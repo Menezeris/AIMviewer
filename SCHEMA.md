@@ -410,6 +410,17 @@ create table ifc_property_definitions (
 
 ---
 
+
+### 2.12 Práva rolí (D-079, migrácia 20261016120000)
+
+RLS je vypnuté (D-025) a všetko čítanie ide cez `service_role` (D-026). Rolám `anon` a
+`authenticated` sú v schéme `public` **odobraté všetky práva** (tabuľky, views, sekvencie,
+funkcie) aj v default privileges pre objekty vytvorené rolou `postgres`. Dôvod: anon kľúč
+je v prehliadači kvôli Realtime Broadcast (živý kanál, D-079) a bez odobratia by cez
+PostgREST otváral celú DB. `service_role` má explicitný `grant all` / `grant execute`.
+Nová tabuľka alebo RPC teda **nie je** dostupná anon kľúču — ak to raz treba (auth + RLS),
+grant je vedomý krok v migrácii.
+
 ## 4. Konvencia `properties` (D-022)
 
 `properties` JSONB obsahuje **property sety**, vnorené podľa názvu. IFC **atribúty**

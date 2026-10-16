@@ -57,3 +57,28 @@ rozhodnutia: [`DECISIONS.md`](DECISIONS.md), plán: [`ROADMAP.md`](ROADMAP.md).
 3. **Deploy** → appka beží na `*.vercel.app`. Push do `main` = auto-deploy.
 
 Vlastná doména sa rieši až keď je demo verejné (po S3, D-026).
+
+## Claude ako chat vedľa viewera (MCP konektor + živý kanál, D-079)
+
+Claude (napr. predplatné Max) sa pripojí k dátam budovy cez custom connector a 3D
+príkazy („ukáž VZT vyústenia na 2. NP", „skry architektúru") sa vykonajú vo vieweri,
+ktorý je otvorený vedľa.
+
+1. **Migrácia (najprv!):** `supabase db push` — `20261016120000_revoke_anon_grants.sql`
+   odoberie anon kľúču prístup k DB. Bez nej nikdy nedávaj anon kľúč do Vercelu.
+2. **Vercel env:**
+   - `MCP_TOKEN` = dlhý náhodný reťazec (napr. `openssl rand -hex 24`) — bez neho je
+     endpoint vypnutý.
+   - `LIVE_CHANNEL` = názov kanála pre demo (netriviálny, napr. `bencont-7f3k`).
+   - `NEXT_PUBLIC_SUPABASE_URL` = rovnaká hodnota ako `SUPABASE_URL`.
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = anon/publishable kľúč (Supabase → Project
+     Settings → API). Po zmene `NEXT_PUBLIC_*` treba redeploy.
+3. **Claude:** Settings → Connectors → *Add custom connector* → URL
+   `https://ai-mviewer.vercel.app/api/mcp/<MCP_TOKEN>` (bez OAuth). V konverzácii
+   konektor zapni.
+4. **Viewer:** otvor `https://ai-mviewer.vercel.app/ifc?live=<LIVE_CHANNEL>` — vľavo dole
+   sa ukáže zelené „Live". Kanál si tab pamätá; `?live=off` ho vypne.
+
+Ak viewer nie je otvorený alebo kanál nie je nastavený, tool vráti Claude odkaz, ktorým
+sa dá výsledok otvoriť ručne.
+

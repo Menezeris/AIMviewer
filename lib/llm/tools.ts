@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PDF_LINK_SOURCE } from "@/lib/data/constants";
 import { fetchAllPages } from "@/lib/data/pagination";
 import type { ToolDefinition } from "./provider";
+import { mergeIfcActions, type AskAction } from "./actions";
 
 /**
  * Read-only tools LLM rozhrania (D-056) — tool-calling nad whitelistom, NIE
@@ -139,12 +140,7 @@ export interface AskSource {
 }
 
 /** UI akcia vyžiadaná modelom (show_in_3d…) — klient na ňu naviguje (D-056). */
-export interface AskAction {
-  type: "navigate";
-  /** Interná cesta Viewera (server ju stavia z whitelistu — nikdy nie z modelu). */
-  url: string;
-  label: string;
-}
+export type { AskAction };
 
 /** Záznam o vykonanom tool calle (transparentnosť v UI). */
 export interface AskToolTrace {
@@ -1879,32 +1875,7 @@ export class AskToolRuntime {
    * viewer ops (D-066) sa zreťazia cez `;` do `ops` v pôvodnom poradí.
    */
   finalActions(): AskAction[] {
-    const isIfc = (a: AskAction) => a.url.startsWith("/ifc?");
-    const ifcActions = this.actions.filter(isIfc);
-    if (ifcActions.length <= 1) return this.actions;
-
-    const guids: string[] = [];
-    const ops: string[] = [];
-    for (const a of ifcActions) {
-      const params = new URLSearchParams(a.url.slice(a.url.indexOf("?") + 1));
-      for (const g of (params.get("focus") ?? "").split(",")) {
-        if (g && !guids.includes(g)) guids.push(g);
-      }
-      const op = params.get("ops");
-      if (op) ops.push(op);
-    }
-    const merged = new URLSearchParams();
-    if (guids.length > 0) merged.set("focus", guids.join(","));
-    if (ops.length > 0) merged.set("ops", ops.join(";"));
-    merged.set("r", Date.now().toString(36));
-    const label =
-      ops.length > 0
-        ? `3D: ${ifcActions.length} akcií`
-        : `3D: ${guids.length} prvkov`;
-    return [
-      { type: "navigate", url: `/ifc?${merged.toString()}`, label },
-      ...this.actions.filter((a) => !isIfc(a)),
-    ];
+    return mergeIfcActions(this.actions);
   }
 
   /**

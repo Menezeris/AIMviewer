@@ -5,6 +5,7 @@ import { SidebarNav } from "@/components/sidebar-nav";
 import { SidebarShell } from "@/components/sidebar-shell";
 import { SidebarGate } from "@/components/sidebar-gate";
 import { AskDock } from "@/components/ask-dock";
+import { LiveChannel } from "@/components/live-channel";
 
 // ISR: viewer je verejný read-only (žiadne auth/cookies), tak render cachujeme
 // a každých 60 s revalidujeme. Warm navigácia je takmer okamžitá a Next routy
@@ -37,6 +38,9 @@ export default async function ViewerLayout({
 
       {/* Globálny AI chat pri spodku — konverzácia prežíva preklikávanie (D-056). */}
       <AskDock />
+
+      {/* Živý kanál: príkazy od Claude cez MCP konektor (D-079), len s ?live=. */}
+      <LiveChannel />
     </div>
   );
 }

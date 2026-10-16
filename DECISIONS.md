@@ -2698,9 +2698,61 @@ prepnutí na tab). Endpoint je zámerne dynamický (necachovaný) — zanedbate�
 
 ---
 
+### D-079 — Claude cez MCP konektor + živý príkazový kanál do viewera (Realtime)
+**Status:** rozhodnuté (2026-10-16), pre demo Bencont.
+
+**Kontext:** demo má ukázať, že kvalitný IFC model (správne triedy, vzťahy, federácia ARCH+VZT)
+dáva AI okamžité a overiteľné odpovede. Vstavaný `/ask` (D-056) beží na Gemini free tieri;
+lepší model cez API = ďalší náklad. Autor má predplatné Claude (Max), v ktorom vie Claude
+používať vlastné nástroje cez **custom connector (MCP)** bez platenia za tokeny. Cena: chat
+beží v Claude **vedľa** viewera, nie v ňom — a Claude o otvorenom vieweri nevie nič.
+
+**Rozhodnutie:**
+1. **MCP server v AIMvieweri** — `POST /api/mcp/<MCP_TOKEN>` (Streamable HTTP, JSON odpovede,
+   bezstavový). Vystavuje **tie isté tools** ako `/ask` (`TOOL_DEFINITIONS` + `AskToolRuntime`,
+   jeden zdroj pravdy) a ten istý doménový prompt ako MCP `instructions`
+   (`lib/llm/system-prompt.ts`). Žiadna závislosť: JSON-RPC vrstva je ~150 riadkov
+   (`lib/mcp/server.ts`), lebo potrebujeme len `initialize` / `tools/list` / `tools/call` /
+   `ping`; oficiálne SDK by priviedlo express+hono kvôli trom metódam. Bez `MCP_TOKEN` je
+   endpoint vypnutý (404) — vzor env brán D-068/D-072. Token v ceste = autentifikácia
+   konektora (claude.ai podporuje konektor bez OAuth); dáta sú aj tak verejné read-only.
+2. **Živý príkazový kanál** — UI akcie (`show_in_3d`, `style_in_3d`, `open_node`,
+   `open_drawing`) sa z MCP nevrátia klientovi (žiadny nie je), ale **odvysielajú** cez
+   Supabase Realtime Broadcast (REST z servera, `service_role`) na kanál `LIVE_CHANNEL`.
+   Viewer otvorený s `?live=<kanál>` (pamätá si ho v `sessionStorage`) je prihlásený na
+   kanál a príkaz vykoná **tou istou cestou ako AI dock**: `router.push(url)` na whitelist URL
+   postavenú serverom. Dávka príkazov do 350 ms sa zlúči rovnako ako `finalActions()`
+   (`lib/llm/actions.ts`, zdieľané server aj klient), aby rýchle po sebe idúce `style_in_3d`
+   nezhodili jeden druhého.
+3. **Anon kľúč v prehliadači — až po odobratí práv (mení D-026).** Realtime klient potrebuje
+   anon (publishable) kľúč. S vypnutým RLS (D-025) by anon kľúč dal komukoľvek čítanie aj
+   zápis celej DB cez PostgREST, preto migrácia `20261016120000_revoke_anon_grants.sql`
+   odoberie rolám `anon` a `authenticated` všetky práva v schéme `public` (tabuľky,
+   sekvencie, funkcie + default privileges). Appka číta výhradne cez `service_role` (D-026),
+   takže sa nič nerozbije; anon kľúču ostane len Realtime broadcast na verejné kanály a
+   čítanie verejných bucketov (tie sú verejné už dnes). **Poradie nasadenia je povinné:
+   najprv migrácia, až potom `NEXT_PUBLIC_SUPABASE_ANON_KEY` na Verceli.**
+
+**Zavrhnuté:** polling tabuľky príkazov (latencia ~1 s, ďalšia tabuľka, funkcia na každý tik);
+SSE z Next routy (serverless inštancie nezdieľajú stav); Claude cez API v `/ask` (funguje
+už dnes cez `LLM_PROVIDER=anthropic`, ale platí sa za tokeny — ostáva ako záloha);
+privátne Realtime kanály s RLS na `realtime.messages` (vyžadujú auth, ktoré nemáme).
+
+**Vedomé limity:** kanál je verejný broadcast — kto pozná názov kanála a anon kľúč, môže
+viewerom pohnúť (len pohľad, žiadne dáta). Názov kanála preto nie je triviálny a mení sa
+per demo. MCP nevie, či niekto počúva — tool vráti „odoslané do živého viewera", nie
+„zobrazené". Rate limit na MCP neriešime (bez LLM nákladov na našej strane).
+
+**Dôsledok:** env `MCP_TOKEN`, `LIVE_CHANNEL` (server), `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` (klient). `/ask` ostáva nezmenený (prompt presunutý do
+modulu bez zmeny textu). Návod na pripojenie konektora v README.
+
+---
+
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-16** — **D-079 (Claude cez MCP + živý kanál do viewera):** `POST /api/mcp/<MCP_TOKEN>` vystavuje tools `/ask` pre custom connector v Claude (Max, bez platby za tokeny); UI akcie idú cez Supabase Realtime Broadcast na kanál `LIVE_CHANNEL` do viewera otvoreného s `?live=<kanál>`, ktorý ich vykoná ako AI dock (`router.push`). Anon kľúč smie do prehliadača až po migrácii, ktorá odoberie `anon`/`authenticated` práva v `public` (mení D-026).
 - **2026-08-02** — **D-075 dodatok (ribbon je toolbar aj na mobile):** upstream posielal každú malú obrazovku (`isMobile`: šírka < 768, alebo touch < 1024) do `MobileToolbar`, takže na telefóne ribbon — aj s našou záložkou `Documents` — vôbec nerenderoval (overené Playwrightom na profiloch iPhone 14 / Pixel 7 / iPad Mini: 44px lišta ikon, naše funkcie len v „…" menu; ribbon až od 1024 px). Teraz o toolbare rozhoduje **zvolený štýl, nie veľkosť obrazovky**: `ribbon` obsluhuje všetky šírky (44px pás, 36px ciele, vodorovne scrollovateľné záložky, bez uloženej voľby štartuje zbalený → 44 px; ťuknutie na záložku band otvorí len dočasne, pripína chevron), `classic` si na malých necháva `MobileToolbar` ako cestu späť. Prepínač v `ViewerLayout` je fork-only (sentinely), responzívnosť ribbonu + `lib/viewport.ts` + `ThemeSwitch size` sú generické (kandidát na upstream PR). AIMviewer bez zmien kódu.
 - **2026-08-02** — **D-075 dodatok (záložka „Documents" v ribbone):** upstream sync spravil z tabbed ribbonu default toolbar, čím naše vstupné body (Documents, Underlays, 3D|2D|Split) ostali len v klasickom stripe a v ikonovej lište; doplnená fork-only záložka `Documents` (telo v `apps/viewer/src/aim/DocumentsRibbonTab.tsx`, zapojenie cez sentinely). Iba presun vstupných bodov, nula zmien správania.
 - **2026-08-01** — **D-071 dodatok (sync sa merguje sám, hlási stav; audit driftu):** kontrola stavu ukázala, že fork je **146 commitov (~3 týždne) pozadu** — posledný upstream commit reálne na `main` je `beeb8ed5` z **2026-07-11**, upstream je na `ff03b862` (2026-08-01). Nešlo o jednu poruchu, ale o štyri: **(1)** oprava workflowu z 27. 7. nikdy nepristála na `main` — commity `eba104bc`/`ad78ca33`/`922bf8a0` ostali na vetve `claude/mame-zas-s-tymto-problem-uvo65y` **bez otvoreného PR**, a keďže GitHub cron číta workflow *vždy* z default branch, beh 3. 8. by padol identicky ako 20. a 27. 7.; **(2)** beh **13. 7. hlásil „success", hoci nevytvoril žiadny PR** — `gh` mieril na LTplus-AG a 403 zožralo `|| echo`, jediná stopa je osirotená vetva `sync/upstream-2026-07-13`, takže automat *nikdy* nedobehol celý cyklus; **(3)** PR #35 bol zelený od 27. 7. 13:50 a **päť dní ho nikto nezmergoval**, fork medzitým zaostal o ďalších 27 commitov — toto, nie CI, je hlavná príčina driftu; **(4)** o zaostávaní neinformovalo nič. Opravené vo forku (PR #36): každé `gh` volanie buď prejde, alebo zhodí beh (zlyhaný scheduled workflow pošle e-mail); **bezkonfliktný sync počká na CI a zmerguje sa sám** merge commitom, konfliktný ostáva s `needs-manual-merge`; každý beh (aj po zlyhaní, `if: always()`) prepíše jediný issue `Upstream sync status` — koľko commitov pozadu, ktorý upstream commit `main` reálne obsahuje, výsledok posledného behu a odpočet do expirácie PATu z repo variable `UPSTREAM_SYNC_TOKEN_EXPIRES`. CI sa čaká v jobe, nie cez `gh pr merge --auto`, lebo `--auto` merguje v momente mergeability — bez required status checks teda pred CI, a sync PAT nemá Administration scope na overenie, či sú nastavené. `FORK_MAINTENANCE.md` tabuľka touchpointov (označená za zastaranú v predošlom dodatku) pregenerovaná zo sentinelov: mala 3 súbory, realita je **9** vrátane `packages/renderer/src/index.ts` (generický external-overlay hook — najďalej postúpený kandidát na upstream PR). V AIMviewer: `@ifc-lite/geometry|query|wasm` **pinnuté na presnú verziu** (2.9.2 / 1.14.10 / 2.13.4 — zosúladené s guardrailom v ROADMAPe a s 24h cache `ifc-lite_bg.wasm` v `next.config.ts`) a pridaný `renovate.json` (pondelok, `@ifc-lite/*` v jednom PR, majory oddelene, dependency dashboard) — lock zamrzol na `e83ef55` (28. 6.) a nikto si nevšimol, že `@ifc-lite/wasm` medzitým vyskočil z 2.13.4 na **4.2.0**, dva majory. Majory sa zámerne nebumpli v tejto zmene — prídu ako samostatný Renovate PR, lebo AIMviewer nemá CI a každý bump treba overiť ručne receptom z `.claude/skills/verify`. **Overené naživo:** PR #36 zmergovaný → PR #35 (zelený, 30/30 checkov) domergovaný **merge commitom** → zaostávanie kleslo **146 → 27**; ostrý `workflow_dispatch` opraveného workflowu potom zmergoval upstream, pushol vetvu a otvoril **PR #37** (`ff03b862`, 27 commitov, 285 súborov, konflikty, oba labely) — celý cyklus teda po prvý raz dobehol. **Zlyhal však posledný krok:** `the 'AssetinSpace/ifc-lite' repository has disabled issues` — GitHub dodáva forky s **vypnutou feature Issues**, čo sme dovtedy nevedeli. Sync fungoval, červený bol kvôli reportingu; a červená za funkčný beh učí ignorovať červenú, teda presne ten návyk, ktorý nás stál tri týždne. Opravené v PR #38: status ide **vždy** do `$GITHUB_STEP_SUMMARY` (nepotrebuje žiadnu zapnutú feature), issue je best-effort a tolerovaná je **len** podmienka „has disabled issues" (warning + exit 0) — každé iné zlyhanie `gh` beh naďalej zhodí. `FORK_MAINTENANCE.md` dostal tabuľku nastavení, ktoré workflow očakáva. **Nastavenia, ktoré kód nevyrieši a treba klik v Settings:** zapnúť Issues (potom vznikne `Upstream sync status`, raz ho pripnúť) a nastaviť variable `UPSTREAM_SYNC_TOKEN_EXPIRES` = `2027-07-27`. **Otvorené:** `@assetinspace/design-kit` v AIMviewer ostáva `github:AssetinSpace/design-kit#main` (plávajúca vetva, v locku `git+ssh://`) — fork to už má ako HTTPS tarball pinnutý na `d41bbbb`, ale AIMviewer ide na **npm**, ktorý na rozdiel od pnpm robí HTTPS fallback, takže tu to build nerozbíja a je to reprodukovateľnosť, nie požiar; prepnutie sa nedalo dokončiť, lebo v tomto prostredí je GitHub HTTPS egress blokovaný (403) a lockfile sa nedá pregenerovať bez stiahnutia tarballu.

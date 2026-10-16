@@ -189,7 +189,9 @@ Každá úroveň je riadok v `objects` (líši sa `object_type`). Spatial väzby
 ## Dátový prístup (D-026)
 - Čítanie **výhradne server-side** cez Supabase `service_role` (Server Components /
   route handlers). DB ostáva nevystavená, **RLS sa nezapína** (línia D-025).
-- Anon kľúč sa do prehliadača nedáva, kým nepríde auth + RLS.
+- Anon kľúč smie do prehliadača **len** kvôli Realtime živému kanálu (D-079) a **len** keď
+  rolám `anon`/`authenticated` nepatria v `public` žiadne práva (migrácia `20261016120000`);
+  nová tabuľka/RPC im práva nedáva. Dáta sa cez anon kľúč nikdy nečítajú.
 - ISR cache (`unstable_cache`, tag `aim`, revalidate 60 s, D-030); po ETL loade
   `revalidateTag("aim")`.
 
