@@ -2749,9 +2749,69 @@ modulu bez zmeny textu). Návod na pripojenie konektora v README.
 
 ---
 
+### D-080 — Odvodzovače nad federáciou; prvok → priestor ako `rel_referenced_in_spatial_structure`
+**Status:** rozhodnuté (2026-10-16). **Spresňuje D-052** (typ hrany a rámec).
+
+**Kontext:** demo potrebuje odpoveď „ktoré VZT prvky sú v miestnosti X". VZT.ifc nemá
+žiadne IfcSpace a všetkých 1021 prvkov je natívne zaradených len na podlaží; miestnosti
+sú v ASR.ifc. Vzťah naprieč súbormi v IFC žiť nemôže (D-052), musí byť v našej DB.
+D-052 navrhoval hranu `rel_contained_in_spatial_structure` so `source='geom'`. Kontrola
+proti schéme IFC4X3_ADD2: `IfcElement.ContainedInStructure` je **SET[0:1]** — prvok smie
+byť obsiahnutý len v jednej štruktúre a natívne už je (podlažie); manifest to drží ako
+unique-active-parent. Druhá contained hrana by porušila IFC aj našu integritu.
+
+**Rozhodnutie:**
+1. **Typ hrany = `rel_referenced_in_spatial_structure`** (IfcRelReferencedInSpatialStructure,
+   `IfcElement.ReferencedInStructures` SET[0:?]) — IFC presne na to má neexkluzívny vzťah
+   „prvok sa nachádza aj v ďalšej priestorovej štruktúre". Je IFC-kanonický (namespace
+   `rel`, export `ifcrel`), nie `aim_`. Natívny containment (podlažie) ostáva nedotknutý.
+   `role` = `inside` (≥ 50 % vzorky bodov prvku v priestore) | `partial` (≥ 10 %, napr.
+   potrubie prechádza miestnosťou).
+2. **Rámec odvodzovačov** `etl/derive/` (`python -m etl.derive <rule> --models …`):
+   post-processing nad naloadenými modelmi, nie súčasť `etl.main`. Odvodzovač dostane
+   modely federácie a vráti hrany s IFC GUID na oboch koncoch; zápis je spoločný
+   (`etl/derive/db.py`): deterministické id, `source='derive:<rule>'`, hrany, ktoré nový
+   beh neodvodí, sa **uzavrú** (`valid_until`), nemažú. Ďalšie odvodzovače (systém
+   obsluhuje miestnosti, zóny…) = nový modul v registri, žiadna zmena zápisu.
+3. **Geometria `spatial_reference`:** priestor = hranol (pôdorys tela IfcSpace × výška od
+   podlahy po úroveň podlažia nad ním, lebo VZT je v podhľade nad telom miestnosti, ktoré
+   Revit končí na podhľade); prvok = stred obálky + vzorka vrcholov; test bod-v-trojuholníku
+   v numpy, bez OCC booleanov. Default prvky `IfcDistributionElement` + `IfcFurnishingElement`
+   (steny/dosky/dvere sú hraničné prvky — tie patria do `IfcRelSpaceBoundary`, nie sem),
+   priestory `IfcSpace` + `IfcSpatialZone` (IfcSpatialElement s geometriou).
+4. **Zarovnanie federácie cez IfcMapConversion** (ako viewer, D-050 dodatok): ASR a VZT
+   majú rôzne Eastings/Northings (lokálny posun VZT → ASR = 30,26 m / −7,77 m). Bez
+   zarovnania sa spáruje 117 z 1112 prvkov, so zarovnaním 1080. Rôzna rotácia = chyba.
+5. **IfcZone sa geometriou nerieši:** IfcZone je IfcSystem (skupina priestorov cez
+   IfcRelAssignsToGroup), nemá telo. „Prvky v zóne" = prvky v jej priestoroch, teda
+   tranzitívny dopyt, nie uložená hrana. Zóna s vlastnou geometriou patrí do
+   IfcSpatialZone a tú odvodzovač berie.
+6. **Pohľad `v_space_elements`** = natívny containment do priestoru ∪ odvodené referencie
+   (`relation` contained|referenced) — jeden dopyt pre LLM aj viewer.
+
+**Export:** zdrojové IFC sa neprepisujú, export pôvodných súborov sa nemení. Pri exporte
+zlúčeného modelu sa hrana serializuje ako IfcRelReferencedInSpatialStructure — s natívnym
+containmentom nekoliduje, lebo IFC na to rátá. Pri exporte po súboroch je cross-file hrana
+mimo oboch súborov → ICDD linkset (D-015), ako pri ostatných vrstvách naprieč modelmi.
+
+**Zavrhnuté:** `rel_contained_in_spatial_structure` (exkluzívne, D-052 pôvodne);
+`IfcRelInterferesElements` (IFC4.3 ho povoľuje aj pre IfcSpatialElement, ale opisuje
+geometrický stret, nie zaradenie — vhodný na budúcu clash vrstvu); presun prvku zo
+storey do space (deštruktívne voči zdroju); OCC solid-in-solid (pomalé, citlivé na
+neuzavreté telesá z Revitu).
+
+**Nález pri prvom behu (QA výstup odvodzovača):** ASR.ifc má miestnosti 2. a 3. NP
+**zdvojené** (rovnaké číslo, výška tela 8,0 a 8,8 m), Revit Areas („Zóna 1 – Retail +
+Lobby", „Nájomný priestor") exportované ako IfcSpace (patria do IfcZone/IfcSpatialZone),
+1. NP má len dve skutočné miestnosti a 5. NP žiadnu. Odvodzovač to hlási ako prekrývajúce
+sa priestory; náprava patrí do modelu, nie do kódu.
+
+---
+
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-16** — **D-080 (odvodzovače; prvok → priestor):** rámec `etl/derive/` pre hrany odvodené nad federáciou (idempotentné, `source='derive:<rule>'`, zastarané sa uzavrú). Prvý odvodzovač `spatial_reference` zaraďuje prvky do priestorov geometriou ako **`rel_referenced_in_spatial_structure`** (IfcRelReferencedInSpatialStructure — neexkluzívny; spresňuje D-052, kde contained koliduje so SET[0:1]), zarovnanie federácie cez IfcMapConversion, priestor ako hranol po podlažie nad ním (podhľad). Pohľad `v_space_elements`. IfcZone tranzitívne, nie geometriou.
 - **2026-10-16** — **D-079 (Claude cez MCP + živý kanál do viewera):** `POST /api/mcp/<MCP_TOKEN>` vystavuje tools `/ask` pre custom connector v Claude (Max, bez platby za tokeny); UI akcie idú cez Supabase Realtime Broadcast na kanál `LIVE_CHANNEL` do viewera otvoreného s `?live=<kanál>`, ktorý ich vykoná ako AI dock (`router.push`). Anon kľúč smie do prehliadača až po migrácii, ktorá odoberie `anon`/`authenticated` práva v `public` (mení D-026).
 - **2026-08-02** — **D-075 dodatok (ribbon je toolbar aj na mobile):** upstream posielal každú malú obrazovku (`isMobile`: šírka < 768, alebo touch < 1024) do `MobileToolbar`, takže na telefóne ribbon — aj s našou záložkou `Documents` — vôbec nerenderoval (overené Playwrightom na profiloch iPhone 14 / Pixel 7 / iPad Mini: 44px lišta ikon, naše funkcie len v „…" menu; ribbon až od 1024 px). Teraz o toolbare rozhoduje **zvolený štýl, nie veľkosť obrazovky**: `ribbon` obsluhuje všetky šírky (44px pás, 36px ciele, vodorovne scrollovateľné záložky, bez uloženej voľby štartuje zbalený → 44 px; ťuknutie na záložku band otvorí len dočasne, pripína chevron), `classic` si na malých necháva `MobileToolbar` ako cestu späť. Prepínač v `ViewerLayout` je fork-only (sentinely), responzívnosť ribbonu + `lib/viewport.ts` + `ThemeSwitch size` sú generické (kandidát na upstream PR). AIMviewer bez zmien kódu.
 - **2026-08-02** — **D-075 dodatok (záložka „Documents" v ribbone):** upstream sync spravil z tabbed ribbonu default toolbar, čím naše vstupné body (Documents, Underlays, 3D|2D|Split) ostali len v klasickom stripe a v ikonovej lište; doplnená fork-only záložka `Documents` (telo v `apps/viewer/src/aim/DocumentsRibbonTab.tsx`, zapojenie cez sentinely). Iba presun vstupných bodov, nula zmien správania.

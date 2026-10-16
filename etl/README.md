@@ -73,6 +73,24 @@ použité raz pri výmene ručného seedu za reálne ETL dáta. Seed je reproduk
 z `../supabase/seed.sql`, takže je to vratné. Bez `--reset` ide čistý idempotentný
 upsert (re-run rovnakého modelu nič neduplikuje).
 
+## Odvodené hrany — `etl.derive` (D-080)
+
+Post-processing nad už naloadenými modelmi: hrany, ktoré v žiadnom zdrojovom IFC nie sú,
+ale dajú sa odvodiť. Prvý odvodzovač `spatial_reference` zaradí prvky (VZT, nábytok…) do
+miestností geometriou ako `rel_referenced_in_spatial_structure`:
+
+```bash
+# najprv bez DB: zhrnutie, QA prekrývajúcich sa priestorov, CSV report
+python -m etl.derive spatial_reference --models podklady/FINAL/ASR.ifc podklady/FINAL/VZT.ifc --dry-run --report out/spatial.csv
+# zápis (idempotentný; hrany, ktoré beh už neodvodí, sa uzavrú)
+python -m etl.derive spatial_reference --models podklady/FINAL/ASR.ifc podklady/FINAL/VZT.ifc
+```
+
+Prvý model je referenčný súradnicový rámec, ostatné sa zarovnajú cez `IfcMapConversion`.
+Voľby: `--include` (triedy prvkov), `--spatial` (triedy priestorov), `--no-plenum`
+(nepredlžovať miestnosť do podhľadu po podlažie nad ňou). Spúšťa sa **po** `etl.main`
+oboch modelov (prvky aj priestory musia byť v DB, páruje sa cez aktívny IFC GUID).
+
 ## Idempotencia (D-031)
 - `objects` upsert cez `object_ref` (UNIQUE) → `id` ostáva DB-generované (D-010).
 - Hrany / systémy / GUID história → deterministické UUID (`ids.py`), `ON CONFLICT (id)`.

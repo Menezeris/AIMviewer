@@ -99,6 +99,8 @@ const QUERY_RELATIONS = new Set([
   "v_property_dictionary",
   "rel_aggregates",
   "rel_contained_in_spatial_structure",
+  "rel_referenced_in_spatial_structure",
+  "v_space_elements",
   "rel_defines_by_type",
   "rel_associates_document",
   "rel_associates_classification",
@@ -117,6 +119,7 @@ const COLUMN_RE = /^[a-zA-Z_][a-zA-Z0-9_]*(->>?[a-zA-Z0-9_ .-]+)*$/;
 const REL_VIEWS = new Set([
   "rel_aggregates",
   "rel_contained_in_spatial_structure",
+  "rel_referenced_in_spatial_structure",
   "rel_defines_by_type",
   "rel_associates_document",
   "rel_associates_classification",
@@ -412,7 +415,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "list_relations",
     description:
       "Vzťahy uzla cez kanonické views: rel_aggregates (dekompozícia štruktúry), " +
-      "rel_contained_in_spatial_structure (prvok v priestore), rel_defines_by_type (occurrence→typ), " +
+      "rel_contained_in_spatial_structure (prvok v priestore/podlaží, natívne zo súboru), " +
+      "rel_referenced_in_spatial_structure (prvok sa nachádza aj v priestore — odvodené geometriou " +
+      "naprieč modelmi, role inside|partial), rel_defines_by_type (occurrence→typ), " +
       "rel_associates_document (uzol→dokument), rel_associates_classification, " +
       "rel_assigns_to_actor (zodpovednosti, aktor→uzol), rel_assigns_to_group (člen→systém), " +
       "rel_member_of (osoba→organizácia). Smer je subjekt(from)→objekt(to); zadaj from_id alebo to_id.",
@@ -431,7 +436,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_spatial_path",
     description:
       "Priestorové zaradenie uzla — cesta nahor (asset → space → floor → building → site) " +
-      "cez rel_contained_in_spatial_structure a rel_aggregates. Odpovedá na 'v ktorej miestnosti/podlaží je X'.",
+      "cez rel_contained_in_spatial_structure a rel_aggregates, plus `referenced_in` = miestnosti, " +
+      "v ktorých prvok geometricky leží (rel_referenced_in_spatial_structure, napr. VZT prvok z iného " +
+      "modelu než miestnosti). Odpovedá na 'v ktorej miestnosti/podlaží je X'.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1334,11 +1341,29 @@ export class AskToolRuntime {
       current = parent;
     }
 
-    const metas = await this.loadObjects([id, ...chainIds]);
+    // D-080: odvodené zaradenie do miestností (geometria naprieč federáciou).
+    const { data: refs, error: refErr } = await supabase
+      .from("rel_referenced_in_spatial_structure")
+      .select("to_id, role")
+      .eq("from_id", id)
+      .is("valid_until", null)
+      .limit(MAX_LIMIT);
+    if (refErr) throw new Error(refErr.message);
+    const refRows = (refs ?? []) as { to_id: string; role: string | null }[];
+
+    const metas = await this.loadObjects([id, ...chainIds, ...refRows.map((r) => r.to_id)]);
     const metaById = new Map(metas.map((m) => [m.id, m]));
     return {
       object: metaById.get(id) ?? { id },
       path: chainIds.map((cid) => metaById.get(cid) ?? { id: cid }),
+      ...(refRows.length
+        ? {
+            referenced_in: refRows.map((r) => ({
+              ...(metaById.get(r.to_id) ?? { id: r.to_id }),
+              role: r.role,
+            })),
+          }
+        : {}),
     };
   }
 

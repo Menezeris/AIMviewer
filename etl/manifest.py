@@ -90,6 +90,16 @@ _SPECS: list[RelType] = [
         description="Fyzický prvok (asset) umiestnený v priestorovej štruktúre.",
     ),
     RelType(
+        rel_type="rel_referenced_in_spatial_structure",
+        ifc_entity="IfcRelReferencedInSpatialStructure",
+        relating_attr="RelatingStructure",    # = štruktúra (space/floor) = náš to_id
+        relating_end="to",
+        from_object_types=["asset"],
+        to_object_types=["space", "floor", "building", "site"],
+        description="Prvok sa nachádza (aj) v priestorovej štruktúre — neexkluzívne, "
+                    "odvodené geometriou naprieč federáciou (D-080).",
+    ),
+    RelType(
         rel_type="rel_defines_by_type",
         ifc_entity="IfcRelDefinesByType",
         relating_attr="RelatingType",          # = type = náš to_id
@@ -190,7 +200,11 @@ def build_manifest(schema_name: str = IFC_SCHEMA) -> list[RelType]:
     """
     from ifcopenshell import ifcopenshell_wrapper as w
 
-    schema = w.schema_by_name(schema_name)
+    try:
+        schema = w.schema_by_name(schema_name)
+    except RuntimeError:
+        # ifcopenshell ≥0.9 nesie IFC4.3 len ako IFC4X3_ADD2 (meta-model vzťahov je rovnaký).
+        schema = w.schema_by_name(f"{schema_name}_ADD2")
     out: list[RelType] = []
     for spec in _SPECS:
         if spec.ifc_entity is None:

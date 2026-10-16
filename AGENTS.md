@@ -124,6 +124,8 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
   `rel_associates_document` (IfcRelAssociatesDocument), `rel_associates_classification`
   (IfcRelAssociatesClassification), `rel_assigns_to_actor` (IfcRelAssignsToActor),
   `rel_assigns_to_group` (IfcRelAssignsToGroup — systémy, D-047),
+  `rel_referenced_in_spatial_structure` (IfcRelReferencedInSpatialStructure — prvok aj v ďalšom
+  priestore, neexkluzívne; odvodené cez `python -m etl.derive`, D-080),
   `rel_member_of` (IfcPersonAndOrganization — **resource, nie IfcRel**; poctivo mimo taxonómie)
 - **Fyzicky binárne `from→to` + naše meta stĺpce, NIE objektifikované N-árne IFC entity**
   (preberáme identitu/granularitu IFC, nie serializačnú štruktúru — index nad IFC

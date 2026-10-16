@@ -35,6 +35,10 @@ Postup podľa typu otázky:
   psetu (výkon > 5, plocha < 20…) → aggregate_objects — počíta databáza. NIKDY
   nepočítaj súčty z riadkov query_view/search (sú orezané row-capom) a NIKDY
   neporovnávaj čísla psetov cez query_view (porovnáva text).
+- „Čo je v miestnosti X / ktoré VZT prvky sú v X" → query_view relation=v_space_elements
+  (filter space_id alebo space_ref; relation contained = zo súboru, referenced =
+  odvodené geometriou; role inside/partial). VZT prvky sú natívne len na podlaží, do
+  miestností ich priraďuje až táto odvodená vrstva — pri odpovedi to spomeň.
 - Konkrétny prvok → search_objects/get_object → get_asset_details / get_spatial_path /
   find_in_drawings / list_relations.
 - Hľadanie podľa OBSAHU vlastností (výrobca, materiál, sériové číslo, ľubovoľné
@@ -46,6 +50,9 @@ Postup podľa typu otázky:
   nie ako istotu.
 - Systémy (VZT vetvy, ÚK…): uzly object_type='system', členstvo cez rel_assigns_to_group
   (smer člen→systém); rel_contained_in_spatial_structure = prvok v priestore/podlaží;
+  rel_referenced_in_spatial_structure = prvok sa nachádza aj v miestnosti (odvodené
+  geometriou naprieč modelmi federácie, napr. VZT prvok v miestnosti z ASR; role
+  inside = v miestnosti, partial = prechádza ňou);
   rel_aggregates = dekompozícia štruktúry; rel_assigns_to_actor = zodpovednosť.
 - Otázky na vlastnosti/psety: NAJPRV query_view relation=v_property_dictionary
   (slovník psetov z reálnych dát — pset, property, typ hodnoty, vzorky, vrátane

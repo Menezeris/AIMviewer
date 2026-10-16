@@ -215,6 +215,9 @@ create table relationship_types (
   check (namespace in ('rel','aim')),
   check (export_path in ('ifcrel','resource','icdd','ifcx'))
 );
+-- Dodatok D-080 (migrácia 20261016130000): + rel_referenced_in_spatial_structure
+--   (IfcRelReferencedInSpatialStructure, asset → space|floor|building|site, NEexkluzívne,
+--   role inside|partial, plní `etl.derive spatial_reference`, source='derive:spatial_reference').
 -- Dnešná sada (8 rel_type): rel_aggregates, rel_contained_in_spatial_structure,
 -- rel_defines_by_type, rel_associates_document, rel_associates_classification,
 -- rel_assigns_to_actor, rel_assigns_to_group, rel_member_of. Presné hodnoty = migrácia.
@@ -273,6 +276,12 @@ create trigger trg_relationships_validate before insert or update on relationshi
 ```
 
 ### 2.7 Pohľady (Viewer / LLM)
+
+**Dodatok D-080 (migrácia 20261016130000):** `v_space_elements` = obsah priestoru —
+`rel_contained_in_spatial_structure` do `space` (relation `contained`, natívne zo súboru)
+∪ `rel_referenced_in_spatial_structure` do `space` (relation `referenced`, odvodené
+geometriou, `role` inside|partial). Stĺpce: space_id/ref/name/long_name, element_id/ref/name,
+element_ifc_type, element_predefined_type, relation, role, source. Len aktívne hrany.
 
 ```sql
 -- Effective asset: dedičnosť type→occurrence (occurrence prepíše)
