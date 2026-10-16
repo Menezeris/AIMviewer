@@ -12,8 +12,8 @@
 -- preberáme ho doslovne (IFC-first, D-046), preto namespace 'rel', nie 'aim'.
 --
 -- Hrany plní odvodzovač `python -m etl.derive spatial_reference` (geometria,
--- source='derive:spatial_reference'); role = 'inside' | 'partial' (podiel
--- vzorky bodov prvku vnútri priestoru). Zdrojové IFC sa nikdy neprepisujú.
+-- source='derive:spatial_reference'); role = 'inside' (prvok celý v tele
+-- priestoru) | 'partial' (prvok telo pretína). Zdrojové IFC sa nikdy neprepisujú.
 -- =============================================================================
 
 begin;

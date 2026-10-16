@@ -86,9 +86,12 @@ python -m etl.derive spatial_reference --models podklady/FINAL/ASR.ifc podklady/
 python -m etl.derive spatial_reference --models podklady/FINAL/ASR.ifc podklady/FINAL/VZT.ifc
 ```
 
+Geometriu rieši ifcopenshell (`geom.tree` nad BRep telesami): `inside` = prvok celý v tele
+priestoru, `partial` = prvok telo pretína. Rozhoduje telo IfcSpace v modeli — ak VZT
+v podhľade nepadne do miestnosti, treba opraviť telo priestoru v modeli.
 Prvý model je referenčný súradnicový rámec, ostatné sa zarovnajú cez `IfcMapConversion`.
-Voľby: `--include` (triedy prvkov), `--spatial` (triedy priestorov), `--no-plenum`
-(nepredlžovať miestnosť do podhľadu po podlažie nad ňou). Spúšťa sa **po** `etl.main`
+Voľby: `--include` (triedy prvkov), `--spatial` (triedy priestorov), `--inside-only`
+(len prvky celé vnútri, bez `partial`). Spúšťa sa **po** `etl.main`
 oboch modelov (prvky aj priestory musia byť v DB, páruje sa cez aktívny IFC GUID).
 
 ## Idempotencia (D-031)

@@ -1,9 +1,8 @@
-"""Odvodzovač prvok → priestor (D-080): geometria, rekonciliácia zápisu, integrácia.
+"""Odvodzovač prvok → priestor (D-080): zarovnanie, rekonciliácia zápisu, integrácia.
 
 DB sa nepoužíva (stub kurzor). Integračný test postaví malý IFC4X3 model cez
-ifcopenshell.api: miestnosť 4×4×3 m na podlaží 0 m, nad ňou podlažie 4 m,
-vyústenie v miestnosti, vyústenie v podhľade (nad telom miestnosti) a vyústenie
-mimo nej.
+ifcopenshell.api: dve miestnosti 4×4×3 m vedľa seba, vyústenie v prvej, vyústenie
+nad telom miestnosti (podhľad), vyústenie mimo a potrubie cez obe miestnosti.
 """
 
 from __future__ import annotations
@@ -13,32 +12,7 @@ import pytest
 
 from etl.derive import DerivedEdge
 from etl.derive.db import edge_uuid, write_edges
-from etl.derive.geometry import MapFrame, Mesh, footprint, offset_to, points_inside
-
-
-def _box(guid: str, x0, y0, z0, x1, y1, z1) -> Mesh:
-    v = np.array([[x, y, z] for z in (z0, z1) for y in (y0, y1) for x in (x0, x1)], dtype=float)
-    f = np.array([
-        [0, 2, 1], [1, 2, 3],  # spodok
-        [4, 5, 6], [5, 7, 6],  # vrch
-        [0, 1, 4], [1, 5, 4], [2, 6, 3], [3, 6, 7],
-        [0, 4, 2], [2, 4, 6], [1, 3, 5], [3, 7, 5],
-    ])
-    return Mesh(guid, "IfcSpace", v, f)
-
-
-def test_points_inside_l_shaped_footprint_and_height() -> None:
-    # L-tvar = dva kvádre zlúčené do jedného „telesa" (zjednotenie projekcií).
-    a, b = _box("s", 0, 0, 0, 4, 2, 3), _box("s", 0, 2, 0, 2, 4, 3)
-    mesh = Mesh("s", "IfcSpace", np.vstack([a.verts, b.verts]), np.vstack([a.faces, b.faces + 8]))
-    fp = footprint(mesh, z_top=4.0)
-    pts = np.array([
-        [1, 1, 1],    # dnu
-        [3, 3, 1],    # vo výreze L → von
-        [1, 3, 3.5],  # v podhľade nad telom (z_top=4) → dnu
-        [1, 1, 4.5],  # nad podlažím → von
-    ], dtype=float)
-    assert points_inside(fp, pts).tolist() == [True, False, True, False]
+from etl.derive.geometry import MapFrame, offset_to
 
 
 def test_offset_between_map_conversions() -> None:
@@ -133,22 +107,29 @@ def _model():
         return el
 
     space = placed("IfcSpace", 0, 0, 0, 4, 4, 3, storeys[0], "1.01")
+    space2 = placed("IfcSpace", 4, 0, 0, 4, 4, 3, storeys[0], "1.02")
     t_in = placed("IfcAirTerminal", 1, 1, 2.5, 0.3, 0.3, 0.1, storeys[0], "in")
     t_plenum = placed("IfcAirTerminal", 2, 2, 3.5, 0.3, 0.3, 0.1, storeys[0], "plenum")
-    t_out = placed("IfcAirTerminal", 6, 6, 1, 0.3, 0.3, 0.1, storeys[0], "out")
-    return m, space, t_in, t_plenum, t_out
+    t_out = placed("IfcAirTerminal", 9, 6, 1, 0.3, 0.3, 0.1, storeys[0], "out")
+    duct = placed("IfcDuctSegment", 2, 1.5, 2, 4, 0.3, 0.3, storeys[0], "duct")
+    return m, space, space2, t_in, t_plenum, t_out, duct
 
 
-def test_derive_assigns_terminals_to_space_including_plenum() -> None:
+def test_derive_inside_partial_and_unmatched() -> None:
     from etl.derive.spatial_reference import REL_TYPE, SpatialReferenceConfig, derive
 
-    m, space, t_in, t_plenum, t_out = _model()
+    m, space, space2, t_in, t_plenum, t_out, duct = _model()
     res = derive([m])
     got = {(e.from_guid, e.to_guid, e.role) for e in res.edges}
     assert (t_in.GlobalId, space.GlobalId, "inside") in got
-    assert (t_plenum.GlobalId, space.GlobalId, "inside") in got
+    # potrubie prechádza oboma miestnosťami → partial v oboch, inside v žiadnej
+    assert (duct.GlobalId, space.GlobalId, "partial") in got
+    assert (duct.GlobalId, space2.GlobalId, "partial") in got
     assert all(e.rel_type == REL_TYPE for e in res.edges)
-    assert (t_out.GlobalId, "IfcAirTerminal") in res.unmatched
+    # nad telom miestnosti = mimo; rozhoduje telo IfcSpace, nie heuristika
+    unmatched = {g for g, _ in res.unmatched}
+    assert {t_plenum.GlobalId, t_out.GlobalId} <= unmatched
+    assert res.overlaps == {}
 
-    strict = derive([m], SpatialReferenceConfig(extend_to_storey_above=False))
-    assert t_plenum.GlobalId not in {e.from_guid for e in strict.edges}
+    strict = derive([m], SpatialReferenceConfig(include_partial=False))
+    assert duct.GlobalId not in {e.from_guid for e in strict.edges}

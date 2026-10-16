@@ -23,5 +23,3 @@ class DerivedEdge:
     from_guid: str
     to_guid: str
     role: str | None
-    # Dôkaz pre report/kontrolu (do DB nejde): napr. podiel bodov vnútri priestoru.
-    evidence: float | None = None
