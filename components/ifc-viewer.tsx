@@ -25,6 +25,8 @@ import type { ViewerApi } from "@/lib/viewer-api";
  *                   SHOW{guids|selector} · ISOLATE{guids|selector} ·
  *                   SHOW_ALL · RESET_COLORS   (D-066; selector = množinový
  *                   výber {types,model} rozkladaný viewer-side) ·
+ *                   SELECT{guid} (D-082; výber ako klik: selekcia + kamera +
+ *                   panel vlastností, viewer odpovie ENTITY_SELECTED) ·
  *                   AIM_PANEL_DATA{guid,data} · AIM_PANEL_EMPTY{guid,reason}
  *   viewer → host:  READY · MODELS_LOADED · ENTITY_SELECTED{guid} ·
  *                   ENTITY_DESELECTED · AIM_NAVIGATE{href}
@@ -75,6 +77,7 @@ type ViewerOp =
   | { op: "hide" | "show" | "isolate"; guids: string[] }
   | { op: "colorize_sel"; selector: OpsSelector; color: string }
   | { op: "hide_sel" | "show_sel" | "isolate_sel"; selector: OpsSelector }
+  | { op: "select"; guid: string }
   | { op: "show_all" }
   | { op: "reset_colors" };
 
@@ -106,6 +109,9 @@ function parseOps(raw: string): ViewerOp[] {
       out.push({ op, selector: sel, color: `#${arg}` });
     } else if ((op === "hide_sel" || op === "show_sel" || op === "isolate_sel") && sel) {
       out.push({ op, selector: sel });
+    } else if (op === "select" && guids.length > 0) {
+      // Výber je jeden prvok (D-082) — prípadné ďalšie GUIDy sa ignorujú.
+      out.push({ op, guid: guids[0] });
     } else if (op === "show_all" || op === "reset_colors") {
       out.push({ op });
     }
@@ -306,6 +312,9 @@ export function IFCViewer({
           break;
         case "isolate_sel":
           post({ type: "ISOLATE", selector: o.selector });
+          break;
+        case "select":
+          post({ type: "SELECT", guid: o.guid });
           break;
         case "show_all":
           post({ type: "SHOW_ALL" });

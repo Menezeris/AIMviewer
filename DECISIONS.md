@@ -2858,11 +2858,44 @@ prehliadači cez IDS modul IFClite (výsledok by nebol v DB, AI by ho nevidela);
 — to rieši odvodená vrstva D-080, nie IDS. Kým knižnica nemá F4 generátor, IDS pochádza
 z jej prototypu (deterministický výstup, overený XSD).
 
+### D-082 — Výber prvku v 3D ako klik: tool `select_in_3d` a op `select`
+**Status:** rozhodnuté (2026-10-17), pripomienka z dema Bencont. **Rozširuje D-066 a D-079.**
+
+**Kontext:** Claude cez konektor (D-079) vedel prvok v 3D len zvýrazniť a priblížiť
+(`show_in_3d` → bridge `FOCUS`) alebo otvoriť jeho kartu mimo 3D (`open_node` → `/node/<id>`).
+Stav „prvok vybraný kliknutím" (selekcia vo viewri + natívny panel vlastností s AIM kartou,
+D-077) sa takto navodiť nedal, hoci práve ten používateľ pri prehliadke modelu chce vidieť.
+
+**Rozhodnutie:**
+1. **Nový tool `select_in_3d(id_or_ref)`** — jeden prvok s aktívnym IFC GUID. Popis toolu
+   ho výslovne odlišuje od `show_in_3d` (zvýraznenie, aj veľa prvkov, bez panelu) a
+   `open_node` (karta mimo 3D).
+2. **Transport = existujúca viewer op v `ops` (D-066):** `select::<guid>`. Zlučovanie akcií
+   (`mergeIfcActions`), živý kanál (D-079) aj záložný odkaz fungujú bez zmeny; výber sa
+   aplikuje po `focus` a ostatných ops v poradí, v akom ich model vydal.
+3. **Bridge správa `SELECT{guid}` (host → viewer).** Fork viewera ju vykoná tou istou cestou
+   ako klik myšou: nastaví selekciu, zarámuje kameru na prvok a otvorí panel vlastností;
+   následne pošle hostovi `ENTITY_SELECTED{guid}` ako pri kliku. AIM kartu teda dotiahne
+   host existujúcim tokom (`/api/element/<id>` → `AIM_PANEL_DATA`) — žiadna druhá cesta
+   k dátam karty.
+
+**Zavrhnuté:** `FOCUS` + automatické otvorenie karty hostom (panel vlastností vo viewri by
+ostal zavretý a selekcia by sa líšila od kliku); rozšírenie `show_in_3d` o príznak výberu
+(miešal by množinové zvýraznenie s výberom jedného prvku a model by ho používal nejednoznačne).
+
+**Druhá strana (fork `Menezeris/ifc-lite`, `apps/viewer/src/aim/AimBridge.tsx`):** `SELECT`
+ide tou istou cestou ako klik vo viewporte (`selectPickedGlobalId`), odfarbí predošlý FOCUS,
+otvorí panel vlastností (`openPanelInHome('properties')`) a priblíži kameru (`flyTo`); selekcia
+sa zámerne neoznačí ako programová, takže `ENTITY_SELECTED` príde hostovi ako po kliku. Kým
+nasadený fork `SELECT` nepozná, viewer ho ticho ignoruje (tool hlási úspech bez efektu) —
+preto sa obe strany nasadzujú spolu.
+
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-17** — **D-082 (výber prvku v 3D ako klik):** nový tool `select_in_3d` vydá viewer op `select::<guid>` (D-066 wire formát, živý kanál a záložný odkaz bez zmeny); host pošle bridge správu `SELECT{guid}`, fork ju vykoná ako klik (selekcia, kamera, panel vlastností) a odpovie `ENTITY_SELECTED`, takže AIM kartu dotiahne existujúci tok. Vyžaduje podporu `SELECT` vo forku.
 - **2026-10-17** — **D-081 (kontrola modelu voči IDS z knižnice):** `python -m etl.ids_check` spustí ifctester s IDS, ktorý vyrobila knižnica požiadaviek (nekopíruje sa), výsledky do `ids_runs`/`ids_results` (prvok cez aktívny GUID, pôvod IDS so SHA-256), čítanie `v_ids_latest`/`v_ids_summary` pre LLM a 3D. ETL podlažia akceptujú `2.NP` (štandard knižnice) popri `2NP`.
 - **2026-10-16** — **D-080 (odvodzovače; prvok → priestor):** rámec `etl/derive/` pre hrany odvodené nad federáciou (idempotentné, `source='derive:<rule>'`, zastarané sa uzavrú). Prvý odvodzovač `spatial_reference` zaraďuje prvky do priestorov geometriou ako **`rel_referenced_in_spatial_structure`** (IfcRelReferencedInSpatialStructure — neexkluzívny; spresňuje D-052, kde contained koliduje so SET[0:1]), zarovnanie federácie cez IfcMapConversion, ifcopenshell `geom.tree` (inside = celý v tele priestoru, partial = pretína), žiadna heuristika podhľadu. Pohľad `v_space_elements`. IfcZone tranzitívne, nie geometriou.
 - **2026-10-16** — **D-079 (Claude cez MCP + živý kanál do viewera):** `POST /api/mcp/<MCP_TOKEN>` vystavuje tools `/ask` pre custom connector v Claude (Max, bez platby za tokeny); UI akcie idú cez Supabase Realtime Broadcast na kanál `LIVE_CHANNEL` do viewera otvoreného s `?live=<kanál>`, ktorý ich vykoná ako AI dock (`router.push`). Anon kľúč smie do prehliadača až po migrácii, ktorá odoberie `anon`/`authenticated` práva v `public` (mení D-026).

@@ -126,7 +126,7 @@ export function mcpInstructions(siteUrl: string): string {
   return `${base}
 
 Kontext MCP (Claude vedľa viewera):
-- UI akcie (show_in_3d, style_in_3d, open_node, open_drawing) sa odošlú do ŽIVÉHO
+- UI akcie (show_in_3d, select_in_3d, style_in_3d, open_node, open_drawing) sa odošlú do ŽIVÉHO
   viewera, ktorý má používateľ otvorený vedľa. Používateľ výsledok vidí tam; ty
   len stručne potvrď, čo sa zobrazilo. Ak tool vráti, že živý kanál nie je
   nastavený, povedz to a ponúkni odkaz.
