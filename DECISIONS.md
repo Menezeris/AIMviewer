@@ -3097,11 +3097,99 @@ zmerguje s ich koncom; po zlúčení s `main`.
 - **Q8** Živé overenie: má AIMviewer preview mieriť na preview forku
   (`NEXT_PUBLIC_IFC_VIEWER_URL` per vetva na Verceli), alebo overujeme až po zlúčení forku?
 
+
+**Dodatok D-083 (2026-10-17) - pohľad bez súradníc, `scene.actions`, motor na serveri.**
+Po prieskume forku a balíka `@ifc-lite/mcp` (D-084):
+- **Pohľad ostáva bez súradníc** (`SET_SECTION {storeyGuid, offsetM, axis}`, `SET_CAMERA {preset,
+  guids}`, `SET_VIEW_MODE`). Fork má kontrakt `scene.actions` (`lib/actions/scene-actions.ts`,
+  `applySceneActions`), ten však berie rovinu rezu a kameru vo svetových súradniciach IFC, ktoré
+  host nepozná, a pri každom použití vráti späť predchádzajúcu sadu. Viewer preto prepočíta
+  podlažie na rovinu sám (`storeyOptions` z `useFloorplanView`, kontrola cez
+  `lib/actions/scene-coordinates.ts`) a zapíše ju tým istým kanálom sekcie ako `scene-apply.ts`.
+  `scene.actions` sa použije až vo fáze 2 ako `viewer_apply_scene` (vždy celá sada naraz).
+- **Oprava poradia** v `MODELS_LOADED` (ops až po `UNDERLAYS_LOAD`/`DOCUMENTS_LOAD`) patrí do fázy 1.
+- **Bod 5 (analýzy vo vieweri) nahrádza D-084:** kolízie, IDS a porovnanie revízií počíta motor
+  na serveri, nečakajú na spätný kanál.
+
+### D-084 - IFC motor `@ifc-lite/mcp` ako knižnica v MCP konektore AIM
+**Status:** rozhodnuté (2026-10-17), fáza 0 (prototyp) beží. **Rozširuje D-079, D-083.**
+
+**Kontext:** cieľ (Samuel, 17. 10.) je, aby Claude cez konektor vedel vo vieweri všetko, čo sa dá
+naklikať, robil analýzy a reporty na zadanie a neskôr **zapisoval psety a validoval ich voči
+požiadavkám** (IDS z knižnice). Upstream balík `@ifc-lite/mcp` (npm, MPL-2.0) má 125 tools nad IFC
+súborom (dotazy s číselnými filtrami, kolízie, IDS, porovnanie, úpravy, export). Overené
+spustením nad ASR+VZT:
+- načítanie 1,2-2,5 s pri ~300 MB, kolízie ~2,5 s pri ~600 MB;
+- `NetFloorArea>20` vráti 32 miestností;
+- výsledky nesú GlobalId;
+- funguje aj zapojenie v tom istom procese (`createMCPServer` + `InProcessTransport`).
+
+**Rozhodnutie:**
+1. **Jeden konektor, tri rodiny tools:** dnešné AIM tools nad DB, `ifc_*` = motor `@ifc-lite/mcp`
+   ako knižnica (vybraná podmnožina, nie 125 tools) a viewer tools cez náš bridge. Výsledky motora
+   sa prepoja na AIM cez GUID (`ifc_guid_history` -> `object_ref`) a nesú pripravený vstup pre
+   `show_in_3d`/`style_in_3d`. Smerovanie v `mcpInstructions`: DB tools pre graf AIM, `ifc_*` pre
+   to, čo je len v súbore, číselné porovnania, IDS ad hoc a zápis.
+2. **Balík nepoužívame ako samostatný server**, lebo:
+   - HTTP relácie začínajú bez modelu a model načíta len z cesty na disku;
+   - `viewer_*` tools riadia jeho vlastný viewer na 127.0.0.1;
+   - má jeden statický token a žiadny OAuth;
+   - nevidí dáta AIM.
+3. **Bezstavový motor:** parsovaný store sa drží v pamäti inštancie (keyed URL+ETag, jedno načítanie
+   aj pri súbežných requestoch), každý request dostane nový `HeadlessLikeBackend`. Úpravy
+   (overlay) visia na backende a balík ich nevie zmazať, takže zdieľaný model by medzi requestmi
+   "zdedil" cudzie úpravy.
+4. **Zápis (fáza 3) ako propose -> commit:**
+   - zmeny sa aplikujú na čerstvý backend, exportujú (`bim.export.ifc()` vráti STEP text), znova
+     načítajú a validujú;
+   - `ids_validate` vlastné úpravy vlastností existujúcich prvkov nevidí;
+   - commit uloží nemennú revíziu a change set (audit, dá sa aplikovať na ďalší export projektanta);
+   - zápis má samostatný token a anotáciu `readOnlyHint:false`.
+   Detail v D-086.
+5. **Fázy:** 0 prototyp (merania, porovnanie IDS motorov) · 1 čítanie + pohľad (D-083 fáza 1) ·
+   2 zhoda s UI + spätný kanál (D-085) · 3a zápis psetov + Name/Description/ObjectType/Tag ·
+   3b klasifikácia, LongName, PredefinedType, IfcZone · 4 reporty a analýzy (kolízie ASR×VZT cez
+   zlúčenie modelov).
+
+**Brány fázy 0** (ak niektorá neprejde, motor pôjde ako samostatná Node služba za
+`lib/engine/client.ts`, ostatné sa nemení):
+1. build prejde a vytrasovaná veľkosť MCP route je < 200 MB (Vercel limit 250 MB, celá inštalácia
+   balíka má 255 MB);
+2. studené prvé volanie p95 < 12 s, teplý dotaz p95 < 1,5 s, špička pamäte < 1,2 GB;
+3. izolácia backendov nad jedným parsovaným storeom;
+4. zhoda IDS motorov na ER-0101 × ASR: 8/8 verdiktov, ≥ 99 % prvkov, rozdiely vysvetlené.
+
+**Vedomé limity (overené v kóde 0.27.0):**
+- `entity_set_attribute` vie len Name/Description/ObjectType/Tag. ER-0101 × ASR zlyháva na mene
+  podlažia (`1NP` vs. `\d.NP`), CCI klasifikácii priestorov a chýbajúcej IfcZone, takže fáza 3a
+  opraví len podlažia a zvyšok je 3b.
+- Filter dotazu nevidí vlastnosti zdedené z typu.
+- `geometry_*` čítajú len množstvá (Qto), nie skutočnú geometriu.
+- Kolízie fungujú len v rámci jedného modelu.
+- `export_pdf_report` a `raycast` sú v 0.27.0 len kostry.
+
+**Zavrhnuté:**
+- *Upstream MCP ako druhý konektor:* iné dáta (súbor bez AIM), iný viewer, duplicitné tools.
+- *Prepísať AIM do IFC a nechať balík čítať všetko:* balík nečíta aktérov ani roly, odvodené
+  väzby do miestností ignoruje vo filtroch, väzby naprieč súbormi IFC4 neunesie a obsah CDE
+  (texty PDF, fotky, behy IDS) do modelu nepatrí; vytvorilo by to druhého nositeľa tých istých dát.
+- *Vlastná implementácia dotazov, IDS a úprav nad IFC:* balík ich má a je aktívne udržiavaný.
+
+**Otvorené otázky (pred fázou 3):** samostatná služba ak brána neprejde; ktorý IDS motor je
+záväzný (návrh: ifctester pre zaznamenané behy, `@ifc-lite/ids` ako predkontrola) a odkiaľ server
+číta IDS; či je upravené IFC nová autoritatívna revízia alebo change set nad exportom projektanta;
+autorizácia zápisu (token vs. OAuth); prvý GitHub Actions workflow pre re-ETL; spoločný
+`LIVE_CHANNEL` vs. párovanie per relácia pre spätný kanál.
+
+**Závislosť a licencia:** `@ifc-lite/mcp` 0.27.0 (MPL-2.0, pripnutá presná verzia), transitívne
+MIT/ISC/Apache-2.0/BSD; `jszip` dvojlicencia MIT/GPL (volíme MIT); žiadna AGPL.
+
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-17** - **D-084 (IFC motor `@ifc-lite/mcp` ako knižnica v konektore) + dodatok D-083:** jeden konektor s tromi rodinami tools (AIM nad DB, `ifc_*` motor nad IFC súbormi, viewer cez bridge), výsledky motora prepojené na AIM cez GUID; bezstavový motor (nový backend na request); zápis ako propose -> commit s IDS bránou a nemennými revíziami (D-086). Pohľad ostáva bez súradníc, `scene.actions` až vo fáze 2. Fáza 0 meria Vercel a zhodu IDS motorov.
 - **2026-10-17** - **D-083 (návrh: Claude ovláda viewer cez MCP, F12):** katalóg 17 use-casov overený voči kódu a živo (2, 4, 7, 16 stoja na dátach, nie na vieweri; 8 je len čiastočne). Fáza 1 = tools `set_section`, `set_camera`, `set_view_mode` + `open_drawing in_viewer` + reset cez existujúci `ops` formát a živý kanál, vo forku bridge `SET_SECTION`/`SET_CAMERA`/`SET_VIEW_MODE` nad existujúcimi volaniami (bez zmeny DB, bez zásahu do upstream súborov); fáza 2 spätný kanál, fáza 3 zápis a fáza 4 analýzy z upstreamu, každá so samostatným rozhodnutím. Upstream `@ifc-lite/mcp` sa nepreberá ako server. Čaká na schválenie (Q1-Q8).
 - **2026-10-17** — **D-082 (výber prvku v 3D ako klik):** nový tool `select_in_3d` vydá viewer op `select::<guid>` (D-066 wire formát, živý kanál a záložný odkaz bez zmeny); host pošle bridge správu `SELECT{guid}`, fork ju vykoná ako klik (selekcia, kamera, panel vlastností) a odpovie `ENTITY_SELECTED`, takže AIM kartu dotiahne existujúci tok. Vyžaduje podporu `SELECT` vo forku.
 - **2026-10-17** — **D-081 (kontrola modelu voči IDS z knižnice):** `python -m etl.ids_check` spustí ifctester s IDS, ktorý vyrobila knižnica požiadaviek (nekopíruje sa), výsledky do `ids_runs`/`ids_results` (prvok cez aktívny GUID, pôvod IDS so SHA-256), čítanie `v_ids_latest`/`v_ids_summary` pre LLM a 3D. ETL podlažia akceptujú `2.NP` (štandard knižnice) popri `2NP`.
