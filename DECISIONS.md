@@ -3183,6 +3183,25 @@ autorizácia zápisu (token vs. OAuth); prvý GitHub Actions workflow pre re-ETL
 
 **Závislosť a licencia:** `@ifc-lite/mcp` 0.27.0 (MPL-2.0, pripnutá presná verzia), transitívne
 MIT/ISC/Apache-2.0/BSD; `jszip` dvojlicencia MIT/GPL (volíme MIT); žiadna AGPL.
+Priame závislosti `@ifc-lite/parser` 9.5.1 a `@ifc-lite/sdk` 9.5.0 (MPL-2.0) - načítanie z bajtov.
+Odstránené nepoužívané `@ifc-lite/geometry`/`query`/`wasm` a `postinstall` kopírujúci WASM do
+`public/` (3D renderuje fork v iframe, v kóde ostali len komentáre).
+
+**Výsledky fázy 0 (2026-10-17, lokálne, Node 22; ASR 20,1 MB + VZT 9,6 MB z verejného bucketu):**
+
+| Brána | Meranie | Stav |
+|---|---|---|
+| 1 veľkosť | `next build` prejde; trasovanie route `/api/mcp/[token]` = **75,8 MB** (2863 súborov, WASM aj xmldom pribalené cez `outputFileTracingIncludes`) | ✅ |
+| 2 čas a pamäť | zbuildovaný Next server (`next start`) cez MCP endpoint: studené načítanie ASR **1,1 s** + VZT **0,5 s** (vrátane sťahovania), teplé **0 ms** (tá istá inštancia), `query_entities` s číselným filtrom **8-30 ms** (32 miestností), `clash_check` VZT **2,1-2,6 s** (228 kolízií), RSS **~625 MB** | ✅ lokálne, **na Verceli ešte nezmerané** |
+| 3 izolácia | úprava psetu na backende A sa v ďalšom volaní nad tým istým storeom neprejaví (`engine.test.ts` + benchmark nad ASR) | ✅ |
+| 4 zhoda IDS | ER-0101 × ASR: `@ifc-lite/ids` vs. ifctester (`etl.ids_check --dry-run --report`) = **8/8 verdiktov, 189/189 párov špecifikácia × prvok (100 %)**, `ids_validate` ~0,34 s | ✅ |
+
+Výhrada k bráne 4: ER-0101 testuje atribúty, klasifikáciu a väzby, nie hodnoty psetov ani
+dedičnosť z typu - porovnanie sa zopakuje s prvým IDS, ktoré psety testuje (pred fázou 3).
+Na Verceli treba bránu 2 overiť na preview s `ENGINE_SPIKE=1` (`ifc_engine_probe`); kým sa
+neoverí, rozhodnutie "v procese" platí podmienečne. Nástroje: `scripts/spike/engine-bench.mts`,
+`scripts/spike/ids-compare.mts` (spúšťajú sa cez `npx vite-node@6.0.0`, lebo `tsx` preloží
+`lib/engine` do CommonJS a `@ifc-lite/ids` používa top-level await).
 
 ---
 

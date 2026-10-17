@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
+import { PROBE_TOOL } from "@/lib/engine/probe-def";
 import { broadcastLive, liveChannel } from "@/lib/live/broadcast";
 import { mcpInstructions } from "@/lib/llm/system-prompt";
 import { AskToolRuntime, TOOL_DEFINITIONS } from "@/lib/llm/tools";
@@ -40,7 +41,19 @@ function siteUrl(): string {
   return "https://ai-mviewer.vercel.app";
 }
 
+/** Diagnostika IFC motora (D-084 fáza 0) - len keď je zapnutá env bránou. */
+const ENGINE_SPIKE = process.env.ENGINE_SPIKE === "1";
+
 async function callTool(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
+  if (ENGINE_SPIKE && name === "ifc_engine_probe") {
+    // Lenivý import: DB tools nesmú platiť studený štart motora.
+    const { runProbe } = await import("@/lib/engine/probe");
+    try {
+      return { text: [await runProbe(args)], isError: false };
+    } catch (err) {
+      return { text: [`Chyba motora: ${err instanceof Error ? err.message : String(err)}`], isError: true };
+    }
+  }
   const runtime = new AskToolRuntime();
   const res = await runtime.exec(name, args);
   const text = [res.content];
@@ -77,7 +90,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   const deps: McpServerDeps = {
     serverInfo: { name: "aim-viewer", version: "1.0.0" },
     instructions: mcpInstructions(siteUrl()),
-    tools: TOOL_DEFINITIONS,
+    tools: ENGINE_SPIKE ? [...TOOL_DEFINITIONS, PROBE_TOOL] : TOOL_DEFINITIONS,
     callTool,
   };
   const response = await handleMcpPayload(payload, deps);
