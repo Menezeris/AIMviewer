@@ -2890,11 +2890,219 @@ sa zámerne neoznačí ako programová, takže `ENTITY_SELECTED` príde hostovi 
 nasadený fork `SELECT` nepozná, viewer ho ticho ignoruje (tool hlási úspech bez efektu) —
 preto sa obe strany nasadzujú spolu.
 
+### D-083 - Claude ovláda viewer cez MCP (F12): pohľad, rez, režim, potom spätný kanál a zápis
+**Status:** návrh (2026-10-17), **čaká na schválenie Samuelom**; implementácia fázy 1 až po
+schválení. **Rozširuje D-066, D-079, D-082; fáza 1 realizuje `VIEW_SET` z D-075 M4.**
+
+**Kontext:** po F11 (D-079, D-082) vie Claude cez konektor čítať graf AIM a vo vieweri prvky
+zvýrazniť, ofarbiť, skryť, izolovať a vybrať. Nevie však pohnúť **pohľadom**: rez, kamera,
+režim 3D|2D|Split a podlažie, dokument v paneli vedľa 3D. Viewer (fork) to všetko už vie
+(SDK `setSection`/`setCamera`, `cameraCallbacks.setPresetView`, `useViewMode`,
+`DOCUMENT_OPEN`), chýba len cesta od MCP toolu po bridge správu. Druhá medzera je smer
+**viewer -> Claude** (čo je vybrané, čo je vidno, snímka): kanál D-079 je jednosmerný,
+tool hlási "odoslané", nie "zobrazené". Tretia je **zápis** (porucha, BCF komentár), ktorý
+dnes nemá ani dátový model, ani autorizáciu.
+
+**Katalóg use-casov (overené 2026-10-17 voči kódu oboch vetiev `claude/vigilant-cannon-cuizq0`
+a živo cez konektor nad prod dátami).** Stav: ✅ funguje · 🟡 čiastočne · ❌ nie.
+
+| # | Rola | Požiadavka | Dnes | Čo presne chýba | Odomkne |
+|---|---|---|---|---|---|
+| 1 | FM technik | Kde je VZT jednotka na 2. NP a čo obsluhuje | ✅ | nič; `locate_objects` (AIRCONDITIONINGUNIT) vráti JV.01.01.001 na 2NP, obsluhu cez `rel_assigns_to_group` + `v_space_elements`. Jednotka je na podlaží, nie v miestnosti (D-049), prompt to hovorí | - |
+| 2 | FM technik | Požiarne klapky a ktoré sú po revízii | ❌ | **dáta, nie viewer**: v modeli nie je ani jeden `IfcDamper` (`get_model_stats`), dáta revízie tiež nie. Pôvodný odhad "čiastočne" neplatí | import / model |
+| 3 | FM technik | Ukáž strop nad 2.05, kade idú potrubia | ❌ | rez a kamera. Po fáze 1: `set_section` (vodorovne, `floor=3NP`, `offset_m` pod stropnou doskou) + `style_in_3d hide IfcCovering` + `set_camera top` s cieľom 2.05. Pozor: 2.05 je v dátach dvakrát (`2.05`, `2.05-2`, zdvojené miestnosti, D-080) | fáza 1 |
+| 4 | FM technik | Zapíš poruchu na tento ventil | ❌ | zápis (dátový model + autorizácia) **a** dáta: v modeli nie je `IfcValve` (ÚK/ZTI nenaimportované) | fáza 3 + import |
+| 5 | Správca | Ofarbi miestnosti podľa plochy / nájomcu | 🟡 | plocha: 89 priestorov má `Qto_SpaceBaseQuantities.NetFloorArea`; Claude prečíta hodnoty (`query_view`, 89 < cap 100), sám roztriedi do pásiem a pošle `style_in_3d` s `ids_or_refs` po pásmach. Funguje pre malé množiny, pásma počíta model, nie DB. Nájomca: ❌, v dátach žiadna vlastnosť (`search_everything` "tenant najomca" = 0) | mimo poradia (číselný filter) + dáta |
+| 6 | Správca | Ktoré miestnosti nespĺňajú požiadavky a prečo | ✅ | nič; `v_ids_summary` / `v_ids_latest` + colorize (D-081) | - |
+| 7 | Správca | Ukáž fotky z 1.12 | 🟡 | priestor `1.12` v dátach nie je (object_ref 1.x: 1.17, 1.18, 1.28...). 3 capture body existujú, ukotvené **len na pláne** (`_capture.plan`, bez `world`), takže 3D piny sa nezobrazia. `open_node(priestor)` otvorí kartu s galériou, ale Claude nevie zistiť, ktorý priestor fotky má: `captures` ani `aim_rel_capture_located` nie sú vo whiteliste `query_view` | fáza 1b + dáta (`world`) |
+| 8 | Koordinátor | Izoluj VZT a ASR na 3. NP | 🟡 | `style_in_3d` nemá filter podlažia; `model=VZT` izoluje celý súbor. `locate_objects` vracia na podlažie len vzorku, takže úplný zoznam ids sa nedá poskladať. Pôvodný odhad "funguje" neplatí | fáza 1 (voliteľne, Q2) |
+| 9 | Koordinátor | Kde sa VZT križuje s nosnými prvkami | ❌ | upstream `@ifc-lite/clash` beží v prehliadači (`clashSlice`, `bim.clash.run`); chýba príkaz na spustenie a spätný kanál na výsledok | fáza 4 (po 2) |
+| 10 | Koordinátor | Čo sa zmenilo medzi revíziou A a B | ❌ | upstream `@ifc-lite/diff` (`diffModels`) a ComparePanel existujú, ale AIM nesie jednu revíziu modelu; chýba druhá revízia ako dáta aj ako načítaný model | fáza 4 + dáta |
+| 11 | Investor | Prejdi budovu podlažie po podlaží | ❌ | kamera + podlažie. Po fáze 1: `set_view_mode 2d floor=1NP..5NP` (bez kalibrovaného výkresu = zamknutý ortho pohľad zhora s rezom 1,2 m nad podlahou, `enterDrawingView`), krok za krokom na pokyn používateľa | fáza 1 |
+| 12 | Investor | Obrázok fasády s ofarbenými oknami | ❌ | ofarbenie ✅, kamera `front` po fáze 1; obrázok: fork má `captureViewportScreenshot()` (JPEG data URL), chýba spätný kanál, ktorým by sa dostal ku Claude ako MCP image | fáza 1 (pohľad) + fáza 2 (obrázok) |
+| 13 | všetci | Čo mám práve vybrané / čo vidím | ❌ | kanál je jednosmerný; stav vo forku je čitateľný (`selectedEntity`, `hiddenEntities`, `isolatedEntities`, `getViewpoint()`, `getSections()`, `deriveViewMode`) | fáza 2 |
+| 14 | Projektant | Otvor pôdorys 2NP vedľa modelu | 🟡 | `open_drawing` otvorí `/drawing/<id>` mimo 3D. Viewer vie `DOCUMENT_OPEN{documentId,page}` a `/ifc?doc=` existuje, ale MCP ho nepoužíva a `mergeIfcActions` parameter `doc` zahodí | fáza 1 (op `doc`) |
+| 15 | všetci | Vráť pohľad do pôvodného stavu | 🟡 | `show_all` + `reset_colors` áno; rez, kamera a režim nie | fáza 1 |
+| 16 | FM technik | Kde je najbližší uzatvárací ventil | ❌ | dáta (import ÚK/ZTI, ROADMAP F6) | import |
+| 17 | Koordinátor | Spusti IDS kontrolu na aktuálnom modeli | 🟡 | posledný beh áno (E6); nový beh len cez ETL (`python -m etl.ids_check`), nie z MCP. Upstream `@ifc-lite/ids` (`useIDS().runValidation`) validuje v prehliadači | fáza 4 |
+
+Pozn.: use-casy 2, 4, 7 a 16 nezablokuje viewer, ale **dáta** - ani fáza 1 až 4 ich
+nevyrieši bez importu (klapky, ventily, priestor 1.12, `world` ukotvenie snímok).
+
+**Rozhodnutie (fázovanie F12):**
+
+1. **Fáza 1 - pohľad (bez zmeny DB, bez nového kanála).** Tri nové MCP tools
+   `set_section`, `set_camera`, `set_view_mode` + voľba `in_viewer` v `open_drawing` +
+   `reset` v `set_view_mode`. Transport = existujúci `ops` wire formát (D-066) cez živý
+   kanál (D-079) a záložný odkaz, bez zmeny `isSafeViewerUrl` (už dnes pustí každé
+   `/ifc?...`). Vo forku tri nové bridge správy `SET_SECTION`, `SET_CAMERA`,
+   `SET_VIEW_MODE` (mená zhodné s upstream `@ifc-lite/embed-protocol`, payload
+   GUID-centrický ako zvyšok AIM bridge, D-067), ktoré obaľujú existujúce volania
+   (`showSectionCut` / `clearSectionCut`, `cameraCallbacks.*`, `useViewMode`), plus
+   `DOCUMENT_OPEN` bez zmeny. Podlažie cestuje ako **IFC GUID podlažia** (v DB aktívny
+   GUID na `floor`, napr. 2NP = `27hbQtAoP6qvoEYhPARoI7`); výšku rezu počíta viewer zo
+   svojej elevácie podlažia (metre, viewer Y-up, `worldToPercent`), nie host z
+   `floors.elevation` (mm) - jedna pravda o súradniciach je vo vieweri. Odomkne use-casy
+   3, 11, 14, 15 a pohľadovú časť 12.
+2. **Fáza 1b - drobnosti bez forku.** `captures` + `aim_rel_capture_located` do whitelistu
+   `query_view` (use-case 7), prípadne filter podlažia v `style_in_3d` (Q2).
+3. **Fáza 2 - spätný kanál viewer -> Claude.** Tool `get_viewer_state` (výber, viditeľnosť,
+   kamera, rez, režim, podlažie) a `get_viewer_snapshot` (obrázok). Mechanizmus a
+   autorizácia samostatným rozhodnutím (Q5); kým nie je, tools hlásia "odoslané", nie
+   "zobrazené".
+4. **Fáza 3 - prvý zápis** (porucha / BCF komentár k prvku) **samostatným rozhodnutím**:
+   dátový model (kde je nositeľ tiketu), autorizácia zápisu (dnes len token v ceste MCP,
+   D-079) a MCP anotácie (`readOnlyHint: false`). Bez neho sa zápis nestavia.
+5. **Fáza 4 - analýzy z upstreamu vo vieweri** (kolízie, porovnanie revízií, IDS v
+   prehliadači) nad načítaným modelom, výsledok cez kanál fázy 2. Upstream `@ifc-lite/mcp`
+   **nepreberáme ako server**: jeho tools pracujú nad IFC súborom načítaným headless v Node
+   a jeho `viewer_*` tools ovládajú samostatný `@ifc-lite/viewer-core`, nie náš fork v
+   iframe ani graf AIM. Preberáme **knižnice**, ktoré už viewer používa (`@ifc-lite/clash`,
+   `@ifc-lite/diff`, `@ifc-lite/ids`, `@ifc-lite/bcf`), a z `@ifc-lite/mcp` len inšpiráciu
+   pre tvar tools (napr. `viewer_set_section {axis, position, flipped, enabled}`,
+   `viewer_color_by_property` s legendou, `viewer_wait_for_selection`).
+
+**Zdôvodnenie poradia:** fáza 1 je najlacnejšia (všetko je vo vieweri, mení sa len host a
+tenká vrstva v `aim/`), nemení DB ani bezpečnostný model a dáva demo moment "Claude mi
+ukáže strop / prejde podlažia". Spätný kanál ide pred zápis aj analýzy, lebo obe ho
+potrebujú (výsledok kolízií, potvrdenie výberu pred zápisom "na tento ventil"). Zápis ide
+pred analýzy len ak ho Samuel uprednostní pre FM demo; technicky sú nezávislé.
+
+**Zavrhnuté:**
+- *Nový kanál pre pohľadové príkazy* (WebSocket, SSE): `ops` + Realtime (D-066, D-079)
+  unesie všetko z fázy 1; nový kanál by zdvojil whitelist aj zlučovanie akcií.
+- *Výška rezu počítaná hostom z `floors.elevation`*: DB je v mm a v súradniciach IFC,
+  viewer reže v recentrovaných metroch (Y-up, `bcfWorldOffset`); dve pravdy o súradniciach
+  by sa rozišli pri prvej zmene georeferencovania (D-050).
+- *Prevziať upstream `@ifc-lite/mcp` ako druhý MCP server*: iné dáta (súbor, nie graf AIM),
+  iný viewer, druhý konektor pre používateľa; duplikát tools nad tými istými prvkami.
+- *Jeden univerzálny tool `set_view {section, camera, mode}`*: model ho volá nejednoznačne
+  (vzor D-082 - rozšírenie `show_in_3d` o výber bolo zavrhnuté z toho istého dôvodu);
+  tri úzke tools s jasným popisom sa skladajú v jednom kole.
+- *Prehliadka podlaží ako jeden príkaz s časovačom vo vieweri*: tempo má určovať
+  používateľ ("ďalej"), Claude a viewer o sebe nevedia (bez fázy 2); krok = jeden call.
+
+**Plán fázy 1 (implementácia až po schválení):**
+
+*MCP tools (vstupné schémy):*
+- `set_section`
+  `{ action: "set"|"clear" (req), orientation?: "horizontal"|"vertical_x"|"vertical_z"
+  (default horizontal), floor?: string (id_or_ref podlažia: "3NP", "3.NP", "3. NP", UUID),
+  offset_m?: number (výška nad úrovňou podlažia, default 1.2, rozsah -5..20),
+  position_percent?: number (0..100, alternatíva bez podlažia, jediná pre zvislé rezy),
+  flipped?: boolean }`. Vodorovný rez vyžaduje `floor` alebo `position_percent`.
+  Mapovanie na SDK osi: horizontal = `y` (viewer `down`), vertical_x = `x` (`side`),
+  vertical_z = `z` (`front`).
+- `set_camera`
+  `{ preset: "top"|"bottom"|"front"|"back"|"left"|"right"|"iso"|"fit_all" (req),
+  target_ids_or_refs?: string[] (1..100, zarámuje kameru na prvky, napr. miestnosť),
+  projection?: "perspective"|"orthographic" }`. `iso` = `cameraCallbacks.home()` (SE
+  izometria), s cieľom = rotácia + `frameEntities` (pri implementácii overiť, že
+  `frameEntities` zachová smer pohľadu presetu).
+- `set_view_mode`
+  `{ mode: "3d"|"2d"|"split" (req), floor?: string (id_or_ref; pre 2d/split, inak
+  posledné/prvé podlažie), reset?: boolean (s mode=3d: zruší rez, ofarbenie, skrytie a
+  vráti kameru home) }`. 2d s kalibrovaným výkresom = pôdorys PDF na celú plochu
+  (`enterPlanView`), bez výkresu = zamknutý ortho pohľad zhora s rezom 1,2 m nad
+  podlahou (`enterDrawingView`).
+- `open_drawing` dostane `in_viewer?: boolean` - true otvorí dokument ako kartu vedľa 3D
+  (op `doc`), default ostáva `/drawing/<id>`.
+
+*Wire formát (rozšírenie D-066; `parseOps` delí len `;` a `:`, takže argument smie niesť
+bodku aj mínus; tretie pole = GUIDy oddelené bodkou):*
+- `section:<y|x|z>[~h=<m>][~p=<pct>][~f=1]:<storeyGuid>` · `section_clear::`
+- `camera:<preset>[~proj=o|p]:<guid.guid...>`
+- `view:<3d|2d|split>:<storeyGuid>`
+- `doc:<page>:<documentId>`
+- `reset` = server poskladá existujúce ops: `section_clear` · `view:3d` · `show_all` ·
+  `reset_colors` · `camera:iso` (žiadna nová op).
+
+*Bridge správy (host -> viewer, fork `apps/viewer/src/aim/`):*
+- `SET_SECTION { action: "set"|"clear", axis?: "x"|"y"|"z", storeyGuid?: string,
+  offsetM?: number, position?: number (0..100), flipped?: boolean }`
+- `SET_CAMERA { preset, projection?: "perspective"|"orthographic", guids?: string[] }`
+- `SET_VIEW_MODE { mode: "3d"|"2d"|"split", storeyGuid?: string }`
+- `DOCUMENT_OPEN` bez zmeny (už má `page`).
+Neznáme podlažie (GUID nie je medzi `storeyOptions`) = fallback na normalizovaný názov
+(`3NP_VZT` -> `3NP`, D-049), inak no-op s varovaním v konzole. Rez cez Section tool
+(viditeľný a posúvateľný v UI); v režime 2d/split riadi rez podlažia `underlayCut`, ktorý
+má prednosť (`aim/underlayCut.ts`), preto `SET_VIEW_MODE 3d` aj `SET_SECTION clear`
+nechávajú stav jednoznačný.
+
+*Súbory - AIMviewer (`Menezeris/AIMviewer`, vetva `claude/f12-mcp-viewer-control`):*
+- `lib/viewer-ops.ts` (nový, čistý, server aj klient): typy `ViewerOp`, `parseOps`
+  presunutý z `components/ifc-viewer.tsx` + buildery `sectionOp`, `cameraOp`,
+  `viewModeOp`, `docOp`. Jeden zdroj wire formátu (dnes ho tools.ts skladá reťazcami a
+  komponent parsuje bez spoločného testu).
+- `components/ifc-viewer.tsx`: import `parseOps`, nové prípady v `applyOps`
+  (`SET_SECTION`, `SET_CAMERA`, `SET_VIEW_MODE`, `DOCUMENT_OPEN`), komentár protokolu;
+  **v `MODELS_LOADED` presunúť `applyOps(ops)` za `UNDERLAYS_LOAD`/`DOCUMENTS_LOAD`/
+  `CAPTURES_LOAD`** - dnes idú ops pred výkresmi a `view:2d` aj `doc` z deep linku by
+  prišli skôr, než ich viewer pozná.
+- `lib/llm/tools.ts`: tri definície + handlery `setSection`, `setCamera`, `setViewMode`,
+  helper `resolveFloor` (object_ref/meno s normalizáciou `3NP`/`3.NP`/`3. NP`, aktívny
+  GUID z `ifc_guid_history`), `in_viewer` v `openDrawing`.
+- `lib/llm/system-prompt.ts`: kedy ktorý tool a skladby (strop nad miestnosťou,
+  prehliadka podlaží, reset). Mení prompt -> eval kadencia D-057.
+- `scripts/eval-ask.ts` + `eval/questions.json`: nové `expect.actions_match` (regex na URL
+  akcie) a 4 otázky (strop nad 2.05, 2NP v 2D, pôdorys vedľa modelu, reset).
+- Testy: `lib/viewer-ops.test.ts` (build -> parse round-trip, odmietnutie zlých hodnôt,
+  regresia existujúcich ops D-066/D-082, GUID s `$`/`_`), `lib/llm/actions.test.ts`
+  (nové ops prežijú `mergeIfcActions` v poradí; `isSafeViewerUrl` ich pustí),
+  `lib/mcp/server.test.ts` (tools/list obsahuje nové tools).
+- Dokumenty: dodatok D-083 (implementované), ROADMAP stav + changelog, README (zoznam
+  tools konektora).
+
+*Súbory - fork (`Menezeris/ifc-lite`, vetva `claude/f12-mcp-viewer-control`), všetko v
+`apps/viewer/src/aim/`, **bez zásahu do upstream súborov** (očakávané; ak by bol nutný,
+AIM-FORK sentinely + riadok v `docs/FORK_MAINTENANCE.md`):*
+- `aim/view-protocol.ts` (nový): typy troch správ + `isViewMessage` (validácia rozsahov).
+  Samostatný súbor, lebo `bridge-protocol.ts` je na rozpočte module-size (458/458);
+  v ňom len union typ a jedno delegovanie, rozpočet sa nezvyšuje (vyrovná sa presunom).
+- `aim/viewCommands.ts` (nový): čisté výpočty (podlažie -> percento rezu cez
+  `mergedSectionBounds`/`sectionAxisRange`/`worldToPercent`, preset -> volanie
+  `cameraCallbacks`, fallback podlažia podľa mena).
+- `aim/useAimViewCommands.ts` (nový hook): `useViewMode` + `storeyOptions` z
+  `useFloorplanView` (sú to hooky, preto nie v listeneri priamo).
+- `aim/AimBridge.tsx`: tri prípady v dispatchi.
+- Testy (`node:test`, vzor `bridge-protocol.test.ts`): `aim/view-protocol.test.ts`
+  (accept/reject každej správy), `aim/viewCommands.test.ts` (výpočet percenta, mapovanie
+  presetov, neznáme podlažie).
+
+*Overenie pred pushom:* AIMviewer `npm test`, `npx tsc --noEmit`, `npm run lint`,
+`npm run eval` (ak je v prostredí kľúč a DB, inak výslovne "nespustené"); fork
+`pnpm typecheck`, `TEST_PATTERN=aim/ pnpm test` v `apps/viewer`, `pnpm check:module-size`,
+`check:i18n-literals`, `check-agents-md-size`. Živé overenie: Vercel preview forku +
+AIMviewer s `?live=` a konektor v claude.ai (Q8). **Push zoskupene:** jeden push na repo na
+konci fázy 1 (fork = jeden build ifc-lite-viewer).
+
+*Závislosti:* vetvy stoja na `claude/vigilant-cannon-cuizq0` (fork PR 54, AIMviewer
+`select_in_3d`). Ak sa PR 54 alebo PR AIMviewera zmenia pred zlúčením, F12 vetva sa
+zmerguje s ich koncom; po zlúčení s `main`.
+
+**Otvorené otázky pre Samuela (zrkadlo v chate, odpovede patria sem ako dodatok):**
+- **Q1** Rozsah fázy 1: tri tools + `in_viewer` v `open_drawing` + `reset` - súhlas?
+- **Q2** Filter podlažia v `style_in_3d` (use-case 8): do fázy 1 (selektor `s=<podlažie>`
+  rozkladaný vo vieweri, normalizovaný label D-049, aj pre VZT) alebo neskôr?
+- **Q3** Rez z MCP cez Section tool (viditeľný, používateľ ho môže posúvať) - alebo
+  "neviditeľný" rez ako `underlayCut`?
+- **Q4** Prehliadka podlaží (use-case 11): stačí 2D bez výkresu (ortho zhora s rezom),
+  alebo radšej 3D izometria s izoláciou podlažia (potrebuje Q2)?
+- **Q5** Fáza 2: request/response cez ten istý Realtime kanál (verejný = podvrhnuteľný
+  stav, D-079 limit) alebo zápis stavu cez API route s tokenom? Má niesť aj snímky?
+- **Q6** Fáza 3: kto je nositeľ tiketu/poruchy (princíp jedného nositeľa: AIM vs. CDE/CAFM)
+  a ako sa autorizuje zápis?
+- **Q7** Use-casy 2 a 7 stoja na dátach (klapky v modeli nie sú, 1.12 neexistuje):
+  je to vzorová otázka, alebo očakávaš import (ktorý model)?
+- **Q8** Živé overenie: má AIMviewer preview mieriť na preview forku
+  (`NEXT_PUBLIC_IFC_VIEWER_URL` per vetva na Verceli), alebo overujeme až po zlúčení forku?
+
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-17** - **D-083 (návrh: Claude ovláda viewer cez MCP, F12):** katalóg 17 use-casov overený voči kódu a živo (2, 4, 7, 16 stoja na dátach, nie na vieweri; 8 je len čiastočne). Fáza 1 = tools `set_section`, `set_camera`, `set_view_mode` + `open_drawing in_viewer` + reset cez existujúci `ops` formát a živý kanál, vo forku bridge `SET_SECTION`/`SET_CAMERA`/`SET_VIEW_MODE` nad existujúcimi volaniami (bez zmeny DB, bez zásahu do upstream súborov); fáza 2 spätný kanál, fáza 3 zápis a fáza 4 analýzy z upstreamu, každá so samostatným rozhodnutím. Upstream `@ifc-lite/mcp` sa nepreberá ako server. Čaká na schválenie (Q1-Q8).
 - **2026-10-17** — **D-082 (výber prvku v 3D ako klik):** nový tool `select_in_3d` vydá viewer op `select::<guid>` (D-066 wire formát, živý kanál a záložný odkaz bez zmeny); host pošle bridge správu `SELECT{guid}`, fork ju vykoná ako klik (selekcia, kamera, panel vlastností) a odpovie `ENTITY_SELECTED`, takže AIM kartu dotiahne existujúci tok. Vyžaduje podporu `SELECT` vo forku.
 - **2026-10-17** — **D-081 (kontrola modelu voči IDS z knižnice):** `python -m etl.ids_check` spustí ifctester s IDS, ktorý vyrobila knižnica požiadaviek (nekopíruje sa), výsledky do `ids_runs`/`ids_results` (prvok cez aktívny GUID, pôvod IDS so SHA-256), čítanie `v_ids_latest`/`v_ids_summary` pre LLM a 3D. ETL podlažia akceptujú `2.NP` (štandard knižnice) popri `2NP`.
 - **2026-10-16** — **D-080 (odvodzovače; prvok → priestor):** rámec `etl/derive/` pre hrany odvodené nad federáciou (idempotentné, `source='derive:<rule>'`, zastarané sa uzavrú). Prvý odvodzovač `spatial_reference` zaraďuje prvky do priestorov geometriou ako **`rel_referenced_in_spatial_structure`** (IfcRelReferencedInSpatialStructure — neexkluzívny; spresňuje D-052, kde contained koliduje so SET[0:1]), zarovnanie federácie cez IfcMapConversion, ifcopenshell `geom.tree` (inside = celý v tele priestoru, partial = pretína), žiadna heuristika podhľadu. Pohľad `v_space_elements`. IfcZone tranzitívne, nie geometriou.
