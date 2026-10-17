@@ -2883,8 +2883,12 @@ D-077) sa takto navodiť nedal, hoci práve ten používateľ pri prehliadke mod
 ostal zavretý a selekcia by sa líšila od kliku); rozšírenie `show_in_3d` o príznak výberu
 (miešal by množinové zvýraznenie s výberom jedného prvku a model by ho používal nejednoznačne).
 
-**Závislosť:** kým fork (`Menezeris/ifc-lite`, `apps/viewer/src/aim/AimBridge.tsx`) správu
-`SELECT` nespracúva, viewer ju ticho ignoruje — tool vráti úspech, ale v 3D sa nič nestane.
+**Druhá strana (fork `Menezeris/ifc-lite`, `apps/viewer/src/aim/AimBridge.tsx`):** `SELECT`
+ide tou istou cestou ako klik vo viewporte (`selectPickedGlobalId`), odfarbí predošlý FOCUS,
+otvorí panel vlastností (`openPanelInHome('properties')`) a priblíži kameru (`flyTo`); selekcia
+sa zámerne neoznačí ako programová, takže `ENTITY_SELECTED` príde hostovi ako po kliku. Kým
+nasadený fork `SELECT` nepozná, viewer ho ticho ignoruje (tool hlási úspech bez efektu) —
+preto sa obe strany nasadzujú spolu.
 
 ---
 
