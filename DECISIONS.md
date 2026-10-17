@@ -3118,9 +3118,22 @@ Po prieskume forku a balíka `@ifc-lite/mcp` (D-084):
   (`Menezeris/ifc-lite`, rovnaká vetva, z `main` po zlúčení PR 54): `aim/view-protocol.ts`,
   `aim/viewCommands.ts`, `aim/useAimViewCommands.ts`, bez zásahu do upstream súborov.
   Overené: AIMviewer vitest 83/83, `tsc`, `next build`; fork `tsc` (viewer) 0 chýb, testy
-  `aim/` 35/35, `check-module-size` OK. **Neoverené naživo** v prehliadači (WebGPU viewer):
-  presný smer kamery pri preset + rámovanie (`setPresetView` a hneď `flyTo`) a rez v
-  režime 2D/Split, kde má prednosť rez podlažia (`underlayCut`).
+  `aim/` 35/35, `check-module-size` OK.
+- **Overenie naživo (2026-10-17):**
+  - *Zostava:* fork lokálne (`vite`), AIMviewer `IFCViewer` na dočasnej devtest stránke
+    a Playwright (headless Chromium) nad ASR+VZT.
+  - *Obmedzenie:* softvérové WebGPU (SwiftShader) stratí zariadenie, preto sa overoval
+    stav viewera (store), nie obraz.
+  - *Rez:* nad 3NP o -0,4 m leží v IFC výške 8,8 m (podlažie 9,2 m).
+  - *Kamera:* `top` s ortografickou projekciou a rámovaním na miestnosť 2.05 sa pozerá
+    zhora; `iso` prepne na perspektívu.
+  - *Režimy:* 2D na 2NP = zamknutý pohľad zhora s rezom 6,2 m, na 3NP 10,4 m; Split a
+    návrat do 3D fungujú.
+  - *Odkaz s ops:* `view:2d` + `doc` pri prvom načítaní otvorí 2D aj kartu dokumentu,
+    takže poradie DOCUMENTS_LOAD -> DOCUMENT_OPEN sedí; reťazec resetu funguje.
+  - *Oprava:* neznáme podlažie predtým potichu prepol do 2D na naposledy použité
+    podlažie; teraz sa správa nevykoná (`pickStorey`).
+  - *Rez v 2D/Split:* má prednosť rez podlažia (`underlayCut`), vizuálne neoverené.
 
 ### D-084 - IFC motor `@ifc-lite/mcp` ako knižnica v MCP konektore AIM
 **Status:** rozhodnuté (2026-10-17), fáza 0 (prototyp) beží. **Rozširuje D-079, D-083.**
@@ -3233,6 +3246,20 @@ Automation"; po meraní bypass zrušený a preview `MCP_TOKEN` zmazaný. Nástro
   nad ASR+VZT (VZT jednotka na 2NP cez štítok podlažia, 13 miestností > 20 m² na 2.NP,
   IfcCovering po podlažiach). Evaly `/ask` motor neobsahujú (ifc_* sú len v MCP); overenie
   motora = živé scenáre cez konektor.
+- **Overenie cez MCP na Vercel preview so skutočnou DB (2026-10-17):**
+  - *Zostava:* `ENGINE_ENABLED` a dočasný token len pre preview vetvy, dočasný bypass;
+    po overení zrušené.
+  - *Prešlo:* všetkých 17 scenárov - `ifc_query` (13 miestností > 20 m² na 2NP, všetky
+    namapované na `object_ref`), `ifc_count` (97 dverí po podlažiach),
+    `ifc_property_values` (`LoadBearing` 114/95), `ifc_get` (cez `object_ref` aj GUID),
+    tools pohľadu (podlažie `3. NP` sa rozpozná, neznáme vráti zoznam dostupných),
+    `open_drawing.in_viewer`, `global_ids` v 3D tools a staré tools bez regresie.
+  - *`ifc_ids_validate`:* hlási prázdny register, kým nie je nastavený `IDS_SOURCES`.
+  - *Oprava `ifc_get`:* trval 5,5 s, lebo balík pri hľadaní podľa GlobalId prechádza
+    všetky entity súboru (~1 s na volanie). Teraz je index GlobalId -> expressId
+    produktov postavený raz na parsovaný model: prvé volanie 0,34 s, ďalšie ~2 ms.
+  - *Popisky akcií:* záporná výška rezu = "pod úrovňou", počet cieľov kamery bez
+    chybného skloňovania.
 
 ---
 

@@ -188,6 +188,27 @@ async function ifcQuery(input: Record<string, unknown>, deps: EngineDeps): Promi
   });
 }
 
+/**
+ * GlobalId -> expressId produktov modelu. Hľadanie podľa GlobalId v balíku
+ * prechádza všetky entity súboru (~1 s na ASR pri každom volaní); parsovaný
+ * store sa nemení, takže index sa postaví raz na store a drží s ním.
+ */
+const guidIndexes = new WeakMap<object, Map<string, number>>();
+async function guidIndex(session: EngineSession, m: EngineModel): Promise<Map<string, number>> {
+  const cached = guidIndexes.get(m.store);
+  if (cached) return cached;
+  const index = new Map<string, number>();
+  for (let offset = 0; ; offset += 10_000) {
+    const res = structured<{ truncated?: boolean; entities?: Array<{ expressId: number; globalId?: string }> }>(
+      await session.call("query_entities", { model_id: m.id, limit: 10_000, offset, fields: ["globalId"] }),
+    );
+    for (const e of res.entities ?? []) if (e.globalId) index.set(e.globalId, e.expressId);
+    if (!res.truncated) break;
+  }
+  guidIndexes.set(m.store, index);
+  return index;
+}
+
 async function ifcGet(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
   const targets = Array.isArray(input.targets) ? [...new Set(input.targets.map(str).filter(Boolean))] : [];
   if (targets.length === 0 || targets.length > 50) throw new InputError("targets musí mať 1-50 položiek.");
@@ -204,6 +225,15 @@ async function ifcGet(input: Record<string, unknown>, deps: EngineDeps): Promise
   const include = ["attributes", "properties", "quantities", "classifications", "documents", ...(includeType ? ["type_properties"] : [])];
   const found: Array<Record<string, unknown> & { global_id: string }> = [];
   const missing: string[] = [];
+  const where = new Map<string, { modelId: string; expressId: number }>();
+  const wanted = [...new Set(guidByTarget.values())];
+  for (const m of models) {
+    const index = await guidIndex(session, m);
+    for (const g of wanted) {
+      const expressId = index.get(g);
+      if (expressId !== undefined && !where.has(g)) where.set(g, { modelId: m.id, expressId });
+    }
+  }
   for (const target of targets) {
     const gid = guidByTarget.get(target);
     if (!gid) {
@@ -211,12 +241,15 @@ async function ifcGet(input: Record<string, unknown>, deps: EngineDeps): Promise
       continue;
     }
     let hit: Record<string, unknown> | null = null;
-    for (const m of models) {
-      const res = await session.call("get_entity", { model_id: m.id, global_id: gid, include });
+    const loc = where.get(gid);
+    // Mimo indexu (napr. typ prvku) ostáva pomalšia cesta cez GlobalId.
+    const candidates = loc ? [{ modelId: loc.modelId, arg: { express_id: loc.expressId } }] : models.map((m) => ({ modelId: m.id, arg: { global_id: gid } }));
+    for (const c of candidates) {
+      const res = await session.call("get_entity", { model_id: c.modelId, ...c.arg, include });
       if (!res.isError && res.structuredContent) {
         const { ref: _ref, ...rest } = res.structuredContent as Record<string, unknown>;
         void _ref;
-        hit = { model: m.id, ...rest };
+        hit = { model: c.modelId, ...rest };
         break;
       }
     }

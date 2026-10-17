@@ -53,7 +53,10 @@ export function planSection(
     }
     return {
       ops: [sectionOp({ storeyGuid: floor.guid, offsetM, flipped })],
-      label: `3D: rez ${offsetM} m nad ${floor.label}`,
+      label:
+        offsetM >= 0
+          ? `3D: rez ${offsetM} m nad ${floor.label}`
+          : `3D: rez ${-offsetM} m pod úrovňou ${floor.label}`,
       result: { ok: true, section: { floor: floor.label, offset_m: offsetM, flipped } },
     };
   }
@@ -80,7 +83,7 @@ export function planCamera(input: Record<string, unknown>, targetGuids: string[]
   }
   return {
     ops: [cameraOp(preset, targetGuids, (proj || undefined) as Projection | undefined)],
-    label: `3D: pohľad ${preset}${targetGuids.length ? ` na ${targetGuids.length} prvkov` : ""}`,
+    label: `3D: pohľad ${preset}${targetGuids.length ? ` na vybrané prvky (${targetGuids.length})` : ""}`,
     result: { ok: true, camera: preset, ...(proj ? { projection: proj } : {}), targets: targetGuids.length },
   };
 }
