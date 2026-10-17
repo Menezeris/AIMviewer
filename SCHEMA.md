@@ -430,6 +430,18 @@ PostgREST otváral celú DB. `service_role` má explicitný `grant all` / `grant
 Nová tabuľka alebo RPC teda **nie je** dostupná anon kľúču — ak to raz treba (auth + RLS),
 grant je vedomý krok v migrácii.
 
+
+### 2.13 Výsledky kontroly voči IDS (D-081, migrácia 20261017120000)
+
+**Deklarovaná extenzia** (IFC na výsledok kontroly koncept nemá; BCF je výmenný formát
+nálezov, nie úložisko). `ids_runs` = jeden beh `etl.ids_check` (IDS title/version, SHA-256
+súboru, pôvod v knižnici požiadaviek, model federácie, počty). `ids_results` = špecifikácia ×
+prvok: `spec_identifier` (= ID poznámky v knižnici, napr. `IU-O-space`), `status`
+`pass|fail`, `reasons text[]` (texty ifctesteru), `object_id` cez aktívny GUID (null = prvok
+nie je v DB), `ifc_guid` null = výsledok celej povinnej špecifikácie bez vyhovujúceho prvku.
+Pohľady: `v_ids_latest` (posledný beh každej dvojice IDS × model, s object_ref/menom),
+`v_ids_summary` (po špecifikáciách: elements, passed, failed, example_reason).
+
 ## 4. Konvencia `properties` (D-022)
 
 `properties` JSONB obsahuje **property sety**, vnorené podľa názvu. IFC **atribúty**

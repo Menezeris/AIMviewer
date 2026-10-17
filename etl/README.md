@@ -94,6 +94,21 @@ Voľby: `--include` (triedy prvkov), `--spatial` (triedy priestorov), `--inside-
 (len prvky celé vnútri, bez `partial`). Spúšťa sa **po** `etl.main`
 oboch modelov (prvky aj priestory musia byť v DB, páruje sa cez aktívny IFC GUID).
 
+## Kontrola modelu voči IDS — `etl.ids_check` (D-081)
+
+IDS vyrába knižnica požiadaviek (`assetin-library`), sem sa nekopíruje. Krok overí model
+ifctesterom a výsledky (špecifikácia × prvok, pass/fail + dôvody) zapíše do `ids_runs` /
+`ids_results`; AI ich číta cez `v_ids_summary` / `v_ids_latest`.
+
+```bash
+python -m etl.ids_check --ids ../assetin-library/tests/fixtures/ids/ER-0101_ARCH.ids \
+    --model podklady/FINAL/ASR.ifc --label ASR --source "assetin-library@<commit>" --dry-run --report out/ids.csv
+```
+
+Spúšťa sa **po** `etl.main` (prvky sa párujú cez aktívny IFC GUID). Každý beh je nový
+záznam (história plnenia ostáva); pohľady ukazujú posledný beh. IDS pre ARCH výmenu sa
+púšťa na ASR, nie na VZT — špecifikácie s `minOccurs=1` by inak hlásili, že v modeli nič nie je.
+
 ## Idempotencia (D-031)
 - `objects` upsert cez `object_ref` (UNIQUE) → `id` ostáva DB-generované (D-010).
 - Hrany / systémy / GUID história → deterministické UUID (`ids.py`), `ON CONFLICT (id)`.

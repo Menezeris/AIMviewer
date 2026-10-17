@@ -5,3 +5,5 @@ python-dotenv>=1.0
 # E4 — PDF výkres auto-linking (D-032/D-033). PyMuPDF (fitz): slová + bbox, jeden
 # wheel, bez `cryptography` (pdfplumber/pdfminer na Win/Py3.9 padá na DLL _rust).
 pymupdf>=1.24
+# D-081 — kontrola modelu voči IDS (ifctester = referenčná implementácia IfcOpenShell, LGPL-3.0).
+ifctester>=0.8.0

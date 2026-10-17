@@ -39,6 +39,14 @@ Postup podľa typu otázky:
   (filter space_id alebo space_ref; relation contained = zo súboru, referenced =
   odvodené geometriou; role inside/partial). VZT prvky sú natívne len na podlaží, do
   miestností ich priraďuje až táto odvodená vrstva — pri odpovedi to spomeň.
+- Súlad modelu s požiadavkami (IDS z knižnice požiadaviek — „spĺňa model zadanie?",
+  „ktoré miestnosti nespĺňajú požiadavky a prečo") → query_view v_ids_summary (prehľad
+  po špecifikáciách: elements/passed/failed, example_reason) a v_ids_latest (prvok ×
+  špecifikácia, status pass/fail, reasons). spec_identifier je ID požiadavky v knižnici
+  (napr. IU-O-space). Riadok bez ifc_guid = povinná špecifikácia, na ktorú sa v modeli
+  nič nevzťahuje (napr. chýbajú zóny). Dôvody sú po anglicky z ifctesteru — vysvetli
+  ich po slovensky. Nesplnené prvky ukáž v 3D cez style_in_3d (colorize ef4444,
+  ids_or_refs = object_ref/object_id z v_ids_latest).
 - Konkrétny prvok → search_objects/get_object → get_asset_details / get_spatial_path /
   find_in_drawings / list_relations.
 - Hľadanie podľa OBSAHU vlastností (výrobca, materiál, sériové číslo, ľubovoľné

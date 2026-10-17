@@ -2821,9 +2821,49 @@ sa priestory; náprava patrí do modelu, nie do kódu.
 
 ---
 
+### D-081 — Kontrola modelu voči IDS z knižnice požiadaviek (`etl.ids_check`)
+**Status:** rozhodnuté (2026-10-17), demo Bencont. **Realizuje IDS časť D-052 a E6.**
+
+**Kontext:** posolstvo dema je „správne zadanie → overený model → AI, ktorej môžeš veriť".
+Požiadavky žijú v knižnici `AssetinSpace/assetin-library` (MD poznámky, jediný zdroj pravdy);
+jej prototyp generátora (`tests/fixtures/ids/dry_run_er0101_arch.py`) z nich skladá IDS 1.0
+pre výmenu ER-0101 × ARCH (8 špecifikácií: miestnosť, podlažie, zóna, STD-CL-01…06), ktorý
+prechádza `ids.xsd`. AIMviewer doteraz žiadny výsledok kontroly nemal (E6 parkované).
+
+**Rozhodnutie:**
+1. **IDS sa do AIMviewera nekopíruje ani nepíše ručne** — ETL krok
+   `python -m etl.ids_check --ids <cesta k .ids z knižnice> --model <ifc> --label ASR`
+   ho číta zo súboru, ktorý vyrobila knižnica. Pôvod (cesta/commit, `ids:info` title/version,
+   SHA-256 súboru) sa ukladá k behu. Požiadavka má jedného nositeľa — knižnicu.
+2. **Validácia = ifctester** (oficiálna referenčná implementácia IfcOpenShell pre IDS, LGPL),
+   nie vlastný kód (línia D-080).
+3. **Výsledky ako dve tabuľky** `ids_runs` (beh: IDS, model, počty) a `ids_results`
+   (špecifikácia × prvok: `pass`/`fail` + dôvody), prvok párovaný cez aktívny IFC GUID
+   (`ifc_guid_history`). Špecifikácia, ktorá nemá žiadny vyhovujúci prvok, ale je povinná
+   (`minOccurs ≥ 1`, napr. zóny), dostane riadok bez prvku. IFC na výsledok kontroly
+   koncept nemá (BCF je formát nálezov, nie úložisko) → deklarovaná extenzia SCHEMA §5.
+4. **Čítacia vrstva:** `v_ids_latest` (výsledky posledného behu každej dvojice IDS × model,
+   s object_ref/menom prvku) a `v_ids_summary` (špecifikácia: počet prvkov, splnené,
+   nesplnené, príklad dôvodu). LLM ich dotazuje cez `query_view`; nesplnené prvky ofarbí
+   `style_in_3d` cez `ids_or_refs`.
+5. **ETL podlažia akceptujú zápis knižnice** `2.NP` popri `2NP` (`_np_key`): IU-O-storey
+   predpisuje `[0-9]{1,2}.(NP|PP)` a premenovanie modelu podľa štandardu nesmie rozbiť
+   federáciu podlaží (D-049).
+
+**Zavrhnuté:** ručne písané IDS v AIMvieweri (druhý nositeľ požiadaviek); kontrola v
+prehliadači cez IDS modul IFClite (výsledok by nebol v DB, AI by ho nevidela); BCF ako
+úložisko (je to výmenný formát, export BCF z `ids_results` je neskorší krok).
+
+**Vedomé limity:** IDS 1.0 nevie overiť vzťah naprieč súbormi (VZT prvok v miestnosti ASR)
+— to rieši odvodená vrstva D-080, nie IDS. Kým knižnica nemá F4 generátor, IDS pochádza
+z jej prototypu (deterministický výstup, overený XSD).
+
+---
+
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-17** — **D-081 (kontrola modelu voči IDS z knižnice):** `python -m etl.ids_check` spustí ifctester s IDS, ktorý vyrobila knižnica požiadaviek (nekopíruje sa), výsledky do `ids_runs`/`ids_results` (prvok cez aktívny GUID, pôvod IDS so SHA-256), čítanie `v_ids_latest`/`v_ids_summary` pre LLM a 3D. ETL podlažia akceptujú `2.NP` (štandard knižnice) popri `2NP`.
 - **2026-10-16** — **D-080 (odvodzovače; prvok → priestor):** rámec `etl/derive/` pre hrany odvodené nad federáciou (idempotentné, `source='derive:<rule>'`, zastarané sa uzavrú). Prvý odvodzovač `spatial_reference` zaraďuje prvky do priestorov geometriou ako **`rel_referenced_in_spatial_structure`** (IfcRelReferencedInSpatialStructure — neexkluzívny; spresňuje D-052, kde contained koliduje so SET[0:1]), zarovnanie federácie cez IfcMapConversion, ifcopenshell `geom.tree` (inside = celý v tele priestoru, partial = pretína), žiadna heuristika podhľadu. Pohľad `v_space_elements`. IfcZone tranzitívne, nie geometriou.
 - **2026-10-16** — **D-079 (Claude cez MCP + živý kanál do viewera):** `POST /api/mcp/<MCP_TOKEN>` vystavuje tools `/ask` pre custom connector v Claude (Max, bez platby za tokeny); UI akcie idú cez Supabase Realtime Broadcast na kanál `LIVE_CHANNEL` do viewera otvoreného s `?live=<kanál>`, ktorý ich vykoná ako AI dock (`router.push`). Anon kľúč smie do prehliadača až po migrácii, ktorá odoberie `anon`/`authenticated` práva v `public` (mení D-026).
 - **2026-08-02** — **D-075 dodatok (ribbon je toolbar aj na mobile):** upstream posielal každú malú obrazovku (`isMobile`: šírka < 768, alebo touch < 1024) do `MobileToolbar`, takže na telefóne ribbon — aj s našou záložkou `Documents` — vôbec nerenderoval (overené Playwrightom na profiloch iPhone 14 / Pixel 7 / iPad Mini: 44px lišta ikon, naše funkcie len v „…" menu; ribbon až od 1024 px). Teraz o toolbare rozhoduje **zvolený štýl, nie veľkosť obrazovky**: `ribbon` obsluhuje všetky šírky (44px pás, 36px ciele, vodorovne scrollovateľné záložky, bez uloženej voľby štartuje zbalený → 44 px; ťuknutie na záložku band otvorí len dočasne, pripína chevron), `classic` si na malých necháva `MobileToolbar` ako cestu späť. Prepínač v `ViewerLayout` je fork-only (sentinely), responzívnosť ribbonu + `lib/viewport.ts` + `ThemeSwitch size` sú generické (kandidát na upstream PR). AIMviewer bez zmien kódu.
