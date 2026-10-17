@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { getIfcModels } from "@/lib/data/ifc-models";
+import { getIfcModels } from "../data/ifc-models";
 
 import { cacheSnapshot, getStore } from "./cache";
 import { callEngineTool, type EngineModel } from "./session";

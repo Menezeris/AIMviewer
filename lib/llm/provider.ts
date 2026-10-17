@@ -50,6 +50,16 @@ export interface ToolDefinition {
     properties: Record<string, unknown>;
     required?: string[];
   };
+  /**
+   * MCP anotácie toolu (D-084). Bez nich platí "len na čítanie"; tool, ktorý
+   * zapisuje (fáza 3, D-086), ich musí prepísať, aby si klient vypýtal súhlas.
+   */
+  annotations?: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    openWorldHint?: boolean;
+  };
 }
 
 export interface LlmRequest {

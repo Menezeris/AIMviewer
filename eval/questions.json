@@ -410,6 +410,38 @@
       "expect": { "no_facts": true },
       "verified": true,
       "notes": "Overené: Siemens sa vo výrobcoch nevyskytuje (sú tam Lindab, TOPWET, VITRA, Waterloo) — model nesmie výskyt vymyslieť."
+    },
+    {
+      "id": "view-ceiling-205",
+      "category": "view",
+      "question": "Ukáž mi strop nad miestnosťou 2.05, kade idú potrubia.",
+      "expect": { "tools_called": ["set_section", "set_camera"], "actions_match": ["section:y~h=-?[0-9.]+", "camera:top"] },
+      "verified": false,
+      "notes": "D-083 fáza 1: rez pod stropom ďalšieho podlažia + pohľad zhora na miestnosť (voliteľne skrytie IfcCovering)."
+    },
+    {
+      "id": "view-floor-2d",
+      "category": "view",
+      "question": "Prepni viewer na 2D pôdorys 2. NP.",
+      "expect": { "tools_called": ["set_view_mode"], "actions_match": ["view:2d:[0-9A-Za-z_$]{22}"] },
+      "verified": false,
+      "notes": "D-083: podlažie cestuje ako GUID podlažia ASR."
+    },
+    {
+      "id": "view-doc-in-viewer",
+      "category": "view",
+      "question": "Otvor pôdorys 2NP vedľa 3D modelu.",
+      "expect": { "tools_called": ["open_drawing"], "actions_match": ["doc:[0-9]*:[0-9a-f-]{36}"] },
+      "verified": false,
+      "notes": "D-083: open_drawing in_viewer=true -> op doc."
+    },
+    {
+      "id": "view-reset",
+      "category": "view",
+      "question": "Vráť pohľad do pôvodného stavu.",
+      "expect": { "tools_called": ["set_view_mode"], "actions_match": ["section_clear::", "show_all::", "reset_colors::"] },
+      "verified": false,
+      "notes": "D-083: set_view_mode mode=3d reset=true."
     }
   ]
 }

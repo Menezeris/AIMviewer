@@ -3110,6 +3110,17 @@ Po prieskume forku a balíka `@ifc-lite/mcp` (D-084):
 - **Oprava poradia** v `MODELS_LOADED` (ops až po `UNDERLAYS_LOAD`/`DOCUMENTS_LOAD`) patrí do fázy 1.
 - **Bod 5 (analýzy vo vieweri) nahrádza D-084:** kolízie, IDS a porovnanie revízií počíta motor
   na serveri, nečakajú na spätný kanál.
+- **Fáza 1 implementovaná (2026-10-17):** tools `set_section`, `set_camera`, `set_view_mode`
+  (+ `reset`) a `open_drawing.in_viewer` (`lib/llm/view-tools.ts`, čistá logika
+  `lib/llm/view-plan.ts`); formát ops a preklad na bridge správy na jednom mieste
+  `lib/viewer-ops.ts` (presunuté z `components/ifc-viewer.tsx`); ops sa v `MODELS_LOADED`
+  aplikujú až po `UNDERLAYS_LOAD`/`DOCUMENTS_LOAD`/`CAPTURES_LOAD`. Fork
+  (`Menezeris/ifc-lite`, rovnaká vetva, z `main` po zlúčení PR 54): `aim/view-protocol.ts`,
+  `aim/viewCommands.ts`, `aim/useAimViewCommands.ts`, bez zásahu do upstream súborov.
+  Overené: AIMviewer vitest 83/83, `tsc`, `next build`; fork `tsc` (viewer) 0 chýb, testy
+  `aim/` 35/35, `check-module-size` OK. **Neoverené naživo** v prehliadači (WebGPU viewer):
+  presný smer kamery pri preset + rámovanie (`setPresetView` a hneď `flyTo`) a rez v
+  režime 2D/Split, kde má prednosť rez podlažia (`underlayCut`).
 
 ### D-084 - IFC motor `@ifc-lite/mcp` ako knižnica v MCP konektore AIM
 **Status:** rozhodnuté (2026-10-17), fáza 0 (prototyp) beží. **Rozširuje D-079, D-083.**
@@ -3192,22 +3203,43 @@ Odstránené nepoužívané `@ifc-lite/geometry`/`query`/`wasm` a `postinstall` 
 | Brána | Meranie | Stav |
 |---|---|---|
 | 1 veľkosť | `next build` prejde; trasovanie route `/api/mcp/[token]` = **75,8 MB** (2863 súborov, WASM aj xmldom pribalené cez `outputFileTracingIncludes`) | ✅ |
-| 2 čas a pamäť | zbuildovaný Next server (`next start`) cez MCP endpoint: studené načítanie ASR **1,1 s** + VZT **0,5 s** (vrátane sťahovania), teplé **0 ms** (tá istá inštancia), `query_entities` s číselným filtrom **8-30 ms** (32 miestností), `clash_check` VZT **2,1-2,6 s** (228 kolízií), RSS **~625 MB** | ✅ lokálne, **na Verceli ešte nezmerané** |
+| 2 čas a pamäť | zbuildovaný Next server (`next start`) cez MCP endpoint: studené načítanie ASR **1,1 s** + VZT **0,5 s** (vrátane sťahovania), teplé **0 ms** (tá istá inštancia), `query_entities` s číselným filtrom **8-30 ms** (32 miestností), `clash_check` VZT **2,1-2,6 s** (228 kolízií), RSS **~625 MB**. **Vercel preview** (Fluid, štandardná pamäť, iad1, Node 24): studené volanie **7,4 s** spolu (nová inštancia po 20 min nečinnosti; ASR 2,1 s + VZT 0,8 s), studené s kolíziami **10,0 s** (kolízie 4,1 s), teplé **0,22-0,55 s** spolu (dotaz 9-20 ms), RSS max **~715 MB** | ✅ |
 | 3 izolácia | úprava psetu na backende A sa v ďalšom volaní nad tým istým storeom neprejaví (`engine.test.ts` + benchmark nad ASR) | ✅ |
 | 4 zhoda IDS | ER-0101 × ASR: `@ifc-lite/ids` vs. ifctester (`etl.ids_check --dry-run --report`) = **8/8 verdiktov, 189/189 párov špecifikácia × prvok (100 %)**, `ids_validate` ~0,34 s | ✅ |
 
 Výhrada k bráne 4: ER-0101 testuje atribúty, klasifikáciu a väzby, nie hodnoty psetov ani
 dedičnosť z typu - porovnanie sa zopakuje s prvým IDS, ktoré psety testuje (pred fázou 3).
-Na Verceli treba bránu 2 overiť na preview s `ENGINE_SPIKE=1` (`ifc_engine_probe`); kým sa
-neoverí, rozhodnutie "v procese" platí podmienečne. Nástroje: `scripts/spike/engine-bench.mts`,
+Rozhodnutie: **motor beží v procese MCP route na Verceli** (všetky štyri brány prešli),
+samostatná služba netreba. Meranie na preview: env `ENGINE_SPIKE=1` a dočasný `MCP_TOKEN`
+len pre preview vetvy `claude/f12-mcp-viewer-control`, dočasný "Protection Bypass for
+Automation"; po meraní bypass zrušený a preview `MCP_TOKEN` zmazaný. Nástroje: `scripts/spike/engine-bench.mts`,
 `scripts/spike/ids-compare.mts` (spúšťajú sa cez `npx vite-node@6.0.0`, lebo `tsx` preloží
 `lib/engine` do CommonJS a `@ifc-lite/ids` používa top-level await).
+
+**Dodatok D-084 (2026-10-17) - fáza 1 implementovaná na vetve `claude/f12-mcp-viewer-control`.**
+- **IFC motor:** tools `ifc_models`, `ifc_query` (triedy, podlažie podľa štítku AIM,
+  až 3 podmienky na psety vrátane číselných), `ifc_get` (ciele = object_ref / objects.id /
+  GlobalId, psety výskytu aj z typu, množstvá, klasifikácie, dokumenty), `ifc_count`
+  (s podmienkou alebo zoskupené podľa triedy / podlažia / materiálu), `ifc_property_values`
+  (histogram) a `ifc_ids_validate` (IDS z registra `IDS_SOURCES`, nič neukladá).
+  Zapína ich env `ENGINE_ENABLED=1`, kód motora sa načíta lenivo až pri prvom `ifc_*`
+  volaní (`lib/engine/tool-defs.ts` vs. `lib/engine/run.ts`).
+- **Prepojenie na AIM:** výsledok nesie `object_id`/`object_ref`/`aim_url` (aktívny GUID v
+  `ifc_guid_history`), `unmapped` a pole `show_in_3d`. `show_in_3d`/`style_in_3d` dostali
+  `global_ids` (max 600), takže sa dajú ukázať aj prvky, ktoré sú len v súbore.
+- **Smerovanie:** pravidlá v `mcpInstructions` (len pri zapnutom motore). MCP anotácie sa
+  dajú nastaviť pre jednotlivé tools (default ostáva "len na čítanie").
+- **Overené:** vitest 83/83 (motor nad inline mini-modelom, prepojenie, podlažia, IDS), smoke
+  nad ASR+VZT (VZT jednotka na 2NP cez štítok podlažia, 13 miestností > 20 m² na 2.NP,
+  IfcCovering po podlažiach). Evaly `/ask` motor neobsahujú (ifc_* sú len v MCP); overenie
+  motora = živé scenáre cez konektor.
 
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-17** - **D-084 dodatok (fáza 1) + D-083 dodatok (fáza 1 implementovaná):** `ifc_*` tools motora prepojené na AIM cez GUID (za `ENGINE_ENABLED`), tools pohľadu `set_section`/`set_camera`/`set_view_mode` + `open_drawing.in_viewer`, `global_ids` v 3D tools, spoločný formát ops `lib/viewer-ops.ts`; fork: bridge `SET_SECTION`/`SET_CAMERA`/`SET_VIEW_MODE`. Brána 2 na Verceli prešla (studené 7,4 s, teplé < 0,6 s, ~715 MB), motor ostáva v procese.
 - **2026-10-17** - **D-084 (IFC motor `@ifc-lite/mcp` ako knižnica v konektore) + dodatok D-083:** jeden konektor s tromi rodinami tools (AIM nad DB, `ifc_*` motor nad IFC súbormi, viewer cez bridge), výsledky motora prepojené na AIM cez GUID; bezstavový motor (nový backend na request); zápis ako propose -> commit s IDS bránou a nemennými revíziami (D-086). Pohľad ostáva bez súradníc, `scene.actions` až vo fáze 2. Fáza 0 meria Vercel a zhodu IDS motorov.
 - **2026-10-17** - **D-083 (návrh: Claude ovláda viewer cez MCP, F12):** katalóg 17 use-casov overený voči kódu a živo (2, 4, 7, 16 stoja na dátach, nie na vieweri; 8 je len čiastočne). Fáza 1 = tools `set_section`, `set_camera`, `set_view_mode` + `open_drawing in_viewer` + reset cez existujúci `ops` formát a živý kanál, vo forku bridge `SET_SECTION`/`SET_CAMERA`/`SET_VIEW_MODE` nad existujúcimi volaniami (bez zmeny DB, bez zásahu do upstream súborov); fáza 2 spätný kanál, fáza 3 zápis a fáza 4 analýzy z upstreamu, každá so samostatným rozhodnutím. Upstream `@ifc-lite/mcp` sa nepreberá ako server. Čaká na schválenie (Q1-Q8).
 - **2026-10-17** — **D-082 (výber prvku v 3D ako klik):** nový tool `select_in_3d` vydá viewer op `select::<guid>` (D-066 wire formát, živý kanál a záložný odkaz bez zmeny); host pošle bridge správu `SELECT{guid}`, fork ju vykoná ako klik (selekcia, kamera, panel vlastností) a odpovie `ENTITY_SELECTED`, takže AIM kartu dotiahne existujúci tok. Vyžaduje podporu `SELECT` vo forku.

@@ -72,6 +72,25 @@ describe("MCP server (D-079)", () => {
     });
   });
 
+  it("tools/list prevezme vlastné anotácie toolu (zápis, D-084)", async () => {
+    const res = await handleMcpPayload(
+      { jsonrpc: "2.0", id: "w", method: "tools/list" },
+      deps({
+        tools: [
+          {
+            name: "ifc_commit_changes",
+            description: "zápis",
+            inputSchema: { type: "object", properties: {} },
+            annotations: { readOnlyHint: false, destructiveHint: false },
+          },
+        ],
+      }),
+    );
+    expect(res).toMatchObject({
+      result: { tools: [{ annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } }] },
+    });
+  });
+
   it("tools/call vykoná tool a vráti textové bloky", async () => {
     const d = deps();
     const res = await handleMcpPayload(

@@ -1,4 +1,4 @@
-import type { ToolDefinition } from "@/lib/llm/provider";
+import type { ToolDefinition } from "../llm/provider";
 
 /** Definícia diagnostického toolu (D-084 fáza 0) - bez závislostí motora, aby
  * ju route mohla importovať staticky; implementácia je v `./probe` (lenivo). */

@@ -10,6 +10,7 @@ import type { CaptureViewerWire } from "@/lib/data/captures";
 import type { TreeDecorations } from "@/lib/data/decoration-counts";
 import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
+import { opToBridgeMessage, parseOps } from "@/lib/viewer-ops";
 
 /**
  * 3D prehliadač = self-hostovaná IFClite appka (fork AssetinSpace/ifc-lite,
@@ -27,6 +28,11 @@ import type { ViewerApi } from "@/lib/viewer-api";
  *                   výber {types,model} rozkladaný viewer-side) ·
  *                   SELECT{guid} (D-082; výber ako klik: selekcia + kamera +
  *                   panel vlastností, viewer odpovie ENTITY_SELECTED) ·
+ *                   SET_SECTION{action,axis,storeyGuid,offsetM,position} ·
+ *                   SET_CAMERA{preset,projection,guids} ·
+ *                   SET_VIEW_MODE{mode,storeyGuid} (D-083; pohľad bez
+ *                   súradníc, podlažie prepočíta viewer) ·
+ *                   DOCUMENT_OPEN{documentId,page} ·
  *                   AIM_PANEL_DATA{guid,data} · AIM_PANEL_EMPTY{guid,reason}
  *   viewer → host:  READY · MODELS_LOADED · ENTITY_SELECTED{guid} ·
  *                   ENTITY_DESELECTED · AIM_NAVIGATE{href}
@@ -56,68 +62,6 @@ type OutboundMessage =
   | { source: typeof SOURCE; type: "CAPTURE_PIN_CLICK"; captureId: string }
   // Karta dokumentu otvorená/zavretá vo viewri (D-075) — recents/analytics.
   | { source: typeof SOURCE; type: "DOCUMENT_EVENT"; documentId: string; event: "opened" | "closed" };
-
-/**
- * Viewer operácia AI docku (D-066) — kompaktný wire formát v URL parametri
- * `ops`: `<op>:<arg>:<guid.guid…>` spájané `;`. GUIDy (base64 abeceda IFC,
- * bez bodky) sa oddeľujú bodkou — neencoduje sa, URL ostáva krátka.
- *
- * Množinové varianty `<op>_sel:<arg>:<selektor>` (D-066 rozšírenie) nesú
- * namiesto GUIDov selektor `t=IfcA.IfcB~m=Model` — celé triedy/súbory
- * rozloží viewer sám z entity tables, takže URL ostáva krátka pri
- * ľubovoľnom počte prvkov.
- */
-interface OpsSelector {
-  types?: string[];
-  model?: string;
-}
-
-type ViewerOp =
-  | { op: "colorize"; guids: string[]; color: string }
-  | { op: "hide" | "show" | "isolate"; guids: string[] }
-  | { op: "colorize_sel"; selector: OpsSelector; color: string }
-  | { op: "hide_sel" | "show_sel" | "isolate_sel"; selector: OpsSelector }
-  | { op: "select"; guid: string }
-  | { op: "show_all" }
-  | { op: "reset_colors" };
-
-function parseSelector(raw: string): OpsSelector | null {
-  const sel: OpsSelector = {};
-  for (const field of raw.split("~")) {
-    if (field.startsWith("t=")) {
-      const types = field.slice(2).split(".").filter(Boolean);
-      if (types.length > 0) sel.types = types;
-    } else if (field.startsWith("m=")) {
-      const model = field.slice(2).trim();
-      if (model) sel.model = model;
-    }
-  }
-  return sel.types || sel.model ? sel : null;
-}
-
-function parseOps(raw: string): ViewerOp[] {
-  const out: ViewerOp[] = [];
-  for (const part of raw.split(";")) {
-    const [op, arg = "", joined = ""] = part.split(":");
-    const guids = joined.split(".").filter(Boolean);
-    const sel = op.endsWith("_sel") ? parseSelector(joined) : null;
-    if (op === "colorize" && guids.length > 0 && /^[0-9a-fA-F]{6}$/.test(arg)) {
-      out.push({ op, guids, color: `#${arg}` });
-    } else if ((op === "hide" || op === "show" || op === "isolate") && guids.length > 0) {
-      out.push({ op, guids });
-    } else if (op === "colorize_sel" && sel && /^[0-9a-fA-F]{6}$/.test(arg)) {
-      out.push({ op, selector: sel, color: `#${arg}` });
-    } else if ((op === "hide_sel" || op === "show_sel" || op === "isolate_sel") && sel) {
-      out.push({ op, selector: sel });
-    } else if (op === "select" && guids.length > 0) {
-      // Výber je jeden prvok (D-082) — prípadné ďalšie GUIDy sa ignorujú.
-      out.push({ op, guid: guids[0] });
-    } else if (op === "show_all" || op === "reset_colors") {
-      out.push({ op });
-    }
-  }
-  return out;
-}
 
 /** Host wire → viewer wire: odstráni host-only `spaceId` z capture pinov. */
 function toCapturePins(captures: CaptureViewerWire[]) {
@@ -285,45 +229,12 @@ export function IFCViewer({
       });
   }
 
-  /** Aplikuje viewer ops AI docku (D-066) — jedna op = jedna bridge správa. */
+  /**
+   * Aplikuje viewer ops AI docku (D-066, pohľad D-083) - jedna op = jedna
+   * bridge správa; formát a preklad žijú v `lib/viewer-ops.ts`.
+   */
   function applyOps(raw: string) {
-    for (const o of parseOps(raw)) {
-      switch (o.op) {
-        case "colorize":
-          post({ type: "COLORIZE", guids: o.guids, color: o.color });
-          break;
-        case "hide":
-          post({ type: "HIDE", guids: o.guids });
-          break;
-        case "show":
-          post({ type: "SHOW", guids: o.guids });
-          break;
-        case "isolate":
-          post({ type: "ISOLATE", guids: o.guids });
-          break;
-        case "colorize_sel":
-          post({ type: "COLORIZE", selector: o.selector, color: o.color });
-          break;
-        case "hide_sel":
-          post({ type: "HIDE", selector: o.selector });
-          break;
-        case "show_sel":
-          post({ type: "SHOW", selector: o.selector });
-          break;
-        case "isolate_sel":
-          post({ type: "ISOLATE", selector: o.selector });
-          break;
-        case "select":
-          post({ type: "SELECT", guid: o.guid });
-          break;
-        case "show_all":
-          post({ type: "SHOW_ALL" });
-          break;
-        case "reset_colors":
-          post({ type: "RESET_COLORS" });
-          break;
-      }
-    }
+    for (const o of parseOps(raw)) post(opToBridgeMessage(o));
   }
 
   // ── Príjem správ z iframu (3D → DB) ─────────────────────────────────────
@@ -354,7 +265,6 @@ export function IFCViewer({
           loadedRef.current = true;
           setStatus("ready");
           if (focus) post({ type: "FOCUS", guids: focus.split(",") });
-          if (ops) applyOps(ops);
           // PDF podklady (D-072) — až po naparsovaní modelov, aby viewer vedel
           // resolvnúť storey GUIDy z placementov.
           if (underlays && underlays.length > 0) {
@@ -378,6 +288,10 @@ export function IFCViewer({
           if (decorations && Object.keys(decorations).length > 0) {
             post({ type: "AIM_TREE_DECORATIONS", decorations });
           }
+          // Ops až po podkladoch, dokumentoch a pinoch (D-083): `view:2d` potrebuje
+          // vedieť, či má podlažie kalibrovaný výkres, a `doc` otvorí len dokument,
+          // ktorý viewer už dostal v DOCUMENTS_LOAD.
+          if (ops) applyOps(ops);
           // Flush príkazov vydaných pred načítaním modelov (viď send()).
           const queued = pendingRef.current;
           pendingRef.current = [];

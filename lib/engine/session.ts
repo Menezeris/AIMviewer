@@ -67,11 +67,15 @@ export interface EngineToolResult {
   isError?: boolean;
 }
 
-export async function callEngineTool(
-  models: EngineModel[],
-  name: EngineUpstreamTool,
-  args: Record<string, unknown>,
-): Promise<EngineToolResult> {
+export interface EngineSession {
+  call(name: EngineUpstreamTool, args: Record<string, unknown>): Promise<EngineToolResult>;
+}
+
+/**
+ * Relácia nad čerstvými backendmi zadaných modelov - viac volaní v jednom
+ * requeste (napr. `ifc_get` po prvkoch) zdieľa jeden server balíka.
+ */
+export async function openEngineSession(models: EngineModel[]): Promise<EngineSession> {
   const registry = new InMemoryModelRegistry();
   for (const m of models) registry.add(modelFromStore(m.store, m.name, m.id));
 
@@ -95,14 +99,28 @@ export async function callEngineTool(
       clientInfo: { name: "aim-viewer", version: "1" },
     },
   });
-  const res = (await server.handleMessage({
-    jsonrpc: "2.0",
-    id: 1,
-    method: "tools/call",
-    params: { name, arguments: args },
-  })) as JsonRpcResponse | null;
 
-  if (!res) throw new Error(`@ifc-lite/mcp nevrátil odpoveď na ${name}`);
-  if ("error" in res && res.error) throw new Error(`@ifc-lite/mcp ${name}: ${res.error.message}`);
-  return (res as { result: EngineToolResult }).result;
+  let nextId = 1;
+  return {
+    async call(name, args) {
+      const res = (await server.handleMessage({
+        jsonrpc: "2.0",
+        id: nextId++,
+        method: "tools/call",
+        params: { name, arguments: args },
+      })) as JsonRpcResponse | null;
+      if (!res) throw new Error(`@ifc-lite/mcp nevrátil odpoveď na ${name}`);
+      if ("error" in res && res.error) throw new Error(`@ifc-lite/mcp ${name}: ${res.error.message}`);
+      return (res as { result: EngineToolResult }).result;
+    },
+  };
+}
+
+/** Jedno volanie toolu v novej relácii. */
+export async function callEngineTool(
+  models: EngineModel[],
+  name: EngineUpstreamTool,
+  args: Record<string, unknown>,
+): Promise<EngineToolResult> {
+  return (await openEngineSession(models)).call(name, args);
 }
