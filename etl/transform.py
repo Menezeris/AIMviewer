@@ -189,8 +189,16 @@ def _properties(entity: Any) -> dict[str, Any]:
     return out
 
 
-_NP_EXACT = re.compile(r"^\d+NP$")     # „reálne" podlažie: 1NP, 2NP, … (nie 1NP_SH_ZD)
-_NP_PREFIX = re.compile(r"\d+NP")       # NP-prefix pomocnej úrovne: 1NP_HH_ZD → 1NP
+# „Reálne" podlažie: 1NP, 2NP… aj zápis štandardu knižnice 1.NP / 2. NP (nie 1NP_SH_ZD).
+_NP_EXACT = re.compile(r"^\d+\.?\s?NP$")
+# NP-prefix pomocnej úrovne: 1NP_HH_ZD → 1NP, 2.NP_VZT → 2NP.
+_NP_PREFIX = re.compile(r"(\d+)\.?\s?NP")
+
+
+def _np_key(name: Optional[str]) -> Optional[str]:
+    """Normalizovaný kľúč podlažia (`2NP`) z názvu v ľubovoľnom zápise (2NP, 2.NP, 2. NP)."""
+    m = _NP_PREFIX.search(name or "")
+    return f"{m.group(1)}NP" if m else None
 
 
 def _is_top_level(entity: Any) -> bool:
@@ -225,9 +233,7 @@ def _resolve_floors(model: ifcopenshell.file) -> tuple[list[Any], dict[int, Any]
     def has_space(st: Any) -> bool:
         return any(c.is_a("IfcSpace") for c in (ue.get_decomposition(st) or []))
 
-    def np_key(name: Optional[str]) -> Optional[str]:
-        m = _NP_PREFIX.search(name or "")
-        return m.group(0) if m else None
+    np_key = _np_key
 
     real: list[Any] = []
     by_np: dict[str, Any] = {}
@@ -281,17 +287,17 @@ def to_staged(
     floor_by_np: dict[str, str] = {}
     floor_by_elev: list[tuple[float, str]] = []
     for ref, elev, name in existing_floors or []:
-        key = _NP_PREFIX.search(name or ref or "")
+        key = _np_key(name) or _np_key(ref)
         if key:
-            floor_by_np.setdefault(key.group(0), ref)
+            floor_by_np.setdefault(key, ref)
         if elev is not None:
             floor_by_elev.append((elev, ref))
 
     def external_floor_ref(storey: Any) -> Optional[str]:
         """Object_ref existujúceho podlažia pre VZT storey (federate). np_key, inak elevácia."""
-        m = _NP_PREFIX.search(attr(storey, "Name") or "")
-        if m:
-            return floor_by_np.get(m.group(0), m.group(0))  # np_key = konvencia floor refu
+        key = _np_key(attr(storey, "Name"))
+        if key:
+            return floor_by_np.get(key, key)  # np_key = konvencia floor refu
         if floor_by_elev:
             e = _to_float(attr(storey, "Elevation")) or 0.0
             return min(floor_by_elev, key=lambda t: abs(t[0] - e))[1]

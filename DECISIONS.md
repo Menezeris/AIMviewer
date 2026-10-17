@@ -2698,9 +2698,174 @@ prepnutí na tab). Endpoint je zámerne dynamický (necachovaný) — zanedbate�
 
 ---
 
+### D-079 — Claude cez MCP konektor + živý príkazový kanál do viewera (Realtime)
+**Status:** rozhodnuté (2026-10-16), pre demo Bencont.
+
+**Kontext:** demo má ukázať, že kvalitný IFC model (správne triedy, vzťahy, federácia ARCH+VZT)
+dáva AI okamžité a overiteľné odpovede. Vstavaný `/ask` (D-056) beží na Gemini free tieri;
+lepší model cez API = ďalší náklad. Autor má predplatné Claude (Max), v ktorom vie Claude
+používať vlastné nástroje cez **custom connector (MCP)** bez platenia za tokeny. Cena: chat
+beží v Claude **vedľa** viewera, nie v ňom — a Claude o otvorenom vieweri nevie nič.
+
+**Rozhodnutie:**
+1. **MCP server v AIMvieweri** — `POST /api/mcp/<MCP_TOKEN>` (Streamable HTTP, JSON odpovede,
+   bezstavový). Vystavuje **tie isté tools** ako `/ask` (`TOOL_DEFINITIONS` + `AskToolRuntime`,
+   jeden zdroj pravdy) a ten istý doménový prompt ako MCP `instructions`
+   (`lib/llm/system-prompt.ts`). Žiadna závislosť: JSON-RPC vrstva je ~150 riadkov
+   (`lib/mcp/server.ts`), lebo potrebujeme len `initialize` / `tools/list` / `tools/call` /
+   `ping`; oficiálne SDK by priviedlo express+hono kvôli trom metódam. Bez `MCP_TOKEN` je
+   endpoint vypnutý (404) — vzor env brán D-068/D-072. Token v ceste = autentifikácia
+   konektora (claude.ai podporuje konektor bez OAuth); dáta sú aj tak verejné read-only.
+2. **Živý príkazový kanál** — UI akcie (`show_in_3d`, `style_in_3d`, `open_node`,
+   `open_drawing`) sa z MCP nevrátia klientovi (žiadny nie je), ale **odvysielajú** cez
+   Supabase Realtime Broadcast (REST z servera, `service_role`) na kanál `LIVE_CHANNEL`.
+   Viewer otvorený s `?live=<kanál>` (pamätá si ho v `sessionStorage`) je prihlásený na
+   kanál a príkaz vykoná **tou istou cestou ako AI dock**: `router.push(url)` na whitelist URL
+   postavenú serverom. Dávka príkazov do 350 ms sa zlúči rovnako ako `finalActions()`
+   (`lib/llm/actions.ts`, zdieľané server aj klient), aby rýchle po sebe idúce `style_in_3d`
+   nezhodili jeden druhého.
+3. **Anon kľúč v prehliadači — až po odobratí práv (mení D-026).** Realtime klient potrebuje
+   anon (publishable) kľúč. S vypnutým RLS (D-025) by anon kľúč dal komukoľvek čítanie aj
+   zápis celej DB cez PostgREST, preto migrácia `20261016120000_revoke_anon_grants.sql`
+   odoberie rolám `anon` a `authenticated` všetky práva v schéme `public` (tabuľky,
+   sekvencie, funkcie + default privileges). Appka číta výhradne cez `service_role` (D-026),
+   takže sa nič nerozbije; anon kľúču ostane len Realtime broadcast na verejné kanály a
+   čítanie verejných bucketov (tie sú verejné už dnes). **Poradie nasadenia je povinné:
+   najprv migrácia, až potom `NEXT_PUBLIC_SUPABASE_ANON_KEY` na Verceli.**
+
+**Zavrhnuté:** polling tabuľky príkazov (latencia ~1 s, ďalšia tabuľka, funkcia na každý tik);
+SSE z Next routy (serverless inštancie nezdieľajú stav); Claude cez API v `/ask` (funguje
+už dnes cez `LLM_PROVIDER=anthropic`, ale platí sa za tokeny — ostáva ako záloha);
+privátne Realtime kanály s RLS na `realtime.messages` (vyžadujú auth, ktoré nemáme).
+
+**Vedomé limity:** kanál je verejný broadcast — kto pozná názov kanála a anon kľúč, môže
+viewerom pohnúť (len pohľad, žiadne dáta). Názov kanála preto nie je triviálny a mení sa
+per demo. MCP nevie, či niekto počúva — tool vráti „odoslané do živého viewera", nie
+„zobrazené". Rate limit na MCP neriešime (bez LLM nákladov na našej strane).
+
+**Dôsledok:** env `MCP_TOKEN`, `LIVE_CHANNEL` (server), `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` (klient). `/ask` ostáva nezmenený (prompt presunutý do
+modulu bez zmeny textu). Návod na pripojenie konektora v README.
+
+---
+
+### D-080 — Odvodzovače nad federáciou; prvok → priestor ako `rel_referenced_in_spatial_structure`
+**Status:** rozhodnuté (2026-10-16). **Spresňuje D-052** (typ hrany a rámec).
+
+**Kontext:** demo potrebuje odpoveď „ktoré VZT prvky sú v miestnosti X". VZT.ifc nemá
+žiadne IfcSpace a všetkých 1021 prvkov je natívne zaradených len na podlaží; miestnosti
+sú v ASR.ifc. Vzťah naprieč súbormi v IFC žiť nemôže (D-052), musí byť v našej DB.
+D-052 navrhoval hranu `rel_contained_in_spatial_structure` so `source='geom'`. Kontrola
+proti schéme IFC4X3_ADD2: `IfcElement.ContainedInStructure` je **SET[0:1]** — prvok smie
+byť obsiahnutý len v jednej štruktúre a natívne už je (podlažie); manifest to drží ako
+unique-active-parent. Druhá contained hrana by porušila IFC aj našu integritu.
+
+**Rozhodnutie:**
+1. **Typ hrany = `rel_referenced_in_spatial_structure`** (IfcRelReferencedInSpatialStructure,
+   `IfcElement.ReferencedInStructures` SET[0:?]) — IFC presne na to má neexkluzívny vzťah
+   „prvok sa nachádza aj v ďalšej priestorovej štruktúre". Je IFC-kanonický (namespace
+   `rel`, export `ifcrel`), nie `aim_`. Natívny containment (podlažie) ostáva nedotknutý.
+   `role` = `inside` (≥ 50 % vzorky bodov prvku v priestore) | `partial` (≥ 10 %, napr.
+   potrubie prechádza miestnosťou).
+2. **Rámec odvodzovačov** `etl/derive/` (`python -m etl.derive <rule> --models …`):
+   post-processing nad naloadenými modelmi, nie súčasť `etl.main`. Odvodzovač dostane
+   modely federácie a vráti hrany s IFC GUID na oboch koncoch; zápis je spoločný
+   (`etl/derive/db.py`): deterministické id, `source='derive:<rule>'`, hrany, ktoré nový
+   beh neodvodí, sa **uzavrú** (`valid_until`), nemažú. Ďalšie odvodzovače (systém
+   obsluhuje miestnosti, zóny…) = nový modul v registri, žiadna zmena zápisu.
+3. **Geometria `spatial_reference` = ifcopenshell, nie vlastný kód.** BVH strom nad
+   presnými BRep telesami (`ifcopenshell.geom.tree`, OpenCascade; iterátor s
+   `iterator-output=NATIVE` len pre vybrané triedy): `inside` = prvok celý v tele
+   priestoru (`select(space, completely_within=True)`), `partial` = prvok telo pretína
+   (`select(space)`). Rozhoduje telo IfcSpace tak, ako ho nesie model — žiadna heuristika
+   (prvý návrh predlžoval miestnosť do podhľadu po podlažie nad ňou; zahodené: ak VZT
+   v podhľade nepadne do miestnosti, je to chyba tela priestoru v modeli a patrí do
+   požiadaviek/IDS, nie do kódu). ifcopenshell nemá hotový „priraď prvky do miestností"
+   (žiadny ifcpatch recept, `util.element` len číta existujúce väzby), má však presne
+   tieto stavebné kamene. Default prvky `IfcDistributionElement` + `IfcFurnishingElement`
+   (steny/dosky/dvere sú hraničné prvky — tie patria do `IfcRelSpaceBoundary`, nie sem),
+   priestory `IfcSpace` + `IfcSpatialZone` (IfcSpatialElement s geometriou).
+4. **Zarovnanie federácie cez IfcMapConversion** (ako viewer, D-050 dodatok): ASR a VZT
+   majú rôzne Eastings/Northings (lokálny posun VZT → ASR = 30,26 m / −7,77 m), posun sa
+   odovzdá ifcopenshell ako `model-offset`. Bez zarovnania by sa prvky VZT minuli
+   miestností o desiatky metrov. Rôzna rotácia = chyba.
+5. **IfcZone sa geometriou nerieši:** IfcZone je IfcSystem (skupina priestorov cez
+   IfcRelAssignsToGroup), nemá telo. „Prvky v zóne" = prvky v jej priestoroch, teda
+   tranzitívny dopyt, nie uložená hrana. Zóna s vlastnou geometriou patrí do
+   IfcSpatialZone a tú odvodzovač berie.
+6. **Pohľad `v_space_elements`** = natívny containment do priestoru ∪ odvodené referencie
+   (`relation` contained|referenced) — jeden dopyt pre LLM aj viewer.
+
+**Export:** zdrojové IFC sa neprepisujú, export pôvodných súborov sa nemení. Pri exporte
+zlúčeného modelu sa hrana serializuje ako IfcRelReferencedInSpatialStructure — s natívnym
+containmentom nekoliduje, lebo IFC na to rátá. Pri exporte po súboroch je cross-file hrana
+mimo oboch súborov → ICDD linkset (D-015), ako pri ostatných vrstvách naprieč modelmi.
+
+**Zavrhnuté:** `rel_contained_in_spatial_structure` (exkluzívne, D-052 pôvodne);
+vlastná geometria v numpy s predĺžením miestnosti do podhľadu (prvý návrh v ten istý
+deň — duplikovala ifcopenshell a skrývala chyby modelu);
+`IfcRelInterferesElements` (IFC4.3 ho povoľuje aj pre IfcSpatialElement, ale opisuje
+geometrický stret, nie zaradenie — vhodný na budúcu clash vrstvu); presun prvku zo
+storey do space v DB (prepisuje zdroj, koliduje s re-importom na unique-active-parent,
+heuristika by sa tvárila ako fakt) — presun patrí do zdrojového modelu (požiadavka
+autorovi, overenie IDS) alebo do pravidla exportu zlúčeného modelu (jediná `inside`
+referencia nehraničného prvku → IfcRelContainedInSpatialStructure do IfcSpace).
+
+**Nález pri prvom behu (pôvodné ASR + VZT, 22 s):** 321 z 1112 prvkov v priestore (292
+inside, 84 partial), **131 zo 139 vyústení mimo tela akejkoľvek miestnosti** — telá
+IfcSpace nedosahujú k VZT. QA výstup odvodzovača: ASR.ifc má miestnosti 2. a 3. NP
+**zdvojené** (rovnaké číslo, výška tela 8,0 a 8,8 m), Revit Areas („Zóna 1 – Retail +
+Lobby", „Nájomný priestor") exportované ako IfcSpace (patria do IfcZone/IfcSpatialZone),
+1. NP má len dve skutočné miestnosti a 5. NP žiadnu. Odvodzovač to hlási ako prekrývajúce
+sa priestory; náprava patrí do modelu, nie do kódu.
+
+---
+
+### D-081 — Kontrola modelu voči IDS z knižnice požiadaviek (`etl.ids_check`)
+**Status:** rozhodnuté (2026-10-17), demo Bencont. **Realizuje IDS časť D-052 a E6.**
+
+**Kontext:** posolstvo dema je „správne zadanie → overený model → AI, ktorej môžeš veriť".
+Požiadavky žijú v knižnici `AssetinSpace/assetin-library` (MD poznámky, jediný zdroj pravdy);
+jej prototyp generátora (`tests/fixtures/ids/dry_run_er0101_arch.py`) z nich skladá IDS 1.0
+pre výmenu ER-0101 × ARCH (8 špecifikácií: miestnosť, podlažie, zóna, STD-CL-01…06), ktorý
+prechádza `ids.xsd`. AIMviewer doteraz žiadny výsledok kontroly nemal (E6 parkované).
+
+**Rozhodnutie:**
+1. **IDS sa do AIMviewera nekopíruje ani nepíše ručne** — ETL krok
+   `python -m etl.ids_check --ids <cesta k .ids z knižnice> --model <ifc> --label ASR`
+   ho číta zo súboru, ktorý vyrobila knižnica. Pôvod (cesta/commit, `ids:info` title/version,
+   SHA-256 súboru) sa ukladá k behu. Požiadavka má jedného nositeľa — knižnicu.
+2. **Validácia = ifctester** (oficiálna referenčná implementácia IfcOpenShell pre IDS, LGPL),
+   nie vlastný kód (línia D-080).
+3. **Výsledky ako dve tabuľky** `ids_runs` (beh: IDS, model, počty) a `ids_results`
+   (špecifikácia × prvok: `pass`/`fail` + dôvody), prvok párovaný cez aktívny IFC GUID
+   (`ifc_guid_history`). Špecifikácia, ktorá nemá žiadny vyhovujúci prvok, ale je povinná
+   (`minOccurs ≥ 1`, napr. zóny), dostane riadok bez prvku. IFC na výsledok kontroly
+   koncept nemá (BCF je formát nálezov, nie úložisko) → deklarovaná extenzia SCHEMA §5.
+4. **Čítacia vrstva:** `v_ids_latest` (výsledky posledného behu každej dvojice IDS × model,
+   s object_ref/menom prvku) a `v_ids_summary` (špecifikácia: počet prvkov, splnené,
+   nesplnené, príklad dôvodu). LLM ich dotazuje cez `query_view`; nesplnené prvky ofarbí
+   `style_in_3d` cez `ids_or_refs`.
+5. **ETL podlažia akceptujú zápis knižnice** `2.NP` popri `2NP` (`_np_key`): IU-O-storey
+   predpisuje `[0-9]{1,2}.(NP|PP)` a premenovanie modelu podľa štandardu nesmie rozbiť
+   federáciu podlaží (D-049).
+
+**Zavrhnuté:** ručne písané IDS v AIMvieweri (druhý nositeľ požiadaviek); kontrola v
+prehliadači cez IDS modul IFClite (výsledok by nebol v DB, AI by ho nevidela); BCF ako
+úložisko (je to výmenný formát, export BCF z `ids_results` je neskorší krok).
+
+**Vedomé limity:** IDS 1.0 nevie overiť vzťah naprieč súbormi (VZT prvok v miestnosti ASR)
+— to rieši odvodená vrstva D-080, nie IDS. Kým knižnica nemá F4 generátor, IDS pochádza
+z jej prototypu (deterministický výstup, overený XSD).
+
+---
+
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-17** — **D-081 (kontrola modelu voči IDS z knižnice):** `python -m etl.ids_check` spustí ifctester s IDS, ktorý vyrobila knižnica požiadaviek (nekopíruje sa), výsledky do `ids_runs`/`ids_results` (prvok cez aktívny GUID, pôvod IDS so SHA-256), čítanie `v_ids_latest`/`v_ids_summary` pre LLM a 3D. ETL podlažia akceptujú `2.NP` (štandard knižnice) popri `2NP`.
+- **2026-10-16** — **D-080 (odvodzovače; prvok → priestor):** rámec `etl/derive/` pre hrany odvodené nad federáciou (idempotentné, `source='derive:<rule>'`, zastarané sa uzavrú). Prvý odvodzovač `spatial_reference` zaraďuje prvky do priestorov geometriou ako **`rel_referenced_in_spatial_structure`** (IfcRelReferencedInSpatialStructure — neexkluzívny; spresňuje D-052, kde contained koliduje so SET[0:1]), zarovnanie federácie cez IfcMapConversion, ifcopenshell `geom.tree` (inside = celý v tele priestoru, partial = pretína), žiadna heuristika podhľadu. Pohľad `v_space_elements`. IfcZone tranzitívne, nie geometriou.
+- **2026-10-16** — **D-079 (Claude cez MCP + živý kanál do viewera):** `POST /api/mcp/<MCP_TOKEN>` vystavuje tools `/ask` pre custom connector v Claude (Max, bez platby za tokeny); UI akcie idú cez Supabase Realtime Broadcast na kanál `LIVE_CHANNEL` do viewera otvoreného s `?live=<kanál>`, ktorý ich vykoná ako AI dock (`router.push`). Anon kľúč smie do prehliadača až po migrácii, ktorá odoberie `anon`/`authenticated` práva v `public` (mení D-026).
 - **2026-08-02** — **D-075 dodatok (ribbon je toolbar aj na mobile):** upstream posielal každú malú obrazovku (`isMobile`: šírka < 768, alebo touch < 1024) do `MobileToolbar`, takže na telefóne ribbon — aj s našou záložkou `Documents` — vôbec nerenderoval (overené Playwrightom na profiloch iPhone 14 / Pixel 7 / iPad Mini: 44px lišta ikon, naše funkcie len v „…" menu; ribbon až od 1024 px). Teraz o toolbare rozhoduje **zvolený štýl, nie veľkosť obrazovky**: `ribbon` obsluhuje všetky šírky (44px pás, 36px ciele, vodorovne scrollovateľné záložky, bez uloženej voľby štartuje zbalený → 44 px; ťuknutie na záložku band otvorí len dočasne, pripína chevron), `classic` si na malých necháva `MobileToolbar` ako cestu späť. Prepínač v `ViewerLayout` je fork-only (sentinely), responzívnosť ribbonu + `lib/viewport.ts` + `ThemeSwitch size` sú generické (kandidát na upstream PR). AIMviewer bez zmien kódu.
 - **2026-08-02** — **D-075 dodatok (záložka „Documents" v ribbone):** upstream sync spravil z tabbed ribbonu default toolbar, čím naše vstupné body (Documents, Underlays, 3D|2D|Split) ostali len v klasickom stripe a v ikonovej lište; doplnená fork-only záložka `Documents` (telo v `apps/viewer/src/aim/DocumentsRibbonTab.tsx`, zapojenie cez sentinely). Iba presun vstupných bodov, nula zmien správania.
 - **2026-08-01** — **D-071 dodatok (sync sa merguje sám, hlási stav; audit driftu):** kontrola stavu ukázala, že fork je **146 commitov (~3 týždne) pozadu** — posledný upstream commit reálne na `main` je `beeb8ed5` z **2026-07-11**, upstream je na `ff03b862` (2026-08-01). Nešlo o jednu poruchu, ale o štyri: **(1)** oprava workflowu z 27. 7. nikdy nepristála na `main` — commity `eba104bc`/`ad78ca33`/`922bf8a0` ostali na vetve `claude/mame-zas-s-tymto-problem-uvo65y` **bez otvoreného PR**, a keďže GitHub cron číta workflow *vždy* z default branch, beh 3. 8. by padol identicky ako 20. a 27. 7.; **(2)** beh **13. 7. hlásil „success", hoci nevytvoril žiadny PR** — `gh` mieril na LTplus-AG a 403 zožralo `|| echo`, jediná stopa je osirotená vetva `sync/upstream-2026-07-13`, takže automat *nikdy* nedobehol celý cyklus; **(3)** PR #35 bol zelený od 27. 7. 13:50 a **päť dní ho nikto nezmergoval**, fork medzitým zaostal o ďalších 27 commitov — toto, nie CI, je hlavná príčina driftu; **(4)** o zaostávaní neinformovalo nič. Opravené vo forku (PR #36): každé `gh` volanie buď prejde, alebo zhodí beh (zlyhaný scheduled workflow pošle e-mail); **bezkonfliktný sync počká na CI a zmerguje sa sám** merge commitom, konfliktný ostáva s `needs-manual-merge`; každý beh (aj po zlyhaní, `if: always()`) prepíše jediný issue `Upstream sync status` — koľko commitov pozadu, ktorý upstream commit `main` reálne obsahuje, výsledok posledného behu a odpočet do expirácie PATu z repo variable `UPSTREAM_SYNC_TOKEN_EXPIRES`. CI sa čaká v jobe, nie cez `gh pr merge --auto`, lebo `--auto` merguje v momente mergeability — bez required status checks teda pred CI, a sync PAT nemá Administration scope na overenie, či sú nastavené. `FORK_MAINTENANCE.md` tabuľka touchpointov (označená za zastaranú v predošlom dodatku) pregenerovaná zo sentinelov: mala 3 súbory, realita je **9** vrátane `packages/renderer/src/index.ts` (generický external-overlay hook — najďalej postúpený kandidát na upstream PR). V AIMviewer: `@ifc-lite/geometry|query|wasm` **pinnuté na presnú verziu** (2.9.2 / 1.14.10 / 2.13.4 — zosúladené s guardrailom v ROADMAPe a s 24h cache `ifc-lite_bg.wasm` v `next.config.ts`) a pridaný `renovate.json` (pondelok, `@ifc-lite/*` v jednom PR, majory oddelene, dependency dashboard) — lock zamrzol na `e83ef55` (28. 6.) a nikto si nevšimol, že `@ifc-lite/wasm` medzitým vyskočil z 2.13.4 na **4.2.0**, dva majory. Majory sa zámerne nebumpli v tejto zmene — prídu ako samostatný Renovate PR, lebo AIMviewer nemá CI a každý bump treba overiť ručne receptom z `.claude/skills/verify`. **Overené naživo:** PR #36 zmergovaný → PR #35 (zelený, 30/30 checkov) domergovaný **merge commitom** → zaostávanie kleslo **146 → 27**; ostrý `workflow_dispatch` opraveného workflowu potom zmergoval upstream, pushol vetvu a otvoril **PR #37** (`ff03b862`, 27 commitov, 285 súborov, konflikty, oba labely) — celý cyklus teda po prvý raz dobehol. **Zlyhal však posledný krok:** `the 'AssetinSpace/ifc-lite' repository has disabled issues` — GitHub dodáva forky s **vypnutou feature Issues**, čo sme dovtedy nevedeli. Sync fungoval, červený bol kvôli reportingu; a červená za funkčný beh učí ignorovať červenú, teda presne ten návyk, ktorý nás stál tri týždne. Opravené v PR #38: status ide **vždy** do `$GITHUB_STEP_SUMMARY` (nepotrebuje žiadnu zapnutú feature), issue je best-effort a tolerovaná je **len** podmienka „has disabled issues" (warning + exit 0) — každé iné zlyhanie `gh` beh naďalej zhodí. `FORK_MAINTENANCE.md` dostal tabuľku nastavení, ktoré workflow očakáva. **Nastavenia, ktoré kód nevyrieši a treba klik v Settings:** zapnúť Issues (potom vznikne `Upstream sync status`, raz ho pripnúť) a nastaviť variable `UPSTREAM_SYNC_TOKEN_EXPIRES` = `2027-07-27`. **Otvorené:** `@assetinspace/design-kit` v AIMviewer ostáva `github:AssetinSpace/design-kit#main` (plávajúca vetva, v locku `git+ssh://`) — fork to už má ako HTTPS tarball pinnutý na `d41bbbb`, ale AIMviewer ide na **npm**, ktorý na rozdiel od pnpm robí HTTPS fallback, takže tu to build nerozbíja a je to reprodukovateľnosť, nie požiar; prepnutie sa nedalo dokončiť, lebo v tomto prostredí je GitHub HTTPS egress blokovaný (403) a lockfile sa nedá pregenerovať bez stiahnutia tarballu.

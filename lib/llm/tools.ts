@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PDF_LINK_SOURCE } from "@/lib/data/constants";
 import { fetchAllPages } from "@/lib/data/pagination";
 import type { ToolDefinition } from "./provider";
+import { mergeIfcActions, type AskAction } from "./actions";
 
 /**
  * Read-only tools LLM rozhrania (D-056) — tool-calling nad whitelistom, NIE
@@ -98,6 +99,11 @@ const QUERY_RELATIONS = new Set([
   "v_property_dictionary",
   "rel_aggregates",
   "rel_contained_in_spatial_structure",
+  "rel_referenced_in_spatial_structure",
+  "v_space_elements",
+  "ids_runs",
+  "v_ids_latest",
+  "v_ids_summary",
   "rel_defines_by_type",
   "rel_associates_document",
   "rel_associates_classification",
@@ -116,6 +122,7 @@ const COLUMN_RE = /^[a-zA-Z_][a-zA-Z0-9_]*(->>?[a-zA-Z0-9_ .-]+)*$/;
 const REL_VIEWS = new Set([
   "rel_aggregates",
   "rel_contained_in_spatial_structure",
+  "rel_referenced_in_spatial_structure",
   "rel_defines_by_type",
   "rel_associates_document",
   "rel_associates_classification",
@@ -139,12 +146,7 @@ export interface AskSource {
 }
 
 /** UI akcia vyžiadaná modelom (show_in_3d…) — klient na ňu naviguje (D-056). */
-export interface AskAction {
-  type: "navigate";
-  /** Interná cesta Viewera (server ju stavia z whitelistu — nikdy nie z modelu). */
-  url: string;
-  label: string;
-}
+export type { AskAction };
 
 /** Záznam o vykonanom tool calle (transparentnosť v UI). */
 export interface AskToolTrace {
@@ -416,7 +418,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "list_relations",
     description:
       "Vzťahy uzla cez kanonické views: rel_aggregates (dekompozícia štruktúry), " +
-      "rel_contained_in_spatial_structure (prvok v priestore), rel_defines_by_type (occurrence→typ), " +
+      "rel_contained_in_spatial_structure (prvok v priestore/podlaží, natívne zo súboru), " +
+      "rel_referenced_in_spatial_structure (prvok sa nachádza aj v priestore — odvodené geometriou " +
+      "naprieč modelmi, role inside|partial), rel_defines_by_type (occurrence→typ), " +
       "rel_associates_document (uzol→dokument), rel_associates_classification, " +
       "rel_assigns_to_actor (zodpovednosti, aktor→uzol), rel_assigns_to_group (člen→systém), " +
       "rel_member_of (osoba→organizácia). Smer je subjekt(from)→objekt(to); zadaj from_id alebo to_id.",
@@ -435,7 +439,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_spatial_path",
     description:
       "Priestorové zaradenie uzla — cesta nahor (asset → space → floor → building → site) " +
-      "cez rel_contained_in_spatial_structure a rel_aggregates. Odpovedá na 'v ktorej miestnosti/podlaží je X'.",
+      "cez rel_contained_in_spatial_structure a rel_aggregates, plus `referenced_in` = miestnosti, " +
+      "v ktorých prvok geometricky leží (rel_referenced_in_spatial_structure, napr. VZT prvok z iného " +
+      "modelu než miestnosti). Odpovedá na 'v ktorej miestnosti/podlaží je X'.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1338,11 +1344,29 @@ export class AskToolRuntime {
       current = parent;
     }
 
-    const metas = await this.loadObjects([id, ...chainIds]);
+    // D-080: odvodené zaradenie do miestností (geometria naprieč federáciou).
+    const { data: refs, error: refErr } = await supabase
+      .from("rel_referenced_in_spatial_structure")
+      .select("to_id, role")
+      .eq("from_id", id)
+      .is("valid_until", null)
+      .limit(MAX_LIMIT);
+    if (refErr) throw new Error(refErr.message);
+    const refRows = (refs ?? []) as { to_id: string; role: string | null }[];
+
+    const metas = await this.loadObjects([id, ...chainIds, ...refRows.map((r) => r.to_id)]);
     const metaById = new Map(metas.map((m) => [m.id, m]));
     return {
       object: metaById.get(id) ?? { id },
       path: chainIds.map((cid) => metaById.get(cid) ?? { id: cid }),
+      ...(refRows.length
+        ? {
+            referenced_in: refRows.map((r) => ({
+              ...(metaById.get(r.to_id) ?? { id: r.to_id }),
+              role: r.role,
+            })),
+          }
+        : {}),
     };
   }
 
@@ -1879,32 +1903,7 @@ export class AskToolRuntime {
    * viewer ops (D-066) sa zreťazia cez `;` do `ops` v pôvodnom poradí.
    */
   finalActions(): AskAction[] {
-    const isIfc = (a: AskAction) => a.url.startsWith("/ifc?");
-    const ifcActions = this.actions.filter(isIfc);
-    if (ifcActions.length <= 1) return this.actions;
-
-    const guids: string[] = [];
-    const ops: string[] = [];
-    for (const a of ifcActions) {
-      const params = new URLSearchParams(a.url.slice(a.url.indexOf("?") + 1));
-      for (const g of (params.get("focus") ?? "").split(",")) {
-        if (g && !guids.includes(g)) guids.push(g);
-      }
-      const op = params.get("ops");
-      if (op) ops.push(op);
-    }
-    const merged = new URLSearchParams();
-    if (guids.length > 0) merged.set("focus", guids.join(","));
-    if (ops.length > 0) merged.set("ops", ops.join(";"));
-    merged.set("r", Date.now().toString(36));
-    const label =
-      ops.length > 0
-        ? `3D: ${ifcActions.length} akcií`
-        : `3D: ${guids.length} prvkov`;
-    return [
-      { type: "navigate", url: `/ifc?${merged.toString()}`, label },
-      ...this.actions.filter((a) => !isIfc(a)),
-    ];
+    return mergeIfcActions(this.actions);
   }
 
   /**

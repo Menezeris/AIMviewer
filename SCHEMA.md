@@ -215,6 +215,9 @@ create table relationship_types (
   check (namespace in ('rel','aim')),
   check (export_path in ('ifcrel','resource','icdd','ifcx'))
 );
+-- Dodatok D-080 (migrácia 20261016130000): + rel_referenced_in_spatial_structure
+--   (IfcRelReferencedInSpatialStructure, asset → space|floor|building|site, NEexkluzívne,
+--   role inside|partial, plní `etl.derive spatial_reference`, source='derive:spatial_reference').
 -- Dnešná sada (8 rel_type): rel_aggregates, rel_contained_in_spatial_structure,
 -- rel_defines_by_type, rel_associates_document, rel_associates_classification,
 -- rel_assigns_to_actor, rel_assigns_to_group, rel_member_of. Presné hodnoty = migrácia.
@@ -273,6 +276,12 @@ create trigger trg_relationships_validate before insert or update on relationshi
 ```
 
 ### 2.7 Pohľady (Viewer / LLM)
+
+**Dodatok D-080 (migrácia 20261016130000):** `v_space_elements` = obsah priestoru —
+`rel_contained_in_spatial_structure` do `space` (relation `contained`, natívne zo súboru)
+∪ `rel_referenced_in_spatial_structure` do `space` (relation `referenced`, odvodené
+geometriou, `role` inside|partial). Stĺpce: space_id/ref/name/long_name, element_id/ref/name,
+element_ifc_type, element_predefined_type, relation, role, source. Len aktívne hrany.
 
 ```sql
 -- Effective asset: dedičnosť type→occurrence (occurrence prepíše)
@@ -409,6 +418,29 @@ create table ifc_property_definitions (
 ```
 
 ---
+
+
+### 2.12 Práva rolí (D-079, migrácia 20261016120000)
+
+RLS je vypnuté (D-025) a všetko čítanie ide cez `service_role` (D-026). Rolám `anon` a
+`authenticated` sú v schéme `public` **odobraté všetky práva** (tabuľky, views, sekvencie,
+funkcie) aj v default privileges pre objekty vytvorené rolou `postgres`. Dôvod: anon kľúč
+je v prehliadači kvôli Realtime Broadcast (živý kanál, D-079) a bez odobratia by cez
+PostgREST otváral celú DB. `service_role` má explicitný `grant all` / `grant execute`.
+Nová tabuľka alebo RPC teda **nie je** dostupná anon kľúču — ak to raz treba (auth + RLS),
+grant je vedomý krok v migrácii.
+
+
+### 2.13 Výsledky kontroly voči IDS (D-081, migrácia 20261017120000)
+
+**Deklarovaná extenzia** (IFC na výsledok kontroly koncept nemá; BCF je výmenný formát
+nálezov, nie úložisko). `ids_runs` = jeden beh `etl.ids_check` (IDS title/version, SHA-256
+súboru, pôvod v knižnici požiadaviek, model federácie, počty). `ids_results` = špecifikácia ×
+prvok: `spec_identifier` (= ID poznámky v knižnici, napr. `IU-O-space`), `status`
+`pass|fail`, `reasons text[]` (texty ifctesteru), `object_id` cez aktívny GUID (null = prvok
+nie je v DB), `ifc_guid` null = výsledok celej povinnej špecifikácie bez vyhovujúceho prvku.
+Pohľady: `v_ids_latest` (posledný beh každej dvojice IDS × model, s object_ref/menom),
+`v_ids_summary` (po špecifikáciách: elements, passed, failed, example_reason).
 
 ## 4. Konvencia `properties` (D-022)
 

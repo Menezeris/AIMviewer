@@ -124,6 +124,8 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
   `rel_associates_document` (IfcRelAssociatesDocument), `rel_associates_classification`
   (IfcRelAssociatesClassification), `rel_assigns_to_actor` (IfcRelAssignsToActor),
   `rel_assigns_to_group` (IfcRelAssignsToGroup — systémy, D-047),
+  `rel_referenced_in_spatial_structure` (IfcRelReferencedInSpatialStructure — prvok aj v ďalšom
+  priestore, neexkluzívne; odvodené cez `python -m etl.derive`, D-080),
   `rel_member_of` (IfcPersonAndOrganization — **resource, nie IfcRel**; poctivo mimo taxonómie)
 - **Fyzicky binárne `from→to` + naše meta stĺpce, NIE objektifikované N-árne IFC entity**
   (preberáme identitu/granularitu IFC, nie serializačnú štruktúru — index nad IFC
@@ -189,7 +191,9 @@ Každá úroveň je riadok v `objects` (líši sa `object_type`). Spatial väzby
 ## Dátový prístup (D-026)
 - Čítanie **výhradne server-side** cez Supabase `service_role` (Server Components /
   route handlers). DB ostáva nevystavená, **RLS sa nezapína** (línia D-025).
-- Anon kľúč sa do prehliadača nedáva, kým nepríde auth + RLS.
+- Anon kľúč smie do prehliadača **len** kvôli Realtime živému kanálu (D-079) a **len** keď
+  rolám `anon`/`authenticated` nepatria v `public` žiadne práva (migrácia `20261016120000`);
+  nová tabuľka/RPC im práva nedáva. Dáta sa cez anon kľúč nikdy nečítajú.
 - ISR cache (`unstable_cache`, tag `aim`, revalidate 60 s, D-030); po ETL loade
   `revalidateTag("aim")`.
 
