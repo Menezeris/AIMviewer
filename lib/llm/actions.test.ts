@@ -27,6 +27,20 @@ describe("mergeIfcActions (D-056, D-079)", () => {
     expect(params.get("r")).toBe("n");
     expect(merged[1]).toEqual(nav("/node/123", "Karta"));
   });
+
+  it("výber (D-082) ostáva ako op v pôvodnom poradí, GUID s `$` prežije", () => {
+    const merged = mergeIfcActions(
+      [
+        nav(`/ifc?ops=${encodeURIComponent("colorize:ef4444:A")}&r=1`),
+        nav(`/ifc?ops=${encodeURIComponent("select::0MJFXziqDE$gGyPWwro9fq")}&r=2`),
+      ],
+      "n",
+    );
+    expect(merged).toHaveLength(1);
+    const params = new URLSearchParams(merged[0].url.slice("/ifc?".length));
+    expect(params.get("ops")).toBe("colorize:ef4444:A;select::0MJFXziqDE$gGyPWwro9fq");
+    expect(params.get("focus")).toBeNull();
+  });
 });
 
 describe("isSafeViewerUrl", () => {

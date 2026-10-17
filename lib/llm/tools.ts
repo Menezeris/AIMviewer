@@ -478,6 +478,24 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
   {
+    name: "select_in_3d",
+    description:
+      "UI AKCIA: VYBERIE jeden prvok v 3D presne ako klik myšou — viewer ho označí, " +
+      "priblíži naň kameru a otvorí jeho panel vlastností priamo v 3D pohľade (IFC " +
+      "vlastnosti + AIM karta). Zavolaj, keď používateľ chce prvok VYBRAŤ/OZNAČIŤ " +
+      "(kliknúť naň) alebo vidieť jeho VLASTNOSTI v 3D. Rozdiel: show_in_3d prvky len " +
+      "zvýrazní a priblíži (aj mnoho naraz, panel vlastností neotvorí); open_node otvorí " +
+      "samostatnú kartu uzla MIMO 3D pohľadu. Jeden prvok na call; funguje len pre " +
+      "prvky s IFC GUID (sú z IFC modelu).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id_or_ref: { type: "string", description: "objects.id (UUID) alebo object_ref prvku" },
+      },
+      required: ["id_or_ref"],
+    },
+  },
+  {
     name: "style_in_3d",
     description:
       "UI AKCIA: ofarbí / skryje / znova zobrazí / izoluje prvky v 3D modeli, alebo " +
@@ -723,6 +741,8 @@ export class AskToolRuntime {
         return this.searchDocuments(input);
       case "show_in_3d":
         return this.showIn3d(input);
+      case "select_in_3d":
+        return this.selectIn3d(input);
       case "style_in_3d":
         return this.styleIn3d(input);
       case "open_drawing":
@@ -1601,6 +1621,36 @@ export class AskToolRuntime {
       shown: shown.map((s) => s.label),
       ...(skipped.length ? { skipped } : {}),
     };
+  }
+
+  /**
+   * Výber prvku v 3D ako klik myšou (D-082): op `select::<guid>` v `ops`
+   * (wire formát D-066). Viewer nastaví selekciu, priblíži kameru a otvorí
+   * panel vlastností; AIM kartu dotiahne host po ENTITY_SELECTED ako pri kliku.
+   */
+  private async selectIn3d(input: Record<string, unknown>) {
+    const obj = await this.resolveObject(String(input.id_or_ref ?? ""));
+    if (!obj) throw new Error("Prvok neexistuje — najprv ho nájdi cez search_objects.");
+    const label = obj.object_ref ?? obj.name ?? obj.id.slice(0, 8);
+
+    const { data, error } = await getSupabaseAdmin()
+      .from("ifc_guid_history")
+      .select("ifc_guid")
+      .eq("object_id", obj.id)
+      .is("valid_until", null)
+      .limit(1);
+    if (error) throw new Error(error.message);
+    const guid = (data?.[0] as { ifc_guid?: string } | undefined)?.ifc_guid;
+    if (!guid) {
+      throw new Error(`${label} nemá IFC GUID — nie je v 3D modeli (kartu otvor cez open_node).`);
+    }
+
+    this.actions.push({
+      type: "navigate",
+      url: `/ifc?ops=${encodeURIComponent(`select::${guid}`)}&r=${Date.now().toString(36)}`,
+      label: `3D: výber ${label}`,
+    });
+    return { ok: true, opened: "3d", selected: label, ifc_guid: guid };
   }
 
   /**
