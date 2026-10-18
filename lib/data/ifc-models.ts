@@ -11,6 +11,35 @@ export interface IfcModel {
   id: string;
   label: string;
   url: string;
+  /** Aktuálna revízia súboru (D-086), ak ju DB pozná. */
+  revision?: number;
+}
+
+/** Kľúč modelu v `model_revisions` = meno súboru v buckete bez `.ifc` (`…/ifc/ASR.ifc` → `ASR`). */
+export function modelKey(url: string): string | null {
+  const path = url.split(/[?#]/)[0];
+  const m = /\/([^/]+)\.ifc$/i.exec(path);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/**
+ * Pripojí aktuálnu revíziu ku každému modelu, ktorý ju má (D-086): `?rev=N` v URL
+ * zmení `src` iframe viewera, takže po novej revízii sa model načíta znova a cache
+ * prehliadača nevráti starý súbor. Model bez revízie ostáva bez zmeny.
+ */
+export function withRevisions(
+  models: IfcModel[],
+  current: { model: string; revision: number }[],
+): IfcModel[] {
+  const byKey = new Map(current.map((r) => [r.model, r.revision]));
+  return models.map((m) => {
+    const key = modelKey(m.url);
+    const revision = key ? byKey.get(key) : undefined;
+    if (revision === undefined) return m;
+    const url = new URL(m.url);
+    url.searchParams.set("rev", String(revision));
+    return { ...m, url: url.toString(), revision };
+  });
 }
 
 /**

@@ -793,10 +793,12 @@ export class AskToolRuntime {
 
   /** Spoločné filtre search_objects/count_objects nad `objects`. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private applyObjectFilters<T extends { or: any; ilike: any; eq: any }>(
+  private applyObjectFilters<T extends { or: any; ilike: any; eq: any; is: any }>(
     q: T,
     input: Record<string, unknown>
   ): T {
+    // Zaniknuté objekty (už ich nevydáva žiadny model, D-088) AI nevidí.
+    q = q.is("valid_until", null);
     const query = sanitizeQuery(input.query);
     if (query) {
       // Hľadáme naprieč identitou aj IFC typológiou — podtyp (AIRCONDITIONINGUNIT)
@@ -1173,6 +1175,7 @@ export class AskToolRuntime {
         supabase
           .from("objects")
           .select("object_type, ifc_type, predefined_type")
+          .is("valid_until", null)
           .order("id", { ascending: true })
           .range(from, to)
       ),
@@ -1182,9 +1185,9 @@ export class AskToolRuntime {
         .select("name, elevation")
         .order("elevation", { ascending: true })
         .limit(50),
-      supabase.from("objects").select("name").eq("object_type", "system").limit(50),
+      supabase.from("objects").select("name").eq("object_type", "system").is("valid_until", null).limit(50),
       supabase.from("classification_systems").select("name").limit(20),
-      supabase.from("objects").select("name").eq("object_type", "document").limit(50),
+      supabase.from("objects").select("name").eq("object_type", "document").is("valid_until", null).limit(50),
     ]);
     const byObjectType = new Map<string, number>();
     const byClass = new Map<string, { ifc_type: string; predefined_type: string | null; count: number }>();
@@ -1251,6 +1254,7 @@ export class AskToolRuntime {
       .from("objects")
       .select("id, object_type, object_ref, name, ifc_type, predefined_type, user_defined_type")
       .eq(col, idOrRef)
+      .is("valid_until", null)
       .limit(1);
     if (error) throw new Error(error.message);
     const row = data?.[0] as (ObjectRow & { user_defined_type?: string | null }) | undefined;
@@ -1536,6 +1540,7 @@ export class AskToolRuntime {
       .from("objects")
       .select("id, object_type, object_ref, name, ifc_type, predefined_type")
       .eq(col, value)
+      .is("valid_until", null)
       .limit(1);
     if (error) throw new Error(error.message);
     const row = (data?.[0] as ObjectRow | undefined) ?? null;
@@ -1581,7 +1586,8 @@ export class AskToolRuntime {
           const { data, error } = await supabase
             .from("objects")
             .select("id, object_type, object_ref, name, ifc_type, predefined_type")
-            .in(col, vals.slice(i, i + IN_CHUNK));
+            .in(col, vals.slice(i, i + IN_CHUNK))
+            .is("valid_until", null);
           if (error) throw new Error(error.message);
           rows.push(...((data ?? []) as ObjectRow[]));
         }
@@ -1815,7 +1821,8 @@ export class AskToolRuntime {
           const { data, error } = await supabase
             .from("objects")
             .select("id, object_type, object_ref, name")
-            .in(col, values.slice(i, i + IN_CHUNK));
+            .in(col, values.slice(i, i + IN_CHUNK))
+            .is("valid_until", null);
           if (error) throw new Error(error.message);
           for (const row of (data ?? []) as ObjectRow[]) {
             found.set(row.id, row);

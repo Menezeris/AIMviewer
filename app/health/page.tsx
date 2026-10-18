@@ -18,7 +18,8 @@ async function fetchObjectsCount(): Promise<
     // head:true => nevracia riadky, len count (select count(*) from objects).
     const { count, error } = await supabase
       .from("objects")
-      .select("*", { count: "exact", head: true });
+      .select("*", { count: "exact", head: true })
+      .is("valid_until", null);
 
     if (error) return { ok: false, error: error.message };
     return { ok: true, count: count ?? 0 };

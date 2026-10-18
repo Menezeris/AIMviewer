@@ -11,13 +11,16 @@ import psycopg
 from psycopg.types.json import Json
 
 from . import ids
-from .manifest import EDGE_TYPE_TO_REL_TYPE
+from .manifest import _SPECS, EDGE_TYPE_TO_REL_TYPE
 from .model import StagedModel
 
 # D-051: hrany už nemajú per-vzťah tabuľku — všetky idú do generickej `relationships`
 # (diskriminátor `rel_type`). Interný ETL `edge_type` → kanonický `rel_type` drží
 # manifest (`etl/manifest.py`, jeden zdroj pravdy). Zapisujeme BASE tabuľku, nie
 # kanonické views (tie sú len na čítanie).
+
+# rel_type s parciálnym unique indexom "1 aktívny rodič na from_id" (manifest).
+UNIQUE_ACTIVE_FROM = frozenset(s.rel_type for s in _SPECS if s.unique_active_from)
 
 
 def fetch_existing_floors(url: str) -> list[tuple[str, object, object]]:
@@ -49,12 +52,24 @@ def reset_data(cur) -> None:
     )
 
 
-def load_model(url: str, model: StagedModel, reset: bool = False) -> None:
+def load_model(
+    url: str, model: StagedModel, reset: bool = False, scope: str | None = None
+) -> dict[str, int]:
     """Zapíše celý staged model v jednej transakcii (commit na konci).
 
     `reset=True` najprv vyprázdni AIM dáta (nahradenie seedu, E2) — stále v tej
     istej transakcii, takže pri chybe sa nič nezahodí.
+
+    `scope` = meno modelu federácie (`ASR`, `VZT`; D-086). Hrany a GUID história
+    dostanú zdroj tohto modelu (`etl:ASR`, `IFC import:ASR`) a čo tento beh už
+    nevydal, sa uzavrie (`valid_until = now()`) — zmazaný prvok, presunutý prvok,
+    zmenený typ či klasifikácia. Vzor `etl.derive` (D-080). Objekt bez aktívneho GUID
+    dostane `valid_until` (D-088); riadok ostáva (D-010) a pri návrate do modelu ožije.
+    Vráti počty uzavretých záznamov.
     """
+    closed = {"edges": 0, "guids": 0, "objects": 0, "repointed": 0}
+    if scope:
+        scope_sources(model, scope)
     with psycopg.connect(url) as conn:
         with conn.cursor() as cur:
             if reset:
@@ -66,7 +81,120 @@ def load_model(url: str, model: StagedModel, reset: bool = False) -> None:
             _load_guid_history(cur, model, obj_ids)
             _load_edges(cur, model, obj_ids)
             _load_class_links(cur, model, obj_ids, ref_ids)
+            if scope:
+                closed = close_stale(cur, model, scope)
         conn.commit()
+    return closed
+
+
+# Zdroje, ktoré ETL zapisoval pred D-086 (bez mena modelu).
+LEGACY_EDGE_SOURCE = "etl"
+LEGACY_GUID_SOURCE = "IFC import"
+
+
+def edge_source(scope: str) -> str:
+    return f"{LEGACY_EDGE_SOURCE}:{scope}"
+
+
+def guid_source(scope: str) -> str:
+    return f"{LEGACY_GUID_SOURCE}:{scope}"
+
+
+def scope_sources(model: StagedModel, scope: str) -> None:
+    """Prepíše predvolené zdroje ETL na zdroje modelu `scope` (explicitné iné zdroje ostávajú)."""
+    for e in model.edges:
+        if e.source == LEGACY_EDGE_SOURCE:
+            e.source = edge_source(scope)
+    for c in model.class_links:
+        if c.source == LEGACY_EDGE_SOURCE:
+            c.source = edge_source(scope)
+    for g in model.guid_history:
+        if g.source == LEGACY_GUID_SOURCE:
+            g.source = guid_source(scope)
+
+
+def emitted_ids(model: StagedModel) -> tuple[list[str], list[str]]:
+    """Id hrán (vrátane klasifikačných) a aktívnych GUID záznamov, ktoré tento beh zapísal."""
+    edges = [ids.edge_id(e.from_ref, e.to_ref, e.edge_type) for e in model.edges]
+    edges += [
+        ids.edge_id(c.from_ref, f"{c.system_name}:{c.identification}", "has_classification")
+        for c in model.class_links
+    ]
+    guids = [
+        ids.guid_history_id(g.object_ref, g.ifc_guid)
+        for g in model.guid_history
+        if g.valid_until is None
+    ]
+    return edges, guids
+
+
+# Objekt zanikol (D-088): mal GUID zo zdroja `source`, ale už nemá žiadny aktívny GUID.
+_RETIRE_OBJECTS = (
+    "update objects o set valid_until = now() "
+    "where o.valid_until is null and o.ifc_guid is not null "
+    "and exists (select 1 from ifc_guid_history h where h.object_id = o.id and h.source = %s) "
+    "and not exists (select 1 from ifc_guid_history h "
+    "where h.object_id = o.id and h.valid_until is null) returning o.id"
+)
+
+
+def close_stale(cur, model: StagedModel, scope: str) -> dict[str, int]:
+    """Uzavrie aktívne hrany, GUID záznamy a objekty modelu `scope`, ktoré tento beh nevydal."""
+    edges, guids = emitted_ids(model)
+    closed_edges = cur.execute(
+        "update relationships set valid_until = now() "
+        "where source = %s and valid_until is null and not (id = any(%s)) returning id",
+        (edge_source(scope), edges),
+    ).fetchall()
+    closed_guids = cur.execute(
+        "update ifc_guid_history set valid_until = now() "
+        "where source = %s and valid_until is null and not (id = any(%s)) returning id",
+        (guid_source(scope), guids),
+    ).fetchall()
+    retired = cur.execute(_RETIRE_OBJECTS, (guid_source(scope),)).fetchall()
+    return {"edges": len(closed_edges), "guids": len(closed_guids), "objects": len(retired),
+            "repointed": repoint_to_successors(cur)}
+
+
+# Ručné väzby (výkresy E4, dokumenty E3, fotky D-073) na zaniknutý objekt prejdú na
+# platný objekt s rovnakým GUID: premenovaný object_ref je ten istý prvok (D-088).
+# Väzby ETL a derive si model vydá sám, tie sa nepresúvajú.
+_REPOINT = """
+    update relationships r set {end}_id = s.new_id
+    from (select o.id as old_id, n.id as new_id
+          from objects o join objects n
+            on n.ifc_guid = o.ifc_guid and n.valid_until is null and n.id <> o.id
+          where o.valid_until is not null and o.ifc_guid is not null) s
+    where r.{end}_id = s.old_id and r.valid_until is null
+      and r.source not like 'etl%' and r.source not like 'derive:%'
+    returning r.id
+"""
+
+
+def repoint_to_successors(cur) -> int:
+    """Presmeruje aktívne ručné väzby zo zaniknutých objektov na nástupcu s rovnakým GUID."""
+    moved = 0
+    for end in ("from", "to"):
+        moved += len(cur.execute(_REPOINT.format(end=end)).fetchall())
+    return moved
+
+
+def close_legacy(cur) -> dict[str, int]:
+    """Jednorazovo po prvom loade všetkých modelov so `scope` (D-086): čo ostalo aktívne
+    so starým zdrojom bez mena modelu, už žiadny model nevydal → uzavrieť."""
+    closed_edges = cur.execute(
+        "update relationships set valid_until = now() "
+        "where source = %s and valid_until is null returning id",
+        (LEGACY_EDGE_SOURCE,),
+    ).fetchall()
+    closed_guids = cur.execute(
+        "update ifc_guid_history set valid_until = now() "
+        "where source = %s and valid_until is null returning id",
+        (LEGACY_GUID_SOURCE,),
+    ).fetchall()
+    retired = cur.execute(_RETIRE_OBJECTS, (LEGACY_GUID_SOURCE,)).fetchall()
+    return {"edges": len(closed_edges), "guids": len(closed_guids), "objects": len(retired),
+            "repointed": repoint_to_successors(cur)}
 
 
 def _load_systems(cur, model: StagedModel) -> dict[str, str]:
@@ -125,7 +253,8 @@ def _load_objects(cur, model: StagedModel) -> dict[str, str]:
               ifc_guid = excluded.ifc_guid, ifc_type = excluded.ifc_type,
               predefined_type = excluded.predefined_type,
               user_defined_type = excluded.user_defined_type,
-              properties = excluded.properties, updated_at = now()
+              properties = excluded.properties, updated_at = now(),
+              valid_until = null    -- objekt je znova v modeli (D-088)
             returning id
             """,
             (
@@ -248,6 +377,15 @@ def _load_edges(cur, model: StagedModel, obj_ids: dict[str, str]) -> None:
         # idempotentný cez `ON CONFLICT (id)`. `role` je nullable pre všetky typy.
         eid = ids.edge_id(e.from_ref, e.to_ref, e.edge_type)
         from_id, to_id = obj_ids[e.from_ref], obj_ids[e.to_ref]
+        if rel_type in UNIQUE_ACTIVE_FROM and e.valid_until is None:
+            # Nový rodič (presun prvku, zlúčenie priestorov; D-086): pred insertom uzavri
+            # iný aktívny záznam toho istého from_id — inak parciálny unique index
+            # uniq_active_* zhodí celý load. Vzor rotácie GUID (D-010).
+            cur.execute(
+                "update relationships set valid_until = now() "
+                "where rel_type = %s and from_id = %s and valid_until is null and id <> %s",
+                (rel_type, from_id, eid),
+            )
         cur.execute(
             """
             insert into relationships

@@ -3387,9 +3387,292 @@ už 2 365 B nad stropom a funkcia aj po lenivom načítaní potrebuje +968 B.
 
 ---
 
+### D-086 - Úpravy IFC modelu cez agentov: revízie, úlohy z chatu, GitHub Actions (F13)
+**Status:** rozhodnuté (2026-10-18), fáza 0 overená. **Mení D-084 bod 4** (zápis nejde cez
+motor `@ifc-lite/mcp` v MCP route, ale cez ifcopenshell v GitHub Actions) a **dodatok D-084
+z 2026-10-18** (zverejnenie revízie zatiaľ nestojí na IDS bráne). Uzatvára otvorené otázky
+D-084 "upravené IFC ako autoritatívna revízia vs. change set" a "workflow pre re-ETL".
+
+**Kontext:** ASR sa doteraz upravoval v claude.ai projekte "úprava IFC" skriptami ifcopenshell
+nad exportom z Revitu (hlavička v71: `IfcOpenShell 0.9.0.post1 (post-processing Assetin, v29
+až v71)`); výsledok sa odovzdával ako BCF a súbor sa nahrával ručne. V buckete je stále
+`ASR.ifc` z 11. 7. (20,1 MB), prod DB nesie pôvodný model a F2/E6 čakajú na opravený model.
+Cieľ (Samuel, 18. 10.): v Claude (konektor AIM) napíšem alebo vo vieweri označím, čo zmeniť;
+úloha sa spracuje na pozadí, viac úloh naraz, zmena sa hneď prejaví vo vieweri a staré
+verzie ostanú zálohované. Bez novej služby a na free plánoch, ktoré už máme.
+
+**Rozhodnutie (Samuel, 18. 10.):**
+1. **IFC je master.** ASR (od v71) a VZT sú autoritatívne súbory; Revit sa neprehráva.
+   Recepty slúžia na audit a na prepočet úlohy nad novšou revíziou, nie na prehrávanie nad
+   exportom.
+2. **Pracovisko agenta = repo `Menezeris/OCB`** (dáta jednej stavby oddelene od kódu appky):
+   `CLAUDE.md` pre agenta, kontext z Claude projektu, skripty v29-v71, referencia IFC4X3_ADD2
+   (schéma z ifcopenshell + odkaz na dokumentáciu buildingSMART), český preklad IFC z ardit.cz
+   (snímka webu), recepty `recepty/<model>/vNNN-*.py`, zoznamy zmien `zmeny/<model>/vNNN.json`
+   a workflow. IFC súbory v gite nie sú.
+3. **Úloha beží v GitHub Actions OCB:** Claude Code s `CLAUDE_CODE_OAUTH_TOKEN` (Max
+   predplatné) + ifcopenshell; jedna úloha = jeden beh (`workflow_dispatch` s `task_id`).
+   Výstup úlohy je **recept** (deterministický skript nad `ifcopenshell.api`) + **zoznam zmien**
+   (GUID, čo, pred, po), nie len upravený súbor.
+4. **Pripravuje sa paralelne, zapisuje sa po jednom.** Zápis revízie je compare-and-swap v DB
+   (aktuálna revízia == základ úlohy). Ak medzitým vznikla novšia revízia, recept sa spustí
+   znova nad ňou; ak na nej zlyhá, Claude ho v tom istom behu prispôsobí (obmedzený počet
+   pokusov), inak úloha skončí stavom "konflikt". GitHub `concurrency` sa na frontu
+   nepoužije: drží jeden čakajúci beh a ďalšie čakajúce ruší.
+5. **Revízie:** nemenné skomprimované kópie `ifc/archive/<model>/vNNN.ifc.gz` + tabuľka
+   `model_revisions` (model, číslo, rodič, sha256, veľkosť, úloha, commit receptu v OCB,
+   autor, čas). Aktuálna revízia sa nahrá aj na doterajší kľúč `ifc/<model>.ifc`, takže
+   viewer, motor (cache URL + ETag, D-084) a ETL čítajú ako doteraz; URL modelu vo vieweri
+   dostane `?rev=` kvôli cache prehliadača. **Návrat** = nová revízia s obsahom staršej
+   (história sa neprepisuje). Free Supabase stačí: limit 50 MB na súbor, ASR v71 má 24 MB
+   (gzip 4,5 MB), bucket je obsadený na 45 MB z 1 GB, revízia ASR + VZT ~6-7 MB.
+6. **Zverejnenie hneď, bez IDS brány** (Samuel). Pred zverejnením len **technická poistka**:
+   súbor sa otvorí v ifcopenshell, schéma ostáva IFC4X3_ADD2, žiadny GlobalId `IfcRoot` sa
+   nestratil ani nezdvojil okrem tých, ktoré zoznam zmien deklaruje, a počty entít podľa
+   triedy sa zmenili len tam, kde to zoznam zmien hovorí. Neprejde -> nič sa nezverejní a
+   úloha vráti dôvod. Beh IDS (D-081) môže po zverejnení bežať ako záznam, nie ako brána.
+7. **Po zverejnení v tom istom behu:** re-ETL z checkoutu AIMviewer `main` (verejné repo)
+   - `etl.main` pre ASR, `--federate` pre VZT, `etl.derive spatial_reference` - nikdy
+   `--reset`; cache AIM sa obnoví do 60 s (ISR, D-030); broadcast "nová revízia" na
+   `LIVE_CHANNEL` (D-079) a viewer s `?live=` model načíta znova.
+8. **Vstup úlohy:** text z chatu + voliteľne výber z viewera (GUID, neskôr pohľad). Úloha sa
+   ukladá v tvare **BCF témy** (`model_tasks`: názov, popis, komponenty GUID, viewpoint, stav,
+   základná a výsledná revízia, komentáre), aby sa v ďalšej fáze dala zakladať aj z BCF
+   panela forku (`packages/bcf-api`, BCF API 2.1, Bearer token) cez malý BCF API server
+   v AIMvieweri. BCF je vstup a záznam, nie nosič zmeny.
+9. **MCP:** tools `model_change_request` (založí úlohu a spustí workflow v OCB) a
+   `model_change_status`, anotácia `readOnlyHint:false`, vystavené len pod samostatným tokenom
+   zápisu (`MCP_WRITE_TOKEN`, druhý konektor v claude.ai), ako predpokladal D-084. Vercel
+   dostane fine-grained GitHub token s právom Actions: write len na OCB.
+
+**Fáza 0 - overené 2026-10-18:**
+- **Token z predplatného v Actions OCB** (run `39136236745`): Claude Code 2.1.302 odpovedal
+  za 3 s; bez `--model` beží Sonnet 5.5. Výstup uvádza cenníkovú cenu 0,02 USD
+  (`costBasis: list`); či beh čerpá limity predplatného alebo mesačné API kredity Max (100 USD),
+  sa overí na spotrebe po prvých úlohách.
+- **Runner:** 2 vCPU, 7 GB RAM. ifcopenshell 0.9.0 nad ASR z bucketu (21 MB): otvorenie 0,5 s,
+  zápis 3,0 s, 186 MB; celý beh 25 s. Lokálne nad v71 (24 MB): otvorenie 0,7 s, zápis 1,6 s,
+  265 MB (~11-násobok súboru, pri 250 MB modeli by to bolo ~2,7 GB, stále pod limitom runnera).
+- **ETL `--dry-run` nad v71** prejde za 7 s: 985 objektov, 1795 hrán, 737 prvkov, platný SNIM
+  87,5 % prvkov so SNIM dátami. Report hlási kódy TSP mimo `scheme.py` (WC 46, VP 12, SC 3) a
+  kódy na nečakaných triedach (napr. `ST@IfcCovering` 92) - nie chyba, prejsť pred prvým loadom.
+- **Supabase** je na free pláne: `fileSizeLimit` 52428800 (Management API), obsadené 45 MB.
+- **Vercel** funkcia má 2 GB (Hobby) / 4 GB (Pro); motor `ifc_*` nad modelom > ~100 MB by
+  musel ísť mimo route (záloha D-084). Pri OCB to netreba.
+
+**Vedomé limity a riziká:**
+- **ETL je len upsert:** prvok, ktorý úprava zmaže, ostane v DB. Pred prvou úlohou, ktorá maže,
+  treba v ETL uzavrieť zánik (`valid_until` na GUID histórii a hranách prvkov, ktoré v zdroji
+  chýbajú; riadok `objects` ostáva, D-010). Fáza 1.
+- **Prvá revízia = prvý load v71 na prod** (bucket aj DB nesú pôvodný model).
+- **Repo OCB je súkromné** (oprava 2026-10-18: pôvodný záznam ho mylne označil za verejné;
+  anonymné volanie API prešlo cez proxy prostredia, `private: true`). Minúty Actions sa počítajú do limitu.
+- **Prenos zo Supabase** na free pláne 5 GB/mesiac, jedno otvorenie viewera ASR + VZT ~34 MB.
+- **Neoverené:** limit súbežných behov predplatného, platnosť tokenu, `workflow_dispatch` z Vercelu.
+- **Bez IDS brány** chybnú obsahovú zmenu zachytí až človek; ochrana = revízie a návrat.
+
+**Zavrhnuté:**
+- *Zápis cez `@ifc-lite/mcp` v MCP route (D-084 bod 4):* `entity_set_attribute` vie len
+  Name/Description/ObjectType/Tag, klasifikáciu, PredefinedType, IfcZone ani geometriu nie;
+  doterajších 40+ úprav modelu je v ifcopenshell.
+- *Úpravu robí priamo chat cez MCP tools:* bez paralelizmu a Vercel funkcia nemá Python ani
+  ifcopenshell.
+- *Claude API / Managed Agents na serveri:* nová služba a platba za tokeny.
+- *Claude Code cloud sessions:* z MCP servera sa automaticky nespúšťajú.
+- *IFC v gite (LFS):* limit 100 MB na súbor a kvóta LFS; bucket už máme.
+- *Supabase Pro alebo Cloudflare R2 teraz:* OCB je ďaleko pod 50 MB; prehodnotiť, keď
+  skomprimovaná revízia prekročí ~40 MB.
+- *BCF ako nosič zmeny:* opisuje "čo a kde", zmenu vykonať nevie.
+- *Prepisovaný `ASR.ifc` bez archívu:* nedá sa vrátiť.
+
+**Fázy (F13):**
+- **0** ✅ token a ifcopenshell na runneri OCB.
+- **1 Revízie a záloha (AIMviewer):** migrácia `model_revisions` + `model_tasks`;
+  `etl/model_publish.py` (technická poistka, archív gz, compare-and-swap, nahranie na
+  aktuálny kľúč, broadcast); zánik prvkov v ETL; `?rev=` v `getIfcModels`; v71 a súčasný
+  VZT ako prvé revízie a load v71 na prod.
+- **2 Pracovisko agenta (OCB):** `CLAUDE.md`, kontext, schéma, preklad, skripty v29-v71,
+  workflow `uloha.yml`; jedna ručne zadaná úloha od textu po revíziu vo vieweri.
+- **3 Úlohy z chatu:** MCP tools zápisu pod `MCP_WRITE_TOKEN`, GitHub token na Verceli, stav
+  úlohy, viewer znova načíta model po správe "nová revízia" (bridge forku).
+- **4 BCF:** BCF API server nad `model_tasks`, úlohy z BCF panela forku, BCF export k revízii.
+- **Neskôr:** IDS brána (dodatok D-084), porovnanie revízií (`@ifc-lite/diff`, D-083 fáza 4).
+
+**Otvorené otázky:**
+- **Q1** odkaz na český preklad IFC na ardit.cz;
+- **Q2** export Claude projektu "úprava IFC" (inštrukcie, znalosti, skripty alebo popis v29-v71);
+- **Q3** je VZT v buckete aktuálny?
+- **Q4** ~~OCB verejné alebo súkromné~~ uzavreté: súkromné;
+- **Q5** predvolená vetva OCB (dnes `claude/epic-tesla-06p2q4`, lebo repo bolo prázdne);
+- **Q6** model pre úlohy (Sonnet 5.5 predvolený vs. Opus 5.5);
+- **Q7** číslovanie revízií: ASR pokračuje v72, VZT začína v1?
+
+**Závislosti a licencie:** bez novej závislosti v AIMvieweri (ifcopenshell LGPL-3.0 už v ETL).
+V OCB: ifcopenshell (LGPL-3.0), Claude Code CLI (`@anthropic-ai/claude-code`, licencia
+Anthropic, nástroj v CI, nie súčasť distribuovaného kódu). Žiadna AGPL.
+
+**Dodatok D-086 (2026-10-18) - fáza 1 implementovaná na vetve `claude/epic-tesla-06p2q4`.**
+- **Kód:** migrácia `20261018120000_model_revisions.sql` (`model_revisions`, `model_tasks`);
+  `etl/model_publish.py` (`publish` s poistkou a compare-and-swap pod advisory lockom,
+  `revert`, `sync`, `status`, `announce`, `close-legacy`); `etl.main --model`;
+  `getCurrentIfcModels` pridá `?rev=` k URL modelu (bez tabuľky ostane URL bez zmeny);
+  živý kanál počúva udalosť `model_revision` a zavolá `router.refresh()` (iframe dostane
+  nový `src`, fork netreba meniť).
+- **Oznámenie až po re-ETL:** `publish` neoznamuje, `announce` sa volá po `etl.main` a
+  `etl.derive`. Inak by viewer načítal nový model skôr, než DB pozná nové GUID. GUID mapa
+  má cache 60 s (D-030), takže úplne nové prvky môžu mať AIM kartu až po nej.
+- **Zistenie 1 - ETL model v71 nenačíta.** Hrany `has_document` idú aj z entít, ktoré ETL
+  neemituje (IfcSpatialZone 93, IfcProject 44, IfcZone 15, IfcGroup 8), a
+  `_resolve_cross_file_refs` zhodí celý load. Oprava: väzby dokumentov a aktorov len na
+  emitované objekty, vynechané sa vypíšu podľa triedy (vzor systémov D-047). Zóny a skupiny
+  ako objekty AIM sú samostatné rozhodnutie (Q9).
+- **Zistenie 2 - upsert nechá zastarané hrany.** Nad kópiou prod DB (ASR z 30. 6. + VZT,
+  lokálny Postgres 16, rovnaké počty ako prod: 4251 hrán, 2024 GUID) padol load v71 aj na
+  `uniq_active_aggregate` (priestor dostal nového rodiča). Po oprave rotácie rodiča by
+  starý postup nechal 5836 aktívnych hrán, 2616 aktívnych GUID a **454 GUID aktívnych na
+  dvoch objektoch**. Oprava: zdroj podľa modelu (`etl:ASR`, `IFC import:ASR`), uzavretie
+  toho, čo beh nevydal (vzor `etl.derive`, D-080), nový rodič uzavrie starého pred insertom
+  (vzor rotácie GUID, D-010) a jednorazové `close-legacy`. Výsledok: 4436 hrán, 2067 GUID,
+  0 duplicitných GUID, 83 aktívnych priestorov = 83 `IfcSpace` v súbore.
+- **Zistenie 3 - 549 objektov bez aktívneho GUID** (zmazané alebo premenované object_ref)
+  po prechode ostane v `objects`, lebo `objects` nemá platnosť (D-010). Hrany ani GUID už
+  nemajú, ale dotazy priamo nad `objects` (napr. počty podľa triedy) ich uvidia. Q8.
+- **Zistenie 4 - najnovší ASR je v72**, nie v71 (balík `pipeline/` od Samuela:
+  `v72_bcf_fixes.py`, README: "nové kroky stavaj na ASR_v72"). Balík nesie aj kontrolu
+  `run_checks.py` (`ifcopenshell.validate --rules`, kontroly priestorov, zón, LOP, psetov,
+  audit) a `tools/ardit.py` s cache `ifc.ardit.cz` (český preklad, Q1) - vstup fázy 2.
+- **Poistka nad skutočnými súbormi:** v71 voči ASR z 30. 6. za 1,3 s; bez zoznamu zmien hlási
+  243 pribudnutých a 366 zmiznutých objektov (preto prvá revízia ide s `--bootstrap`).
+- **Overené:** pytest ETL 34/34 (vrátane zápisu revízií proti Postgresu: bootstrap, zmena,
+  konflikt, neprejdená poistka nič nezapíše, návrat, úloha `resolved`), vitest 91/91, `tsc`,
+  eslint; naživo dočasná stránka s `LiveChannel` + skutočný Supabase Realtime (testovací
+  kanál): neplatná správa nič neurobí, platná obnoví stránku zo servera a ukáže
+  "Nová revízia ASR v073: …". Nahrávanie do bucketu a `announce` z Pythonu naživo neoverené
+  (v prostredí nie je service role kľúč); `next build` nespustený.
+- **Nenasadené:** migrácia nie je na prode, revízie nie sú založené, prod DB nesie stále
+  model z 30. 6. Prvé revízie (návrh k Q7): ASR v0 = súčasný `ASR.ifc` (export 30. 6., záloha),
+  ASR v72 s `--bootstrap`, VZT v1 = súčasný `VZT.ifc`; potom load oboch s `--model`,
+  `close-legacy`, `etl.derive`, `announce`.
+- **Nové otázky:** **Q8** zaniknuté objekty: (A) `objects.valid_until` + filter vo views,
+  RPC a dátovej vrstve, (B) nechať, kým to nevadí, (C) mazať (proti D-010); **Q9** zóny
+  (IfcZone, IfcSpatialZone) a skupiny (IfcGroup) ako objekty AIM; **Q10** balík `pipeline/`
+  obsahuje výťahy textov projektovej dokumentácie (`ext/`) - pri verejnom OCB budú verejné.
+
+
+**Dodatok D-086 (2026-10-18) - odpovede Samuela:** Q2 balík `pipeline/` (skripty v29-v72,
+kontroly, `tools/ardit.py` s cache `ifc.ardit.cz` = Q1); Q4 a Q10 OCB je súkromné; Q7 číslovanie
+podľa návrhu (ASR v0 = export 30. 6., ASR v72, VZT v1); Q8 a Q9 riešené v D-088. Najnovší súbor
+ASR v72 dodaný (hlavička "post-processing Assetin, v29 až v72").
+
+---
+
+### D-088 - Platnosť objektov a projekt, zóny, skupiny ako uzly AIM
+**Status:** rozhodnuté (2026-10-18, Samuel: Q8 "objekty tam fakt nebudú, platnosť, že sú zmazané,
+vôbec sa s nimi nezapodievať"; Q9 "áno, IfcProject, IfcSite, zóny, IfcSpatialZone, IfcGroup").
+Implementované na vetve `claude/epic-tesla-06p2q4`, nenasadené. **Rozširuje D-010, D-018, D-047,
+D-051, D-086.** Pôvodne očíslované D-087 (kolízia s D-087 "pravidlo pre nové nástroje" z PR #55, ktorý sa zmergoval skôr); migrácia `20261018130000`, `comment on column objects.valid_until` a popisy v `relationship_types` na prode ostávajú s pôvodným číslom D-087 a znamenajú tento záznam.
+
+**Kontext:** prechod prod DB z exportu 30. 6. na ASR v72 (D-086) nechá 549 objektov, ktoré už
+žiadny model nevydáva (zmazané prvky, zmenené object_ref, 26 typov z v62). `objects` platnosť
+nemá, takže by ich videli počty, fulltext aj agregácie AI. Model zároveň od v29 nesie IfcProject,
+IfcZone (18), IfcSpatialZone (46) a IfcGroup (23) s dokumentmi; ETL ich neemitoval a väzby na
+dokumenty z nich (160) vypadávali.
+
+**Rozhodnutie:**
+1. **`objects.valid_until`** (migrácia `20261018130000`): objekt, ktorý mal GUID zo zdroja modelu
+   a už nemá žiadny aktívny GUID, dostane `valid_until = now()` (`etl.main --model`,
+   `model_publish close-legacy`). Riadok ostáva (Master UUID, D-010); keď sa objekt do modelu
+   vráti, upsert mu platnosť zruší.
+2. **Zaniknuté objekty appka ani AI nevidia:** views `v_actors`, `v_asset_classifications`,
+   `v_asset_effective`, `v_floors`, `v_property_dictionary`, `v_spaces` a RPC `search_everything`,
+   `aggregate_objects`, `search_documents` filtrujú `valid_until is null` (definície prevzaté z
+   predošlých migrácií, na prode zhodné okrem komentárov); v TS zoznamy a vyhľadávanie
+   (`applyObjectFilters` v nástrojoch AI, `getObject`/`resolveObject`, štatistiky modelu, sidebar,
+   strom, výkresy podlaží, filter podľa triedy, dokumenty, `aim-lookup`). Hrany a GUID zaniknutého
+   objektu sú uzavreté, takže dotazy cez väzby ho nedosiahnu. Pravidlo pre nový kód je v AGENTS.
+3. **Nové `object_type`** (aditívne, D-018/D-051): `project` (IfcProject), `zone` (IfcZone),
+   `spatial_zone` (IfcSpatialZone), `group` (čistá IfcGroup, podtypy majú vlastný typ). Emituje
+   ich len hlavný model (VZT má vlastný IfcProject toho istého projektu, zóny nemá). IfcSite sa
+   emitoval už predtým, teraz visí pod projektom.
+4. **Väzby zo súboru** (IFC-first, D-046): `rel_aggregates` site → projekt, časť priestorovej
+   zóny → zóna, podskupina → skupina; `rel_contained_in_spatial_structure` priestorová zóna →
+   podlažie; `rel_referenced_in_spatial_structure` zo súboru (priestor v priestorovej zóne, zóna
+   a prvok na podlaží, dvere a stĺpy v priestore); `rel_assigns_to_group` člen → zóna / skupina
+   (priestor, zóna, priestorová zóna, prvok). Manifest (`etl/manifest.py`) a `relationship_types`
+   povoľujú nové typy na koncoch hrán.
+5. **UI:** štítky typov (`Projekt`, `Zóna`, `Priestorová zóna`, `Skupina`, druhy priestorovej zóny
+   `požiarny úsek` / `energetická zóna`); stránka uzla použije zovšeobecnený detail systému
+   (členovia, časti a prvky v zóne podľa IFC triedy). Strom priestorov sa nemení (hrany mimo
+   priestorových typov sa do neho nedostanú, site ostáva koreňom). Prompt AI pozná nové typy.
+
+**Overené 2026-10-18 (lokálny Postgres 16, kópia prod DB: ASR z 30. 6. + VZT, obe migrácie):**
+- load ASR v72 `--model ASR`, VZT `--model VZT --federate`, `close-legacy`, `etl.derive
+  spatial_reference` bez chyby (3,5 min, z toho väčšinu derive);
+- platné objekty 2207: asset 1758, asset_type 206, space 83, document 52, spatial_zone 46,
+  group 23, zone 18, system 13, floor 5, project 1, site 1, building 1; zaniknuté 549 (asset 471,
+  space 50, asset_type 26, site 1, building 1); 0 GUID na dvoch objektoch; 0 aktívnych hrán na
+  zaniknutý objekt; `v_spaces` 83; `aggregate_objects` 2207; fulltext zaniknuté nevracia;
+- opakovaný beh nič neuzavrie; zmazaná stena (SN07.04.0005) uzavrie 3 hrany, 1 GUID a 1 objekt,
+  po návrate ožije;
+- všetkých 163 väzieb na dokumenty ostáva;
+- `etl.derive` teraz zapíše aj prvky v priestorových zónach (979 inside + 122 partial), lebo
+  IfcSpatialZone je v jeho predvolených triedach od D-080 a zóny už sú v DB; prvky v
+  priestoroch 435 + 148 (prod dnes 376 z pôvodného modelu);
+- pytest ETL 36/36, vitest 91/91, `tsc`, eslint. Evaly `/ask` nespustené (prompt sa zmenil o
+  nové typy; bez kľúča a DB v prostredí). UI nových typov naživo neoverené (stránka uzla číta DB).
+
+**Zavrhnuté:**
+- *Mazať zaniknuté objekty:* stratí sa história (GUID, hrany) a väzby fotiek a dokumentov,
+  proti D-010.
+- *Premenovať `objects` na tabuľku a `objects` spraviť view s filtrom:* všetky dotazy by sa
+  filtrovali samé, ale PostgREST embedding, zápisy cez view a FK by sa museli overiť naprieč
+  appkou bez DB v prostredí; riziko väčšie ako prínos.
+- *Zóny ako `aim_*` hrany alebo properties:* IFC ich má ako objekty (IfcGroup, IfcSpatialElement),
+  takže sú uzly (IFC-first).
+
+**Poradie nasadenia:** migrácie `20261018120000` a `20261018130000` pred prvým behom nového ETL
+(upsert zapisuje `valid_until`).
+
+**Dodatok D-088 (2026-10-18) - nasadenie na prod.**
+- **Migrácie** `20261018120000` a `20261018130000` nasadené cez Management API (história
+  `supabase_migrations` zosúladená). Funkcia `search_everything` sa bez superusera dala vytvoriť
+  až po načítaní pg_trgm v tej istej transakcii (`select word_similarity('a', 'a')`); je to
+  v migrácii, takže prejde aj `supabase db push`.
+- **Secrets v OCB** overené workflowom `kontrola-secrets` (storage, REST, DB cez Session pooler,
+  advisory lock, Realtime).
+- **Workflow `bootstrap-revizie`** (OCB, beh `39146709453`): revízie ASR v0, VZT v1, ASR v72;
+  re-ETL oboch modelov so zdrojom modelu 35 min (zápis po riadkoch z runnera v USA do DB vo
+  Švédsku; kandidát na dávkový zápis), derive 7,5 min, oznámenie oboch revízií.
+- **Prod po bootstrape:** platných objektov 2226 (asset 1758, asset_type 206, space 83, document
+  65, spatial_zone 46, group 23, zone 18, system 13, floor 5, capture 3, capture_media 3,
+  project 1, site 1, building 1), zaniknutých 549, 0 GUID na dvoch objektoch, 163 väzieb na
+  dokumenty z IFC, 24 požiarnych úsekov, `v_spaces` 83.
+- **Nález: 264 aktívnych hrán na zaniknuté objekty** (lokálna kópia ich nemala, chýbali v nej
+  odvodené a ručné väzby): (a) 242 hrán derive - id hrany je z GUID, upsert však neprepísal
+  `from_id`/`to_id`, takže hrana ostala na premenovanom priestore; (b) 20 ručných väzieb na
+  objekty, ktoré sa len premenovali (rovnaký GUID): 9 výkresových väzieb na dvere
+  (`DD03.04.09` -> `DD03.05.09`), 2 na typy, 9 dokumentov E3 na budovu; (c) 2 fotky v
+  priestoroch `2.01-2` a `2.27`, ktoré v v72 nemajú nástupcu.
+- **Oprava** (commit `2b4a7d6`): derive pri upserte prepíše `from_id`/`to_id`; `close_stale` a
+  `close_legacy` presunú ručné väzby (zdroje mimo `etl*` a `derive:*`) na platný objekt s
+  rovnakým GUID. Overené na kópii prod DB s odvodenými hranami z júla: 0 hrán na zaniknuté
+  objekty. Na prode: workflow `odvodenie` (beh `39150583359`) uzavrel 242 hrán z (a); presun
+  ručných väzieb (b) so Samuelovým súhlasom cez Management API: 11 výkresových, 9 dokumentov
+  a 1 fotka (`2.27` má nástupcu s rovnakým GUID). Fotku v priestore `2.01-2` (vo v72 bez
+  nástupcu) Samuel zatiaľ odstránil: capture `a2608cf3…` a jeho médium dostali `valid_until`,
+  ich 2 väzby sú uzavreté, súbory v úložisku ostávajú (vratné). Zoznam fotiek
+  (`fetchAllCapturePointsImpl`) preto filtruje `valid_until is null`. Na prode 0 aktívnych hrán
+  na zaniknuté objekty.
+
+---
+
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-18** - **D-088 dodatok (prod):** migrácie nasadené, bootstrap revízií a load ASR v72 + VZT do prod DB (2226 platných, 549 zaniknutých objektov, 0 duplicitných GUID); nález 264 hrán na zaniknuté objekty a oprava (derive prepisuje koncové objekty, ručné väzby na nástupcu s rovnakým GUID).
+- **2026-10-18** - **D-088 (platnosť objektov, projekt/zóny/skupiny ako uzly):** `objects.valid_until` pre objekty, ktoré žiadny model nevydáva (views, RPC a TS zoznamy ich filtrujú); `project`, `zone`, `spatial_zone`, `group` z IfcProject/IfcZone/IfcSpatialZone/IfcGroup s väzbami zo súboru; UI cez zovšeobecnený detail systému. Overené nad kópiou prod DB s v72: 2207 platných, 549 zaniknutých, 0 duplicitných GUID. + dodatok D-086 (odpovede Q1, Q2, Q4, Q7, Q10; OCB je súkromné).
+- **2026-10-18** - **D-086 dodatok (fáza 1):** revízie `model_revisions`/`model_tasks`, `etl/model_publish.py` (poistka, compare-and-swap, revert, announce po re-ETL), `etl.main --model` (zdroj podľa modelu, uzavretie zastaraných hrán a GUID, rotácia rodiča), väzby dokumentov len na emitované objekty, `?rev=` v URL modelu a obnova viewera na `model_revision`. Zistené: ETL v71 nenačítal; starý postup by nechal 454 GUID na dvoch objektoch; 549 zaniknutých objektov (Q8); najnovší ASR je v72.
+- **2026-10-18** - **D-086 (úpravy IFC cez agentov, F13):** IFC je master; úlohy z chatu (neskôr z BCF panela) bežia v GitHub Actions repa `Menezeris/OCB` (Claude Code s tokenom predplatného + ifcopenshell), výstup = recept + zoznam zmien; zápis po jednom cez compare-and-swap; nemenné revízie `ifc/archive/<model>/vNNN.ifc.gz` + `model_revisions`, aktuálna na doterajšom kľúči; zverejnenie hneď s technickou poistkou, bez IDS brány; re-ETL a broadcast "nová revízia". Mení D-084 bod 4. Fáza 0 overená (token, ifcopenshell na runneri, ETL dry-run nad v71).
 - **2026-10-18** - **D-087 (pravidlo pre nové nástroje):** najprv tool z `@ifc-lite/mcp` 1:1 (prefix `ifc_`, opis a parametre z balíka, test proti registru), pohľad len ako adaptér v `apps/viewer/src/aim/`, vlastný nástroj len kde originál nič nemá, DB tools sa neduplikujú. Prvých 7 prevzatých tools motora.
 - **2026-10-18** - **D-085 (spätný kanál viewer -> Claude):** `get_bounds` a `get_viewer_state` cez ten istý živý kanál (query/reply s id, timeout namiesto "odoslané"), `set_section` cez prvok (`fit` along/across/center) a na súradnici IFC (`coordinate_m`); súradnice počíta viewer (IFC svet, Z hore), fork bridge `QUERY`/`QUERY_RESULT` a rozšírený `SET_SECTION` len v `aim/`.
 - **2026-10-18** - **D-084 dodatok (IDS):** IDS kontrola zatiaľ v IDS paneli viewera forku, uložené behy ifctesteru ostávajú; `IDS_SOURCES` sa nenastavuje; zdroj IDS pre server je otvorené rozhodnutie pre Samuela, najneskôr pred fázou 3.

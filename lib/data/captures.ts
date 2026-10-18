@@ -220,7 +220,8 @@ async function fetchAllCapturePointsImpl(): Promise<CapturePointWire[]> {
   const { data: caps, error } = await supabase
     .from("objects")
     .select("id")
-    .eq("object_type", "capture");
+    .eq("object_type", "capture")
+    .is("valid_until", null); // odstránená fotka (D-088) sa nezobrazí
   if (error) throw new Error(error.message);
   const captureIds = (caps ?? []).map((c) => c.id as string);
   return hydrateCapturePoints(captureIds);

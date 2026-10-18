@@ -17,7 +17,13 @@ import {
   fetchOrganization,
   fetchSystem,
 } from "@/lib/data/object";
-import { OBJECT_TYPE_LABEL, SYSTEM_TYPE_LABEL, roleLabel } from "@/lib/object-type";
+import {
+  OBJECT_TYPE_LABEL,
+  SPATIAL_ZONE_TYPE_LABEL,
+  SYSTEM_TYPE_LABEL,
+  roleLabel,
+  type GroupLikeType,
+} from "@/lib/object-type";
 import { formatDate } from "@/lib/utils";
 import { LinkPendingSpinner } from "@/components/link-pending-spinner";
 import { PropertySets } from "@/components/property-sets";
@@ -636,17 +642,31 @@ async function OrganizationView({ id }: { id: string }) {
   );
 }
 
+/** Texty karty skupinového uzla podľa typu (D-047, D-088). */
+const GROUP_VIEW_TEXT: Record<
+  GroupLikeType,
+  { kindLabel: string; kinds: Record<string, string>; members: string; empty: string }
+> = {
+  system: { kindLabel: "Druh systému", kinds: SYSTEM_TYPE_LABEL, members: "Prvky systému", empty: "Systém nemá evidované prvky." },
+  project: { kindLabel: "Druh", kinds: {}, members: "Časti projektu", empty: "Projekt nemá evidované časti." },
+  zone: { kindLabel: "Druh", kinds: {}, members: "Členovia zóny", empty: "Zóna nemá evidovaných členov." },
+  spatial_zone: { kindLabel: "Druh zóny", kinds: SPATIAL_ZONE_TYPE_LABEL, members: "Priestory a prvky v zóne", empty: "V zóne nie sú evidované priestory ani prvky." },
+  group: { kindLabel: "Druh", kinds: {}, members: "Prvky skupiny", empty: "Skupina nemá evidované prvky." },
+};
+
 /**
- * Detail systému (D-047): členovia (`rel_assigns_to_group`) zoskupení podľa IFC
- * typu. Ukazuje previazanosť „systém → prvky" (headline graf pre S-LLM).
+ * Detail systému (D-047) a ďalších skupinových uzlov - projekt, zóna, priestorová
+ * zóna, skupina (D-088): členovia a časti zoskupení podľa IFC typu. Ukazuje
+ * previazanosť „systém → prvky" (headline graf pre S-LLM).
  */
 async function SystemView({ id }: { id: string }) {
   const system = await fetchSystem(id);
   if (!system) notFound();
+  const text = GROUP_VIEW_TEXT[system.objectType];
 
   return (
     <div className="mx-auto max-w-3xl">
-      <NodeHeader type="system" name={system.name} objectRef={system.object_ref} />
+      <NodeHeader type={system.objectType} name={system.name} objectRef={system.object_ref} />
 
       <Card className="mb-6">
         <CardHeader>
@@ -655,10 +675,10 @@ async function SystemView({ id }: { id: string }) {
         <CardContent>
           <dl className="divide-y divide-border">
             <Field
-              label="Druh systému"
+              label={text.kindLabel}
               value={
-                system.predefinedType
-                  ? roleLabel(SYSTEM_TYPE_LABEL, system.predefinedType)
+                system.predefinedType && system.predefinedType !== "NOTDEFINED"
+                  ? roleLabel(text.kinds, system.predefinedType)
                   : null
               }
             />
@@ -670,13 +690,13 @@ async function SystemView({ id }: { id: string }) {
       <Card>
         <CardHeader>
           <CardTitle>
-            Prvky systému{" "}
+            {text.members}{" "}
             <span className="text-muted-foreground">({system.memberCount})</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
           {system.groups.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Systém nemá evidované prvky.</p>
+            <p className="text-sm text-muted-foreground">{text.empty}</p>
           ) : (
             <div className="space-y-5">
               {system.groups.map((g) => (
@@ -742,6 +762,10 @@ export default async function NodePage({
     case "organization":
       return <OrganizationView id={id} />;
     case "system":
+    case "project":
+    case "zone":
+    case "spatial_zone":
+    case "group":
       return <SystemView id={id} />;
     case "document":
       // Dokumenty sa zobrazujú v prehliadačke (PDF + bočný panel, D-042 D+).

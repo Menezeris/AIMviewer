@@ -66,7 +66,8 @@ create table objects (
   id                uuid primary key default gen_random_uuid(),   -- Master UUID (D-010/1)
   object_type       text not null,     -- 'site','building','floor','space','asset','asset_type',
                                         -- 'document','person','organization','system' (D-047),
-                                        -- 'capture','capture_media' (D-073)
+                                        -- 'capture','capture_media' (D-073),
+                                        -- 'project','zone','spatial_zone','group' (D-088)
   object_ref        text unique,       -- ľudsky čitateľná identita / QR (D-010/2)
   name              text,              -- IFC Name (atribút)
   ifc_guid          text,              -- IFC GlobalId — len atribút, nullable (D-010/3)
@@ -87,6 +88,13 @@ stĺpec `search_text` = `f_object_search_text(name, object_ref, ifc_type,
 predefined_type, user_defined_type, properties)` — normalizovaný (unaccent + lower)
 flattening identity a všetkých psetov (rezervované `_kľúče` vynechané) pre fulltext.
 Indexy a RPC → §2.9.
+
+**Dodatok (D-088, migrácia 20261018130000):** `objects.valid_until timestamptz` = kedy objekt
+zanikol (už ho nevydáva žiadny model federácie; NULL = platný). Riadok ostáva (D-010). Views
+`v_actors`, `v_asset_classifications`, `v_asset_effective`, `v_floors`, `v_property_dictionary`,
+`v_spaces` a RPC `search_everything`, `aggregate_objects`, `search_documents` filtrujú
+`valid_until is null`; zoznamy a vyhľadávanie v appke tiež (AGENTS). Index
+`idx_objects_retired` (len zaniknuté).
 
 ### 2.2 Typové prípony (1:1 k `objects`)
 
@@ -442,6 +450,25 @@ nie je v DB), `ifc_guid` null = výsledok celej povinnej špecifikácie bez vyho
 Pohľady: `v_ids_latest` (posledný beh každej dvojice IDS × model, s object_ref/menom),
 `v_ids_summary` (po špecifikáciách: elements, passed, failed, example_reason).
 
+### 2.14 Revízie IFC modelov a úlohy úprav (D-086, migrácia 20261018120000)
+
+**Deklarovaná extenzia** (IFC verzie súboru nenesie; BCF nesie tému úlohy, nie úložisko).
+`model_revisions` = jedna zverejnená verzia IFC súboru modelu federácie (`model` = kľúč
+`ifc/<model>.ifc`, `revision` = vNNN, `parent_revision` = základ, `sha256`/`size_bytes`
+nekomprimovaného súboru, `archive_path` = nemenná kópia `ifc/archive/<model>/vNNN.ifc.gz`,
+`recipe_ref` = recept v repe OCB, `guard` = výsledok technickej poistky). Práve jedna
+`is_current` na model (`uniq_current_model_revision`). Zapisuje len `etl/model_publish.py`
+pod advisory lockom modelu (compare-and-swap voči základu úlohy). `model_tasks` = úloha
+úpravy v tvare BCF témy (`title`, `description`, `components` = IFC GlobalId výberu,
+`viewpoint`, `status` `open|in_progress|resolved|conflict|failed`, `base_revision`,
+`result_revision`, `run_url`, `comments`). Práva anon/authenticated nemajú (2.12).
+
+**Zdroj ETL podľa modelu (D-086):** load s `--model ASR` zapisuje hrany so zdrojom
+`etl:ASR` a GUID históriu so zdrojom `IFC import:ASR`; čo beh nevydal, uzavrie
+(`valid_until`). Staré zdroje `etl` / `IFC import` (pred D-086) uzavrie jednorazovo
+`model_publish close-legacy` po prvom loade všetkých modelov. Objekt bez aktívneho GUID
+dostane `objects.valid_until` (D-088), riadok ostáva (D-010).
+
 ## 4. Konvencia `properties` (D-022)
 
 `properties` JSONB obsahuje **property sety**, vnorené podľa názvu. IFC **atribúty**
@@ -512,7 +539,8 @@ ekvivalentu — ak existuje, prevziať názov aj enum doslovne.
 - metadáta na hrane: `valid_from`/`valid_until`/`source`/dôverové vrstvy na `rel_*`
   (IFC vzťahy nenesú platnosť ani provenance väzby),
 - `ifc_guid_history` + Master UUID (identita naprieč verziami súborov),
-- väzby naprieč IFC súbormi (federácia — natívne až IFC5).
+- väzby naprieč IFC súbormi (federácia — natívne až IFC5),
+- revízie súborov modelu a úlohy úprav (`model_revisions`, `model_tasks`, D-086).
 Pri exporte ich IFC nenesie → ICDD linksety (D-015), do budúcna IFCX layer komponenty.
 
 ---

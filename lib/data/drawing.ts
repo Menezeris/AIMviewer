@@ -194,7 +194,8 @@ async function fetchUnderlayDrawingsImpl(): Promise<UnderlayDrawingWire[]> {
   const { data: floors, error: fErr } = await supabase
     .from("objects")
     .select("id")
-    .eq("object_type", "floor");
+    .eq("object_type", "floor")
+    .is("valid_until", null);
   if (fErr) throw new Error(fErr.message);
   const floorIds = (floors ?? []).map((f) => f.id as string);
   if (floorIds.length === 0) return [];

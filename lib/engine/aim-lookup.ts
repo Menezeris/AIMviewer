@@ -60,7 +60,8 @@ export async function resolveTargetsToGuids(targets: string[]): Promise<Map<stri
       const { data, error } = await supabase
         .from("objects")
         .select("id, object_ref")
-        .in(col, vals.slice(i, i + IN_CHUNK));
+        .in(col, vals.slice(i, i + IN_CHUNK))
+        .is("valid_until", null); // zaniknuté objekty (D-088)
       if (error) throw new Error(error.message);
       for (const o of (data ?? []) as { id: string; object_ref: string | null }[]) {
         idByTarget.set(col === "id" ? o.id : (o.object_ref as string), o.id);

@@ -86,6 +86,7 @@ function loadSpatialObjects(
         "id, object_type, object_ref, name, ifc_type, ifc_guid, predefined_type"
       )
       .in("object_type", SPATIAL_TYPES as unknown as string[])
+      .is("valid_until", null) // zaniknuté objekty (D-088)
       .order("id", { ascending: true })
       .range(from, to)
   );
