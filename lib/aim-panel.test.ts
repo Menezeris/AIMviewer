@@ -85,3 +85,33 @@ describe("nodeSummaryToAimPanel (v2, D-077)", () => {
     expect(panel.captures).toEqual({ count: 5, href: "/ifc?captures=s1" });
   });
 });
+
+describe("nodeSummaryToAimPanel - vrstva AIM (D-089)", () => {
+  it("odznak typu podľa object_type: priestorová zóna nie je Prvok", () => {
+    const zone = nodeSummaryToAimPanel({ ...baseSummary, objectType: "spatial_zone" }, "G");
+    expect(zone.badges?.[0].label).toBe("Priestorová zóna");
+    expect(nodeSummaryToAimPanel(baseSummary, "G").badges?.[0].label).toBe("Asset");
+    expect(nodeSummaryToAimPanel({ ...baseSummary, objectType: "neznamy" as ElementDetail["objectType"] }, "G").badges?.[0].label).toBe("Prvok");
+  });
+
+  it("odovzdá odvodené vzťahy a celkový počet, bez nich polia vynechá", () => {
+    const relation = {
+      ruleId: "element_in_spatial_zone",
+      ruleName: "Prvok v priestorovej zóne (geometria)",
+      ifcRelation: "IfcRelReferencedInSpatialStructure" as const,
+      direction: "outgoing" as const,
+      role: "partial",
+      other: { objectId: "z1", guid: "ZG", ref: "N2.04", name: "N2.04", ifcType: "IfcSpatialZone" },
+    };
+    const panel = nodeSummaryToAimPanel(
+      { ...baseSummary, derived: { relations: [relation], total: 3 } },
+      "G"
+    );
+    expect(panel.derivedRelations).toEqual([relation]);
+    expect(panel.derivedTotal).toBe(3);
+
+    const empty = nodeSummaryToAimPanel({ ...baseSummary, derived: { relations: [], total: 0 } }, "G");
+    expect(empty.derivedRelations).toBeUndefined();
+    expect(empty.derivedTotal).toBeUndefined();
+  });
+});

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { fetchNodeSummary } from "@/lib/data/object";
 import { fetchNodeSections } from "@/lib/data/relations";
 import { fetchCaptureSummaryForObject } from "@/lib/data/captures";
+import { fetchDerivedRelations } from "@/lib/data/derivations";
 import type { ElementDetail } from "@/lib/aim-panel";
 
 /**
@@ -26,10 +27,12 @@ export async function GET(
   }
 
   try {
-    const [summary, sections, captures] = await Promise.all([
+    const [summary, sections, captures, derived] = await Promise.all([
       fetchNodeSummary(id),
       fetchNodeSections(id),
       fetchCaptureSummaryForObject(id),
+      // Vrstva AIM (D-089): odvodené vzťahy pre Relationship records vo vieweri.
+      fetchDerivedRelations(id).catch(() => undefined),
     ]);
     if (!summary) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -39,6 +42,7 @@ export async function GET(
       responsibilities: sections.responsibilities,
       guidHistory: sections.guidHistory,
       captures,
+      derived,
     };
     // Read-only súhrn (revaliduje sa s ostatnými AIM dátami po 60 s). Cache v
     // prehliadači + na CDN → opakovaný klik na ten istý kód vo výkrese je okamžitý,

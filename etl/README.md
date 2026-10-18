@@ -95,6 +95,21 @@ Voľby: `--include` (triedy prvkov), `--spatial` (triedy priestorov), `--inside-
 (len prvky celé vnútri, bez `partial`). Spúšťa sa **po** `etl.main`
 oboch modelov (prvky aj priestory musia byť v DB, páruje sa cez aktívny IFC GUID).
 
+### Register pravidiel odvodení (D-089)
+Ktoré odvodenia bežia, je v DB (`derivation_rules`), nie vo workflowe. Každý beh sa zapíše do
+`derivation_runs`.
+```bash
+python -m etl.derive rules                                        # stav a posledný beh
+python -m etl.derive run --models ASR.ifc VZT.ifc --trigger auto  # po novej revízii
+python -m etl.derive run --models ASR.ifc VZT.ifc --rule element_in_spatial_zone
+python -m etl.derive disable --rule element_in_spatial_zone       # uzavrie jeho hrany
+python -m etl.derive enable --rule element_in_spatial_zone --mode manual
+```
+Geometrické pravidlá (`element_in_space`, `element_in_spatial_zone`) sa počítajú jedným
+prechodom a hrany sa rozdelia podľa cieľovej triedy; `element_in_zone` je pohľad
+`v_zone_elements` (prvok v IfcZone cez priestory). `spatial_reference` ostáva ako priamy
+odvodzovač D-080 (predvolene len IfcSpace).
+
 ## Kontrola modelu voči IDS — `etl.ids_check` (D-081)
 
 IDS vyrába knižnica požiadaviek (`assetin-library`), sem sa nekopíruje. Krok overí model

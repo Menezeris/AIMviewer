@@ -1,6 +1,8 @@
 import type { NodeSummary } from "@/lib/data/object";
 import type { CaptureSummary } from "@/lib/data/capture-placement";
 import type { NodeSectionsData } from "@/lib/data/relations";
+import type { DerivedRelationWire } from "@/lib/derivations";
+import { OBJECT_TYPE_LABEL } from "./object-type";
 
 /**
  * AIM karta v natívnom paneli ifclite — render schéma posielaná cez
@@ -33,6 +35,11 @@ export interface AimPanelData {
   captures?: { count: number; href: string };
   /** História GUID (bitemporálna platnosť; `active` = aktuálny GUID). */
   history?: { guid: string; validFrom: string; validUntil?: string; active: boolean }[];
+  // --- vrstva AIM (D-089 fáza B) ---
+  /** Odvodené vzťahy prvku pre Relationship records s odznakom AIM (orezané na smer). */
+  derivedRelations?: DerivedRelationWire[];
+  /** Celkový počet odvodených vzťahov pred orezaním. */
+  derivedTotal?: number;
 }
 
 /**
@@ -44,11 +51,19 @@ export interface ElementDetail extends NodeSummary {
   responsibilities?: NodeSectionsData["responsibilities"];
   guidHistory?: NodeSectionsData["guidHistory"];
   captures?: CaptureSummary | null;
+  /** Odvodené vzťahy (D-089) - `fetchDerivedRelations`. */
+  derived?: { relations: DerivedRelationWire[]; total: number };
 }
 
+/** Odznak typu v paneli; neznámy typ = "Prvok" (zóny, projekt a skupiny majú vlastný, D-088). */
 const TYPE_LABEL: Record<string, string> = {
   asset: "Asset",
   asset_type: "Typ assetu",
+  ...Object.fromEntries(
+    (["project", "site", "building", "floor", "space", "zone", "spatial_zone", "group", "system"] as const).map(
+      (t) => [t, OBJECT_TYPE_LABEL[t]]
+    )
+  ),
 };
 
 /** `2026-07-12T09:31:00Z` → `2026-07-12` (render histórie; null → prázdny string). */
@@ -126,6 +141,8 @@ export function nodeSummaryToAimPanel(
       validUntil: h.validUntil ? shortDate(h.validUntil) : undefined,
       active: h.active,
     })),
+    derivedRelations: summary.derived?.relations.length ? summary.derived.relations : undefined,
+    derivedTotal: summary.derived?.relations.length ? summary.derived.total : undefined,
     actions: [
       { label: "Otvoriť celý detail", href: `/${summary.route}/${summary.id}`, primary: true },
       // Reality Capture (D-073) — otvorí galériu priestoru ako overlay nad 3D.
