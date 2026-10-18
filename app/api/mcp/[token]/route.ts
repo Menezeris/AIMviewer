@@ -5,6 +5,11 @@ import { NextResponse } from "next/server";
 import { PROBE_TOOL } from "@/lib/engine/probe-def";
 import { ENGINE_TOOL_NAMES, engineToolDefinitions } from "@/lib/engine/tool-defs";
 import { broadcastLive, liveChannel } from "@/lib/live/broadcast";
+import {
+  VIEWER_QUERY_TOOL_DEFINITIONS,
+  VIEWER_QUERY_TOOL_NAMES,
+  execViewerQueryTool,
+} from "@/lib/live/viewer-query-tools";
 import { mcpInstructions } from "@/lib/llm/system-prompt";
 import { AskToolRuntime, TOOL_DEFINITIONS } from "@/lib/llm/tools";
 import {
@@ -17,7 +22,8 @@ import {
 /**
  * MCP konektor pre Claude (D-079): `POST /api/mcp/<MCP_TOKEN>`. Tie isté
  * read-only tools ako `/api/ask`; UI akcie sa odvysielajú do živého viewera
- * (Supabase Realtime, kanál `LIVE_CHANNEL`). Bez `MCP_TOKEN` je endpoint
+ * (Supabase Realtime, kanál `LIVE_CHANNEL`); get_bounds / get_viewer_state sa
+ * tým istým kanálom viewera pýtajú (D-085). Bez `MCP_TOKEN` je endpoint
  * vypnutý (404). Bezstavový — žiadne session ID, žiadny SSE stream.
  */
 
@@ -56,6 +62,10 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<Mc
     } catch (err) {
       return { text: [`Chyba motora: ${err instanceof Error ? err.message : String(err)}`], isError: true };
     }
+  }
+  if (VIEWER_QUERY_TOOL_NAMES.has(name)) {
+    const res = await execViewerQueryTool(name, args, siteUrl());
+    return { text: [res.text], isError: res.isError };
   }
   if (ENGINE_ENABLED && ENGINE_TOOL_NAMES.has(name)) {
     // Lenivý import: motor (stovky MB po načítaní modelov) len keď ho Claude volá.
@@ -101,6 +111,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     instructions: mcpInstructions(siteUrl(), ENGINE_ENABLED),
     tools: [
       ...TOOL_DEFINITIONS,
+      ...VIEWER_QUERY_TOOL_DEFINITIONS,
       ...(ENGINE_ENABLED ? engineToolDefinitions() : []),
       ...(ENGINE_SPIKE ? [PROBE_TOOL] : []),
     ],

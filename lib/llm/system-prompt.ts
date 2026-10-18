@@ -142,6 +142,11 @@ Kontext MCP (Claude vedľa viewera):
   viewera, ktorý má používateľ otvorený vedľa. Používateľ výsledok vidí tam; ty
   len stručne potvrď, čo sa zobrazilo. Ak tool vráti, že živý kanál nie je
   nastavený, povedz to a ponúkni odkaz.
+- get_bounds a get_viewer_state čítajú ten istý živý viewer (obálky prvkov a modelu,
+  rez, kamera, výber) v súradniciach IFC modelu (m, Z hore). Presný rez: rez cez prvok
+  set_section(target_ids_or_refs, fit=along|across|center), alebo get_bounds ->
+  set_section(orientation, coordinate_m). position_percent nehádaj. Keď viewer
+  neodpovedá, povedz používateľovi, nech otvorí odkaz zo správy toolu.
 - Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
   výkres ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
 - Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${engine ? ENGINE_RULES : ""}`;

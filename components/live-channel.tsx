@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Radio } from "lucide-react";
 
 import { isSafeViewerUrl, mergeIfcActions, type AskAction } from "@/lib/llm/actions";
+import { LIVE_QUERY_EVENT, LIVE_REPLY_EVENT, isLiveQuery } from "@/lib/live/protocol";
+import { answerViewerQuery } from "@/lib/live/viewer-query-bus";
 
 /**
  * Živý príkazový kanál (D-079): viewer otvorený s `?live=<kanál>` počúva na
@@ -13,6 +15,9 @@ import { isSafeViewerUrl, mergeIfcActions, type AskAction } from "@/lib/llm/acti
  * v `sessionStorage`, lebo navigačné URL príkazov parameter `live` nenesú;
  * `?live=off` ho vypne. Bez kanála alebo bez verejných Supabase env premenných
  * sa nič nenačíta (supabase-js sa importuje až tu, dynamicky).
+ *
+ * Spätný kanál (D-085): udalosť `query` odovzdá vloženému vieweru
+ * (`viewer-query-bus`) a odpoveď pošle späť udalosťou `reply`.
  */
 
 const STORAGE_KEY = "aim-live-channel";
@@ -89,6 +94,12 @@ export function LiveChannel() {
           if (queue.current.length > 0 && !timer.current) {
             timer.current = setTimeout(flush, BATCH_MS);
           }
+        })
+        .on("broadcast", { event: LIVE_QUERY_EVENT }, ({ payload }) => {
+          if (!isLiveQuery(payload)) return;
+          void answerViewerQuery(payload).then((reply) =>
+            sub.send({ type: "broadcast", event: LIVE_REPLY_EVENT, payload: reply }),
+          );
         })
         .subscribe((s) => {
           if (disposed) return;
