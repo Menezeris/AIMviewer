@@ -152,6 +152,9 @@ Kontext MCP (Claude vedľa viewera):
   set_section(target_ids_or_refs, fit=along|across|center), alebo get_bounds ->
   set_section(orientation, coordinate_m). position_percent nehádaj. Keď viewer
   neodpovedá, povedz používateľovi, nech otvorí odkaz zo správy toolu.
+- set_section po odoslaní vráti viewer_section = kde rovina vo vieweri naozaj je (D-092).
+  Rez potvrď len podľa nej; pri reze nad podlažím porovnaj s floor_elevation_model_units +
+  offset_m a pri nesúlade povedz, že viewer rez umiestnil inak.
 - Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
   výkres ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
 - Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${FEEDBACK_RULES}${engine ? ENGINE_RULES : ""}`;

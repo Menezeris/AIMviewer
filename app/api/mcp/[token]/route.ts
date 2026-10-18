@@ -6,6 +6,7 @@ import { PROBE_TOOL } from "@/lib/engine/probe-def";
 import { ENGINE_TOOL_NAMES, engineToolDefinitions } from "@/lib/engine/tool-defs";
 import { FEEDBACK_TOOL_DEFINITIONS, FEEDBACK_TOOL_NAMES, execFeedbackTool } from "@/lib/feedback/tools";
 import { broadcastLive, liveChannel } from "@/lib/live/broadcast";
+import { readBackSection } from "@/lib/live/section-readback";
 import {
   VIEWER_QUERY_TOOL_DEFINITIONS,
   VIEWER_QUERY_TOOL_NAMES,
@@ -96,6 +97,8 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<Mc
           ? `Odoslané do živého viewera. Záložný odkaz:\n${links}`
           : `Odoslanie do živého viewera zlyhalo (HTTP ${sent.status}). Odkaz na otvorenie:\n${links}`,
       );
+      // D-092: rez potvrdí poloha roviny z viewera, nie len odoslanie príkazu.
+      if (sent.ok && name === "set_section" && args.action === "set") text.push(await readBackSection(channel));
     }
   }
   return { text, isError: res.isError };

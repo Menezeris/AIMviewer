@@ -13,6 +13,12 @@ describe("tools pohľadu (D-083 fáza 1)", () => {
     expect(p.result).toMatchObject({ section: { floor: "3NP", offset_m: -0.4 } });
   });
 
+  it("rez nad podlažím vráti eleváciu z AIM DB na kontrolu polohy roviny (D-092)", () => {
+    const p = planSection({ action: "set", floor: "3NP", offset_m: 1 }, { ...FLOOR, elevation: 9200 });
+    expect(p.result).toMatchObject({ section: { floor: "3NP", offset_m: 1, floor_elevation_model_units: 9200 } });
+    expect(planSection({ action: "set", floor: "3NP" }, FLOOR).result.section).not.toHaveProperty("floor_elevation_model_units");
+  });
+
   it("rez: default 1,2 m, zvislý v percentách, zrušenie a chyby vstupu", () => {
     expect(planSection({ action: "set" }, FLOOR).result).toMatchObject({ section: { offset_m: 1.2 } });
     expect(parseOps(planSection({ action: "set", orientation: "vertical_x", position_percent: 30 }, null).ops[0])[0]).toMatchObject({
