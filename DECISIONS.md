@@ -3275,9 +3275,135 @@ Automation"; po meraní bypass zrušený a preview `MCP_TOKEN` zmazaný. Nástro
 
 ---
 
+### D-086 - Úpravy IFC modelu cez agentov: revízie, úlohy z chatu, GitHub Actions (F13)
+**Status:** rozhodnuté (2026-10-18), fáza 0 overená. **Mení D-084 bod 4** (zápis nejde cez
+motor `@ifc-lite/mcp` v MCP route, ale cez ifcopenshell v GitHub Actions) a **dodatok D-084
+z 2026-10-18** (zverejnenie revízie zatiaľ nestojí na IDS bráne). Uzatvára otvorené otázky
+D-084 "upravené IFC ako autoritatívna revízia vs. change set" a "workflow pre re-ETL".
+
+**Kontext:** ASR sa doteraz upravoval v claude.ai projekte "úprava IFC" skriptami ifcopenshell
+nad exportom z Revitu (hlavička v71: `IfcOpenShell 0.9.0.post1 (post-processing Assetin, v29
+až v71)`); výsledok sa odovzdával ako BCF a súbor sa nahrával ručne. V buckete je stále
+`ASR.ifc` z 11. 7. (20,1 MB), prod DB nesie pôvodný model a F2/E6 čakajú na opravený model.
+Cieľ (Samuel, 18. 10.): v Claude (konektor AIM) napíšem alebo vo vieweri označím, čo zmeniť;
+úloha sa spracuje na pozadí, viac úloh naraz, zmena sa hneď prejaví vo vieweri a staré
+verzie ostanú zálohované. Bez novej služby a na free plánoch, ktoré už máme.
+
+**Rozhodnutie (Samuel, 18. 10.):**
+1. **IFC je master.** ASR (od v71) a VZT sú autoritatívne súbory; Revit sa neprehráva.
+   Recepty slúžia na audit a na prepočet úlohy nad novšou revíziou, nie na prehrávanie nad
+   exportom.
+2. **Pracovisko agenta = repo `Menezeris/OCB`** (dáta jednej stavby oddelene od kódu appky):
+   `CLAUDE.md` pre agenta, kontext z Claude projektu, skripty v29-v71, referencia IFC4X3_ADD2
+   (schéma z ifcopenshell + odkaz na dokumentáciu buildingSMART), český preklad IFC z ardit.cz
+   (snímka webu), recepty `recepty/<model>/vNNN-*.py`, zoznamy zmien `zmeny/<model>/vNNN.json`
+   a workflow. IFC súbory v gite nie sú.
+3. **Úloha beží v GitHub Actions OCB:** Claude Code s `CLAUDE_CODE_OAUTH_TOKEN` (Max
+   predplatné) + ifcopenshell; jedna úloha = jeden beh (`workflow_dispatch` s `task_id`).
+   Výstup úlohy je **recept** (deterministický skript nad `ifcopenshell.api`) + **zoznam zmien**
+   (GUID, čo, pred, po), nie len upravený súbor.
+4. **Pripravuje sa paralelne, zapisuje sa po jednom.** Zápis revízie je compare-and-swap v DB
+   (aktuálna revízia == základ úlohy). Ak medzitým vznikla novšia revízia, recept sa spustí
+   znova nad ňou; ak na nej zlyhá, Claude ho v tom istom behu prispôsobí (obmedzený počet
+   pokusov), inak úloha skončí stavom "konflikt". GitHub `concurrency` sa na frontu
+   nepoužije: drží jeden čakajúci beh a ďalšie čakajúce ruší.
+5. **Revízie:** nemenné skomprimované kópie `ifc/archive/<model>/vNNN.ifc.gz` + tabuľka
+   `model_revisions` (model, číslo, rodič, sha256, veľkosť, úloha, commit receptu v OCB,
+   autor, čas). Aktuálna revízia sa nahrá aj na doterajší kľúč `ifc/<model>.ifc`, takže
+   viewer, motor (cache URL + ETag, D-084) a ETL čítajú ako doteraz; URL modelu vo vieweri
+   dostane `?rev=` kvôli cache prehliadača. **Návrat** = nová revízia s obsahom staršej
+   (história sa neprepisuje). Free Supabase stačí: limit 50 MB na súbor, ASR v71 má 24 MB
+   (gzip 4,5 MB), bucket je obsadený na 45 MB z 1 GB, revízia ASR + VZT ~6-7 MB.
+6. **Zverejnenie hneď, bez IDS brány** (Samuel). Pred zverejnením len **technická poistka**:
+   súbor sa otvorí v ifcopenshell, schéma ostáva IFC4X3_ADD2, žiadny GlobalId `IfcRoot` sa
+   nestratil ani nezdvojil okrem tých, ktoré zoznam zmien deklaruje, a počty entít podľa
+   triedy sa zmenili len tam, kde to zoznam zmien hovorí. Neprejde -> nič sa nezverejní a
+   úloha vráti dôvod. Beh IDS (D-081) môže po zverejnení bežať ako záznam, nie ako brána.
+7. **Po zverejnení v tom istom behu:** re-ETL z checkoutu AIMviewer `main` (verejné repo)
+   - `etl.main` pre ASR, `--federate` pre VZT, `etl.derive spatial_reference` - nikdy
+   `--reset`; cache AIM sa obnoví do 60 s (ISR, D-030); broadcast "nová revízia" na
+   `LIVE_CHANNEL` (D-079) a viewer s `?live=` model načíta znova.
+8. **Vstup úlohy:** text z chatu + voliteľne výber z viewera (GUID, neskôr pohľad). Úloha sa
+   ukladá v tvare **BCF témy** (`model_tasks`: názov, popis, komponenty GUID, viewpoint, stav,
+   základná a výsledná revízia, komentáre), aby sa v ďalšej fáze dala zakladať aj z BCF
+   panela forku (`packages/bcf-api`, BCF API 2.1, Bearer token) cez malý BCF API server
+   v AIMvieweri. BCF je vstup a záznam, nie nosič zmeny.
+9. **MCP:** tools `model_change_request` (založí úlohu a spustí workflow v OCB) a
+   `model_change_status`, anotácia `readOnlyHint:false`, vystavené len pod samostatným tokenom
+   zápisu (`MCP_WRITE_TOKEN`, druhý konektor v claude.ai), ako predpokladal D-084. Vercel
+   dostane fine-grained GitHub token s právom Actions: write len na OCB.
+
+**Fáza 0 - overené 2026-10-18:**
+- **Token z predplatného v Actions OCB** (run `39136236745`): Claude Code 2.1.302 odpovedal
+  za 3 s; bez `--model` beží Sonnet 5.5. Výstup uvádza cenníkovú cenu 0,02 USD
+  (`costBasis: list`); či beh čerpá limity predplatného alebo mesačné API kredity Max (100 USD),
+  sa overí na spotrebe po prvých úlohách.
+- **Runner:** 2 vCPU, 7 GB RAM. ifcopenshell 0.9.0 nad ASR z bucketu (21 MB): otvorenie 0,5 s,
+  zápis 3,0 s, 186 MB; celý beh 25 s. Lokálne nad v71 (24 MB): otvorenie 0,7 s, zápis 1,6 s,
+  265 MB (~11-násobok súboru, pri 250 MB modeli by to bolo ~2,7 GB, stále pod limitom runnera).
+- **ETL `--dry-run` nad v71** prejde za 7 s: 985 objektov, 1795 hrán, 737 prvkov, platný SNIM
+  87,5 % prvkov so SNIM dátami. Report hlási kódy TSP mimo `scheme.py` (WC 46, VP 12, SC 3) a
+  kódy na nečakaných triedach (napr. `ST@IfcCovering` 92) - nie chyba, prejsť pred prvým loadom.
+- **Supabase** je na free pláne: `fileSizeLimit` 52428800 (Management API), obsadené 45 MB.
+- **Vercel** funkcia má 2 GB (Hobby) / 4 GB (Pro); motor `ifc_*` nad modelom > ~100 MB by
+  musel ísť mimo route (záloha D-084). Pri OCB to netreba.
+
+**Vedomé limity a riziká:**
+- **ETL je len upsert:** prvok, ktorý úprava zmaže, ostane v DB. Pred prvou úlohou, ktorá maže,
+  treba v ETL uzavrieť zánik (`valid_until` na GUID histórii a hranách prvkov, ktoré v zdroji
+  chýbajú; riadok `objects` ostáva, D-010). Fáza 1.
+- **Prvá revízia = prvý load v71 na prod** (bucket aj DB nesú pôvodný model).
+- **Repo OCB je verejné:** kontext, recepty a logy behov uvidí ktokoľvek; secrets nie.
+- **Prenos zo Supabase** na free pláne 5 GB/mesiac, jedno otvorenie viewera ASR + VZT ~34 MB.
+- **Neoverené:** limit súbežných behov predplatného, platnosť tokenu, `workflow_dispatch` z Vercelu.
+- **Bez IDS brány** chybnú obsahovú zmenu zachytí až človek; ochrana = revízie a návrat.
+
+**Zavrhnuté:**
+- *Zápis cez `@ifc-lite/mcp` v MCP route (D-084 bod 4):* `entity_set_attribute` vie len
+  Name/Description/ObjectType/Tag, klasifikáciu, PredefinedType, IfcZone ani geometriu nie;
+  doterajších 40+ úprav modelu je v ifcopenshell.
+- *Úpravu robí priamo chat cez MCP tools:* bez paralelizmu a Vercel funkcia nemá Python ani
+  ifcopenshell.
+- *Claude API / Managed Agents na serveri:* nová služba a platba za tokeny.
+- *Claude Code cloud sessions:* z MCP servera sa automaticky nespúšťajú.
+- *IFC v gite (LFS):* limit 100 MB na súbor a kvóta LFS; bucket už máme.
+- *Supabase Pro alebo Cloudflare R2 teraz:* OCB je ďaleko pod 50 MB; prehodnotiť, keď
+  skomprimovaná revízia prekročí ~40 MB.
+- *BCF ako nosič zmeny:* opisuje "čo a kde", zmenu vykonať nevie.
+- *Prepisovaný `ASR.ifc` bez archívu:* nedá sa vrátiť.
+
+**Fázy (F13):**
+- **0** ✅ token a ifcopenshell na runneri OCB.
+- **1 Revízie a záloha (AIMviewer):** migrácia `model_revisions` + `model_tasks`;
+  `etl/model_publish.py` (technická poistka, archív gz, compare-and-swap, nahranie na
+  aktuálny kľúč, broadcast); zánik prvkov v ETL; `?rev=` v `getIfcModels`; v71 a súčasný
+  VZT ako prvé revízie a load v71 na prod.
+- **2 Pracovisko agenta (OCB):** `CLAUDE.md`, kontext, schéma, preklad, skripty v29-v71,
+  workflow `uloha.yml`; jedna ručne zadaná úloha od textu po revíziu vo vieweri.
+- **3 Úlohy z chatu:** MCP tools zápisu pod `MCP_WRITE_TOKEN`, GitHub token na Verceli, stav
+  úlohy, viewer znova načíta model po správe "nová revízia" (bridge forku).
+- **4 BCF:** BCF API server nad `model_tasks`, úlohy z BCF panela forku, BCF export k revízii.
+- **Neskôr:** IDS brána (dodatok D-084), porovnanie revízií (`@ifc-lite/diff`, D-083 fáza 4).
+
+**Otvorené otázky:**
+- **Q1** odkaz na český preklad IFC na ardit.cz;
+- **Q2** export Claude projektu "úprava IFC" (inštrukcie, znalosti, skripty alebo popis v29-v71);
+- **Q3** je VZT v buckete aktuálny?
+- **Q4** OCB verejné alebo súkromné (súkromné = minúty Actions sa počítajú do limitu);
+- **Q5** predvolená vetva OCB (dnes `claude/epic-tesla-06p2q4`, lebo repo bolo prázdne);
+- **Q6** model pre úlohy (Sonnet 5.5 predvolený vs. Opus 5.5);
+- **Q7** číslovanie revízií: ASR pokračuje v72, VZT začína v1?
+
+**Závislosti a licencie:** bez novej závislosti v AIMvieweri (ifcopenshell LGPL-3.0 už v ETL).
+V OCB: ifcopenshell (LGPL-3.0), Claude Code CLI (`@anthropic-ai/claude-code`, licencia
+Anthropic, nástroj v CI, nie súčasť distribuovaného kódu). Žiadna AGPL.
+
+---
+
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-18** - **D-086 (úpravy IFC cez agentov, F13):** IFC je master; úlohy z chatu (neskôr z BCF panela) bežia v GitHub Actions repa `Menezeris/OCB` (Claude Code s tokenom predplatného + ifcopenshell), výstup = recept + zoznam zmien; zápis po jednom cez compare-and-swap; nemenné revízie `ifc/archive/<model>/vNNN.ifc.gz` + `model_revisions`, aktuálna na doterajšom kľúči; zverejnenie hneď s technickou poistkou, bez IDS brány; re-ETL a broadcast "nová revízia". Mení D-084 bod 4. Fáza 0 overená (token, ifcopenshell na runneri, ETL dry-run nad v71).
 - **2026-10-18** - **D-084 dodatok (IDS):** IDS kontrola zatiaľ v IDS paneli viewera forku, uložené behy ifctesteru ostávajú; `IDS_SOURCES` sa nenastavuje; zdroj IDS pre server je otvorené rozhodnutie pre Samuela, najneskôr pred fázou 3.
 - **2026-10-17** - **D-084 dodatok (fáza 1) + D-083 dodatok (fáza 1 implementovaná):** `ifc_*` tools motora prepojené na AIM cez GUID (za `ENGINE_ENABLED`), tools pohľadu `set_section`/`set_camera`/`set_view_mode` + `open_drawing.in_viewer`, `global_ids` v 3D tools, spoločný formát ops `lib/viewer-ops.ts`; fork: bridge `SET_SECTION`/`SET_CAMERA`/`SET_VIEW_MODE`. Brána 2 na Verceli prešla (studené 7,4 s, teplé < 0,6 s, ~715 MB), motor ostáva v procese.
 - **2026-10-17** - **D-084 (IFC motor `@ifc-lite/mcp` ako knižnica v konektore) + dodatok D-083:** jeden konektor s tromi rodinami tools (AIM nad DB, `ifc_*` motor nad IFC súbormi, viewer cez bridge), výsledky motora prepojené na AIM cez GUID; bezstavový motor (nový backend na request); zápis ako propose -> commit s IDS bránou a nemennými revíziami (D-086). Pohľad ostáva bez súradníc, `scene.actions` až vo fáze 2. Fáza 0 meria Vercel a zhodu IDS motorov.
