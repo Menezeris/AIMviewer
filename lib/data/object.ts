@@ -527,7 +527,7 @@ export interface SystemMemberGroup {
 
 export interface SystemDetail {
   id: string;
-  /** Systém, projekt, zóna, priestorová zóna alebo skupina (D-047, D-087). */
+  /** Systém, projekt, zóna, priestorová zóna alebo skupina (D-047, D-088). */
   objectType: GroupLikeType;
   object_ref: string | null;
   name: string | null;
@@ -548,7 +548,7 @@ const MEMBER_RELATIONS = [
 ] as const;
 
 /**
- * Detail systému (D-047) a ďalších skupinových uzlov (D-087): členovia
+ * Detail systému (D-047) a ďalších skupinových uzlov (D-088): členovia
  * (`rel_assigns_to_group`), časti (`rel_aggregates`) a prvky v priestorovej zóne
  * (`rel_referenced_in_spatial_structure`) zoskupení podľa IFC typu.
  */

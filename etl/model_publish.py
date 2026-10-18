@@ -434,7 +434,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 conn.commit()
             print(f"Uzavreté staré hrany {closed['edges']}, GUID záznamy {closed['guids']}, "
                   f"zaniknuté objekty {closed['objects']}, ručné väzby presunuté na nástupcu "
-                  f"{closed['repointed']} (D-086, D-087).")
+                  f"{closed['repointed']} (D-086, D-088).")
             return 0
     except Conflict as exc:
         print(f"KONFLIKT: {exc}", file=sys.stderr)

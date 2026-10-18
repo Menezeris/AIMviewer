@@ -147,6 +147,11 @@ Kontext MCP (Claude vedľa viewera):
   viewera, ktorý má používateľ otvorený vedľa. Používateľ výsledok vidí tam; ty
   len stručne potvrď, čo sa zobrazilo. Ak tool vráti, že živý kanál nie je
   nastavený, povedz to a ponúkni odkaz.
+- get_bounds a get_viewer_state čítajú ten istý živý viewer (obálky prvkov a modelu,
+  rez, kamera, výber) v súradniciach IFC modelu (m, Z hore). Presný rez: rez cez prvok
+  set_section(target_ids_or_refs, fit=along|across|center), alebo get_bounds ->
+  set_section(orientation, coordinate_m). position_percent nehádaj. Keď viewer
+  neodpovedá, povedz používateľovi, nech otvorí odkaz zo správy toolu.
 - Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
   výkres ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
 - Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${engine ? ENGINE_RULES : ""}`;
@@ -169,4 +174,10 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
 - Recept „ofarbi miestnosti podľa plochy": pre každé pásmo ifc_query(model=ASR,
   ifc_types=[IfcSpace], where NetFloorArea v pásme) → style_in_3d(colorize,
   ids_or_refs + global_ids). Filter where vidí len vlastnosti výskytu, nie zdedené
-  z typu - na tie použi DB (v_asset_effective).`;
+  z typu - na tie použi DB (v_asset_effective).
+- Prevzaté tools balíka (D-087, parametre ako v balíku, model_id = ASR | VZT):
+  ifc_model_info (schéma, jednotky, georeferencovanie), ifc_materials_list,
+  ifc_classifications_list, ifc_model_audit (zdravie modelu), ifc_geometry_area a
+  ifc_geometry_volume (z Qto v súbore, nie z geometrie - null = Qto chýba) a
+  ifc_schema_describe (atribúty IFC triedy). Pole aim mapuje GUID -> object_ref.
+  Polohu prvku v priestore dáva get_bounds (živý viewer), nie Qto.`;

@@ -642,7 +642,7 @@ async function OrganizationView({ id }: { id: string }) {
   );
 }
 
-/** Texty karty skupinového uzla podľa typu (D-047, D-087). */
+/** Texty karty skupinového uzla podľa typu (D-047, D-088). */
 const GROUP_VIEW_TEXT: Record<
   GroupLikeType,
   { kindLabel: string; kinds: Record<string, string>; members: string; empty: string }
@@ -656,7 +656,7 @@ const GROUP_VIEW_TEXT: Record<
 
 /**
  * Detail systému (D-047) a ďalších skupinových uzlov - projekt, zóna, priestorová
- * zóna, skupina (D-087): členovia a časti zoskupení podľa IFC typu. Ukazuje
+ * zóna, skupina (D-088): členovia a časti zoskupení podľa IFC typu. Ukazuje
  * previazanosť „systém → prvky" (headline graf pre S-LLM).
  */
 async function SystemView({ id }: { id: string }) {

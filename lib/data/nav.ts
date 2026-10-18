@@ -34,7 +34,7 @@ export const fetchSidebarNav = unstable_cache(async (): Promise<SidebarNavData> 
     .from("objects")
     .select("id, object_type, object_ref, name")
     .in("object_type", NAV_TYPES as unknown as string[])
-    .is("valid_until", null); // zaniknuté objekty (D-087)
+    .is("valid_until", null); // zaniknuté objekty (D-088)
   if (error) throw new Error(error.message);
 
   const groups: SidebarNavData = {

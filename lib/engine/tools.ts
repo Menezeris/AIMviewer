@@ -2,6 +2,7 @@ import { getIfcModels } from "../data/ifc-models";
 
 import { cacheSnapshot, getStore, type EngineModelSource } from "./cache";
 import { idsSources, loadIds } from "./ids-sources";
+import { execPassthroughTool, isPassthroughTool } from "./passthrough";
 import { joinToAim, type GuidLookup } from "./join";
 import { openEngineSession, type EngineModel, type EngineSession, type EngineToolResult } from "./session";
 import { resolveStorey } from "./storey";
@@ -408,6 +409,7 @@ export async function execEngineTool(
         content = await ifcIdsValidate(input, deps);
         break;
       default:
+        if (isPassthroughTool(name)) return await execPassthroughTool(name, input, deps);
         return { content: `Neznámy tool motora: ${name}`, isError: true };
     }
     return { content, isError: false };

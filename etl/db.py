@@ -64,7 +64,7 @@ def load_model(
     dostanú zdroj tohto modelu (`etl:ASR`, `IFC import:ASR`) a čo tento beh už
     nevydal, sa uzavrie (`valid_until = now()`) — zmazaný prvok, presunutý prvok,
     zmenený typ či klasifikácia. Vzor `etl.derive` (D-080). Objekt bez aktívneho GUID
-    dostane `valid_until` (D-087); riadok ostáva (D-010) a pri návrate do modelu ožije.
+    dostane `valid_until` (D-088); riadok ostáva (D-010) a pri návrate do modelu ožije.
     Vráti počty uzavretých záznamov.
     """
     closed = {"edges": 0, "guids": 0, "objects": 0, "repointed": 0}
@@ -128,7 +128,7 @@ def emitted_ids(model: StagedModel) -> tuple[list[str], list[str]]:
     return edges, guids
 
 
-# Objekt zanikol (D-087): mal GUID zo zdroja `source`, ale už nemá žiadny aktívny GUID.
+# Objekt zanikol (D-088): mal GUID zo zdroja `source`, ale už nemá žiadny aktívny GUID.
 _RETIRE_OBJECTS = (
     "update objects o set valid_until = now() "
     "where o.valid_until is null and o.ifc_guid is not null "
@@ -157,7 +157,7 @@ def close_stale(cur, model: StagedModel, scope: str) -> dict[str, int]:
 
 
 # Ručné väzby (výkresy E4, dokumenty E3, fotky D-073) na zaniknutý objekt prejdú na
-# platný objekt s rovnakým GUID: premenovaný object_ref je ten istý prvok (D-087).
+# platný objekt s rovnakým GUID: premenovaný object_ref je ten istý prvok (D-088).
 # Väzby ETL a derive si model vydá sám, tie sa nepresúvajú.
 _REPOINT = """
     update relationships r set {end}_id = s.new_id
@@ -254,7 +254,7 @@ def _load_objects(cur, model: StagedModel) -> dict[str, str]:
               predefined_type = excluded.predefined_type,
               user_defined_type = excluded.user_defined_type,
               properties = excluded.properties, updated_at = now(),
-              valid_until = null    -- objekt je znova v modeli (D-087)
+              valid_until = null    -- objekt je znova v modeli (D-088)
             returning id
             """,
             (

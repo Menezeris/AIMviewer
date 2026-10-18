@@ -67,7 +67,7 @@ create table objects (
   object_type       text not null,     -- 'site','building','floor','space','asset','asset_type',
                                         -- 'document','person','organization','system' (D-047),
                                         -- 'capture','capture_media' (D-073),
-                                        -- 'project','zone','spatial_zone','group' (D-087)
+                                        -- 'project','zone','spatial_zone','group' (D-088)
   object_ref        text unique,       -- ľudsky čitateľná identita / QR (D-010/2)
   name              text,              -- IFC Name (atribút)
   ifc_guid          text,              -- IFC GlobalId — len atribút, nullable (D-010/3)
@@ -89,7 +89,7 @@ predefined_type, user_defined_type, properties)` — normalizovaný (unaccent + 
 flattening identity a všetkých psetov (rezervované `_kľúče` vynechané) pre fulltext.
 Indexy a RPC → §2.9.
 
-**Dodatok (D-087, migrácia 20261018130000):** `objects.valid_until timestamptz` = kedy objekt
+**Dodatok (D-088, migrácia 20261018130000):** `objects.valid_until timestamptz` = kedy objekt
 zanikol (už ho nevydáva žiadny model federácie; NULL = platný). Riadok ostáva (D-010). Views
 `v_actors`, `v_asset_classifications`, `v_asset_effective`, `v_floors`, `v_property_dictionary`,
 `v_spaces` a RPC `search_everything`, `aggregate_objects`, `search_documents` filtrujú
@@ -467,7 +467,7 @@ pod advisory lockom modelu (compare-and-swap voči základu úlohy). `model_task
 `etl:ASR` a GUID históriu so zdrojom `IFC import:ASR`; čo beh nevydal, uzavrie
 (`valid_until`). Staré zdroje `etl` / `IFC import` (pred D-086) uzavrie jednorazovo
 `model_publish close-legacy` po prvom loade všetkých modelov. Objekt bez aktívneho GUID
-dostane `objects.valid_until` (D-087), riadok ostáva (D-010).
+dostane `objects.valid_until` (D-088), riadok ostáva (D-010).
 
 ## 4. Konvencia `properties` (D-022)
 

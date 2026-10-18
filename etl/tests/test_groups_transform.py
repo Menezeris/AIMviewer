@@ -1,4 +1,4 @@
-"""Projekt, zóny a skupiny ako uzly AIM (D-087) nad malým IFC súborom.
+"""Projekt, zóny a skupiny ako uzly AIM (D-088) nad malým IFC súborom.
 
 ASR v72 nesie IfcProject, IfcZone (nájomné jednotky, šachty), IfcSpatialZone
 (požiarne úseky, energetické zóny) a IfcGroup (skladby). ETL ich emituje ako

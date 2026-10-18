@@ -221,7 +221,7 @@ async function fetchAllCapturePointsImpl(): Promise<CapturePointWire[]> {
     .from("objects")
     .select("id")
     .eq("object_type", "capture")
-    .is("valid_until", null); // odstránená fotka (D-087) sa nezobrazí
+    .is("valid_until", null); // odstránená fotka (D-088) sa nezobrazí
   if (error) throw new Error(error.message);
   const captureIds = (caps ?? []).map((c) => c.id as string);
   return hydrateCapturePoints(captureIds);

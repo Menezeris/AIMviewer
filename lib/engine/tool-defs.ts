@@ -1,6 +1,8 @@
 import { getIfcModels } from "../data/ifc-models";
 import type { ToolDefinition } from "../llm/provider";
 
+import { passthroughDefinitions } from "./passthrough-defs";
+
 /**
  * Definície `ifc_*` tools IFC motora (D-084) - bez závislostí motora, aby ich
  * MCP route mohla importovať staticky; vykonanie je v `./tools` (lenivo).
@@ -126,6 +128,7 @@ export function engineToolDefinitions(): ToolDefinition[] {
         required: ["model", "ids"],
       },
     },
+    ...passthroughDefinitions(models),
   ];
 }
 

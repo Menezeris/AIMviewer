@@ -797,7 +797,7 @@ export class AskToolRuntime {
     q: T,
     input: Record<string, unknown>
   ): T {
-    // Zaniknuté objekty (už ich nevydáva žiadny model, D-087) AI nevidí.
+    // Zaniknuté objekty (už ich nevydáva žiadny model, D-088) AI nevidí.
     q = q.is("valid_until", null);
     const query = sanitizeQuery(input.query);
     if (query) {

@@ -72,7 +72,7 @@ def test_close_stale_closes_only_this_model() -> None:
     assert edge_params[0] == "etl:ASR"
     assert guid_sql.startswith("update ifc_guid_history set valid_until = now()")
     assert guid_params == ("IFC import:ASR", [ids.guid_history_id("1.01", "G1")])
-    # objekt bez aktívneho GUID zo zdroja modelu zanikne (D-087)
+    # objekt bez aktívneho GUID zo zdroja modelu zanikne (D-088)
     assert obj_sql.startswith("update objects o set valid_until = now()")
     assert "not exists (select 1 from ifc_guid_history h where h.object_id = o.id and h.valid_until is null)" in obj_sql
     assert obj_params == ("IFC import:ASR",)

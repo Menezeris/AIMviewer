@@ -84,9 +84,9 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
 - Všetky uzly sú riadky v `objects`, rozlíšené `object_type`:
   site, building, floor, space, asset, asset_type, document, person, organization,
   system (IfcDistributionSystem, D-047/D-049), capture, capture_media (Reality Capture,
-  D-073), project, zone, spatial_zone, group (IfcProject/IfcZone/IfcSpatialZone/IfcGroup, D-087);
+  D-073), project, zone, spatial_zone, group (IfcProject/IfcZone/IfcSpatialZone/IfcGroup, D-088);
   ďalšie IFC entity (procesy/tasky…) sú **aditívne hodnoty** (D-051)
-- **Zaniknutý objekt** (`objects.valid_until` nie je NULL, D-087) appka ani AI nevidia: každý
+- **Zaniknutý objekt** (`objects.valid_until` nie je NULL, D-088) appka ani AI nevidia: každý
   nový zoznam, počet alebo vyhľadávanie nad `objects` filtruje `valid_until is null`
 - `object_type` validuje ETL/app (NIE CHECK — pridanie typu je aditívne)
 - **Cieľ: pokryť celú IFC ontológiu** (entity aj vzťahy) — entity už dnes generické cez
@@ -210,6 +210,12 @@ Geometria = **ephemerálna v prehliadači** (IFClite WASM, klient-side, IFC súb
 (`ifc_guid_history`, D-010). Federácia disciplinárnych modelov (ARCH + VZT) do jednej scény —
 identita naprieč modelmi drží IFC GUID (expressId sa medzi súbormi prekrýva), podlažie sa
 normalizuje na spoločný label (`1NP_VZT`→`1NP`, D-049).
+
+**Nová funkcia viewera (D-087):** najprv tool z `@ifc-lite/mcp` 1:1, pohľad len ako adaptér v
+`apps/viewer/src/aim/` forku, vlastné len kde originál nič nemá. Fork PR rob podľa skillu
+`.claude/skills/aim-feature/SKILL.md` vo forku (lokálne kontroly, meranie balíka, mutačné
+dôkazy a štítok v prvom pushi), aby CI prešlo na prvý raz. Zvýšenie bundle stropu do 2 kB
+vstupu je predschválené (`docs/FORK_MAINTENANCE.md` vo forku). Poradie zlúčenia: fork, potom AIMviewer.
 
 ## ETL — spustenie
 Python 3.9+ (`py -3.9`), `PYTHONUTF8=1` na Windows (cp1250 konzola). Vždy z koreňa repa:

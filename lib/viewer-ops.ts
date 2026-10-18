@@ -9,6 +9,8 @@
  *
  * Množinové varianty `<op>_sel:<arg>:<selektor>` nesú selektor `t=IfcA.IfcB~m=Model`.
  * Pohľad (D-083): `section:<y|x|z>[~h=<m>][~p=<pct>][~f=1]:<storeyGuid>`,
+ * rez cez prvky (D-085) `section:<auto|y|x|z>~fit=<along|across|center>:<guid.guid...>`
+ * a na súradnici IFC sveta `section:<y|x|z>~c=<m>::`,
  * `section_clear::`, `camera:<preset>[~proj=o|p]:<guid.guid...>`,
  * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>:<documentId>`.
  */
@@ -20,6 +22,13 @@ export interface OpsSelector {
 
 export const SECTION_AXES = ["y", "x", "z"] as const;
 export type SectionAxis = (typeof SECTION_AXES)[number];
+/** Rez cez prvok (D-085): pozdĺž / naprieč dlhšej vodorovnej strany, alebo stredom na osi. */
+export const SECTION_FITS = ["along", "across", "center"] as const;
+export type SectionFit = (typeof SECTION_FITS)[number];
+/** Najviac cieľových prvkov rezu - rovnaký limit ako most forku. */
+export const MAX_SECTION_TARGETS = 100;
+/** Rozsah súradnice roviny v IFC svete (m) - rovnaký ako most forku. */
+export const SECTION_COORDINATE_LIMIT = 1e7;
 export const CAMERA_PRESETS = ["top", "bottom", "front", "back", "left", "right", "iso", "fit_all"] as const;
 export type CameraPreset = (typeof CAMERA_PRESETS)[number];
 export const VIEW_MODES = ["3d", "2d", "split"] as const;
@@ -37,7 +46,18 @@ export type ViewerOp =
   | { op: "select"; guid: string }
   | { op: "show_all" }
   | { op: "reset_colors" }
-  | { op: "section"; axis: SectionAxis; storeyGuid?: string; offsetM?: number; position?: number; flipped?: boolean }
+  | {
+      op: "section";
+      /** Chýba len pri `fit` along/across - os volí viewer podľa obálky prvkov. */
+      axis?: SectionAxis;
+      storeyGuid?: string;
+      offsetM?: number;
+      position?: number;
+      guids?: string[];
+      fit?: SectionFit;
+      coordinate?: number;
+      flipped?: boolean;
+    }
   | { op: "section_clear" }
   | { op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[] }
   | { op: "view"; mode: ViewMode; storeyGuid?: string }
@@ -99,7 +119,24 @@ export function parseOps(raw: string): ViewerOp[] {
       out.push({ op });
     } else if (op === "section") {
       const [axis, kv] = parseArg(arg);
+      const flip = kv.f === "1" ? { flipped: true } : {};
+      if (kv.fit !== undefined) {
+        // Rez cez prvky: GUIDy sú ciele, nie podlažie.
+        const fit = kv.fit as SectionFit;
+        if (!(SECTION_FITS as readonly string[]).includes(fit)) continue;
+        if (guids.length === 0 || guids.length > MAX_SECTION_TARGETS) continue;
+        const auto = fit === "along" || fit === "across";
+        if (auto ? axis !== "auto" : !(SECTION_AXES as readonly string[]).includes(axis)) continue;
+        out.push({ op, ...(auto ? {} : { axis: axis as SectionAxis }), guids, fit, ...flip });
+        continue;
+      }
       if (!(SECTION_AXES as readonly string[]).includes(axis)) continue;
+      const coordinate = finite(kv.c, -SECTION_COORDINATE_LIMIT, SECTION_COORDINATE_LIMIT);
+      if (kv.c !== undefined) {
+        if (coordinate === undefined || guids.length > 0) continue;
+        out.push({ op, axis: axis as SectionAxis, coordinate, ...flip });
+        continue;
+      }
       const offsetM = finite(kv.h, SECTION_OFFSET_RANGE.min, SECTION_OFFSET_RANGE.max);
       const position = finite(kv.p, 0, 100);
       const storeyGuid = guids[0];
@@ -179,13 +216,28 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
 
 // ── Buildery (server) ────────────────────────────────────────────────────────
 
-export function sectionOp(p: { storeyGuid?: string; offsetM?: number; axis?: SectionAxis; position?: number; flipped?: boolean }): string {
-  const axis = p.storeyGuid ? "y" : (p.axis ?? "y");
+export function sectionOp(p: {
+  storeyGuid?: string;
+  offsetM?: number;
+  axis?: SectionAxis;
+  position?: number;
+  guids?: string[];
+  fit?: SectionFit;
+  coordinate?: number;
+  flipped?: boolean;
+}): string {
   const kv: string[] = [];
-  if (p.storeyGuid) kv.push(`h=${p.offsetM ?? 1.2}`);
+  let axis: string = p.storeyGuid ? "y" : (p.axis ?? "y");
+  let tail = p.storeyGuid ?? "";
+  if (p.fit) {
+    if (p.fit !== "center") axis = "auto";
+    kv.push(`fit=${p.fit}`);
+    tail = (p.guids ?? []).join(".");
+  } else if (p.storeyGuid) kv.push(`h=${p.offsetM ?? 1.2}`);
+  else if (p.coordinate !== undefined) kv.push(`c=${p.coordinate}`);
   else if (p.position !== undefined) kv.push(`p=${p.position}`);
   if (p.flipped) kv.push("f=1");
-  return `section:${[axis, ...kv].join("~")}:${p.storeyGuid ?? ""}`;
+  return `section:${[axis, ...kv].join("~")}:${tail}`;
 }
 
 export const SECTION_CLEAR_OP = "section_clear::";

@@ -74,19 +74,19 @@ _SPECS: list[RelType] = [
         ifc_entity="IfcRelAggregates",
         relating_attr="RelatingObject",       # = celok (parent) = náš to_id
         relating_end="to",
-        # spatial child; site → project, časti priestorovej zóny a podskupiny (D-087)
+        # spatial child; site → project, časti priestorovej zóny a podskupiny (D-088)
         from_object_types=["site", "building", "floor", "space", "spatial_zone", "group"],
         to_object_types=["project", "site", "building", "floor", "spatial_zone", "group"],
         unique_active_from=True,
         description="Dekompozícia Project→Site→Building→Floor→Space (D-013), časti "
-                    "priestorovej zóny a skupiny (D-087).",
+                    "priestorovej zóny a skupiny (D-088).",
     ),
     RelType(
         rel_type="rel_contained_in_spatial_structure",
         ifc_entity="IfcRelContainedInSpatialStructure",
         relating_attr="RelatingStructure",    # = štruktúra (space/floor) = náš to_id
         relating_end="to",
-        from_object_types=["asset", "spatial_zone"],   # fyzický prvok, priestorová zóna (D-087)
+        from_object_types=["asset", "spatial_zone"],   # fyzický prvok, priestorová zóna (D-088)
         to_object_types=["floor", "space"],    # priestor/podlažie
         unique_active_from=True,
         description="Fyzický prvok (asset) alebo priestorová zóna v priestorovej štruktúre.",
@@ -100,7 +100,7 @@ _SPECS: list[RelType] = [
         to_object_types=["space", "floor", "building", "site", "spatial_zone"],
         description="Prvok sa nachádza (aj) v priestorovej štruktúre — neexkluzívne; "
                     "odvodené geometriou naprieč federáciou (D-080) alebo zo súboru, "
-                    "napr. priestor v priestorovej zóne (D-087).",
+                    "napr. priestor v priestorovej zóne (D-088).",
     ),
     RelType(
         rel_type="rel_defines_by_type",
@@ -148,8 +148,8 @@ _SPECS: list[RelType] = [
         relating_attr="RelatingGroup",         # = group/system = náš to_id
         relating_end="to",
         from_object_types=["asset", "space", "zone", "spatial_zone"],   # člen
-        to_object_types=["system", "zone", "group"],   # IfcDistributionSystem (D-047), IfcZone, IfcGroup (D-087)
-        description="Členstvo v systéme (D-047), zóne alebo skupine (D-087).",
+        to_object_types=["system", "zone", "group"],   # IfcDistributionSystem (D-047), IfcZone, IfcGroup (D-088)
+        description="Členstvo v systéme (D-047), zóne alebo skupine (D-088).",
     ),
     RelType(
         rel_type="rel_member_of",

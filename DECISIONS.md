@@ -3273,6 +3273,118 @@ Automation"; po meraní bypass zrušený a preview `MCP_TOKEN` zmazaný. Nástro
   stojí na IDS bráne na serveri. Do vtedy je otázka 2 plánu F12 (zdroj IDS) odložená, nie
   zodpovedaná.
 
+### D-085 - Spätný kanál viewer -> Claude: obálky, stav pohľadu, rez cez prvok
+**Status:** rozhodnuté (2026-10-18, Samuel: "áno začni"). **Realizuje fázu 2 D-083 (bez
+snímky obrazovky); rozširuje D-079.**
+
+**Kontext:** Claude dostal úlohu "pozdĺžny rez schodiskom" a rez nevedel položiť: `set_section`
+poznal len percentá rozmeru modelu a viewer nič nehlásil, takže Claude hádal naslepo. Sám
+pomenoval, čo potrebuje: obálku prvku v súradniciach modelu, rozsah modelu a jeho osi, stav
+rezu a kamery a rez na presnej súradnici alebo cez zvolený prvok. Balík `@ifc-lite/mcp` to
+nevyrieši: `geometry_bbox` počíta rozmery z množstiev (Qto), nie polohu, a `viewer_set_section`
+berie len os a číslo; jeho `viewer_*` ovládajú vlastný lokálny viewer (D-083, D-084). Polohu
+prvkov pozná len náš viewer, ktorý má načítanú geometriu.
+
+**Rozhodnutie:**
+1. **Kanál = ten istý živý kanál D-079.** Server sa pripojí na `LIVE_CHANNEL` (Supabase
+   Realtime, `service_role`), pošle udalosť `query` {id, query, guids?} a čaká na `reply` s tým
+   istým id (`lib/live/query.ts`, timeout 8 s). Viewer s `?live=` ju odovzdá forku ako bridge
+   správu `QUERY` a odpoveď `QUERY_RESULT` vráti do kanála (`components/live-channel.tsx`,
+   `lib/live/viewer-query-bus.ts`, `components/ifc-viewer.tsx`). Na rozdiel od príkazov to nie je
+   fire-and-forget: bez otvoreného viewera príde timeout a tool povie, čo má používateľ otvoriť.
+2. **Tools (len MCP):** `get_bounds` (obálky prvkov a celého modelu, osi, ktoré `orientation`
+   ktorú os reže) a `get_viewer_state` (režim a podlažie, rez, kamera, výber, počty skrytých a
+   izolovaných). GUIDy výsledku dostanú `object_ref` z AIM.
+3. **Rez cez prvok a na súradnici:** `set_section` s cieľom (`target_ids_or_refs` / `global_ids`)
+   + `fit` along / across (zvislo pozdĺž / naprieč dlhšej vodorovnej strany, os volí viewer) /
+   center (stredom na zadanej `orientation`), alebo `coordinate_m` (súradnica na osi orientation).
+   Wire formát ops: `section:auto~fit=along:<guid...>`, `section:y~c=<m>:`.
+4. **Jedna pravda o súradniciach je vo vieweri (ako D-083).** Odpovede aj `coordinate_m` sú IFC
+   svet (m, Z hore): fork prevádza render rámec cez `@ifc-lite/geometry/world-frame` a
+   `bcfWorldOffset` (to isté pravidlo ako BCF a meranie), obálky berie zo scény renderera (tie
+   isté ako rámovanie kamery, aj inštancie; zostava bez vlastnej geometrie, napr. IfcStair ako
+   kontajner, cez svoje časti) a rez vykoná cez `showSectionCut`. Žiadny upstream súbor forku
+   sa nemení, všetko je v `apps/viewer/src/aim/`.
+
+**Zavrhnuté:**
+- *Obálky z ETL do DB:* geometria je ephemerálny kontajner viazaný cez GUID (D-044) a render
+  rámec sa posúva s georeferencovaním (D-050); uložená obálka by bola druhý nositeľ.
+- *Obálky na serveri z IFC (geometria v Node):* pamäť a čas na každý request, a iné súradnice
+  než tie, v ktorých reže viewer.
+- *`geometry_bbox` z balíka:* rozmery z Qto, nie poloha v modeli.
+- *Samostatný kanál (WebSocket/SSE zo servera):* Realtime už máme, druhý kanál by zdvojil
+  autorizáciu aj párovanie.
+
+**Vedomé limity:**
+- Kanál je spoločný (`LIVE_CHANNEL`): pri viacerých otvorených vieweroch platí prvá odpoveď.
+  Párovanie per relácia ostáva otvorené (otázka z D-084).
+- Kanál je verejný: kto pozná jeho názov, vidí otázky aj odpovede (obálky, stav pohľadu).
+  Názov má byť netriviálny (README); dnešný `aim-viewer` treba zmeniť pred zdieľaním mimo tímu.
+- Rez cez prvok z odkazu príde s `MODELS_LOADED`, keď geometria ešte prúdi do scény; most ho
+  skúša znova každých 500 ms (najviac 30 s), novší rez opakovanie zruší.
+- Snímka pohľadu (`get_viewer_snapshot`, use-case 12 z D-083) nie je súčasťou, obrázok cez
+  Realtime by narazil na limit veľkosti správy.
+
+**Overené (2026-10-18):** fork `view-protocol.test.ts` 9/9 a 6 chirurgických mutácií (všetky
+OBSERVED, `docs/architecture/evidence/aim-d085-view-queries/` vo forku); AIM vitest 99/99. Naživo:
+lokálny fork + AIM dev server + falošný Realtime server s protokolom realtime-js 2 (vrátane
+binárneho broadcastu): MCP `get_bounds` na točité schodisko `AC20-FZK-Haus.ifc` -> Realtime ->
+host -> most -> späť za 227 ms (x 6.718..8.315, y 2.243..3.952, z 0..3.56); `set_section` fit
+along z odkazu reže na X 7.517 m (stred schodiska, rovnakú hodnotu ukazuje nástroj Section
+viewera); `coordinate_m` 1.2 vodorovne sa vráti v `get_viewer_state` ako 1.2. Proti
+skutočnému Supabase Realtime a v claude.ai overené ešte nie je.
+
+### D-087 - Pravidlo pre nové nástroje: najprv originál, adaptér v `aim/`, vlastné len tam, kde originál nič nemá
+**Status:** rozhodnuté (2026-10-18, Samuel). **Rozširuje D-071, D-083, D-084.** (D-086 je
+rezervované pre zápis, D-084.)
+
+**Kontext:** obava, že namiesto nástrojov, ktoré už niekto odskúšal, začneme písať vlastné a pri
+synchronizácii forku s originálom budú kolízie. Kolízie pri synchronizácii vznikajú len v
+upstream súboroch označených `AIM-FORK` (`ifc-lite/docs/FORK_MAINTENANCE.md`), nie v nových
+nástrojoch: tools motora sú v AIMviewer nad npm balíkom a most pohľadu je v
+`apps/viewer/src/aim/`, kde originál nemá žiadny súbor.
+
+**Rozhodnutie (poradie, v ktorom sa nový nástroj hľadá):**
+1. **Najprv originál.** Ak tool v `@ifc-lite/mcp` existuje a funguje na serveri, preberie sa
+   takmer 1:1: názov s prefixom `ifc_`, rovnaký opis a parametre, žiadna vlastná logika; jediný
+   doplnok je prepojenie GUIDov na AIM. Opis a schému stráži test proti registru balíka
+   (`lib/engine/passthrough.test.ts`), takže zmena pri povýšení verzie padne v teste.
+2. **Pohľad vo vieweri len ako tenký adaptér v `apps/viewer/src/aim/`** nad funkciami viewera
+   originálu (store, renderer, SDK). Do upstream súborov forku nič nové; keď sa to nedá,
+   rozhodnutie sa zapíše (sentinel `AIM-FORK` a riadok vo `FORK_MAINTENANCE.md`).
+3. **Vlastný nástroj len tam, kde originál nič nemá**, a s parametrami v štýle originálu
+   (napr. `axis` / `position` + nový `target`). Takú vec možno ponúknuť originálu ako PR;
+   keď ju prijme, náš kód sa zmaže.
+4. **Neduplikovať DB tools:** tool balíka, ktorý odpovedá na to isté ako tool nad grafom AIM
+   (napr. `spatial_hierarchy` vs. `get_spatial_path`), sa nepreberá, lebo by dal dve odpovede na
+   tú istú otázku.
+
+**Prvé uplatnenie (2026-10-18):** prevzaté 1:1 `ifc_model_info`, `ifc_materials_list`,
+`ifc_classifications_list`, `ifc_model_audit`, `ifc_geometry_area`, `ifc_geometry_volume`,
+`ifc_schema_describe` (len čítanie, jeden model, bez súborov a siete; naživo nad ASR a VZT 0,3 až
+1,4 s). Vlastné podľa bodu 3: `get_bounds`, `get_viewer_state` a rez cez prvok (D-085), lebo
+originál polohu prvkov ani rez cez prvok nemá. Zatiaľ neprevzaté: `clash_check` (pamäť na
+Verceli, kolízie ASR x VZT potrebujú zlúčenie modelov, fáza 4), `geometry_bbox` (Qto, nie
+poloha), `spatial_hierarchy` a `containment_chain` (bod 4), `ids_*` okrem validácie (zdroj IDS
+je otvorený, D-084), exporty (úložisko pre súbory), zápis (D-086), BCF a toky (stav medzi
+volaniami), `bsdd_*` (externé API).
+
+**Dodatok D-087 (2026-10-18) - nová funkcia viewera nemá stáť na CI forku.** Prvý fork PR
+podľa tohto pravidla (Menezeris/ifc-lite#58) stál hodiny na kontrole veľkosti vstupného
+balíka viewera (perf ratchet `viewer-entry-js-bytes`, tolerancia 0,1 %): `main` forku bol
+už 2 365 B nad stropom a funkcia aj po lenivom načítaní potrebuje +968 B.
+- **Rozhodnutie (Samuel):** strop zvýšený na 3 151 632 B a odteraz je zvýšenie
+  **predschválené**, keď je kód v `apps/viewer/src/aim/`, je najprv lenivý (dynamický
+  `import()`, lenivý modul neimportuje nič, čo importuje vstup) a zvýšenie je najviac 2 kB
+  vstupu a 10 kB eager JS nad `main`, ako vlastný commit s nameranými číslami
+  (`ifc-lite/docs/FORK_MAINTENANCE.md`, "Pre-approved raises for new AIM features").
+  Väčšie zvýšenie sa pýta.
+- **Postup:** skill `ifc-lite/.claude/skills/aim-feature/SKILL.md` - čo spustiť pred prvým
+  pushom (typy, testy, kontroly forku, meranie balíka voči `main` rovnakým skriptom ako CI,
+  mutačné dôkazy a štítok `revert-oracle-exempt` už pri otvorení PR, živé overenie vo
+  vloženom vieweri) a čo počas CI nerobiť (neupravovať PR, `edited` prehrá starý verdikt).
+  Cieľ: CI forku zelené na prvý beh.
+
 ---
 
 ### D-086 - Úpravy IFC modelu cez agentov: revízie, úlohy z chatu, GitHub Actions (F13)
@@ -3449,16 +3561,16 @@ Anthropic, nástroj v CI, nie súčasť distribuovaného kódu). Žiadna AGPL.
 
 **Dodatok D-086 (2026-10-18) - odpovede Samuela:** Q2 balík `pipeline/` (skripty v29-v72,
 kontroly, `tools/ardit.py` s cache `ifc.ardit.cz` = Q1); Q4 a Q10 OCB je súkromné; Q7 číslovanie
-podľa návrhu (ASR v0 = export 30. 6., ASR v72, VZT v1); Q8 a Q9 riešené v D-087. Najnovší súbor
+podľa návrhu (ASR v0 = export 30. 6., ASR v72, VZT v1); Q8 a Q9 riešené v D-088. Najnovší súbor
 ASR v72 dodaný (hlavička "post-processing Assetin, v29 až v72").
 
 ---
 
-### D-087 - Platnosť objektov a projekt, zóny, skupiny ako uzly AIM
+### D-088 - Platnosť objektov a projekt, zóny, skupiny ako uzly AIM
 **Status:** rozhodnuté (2026-10-18, Samuel: Q8 "objekty tam fakt nebudú, platnosť, že sú zmazané,
 vôbec sa s nimi nezapodievať"; Q9 "áno, IfcProject, IfcSite, zóny, IfcSpatialZone, IfcGroup").
 Implementované na vetve `claude/epic-tesla-06p2q4`, nenasadené. **Rozširuje D-010, D-018, D-047,
-D-051, D-086.**
+D-051, D-086.** Pôvodne očíslované D-087 (kolízia s D-087 "pravidlo pre nové nástroje" z PR #55, ktorý sa zmergoval skôr); migrácia `20261018130000`, `comment on column objects.valid_until` a popisy v `relationship_types` na prode ostávajú s pôvodným číslom D-087 a znamenajú tento záznam.
 
 **Kontext:** prechod prod DB z exportu 30. 6. na ASR v72 (D-086) nechá 549 objektov, ktoré už
 žiadny model nevydáva (zmazané prvky, zmenené object_ref, 26 typov z v62). `objects` platnosť
@@ -3521,7 +3633,7 @@ dokumenty z nich (160) vypadávali.
 **Poradie nasadenia:** migrácie `20261018120000` a `20261018130000` pred prvým behom nového ETL
 (upsert zapisuje `valid_until`).
 
-**Dodatok D-087 (2026-10-18) - nasadenie na prod.**
+**Dodatok D-088 (2026-10-18) - nasadenie na prod.**
 - **Migrácie** `20261018120000` a `20261018130000` nasadené cez Management API (história
   `supabase_migrations` zosúladená). Funkcia `search_everything` sa bez superusera dala vytvoriť
   až po načítaní pg_trgm v tej istej transakcii (`select word_similarity('a', 'a')`); je to
@@ -3557,10 +3669,12 @@ dokumenty z nich (160) vypadávali.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
-- **2026-10-18** - **D-087 dodatok (prod):** migrácie nasadené, bootstrap revízií a load ASR v72 + VZT do prod DB (2226 platných, 549 zaniknutých objektov, 0 duplicitných GUID); nález 264 hrán na zaniknuté objekty a oprava (derive prepisuje koncové objekty, ručné väzby na nástupcu s rovnakým GUID).
-- **2026-10-18** - **D-087 (platnosť objektov, projekt/zóny/skupiny ako uzly):** `objects.valid_until` pre objekty, ktoré žiadny model nevydáva (views, RPC a TS zoznamy ich filtrujú); `project`, `zone`, `spatial_zone`, `group` z IfcProject/IfcZone/IfcSpatialZone/IfcGroup s väzbami zo súboru; UI cez zovšeobecnený detail systému. Overené nad kópiou prod DB s v72: 2207 platných, 549 zaniknutých, 0 duplicitných GUID. + dodatok D-086 (odpovede Q1, Q2, Q4, Q7, Q10; OCB je súkromné).
+- **2026-10-18** - **D-088 dodatok (prod):** migrácie nasadené, bootstrap revízií a load ASR v72 + VZT do prod DB (2226 platných, 549 zaniknutých objektov, 0 duplicitných GUID); nález 264 hrán na zaniknuté objekty a oprava (derive prepisuje koncové objekty, ručné väzby na nástupcu s rovnakým GUID).
+- **2026-10-18** - **D-088 (platnosť objektov, projekt/zóny/skupiny ako uzly):** `objects.valid_until` pre objekty, ktoré žiadny model nevydáva (views, RPC a TS zoznamy ich filtrujú); `project`, `zone`, `spatial_zone`, `group` z IfcProject/IfcZone/IfcSpatialZone/IfcGroup s väzbami zo súboru; UI cez zovšeobecnený detail systému. Overené nad kópiou prod DB s v72: 2207 platných, 549 zaniknutých, 0 duplicitných GUID. + dodatok D-086 (odpovede Q1, Q2, Q4, Q7, Q10; OCB je súkromné).
 - **2026-10-18** - **D-086 dodatok (fáza 1):** revízie `model_revisions`/`model_tasks`, `etl/model_publish.py` (poistka, compare-and-swap, revert, announce po re-ETL), `etl.main --model` (zdroj podľa modelu, uzavretie zastaraných hrán a GUID, rotácia rodiča), väzby dokumentov len na emitované objekty, `?rev=` v URL modelu a obnova viewera na `model_revision`. Zistené: ETL v71 nenačítal; starý postup by nechal 454 GUID na dvoch objektoch; 549 zaniknutých objektov (Q8); najnovší ASR je v72.
 - **2026-10-18** - **D-086 (úpravy IFC cez agentov, F13):** IFC je master; úlohy z chatu (neskôr z BCF panela) bežia v GitHub Actions repa `Menezeris/OCB` (Claude Code s tokenom predplatného + ifcopenshell), výstup = recept + zoznam zmien; zápis po jednom cez compare-and-swap; nemenné revízie `ifc/archive/<model>/vNNN.ifc.gz` + `model_revisions`, aktuálna na doterajšom kľúči; zverejnenie hneď s technickou poistkou, bez IDS brány; re-ETL a broadcast "nová revízia". Mení D-084 bod 4. Fáza 0 overená (token, ifcopenshell na runneri, ETL dry-run nad v71).
+- **2026-10-18** - **D-087 (pravidlo pre nové nástroje):** najprv tool z `@ifc-lite/mcp` 1:1 (prefix `ifc_`, opis a parametre z balíka, test proti registru), pohľad len ako adaptér v `apps/viewer/src/aim/`, vlastný nástroj len kde originál nič nemá, DB tools sa neduplikujú. Prvých 7 prevzatých tools motora.
+- **2026-10-18** - **D-085 (spätný kanál viewer -> Claude):** `get_bounds` a `get_viewer_state` cez ten istý živý kanál (query/reply s id, timeout namiesto "odoslané"), `set_section` cez prvok (`fit` along/across/center) a na súradnici IFC (`coordinate_m`); súradnice počíta viewer (IFC svet, Z hore), fork bridge `QUERY`/`QUERY_RESULT` a rozšírený `SET_SECTION` len v `aim/`.
 - **2026-10-18** - **D-084 dodatok (IDS):** IDS kontrola zatiaľ v IDS paneli viewera forku, uložené behy ifctesteru ostávajú; `IDS_SOURCES` sa nenastavuje; zdroj IDS pre server je otvorené rozhodnutie pre Samuela, najneskôr pred fázou 3.
 - **2026-10-17** - **D-084 dodatok (fáza 1) + D-083 dodatok (fáza 1 implementovaná):** `ifc_*` tools motora prepojené na AIM cez GUID (za `ENGINE_ENABLED`), tools pohľadu `set_section`/`set_camera`/`set_view_mode` + `open_drawing.in_viewer`, `global_ids` v 3D tools, spoločný formát ops `lib/viewer-ops.ts`; fork: bridge `SET_SECTION`/`SET_CAMERA`/`SET_VIEW_MODE`. Brána 2 na Verceli prešla (studené 7,4 s, teplé < 0,6 s, ~715 MB), motor ostáva v procese.
 - **2026-10-17** - **D-084 (IFC motor `@ifc-lite/mcp` ako knižnica v konektore) + dodatok D-083:** jeden konektor s tromi rodinami tools (AIM nad DB, `ifc_*` motor nad IFC súbormi, viewer cez bridge), výsledky motora prepojené na AIM cez GUID; bezstavový motor (nový backend na request); zápis ako propose -> commit s IDS bránou a nemennými revíziami (D-086). Pohľad ostáva bez súradníc, `scene.actions` až vo fáze 2. Fáza 0 meria Vercel a zhodu IDS motorov.

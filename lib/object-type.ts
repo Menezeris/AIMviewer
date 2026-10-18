@@ -8,13 +8,13 @@ export type ObjectType =
   | "organization"
   | "document"
   | "system"
-  // Projekt, zóny a skupiny z IFC (D-087): IfcProject, IfcZone, IfcSpatialZone, IfcGroup.
+  // Projekt, zóny a skupiny z IFC (D-088): IfcProject, IfcZone, IfcSpatialZone, IfcGroup.
   | "project"
   | "zone"
   | "spatial_zone"
   | "group";
 
-/** Skupinové uzly s členmi alebo časťami (systém D-047, projekt/zóny/skupiny D-087). */
+/** Skupinové uzly s členmi alebo časťami (systém D-047, projekt/zóny/skupiny D-088). */
 export const GROUP_LIKE_TYPES = ["system", "project", "zone", "spatial_zone", "group"] as const;
 export type GroupLikeType = (typeof GROUP_LIKE_TYPES)[number];
 
@@ -36,7 +36,7 @@ export const OBJECT_TYPE_LABEL: Record<ObjectType, string> = {
   group: "Skupina",
 };
 
-/** Labely `IfcSpatialZoneTypeEnum` (predefined_type priestorovej zóny, D-087). */
+/** Labely `IfcSpatialZoneTypeEnum` (predefined_type priestorovej zóny, D-088). */
 export const SPATIAL_ZONE_TYPE_LABEL: Record<string, string> = {
   FIRESAFETY: "požiarny úsek",
   THERMAL: "energetická zóna",

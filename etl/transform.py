@@ -440,7 +440,7 @@ def to_staged(
     for sysent in model.by_type("IfcDistributionSystem"):
         system_refs[sysent.id()] = add_object(sysent, "system", refs.generic_ref(sysent))
 
-    # 4.6) Projekt, zóny a skupiny (D-087): IfcProject, IfcZone, IfcSpatialZone a čisté
+    # 4.6) Projekt, zóny a skupiny (D-088): IfcProject, IfcZone, IfcSpatialZone a čisté
     #      IfcGroup (skladby). Len hlavný model — VZT nesie vlastný IfcProject toho istého
     #      projektu a zóny nemá (federate ich neemituje).
     group_refs: dict[int, str] = {}
@@ -573,7 +573,7 @@ def _collect_group_structure(
     group_refs: dict[int, str],
     spatial_ref: Any,
 ) -> None:
-    """Väzby projektu, priestorových zón a skupín zo súboru (D-087).
+    """Väzby projektu, priestorových zón a skupín zo súboru (D-088).
 
     - `aggregates`: site → projekt, časť priestorovej zóny → zóna, podskupina → skupina
       (dekompozícia budovy a nižšie ostáva v kroku 1);

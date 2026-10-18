@@ -29,9 +29,13 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "set_section",
     description:
       "UI AKCIA: rez modelom v 3D. Vodorovný rez nad podlažím = floor + offset_m (výška nad úrovňou " +
-      "podlažia v m, default 1,2 = pôdorysný rez; záporná = pod úrovňou). Zvislý rez = orientation " +
-      "vertical_x/vertical_z + position_percent. action=clear rez zruší. Príklad 'ukáž strop nad " +
-      "miestnosťou na 2NP, kade idú potrubia': set_section(floor=3NP, offset_m=-0.4) + " +
+      "podlažia v m, default 1,2 = pôdorysný rez; záporná = pod úrovňou). Rez cez prvok = " +
+      "target_ids_or_refs alebo global_ids + fit: along (zvislo pozdĺž dlhšej strany prvku, napr. po " +
+      "dĺžke ramena schodiska), across (zvislo naprieč), center (stredom prvku na zadanej orientation). " +
+      "Presná poloha = orientation + coordinate_m v súradniciach IFC (vertical_x reže na IFC X, " +
+      "vertical_z na IFC Y, horizontal na IFC Z - výške); súradnice dá get_bounds. position_percent " +
+      "(0-100 % rozmeru modelu) len ako posledná možnosť. action=clear rez zruší. Príklad 'ukáž strop " +
+      "nad miestnosťou na 2NP, kade idú potrubia': set_section(floor=3NP, offset_m=-0.4) + " +
       "style_in_3d(hide, ifc_type=IfcCovering) + set_camera(preset=top, target=miestnosť).",
     inputSchema: {
       type: "object",
@@ -41,6 +45,18 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         floor: floorProp,
         offset_m: { type: "number", description: "Výška rezu nad úrovňou podlažia v metroch (-5 až 20, default 1,2)" },
         position_percent: { type: "number", description: "Poloha rezu 0-100 % rozmeru modelu (bez podlažia, pre zvislé rezy)" },
+        target_ids_or_refs: {
+          type: "array",
+          items: { type: "string" },
+          description: `Rez cez tieto prvky: objects.id alebo object_ref (max ${MAX_TARGETS})`,
+        },
+        global_ids: { type: "array", items: { type: "string" }, description: "Rez cez prvky podľa IFC GlobalId (z ifc_* toolov)" },
+        fit: {
+          type: "string",
+          enum: ["along", "across", "center"],
+          description: "S cieľom: along = pozdĺž, across = naprieč (zvislý rez, os volí viewer), center = stredom na orientation",
+        },
+        coordinate_m: { type: "number", description: "Poloha roviny v IFC súradniciach (m) na osi orientation" },
         flipped: { type: "boolean", description: "Otočiť stranu rezu" },
       },
       required: ["action"],
@@ -118,7 +134,7 @@ async function resolveFloor(raw: unknown): Promise<{ label: string; guid: string
   return { label: floor.object_ref ?? floor.name ?? want, guid };
 }
 
-async function resolveTargets(input: Record<string, unknown>): Promise<string[]> {
+export async function resolveTargets(input: Record<string, unknown>): Promise<string[]> {
   const refs = Array.isArray(input.target_ids_or_refs)
     ? (input.target_ids_or_refs as unknown[]).filter((v): v is string => typeof v === "string" && v.trim() !== "").map((v) => v.trim())
     : [];
@@ -146,7 +162,8 @@ export async function execViewTool(
   let plan: ViewPlan;
   if (name === "set_section") {
     const floor = input.action === "set" ? await resolveFloor(input.floor) : null;
-    plan = planSection(input, floor);
+    const targets = input.action === "set" && (input.target_ids_or_refs || input.global_ids) ? await resolveTargets(input) : [];
+    plan = planSection(input, floor, targets);
   } else if (name === "set_camera") {
     plan = planCamera(input, await resolveTargets(input));
   } else if (name === "set_view_mode") {

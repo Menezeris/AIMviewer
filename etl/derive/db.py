@@ -61,7 +61,7 @@ def write_edges(cur, source: str, rel_type: str, edges: list[DerivedEdge]) -> Wr
             stats.disallowed.append((e.to_guid, t[1]))
             continue
         # id hrany je z GUID; objekt s tým GUID sa môže zmeniť (premenovaný object_ref,
-        # D-087), preto upsert prepisuje aj from_id/to_id.
+        # D-088), preto upsert prepisuje aj from_id/to_id.
         eid = edge_uuid(source, e)
         keep.append(eid)
         cur.execute(
