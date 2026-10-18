@@ -3757,6 +3757,103 @@ zapnúť/vypnúť/prepočítať je zmena dát s potvrdením, zatiaľ cez workflo
   `viaSpaceRef`), najviac 200 na smer. Čítajú sa len zapnuté pravidlá.
 Popri tom: odznak typu v paneli AIM podľa `object_type` (zóna už nie je "Prvok").
 
+### D-090 - Pripomienky a požiadavky na nové tools z konektora; issue spustí Claude session
+**Status:** rozhodnuté (2026-10-18, Claude v nočnej session na pokyn Samuela "rozhodni všetko,
+čo môžeš"), implementované na vetve `claude/mcp-tools-comments-tw8wl5`. **Mení zavrhnutie
+"Claude Code cloud sessions sa z MCP servera automaticky nespúšťajú" v D-086:** odvtedy existuje
+API trigger routines. **Nadväzuje na D-079, D-084, D-086, D-087.**
+
+**Kontext:** Samuel (18. 10.): keď cez konektor AIM zistím, že Claude na niečo nemá tool, má si
+to zaznamenať a poslať ďalej, nech sa tá funkcia začne stavať: najprv GitHub issue, z neho
+automaticky Claude session, ktorá rieši a môže sa ma dopytovať. Popri tom pridávať pripomienky
+(niečo nefunguje, vrátilo nezmysel). Dnes taká potreba ostane v rozhovore a stratí sa.
+
+**Rozhodnutie:**
+1. **Tri tools konektora, len v MCP** (nie v `/ask`, `lib/feedback/tools.ts`):
+   `request_tool` (chýbajúca schopnosť: potreba, skúšané tools, prečo nestačia, voliteľný
+   návrh mena/vstupov/výstupu, oblasť), `report_feedback` (pripomienka: `bug`, `wrong_data`,
+   `wrong_answer`, `improvement`; session len s `start_session`) a `feedback_status` (zoznam
+   otvorených alebo stav jedného issue: session, PR, posledné komentáre = otázky session).
+   Zápisové tools majú `readOnlyHint:false`, `openWorldHint:true`, takže klient si vypýta súhlas.
+2. **Záznam je GitHub issue v repe konektora** (`FEEDBACK_REPO`, predvolene
+   `Menezeris/AIMviewer`), štítky `mcp` + `novy-tool` alebo `pripomienka` + druh/oblasť,
+   po spustení `session`. **Žiadna tabuľka v DB:** issue je jediný nositeľ (stav, diskusia,
+   väzba na PR), kópia v DB by zastarávala. Bez tokenu alebo pri chybe GitHubu tool vráti
+   koncept issue, aby sa požiadavka nestratila.
+3. **Opakovaná potreba sa nezakladá znova:** skrytá značka v tele (`<!-- aim-mcp {...} -->`,
+   odtlačok z `proposal.name` alebo názvu bez diakritiky) a zhoda s otvoreným issue = komentár
+   "Ďalší výskyt". Ak ešte nebeží session, opakovanie ju spustí (náprava po doplnení routine).
+4. **Session spúšťa routine cez API trigger:** server po založení issue zavolá
+   `POST https://api.anthropic.com/v1/claude_code/routines/<id>/fire` (hlavička
+   `anthropic-beta: experimental-cc-routine-2026-04-01`, token viazaný na routine) s textom
+   repo + číslo issue; odpoveď nesie `claude_code_session_url`, ktorý tool vráti Claudovi a
+   zapíše do issue. Routine **"AIM: požiadavka z konektora"** (`trig_01HfMX6dt9uNSkd2zZ8HHPST`,
+   bez rozvrhu, nová session pri každom spustení, push notifikácia) je založená; API trigger a
+   token sa dajú vytvoriť len vo webe (claude.ai/code/routines).
+5. **Ako session rieši, je v gite, nie v routine:** prompt routine je krátky (payload je
+   nedôveryhodný, vezmi len repo a číslo issue, pripoj repo, čítaj skill) a postup je skill
+   `.claude/skills/mcp-poziadavka/SKILL.md`: najprv overiť, či to nejde existujúcimi tools
+   (často stačí prompt), či nechýbajú dáta (tool to nevyrieši), až potom D-0xx a tool; pri
+   viewere a motore D-087; otázky v session aj ako komentár v issue; výsledok PR s
+   `Closes #N`, nikdy merge.
+6. **Na hlavnom konektore, nie pod `MCP_WRITE_TOKEN`:** D-086 dáva pod token zápisu tools, ktoré
+   menia dáta AIM alebo model. Tieto nemenia nič v AIM; zapisujú do GitHubu a míňajú limity
+   predplatného. Potreba vzniká počas bežnej práce, takže musia byť tam, kde sa pracuje.
+7. **Verejné repo:** AIMviewer je verejné, issue tiež. Opis tools a prompt zakazujú mená,
+   kontakty a tokeny; server pred zápisom nahradí hodnoty `MCP_TOKEN`, `MCP_WRITE_TOKEN`,
+   `LIVE_CHANNEL` a oboch tokenov D-090 textom `[skryté]`. Ak to bude málo, `FEEDBACK_REPO` sa
+   prepne na súkromné repo bez zmeny kódu.
+
+**Env (Vercel):** `FEEDBACK_GITHUB_TOKEN` (fine-grained PAT, len `Menezeris/AIMviewer`,
+Issues: read and write, Metadata: read), voliteľne `FEEDBACK_REPO`; `CLAUDE_ROUTINE_FIRE_URL`
+(URL z API triggera routine) a `CLAUDE_ROUTINE_TOKEN`. Bez prvého tools vracajú koncept, bez
+druhých dvoch vznikne issue a session čaká.
+
+**Vedomé limity:**
+- API routines je beta (`/fire` sa môže zmeniť, nové hlavičky s dátumom, dve predošlé platia).
+- Limity: 30 spustení za hodinu na routine, 100 za hodinu na účet; každá session ide na
+  predplatné vlastníka routine (Samuel).
+- **Routine založená cez MCP nemá repo ani konektory** (overené testom, issue #58): session
+  vznikla, ale `gh api` vrátil 403 a `add_repo` v nej nebol. Repo `Menezeris/AIMviewer`,
+  konektory (GitHub, aim-viewer) a model sa routine pridávajú vo webe spolu s API triggerom;
+  bez repa prompt povie, čo chýba, a skončí. Bez nastavenia modelu beží Sonnet 5.5 (ako D-086 Q6).
+- Session zatiaľ beží len nad AIMviewer; fork `ifc-lite` si pripojí sama cez `add_repo`, ak má
+  prístup (D-087).
+- Neoverené naživo: `/fire` z Vercelu (token ešte neexistuje); spustenie routine overené len
+  cez `fire_trigger` z inej session. Chýbajúce štítky GitHub pri zakladaní issue vytvorí sám
+  (overené na #58); pri 422 sa issue založí bez štítkov.
+
+**Zavrhnuté:**
+- *claude-code-action v GitHub Actions na štítok issue:* beh nie je session v claude.ai, nedá sa
+  v ňom rozprávať, otázky len cez `@claude` komentáre a nový beh; pre úpravy modelu (D-086)
+  ostáva.
+- *GitHub trigger routine:* routines poznajú len udalosti PR a release, nie issues.
+- *Tabuľka `mcp_feedback` v DB:* druhý nositeľ toho istého; GitHub má stav aj diskusiu.
+- *Jeden tool s parametrom druhu:* model lepšie trafí dva tools s jasným opisom kedy.
+- *Pravidelná routine, ktorá prechádza issues:* prázdne session každý deň; opakované volanie
+  toolu po doplnení routine rieši ten istý prípad.
+
+**Závislosti a licencie:** bez novej závislosti (fetch na GitHub REST a Anthropic API).
+
+**Dodatok D-090 (2026-10-18) - koordinácia súbežných sessions.** Samuel: automatické sessions
+sa majú vzájomne koordinovať, nevyvíjať to isté dvakrát a nerobiť konflikty. Za noc sa zrazili
+čísla rozhodnutí dvakrát (assetin-library Z5, D-090/D-091 tu). Úplnú záruku dať nevieme
+(sessions o sebe nevedia, kým sa nepozrú), preto štyri vrstvy od najtvrdšej:
+1. **Jedna session na issue** - server: opakovanie sa pripíše k otvorenému issue a štítok
+   `session` zabráni druhému spusteniu (už v D-090).
+2. **Zoznam súbežných požiadaviek** - server pri zakladaní issue pripíše do tela otvorené issues
+   `mcp` (s príznakom, či na nich beží session) a vráti ich aj Claudovi v rozhovore
+   (`other_open`).
+3. **Register čísel D-0xx** - issue #60 (štítok `koordinacia`, nezatvára sa): číslo sa
+   rezervuje komentárom pred použitím, prvý komentár vyhráva.
+4. **Pravidlá pre každú session** - `AGENTS.md` sekcia "Súbežné session" a krok "Koordinácia" v
+   skille `mcp-poziadavka`: ohlásiť vetvu v issue, pred plánom pozrieť otvorené PR a vetvy,
+   pri rovnakých súboroch dať vedieť a novú logiku dať do vlastného modulu, pred PR zlúčiť
+   `main`; konflikt rieši vetva, ktorá prišla do `main` neskôr.
+*Zavrhnuté:* zámok v DB alebo tabuľka sessions (druhý nositeľ stavu, GitHub ho už má); jedna
+sekvenčná fronta požiadaviek (zahodila by paralelizmus, ktorý D-086 chce); čísla rozhodnutí
+pridelené až pri merge (odkazy medzi vetvami by sa menili).
+
 ### D-091 - Kde žije AIM funkcia: predvolene AIMviewer, vo forku len zobrazenie vnútri panelov viewera
 
 **Dátum:** 2026-10-18 · **Stav:** prijaté (Samuel) · **Súvisí:** D-071, D-072, D-087, D-089
@@ -3795,10 +3892,13 @@ s rýchlym CI. Most sa rozširuje o dáta na zobrazenie a o správy "otvor akciu
 
 ---
 
+---
+
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
 - **2026-10-18** - **D-091 (kde žije AIM funkcia):** predvolene AIMviewer; do forku len zobrazenie, ktoré musí byť vnútri panelov viewera (odznaky, záznamy, lokálne prepínače); akcie meniace dáta robí host, tlačidlo vo forku ich len otvorí.
+- **2026-10-18** - **D-090 (pripomienky a požiadavky na nové tools z konektora):** MCP tools `request_tool`, `report_feedback`, `feedback_status`; záznam = GitHub issue v repe konektora (bez tabuľky v DB, opakovanie = komentár), požiadavka na tool spustí Claude Code session cez API trigger routine "AIM: požiadavka z konektora", postup session v skille `mcp-poziadavka`; mení zavrhnutie cloud sessions v D-086.
 - **2026-10-18** - **D-089 (register pravidiel odvodení, vrstva AIM nad modelmi):** `derivation_rules` + `derivation_runs`, pravidlá `element_in_space`, `element_in_spatial_zone` (geometria) a `element_in_zone` (cez priestory, pohľad `v_zone_elements`, IFC na prvok v IfcZone vzťah nemá), zapnúť/vypnúť a režim auto/manual; vrstva vo vieweri s odznakom AIM a povýšenie do súboru ako ďalšie fázy.
 - **2026-10-18** - **D-088 dodatok (prod):** migrácie nasadené, bootstrap revízií a load ASR v72 + VZT do prod DB (2226 platných, 549 zaniknutých objektov, 0 duplicitných GUID); nález 264 hrán na zaniknuté objekty a oprava (derive prepisuje koncové objekty, ručné väzby na nástupcu s rovnakým GUID).
 - **2026-10-18** - **D-088 (platnosť objektov, projekt/zóny/skupiny ako uzly):** `objects.valid_until` pre objekty, ktoré žiadny model nevydáva (views, RPC a TS zoznamy ich filtrujú); `project`, `zone`, `spatial_zone`, `group` z IfcProject/IfcZone/IfcSpatialZone/IfcGroup s väzbami zo súboru; UI cez zovšeobecnený detail systému. Overené nad kópiou prod DB s v72: 2207 platných, 549 zaniknutých, 0 duplicitných GUID. + dodatok D-086 (odpovede Q1, Q2, Q4, Q7, Q10; OCB je súkromné).

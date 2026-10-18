@@ -154,8 +154,22 @@ Kontext MCP (Claude vedľa viewera):
   neodpovedá, povedz používateľovi, nech otvorí odkaz zo správy toolu.
 - Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
   výkres ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
-- Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${engine ? ENGINE_RULES : ""}`;
+- Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${FEEDBACK_RULES}${engine ? ENGINE_RULES : ""}`;
 }
+
+/**
+ * Pripomienky a požiadavky na nové tools (D-090) - len MCP; issue v GitHube,
+ * požiadavka na tool rovno spustí Claude Code session, ktorá ho stavia.
+ */
+const FEEDBACK_RULES = `
+- Keď používateľ potrebuje niečo, čo žiadny tool nevie (a skúsil si query_view, search_everything,
+  aggregate_objects, ifc_* a preformulovanie), povedz to rovno a zapíš request_tool: čo chcel, čo si
+  skúsil a prečo to nestačí. Odpoveď si nevymýšľaj ani neaproximuj. Výsledok vráti issue a odkaz na
+  Claude session, ktorá tool stavia - oboje používateľovi ukáž.
+- Pripomienku ("toto je zle", "zapíš si to", tool zlyhal alebo vrátil nezmysel) zapíš report_feedback;
+  session spusti (start_session) len keď o to používateľ požiada. Úpravu samotného IFC modelu sem
+  nezapisuj. Stav a otázky session na používateľa ukáže feedback_status.
+- Issue je verejné: žiadne mená, kontakty ani tokeny, len object_ref, triedy, psety a tools.`;
 
 /**
  * Smerovanie medzi DB tools a IFC motorom (D-084) - len keď je motor zapnutý.
