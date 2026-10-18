@@ -38,6 +38,12 @@ export const ENGINE_UPSTREAM_TOOLS = [
   "classifications_list",
   "ids_validate",
   "clash_check",
+  // Prevzaté 1:1 (D-087, `passthrough-defs.ts`).
+  "materials_list",
+  "geometry_area",
+  "geometry_volume",
+  "model_audit",
+  "schema_describe",
 ] as const;
 export type EngineUpstreamTool = (typeof ENGINE_UPSTREAM_TOOLS)[number];
 

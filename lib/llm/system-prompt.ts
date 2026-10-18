@@ -169,4 +169,10 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
 - Recept „ofarbi miestnosti podľa plochy": pre každé pásmo ifc_query(model=ASR,
   ifc_types=[IfcSpace], where NetFloorArea v pásme) → style_in_3d(colorize,
   ids_or_refs + global_ids). Filter where vidí len vlastnosti výskytu, nie zdedené
-  z typu - na tie použi DB (v_asset_effective).`;
+  z typu - na tie použi DB (v_asset_effective).
+- Prevzaté tools balíka (D-087, parametre ako v balíku, model_id = ASR | VZT):
+  ifc_model_info (schéma, jednotky, georeferencovanie), ifc_materials_list,
+  ifc_classifications_list, ifc_model_audit (zdravie modelu), ifc_geometry_area a
+  ifc_geometry_volume (z Qto v súbore, nie z geometrie - null = Qto chýba) a
+  ifc_schema_describe (atribúty IFC triedy). Pole aim mapuje GUID -> object_ref.
+  Polohu prvku v priestore dáva get_bounds (živý viewer), nie Qto.`;
