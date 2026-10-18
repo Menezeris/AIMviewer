@@ -65,8 +65,8 @@ def test_close_stale_closes_only_this_model() -> None:
     cur = StubCursor()
     m = _model()
     closed = close_stale(cur, m, "ASR")
-    assert closed == {"edges": 1, "guids": 1, "objects": 1}
-    (edge_sql, edge_params), (guid_sql, guid_params), (obj_sql, obj_params) = cur.calls
+    assert closed == {"edges": 1, "guids": 1, "objects": 1, "repointed": 2}
+    (edge_sql, edge_params), (guid_sql, guid_params), (obj_sql, obj_params), *repoint = cur.calls
     assert edge_sql.startswith("update relationships set valid_until = now()")
     assert "source = %s and valid_until is null and not (id = any(%s))" in edge_sql
     assert edge_params[0] == "etl:ASR"
@@ -76,12 +76,16 @@ def test_close_stale_closes_only_this_model() -> None:
     assert obj_sql.startswith("update objects o set valid_until = now()")
     assert "not exists (select 1 from ifc_guid_history h where h.object_id = o.id and h.valid_until is null)" in obj_sql
     assert obj_params == ("IFC import:ASR",)
+    # ručné väzby na nástupcu s rovnakým GUID, oba konce; väzby ETL a derive nie
+    assert [sql.split(" = s.new_id")[0] for sql, _ in repoint] == [
+        "update relationships r set from_id", "update relationships r set to_id"]
+    assert all("r.source not like 'etl%' and r.source not like 'derive:%'" in sql for sql, _ in repoint)
 
 
 def test_close_legacy_targets_sources_without_model() -> None:
     cur = StubCursor()
     close_legacy(cur)
-    assert [c[1] for c in cur.calls] == [("etl",), ("IFC import",), ("IFC import",)]
+    assert [c[1] for c in cur.calls] == [("etl",), ("IFC import",), ("IFC import",), (), ()]
 
 
 def test_new_parent_closes_previous_active_parent_first() -> None:

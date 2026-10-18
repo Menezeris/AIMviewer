@@ -67,7 +67,7 @@ def load_model(
     dostane `valid_until` (D-087); riadok ostáva (D-010) a pri návrate do modelu ožije.
     Vráti počty uzavretých záznamov.
     """
-    closed = {"edges": 0, "guids": 0, "objects": 0}
+    closed = {"edges": 0, "guids": 0, "objects": 0, "repointed": 0}
     if scope:
         scope_sources(model, scope)
     with psycopg.connect(url) as conn:
@@ -152,7 +152,31 @@ def close_stale(cur, model: StagedModel, scope: str) -> dict[str, int]:
         (guid_source(scope), guids),
     ).fetchall()
     retired = cur.execute(_RETIRE_OBJECTS, (guid_source(scope),)).fetchall()
-    return {"edges": len(closed_edges), "guids": len(closed_guids), "objects": len(retired)}
+    return {"edges": len(closed_edges), "guids": len(closed_guids), "objects": len(retired),
+            "repointed": repoint_to_successors(cur)}
+
+
+# Ručné väzby (výkresy E4, dokumenty E3, fotky D-073) na zaniknutý objekt prejdú na
+# platný objekt s rovnakým GUID: premenovaný object_ref je ten istý prvok (D-087).
+# Väzby ETL a derive si model vydá sám, tie sa nepresúvajú.
+_REPOINT = """
+    update relationships r set {end}_id = s.new_id
+    from (select o.id as old_id, n.id as new_id
+          from objects o join objects n
+            on n.ifc_guid = o.ifc_guid and n.valid_until is null and n.id <> o.id
+          where o.valid_until is not null and o.ifc_guid is not null) s
+    where r.{end}_id = s.old_id and r.valid_until is null
+      and r.source not like 'etl%' and r.source not like 'derive:%'
+    returning r.id
+"""
+
+
+def repoint_to_successors(cur) -> int:
+    """Presmeruje aktívne ručné väzby zo zaniknutých objektov na nástupcu s rovnakým GUID."""
+    moved = 0
+    for end in ("from", "to"):
+        moved += len(cur.execute(_REPOINT.format(end=end)).fetchall())
+    return moved
 
 
 def close_legacy(cur) -> dict[str, int]:
@@ -169,7 +193,8 @@ def close_legacy(cur) -> dict[str, int]:
         (LEGACY_GUID_SOURCE,),
     ).fetchall()
     retired = cur.execute(_RETIRE_OBJECTS, (LEGACY_GUID_SOURCE,)).fetchall()
-    return {"edges": len(closed_edges), "guids": len(closed_guids), "objects": len(retired)}
+    return {"edges": len(closed_edges), "guids": len(closed_guids), "objects": len(retired),
+            "repointed": repoint_to_successors(cur)}
 
 
 def _load_systems(cur, model: StagedModel) -> dict[str, str]:

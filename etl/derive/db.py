@@ -60,6 +60,8 @@ def write_edges(cur, source: str, rel_type: str, edges: list[DerivedEdge]) -> Wr
         if to_ok and t[1] not in to_ok:
             stats.disallowed.append((e.to_guid, t[1]))
             continue
+        # id hrany je z GUID; objekt s tým GUID sa môže zmeniť (premenovaný object_ref,
+        # D-087), preto upsert prepisuje aj from_id/to_id.
         eid = edge_uuid(source, e)
         keep.append(eid)
         cur.execute(
@@ -68,6 +70,7 @@ def write_edges(cur, source: str, rel_type: str, edges: list[DerivedEdge]) -> Wr
               (id, rel_type, from_id, to_id, role, valid_from, valid_until, source)
             values (%s, %s, %s, %s, %s, now(), null, %s)
             on conflict (id) do update set
+              from_id = excluded.from_id, to_id = excluded.to_id,
               role = excluded.role, valid_until = null, source = excluded.source
             """,
             (eid, rel_type, f[0], t[0], e.role, source),
