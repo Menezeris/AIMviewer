@@ -7,7 +7,16 @@ export type ObjectType =
   | "person"
   | "organization"
   | "document"
-  | "system";
+  | "system"
+  // Projekt, zóny a skupiny z IFC (D-087): IfcProject, IfcZone, IfcSpatialZone, IfcGroup.
+  | "project"
+  | "zone"
+  | "spatial_zone"
+  | "group";
+
+/** Skupinové uzly s členmi alebo časťami (systém D-047, projekt/zóny/skupiny D-087). */
+export const GROUP_LIKE_TYPES = ["system", "project", "zone", "spatial_zone", "group"] as const;
+export type GroupLikeType = (typeof GROUP_LIKE_TYPES)[number];
 
 /** Slovenské labely typov uzlov (zobrazenie vo Viewerі). */
 export const OBJECT_TYPE_LABEL: Record<ObjectType, string> = {
@@ -21,6 +30,24 @@ export const OBJECT_TYPE_LABEL: Record<ObjectType, string> = {
   organization: "Organizácia",
   document: "Dokument",
   system: "Systém",
+  project: "Projekt",
+  zone: "Zóna",
+  spatial_zone: "Priestorová zóna",
+  group: "Skupina",
+};
+
+/** Labely `IfcSpatialZoneTypeEnum` (predefined_type priestorovej zóny, D-087). */
+export const SPATIAL_ZONE_TYPE_LABEL: Record<string, string> = {
+  FIRESAFETY: "požiarny úsek",
+  THERMAL: "energetická zóna",
+  LIGHTING: "osvetlenie",
+  OCCUPANCY: "obsadenosť",
+  SECURITY: "bezpečnosť",
+  TRANSPORT: "doprava",
+  VENTILATION: "vetranie",
+  CONSTRUCTION: "výstavba",
+  RESERVATION: "rezervácia",
+  INTERFERENCE: "interferencia",
 };
 
 /** Labely `IfcDistributionSystemEnum` (predefined_type systému, D-047). */

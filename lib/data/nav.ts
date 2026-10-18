@@ -33,7 +33,8 @@ export const fetchSidebarNav = unstable_cache(async (): Promise<SidebarNavData> 
   const { data, error } = await supabase
     .from("objects")
     .select("id, object_type, object_ref, name")
-    .in("object_type", NAV_TYPES as unknown as string[]);
+    .in("object_type", NAV_TYPES as unknown as string[])
+    .is("valid_until", null); // zaniknuté objekty (D-087)
   if (error) throw new Error(error.message);
 
   const groups: SidebarNavData = {

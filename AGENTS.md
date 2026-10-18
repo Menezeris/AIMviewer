@@ -84,7 +84,10 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
 - Všetky uzly sú riadky v `objects`, rozlíšené `object_type`:
   site, building, floor, space, asset, asset_type, document, person, organization,
   system (IfcDistributionSystem, D-047/D-049), capture, capture_media (Reality Capture,
-  D-073); ďalšie IFC entity (napr. `zone` = IfcZone, procesy/tasky) sú **aditívne hodnoty** (D-051)
+  D-073), project, zone, spatial_zone, group (IfcProject/IfcZone/IfcSpatialZone/IfcGroup, D-087);
+  ďalšie IFC entity (procesy/tasky…) sú **aditívne hodnoty** (D-051)
+- **Zaniknutý objekt** (`objects.valid_until` nie je NULL, D-087) appka ani AI nevidia: každý
+  nový zoznam, počet alebo vyhľadávanie nad `objects` filtruje `valid_until is null`
 - `object_type` validuje ETL/app (NIE CHECK — pridanie typu je aditívne)
 - **Cieľ: pokryť celú IFC ontológiu** (entity aj vzťahy) — entity už dnes generické cez
   otvorený `object_type`; vzťahy cez generický meta-model (D-051). Nie je to prestavba, ale

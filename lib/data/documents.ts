@@ -49,7 +49,8 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
     supabase
       .from("objects")
       .select("id, name")
-      .eq("object_type", "document"),
+      .eq("object_type", "document")
+      .is("valid_until", null),
     supabase
       .from("documents")
       .select("id, location, storage_type, revision, status, purpose")
@@ -57,7 +58,8 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
     supabase
       .from("objects")
       .select("id, name, ifc_guid")
-      .eq("object_type", "floor"),
+      .eq("object_type", "floor")
+      .is("valid_until", null),
   ]);
   if (objsRes.error) throw new Error(objsRes.error.message);
   if (docsRes.error) throw new Error(docsRes.error.message);

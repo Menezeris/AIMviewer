@@ -76,7 +76,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     closed = load_model(url, staged, reset=args.reset, scope=args.model)
     if args.model:
         print(f"Model {args.model}: uzavreté zastarané hrany {closed['edges']}, "
-              f"GUID záznamy {closed['guids']} (D-086).")
+              f"GUID záznamy {closed['guids']}, zaniknuté objekty {closed['objects']} (D-086, D-087).")
     print("Hotovo — zapísané do Supabase.")
 
 

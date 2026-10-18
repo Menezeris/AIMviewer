@@ -63,10 +63,11 @@ def load_model(
     `scope` = meno modelu federácie (`ASR`, `VZT`; D-086). Hrany a GUID história
     dostanú zdroj tohto modelu (`etl:ASR`, `IFC import:ASR`) a čo tento beh už
     nevydal, sa uzavrie (`valid_until = now()`) — zmazaný prvok, presunutý prvok,
-    zmenený typ či klasifikácia. Vzor `etl.derive` (D-080); `objects` ostávajú (D-010).
+    zmenený typ či klasifikácia. Vzor `etl.derive` (D-080). Objekt bez aktívneho GUID
+    dostane `valid_until` (D-087); riadok ostáva (D-010) a pri návrate do modelu ožije.
     Vráti počty uzavretých záznamov.
     """
-    closed = {"edges": 0, "guids": 0}
+    closed = {"edges": 0, "guids": 0, "objects": 0}
     if scope:
         scope_sources(model, scope)
     with psycopg.connect(url) as conn:
@@ -127,8 +128,18 @@ def emitted_ids(model: StagedModel) -> tuple[list[str], list[str]]:
     return edges, guids
 
 
+# Objekt zanikol (D-087): mal GUID zo zdroja `source`, ale už nemá žiadny aktívny GUID.
+_RETIRE_OBJECTS = (
+    "update objects o set valid_until = now() "
+    "where o.valid_until is null and o.ifc_guid is not null "
+    "and exists (select 1 from ifc_guid_history h where h.object_id = o.id and h.source = %s) "
+    "and not exists (select 1 from ifc_guid_history h "
+    "where h.object_id = o.id and h.valid_until is null) returning o.id"
+)
+
+
 def close_stale(cur, model: StagedModel, scope: str) -> dict[str, int]:
-    """Uzavrie aktívne hrany a GUID záznamy modelu `scope`, ktoré tento beh nevydal."""
+    """Uzavrie aktívne hrany, GUID záznamy a objekty modelu `scope`, ktoré tento beh nevydal."""
     edges, guids = emitted_ids(model)
     closed_edges = cur.execute(
         "update relationships set valid_until = now() "
@@ -140,7 +151,8 @@ def close_stale(cur, model: StagedModel, scope: str) -> dict[str, int]:
         "where source = %s and valid_until is null and not (id = any(%s)) returning id",
         (guid_source(scope), guids),
     ).fetchall()
-    return {"edges": len(closed_edges), "guids": len(closed_guids)}
+    retired = cur.execute(_RETIRE_OBJECTS, (guid_source(scope),)).fetchall()
+    return {"edges": len(closed_edges), "guids": len(closed_guids), "objects": len(retired)}
 
 
 def close_legacy(cur) -> dict[str, int]:
@@ -156,7 +168,8 @@ def close_legacy(cur) -> dict[str, int]:
         "where source = %s and valid_until is null returning id",
         (LEGACY_GUID_SOURCE,),
     ).fetchall()
-    return {"edges": len(closed_edges), "guids": len(closed_guids)}
+    retired = cur.execute(_RETIRE_OBJECTS, (LEGACY_GUID_SOURCE,)).fetchall()
+    return {"edges": len(closed_edges), "guids": len(closed_guids), "objects": len(retired)}
 
 
 def _load_systems(cur, model: StagedModel) -> dict[str, str]:
@@ -215,7 +228,8 @@ def _load_objects(cur, model: StagedModel) -> dict[str, str]:
               ifc_guid = excluded.ifc_guid, ifc_type = excluded.ifc_type,
               predefined_type = excluded.predefined_type,
               user_defined_type = excluded.user_defined_type,
-              properties = excluded.properties, updated_at = now()
+              properties = excluded.properties, updated_at = now(),
+              valid_until = null    -- objekt je znova v modeli (D-087)
             returning id
             """,
             (

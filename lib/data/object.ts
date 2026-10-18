@@ -4,7 +4,7 @@ import { unstable_cache } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import type { ObjectType } from "@/lib/object-type";
+import { GROUP_LIKE_TYPES, type GroupLikeType, type ObjectType } from "@/lib/object-type";
 import { AIM_CACHE, PDF_LINK_SOURCE } from "@/lib/data/constants";
 
 /**
@@ -527,9 +527,11 @@ export interface SystemMemberGroup {
 
 export interface SystemDetail {
   id: string;
+  /** Systém, projekt, zóna, priestorová zóna alebo skupina (D-047, D-087). */
+  objectType: GroupLikeType;
   object_ref: string | null;
   name: string | null;
-  /** IfcDistributionSystemEnum (VENTILATION/EXHAUST…). */
+  /** IfcDistributionSystemEnum (VENTILATION/EXHAUST…), IfcSpatialZoneTypeEnum… */
   predefinedType: string | null;
   memberCount: number;
   groups: SystemMemberGroup[];
@@ -538,30 +540,45 @@ export interface SystemDetail {
 /** Koľko členov na skupinu vypíšeme ako odkazy (zvyšok len počet — VZT má stovky). */
 const SYSTEM_MEMBER_LIST_CAP = 60;
 
-/** Detail systému (D-047): členovia (`rel_assigns_to_group`) zoskupení podľa IFC typu. */
+/** Hrany "člen / časť → skupinový uzol" (to_id = uzol): členstvo, dekompozícia, referencia. */
+const MEMBER_RELATIONS = [
+  "rel_assigns_to_group",
+  "rel_aggregates",
+  "rel_referenced_in_spatial_structure",
+] as const;
+
+/**
+ * Detail systému (D-047) a ďalších skupinových uzlov (D-087): členovia
+ * (`rel_assigns_to_group`), časti (`rel_aggregates`) a prvky v priestorovej zóne
+ * (`rel_referenced_in_spatial_structure`) zoskupení podľa IFC typu.
+ */
 async function fetchSystemImpl(id: string): Promise<SystemDetail | null> {
   const supabase = getSupabaseAdmin();
 
-  const [objRes, memRes] = await Promise.all([
+  const [objRes, ...memRes] = await Promise.all([
     supabase
       .from("objects")
-      .select("id, object_ref, name, predefined_type")
+      .select("id, object_type, object_ref, name, predefined_type")
       .eq("id", id)
-      .eq("object_type", "system")
+      .in("object_type", GROUP_LIKE_TYPES as unknown as string[])
       .limit(1),
-    supabase
-      .from("rel_assigns_to_group")
-      .select("from_id")
-      .eq("to_id", id)
-      .is("valid_until", null),
+    ...MEMBER_RELATIONS.map((rel) =>
+      supabase.from(rel).select("from_id").eq("to_id", id).is("valid_until", null)
+    ),
   ]);
 
   if (objRes.error) throw new Error(objRes.error.message);
   const obj = objRes.data?.[0];
   if (!obj) return null;
 
-  if (memRes.error) throw new Error(memRes.error.message);
-  const memberIds = [...new Set((memRes.data ?? []).map((r) => r.from_id as string))];
+  const memberIds = [
+    ...new Set(
+      memRes.flatMap((res) => {
+        if (res.error) throw new Error(res.error.message);
+        return (res.data ?? []).map((r) => (r as { from_id: string }).from_id);
+      })
+    ),
+  ];
 
   // Členské objekty s IFC typom (loadObjectLinks nemá ifc_type → vlastný dotaz).
   const members =
@@ -609,6 +626,7 @@ async function fetchSystemImpl(id: string): Promise<SystemDetail | null> {
 
   return {
     id: obj.id as string,
+    objectType: obj.object_type as GroupLikeType,
     object_ref: (obj.object_ref as string | null) ?? null,
     name: (obj.name as string | null) ?? null,
     predefinedType: (obj.predefined_type as string | null) ?? null,

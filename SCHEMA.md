@@ -66,7 +66,8 @@ create table objects (
   id                uuid primary key default gen_random_uuid(),   -- Master UUID (D-010/1)
   object_type       text not null,     -- 'site','building','floor','space','asset','asset_type',
                                         -- 'document','person','organization','system' (D-047),
-                                        -- 'capture','capture_media' (D-073)
+                                        -- 'capture','capture_media' (D-073),
+                                        -- 'project','zone','spatial_zone','group' (D-087)
   object_ref        text unique,       -- ľudsky čitateľná identita / QR (D-010/2)
   name              text,              -- IFC Name (atribút)
   ifc_guid          text,              -- IFC GlobalId — len atribút, nullable (D-010/3)
@@ -87,6 +88,13 @@ stĺpec `search_text` = `f_object_search_text(name, object_ref, ifc_type,
 predefined_type, user_defined_type, properties)` — normalizovaný (unaccent + lower)
 flattening identity a všetkých psetov (rezervované `_kľúče` vynechané) pre fulltext.
 Indexy a RPC → §2.9.
+
+**Dodatok (D-087, migrácia 20261018130000):** `objects.valid_until timestamptz` = kedy objekt
+zanikol (už ho nevydáva žiadny model federácie; NULL = platný). Riadok ostáva (D-010). Views
+`v_actors`, `v_asset_classifications`, `v_asset_effective`, `v_floors`, `v_property_dictionary`,
+`v_spaces` a RPC `search_everything`, `aggregate_objects`, `search_documents` filtrujú
+`valid_until is null`; zoznamy a vyhľadávanie v appke tiež (AGENTS). Index
+`idx_objects_retired` (len zaniknuté).
 
 ### 2.2 Typové prípony (1:1 k `objects`)
 
@@ -458,7 +466,8 @@ pod advisory lockom modelu (compare-and-swap voči základu úlohy). `model_task
 **Zdroj ETL podľa modelu (D-086):** load s `--model ASR` zapisuje hrany so zdrojom
 `etl:ASR` a GUID históriu so zdrojom `IFC import:ASR`; čo beh nevydal, uzavrie
 (`valid_until`). Staré zdroje `etl` / `IFC import` (pred D-086) uzavrie jednorazovo
-`model_publish close-legacy` po prvom loade všetkých modelov. `objects` ostávajú (D-010).
+`model_publish close-legacy` po prvom loade všetkých modelov. Objekt bez aktívneho GUID
+dostane `objects.valid_until` (D-087), riadok ostáva (D-010).
 
 ## 4. Konvencia `properties` (D-022)
 

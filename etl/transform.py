@@ -303,7 +303,10 @@ def to_staged(
             return min(floor_by_elev, key=lambda t: abs(t[0] - e))[1]
         return None
 
+    emitted: dict[int, str] = {}                 # entity.id() → object_ref všetkých emitnutých
+
     def add_object(entity: Any, object_type: str, ref: str, **extra: Any) -> str:
+        emitted[entity.id()] = ref
         guid = attr(entity, "GlobalId")
         staged.objects.append(
             ObjectRow(
@@ -436,15 +439,32 @@ def to_staged(
     system_refs: dict[int, str] = {}
     for sysent in model.by_type("IfcDistributionSystem"):
         system_refs[sysent.id()] = add_object(sysent, "system", refs.generic_ref(sysent))
+
+    # 4.6) Projekt, zóny a skupiny (D-087): IfcProject, IfcZone, IfcSpatialZone a čisté
+    #      IfcGroup (skladby). Len hlavný model — VZT nesie vlastný IfcProject toho istého
+    #      projektu a zóny nemá (federate ich neemituje).
+    group_refs: dict[int, str] = {}
+    if not federate:
+        for ifc_class, otype in (("IfcProject", "project"), ("IfcZone", "zone"),
+                                 ("IfcSpatialZone", "spatial_zone"), ("IfcGroup", "group")):
+            for ent in model.by_type(ifc_class):
+                if ifc_class == "IfcGroup" and ent.is_a() != "IfcGroup":
+                    continue  # podtypy (IfcZone, IfcSystem…) majú vlastný object_type
+                group_refs[ent.id()] = add_object(ent, otype, refs.generic_ref(ent))
+        _collect_group_structure(model, staged, emitted, group_refs, _spatial_ref)
+
+    # Členstvo v systéme, zóne a skupine (IfcRelAssignsToGroup): len emitnutí členovia.
     for rel in model.by_type("IfcRelAssignsToGroup"):
         group = attr(rel, "RelatingGroup")
-        if group is None or group.id() not in system_refs:
+        if group is None:
             continue
-        sys_ref = system_refs[group.id()]
+        target_ref = system_refs.get(group.id()) or group_refs.get(group.id())
+        if target_ref is None:
+            continue
         for member in attr(rel, "RelatedObjects") or []:
-            member_ref = refs._by_id.get(member.id())
+            member_ref = emitted.get(member.id())
             if member_ref is not None:
-                staged.edges.append(Edge("assigns_to_group", member_ref, sys_ref))
+                staged.edges.append(Edge("assigns_to_group", member_ref, target_ref))
 
     # 5) Dokumenty + aktori (best-effort, štruktúra je tu — doladiť na model, E2).
     _collect_documents(model, refs, staged)
@@ -544,6 +564,53 @@ def _collect_documents(model: ifcopenshell.file, refs: _RefAllocator, staged: St
                 obj_ref = refs.ref(obj)
                 staged.link_classes.setdefault(obj_ref, obj.is_a())
                 staged.edges.append(Edge("has_document", obj_ref, doc_ref, role="document"))
+
+
+def _collect_group_structure(
+    model: ifcopenshell.file,
+    staged: StagedModel,
+    emitted: dict[int, str],
+    group_refs: dict[int, str],
+    spatial_ref: Any,
+) -> None:
+    """Väzby projektu, priestorových zón a skupín zo súboru (D-087).
+
+    - `aggregates`: site → projekt, časť priestorovej zóny → zóna, podskupina → skupina
+      (dekompozícia budovy a nižšie ostáva v kroku 1);
+    - `contained`: priestorová zóna na podlaží (IfcRelContainedInSpatialStructure);
+    - `referenced`: IfcRelReferencedInSpatialStructure zo súboru (priestor v priestorovej
+      zóne, zóna aj prvok na podlaží, dvere v priestore). Podlažie sa premapuje ako pri
+      containmente (D-035); väzba len medzi emitnutými objektmi."""
+    for rel in model.by_type("IfcRelAggregates"):
+        parent = attr(rel, "RelatingObject")
+        if parent is None or parent.id() not in group_refs:
+            continue
+        for child in attr(rel, "RelatedObjects") or []:
+            child_ref = emitted.get(child.id())
+            if child_ref is not None:
+                staged.edges.append(Edge("aggregates", child_ref, group_refs[parent.id()]))
+
+    def structure_ref(structure: Any) -> Optional[str]:
+        if structure is None:
+            return None
+        return group_refs.get(structure.id()) or spatial_ref(structure)
+
+    for rel in model.by_type("IfcRelContainedInSpatialStructure"):
+        to_ref = structure_ref(attr(rel, "RelatingStructure"))
+        for el in attr(rel, "RelatedElements") or []:
+            if to_ref is not None and el.is_a("IfcSpatialZone") and el.id() in group_refs:
+                staged.edges.append(Edge("contained", group_refs[el.id()], to_ref))
+
+    seen: set[tuple[str, str]] = set()
+    for rel in model.by_type("IfcRelReferencedInSpatialStructure"):
+        to_ref = structure_ref(attr(rel, "RelatingStructure"))
+        if to_ref is None:
+            continue
+        for el in attr(rel, "RelatedElements") or []:
+            from_ref = emitted.get(el.id())
+            if from_ref is not None and from_ref != to_ref and (from_ref, to_ref) not in seen:
+                seen.add((from_ref, to_ref))
+                staged.edges.append(Edge("referenced", from_ref, to_ref))
 
 
 def _drop_unemitted_links(staged: StagedModel, cov: CoverageReport) -> None:

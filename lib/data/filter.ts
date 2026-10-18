@@ -13,7 +13,8 @@ export const fetchByIfcType = unstable_cache(
       .from("objects")
       .select("id")
       .eq("ifc_type", ifcType)
-      .eq("object_type", "asset");
+      .eq("object_type", "asset")
+      .is("valid_until", null);
     if (error) throw new Error(error.message);
     return (data ?? []).map((r) => r.id as string);
   },
