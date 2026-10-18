@@ -231,3 +231,6 @@ ROADMAP changelogu. Detail → `DECISIONS.md` D-057.
 Nová RPC pre LLM = vždy read-only `stable` + `set search_path` + interné whitelisty
 (relation/op/stĺpce), identifikátory `format('%I')`, literály `format('%L')` — vzor
 `search_everything`/`aggregate_objects` (D-059/D-060).
+
+Chýbajúci tool alebo pripomienka z konektora = GitHub issue (`request_tool`/`report_feedback`, D-090);
+session, ktorá ho rieši, postupuje podľa skillu `.claude/skills/mcp-poziadavka/SKILL.md`.
