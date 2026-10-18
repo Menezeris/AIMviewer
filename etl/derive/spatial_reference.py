@@ -1,7 +1,8 @@
 """Odvodzovač `spatial_reference` (D-080): prvok → priestor podľa geometrie.
 
 Pre každý prvok federácie (default: IfcDistributionElement + IfcFurnishingElement)
-zistí, v ktorých priestorových prvkoch (default: IfcSpace, IfcSpatialZone) leží,
+zistí, v ktorých priestorových prvkoch (default: IfcSpace; ďalšie triedy podľa registra
+pravidiel D-089, napr. IfcSpatialZone) leží,
 a vydá hranu `rel_referenced_in_spatial_structure` (IFC-kanonická,
 IfcRelReferencedInSpatialStructure — neexkluzívna, takže nekoliduje s natívnym
 `ContainedInStructure` prvku na podlaží, ktoré je SET[0:1]).
@@ -31,7 +32,8 @@ REL_TYPE = "rel_referenced_in_spatial_structure"
 @dataclass
 class SpatialReferenceConfig:
     element_classes: tuple[str, ...] = ("IfcDistributionElement", "IfcFurnishingElement")
-    spatial_classes: tuple[str, ...] = ("IfcSpace", "IfcSpatialZone")
+    # Priestorové zóny majú vlastné pravidlo v registri (D-089, element_in_spatial_zone).
+    spatial_classes: tuple[str, ...] = ("IfcSpace",)
     # Vydávať aj `partial` (prvok pretína priestor). False = len prvky celé vnútri.
     include_partial: bool = True
 

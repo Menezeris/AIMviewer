@@ -3682,11 +3682,72 @@ dokumenty z nich (160) vypadávali.
   sa neukladá ("Požiarny úsek - Technická miestnosť 2NP"), preto ich fulltext nenájde; VZT
   prvky bez SNIM kódu sa zobrazujú ako GUID namiesto názvu.
 
+
+---
+
+### D-089 - Register pravidiel odvodení a vrstva AIM nad modelmi
+**Status:** rozhodnuté (2026-10-18, Samuel), fáza A implementovaná na vetve
+`claude/epic-tesla-06p2q4`. **Rozširuje D-080, D-086, D-088.**
+
+**Kontext:** odvodzovač `etl.derive` (D-080) beží len preto, že je krokom workflowov v OCB; nedá
+sa vypnúť, nikde nevidno, čo a kedy prepočítal, a s D-088 začal priraďovať prvky aj do
+IfcSpatialZone bez výslovného rozhodnutia. Samuel (18. 10.): odvodené vzťahy majú byť IFC vzťahmi
+nad súbormi modelov, vrstva musí prežiť zmeny súborov (drží sa GUID), vo vieweri má byť ďalšou
+vrstvou vedľa modelov a v Relationship records s odznakom AIM; vzťah v rámci jedného súboru sa
+zapíše do súboru, medzi súbormi ostáva vo vrstve; zóny aj priestorové zóny áno; odvodenia majú
+byť pod kontrolou (zapnúť, vypnúť, vidieť behy).
+
+**Tri druhy vzťahov v AIM:** *zo súboru* (IFC, projektant alebo pipeline), *ručný* (človek v AIM:
+fotka, výkres), *odvodený* (pravidlo nad dátami; ručne sa needituje, mení sa prepočtom).
+
+**Rozhodnutie:**
+1. **Register pravidiel ako dáta** - tabuľka `derivation_rules`: id, názov, popis, druh
+   (`geometry` | `via_space`), IFC vzťah, zdrojové a cieľové triedy, roly (`inside`, `partial`),
+   **zapnuté**, **režim** (`auto` = po každej novej revízii, `manual` = len na vyžiadanie) a zdroj
+   hrán (`source`), pod ktorým pravidlo zapisuje.
+2. **Záznam každého behu** - `derivation_runs` (pravidlo, revízie modelov, zapísané, uzavreté,
+   GUID mimo DB, stav, spúšťač), vzor `ids_runs` (D-081).
+3. **Vypnutie pravidla** jeho hrany uzavrie (história ostáva), **zapnutie** ich prepočíta.
+   Ovládanie zatiaľ cez CLI a workflow `odvodenie` v OCB (vstupy), neskôr zo záložky vo vieweri.
+4. **Pravidlá na štarte:**
+   - `element_in_space` - prvok (IfcDistributionElement, IfcFurnishingElement) -> IfcSpace podľa
+     geometrie, `rel_referenced_in_spatial_structure`, inside + partial, zdroj
+     `derive:spatial_reference` (doterajšie hrany D-080 ostávajú);
+   - `element_in_spatial_zone` - to isté -> IfcSpatialZone (požiarne úseky, energetické zóny),
+     zdroj `derive:element_in_spatial_zone`; partial = prestupy cez hranicu úseku;
+   - `element_in_zone` - prvok -> IfcZone **cez priestory** (prvok v priestore, priestor člen
+     zóny, aj vnorené zóny). IfcZone nemá teleso a sdružuje len priestory (IFC4.3, ardit.cz:
+     "zóna sdružuje prostory, systémy sdružují prvky"), takže IFC na "prvok v IfcZone" vzťah
+     nemá: pravidlo nezapisuje hranu, je to pohľad `v_zone_elements`, ktorý platí, len keď je
+     pravidlo zapnuté.
+   Všetky zapnuté, režim `auto`.
+5. **Geometria sa počíta raz** pre všetky zapnuté geometrické pravidlá (jeden BVH strom) a hrany
+   sa rozdelia podľa cieľovej triedy; každé pravidlo zapisuje pod vlastným zdrojom, takže sa dá
+   vypnúť samostatne.
+6. **Vrstva AIM nad modelmi** (fáza B): viewer dostane odvodené vzťahy k GUID ako vrstvu (vzor
+   AIM panel D-077, podklady D-072); fork ukáže záložku spracovaní vedľa Models (pravidlá, stav,
+   posledný beh) a v Relationship records záznamy s odznakom AIM a zdrojom namiesto čísla
+   entity. Export vrstvy spolu so súbormi neskôr cez ICDD (D-015).
+7. **Povýšenie do súboru** (fáza D): odvodený vzťah v rámci jedného modelu môže agent na
+   schválenie zapísať do súboru ako novú revíziu (D-086); odvodzovač ho potom preskočí, lebo ho
+   nesie súbor. Vzťahy medzi súbormi (IFC4 ich neunesie) ostávajú vo vrstve.
+
+**Fázy:** **A** register, behy, CLI `etl.derive run|rules|enable|disable`, `v_zone_elements`,
+workflowy v OCB · **B** vrstva vo vieweri (fork: záložka, odznak AIM) · **C** AI: `v_zone_elements`
+v `query_view` a prompt (evaly) · **D** povýšenie do súboru cez agenta.
+
+**Zavrhnuté:**
+- *Prvok ako člen IfcZone cez `rel_assigns_to_group`:* proti IFC (zóna sdružuje priestory).
+- *`aim_` hrana pre prvok v IfcZone:* informácia sa dá vždy presne vypočítať z priestorov; uložená
+  kópia by zastarávala (princíp jedného nositeľa).
+- *Prepínače v env alebo kóde workflowu:* nevidno ich vo vieweri ani v DB a nemajú históriu behov.
+
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-18** - **D-089 (register pravidiel odvodení, vrstva AIM nad modelmi):** `derivation_rules` + `derivation_runs`, pravidlá `element_in_space`, `element_in_spatial_zone` (geometria) a `element_in_zone` (cez priestory, pohľad `v_zone_elements`, IFC na prvok v IfcZone vzťah nemá), zapnúť/vypnúť a režim auto/manual; vrstva vo vieweri s odznakom AIM a povýšenie do súboru ako ďalšie fázy.
 - **2026-10-18** - **D-088 dodatok (prod):** migrácie nasadené, bootstrap revízií a load ASR v72 + VZT do prod DB (2226 platných, 549 zaniknutých objektov, 0 duplicitných GUID); nález 264 hrán na zaniknuté objekty a oprava (derive prepisuje koncové objekty, ručné väzby na nástupcu s rovnakým GUID).
 - **2026-10-18** - **D-088 (platnosť objektov, projekt/zóny/skupiny ako uzly):** `objects.valid_until` pre objekty, ktoré žiadny model nevydáva (views, RPC a TS zoznamy ich filtrujú); `project`, `zone`, `spatial_zone`, `group` z IfcProject/IfcZone/IfcSpatialZone/IfcGroup s väzbami zo súboru; UI cez zovšeobecnený detail systému. Overené nad kópiou prod DB s v72: 2207 platných, 549 zaniknutých, 0 duplicitných GUID. + dodatok D-086 (odpovede Q1, Q2, Q4, Q7, Q10; OCB je súkromné).
 - **2026-10-18** - **D-086 dodatok (fáza 1):** revízie `model_revisions`/`model_tasks`, `etl/model_publish.py` (poistka, compare-and-swap, revert, announce po re-ETL), `etl.main --model` (zdroj podľa modelu, uzavretie zastaraných hrán a GUID, rotácia rodiča), väzby dokumentov len na emitované objekty, `?rev=` v URL modelu a obnova viewera na `model_revision`. Zistené: ETL v71 nenačítal; starý postup by nechal 454 GUID na dvoch objektoch; 549 zaniknutých objektov (Q8); najnovší ASR je v72.

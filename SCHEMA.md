@@ -469,6 +469,18 @@ pod advisory lockom modelu (compare-and-swap voči základu úlohy). `model_task
 `model_publish close-legacy` po prvom loade všetkých modelov. Objekt bez aktívneho GUID
 dostane `objects.valid_until` (D-088), riadok ostáva (D-010).
 
+### 2.15 Register pravidiel odvodení (D-089, migrácia 20261018140000)
+
+`derivation_rules` = pravidlo odvodeného vzťahu (`id`, `name`, `kind` `geometry|via_space`,
+`rel_type`, `source` = zdroj hrán v `relationships`, `source_classes`, `target_classes`, `roles`,
+`enabled`, `mode` `auto|manual`). `derivation_runs` = jeden beh pravidla (`status`
+`ok|dry_run|disabled|error`, `trigger`, `models` = revízie z `model_revisions`, `written`,
+`closed`, `unresolved`, `details`). Pravidlá na štarte: `element_in_space`
+(`derive:spatial_reference`, D-080), `element_in_spatial_zone` (`derive:element_in_spatial_zone`)
+a `element_in_zone` (bez hrán: IFC na prvok v IfcZone vzťah nemá). Pohľad **`v_zone_elements`**
+= prvok v IfcZone cez priestory (prvok v priestore natívne alebo referenciou, priestor člen zóny
+priamo alebo cez vnorenú zónu); prázdny, keď je `element_in_zone` vypnuté.
+
 ## 4. Konvencia `properties` (D-022)
 
 `properties` JSONB obsahuje **property sety**, vnorené podľa názvu. IFC **atribúty**
