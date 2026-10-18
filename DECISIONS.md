@@ -3521,11 +3521,39 @@ dokumenty z nich (160) vypadávali.
 **Poradie nasadenia:** migrácie `20261018120000` a `20261018130000` pred prvým behom nového ETL
 (upsert zapisuje `valid_until`).
 
+**Dodatok D-087 (2026-10-18) - nasadenie na prod.**
+- **Migrácie** `20261018120000` a `20261018130000` nasadené cez Management API (história
+  `supabase_migrations` zosúladená). Funkcia `search_everything` sa bez superusera dala vytvoriť
+  až po načítaní pg_trgm v tej istej transakcii (`select word_similarity('a', 'a')`); je to
+  v migrácii, takže prejde aj `supabase db push`.
+- **Secrets v OCB** overené workflowom `kontrola-secrets` (storage, REST, DB cez Session pooler,
+  advisory lock, Realtime).
+- **Workflow `bootstrap-revizie`** (OCB, beh `39146709453`): revízie ASR v0, VZT v1, ASR v72;
+  re-ETL oboch modelov so zdrojom modelu 35 min (zápis po riadkoch z runnera v USA do DB vo
+  Švédsku; kandidát na dávkový zápis), derive 7,5 min, oznámenie oboch revízií.
+- **Prod po bootstrape:** platných objektov 2224 (asset 1758, asset_type 206, space 83, document
+  65, spatial_zone 46, group 23, zone 18, system 13, floor 5, capture 3, capture_media 3,
+  project 1, site 1, building 1), zaniknutých 549, 0 GUID na dvoch objektoch, 163 väzieb na
+  dokumenty z IFC, 24 požiarnych úsekov, `v_spaces` 83.
+- **Nález: 264 aktívnych hrán na zaniknuté objekty** (lokálna kópia ich nemala, chýbali v nej
+  odvodené a ručné väzby): (a) 242 hrán derive - id hrany je z GUID, upsert však neprepísal
+  `from_id`/`to_id`, takže hrana ostala na premenovanom priestore; (b) 20 ručných väzieb na
+  objekty, ktoré sa len premenovali (rovnaký GUID): 9 výkresových väzieb na dvere
+  (`DD03.04.09` -> `DD03.05.09`), 2 na typy, 9 dokumentov E3 na budovu; (c) 2 fotky v
+  priestoroch `2.01-2` a `2.27`, ktoré v v72 nemajú nástupcu.
+- **Oprava** (commit `2b4a7d6`): derive pri upserte prepíše `from_id`/`to_id`; `close_stale` a
+  `close_legacy` presunú ručné väzby (zdroje mimo `etl*` a `derive:*`) na platný objekt s
+  rovnakým GUID. Overené na kópii prod DB s odvodenými hranami z júla: 0 hrán na zaniknuté
+  objekty. Na prode beží workflow `odvodenie` (oprava a)); presun ručných väzieb (b) na prode
+  čaká na Samuelov súhlas (priamy SQL zápis zablokovalo pravidlo prostredia); (c) treba
+  rozhodnúť ručne (fotky priradiť k novému priestoru).
+
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-18** - **D-087 dodatok (prod):** migrácie nasadené, bootstrap revízií a load ASR v72 + VZT do prod DB (2224 platných, 549 zaniknutých objektov, 0 duplicitných GUID); nález 264 hrán na zaniknuté objekty a oprava (derive prepisuje koncové objekty, ručné väzby na nástupcu s rovnakým GUID).
 - **2026-10-18** - **D-087 (platnosť objektov, projekt/zóny/skupiny ako uzly):** `objects.valid_until` pre objekty, ktoré žiadny model nevydáva (views, RPC a TS zoznamy ich filtrujú); `project`, `zone`, `spatial_zone`, `group` z IfcProject/IfcZone/IfcSpatialZone/IfcGroup s väzbami zo súboru; UI cez zovšeobecnený detail systému. Overené nad kópiou prod DB s v72: 2207 platných, 549 zaniknutých, 0 duplicitných GUID. + dodatok D-086 (odpovede Q1, Q2, Q4, Q7, Q10; OCB je súkromné).
 - **2026-10-18** - **D-086 dodatok (fáza 1):** revízie `model_revisions`/`model_tasks`, `etl/model_publish.py` (poistka, compare-and-swap, revert, announce po re-ETL), `etl.main --model` (zdroj podľa modelu, uzavretie zastaraných hrán a GUID, rotácia rodiča), väzby dokumentov len na emitované objekty, `?rev=` v URL modelu a obnova viewera na `model_revision`. Zistené: ETL v71 nenačítal; starý postup by nechal 454 GUID na dvoch objektoch; 549 zaniknutých objektov (Q8); najnovší ASR je v72.
 - **2026-10-18** - **D-086 (úpravy IFC cez agentov, F13):** IFC je master; úlohy z chatu (neskôr z BCF panela) bežia v GitHub Actions repa `Menezeris/OCB` (Claude Code s tokenom predplatného + ifcopenshell), výstup = recept + zoznam zmien; zápis po jednom cez compare-and-swap; nemenné revízie `ifc/archive/<model>/vNNN.ifc.gz` + `model_revisions`, aktuálna na doterajšom kľúči; zverejnenie hneď s technickou poistkou, bez IDS brány; re-ETL a broadcast "nová revízia". Mení D-084 bod 4. Fáza 0 overená (token, ifcopenshell na runneri, ETL dry-run nad v71).
