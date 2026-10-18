@@ -10,6 +10,10 @@
 
 begin;
 
+-- Načíta knižnicu pg_trgm: bez nej rola bez superusera (Management API, `supabase db push`)
+-- nesmie pri create function nastaviť `pg_trgm.word_similarity_threshold` (search_everything).
+select word_similarity('a', 'a');
+
 alter table objects add column valid_until timestamptz;   -- NULL = objekt existuje v modeli
 comment on column objects.valid_until is
   'Kedy objekt zanikol (už ho nevydáva žiadny model federácie, D-087). NULL = platný.';
