@@ -442,6 +442,14 @@
       "expect": { "tools_called": ["set_view_mode"], "actions_match": ["section_clear::", "show_all::", "reset_colors::"] },
       "verified": false,
       "notes": "D-083: set_view_mode mode=3d reset=true."
+    },
+    {
+      "id": "view-selection-summary",
+      "category": "view",
+      "question": "Čo mám označené vo vieweri?",
+      "expect": { "tools_called": ["get_viewer_state"] },
+      "verified": false,
+      "notes": "D-093 (#64): len MCP so živým viewerom, /ask tool nemá. Odpoveď zo selection.summary (triedy, podlažia, zostavy); pri selection.truncated povie, že výber je orezaný, a nepopíše ho ako celok."
     }
   ]
 }

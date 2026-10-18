@@ -3919,11 +3919,50 @@ s rýchlym CI. Most sa rozširuje o dáta na zobrazenie a o správy "otvor akciu
 - *Všetko v hostovi, aj odznaky a záznamy:* host do panelov v iframe kresliť nevie; overlay nad
   iframe by sa rozišiel s rozložením viewera.
 
+### D-093 - get_viewer_state: súhrn výberu, príznak orezania a identita položiek
+
+**Dátum:** 2026-10-19 · **Stav:** navrhnuté (čaká na Samuela: kontrakt forku) · **Súvisí:** D-085, D-087, D-090, D-091 · **Issue:** #64
+
+**Kontext:** Používateľ vybral celý ľahký obvodový plášť (1810 prvkov). `get_viewer_state` vrátil
+`selection.count` 1810, ale len prvých 50 GUID bez triedy, podlažia a rodiča, bez stránkovania a bez
+povedania, že zoznam je orezaný. Claude zobral vzorku (náhodou celá z 1NP) a povedal, že výber je
+len 1NP. Orezanie robí odpoveď mosta vo forku, host ju len preposiela. Overené nad prod DB: AIM má
+55 `IfcCurtainWall` (1NP až 4NP), ale ich časti (`IfcPlate`, `IfcMember`) nie, takže triedu, podlažie
+a zostavu týchto prvkov pozná len viewer s načítaným IFC.
+
+**Rozhodnutie:**
+1. Server (`lib/live/selection-summary.ts`, DB časť `selection-context.ts`) vráti vo `selection`:
+   `count`, `returned`, `truncated`, `summary` (počty podľa IFC triedy, podlažia, rodičovskej zostavy
+   a modelu, `covers` = `all` alebo `returned`, `in_aim`), stránku `items` (`guid`, `object_ref`,
+   `name`, `ifc_type`, `floor`, `parent`, `model`, `in_aim`; `items_offset`/`items_limit`, default 50,
+   strop 200) a vetu `note`, keď je zoznam orezaný alebo stránkovaný. Surové `guids` z odpovede
+   odpadnú, ostatné polia viewera (napr. `bbox`) ostanú.
+2. Zdroj údajov o prvku: najprv viewer (`selection.items`), inak AIM: podlažie cez
+   `rel_contained_in_spatial_structure` (priestor -> podlažie cez `rel_aggregates`), alebo kontajner
+   zostavy; zostava cez `rel_aggregates` na nepriestorový uzol; zaniknuté objekty nie (D-088).
+3. **Kontrakt pre fork** (odpoveď `view_state`, len `apps/viewer/src/aim/`): `selection.guids` celé
+   (strop 5000, `MAX_SELECTION_GUIDS`) a voliteľne `selection.items[]` {`guid`, `name`, `ifc_type`,
+   `storey`, `model`, `parent_guid`, `parent_type`, `parent_name`} a `selection.bbox`. Je to dátová
+   odpoveď mosta, nie rozhodovanie o dátach (D-091). Server použije, čo príde; kým fork posiela
+   50 GUID, `truncated` a `covers=returned` zabránia záveru zo vzorky.
+4. Prompt MCP: na "čo mám vybrané" odpovedať zo `summary`, pri `truncated` nepopisovať výber ako celok.
+
+**Dôsledky:** chyba z issue (záver z čiastočnej vzorky) je zavretá hneď po nasadení hosta; úplný súhrn
+pre časti zostáv príde so zmenou forku. 1810 GUID je ~45 kB v Realtime odpovedi, AIM lookup ide po
+dávkach 100.
+
+**Zavrhnuté:**
+- *Dopočítať triedu a rodiča na serveri cez IFC motor (`ENGINE_ENABLED`):* studený štart ~7 s a druhá
+  kópia IFC, ktorú viewer už má načítanú. Otvorené ako otázka pre Samuela v #64.
+- *Nový tool `get_selection`:* ten istý stav viewera by mal dve cesty; stránkovanie stačí v
+  `get_viewer_state`.
+
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-093 (súhrn výberu v `get_viewer_state`):** `selection` s `count`/`returned`/`truncated`, súhrnom (trieda, podlažie, zostava, model, `covers`), stránkou položiek s identitou a `note` pri orezaní; kontrakt pre fork (celé `guids`, voliteľné `items` a `bbox`); prompt nerobí závery zo vzorky.
 - **2026-10-19** - **D-090 dodatok (issue len na pokyn):** Claude zápis len ponúkne, `request_tool`/`report_feedback` volá až na výslovný pokyn Samuela.
 - **2026-10-19** - **D-090 dodatok (strop a fronta):** najviac 3 súbežné sessions (`FEEDBACK_MAX_SESSIONS`), ďalšie issues so štítkom `fronta`, session po PR uvoľní miesto a pošle notifikáciu, ďalšiu spustí tool `start_queued_session`; `request_tool.start_session=false` pre dávky.
 - **2026-10-18** - **D-091 (kde žije AIM funkcia):** predvolene AIMviewer; do forku len zobrazenie, ktoré musí byť vnútri panelov viewera (odznaky, záznamy, lokálne prepínače); akcie meniace dáta robí host, tlačidlo vo forku ich len otvorí.

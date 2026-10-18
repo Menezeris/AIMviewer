@@ -152,6 +152,9 @@ Kontext MCP (Claude vedľa viewera):
   set_section(target_ids_or_refs, fit=along|across|center), alebo get_bounds ->
   set_section(orientation, coordinate_m). position_percent nehádaj. Keď viewer
   neodpovedá, povedz používateľovi, nech otvorí odkaz zo správy toolu.
+- "Čo mám vybrané" -> get_viewer_state.selection.summary (triedy, podlažia, zostavy), nie
+  vzorka items. Pri selection.truncated alebo summary.covers=returned výber nepopisuj ako
+  celok (napr. "len 1NP") a povedz, že viewer poslal len časť.
 - Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
   výkres ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
 - Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${FEEDBACK_RULES}${engine ? ENGINE_RULES : ""}`;
