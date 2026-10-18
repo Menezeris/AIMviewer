@@ -329,7 +329,7 @@ async function ifcIdsValidate(input: Record<string, unknown>, deps: EngineDeps):
   if (!src) {
     throw new InputError(
       sources.length === 0
-        ? "Register IDS je prázdny (env IDS_SOURCES nie je nastavený) - kontrola teraz nie je dostupná; uložený beh je v v_ids_summary."
+        ? "Register IDS je prázdny - kontrola na serveri zatiaľ nie je zapnutá (D-084, IDS_SOURCES). IDS skontroluj v IDS paneli viewera; uložený beh je v v_ids_summary / v_ids_latest."
         : `IDS '${idsId}' nie je v registri: ${sources.map((s) => s.id).join(", ")}.`,
     );
   }

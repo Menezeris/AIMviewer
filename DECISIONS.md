@@ -3261,11 +3261,24 @@ Automation"; po meraní bypass zrušený a preview `MCP_TOKEN` zmazaný. Nástro
   - *Popisky akcií:* záporná výška rezu = "pod úrovňou", počet cieľov kamery bez
     chybného skloňovania.
 
+**Dodatok D-084 (2026-10-18) - IDS zatiaľ vo vieweri forku, zdroj IDS pre server otvorený.**
+- **Rozhodnutie (Samuel):** kontrola modelu voči IDS sa zatiaľ robí v IDS paneli viewera
+  forku (`apps/viewer/src/components/viewer/IDS*`). Uložené behy ifctesteru (D-081,
+  `v_ids_latest`/`v_ids_summary`) ostávajú záväzným záznamom.
+- **Server:** `IDS_SOURCES` sa zatiaľ nenastavuje. `ifc_ids_validate` ostáva v kóde; pri
+  prázdnom registri vráti chybu, ktorá odkáže na IDS panel viewera a na uložený beh.
+- **Otvorené rozhodnutie (Samuel, aj neskôr):** odkiaľ bude server brať IDS (súbor z
+  `assetin-library` na pevnom commite, alebo bucket, do ktorého ich knižnica publikuje) a
+  kedy kontrolu na serveri zapnúť. Najneskôr pred fázou 3 (D-086), lebo commit zápisu
+  stojí na IDS bráne na serveri. Do vtedy je otázka 2 plánu F12 (zdroj IDS) odložená, nie
+  zodpovedaná.
+
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-18** - **D-084 dodatok (IDS):** IDS kontrola zatiaľ v IDS paneli viewera forku, uložené behy ifctesteru ostávajú; `IDS_SOURCES` sa nenastavuje; zdroj IDS pre server je otvorené rozhodnutie pre Samuela, najneskôr pred fázou 3.
 - **2026-10-17** - **D-084 dodatok (fáza 1) + D-083 dodatok (fáza 1 implementovaná):** `ifc_*` tools motora prepojené na AIM cez GUID (za `ENGINE_ENABLED`), tools pohľadu `set_section`/`set_camera`/`set_view_mode` + `open_drawing.in_viewer`, `global_ids` v 3D tools, spoločný formát ops `lib/viewer-ops.ts`; fork: bridge `SET_SECTION`/`SET_CAMERA`/`SET_VIEW_MODE`. Brána 2 na Verceli prešla (studené 7,4 s, teplé < 0,6 s, ~715 MB), motor ostáva v procese.
 - **2026-10-17** - **D-084 (IFC motor `@ifc-lite/mcp` ako knižnica v konektore) + dodatok D-083:** jeden konektor s tromi rodinami tools (AIM nad DB, `ifc_*` motor nad IFC súbormi, viewer cez bridge), výsledky motora prepojené na AIM cez GUID; bezstavový motor (nový backend na request); zápis ako propose -> commit s IDS bránou a nemennými revíziami (D-086). Pohľad ostáva bez súradníc, `scene.actions` až vo fáze 2. Fáza 0 meria Vercel a zhodu IDS motorov.
 - **2026-10-17** - **D-083 (návrh: Claude ovláda viewer cez MCP, F12):** katalóg 17 use-casov overený voči kódu a živo (2, 4, 7, 16 stoja na dátach, nie na vieweri; 8 je len čiastočne). Fáza 1 = tools `set_section`, `set_camera`, `set_view_mode` + `open_drawing in_viewer` + reset cez existujúci `ops` formát a živý kanál, vo forku bridge `SET_SECTION`/`SET_CAMERA`/`SET_VIEW_MODE` nad existujúcimi volaniami (bez zmeny DB, bez zásahu do upstream súborov); fáza 2 spätný kanál, fáza 3 zápis a fáza 4 analýzy z upstreamu, každá so samostatným rozhodnutím. Upstream `@ifc-lite/mcp` sa nepreberá ako server. Čaká na schválenie (Q1-Q8).
