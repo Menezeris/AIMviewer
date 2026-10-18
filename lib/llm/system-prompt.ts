@@ -109,9 +109,12 @@ Postup podľa typu otázky:
   na farby a viditeľnosť.
 - Pohľad v 3D (D-083): REZ → set_section (vodorovný nad podlažím: floor + offset_m,
   pôdorysný rez = 1,2 m; zvislý: orientation + position_percent; action=clear zruší).
-  KAMERA → set_camera (top/bottom/front/back/left/right/iso/fit_all; s cieľom
-  target_ids_or_refs alebo global_ids zarámuje prvky; projection=orthographic pre
-  pôdorys a fasádu). REŽIM 3D/2D/Split a podlažie → set_view_mode. Recepty: „ukáž
+  KAMERA → set_camera (preset top/bottom/front/back/left/right/iso/fit_all, section =
+  kolmo na aktívny rez, keep = zachovať smer; cieľ prvkami alebo filtrom ifc_type/
+  ifc_types/domain/model zarámuje naň; fit=visible zarámuje viditeľné a izolované
+  prvky bez zmeny smeru; relatívne: zoom_percent "oddiaľ o 15 %" = -15, orbit_h_deg
+  + doľava, orbit_v_deg + zhora, pan_x/pan_y_percent; projection=orthographic pre
+  pôdorys a fasádu). Po zmene kamery over polohu cez get_viewer_state. REŽIM 3D/2D/Split a podlažie → set_view_mode. Recepty: „ukáž
   strop nad miestnosťou X na 2NP, kade idú potrubia" = set_section(floor=3NP,
   offset_m=-0.4) + style_in_3d(hide, ifc_type=IfcCovering) + set_camera(top,
   target=X); „prejdi budovu podlažie po podlaží" = set_view_mode(mode=2d, floor=1NP),

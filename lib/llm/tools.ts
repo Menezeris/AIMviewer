@@ -6,6 +6,7 @@ import { fetchAllPages } from "@/lib/data/pagination";
 import type { ToolDefinition } from "./provider";
 import { docOp } from "@/lib/viewer-ops";
 import { mergeIfcActions, type AskAction } from "./actions";
+import { DOMAIN_IFC_TYPES, sanitizeIfcType, sanitizeModelName } from "./ifc-selector";
 import { VIEW_TOOL_DEFINITIONS, VIEW_TOOL_NAMES, execViewTool } from "./view-tools";
 
 /**
@@ -32,53 +33,6 @@ const LOCATE_CAP = 500;
 const IN_CHUNK = 100;
 /** Max prvkov jednej style_in_3d operácie — GUIDy cestujú v URL (D-066). */
 const STYLE_CAP = 400;
-
-/**
- * IFC domény → triedy pre množinové 3D operácie (D-066 rozšírenie: „všetko
- * HVAC", „celá elektrika"). Selektor rozkladá viewer z entity tables, takže
- * zoznam smie byť veľkorysý — trieda, ktorá v modeli nie je, sa ticho
- * preskočí. Kurátorský výber podľa IFC4 domain schém.
- */
-const DOMAIN_IFC_TYPES: Record<string, string[]> = {
-  hvac: [
-    "IfcDuctSegment", "IfcDuctFitting", "IfcDuctSilencer", "IfcAirTerminal",
-    "IfcAirTerminalBox", "IfcAirToAirHeatRecovery", "IfcFan", "IfcDamper",
-    "IfcCoil", "IfcHumidifier", "IfcEvaporativeCooler", "IfcEvaporator",
-    "IfcCondenser", "IfcCompressor", "IfcChiller", "IfcBoiler", "IfcBurner",
-    "IfcCooledBeam", "IfcCoolingTower", "IfcHeatExchanger", "IfcSpaceHeater",
-    "IfcTubeBundle", "IfcUnitaryEquipment", "IfcVibrationIsolator", "IfcFilter",
-  ],
-  plumbing: [
-    "IfcPipeSegment", "IfcPipeFitting", "IfcSanitaryTerminal", "IfcWasteTerminal",
-    "IfcInterceptor", "IfcStackTerminal", "IfcValve", "IfcPump", "IfcTank",
-    "IfcFlowMeter",
-  ],
-  electrical: [
-    "IfcCableCarrierSegment", "IfcCableCarrierFitting", "IfcCableSegment",
-    "IfcCableFitting", "IfcOutlet", "IfcSwitchingDevice", "IfcLightFixture",
-    "IfcLamp", "IfcElectricAppliance", "IfcElectricDistributionBoard",
-    "IfcElectricFlowStorageDevice", "IfcElectricGenerator", "IfcElectricMotor",
-    "IfcElectricTimeControl", "IfcJunctionBox", "IfcTransformer",
-    "IfcAudioVisualAppliance", "IfcCommunicationsAppliance", "IfcProtectiveDevice",
-    "IfcSensor", "IfcActuator", "IfcAlarm", "IfcController", "IfcUnitaryControlElement",
-  ],
-  architecture: [
-    "IfcWall", "IfcCurtainWall", "IfcDoor", "IfcWindow", "IfcRoof", "IfcStair",
-    "IfcStairFlight", "IfcRamp", "IfcRampFlight", "IfcRailing", "IfcCovering",
-    "IfcFurniture", "IfcFurnishingElement",
-  ],
-  structure: [
-    "IfcBeam", "IfcColumn", "IfcSlab", "IfcFooting", "IfcPile", "IfcMember",
-    "IfcPlate", "IfcReinforcingBar", "IfcReinforcingMesh", "IfcTendon",
-    "IfcTendonAnchor",
-  ],
-};
-
-/** Wire-safe očista selektorových hodnôt (ops formát používa : ; ~ . ako oddeľovače). */
-const sanitizeIfcType = (raw: unknown): string =>
-  String(raw ?? "").replace(/[^A-Za-z0-9]/g, "").trim();
-const sanitizeModelName = (raw: unknown): string =>
-  String(raw ?? "").replace(/[:;~.]/g, "").trim();
 
 /** Max IFC GlobalId priamo z výsledku IFC motora (D-084): ~23 znakov na GUID v URL (limit 16 000). */
 const GLOBAL_IDS_CAP = 600;
