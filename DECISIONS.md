@@ -3546,8 +3546,11 @@ dokumenty z nich (160) vypadávali.
   rovnakým GUID. Overené na kópii prod DB s odvodenými hranami z júla: 0 hrán na zaniknuté
   objekty. Na prode: workflow `odvodenie` (beh `39150583359`) uzavrel 242 hrán z (a); presun
   ručných väzieb (b) so Samuelovým súhlasom cez Management API: 11 výkresových, 9 dokumentov
-  a 1 fotka (`2.27` má nástupcu s rovnakým GUID). Ostáva 1 fotka v priestore `2.01-2`, ktorý
-  vo v72 nástupcu nemá - priradiť ručne.
+  a 1 fotka (`2.27` má nástupcu s rovnakým GUID). Fotku v priestore `2.01-2` (vo v72 bez
+  nástupcu) Samuel zatiaľ odstránil: capture `a2608cf3…` a jeho médium dostali `valid_until`,
+  ich 2 väzby sú uzavreté, súbory v úložisku ostávajú (vratné). Zoznam fotiek
+  (`fetchAllCapturePointsImpl`) preto filtruje `valid_until is null`. Na prode 0 aktívnych hrán
+  na zaniknuté objekty.
 
 ---
 
