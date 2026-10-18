@@ -210,7 +210,9 @@ normalizuje na spoločný label (`1NP_VZT`→`1NP`, D-049).
 
 ## ETL — spustenie
 Python 3.9+ (`py -3.9`), `PYTHONUTF8=1` na Windows (cp1250 konzola). Vždy z koreňa repa:
-`python -m etl.main --file <ifc> [--dry-run|--reset|--federate]`. Detaily v `etl/README.md`.
+`python -m etl.main --file <ifc> [--dry-run|--reset|--federate] [--model ASR|VZT]`. Detaily v `etl/README.md`.
+IFC modely federácie sa zverejňujú **len cez `python -m etl.model_publish`** (revízia + archív,
+D-086), nikdy priamym uploadom do bucketu; re-ETL revízie vždy s `--model`, nikdy `--reset`.
 
 ## LLM rozhranie — eval kadencia (D-057)
 Zmena LLM vrstvy (tools, system prompt, model/provider) ⇒ pred commitom spusti evaly

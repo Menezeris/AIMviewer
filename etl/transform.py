@@ -449,6 +449,7 @@ def to_staged(
     # 5) Dokumenty + aktori (best-effort, štruktúra je tu — doladiť na model, E2).
     _collect_documents(model, refs, staged)
     _collect_actors(model, refs, staged)
+    _drop_unemitted_links(staged, refs.cov)
 
     # Coverage typov: koľko zdieľaných SNIM kódov vs. koľko IFC typov ich nieslo.
     refs.cov.types_total = len(type_code_by_id)
@@ -540,9 +541,30 @@ def _collect_documents(model: ifcopenshell.file, refs: _RefAllocator, staged: St
         for obj in attr(assoc, "RelatedObjects") or []:
             obj_guid = attr(obj, "GlobalId")
             if obj_guid:
-                staged.edges.append(
-                    Edge("has_document", refs.ref(obj), doc_ref, role="document")
-                )
+                obj_ref = refs.ref(obj)
+                staged.link_classes.setdefault(obj_ref, obj.is_a())
+                staged.edges.append(Edge("has_document", obj_ref, doc_ref, role="document"))
+
+
+def _drop_unemitted_links(staged: StagedModel, cov: CoverageReport) -> None:
+    """Väzby dokumentov a aktorov len na emitnuté objekty — žiadne dangling hrany.
+
+    Model nesie dokumenty aj na entitách, ktoré ETL (zatiaľ) neemituje: IfcZone,
+    IfcSpatialZone, IfcGroup skladieb, IfcProject (D-086). Hrana na neexistujúci
+    `object_ref` by zhodila celý load (`_resolve_cross_file_refs`), preto sa vynechá
+    a zráta do coverage podľa IFC triedy."""
+    emitted = {o.object_ref for o in staged.objects}
+    kept: list[Edge] = []
+    for e in staged.edges:
+        other = e.from_ref if e.edge_type == "has_document" else (
+            e.to_ref if e.edge_type == "responsible_for" else None
+        )
+        if other is None or other in emitted:
+            kept.append(e)
+            continue
+        cls = staged.link_classes.get(other, "?")
+        cov.unlinked[cls] = cov.unlinked.get(cls, 0) + 1
+    staged.edges = kept
 
 
 def _collect_actors(model: ifcopenshell.file, refs: _RefAllocator, staged: StagedModel) -> None:
@@ -559,8 +581,10 @@ def _collect_actors(model: ifcopenshell.file, refs: _RefAllocator, staged: Stage
         role_name = str(attr(role, "Role")) if role else None
         for obj in attr(rel, "RelatedObjects") or []:
             if attr(obj, "GlobalId"):
+                obj_ref = refs.ref(obj)
+                staged.link_classes.setdefault(obj_ref, obj.is_a())
                 staged.edges.append(
-                    Edge("responsible_for", actor_ref, refs.ref(obj), role=role_name or "responsible")
+                    Edge("responsible_for", actor_ref, obj_ref, role=role_name or "responsible")
                 )
 
 

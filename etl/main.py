@@ -38,6 +38,11 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         help="disciplinárny model (VZT) napojiť na existujúcu štruktúru — bez emitu "
              "spatial koreňov, prvky na existujúce podlažia (D-049). Nekombinovať s --reset.",
     )
+    parser.add_argument(
+        "--model", metavar="MENO",
+        help="meno modelu federácie (ASR, VZT; D-086): hrany a GUID história dostanú zdroj "
+             "modelu a čo tento beh už nevydal (zmazané/presunuté prvky), sa uzavrie.",
+    )
     args = parser.parse_args(argv)
 
     if args.federate and args.reset:
@@ -56,6 +61,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
 
     staged = transform.to_staged(model, federate=args.federate, existing_floors=existing_floors)
     print(f"Staged: {staged.summary()}")
+    _print_unlinked(staged)
 
     if args.dry_run:
         print("--dry-run → do DB sa nezapisuje.")
@@ -67,11 +73,21 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     url = config.database_url()
     if args.reset:
         print("--reset → AIM dáta sa pred loadom vyprázdnia (nahradenie seedu).")
-    load_model(url, staged, reset=args.reset)
+    closed = load_model(url, staged, reset=args.reset, scope=args.model)
+    if args.model:
+        print(f"Model {args.model}: uzavreté zastarané hrany {closed['edges']}, "
+              f"GUID záznamy {closed['guids']} (D-086).")
     print("Hotovo — zapísané do Supabase.")
 
 
 _SNIM_REF = re.compile(r"^[A-Z]{2}\d{2}(?:\.\d+)+$")  # napr. DD01.06 / DD01.06.03
+
+
+def _print_unlinked(staged: StagedModel) -> None:
+    unlinked = staged.coverage.unlinked if staged.coverage else {}
+    if unlinked:
+        detail = ", ".join(f"{cls} {n}" for cls, n in sorted(unlinked.items(), key=lambda kv: -kv[1]))
+        print(f"Vynechané väzby dokumentov/aktorov na neemitované entity: {detail}")
 
 
 def _print_sample(staged: StagedModel) -> None:

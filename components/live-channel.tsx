@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Radio } from "lucide-react";
 
 import { isSafeViewerUrl, mergeIfcActions, type AskAction } from "@/lib/llm/actions";
+import { LIVE_REVISION_EVENT, parseRevisionNotice, revisionToast } from "@/lib/live/revision";
 
 /**
  * Živý príkazový kanál (D-079): viewer otvorený s `?live=<kanál>` počúva na
@@ -55,15 +56,19 @@ export function LiveChannel() {
     let disposed = false;
     let cleanup: (() => void) | undefined;
 
+    const showToast = (msg: string) => {
+      setToast(msg);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
+    };
+
     const flush = () => {
       timer.current = null;
       const batch = queue.current.splice(0);
       const nav = mergeIfcActions(batch)[0];
       if (!nav) return;
       router.push(nav.url);
-      setToast(`Claude: ${nav.label}`);
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
+      showToast(`Claude: ${nav.label}`);
     };
 
     import("@supabase/supabase-js").then(({ createClient }) => {
@@ -89,6 +94,14 @@ export function LiveChannel() {
           if (queue.current.length > 0 && !timer.current) {
             timer.current = setTimeout(flush, BATCH_MS);
           }
+        })
+        // Nová revízia modelu (D-086): stránka sa obnoví zo servera, URL modelu dostane
+        // nový `?rev=` a iframe viewera model načíta znova; adresa (výber, ops) ostáva.
+        .on("broadcast", { event: LIVE_REVISION_EVENT }, ({ payload }) => {
+          const notice = parseRevisionNotice(payload);
+          if (!notice) return;
+          router.refresh();
+          showToast(revisionToast(notice));
         })
         .subscribe((s) => {
           if (disposed) return;

@@ -20,7 +20,8 @@ Python pipeline, ktorá načíta IFC model a naplní Supabase schému (`objects`
 | `db.py` | idempotentný upsert do Postgresu v poradí FK; hrany → generická `relationships` (D-051) |
 | `ids.py` | deterministické UUID pre tabuľky bez prirodzeného unique |
 | `config.py` | načítanie `DATABASE_URL` |
-| `main.py` | CLI (`--file`, `--dry-run`) |
+| `main.py` | CLI (`--file`, `--dry-run`, `--model`) |
+| `model_publish.py` | revízie IFC modelov: poistka, archív, compare-and-swap, živý kanál (D-086) |
 
 ## Predpoklady
 - **Python 3.9+** (overené s 3.9 + `ifcopenshell 0.8.4`).
@@ -109,6 +110,37 @@ Spúšťa sa **po** `etl.main` (prvky sa párujú cez aktívny IFC GUID). Každ�
 záznam (história plnenia ostáva); pohľady ukazujú posledný beh. IDS pre ARCH výmenu sa
 púšťa na ASR, nie na VZT — špecifikácie s `minOccurs=1` by inak hlásili, že v modeli nič nie je.
 
+## Revízie modelov — `etl.model_publish` (D-086)
+
+IFC súbor je master. Každá zverejnená verzia modelu = nemenná kópia
+`ifc/archive/<model>/vNNN.ifc.gz` + riadok `model_revisions`; aktuálna je aj na
+`ifc/<model>.ifc`. Env: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+voliteľne `LIVE_CHANNEL`.
+
+Poradie jednej zmeny (rovnaké v GitHub Actions repa OCB):
+```bash
+python -m etl.model_publish publish --model ASR --file ASR_v73.ifc --base 72 \
+    --changes zmeny.json --summary "..."        # poistka → archív → revízia (compare-and-swap)
+python -m etl.main --file ASR_v73.ifc --model ASR              # re-ETL so zdrojom modelu
+python -m etl.derive spatial_reference --models ASR_v73.ifc VZT.ifc
+python -m etl.model_publish announce --model ASR               # "nová revízia" do viewera
+```
+- **Poistka** (bez IDS): súbor sa otvorí, schéma ostáva, žiadny GlobalId nie je dvakrát a
+  každý pridaný/odobratý objekt (`IfcObjectDefinition`) je v zozname zmien ako `add` /
+  `remove`. Neprejde → kód 2, nič sa nezapíše. `--dry-run` = len poistka.
+- **Konflikt** (kód 3): aktuálna revízia už nie je `--base` → recept spustiť nad novou.
+- `revert --model ASR --to 71` = nová revízia s obsahom v71; `sync` = aktuálny kľúč znova
+  z archívu; `status` = zoznam revízií.
+- Zoznam zmien (`zmeny.json`): `{"summary": "...", "changes": [{"guid", "ifc_class",
+  "op": "add|remove|modify", "what", "before", "after"}]}`.
+
+**`--model` v `etl.main`:** hrany a GUID história dostanú zdroj modelu (`etl:ASR`,
+`IFC import:ASR`); čo beh nevydal (zmazaný, presunutý, premenovaný prvok), sa uzavrie.
+Nový rodič pri `rel_aggregates` / `contained` / `defines_by_type` uzavrie starého pred
+insertom. **Prvý prechod** z dát bez mena modelu: načítať ASR aj VZT s `--model`, potom raz
+`python -m etl.model_publish close-legacy`. Väzby dokumentov/aktorov na entity, ktoré ETL
+neemituje (IfcZone, IfcSpatialZone, IfcGroup, IfcProject), sa vynechajú a vypíšu.
+
 ## Idempotencia (D-031)
 - `objects` upsert cez `object_ref` (UNIQUE) → `id` ostáva DB-generované (D-010).
 - Hrany / systémy / GUID história → deterministické UUID (`ids.py`), `ON CONFLICT (id)`.
@@ -145,4 +177,6 @@ ide na GUID fallback (správne — netlačí sa inštančný tag).
 ## Unit testy
 `pip install -r etl/requirements-dev.txt`, potom z koreňa repa `python -m pytest etl/tests -q`.
 Testy sú čisto lokálne (bez DB/Supabase) — pokrývajú parsovanie manifestu a load-logiku
-cez stub kurzor.
+cez stub kurzor. Testy zápisu revízií (`test_model_publish.py`) potrebujú prázdnu Postgres
+databázu v `AIM_TEST_DATABASE_URL` (migrácia sa aplikuje do vlastnej schémy testu), inak sa
+preskočia.

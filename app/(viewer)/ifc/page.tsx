@@ -2,7 +2,7 @@ import { fetchUnderlayDrawings } from "@/lib/data/drawing";
 import { fetchProjectDocuments } from "@/lib/data/documents";
 import { fetchCapturePins } from "@/lib/data/captures";
 import { fetchTreeDecorations } from "@/lib/data/decorations";
-import { fetchGuidMap, getIfcModels } from "@/lib/data/ifc";
+import { fetchGuidMap, getCurrentIfcModels } from "@/lib/data/ifc";
 import IFCWorkspace from "@/components/ifc-workspace";
 
 // SSR na každý request — GUID mapa sa číta z DB (cache na úrovni fetchGuidMap, D-029).
@@ -20,7 +20,8 @@ export default async function IFCPage({
   const { focus, ops, r, doc } = await searchParams;
 
   const [models, guidMap, underlays, documents, captures, decorations] = await Promise.all([
-    Promise.resolve(getIfcModels()),
+    // Aktuálne revízie modelov (D-086) — `?rev=` v URL obnoví iframe po novej revízii.
+    getCurrentIfcModels(),
     fetchGuidMap(),
     // Georeferencované PDF podklady (D-072) — viewer ich dostane po MODELS_LOADED.
     fetchUnderlayDrawings(),

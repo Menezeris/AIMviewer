@@ -126,6 +126,8 @@ class CoverageReport:
     fallback_classes: dict[str, int] = field(default_factory=dict)   # IFC trieda → počet fallbackov
     undefined_tsp: dict[str, int] = field(default_factory=dict)      # kód je, kategória v schéme nie
     collisions: list[str] = field(default_factory=list)             # duplicitné SNIM kódy
+    # väzby dokument/aktor na entitu, ktorú ETL neemituje (IfcZone, IfcGroup, IfcProject…)
+    unlinked: dict[str, int] = field(default_factory=dict)          # IFC trieda → počet väzieb
 
 
 @dataclass
@@ -137,6 +139,8 @@ class StagedModel:
     refs: list[ClassificationRef] = field(default_factory=list)
     guid_history: list[GuidHistory] = field(default_factory=list)
     coverage: Optional["CoverageReport"] = None
+    # object_ref → IFC trieda entít, na ktoré ukazujú väzby dokumentov/aktorov (diagnostika)
+    link_classes: dict[str, str] = field(default_factory=dict)
 
     def summary(self) -> str:
         return (
