@@ -3664,6 +3664,24 @@ dokumenty z nich (160) vypadávali.
   (`fetchAllCapturePointsImpl`) preto filtruje `valid_until is null`. Na prode 0 aktívnych hrán
   na zaniknuté objekty.
 
+
+**Dodatok D-088 (2026-10-18) - overenie na produkcii a otvorené body.**
+- Po merge PR #56: konektor AIM vracia 83 priestorov (pred merge 133 vrátane zaniknutých), 2224
+  objektov, 24 požiarnych úsekov; `DD03.04.09` neexistuje, `DD03.05.09` áno. Stránka uzla N2.04
+  ukazuje "Priestorová zóna", druh "požiarny úsek" a 35 prvkov. Workflow `odvodenie` (OCB)
+  zavolal `announce` a otvorený viewer s `?live=aim-viewer` sa sám obnovil s hlásením o revízii
+  (Samuel potvrdil).
+- **Odvodenia do zón neboli schválené:** `etl.derive` má IfcSpatialZone v predvolených triedach od
+  D-080 a s D-088 začal priraďovať prvky aj do požiarnych úsekov a energetických zón. Samuel
+  (18. 10.): vzťahy majú byť IFC vzťahmi nad súbormi modelov, zobrazené vo vieweri ako ďalšia
+  vrstva vedľa modelov (záložka spracovaní) a v Relationship records s odznakom AIM; vrstva
+  prežije zmeny súborov, export spolu so súbormi neskôr cez ICDD (D-015); vzťah v rámci jedného
+  súboru sa zapíše do súboru (revízia D-086), medzi súbormi ostáva vo vrstve. Pravidlá odvodení
+  (ktoré, medzi čím, kedy) sú samostatné rozhodnutie pred ďalšou prácou na vieweri.
+- Drobnosti: panel AIM vo vieweri ukazuje pri zóne odznak "Prvok"; LongName priestorových zón
+  sa neukladá ("Požiarny úsek - Technická miestnosť 2NP"), preto ich fulltext nenájde; VZT
+  prvky bez SNIM kódu sa zobrazujú ako GUID namiesto názvu.
+
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
