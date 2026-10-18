@@ -114,8 +114,10 @@ Nastavenie:
    (Metadata: read sa pridá sám) -> Vercel env `FEEDBACK_GITHUB_TOKEN`. Iné repo: `FEEDBACK_REPO=owner/repo`.
 2. **Routine:** claude.ai/code/routines -> "AIM: požiadavka z konektora" -> Edit -> Add another
    trigger -> API -> skopíruj URL do `CLAUDE_ROUTINE_FIRE_URL` a Generate token do
-   `CLAUDE_ROUTINE_TOKEN` (zobrazí sa raz). V routine skontroluj repo/prostredie a pridaj
-   konektory GitHub a aim-viewer.
+   `CLAUDE_ROUTINE_TOKEN` (zobrazí sa raz). V tej istej routine **pridaj repo
+   `Menezeris/AIMviewer`** (bez neho session nemá prístup, overené na #58), konektory GitHub a
+   aim-viewer a model (Opus pre stavbu tools; predvolený je Sonnet).
 3. Redeploy. Bez tokenu tools vrátia koncept issue; bez routine issue vznikne a session čaká
-   (ďalšie zavolanie tej istej požiadavky ju spustí).
+   (ďalšie zavolanie tej istej požiadavky ju spustí). Session, ktorá zlyhala, sa spustí znova po
+   odobratí štítku `session` z issue.
 

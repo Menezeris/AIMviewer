@@ -3815,13 +3815,15 @@ druhých dvoch vznikne issue a session čaká.
 - API routines je beta (`/fire` sa môže zmeniť, nové hlavičky s dátumom, dve predošlé platia).
 - Limity: 30 spustení za hodinu na routine, 100 za hodinu na účet; každá session ide na
   predplatné vlastníka routine (Samuel).
-- Routine založená cez MCP nemá konektory (organizácia ich pri tomto spôsobe nedovolí): session
-  má vstavaný GitHub v cloud session a `add_repo`; konektor `aim-viewer` treba routine pridať
-  vo webe, ak má overovať nad živými dátami.
+- **Routine založená cez MCP nemá repo ani konektory** (overené testom, issue #58): session
+  vznikla, ale `gh api` vrátil 403 a `add_repo` v nej nebol. Repo `Menezeris/AIMviewer`,
+  konektory (GitHub, aim-viewer) a model sa routine pridávajú vo webe spolu s API triggerom;
+  bez repa prompt povie, čo chýba, a skončí. Bez nastavenia modelu beží Sonnet 5.5 (ako D-086 Q6).
 - Session zatiaľ beží len nad AIMviewer; fork `ifc-lite` si pripojí sama cez `add_repo`, ak má
   prístup (D-087).
-- Neoverené naživo: `/fire` z Vercelu (token ešte neexistuje), vytvorenie chýbajúcich štítkov
-  pri zakladaní issue (pri 422 sa issue založí bez štítkov).
+- Neoverené naživo: `/fire` z Vercelu (token ešte neexistuje); spustenie routine overené len
+  cez `fire_trigger` z inej session. Chýbajúce štítky GitHub pri zakladaní issue vytvorí sám
+  (overené na #58); pri 422 sa issue založí bez štítkov.
 
 **Zavrhnuté:**
 - *claude-code-action v GitHub Actions na štítok issue:* beh nie je session v claude.ai, nedá sa
