@@ -3856,6 +3856,24 @@ sa majú vzájomne koordinovať, nevyvíjať to isté dvakrát a nerobiť konfli
 sekvenčná fronta požiadaviek (zahodila by paralelizmus, ktorý D-086 chce); čísla rozhodnutí
 pridelené až pri merge (odkazy medzi vetvami by sa menili).
 
+**Dodatok D-090 (2026-10-19) - strop súbežných sessions a fronta.** Samuel: naraz najviac tri
+sessions z issues; issues vznikajú ďalej a keď sa miesto uvoľní, má prísť notifikácia, či spustiť
+ďalšiu. Riešenie bez novej služby, stav je v štítkoch issues (jeden nositeľ):
+- **Beží** = otvorené issue so štítkom `session`, ktoré sa hýbalo za posledných 24 h (spadnutá
+  alebo zabudnutá session strop neblokuje navždy; `feedback_status` ju ukáže ako `stale`).
+  Strop `FEEDBACK_MAX_SESSIONS`, predvolene 3.
+- **Fronta** = štítok `fronta`. `request_tool` (a pripomienka so `start_session`) pri plnom strope
+  issue založí, dá do fronty a povie pozíciu; `start_session=false` len zapíše (dávka bez sessions).
+- **Uvoľnenie** robí session sama (skill, krok Výsledok): po otvorení PR alebo keď už len čaká na
+  Samuela vymení `session` za `pr` alebo `caka-na-samuela` a ak je fronta neprázdna, pošle
+  notifikáciu (alebo ju dá do záverečnej správy, ktorú routine pošle ako push).
+- **Spustenie ďalšej** robí Samuel cez konektor: nový tool `start_queued_session` (najstaršia z
+  fronty alebo konkrétne issue; pri plnom strope nič nespustí, `over_limit` len na výslovnú žiadosť).
+*Vedomé limity:* dve súbežné volania tesne pri strope môžu spustiť jednu session navyše (GitHub
+nemá atomický zámok, risk je malý); session, ktorá štítok nevymení, drží miesto najviac 24 h.
+*Zavrhnuté:* automatické spustenie ďalšej bez otázky (Samuel chce rozhodnúť, a míňa to
+predplatné); pravidelná routine, ktorá frontu kontroluje (prázdne sessions každú hodinu).
+
 ---
 
 ### D-091 - Kde žije AIM funkcia: predvolene AIMviewer, vo forku len zobrazenie vnútri panelov viewera
@@ -3899,6 +3917,7 @@ s rýchlym CI. Most sa rozširuje o dáta na zobrazenie a o správy "otvor akciu
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-090 dodatok (strop a fronta):** najviac 3 súbežné sessions (`FEEDBACK_MAX_SESSIONS`), ďalšie issues so štítkom `fronta`, session po PR uvoľní miesto a pošle notifikáciu, ďalšiu spustí tool `start_queued_session`; `request_tool.start_session=false` pre dávky.
 - **2026-10-18** - **D-091 (kde žije AIM funkcia):** predvolene AIMviewer; do forku len zobrazenie, ktoré musí byť vnútri panelov viewera (odznaky, záznamy, lokálne prepínače); akcie meniace dáta robí host, tlačidlo vo forku ich len otvorí.
 - **2026-10-18** - **D-090 (pripomienky a požiadavky na nové tools z konektora):** MCP tools `request_tool`, `report_feedback`, `feedback_status`; záznam = GitHub issue v repe konektora (bez tabuľky v DB, opakovanie = komentár), požiadavka na tool spustí Claude Code session cez API trigger routine "AIM: požiadavka z konektora", postup session v skille `mcp-poziadavka`; mení zavrhnutie cloud sessions v D-086.
 - **2026-10-18** - **D-089 (register pravidiel odvodení, vrstva AIM nad modelmi):** `derivation_rules` + `derivation_runs`, pravidlá `element_in_space`, `element_in_spatial_zone` (geometria) a `element_in_zone` (cez priestory, pohľad `v_zone_elements`, IFC na prvok v IfcZone vzťah nemá), zapnúť/vypnúť a režim auto/manual; vrstva vo vieweri s odznakom AIM a povýšenie do súboru ako ďalšie fázy.

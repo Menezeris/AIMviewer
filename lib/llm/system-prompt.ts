@@ -169,6 +169,9 @@ const FEEDBACK_RULES = `
 - Pripomienku ("toto je zle", "zapíš si to", tool zlyhal alebo vrátil nezmysel) zapíš report_feedback;
   session spusti (start_session) len keď o to používateľ požiada. Úpravu samotného IFC modelu sem
   nezapisuj. Stav a otázky session na používateľa ukáže feedback_status.
+- Naraz bežia najviac 3 sessions; ďalšie požiadavky idú do fronty (queued). Pri viacerých položkách
+  naraz (zoznam, dokument) zapíš každú zvlášť, podobné zlúč do jednej, a na konci povedz, koľko session
+  beží a čo čaká. "Spusti ďalšiu" = start_queued_session.
 - Issue je verejné: žiadne mená, kontakty ani tokeny, len object_ref, triedy, psety a tools.`;
 
 /**

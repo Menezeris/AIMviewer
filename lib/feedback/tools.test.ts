@@ -291,6 +291,118 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
   });
 });
 
+describe("strop súbežných sessions a fronta (D-090)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  const running = (n: number, updated = "2026-10-18T21:00:00Z") =>
+    issue({ number: n, title: `Beží ${n}`, labels: [{ name: "mcp" }, { name: "session" }], updated_at: updated });
+  const queued = (n: number, created: string) =>
+    issue({
+      number: n,
+      title: `Čaká ${n}`,
+      created_at: created,
+      body: marker({ v: 1, kind: "feedback", fp: `feedback:bug:${n}` }),
+      labels: [{ name: "mcp" }, { name: "fronta" }],
+    });
+  const fired = () => vi.fn(async () => ({ sessionId: "s", sessionUrl: "https://claude.ai/code/s" }));
+
+  it("pri plnom strope ide nová požiadavka do fronty a session sa nespustí", async () => {
+    const gh = fakeGithub({
+      "GET /repos/Menezeris/AIMviewer/issues": () => ({ json: [running(1), running(2), running(3)] }),
+      "POST /repos/Menezeris/AIMviewer/issues": () => ({ status: 201, json: issue() }),
+      "POST /repos/Menezeris/AIMviewer/issues/12/labels": () => ({ json: [] }),
+    });
+    const fire = fired();
+    const res = await execFeedbackTool("request_tool", toolArgs, deps({ client: gh.client, fire }));
+    const out = JSON.parse(res.text);
+    expect(out).toMatchObject({ queued: true, session: null });
+    expect(out.session_note).toContain("pozícia 1");
+    expect(out.session_note).toContain("Bežia 3 z 3");
+    expect(fire).not.toHaveBeenCalled();
+    const label = gh.calls.find((c) => c.url.endsWith("/issues/12/labels"))!;
+    expect(label.body).toEqual({ labels: ["fronta"] });
+  });
+
+  it("strop sa dá zmeniť cez FEEDBACK_MAX_SESSIONS a session bez pohybu 24 h sa nepočíta", async () => {
+    vi.stubEnv("FEEDBACK_MAX_SESSIONS", "2");
+    const gh = fakeGithub({
+      "GET /repos/Menezeris/AIMviewer/issues": () => ({
+        json: [running(1), running(2, "2026-10-16T10:00:00Z")],
+      }),
+      "POST /repos/Menezeris/AIMviewer/issues": () => ({ status: 201, json: issue() }),
+      "POST /repos/Menezeris/AIMviewer/issues/12/comments": () => ({ status: 201, json: { id: 1 } }),
+      "POST /repos/Menezeris/AIMviewer/issues/12/labels": () => ({ json: [] }),
+    });
+    const fire = fired();
+    const out = JSON.parse((await execFeedbackTool("request_tool", toolArgs, deps({ client: gh.client, fire }))).text);
+    expect(out.queued).toBe(false);
+    expect(fire).toHaveBeenCalledTimes(1);
+  });
+
+  it("start_session=false len zapíše, bez session aj bez fronty", async () => {
+    const gh = fakeGithub({
+      "GET /repos/Menezeris/AIMviewer/issues": () => ({ json: [] }),
+      "POST /repos/Menezeris/AIMviewer/issues": () => ({ status: 201, json: issue() }),
+    });
+    const fire = fired();
+    const out = JSON.parse(
+      (await execFeedbackTool("request_tool", { ...toolArgs, start_session: false }, deps({ client: gh.client, fire })))
+        .text,
+    );
+    expect(out).toMatchObject({ queued: false, session: null });
+    expect(fire).not.toHaveBeenCalled();
+  });
+
+  it("start_queued_session spustí najstaršie z fronty a vymení štítok fronta za session", async () => {
+    const gh = fakeGithub({
+      "GET /repos/Menezeris/AIMviewer/issues": () => ({
+        json: [running(1), queued(21, "2026-10-18T22:30:00Z"), queued(20, "2026-10-18T22:00:00Z")],
+      }),
+      "POST /repos/Menezeris/AIMviewer/issues/20/comments": () => ({ status: 201, json: { id: 1 } }),
+      "POST /repos/Menezeris/AIMviewer/issues/20/labels": () => ({ json: [] }),
+      "DELETE /repos/Menezeris/AIMviewer/issues/20/labels/fronta": () => ({ json: [] }),
+    });
+    const fire = fired();
+    const out = JSON.parse((await execFeedbackTool("start_queued_session", {}, deps({ client: gh.client, fire }))).text);
+    expect(out.started).toMatchObject({ number: 20 });
+    expect(out.queue_left).toEqual([{ number: 21, title: "Čaká 21" }]);
+    expect((fire.mock.calls[0] as unknown as [string])[0]).toContain("druh: pripomienka");
+    expect(gh.calls.some((c) => c.method === "DELETE" && c.url.endsWith("/issues/20/labels/fronta"))).toBe(true);
+  });
+
+  it("start_queued_session pri plnom strope nič nespustí a povie, čo beží", async () => {
+    const gh = fakeGithub({
+      "GET /repos/Menezeris/AIMviewer/issues": () => ({
+        json: [running(1), running(2), running(3), queued(20, "2026-10-18T22:00:00Z")],
+      }),
+    });
+    const fire = fired();
+    const res = await execFeedbackTool("start_queued_session", {}, deps({ client: gh.client, fire }));
+    const out = JSON.parse(res.text);
+    expect(out.started).toBeNull();
+    expect(out.running.map((i: { number: number }) => i.number)).toEqual([1, 2, 3]);
+    expect(out.queue).toEqual([{ number: 20, title: "Čaká 20" }]);
+    expect(fire).not.toHaveBeenCalled();
+  });
+
+  it("start_queued_session s prázdnou frontou to povie bez chyby", async () => {
+    const gh = fakeGithub({ "GET /repos/Menezeris/AIMviewer/issues": () => ({ json: [running(1)] }) });
+    const res = await execFeedbackTool("start_queued_session", {}, deps({ client: gh.client, fire: fired() }));
+    expect(res.isError).toBe(false);
+    expect(JSON.parse(res.text).note).toBe("Fronta je prázdna.");
+  });
+
+  it("feedback_status ukáže, koľko sessions beží a čo je vo fronte", async () => {
+    const gh = fakeGithub({
+      "GET /repos/Menezeris/AIMviewer/issues": () => ({
+        json: [running(1), running(2, "2026-10-16T10:00:00Z"), queued(20, "2026-10-18T22:00:00Z")],
+      }),
+    });
+    const out = JSON.parse((await execFeedbackTool("feedback_status", {}, deps({ client: gh.client }))).text);
+    expect(out.sessions).toEqual({ running: [1], max: 3, stale: [2], queue: [20] });
+  });
+});
+
 describe("routine /fire (D-090)", () => {
   afterEach(() => vi.unstubAllEnvs());
 

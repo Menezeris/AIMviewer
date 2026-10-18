@@ -117,7 +117,9 @@ Nastavenie:
    `CLAUDE_ROUTINE_TOKEN` (zobrazí sa raz). V tej istej routine **pridaj repo
    `Menezeris/AIMviewer`** (bez neho session nemá prístup, overené na #58), konektory GitHub a
    aim-viewer a model (Opus pre stavbu tools; predvolený je Sonnet).
-3. Redeploy. Bez tokenu tools vrátia koncept issue; bez routine issue vznikne a session čaká
+3. Voliteľne `FEEDBACK_MAX_SESSIONS` (predvolene 3): koľko sessions beží naraz, ďalšie issues čakajú
+   so štítkom `fronta` a spúšťa ich `start_queued_session` ("spusti ďalšiu požiadavku").
+4. Redeploy. Bez tokenu tools vrátia koncept issue; bez routine issue vznikne a session čaká
    (ďalšie zavolanie tej istej požiadavky ju spustí). Session, ktorá zlyhala, sa spustí znova po
    odobratí štítku `session` z issue.
 
