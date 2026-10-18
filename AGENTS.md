@@ -219,6 +219,10 @@ Geometria = **ephemerálna v prehliadači** (IFClite WASM, klient-side, IFC súb
 identita naprieč modelmi drží IFC GUID (expressId sa medzi súbormi prekrýva), podlažie sa
 normalizuje na spoločný label (`1NP_VZT`→`1NP`, D-049).
 
+**Kde žije AIM funkcia (D-091):** predvolene v AIMvieweri; do forku len zobrazenie, ktoré musí
+byť vnútri panelov viewera (odznak, záznam, lokálny prepínač). Akcie meniace dáta robí host,
+tlačidlo vo forku ich len otvorí.
+
 **Nová funkcia viewera (D-087):** najprv tool z `@ifc-lite/mcp` 1:1, pohľad len ako adaptér v
 `apps/viewer/src/aim/` forku, vlastné len kde originál nič nemá. Fork PR rob podľa skillu
 `.claude/skills/aim-feature/SKILL.md` vo forku (lokálne kontroly, meranie balíka, mutačné

@@ -3858,9 +3858,48 @@ pridelené až pri merge (odkazy medzi vetvami by sa menili).
 
 ---
 
+### D-091 - Kde žije AIM funkcia: predvolene AIMviewer, vo forku len zobrazenie vnútri panelov viewera
+
+**Dátum:** 2026-10-18 · **Stav:** prijaté (Samuel) · **Súvisí:** D-071, D-072, D-087, D-089
+
+**Kontext:** UI vrstvy odvodení (D-089 fáza B) sa stavalo vo forku `ifc-lite` a trvalo hodiny,
+hoci samotné komponenty boli hotové rýchlo. Každá zmena forku platí poistky, ktoré držia fork
+zosynchronizovateľný s upstreamom (D-071): build celého monorepa, stovky testov, meranie veľkosti
+balíka so stropom, mutačné dôkazy, kontrola nepoužitých premenných; navyše zlúčenie forku a potom
+AIMviewera. AIMviewer má databázu, prihlásenie a rýchle nasadenie (Vercel za minúty). Viewer beží
+v iframe, takže do jeho ribbonu a panelov (MODELS, Relationship records) host kresliť nevie.
+
+**Rozhodnutie:**
+1. **Predvolené miesto pre novú AIM funkciu je AIMviewer** (stránky, panely a dialógy hosta,
+   API, MCP). Do forku ide len to, čo **musí byť vnútri panelov viewera**, aby dávalo zmysel:
+   odznak alebo záznam v jeho paneli, prepínač zobrazenia v scéne, sekcia v jeho strome.
+2. **Fork len zobrazuje a lokálne prepína.** Dáta dostane mostom (`aim-bridge`) hotové; fork
+   nečíta databázu, nerozhoduje o dátach a nemá vlastné formuláre na ich zmenu.
+3. **Akcia, ktorá mení dáta** (zapnúť/vypnúť pravidlo, prepočítať, zápis z viewera vo fáze 3
+   D-086, správa pravidiel, história behov) **patrí do AIMviewera**. Tlačidlo vo forku smie
+   akciu len otvoriť (odkaz alebo správa mostom hostovi), samotný dialóg, potvrdenie a zápis
+   robí host.
+4. Pri návrhu funkcie sa najprv povie, ktorá časť musí byť vo forku a prečo; čo sa dá urobiť
+   v hostovi, sa vo forku nerobí. Stav D-089: tlačidlá Pravidlá a Prepočítať vedú zatiaľ na
+   workflow `odvodenie` v OCB (`manageUrl`); keď vznikne stránka pravidiel v AIMvieweri,
+   `manageUrl` na ňu ukáže bez zmeny forku.
+
+**Dôsledky:** zmeny forku sú zriedkavé a malé (zobrazenie), väčšina iterácií beží v AIMvieweri
+s rýchlym CI. Most sa rozširuje o dáta na zobrazenie a o správy "otvor akciu v hostovi".
+
+**Zavrhnuté:**
+- *Všetky AIM tlačidlá a panely vo forku (doterajší postup pri D-089 B):* každá iterácia platí
+  plnú cenu poistiek forku; správa dát vo forku by ďalej potrebovala prihlásenie a prístup k DB,
+  ktoré má host.
+- *Všetko v hostovi, aj odznaky a záznamy:* host do panelov v iframe kresliť nevie; overlay nad
+  iframe by sa rozišiel s rozložením viewera.
+
+---
+
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-18** - **D-091 (kde žije AIM funkcia):** predvolene AIMviewer; do forku len zobrazenie, ktoré musí byť vnútri panelov viewera (odznaky, záznamy, lokálne prepínače); akcie meniace dáta robí host, tlačidlo vo forku ich len otvorí.
 - **2026-10-18** - **D-090 (pripomienky a požiadavky na nové tools z konektora):** MCP tools `request_tool`, `report_feedback`, `feedback_status`; záznam = GitHub issue v repe konektora (bez tabuľky v DB, opakovanie = komentár), požiadavka na tool spustí Claude Code session cez API trigger routine "AIM: požiadavka z konektora", postup session v skille `mcp-poziadavka`; mení zavrhnutie cloud sessions v D-086.
 - **2026-10-18** - **D-089 (register pravidiel odvodení, vrstva AIM nad modelmi):** `derivation_rules` + `derivation_runs`, pravidlá `element_in_space`, `element_in_spatial_zone` (geometria) a `element_in_zone` (cez priestory, pohľad `v_zone_elements`, IFC na prvok v IfcZone vzťah nemá), zapnúť/vypnúť a režim auto/manual; vrstva vo vieweri s odznakom AIM a povýšenie do súboru ako ďalšie fázy.
 - **2026-10-18** - **D-088 dodatok (prod):** migrácie nasadené, bootstrap revízií a load ASR v72 + VZT do prod DB (2226 platných, 549 zaniknutých objektov, 0 duplicitných GUID); nález 264 hrán na zaniknuté objekty a oprava (derive prepisuje koncové objekty, ručné väzby na nástupcu s rovnakým GUID).
