@@ -87,8 +87,18 @@ sa dá výsledok otvoriť ručne.
 `open_drawing` s `in_viewer=true` (dokument vedľa 3D). Vyžadujú fork viewera s bridge
 správami `SET_SECTION`/`SET_CAMERA`/`SET_VIEW_MODE` (nasadzujú sa spolu).
 
+**Spätný kanál (D-085):** `get_bounds` (obálky prvkov a modelu) a `get_viewer_state` (rez,
+kamera, režim, výber) sa pýtajú otvoreného viewera cez ten istý kanál a čakajú na odpoveď;
+bez viewera na `/ifc?live=<LIVE_CHANNEL>` vrátia, čo treba otvoriť. `set_section` vie rez cez
+prvok (`target_ids_or_refs` / `global_ids` + `fit` along/across/center) a na súradnici IFC
+(`coordinate_m`). Súradnice sú IFC svet (m, Z hore), počíta ich viewer. Vyžaduje fork s
+bridge správami `QUERY`/`QUERY_RESULT`.
+
 **IFC motor (D-084, voliteľne):** env `ENGINE_ENABLED=1` pridá tools `ifc_models`,
-`ifc_query`, `ifc_get`, `ifc_count`, `ifc_property_values`, `ifc_ids_validate`, ktoré čítajú
+`ifc_query`, `ifc_get`, `ifc_count`, `ifc_property_values`, `ifc_ids_validate` a 7 tools
+prevzatých z balíka 1:1 (D-087: `ifc_model_info`, `ifc_materials_list`,
+`ifc_classifications_list`, `ifc_model_audit`, `ifc_geometry_area`, `ifc_geometry_volume`,
+`ifc_schema_describe`), ktoré čítajú
 priamo IFC súbory federácie cez `@ifc-lite/mcp` (číselné filtre psetov, histogramy, IDS
 kontrola teraz). IDS pre `ifc_ids_validate` sa berú z env `IDS_SOURCES` =
 `{"<id>": "<https URL .ids>"}` (bez neho je kontrola nedostupná). Zatiaľ zámerne

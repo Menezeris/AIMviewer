@@ -11,6 +11,8 @@ import type { TreeDecorations } from "@/lib/data/decoration-counts";
 import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { opToBridgeMessage, parseOps } from "@/lib/viewer-ops";
+import type { LiveReplyPayload } from "@/lib/live/protocol";
+import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
 
 /**
  * 3D prehliadač = self-hostovaná IFClite appka (fork AssetinSpace/ifc-lite,
@@ -61,7 +63,12 @@ type OutboundMessage =
   // Klik na Reality Capture pin v 3D (D-073) — host otvorí galériu/panorámu.
   | { source: typeof SOURCE; type: "CAPTURE_PIN_CLICK"; captureId: string }
   // Karta dokumentu otvorená/zavretá vo viewri (D-075) — recents/analytics.
-  | { source: typeof SOURCE; type: "DOCUMENT_EVENT"; documentId: string; event: "opened" | "closed" };
+  | { source: typeof SOURCE; type: "DOCUMENT_EVENT"; documentId: string; event: "opened" | "closed" }
+  // Odpoveď na QUERY spätného kanála (D-085) - obálky, stav pohľadu.
+  | { source: typeof SOURCE; type: "QUERY_RESULT"; id: string; ok: boolean; result?: unknown; error?: string };
+
+/** Ako dlho čaká živý kanál na odpoveď forku (server čaká dlhšie, QUERY_TIMEOUT_MS). */
+const VIEWER_QUERY_TIMEOUT_MS = 5000;
 
 /** Host wire → viewer wire: odstráni host-only `spaceId` z capture pinov. */
 function toCapturePins(captures: CaptureViewerWire[]) {
@@ -191,6 +198,8 @@ export function IFCViewer({
   // naparsovaním modelov nič nenájde. Queue-ujú sa a flushnú v handleri
   // MODELS_LOADED (prenesené z už zmazaného ifc-viewer-embed.tsx).
   const pendingRef = useRef<Record<string, unknown>[]>([]);
+  // Otázky D-085 čakajúce na QUERY_RESULT z iframu, podľa id.
+  const queriesRef = useRef(new Map<string, (r: LiveReplyPayload) => void>());
   function send(msg: Record<string, unknown>) {
     if (loadedRef.current) post(msg);
     else pendingRef.current.push(msg);
@@ -298,6 +307,17 @@ export function IFCViewer({
           for (const msg of queued) post(msg);
           break;
         }
+        case "QUERY_RESULT": {
+          const resolve = queriesRef.current.get(e.data.id);
+          if (!resolve) break;
+          queriesRef.current.delete(e.data.id);
+          resolve(
+            e.data.ok
+              ? { id: e.data.id, ok: true, result: e.data.result }
+              : { id: e.data.id, ok: false, error: e.data.error ?? "viewer chyba" },
+          );
+          break;
+        }
         case "ENTITY_SELECTED": {
           const objectId = guidMap[e.data.guid];
           sendAimPanel(e.data.guid, objectId);
@@ -372,8 +392,30 @@ export function IFCViewer({
     }
 
     window.addEventListener("message", onMessage);
+    // Spätný kanál (D-085): otázku pošli forku až s naparsovanými modelmi.
+    const pendingQueries = queriesRef.current;
+    const unregisterQueries = setViewerQueryHandler(
+      (q) =>
+        new Promise<LiveReplyPayload>((resolve) => {
+          if (!loadedRef.current) {
+            resolve({ id: q.id, ok: false, error: "3D viewer ešte načítava model." });
+            return;
+          }
+          const timer = setTimeout(() => {
+            pendingQueries.delete(q.id);
+            resolve({ id: q.id, ok: false, error: "3D viewer neodpovedal." });
+          }, VIEWER_QUERY_TIMEOUT_MS);
+          pendingQueries.set(q.id, (r) => {
+            clearTimeout(timer);
+            resolve(r);
+          });
+          post({ type: "QUERY", id: q.id, query: q.query, ...(q.guids ? { guids: q.guids } : {}) });
+        }),
+    );
     return () => {
       window.removeEventListener("message", onMessage);
+      unregisterQueries();
+      pendingQueries.clear();
       readyRef.current = false;
       loadedRef.current = false;
       pendingRef.current = [];

@@ -80,3 +80,42 @@ describe("viewer ops - pohľad (D-083)", () => {
     expect(parseOps(back)).toHaveLength(2);
   });
 });
+
+describe("viewer ops - rez cez prvok a na súradnici (D-085)", () => {
+  const STAIR = "38a9vdh9bF5Qg28GWyHhlr";
+
+  it("pozdĺž / naprieč: os volí viewer, správa nenesie axis", () => {
+    const raw = sectionOp({ guids: [STAIR], fit: "along" });
+    expect(raw).toBe(`section:auto~fit=along:${STAIR}`);
+    const [op] = parseOps(raw);
+    expect(op).toEqual({ op: "section", guids: [STAIR], fit: "along" });
+    expect(opToBridgeMessage(op)).toEqual({ type: "SET_SECTION", action: "set", guids: [STAIR], fit: "along" });
+    expect(parseOps(sectionOp({ guids: [STAIR], fit: "across", flipped: true }))).toEqual([
+      { op: "section", guids: [STAIR], fit: "across", flipped: true },
+    ]);
+  });
+
+  it("stredom prvku na zadanej osi a presná súradnica IFC", () => {
+    expect(parseOps(sectionOp({ guids: [STAIR], fit: "center", axis: "y" }))).toEqual([
+      { op: "section", axis: "y", guids: [STAIR], fit: "center" },
+    ]);
+    const raw = sectionOp({ axis: "z", coordinate: -12.5 });
+    expect(raw).toBe("section:z~c=-12.5:");
+    expect(opToBridgeMessage(parseOps(raw)[0])).toEqual({ type: "SET_SECTION", action: "set", axis: "z", coordinate: -12.5 });
+  });
+
+  it("neplatné kombinácie sa zahodia", () => {
+    for (const raw of [
+      `section:x~fit=along:${STAIR}`, // along s pevnou osou
+      `section:auto~fit=center:${STAIR}`, // center bez osi
+      "section:auto~fit=along:", // bez cieľa
+      `section:auto~fit=diagonal:${STAIR}`,
+      `section:x~c=5:${STAIR}`, // súradnica s cieľom
+      "section:x~c=abc:",
+      "section:x~c=1e9:",
+      `section:auto~fit=along:${Array(101).fill(STAIR).join(".")}`,
+    ]) {
+      expect(parseOps(raw), raw).toEqual([]);
+    }
+  });
+});

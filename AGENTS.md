@@ -208,6 +208,12 @@ Geometria = **ephemerálna v prehliadači** (IFClite WASM, klient-side, IFC súb
 identita naprieč modelmi drží IFC GUID (expressId sa medzi súbormi prekrýva), podlažie sa
 normalizuje na spoločný label (`1NP_VZT`→`1NP`, D-049).
 
+**Nová funkcia viewera (D-087):** najprv tool z `@ifc-lite/mcp` 1:1, pohľad len ako adaptér v
+`apps/viewer/src/aim/` forku, vlastné len kde originál nič nemá. Fork PR rob podľa skillu
+`.claude/skills/aim-feature/SKILL.md` vo forku (lokálne kontroly, meranie balíka, mutačné
+dôkazy a štítok v prvom pushi), aby CI prešlo na prvý raz. Zvýšenie bundle stropu do 2 kB
+vstupu je predschválené (`docs/FORK_MAINTENANCE.md` vo forku). Poradie zlúčenia: fork, potom AIMviewer.
+
 ## ETL — spustenie
 Python 3.9+ (`py -3.9`), `PYTHONUTF8=1` na Windows (cp1250 konzola). Vždy z koreňa repa:
 `python -m etl.main --file <ifc> [--dry-run|--reset|--federate]`. Detaily v `etl/README.md`.
