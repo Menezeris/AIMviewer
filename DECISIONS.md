@@ -3742,6 +3742,21 @@ v `query_view` a prompt (evaly) · **D** povýšenie do súboru cez agenta.
   kópia by zastarávala (princíp jedného nositeľa).
 - *Prepínače v env alebo kóde workflowu:* nevidno ich vo vieweri ani v DB a nemajú históriu behov.
 
+**Dodatok (fáza B, strana AIMviewera):** UI v rozhraní forku je striktne oddelené od upstreamu:
+vlastná záložka ribbonu "Documents" sa premenuje na **AIM** so skupinami *Documents* a
+*Derivations* (oko "AIM vzťahy", Pravidlá, Prepočítať), ľavý panel dostane sekciu **AIM VRSTVY**
+pod MODELS (pravidlo: oko, počet, režim, posledný beh; čísla revízií pri modeloch) a pravý panel
+záznamy s odznakom AIM, zdrojom a rolou v Relationship records. Oko je len lokálne zobrazenie;
+zapnúť/vypnúť/prepočítať je zmena dát s potvrdením, zatiaľ cez workflow `odvodenie` v OCB
+(`manageUrl`), zápis z viewera až vo fáze 3 (D-086). Most (`lib/derivations.ts`):
+- host -> viewer `AIM_DERIVATIONS_LOAD { layer }` po `MODELS_LOADED` a pri zmene: pravidlá so
+  stavom (`count` aktívnych hrán alebo riadkov `v_zone_elements`, `lastRun`), aktuálne revízie
+  modelov, `manageUrl`; bez migrácie `20261018140000` sa neposiela nič;
+- `AIM_PANEL_DATA.data.derivedRelations` + `derivedTotal`: odvodené vzťahy vybraného prvku
+  v oboch smeroch (pravidlo, IFC vzťah alebo NULL pri IfcZone, rola, druhý koniec s GUID,
+  `viaSpaceRef`), najviac 200 na smer. Čítajú sa len zapnuté pravidlá.
+Popri tom: odznak typu v paneli AIM podľa `object_type` (zóna už nie je "Prvok").
+
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný

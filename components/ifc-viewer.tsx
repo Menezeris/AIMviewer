@@ -8,6 +8,7 @@ import type { UnderlayDrawingWire } from "@/lib/data/drawing";
 import type { DocumentWire } from "@/lib/data/documents";
 import type { CaptureViewerWire } from "@/lib/data/captures";
 import type { TreeDecorations } from "@/lib/data/decoration-counts";
+import type { DerivationsLayerWire } from "@/lib/derivations";
 import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { opToBridgeMessage, parseOps } from "@/lib/viewer-ops";
@@ -35,7 +36,9 @@ import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
  *                   SET_VIEW_MODE{mode,storeyGuid} (D-083; pohľad bez
  *                   súradníc, podlažie prepočíta viewer) ·
  *                   DOCUMENT_OPEN{documentId,page} ·
- *                   AIM_PANEL_DATA{guid,data} · AIM_PANEL_EMPTY{guid,reason}
+ *                   AIM_PANEL_DATA{guid,data} · AIM_PANEL_EMPTY{guid,reason} ·
+ *                   AIM_DERIVATIONS_LOAD{layer} (D-089; vrstva AIM nad modelmi,
+ *                   typy v lib/derivations.ts)
  *   viewer → host:  READY · MODELS_LOADED · ENTITY_SELECTED{guid} ·
  *                   ENTITY_DESELECTED · AIM_NAVIGATE{href}
  *
@@ -109,6 +112,8 @@ interface Props {
   captures?: CaptureViewerWire[];
   /** AIM dekorácie stromu (D-077) — per-GUID badge counts, po MODELS_LOADED. */
   decorations?: TreeDecorations;
+  /** Vrstva AIM nad modelmi (D-089) — AIM_DERIVATIONS_LOAD po MODELS_LOADED. */
+  derivations?: DerivationsLayerWire | null;
   apiRef?: React.RefObject<ViewerApi | null>;
   onSelect?: (element: SelectedElement) => void;
   onPickedElement?: (objectId: string, guid: string) => void;
@@ -129,6 +134,7 @@ export function IFCViewer({
   openDocumentId,
   captures,
   decorations,
+  derivations,
   apiRef,
   onSelect,
   onPickedElement,
@@ -297,6 +303,8 @@ export function IFCViewer({
           if (decorations && Object.keys(decorations).length > 0) {
             post({ type: "AIM_TREE_DECORATIONS", decorations });
           }
+          // Vrstva AIM nad modelmi (D-089): pravidlá odvodení, počty, revízie modelov.
+          if (derivations) post({ type: "AIM_DERIVATIONS_LOAD", layer: derivations });
           // Ops až po podkladoch, dokumentoch a pinoch (D-083): `view:2d` potrebuje
           // vedieť, či má podlažie kalibrovaný výkres, a `doc` otvorí len dokument,
           // ktorý viewer už dostal v DOCUMENTS_LOAD.
@@ -468,6 +476,13 @@ export function IFCViewer({
     post({ type: "AIM_TREE_DECORATIONS", decorations: decorations ?? {} });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [decorations]);
+
+  // ── Vrstva AIM (D-089) — re-send po zmene (router.refresh po novej revízii).
+  useEffect(() => {
+    if (!loadedRef.current || !derivations) return;
+    post({ type: "AIM_DERIVATIONS_LOAD", layer: derivations });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [derivations]);
 
   // ── `?doc=` deep link pri soft-navigácii (D-075): handler MODELS_LOADED ho
   // pokrýva len pri prvom otvorení stránky — na už načítanej scéne sa iframe
