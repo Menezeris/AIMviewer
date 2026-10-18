@@ -211,7 +211,7 @@ Geometria = **ephemerálna v prehliadači** (IFClite WASM, klient-side, IFC súb
 identita naprieč modelmi drží IFC GUID (expressId sa medzi súbormi prekrýva), podlažie sa
 normalizuje na spoločný label (`1NP_VZT`→`1NP`, D-049).
 
-**Kde žije AIM funkcia (D-090):** predvolene v AIMvieweri; do forku len zobrazenie, ktoré musí
+**Kde žije AIM funkcia (D-091):** predvolene v AIMvieweri; do forku len zobrazenie, ktoré musí
 byť vnútri panelov viewera (odznak, záznam, lokálny prepínač). Akcie meniace dáta robí host,
 tlačidlo vo forku ich len otvorí.
 
