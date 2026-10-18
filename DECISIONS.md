@@ -3544,9 +3544,10 @@ dokumenty z nich (160) vypadávali.
 - **Oprava** (commit `2b4a7d6`): derive pri upserte prepíše `from_id`/`to_id`; `close_stale` a
   `close_legacy` presunú ručné väzby (zdroje mimo `etl*` a `derive:*`) na platný objekt s
   rovnakým GUID. Overené na kópii prod DB s odvodenými hranami z júla: 0 hrán na zaniknuté
-  objekty. Na prode beží workflow `odvodenie` (oprava a)); presun ručných väzieb (b) na prode
-  čaká na Samuelov súhlas (priamy SQL zápis zablokovalo pravidlo prostredia); (c) treba
-  rozhodnúť ručne (fotky priradiť k novému priestoru).
+  objekty. Na prode: workflow `odvodenie` (beh `39150583359`) uzavrel 242 hrán z (a); presun
+  ručných väzieb (b) so Samuelovým súhlasom cez Management API: 11 výkresových, 9 dokumentov
+  a 1 fotka (`2.27` má nástupcu s rovnakým GUID). Ostáva 1 fotka v priestore `2.01-2`, ktorý
+  vo v72 nástupcu nemá - priradiť ručne.
 
 ---
 
