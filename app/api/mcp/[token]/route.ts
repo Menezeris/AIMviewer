@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { PROBE_TOOL } from "@/lib/engine/probe-def";
 import { ENGINE_TOOL_NAMES, engineToolDefinitions } from "@/lib/engine/tool-defs";
+import { FEEDBACK_TOOL_DEFINITIONS, FEEDBACK_TOOL_NAMES, execFeedbackTool } from "@/lib/feedback/tools";
 import { broadcastLive, liveChannel } from "@/lib/live/broadcast";
 import {
   VIEWER_QUERY_TOOL_DEFINITIONS,
@@ -23,7 +24,8 @@ import {
  * MCP konektor pre Claude (D-079): `POST /api/mcp/<MCP_TOKEN>`. Tie isté
  * read-only tools ako `/api/ask`; UI akcie sa odvysielajú do živého viewera
  * (Supabase Realtime, kanál `LIVE_CHANNEL`); get_bounds / get_viewer_state sa
- * tým istým kanálom viewera pýtajú (D-085). Bez `MCP_TOKEN` je endpoint
+ * tým istým kanálom viewera pýtajú (D-085); pripomienky a požiadavky na nové
+ * tools idú do GitHub issues a spúšťajú Claude session (D-090). Bez `MCP_TOKEN` je endpoint
  * vypnutý (404). Bezstavový — žiadne session ID, žiadny SSE stream.
  */
 
@@ -62,6 +64,10 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<Mc
     } catch (err) {
       return { text: [`Chyba motora: ${err instanceof Error ? err.message : String(err)}`], isError: true };
     }
+  }
+  if (FEEDBACK_TOOL_NAMES.has(name)) {
+    const res = await execFeedbackTool(name, args);
+    return { text: [res.text], isError: res.isError };
   }
   if (VIEWER_QUERY_TOOL_NAMES.has(name)) {
     const res = await execViewerQueryTool(name, args, siteUrl());
@@ -112,6 +118,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     tools: [
       ...TOOL_DEFINITIONS,
       ...VIEWER_QUERY_TOOL_DEFINITIONS,
+      ...FEEDBACK_TOOL_DEFINITIONS,
       ...(ENGINE_ENABLED ? engineToolDefinitions() : []),
       ...(ENGINE_SPIKE ? [PROBE_TOOL] : []),
     ],

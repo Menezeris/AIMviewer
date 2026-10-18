@@ -106,3 +106,18 @@ nenastavené: IDS sa kontroluje v IDS paneli viewera forku, zdroj IDS pre server
 otvorené rozhodnutie (dodatok D-084 z 2026-10-18). `ENGINE_SPIKE=1`
 (len preview) pridá diagnostický `ifc_engine_probe`.
 
+**Pripomienky a nové tools (D-090):** `request_tool` (chýbajúci tool), `report_feedback`
+(pripomienka) a `feedback_status` zapisujú a čítajú GitHub issues v repe konektora; požiadavka na
+tool hneď spustí Claude Code session, ktorá ju rieši podľa skillu `.claude/skills/mcp-poziadavka`.
+Nastavenie:
+1. **GitHub token:** fine-grained PAT, repo `Menezeris/AIMviewer`, Issues: read and write
+   (Metadata: read sa pridá sám) -> Vercel env `FEEDBACK_GITHUB_TOKEN`. Iné repo: `FEEDBACK_REPO=owner/repo`.
+2. **Routine:** claude.ai/code/routines -> "AIM: požiadavka z konektora" -> Edit -> Add another
+   trigger -> API -> skopíruj URL do `CLAUDE_ROUTINE_FIRE_URL` a Generate token do
+   `CLAUDE_ROUTINE_TOKEN` (zobrazí sa raz). V tej istej routine **pridaj repo
+   `Menezeris/AIMviewer`** (bez neho session nemá prístup, overené na #58), konektory GitHub a
+   aim-viewer a model (Opus pre stavbu tools; predvolený je Sonnet).
+3. Redeploy. Bez tokenu tools vrátia koncept issue; bez routine issue vznikne a session čaká
+   (ďalšie zavolanie tej istej požiadavky ju spustí). Session, ktorá zlyhala, sa spustí znova po
+   odobratí štítku `session` z issue.
+
