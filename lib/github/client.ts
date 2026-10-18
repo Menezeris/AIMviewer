@@ -123,6 +123,15 @@ export class GithubClient {
     await this.call("POST", `${this.base}/issues/${number}/labels`, { labels });
   }
 
+  /** Odoberie štítok; chýbajúci štítok (404) nie je chyba. */
+  async removeLabel(number: number, label: string): Promise<void> {
+    try {
+      await this.call("DELETE", `${this.base}/issues/${number}/labels/${encodeURIComponent(label)}`);
+    } catch (err) {
+      if (!(err instanceof GithubError && err.status === 404)) throw err;
+    }
+  }
+
   /** PR, ktoré na issue odkazujú (udalosti `cross-referenced` z časovej osi). */
   async linkedPullRequests(
     number: number,

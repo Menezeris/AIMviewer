@@ -82,4 +82,10 @@ a pridaj do `eval/questions.json` otázku z issue (bez overenej hodnoty, ak ju n
 - Pred PR zlúč aktuálny `origin/main` do vetvy (merge, nie rebase) a prejdi testy znova.
 - PR do `main` s `Closes #<číslo>` v tele, nikdy merge. Prihlás sa na PR (subscribe) a dotiahni CI.
 - Do issue krátky komentár: čo vzniklo, odkaz na PR, čo treba po merge (env, migrácia, fork).
+- **Uvoľni miesto** (naraz bežia najviac 3 sessions, ďalšie čakajú so štítkom `fronta`): keď je
+  PR otvorený, alebo keď už len čakáš na Samuelovo rozhodnutie, odober z issue štítok `session` a
+  pridaj `pr` alebo `caka-na-samuela`. Potom pozri otvorené issues so štítkom `fronta`; ak nejaké
+  sú, pošli Samuelovi notifikáciu (ak máš nástroj na notifikácie, inak to napíš do záverečnej
+  správy, routine ju pošle ako push): "Miesto sa uvoľnilo. Vo fronte: #N názov, ... Spustiť
+  ďalšiu? V Claude s konektorom aim-viewer napíš 'spusti ďalšiu požiadavku'."
 - Keď tool netreba (krok 2), zatvor issue až po Samuelovom súhlase; dovtedy komentár s dôvodom.

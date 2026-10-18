@@ -18,6 +18,8 @@ export const LABEL_MCP = "mcp";
 export const LABEL_TOOL = "novy-tool";
 export const LABEL_FEEDBACK = "pripomienka";
 export const LABEL_SESSION = "session";
+/** Čaká na voľné miesto (strop súbežných sessions). */
+export const LABEL_QUEUE = "fronta";
 
 export const AREAS = ["aim_data", "viewer", "ifc_engine", "model_change", "requirements_library", "other"] as const;
 export const FEEDBACK_KINDS = ["bug", "wrong_data", "wrong_answer", "improvement"] as const;
@@ -58,10 +60,11 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "request_tool",
     description:
       "Zapíše POŽIADAVKU NA NOVÝ TOOL (GitHub issue) a hneď spustí Claude Code session, ktorá ho navrhne a " +
-      "naprogramuje (D-090). Volaj, keď používateľ potrebuje niečo, čo žiadny tool nevie, AŽ PO vyčerpaní " +
-      "existujúcich tools (query_view, search_everything, aggregate_objects, ifc_*...) - nie po prvom prázdnom " +
-      "výsledku. Opíš potrebu, nie riešenie: čo chcel používateľ, čo si skúsil a prečo to nestačí. Rovnaká " +
-      "požiadavka (rovnaký title alebo proposal.name) sa pripíše k otvorenému issue ako ďalší výskyt. " +
+      "naprogramuje (D-090). Volaj LEN na výslovný pokyn používateľa ('zapíš to', 'založ issue'); sám to len " +
+      "ponúkni, a to až po vyčerpaní existujúcich tools (query_view, search_everything, aggregate_objects, " +
+      "ifc_*...). Opíš potrebu, nie riešenie: čo chcel používateľ, čo si skúsil a prečo to nestačí. Rovnaká " +
+      "požiadavka (rovnaký title alebo proposal.name) sa pripíše k otvorenému issue ako ďalší výskyt. Naraz " +
+      "bežia najviac 3 sessions; ďalšie issues idú do fronty (queued=true) a spúšťa ich start_queued_session. " +
       PRIVACY,
     inputSchema: {
       type: "object",
@@ -102,6 +105,10 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
           items: { type: "string" },
           description: "Ďalšie otázky, ktoré by tool pokryl.",
         },
+        start_session: {
+          type: "boolean",
+          description: "false = len zapísať, session nespúšťať ani nedávať do fronty (predvolene true).",
+        },
       },
       required: ["title", "user_request", "why_existing_fail"],
     },
@@ -111,8 +118,8 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "report_feedback",
     description:
       "Zapíše PRIPOMIENKU ku konektoru (GitHub issue, D-090): chyba toolu (bug), zlé alebo chýbajúce dáta " +
-      "(wrong_data), zlá odpoveď alebo postup (wrong_answer), návrh na zlepšenie (improvement). Volaj, keď to " +
-      "používateľ povie ('zapíš si to', 'toto je zle', 'pripomienka') alebo keď tool zjavne zlyhal. " +
+      "(wrong_data), zlá odpoveď alebo postup (wrong_answer), návrh na zlepšenie (improvement). Volaj LEN na " +
+      "výslovný pokyn používateľa ('zapíš si to', 'založ pripomienku'); keď tool zjavne zlyhal, len to ponúkni. " +
       "start_session=true hneď spustí Claude Code session, ktorá to rieši - len keď to používateľ chce. " +
       "Opravu dát IFC modelu nezapisuj sem, to je úloha úpravy modelu (F13). " +
       PRIVACY,
@@ -140,7 +147,8 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
     description:
       "Stav pripomienok a požiadaviek na tools (D-090). Bez issue_number vráti otvorené issues konektora " +
       "(číslo, názov, druh, či beží session); s issue_number stav issue, odkaz na session, PR a posledné " +
-      "komentáre (otázky session na používateľa). Použi pred request_tool, keď tušíš, že požiadavka už existuje.",
+      "komentáre (otázky session na používateľa). Zoznam ukáže aj sessions: koľko beží z koľkých a čo je vo " +
+      "fronte. Použi pred request_tool, keď tušíš, že požiadavka už existuje.",
     inputSchema: {
       type: "object",
       properties: {
@@ -148,6 +156,22 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
       },
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  {
+    name: "start_queued_session",
+    description:
+      "Spustí Claude Code session pre ďalšiu požiadavku z fronty (D-090): bez issue_number najstaršiu so " +
+      "štítkom fronta, s issue_number konkrétne otvorené issue konektora. Volaj, keď používateľ povie 'spusti " +
+      "ďalšiu' (napr. po notifikácii, že sa uvoľnilo miesto). Pri plnom strope nič nespustí a vráti, čo beží; " +
+      "over_limit=true strop obíde, len keď to používateľ výslovne chce.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_number: { type: "integer", description: "Konkrétne issue; bez neho najstaršie vo fronte." },
+        over_limit: { type: "boolean", description: "Spustiť aj nad strop (len na výslovnú žiadosť)." },
+      },
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
 ];
 
@@ -317,7 +341,7 @@ export function draftToolRequest(args: Record<string, unknown>, now: Date): Draf
     ]
       .filter(Boolean)
       .join("\n\n"),
-    start: true,
+    start: args.start_session !== false,
   };
 }
 
@@ -371,6 +395,58 @@ const json = (v: unknown) => JSON.stringify(v, null, 1);
 
 const MAX_OTHERS = 15;
 
+/** Strop súbežných sessions (env `FEEDBACK_MAX_SESSIONS`, predvolene 3). */
+export function maxSessions(): number {
+  const n = Number.parseInt(process.env.FEEDBACK_MAX_SESSIONS ?? "", 10);
+  return Number.isFinite(n) && n > 0 ? n : 3;
+}
+
+/** Session bez pohybu v issue dlhšie než toto sa do stropu nepočíta (spadla alebo zabudnutá). */
+export const STALE_HOURS = 24;
+
+/** Bežiace sessions = otvorené issues so štítkom `session`, ktoré sa hýbali v posledných STALE_HOURS. */
+export function runningSessions(open: GithubIssue[], now: Date): { running: GithubIssue[]; stale: GithubIssue[] } {
+  const withSession = open.filter((i) => hasLabel(i, LABEL_SESSION));
+  const limit = now.getTime() - STALE_HOURS * 3600_000;
+  const fresh = (i: GithubIssue) => {
+    const t = Date.parse(i.updated_at);
+    return Number.isNaN(t) || t >= limit;
+  };
+  return { running: withSession.filter(fresh), stale: withSession.filter((i) => !fresh(i)) };
+}
+
+/** Fronta = otvorené issues so štítkom `fronta` bez session, najstaršie prvé. */
+export function queuedIssues(open: GithubIssue[]): GithubIssue[] {
+  return open
+    .filter((i) => hasLabel(i, LABEL_QUEUE) && !hasLabel(i, LABEL_SESSION))
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+/** Spustí session k issue a zapíše odkaz; štítok `fronta` sa vymení za `session`. */
+async function startSession(
+  client: GithubClient,
+  fire: NonNullable<FeedbackDeps["fire"]>,
+  issue: GithubIssue,
+  kind: Draft["kind"],
+  repeated: boolean,
+): Promise<{ url: string }> {
+  const repo = `${client.target.owner}/${client.target.repo}`;
+  const fired = await fire(firePayload(repo, issue, kind, repeated));
+  // Odkaz a štítky pri issue sú pohodlie: zlyhanie nemá zhodiť výsledok, session už beží.
+  await client
+    .addComment(
+      issue.number,
+      `Claude session pre túto požiadavku: ${fired.sessionUrl}\n\n<!-- aim-mcp-session ${JSON.stringify({ url: fired.sessionUrl })} -->`,
+    )
+    .catch(() => undefined);
+  await client.addLabels(issue.number, [LABEL_SESSION]).catch(() => undefined);
+  if (hasLabel(issue, LABEL_QUEUE)) await client.removeLabel(issue.number, LABEL_QUEUE).catch(() => undefined);
+  return { url: fired.sessionUrl };
+}
+
+const queueText = (running: GithubIssue[], max: number) =>
+  `Bežia ${running.length} z ${max} sessions (${running.map((i) => `#${i.number}`).join(", ")}).`;
+
 const hasLabel = (i: GithubIssue, name: string) => i.labels.some((l) => l.name === name);
 
 /**
@@ -411,13 +487,13 @@ async function record(d: Draft, deps: FeedbackDeps): Promise<{ text: string; isE
     };
   }
   const client = deps.client;
-  const repo = `${client.target.owner}/${client.target.repo}`;
 
   let issue: GithubIssue;
   let duplicate = false;
   let others: GithubIssue[] = [];
+  let open: GithubIssue[] = [];
   try {
-    const open = await client.listOpenIssues(LABEL_MCP);
+    open = await client.listOpenIssues(LABEL_MCP);
     const same = open.find((i) => parseMarker(i.body)?.fp === draft.fp);
     others = open.filter((i) => i.number !== same?.number).slice(0, MAX_OTHERS);
     if (same) {
@@ -438,7 +514,10 @@ async function record(d: Draft, deps: FeedbackDeps): Promise<{ text: string; isE
   }
 
   const hasSession = hasLabel(issue, LABEL_SESSION);
+  const max = maxSessions();
+  const { running } = runningSessions(open, deps.now());
   let session: { url: string } | null = null;
+  let queued = false;
   let sessionNote: string;
   if (!draft.start) {
     sessionNote = "Session sa nespúšťala (start_session nebolo zapnuté).";
@@ -448,19 +527,17 @@ async function record(d: Draft, deps: FeedbackDeps): Promise<{ text: string; isE
     sessionNote =
       "Session sa nespustila: routine nie je nastavená na serveri (CLAUDE_ROUTINE_FIRE_URL, CLAUDE_ROUTINE_TOKEN). " +
       "Issue čaká; opakované zavolanie po nastavení session spustí.";
+  } else if (running.length >= max) {
+    queued = true;
+    if (!hasLabel(issue, LABEL_QUEUE)) await client.addLabels(issue.number, [LABEL_QUEUE]).catch(() => undefined);
+    const position = queuedIssues(open).filter((i) => i.number !== issue.number).length + 1;
+    sessionNote =
+      `Issue je vo fronte (pozícia ${position}). ${queueText(running, max)} ` +
+      "Keď niektorá skončí, Samuel dostane notifikáciu; ďalšiu spustí start_queued_session.";
   } else {
     try {
-      const fired = await deps.fire(firePayload(repo, issue, draft.kind, duplicate));
-      session = { url: fired.sessionUrl };
+      session = await startSession(client, deps.fire, issue, draft.kind, duplicate);
       sessionNote = "Session beží; otázky položí v nej aj ako komentár v issue.";
-      // Odkaz pri issue je pohodlie: zlyhanie nemá zhodiť výsledok, session už beží.
-      await client
-        .addComment(
-          issue.number,
-          `Claude session pre túto požiadavku: ${fired.sessionUrl}\n\n<!-- aim-mcp-session ${JSON.stringify({ url: fired.sessionUrl })} -->`,
-        )
-        .catch(() => undefined);
-      await client.addLabels(issue.number, [LABEL_SESSION]).catch(() => undefined);
     } catch (err) {
       sessionNote = `Session sa nespustila: ${err instanceof Error ? err.message : String(err)}. Issue čaká.`;
     }
@@ -471,9 +548,71 @@ async function record(d: Draft, deps: FeedbackDeps): Promise<{ text: string; isE
       issue: { number: issue.number, url: issue.html_url, title: issue.title },
       duplicate,
       session,
+      queued,
       session_note: sessionNote,
       // Súbežné požiadavky: Claude ich vie spomenúť, session ich má v tele issue.
       other_open: others.map((i) => ({ number: i.number, title: i.title, session: hasLabel(i, LABEL_SESSION) })),
+    }),
+    isError: false,
+  };
+}
+
+async function startQueued(
+  args: Record<string, unknown>,
+  deps: FeedbackDeps,
+): Promise<{ text: string; isError: boolean }> {
+  if (!deps.client) {
+    return { text: "Zápis do GitHubu nie je nastavený (chýba FEEDBACK_GITHUB_TOKEN na serveri).", isError: true };
+  }
+  if (!deps.fire) {
+    return {
+      text: "Routine nie je nastavená na serveri (CLAUDE_ROUTINE_FIRE_URL, CLAUDE_ROUTINE_TOKEN), session sa nedá spustiť.",
+      isError: true,
+    };
+  }
+  const client = deps.client;
+  const open = await client.listOpenIssues(LABEL_MCP);
+  const max = maxSessions();
+  const { running, stale } = runningSessions(open, deps.now());
+  const queue = queuedIssues(open);
+  const wanted = typeof args.issue_number === "number" ? Math.trunc(args.issue_number) : null;
+  const target = wanted === null ? queue[0] : open.find((i) => i.number === wanted);
+  if (!target) {
+    return {
+      text: json({
+        started: null,
+        note: wanted === null ? "Fronta je prázdna." : `Issue #${wanted} nie je otvorené issue konektora (štítok mcp).`,
+        running: running.map((i) => ({ number: i.number, title: i.title })),
+      }),
+      isError: wanted !== null,
+    };
+  }
+  if (hasLabel(target, LABEL_SESSION)) {
+    return { text: `Pre #${target.number} už session beží (feedback_status ukáže odkaz).`, isError: true };
+  }
+  if (running.length >= max && args.over_limit !== true) {
+    return {
+      text: json({
+        started: null,
+        note:
+          `${queueText(running, max)} Miesto nie je voľné. Spusti po skončení niektorej, alebo s over_limit=true ` +
+          "len keď to používateľ výslovne chce.",
+        running: running.map((i) => ({ number: i.number, title: i.title, updated_at: i.updated_at })),
+        stale: stale.map((i) => ({ number: i.number, title: i.title, updated_at: i.updated_at })),
+        queue: queue.map((i) => ({ number: i.number, title: i.title })),
+      }),
+      isError: false,
+    };
+  }
+  const kind = parseMarker(target.body)?.kind ?? "tool";
+  const session = await startSession(client, deps.fire, target, kind, false);
+  return {
+    text: json({
+      started: { number: target.number, title: target.title, url: target.html_url },
+      session,
+      running_after: running.length + 1,
+      max,
+      queue_left: queue.filter((i) => i.number !== target.number).map((i) => ({ number: i.number, title: i.title })),
     }),
     isError: false,
   };
@@ -491,14 +630,22 @@ async function status(args: Record<string, unknown>, deps: FeedbackDeps): Promis
   const client = deps.client;
   const n = typeof args.issue_number === "number" ? Math.trunc(args.issue_number) : null;
   if (n === null) {
-    const open = await client.listOpenIssues(LABEL_MCP, 50);
+    const open = await client.listOpenIssues(LABEL_MCP);
+    const { running, stale } = runningSessions(open, deps.now());
     return {
       text: json({
+        sessions: {
+          running: running.map((i) => i.number),
+          max: maxSessions(),
+          stale: stale.map((i) => i.number),
+          queue: queuedIssues(open).map((i) => i.number),
+        },
         open: open.map((i) => ({
           number: i.number,
           title: i.title,
           kind: parseMarker(i.body)?.kind ?? null,
-          session: i.labels.some((l) => l.name === LABEL_SESSION),
+          session: hasLabel(i, LABEL_SESSION),
+          queued: hasLabel(i, LABEL_QUEUE),
           labels: i.labels.map((l) => l.name),
           updated_at: i.updated_at,
           url: i.html_url,
@@ -548,6 +695,8 @@ export async function execFeedbackTool(
         return await record(draftFeedback(args, deps.now()), deps);
       case "feedback_status":
         return await status(args, deps);
+      case "start_queued_session":
+        return await startQueued(args, deps);
       default:
         return { text: `Neznámy tool: ${name}`, isError: true };
     }

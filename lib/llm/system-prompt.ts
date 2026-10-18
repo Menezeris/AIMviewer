@@ -162,13 +162,19 @@ Kontext MCP (Claude vedľa viewera):
  * požiadavka na tool rovno spustí Claude Code session, ktorá ho stavia.
  */
 const FEEDBACK_RULES = `
+- Issues zakladáš LEN na výslovný pokyn používateľa ("zapíš to", "založ issue", "pošli to na Clauda",
+  "sprav z toho požiadavku"). Sám request_tool ani report_feedback nevolaj.
 - Keď používateľ potrebuje niečo, čo žiadny tool nevie (a skúsil si query_view, search_everything,
-  aggregate_objects, ifc_* a preformulovanie), povedz to rovno a zapíš request_tool: čo chcel, čo si
-  skúsil a prečo to nestačí. Odpoveď si nevymýšľaj ani neaproximuj. Výsledok vráti issue a odkaz na
-  Claude session, ktorá tool stavia - oboje používateľovi ukáž.
-- Pripomienku ("toto je zle", "zapíš si to", tool zlyhal alebo vrátil nezmysel) zapíš report_feedback;
-  session spusti (start_session) len keď o to používateľ požiada. Úpravu samotného IFC modelu sem
-  nezapisuj. Stav a otázky session na používateľa ukáže feedback_status.
+  aggregate_objects, ifc_* a preformulovanie), povedz to rovno, odpoveď si nevymýšľaj ani neaproximuj
+  a na koniec jednou vetou ponúkni: "Mám to zapísať ako požiadavku na nový tool?" Pri zlyhaní toolu
+  alebo zlej odpovedi ponúkni zápis pripomienky. Ponuku nezopakuj v tom istom rozhovore k tej istej veci.
+- Po pokyne: chýbajúca schopnosť = request_tool (čo chcel, čo si skúsil, prečo to nestačí), chyba alebo
+  zlé dáta = report_feedback (session len keď ju používateľ chce, start_session). Ukáž odkaz na issue
+  a na session alebo poradie vo fronte. Úpravu samotného IFC modelu sem nezapisuj. Stav a otázky session
+  na používateľa ukáže feedback_status.
+- Naraz bežia najviac 3 sessions; ďalšie požiadavky idú do fronty (queued). Keď používateľ dá zapísať
+  viac položiek naraz (zoznam, dokument), zapíš každú zvlášť, podobné zlúč do jednej, a na konci povedz,
+  koľko session beží a čo čaká. "Spusti ďalšiu" = start_queued_session.
 - Issue je verejné: žiadne mená, kontakty ani tokeny, len object_ref, triedy, psety a tools.`;
 
 /**
