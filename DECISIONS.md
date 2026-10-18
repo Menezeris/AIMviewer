@@ -3837,6 +3837,25 @@ druhých dvoch vznikne issue a session čaká.
 
 **Závislosti a licencie:** bez novej závislosti (fetch na GitHub REST a Anthropic API).
 
+**Dodatok D-090 (2026-10-18) - koordinácia súbežných sessions.** Samuel: automatické sessions
+sa majú vzájomne koordinovať, nevyvíjať to isté dvakrát a nerobiť konflikty. Za noc sa zrazili
+čísla rozhodnutí dvakrát (assetin-library Z5, D-090/D-091 tu). Úplnú záruku dať nevieme
+(sessions o sebe nevedia, kým sa nepozrú), preto štyri vrstvy od najtvrdšej:
+1. **Jedna session na issue** - server: opakovanie sa pripíše k otvorenému issue a štítok
+   `session` zabráni druhému spusteniu (už v D-090).
+2. **Zoznam súbežných požiadaviek** - server pri zakladaní issue pripíše do tela otvorené issues
+   `mcp` (s príznakom, či na nich beží session) a vráti ich aj Claudovi v rozhovore
+   (`other_open`).
+3. **Register čísel D-0xx** - issue #60 (štítok `koordinacia`, nezatvára sa): číslo sa
+   rezervuje komentárom pred použitím, prvý komentár vyhráva.
+4. **Pravidlá pre každú session** - `AGENTS.md` sekcia "Súbežné session" a krok "Koordinácia" v
+   skille `mcp-poziadavka`: ohlásiť vetvu v issue, pred plánom pozrieť otvorené PR a vetvy,
+   pri rovnakých súboroch dať vedieť a novú logiku dať do vlastného modulu, pred PR zlúčiť
+   `main`; konflikt rieši vetva, ktorá prišla do `main` neskôr.
+*Zavrhnuté:* zámok v DB alebo tabuľka sessions (druhý nositeľ stavu, GitHub ho už má); jedna
+sekvenčná fronta požiadaviek (zahodila by paralelizmus, ktorý D-086 chce); čísla rozhodnutí
+pridelené až pri merge (odkazy medzi vetvami by sa menili).
+
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný

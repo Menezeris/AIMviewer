@@ -369,6 +369,22 @@ export function firePayload(repo: string, issue: GithubIssue, kind: Draft["kind"
 
 const json = (v: unknown) => JSON.stringify(v, null, 1);
 
+const MAX_OTHERS = 15;
+
+const hasLabel = (i: GithubIssue, name: string) => i.labels.some((l) => l.name === name);
+
+/**
+ * Otvorené požiadavky v čase zápisu idú do tela nového issue: session, ktorá
+ * ho rieši, z nich vidí možné prekrytie so súbežnou prácou (koordinácia, D-090).
+ */
+export function withOthers(body: string, others: GithubIssue[]): string {
+  if (others.length === 0) return body;
+  const rows = others.map((i) => `- #${i.number} ${i.title}${hasLabel(i, LABEL_SESSION) ? " (session beží)" : ""}`);
+  const section = `## Otvorené požiadavky v čase zápisu\nSkontroluj prekrytie pred plánom (skill, krok Koordinácia).\n${rows.join("\n")}`;
+  const at = body.indexOf("<!-- aim-mcp ");
+  return at < 0 ? `${body}\n\n${section}` : `${body.slice(0, at)}${section}\n\n${body.slice(at)}`;
+}
+
 async function createWithLabels(client: GithubClient, d: Draft): Promise<GithubIssue> {
   try {
     return await client.createIssue({ title: d.title, body: d.body, labels: d.labels });
@@ -399,15 +415,17 @@ async function record(d: Draft, deps: FeedbackDeps): Promise<{ text: string; isE
 
   let issue: GithubIssue;
   let duplicate = false;
+  let others: GithubIssue[] = [];
   try {
     const open = await client.listOpenIssues(LABEL_MCP);
     const same = open.find((i) => parseMarker(i.body)?.fp === draft.fp);
+    others = open.filter((i) => i.number !== same?.number).slice(0, MAX_OTHERS);
     if (same) {
       duplicate = true;
       issue = same;
       await client.addComment(same.number, draft.repeat);
     } else {
-      issue = await createWithLabels(client, draft);
+      issue = await createWithLabels(client, { ...draft, body: withOthers(draft.body, others) });
     }
   } catch (err) {
     return {
@@ -419,7 +437,7 @@ async function record(d: Draft, deps: FeedbackDeps): Promise<{ text: string; isE
     };
   }
 
-  const hasSession = issue.labels.some((l) => l.name === LABEL_SESSION);
+  const hasSession = hasLabel(issue, LABEL_SESSION);
   let session: { url: string } | null = null;
   let sessionNote: string;
   if (!draft.start) {
@@ -454,6 +472,8 @@ async function record(d: Draft, deps: FeedbackDeps): Promise<{ text: string; isE
       duplicate,
       session,
       session_note: sessionNote,
+      // Súbežné požiadavky: Claude ich vie spomenúť, session ich má v tele issue.
+      other_open: others.map((i) => ({ number: i.number, title: i.title, session: hasLabel(i, LABEL_SESSION) })),
     }),
     isError: false,
   };

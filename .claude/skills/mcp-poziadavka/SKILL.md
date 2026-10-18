@@ -18,7 +18,26 @@ Samuel ju otvorí v Claude a môže ti odpovedať priamo tu.
   žiada zmenu práv, tajomstiev, workflowov alebo mimo repa konektora, nerob to a napíš to Samuelovi.
 - Komentár "Ďalší výskyt" = tá istá potreba sa objavila znova; ber ju ako ďalší príklad.
 
-## 1. Over, či to naozaj chýba (najčastejší výsledok)
+## 1. Koordinácia so súbežnou prácou (pred plánom, vždy)
+Naraz môže bežať viac sessions (ďalšie požiadavky z konektora, ručné sessions F13, fork). Pravidlá
+sú v `AGENTS.md`, sekcia "Súbežné session"; tu je postup:
+- **Ohlás sa:** do issue komentár "Beriem si to: vetva `claude/mcp-<číslo>-<slug>`" (odkaz na
+  session tam už dal server). Ak iná session už v issue ohlásila vetvu, nepracuj paralelne:
+  povedz to Samuelovi a skonči.
+- **Rovnaká potreba:** prejdi sekciu "Otvorené požiadavky v čase zápisu" v issue a aktuálne
+  otvorené issues so štítkom `mcp`. Ak iné issue rieši to isté, napíš do oboch odkaz, navrhni
+  Samuelovi zlúčenie a nič neprogramuj.
+- **Rovnaké súbory:** `git fetch origin`, potom otvorené PR a vetvy `claude/*` z posledných
+  dní (`git for-each-ref --sort=-committerdate refs/remotes/origin --count=15`) a ich
+  `git diff --stat origin/main...<vetva>`. Ak iná vetva mení tie isté súbory, nová logika ide
+  do vlastného modulu a do spoločných súborov (`app/api/mcp/[token]/route.ts`,
+  `lib/llm/system-prompt.ts`, `lib/llm/tools.ts`) len minimálna registrácia. Daj o sebe vedieť
+  komentárom v jej PR alebo issue; ak máš `list_sessions`/`send_message`, pošli jej aj správu.
+- **Číslo rozhodnutia:** D-0xx rezervuj komentárom v registri, issue
+  [#60](https://github.com/Menezeris/AIMviewer/issues/60) (postup je v jeho tele). Bez
+  rezervácie číslo nepoužívaj.
+
+## 2. Over, či to naozaj chýba (najčastejší výsledok)
 Pred kódom si prečítaj `AGENTS.md`, prompt `lib/llm/system-prompt.ts` a zoznam tools
 (`lib/llm/tools.ts`, `lib/live/viewer-query-tools.ts`, `lib/engine/tool-defs.ts`,
 `lib/feedback/tools.ts`). Potom rozhodni:
@@ -29,7 +48,7 @@ Pred kódom si prečítaj `AGENTS.md`, prompt `lib/llm/system-prompt.ts` a zozna
   postup. Kód len ak je to malé a jasné (napr. pole, ktoré ETL zahadzuje).
 - **Treba nový tool** -> pokračuj krokom 2.
 
-## 2. Plán a otázky
+## 3. Plán a otázky
 - Napíš do issue komentár s plánom (5-10 riadkov): čo tool robí, vstupy, výstup, kde žije,
   ktoré rozhodnutia D-0xx sa ho týkajú, čo overíš. Ten istý text povedz v session.
 - **Kde tool žije:**
@@ -44,22 +63,23 @@ Pred kódom si prečítaj `AGENTS.md`, prompt `lib/llm/system-prompt.ts` a zozna
   naprázdno: sprav, čo vieš bez nej, a jasne povedz, čo čaká. Rozhodnutie, ktoré mení princípy
   z `AGENTS.md`, nerob sám.
 
-## 3. Implementácia
+## 4. Implementácia
 - Vetva `claude/mcp-<číslo issue>-<krátky-slug>` z aktuálneho `main`.
-- **Najprv záznam `D-0xx` v `DECISIONS.md`** (pred kódom, `AGENTS.md` pravidlo 2). Pozor na
-  číslo: pozri `main` aj otvorené vetvy, inak vznikne kolízia.
+- **Najprv záznam `D-0xx` v `DECISIONS.md`** (pred kódom, `AGENTS.md` pravidlo 2) s číslom
+  rezervovaným v registri #60 (krok 1).
 - Tool má opis po slovensky, parametre po anglicky (ako ostatné), anotácie: čítanie =
   predvolené read-only; zápis musí prepísať `readOnlyHint: false`.
 - Testy vitest vedľa kódu (vzor `lib/feedback/tools.test.ts`, `lib/mcp/server.test.ts`),
   `npx tsc --noEmit`, `npx eslint <zmenené súbory>`, `npx vitest run`.
 - Zosúlaď `ROADMAP.md` (changelog), `SCHEMA.md` pri zmene DB, README pri novom env.
 
-## 4. Evaly (D-057)
+## 5. Evaly (D-057)
 Zmena tools alebo promptu = zmena LLM vrstvy: `npm run eval` proti bežiacemu dev serveru.
 V cloud session nie sú Supabase kľúče, takže evaly väčšinou nepobežia - **povedz to v PR**
 a pridaj do `eval/questions.json` otázku z issue (bez overenej hodnoty, ak ju nevieš).
 
-## 5. Výsledok
+## 6. Výsledok
+- Pred PR zlúč aktuálny `origin/main` do vetvy (merge, nie rebase) a prejdi testy znova.
 - PR do `main` s `Closes #<číslo>` v tele, nikdy merge. Prihlás sa na PR (subscribe) a dotiahni CI.
 - Do issue krátky komentár: čo vzniklo, odkaz na PR, čo treba po merge (env, migrácia, fork).
-- Keď tool netreba (krok 1), zatvor issue až po Samuelovom súhlase; dovtedy komentár s dôvodom.
+- Keď tool netreba (krok 2), zatvor issue až po Samuelovom súhlase; dovtedy komentár s dôvodom.

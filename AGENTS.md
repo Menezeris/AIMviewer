@@ -55,6 +55,14 @@ Pravidlá pri písaní (agent aj človek):
    aby ľubovoľný iný nástroj spustený nad repom mal aktuálny, konzistentný kontext (zdroj
    pravdy ostáva `AGENTS.md`, pointery bez duplikovaného obsahu).
 
+### Súbežné session (D-090)
+Naraz beží viac Claude sessions (ručné, automatické z konektora, fork). Každá:
+- **pred plánom** pozrie otvorené PR a vetvy `claude/*` z posledných dní (`git diff --stat
+  origin/main...<vetva>`); rovnakú prácu nerobí druhýkrát, pri rovnakých súboroch dá vedieť
+  (komentár v PR/issue, `send_message`, ak ho má) a novú logiku dá do vlastného modulu;
+- **číslo `D-0xx` rezervuje** komentárom v registri, issue #60, až potom ho použije;
+- **pred PR** zlúči `origin/main` do vetvy; konflikt rieši vetva, ktorá prišla do `main` neskôr.
+
 Nižšie je normatívny súhrn konvencií. **Presné DDL, stĺpce a pohľady sú v `SCHEMA.md`** —
 tu sú len pravidlá, ktorých sa treba držať.
 

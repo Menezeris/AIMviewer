@@ -135,6 +135,27 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
     expect(gh.calls.some((c) => c.url.endsWith("/issues/12/labels"))).toBe(true);
   });
 
+  it("nové issue nesie zoznam súbežných otvorených požiadaviek (koordinácia)", async () => {
+    const other = issue({
+      number: 7,
+      title: "Nový tool: Zóny podľa požiarneho úseku",
+      body: marker({ v: 1, kind: "tool", fp: "tool:fire-zones" }),
+      labels: [{ name: "mcp" }, { name: "session" }],
+    });
+    const gh = fakeGithub({
+      "GET /repos/Menezeris/AIMviewer/issues": () => ({ json: [other] }),
+      "POST /repos/Menezeris/AIMviewer/issues": () => ({ status: 201, json: issue() }),
+    });
+    const res = await execFeedbackTool("request_tool", toolArgs, deps({ client: gh.client }));
+    expect(JSON.parse(res.text).other_open).toEqual([
+      { number: 7, title: "Nový tool: Zóny podľa požiarneho úseku", session: true },
+    ]);
+    const body = (gh.calls[1].body as { body: string }).body;
+    expect(body).toContain("- #7 Nový tool: Zóny podľa požiarneho úseku (session beží)");
+    // Značka ostáva na konci, aby ju zhoda opakovania našla.
+    expect(body.indexOf("Otvorené požiadavky")).toBeLessThan(body.indexOf("<!-- aim-mcp "));
+  });
+
   it("rovnaká požiadavka sa pripíše k otvorenému issue a session nespúšťa znova", async () => {
     const existing = issue({
       body: marker({ v: 1, kind: "tool", fp: "tool:rooms-without-lighting" }),
