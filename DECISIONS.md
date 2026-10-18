@@ -3874,6 +3874,13 @@ nemá atomický zámok, risk je malý); session, ktorá štítok nevymení, drž
 *Zavrhnuté:* automatické spustenie ďalšej bez otázky (Samuel chce rozhodnúť, a míňa to
 predplatné); pravidelná routine, ktorá frontu kontroluje (prázdne sessions každú hodinu).
 
+**Dodatok D-090 (2026-10-19) - issue len na pokyn.** Samuel: issue sa nemá zakladať samo, keď
+Claude niečo nevie, ale až keď to Samuel povie. Mení bod 1 a MCP inštrukcie: Claude chýbajúcu
+schopnosť alebo zlyhanie toolu povie a jednou vetou **ponúkne** zápis ("Mám to zapísať ako
+požiadavku na nový tool?"); `request_tool` a `report_feedback` volá len na výslovný pokyn. Dôvod:
+každé issue je verejné a každá session míňa predplatné, o oboch rozhoduje Samuel. Súhlas klienta
+pri zápisovom toole (`readOnlyHint:false`) ostáva ako druhá poistka.
+
 ---
 
 ### D-091 - Kde žije AIM funkcia: predvolene AIMviewer, vo forku len zobrazenie vnútri panelov viewera
@@ -3917,6 +3924,7 @@ s rýchlym CI. Most sa rozširuje o dáta na zobrazenie a o správy "otvor akciu
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-090 dodatok (issue len na pokyn):** Claude zápis len ponúkne, `request_tool`/`report_feedback` volá až na výslovný pokyn Samuela.
 - **2026-10-19** - **D-090 dodatok (strop a fronta):** najviac 3 súbežné sessions (`FEEDBACK_MAX_SESSIONS`), ďalšie issues so štítkom `fronta`, session po PR uvoľní miesto a pošle notifikáciu, ďalšiu spustí tool `start_queued_session`; `request_tool.start_session=false` pre dávky.
 - **2026-10-18** - **D-091 (kde žije AIM funkcia):** predvolene AIMviewer; do forku len zobrazenie, ktoré musí byť vnútri panelov viewera (odznaky, záznamy, lokálne prepínače); akcie meniace dáta robí host, tlačidlo vo forku ich len otvorí.
 - **2026-10-18** - **D-090 (pripomienky a požiadavky na nové tools z konektora):** MCP tools `request_tool`, `report_feedback`, `feedback_status`; záznam = GitHub issue v repe konektora (bez tabuľky v DB, opakovanie = komentár), požiadavka na tool spustí Claude Code session cez API trigger routine "AIM: požiadavka z konektora", postup session v skille `mcp-poziadavka`; mení zavrhnutie cloud sessions v D-086.

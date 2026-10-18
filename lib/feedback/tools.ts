@@ -60,9 +60,9 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "request_tool",
     description:
       "Zapíše POŽIADAVKU NA NOVÝ TOOL (GitHub issue) a hneď spustí Claude Code session, ktorá ho navrhne a " +
-      "naprogramuje (D-090). Volaj, keď používateľ potrebuje niečo, čo žiadny tool nevie, AŽ PO vyčerpaní " +
-      "existujúcich tools (query_view, search_everything, aggregate_objects, ifc_*...) - nie po prvom prázdnom " +
-      "výsledku. Opíš potrebu, nie riešenie: čo chcel používateľ, čo si skúsil a prečo to nestačí. Rovnaká " +
+      "naprogramuje (D-090). Volaj LEN na výslovný pokyn používateľa ('zapíš to', 'založ issue'); sám to len " +
+      "ponúkni, a to až po vyčerpaní existujúcich tools (query_view, search_everything, aggregate_objects, " +
+      "ifc_*...). Opíš potrebu, nie riešenie: čo chcel používateľ, čo si skúsil a prečo to nestačí. Rovnaká " +
       "požiadavka (rovnaký title alebo proposal.name) sa pripíše k otvorenému issue ako ďalší výskyt. Naraz " +
       "bežia najviac 3 sessions; ďalšie issues idú do fronty (queued=true) a spúšťa ich start_queued_session. " +
       PRIVACY,
@@ -118,8 +118,8 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "report_feedback",
     description:
       "Zapíše PRIPOMIENKU ku konektoru (GitHub issue, D-090): chyba toolu (bug), zlé alebo chýbajúce dáta " +
-      "(wrong_data), zlá odpoveď alebo postup (wrong_answer), návrh na zlepšenie (improvement). Volaj, keď to " +
-      "používateľ povie ('zapíš si to', 'toto je zle', 'pripomienka') alebo keď tool zjavne zlyhal. " +
+      "(wrong_data), zlá odpoveď alebo postup (wrong_answer), návrh na zlepšenie (improvement). Volaj LEN na " +
+      "výslovný pokyn používateľa ('zapíš si to', 'založ pripomienku'); keď tool zjavne zlyhal, len to ponúkni. " +
       "start_session=true hneď spustí Claude Code session, ktorá to rieši - len keď to používateľ chce. " +
       "Opravu dát IFC modelu nezapisuj sem, to je úloha úpravy modelu (F13). " +
       PRIVACY,
