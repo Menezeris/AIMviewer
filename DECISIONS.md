@@ -3757,6 +3757,8 @@ zapnúť/vypnúť/prepočítať je zmena dát s potvrdením, zatiaľ cez workflo
   `viaSpaceRef`), najviac 200 na smer. Čítajú sa len zapnuté pravidlá.
 Popri tom: odznak typu v paneli AIM podľa `object_type` (zóna už nie je "Prvok").
 
+---
+
 ### D-090 - Pripomienky a požiadavky na nové tools z konektora; issue spustí Claude session
 **Status:** rozhodnuté (2026-10-18, Claude v nočnej session na pokyn Samuela "rozhodni všetko,
 čo môžeš"), implementované na vetve `claude/mcp-tools-comments-tw8wl5`. **Mení zavrhnutie
@@ -3854,6 +3856,8 @@ sa majú vzájomne koordinovať, nevyvíjať to isté dvakrát a nerobiť konfli
 sekvenčná fronta požiadaviek (zahodila by paralelizmus, ktorý D-086 chce); čísla rozhodnutí
 pridelené až pri merge (odkazy medzi vetvami by sa menili).
 
+---
+
 ### D-091 - Kde žije AIM funkcia: predvolene AIMviewer, vo forku len zobrazenie vnútri panelov viewera
 
 **Dátum:** 2026-10-18 · **Stav:** prijaté (Samuel) · **Súvisí:** D-071, D-072, D-087, D-089
@@ -3889,8 +3893,6 @@ s rýchlym CI. Most sa rozširuje o dáta na zobrazenie a o správy "otvor akciu
   ktoré má host.
 - *Všetko v hostovi, aj odznaky a záznamy:* host do panelov v iframe kresliť nevie; overlay nad
   iframe by sa rozišiel s rozložením viewera.
-
----
 
 ---
 
