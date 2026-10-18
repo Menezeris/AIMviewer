@@ -19,6 +19,16 @@ export interface RoutineFireResult {
   sessionUrl: string;
 }
 
+/** Token smie ísť len na API Anthropic; presnú cestu necháme na URL z routine. */
+export function isFireUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && u.hostname === "api.anthropic.com" && u.pathname.endsWith("/fire");
+  } catch {
+    return false;
+  }
+}
+
 export function routineConfigured(): boolean {
   return Boolean(process.env.CLAUDE_ROUTINE_FIRE_URL?.trim() && process.env.CLAUDE_ROUTINE_TOKEN?.trim());
 }
@@ -31,8 +41,8 @@ export async function fireRoutine(text: string, fetchImpl: typeof fetch = fetch)
   const url = process.env.CLAUDE_ROUTINE_FIRE_URL?.trim();
   const token = process.env.CLAUDE_ROUTINE_TOKEN?.trim();
   if (!url || !token) throw new Error("Routine nie je nastavená (CLAUDE_ROUTINE_FIRE_URL, CLAUDE_ROUTINE_TOKEN).");
-  if (!/^https:\/\/api\.anthropic\.com\/v1\/claude_code\/routines\/[\w-]+\/fire$/.test(url)) {
-    throw new Error("CLAUDE_ROUTINE_FIRE_URL nemá tvar https://api.anthropic.com/v1/claude_code/routines/<id>/fire.");
+  if (!isFireUrl(url)) {
+    throw new Error("CLAUDE_ROUTINE_FIRE_URL nemá tvar https://api.anthropic.com/.../fire (URL z API triggera routine).");
   }
   const res = await fetchImpl(url, {
     method: "POST",
