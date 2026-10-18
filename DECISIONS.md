@@ -3369,6 +3369,22 @@ poloha), `spatial_hierarchy` a `containment_chain` (bod 4), `ids_*` okrem valid�
 je otvorený, D-084), exporty (úložisko pre súbory), zápis (D-086), BCF a toky (stav medzi
 volaniami), `bsdd_*` (externé API).
 
+**Dodatok D-087 (2026-10-18) - nová funkcia viewera nemá stáť na CI forku.** Prvý fork PR
+podľa tohto pravidla (Menezeris/ifc-lite#58) stál hodiny na kontrole veľkosti vstupného
+balíka viewera (perf ratchet `viewer-entry-js-bytes`, tolerancia 0,1 %): `main` forku bol
+už 2 365 B nad stropom a funkcia aj po lenivom načítaní potrebuje +968 B.
+- **Rozhodnutie (Samuel):** strop zvýšený na 3 151 632 B a odteraz je zvýšenie
+  **predschválené**, keď je kód v `apps/viewer/src/aim/`, je najprv lenivý (dynamický
+  `import()`, lenivý modul neimportuje nič, čo importuje vstup) a zvýšenie je najviac 2 kB
+  vstupu a 10 kB eager JS nad `main`, ako vlastný commit s nameranými číslami
+  (`ifc-lite/docs/FORK_MAINTENANCE.md`, "Pre-approved raises for new AIM features").
+  Väčšie zvýšenie sa pýta.
+- **Postup:** skill `ifc-lite/.claude/skills/aim-feature/SKILL.md` - čo spustiť pred prvým
+  pushom (typy, testy, kontroly forku, meranie balíka voči `main` rovnakým skriptom ako CI,
+  mutačné dôkazy a štítok `revert-oracle-exempt` už pri otvorení PR, živé overenie vo
+  vloženom vieweri) a čo počas CI nerobiť (neupravovať PR, `edited` prehrá starý verdikt).
+  Cieľ: CI forku zelené na prvý beh.
+
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
