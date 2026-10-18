@@ -82,3 +82,17 @@ ktorý je otvorený vedľa.
 Ak viewer nie je otvorený alebo kanál nie je nastavený, tool vráti Claude odkaz, ktorým
 sa dá výsledok otvoriť ručne.
 
+**Pohľad (D-083):** `set_section` (rez nad podlažím alebo zvislý), `set_camera` (top/front/
+.../iso, rámovanie na prvky), `set_view_mode` (3D/2D/Split, podlažie, `reset`) a
+`open_drawing` s `in_viewer=true` (dokument vedľa 3D). Vyžadujú fork viewera s bridge
+správami `SET_SECTION`/`SET_CAMERA`/`SET_VIEW_MODE` (nasadzujú sa spolu).
+
+**IFC motor (D-084, voliteľne):** env `ENGINE_ENABLED=1` pridá tools `ifc_models`,
+`ifc_query`, `ifc_get`, `ifc_count`, `ifc_property_values`, `ifc_ids_validate`, ktoré čítajú
+priamo IFC súbory federácie cez `@ifc-lite/mcp` (číselné filtre psetov, histogramy, IDS
+kontrola teraz). IDS pre `ifc_ids_validate` sa berú z env `IDS_SOURCES` =
+`{"<id>": "<https URL .ids>"}` (bez neho je kontrola nedostupná). Zatiaľ zámerne
+nenastavené: IDS sa kontroluje v IDS paneli viewera forku, zdroj IDS pre server je
+otvorené rozhodnutie (dodatok D-084 z 2026-10-18). `ENGINE_SPIKE=1`
+(len preview) pridá diagnostický `ifc_engine_probe`.
+

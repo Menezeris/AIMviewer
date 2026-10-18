@@ -2,6 +2,8 @@ import { timingSafeEqual } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
+import { PROBE_TOOL } from "@/lib/engine/probe-def";
+import { ENGINE_TOOL_NAMES, engineToolDefinitions } from "@/lib/engine/tool-defs";
 import { broadcastLive, liveChannel } from "@/lib/live/broadcast";
 import { mcpInstructions } from "@/lib/llm/system-prompt";
 import { AskToolRuntime, TOOL_DEFINITIONS } from "@/lib/llm/tools";
@@ -40,7 +42,27 @@ function siteUrl(): string {
   return "https://ai-mviewer.vercel.app";
 }
 
+/** Diagnostika IFC motora (D-084 fáza 0) - len keď je zapnutá env bránou. */
+const ENGINE_SPIKE = process.env.ENGINE_SPIKE === "1";
+/** `ifc_*` tools IFC motora (D-084 fáza 1) - env brána; diagnostika ich zapína tiež. */
+const ENGINE_ENABLED = process.env.ENGINE_ENABLED === "1" || ENGINE_SPIKE;
+
 async function callTool(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
+  if (ENGINE_SPIKE && name === "ifc_engine_probe") {
+    // Lenivý import: DB tools nesmú platiť studený štart motora.
+    const { runProbe } = await import("@/lib/engine/probe");
+    try {
+      return { text: [await runProbe(args)], isError: false };
+    } catch (err) {
+      return { text: [`Chyba motora: ${err instanceof Error ? err.message : String(err)}`], isError: true };
+    }
+  }
+  if (ENGINE_ENABLED && ENGINE_TOOL_NAMES.has(name)) {
+    // Lenivý import: motor (stovky MB po načítaní modelov) len keď ho Claude volá.
+    const { runEngineTool } = await import("@/lib/engine/run");
+    const res = await runEngineTool(name, args);
+    return { text: [res.content], isError: res.isError };
+  }
   const runtime = new AskToolRuntime();
   const res = await runtime.exec(name, args);
   const text = [res.content];
@@ -76,8 +98,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
   const deps: McpServerDeps = {
     serverInfo: { name: "aim-viewer", version: "1.0.0" },
-    instructions: mcpInstructions(siteUrl()),
-    tools: TOOL_DEFINITIONS,
+    instructions: mcpInstructions(siteUrl(), ENGINE_ENABLED),
+    tools: [
+      ...TOOL_DEFINITIONS,
+      ...(ENGINE_ENABLED ? engineToolDefinitions() : []),
+      ...(ENGINE_SPIKE ? [PROBE_TOOL] : []),
+    ],
     callTool,
   };
   const response = await handleMcpPayload(payload, deps);

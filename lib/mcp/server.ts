@@ -105,8 +105,9 @@ async function handleOne(
           name: t.name,
           description: t.description,
           inputSchema: t.inputSchema,
-          // Žiadny tool nemení dáta; UI akcie menia len pohľad vo vieweri.
-          annotations: { readOnlyHint: true, openWorldHint: false },
+          // Default: tool nemení dáta (UI akcie menia len pohľad vo vieweri);
+          // tool, ktorý zapisuje, to prepíše vlastnými anotáciami (D-084).
+          annotations: { readOnlyHint: true, openWorldHint: false, ...t.annotations },
         })),
       });
     case "tools/call": {

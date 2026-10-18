@@ -8,14 +8,13 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "eval": "tsx scripts/eval-ask.ts",
-    "postinstall": "cp node_modules/@ifc-lite/wasm/pkg/ifc-lite_bg.wasm public/ifc-lite_bg.wasm"
+    "eval": "tsx scripts/eval-ask.ts"
   },
   "dependencies": {
     "@assetinspace/design-kit": "github:AssetinSpace/design-kit#main",
-    "@ifc-lite/geometry": "2.9.2",
-    "@ifc-lite/query": "1.14.10",
-    "@ifc-lite/wasm": "2.13.4",
+    "@ifc-lite/mcp": "0.27.0",
+    "@ifc-lite/parser": "9.5.1",
+    "@ifc-lite/sdk": "9.5.0",
     "@photo-sphere-viewer/compass-plugin": "^5.14.3",
     "@photo-sphere-viewer/core": "^5.14.3",
     "@photo-sphere-viewer/gallery-plugin": "^5.14.3",

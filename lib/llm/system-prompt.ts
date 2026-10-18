@@ -102,6 +102,17 @@ Postup podľa typu otázky:
   a/alebo reset_colors. Viac operácií naraz („dvere červené, okná modré") = viac
   style_in_3d callov. show_in_3d používaj na zvýraznenie+priblíženie, style_in_3d
   na farby a viditeľnosť.
+- Pohľad v 3D (D-083): REZ → set_section (vodorovný nad podlažím: floor + offset_m,
+  pôdorysný rez = 1,2 m; zvislý: orientation + position_percent; action=clear zruší).
+  KAMERA → set_camera (top/bottom/front/back/left/right/iso/fit_all; s cieľom
+  target_ids_or_refs alebo global_ids zarámuje prvky; projection=orthographic pre
+  pôdorys a fasádu). REŽIM 3D/2D/Split a podlažie → set_view_mode. Recepty: „ukáž
+  strop nad miestnosťou X na 2NP, kade idú potrubia" = set_section(floor=3NP,
+  offset_m=-0.4) + style_in_3d(hide, ifc_type=IfcCovering) + set_camera(top,
+  target=X); „prejdi budovu podlažie po podlaží" = set_view_mode(mode=2d, floor=1NP),
+  ďalšie podlažie až na pokyn používateľa; „otvor výkres vedľa modelu" =
+  open_drawing(in_viewer=true); „vráť pohľad/začni odznova" = set_view_mode(mode=3d,
+  reset=true).
 - Opakované zobrazovanie: KAŽDÁ nová požiadavka na zobrazenie = nový show_in_3d call.
   Zvýraznenie v 3D vždy nahradí predchádzajúce — pošli presne tie prvky, ktoré majú
   byť zvýraznené PO tejto požiadavke: „ukáž iné/teraz X" → len X; „pridaj k nim X" /
@@ -119,18 +130,38 @@ const PLAIN_TEXT_RULE =
  * markdown vykreslí, takže pravidlo čistého textu odpadá; UI akcie sa
  * nevrátia klientovi, ale odvysielajú do živého viewera.
  */
-export function mcpInstructions(siteUrl: string): string {
+export function mcpInstructions(siteUrl: string, engine = false): string {
   const base = SYSTEM_PROMPT.endsWith(PLAIN_TEXT_RULE)
     ? SYSTEM_PROMPT.slice(0, -PLAIN_TEXT_RULE.length)
     : SYSTEM_PROMPT;
   return `${base}
 
 Kontext MCP (Claude vedľa viewera):
-- UI akcie (show_in_3d, select_in_3d, style_in_3d, open_node, open_drawing) sa odošlú do ŽIVÉHO
+- UI akcie (show_in_3d, select_in_3d, style_in_3d, set_section, set_camera, set_view_mode,
+  open_node, open_drawing) sa odošlú do ŽIVÉHO
   viewera, ktorý má používateľ otvorený vedľa. Používateľ výsledok vidí tam; ty
   len stručne potvrď, čo sa zobrazilo. Ak tool vráti, že živý kanál nie je
   nastavený, povedz to a ponúkni odkaz.
 - Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
   výkres ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
-- Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.`;
+- Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${engine ? ENGINE_RULES : ""}`;
 }
+
+/**
+ * Smerovanie medzi DB tools a IFC motorom (D-084) - len keď je motor zapnutý.
+ */
+const ENGINE_RULES = `
+
+IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
+- Graf AIM (dokumenty, zodpovednosti, systémy, väzby, miestnosti odvodené geometriou,
+  uložené IDS behy, fotky) ostáva na DB tools. ifc_* použi na: číselné porovnanie
+  hodnôt psetov (ifc_query s where op > < >= <=), presné počty a histogramy zo súboru
+  (ifc_count, ifc_property_values), všetky údaje prvku zo súboru (ifc_get) a kontrolu
+  voči IDS práve teraz (ifc_ids_validate - nič neukladá).
+- Výsledok nesie object_ref, ak prvok pozná AIM; unmapped = prvky len v súbore
+  (spomeň ich počet). Pole show_in_3d (ids_or_refs + global_ids) pošli rovno do
+  show_in_3d/style_in_3d.
+- Recept „ofarbi miestnosti podľa plochy": pre každé pásmo ifc_query(model=ASR,
+  ifc_types=[IfcSpace], where NetFloorArea v pásme) → style_in_3d(colorize,
+  ids_or_refs + global_ids). Filter where vidí len vlastnosti výskytu, nie zdedené
+  z typu - na tie použi DB (v_asset_effective).`;

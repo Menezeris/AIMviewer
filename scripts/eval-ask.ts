@@ -30,6 +30,10 @@ interface Expect {
   sources_any_ref?: string[];
   source_types?: string[];
   no_facts?: boolean;
+  /** Regexy, ktoré musí splniť URL niektorej UI akcie (dekódovaná), napr. ops pohľadu (D-083). */
+  actions_match?: string[];
+  /** Tools, ktoré musí model zavolať (podľa trace). */
+  tools_called?: string[];
 }
 
 interface Question {
@@ -51,6 +55,7 @@ interface AskResponse {
   answer?: string;
   sources?: AskSource[];
   trace?: { name: string; ok: boolean }[];
+  actions?: { url: string }[];
   provider?: string;
   error?: string;
 }
@@ -125,6 +130,16 @@ function score(expect: Expect, res: AskResponse): string[] {
     if (!sources.some((s) => s.objectType === t)) {
       failures.push(`sources neobsahujú object_type '${t}'`);
     }
+  }
+  const urls = (res.actions ?? []).map((a) => decodeURIComponent(a.url));
+  for (const pattern of expect.actions_match ?? []) {
+    if (!urls.some((u) => new RegExp(pattern).test(u))) {
+      failures.push(`žiadna UI akcia nematchuje /${pattern}/ (akcie: ${urls.join(" | ") || "-"})`);
+    }
+  }
+  const called = new Set((res.trace ?? []).map((t) => t.name));
+  for (const tool of expect.tools_called ?? []) {
+    if (!called.has(tool)) failures.push(`model nezavolal ${tool}`);
   }
   if (expect.no_facts) {
     if (!NOT_FOUND_RE.test(answer)) failures.push("no_facts: chýba formulácia typu 'nenašiel som'");

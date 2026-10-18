@@ -4,7 +4,9 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PDF_LINK_SOURCE } from "@/lib/data/constants";
 import { fetchAllPages } from "@/lib/data/pagination";
 import type { ToolDefinition } from "./provider";
+import { docOp } from "@/lib/viewer-ops";
 import { mergeIfcActions, type AskAction } from "./actions";
+import { VIEW_TOOL_DEFINITIONS, VIEW_TOOL_NAMES, execViewTool } from "./view-tools";
 
 /**
  * Read-only tools LLM rozhrania (D-056) — tool-calling nad whitelistom, NIE
@@ -77,6 +79,19 @@ const sanitizeIfcType = (raw: unknown): string =>
   String(raw ?? "").replace(/[^A-Za-z0-9]/g, "").trim();
 const sanitizeModelName = (raw: unknown): string =>
   String(raw ?? "").replace(/[:;~.]/g, "").trim();
+
+/** Max IFC GlobalId priamo z výsledku IFC motora (D-084): ~23 znakov na GUID v URL (limit 16 000). */
+const GLOBAL_IDS_CAP = 600;
+const IFC_GUID_RE = /^[0-9A-Za-z_$]{22}$/;
+/** IFC GlobalId z `global_ids` (výsledok `ifc_*` toolov) - len platný tvar, bez duplicít. */
+function sanitizeGlobalIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const ids = raw
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim())
+    .filter((v) => IFC_GUID_RE.test(v));
+  return [...new Set(ids)].slice(0, GLOBAL_IDS_CAP);
+}
 
 /**
  * Whitelist relácií pre generický query_view (celá čitateľná DB, D-056 dodatok).
@@ -467,6 +482,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           description: `objects.id (UUID) alebo object_ref prvkov na zvýraznenie (1–${SHOW_3D_CAP})`,
         },
         id_or_ref: { type: "string", description: "Alternatíva pre jediný prvok" },
+        global_ids: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            `IFC GlobalId prvkov priamo z výsledku ifc_* toolov (pole show_in_3d.global_ids) - ` +
+            `aj prvky, ktoré nie sú v grafe AIM; max ${GLOBAL_IDS_CAP}`,
+        },
         ifc_type: {
           type: "string",
           description: "Filter namiesto ids: IFC typ (IfcDoor, IfcWindow…) — zobrazí všetky zhody",
@@ -530,6 +552,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "array",
           items: { type: "string" },
           description: "objects.id (UUID) alebo object_ref konkrétnych prvkov",
+        },
+        global_ids: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            `IFC GlobalId prvkov priamo z výsledku ifc_* toolov (pole show_in_3d.global_ids) - ` +
+            `aj prvky, ktoré nie sú v grafe AIM; max ${GLOBAL_IDS_CAP}`,
         },
         ifc_type: {
           type: "string",
@@ -597,6 +626,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         document_id: { type: "string", description: "objects.id dokumentu (UUID)" },
         focus_id: { type: "string", description: "Voliteľné: objects.id prvku na zvýraznenie" },
         page: { type: "number", description: "Voliteľné: číslo strany" },
+        in_viewer: {
+          type: "boolean",
+          description:
+            "true = otvorí dokument ako kartu vedľa 3D modelu vo vieweri (bez zvýraznenia " +
+            "prvku); default false = samostatná prehliadačka výkresu",
+        },
       },
       required: ["document_id"],
     },
@@ -644,6 +679,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       required: ["id"],
     },
   },
+  ...VIEW_TOOL_DEFINITIONS,
 ];
 
 export interface ToolExecution {
@@ -750,6 +786,7 @@ export class AskToolRuntime {
       case "open_node":
         return this.openNode(input);
       default:
+        if (VIEW_TOOL_NAMES.has(name)) return execViewTool(name, input, (a) => this.actions.push(a));
         throw new Error(`Neznámy tool '${name}'.`);
     }
   }
@@ -1518,14 +1555,15 @@ export class AskToolRuntime {
     }
     const single = String(input.id_or_ref ?? "").trim();
     if (single) refs.push(single);
+    const globalIds = sanitizeGlobalIds(input.global_ids);
     const hasFilters = Boolean(
       sanitizeQuery(input.query) ||
         sanitizeQuery(input.ifc_type) ||
         sanitizeQuery(input.predefined_type) ||
         (typeof input.object_type === "string" && input.object_type)
     );
-    if (refs.length === 0 && !hasFilters) {
-      throw new Error("Zadaj ids_or_refs / id_or_ref, alebo filter (ifc_type, query…).");
+    if (refs.length === 0 && !hasFilters && globalIds.length === 0) {
+      throw new Error("Zadaj ids_or_refs / id_or_ref / global_ids, alebo filter (ifc_type, query...).");
     }
 
     // Dva režimy: explicitné ids/refs (dávkové `.in()` — pri SHOW_3D_CAP prvkoch
@@ -1548,7 +1586,7 @@ export class AskToolRuntime {
           rows.push(...((data ?? []) as ObjectRow[]));
         }
       }
-    } else {
+    } else if (hasFilters) {
       const q = this.applyObjectFilters(
         supabase
           .from("objects")
@@ -1600,6 +1638,10 @@ export class AskToolRuntime {
       }
     } else {
       for (const obj of rows) addRow(obj);
+    }
+    // GlobalId priamo z IFC motora (D-084) - prvok nemusí byť v grafe AIM.
+    for (const g of globalIds) {
+      if (!shown.some((s) => s.guid === g)) shown.push({ label: g, guid: g });
     }
     if (shown.length === 0) {
       throw new Error(`Žiadny z prvkov sa nedá zobraziť v 3D: ${skipped.join(", ")}.`);
@@ -1708,8 +1750,10 @@ export class AskToolRuntime {
       ? (input.ifc_types as unknown[]).map(sanitizeIfcType).filter(Boolean)
       : [];
     const singleType = sanitizeIfcType(input.ifc_type);
+    const globalIds = sanitizeGlobalIds(input.global_ids);
     const explicitGiven =
-      Array.isArray(input.ids_or_refs) && (input.ids_or_refs as unknown[]).length > 0;
+      (Array.isArray(input.ids_or_refs) && (input.ids_or_refs as unknown[]).length > 0) ||
+      globalIds.length > 0;
     // Výber podľa hodnoty vlastnosti psetu žije len v DB → DB vetva nižšie.
     const propertyName = String(input.property ?? "").trim();
     const dbOnlyFilter =
@@ -1842,7 +1886,7 @@ export class AskToolRuntime {
             `(hľadané psety: ${propertyPsets.join(", ")}) — over hodnoty cez v_property_dictionary.`
         );
       }
-    } else {
+    } else if (globalIds.length === 0) {
       const hasFilter =
         sanitizeQuery(input.ifc_type) ||
         sanitizeQuery(input.predefined_type) ||
@@ -1866,8 +1910,9 @@ export class AskToolRuntime {
       }
     }
 
-    // ── objects.id → aktívny IFC GUID (len prvky prítomné v 3D modeli).
-    const guids: string[] = [];
+    // ── objects.id → aktívny IFC GUID (len prvky prítomné v 3D modeli);
+    // GlobalId z IFC motora (D-084) idú rovno.
+    const guids: string[] = [...globalIds];
     for (let i = 0; i < objectIds.length; i += IN_CHUNK) {
       const { data, error } = await supabase
         .from("ifc_guid_history")
@@ -1876,7 +1921,7 @@ export class AskToolRuntime {
         .is("valid_until", null);
       if (error) throw new Error(error.message);
       for (const row of (data ?? []) as { ifc_guid: string }[]) {
-        if (row.ifc_guid) guids.push(row.ifc_guid);
+        if (row.ifc_guid && !guids.includes(row.ifc_guid)) guids.push(row.ifc_guid);
       }
     }
     if (guids.length === 0) {
@@ -1921,11 +1966,21 @@ export class AskToolRuntime {
         ? Math.floor(input.page)
         : null;
 
+    const label = doc.name ?? doc.object_ref ?? "výkres";
+    if (input.in_viewer === true) {
+      // Karta dokumentu vedľa 3D (D-075 DOCUMENT_OPEN cez op `doc`, D-083).
+      this.actions.push({
+        type: "navigate",
+        url: `/ifc?ops=${encodeURIComponent(docOp(doc.id, page ?? undefined))}&r=${Date.now().toString(36)}`,
+        label: `Viewer: ${label}`,
+      });
+      return { ok: true, opened: "viewer_document", document: label, ...(page ? { page } : {}) };
+    }
+
     const params = new URLSearchParams();
     if (focusId) params.set("focus", focusId);
     if (page) params.set("page", String(page));
     const qs = params.toString();
-    const label = doc.name ?? doc.object_ref ?? "výkres";
     this.actions.push({
       type: "navigate",
       url: `/drawing/${doc.id}${qs ? `?${qs}` : ""}`,
