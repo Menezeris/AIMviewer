@@ -52,7 +52,7 @@ export interface MatchedMember {
 
 /** Bez diakritiky a veľkosti písmen: "Tepelná izolácia" ~ "izolacia". */
 export function foldText(text: string): string {
-  return text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
 const hits = (needle: string, values: Array<string | undefined>): boolean =>
