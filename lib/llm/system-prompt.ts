@@ -155,7 +155,8 @@ Kontext MCP (Claude vedľa viewera):
 - get_bounds a get_viewer_state čítajú ten istý živý viewer (obálky prvkov a modelu,
   rez, kamera, výber) v súradniciach IFC modelu (m, Z hore). Presný rez: rez cez prvok
   set_section(target_ids_or_refs, fit=along|across|center), alebo get_bounds ->
-  set_section(orientation, coordinate_m). position_percent nehádaj. Keď viewer
+  set_section(orientation, coordinate_m). position_percent nehádaj (je voči obálke celej
+  scény, nie budovy). Keď viewer
   neodpovedá, povedz používateľovi, nech otvorí odkaz zo správy toolu.
 - set_section po odoslaní vráti viewer_section = kde rovina vo vieweri naozaj je (D-092).
   Rez potvrď len podľa nej; pri reze nad podlažím porovnaj s floor_elevation_model_units +

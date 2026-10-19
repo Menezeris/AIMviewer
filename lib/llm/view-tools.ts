@@ -37,7 +37,7 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "dĺžke ramena schodiska), across (zvislo naprieč), center (stredom prvku na zadanej orientation). " +
       "Presná poloha = orientation + coordinate_m v súradniciach IFC (vertical_x reže na IFC X, " +
       "vertical_z na IFC Y, horizontal na IFC Z - výške); súradnice dá get_bounds. position_percent " +
-      "(0-100 % rozmeru modelu) len ako posledná možnosť. action=clear rez zruší. Čistý pohľad bez widgetu rezu = " +
+      "(0-100 % obálky celej scény, nie budovy) len ako posledná možnosť. action=clear rez zruší. Čistý pohľad bez widgetu rezu = " +
       "show_widget=false (pri set) alebo action=widget, show_widget=false (rez ostáva). Príklad 'ukáž strop " +
       "nad miestnosťou na 2NP, kade idú potrubia': set_section(floor=3NP, offset_m=-0.4) + " +
       "style_in_3d(hide, ifc_type=IfcCovering) + set_camera(preset=top, target=miestnosť).",
@@ -48,7 +48,10 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         orientation: { type: "string", enum: ["horizontal", "vertical_x", "vertical_z"], description: "Default horizontal" },
         floor: floorProp,
         offset_m: { type: "number", description: "Výška rezu nad úrovňou podlažia v metroch (-5 až 20, default 1,2)" },
-        position_percent: { type: "number", description: "Poloha rezu 0-100 % rozmeru modelu (bez podlažia, pre zvislé rezy)" },
+        position_percent: {
+          type: "number",
+          description: "Poloha rezu 0-100 % obálky celej scény (všetky viditeľné modely, nie len budova), len ako posledná možnosť",
+        },
         target_ids_or_refs: {
           type: "array",
           items: { type: "string" },
