@@ -4192,6 +4192,52 @@ merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo fo
 - **2026-06-22** — D-044 (IFC 3D viewer — IFClite, geometria ephemerálna cez GUID); sprint DV (D-042/D-043).
 - **2026-06-20** — D-036 (CDE naming), D-040 (`IfcSpace.LongName`), D-041 (E4 auto-linking), D-042 (plánovaná prehliadačka výkresov).
 
+### D-097 - ifc_relations: všetky IFC vzťahy entity zo súboru, so smerom, rekurziou a stránkovaním
+
+**Dátum:** 2026-10-19 · **Stav:** implementované (PR, čaká na merge) · **Súvisí:** D-084, D-087, D-088, D-090 · **Issue:** #67
+
+**Kontext:** Claude cez konektor nevedel odpovedať na "ktoré priestory sú prenajímateľné", "kto patrí
+do systému Prívod-1NP" ani "ku ktorým zónam patrí miestnosť". `ifc_get` členov IfcZone/IfcGroup
+nevracia, `list_relations` vidí len graf AIM (zóny a prvky bez `object_id` v ňom nie sú) a má strop
+100 riadkov bez stránkovania, porty a ich prepojenia (IfcRelNests + IfcRelConnectsPorts) nevidel vôbec.
+Pravidlo z požiadavky: čo je viditeľné v UI viewera, musí vedieť prečítať aj Claude.
+
+**Overenie (D-087, krok 1):** `@ifc-lite/mcp` 0.27.0 má tool `relationships`, ktorý vráti všetky hrany
+grafu entity v oboch smeroch s presnou triedou IfcRel* (AssignsToGroup, Nests, ConnectsPorts,
+ConnectsPortToElement, SpaceBoundary*, Voids/Fills, Contained/ReferencedInSpatialStructure,
+DefinesByType, Associates*, ServicesBuildings...). Motor ho mal povolený (`ENGINE_UPSTREAM_TOOLS`),
+len nevystavený. Chýba mu filter, rekurzia, stránkovanie a GlobalId druhej strany, takže stačí
+adaptér, nie vlastné čítanie IFC.
+
+**Rozhodnutie:**
+1. Nový tool motora `ifc_relations` (`lib/engine/relations.ts`, registrácia v `tool-defs.ts` a
+   `tools.ts`): `target` = object_ref / objects.id / GlobalId (aj entita mimo grafu AIM), `model?`,
+   `rel_types?`, `direction` forward | inverse | both, `recursive`, `through_ports`, `limit` 1-200 a
+   `cursor`.
+2. Smer je smer balíka: forward = entita je Relating strana (skupina -> členovia, podlažie -> prvky,
+   celok -> časti, prvok -> porty), inverse = kam entita patrí.
+3. `recursive` ide do šírky cez tie isté triedy a smer, max hĺbka 10, každá entita raz (riadok nesie
+   `depth` a `via`). Bez `rel_types` ide len cez IfcRelAssignsToGroup: cez všetky vzťahy by sa z
+   jednej zóny rozliala cez hranice priestorov a otvory do celého modelu (overené: 2361 vzťahov z
+   "Požiarne úseky" namiesto 24 úsekov). Strop prechodu 20 000 vzťahov, nad ním `incomplete`.
+4. `through_ports` = jeden krok sieťou: vlastné porty (IfcRelNests, v IFC2X3 IfcRelConnectsPortToElement)
+   -> IfcRelConnectsPorts -> port druhej strany -> jeho hostiteľský prvok; riadok nesie `via_port` a `port`.
+5. Bez `rel_types` sa skrývajú IfcRelDefinesByProperties (psety a Qto dáva `ifc_get`).
+6. Výstup: cieľ, `total` a `counts` (po triede a smere) za celý výsledok, `items` (rel_type, direction,
+   global_id, ifc_type, name, object_ref/object_id len ak ich AIM pozná), `next_cursor` (null =
+   koniec), `unmapped`, `show_in_3d`. Dávka sa skráti tak, aby JSON nikdy nebol orezaný uprostred;
+   strop odpovede 40 000 znakov (ostatné `ifc_*` 20 000), aby systém s 824 členmi prešiel na 5 stránok.
+7. Pravidlo v `ENGINE_RULES` (`lib/llm/system-prompt.ts`): úplný zoznam členov a vzťahy entít len v
+   súbore -> `ifc_relations`, `list_relations` ostáva pre graf AIM. `list_relations` sa nemení.
+
+**Overené nad ASR a VZT (lokálne, bez DB):** "Nájomné priestory" rekurzívne 36 členov (vnorené zóny
+NJ a ich miestnosti, 1,7 s so studeným načítaním), "Technické priestory" 11 miestností, "Požiarne
+úseky" 24 IfcSpatialZone, systém Odvod-2NP 824 vzťahov (823 členov + IfcRelServicesBuildings) po 200,
+vyústka VV.02.01.006 cez porty -> tvarovka TA.02; teplé volania 1-230 ms.
+
+**Mimo rozsahu:** import zón a členstva do grafu AIM (návrh v issue) je úloha ETL (D-088), nie toolu
+konektora. Otázka Samuelovi je v issue #67.
+
 ---
 
 ### D-095 - `ifc_search`: full-text priamo v IFC súbore, zdroj pri každom výsledku
