@@ -50,3 +50,25 @@ export function isLiveReply(p: unknown): p is LiveReplyPayload {
   const r = p as Record<string, unknown>;
   return isStr(r.id) && (r.ok === true || (r.ok === false && typeof r.error === "string"));
 }
+
+/**
+ * Potvrdenie príkazu (D-101): server pošle príkaz s `cmdId`, viewer ho vykoná a
+ * po dobehnutí jeho krokov vráti udalosť `applied` so stavom po aplikovaní.
+ */
+export const LIVE_APPLIED_EVENT = "applied";
+
+export interface LiveAppliedPayload {
+  cmdId: string;
+  ok: boolean;
+  /** Čo sa vo vieweri vykonať nedalo (napr. prvok sa nenašiel). */
+  issues: string[];
+  state?: unknown;
+}
+
+export const isCmdId = (v: unknown): v is string => isStr(v) && v.length <= MAX_ID;
+
+export function isLiveApplied(p: unknown): p is LiveAppliedPayload {
+  if (!p || typeof p !== "object") return false;
+  const a = p as Record<string, unknown>;
+  return isCmdId(a.cmdId) && typeof a.ok === "boolean" && Array.isArray(a.issues) && a.issues.every((i) => typeof i === "string");
+}

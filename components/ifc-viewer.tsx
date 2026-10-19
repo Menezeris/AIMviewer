@@ -16,6 +16,7 @@ import { MAX_ZONE_GUIDS, lensBridgeMessage, lensZoneIds } from "@/lib/viewer-len
 import type { LiveQueryPayload, LiveReplyPayload } from "@/lib/live/protocol";
 import { hasRelativeStep, relativeViewpoint, type CameraMove, type ViewerCamera } from "@/lib/viewer-camera";
 import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
+import { emitApplied, setLiveApplyHandler, takePendingCmdIds, type LiveApply } from "@/lib/live/viewer-apply-bus";
 import { BCF_CHANGED_WINDOW_EVENT, bcfLoadMessage } from "@/lib/live/bcf-event";
 
 /**
@@ -72,7 +73,9 @@ type OutboundMessage =
   // Karta dokumentu otvorená/zavretá vo viewri (D-075) — recents/analytics.
   | { source: typeof SOURCE; type: "DOCUMENT_EVENT"; documentId: string; event: "opened" | "closed" }
   // Odpoveď na QUERY spätného kanála (D-085) - obálky, stav pohľadu.
-  | { source: typeof SOURCE; type: "QUERY_RESULT"; id: string; ok: boolean; result?: unknown; error?: string };
+  | { source: typeof SOURCE; type: "QUERY_RESULT"; id: string; ok: boolean; result?: unknown; error?: string }
+  // Potvrdenie príkazov pred ACK_REQUEST (D-101) - stav po vykonaní, čo sa nevykonalo.
+  | { source: typeof SOURCE; type: "APPLIED"; cmdId: string; ok: boolean; issues: string[]; state?: unknown };
 
 /** Ako dlho čaká živý kanál na odpoveď forku (server čaká dlhšie, QUERY_TIMEOUT_MS). */
 const VIEWER_QUERY_TIMEOUT_MS = 5000;
@@ -233,6 +236,10 @@ export function IFCViewer({
   const queriesRef = useRef(new Map<string, (r: LiveReplyPayload) => void>());
   // Ops AI docku idú po sebe; relatívna kamera v nich čaká na view_state (D-098).
   const opsChainRef = useRef<Promise<void>>(Promise.resolve());
+  // Príkazy živého kanála vykonané na mieste (D-101): nonce, ktorý už soft-nav efekt nezopakuje,
+  // a príkazy, ktoré prišli pred MODELS_LOADED.
+  const liveNonceRef = useRef<string | null>(null);
+  const pendingLiveRef = useRef<LiveApply[]>([]);
   const cameraQueryRef = useRef(0);
   function send(msg: Record<string, unknown>) {
     if (loadedRef.current) post(msg);
@@ -292,6 +299,21 @@ export function IFCViewer({
         if (o.op === "show_all") post({ type: "APPLY_LENS", mode: "unisolate" });
       }
     }).catch((err: unknown) => console.warn("[ifc-viewer] ops", err));
+  }
+
+  /** Potvrdenie (D-101): ACK_REQUEST ide za ops v tom istom reťazci, fork ho vybaví po nich. */
+  function requestAck(cmdIds: string[]) {
+    if (cmdIds.length === 0) return;
+    opsChainRef.current = opsChainRef.current.then(() => {
+      for (const cmdId of cmdIds) post({ type: "ACK_REQUEST", cmdId });
+    });
+  }
+
+  /** Príkaz živého kanála na mieste (D-101): to isté ako focus/ops z URL, bez navigácie. */
+  function runLive(a: LiveApply) {
+    if (a.focus) post({ type: "FOCUS", guids: a.focus.split(",") });
+    if (a.ops) applyOps(a.ops);
+    requestAck(a.cmdIds);
   }
 
   /**
@@ -400,8 +422,16 @@ export function IFCViewer({
           const queued = pendingRef.current;
           pendingRef.current = [];
           for (const msg of queued) post(msg);
+          // D-101: potvrdenie príkazu, ktorý prišiel navigáciou, a príkazy na mieste spred načítania.
+          requestAck(takePendingCmdIds());
+          const live = pendingLiveRef.current;
+          pendingLiveRef.current = [];
+          for (const a of live) runLive(a);
           break;
         }
+        case "APPLIED":
+          emitApplied({ cmdId: e.data.cmdId, ok: e.data.ok, issues: e.data.issues, state: e.data.state });
+          break;
         case "QUERY_RESULT": {
           const resolve = queriesRef.current.get(e.data.id);
           if (!resolve) break;
@@ -490,9 +520,16 @@ export function IFCViewer({
     // Spätný kanál (D-085): otázku pošli forku až s naparsovanými modelmi.
     const pendingQueries = queriesRef.current;
     const unregisterQueries = setViewerQueryHandler(askViewer);
+    const unregisterApply = setLiveApplyHandler((a) => {
+      if (a.nonce) liveNonceRef.current = a.nonce;
+      if (loadedRef.current) runLive(a);
+      else pendingLiveRef.current.push(a);
+    });
     return () => {
       window.removeEventListener("message", onMessage);
       unregisterQueries();
+      unregisterApply();
+      pendingLiveRef.current = [];
       pendingQueries.clear();
       readyRef.current = false;
       loadedRef.current = false;
@@ -510,6 +547,7 @@ export function IFCViewer({
   // handler MODELS_LOADED sám — pred READY sa preto neposiela nič).
   useEffect(() => {
     if (!readyRef.current || !focus) return;
+    if (focusNonce && focusNonce === liveNonceRef.current) return; // už vykonané na mieste (D-101)
     send({ type: "FOCUS", guids: focus.split(",") });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, focusNonce]);
@@ -519,7 +557,9 @@ export function IFCViewer({
   // počiatočné ops aplikuje handler MODELS_LOADED vyššie.
   useEffect(() => {
     if (!loadedRef.current || !ops) return;
+    if (focusNonce && focusNonce === liveNonceRef.current) return; // už vykonané na mieste (D-101)
     applyOps(ops);
+    requestAck(takePendingCmdIds());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ops, focusNonce]);
 
