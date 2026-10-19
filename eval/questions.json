@@ -527,6 +527,42 @@
       "notes": "D-096 (#68): color_by=system (autoColor group) alebo groups podľa názvu systému (Prívod/Odvod/Nasávanie/Výfuk); bez pevnej palety, legenda z viewera."
     },
     {
+      "id": "relations-zone-members",
+      "category": "relations",
+      "question": "Ktoré miestnosti patria do zóny Technické priestory?",
+      "expect": {
+        "tools_called": [
+          "ifc_relations"
+        ]
+      },
+      "verified": false,
+      "notes": "D-097 (#67): len MCP s motorom, /ask ifc_* nemá. ifc_relations(target=GlobalId zóny, direction=forward, rel_types=[IfcRelAssignsToGroup]); lokálne nad ASR 11 miestností (1.04, 1.05, 1.07...)."
+    },
+    {
+      "id": "relations-system-members",
+      "category": "relations",
+      "question": "Kto patrí do systému Odvod-2NP? Koľko prvkov to je?",
+      "expect": {
+        "tools_called": [
+          "ifc_relations"
+        ]
+      },
+      "verified": false,
+      "notes": "D-097 (#67): ifc_relations direction=forward so stránkovaním cez next_cursor; počet z total/counts: 823 členov IfcRelAssignsToGroup (VZT, lokálne 2026-10-19). Nesmie povedať 100 (strop list_relations)."
+    },
+    {
+      "id": "relations-port-connections",
+      "category": "relations",
+      "question": "Ktoré prvky sú cez porty napojené na vyústku VV.02.01.006?",
+      "expect": {
+        "tools_called": [
+          "ifc_relations"
+        ]
+      },
+      "verified": false,
+      "notes": "D-097 (#67): ifc_relations through_ports=true; lokálne nad VZT tvarovka TA.02 (IfcDuctFitting)."
+    },
+    {
       "id": "view-selection-summary",
       "category": "view",
       "question": "Čo mám označené vo vieweri?",
