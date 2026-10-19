@@ -7,11 +7,13 @@ import { GithubClient } from "../github/client";
 
 import { fireRoutine, ROUTINE_BETA } from "./routine";
 import {
+  draftComment,
   draftFeedback,
   draftToolRequest,
   execFeedbackTool,
   FEEDBACK_TOOL_DEFINITIONS,
   marker,
+  parseCommentKind,
   parseMarker,
   slug,
   type FeedbackDeps,
@@ -288,6 +290,93 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
     const out = JSON.parse((await execFeedbackTool("feedback_status", {}, deps({ client: gh.client }))).text);
     expect(out.open).toHaveLength(1);
     expect(out.open[0]).toMatchObject({ number: 12, kind: "tool", session: true });
+  });
+});
+
+describe("feedback_comment: komentár do issue konektora (D-090, #98)", () => {
+  const commented = () =>
+    fakeGithub({
+      "GET /repos/Menezeris/AIMviewer/issues/12": () => ({ json: issue() }),
+      "POST /repos/Menezeris/AIMviewer/issues/12/comments": (body) => ({
+        status: 201,
+        json: { id: 99, html_url: "https://github.com/Menezeris/AIMviewer/issues/12#issuecomment-99", body },
+      }),
+    });
+
+  it("je zápisový tool a overí vstup bez volania GitHubu", async () => {
+    const def = FEEDBACK_TOOL_DEFINITIONS.find((t) => t.name === "feedback_comment")!;
+    expect(def.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false, openWorldHint: true });
+    expect(await execFeedbackTool("feedback_comment", { text: "x" }, deps())).toMatchObject({ isError: true });
+    expect(await execFeedbackTool("feedback_comment", { issue_number: 12 }, deps())).toEqual({
+      text: "Chýba text.",
+      isError: true,
+    });
+    const bad = await execFeedbackTool("feedback_comment", { issue_number: 12, text: "x", kind: "spam" }, deps());
+    expect(bad.text).toContain("eval_round");
+  });
+
+  it("zapíše komentár s nadpisom druhu, skrytou značkou a vráti odkaz", async () => {
+    const gh = commented();
+    const res = await execFeedbackTool(
+      "feedback_comment",
+      { issue_number: 12, text: "| eval | pred | po |\n|---|---|---|\n| a | 5 | 3 |", kind: "eval_round" },
+      deps({ client: gh.client }),
+    );
+    expect(res.isError).toBe(false);
+    expect(JSON.parse(res.text)).toEqual({
+      issue: { number: 12, url: issue().html_url, title: issue().title },
+      comment: { id: 99, url: "https://github.com/Menezeris/AIMviewer/issues/12#issuecomment-99" },
+    });
+    const body = (gh.calls[1].body as { body: string }).body;
+    expect(body).toMatch(/^\*\*Kolo evalov\*\* \(2026-10-18 22:00 UTC, `feedback_comment`\)/);
+    expect(body).toContain("| a | 5 | 3 |");
+    expect(parseCommentKind(body)).toBe("eval_round");
+    expect(draftComment({ issue_number: 12, text: "x" }, NOW).body).toContain("**Poznámka**");
+  });
+
+  it("tajomstvá z textu skryje", async () => {
+    const gh = commented();
+    await execFeedbackTool(
+      "feedback_comment",
+      { issue_number: 12, text: "token tajny-token-123" },
+      deps({ client: gh.client, secrets: ["tajny-token-123"] }),
+    );
+    const body = (gh.calls[1].body as { body: string }).body;
+    expect(body).not.toContain("tajny-token-123");
+    expect(body).toContain("[skryté]");
+  });
+
+  it("odmietne issue mimo konektora, PR a zatvorené issue", async () => {
+    for (const over of [{ labels: [{ name: "bug" }] }, { pull_request: {} }, { state: "closed" }]) {
+      const gh = fakeGithub({ "GET /repos/Menezeris/AIMviewer/issues/12": () => ({ json: issue(over) }) });
+      const res = await execFeedbackTool("feedback_comment", { issue_number: 12, text: "x" }, deps({ client: gh.client }));
+      expect(res.isError).toBe(true);
+      expect(gh.calls.some((c) => c.method === "POST")).toBe(false);
+    }
+  });
+
+  it("bez tokenu vráti koncept komentára", async () => {
+    const out = JSON.parse((await execFeedbackTool("feedback_comment", { issue_number: 12, text: "x" }, deps())).text);
+    expect(out.error).toContain("FEEDBACK_GITHUB_TOKEN");
+    expect(out.draft.issue_number).toBe(12);
+  });
+
+  it("feedback_status označí komentáre dopísané konektorom", async () => {
+    const body = draftComment({ issue_number: 12, text: "kolo 2", kind: "result" }, NOW).body;
+    const gh = fakeGithub({
+      "GET /repos/Menezeris/AIMviewer/issues/12": () => ({ json: issue() }),
+      "GET /repos/Menezeris/AIMviewer/issues/12/comments": () => ({
+        json: [
+          { id: 1, html_url: "c1", user: null, created_at: "t1", body: "Otázka?" },
+          { id: 2, html_url: "c2", user: null, created_at: "t2", body },
+        ],
+      }),
+      "GET /repos/Menezeris/AIMviewer/issues/12/timeline": () => ({ json: [] }),
+    });
+    const out = JSON.parse((await execFeedbackTool("feedback_status", { issue_number: 12 }, deps({ client: gh.client }))).text);
+    expect(out.last_comments.map((c: { via_connector: unknown }) => c.via_connector)).toEqual([null, "result"]);
+    expect(out.last_comments[1].text).toContain("kolo 2");
+    expect(out.last_comments[1].text).not.toContain("aim-mcp-comment");
   });
 });
 

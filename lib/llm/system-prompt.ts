@@ -211,6 +211,8 @@ const FEEDBACK_RULES = `
 - Naraz bežia najviac 3 sessions; ďalšie požiadavky idú do fronty (queued). Keď používateľ dá zapísať
   viac položiek naraz (zoznam, dokument), zapíš každú zvlášť, podobné zlúč do jednej, a na konci povedz,
   koľko session beží a čo čaká. "Spusti ďalšiu" = start_queued_session.
+- "Dopíš do #N ..." (kolo evalov, výsledky pred / po, poznámka) = feedback_comment do existujúceho
+  issue, nie nové issue; ukáž odkaz na komentár.
 - Issue je verejné: žiadne mená, kontakty ani tokeny, len object_ref, triedy, psety a tools.`;
 
 /**
