@@ -65,8 +65,9 @@ def test_close_stale_closes_only_this_model() -> None:
     cur = StubCursor()
     m = _model()
     closed = close_stale(cur, m, "ASR")
-    assert closed == {"edges": 1, "guids": 1, "objects": 1, "repointed": 2}
-    (edge_sql, edge_params), (guid_sql, guid_params), (obj_sql, obj_params), *repoint = cur.calls
+    assert closed == {"edges": 1, "guids": 1, "objects": 1, "documents": 1, "repointed": 2}
+    (edge_sql, edge_params), (guid_sql, guid_params), (obj_sql, obj_params), \
+        (doc_sql, doc_params), *repoint = cur.calls
     assert edge_sql.startswith("update relationships set valid_until = now()")
     assert "source = %s and valid_until is null and not (id = any(%s))" in edge_sql
     assert edge_params[0] == "etl:ASR"
@@ -76,6 +77,10 @@ def test_close_stale_closes_only_this_model() -> None:
     assert obj_sql.startswith("update objects o set valid_until = now()")
     assert "not exists (select 1 from ifc_guid_history h where h.object_id = o.id and h.valid_until is null)" in obj_sql
     assert obj_params == ("IFC import:ASR",)
+    # dokumenty modelu, ktoré beh nevydal, zaniknú (D-101); iné modely a E3 nie
+    assert doc_sql.startswith("update objects set valid_until = now()")
+    assert "properties->>'_model' = %s and not (object_ref = any(%s))" in doc_sql
+    assert doc_params == (["document", "document_reference"], "ASR", [])
     # ručné väzby na nástupcu s rovnakým GUID, oba konce; väzby ETL a derive nie
     assert [sql.split(" = s.new_id")[0] for sql, _ in repoint] == [
         "update relationships r set from_id", "update relationships r set to_id"]

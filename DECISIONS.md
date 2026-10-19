@@ -4693,3 +4693,26 @@ od hostiteľa a filtruje len podľa názvu. Doplní sa:
 Krok 3 tým znamená: skupina AIM v lište, panel dokumentov so zoskupením, hľadaním v metadátach a
 prepínačom výberu, AIM vrstvy vpravo, AIM karta nad efektívnymi dokumentmi; hľadanie v obsahu je
 až po kroku 4.
+
+**Dodatok 2026-10-19 - krok 1 urobený (ETL podľa IFC).** Tvar dát (Samuel nenamietal):
+- `IfcDocumentInformation` = `document`, `object_ref` = `Identification`, `ifc_type`
+  `IfcDocumentInformation`; aj 10 priečinkových častí bez súboru (PD, SPR, ASR, PBR...).
+- Strom = `rel_document_information_relationship` (resource ako `rel_member_of`, D-048): časť ->
+  nadradený, `role` = `RelationshipType`. Meno podľa IFC entity, lebo IFC tu koncept má.
+- `IfcDocumentReference` = `document_reference` s príponou `documents` a stĺpcom
+  `referenced_document_id` (IFC atribút `ReferencedDocument` je stĺpec, nie hrana - AGENTS);
+  `object_ref` = `<Identification dokumentu>#page=N`, meno z `Description` (ASR nesie popis
+  strany tam). `/drawing/<odkaz>` presmeruje na dokument na strane.
+- Nové stĺpce `documents`: `creation_time`, `last_revision_time`, `electronic_format`,
+  `referenced_document_id` (migrácia `20261019160000`); `document_owner` = text "Osoba
+  (Organizácia)" ako doteraz.
+- Súbor: load hľadá v `storage.objects` bucketu `documents` súbor s menom z `Location`; nájdený =
+  verejná URL (`storage_type='supabase'`), pôvodná `Location` v `properties._ifc_location`.
+- Dokumenty nemajú GUID, preto `_RETIRE_OBJECTS` (D-088) na ne nedosiahne: nesú
+  `properties._model` a beh `--model` ukončí tie, ktoré model už nevydáva. Starú sadu E3 a
+  dokumenty ETL pred D-101 (bez `_model`) ukončí jednorazovo `python -m etl.documents
+  close-legacy` aj s ich väzbami (E3 na podlažia, E4 na prvky); text strán ostáva v
+  `document_pages`, `search_documents` zaniknuté dokumenty nevidí.
+- Produkcia: re-ETL bez novej revízie robí nový workflow `reetl` v OCB (aktuálna revízia
+  overená cez sha256, `dry_run`, `close_legacy_documents`).
+- Knižnica dokumentov vo vieweri berie priečinok zo stromu dokumentácie (koreň PD sa vynecháva).

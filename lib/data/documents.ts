@@ -4,6 +4,7 @@ import { unstable_cache } from "next/cache";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { AIM_CACHE } from "@/lib/data/constants";
+import { documentFolder, referencePage } from "@/lib/data/document-tree";
 
 /**
  * Data-access vrstva pre in-viewer knižnicu dokumentov (D-075): mapuje
@@ -42,10 +43,10 @@ function mimeFor(location: string): string | null {
 async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
   const supabase = getSupabaseAdmin();
 
-  // Bez stránkovania zámerne (vzor fetchUnderlayDrawings): dokumentov je ~13
-  // (E3), hlboko pod PostgREST capom 1000. Pri multi-projekte (D-033) prehodnotiť.
+  // Bez stránkovania zámerne (vzor fetchUnderlayDrawings): dokumentov je ~54
+  // (IFC, D-101), hlboko pod PostgREST capom 1000. Pri multi-projekte (D-033) prehodnotiť.
   // Tri nezávislé selecty naraz — len rel dotaz nižšie potrebuje floorIds.
-  const [objsRes, docsRes, floorsRes] = await Promise.all([
+  const [objsRes, docsRes, floorsRes, partsRes] = await Promise.all([
     supabase
       .from("objects")
       .select("id, name")
@@ -60,11 +61,23 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
       .select("id, name, ifc_guid")
       .eq("object_type", "floor")
       .is("valid_until", null),
+    // Strom dokumentácie z IFC (D-101): časť → nadradený dokument.
+    supabase
+      .from("rel_document_information_relationship")
+      .select("from_id, to_id")
+      .is("valid_until", null),
   ]);
   if (objsRes.error) throw new Error(objsRes.error.message);
   if (docsRes.error) throw new Error(docsRes.error.message);
   if (floorsRes.error) throw new Error(floorsRes.error.message);
+  if (partsRes.error) throw new Error(partsRes.error.message);
   const docById = new Map((docsRes.data ?? []).map((d) => [d.id as string, d]));
+  const parentOf = new Map(
+    ((partsRes.data ?? []) as { from_id: string; to_id: string }[]).map((r) => [r.from_id, r.to_id])
+  );
+  const nameOf = new Map(
+    (objsRes.data ?? []).map((o) => [o.id as string, (o.name as string | null) ?? (o.id as string)])
+  );
 
   // Väzba podlažie → výkres (E3, role='drawing') určuje kind='drawing',
   // storeyGuid (IFC GlobalId podlažia) a folder (názov podlažia).
@@ -118,12 +131,16 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
       if (value) meta[key] = value;
     }
 
-    // Folder: výkresy podľa podlažia, ostatné podľa účelu (CDE typ, D-036).
+    // Folder: výkresy podľa podlažia, potom strom dokumentácie z IFC (D-101),
+    // inak podľa účelu (CDE typ, D-036).
+    const tree = documentFolder(id, parentOf, nameOf);
     const folder = floor?.name
       ? ["Výkresy", floor.name]
-      : typeof doc.purpose === "string" && doc.purpose
-        ? [doc.purpose]
-        : undefined;
+      : tree.length > 0
+        ? tree
+        : typeof doc.purpose === "string" && doc.purpose
+          ? [doc.purpose]
+          : undefined;
 
     out.push({
       documentId: id,
@@ -145,5 +162,46 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
 export const fetchProjectDocuments = unstable_cache(
   fetchProjectDocumentsImpl,
   ["fetch-project-documents"],
+  AIM_CACHE
+);
+
+/** Cieľ IfcDocumentReference (D-101): dokument, ktorého časť odkaz označuje, a strana. */
+export interface DocumentReferenceTarget {
+  documentId: string;
+  page: number | null;
+}
+
+async function fetchDocumentReferenceImpl(id: string): Promise<DocumentReferenceTarget | null> {
+  const supabase = getSupabaseAdmin();
+  const [objRes, docRes] = await Promise.all([
+    supabase
+      .from("objects")
+      .select("id")
+      .eq("id", id)
+      .eq("object_type", "document_reference")
+      .limit(1),
+    supabase
+      .from("documents")
+      .select("location, identification, referenced_document_id")
+      .eq("id", id)
+      .limit(1),
+  ]);
+  if (objRes.error) throw new Error(objRes.error.message);
+  if (docRes.error) throw new Error(docRes.error.message);
+  const d = docRes.data?.[0];
+  if (!objRes.data?.[0] || !d?.referenced_document_id) return null;
+  return {
+    documentId: d.referenced_document_id as string,
+    page: referencePage(
+      (d.location as string | null) ?? null,
+      (d.identification as string | null) ?? null
+    ),
+  };
+}
+
+/** Odkaz na časť dokumentu → dokument a strana (ISR, tag `aim`). */
+export const fetchDocumentReference = unstable_cache(
+  fetchDocumentReferenceImpl,
+  ["fetch-document-reference"],
   AIM_CACHE
 );

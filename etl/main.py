@@ -73,11 +73,18 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     url = config.database_url()
     if args.reset:
         print("--reset → AIM dáta sa pred loadom vyprázdnia (nahradenie seedu).")
-    closed = load_model(url, staged, reset=args.reset, scope=args.model)
+    storage_base = config.supabase_url()
+    if storage_base is None:
+        print("Chýba SUPABASE_URL → dokumenty ostanú bez súborov v buckete (D-101).")
+    closed = load_model(url, staged, reset=args.reset, scope=args.model, storage_base=storage_base)
+    docs = [o.document for o in staged.objects if o.object_type == "document" and o.document]
+    print(f"Dokumenty: {len(docs)}, so súborom v buckete "
+          f"{sum(d.storage_type == 'supabase' for d in docs)} (D-101).")
     if args.model:
         print(f"Model {args.model}: uzavreté zastarané hrany {closed['edges']}, "
               f"GUID záznamy {closed['guids']}, zaniknuté objekty {closed['objects']}, "
-              f"ručné väzby presunuté na nástupcu {closed['repointed']} (D-086, D-088).")
+              f"zaniknuté dokumenty {closed['documents']}, "
+              f"ručné väzby presunuté na nástupcu {closed['repointed']} (D-086, D-088, D-101).")
     print("Hotovo — zapísané do Supabase.")
 
 

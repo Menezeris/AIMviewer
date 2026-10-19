@@ -15,7 +15,7 @@
 ```
 objects  ──┐  (jeden uzlový priestor, Master UUID = kotva)
            ├─ floors    (elevation)
-           ├─ documents (IfcDocumentInformation polia)
+           ├─ documents (IfcDocumentInformation polia; aj IfcDocumentReference, D-101)
            └─ persons   (meno, kontakt)   ── organization = objects riadok
 
 HRANY (objects → objects, čisté FK) — IFC-kanonické (D-048):
@@ -24,6 +24,7 @@ HRANY (objects → objects, čisté FK) — IFC-kanonické (D-048):
   rel_defines_by_type                 occurrence → type          (IfcRelDefinesByType)
   rel_member_of                       person → organization      (IfcPersonAndOrganization)
   rel_associates_document             objekt → dokument          (IfcRelAssociatesDocument)
+  rel_document_information_relationship  časť → nadradený dokument (IfcDocumentInformationRelationship, D-101)
   rel_assigns_to_actor                person|organization → objekt  (role, platnosť = handover)
   rel_assigns_to_group                element → system           (IfcRelAssignsToGroup, D-047)
 
@@ -67,7 +68,8 @@ create table objects (
   object_type       text not null,     -- 'site','building','floor','space','asset','asset_type',
                                         -- 'document','person','organization','system' (D-047),
                                         -- 'capture','capture_media' (D-073),
-                                        -- 'project','zone','spatial_zone','group' (D-088)
+                                        -- 'project','zone','spatial_zone','group' (D-088),
+                                        -- 'document_reference' (IfcDocumentReference, D-101)
   object_ref        text unique,       -- ľudsky čitateľná identita / QR (D-010/2)
   name              text,              -- IFC Name (atribút)
   ifc_guid          text,              -- IFC GlobalId — len atribút, nullable (D-010/3)
@@ -112,6 +114,12 @@ create table documents (        -- IfcDocumentInformation (D-014); .Name žije v
   valid_from      timestamptz,  -- platnosť revízie (≠ platnosť väzby)
   valid_until     timestamptz
 );
+-- + storage_type (D-032, migrácia 20260620120000): supabase | external | unresolved
+-- + D-101 (migrácia 20261019160000), IFC atribúty doslovne:
+--   creation_time timestamptz, last_revision_time timestamptz, electronic_format text,
+--   referenced_document_id uuid → objects (IfcDocumentReference.ReferencedDocument;
+--   len pri object_type='document_reference', riadok nesie Location/Identification/
+--   Description odkazu, objects.name = Name, inak Description)
 
 create table persons (          -- IfcPerson (D-024); objects.name = zobrazované meno
   id          uuid primary key references objects(id) on delete cascade,
@@ -520,7 +528,10 @@ Psety nikdy nezačínajú `_`. Aktuálne používané (deklarované extenzie, D-
 regióny výkresov, D-042, zapisuje `etl/pdf_link.py`), `_georef` (georeferencia
 PDF podkladu na podlažie, D-072, zapisuje `PATCH /api/underlay`), `_capture`
 (ukotvenie reality-capture bodu — `plan`{documentId,page,u,v} + `world`{x,y,z} +
-`yaw`, versioned; D-073, zapisuje `POST /api/captures`, len na `object_type='capture'`).
+`yaw`, versioned; D-073, zapisuje `POST /api/captures`, len na `object_type='capture'`),
+`_model` (model federácie, ktorý dokument vydal; ETL ukončí dokumenty modelu, ktoré už
+nevydáva, D-101) a `_ifc_location` (pôvodná `Location` zo súboru, keď `documents.location`
+ukazuje na súbor v buckete `documents`, D-101) - oba len na `document`/`document_reference`.
 
 ---
 
@@ -541,11 +552,13 @@ CamelCase by vyžadoval úvodzovky a škodil LLM text-to-SQL). IFC väzba cez
 | `rel_defines_by_type` | IfcRelDefinesByType (IfcRelDefines) |
 | `rel_member_of` | IfcPersonAndOrganization (**resource, nie IfcRel** — D-048) |
 | `rel_associates_document` | IfcRelAssociatesDocument (IfcRelAssociates) |
+| `rel_document_information_relationship` | IfcDocumentInformationRelationship (**resource, nie IfcRel**, D-101); `role` = RelationshipType |
 | `rel_associates_classification` | IfcRelAssociatesClassification (IfcRelAssociates) |
 | `rel_assigns_to_actor` | IfcRelAssignsToActor + IfcActorRole (IfcRelAssigns) |
 | `rel_assigns_to_group` | IfcRelAssignsToGroup (IfcRelAssigns) — systémy, D-047 |
 | `classification_systems` / `_references` | IfcClassification / IfcClassificationReference |
 | `documents` (prípona) | IfcDocumentInformation (atribútovo 1:1, viď nižšie) |
+| `object_type='document_reference'` (prípona `documents`) | IfcDocumentReference: časť dokumentu, napr. strana (D-101) |
 | `object_type='capture'` (prípona `captures`) | ~IfcAnnotation (reality-capture bod); ukotvenie v `_capture`, D-073 |
 | `object_type='capture_media'` (prípona `capture_media`) | ~IfcDocumentInformation (snímka/verzia), D-073 |
 | `aim_rel_capture_located` | **aim_** (IFC nemá koncept; ~IfcRelContainedInSpatialStructure) → ICDD linkset, D-073 |

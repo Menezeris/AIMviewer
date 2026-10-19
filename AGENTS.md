@@ -92,7 +92,8 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
 - Všetky uzly sú riadky v `objects`, rozlíšené `object_type`:
   site, building, floor, space, asset, asset_type, document, person, organization,
   system (IfcDistributionSystem, D-047/D-049), capture, capture_media (Reality Capture,
-  D-073), project, zone, spatial_zone, group (IfcProject/IfcZone/IfcSpatialZone/IfcGroup, D-088);
+  D-073), project, zone, spatial_zone, group (IfcProject/IfcZone/IfcSpatialZone/IfcGroup, D-088),
+  document_reference (IfcDocumentReference, časť dokumentu, D-101);
   ďalšie IFC entity (procesy/tasky…) sú **aditívne hodnoty** (D-051)
 - **Zaniknutý objekt** (`objects.valid_until` nie je NULL, D-088) appka ani AI nevidia: každý
   nový zoznam, počet alebo vyhľadávanie nad `objects` filtruje `valid_until is null`
@@ -137,7 +138,9 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
   `rel_assigns_to_group` (IfcRelAssignsToGroup — systémy, D-047),
   `rel_referenced_in_spatial_structure` (IfcRelReferencedInSpatialStructure — prvok aj v ďalšom
   priestore, neexkluzívne; odvodené cez `python -m etl.derive`, D-080),
-  `rel_member_of` (IfcPersonAndOrganization — **resource, nie IfcRel**; poctivo mimo taxonómie)
+  `rel_member_of` (IfcPersonAndOrganization — **resource, nie IfcRel**; poctivo mimo taxonómie),
+  `rel_document_information_relationship` (IfcDocumentInformationRelationship, strom dokumentácie,
+  resource ako `rel_member_of`, D-101)
 - **Fyzicky binárne `from→to` + naše meta stĺpce, NIE objektifikované N-árne IFC entity**
   (preberáme identitu/granularitu IFC, nie serializačnú štruktúru — index nad IFC
   sémantikou, nie STEP v Postgrese, D-046/D-048)
