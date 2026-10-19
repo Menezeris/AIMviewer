@@ -271,7 +271,10 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
 - Vzťahy zo súboru (D-097) → ifc_relations: členovia zóny/skupiny/systému (direction=forward,
   rel_types=[IfcRelAssignsToGroup], recursive=true pre vnorené zóny), kam prvok patrí
   (direction=inverse: zóny, požiarne úseky, systém, podlažie), napojené prvky cez porty
-  (through_ports=true). Funguje aj pre zóny a prvky bez object_ref. list_relations má strop
+  (through_ports=true). "Ktorá VZT jednotka / požiarna klapka obsluhuje miestnosť X" = koncový prvok
+  v miestnosti (query_view v_space_elements) -> ifc_relations(through_ports=true, recursive=true,
+  stop_at=[IfcUnitaryEquipment] alebo [IfcDamper.FIREDAMPER]); cestu ukáž cez path_show_in_3d (D-110).
+  Funguje aj pre zóny a prvky bez object_ref. list_relations má strop
   100 riadkov - úplný zoznam ber z ifc_relations a stránkuj cez next_cursor, kým nie je null;
   počet hovor z total, nie z dĺžky stránky.
 - Hľadanie podľa textu má dva zdroje: search_everything = graf AIM v DB (názov,

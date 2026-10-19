@@ -609,6 +609,14 @@
       "expect": { "tools_called": ["bcf_topic_create"] },
       "verified": false,
       "notes": "D-099 (issue #78): téma z výberu živého viewera, priradená človeku = bez session. Len MCP, overenie = scenár cez konektor s otvoreným viewerom."
+    },
+    {
+      "id": "network-ahu-for-room",
+      "category": "relations",
+      "question": "Ktorá vzduchotechnická jednotka zásobuje miestnosť 3.02 a ktorá požiarna klapka ju uzatvára?",
+      "expect": { "tools_called": ["ifc_relations"] },
+      "verified": false,
+      "notes": "D-110 (issue #75): koncový prvok v 3.02 (v_space_elements) -> ifc_relations(through_ports=true, recursive=true, stop_at=[IfcUnitaryEquipment]) a stop_at=[IfcDamper.FIREDAMPER]; cesta cez path_show_in_3d."
     }
   ]
 }

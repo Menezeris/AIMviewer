@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-110 (prechod VZT sieťou, #75):** `ifc_relations(through_ports, recursive, stop_at)` prejde sieť cez porty a vráti najbližšiu jednotku alebo klapku (aj `IfcDamper.FIREDAMPER`) s cestou a `path_show_in_3d`; `max_steps`, `cut_off`.
 - **2026-10-19** - **D-104 (dokumenty z IFC):** jedna sada dokumentov z IFC (stará sada E3 sa odstráni), ETL podľa IfcDocumentInformation vrátane stromu a odkazov na strany, efektívne dokumenty objektu cez vzťahy (typ, skupina, zóna, priestorová zóna, odvodené) v DB aj v tooloch, prehliadanie a preklikávanie PDF cieľovo vo vieweri (fork), súbory v buckete podľa `Identification`.
 - **2026-10-19** - **D-103 (rýchle CI forku, rozširuje D-098):** rýchla cesta aj pre PR s úpravami pôvodných viewer súborov len vnútri AIM-FORK blokov (build viewera, súvisiace viewer testy, ratchet viewer JS), nočné plné CI na `main`, nálezy review bota neblokujú merge okrem bezpečnostných (ifc-lite #69).
 - **2026-10-19** - **D-102 (kolo 3 latencie MCP):** kód prvku (SD04.0001, VV.03.01.040) ako cieľ všetkých toolov cez meno v AIM a IFC Name/Tag, predčítané indexy motora (`ifc_search` 2 až 90 ms), kód bez preklepu, `set_section relative_to=ceiling` z Qto miestností (vážený medián), `get_object` s podlažím, kamera na miestnosť a `CLEAR_SELECTION` vo forku.
@@ -4900,3 +4901,30 @@ až po kroku 4.
 - Produkcia: re-ETL bez novej revízie robí nový workflow `reetl` v OCB (aktuálna revízia
   overená cez sha256, `dry_run`, `close_legacy_documents`).
 - Knižnica dokumentov vo vieweri berie priečinok zo stromu dokumentácie (koreň PD sa vynecháva).
+
+---
+
+### D-110 - Prechod VZT sieťou cez porty: `ifc_relations` s `recursive` a `stop_at`
+**Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #75).
+Nadväzuje na D-097 (`ifc_relations`, `through_ports` o jeden krok), D-087, D-102 (menej toolov).
+
+**Kontext:** "Ktorá VZT jednotka zásobuje túto miestnosť?" a "Ktorá požiarna klapka ju uzatvára?"
+konektor nevedel: `through_ports` ide len k susedom a priradenie k systémom je v modeli neúplné
+(Prívod-1NP má 8 prvkov, jednotky nie sú v priestoroch). Sieť cez porty (IfcRelNests ->
+IfcRelConnectsPorts) je v súbore celá.
+
+**Rozhodnutie:**
+1. Bez nového toolu: `ifc_relations(through_ports=true, recursive=true)` prejde sieť do šírky
+   cez porty, každý prvok raz, s `depth` a predchodcom `via`.
+2. `stop_at` = IFC triedy, voliteľne `Trieda.PREDEFINED` (`IfcDamper.FIREDAMPER`); PredefinedType
+   sa číta len pri kandidátoch tej triedy. Za zastavením sa nejde. `reached` dá zastavenia s počtom
+   krokov a cestou (GUIDy od štartu), najbližšie prvé; `path_show_in_3d` = cesta k najbližšiemu.
+3. `max_steps` (default 50, max 200); `cut_off` povie, že sieť pokračuje, prázdne `reached` bez
+   `cut_off` = sieť je prerušená alebo bez portov.
+4. Smer toku (FlowDirection portov) sa zatiaľ nesleduje: prechod ide oboma smermi a najbližšia
+   jednotka je zvyčajne tá, ktorá vetvu zásobuje. Štart z miestnosti = koncový prvok v miestnosti
+   (`v_space_elements`), potom trace (veta v inštrukciách).
+
+**Zavrhnuté:**
+- *Nový tool `trace_network`:* zdvojil by prechod portov z `ifc_relations` a pridal definíciu.
+- *Prechod cez priradenie systému:* systémy sú v modeli neúplné; porty sú zdroj pravdy siete.

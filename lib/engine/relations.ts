@@ -77,16 +77,37 @@ function parseRelTypes(raw: unknown): Map<string, string> {
 
 const isPort = (type: string) => /port$/i.test(type);
 
+/** Zastavenie prechodu sieťou (D-110): IFC trieda, voliteľne s PredefinedType (`IfcDamper.FIREDAMPER`). */
+interface StopRule {
+  cls: string;
+  predefined?: string;
+}
+
+function parseStopAt(raw: unknown): StopRule[] {
+  const list = Array.isArray(raw) ? raw : raw === undefined ? [] : [raw];
+  return list.map((v) => {
+    const s = str(v);
+    const m = /^(Ifc[A-Za-z0-9]+)(?:\.([A-Za-z0-9_]+))?$/.exec(s);
+    if (!m) throw new InputError(`stop_at: '${String(v)}' nie je IFC trieda (napr. IfcUnitaryEquipment alebo IfcDamper.FIREDAMPER).`);
+    return { cls: m[1].toLowerCase(), ...(m[2] ? { predefined: m[2].toUpperCase() } : {}) };
+  });
+}
+
 export async function ifcRelations(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
   const target = str(input.target);
   if (!target) throw new InputError("Zadaj target (object_ref, objects.id alebo IFC GlobalId).");
   const recursive = input.recursive === true;
   const relTypes = parseRelTypes(input.rel_types);
-  if (recursive && relTypes.size === 0) relTypes.set(relKey(RECURSIVE_DEFAULT), RECURSIVE_DEFAULT);
+  if (recursive && relTypes.size === 0 && input.through_ports !== true) relTypes.set(relKey(RECURSIVE_DEFAULT), RECURSIVE_DEFAULT);
   const direction = str(input.direction) || "both";
   if (!(DIRECTIONS as readonly string[]).includes(direction)) throw new InputError("direction: forward | inverse | both.");
   const throughPorts = input.through_ports === true;
-  if (recursive && direction === "both") {
+  const stopAt = parseStopAt(input.stop_at);
+  const maxSteps = clamp(input.max_steps, 1, 200, 50);
+  if (stopAt.length > 0 && !(throughPorts && recursive)) {
+    throw new InputError("stop_at platí len pri prechode sieťou: through_ports=true a recursive=true.");
+  }
+  if (recursive && direction === "both" && !throughPorts) {
     throw new InputError("recursive potrebuje direction forward (členovia, časti) alebo inverse (kam patrí).");
   }
   const limit = clamp(input.limit, 1, 200, 100);
@@ -131,10 +152,22 @@ export async function ifcRelations(input: Record<string, unknown>, deps: EngineD
     name: e.entity.name ?? null,
   });
 
-  const rows: Row[] = throughPorts
-    ? await portConnections(rootId, edgesOf, guidOf, row)
-    : await walk(rootId, edgesOf, guidOf, row, { relTypes, direction, recursive });
+  // PredefinedType len pre kandidátov na zastavenie (stop_at s typom), nie pre celú sieť.
+  const predefinedOf = async (id: number): Promise<string | null> => {
+    const res = structured<{ attributes?: Array<{ name?: string; value?: unknown }> }>(
+      await session.call("get_entity", { model_id: model.id, express_id: id, include: ["attributes"] }),
+    );
+    const v = (res.attributes ?? []).find((a) => a.name === "PredefinedType")?.value;
+    return typeof v === "string" ? v.replace(/^\.|\.$/g, "").toUpperCase() : null;
+  };
+  const trace = throughPorts && recursive ? await traceNetwork(rootId, edgesOf, guidOf, row, { stopAt, maxSteps, predefinedOf }) : null;
+  const rows: Row[] = trace
+    ? trace.rows
+    : throughPorts
+      ? await portConnections(rootId, edgesOf, guidOf, row)
+      : await walk(rootId, edgesOf, guidOf, row, { relTypes, direction, recursive });
   const incomplete = rows.length >= MAX_ROWS;
+  const pathJoined = trace?.reached[0] ? await joinToAim(trace.reached[0].path.map((g) => ({ global_id: g })), deps.lookup) : null;
 
   const counts = new Map<string, { rel_type: string; direction: string; count: number }>();
   for (const r of rows) {
@@ -174,7 +207,18 @@ export async function ifcRelations(input: Record<string, unknown>, deps: EngineD
         ...(relTypes.size > 0 ? { rel_types: [...relTypes.values()] } : { hidden: "IfcRelDefinesByProperties (psety a Qto dáva ifc_get)" }),
         direction: throughPorts ? "through_ports" : direction,
         ...(recursive ? { recursive: true } : {}),
+        ...(trace ? { max_steps: maxSteps, ...(stopAt.length ? { stop_at: input.stop_at } : {}) } : {}),
       },
+      ...(trace
+        ? {
+            reached: trace.reached,
+            ...(pathJoined ? { path_show_in_3d: pathJoined.show_in_3d } : {}),
+            ...(trace.cutOff ? { cut_off: `sieť pokračuje za ${maxSteps} krokmi - zvýš max_steps` } : {}),
+            ...(stopAt.length && trace.reached.length === 0 && !trace.cutOff
+              ? { note: "Sieť skončila bez zastavenia: prvky stop_at cez porty nie sú napojené (prerušená sieť alebo chýbajúce porty)." }
+              : {}),
+          }
+        : {}),
       total: rows.length,
       ...(incomplete ? { incomplete: `prechod zastavený na ${MAX_ROWS} vzťahoch - zúž rel_types` } : {}),
       counts: [...counts.values()],
@@ -230,12 +274,18 @@ async function walk(
   return rows;
 }
 
+interface PortLink {
+  own: UpstreamEdge;
+  link: UpstreamEdge;
+  host?: UpstreamEdge;
+}
+
 /**
- * Prvky napojené na entitu cez porty: vlastné porty (IfcRelNests, v IFC2X3
+ * Spojenia entity cez porty: vlastné porty (IfcRelNests, v IFC2X3
  * IfcRelConnectsPortToElement) -> IfcRelConnectsPorts -> port druhej strany ->
- * jeho hostiteľský prvok. Port bez hostiteľa sa vráti sám.
+ * jeho hostiteľský prvok (ak ho port má).
  */
-async function portConnections(rootId: number, edgesOf: EdgesOf, guidOf: (id: number) => string, row: MakeRow): Promise<Row[]> {
+async function portLinks(rootId: number, edgesOf: EdgesOf): Promise<PortLink[]> {
   const hostOf = async (portId: number) =>
     (await edgesOf(portId)).find(
       (e) =>
@@ -246,22 +296,92 @@ async function portConnections(rootId: number, edgesOf: EdgesOf, guidOf: (id: nu
   const ownPorts = (await edgesOf(rootId)).filter(
     (e) => isPort(e.entity.type) && ["relnests", "relconnectsporttoelement"].includes(relKey(e.relationshipType)),
   );
-  const rows: Row[] = [];
+  const out: PortLink[] = [];
   const seen = new Set<string>();
   for (const own of ownPorts) {
     for (const link of await edgesOf(own.entity.id)) {
       if (relKey(link.relationshipType) !== "relconnectsports" || link.entity.id === rootId) continue;
-      const host = await hostOf(link.entity.id);
       const key = `${own.entity.id}:${link.entity.id}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const ports = { via_port: guidOf(own.entity.id), port: guidOf(link.entity.id) };
-      rows.push(
-        host
-          ? row({ ...link, entity: host.entity }, ports)
-          : row(link, { via_port: ports.via_port }),
-      );
+      out.push({ own, link, host: await hostOf(link.entity.id) });
     }
   }
-  return rows;
+  return out;
+}
+
+/** Prvky napojené na entitu cez porty, jeden krok. Port bez hostiteľa sa vráti sám. */
+async function portConnections(rootId: number, edgesOf: EdgesOf, guidOf: (id: number) => string, row: MakeRow): Promise<Row[]> {
+  return (await portLinks(rootId, edgesOf)).map(({ own, link, host }) => {
+    const ports = { via_port: guidOf(own.entity.id), port: guidOf(link.entity.id) };
+    return host ? row({ ...link, entity: host.entity }, ports) : row(link, { via_port: ports.via_port });
+  });
+}
+
+export interface Reached {
+  global_id: string;
+  ifc_type: string;
+  name: string | null;
+  predefined_type?: string;
+  steps: number;
+  /** GUIDy od štartu po zastavenie vrátane. */
+  path: string[];
+}
+
+/**
+ * Prechod sieťou cez porty do šírky (D-110): každý prvok raz, s hĺbkou a
+ * predchodcom (`via`). Prvok zo `stop_at` sa zapíše do `reached` s cestou a za
+ * neho sa nejde (najbližšia jednotka, prvá klapka). Oba smery toku.
+ */
+async function traceNetwork(
+  rootId: number,
+  edgesOf: EdgesOf,
+  guidOf: (id: number) => string,
+  row: MakeRow,
+  opts: { stopAt: StopRule[]; maxSteps: number; predefinedOf: (id: number) => Promise<string | null> },
+): Promise<{ rows: Row[]; reached: Reached[]; cutOff: boolean }> {
+  const parent = new Map<number, number>();
+  const visited = new Set([rootId]);
+  const rows: Row[] = [];
+  const reached: Reached[] = [];
+  const pathTo = (id: number) => {
+    const ids = [id];
+    for (let p = parent.get(id); p !== undefined; p = parent.get(p)) ids.push(p);
+    return ids.reverse().map(guidOf);
+  };
+  const stopsAt = async (e: UpstreamEdge["entity"]): Promise<{ hit: boolean; predefined?: string }> => {
+    const rules = opts.stopAt.filter((r) => r.cls === e.type.toLowerCase());
+    if (rules.length === 0) return { hit: false };
+    if (rules.some((r) => !r.predefined)) return { hit: true };
+    const predefined = (await opts.predefinedOf(e.id)) ?? undefined;
+    return { hit: rules.some((r) => r.predefined === predefined), predefined };
+  };
+  let level = [rootId];
+  let depth = 1;
+  for (; level.length > 0 && depth <= opts.maxSteps && rows.length < MAX_ROWS; depth++) {
+    const nextLevel: number[] = [];
+    for (const id of level) {
+      for (const { own, link, host } of await portLinks(id, edgesOf)) {
+        if (!host || visited.has(host.entity.id)) continue;
+        visited.add(host.entity.id);
+        parent.set(host.entity.id, id);
+        rows.push(row({ ...link, entity: host.entity }, { depth, via: guidOf(id), via_port: guidOf(own.entity.id), port: guidOf(link.entity.id) }));
+        const stop = await stopsAt(host.entity);
+        if (stop.hit) {
+          reached.push({
+            global_id: guidOf(host.entity.id),
+            ifc_type: host.entity.type,
+            name: host.entity.name ?? null,
+            ...(stop.predefined ? { predefined_type: stop.predefined } : {}),
+            steps: depth,
+            path: pathTo(host.entity.id),
+          });
+          continue;
+        }
+        nextLevel.push(host.entity.id);
+      }
+    }
+    level = nextLevel;
+  }
+  return { rows, reached, cutOff: level.length > 0 && depth > opts.maxSteps };
 }
