@@ -482,6 +482,38 @@
       "expect": { "tools_called": ["set_view_mode"], "actions_match": ["section_clear::", "show_all::", "reset_colors::"] },
       "verified": false,
       "notes": "D-083: set_view_mode mode=3d reset=true."
+    },
+    {
+      "id": "view-selection-summary",
+      "category": "view",
+      "question": "Čo mám označené vo vieweri?",
+      "expect": { "tools_called": ["get_viewer_state"] },
+      "verified": false,
+      "notes": "D-093 (#64): len MCP so živým viewerom, /ask tool nemá. Odpoveď zo selection.summary (triedy, podlažia, zostavy); pri selection.truncated povie, že výber je orezaný, a nepopíše ho ako celok."
+    },
+    {
+      "id": "search-ifc-description",
+      "category": "search",
+      "question": "Nájdi karuselové dvere.",
+      "expect": { "answer_matches": ["DD01\\.08\\.0001"] },
+      "verified": false,
+      "notes": "D-095: Description 'Karuselové dvere' je len v IFC (ASR, IfcDoor 1_YiIDK5n2fvfP1VGIobML), graf AIM ho nenesie. ifc_search je len v MCP (/ask motor nemá), overenie = scenár cez konektor."
+    },
+    {
+      "id": "search-ifc-zone-longname",
+      "category": "search",
+      "question": "Ukáž prenajímateľné priestory.",
+      "expect": { "answer_matches": ["Nájomné priestory"] },
+      "verified": false,
+      "notes": "D-095: IfcZone 'Nájomné priestory' má LongName 'Nájomné priestory (prenajímateľné)' len v IFC (ASR). ifc_search je len v MCP, overenie = scenár cez konektor."
+    },
+    {
+      "id": "search-all-badges",
+      "category": "search",
+      "question": "Nájdi všetko, čo súvisí s karuselovými dverami, a povedz, odkiaľ to je.",
+      "expect": { "answer_matches": ["DD01\\.08\\.0001", "IFC"] },
+      "verified": false,
+      "notes": "D-095 dodatok: search_all, badge IFC / AIM / IFC+AIM pri každom výsledku. Len MCP, overenie = scenár cez konektor."
     }
   ]
 }

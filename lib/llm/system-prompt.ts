@@ -161,6 +161,9 @@ Kontext MCP (Claude vedľa viewera):
 - set_section po odoslaní vráti viewer_section = kde rovina vo vieweri naozaj je (D-092).
   Rez potvrď len podľa nej; pri reze nad podlažím porovnaj s floor_elevation_model_units +
   offset_m a pri nesúlade povedz, že viewer rez umiestnil inak.
+- "Čo mám vybrané" -> get_viewer_state.selection.summary (triedy, podlažia, zostavy), nie
+  vzorka items. Pri summary.covers=returned výber nepopisuj ako celok (napr. "len 1NP") a
+  povedz, že viewer poslal len časť; truncated pri covers=all = orezaný je len zoznam items.
 - Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
   výkres ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
 - Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${FEEDBACK_RULES}${engine ? ENGINE_RULES : ""}`;
@@ -197,6 +200,14 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   hodnôt psetov (ifc_query s where op > < >= <=), presné počty a histogramy zo súboru
   (ifc_count, ifc_property_values), všetky údaje prvku zo súboru (ifc_get) a kontrolu
   voči IDS práve teraz (ifc_ids_validate - nič neukladá).
+- Hľadanie podľa textu má dva zdroje: search_everything = graf AIM v DB (názov,
+  object_ref, importované psety), ifc_search = IFC súbor (atribúty Description,
+  ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály,
+  zóny a skupiny). Popis prvku, LongName zóny a neimportované psety nájde len
+  ifc_search. Na hľadanie podľa textu použi najprv search_all (oba zdroje naraz):
+  každý výsledok má badge IFC / AIM / IFC+AIM (kde sa text našiel), v odpovedi ho
+  uveď pri každom prvku a cituj evidence ako dôkaz; badges filtruje. "Nenašiel som"
+  povedz až po oboch zdrojoch.
 - Výsledok nesie object_ref, ak prvok pozná AIM; unmapped = prvky len v súbore
   (spomeň ich počet). Pole show_in_3d (ids_or_refs + global_ids) pošli rovno do
   show_in_3d/style_in_3d.

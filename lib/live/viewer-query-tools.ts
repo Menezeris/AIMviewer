@@ -8,6 +8,8 @@ import { resolveTargets } from "@/lib/llm/view-tools";
 import { liveChannel } from "./broadcast";
 import { MAX_QUERY_GUIDS, type ViewerQuery } from "./protocol";
 import { queryLiveViewer, type QueryOutcome } from "./query";
+import { lookupSelectionContext } from "./selection-context";
+import { DEFAULT_ITEMS_LIMIT, MAX_ITEMS_LIMIT, lookupGuidsFor, summarizeSelection, type ViewerSelection } from "./selection-summary";
 
 /**
  * Tools spätného kanála (D-085), len v MCP konektore: čítajú otvorený živý
@@ -40,9 +42,22 @@ export const VIEWER_QUERY_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_viewer_state",
     description:
       "Čo práve ukazuje OTVORENÝ živý viewer: režim (3d/2d/split) a podlažie, aktívny rez (os, " +
-      "súradnica v IFC, poloha v %), kamera (pozícia a cieľ v IFC), výber (GUID + object_ref) a počty " +
-      "skrytých a izolovaných prvkov. Použi pred úpravou pohľadu a na otázky 'čo mám vybrané / čo vidím'.",
-    inputSchema: { type: "object", properties: {} },
+      "súradnica v IFC, poloha v %), kamera (pozícia a cieľ v IFC), výber a počty skrytých a izolovaných " +
+      "prvkov. Výber: count (celkom), returned a truncated (či viewer poslal všetko), summary (počty podľa " +
+      "IFC triedy, podlažia, rodičovskej zostavy a modelu; covers=all|returned) a stránka items (guid, " +
+      "object_ref, name, ifc_type, floor, parent). Na 'čo mám vybrané' odpovedaj zo summary, nie zo vzorky " +
+      "items; pri truncated povedz, že výber je orezaný. Použi pred úpravou pohľadu a na otázky 'čo mám " +
+      "vybrané / čo vidím'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        items_offset: { type: "number", description: "Od ktorej položky výberu (stránkovanie items, default 0)" },
+        items_limit: {
+          type: "number",
+          description: `Koľko položiek výberu (default ${DEFAULT_ITEMS_LIMIT}, strop ${MAX_ITEMS_LIMIT}); súhrn je vždy za celý výber`,
+        },
+      },
+    },
   },
 ];
 
@@ -62,29 +77,44 @@ export function outcomeError(outcome: Exclude<QueryOutcome, { ok: true }>, chann
   return "Pripojenie na živý kanál zlyhalo, skús znova.";
 }
 
-/** GUIDy výsledku viewera doplní o object_ref a názov z AIM (prvky mimo AIM ostanú bez nich). */
-async function withAimRefs(result: unknown): Promise<unknown> {
+/**
+ * Výsledok viewera doplní z AIM: prvky obálok o object_ref a názov, výber o súhrn,
+ * príznak orezania a stránku položiek (D-093). Prvky mimo AIM ostanú bez object_ref.
+ */
+async function withAimRefs(result: unknown, input: Record<string, unknown>): Promise<unknown> {
   if (!result || typeof result !== "object") return result;
-  const r = result as { elements?: { guid: string }[]; selection?: { guids?: string[] } };
-  const guids = [...(r.elements ?? []).map((e) => e.guid), ...(r.selection?.guids ?? [])];
-  if (guids.length === 0) return result;
-  let refs: Awaited<ReturnType<typeof lookupGuids>>;
+  const r = result as { elements?: { guid: string }[]; selection?: ViewerSelection };
+  const elementGuids = (r.elements ?? []).map((e) => e.guid);
+  const selectionGuids = r.selection ? lookupGuidsFor(r.selection) : [];
+  let refs: Awaited<ReturnType<typeof lookupGuids>> = new Map();
+  let ctx: Awaited<ReturnType<typeof lookupSelectionContext>> = new Map();
+  let aimError: string | undefined;
   try {
-    refs = await lookupGuids([...new Set(guids)]);
+    [refs, ctx] = await Promise.all([
+      elementGuids.length ? lookupGuids([...new Set(elementGuids)]) : refs,
+      selectionGuids.length ? lookupSelectionContext(selectionGuids) : ctx,
+    ]);
   } catch (err) {
     // Odpoveď viewera platí aj bez AIM - výpadok DB ju nemá zahodiť, len to povie.
-    return { ...r, aim_refs_error: err instanceof Error ? err.message : String(err) };
+    aimError = err instanceof Error ? err.message : String(err);
   }
   const ref = (g: string) => {
     const a = refs.get(g);
     return a ? { object_ref: a.object_ref, name: a.name } : {};
   };
+  let selection: unknown = r.selection;
+  if (r.selection) {
+    // Surové zoznamy GUID nahradí stránka items; ostatné polia viewera (napr. bbox) ostanú.
+    const rest: Record<string, unknown> = { ...r.selection };
+    delete rest.guids;
+    delete rest.items;
+    selection = { ...rest, ...summarizeSelection(r.selection, ctx, input) };
+  }
   return {
     ...r,
     ...(r.elements ? { elements: r.elements.map((e) => ({ ...e, ...ref(e.guid) })) } : {}),
-    ...(r.selection?.guids
-      ? { selection: { ...r.selection, items: r.selection.guids.map((g) => ({ guid: g, ...ref(g) })) } }
-      : {}),
+    ...(r.selection ? { selection } : {}),
+    ...(aimError ? { aim_refs_error: aimError } : {}),
   };
 }
 
@@ -102,7 +132,7 @@ export async function execViewerQueryTool(
       return { text: outcomeError(outcome ?? { ok: false, reason: "not_configured" }, channel, site), isError: true };
     }
     if (!outcome.reply.ok) return { text: `Viewer odpovedal chybou: ${outcome.reply.error}`, isError: true };
-    return { text: JSON.stringify(await withAimRefs(outcome.reply.result)), isError: false };
+    return { text: JSON.stringify(await withAimRefs(outcome.reply.result, input)), isError: false };
   } catch (err) {
     if (err instanceof ViewInputError) return { text: err.message, isError: true };
     return { text: `Chyba: ${err instanceof Error ? err.message : String(err)}`, isError: true };
