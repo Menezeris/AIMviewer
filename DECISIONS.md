@@ -4206,12 +4206,16 @@ ratchet), `aim-fast.yml` pustí AIM testy, lacné gates a typecheck viewera (pri
 Plné CI ostáva pri sync s originálom a pri zmene upstream súborov. Balík a revert oracle sa
 merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo forku.
 
+**Nasleduje:** D-103 rozširuje rýchle CI na malé AIM-FORK úpravy pôvodných súborov a pridáva
+nočné plné CI na `main`.
+
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
 - **2026-10-19** - **D-104 (dokumenty z IFC):** jedna sada dokumentov z IFC (stará sada E3 sa odstráni), ETL podľa IfcDocumentInformation vrátane stromu a odkazov na strany, efektívne dokumenty objektu cez vzťahy (typ, skupina, zóna, priestorová zóna, odvodené) v DB aj v tooloch, prehliadanie a preklikávanie PDF cieľovo vo vieweri (fork), súbory v buckete podľa `Identification`.
+- **2026-10-19** - **D-103 (rýchle CI forku, rozširuje D-098):** rýchla cesta aj pre PR s úpravami pôvodných viewer súborov len vnútri AIM-FORK blokov (build viewera, súvisiace viewer testy, ratchet viewer JS), nočné plné CI na `main`, nálezy review bota neblokujú merge okrem bezpečnostných (ifc-lite #69).
 - **2026-10-19** - **D-102 (kolo 3 latencie MCP):** kód prvku (SD04.0001, VV.03.01.040) ako cieľ všetkých toolov cez meno v AIM a IFC Name/Tag, predčítané indexy motora (`ifc_search` 2 až 90 ms), kód bez preklepu, `set_section relative_to=ceiling` z Qto miestností (vážený medián), `get_object` s podlažím, kamera na miestnosť a `CLEAR_SELECTION` vo forku.
 - **2026-10-19** - **D-101 (potvrdenie príkazov viewera):** `ACK_REQUEST`/`APPLIED` s `cmdId` namiesto pevných limitov, fronta príkazov vo forku počas načítania, `ISOLATE` presná množina a Lens `mode: add` rozšíri izoláciu (#95), `CLEAR_FOCUS` (#94), widget rezu trvalo (#63), príkaz na `/ifc` bez navigácie, teplý Realtime kanál, predčítanie motora aj na studenej inštancii.
 - **2026-10-19** - **D-100 dodatok (meranie v iad1, región `arn1`):** 12 úloh správne, 6 nad stropom volaní; server väčšinou pod 1 s, čas tvoria počty volaní; funkcie presunuté do `arn1` pri databáze.
@@ -4731,6 +4735,46 @@ namiesto 17 656, aj s novými pravidlami. Cieľ 10 000 by vyžadoval škrtať do
 
 Evaly: D4 (3,05 m, nie 2,90), E3 (12,20 m, strop 2), D5 (strop 1), V1 (kamera sa pohne), nové
 D7 (kód len v IFC) a V4 (zruš výber).
+
+---
+
+### D-103 - Rýchle CI forku aj pre malé AIM-FORK úpravy; nočné plné CI; review neblokuje
+
+**Dátum:** 2026-10-19 · **Stav:** prijaté (Samuel) · **Súvisí:** D-098 (predchodca, rozširuje ho), D-101 · **PR:** Menezeris/ifc-lite#69
+
+**Kontext:** podľa D-098 išiel rýchlou cestou len PR výhradne v `apps/viewer/src/aim/`. PR #67
+vo forku (D-101) menil navyše len dva malé AIM-FORK bloky (`SectionHint.tsx`,
+`SectionVisualization.tsx`). Každá oprava po review preto spustila plné CI (asi 64 kontrol,
+16 shardov viewer testov, E2E, WASM; s frontou runnerov 30 až 40 min) a 6 kôl trvalo spolu skoro
+3 hodiny. Merge neblokoval žiadny check, ale pravidlo agentov opraviť každý nález review bota pred
+mergom. Fork sa po merge hneď nasadzuje do produkcie, preto rýchlosť potrebuje poistky.
+
+**Rozhodnutie:**
+1. **Rýchla cesta aj pre malé AIM-FORK úpravy.** Skript `scripts/check-aim-fork-only.mjs` vo forku
+   rozhodne na merge commite PR medzi `aim-only`, `fork-blocks` a `full`. `fork-blocks` znamená,
+   že existujúce súbory `apps/viewer/` sa menia len vnútri AIM-FORK blokov (overené po hunkoch
+   voči base), prípadne predschválené zvýšenie stropov viewer bundlu. Rýchla cesta
+   (`aim-fast.yml`) navyše spustí build viewera, perf ratchet viewer JS z toho istého buildu a
+   viewer testy, ktoré importujú zmenený súbor. Cieľ je 10 až 15 min na kolo. Synchronizácia
+   s originálom, workflow, skript, balík, nový pôvodný súbor a zmena mimo markerov idú vždy plným CI.
+2. **Nočné plné CI na `main`.** `test.yml` vo forku beží každú noc (00:41 UTC) so všetkými
+   lanes; červený beh hlási `aim-nightly-report.yml` cez `report-scheduled-failure.yml` (issue po
+   zapnutí Issues a nastavení `AIM_SCHEDULED_ISSUES=true`, dovtedy mail od GitHubu).
+3. **Nález review bota neblokuje merge, ak je CI zelené**, okrem bezpečnostných. Nález nesie
+   štítok **minor** alebo **blocker (security)**; minor nálezy sa zbierajú a riešia v ďalšom PR
+   (skill `steward` vo forku).
+4. Bundle perf ratchet ostáva; rýchla cesta meria viewer JS z buildu, lokálne meranie podľa
+   skillu `aim-feature` slúži na prípravu predschváleného zvýšenia.
+
+**Zavrhnuté:**
+- *Plné CI pri každej zmene pôvodného súboru (stav D-098):* 30 až 40 min na každý push aj pri
+  dvoch riadkoch v bloku.
+- *Rýchla cesta bez nočného behu:* merge z rýchlej cesty na `main` len prehrá verdikt PR, takže
+  ťažké lanes by na `main` nebežali nikdy.
+
+**Detail:** `docs/FORK_MAINTENANCE.md` vo forku, sekcia "Fast CI for AIM pull requests".
+
+---
 
 ### D-104 - Dokumenty z IFC: jedna sada, dedenie cez vzťahy, prehliadanie vo vieweri
 > **Číslo:** rezervované v #60 ako D-101, ale D-101 do `main` skôr zapísalo potvrdenie príkazov
