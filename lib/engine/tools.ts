@@ -4,6 +4,7 @@ import { cacheSnapshot, getStore, type EngineModelSource } from "./cache";
 import { idsSources, loadIds } from "./ids-sources";
 import { execPassthroughTool, isPassthroughTool } from "./passthrough";
 import { joinToAim, type GuidLookup } from "./join";
+import { ifcRelations } from "./relations";
 import { openEngineSession, type EngineModel, type EngineSession, type EngineToolResult } from "./session";
 import { resolveStorey } from "./storey";
 import { OPS } from "./tool-defs";
@@ -17,11 +18,11 @@ import { OPS } from "./tool-defs";
  */
 
 const MAX_RESULT_CHARS = 20_000;
-const ENGINE_VERSION = "@ifc-lite/mcp@0.27.0";
+export const ENGINE_VERSION = "@ifc-lite/mcp@0.27.0";
 /** Operátory, ktoré vie aj selektor (ďalšie podmienky `where` okrem prvej). */
 const SELECTOR_OPS = new Set(["=", "!=", ">", "<", ">=", "<="]);
 const NAME_RE = /^[A-Za-z0-9_]+$/;
-const IFC_GUID_RE = /^[0-9A-Za-z_$]{22}$/;
+export const IFC_GUID_RE = /^[0-9A-Za-z_$]{22}$/;
 
 export interface EngineDeps {
   sources?: () => EngineModelSource[];
@@ -36,18 +37,18 @@ export interface EngineExecution {
   isError: boolean;
 }
 
-class InputError extends Error {}
+export class InputError extends Error {}
 
-function clamp(raw: unknown, min: number, max: number, dflt: number): number {
+export function clamp(raw: unknown, min: number, max: number, dflt: number): number {
   const n = typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : dflt;
   return Math.min(max, Math.max(min, n));
 }
 
-function str(raw: unknown): string {
+export function str(raw: unknown): string {
   return typeof raw === "string" ? raw.trim() : "";
 }
 
-function structured<T>(res: EngineToolResult): T {
+export function structured<T>(res: EngineToolResult): T {
   if (res.isError) {
     const text = res.content.map((c) => c.text ?? "").join(" ").trim();
     throw new Error(text || "Motor vrátil chybu.");
@@ -100,7 +101,7 @@ function sanitizeTypes(raw: unknown): string[] {
   return list.map((v) => str(v)).filter((v) => /^Ifc[A-Za-z0-9]+$/.test(v));
 }
 
-async function modelsFor(ids: string[], deps: EngineDeps): Promise<{ models: EngineModel[]; revision: Record<string, unknown> }> {
+export async function modelsFor(ids: string[], deps: EngineDeps): Promise<{ models: EngineModel[]; revision: Record<string, unknown> }> {
   const all = (deps.sources ?? getIfcModels)();
   const revision: Record<string, unknown> = {};
   const models: EngineModel[] = [];
@@ -195,7 +196,7 @@ async function ifcQuery(input: Record<string, unknown>, deps: EngineDeps): Promi
  * store sa nemení, takže index sa postaví raz na store a drží s ním.
  */
 const guidIndexes = new WeakMap<object, Map<string, number>>();
-async function guidIndex(session: EngineSession, m: EngineModel): Promise<Map<string, number>> {
+export async function guidIndex(session: EngineSession, m: EngineModel): Promise<Map<string, number>> {
   const cached = guidIndexes.get(m.store);
   if (cached) return cached;
   const index = new Map<string, number>();
@@ -407,6 +408,9 @@ export async function execEngineTool(
         break;
       case "ifc_ids_validate":
         content = await ifcIdsValidate(input, deps);
+        break;
+      case "ifc_relations":
+        content = await ifcRelations(input, deps);
         break;
       default:
         if (isPassthroughTool(name)) return await execPassthroughTool(name, input, deps);

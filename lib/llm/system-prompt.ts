@@ -188,6 +188,12 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   hodnôt psetov (ifc_query s where op > < >= <=), presné počty a histogramy zo súboru
   (ifc_count, ifc_property_values), všetky údaje prvku zo súboru (ifc_get) a kontrolu
   voči IDS práve teraz (ifc_ids_validate - nič neukladá).
+- Vzťahy zo súboru (D-097) → ifc_relations: členovia zóny/skupiny/systému (direction=forward,
+  rel_types=[IfcRelAssignsToGroup], recursive=true pre vnorené zóny), kam prvok patrí
+  (direction=inverse: zóny, požiarne úseky, systém, podlažie), napojené prvky cez porty
+  (through_ports=true). Funguje aj pre zóny a prvky bez object_ref. list_relations má strop
+  100 riadkov - úplný zoznam ber z ifc_relations a stránkuj cez next_cursor, kým nie je null;
+  počet hovor z total, nie z dĺžky stránky.
 - Výsledok nesie object_ref, ak prvok pozná AIM; unmapped = prvky len v súbore
   (spomeň ich počet). Pole show_in_3d (ids_or_refs + global_ids) pošli rovno do
   show_in_3d/style_in_3d.

@@ -128,6 +128,36 @@ export function engineToolDefinitions(): ToolDefinition[] {
         required: ["model", "ids"],
       },
     },
+    {
+      name: "ifc_relations",
+      description:
+        "IFC MOTOR: všetky IFC vzťahy jednej entity priamo zo súboru, aj entity mimo grafu AIM (zóna, " +
+        "systém, port): členovia zón/skupín/systémov (IfcRelAssignsToGroup), kam prvok patrí, podlažie a " +
+        "miestnosť (IfcRelContainedIn/ReferencedInSpatialStructure), agregácia a vnorenie (IfcRelAggregates/" +
+        "IfcRelNests), typ, otvory a výplne (Voids/Fills), hranice priestoru, porty, dokumenty, klasifikácie, " +
+        "materiály. direction: forward = entita je Relating (skupina -> členovia, podlažie -> prvky, celok -> " +
+        "časti, prvok -> porty), inverse = kam entita patrí. recursive rozvinie vnorené zóny/systémy (bez rel_types len cez IfcRelAssignsToGroup). " +
+        "through_ports = prvky napojené cez porty (IfcRelConnectsPorts), jeden krok. Úplný zoznam bez stropu: " +
+        "stránkuj cez next_cursor, kým nie je null; total a counts platia pre celý výsledok.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          target: { type: "string", description: "object_ref, objects.id alebo IFC GlobalId" },
+          model: { ...model, description: "Voliteľne model; inak sa entita hľadá vo všetkých" },
+          rel_types: {
+            type: "array",
+            items: { type: "string" },
+            description: "Len tieto triedy vzťahov, napr. [IfcRelAssignsToGroup]. Bez filtra všetky okrem psetov (IfcRelDefinesByProperties)",
+          },
+          direction: { type: "string", enum: ["forward", "inverse", "both"], description: "Default both" },
+          recursive: { type: "boolean", description: "Rozvinúť do hĺbky (max 10) cez tie isté vzťahy, bez rel_types len cez IfcRelAssignsToGroup; len s direction forward alebo inverse" },
+          through_ports: { type: "boolean", description: "Prvky napojené cez porty namiesto priamych vzťahov" },
+          limit: { type: "number", description: "Max vzťahov na stránku (1-200, default 100)" },
+          cursor: { type: "string", description: "next_cursor z predchádzajúcej stránky" },
+        },
+        required: ["target"],
+      },
+    },
     ...passthroughDefinitions(models),
   ];
 }
