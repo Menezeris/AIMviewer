@@ -473,7 +473,7 @@ rieši). `model` môže byť NULL (téma nad celou federáciou). `status` pribud
 `mode`, `storey_guid`, počet a orezanie výberu), `components` = IFC GlobalId prvkov témy
 (BCF selection; výber z viewera alebo zadané prvky). `comments`
 = BCF komentáre `[{guid, author, date, comment}]`; pripája ich funkcia
-`model_task_add_comment(task, author, comment)` atomicky (vráti komentár, NULL = téma nie je).
+`model_task_add_comment(task, author, comment)` atomicky (vráti komentár, NULL = téma nie je). Právo na funkciu má len `service_role` (migrácia 20261019120100, 2.12).
 Mapovanie na BCF: `id` = topic guid, `status` = topic_status (lowercase, `in_progress` =
 "In Progress"), `author` = creation_author, `created_at`/`updated_at` = creation/modified_date.
 
