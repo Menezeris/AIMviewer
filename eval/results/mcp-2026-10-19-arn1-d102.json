@@ -1,0 +1,266 @@
+{
+  "ranAt": "2026-10-19T18:43:10Z",
+  "label": "arn1-po-D-102-kolo-3",
+  "region": "arn1",
+  "runner": "Claude Code subagent (general-purpose), MCP konektor AIM (nové opisy D-102: get_object s kódom prvku, set_section s relative_to); headless viewer (Chromium + WebGPU SwiftShader) na produkčnom /ifc?live=, fork dpl_GG4o6Fc6 (e81e3ca7), AIMviewer 7f7e2ef1 (obsahuje d577d1b7); o 18:49:20 sa počas behu (medzi E3 a E1) nasadil 1a122b67 (#105, dokumenty z IFC, mimo konektora)",
+  "note": "Po zlúčení D-102 (Menezeris/ifc-lite#68, Menezeris/AIMviewer#109 a #111). Dátové úlohy paralelne, úlohy vo vieweri po jednej v poradí V1, V2, E2 (pokračovanie agenta V2), E3, E1, V4 (setup + meraná druhá správa), V3. E4 vynechaná: potrebuje výber používateľa. Hodnotenie prísne: D4 musí dať 3,05 m, E3 rez 12,2 m ±0,1, V1 musí použiť show_in_3d. duration_ms zahŕňa réžiu agenta a ToolSearch; v tomto behu bola réžia výrazne vyššia ako po D-101 (D1 s 1 volaním 11,6 s oproti 7,8 s, V2 s 1 volaním 90,8 s), preto časy agenta medzi behmi porovnávať opatrne a rýchlosť konektora čítať z mcp_call_log.",
+  "server_p50_ms": {
+    "query_view": 64,
+    "ifc_search": 59,
+    "count_objects": 144,
+    "locate_objects": 208,
+    "search_objects": 245,
+    "search_everything": 271,
+    "ifc_relations": 283,
+    "get_viewer_state": 456,
+    "get_spatial_path": 471,
+    "get_object": 513,
+    "set_camera": 648,
+    "select_in_3d": 771,
+    "set_section": 1046,
+    "style_in_3d_isolate": 1046,
+    "show_in_3d": 1172,
+    "set_view_mode": 1190,
+    "ifc_property_values": 2959
+  },
+  "server_p95_ms": {
+    "show_in_3d": 2400,
+    "style_in_3d_isolate": 1662,
+    "set_section": 1128,
+    "select_in_3d": 1069,
+    "set_camera": 890,
+    "get_viewer_state": 710,
+    "get_object": 529
+  },
+  "server_ack_ms": {
+    "set_section": 361,
+    "select_in_3d": 433,
+    "set_camera": 543,
+    "style_in_3d_isolate": 753,
+    "show_in_3d": 1091,
+    "set_view_mode": 1110,
+    "avg_all": 743,
+    "max_all": 2207
+  },
+  "server_engine_load_ms": {
+    "ifc_property_values": 2320
+  },
+  "server_calls": {
+    "n": 41,
+    "cold": 10,
+    "all_ok": true,
+    "note": "cold = prvé volania dátových toolov na nových inštanciách (count_objects, locate_objects, search_objects, get_object, get_viewer_state, select_in_3d), všetky pod 0,55 s; studené ifc_get sa v behu nevyskytlo. Počty zahŕňajú aj kontrolné get_viewer_state hodnotiteľa."
+  },
+  "summary": {
+    "pass": "13/14",
+    "pass_same_12_as_d101": "12/12",
+    "median_calls": 1,
+    "median_duration_ms": 23653,
+    "median_duration_ms_same_12": 20796,
+    "over_cap": [
+      "D3",
+      "D4",
+      "D7",
+      "V3"
+    ],
+    "vs_d101": {
+      "pass": "9/12 -> 12/12 (rovnaké úlohy); nové D7 fail, V4 pass",
+      "median_calls": "1 -> 1",
+      "median_duration_ms": "11383 -> 20796 (rovnaké úlohy; réžia agenta v tomto behu vyššia, pozri note)",
+      "over_cap": "D5, V1, E1 -> D3, D4, V3 (+ nové D7)",
+      "D4": "2,90 m fail -> 3,05 m pass (3 volania)",
+      "D5": "3 volania 14,8 s -> 1 volanie 14,7 s",
+      "V1": "select_in_3d, kamera stála (fail) -> show_in_3d, kamera na miestnosti (pass, 1 volanie)",
+      "E3": "rez 9,00 m fail, 3 volania -> 12,20 m pass, 1 volanie",
+      "E1": "12 volaní 48,2 s -> 4 volania 31,6 s",
+      "V3": "1 volanie 11,4 s -> 3 volania 29,7 s (pass, nad stropom)",
+      "ifc_search_server": "4401 -> 59 ms",
+      "select_in_3d_server": "1936 (ack 1676) -> 771 (ack 433) ms",
+      "style_in_3d_server": "619 -> 1046 ms (n=3, jedno volanie 1,73 s s ack 1,40 s)"
+    },
+    "finding": "Všetky úkony vo vieweri sú na serveri do 2,4 s vrátane potvrdenia z viewera (ack priemer 0,74 s, max 2,2 s pri prvom show_in_3d), dátové tooly do 0,55 s, len ifc_property_values 3,0 s (načítanie motora 2,3 s). Cieľ 5 s na úlohu však nesplní ani jedna úloha cez Claude Code: agent sám (ToolSearch, uvažovanie) pridáva 10 až 90 s, preto treba čas overiť aj v claude.ai. Ostáva: D7 get_object pre kód len v IFC nepoužije a ide cez locate/search (6 volaní) a nevyžiadane hýbe viewerom; V3 potrebuje 3 volania (set_view_mode + show_in_3d + set_camera), chýba jedna akcia 'reset všetkého'; D4 3 volania, lebo get_object nevracia Qto miestnosti; D3 agent počíta dvakrát pre istotu."
+  },
+  "results": [
+    {
+      "id": "D1-pocet-dveri",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "count_objects"
+      ],
+      "tool_uses_total": 2,
+      "duration_ms": 11603,
+      "over_cap": false,
+      "note": ""
+    },
+    {
+      "id": "D2-vzt-jednotky-kde",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "locate_objects"
+      ],
+      "tool_uses_total": 3,
+      "duration_ms": 15071,
+      "over_cap": false,
+      "note": ""
+    },
+    {
+      "id": "D3-pocet-miestnosti",
+      "pass": true,
+      "calls": 2,
+      "tools": [
+        "count_objects",
+        "count_objects"
+      ],
+      "tool_uses_total": 3,
+      "duration_ms": 14936,
+      "over_cap": true,
+      "note": "83 miestností, agent overil druhým počítaním (IfcSpace aj object_type space)"
+    },
+    {
+      "id": "D4-podhlad-qto",
+      "pass": true,
+      "calls": 3,
+      "tools": [
+        "search_objects",
+        "get_object",
+        "query_view"
+      ],
+      "tool_uses_total": 6,
+      "duration_ms": 24413,
+      "over_cap": true,
+      "note": "3,05 m z Qto_SpaceBaseQuantities.FinishCeilingHeight, FinishFloorHeight neodčítal (po D-101 2,90 m = fail). O 1 volanie nad stropom."
+    },
+    {
+      "id": "D5-vyustka-kde",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "get_object"
+      ],
+      "tool_uses_total": 2,
+      "duration_ms": 14732,
+      "over_cap": false,
+      "note": "get_object(kód) vrátil IfcAirTerminal DIFFUSER aj podlažie 3NP na jedno volanie (po D-101 3 volania)"
+    },
+    {
+      "id": "D6-nosne-steny",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "ifc_property_values"
+      ],
+      "tool_uses_total": 2,
+      "duration_ms": 17004,
+      "over_cap": false,
+      "note": "86 zo 168 stien"
+    },
+    {
+      "id": "D7-kod-len-v-ifc",
+      "pass": false,
+      "calls": 6,
+      "tools": [
+        "locate_objects",
+        "search_everything",
+        "ifc_search",
+        "ifc_relations",
+        "get_spatial_path",
+        "show_in_3d"
+      ],
+      "tool_uses_total": 9,
+      "duration_ms": 41939,
+      "over_cap": true,
+      "note": "odpoveď vecne správna (IfcStairFlight pod SC01.0001, 1NP), ale get_object vôbec nezavolal a hľadal 5 volaniami; navyše nevyžiadane zavolal show_in_3d a zasiahol do viewera počas V1 (V1 sa preto meral znova)"
+    },
+    {
+      "id": "V1-ukaz-miestnost",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "show_in_3d"
+      ],
+      "tool_uses_total": 2,
+      "duration_ms": 23050,
+      "over_cap": false,
+      "note": "opakovaný beh po kolízii s D7 (prvý beh: tiež 1 volanie show_in_3d, 26,9 s). Kamera z (77,8; -33,9; 37,0) mieri na stred 3.02, výber 3.02, focus 1"
+    },
+    {
+      "id": "V2-izoluj-nosne",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "style_in_3d"
+      ],
+      "tool_uses_total": 3,
+      "duration_ms": 90835,
+      "over_cap": false,
+      "note": "isolated 185; server style_in_3d 1,73 s (ack 1,40 s), zvyšok je réžia agenta (anomália, rovnaké 1 volanie po D-101 trvalo 9,8 s)"
+    },
+    {
+      "id": "E2-pridaj-schodiska",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "style_in_3d"
+      ],
+      "tool_uses_total": 1,
+      "duration_ms": 68592,
+      "over_cap": false,
+      "note": "isolated 185 -> 190; server 0,40 s. Čas je rozdiel kumulatívneho duration_ms agenta V2 (159427 - 90835), réžia agenta"
+    },
+    {
+      "id": "E3-rez-pod-podhladom",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "set_section"
+      ],
+      "tool_uses_total": 3,
+      "duration_ms": 18542,
+      "over_cap": false,
+      "note": "rez horizontal na 12,20 m (3NP 9,20 + 3,05 - 0,05) jedným volaním cez relative_to=ceiling (po D-101 9,00 m = fail, 3 volania). Prvý pokus prerušilo preregistrovanie konektora, meraný je opakovaný beh"
+    },
+    {
+      "id": "E1-rez-schodiskom",
+      "pass": true,
+      "calls": 4,
+      "tools": [
+        "get_object",
+        "set_section",
+        "style_in_3d",
+        "set_camera"
+      ],
+      "tool_uses_total": 7,
+      "duration_ms": 31636,
+      "over_cap": false,
+      "note": "rez vertical na IFC Y 4,159 pozdĺž ramena, izolácia nosných 185, kamera kolmo na rez (po D-101 12 volaní, 48,2 s)"
+    },
+    {
+      "id": "V4-zrus-vyber",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "select_in_3d"
+      ],
+      "tool_uses_total": 2,
+      "duration_ms": 24256,
+      "over_cap": false,
+      "note": "setup (search_objects, select_in_3d) 15,0 s; meraná druhá správa: rozdiel kumulatívneho času 39234 - 14978. selection.count 0"
+    },
+    {
+      "id": "V3-zrus-vsetko",
+      "pass": true,
+      "calls": 3,
+      "tools": [
+        "set_view_mode",
+        "show_in_3d",
+        "set_camera"
+      ],
+      "tool_uses_total": 5,
+      "duration_ms": 29691,
+      "over_cap": true,
+      "note": "bez rezu, izolácie, výberu a focusu (overené get_viewer_state), kamera na celú budovu; 3 volania, o 1 nad stropom"
+    }
+  ]
+}
