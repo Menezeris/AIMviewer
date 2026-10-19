@@ -57,11 +57,16 @@ export async function queryLiveViewer(
   channel: string,
   query: ViewerQuery,
   guids: string[] = [],
-  opts: { timeoutMs?: number; open?: (channel: string) => Promise<QueryChannel | null> } = {},
+  opts: { timeoutMs?: number; rev?: string; open?: (channel: string) => Promise<QueryChannel | null> } = {},
 ): Promise<QueryOutcome> {
   const ch = await (opts.open ?? connect)(channel);
   if (!ch) return { ok: false, reason: "not_configured" };
-  const payload: LiveQueryPayload = { id: randomUUID(), query, ...(guids.length ? { guids } : {}) };
+  const payload: LiveQueryPayload = {
+    id: randomUUID(),
+    query,
+    ...(guids.length ? { guids } : {}),
+    ...(opts.rev ? { rev: opts.rev } : {}),
+  };
 
   return new Promise<QueryOutcome>((resolve) => {
     let settled = false;

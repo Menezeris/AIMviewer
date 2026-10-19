@@ -16,6 +16,10 @@ export const MAX_STYLE_GROUPS = 12;
 export const SCOPED_GUID_CAP = 500;
 
 const HEX6 = /^[0-9a-f]{6}$/;
+/** Akcie, pri ktorých má skupina farbu (Lens, D-096). */
+const COLOR_ACTIONS = new Set(["colorize", "transparent", "isolate"]);
+/** Izolácia bez farby od používateľa: neutrálna sivomodrá (Lens farbí aj izolované prvky). */
+export const ISOLATE_DEFAULT_COLOR = "64748b";
 
 /** Kľúče filtra, ktoré smie niesť top-level vstup aj skupina. */
 export const FILTER_KEYS = [
@@ -93,15 +97,18 @@ export function describeFilter(f: StyleFilter): string {
  */
 export function parseStyleGroups(input: Record<string, unknown>, action: string): StyleGroup[] {
   const base = pickFilter(input);
+  const colorOf = (raw: unknown, where: string): string => {
+    if (!COLOR_ACTIONS.has(action)) return "";
+    const c = normColor(raw);
+    if (!c && action === "isolate") return ISOLATE_DEFAULT_COLOR;
+    if (!HEX6.test(c)) throw new StyleInputError(`${where} musí byť hex RRGGBB (napr. ef4444 pre červenú).`);
+    return c;
+  };
   if (!Array.isArray(input.groups)) {
-    const color = action === "colorize" ? normColor(input.color) : "";
-    if (action === "colorize" && !HEX6.test(color)) {
-      throw new StyleInputError("color musí byť hex RRGGBB (napr. ef4444 pre červenú).");
-    }
-    return [{ label: describeFilter(base), color, filter: base }];
+    return [{ label: describeFilter(base), color: colorOf(input.color, "color"), filter: base }];
   }
-  if (action !== "colorize") {
-    throw new StyleInputError("groups platí len s action=colorize (každá skupina má vlastnú farbu).");
+  if (!COLOR_ACTIONS.has(action)) {
+    throw new StyleInputError("groups platí len s action=colorize, transparent alebo isolate (každá skupina má vlastnú farbu).");
   }
   const raw = input.groups as unknown[];
   if (raw.length === 0) throw new StyleInputError("groups je prázdne - zadaj aspoň jednu skupinu {color, filter}.");
@@ -111,8 +118,7 @@ export function parseStyleGroups(input: Record<string, unknown>, action: string)
       throw new StyleInputError(`groups[${i}] musí byť objekt {label, color, ...filter}.`);
     }
     const obj = g as Record<string, unknown>;
-    const color = normColor(obj.color);
-    if (!HEX6.test(color)) throw new StyleInputError(`groups[${i}].color musí byť hex RRGGBB.`);
+    const color = colorOf(obj.color, `groups[${i}].color`);
     const filter = { ...base, ...pickFilter(obj) };
     if (Object.keys(filter).length === 0) {
       throw new StyleInputError(`groups[${i}] nemá žiadny filter (system, zone, storey, ifc_type...).`);

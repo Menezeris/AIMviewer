@@ -13,7 +13,10 @@
  * a na súradnici IFC sveta `section:<y|x|z>~c=<m>::`,
  * `section_clear::`, `camera:<preset>[~proj=o|p]:<guid.guid...>`,
  * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>:<documentId>`.
+ * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
  */
+
+import { LENS_MODES, decodeLensWire, lensBridgeMessage, type LensMode, type LensWire } from "./viewer-lens";
 
 export interface OpsSelector {
   types?: string[];
@@ -61,7 +64,8 @@ export type ViewerOp =
   | { op: "section_clear" }
   | { op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[] }
   | { op: "view"; mode: ViewMode; storeyGuid?: string }
-  | { op: "doc"; documentId: string; page?: number };
+  | { op: "doc"; documentId: string; page?: number }
+  | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -158,6 +162,13 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "view") {
       if (!(VIEW_MODES as readonly string[]).includes(arg)) continue;
       out.push({ op, mode: arg as ViewMode, ...(guids[0] ? { storeyGuid: guids[0] } : {}) });
+    } else if (op === "lens") {
+      const [mode, kv] = parseArg(arg);
+      if (!(LENS_MODES as readonly string[]).includes(mode)) continue;
+      const wire = decodeLensWire(joined);
+      if (!wire) continue;
+      const rev = kv.r && /^[A-Za-z0-9_-]{1,64}$/.test(kv.r) ? kv.r : undefined;
+      out.push({ op, mode: mode as LensMode, ...(rev ? { rev } : {}), wire });
     } else if (op === "doc") {
       const documentId = joined;
       if (!UUID.test(documentId)) continue;
@@ -211,6 +222,9 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
       return { type: "SET_VIEW_MODE", mode: o.mode, ...(o.storeyGuid ? { storeyGuid: o.storeyGuid } : {}) };
     case "doc":
       return { type: "DOCUMENT_OPEN", documentId: o.documentId, ...(o.page ? { page: o.page } : {}) };
+    case "lens":
+      // Zónu (`aim_zone`) doplní klient pred odoslaním; tu ostane prázdna.
+      return lensBridgeMessage(o.mode, o.wire, new Map(), o.rev);
   }
 }
 

@@ -104,9 +104,17 @@ Postup podľa typu otázky:
   nie si istý, over ho cez v_property_dictionary. Pomenovanú farbu preveď na hex (červená ef4444, zelená 22c55e, modrá
   3b82f6, žltá eab308, oranžová f97316, fialová a855f7). Efekty sa v scéne HROMADIA
   naprieč požiadavkami; „zobraz všetko/zruš farby/resetni pohľad" → action show_all
-  a/alebo reset_colors. Viac operácií naraz („dvere červené, okná modré") = viac
-  style_in_3d callov. show_in_3d používaj na zvýraznenie+priblíženie, style_in_3d
-  na farby a viditeľnosť.
+  a/alebo reset_colors. Viac farieb naraz („dvere červené, okná modré") = JEDEN call
+  s groups. show_in_3d používaj na zvýraznenie+priblíženie, style_in_3d na farby a
+  viditeľnosť.
+- Farby, priehľadnosť a izolácia idú do panelu Lens vo vieweri (D-096): lens „AIM
+  chat", každá skupina = pravidlo s farbou, legenda a počty; prvky mimo pravidiel
+  viewer stlmí. Ďalšie colorize/transparent/isolate pravidlá pridávajú (mode=replace
+  začne odznova), reset_colors lens vypne, show_all zruší izoláciu. Počty na pravidlo
+  vráti viewer v odpovedi toolu („Počty vo vieweri") - cituj ich, nie odhad. „Zafarbi
+  podľa systémov / tried / materiálu / modelu / vlastnosti X" → color_by (system, ifc_type,
+  material, model, property + color_by_key Pset.Vlastnosť); farby zvolí viewer a
+  legenda príde v počtoch. Skrytie (hide) ide mimo Lens, zvyšok ostáva normálny.
 - Systém, zóna, podlažie v 3D (D-096): „zafarbi prívodnú vetvu" → style_in_3d(system=
   'Prívod-1NP' alebo 'Prívod' pre všetky prívody) - NIKDY neposielaj id systému v
   ids_or_refs (vyberie len samotný systém, nie jeho členov). Zóna (IfcZone, požiarny
@@ -115,11 +123,12 @@ Postup podľa typu otázky:
   IfcSpace / IfcSpatialZone); podlažie → storey; prvky bez systému →
   not_in_system=true. Kritériá sa kombinujú ako AND v JEDNOM calle („tvarovky na 2NP v
   prívode" = ifc_type=IfcDuctFitting + storey=2NP + system=Prívod). Viac farieb naraz →
-  groups (action=colorize): top-level filter spoločný, v skupine system/color/label.
+  groups (colorize, transparent alebo isolate): top-level filter spoločný, v skupine
+  system/color/label.
   Systém nesie predefined_type (VENTILATION/EXHAUST...) aj ObjectType (napr. Přiváděný
   / Odváděný vzduch); oba vie system_type. Prívod od nasávania a odvod od výfuku
   rozlíši len názov systému. Farby skupín ber od používateľa; ak ich nepovie, zvoľ
-  odlíšiteľné a v odpovedi uveď legendu. V odpovedi uveď počty na skupinu z výsledku.
+  odlíšiteľné a v odpovedi uveď legendu. V odpovedi uveď počty na pravidlo z viewera.
 - Pohľad v 3D (D-083): REZ → set_section (vodorovný nad podlažím: floor + offset_m,
   pôdorysný rez = 1,2 m; zvislý: orientation + position_percent; action=clear zruší).
   KAMERA → set_camera (top/bottom/front/back/left/right/iso/fit_all; s cieľom

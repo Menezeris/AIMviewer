@@ -12,6 +12,7 @@ import type { DerivationsLayerWire } from "@/lib/derivations";
 import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { opToBridgeMessage, parseOps } from "@/lib/viewer-ops";
+import { MAX_ZONE_GUIDS, lensBridgeMessage, lensZoneIds } from "@/lib/viewer-lens";
 import type { LiveReplyPayload } from "@/lib/live/protocol";
 import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
 
@@ -72,6 +73,8 @@ type OutboundMessage =
 
 /** Ako dlho čaká živý kanál na odpoveď forku (server čaká dlhšie, QUERY_TIMEOUT_MS). */
 const VIEWER_QUERY_TIMEOUT_MS = 5000;
+/** Lens sa vyhodnocuje až po navigácii a stiahnutí zóny; fork čaká najviac 6 s. */
+const LENS_QUERY_TIMEOUT_MS = 7000;
 
 /** Host wire → viewer wire: odstráni host-only `spaceId` z capture pinov. */
 function toCapturePins(captures: CaptureViewerWire[]) {
@@ -82,6 +85,25 @@ function toCapturePins(captures: CaptureViewerWire[]) {
     name: c.name,
     thumbUrl: c.thumbUrl,
   }));
+}
+
+/** GUIDy zón (miestnosti + prvky v nich a dotýkajúce sa ich) z `/api/style-scope`; chyba = prázdna zóna. */
+async function fetchZoneGuids(ids: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const r = await fetch(`/api/style-scope?zone=${encodeURIComponent(id)}`);
+        if (!r.ok) throw new Error(String(r.status));
+        const body = (await r.json()) as { guids?: unknown };
+        const guids = Array.isArray(body.guids) ? body.guids.filter((g): g is string => typeof g === "string") : [];
+        out.set(id, guids.slice(0, MAX_ZONE_GUIDS));
+      } catch (err) {
+        console.warn("[aim] zóna pre lens sa nenačítala", id, err);
+      }
+    }),
+  );
+  return out;
 }
 
 function isBridgeMessage(data: unknown): data is OutboundMessage {
@@ -249,7 +271,17 @@ export function IFCViewer({
    * bridge správa; formát a preklad žijú v `lib/viewer-ops.ts`.
    */
   function applyOps(raw: string) {
-    for (const o of parseOps(raw)) post(opToBridgeMessage(o));
+    for (const o of parseOps(raw)) {
+      if (o.op === "lens" && lensZoneIds(o.wire).length > 0) {
+        // Zóna z grafu AIM (D-096): GUIDy jej miestností a prvkov si klient stiahne sám.
+        void fetchZoneGuids(lensZoneIds(o.wire)).then((zones) => post(lensBridgeMessage(o.mode, o.wire, zones, o.rev)));
+        continue;
+      }
+      post(opToBridgeMessage(o));
+      // Reset farieb vypne aj AIM chat lens, zobraziť všetko zruší jej izoláciu (D-096).
+      if (o.op === "reset_colors") post({ type: "APPLY_LENS", mode: "clear" });
+      if (o.op === "show_all") post({ type: "APPLY_LENS", mode: "unisolate" });
+    }
   }
 
   // ── Príjem správ z iframu (3D → DB) ─────────────────────────────────────
@@ -412,11 +444,16 @@ export function IFCViewer({
           const timer = setTimeout(() => {
             pendingQueries.delete(q.id);
             resolve({ id: q.id, ok: false, error: "3D viewer neodpovedal." });
-          }, VIEWER_QUERY_TIMEOUT_MS);
+          }, q.query === "lens_state" ? LENS_QUERY_TIMEOUT_MS : VIEWER_QUERY_TIMEOUT_MS);
           pendingQueries.set(q.id, (r) => {
             clearTimeout(timer);
             resolve(r);
           });
+          if (q.query === "lens_state") {
+            // Počty AIM chat lens (D-096): viewer počká na vyhodnotenie verzie `rev`.
+            post({ type: "LENS_QUERY", id: q.id, ...(q.rev ? { rev: q.rev } : {}) });
+            return;
+          }
           post({ type: "QUERY", id: q.id, query: q.query, ...(q.guids ? { guids: q.guids } : {}) });
         }),
     );

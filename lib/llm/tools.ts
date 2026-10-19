@@ -9,6 +9,7 @@ import { mergeIfcActions, type AskAction } from "./actions";
 import { VIEW_TOOL_DEFINITIONS, VIEW_TOOL_NAMES, execViewTool } from "./view-tools";
 import { execScopedStyle } from "./style-scope";
 import { needsScopedStyle } from "./style-plan";
+import { LENS_STYLE_ACTIONS, execLensStyle } from "./style-lens";
 
 /**
  * Read-only tools LLM rozhrania (D-056) — tool-calling nad whitelistom, NIE
@@ -535,20 +536,39 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "storey rozbalia členov v grafe AIM (NIE id systému v ids_or_refs - to vyberie len " +
       "samotný systém). Prvky mimo systémov: not_in_system=true. Všetky zadané kritériá " +
       "platia naraz (AND), napr. ifc_type=IfcDuctFitting + storey=1NP + system=Prívod. " +
-      "Viac farieb naraz = groups: [{label, color, ...filter}] s action=colorize (top-level " +
-      "filter platí pre všetky skupiny); vráti počet prvkov na skupinu. " +
-      "Efekty sa hromadia, kým ich nezruší show_all/reset_colors. Viac operácií " +
-      "= viac callov (pokojne v jednom kole).",
+      "Viac farieb naraz = groups: [{label, color, ...filter}] (top-level filter platí pre " +
+      "všetky skupiny). colorize / transparent / isolate idú do panelu Lens vo vieweri ako " +
+      "lens 'AIM chat' (pravidlo = skupina, legenda, počty; prvky mimo pravidiel sú stlmené); " +
+      "ďalšie volania pridávajú pravidlá (mode=replace začne odznova), počty na pravidlo " +
+      "vráti živý viewer v odpovedi. Farby podľa hodnoty (systémy, triedy, materiál, " +
+      "vlastnosť...) = color_by, viewer zvolí farby a vráti legendu. Farby určuje používateľ; " +
+      "keď ich nepovie, zvoľ dobre odlíšiteľné a povedz ich. " +
+      "Efekty sa hromadia, kým ich nezruší show_all/reset_colors (reset_colors vypne aj " +
+      "lens). Viac operácií = viac callov (pokojne v jednom kole).",
     inputSchema: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          enum: ["colorize", "hide", "show", "isolate", "show_all", "reset_colors"],
+          enum: ["colorize", "transparent", "hide", "show", "isolate", "show_all", "reset_colors"],
           description:
-            "colorize=ofarbiť (vyžaduje color), hide=skryť, show=znova zobraziť skryté, " +
-            "isolate=zobraziť LEN vybrané (ostatné skryť), show_all=zrušiť skrývanie, " +
-            "reset_colors=zrušiť ofarbenie",
+            "colorize=ofarbiť (vyžaduje color), transparent=priehľadne s farbou, hide=skryť, " +
+            "show=znova zobraziť skryté, isolate=zobraziť LEN vybrané (ostatné skryť; farba " +
+            "voliteľná), show_all=zrušiť skrývanie a izoláciu, reset_colors=zrušiť ofarbenie a lens",
+        },
+        mode: {
+          type: "string",
+          enum: ["add", "replace"],
+          description: "Lens (colorize/transparent/isolate): add = pridať k doterajším pravidlám (predvolené), replace = začať odznova",
+        },
+        color_by: {
+          type: "string",
+          enum: ["ifc_type", "system", "zone", "material", "model", "classification", "property", "attribute"],
+          description: "Farby podľa hodnoty (action=colorize, bez color a groups): každá hodnota iná farba, legenda vo vieweri",
+        },
+        color_by_key: {
+          type: "string",
+          description: "Pri color_by=property 'Pset.Vlastnosť' (Pset_WallCommon.FireRating), pri attribute meno atribútu (ObjectType)",
         },
         color: {
           type: "string",
@@ -647,9 +667,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         groups: {
           type: "array",
           description:
-            `Viac skupín s vlastnou farbou v jednom volaní (len action=colorize, max 12): ` +
-            `každá {label, color, + ľubovoľné filtre z tohto toolu}; top-level filtre platia ` +
-            `pre všetky skupiny. Spolu max 500 prvkov do 3D.`,
+            `Viac skupín s vlastnou farbou v jednom volaní (action colorize, transparent alebo ` +
+            `isolate, max 12): každá {label, color, + ľubovoľné filtre z tohto toolu} = jedno ` +
+            `pravidlo Lens; top-level filtre platia pre všetky skupiny.`,
           items: {
             type: "object",
             properties: {
@@ -753,6 +773,8 @@ export class AskToolRuntime {
   readonly trace: AskToolTrace[] = [];
   /** UI akcie vyžiadané modelom — route ich vráti klientovi na vykonanie. */
   readonly actions: AskAction[] = [];
+  /** Verzia AIM chat lens z posledného `style_in_3d` (D-096) - MCP sa podľa nej spýta viewera na počty. */
+  lensRev: string | null = null;
 
   /** Zaregistruje objekt medzi zdroje (dedupe podľa id). */
   private addSource(row: ObjectRow) {
@@ -1771,6 +1793,7 @@ export class AskToolRuntime {
     const action = String(input.action ?? "").trim();
     const opLabel: Record<string, string> = {
       colorize: "ofarbenie",
+      transparent: "priehľadnosť",
       hide: "skrytie",
       show: "zobrazenie",
       isolate: "izolácia",
@@ -1779,7 +1802,7 @@ export class AskToolRuntime {
     };
     if (!(action in opLabel)) {
       throw new Error(
-        "action musí byť colorize | hide | show | isolate | show_all | reset_colors."
+        "action musí byť colorize | transparent | hide | show | isolate | show_all | reset_colors."
       );
     }
 
@@ -1795,7 +1818,16 @@ export class AskToolRuntime {
       return { ok: true, applied: action };
     }
 
-    // Systém, zóna, podlažie, AND kritériá a skupiny s farbou (D-096): členov rozbalí graf AIM.
+    // Farbenie, priehľadnosť a izolácia nad Lens vo vieweri (D-096): pravidlá s AND, skupiny, počty.
+    if (LENS_STYLE_ACTIONS.has(action)) {
+      const { result, rev } = await execLensStyle(action, input, (a) => this.actions.push(a), {
+        domainTypes: DOMAIN_IFC_TYPES,
+      });
+      this.lensRev = rev;
+      return result;
+    }
+
+    // Skrytie / zobrazenie so systémom, zónou alebo podlažím: členov rozbalí graf AIM (GUIDy).
     if (needsScopedStyle(input)) {
       return execScopedStyle(action, input, (a) => this.actions.push(a), { domainTypes: DOMAIN_IFC_TYPES });
     }

@@ -44,7 +44,7 @@ const GROUPISH_TYPES = ["zone", "spatial_zone", "group"];
 const IFC_GUID_RE = /^[0-9A-Za-z_$]{22}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-interface TypedRow extends NamedRow {
+export interface TypedRow extends NamedRow {
   object_type: string;
   predefined_type: string | null;
 }
@@ -58,7 +58,7 @@ export interface ScopedStyleOptions {
   domainTypes: Record<string, string[]>;
 }
 
-class ScopeResolver {
+export class ScopeResolver {
   private systems?: TypedRow[];
   private groupish?: TypedRow[];
   private floors?: NamedRow[];
@@ -123,7 +123,8 @@ class ScopeResolver {
     return members;
   }
 
-  async systemMembers(f: StyleFilter): Promise<{ ids: Set<string>; matched: string[] }> {
+  /** Systémy podľa `system` (id, ref, názov, ObjectType) a `system_type` (predefined_type alebo ObjectType). */
+  async pickSystems(f: StyleFilter): Promise<TypedRow[]> {
     this.systems ??= await this.nodesOfTypes(["system"]);
     const want = str(f.system);
     const type = str(f.system_type).toUpperCase();
@@ -141,6 +142,11 @@ class ScopeResolver {
         `Systém ${[want, type].filter(Boolean).join(" / ")} sa nenašiel. Dostupné: ${avail.slice(0, 25).join(", ")}.`,
       );
     }
+    return picked;
+  }
+
+  async systemMembers(f: StyleFilter): Promise<{ ids: Set<string>; matched: string[] }> {
+    const picked = await this.pickSystems(f);
     return {
       ids: await this.closure(picked.map((s) => s.id)),
       matched: picked.map((s) => s.object_ref ?? s.name ?? s.id),
@@ -155,7 +161,8 @@ class ScopeResolver {
     return this.allSystemMembers;
   }
 
-  async zoneMembers(want: string): Promise<{ ids: Set<string>; matched: string[] }> {
+  /** Zóny (IfcZone, IfcSpatialZone, IfcGroup) podľa id, object_ref alebo názvu. */
+  async pickZones(want: string): Promise<TypedRow[]> {
     this.groupish ??= await this.nodesOfTypes(GROUPISH_TYPES);
     const picked = pickNamed(this.groupish, want);
     if (picked.length === 0) {
@@ -164,6 +171,15 @@ class ScopeResolver {
         `Zóna '${want}' sa nenašla (IfcZone, IfcSpatialZone ani IfcGroup). IfcZone v modeli: ${zones.slice(0, 25).join(", ")}.`,
       );
     }
+    return picked;
+  }
+
+  async zoneMembers(want: string): Promise<{ ids: Set<string>; matched: string[] }> {
+    const picked = await this.pickZones(want);
+    return { ids: await this.zoneMemberIds(picked), matched: picked.map((z) => z.object_ref ?? z.name ?? z.id) };
+  }
+
+  async zoneMemberIds(picked: TypedRow[]): Promise<Set<string>> {
     const groupIds = picked.filter((z) => z.object_type !== "spatial_zone").map((z) => z.id);
     const spatialIds = picked.filter((z) => z.object_type === "spatial_zone").map((z) => z.id);
 
@@ -177,10 +193,11 @@ class ScopeResolver {
       const rows = await this.fetchIn<{ from_id: string }>(rel, "id, from_id", "to_id", containers);
       for (const r of rows) ids.add(r.from_id);
     }
-    return { ids, matched: picked.map((z) => z.object_ref ?? z.name ?? z.id) };
+    return ids;
   }
 
-  async storeyMembers(want: string): Promise<{ ids: Set<string>; label: string }> {
+  /** Podlažie podľa id, object_ref alebo názvu (1NP = 1.NP = 1 NP). */
+  async pickFloor(want: string): Promise<NamedRow> {
     this.floors ??= await fetchAllPages<NamedRow>((from, to) =>
       this.db
         .from("objects")
@@ -202,6 +219,11 @@ class ScopeResolver {
         `Podlažie '${want}' neexistuje. Dostupné: ${this.floors.map((f) => f.object_ref ?? f.name).join(", ")}.`,
       );
     }
+    return floor;
+  }
+
+  async storeyMembers(want: string): Promise<{ ids: Set<string>; label: string }> {
+    const floor = await this.pickFloor(want);
     const spaces = (await this.fetchIn<{ from_id: string }>("rel_aggregates", "id, from_id", "to_id", [floor.id])).map(
       (r) => r.from_id,
     );

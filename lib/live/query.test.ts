@@ -65,3 +65,21 @@ describe("otázka do živého viewera (D-085)", () => {
     });
   });
 });
+
+describe("počty AIM chat lens (D-096)", () => {
+  it("lens_state nesie rev a odpoveď viewera sa vráti ako text pre model", async () => {
+    const { lensCountsText } = await import("./lens-counts");
+    const f = fakeChannel();
+    const pending = lensCountsText("kanal", "r1", (ch, q, g, opts) => queryLiveViewer(ch, q, g, { ...opts, open: f.open }));
+    await tick();
+    expect(f.sent[0].payload).toMatchObject({ query: "lens_state", rev: "r1" });
+    f.reply({ id: f.sent[0].payload.id, ok: true, result: { active: true, rules: [{ name: "Prívod", count: 8 }] } });
+    expect(await pending).toContain('"count":8');
+  });
+
+  it("timeout a chyba viewera povedia, že počty nie sú, nie že lens zlyhala", async () => {
+    const { lensCountsText } = await import("./lens-counts");
+    expect(await lensCountsText("k", "r", async () => ({ ok: false, reason: "timeout" }))).toMatch(/neprišli/);
+    expect(await lensCountsText("k", "r", async () => ({ ok: true, reply: { id: "x", ok: false, error: "boom" } }))).toMatch(/boom/);
+  });
+});
