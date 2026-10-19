@@ -420,6 +420,30 @@
       "notes": "D-083 fáza 1: rez pod stropom ďalšieho podlažia + pohľad zhora na miestnosť (voliteľne skrytie IfcCovering)."
     },
     {
+      "id": "view-camera-zoom-out",
+      "category": "view",
+      "question": "Oddiaľ pôdorys o 15 percent.",
+      "expect": { "tools_called": ["set_camera"], "actions_match": ["camera:keep~z=-15"] },
+      "verified": false,
+      "notes": "D-094 (#65): relatívny zoom pri zachovanom smere."
+    },
+    {
+      "id": "view-camera-hvac-iso-fit",
+      "category": "view",
+      "question": "Ukáž vzduchotechniku v perspektíve na celú obrazovku.",
+      "expect": { "tools_called": ["style_in_3d", "set_camera"], "actions_match": ["camera(_sel)?:iso"] },
+      "verified": false,
+      "notes": "D-094 (#65): izolácia domain=hvac + set_camera(iso, fit=visible alebo cieľ domain=hvac, projection=perspective)."
+    },
+    {
+      "id": "view-camera-section-perpendicular",
+      "category": "view",
+      "question": "Sprav rez schodiskom a pozri sa naň kolmo, rovno spredu.",
+      "expect": { "tools_called": ["set_section", "set_camera"], "actions_match": ["camera(_sel)?:section"] },
+      "verified": false,
+      "notes": "D-094 (#65): set_section cez IfcStairFlight + set_camera(preset=section, fit=visible)."
+    },
+    {
       "id": "view-floor-2d",
       "category": "view",
       "question": "Prepni viewer na 2D pôdorys 2. NP.",

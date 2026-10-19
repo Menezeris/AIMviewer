@@ -1,5 +1,4 @@
 import {
-  CAMERA_PRESETS,
   MAX_SECTION_TARGETS,
   SECTION_CLEAR_OP,
   SECTION_COORDINATE_LIMIT,
@@ -9,8 +8,6 @@ import {
   sectionOp,
   viewModeOp,
   VIEW_MODES,
-  type CameraPreset,
-  type Projection,
   type SectionFit,
   type ViewMode,
 } from "../viewer-ops";
@@ -112,22 +109,6 @@ export function planSection(
     ops: [sectionOp({ axis, position, flipped })],
     label: `3D: rez ${orientation} ${position} %`,
     result: { ok: true, section: { orientation, position_percent: position, flipped } },
-  };
-}
-
-export function planCamera(input: Record<string, unknown>, targetGuids: string[]): ViewPlan {
-  const preset = String(input.preset ?? "").trim() as CameraPreset;
-  if (!(CAMERA_PRESETS as readonly string[]).includes(preset)) {
-    throw new ViewInputError(`preset musí byť jeden z ${CAMERA_PRESETS.join(", ")}.`);
-  }
-  const proj = String(input.projection ?? "").trim();
-  if (proj && proj !== "perspective" && proj !== "orthographic") {
-    throw new ViewInputError("projection musí byť perspective alebo orthographic.");
-  }
-  return {
-    ops: [cameraOp(preset, targetGuids, (proj || undefined) as Projection | undefined)],
-    label: `3D: pohľad ${preset}${targetGuids.length ? ` na vybrané prvky (${targetGuids.length})` : ""}`,
-    result: { ok: true, camera: preset, ...(proj ? { projection: proj } : {}), targets: targetGuids.length },
   };
 }
 
