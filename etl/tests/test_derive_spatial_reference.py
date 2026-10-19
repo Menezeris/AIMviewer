@@ -133,3 +133,51 @@ def test_derive_inside_partial_and_unmatched() -> None:
 
     strict = derive([m], SpatialReferenceConfig(include_partial=False))
     assert duct.GlobalId not in {e.from_guid for e in strict.edges}
+
+
+def _faceted_box(m, x, y, z, d, flip=frozenset()):
+    """IfcFacetedBrep kocky d×d×d na (x, y, z) v mm; `flip` = indexy stien s opačným poradím
+    vrcholov (Revit exportuje rodiny s nejednotne orientovanými stenami)."""
+    p = [m.createIfcCartesianPoint((x + dx * d, y + dy * d, z + dz * d))
+         for dz in (0, 1) for dy in (0, 1) for dx in (0, 1)]
+    quads = [(0, 2, 3, 1), (4, 5, 7, 6), (0, 1, 5, 4), (2, 6, 7, 3), (0, 4, 6, 2), (1, 3, 7, 5)]
+    faces = []
+    for i, q in enumerate(quads):
+        pts = [p[k] for k in (reversed(q) if i in flip else q)]
+        faces.append(m.createIfcFace([m.createIfcFaceOuterBound(m.createIfcPolyLoop(pts), True)]))
+    return m.createIfcFacetedBrep(m.createIfcClosedShell(faces))
+
+
+def test_faceted_brep_with_inconsistent_faces_is_matched() -> None:
+    """#92: výustky a tvarovky VZT z Revitu majú telo IfcFacetedBrep (často cez IfcMappedItem
+    typu) s nejednotne orientovanými stenami; bez `reorient-shells` ich presný test voči telu
+    priestoru minul a nedostali žiadnu hranu."""
+    import ifcopenshell.guid
+
+    from etl.derive.spatial_reference import derive
+
+    m, space, *_ = _model()
+    body = next(c for c in m.by_type("IfcGeometricRepresentationSubContext")
+                if c.ContextIdentifier == "Body")
+    storey = m.by_type("IfcBuildingStorey")[0]
+    origin = m.createIfcAxis2Placement3D(m.createIfcCartesianPoint((0.0, 0.0, 0.0)))
+    terminals = []
+    for name, x, flip in (("brep", 500.0, {1, 3}), ("mapped", 2500.0, {0, 2, 5})):
+        brep = _faceted_box(m, x, 500.0, 2000.0, 300.0, flip)
+        rep = m.createIfcShapeRepresentation(body, "Body", "Brep", [brep])
+        if name == "mapped":
+            src = m.createIfcRepresentationMap(origin, rep)
+            target = m.createIfcCartesianTransformationOperator3D(
+                None, None, m.createIfcCartesianPoint((0.0, 0.0, 0.0)), 1.0, None)
+            rep = m.createIfcShapeRepresentation(body, "Body", "MappedRepresentation",
+                                                 [m.createIfcMappedItem(src, target)])
+        el = m.createIfcAirTerminal(GlobalId=ifcopenshell.guid.new(), Name=name,
+                                    ObjectPlacement=m.createIfcLocalPlacement(None, origin),
+                                    Representation=m.createIfcProductDefinitionShape(None, None, [rep]))
+        m.createIfcRelContainedInSpatialStructure(
+            ifcopenshell.guid.new(), None, None, None, [el], storey)
+        terminals.append(el)
+
+    got = {(e.from_guid, e.to_guid, e.role) for e in derive([m]).edges}
+    for el in terminals:
+        assert (el.GlobalId, space.GlobalId, "inside") in got, el.Name
