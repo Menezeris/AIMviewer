@@ -3994,16 +3994,18 @@ vlastné testy a dôkazy.
 - *Výpočty kamery v moste forku:* duplikovali by funkcie viewera, zväčšili vstupný balík a pri
   synchronizácii s originálom by sa rozchádzali.
 
-**Otvorené:** rýchle CI forku pre PR, ktoré menia len `apps/viewer/src/aim/` (preskočenie
-ťažkých vetiev `test.yml` a vlastný `aim-fast.yml`), čaká na Samuelovo potvrdenie mimo textu
-issue (zmena workflowov).
+4. **Rýchle CI forku pre PR, ktoré menia len AIM vrstvu** (Samuel, 2026-10-19): `test.yml` vo forku
+   (job `changes`, krok `aimonly`) vypne ťažké vetvy (Rust, WASM, viewer shards, E2E, perf
+   ratchet), `aim-fast.yml` pustí AIM testy, lacné gates a typecheck viewera (približne 10 min).
+   Plné CI ostáva pri sync s originálom a pri zmene upstream súborov. Balík a revert oracle sa
+   merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo forku.
 
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
-- **2026-10-19** - **D-098 (najprv existujúce funkcie, fork len sprístupní):** pred návrhom sa prehľadá store, SDK, `@ifc-lite/mcp` a embed protokol; fork len tenký most, výpočty v AIMvieweri. Pravidlo v `AGENTS.md`, skilloch `mcp-poziadavka` a `aim-feature`, `FORK_MAINTENANCE.md` (#65).
+- **2026-10-19** - **D-098 (najprv existujúce funkcie, fork len sprístupní):** pred návrhom sa prehľadá store, SDK, `@ifc-lite/mcp` a embed protokol; fork len tenký most, výpočty v AIMvieweri. Pravidlo v `AGENTS.md`, skilloch `mcp-poziadavka` a `aim-feature`, `FORK_MAINTENANCE.md`; rýchle CI forku pre PR len v `aim/` (`aim-fast.yml`) (#65).
 - **2026-10-19** - **D-094 (set_camera: relatívny pohyb, fit, filter, kolmo na rez):** `set_camera` dostal `preset` keep/section, `fit` visible/selection, cieľ filtrom (`ifc_type(s)`, `domain`, `model`, op `camera_sel`), `zoom_percent`, `orbit_h_deg`/`orbit_v_deg`, `pan_x_percent`/`pan_y_percent` (samostatné volanie, pózu počíta host z `view_state`); fork `SET_CAMERA` cez existujúce funkcie a oprava front/back s cieľom (ifc-lite#60, #65).
 - **2026-10-19** - **D-090 dodatok (issue len na pokyn):** Claude zápis len ponúkne, `request_tool`/`report_feedback` volá až na výslovný pokyn Samuela.
 - **2026-10-19** - **D-090 dodatok (strop a fronta):** najviac 3 súbežné sessions (`FEEDBACK_MAX_SESSIONS`), ďalšie issues so štítkom `fronta`, session po PR uvoľní miesto a pošle notifikáciu, ďalšiu spustí tool `start_queued_session`; `request_tool.start_session=false` pre dávky.
