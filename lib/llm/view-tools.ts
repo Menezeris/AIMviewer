@@ -10,7 +10,7 @@ import type { AskAction } from "./actions";
 import type { ToolDefinition } from "./provider";
 import { planCamera } from "./camera-plan";
 import { DOMAIN_IFC_TYPES } from "./ifc-selector";
-import { ViewInputError, planSection, planViewMode, type ViewPlan } from "./view-plan";
+import { ViewInputError, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
 
 /**
  * UI tools pohľadu (D-083 fáza 1): rez, kamera, režim 3D/2D/Split. Vydávajú
@@ -37,17 +37,21 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "dĺžke ramena schodiska), across (zvislo naprieč), center (stredom prvku na zadanej orientation). " +
       "Presná poloha = orientation + coordinate_m v súradniciach IFC (vertical_x reže na IFC X, " +
       "vertical_z na IFC Y, horizontal na IFC Z - výške); súradnice dá get_bounds. position_percent " +
-      "(0-100 % rozmeru modelu) len ako posledná možnosť. action=clear rez zruší. Príklad 'ukáž strop " +
+      "(0-100 % obálky celej scény, nie budovy) len ako posledná možnosť. action=clear rez zruší. Čistý pohľad bez widgetu rezu = " +
+      "show_widget=false (pri set) alebo action=widget, show_widget=false (rez ostáva). Príklad 'ukáž strop " +
       "nad miestnosťou na 2NP, kade idú potrubia': set_section(floor=3NP, offset_m=-0.4) + " +
       "style_in_3d(hide, ifc_type=IfcCovering) + set_camera(preset=top, target=miestnosť).",
     inputSchema: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["set", "clear"] },
+        action: { type: "string", enum: ["set", "clear", "widget"], description: "widget = len zobraziť/skryť widget aktívneho rezu (show_widget)" },
         orientation: { type: "string", enum: ["horizontal", "vertical_x", "vertical_z"], description: "Default horizontal" },
         floor: floorProp,
         offset_m: { type: "number", description: "Výška rezu nad úrovňou podlažia v metroch (-5 až 20, default 1,2)" },
-        position_percent: { type: "number", description: "Poloha rezu 0-100 % rozmeru modelu (bez podlažia, pre zvislé rezy)" },
+        position_percent: {
+          type: "number",
+          description: "Poloha rezu 0-100 % obálky celej scény (všetky viditeľné modely, nie len budova), len ako posledná možnosť",
+        },
         target_ids_or_refs: {
           type: "array",
           items: { type: "string" },
@@ -61,6 +65,10 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         coordinate_m: { type: "number", description: "Poloha roviny v IFC súradniciach (m) na osi orientation" },
         flipped: { type: "boolean", description: "Otočiť stranu rezu" },
+        show_widget: {
+          type: "boolean",
+          description: "false = skryť widget rezu (rovina a jej obrys) pre čistý pohľad, rez ostáva aktívny; true = zobraziť",
+        },
       },
       required: ["action"],
     },
@@ -125,14 +133,14 @@ export const VIEW_TOOL_NAMES = new Set(VIEW_TOOL_DEFINITIONS.map((t) => t.name))
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Podlažie AIM (object_ref, názov s normalizáciou, alebo UUID) -> label + aktívny GUID. */
-async function resolveFloor(raw: unknown): Promise<{ label: string; guid: string } | null> {
+/** Podlažie AIM (object_ref, názov s normalizáciou, alebo UUID) -> label, aktívny GUID, elevácia. */
+async function resolveFloor(raw: unknown): Promise<SectionFloor | null> {
   const want = typeof raw === "string" ? raw.trim() : "";
   if (!want) return null;
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase.from("v_floors").select("id, object_ref, name");
+  const { data, error } = await supabase.from("v_floors").select("id, object_ref, name, elevation");
   if (error) throw new Error(error.message);
-  const floors = (data ?? []) as { id: string; object_ref: string | null; name: string | null }[];
+  const floors = (data ?? []) as { id: string; object_ref: string | null; name: string | null; elevation: number | null }[];
   const norm = normalizeStoreyLabel(want);
   const floor = floors.find(
     (f) =>
@@ -154,7 +162,7 @@ async function resolveFloor(raw: unknown): Promise<{ label: string; guid: string
   if (ge) throw new Error(ge.message);
   const guid = (g?.[0] as { ifc_guid?: string } | undefined)?.ifc_guid;
   if (!guid) throw new ViewInputError(`Podlažie ${floor.object_ref ?? floor.name} nemá IFC GUID - nie je v 3D modeli.`);
-  return { label: floor.object_ref ?? floor.name ?? want, guid };
+  return { label: floor.object_ref ?? floor.name ?? want, guid, elevation: floor.elevation };
 }
 
 export async function resolveTargets(input: Record<string, unknown>): Promise<string[]> {

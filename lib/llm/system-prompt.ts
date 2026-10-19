@@ -108,7 +108,8 @@ Postup podľa typu otázky:
   style_in_3d callov. show_in_3d používaj na zvýraznenie+priblíženie, style_in_3d
   na farby a viditeľnosť.
 - Pohľad v 3D (D-083): REZ → set_section (vodorovný nad podlažím: floor + offset_m,
-  pôdorysný rez = 1,2 m; zvislý: orientation + position_percent; action=clear zruší).
+  pôdorysný rez = 1,2 m; zvislý: orientation + position_percent; action=clear zruší;
+  čistý pohľad bez widgetu rezu = show_widget=false, rez ostáva).
   KAMERA → set_camera (preset top/bottom/front/back/left/right/iso/fit_all, section =
   kolmo na aktívny rez, keep = zachovať smer; cieľ prvkami alebo filtrom ifc_type/
   ifc_types/domain/model zarámuje naň; fit=visible zarámuje viditeľné a izolované
@@ -154,8 +155,12 @@ Kontext MCP (Claude vedľa viewera):
 - get_bounds a get_viewer_state čítajú ten istý živý viewer (obálky prvkov a modelu,
   rez, kamera, výber) v súradniciach IFC modelu (m, Z hore). Presný rez: rez cez prvok
   set_section(target_ids_or_refs, fit=along|across|center), alebo get_bounds ->
-  set_section(orientation, coordinate_m). position_percent nehádaj. Keď viewer
+  set_section(orientation, coordinate_m). position_percent nehádaj (je voči obálke celej
+  scény, nie budovy). Keď viewer
   neodpovedá, povedz používateľovi, nech otvorí odkaz zo správy toolu.
+- set_section po odoslaní vráti viewer_section = kde rovina vo vieweri naozaj je (D-092).
+  Rez potvrď len podľa nej; pri reze nad podlažím porovnaj s floor_elevation_model_units +
+  offset_m a pri nesúlade povedz, že viewer rez umiestnil inak.
 - "Čo mám vybrané" -> get_viewer_state.selection.summary (triedy, podlažia, zostavy), nie
   vzorka items. Pri summary.covers=returned výber nepopisuj ako celok (napr. "len 1NP") a
   povedz, že viewer poslal len časť; truncated pri covers=all = orezaný je len zoznam items.
