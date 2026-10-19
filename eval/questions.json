@@ -612,7 +612,7 @@
     },
     {
       "id": "style-xray-context",
-      "category": "viewer",
+      "category": "view",
       "question": "Zobraz SDK priečky a podhľady na 2NP plne a ostatné konštrukcie duchovo.",
       "expect": { "tools_called": ["style_in_3d"] },
       "verified": false,
