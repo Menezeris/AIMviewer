@@ -4026,6 +4026,79 @@ celok; bez súhrnu z viewera platí pôvodné správanie (bod 1). Strop 5000 z b
 
 ---
 
+### D-096 - `style_in_3d` nad Lens: systém, zóna a podlažie ako filtre, AND kritériá, skupiny s farbou a počty z viewera
+
+**Dátum:** 2026-10-19 · **Stav:** navrhnuté (požiadavka z konektora, issue #68), PR čaká na Samuela
+· **Súvisí:** D-066, D-079, D-085, D-087, D-088, D-089, D-090, D-091
+
+**Kontext:** "zafarbi celú prívodnú vetvu" zafarbilo len samotný systém, lebo `style_in_3d`
+vie triedu, doménu, model, vlastnosť a explicitné prvky, ale nie členov systému ani zóny.
+Kritériá sa nedali kombinovať (trieda AND podlažie AND systém) a viac farieb znamenalo viac
+volaní bez počtov. Fork viewera má od upstreamu **Lens** (`@ifc-lite/lens` 2.2.0,
+`@ifc-lite/rules` 0.7.7, panel Lens): pravidlá s AND nad IFC (trieda, predefined_type,
+podlažie, skupina IfcSystem/IfcZone, vlastnosť, atribút, model, GlobalId...), farba a akcia na
+pravidlo, počty, legenda a autoColor. Originál `@ifc-lite/mcp` ho ovláda len vo vlastnom
+vieweri balíka, nie v našom iframe, takže podľa D-087 bod 3 ide o vlastný adaptér.
+
+**Rozhodnutie (Samuel, 2026-10-19: všetko nad Lens, jeden celok):**
+1. **Rozšírenie existujúceho `style_in_3d`, nie nový tool.** `colorize`, nové `transparent`
+   a `isolate` zostavia pravidlá **lens "AIM chat"**; `groups` = viac pravidiel s farbou;
+   `color_by` (system, ifc_type, material, model, classification, property, attribute) =
+   autoColor s legendou; `mode` add (pridáva) / replace. `reset_colors` lens vypne,
+   `show_all` zruší izoláciu z chatu. **Izolácia nejde cez lens** (Samuel, 2026-10-19:
+   izolované prvky sa farbia len na žiadosť): pravidlá sa vyhodnotia tým istým federovaným
+   filtrom ako lens a ich zjednotenie sa izoluje kanálom izolácie viewera, prvky bez farby
+   ostanú v pôvodnom vzhľade; skupina s farbou je navyše pravidlo lens. **Skrývanie len na
+   výslovnú žiadosť** (Samuel): `hide`/`show` ostávajú na kanáli skrývania viewera mimo Lens,
+   stlmené (ghost) sú len prvky mimo farebných pravidiel lens.
+2. **Pravidlá:** trieda/doména -> `ifcType`, predefined_type -> `predefinedType`, podlažie ->
+   `storey` (meno podlažia z grafu AIM), systém a `system_type` -> mená systémov z grafu AIM
+   (aj podľa ObjectType) -> `group` IfcSystem s regexom na presné mená, `not_in_system` ->
+   `group isNotSet`, vlastnosť -> `property` s dedičnosťou z typu, text -> `name contains`,
+   model -> meno modelu, ktoré fork preloží na identitu modelu vo vieweri, konkrétne prvky
+   -> `globalId` (strop 400 v URL). Kritériá jednej skupiny sú AND.
+3. **Zóna** (IfcZone, IfcSpatialZone, IfcGroup) = miestnosti (aj cez vnorené zóny) a **vždy aj
+   prvky v nich alebo dotýkajúce sa ich** (contained + referenced inside/partial, aj z iného
+   modelu federácie; len miestnosti iba na výslovnú žiadosť cez `ifc_type`). Lens to z IFC
+   nevie, preto ide v URL symbolicky (pravidlo `aim_zone` s id zón) a klient viewera si GUIDy
+   stiahne z `GET /api/style-scope?zone=<id>` (strop 5000 na správu), takže dĺžka URL zónu
+   neobmedzuje.
+4. **Transport:** op `lens:<mode>~r=<rev>:<base64url JSON>` v tej istej `/ifc?ops=` URL (D-066,
+   živý kanál D-079); klient pošle forku `APPLY_LENS`. Fork (`apps/viewer/src/aim/aimLens.ts`,
+   lenivo) vloží lens do dočasného slotu `auto-color-from-list` (upstream ho neukladá ani
+   neexportuje), aktivuje ju a otvorí panel Lens; vyhodnotenie robí upstream `useLens`.
+   Upstream súbory sa nemenia.
+5. **Počty pre Clauda z viewera, nie odhadom:** po odoslaní sa MCP spýta spätným kanálom
+   (D-085) `lens_state` s tým istým `rev`; fork počká na vyhodnotenie práve tejto verzie
+   (`LENS_QUERY` -> `QUERY_RESULT`, najviac 6 s) a vráti počet na pravidlo, izolované prvky a
+   legendu. Bez živého viewera tool vráti zostavenú lens a povie, že počty sú v paneli Lens.
+6. **Bez pevnej palety** (Samuel): farby určuje používateľ, inak model zvolí odlíšiteľné a vráti
+   legendu; izolácia bez farby prvky nefarbí. Dáta VZT: predefined_type a
+   ObjectType rozlišujú prívod od odvodu, ale nie prívod od nasávania (VENTILATION,
+   "Přiváděný vzduch") ani odvod od výfuku (EXHAUST, "Odváděný vzduch"); rozlíši ich len názov.
+7. Kód: `lib/viewer-lens.ts` (wire formát, server aj klient), `lib/llm/lens-plan.ts` (čisté
+   pravidlá), `lib/llm/style-lens.ts` (mená z DB), `lib/llm/style-scope.ts` (rozbalenie zóny,
+   systémov, podlažia; GUID cesta pre `hide`/`show` so systémom, zónou alebo podlažím),
+   `lib/live/lens-counts.ts`, `app/api/style-scope`; fork `lens-protocol.ts`,
+   `aimLensPlan.ts`, `aimLens.ts`, v `AimBridge.tsx` len registrácia.
+
+**Dôsledky:** filter systému ukáže len to, čo nesie model: Prívod-1NP má v DB 8 členov (stav
+2026-10-19). Lens farbí prvou zhodou, preto novšie pravidlá idú v AIM chat lens dopredu (nová
+farba prebije staršiu). Kým je lens aktívna, izolované prvky bez farby sú stlmené ako všetko
+mimo farebných pravidiel; bez lens ostanú v pôvodnom vzhľade. Lens `group` vidí len priame IfcRelAssignsToGroup (systémy VZT sú ploché).
+Podlažie ide podľa mena v IFC (ASR aj VZT majú 1NP...4NP). Poradie zlúčenia: fork, potom
+AIMviewer (starý fork správy Lens ignoruje, nič sa nerozbije).
+
+**Zavrhnuté:**
+- *Nový tool `style_in_3d_rozsirenie`:* dva tools na to isté by model mýlili.
+- *GUIDy v URL pre všetko (prvá verzia PR #85):* strop 500 prvkov na volanie, žiadna legenda ani
+  panel; ostáva len pre `hide`/`show`.
+- *Vyhodnotenie lens na serveri cez `@ifc-lite/rules`:* adaptér dát Lens žije vo vieweri, kópia
+  na serveri by sa rozišla s tým, čo používateľ vidí; počty dáva priamo viewer.
+- *`viewer_*` tools z `@ifc-lite/mcp`:* ovládajú vlastný viewer balíka, nie náš iframe.
+
+---
+
 ### D-094 - set_camera: relatívny pohyb, fit na viditeľné, cieľ filtrom, pohľad kolmo na rez
 
 **Dátum:** 2026-10-19 · **Stav:** implementované (revízia podľa D-098), fork PR Menezeris/ifc-lite#60 · **Súvisí:** D-066, D-083, D-085, D-087, D-090, D-098 · **Issue:** #65
@@ -4110,6 +4183,7 @@ merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo fo
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-096 (`style_in_3d` nad Lens):** farbenie, priehľadnosť a izolácia ako lens "AIM chat" v paneli Lens forku; filtre `system`, `system_type`, `not_in_system`, `zone`, `storey` (AND), `groups` s farbou, `color_by` s legendou; zóna sa doťahuje na klientovi; počty na pravidlo vracia viewer spätným kanálom.
 - **2026-10-19** - **D-093 dodatok (súhrn výberu počíta fork):** strop Realtime 256 kB, fork posiela `summary` nad celým výberom, zoznamy orezané (1000 GUID, 100 položiek) a `bbox`; server súhrn prevezme.
 - **2026-10-19** - **D-093 (súhrn výberu v `get_viewer_state`):** `selection` s `count`/`returned`/`truncated`, súhrnom (trieda, podlažie, zostava, model, `covers`), stránkou položiek s identitou a `note` pri orezaní; kontrakt pre fork (celé `guids`, voliteľné `items` a `bbox`); prompt nerobí závery zo vzorky.
 - **2026-10-19** - **D-098 (najprv existujúce funkcie, fork len sprístupní):** pred návrhom sa prehľadá store, SDK, `@ifc-lite/mcp` a embed protokol; fork len tenký most, výpočty v AIMvieweri. Pravidlo v `AGENTS.md`, skilloch `mcp-poziadavka` a `aim-feature`, `FORK_MAINTENANCE.md`; rýchle CI forku pre PR len v `aim/` (`aim-fast.yml`) (#65).

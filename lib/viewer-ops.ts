@@ -14,8 +14,10 @@
  * `section_clear::`, `section_gizmo:<0|1>:`, `camera:<preset>[~proj=o|p]:<guid.guid...>` (fit a relatívne kroky
  * `~fit=..~z=..~oh=..~ov=..~px=..~py=..` a `camera_sel:<arg>:<selektor>`, D-094/D-098, `lib/viewer-camera.ts`),
  * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>:<documentId>`.
+ * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
  */
 
+import { LENS_MODES, decodeLensWire, lensBridgeMessage, type LensMode, type LensWire } from "./viewer-lens";
 import { cameraMoveArgs, parseCameraMove, type CameraMove } from "./viewer-camera";
 
 export interface OpsSelector {
@@ -68,7 +70,8 @@ export type ViewerOp =
   | { op: "section_gizmo"; showGizmo: boolean }
   | ({ op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[]; selector?: OpsSelector } & CameraMove)
   | { op: "view"; mode: ViewMode; storeyGuid?: string }
-  | { op: "doc"; documentId: string; page?: number };
+  | { op: "doc"; documentId: string; page?: number }
+  | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -178,6 +181,13 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "view") {
       if (!(VIEW_MODES as readonly string[]).includes(arg)) continue;
       out.push({ op, mode: arg as ViewMode, ...(guids[0] ? { storeyGuid: guids[0] } : {}) });
+    } else if (op === "lens") {
+      const [mode, kv] = parseArg(arg);
+      if (!(LENS_MODES as readonly string[]).includes(mode)) continue;
+      const wire = decodeLensWire(joined);
+      if (!wire) continue;
+      const rev = kv.r && /^[A-Za-z0-9_-]{1,64}$/.test(kv.r) ? kv.r : undefined;
+      out.push({ op, mode: mode as LensMode, ...(rev ? { rev } : {}), wire });
     } else if (op === "doc") {
       const documentId = joined;
       if (!UUID.test(documentId)) continue;
@@ -236,6 +246,9 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
       return { type: "SET_VIEW_MODE", mode: o.mode, ...(o.storeyGuid ? { storeyGuid: o.storeyGuid } : {}) };
     case "doc":
       return { type: "DOCUMENT_OPEN", documentId: o.documentId, ...(o.page ? { page: o.page } : {}) };
+    case "lens":
+      // Zónu (`aim_zone`) doplní klient pred odoslaním; tu ostane prázdna.
+      return lensBridgeMessage(o.mode, o.wire, new Map(), o.rev);
   }
 }
 

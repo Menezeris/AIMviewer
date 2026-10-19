@@ -484,6 +484,49 @@
       "notes": "D-083: set_view_mode mode=3d reset=true."
     },
     {
+      "id": "style-system-branch",
+      "category": "view",
+      "question": "Zafarbi celú prívodnú vetvu 1NP na červeno.",
+      "expect": { "tools_called": ["style_in_3d"], "actions_match": ["lens:(add|replace)~r=[A-Za-z0-9_-]+:[A-Za-z0-9_-]+"] },
+      "verified": false,
+      "notes": "D-096 (#68): style_in_3d system=Prívod-1NP, nie id systému v ids_or_refs; lens pravidlo group IfcSystem. V DB 8 členov (stav 2026-10-19)."
+    },
+    {
+      "id": "style-groups-fittings",
+      "category": "view",
+      "question": "Označ všetky tvarovky na 1NP, prívod červeno, odvod modro.",
+      "expect": {
+        "tools_called": ["style_in_3d"],
+        "actions_match": ["lens:(add|replace)~r=[A-Za-z0-9_-]+:[A-Za-z0-9_-]+"]
+      },
+      "verified": false,
+      "notes": "D-096 (#68): jeden call s ifc_type=IfcDuctFitting + storey=1NP + groups [system Prívod, system Odvod]; počty na pravidlo z viewera (Lens)."
+    },
+    {
+      "id": "style-zone-isolate",
+      "category": "view",
+      "question": "Izoluj miestnosti zo zóny Nájomné priestory.",
+      "expect": { "tools_called": ["style_in_3d"], "actions_match": ["lens:(add|replace)~r=[A-Za-z0-9_-]+:[A-Za-z0-9_-]+"] },
+      "verified": false,
+      "notes": "D-096 (#68): isolate + zone=Nájomné priestory + ifc_type=IfcSpace (len miestnosti, výslovná žiadosť); zóna má 4 vnorené zóny a 32 miestností (stav 2026-10-19)."
+    },
+    {
+      "id": "style-not-in-system",
+      "category": "view",
+      "question": "Ukáž IfcDuctSegment na 2NP, ktoré nepatria do žiadneho systému.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-096 (#68): ifc_type=IfcDuctSegment + storey=2NP + not_in_system=true (colorize alebo isolate)."
+    },
+    {
+      "id": "style-color-by-system",
+      "category": "view",
+      "question": "Zafarbi všetky systémy podľa typu, každý inou farbou.",
+      "expect": { "tools_called": ["style_in_3d"], "actions_match": ["lens:(add|replace)~r=[A-Za-z0-9_-]+:[A-Za-z0-9_-]+"] },
+      "verified": false,
+      "notes": "D-096 (#68): color_by=system (autoColor group) alebo groups podľa názvu systému (Prívod/Odvod/Nasávanie/Výfuk); bez pevnej palety, legenda z viewera."
+    },
+    {
       "id": "relations-zone-members",
       "category": "relations",
       "question": "Ktoré miestnosti patria do zóny Technické priestory?",

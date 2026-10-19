@@ -10,7 +10,8 @@
 export const LIVE_QUERY_EVENT = "query";
 export const LIVE_REPLY_EVENT = "reply";
 
-export const VIEWER_QUERIES = ["bounds", "view_state"] as const;
+/** `lens_state` = počty AIM chat lens po `style_in_3d` (D-096). */
+export const VIEWER_QUERIES = ["bounds", "view_state", "lens_state"] as const;
 export type ViewerQuery = (typeof VIEWER_QUERIES)[number];
 
 /** Rovnaké limity ako most forku (`apps/viewer/src/aim/view-protocol.ts`). */
@@ -21,6 +22,8 @@ export interface LiveQueryPayload {
   id: string;
   query: ViewerQuery;
   guids?: string[];
+  /** Verzia lens pri `lens_state` - viewer počká na jej vyhodnotenie. */
+  rev?: string;
 }
 
 export type LiveReplyPayload =
@@ -37,7 +40,8 @@ export function isLiveQuery(p: unknown): p is LiveQueryPayload {
     q.id.length <= MAX_ID &&
     (VIEWER_QUERIES as readonly unknown[]).includes(q.query) &&
     (q.guids === undefined ||
-      (Array.isArray(q.guids) && q.guids.length <= MAX_QUERY_GUIDS && q.guids.every(isStr)))
+      (Array.isArray(q.guids) && q.guids.length <= MAX_QUERY_GUIDS && q.guids.every(isStr))) &&
+    (q.rev === undefined || (isStr(q.rev) && q.rev.length <= MAX_ID))
   );
 }
 

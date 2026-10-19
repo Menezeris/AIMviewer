@@ -13,6 +13,7 @@ import {
   VIEWER_QUERY_TOOL_NAMES,
   execViewerQueryTool,
 } from "@/lib/live/viewer-query-tools";
+import { lensCountsText } from "@/lib/live/lens-counts";
 import { mcpInstructions } from "@/lib/llm/system-prompt";
 import { AskToolRuntime, TOOL_DEFINITIONS } from "@/lib/llm/tools";
 import {
@@ -103,6 +104,8 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<Mc
           ? `Odoslané do živého viewera. Záložný odkaz:\n${links}`
           : `Odoslanie do živého viewera zlyhalo (HTTP ${sent.status}). Odkaz na otvorenie:\n${links}`,
       );
+      // Počty AIM chat lens priamo z viewera (D-096): tie isté, čo používateľ vidí v paneli Lens.
+      if (sent.ok && runtime.lensRev) text.push(await lensCountsText(channel, runtime.lensRev));
       // D-092: rez potvrdí poloha roviny z viewera, nie len odoslanie príkazu.
       if (sent.ok && name === "set_section" && args.action === "set") text.push(await readBackSection(channel));
     }
