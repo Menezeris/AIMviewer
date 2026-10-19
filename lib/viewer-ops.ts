@@ -11,9 +11,12 @@
  * Pohľad (D-083): `section:<y|x|z>[~h=<m>][~p=<pct>][~f=1]:<storeyGuid>`,
  * rez cez prvky (D-085) `section:<auto|y|x|z>~fit=<along|across|center>:<guid.guid...>`
  * a na súradnici IFC sveta `section:<y|x|z>~c=<m>::`,
- * `section_clear::`, `camera:<preset>[~proj=o|p]:<guid.guid...>`,
+ * `section_clear::`, `camera:<preset>[~proj=o|p]:<guid.guid...>` (fit a relatívne kroky
+ * `~fit=..~z=..~oh=..~ov=..~px=..~py=..` a `camera_sel:<arg>:<selektor>`, D-094/D-098, `lib/viewer-camera.ts`),
  * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>:<documentId>`.
  */
+
+import { cameraMoveArgs, parseCameraMove, type CameraMove } from "./viewer-camera";
 
 export interface OpsSelector {
   types?: string[];
@@ -29,7 +32,8 @@ export type SectionFit = (typeof SECTION_FITS)[number];
 export const MAX_SECTION_TARGETS = 100;
 /** Rozsah súradnice roviny v IFC svete (m) - rovnaký ako most forku. */
 export const SECTION_COORDINATE_LIMIT = 1e7;
-export const CAMERA_PRESETS = ["top", "bottom", "front", "back", "left", "right", "iso", "fit_all"] as const;
+/** keep = zachovať smer, section = kolmo na aktívny rez (D-094). */
+export const CAMERA_PRESETS = ["top", "bottom", "front", "back", "left", "right", "iso", "fit_all", "keep", "section"] as const;
 export type CameraPreset = (typeof CAMERA_PRESETS)[number];
 export const VIEW_MODES = ["3d", "2d", "split"] as const;
 export type ViewMode = (typeof VIEW_MODES)[number];
@@ -59,7 +63,7 @@ export type ViewerOp =
       flipped?: boolean;
     }
   | { op: "section_clear" }
-  | { op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[] }
+  | ({ op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[]; selector?: OpsSelector } & CameraMove)
   | { op: "view"; mode: ViewMode; storeyGuid?: string }
   | { op: "doc"; documentId: string; page?: number };
 
@@ -150,11 +154,19 @@ export function parseOps(raw: string): ViewerOp[] {
         ...(position !== undefined && !storeyGuid ? { position } : {}),
         ...(kv.f === "1" ? { flipped: true } : {}),
       });
-    } else if (op === "camera") {
+    } else if (op === "camera" || op === "camera_sel") {
       const [preset, kv] = parseArg(arg);
       if (!(CAMERA_PRESETS as readonly string[]).includes(preset)) continue;
+      if (op === "camera_sel" && !sel) continue;
       const projection = kv.proj === "o" ? "orthographic" : kv.proj === "p" ? "perspective" : undefined;
-      out.push({ op, preset: preset as CameraPreset, guids, ...(projection ? { projection } : {}) });
+      out.push({
+        op: "camera",
+        preset: preset as CameraPreset,
+        guids: sel ? [] : guids,
+        ...(sel ? { selector: sel } : {}),
+        ...(projection ? { projection } : {}),
+        ...parseCameraMove(kv),
+      });
     } else if (op === "view") {
       if (!(VIEW_MODES as readonly string[]).includes(arg)) continue;
       out.push({ op, mode: arg as ViewMode, ...(guids[0] ? { storeyGuid: guids[0] } : {}) });
@@ -206,6 +218,9 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
         preset: o.preset,
         ...(o.projection ? { projection: o.projection } : {}),
         ...(o.guids.length > 0 ? { guids: o.guids } : {}),
+        ...(o.selector ? { selector: o.selector } : {}),
+        // Relatívne kroky sem nepatria: host z nich spraví pózu (applyCameraOp v ifc-viewer.tsx).
+        ...(o.fit ? { fit: o.fit } : {}),
       };
     case "view":
       return { type: "SET_VIEW_MODE", mode: o.mode, ...(o.storeyGuid ? { storeyGuid: o.storeyGuid } : {}) };
@@ -242,9 +257,22 @@ export function sectionOp(p: {
 
 export const SECTION_CLEAR_OP = "section_clear::";
 
-export function cameraOp(preset: CameraPreset, guids: string[] = [], projection?: Projection): string {
-  const arg = projection ? `${preset}~proj=${projection === "orthographic" ? "o" : "p"}` : preset;
-  return `camera:${arg}:${guids.join(".")}`;
+function cameraArg(preset: CameraPreset, projection?: Projection, move: CameraMove = {}): string {
+  const proj = projection ? [`proj=${projection === "orthographic" ? "o" : "p"}`] : [];
+  return [preset, ...proj, ...cameraMoveArgs(move)].join("~");
+}
+
+export function cameraOp(preset: CameraPreset, guids: string[] = [], projection?: Projection, move?: CameraMove): string {
+  return `camera:${cameraArg(preset, projection, move)}:${guids.join(".")}`;
+}
+
+/** Kamera na množinu prvkov podľa selektora (D-094) - rozloží ju viewer ako `*_sel`. */
+export function cameraSelOp(preset: CameraPreset, selector: OpsSelector, projection?: Projection, move?: CameraMove): string {
+  const fields = [
+    ...(selector.types?.length ? [`t=${selector.types.join(".")}`] : []),
+    ...(selector.model ? [`m=${selector.model}`] : []),
+  ];
+  return `camera_sel:${cameraArg(preset, projection, move)}:${fields.join("~")}`;
 }
 
 export function viewModeOp(mode: ViewMode, storeyGuid?: string): string {

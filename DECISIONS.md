@@ -3921,9 +3921,90 @@ s rýchlym CI. Most sa rozširuje o dáta na zobrazenie a o správy "otvor akciu
 
 ---
 
+### D-094 - set_camera: relatívny pohyb, fit na viditeľné, cieľ filtrom, pohľad kolmo na rez
+
+**Dátum:** 2026-10-19 · **Stav:** implementované (revízia podľa D-098), fork PR Menezeris/ifc-lite#60 · **Súvisí:** D-066, D-083, D-085, D-087, D-090, D-098 · **Issue:** #65
+
+**Kontext:** požiadavka z konektora (#65): "oddiaľ pôdorys o 15 %", "VZT v perspektíve na celú
+obrazovku", "pozri sa na rez schodiskom kolmo". `set_camera` vedel len presety a framing na GUIDy:
+`fit_all` zmení smer pohľadu, `iso` nezafituje na izolované prvky, cieľ nejde zadať filtrom a pohľad
+kolmo na rez chýba. Originál `@ifc-lite/mcp` 0.27.0 má z kamery len `viewer_fly_to` (zarámuj
+entity), relatívny pohyb ani rez nemá, preto podľa D-087 bod 3 vlastné, v štýle originálu.
+
+**Rozhodnutie:**
+1. **Rozšírenie `set_camera`, nie nový tool** (jeden tool na kameru, model nevolí medzi dvoma).
+   Staré volania platia bez zmeny.
+2. `preset` je voliteľný; nové hodnoty `keep` (zachovať smer, default) a `section` (kolmo na
+   aktívny rez, zo strany, z ktorej je rez viditeľný).
+3. `fit`: `visible` (viditeľné, teda aj izolované prvky, `fitAll` forku) alebo `selection` (výber
+   vo vieweri, `frameSelection`). S cieľom sa rámuje naň, `fit` sa s cieľom nekombinuje. Bez `fit`
+   a bez cieľa ostáva doterajšie správanie presetu.
+4. Cieľ aj filtrom ako `style_in_3d`: `ifc_type`, `ifc_types`, `domain`, `model`. Selektor
+   rozloží viewer z entity tables (op `camera_sel`, rovnaký tvar `t=..~m=..` ako `*_sel`, D-066).
+5. Relatívne kroky: `zoom_percent` (-90 až 500; kladné priblíži, vzdialenosť / (1 + p/100),
+   záporné oddiali, vzdialenosť * (1 + |p|/100); pri ortografickej projekcii mierka rovnako),
+   `orbit_h_deg` (-180 až 180, kladné = kamera obehne cieľ doľava), `orbit_v_deg` (-89 až 89,
+   kladné = viac zhora), `pan_x_percent`/`pan_y_percent` (-100 až 100 % šírky/výšky pohľadu,
+   kladné = obsah sa posunie doľava/dole, teda pohľad doprava/hore).
+6. **Relatívny krok je samostatné volanie** (bez presetu, fit, cieľa a projection): počíta sa
+   z aktuálnej pózy a preset či fit ju menia animáciou. Poradie vo vieweri pri jednom volaní:
+   projekcia, smer, po animácii smeru rámovanie; relatívne kroky orbit, zoom, posun. Tool vráti,
+   čo poslal; skutočnú polohu kamery vráti `get_viewer_state` (D-085), model ju má overiť.
+7. **Wire formát** (D-066): `camera:<preset>[~proj=o|p][~fit=v|s][~z=..][~oh=..][~ov=..]
+   [~px=..][~py=..]:<guid.guid..>` a `camera_sel:<to isté>:t=..~m=..`. Bridge `SET_CAMERA` dostane
+   `fit` a `selector`. Relatívne kroky do mosta nejdú: host (`components/ifc-viewer.tsx`) sa
+   opýta `QUERY view_state`, čistou funkciou `relativeViewpoint` (`lib/viewer-camera.ts`) vypočíta
+   novú pózu v IFC svete a pošle `SET_CAMERA {preset: keep, viewpoint}` (D-098).
+8. **Fork** (`apps/viewer/src/aim/viewCamera.ts`, D-087 bod 2, D-098): len existujúce funkcie.
+   `section` = upstream Set view (`presetViewForAxis` / `customPlaneViewpoint`), `fit` =
+   `fitAll` / `frameSelection`, cieľ = `flyTo`, `viewpoint` = `applyViewpoint`. `view_state`
+   vracia aj `up`, `fov_deg`, `ortho_size`, `aspect`. Oprava chyby z #65 (preset `front`/`back`
+   s cieľom nepohol kamerou): rámovanie hneď po presete prepísalo koncový bod jeho animácie, teraz
+   ide až po nej. Poradie zlúčenia: fork, potom AIMviewer (starý fork nové presety odmietne).
+   Známe obmedzenie upstream ViewCube: rovnaký pevný preset dvakrát po sebe otočí pohľad o 90°.
+
+**Zavrhnuté:**
+- *Nový tool `camera_control` popri `set_camera`:* dva tools na to isté, model by volil zle.
+- *Absolútna poloha kamery (x, y, z):* model nepozná mierku scény; relatívne kroky a fit stačia.
+
+---
+
+### D-098 - Najprv to, čo viewer a originál už majú; fork len sprístupní
+
+**Dátum:** 2026-10-19 · **Stav:** prijaté (Samuel) · **Súvisí:** D-087, D-091, D-094, D-090 · **Issue:** #65
+
+**Kontext:** prvá verzia D-094 navrhla do forku nové výpočty kamery (relatívny zoom, orbit, posun,
+pohľad na rez v moste). Pri čítaní kódu forku sa ukázalo, že takmer všetko už existuje: `fitAll`
+rámuje viditeľné prvky bez zmeny smeru (#5884), tlačidlo Set view sa pozerá kolmo na rez (#7545),
+`applyViewpoint`/`getViewpoint` nastaví a prečíta presnú pózu, `frameSelection` a `flyTo` rámujú.
+Nové funkcie vo forku zväčšujú balík, rozchádzajú sa s originálom pri synchronizácii a potrebujú
+vlastné testy a dôkazy.
+
+**Rozhodnutie:**
+1. **Prednostne využívame to, čo fork a originál už majú, a nevymýšľame nové funkcie.** Pred
+   návrhom sa prehľadá store forku (`CameraCallbacks`, slices), SDK `@ifc-lite/sdk`,
+   `@ifc-lite/mcp`, embed protokol a akcie UI originálu (tlačidlá, ViewCube).
+2. **Fork len tenko sprístupní existujúcu funkciu cez most** (adaptér v `apps/viewer/src/aim/`).
+   Výpočty, ktoré vie urobiť host z dát, ktoré fork vráti (napr. relatívna kamera z
+   `view_state`), robí AIMviewer.
+3. Pravidlo je v `AGENTS.md` (3D Viewer), v skille `mcp-poziadavka` (krok 2) a vo forku v
+   `docs/FORK_MAINTENANCE.md` (Conventions) a skille `aim-feature` (krok 1).
+
+**Zavrhnuté:**
+- *Výpočty kamery v moste forku:* duplikovali by funkcie viewera, zväčšili vstupný balík a pri
+  synchronizácii s originálom by sa rozchádzali.
+
+**Otvorené:** rýchle CI forku pre PR, ktoré menia len `apps/viewer/src/aim/` (preskočenie
+ťažkých vetiev `test.yml` a vlastný `aim-fast.yml`), čaká na Samuelovo potvrdenie mimo textu
+issue (zmena workflowov).
+
+---
+
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-098 (najprv existujúce funkcie, fork len sprístupní):** pred návrhom sa prehľadá store, SDK, `@ifc-lite/mcp` a embed protokol; fork len tenký most, výpočty v AIMvieweri. Pravidlo v `AGENTS.md`, skilloch `mcp-poziadavka` a `aim-feature`, `FORK_MAINTENANCE.md` (#65).
+- **2026-10-19** - **D-094 (set_camera: relatívny pohyb, fit, filter, kolmo na rez):** `set_camera` dostal `preset` keep/section, `fit` visible/selection, cieľ filtrom (`ifc_type(s)`, `domain`, `model`, op `camera_sel`), `zoom_percent`, `orbit_h_deg`/`orbit_v_deg`, `pan_x_percent`/`pan_y_percent` (samostatné volanie, pózu počíta host z `view_state`); fork `SET_CAMERA` cez existujúce funkcie a oprava front/back s cieľom (ifc-lite#60, #65).
 - **2026-10-19** - **D-090 dodatok (issue len na pokyn):** Claude zápis len ponúkne, `request_tool`/`report_feedback` volá až na výslovný pokyn Samuela.
 - **2026-10-19** - **D-090 dodatok (strop a fronta):** najviac 3 súbežné sessions (`FEEDBACK_MAX_SESSIONS`), ďalšie issues so štítkom `fronta`, session po PR uvoľní miesto a pošle notifikáciu, ďalšiu spustí tool `start_queued_session`; `request_tool.start_session=false` pre dávky.
 - **2026-10-18** - **D-091 (kde žije AIM funkcia):** predvolene AIMviewer; do forku len zobrazenie, ktoré musí byť vnútri panelov viewera (odznaky, záznamy, lokálne prepínače); akcie meniace dáta robí host, tlačidlo vo forku ich len otvorí.

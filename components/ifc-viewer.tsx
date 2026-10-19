@@ -12,7 +12,8 @@ import type { DerivationsLayerWire } from "@/lib/derivations";
 import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { opToBridgeMessage, parseOps } from "@/lib/viewer-ops";
-import type { LiveReplyPayload } from "@/lib/live/protocol";
+import type { LiveQueryPayload, LiveReplyPayload } from "@/lib/live/protocol";
+import { hasRelativeStep, relativeViewpoint, type CameraMove, type ViewerCamera } from "@/lib/viewer-camera";
 import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
 
 /**
@@ -206,6 +207,9 @@ export function IFCViewer({
   const pendingRef = useRef<Record<string, unknown>[]>([]);
   // Otázky D-085 čakajúce na QUERY_RESULT z iframu, podľa id.
   const queriesRef = useRef(new Map<string, (r: LiveReplyPayload) => void>());
+  // Ops AI docku idú po sebe; relatívna kamera v nich čaká na view_state (D-098).
+  const opsChainRef = useRef<Promise<void>>(Promise.resolve());
+  const cameraQueryRef = useRef(0);
   function send(msg: Record<string, unknown>) {
     if (loadedRef.current) post(msg);
     else pendingRef.current.push(msg);
@@ -249,7 +253,53 @@ export function IFCViewer({
    * bridge správa; formát a preklad žijú v `lib/viewer-ops.ts`.
    */
   function applyOps(raw: string) {
-    for (const o of parseOps(raw)) post(opToBridgeMessage(o));
+    const list = parseOps(raw);
+    // Relatívny krok kamery čaká na view_state; ops za ním idú až potom, aby
+    // poradie ostalo také, ako ho poslal tool (D-098).
+    opsChainRef.current = opsChainRef.current.then(async () => {
+      for (const o of list) {
+        if (o.op === "camera" && hasRelativeStep(o)) await applyRelativeCamera(o);
+        else post(opToBridgeMessage(o));
+      }
+    }).catch((err: unknown) => console.warn("[ifc-viewer] ops", err));
+  }
+
+  /**
+   * Otázka spätného kanála (D-085) forku: QUERY -> QUERY_RESULT s tým istým id.
+   * Pýta sa ňou živý kanál aj host sám (relatívna kamera).
+   */
+  function askViewer(q: LiveQueryPayload): Promise<LiveReplyPayload> {
+    return new Promise<LiveReplyPayload>((resolve) => {
+      if (!loadedRef.current) {
+        resolve({ id: q.id, ok: false, error: "3D viewer ešte načítava model." });
+        return;
+      }
+      const pending = queriesRef.current;
+      const timer = setTimeout(() => {
+        pending.delete(q.id);
+        resolve({ id: q.id, ok: false, error: "3D viewer neodpovedal." });
+      }, VIEWER_QUERY_TIMEOUT_MS);
+      pending.set(q.id, (r) => {
+        clearTimeout(timer);
+        resolve(r);
+      });
+      post({ type: "QUERY", id: q.id, query: q.query, ...(q.guids ? { guids: q.guids } : {}) });
+    });
+  }
+
+  /**
+   * Relatívny zoom/orbit/posun (D-098): aktuálna póza z view_state, nová
+   * póza čistou funkciou `relativeViewpoint`, do forku ako `SET_CAMERA
+   * {viewpoint}` (fork ju len prenesie do kamery).
+   */
+  async function applyRelativeCamera(o: CameraMove) {
+    const r = await askViewer({ id: `camera-${++cameraQueryRef.current}`, query: "view_state" });
+    const camera = r.ok ? (r.result as { camera?: ViewerCamera | null } | undefined)?.camera : null;
+    if (!camera) {
+      console.warn("[ifc-viewer] relatívna kamera: view_state bez kamery", r.ok ? "" : r.error);
+      return;
+    }
+    post({ type: "SET_CAMERA", preset: "keep", viewpoint: relativeViewpoint(camera, o) });
   }
 
   // ── Príjem správ z iframu (3D → DB) ─────────────────────────────────────
@@ -402,24 +452,7 @@ export function IFCViewer({
     window.addEventListener("message", onMessage);
     // Spätný kanál (D-085): otázku pošli forku až s naparsovanými modelmi.
     const pendingQueries = queriesRef.current;
-    const unregisterQueries = setViewerQueryHandler(
-      (q) =>
-        new Promise<LiveReplyPayload>((resolve) => {
-          if (!loadedRef.current) {
-            resolve({ id: q.id, ok: false, error: "3D viewer ešte načítava model." });
-            return;
-          }
-          const timer = setTimeout(() => {
-            pendingQueries.delete(q.id);
-            resolve({ id: q.id, ok: false, error: "3D viewer neodpovedal." });
-          }, VIEWER_QUERY_TIMEOUT_MS);
-          pendingQueries.set(q.id, (r) => {
-            clearTimeout(timer);
-            resolve(r);
-          });
-          post({ type: "QUERY", id: q.id, query: q.query, ...(q.guids ? { guids: q.guids } : {}) });
-        }),
-    );
+    const unregisterQueries = setViewerQueryHandler(askViewer);
     return () => {
       window.removeEventListener("message", onMessage);
       unregisterQueries();

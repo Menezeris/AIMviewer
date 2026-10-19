@@ -40,7 +40,9 @@ sú v `AGENTS.md`, sekcia "Súbežné session"; tu je postup:
 ## 2. Over, či to naozaj chýba (najčastejší výsledok)
 Pred kódom si prečítaj `AGENTS.md`, prompt `lib/llm/system-prompt.ts` a zoznam tools
 (`lib/llm/tools.ts`, `lib/live/viewer-query-tools.ts`, `lib/engine/tool-defs.ts`,
-`lib/feedback/tools.ts`). Potom rozhodni:
+`lib/feedback/tools.ts`). Pri požiadavke na viewer over aj existujúce funkcie forku a originálu
+(D-098): store a `CameraCallbacks`, SDK, `@ifc-lite/mcp`, embed protokol, akcie UI (tlačidlá,
+ViewCube). Ak funkcia existuje, stačí ju sprístupniť cez most, nič nové nevymýšľaj. Potom rozhodni:
 - **Ide to existujúcimi tools** (zlý postup modelu) -> oprava je v `system-prompt.ts` alebo v
   opise toolu, nie nový tool. Zmena LLM vrstvy = evaly (D-057), pozri krok 4.
 - **Chýbajú dáta** (model ich nenesie, ETL ich neberie) -> nový tool to nevyrieši. Napíš do
