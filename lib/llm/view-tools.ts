@@ -10,7 +10,7 @@ import type { AskAction } from "./actions";
 import type { ToolDefinition } from "./provider";
 import { planCamera } from "./camera-plan";
 import { DOMAIN_IFC_TYPES } from "./ifc-selector";
-import { ViewInputError, planSection, planViewMode, type ViewPlan } from "./view-plan";
+import { ViewInputError, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
 
 /**
  * UI tools pohľadu (D-083 fáza 1): rez, kamera, režim 3D/2D/Split. Vydávajú
@@ -125,14 +125,14 @@ export const VIEW_TOOL_NAMES = new Set(VIEW_TOOL_DEFINITIONS.map((t) => t.name))
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Podlažie AIM (object_ref, názov s normalizáciou, alebo UUID) -> label + aktívny GUID. */
-async function resolveFloor(raw: unknown): Promise<{ label: string; guid: string } | null> {
+/** Podlažie AIM (object_ref, názov s normalizáciou, alebo UUID) -> label, aktívny GUID, elevácia. */
+async function resolveFloor(raw: unknown): Promise<SectionFloor | null> {
   const want = typeof raw === "string" ? raw.trim() : "";
   if (!want) return null;
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase.from("v_floors").select("id, object_ref, name");
+  const { data, error } = await supabase.from("v_floors").select("id, object_ref, name, elevation");
   if (error) throw new Error(error.message);
-  const floors = (data ?? []) as { id: string; object_ref: string | null; name: string | null }[];
+  const floors = (data ?? []) as { id: string; object_ref: string | null; name: string | null; elevation: number | null }[];
   const norm = normalizeStoreyLabel(want);
   const floor = floors.find(
     (f) =>
@@ -154,7 +154,7 @@ async function resolveFloor(raw: unknown): Promise<{ label: string; guid: string
   if (ge) throw new Error(ge.message);
   const guid = (g?.[0] as { ifc_guid?: string } | undefined)?.ifc_guid;
   if (!guid) throw new ViewInputError(`Podlažie ${floor.object_ref ?? floor.name} nemá IFC GUID - nie je v 3D modeli.`);
-  return { label: floor.object_ref ?? floor.name ?? want, guid };
+  return { label: floor.object_ref ?? floor.name ?? want, guid, elevation: floor.elevation };
 }
 
 export async function resolveTargets(input: Record<string, unknown>): Promise<string[]> {

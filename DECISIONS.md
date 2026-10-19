@@ -3919,6 +3919,41 @@ s rýchlym CI. Most sa rozširuje o dáta na zobrazenie a o správy "otvor akciu
 - *Všetko v hostovi, aj odznaky a záznamy:* host do panelov v iframe kresliť nevie; overlay nad
   iframe by sa rozišiel s rozložením viewera.
 
+### D-092 - set_section vracia polohu roviny z viewera; opravy rezu vo forku
+
+**Dátum:** 2026-10-19 · **Stav:** čiastočne (host hotový, fork čaká) · **Súvisí:** D-083, D-085, D-087, D-090, D-091 · **Issue:** #63
+
+**Kontext:** pripomienka z konektora (#63): vodorovný rez nad 3NP s `offset_m=1` dal rovinu na
+13,55 m a s `offset_m=-2` na 12,10 m, strecha a fasáda ostali viditeľné, widget rezu sa nedá
+skryť a `position_percent` 50 % padlo na asi 15 % budovy. Podlažie 3NP má v DB `elevation = 9200`
+(mm), správne výšky sú teda 10,2 m a 7,2 m: chyba nie je len v mierke offsetu (sklon 0,486), ale
+aj v základnej výške. AIMviewer posiela viewer op `section:y~h=<offset>:<GUID podlažia>`;
+výšku, orezávanie, widget aj percentá počíta fork (D-083: "jedna pravda o súradniciach" je viewer).
+`set_section` pritom vracal len to, čo poslal, takže Claude potvrdil zlý rez.
+
+**Rozhodnutie:**
+1. **Potvrdenie z viewera (host, hotové):** MCP konektor po odvysielaní `set_section action=set`
+   prečíta tým istým živým kanálom stav viewera (`view_state`, D-085, timeout 4 s) a do odpovede
+   pridá `viewer_section` = rez, ako ho viewer naozaj má. Pri reze nad podlažím výsledok nesie
+   `floor_elevation_model_units` (IfcBuildingStorey.Elevation z AIM DB, jednotky modelu), aby
+   Claude porovnal polohu roviny s eleváciou + offsetom a pri nesúlade rez nepotvrdil.
+   Výpočet výšky ostáva vo vieweri, host ho len kontroluje.
+2. **Opravy rezu patria do forku** (D-087/D-091, je to správanie scény): (a) rovina oreže všetky
+   federované modely a všetky typy prvkov; (b) výška = elevácia podlažia + offset v metroch
+   IFC sveta (oprava mierky aj základnej výšky); (c) skrytie widgetu rezu pri aktívnom reze
+   (nový parameter op aj toolu); (d) percento voči budove alebo zvolenému modelu, nie voči celej
+   federovanej obálke. Fork nebol v session pripojený, preto sa robí ako samostatná zmena forku
+   a po nej doplnenie parametrov toolu v hostovi.
+
+**Otvorené (Samuel):** pripojenie forku; či do opravy forku posielať namiesto `storeyGuid +
+offset` absolútnu výšku `coordinate_m` z DB (obchádzka, mení princíp D-083); voči čomu má byť
+predvolené percento rezu.
+
+**Zavrhnuté:**
+- *Vypočítať očakávanú výšku v metroch v hostovi a hlásiť nesúlad automaticky:* `floors.elevation`
+  je v jednotkách modelu (ETL ho neprevádza), host by musel hádať jednotky; porovnanie robí Claude
+  s oboma číslami v ruke.
+
 ---
 
 ### D-094 - set_camera: relatívny pohyb, fit na viditeľné, cieľ filtrom, pohľad kolmo na rez
@@ -4007,6 +4042,7 @@ merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo fo
 
 - **2026-10-19** - **D-098 (najprv existujúce funkcie, fork len sprístupní):** pred návrhom sa prehľadá store, SDK, `@ifc-lite/mcp` a embed protokol; fork len tenký most, výpočty v AIMvieweri. Pravidlo v `AGENTS.md`, skilloch `mcp-poziadavka` a `aim-feature`, `FORK_MAINTENANCE.md`; rýchle CI forku pre PR len v `aim/` (`aim-fast.yml`) (#65).
 - **2026-10-19** - **D-094 (set_camera: relatívny pohyb, fit, filter, kolmo na rez):** `set_camera` dostal `preset` keep/section, `fit` visible/selection, cieľ filtrom (`ifc_type(s)`, `domain`, `model`, op `camera_sel`), `zoom_percent`, `orbit_h_deg`/`orbit_v_deg`, `pan_x_percent`/`pan_y_percent` (samostatné volanie, pózu počíta host z `view_state`); fork `SET_CAMERA` cez existujúce funkcie a oprava front/back s cieľom (ifc-lite#60, #65).
+- **2026-10-19** - **D-092 (set_section vracia polohu roviny z viewera):** MCP po odoslaní rezu prečíta `view_state` a vráti `viewer_section`, rez nad podlažím nesie eleváciu z DB na kontrolu; opravy orezávania, výšky, widgetu a percent sú vo forku (#63).
 - **2026-10-19** - **D-090 dodatok (issue len na pokyn):** Claude zápis len ponúkne, `request_tool`/`report_feedback` volá až na výslovný pokyn Samuela.
 - **2026-10-19** - **D-090 dodatok (strop a fronta):** najviac 3 súbežné sessions (`FEEDBACK_MAX_SESSIONS`), ďalšie issues so štítkom `fronta`, session po PR uvoľní miesto a pošle notifikáciu, ďalšiu spustí tool `start_queued_session`; `request_tool.start_session=false` pre dávky.
 - **2026-10-18** - **D-091 (kde žije AIM funkcia):** predvolene AIMviewer; do forku len zobrazenie, ktoré musí byť vnútri panelov viewera (odznaky, záznamy, lokálne prepínače); akcie meniace dáta robí host, tlačidlo vo forku ich len otvorí.

@@ -32,9 +32,16 @@ function num(raw: unknown): number | undefined {
   return typeof raw === "number" && Number.isFinite(raw) ? raw : undefined;
 }
 
+/** Podlažie pre rez: label, GUID a IfcBuildingStorey.Elevation z AIM DB (jednotky modelu). */
+export interface SectionFloor {
+  label: string;
+  guid: string;
+  elevation?: number | null;
+}
+
 export function planSection(
   input: Record<string, unknown>,
-  floor: { label: string; guid: string } | null,
+  floor: SectionFloor | null,
   targetGuids: string[] = [],
 ): ViewPlan {
   const action = String(input.action ?? "").trim();
@@ -95,7 +102,16 @@ export function planSection(
         offsetM >= 0
           ? `3D: rez ${offsetM} m nad ${floor.label}`
           : `3D: rez ${-offsetM} m pod úrovňou ${floor.label}`,
-      result: { ok: true, section: { floor: floor.label, offset_m: offsetM, flipped } },
+      result: {
+        ok: true,
+        section: {
+          floor: floor.label,
+          offset_m: offsetM,
+          flipped,
+          // D-092: viewer počíta výšku sám; elevácia z AIM DB slúži na kontrolu jeho polohy roviny.
+          ...(floor.elevation != null ? { floor_elevation_model_units: floor.elevation } : {}),
+        },
+      },
     };
   }
   const position = num(input.position_percent);

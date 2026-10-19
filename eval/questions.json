@@ -444,6 +444,14 @@
       "notes": "D-094 (#65): set_section cez IfcStairFlight + set_camera(preset=section, fit=visible)."
     },
     {
+      "id": "view-section-3np",
+      "category": "view",
+      "question": "Sprav vodorovný rez 1 m nad podlahou 3NP.",
+      "expect": { "tools_called": ["set_section"], "actions_match": ["section:y~h=1:[0-9A-Za-z_$]{22}"] },
+      "verified": false,
+      "notes": "D-092 / #63: vo vieweri má rovina byť na elevácii 3NP (9200 mm) + 1 m = 10,2 m; v MCP to potvrdí viewer_section."
+    },
+    {
       "id": "view-floor-2d",
       "category": "view",
       "question": "Prepni viewer na 2D pôdorys 2. NP.",
