@@ -609,6 +609,22 @@
       "expect": { "tools_called": ["bcf_topic_create"] },
       "verified": false,
       "notes": "D-099 (issue #78): téma z výberu živého viewera, priradená človeku = bez session. Len MCP, overenie = scenár cez konektor s otvoreným viewerom."
+    },
+    {
+      "id": "materials-insulation-layers",
+      "category": "ifc_engine",
+      "question": "Ukáž všetky vrstvy izolácie v modeli ASR.",
+      "expect": { "tools_called": ["ifc_material_layers"] },
+      "verified": false,
+      "notes": "D-108 (issue #69): ifc_material_layers(material=izol) a show_in_3d z jeho show_in_3d; nie hádanie podľa názvu skladby. Počet over voči súboru ASR."
+    },
+    {
+      "id": "materials-assembly-layers",
+      "category": "ifc_engine",
+      "question": "Aké vrstvy má skladba FS01.10?",
+      "expect": { "tools_called": ["ifc_get"] },
+      "verified": false,
+      "notes": "D-108 (issue #69): ifc_get prvku alebo typu FS01.10 vráti materials.layers s hrúbkami; odpoveď vymenuje vrstvy v poradí."
     }
   ]
 }
