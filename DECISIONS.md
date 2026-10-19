@@ -3999,3 +3999,57 @@ s rýchlym CI. Most sa rozširuje o dáta na zobrazenie a o správy "otvor akciu
 - **2026-06-28** — Zjednotenie vetiev do `main`; D-045 (kandidát: pasportizácia + dynamika).
 - **2026-06-22** — D-044 (IFC 3D viewer — IFClite, geometria ephemerálna cez GUID); sprint DV (D-042/D-043).
 - **2026-06-20** — D-036 (CDE naming), D-040 (`IfcSpace.LongName`), D-041 (E4 auto-linking), D-042 (plánovaná prehliadačka výkresov).
+
+---
+
+### D-095 - `ifc_search`: full-text priamo v IFC súbore, zdroj pri každom výsledku
+**Status:** rozhodnuté (2026-10-19), implementované na vetve `claude/pensive-curie-831whw` (issue #66).
+**Rozširuje D-059, D-084, D-087.**
+
+**Kontext:** Claude cez konektor nenašiel "karuselové dvere" ani "prenajímateľné priestory".
+V ASR má IfcDoor `DD01.08.0001` atribút Description "Karuselové dvere" a IfcZone "Nájomné
+priestory" LongName "Nájomné priestory (prenajímateľné)". Graf AIM tieto atribúty nenesie
+(`objects` nemá Description, ObjectType, Tag ani LongName zón), takže `search_everything`
+(D-059) ich nájsť nemôže, a `ifc_query` vie len triedu a presné podmienky psetov. Navyše
+nebolo jasné, ktoré hľadanie ide do IFC a ktoré do DB. `@ifc-lite/mcp` 0.27.0 full-text tool
+nemá (`query_entities`, `ids_schema_search` a `bsdd_search` hľadajú niečo iné).
+
+**Rozhodnutie:**
+1. **Nový tool `ifc_search`** (D-087 bod 3, vlastný nad balíkom): dáta berie cez
+   `query_entities` + `get_entities_bulk` balíka, hľadanie je v `lib/engine/search.ts`. Index sa
+   postaví raz na parsovaný store (nemení sa, vzor indexu GlobalId v `ifc_get`) a obsahuje
+   atribúty (Name, Description, ObjectType, Tag, LongName, PredefinedType...), psety a Qto
+   výskytu aj z typu, klasifikácie a materiály - prvkov, priestorov, zón, skupín, systémov aj
+   typov (IfcTypeObject).
+2. **Zhoda:** bez diakritiky a veľkých písmen, každé slovo dotazu musí sedieť v niektorom poli
+   (začiatok slova alebo podreťazec od 3 znakov), inak fuzzy (Levenshtein 1 od 4 znakov, 2 od 8
+   znakov, aj voči začiatku slova). Skóre zvýhodní Name/Description/LongName/ObjectType a
+   celú frázu v jednom poli.
+3. **Vstupy:** `text`, `model?` (inak všetky modely), `ifc_types?` (vrátane podtried),
+   `fields?` (attribute | property | quantity | type_property | classification | material),
+   `fuzzy?`, `limit`/`offset`. **Výstup:** `source: "ifc"` pre celý výsledok a pri každej
+   položke `source` `ifc` (len v súbore) alebo `ifc+aim` (AIM prvok pozná, má `object_ref`),
+   `matched` (pole, cesta, hodnota ako dôkaz), `match_kind`, `score` a `show_in_3d`.
+4. **Zdroj v opisoch:** `search_everything` = "ZDROJ: graf AIM v DB", `ifc_search` = "ZDROJ:
+   IFC súbor"; pravidlo v MCP inštrukciách (len pri zapnutom motore): text hľadaj v oboch,
+   "nenašiel som" až po oboch, v odpovedi uveď zdroj.
+5. **`search_everything` sa nepremenúva** na `aim_search` (návrh z issue): používa ho aj chat
+   `/ask`, evaly a prompt, premenovanie by rozbilo staré rozhovory. Otázka je položená
+   Samuelovi v #66; ak premenovanie chce, doplní sa.
+
+**Zavrhnuté:**
+- *Description/LongName/ObjectType/Tag do grafu AIM (ETL):* vyrieši len atribúty, nie
+  neimportované psety, Qto a materiály; a druhý nositeľ dát, ktoré sú v súbore (D-084).
+  Ak ich AIM bude potrebovať ako stĺpce (IFC-first, D-046), je to samostatné rozhodnutie.
+- *Rozšíriť `ifc_query` o `contains` na atribútoch:* balík atribútové termy v selektore
+  nepodporuje a full-text naprieč poliami by aj tak potreboval vlastný index.
+- *Kombinované hľadanie v jednom tool:* zatiaľ nie, Claude zavolá oba tools a zdroj je
+  pri výsledku; otázka pre Samuela v #66.
+
+**Overené (2026-10-19, lokálne nad ASR v71 a VZT z verejného bucketu):** prvé volanie nad
+oboma modelmi 4,8 s vrátane sťahovania a parsovania (index ~2 s), ďalšie 3-320 ms.
+"karuselové" -> IfcDoor `DD01.08.0001`, IfcDoorType `DD01.08` (Description) a krytina
+`PD02.11` (materiál); "prenajímateľné" -> IfcZone "Nájomné priestory" (LongName); preklep
+"karuzelove" nájde to isté ako fuzzy; "protipožiarne" 0 (v súboroch naozaj nie je). Vitest
+`lib/engine/search.test.ts` nad mini modelom. Evaly `/ask` motor neobsahujú (ifc_* sú len v
+MCP), otázky z issue sú v `eval/questions.json` ako neoverené.

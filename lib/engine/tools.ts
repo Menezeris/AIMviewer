@@ -4,6 +4,7 @@ import { cacheSnapshot, getStore, type EngineModelSource } from "./cache";
 import { idsSources, loadIds } from "./ids-sources";
 import { execPassthroughTool, isPassthroughTool } from "./passthrough";
 import { joinToAim, type GuidLookup } from "./join";
+import { SEARCH_FIELDS, idsOfTypes, searchEntities, searchIndex, type SearchField } from "./search";
 import { openEngineSession, type EngineModel, type EngineSession, type EngineToolResult } from "./session";
 import { resolveStorey } from "./storey";
 import { OPS } from "./tool-defs";
@@ -307,6 +308,40 @@ async function ifcPropertyValues(input: Record<string, unknown>, deps: EngineDep
   });
 }
 
+async function ifcSearch(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
+  const text = str(input.text);
+  if (text.length < 2) throw new InputError("text musí mať aspoň 2 znaky.");
+  const types = sanitizeTypes(input.ifc_types);
+  const fieldsRaw = Array.isArray(input.fields) ? input.fields.map(str) : [];
+  const bad = fieldsRaw.filter((f) => !(SEARCH_FIELDS as readonly string[]).includes(f));
+  if (bad.length > 0) throw new InputError(`fields: ${SEARCH_FIELDS.join(" | ")} (neznáme: ${bad.join(", ")}).`);
+  const limit = clamp(input.limit, 1, 200, 30);
+  const offset = clamp(input.offset, 0, 100_000, 0);
+  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? getIfcModels)().map((m) => m.id);
+  const { models, revision } = await modelsFor(modelIds, deps);
+  const session = await openEngineSession(models);
+  const index = (await Promise.all(models.map((m) => searchIndex(session, m)))).flat();
+  const allowed = types.length > 0 ? new Map(await Promise.all(models.map(async (m) => [m.id, await idsOfTypes(session, m.id, types)] as const))) : undefined;
+  const hits = searchEntities(index, { text, allowed, fields: fieldsRaw as SearchField[], fuzzy: input.fuzzy !== false });
+  const page = hits.slice(offset, offset + limit);
+  const joined = await joinToAim(page, deps.lookup);
+  return envelope({
+    source: "ifc",
+    models: modelIds,
+    revision,
+    total: hits.length,
+    returned: page.length,
+    ...(offset > 0 ? { offset } : {}),
+    truncated: hits.length > offset + page.length,
+    unmapped: joined.unmapped,
+    items: joined.items.map((i) => ({ ...i, source: i.object_id ? "ifc+aim" : "ifc" })),
+    show_in_3d: joined.show_in_3d,
+    ...(hits.length === 0
+      ? { hint: "V IFC súbore nič - skús search_everything (graf AIM: importované psety, dokumenty), synonymum alebo anglický výraz." }
+      : {}),
+  });
+}
+
 interface IdsSpec {
   specification?: { id?: string; identifier?: string; name?: string };
   status?: string;
@@ -395,6 +430,9 @@ export async function execEngineTool(
         break;
       case "ifc_query":
         content = await ifcQuery(input, deps);
+        break;
+      case "ifc_search":
+        content = await ifcSearch(input, deps);
         break;
       case "ifc_get":
         content = await ifcGet(input, deps);

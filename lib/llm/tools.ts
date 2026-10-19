@@ -238,8 +238,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "search_everything",
     description:
-      "Fulltextové vyhľadávanie nad CELÝM obsahom uzlov — názov, object_ref, IFC trieda " +
-      "aj VŠETKY psety (kľúče a hodnoty, vrátane custom psetov). Tolerantné na diakritiku " +
+      "ZDROJ: graf AIM v DB (nie IFC súbor). Fulltextové vyhľadávanie nad CELÝM obsahom uzlov " +
+      "AIM — názov, object_ref, IFC trieda aj VŠETKY importované psety (kľúče a hodnoty, vrátane " +
+      "custom psetov); IFC atribúty Description/ObjectType/Tag/LongName nevidí. Tolerantné na diakritiku " +
       "a preklepy (fuzzy). Použi vždy, keď hľadáš podľa OBSAHU vlastností (výrobca, materiál, " +
       "sériové číslo, ľubovoľné kľúčové slovo) alebo keď search_objects nič nenašiel. " +
       "Vracia score, match_kind, úryvok (headline) a matched_properties = v ktorom psete/" +
