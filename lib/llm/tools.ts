@@ -621,13 +621,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         system: {
           type: "string",
           description:
-            "Členovia systému (IfcDistributionSystem) podľa id, object_ref alebo názvu; presná " +
-            "zhoda, inak všetky systémy, ktorých názov text obsahuje (Prívod = Prívod-1NP, " +
-            "Prívod-2NP...). Odpoveď vráti zhodné systémy.",
+            "Členovia systému (IfcDistributionSystem) podľa id, object_ref, názvu alebo ObjectType; " +
+            "presná zhoda, inak všetky systémy, ktoré text obsahujú (Prívod = Prívod-1NP, " +
+            "Prívod-2NP...; 'Přiváděný vzduch' = všetky s týmto ObjectType). Odpoveď vráti zhodné systémy.",
         },
         system_type: {
           type: "string",
-          description: "Členovia systémov s týmto predefined_type (VENTILATION, EXHAUST, SEWAGE...)",
+          description: "Členovia systémov s týmto predefined_type (VENTILATION, EXHAUST, SEWAGE...) alebo ObjectType",
         },
         not_in_system: {
           type: "boolean",

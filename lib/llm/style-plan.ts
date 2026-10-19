@@ -135,23 +135,22 @@ export interface NamedRow {
   id: string;
   object_ref: string | null;
   name: string | null;
+  /** IFC ObjectType, napr. "Přiváděný vzduch" pri systéme (voliteľné). */
+  user_defined_type?: string | null;
 }
 
 /**
- * Výber uzlov podľa id, object_ref alebo názvu: najprv presná zhoda (bez ohľadu
- * na veľkosť písmen), inak všetky, ktoré text obsahujú ("Prívod" = Prívod-1NP,
- * Prívod-2NP, ...).
+ * Výber uzlov podľa id, object_ref, názvu alebo ObjectType: najprv presná zhoda
+ * (bez ohľadu na veľkosť písmen), inak všetky, ktoré text obsahujú ("Prívod" =
+ * Prívod-1NP, Prívod-2NP, ...; "Přiváděný vzduch" = všetky systémy s týmto ObjectType).
  */
 export function pickNamed<T extends NamedRow>(rows: T[], want: string): T[] {
   const w = want.trim().toLowerCase();
   if (!w) return [];
-  const exact = rows.filter(
-    (r) => r.id.toLowerCase() === w || (r.object_ref ?? "").toLowerCase() === w || (r.name ?? "").toLowerCase() === w,
-  );
+  const fields = (r: T) => [r.object_ref, r.name, r.user_defined_type].map((v) => (v ?? "").toLowerCase());
+  const exact = rows.filter((r) => r.id.toLowerCase() === w || fields(r).includes(w));
   if (exact.length > 0) return exact;
-  return rows.filter(
-    (r) => (r.object_ref ?? "").toLowerCase().includes(w) || (r.name ?? "").toLowerCase().includes(w),
-  );
+  return rows.filter((r) => fields(r).some((f) => f.includes(w)));
 }
 
 export interface CandidateRow {

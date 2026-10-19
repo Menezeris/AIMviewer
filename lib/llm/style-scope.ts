@@ -96,7 +96,7 @@ class ScopeResolver {
     return fetchAllPages<TypedRow>((from, to) =>
       this.db
         .from("objects")
-        .select("id, object_type, object_ref, name, predefined_type")
+        .select("id, object_type, object_ref, name, predefined_type, user_defined_type")
         .in("object_type", types)
         .is("valid_until", null)
         .order("id")
@@ -129,9 +129,15 @@ class ScopeResolver {
     const want = str(f.system);
     const type = str(f.system_type).toUpperCase();
     let picked = want ? pickNamed(this.systems, want) : this.systems;
-    if (type) picked = picked.filter((s) => (s.predefined_type ?? "").toUpperCase() === type);
+    if (type) {
+      picked = picked.filter(
+        (s) => (s.predefined_type ?? "").toUpperCase() === type || (s.user_defined_type ?? "").toUpperCase() === type,
+      );
+    }
     if (picked.length === 0) {
-      const avail = this.systems.map((s) => `${s.object_ref ?? s.name} (${s.predefined_type ?? "-"})`);
+      const avail = this.systems.map(
+        (s) => `${s.object_ref ?? s.name} (${[s.predefined_type, s.user_defined_type].filter(Boolean).join(", ") || "-"})`,
+      );
       throw new StyleInputError(
         `Systém ${[want, type].filter(Boolean).join(" / ")} sa nenašiel. Dostupné: ${avail.slice(0, 25).join(", ")}.`,
       );

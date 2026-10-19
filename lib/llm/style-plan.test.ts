@@ -81,6 +81,14 @@ describe("pickNamed", () => {
   it("presná zhoda má prednosť pred obsahovaním", () => {
     expect(pickNamed(rows, "prívod-1np").map((r) => r.id)).toEqual(["1"]);
   });
+  it("ObjectType systému vyberie všetky systémy daného druhu", () => {
+    const typed = [
+      { id: "1", object_ref: "Prívod-1NP", name: "Prívod-1NP", user_defined_type: "Přiváděný vzduch" },
+      { id: "2", object_ref: "Nasávanie", name: "Nasávanie", user_defined_type: "Přiváděný vzduch" },
+      { id: "3", object_ref: "Odvod-1NP", name: "Odvod-1NP", user_defined_type: "Odváděný vzduch" },
+    ];
+    expect(pickNamed(typed, "přiváděný vzduch").map((r) => r.id)).toEqual(["1", "2"]);
+  });
   it("časť názvu vyberie všetky zhodné systémy", () => {
     expect(pickNamed(rows, "Prívod").map((r) => r.id)).toEqual(["1", "2"]);
     expect(pickNamed(rows, "1NP").map((r) => r.id)).toEqual(["1", "3"]);

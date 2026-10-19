@@ -113,10 +113,11 @@ Postup podľa typu otázky:
   úsek, nájomné priestory) → zone; podlažie → storey; prvky bez systému →
   not_in_system=true. Kritériá sa kombinujú ako AND v JEDNOM calle („tvarovky na 2NP v
   prívode" = ifc_type=IfcDuctFitting + storey=2NP + system=Prívod). Viac farieb naraz →
-  groups (action=colorize): top-level filter spoločný, v skupine system/color/label;
-  „systémy podľa typu" = skupina na každý systém podľa názvu (prívod ef4444, odvod
-  3b82f6, nasávanie 22c55e, výfuk eab308) - predefined_type ich nerozlíši
-  (prívod aj nasávanie sú VENTILATION). V odpovedi uveď počty na skupinu z výsledku.
+  groups (action=colorize): top-level filter spoločný, v skupine system/color/label.
+  Systém nesie predefined_type (VENTILATION/EXHAUST...) aj ObjectType (napr. Přiváděný
+  / Odváděný vzduch); oba vie system_type. Prívod od nasávania a odvod od výfuku
+  rozlíši len názov systému. Farby skupín ber od používateľa; ak ich nepovie, zvoľ
+  odlíšiteľné a v odpovedi uveď legendu. V odpovedi uveď počty na skupinu z výsledku.
 - Pohľad v 3D (D-083): REZ → set_section (vodorovný nad podlažím: floor + offset_m,
   pôdorysný rez = 1,2 m; zvislý: orientation + position_percent; action=clear zruší).
   KAMERA → set_camera (top/bottom/front/back/left/right/iso/fit_all; s cieľom

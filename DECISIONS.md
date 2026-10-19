@@ -3947,9 +3947,12 @@ GlobalId a systém ani zónu nepozná (graf AIM), takže podľa D-087 bod 3 ide 
    všetky skupiny. Jedna URL akcia s viacerými ops (D-066 formát GUIDov, fork sa nemení).
    Strop 500 GUIDov na volanie (URL akcie max 16 000 znakov) delený medzi skupiny, odpoveď
    vráti počet na skupinu, zhodné systémy/zóny, počet poslaných do 3D a poznámku pri orezaní.
-5. **Bez pevnej palety podľa typu systému:** predefined_type prívod od nasávania (oba
-   VENTILATION) ani odvod od výfuku (oba EXHAUST) nerozlíši; prompt vedie model k skupinám podľa
-   názvu systému s odporúčanými farbami. Pevná paleta v kóde = otázka pre Samuela (#68).
+5. **Bez pevnej palety** (Samuel, 2026-10-19: farby povie používateľ). Systém sa vyberá aj
+   podľa ObjectType (`user_defined_type`, napr. "Přiváděný vzduch") a `system_type` porovná
+   predefined_type aj ObjectType. Dáta modelu VZT: predefined_type a ObjectType rozlišujú prívod
+   od odvodu, ale nie prívod od nasávania (VENTILATION, "Přiváděný vzduch") ani odvod od výfuku
+   (EXHAUST, "Odváděný vzduch"); `Pset_DistributionSystemCommon.Reference` = ObjectType,
+   klasifikáciu systémy nemajú a prvky systém v psetoch nenesú. Rozlíši ich len názov.
 6. Logika je v `lib/llm/style-plan.ts` (čistá, testy) a `lib/llm/style-scope.ts` (DB), v
    `tools.ts` len schéma a vetva, ktorá doň deleguje. Pôvodné volania bez nových parametrov
    idú nezmenenou cestou (množinový selektor viewera pre tisíce prvkov ostáva).
