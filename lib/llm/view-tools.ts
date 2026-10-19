@@ -4,10 +4,13 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { resolveTargetsToGuids } from "@/lib/engine/aim-lookup";
 import { normalizeStoreyLabel } from "@/lib/engine/storey";
 import { CAMERA_PRESETS } from "@/lib/viewer-ops";
+import { CAMERA_FITS, CAMERA_RANGES } from "@/lib/viewer-camera";
 
 import type { AskAction } from "./actions";
 import type { ToolDefinition } from "./provider";
-import { ViewInputError, planCamera, planSection, planViewMode, type ViewPlan } from "./view-plan";
+import { planCamera } from "./camera-plan";
+import { DOMAIN_IFC_TYPES } from "./ifc-selector";
+import { ViewInputError, planSection, planViewMode, type ViewPlan } from "./view-plan";
 
 /**
  * UI tools pohľadu (D-083 fáza 1): rez, kamera, režim 3D/2D/Split. Vydávajú
@@ -65,18 +68,38 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "set_camera",
     description:
-      "UI AKCIA: nastaví pohľad kamery v 3D - top/bottom/front/back/left/right, iso (izometria) alebo " +
-      "fit_all (celý model). S cieľom (target_ids_or_refs alebo global_ids) zarámuje kameru na prvky, " +
-      "napr. miestnosť. projection orthographic = bez perspektívy (vhodné pre top/front).",
+      "UI AKCIA: kamera v 3D. preset = smer pohľadu (top/bottom/front/back/left/right/iso; fit_all = celý " +
+      "model; section = kolmo na aktívny rez, ako tlačidlo Set view; keep = zachovať smer, default). fit = čo " +
+      "zarámovať pri danom smere: visible (viditeľné, aj izolované prvky), selection (výber vo vieweri). Cieľ " +
+      "prvkami (target_ids_or_refs alebo global_ids) alebo filtrom ako style_in_3d (ifc_type, ifc_types, " +
+      "domain, model) zarámuje kameru naň. Relatívne kroky od aktuálneho pohľadu, vždy v SAMOSTATNOM volaní " +
+      "bez presetu, fit, cieľa a projection: zoom_percent (+ priblíž, - oddiaľ), orbit_h_deg (+ doľava), " +
+      "orbit_v_deg (+ viac zhora), pan_x_percent/pan_y_percent (% pohľadu, + doprava/hore). projection " +
+      "orthographic = bez perspektívy (pôdorys, fasáda). Príklady: 'oddiaľ o 15 %' = zoom_percent=-15; " +
+      "'izolované VZT v iso na celú obrazovku' = preset=iso, fit=visible, projection=perspective; 'rez " +
+      "schodiskom kolmo' = set_section cez schodisko, potom preset=section, fit=visible. Polohu kamery po " +
+      "zmene over cez get_viewer_state.",
     inputSchema: {
       type: "object",
       properties: {
-        preset: { type: "string", enum: [...CAMERA_PRESETS] },
+        preset: { type: "string", enum: [...CAMERA_PRESETS], description: "Smer pohľadu; default keep (zachovať)" },
+        fit: { type: "string", enum: [...CAMERA_FITS], description: "Čo zarámovať bez cieľa; s cieľom sa rámuje naň" },
         target_ids_or_refs: { type: "array", items: { type: "string" }, description: `objects.id alebo object_ref (max ${MAX_TARGETS})` },
         global_ids: { type: "array", items: { type: "string" }, description: "IFC GlobalId z výsledku ifc_* toolov" },
+        ifc_type: { type: "string", description: "Cieľ filtrom: jedna IFC trieda (napr. IfcStairFlight)" },
+        ifc_types: { type: "array", items: { type: "string" }, description: "Cieľ filtrom: viac IFC tried" },
+        domain: { type: "string", enum: Object.keys(DOMAIN_IFC_TYPES), description: "Cieľ filtrom: celá profesia" },
+        model: { type: "string", description: "Cieľ filtrom: súbor federácie (VZT, ASR)" },
+        zoom_percent: {
+          type: "number",
+          description: `Relatívny zoom v % (${CAMERA_RANGES.zoomPercent.min} až ${CAMERA_RANGES.zoomPercent.max}): + priblíži, - oddiali`,
+        },
+        orbit_h_deg: { type: "number", description: "Otočenie okolo cieľa vodorovne v stupňoch (-180 až 180), + = doľava" },
+        orbit_v_deg: { type: "number", description: "Otočenie zvislo v stupňoch (-89 až 89), + = viac zhora" },
+        pan_x_percent: { type: "number", description: "Posun pohľadu v % šírky (-100 až 100), + = doprava" },
+        pan_y_percent: { type: "number", description: "Posun pohľadu v % výšky (-100 až 100), + = hore" },
         projection: { type: "string", enum: ["perspective", "orthographic"] },
       },
-      required: ["preset"],
     },
   },
   {

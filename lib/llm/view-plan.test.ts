@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { parseOps } from "../viewer-ops";
-import { ViewInputError, planCamera, planSection, planViewMode } from "./view-plan";
+import { planCamera } from "./camera-plan";
+import { ViewInputError, planSection, planViewMode } from "./view-plan";
 
 const FLOOR = { label: "3NP", guid: "3ig6N2jJz05g7H9Fq$ftkL" };
 const ROOM = "1KphWFyMb8dRV6rhVkyU6y";
