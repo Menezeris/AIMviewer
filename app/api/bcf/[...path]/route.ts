@@ -6,11 +6,11 @@ import { handleBcfApi } from "@/lib/bcf/api";
 import { defaultBcfDeps } from "@/lib/bcf/runtime";
 
 /**
- * BCF API 2.1 (D-099 fáza B): báza `<site>/api/bcf`. BCF panel viewera sa
- * pripojí cez "Pripojiť server" -> vlastná adresa + token (`BCF_API_TOKEN`).
- * `/versions` a `/2.1/auth` sú bez tokenu (objavenie služby), zvyšok s
- * `Authorization: Bearer`. Bez `BCF_API_TOKEN` je API vypnuté (404).
- * CORS je otvorený: panel beží na doméne viewera a autentifikácia je token,
+ * BCF API 2.1 (D-099): báza `<site>/api/bcf`. Čítanie je bez tokenu - viewer
+ * si témy načíta sám cez most (`AIM_BCF_LOAD`, dodatok D-099), rovnako
+ * verejne ako ostatné dáta AIM. Zápis (POST/PUT) len s `Authorization: Bearer
+ * <BCF_API_TOKEN>`; bez tejto env je API len na čítanie a témy sa zakladajú v
+ * chate. CORS je otvorený: viewer beží na inej doméne a zápis chráni token,
  * nie cookie.
  */
 
@@ -30,7 +30,8 @@ function configuredToken(): string | null {
   return t && t.length >= 16 ? t : null;
 }
 
-function bearerMatches(header: string | null, expected: string): boolean {
+function bearerMatches(header: string | null, expected: string | null): boolean {
+  if (!expected) return false;
   const m = header ? /^Bearer\s+(.+)$/i.exec(header.trim()) : null;
   if (!m) return false;
   const a = Buffer.from(m[1].trim());
@@ -40,7 +41,6 @@ function bearerMatches(header: string | null, expected: string): boolean {
 
 async function handle(req: Request, ctx: { params: Promise<{ path: string[] }> }): Promise<Response> {
   const expected = configuredToken();
-  if (!expected) return new NextResponse("Not found", { status: 404 });
   const { path } = await ctx.params;
   let body: unknown = null;
   if (req.method === "POST" || req.method === "PUT") {
@@ -56,6 +56,7 @@ async function handle(req: Request, ctx: { params: Promise<{ path: string[] }> }
       deps: defaultBcfDeps(),
       user: process.env.BCF_API_USER?.trim() || "aim",
       authenticated: bearerMatches(req.headers.get("authorization"), expected),
+      writeEnabled: expected !== null,
     },
   );
   return NextResponse.json(res.body, { status: res.status, headers: CORS });
@@ -66,6 +67,5 @@ export const POST = handle;
 export const PUT = handle;
 
 export async function OPTIONS(): Promise<Response> {
-  if (!configuredToken()) return new NextResponse("Not found", { status: 404 });
   return new NextResponse(null, { status: 204, headers: CORS });
 }

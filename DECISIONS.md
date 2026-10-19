@@ -4510,3 +4510,21 @@ nezačali (overené v histórii sessions a v repách). Konektor nemá žiadny BC
 `modified_by` zadá Claude (predvolene "Claude (MCP)"). Snímka obrazovky zatiaľ nie je. Témy
 v DB anon kľúč nevidí (D-079), BCF panel ich uvidí až s fázou B. Routine "AIM: BCF téma" a jej
 env treba založiť vo webe (claude.ai/code/routines), ako pri D-090.
+
+**Dodatok D-099 (2026-10-19) - témy vo vieweri bez tokenu.** Samuel: "nechcem nikam dávať tokeny";
+témy zakladá a mení v chate (MCP), vo vieweri ich chce len vidieť, automaticky.
+1. **BCF API číta bez tokenu.** `GET` na `/api/bcf` je verejný ako ostatné dáta AIM (viewer bez
+   prihlásenia); zápis (`POST`/`PUT`) len s `BCF_API_TOKEN`, bez neho 403 "zakladaj v chate". Bez
+   tokenu API v oprávneniach (`project_actions`, `topic_actions`) neponúka nič, takže BCF panel
+   zápis ani neukáže. `current-user` ostáva len s tokenom (prihlásenie panela tokenom).
+2. **Viewer si témy načíta sám:** host po `MODELS_LOADED` pošle mostu `AIM_BCF_LOAD { baseUrl:
+   <origin>/api/bcf, projectId: aim }`; fork (`aim/bcf-protocol.ts`, lenivé `aim/aimBcf.ts`,
+   Menezeris/ifc-lite#66) témy stiahne upstream klientom `fetchProjectAsBCF` bez tokenu a dá ich BCF
+   panelu. Adresa musí byť na origine hosta; vlastný projekt používateľa (súbor, server) sa neprepíše.
+3. **Obnova po zmene z chatu:** každý zápis témy (MCP tools aj BCF API) pošle na `LIVE_CHANNEL`
+   udalosť `bcf_topics` (`lib/live/bcf-event.ts`); `components/live-channel.tsx` ju prepošle oknu
+   a `components/ifc-viewer.tsx` pošle `AIM_BCF_LOAD` znova. Bez `?live=` sa témy obnovia pri
+   ďalšom otvorení viewera.
+- *Zavrhnuté:* token na zápis vložený do stránky (b) - ktokoľvek s odkazom by zakladal témy a
+  spúšťal sessions; čakať na prihlásenie (c) - Samuel zápis z panela nepotrebuje.
+

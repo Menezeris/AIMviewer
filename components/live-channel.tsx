@@ -6,6 +6,7 @@ import { Radio } from "lucide-react";
 
 import { isSafeViewerUrl, mergeIfcActions, type AskAction } from "@/lib/llm/actions";
 import { LIVE_QUERY_EVENT, LIVE_REPLY_EVENT, isLiveQuery } from "@/lib/live/protocol";
+import { BCF_CHANGED_WINDOW_EVENT, LIVE_BCF_EVENT } from "@/lib/live/bcf-event";
 import { LIVE_REVISION_EVENT, parseRevisionNotice, revisionToast } from "@/lib/live/revision";
 import { answerViewerQuery } from "@/lib/live/viewer-query-bus";
 
@@ -107,6 +108,10 @@ export function LiveChannel() {
           if (!notice) return;
           router.refresh();
           showToast(revisionToast(notice));
+        })
+        // Témy BCF sa zmenili (D-099): viewer na stránke si ich načíta znova.
+        .on("broadcast", { event: LIVE_BCF_EVENT }, () => {
+          window.dispatchEvent(new Event(BCF_CHANGED_WINDOW_EVENT));
         })
         .on("broadcast", { event: LIVE_QUERY_EVENT }, ({ payload }) => {
           if (!isLiveQuery(payload)) return;

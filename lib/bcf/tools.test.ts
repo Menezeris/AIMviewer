@@ -201,3 +201,19 @@ describe("payload routine", () => {
     ]);
   });
 });
+
+describe("oznámenie viewerom (D-099 dodatok)", () => {
+  it("zápis cez tool oznámi zmenu, zoznam ani chybný vstup nie", async () => {
+    const notify = vi.fn(async () => undefined);
+    const d = deps({ notify });
+    await run("bcf_topic_list", {}, d);
+    await run("bcf_topic_create", { title: " " }, d);
+    expect(notify).not.toHaveBeenCalled();
+    await run("bcf_topic_create", { title: "t" }, d);
+    await run("bcf_topic_update", { guid: "#1", comment: "c" }, d);
+    await run("bcf_topic_close", { guid: "#1" }, d);
+    expect(notify).toHaveBeenCalledTimes(3);
+    const broken = await run("bcf_topic_create", { title: "u" }, deps({ notify: async () => Promise.reject(new Error("x")) }));
+    expect(broken.isError).toBe(false);
+  });
+});
