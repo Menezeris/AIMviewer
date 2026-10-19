@@ -1,4 +1,4 @@
-"""Dokumenty z IFC (D-101): súbory v buckete a ukončenie starej sady.
+"""Dokumenty z IFC (D-104): súbory v buckete a ukončenie starej sady.
 
 `Location` dokumentu v IFC je cesta autora (`../Dokumentacia/<Identification>.pdf`).
 Load ju preloží na verejnú URL v buckete `documents`, ak tam súbor s rovnakým menom
@@ -6,9 +6,9 @@ je (`storage_type='supabase'`); inak ostane zo súboru (`unresolved`) a UI uká�
 súbor chýba. Pôvodná hodnota zostane v `properties._ifc_location`. Odkaz na časť
 dokumentu (`#page=3`) si fragment ponechá.
 
-Stará sada E3 (D-036, `podklady/docs.csv`) a dokumenty z ETL pred D-101 nemajú
+Stará sada E3 (D-036, `podklady/docs.csv`) a dokumenty z ETL pred D-104 nemajú
 `properties._model`. Jednorazovo ich ukončí `close-legacy` (spúšťa sa po prvom
-re-ETL modelu s D-101):
+re-ETL modelu s D-104):
 
     python -m etl.documents close-legacy [--dry-run]
 """
@@ -74,7 +74,7 @@ RETIRE_DOCUMENTS = (
     "and properties->>'_model' = %s and not (object_ref = any(%s)) returning id"
 )
 
-# Dokumenty bez modelu: stará sada E3 a dokumenty ETL pred D-101.
+# Dokumenty bez modelu: stará sada E3 a dokumenty ETL pred D-104.
 _LEGACY = (
     "select id from objects where valid_until is null and object_type = any(%s) "
     "and not (properties ? '_model')"
@@ -82,7 +82,7 @@ _LEGACY = (
 
 
 def close_legacy(cur) -> dict[str, int]:
-    """Ukončí dokumenty bez `_model` a všetky ich aktívne väzby (E3, E4, ETL pred D-101)."""
+    """Ukončí dokumenty bez `_model` a všetky ich aktívne väzby (E3, E4, ETL pred D-104)."""
     legacy = [r[0] for r in cur.execute(_LEGACY, (list(DOCUMENT_TYPES),)).fetchall()]
     if not legacy:
         return {"documents": 0, "edges": 0}
@@ -99,9 +99,9 @@ def main(argv: Optional[list[str]] = None) -> None:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
-    ap = argparse.ArgumentParser(description="Dokumenty z IFC (D-101)")
+    ap = argparse.ArgumentParser(description="Dokumenty z IFC (D-104)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    legacy = sub.add_parser("close-legacy", help="ukonči dokumenty bez modelu (E3, ETL pred D-101)")
+    legacy = sub.add_parser("close-legacy", help="ukonči dokumenty bez modelu (E3, ETL pred D-104)")
     legacy.add_argument("--dry-run", action="store_true", help="len vypíš, nič nezapisuj")
     args = ap.parse_args(argv)
 
@@ -122,7 +122,7 @@ def main(argv: Optional[list[str]] = None) -> None:
                       f"(dokumentov z modelov: {new}).")
                 return
             if ids and not new:
-                raise SystemExit("Žiadny dokument s _model - najprv re-ETL modelu s D-101, "
+                raise SystemExit("Žiadny dokument s _model - najprv re-ETL modelu s D-104, "
                                  "inak by ostala knižnica prázdna.")
             closed = close_legacy(cur)
         conn.commit()

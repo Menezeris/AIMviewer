@@ -429,8 +429,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "UI AKCIA: otvorí 3D model so zvýraznenými a priblíženými prvkami. Zavolaj, keď " +
       "používateľ žiada prvky UKÁZAŤ/ZOBRAZIŤ v 3D. Hromadné zobrazenie podľa typu " +
       "(napr. všetky dvere) = pošli PRIAMO filter (ifc_type/query/predefined_type), server " +
-      "prvky dohľadá sám. Konkrétnu množinu prvkov pošli v ids_or_refs (JEDEN call). " +
-      "Funguje len pre prvky s IFC GUID (sú z IFC modelu).",
+      "prvky dohľadá sám. Konkrétnu množinu prvkov pošli v ids_or_refs (JEDEN call; object_ref " +
+      "ako '3.02' netreba hľadať vopred). Zvýraznenie je oranžové; clear=true ho zruší (ostatné " +
+      "farby ostanú). Funguje len pre prvky s IFC GUID (sú z IFC modelu).",
     inputSchema: {
       type: "object",
       properties: {
@@ -440,6 +441,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           description: `objects.id (UUID) alebo object_ref prvkov na zvýraznenie (1–${SHOW_3D_CAP})`,
         },
         id_or_ref: { type: "string", description: "Alternatíva pre jediný prvok" },
+        clear: { type: "boolean", description: "true = len zrušiť oranžové zvýraznenie z predošlého show_in_3d" },
         global_ids: {
           type: "array",
           items: { type: "string" },
@@ -515,7 +517,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         mode: {
           type: "string",
           enum: ["add", "replace"],
-          description: "Lens (colorize/transparent/isolate): add = pridať k doterajším pravidlám (predvolené), replace = začať odznova",
+          description:
+            "Lens (colorize/transparent/isolate): add = pridať k doterajším pravidlám (predvolené; pri isolate " +
+            "rozšíri aktuálnu izoláciu, napr. 'pridaj aj schodiská' = isolate + mode=add, jeden call), replace = " +
+            "začať odznova (nová izolácia)",
         },
         color_by: {
           type: "string",
@@ -1588,6 +1593,11 @@ export class AskToolRuntime {
   }
 
   private async showIn3d(input: Record<string, unknown>) {
+    if (input.clear === true) {
+      // D-101 (#94): zvýraznenie sa dá zrušiť samostatne, bez reset_colors.
+      this.actions.push({ type: "navigate", url: `/ifc?ops=clear_focus::&r=${Date.now().toString(36)}`, label: "Zrušiť zvýraznenie" });
+      return { ok: true, cleared: "zvýraznenie" };
+    }
     const supabase = getSupabaseAdmin();
     const refs: string[] = [];
     if (Array.isArray(input.ids_or_refs)) {

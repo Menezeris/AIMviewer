@@ -77,7 +77,7 @@ def test_close_stale_closes_only_this_model() -> None:
     assert obj_sql.startswith("update objects o set valid_until = now()")
     assert "not exists (select 1 from ifc_guid_history h where h.object_id = o.id and h.valid_until is null)" in obj_sql
     assert obj_params == ("IFC import:ASR",)
-    # dokumenty modelu, ktoré beh nevydal, zaniknú (D-101); iné modely a E3 nie
+    # dokumenty modelu, ktoré beh nevydal, zaniknú (D-104); iné modely a E3 nie
     assert doc_sql.startswith("update objects set valid_until = now()")
     assert "properties->>'_model' = %s and not (object_ref = any(%s))" in doc_sql
     assert doc_params == (["document", "document_reference"], "ASR", [])

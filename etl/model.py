@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 @dataclass
 class DocumentExt:
-    """Prípona `documents`: IfcDocumentInformation, alebo IfcDocumentReference (D-101) so
+    """Prípona `documents`: IfcDocumentInformation, alebo IfcDocumentReference (D-104) so
     `referenced_document_ref` na dokument, ktorého časť (napr. stranu) označuje."""
 
     identification: Optional[str] = None

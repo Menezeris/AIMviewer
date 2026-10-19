@@ -1,5 +1,5 @@
 -- =============================================================================
--- D-101 krok 1 - Dokumenty z IFC: atribúty, strom dokumentácie, odkazy na časť
+-- D-104 krok 1 - Dokumenty z IFC: atribúty, strom dokumentácie, odkazy na časť
 -- =============================================================================
 -- Aditívna migrácia (AGENTS.md: migrácie sa nemažú ani needitujú).
 --
@@ -20,11 +20,11 @@ alter table documents
   add column electronic_format text,
   add column referenced_document_id uuid references objects(id) on delete set null;
 
-comment on column documents.creation_time is 'IfcDocumentInformation.CreationTime (D-101).';
-comment on column documents.last_revision_time is 'IfcDocumentInformation.LastRevisionTime (D-101).';
-comment on column documents.electronic_format is 'IfcDocumentInformation.ElectronicFormat, MIME typ (D-101).';
+comment on column documents.creation_time is 'IfcDocumentInformation.CreationTime (D-104).';
+comment on column documents.last_revision_time is 'IfcDocumentInformation.LastRevisionTime (D-104).';
+comment on column documents.electronic_format is 'IfcDocumentInformation.ElectronicFormat, MIME typ (D-104).';
 comment on column documents.referenced_document_id is
-  'IfcDocumentReference.ReferencedDocument: dokument, ktorého časť odkaz označuje (D-101). '
+  'IfcDocumentReference.ReferencedDocument: dokument, ktorého časť odkaz označuje (D-104). '
   'Vyplnené len pri object_type = document_reference.';
 
 create index idx_documents_referenced on documents (referenced_document_id)
@@ -39,12 +39,12 @@ values
   ('rel_document_information_relationship', 'IfcDocumentInformationRelationship', null, false, 'to',
    array['document'], array['document'], false,
    'rel', 'resource', false,
-   'Strom dokumentácie (D-101): časť → nadradený dokument; role = RelationshipType (napr. SUBDOCUMENT). IFC resource, nie IfcRel.')
+   'Strom dokumentácie (D-104): časť → nadradený dokument; role = RelationshipType (napr. SUBDOCUMENT). IFC resource, nie IfcRel.')
 on conflict (rel_type) do nothing;
 
 update relationship_types set
   to_object_types = array['document', 'document_reference'],
-  description = 'Väzba objekt → dokument (D-014) alebo jeho časť (IfcDocumentReference, D-101); role=''drawing'' pre E4.'
+  description = 'Väzba objekt → dokument (D-014) alebo jeho časť (IfcDocumentReference, D-104); role=''drawing'' pre E4.'
 where rel_type = 'rel_associates_document';
 
 create view rel_document_information_relationship as

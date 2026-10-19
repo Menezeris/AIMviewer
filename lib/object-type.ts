@@ -7,7 +7,7 @@ export type ObjectType =
   | "person"
   | "organization"
   | "document"
-  // Časť dokumentu (IfcDocumentReference, napr. strana výpisu skladieb, D-101).
+  // Časť dokumentu (IfcDocumentReference, napr. strana výpisu skladieb, D-104).
   | "document_reference"
   | "system"
   // Projekt, zóny a skupiny z IFC (D-088): IfcProject, IfcZone, IfcSpatialZone, IfcGroup.

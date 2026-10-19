@@ -121,7 +121,7 @@ _SPECS: list[RelType] = [
                            "asset_type", "zone", "spatial_zone", "group"],
         to_object_types=["document", "document_reference"],
         description="Väzba objekt → dokument (D-014) alebo jeho časť (IfcDocumentReference, "
-                    "D-101); role='drawing' pre E4.",
+                    "D-104); role='drawing' pre E4.",
     ),
     RelType(
         rel_type="rel_associates_classification",
@@ -164,13 +164,13 @@ _SPECS: list[RelType] = [
     ),
     RelType(
         rel_type="rel_document_information_relationship",
-        ifc_entity="IfcDocumentInformationRelationship",  # resource, NIE IfcRel (D-101)
+        ifc_entity="IfcDocumentInformationRelationship",  # resource, NIE IfcRel (D-104)
         relating_attr="RelatingDocument",      # = nadradený dokument = náš to_id
         relating_end="to",
         from_object_types=["document"],        # časť (RelatedDocuments)
         to_object_types=["document"],
         export_path="resource",
-        description="Strom dokumentácie (D-101): časť → nadradený dokument; "
+        description="Strom dokumentácie (D-104): časť → nadradený dokument; "
                     "role = RelationshipType (napr. SUBDOCUMENT). IFC resource, nie IfcRel.",
     ),
 ]

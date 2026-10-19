@@ -1,0 +1,217 @@
+{
+  "ranAt": "2026-10-19T17:47:00Z",
+  "label": "arn1-po-D-101-kolo-2",
+  "region": "arn1",
+  "runner": "Claude Code subagent (general-purpose), konektor aim-viewer; headless viewer (Chromium + WebGPU SwiftShader) na produkčnom /ifc?live=, fork dpl_D4b6NSqG (b34cad6d), AIMviewer 866a13f6",
+  "note": "Po zlúčení D-101 (Menezeris/ifc-lite#67, Menezeris/AIMviewer#104). Dátové úlohy paralelne, úlohy vo vieweri po jednej v poradí V1, V2, E2 (pokračovanie agenta V2), E3, E1, V3. E4 vynechaná: potrebuje výber používateľa. Hodnotenie prísnejšie ako ráno: D4 a E3 sú nesplnené pre výklad dát (číslo nesedí), hoci regex alebo tooly by prešli. duration_ms zahŕňa réžiu agenta a ToolSearch (asi 5 s).",
+  "server_p50_ms": {
+    "search_objects": 107,
+    "get_object": 100,
+    "ifc_query": 187,
+    "locate_objects": 194,
+    "count_objects": 234,
+    "ifc_relations": 262,
+    "get_bounds": 285,
+    "get_viewer_state": 471,
+    "set_section": 502,
+    "style_in_3d_isolate": 619,
+    "set_camera": 945,
+    "get_spatial_path": 1342,
+    "set_view_mode": 1430,
+    "select_in_3d": 1936,
+    "ifc_search": 4401,
+    "ifc_property_values_cold": 4543,
+    "ifc_get_cold": 6000
+  },
+  "server_ack_ms": {
+    "set_section": 371,
+    "style_in_3d_isolate": 566,
+    "set_camera": 814,
+    "set_view_mode": 1296,
+    "select_in_3d": 1676
+  },
+  "summary": {
+    "pass": "9/12",
+    "median_calls": 1,
+    "median_duration_ms": 11383,
+    "over_cap": [
+      "D5",
+      "V1",
+      "E1"
+    ],
+    "vs_iad1_rano": {
+      "median_calls": "1.5 -> 1",
+      "median_duration_ms": "13493 -> 11383",
+      "over_cap": "6 -> 3",
+      "E2": "3 volania 19,7 s -> 1 volanie 7,2 s",
+      "E3": "6 volaní 38 s -> 3 volania 17,4 s",
+      "V3": "4 volania 18,2 s -> 1 volanie 11,4 s",
+      "E1": "14 volaní 55 s -> 12 volaní 48 s",
+      "style_in_3d_server": "1438 -> 619 ms"
+    },
+    "finding": "Úkony vo vieweri sú na serveri 0,5 až 1,9 s vrátane potvrdenia z viewera (ack). Pomalé ostávajú ifc_* tooly na studenej inštancii (motor 2 s + exec 2 až 3 s = 4,5 až 6 s) a ifc_search (4,4 s aj teplý). E1 míňa 8 z 12 volaní na hľadanie ramena SD04.0001, ktoré je len v IFC bez object_ref. Nesplnené D4, E3 a V1 sú chyby výkladu a výberu toolu, nie rýchlosti."
+  },
+  "results": [
+    {
+      "id": "D1-pocet-dveri",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "count_objects"
+      ],
+      "tool_uses_total": 3,
+      "duration_ms": 7784,
+      "over_cap": false,
+      "note": ""
+    },
+    {
+      "id": "D2-vzt-jednotky-kde",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "locate_objects"
+      ],
+      "tool_uses_total": 4,
+      "duration_ms": 11385,
+      "over_cap": false,
+      "note": ""
+    },
+    {
+      "id": "D3-pocet-miestnosti",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "count_objects"
+      ],
+      "tool_uses_total": 3,
+      "duration_ms": 6856,
+      "over_cap": false,
+      "note": ""
+    },
+    {
+      "id": "D4-podhlad-qto",
+      "pass": false,
+      "calls": 2,
+      "tools": [
+        "search_objects",
+        "ifc_get"
+      ],
+      "tool_uses_total": 4,
+      "duration_ms": 25294,
+      "note": "regex 3050 sedí, ale odpoveď je 2,90 m: agent odčítal FinishFloorHeight (150). IFC FinishCeilingHeight je od hotovej podlahy, správne 3,05 m. Rovnaké volania ako ráno, chyba výkladu, nie konektora.",
+      "over_cap": false
+    },
+    {
+      "id": "D5-vyustka-kde",
+      "pass": true,
+      "calls": 3,
+      "tools": [
+        "get_object",
+        "search_objects",
+        "get_spatial_path"
+      ],
+      "tool_uses_total": 5,
+      "duration_ms": 14835,
+      "over_cap": true,
+      "note": "get_object podľa názvu nenájde, VV.03.01.040 je Name, nie object_ref"
+    },
+    {
+      "id": "D6-nosne-steny",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "ifc_property_values"
+      ],
+      "tool_uses_total": 3,
+      "duration_ms": 12841,
+      "over_cap": false,
+      "note": ""
+    },
+    {
+      "id": "V1-ukaz-miestnost",
+      "pass": false,
+      "calls": 2,
+      "tools": [
+        "search_objects",
+        "select_in_3d"
+      ],
+      "tool_uses_total": 4,
+      "duration_ms": 11338,
+      "over_cap": true,
+      "note": "miestnosť vybraná (selection 1, 3.02), ale agent zvolil select_in_3d namiesto show_in_3d a kamera sa nepohla, hoci tvrdil, že áno"
+    },
+    {
+      "id": "V2-izoluj-nosne",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "style_in_3d"
+      ],
+      "tool_uses_total": 3,
+      "duration_ms": 9767,
+      "note": "isolated 185 (pravidlo 176 + časti zostáv)",
+      "over_cap": false
+    },
+    {
+      "id": "E2-pridaj-schodiska",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "style_in_3d"
+      ],
+      "tool_uses_total": 2,
+      "duration_ms": 7185,
+      "note": "isolated 185 -> 190, jedno volanie (ráno 3)",
+      "over_cap": false
+    },
+    {
+      "id": "E3-rez-pod-podhladom",
+      "pass": false,
+      "calls": 3,
+      "tools": [
+        "ifc_query",
+        "get_bounds",
+        "set_section"
+      ],
+      "tool_uses_total": 5,
+      "duration_ms": 17355,
+      "over_cap": false,
+      "note": "rez potvrdený viewerom, ale na 9,00 m: agent vzal podhľady priradené k 3NP (spodok 9,05 m, visia pod doskou 3NP), očakávané 12,20 m z Qto miestností 3NP. Ráno 6 volaní / 38 s. Nejednoznačnosť dát (priradenie podhľadov k podlažiu), nie rýchlosti."
+    },
+    {
+      "id": "E1-rez-schodiskom",
+      "pass": true,
+      "calls": 12,
+      "tools": [
+        "search_objects",
+        "get_object",
+        "search_objects",
+        "search_objects",
+        "search_objects",
+        "ifc_search",
+        "ifc_relations",
+        "ifc_relations",
+        "get_bounds",
+        "set_section",
+        "style_in_3d",
+        "set_camera"
+      ],
+      "tool_uses_total": 15,
+      "duration_ms": 48228,
+      "over_cap": true,
+      "note": "8 z 12 volaní je hľadanie ramena SD04.0001 (len v IFC, v AIM bez object_ref); samotné úkony vo vieweri 3 volania"
+    },
+    {
+      "id": "V3-zrus-vsetko",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "set_view_mode"
+      ],
+      "tool_uses_total": 3,
+      "duration_ms": 11381,
+      "note": "bez rezu, izolácie a farieb (overené get_viewer_state); výber 1 prvku ostal, zrušiť výber konektor nevie. Ráno 4 volania.",
+      "over_cap": false
+    }
+  ]
+}

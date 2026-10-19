@@ -93,7 +93,7 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
   site, building, floor, space, asset, asset_type, document, person, organization,
   system (IfcDistributionSystem, D-047/D-049), capture, capture_media (Reality Capture,
   D-073), project, zone, spatial_zone, group (IfcProject/IfcZone/IfcSpatialZone/IfcGroup, D-088),
-  document_reference (IfcDocumentReference, časť dokumentu, D-101);
+  document_reference (IfcDocumentReference, časť dokumentu, D-104);
   ďalšie IFC entity (procesy/tasky…) sú **aditívne hodnoty** (D-051)
 - **Zaniknutý objekt** (`objects.valid_until` nie je NULL, D-088) appka ani AI nevidia: každý
   nový zoznam, počet alebo vyhľadávanie nad `objects` filtruje `valid_until is null`
@@ -140,7 +140,7 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
   priestore, neexkluzívne; odvodené cez `python -m etl.derive`, D-080),
   `rel_member_of` (IfcPersonAndOrganization — **resource, nie IfcRel**; poctivo mimo taxonómie),
   `rel_document_information_relationship` (IfcDocumentInformationRelationship, strom dokumentácie,
-  resource ako `rel_member_of`, D-101)
+  resource ako `rel_member_of`, D-104)
 - **Fyzicky binárne `from→to` + naše meta stĺpce, NIE objektifikované N-árne IFC entity**
   (preberáme identitu/granularitu IFC, nie serializačnú štruktúru — index nad IFC
   sémantikou, nie STEP v Postgrese, D-046/D-048)
@@ -226,7 +226,7 @@ normalizuje na spoločný label (`1NP_VZT`→`1NP`, D-049).
 byť vnútri panelov viewera (odznak, záznam, lokálny prepínač). Akcie meniace dáta robí host,
 tlačidlo vo forku ich len otvorí.
 
-**Dokumenty (D-101):** jedna sada z IFC; dokumenty objektu sa hľadajú cez vzťahy (typ, skupina, zóna,
+**Dokumenty (D-104):** jedna sada z IFC; dokumenty objektu sa hľadajú cez vzťahy (typ, skupina, zóna,
 priestorová zóna), nie len priamo, v UI aj v tooloch; prehliadanie PDF sa rozvíja vo vieweri, nie na `/drawing`.
 
 **Nová funkcia viewera (D-087):** najprv tool z `@ifc-lite/mcp` 1:1, pohľad len ako adaptér v

@@ -116,7 +116,7 @@ class _RefAllocator:
         return ref
 
     def named_ref(self, entity: Any, base: str) -> str:
-        """Ref z vlastného kľúča (napr. `Identification` dokumentu, D-101) + suffix pri kolízii."""
+        """Ref z vlastného kľúča (napr. `Identification` dokumentu, D-104) + suffix pri kolízii."""
         cached = self._by_id.get(entity.id())
         if cached is not None:
             return cached
@@ -542,7 +542,7 @@ def _collect_classifications(
 
 
 def _collect_documents(model: ifcopenshell.file, refs: _RefAllocator, staged: StagedModel) -> None:
-    """Dokumentácia zo súboru (D-101): každý IfcDocumentInformation ako `document` (aj
+    """Dokumentácia zo súboru (D-104): každý IfcDocumentInformation ako `document` (aj
     priečinkové časti bez súboru), strom z IfcDocumentInformationRelationship ako
     `document_part` (časť → nadradený), IfcDocumentReference ako `document_reference`
     (časť dokumentu, napr. strana) a IfcRelAssociatesDocument ako `has_document`.

@@ -71,7 +71,7 @@ def load_model(
     Vráti počty uzavretých záznamov.
 
     `storage_base` = `SUPABASE_URL`: `Location` dokumentov sa preloží na URL súboru v
-    buckete `documents`, ak tam je (D-101, `documents.resolve_locations`).
+    buckete `documents`, ak tam je (D-104, `documents.resolve_locations`).
     """
     closed = {"edges": 0, "guids": 0, "objects": 0, "documents": 0, "repointed": 0}
     if scope:
@@ -160,7 +160,7 @@ def close_stale(cur, model: StagedModel, scope: str) -> dict[str, int]:
         (guid_source(scope), guids),
     ).fetchall()
     retired = cur.execute(_RETIRE_OBJECTS, (guid_source(scope),)).fetchall()
-    # Dokumenty nemajú GUID: model ich značí `_model`, čo už nevydal, zaniká (D-101).
+    # Dokumenty nemajú GUID: model ich značí `_model`, čo už nevydal, zaniká (D-104).
     docs = [o.object_ref for o in model.objects if o.object_type in documents.DOCUMENT_TYPES]
     retired_docs = cur.execute(
         documents.RETIRE_DOCUMENTS, (list(documents.DOCUMENT_TYPES), scope, docs)

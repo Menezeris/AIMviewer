@@ -1,4 +1,4 @@
-"""Dokumenty z IFC (D-101) nad malým súborom v tvare ASR.
+"""Dokumenty z IFC (D-104) nad malým súborom v tvare ASR.
 
 ASR nesie strom dokumentácie (PD -> časť -> súbor cez IfcDocumentInformationRelationship),
 súbory s `Location = ../Dokumentacia/<Identification>.pdf`, IfcDocumentReference na strany

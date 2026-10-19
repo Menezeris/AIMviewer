@@ -770,7 +770,7 @@ export default async function NodePage({
     case "document":
     case "document_reference":
       // Dokumenty sa zobrazujú v prehliadačke (PDF + bočný panel, D-042 D+);
-      // odkaz na časť dokumentu ju otvorí na svojej strane (D-101).
+      // odkaz na časť dokumentu ju otvorí na svojej strane (D-104).
       redirect(`/drawing/${id}`);
     default:
       notFound();

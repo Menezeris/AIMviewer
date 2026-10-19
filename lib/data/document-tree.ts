@@ -1,5 +1,5 @@
 /**
- * Dokumenty z IFC (D-101) - čisté pomocné funkcie bez DB, zdieľané server-side
+ * Dokumenty z IFC (D-104) - čisté pomocné funkcie bez DB, zdieľané server-side
  * dátovou vrstvou (knižnica dokumentov, odkaz na stranu) a testované samostatne.
  */
 

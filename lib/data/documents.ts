@@ -44,7 +44,7 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
   const supabase = getSupabaseAdmin();
 
   // Bez stránkovania zámerne (vzor fetchUnderlayDrawings): dokumentov je ~54
-  // (IFC, D-101), hlboko pod PostgREST capom 1000. Pri multi-projekte (D-033) prehodnotiť.
+  // (IFC, D-104), hlboko pod PostgREST capom 1000. Pri multi-projekte (D-033) prehodnotiť.
   // Tri nezávislé selecty naraz — len rel dotaz nižšie potrebuje floorIds.
   const [objsRes, docsRes, floorsRes, partsRes] = await Promise.all([
     supabase
@@ -61,7 +61,7 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
       .select("id, name, ifc_guid")
       .eq("object_type", "floor")
       .is("valid_until", null),
-    // Strom dokumentácie z IFC (D-101): časť → nadradený dokument.
+    // Strom dokumentácie z IFC (D-104): časť → nadradený dokument.
     supabase
       .from("rel_document_information_relationship")
       .select("from_id, to_id")
@@ -131,7 +131,7 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
       if (value) meta[key] = value;
     }
 
-    // Folder: výkresy podľa podlažia, potom strom dokumentácie z IFC (D-101),
+    // Folder: výkresy podľa podlažia, potom strom dokumentácie z IFC (D-104),
     // inak podľa účelu (CDE typ, D-036).
     const tree = documentFolder(id, parentOf, nameOf);
     const folder = floor?.name
@@ -165,7 +165,7 @@ export const fetchProjectDocuments = unstable_cache(
   AIM_CACHE
 );
 
-/** Cieľ IfcDocumentReference (D-101): dokument, ktorého časť odkaz označuje, a strana. */
+/** Cieľ IfcDocumentReference (D-104): dokument, ktorého časť odkaz označuje, a strana. */
 export interface DocumentReferenceTarget {
   documentId: string;
   page: number | null;

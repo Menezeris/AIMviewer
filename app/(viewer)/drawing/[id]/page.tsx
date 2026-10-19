@@ -32,7 +32,7 @@ export default async function DrawingPage({
     fetchDocument(id),
   ]);
   if (!document) {
-    // Odkaz na časť dokumentu (IfcDocumentReference, D-101) = jeho dokument na strane.
+    // Odkaz na časť dokumentu (IfcDocumentReference, D-104) = jeho dokument na strane.
     const ref = await fetchDocumentReference(id);
     if (!ref) notFound(); // nie je dokument
     redirect(`/drawing/${ref.documentId}${ref.page ? `?page=${ref.page}` : ""}`);

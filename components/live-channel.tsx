@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Radio } from "lucide-react";
 
 import { isSafeViewerUrl, mergeIfcActions, type AskAction } from "@/lib/llm/actions";
-import { LIVE_QUERY_EVENT, LIVE_REPLY_EVENT, isLiveQuery } from "@/lib/live/protocol";
+import { LIVE_APPLIED_EVENT, LIVE_QUERY_EVENT, LIVE_REPLY_EVENT, isCmdId, isLiveQuery } from "@/lib/live/protocol";
+import { applyLive, deferCmdIds, parseIfcCommandUrl, setAppliedSink } from "@/lib/live/viewer-apply-bus";
 import { BCF_CHANGED_WINDOW_EVENT, LIVE_BCF_EVENT } from "@/lib/live/bcf-event";
 import { LIVE_REVISION_EVENT, parseRevisionNotice, revisionToast } from "@/lib/live/revision";
 import { answerViewerQuery } from "@/lib/live/viewer-query-bus";
@@ -20,12 +21,16 @@ import { answerViewerQuery } from "@/lib/live/viewer-query-bus";
  *
  * Spätný kanál (D-085): udalosť `query` odovzdá vloženému vieweru
  * (`viewer-query-bus`) a odpoveď pošle späť udalosťou `reply`.
+ *
+ * D-101: na `/ifc` sa príkaz vykoná na mieste (`viewer-apply-bus`) a URL sa len
+ * prepíše - bez `router.push` a serverového renderu stránky pri každom úkone.
+ * Potvrdenie forku (`APPLIED`) ide späť udalosťou `applied` s `cmdId` príkazu.
  */
 
 const STORAGE_KEY = "aim-live-channel";
 const LIVE_EVENT = "command";
-/** Príkazy doručené do tohto okna sa zlúčia do jednej navigácie. */
-const BATCH_MS = 350;
+/** Príkazy doručené do tohto okna sa zlúčia do jednej akcie (jedno volanie toolu = jeden príkaz). */
+const BATCH_MS = 50;
 const TOAST_MS = 4000;
 
 type Status = "connecting" | "live" | "error";
@@ -50,6 +55,7 @@ export function LiveChannel() {
   const [status, setStatus] = useState<Status>("connecting");
   const [toast, setToast] = useState<string | null>(null);
   const queue = useRef<AskAction[]>([]);
+  const cmdIds = useRef<string[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -71,9 +77,18 @@ export function LiveChannel() {
     const flush = () => {
       timer.current = null;
       const batch = queue.current.splice(0);
+      const ids = cmdIds.current.splice(0);
       const nav = mergeIfcActions(batch)[0];
       if (!nav) return;
-      router.push(nav.url);
+      const inPlace = parseIfcCommandUrl(nav.url);
+      // Na /ifc s viewerom bez navigácie; URL sa prepíše, aby odkaz ostal zdieľateľný.
+      if (inPlace && window.location.pathname === "/ifc" && applyLive({ ...inPlace, cmdIds: ids })) {
+        window.history.replaceState(window.history.state, "", nav.url);
+      } else {
+        // Na /ifc z inej stránky: viewer príkaz z URL vykoná a potvrdí po načítaní.
+        if (inPlace) deferCmdIds(ids);
+        router.push(nav.url);
+      }
       showToast(`Claude: ${nav.label}`);
     };
 
@@ -88,6 +103,8 @@ export function LiveChannel() {
         .on("broadcast", { event: LIVE_EVENT }, ({ payload }) => {
           const actions = (payload as { actions?: unknown })?.actions;
           if (!Array.isArray(actions)) return;
+          const cmdId = (payload as { cmdId?: unknown })?.cmdId;
+          if (isCmdId(cmdId)) cmdIds.current.push(cmdId);
           for (const a of actions) {
             if (a && (a as AskAction).type === "navigate" && isSafeViewerUrl((a as AskAction).url)) {
               queue.current.push({
@@ -125,7 +142,12 @@ export function LiveChannel() {
           else if (s === "CHANNEL_ERROR" || s === "TIMED_OUT") setStatus("error");
           else if (s === "CLOSED") setStatus("connecting");
         });
+      // Potvrdenie príkazu z forku (D-101) späť serveru.
+      const unregisterSink = setAppliedSink((applied) => {
+        void sub.send({ type: "broadcast", event: LIVE_APPLIED_EVENT, payload: applied });
+      });
       cleanup = () => {
+        unregisterSink();
         client.removeChannel(sub);
       };
     }).catch(() => {
