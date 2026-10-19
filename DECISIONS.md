@@ -4117,8 +4117,19 @@ nemá (`query_entities`, `ids_schema_search` a `bsdd_search` hľadajú niečo in
    IFC súbor"; pravidlo v MCP inštrukciách (len pri zapnutom motore): text hľadaj v oboch,
    "nenašiel som" až po oboch, v odpovedi uveď zdroj.
 5. **`search_everything` sa nepremenúva** na `aim_search` (návrh z issue): používa ho aj chat
-   `/ask`, evaly a prompt, premenovanie by rozbilo staré rozhovory. Otázka je položená
-   Samuelovi v #66; ak premenovanie chce, doplní sa.
+   `/ask`, evaly a prompt, premenovanie by rozbilo staré rozhovory. Samuel potvrdil v #66.
+6. **Kombinované `search_all`** (dodatok 2026-10-19, na žiadosť Samuela v #66: "kombinované,
+   ale tak, aby bolo jasné, čo je čo, s badge a filtrovateľné"): jedno volanie hľadá naraz cez
+   `ifc_search` aj `search_everything`, výsledky spojí podľa `objects.id` (IFC prvok ho má, ak
+   ho AIM pozná), inak podľa GlobalId. Každý výsledok má **badge** podľa toho, kde sa našiel
+   TEXT: `IFC`, `AIM` alebo `IFC+AIM`; či prvok AIM pozná, ukazuje `object_ref` (badge `IFC` s
+   `object_ref` = prvok je v AIM, ale text je len v súbore, napr. Description). Dôkaz z každého
+   zdroja je v `evidence.ifc` / `evidence.aim`. Vstup `badges` filtruje, `counts` sú počty po
+   badge pred filtrom; `ifc_types` a `model` zúžia aj AIM časť. Poradie: `IFC+AIM` najprv,
+   potom podľa poradia v zdroji (skóre zdrojov nie sú porovnateľné). Zlyhanie jedného zdroja
+   je v `errors`, druhý ostane. Len MCP a len pri zapnutom motore (bez neho je to
+   `search_everything`); kód `lib/engine/search-all.ts`, prompt odporúča `search_all` ako prvý
+   krok. `ifc_search` aj `search_everything` ostávajú na cielené hľadanie v jednom zdroji.
 
 **Zavrhnuté:**
 - *Description/LongName/ObjectType/Tag do grafu AIM (ETL):* vyrieši len atribúty, nie
@@ -4126,8 +4137,6 @@ nemá (`query_entities`, `ids_schema_search` a `bsdd_search` hľadajú niečo in
   Ak ich AIM bude potrebovať ako stĺpce (IFC-first, D-046), je to samostatné rozhodnutie.
 - *Rozšíriť `ifc_query` o `contains` na atribútoch:* balík atribútové termy v selektore
   nepodporuje a full-text naprieč poliami by aj tak potreboval vlastný index.
-- *Kombinované hľadanie v jednom tool:* zatiaľ nie, Claude zavolá oba tools a zdroj je
-  pri výsledku; otázka pre Samuela v #66.
 
 **Najprv to, čo existuje (D-098), overené 2026-10-19 vo forku `Menezeris/ifc-lite`:**
 originál full-text, ktorý by sa dal použiť na serveri, nemá. Prejdené miesta:

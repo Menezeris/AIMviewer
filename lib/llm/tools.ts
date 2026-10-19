@@ -798,7 +798,8 @@ export class AskToolRuntime {
    * Jediné .rpc() volanie LLM vrstvy: parametrizované (žiadny SQL splicing),
    * row-cap drží SQL funkcia (limit 50).
    */
-  private async searchEverything(input: Record<string, unknown>) {
+  /** Aj pre kombinované `search_all` (D-095), preto verejné. */
+  async searchEverything(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
     const q = String(input.q ?? "").trim().slice(0, 200);
     if (q.length < 2) throw new Error("q musí mať aspoň 2 znaky.");

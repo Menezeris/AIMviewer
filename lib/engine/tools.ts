@@ -309,6 +309,11 @@ async function ifcPropertyValues(input: Record<string, unknown>, deps: EngineDep
 }
 
 async function ifcSearch(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
+  return envelope(await ifcSearchResult(input, deps));
+}
+
+/** Výsledok `ifc_search` ako objekt - používa ho aj kombinované `search_all` (D-095). */
+export async function ifcSearchResult(input: Record<string, unknown>, deps: EngineDeps) {
   const text = str(input.text);
   if (text.length < 2) throw new InputError("text musí mať aspoň 2 znaky.");
   const types = sanitizeTypes(input.ifc_types);
@@ -325,7 +330,7 @@ async function ifcSearch(input: Record<string, unknown>, deps: EngineDeps): Prom
   const hits = searchEntities(index, { text, allowed, fields: fieldsRaw as SearchField[], fuzzy: input.fuzzy !== false });
   const page = hits.slice(offset, offset + limit);
   const joined = await joinToAim(page, deps.lookup);
-  return envelope({
+  return {
     source: "ifc",
     models: modelIds,
     revision,
@@ -339,7 +344,7 @@ async function ifcSearch(input: Record<string, unknown>, deps: EngineDeps): Prom
     ...(hits.length === 0
       ? { hint: "V IFC súbore nič - skús search_everything (graf AIM: importované psety, dokumenty), synonymum alebo anglický výraz." }
       : {}),
-  });
+  };
 }
 
 interface IdsSpec {

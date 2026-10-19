@@ -482,6 +482,14 @@
       "expect": { "answer_matches": ["Nájomné priestory"] },
       "verified": false,
       "notes": "D-095: IfcZone 'Nájomné priestory' má LongName 'Nájomné priestory (prenajímateľné)' len v IFC (ASR). ifc_search je len v MCP, overenie = scenár cez konektor."
+    },
+    {
+      "id": "search-all-badges",
+      "category": "search",
+      "question": "Nájdi všetko, čo súvisí s karuselovými dverami, a povedz, odkiaľ to je.",
+      "expect": { "answer_matches": ["DD01\\.08\\.0001", "IFC"] },
+      "verified": false,
+      "notes": "D-095 dodatok: search_all, badge IFC / AIM / IFC+AIM pri každom výsledku. Len MCP, overenie = scenár cez konektor."
     }
   ]
 }

@@ -196,8 +196,10 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   object_ref, importované psety), ifc_search = IFC súbor (atribúty Description,
   ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály,
   zóny a skupiny). Popis prvku, LongName zóny a neimportované psety nájde len
-  ifc_search. "Nenašiel som" povedz až po oboch; v odpovedi uveď, z ktorého zdroja
-  výsledok je (source: ifc / ifc+aim) a cituj pole matched ako dôkaz.
+  ifc_search. Na hľadanie podľa textu použi najprv search_all (oba zdroje naraz):
+  každý výsledok má badge IFC / AIM / IFC+AIM (kde sa text našiel), v odpovedi ho
+  uveď pri každom prvku a cituj evidence ako dôkaz; badges filtruje. "Nenašiel som"
+  povedz až po oboch zdrojoch.
 - Výsledok nesie object_ref, ak prvok pozná AIM; unmapped = prvky len v súbore
   (spomeň ich počet). Pole show_in_3d (ids_or_refs + global_ids) pošli rovno do
   show_in_3d/style_in_3d.
