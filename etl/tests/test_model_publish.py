@@ -19,10 +19,12 @@ import pytest
 
 from etl import model_publish as mp
 
-MIGRATION = (
-    Path(__file__).resolve().parents[2]
-    / "supabase/migrations/20261018120000_model_revisions.sql"
-)
+_MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "supabase/migrations"
+# model_tasks ako BCF témy (D-099) mení tabuľku, ktorú publish uzatvára.
+MIGRATIONS = [
+    _MIGRATIONS_DIR / "20261018120000_model_revisions.sql",
+    _MIGRATIONS_DIR / "20261019120000_bcf_topics.sql",
+]
 
 
 def _model(tmp: Path, name: str, walls: list[str], schema: str = "IFC4X3_ADD2") -> Path:
@@ -95,7 +97,8 @@ def db_url():
     with psycopg.connect(DB, autocommit=True) as conn:
         conn.execute(f"create schema {schema}")
         conn.execute(f"set search_path to {schema}")
-        conn.execute(MIGRATION.read_text(encoding="utf-8"))
+        for m in MIGRATIONS:
+            conn.execute(m.read_text(encoding="utf-8"))
     sep = "&" if "?" in DB else "?"
     yield f"{DB}{sep}options=-csearch_path%3D{schema}"
     with psycopg.connect(DB, autocommit=True) as conn:
@@ -199,6 +202,26 @@ def test_task_is_resolved_with_result_revision(tmp_path, db_url, storage) -> Non
         assert conn.execute(
             "select status, result_revision from model_tasks where id = %s", (task,)
         ).fetchone() == ("resolved", 0)
+
+
+@needs_db
+def test_bcf_topic_without_model_and_atomic_comment(db_url) -> None:
+    """D-099: téma nad federáciou nemá model; komentár sa pripája bez prepisu poľa."""
+    import psycopg
+
+    with psycopg.connect(db_url) as conn:
+        task, number = conn.execute(
+            "insert into model_tasks (title, assigned_to) values ('t', 'claude') returning id, number"
+        ).fetchone()
+        first = conn.execute("select model_task_add_comment(%s, 'Claude', 'a')", (task,)).fetchone()[0]
+        conn.execute("select model_task_add_comment(%s, 'Samuel', 'b')", (task,))
+        assert conn.execute("select model_task_add_comment(gen_random_uuid(), 'x', 'y')").fetchone()[0] is None
+        row = conn.execute(
+            "select comments, modified_by, topic_type, status from model_tasks where id = %s", (task,)
+        ).fetchone()
+    assert number >= 1 and first["comment"] == "a" and first["guid"]
+    assert [c["comment"] for c in row[0]] == ["a", "b"]
+    assert row[1:] == ("Samuel", "Issue", "open")
 
 
 def test_changes_file_format_roundtrip(tmp_path: Path) -> None:

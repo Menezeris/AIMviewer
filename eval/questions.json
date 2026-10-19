@@ -593,6 +593,14 @@
       "expect": { "answer_matches": ["DD01\\.08\\.0001", "IFC"] },
       "verified": false,
       "notes": "D-095 dodatok: search_all, badge IFC / AIM / IFC+AIM pri každom výsledku. Len MCP, overenie = scenár cez konektor."
+    },
+    {
+      "id": "bcf-topic-selection",
+      "category": "bcf",
+      "question": "Vyber tento prvok a vytvor BCF tému: potrubie koliduje s nosníkom, priraď projektantovi VZT, priorita vysoká.",
+      "expect": { "tools_called": ["bcf_topic_create"] },
+      "verified": false,
+      "notes": "D-099 (issue #78): téma z výberu živého viewera, priradená človeku = bez session. Len MCP, overenie = scenár cez konektor s otvoreným viewerom."
     }
   ]
 }

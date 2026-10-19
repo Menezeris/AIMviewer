@@ -123,3 +123,14 @@ Nastavenie:
    (ďalšie zavolanie tej istej požiadavky ju spustí). Session, ktorá zlyhala, sa spustí znova po
    odobratí štítku `session` z issue.
 
+**BCF témy nad modelmi (D-099):** `bcf_topic_create`, `bcf_topic_list`, `bcf_topic_update`,
+`bcf_topic_close` a `bcf_viewpoint_create` (tvar 1:1 z `@ifc-lite/mcp`) ukladajú témy do
+`model_tasks` (migrácia `20261019120000`). Téma bez prvkov vezme výber a pohľad z otvoreného
+živého viewera. Téma priradená Claudovi (`assigned_to: claude`) spustí Claude Code session:
+1. **Routine:** claude.ai/code/routines -> nová routine **"AIM: BCF téma"** (bez rozvrhu, nová
+   session pri každom spustení) s repami `Menezeris/OCB` a `Menezeris/AIMviewer`, konektorom
+   aim-viewer a modelom; Add another trigger -> API -> URL do `CLAUDE_BCF_ROUTINE_FIRE_URL`,
+   token do `CLAUDE_BCF_ROUTINE_TOKEN`. Pracovisko v OCB (postup riešenia témy) je fáza C D-099.
+2. Voliteľne `BCF_MAX_SESSIONS` (predvolene 3). Bez routine alebo nad stropom téma čaká a spustí ju
+   `bcf_topic_update` so `start_session=true`.
+

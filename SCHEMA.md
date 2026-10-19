@@ -463,6 +463,20 @@ pod advisory lockom modelu (compare-and-swap voči základu úlohy). `model_task
 `viewpoint`, `status` `open|in_progress|resolved|conflict|failed`, `base_revision`,
 `result_revision`, `run_url`, `comments`). Práva anon/authenticated nemajú (2.12).
 
+**BCF témy (D-099, migrácia 20261019120000):** `model_tasks` nesie všetky BCF témy nad
+modelmi federácie (kolízia, pripomienka, úprava modelu), nielen úlohy úprav. Pribudli polia
+podľa BCF API 2.1 topic: `number` (identity, BCF `index`, "téma #N"), `topic_type`
+(predvolene `Issue`), `priority`, `assigned_to` (`claude` = téma pre Claude, spustí session),
+`due_date`, `labels text[]`, `stage`, `modified_by`, `session_url` (Claude session, ktorá tému
+rieši). `model` môže byť NULL (téma nad celou federáciou). `status` pribudol o `closed`
+(uzavretá bez revízie). `viewpoint` = pohľad z viewera (`camera` v IFC svete, `section`,
+`mode`, `storey_guid`, počet a orezanie výberu), `components` = IFC GlobalId prvkov témy
+(BCF selection; výber z viewera alebo zadané prvky). `comments`
+= BCF komentáre `[{guid, author, date, comment}]`; pripája ich funkcia
+`model_task_add_comment(task, author, comment)` atomicky (vráti komentár, NULL = téma nie je).
+Mapovanie na BCF: `id` = topic guid, `status` = topic_status (lowercase, `in_progress` =
+"In Progress"), `author` = creation_author, `created_at`/`updated_at` = creation/modified_date.
+
 **Zdroj ETL podľa modelu (D-086):** load s `--model ASR` zapisuje hrany so zdrojom
 `etl:ASR` a GUID históriu so zdrojom `IFC import:ASR`; čo beh nevydal, uzavrie
 (`valid_until`). Staré zdroje `etl` / `IFC import` (pred D-086) uzavrie jednorazovo
@@ -552,7 +566,7 @@ ekvivalentu — ak existuje, prevziať názov aj enum doslovne.
   (IFC vzťahy nenesú platnosť ani provenance väzby),
 - `ifc_guid_history` + Master UUID (identita naprieč verziami súborov),
 - väzby naprieč IFC súbormi (federácia — natívne až IFC5),
-- revízie súborov modelu a úlohy úprav (`model_revisions`, `model_tasks`, D-086).
+- revízie súborov modelu a BCF témy vrátane úloh úprav (`model_revisions`, `model_tasks`, D-086, D-099).
 Pri exporte ich IFC nenesie → ICDD linksety (D-015), do budúcna IFCX layer komponenty.
 
 ---

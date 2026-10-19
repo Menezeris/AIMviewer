@@ -445,4 +445,20 @@ describe("routine /fire (D-090)", () => {
     const fetchImpl = vi.fn(async () => new Response("rate limited", { status: 429 }));
     await expect(fireRoutine("x", fetchImpl as unknown as typeof fetch)).rejects.toThrow("HTTP 429");
   });
+
+  it("iná routine (BCF téma, D-099) ide na svoju URL a chyba menuje jej env", async () => {
+    vi.stubEnv("CLAUDE_ROUTINE_FIRE_URL", URL_OK);
+    vi.stubEnv("CLAUDE_ROUTINE_TOKEN", "tok");
+    const other = `${URL_OK.replace("trig_01abc", "trig_02bcf")}`;
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ claude_code_session_id: "s", claude_code_session_url: "u" })),
+    );
+    await fireRoutine("t", fetchImpl as unknown as typeof fetch, { url: other, token: "t2", env: "BCF_URL, BCF_TOKEN" });
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(other);
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer t2");
+    await expect(
+      fireRoutine("t", fetchImpl as unknown as typeof fetch, { url: undefined, token: "t2", env: "BCF_URL, BCF_TOKEN" }),
+    ).rejects.toThrow("BCF_URL, BCF_TOKEN");
+  });
 });

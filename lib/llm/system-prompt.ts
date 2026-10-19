@@ -190,7 +190,7 @@ Kontext MCP (Claude vedľa viewera):
   povedz, že viewer poslal len časť; truncated pri covers=all = orezaný je len zoznam items.
 - Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
   výkres ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
-- Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${FEEDBACK_RULES}${engine ? ENGINE_RULES : ""}`;
+- Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${FEEDBACK_RULES}${BCF_RULES}${engine ? ENGINE_RULES : ""}`;
 }
 
 /**
@@ -206,12 +206,28 @@ const FEEDBACK_RULES = `
   alebo zlej odpovedi ponúkni zápis pripomienky. Ponuku nezopakuj v tom istom rozhovore k tej istej veci.
 - Po pokyne: chýbajúca schopnosť = request_tool (čo chcel, čo si skúsil, prečo to nestačí), chyba alebo
   zlé dáta = report_feedback (session len keď ju používateľ chce, start_session). Ukáž odkaz na issue
-  a na session alebo poradie vo fronte. Úpravu samotného IFC modelu sem nezapisuj. Stav a otázky session
+  a na session alebo poradie vo fronte. Chybu v samotnom IFC modeli sem nezapisuj (to je BCF téma). Stav a otázky session
   na používateľa ukáže feedback_status.
 - Naraz bežia najviac 3 sessions; ďalšie požiadavky idú do fronty (queued). Keď používateľ dá zapísať
   viac položiek naraz (zoznam, dokument), zapíš každú zvlášť, podobné zlúč do jednej, a na konci povedz,
   koľko session beží a čo čaká. "Spusti ďalšiu" = start_queued_session.
 - Issue je verejné: žiadne mená, kontakty ani tokeny, len object_ref, triedy, psety a tools.`;
+
+/**
+ * BCF témy nad modelmi federácie (D-099) - len MCP; téma pre Claude spustí
+ * session, ktorá model opraví.
+ */
+const BCF_RULES = `
+- Chyba alebo nezhoda v MODELI (prvok, vlastnosť, kolízia, pripomienka k prvku, požiadavka na úpravu
+  IFC) = BCF téma: bcf_topic_create, nie request_tool ani report_feedback (tie sú o konektore). Zakladaj
+  ju na pokyn používateľa ("založ BCF / tému / issue k tomuto"). "Tento prvok / čo mám vybrané" =
+  bez prvkov v argumentoch, capture_view vezme výber a pohľad z viewera; povedz, koľko prvkov téma má a
+  či sa pohľad uložil.
+- assigned_to='claude' len keď to má opraviť Claude ("oprav to", "nech to vyrieši Claude"): spustí sa
+  session, ktorá upraví IFC a zverejní revíziu. Človeku priraď podľa mena. Ukáž číslo témy (#N) a odkaz
+  na session alebo že čaká vo fronte.
+- "Ukáž tému #N" = bcf_topic_list(guid) a show_in_3d(global_ids); stav, komentár a priradenie =
+  bcf_topic_update; uzavretie bez úpravy modelu = bcf_topic_close.`;
 
 /**
  * Smerovanie medzi DB tools a IFC motorom (D-084) - len keď je motor zapnutý.
