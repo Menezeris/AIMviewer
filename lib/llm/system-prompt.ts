@@ -155,43 +155,68 @@ Postup podľa typu otázky:
 
 - Odpoveď je čistý text bez markdown formátovania (žiadne **, #, tabuľky).`;
 
-/** Posledné pravidlo `/ask` promptu — UI docku renderuje čistý text. */
-const PLAIN_TEXT_RULE =
-  "\n\n- Odpoveď je čistý text bez markdown formátovania (žiadne **, #, tabuľky).";
-
 /**
  * Inštrukcie pre MCP klienta (Claude v aplikácii vedľa viewera, D-079). Klient
- * markdown vykreslí, takže pravidlo čistého textu odpadá; UI akcie sa
- * nevrátia klientovi, ale odvysielajú do živého viewera.
+ * markdown vykreslí, takže pravidlo čistého textu odpadá (je na konci UI odsekov,
+ * ktoré MCP nahradí); UI akcie sa nevrátia klientovi, ale odvysielajú do živého viewera.
  */
 export function mcpInstructions(siteUrl: string, engine = false): string {
-  const base = SYSTEM_PROMPT.endsWith(PLAIN_TEXT_RULE)
-    ? SYSTEM_PROMPT.slice(0, -PLAIN_TEXT_RULE.length)
-    : SYSTEM_PROMPT;
+  // Odseky o UI akciách z promptu chatu opakujú opisy toolov; MCP ich má krátko (D-102).
+  const cut = SYSTEM_PROMPT.indexOf(UI_SECTION_MARKER);
+  const base = cut > 0 ? SYSTEM_PROMPT.slice(0, cut).trimEnd() : SYSTEM_PROMPT;
   return `${base}
+${MCP_UI_RULES}
 
 Kontext MCP (Claude vedľa viewera):
 - UI akcie (show_in_3d, select_in_3d, style_in_3d, set_section, set_camera, set_view_mode,
-  open_node, open_drawing) sa odošlú do ŽIVÉHO
-  viewera, ktorý má používateľ otvorený vedľa. Používateľ výsledok vidí tam; ty
-  len stručne potvrď, čo sa zobrazilo. Ak tool vráti, že živý kanál nie je
-  nastavený, povedz to a ponúkni odkaz.
-- get_bounds a get_viewer_state čítajú ten istý živý viewer (obálky prvkov a modelu,
-  rez, kamera, výber) v súradniciach IFC modelu (m, Z hore). Presný rez: rez cez prvok
-  set_section(target_ids_or_refs, fit=along|across|center), alebo get_bounds ->
-  set_section(orientation, coordinate_m). position_percent nehádaj (je voči obálke celej
-  scény, nie budovy). Keď viewer
-  neodpovedá, povedz používateľovi, nech otvorí odkaz zo správy toolu.
-- set_section po odoslaní vráti viewer_section = kde rovina vo vieweri naozaj je (D-092).
-  Rez potvrď len podľa nej; pri reze nad podlažím porovnaj s floor_elevation_model_units +
-  offset_m a pri nesúlade povedz, že viewer rez umiestnil inak.
-- "Čo mám vybrané" -> get_viewer_state.selection.summary (triedy, podlažia, zostavy), nie
-  vzorka items. Pri summary.covers=returned výber nepopisuj ako celok (napr. "len 1NP") a
-  povedz, že viewer poslal len časť; truncated pri covers=all = orezaný je len zoznam items.
+  open_node, open_drawing) idú do ŽIVÉHO viewera, ktorý má používateľ otvorený vedľa, a tool
+  vráti stav, ktorý viewer po príkaze POTVRDIL (rez, izolácia, kamera, zvýraznenie, počty Lens).
+  Potvrď len to, čo potvrdenie hovorí; ok:false / issues = čo sa nevykonalo, povedz to. Netvrď,
+  čo potvrdenie nehovorí (napr. že sa kamera pohla). Bez potvrdenia viewer nepočúva - ponúkni
+  odkaz zo správy toolu.
+- get_bounds a get_viewer_state čítajú ten istý viewer v súradniciach IFC (m, Z hore).
+  "Čo mám vybrané" -> get_viewer_state.selection.summary (triedy, podlažia, zostavy), nie vzorka
+  items; pri summary.covers=returned povedz, že viewer poslal len časť.
 - Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
   výkres ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
 - Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${FEEDBACK_RULES}${BCF_RULES}${engine ? ENGINE_RULES : ""}`;
 }
+
+/** Začiatok odsekov o UI akciách v `SYSTEM_PROMPT` (chat ich nesie celé, MCP nahradí `MCP_UI_RULES`). */
+export const UI_SECTION_MARKER = "- UI akcie: keď používateľ žiada niečo ZOBRAZIŤ";
+
+/** UI akcie pre MCP (D-102): to, čo opisy toolov nehovoria, plus pravidlá z meraní kola 3. */
+const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04.0001, aj prvok len v IFC bez
+  object_ref) daj PRIAMO ako cieľ toolu (id_or_ref, ids_or_refs, target_ids_or_refs, get_object)
+  - server ho dohľadá v AIM aj v IFC. Netreba ho najprv hľadať cez search_*; viacznačný kód
+  vráti kandidátov s global_id.
+- "Ukáž / zobraz X" (aj jednu miestnosť) = show_in_3d (zvýrazní a priblíži). select_in_3d len
+  na "vyber / označ / ukáž vlastnosti"; select_in_3d(clear=true) zruší výber. Celú triedu ukáž
+  filtrom (show_in_3d ifc_type=...), nie vymenúvaním. Nové zobrazenie nahradí predošlé;
+  "pridaj aj X" = predošlé prvky + X v jednom ids_or_refs.
+- Farby, priehľadnosť, skrytie, izolácia = style_in_3d (filtre a groups podľa opisu toolu).
+  Výber podľa hodnoty vlastnosti = property + value, nikdy aproximácia triedou alebo doménou;
+  názov vlastnosti over cez v_property_dictionary. Systém / zóna / podlažie ako filter system /
+  zone / storey, nikdy id systému v ids_or_refs; prívod a odvod rozlíši len názov systému.
+  "Pridaj k izolácii aj X" = isolate s mode=add. Skrytie (hide) len na výslovnú žiadosť;
+  izoluj bez farby, ak farbu nechcú. Farby: červená ef4444, zelená 22c55e, modrá 3b82f6, žltá
+  eab308, oranžová f97316, fialová a855f7; inak zvoľ odlíšiteľné a uveď legendu. Počty na
+  pravidlo cituj z odpovede toolu.
+- Rez = set_section: nad podlažím floor + offset_m (1,2 = pôdorys); "X cm pod podhľadom na NP"
+  = set_section(floor=NP, relative_to=ceiling, offset_m=-X) - server vezme podhľad miestností
+  podlažia; rez cez prvok = cieľ + fit (along / across / center); presná súradnica z get_bounds,
+  position_percent nehádaj. Kamera = set_camera (preset, section = kolmo na rez, fit=visible,
+  relatívny krok samostatne). Režim 3D/2D/Split a podlažie = set_view_mode; "zruš všetko /
+  vráť pohľad / začni odznova" = set_view_mode(mode=3d, reset=true) (rez, farby, izolácia,
+  výber, kamera).
+- Výšky: Qto_SpaceBaseQuantities.FinishCeilingHeight = svetlá výška po podhľad od HOTOVEJ
+  podlahy (FinishFloorHeight neodčítaj); Height = konštrukčná výška doska-doska. Podhľady
+  (IfcCovering) priradené k podlažiu môžu visieť pod jeho doskou a patria miestnostiam pod
+  ním - výšku podhľadu podlažia ber z miestností (relative_to=ceiling), nie z IfcCovering.
+- Recepty: "strop nad miestnosťou na 2NP, kade idú potrubia" = set_section(floor=3NP,
+  offset_m=-0.4) + style_in_3d(hide, ifc_type=IfcCovering) + set_camera(preset=top, cieľ
+  miestnosť); "prejdi budovu podlažie po podlaží" = set_view_mode(mode=2d, floor=1NP), ďalšie
+  až na pokyn; "otvor výkres vedľa modelu" = open_drawing(in_viewer=true).`;
 
 /**
  * Pripomienky a požiadavky na nové tools (D-090) - len MCP; issue v GitHube,
@@ -253,7 +278,8 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   object_ref, importované psety), ifc_search = IFC súbor (atribúty Description,
   ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály,
   zóny a skupiny). Popis prvku, LongName zóny a neimportované psety nájde len
-  ifc_search. Na hľadanie podľa textu použi najprv search_all (oba zdroje naraz):
+  ifc_search. Kód prvku netreba hľadať (daj ho priamo ako cieľ). Na hľadanie podľa textu
+  použi najprv search_all (oba zdroje naraz):
   každý výsledok má badge IFC / AIM / IFC+AIM (kde sa text našiel), v odpovedi ho
   uveď pri každom prvku a cituj evidence ako dôkaz; badges filtruje. "Nenašiel som"
   povedz až po oboch zdrojoch.

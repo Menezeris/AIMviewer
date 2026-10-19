@@ -35,17 +35,18 @@
       "question": "Aká je svetlá výška po podhľad v miestnosti 3.02?",
       "max_calls": 2,
       "budget_s": 5,
-      "expect": { "answer_matches": ["3[.,]05|3050"] },
-      "notes": "Qto_SpaceBaseQuantities.FinishCeilingHeight = 3050 mm (#96). Pozor: 3.02 je číslo miestnosti, nie výška."
+      "expect": { "answer_matches": ["3[.,]05|3050"], "answer_not_matches": ["2[.,]9"] },
+      "notes": "Qto_SpaceBaseQuantities.FinishCeilingHeight = 3050 mm od hotovej podlahy (#96, Samuel 19. 10.: 3,05 m, FinishFloorHeight sa neodčítava). Pozor: 3.02 je číslo miestnosti, nie výška."
     },
     {
       "id": "D5-vyustka-kde",
       "category": "data",
       "viewer": false,
       "question": "Čo je prvok VV.03.01.040 a na ktorom podlaží je?",
-      "max_calls": 2,
+      "max_calls": 1,
       "budget_s": 5,
-      "expect": { "answer_matches": ["(?i)vyúst|air ?terminal|IfcAirTerminal", "3NP"] }
+      "expect": { "answer_matches": ["(?i)vyúst|air ?terminal|IfcAirTerminal", "3NP"] },
+      "notes": "VV.03.01.040 je meno, nie object_ref; get_object(kód) vráti aj podlažie (D-102)."
     },
     {
       "id": "D6-nosne-steny",
@@ -58,13 +59,24 @@
       "notes": "ifc_count ASR, Pset_WallCommon.LoadBearing = true."
     },
     {
+      "id": "D7-kod-len-v-ifc",
+      "category": "data",
+      "viewer": false,
+      "question": "Kde je rameno schodiska SD04.0001?",
+      "max_calls": 2,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["(?i)IfcStairFlight|rameno"], "tools_called": ["get_object"] },
+      "notes": "D-102: prvok len v IFC (bez object_ref); get_object(kód) ho nájde cez IFC Name, podlažie dá ifc_get alebo get_bounds."
+    },
+    {
       "id": "V1-ukaz-miestnost",
       "category": "viewer",
       "viewer": true,
       "question": "Ukáž mi miestnosť 3.02.",
       "max_calls": 1,
       "budget_s": 5,
-      "expect": { "tools_called": ["show_in_3d"] }
+      "expect": { "tools_called": ["show_in_3d"], "viewer_state": "kamera sa pohla (camera v APPLIED alebo get_viewer_state iná než pred úlohou)" },
+      "notes": "D-102: miestnosť je vo forku skrytá, FOCUS ju zapne a priblíži; select_in_3d tu nie je správna voľba."
     },
     {
       "id": "V2-izoluj-nosne",
@@ -91,10 +103,10 @@
       "category": "viewer",
       "viewer": true,
       "question": "Sprav vodorovný rez 5 cm pod podhľadom na 3NP.",
-      "max_calls": 3,
+      "max_calls": 2,
       "budget_s": 8,
-      "expect": { "viewer_state": "section.axis vodorovná, coordinate 12,20 m (podlaha 3NP 9,20 m + FinishCeilingHeight 3,05 m - 0,05 m)" },
-      "notes": "#97 E3. Pri offline vieweri má agent hneď povedať, že viewer nie je otvorený."
+      "expect": { "viewer_state": "section horizontal, coordinate 12,20 m ±0,1 (podlaha 3NP 9,20 m + podhľad miestností 3NP 3,05 m - 0,05 m)" },
+      "notes": "#97 E3, D-102: set_section(floor=3NP, relative_to=ceiling, offset_m=-0.05). Podhľady IfcCovering priradené k 3NP visia pod doskou 3NP (patria 2NP) - nie sú to podhľady 3NP (Samuel 19. 10.)."
     },
     {
       "id": "E1-rez-schodiskom",
@@ -104,7 +116,7 @@
       "max_calls": 4,
       "budget_s": 10,
       "expect": { "tools_called": ["set_section", "style_in_3d", "set_camera"] },
-      "notes": "#97 E1 (baseline 9 volaní)."
+      "notes": "#97 E1 (baseline 14 volaní, po D-101 12). D-102: kód SD04.0001 priamo ako cieľ set_section."
     },
     {
       "id": "E4-co-mam-oznacene",
@@ -116,6 +128,17 @@
       "budget_s": 5,
       "expect": { "tools_called": ["get_viewer_state"] },
       "notes": "#97 E4, overenie #64 (súhrn výberu)."
+    },
+    {
+      "id": "V4-zrus-vyber",
+      "category": "viewer",
+      "viewer": true,
+      "setup": "Vyber v 3D miestnosť 3.02.",
+      "question": "Zruš výber.",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "tools_called": ["select_in_3d"], "viewer_state": "selection.count = 0" },
+      "notes": "D-102: select_in_3d(clear=true), CLEAR_SELECTION vo forku."
     },
     {
       "id": "V3-zrus-vsetko",

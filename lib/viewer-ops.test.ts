@@ -31,6 +31,7 @@ describe("viewer ops - existujúce operácie (D-066, D-082)", () => {
 
   it("clear_focus zruší len zvýraznenie (D-101, #94)", () => {
     expect(bridge("clear_focus::")).toEqual([{ type: "CLEAR_FOCUS" }]);
+    expect(bridge("clear_selection::")).toEqual([{ type: "CLEAR_SELECTION" }]);
   });
 
   it("chybné časti sa zahodia", () => {

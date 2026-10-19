@@ -150,9 +150,9 @@ export function planViewMode(
   if (!(VIEW_MODES as readonly string[]).includes(mode)) throw new ViewInputError("mode musí byť 3d, 2d alebo split.");
   if (input.reset === true) {
     if (mode !== "3d") throw new ViewInputError("reset platí len s mode=3d.");
-    // Zloží existujúce ops: bez rezu, 3D, všetko viditeľné, bez farieb, izometria.
+    // Zloží existujúce ops: bez rezu, 3D, všetko viditeľné, bez farieb, bez výberu (D-102), izometria.
     return {
-      ops: [SECTION_CLEAR_OP, viewModeOp("3d"), "show_all::", "reset_colors::", cameraOp("iso")],
+      ops: [SECTION_CLEAR_OP, viewModeOp("3d"), "show_all::", "reset_colors::", "clear_selection::", cameraOp("iso")],
       label: "3D: pôvodný pohľad",
       result: { ok: true, reset: true },
     };

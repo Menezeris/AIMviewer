@@ -54,6 +54,7 @@ export type ViewerOp =
   | { op: "reset_colors" }
   /** Zruší oranžové zvýraznenie z show_in_3d, ostatné farby nechá (D-101, #94). */
   | { op: "clear_focus" }
+  | { op: "clear_selection" }
   | {
       op: "section";
       /** Chýba len pri `fit` along/across - os volí viewer podľa obálky prvkov. */
@@ -127,7 +128,7 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "select" && guids.length > 0) {
       // Výber je jeden prvok (D-082) - prípadné ďalšie GUIDy sa ignorujú.
       out.push({ op, guid: guids[0] });
-    } else if (op === "show_all" || op === "reset_colors" || op === "section_clear" || op === "clear_focus") {
+    } else if (op === "show_all" || op === "reset_colors" || op === "section_clear" || op === "clear_focus" || op === "clear_selection") {
       out.push({ op });
     } else if (op === "section_gizmo" && (arg === "0" || arg === "1")) {
       out.push({ op, showGizmo: arg === "1" });
@@ -227,6 +228,8 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
       return { type: "RESET_COLORS" };
     case "clear_focus":
       return { type: "CLEAR_FOCUS" };
+    case "clear_selection":
+      return { type: "CLEAR_SELECTION" };
     case "section": {
       const { op: _op, ...rest } = o;
       void _op;

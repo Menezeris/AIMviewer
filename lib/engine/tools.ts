@@ -5,7 +5,17 @@ import { idsSources, loadIds } from "./ids-sources";
 import { execPassthroughTool, isPassthroughTool } from "./passthrough";
 import { joinToAim, type GuidLookup } from "./join";
 import { ifcRelations } from "./relations";
-import { SEARCH_FIELDS, idsOfTypes, searchEntities, searchIndex, type SearchField } from "./search";
+import {
+  SEARCH_FIELDS,
+  exactNameHits,
+  idsOfTypes,
+  looksLikeCode,
+  nameIndex,
+  nameKey,
+  searchEntities,
+  searchIndex,
+  type SearchField,
+} from "./search";
 import { openEngineSession, type EngineModel, type EngineSession, type EngineToolResult } from "./session";
 import { resolveStorey } from "./storey";
 import { OPS } from "./tool-defs";
@@ -122,7 +132,7 @@ function requireModel(input: Record<string, unknown>): string {
   return m;
 }
 
-async function storeyGuid(session: EngineSession, modelId: string, label: string): Promise<string> {
+export async function storeyGuid(session: EngineSession, modelId: string, label: string): Promise<string> {
   const res = structured<{ entities?: Array<{ globalId?: string; name?: string }> }>(
     await session.call("query_entities", { model_id: modelId, type: "IfcBuildingStorey", limit: 200 }),
   );
@@ -378,8 +388,12 @@ export async function ifcSearchResult(input: Record<string, unknown>, deps: Engi
   const { models, revision } = await modelsFor(modelIds, deps);
   const session = await openEngineSession(models);
   const index = (await Promise.all(models.map((m) => searchIndex(session, m)))).flat();
-  const allowed = types.length > 0 ? new Map(await Promise.all(models.map(async (m) => [m.id, await idsOfTypes(session, m.id, types)] as const))) : undefined;
-  const hits = searchEntities(index, { text, allowed, fields: fieldsRaw as SearchField[], fuzzy: input.fuzzy !== false });
+  const allowed = types.length > 0 ? new Map(await Promise.all(models.map(async (m) => [m.id, await idsOfTypes(session, m, types)] as const))) : undefined;
+  // Kód prvku (SD04.0001) presne podľa mena alebo Tagu bez prechodu celého indexu (D-102).
+  const exact = looksLikeCode(text)
+    ? exactNameHits((await Promise.all(models.map((m) => nameIndex(session, m)))).flatMap((ni) => ni.get(nameKey(text)) ?? []), allowed)
+    : [];
+  const hits = exact.length > 0 ? exact : searchEntities(index, { text, allowed, fields: fieldsRaw as SearchField[], fuzzy: input.fuzzy !== false });
   const page = hits.slice(offset, offset + limit);
   const joined = await joinToAim(page, deps.lookup);
   return {
