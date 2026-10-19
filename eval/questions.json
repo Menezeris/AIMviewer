@@ -609,6 +609,22 @@
       "expect": { "tools_called": ["bcf_topic_create"] },
       "verified": false,
       "notes": "D-099 (issue #78): téma z výberu živého viewera, priradená človeku = bez session. Len MCP, overenie = scenár cez konektor s otvoreným viewerom."
+    },
+    {
+      "id": "model-revision-current",
+      "category": "ifc_engine",
+      "question": "Je toto najnovšia verzia VZT? Kedy a čím sa naposledy zmenila ASR?",
+      "expect": { "tools_called": ["ifc_models"] },
+      "verified": false,
+      "notes": "D-109 (issue #73): ifc_models vráti aktuálnu revíziu (vNNN, dátum, autor, súhrn); history=N pre predchádzajúce. Hodnoty over v model_revisions."
+    },
+    {
+      "id": "model-crs",
+      "category": "ifc_engine",
+      "question": "Aký súradnicový systém používa model ASR?",
+      "expect": { "tools_called": ["ifc_model_info"] },
+      "verified": false,
+      "notes": "D-109 (issue #73): georeferencia a CRS z ifc_model_info (prevzatý z balíka), nie odhad."
     }
   ]
 }

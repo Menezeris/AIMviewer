@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-109 (verzia modelu v ifc_models, #73):** aktuálna revízia z `model_revisions` (vNNN, dátum, autor, súhrn, sha256, poistka), `history: N`, cesta k zoznamu zmien v OCB; `loaded` vysvetlené ako cache motora; CRS a hlavička ostávajú v `ifc_model_info`.
 - **2026-10-19** - **D-104 (dokumenty z IFC):** jedna sada dokumentov z IFC (stará sada E3 sa odstráni), ETL podľa IfcDocumentInformation vrátane stromu a odkazov na strany, efektívne dokumenty objektu cez vzťahy (typ, skupina, zóna, priestorová zóna, odvodené) v DB aj v tooloch, prehliadanie a preklikávanie PDF cieľovo vo vieweri (fork), súbory v buckete podľa `Identification`.
 - **2026-10-19** - **D-103 (rýchle CI forku, rozširuje D-098):** rýchla cesta aj pre PR s úpravami pôvodných viewer súborov len vnútri AIM-FORK blokov (build viewera, súvisiace viewer testy, ratchet viewer JS), nočné plné CI na `main`, nálezy review bota neblokujú merge okrem bezpečnostných (ifc-lite #69).
 - **2026-10-19** - **D-102 (kolo 3 latencie MCP):** kód prvku (SD04.0001, VV.03.01.040) ako cieľ všetkých toolov cez meno v AIM a IFC Name/Tag, predčítané indexy motora (`ifc_search` 2 až 90 ms), kód bez preklepu, `set_section relative_to=ceiling` z Qto miestností (vážený medián), `get_object` s podlažím, kamera na miestnosť a `CLEAR_SELECTION` vo forku.
@@ -4900,3 +4901,33 @@ až po kroku 4.
 - Produkcia: re-ETL bez novej revízie robí nový workflow `reetl` v OCB (aktuálna revízia
   overená cez sha256, `dry_run`, `close_legacy_documents`).
 - Knižnica dokumentov vo vieweri berie priečinok zo stromu dokumentácie (koreň PD sa vynecháva).
+
+---
+
+### D-109 - Verzia modelu v `ifc_models`: revízia z `model_revisions`, história
+**Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #73).
+Nadväzuje na D-084 (IFC motor), D-086 (revízie modelov), D-087, D-102 (menej toolov).
+
+**Kontext:** "Je toto najnovšie VZT?" konektor nevedel: `ifc_models` vracal len kód, štítok a
+`loaded`, ktoré Claude čítal ako "viewer model nemá" (v skutočnosti cache motora na serveri).
+Revízie modelov (číslo, základ, autor, dátum, sha256, recept, súhrn, výsledok poistky) sú od D-086
+v `model_revisions`, žiaden tool ich nečítal. Hlavičku súboru, jednotky a súradnicový systém už
+dáva `ifc_model_info` (prevzatý z balíka, D-087).
+
+**Rozhodnutie:**
+1. Bez nového toolu: `ifc_models` pri každom modeli vracia aktuálnu revíziu (`v075`, základ,
+   `published_at`, autor, súhrn, sha256, veľkosť, recept, poistka: počet objektov, pridané a
+   odobraté GUIDy s počtom, zmena počtu podľa tried) a cestu k úplnému zoznamu zmien v OCB
+   (`zmeny/<MODEL>/vNNN.json`, v DB nie je). `history: N` pridá posledných N revízií.
+2. Kľúč revízie je meno súboru v buckete (`ASR.ifc` -> `ASR`), nie id modelu. Aktuálna revízia sa
+   dočíta zvlášť, ak nie je medzi najnovšími (návrat cez `model_publish revert`).
+3. `loaded_means` v odpovedi vysvetľuje, že `loaded` je cache motora, nie stav viewera. Chyba DB
+   zoznam modelov nezhodí (`revision_error`).
+4. "Aký súradnicový systém / jednotky / kto súbor vytvoril" ostáva na `ifc_model_info` (veta v
+   inštrukciách).
+
+**Zavrhnuté:**
+- *Nový tool `get_model_info`:* zdvojil by `ifc_models` aj `ifc_model_info` a pridal definíciu, ktorú
+  D-102 škrtá.
+- *Diff prvkov medzi revíziami v tooli:* zmenené prvky (modify) nesie len zoznam zmien v OCB;
+  pridané a odobraté dáva poistka.
