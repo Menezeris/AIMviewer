@@ -4587,6 +4587,14 @@ inštrukcií podľa `mcp_call_log` (vlastné D-0xx).
 - *Cron na zahrievanie inštancie:* Fluid compute inštancie zdieľa; predčítanie pri pripojení
   konektora stačí a nestojí nič, keď sa konektor nepoužíva.
 
+**Dodatok D-100 (2026-10-19) - meranie v iad1 a presun do `arn1`.** Po zlúčení kola 1 zmerané
+12 úloh (`eval/results/mcp-2026-10-19-iad1.json`, headless viewer v session): všetky správne,
+ale 6 nad stropom volaní (E1 14 volaní a 55 s, E3 6 volaní a 38 s). Server väčšinou pod 1 s
+(`count_objects` 0,58 s, `set_section` 0,32 s, `style_in_3d` 1,44 s, z toho 1,35 s čakanie na
+počty z Lens); pomalé sú dotazy s viacerými kolami do DB (`get_spatial_path` 2,5 s,
+`get_model_stats` 1,3 s). Čas teda tvoria hlavne počty volaní (kolo 2 a 3), región skráti každé
+kolo do DB: funkcie idú do `arn1` (`vercel.json`), pri Supabase `eu-north-1`.
+
 ### D-101 - Dokumenty z IFC: jedna sada, dedenie cez vzťahy, prehliadanie vo vieweri
 **Status:** rozhodnuté smerovanie (2026-10-19, Samuel), implementácia po krokoch nižšie; PDF
 súbory dodá Samuel. Nadväzuje na D-014, D-032, D-036, D-046, D-063, D-075, D-076, D-077, D-088,
@@ -4685,10 +4693,3 @@ od hostiteľa a filtruje len podľa názvu. Doplní sa:
 Krok 3 tým znamená: skupina AIM v lište, panel dokumentov so zoskupením, hľadaním v metadátach a
 prepínačom výberu, AIM vrstvy vpravo, AIM karta nad efektívnymi dokumentmi; hľadanie v obsahu je
 až po kroku 4.
-**Dodatok D-100 (2026-10-19) - meranie v iad1 a presun do `arn1`.** Po zlúčení kola 1 zmerané
-12 úloh (`eval/results/mcp-2026-10-19-iad1.json`, headless viewer v session): všetky správne,
-ale 6 nad stropom volaní (E1 14 volaní a 55 s, E3 6 volaní a 38 s). Server väčšinou pod 1 s
-(`count_objects` 0,58 s, `set_section` 0,32 s, `style_in_3d` 1,44 s, z toho 1,35 s čakanie na
-počty z Lens); pomalé sú dotazy s viacerými kolami do DB (`get_spatial_path` 2,5 s,
-`get_model_stats` 1,3 s). Čas teda tvoria hlavne počty volaní (kolo 2 a 3), región skráti každé
-kolo do DB: funkcie idú do `arn1` (`vercel.json`), pri Supabase `eu-north-1`.
