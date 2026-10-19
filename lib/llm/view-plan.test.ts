@@ -41,7 +41,7 @@ describe("tools pohľadu (D-083 fáza 1)", () => {
   it("režim 2D na podlaží a reset pohľadu", () => {
     expect(parseOps(planViewMode({ mode: "2d" }, FLOOR).ops[0])).toEqual([{ op: "view", mode: "2d", storeyGuid: FLOOR.guid }]);
     const reset = planViewMode({ mode: "3d", reset: true }, null);
-    expect(parseOps(reset.ops.join(";")).map((o) => o.op)).toEqual(["section_clear", "view", "show_all", "reset_colors", "camera"]);
+    expect(parseOps(reset.ops.join(";")).map((o) => o.op)).toEqual(["section_clear", "view", "show_all", "reset_colors", "clear_selection", "camera"]);
     expect(() => planViewMode({ mode: "2d", reset: true }, null)).toThrow(/reset/);
   });
 });

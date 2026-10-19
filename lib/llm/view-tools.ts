@@ -47,7 +47,12 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         action: { type: "string", enum: ["set", "clear", "widget"], description: "widget = len zobraziť/skryť widget aktívneho rezu (show_widget)" },
         orientation: { type: "string", enum: ["horizontal", "vertical_x", "vertical_z"], description: "Default horizontal" },
         floor: floorProp,
-        offset_m: { type: "number", description: "Výška rezu nad úrovňou podlažia v metroch (-5 až 20, default 1,2)" },
+        offset_m: { type: "number", description: "Výška rezu nad úrovňou podlažia v metroch (-5 až 20, default 1,2); s relative_to=ceiling posun od podhľadu (-0.05 = 5 cm pod podhľadom)" },
+        relative_to: {
+          type: "string",
+          enum: ["floor", "ceiling"],
+          description: "S floor: ceiling = offset_m sa ráta od podhľadu miestností podlažia (Qto FinishCeilingHeight, server ho zistí sám)",
+        },
         position_percent: {
           type: "number",
           description: "Poloha rezu 0-100 % obálky celej scény (všetky viditeľné modely, nie len budova), len ako posledná možnosť",
@@ -194,7 +199,17 @@ export async function execViewTool(
   if (name === "set_section") {
     const floor = input.action === "set" ? await resolveFloor(input.floor) : null;
     const targets = input.action === "set" && (input.target_ids_or_refs || input.global_ids) ? await resolveTargets(input) : [];
-    plan = planSection(input, floor, targets);
+    if (input.relative_to === "ceiling") {
+      if (!floor) throw new ViewInputError("relative_to=ceiling potrebuje floor (podlažie, ktorého podhľad).");
+      const { storeyCeiling } = await import("@/lib/engine/ceiling");
+      const ceiling = await storeyCeiling(floor.label);
+      if (!ceiling) throw new ViewInputError(`Miestnosti podlažia ${floor.label} nemajú Qto FinishCeilingHeight - zadaj offset_m priamo.`);
+      const offset = typeof input.offset_m === "number" && Number.isFinite(input.offset_m) ? input.offset_m : 0;
+      plan = planSection({ ...input, offset_m: Math.round((ceiling.height_m + offset) * 1000) / 1000 }, floor, targets);
+      plan.result = { ...plan.result, ceiling: { ...ceiling, offset_from_ceiling_m: offset } };
+    } else {
+      plan = planSection(input, floor, targets);
+    }
   } else if (name === "set_camera") {
     plan = planCamera(input, await resolveTargets(input));
   } else if (name === "set_view_mode") {
