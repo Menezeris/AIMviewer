@@ -54,6 +54,8 @@ export interface DerivedRelationWire {
     ref: string | null;
     name: string | null;
     ifcType: string | null;
+    /** IFC PredefinedType (THERMAL, FIRESAFETY...) na zoskupenie v strome panela (D-106); NOTDEFINED = null. */
+    predefinedType?: string | null;
   };
   viaSpaceRef?: string | null;
 }

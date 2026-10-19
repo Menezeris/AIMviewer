@@ -121,6 +121,7 @@ interface OtherObject {
   name: string | null;
   ifc_type: string | null;
   ifc_guid: string | null;
+  predefined_type: string | null;
 }
 
 /**
@@ -206,7 +207,7 @@ export async function fetchDerivedRelations(
   if (ids.length > 0) {
     const { data } = await supabase
       .from("objects")
-      .select("id, object_ref, name, ifc_type, ifc_guid")
+      .select("id, object_ref, name, ifc_type, ifc_guid, predefined_type")
       .in("id", ids);
     for (const o of (data ?? []) as OtherObject[]) others.set(o.id, o);
   }
@@ -223,6 +224,7 @@ export async function fetchDerivedRelations(
           ref: o.object_ref,
           name: o.name,
           ifcType: o.ifc_type,
+          predefinedType: o.predefined_type && o.predefined_type !== "NOTDEFINED" ? o.predefined_type : null,
         },
       },
     ];
