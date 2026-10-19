@@ -8,10 +8,10 @@
  * oddelené bodkou (base64 abeceda IFC bodku ani dvojbodku neobsahuje).
  *
  * Množinové varianty `<op>_sel:<arg>:<selektor>` nesú selektor `t=IfcA.IfcB~m=Model`.
- * Pohľad (D-083): `section:<y|x|z>[~h=<m>][~p=<pct>][~f=1]:<storeyGuid>`,
+ * Pohľad (D-083): `section:<y|x|z>[~h=<m>][~p=<pct>][~f=1][~g=0|1]:<storeyGuid>` (g = widget rezu, #63),
  * rez cez prvky (D-085) `section:<auto|y|x|z>~fit=<along|across|center>:<guid.guid...>`
  * a na súradnici IFC sveta `section:<y|x|z>~c=<m>::`,
- * `section_clear::`, `camera:<preset>[~proj=o|p]:<guid.guid...>` (fit a relatívne kroky
+ * `section_clear::`, `section_gizmo:<0|1>:`, `camera:<preset>[~proj=o|p]:<guid.guid...>` (fit a relatívne kroky
  * `~fit=..~z=..~oh=..~ov=..~px=..~py=..` a `camera_sel:<arg>:<selektor>`, D-094/D-098, `lib/viewer-camera.ts`),
  * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>:<documentId>`.
  * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
@@ -63,8 +63,11 @@ export type ViewerOp =
       fit?: SectionFit;
       coordinate?: number;
       flipped?: boolean;
+      /** false = skryť widget rezu (quad a obrys), rez ostáva (#63). */
+      showGizmo?: boolean;
     }
   | { op: "section_clear" }
+  | { op: "section_gizmo"; showGizmo: boolean }
   | ({ op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[]; selector?: OpsSelector } & CameraMove)
   | { op: "view"; mode: ViewMode; storeyGuid?: string }
   | { op: "doc"; documentId: string; page?: number }
@@ -124,9 +127,14 @@ export function parseOps(raw: string): ViewerOp[] {
       out.push({ op, guid: guids[0] });
     } else if (op === "show_all" || op === "reset_colors" || op === "section_clear") {
       out.push({ op });
+    } else if (op === "section_gizmo" && (arg === "0" || arg === "1")) {
+      out.push({ op, showGizmo: arg === "1" });
     } else if (op === "section") {
       const [axis, kv] = parseArg(arg);
-      const flip = kv.f === "1" ? { flipped: true } : {};
+      const flip = {
+        ...(kv.f === "1" ? { flipped: true } : {}),
+        ...(kv.g === "0" || kv.g === "1" ? { showGizmo: kv.g === "1" } : {}),
+      };
       if (kv.fit !== undefined) {
         // Rez cez prvky: GUIDy sú ciele, nie podlažie.
         const fit = kv.fit as SectionFit;
@@ -155,7 +163,7 @@ export function parseOps(raw: string): ViewerOp[] {
         axis: axis as SectionAxis,
         ...(storeyGuid ? { storeyGuid, offsetM: offsetM ?? 1.2 } : {}),
         ...(position !== undefined && !storeyGuid ? { position } : {}),
-        ...(kv.f === "1" ? { flipped: true } : {}),
+        ...flip,
       });
     } else if (op === "camera" || op === "camera_sel") {
       const [preset, kv] = parseArg(arg);
@@ -222,6 +230,8 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     }
     case "section_clear":
       return { type: "SET_SECTION", action: "clear" };
+    case "section_gizmo":
+      return { type: "SET_SECTION", action: "gizmo", showGizmo: o.showGizmo };
     case "camera":
       return {
         type: "SET_CAMERA",
@@ -253,6 +263,7 @@ export function sectionOp(p: {
   fit?: SectionFit;
   coordinate?: number;
   flipped?: boolean;
+  showGizmo?: boolean;
 }): string {
   const kv: string[] = [];
   let axis: string = p.storeyGuid ? "y" : (p.axis ?? "y");
@@ -265,10 +276,14 @@ export function sectionOp(p: {
   else if (p.coordinate !== undefined) kv.push(`c=${p.coordinate}`);
   else if (p.position !== undefined) kv.push(`p=${p.position}`);
   if (p.flipped) kv.push("f=1");
+  if (p.showGizmo !== undefined) kv.push(`g=${p.showGizmo ? 1 : 0}`);
   return `section:${[axis, ...kv].join("~")}:${tail}`;
 }
 
 export const SECTION_CLEAR_OP = "section_clear::";
+
+/** Len widget aktívneho rezu (#63): `section_gizmo:<0|1>:`. */
+export const sectionGizmoOp = (show: boolean) => `section_gizmo:${show ? 1 : 0}:`;
 
 function cameraArg(preset: CameraPreset, projection?: Projection, move: CameraMove = {}): string {
   const proj = projection ? [`proj=${projection === "orthographic" ? "o" : "p"}`] : [];

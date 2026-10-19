@@ -195,8 +195,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "search_everything",
     description:
-      "Fulltextové vyhľadávanie nad CELÝM obsahom uzlov — názov, object_ref, IFC trieda " +
-      "aj VŠETKY psety (kľúče a hodnoty, vrátane custom psetov). Tolerantné na diakritiku " +
+      "ZDROJ: graf AIM v DB (nie IFC súbor). Fulltextové vyhľadávanie nad CELÝM obsahom uzlov " +
+      "AIM — názov, object_ref, IFC trieda aj VŠETKY importované psety (kľúče a hodnoty, vrátane " +
+      "custom psetov); IFC atribúty Description/ObjectType/Tag/LongName nevidí. Tolerantné na diakritiku " +
       "a preklepy (fuzzy). Použi vždy, keď hľadáš podľa OBSAHU vlastností (výrobca, materiál, " +
       "sériové číslo, ľubovoľné kľúčové slovo) alebo keď search_objects nič nenašiel. " +
       "Vracia score, match_kind, úryvok (headline) a matched_properties = v ktorom psete/" +
@@ -880,7 +881,8 @@ export class AskToolRuntime {
    * Jediné .rpc() volanie LLM vrstvy: parametrizované (žiadny SQL splicing),
    * row-cap drží SQL funkcia (limit 50).
    */
-  private async searchEverything(input: Record<string, unknown>) {
+  /** Aj pre kombinované `search_all` (D-095), preto verejné. */
+  async searchEverything(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
     const q = String(input.q ?? "").trim().slice(0, 200);
     if (q.length < 2) throw new Error("q musí mať aspoň 2 znaky.");

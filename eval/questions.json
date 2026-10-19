@@ -444,6 +444,22 @@
       "notes": "D-094 (#65): set_section cez IfcStairFlight + set_camera(preset=section, fit=visible)."
     },
     {
+      "id": "view-section-3np",
+      "category": "view",
+      "question": "Sprav vodorovný rez 1 m nad podlahou 3NP.",
+      "expect": { "tools_called": ["set_section"], "actions_match": ["section:y~h=1:[0-9A-Za-z_$]{22}"] },
+      "verified": false,
+      "notes": "D-092 / #63: vo vieweri má rovina byť na elevácii 3NP (9200 mm) + 1 m = 10,2 m; v MCP to potvrdí viewer_section."
+    },
+    {
+      "id": "view-section-hide-widget",
+      "category": "view",
+      "question": "Sprav pôdorysný rez na 2NP a skry rovinu rezu, nech je pohľad čistý.",
+      "expect": { "tools_called": ["set_section"], "actions_match": ["section:y~h=[0-9.]+~g=0:|section_gizmo:0:"] },
+      "verified": false,
+      "notes": "D-092 dodatok / #63: show_widget=false pri set alebo action=widget; rez ostáva aktívny."
+    },
+    {
       "id": "view-floor-2d",
       "category": "view",
       "question": "Prepni viewer na 2D pôdorys 2. NP.",
@@ -509,6 +525,38 @@
       "expect": { "tools_called": ["style_in_3d"], "actions_match": ["lens:(add|replace)~r=[A-Za-z0-9_-]+:[A-Za-z0-9_-]+"] },
       "verified": false,
       "notes": "D-096 (#68): color_by=system (autoColor group) alebo groups podľa názvu systému (Prívod/Odvod/Nasávanie/Výfuk); bez pevnej palety, legenda z viewera."
+    },
+    {
+      "id": "view-selection-summary",
+      "category": "view",
+      "question": "Čo mám označené vo vieweri?",
+      "expect": { "tools_called": ["get_viewer_state"] },
+      "verified": false,
+      "notes": "D-093 (#64): len MCP so živým viewerom, /ask tool nemá. Odpoveď zo selection.summary (triedy, podlažia, zostavy); pri selection.truncated povie, že výber je orezaný, a nepopíše ho ako celok."
+    },
+    {
+      "id": "search-ifc-description",
+      "category": "search",
+      "question": "Nájdi karuselové dvere.",
+      "expect": { "answer_matches": ["DD01\\.08\\.0001"] },
+      "verified": false,
+      "notes": "D-095: Description 'Karuselové dvere' je len v IFC (ASR, IfcDoor 1_YiIDK5n2fvfP1VGIobML), graf AIM ho nenesie. ifc_search je len v MCP (/ask motor nemá), overenie = scenár cez konektor."
+    },
+    {
+      "id": "search-ifc-zone-longname",
+      "category": "search",
+      "question": "Ukáž prenajímateľné priestory.",
+      "expect": { "answer_matches": ["Nájomné priestory"] },
+      "verified": false,
+      "notes": "D-095: IfcZone 'Nájomné priestory' má LongName 'Nájomné priestory (prenajímateľné)' len v IFC (ASR). ifc_search je len v MCP, overenie = scenár cez konektor."
+    },
+    {
+      "id": "search-all-badges",
+      "category": "search",
+      "question": "Nájdi všetko, čo súvisí s karuselovými dverami, a povedz, odkiaľ to je.",
+      "expect": { "answer_matches": ["DD01\\.08\\.0001", "IFC"] },
+      "verified": false,
+      "notes": "D-095 dodatok: search_all, badge IFC / AIM / IFC+AIM pri každom výsledku. Len MCP, overenie = scenár cez konektor."
     }
   ]
 }
