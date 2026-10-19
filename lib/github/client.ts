@@ -111,6 +111,10 @@ export class GithubClient {
     return items.filter((i) => !i.pull_request);
   }
 
+  reopenIssue(number: number): Promise<GithubIssue> {
+    return this.call("PATCH", `${this.base}/issues/${number}`, { state: "open" });
+  }
+
   addComment(number: number, body: string): Promise<GithubComment> {
     return this.call("POST", `${this.base}/issues/${number}/comments`, { body });
   }

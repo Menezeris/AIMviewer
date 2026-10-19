@@ -107,7 +107,8 @@ otvorené rozhodnutie (dodatok D-084 z 2026-10-18). `ENGINE_SPIKE=1`
 (len preview) pridá diagnostický `ifc_engine_probe`.
 
 **Pripomienky a nové tools (D-090):** `request_tool` (chýbajúci tool), `report_feedback`
-(pripomienka) a `feedback_status` zapisujú a čítajú GitHub issues v repe konektora; požiadavka na
+(pripomienka), `feedback_comment` (komentár do issue, voliteľne ho znovu otvorí) a `feedback_status` zapisujú a
+čítajú GitHub issues v repe konektora; požiadavka na
 tool hneď spustí Claude Code session, ktorá ju rieši podľa skillu `.claude/skills/mcp-poziadavka`.
 Nastavenie:
 1. **GitHub token:** fine-grained PAT, repo `Menezeris/AIMviewer`, Issues: read and write

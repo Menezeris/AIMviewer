@@ -593,6 +593,14 @@
       "expect": { "answer_matches": ["DD01\\.08\\.0001", "IFC"] },
       "verified": false,
       "notes": "D-095 dodatok: search_all, badge IFC / AIM / IFC+AIM pri každom výsledku. Len MCP, overenie = scenár cez konektor."
+    },
+    {
+      "id": "feedback-comment-eval-round",
+      "category": "feedback",
+      "question": "Dopíš do #97 kolo 2: eval locate-doors pred 4 volania, po 2.",
+      "expect": { "answer_matches": ["issuecomment"] },
+      "verified": false,
+      "notes": "D-090 dodatok (#98): feedback_comment do existujúceho issue, nie nové issue; odpoveď nesie odkaz na komentár. Len MCP a zapisuje do GitHubu, overenie = scenár cez konektor."
     }
   ]
 }
