@@ -12,6 +12,9 @@ import { LiveChannel } from "@/components/live-channel";
 // prefetchne. V `next dev` sa cache neuplatní → počas vývoja vždy čerstvé.
 export const revalidate = 60;
 
+/** Panel AI chatu vo vieweri (D-056) - predvolene skrytý (D-100). */
+const ASK_PANEL = process.env.NEXT_PUBLIC_ASK_PANEL === "1";
+
 export default async function ViewerLayout({
   children,
 }: {
@@ -36,8 +39,9 @@ export default async function ViewerLayout({
         {children}
       </main>
 
-      {/* Globálny AI chat pri spodku — konverzácia prežíva preklikávanie (D-056). */}
-      <AskDock />
+      {/* Globálny AI chat pri spodku — konverzácia prežíva preklikávanie (D-056).
+          Skrytý, kým nie je NEXT_PUBLIC_ASK_PANEL=1: Claude pracuje cez MCP konektor (D-100). */}
+      {ASK_PANEL && <AskDock />}
 
       {/* Živý kanál: príkazy od Claude cez MCP konektor (D-079), len s ?live=. */}
       <LiveChannel />

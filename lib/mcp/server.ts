@@ -155,6 +155,12 @@ export async function handleMcpPayload(
   return handleOne(payload, deps);
 }
 
+/** Metódy JSON-RPC v správe alebo dávke (D-100: route podľa nich predčíta IFC motor). */
+export function payloadMethods(payload: unknown): string[] {
+  const list = Array.isArray(payload) ? payload : [payload];
+  return list.flatMap((m) => (isObject(m) && typeof m.method === "string" ? [m.method] : []));
+}
+
 /** Odpoveď na nečitateľné telo (neplatný JSON). */
 export const parseErrorResponse = (): JsonRpcResponse =>
   fail(null, PARSE_ERROR, "Telo nie je platný JSON.");

@@ -114,6 +114,32 @@ describe("ifc_* tools (D-084 fáza 1)", () => {
     const r = await run("ifc_property_values", { model: "MINI", ifc_type: "IfcWall", pset: "Pset_WallCommon", name: "LoadBearing" });
     expect(r.json.entities).toBe(1);
     expect(r.json.values).toEqual([{ value: "false", count: 1 }]);
+    expect(r.json.source).toBe("pset");
+  });
+
+  it("ifc_property_values: množstvá Qto, nie (missing) (#96)", async () => {
+    const r = await run("ifc_property_values", {
+      model: "MINI",
+      ifc_type: "IfcSpace",
+      pset: "Qto_SpaceBaseQuantities",
+      name: "NetFloorArea",
+    });
+    expect(r.isError).toBe(false);
+    expect(r.json.source).toBe("qto");
+    expect(r.json.values).toEqual(
+      expect.arrayContaining([
+        { value: "25.5", count: 1 },
+        { value: "8", count: 1 },
+        { value: "42", count: 1 },
+      ]),
+    );
+    expect(JSON.stringify(r.json.values)).not.toContain("(missing)");
+  });
+
+  it("ifc_property_values: hodnota nikde - poznámka, nie tvrdenie, že dáta nie sú", async () => {
+    const r = await run("ifc_property_values", { model: "MINI", ifc_type: "IfcSpace", pset: "Qto_SpaceBaseQuantities", name: "Nic" });
+    expect(r.json.values).toEqual([{ value: "(missing)", count: r.json.entities }]);
+    expect(r.json.note).toContain("ifc_get");
   });
 
   it("ifc_get: cieľ cez object_ref aj priamo cez GUID, chýbajúci sa nahlási", async () => {

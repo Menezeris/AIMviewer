@@ -297,16 +297,67 @@ async function ifcPropertyValues(input: Record<string, unknown>, deps: EngineDep
   const res = structured<{ values: Array<{ value: string; count: number }>; total: number }>(
     await session.call("properties_unique", { model_id: modelId, type, pset, property: name }),
   );
+  // Upstream `properties_unique` číta len psety; Qto (IfcElementQuantity) vráti ako "(missing)" (#96).
+  let values = res.values;
+  let source: "pset" | "qto" = "pset";
+  if (res.total > 0 && values.every((v) => v.value === MISSING)) {
+    const qto = await quantityValues(session, modelId, type, pset, name);
+    if (qto.some((v) => v.value !== MISSING)) {
+      values = qto;
+      source = "qto";
+    }
+  }
+  const nowhere = values.every((v) => v.value === MISSING);
   return envelope({
     model: modelId,
     revision: revision[modelId],
     ifc_type: type,
     property: `${pset}.${name}`,
+    source,
     entities: res.total,
-    distinct: res.values.length,
-    values: res.values.slice(0, limit),
-    ...(res.values.length > limit ? { truncated: true } : {}),
+    distinct: values.length,
+    values: values.slice(0, limit),
+    ...(values.length > limit ? { truncated: true } : {}),
+    ...(nowhere
+      ? {
+          note:
+            "Hodnota nie je v psetoch výskytu ani v množstvách (Qto). Typové psety tento tool nečíta - " +
+            "pred záverom, že dáta chýbajú, over jeden prvok cez ifc_get.",
+        }
+      : {}),
   });
+}
+
+const MISSING = "(missing)";
+const BULK_PAGE = 1000;
+
+/** Histogram hodnoty z množstiev (Qto) pre všetky prvky typu - po stránkach, ako guidIndex. */
+async function quantityValues(
+  session: EngineSession,
+  modelId: string,
+  type: string,
+  qset: string,
+  name: string,
+): Promise<Array<{ value: string; count: number }>> {
+  const counts = new Map<string, number>();
+  for (let offset = 0; ; offset += BULK_PAGE) {
+    const page = structured<{ truncated?: boolean; entities?: Array<{ expressId: number }> }>(
+      await session.call("query_entities", { model_id: modelId, types: [type], limit: BULK_PAGE, offset, fields: ["globalId"] }),
+    );
+    const ids = (page.entities ?? []).map((e) => e.expressId);
+    if (ids.length > 0) {
+      const bulk = structured<{ entities: Record<string, { quantities?: Array<{ name: string; quantities: Array<{ name: string; value: number }> }> }> }>(
+        await session.call("get_entities_bulk", { model_id: modelId, express_ids: ids, include: ["quantities"] }),
+      );
+      for (const e of Object.values(bulk.entities ?? {})) {
+        const q = e.quantities?.find((s) => s.name === qset)?.quantities.find((x) => x.name === name);
+        const key = q?.value == null ? MISSING : String(q.value);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+    }
+    if (!page.truncated) break;
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value, count]) => ({ value, count }));
 }
 
 async function ifcSearch(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {

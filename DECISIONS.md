@@ -4195,6 +4195,7 @@ merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo fo
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-100 (latencia MCP konektora):** log volaní `mcp_call_log` s fázami, eval úlohy konektora merané agentom (`eval/mcp-tasks.json`), predčítanie IFC motora pri pripojení, panel chatu vo vieweri skrytý, `ifc_property_values` číta aj Qto (#96); región `arn1` samostatne po baseline (#97).
 - **2026-10-19** - **D-090 dodatok (`feedback_comment`, #98):** komentár do issue konektora (štítok `mcp`, aj zatvoreného, `reopen` na pokyn) s druhom `eval_round` / `result` / `note`, vráti odkaz; `feedback_status` označí komentáre konektora (`via_connector`).
 - **2026-10-19** - **D-096 (`style_in_3d` nad Lens):** farbenie, priehľadnosť a izolácia ako lens "AIM chat" v paneli Lens forku; filtre `system`, `system_type`, `not_in_system`, `zone`, `storey` (AND), `groups` s farbou, `color_by` s legendou; zóna sa doťahuje na klientovi; počty na pravidlo vracia viewer spätným kanálom.
 - **2026-10-19** - **D-093 dodatok (súhrn výberu počíta fork):** strop Realtime 256 kB, fork posiela `summary` nad celým výberom, zoznamy orezané (1000 GUID, 100 položiek) a `bbox`; server súhrn prevezme.
@@ -4528,3 +4529,58 @@ témy zakladá a mení v chate (MCP), vo vieweri ich chce len vidieť, automatic
 - *Zavrhnuté:* token na zápis vložený do stránky (b) - ktokoľvek s odkazom by zakladal témy a
   spúšťal sessions; čakať na prihlásenie (c) - Samuel zápis z panela nepotrebuje.
 
+
+---
+
+### D-100 - Latencia MCP konektora: meranie, región, predčítanie motora
+**Status:** rozhodnuté (2026-10-19, Samuel: cieľ "5 sekúnd max na úkony, ktoré aj nemajú trvať
+dlhšie", plán po kolách schválený), kolo 1 na vetve `claude/loving-sagan-nw4ma8`. Rámec je
+issue #97; rieši #96. Nadväzuje na D-057 (evaly), D-079 (konektor), D-084 (IFC motor), D-085
+(spätný kanál viewera).
+
+**Kontext:** Bežné úkony cez konektor v claude.ai trvajú desiatky sekúnd a 4 až 9 volaní (#97).
+Prieskum kódu a nastavení 19. 10.:
+- funkcie Vercelu bežia v `iad1` (Washington), Supabase v `eu-north-1` (Štokholm), takže každý
+  DB dotaz aj Realtime spojenie ide cez Atlantik;
+- UI príkaz prejde 350 ms dávkou, `router.push` a celým serverovým renderom `/ifc` (7 DB
+  dotazov); potvrdenie z viewera čaká pevným limitom (4 s rez, 10 s Lens) a pri každom volaní
+  otvára nový websocket;
+- IFC motor pri studenom štarte načítava 7,4 s a dve volania po sebe môžu trafiť dve inštancie,
+  každá načíta model znova;
+- konektor ponúka 49 toolov (asi 51 tis. znakov definícií, 17,7 tis. znakov inštrukcií);
+- časy volaní sa nemerali vôbec, evaly (D-057) testujú len in-app chat `/api/ask`.
+
+**Rozhodnutie:**
+1. **Cieľ a rozpočet:** bežný úkon = 1 až 2 volania toolu a do 5 s v claude.ai. Kolá modelu
+   neovplyvníme, iba ich počet, preto server: DB tool p50 pod 300 ms, UI úkon s potvrdením pod
+   1 s, IFC tool teplý pod 0,5 s.
+2. **Meria sa každé volanie:** tabuľka `mcp_call_log` (migrácia `20261019140000`, SCHEMA §2.16):
+   tool, `action`, ms, fázy (`exec`, `broadcast`, `lens`, `readback`, `engine_load`), `ok`,
+   `cold` (prvé volanie inštancie), región. Zápis cez `after()` po odpovedi, chyba zápisu tool
+   nezhodí. Argumenty sa neukladajú.
+3. **Úlohy konektora sa merajú agentom:** `eval/mcp-tasks.json` (E1 až E4 z #97 a typické
+   úlohy so stropom volaní a rozpočtom času), postup v `eval/MCP-EVAL.md`: čerstvý Claude agent
+   v Claude Code s konektorom aim-viewer, bez API kľúča (Samuel, 19. 10.). Výsledky
+   `eval/results/mcp-*.json` a súhrn do #97 (`eval_round`).
+4. **Región funkcií `arn1`** (Štokholm, pri databáze) - samostatným PR po baseline, aby sa dal
+   zmerať rozdiel (Samuel súhlasil 19. 10.).
+5. **Predčítanie motora:** po `initialize` / `tools/list` route cez `after()` načíta modely
+   federácie do cache, prvé `ifc_*` volanie nečaká.
+6. **Panel chatu vo vieweri je predvolene skrytý** (`NEXT_PUBLIC_ASK_PANEL=1` ho zapne): Claude
+   pracuje cez konektor; `/api/ask` ostáva.
+7. **#96:** `ifc_property_values` pri hodnote, ktorá v psetoch chýba všade, prečíta množstvá
+   (Qto) cez `get_entities_bulk`; výsledok nesie `source` (`pset` | `qto`) a pri hodnote, ktorá
+   nie je nikde, poznámku "over cez ifc_get" namiesto tichého `(missing)`.
+
+**Ďalšie kolá (plán, nie ešte rozhodnutie):** kolo 2 = cesta príkazu do viewera (potvrdenie
+`APPLIED` s `cmd_id`, fronta počas načítania, `isolate_add`/`isolate_remove`, widget rezu,
+zrušenie zvýraznenia; fork aj host, #95, #63, #94); kolo 3 = zlúčenie toolov a skrátenie
+inštrukcií podľa `mcp_call_log` (vlastné D-0xx).
+
+**Zavrhnuté:**
+- *Najprv zlučovať tooly:* bez merania by sa nedalo povedať, čo pomohlo, a zmena API konektora
+  je najdrahšia.
+- *Log do konzoly Vercelu namiesto tabuľky:* krátka retencia a p50/p95 by sa nedali počítať SQL.
+- *Evaly cez Claude API:* potrebujú kľúč a platia sa; agent v Claude Code ide z predplatného.
+- *Cron na zahrievanie inštancie:* Fluid compute inštancie zdieľa; predčítanie pri pripojení
+  konektora stačí a nestojí nič, keď sa konektor nepoužíva.
