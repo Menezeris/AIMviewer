@@ -16,6 +16,7 @@ import { MAX_ZONE_GUIDS, lensBridgeMessage, lensZoneIds } from "@/lib/viewer-len
 import type { LiveQueryPayload, LiveReplyPayload } from "@/lib/live/protocol";
 import { hasRelativeStep, relativeViewpoint, type CameraMove, type ViewerCamera } from "@/lib/viewer-camera";
 import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
+import { BCF_CHANGED_WINDOW_EVENT, bcfLoadMessage } from "@/lib/live/bcf-event";
 
 /**
  * 3D prehliadač = self-hostovaná IFClite appka (fork AssetinSpace/ifc-lite,
@@ -40,7 +41,8 @@ import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
  *                   DOCUMENT_OPEN{documentId,page} ·
  *                   AIM_PANEL_DATA{guid,data} · AIM_PANEL_EMPTY{guid,reason} ·
  *                   AIM_DERIVATIONS_LOAD{layer} (D-089; vrstva AIM nad modelmi,
- *                   typy v lib/derivations.ts)
+ *                   typy v lib/derivations.ts) · AIM_BCF_LOAD{baseUrl,projectId}
+ *                   (D-099; BCF témy z /api/bcf bez tokenu, aj po zmene z chatu)
  *   viewer → host:  READY · MODELS_LOADED · ENTITY_SELECTED{guid} ·
  *                   ENTITY_DESELECTED · AIM_NAVIGATE{href}
  *
@@ -388,6 +390,8 @@ export function IFCViewer({
           }
           // Vrstva AIM nad modelmi (D-089): pravidlá odvodení, počty, revízie modelov.
           if (derivations) post({ type: "AIM_DERIVATIONS_LOAD", layer: derivations });
+          // BCF témy (D-099): viewer si ich načíta z /api/bcf tohto originu bez tokenu.
+          post(bcfLoadMessage(window.location.origin));
           // Ops až po podkladoch, dokumentoch a pinoch (D-083): `view:2d` potrebuje
           // vedieť, či má podlažie kalibrovaný výkres, a `doc` otvorí len dokument,
           // ktorý viewer už dostal v DOCUMENTS_LOAD.
@@ -542,6 +546,16 @@ export function IFCViewer({
     post({ type: "AIM_TREE_DECORATIONS", decorations: decorations ?? {} });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [decorations]);
+
+  // ── BCF témy (D-099) — po zápise z chatu príde udalosť zo živého kanála.
+  useEffect(() => {
+    const reload = () => {
+      if (loadedRef.current) post(bcfLoadMessage(window.location.origin));
+    };
+    window.addEventListener(BCF_CHANGED_WINDOW_EVENT, reload);
+    return () => window.removeEventListener(BCF_CHANGED_WINDOW_EVENT, reload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Vrstva AIM (D-089) — re-send po zmene (router.refresh po novej revízii).
   useEffect(() => {

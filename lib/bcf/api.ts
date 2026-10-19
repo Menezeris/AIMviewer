@@ -7,7 +7,8 @@ import { isClaude, maybeStartSession, normalizeStatus, type BcfDeps } from "./to
  * BCF API 2.1 nad `model_tasks` (D-099 fáza B): BCF panel viewera (fork,
  * `@ifc-lite/bcf-api`) sa pripojí tokenom a vidí, zakladá a komentuje tie
  * isté témy ako MCP tools. Jeden projekt = celá federácia (téma nemusí mať
- * model). Čistá funkcia nad požiadavkou - autentifikáciu a CORS robí route.
+ * model). Čítanie je bez tokenu (viewer si témy načíta sám, D-099 dodatok),
+ * zápis len s tokenom. Čistá funkcia nad požiadavkou - token a CORS rieši route.
  */
 
 export const BCF_VERSION = "2.1";
@@ -45,8 +46,10 @@ export interface BcfApiContext {
   deps: BcfDeps;
   /** Používateľ tokenu (BCF current-user, autor zápisov). */
   user: string;
-  /** Prihlásený? Bez tokenu sú len `/versions` a `/auth`. */
+  /** Požiadavka nesie platný token na zápis. */
   authenticated: boolean;
+  /** Token na zápis je nastavený (`BCF_API_TOKEN`); bez neho je API len na čítanie. */
+  writeEnabled: boolean;
 }
 
 const ok = (body: unknown, status = 200): BcfApiResponse => ({ status, body });
@@ -129,7 +132,7 @@ export function viewpointFromDto(dto: Record<string, unknown>): { viewpoint: Rec
   return { viewpoint: { guid, source: "bcf", bcf: rest }, selection };
 }
 
-export function topicToDto(row: BcfTopicRow): Record<string, unknown> {
+export function topicToDto(row: BcfTopicRow, canWrite = true): Record<string, unknown> {
   return {
     guid: row.id,
     server_assigned_id: `#${row.number}`,
@@ -148,7 +151,9 @@ export function topicToDto(row: BcfTopicRow): Record<string, unknown> {
     modified_date: row.updated_at,
     modified_author: row.modified_by,
     reference_links: row.session_url ? [row.session_url] : [],
-    authorization: { topic_actions: TOPIC_ACTIONS, topic_status: Object.values(STATUS_TO_BCF) },
+    authorization: canWrite
+      ? { topic_actions: TOPIC_ACTIONS, topic_status: Object.values(STATUS_TO_BCF) }
+      : { topic_actions: [], topic_status: [] },
   };
 }
 
@@ -158,7 +163,7 @@ export function commentToDto(topic: BcfTopicRow, c: BcfComment): Record<string, 
 
 const union = (...lists: string[][]) => [...new Set(lists.flat())];
 
-async function extensions(deps: BcfDeps): Promise<Record<string, unknown>> {
+async function extensions(deps: BcfDeps, canWrite: boolean): Promise<Record<string, unknown>> {
   const v = await deps.store.vocabulary();
   return {
     topic_type: union(DEFAULT_TYPES, v.topic_type),
@@ -168,8 +173,8 @@ async function extensions(deps: BcfDeps): Promise<Record<string, unknown>> {
     // Bez zoznamu štítkov panel štítky nekontroluje (MCP ich píše voľne).
     user_id_type: union(["claude"], v.assigned_to),
     snippet_type: [],
-    project_actions: PROJECT_ACTIONS,
-    topic_actions: TOPIC_ACTIONS,
+    project_actions: canWrite ? PROJECT_ACTIONS : [],
+    topic_actions: canWrite ? TOPIC_ACTIONS : [],
     comment_actions: [],
   };
 }
@@ -215,6 +220,11 @@ function topicWrite(body: unknown, user: string): BcfTopicWrite & { title: strin
 
 class ApiInputError extends Error {}
 
+/** Oznámenie je pohodlie: zlyhanie nemá zhodiť zápis, ktorý už prebehol. */
+async function notified(ctx: BcfApiContext): Promise<void> {
+  await ctx.deps.notify?.().catch(() => undefined);
+}
+
 async function startIfClaude(row: BcfTopicRow, wasClaude: boolean, deps: BcfDeps): Promise<BcfTopicRow> {
   if (!isClaude(row.assigned_to) || wasClaude) return row;
   return (await maybeStartSession(row, deps, true)).topic;
@@ -224,6 +234,12 @@ async function startIfClaude(row: BcfTopicRow, wasClaude: boolean, deps: BcfDeps
 export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Promise<BcfApiResponse> {
   const { method, segments: s } = req;
   const { deps, user } = ctx;
+  const canWrite = ctx.authenticated;
+  const project = () => ({
+    project_id: PROJECT_ID,
+    name: PROJECT_NAME,
+    authorization: { project_actions: canWrite ? PROJECT_ACTIONS : [] },
+  });
   try {
     if (s.length === 1 && s[0] === "versions" && method === "GET") {
       return ok({
@@ -235,17 +251,21 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
       // Len vložený token (Bearer); OAuth server nemáme.
       return ok({ http_basic_supported: false, supported_oauth2_flows: [] });
     }
-    if (!ctx.authenticated) return err(401, "Chýba alebo nesedí token (Authorization: Bearer).");
-    if (s.length === 2 && s[1] === "current-user" && method === "GET") return ok({ id: user, name: user });
+    if (method !== "GET") {
+      if (!ctx.writeEnabled) {
+        return err(403, "Zápis cez BCF API je vypnutý (bez BCF_API_TOKEN); témy zakladaj a meň v chate cez konektor AIM.");
+      }
+      if (!ctx.authenticated) return err(401, "Zápis potrebuje token (Authorization: Bearer).");
+    }
+    if (s.length === 2 && s[1] === "current-user" && method === "GET") {
+      // Prihlásenie tokenom v paneli; bez tokenu sa panel nepripája, témy mu posiela most AIM.
+      return ctx.authenticated ? ok({ id: user, name: user }) : err(401, "Chýba alebo nesedí token (Authorization: Bearer).");
+    }
     if (s[1] !== "projects") return err(404, "Neznáma cesta BCF API.");
-    if (s.length === 2 && method === "GET") {
-      return ok([{ project_id: PROJECT_ID, name: PROJECT_NAME, authorization: { project_actions: PROJECT_ACTIONS } }]);
-    }
+    if (s.length === 2 && method === "GET") return ok([project()]);
     if (s[2] !== PROJECT_ID) return err(404, `Projekt ${s[2]} neexistuje (jediný je '${PROJECT_ID}').`);
-    if (s.length === 3 && method === "GET") {
-      return ok({ project_id: PROJECT_ID, name: PROJECT_NAME, authorization: { project_actions: PROJECT_ACTIONS } });
-    }
-    if (s.length === 4 && s[3] === "extensions" && method === "GET") return ok(await extensions(deps));
+    if (s.length === 3 && method === "GET") return ok(project());
+    if (s.length === 4 && s[3] === "extensions" && method === "GET") return ok(await extensions(deps, canWrite));
     if (s[3] !== "topics") return err(404, "Neznáma cesta BCF API.");
 
     if (s.length === 4) {
@@ -254,11 +274,13 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
         const top = Math.min(500, Math.max(1, Number.parseInt(req.query.get("$top") ?? "", 10) || 100));
         const skip = Math.max(0, Number.parseInt(req.query.get("$skip") ?? "", 10) || 0);
         const { rows } = await deps.store.list({ limit: top, offset: skip, ascending: true });
-        return ok(rows.map(topicToDto));
+        return ok(rows.map((r) => topicToDto(r, canWrite)));
       }
       if (method === "POST") {
         const row = await deps.store.create({ ...topicWrite(req.body, user), author: user });
-        return ok(topicToDto(await startIfClaude(row, false, deps)), 201);
+        const started = await startIfClaude(row, false, deps);
+        await notified(ctx);
+        return ok(topicToDto(started), 201);
       }
       return err(405, "Metóda nie je povolená.");
     }
@@ -268,10 +290,12 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
     const topic = found;
 
     if (s.length === 5) {
-      if (method === "GET") return ok(topicToDto(topic));
+      if (method === "GET") return ok(topicToDto(topic, canWrite));
       if (method === "PUT") {
         const row = await deps.store.update(topic.id, topicWrite(req.body, user));
-        return ok(topicToDto(await startIfClaude(row, isClaude(topic.assigned_to), deps)));
+        const started = await startIfClaude(row, isClaude(topic.assigned_to), deps);
+        await notified(ctx);
+        return ok(topicToDto(started));
       }
       return err(405, "Metóda nie je povolená.");
     }
@@ -283,7 +307,9 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
         const text = str(b.comment, 8000);
         if (!text) return err(400, "Chýba comment.");
         const c = await deps.store.addComment(topic.id, user, text);
-        return c ? ok(commentToDto(topic, c), 201) : err(404, `Téma ${topic.id} neexistuje.`);
+        if (!c) return err(404, `Téma ${topic.id} neexistuje.`);
+        await notified(ctx);
+        return ok(commentToDto(topic, c), 201);
       }
       return err(405, "Metóda nie je povolená.");
     }
@@ -301,6 +327,7 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
             ...(selection.length ? { components: selection } : {}),
             modified_by: user,
           });
+          await notified(ctx);
           return ok(viewpointToDto(row), 201);
         }
         return err(405, "Metóda nie je povolená.");

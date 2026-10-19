@@ -185,6 +185,8 @@ export interface BcfDeps {
   resolve: (input: Record<string, unknown>) => Promise<string[]>;
   now: () => Date;
   maxSessions: number;
+  /** Po zápise: oznámenie otvoreným viewerom, že sa témy zmenili (D-099 dodatok). */
+  notify?: () => Promise<void>;
 }
 
 /** Čistá časť: odpoveď `view_state` -> uložený pohľad (bez zoznamu GUID, ten je v components). */
@@ -492,26 +494,26 @@ async function viewpoint(args: Record<string, unknown>, deps: BcfDeps) {
   return { topic: summary(row), selection: c.guids.length, viewpoint_from_viewer: Boolean(c.viewpoint), view_note: c.viewNote };
 }
 
+const WRITES: Record<string, (args: Record<string, unknown>, deps: BcfDeps) => Promise<unknown>> = {
+  bcf_topic_create: create,
+  bcf_topic_update: update,
+  bcf_topic_close: close,
+  bcf_viewpoint_create: viewpoint,
+};
+
 export async function execBcfTool(
   name: string,
   args: Record<string, unknown>,
   deps: BcfDeps,
 ): Promise<{ text: string; isError: boolean }> {
   try {
-    switch (name) {
-      case "bcf_topic_create":
-        return { text: json(await create(args, deps)), isError: false };
-      case "bcf_topic_list":
-        return { text: json(await list(args, deps)), isError: false };
-      case "bcf_topic_update":
-        return { text: json(await update(args, deps)), isError: false };
-      case "bcf_topic_close":
-        return { text: json(await close(args, deps)), isError: false };
-      case "bcf_viewpoint_create":
-        return { text: json(await viewpoint(args, deps)), isError: false };
-      default:
-        return { text: `Neznámy tool: ${name}`, isError: true };
-    }
+    if (name === "bcf_topic_list") return { text: json(await list(args, deps)), isError: false };
+    const write = WRITES[name];
+    if (!write) return { text: `Neznámy tool: ${name}`, isError: true };
+    const result = await write(args, deps);
+    // Oznámenie je pohodlie: zlyhanie nemá zhodiť zápis, ktorý už prebehol.
+    await deps.notify?.().catch(() => undefined);
+    return { text: json(result), isError: false };
   } catch (err) {
     if (err instanceof BcfInputError || err instanceof ViewInputError) return { text: err.message, isError: true };
     return { text: `Chyba: ${err instanceof Error ? err.message : String(err)}`, isError: true };

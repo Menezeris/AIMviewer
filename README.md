@@ -138,11 +138,10 @@ Nastavenie:
    > Ak chýba repo OCB alebo konektor aim-viewer, napíš, čo chýba, a skonči.
 2. Voliteľne `BCF_MAX_SESSIONS` (predvolene 3). Bez routine alebo nad stropom téma čaká a spustí ju
    `bcf_topic_update` so `start_session=true`.
-3. **BCF panel viewera (BCF API 2.1):** Vercel env `BCF_API_TOKEN` (náhodný reťazec, aspoň 16
-   znakov; bez neho je `/api/bcf` vypnuté) a voliteľne `BCF_API_USER` (meno autora zápisov z panela,
-   predvolene `aim`). Vo vieweri: BCF panel -> Pripojiť server -> vlastná adresa
-   `<site>/api/bcf`, prihlásenie tokenom, projekt "AIM - modely federácie". Témy z chatu aj z panela
-   sú tie isté riadky `model_tasks`.
+3. **BCF panel viewera:** nič netreba nastavovať. Viewer si témy načíta sám z `/api/bcf` (čítanie
+   bez tokenu) a po zmene z chatu ich obnoví (živý kanál). Zápis priamo z panela je voliteľný: Vercel
+   env `BCF_API_TOKEN` (aspoň 16 znakov), voliteľne `BCF_API_USER`, a v paneli Pripojiť server ->
+   `<site>/api/bcf` s tokenom. Témy z chatu aj z panela sú tie isté riadky `model_tasks`.
 4. **Riešenie v OCB:** workflow `uloha` (recept -> poistka -> revízia -> re-ETL -> viewer) a skill
    `bcf-tema` sú v repe `Menezeris/OCB`; potrebujú tie isté secrets ako ostatné workflowy OCB.
 

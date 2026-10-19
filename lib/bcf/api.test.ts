@@ -10,6 +10,7 @@ const ctx = (over: Partial<BcfApiContext> = {}): BcfApiContext => ({
   deps: deps(),
   user: "samuel",
   authenticated: true,
+  writeEnabled: true,
   ...over,
 });
 
@@ -24,12 +25,42 @@ const call = (c: BcfApiContext, method: string, path: string, body: unknown = nu
 const P = `2.1/projects/${PROJECT_ID}`;
 
 describe("objavenie a prihlásenie (ako BCFServerConnectForm)", () => {
-  it("/versions a /auth bez tokenu, ostatné 401", async () => {
-    const anon = ctx({ authenticated: false });
+  it("čítanie bez tokenu, zápis len s tokenom; bez BCF_API_TOKEN je API len na čítanie", async () => {
+    const { store, rows } = memoryStore([{ title: "x" }]);
+    const anon = ctx({ deps: deps({ store }), authenticated: false });
     expect((await call(anon, "GET", "versions")).body).toMatchObject({ versions: [{ version_id: "2.1" }] });
     expect((await call(anon, "GET", "2.1/auth")).status).toBe(200);
     expect((await call(anon, "GET", "2.1/current-user")).status).toBe(401);
-    expect((await call(anon, "GET", `${P}/topics`)).status).toBe(401);
+    const list = await call(anon, "GET", `${P}/topics`);
+    expect(list.status).toBe(200);
+    // Bez tokenu panel neponúkne zápis: prázdne akcie projektu aj témy.
+    expect((list.body as Record<string, unknown>[])[0].authorization).toEqual({ topic_actions: [], topic_status: [] });
+    expect((await call(anon, "GET", "2.1/projects")).body).toEqual([
+      expect.objectContaining({ authorization: { project_actions: [] } }),
+    ]);
+    expect(((await call(anon, "GET", `${P}/extensions`)).body as Record<string, unknown>).project_actions).toEqual([]);
+    expect((await call(anon, "POST", `${P}/topics`, { title: "t" })).status).toBe(401);
+    expect((await call(anon, "POST", `${P}/topics/${rows[0].id}/comments`, { comment: "c" })).status).toBe(401);
+    const readOnly = ctx({ deps: deps({ store }), authenticated: false, writeEnabled: false });
+    const refused = await call(readOnly, "PUT", `${P}/topics/${rows[0].id}`, { title: "y" });
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ message: expect.stringMatching(/v chate/) });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].title).toBe("x");
+  });
+
+  it("zápis oznámi zmenu otvoreným viewerom, čítanie nie", async () => {
+    const notify = vi.fn(async () => undefined);
+    const { store, rows } = memoryStore([{ title: "x" }]);
+    const c = ctx({ deps: deps({ store, notify }) });
+    await call(c, "GET", `${P}/topics`);
+    expect(notify).not.toHaveBeenCalled();
+    await call(c, "POST", `${P}/topics`, { title: "t" });
+    await call(c, "POST", `${P}/topics/${rows[0].id}/comments`, { comment: "c" });
+    expect(notify).toHaveBeenCalledTimes(2);
+    // Zlyhané oznámenie zápis nezhodí.
+    const broken = ctx({ deps: deps({ store, notify: async () => Promise.reject(new Error("kanál")) }) });
+    expect((await call(broken, "POST", `${P}/topics`, { title: "u" })).status).toBe(201);
   });
 
   it("current-user, projekt a slovník projektu", async () => {

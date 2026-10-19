@@ -1,7 +1,8 @@
 import "server-only";
 
 import { fireRoutine, routineConfigured, type RoutineConfig } from "@/lib/feedback/routine";
-import { liveChannel } from "@/lib/live/broadcast";
+import { LIVE_BCF_EVENT } from "@/lib/live/bcf-event";
+import { broadcastLiveEvent, liveChannel } from "@/lib/live/broadcast";
 import { queryLiveViewer } from "@/lib/live/query";
 import { resolveTargets } from "@/lib/llm/view-tools";
 
@@ -40,6 +41,12 @@ export async function captureLiveView(): Promise<CapturedView | string> {
   return viewFromState(outcome.reply.result);
 }
 
+/** "Témy sa zmenili" na živý kanál; otvorený viewer si ich načíta znova. */
+export async function notifyBcfChanged(): Promise<void> {
+  const channel = liveChannel();
+  if (channel) await broadcastLiveEvent(channel, LIVE_BCF_EVENT, { at: new Date().toISOString() });
+}
+
 export function defaultBcfDeps(): BcfDeps {
   const cfg = bcfRoutine();
   return {
@@ -49,5 +56,6 @@ export function defaultBcfDeps(): BcfDeps {
     resolve: resolveTargets,
     now: () => new Date(),
     maxSessions: bcfMaxSessions(),
+    notify: notifyBcfChanged,
   };
 }

@@ -34,7 +34,7 @@ function server(store = memoryStore()) {
         query: url.searchParams,
         body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
       },
-      { deps: d, user: "samuel", authenticated: headers.get("authorization") === `Bearer ${TOKEN}` },
+      { deps: d, user: "samuel", authenticated: headers.get("authorization") === `Bearer ${TOKEN}`, writeEnabled: true },
     );
     return new Response(JSON.stringify(res.body), { status: res.status, headers: { "Content-Type": "application/json" } });
   };
@@ -50,6 +50,16 @@ describe("@ifc-lite/bcf-api proti /api/bcf", () => {
     expect(await client.getCurrentUser()).toMatchObject({ id: "samuel" });
     const anon = new BcfApiClient({ baseUrl: BASE, fetchFn });
     await expect(anon.getCurrentUser()).rejects.toThrow();
+  });
+
+  it("viewer bez tokenu (AIM_BCF_LOAD): fetchProjectAsBCF prejde, zápis nie", async () => {
+    const s = server(memoryStore([{ title: "Z chatu", components: [G1] }]));
+    const anon = new BcfApiClient({ baseUrl: BASE, fetchFn: s.fetchFn });
+    const result = await fetchProjectAsBCF(anon, PROJECT_ID, { includeSnapshots: false });
+    expect(result.warnings).toEqual([]);
+    expect([...result.project.topics.values()].map((t) => t.title)).toEqual(["Z chatu"]);
+    await expect(anon.createTopic(PROJECT_ID, { title: "nie" })).rejects.toThrow();
+    expect(s.rows).toHaveLength(1);
   });
 
   it("fetchProjectAsBCF načíta témy s komentármi, pohľadom a výberom", async () => {
