@@ -37,6 +37,49 @@ describe("výber z viewera pre get_viewer_state (D-093)", () => {
     expect(s.items[0].parent).toMatchObject({ guid: "CW1", object_ref: "I1-V.01" });
   });
 
+  it("súhrn z viewera platí pre celý výber, aj keď zoznam GUID je orezaný (D-093 dodatok)", () => {
+    const ctx: SelectionContext = new Map([
+      ["CW1", { object_id: "o1", object_ref: "I1-V.01", name: "Plášť", ifc_type: "IfcCurtainWall", floor: "1NP", parent: null }],
+    ]);
+    const sel = {
+      count: 1810,
+      guids: guids(1000),
+      items: [{ guid: "G0", ifc_type: "IfcPlate", storey: "1NP", parent_guid: "CW1", parent_type: "IfcCurtainWall" }],
+      summary: {
+        of: 1810,
+        by_ifc_type: [{ key: "IfcPlate", count: 1200 }, { key: "IfcMember", count: 610 }],
+        by_storey: [{ key: "1NP", count: 600 }, { key: "2NP", count: 500 }, { key: "3NP", count: 400 }, { key: "4NP", count: 310 }],
+        by_parent: [
+          { key: "IfcCurtainWall Plášť", count: 1000, guid: "CW1", ifc_type: "IfcCurtainWall", name: "Plášť" },
+          { key: "IfcCurtainWall CW2", count: 810, guid: "CW2", ifc_type: "IfcCurtainWall", name: null },
+        ],
+      },
+    };
+    expect(lookupGuidsFor(sel)).toContain("CW2");
+    const s = summarizeSelection(sel, ctx);
+    expect(s).toMatchObject({ count: 1810, returned: 1000, truncated: true });
+    expect(s.summary).toMatchObject({ covers: "all", of: 1810 });
+    expect(s.summary.by_floor.map((g) => g.key)).toEqual(["1NP", "2NP", "3NP", "4NP"]);
+    expect(s.summary.by_parent).toEqual([
+      { key: "IfcCurtainWall I1-V.01", count: 1000 },
+      { key: "IfcCurtainWall CW2", count: 810 },
+    ]);
+    expect(s.summary.by_model).toBeUndefined();
+    expect(s.note).toContain("súhrn (summary) však platí pre celý výber");
+    expect(s.note).not.toContain("nerob z nich závery");
+  });
+
+  it("súhrn z viewera za menej prvkov, než je výber, ostane covers=returned", () => {
+    const s = summarizeSelection({ count: 20, guids: guids(5), summary: { of: 5, by_ifc_type: [{ key: "IfcWall", count: 5 }] } }, new Map());
+    expect(s.summary).toMatchObject({ covers: "returned", of: 5, by_ifc_type: [{ key: "IfcWall", count: 5 }] });
+    expect(s.note).toContain("nerob z nich závery");
+  });
+
+  it("neplatný súhrn z viewera sa ignoruje", () => {
+    const s = summarizeSelection({ count: 2, guids: guids(2), summary: { of: "x" } as never }, new Map());
+    expect(s.summary).toMatchObject({ covers: "all", of: 2 });
+  });
+
   it("bez údajov z viewera doplní triedu, podlažie a zostavu z AIM", () => {
     const ctx: SelectionContext = new Map([
       ["A", { object_id: "a", object_ref: "DD01.06.03", name: "Dvere", ifc_type: "IfcDoor", floor: "2NP", parent: null }],
