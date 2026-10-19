@@ -24,8 +24,8 @@ export interface JoinedItem {
   [key: string]: unknown;
 }
 
-export interface Joined {
-  items: JoinedItem[];
+export interface Joined<T = unknown> {
+  items: Array<T & JoinedItem>;
   unmapped: number;
   show_in_3d: { ids_or_refs: string[]; global_ids: string[] };
 }
@@ -36,7 +36,7 @@ const routeFor = (objectType: string): string =>
 export async function joinToAim<T extends { global_id: string }>(
   rows: T[],
   lookup: GuidLookup,
-): Promise<Joined> {
+): Promise<Joined<T>> {
   const guids = [...new Set(rows.map((r) => r.global_id).filter(Boolean))];
   const refs = guids.length > 0 ? await lookup(guids) : new Map<string, AimRef>();
   let unmapped = 0;

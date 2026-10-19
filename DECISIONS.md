@@ -4132,3 +4132,81 @@ merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo fo
 - **2026-06-28** — Zjednotenie vetiev do `main`; D-045 (kandidát: pasportizácia + dynamika).
 - **2026-06-22** — D-044 (IFC 3D viewer — IFClite, geometria ephemerálna cez GUID); sprint DV (D-042/D-043).
 - **2026-06-20** — D-036 (CDE naming), D-040 (`IfcSpace.LongName`), D-041 (E4 auto-linking), D-042 (plánovaná prehliadačka výkresov).
+
+---
+
+### D-095 - `ifc_search`: full-text priamo v IFC súbore, zdroj pri každom výsledku
+**Status:** rozhodnuté (2026-10-19), implementované (issue #66, PR #89).
+**Rozširuje D-059, D-084, D-087.**
+
+**Kontext:** Claude cez konektor nenašiel "karuselové dvere" ani "prenajímateľné priestory".
+V ASR má IfcDoor `DD01.08.0001` atribút Description "Karuselové dvere" a IfcZone "Nájomné
+priestory" LongName "Nájomné priestory (prenajímateľné)". Graf AIM tieto atribúty nenesie
+(`objects` nemá Description, ObjectType, Tag ani LongName zón), takže `search_everything`
+(D-059) ich nájsť nemôže, a `ifc_query` vie len triedu a presné podmienky psetov. Navyše
+nebolo jasné, ktoré hľadanie ide do IFC a ktoré do DB. `@ifc-lite/mcp` 0.27.0 full-text tool
+nemá (`query_entities`, `ids_schema_search` a `bsdd_search` hľadajú niečo iné).
+
+**Rozhodnutie:**
+1. **Nový tool `ifc_search`** (D-087 bod 3, vlastný nad balíkom): dáta berie cez
+   `query_entities` + `get_entities_bulk` balíka, hľadanie je v `lib/engine/search.ts`. Index sa
+   postaví raz na parsovaný store (nemení sa, vzor indexu GlobalId v `ifc_get`) a obsahuje
+   atribúty (Name, Description, ObjectType, Tag, LongName, PredefinedType...), psety a Qto
+   výskytu aj z typu, klasifikácie a materiály - prvkov, priestorov, zón, skupín, systémov aj
+   typov (IfcTypeObject).
+2. **Zhoda:** bez diakritiky a veľkých písmen, každé slovo dotazu musí sedieť v niektorom poli
+   (začiatok slova alebo podreťazec od 3 znakov), inak fuzzy (Levenshtein 1 od 4 znakov, 2 od 8
+   znakov, aj voči začiatku slova). Skóre zvýhodní Name/Description/LongName/ObjectType a
+   celú frázu v jednom poli.
+3. **Vstupy:** `text`, `model?` (inak všetky modely), `ifc_types?` (vrátane podtried),
+   `fields?` (attribute | property | quantity | type_property | classification | material),
+   `fuzzy?`, `limit`/`offset`. **Výstup:** `source: "ifc"` pre celý výsledok a pri každej
+   položke `source` `ifc` (len v súbore) alebo `ifc+aim` (AIM prvok pozná, má `object_ref`),
+   `matched` (pole, cesta, hodnota ako dôkaz), `match_kind`, `score` a `show_in_3d`.
+4. **Zdroj v opisoch:** `search_everything` = "ZDROJ: graf AIM v DB", `ifc_search` = "ZDROJ:
+   IFC súbor"; pravidlo v MCP inštrukciách (len pri zapnutom motore): text hľadaj v oboch,
+   "nenašiel som" až po oboch, v odpovedi uveď zdroj.
+5. **`search_everything` sa nepremenúva** na `aim_search` (návrh z issue): používa ho aj chat
+   `/ask`, evaly a prompt, premenovanie by rozbilo staré rozhovory. Samuel potvrdil v #66.
+6. **Kombinované `search_all`** (dodatok 2026-10-19, na žiadosť Samuela v #66: "kombinované,
+   ale tak, aby bolo jasné, čo je čo, s badge a filtrovateľné"): jedno volanie hľadá naraz cez
+   `ifc_search` aj `search_everything`, výsledky spojí podľa `objects.id` (IFC prvok ho má, ak
+   ho AIM pozná), inak podľa GlobalId. Každý výsledok má **badge** podľa toho, kde sa našiel
+   TEXT: `IFC`, `AIM` alebo `IFC+AIM`; či prvok AIM pozná, ukazuje `object_ref` (badge `IFC` s
+   `object_ref` = prvok je v AIM, ale text je len v súbore, napr. Description). Dôkaz z každého
+   zdroja je v `evidence.ifc` / `evidence.aim`. Vstup `badges` filtruje, `counts` sú počty po
+   badge pred filtrom; `ifc_types` a `model` zúžia aj AIM časť. Poradie: `IFC+AIM` najprv,
+   potom podľa poradia v zdroji (skóre zdrojov nie sú porovnateľné). Zlyhanie jedného zdroja
+   je v `errors`, druhý ostane. Len MCP a len pri zapnutom motore (bez neho je to
+   `search_everything`); kód `lib/engine/search-all.ts`, prompt odporúča `search_all` ako prvý
+   krok. `ifc_search` aj `search_everything` ostávajú na cielené hľadanie v jednom zdroji.
+
+**Zavrhnuté:**
+- *Description/LongName/ObjectType/Tag do grafu AIM (ETL):* vyrieši len atribúty, nie
+  neimportované psety, Qto a materiály; a druhý nositeľ dát, ktoré sú v súbore (D-084).
+  Ak ich AIM bude potrebovať ako stĺpce (IFC-first, D-046), je to samostatné rozhodnutie.
+- *Rozšíriť `ifc_query` o `contains` na atribútoch:* balík atribútové termy v selektore
+  nepodporuje a full-text naprieč poliami by aj tak potreboval vlastný index.
+
+**Najprv to, čo existuje (D-098), overené 2026-10-19 vo forku `Menezeris/ifc-lite`:**
+originál full-text, ktorý by sa dal použiť na serveri, nemá. Prejdené miesta:
+- viewer `apps/viewer/src/lib/search/tier0-scan.ts` a `tier1-index.ts` (hľadanie v toolbare a
+  v `SearchModal`): indexuje len Name, GlobalId, Description, ObjectType a triedu z
+  `EntityTable`, bez psetov, Qto, LongName, klasifikácií a materiálov, bez odstránenia
+  diakritiky a bez fuzzy; je to kód aplikácie viewera (nie balík), na serveri ho nemáme;
+- `@ifc-lite/query` (`filter-predicate.ts`, `property-filter.ts`): operátory `contains` a
+  `matches` nad jednou vlastnosťou, nie hľadanie naprieč poľami;
+- `@ifc-lite/sdk` (`bim.query`): rovnaké filtre ako `@ifc-lite/query`; `search` má len
+  namespace bSDD;
+- `@ifc-lite/mcp` 0.27.0: `query_entities`, `ids_schema_search`, `bsdd_search`;
+- embed protokol: hľadanie nemá.
+Vlastný index v `search.ts` preto ostáva; z viewera preberá len princíp (index raz po
+načítaní, tokeny slov) a pridáva polia, ktoré viewer nehľadá.
+
+**Overené (2026-10-19, lokálne nad ASR v71 a VZT z verejného bucketu):** prvé volanie nad
+oboma modelmi 4,8 s vrátane sťahovania a parsovania (index ~2 s), ďalšie 3-320 ms.
+"karuselové" -> IfcDoor `DD01.08.0001`, IfcDoorType `DD01.08` (Description) a krytina
+`PD02.11` (materiál); "prenajímateľné" -> IfcZone "Nájomné priestory" (LongName); preklep
+"karuzelove" nájde to isté ako fuzzy; "protipožiarne" 0 (v súboroch naozaj nie je). Vitest
+`lib/engine/search.test.ts` nad mini modelom. Evaly `/ask` motor neobsahujú (ifc_* sú len v
+MCP), otázky z issue sú v `eval/questions.json` ako neoverené.
