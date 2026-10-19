@@ -452,6 +452,14 @@
       "notes": "D-092 / #63: vo vieweri má rovina byť na elevácii 3NP (9200 mm) + 1 m = 10,2 m; v MCP to potvrdí viewer_section."
     },
     {
+      "id": "view-section-hide-widget",
+      "category": "view",
+      "question": "Sprav pôdorysný rez na 2NP a skry rovinu rezu, nech je pohľad čistý.",
+      "expect": { "tools_called": ["set_section"], "actions_match": ["section:y~h=[0-9.]+~g=0:|section_gizmo:0:"] },
+      "verified": false,
+      "notes": "D-092 dodatok / #63: show_widget=false pri set alebo action=widget; rez ostáva aktívny."
+    },
+    {
       "id": "view-floor-2d",
       "category": "view",
       "question": "Prepni viewer na 2D pôdorys 2. NP.",

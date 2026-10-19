@@ -2,6 +2,7 @@ import {
   MAX_SECTION_TARGETS,
   SECTION_CLEAR_OP,
   SECTION_COORDINATE_LIMIT,
+  sectionGizmoOp,
   SECTION_FITS,
   SECTION_OFFSET_RANGE,
   cameraOp,
@@ -48,7 +49,19 @@ export function planSection(
   if (action === "clear") {
     return { ops: [SECTION_CLEAR_OP], label: "3D: zrušiť rez", result: { ok: true, section: "cleared" } };
   }
-  if (action !== "set") throw new ViewInputError("action musí byť set alebo clear.");
+  const showWidget = typeof input.show_widget === "boolean" ? input.show_widget : undefined;
+  if (action === "widget") {
+    // Len widget aktívneho rezu, rez ostáva (#63).
+    if (showWidget === undefined) throw new ViewInputError("action=widget potrebuje show_widget (true/false).");
+    return {
+      ops: [sectionGizmoOp(showWidget)],
+      label: showWidget ? "3D: zobraziť widget rezu" : "3D: skryť widget rezu",
+      result: { ok: true, section: { show_widget: showWidget } },
+    };
+  }
+  if (action !== "set") throw new ViewInputError("action musí byť set, clear alebo widget.");
+  const gizmo = showWidget === undefined ? {} : { showGizmo: showWidget };
+  const widgetOut = showWidget === undefined ? {} : { show_widget: showWidget };
   const orientation = String(input.orientation ?? "horizontal") as keyof typeof ORIENTATION_AXIS;
   const axis = ORIENTATION_AXIS[orientation];
   if (!axis) throw new ViewInputError("orientation musí byť horizontal, vertical_x alebo vertical_z.");
@@ -74,9 +87,9 @@ export function planSection(
     }
     const label = auto ? `3D: rez ${fit === "along" ? "pozdĺž" : "naprieč"} vybraných prvkov` : `3D: rez ${orientation} stredom vybraných prvkov`;
     return {
-      ops: [sectionOp({ guids, fit, ...(auto ? {} : { axis }), flipped })],
+      ops: [sectionOp({ guids, fit, ...(auto ? {} : { axis }), flipped, ...gizmo })],
       label,
-      result: { ok: true, section: { fit, ...(auto ? {} : { orientation }), targets: guids.length, flipped } },
+      result: { ok: true, section: { fit, ...(auto ? {} : { orientation }), targets: guids.length, flipped, ...widgetOut } },
     };
   }
 
@@ -84,9 +97,9 @@ export function planSection(
     if (Math.abs(coordinate) > SECTION_COORDINATE_LIMIT) throw new ViewInputError("coordinate_m je mimo rozsahu.");
     const crosses = { y: "IFC Z (výška)", x: "IFC X", z: "IFC Y" }[axis];
     return {
-      ops: [sectionOp({ axis, coordinate, flipped })],
+      ops: [sectionOp({ axis, coordinate, flipped, ...gizmo })],
       label: `3D: rez ${orientation} na ${crosses} = ${coordinate} m`,
-      result: { ok: true, section: { orientation, coordinate_m: coordinate, crosses, flipped } },
+      result: { ok: true, section: { orientation, coordinate_m: coordinate, crosses, flipped, ...widgetOut } },
     };
   }
 
@@ -97,7 +110,7 @@ export function planSection(
       throw new ViewInputError(`offset_m musí byť v rozsahu ${SECTION_OFFSET_RANGE.min} až ${SECTION_OFFSET_RANGE.max} m.`);
     }
     return {
-      ops: [sectionOp({ storeyGuid: floor.guid, offsetM, flipped })],
+      ops: [sectionOp({ storeyGuid: floor.guid, offsetM, flipped, ...gizmo })],
       label:
         offsetM >= 0
           ? `3D: rez ${offsetM} m nad ${floor.label}`
@@ -108,6 +121,7 @@ export function planSection(
           floor: floor.label,
           offset_m: offsetM,
           flipped,
+          ...widgetOut,
           // D-092: viewer počíta výšku sám; elevácia z AIM DB slúži na kontrolu jeho polohy roviny.
           ...(floor.elevation != null ? { floor_elevation_model_units: floor.elevation } : {}),
         },
@@ -122,9 +136,9 @@ export function planSection(
   }
   if (position < 0 || position > 100) throw new ViewInputError("position_percent musí byť 0-100.");
   return {
-    ops: [sectionOp({ axis, position, flipped })],
+    ops: [sectionOp({ axis, position, flipped, ...gizmo })],
     label: `3D: rez ${orientation} ${position} %`,
-    result: { ok: true, section: { orientation, position_percent: position, flipped } },
+    result: { ok: true, section: { orientation, position_percent: position, flipped, ...widgetOut } },
   };
 }
 

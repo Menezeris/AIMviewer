@@ -3921,7 +3921,7 @@ s rýchlym CI. Most sa rozširuje o dáta na zobrazenie a o správy "otvor akciu
 
 ### D-092 - set_section vracia polohu roviny z viewera; opravy rezu vo forku
 
-**Dátum:** 2026-10-19 · **Stav:** čiastočne (host hotový, fork čaká) · **Súvisí:** D-083, D-085, D-087, D-090, D-091 · **Issue:** #63
+**Dátum:** 2026-10-19 · **Stav:** čiastočne (výška, orezanie, widget a potvrdenie hotové; percentá čakajú na Samuela) · **Súvisí:** D-083, D-085, D-087, D-090, D-091 · **Issue:** #63
 
 **Kontext:** pripomienka z konektora (#63): vodorovný rez nad 3NP s `offset_m=1` dal rovinu na
 13,55 m a s `offset_m=-2` na 12,10 m, strecha a fasáda ostali viditeľné, widget rezu sa nedá
@@ -3953,6 +3953,25 @@ predvolené percento rezu.
 - *Vypočítať očakávanú výšku v metroch v hostovi a hlásiť nesúlad automaticky:* `floors.elevation`
   je v jednotkách modelu (ETL ho neprevádza), host by musel hádať jednotky; porovnanie robí Claude
   s oboma číslami v ruke.
+
+**Dodatok 2026-10-19 (oprava vo forku, Menezeris/ifc-lite vetva `claude/stoic-bohr-6n8rmb`):**
+- **Príčina výšky aj mierky:** renderer (a Section bar) rozkladá percento rezu na obálku
+  `usePlacementCoordinateInfo` (živé obálky modelov zo scény), AIM vrstva forku na holé
+  `mergedSectionBounds`. Vo federácii sú to dve rôzne veľké obálky, rez padol inam a sklon
+  0,486 je ich pomer. `view_state` čítal rez cez tú istú holú obálku, takže hlásil požadovanú
+  výšku, nie skutočnú. Fork teraz počíta všetko (rez nad podlažím, rez cez prvok a súradnicu,
+  `view_state`, obálka modelu) voči obálke renderera; elevácia podlažia v rámci jeho modelu.
+  Overené naživo: rez 3NP-analógie s offsetom 1 a -2 m pred opravou 11,93 a 4,45 m, po oprave
+  presne 3,7 a 0,7 m (elevácia + offset). Princíp D-083 ostáva, obchádzka cez `coordinate_m`
+  netreba.
+- **Orezanie (bod 1):** strecha "nad rovinou" bola dôsledok zlej výšky: rovina pre 3NP + 1 m
+  bola v skutočnosti nad podlahou 4NP (13,4 m), pôdorys 3NP zakryla doska 4NP. Renderer
+  orezáva všetky modely; samostatná zmena netreba, overí sa naživo po nasadení.
+- **Widget (bod 3):** bridge `SET_SECTION showGizmo` a `action: 'gizmo'`; host op
+  `section:...~g=0|1` a `section_gizmo:<0|1>:`, tool `set_section show_widget` a `action=widget`.
+  `view_state.section.show_gizmo` hlási stav.
+- **Percentá (bod 4):** `position_percent` je po oprave voči obálke, ktorú renderer naozaj
+  reže (všetky viditeľné modely). Voči čomu má byť (budova/model/podlažie), rozhodne Samuel.
 
 ---
 
@@ -4042,6 +4061,7 @@ merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo fo
 
 - **2026-10-19** - **D-098 (najprv existujúce funkcie, fork len sprístupní):** pred návrhom sa prehľadá store, SDK, `@ifc-lite/mcp` a embed protokol; fork len tenký most, výpočty v AIMvieweri. Pravidlo v `AGENTS.md`, skilloch `mcp-poziadavka` a `aim-feature`, `FORK_MAINTENANCE.md`; rýchle CI forku pre PR len v `aim/` (`aim-fast.yml`) (#65).
 - **2026-10-19** - **D-094 (set_camera: relatívny pohyb, fit, filter, kolmo na rez):** `set_camera` dostal `preset` keep/section, `fit` visible/selection, cieľ filtrom (`ifc_type(s)`, `domain`, `model`, op `camera_sel`), `zoom_percent`, `orbit_h_deg`/`orbit_v_deg`, `pan_x_percent`/`pan_y_percent` (samostatné volanie, pózu počíta host z `view_state`); fork `SET_CAMERA` cez existujúce funkcie a oprava front/back s cieľom (ifc-lite#60, #65).
+- **2026-10-19** - **D-092 dodatok (oprava rezu vo forku, widget):** výška rezu a `view_state` voči obálke renderera (príčina sklonu 0,486), skrytie widgetu cez `show_widget` / `action=widget`; percentá čakajú na Samuela (#63).
 - **2026-10-19** - **D-092 (set_section vracia polohu roviny z viewera):** MCP po odoslaní rezu prečíta `view_state` a vráti `viewer_section`, rez nad podlažím nesie eleváciu z DB na kontrolu; opravy orezávania, výšky, widgetu a percent sú vo forku (#63).
 - **2026-10-19** - **D-090 dodatok (issue len na pokyn):** Claude zápis len ponúkne, `request_tool`/`report_feedback` volá až na výslovný pokyn Samuela.
 - **2026-10-19** - **D-090 dodatok (strop a fronta):** najviac 3 súbežné sessions (`FEEDBACK_MAX_SESSIONS`), ďalšie issues so štítkom `fronta`, session po PR uvoľní miesto a pošle notifikáciu, ďalšiu spustí tool `start_queued_session`; `request_tool.start_session=false` pre dávky.

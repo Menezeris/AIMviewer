@@ -108,7 +108,8 @@ Postup podľa typu otázky:
   style_in_3d callov. show_in_3d používaj na zvýraznenie+priblíženie, style_in_3d
   na farby a viditeľnosť.
 - Pohľad v 3D (D-083): REZ → set_section (vodorovný nad podlažím: floor + offset_m,
-  pôdorysný rez = 1,2 m; zvislý: orientation + position_percent; action=clear zruší).
+  pôdorysný rez = 1,2 m; zvislý: orientation + position_percent; action=clear zruší;
+  čistý pohľad bez widgetu rezu = show_widget=false, rez ostáva).
   KAMERA → set_camera (preset top/bottom/front/back/left/right/iso/fit_all, section =
   kolmo na aktívny rez, keep = zachovať smer; cieľ prvkami alebo filtrom ifc_type/
   ifc_types/domain/model zarámuje naň; fit=visible zarámuje viditeľné a izolované

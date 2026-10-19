@@ -37,13 +37,14 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "dĺžke ramena schodiska), across (zvislo naprieč), center (stredom prvku na zadanej orientation). " +
       "Presná poloha = orientation + coordinate_m v súradniciach IFC (vertical_x reže na IFC X, " +
       "vertical_z na IFC Y, horizontal na IFC Z - výške); súradnice dá get_bounds. position_percent " +
-      "(0-100 % rozmeru modelu) len ako posledná možnosť. action=clear rez zruší. Príklad 'ukáž strop " +
+      "(0-100 % rozmeru modelu) len ako posledná možnosť. action=clear rez zruší. Čistý pohľad bez widgetu rezu = " +
+      "show_widget=false (pri set) alebo action=widget, show_widget=false (rez ostáva). Príklad 'ukáž strop " +
       "nad miestnosťou na 2NP, kade idú potrubia': set_section(floor=3NP, offset_m=-0.4) + " +
       "style_in_3d(hide, ifc_type=IfcCovering) + set_camera(preset=top, target=miestnosť).",
     inputSchema: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["set", "clear"] },
+        action: { type: "string", enum: ["set", "clear", "widget"], description: "widget = len zobraziť/skryť widget aktívneho rezu (show_widget)" },
         orientation: { type: "string", enum: ["horizontal", "vertical_x", "vertical_z"], description: "Default horizontal" },
         floor: floorProp,
         offset_m: { type: "number", description: "Výška rezu nad úrovňou podlažia v metroch (-5 až 20, default 1,2)" },
@@ -61,6 +62,10 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         coordinate_m: { type: "number", description: "Poloha roviny v IFC súradniciach (m) na osi orientation" },
         flipped: { type: "boolean", description: "Otočiť stranu rezu" },
+        show_widget: {
+          type: "boolean",
+          description: "false = skryť widget rezu (rovina a jej obrys) pre čistý pohľad, rez ostáva aktívny; true = zobraziť",
+        },
       },
       required: ["action"],
     },

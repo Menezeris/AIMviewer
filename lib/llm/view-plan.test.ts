@@ -76,3 +76,20 @@ describe("set_section cez prvok a na súradnici (D-085)", () => {
     ).toThrow(ViewInputError);
   });
 });
+
+describe("set_section: widget rezu (#63)", () => {
+  it("show_widget=false pri reze nad podlažím skryje widget, rez ostáva", () => {
+    const p = planSection({ action: "set", floor: "3NP", offset_m: 1, show_widget: false }, FLOOR);
+    expect(parseOps(p.ops.join(";"))).toEqual([
+      { op: "section", axis: "y", storeyGuid: FLOOR.guid, offsetM: 1, showGizmo: false },
+    ]);
+    expect(p.result).toMatchObject({ section: { floor: "3NP", show_widget: false } });
+  });
+
+  it("action=widget prepne len widget a bez show_widget je to chyba", () => {
+    expect(parseOps(planSection({ action: "widget", show_widget: false }, null).ops.join(";"))).toEqual([
+      { op: "section_gizmo", showGizmo: false },
+    ]);
+    expect(() => planSection({ action: "widget" }, null)).toThrow(ViewInputError);
+  });
+});

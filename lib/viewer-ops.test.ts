@@ -119,3 +119,13 @@ describe("viewer ops - rez cez prvok a na súradnici (D-085)", () => {
     }
   });
 });
+
+describe("viewer ops - widget rezu (#63)", () => {
+  it("g=0/1 pri reze a section_gizmo idú do bridge ako showGizmo", () => {
+    const op = parseOps(sectionOp({ axis: "z", coordinate: 3, showGizmo: false }))[0];
+    expect(opToBridgeMessage(op)).toEqual({ type: "SET_SECTION", action: "set", axis: "z", coordinate: 3, showGizmo: false });
+    expect(opToBridgeMessage(parseOps("section_gizmo:1:")[0])).toEqual({ type: "SET_SECTION", action: "gizmo", showGizmo: true });
+    expect(parseOps("section_gizmo:x:")).toEqual([]);
+    expect(sectionOp({ storeyGuid: G2, offsetM: 1 })).not.toContain("g=");
+  });
+});
