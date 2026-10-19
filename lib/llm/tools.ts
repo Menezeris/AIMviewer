@@ -365,12 +365,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "get_object",
     description:
-      "Detail jedného uzla podľa UUID alebo object_ref (napr. 'DD01.06.03'): " +
-      "identita, IFC trieda, predefined_type, aktívny IFC GUID.",
+      "Detail jedného uzla podľa UUID, object_ref (napr. 'DD01.06.03') alebo kódu prvku " +
+      "(meno ako 'VV.03.01.040'; prvok len v IFC vráti in_aim:false a global_id): " +
+      "identita, IFC trieda, predefined_type, aktívny IFC GUID a podlažie (floor) - na " +
+      "'čo je X a kde je' stačí jedno volanie.",
     inputSchema: {
       type: "object",
       properties: {
-        id_or_ref: { type: "string", description: "objects.id (UUID) alebo object_ref" },
+        id_or_ref: { type: "string", description: "objects.id (UUID), object_ref alebo kód prvku (meno v AIM / IFC)" },
       },
       required: ["id_or_ref"],
     },
@@ -428,10 +430,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "show_in_3d",
     description:
       "UI AKCIA: otvorí 3D model so zvýraznenými a priblíženými prvkami. Zavolaj, keď " +
-      "používateľ žiada prvky UKÁZAŤ/ZOBRAZIŤ v 3D. Hromadné zobrazenie podľa typu " +
+      "používateľ žiada prvky UKÁZAŤ/ZOBRAZIŤ v 3D - aj jednu miestnosť ('ukáž miestnosť 3.02'; " +
+      "skrytú miestnosť viewer zapne a priblíži). Hromadné zobrazenie podľa typu " +
       "(napr. všetky dvere) = pošli PRIAMO filter (ifc_type/query/predefined_type), server " +
       "prvky dohľadá sám. Konkrétnu množinu prvkov pošli v ids_or_refs (JEDEN call; object_ref " +
-      "ako '3.02' netreba hľadať vopred). Zvýraznenie je oranžové; clear=true ho zruší (ostatné " +
+      "ako '3.02' aj kód prvku ako 'SD04.0001' netreba hľadať vopred). Zvýraznenie je oranžové; clear=true ho zruší (ostatné " +
       "farby ostanú). Funguje len pre prvky s IFC GUID (sú z IFC modelu).",
     inputSchema: {
       type: "object",
@@ -439,7 +442,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         ids_or_refs: {
           type: "array",
           items: { type: "string" },
-          description: `objects.id (UUID) alebo object_ref prvkov na zvýraznenie (1–${SHOW_3D_CAP})`,
+          description: `objects.id (UUID), object_ref alebo kód prvku (meno v IFC) na zvýraznenie (1–${SHOW_3D_CAP})`,
         },
         id_or_ref: { type: "string", description: "Alternatíva pre jediný prvok" },
         clear: { type: "boolean", description: "true = len zrušiť oranžové zvýraznenie z predošlého show_in_3d" },
@@ -465,8 +468,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     description:
       "UI AKCIA: VYBERIE jeden prvok v 3D presne ako klik myšou — viewer ho označí, " +
       "priblíži naň kameru a otvorí jeho panel vlastností priamo v 3D pohľade (IFC " +
-      "vlastnosti + AIM karta). Zavolaj, keď používateľ chce prvok VYBRAŤ/OZNAČIŤ " +
-      "(kliknúť naň) alebo vidieť jeho VLASTNOSTI v 3D. Rozdiel: show_in_3d prvky len " +
+      "vlastnosti + AIM karta). Zavolaj LEN keď používateľ chce prvok VYBRAŤ/OZNAČIŤ " +
+      "(kliknúť naň) alebo vidieť jeho VLASTNOSTI v 3D; 'ukáž/zobraz X' = show_in_3d. Rozdiel: show_in_3d prvky " +
       "zvýrazní a priblíži (aj mnoho naraz, panel vlastností neotvorí); open_node otvorí " +
       "samostatnú kartu uzla MIMO 3D pohľadu. Jeden prvok na call; funguje len pre " +
       "prvky s IFC GUID (sú z IFC modelu). clear=true výber zruší (ako klik do prázdna).",

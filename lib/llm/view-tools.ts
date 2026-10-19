@@ -32,7 +32,9 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "set_section",
     description:
       "UI AKCIA: rez modelom v 3D. Vodorovný rez nad podlažím = floor + offset_m (výška nad úrovňou " +
-      "podlažia v m, default 1,2 = pôdorysný rez; záporná = pod úrovňou). Rez cez prvok = " +
+      "podlažia v m, default 1,2 = pôdorysný rez; záporná = pod úrovňou). Pod podhľadom podlažia = " +
+      "floor + relative_to=ceiling + offset_m (-0.05 = 5 cm pod podhľadom miestností podlažia; server " +
+      "vezme ich FinishCeilingHeight). Rez cez prvok (aj kódom ako SD04.0001) = " +
       "target_ids_or_refs alebo global_ids + fit: along (zvislo pozdĺž dlhšej strany prvku, napr. po " +
       "dĺžke ramena schodiska), across (zvislo naprieč), center (stredom prvku na zadanej orientation). " +
       "Presná poloha = orientation + coordinate_m v súradniciach IFC (vertical_x reže na IFC X, " +

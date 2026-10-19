@@ -4700,3 +4700,18 @@ Samuel potvrdil:
 - **Fork:** 97 AIM testov, revert oracle 3/3 `OBSERVED`
   (`docs/architecture/evidence/aim-d102-frame-clear/`); balík vstup +19 B a eager +41 B.
   Naživo v iframe s AC20-FZK-Haus: SELECT miestnosti pohne kamerou, CLEAR_SELECTION zruší výber.
+
+**Dodatok (2026-10-19, opisy a inštrukcie):** inštrukcie MCP (`mcpInstructions`) majú namiesto
+odsekov o UI akciách z promptu chatu (opakovali opisy toolov) krátke pravidlá `MCP_UI_RULES`.
+- **Kód prvku** daj priamo ako cieľ.
+- **"Ukáž X"** = `show_in_3d`, `select_in_3d` len na výber a vlastnosti.
+- **Potvrdenie viewera:** potvrdiť len to, čo viewer potvrdil.
+- **Výšky:** `FinishCeilingHeight` od hotovej podlahy, podhľad podlažia z miestností.
+
+Prompt in-app chatu (`SYSTEM_PROMPT`, `/api/ask`) sa nemení. Inštrukcie MCP majú 14 032 znakov
+namiesto 17 656, aj s novými pravidlami. Cieľ 10 000 by vyžadoval škrtať doménové pravidlá
+(IDS, systémy, psety), ktoré opisy toolov nenesú.
+
+Evaly: D4 (3,05 m, nie 2,90), E3 (12,20 m, strop 2), D5 (strop 1), V1 (kamera sa pohne), nové
+D7 (kód len v IFC) a V4 (zruš výber).
+
