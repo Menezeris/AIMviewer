@@ -4659,12 +4659,17 @@ dodatkom.
 - *Rozvíjať `/drawing/[id]` ako hlavné miesto dokumentov:* cieľ je jedno rozhranie vo vieweri
   (D-075), dve miesta by sa rozchádzali.
 
-**Dodatok 2026-10-19 (Samuel): dokumenty v ľavom paneli viewera, zoskupenie a vyhľadávanie.**
-Knižnica dokumentov patrí do ľavého panela viewera vedľa stromu modelu, nie len ako pracovný
-panel vpravo. Dokumenty sa dajú zoskupiť a vyhľadať podľa metadát aj obsahu. Čo z toho už je
-(overené vo forku 19. 10.): panel `documents` (D-075) ukazuje zoznam z `DOCUMENTS_LOAD`, zoskupuje
-len podľa `folder` od hostiteľa a filtruje len podľa názvu; každý pracovný panel sa dá vytiahnuť
-a prichytiť k ľavému okraju (dock), ale vtedy pláva nad scénou, nie v stĺpci stromu.
+**Dodatok 2026-10-19 (Samuel): skupina AIM v pravej lište viewera, dokumenty so zoskupením a
+vyhľadávaním.** Ľavý panel ostáva stromu modelu, aby nestratil prehľadnosť. AIM panely sa otvárajú
+vpravo ako dnes dokumenty: v pravej lište (rail) pribudne **vlastná skupina "AIM" úplne hore**,
+nad skupinami originálu (Coordinate, Check, Quantify, Automate, Site, Author). Patria do nej
+**Dokumenty** (panel `documents`, D-075, dnes v Coordinate), **AIM vrstvy** (D-089, dnes sekcia v
+ľavom paneli cez `aim/hierarchyPanel.ts`, presunie sa do vlastného pravého panela, čím zmizne aj
+jeden zásah do upstream `HierarchyPanel`) a **Podklady výkresov** (`drawing-underlay`, D-072, dnes
+v Author); ďalšie AIM panely sa pridávajú sem. Skupina sa pridá do `PANEL_GROUPS` v
+`lib/panels/registry.ts` medzi existujúce sentinely `AIM-FORK` (D-098: rail, ribbon a príkazy
+už skupiny čítajú odtiaľ). Stav panela dokumentov vo forku 19. 10.: zoskupuje len podľa `folder`
+od hostiteľa a filtruje len podľa názvu. Doplní sa:
 - **Zoskupenie** podľa poľa zo záznamu dokumentu, ktoré pošle hostiteľ: strom dokumentácie
   (PD › časť › dokument), časť/profesia, druh (výkres, správa, posudok), nositeľ väzby (projekt,
   zóna, priestorová zóna, skupina, typ), podlažie (cez zónu a jej priestory), dátum revízie,
@@ -4676,8 +4681,6 @@ a prichytiť k ľavému okraju (dock), ale vtedy pláva nad scénou, nie v stĺp
   (D-091, D-098), most dostane dvojicu žiadosť a odpoveď.
 - **Dokumenty výberu:** prepínač "len pre vybraný prvok" ukáže efektívne dokumenty výberu s
   cestou (krok 2), ten istý zdroj ako AIM karta.
-- Forma v ľavom paneli (sekcia ako AIM VRSTVY cez `aim/hierarchyPanel.ts`, alebo záložka vedľa
-  SPATIAL až LAYERS v upstream `HierarchyPanel`) sa rozhodne pri návrhu forku podľa D-098;
-  záložka mení upstream súbor, sekcia nie.
-Krok 3 tým znamená: ľavý panel dokumentov + AIM karta nad efektívnymi dokumentmi; vyhľadávanie v
-obsahu je až po kroku 4.
+Krok 3 tým znamená: skupina AIM v lište, panel dokumentov so zoskupením, hľadaním v metadátach a
+prepínačom výberu, AIM vrstvy vpravo, AIM karta nad efektívnymi dokumentmi; hľadanie v obsahu je
+až po kroku 4.
