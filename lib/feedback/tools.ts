@@ -47,9 +47,19 @@ const AREA_TEXT: Record<Area, string> = {
   other: "neurčené",
 };
 
+export const COMMENT_KINDS = ["eval_round", "result", "note"] as const;
+type CommentKind = (typeof COMMENT_KINDS)[number];
+const COMMENT_TEXT: Record<CommentKind, string> = {
+  eval_round: "Kolo evalov",
+  result: "Výsledok",
+  note: "Poznámka",
+};
+
 const MAX_TITLE = 120;
 const MAX_TEXT = 4000;
 const MAX_ITEMS = 10;
+/** Kolo evalov s tabuľkou pred / po je dlhšie než pripomienka (GitHub berie do 65 536). */
+const MAX_COMMENT = 16000;
 
 const PRIVACY =
   "Issue je VEREJNÉ (repo konektora je verejné): nepíš mená, telefóny ani e-maily osôb a firiem z modelu, " +
@@ -156,6 +166,33 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
       },
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  {
+    name: "feedback_comment",
+    description:
+      "Dopíše KOMENTÁR do existujúceho issue konektora, otvoreného aj zatvoreného (štítok mcp, D-090): kolo " +
+      "evalov, výsledky pred / po, poznámka k požiadavke. Volaj LEN na výslovný pokyn používateľa ('dopíš do #97 " +
+      "kolo 2'); nové issue nezakladá a session nespúšťa. reopen=true zatvorené issue znovu otvorí, LEN keď to " +
+      "používateľ výslovne povie ('otvor ho znova'). Vráti odkaz na komentár; feedback_status ho ukáže v last_comments. " +
+      PRIVACY,
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_number: { type: "integer", description: "Číslo otvoreného issue konektora." },
+        text: { type: "string", description: `Text komentára v markdown (max ${MAX_COMMENT} znakov).` },
+        kind: {
+          type: "string",
+          enum: [...COMMENT_KINDS],
+          description: "Druh komentára (nadpis): eval_round (kolo evalov), result (výsledok), note (poznámka, predvolene).",
+        },
+        reopen: {
+          type: "boolean",
+          description: "true = zatvorené issue znovu otvoriť (len na výslovný pokyn používateľa; predvolene nie).",
+        },
+      },
+      required: ["issue_number", "text"],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
   {
     name: "start_queued_session",
@@ -618,6 +655,72 @@ async function startQueued(
   };
 }
 
+/** Skrytá značka komentára dopísaného cez `feedback_comment`. */
+const COMMENT_RE = /<!-- aim-mcp-comment (\{[^}]*\}) -->/;
+
+export function parseCommentKind(body: string): CommentKind | null {
+  const m = COMMENT_RE.exec(body);
+  if (!m) return null;
+  try {
+    const kind = (JSON.parse(m[1]) as { kind?: unknown }).kind;
+    return (COMMENT_KINDS as readonly string[]).includes(kind as string) ? (kind as CommentKind) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function draftComment(args: Record<string, unknown>, now: Date): { number: number; body: string } {
+  const number = typeof args.issue_number === "number" ? Math.trunc(args.issue_number) : NaN;
+  if (!(number >= 1)) throw new FeedbackInputError("Chýba issue_number (kladné číslo).");
+  const text = str(args.text, MAX_COMMENT, "text", true);
+  if (args.kind !== undefined && !(COMMENT_KINDS as readonly string[]).includes(args.kind as string)) {
+    throw new FeedbackInputError(`kind musí byť jedno z: ${COMMENT_KINDS.join(", ")}.`);
+  }
+  const kind = (args.kind as CommentKind | undefined) ?? "note";
+  return {
+    number,
+    body: [
+      `**${COMMENT_TEXT[kind]}** (${stamp(now)}, \`feedback_comment\`)`,
+      text,
+      `<!-- aim-mcp-comment ${JSON.stringify({ v: 1, kind })} -->`,
+    ].join("\n\n"),
+  };
+}
+
+/**
+ * Komentár do issue konektora (otvoreného aj zatvoreného); issue a PR mimo štítku `mcp` odmietne.
+ * `reopen=true` zatvorené issue najprv znovu otvorí, aby sa komentár nezapísal bez neho.
+ */
+async function comment(args: Record<string, unknown>, deps: FeedbackDeps): Promise<{ text: string; isError: boolean }> {
+  const d = draftComment(args, deps.now());
+  const body = redact(d.body, deps.secrets);
+  if (!deps.client) {
+    return {
+      text: json({
+        error: "Zápis do GitHubu nie je nastavený (chýba FEEDBACK_GITHUB_TOKEN na serveri). Nič sa neuložilo.",
+        draft: { issue_number: d.number, body },
+      }),
+      isError: true,
+    };
+  }
+  const client = deps.client;
+  const issue = await client.getIssue(d.number);
+  if (issue.pull_request || !hasLabel(issue, LABEL_MCP)) {
+    return { text: `#${d.number} nie je issue konektora (štítok ${LABEL_MCP}), komentár sa nezapísal.`, isError: true };
+  }
+  const reopened = args.reopen === true && issue.state !== "open";
+  if (reopened) await client.reopenIssue(d.number);
+  const c = await client.addComment(d.number, body);
+  return {
+    text: json({
+      issue: { number: issue.number, url: issue.html_url, title: issue.title, state: reopened ? "open" : issue.state },
+      comment: { id: c.id, url: c.html_url },
+      reopened,
+    }),
+    isError: false,
+  };
+}
+
 const excerpt = (s: string, n = 500) => {
   const clean = s.replace(/<!--[\s\S]*?-->/g, "").trim();
   return clean.length > n ? `${clean.slice(0, n - 1)}...` : clean;
@@ -675,6 +778,8 @@ async function status(args: Record<string, unknown>, deps: FeedbackDeps): Promis
       last_comments: comments.slice(-3).map((c) => ({
         author: c.user?.login ?? null,
         at: c.created_at,
+        // Dopísané cez feedback_comment (kolo evalov, výsledok, poznámka).
+        via_connector: parseCommentKind(c.body),
         text: excerpt(c.body),
       })),
     }),
@@ -695,6 +800,8 @@ export async function execFeedbackTool(
         return await record(draftFeedback(args, deps.now()), deps);
       case "feedback_status":
         return await status(args, deps);
+      case "feedback_comment":
+        return await comment(args, deps);
       case "start_queued_session":
         return await startQueued(args, deps);
       default:
