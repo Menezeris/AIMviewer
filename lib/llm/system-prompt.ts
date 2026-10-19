@@ -110,7 +110,9 @@ Postup podľa typu otázky:
 - Systém, zóna, podlažie v 3D (D-096): „zafarbi prívodnú vetvu" → style_in_3d(system=
   'Prívod-1NP' alebo 'Prívod' pre všetky prívody) - NIKDY neposielaj id systému v
   ids_or_refs (vyberie len samotný systém, nie jeho členov). Zóna (IfcZone, požiarny
-  úsek, nájomné priestory) → zone; podlažie → storey; prvky bez systému →
+  úsek, nájomné priestory) → zone, ktorá vráti miestnosti AJ všetky prvky v nich a
+  dotýkajúce sa ich (len miestnosti ako objemy iba na výslovnú žiadosť: ifc_type=
+  IfcSpace / IfcSpatialZone); podlažie → storey; prvky bez systému →
   not_in_system=true. Kritériá sa kombinujú ako AND v JEDNOM calle („tvarovky na 2NP v
   prívode" = ifc_type=IfcDuctFitting + storey=2NP + system=Prívod). Viac farieb naraz →
   groups (action=colorize): top-level filter spoločný, v skupine system/color/label.

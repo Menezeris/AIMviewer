@@ -636,8 +636,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         zone: {
           type: "string",
           description:
-            "Zóna podľa id, object_ref alebo názvu: IfcZone = jej miestnosti a prvky v nich " +
-            "(len miestnosti: ifc_type=IfcSpace), IfcSpatialZone = prvky v nej, IfcGroup = členovia",
+            "Zóna (IfcZone, IfcSpatialZone, IfcGroup) podľa id, object_ref alebo názvu: vždy " +
+            "miestnosti AJ všetky prvky v nich alebo dotýkajúce sa ich. Len miestnosti/objemy " +
+            "zón iba na výslovnú žiadosť: ifc_type=IfcSpace alebo IfcSpatialZone",
         },
         storey: {
           type: "string",

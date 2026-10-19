@@ -28,9 +28,8 @@ import {
  * farbou v jednom volaní a počty na skupinu. Čistá logika je v `style-plan.ts`.
  *
  * Členstvo: systém a IfcGroup = `rel_assigns_to_group` (člen -> skupina,
- * rekurzívne cez vnorené skupiny); IfcZone = jej miestnosti (rekurzívne) a
- * prvky v nich (`v_zone_elements`, D-089); IfcSpatialZone = prvky v nej
- * (contained alebo referenced); podlažie = miestnosti podlažia a prvky natívne
+ * rekurzívne cez vnorené skupiny); IfcZone a IfcSpatialZone = miestnosti a vždy
+ * aj prvky v nich alebo dotýkajúce sa ich (contained + referenced); podlažie = miestnosti podlažia a prvky natívne
  * na podlaží alebo v jeho miestnostiach (bez odvodených referencií, aby prvok
  * nepatril na dve podlažia).
  */
@@ -166,32 +165,17 @@ class ScopeResolver {
       );
     }
     const groupIds = picked.filter((z) => z.object_type !== "spatial_zone").map((z) => z.id);
-    const zoneIds = picked.filter((z) => z.object_type === "zone").map((z) => z.id);
     const spatialIds = picked.filter((z) => z.object_type === "spatial_zone").map((z) => z.id);
 
+    // Zóna = jej miestnosti (aj cez vnorené zóny) a VŽDY aj prvky v nich alebo tie, ktoré
+    // sa ich dotýkajú (contained + referenced inside/partial, D-080). Priamo z hrán, nie cez
+    // v_zone_elements, aby výsledok nezávisel od prepínača pravidla element_in_zone (Samuel).
     const ids = groupIds.length > 0 ? await this.closure(groupIds) : new Set<string>();
-    if (zoneIds.length > 0) {
-      try {
-        const rows = await this.fetchIn<{ element_id: string }>("v_zone_elements", "element_id", "zone_id", zoneIds, {
-          activeOnly: false,
-          order: "element_id",
-        });
-        for (const r of rows) ids.add(r.element_id);
-      } catch {
-        // DB bez migrácie D-089: prvky v miestnostiach zóny priamo z hrán (rovnaká logika ako pohľad).
-        const spaces = [...ids];
-        for (const rel of ["rel_contained_in_spatial_structure", "rel_referenced_in_spatial_structure"]) {
-          const rows = await this.fetchIn<{ from_id: string }>(rel, "id, from_id", "to_id", spaces);
-          for (const r of rows) ids.add(r.from_id);
-        }
-      }
-    }
-    if (spatialIds.length > 0) {
-      for (const id of spatialIds) ids.add(id);
-      for (const rel of ["rel_contained_in_spatial_structure", "rel_referenced_in_spatial_structure"]) {
-        const rows = await this.fetchIn<{ from_id: string }>(rel, "id, from_id", "to_id", spatialIds);
-        for (const r of rows) ids.add(r.from_id);
-      }
+    for (const id of spatialIds) ids.add(id);
+    const containers = [...ids];
+    for (const rel of ["rel_contained_in_spatial_structure", "rel_referenced_in_spatial_structure"]) {
+      const rows = await this.fetchIn<{ from_id: string }>(rel, "id, from_id", "to_id", containers);
+      for (const r of rows) ids.add(r.from_id);
     }
     return { ids, matched: picked.map((z) => z.object_ref ?? z.name ?? z.id) };
   }

@@ -3936,9 +3936,10 @@ GlobalId a systém ani zónu nepozná (graf AIM), takže podľa D-087 bod 3 ide 
    "Prívod" = všetky prívody), `system_type` (predefined_type systému), `not_in_system`,
    `zone`, `storey` a `groups`.
 2. **Členstvo sa rozbalí v grafe AIM** (server, nie viewer): systém a IfcGroup cez
-   `rel_assigns_to_group` rekurzívne; IfcZone = jej miestnosti a prvky v nich (`v_zone_elements`,
-   D-089, pri chýbajúcom pohľade rovnaká logika z hrán); IfcSpatialZone = prvky v nej
-   (contained aj referenced); podlažie = miestnosti podlažia a prvky natívne na podlaží alebo v
+   `rel_assigns_to_group` rekurzívne; zóna (IfcZone, IfcSpatialZone, IfcGroup) = miestnosti a
+   **vždy aj prvky v nich alebo dotýkajúce sa ich** (contained + referenced inside/partial,
+   priamo z hrán, nezávisle od prepínača `element_in_zone`); len miestnosti alebo objemy zón
+   iba na výslovnú žiadosť cez `ifc_type` (Samuel, 2026-10-19); podlažie = miestnosti podlažia a prvky natívne na podlaží alebo v
    jeho miestnostiach, bez odvodených referencií (prvok nemá byť na dvoch podlažiach).
 3. **AND:** všetky zadané kritériá vrátane triedy, domény, predefined_type, vlastnosti, textu a
    modelu (`ifc_guid_history.source` = `IFC import:<model>`) sa prenikajú. Farbia sa len uzly s
