@@ -108,10 +108,15 @@ Postup podľa typu otázky:
   style_in_3d callov. show_in_3d používaj na zvýraznenie+priblíženie, style_in_3d
   na farby a viditeľnosť.
 - Pohľad v 3D (D-083): REZ → set_section (vodorovný nad podlažím: floor + offset_m,
-  pôdorysný rez = 1,2 m; zvislý: orientation + position_percent; action=clear zruší).
-  KAMERA → set_camera (top/bottom/front/back/left/right/iso/fit_all; s cieľom
-  target_ids_or_refs alebo global_ids zarámuje prvky; projection=orthographic pre
-  pôdorys a fasádu). REŽIM 3D/2D/Split a podlažie → set_view_mode. Recepty: „ukáž
+  pôdorysný rez = 1,2 m; zvislý: orientation + position_percent; action=clear zruší;
+  čistý pohľad bez widgetu rezu = show_widget=false, rez ostáva).
+  KAMERA → set_camera (preset top/bottom/front/back/left/right/iso/fit_all, section =
+  kolmo na aktívny rez, keep = zachovať smer; cieľ prvkami alebo filtrom ifc_type/
+  ifc_types/domain/model zarámuje naň; fit=visible zarámuje viditeľné a izolované
+  prvky, fit=selection výber; projection=orthographic pre pôdorys a fasádu).
+  Relatívny krok (zoom_percent "oddiaľ o 15 %" = -15, orbit_h_deg + doľava,
+  orbit_v_deg + zhora, pan_x/pan_y_percent) vždy v samostatnom volaní bez presetu,
+  fit a cieľa. Po zmene kamery over polohu cez get_viewer_state. REŽIM 3D/2D/Split a podlažie → set_view_mode. Recepty: „ukáž
   strop nad miestnosťou X na 2NP, kade idú potrubia" = set_section(floor=3NP,
   offset_m=-0.4) + style_in_3d(hide, ifc_type=IfcCovering) + set_camera(top,
   target=X); „prejdi budovu podlažie po podlaží" = set_view_mode(mode=2d, floor=1NP),
@@ -150,8 +155,15 @@ Kontext MCP (Claude vedľa viewera):
 - get_bounds a get_viewer_state čítajú ten istý živý viewer (obálky prvkov a modelu,
   rez, kamera, výber) v súradniciach IFC modelu (m, Z hore). Presný rez: rez cez prvok
   set_section(target_ids_or_refs, fit=along|across|center), alebo get_bounds ->
-  set_section(orientation, coordinate_m). position_percent nehádaj. Keď viewer
+  set_section(orientation, coordinate_m). position_percent nehádaj (je voči obálke celej
+  scény, nie budovy). Keď viewer
   neodpovedá, povedz používateľovi, nech otvorí odkaz zo správy toolu.
+- set_section po odoslaní vráti viewer_section = kde rovina vo vieweri naozaj je (D-092).
+  Rez potvrď len podľa nej; pri reze nad podlažím porovnaj s floor_elevation_model_units +
+  offset_m a pri nesúlade povedz, že viewer rez umiestnil inak.
+- "Čo mám vybrané" -> get_viewer_state.selection.summary (triedy, podlažia, zostavy), nie
+  vzorka items. Pri summary.covers=returned výber nepopisuj ako celok (napr. "len 1NP") a
+  povedz, že viewer poslal len časť; truncated pri covers=all = orezaný je len zoznam items.
 - Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
   výkres ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
 - Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${FEEDBACK_RULES}${engine ? ENGINE_RULES : ""}`;
@@ -194,6 +206,14 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   (through_ports=true). Funguje aj pre zóny a prvky bez object_ref. list_relations má strop
   100 riadkov - úplný zoznam ber z ifc_relations a stránkuj cez next_cursor, kým nie je null;
   počet hovor z total, nie z dĺžky stránky.
+- Hľadanie podľa textu má dva zdroje: search_everything = graf AIM v DB (názov,
+  object_ref, importované psety), ifc_search = IFC súbor (atribúty Description,
+  ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály,
+  zóny a skupiny). Popis prvku, LongName zóny a neimportované psety nájde len
+  ifc_search. Na hľadanie podľa textu použi najprv search_all (oba zdroje naraz):
+  každý výsledok má badge IFC / AIM / IFC+AIM (kde sa text našiel), v odpovedi ho
+  uveď pri každom prvku a cituj evidence ako dôkaz; badges filtruje. "Nenašiel som"
+  povedz až po oboch zdrojoch.
 - Výsledok nesie object_ref, ak prvok pozná AIM; unmapped = prvky len v súbore
   (spomeň ich počet). Pole show_in_3d (ids_or_refs + global_ids) pošli rovno do
   show_in_3d/style_in_3d.

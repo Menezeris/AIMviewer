@@ -229,6 +229,12 @@ tlačidlo vo forku ich len otvorí.
 dôkazy a štítok v prvom pushi), aby CI prešlo na prvý raz. Zvýšenie bundle stropu do 2 kB
 vstupu je predschválené (`docs/FORK_MAINTENANCE.md` vo forku). Poradie zlúčenia: fork, potom AIMviewer.
 
+**Najprv to, čo už existuje (D-098):** pred návrhom čohokoľvek prehľadaj store forku
+(`CameraCallbacks`, slices), SDK, `@ifc-lite/mcp`, embed protokol a akcie UI originálu. Fork len
+tenko sprístupní existujúcu funkciu cez most, výpočty robí AIMviewer. Nové funkcie nevymýšľaj.
+Fork PR len v `apps/viewer/src/aim/` (+ AIM dôkazy, skill) ide rýchlym CI `aim-fast.yml` (~10 min);
+upstream súbor v tom istom PR vráti plné CI, preto AIM zmeny drž oddelene.
+
 ## ETL — spustenie
 Python 3.9+ (`py -3.9`), `PYTHONUTF8=1` na Windows (cp1250 konzola). Vždy z koreňa repa:
 `python -m etl.main --file <ifc> [--dry-run|--reset|--federate] [--model ASR|VZT]`. Detaily v `etl/README.md`.

@@ -2,6 +2,7 @@ import { getIfcModels } from "../data/ifc-models";
 import type { ToolDefinition } from "../llm/provider";
 
 import { passthroughDefinitions } from "./passthrough-defs";
+import { SEARCH_FIELDS } from "./search";
 
 /**
  * Definície `ifc_*` tools IFC motora (D-084) - bez závislostí motora, aby ich
@@ -61,6 +62,34 @@ export function engineToolDefinitions(): ToolDefinition[] {
           limit: { type: "number", description: "Max prvkov vo výsledku (1-500, default 100)" },
         },
         required: ["model"],
+      },
+    },
+    {
+      name: "ifc_search",
+      description:
+        "IFC MOTOR - ZDROJ: IFC súbor (nie graf AIM). Full-text v IFC súbore: atribúty (Name, Description, " +
+        "ObjectType, Tag, LongName, PredefinedType...), psety a Qto výskytu aj z typu, klasifikácie a materiály " +
+        "prvkov, priestorov, zón (IfcZone), skupín, systémov aj typov. Bez ohľadu na diakritiku a veľkosť " +
+        "písmen, všetky slová musia sedieť (aj ako začiatok slova), pri preklepe fuzzy. Použi na hľadanie " +
+        "podľa textu, ktorý graf AIM nenesie (popis, LongName zóny, ObjectType, Tag, neimportované psety), " +
+        "a keď search_everything nič nenašiel. Každý výsledok nesie source (ifc = len v súbore, ifc+aim = " +
+        "prvok pozná aj AIM, potom má object_ref), matched (pole a hodnota ako dôkaz) a show_in_3d.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          text: { type: "string", description: "Hľadaný text (slová, kód, hodnota; min 2 znaky)" },
+          model: { ...model, description: "Voliteľne model; inak sa hľadá vo všetkých" },
+          ifc_types: { type: "array", items: { type: "string" }, description: "Voliteľne IFC triedy vrátane podtried, napr. [IfcDoor] alebo [IfcZone]" },
+          fields: {
+            type: "array",
+            items: { type: "string", enum: [...SEARCH_FIELDS] },
+            description: "Voliteľne len tieto časti: attribute | property | quantity | type_property | classification | material",
+          },
+          fuzzy: { type: "boolean", description: "Tolerovať preklepy (default true)" },
+          limit: { type: "number", description: "Max výsledkov (1-200, default 30)" },
+          offset: { type: "number", description: "Posun pre stránkovanie (default 0)" },
+        },
+        required: ["text"],
       },
     },
     {

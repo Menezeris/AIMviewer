@@ -3919,11 +3919,203 @@ s rýchlym CI. Most sa rozširuje o dáta na zobrazenie a o správy "otvor akciu
 - *Všetko v hostovi, aj odznaky a záznamy:* host do panelov v iframe kresliť nevie; overlay nad
   iframe by sa rozišiel s rozložením viewera.
 
+### D-092 - set_section vracia polohu roviny z viewera; opravy rezu vo forku
+
+**Dátum:** 2026-10-19 · **Stav:** prijaté (výška, orezanie, widget a potvrdenie hotové; percentá bez zmeny) · **Súvisí:** D-083, D-085, D-087, D-090, D-091 · **Issue:** #63
+
+**Kontext:** pripomienka z konektora (#63): vodorovný rez nad 3NP s `offset_m=1` dal rovinu na
+13,55 m a s `offset_m=-2` na 12,10 m, strecha a fasáda ostali viditeľné, widget rezu sa nedá
+skryť a `position_percent` 50 % padlo na asi 15 % budovy. Podlažie 3NP má v DB `elevation = 9200`
+(mm), správne výšky sú teda 10,2 m a 7,2 m: chyba nie je len v mierke offsetu (sklon 0,486), ale
+aj v základnej výške. AIMviewer posiela viewer op `section:y~h=<offset>:<GUID podlažia>`;
+výšku, orezávanie, widget aj percentá počíta fork (D-083: "jedna pravda o súradniciach" je viewer).
+`set_section` pritom vracal len to, čo poslal, takže Claude potvrdil zlý rez.
+
+**Rozhodnutie:**
+1. **Potvrdenie z viewera (host, hotové):** MCP konektor po odvysielaní `set_section action=set`
+   prečíta tým istým živým kanálom stav viewera (`view_state`, D-085, timeout 4 s) a do odpovede
+   pridá `viewer_section` = rez, ako ho viewer naozaj má. Pri reze nad podlažím výsledok nesie
+   `floor_elevation_model_units` (IfcBuildingStorey.Elevation z AIM DB, jednotky modelu), aby
+   Claude porovnal polohu roviny s eleváciou + offsetom a pri nesúlade rez nepotvrdil.
+   Výpočet výšky ostáva vo vieweri, host ho len kontroluje.
+2. **Opravy rezu patria do forku** (D-087/D-091, je to správanie scény): (a) rovina oreže všetky
+   federované modely a všetky typy prvkov; (b) výška = elevácia podlažia + offset v metroch
+   IFC sveta (oprava mierky aj základnej výšky); (c) skrytie widgetu rezu pri aktívnom reze
+   (nový parameter op aj toolu); (d) percento voči budove alebo zvolenému modelu, nie voči celej
+   federovanej obálke. Fork nebol v session pripojený, preto sa robí ako samostatná zmena forku
+   a po nej doplnenie parametrov toolu v hostovi.
+
+**Otvorené (Samuel):** pripojenie forku; či do opravy forku posielať namiesto `storeyGuid +
+offset` absolútnu výšku `coordinate_m` z DB (obchádzka, mení princíp D-083); voči čomu má byť
+predvolené percento rezu.
+
+**Zavrhnuté:**
+- *Vypočítať očakávanú výšku v metroch v hostovi a hlásiť nesúlad automaticky:* `floors.elevation`
+  je v jednotkách modelu (ETL ho neprevádza), host by musel hádať jednotky; porovnanie robí Claude
+  s oboma číslami v ruke.
+
+**Dodatok 2026-10-19 (oprava vo forku, Menezeris/ifc-lite vetva `claude/stoic-bohr-6n8rmb`):**
+- **Príčina výšky aj mierky:** renderer (a Section bar) rozkladá percento rezu na obálku
+  `usePlacementCoordinateInfo` (živé obálky modelov zo scény), AIM vrstva forku na holé
+  `mergedSectionBounds`. Vo federácii sú to dve rôzne veľké obálky, rez padol inam a sklon
+  0,486 je ich pomer. `view_state` čítal rez cez tú istú holú obálku, takže hlásil požadovanú
+  výšku, nie skutočnú. Fork teraz počíta všetko (rez nad podlažím, rez cez prvok a súradnicu,
+  `view_state`, obálka modelu) voči obálke renderera; elevácia podlažia v rámci jeho modelu.
+  Overené naživo: rez 3NP-analógie s offsetom 1 a -2 m pred opravou 11,93 a 4,45 m, po oprave
+  presne 3,7 a 0,7 m (elevácia + offset). Princíp D-083 ostáva, obchádzka cez `coordinate_m`
+  netreba.
+- **Orezanie (bod 1):** strecha "nad rovinou" bola dôsledok zlej výšky: rovina pre 3NP + 1 m
+  bola v skutočnosti nad podlahou 4NP (13,4 m), pôdorys 3NP zakryla doska 4NP. Renderer
+  orezáva všetky modely; samostatná zmena netreba, overí sa naživo po nasadení.
+- **Widget (bod 3):** bridge `SET_SECTION showGizmo` a `action: 'gizmo'`; host op
+  `section:...~g=0|1` a `section_gizmo:<0|1>:`, tool `set_section show_widget` a `action=widget`.
+  `view_state.section.show_gizmo` hlási stav.
+- **Percentá (bod 4, Samuel 2026-10-19: netreba):** `position_percent` ostáva voči obálke celej
+  scény (všetky viditeľné modely, rovnako ako Section bar). Je to núdzová možnosť; presný rez
+  dáva `floor` + `offset_m` alebo `coordinate_m` z `get_bounds`. Opis toolu a prompt to hovoria.
+
+---
+
+### D-093 - get_viewer_state: súhrn výberu, príznak orezania a identita položiek
+
+**Dátum:** 2026-10-19 · **Stav:** navrhnuté (kontrakt forku podľa dodatku, schváli Samuel mergom) · **Súvisí:** D-085, D-087, D-090, D-091 · **Issue:** #64
+
+**Kontext:** Používateľ vybral celý ľahký obvodový plášť (1810 prvkov). `get_viewer_state` vrátil
+`selection.count` 1810, ale len prvých 50 GUID bez triedy, podlažia a rodiča, bez stránkovania a bez
+povedania, že zoznam je orezaný. Claude zobral vzorku (náhodou celá z 1NP) a povedal, že výber je
+len 1NP. Orezanie robí odpoveď mosta vo forku, host ju len preposiela. Overené nad prod DB: AIM má
+55 `IfcCurtainWall` (1NP až 4NP), ale ich časti (`IfcPlate`, `IfcMember`) nie, takže triedu, podlažie
+a zostavu týchto prvkov pozná len viewer s načítaným IFC.
+
+**Rozhodnutie:**
+1. Server (`lib/live/selection-summary.ts`, DB časť `selection-context.ts`) vráti vo `selection`:
+   `count`, `returned`, `truncated`, `summary` (počty podľa IFC triedy, podlažia, rodičovskej zostavy
+   a modelu, `covers` = `all` alebo `returned`, `in_aim`), stránku `items` (`guid`, `object_ref`,
+   `name`, `ifc_type`, `floor`, `parent`, `model`, `in_aim`; `items_offset`/`items_limit`, default 50,
+   strop 200) a vetu `note`, keď je zoznam orezaný alebo stránkovaný. Surové `guids` z odpovede
+   odpadnú, ostatné polia viewera (napr. `bbox`) ostanú.
+2. Zdroj údajov o prvku: najprv viewer (`selection.items`), inak AIM: podlažie cez
+   `rel_contained_in_spatial_structure` (priestor -> podlažie cez `rel_aggregates`), alebo kontajner
+   zostavy; zostava cez `rel_aggregates` na nepriestorový uzol; zaniknuté objekty nie (D-088).
+3. **Kontrakt pre fork** (odpoveď `view_state`, len `apps/viewer/src/aim/`): `selection.guids` celé
+   (strop 5000, `MAX_SELECTION_GUIDS`) a voliteľne `selection.items[]` {`guid`, `name`, `ifc_type`,
+   `storey`, `model`, `parent_guid`, `parent_type`, `parent_name`} a `selection.bbox`. Je to dátová
+   odpoveď mosta, nie rozhodovanie o dátach (D-091). Server použije, čo príde; kým fork posiela
+   50 GUID, `truncated` a `covers=returned` zabránia záveru zo vzorky.
+4. Prompt MCP: na "čo mám vybrané" odpovedať zo `summary`, pri `truncated` nepopisovať výber ako celok.
+
+**Dôsledky:** chyba z issue (záver z čiastočnej vzorky) je zavretá hneď po nasadení hosta; úplný súhrn
+pre časti zostáv príde so zmenou forku. 1810 GUID je ~45 kB v Realtime odpovedi, AIM lookup ide po
+dávkach 100.
+
+**Dodatok (2026-10-19, strop Realtime):** Realtime projektu má `max_payload_size_in_kb` 256 a
+`max_bytes_per_second` 100000 (Management API). Celý výber s identitou (1810 položiek ~400 kB, 5000
+GUID ~125 kB) sa do jednej odpovede nezmestí. Preto fork súhrn spočíta sám nad **celým** výberom a
+zoznamy oreže: `selection.summary` {`of`, `by_ifc_type`, `by_storey`, `by_parent` (`key`, `count`,
+`guid`, `ifc_type`, `name`), `by_model` pri viacerých modeloch}, `selection.guids` najviac 1000,
+`selection.items` najviac 100, `selection.truncated` a `selection.bbox` (obálka výberu v IFC svete).
+Odpoveď má aj pri 5000 prvkoch ~60 kB. Server súhrn viewera prevezme (`covers=all`, keď `of` pokrýva
+`count`), zostavu známu v AIM pomenuje `object_ref` a pri orezanom zozname povie, že súhrn platí pre
+celok; bez súhrnu z viewera platí pôvodné správanie (bod 1). Strop 5000 z bodu 3 sa týka len servera.
+
+**Zavrhnuté:**
+- *Dopočítať triedu a rodiča na serveri cez IFC motor (`ENGINE_ENABLED`):* studený štart ~7 s a druhá
+  kópia IFC, ktorú viewer už má načítanú. Otvorené ako otázka pre Samuela v #64.
+- *Nový tool `get_selection`:* ten istý stav viewera by mal dve cesty; stránkovanie stačí v
+  `get_viewer_state`.
+
+---
+
+### D-094 - set_camera: relatívny pohyb, fit na viditeľné, cieľ filtrom, pohľad kolmo na rez
+
+**Dátum:** 2026-10-19 · **Stav:** implementované (revízia podľa D-098), fork PR Menezeris/ifc-lite#60 · **Súvisí:** D-066, D-083, D-085, D-087, D-090, D-098 · **Issue:** #65
+
+**Kontext:** požiadavka z konektora (#65): "oddiaľ pôdorys o 15 %", "VZT v perspektíve na celú
+obrazovku", "pozri sa na rez schodiskom kolmo". `set_camera` vedel len presety a framing na GUIDy:
+`fit_all` zmení smer pohľadu, `iso` nezafituje na izolované prvky, cieľ nejde zadať filtrom a pohľad
+kolmo na rez chýba. Originál `@ifc-lite/mcp` 0.27.0 má z kamery len `viewer_fly_to` (zarámuj
+entity), relatívny pohyb ani rez nemá, preto podľa D-087 bod 3 vlastné, v štýle originálu.
+
+**Rozhodnutie:**
+1. **Rozšírenie `set_camera`, nie nový tool** (jeden tool na kameru, model nevolí medzi dvoma).
+   Staré volania platia bez zmeny.
+2. `preset` je voliteľný; nové hodnoty `keep` (zachovať smer, default) a `section` (kolmo na
+   aktívny rez, zo strany, z ktorej je rez viditeľný).
+3. `fit`: `visible` (viditeľné, teda aj izolované prvky, `fitAll` forku) alebo `selection` (výber
+   vo vieweri, `frameSelection`). S cieľom sa rámuje naň, `fit` sa s cieľom nekombinuje. Bez `fit`
+   a bez cieľa ostáva doterajšie správanie presetu.
+4. Cieľ aj filtrom ako `style_in_3d`: `ifc_type`, `ifc_types`, `domain`, `model`. Selektor
+   rozloží viewer z entity tables (op `camera_sel`, rovnaký tvar `t=..~m=..` ako `*_sel`, D-066).
+5. Relatívne kroky: `zoom_percent` (-90 až 500; kladné priblíži, vzdialenosť / (1 + p/100),
+   záporné oddiali, vzdialenosť * (1 + |p|/100); pri ortografickej projekcii mierka rovnako),
+   `orbit_h_deg` (-180 až 180, kladné = kamera obehne cieľ doľava), `orbit_v_deg` (-89 až 89,
+   kladné = viac zhora), `pan_x_percent`/`pan_y_percent` (-100 až 100 % šírky/výšky pohľadu,
+   kladné = obsah sa posunie doľava/dole, teda pohľad doprava/hore).
+6. **Relatívny krok je samostatné volanie** (bez presetu, fit, cieľa a projection): počíta sa
+   z aktuálnej pózy a preset či fit ju menia animáciou. Poradie vo vieweri pri jednom volaní:
+   projekcia, smer, po animácii smeru rámovanie; relatívne kroky orbit, zoom, posun. Tool vráti,
+   čo poslal; skutočnú polohu kamery vráti `get_viewer_state` (D-085), model ju má overiť.
+7. **Wire formát** (D-066): `camera:<preset>[~proj=o|p][~fit=v|s][~z=..][~oh=..][~ov=..]
+   [~px=..][~py=..]:<guid.guid..>` a `camera_sel:<to isté>:t=..~m=..`. Bridge `SET_CAMERA` dostane
+   `fit` a `selector`. Relatívne kroky do mosta nejdú: host (`components/ifc-viewer.tsx`) sa
+   opýta `QUERY view_state`, čistou funkciou `relativeViewpoint` (`lib/viewer-camera.ts`) vypočíta
+   novú pózu v IFC svete a pošle `SET_CAMERA {preset: keep, viewpoint}` (D-098).
+8. **Fork** (`apps/viewer/src/aim/viewCamera.ts`, D-087 bod 2, D-098): len existujúce funkcie.
+   `section` = upstream Set view (`presetViewForAxis` / `customPlaneViewpoint`), `fit` =
+   `fitAll` / `frameSelection`, cieľ = `flyTo`, `viewpoint` = `applyViewpoint`. `view_state`
+   vracia aj `up`, `fov_deg`, `ortho_size`, `aspect`. Oprava chyby z #65 (preset `front`/`back`
+   s cieľom nepohol kamerou): rámovanie hneď po presete prepísalo koncový bod jeho animácie, teraz
+   ide až po nej. Poradie zlúčenia: fork, potom AIMviewer (starý fork nové presety odmietne).
+   Známe obmedzenie upstream ViewCube: rovnaký pevný preset dvakrát po sebe otočí pohľad o 90°.
+
+**Zavrhnuté:**
+- *Nový tool `camera_control` popri `set_camera`:* dva tools na to isté, model by volil zle.
+- *Absolútna poloha kamery (x, y, z):* model nepozná mierku scény; relatívne kroky a fit stačia.
+
+---
+
+### D-098 - Najprv to, čo viewer a originál už majú; fork len sprístupní
+
+**Dátum:** 2026-10-19 · **Stav:** prijaté (Samuel) · **Súvisí:** D-087, D-091, D-094, D-090 · **Issue:** #65
+
+**Kontext:** prvá verzia D-094 navrhla do forku nové výpočty kamery (relatívny zoom, orbit, posun,
+pohľad na rez v moste). Pri čítaní kódu forku sa ukázalo, že takmer všetko už existuje: `fitAll`
+rámuje viditeľné prvky bez zmeny smeru (#5884), tlačidlo Set view sa pozerá kolmo na rez (#7545),
+`applyViewpoint`/`getViewpoint` nastaví a prečíta presnú pózu, `frameSelection` a `flyTo` rámujú.
+Nové funkcie vo forku zväčšujú balík, rozchádzajú sa s originálom pri synchronizácii a potrebujú
+vlastné testy a dôkazy.
+
+**Rozhodnutie:**
+1. **Prednostne využívame to, čo fork a originál už majú, a nevymýšľame nové funkcie.** Pred
+   návrhom sa prehľadá store forku (`CameraCallbacks`, slices), SDK `@ifc-lite/sdk`,
+   `@ifc-lite/mcp`, embed protokol a akcie UI originálu (tlačidlá, ViewCube).
+2. **Fork len tenko sprístupní existujúcu funkciu cez most** (adaptér v `apps/viewer/src/aim/`).
+   Výpočty, ktoré vie urobiť host z dát, ktoré fork vráti (napr. relatívna kamera z
+   `view_state`), robí AIMviewer.
+3. Pravidlo je v `AGENTS.md` (3D Viewer), v skille `mcp-poziadavka` (krok 2) a vo forku v
+   `docs/FORK_MAINTENANCE.md` (Conventions) a skille `aim-feature` (krok 1).
+
+**Zavrhnuté:**
+- *Výpočty kamery v moste forku:* duplikovali by funkcie viewera, zväčšili vstupný balík a pri
+  synchronizácii s originálom by sa rozchádzali.
+
+**Doplnené (Samuel, 2026-10-19) - rýchle CI forku pre PR len v AIM vrstve:** `test.yml` vo forku
+(job `changes`, krok `aimonly`) vypne ťažké vetvy (Rust, WASM, viewer shards, E2E, perf
+ratchet), `aim-fast.yml` pustí AIM testy, lacné gates a typecheck viewera (približne 10 min).
+Plné CI ostáva pri sync s originálom a pri zmene upstream súborov. Balík a revert oracle sa
+merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo forku.
+
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-093 dodatok (súhrn výberu počíta fork):** strop Realtime 256 kB, fork posiela `summary` nad celým výberom, zoznamy orezané (1000 GUID, 100 položiek) a `bbox`; server súhrn prevezme.
+- **2026-10-19** - **D-093 (súhrn výberu v `get_viewer_state`):** `selection` s `count`/`returned`/`truncated`, súhrnom (trieda, podlažie, zostava, model, `covers`), stránkou položiek s identitou a `note` pri orezaní; kontrakt pre fork (celé `guids`, voliteľné `items` a `bbox`); prompt nerobí závery zo vzorky.
+- **2026-10-19** - **D-098 (najprv existujúce funkcie, fork len sprístupní):** pred návrhom sa prehľadá store, SDK, `@ifc-lite/mcp` a embed protokol; fork len tenký most, výpočty v AIMvieweri. Pravidlo v `AGENTS.md`, skilloch `mcp-poziadavka` a `aim-feature`, `FORK_MAINTENANCE.md`; rýchle CI forku pre PR len v `aim/` (`aim-fast.yml`) (#65).
+- **2026-10-19** - **D-094 (set_camera: relatívny pohyb, fit, filter, kolmo na rez):** `set_camera` dostal `preset` keep/section, `fit` visible/selection, cieľ filtrom (`ifc_type(s)`, `domain`, `model`, op `camera_sel`), `zoom_percent`, `orbit_h_deg`/`orbit_v_deg`, `pan_x_percent`/`pan_y_percent` (samostatné volanie, pózu počíta host z `view_state`); fork `SET_CAMERA` cez existujúce funkcie a oprava front/back s cieľom (ifc-lite#60, #65).
+- **2026-10-19** - **D-092 dodatok (oprava rezu vo forku, widget):** výška rezu a `view_state` voči obálke renderera (príčina sklonu 0,486), skrytie widgetu cez `show_widget` / `action=widget`; percentá ostávajú voči celej scéne, len opis (#63).
+- **2026-10-19** - **D-092 (set_section vracia polohu roviny z viewera):** MCP po odoslaní rezu prečíta `view_state` a vráti `viewer_section`, rez nad podlažím nesie eleváciu z DB na kontrolu; opravy orezávania, výšky, widgetu a percent sú vo forku (#63).
 - **2026-10-19** - **D-090 dodatok (issue len na pokyn):** Claude zápis len ponúkne, `request_tool`/`report_feedback` volá až na výslovný pokyn Samuela.
 - **2026-10-19** - **D-090 dodatok (strop a fronta):** najviac 3 súbežné sessions (`FEEDBACK_MAX_SESSIONS`), ďalšie issues so štítkom `fronta`, session po PR uvoľní miesto a pošle notifikáciu, ďalšiu spustí tool `start_queued_session`; `request_tool.start_session=false` pre dávky.
 - **2026-10-18** - **D-091 (kde žije AIM funkcia):** predvolene AIMviewer; do forku len zobrazenie, ktoré musí byť vnútri panelov viewera (odznaky, záznamy, lokálne prepínače); akcie meniace dáta robí host, tlačidlo vo forku ich len otvorí.
@@ -4045,3 +4237,81 @@ vyústka VV.02.01.006 cez porty -> tvarovka TA.02; teplé volania 1-230 ms.
 
 **Mimo rozsahu:** import zón a členstva do grafu AIM (návrh v issue) je úloha ETL (D-088), nie toolu
 konektora. Otázka Samuelovi je v issue #67.
+
+---
+
+### D-095 - `ifc_search`: full-text priamo v IFC súbore, zdroj pri každom výsledku
+**Status:** rozhodnuté (2026-10-19), implementované (issue #66, PR #89).
+**Rozširuje D-059, D-084, D-087.**
+
+**Kontext:** Claude cez konektor nenašiel "karuselové dvere" ani "prenajímateľné priestory".
+V ASR má IfcDoor `DD01.08.0001` atribút Description "Karuselové dvere" a IfcZone "Nájomné
+priestory" LongName "Nájomné priestory (prenajímateľné)". Graf AIM tieto atribúty nenesie
+(`objects` nemá Description, ObjectType, Tag ani LongName zón), takže `search_everything`
+(D-059) ich nájsť nemôže, a `ifc_query` vie len triedu a presné podmienky psetov. Navyše
+nebolo jasné, ktoré hľadanie ide do IFC a ktoré do DB. `@ifc-lite/mcp` 0.27.0 full-text tool
+nemá (`query_entities`, `ids_schema_search` a `bsdd_search` hľadajú niečo iné).
+
+**Rozhodnutie:**
+1. **Nový tool `ifc_search`** (D-087 bod 3, vlastný nad balíkom): dáta berie cez
+   `query_entities` + `get_entities_bulk` balíka, hľadanie je v `lib/engine/search.ts`. Index sa
+   postaví raz na parsovaný store (nemení sa, vzor indexu GlobalId v `ifc_get`) a obsahuje
+   atribúty (Name, Description, ObjectType, Tag, LongName, PredefinedType...), psety a Qto
+   výskytu aj z typu, klasifikácie a materiály - prvkov, priestorov, zón, skupín, systémov aj
+   typov (IfcTypeObject).
+2. **Zhoda:** bez diakritiky a veľkých písmen, každé slovo dotazu musí sedieť v niektorom poli
+   (začiatok slova alebo podreťazec od 3 znakov), inak fuzzy (Levenshtein 1 od 4 znakov, 2 od 8
+   znakov, aj voči začiatku slova). Skóre zvýhodní Name/Description/LongName/ObjectType a
+   celú frázu v jednom poli.
+3. **Vstupy:** `text`, `model?` (inak všetky modely), `ifc_types?` (vrátane podtried),
+   `fields?` (attribute | property | quantity | type_property | classification | material),
+   `fuzzy?`, `limit`/`offset`. **Výstup:** `source: "ifc"` pre celý výsledok a pri každej
+   položke `source` `ifc` (len v súbore) alebo `ifc+aim` (AIM prvok pozná, má `object_ref`),
+   `matched` (pole, cesta, hodnota ako dôkaz), `match_kind`, `score` a `show_in_3d`.
+4. **Zdroj v opisoch:** `search_everything` = "ZDROJ: graf AIM v DB", `ifc_search` = "ZDROJ:
+   IFC súbor"; pravidlo v MCP inštrukciách (len pri zapnutom motore): text hľadaj v oboch,
+   "nenašiel som" až po oboch, v odpovedi uveď zdroj.
+5. **`search_everything` sa nepremenúva** na `aim_search` (návrh z issue): používa ho aj chat
+   `/ask`, evaly a prompt, premenovanie by rozbilo staré rozhovory. Samuel potvrdil v #66.
+6. **Kombinované `search_all`** (dodatok 2026-10-19, na žiadosť Samuela v #66: "kombinované,
+   ale tak, aby bolo jasné, čo je čo, s badge a filtrovateľné"): jedno volanie hľadá naraz cez
+   `ifc_search` aj `search_everything`, výsledky spojí podľa `objects.id` (IFC prvok ho má, ak
+   ho AIM pozná), inak podľa GlobalId. Každý výsledok má **badge** podľa toho, kde sa našiel
+   TEXT: `IFC`, `AIM` alebo `IFC+AIM`; či prvok AIM pozná, ukazuje `object_ref` (badge `IFC` s
+   `object_ref` = prvok je v AIM, ale text je len v súbore, napr. Description). Dôkaz z každého
+   zdroja je v `evidence.ifc` / `evidence.aim`. Vstup `badges` filtruje, `counts` sú počty po
+   badge pred filtrom; `ifc_types` a `model` zúžia aj AIM časť. Poradie: `IFC+AIM` najprv,
+   potom podľa poradia v zdroji (skóre zdrojov nie sú porovnateľné). Zlyhanie jedného zdroja
+   je v `errors`, druhý ostane. Len MCP a len pri zapnutom motore (bez neho je to
+   `search_everything`); kód `lib/engine/search-all.ts`, prompt odporúča `search_all` ako prvý
+   krok. `ifc_search` aj `search_everything` ostávajú na cielené hľadanie v jednom zdroji.
+
+**Zavrhnuté:**
+- *Description/LongName/ObjectType/Tag do grafu AIM (ETL):* vyrieši len atribúty, nie
+  neimportované psety, Qto a materiály; a druhý nositeľ dát, ktoré sú v súbore (D-084).
+  Ak ich AIM bude potrebovať ako stĺpce (IFC-first, D-046), je to samostatné rozhodnutie.
+- *Rozšíriť `ifc_query` o `contains` na atribútoch:* balík atribútové termy v selektore
+  nepodporuje a full-text naprieč poliami by aj tak potreboval vlastný index.
+
+**Najprv to, čo existuje (D-098), overené 2026-10-19 vo forku `Menezeris/ifc-lite`:**
+originál full-text, ktorý by sa dal použiť na serveri, nemá. Prejdené miesta:
+- viewer `apps/viewer/src/lib/search/tier0-scan.ts` a `tier1-index.ts` (hľadanie v toolbare a
+  v `SearchModal`): indexuje len Name, GlobalId, Description, ObjectType a triedu z
+  `EntityTable`, bez psetov, Qto, LongName, klasifikácií a materiálov, bez odstránenia
+  diakritiky a bez fuzzy; je to kód aplikácie viewera (nie balík), na serveri ho nemáme;
+- `@ifc-lite/query` (`filter-predicate.ts`, `property-filter.ts`): operátory `contains` a
+  `matches` nad jednou vlastnosťou, nie hľadanie naprieč poľami;
+- `@ifc-lite/sdk` (`bim.query`): rovnaké filtre ako `@ifc-lite/query`; `search` má len
+  namespace bSDD;
+- `@ifc-lite/mcp` 0.27.0: `query_entities`, `ids_schema_search`, `bsdd_search`;
+- embed protokol: hľadanie nemá.
+Vlastný index v `search.ts` preto ostáva; z viewera preberá len princíp (index raz po
+načítaní, tokeny slov) a pridáva polia, ktoré viewer nehľadá.
+
+**Overené (2026-10-19, lokálne nad ASR v71 a VZT z verejného bucketu):** prvé volanie nad
+oboma modelmi 4,8 s vrátane sťahovania a parsovania (index ~2 s), ďalšie 3-320 ms.
+"karuselové" -> IfcDoor `DD01.08.0001`, IfcDoorType `DD01.08` (Description) a krytina
+`PD02.11` (materiál); "prenajímateľné" -> IfcZone "Nájomné priestory" (LongName); preklep
+"karuzelove" nájde to isté ako fuzzy; "protipožiarne" 0 (v súboroch naozaj nie je). Vitest
+`lib/engine/search.test.ts` nad mini modelom. Evaly `/ask` motor neobsahujú (ifc_* sú len v
+MCP), otázky z issue sú v `eval/questions.json` ako neoverené.

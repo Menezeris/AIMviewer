@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { parseOps } from "../viewer-ops";
-import { ViewInputError, planCamera, planSection, planViewMode } from "./view-plan";
+import { planCamera } from "./camera-plan";
+import { ViewInputError, planSection, planViewMode } from "./view-plan";
 
 const FLOOR = { label: "3NP", guid: "3ig6N2jJz05g7H9Fq$ftkL" };
 const ROOM = "1KphWFyMb8dRV6rhVkyU6y";
@@ -11,6 +12,12 @@ describe("tools pohľadu (D-083 fáza 1)", () => {
     const p = planSection({ action: "set", floor: "3NP", offset_m: -0.4 }, FLOOR);
     expect(parseOps(p.ops.join(";"))).toEqual([{ op: "section", axis: "y", storeyGuid: FLOOR.guid, offsetM: -0.4 }]);
     expect(p.result).toMatchObject({ section: { floor: "3NP", offset_m: -0.4 } });
+  });
+
+  it("rez nad podlažím vráti eleváciu z AIM DB na kontrolu polohy roviny (D-092)", () => {
+    const p = planSection({ action: "set", floor: "3NP", offset_m: 1 }, { ...FLOOR, elevation: 9200 });
+    expect(p.result).toMatchObject({ section: { floor: "3NP", offset_m: 1, floor_elevation_model_units: 9200 } });
+    expect(planSection({ action: "set", floor: "3NP" }, FLOOR).result.section).not.toHaveProperty("floor_elevation_model_units");
   });
 
   it("rez: default 1,2 m, zvislý v percentách, zrušenie a chyby vstupu", () => {
@@ -67,5 +74,22 @@ describe("set_section cez prvok a na súradnici (D-085)", () => {
     expect(() =>
       planSection({ action: "set", target_ids_or_refs: ["A"], fit: "along", position_percent: 40 }, null, [STAIR]),
     ).toThrow(ViewInputError);
+  });
+});
+
+describe("set_section: widget rezu (#63)", () => {
+  it("show_widget=false pri reze nad podlažím skryje widget, rez ostáva", () => {
+    const p = planSection({ action: "set", floor: "3NP", offset_m: 1, show_widget: false }, FLOOR);
+    expect(parseOps(p.ops.join(";"))).toEqual([
+      { op: "section", axis: "y", storeyGuid: FLOOR.guid, offsetM: 1, showGizmo: false },
+    ]);
+    expect(p.result).toMatchObject({ section: { floor: "3NP", show_widget: false } });
+  });
+
+  it("action=widget prepne len widget a bez show_widget je to chyba", () => {
+    expect(parseOps(planSection({ action: "widget", show_widget: false }, null).ops.join(";"))).toEqual([
+      { op: "section_gizmo", showGizmo: false },
+    ]);
+    expect(() => planSection({ action: "widget" }, null)).toThrow(ViewInputError);
   });
 });
