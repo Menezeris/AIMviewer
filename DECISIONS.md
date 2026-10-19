@@ -2819,6 +2819,22 @@ Lobby", „Nájomný priestor") exportované ako IfcSpace (patria do IfcZone/Ifc
 1. NP má len dve skutočné miestnosti a 5. NP žiadnu. Odvodzovač to hlási ako prekrývajúce
 sa priestory; náprava patrí do modelu, nie do kódu.
 
+**Dodatok 2026-10-19 (#92): steny IfcFacetedBrep sa preorientujú.** Nález "131 zo 139
+vyústení mimo tela miestnosti" vyššie nebol stav modelu, ale chyba odvodzovača. Väzbu
+nedostal **žiadny** prvok s telom `IfcFacetedBrep` (568 z 568 v aktuálnych ASR + VZT z bucketu 19. 10.:
+výustky a tvarovky cez `IfcMappedItem` typu, potrubia s telom Brep aj odvodňovače ASR),
+zatiaľ čo `IfcExtrudedAreaSolid` a `IfcSurfaceCurveSweptAreaSolid` prechádzali. Revit
+exportuje tieto telá s nejednotne orientovanými stenami a presný test BVH stromu voči telu
+priestoru ich minie. Hypotéza z issue (mapovaná geometria, chýbajúca trieda) neplatí:
+`IfcAirTerminal` je `IfcDistributionElement` a tvar mapovaného prvku je v strome na správnom
+mieste. Oprava: iterátor má `reorient-shells`. Výsledok nad ASR + VZT: 1061 z 1092 prvkov
+v priestore (predtým 513), 948 inside a 188 partial, bez prekrývajúcich sa priestorov a bez
+duplicitných hrán. Ostáva 31 prvkov mimo priestorov (20 odvodňovačov OV04 na 4.-5. NP, 11
+VZT), to je obsah modelu. Čas výpočtu narástol asi trikrát (lokálne 58 s -> 189 s). Hrany sa
+prepočítajú pri ďalšom behu `python -m etl.derive run` (zápis je idempotentný, D-080 bod 3).
+Duplicitné hrany pri VV.07.01.002 z issue sa nad aktuálnou DB nereprodukujú (tri rôzne
+ciele: 2.12, N2.03, PZ13); odvodzovač duplicity nevydáva a id hrany je deterministické.
+
 ---
 
 ### D-081 — Kontrola modelu voči IDS z knižnice požiadaviek (`etl.ids_check`)
