@@ -24,7 +24,7 @@ const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 const strList = (v: unknown): string[] => (Array.isArray(v) ? (v as unknown[]).map(str).filter(Boolean) : []);
 
 /** Akcie `style_in_3d`, ktoré idú cez Lens (skrytie ostáva na kanáli skrývania viewera). */
-export const LENS_STYLE_ACTIONS = new Set(["colorize", "transparent", "isolate"]);
+export const LENS_STYLE_ACTIONS = new Set(["colorize", "transparent", "isolate", "xray"]);
 
 export interface LensStyleOptions {
   /** IFC domény -> triedy (zdieľané so selektorom v `tools.ts`). */
@@ -145,13 +145,17 @@ export async function execLensStyle(
   for (const g of groups) {
     const info: GroupInfo = { label: g.label, ...(g.color ? { color: `#${g.color}` } : {}) };
     const filter = await resolveFilter(scope, g.filter, opts, info, budget);
-    // Izolovaná skupina bez farby ostane v pôvodnom vzhľade (len kanál izolácie viewera).
+    // Izolovaná (X-ray) skupina bez farby ostane v pôvodnom vzhľade (len kanál izolácie / ghost viewera).
     const a = action === "transparent" ? "transparent" : g.color ? "colorize" : "isolate";
     rules.push({ n: g.label, a, ...(g.color ? { c: `#${g.color}` } : {}), g: [lensGroup(filter)] });
     infos.push(info);
   }
-  const wire: LensWire = { r: rules, ...(action === "isolate" ? { i: 1 as const } : {}) };
-  const verb = { colorize: "ofarbenie", transparent: "priehľadnosť", isolate: "izolácia" }[action] ?? action;
+  const wire: LensWire = {
+    r: rules,
+    ...(action === "isolate" ? { i: 1 as const } : {}),
+    ...(action === "xray" ? { x: 1 as const } : {}),
+  };
+  const verb = { colorize: "ofarbenie", transparent: "priehľadnosť", isolate: "izolácia", xray: "X-ray" }[action] ?? action;
   push({
     type: "navigate",
     url: `/ifc?ops=${encodeURIComponent(lensOp(mode, wire, rev))}&r=${Date.now().toString(36)}`,
@@ -167,6 +171,9 @@ export async function execLensStyle(
       groups: infos,
       ...(action === "isolate"
         ? { isolated: "viewer zobrazí len tieto prvky; bez farby ostanú v pôvodnom vzhľade, show_all izoláciu zruší" }
+        : {}),
+      ...(action === "xray"
+        ? { xray: "tieto prvky ostanú plné v pôvodnom vzhľade, zvyšok modelu priesvitný (X-ray context); show_all ho zruší" }
         : {}),
     },
   };
