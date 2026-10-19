@@ -170,9 +170,10 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "feedback_comment",
     description:
-      "Dopíše KOMENTÁR do existujúceho otvoreného issue konektora (štítok mcp, D-090): kolo evalov, výsledky " +
-      "pred / po, poznámka k požiadavke. Volaj LEN na výslovný pokyn používateľa ('dopíš do #97 kolo 2'); nové " +
-      "issue nezakladá a session nespúšťa. Vráti odkaz na komentár; feedback_status ho ukáže v last_comments. " +
+      "Dopíše KOMENTÁR do existujúceho issue konektora, otvoreného aj zatvoreného (štítok mcp, D-090): kolo " +
+      "evalov, výsledky pred / po, poznámka k požiadavke. Volaj LEN na výslovný pokyn používateľa ('dopíš do #97 " +
+      "kolo 2'); nové issue nezakladá a session nespúšťa. reopen=true zatvorené issue znovu otvorí, LEN keď to " +
+      "používateľ výslovne povie ('otvor ho znova'). Vráti odkaz na komentár; feedback_status ho ukáže v last_comments. " +
       PRIVACY,
     inputSchema: {
       type: "object",
@@ -183,6 +184,10 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "string",
           enum: [...COMMENT_KINDS],
           description: "Druh komentára (nadpis): eval_round (kolo evalov), result (výsledok), note (poznámka, predvolene).",
+        },
+        reopen: {
+          type: "boolean",
+          description: "true = zatvorené issue znovu otvoriť (len na výslovný pokyn používateľa; predvolene nie).",
         },
       },
       required: ["issue_number", "text"],
@@ -682,7 +687,10 @@ export function draftComment(args: Record<string, unknown>, now: Date): { number
   };
 }
 
-/** Komentár len do otvoreného issue konektora; issue a PR mimo štítku `mcp` odmietne. */
+/**
+ * Komentár do issue konektora (otvoreného aj zatvoreného); issue a PR mimo štítku `mcp` odmietne.
+ * `reopen=true` zatvorené issue najprv znovu otvorí, aby sa komentár nezapísal bez neho.
+ */
 async function comment(args: Record<string, unknown>, deps: FeedbackDeps): Promise<{ text: string; isError: boolean }> {
   const d = draftComment(args, deps.now());
   const body = redact(d.body, deps.secrets);
@@ -700,14 +708,14 @@ async function comment(args: Record<string, unknown>, deps: FeedbackDeps): Promi
   if (issue.pull_request || !hasLabel(issue, LABEL_MCP)) {
     return { text: `#${d.number} nie je issue konektora (štítok ${LABEL_MCP}), komentár sa nezapísal.`, isError: true };
   }
-  if (issue.state !== "open") {
-    return { text: `#${d.number} je zatvorené, komentár sa nezapísal. Novú potrebu zapíš ako nové issue.`, isError: true };
-  }
+  const reopened = args.reopen === true && issue.state !== "open";
+  if (reopened) await client.reopenIssue(d.number);
   const c = await client.addComment(d.number, body);
   return {
     text: json({
-      issue: { number: issue.number, url: issue.html_url, title: issue.title },
+      issue: { number: issue.number, url: issue.html_url, title: issue.title, state: reopened ? "open" : issue.state },
       comment: { id: c.id, url: c.html_url },
+      reopened,
     }),
     isError: false,
   };

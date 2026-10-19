@@ -212,7 +212,8 @@ const FEEDBACK_RULES = `
   viac položiek naraz (zoznam, dokument), zapíš každú zvlášť, podobné zlúč do jednej, a na konci povedz,
   koľko session beží a čo čaká. "Spusti ďalšiu" = start_queued_session.
 - "Dopíš do #N ..." (kolo evalov, výsledky pred / po, poznámka) = feedback_comment do existujúceho
-  issue, nie nové issue; ukáž odkaz na komentár.
+  issue (aj zatvoreného), nie nové issue; ukáž odkaz na komentár. reopen=true len na výslovný pokyn
+  ("otvor ho znova").
 - Issue je verejné: žiadne mená, kontakty ani tokeny, len object_ref, triedy, psety a tools.`;
 
 /**

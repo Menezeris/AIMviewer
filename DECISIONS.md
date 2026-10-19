@@ -3887,11 +3887,11 @@ issue len založiť a čítať, takže každé kolo by bolo nové issue a histó
 `feedback_comment` (len MCP, `lib/feedback/tools.ts`): `issue_number`, `text` (markdown, do 16 000
 znakov), voliteľne `kind` = `eval_round` / `result` / `note` (nadpis komentára), vráti odkaz na
 komentár. Rovnaký token a pravidlá ako `report_feedback`: len na výslovný pokyn, maskovanie tajomstiev,
-`readOnlyHint:false`; session nespúšťa. Komentuje **len otvorené issues so štítkom `mcp`** v repe
-konektora (iné issues a PR odmietne, token má Issues: write na celé repo). Skrytá značka
-`<!-- aim-mcp-comment {...} -->`, `feedback_status` ju vráti ako `via_connector` pri komentári.
-*Zavrhnuté:* komentovanie zatvorených issues (nikto ich nesleduje, nová potreba = nové issue);
-pripísanie cez `report_feedback` s rovnakým názvom (odtlačok je krehký a text by bol "Ďalší výskyt").
+`readOnlyHint:false`; session nespúšťa. Komentuje **issues so štítkom `mcp`** v repe konektora,
+otvorené aj zatvorené (iné issues a PR odmietne, token má Issues: write na celé repo). Samuel
+(2026-10-19): voliteľné `reopen: true` zatvorené issue pred komentárom znovu otvorí, len na výslovný
+pokyn používateľa. Skrytá značka `<!-- aim-mcp-comment {...} -->`, `feedback_status` ju vráti ako
+`via_connector` pri komentári. *Zavrhnuté:* pripísanie cez `report_feedback` s rovnakým názvom (odtlačok je krehký a text by bol "Ďalší výskyt").
 
 ---
 
@@ -4195,7 +4195,7 @@ merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo fo
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
-- **2026-10-19** - **D-090 dodatok (`feedback_comment`, #98):** komentár do otvoreného issue konektora (štítok `mcp`) s druhom `eval_round` / `result` / `note`, vráti odkaz; `feedback_status` označí komentáre konektora (`via_connector`).
+- **2026-10-19** - **D-090 dodatok (`feedback_comment`, #98):** komentár do issue konektora (štítok `mcp`, aj zatvoreného, `reopen` na pokyn) s druhom `eval_round` / `result` / `note`, vráti odkaz; `feedback_status` označí komentáre konektora (`via_connector`).
 - **2026-10-19** - **D-096 (`style_in_3d` nad Lens):** farbenie, priehľadnosť a izolácia ako lens "AIM chat" v paneli Lens forku; filtre `system`, `system_type`, `not_in_system`, `zone`, `storey` (AND), `groups` s farbou, `color_by` s legendou; zóna sa doťahuje na klientovi; počty na pravidlo vracia viewer spätným kanálom.
 - **2026-10-19** - **D-093 dodatok (súhrn výberu počíta fork):** strop Realtime 256 kB, fork posiela `summary` nad celým výberom, zoznamy orezané (1000 GUID, 100 položiek) a `bbox`; server súhrn prevezme.
 - **2026-10-19** - **D-093 (súhrn výberu v `get_viewer_state`):** `selection` s `count`/`returned`/`truncated`, súhrnom (trieda, podlažie, zostava, model, `covers`), stránkou položiek s identitou a `note` pri orezaní; kontrakt pre fork (celé `guids`, voliteľné `items` a `bbox`); prompt nerobí závery zo vzorky.

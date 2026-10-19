@@ -324,8 +324,9 @@ describe("feedback_comment: komentár do issue konektora (D-090, #98)", () => {
     );
     expect(res.isError).toBe(false);
     expect(JSON.parse(res.text)).toEqual({
-      issue: { number: 12, url: issue().html_url, title: issue().title },
+      issue: { number: 12, url: issue().html_url, title: issue().title, state: "open" },
       comment: { id: 99, url: "https://github.com/Menezeris/AIMviewer/issues/12#issuecomment-99" },
+      reopened: false,
     });
     const body = (gh.calls[1].body as { body: string }).body;
     expect(body).toMatch(/^\*\*Kolo evalov\*\* \(2026-10-18 22:00 UTC, `feedback_comment`\)/);
@@ -346,8 +347,47 @@ describe("feedback_comment: komentár do issue konektora (D-090, #98)", () => {
     expect(body).toContain("[skryté]");
   });
 
-  it("odmietne issue mimo konektora, PR a zatvorené issue", async () => {
-    for (const over of [{ labels: [{ name: "bug" }] }, { pull_request: {} }, { state: "closed" }]) {
+  const closed = () => {
+    const gh = fakeGithub({
+      "GET /repos/Menezeris/AIMviewer/issues/12": () => ({ json: issue({ state: "closed" }) }),
+      "PATCH /repos/Menezeris/AIMviewer/issues/12": () => ({ json: issue() }),
+      "POST /repos/Menezeris/AIMviewer/issues/12/comments": () => ({ status: 201, json: { id: 5, html_url: "c5" } }),
+    });
+    return gh;
+  };
+
+  it("do zatvoreného issue zapíše komentár a bez reopen ho nechá zatvorené", async () => {
+    const gh = closed();
+    const out = JSON.parse(
+      (await execFeedbackTool("feedback_comment", { issue_number: 12, text: "x" }, deps({ client: gh.client }))).text,
+    );
+    expect(out).toMatchObject({ issue: { state: "closed" }, comment: { id: 5 }, reopened: false });
+    expect(gh.calls.some((c) => c.method === "PATCH")).toBe(false);
+  });
+
+  it("reopen=true zatvorené issue najprv znovu otvorí, potom zapíše komentár", async () => {
+    const gh = closed();
+    const out = JSON.parse(
+      (await execFeedbackTool("feedback_comment", { issue_number: 12, text: "x", reopen: true }, deps({ client: gh.client })))
+        .text,
+    );
+    expect(out).toMatchObject({ issue: { state: "open" }, reopened: true });
+    expect(gh.calls.map((c) => c.method)).toEqual(["GET", "PATCH", "POST"]);
+    expect(gh.calls[1].body).toEqual({ state: "open" });
+  });
+
+  it("reopen pri otvorenom issue nič neotvára", async () => {
+    const gh = commented();
+    const out = JSON.parse(
+      (await execFeedbackTool("feedback_comment", { issue_number: 12, text: "x", reopen: true }, deps({ client: gh.client })))
+        .text,
+    );
+    expect(out.reopened).toBe(false);
+    expect(gh.calls.some((c) => c.method === "PATCH")).toBe(false);
+  });
+
+  it("odmietne issue mimo konektora a PR", async () => {
+    for (const over of [{ labels: [{ name: "bug" }] }, { pull_request: {} }]) {
       const gh = fakeGithub({ "GET /repos/Menezeris/AIMviewer/issues/12": () => ({ json: issue(over) }) });
       const res = await execFeedbackTool("feedback_comment", { issue_number: 12, text: "x" }, deps({ client: gh.client }));
       expect(res.isError).toBe(true);
