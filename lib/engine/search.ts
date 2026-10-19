@@ -185,24 +185,42 @@ export function searchIndex(session: EngineSession, m: EngineModel): Promise<Ind
   return p;
 }
 
+/** Riadky Levenshteina sa recyklujú: fuzzy hľadanie ich volá milión ráz na otázku (D-102). */
+let rowA = new Int32Array(64);
+let rowB = new Int32Array(64);
+
 /** Levenshtein s horným stropom (rýchly výstup, keď je slovo ďaleko). */
 export function editDistance(a: string, b: string, max: number): number {
   if (Math.abs(a.length - b.length) > max) return max + 1;
-  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  if (rowA.length <= b.length) {
+    rowA = new Int32Array(b.length + 1);
+    rowB = new Int32Array(b.length + 1);
+  }
+  let prev = rowA;
+  let cur = rowB;
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
   for (let i = 1; i <= a.length; i++) {
-    const cur = [i];
+    cur[0] = i;
     let rowMin = i;
+    const ai = a.charCodeAt(i - 1);
     for (let j = 1; j <= b.length; j++) {
-      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-      rowMin = Math.min(rowMin, cur[j]);
+      const v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ai === b.charCodeAt(j - 1) ? 0 : 1));
+      cur[j] = v;
+      if (v < rowMin) rowMin = v;
     }
     if (rowMin > max) return max + 1;
+    const t = prev;
     prev = cur;
+    cur = t;
   }
   return prev[b.length];
 }
 
-const allowedEdits = (token: string) => (token.length >= 8 ? 2 : token.length >= 4 ? 1 : 0);
+/**
+ * Preklep sa toleruje len v slovách. Token s číslicou je kód alebo číslo
+ * (SD04, 0001, 3.02): fuzzy by z neho spravil iný prvok (SD03), preto len presne (D-102).
+ */
+const allowedEdits = (token: string) => (/\d/.test(token) ? 0 : token.length >= 8 ? 2 : token.length >= 4 ? 1 : 0);
 
 /** 2 = presná zhoda slova/prefixu, 1 = fuzzy, 0 = nič. */
 function tokenMatch(token: string, f: IndexedField, fuzzy: boolean): number {
@@ -279,7 +297,69 @@ export function searchEntities(index: IndexedEntity[], q: SearchQuery): SearchHi
   return hits.sort((a, b) => b.score - a.score || a.ifc_type.localeCompare(b.ifc_type) || (a.name ?? "").localeCompare(b.name ?? ""));
 }
 
-/** expressId prvkov zadaných tried vrátane podtried (cez `query_entities` balíka). */
-export async function idsOfTypes(session: EngineSession, modelId: string, types: string[]): Promise<Set<number>> {
-  return new Set(await allIds(session, modelId, types));
+/** expressId prvkov zadaných tried vrátane podtried (cez `query_entities` balíka), raz na store a triedy. */
+const typeIds = new WeakMap<object, Map<string, Promise<Set<number>>>>();
+export function idsOfTypes(session: EngineSession, m: EngineModel, types: string[]): Promise<Set<number>> {
+  let byKey = typeIds.get(m.store);
+  if (!byKey) typeIds.set(m.store, (byKey = new Map()));
+  const key = [...types].sort().join(",");
+  let p = byKey.get(key);
+  if (!p) {
+    p = allIds(session, m.id, types).then((ids) => new Set(ids));
+    byKey.set(key, p);
+    p.catch(() => byKey.delete(key));
+  }
+  return p;
+}
+
+/** Presné meno alebo Tag -> prvky; kód ako SD04.0001 tak nejde cez fuzzy prechod indexu (D-102). */
+export type NameIndex = Map<string, IndexedEntity[]>;
+const nameIndexes = new WeakMap<object, Promise<NameIndex>>();
+
+export const nameKey = (s: string) => normalizeText(s).trim();
+
+export function nameIndex(session: EngineSession, m: EngineModel): Promise<NameIndex> {
+  let p = nameIndexes.get(m.store);
+  if (!p) {
+    p = searchIndex(session, m).then(buildNameIndex);
+    nameIndexes.set(m.store, p);
+    p.catch(() => nameIndexes.delete(m.store));
+  }
+  return p;
+}
+
+export function buildNameIndex(entities: IndexedEntity[]): NameIndex {
+  const out: NameIndex = new Map();
+  const add = (k: string, e: IndexedEntity) => {
+    if (!k) return;
+    const list = out.get(k);
+    if (!list) out.set(k, [e]);
+    else if (!list.includes(e)) list.push(e);
+  };
+  for (const e of entities) {
+    if (e.name) add(nameKey(e.name), e);
+    for (const f of e.fields) if (f.field === "attribute" && f.path === "Tag") add(nameKey(f.value), e);
+  }
+  return out;
+}
+
+/** Vyzerá ako kód prvku (SD04.0001, VV.03.01.040, PD02.31.07), nie ako slová. */
+export function looksLikeCode(text: string): boolean {
+  const t = text.trim();
+  return /^[\p{L}]{1,6}[\p{L}\d]*([._-]\d+)+$/u.test(t) || /^[\p{L}]{1,6}\d+$/u.test(t);
+}
+
+/** Zásahy presného mena ako výsledok hľadania (najvyššie skóre, match_kind exact). */
+export function exactNameHits(entities: IndexedEntity[], allowed?: Map<string, Set<number>>): SearchHit[] {
+  return entities
+    .filter((e) => !allowed || allowed.get(e.model)?.has(e.express_id))
+    .map((e) => ({
+      model: e.model,
+      global_id: e.global_id,
+      ifc_type: e.ifc_type,
+      name: e.name,
+      score: 100,
+      match_kind: "exact" as const,
+      matched: [{ field: "attribute" as const, path: "Name", value: e.name ?? "" }],
+    }));
 }

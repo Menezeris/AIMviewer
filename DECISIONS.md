@@ -2819,6 +2819,22 @@ Lobby", „Nájomný priestor") exportované ako IfcSpace (patria do IfcZone/Ifc
 1. NP má len dve skutočné miestnosti a 5. NP žiadnu. Odvodzovač to hlási ako prekrývajúce
 sa priestory; náprava patrí do modelu, nie do kódu.
 
+**Dodatok 2026-10-19 (#92): steny IfcFacetedBrep sa preorientujú.** Nález "131 zo 139
+vyústení mimo tela miestnosti" vyššie nebol stav modelu, ale chyba odvodzovača. Väzbu
+nedostal **žiadny** prvok s telom `IfcFacetedBrep` (568 z 568 v aktuálnych ASR + VZT z bucketu 19. 10.:
+výustky a tvarovky cez `IfcMappedItem` typu, potrubia s telom Brep aj odvodňovače ASR),
+zatiaľ čo `IfcExtrudedAreaSolid` a `IfcSurfaceCurveSweptAreaSolid` prechádzali. Revit
+exportuje tieto telá s nejednotne orientovanými stenami a presný test BVH stromu voči telu
+priestoru ich minie. Hypotéza z issue (mapovaná geometria, chýbajúca trieda) neplatí:
+`IfcAirTerminal` je `IfcDistributionElement` a tvar mapovaného prvku je v strome na správnom
+mieste. Oprava: iterátor má `reorient-shells`. Výsledok nad ASR + VZT: 1061 z 1092 prvkov
+v priestore (predtým 513), 948 inside a 188 partial, bez prekrývajúcich sa priestorov a bez
+duplicitných hrán. Ostáva 31 prvkov mimo priestorov (20 odvodňovačov OV04 na 4.-5. NP, 11
+VZT), to je obsah modelu. Čas výpočtu narástol asi trikrát (lokálne 58 s -> 189 s). Hrany sa
+prepočítajú pri ďalšom behu `python -m etl.derive run` (zápis je idempotentný, D-080 bod 3).
+Duplicitné hrany pri VV.07.01.002 z issue sa nad aktuálnou DB nereprodukujú (tri rôzne
+ciele: 2.12, N2.03, PZ13); odvodzovač duplicity nevydáva a id hrany je deterministické.
+
 ---
 
 ### D-081 — Kontrola modelu voči IDS z knižnice požiadaviek (`etl.ids_check`)
@@ -4196,6 +4212,7 @@ merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo fo
 > D-záznam vyššie.
 
 - **2026-10-19** - **D-104 (dokumenty z IFC):** jedna sada dokumentov z IFC (stará sada E3 sa odstráni), ETL podľa IfcDocumentInformation vrátane stromu a odkazov na strany, efektívne dokumenty objektu cez vzťahy (typ, skupina, zóna, priestorová zóna, odvodené) v DB aj v tooloch, prehliadanie a preklikávanie PDF cieľovo vo vieweri (fork), súbory v buckete podľa `Identification`.
+- **2026-10-19** - **D-102 (kolo 3 latencie MCP):** kód prvku (SD04.0001, VV.03.01.040) ako cieľ všetkých toolov cez meno v AIM a IFC Name/Tag, predčítané indexy motora (`ifc_search` 2 až 90 ms), kód bez preklepu, `set_section relative_to=ceiling` z Qto miestností (vážený medián), `get_object` s podlažím, kamera na miestnosť a `CLEAR_SELECTION` vo forku.
 - **2026-10-19** - **D-101 (potvrdenie príkazov viewera):** `ACK_REQUEST`/`APPLIED` s `cmdId` namiesto pevných limitov, fronta príkazov vo forku počas načítania, `ISOLATE` presná množina a Lens `mode: add` rozšíri izoláciu (#95), `CLEAR_FOCUS` (#94), widget rezu trvalo (#63), príkaz na `/ifc` bez navigácie, teplý Realtime kanál, predčítanie motora aj na studenej inštancii.
 - **2026-10-19** - **D-100 dodatok (meranie v iad1, región `arn1`):** 12 úloh správne, 6 nad stropom volaní; server väčšinou pod 1 s, čas tvoria počty volaní; funkcie presunuté do `arn1` pri databáze.
 - **2026-10-19** - **D-100 (latencia MCP konektora):** log volaní `mcp_call_log` s fázami, eval úlohy konektora merané agentom (`eval/mcp-tasks.json`), predčítanie IFC motora pri pripojení, panel chatu vo vieweri skrytý, `ifc_property_values` číta aj Qto (#96); región `arn1` samostatne po baseline (#97).
@@ -4642,6 +4659,78 @@ chyba bola vo forku).
 (`docs/architecture/evidence/aim-d101-command-ack/`), živo v iframe s AC20-FZK-Haus (fronta,
 izolácia 13/13/14/13, focus, widget, Lens add 13 -> 14), vstupný balík +1 429 B voči main
 (predschválené). AIMviewer - vitest, `tsc`, eslint.
+
+### D-102 - Hľadanie prvku podľa kódu, predčítané indexy motora, rez pod podhľadom, zrušenie výberu
+**Status:** rozhodnuté (2026-10-19, kolo 3 plánu D-100, Samuel schválil plán), vetva
+`claude/loving-sagan-nw4ma8` v AIMvieweri aj vo forku Menezeris/ifc-lite (PR #68). Súčasť #97.
+Nadväzuje na D-095 (`ifc_search`), D-100 (predčítanie motora), D-101 (potvrdenie príkazov).
+
+**Kontext:** meranie po D-101 (`eval/results/mcp-2026-10-19-arn1-d101.json`) ukázalo:
+- úkony vo vieweri sú pod 2 s;
+- E1 však míňa 8 z 12 volaní na nájdenie ramena SD04.0001 (IfcStairFlight len v IFC, bez `object_ref`);
+- D5 potrebuje 3 volania, lebo VV.03.01.040 je meno, nie `object_ref`;
+- `ifc_search` stojí 4,4 s aj na teplej inštancii, lebo index sa stavia až pri prvom volaní;
+- studené `ifc_*` volania trvajú 4,5 až 6 s;
+- "ukáž miestnosť" kamerou nepohne (IfcSpace je vo forku skrytý) a agent tvrdí opak;
+- zrušiť výber sa nedá;
+- výšky agent vykladá zle: odčítal `FinishFloorHeight` a rez "pod podhľadom na 3NP" spravil pod
+  IfcCovering priradenými k 3NP, ktoré visia pod doskou 3NP a patria miestnostiam 2NP.
+
+Samuel potvrdil:
+- `FinishCeilingHeight` sa meria od hotovej podlahy (IFC), 3.02 má 3,05 m;
+- "podhľad na 3NP" je podhľad miestností 3NP.
+
+**Rozhodnutie:**
+1. **Kód prvku ako cieľ:** `resolveTargetsToGuids` (set_section, set_camera, get_bounds, ifc_get,
+   ifc_relations), `show_in_3d`, `select_in_3d` a `get_object` po neúspechu `object_ref` skúsia
+   presné `objects.name` a potom IFC Name/Tag v motore (`lib/engine/names.ts`, index mien na
+   indexe `ifc_search`). Viacznačný kód je chyba so zoznamom kandidátov (GUID), nevyberá sa
+   potichu. `get_object` vráti aj podlažie (1 až 2 dotazy) a prvok len v IFC označí `in_aim:false`.
+2. **Predčítanie indexov:** `preloadEngineModels` po parsovaní postaví aj index GUID a index
+   `ifc_search` (s menami), takže prvé hľadanie ani `ifc_get` na čerstvej inštancii nečakajú.
+   Lokálne nad ASR+VZT: index 2,5 s v `after()`, potom `ifc_search` 2 až 90 ms, kód 1 ms.
+3. **`ifc_search`:**
+   - kód (SD04.0001) ide najprv presne podľa mena alebo Tagu;
+   - token s číslicou sa nehľadá s preklepom (SD04 už nenájde SD03);
+   - Levenshtein bez alokácie;
+   - triedy (`ifc_types`) sa cachujú na store.
+4. **Rez pod podhľadom:** `set_section(floor, relative_to="ceiling", offset_m=-0.05)`. Server vezme
+   `FinishCeilingHeight` miestností podlažia (`lib/engine/ceiling.ts`), medián vážený plochou
+   (openspace prehlasuje WC), v jednotke modelu (`lengthUnitScale`), a vráti aj rozsah. Pre 3NP
+   vychádza 3,05 m (miestnosti 2,6 až 3,05 m).
+5. **Kamera a výber (fork):**
+   - FOCUS a SELECT na miestnosť alebo zónu najprv zapnú ich skrytú triedu, počkajú na geometriu,
+     zarámujú a počkajú na koniec animácie, takže `APPLIED` nesie novú polohu kamery;
+   - bez geometrie je to problém v `APPLIED`;
+   - `CLEAR_SELECTION` (op `clear_selection`, `select_in_3d clear=true`, súčasť
+     `set_view_mode reset`) zruší výber.
+
+**Zavrhnuté:**
+- **Nový tool "find_element":** agent by mal o krok viac a ostatné tooly by kód aj tak nepoznali.
+- **Fuzzy pre kódy:** našla SD03 namiesto SD04.
+- **IfcCovering podlažia pre výšku podhľadu:** v modeli patria podhľady k podlažiu nad miestnosťou.
+- **Obyčajný medián výšky:** WC a chodby ho stiahli na 2,6 m.
+
+**Overenie:**
+- **AIMviewer:** vitest (nové `lib/engine/names.test.ts`: kód bez preklepu, index mien a Tagu,
+  viacznačnosť, výška podhľadu), `tsc`, eslint; lokálne meranie nad ASR+VZT.
+- **Fork:** 97 AIM testov, revert oracle 3/3 `OBSERVED`
+  (`docs/architecture/evidence/aim-d102-frame-clear/`); balík vstup +19 B a eager +41 B.
+  Naživo v iframe s AC20-FZK-Haus: SELECT miestnosti pohne kamerou, CLEAR_SELECTION zruší výber.
+
+**Dodatok (2026-10-19, opisy a inštrukcie):** inštrukcie MCP (`mcpInstructions`) majú namiesto
+odsekov o UI akciách z promptu chatu (opakovali opisy toolov) krátke pravidlá `MCP_UI_RULES`.
+- **Kód prvku** daj priamo ako cieľ.
+- **"Ukáž X"** = `show_in_3d`, `select_in_3d` len na výber a vlastnosti.
+- **Potvrdenie viewera:** potvrdiť len to, čo viewer potvrdil.
+- **Výšky:** `FinishCeilingHeight` od hotovej podlahy, podhľad podlažia z miestností.
+
+Prompt in-app chatu (`SYSTEM_PROMPT`, `/api/ask`) sa nemení. Inštrukcie MCP majú 14 032 znakov
+namiesto 17 656, aj s novými pravidlami. Cieľ 10 000 by vyžadoval škrtať doménové pravidlá
+(IDS, systémy, psety), ktoré opisy toolov nenesú.
+
+Evaly: D4 (3,05 m, nie 2,90), E3 (12,20 m, strop 2), D5 (strop 1), V1 (kamera sa pohne), nové
+D7 (kód len v IFC) a V4 (zruš výber).
 
 ### D-104 - Dokumenty z IFC: jedna sada, dedenie cez vzťahy, prehliadanie vo vieweri
 > **Číslo:** rezervované v #60 ako D-101, ale D-101 do `main` skôr zapísalo potvrdenie príkazov

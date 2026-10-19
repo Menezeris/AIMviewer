@@ -8,6 +8,7 @@ import { docOp } from "@/lib/viewer-ops";
 import { mergeIfcActions, type AskAction } from "./actions";
 import { DOMAIN_IFC_TYPES, sanitizeIfcType, sanitizeModelName } from "./ifc-selector";
 import { VIEW_TOOL_DEFINITIONS, VIEW_TOOL_NAMES, execViewTool } from "./view-tools";
+import { engineEnabled, resolveNamesToGuids } from "@/lib/engine/aim-lookup";
 import { execScopedStyle } from "./style-scope";
 import { needsScopedStyle } from "./style-plan";
 import { LENS_STYLE_ACTIONS, execLensStyle } from "./style-lens";
@@ -364,12 +365,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "get_object",
     description:
-      "Detail jedného uzla podľa UUID alebo object_ref (napr. 'DD01.06.03'): " +
-      "identita, IFC trieda, predefined_type, aktívny IFC GUID.",
+      "Detail jedného uzla podľa UUID, object_ref (napr. 'DD01.06.03') alebo kódu prvku " +
+      "(meno ako 'VV.03.01.040'; prvok len v IFC vráti in_aim:false a global_id): " +
+      "identita, IFC trieda, predefined_type, aktívny IFC GUID a podlažie (floor) - na " +
+      "'čo je X a kde je' stačí jedno volanie.",
     inputSchema: {
       type: "object",
       properties: {
-        id_or_ref: { type: "string", description: "objects.id (UUID) alebo object_ref" },
+        id_or_ref: { type: "string", description: "objects.id (UUID), object_ref alebo kód prvku (meno v AIM / IFC)" },
       },
       required: ["id_or_ref"],
     },
@@ -427,10 +430,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "show_in_3d",
     description:
       "UI AKCIA: otvorí 3D model so zvýraznenými a priblíženými prvkami. Zavolaj, keď " +
-      "používateľ žiada prvky UKÁZAŤ/ZOBRAZIŤ v 3D. Hromadné zobrazenie podľa typu " +
+      "používateľ žiada prvky UKÁZAŤ/ZOBRAZIŤ v 3D - aj jednu miestnosť ('ukáž miestnosť 3.02'; " +
+      "skrytú miestnosť viewer zapne a priblíži). Hromadné zobrazenie podľa typu " +
       "(napr. všetky dvere) = pošli PRIAMO filter (ifc_type/query/predefined_type), server " +
       "prvky dohľadá sám. Konkrétnu množinu prvkov pošli v ids_or_refs (JEDEN call; object_ref " +
-      "ako '3.02' netreba hľadať vopred). Zvýraznenie je oranžové; clear=true ho zruší (ostatné " +
+      "ako '3.02' aj kód prvku ako 'SD04.0001' netreba hľadať vopred). Zvýraznenie je oranžové; clear=true ho zruší (ostatné " +
       "farby ostanú). Funguje len pre prvky s IFC GUID (sú z IFC modelu).",
     inputSchema: {
       type: "object",
@@ -438,7 +442,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         ids_or_refs: {
           type: "array",
           items: { type: "string" },
-          description: `objects.id (UUID) alebo object_ref prvkov na zvýraznenie (1–${SHOW_3D_CAP})`,
+          description: `objects.id (UUID), object_ref alebo kód prvku (meno v IFC) na zvýraznenie (1–${SHOW_3D_CAP})`,
         },
         id_or_ref: { type: "string", description: "Alternatíva pre jediný prvok" },
         clear: { type: "boolean", description: "true = len zrušiť oranžové zvýraznenie z predošlého show_in_3d" },
@@ -464,17 +468,17 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     description:
       "UI AKCIA: VYBERIE jeden prvok v 3D presne ako klik myšou — viewer ho označí, " +
       "priblíži naň kameru a otvorí jeho panel vlastností priamo v 3D pohľade (IFC " +
-      "vlastnosti + AIM karta). Zavolaj, keď používateľ chce prvok VYBRAŤ/OZNAČIŤ " +
-      "(kliknúť naň) alebo vidieť jeho VLASTNOSTI v 3D. Rozdiel: show_in_3d prvky len " +
+      "vlastnosti + AIM karta). Zavolaj LEN keď používateľ chce prvok VYBRAŤ/OZNAČIŤ " +
+      "(kliknúť naň) alebo vidieť jeho VLASTNOSTI v 3D; 'ukáž/zobraz X' = show_in_3d. Rozdiel: show_in_3d prvky " +
       "zvýrazní a priblíži (aj mnoho naraz, panel vlastností neotvorí); open_node otvorí " +
       "samostatnú kartu uzla MIMO 3D pohľadu. Jeden prvok na call; funguje len pre " +
-      "prvky s IFC GUID (sú z IFC modelu).",
+      "prvky s IFC GUID (sú z IFC modelu). clear=true výber zruší (ako klik do prázdna).",
     inputSchema: {
       type: "object",
       properties: {
-        id_or_ref: { type: "string", description: "objects.id (UUID) alebo object_ref prvku" },
+        id_or_ref: { type: "string", description: "objects.id (UUID), object_ref alebo kód prvku (meno v IFC)" },
+        clear: { type: "boolean", description: "true = zrušiť výber vo vieweri (id_or_ref netreba)" },
       },
-      required: ["id_or_ref"],
     },
   },
   {
@@ -1301,17 +1305,72 @@ export class AskToolRuntime {
       .is("valid_until", null)
       .limit(1);
     if (error) throw new Error(error.message);
-    const row = data?.[0] as (ObjectRow & { user_defined_type?: string | null }) | undefined;
+    let row = data?.[0] as (ObjectRow & { user_defined_type?: string | null }) | undefined;
+    let matchedBy: "name" | undefined;
+    if (!row && col === "object_ref") {
+      // Kód prvku býva meno, nie object_ref (VV.03.01.040), alebo prvok nie je v AIM vôbec (D-102).
+      const { data: named, error: nameErr } = await supabase
+        .from("objects")
+        .select("id, object_type, object_ref, name, ifc_type, predefined_type, user_defined_type")
+        .eq("name", idOrRef)
+        .is("valid_until", null)
+        .limit(6);
+      if (nameErr) throw new Error(nameErr.message);
+      const rows = (named ?? []) as (ObjectRow & { user_defined_type?: string | null })[];
+      if (rows.length > 1) {
+        return { found: false, ambiguous: rows.slice(0, 5).map((r) => ({ id: r.id, object_ref: r.object_ref, ifc_type: r.ifc_type })), hint: "Meno má viac uzlov - vyber podľa id." };
+      }
+      row = rows[0];
+      matchedBy = row ? "name" : undefined;
+      if (!row) {
+        const inIfc = await this.findInIfc(idOrRef);
+        if (inIfc) return inIfc;
+      }
+    }
     if (!row) return { found: false, hint: "Uzol neexistuje — skús search_objects." };
     this.addSource(row);
 
-    const { data: guidRows } = await supabase
-      .from("ifc_guid_history")
-      .select("ifc_guid")
-      .eq("object_id", row.id)
-      .is("valid_until", null)
-      .limit(1);
-    return { ...row, ifc_guid: guidRows?.[0]?.ifc_guid ?? null };
+    const [{ data: guidRows }, floor] = await Promise.all([
+      supabase.from("ifc_guid_history").select("ifc_guid").eq("object_id", row.id).is("valid_until", null).limit(1),
+      this.floorOf(row.id),
+    ]);
+    return { ...row, ifc_guid: guidRows?.[0]?.ifc_guid ?? null, ...(floor ? { floor } : {}), ...(matchedBy ? { matched_by: matchedBy } : {}) };
+  }
+
+  /** Podlažie uzla: priame umiestnenie, alebo cez miestnosť (contained -> aggregates), 1-2 dotazy. */
+  private async floorOf(id: string): Promise<{ id: string; object_ref: string | null; name: string | null } | null> {
+    const supabase = getSupabaseAdmin();
+    let current = id;
+    for (let depth = 0; depth < 3; depth++) {
+      const [contained, aggregated] = await Promise.all(
+        ["rel_contained_in_spatial_structure", "rel_aggregates"].map((view) =>
+          supabase.from(view).select("to_id").eq("from_id", current).is("valid_until", null).limit(1),
+        ),
+      );
+      const parent = (contained.data?.[0]?.to_id ?? aggregated.data?.[0]?.to_id) as string | undefined;
+      if (!parent) return null;
+      const { data } = await supabase.from("objects").select("id, object_type, object_ref, name").eq("id", parent).limit(1);
+      const p = data?.[0] as { id: string; object_type: string; object_ref: string | null; name: string | null } | undefined;
+      if (!p) return null;
+      if (p.object_type === "floor") return { id: p.id, object_ref: p.object_ref, name: p.name };
+      current = p.id;
+    }
+    return null;
+  }
+
+  /** Prvok len v IFC súbore podľa presného mena / Tagu (motor, D-102); null = nič alebo motor vypnutý. */
+  private async findInIfc(code: string): Promise<Record<string, unknown> | null> {
+    if (!engineEnabled()) return null;
+    const { findByNames } = await import("@/lib/engine/names");
+    const hits = (await findByNames([code])).get(code) ?? [];
+    if (hits.length === 0) return null;
+    return {
+      found: true,
+      in_aim: false,
+      source: "ifc",
+      ...(hits.length === 1 ? hits[0] : { candidates: hits.slice(0, 5) }),
+      hint: "Prvok je len v IFC súbore (v grafe AIM nie je). Ako cieľ ho do set_section / show_in_3d / get_bounds daj kódom alebo global_id; vlastnosti a podlažie dá ifc_get.",
+    };
   }
 
   private async getAssetDetails(input: Record<string, unknown>) {
@@ -1686,10 +1745,15 @@ export class AskToolRuntime {
       else shown.push({ label, guid });
     };
     if (unique.length > 0) {
+      // Kód, ktorý nie je object_ref (meno prvku, prvok len v IFC), dohľadá meno a motor (D-102).
+      const missing = unique.filter((ref) => !isUuid(ref) && !byRef.has(ref));
+      const byName = missing.length > 0 ? await resolveNamesToGuids(missing) : new Map<string, string>();
       for (const ref of unique) {
         const obj = isUuid(ref) ? byId.get(ref) : byRef.get(ref);
-        if (!obj) skipped.push(`${ref} (neexistuje)`);
-        else addRow(obj);
+        const guid = byName.get(ref);
+        if (obj) addRow(obj);
+        else if (guid) shown.push({ label: ref, guid });
+        else skipped.push(`${ref} (neexistuje)`);
       }
     } else {
       for (const obj of rows) addRow(obj);
@@ -1726,21 +1790,32 @@ export class AskToolRuntime {
    * panel vlastností; AIM kartu dotiahne host po ENTITY_SELECTED ako pri kliku.
    */
   private async selectIn3d(input: Record<string, unknown>) {
-    const obj = await this.resolveObject(String(input.id_or_ref ?? ""));
-    if (!obj) throw new Error("Prvok neexistuje — najprv ho nájdi cez search_objects.");
-    const label = obj.object_ref ?? obj.name ?? obj.id.slice(0, 8);
-
-    const { data, error } = await getSupabaseAdmin()
-      .from("ifc_guid_history")
-      .select("ifc_guid")
-      .eq("object_id", obj.id)
-      .is("valid_until", null)
-      .limit(1);
-    if (error) throw new Error(error.message);
-    const guid = (data?.[0] as { ifc_guid?: string } | undefined)?.ifc_guid;
-    if (!guid) {
-      throw new Error(`${label} nemá IFC GUID — nie je v 3D modeli (kartu otvor cez open_node).`);
+    if (input.clear === true) {
+      // D-102: výber sa dá zrušiť ako klik do prázdna.
+      this.actions.push({ type: "navigate", url: `/ifc?ops=clear_selection::&r=${Date.now().toString(36)}`, label: "Zrušiť výber" });
+      return { ok: true, cleared: "výber" };
     }
+    const ref = String(input.id_or_ref ?? "").trim();
+    const obj = await this.resolveObject(ref);
+    let label = ref;
+    let guid: string | undefined;
+    if (obj) {
+      label = obj.object_ref ?? obj.name ?? obj.id.slice(0, 8);
+      const { data, error } = await getSupabaseAdmin()
+        .from("ifc_guid_history")
+        .select("ifc_guid")
+        .eq("object_id", obj.id)
+        .is("valid_until", null)
+        .limit(1);
+      if (error) throw new Error(error.message);
+      guid = (data?.[0] as { ifc_guid?: string } | undefined)?.ifc_guid;
+      if (!guid) {
+        throw new Error(`${label} nemá IFC GUID — nie je v 3D modeli (kartu otvor cez open_node).`);
+      }
+    } else if (ref && !isUuid(ref)) {
+      guid = (await resolveNamesToGuids([ref])).get(ref); // kód prvku (D-102)
+    }
+    if (!guid) throw new Error("Prvok neexistuje — najprv ho nájdi cez search_objects.");
 
     this.actions.push({
       type: "navigate",
