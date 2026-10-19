@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { PROBE_TOOL } from "@/lib/engine/probe-def";
+import { SEARCH_ALL_TOOL } from "@/lib/engine/search-all";
 import { ENGINE_TOOL_NAMES, engineToolDefinitions } from "@/lib/engine/tool-defs";
 import { FEEDBACK_TOOL_DEFINITIONS, FEEDBACK_TOOL_NAMES, execFeedbackTool } from "@/lib/feedback/tools";
 import { broadcastLive, liveChannel } from "@/lib/live/broadcast";
@@ -73,6 +74,11 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<Mc
     const res = await execViewerQueryTool(name, args, siteUrl());
     return { text: [res.text], isError: res.isError };
   }
+  if (ENGINE_ENABLED && name === SEARCH_ALL_TOOL.name) {
+    const { runSearchAll } = await import("@/lib/engine/run");
+    const res = await runSearchAll(args);
+    return { text: [res.content], isError: res.isError };
+  }
   if (ENGINE_ENABLED && ENGINE_TOOL_NAMES.has(name)) {
     // Lenivý import: motor (stovky MB po načítaní modelov) len keď ho Claude volá.
     const { runEngineTool } = await import("@/lib/engine/run");
@@ -119,7 +125,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       ...TOOL_DEFINITIONS,
       ...VIEWER_QUERY_TOOL_DEFINITIONS,
       ...FEEDBACK_TOOL_DEFINITIONS,
-      ...(ENGINE_ENABLED ? engineToolDefinitions() : []),
+      ...(ENGINE_ENABLED ? [SEARCH_ALL_TOOL, ...engineToolDefinitions()] : []),
       ...(ENGINE_SPIKE ? [PROBE_TOOL] : []),
     ],
     callTool,
