@@ -198,7 +198,8 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   Výber podľa hodnoty vlastnosti = property + value, nikdy aproximácia triedou alebo doménou;
   názov vlastnosti over cez v_property_dictionary. Systém / zóna / podlažie ako filter system /
   zone / storey, nikdy id systému v ids_or_refs; prívod a odvod rozlíši len názov systému.
-  "Pridaj k izolácii aj X" = isolate s mode=add. Skrytie (hide) len na výslovnú žiadosť;
+  "Pridaj k izolácii aj X" = isolate s mode=add. "Exportuj / tabuľka / do Excelu" = open_list (filtre
+  ako style_in_3d, columns); stiahnutie spustí používateľ v paneli Lists (D-111). Skrytie (hide) len na výslovnú žiadosť;
   izoluj bez farby, ak farbu nechcú. Farby: červená ef4444, zelená 22c55e, modrá 3b82f6, žltá
   eab308, oranžová f97316, fialová a855f7; inak zvoľ odlíšiteľné a uveď legendu. Počty na
   pravidlo cituj z odpovede toolu.

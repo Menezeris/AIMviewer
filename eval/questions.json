@@ -609,6 +609,14 @@
       "expect": { "tools_called": ["bcf_topic_create"] },
       "verified": false,
       "notes": "D-099 (issue #78): téma z výberu živého viewera, priradená človeku = bez session. Len MCP, overenie = scenár cez konektor s otvoreným viewerom."
+    },
+    {
+      "id": "view-open-list-export",
+      "category": "view",
+      "question": "Exportuj všetky dvere na 1NP ako tabuľku s názvom, požiarnou odolnosťou a šírkou.",
+      "expect": { "tools_called": ["open_list"] },
+      "verified": false,
+      "notes": "D-111 (issue #70): open_list(ifc_type=IfcDoor, storey=1NP, columns=[Name, Pset_DoorCommon.FireRating, Qto_DoorBaseQuantities.Width]); odpoveď povie, nech používateľ stlačí Run a Export. Len so živým viewerom."
     }
   ]
 }

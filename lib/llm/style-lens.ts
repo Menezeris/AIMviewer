@@ -31,7 +31,7 @@ export interface LensStyleOptions {
   domainTypes: Record<string, string[]>;
 }
 
-interface GroupInfo {
+export interface GroupInfo {
   label: string;
   color?: string;
   systems?: string[];
@@ -40,7 +40,7 @@ interface GroupInfo {
   elements?: number;
 }
 
-async function resolveFilter(
+export async function resolveFilter(
   scope: ScopeResolver,
   f: StyleFilter,
   opts: LensStyleOptions,
