@@ -4195,6 +4195,7 @@ merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo fo
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-100 dodatok (meranie v iad1, región `arn1`):** 12 úloh správne, 6 nad stropom volaní; server väčšinou pod 1 s, čas tvoria počty volaní; funkcie presunuté do `arn1` pri databáze.
 - **2026-10-19** - **D-100 (latencia MCP konektora):** log volaní `mcp_call_log` s fázami, eval úlohy konektora merané agentom (`eval/mcp-tasks.json`), predčítanie IFC motora pri pripojení, panel chatu vo vieweri skrytý, `ifc_property_values` číta aj Qto (#96); región `arn1` samostatne po baseline (#97).
 - **2026-10-19** - **D-090 dodatok (`feedback_comment`, #98):** komentár do issue konektora (štítok `mcp`, aj zatvoreného, `reopen` na pokyn) s druhom `eval_round` / `result` / `note`, vráti odkaz; `feedback_status` označí komentáre konektora (`via_connector`).
 - **2026-10-19** - **D-096 (`style_in_3d` nad Lens):** farbenie, priehľadnosť a izolácia ako lens "AIM chat" v paneli Lens forku; filtre `system`, `system_type`, `not_in_system`, `zone`, `storey` (AND), `groups` s farbou, `color_by` s legendou; zóna sa doťahuje na klientovi; počty na pravidlo vracia viewer spätným kanálom.
@@ -4584,3 +4585,11 @@ inštrukcií podľa `mcp_call_log` (vlastné D-0xx).
 - *Evaly cez Claude API:* potrebujú kľúč a platia sa; agent v Claude Code ide z predplatného.
 - *Cron na zahrievanie inštancie:* Fluid compute inštancie zdieľa; predčítanie pri pripojení
   konektora stačí a nestojí nič, keď sa konektor nepoužíva.
+
+**Dodatok D-100 (2026-10-19) - meranie v iad1 a presun do `arn1`.** Po zlúčení kola 1 zmerané
+12 úloh (`eval/results/mcp-2026-10-19-iad1.json`, headless viewer v session): všetky správne,
+ale 6 nad stropom volaní (E1 14 volaní a 55 s, E3 6 volaní a 38 s). Server väčšinou pod 1 s
+(`count_objects` 0,58 s, `set_section` 0,32 s, `style_in_3d` 1,44 s, z toho 1,35 s čakanie na
+počty z Lens); pomalé sú dotazy s viacerými kolami do DB (`get_spatial_path` 2,5 s,
+`get_model_stats` 1,3 s). Čas teda tvoria hlavne počty volaní (kolo 2 a 3), región skráti každé
+kolo do DB: funkcie idú do `arn1` (`vercel.json`), pri Supabase `eu-north-1`.

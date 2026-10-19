@@ -1,0 +1,27 @@
+{
+  "ranAt": "2026-10-19T14:20:00Z",
+  "label": "iad1-po-D-100-kolo-1",
+  "region": "iad1",
+  "runner": "Claude Code subagent (general-purpose), konektor aim-viewer; headless viewer (Chromium + WebGPU SwiftShader) na produkčnom /ifc?live=",
+  "note": "Po zlúčení D-100 kola 1 (log volaní, predčítanie motora, Qto). Dátové úlohy paralelne, úlohy vo vieweri po jednej v poradí V1, V2, E2, E3, E1, V3 (stav viewera sa prenáša). E4 vynechaná: potrebuje výber používateľa vo vieweri. duration_ms zahŕňa réžiu agenta a ToolSearch.",
+  "results": [
+    { "id": "D1-pocet-dveri", "pass": true, "calls": 1, "tools": ["count_objects"], "duration_ms": 6755, "over_cap": false },
+    { "id": "D2-vzt-jednotky-kde", "pass": true, "calls": 1, "tools": ["locate_objects"], "duration_ms": 10919, "over_cap": false },
+    { "id": "D3-pocet-miestnosti", "pass": true, "calls": 1, "tools": ["get_model_stats"], "duration_ms": 9269, "over_cap": false },
+    { "id": "D4-podhlad-qto", "pass": true, "calls": 2, "tools": ["search_objects", "ifc_get"], "duration_ms": 15008, "over_cap": false },
+    { "id": "D5-vyustka-kde", "pass": true, "calls": 3, "tools": ["get_object", "search_objects", "get_spatial_path"], "duration_ms": 14579, "over_cap": true, "note": "get_object hľadá len object_ref, názov VV.03.01.040 nenájde." },
+    { "id": "D6-nosne-steny", "pass": true, "calls": 1, "tools": ["ifc_property_values"], "duration_ms": 7799, "over_cap": false },
+    { "id": "V1-ukaz-miestnost", "pass": true, "calls": 2, "tools": ["search_objects", "show_in_3d"], "duration_ms": 9428, "over_cap": true, "note": "show_in_3d prijíma object_ref, hľadanie navyše." },
+    { "id": "V2-izoluj-nosne", "pass": true, "calls": 1, "tools": ["style_in_3d"], "duration_ms": 12407, "over_cap": false },
+    { "id": "E2-pridaj-schodiska", "pass": true, "calls": 3, "tools": ["style_in_3d", "get_viewer_state", "style_in_3d"], "duration_ms": 19671, "over_cap": true, "note": "Lens mode add izoláciu nahradil namiesto rozšírenia (#95), agent ju poskladal znova." },
+    { "id": "E3-rez-pod-podhladom", "pass": true, "calls": 6, "tools": ["search_objects", "query_view", "query_view", "get_bounds", "set_section", "get_viewer_state"], "duration_ms": 37967, "over_cap": true, "note": "Rez 12,20 m správne; výšku podhľadu hľadal cez geometriu namiesto Qto." },
+    { "id": "E1-rez-schodiskom", "pass": true, "calls": 14, "tools": ["get_object", "search_objects", "search_objects", "search_objects", "ifc_search", "search_everything", "ifc_search", "search_everything", "get_bounds", "set_section", "set_section", "style_in_3d", "set_camera", "get_viewer_state"], "duration_ms": 55025, "over_cap": true, "note": "SD04.0001 nie je v grafe AIM (8 hľadaní); readback prvého rezu vrátil starý stav (#63), rez zopakovaný súradnicou." },
+    { "id": "V3-zrus-vsetko", "pass": true, "calls": 4, "tools": ["set_view_mode", "get_viewer_state", "set_camera", "get_viewer_state"], "duration_ms": 18165, "over_cap": true, "note": "Výber sa cez konektor zrušiť nedá." }
+  ],
+  "server_p50_ms": {
+    "count_objects": 584, "search_objects": 411, "query_view": 281, "get_object": 336, "locate_objects": 985, "get_model_stats": 1264,
+    "get_spatial_path": 2463, "ifc_get": 1980, "ifc_search": 3219, "ifc_property_values": 85, "get_bounds": 948, "get_viewer_state": 631,
+    "show_in_3d": 430, "style_in_3d_isolate": 1438, "set_section": 318, "set_camera": 65, "set_view_mode": 75
+  },
+  "summary": { "pass": "12/12", "median_calls": 1.5, "median_duration_ms": 13493, "over_cap": ["D5", "V1", "E2", "E3", "E1", "V3"], "finding": "Server je väčšinou pod 1 s; čas tvorí počet volaní a kolá modelu. style_in_3d čaká 1,35 s na počty z Lens." }
+}
