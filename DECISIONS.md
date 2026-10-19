@@ -4195,6 +4195,7 @@ merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo fo
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-101 (dokumenty z IFC):** jedna sada dokumentov z IFC (stará sada E3 sa odstráni), ETL podľa IfcDocumentInformation vrátane stromu a odkazov na strany, efektívne dokumenty objektu cez vzťahy (typ, skupina, zóna, priestorová zóna, odvodené) v DB aj v tooloch, prehliadanie a preklikávanie PDF cieľovo vo vieweri (fork), súbory v buckete podľa `Identification`.
 - **2026-10-19** - **D-100 (latencia MCP konektora):** log volaní `mcp_call_log` s fázami, eval úlohy konektora merané agentom (`eval/mcp-tasks.json`), predčítanie IFC motora pri pripojení, panel chatu vo vieweri skrytý, `ifc_property_values` číta aj Qto (#96); región `arn1` samostatne po baseline (#97).
 - **2026-10-19** - **D-090 dodatok (`feedback_comment`, #98):** komentár do issue konektora (štítok `mcp`, aj zatvoreného, `reopen` na pokyn) s druhom `eval_round` / `result` / `note`, vráti odkaz; `feedback_status` označí komentáre konektora (`via_connector`).
 - **2026-10-19** - **D-096 (`style_in_3d` nad Lens):** farbenie, priehľadnosť a izolácia ako lens "AIM chat" v paneli Lens forku; filtre `system`, `system_type`, `not_in_system`, `zone`, `storey` (AND), `groups` s farbou, `color_by` s legendou; zóna sa doťahuje na klientovi; počty na pravidlo vracia viewer spätným kanálom.
@@ -4584,3 +4585,76 @@ inštrukcií podľa `mcp_call_log` (vlastné D-0xx).
 - *Evaly cez Claude API:* potrebujú kľúč a platia sa; agent v Claude Code ide z predplatného.
 - *Cron na zahrievanie inštancie:* Fluid compute inštancie zdieľa; predčítanie pri pripojení
   konektora stačí a nestojí nič, keď sa konektor nepoužíva.
+
+### D-101 - Dokumenty z IFC: jedna sada, dedenie cez vzťahy, prehliadanie vo vieweri
+**Status:** rozhodnuté smerovanie (2026-10-19, Samuel), implementácia po krokoch nižšie; PDF
+súbory dodá Samuel. Nadväzuje na D-014, D-032, D-036, D-046, D-063, D-075, D-076, D-077, D-088,
+D-089, D-091, D-098.
+
+**Kontext (stav 19. 10., ASR v73/v74, overené v súbore, v prod DB aj naživo vo vieweri):**
+- ASR nesie dokumentáciu DSP ako strom IfcDocumentInformation (54: koreň `OCB_SO01_PD`, 9 častí
+  SPR, STU, SIT, ASR, STA, PBR, FYZ, TZB, BIM cez IfcDocumentInformationRelationship
+  `SUBDOCUMENT`, 44 súborov s `Location = ../Dokumentacia/<Identification>.pdf`) a 8
+  IfcDocumentReference na strany 3 až 10 výkresu D.1.1.09 Výpis skladieb (`#page=N`).
+- 163 IfcRelAssociatesDocument: IfcProject 44, IfcSpatialZone 93 (PBR na požiarne úseky, PENB
+  a zónovanie na tepelné zóny), IfcZone 15 (pôdorysy ASR na nájomné jednotky a príslušnosť),
+  IfcGroup S1 až S9 8 (strana výpisu skladieb), IfcCurtainWallType PL01 3. **Žiadna väzba nejde
+  priamo na prvok ani priestor** - k dokumentu sa dostane cez cestu (priestor -> zóna, prvok ->
+  skupina S1.01 -> rodič S1 -> strana, panel LOP -> typ PL01, priestor -> priestorová zóna).
+- ETL (`etl/transform.py` `_collect_documents`) dokumenty nahrá, ale: `object_ref` = Name
+  namiesto Identification, IfcDocumentReference berie ako dokument (8 uzlov
+  `IfcDocumentReference-N` bez názvu, strany aj rodiča), strom dokumentov a 10 priečinkových
+  dokumentov vynechá, súbory nemajú (`storage_type = unresolved`).
+- Popri tom žije stará sada E3 (13 PDF z `podklady/docs.csv`, D-036) s iným pomenovaním, súbormi
+  v buckete, textom strán, 198 väzbami prvok -> výkres (E4) a kalibráciou podkladov; ten istý
+  výkres je tak v DB dvakrát.
+- Viewer aj tooly berú len priame väzby: stránky zóny, priestorovej zóny, skupiny, projektu a
+  typu dokumenty nemajú, AIM karta v 3D ukáže len priame (dvere DD01.07.01 = starý "Pudorys 1NP",
+  priestor 3.01 = nič) a klik na dokument odíde z 3D na `/drawing/[id]`. Knižnica dokumentov vo
+  vieweri (D-075) ukazuje len súbory z bucketu; otvorenie na strane funguje (op
+  `doc:<strana>:<id>` -> `DOCUMENT_OPEN`). `list_relations` mieša väzby z modelu s výkresmi E4,
+  `get_asset_details` dokumenty nevracia.
+
+**Rozhodnutie:**
+1. **Jedna sada dokumentov = dokumenty z IFC.** Stará sada E3 sa odstráni (Samuel 19. 10.):
+   uzly zaniknú (`valid_until`), väzby E4, oblasti `_drawing_links`, text strán a kalibrácia
+   podkladov sa neprenášajú; súbory z bucketu sa zmažú až po nahradení. Väzby z obsahu výkresov
+   a kalibrácia sa, ak budú treba, urobia znova nad IFC dokumentmi vo vrstve viewera (bod 4).
+2. **ETL číta dokumenty podľa IFC:** identita = `Identification`; atribúty IfcDocumentInformation
+   vrátane dnes chýbajúcich (`creation_time`, `last_revision_time`, `electronic_format`, vlastník)
+   aditívnou migráciou; strom dokumentov z IfcDocumentInformationRelationship; IfcDocumentReference
+   ako odkaz na časť dokumentu (stranu) s vlastným názvom ("S1 - Skladba..."), nie ako samostatný
+   dokument. Názvy hrany a tvar odkazu (uzol alebo hrana so stranou) podľa IFC-first (D-046,
+   D-048) rozhodne dodatok spolu so `SCHEMA.md` pri implementácii.
+3. **Dokumenty objektu sa hľadajú cez vzťahy, nie len priamo.** Efektívne dokumenty počíta DB
+   (pohľad, obdoba `v_asset_effective`): objekt -> dokument -> cesta (priamo, cez typ, cez
+   skupinu a jej rodičov, cez zónu, cez priestorovú zónu, cez odvodené vzťahy D-089) + strana;
+   dokumentácia projektu sa ukazuje raz, nie pri každom prvku. Do modelu sa budú dopĺňať ďalšie
+   väzby (Samuel) a pohľad ich zoberie bez zmeny kódu. **Tooly (MCP aj `/ask`) idú cez tie isté
+   cesty:** dokumenty objektu s cestou a odkazom na otvorenie na strane, objekty dokumentu aj
+   zdedené (napr. "ktoré priestory pokrýva PBR pôdorys 2NP"), dokumenty v `get_asset_details`,
+   výkresy z obsahu PDF oddelené od väzieb z modelu. Evaly podľa D-057.
+4. **Prehliadanie dokumentov patrí do viewera** (fork ifc-lite a vrstva AIM nad ním), nie na
+   stránky AIMviewera: otvorenie PDF v karte viewera aj na strane, preklik z prvku na dokument a z
+   dokumentu späť na prvky (D-076), knižnica ako strom IFC dokumentácie, AIM karta otvára dokument
+   vo vieweri. `/drawing/[id]` a karty dokumentov na `/node` sa ďalej nerozvíjajú a ostanú, kým
+   ich vrstva vo vieweri nenahradí. Je to dlhší program; ide podľa D-091 a D-098 (fork len
+   zobrazuje, dáta a výpočty dodá AIMviewer, najprv to, čo fork má: `documentsSlice`,
+   `DocumentsPanel`, `PdfDocumentView`, `DOCUMENT_OPEN` so stranou).
+5. **Súbory:** PDF v buckete `documents`, názov súboru = `Identification` (tak ako ho nesie
+   `Location` v IFC). ETL preloží relatívnu `Location` na URL v buckete, ak súbor existuje
+   (`storage_type = supabase`); inak `unresolved` a UI ukáže "súbor chýba", nie rozbitý odkaz.
+   Text strán (`document_pages`) sa extrahuje zo súborov v buckete, nie z lokálneho priečinka.
+
+**Kroky:** (1) ETL a migrácia podľa bodu 2, (2) pohľad efektívnych dokumentov a tooly, (3)
+viewer: AIM karta a knižnica nad efektívnymi dokumentmi, otvorenie vo vieweri na strane, (4)
+súbory a text strán, keď ich Samuel dodá, (5) odstránenie starej sady. Bod 4 rozhodnutia ako
+celok (preklik z dokumentu na prvky, kalibrácia nad IFC výkresmi) je ďalší program s vlastným
+dodatkom.
+
+**Zavrhnuté:**
+- *Nechať obe sady a prepojiť ich:* dvaja nositelia tej istej informácie (AGENTS, D-017).
+- *Rozkopírovať väzby dokumentov na každý prvok v modeli alebo v ETL:* model aj DB by niesli
+  duplicitu a každá nová väzba v modeli by znamenala znova kopírovať; dedenie počíta pohľad.
+- *Rozvíjať `/drawing/[id]` ako hlavné miesto dokumentov:* cieľ je jedno rozhranie vo vieweri
+  (D-075), dve miesta by sa rozchádzali.

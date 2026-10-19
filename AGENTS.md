@@ -223,6 +223,9 @@ normalizuje na spoločný label (`1NP_VZT`→`1NP`, D-049).
 byť vnútri panelov viewera (odznak, záznam, lokálny prepínač). Akcie meniace dáta robí host,
 tlačidlo vo forku ich len otvorí.
 
+**Dokumenty (D-101):** jedna sada z IFC; dokumenty objektu sa hľadajú cez vzťahy (typ, skupina, zóna,
+priestorová zóna), nie len priamo, v UI aj v tooloch; prehliadanie PDF sa rozvíja vo vieweri, nie na `/drawing`.
+
 **Nová funkcia viewera (D-087):** najprv tool z `@ifc-lite/mcp` 1:1, pohľad len ako adaptér v
 `apps/viewer/src/aim/` forku, vlastné len kde originál nič nemá. Fork PR rob podľa skillu
 `.claude/skills/aim-feature/SKILL.md` vo forku (lokálne kontroly, meranie balíka, mutačné
