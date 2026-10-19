@@ -2,7 +2,8 @@ import "server-only";
 
 /**
  * Spustenie Claude Code session z požiadavky (D-090): API trigger routine
- * "AIM: požiadavka z konektora" (claude.ai/code/routines). Každé `/fire`
+ * "AIM: požiadavka z konektora" (claude.ai/code/routines), pre BCF tému
+ * "AIM: BCF téma" (D-099, `RoutineConfig` z `lib/bcf/tools.ts`). Každé `/fire`
  * založí novú cloud session v účte vlastníka routine; session je bežná
  * interaktívna session, ktorú Samuel otvorí v Claude a môže v nej odpovedať.
  *
@@ -29,20 +30,40 @@ export function isFireUrl(url: string): boolean {
   }
 }
 
-export function routineConfigured(): boolean {
-  return Boolean(process.env.CLAUDE_ROUTINE_FIRE_URL?.trim() && process.env.CLAUDE_ROUTINE_TOKEN?.trim());
+/** Ktorá routine: URL a token z API triggera + mená env do chybových hlášok. */
+export interface RoutineConfig {
+  url: string | undefined;
+  token: string | undefined;
+  env: string;
+}
+
+/** Routine "AIM: požiadavka z konektora" (D-090). */
+export function feedbackRoutine(): RoutineConfig {
+  return {
+    url: process.env.CLAUDE_ROUTINE_FIRE_URL,
+    token: process.env.CLAUDE_ROUTINE_TOKEN,
+    env: "CLAUDE_ROUTINE_FIRE_URL, CLAUDE_ROUTINE_TOKEN",
+  };
+}
+
+export function routineConfigured(cfg: RoutineConfig = feedbackRoutine()): boolean {
+  return Boolean(cfg.url?.trim() && cfg.token?.trim());
 }
 
 /**
  * `text` príde do session ako blok `<routine-fire-payload>` (nedôveryhodné dáta);
  * uložený prompt routine hovorí, ako ho čítať.
  */
-export async function fireRoutine(text: string, fetchImpl: typeof fetch = fetch): Promise<RoutineFireResult> {
-  const url = process.env.CLAUDE_ROUTINE_FIRE_URL?.trim();
-  const token = process.env.CLAUDE_ROUTINE_TOKEN?.trim();
-  if (!url || !token) throw new Error("Routine nie je nastavená (CLAUDE_ROUTINE_FIRE_URL, CLAUDE_ROUTINE_TOKEN).");
+export async function fireRoutine(
+  text: string,
+  fetchImpl: typeof fetch = fetch,
+  cfg: RoutineConfig = feedbackRoutine(),
+): Promise<RoutineFireResult> {
+  const url = cfg.url?.trim();
+  const token = cfg.token?.trim();
+  if (!url || !token) throw new Error(`Routine nie je nastavená (${cfg.env}).`);
   if (!isFireUrl(url)) {
-    throw new Error("CLAUDE_ROUTINE_FIRE_URL nemá tvar https://api.anthropic.com/.../fire (URL z API triggera routine).");
+    throw new Error(`URL routine (${cfg.env}) nemá tvar https://api.anthropic.com/.../fire (URL z API triggera routine).`);
   }
   const res = await fetchImpl(url, {
     method: "POST",

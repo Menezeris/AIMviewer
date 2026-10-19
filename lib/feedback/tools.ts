@@ -131,7 +131,7 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
       "(wrong_data), zlá odpoveď alebo postup (wrong_answer), návrh na zlepšenie (improvement). Volaj LEN na " +
       "výslovný pokyn používateľa ('zapíš si to', 'založ pripomienku'); keď tool zjavne zlyhal, len to ponúkni. " +
       "start_session=true hneď spustí Claude Code session, ktorá to rieši - len keď to používateľ chce. " +
-      "Opravu dát IFC modelu nezapisuj sem, to je úloha úpravy modelu (F13). " +
+      "Chybu v IFC modeli nezapisuj sem, to je BCF téma (bcf_topic_create, D-099). " +
       PRIVACY,
     inputSchema: {
       type: "object",

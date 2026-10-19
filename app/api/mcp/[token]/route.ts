@@ -2,6 +2,8 @@ import { timingSafeEqual } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
+import { defaultBcfDeps } from "@/lib/bcf/runtime";
+import { BCF_TOOL_DEFINITIONS, BCF_TOOL_NAMES, execBcfTool } from "@/lib/bcf/tools";
 import { PROBE_TOOL } from "@/lib/engine/probe-def";
 import { SEARCH_ALL_TOOL } from "@/lib/engine/search-all";
 import { ENGINE_TOOL_NAMES, engineToolDefinitions } from "@/lib/engine/tool-defs";
@@ -28,7 +30,8 @@ import {
  * read-only tools ako `/api/ask`; UI akcie sa odvysielajú do živého viewera
  * (Supabase Realtime, kanál `LIVE_CHANNEL`); get_bounds / get_viewer_state sa
  * tým istým kanálom viewera pýtajú (D-085); pripomienky a požiadavky na nové
- * tools idú do GitHub issues a spúšťajú Claude session (D-090). Bez `MCP_TOKEN` je endpoint
+ * tools idú do GitHub issues a spúšťajú Claude session (D-090); BCF témy nad modelmi sú v DB
+ * a téma pre Claude spúšťa session (D-099). Bez `MCP_TOKEN` je endpoint
  * vypnutý (404). Bezstavový — žiadne session ID, žiadny SSE stream.
  */
 
@@ -67,6 +70,10 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<Mc
     } catch (err) {
       return { text: [`Chyba motora: ${err instanceof Error ? err.message : String(err)}`], isError: true };
     }
+  }
+  if (BCF_TOOL_NAMES.has(name)) {
+    const res = await execBcfTool(name, args, defaultBcfDeps());
+    return { text: [res.text], isError: res.isError };
   }
   if (FEEDBACK_TOOL_NAMES.has(name)) {
     const res = await execFeedbackTool(name, args);
@@ -130,6 +137,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     tools: [
       ...TOOL_DEFINITIONS,
       ...VIEWER_QUERY_TOOL_DEFINITIONS,
+      ...BCF_TOOL_DEFINITIONS,
       ...FEEDBACK_TOOL_DEFINITIONS,
       ...(ENGINE_ENABLED ? [SEARCH_ALL_TOOL, ...engineToolDefinitions()] : []),
       ...(ENGINE_SPIKE ? [PROBE_TOOL] : []),
