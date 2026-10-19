@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ISOLATE_DEFAULT_COLOR,
   SCOPED_GUID_CAP,
   StyleInputError,
   allocateCap,
@@ -60,14 +59,14 @@ describe("parseStyleGroups", () => {
     expect(() => parseStyleGroups({ groups: [{ color: "ef4444" }] }, "colorize")).toThrow(/filter/);
     expect(() => parseStyleGroups({ color: "red", system: "X" }, "colorize")).toThrow(/hex/);
   });
-  it("hide nepotrebuje farbu, izolácia bez farby dostane neutrálnu (Lens farbí aj izolované)", () => {
+  it("hide ani izolácia farbu nepotrebujú (izolované prvky ostanú v pôvodnom vzhľade)", () => {
     expect(parseStyleGroups({ zone: "Nájomné priestory", ifc_type: "IfcSpace" }, "hide")[0].color).toBe("");
-    expect(parseStyleGroups({ zone: "Nájomné priestory" }, "isolate")[0].color).toBe(ISOLATE_DEFAULT_COLOR);
+    expect(parseStyleGroups({ zone: "Nájomné priestory" }, "isolate")[0].color).toBe("");
     expect(parseStyleGroups({ zone: "Nájomné priestory", color: "#22C55E" }, "isolate")[0].color).toBe("22c55e");
   });
   it("groups platia aj pre transparent a isolate; transparent farbu vyžaduje", () => {
     const g = parseStyleGroups({ groups: [{ color: "ef4444", system: "X" }, { system: "Y" }] }, "isolate");
-    expect(g.map((x) => x.color)).toEqual(["ef4444", ISOLATE_DEFAULT_COLOR]);
+    expect(g.map((x) => x.color)).toEqual(["ef4444", ""]);
     expect(() => parseStyleGroups({ groups: [{ system: "X" }] }, "transparent")).toThrow(/color/);
   });
 });

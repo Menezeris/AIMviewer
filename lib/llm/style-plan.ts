@@ -16,10 +16,8 @@ export const MAX_STYLE_GROUPS = 12;
 export const SCOPED_GUID_CAP = 500;
 
 const HEX6 = /^[0-9a-f]{6}$/;
-/** Akcie, pri ktorých má skupina farbu (Lens, D-096). */
+/** Akcie, pri ktorých má skupina farbu (Lens, D-096); pri izolácii je farba voliteľná. */
 const COLOR_ACTIONS = new Set(["colorize", "transparent", "isolate"]);
-/** Izolácia bez farby od používateľa: neutrálna sivomodrá (Lens farbí aj izolované prvky). */
-export const ISOLATE_DEFAULT_COLOR = "64748b";
 
 /** Kľúče filtra, ktoré smie niesť top-level vstup aj skupina. */
 export const FILTER_KEYS = [
@@ -100,7 +98,8 @@ export function parseStyleGroups(input: Record<string, unknown>, action: string)
   const colorOf = (raw: unknown, where: string): string => {
     if (!COLOR_ACTIONS.has(action)) return "";
     const c = normColor(raw);
-    if (!c && action === "isolate") return ISOLATE_DEFAULT_COLOR;
+    // Izolované prvky ostanú v pôvodnom vzhľade, kým farbu niekto nežiada (Samuel, 2026-10-19).
+    if (!c && action === "isolate") return "";
     if (!HEX6.test(c)) throw new StyleInputError(`${where} musí byť hex RRGGBB (napr. ef4444 pre červenú).`);
     return c;
   };

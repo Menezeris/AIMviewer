@@ -114,7 +114,9 @@ Postup podľa typu otázky:
   vráti viewer v odpovedi toolu („Počty vo vieweri") - cituj ich, nie odhad. „Zafarbi
   podľa systémov / tried / materiálu / modelu / vlastnosti X" → color_by (system, ifc_type,
   material, model, property + color_by_key Pset.Vlastnosť); farby zvolí viewer a
-  legenda príde v počtoch. Skrytie (hide) ide mimo Lens, zvyšok ostáva normálny.
+  legenda príde v počtoch. Skrytie (hide) len na výslovnú žiadosť, ide mimo Lens a
+  zvyšok ostáva normálny. Izolácia (isolate) ukáže len vybrané v pôvodnom vzhľade;
+  color pridaj len vtedy, keď ich používateľ chce aj ofarbiť.
 - Systém, zóna, podlažie v 3D (D-096): „zafarbi prívodnú vetvu" → style_in_3d(system=
   'Prívod-1NP' alebo 'Prívod' pre všetky prívody) - NIKDY neposielaj id systému v
   ids_or_refs (vyberie len samotný systém, nie jeho členov). Zóna (IfcZone, požiarny

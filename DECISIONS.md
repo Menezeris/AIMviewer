@@ -3938,9 +3938,12 @@ vieweri balíka, nie v našom iframe, takže podľa D-087 bod 3 ide o vlastný a
    a `isolate` zostavia pravidlá **lens "AIM chat"**; `groups` = viac pravidiel s farbou;
    `color_by` (system, ifc_type, material, model, classification, property, attribute) =
    autoColor s legendou; `mode` add (pridáva) / replace. `reset_colors` lens vypne,
-   `show_all` zruší jej izoláciu. Izolácia = pravidlá a za nimi pravidlo "Ostatné (skryté)",
-   lebo Lens farbí prvou zhodou. `hide`/`show` ostávajú na kanáli skrývania viewera (Lens
-   stlmí všetko mimo pravidiel, čo pri skrytí nechceme; otázka pre Samuela v #68).
+   `show_all` zruší izoláciu z chatu. **Izolácia nejde cez lens** (Samuel, 2026-10-19:
+   izolované prvky sa farbia len na žiadosť): pravidlá sa vyhodnotia tým istým federovaným
+   filtrom ako lens a ich zjednotenie sa izoluje kanálom izolácie viewera, prvky bez farby
+   ostanú v pôvodnom vzhľade; skupina s farbou je navyše pravidlo lens. **Skrývanie len na
+   výslovnú žiadosť** (Samuel): `hide`/`show` ostávajú na kanáli skrývania viewera mimo Lens,
+   stlmené (ghost) sú len prvky mimo farebných pravidiel lens.
 2. **Pravidlá:** trieda/doména -> `ifcType`, predefined_type -> `predefinedType`, podlažie ->
    `storey` (meno podlažia z grafu AIM), systém a `system_type` -> mená systémov z grafu AIM
    (aj podľa ObjectType) -> `group` IfcSystem s regexom na presné mená, `not_in_system` ->
@@ -3960,10 +3963,10 @@ vieweri balíka, nie v našom iframe, takže podľa D-087 bod 3 ide o vlastný a
    Upstream súbory sa nemenia.
 5. **Počty pre Clauda z viewera, nie odhadom:** po odoslaní sa MCP spýta spätným kanálom
    (D-085) `lens_state` s tým istým `rev`; fork počká na vyhodnotenie práve tejto verzie
-   (`LENS_QUERY` -> `QUERY_RESULT`, najviac 6 s) a vráti počet na pravidlo, skryté ostatné a
+   (`LENS_QUERY` -> `QUERY_RESULT`, najviac 6 s) a vráti počet na pravidlo, izolované prvky a
    legendu. Bez živého viewera tool vráti zostavenú lens a povie, že počty sú v paneli Lens.
 6. **Bez pevnej palety** (Samuel): farby určuje používateľ, inak model zvolí odlíšiteľné a vráti
-   legendu; izolácia bez farby dostane neutrálnu `#64748b`. Dáta VZT: predefined_type a
+   legendu; izolácia bez farby prvky nefarbí. Dáta VZT: predefined_type a
    ObjectType rozlišujú prívod od odvodu, ale nie prívod od nasávania (VENTILATION,
    "Přiváděný vzduch") ani odvod od výfuku (EXHAUST, "Odváděný vzduch"); rozlíši ich len názov.
 7. Kód: `lib/viewer-lens.ts` (wire formát, server aj klient), `lib/llm/lens-plan.ts` (čisté
@@ -3973,7 +3976,9 @@ vieweri balíka, nie v našom iframe, takže podľa D-087 bod 3 ide o vlastný a
    `aimLensPlan.ts`, `aimLens.ts`, v `AimBridge.tsx` len registrácia.
 
 **Dôsledky:** filter systému ukáže len to, čo nesie model: Prívod-1NP má v DB 8 členov (stav
-2026-10-19). Lens `group` vidí len priame IfcRelAssignsToGroup (systémy VZT sú ploché).
+2026-10-19). Lens farbí prvou zhodou, preto novšie pravidlá idú v AIM chat lens dopredu (nová
+farba prebije staršiu). Kým je lens aktívna, izolované prvky bez farby sú stlmené ako všetko
+mimo farebných pravidiel; bez lens ostanú v pôvodnom vzhľade. Lens `group` vidí len priame IfcRelAssignsToGroup (systémy VZT sú ploché).
 Podlažie ide podľa mena v IFC (ASR aj VZT majú 1NP...4NP). Poradie zlúčenia: fork, potom
 AIMviewer (starý fork správy Lens ignoruje, nič sa nerozbije).
 

@@ -13,7 +13,8 @@
 
 export const LENS_MODES = ["add", "replace", "clear", "unisolate"] as const;
 export type LensMode = (typeof LENS_MODES)[number];
-export const LENS_ACTIONS = ["colorize", "transparent", "hide"] as const;
+/** `isolate` = len do izolácie bez farby (viewer izoluje kanálom izolácie, nie lens). */
+export const LENS_ACTIONS = ["colorize", "transparent", "hide", "isolate"] as const;
 export type LensAction = (typeof LENS_ACTIONS)[number];
 export const AUTO_COLOR_SOURCES = [
   "ifcType",
@@ -43,14 +44,14 @@ export interface LensWireRule {
   /** Názov pravidla v paneli Lens (štítok skupiny). */
   n: string;
   a: LensAction;
-  /** Hex `#rrggbb`. */
-  c: string;
+  /** Hex `#rrggbb`; pri `isolate` chýba. */
+  c?: string;
   g: LensFilterGroup[];
 }
 
 export interface LensWire {
   r?: LensWireRule[];
-  /** Po pravidlách skryť všetko ostatné (izolácia). */
+  /** Izolovať zjednotenie všetkých pravidiel (farebné aj bez farby). */
   i?: 1;
   ac?: { source: AutoColorSource; psetName?: string; propertyName?: string };
 }
@@ -110,7 +111,8 @@ export function decodeLensWire(raw: string): LensWire | null {
     if (!Array.isArray(parsed.r) || parsed.r.length > MAX_RULES) return null;
     for (const r of parsed.r) {
       if (!isObj(r) || typeof r.n !== "string" || !(LENS_ACTIONS as readonly unknown[]).includes(r.a)) return null;
-      if (typeof r.c !== "string" || !HEX.test(r.c) || !Array.isArray(r.g) || !r.g.every(validGroup)) return null;
+      const colorOk = r.a === "isolate" ? r.c === undefined : typeof r.c === "string" && HEX.test(r.c);
+      if (!colorOk || !Array.isArray(r.g) || !r.g.every(validGroup)) return null;
     }
     out.r = parsed.r as LensWireRule[];
   }
@@ -166,7 +168,7 @@ export function lensBridgeMessage(
   const rules = (wire.r ?? []).map((r) => ({
     name: r.n.slice(0, 120) || "výber",
     action: r.a,
-    color: r.c,
+    ...(r.c ? { color: r.c } : {}),
     groups: r.g.map((g) => ({ combinator: g.combinator, rules: g.rules.map(swap) })),
   }));
   return {

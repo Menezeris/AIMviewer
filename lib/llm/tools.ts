@@ -553,8 +553,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           enum: ["colorize", "transparent", "hide", "show", "isolate", "show_all", "reset_colors"],
           description:
             "colorize=ofarbiť (vyžaduje color), transparent=priehľadne s farbou, hide=skryť, " +
-            "show=znova zobraziť skryté, isolate=zobraziť LEN vybrané (ostatné skryť; farba " +
-            "voliteľná), show_all=zrušiť skrývanie a izoláciu, reset_colors=zrušiť ofarbenie a lens",
+            "show=znova zobraziť skryté, isolate=zobraziť LEN vybrané (ostatné skryť; bez color " +
+            "ostanú v pôvodnom vzhľade, color len keď ho používateľ chce), show_all=zrušiť skrývanie " +
+            "a izoláciu, reset_colors=zrušiť ofarbenie a lens",
         },
         mode: {
           type: "string",

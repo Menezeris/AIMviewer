@@ -33,7 +33,7 @@ export interface LensStyleOptions {
 
 interface GroupInfo {
   label: string;
-  color: string;
+  color?: string;
   systems?: string[];
   zones?: string[];
   storey?: string;
@@ -140,13 +140,14 @@ export async function execLensStyle(
   const groups = parseStyleGroups(input, action);
   const scope = new ScopeResolver(getSupabaseAdmin());
   const budget = { left: LENS_GUID_CAP };
-  const lensAction = action === "transparent" ? "transparent" : "colorize";
   const rules: LensWireRule[] = [];
   const infos: GroupInfo[] = [];
   for (const g of groups) {
-    const info: GroupInfo = { label: g.label, color: `#${g.color}` };
+    const info: GroupInfo = { label: g.label, ...(g.color ? { color: `#${g.color}` } : {}) };
     const filter = await resolveFilter(scope, g.filter, opts, info, budget);
-    rules.push({ n: g.label, a: lensAction, c: `#${g.color}`, g: [lensGroup(filter)] });
+    // Izolovaná skupina bez farby ostane v pôvodnom vzhľade (len kanál izolácie viewera).
+    const a = action === "transparent" ? "transparent" : g.color ? "colorize" : "isolate";
+    rules.push({ n: g.label, a, ...(g.color ? { c: `#${g.color}` } : {}), g: [lensGroup(filter)] });
     infos.push(info);
   }
   const wire: LensWire = { r: rules, ...(action === "isolate" ? { i: 1 as const } : {}) };
@@ -164,7 +165,9 @@ export async function execLensStyle(
       lens: "AIM chat",
       mode,
       groups: infos,
-      ...(action === "isolate" ? { isolated: "ostatné prvky sú skryté pravidlom Ostatné (skryté)" } : {}),
+      ...(action === "isolate"
+        ? { isolated: "viewer zobrazí len tieto prvky; bez farby ostanú v pôvodnom vzhľade, show_all izoláciu zruší" }
+        : {}),
     },
   };
 }

@@ -66,6 +66,15 @@ describe("viewer-lens (D-096)", () => {
     expect(capped.rules[1].groups[0].rules[0].values).toHaveLength(MAX_ZONE_GUIDS);
   });
 
+  it("izolácia bez farby: pravidlo isolate bez c prejde, farebné bez c nie", () => {
+    const g = WIRE.r![0].g;
+    const [o] = parseOps(lensOp("add", { r: [{ n: "Zóna", a: "isolate", g }], i: 1 }, "r3"));
+    expect(opToBridgeMessage(o)).toMatchObject({ isolate: true, rules: [{ name: "Zóna", action: "isolate" }] });
+    expect((opToBridgeMessage(o) as { rules: object[] }).rules[0]).not.toHaveProperty("color");
+    expect(parseOps(lensOp("add", { r: [{ n: "x", a: "colorize", g }] }))).toEqual([]);
+    expect(parseOps(lensOp("add", { r: [{ n: "x", a: "isolate", c: "#000000", g }] }))).toEqual([]);
+  });
+
   it("op bez zóny sa preloží priamo cez opToBridgeMessage", () => {
     const [o] = parseOps(lensOp("add", { ac: { source: "group" } }, "r2"));
     expect(opToBridgeMessage(o)).toEqual({ type: "APPLY_LENS", mode: "add", rev: "r2", autoColor: { source: "group" } });
