@@ -69,6 +69,17 @@ export interface TopicFilter {
   model?: string;
   assigned_to?: string;
   limit: number;
+  offset?: number;
+  /** Podľa čísla vzostupne (BCF API stránkuje od najstaršej); predvolene najnovšie prvé. */
+  ascending?: boolean;
+}
+
+/** Hodnoty, ktoré už témy používajú (slovník projektu pre BCF API extensions). */
+export interface TopicVocabulary {
+  topic_type: string[];
+  priority: string[];
+  stage: string[];
+  assigned_to: string[];
 }
 
 export interface BcfStore {
@@ -81,6 +92,7 @@ export interface BcfStore {
   addComment(id: string, author: string, comment: string): Promise<BcfComment | null>;
   /** Témy so session, ktoré ešte bežia (stav `in_progress`, pohyb po `since`). */
   runningSessions(since: Date): Promise<BcfTopicRow[]>;
+  vocabulary(): Promise<TopicVocabulary>;
 }
 
 const TABLE = "model_tasks";
@@ -112,7 +124,10 @@ export function supabaseBcfStore(): BcfStore {
       if (filter.model) q = q.eq("model", filter.model);
       // Presná zhoda bez ohľadu na veľkosť písmen: zástupné znaky LIKE sa escapujú.
       if (filter.assigned_to) q = q.ilike("assigned_to", filter.assigned_to.replace(/[\\%_]/g, "\\$&"));
-      const { data, error, count } = await q.order("number", { ascending: false }).limit(filter.limit);
+      const from = filter.offset ?? 0;
+      const { data, error, count } = await q
+        .order("number", { ascending: filter.ascending === true })
+        .range(from, from + filter.limit - 1);
       if (error) fail("Čítanie tém zlyhalo", error);
       return { rows: (data ?? []) as BcfTopicRow[], total: count ?? (data ?? []).length };
     },
@@ -144,6 +159,19 @@ export function supabaseBcfStore(): BcfStore {
         .gte("updated_at", since.toISOString());
       if (error) fail("Čítanie bežiacich sessions zlyhalo", error);
       return (data ?? []) as BcfTopicRow[];
+    },
+    async vocabulary() {
+      const { data, error } = await db().from(TABLE).select("topic_type, priority, stage, assigned_to");
+      if (error) fail("Čítanie slovníka tém zlyhalo", error);
+      const rows = (data ?? []) as Pick<BcfTopicRow, "topic_type" | "priority" | "stage" | "assigned_to">[];
+      const distinct = (k: keyof (typeof rows)[number]) =>
+        [...new Set(rows.map((r) => r[k]).filter((v): v is string => typeof v === "string" && v !== ""))].sort();
+      return {
+        topic_type: distinct("topic_type"),
+        priority: distinct("priority"),
+        stage: distinct("stage"),
+        assigned_to: distinct("assigned_to"),
+      };
     },
   };
 }

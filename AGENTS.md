@@ -252,3 +252,5 @@ Nová RPC pre LLM = vždy read-only `stable` + `set search_path` + interné whit
 
 Chýbajúci tool alebo pripomienka z konektora = GitHub issue (`request_tool`/`report_feedback`, D-090);
 session, ktorá ho rieši, postupuje podľa skillu `.claude/skills/mcp-poziadavka/SKILL.md`.
+Chyba v IFC modeli = BCF téma v `model_tasks` (`bcf_topic_*`, BCF API `/api/bcf`, D-099), nie issue;
+téma pre Claude sa rieši v repe OCB (skill `bcf-tema`, workflow `uloha`).

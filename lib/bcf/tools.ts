@@ -1,5 +1,7 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import type { RoutineFireResult } from "@/lib/feedback/routine";
 import type { ToolDefinition } from "@/lib/llm/provider";
 
@@ -193,6 +195,7 @@ export function viewFromState(result: unknown): CapturedView {
   const count = typeof sel.count === "number" ? sel.count : selection.length;
   return {
     viewpoint: {
+      guid: randomUUID(),
       source: "viewer",
       frame: r.frame ?? "ifc_world",
       units: r.units ?? "m",
@@ -301,7 +304,7 @@ export function bcfFirePayload(t: BcfTopicRow): string {
   ].join("\n");
 }
 
-interface SessionOutcome {
+export interface SessionOutcome {
   session: { url: string } | null;
   queued: boolean;
   note: string;
@@ -309,7 +312,7 @@ interface SessionOutcome {
 }
 
 /** Spustí session pre tému priradenú Claudovi (ak nebeží a je miesto); inak povie prečo nie. */
-async function maybeStartSession(topic: BcfTopicRow, deps: BcfDeps, wanted: boolean): Promise<SessionOutcome> {
+export async function maybeStartSession(topic: BcfTopicRow, deps: BcfDeps, wanted: boolean): Promise<SessionOutcome> {
   const base = { session: null, queued: false, topic };
   if (!isClaude(topic.assigned_to)) return { ...base, note: "Téma nie je priradená Claudovi, session sa nespúšťa." };
   if (!wanted) return { ...base, note: "Session sa nespúšťala (start_session=false)." };
@@ -483,7 +486,7 @@ async function viewpoint(args: Record<string, unknown>, deps: BcfDeps) {
   }
   const row = await deps.store.update(topic.id, {
     components: c.guids,
-    viewpoint: c.viewpoint ?? { source: "selection" },
+    viewpoint: c.viewpoint ?? { guid: randomUUID(), source: "selection" },
     modified_by: DEFAULT_AUTHOR,
   });
   return { topic: summary(row), selection: c.guids.length, viewpoint_from_viewer: Boolean(c.viewpoint), view_note: c.viewNote };

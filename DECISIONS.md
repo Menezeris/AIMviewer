@@ -4393,8 +4393,8 @@ MCP), otázky z issue sú v `eval/questions.json` ako neoverené.
 ---
 
 ### D-099 - BCF témy nad modelmi federácie; téma pre Claude spustí session
-**Status:** rozhodnuté (2026-10-19, Samuel: "súhlasím, začni" na tri body nižšie), fáza A
-implementovaná na vetve `claude/serene-ptolemy-r16t1s`. **Mení D-086 body 3, 8 a 9 a fázy 3-4;
+**Status:** rozhodnuté (2026-10-19, Samuel: "súhlasím, začni" na tri body nižšie), fázy A, B a C
+implementované na vetve `claude/serene-ptolemy-r16t1s` (AIMviewer aj OCB). **Mení D-086 body 3, 8 a 9 a fázy 3-4;
 rieši issue #78** (`create_bcf_topic`). Nadväzuje na D-085 (stav viewera), D-087 (tools
 originálu), D-090 (routine) a D-098 (najprv existujúce).
 
@@ -4457,10 +4457,28 @@ nezačali (overené v histórii sessions a v repách). Konektor nemá žiadny BC
 **Fázy:**
 - **A (táto vetva):** migrácia, `lib/bcf/` (tools, uloženie, spustenie routine), registrácia
   v MCP, pravidlo v inštrukciách konektora.
-- **B:** BCF API 2.1 v AIMvieweri nad `model_tasks` (`/versions`, `/auth`, projekty = modely,
-  témy, komentáre, pohľady), token na čítanie a zápis; BCF panel forku sa naň pripojí.
-- **C:** pracovisko agenta v OCB (`CLAUDE.md`, skill riešenia témy, balík `pipeline/`), routine
-  "AIM: BCF téma" s repami OCB a AIMviewer a konektorom aim-viewer (nastavuje sa vo webe).
+- **B:** BCF API 2.1 v AIMvieweri nad `model_tasks` (`app/api/bcf/[...path]`, `lib/bcf/api.ts`),
+  báza `<site>/api/bcf`. **Jeden projekt `aim` = celá federácia** (téma nemusí mať model; projekt
+  na model by tému nad ASR aj VZT nemal kam dať). `/versions` a `/2.1/auth` bez tokenu, ostatné s
+  `Authorization: Bearer <BCF_API_TOKEN>`; používateľ tokenu (`BCF_API_USER`, predvolene `aim`) je
+  current-user a autor zápisov. Témy (`$top`/`$skip`, `$filter` a `$orderby` sa nevyhodnocujú),
+  téma GET/POST/PUT, komentáre GET/POST, pohľady GET/POST + `selection`/`coloring`/`visibility`.
+  Stav ide v BCF tvare (`Open`, `In Progress`...); slovník projektu (`extensions`) = predvolené
+  hodnoty + hodnoty, ktoré témy už používajú, `user_id_type` vždy obsahuje `claude` (outbox panela
+  inak zápis odmietne). Pohľad z viewera sa prevádza na BCF kameru a rovinu rezu (IFC svet, Z hore,
+  normála ako `sectionPlaneToClippingPlane` v `@ifc-lite/bcf`); pohľad z panela sa ukladá v tvare
+  BCF, bez snímky. Téma založená alebo priradená Claudovi cez API spustí session rovnako ako z MCP.
+  Zhoda overená testom so skutočným `@ifc-lite/bcf-api` (`resolveBcfServiceBaseUrl`,
+  `fetchProjectAsBCF`, zápisy outboxu). Panel sa pripojí ručne ("Pripojiť server" -> vlastná
+  adresa + token); automatické pripojenie z mostu `aim/` je neskorší krok.
+- **C:** pracovisko v OCB: `CLAUDE.md` (princípy), skill `.claude/skills/bcf-tema` (postup session od
+  témy po revíziu), `recepty/_vzor.py` (deterministický recept nad `ifcopenshell.api`) a workflow
+  **`uloha.yml`**: recept nad aktuálnou revíziou (súbor overený voči `model_revisions.sha256`) ->
+  `model_publish publish` s poistkou, `--task` a `--recipe cesta@commit` (najprv `dry_run`) ->
+  re-ETL (`--federate` okrem ASR) -> `etl.derive run` nad všetkými modelmi -> `announce`. Vstupy
+  len cez env a s kontrolou tvaru ciest. Session recept overí lokálne nad verejným súborom, workflow
+  spúšťa cez GitHub MCP. Routine "AIM: BCF téma" sa zakladá vo webe (prompt v README AIMviewer).
+  Balík `pipeline/` (v29-v73) ešte nie je v OCB - čaká na Samuela.
 - **D:** snímka pohľadu (`get_viewer_snapshot`, D-083 fáza 2), export `.bcfzip`
   (`@ifc-lite/bcf` `writeBCF`), prípadne publikácia do CDE (`bcf_publication_*`).
 
