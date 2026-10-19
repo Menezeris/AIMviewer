@@ -3994,11 +3994,11 @@ vlastné testy a dôkazy.
 - *Výpočty kamery v moste forku:* duplikovali by funkcie viewera, zväčšili vstupný balík a pri
   synchronizácii s originálom by sa rozchádzali.
 
-4. **Rýchle CI forku pre PR, ktoré menia len AIM vrstvu** (Samuel, 2026-10-19): `test.yml` vo forku
-   (job `changes`, krok `aimonly`) vypne ťažké vetvy (Rust, WASM, viewer shards, E2E, perf
-   ratchet), `aim-fast.yml` pustí AIM testy, lacné gates a typecheck viewera (približne 10 min).
-   Plné CI ostáva pri sync s originálom a pri zmene upstream súborov. Balík a revert oracle sa
-   merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo forku.
+**Doplnené (Samuel, 2026-10-19) - rýchle CI forku pre PR len v AIM vrstve:** `test.yml` vo forku
+(job `changes`, krok `aimonly`) vypne ťažké vetvy (Rust, WASM, viewer shards, E2E, perf
+ratchet), `aim-fast.yml` pustí AIM testy, lacné gates a typecheck viewera (približne 10 min).
+Plné CI ostáva pri sync s originálom a pri zmene upstream súborov. Balík a revert oracle sa
+merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo forku.
 
 ---
 
