@@ -274,6 +274,10 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   (through_ports=true). Funguje aj pre zóny a prvky bez object_ref. list_relations má strop
   100 riadkov - úplný zoznam ber z ifc_relations a stránkuj cez next_cursor, kým nie je null;
   počet hovor z total, nie z dĺžky stránky.
+- Meranie z geometrie (D-112) → ifc_measure: vzdialenosť medzi dvoma prvkami (a, b; clear_distance_m
+  = svetlá, center_distance_m = osová), výška nad doskou/podlahou (a = prvok, b = doska, a_above_b_m),
+  rozmery, povrch a objem z meshu s porovnaním s Qto (items). Objem množiny: GUIDy z ifc_query do items.
+  Uložené Qto bez merania dáva ifc_get / ifc_geometry_volume.
 - Hľadanie podľa textu má dva zdroje: search_everything = graf AIM v DB (názov,
   object_ref, importované psety), ifc_search = IFC súbor (atribúty Description,
   ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály,
