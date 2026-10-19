@@ -4,6 +4,7 @@ import {
   handleMcpPayload,
   INVALID_PARAMS,
   METHOD_NOT_FOUND,
+  payloadMethods,
   type McpServerDeps,
 } from "./server";
 
@@ -142,5 +143,11 @@ describe("MCP server (D-079)", () => {
       deps(),
     );
     expect(res).toEqual([{ jsonrpc: "2.0", id: 6, result: {} }]);
+  });
+
+  it("payloadMethods: metódy zo správy aj z dávky (D-100)", () => {
+    expect(payloadMethods({ jsonrpc: "2.0", id: 1, method: "initialize" })).toEqual(["initialize"]);
+    expect(payloadMethods([{ method: "tools/list" }, { id: 2 }, { method: "ping" }])).toEqual(["tools/list", "ping"]);
+    expect(payloadMethods("x")).toEqual([]);
   });
 });

@@ -495,6 +495,14 @@ a `element_in_zone` (bez hrán: IFC na prvok v IfcZone vzťah nemá). Pohľad **
 = prvok v IfcZone cez priestory (prvok v priestore natívne alebo referenciou, priestor člen zóny
 priamo alebo cez vnorenú zónu); prázdny, keď je `element_in_zone` vypnuté.
 
+### 2.16 Log volaní MCP konektora (D-100, migrácia 20261019140000)
+
+`mcp_call_log` = jedno volanie toolu konektora: `tool`, `action` (`args.action`, ak ju tool má),
+`ms` (celé volanie na serveri), `ok`, `cold` (prvé volanie inštancie funkcie), `phases` (jsonb, ms
+po fázach `exec`, `broadcast`, `lens`, `readback`, `engine_load`), `region` (`VERCEL_REGION`).
+Argumenty sa neukladajú. Zapisuje `/api/mcp/<token>` po odoslaní odpovede; slúži na p50/p95
+latencie (`eval/MCP-EVAL.md`).
+
 ## 4. Konvencia `properties` (D-022)
 
 `properties` JSONB obsahuje **property sety**, vnorené podľa názvu. IFC **atribúty**

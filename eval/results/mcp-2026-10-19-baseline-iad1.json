@@ -1,0 +1,16 @@
+{
+  "ranAt": "2026-10-19T13:30:00Z",
+  "label": "baseline-iad1",
+  "region": "iad1",
+  "runner": "Claude Code subagent (general-purpose), konektor aim-viewer, paralelne",
+  "note": "Pred D-100 (bez mcp_call_log, motor bez predčítania). Len category=data; viewer úlohy čakajú na otvorený živý viewer. duration_ms zahŕňa réžiu agenta a ToolSearch (tool_uses_total).",
+  "results": [
+    { "id": "D1-pocet-dveri", "pass": true, "calls": 1, "tools": ["count_objects"], "tool_uses_total": 3, "duration_ms": 7128, "over_cap": false },
+    { "id": "D2-vzt-jednotky-kde", "pass": true, "calls": 1, "tools": ["locate_objects"], "tool_uses_total": 4, "duration_ms": 10013, "over_cap": false },
+    { "id": "D3-pocet-miestnosti", "pass": true, "calls": 2, "tools": ["count_objects", "count_objects"], "tool_uses_total": 4, "duration_ms": 9744, "over_cap": true, "note": "Druhé volanie len overovalo to isté iným filtrom." },
+    { "id": "D4-podhlad-qto", "pass": true, "calls": 2, "tools": ["search_objects", "ifc_get"], "tool_uses_total": 4, "duration_ms": 15574, "over_cap": false },
+    { "id": "D5-vyustka-kde", "pass": true, "calls": 3, "tools": ["get_object", "search_objects", "get_spatial_path"], "tool_uses_total": 5, "duration_ms": 15132, "over_cap": true, "note": "get_object hľadá len object_ref; názov VV.03.01.040 nenašiel." },
+    { "id": "D6-nosne-steny", "pass": true, "calls": 2, "tools": ["ifc_property_values", "ifc_count"], "tool_uses_total": 4, "duration_ms": 10284, "over_cap": true }
+  ],
+  "summary": { "pass": "6/6", "median_calls": 2, "median_duration_ms": 10149, "over_cap": ["D3", "D5", "D6"] }
+}

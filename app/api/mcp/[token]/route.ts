@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 
 import { defaultBcfDeps } from "@/lib/bcf/runtime";
 import { BCF_TOOL_DEFINITIONS, BCF_TOOL_NAMES, execBcfTool } from "@/lib/bcf/tools";
@@ -18,12 +18,15 @@ import {
 import { lensCountsText } from "@/lib/live/lens-counts";
 import { mcpInstructions } from "@/lib/llm/system-prompt";
 import { AskToolRuntime, TOOL_DEFINITIONS } from "@/lib/llm/tools";
+import { callAction, writeCallLog } from "@/lib/mcp/call-log";
 import {
   handleMcpPayload,
   parseErrorResponse,
+  payloadMethods,
   type McpServerDeps,
   type McpToolResult,
 } from "@/lib/mcp/server";
+import { startTimer, type CallTimer } from "@/lib/mcp/timing";
 
 /**
  * MCP konektor pre Claude (D-079): `POST /api/mcp/<MCP_TOKEN>`. Tie isté
@@ -61,7 +64,39 @@ const ENGINE_SPIKE = process.env.ENGINE_SPIKE === "1";
 /** `ifc_*` tools IFC motora (D-084 fáza 1) - env brána; diagnostika ich zapína tiež. */
 const ENGINE_ENABLED = process.env.ENGINE_ENABLED === "1" || ENGINE_SPIKE;
 
+/** Prvé volanie v tejto inštancii funkcie = studený štart (D-100). */
+let instanceWarm = false;
+
+/** Čas, ktorý volanie strávilo načítaním modelov do cache motora (0 = boli teplé). */
+async function engineLoadMs(since: number): Promise<number> {
+  const { cacheSnapshot } = await import("@/lib/engine/cache");
+  return cacheSnapshot()
+    .filter((e) => e.loadedAt >= since)
+    .reduce((sum, e) => sum + e.loadMs, 0);
+}
+
+/** Tool s meraním (D-100): čas a fázy idú do `mcp_call_log` až po odoslaní odpovede. */
 async function callTool(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
+  const cold = !instanceWarm;
+  instanceWarm = true;
+  const timer = startTimer();
+  const since = Date.now();
+  let res: McpToolResult = { text: ["Chyba toolu"], isError: true };
+  try {
+    res = await runTool(name, args, timer);
+    return res;
+  } finally {
+    if (name === SEARCH_ALL_TOOL.name || ENGINE_TOOL_NAMES.has(name)) {
+      const loadMs = await engineLoadMs(since).catch(() => 0);
+      if (loadMs > 0) timer.add("engine_load", loadMs);
+    }
+    const { ms, phases } = timer.done();
+    const row = { tool: name, action: callAction(args), ms, ok: !res.isError, cold, phases, region: process.env.VERCEL_REGION ?? null };
+    after(() => writeCallLog(row));
+  }
+}
+
+async function runTool(name: string, args: Record<string, unknown>, timer: CallTimer): Promise<McpToolResult> {
   if (ENGINE_SPIKE && name === "ifc_engine_probe") {
     // Lenivý import: DB tools nesmú platiť studený štart motora.
     const { runProbe } = await import("@/lib/engine/probe");
@@ -72,30 +107,30 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<Mc
     }
   }
   if (BCF_TOOL_NAMES.has(name)) {
-    const res = await execBcfTool(name, args, defaultBcfDeps());
+    const res = await timer.phase("exec", () => execBcfTool(name, args, defaultBcfDeps()));
     return { text: [res.text], isError: res.isError };
   }
   if (FEEDBACK_TOOL_NAMES.has(name)) {
-    const res = await execFeedbackTool(name, args);
+    const res = await timer.phase("exec", () => execFeedbackTool(name, args));
     return { text: [res.text], isError: res.isError };
   }
   if (VIEWER_QUERY_TOOL_NAMES.has(name)) {
-    const res = await execViewerQueryTool(name, args, siteUrl());
+    const res = await timer.phase("exec", () => execViewerQueryTool(name, args, siteUrl()));
     return { text: [res.text], isError: res.isError };
   }
   if (ENGINE_ENABLED && name === SEARCH_ALL_TOOL.name) {
     const { runSearchAll } = await import("@/lib/engine/run");
-    const res = await runSearchAll(args);
+    const res = await timer.phase("exec", () => runSearchAll(args));
     return { text: [res.content], isError: res.isError };
   }
   if (ENGINE_ENABLED && ENGINE_TOOL_NAMES.has(name)) {
     // Lenivý import: motor (stovky MB po načítaní modelov) len keď ho Claude volá.
     const { runEngineTool } = await import("@/lib/engine/run");
-    const res = await runEngineTool(name, args);
+    const res = await timer.phase("exec", () => runEngineTool(name, args));
     return { text: [res.content], isError: res.isError };
   }
   const runtime = new AskToolRuntime();
-  const res = await runtime.exec(name, args);
+  const res = await timer.phase("exec", () => runtime.exec(name, args));
   const text = [res.content];
   const actions = runtime.finalActions();
   if (!res.isError && actions.length > 0) {
@@ -105,16 +140,21 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<Mc
     if (!channel) {
       text.push(`Živý viewer nie je nastavený (chýba LIVE_CHANNEL). Odkaz na otvorenie:\n${links}`);
     } else {
-      const sent = await broadcastLive(channel, actions).catch(() => ({ ok: false, status: 0 }));
+      const sent = await timer.phase("broadcast", () =>
+        broadcastLive(channel, actions).catch(() => ({ ok: false, status: 0 })),
+      );
       text.push(
         sent.ok
           ? `Odoslané do živého viewera. Záložný odkaz:\n${links}`
           : `Odoslanie do živého viewera zlyhalo (HTTP ${sent.status}). Odkaz na otvorenie:\n${links}`,
       );
       // Počty AIM chat lens priamo z viewera (D-096): tie isté, čo používateľ vidí v paneli Lens.
-      if (sent.ok && runtime.lensRev) text.push(await lensCountsText(channel, runtime.lensRev));
+      const lensRev = runtime.lensRev;
+      if (sent.ok && lensRev) text.push(await timer.phase("lens", () => lensCountsText(channel, lensRev)));
       // D-092: rez potvrdí poloha roviny z viewera, nie len odoslanie príkazu.
-      if (sent.ok && name === "set_section" && args.action === "set") text.push(await readBackSection(channel));
+      if (sent.ok && name === "set_section" && args.action === "set") {
+        text.push(await timer.phase("readback", () => readBackSection(channel)));
+      }
     }
   }
   return { text, isError: res.isError };
@@ -144,6 +184,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     ],
     callTool,
   };
+  // D-100: Claude sa pripája (initialize / tools/list) -> modely motora sa načítajú vopred,
+  // prvé ifc_* volanie potom nečaká na stiahnutie a parsovanie.
+  if (ENGINE_ENABLED && payloadMethods(payload).some((m) => m === "initialize" || m === "tools/list")) {
+    after(async () => {
+      const { preloadEngineModels } = await import("@/lib/engine/preload");
+      await preloadEngineModels();
+    });
+  }
   const response = await handleMcpPayload(payload, deps);
   if (response === null) return new NextResponse(null, { status: 202, headers: NO_STORE });
   return NextResponse.json(response, { headers: NO_STORE });

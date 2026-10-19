@@ -1,0 +1,130 @@
+{
+  "note": "D-100: úlohy pre konektor aim-viewer (#97). Každú rieši čerstvý Claude agent len s toolmi aim-viewer; meria sa počet volaní, čas a výsledok. Postup je v eval/MCP-EVAL.md. max_calls = strop volaní aim-viewer (bez ToolSearch); budget_s = cieľ celej odpovede. viewer=true potrebuje otvorený živý viewer (?live=). Hodnoty overené cez konektor 2026-10-19 nad ASR v73 a VZT v2.",
+  "tasks": [
+    {
+      "id": "D1-pocet-dveri",
+      "category": "data",
+      "viewer": false,
+      "question": "Koľko dverí je v budove?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["\\b97\\b"] }
+    },
+    {
+      "id": "D2-vzt-jednotky-kde",
+      "category": "data",
+      "viewer": false,
+      "question": "Koľko je vzduchotechnických jednotiek a na ktorých podlažiach sú?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["\\b3\\b", "1NP", "2NP", "3NP"] }
+    },
+    {
+      "id": "D3-pocet-miestnosti",
+      "category": "data",
+      "viewer": false,
+      "question": "Koľko miestností má budova?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["\\b83\\b"] }
+    },
+    {
+      "id": "D4-podhlad-qto",
+      "category": "data",
+      "viewer": false,
+      "question": "Aká je svetlá výška po podhľad v miestnosti 3.02?",
+      "max_calls": 2,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["3[.,]05|3050"] },
+      "notes": "Qto_SpaceBaseQuantities.FinishCeilingHeight = 3050 mm (#96). Pozor: 3.02 je číslo miestnosti, nie výška."
+    },
+    {
+      "id": "D5-vyustka-kde",
+      "category": "data",
+      "viewer": false,
+      "question": "Čo je prvok VV.03.01.040 a na ktorom podlaží je?",
+      "max_calls": 2,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["(?i)vyúst|air ?terminal|IfcAirTerminal", "3NP"] }
+    },
+    {
+      "id": "D6-nosne-steny",
+      "category": "data",
+      "viewer": false,
+      "question": "Koľko stien je nosných?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["\\b86\\b"] },
+      "notes": "ifc_count ASR, Pset_WallCommon.LoadBearing = true."
+    },
+    {
+      "id": "V1-ukaz-miestnost",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Ukáž mi miestnosť 3.02.",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "tools_called": ["show_in_3d"] }
+    },
+    {
+      "id": "V2-izoluj-nosne",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Izoluj nosné prvky.",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "tools_called": ["style_in_3d"], "viewer_state": "isolated_count > 0, viditeľné len prvky s LoadBearing=true" }
+    },
+    {
+      "id": "E2-pridaj-schodiska",
+      "category": "viewer",
+      "viewer": true,
+      "setup": "Izoluj nosné prvky.",
+      "question": "Pridaj tam aj schodiská.",
+      "max_calls": 2,
+      "budget_s": 5,
+      "expect": { "viewer_state": "izolácia = nosné prvky + IfcStair a IfcStairFlight (isolated_count vyšší než po setupe)" },
+      "notes": "#97 E2, #95. Pred kolom 2 chýba isolate_add, očakáva sa prekročenie stropu."
+    },
+    {
+      "id": "E3-rez-pod-podhladom",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Sprav vodorovný rez 5 cm pod podhľadom na 3NP.",
+      "max_calls": 3,
+      "budget_s": 8,
+      "expect": { "viewer_state": "section.axis vodorovná, coordinate 12,20 m (podlaha 3NP 9,20 m + FinishCeilingHeight 3,05 m - 0,05 m)" },
+      "notes": "#97 E3. Pri offline vieweri má agent hneď povedať, že viewer nie je otvorený."
+    },
+    {
+      "id": "E1-rez-schodiskom",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Sprav rez pozdĺž nástupného ramena schodiska SD04.0001, izoluj nosné prvky a pozri sa kolmo na rez.",
+      "max_calls": 4,
+      "budget_s": 10,
+      "expect": { "tools_called": ["set_section", "style_in_3d", "set_camera"] },
+      "notes": "#97 E1 (baseline 9 volaní)."
+    },
+    {
+      "id": "E4-co-mam-oznacene",
+      "category": "viewer",
+      "viewer": true,
+      "setup": "Používateľ vo vieweri označí celý obvodový plášť (steny fasády).",
+      "question": "Čo mám označené?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "tools_called": ["get_viewer_state"] },
+      "notes": "#97 E4, overenie #64 (súhrn výberu)."
+    },
+    {
+      "id": "V3-zrus-vsetko",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Zruš všetko a vráť pohľad na celú budovu.",
+      "max_calls": 2,
+      "budget_s": 5,
+      "expect": { "viewer_state": "bez izolácie, bez rezu, bez farieb" }
+    }
+  ]
+}

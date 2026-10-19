@@ -126,8 +126,9 @@ export function engineToolDefinitions(): ToolDefinition[] {
     {
       name: "ifc_property_values",
       description:
-        "IFC MOTOR: zoznam rôznych hodnôt jednej vlastnosti psetu s počtami (histogram) pre IFC triedu - " +
-        "na otázky 'aké hodnoty má X' a ako podklad pre farbenie podľa hodnoty.",
+        "IFC MOTOR: zoznam rôznych hodnôt jednej vlastnosti psetu alebo množstva Qto s počtami (histogram) " +
+        "pre IFC triedu - na otázky 'aké hodnoty má X' a ako podklad pre farbenie podľa hodnoty. " +
+        "`source` hovorí, odkiaľ hodnota je (pset | qto); typové psety nečíta.",
       inputSchema: {
         type: "object",
         properties: {
