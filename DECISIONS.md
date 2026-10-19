@@ -3919,6 +3919,54 @@ s rýchlym CI. Most sa rozširuje o dáta na zobrazenie a o správy "otvor akciu
 - *Všetko v hostovi, aj odznaky a záznamy:* host do panelov v iframe kresliť nevie; overlay nad
   iframe by sa rozišiel s rozložením viewera.
 
+### D-093 - get_viewer_state: súhrn výberu, príznak orezania a identita položiek
+
+**Dátum:** 2026-10-19 · **Stav:** navrhnuté (kontrakt forku podľa dodatku, schváli Samuel mergom) · **Súvisí:** D-085, D-087, D-090, D-091 · **Issue:** #64
+
+**Kontext:** Používateľ vybral celý ľahký obvodový plášť (1810 prvkov). `get_viewer_state` vrátil
+`selection.count` 1810, ale len prvých 50 GUID bez triedy, podlažia a rodiča, bez stránkovania a bez
+povedania, že zoznam je orezaný. Claude zobral vzorku (náhodou celá z 1NP) a povedal, že výber je
+len 1NP. Orezanie robí odpoveď mosta vo forku, host ju len preposiela. Overené nad prod DB: AIM má
+55 `IfcCurtainWall` (1NP až 4NP), ale ich časti (`IfcPlate`, `IfcMember`) nie, takže triedu, podlažie
+a zostavu týchto prvkov pozná len viewer s načítaným IFC.
+
+**Rozhodnutie:**
+1. Server (`lib/live/selection-summary.ts`, DB časť `selection-context.ts`) vráti vo `selection`:
+   `count`, `returned`, `truncated`, `summary` (počty podľa IFC triedy, podlažia, rodičovskej zostavy
+   a modelu, `covers` = `all` alebo `returned`, `in_aim`), stránku `items` (`guid`, `object_ref`,
+   `name`, `ifc_type`, `floor`, `parent`, `model`, `in_aim`; `items_offset`/`items_limit`, default 50,
+   strop 200) a vetu `note`, keď je zoznam orezaný alebo stránkovaný. Surové `guids` z odpovede
+   odpadnú, ostatné polia viewera (napr. `bbox`) ostanú.
+2. Zdroj údajov o prvku: najprv viewer (`selection.items`), inak AIM: podlažie cez
+   `rel_contained_in_spatial_structure` (priestor -> podlažie cez `rel_aggregates`), alebo kontajner
+   zostavy; zostava cez `rel_aggregates` na nepriestorový uzol; zaniknuté objekty nie (D-088).
+3. **Kontrakt pre fork** (odpoveď `view_state`, len `apps/viewer/src/aim/`): `selection.guids` celé
+   (strop 5000, `MAX_SELECTION_GUIDS`) a voliteľne `selection.items[]` {`guid`, `name`, `ifc_type`,
+   `storey`, `model`, `parent_guid`, `parent_type`, `parent_name`} a `selection.bbox`. Je to dátová
+   odpoveď mosta, nie rozhodovanie o dátach (D-091). Server použije, čo príde; kým fork posiela
+   50 GUID, `truncated` a `covers=returned` zabránia záveru zo vzorky.
+4. Prompt MCP: na "čo mám vybrané" odpovedať zo `summary`, pri `truncated` nepopisovať výber ako celok.
+
+**Dôsledky:** chyba z issue (záver z čiastočnej vzorky) je zavretá hneď po nasadení hosta; úplný súhrn
+pre časti zostáv príde so zmenou forku. 1810 GUID je ~45 kB v Realtime odpovedi, AIM lookup ide po
+dávkach 100.
+
+**Dodatok (2026-10-19, strop Realtime):** Realtime projektu má `max_payload_size_in_kb` 256 a
+`max_bytes_per_second` 100000 (Management API). Celý výber s identitou (1810 položiek ~400 kB, 5000
+GUID ~125 kB) sa do jednej odpovede nezmestí. Preto fork súhrn spočíta sám nad **celým** výberom a
+zoznamy oreže: `selection.summary` {`of`, `by_ifc_type`, `by_storey`, `by_parent` (`key`, `count`,
+`guid`, `ifc_type`, `name`), `by_model` pri viacerých modeloch}, `selection.guids` najviac 1000,
+`selection.items` najviac 100, `selection.truncated` a `selection.bbox` (obálka výberu v IFC svete).
+Odpoveď má aj pri 5000 prvkoch ~60 kB. Server súhrn viewera prevezme (`covers=all`, keď `of` pokrýva
+`count`), zostavu známu v AIM pomenuje `object_ref` a pri orezanom zozname povie, že súhrn platí pre
+celok; bez súhrnu z viewera platí pôvodné správanie (bod 1). Strop 5000 z bodu 3 sa týka len servera.
+
+**Zavrhnuté:**
+- *Dopočítať triedu a rodiča na serveri cez IFC motor (`ENGINE_ENABLED`):* studený štart ~7 s a druhá
+  kópia IFC, ktorú viewer už má načítanú. Otvorené ako otázka pre Samuela v #64.
+- *Nový tool `get_selection`:* ten istý stav viewera by mal dve cesty; stránkovanie stačí v
+  `get_viewer_state`.
+
 ---
 
 ### D-094 - set_camera: relatívny pohyb, fit na viditeľné, cieľ filtrom, pohľad kolmo na rez
@@ -4005,6 +4053,8 @@ merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo fo
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-093 dodatok (súhrn výberu počíta fork):** strop Realtime 256 kB, fork posiela `summary` nad celým výberom, zoznamy orezané (1000 GUID, 100 položiek) a `bbox`; server súhrn prevezme.
+- **2026-10-19** - **D-093 (súhrn výberu v `get_viewer_state`):** `selection` s `count`/`returned`/`truncated`, súhrnom (trieda, podlažie, zostava, model, `covers`), stránkou položiek s identitou a `note` pri orezaní; kontrakt pre fork (celé `guids`, voliteľné `items` a `bbox`); prompt nerobí závery zo vzorky.
 - **2026-10-19** - **D-098 (najprv existujúce funkcie, fork len sprístupní):** pred návrhom sa prehľadá store, SDK, `@ifc-lite/mcp` a embed protokol; fork len tenký most, výpočty v AIMvieweri. Pravidlo v `AGENTS.md`, skilloch `mcp-poziadavka` a `aim-feature`, `FORK_MAINTENANCE.md`; rýchle CI forku pre PR len v `aim/` (`aim-fast.yml`) (#65).
 - **2026-10-19** - **D-094 (set_camera: relatívny pohyb, fit, filter, kolmo na rez):** `set_camera` dostal `preset` keep/section, `fit` visible/selection, cieľ filtrom (`ifc_type(s)`, `domain`, `model`, op `camera_sel`), `zoom_percent`, `orbit_h_deg`/`orbit_v_deg`, `pan_x_percent`/`pan_y_percent` (samostatné volanie, pózu počíta host z `view_state`); fork `SET_CAMERA` cez existujúce funkcie a oprava front/back s cieľom (ifc-lite#60, #65).
 - **2026-10-19** - **D-090 dodatok (issue len na pokyn):** Claude zápis len ponúkne, `request_tool`/`report_feedback` volá až na výslovný pokyn Samuela.
