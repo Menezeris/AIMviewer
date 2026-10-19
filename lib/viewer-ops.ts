@@ -44,12 +44,21 @@ export type Projection = "perspective" | "orthographic";
 /** Výška rezu nad úrovňou podlažia (m) - rozsah, ktorý server aj klient prijmú. */
 export const SECTION_OFFSET_RANGE = { min: -5, max: 20 } as const;
 
+/** Panel vlastností po výbere (D-113): záložka AIM | IFC, sekcia, zvýraznená vlastnosť. */
+export const PANEL_TABS = ["aim", "ifc"] as const;
+export const PANEL_SECTIONS = ["properties", "quantities"] as const;
+export interface SelectPanel {
+  tab?: (typeof PANEL_TABS)[number];
+  section?: (typeof PANEL_SECTIONS)[number];
+  focus?: { pset: string; property: string };
+}
+
 export type ViewerOp =
   | { op: "colorize"; guids: string[]; color: string }
   | { op: "hide" | "show" | "isolate"; guids: string[] }
   | { op: "colorize_sel"; selector: OpsSelector; color: string }
   | { op: "hide_sel" | "show_sel" | "isolate_sel"; selector: OpsSelector }
-  | { op: "select"; guid: string }
+  | { op: "select"; guid: string; panel?: SelectPanel }
   | { op: "show_all" }
   | { op: "reset_colors" }
   /** Zruší oranžové zvýraznenie z show_in_3d, ostatné farby nechá (D-101, #94). */
@@ -110,6 +119,40 @@ function finite(raw: string | undefined, min: number, max: number): number | und
   return Number.isFinite(n) && n >= min && n <= max ? n : undefined;
 }
 
+/** Meno psetu/vlastnosti do `ops`: oddeľovače `: ; . ~` nesmú prejsť. */
+const encName = (v: string) => encodeURIComponent(v).replace(/\./g, "%2E").replace(/~/g, "%7E");
+function decName(v: string | undefined): string | undefined {
+  if (!v) return undefined;
+  try {
+    const out = decodeURIComponent(v);
+    return out.length > 0 && out.length <= 200 ? out : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** `~t=ifc~s=quantities~p=<pset>~v=<vlastnosť>` -> panel; nič platné = undefined. */
+function parsePanel(arg: string): SelectPanel | undefined {
+  const [, kv] = parseArg(arg);
+  const panel: SelectPanel = {};
+  if ((PANEL_TABS as readonly string[]).includes(kv.t)) panel.tab = kv.t as SelectPanel["tab"];
+  if ((PANEL_SECTIONS as readonly string[]).includes(kv.s)) panel.section = kv.s as SelectPanel["section"];
+  const pset = decName(kv.p);
+  const property = decName(kv.v);
+  if (pset && property) panel.focus = { pset, property };
+  return panel.tab || panel.section || panel.focus ? panel : undefined;
+}
+
+/** Op výberu (D-082) s voliteľným panelom (D-113). */
+export function selectOp(guid: string, panel?: SelectPanel): string {
+  const kv = [
+    panel?.tab ? `t=${panel.tab}` : "",
+    panel?.section ? `s=${panel.section}` : "",
+    panel?.focus ? `p=${encName(panel.focus.pset)}~v=${encName(panel.focus.property)}` : "",
+  ].filter(Boolean);
+  return `select:${kv.length ? `~${kv.join("~")}` : ""}:${guid}`;
+}
+
 /** Rozparsuje `ops`; neznáme alebo chybné časti sa ticho zahodia (vstup je z URL). */
 export function parseOps(raw: string): ViewerOp[] {
   const out: ViewerOp[] = [];
@@ -127,7 +170,8 @@ export function parseOps(raw: string): ViewerOp[] {
       out.push({ op, selector: sel });
     } else if (op === "select" && guids.length > 0) {
       // Výber je jeden prvok (D-082) - prípadné ďalšie GUIDy sa ignorujú.
-      out.push({ op, guid: guids[0] });
+      const panel = parsePanel(arg);
+      out.push({ op, guid: guids[0], ...(panel ? { panel } : {}) });
     } else if (op === "show_all" || op === "reset_colors" || op === "section_clear" || op === "clear_focus" || op === "clear_selection") {
       out.push({ op });
     } else if (op === "section_gizmo" && (arg === "0" || arg === "1")) {
@@ -221,7 +265,7 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     case "isolate_sel":
       return { type: "ISOLATE", selector: o.selector };
     case "select":
-      return { type: "SELECT", guid: o.guid };
+      return { type: "SELECT", guid: o.guid, ...(o.panel ? { panel: o.panel } : {}) };
     case "show_all":
       return { type: "SHOW_ALL" };
     case "reset_colors":

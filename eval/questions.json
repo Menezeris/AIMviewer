@@ -609,6 +609,14 @@
       "expect": { "tools_called": ["bcf_topic_create"] },
       "verified": false,
       "notes": "D-099 (issue #78): téma z výberu živého viewera, priradená človeku = bez session. Len MCP, overenie = scenár cez konektor s otvoreným viewerom."
+    },
+    {
+      "id": "view-select-panel-ifc",
+      "category": "view",
+      "question": "Vyber miestnosť 2.01 a ukáž jej IFC výmery, zvýrazni čistú podlahovú plochu.",
+      "expect": { "tools_called": ["select_in_3d"], "actions_match": ["select:[^:]*s=quantities"] },
+      "verified": false,
+      "notes": "D-113 (issue #71): select_in_3d(id_or_ref=2.01, panel_section=quantities alebo highlight=Qto_SpaceBaseQuantities.NetFloorArea -> sekcia Quantities); hodnotu NetFloorArea z ifc_get."
     }
   ]
 }

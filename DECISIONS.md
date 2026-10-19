@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-113 (panel vlastností z chatu, #71):** `select_in_3d` s `panel_tab`, `panel_section` a `highlight`; fork prepne záložku AIM | IFC, sekciu a zvýrazní vlastnosť cez upstream `pendingPropertyFocus` bez režimu úprav.
 - **2026-10-19** - **D-104 (dokumenty z IFC):** jedna sada dokumentov z IFC (stará sada E3 sa odstráni), ETL podľa IfcDocumentInformation vrátane stromu a odkazov na strany, efektívne dokumenty objektu cez vzťahy (typ, skupina, zóna, priestorová zóna, odvodené) v DB aj v tooloch, prehliadanie a preklikávanie PDF cieľovo vo vieweri (fork), súbory v buckete podľa `Identification`.
 - **2026-10-19** - **D-103 (rýchle CI forku, rozširuje D-098):** rýchla cesta aj pre PR s úpravami pôvodných viewer súborov len vnútri AIM-FORK blokov (build viewera, súvisiace viewer testy, ratchet viewer JS), nočné plné CI na `main`, nálezy review bota neblokujú merge okrem bezpečnostných (ifc-lite #69).
 - **2026-10-19** - **D-102 (kolo 3 latencie MCP):** kód prvku (SD04.0001, VV.03.01.040) ako cieľ všetkých toolov cez meno v AIM a IFC Name/Tag, predčítané indexy motora (`ifc_search` 2 až 90 ms), kód bez preklepu, `set_section relative_to=ceiling` z Qto miestností (vážený medián), `get_object` s podlažím, kamera na miestnosť a `CLEAR_SELECTION` vo forku.
@@ -4900,3 +4901,36 @@ až po kroku 4.
 - Produkcia: re-ETL bez novej revízie robí nový workflow `reetl` v OCB (aktuálna revízia
   overená cez sha256, `dry_run`, `close_legacy_documents`).
 - Knižnica dokumentov vo vieweri berie priečinok zo stromu dokumentácie (koreň PD sa vynecháva).
+
+---
+
+### D-113 - Panel vlastností z chatu: záložka, sekcia a zvýraznená vlastnosť
+**Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #71).
+Nadväzuje na D-077 (AIM | IFC inspektor), D-082 (výber ako klik), D-098 (najprv existujúce funkcie viewera).
+
+**Kontext:** `select_in_3d` otvoril panel vlastností vždy na záložke AIM. "Ukáž IFC údaje miestnosti
+4.01" alebo "zvýrazni čistú podlahovú plochu" Claude nevedel: nevedel prepnúť na IFC, otvoriť sekciu
+Quantities ani ukázať konkrétnu vlastnosť. Viewer to všetko má: prepínač AIM | IFC vo forku, sekcie
+upstream panela (`propertiesActiveTab`) a skok na vlastnosť (`pendingPropertyFocus`, ktorým bSDD
+karta otvára "Edit in Properties": rozbalí pset, posunie a zvýrazní riadok).
+
+**Rozhodnutie:**
+1. `select_in_3d` má `panel_tab` (aim | ifc), `panel_section` (properties | quantities) a
+   `highlight` (`Pset.Vlastnosť`, delí sa na prvej bodke). Chybný vstup je chyba toolu. `highlight` na
+   `Qto_*` otvorí sekciu Quantities (tam upstream focus riadok nezvýrazní) a výsledok to povie.
+2. Op `select:~t=..~s=..~p=..~v=..:<guid>` (`selectOp`, mená psetu a vlastnosti zakódované, aby
+   oddeľovače ops neprešli) -> `SELECT { guid, panel: { tab, section, focus } }`. Bez panela ostáva
+   `select::<guid>` a správa ako doteraz.
+3. Fork (Menezeris/ifc-lite#75): lenivý `SELECT` panel overí (neplatný = nič sa nevyberie), po výbere
+   prepne záložku a sekciu a vlastnosť zvýrazní cez `pendingPropertyFocus`. Focus vždy prepne na IFC /
+   Properties. Upstream focus zapína režim úprav (pracovný priestor Model); focus z chatu ho
+   nezapína (jednoriadkový blok AIM-FORK v `PropertiesPanel.tsx`).
+4. Obsah panelu sa Claudovi nevracia: hodnoty berie z `ifc_get` (tie isté dáta zo súboru), panel ich
+   ukazuje používateľovi.
+
+**Zavrhnuté:**
+- *Samostatný tool `set_properties_panel`:* panel patrí k vybranému prvku; jedna správa po výbere
+  nemá preteky medzi výberom a prepnutím, ktoré panel pri zmene výberu resetuje.
+- *Vrátiť obsah panelu cez live kanál:* duplikát `ifc_get`.
+
+**Otvorené:** zvýraznenie vlastnosti typu (zdedenej) a vlastnosti v Quantities upstream focus nevie.
