@@ -7,6 +7,8 @@ export type ObjectType =
   | "person"
   | "organization"
   | "document"
+  // Časť dokumentu (IfcDocumentReference, napr. strana výpisu skladieb, D-104).
+  | "document_reference"
   | "system"
   // Projekt, zóny a skupiny z IFC (D-088): IfcProject, IfcZone, IfcSpatialZone, IfcGroup.
   | "project"
@@ -29,6 +31,7 @@ export const OBJECT_TYPE_LABEL: Record<ObjectType, string> = {
   person: "Osoba",
   organization: "Organizácia",
   document: "Dokument",
+  document_reference: "Časť dokumentu",
   system: "Systém",
   project: "Projekt",
   zone: "Zóna",

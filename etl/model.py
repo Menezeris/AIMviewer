@@ -13,6 +13,9 @@ from typing import Any, Optional
 
 @dataclass
 class DocumentExt:
+    """Prípona `documents`: IfcDocumentInformation, alebo IfcDocumentReference (D-104) so
+    `referenced_document_ref` na dokument, ktorého časť (napr. stranu) označuje."""
+
     identification: Optional[str] = None
     description: Optional[str] = None
     location: Optional[str] = None
@@ -22,6 +25,12 @@ class DocumentExt:
     status: Optional[str] = None
     valid_from: Optional[str] = None
     valid_until: Optional[str] = None
+    creation_time: Optional[str] = None
+    last_revision_time: Optional[str] = None
+    electronic_format: Optional[str] = None
+    # `supabase` (súbor v buckete `documents`) | `unresolved`; dopĺňa load (documents.py)
+    storage_type: str = "unresolved"
+    referenced_document_ref: Optional[str] = None   # IfcDocumentReference.ReferencedDocument
 
 
 @dataclass
@@ -54,7 +63,7 @@ class ObjectRow:
 @dataclass
 class Edge:
     """Hrana objekt→objekt, IFC-kanonická (D-048): edge_type ∈ aggregates/contained/
-    defined_by_type/member_of/has_document/responsible_for/assigns_to_group.
+    defined_by_type/member_of/has_document/responsible_for/assigns_to_group/document_part.
     D-051: `edge_type` → `rel_type` mapuje `manifest.EDGE_TYPE_TO_REL_TYPE`;
     zapisuje sa do generickej `relationships` (db.py). `role` je nullable."""
 
