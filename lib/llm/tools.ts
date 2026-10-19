@@ -7,6 +7,8 @@ import type { ToolDefinition } from "./provider";
 import { docOp } from "@/lib/viewer-ops";
 import { mergeIfcActions, type AskAction } from "./actions";
 import { VIEW_TOOL_DEFINITIONS, VIEW_TOOL_NAMES, execViewTool } from "./view-tools";
+import { execScopedStyle } from "./style-scope";
+import { needsScopedStyle } from "./style-plan";
 
 /**
  * Read-only tools LLM rozhrania (D-056) — tool-calling nad whitelistom, NIE
@@ -529,6 +531,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "(napr. domain=hvac + model=VZT). Výber podľa HODNOTY VLASTNOSTI psetu " +
       "(nosné prvky, vonkajšie, požiarna odolnosť…) = property + value (presná " +
       "zhoda, dedičnosť z typu zahrnutá) — NIKDY neaproximuj vlastnosť triedami. " +
+      "Systém (VZT vetva, ZTI...), zóna a podlažie: system / system_type / zone / " +
+      "storey rozbalia členov v grafe AIM (NIE id systému v ids_or_refs - to vyberie len " +
+      "samotný systém). Prvky mimo systémov: not_in_system=true. Všetky zadané kritériá " +
+      "platia naraz (AND), napr. ifc_type=IfcDuctFitting + storey=1NP + system=Prívod. " +
+      "Viac farieb naraz = groups: [{label, color, ...filter}] s action=colorize (top-level " +
+      "filter platí pre všetky skupiny); vráti počet prvkov na skupinu. " +
       "Efekty sa hromadia, kým ich nezruší show_all/reset_colors. Viac operácií " +
       "= viac callov (pokojne v jednom kole).",
     inputSchema: {
@@ -609,6 +617,57 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         query: {
           type: "string",
           description: "Alternatíva: prvky podľa názvu/object_ref (ilike substring)",
+        },
+        system: {
+          type: "string",
+          description:
+            "Členovia systému (IfcDistributionSystem) podľa id, object_ref alebo názvu; presná " +
+            "zhoda, inak všetky systémy, ktorých názov text obsahuje (Prívod = Prívod-1NP, " +
+            "Prívod-2NP...). Odpoveď vráti zhodné systémy.",
+        },
+        system_type: {
+          type: "string",
+          description: "Členovia systémov s týmto predefined_type (VENTILATION, EXHAUST, SEWAGE...)",
+        },
+        not_in_system: {
+          type: "boolean",
+          description: "true = len prvky, ktoré nepatria do žiadneho systému (s ifc_type/storey)",
+        },
+        zone: {
+          type: "string",
+          description:
+            "Zóna podľa id, object_ref alebo názvu: IfcZone = jej miestnosti a prvky v nich " +
+            "(len miestnosti: ifc_type=IfcSpace), IfcSpatialZone = prvky v nej, IfcGroup = členovia",
+        },
+        storey: {
+          type: "string",
+          description: "Podlažie (1NP, 2.NP, object_ref): miestnosti a prvky na ňom",
+        },
+        groups: {
+          type: "array",
+          description:
+            `Viac skupín s vlastnou farbou v jednom volaní (len action=colorize, max 12): ` +
+            `každá {label, color, + ľubovoľné filtre z tohto toolu}; top-level filtre platia ` +
+            `pre všetky skupiny. Spolu max 500 prvkov do 3D.`,
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string" },
+              color: { type: "string", description: "Hex RRGGBB" },
+              system: { type: "string" },
+              system_type: { type: "string" },
+              zone: { type: "string" },
+              storey: { type: "string" },
+              ifc_type: { type: "string" },
+              ifc_types: { type: "array", items: { type: "string" } },
+              predefined_type: { type: "string" },
+              property: { type: "string" },
+              value: { type: "string" },
+              model: { type: "string" },
+              not_in_system: { type: "boolean" },
+            },
+            required: ["color"],
+          },
         },
       },
       required: ["action"],
@@ -1733,6 +1792,11 @@ export class AskToolRuntime {
         label: `3D: ${opLabel[action]}`,
       });
       return { ok: true, applied: action };
+    }
+
+    // Systém, zóna, podlažie, AND kritériá a skupiny s farbou (D-096): členov rozbalí graf AIM.
+    if (needsScopedStyle(input)) {
+      return execScopedStyle(action, input, (a) => this.actions.push(a), { domainTypes: DOMAIN_IFC_TYPES });
     }
 
     let color = "";

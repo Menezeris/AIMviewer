@@ -3919,11 +3919,56 @@ s rýchlym CI. Most sa rozširuje o dáta na zobrazenie a o správy "otvor akciu
 - *Všetko v hostovi, aj odznaky a záznamy:* host do panelov v iframe kresliť nevie; overlay nad
   iframe by sa rozišiel s rozložením viewera.
 
+### D-096 - `style_in_3d`: systém, zóna a podlažie ako filtre, AND kritériá, skupiny s farbou a počty
+
+**Dátum:** 2026-10-19 · **Stav:** navrhnuté (požiadavka z konektora, issue #68), čaká na Samuela
+· **Súvisí:** D-066, D-087, D-088, D-089, D-090
+
+**Kontext:** "zafarbi celú prívodnú vetvu" zafarbilo len samotný systém, lebo `style_in_3d`
+vie triedu, doménu, model, vlastnosť a explicitné prvky, ale nie členov systému ani zóny.
+Kritériá sa nedali kombinovať (trieda AND podlažie AND systém) a viac farieb znamenalo viac
+volaní bez počtov. Originál `@ifc-lite/mcp` má `viewer_colorize` len podľa triedy alebo
+GlobalId a systém ani zónu nepozná (graf AIM), takže podľa D-087 bod 3 ide o vlastné rozšírenie.
+
+**Rozhodnutie:**
+1. **Rozšírenie existujúceho `style_in_3d`, nie nový tool** (model ho už pozná). Nové parametre
+   `system` (id, object_ref alebo názov; presná zhoda, inak všetky obsahujúce text, takže
+   "Prívod" = všetky prívody), `system_type` (predefined_type systému), `not_in_system`,
+   `zone`, `storey` a `groups`.
+2. **Členstvo sa rozbalí v grafe AIM** (server, nie viewer): systém a IfcGroup cez
+   `rel_assigns_to_group` rekurzívne; IfcZone = jej miestnosti a prvky v nich (`v_zone_elements`,
+   D-089, pri chýbajúcom pohľade rovnaká logika z hrán); IfcSpatialZone = prvky v nej
+   (contained aj referenced); podlažie = miestnosti podlažia a prvky natívne na podlaží alebo v
+   jeho miestnostiach, bez odvodených referencií (prvok nemá byť na dvoch podlažiach).
+3. **AND:** všetky zadané kritériá vrátane triedy, domény, predefined_type, vlastnosti, textu a
+   modelu (`ifc_guid_history.source` = `IFC import:<model>`) sa prenikajú. Farbia sa len uzly s
+   geometriou (asset, space, spatial_zone).
+4. **`groups`** (len `colorize`, max 12): `{label, color, + filtre}`, top-level filter platí pre
+   všetky skupiny. Jedna URL akcia s viacerými ops (D-066 formát GUIDov, fork sa nemení).
+   Strop 500 GUIDov na volanie (URL akcie max 16 000 znakov) delený medzi skupiny, odpoveď
+   vráti počet na skupinu, zhodné systémy/zóny, počet poslaných do 3D a poznámku pri orezaní.
+5. **Bez pevnej palety podľa typu systému:** predefined_type prívod od nasávania (oba
+   VENTILATION) ani odvod od výfuku (oba EXHAUST) nerozlíši; prompt vedie model k skupinám podľa
+   názvu systému s odporúčanými farbami. Pevná paleta v kóde = otázka pre Samuela (#68).
+6. Logika je v `lib/llm/style-plan.ts` (čistá, testy) a `lib/llm/style-scope.ts` (DB), v
+   `tools.ts` len schéma a vetva, ktorá doň deleguje. Pôvodné volania bez nových parametrov
+   idú nezmenenou cestou (množinový selektor viewera pre tisíce prvkov ostáva).
+
+**Dôsledky:** filter systému ukáže len to, čo nesie model: Prívod-1NP má v DB 8 členov (stav
+2026-10-19), ostatné VZT systémy spolu ~1000. Výber nad podlažím ide cez DB, takže je
+ohraničený stropom 500 GUIDov; celé triedy bez podlažia ďalej rieši selektor viewera.
+
+**Zavrhnuté:**
+- *Nový tool `style_in_3d_rozsirenie`:* dva tools na to isté by model mýlili.
+- *Závislosť na `ifc_relations` (#67):* rozbalenie členov je pár dopytov nad `rel_*` views.
+- *Selektor systému vo vieweri (fork):* viewer nepozná graf AIM; D-091 dáva dáta hostovi.
+
 ---
 
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-096 (`style_in_3d` systém/zóna/podlažie, AND, skupiny):** nové filtre `system`, `system_type`, `not_in_system`, `zone`, `storey` rozbalia členov v grafe AIM, kritériá sa prenikajú, `groups` farbí viac skupín naraz s počtami; strop 500 GUIDov na volanie; bez zmeny forku.
 - **2026-10-19** - **D-090 dodatok (issue len na pokyn):** Claude zápis len ponúkne, `request_tool`/`report_feedback` volá až na výslovný pokyn Samuela.
 - **2026-10-19** - **D-090 dodatok (strop a fronta):** najviac 3 súbežné sessions (`FEEDBACK_MAX_SESSIONS`), ďalšie issues so štítkom `fronta`, session po PR uvoľní miesto a pošle notifikáciu, ďalšiu spustí tool `start_queued_session`; `request_tool.start_session=false` pre dávky.
 - **2026-10-18** - **D-091 (kde žije AIM funkcia):** predvolene AIMviewer; do forku len zobrazenie, ktoré musí byť vnútri panelov viewera (odznaky, záznamy, lokálne prepínače); akcie meniace dáta robí host, tlačidlo vo forku ich len otvorí.

@@ -442,6 +442,41 @@
       "expect": { "tools_called": ["set_view_mode"], "actions_match": ["section_clear::", "show_all::", "reset_colors::"] },
       "verified": false,
       "notes": "D-083: set_view_mode mode=3d reset=true."
+    },
+    {
+      "id": "style-system-branch",
+      "category": "view",
+      "question": "Zafarbi celú prívodnú vetvu 1NP na červeno.",
+      "expect": { "tools_called": ["style_in_3d"], "actions_match": ["colorize:ef4444:[0-9A-Za-z_$]{22}"] },
+      "verified": false,
+      "notes": "D-096 (#68): style_in_3d system=Prívod-1NP, nie id systému v ids_or_refs. V DB 8 členov (stav 2026-10-19)."
+    },
+    {
+      "id": "style-groups-fittings",
+      "category": "view",
+      "question": "Označ všetky tvarovky na 1NP, prívod červeno, odvod modro.",
+      "expect": {
+        "tools_called": ["style_in_3d"],
+        "actions_match": ["colorize:ef4444:[0-9A-Za-z_$]{22}", "colorize:3b82f6:[0-9A-Za-z_$]{22}"]
+      },
+      "verified": false,
+      "notes": "D-096 (#68): jeden call s ifc_type=IfcDuctFitting + storey=1NP + groups [system Prívod, system Odvod]; odpoveď má počty na skupinu."
+    },
+    {
+      "id": "style-zone-isolate",
+      "category": "view",
+      "question": "Izoluj miestnosti zo zóny Nájomné priestory.",
+      "expect": { "tools_called": ["style_in_3d"], "actions_match": ["isolate::[0-9A-Za-z_$]{22}"] },
+      "verified": false,
+      "notes": "D-096 (#68): zone=Nájomné priestory + ifc_type=IfcSpace; zóna má 4 vnorené zóny a 32 miestností (stav 2026-10-19)."
+    },
+    {
+      "id": "style-not-in-system",
+      "category": "view",
+      "question": "Ukáž IfcDuctSegment na 2NP, ktoré nepatria do žiadneho systému.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-096 (#68): ifc_type=IfcDuctSegment + storey=2NP + not_in_system=true (colorize alebo isolate)."
     }
   ]
 }
