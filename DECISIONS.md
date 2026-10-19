@@ -4086,7 +4086,7 @@ merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo fo
 ---
 
 ### D-095 - `ifc_search`: full-text priamo v IFC súbore, zdroj pri každom výsledku
-**Status:** rozhodnuté (2026-10-19), implementované (issue #66, PR #84).
+**Status:** rozhodnuté (2026-10-19), implementované (issue #66, PR #89).
 **Rozširuje D-059, D-084, D-087.**
 
 **Kontext:** Claude cez konektor nenašiel "karuselové dvere" ani "prenajímateľné priestory".
