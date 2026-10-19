@@ -16,6 +16,8 @@ export interface LivePayload {
   /** Kto príkaz poslal (zobrazí sa vo vieweri). */
   from: string;
   sentAt: string;
+  /** Id príkazu pre potvrdenie `applied` (D-101). */
+  cmdId?: string;
 }
 
 export function liveChannel(): string | null {
@@ -33,12 +35,13 @@ export async function broadcastLive(
   channel: string,
   actions: AskAction[],
   fetchImpl: typeof fetch = fetch,
+  cmdId?: string,
 ): Promise<{ ok: boolean; status: number }> {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return { ok: false, status: 0 };
 
-  const payload: LivePayload = { actions, from: "Claude", sentAt: new Date().toISOString() };
+  const payload: LivePayload = { actions, from: "Claude", sentAt: new Date().toISOString(), ...(cmdId ? { cmdId } : {}) };
   const res = await fetchImpl(`${url.replace(/\/$/, "")}/realtime/v1/api/broadcast`, {
     method: "POST",
     headers: {

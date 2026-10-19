@@ -32,7 +32,7 @@ export type QueryOutcome =
   | { ok: true; reply: LiveReplyPayload }
   | { ok: false; reason: "not_configured" | "channel_error" | "timeout" };
 
-async function connect(channel: string): Promise<QueryChannel | null> {
+export async function connect(channel: string): Promise<QueryChannel | null> {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
@@ -59,14 +59,20 @@ export async function queryLiveViewer(
   guids: string[] = [],
   opts: { timeoutMs?: number; rev?: string; open?: (channel: string) => Promise<QueryChannel | null> } = {},
 ): Promise<QueryOutcome> {
-  const ch = await (opts.open ?? connect)(channel);
-  if (!ch) return { ok: false, reason: "not_configured" };
   const payload: LiveQueryPayload = {
     id: randomUUID(),
     query,
     ...(guids.length ? { guids } : {}),
     ...(opts.rev ? { rev: opts.rev } : {}),
   };
+  // Teplý kanál inštancie (D-101): bez nového websocketu a prihlásenia pri každej otázke.
+  if (!opts.open) {
+    const { warmChannel } = await import("./warm-channel");
+    const warm = await warmChannel(channel);
+    if (warm) return askWarm(warm, payload, opts.timeoutMs ?? QUERY_TIMEOUT_MS);
+  }
+  const ch = await (opts.open ?? connect)(channel);
+  if (!ch) return { ok: false, reason: "not_configured" };
 
   return new Promise<QueryOutcome>((resolve) => {
     let settled = false;
@@ -88,5 +94,25 @@ export async function queryLiveViewer(
         done({ ok: false, reason: "channel_error" });
       }
     });
+  });
+}
+
+async function askWarm(
+  warm: import("./warm-channel").WarmChannel,
+  payload: LiveQueryPayload,
+  timeoutMs: number,
+): Promise<QueryOutcome> {
+  return new Promise<QueryOutcome>((resolve) => {
+    let settled = false;
+    const done = (outcome: QueryOutcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      off();
+      resolve(outcome);
+    };
+    const timer = setTimeout(() => done({ ok: false, reason: "timeout" }), timeoutMs);
+    const off = warm.onReply(payload.id, (reply) => done({ ok: true, reply }));
+    warm.send(LIVE_QUERY_EVENT, payload).catch(() => done({ ok: false, reason: "channel_error" }));
   });
 }

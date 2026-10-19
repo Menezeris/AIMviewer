@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 
 import { NextResponse, after } from "next/server";
 
@@ -16,6 +16,8 @@ import {
   execViewerQueryTool,
 } from "@/lib/live/viewer-query-tools";
 import { lensCountsText } from "@/lib/live/lens-counts";
+import { ACK_TIMEOUT_MS, appliedText, notAppliedText } from "@/lib/live/applied-text";
+import { expectApplied } from "@/lib/live/warm-channel";
 import { mcpInstructions } from "@/lib/llm/system-prompt";
 import { AskToolRuntime, TOOL_DEFINITIONS } from "@/lib/llm/tools";
 import { callAction, writeCallLog } from "@/lib/mcp/call-log";
@@ -66,6 +68,8 @@ const ENGINE_ENABLED = process.env.ENGINE_ENABLED === "1" || ENGINE_SPIKE;
 
 /** Prvé volanie v tejto inštancii funkcie = studený štart (D-100). */
 let instanceWarm = false;
+/** Predčítanie motora už v tejto inštancii beží alebo dobehlo (D-101). */
+let enginePreloaded = false;
 
 /** Čas, ktorý volanie strávilo načítaním modelov do cache motora (0 = boli teplé). */
 async function engineLoadMs(since: number): Promise<number> {
@@ -140,20 +144,29 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
     if (!channel) {
       text.push(`Živý viewer nie je nastavený (chýba LIVE_CHANNEL). Odkaz na otvorenie:\n${links}`);
     } else {
+      // D-101: čakanie na potvrdenie sa prihlási ešte pred odoslaním príkazu (teplý kanál inštancie).
+      const cmdId = randomUUID();
+      const waitApplied = await timer.phase("channel", () => expectApplied(channel, cmdId).catch(() => null));
       const sent = await timer.phase("broadcast", () =>
-        broadcastLive(channel, actions).catch(() => ({ ok: false, status: 0 })),
+        broadcastLive(channel, actions, fetch, cmdId).catch(() => ({ ok: false, status: 0 })),
       );
       text.push(
         sent.ok
           ? `Odoslané do živého viewera. Záložný odkaz:\n${links}`
           : `Odoslanie do živého viewera zlyhalo (HTTP ${sent.status}). Odkaz na otvorenie:\n${links}`,
       );
-      // Počty AIM chat lens priamo z viewera (D-096): tie isté, čo používateľ vidí v paneli Lens.
-      const lensRev = runtime.lensRev;
-      if (sent.ok && lensRev) text.push(await timer.phase("lens", () => lensCountsText(channel, lensRev)));
-      // D-092: rez potvrdí poloha roviny z viewera, nie len odoslanie príkazu.
-      if (sent.ok && name === "set_section" && args.action === "set") {
-        text.push(await timer.phase("readback", () => readBackSection(channel)));
+      // Potvrdzuje len viewer (`/ifc`); karta prvku alebo výkres je len navigácia.
+      if (sent.ok && waitApplied && actions.some((a) => a.url.startsWith("/ifc"))) {
+        const t0 = Date.now();
+        const applied = await timer.phase("ack", () => waitApplied(ACK_TIMEOUT_MS));
+        text.push(applied ? appliedText(name, applied, Date.now() - t0) : notAppliedText(ACK_TIMEOUT_MS));
+      } else if (sent.ok) {
+        // Bez teplého kanála pôvodné čítanie stavu (D-096 počty Lens, D-092 poloha rezu).
+        const lensRev = runtime.lensRev;
+        if (lensRev) text.push(await timer.phase("lens", () => lensCountsText(channel, lensRev)));
+        if (name === "set_section" && args.action === "set") {
+          text.push(await timer.phase("readback", () => readBackSection(channel)));
+        }
       }
     }
   }
@@ -186,9 +199,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   };
   // D-100: Claude sa pripája (initialize / tools/list) -> modely motora sa načítajú vopred,
   // prvé ifc_* volanie potom nečaká na stiahnutie a parsovanie.
-  if (ENGINE_ENABLED && payloadMethods(payload).some((m) => m === "initialize" || m === "tools/list")) {
+  // D-101: aj prvá požiadavka na studenú inštanciu (Claude sa nepripája nanovo, ale
+  // volanie trafí novú inštanciu) - import motora a modely, kým beží DB tool.
+  if (ENGINE_ENABLED && (!enginePreloaded || payloadMethods(payload).some((m) => m === "initialize" || m === "tools/list"))) {
+    enginePreloaded = true;
     after(async () => {
-      const { preloadEngineModels } = await import("@/lib/engine/preload");
+      const [{ preloadEngineModels }] = await Promise.all([import("@/lib/engine/preload"), import("@/lib/engine/run")]);
       await preloadEngineModels();
     });
   }

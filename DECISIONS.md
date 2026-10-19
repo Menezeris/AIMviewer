@@ -4195,6 +4195,7 @@ merajú lokálne (skill `aim-feature`). Detail: `docs/FORK_MAINTENANCE.md` vo fo
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-101 (potvrdenie príkazov viewera):** `ACK_REQUEST`/`APPLIED` s `cmdId` namiesto pevných limitov, fronta príkazov vo forku počas načítania, `ISOLATE` presná množina a Lens `mode: add` rozšíri izoláciu (#95), `CLEAR_FOCUS` (#94), widget rezu trvalo (#63), príkaz na `/ifc` bez navigácie, teplý Realtime kanál, predčítanie motora aj na studenej inštancii.
 - **2026-10-19** - **D-100 dodatok (meranie v iad1, región `arn1`):** 12 úloh správne, 6 nad stropom volaní; server väčšinou pod 1 s, čas tvoria počty volaní; funkcie presunuté do `arn1` pri databáze.
 - **2026-10-19** - **D-100 (latencia MCP konektora):** log volaní `mcp_call_log` s fázami, eval úlohy konektora merané agentom (`eval/mcp-tasks.json`), predčítanie IFC motora pri pripojení, panel chatu vo vieweri skrytý, `ifc_property_values` číta aj Qto (#96); región `arn1` samostatne po baseline (#97).
 - **2026-10-19** - **D-090 dodatok (`feedback_comment`, #98):** komentár do issue konektora (štítok `mcp`, aj zatvoreného, `reopen` na pokyn) s druhom `eval_round` / `result` / `note`, vráti odkaz; `feedback_status` označí komentáre konektora (`via_connector`).
@@ -4593,3 +4594,50 @@ ale 6 nad stropom volaní (E1 14 volaní a 55 s, E3 6 volaní a 38 s). Server v�
 počty z Lens); pomalé sú dotazy s viacerými kolami do DB (`get_spatial_path` 2,5 s,
 `get_model_stats` 1,3 s). Čas teda tvoria hlavne počty volaní (kolo 2 a 3), región skráti každé
 kolo do DB: funkcie idú do `arn1` (`vercel.json`), pri Supabase `eu-north-1`.
+
+---
+
+### D-101 - Potvrdenie príkazov viewera, fronta počas načítania, príkaz bez renderu /ifc
+**Status:** rozhodnuté (2026-10-19, kolo 2 plánu D-100, Samuel: zlučovať po zelenom CI a živom
+overení), vetva `claude/loving-sagan-nw4ma8` v AIMvieweri aj vo forku Menezeris/ifc-lite.
+Rieši #95, #94 a #63 (zastaraný readback, widget); súčasť #97. Nadväzuje na D-085, D-092, D-096.
+
+**Kontext:** meranie D-100 (iad1, headless viewer) ukázalo, že server je väčšinou pod 1 s, ale
+úlohy vo vieweri stoja 3 až 14 volaní: readback rezu vrátil stav spred príkazu (E1 zopakoval rez),
+Lens `mode: add` izoláciu nahradil namiesto rozšírenia (E2 ju skladal znova), viewer zahodil
+príkazy počas načítania a oranžové zvýraznenie sa nedalo zrušiť. Každý UI úkon navyše prešiel
+350 ms dávkou, `router.push` a serverovým renderom `/ifc` (7 DB dotazov), a server pri každom
+čítaní otváral nový websocket a čakal pevným limitom (4 s rez, 10 s Lens).
+
+**Rozhodnutie:**
+1. **Potvrdenie príkazu:** server pošle príkaz s `cmdId`, host za jeho bridge správy pridá
+   `ACK_REQUEST {cmdId}` a fork po ich vykonaní (aj asynchrónnych krokov: rez cez prvok, kamera,
+   Lens) odpovie `APPLIED {cmdId, ok, issues, state}` so stavom po príkaze. Host ho pošle späť
+   udalosťou `applied`; MCP tool vráti potvrdený stav (rez, izolácia, zvýraznenie, súhrn Lens)
+   namiesto "odoslané". Bez potvrdenia do 3 s tool povie, že viewer nepočúva, a netvrdí výsledok.
+   Čo sa nevykonalo (prvok sa nenašiel, neznáme podlažie), je v `issues` a `ok: false`.
+2. **Fronta vo forku:** príkazy pred načítaním modelov a dotečením geometrie sa radia a vykonajú
+   potom v poradí (`aim/command-gate.ts`); rez nad podlažím sa tak počíta voči finálnej obálke.
+3. **Izolácia:** `ISOLATE` nastaví presnú množinu (nie prepínač), `ISOLATE_ADD` / `ISOLATE_REMOVE`
+   ju menia, Lens z chatu s `mode: add` izoláciu rozšíri; `style_in_3d(isolate, mode=add)` je teda
+   "pridaj aj schodiská" jedným volaním (#95).
+4. **Zvýraznenie:** `CLEAR_FOCUS` (tool `show_in_3d clear=true`, op `clear_focus`) a prázdny
+   `FOCUS` zrušia oranžovú bez ostatných farieb; `view_state` hlási `focus` (#94).
+5. **Widget rezu:** voľba `show_widget` platí aj pre ďalší rez; AIM-FORK v `SectionHint` a
+   `SectionVisualization` skryje nápovedu aj rukoväť (#63).
+6. **Príkaz na mieste:** `components/live-channel.tsx` na `/ifc` príkaz vykoná cez
+   `lib/live/viewer-apply-bus.ts` priamo vo vieweri a URL len prepíše (`history.replaceState`),
+   dávka 50 ms namiesto 350 ms; z inej stránky naviguje ako doteraz a potvrdí po načítaní.
+7. **Teplý kanál:** server drží jeden prihlásený Realtime kanál na inštanciu
+   (`lib/live/warm-channel.ts`, nečinný 60 s sa otvorí nanovo), otázky aj potvrdenia sa párujú
+   podľa id. Predčítanie IFC motora beží aj na prvej požiadavke studenej inštancie.
+
+**Zavrhnuté:** potvrdenie v každej vetve príkazu (veľa zásahov do forku, jedno `ACK_REQUEST` za
+príkazmi stačí, lebo most ich vybavuje v poradí); vlastná fronta v hostovi (fork vie, kedy je
+geometria hotová, host nie); nový tool na pridanie k izolácii (existujúci `mode: add` stačil,
+chyba bola vo forku).
+
+**Overenie:** fork - 94 AIM testov, `tsc`, kontroly zdrojov, revert oracle 8/8 `OBSERVED`
+(`docs/architecture/evidence/aim-d101-command-ack/`), živo v iframe s AC20-FZK-Haus (fronta,
+izolácia 13/13/14/13, focus, widget, Lens add 13 -> 14), vstupný balík +1 429 B voči main
+(predschválené). AIMviewer - vitest, `tsc`, eslint.
