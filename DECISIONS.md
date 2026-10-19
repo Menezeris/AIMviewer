@@ -2819,6 +2819,22 @@ Lobby", „Nájomný priestor") exportované ako IfcSpace (patria do IfcZone/Ifc
 1. NP má len dve skutočné miestnosti a 5. NP žiadnu. Odvodzovač to hlási ako prekrývajúce
 sa priestory; náprava patrí do modelu, nie do kódu.
 
+**Dodatok 2026-10-19 (#92): steny IfcFacetedBrep sa preorientujú.** Nález "131 zo 139
+vyústení mimo tela miestnosti" vyššie nebol stav modelu, ale chyba odvodzovača. Väzbu
+nedostal **žiadny** prvok s telom `IfcFacetedBrep` (568 z 568 v aktuálnych ASR + VZT z bucketu 19. 10.:
+výustky a tvarovky cez `IfcMappedItem` typu, potrubia s telom Brep aj odvodňovače ASR),
+zatiaľ čo `IfcExtrudedAreaSolid` a `IfcSurfaceCurveSweptAreaSolid` prechádzali. Revit
+exportuje tieto telá s nejednotne orientovanými stenami a presný test BVH stromu voči telu
+priestoru ich minie. Hypotéza z issue (mapovaná geometria, chýbajúca trieda) neplatí:
+`IfcAirTerminal` je `IfcDistributionElement` a tvar mapovaného prvku je v strome na správnom
+mieste. Oprava: iterátor má `reorient-shells`. Výsledok nad ASR + VZT: 1061 z 1092 prvkov
+v priestore (predtým 513), 948 inside a 188 partial, bez prekrývajúcich sa priestorov a bez
+duplicitných hrán. Ostáva 31 prvkov mimo priestorov (20 odvodňovačov OV04 na 4.-5. NP, 11
+VZT), to je obsah modelu. Čas výpočtu narástol asi trikrát (lokálne 58 s -> 189 s). Hrany sa
+prepočítajú pri ďalšom behu `python -m etl.derive run` (zápis je idempotentný, D-080 bod 3).
+Duplicitné hrany pri VV.07.01.002 z issue sa nad aktuálnou DB nereprodukujú (tri rôzne
+ciele: 2.12, N2.03, PZ13); odvodzovač duplicity nevydáva a id hrany je deterministické.
+
 ---
 
 ### D-081 — Kontrola modelu voči IDS z knižnice požiadaviek (`etl.ids_check`)
@@ -4198,7 +4214,9 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-104 (dokumenty z IFC):** jedna sada dokumentov z IFC (stará sada E3 sa odstráni), ETL podľa IfcDocumentInformation vrátane stromu a odkazov na strany, efektívne dokumenty objektu cez vzťahy (typ, skupina, zóna, priestorová zóna, odvodené) v DB aj v tooloch, prehliadanie a preklikávanie PDF cieľovo vo vieweri (fork), súbory v buckete podľa `Identification`.
 - **2026-10-19** - **D-103 (rýchle CI forku, rozširuje D-098):** rýchla cesta aj pre PR s úpravami pôvodných viewer súborov len vnútri AIM-FORK blokov (build viewera, súvisiace viewer testy, ratchet viewer JS), nočné plné CI na `main`, nálezy review bota neblokujú merge okrem bezpečnostných (ifc-lite #69).
+- **2026-10-19** - **D-102 (kolo 3 latencie MCP):** kód prvku (SD04.0001, VV.03.01.040) ako cieľ všetkých toolov cez meno v AIM a IFC Name/Tag, predčítané indexy motora (`ifc_search` 2 až 90 ms), kód bez preklepu, `set_section relative_to=ceiling` z Qto miestností (vážený medián), `get_object` s podlažím, kamera na miestnosť a `CLEAR_SELECTION` vo forku.
 - **2026-10-19** - **D-101 (potvrdenie príkazov viewera):** `ACK_REQUEST`/`APPLIED` s `cmdId` namiesto pevných limitov, fronta príkazov vo forku počas načítania, `ISOLATE` presná množina a Lens `mode: add` rozšíri izoláciu (#95), `CLEAR_FOCUS` (#94), widget rezu trvalo (#63), príkaz na `/ifc` bez navigácie, teplý Realtime kanál, predčítanie motora aj na studenej inštancii.
 - **2026-10-19** - **D-100 dodatok (meranie v iad1, región `arn1`):** 12 úloh správne, 6 nad stropom volaní; server väčšinou pod 1 s, čas tvoria počty volaní; funkcie presunuté do `arn1` pri databáze.
 - **2026-10-19** - **D-100 (latencia MCP konektora):** log volaní `mcp_call_log` s fázami, eval úlohy konektora merané agentom (`eval/mcp-tasks.json`), predčítanie IFC motora pri pripojení, panel chatu vo vieweri skrytý, `ifc_property_values` číta aj Qto (#96); región `arn1` samostatne po baseline (#97).
@@ -4646,6 +4664,78 @@ chyba bola vo forku).
 izolácia 13/13/14/13, focus, widget, Lens add 13 -> 14), vstupný balík +1 429 B voči main
 (predschválené). AIMviewer - vitest, `tsc`, eslint.
 
+### D-102 - Hľadanie prvku podľa kódu, predčítané indexy motora, rez pod podhľadom, zrušenie výberu
+**Status:** rozhodnuté (2026-10-19, kolo 3 plánu D-100, Samuel schválil plán), vetva
+`claude/loving-sagan-nw4ma8` v AIMvieweri aj vo forku Menezeris/ifc-lite (PR #68). Súčasť #97.
+Nadväzuje na D-095 (`ifc_search`), D-100 (predčítanie motora), D-101 (potvrdenie príkazov).
+
+**Kontext:** meranie po D-101 (`eval/results/mcp-2026-10-19-arn1-d101.json`) ukázalo:
+- úkony vo vieweri sú pod 2 s;
+- E1 však míňa 8 z 12 volaní na nájdenie ramena SD04.0001 (IfcStairFlight len v IFC, bez `object_ref`);
+- D5 potrebuje 3 volania, lebo VV.03.01.040 je meno, nie `object_ref`;
+- `ifc_search` stojí 4,4 s aj na teplej inštancii, lebo index sa stavia až pri prvom volaní;
+- studené `ifc_*` volania trvajú 4,5 až 6 s;
+- "ukáž miestnosť" kamerou nepohne (IfcSpace je vo forku skrytý) a agent tvrdí opak;
+- zrušiť výber sa nedá;
+- výšky agent vykladá zle: odčítal `FinishFloorHeight` a rez "pod podhľadom na 3NP" spravil pod
+  IfcCovering priradenými k 3NP, ktoré visia pod doskou 3NP a patria miestnostiam 2NP.
+
+Samuel potvrdil:
+- `FinishCeilingHeight` sa meria od hotovej podlahy (IFC), 3.02 má 3,05 m;
+- "podhľad na 3NP" je podhľad miestností 3NP.
+
+**Rozhodnutie:**
+1. **Kód prvku ako cieľ:** `resolveTargetsToGuids` (set_section, set_camera, get_bounds, ifc_get,
+   ifc_relations), `show_in_3d`, `select_in_3d` a `get_object` po neúspechu `object_ref` skúsia
+   presné `objects.name` a potom IFC Name/Tag v motore (`lib/engine/names.ts`, index mien na
+   indexe `ifc_search`). Viacznačný kód je chyba so zoznamom kandidátov (GUID), nevyberá sa
+   potichu. `get_object` vráti aj podlažie (1 až 2 dotazy) a prvok len v IFC označí `in_aim:false`.
+2. **Predčítanie indexov:** `preloadEngineModels` po parsovaní postaví aj index GUID a index
+   `ifc_search` (s menami), takže prvé hľadanie ani `ifc_get` na čerstvej inštancii nečakajú.
+   Lokálne nad ASR+VZT: index 2,5 s v `after()`, potom `ifc_search` 2 až 90 ms, kód 1 ms.
+3. **`ifc_search`:**
+   - kód (SD04.0001) ide najprv presne podľa mena alebo Tagu;
+   - token s číslicou sa nehľadá s preklepom (SD04 už nenájde SD03);
+   - Levenshtein bez alokácie;
+   - triedy (`ifc_types`) sa cachujú na store.
+4. **Rez pod podhľadom:** `set_section(floor, relative_to="ceiling", offset_m=-0.05)`. Server vezme
+   `FinishCeilingHeight` miestností podlažia (`lib/engine/ceiling.ts`), medián vážený plochou
+   (openspace prehlasuje WC), v jednotke modelu (`lengthUnitScale`), a vráti aj rozsah. Pre 3NP
+   vychádza 3,05 m (miestnosti 2,6 až 3,05 m).
+5. **Kamera a výber (fork):**
+   - FOCUS a SELECT na miestnosť alebo zónu najprv zapnú ich skrytú triedu, počkajú na geometriu,
+     zarámujú a počkajú na koniec animácie, takže `APPLIED` nesie novú polohu kamery;
+   - bez geometrie je to problém v `APPLIED`;
+   - `CLEAR_SELECTION` (op `clear_selection`, `select_in_3d clear=true`, súčasť
+     `set_view_mode reset`) zruší výber.
+
+**Zavrhnuté:**
+- **Nový tool "find_element":** agent by mal o krok viac a ostatné tooly by kód aj tak nepoznali.
+- **Fuzzy pre kódy:** našla SD03 namiesto SD04.
+- **IfcCovering podlažia pre výšku podhľadu:** v modeli patria podhľady k podlažiu nad miestnosťou.
+- **Obyčajný medián výšky:** WC a chodby ho stiahli na 2,6 m.
+
+**Overenie:**
+- **AIMviewer:** vitest (nové `lib/engine/names.test.ts`: kód bez preklepu, index mien a Tagu,
+  viacznačnosť, výška podhľadu), `tsc`, eslint; lokálne meranie nad ASR+VZT.
+- **Fork:** 97 AIM testov, revert oracle 3/3 `OBSERVED`
+  (`docs/architecture/evidence/aim-d102-frame-clear/`); balík vstup +19 B a eager +41 B.
+  Naživo v iframe s AC20-FZK-Haus: SELECT miestnosti pohne kamerou, CLEAR_SELECTION zruší výber.
+
+**Dodatok (2026-10-19, opisy a inštrukcie):** inštrukcie MCP (`mcpInstructions`) majú namiesto
+odsekov o UI akciách z promptu chatu (opakovali opisy toolov) krátke pravidlá `MCP_UI_RULES`.
+- **Kód prvku** daj priamo ako cieľ.
+- **"Ukáž X"** = `show_in_3d`, `select_in_3d` len na výber a vlastnosti.
+- **Potvrdenie viewera:** potvrdiť len to, čo viewer potvrdil.
+- **Výšky:** `FinishCeilingHeight` od hotovej podlahy, podhľad podlažia z miestností.
+
+Prompt in-app chatu (`SYSTEM_PROMPT`, `/api/ask`) sa nemení. Inštrukcie MCP majú 14 032 znakov
+namiesto 17 656, aj s novými pravidlami. Cieľ 10 000 by vyžadoval škrtať doménové pravidlá
+(IDS, systémy, psety), ktoré opisy toolov nenesú.
+
+Evaly: D4 (3,05 m, nie 2,90), E3 (12,20 m, strop 2), D5 (strop 1), V1 (kamera sa pohne), nové
+D7 (kód len v IFC) a V4 (zruš výber).
+
 ---
 
 ### D-103 - Rýchle CI forku aj pre malé AIM-FORK úpravy; nočné plné CI; review neblokuje
@@ -4683,3 +4773,130 @@ mergom. Fork sa po merge hneď nasadzuje do produkcie, preto rýchlosť potrebuj
   ťažké lanes by na `main` nebežali nikdy.
 
 **Detail:** `docs/FORK_MAINTENANCE.md` vo forku, sekcia "Fast CI for AIM pull requests".
+
+---
+
+### D-104 - Dokumenty z IFC: jedna sada, dedenie cez vzťahy, prehliadanie vo vieweri
+> **Číslo:** rezervované v #60 ako D-101, ale D-101 do `main` skôr zapísalo potvrdenie príkazov
+> viewera (D-101 vyššie); D-102 a D-103 sú obsadené, preto D-104. Commity, PR #105 a OCB PR #4/#5
+> z 19. 10. ho ešte volajú D-101.
+**Status:** rozhodnuté smerovanie (2026-10-19, Samuel), implementácia po krokoch nižšie; PDF
+súbory dodá Samuel. Nadväzuje na D-014, D-032, D-036, D-046, D-063, D-075, D-076, D-077, D-088,
+D-089, D-091, D-098.
+
+**Kontext (stav 19. 10., ASR v73/v74, overené v súbore, v prod DB aj naživo vo vieweri):**
+- ASR nesie dokumentáciu DSP ako strom IfcDocumentInformation (54: koreň `OCB_SO01_PD`, 9 častí
+  SPR, STU, SIT, ASR, STA, PBR, FYZ, TZB, BIM cez IfcDocumentInformationRelationship
+  `SUBDOCUMENT`, 44 súborov s `Location = ../Dokumentacia/<Identification>.pdf`) a 8
+  IfcDocumentReference na strany 3 až 10 výkresu D.1.1.09 Výpis skladieb (`#page=N`).
+- 163 IfcRelAssociatesDocument: IfcProject 44, IfcSpatialZone 93 (PBR na požiarne úseky, PENB
+  a zónovanie na tepelné zóny), IfcZone 15 (pôdorysy ASR na nájomné jednotky a príslušnosť),
+  IfcGroup S1 až S9 8 (strana výpisu skladieb), IfcCurtainWallType PL01 3. **Žiadna väzba nejde
+  priamo na prvok ani priestor** - k dokumentu sa dostane cez cestu (priestor -> zóna, prvok ->
+  skupina S1.01 -> rodič S1 -> strana, panel LOP -> typ PL01, priestor -> priestorová zóna).
+- ETL (`etl/transform.py` `_collect_documents`) dokumenty nahrá, ale: `object_ref` = Name
+  namiesto Identification, IfcDocumentReference berie ako dokument (8 uzlov
+  `IfcDocumentReference-N` bez názvu, strany aj rodiča), strom dokumentov a 10 priečinkových
+  dokumentov vynechá, súbory nemajú (`storage_type = unresolved`).
+- Popri tom žije stará sada E3 (13 PDF z `podklady/docs.csv`, D-036) s iným pomenovaním, súbormi
+  v buckete, textom strán, 198 väzbami prvok -> výkres (E4) a kalibráciou podkladov; ten istý
+  výkres je tak v DB dvakrát.
+- Viewer aj tooly berú len priame väzby: stránky zóny, priestorovej zóny, skupiny, projektu a
+  typu dokumenty nemajú, AIM karta v 3D ukáže len priame (dvere DD01.07.01 = starý "Pudorys 1NP",
+  priestor 3.01 = nič) a klik na dokument odíde z 3D na `/drawing/[id]`. Knižnica dokumentov vo
+  vieweri (D-075) ukazuje len súbory z bucketu; otvorenie na strane funguje (op
+  `doc:<strana>:<id>` -> `DOCUMENT_OPEN`). `list_relations` mieša väzby z modelu s výkresmi E4,
+  `get_asset_details` dokumenty nevracia.
+
+**Rozhodnutie:**
+1. **Jedna sada dokumentov = dokumenty z IFC.** Stará sada E3 sa odstráni (Samuel 19. 10.):
+   uzly zaniknú (`valid_until`), väzby E4, oblasti `_drawing_links`, text strán a kalibrácia
+   podkladov sa neprenášajú; súbory z bucketu sa zmažú až po nahradení. Väzby z obsahu výkresov
+   a kalibrácia sa, ak budú treba, urobia znova nad IFC dokumentmi vo vrstve viewera (bod 4).
+2. **ETL číta dokumenty podľa IFC:** identita = `Identification`; atribúty IfcDocumentInformation
+   vrátane dnes chýbajúcich (`creation_time`, `last_revision_time`, `electronic_format`, vlastník)
+   aditívnou migráciou; strom dokumentov z IfcDocumentInformationRelationship; IfcDocumentReference
+   ako odkaz na časť dokumentu (stranu) s vlastným názvom ("S1 - Skladba..."), nie ako samostatný
+   dokument. Názvy hrany a tvar odkazu (uzol alebo hrana so stranou) podľa IFC-first (D-046,
+   D-048) rozhodne dodatok spolu so `SCHEMA.md` pri implementácii.
+3. **Dokumenty objektu sa hľadajú cez vzťahy, nie len priamo.** Efektívne dokumenty počíta DB
+   (pohľad, obdoba `v_asset_effective`): objekt -> dokument -> cesta (priamo, cez typ, cez
+   skupinu a jej rodičov, cez zónu, cez priestorovú zónu, cez odvodené vzťahy D-089) + strana;
+   dokumentácia projektu sa ukazuje raz, nie pri každom prvku. Do modelu sa budú dopĺňať ďalšie
+   väzby (Samuel) a pohľad ich zoberie bez zmeny kódu. **Tooly (MCP aj `/ask`) idú cez tie isté
+   cesty:** dokumenty objektu s cestou a odkazom na otvorenie na strane, objekty dokumentu aj
+   zdedené (napr. "ktoré priestory pokrýva PBR pôdorys 2NP"), dokumenty v `get_asset_details`,
+   výkresy z obsahu PDF oddelené od väzieb z modelu. Evaly podľa D-057.
+4. **Prehliadanie dokumentov patrí do viewera** (fork ifc-lite a vrstva AIM nad ním), nie na
+   stránky AIMviewera: otvorenie PDF v karte viewera aj na strane, preklik z prvku na dokument a z
+   dokumentu späť na prvky (D-076), knižnica ako strom IFC dokumentácie, AIM karta otvára dokument
+   vo vieweri. `/drawing/[id]` a karty dokumentov na `/node` sa ďalej nerozvíjajú a ostanú, kým
+   ich vrstva vo vieweri nenahradí. Je to dlhší program; ide podľa D-091 a D-098 (fork len
+   zobrazuje, dáta a výpočty dodá AIMviewer, najprv to, čo fork má: `documentsSlice`,
+   `DocumentsPanel`, `PdfDocumentView`, `DOCUMENT_OPEN` so stranou).
+5. **Súbory:** PDF v buckete `documents`, názov súboru = `Identification` (tak ako ho nesie
+   `Location` v IFC). ETL preloží relatívnu `Location` na URL v buckete, ak súbor existuje
+   (`storage_type = supabase`); inak `unresolved` a UI ukáže "súbor chýba", nie rozbitý odkaz.
+   Text strán (`document_pages`) sa extrahuje zo súborov v buckete, nie z lokálneho priečinka.
+
+**Kroky:** (1) ETL a migrácia podľa bodu 2, (2) pohľad efektívnych dokumentov a tooly, (3)
+viewer: AIM karta a knižnica nad efektívnymi dokumentmi, otvorenie vo vieweri na strane, (4)
+súbory a text strán, keď ich Samuel dodá, (5) odstránenie starej sady. Bod 4 rozhodnutia ako
+celok (preklik z dokumentu na prvky, kalibrácia nad IFC výkresmi) je ďalší program s vlastným
+dodatkom.
+
+**Zavrhnuté:**
+- *Nechať obe sady a prepojiť ich:* dvaja nositelia tej istej informácie (AGENTS, D-017).
+- *Rozkopírovať väzby dokumentov na každý prvok v modeli alebo v ETL:* model aj DB by niesli
+  duplicitu a každá nová väzba v modeli by znamenala znova kopírovať; dedenie počíta pohľad.
+- *Rozvíjať `/drawing/[id]` ako hlavné miesto dokumentov:* cieľ je jedno rozhranie vo vieweri
+  (D-075), dve miesta by sa rozchádzali.
+
+**Dodatok 2026-10-19 (Samuel): skupina AIM v pravej lište viewera, dokumenty so zoskupením a
+vyhľadávaním.** Ľavý panel ostáva stromu modelu, aby nestratil prehľadnosť. AIM panely sa otvárajú
+vpravo ako dnes dokumenty: v pravej lište (rail) pribudne **vlastná skupina "AIM" úplne hore**,
+nad skupinami originálu (Coordinate, Check, Quantify, Automate, Site, Author). Patria do nej
+**Dokumenty** (panel `documents`, D-075, dnes v Coordinate), **AIM vrstvy** (D-089, dnes sekcia v
+ľavom paneli cez `aim/hierarchyPanel.ts`, presunie sa do vlastného pravého panela, čím zmizne aj
+jeden zásah do upstream `HierarchyPanel`) a **Podklady výkresov** (`drawing-underlay`, D-072, dnes
+v Author); ďalšie AIM panely sa pridávajú sem. Skupina sa pridá do `PANEL_GROUPS` v
+`lib/panels/registry.ts` medzi existujúce sentinely `AIM-FORK` (D-098: rail, ribbon a príkazy
+už skupiny čítajú odtiaľ). Stav panela dokumentov vo forku 19. 10.: zoskupuje len podľa `folder`
+od hostiteľa a filtruje len podľa názvu. Doplní sa:
+- **Zoskupenie** podľa poľa zo záznamu dokumentu, ktoré pošle hostiteľ: strom dokumentácie
+  (PD › časť › dokument), časť/profesia, druh (výkres, správa, posudok), nositeľ väzby (projekt,
+  zóna, priestorová zóna, skupina, typ), podlažie (cez zónu a jej priestory), dátum revízie,
+  formát. Viewer zoskupuje genericky podľa kľúčov `meta`, zoznam polí neobsahuje.
+- **Vyhľadávanie v metadátach** (identifikácia, názov, popis, časť, vlastník, dátum) beží v
+  prehliadači nad poslaným zoznamom.
+- **Vyhľadávanie v obsahu** počíta AIMviewer (`document_pages`, `search_documents`, krok 4) a
+  vracia dokument, stranu a úryvok; klik otvorí PDF na strane. Viewer výsledok len zobrazí
+  (D-091, D-098), most dostane dvojicu žiadosť a odpoveď.
+- **Dokumenty výberu:** prepínač "len pre vybraný prvok" ukáže efektívne dokumenty výberu s
+  cestou (krok 2), ten istý zdroj ako AIM karta.
+Krok 3 tým znamená: skupina AIM v lište, panel dokumentov so zoskupením, hľadaním v metadátach a
+prepínačom výberu, AIM vrstvy vpravo, AIM karta nad efektívnymi dokumentmi; hľadanie v obsahu je
+až po kroku 4.
+
+**Dodatok 2026-10-19 - krok 1 urobený (ETL podľa IFC).** Tvar dát (Samuel nenamietal):
+- `IfcDocumentInformation` = `document`, `object_ref` = `Identification`, `ifc_type`
+  `IfcDocumentInformation`; aj 10 priečinkových častí bez súboru (PD, SPR, ASR, PBR...).
+- Strom = `rel_document_information_relationship` (resource ako `rel_member_of`, D-048): časť ->
+  nadradený, `role` = `RelationshipType`. Meno podľa IFC entity, lebo IFC tu koncept má.
+- `IfcDocumentReference` = `document_reference` s príponou `documents` a stĺpcom
+  `referenced_document_id` (IFC atribút `ReferencedDocument` je stĺpec, nie hrana - AGENTS);
+  `object_ref` = `<Identification dokumentu>#page=N`, meno z `Description` (ASR nesie popis
+  strany tam). `/drawing/<odkaz>` presmeruje na dokument na strane.
+- Nové stĺpce `documents`: `creation_time`, `last_revision_time`, `electronic_format`,
+  `referenced_document_id` (migrácia `20261019160000`); `document_owner` = text "Osoba
+  (Organizácia)" ako doteraz.
+- Súbor: load hľadá v `storage.objects` bucketu `documents` súbor s menom z `Location`; nájdený =
+  verejná URL (`storage_type='supabase'`), pôvodná `Location` v `properties._ifc_location`.
+- Dokumenty nemajú GUID, preto `_RETIRE_OBJECTS` (D-088) na ne nedosiahne: nesú
+  `properties._model` a beh `--model` ukončí tie, ktoré model už nevydáva. Starú sadu E3 a
+  dokumenty ETL pred D-104 (bez `_model`) ukončí jednorazovo `python -m etl.documents
+  close-legacy` aj s ich väzbami (E3 na podlažia, E4 na prvky); text strán ostáva v
+  `document_pages`, `search_documents` zaniknuté dokumenty nevidí.
+- Produkcia: re-ETL bez novej revízie robí nový workflow `reetl` v OCB (aktuálna revízia
+  overená cez sha256, `dry_run`, `close_legacy_documents`).
+- Knižnica dokumentov vo vieweri berie priečinok zo stromu dokumentácie (koreň PD sa vynecháva).

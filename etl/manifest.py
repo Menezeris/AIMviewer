@@ -119,8 +119,9 @@ _SPECS: list[RelType] = [
         relating_end="to",
         from_object_types=["project", "site", "building", "floor", "space", "asset",
                            "asset_type", "zone", "spatial_zone", "group"],
-        to_object_types=["document"],
-        description="Väzba objekt → dokument (D-014); role='drawing' pre E4.",
+        to_object_types=["document", "document_reference"],
+        description="Väzba objekt → dokument (D-014) alebo jeho časť (IfcDocumentReference, "
+                    "D-104); role='drawing' pre E4.",
     ),
     RelType(
         rel_type="rel_associates_classification",
@@ -161,6 +162,17 @@ _SPECS: list[RelType] = [
         export_path="resource",
         description="Osoba v organizácii (D-024) — IFC resource, nie IfcRel.",
     ),
+    RelType(
+        rel_type="rel_document_information_relationship",
+        ifc_entity="IfcDocumentInformationRelationship",  # resource, NIE IfcRel (D-104)
+        relating_attr="RelatingDocument",      # = nadradený dokument = náš to_id
+        relating_end="to",
+        from_object_types=["document"],        # časť (RelatedDocuments)
+        to_object_types=["document"],
+        export_path="resource",
+        description="Strom dokumentácie (D-104): časť → nadradený dokument; "
+                    "role = RelationshipType (napr. SUBDOCUMENT). IFC resource, nie IfcRel.",
+    ),
 ]
 
 # Interné ETL `edge_type` (model.py / db.py) → kanonický `rel_type` (D-051).
@@ -174,6 +186,7 @@ EDGE_TYPE_TO_REL_TYPE: dict[str, str] = {
     "assigns_to_group": "rel_assigns_to_group",
     "referenced": "rel_referenced_in_spatial_structure",
     "has_classification": "rel_associates_classification",
+    "document_part": "rel_document_information_relationship",
 }
 
 

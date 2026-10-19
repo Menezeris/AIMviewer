@@ -14,7 +14,8 @@ Geometriu rieši ifcopenshell: BVH strom nad presnými BRep telesami
     prechádza miestnosťou.
 Rozhoduje teda telo IfcSpace tak, ako ho model nesie; žiadna heuristika navyše
 (ak VZT v podhľade nepadne do miestnosti, má model zle definované telo priestoru).
-Modely federácie sa zarovnajú cez IfcMapConversion (`model-offset`).
+Modely federácie sa zarovnajú cez IfcMapConversion (`model-offset`). Steny IfcFacetedBrep
+sa preorientujú (`reorient-shells`), inak telo s opačne otočenými stenami nič nepretne (#92).
 Prvok, ktorý zdrojový súbor už priamo obsahuje/referencuje v tom priestore, sa preskočí.
 """
 
@@ -79,6 +80,9 @@ def _iterator(model, products, offset):
     settings = ifcopenshell.geom.settings()
     settings.set("use-world-coords", True)
     settings.set("iterator-output", ifcopenshell_wrapper.NATIVE)
+    # Revit exportuje rodiny (výustky, tvarovky) ako IfcFacetedBrep s nejednotne orientovanými
+    # stenami; bez preorientovania ich presný test voči telu priestoru minie (#92).
+    settings.set("reorient-shells", True)
     if any(offset):
         settings.set("model-offset", tuple(float(x) for x in offset))
     return ifcopenshell.geom.iterator(settings, model, multiprocessing.cpu_count(), include=products)

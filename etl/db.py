@@ -7,10 +7,12 @@ unique používajú deterministické UUID (`ids.py`). Všetko v jednej transakci
 
 from __future__ import annotations
 
+from typing import Optional
+
 import psycopg
 from psycopg.types.json import Json
 
-from . import ids
+from . import documents, ids
 from .manifest import _SPECS, EDGE_TYPE_TO_REL_TYPE
 from .model import StagedModel
 
@@ -53,7 +55,8 @@ def reset_data(cur) -> None:
 
 
 def load_model(
-    url: str, model: StagedModel, reset: bool = False, scope: str | None = None
+    url: str, model: StagedModel, reset: bool = False, scope: str | None = None,
+    storage_base: Optional[str] = None,
 ) -> dict[str, int]:
     """Zapíše celý staged model v jednej transakcii (commit na konci).
 
@@ -66,12 +69,17 @@ def load_model(
     zmenený typ či klasifikácia. Vzor `etl.derive` (D-080). Objekt bez aktívneho GUID
     dostane `valid_until` (D-088); riadok ostáva (D-010) a pri návrate do modelu ožije.
     Vráti počty uzavretých záznamov.
+
+    `storage_base` = `SUPABASE_URL`: `Location` dokumentov sa preloží na URL súboru v
+    buckete `documents`, ak tam je (D-104, `documents.resolve_locations`).
     """
-    closed = {"edges": 0, "guids": 0, "objects": 0, "repointed": 0}
+    closed = {"edges": 0, "guids": 0, "objects": 0, "documents": 0, "repointed": 0}
     if scope:
         scope_sources(model, scope)
+        documents.mark_model(model, scope)
     with psycopg.connect(url) as conn:
         with conn.cursor() as cur:
+            documents.resolve_locations(model, documents.bucket_names(cur), storage_base)
             if reset:
                 reset_data(cur)
             sys_ids = _load_systems(cur, model)
@@ -152,8 +160,13 @@ def close_stale(cur, model: StagedModel, scope: str) -> dict[str, int]:
         (guid_source(scope), guids),
     ).fetchall()
     retired = cur.execute(_RETIRE_OBJECTS, (guid_source(scope),)).fetchall()
+    # Dokumenty nemajú GUID: model ich značí `_model`, čo už nevydal, zaniká (D-104).
+    docs = [o.object_ref for o in model.objects if o.object_type in documents.DOCUMENT_TYPES]
+    retired_docs = cur.execute(
+        documents.RETIRE_DOCUMENTS, (list(documents.DOCUMENT_TYPES), scope, docs)
+    ).fetchall()
     return {"edges": len(closed_edges), "guids": len(closed_guids), "objects": len(retired),
-            "repointed": repoint_to_successors(cur)}
+            "documents": len(retired_docs), "repointed": repoint_to_successors(cur)}
 
 
 # Ručné väzby (výkresy E4, dokumenty E3, fotky D-073) na zaniknutý objekt prejdú na
@@ -283,22 +296,30 @@ def _load_appendices(cur, model: StagedModel, obj_ids: dict[str, str]) -> None:
             )
         if o.document is not None:
             d = o.document
+            referenced = obj_ids[d.referenced_document_ref] if d.referenced_document_ref else None
             cur.execute(
                 """
                 insert into documents
                   (id, identification, description, location, purpose, revision,
-                   document_owner, status, valid_from, valid_until)
-                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   document_owner, status, valid_from, valid_until, storage_type,
+                   creation_time, last_revision_time, electronic_format, referenced_document_id)
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 on conflict (id) do update set
                   identification = excluded.identification, description = excluded.description,
                   location = excluded.location, purpose = excluded.purpose,
                   revision = excluded.revision, document_owner = excluded.document_owner,
                   status = excluded.status, valid_from = excluded.valid_from,
-                  valid_until = excluded.valid_until
+                  valid_until = excluded.valid_until, storage_type = excluded.storage_type,
+                  creation_time = excluded.creation_time,
+                  last_revision_time = excluded.last_revision_time,
+                  electronic_format = excluded.electronic_format,
+                  referenced_document_id = excluded.referenced_document_id
                 """,
                 (
                     oid, d.identification, d.description, d.location, d.purpose,
                     d.revision, d.document_owner, d.status, d.valid_from, d.valid_until,
+                    d.storage_type, d.creation_time, d.last_revision_time,
+                    d.electronic_format, referenced,
                 ),
             )
         if o.person is not None:

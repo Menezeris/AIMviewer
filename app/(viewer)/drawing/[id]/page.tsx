@@ -1,5 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
+import { fetchDocumentReference } from "@/lib/data/documents";
 import { fetchDrawing } from "@/lib/data/drawing";
 import { fetchDocument } from "@/lib/data/object";
 import DrawingWorkspace from "@/components/drawing-workspace";
@@ -30,7 +31,12 @@ export default async function DrawingPage({
     fetchDrawing(id),
     fetchDocument(id),
   ]);
-  if (!document) notFound(); // nie je dokument
+  if (!document) {
+    // Odkaz na časť dokumentu (IfcDocumentReference, D-104) = jeho dokument na strane.
+    const ref = await fetchDocumentReference(id);
+    if (!ref) notFound(); // nie je dokument
+    redirect(`/drawing/${ref.documentId}${ref.page ? `?page=${ref.page}` : ""}`);
+  }
 
   const pdfUrl = drawing?.location ?? document.location;
   const links = drawing?.links ?? [];

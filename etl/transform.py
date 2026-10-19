@@ -115,6 +115,15 @@ class _RefAllocator:
         self._by_id[entity.id()] = ref
         return ref
 
+    def named_ref(self, entity: Any, base: str) -> str:
+        """Ref z vlastného kľúča (napr. `Identification` dokumentu, D-104) + suffix pri kolízii."""
+        cached = self._by_id.get(entity.id())
+        if cached is not None:
+            return cached
+        ref = self._unique(base)
+        self._by_id[entity.id()] = ref
+        return ref
+
     def ref(self, entity: Any) -> str:
         """Ref už pridelený (asset/typ), inak generický — pre väzby dok./aktorov."""
         return self._by_id.get(entity.id()) or self.generic_ref(entity)
@@ -533,37 +542,98 @@ def _collect_classifications(
 
 
 def _collect_documents(model: ifcopenshell.file, refs: _RefAllocator, staged: StagedModel) -> None:
-    """IfcRelAssociatesDocument → document objekt + rel_associates_document. TODO(model)."""
-    seen: dict[int, str] = {}
+    """Dokumentácia zo súboru (D-104): každý IfcDocumentInformation ako `document` (aj
+    priečinkové časti bez súboru), strom z IfcDocumentInformationRelationship ako
+    `document_part` (časť → nadradený), IfcDocumentReference ako `document_reference`
+    (časť dokumentu, napr. strana) a IfcRelAssociatesDocument ako `has_document`.
+
+    `object_ref` dokumentu = `Identification` (CDE názov, D-036), odkazu =
+    `<Identification dokumentu>#<Identification odkazu>`. `Location` ostáva zo súboru;
+    na URL v buckete ju preloží load (`documents.resolve_locations`)."""
+    doc_refs: dict[int, str] = {}
+    for info in model.by_type("IfcDocumentInformation"):
+        ref = refs.named_ref(info, attr(info, "Identification") or attr(info, "Name") or "IfcDocumentInformation")
+        doc_refs[info.id()] = ref
+        status = attr(info, "Status")
+        staged.objects.append(
+            ObjectRow(
+                object_ref=ref,
+                object_type="document",
+                name=attr(info, "Name"),
+                ifc_type="IfcDocumentInformation",
+                document=DocumentExt(
+                    identification=attr(info, "Identification"),
+                    description=attr(info, "Description"),
+                    location=attr(info, "Location"),
+                    purpose=attr(info, "Purpose"),
+                    revision=attr(info, "Revision"),
+                    document_owner=_actor_label(attr(info, "DocumentOwner")),
+                    status=str(status) if status else None,
+                    valid_from=attr(info, "ValidFrom"),
+                    valid_until=attr(info, "ValidUntil"),
+                    creation_time=attr(info, "CreationTime"),
+                    last_revision_time=attr(info, "LastRevisionTime"),
+                    electronic_format=attr(info, "ElectronicFormat"),
+                ),
+            )
+        )
+
+    for rel in model.by_type("IfcDocumentInformationRelationship"):
+        parent = attr(rel, "RelatingDocument")
+        if parent is None or parent.id() not in doc_refs:
+            continue
+        for child in attr(rel, "RelatedDocuments") or []:
+            if child.id() in doc_refs:
+                staged.edges.append(Edge("document_part", doc_refs[child.id()], doc_refs[parent.id()],
+                                         role=attr(rel, "RelationshipType")))
+
+    for dref in model.by_type("IfcDocumentReference"):
+        target = attr(dref, "ReferencedDocument")
+        target_ref = doc_refs.get(target.id()) if target is not None else None
+        own = attr(dref, "Identification") or attr(dref, "Name") or attr(dref, "Location")
+        base = f"{target_ref}#{own}" if target_ref and own else (own or target_ref or "IfcDocumentReference")
+        ref = refs.named_ref(dref, base)
+        doc_refs[dref.id()] = ref
+        staged.objects.append(
+            ObjectRow(
+                object_ref=ref,
+                object_type="document_reference",
+                # ASR nesie popis strany v Description, Name je prázdne
+                name=attr(dref, "Name") or attr(dref, "Description") or own,
+                ifc_type="IfcDocumentReference",
+                document=DocumentExt(
+                    identification=attr(dref, "Identification"),
+                    description=attr(dref, "Description"),
+                    location=attr(dref, "Location"),
+                    referenced_document_ref=target_ref,
+                ),
+            )
+        )
+
     for assoc in model.by_type("IfcRelAssociatesDocument"):
         info = attr(assoc, "RelatingDocument")
-        if info is None:
+        if info is None or info.id() not in doc_refs:
             continue
-        if info.id() not in seen:
-            ref = refs.ref(info)
-            staged.objects.append(
-                ObjectRow(
-                    object_ref=ref,
-                    object_type="document",
-                    name=attr(info, "Name"),
-                    document=DocumentExt(
-                        identification=attr(info, "Identification"),
-                        description=attr(info, "Description"),
-                        location=attr(info, "Location"),
-                        purpose=attr(info, "Purpose"),
-                        revision=attr(info, "Revision"),
-                        status=str(attr(info, "Status")) if attr(info, "Status") else None,
-                    ),
-                )
-            )
-            seen[info.id()] = ref
-        doc_ref = seen[info.id()]
+        doc_ref = doc_refs[info.id()]
         for obj in attr(assoc, "RelatedObjects") or []:
             obj_guid = attr(obj, "GlobalId")
             if obj_guid:
                 obj_ref = refs.ref(obj)
                 staged.link_classes.setdefault(obj_ref, obj.is_a())
                 staged.edges.append(Edge("has_document", obj_ref, doc_ref, role="document"))
+
+
+def _actor_label(actor: Any) -> Optional[str]:
+    """IfcPerson / IfcOrganization / IfcPersonAndOrganization → čitateľné meno (vlastník dokumentu)."""
+    if actor is None:
+        return None
+    if actor.is_a("IfcPersonAndOrganization"):
+        person = _actor_label(attr(actor, "ThePerson"))
+        org = _actor_label(attr(actor, "TheOrganization"))
+        return f"{person} ({org})" if person and org else person or org
+    if actor.is_a("IfcPerson"):
+        return " ".join(x for x in (attr(actor, "GivenName"), attr(actor, "FamilyName")) if x) or None
+    return attr(actor, "Name")
 
 
 def _collect_group_structure(

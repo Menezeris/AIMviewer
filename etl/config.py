@@ -31,6 +31,11 @@ def database_url() -> str:
     return url
 
 
+def supabase_url() -> str | None:
+    """`SUPABASE_URL` (báza verejných URL v Storage), ak je nastavené."""
+    return os.environ.get("SUPABASE_URL") or None
+
+
 # Verejná URL nasadeného Viewera — báza pre URI-link anotácie vo výkresoch (D-042 B).
 # Env-špecifická: prepíš `SITE_URL` v `.env.local` pre lokál/preview; default = produkcia.
 _DEFAULT_SITE_URL = "https://ai-mviewer.vercel.app"

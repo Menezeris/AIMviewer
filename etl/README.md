@@ -22,6 +22,7 @@ Python pipeline, ktorá načíta IFC model a naplní Supabase schému (`objects`
 | `config.py` | načítanie `DATABASE_URL` |
 | `main.py` | CLI (`--file`, `--dry-run`, `--model`) |
 | `model_publish.py` | revízie IFC modelov: poistka, archív, compare-and-swap, živý kanál (D-086) |
+| `documents.py` | dokumenty z IFC: `Location` → súbor v buckete `documents`, ukončenie starej sady (D-104) |
 
 ## Predpoklady
 - **Python 3.9+** (overené s 3.9 + `ifcopenshell 0.8.4`).
@@ -67,6 +68,24 @@ sú PDF lokálne (`podklady/FINAL`, rovnaký kontrakt ako E4):
 python -m etl.pdf_text --dry-run   # extrakcia + report, bez zápisu
 python -m etl.pdf_text             # idempotentný zápis (delete+insert per dokument)
 ```
+
+### Dokumenty z IFC (D-104)
+Dokumentáciu nesie model: každý `IfcDocumentInformation` je `document` s `object_ref` =
+`Identification` (aj priečinkové časti bez súboru), strom z
+`IfcDocumentInformationRelationship` je `rel_document_information_relationship` (časť →
+nadradený), `IfcDocumentReference` je `document_reference` (napr. strana výpisu skladieb,
+`object_ref` = `<Identification dokumentu>#page=N`). Load preloží `Location`
+(`../Dokumentacia/<Identification>.pdf`) na verejnú URL súboru v buckete `documents`, ak tam
+súbor s rovnakým menom je (`storage_type='supabase'`, treba `SUPABASE_URL`); pôvodná hodnota
+ostane v `properties._ifc_location`. Dokumenty nesú `properties._model`; dokument, ktorý model
+prestane vydávať, `--model` beh ukončí. Starú sadu E3 a dokumenty ETL pred D-104 (bez
+`_model`) jednorazovo ukončí:
+```bash
+python -m etl.documents close-legacy --dry-run   # koľko by sa ukončilo
+python -m etl.documents close-legacy             # dokumenty bez _model + ich väzby
+```
+Na produkcii oboje spúšťa workflow `reetl` v repe OCB (re-ETL aktuálnej revízie bez novej
+revízie, `close_legacy_documents`).
 
 ### `--reset` (nahradenie seedu, E2)
 `--reset` pred loadom `TRUNCATE ... CASCADE` vyprázdni AIM dáta (riadky, nie schému) —
