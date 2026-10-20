@@ -1,8 +1,7 @@
 import { getIfcModels } from "../data/ifc-models";
 import type { ToolDefinition } from "../llm/provider";
 
-import { passthroughDefinitions } from "./passthrough-defs";
-import { SEARCH_FIELDS } from "./search";
+import { PASSTHROUGH_TOOLS, passthroughName } from "./passthrough-defs";
 
 /**
  * Definície `ifc_*` tools IFC motora (D-084) - bez závislostí motora, aby ich
@@ -34,6 +33,19 @@ const whereSchema = {
   },
 };
 
+/** `ifc_models` action -> prevzatý tool balíka (D-087); revisions je vlastný (D-109). */
+export const MODEL_ACTIONS = {
+  revisions: null,
+  info: "model_info",
+  materials: "materials_list",
+  classifications: "classifications_list",
+  audit: "model_audit",
+  schema: "schema_describe",
+} as const;
+export type ModelAction = keyof typeof MODEL_ACTIONS;
+
+export const QUERY_MODES = ["list", "count", "values"] as const;
+
 export function engineToolDefinitions(): ToolDefinition[] {
   const models = modelEnum();
   const model = { type: "string", enum: models, description: `Model federácie (${models.join(", ")})` };
@@ -41,62 +53,45 @@ export function engineToolDefinitions(): ToolDefinition[] {
     {
       name: "ifc_models",
       description:
-        "IFC MOTOR: zoznam IFC modelov federácie a ich aktuálna revízia (vNNN, dátum, autor, súhrn " +
-        "zmien, sha256, výsledok poistky: pridané/odobraté objekty). history = aj predchádzajúce revízie. " +
-        "Na \"je toto najnovšie VZT?\" a \"čo sa zmenilo\"; hlavičku súboru, jednotky a súradnicový " +
-        "systém dáva ifc_model_info. Zavolaj aj, keď nevieš, ktorý model (ASR/VZT) obsahuje hľadané prvky.",
+        "IFC MOTOR: modely federácie a údaje o súbore. action=revisions (default): aktuálna revízia každého " +
+        "modelu (vNNN, dátum, autor, súhrn zmien, výsledok poistky), history = aj predchádzajúce; info: schéma, " +
+        "jednotky, georeferencovanie a počty entít; materials / classifications: materiály a klasifikácie modelu " +
+        "s počtami; audit: zdravie modelu; schema: atribúty a dedičnosť IFC triedy (type, bez modelu). " +
+        "Zavolaj aj, keď nevieš, ktorý model (ASR/VZT) prvky nesie.",
       inputSchema: {
         type: "object",
         properties: {
-          history: { type: "number", description: "Koľko posledných revízií na model (1-20); bez neho len aktuálna" },
+          action: { type: "string", enum: Object.keys(MODEL_ACTIONS) },
+          model: { ...model, description: "Pri info, materials, classifications a audit povinný" },
+          history: { type: "number", description: "revisions: koľko posledných revízií na model (1-20)" },
+          type: { type: "string", description: "schema: IFC trieda, napr. IfcWall" },
+          include_inherited: { type: "boolean", description: "schema: aj zdedené atribúty (default true)" },
         },
       },
     },
     {
       name: "ifc_query",
       description:
-        "IFC MOTOR: nájde prvky priamo v IFC súbore podľa IFC triedy, podlažia a hodnôt psetov - aj " +
-        "ČÍSELNÉ porovnania (plocha > 20, výkon >= 5). Použi na otázky, ktoré DB tools nevedia " +
-        "(číselné porovnanie, vlastnosť, ktorú ETL nenaimportovalo). Vráti prvky s object_ref z AIM, " +
-        "počet nenamapovaných a pole show_in_3d pripravené pre show_in_3d/style_in_3d.",
+        "IFC MOTOR: prvky priamo v IFC súbore podľa triedy, podlažia a hodnôt psetov, aj ČÍSELNÉ porovnania " +
+        "(plocha > 20). mode=list (default): prvky s object_ref a poľom show_in_3d pre show_in_3d/style_in_3d; " +
+        "count: presný počet, aj group_by trieda/podlažie/materiál; values: rôzne hodnoty jednej vlastnosti psetu " +
+        "alebo Qto s počtami (pset + name, 'aké hodnoty má X'). material = prvky s materiálom alebo vrstvou skladby " +
+        "(aj z typu), napr. izolácia, EPS, minerálna vlna: total, skladby s hrúbkou a show_in_3d. Číta vlastnosti " +
+        "výskytu, nie zdedené z typu.",
       inputSchema: {
         type: "object",
         properties: {
-          model,
-          ifc_types: { type: "array", items: { type: "string" }, description: "IFC triedy, napr. [IfcSpace]" },
+          mode: { type: "string", enum: [...QUERY_MODES] },
+          model: { ...model, description: "Model; bez neho len s material (inak všetky)" },
+          ifc_types: { type: "array", items: { type: "string" }, description: "IFC triedy, napr. [IfcSpace]; count a values berú prvú" },
           where: whereSchema,
-          storey: { type: "string", description: "Podlažie podľa štítku AIM (2NP, 2.NP, 3NP)" },
-          limit: { type: "number", description: "Max prvkov vo výsledku (1-500, default 100)" },
+          storey: { type: "string", description: "list: podlažie podľa štítku AIM (2NP, 3NP)" },
+          group_by: { type: "string", enum: ["type", "storey", "material"], description: "count: zoskupiť (s where sa nekombinuje)" },
+          pset: { type: "string", description: "values: pset alebo Qto, napr. Pset_DoorCommon" },
+          name: { type: "string", description: "values: vlastnosť, napr. FireRating" },
+          material: { type: "string", description: "Časť názvu materiálu, vrstvy alebo kategórie (bez diakritiky)" },
+          limit: { type: "number", description: "Max prvkov alebo hodnôt vo výsledku" },
         },
-        required: ["model"],
-      },
-    },
-    {
-      name: "ifc_search",
-      description:
-        "IFC MOTOR - ZDROJ: IFC súbor (nie graf AIM). Full-text v IFC súbore: atribúty (Name, Description, " +
-        "ObjectType, Tag, LongName, PredefinedType...), psety a Qto výskytu aj z typu, klasifikácie a materiály " +
-        "prvkov, priestorov, zón (IfcZone), skupín, systémov aj typov. Bez ohľadu na diakritiku a veľkosť " +
-        "písmen, všetky slová musia sedieť (aj ako začiatok slova), pri preklepe fuzzy. Použi na hľadanie " +
-        "podľa textu, ktorý graf AIM nenesie (popis, LongName zóny, ObjectType, Tag, neimportované psety), " +
-        "a keď search_everything nič nenašiel. Každý výsledok nesie source (ifc = len v súbore, ifc+aim = " +
-        "prvok pozná aj AIM, potom má object_ref), matched (pole a hodnota ako dôkaz) a show_in_3d.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          text: { type: "string", description: "Hľadaný text (slová, kód, hodnota; min 2 znaky)" },
-          model: { ...model, description: "Voliteľne model; inak sa hľadá vo všetkých" },
-          ifc_types: { type: "array", items: { type: "string" }, description: "Voliteľne IFC triedy vrátane podtried, napr. [IfcDoor] alebo [IfcZone]" },
-          fields: {
-            type: "array",
-            items: { type: "string", enum: [...SEARCH_FIELDS] },
-            description: "Voliteľne len tieto časti: attribute | property | quantity | type_property | classification | material",
-          },
-          fuzzy: { type: "boolean", description: "Tolerovať preklepy (default true)" },
-          limit: { type: "number", description: "Max výsledkov (1-200, default 30)" },
-          offset: { type: "number", description: "Posun pre stránkovanie (default 0)" },
-        },
-        required: ["text"],
       },
     },
     {
@@ -113,40 +108,6 @@ export function engineToolDefinitions(): ToolDefinition[] {
           include_type_properties: { type: "boolean", description: "Pridať psety z typu (default true)" },
         },
         required: ["targets"],
-      },
-    },
-    {
-      name: "ifc_count",
-      description:
-        "IFC MOTOR: presný počet prvkov v IFC súbore - celkovo, podľa podmienok where, alebo zoskupený " +
-        "podľa triedy / podlažia / materiálu (group_by; s where sa nekombinuje).",
-      inputSchema: {
-        type: "object",
-        properties: {
-          model,
-          ifc_type: { type: "string" },
-          where: whereSchema,
-          group_by: { type: "string", enum: ["type", "storey", "material"] },
-        },
-        required: ["model"],
-      },
-    },
-    {
-      name: "ifc_property_values",
-      description:
-        "IFC MOTOR: zoznam rôznych hodnôt jednej vlastnosti psetu alebo množstva Qto s počtami (histogram) " +
-        "pre IFC triedu - na otázky 'aké hodnoty má X' a ako podklad pre farbenie podľa hodnoty. " +
-        "`source` hovorí, odkiaľ hodnota je (pset | qto); typové psety nečíta.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          model,
-          ifc_type: { type: "string", description: "IFC trieda, napr. IfcSpace" },
-          pset: { type: "string" },
-          name: { type: "string", description: "Názov vlastnosti" },
-          limit: { type: "number", description: "Max hodnôt (1-200, default 50)" },
-        },
-        required: ["model", "ifc_type", "pset", "name"],
       },
     },
     {
@@ -205,24 +166,6 @@ export function engineToolDefinitions(): ToolDefinition[] {
       },
     },
     {
-      name: "ifc_material_layers",
-      description:
-        "IFC MOTOR: prvky, ktorých materiál obsahuje hľadaný materiál alebo kategóriu - aj ako jedna vrstva " +
-        "zloženej skladby (IfcMaterialLayerSet), zložka alebo profil, vrátane materiálu z typu. Na \"ukáž " +
-        "izoláciu / EPS / minerálnu vlnu\"; hľadá bez diakritiky v názve materiálu, vrstvy aj kategórie. Vráti " +
-        "total, súhrn podľa skladby (sets) s nájdenými vrstvami a hrúbkou, prvky a show_in_3d za všetky nájdené.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          material: { type: "string", description: "Časť názvu materiálu, vrstvy alebo kategórie (napr. izol, EPS, minerál, betón)" },
-          model: { ...model, description: "Voliteľne model; inak všetky" },
-          ifc_types: { type: "array", items: { type: "string" }, description: "Len tieto triedy (default IfcElement so všetkými podtriedami)" },
-          limit: { type: "number", description: "Max vypísaných prvkov (1-500, default 100); total, sets a show_in_3d platia pre všetky" },
-        },
-        required: ["material"],
-      },
-    },
-    {
       name: "ifc_measure",
       description:
         "IFC MOTOR: meranie z geometrie (nie z Qto). a + b = svetlá vzdialenosť povrchov dvoch prvkov (aj ASR " +
@@ -238,11 +181,28 @@ export function engineToolDefinitions(): ToolDefinition[] {
           b: { type: "string", description: "Druhý prvok na vzdialenosť" },
           items: { type: "array", items: { type: "string" }, description: "Prvky na rozmery a výmery (max 50)" },
           model: { ...model, description: "Voliteľne model; inak sa prvky hľadajú vo všetkých" },
+          qto: {
+            type: "boolean",
+            description: "Len plocha a objem z Qto v súbore (a alebo items), bez tesselácie geometrie - rýchle",
+          },
         },
       },
     },
-    ...passthroughDefinitions(models),
   ];
 }
 
-export const ENGINE_TOOL_NAMES = new Set(engineToolDefinitions().map((t) => t.name));
+/**
+ * Staré mená zlúčených toolov (D-115): v zozname už nie sú, ale volanie nimi
+ * ešte prejde (klient si zoznam toolov drží počas konverzácie). Zmažú sa,
+ * keď ich `mcp_call_log` dva týždne neukáže.
+ */
+export const LEGACY_ENGINE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "ifc_search",
+  "ifc_count",
+  "ifc_property_values",
+  "ifc_material_layers",
+  ...PASSTHROUGH_TOOLS.map((t) => passthroughName(t.upstream)),
+]);
+
+/** Mená, ktoré vykoná motor: zoznam + staré mená. */
+export const ENGINE_TOOL_NAMES = new Set([...engineToolDefinitions().map((t) => t.name), ...LEGACY_ENGINE_TOOL_NAMES]);

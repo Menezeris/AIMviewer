@@ -95,11 +95,11 @@ prvok (`target_ids_or_refs` / `global_ids` + `fit` along/across/center) a na sú
 (`coordinate_m`). Súradnice sú IFC svet (m, Z hore), počíta ich viewer. Vyžaduje fork s
 bridge správami `QUERY`/`QUERY_RESULT`.
 
-**IFC motor (D-084, voliteľne):** env `ENGINE_ENABLED=1` pridá tools `ifc_models`,
-`ifc_query`, `ifc_get`, `ifc_count`, `ifc_property_values`, `ifc_ids_validate` a 7 tools
-prevzatých z balíka 1:1 (D-087: `ifc_model_info`, `ifc_materials_list`,
-`ifc_classifications_list`, `ifc_model_audit`, `ifc_geometry_area`, `ifc_geometry_volume`,
-`ifc_schema_describe`), ktoré čítajú
+**IFC motor (D-084, voliteľne):** env `ENGINE_ENABLED=1` pridá `search_all` a tools
+`ifc_models` (revízie a cez `action` aj prevzaté tools balíka: info, materiály, klasifikácie,
+audit, schéma), `ifc_query` (`mode` list | count | values, `material`), `ifc_get`,
+`ifc_ids_validate`, `ifc_relations` a `ifc_measure` (D-115 ich zlúčil, úplný zoznam je v
+`MCP-TOOLS.md`), ktoré čítajú
 priamo IFC súbory federácie cez `@ifc-lite/mcp` (číselné filtre psetov, histogramy, IDS
 kontrola teraz). IDS pre `ifc_ids_validate` sa berú z env `IDS_SOURCES` =
 `{"<id>": "<https URL .ids>"}` (bez neho je kontrola nedostupná). Zatiaľ zámerne

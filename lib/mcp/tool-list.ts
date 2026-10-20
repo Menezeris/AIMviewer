@@ -1,7 +1,7 @@
 import { BCF_TOOL_DEFINITIONS } from "../bcf/tools";
 import { PROBE_TOOL } from "../engine/probe-def";
 import { SEARCH_ALL_TOOL } from "../engine/search-all";
-import { engineToolDefinitions } from "../engine/tool-defs";
+import { LEGACY_ENGINE_TOOL_NAMES, engineToolDefinitions } from "../engine/tool-defs";
 import { FEEDBACK_TOOL_DEFINITIONS } from "../feedback/tools";
 import { VIEWER_QUERY_TOOL_DEFINITIONS } from "../live/viewer-query-tools";
 import type { ToolDefinition } from "../llm/provider";
@@ -77,4 +77,9 @@ export function mcpToolGroups({ engine }: ToolListOptions): ToolGroup[] {
 
 export function mcpToolDefinitions(opts: ToolListOptions): ToolDefinition[] {
   return [...mcpToolGroups(opts).flatMap((g) => g.tools), ...(opts.spike ? [PROBE_TOOL] : [])];
+}
+
+/** Staré mená zlúčených toolov, ktoré sa ešte vykonajú (D-115); bez motora žiadne. */
+export function mcpLegacyToolNames({ engine }: ToolListOptions): ReadonlySet<string> {
+  return engine ? LEGACY_ENGINE_TOOL_NAMES : new Set();
 }

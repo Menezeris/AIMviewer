@@ -3,7 +3,7 @@
 > Generované z definícií toolov (`lib/mcp/tool-list.ts`), needituj ručne. Obnova:
 > `npx vitest run lib/mcp/tool-registry.test.ts -u`.
 
-Konektor má 52 toolov (s IFC motorom, `ENGINE_ENABLED=1`).
+Konektor má 41 toolov (s IFC motorom, `ENGINE_ENABLED=1`).
 
 **Pravidlo D-114 - najprv napasuj, až potom nový tool:**
 1. Tu nájdi 2-3 najbližšie tooly k tomu, čo treba.
@@ -105,43 +105,21 @@ Zdroj: GitHub issues + session. Definície: lib/feedback/tools.ts. Len MCP.
 - **`start_queued_session`** (D-090, zápis) - Spustí Claude Code session pre ďalšiu požiadavku z fronty (D-090): bez issue_number najstaršiu so štítkom fronta, s issue_number konkrétne otvorené issue konektora.
   Parametre: `issue_number`, `over_limit`
 
-## IFC motor (18)
+## IFC motor (7)
 
 Zdroj: IFC súbory federácie (@ifc-lite/mcp). Definície: lib/engine/search-all.ts, lib/engine/tool-defs.ts, lib/engine/passthrough-defs.ts. Len MCP.
 
-- **`search_all`** (D-095, čítanie) - Kombinované hľadanie textu naraz v OBOCH zdrojoch: IFC súbor (ako ifc_search: atribúty Description, ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály, zóny) aj graf AIM v DB (ako search_everything: názov, object_ref, importované psety, dokumenty, osoby).
-  Parametre: `text*`, `badges=IFC|AIM|IFC+AIM`, `ifc_types`, `model`, `limit`
-- **`ifc_models`** (D-084, čítanie) - IFC MOTOR: zoznam IFC modelov federácie a ich aktuálna revízia (vNNN, dátum, autor, súhrn zmien, sha256, výsledok poistky: pridané/odobraté objekty). history = aj predchádzajúce revízie.
-  Parametre: `history`
-- **`ifc_query`** (D-084, čítanie) - IFC MOTOR: nájde prvky priamo v IFC súbore podľa IFC triedy, podlažia a hodnôt psetov - aj ČÍSELNÉ porovnania (plocha > 20, výkon >= 5).
-  Parametre: `model*=ASR|VZT`, `ifc_types`, `where`, `storey`, `limit`
-- **`ifc_search`** (D-095, čítanie) - IFC MOTOR - ZDROJ: IFC súbor (nie graf AIM). Full-text v IFC súbore: atribúty (Name, Description, ObjectType, Tag, LongName, PredefinedType...), psety a Qto výskytu aj z typu, klasifikácie a materiály prvkov, priestorov, zón (IfcZone), skupín, systémov aj typov.
-  Parametre: `text*`, `model=ASR|VZT`, `ifc_types`, `fields=attribute|property|quantity|type_property|classification|material`, `fuzzy`, `limit`, `offset`
+- **`search_all`** (D-095, čítanie) - Hľadanie podľa textu naraz v OBOCH zdrojoch: IFC súbor (atribúty Name, Description, ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály, zóny, skupiny) a graf AIM v DB (názov, object_ref, importované psety, dokumenty, osoby).
+  Parametre: `text*`, `source=all|ifc|aim`, `badges=IFC|AIM|IFC+AIM`, `ifc_types`, `model`, `limit`, `fields=attribute|property|quantity|type_property|classification|material`, `fuzzy`, `offset`
+- **`ifc_models`** (D-084, čítanie) - IFC MOTOR: modely federácie a údaje o súbore. action=revisions (default): aktuálna revízia každého modelu (vNNN, dátum, autor, súhrn zmien, výsledok poistky), history = aj predchádzajúce; info: schéma, jednotky, georeferencovanie a počty entít; materials / classifications: materiály a klasifikácie modelu s počtami; audit: zdravie modelu; schema: atribúty a dedičnosť IFC triedy (type, bez modelu).
+  Parametre: `action=revisions|info|materials|classifications|audit|schema`, `model=ASR|VZT`, `history`, `type`, `include_inherited`
+- **`ifc_query`** (D-084, čítanie) - IFC MOTOR: prvky priamo v IFC súbore podľa triedy, podlažia a hodnôt psetov, aj ČÍSELNÉ porovnania (plocha > 20). mode=list (default): prvky s object_ref a poľom show_in_3d pre show_in_3d/style_in_3d; count: presný počet, aj group_by trieda/podlažie/materiál; values: rôzne hodnoty jednej vlastnosti psetu alebo Qto s počtami (pset + name, 'aké hodnoty má X'). material = prvky s materiálom alebo vrstvou skladby (aj z typu), napr. izolácia, EPS, minerálna vlna: total, skladby s hrúbkou a show_in_3d.
+  Parametre: `mode=list|count|values`, `model=ASR|VZT`, `ifc_types`, `where`, `storey`, `group_by=type|storey|material`, `pset`, `name`, `material`, `limit`
 - **`ifc_get`** (D-084, čítanie) - IFC MOTOR: všetky údaje prvkov priamo z IFC súboru - atribúty, psety výskytu, množstvá (Qto), klasifikácie, materiály (vrstvy skladby s hrúbkou a kategóriou, aj z typu), dokumenty a voliteľne psety z typu.
   Parametre: `targets*`, `model=ASR|VZT`, `include_type_properties`
-- **`ifc_count`** (D-084, čítanie) - IFC MOTOR: presný počet prvkov v IFC súbore - celkovo, podľa podmienok where, alebo zoskupený podľa triedy / podlažia / materiálu (group_by; s where sa nekombinuje).
-  Parametre: `model*=ASR|VZT`, `ifc_type`, `where`, `group_by=type|storey|material`
-- **`ifc_property_values`** (D-084, čítanie) - IFC MOTOR: zoznam rôznych hodnôt jednej vlastnosti psetu alebo množstva Qto s počtami (histogram) pre IFC triedu - na otázky 'aké hodnoty má X' a ako podklad pre farbenie podľa hodnoty. `source` hovorí, odkiaľ hodnota je (pset | qto); typové psety nečíta.
-  Parametre: `model*=ASR|VZT`, `ifc_type*`, `pset*`, `name*`, `limit`
 - **`ifc_ids_validate`** (D-084, čítanie) - IFC MOTOR: skontroluje model TERAZ voči IDS z knižnice požiadaviek (nič neukladá).
   Parametre: `model*=ASR|VZT`, `ids*`, `spec`, `failures_per_spec`
 - **`ifc_relations`** (D-097, čítanie) - IFC MOTOR: všetky IFC vzťahy jednej entity priamo zo súboru, aj entity mimo grafu AIM (zóna, systém, port): členovia zón/skupín/systémov (IfcRelAssignsToGroup), kam prvok patrí, podlažie a miestnosť (IfcRelContainedIn/ReferencedInSpatialStructure), agregácia a vnorenie (IfcRelAggregates/IfcRelNests), typ, otvory a výplne (Voids/Fills), hranice priestoru, porty, dokumenty, klasifikácie, materiály. direction: forward = entita je Relating (skupina -> členovia, podlažie -> prvky, celok -> časti, prvok -> porty), inverse = kam entita patrí. recursive rozvinie vnorené zóny/systémy (bez rel_types len cez IfcRelAssignsToGroup). through_ports = prvky napojené cez porty (IfcRelConnectsPorts), jeden krok; s recursive=true prechod celou sieťou cez porty a stop_at (napr. IfcUnitaryEquipment, IfcDamper.FIREDAMPER) = najbližšia jednotka alebo klapka s cestou (reached, path_show_in_3d).
   Parametre: `target*`, `model=ASR|VZT`, `rel_types`, `direction=forward|inverse|both`, `recursive`, `through_ports`, `stop_at`, `max_steps`, `limit`, `cursor`
-- **`ifc_material_layers`** (D-108, čítanie) - IFC MOTOR: prvky, ktorých materiál obsahuje hľadaný materiál alebo kategóriu - aj ako jedna vrstva zloženej skladby (IfcMaterialLayerSet), zložka alebo profil, vrátane materiálu z typu.
-  Parametre: `material*`, `model=ASR|VZT`, `ifc_types`, `limit`
 - **`ifc_measure`** (D-112, čítanie) - IFC MOTOR: meranie z geometrie (nie z Qto). a + b = svetlá vzdialenosť povrchov dvoch prvkov (aj ASR voči VZT; záporná = prienik), vzdialenosť stredov, medzera obálok po osiach X/Y/Z a vodorovne, a_above_b_m = výška spodku a nad vrchom b (napr. klapka nad doskou: b = doska).
-  Parametre: `a`, `b`, `items`, `model=ASR|VZT`
-- **`ifc_model_info`** (D-087, čítanie) - Return schema, entity counts, file metadata, georeferencing, and units for the active (or named) model. [@ifc-lite/mcp model_info; model_id: ASR | VZT; GUIDy výsledku nesú object_ref v poli aim, ak ich AIM pozná]
-  Parametre: `model_id*=ASR|VZT`
-- **`ifc_materials_list`** (D-087, čítanie) - All materials present in the model with usage counts. [@ifc-lite/mcp materials_list; model_id: ASR | VZT; GUIDy výsledku nesú object_ref v poli aim, ak ich AIM pozná]
-  Parametre: `model_id*=ASR|VZT`
-- **`ifc_classifications_list`** (D-087, čítanie) - All classification references in the model with usage counts. [@ifc-lite/mcp classifications_list; model_id: ASR | VZT; GUIDy výsledku nesú object_ref v poli aim, ak ich AIM pozná]
-  Parametre: `model_id*=ASR|VZT`
-- **`ifc_geometry_area`** (D-087, čítanie) - Element surface area (in the file area unit, typically m²) read from IfcElementQuantity.
-  Parametre: `model_id*=ASR|VZT`, `global_id`, `express_id`, `global_ids`, `express_ids`
-- **`ifc_geometry_volume`** (D-087, čítanie) - Element volume (in the file volume unit, typically m³) read from IfcElementQuantity.
-  Parametre: `model_id*=ASR|VZT`, `global_id`, `express_id`, `global_ids`, `express_ids`
-- **`ifc_model_audit`** (D-087, čítanie) - Comprehensive model health check: required entities, GlobalId uniqueness, orphan detection, naming conventions, broken relationships.
-  Parametre: `model_id*=ASR|VZT`
-- **`ifc_schema_describe`** (D-087, čítanie) - Describe an IFC entity type: attributes, parents, inheritance chain.
-  Parametre: `type*`, `include_inherited`
+  Parametre: `a`, `b`, `items`, `model=ASR|VZT`, `qto`

@@ -5174,3 +5174,46 @@ súborov s definíciami bol neúplný.
   pre session, ktorá kód mení, nie pre agenta v rozhovore.
 
 **Ďalej:** D-115 zlúči tooly s rovnakým zdrojom do toolov s rozlišovacím parametrom.
+
+### D-115 - Zlúčenie MCP toolov do toolov s rozlišovacím parametrom
+**Status:** rozhodnuté (2026-10-20, Samuel v #97), zavádza sa po skupinách. Nadväzuje na D-114
+(najprv napasuj) a mení D-087 (prevzaté tools balíka už nie sú v zozname pod vlastným menom) a
+D-099 (BCF mená, krok 2).
+
+**Kontext:** 52 toolov, okolo 79 000 znakov pred prvou otázkou a agent si medzi podobnými toolmi
+vyberá zle. Základ pred zlúčením (`eval/results/mcp-2026-10-20-arn1-pred-d115.json`): 30/30
+správne, 6 úloh nad stropom volaní, všetky preto, že agent nevie, čo jeden tool už vie (D7, C8:
+`get_object` bez podlažia prvku len v IFC a bez Qto; C1, D3: overovanie podobnými toolmi; V3, V6).
+Samuel: počet toolov nie je cieľ, cieľ je rýchle načítanie, dobrý výber toolu a rozširovanie
+namiesto pridávania.
+
+**Rozhodnutie:**
+1. Zlučujú sa tooly s rovnakým zdrojom do jedného s rozlišovacím parametrom (`action`, `mode`,
+   `source`). Handlery ostávajú, mení sa dispatch a schéma. Čítanie a zápis sa nemiešajú (anotácie).
+   Mená sa zachovávajú, kde sa dá (telemetria a evaly ostanú porovnateľné).
+2. **Prechod:** staré mená sa nevypisujú, ale volanie nimi prejde (`legacyTools` v MCP serveri,
+   `LEGACY_ENGINE_TOOL_NAMES`); `mcp_call_log.tool` nesie volané meno, takže sa dá zistiť, kedy ich
+   už nikto nevolá. Zmažú sa po dvoch týždňoch bez volania. `callAction` loguje prvý z parametrov
+   `action`, `mode`, `source`.
+3. **Krok 1 - IFC motor (18 -> 7 toolov):**
+   - `ifc_query` + `mode` list | count | values a filter `material` (bývalé `ifc_count`,
+     `ifc_property_values`, `ifc_material_layers`);
+   - `ifc_models` + `action` revisions | info | materials | classifications | audit | schema
+     (bývalé `ifc_model_info`, `ifc_materials_list`, `ifc_classifications_list`, `ifc_model_audit`,
+     `ifc_schema_describe`; parametre idú do balíka 1:1, test parity schém ostáva);
+   - `ifc_measure` + `qto` (bývalé `ifc_geometry_area`, `ifc_geometry_volume`: plocha a objem z Qto
+     bez tesselácie);
+   - `search_all` + `source` all | ifc | aim, `fields`, `fuzzy`, `offset` (bývalé `ifc_search`).
+4. **Ďalšie kroky** (samostatné PR, každý s evalom v novej session): BCF a feedback (zápis a čítanie
+   zvlášť), dotazy viewera (`get_viewer_state` + obálky), zdieľané tooly AIM (`search_objects` +
+   `mode`, `get_object` + `include`, `show_in_3d` + výber, `set_camera` + režim a reset, `open_node`
+   + výkres) s prepisom inštrukcií. `query_view` a `aggregate_objects` ostávajú oddelené (rozdielna
+   sémantika porovnaní).
+
+**Zavrhnuté:**
+- *Jeden veľký PR:* regresiu vo výbere toolu by nebolo vidieť po skupinách.
+- *Premenovať všetko na nové mená (`ifc_model`, `find_objects`...):* rozbije porovnanie s
+  predchádzajúcimi kolami v `mcp_call_log` a evaloch bez úžitku pre agenta.
+- *Okamžite zmazať staré mená:* claude.ai drží zoznam toolov počas konverzácie, rozpracované
+  rozhovory by padali na "Neznámy tool".
+
