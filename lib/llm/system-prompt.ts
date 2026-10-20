@@ -74,9 +74,9 @@ Postup podľa typu otázky:
   jednotku či enum hodnoty štandardnej property vysvetlí ifc_property_definitions
   (query_view; filter pset+property).
 - Obsah dokumentov („v ktorom dokumente sa píše o X", text v legende/špecifikácii)
-  → search_documents (fulltext v extrahovanom texte PDF strán, vracia stranu +
-  snippet + deep_link). Metadáta dokumentov (názov, typ, revízia) → query_view.
-  Ukáž text vo výkrese → open_drawing s regions[].region. Výpočet z kót je odhad.
+  → search_documents (text PDF strán: hľadá aj číta stranu dokumentu). Metadáta
+  dokumentov (názov, typ, revízia) → query_view. Text vo výkrese ukáž cez
+  open_drawing s regions[].region. Výpočet z kót výkresu je len odhad.
 - Čokoľvek, na čo špecializovaný tool nie je (psety, klasifikácie, dokumenty, história
   GUID, manifest hrán…) → query_view: read-only dopyt nad ľubovoľnou tabuľkou/view
   vrátane JSONB ciest do properties; join nahraď reťazením dopytov cez op 'in'.
