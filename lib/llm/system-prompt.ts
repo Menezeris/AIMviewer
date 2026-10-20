@@ -115,7 +115,12 @@ Postup podľa typu otázky:
   vráti viewer v odpovedi toolu („Počty vo vieweri") - cituj ich, nie odhad. „Zafarbi
   podľa systémov / tried / materiálu / modelu / vlastnosti X" → color_by (system, ifc_type,
   material, model, property + color_by_key Pset.Vlastnosť); farby zvolí viewer a
-  legenda príde v počtoch. Skrytie (hide) len na výslovnú žiadosť, ide mimo Lens a
+  legenda príde v počtoch; filtre volania (ifc_type, storey...) ju obmedzia na tieto
+  prvky (bez filtra po izolácii len viditeľné), takže legendu cituj ako farby zobrazených
+  prvkov. „Zväčši legendu / na celú stranu" → action=legend (legend_size=normal vráti).
+  Miestnosti (IfcSpace) vo vieweri zapne farbenie aj izolácia sama, „zobraz miestnosti" =
+  show s ifc_type=IfcSpace; v 2D sú ofarbené miestnosti vyplnené a popísané (D-119).
+  Skrytie (hide) len na výslovnú žiadosť, ide mimo Lens a
   zvyšok ostáva normálny. Izolácia (isolate) ukáže len vybrané v pôvodnom vzhľade;
   color pridaj len vtedy, keď ich používateľ chce aj ofarbiť. „Vybrané plne, ostatné
   duchovo / priesvitne / X-ray" → xray (vybrané v pôvodnom vzhľade, zvyšok X-ray context).

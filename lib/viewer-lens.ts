@@ -65,7 +65,14 @@ export interface LensWire {
   /** X-ray context zo zjednotenia pravidiel: vybrané plné, zvyšok priesvitný (D-105). S `i` sa nekombinuje. */
   x?: 1;
   ac?: { source: AutoColorSource; psetName?: string; propertyName?: string };
+  /** Rozsah `ac` (D-119): farby podľa hodnoty, legenda a počty len pre prvky týchto skupín (AND v skupine). */
+  s?: LensFilterGroup[];
+  /** Veľkosť legendy (D-119): `large` = panel Lens ako veľké okno, `normal` = späť do lišty. */
+  l?: LegendSize;
 }
+
+export const LEGEND_SIZES = ["large", "normal"] as const;
+export type LegendSize = (typeof LEGEND_SIZES)[number];
 
 /** Najviac zón a dokumentov v jednej správe (každý = jeden dopyt na `/api/style-scope`). */
 export const MAX_LENS_ZONES = 8;
@@ -134,6 +141,14 @@ export function decodeLensWire(raw: string): LensWire | null {
     if (!isObj(parsed.ac) || !(AUTO_COLOR_SOURCES as readonly unknown[]).includes(parsed.ac.source)) return null;
     out.ac = parsed.ac as LensWire["ac"];
   }
+  if (parsed.s !== undefined) {
+    if (!out.ac || !Array.isArray(parsed.s) || parsed.s.length === 0 || !parsed.s.every(validGroup)) return null;
+    out.s = parsed.s as LensFilterGroup[];
+  }
+  if (parsed.l !== undefined) {
+    if (!(LEGEND_SIZES as readonly unknown[]).includes(parsed.l)) return null;
+    out.l = parsed.l as LegendSize;
+  }
   return out;
 }
 
@@ -156,7 +171,8 @@ function scopeKeysOf(rule: LensFilterRule): string[] {
 /** Kľúče zón a dokumentov zo všetkých pravidiel (bez duplicít). */
 export function lensScopeKeys(wire: LensWire): string[] {
   const keys = new Set<string>();
-  for (const r of wire.r ?? []) for (const g of r.g) for (const rule of g.rules) for (const k of scopeKeysOf(rule)) keys.add(k);
+  // Aj rozsah farieb podľa hodnoty (`s`, D-119) môže niesť zónu alebo dokument.
+  for (const g of [...(wire.r ?? []).flatMap((r) => r.g), ...(wire.s ?? [])]) for (const rule of g.rules) for (const k of scopeKeysOf(rule)) keys.add(k);
   return [...keys].slice(0, MAX_LENS_ZONES);
 }
 
@@ -199,10 +215,8 @@ export function lensBridgeMessage(
 ): Record<string, unknown> {
   // Most forku prijme spolu najviac MAX_ZONE_GUIDS GlobalId v jednej správe.
   let budget = MAX_ZONE_GUIDS;
-  for (const r of wire.r ?? []) {
-    for (const g of r.g) {
-      for (const rule of g.rules) if (rule.kind === "globalId" && Array.isArray(rule.values)) budget -= rule.values.length;
-    }
+  for (const g of [...(wire.r ?? []).flatMap((r) => r.g), ...(wire.s ?? [])]) {
+    for (const rule of g.rules) if (rule.kind === "globalId" && Array.isArray(rule.values)) budget -= rule.values.length;
   }
   const swap = (rule: LensFilterRule): LensFilterRule => {
     if (rule.kind !== "aim_zone" && rule.kind !== "aim_document") return rule;
@@ -226,5 +240,7 @@ export function lensBridgeMessage(
     ...(wire.i ? { isolate: true } : {}),
     ...(wire.x ? { xray: true } : {}),
     ...(wire.ac ? { autoColor: wire.ac } : {}),
+    ...(wire.ac && wire.s ? { autoColorScope: wire.s.map((g) => ({ combinator: g.combinator, rules: g.rules.map(swap) })) } : {}),
+    ...(wire.l ? { legend: wire.l } : {}),
   };
 }

@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-20** - **D-119 (miestnosti a farby z chatu, #135 #136 #137):** Lens z chatu a `show` zapnú skryté IfcSpace/IfcSpatialZone, fork v 2D vyplní a popíše ofarbené miestnosti, `color_by` rešpektuje filter volania (inak viditeľné prvky) cez `capturedScope`, `style_in_3d action=legend` s `legend_size` zväčší legendu.
 - **2026-10-20** - **D-116 (release train, rozširuje D-103):** feature PR forku len rýchla cesta, plné CI raz na balíku `release/aim-*` (merge na pokyn Samuela), výber viewera nad 3D (`?viewer=pr-N`, náhľad PR forku) na živé testovanie s MCP pred zlúčením, smoke po nasadení, tag balíka (ifc-lite #77).
 - **2026-10-19** - **D-112 (meranie z geometrie, #74):** `ifc_measure` tesseluje model ako `clash_check` a meria svetlú vzdialenosť dvoch prvkov (aj ASR voči VZT), výšku nad doskou, rozmery, povrch, pôdorys a objem z meshu s porovnaním s Qto.
 - **2026-10-19** - **D-110 (prechod VZT sieťou, #75):** `ifc_relations(through_ports, recursive, stop_at)` prejde sieť cez porty a vráti najbližšiu jednotku alebo klapku (aj `IfcDamper.FIREDAMPER`) s cestou a `path_show_in_3d`; `max_steps`, `cut_off`.
@@ -5747,6 +5748,51 @@ by `open_drawing` vedel výrez dopočítať z obálky prvku (`get_viewer_state b
 - *Zoom + stred namiesto výrezu:* výrez priamo zodpovedá vete "priblíž pravý horný roh" a nezávisí
   od veľkosti plochy karty.
 
+### D-119 - Miestnosti a farby z chatu: zapnutie IfcSpace, výplň v 2D, rozsah a veľká legenda Color by
+
+**Dátum:** 2026-10-20 · **Stav:** navrhnuté (čaká na Samuela) · **Súvisí:** D-096, D-102, D-105, D-114, D-116, D-098 · **Issues:** #135, #136, #137 · **PR:** AIMviewer (tento), Menezeris/ifc-lite (fork)
+
+**Kontext:** tri pripomienky Samuela z 20. 10. (konektor MCP): (1) `style_in_3d` isolate/colorize
+na IfcSpace vráti 32 prvkov, ale nič nevidno, lebo miestnosti sú vo vieweri predvolene vypnutá
+trieda a žiadny tool ju nezapne (#136); (2) v 2D pôdoryse s rezom sú ofarbené miestnosti takmer
+neviditeľné (#137); (3) `color_by` ignoruje filter volania, legenda má 49 materiálov celého modelu
+namiesto 55 izolovaných stien a nedá sa zväčšiť (#135).
+
+**Overenie (D-114, D-098):** `show_in_3d` miestnosť zapne (D-102), ale Lens z chatu nie;
+`set_view_mode` a `set_section` robia, čo majú. Diagnostika naživo (fork, FZK-Haus): spodná plocha
+IfcSpace leží na hornej ploche dosky a v hĺbke sa s ňou bije, výplň rezu má jednu farbu pre všetky
+prvky. Server pri `color_by` zahadzoval filtre (`style-lens.ts`). Upstream má `Lens.capturedScope`
+(UI "Population") a plávajúce panely (`floatPanel`), most ich nepoužíval.
+
+**Rozhodnutie (rozšírenie existujúcich toolov, žiadny nový tool):**
+1. **Zapnutie miestností a zón (#136):** fork zapne skrytú triedu IfcSpace / IfcSpatialZone, keď ju
+   zasiahne Lens z chatu (colorize, transparent, isolate, xray, aj `color_by` s filtrom) alebo
+   `SHOW` / `ISOLATE`. Ručne: `style_in_3d action=show ifc_type=IfcSpace`. Rovnaký prepínač ako
+   pri FOCUS (`frame-gates.ts`); preferencia sa ukladá ako pri ručnom prepnutí.
+2. **Výplň miestností v 2D (#137):** vrstva forku `AimRoomFillLayer` nad scénou (ako piny a
+   `ZoneOverlay`) v režime 2D bez výkresu nakreslí pôdorys každej miestnosti ofarbenej aktívnou
+   Lens: polopriehľadná výplň, obrys a názov (LongName, inak Name), len podlažie pôdorysu. Pôdorys
+   je spodná plocha geometrie miestnosti. Renderer ani upstream súbory sa nemenia (okrem riadku
+   montáže v bloku AIM-FORK).
+3. **Rozsah `color_by` (#135):** filtre volania (`ifc_type`, `storey`, `zone`...) idú vo wire ako
+   `s` a v moste ako `autoColorScope`; fork z nich spraví `capturedScope`, takže farby, legenda a
+   počty sú len za tieto prvky. Bez filtra pri zúženom pohľade (izolácia, skrytie, X-ray, sólo
+   podlažie) vezme viditeľné prvky, inak celý model ako doteraz. Výsledok toolu nesie
+   `scope` a legenda od viewera je za rovnaké prvky.
+4. **Veľká legenda (#135):** `style_in_3d action=legend` s `legend_size=large|normal` (aj spolu s
+   colorize): panel Lens ako veľké plávajúce okno cez takmer celý viewer, posunutý na legendu, bez
+   stropu 220 px (pravidlo v `assetin-theme.css`); `normal` ho vráti do lišty.
+
+**Zavrhnuté rozšírenie a nové tooly:**
+- *Nový tool `set_space_visibility`:* zapnutie triedy patrí k akcii, ktorá miestnosti cieli; ručne
+  ho pokryje existujúce `show`.
+- *`set_view_mode` s parametrom legendy:* legenda patrí k Lens, ktorú ovláda `style_in_3d`.
+- *Výplň rezu (cap) farbou Lens alebo posun hĺbky v rendereri:* zmena balíka `renderer` = plné CI
+  originálu a údržba pri synchronizácii; vrstva AIM to rieši bez neho.
+- *Výplň aj v 3D:* zatiaľ len 2D, aby v 3D neprekrývala model (otázka pre Samuela v #137).
+
+**Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežali; do `eval/questions.json`
+pribudli otázky z issues.
 
 ### D-122 - Uložené pohľady viewera: `saved_view`, zoznam v `get_viewer_state`, obnova v `set_view_mode`
 **Status:** rozhodnuté (2026-10-20, pôvodne D-117, prečíslované pre kolíziu v registri #60; Samuel cez orchestrátora: pohľady sú spoločné pre stavbu a žijú
