@@ -488,7 +488,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             "show=znova zobraziť skryté, isolate=zobraziť LEN vybrané (ostatné skryť; bez color " +
             "ostanú v pôvodnom vzhľade, color len keď ho používateľ chce), xray=vybrané plné v pôvodnom " +
             "vzhľade a zvyšok modelu priesvitný (X-ray context, ako tlačidlo duch; filtre ako isolate), " +
-            "show_all=zrušiť skrývanie, izoláciu a X-ray, reset_colors=zrušiť ofarbenie a lens",
+            "show_all=zrušiť skrývanie, izoláciu, X-ray aj rez (rez vráti set_section), reset_colors=zrušiť ofarbenie a lens",
         },
         mode: {
           type: "string",
