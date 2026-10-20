@@ -18,6 +18,7 @@
  */
 
 import { LENS_MODES, decodeLensWire, lensBridgeMessage, type LensMode, type LensWire } from "./viewer-lens";
+import { parseSectionCapArg, sectionCapBridgeMessage, type SectionCapOp } from "./viewer-section-cap";
 import { decodeListWire, listBridgeMessage, type ListWire } from "./viewer-list";
 import { cameraMoveArgs, parseCameraMove, type CameraMove } from "./viewer-camera";
 
@@ -80,6 +81,8 @@ export type ViewerOp =
       showGizmo?: boolean;
     }
   | { op: "section_clear" }
+  /** Vzhľad reznej plochy (D-120), `lib/viewer-section-cap.ts`. */
+  | SectionCapOp
   | { op: "section_gizmo"; showGizmo: boolean }
   | ({ op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[]; selector?: OpsSelector } & CameraMove)
   | { op: "view"; mode: ViewMode; storeyGuid?: string }
@@ -179,6 +182,9 @@ export function parseOps(raw: string): ViewerOp[] {
       out.push({ op });
     } else if (op === "section_gizmo" && (arg === "0" || arg === "1")) {
       out.push({ op, showGizmo: arg === "1" });
+    } else if (op === "section_cap") {
+      const cap = parseSectionCapArg(arg);
+      if (cap) out.push(cap);
     } else if (op === "section") {
       const [axis, kv] = parseArg(arg);
       const flip = {
@@ -289,6 +295,8 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
       return { type: "SET_SECTION", action: "clear" };
     case "section_gizmo":
       return { type: "SET_SECTION", action: "gizmo", showGizmo: o.showGizmo };
+    case "section_cap":
+      return sectionCapBridgeMessage(o);
     case "camera":
       return {
         type: "SET_CAMERA",

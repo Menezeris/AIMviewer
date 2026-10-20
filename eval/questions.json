@@ -460,6 +460,14 @@
       "notes": "D-092 dodatok / #63: show_widget=false pri set alebo action=widget; rez ostáva aktívny."
     },
     {
+      "id": "view-section-cap-off",
+      "category": "view",
+      "question": "Sprav rez 1 m nad podlahou 1NP a vypni na ňom šrafu, nech je vidieť ofarbenie miestností.",
+      "expect": { "tools_called": ["set_section"], "actions_match": ["section_cap:(none|solid)"] },
+      "verified": false,
+      "notes": "D-120 / #138: cap_style=none (bez plochy) alebo solid (plná výplň) pri set alebo action=widget; rez ostáva."
+    },
+    {
       "id": "view-floor-2d",
       "category": "view",
       "question": "Prepni viewer na 2D pôdorys 2. NP.",
