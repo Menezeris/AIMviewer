@@ -6,6 +6,7 @@ import { guid } from "./mini-building";
  * - 1NP: R1 (x 0-4), R2 (x 4-8), schodiskový priestor S1 (x 8-10);
  * - 2NP: R3 (x 0-8), schodiskový priestor S2 (x 8-10);
  * - dvere (stred y = 2): DX vonkajšie v R1 (x = 0, IsExternal), D1 R1|R2 (x = 4),
+ *   DR karuselové vonkajšie v R2 (y = 0, x = 6, typ s OperationType REVOLVING),
  *   D2 R2|S1 (x = 8), D3 R3|S2 (x = 8, 2NP), DT na streche 2NP (vonkajšie, x = 0);
  * - schodisko ST v S1 (x 8,2-9,8, y 0,5-3,5, z 0-3,5) s ramenom 3 x 3,5 m;
  * - stôl DESK v R2 (stred x 6, y 1);
@@ -62,15 +63,18 @@ const d1 = door("D1", 4, 0);
 const d2 = door("D2", 8, 0);
 const d3 = door("D3", 8, 3.5);
 const dt = door("DT", 0, 3.5);
+const revolvingType = add(`IFCDOORTYPE('${guid("DRT")}',$,'DRT',$,$,$,$,$,$,.DOOR.,.REVOLVING.,.F.,$)`);
+const dr = add(`IFCDOOR('${guid("DR")}',$,'DR',$,$,${world},${box(5.55, 6.45, -0.1, 0.1, 0, 2)},$,2.,0.9,.DOOR.,$,$)`);
+add(`IFCRELDEFINESBYTYPE('${guid("RDT")}',$,$,$,(${dr}),${revolvingType})`);
 const flight = add(`IFCSTAIRFLIGHT('${guid("FL")}',$,'FL',$,$,${world},${box(8.2, 9.8, 0.5, 3.5, 0, 3.5)},$,$,$,$,$,.STRAIGHT.)`);
 const stair = add(`IFCSTAIR('${guid("ST")}',$,'ST',$,$,${world},$,$,.STRAIGHT_RUN_STAIR.)`);
 add(`IFCRELAGGREGATES('${guid("RAGG5")}',$,$,$,${stair},(${flight}))`);
 const desk = add(`IFCFURNITURE('${guid("DESK")}',$,'DESK',$,$,${world},${box(5.5, 6.5, 0.5, 1.5, 0, 0.75)},$,$)`);
-add(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid("RC1")}',$,$,$,(${dx},${d1},${d2},${stair},${desk}),${st1})`);
+add(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid("RC1")}',$,$,$,(${dx},${dr},${d1},${d2},${stair},${desk}),${st1})`);
 add(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid("RC2")}',$,$,$,(${d3},${dt}),${st2})`);
 
 const ext = add(`IFCPROPERTYSET('${guid("PEXT")}',$,'Pset_DoorCommon',$,(${add("IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$)")}))`);
-add(`IFCRELDEFINESBYPROPERTIES('${guid("RPEXT")}',$,$,$,(${dx},${dt}),${ext})`);
+add(`IFCRELDEFINESBYPROPERTIES('${guid("RPEXT")}',$,$,$,(${dx},${dr},${dt}),${ext})`);
 
 let n = 0;
 const boundary = (sp: string, el: string, kind: "INTERNAL" | "EXTERNAL") =>
@@ -83,6 +87,7 @@ boundary(s1, d2, "INTERNAL");
 boundary(s2, d3, "INTERNAL");
 boundary(r3, d3, "INTERNAL");
 boundary(r3, dt, "EXTERNAL");
+boundary(r2, dr, "EXTERNAL");
 
 export const MINI_ROUTE = `ISO-10303-21;
 HEADER;

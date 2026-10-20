@@ -5044,6 +5044,27 @@ AIMviewer vetva `claude/lucid-wright-g4qmwq-krok3` (stavia na #121):
   objektu zachová kľúče hostiteľa (`HOST_PROPERTY_KEYS = ("_georef",)` v `etl/db.py`), takže
   re-ETL kalibráciu nezmaže.
 
+**Dodatok 2026-10-20 - krok 4: z dokumentu na prvky v 3D (Samuel, bez nového D).** Samuel
+pomenoval krokom 4 preklik "ukáž, čoho sa týka tento výkres / táto strana" (bod 4 rozhodnutia);
+text strán a odstránenie starej sady zo zoznamu krokov vyššie idú po ňom. Podľa D-114 bez
+nového toolu:
+- Tooly: `style_in_3d` a `open_list` dostali filter `document` (id, object_ref alebo názov, napr.
+  `D.1.1.03`; odkaz na časť dokumentu len podľa id alebo presného object_ref) a `page`. Prvky sú
+  tie isté ako v `get_object(include=documents)` pri dokumente: `v_object_documents` aj zdedené cez
+  podlažie, zónu, skupinu a typ, do 3D len uzly s geometriou (asset, space, spatial_zone).
+  Kombinuje sa s ostatnými filtrami (AND). `show_in_3d` sa nemení (strop 100 prvkov na
+  zvýraznenie), jeho popis posiela na `style_in_3d`.
+- Veľký dokument necestuje v URL: lens nesie symbolické pravidlo `aim_document {id, page}` ako
+  zónu `aim_zone` (D-096) a klient si GUIDy stiahne z `/api/style-scope?document=<id>[&page=N]`
+  (strop mosta 5000). Skrytie a zobrazenie (`hide`/`show`) idú starou cestou s GUIDmi (strop 500).
+- `get_object` pri dokumente stránkuje `v_object_documents` (predtým `.limit(5000)` ticho orezal
+  na 1000 riadkov PostgREST, pôdorys podlažia ich má viac), vracia `by_page` (počet objektov na
+  stranu) a `in_3d` s presným volaním `style_in_3d`.
+- Fork: tlačidlo "Ukázať v 3D" v lište otvoreného PDF pošle `DOCUMENT_SHOW_3D {documentId, page}`
+  s čítanou stranou; host odpovie `APPLY_LENS` (replace, X-ray podľa D-105, štítok = meno
+  dokumentu). Strana bez vlastných prvkov (titulná strana, pôdorys bez odkazov na strany) ukáže
+  celý dokument. Viewer väzby dokumentov nedrží, rozhoduje graf AIM.
+
 ---
 
 ### D-105 - X-ray context z chatu: `style_in_3d action=xray`, drôtový model zatiaľ nie
@@ -5541,3 +5562,43 @@ sú riadky vzťahov, nie trasa.
 **Otvorené:** dvere DD02.05.14 majú navyše hranicu s 2.02 (geometria vidí len 2.01 | 2.10), recept ju nemaže;
 DD04.07.02 (vstup do akustickej zásteny na streche) nemá miestnosť ani z jednej strany. Čiara trasy vo vieweri
 (nie len zvýraznenie prvkov) potrebuje správu mosta vo forku.
+
+**Dodatok 2026-10-20 (Samuel cez orchestrátora):** 12 opráv `InternalOrExternalBoundary` áno; navyše hranica
+DD02.05.14 - 2.02 sa v receptoch odoberá (pravidlo: väzba dverí s miestnosťou, ktorú geometria nevidí na žiadnej
+strane, keď dvere majú obe strany v iných miestnostiach; viac ako 1 prípad = len výpis); dvere na strechu nie sú
+východ. **Otočné (karuselové) dvere nie sú únikový východ:** tool vylúči dvere s `OperationType` REVOLVING*
+(výskyt, inak typ) a vypíše ich v `revolving_doors_not_exits`; priechodné ostávajú. V ASR v76 má typ DD01.08
+"Karuselové dvere" chybne DOUBLE_SWING_RIGHT, recept v078 ho opraví na REVOLVING.
+
+---
+
+### D-124 - Kóta vo vieweri: `ifc_measure show` cez nástroj Measure forku
+**Status:** rozhodnuté (2026-10-20, Samuel cez orchestrátora), číslo pridelené v registri #60. Nadväzuje na
+D-112 (meranie z geometrie), D-098 (most volá existujúce funkcie viewera) a D-114 (najprv napasuj).
+
+**Kontext:** `ifc_measure` vracal svetlú vzdialenosť a rozmery len ako čísla; vo vieweri sa dali ukázať len
+prvky, nie čiara, medzi ktorou sa meralo.
+
+**Rozhodnutie:**
+1. **Fork nekreslí nič nové.** Nový príkaz mosta `MEASURE_SHOW { segments: [{ a, b }], keep? }` (body
+   v IFC svete, Z hore, m; najviac 12) vloží úseky do upstream nástroja Measure ako hotové merania, tou istou
+   cestou ako dva kliky (`addMeasurePoint` + `completeMeasurement`). Kreslí ich `MeasurementSceneLayer`
+   s jednotkami viewera aj bez otvoreného nástroja a používateľ ich vymaže ako vlastné. Prevod IFC svet ->
+   render rámec je ten istý ako pri póze kamery od hosta (`ifcPointToRender`, `bcfWorldOffset`). Kóty od
+   hosta si fork pamätá: ďalší príkaz bez `keep` ich nahradí, merania používateľa nechá.
+2. **`ifc_measure` (`lib/engine/measure-dimension.ts`):** pri a + b vracia `closest_points` (konce najkratšej
+   úsečky v IFC svete). Clash engine dáva len stred úsečky, konce sú najbližšie body každého meshu k nemu (pre
+   dvojicu s minimom presne tie isté body). `show=true` pošle kótu do živého viewera: a + b = táto úsečka,
+   len a = tri hrany obálky X, Y, Z. Pri prieniku a dotyku nie je čo kótovať.
+3. **Rámec meshu:** headless tesselácia si pamätá posun do IFC sveta z `coordinateInfo`
+   (`renderFrameWorldOffset`), aby body sedeli aj pri modeli s RTC posunom (ASR v76 má posun 0).
+4. Akcie z nástrojov motora idú do viewera tou istou cestou ako akcie DB tools (`deliverActions` v MCP route,
+   s potvrdením `APPLIED`).
+
+**Zavrhnuté rozšírenie: nový tool `show_dimension` - prečo nie:** body počíta `ifc_measure` z tých istých
+meshov a jeho výsledok je to, čo sa má ukázať; rozlišovací parameter `show` stačí (D-114).
+
+**Zavrhnuté:**
+- *Vlastný renderer kót vo forku:* upstream Measure už kreslí, popisuje a maže merania (D-098).
+- *Úsečka zo stredu `closest_point` a obálky clash výsledku:* obálka úsečky neurčuje, ktorá uhlopriečka je
+  úsečka.

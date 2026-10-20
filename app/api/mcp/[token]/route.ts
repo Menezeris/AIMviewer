@@ -17,6 +17,7 @@ import { lensCountsText } from "@/lib/live/lens-counts";
 import { ACK_TIMEOUT_MS, appliedText, notAppliedText } from "@/lib/live/applied-text";
 import { expectApplied } from "@/lib/live/warm-channel";
 import { mcpInstructions } from "@/lib/llm/system-prompt";
+import type { AskAction } from "@/lib/llm/actions";
 import { AskToolRuntime } from "@/lib/llm/tools";
 import { callAction, writeCallLog } from "@/lib/mcp/call-log";
 import { mcpToolDefinitions } from "@/lib/mcp/tool-list";
@@ -130,46 +131,59 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
     // Lenivý import: motor (stovky MB po načítaní modelov) len keď ho Claude volá.
     const { runEngineTool } = await import("@/lib/engine/run");
     const res = await timer.phase("exec", () => runEngineTool(name, args));
-    return { text: [res.content], isError: res.isError };
+    const text = [res.content];
+    // Kóta z ifc_measure show (D-124) ide do viewera rovnako ako akcie DB tools.
+    if (!res.isError && res.actions?.length) text.push(...(await deliverActions(name, args, res.actions, timer)));
+    return { text, isError: res.isError };
   }
   const runtime = new AskToolRuntime();
   const res = await timer.phase("exec", () => runtime.exec(name, args));
   const text = [res.content];
   const actions = runtime.finalActions();
-  if (!res.isError && actions.length > 0) {
-    const site = siteUrl();
-    const links = actions.map((a) => `${a.label}: ${site}${a.url}`).join("\n");
-    const channel = liveChannel();
-    if (!channel) {
-      text.push(`Živý viewer nie je nastavený (chýba LIVE_CHANNEL). Odkaz na otvorenie:\n${links}`);
-    } else {
-      // D-101: čakanie na potvrdenie sa prihlási ešte pred odoslaním príkazu (teplý kanál inštancie).
-      const cmdId = randomUUID();
-      const waitApplied = await timer.phase("channel", () => expectApplied(channel, cmdId).catch(() => null));
-      const sent = await timer.phase("broadcast", () =>
-        broadcastLive(channel, actions, fetch, cmdId).catch(() => ({ ok: false, status: 0 })),
-      );
-      text.push(
-        sent.ok
-          ? `Odoslané do živého viewera. Záložný odkaz:\n${links}`
-          : `Odoslanie do živého viewera zlyhalo (HTTP ${sent.status}). Odkaz na otvorenie:\n${links}`,
-      );
-      // Potvrdzuje len viewer (`/ifc`); karta prvku alebo výkres je len navigácia.
-      if (sent.ok && waitApplied && actions.some((a) => a.url.startsWith("/ifc"))) {
-        const t0 = Date.now();
-        const applied = await timer.phase("ack", () => waitApplied(ACK_TIMEOUT_MS));
-        text.push(applied ? appliedText(name, applied, Date.now() - t0) : notAppliedText(ACK_TIMEOUT_MS));
-      } else if (sent.ok) {
-        // Bez teplého kanála pôvodné čítanie stavu (D-096 počty Lens, D-092 poloha rezu).
-        const lensRev = runtime.lensRev;
-        if (lensRev) text.push(await timer.phase("lens", () => lensCountsText(channel, lensRev)));
-        if (name === "set_section" && args.action === "set") {
-          text.push(await timer.phase("readback", () => readBackSection(channel)));
-        }
+  if (!res.isError && actions.length > 0) text.push(...(await deliverActions(name, args, actions, timer, runtime.lensRev)));
+  return { text, isError: res.isError };
+}
+
+/** Akcie toolu do živého viewera (D-079) s potvrdením (D-101); vráti riadky pre odpoveď. */
+async function deliverActions(
+  name: string,
+  args: Record<string, unknown>,
+  actions: AskAction[],
+  timer: CallTimer,
+  lensRev?: string | null,
+): Promise<string[]> {
+  const text: string[] = [];
+  const site = siteUrl();
+  const links = actions.map((a) => `${a.label}: ${site}${a.url}`).join("\n");
+  const channel = liveChannel();
+  if (!channel) {
+    text.push(`Živý viewer nie je nastavený (chýba LIVE_CHANNEL). Odkaz na otvorenie:\n${links}`);
+  } else {
+    // D-101: čakanie na potvrdenie sa prihlási ešte pred odoslaním príkazu (teplý kanál inštancie).
+    const cmdId = randomUUID();
+    const waitApplied = await timer.phase("channel", () => expectApplied(channel, cmdId).catch(() => null));
+    const sent = await timer.phase("broadcast", () =>
+      broadcastLive(channel, actions, fetch, cmdId).catch(() => ({ ok: false, status: 0 })),
+    );
+    text.push(
+      sent.ok
+        ? `Odoslané do živého viewera. Záložný odkaz:\n${links}`
+        : `Odoslanie do živého viewera zlyhalo (HTTP ${sent.status}). Odkaz na otvorenie:\n${links}`,
+    );
+    // Potvrdzuje len viewer (`/ifc`); karta prvku alebo výkres je len navigácia.
+    if (sent.ok && waitApplied && actions.some((a) => a.url.startsWith("/ifc"))) {
+      const t0 = Date.now();
+      const applied = await timer.phase("ack", () => waitApplied(ACK_TIMEOUT_MS));
+      text.push(applied ? appliedText(name, applied, Date.now() - t0) : notAppliedText(ACK_TIMEOUT_MS));
+    } else if (sent.ok) {
+      // Bez teplého kanála pôvodné čítanie stavu (D-096 počty Lens, D-092 poloha rezu).
+      if (lensRev) text.push(await timer.phase("lens", () => lensCountsText(channel, lensRev)));
+      if (name === "set_section" && args.action === "set") {
+        text.push(await timer.phase("readback", () => readBackSection(channel)));
       }
     }
   }
-  return { text, isError: res.isError };
+  return text;
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ token: string }> }) {

@@ -12,8 +12,15 @@ import type { DerivationsLayerWire } from "@/lib/derivations";
 import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { opToBridgeMessage, parseOps } from "@/lib/viewer-ops";
-import { MAX_ZONE_GUIDS, lensBridgeMessage, lensZoneIds } from "@/lib/viewer-lens";
-import { listBridgeMessage, listZoneIds } from "@/lib/viewer-list";
+import {
+  MAX_ZONE_GUIDS,
+  documentLensWire,
+  documentScopeKey,
+  lensBridgeMessage,
+  lensScopeKeys,
+  scopeQuery,
+} from "@/lib/viewer-lens";
+import { listBridgeMessage, listScopeKeys } from "@/lib/viewer-list";
 import type { LiveQueryPayload, LiveReplyPayload } from "@/lib/live/protocol";
 import { hasRelativeStep, relativeViewpoint, type CameraMove, type ViewerCamera } from "@/lib/viewer-camera";
 import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
@@ -47,7 +54,8 @@ import { PROD_VIEWER_URL } from "@/lib/viewer-source";
  *                   typy v lib/derivations.ts) · AIM_BCF_LOAD{baseUrl,projectId}
  *                   (D-099; BCF témy z /api/bcf bez tokenu, aj po zmene z chatu)
  *   viewer → host:  READY · MODELS_LOADED · ENTITY_SELECTED{guid} ·
- *                   ENTITY_DESELECTED · AIM_NAVIGATE{href}
+ *                   ENTITY_DESELECTED · AIM_NAVIGATE{href} ·
+ *                   DOCUMENT_SHOW_3D{documentId,page} (D-104 krok 4; host odpovie APPLY_LENS)
  *
  * AIM karta: po ENTITY_SELECTED host dotiahne DB súhrn (/api/element/{id})
  * a pošle ho ako render schému (lib/aim-panel.ts) do natívneho panelu
@@ -71,6 +79,8 @@ type OutboundMessage =
   | { source: typeof SOURCE; type: "CAPTURE_PIN_CLICK"; captureId: string }
   // Karta dokumentu otvorená/zavretá vo viewri (D-075) — recents/analytics.
   | { source: typeof SOURCE; type: "DOCUMENT_EVENT"; documentId: string; event: "opened" | "closed" }
+  // Tlačidlo "Ukázať v 3D" pri otvorenom dokumente (D-104 krok 4) - host odpovie APPLY_LENS.
+  | { source: typeof SOURCE; type: "DOCUMENT_SHOW_3D"; documentId: string; page?: number }
   // Odpoveď na QUERY spätného kanála (D-085) - obálky, stav pohľadu.
   | { source: typeof SOURCE; type: "QUERY_RESULT"; id: string; ok: boolean; result?: unknown; error?: string }
   // Potvrdenie príkazov pred ACK_REQUEST (D-101) - stav po vykonaní, čo sa nevykonalo.
@@ -92,23 +102,44 @@ function toCapturePins(captures: CaptureViewerWire[]) {
   }));
 }
 
-/** GUIDy zón (miestnosti + prvky v nich a dotýkajúce sa ich) z `/api/style-scope`; chyba = prázdna zóna. */
-async function fetchZoneGuids(ids: string[]): Promise<Map<string, string[]>> {
+/**
+ * GUIDy zón (miestnosti + prvky v nich a dotýkajúce sa ich) a dokumentov (prvky, ktorých
+ * sa dokument alebo strana týka, D-104) z `/api/style-scope`; chyba = prázdna množina.
+ */
+async function fetchScopeGuids(keys: string[]): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
   await Promise.all(
-    ids.map(async (id) => {
+    keys.map(async (id) => {
+      const query = scopeQuery(id);
+      if (!query) return;
       try {
-        const r = await fetch(`/api/style-scope?zone=${encodeURIComponent(id)}`);
+        const r = await fetch(`/api/style-scope?${query}`);
         if (!r.ok) throw new Error(String(r.status));
         const body = (await r.json()) as { guids?: unknown };
         const guids = Array.isArray(body.guids) ? body.guids.filter((g): g is string => typeof g === "string") : [];
         out.set(id, guids.slice(0, MAX_ZONE_GUIDS));
       } catch (err) {
-        console.warn("[aim] zóna pre lens sa nenačítala", id, err);
+        console.warn("[aim] zóna alebo dokument pre lens sa nenačítali", id, err);
       }
     }),
   );
   return out;
+}
+
+/** Prvky dokumentu alebo strany z `/api/style-scope` (D-104 krok 4); chyba = `null`. */
+async function fetchDocumentScope(id: string, page?: number): Promise<{ name: string; guids: string[] } | null> {
+  const query = scopeQuery(documentScopeKey(id, page));
+  if (!query) return null;
+  try {
+    const r = await fetch(`/api/style-scope?${query}`);
+    if (!r.ok) throw new Error(String(r.status));
+    const body = (await r.json()) as { document?: unknown; guids?: unknown };
+    const guids = Array.isArray(body.guids) ? body.guids.filter((g): g is string => typeof g === "string") : [];
+    return { name: typeof body.document === "string" ? body.document : "Dokument", guids: guids.slice(0, MAX_ZONE_GUIDS) };
+  } catch (err) {
+    console.warn("[aim] prvky dokumentu sa nenačítali", id, page, err);
+    return null;
+  }
 }
 
 function isBridgeMessage(data: unknown): data is OutboundMessage {
@@ -293,17 +324,36 @@ export function IFCViewer({
     opsChainRef.current = opsChainRef.current.then(async () => {
       for (const o of list) {
         if (o.op === "camera" && hasRelativeStep(o)) await applyRelativeCamera(o);
-        else if (o.op === "lens" && lensZoneIds(o.wire).length > 0) {
-          // Zóna z grafu AIM (D-096): GUIDy jej miestností a prvkov si klient stiahne sám.
-          post(lensBridgeMessage(o.mode, o.wire, await fetchZoneGuids(lensZoneIds(o.wire)), o.rev));
-        } else if (o.op === "list" && listZoneIds(o.wire).length > 0) {
-          post(listBridgeMessage(o.wire, await fetchZoneGuids(listZoneIds(o.wire))));
+        else if (o.op === "lens" && lensScopeKeys(o.wire).length > 0) {
+          // Zóna alebo dokument z grafu AIM (D-096, D-104): GUIDy prvkov si klient stiahne sám.
+          post(lensBridgeMessage(o.mode, o.wire, await fetchScopeGuids(lensScopeKeys(o.wire)), o.rev));
+        } else if (o.op === "list" && listScopeKeys(o.wire).length > 0) {
+          post(listBridgeMessage(o.wire, await fetchScopeGuids(listScopeKeys(o.wire))));
         } else post(opToBridgeMessage(o));
         // Reset farieb vypne aj AIM chat lens, zobraziť všetko zruší izoláciu z chatu (D-096).
         if (o.op === "reset_colors") post({ type: "APPLY_LENS", mode: "clear" });
         if (o.op === "show_all") post({ type: "APPLY_LENS", mode: "unisolate" });
       }
     }).catch((err: unknown) => console.warn("[ifc-viewer] ops", err));
+  }
+
+  /**
+   * "Ukázať v 3D" z otvoreného dokumentu (D-104 krok 4): X-ray prvkov strany; strana bez
+   * vlastných prvkov (titulná, výkres bez odkazov na strany) ukáže celý dokument. Ide v
+   * reťazci ops, aby sa neprekrížila s lens z chatu.
+   */
+  function showDocumentIn3d(documentId: string, page: number | undefined) {
+    opsChainRef.current = opsChainRef.current.then(async () => {
+      let scope = page ? await fetchDocumentScope(documentId, page) : null;
+      let usedPage = page;
+      if (!scope || scope.guids.length === 0) {
+        scope = await fetchDocumentScope(documentId);
+        usedPage = undefined;
+      }
+      if (!scope) return;
+      const wire = documentLensWire(documentId, scope.name, usedPage);
+      post(lensBridgeMessage("replace", wire, new Map([[documentScopeKey(documentId, usedPage), scope.guids]])));
+    }).catch((err: unknown) => console.warn("[ifc-viewer] dokument v 3D", err));
   }
 
   /** Potvrdenie (D-101): ACK_REQUEST ide za ops v tom istom reťazci, fork ho vybaví po nich. */
@@ -475,6 +525,13 @@ export function IFCViewer({
             onCaptureClick?.(e.data.captureId);
           }
           break;
+        case "DOCUMENT_SHOW_3D": {
+          const { documentId, page } = e.data;
+          if (typeof documentId === "string" && documentId) {
+            showDocumentIn3d(documentId, typeof page === "number" && Number.isInteger(page) && page > 0 ? page : undefined);
+          }
+          break;
+        }
         case "DOCUMENT_EVENT":
           // D-075: zatiaľ bez host-side využitia (kandidát: recents/analytics).
           // Prijíma sa naschvál — neznámy typ by inak skončil ako šum v konzole

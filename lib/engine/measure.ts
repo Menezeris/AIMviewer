@@ -1,5 +1,6 @@
 import { clashMemberKey, createClashEngine, type ClashElement } from "@ifc-lite/clash";
 import { GeometryProcessor, type MeshData } from "@ifc-lite/geometry";
+import { renderFrameWorldOffset } from "@ifc-lite/geometry/world-frame";
 import type { IfcDataStore } from "@ifc-lite/parser";
 import { EntityNode } from "@ifc-lite/query";
 
@@ -7,6 +8,8 @@ import { getIfcModels } from "../data/ifc-models";
 
 import { clearOpening } from "./door-clear";
 import { joinToAim } from "./join";
+import { pairDimension, sizeDimensions } from "./measure-dimension";
+import type { MeasureSegment } from "../viewer-measure";
 import { openEngineSession, type EngineModel } from "./session";
 import { ENGINE_VERSION, IFC_GUID_RE, InputError, guidIndex, modelsFor, str, type EngineDeps } from "./tools";
 
@@ -44,6 +47,8 @@ export interface MeshElement {
   parts: number[];
   /** Obálka v rámci meshu (Y-up). */
   bounds: Box;
+  /** Posun rámca meshu do IFC sveta (Z hore, m) z `coordinateInfo`; bez neho 0 (D-124). */
+  worldOffset?: Vec3;
 }
 
 /** Y-up mesh -> IFC (Z hore): x = x, y = -z, z = y. */
@@ -130,7 +135,12 @@ const round = (v: number, digits = 3) => Math.round(v * 10 ** digits) / 10 ** di
 const roundVec = (v: readonly number[]) => v.map((x) => round(x)) as Vec3;
 
 /** Meshe jedného modelu zlúčené po prvkoch, svetové súradnice (world = origin + position). */
-export function elementsFromMeshes(meshes: MeshData[], store: IfcDataStore, model: string): Map<string, MeshElement> {
+export function elementsFromMeshes(
+  meshes: MeshData[],
+  store: IfcDataStore,
+  model: string,
+  worldOffset?: Vec3,
+): Map<string, MeshElement> {
   const groups = new Map<number, MeshData[]>();
   for (const m of meshes) {
     if (!m.positions?.length || !m.indices?.length) continue;
@@ -176,6 +186,7 @@ export function elementsFromMeshes(meshes: MeshData[], store: IfcDataStore, mode
       indices,
       parts,
       bounds: boundsOf(positions),
+      ...(worldOffset ? { worldOffset } : {}),
     });
   }
   return out;
@@ -204,8 +215,9 @@ async function tessellate(m: EngineModel): Promise<Map<string, MeshElement>> {
     console.warn = () => undefined;
     try {
       await gp.init();
-      const { meshes } = await gp.process(bytes);
-      return elementsFromMeshes(meshes, m.store, m.id);
+      const { meshes, coordinateInfo } = await gp.process(bytes);
+      const o = renderFrameWorldOffset(coordinateInfo);
+      return elementsFromMeshes(meshes, m.store, m.id, [o.x, o.y, o.z]);
     } finally {
       console.log = origLog;
       console.warn = origWarn;
@@ -325,6 +337,8 @@ export async function pairOf(a: MeshElement, b: MeshElement) {
     status: clear === null ? "unknown" : clear < -1e-4 ? "overlap" : clear <= 1e-4 ? "touch" : "gap",
     distance_kind: d?.kind ?? null,
     closest_point: d ? roundVec(toIfc(d.point)) : null,
+    // Konce najkratšej úsečky v IFC svete (D-124): kóta vo vieweri; pri prieniku a dotyku null.
+    closest_points: d ? pairDimension(a, b, d.point, d.distance) : null,
     center_distance_m: round(Math.hypot(ca[0] - cb[0], ca[1] - cb[1], ca[2] - cb[2])),
     bbox_gap_m: { x: round(gap[0]), y: round(gap[1]), z: round(gap[2]), horizontal: round(Math.hypot(gap[0], gap[1])) },
     // a nad b: spodok a - vrch b (napr. klapka nad doskou); záporné = a je pod b.
@@ -342,7 +356,15 @@ function parseTargets(input: Record<string, unknown>): { a: string; b: string; l
   return { a, b, list };
 }
 
-export async function ifcMeasure(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
+/**
+ * `dimensions`: volajúci s `show=true` sem dostane kóty pre viewer (D-124) -
+ * a + b svetlú vzdialenosť, len a rozmery obálky.
+ */
+export async function ifcMeasure(
+  input: Record<string, unknown>,
+  deps: EngineDeps,
+  dimensions?: MeasureSegment[],
+): Promise<string> {
   const { a, b, list } = parseTargets(input);
   const targets = [...new Set([a, b, ...list].filter(Boolean))];
   const refs = targets.filter((t) => !IFC_GUID_RE.test(t));
@@ -404,8 +426,11 @@ export async function ifcMeasure(input: Record<string, unknown>, deps: EngineDep
     const eb = element(b);
     out.a = { ...ident.get(a), size: sizeOf(ea, storeOf(ea)) };
     out.b = { ...ident.get(b), size: sizeOf(eb, storeOf(eb)) };
-    out.distance = await pairOf(ea, eb);
+    const pair = await pairOf(ea, eb);
+    out.distance = pair;
+    if (dimensions && pair.closest_points) dimensions.push(pair.closest_points);
   } else {
+    if (dimensions && a && list.length === 0) dimensions.push(...sizeDimensions(element(a)));
     const items = (a ? [a, ...list] : list).map((t) => {
       const e = element(t);
       return { ...ident.get(t), size: sizeOf(e, storeOf(e)) };
@@ -423,10 +448,11 @@ export async function ifcMeasure(input: Record<string, unknown>, deps: EngineDep
     }
   }
   out.show_in_3d = joined.show_in_3d;
+  if (dimensions) out.view = dimensions.length > 0 ? `kóty vo vieweri: ${dimensions.length}` : "nič na kótovanie (prienik, dotyk alebo items)";
   if (input.clear_opening === true) return JSON.stringify(out);
   out.note =
     "clear_distance_m = najkratšia vzdialenosť povrchov (záporná = prienik). a_above_b_m = spodok a mínus vrch b. " +
-    "vs_qto porovná mesh s Qto zo súboru (mismatch nad 5 %). Kótu vo vieweri zatiaľ nekreslí - ukáž prvky cez show_in_3d.";
+    "vs_qto porovná mesh s Qto zo súboru (mismatch nad 5 %). show=true nakreslí kótu vo vieweri (a + b: closest_points, len a: hrany obálky X, Y, Z).";
   return JSON.stringify(out);
 }
 

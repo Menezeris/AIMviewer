@@ -60,7 +60,13 @@ describe("ifc_measure route (D-121)", () => {
     expect(r.json.to).toMatchObject({ global_id: guid("R1"), object_ref: "1.01" });
     expect(r.json.show_in_3d.ids_or_refs).toEqual([AIM[guid("D1")].object_id, AIM[guid("R1")].object_id]);
     expect(r.json.show_in_3d.global_ids).toContain(guid("ST"));
-    expect(r.json.graph).toMatchObject({ spaces: 5, doors: 5, exits: 1, stairs: 1, upper_external_doors_not_exits: ["DT"] });
+    expect(r.json.graph).toMatchObject({ spaces: 5,
+      doors: 6,
+      exits: 1,
+      stairs: 1,
+      upper_external_doors_not_exits: ["DT"],
+      revolving_doors_not_exits: ["DR"],
+    });
   });
 
   it("úniková cesta k vonkajším dverám na teréne, nie na strechu", async () => {
@@ -69,6 +75,7 @@ describe("ifc_measure route (D-121)", () => {
     expect(r.json.exit).toMatchObject({ global_id: guid("DX"), name: "DX" });
     expect(r.json.length_m).toBeCloseTo(18.6, 5);
     expect(path(r.json).at(-1)).toBe("door:DX");
+    // Karuselové DR v R2 je bližšie (R2 -> DR 2 m), ale únikovým východom nie je.
     expect(r.json.other_exits).toBeUndefined();
   });
 

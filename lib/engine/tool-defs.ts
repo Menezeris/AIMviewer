@@ -171,6 +171,7 @@ export function engineToolDefinitions(): ToolDefinition[] {
         "IFC MOTOR: meranie z geometrie (nie z Qto). clear_opening + items (dvere z ifc_query, max 50) = svetlá " +
         "šírka a výška dverí medzi zárubňami a od prahu po nadpražie z geometrie, nie z psetov (OverallWidth je so " +
         "zárubňou); s min_width_m / min_height_m aj pass/fail a check.style_pass / style_fail pre style_in_3d. " +
+        "KÓTA vo vieweri: show=true (a + b čiara medzi najbližšími bodmi s dĺžkou, len a hrany obálky X, Y, Z). " +
         "a + b = svetlá vzdialenosť povrchov dvoch prvkov (aj ASR " +
         "voči VZT; záporná = prienik), vzdialenosť stredov, medzera obálok po osiach X/Y/Z a vodorovne, " +
         "a_above_b_m = výška spodku a nad vrchom b (napr. klapka nad doskou: b = doska). \"Od steny k stene\" = " +
@@ -204,6 +205,10 @@ export function engineToolDefinitions(): ToolDefinition[] {
           },
           min_width_m: { type: "number", description: "clear_opening: limit svetlej šírky v m od používateľa -> pass/fail" },
           min_height_m: { type: "number", description: "clear_opening: limit svetlej výšky v m od používateľa -> pass/fail" },
+          show: {
+            type: "boolean",
+            description: "true = kóta v živom vieweri (nástroj Measure); predošlé kóty od Claude nahradí, vlastné merania nie",
+          },
         },
       },
     },
