@@ -125,7 +125,7 @@ def emitted_ids(model: StagedModel) -> tuple[list[str], list[str]]:
     """Id hrán (vrátane klasifikačných) a aktívnych GUID záznamov, ktoré tento beh zapísal."""
     edges = [ids.edge_id(e.from_ref, e.to_ref, e.edge_type) for e in model.edges]
     edges += [
-        ids.edge_id(c.from_ref, f"{c.system_name}:{c.identification}", "has_classification")
+        ids.edge_id(c.from_ref, f"{c.system_name}:{c.identification}", c.edge_type)
         for c in model.class_links
     ]
     guids = [
@@ -425,11 +425,12 @@ def _load_class_links(
 ) -> None:
     # rel_associates_classification je výnimka: to_id → classification_references
     # (nie objects). V generickej `relationships` je to len iný `rel_type`
-    # (`to_is_classification` v manifeste); trigger to zohľadní.
-    rel_type = EDGE_TYPE_TO_REL_TYPE["has_classification"]
+    # (`to_is_classification` v manifeste); trigger to zohľadní. Typ dokumentu (D-104) ide
+    # tou istou cestou s iným `rel_type`.
     for c in model.class_links:
+        rel_type = EDGE_TYPE_TO_REL_TYPE[c.edge_type]
         ref_id = ref_ids[(c.system_name, c.identification)]
-        cid = ids.edge_id(c.from_ref, f"{c.system_name}:{c.identification}", "has_classification")
+        cid = ids.edge_id(c.from_ref, f"{c.system_name}:{c.identification}", c.edge_type)
         cur.execute(
             """
             insert into relationships

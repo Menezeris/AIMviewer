@@ -29,7 +29,7 @@ describe("zlúčené tooly AIM (D-115)", () => {
     expect(mode).toMatchObject({ isError: true });
     expect(mode.content).toContain("list | count | locate");
     const include = await rt.exec("get_object", { id_or_ref: "DD01.02.0004", include: ["materials"] });
-    expect(include.content).toContain("details | path | drawings");
+    expect(include.content).toContain("details | path | documents");
   });
 
   it("show_in_3d select=true ide cez výber (panel sa overí pred DB), clear zruší výber", async () => {
