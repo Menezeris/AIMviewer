@@ -19,7 +19,7 @@ import { expectApplied } from "@/lib/live/warm-channel";
 import { mcpInstructions } from "@/lib/llm/system-prompt";
 import { AskToolRuntime } from "@/lib/llm/tools";
 import { callAction, writeCallLog } from "@/lib/mcp/call-log";
-import { mcpLegacyToolNames, mcpToolDefinitions } from "@/lib/mcp/tool-list";
+import { mcpToolDefinitions } from "@/lib/mcp/tool-list";
 import { defaultSavedViewDeps } from "@/lib/views/runtime";
 import { SAVED_VIEW_TOOL_NAMES, execSavedViewTool } from "@/lib/views/tools";
 import {
@@ -198,7 +198,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     serverInfo: { name: "aim-viewer", version: "1.0.0" },
     instructions: mcpInstructions(siteUrl(), ENGINE_ENABLED),
     tools: mcpToolDefinitions({ engine: ENGINE_ENABLED, spike: ENGINE_SPIKE }),
-    legacyTools: mcpLegacyToolNames({ engine: ENGINE_ENABLED }),
     callTool,
   };
   // D-100: Claude sa pripája (initialize / tools/list) -> modely motora sa načítajú vopred,

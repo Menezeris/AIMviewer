@@ -164,19 +164,6 @@ function isUuid(v: string): boolean {
 /** Čo `get_object` pridá v tom istom volaní (D-115). */
 export const GET_OBJECT_INCLUDES = ["details", "path", "drawings"] as const;
 
-/**
- * Staré mená zlúčených toolov (D-115): v zozname už nie sú, ale dispatch ich
- * vykoná (klient si zoznam toolov drží počas konverzácie).
- */
-export const LEGACY_ASK_TOOL_NAMES: ReadonlySet<string> = new Set([
-  "count_objects",
-  "locate_objects",
-  "get_asset_details",
-  "get_spatial_path",
-  "find_in_drawings",
-  "select_in_3d",
-]);
-
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "get_model_stats",
@@ -398,7 +385,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "predefined_type), konkrétne prvky v ids_or_refs (object_ref aj kód prvku ako 'SD04.0001' netreba hľadať " +
       "vopred). select=true = VYBERIE jeden prvok ako klik myšou a otvorí jeho panel vlastností ('vyber / označ " +
       "X', 'ukáž jeho vlastnosti'): panel_tab aim | ifc, panel_section properties | quantities, highlight " +
-      "'Pset.Vlastnosť' zvýrazní riadok; hodnoty do odpovede ber z ifc_get. clear=true zruší zvýraznenie, so " +
+      "'Pset.Vlastnosť' zvýrazní riadok; panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
       "select=true výber. Funguje pre prvky s IFC GUID.",
     inputSchema: {
       type: "object",
@@ -745,24 +732,14 @@ export class AskToolRuntime {
         return this.searchObjects(input);
       case "search_everything":
         return this.searchEverything(input);
-      case "count_objects":
-        return this.countObjects(input);
-      case "locate_objects":
-        return this.locateObjects(input);
       case "query_view":
         return this.queryView(input);
       case "aggregate_objects":
         return this.aggregateObjects(input);
       case "get_object":
         return this.getObjectWith(input);
-      case "get_asset_details":
-        return this.getAssetDetails(input);
       case "list_relations":
         return this.listRelations(input);
-      case "get_spatial_path":
-        return this.getSpatialPath(input);
-      case "find_in_drawings":
-        return this.findInDrawings(input);
       case "search_documents":
         return this.searchDocuments(input);
       case "show_in_3d":
@@ -772,8 +749,6 @@ export class AskToolRuntime {
           return this.selectIn3d({ ...input, id_or_ref: input.id_or_ref ?? first });
         }
         return this.showIn3d(input);
-      case "select_in_3d":
-        return this.selectIn3d(input);
       case "style_in_3d":
         return this.styleIn3d(input);
       case "open_drawing":
@@ -1347,7 +1322,7 @@ export class AskToolRuntime {
       in_aim: false,
       source: "ifc",
       ...(hits.length === 1 ? hits[0] : { candidates: hits.slice(0, 5) }),
-      hint: "Prvok je len v IFC súbore (v grafe AIM nie je). Ako cieľ ho do set_section / show_in_3d / get_viewer_state daj kódom alebo global_id; vlastnosti a podlažie dá ifc_get.",
+      hint: "Prvok je len v IFC súbore (v grafe AIM nie je); storey = podlažie zo súboru (aj cez celok, napr. schodisko). Ako cieľ ho do set_section / show_in_3d / get_viewer_state daj kódom alebo global_id; vlastnosti a materiály dá ifc_get.",
     };
   }
 

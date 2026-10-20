@@ -1,12 +1,12 @@
-import { BCF_TOOL_DEFINITIONS, LEGACY_BCF_TOOL_NAMES } from "../bcf/tools";
+import { BCF_TOOL_DEFINITIONS } from "../bcf/tools";
 import { PROBE_TOOL } from "../engine/probe-def";
 import { SEARCH_ALL_TOOL } from "../engine/search-all";
-import { LEGACY_ENGINE_TOOL_NAMES, engineToolDefinitions } from "../engine/tool-defs";
-import { FEEDBACK_TOOL_DEFINITIONS, LEGACY_FEEDBACK_TOOL_NAMES } from "../feedback/tools";
-import { LEGACY_VIEWER_QUERY_TOOL_NAMES, VIEWER_QUERY_TOOL_DEFINITIONS } from "../live/viewer-query-tools";
+import { engineToolDefinitions } from "../engine/tool-defs";
+import { FEEDBACK_TOOL_DEFINITIONS } from "../feedback/tools";
+import { VIEWER_QUERY_TOOL_DEFINITIONS } from "../live/viewer-query-tools";
 import type { ToolDefinition } from "../llm/provider";
 import { withSearchAll } from "../llm/system-prompt";
-import { LEGACY_ASK_TOOL_NAMES, TOOL_DEFINITIONS } from "../llm/tools";
+import { TOOL_DEFINITIONS } from "../llm/tools";
 import { SAVED_VIEW_TOOL_DEFINITIONS } from "../views/tools";
 
 /**
@@ -91,13 +91,3 @@ export function mcpToolDefinitions(opts: ToolListOptions): ToolDefinition[] {
   return [...mcpToolGroups(opts).flatMap((g) => g.tools), ...(opts.spike ? [PROBE_TOOL] : [])];
 }
 
-/** Staré mená zlúčených toolov, ktoré sa ešte vykonajú (D-115); mená motora len s motorom. */
-export function mcpLegacyToolNames({ engine }: ToolListOptions): ReadonlySet<string> {
-  return new Set([
-    ...LEGACY_ASK_TOOL_NAMES,
-    ...LEGACY_VIEWER_QUERY_TOOL_NAMES,
-    ...LEGACY_BCF_TOOL_NAMES,
-    ...LEGACY_FEEDBACK_TOOL_NAMES,
-    ...(engine ? [...LEGACY_ENGINE_TOOL_NAMES, "search_everything"] : []),
-  ]);
-}

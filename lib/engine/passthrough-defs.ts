@@ -4,7 +4,7 @@ import type { ToolDefinition } from "../llm/provider";
  * Tools `@ifc-lite/mcp` prevzaté takmer 1:1 (D-087, pravidlo 1): rovnaké
  * parametre ako v balíku, žiadna vlastná logika, jediný doplnok je prepojenie
  * GUIDov výsledku na AIM. Od D-115 ich Claude volá cez `ifc_models` (action) a
- * `ifc_measure` (qto); mená `ifc_<upstream>` ostali ako staré mená na prechod.
+ * `ifc_measure` (qto); mená `ifc_<upstream>` sú už len vnútorné kľúče (aliasy zrušené).
  * Bez závislostí motora (MCP route ich importuje staticky); schémy stráži
  * `passthrough.test.ts` proti registru balíka, takže povýšenie verzie, ktoré
  * ich zmení, padne v teste a nie u Clauda.

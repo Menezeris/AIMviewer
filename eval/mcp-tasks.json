@@ -56,7 +56,7 @@
       "max_calls": 1,
       "budget_s": 5,
       "expect": { "answer_matches": ["\\b86\\b"] },
-      "notes": "ifc_count ASR, Pset_WallCommon.LoadBearing = true."
+      "notes": "ifc_query mode=count ASR, Pset_WallCommon.LoadBearing = true."
     },
     {
       "id": "D7-kod-len-v-ifc",
@@ -66,7 +66,7 @@
       "max_calls": 2,
       "budget_s": 5,
       "expect": { "answer_matches": ["(?i)IfcStairFlight|rameno"], "tools_called": ["get_object"] },
-      "notes": "D-102: prvok len v IFC (bez object_ref); get_object(kód) ho nájde cez IFC Name, podlažie dá ifc_get alebo get_bounds."
+      "notes": "D-102: prvok len v IFC (bez object_ref); get_object(kód) ho nájde cez IFC Name, podlažie vráti get_object (storey) alebo ifc_get."
     },
     {
       "id": "C1-poziarna-odolnost-dveri",

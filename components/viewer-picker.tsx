@@ -150,7 +150,8 @@ export function ViewerPicker({
   }
 
   return (
-    <div className="absolute bottom-3 left-3 z-20 flex max-w-[min(26rem,calc(100%-1.5rem))] flex-col items-start gap-1 text-xs">
+    // Nad indikátorom Live, keď je zapnutý (--aim-live-inset nastavuje LiveChannel).
+    <div className="absolute bottom-[calc(0.75rem+var(--aim-live-inset,0px))] left-3 z-20 flex max-w-[min(26rem,calc(100%-1.5rem))] flex-col items-start gap-1 text-xs">
       {open && (
         <div
           role="listbox"
