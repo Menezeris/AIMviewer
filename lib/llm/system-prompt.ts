@@ -161,11 +161,17 @@ Postup podľa typu otázky:
  * markdown vykreslí, takže pravidlo čistého textu odpadá (je na konci UI odsekov,
  * ktoré MCP nahradí); UI akcie sa nevrátia klientovi, ale odvysielajú do živého viewera.
  */
+/** Text pre MCP s motorom (D-115): search_all (AIM + IFC) namiesto search_everything (len AIM). */
+export function withSearchAll(text: string): string {
+  return text.replaceAll("search_everything", "search_all");
+}
+
 export function mcpInstructions(siteUrl: string, engine = false): string {
   // Odseky o UI akciách z promptu chatu opakujú opisy toolov; MCP ich má krátko (D-102).
   const cut = SYSTEM_PROMPT.indexOf(UI_SECTION_MARKER);
-  const base = cut > 0 ? SYSTEM_PROMPT.slice(0, cut).trimEnd() : SYSTEM_PROMPT;
-  return `${base}
+  const chat = cut > 0 ? SYSTEM_PROMPT.slice(0, cut).trimEnd() : SYSTEM_PROMPT;
+  // D-115: s motorom hľadá text v grafe AIM aj v IFC súbore search_all; search_everything sa nevypisuje.
+  const text = `${chat}
 ${MCP_UI_RULES}
 
 Kontext MCP (Claude vedľa viewera):
@@ -181,6 +187,7 @@ Kontext MCP (Claude vedľa viewera):
 - Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
   výkres ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
 - Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${FEEDBACK_RULES}${BCF_RULES}${engine ? ENGINE_RULES : ""}`;
+  return engine ? withSearchAll(text) : text;
 }
 
 /** Začiatok odsekov o UI akciách v `SYSTEM_PROMPT` (chat ich nesie celé, MCP nahradí `MCP_UI_RULES`). */
@@ -282,7 +289,7 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   100 riadkov - úplný zoznam ber z ifc_relations a stránkuj cez next_cursor, kým nie je null;
   počet hovor z total, nie z dĺžky stránky.
 - Materiál prvkov (izolácia, minerálna vlna, EPS, betón; D-108) je len v IFC súbore, graf AIM ho nenesie:
-  "koľko / ktoré / ukáž prvky z materiálu X" = ifc_query(material=X), nie search_everything; vrstvy
+  "koľko / ktoré / ukáž prvky z materiálu X" = ifc_query(material=X), nie fulltext; vrstvy
   jedného prvku = ifc_get. Dedičnosť a atribúty IFC triedy = ifc_models(action=schema), nie z pamäti.
 - Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou; items = rozmery a objem z meshu;
   qto=true = plocha a objem len z Qto v súbore (rýchle).

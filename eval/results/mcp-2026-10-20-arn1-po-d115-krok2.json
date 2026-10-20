@@ -1,0 +1,138 @@
+{
+ "ranAt": "2026-10-20T05:54:00Z",
+ "label": "arn1-po-D-115-krok2",
+ "region": "arn1",
+ "runner": "čerstvá Claude Code session (session_01Hu5R6yGdAuHftoEDhhFgjj), main 50e3988 (34 toolov), C2/C7/C11 dvakrát; headless viewer pre V7",
+ "results": [
+  {
+   "id": "C1-poziarna-odolnost-dveri",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "aggregate_objects",
+    "search_everything"
+   ],
+   "duration_ms": 15757,
+   "note": "cez graf AIM, nie ifc_query(mode=values); druhé volanie zbytočné"
+  },
+  {
+   "id": "C2-mineralna-vlna",
+   "run": "a",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "ifc_query(mode=count, material) CHYBA",
+    "ifc_query(material)"
+   ],
+   "duration_ms": 25426,
+   "note": "po oprave opisov 11 -> 2; count + material neprešlo"
+  },
+  {
+   "id": "C2-mineralna-vlna",
+   "run": "b",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "ifc_query(mode=count, material) CHYBA",
+    "ifc_query(material)"
+   ],
+   "duration_ms": 25342
+  },
+  {
+   "id": "C3-vzt-potrubie-pocet",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_query(mode=count)"
+   ],
+   "duration_ms": 12822
+  },
+  {
+   "id": "C6-klasifikacia",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_models(action=classifications)"
+   ],
+   "duration_ms": 16496
+  },
+  {
+   "id": "C7-dedenie-triedy",
+   "run": "a",
+   "pass": false,
+   "calls": 0,
+   "tools": [],
+   "duration_ms": 9603,
+   "note": "z pamäti, ifc_models(action=schema) prehliadol"
+  },
+  {
+   "id": "C7-dedenie-triedy",
+   "run": "b",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_models(action=schema)"
+   ],
+   "duration_ms": 16486
+  },
+  {
+   "id": "C11-text-v-ifc",
+   "run": "a",
+   "pass": true,
+   "calls": 4,
+   "tools": [
+    "ifc_query(mode=values)",
+    "search_everything",
+    "ifc_query(where contains)",
+    "ifc_query(mode=values)"
+   ],
+   "duration_ms": 25301,
+   "note": "search_all nepoužitý"
+  },
+  {
+   "id": "C11-text-v-ifc",
+   "run": "b",
+   "pass": true,
+   "calls": 3,
+   "tools": [
+    "search_everything",
+    "ifc_query(where contains)",
+    "ifc_query(where contains)"
+   ],
+   "duration_ms": 31288,
+   "note": "search_all nepoužitý"
+  },
+  {
+   "id": "C12-bcf-otvorene",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "bcf_topic_list(status=open)",
+    "bcf_topic_list"
+   ],
+   "duration_ms": 11201
+  },
+  {
+   "id": "C13-otvorene-poziadavky",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "feedback_status"
+   ],
+   "duration_ms": 11638
+  },
+  {
+   "id": "V7-obalka-prvku",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "get_viewer_state(bounds=true)"
+   ],
+   "duration_ms": 10114
+  }
+ ],
+ "summary": {
+  "pass": "11/12",
+  "finding": "Oprava opisov po kroku 1 zabrala (C2 11 -> 2). Zostáva: count + material neprešlo (opravené v kroku 3), C7 raz z pamäti (schéma na začiatok opisu), search_all sa obchádza cez search_everything z inštrukcií chatu (v kroku 3 ho v MCP s motorom nahrádza)."
+ }
+}

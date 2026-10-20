@@ -5,6 +5,7 @@ import { LEGACY_ENGINE_TOOL_NAMES, engineToolDefinitions } from "../engine/tool-
 import { FEEDBACK_TOOL_DEFINITIONS, LEGACY_FEEDBACK_TOOL_NAMES } from "../feedback/tools";
 import { LEGACY_VIEWER_QUERY_TOOL_NAMES, VIEWER_QUERY_TOOL_DEFINITIONS } from "../live/viewer-query-tools";
 import type { ToolDefinition } from "../llm/provider";
+import { withSearchAll } from "../llm/system-prompt";
 import { LEGACY_ASK_TOOL_NAMES, TOOL_DEFINITIONS } from "../llm/tools";
 
 /**
@@ -39,7 +40,10 @@ export function mcpToolGroups({ engine }: ToolListOptions): ToolGroup[] {
       source: "DB (AIM graf) -> živý viewer",
       file: "lib/llm/tools.ts, lib/llm/view-tools.ts, lib/llm/list-tool.ts",
       mcpOnly: false,
-      tools: TOOL_DEFINITIONS,
+      // D-115: s motorom search_all nahrádza search_everything (hľadá v grafe AIM aj v IFC súbore).
+      tools: engine
+        ? TOOL_DEFINITIONS.filter((t) => t.name !== "search_everything").map((t) => ({ ...t, description: withSearchAll(t.description) }))
+        : TOOL_DEFINITIONS,
     },
     {
       group: "Dotazy na stav viewera",
@@ -86,6 +90,6 @@ export function mcpLegacyToolNames({ engine }: ToolListOptions): ReadonlySet<str
     ...LEGACY_VIEWER_QUERY_TOOL_NAMES,
     ...LEGACY_BCF_TOOL_NAMES,
     ...LEGACY_FEEDBACK_TOOL_NAMES,
-    ...(engine ? LEGACY_ENGINE_TOOL_NAMES : []),
+    ...(engine ? [...LEGACY_ENGINE_TOOL_NAMES, "search_everything"] : []),
   ]);
 }

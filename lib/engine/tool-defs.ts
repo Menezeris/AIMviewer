@@ -53,10 +53,11 @@ export function engineToolDefinitions(): ToolDefinition[] {
     {
       name: "ifc_models",
       description:
-        "IFC MOTOR: modely federácie, súbor a IFC schéma. action=revisions (default): aktuálna revízia modelu " +
-        "(vNNN, dátum, autor, zmeny), history = aj predchádzajúce; info: schéma IFC, jednotky, georeferencovanie; " +
-        "materials / classifications: zoznam materiálov a klasifikácií s počtami; audit: zdravie modelu; " +
-        "schema: z ktorej triedy IFC trieda dedí a jej atribúty (type, napr. IfcAirTerminal; bez modelu).",
+        "IFC MOTOR: IFC SCHÉMA, modely federácie a údaje súboru. action=schema: z ktorej triedy IFC trieda " +
+        "dedí, celá línia dedičnosti a atribúty (type, napr. IfcAirTerminal; bez modelu) - neodpovedaj z pamäti. " +
+        "revisions (default): aktuálna revízia modelu (vNNN, dátum, autor, zmeny), history = aj predchádzajúce; " +
+        "info: schéma IFC, jednotky, georeferencovanie; materials / classifications: zoznam materiálov a " +
+        "klasifikácií s počtami; audit: zdravie modelu.",
       inputSchema: {
         type: "object",
         properties: {
@@ -87,7 +88,7 @@ export function engineToolDefinitions(): ToolDefinition[] {
           group_by: { type: "string", enum: ["type", "storey", "material"], description: "count: zoskupiť (s where sa nekombinuje)" },
           pset: { type: "string", description: "values: pset alebo Qto, napr. Pset_DoorCommon" },
           name: { type: "string", description: "values: vlastnosť, napr. FireRating" },
-          material: { type: "string", description: "Časť názvu materiálu, vrstvy alebo kategórie (bez diakritiky)" },
+          material: { type: "string", description: "Časť názvu materiálu, vrstvy alebo kategórie; s mode=count len počet" },
           limit: { type: "number", description: "Max prvkov alebo hodnôt vo výsledku" },
         },
       },

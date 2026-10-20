@@ -3,7 +3,7 @@
 > Generované z definícií toolov (`lib/mcp/tool-list.ts`), needituj ručne. Obnova:
 > `npx vitest run lib/mcp/tool-registry.test.ts -u`.
 
-Konektor má 28 toolov (s IFC motorom, `ENGINE_ENABLED=1`).
+Konektor má 27 toolov (s IFC motorom, `ENGINE_ENABLED=1`).
 
 **Pravidlo D-114 - najprv napasuj, až potom nový tool:**
 1. Tu nájdi 2-3 najbližšie tooly k tomu, čo treba.
@@ -17,7 +17,7 @@ Konektor má 28 toolov (s IFC motorom, `ENGINE_ENABLED=1`).
 Legenda: `*` = povinný parameter, `=a|b` = povolené hodnoty, v zátvorke rozhodnutie,
 ktoré tool zaviedlo, a či číta alebo zapisuje (zápis si v claude.ai pýta súhlas).
 
-## AIM graf, pohľad a navigácia (16)
+## AIM graf, pohľad a navigácia (15)
 
 Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/view-tools.ts, lib/llm/list-tool.ts. Aj chat `/api/ask`.
 
@@ -25,8 +25,6 @@ Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/vie
   Parametre: žiadne
 - **`search_objects`** (D-056, čítanie) - Nájde, SPOČÍTA alebo LOKALIZUJE uzly grafu AIM podľa identity a IFC typológie. mode=list (default): riadky; count: presný počet ('koľko X je v budove'; z riadkov list nepočítaj, sú orezané); locate: presný počet + rozpad po podlažiach a miestnostiach so vzorkou ('koľko X a kde / na ktorých podlažiach', predvolene object_type asset, alebo ids z predošlého hľadania). `query` hľadá v názve, object_ref, IFC triede aj predefined_type (ilike). ifc_type = IFC trieda (IfcDoor), predefined_type = podtyp (AIRCONDITIONINGUNIT je predefined_type, NIE ifc_type).
   Parametre: `mode=list|count|locate`, `query`, `object_type`, `ifc_type`, `predefined_type`, `ids`, `limit`
-- **`search_everything`** (D-059, čítanie) - ZDROJ: graf AIM v DB (nie IFC súbor). Fulltextové vyhľadávanie nad CELÝM obsahom uzlov AIM — názov, object_ref, IFC trieda aj VŠETKY importované psety (kľúče a hodnoty, vrátane custom psetov); IFC atribúty Description/ObjectType/Tag/LongName nevidí.
-  Parametre: `q*`, `object_types`, `limit`
 - **`query_view`** (D-056, čítanie) - Generický read-only dopyt nad ľubovoľnou tabuľkou/view v DB (celá dátová vrstva).
   Parametre: `relation*`, `select`, `filters`, `order`, `count_only`, `limit`
 - **`aggregate_objects`** (D-060, čítanie) - Presné agregácie a ČÍSELNÉ porovnania nad hodnotami psetov — počíta databáza, nikdy nepočítaj z orezaných riadkov. agg=count|sum|avg|min|max nad numerickou hodnotou prop_path (napr. ['VZT_Parametre','AirFlowRate']); group_by (stĺpec: object_type|ifc_type|predefined_type|user_defined_type|name|object_ref) alebo group_by_path (pset cesta ako kľúč, napr. výrobca).
@@ -85,7 +83,7 @@ Zdroj: IFC súbory federácie (@ifc-lite/mcp). Definície: lib/engine/search-all
 
 - **`search_all`** (D-095, čítanie) - Hľadanie podľa textu naraz v OBOCH zdrojoch: IFC súbor (atribúty Name, Description, ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály, zóny, skupiny) a graf AIM v DB (názov, object_ref, importované psety, dokumenty, osoby).
   Parametre: `text*`, `source=all|ifc|aim`, `badges=IFC|AIM|IFC+AIM`, `ifc_types`, `model`, `limit`, `fields=attribute|property|quantity|type_property|classification|material`, `fuzzy`, `offset`
-- **`ifc_models`** (D-084, čítanie) - IFC MOTOR: modely federácie, súbor a IFC schéma. action=revisions (default): aktuálna revízia modelu (vNNN, dátum, autor, zmeny), history = aj predchádzajúce; info: schéma IFC, jednotky, georeferencovanie; materials / classifications: zoznam materiálov a klasifikácií s počtami; audit: zdravie modelu; schema: z ktorej triedy IFC trieda dedí a jej atribúty (type, napr. IfcAirTerminal; bez modelu).
+- **`ifc_models`** (D-084, čítanie) - IFC MOTOR: IFC SCHÉMA, modely federácie a údaje súboru. action=schema: z ktorej triedy IFC trieda dedí, celá línia dedičnosti a atribúty (type, napr. IfcAirTerminal; bez modelu) - neodpovedaj z pamäti. revisions (default): aktuálna revízia modelu (vNNN, dátum, autor, zmeny), history = aj predchádzajúce; info: schéma IFC, jednotky, georeferencovanie; materials / classifications: zoznam materiálov a klasifikácií s počtami; audit: zdravie modelu.
   Parametre: `action=revisions|info|materials|classifications|audit|schema`, `model=ASR|VZT`, `history`, `type`, `include_inherited`
 - **`ifc_query`** (D-084, čítanie) - IFC MOTOR: prvky v IFC súbore podľa MATERIÁLU (material: izolácia, minerálna vlna, EPS, betón - aj vrstva skladby a materiál z typu; graf AIM materiály nenesie), triedy, podlažia a hodnôt psetov vrátane ČÍSELNÝCH porovnaní (plocha > 20). mode=list (default): prvky s object_ref a show_in_3d; count: presný počet zo súboru, aj group_by trieda/podlažie/materiál; values: aké hodnoty má vlastnosť psetu alebo Qto a koľko prvkov má ktorú (pset + name).
   Parametre: `mode=list|count|values`, `model=ASR|VZT`, `ifc_types`, `where`, `storey`, `group_by=type|storey|material`, `pset`, `name`, `material`, `limit`
