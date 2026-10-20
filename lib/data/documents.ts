@@ -5,6 +5,8 @@ import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { AIM_CACHE } from "@/lib/data/constants";
 import { documentFolder, referencePage } from "@/lib/data/document-tree";
+import { documentMeta, floorDrawing, type DocumentHolder } from "@/lib/data/document-meta";
+import { fetchDocumentTypes, fetchNodes, typeText } from "@/lib/data/object-documents";
 
 /**
  * Data-access vrstva pre in-viewer knižnicu dokumentov (D-075): mapuje
@@ -13,7 +15,8 @@ import { documentFolder, referencePage } from "@/lib/data/document-tree";
  *
  * Súrodenec `fetchUnderlayDrawings` (D-072), nie náhrada — kalibrované
  * výkresy idú do viewera v OBOCH správach (rovnaké documentId) a panel ich
- * prepája cez `storeyGuid`.
+ * prepája cez `storeyGuid`. `meta` (D-104 krok 3) nesie údaje na zoskupenie
+ * a hľadanie vo vieweri (`document-meta.ts`).
  */
 
 /** Wire formát dokumentu pre `DOCUMENTS_LOAD` (zrkadlí fork bridge-protocol). */
@@ -45,8 +48,7 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
 
   // Bez stránkovania zámerne (vzor fetchUnderlayDrawings): dokumentov je ~54
   // (IFC, D-104), hlboko pod PostgREST capom 1000. Pri multi-projekte (D-033) prehodnotiť.
-  // Tri nezávislé selecty naraz — len rel dotaz nižšie potrebuje floorIds.
-  const [objsRes, docsRes, floorsRes, partsRes] = await Promise.all([
+  const [objsRes, docsRes, partsRes] = await Promise.all([
     supabase
       .from("objects")
       .select("id, name")
@@ -54,13 +56,8 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
       .is("valid_until", null),
     supabase
       .from("documents")
-      .select("id, location, storage_type, revision, status, purpose")
+      .select("id, identification, location, document_owner, last_revision_time, electronic_format")
       .eq("storage_type", "supabase"),
-    supabase
-      .from("objects")
-      .select("id, name, ifc_guid")
-      .eq("object_type", "floor")
-      .is("valid_until", null),
     // Strom dokumentácie z IFC (D-104): časť → nadradený dokument.
     supabase
       .from("rel_document_information_relationship")
@@ -69,7 +66,6 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
   ]);
   if (objsRes.error) throw new Error(objsRes.error.message);
   if (docsRes.error) throw new Error(docsRes.error.message);
-  if (floorsRes.error) throw new Error(floorsRes.error.message);
   if (partsRes.error) throw new Error(partsRes.error.message);
   const docById = new Map((docsRes.data ?? []).map((d) => [d.id as string, d]));
   const parentOf = new Map(
@@ -79,32 +75,10 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
     (objsRes.data ?? []).map((o) => [o.id as string, (o.name as string | null) ?? (o.id as string)])
   );
 
-  // Väzba podlažie → výkres (E3, role='drawing') určuje kind='drawing',
-  // storeyGuid (IFC GlobalId podlažia) a folder (názov podlažia).
-  const floorById = new Map(
-    (floorsRes.data ?? []).map((f) => [
-      f.id as string,
-      { name: (f.name as string | null) ?? "", guid: (f.ifc_guid as string | null) ?? "" },
-    ])
-  );
-
-  const floorIds = [...floorById.keys()];
-  const drawingFloorByDocId = new Map<string, { name: string; guid: string }>();
-  if (floorIds.length > 0) {
-    const { data: rels, error: rErr } = await supabase
-      .from("rel_associates_document")
-      .select("from_id, to_id")
-      .in("from_id", floorIds)
-      .eq("role", "drawing")
-      .is("valid_until", null);
-    if (rErr) throw new Error(rErr.message);
-    for (const rel of (rels ?? []) as { from_id: string; to_id: string }[]) {
-      const floor = floorById.get(rel.from_id);
-      if (floor && !drawingFloorByDocId.has(rel.to_id)) {
-        drawingFloorByDocId.set(rel.to_id, floor);
-      }
-    }
-  }
+  // Nositelia (D-104 krok 3): kto dokument nesie (podlažie, miestnosť, zóna...) a druh
+  // (typ informácie ISO 19650). Z nich je `meta` na zoskupenie a pôdorys podlažia.
+  const fileIds = [...docById.keys()].filter((id) => nameOf.has(id));
+  const [holdersByDoc, types] = await Promise.all([fetchHolders(fileIds), fetchDocumentTypes(fileIds)]);
 
   const out: DocumentWire[] = [];
   for (const obj of objsRes.data ?? []) {
@@ -118,29 +92,22 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
     const mime = mimeFor(location);
     if (!mime) continue;
     const name = (obj.name as string | null) ?? id;
-    const floor = drawingFloorByDocId.get(id);
-    const kind: DocumentWire["kind"] = floor
-      ? "drawing"
-      : mime.startsWith("image/")
-        ? "image"
-        : "document";
+    const holders = holdersByDoc.get(id) ?? [];
+    const type = types.get(id);
+    const plan = floorDrawing(holders, type?.code);
+    const kind: DocumentWire["kind"] = plan.drawing ? "drawing" : mime.startsWith("image/") ? "image" : "document";
 
-    const meta: Record<string, string> = {};
-    for (const key of ["revision", "status", "purpose"] as const) {
-      const value = doc[key] as string | null;
-      if (value) meta[key] = value;
-    }
-
-    // Folder: výkresy podľa podlažia, potom strom dokumentácie z IFC (D-104),
-    // inak podľa účelu (CDE typ, D-036).
+    // Folder: strom dokumentácie z IFC (D-104), koreň PD sa vynecháva.
     const tree = documentFolder(id, parentOf, nameOf);
-    const folder = floor?.name
-      ? ["Výkresy", floor.name]
-      : tree.length > 0
-        ? tree
-        : typeof doc.purpose === "string" && doc.purpose
-          ? [doc.purpose]
-          : undefined;
+    const meta = documentMeta({
+      identification: (doc.identification as string | null) ?? null,
+      folder: tree,
+      type: typeText(type),
+      holders,
+      lastRevisionTime: (doc.last_revision_time as string | null) ?? null,
+      electronicFormat: (doc.electronic_format as string | null) ?? mime,
+      owner: (doc.document_owner as string | null) ?? null,
+    });
 
     out.push({
       documentId: id,
@@ -148,13 +115,43 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
       kind,
       url: location,
       mime,
-      ...(floor?.guid ? { storeyGuid: floor.guid } : {}),
-      ...(folder ? { folder } : {}),
+      ...(plan.storeyGuid ? { storeyGuid: plan.storeyGuid } : {}),
+      ...(tree.length > 0 ? { folder: tree } : {}),
       ...(Object.keys(meta).length > 0 ? { meta } : {}),
     });
   }
   // Stabilné poradie pre viewer aj cache (názov, potom id).
   out.sort((a, b) => a.name.localeCompare(b.name) || a.documentId.localeCompare(b.documentId));
+  return out;
+}
+
+/** Nositelia dokumentov (rel_associates_document -> objekt), po dokumentoch. */
+async function fetchHolders(documentIds: readonly string[]): Promise<Map<string, DocumentHolder[]>> {
+  const out = new Map<string, DocumentHolder[]>();
+  if (documentIds.length === 0) return out;
+  const supabase = getSupabaseAdmin();
+  const { data: rels, error } = await supabase
+    .from("rel_associates_document")
+    .select("from_id, to_id")
+    .in("to_id", documentIds)
+    .is("valid_until", null);
+  if (error) throw new Error(error.message);
+  const pairs = (rels ?? []) as { from_id: string; to_id: string }[];
+  const nodes = await fetchNodes(pairs.map((r) => r.from_id));
+  const { data: guids, error: gErr } = await supabase
+    .from("objects")
+    .select("id, ifc_guid")
+    .in("id", nodes.filter((n) => n.object_type === "floor").map((n) => n.id));
+  if (gErr) throw new Error(gErr.message);
+  const guidOf = new Map(((guids ?? []) as { id: string; ifc_guid: string | null }[]).map((g) => [g.id, g.ifc_guid]));
+  const nodeOf = new Map(nodes.map((n) => [n.id, n]));
+  for (const r of pairs) {
+    const n = nodeOf.get(r.from_id);
+    if (!n) continue;
+    const list = out.get(r.to_id) ?? [];
+    list.push({ objectType: n.object_type, name: n.name, ifcGuid: guidOf.get(n.id) ?? null });
+    out.set(r.to_id, list);
+  }
   return out;
 }
 

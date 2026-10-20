@@ -31,6 +31,7 @@ HRANY (objects → objects, čisté FK) — IFC-kanonické (D-048):
 KLASIFIKÁCIA (referenčné dáta):
   classification_systems ◄─ classification_references
   rel_associates_classification  objekt(type aj occurrence) → reference
+  rel_external_reference_relationship  dokument → reference (typ informácie ISO 19650, D-104)
 ```
 
 ---
@@ -503,6 +504,17 @@ a `element_in_zone` (bez hrán: IFC na prvok v IfcZone vzťah nemá). Pohľad **
 = prvok v IfcZone cez priestory (prvok v priestore natívne alebo referenciou, priestor člen zóny
 priamo alebo cez vnorenú zónu); prázdny, keď je `element_in_zone` vypnuté.
 
+**`v_object_documents`** (D-104 krok 2, migrácia 20261020090000) = dokumenty objektu cez vzťahy:
+`object_id`, `object_type`, `object_ref`, `document_id` (pri odkaze na časť jeho dokument),
+`reference_id`, `page`, `via` (`direct|type|zone|group|system|spatial_zone`), `via_id` (nositeľ
+dokumentu), `via_nearest_id` (najbližší nositeľ k objektu), `via_space_id`, `depth`, `path`, `role`,
+`source`. Ide od nositeľov (`rel_associates_document`) nadol cez `rel_assigns_to_group`,
+`rel_aggregates` (skupina, priestorová zóna), `rel_defines_by_type`, `rel_referenced_in_spatial_structure`
+(priestorová zóna) a `v_zone_elements`, a prvok (asset) aj z podlažia a miestnosti, v ktorých je
+(`rel_contained_in_spatial_structure`, `rel_referenced_in_spatial_structure`; dodatok migrácia
+20261020120000). Miestnosť ani priestorová zóna od podlažia nededia; projekt, budova a pozemok sa
+nededia; väzby E4 (`pdf_link (E4)`) vynecháva. `via` je aj `floor` a `space`.
+
 ### 2.16 Log volaní MCP konektora (D-100, migrácia 20261019140000)
 
 `mcp_call_log` = jedno volanie toolu konektora: `tool`, `action` (`args.action`, ak ju tool má),
@@ -554,6 +566,7 @@ CamelCase by vyžadoval úvodzovky a škodil LLM text-to-SQL). IFC väzba cez
 | `rel_associates_document` | IfcRelAssociatesDocument (IfcRelAssociates) |
 | `rel_document_information_relationship` | IfcDocumentInformationRelationship (**resource, nie IfcRel**, D-104); `role` = RelationshipType |
 | `rel_associates_classification` | IfcRelAssociatesClassification (IfcRelAssociates) |
+| `rel_external_reference_relationship` | IfcExternalReferenceRelationship (**resource, nie IfcRel**, D-104): klasifikácia dokumentu; `to_id` → `classification_references` |
 | `rel_assigns_to_actor` | IfcRelAssignsToActor + IfcActorRole (IfcRelAssigns) |
 | `rel_assigns_to_group` | IfcRelAssignsToGroup (IfcRelAssigns) — systémy, D-047 |
 | `classification_systems` / `_references` | IfcClassification / IfcClassificationReference |

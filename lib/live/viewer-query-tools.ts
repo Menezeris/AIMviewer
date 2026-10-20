@@ -48,18 +48,12 @@ export const VIEWER_QUERY_TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 ];
 
-/** Staré meno (D-115): `get_bounds` = get_viewer_state s obálkami; nevypisuje sa, ale vykoná sa. */
-export const LEGACY_VIEWER_QUERY_TOOL_NAMES: ReadonlySet<string> = new Set(["get_bounds"]);
+export const VIEWER_QUERY_TOOL_NAMES = new Set(VIEWER_QUERY_TOOL_DEFINITIONS.map((t) => t.name));
 
-export const VIEWER_QUERY_TOOL_NAMES = new Set([
-  ...VIEWER_QUERY_TOOL_DEFINITIONS.map((t) => t.name),
-  ...LEGACY_VIEWER_QUERY_TOOL_NAMES,
-]);
-
-/** Obálky alebo stav: get_bounds, bounds=true alebo zadaný cieľ = obálky (D-115). */
-export function viewerQueryOf(name: string, input: Record<string, unknown>): ViewerQuery {
+/** Obálky alebo stav: bounds=true alebo zadaný cieľ = obálky (D-115). */
+export function viewerQueryOf(input: Record<string, unknown>): ViewerQuery {
   const targets = input.target_ids_or_refs !== undefined || input.global_ids !== undefined;
-  return name === "get_bounds" || input.bounds === true || targets ? "bounds" : "view_state";
+  return input.bounds === true || targets ? "bounds" : "view_state";
 }
 
 /** Chybová hláška pre model: čo chýba a ako to používateľ napraví. */
@@ -124,7 +118,7 @@ export async function execViewerQueryTool(
 ): Promise<{ text: string; isError: boolean }> {
   const channel = liveChannel();
   try {
-    const query = viewerQueryOf(name, input);
+    const query = viewerQueryOf(input);
     const guids = query === "bounds" && (input.target_ids_or_refs || input.global_ids) ? await resolveTargets(input) : [];
     const outcome = channel ? await queryLiveViewer(channel, query, guids.slice(0, MAX_QUERY_GUIDS)) : null;
     if (!outcome || !outcome.ok) {

@@ -4910,6 +4910,140 @@ až po kroku 4.
   overená cez sha256, `dry_run`, `close_legacy_documents`).
 - Knižnica dokumentov vo vieweri berie priečinok zo stromu dokumentácie (koreň PD sa vynecháva).
 
+**Dodatok 2026-10-20 - krok 2 (dokumenty objektu cez vzťahy, Samuel potvrdil).**
+- Pohľad `v_object_documents` (migrácia `20261020090000`): objekt -> dokument (alebo strana pri
+  `document_reference`) a cez čo: `direct`, `type`, `zone` / `group` / `system` (členstvo, prvok
+  aj cez miestnosť v zóne z `v_zone_elements`), `spatial_zone` (aj odvodené
+  `element_in_spatial_zone`), a cez nadradené zóny a skupiny (`rel_assigns_to_group`,
+  `rel_aggregates`). Ide sa od nositeľov dokumentov nadol, nie od všetkých objektov: na prod 14 769
+  riadkov pre 1 543 objektov, celý pohľad 85 ms, jeden objekt 60 ms. Projekt sa nededí.
+- Tooly (MCP aj `/ask`): podľa D-114 a D-115 rozšírenie, nie nový tool. `get_object` dostane
+  `include=documents` (namiesto `drawings`): pri objekte jeden riadok na dokument a stranu s
+  najbližšou cestou (`via_name`, `through`, `also_via`) a odkazom na otvorenie na strane, plus počet
+  dokumentov stavby; pri dokumente alebo odkaze na stranu opačne objekty, ktorých sa týka (počty
+  podľa typu a nositeľa, vzorka). `query_view` pozná `v_object_documents` a strom dokumentácie.
+- Výkresové väzby z obsahu PDF (E4), ktoré čítali `include=drawings` a `find_in_drawings`, krok 1
+  ukončil, takže vždy vracali prázdno. Staré `include=drawings` vedie na dokumenty z modelu;
+  staré meno `find_in_drawings` `main` medzitým zrušil spolu s ostatnými menami D-115.
+- Čo z modelu vychádza: zóny cez viac podlaží (Spoločné priestory, Nájomné priestory) nesú pôdorysy
+  všetkých podlaží, takže dvere na 1NP dostanú aj pôdorys 3NP a strechy. Pohľad to nefiltruje (je to
+  väzba v modeli); presnejšie by bolo viazať pôdorys na zónu podlažia alebo na podlažie (otázka na
+  Samuela v PR).
+- Poučenie z kroku 1: úloha z BCF témy #3 (ASR v75, 19. 10. 17:07) bežala s ETL z `main` ešte pred
+  merge #105 a starý ETL vrátil starú sadu dokumentov a uzavrel strom; náprava = `reetl` po merge.
+  Kým zmena ETL nie je v `main`, každé re-ETL z iných workflowov ju prepíše.
+
+**Dodatok 2026-10-20 - nositelia dokumentov podľa praxe (Samuel).** Model sa upraví receptom OCB
+`recepty/ASR/v076-dokumenty-nositelia.py` (revízia ASR v76):
+- podlažie (IfcBuildingStorey) nesie pôdorysy všetkých profesií svojho podlažia (1NP: ASR, PBR,
+  základy, strop nad 1NP; 2NP a 3NP: ASR, PBR; 4NP: strecha, PBR; 5NP: strecha - jeden výkres pre
+  4NP a 5NP);
+- miestnosť (IfcSpace) nesie len ASR pôdorys svojho podlažia;
+- zóna (IfcZone) nesie len zónové dokumenty: ASR pôdorysy zo zón (15 väzieb) sa odoberú; požiarne
+  úseky (PBR pôdorysy, technická správa, výpočet rizika) a tepelné zóny (PENB, SF.02) ostávajú;
+- budova (IfcBuilding) nesie výkresy pre všetky podlažia (TP.01, SF.01), pozemok (IfcSite) situácie
+  (C.01 až C.03, D.1.3.01); projekt ostáva nositeľom celej dokumentácie.
+Pohľad `v_object_documents` (migrácia `20261020120000`): prvok dedí dokumenty podlažia a miestnosti,
+v ktorých je; miestnosť od podlažia nededí (ostane pri ASR pôdoryse, PBR dostane cez požiarny
+úsek), budova, pozemok a projekt sa nededia. Výsledok: dvere na 1NP majú pôdorysy 1NP všetkých
+profesií, nie pôdorys 3NP a strechy ako pri zónach cez viac podlaží.
+
+**Dodatok 2026-10-20 - plán kroku 3 (viewer).** Zistený stav pred krokom 3:
+- Zoznam dokumentov pre viewer (`DOCUMENTS_LOAD`, `lib/data/documents.ts`) posiela len súbory a v
+  `meta` len `revision`, `status`, `purpose` (v ASR prázdne); nové stĺpce kroku 1 (`identification`,
+  `last_revision_time`, `electronic_format`, `document_owner`) a nositeľov neposiela. Vetva
+  `kind = drawing` čaká na rolu `drawing` (E3), ktorú IFC dokumenty nemajú.
+- AIM karta (`/api/element`, `lib/data/object.ts`) berie len priame väzby (po v76 len miestnosť a
+  jej ASR pôdorys), bez strany a cesty; klik pošle `AIM_NAVIGATE` na `/drawing/[id]` a odíde z 3D.
+- Podklady výkresov (`fetchUnderlayDrawings`) hľadajú väzbu podlažie -> dokument s rolou `drawing`,
+  takže sú od kroku 1 prázdne. Kalibrácia sa píše do `objects.properties._georef`, ktoré každé
+  re-ETL prepíše (upsert `properties = excluded.properties`).
+- Vo forku: skupiny lišty sú zoznam `PANEL_GROUPS` v `lib/panels/registry.ts` bez sentinelu,
+  `DocumentsPanel` zoskupuje len podľa `folder` a filtruje len názov, `AimCard` dokumentu pozná len
+  `href`. `bridge-protocol.ts`, `HierarchyPanel.tsx` a `PdfDocumentView.tsx` sú na limite veľkosti.
+
+Postup (D-087: najprv fork, potom AIMviewer; každá časť je spätne kompatibilná, nové polia sú
+voliteľné a starší viewer ich ignoruje):
+1. **Fork, lišta:** skupina `aim` prvá v `PANEL_GROUPS` (popisky v `i18n/catalogues/aim-fork.en.ts`),
+   do nej `documents` (z Coordinate), `drawing-underlay` (z Author) a nový panel `aim-layers`
+   (`aim/AimLayersPanel.tsx` nad existujúcim `AimLayersSectionBody`, na celú výšku); sekcia AIM
+   VRSTVY z ľavého stromu zmizne (dva riadky v `HierarchyPanel` preč, menej zásahov do upstreamu).
+   Ribbon AIM otvára panel vrstiev namiesto ľavého stromu. Upstream testy, ktoré čakajú `hierarchy`
+   ako prvý panel lišty, sa upravia v sentineloch. Uložené rozloženie lišty si poradie nechá
+   (migrácia rozloženia forku mení len nedotknuté predvolené poradie): nová skupina sa ukáže po
+   "Reset layout"; vlastná migrácia sa nerobí.
+2. **Fork, panel Dokumenty:** logika v `aim/documentsQuery.ts` (čisté funkcie, testy `node:test`),
+   `DocumentsPanel` ju len volá. Zoskupenie "podľa" = priečinok (strom dokumentácie) alebo
+   ľubovoľný kľúč `meta`, ktorý majú poslané dokumenty (zoznam kľúčov viewer nedrží); hľadanie
+   v názve a všetkých hodnotách `meta` bez ohľadu na diakritiku; prepínač "len pre výber" ukáže
+   dokumenty z AIM karty aktuálneho výberu (ten istý zdroj, žiadna nová správa) s cestou "cez
+   N3.01" a klik otvorí PDF na strane (`openDocument(id, {page})`). Texty cez katalóg forku.
+3. **Fork, AIM karta:** položka dokumentu dostane voliteľné `documentId`, `page`, `via`; ak ich
+   má a viewer dokument pozná, klik otvorí PDF vo vieweri na strane, inak ako doteraz `href`.
+4. **AIMviewer, dáta:** `objectDocuments` z `lib/llm/tools.ts` sa presunie do
+   `lib/data/object-documents.ts` (jeden kód pre tooly, AIM kartu aj panel; doplní sa filter
+   `valid_until`). `/api/element` dá do karty efektívne dokumenty z `v_object_documents` (bez
+   dokumentácie projektu, tá je v paneli) s `documentId`, `page`, `via` a `href` ako zálohou.
+   `DOCUMENTS_LOAD` pošle v `meta` kľúče `Identifikácia`, `Časť` (časť stromu, napr. D.1.1),
+   `Nositeľ` (typy nositeľov dokumentu: podlažie, miestnosť, zóna, požiarny úsek...), `Podlažie`
+   (podlažia, ktoré dokument nesú), `Revízia` (dátum `last_revision_time`), `Formát`, `Vlastník`;
+   mŕtva vetva E3 (`kind = drawing` z roly, priečinok "Výkresy") zmizne.
+5. **AIMviewer, podklady:** zdroj podkladov = dokumenty, ktoré nesie podlažie (po v76 pôdorysy
+   všetkých profesií), nie rola `drawing`. ETL pri upserte zachová kľúče, ktoré píše host
+   (`_georef`), aby re-ETL kalibráciu nezmazal. Kalibrácia sa robí znova nad IFC pôdorysmi.
+6. **Overenie:** testy forku (`aim-feature` skill: tsc, `node:test`, kontroly veľkosti, i18n a
+   fast lane), vitest AIMviewera, naživo Playwright nad preview: lišta s AIM navrchu, zoskupenie
+   podľa časti a podlažia, "len pre výber" na 3.01 a DD01.07.01, otvorenie D.1.1.09 na strane 3
+   z karty podlahy ST01.20.0012.
+
+Mimo kroku 3: hľadanie v obsahu PDF (krok 4, `document_pages` je na prod prázdna) a preklik z
+dokumentu na prvky v 3D (ďalší program bodu 4).
+
+Otvorené pre Samuela: **druh dokumentu** (výkres, technická správa, výpočet, posudok) model
+nenesie (`Purpose`, `IntendedUse`, `Scope`, `Status` sú v ASR prázdne), takže zoskupenie podľa
+druhu a rozlíšenie výkresu pre podklady z dát nejde. Návrh: doplniť ho receptom do
+`IfcDocumentInformation.Purpose` (model je nositeľ), nie odvodzovať z mena súboru vo vieweri.
+
+**Dodatok 2026-10-20 - druh dokumentu = typ informácie ISO 19650 (Samuel).** IFC nemá na
+IfcDocumentInformation atribút pre druh (overené v schéme IFC4X3_ADD2: `Purpose`, `IntendedUse`,
+`Scope` sú voľný text, `Status` a `Confidentiality` iné číselníky). Druh sa zapíše ako
+klasifikácia dokumentu, nie ako text v `Purpose`:
+- Číselník = pole Type (typ informácie) v názve kontajnera z **národnej prílohy UK k ISO 19650-2**
+  (BS EN ISO 19650-2:2018 NA); samotné medzinárodné časti ISO 19650 kódy neurčujú. V IFC
+  `IfcClassification` "ISO 19650 typ informácie" (Source BSI), referencia = kód s menom po
+  slovensky a `Description` po anglicky. Použité kódy: DR výkres, CA výpočty, RP správa, SH výpis,
+  SP špecifikácia; ďalšie kódy prílohy sa pridajú, keď ich bude treba.
+- Väzba = `IfcExternalReferenceRelationship` (referencia -> dokumenty), lebo dokument nie je
+  IfcRoot a IfcRelAssociatesClassification naň nedosiahne. V DB nový rel_type
+  `rel_external_reference_relationship` (resource, `to_id` -> `classification_references` ako
+  pri `rel_associates_classification`), migrácia `20261020150000`. Meno referencie ETL už ukladá.
+- ASR v77 (recept OCB `recepty/ASR/v077-typy-dokumentov-iso19650.py`): 44 dokumentov so súborom,
+  DR 26, CA 10, RP 5, SH 2, SP 1, podľa obsahu PDF (A4 výpočtové prílohy TZB a fyziky = CA,
+  výkresové listy vrátane štúdie S.01 a tepelných záťaží TP.02 = DR, výpisy skladieb = SH,
+  hierarchia SNIM = SP). Priečinkové časti stromu typ nemajú.
+- Krok 3 (plán vyššie) tým dostáva: `meta` kľúč `Druh` v zozname dokumentov, druh v AIM karte a v
+  `get_object(include=documents)`; podklady výkresov = dokumenty typu DR, ktoré nesie podlažie.
+
+**Dodatok 2026-10-20 - krok 3 urobený (viewer a dáta pre neho).** Fork Menezeris/ifc-lite#81,
+AIMviewer vetva `claude/lucid-wright-g4qmwq-krok3` (stavia na #121):
+- Lišta viewera: skupina `aim` prvá v `PANEL_GROUPS` s panelmi Documents, AIM layers (sekcia zo
+  stromu je vlastný panel `aim-layers`) a Drawing underlays. Uložené rozloženie si poradie nechá,
+  skupina sa ukáže po "Reset layout" (vlastná migrácia rozloženia sa nerobí).
+- Panel dokumentov zoskupuje podľa priečinka alebo kľúča `meta`, filter hľadá v názve, priečinku
+  aj `meta` bez diakritiky; "Len pre výber" berie dokumenty z AIM karty výberu (žiadna nová
+  správa mosta). Viac hodnôt v jednom kľúči oddeľuje `; ` (pôdorys strechy 4NP aj 5NP).
+- `DOCUMENTS_LOAD.meta` (`lib/data/document-meta.ts`): Identifikácia, Časť, Druh, Nositeľ,
+  Podlažie, Revízia, Formát, Vlastník; kľúč je rovno slovenský popisok, viewer ich nepozná
+  vopred. Projekt je nositeľom len pri dokumente, ktorý nič iné nenesie. Pôdorys podlažia
+  (dokument na podlaží, druh DR alebo neznámy) je `kind = drawing`, `storeyGuid` len pri jednom
+  podlaží. Stará vetva E3 (rola `drawing`, priečinok "Výkresy") zmizla.
+- AIM karta (`/api/element`) nesie dokumenty prvku z `v_object_documents` (najviac 40) s
+  `documentId`, stranou, cestou (`priamo`, `cez priestorovú zónu N3.01`) a kódom druhu; klik
+  ich otvorí vo vieweri na strane. Tooly aj karta čítajú z `lib/data/object-documents.ts`.
+- Podklady výkresov: dokumenty, ktoré nesie podlažie (rola sa nefiltruje). ETL pri upserte
+  objektu zachová kľúče hostiteľa (`HOST_PROPERTY_KEYS = ("_georef",)` v `etl/db.py`), takže
+  re-ETL kalibráciu nezmaže.
+
 ---
 
 ### D-105 - X-ray context z chatu: `style_in_3d action=xray`, drôtový model zatiaľ nie
@@ -5196,6 +5330,12 @@ namiesto pridávania.
    `LEGACY_ENGINE_TOOL_NAMES`); `mcp_call_log.tool` nesie volané meno, takže sa dá zistiť, kedy ich
    už nikto nevolá. Zmažú sa po dvoch týždňoch bez volania. `callAction` loguje prvý z parametrov
    `action`, `mode`, `source`.
+   **Dodatok 2026-10-20 (Samuel):** staré mená sú zmazané hneď, nečaká sa do 3. 11. Konektor
+   používa len Samuel, staré konverzácie s uloženým zoznamom toolov nepoužije a `mcp_call_log` od
+   06:17 UTC staré mená neukazuje. Zrušené: `legacyTools` v MCP serveri, `mcpLegacyToolNames`,
+   `LEGACY_*_TOOL_NAMES` a vetvy dispatchu, ktoré vykonali staré meno; volanie starým menom vráti
+   "Neznámy tool". `search_everything` ostáva riadnym toolom bez motora (aj `/api/ask`), s motorom ho
+   v MCP nahrádza `search_all` bez aliasu.
 3. **Krok 1 - IFC motor (18 -> 7 toolov):**
    - `ifc_query` + `mode` list | count | values a filter `material` (bývalé `ifc_count`,
      `ifc_property_values`, `ifc_material_layers`);
@@ -5232,12 +5372,17 @@ namiesto pridávania.
      meno ostáva ako `legacyTools`, `/api/ask` bez motora ho má ďalej), `ifc_query(mode=count)` prijme
      `material` a `ifc_models` má schému triedy na začiatku opisu (C7: jeden z dvoch behov odpovedal z pamäti).
 
+7. **Zvyšky po záverečnom evale** (pridelené orchestrátorom so súhlasom Samuela, bez nového toolu): D7 -
+   `get_object` pre prvok len v IFC vráti `storey` (podlažie nahor cez IfcRelAggregates /
+   IfcRelContainedInSpatialStructure, `lib/engine/names.ts`); V6 - opis výberu neradí `ifc_get`, keď panel
+   hodnoty ukáže sám.
+
 **Zavrhnuté:**
 - *Jeden veľký PR:* regresiu vo výbere toolu by nebolo vidieť po skupinách.
 - *Premenovať všetko na nové mená (`ifc_model`, `find_objects`...):* rozbije porovnanie s
   predchádzajúcimi kolami v `mcp_call_log` a evaloch bez úžitku pre agenta.
 - *Okamžite zmazať staré mená:* claude.ai drží zoznam toolov počas konverzácie, rozpracované
-  rozhovory by padali na "Neznámy tool".
+  rozhovory by padali na "Neznámy tool". (Prehodnotené v ten istý deň, dodatok k bodu 2.)
 
 ---
 
@@ -5280,6 +5425,42 @@ Authentication vypnúť pre Preview, inak sa náhľad v iframe nenačíta. Pre z
 
 **Detail:** `docs/FORK_MAINTENANCE.md` vo forku, sekcia "Release train".
 
+
+### D-118 - Rýchle kontroly nad modelom: atribúty v `ifc_query.where` a postup kontroly
+**Dátum:** 2026-10-20 · **Stav:** rozhodnuté (orchestrátor na Samuelov pokyn, rýchla časť issue #77) · **Súvisí:** D-084, D-112, D-111, D-099, D-114
+
+**Kontext:** issue #77 žiada `run_rule_check` (sada pravidiel STN/ČSN, meranie, pass/fail, tabuľka, BCF).
+Samuel chce hneď rýchlu časť nad tým, čo už je. Limity noriem patria do knižnice požiadaviek (IDS,
+`ifc_ids_validate`), nie do konektora. Chýbalo: `ifc_query.where` nevidel IFC atribúty
+(`OverallWidth`, `OverallHeight`), len psety a Qto; upstream selektor atribúty tiež nevie.
+
+**Rozhodnutie (D-114, rozšírenie, nie nový tool):**
+1. `ifc_query.where` prijme podmienku `{attribute, op, value}` namiesto `pset` + `name`. Kandidáti
+   (triedy, podlažie, podmienky na psety) idú z `query_entities` ako doteraz, atribúty sa dofiltrujú
+   z `get_entities_bulk(include=attributes)` po stránkach 1000. Čísla sa porovnávajú číselne, text bez
+   ohľadu na veľkosť písmen; `matches` atribút nevie. Podmienka na atribút potrebuje `ifc_types`,
+   strop 20 000 kandidátov. Platí pre `mode=list` aj `count`.
+2. `ifc_measure` bez zmeny kódu: opis hovorí, že "od steny k stene" je jedno volanie `a` + `b`
+   a šírka obdĺžnikovej miestnosti či chodby je `bbox_m` miestnosti (`a` = IfcSpace).
+3. Inštrukcie MCP: rýchla kontrola = `ifc_query` / `ifc_measure` -> `style_in_3d` (pass zelená,
+   fail červená) -> `open_list` -> pri zlyhaní ponúknuť `bcf_topic`. Limit dáva používateľ alebo IDS,
+   model si ho nevymýšľa. Nahrádza recept "ofarbi miestnosti podľa plochy" (ten istý postup).
+
+**Overenie nad ASR (konektor):** `ifc_measure(SN05.01.0001, SN05.01.0002)` jedným volaním 9,3 m;
+miestnosť 1.10 = 6,796 x 3,221 m, pôdorys z meshu = Qto 21,699 m². DD02.05.04 má `OverallWidth`
+900 (so zárubňou) a zároveň pset `AIM_Door.ClearWidth` 800; `where AIM_Door.ClearWidth < 900` = 40 dverí.
+
+**Zavrhnuté:**
+- *Nový tool `run_rule_check` so sadou limitov:* duplikát IDS bez citácie normy (komentár v #77).
+- *Upstream `check_rules` (`@ifc-lite/rules`) 1:1:* formát je ťažký na ručné písanie a dubluje IDS.
+
+**Otvorené:**
+- Steny ohraničujúce miestnosť sa dnes nedajú zistiť (model nemá `IfcRelSpaceBoundary`,
+  `v_space_elements` steny nepriraďuje), steny určí používateľ alebo výber vo vieweri.
+- Kóta merania vo vieweri: `ifc_measure` vracia jeden najbližší bod, kóta potrebuje oba body
+  dvojice, prevod osí IFC (Z hore) do rámca renderera a novú správu mosta vo forku, ktorá zapíše
+  meranie do upstream `measurementSlice`. Väčší kus, návrh v #77.
+- Nositeľ svetlej šírky dverí (`AIM_Door.ClearWidth`?) potvrdí Samuel.
 
 ### D-121 - Najkratšia a úniková cesta: `ifc_measure route` nad hranicami priestorov zo súboru
 **Status:** rozhodnuté (2026-10-20, Samuel v #76), číslo pridelené v registri #60. Nadväzuje na D-112 (meranie

@@ -125,7 +125,7 @@ def emitted_ids(model: StagedModel) -> tuple[list[str], list[str]]:
     """Id hrán (vrátane klasifikačných) a aktívnych GUID záznamov, ktoré tento beh zapísal."""
     edges = [ids.edge_id(e.from_ref, e.to_ref, e.edge_type) for e in model.edges]
     edges += [
-        ids.edge_id(c.from_ref, f"{c.system_name}:{c.identification}", "has_classification")
+        ids.edge_id(c.from_ref, f"{c.system_name}:{c.identification}", c.edge_type)
         for c in model.class_links
     ]
     guids = [
@@ -249,6 +249,11 @@ def _load_refs(cur, model: StagedModel, sys_ids: dict[str, str]) -> dict[tuple[s
     return out
 
 
+# Kľúče `objects.properties`, ktoré nezapisuje ETL, ale hostiteľ, a re-ETL ich nesmie
+# zmazať: kalibrácia podkladu výkresu (`_georef`, PATCH /api/underlay, D-072; D-104).
+HOST_PROPERTY_KEYS = ("_georef",)
+
+
 def _load_objects(cur, model: StagedModel) -> dict[str, str]:
     """Upsert `objects` cez object_ref; vráti mapu object_ref → DB id."""
     out: dict[str, str] = {}
@@ -266,13 +271,20 @@ def _load_objects(cur, model: StagedModel) -> dict[str, str]:
               ifc_guid = excluded.ifc_guid, ifc_type = excluded.ifc_type,
               predefined_type = excluded.predefined_type,
               user_defined_type = excluded.user_defined_type,
-              properties = excluded.properties, updated_at = now(),
+              -- model prepíše svoje vlastnosti, kľúče hostiteľa (HOST_PROPERTY_KEYS) ostanú
+              properties = excluded.properties || (
+                select coalesce(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
+                from jsonb_each(objects.properties) e
+                where e.key = any(%s)
+              ),
+              updated_at = now(),
               valid_until = null    -- objekt je znova v modeli (D-088)
             returning id
             """,
             (
                 o.object_type, o.object_ref, o.name, o.ifc_guid, o.ifc_type,
                 o.predefined_type, o.user_defined_type, Json(o.properties or {}),
+                list(HOST_PROPERTY_KEYS),
             ),
         ).fetchone()
         out[o.object_ref] = row[0]
@@ -425,11 +437,12 @@ def _load_class_links(
 ) -> None:
     # rel_associates_classification je výnimka: to_id → classification_references
     # (nie objects). V generickej `relationships` je to len iný `rel_type`
-    # (`to_is_classification` v manifeste); trigger to zohľadní.
-    rel_type = EDGE_TYPE_TO_REL_TYPE["has_classification"]
+    # (`to_is_classification` v manifeste); trigger to zohľadní. Typ dokumentu (D-104) ide
+    # tou istou cestou s iným `rel_type`.
     for c in model.class_links:
+        rel_type = EDGE_TYPE_TO_REL_TYPE[c.edge_type]
         ref_id = ref_ids[(c.system_name, c.identification)]
-        cid = ids.edge_id(c.from_ref, f"{c.system_name}:{c.identification}", "has_classification")
+        cid = ids.edge_id(c.from_ref, f"{c.system_name}:{c.identification}", c.edge_type)
         cur.execute(
             """
             insert into relationships

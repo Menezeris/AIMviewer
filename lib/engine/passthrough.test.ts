@@ -3,10 +3,10 @@ import { buildDefaultToolRegistry } from "@ifc-lite/mcp";
 
 import { MINI_BUILDING_BYTES, guid } from "./__fixtures__/mini-building";
 import { clearEngineCache } from "./cache";
-import { collectGuids } from "./passthrough";
+import { collectGuids, execPassthroughTool } from "./passthrough";
 import { PASSTHROUGH_TOOLS, passthroughDefinitions } from "./passthrough-defs";
 import { ENGINE_UPSTREAM_TOOLS } from "./session";
-import { execEngineTool, type EngineDeps } from "./tools";
+import type { EngineDeps } from "./tools";
 
 const fetchImpl = (async () => new Response(MINI_BUILDING_BYTES, { status: 200, headers: { etag: '"mini"' } })) as typeof fetch;
 const deps: EngineDeps = {
@@ -47,24 +47,24 @@ describe("prevzaté tools @ifc-lite/mcp (D-087)", () => {
   });
 
   it("vykoná tool balíka nad modelom a GUIDy doplní o object_ref", async () => {
-    const r = await execEngineTool("ifc_model_info", { model_id: "MINI" }, deps);
+    const r = await execPassthroughTool("ifc_model_info", { model_id: "MINI" }, deps);
     expect(r.isError).toBe(false);
     const json = JSON.parse(r.content);
     expect(json).toMatchObject({ tool: "model_info", model: "MINI" });
     expect(json.result).toBeTruthy();
 
-    const audit = await execEngineTool("ifc_model_audit", { model_id: "MINI" }, deps);
+    const audit = await execPassthroughTool("ifc_model_audit", { model_id: "MINI" }, deps);
     expect(audit.isError).toBe(false);
     expect(JSON.parse(audit.content).tool).toBe("model_audit");
 
-    const desc = await execEngineTool("ifc_schema_describe", { type: "IfcWall" }, deps);
+    const desc = await execPassthroughTool("ifc_schema_describe", { type: "IfcWall" }, deps);
     expect(desc.isError).toBe(false);
     expect(JSON.stringify(JSON.parse(desc.content).result)).toContain("IfcWall");
   });
 
   it("chýbajúci model a cudzie kľúče", async () => {
-    expect((await execEngineTool("ifc_materials_list", {}, deps)).isError).toBe(true);
-    const ok = await execEngineTool("ifc_materials_list", { model_id: "MINI", zlý_kľúč: 1 }, deps);
+    expect((await execPassthroughTool("ifc_materials_list", {}, deps)).isError).toBe(true);
+    const ok = await execPassthroughTool("ifc_materials_list", { model_id: "MINI", zlý_kľúč: 1 }, deps);
     expect(ok.isError).toBe(false);
   });
 

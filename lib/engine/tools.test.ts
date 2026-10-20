@@ -4,7 +4,7 @@ import { MINI_BUILDING_BYTES, guid } from "./__fixtures__/mini-building";
 import { clearEngineCache } from "./cache";
 import type { AimRef } from "./join";
 import { normalizeStoreyLabel, resolveStorey } from "./storey";
-import { execEngineTool, type EngineDeps } from "./tools";
+import { attributeMatches, execEngineTool, type EngineDeps } from "./tools";
 
 const IDS_URL = "https://example.test/storey.ids";
 const STOREY_IDS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -85,6 +85,31 @@ describe("ifc_* tools (D-084 fáza 1)", () => {
     expect(r.json.total).toBe(2);
   });
 
+  it("ifc_query: podmienka na IFC atribút (D-118), aj s podmienkou na pset a v count", async () => {
+    const r = await run("ifc_query", {
+      model: "MINI",
+      ifc_types: ["IfcSpace"],
+      where: [{ attribute: "LongName", op: "contains", value: "kancel" }],
+    });
+    expect(r.isError).toBe(false);
+    expect(r.json.total).toBe(1);
+    expect(r.json.items[0].object_ref).toBe("1.01");
+    const mixed = await run("ifc_query", {
+      model: "MINI",
+      ifc_types: ["IfcSpace"],
+      where: [
+        { pset: "Qto_SpaceBaseQuantities", name: "NetFloorArea", op: ">", value: 5 },
+        { attribute: "LongName", op: "!=", value: "Sklad" },
+      ],
+    });
+    expect(mixed.json.items.map((i: { global_id: string }) => i.global_id).sort()).toEqual([guid("SPA"), guid("SPC")].sort());
+    const c = await run("ifc_query", { model: "MINI", mode: "count", ifc_types: ["IfcWall"], where: [{ attribute: "Tag", op: "=", value: "TAGA" }] });
+    expect(c.json.total).toBe(1);
+    const noType = await run("ifc_query", { model: "MINI", where: [{ attribute: "LongName", op: "exists" }] });
+    expect(noType.isError).toBe(true);
+    expect(noType.content).toContain("ifc_types");
+  });
+
   it("ifc_query: podlažie podľa štítku AIM (1.NP = 1NP v modeli)", async () => {
     const r = await run("ifc_query", { model: "MINI", ifc_types: ["IfcWall"], storey: "1.NP" });
     expect(r.isError).toBe(false);
@@ -97,28 +122,30 @@ describe("ifc_* tools (D-084 fáza 1)", () => {
     expect(r.content).toContain("1NP");
   });
 
-  it("ifc_count: zoskupenie podľa triedy a počet s podmienkou", async () => {
-    const g = await run("ifc_count", { model: "MINI", group_by: "type" });
+  it("ifc_query mode=count: zoskupenie podľa triedy a počet s podmienkou", async () => {
+    const g = await run("ifc_query", { mode: "count", model: "MINI", group_by: "type" });
     expect(g.json.groups.find((x: { key: string }) => x.key === "IfcSpace").count).toBe(3);
-    const w = await run("ifc_count", {
+    const w = await run("ifc_query", {
+      mode: "count",
       model: "MINI",
       ifc_type: "IfcSpace",
       where: [{ pset: "Qto_SpaceBaseQuantities", name: "NetFloorArea", op: "<=", value: 8 }],
     });
     expect(w.json.total).toBe(1);
-    const both = await run("ifc_count", { model: "MINI", group_by: "type", where: [{ pset: "A", name: "B", op: "exists" }] });
+    const both = await run("ifc_query", { mode: "count", model: "MINI", group_by: "type", where: [{ pset: "A", name: "B", op: "exists" }] });
     expect(both.isError).toBe(true);
   });
 
-  it("ifc_property_values: histogram hodnôt", async () => {
-    const r = await run("ifc_property_values", { model: "MINI", ifc_type: "IfcWall", pset: "Pset_WallCommon", name: "LoadBearing" });
+  it("ifc_query mode=values: histogram hodnôt", async () => {
+    const r = await run("ifc_query", { mode: "values", model: "MINI", ifc_type: "IfcWall", pset: "Pset_WallCommon", name: "LoadBearing" });
     expect(r.json.entities).toBe(1);
     expect(r.json.values).toEqual([{ value: "false", count: 1 }]);
     expect(r.json.source).toBe("pset");
   });
 
-  it("ifc_property_values: množstvá Qto, nie (missing) (#96)", async () => {
-    const r = await run("ifc_property_values", {
+  it("ifc_query mode=values: množstvá Qto, nie (missing) (#96)", async () => {
+    const r = await run("ifc_query", {
+      mode: "values",
       model: "MINI",
       ifc_type: "IfcSpace",
       pset: "Qto_SpaceBaseQuantities",
@@ -136,21 +163,21 @@ describe("ifc_* tools (D-084 fáza 1)", () => {
     expect(JSON.stringify(r.json.values)).not.toContain("(missing)");
   });
 
-  it("ifc_property_values: hodnota nikde - poznámka, nie tvrdenie, že dáta nie sú", async () => {
-    const r = await run("ifc_property_values", { model: "MINI", ifc_type: "IfcSpace", pset: "Qto_SpaceBaseQuantities", name: "Nic" });
+  it("ifc_query mode=values: hodnota nikde - poznámka, nie tvrdenie, že dáta nie sú", async () => {
+    const r = await run("ifc_query", { mode: "values", model: "MINI", ifc_type: "IfcSpace", pset: "Qto_SpaceBaseQuantities", name: "Nic" });
     expect(r.json.values).toEqual([{ value: "(missing)", count: r.json.entities }]);
     expect(r.json.note).toContain("ifc_get");
   });
 
-  it("D-115: ifc_query mode=count a mode=values dajú to isté ako staré ifc_count a ifc_property_values", async () => {
+  it("D-115: ifc_query mode=count a mode=values prijmú ifc_types aj jednu ifc_type", async () => {
     const count = { model: "MINI", group_by: "type" };
-    expect((await run("ifc_query", { ...count, mode: "count" })).json).toEqual((await run("ifc_count", count)).json);
+    expect((await run("ifc_query", { ...count, mode: "count" })).json.groups.length).toBeGreaterThan(0);
     const where = [{ pset: "Qto_SpaceBaseQuantities", name: "NetFloorArea", op: "<=", value: 8 }];
     const c = await run("ifc_query", { model: "MINI", mode: "count", ifc_types: ["IfcSpace"], where });
-    expect(c.json).toEqual((await run("ifc_count", { model: "MINI", ifc_type: "IfcSpace", where })).json);
+    expect(c.json).toEqual((await run("ifc_query", { model: "MINI", mode: "count", ifc_type: "IfcSpace", where })).json);
     const values = { model: "MINI", pset: "Qto_SpaceBaseQuantities", name: "NetFloorArea" };
     const v = await run("ifc_query", { ...values, mode: "values", ifc_types: ["IfcSpace"] });
-    expect(v.json).toEqual((await run("ifc_property_values", { ...values, ifc_type: "IfcSpace" })).json);
+    expect(v.json).toEqual((await run("ifc_query", { ...values, mode: "values", ifc_type: "IfcSpace" })).json);
     expect((await run("ifc_query", { model: "MINI", mode: "zle" })).isError).toBe(true);
   });
 
@@ -158,8 +185,8 @@ describe("ifc_* tools (D-084 fáza 1)", () => {
     const info = await run("ifc_models", { action: "info", model: "MINI" });
     expect(info.isError).toBe(false);
     expect(info.json).toMatchObject({ tool: "model_info", model: "MINI" });
-    const old = (await run("ifc_model_info", { model_id: "MINI" })).json;
-    expect({ ...info.json.result, loadedAt: 0 }).toEqual({ ...old.result, loadedAt: 0 });
+    expect(info.json.result).toBeTruthy();
+    expect((await run("ifc_model_info", { model_id: "MINI" })).isError).toBe(true);
     const schema = await run("ifc_models", { action: "schema", type: "IfcWall" });
     expect(schema.json.tool).toBe("schema_describe");
     expect((await run("ifc_models", { action: "info" })).isError).toBe(true);
@@ -217,5 +244,17 @@ describe("podlažia (D-049)", () => {
     expect(["3NP", "3.NP", "3. NP", "3np", "3NP_VZT"].map(normalizeStoreyLabel)).toEqual(Array(5).fill("3NP"));
     expect(resolveStorey("2NP", [{ globalId: "g1", name: "1NP" }, { globalId: "g2", name: "2.NP" }])).toBe("g2");
     expect(resolveStorey("9NP", [{ globalId: "g1", name: "1NP" }])).toBeNull();
+  });
+});
+
+describe("attributeMatches (D-118)", () => {
+  it("čísla číselne, text bez veľkosti písmen, prázdna hodnota neprejde porovnaním", () => {
+    expect(attributeMatches(900, { op: "<", value: 1000 })).toBe(true);
+    expect(attributeMatches(900, { op: "<", value: "900" })).toBe(false);
+    expect(attributeMatches("USERDEFINED", { op: "=", value: "userdefined" })).toBe(true);
+    expect(attributeMatches(undefined, { op: "<", value: 900 })).toBe(false);
+    expect(attributeMatches(undefined, { op: "!=", value: 900 })).toBe(true);
+    expect(attributeMatches("", { op: "exists" })).toBe(false);
+    expect(attributeMatches("Dvere", { op: ">", value: 5 })).toBe(false);
   });
 });

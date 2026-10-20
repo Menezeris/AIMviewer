@@ -187,10 +187,10 @@ async function fetchUnderlayDrawingsImpl(): Promise<UnderlayDrawingWire[]> {
   const supabase = getSupabaseAdmin();
 
   // Bez stránkovania (fetchAllPages) zámerne: kardinalita je ohraničená —
-  // podlaží je jednotky a floor→drawing väzieb/dokumentov ~13 (E3), hlboko
-  // pod PostgREST capom 1000. Pri multi-projekte (D-033) prehodnotiť.
-  // 1) podlažia → ich výkresy (E3 väzba floor→drawing, role='drawing';
-  //    E4 element-väzby `pdf_link (E4)` sem nepatria).
+  // podlaží je jednotky a ich pôdorysov ~12 (ASR v76), hlboko pod PostgREST
+  // capom 1000. Pri multi-projekte (D-033) prehodnotiť.
+  // 1) podlažia → dokumenty, ktoré nesú (D-104: po ASR v76 pôdorysy všetkých
+  //    profesií; IFC väzba má role 'document', stará E3 mala 'drawing').
   const { data: floors, error: fErr } = await supabase
     .from("objects")
     .select("id")
@@ -204,7 +204,6 @@ async function fetchUnderlayDrawingsImpl(): Promise<UnderlayDrawingWire[]> {
     .from("rel_associates_document")
     .select("to_id")
     .in("from_id", floorIds)
-    .eq("role", "drawing")
     .is("valid_until", null);
   if (rErr) throw new Error(rErr.message);
 

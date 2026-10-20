@@ -32,6 +32,12 @@ const LIVE_EVENT = "command";
 /** Príkazy doručené do tohto okna sa zlúčia do jednej akcie (jedno volanie toolu = jeden príkaz). */
 const BATCH_MS = 50;
 const TOAST_MS = 4000;
+/**
+ * Koľko indikátor Live (fixed vľavo dole) zaberá nad spodkom okna. Prvky ukotvené
+ * vľavo dole (čip výberu viewera, D-116) sa o túto CSS premennú posunú nad neho.
+ */
+const LIVE_INSET_VAR = "--aim-live-inset";
+const LIVE_INSET = "2.25rem";
 
 type Status = "connecting" | "live" | "error";
 
@@ -161,6 +167,15 @@ export function LiveChannel() {
       cleanup?.();
     };
   }, [router]);
+
+  useEffect(() => {
+    if (!channel) return;
+    const root = document.documentElement;
+    root.style.setProperty(LIVE_INSET_VAR, LIVE_INSET);
+    return () => {
+      root.style.removeProperty(LIVE_INSET_VAR);
+    };
+  }, [channel]);
 
   if (!channel) return null;
 
