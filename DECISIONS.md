@@ -5514,3 +5514,10 @@ sú riadky vzťahov, nie trasa.
 **Otvorené:** dvere DD02.05.14 majú navyše hranicu s 2.02 (geometria vidí len 2.01 | 2.10), recept ju nemaže;
 DD04.07.02 (vstup do akustickej zásteny na streche) nemá miestnosť ani z jednej strany. Čiara trasy vo vieweri
 (nie len zvýraznenie prvkov) potrebuje správu mosta vo forku.
+
+**Dodatok 2026-10-20 (Samuel cez orchestrátora):** 12 opráv `InternalOrExternalBoundary` áno; navyše hranica
+DD02.05.14 - 2.02 sa v receptoch odoberá (pravidlo: väzba dverí s miestnosťou, ktorú geometria nevidí na žiadnej
+strane, keď dvere majú obe strany v iných miestnostiach; viac ako 1 prípad = len výpis); dvere na strechu nie sú
+východ. **Otočné (karuselové) dvere nie sú únikový východ:** tool vylúči dvere s `OperationType` REVOLVING*
+(výskyt, inak typ) a vypíše ich v `revolving_doors_not_exits`; priechodné ostávajú. V ASR v76 má typ DD01.08
+"Karuselové dvere" chybne DOUBLE_SWING_RIGHT, recept v078 ho opraví na REVOLVING.
