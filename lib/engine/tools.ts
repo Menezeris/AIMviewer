@@ -2,7 +2,7 @@ import { getIfcModels, modelKey } from "../data/ifc-models";
 
 import { cacheSnapshot, getStore, type EngineModelSource } from "./cache";
 import { idsSources, loadIds } from "./ids-sources";
-import { execPassthroughTool, isPassthroughTool } from "./passthrough";
+import { execPassthroughTool } from "./passthrough";
 import { passthroughName } from "./passthrough-defs";
 import { joinToAim, type GuidLookup } from "./join";
 import { ifcMaterialLayers } from "./materials";
@@ -485,10 +485,6 @@ async function quantityValues(
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value, count]) => ({ value, count }));
 }
 
-async function ifcSearch(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
-  return envelope(await ifcSearchResult(input, deps));
-}
-
 /** Výsledok `ifc_search` ako objekt - používa ho aj kombinované `search_all` (D-095). */
 export async function ifcSearchResult(input: Record<string, unknown>, deps: EngineDeps) {
   const text = str(input.text);
@@ -730,17 +726,8 @@ export async function execEngineTool(
       case "ifc_query":
         content = await ifcQueryMode(input, deps);
         break;
-      case "ifc_search":
-        content = await ifcSearch(input, deps);
-        break;
       case "ifc_get":
         content = await ifcGet(input, deps);
-        break;
-      case "ifc_count":
-        content = await ifcCount(input, deps);
-        break;
-      case "ifc_property_values":
-        content = await ifcPropertyValues(input, deps);
         break;
       case "ifc_ids_validate":
         content = await ifcIdsValidate(input, deps);
@@ -748,14 +735,10 @@ export async function execEngineTool(
       case "ifc_relations":
         content = await ifcRelations(input, deps);
         break;
-      case "ifc_material_layers":
-        content = await ifcMaterialLayers(input, deps);
-        break;
       case "ifc_measure":
         content = input.qto === true ? await ifcQto(input, deps) : await (await import("./measure")).ifcMeasure(input, deps);
         break;
       default:
-        if (isPassthroughTool(name)) return await execPassthroughTool(name, input, deps);
         return { content: `Neznámy tool motora: ${name}`, isError: true };
     }
     return { content, isError: false };

@@ -1,7 +1,6 @@
 import { getIfcModels } from "../data/ifc-models";
 import type { ToolDefinition } from "../llm/provider";
 
-import { PASSTHROUGH_TOOLS, passthroughName } from "./passthrough-defs";
 
 /**
  * Definície `ifc_*` tools IFC motora (D-084) - bez závislostí motora, aby ich
@@ -194,18 +193,4 @@ export function engineToolDefinitions(): ToolDefinition[] {
   ];
 }
 
-/**
- * Staré mená zlúčených toolov (D-115): v zozname už nie sú, ale volanie nimi
- * ešte prejde (klient si zoznam toolov drží počas konverzácie). Zmažú sa,
- * keď ich `mcp_call_log` dva týždne neukáže.
- */
-export const LEGACY_ENGINE_TOOL_NAMES: ReadonlySet<string> = new Set([
-  "ifc_search",
-  "ifc_count",
-  "ifc_property_values",
-  "ifc_material_layers",
-  ...PASSTHROUGH_TOOLS.map((t) => passthroughName(t.upstream)),
-]);
-
-/** Mená, ktoré vykoná motor: zoznam + staré mená. */
-export const ENGINE_TOOL_NAMES = new Set([...engineToolDefinitions().map((t) => t.name), ...LEGACY_ENGINE_TOOL_NAMES]);
+export const ENGINE_TOOL_NAMES = new Set(engineToolDefinitions().map((t) => t.name));

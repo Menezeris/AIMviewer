@@ -5196,6 +5196,12 @@ namiesto pridávania.
    `LEGACY_ENGINE_TOOL_NAMES`); `mcp_call_log.tool` nesie volané meno, takže sa dá zistiť, kedy ich
    už nikto nevolá. Zmažú sa po dvoch týždňoch bez volania. `callAction` loguje prvý z parametrov
    `action`, `mode`, `source`.
+   **Dodatok 2026-10-20 (Samuel):** staré mená sú zmazané hneď, nečaká sa do 3. 11. Konektor
+   používa len Samuel, staré konverzácie s uloženým zoznamom toolov nepoužije a `mcp_call_log` od
+   06:17 UTC staré mená neukazuje. Zrušené: `legacyTools` v MCP serveri, `mcpLegacyToolNames`,
+   `LEGACY_*_TOOL_NAMES` a vetvy dispatchu, ktoré vykonali staré meno; volanie starým menom vráti
+   "Neznámy tool". `search_everything` ostáva riadnym toolom bez motora (aj `/api/ask`), s motorom ho
+   v MCP nahrádza `search_all` bez aliasu.
 3. **Krok 1 - IFC motor (18 -> 7 toolov):**
    - `ifc_query` + `mode` list | count | values a filter `material` (bývalé `ifc_count`,
      `ifc_property_values`, `ifc_material_layers`);
@@ -5232,12 +5238,17 @@ namiesto pridávania.
      meno ostáva ako `legacyTools`, `/api/ask` bez motora ho má ďalej), `ifc_query(mode=count)` prijme
      `material` a `ifc_models` má schému triedy na začiatku opisu (C7: jeden z dvoch behov odpovedal z pamäti).
 
+7. **Zvyšky po záverečnom evale** (pridelené orchestrátorom so súhlasom Samuela, bez nového toolu): D7 -
+   `get_object` pre prvok len v IFC vráti `storey` (podlažie nahor cez IfcRelAggregates /
+   IfcRelContainedInSpatialStructure, `lib/engine/names.ts`); V6 - opis výberu neradí `ifc_get`, keď panel
+   hodnoty ukáže sám.
+
 **Zavrhnuté:**
 - *Jeden veľký PR:* regresiu vo výbere toolu by nebolo vidieť po skupinách.
 - *Premenovať všetko na nové mená (`ifc_model`, `find_objects`...):* rozbije porovnanie s
   predchádzajúcimi kolami v `mcp_call_log` a evaloch bez úžitku pre agenta.
 - *Okamžite zmazať staré mená:* claude.ai drží zoznam toolov počas konverzácie, rozpracované
-  rozhovory by padali na "Neznámy tool".
+  rozhovory by padali na "Neznámy tool". (Prehodnotené v ten istý deň, dodatok k bodu 2.)
 
 ---
 

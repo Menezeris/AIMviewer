@@ -122,28 +122,30 @@ describe("ifc_* tools (D-084 fáza 1)", () => {
     expect(r.content).toContain("1NP");
   });
 
-  it("ifc_count: zoskupenie podľa triedy a počet s podmienkou", async () => {
-    const g = await run("ifc_count", { model: "MINI", group_by: "type" });
+  it("ifc_query mode=count: zoskupenie podľa triedy a počet s podmienkou", async () => {
+    const g = await run("ifc_query", { mode: "count", model: "MINI", group_by: "type" });
     expect(g.json.groups.find((x: { key: string }) => x.key === "IfcSpace").count).toBe(3);
-    const w = await run("ifc_count", {
+    const w = await run("ifc_query", {
+      mode: "count",
       model: "MINI",
       ifc_type: "IfcSpace",
       where: [{ pset: "Qto_SpaceBaseQuantities", name: "NetFloorArea", op: "<=", value: 8 }],
     });
     expect(w.json.total).toBe(1);
-    const both = await run("ifc_count", { model: "MINI", group_by: "type", where: [{ pset: "A", name: "B", op: "exists" }] });
+    const both = await run("ifc_query", { mode: "count", model: "MINI", group_by: "type", where: [{ pset: "A", name: "B", op: "exists" }] });
     expect(both.isError).toBe(true);
   });
 
-  it("ifc_property_values: histogram hodnôt", async () => {
-    const r = await run("ifc_property_values", { model: "MINI", ifc_type: "IfcWall", pset: "Pset_WallCommon", name: "LoadBearing" });
+  it("ifc_query mode=values: histogram hodnôt", async () => {
+    const r = await run("ifc_query", { mode: "values", model: "MINI", ifc_type: "IfcWall", pset: "Pset_WallCommon", name: "LoadBearing" });
     expect(r.json.entities).toBe(1);
     expect(r.json.values).toEqual([{ value: "false", count: 1 }]);
     expect(r.json.source).toBe("pset");
   });
 
-  it("ifc_property_values: množstvá Qto, nie (missing) (#96)", async () => {
-    const r = await run("ifc_property_values", {
+  it("ifc_query mode=values: množstvá Qto, nie (missing) (#96)", async () => {
+    const r = await run("ifc_query", {
+      mode: "values",
       model: "MINI",
       ifc_type: "IfcSpace",
       pset: "Qto_SpaceBaseQuantities",
@@ -161,21 +163,21 @@ describe("ifc_* tools (D-084 fáza 1)", () => {
     expect(JSON.stringify(r.json.values)).not.toContain("(missing)");
   });
 
-  it("ifc_property_values: hodnota nikde - poznámka, nie tvrdenie, že dáta nie sú", async () => {
-    const r = await run("ifc_property_values", { model: "MINI", ifc_type: "IfcSpace", pset: "Qto_SpaceBaseQuantities", name: "Nic" });
+  it("ifc_query mode=values: hodnota nikde - poznámka, nie tvrdenie, že dáta nie sú", async () => {
+    const r = await run("ifc_query", { mode: "values", model: "MINI", ifc_type: "IfcSpace", pset: "Qto_SpaceBaseQuantities", name: "Nic" });
     expect(r.json.values).toEqual([{ value: "(missing)", count: r.json.entities }]);
     expect(r.json.note).toContain("ifc_get");
   });
 
-  it("D-115: ifc_query mode=count a mode=values dajú to isté ako staré ifc_count a ifc_property_values", async () => {
+  it("D-115: ifc_query mode=count a mode=values prijmú ifc_types aj jednu ifc_type", async () => {
     const count = { model: "MINI", group_by: "type" };
-    expect((await run("ifc_query", { ...count, mode: "count" })).json).toEqual((await run("ifc_count", count)).json);
+    expect((await run("ifc_query", { ...count, mode: "count" })).json.groups.length).toBeGreaterThan(0);
     const where = [{ pset: "Qto_SpaceBaseQuantities", name: "NetFloorArea", op: "<=", value: 8 }];
     const c = await run("ifc_query", { model: "MINI", mode: "count", ifc_types: ["IfcSpace"], where });
-    expect(c.json).toEqual((await run("ifc_count", { model: "MINI", ifc_type: "IfcSpace", where })).json);
+    expect(c.json).toEqual((await run("ifc_query", { model: "MINI", mode: "count", ifc_type: "IfcSpace", where })).json);
     const values = { model: "MINI", pset: "Qto_SpaceBaseQuantities", name: "NetFloorArea" };
     const v = await run("ifc_query", { ...values, mode: "values", ifc_types: ["IfcSpace"] });
-    expect(v.json).toEqual((await run("ifc_property_values", { ...values, ifc_type: "IfcSpace" })).json);
+    expect(v.json).toEqual((await run("ifc_query", { ...values, mode: "values", ifc_type: "IfcSpace" })).json);
     expect((await run("ifc_query", { model: "MINI", mode: "zle" })).isError).toBe(true);
   });
 
@@ -183,8 +185,8 @@ describe("ifc_* tools (D-084 fáza 1)", () => {
     const info = await run("ifc_models", { action: "info", model: "MINI" });
     expect(info.isError).toBe(false);
     expect(info.json).toMatchObject({ tool: "model_info", model: "MINI" });
-    const old = (await run("ifc_model_info", { model_id: "MINI" })).json;
-    expect({ ...info.json.result, loadedAt: 0 }).toEqual({ ...old.result, loadedAt: 0 });
+    expect(info.json.result).toBeTruthy();
+    expect((await run("ifc_model_info", { model_id: "MINI" })).isError).toBe(true);
     const schema = await run("ifc_models", { action: "schema", type: "IfcWall" });
     expect(schema.json.tool).toBe("schema_describe");
     expect((await run("ifc_models", { action: "info" })).isError).toBe(true);
