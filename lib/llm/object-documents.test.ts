@@ -83,6 +83,9 @@ beforeEach(() => {
     v({ object_id: "st", object_type: "asset", document_id: "d9", reference_id: "r3", page: 3, via: "group", via_id: "s1", depth: 2 }),
     v({ object_id: "np", object_type: "zone", document_id: "d3", via: "direct", via_id: null, depth: 0 }),
   ];
+  // Druh dokumentu (D-104, typ informácie ISO 19650).
+  tables.rel_external_reference_relationship = [{ id: "x1", from_id: "d9", to_id: "c1", valid_until: null }];
+  tables.classification_references = [{ id: "c1", identification: "SH", name: "Výpis" }];
   tables.rel_associates_document = Array.from({ length: 44 }, (_, i) => ({
     id: `p${i}`, from_id: "proj", to_id: `x${i}`, valid_until: null,
   }));
@@ -112,7 +115,8 @@ describe("get_object include=documents (D-104)", () => {
   it("objekt so stranou: deep_link otvorí dokument na strane", async () => {
     const out = await run("ST01.20.0012");
     expect(out.documents[0]).toMatchObject({
-      document: "D.1.1.09 Výpis skladieb", page: 3, via: "group", via_name: "S1", deep_link: "/drawing/d9?page=3",
+      document: "D.1.1.09 Výpis skladieb", type: "SH Výpis", page: 3, via: "group", via_name: "S1",
+      deep_link: "/drawing/d9?page=3",
     });
   });
 

@@ -2,6 +2,7 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PDF_LINK_SOURCE } from "@/lib/data/constants";
+import { fetchDocumentTypes, fetchObjectDocuments, typeText } from "@/lib/data/object-documents";
 import { fetchAllPages } from "@/lib/data/pagination";
 import type { ToolDefinition } from "./provider";
 import { docOp, selectOp } from "@/lib/viewer-ops";
@@ -1578,59 +1579,29 @@ export class AskToolRuntime {
   }
 
   /**
-   * Dokumenty objektu cez vzťahy (D-104, `v_object_documents`): jeden riadok na dokument a
-   * stranu, najbližšia cesta prvá. `via` = druh nositeľa, `via_name` = nositeľ dokumentu,
-   * `through` = najbližší nositeľ k objektu, ak je iný (napr. NJ - 3NP pod Nájomné priestory).
+   * Dokumenty objektu cez vzťahy (D-104, `lib/data/object-documents.ts`, ten istý zdroj
+   * ako AIM karta): jeden riadok na dokument a stranu, najbližšia cesta prvá. `via` = druh
+   * nositeľa, `via_name` = nositeľ, `through` = najbližší nositeľ k objektu, ak je iný.
    */
   private async objectDocuments(objectId: string) {
-    const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase
-      .from("v_object_documents")
-      .select("document_id, reference_id, page, via, via_id, via_nearest_id, depth")
-      .eq("object_id", objectId)
-      .order("depth")
-      .limit(500);
-    if (error) throw new Error(error.message);
-    const rows = (data ?? []) as {
-      document_id: string;
-      reference_id: string | null;
-      page: number | null;
-      via: string;
-      via_id: string | null;
-      via_nearest_id: string | null;
-      depth: number;
-    }[];
-    const metas = await this.loadObjects([
-      ...new Set(rows.flatMap((r) => [r.document_id, r.via_id, r.via_nearest_id].filter(Boolean) as string[])),
-    ]);
-    const meta = new Map(metas.map((m) => [m.id, m]));
-    const label = (id: string | null) => (id ? meta.get(id)?.name ?? meta.get(id)?.object_ref ?? id : null);
-    const out = new Map<string, Record<string, unknown>>();
-    for (const r of rows) {
-      const key = `${r.document_id}:${r.page ?? ""}`;
-      const seen = out.get(key);
-      const holder = label(r.via_id);
-      if (seen) {
-        // Ten istý dokument aj cez ďalšieho nositeľa (napr. zóna aj nadradená zóna).
-        const also = (seen.also_via as string[] | undefined) ?? [];
-        if (holder && holder !== seen.via_name && !also.includes(holder)) seen.also_via = [...also, holder];
-        continue;
-      }
-      const doc = meta.get(r.document_id);
-      if (doc) this.addSource(doc);
-      const through = r.via_nearest_id && r.via_nearest_id !== r.via_id ? label(r.via_nearest_id) : null;
-      out.set(key, {
-        document_id: r.document_id,
-        document: doc?.name ?? null,
-        identification: doc?.object_ref ?? null,
-        ...(r.page ? { page: r.page } : {}),
-        via: r.via,
-        ...(holder ? { via_name: holder } : {}),
-        ...(through ? { through } : {}),
-        deep_link: `/drawing/${r.document_id}${r.page ? `?page=${r.page}` : ""}`,
-      });
-    }
-    return [...out.values()];
+    const { documents, nodes } = await fetchObjectDocuments(objectId);
+    for (const n of nodes) this.addSource(n);
+    const types = await fetchDocumentTypes([...new Set(documents.map((d) => d.documentId))]);
+    return documents.map((d) => {
+      const type = typeText(types.get(d.documentId));
+      return {
+        document_id: d.documentId,
+        document: d.name,
+        identification: d.identification,
+        ...(type ? { type } : {}),
+        ...(d.page ? { page: d.page } : {}),
+        via: d.via,
+        ...(d.viaName ? { via_name: d.viaName } : {}),
+        ...(d.through ? { through: d.through } : {}),
+        ...(d.alsoVia ? { also_via: d.alsoVia } : {}),
+        deep_link: `/drawing/${d.documentId}${d.page ? `?page=${d.page}` : ""}`,
+      };
+    });
   }
 
   /**

@@ -2,6 +2,7 @@ import type { NodeSummary } from "@/lib/data/object";
 import type { CaptureSummary } from "@/lib/data/capture-placement";
 import type { NodeSectionsData } from "@/lib/data/relations";
 import type { DerivedRelationWire } from "@/lib/derivations";
+import { viaText, type ObjectDocument } from "@/lib/data/object-documents-core";
 import { OBJECT_TYPE_LABEL } from "./object-type";
 
 /**
@@ -26,7 +27,11 @@ export interface AimPanelData {
     label: string;
     rows: { label: string; value: string; href?: string; mono?: boolean }[];
   }[];
-  documents?: { name: string; href: string; badge?: string }[];
+  /**
+   * Dokumenty prvku. `documentId`, `page` a `via` (D-104) sú voliteľné: s nimi viewer
+   * otvorí PDF sám na strane (AimCardDocumentWire vo forku), bez nich naviguje `href`.
+   */
+  documents?: { name: string; href: string; badge?: string; documentId?: string; page?: number; via?: string }[];
   actions?: { label: string; href: string; primary?: boolean }[];
   // --- v2 typované sekcie (D-077: AIM inspector) ---
   /** Zodpovedné osoby/organizácie (rel_assigns_to_actor). */
@@ -53,7 +58,15 @@ export interface ElementDetail extends NodeSummary {
   captures?: CaptureSummary | null;
   /** Odvodené vzťahy (D-089) - `fetchDerivedRelations`. */
   derived?: { relations: DerivedRelationWire[]; total: number };
+  /**
+   * Dokumenty prvku cez vzťahy (D-104, `v_object_documents`) s druhom (kód ISO 19650);
+   * chýba, ak sa nepodarilo načítať - karta potom ukáže priame väzby ako predtým.
+   */
+  effectiveDocuments?: (ObjectDocument & { typeCode?: string })[];
 }
+
+/** Strop dokumentov v karte; plný zoznam je v paneli Dokumenty ("len pre výber"). */
+const CARD_DOCUMENTS_MAX = 40;
 
 /** Odznak typu v paneli; neznámy typ = "Prvok" (zóny, projekt a skupiny majú vlastný, D-088). */
 const TYPE_LABEL: Record<string, string> = {
@@ -118,12 +131,22 @@ export function nodeSummaryToAimPanel(
     subtitle: summary.objectRef ?? undefined,
     badges: [{ label: TYPE_LABEL[summary.objectType] ?? "Prvok", tone: "accent" }],
     sections,
-    // Parita so starým ElementInfoPanel: všetky dokumenty vedú na /drawing/{id}.
-    documents: summary.documents.map((d) => ({
-      name: d.name ?? d.objectRef ?? d.id,
-      href: `/drawing/${d.id}`,
-      badge: d.isDrawing ? "výkres" : undefined,
-    })),
+    // D-104: dokumenty aj cez zónu, podlažie, typ a skupinu, so stranou a cestou; viewer
+    // ich otvorí sám. Bez nich (chyba čítania) priame väzby na /drawing/{id} ako predtým.
+    documents: summary.effectiveDocuments
+      ? summary.effectiveDocuments.slice(0, CARD_DOCUMENTS_MAX).map((d) => ({
+          name: d.name ?? d.identification ?? d.documentId,
+          href: `/drawing/${d.documentId}${d.page ? `?page=${d.page}` : ""}`,
+          badge: d.typeCode,
+          documentId: d.documentId,
+          ...(d.page ? { page: d.page } : {}),
+          via: viaText(d),
+        }))
+      : summary.documents.map((d) => ({
+          name: d.name ?? d.objectRef ?? d.id,
+          href: `/drawing/${d.id}`,
+          badge: d.isDrawing ? "výkres" : undefined,
+        })),
     // v2 (D-077): zodpovednosti s preklikom na aktora, história GUID read-only.
     responsibilities: summary.responsibilities?.map((r) => ({
       name: r.actorName ?? r.actorRef ?? r.actorId,

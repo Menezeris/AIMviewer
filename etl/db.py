@@ -249,6 +249,11 @@ def _load_refs(cur, model: StagedModel, sys_ids: dict[str, str]) -> dict[tuple[s
     return out
 
 
+# Kľúče `objects.properties`, ktoré nezapisuje ETL, ale hostiteľ, a re-ETL ich nesmie
+# zmazať: kalibrácia podkladu výkresu (`_georef`, PATCH /api/underlay, D-072; D-104).
+HOST_PROPERTY_KEYS = ("_georef",)
+
+
 def _load_objects(cur, model: StagedModel) -> dict[str, str]:
     """Upsert `objects` cez object_ref; vráti mapu object_ref → DB id."""
     out: dict[str, str] = {}
@@ -266,13 +271,20 @@ def _load_objects(cur, model: StagedModel) -> dict[str, str]:
               ifc_guid = excluded.ifc_guid, ifc_type = excluded.ifc_type,
               predefined_type = excluded.predefined_type,
               user_defined_type = excluded.user_defined_type,
-              properties = excluded.properties, updated_at = now(),
+              -- model prepíše svoje vlastnosti, kľúče hostiteľa (HOST_PROPERTY_KEYS) ostanú
+              properties = excluded.properties || (
+                select coalesce(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
+                from jsonb_each(objects.properties) e
+                where e.key = any(%s)
+              ),
+              updated_at = now(),
               valid_until = null    -- objekt je znova v modeli (D-088)
             returning id
             """,
             (
                 o.object_type, o.object_ref, o.name, o.ifc_guid, o.ifc_type,
                 o.predefined_type, o.user_defined_type, Json(o.properties or {}),
+                list(HOST_PROPERTY_KEYS),
             ),
         ).fetchone()
         out[o.object_ref] = row[0]
