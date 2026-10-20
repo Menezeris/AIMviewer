@@ -13,7 +13,7 @@
 
 export const LENS_MODES = ["add", "replace", "clear", "unisolate"] as const;
 export type LensMode = (typeof LENS_MODES)[number];
-/** `isolate` = len do izolácie bez farby (viewer izoluje kanálom izolácie, nie lens). */
+/** `isolate` = len do izolácie alebo X-ray bez farby (viewer ich drží vlastným kanálom, nie lens). */
 export const LENS_ACTIONS = ["colorize", "transparent", "hide", "isolate"] as const;
 export type LensAction = (typeof LENS_ACTIONS)[number];
 export const AUTO_COLOR_SOURCES = [
@@ -53,6 +53,8 @@ export interface LensWire {
   r?: LensWireRule[];
   /** Izolovať zjednotenie všetkých pravidiel (farebné aj bez farby). */
   i?: 1;
+  /** X-ray context zo zjednotenia pravidiel: vybrané plné, zvyšok priesvitný (D-105). S `i` sa nekombinuje. */
+  x?: 1;
   ac?: { source: AutoColorSource; psetName?: string; propertyName?: string };
 }
 
@@ -117,6 +119,8 @@ export function decodeLensWire(raw: string): LensWire | null {
     out.r = parsed.r as LensWireRule[];
   }
   if (parsed.i === 1) out.i = 1;
+  if (parsed.x === 1) out.x = 1;
+  if (out.i && out.x) return null;
   if (parsed.ac !== undefined) {
     if (!isObj(parsed.ac) || !(AUTO_COLOR_SOURCES as readonly unknown[]).includes(parsed.ac.source)) return null;
     out.ac = parsed.ac as LensWire["ac"];
@@ -177,6 +181,7 @@ export function lensBridgeMessage(
     ...(rev ? { rev } : {}),
     ...(rules.length ? { rules } : {}),
     ...(wire.i ? { isolate: true } : {}),
+    ...(wire.x ? { xray: true } : {}),
     ...(wire.ac ? { autoColor: wire.ac } : {}),
   };
 }

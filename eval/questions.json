@@ -611,6 +611,12 @@
       "notes": "D-099 (issue #78): téma z výberu živého viewera, priradená človeku = bez session. Len MCP, overenie = scenár cez konektor s otvoreným viewerom."
     },
     {
+      "id": "style-xray-context",
+      "category": "view",
+      "question": "Zobraz SDK priečky a podhľady na 2NP plne a ostatné konštrukcie duchovo.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-105 (issue #106): očakávané style_in_3d(action=xray, storey=2NP, ...) jedným callom, nie transparent + colorize. Len MCP so živým viewerom.",
       "id": "view-open-list-export",
       "category": "view",
       "question": "Exportuj všetky dvere na 1NP ako tabuľku s názvom, požiarnou odolnosťou a šírkou.",
