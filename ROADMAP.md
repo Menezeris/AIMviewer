@@ -319,6 +319,7 @@ naming convention finálny tvar) sú v DECISIONS §7.
 > Kompaktný reverse-chrono log. Detail ku každému bodu je v `DECISIONS.md` (D-0xx);
 > aktuálny stav je hore v sekcii „Stav".
 
+- **2026-10-20** - **D-114 (výber viewera, release train):** `?viewer=pr-N` a čip nad 3D vložia náhľad PR forku (`lib/viewer-source.ts`, `lib/viewer-previews.ts`, `/api/viewer-previews`, `components/viewer-picker.tsx`), fork Menezeris/ifc-lite#77 (rýchle PR, balík, smoke). Overené: vitest 330/330, `tsc`, eslint, živo v dev (PR #76 vložený, voľba drží v karte, cudzia URL odmietnutá, `prod` vráti produkciu).
 - **2026-10-19** - **D-112 (meranie z geometrie, #74):** tool `ifc_measure` (`lib/engine/measure.ts`, fixture `mini-geometry.ts`), priame závislosti `@ifc-lite/clash`/`geometry`/`query`. Overené: vitest 300/300, `tsc`, eslint, `next build` (trace MCP route nesie nové balíky), na aktuálnych ASR a VZT (stena - potrubie 1,433 m, objem steny = Qto).
 - **2026-10-19** - **D-110 (prechod VZT sieťou, #75):** `lib/engine/relations.ts` `traceNetwork` (BFS cez porty, `stop_at`, `max_steps`, `reached`, `path_show_in_3d`), fixture `mini-relations` s reťazou potrubie -> požiarna klapka -> jednotka, veta v MCP inštrukciách. Overené: vitest 295/295, `tsc`, eslint.
 - **2026-10-19** - **D-109 (verzia modelu, #73):** `ifc_models` s revíziou a históriou (`lib/engine/revisions.ts`, `lib/data/model-revisions.ts`), veta v MCP inštrukciách. Overené: vitest 297/297 (tvar revízie, návrat, história, chyba DB), `tsc`, eslint.

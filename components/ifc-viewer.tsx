@@ -19,6 +19,7 @@ import { hasRelativeStep, relativeViewpoint, type CameraMove, type ViewerCamera 
 import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
 import { emitApplied, setLiveApplyHandler, takePendingCmdIds, type LiveApply } from "@/lib/live/viewer-apply-bus";
 import { BCF_CHANGED_WINDOW_EVENT, bcfLoadMessage } from "@/lib/live/bcf-event";
+import { PROD_VIEWER_URL } from "@/lib/viewer-source";
 
 /**
  * 3D prehliadač = self-hostovaná IFClite appka (fork AssetinSpace/ifc-lite,
@@ -56,9 +57,6 @@ import { BCF_CHANGED_WINDOW_EVENT, bcfLoadMessage } from "@/lib/live/bcf-event";
 
 const SOURCE = "aim-bridge" as const;
 
-/** URL nasadeného IFClite vieweru. Override cez NEXT_PUBLIC_IFC_VIEWER_URL. */
-const VIEWER_URL =
-  process.env.NEXT_PUBLIC_IFC_VIEWER_URL ?? "https://ifc-lite-viewer.vercel.app";
 
 type OutboundMessage =
   | { source: typeof SOURCE; type: "READY" }
@@ -150,6 +148,9 @@ interface Props {
   onNavigate?: (href: string) => void;
   /** Klik na capture pin v 3D (D-073) — host otvorí galériu/panorámu. */
   onCaptureClick?: (captureId: string) => void;
+  /** Vložený viewer (D-114): produkčný, alebo náhľad PR forku z výberu viewera.
+   *  Overený volajúcim (lib/viewer-source.ts); zmena remountne iframe. */
+  viewerUrl?: string;
 }
 
 export function IFCViewer({
@@ -169,6 +170,7 @@ export function IFCViewer({
   onPickedElement,
   onNavigate,
   onCaptureClick,
+  viewerUrl = PROD_VIEWER_URL,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
@@ -186,11 +188,11 @@ export function IFCViewer({
   // AIM panel dáta ľubovoľnej origin — misconfigurácia nesmie otvárať bridge.
   const viewerOrigin = useMemo(() => {
     try {
-      return new URL(VIEWER_URL).origin;
+      return new URL(viewerUrl).origin;
     } catch {
       return null;
     }
-  }, []);
+  }, [viewerUrl]);
 
   // objects.id → ifc_guid (reverz guidMap) — na preklad DB→3D príkazov.
   const objectIdToGuid = useMemo(() => {
@@ -204,13 +206,13 @@ export function IFCViewer({
   // dekóduje späť a splitne na ','.
   const src = useMemo(() => {
     if (!viewerOrigin) return null;
-    const u = new URL(VIEWER_URL);
+    const u = new URL(viewerUrl);
     u.searchParams.set("models", models.map((m) => m.url).join(","));
     return u.toString();
-  }, [models, viewerOrigin]);
+  }, [models, viewerOrigin, viewerUrl]);
 
-  // Stabilný kľúč — iframe sa remountuje len keď sa zmenia URL modelov.
-  const modelsKey = models.map((m) => m.url).join("|");
+  // Stabilný kľúč — iframe sa remountuje len keď sa zmenia URL modelov alebo viewer (D-114).
+  const modelsKey = `${viewerUrl}#${models.map((m) => m.url).join("|")}`;
 
   // Reset stavu pri zmene modelov — React pattern „adjust state during render"
   // (nie setState v effekte). V praxi sa modely počas session nemenia.
@@ -626,7 +628,7 @@ export function IFCViewer({
           </span>
           <span className="max-w-sm text-xs text-muted-foreground">
             <code className="rounded bg-muted px-1">NEXT_PUBLIC_IFC_VIEWER_URL</code>{" "}
-            nie je platná URL: <code className="rounded bg-muted px-1">{VIEWER_URL}</code>
+            nie je platná URL: <code className="rounded bg-muted px-1">{viewerUrl}</code>
           </span>
         </div>
       </div>
@@ -661,7 +663,7 @@ export function IFCViewer({
           </span>
           <span className="max-w-sm text-xs text-muted-foreground">
             Skontrolujte dostupnosť vieweru na{" "}
-            <code className="rounded bg-muted px-1">{VIEWER_URL}</code> alebo
+            <code className="rounded bg-muted px-1">{viewerUrl}</code> alebo
             nastavte <code className="rounded bg-muted px-1">NEXT_PUBLIC_IFC_VIEWER_URL</code>.
           </span>
         </div>
