@@ -1,0 +1,70 @@
+{
+  "ranAt": "2026-10-20T20:46:00Z",
+  "label": "D-119 na produkcii (#135, #136, #137)",
+  "region": "arn1",
+  "runner": "cloud session, každá úloha čerstvý subagent; headless produkčný viewer na živom kanáli. style-legend-large zopakované v novej session so schémou po nasadení D-119.",
+  "results": [
+    {
+      "id": "style-spaces-visible",
+      "pass": true,
+      "calls": 5,
+      "tools": [
+        "get_model_stats",
+        "search_objects(query=prenaj)",
+        "search_all(text)",
+        "search_objects(object_type=zone)",
+        "style_in_3d(xray, zone=Nájomné priestory, ifc_type=IfcSpace)"
+      ],
+      "duration_ms": 36000,
+      "over_cap": false,
+      "note": "X-ray 32 miestností zóny Nájomné priestory, viewer potvrdil; odpoveď neradí zapínať miestnosti ručne. 4 volania len na nájdenie názvu zóny."
+    },
+    {
+      "id": "style-color-by-scoped-legend",
+      "pass": true,
+      "calls": 2,
+      "tools": [
+        "style_in_3d(isolate, IfcWall, 1NP)",
+        "style_in_3d(colorize, color_by=material, IfcWall, 1NP)"
+      ],
+      "duration_ms": 25725,
+      "over_cap": false,
+      "note": "Legenda len za 55 stien 1NP (5 materiálov), nie za celý model; lens v get_viewer_state to potvrdil."
+    },
+    {
+      "id": "style-legend-large",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "style_in_3d(action=legend, legend_size=large)"
+      ],
+      "duration_ms": 9388,
+      "over_cap": false,
+      "note": "Opakované v čerstvej session: prvý beh mal schému toolov spred nasadenia D-119 a action=legend nepoznal. Viewer potvrdil (272 ms)."
+    },
+    {
+      "id": "spaces-2d-plan-colors",
+      "pass": true,
+      "calls": 3,
+      "tools": [
+        "set_view_mode(2d, 1NP)",
+        "search_all(text=retail)",
+        "style_in_3d(colorize, groups zone NJ - Retail 1/2)"
+      ],
+      "duration_ms": 36171,
+      "over_cap": false,
+      "note": "mode=2d na 1NP, Retail 1 modrá (18), Retail 2 oranžová (16). Výplň v 2D headless viewer nevykreslí (WebGPU), overené len stavom lens."
+    }
+  ],
+  "summary": {
+    "pass": "4/4",
+    "median_calls": 2.5,
+    "median_duration_ms": 30862.5,
+    "findings": [
+      "Session so starým zoznamom toolov nepozná nové parametre (action=legend); eval nových funkcií treba púšťať v novej session.",
+      "Paralelné volania sa vo vieweri vykonajú v poradí príchodu, nie v poradí volania: reset paralelne (show_all + set_camera) ukázal starý stav. Vysvetľuje to aj 'vracajúcu sa izoláciu' z predošlého kola; show_all funguje.",
+      "get_viewer_state po #160 vracia lens (pravidlá, legenda, izolácia/X-ray s počtom) - overené na produkcii.",
+      "style-spaces-visible: agent hľadal názov zóny 4 volaniami; kandidát na nápovedu (zóna Nájomné priestory = prenajímateľné plochy)."
+    ]
+  }
+}
