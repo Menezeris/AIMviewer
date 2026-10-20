@@ -306,21 +306,18 @@
     {
       "id": "doc-drawings-of",
       "category": "documents",
-      "question": "Na ktorých výkresoch je zobrazený prvok DD01.06.03?",
-      "expect": {
-        "answer_matches": ["Pudorys 1NP"],
-        "sources_any_ref": ["DD01.06.03"]
-      },
-      "verified": true,
-      "notes": "Overené: E4 väzba (source 'pdf_link (E4)') → 'Pudorys 1NP'."
+      "question": "Aké dokumenty patria k miestnosti 3.01?",
+      "expect": { "tools_called": ["get_object"], "answer_matches": ["Pôdorys 3NP", "N3\\.01|PBR"] },
+      "verified": false,
+      "notes": "D-104 krok 2: výkresové väzby z obsahu PDF (E4) sú zrušené. 3.01 má dokumenty cez zónu NJ - 3NP (D.1.1.03 Pôdorys 3NP), požiarny úsek N3.01 (PBR) a tepelnú zónu Z3 (PENB, zónovanie); overené dotazom na v_object_documents na prod 20. 10., nie eval behom."
     },
     {
       "id": "doc-meta",
       "category": "documents",
       "question": "Aké výkresy pôdorysov máme v projekte?",
-      "expect": { "answer_matches": ["Pudorys 1NP", "Pudorys 2NP", "Pudorys 3NP"] },
-      "verified": true,
-      "notes": "Overené: Pudorys 1NP, 2NP, 3NP, strechy, 1NP PBR (celkom 13 dokumentov)."
+      "expect": { "answer_matches": ["Pôdorys 1NP", "Pôdorys 2NP", "Pôdorys 3NP"] },
+      "verified": false,
+      "notes": "D-104: dokumenty z IFC (D.1.1.01 Pôdorys 1NP ... D.1.3.05 Pôdorys 4NP PBR; 54 dokumentov, 44 so súborom), stará sada E3 (Pudorys 1NP) je ukončená."
     },
     {
       "id": "agg-sum",
@@ -689,6 +686,46 @@
       "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
       "notes": "D-122 (issue #72): set_view_mode(saved_view='Posledný pohľad', section_offset_m=-1); predtým uložený pohľad cez saved_view(action=save). Len MCP so živým viewerom."
+    },
+    {
+      "id": "doc-object-page",
+      "category": "documents",
+      "question": "V ktorom dokumente a na ktorej strane je popísaná skladba podlahy ST01.20.0012?",
+      "expect": { "tools_called": ["get_object"], "answer_matches": ["Výpis skladieb", "\\b3\\b"] },
+      "verified": false,
+      "notes": "D-104 krok 2: IfcCovering ST01.20.0012 -> skupina S1.01 -> S1 -> IfcDocumentReference D.1.1.09 strana 3; overené na prod 20. 10., nie eval behom."
+    },
+    {
+      "id": "doc-covers",
+      "category": "documents",
+      "question": "Ktorých miestností a zón sa týka dokument D.1.3.04 Pôdorys 3NP PBR?",
+      "expect": { "tools_called": ["get_object"], "answer_matches": ["N3\\."] },
+      "verified": false,
+      "notes": "D-104 krok 2: opačný smer, get_object(OCB_SO01_PBR_D-1-3-04_PODORYS-3NP, include=documents) (požiarne úseky N3.* a ich miestnosti a prvky)."
+    },
+    {
+      "id": "quick-check-door-width",
+      "category": "count",
+      "question": "Koľko dverí v ASR má OverallWidth menej ako 900 mm? Ofarbi ich na červeno.",
+      "expect": { "tools_called": ["ifc_query", "style_in_3d"] },
+      "verified": false,
+      "notes": "D-118 (issue #77): ifc_query(ifc_types=[IfcDoor], where=[{attribute:'OverallWidth', op:'<', value:900}]) -> style_in_3d(colorize ef4444). Počet neoverený."
+    },
+    {
+      "id": "quick-check-room-width",
+      "category": "location",
+      "question": "Aká široká je miestnosť 1.10?",
+      "expect": { "tools_called": ["ifc_measure"], "answer_matches": ["3[,.]2"] },
+      "verified": false,
+      "notes": "D-118 (issue #77): ifc_measure(a=1.10) -> bbox_m 6.796 x 3.221 (konektor 2026-10-20)."
+    },
+    {
+      "id": "door-clear-width-geometry",
+      "category": "count",
+      "question": "Skontroluj všetky dvere na 1NP na svetlú šírku aspoň 800 mm a nevyhovujúce ofarbi na červeno.",
+      "expect": { "tools_called": ["ifc_query", "ifc_measure", "style_in_3d"], "answer_matches": ["\\b12\\b"] },
+      "verified": false,
+      "notes": "D-118 dodatok (issue #77): ifc_query(IfcDoor, storey=1NP) -> ifc_measure(items, clear_opening, min_width_m=0.8) -> style_in_3d(check.style_fail, ef4444). 12 = počet podľa AIM_Door.ClearWidth < 800 na 1NP (konektor 2026-10-20), geometria dáva tie isté šírky; eval behom neoverené."
     }
   ]
 }

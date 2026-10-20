@@ -291,6 +291,7 @@ def to_staged(
     refs = _RefAllocator(coding)
     systems_seen: dict[str, ClassificationSystem] = {}
     refs_seen: set[tuple[str, str]] = set()
+    ref_names: dict[tuple[str, str], Optional[str]] = {}
 
     # Federačné mapovanie podlaží (D-049): np-kľúč / elevácia → existujúci floor object_ref.
     floor_by_np: dict[str, str] = {}
@@ -477,6 +478,7 @@ def to_staged(
 
     # 5) Dokumenty + aktori (best-effort, štruktúra je tu — doladiť na model, E2).
     _collect_documents(model, refs, staged)
+    _collect_document_classifications(model, refs, staged, systems_seen, refs_seen, ref_names)
     _collect_actors(model, refs, staged)
     _drop_unemitted_links(staged, refs.cov)
 
@@ -489,7 +491,7 @@ def to_staged(
     # Deduplikuj systémy/refy do staged zoznamov.
     staged.systems = list(systems_seen.values())
     staged.refs = [
-        ClassificationRef(system_name=s, identification=i, name=None, location=None)
+        ClassificationRef(system_name=s, identification=i, name=ref_names.get((s, i)), location=None)
         for (s, i) in refs_seen
     ]
     return staged
@@ -523,22 +525,61 @@ def _collect_classifications(
         cref = attr(assoc, "RelatingClassification")
         if cref is None or not cref.is_a("IfcClassificationReference"):
             continue
-        identification = attr(cref, "Identification") or attr(cref, "ItemReference")
-        if not identification:
-            continue
-        source = attr(cref, "ReferencedSource")
-        sys_name = (attr(source, "Name") if source else None) or "Neznámy systém"
-        if sys_name not in systems_seen:
-            systems_seen[sys_name] = ClassificationSystem(
-                name=sys_name,
-                source=attr(source, "Source") if source else None,
-                edition=attr(source, "Edition") if source else None,
-                location=attr(source, "Location") if source else None,
-            )
-        refs_seen.add((sys_name, str(identification)))
-        staged.class_links.append(
-            ClassLink(from_ref=obj_ref, system_name=sys_name, identification=str(identification))
+        key = _classification_ref(cref, systems_seen, refs_seen)
+        if key is not None:
+            staged.class_links.append(ClassLink(from_ref=obj_ref, system_name=key[0], identification=key[1]))
+
+
+def _classification_ref(
+    cref: Any,
+    systems_seen: dict[str, ClassificationSystem],
+    refs_seen: set[tuple[str, str]],
+) -> Optional[tuple[str, str]]:
+    """IfcClassificationReference → (systém, kód); systém a referenciu zaregistruje."""
+    identification = attr(cref, "Identification") or attr(cref, "ItemReference")
+    if not identification:
+        return None
+    source = attr(cref, "ReferencedSource")
+    sys_name = (attr(source, "Name") if source else None) or "Neznámy systém"
+    if sys_name not in systems_seen:
+        systems_seen[sys_name] = ClassificationSystem(
+            name=sys_name,
+            source=attr(source, "Source") if source else None,
+            edition=attr(source, "Edition") if source else None,
+            location=attr(source, "Location") if source else None,
         )
+    refs_seen.add((sys_name, str(identification)))
+    return sys_name, str(identification)
+
+
+def _collect_document_classifications(
+    model: ifcopenshell.file,
+    refs: _RefAllocator,
+    staged: StagedModel,
+    systems_seen: dict[str, ClassificationSystem],
+    refs_seen: set[tuple[str, str]],
+    ref_names: dict[tuple[str, str], Optional[str]],
+) -> None:
+    """Klasifikácia dokumentu (D-104, napr. typ informácie ISO 19650): IfcDocumentInformation
+    nie je IfcRoot, IfcRelAssociatesClassification naň nedosiahne, preto
+    IfcExternalReferenceRelationship z referencie na dokumenty. Dokument musí byť už
+    pridelený v `_collect_documents`; referencia nesie aj meno (napr. "Výkres")."""
+    for rel in model.by_type("IfcExternalReferenceRelationship"):
+        cref = attr(rel, "RelatingReference")
+        if cref is None or not cref.is_a("IfcClassificationReference"):
+            continue
+        docs = [o for o in attr(rel, "RelatedResourceObjects") or [] if o.is_a("IfcDocumentInformation")]
+        if not docs:
+            continue
+        key = _classification_ref(cref, systems_seen, refs_seen)
+        if key is None:
+            continue
+        ref_names.setdefault(key, attr(cref, "Name"))
+        for doc in docs:
+            staged.class_links.append(ClassLink(
+                from_ref=refs.ref(doc), system_name=key[0], identification=key[1],
+                edge_type="document_classification",
+            ))
 
 
 def _collect_documents(model: ifcopenshell.file, refs: _RefAllocator, staged: StagedModel) -> None:

@@ -22,6 +22,7 @@
 import { LENS_MODES, decodeLensWire, lensBridgeMessage, type LensMode, type LensWire } from "./viewer-lens";
 import { decodeListWire, listBridgeMessage, type ListWire } from "./viewer-list";
 import { cameraMoveArgs, parseCameraMove, type BridgeViewpoint, type CameraMove } from "./viewer-camera";
+import { decodeMeasureWire, type MeasureSegment } from "./viewer-measure";
 
 export interface OpsSelector {
   types?: string[];
@@ -90,7 +91,9 @@ export type ViewerOp =
   | { op: "doc"; documentId: string; page?: number }
   | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire }
   /** Zoznam z chatu do panela Lists (D-111), formát v `lib/viewer-list.ts`. */
-  | { op: "list"; wire: ListWire };
+  | { op: "list"; wire: ListWire }
+  /** Kóty v IFC svete do nástroja Measure forku (D-124), formát v `lib/viewer-measure.ts`. */
+  | { op: "measure"; segments: MeasureSegment[]; keep?: boolean };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -266,6 +269,9 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "list") {
       const wire = decodeListWire(joined);
       if (wire) out.push({ op, wire });
+    } else if (op === "measure") {
+      const segments = decodeMeasureWire(joined);
+      if (segments) out.push({ op, segments, ...(arg === "keep" ? { keep: true } : {}) });
     } else if (op === "doc") {
       const documentId = joined;
       if (!UUID.test(documentId)) continue;
@@ -331,11 +337,13 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     case "doc":
       return { type: "DOCUMENT_OPEN", documentId: o.documentId, ...(o.page ? { page: o.page } : {}) };
     case "lens":
-      // Zónu (`aim_zone`) doplní klient pred odoslaním; tu ostane prázdna.
+      // Zónu (`aim_zone`) a dokument (`aim_document`) doplní klient pred odoslaním; tu ostanú prázdne.
       return lensBridgeMessage(o.mode, o.wire, new Map(), o.rev);
     case "list":
       // Zónu doplní klient pred odoslaním, ako pri Lens.
       return listBridgeMessage(o.wire, new Map());
+    case "measure":
+      return { type: "MEASURE_SHOW", segments: o.segments, ...(o.keep ? { keep: true } : {}) };
   }
 }
 

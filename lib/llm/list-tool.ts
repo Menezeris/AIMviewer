@@ -32,6 +32,8 @@ const filterProps = {
   system: { type: "string" },
   system_type: { type: "string" },
   zone: { type: "string", description: "Zóna (IfcZone, požiarny úsek...) - miestnosti aj prvky v nich" },
+  document: { type: "string", description: "Dokument (id, object_ref, názov) - prvky, ktorých sa týka" },
+  page: { type: "number", description: "S document: len prvky danej strany" },
   property: { type: "string", description: "Vlastnosť na filter (s value)" },
   pset: { type: "string" },
   value: { type: "string" },

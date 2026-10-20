@@ -74,7 +74,9 @@ Dokumentáciu nesie model: každý `IfcDocumentInformation` je `document` s `obj
 `Identification` (aj priečinkové časti bez súboru), strom z
 `IfcDocumentInformationRelationship` je `rel_document_information_relationship` (časť →
 nadradený), `IfcDocumentReference` je `document_reference` (napr. strana výpisu skladieb,
-`object_ref` = `<Identification dokumentu>#page=N`). Load preloží `Location`
+`object_ref` = `<Identification dokumentu>#page=N`). Druh dokumentu je klasifikácia
+(`IfcClassificationReference` cez `IfcExternalReferenceRelationship`, ASR v77: typ informácie
+ISO 19650) a ide do `rel_external_reference_relationship` (dokument → referencia). Load preloží `Location`
 (`../Dokumentacia/<Identification>.pdf`) na verejnú URL súboru v buckete `documents`, ak tam
 súbor s rovnakým menom je (`storage_type='supabase'`, treba `SUPABASE_URL`); pôvodná hodnota
 ostane v `properties._ifc_location`. Dokumenty nesú `properties._model`; dokument, ktorý model
@@ -86,6 +88,10 @@ python -m etl.documents close-legacy             # dokumenty bez _model + ich v�
 ```
 Na produkcii oboje spúšťa workflow `reetl` v repe OCB (re-ETL aktuálnej revízie bez novej
 revízie, `close_legacy_documents`).
+
+Upsert objektu prepíše `properties` tým, čo vydá model, okrem kľúčov hostiteľa
+(`HOST_PROPERTY_KEYS` v `db.py`, dnes `_georef` = kalibrácia podkladu výkresu z PATCH
+`/api/underlay`): tie ostanú, re-ETL ich nezmaže (D-104 krok 3).
 
 ### `--reset` (nahradenie seedu, E2)
 `--reset` pred loadom `TRUNCATE ... CASCADE` vyprázdni AIM dáta (riadky, nie schému) —

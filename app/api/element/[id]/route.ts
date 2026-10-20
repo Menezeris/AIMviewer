@@ -4,7 +4,18 @@ import { fetchNodeSummary } from "@/lib/data/object";
 import { fetchNodeSections } from "@/lib/data/relations";
 import { fetchCaptureSummaryForObject } from "@/lib/data/captures";
 import { fetchDerivedRelations } from "@/lib/data/derivations";
+import { fetchDocumentTypes, fetchObjectDocuments } from "@/lib/data/object-documents";
 import type { ElementDetail } from "@/lib/aim-panel";
+
+/** Dokumenty prvku cez vzťahy s kódom druhu (D-104); chyba = karta ukáže priame väzby. */
+async function effectiveDocuments(id: string): Promise<ElementDetail["effectiveDocuments"]> {
+  const { documents } = await fetchObjectDocuments(id);
+  const types = await fetchDocumentTypes([...new Set(documents.map((d) => d.documentId))]);
+  return documents.map((d) => {
+    const typeCode = types.get(d.documentId)?.code;
+    return typeCode ? { ...d, typeCode } : d;
+  });
+}
 
 /**
  * Detail prvku pre AIM inspector v 3D (D-077) a bočný info-panel prehliadačky
@@ -27,12 +38,16 @@ export async function GET(
   }
 
   try {
-    const [summary, sections, captures, derived] = await Promise.all([
+    const [summary, sections, captures, derived, docs] = await Promise.all([
       fetchNodeSummary(id),
       fetchNodeSections(id),
       fetchCaptureSummaryForObject(id),
       // Vrstva AIM (D-089): odvodené vzťahy pre Relationship records vo vieweri.
       fetchDerivedRelations(id).catch(() => undefined),
+      effectiveDocuments(id).catch((err) => {
+        console.error(`[api/element/${id}] documents`, err);
+        return undefined;
+      }),
     ]);
     if (!summary) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -43,6 +58,7 @@ export async function GET(
       guidHistory: sections.guidHistory,
       captures,
       derived,
+      ...(docs ? { effectiveDocuments: docs } : {}),
     };
     // Read-only súhrn (revaliduje sa s ostatnými AIM dátami po 60 s). Cache v
     // prehliadači + na CDN → opakovaný klik na ten istý kód vo výkrese je okamžitý,
