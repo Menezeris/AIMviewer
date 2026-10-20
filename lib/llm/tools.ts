@@ -5,11 +5,12 @@ import { PDF_LINK_SOURCE } from "@/lib/data/constants";
 import { fetchDocumentTypes, fetchObjectDocuments, typeText } from "@/lib/data/object-documents";
 import { fetchAllPages } from "@/lib/data/pagination";
 import type { ToolDefinition } from "./provider";
-import { docOp, docRegionInput, selectOp } from "@/lib/viewer-ops";
+import { docHighlightsInput, docOp, docRegionInput, selectOp } from "@/lib/viewer-ops";
 import {
   PAGE_BLOCKS_CAP,
   PAGE_TEXT_CAP,
   compactBlocks,
+  highlightsRegion,
   matchBlocks,
   parseBlocks,
   type TextBlock,
@@ -627,9 +628,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "open_drawing",
     description:
       "UI AKCIA: otvorí výkres/dokument v prehliadačke, voliteľne so zvýrazneným prvkom, " +
-      "stranou a výrezom strany (region = priblíženie na časť strany v karte vo vieweri). " +
-      "Zavolaj, keď používateľ žiada otvoriť/ukázať výkres alebo prvok vo výkrese, alebo " +
-      "priblížiť výkres na miesto (document_id a page zisti cez get_object(include=documents)).",
+      "stranou, výrezom strany (region = priblíženie na časť strany v karte vo vieweri) a " +
+      "rámikmi okolo textu (highlights). Zavolaj, keď používateľ žiada otvoriť/ukázať výkres " +
+      "alebo prvok vo výkrese, priblížiť výkres na miesto alebo ukázať/zvýrazniť text v ňom " +
+      "(document_id a page zisti cez get_object(include=documents), text cez search_documents).",
     inputSchema: {
       type: "object",
       properties: {
@@ -658,6 +660,23 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           },
           required: ["x", "y", "width", "height"],
         },
+        highlights: {
+          type: "array",
+          description:
+            "Voliteľné: rámiky okolo textu na strane page, v % strany (najviac 20) - daj sem " +
+            "regions[].bbox zo search_documents. Bez region sa karta priblíži na rámiky. " +
+            "Vždy vo vieweri; ďalšie otvorenie dokumentu rámiky zruší.",
+          items: {
+            type: "object",
+            properties: {
+              x: { type: "number" },
+              y: { type: "number" },
+              width: { type: "number" },
+              height: { type: "number" },
+            },
+            required: ["x", "y", "width", "height"],
+          },
+        },
       },
       required: ["document_id"],
     },
@@ -684,9 +703,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "(2) q + document_id = hľadanie len v tom dokumente (napr. 'ukáž vo výkrese popisok 1.05', " +
       "'nájdi v technickej správe požiarnu odolnosť'); (3) document_id bez q = PREČÍTA stranu " +
       "(page, default 1): celý text, s include_blocks aj riadky s polohou na strane (legenda, " +
-      "kóty, výpočet z výkresu). regions = výrezy strany v %, kde text je: daj ich do " +
-      "open_drawing region (in_viewer) a miesto sa priblíži. Slová sa hľadajú aj v inom tvare " +
-      "(skloňovanie). Metadáta dokumentov (názov, typ, revízia) hľadá query_view.",
+      "kóty). regions = kde na strane text je (bbox v %): 'ukáž/zvýrazni vo výkrese' = " +
+      "open_drawing(document_id, page, highlights=[regions[].bbox]) - karta sa priblíži a text " +
+      "orámuje. Slová sa hľadajú aj v inom tvare (skloňovanie). Výmery a objemy (murivo, plochy) " +
+      "počítaj z kót výkresu LEN na výslovnú žiadosť 'z výkresu' a ako hrubý odhad; inak vždy z " +
+      "modelu (ifc_measure, Qto). Metadáta dokumentov (názov, typ, revízia) hľadá query_view.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2275,15 +2296,22 @@ export class AskToolRuntime {
         : null;
 
     const label = doc.name ?? doc.object_ref ?? "výkres";
-    const region = docRegionInput(input.region);
+    const highlights = docHighlightsInput(input.highlights);
+    if (input.highlights !== undefined && Array.isArray(input.highlights) && input.highlights.length > 0 && highlights.length === 0) {
+      throw new Error("highlights = [{x, y, width, height}] v % strany (0-100), aspoň jeden na strane.");
+    }
+    // Bez výrezu sa karta priblíži na rámiky (D-123): ich obal, najmenej 15 % na os.
+    const region =
+      docRegionInput(input.region) ??
+      (input.region === undefined && highlights.length > 0 ? highlightsRegion(highlights) : undefined);
     if (input.region !== undefined && !region) {
       throw new Error("region musí mať x, y, width, height v % strany (0-100) a ležať na strane.");
     }
     if (input.in_viewer === true || region) {
-      // Karta dokumentu vedľa 3D (D-075 DOCUMENT_OPEN cez op `doc`, D-083), výrez strany D-117.
+      // Karta dokumentu vedľa 3D (D-075 DOCUMENT_OPEN cez op `doc`, D-083), výrez strany D-117, rámiky D-123.
       this.actions.push({
         type: "navigate",
-        url: `/ifc?ops=${encodeURIComponent(docOp(doc.id, page ?? undefined, region))}&r=${Date.now().toString(36)}`,
+        url: `/ifc?ops=${encodeURIComponent(docOp(doc.id, page ?? undefined, region, highlights))}&r=${Date.now().toString(36)}`,
         label: `Viewer: ${label}`,
       });
       return {
@@ -2292,6 +2320,7 @@ export class AskToolRuntime {
         document: label,
         ...(page ? { page } : {}),
         ...(region ? { region: { x: region.x, y: region.y, width: region.w, height: region.h } } : {}),
+        ...(highlights.length > 0 ? { highlights: highlights.length } : {}),
         ...(focusId
           ? {
               note:

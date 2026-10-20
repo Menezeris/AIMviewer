@@ -13,7 +13,8 @@
  * a na súradnici IFC sveta `section:<y|x|z>~c=<m>::`,
  * `section_clear::`, `section_gizmo:<0|1>:`, `camera:<preset>[~proj=o|p]:<guid.guid...>` (fit a relatívne kroky
  * `~fit=..~z=..~oh=..~ov=..~px=..~py=..` a `camera_sel:<arg>:<selektor>`, D-094/D-098, `lib/viewer-camera.ts`),
- * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>[~r=<x>_<y>_<w>_<h>]:<documentId>` (výrez strany v %, D-117).
+ * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>[~r=<x>_<y>_<w>_<h>][~h=<x>_<y>_<w>_<h>_...]:<documentId>`
+ * (výrez strany v %, D-117; rámiky okolo textu v %, po štyroch číslach, D-123).
  * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
  */
 
@@ -33,6 +34,10 @@ export interface DocRegion {
   w: number;
   h: number;
 }
+
+/** Výrez a rámiky: drôt (op) nesie percentá, fork čaká zlomky strany (0-1). */
+const toFraction = (r: DocRegion) => ({ x: r.x / 100, y: r.y / 100, w: r.w / 100, h: r.h / 100 });
+const pctList = (r: DocRegion) => [r.x, r.y, r.w, r.h].map((v) => +v.toFixed(2)).join("_");
 
 export const SECTION_AXES = ["y", "x", "z"] as const;
 export type SectionAxis = (typeof SECTION_AXES)[number];
@@ -91,7 +96,7 @@ export type ViewerOp =
   | { op: "section_gizmo"; showGizmo: boolean }
   | ({ op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[]; selector?: OpsSelector } & CameraMove)
   | { op: "view"; mode: ViewMode; storeyGuid?: string }
-  | { op: "doc"; documentId: string; page?: number; region?: DocRegion }
+  | { op: "doc"; documentId: string; page?: number; region?: DocRegion; highlights?: DocRegion[] }
   | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire }
   /** Zoznam z chatu do panela Lists (D-111), formát v `lib/viewer-list.ts`. */
   | { op: "list"; wire: ListWire };
@@ -157,6 +162,57 @@ export function clampDocRegion(r: DocRegion): DocRegion | undefined {
   const x = axis(r.x, r.w);
   const y = axis(r.y, r.h);
   return x && y ? { x: x[0], y: y[0], w: x[1], h: y[1] } : undefined;
+}
+
+/** Najviac rámikov naraz (D-123), rovnako ako vo forku. */
+export const MAX_DOC_HIGHLIGHTS = 20;
+
+/**
+ * Rámik okolo textu (D-123): orezaný do strany ako výrez, ale bez 1 % minima,
+ * lebo riadok textu býva vysoký 0,4-1 % strany (najmenej 0,1 %).
+ */
+export function clampDocHighlight(r: DocRegion): DocRegion | undefined {
+  const axis = (start: number, size: number): [number, number] | undefined => {
+    const lo = Math.max(0, start);
+    const hi = Math.min(100, start + size);
+    if (!(hi - lo > 0)) return undefined;
+    // Rozmer vnútri strany ostáva presný (bez odčítania, ktoré pridá chybu zaokrúhlenia).
+    const len = Math.max(0.1, Math.min(start < 0 ? start + size : size, 100 - lo));
+    return [Math.min(lo, 100 - len), len];
+  };
+  const x = axis(r.x, r.w);
+  const y = axis(r.y, r.h);
+  return x && y ? { x: x[0], y: y[0], w: x[1], h: y[1] } : undefined;
+}
+
+/** Rámiky z `h=x_y_w_h_x_y_w_h...` (D-123); neplatné vynechá. */
+export function parseDocHighlights(raw: string | undefined): DocRegion[] {
+  if (!raw) return [];
+  const n = raw.split("_").map((v) => finite(v, -1000, 1000));
+  const out: DocRegion[] = [];
+  for (let i = 0; i + 3 < n.length && out.length < MAX_DOC_HIGHLIGHTS; i += 4) {
+    const [x, y, w, h] = n.slice(i, i + 4);
+    if (x === undefined || y === undefined || w === undefined || h === undefined) continue;
+    const r = clampDocHighlight({ x, y, w, h });
+    if (r) out.push(r);
+  }
+  return out;
+}
+
+/** Rámiky z parametra toolu `highlights` ([{x, y, width, height}] v %, D-123); neplatné vynechá. */
+export function docHighlightsInput(raw: unknown): DocRegion[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== "object") return undefined;
+      const r = item as Record<string, unknown>;
+      const n = [r.x, r.y, r.width, r.height];
+      if (!n.every((v) => typeof v === "number" && Number.isFinite(v))) return undefined;
+      const [x, y, w, h] = n as number[];
+      return clampDocHighlight({ x, y, w, h });
+    })
+    .filter((r): r is DocRegion => r !== undefined)
+    .slice(0, MAX_DOC_HIGHLIGHTS);
 }
 
 function finite(raw: string | undefined, min: number, max: number): number | undefined {
@@ -290,11 +346,13 @@ export function parseOps(raw: string): ViewerOp[] {
       const [pageArg, kv] = parseArg(arg);
       const page = finite(pageArg, 1, 100_000);
       const region = parseDocRegion(kv.r);
+      const highlights = parseDocHighlights(kv.h);
       out.push({
         op,
         documentId,
         ...(page !== undefined ? { page: Math.floor(page) } : {}),
         ...(region ? { region } : {}),
+        ...(highlights.length > 0 ? { highlights } : {}),
       });
     }
   }
@@ -357,9 +415,9 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
         documentId: o.documentId,
         ...(o.page ? { page: o.page } : {}),
         // Fork čaká zlomky strany (0-1), drôt nesie percentá.
-        ...(o.region
-          ? { region: { x: o.region.x / 100, y: o.region.y / 100, w: o.region.w / 100, h: o.region.h / 100 } }
-          : {}),
+        ...(o.region ? { region: toFraction(o.region) } : {}),
+        // Rámiky (D-123): fork ich nakreslí na strane `page`; prázdne = staré zruší.
+        ...(o.highlights?.length ? { highlights: o.highlights.map(toFraction) } : {}),
       };
     case "lens":
       // Zónu (`aim_zone`) doplní klient pred odoslaním; tu ostane prázdna.
@@ -425,7 +483,8 @@ export function viewModeOp(mode: ViewMode, storeyGuid?: string): string {
   return `view:${mode}:${storeyGuid ?? ""}`;
 }
 
-export function docOp(documentId: string, page?: number, region?: DocRegion): string {
-  const r = region ? `~r=${[region.x, region.y, region.w, region.h].map((v) => +v.toFixed(2)).join("_")}` : "";
-  return `doc:${page ?? ""}${r}:${documentId}`;
+export function docOp(documentId: string, page?: number, region?: DocRegion, highlights?: DocRegion[]): string {
+  const r = region ? `~r=${pctList(region)}` : "";
+  const h = highlights?.length ? `~h=${highlights.map(pctList).join("_")}` : "";
+  return `doc:${page ?? ""}${r}${h}:${documentId}`;
 }

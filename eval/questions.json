@@ -401,9 +401,9 @@
       "id": "doc-show-label",
       "category": "documents_content",
       "question": "Ukáž vo výkrese D.1.1.01 Pôdorys 1NP, kde je popisok miestnosti 1.05.",
-      "expect": { "tools_called": ["search_documents", "open_drawing"] },
+      "expect": { "tools_called": ["search_documents", "open_drawing"], "actions_match": ["doc:1~r=[0-9._]+~h=[0-9._]+:"] },
       "verified": false,
-      "notes": "D-123 (#149): search_documents q=1.05 + document_id vráti regions, open_drawing region (D-117, PR #140) priblíži výrez. Lokálne overené: popisok 1.05 v pôdoryse okolo x 38 %, y 56 % strany."
+      "notes": "D-123 (#149): search_documents q=1.05 + document_id vráti regions, open_drawing highlights (D-123) orámuje text a priblíži kartu (D-117). Lokálne overené: popisok 1.05 v pôdoryse okolo x 38 %, y 56 % strany."
     },
     {
       "id": "neg-valves",

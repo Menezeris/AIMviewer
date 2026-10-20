@@ -83,6 +83,19 @@ export function regionAround(b: Pick<TextBlock, "x" | "y" | "w" | "h">, min = MI
 }
 
 /**
+ * Výrez pre open_drawing, keď prišli len rámiky (D-123): obal všetkých rámikov
+ * (v %, tvar `w/h` ako DocRegion vo viewer-ops), najmenej MIN_REGION na os.
+ */
+export function highlightsRegion(rects: { x: number; y: number; w: number; h: number }[]) {
+  const x0 = Math.min(...rects.map((r) => r.x));
+  const y0 = Math.min(...rects.map((r) => r.y));
+  const x1 = Math.max(...rects.map((r) => r.x + r.w));
+  const y1 = Math.max(...rects.map((r) => r.y + r.h));
+  const r = regionAround({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+  return { x: r.x, y: r.y, w: r.width, h: r.height };
+}
+
+/**
  * Riadky strany, ktoré obsahujú slová dopytu. Najprv riadky so všetkými slovami;
  * keď žiadny nie je (napr. "1.05 Technická miestnosť" sú vo výkrese dva riadky),
  * riadky s najväčším počtom slov. Poradie zhora nadol, zľava doprava.

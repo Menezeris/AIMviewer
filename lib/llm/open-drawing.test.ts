@@ -46,4 +46,25 @@ describe("open_drawing s výrezom strany (D-117)", () => {
     expect(JSON.parse(res.content).note).toContain("region");
     expect(decodeURIComponent(rt.finalActions()[0].url)).toContain(`doc::${DOC}`);
   });
+
+  it("highlights (D-123) orámujú text a bez region priblížia kartu na ich obal", async () => {
+    const rt = new AskToolRuntime();
+    const res = await rt.exec("open_drawing", {
+      document_id: DOC,
+      page: 1,
+      highlights: [{ x: 38.33, y: 56.05, width: 0.75, height: 1.2 }],
+    });
+    const out = JSON.parse(res.content);
+    expect(out).toMatchObject({ ok: true, opened: "viewer_document", page: 1, highlights: 1 });
+    expect(out.region.width).toBe(15);
+    expect(out.region.x).toBeLessThan(38.33);
+    expect(out.region.x + out.region.width).toBeGreaterThan(39.08);
+    const url = decodeURIComponent(rt.finalActions()[0].url);
+    expect(url).toContain("~h=38.33_56.05_0.75_1.2");
+    expect(url).toContain("~r=");
+
+    const bad = await rt.exec("open_drawing", { document_id: DOC, highlights: [{ x: 500, y: 0, width: 1, height: 1 }] });
+    expect(bad.isError).toBe(true);
+    expect(bad.content).toContain("highlights");
+  });
 });

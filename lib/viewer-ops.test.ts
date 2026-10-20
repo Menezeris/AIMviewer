@@ -4,6 +4,7 @@ import {
   SECTION_CLEAR_OP,
   cameraOp,
   clampDocRegion,
+  docHighlightsInput,
   docOp,
   docRegionInput,
   opToBridgeMessage,
@@ -93,6 +94,28 @@ describe("viewer ops - pohľad (D-083)", () => {
     // Chybný výrez sa zahodí, dokument sa otvorí celý.
     expect(parseOps(`doc:3~r=10_abc_5_5:${DOC}`)).toEqual([{ op: "doc", documentId: DOC, page: 3 }]);
     expect(parseOps(`doc:3~r=120_0_10_10:${DOC}`)).toEqual([{ op: "doc", documentId: DOC, page: 3 }]);
+  });
+
+  it("rámiky okolo textu (D-123): po štyroch číslach na drôte, zlomky v bridge správe", () => {
+    const op = docOp(DOC, 1, undefined, [
+      { x: 38.33, y: 56.05, w: 0.75, h: 1.2 },
+      { x: 37.48, y: 57.46, w: 2.46, h: 0.8 },
+    ]);
+    expect(op).toBe(`doc:1~h=38.33_56.05_0.75_1.2_37.48_57.46_2.46_0.8:${DOC}`);
+    const [msg] = bridge(op) as { highlights: { x: number; w: number }[] }[];
+    expect(msg.highlights).toHaveLength(2);
+    expect(msg.highlights[0].x).toBeCloseTo(0.3833);
+    expect(msg.highlights[0].w).toBeCloseTo(0.0075);
+    // Tenký riadok sa nenafúkne na 1 % ako výrez; neúplná štvorica a riadok mimo strany sa zahodia.
+    expect(parseOps(`doc:1~h=10_10_0.3_0.4_200_0_1_1_5_5_1:${DOC}`)).toEqual([
+      { op: "doc", documentId: DOC, page: 1, highlights: [{ x: 10, y: 10, w: 0.3, h: 0.4 }] },
+    ]);
+  });
+
+  it("rámiky z parametra toolu: neplatné vynechá, najviac 20", () => {
+    expect(docHighlightsInput([{ x: 1, y: 2, width: 3, height: 4 }, { x: "1" }, null])).toEqual([{ x: 1, y: 2, w: 3, h: 4 }]);
+    expect(docHighlightsInput(Array.from({ length: 30 }, () => ({ x: 1, y: 1, width: 1, height: 1 })))).toHaveLength(20);
+    expect(docHighlightsInput("x")).toEqual([]);
   });
 
   it("výrez strany sa oreže do strany", () => {

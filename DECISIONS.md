@@ -5466,7 +5466,7 @@ miestnosť 1.10 = 6,796 x 3,221 m, pôdorys z meshu = Qto 21,699 m². DD02.05.04
 
 ### D-123 - Text dokumentov z textovej vrstvy PDF: naplnenie zo storage, riadky s polohou, čítanie strany v `search_documents`
 
-**Dátum:** 2026-10-20 · **Stav:** navrhnuté (čaká na Samuela: naplnenie produkcie, rámik vo vieweri) · **Súvisí:** D-063 (rozširuje), D-104, D-117, D-114, D-090 · **Issue:** #149
+**Dátum:** 2026-10-20 · **Stav:** prijaté (Samuel cez orchestrátora: rámik áno, OCR nie, výmery z výkresu len na žiadosť); otvorené naplnenie produkcie · **Súvisí:** D-063 (rozširuje), D-104, D-117, D-114, D-090 · **Issue:** #149
 
 **Kontext:** požiadavka z konektora (#149): spočítať murivo na 1NP z PDF výkresu D.1.1.01 a vedieť
 čítať, hľadať a ukazovať text vo všetkých výkresoch a technických správach. Návrh z konverzácie bol
@@ -5507,8 +5507,27 @@ nový tool `read_document` s OCR. Overenie nad produkciou ukázalo, že tool nec
   a strany by zahltili výsledok.
 - *OCR:* žiadny dnešný dokument ho nepotrebuje; pridá sa, keď príde sken bez textovej vrstvy.
 
-**Otvorené (Samuel, #149):** spustenie migrácie a `--from-db` na produkcii; farebný rámik okolo textu
-v karte PDF vo vieweri (zmena forku, D-087) ako ďalší krok, ak priblíženie nestačí.
+**Dodatok 2026-10-20 (Samuelove odpovede cez orchestrátora):**
+6. **Rámik okolo textu áno:** `open_drawing highlights=[{x, y, width, height}]` (v %, najviac 20, typicky
+   `regions[].bbox` zo `search_documents`), op `doc:<strana>[~r=...][~h=x_y_w_h_...]:<id>` a `DOCUMENT_OPEN
+   highlights` (zlomky strany). Bez `region` sa karta priblíži na obal rámikov (najmenej 15 % na os). Rámik
+   nemá 1 % minimum výrezu, aby tenký riadok ostal tenký. Kreslí ho fork (Menezeris/ifc-lite#86, nadväzuje na
+   D-117 #80) ako vrstvu nad stranou v `aim/docRegion.ts`; ďalší `DOCUMENT_OPEN` rámiky nahradí alebo zruší.
+7. **OCR mimo rozsahu.**
+8. **Výmery z výkresu len na výslovnú žiadosť:** objem muriva, plochy a podobne z kót PDF počíta agent len na
+   žiadosť "z výkresu" a ako hrubý odhad; inak vždy z modelu (`ifc_measure`, Qto). Pravidlo je v opise
+   `search_documents` a v inštrukciách.
+9. **Prečo text v DB (otázka Samuela) a variant bez DB:** hľadanie naprieč všetkými dokumentmi ("v ktorom
+   dokumente sa píše o X") potrebuje index; prehľadať 44 PDF (okolo 900 tis. znakov, desiatky MB) pri každej
+   otázke by trvalo sekundy až desiatky sekúnd a záviselo by od storage. Čítanie jednej strany
+   (`document_id` + `page`) ale index nepotrebuje: **variant B** = server pri čítaní strany stiahne PDF zo
+   `documents.location` a vytiahne text a riadky s polohou za behu (pdf.js v Node, rovnaký výstup ako
+   `blocks`), s krátkou cache. Výhoda: funguje hneď a pre nový dokument bez ETL; nevýhoda: nová závislosť
+   servera (pdf.js), sekundy na prvé čítanie veľkého PDF a dva kódy extrakcie (Python v ETL, JS na serveri),
+   ktoré sa môžu rozísť. Odporúčanie: DB ostáva zdrojom pre hľadanie aj čítanie (jeden extraktor, rýchle),
+   variant B len ako záloha, keď dokument v `document_pages` chýba. Rozhodne Samuel (#149).
+
+**Otvorené (Samuel, #149):** kto a kedy spustí migráciu a `--from-db` na produkcii; či chce variant B.
 
 ### D-117 - Výrez strany výkresu z chatu: `open_drawing region`
 
