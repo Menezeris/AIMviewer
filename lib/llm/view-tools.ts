@@ -130,7 +130,8 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "set_view_mode",
     description:
       "UI AKCIA: prepne viewer medzi 3D, 2D (pôdorys podlažia) a Split (2D + 3D vedľa seba). 2D s " +
-      "kalibrovaným výkresom ukáže PDF pôdorys, inak model zhora s rezom 1,2 m nad podlahou. Na " +
+      "kalibrovaným výkresom ukáže PDF pôdorys, inak model zhora s rezom 1,2 m nad podlahou; miestnosti " +
+      "ofarbené cez style_in_3d sú v ňom vyplnené farbou a popísané názvom. Na " +
       "prehliadku budovy podlažie po podlaží volaj mode=2d s floor postupne (krok na pokyn používateľa). " +
       "reset=true s mode=3d vráti pôvodný pohľad (bez rezu, farieb, skrytia, výberu a zvýraznenia, izometria).",
     inputSchema: {
