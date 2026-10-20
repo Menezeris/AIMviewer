@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-110 (prechod VZT sieťou, #75):** `ifc_relations(through_ports, recursive, stop_at)` prejde sieť cez porty a vráti najbližšiu jednotku alebo klapku (aj `IfcDamper.FIREDAMPER`) s cestou a `path_show_in_3d`; `max_steps`, `cut_off`.
 - **2026-10-19** - **D-109 (verzia modelu v ifc_models, #73):** aktuálna revízia z `model_revisions` (vNNN, dátum, autor, súhrn, sha256, poistka), `history: N`, cesta k zoznamu zmien v OCB; `loaded` vysvetlené ako cache motora; CRS a hlavička ostávajú v `ifc_model_info`.
 - **2026-10-19** - **D-108 (materiálové vrstvy z IFC, #69):** `ifc_get` vracia materiály (vrstvy, hrúbky, kategórie, aj z typu), nový `ifc_material_layers` nájde prvky podľa materiálu alebo kategórie vrstvy so súhrnom podľa skladby a `show_in_3d`.
 - **2026-10-19** - **D-113 (panel vlastností z chatu, #71):** `select_in_3d` s `panel_tab`, `panel_section` a `highlight`; fork prepne záložku AIM | IFC, sekciu a zvýrazní vlastnosť cez upstream `pendingPropertyFocus` bez režimu úprav.
@@ -5071,3 +5072,27 @@ dáva `ifc_model_info` (prevzatý z balíka, D-087).
   D-102 škrtá.
 - *Diff prvkov medzi revíziami v tooli:* zmenené prvky (modify) nesie len zoznam zmien v OCB;
   pridané a odobraté dáva poistka.
+### D-110 - Prechod VZT sieťou cez porty: `ifc_relations` s `recursive` a `stop_at`
+**Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #75).
+Nadväzuje na D-097 (`ifc_relations`, `through_ports` o jeden krok), D-087, D-102 (menej toolov).
+
+**Kontext:** "Ktorá VZT jednotka zásobuje túto miestnosť?" a "Ktorá požiarna klapka ju uzatvára?"
+konektor nevedel: `through_ports` ide len k susedom a priradenie k systémom je v modeli neúplné
+(Prívod-1NP má 8 prvkov, jednotky nie sú v priestoroch). Sieť cez porty (IfcRelNests ->
+IfcRelConnectsPorts) je v súbore celá.
+
+**Rozhodnutie:**
+1. Bez nového toolu: `ifc_relations(through_ports=true, recursive=true)` prejde sieť do šírky
+   cez porty, každý prvok raz, s `depth` a predchodcom `via`.
+2. `stop_at` = IFC triedy, voliteľne `Trieda.PREDEFINED` (`IfcDamper.FIREDAMPER`); PredefinedType
+   sa číta len pri kandidátoch tej triedy. Za zastavením sa nejde. `reached` dá zastavenia s počtom
+   krokov a cestou (GUIDy od štartu), najbližšie prvé; `path_show_in_3d` = cesta k najbližšiemu.
+3. `max_steps` (default 50, max 200); `cut_off` povie, že sieť pokračuje, prázdne `reached` bez
+   `cut_off` = sieť je prerušená alebo bez portov.
+4. Smer toku (FlowDirection portov) sa zatiaľ nesleduje: prechod ide oboma smermi a najbližšia
+   jednotka je zvyčajne tá, ktorá vetvu zásobuje. Štart z miestnosti = koncový prvok v miestnosti
+   (`v_space_elements`), potom trace (veta v inštrukciách).
+
+**Zavrhnuté:**
+- *Nový tool `trace_network`:* zdvojil by prechod portov z `ifc_relations` a pridal definíciu.
+- *Prechod cez priradenie systému:* systémy sú v modeli neúplné; porty sú zdroj pravdy siete.

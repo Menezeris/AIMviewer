@@ -319,6 +319,7 @@ naming convention finálny tvar) sú v DECISIONS §7.
 > Kompaktný reverse-chrono log. Detail ku každému bodu je v `DECISIONS.md` (D-0xx);
 > aktuálny stav je hore v sekcii „Stav".
 
+- **2026-10-19** - **D-110 (prechod VZT sieťou, #75):** `lib/engine/relations.ts` `traceNetwork` (BFS cez porty, `stop_at`, `max_steps`, `reached`, `path_show_in_3d`), fixture `mini-relations` s reťazou potrubie -> požiarna klapka -> jednotka, veta v MCP inštrukciách. Overené: vitest 295/295, `tsc`, eslint.
 - **2026-10-19** - **D-109 (verzia modelu, #73):** `ifc_models` s revíziou a históriou (`lib/engine/revisions.ts`, `lib/data/model-revisions.ts`), veta v MCP inštrukciách. Overené: vitest 297/297 (tvar revízie, návrat, história, chyba DB), `tsc`, eslint.
 - **2026-10-19** - **D-108 (materiálové vrstvy, #69):** `ifc_get` s `materials`, nový `ifc_material_layers` (`lib/engine/materials.ts`, fixture `mini-materials.ts`), veta v MCP inštrukciách. Overené: vitest 299/299 (nové testy vrstvy z typu, zložky, súhrn, limit), `tsc`, eslint.
 - **2026-10-19** - **D-113 (panel vlastností z chatu, #71):** `select_in_3d` (`panel_tab`, `panel_section`, `highlight`, `lib/llm/select-panel.ts`), op `select` s panelom (`selectOp`), fork Menezeris/ifc-lite#75. Overené: vitest, `tsc`, eslint; fork 100/100, mutácie 6/6 OBSERVED, živo v iframe (IFC / Properties, zvýraznený riadok bez režimu úprav, Quantities, späť na AIM).

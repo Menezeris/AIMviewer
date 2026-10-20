@@ -175,7 +175,9 @@ export function engineToolDefinitions(): ToolDefinition[] {
         "IfcRelNests), typ, otvory a výplne (Voids/Fills), hranice priestoru, porty, dokumenty, klasifikácie, " +
         "materiály. direction: forward = entita je Relating (skupina -> členovia, podlažie -> prvky, celok -> " +
         "časti, prvok -> porty), inverse = kam entita patrí. recursive rozvinie vnorené zóny/systémy (bez rel_types len cez IfcRelAssignsToGroup). " +
-        "through_ports = prvky napojené cez porty (IfcRelConnectsPorts), jeden krok. Úplný zoznam bez stropu: " +
+        "through_ports = prvky napojené cez porty (IfcRelConnectsPorts), jeden krok; s recursive=true prechod " +
+        "celou sieťou cez porty a stop_at (napr. IfcUnitaryEquipment, IfcDamper.FIREDAMPER) = najbližšia jednotka " +
+        "alebo klapka s cestou (reached, path_show_in_3d). Úplný zoznam bez stropu: " +
         "stránkuj cez next_cursor, kým nie je null; total a counts platia pre celý výsledok.",
       inputSchema: {
         type: "object",
@@ -190,6 +192,12 @@ export function engineToolDefinitions(): ToolDefinition[] {
           direction: { type: "string", enum: ["forward", "inverse", "both"], description: "Default both" },
           recursive: { type: "boolean", description: "Rozvinúť do hĺbky (max 10) cez tie isté vzťahy, bez rel_types len cez IfcRelAssignsToGroup; len s direction forward alebo inverse" },
           through_ports: { type: "boolean", description: "Prvky napojené cez porty namiesto priamych vzťahov" },
+          stop_at: {
+            type: "array",
+            items: { type: "string" },
+            description: "S through_ports a recursive: zastaviť na triede, voliteľne Trieda.PREDEFINED (IfcDamper.FIREDAMPER)",
+          },
+          max_steps: { type: "number", description: "S through_ports a recursive: max krokov sieťou (1-200, default 50)" },
           limit: { type: "number", description: "Max vzťahov na stránku (1-200, default 100)" },
           cursor: { type: "string", description: "next_cursor z predchádzajúcej stránky" },
         },
