@@ -74,7 +74,9 @@ Dokumentáciu nesie model: každý `IfcDocumentInformation` je `document` s `obj
 `Identification` (aj priečinkové časti bez súboru), strom z
 `IfcDocumentInformationRelationship` je `rel_document_information_relationship` (časť →
 nadradený), `IfcDocumentReference` je `document_reference` (napr. strana výpisu skladieb,
-`object_ref` = `<Identification dokumentu>#page=N`). Load preloží `Location`
+`object_ref` = `<Identification dokumentu>#page=N`). Druh dokumentu je klasifikácia
+(`IfcClassificationReference` cez `IfcExternalReferenceRelationship`, ASR v77: typ informácie
+ISO 19650) a ide do `rel_external_reference_relationship` (dokument → referencia). Load preloží `Location`
 (`../Dokumentacia/<Identification>.pdf`) na verejnú URL súboru v buckete `documents`, ak tam
 súbor s rovnakým menom je (`storage_type='supabase'`, treba `SUPABASE_URL`); pôvodná hodnota
 ostane v `properties._ifc_location`. Dokumenty nesú `properties._model`; dokument, ktorý model

@@ -5001,6 +5001,26 @@ nenesie (`Purpose`, `IntendedUse`, `Scope`, `Status` sú v ASR prázdne), takže
 druhu a rozlíšenie výkresu pre podklady z dát nejde. Návrh: doplniť ho receptom do
 `IfcDocumentInformation.Purpose` (model je nositeľ), nie odvodzovať z mena súboru vo vieweri.
 
+**Dodatok 2026-10-20 - druh dokumentu = typ informácie ISO 19650 (Samuel).** IFC nemá na
+IfcDocumentInformation atribút pre druh (overené v schéme IFC4X3_ADD2: `Purpose`, `IntendedUse`,
+`Scope` sú voľný text, `Status` a `Confidentiality` iné číselníky). Druh sa zapíše ako
+klasifikácia dokumentu, nie ako text v `Purpose`:
+- Číselník = pole Type (typ informácie) v názve kontajnera z **národnej prílohy UK k ISO 19650-2**
+  (BS EN ISO 19650-2:2018 NA); samotné medzinárodné časti ISO 19650 kódy neurčujú. V IFC
+  `IfcClassification` "ISO 19650 typ informácie" (Source BSI), referencia = kód s menom po
+  slovensky a `Description` po anglicky. Použité kódy: DR výkres, CA výpočty, RP správa, SH výpis,
+  SP špecifikácia; ďalšie kódy prílohy sa pridajú, keď ich bude treba.
+- Väzba = `IfcExternalReferenceRelationship` (referencia -> dokumenty), lebo dokument nie je
+  IfcRoot a IfcRelAssociatesClassification naň nedosiahne. V DB nový rel_type
+  `rel_external_reference_relationship` (resource, `to_id` -> `classification_references` ako
+  pri `rel_associates_classification`), migrácia `20261020150000`. Meno referencie ETL už ukladá.
+- ASR v77 (recept OCB `recepty/ASR/v077-typy-dokumentov-iso19650.py`): 44 dokumentov so súborom,
+  DR 26, CA 10, RP 5, SH 2, SP 1, podľa obsahu PDF (A4 výpočtové prílohy TZB a fyziky = CA,
+  výkresové listy vrátane štúdie S.01 a tepelných záťaží TP.02 = DR, výpisy skladieb = SH,
+  hierarchia SNIM = SP). Priečinkové časti stromu typ nemajú.
+- Krok 3 (plán vyššie) tým dostáva: `meta` kľúč `Druh` v zozname dokumentov, druh v AIM karte a v
+  `find_documents`; podklady výkresov = dokumenty typu DR, ktoré nesie podlažie.
+
 ---
 
 ### D-105 - X-ray context z chatu: `style_in_3d action=xray`, drôtový model zatiaľ nie

@@ -95,11 +95,13 @@ class ClassificationRef:
 
 @dataclass
 class ClassLink:
-    """`rel_associates_classification`: objekt → klasifikačná referencia (D-023)."""
+    """Objekt → klasifikačná referencia: `rel_associates_classification` (D-023), pri
+    dokumente `rel_external_reference_relationship` (`edge_type`, D-104)."""
 
     from_ref: str
     system_name: str
     identification: str
+    edge_type: str = "has_classification"
     valid_from: Optional[str] = None
     valid_until: Optional[str] = None
     source: str = "etl"

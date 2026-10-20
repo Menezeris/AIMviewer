@@ -31,6 +31,7 @@ HRANY (objects → objects, čisté FK) — IFC-kanonické (D-048):
 KLASIFIKÁCIA (referenčné dáta):
   classification_systems ◄─ classification_references
   rel_associates_classification  objekt(type aj occurrence) → reference
+  rel_external_reference_relationship  dokument → reference (typ informácie ISO 19650, D-104)
 ```
 
 ---
@@ -565,6 +566,7 @@ CamelCase by vyžadoval úvodzovky a škodil LLM text-to-SQL). IFC väzba cez
 | `rel_associates_document` | IfcRelAssociatesDocument (IfcRelAssociates) |
 | `rel_document_information_relationship` | IfcDocumentInformationRelationship (**resource, nie IfcRel**, D-104); `role` = RelationshipType |
 | `rel_associates_classification` | IfcRelAssociatesClassification (IfcRelAssociates) |
+| `rel_external_reference_relationship` | IfcExternalReferenceRelationship (**resource, nie IfcRel**, D-104): klasifikácia dokumentu; `to_id` → `classification_references` |
 | `rel_assigns_to_actor` | IfcRelAssignsToActor + IfcActorRole (IfcRelAssigns) |
 | `rel_assigns_to_group` | IfcRelAssignsToGroup (IfcRelAssigns) — systémy, D-047 |
 | `classification_systems` / `_references` | IfcClassification / IfcClassificationReference |

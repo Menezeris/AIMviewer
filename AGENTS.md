@@ -140,7 +140,9 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
   priestore, neexkluzívne; odvodené cez `python -m etl.derive`, D-080),
   `rel_member_of` (IfcPersonAndOrganization — **resource, nie IfcRel**; poctivo mimo taxonómie),
   `rel_document_information_relationship` (IfcDocumentInformationRelationship, strom dokumentácie,
-  resource ako `rel_member_of`, D-104)
+  resource ako `rel_member_of`, D-104),
+  `rel_external_reference_relationship` (IfcExternalReferenceRelationship, klasifikácia dokumentu,
+  napr. typ informácie ISO 19650; resource, `to_id` → `classification_references`, D-104)
 - **Fyzicky binárne `from→to` + naše meta stĺpce, NIE objektifikované N-árne IFC entity**
   (preberáme identitu/granularitu IFC, nie serializačnú štruktúru — index nad IFC
   sémantikou, nie STEP v Postgrese, D-046/D-048)
