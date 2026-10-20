@@ -89,6 +89,10 @@ python -m etl.documents close-legacy             # dokumenty bez _model + ich v�
 Na produkcii oboje spúšťa workflow `reetl` v repe OCB (re-ETL aktuálnej revízie bez novej
 revízie, `close_legacy_documents`).
 
+Upsert objektu prepíše `properties` tým, čo vydá model, okrem kľúčov hostiteľa
+(`HOST_PROPERTY_KEYS` v `db.py`, dnes `_georef` = kalibrácia podkladu výkresu z PATCH
+`/api/underlay`): tie ostanú, re-ETL ich nezmaže (D-104 krok 3).
+
 ### `--reset` (nahradenie seedu, E2)
 `--reset` pred loadom `TRUNCATE ... CASCADE` vyprázdni AIM dáta (riadky, nie schému) —
 použité raz pri výmene ručného seedu za reálne ETL dáta. Seed je reprodukovateľný
