@@ -168,7 +168,8 @@ export function engineToolDefinitions(): ToolDefinition[] {
     {
       name: "ifc_measure",
       description:
-        "IFC MOTOR: meranie z geometrie (nie z Qto). a + b = svetlá vzdialenosť povrchov dvoch prvkov (aj ASR " +
+        "IFC MOTOR: meranie z geometrie (nie z Qto). KÓTA vo vieweri: show=true (a + b čiara medzi najbližšími " +
+        "bodmi s dĺžkou, len a hrany obálky X, Y, Z). a + b = svetlá vzdialenosť povrchov dvoch prvkov (aj ASR " +
         "voči VZT; záporná = prienik), vzdialenosť stredov, medzera obálok po osiach X/Y/Z a vodorovne, " +
         "a_above_b_m = výška spodku a nad vrchom b (napr. klapka nad doskou: b = doska). \"Od steny k stene\" = " +
         "jedno volanie a + b (dve steny), clear_distance_m je svetlá vzdialenosť; šírka obdĺžnikovej miestnosti " +
@@ -194,6 +195,10 @@ export function engineToolDefinitions(): ToolDefinition[] {
           qto: {
             type: "boolean",
             description: "Len plocha a objem z Qto v súbore (a alebo items), bez tesselácie geometrie - rýchle",
+          },
+          show: {
+            type: "boolean",
+            description: "true = kóta v živom vieweri (nástroj Measure); predošlé kóty od Claude nahradí, vlastné merania nie",
           },
         },
       },
