@@ -633,6 +633,22 @@
       "expect": { "tools_called": ["select_in_3d"], "actions_match": ["select:[^:]*s=quantities"] },
       "verified": false,
       "notes": "D-113 (issue #71): select_in_3d(id_or_ref=2.01, panel_section=quantities alebo highlight=Qto_SpaceBaseQuantities.NetFloorArea -> sekcia Quantities); hodnotu NetFloorArea z ifc_get."
+    },
+    {
+      "id": "materials-insulation-layers",
+      "category": "ifc_engine",
+      "question": "Ukáž všetky vrstvy izolácie v modeli ASR.",
+      "expect": { "tools_called": ["ifc_material_layers"] },
+      "verified": false,
+      "notes": "D-108 (issue #69): ifc_material_layers(material=izol) a show_in_3d z jeho show_in_3d; nie hádanie podľa názvu skladby. Počet over voči súboru ASR."
+    },
+    {
+      "id": "materials-assembly-layers",
+      "category": "ifc_engine",
+      "question": "Aké vrstvy má skladba FS01.10?",
+      "expect": { "tools_called": ["ifc_get"] },
+      "verified": false,
+      "notes": "D-108 (issue #69): ifc_get prvku alebo typu FS01.10 vráti materials.layers s hrúbkami; odpoveď vymenuje vrstvy v poradí."
     }
   ]
 }

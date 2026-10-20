@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-108 (materiálové vrstvy z IFC, #69):** `ifc_get` vracia materiály (vrstvy, hrúbky, kategórie, aj z typu), nový `ifc_material_layers` nájde prvky podľa materiálu alebo kategórie vrstvy so súhrnom podľa skladby a `show_in_3d`.
 - **2026-10-19** - **D-113 (panel vlastností z chatu, #71):** `select_in_3d` s `panel_tab`, `panel_section` a `highlight`; fork prepne záložku AIM | IFC, sekciu a zvýrazní vlastnosť cez upstream `pendingPropertyFocus` bez režimu úprav.
 - **2026-10-19** - **D-111 (zoznam z chatu, #70):** `open_list` s filtrami ako `style_in_3d` a stĺpcami otvorí builder panela Lists (fork `OPEN_LIST`, návrh zoznamu); Run a Export (CSV/XLSX/PDF) robí používateľ.
 - **2026-10-19** - **D-106 (Odvodené záznamy ako strom, #93):** jeden AIM badge a odlíšená sekcia, strom vzťah > IFC trieda / PredefinedType > inštancia s počtami, host posiela `other.predefinedType`.
@@ -5016,3 +5017,29 @@ karta otvára "Edit in Properties": rozbalí pset, posunie a zvýrazní riadok).
 - *Vrátiť obsah panelu cez live kanál:* duplikát `ifc_get`.
 
 **Otvorené:** zvýraznenie vlastnosti typu (zdedenej) a vlastnosti v Quantities upstream focus nevie.
+### D-108 - Materiálové vrstvy z IFC: `ifc_get` s materiálmi, `ifc_material_layers`
+**Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #69).
+Nadväzuje na D-084 (IFC motor), D-087 (najprv tools balíka). D-107 je ponechané pre D-104 krok 2.
+
+**Kontext:** "Ukáž všetky vrstvy izolácie" a "Aké vrstvy má skladba FS01.10?" konektor nevedel:
+`ifc_get` vrstvy nevracal a `ifc_count group_by=material` dáva len názov skladby, takže Claude
+hádal podľa názvu (asi 10 z 90+ prvkov). Upstream `get_entity` materiály vie (IfcMaterialLayerSet
+s poradím, materiálom, hrúbkou a kategóriou, constituent a profile sety, aj zdedené z typu cez
+IfcRelDefinesByType), ale náš `ifc_get` ich z `include` vynechal. Filter podľa materiálu balík
+nemá (`material=` v selektore `query_entities` odmietne).
+
+**Rozhodnutie:**
+1. `ifc_get` vracia aj `materials` (pole balíka bez zmeny).
+2. Nový `ifc_material_layers` (`lib/engine/materials.ts`, adaptér nad upstream `query_entities` a
+   `get_entities_bulk` s `include: ["materials"]`): prvky triedy (default `IfcElement` s podtriedami),
+   ktorých materiál obsahuje hľadaný text v názve materiálu, vrstvy alebo kategórie (vrstvy aj
+   materiálu), bez diakritiky a veľkosti písmen. Zhoda na názve celej skladby vráti všetky jej vrstvy.
+   Výstup: `total`, súhrn podľa skladby s nájdenými vrstvami a hrúbkou, prvky (strop `limit`) s
+   prepojením na AIM a `show_in_3d` za všetky nájdené prvky.
+3. Kategórie materiálov sa nemapujú na vlastný číselník: hľadá sa v tom, čo nesie súbor (názov a
+   kategória), aby výsledok šiel overiť v IFC.
+
+**Zavrhnuté:**
+- *Filter materiálu v selektore balíka:* balík ho zámerne odmieta ako nestratovo nepodporovaný.
+- *Mapovanie na kategórie (tepelná izolácia = EPS, XPS, MW...):* bez číselníka v knižnici by bolo
+  domnienkou; ak bude treba, patrí do knižnice požiadaviek, nie do toolu.
