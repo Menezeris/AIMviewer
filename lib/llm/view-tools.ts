@@ -11,6 +11,7 @@ import type { ToolDefinition } from "./provider";
 import { planCamera } from "./camera-plan";
 import { DOMAIN_IFC_TYPES } from "./ifc-selector";
 import { ViewInputError, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
+import { SECTION_SHIFT_RANGE } from "../views/plan";
 
 /**
  * UI tools pohľadu (D-083 fáza 1): rez, kamera, režim 3D/2D/Split. Vydávajú
@@ -123,15 +124,22 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "UI AKCIA: prepne viewer medzi 3D, 2D (pôdorys podlažia) a Split (2D + 3D vedľa seba). 2D s " +
       "kalibrovaným výkresom ukáže PDF pôdorys, inak model zhora s rezom 1,2 m nad podlahou. Na " +
       "prehliadku budovy podlažie po podlaží volaj mode=2d s floor postupne (krok na pokyn používateľa). " +
-      "reset=true s mode=3d vráti pôvodný pohľad (bez rezu, farieb, skrytia, výberu a zvýraznenia, izometria).",
+      "reset=true s mode=3d vráti pôvodný pohľad (bez rezu, farieb, skrytia, výberu a zvýraznenia, izometria). " +
+      "ULOŽENÝ POHĽAD: saved_view=meno obnoví pohľad uložený cez saved_view (režim, rez, izolácia, skrytie, " +
+      "kamera; mode netreba); 'ako minule' = saved_view='Posledný pohľad'; section_offset_m posunie rez po jeho " +
+      "osi ('o meter nižšie' = -1). Zoznam: get_viewer_state(saved_views=true).",
     inputSchema: {
       type: "object",
       properties: {
         mode: { type: "string", enum: ["3d", "2d", "split"] },
         floor: floorProp,
         reset: { type: "boolean", description: "S mode=3d: zruší rez, farby, skrytie, výber a zvýraznenie a vráti kameru" },
+        saved_view: { type: "string", description: "Meno uloženého pohľadu na obnovu (bez mode)" },
+        section_offset_m: {
+          type: "number",
+          description: `So saved_view: posun rezu po jeho osi v m (${SECTION_SHIFT_RANGE.min} až ${SECTION_SHIFT_RANGE.max}, záporné = nižšie)`,
+        },
       },
-      required: ["mode"],
     },
   },
 ];
@@ -214,6 +222,9 @@ export async function execViewTool(
     }
   } else if (name === "set_camera") {
     plan = planCamera(input, await resolveTargets(input));
+  } else if (name === "set_view_mode" && typeof input.saved_view === "string" && input.saved_view.trim() !== "") {
+    const [{ restoreSavedView }, { defaultSavedViewDeps }] = await Promise.all([import("@/lib/views/tools"), import("@/lib/views/runtime")]);
+    plan = await restoreSavedView(input, defaultSavedViewDeps());
   } else if (name === "set_view_mode") {
     plan = planViewMode(input, input.reset === true ? null : await resolveFloor(input.floor));
   } else {

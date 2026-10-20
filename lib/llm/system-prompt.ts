@@ -184,6 +184,7 @@ Kontext MCP (Claude vedľa viewera):
 - get_viewer_state číta viewer v súradniciach IFC (m, Z hore); bounds=true alebo cieľ = obálky.
   "Čo mám vybrané" -> get_viewer_state.selection.summary (triedy, podlažia, zostavy), nie vzorka
   items; pri summary.covers=returned povedz, že viewer poslal len časť.
+- Uložené pohľady: saved_view; obnova set_view_mode(saved_view).
 - Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
   výkres ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
 - Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${FEEDBACK_RULES}${BCF_RULES}${engine ? ENGINE_RULES : ""}`;

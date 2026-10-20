@@ -7,6 +7,7 @@ import { LEGACY_VIEWER_QUERY_TOOL_NAMES, VIEWER_QUERY_TOOL_DEFINITIONS } from ".
 import type { ToolDefinition } from "../llm/provider";
 import { withSearchAll } from "../llm/system-prompt";
 import { LEGACY_ASK_TOOL_NAMES, TOOL_DEFINITIONS } from "../llm/tools";
+import { SAVED_VIEW_TOOL_DEFINITIONS } from "../views/tools";
 
 /**
  * Zoznam toolov MCP konektora na jednom mieste (D-114): číta ho route, register
@@ -51,6 +52,13 @@ export function mcpToolGroups({ engine }: ToolListOptions): ToolGroup[] {
       file: "lib/live/viewer-query-tools.ts",
       mcpOnly: true,
       tools: VIEWER_QUERY_TOOL_DEFINITIONS,
+    },
+    {
+      group: "Uložené pohľady",
+      source: "DB (saved_views) + živý viewer",
+      file: "lib/views/tools.ts (zoznam v get_viewer_state, obnova v set_view_mode)",
+      mcpOnly: true,
+      tools: SAVED_VIEW_TOOL_DEFINITIONS,
     },
     {
       group: "BCF témy nad modelmi",

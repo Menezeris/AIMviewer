@@ -5280,3 +5280,53 @@ Authentication vypnúť pre Preview, inak sa náhľad v iframe nenačíta. Pre z
 
 **Detail:** `docs/FORK_MAINTENANCE.md` vo forku, sekcia "Release train".
 
+
+### D-117 - Uložené pohľady viewera: `saved_view`, zoznam v `get_viewer_state`, obnova v `set_view_mode`
+**Status:** rozhodnuté (2026-10-20, Samuel cez orchestrátora: pohľady sú spoločné pre stavbu a žijú
+samostatne, nie pri BCF témach; riadok registra `saved_view` čaká na súhlas v #72). Nadväzuje na D-085
+(`view_state`), D-098 (presná póza `SET_CAMERA {viewpoint}`), D-099 (tvar viewpointu), D-114 (najprv
+napasuj) a D-115 (čítanie a zápis sa nemiešajú). Issue #72, fork PR Menezeris/ifc-lite#79.
+
+**Kontext:** "Ulož to ako Pôdorys technickej miestnosti 3.14" a "rež to ako minule, ale o meter nižšie"
+konektor nevedel. Upstream viewer má dve knižnice pohľadov (uložené rezy s kamerou, "basket views"), obe
+len v pamäti prehliadača: po obnovení stránky sú preč a server ich nevidí. `bcf_topic(action=viewpoint)`
+vie zachytiť kameru, rez a režim, ale pohľady sa nemajú miešať so zoznamom tém. `view_state` vracal
+skryté a izolované prvky len ako počty.
+
+**Rozhodnutie:**
+1. **Tabuľka `saved_views`** (migrácia `20261020120000`, `SCHEMA.md` 2.17): meno (jedinečné bez ohľadu na
+   veľkosť písmen), popis, `viewpoint` v tvare `model_tasks.viewpoint` (kamera v IFC svete s projekciou,
+   rez, režim, podlažie a jeho label), výber, skryté a izolované GlobalId (strop 600 ako HIDE/ISOLATE
+   mosta), revízie modelov v čase uloženia, autor. Spoločné pre stavbu, bez vlastníka.
+2. **"Posledný pohľad"** = jediný riadok `kind = 'last'`, prepíše ho každé uloženie a obnova (nie pohyb
+   kamery). Obnova podľa mena ho nájde ako `Posledný pohľad` ("ako minule").
+3. **Jeden nový zápisový tool `saved_view`**, action save | rename | delete. Save číta `view_state` z
+   otvoreného viewera; existujúce meno prepíše len s `overwrite=true`.
+4. **Zoznam** = `get_viewer_state(saved_views=true)`: opis pohľadov (rez, režim, podlažie, kamera, počty
+   prvkov, revízie) bez zoznamov GUID, aj bez otvoreného viewera.
+5. **Obnova** = `set_view_mode(saved_view, section_offset_m)`: existujúce ops (čistý stav ako `reset`,
+   režim s podlažím, rez na súradnici posunutej po jeho osi, izolácia, skrytie, výber jedného prvku) a
+   nová op `pose` (presná póza kamery -> `SET_CAMERA {viewpoint, projection}`, fork ju vie od D-098)
+   ako posledná, aby ju režim ani rez neprepísali. Zápis `last_used_at` a "Posledný pohľad" je
+   evidencia ako `mcp_call_log`, nie dáta používateľa, preto tool ostáva na čítanie.
+6. **Fork** (`apps/viewer/src/aim/`, rýchla cesta D-116): `view_state` vracia aj `hidden_guids` a
+   `isolated_guids` (strop 600); `APPLIED` nesie ďalej len počty a `get_viewer_state` ich Claudovi
+   nevypisuje. So starším viewerom sa skrytie a izolácia neuložia a výsledok to povie.
+
+**Zavrhnuté rozšírenie:**
+- *`bcf_topic` (action=viewpoint, téma typu Pohľad):* Samuel - pohľady samostatne, zoznam tém by sa
+  zmiešal s pohľadmi; téma má stav, priradenie a session, pohľad nič z toho.
+- *`set_view_mode` / `set_camera` aj na uloženie:* sú to tooly na čítanie (UI akcie bez súhlasu);
+  uloženie, premenovanie a zmazanie mení zdieľané dáta a v claude.ai má pýtať súhlas (D-115 bod 1).
+  Obnovu do `set_view_mode` dať ide, preto tam je.
+- *`get_viewer_state` na uloženie:* to isté, čítanie; zoznam do neho patrí (pole stavu, D-114).
+
+**Zavrhnuté:**
+- *Uložené rezy a basket views z upstream viewera:* žijú v pamäti prehliadača, server ich nevidí a
+  po obnovení stránky zmiznú.
+- *Selektor namiesto GUID (izolácia "celé VZT"):* viewer nevracia, akým filtrom izolácia vznikla.
+- *Pamätať každý pohyb kamery:* zbytočné zápisy; "ako minule" znamená posledný použitý pohľad.
+
+**Otvorené:** farby z `style_in_3d colorize` a AIM chat Lens sa neukladajú (viewer nevracia, čo je
+ofarbené); výber viac prvkov sa uloží, ale obnoví len jeden (viewer vyberá jeden prvok, D-082);
+izolácia nad 600 prvkov sa oreže a výsledok to povie.

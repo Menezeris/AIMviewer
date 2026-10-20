@@ -14,12 +14,14 @@
  * `section_clear::`, `section_gizmo:<0|1>:`, `camera:<preset>[~proj=o|p]:<guid.guid...>` (fit a relatívne kroky
  * `~fit=..~z=..~oh=..~ov=..~px=..~py=..` a `camera_sel:<arg>:<selektor>`, D-094/D-098, `lib/viewer-camera.ts`),
  * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>:<documentId>`.
+ * Presná póza kamery z uloženého pohľadu (D-117): `pose:<px,py,pz,tx,ty,tz,ux,uy,uz>[~o=<m>][~proj=o|p]:`
+ * (IFC svet, m; `o` = polovica výšky ortografického pohľadu).
  * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
  */
 
 import { LENS_MODES, decodeLensWire, lensBridgeMessage, type LensMode, type LensWire } from "./viewer-lens";
 import { decodeListWire, listBridgeMessage, type ListWire } from "./viewer-list";
-import { cameraMoveArgs, parseCameraMove, type CameraMove } from "./viewer-camera";
+import { cameraMoveArgs, parseCameraMove, type BridgeViewpoint, type CameraMove } from "./viewer-camera";
 
 export interface OpsSelector {
   types?: string[];
@@ -82,6 +84,8 @@ export type ViewerOp =
   | { op: "section_clear" }
   | { op: "section_gizmo"; showGizmo: boolean }
   | ({ op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[]; selector?: OpsSelector } & CameraMove)
+  /** Presná póza (D-117): fork ju prenesie do kamery ako `SET_CAMERA {viewpoint}` (D-098). */
+  | { op: "pose"; viewpoint: BridgeViewpoint; projection?: Projection }
   | { op: "view"; mode: ViewMode; storeyGuid?: string }
   | { op: "doc"; documentId: string; page?: number }
   | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire }
@@ -156,6 +160,24 @@ export function selectOp(guid: string, panel?: SelectPanel): string {
   return `select:${kv.length ? `~${kv.join("~")}` : ""}:${guid}`;
 }
 
+const vec = (n: number[], i: number) => ({ x: n[i], y: n[i + 1], z: n[i + 2] });
+
+/** `px,py,pz,tx,ty,tz,ux,uy,uz~o=..~proj=..` -> póza; mimo rozsahu mosta forku = null. */
+function parsePose(arg: string): { viewpoint: BridgeViewpoint; projection?: Projection } | null {
+  const [head, kv] = parseArg(arg);
+  const n = head.split(",").map((v) => finite(v, -SECTION_COORDINATE_LIMIT, SECTION_COORDINATE_LIMIT));
+  if (n.length !== 9 || n.some((v) => v === undefined)) return null;
+  const nums = n as number[];
+  if (Math.hypot(nums[6], nums[7], nums[8]) <= 1e-6) return null;
+  const orthoSize = finite(kv.o, 1e-3, SECTION_COORDINATE_LIMIT);
+  if (kv.o !== undefined && orthoSize === undefined) return null;
+  const projection = kv.proj === "o" ? "orthographic" : kv.proj === "p" ? "perspective" : undefined;
+  return {
+    viewpoint: { position: vec(nums, 0), target: vec(nums, 3), up: vec(nums, 6), ...(orthoSize !== undefined ? { orthoSize } : {}) },
+    ...(projection ? { projection } : {}),
+  };
+}
+
 /** Rozparsuje `ops`; neznáme alebo chybné časti sa ticho zahodia (vstup je z URL). */
 export function parseOps(raw: string): ViewerOp[] {
   const out: ViewerOp[] = [];
@@ -228,6 +250,9 @@ export function parseOps(raw: string): ViewerOp[] {
         ...(projection ? { projection } : {}),
         ...parseCameraMove(kv),
       });
+    } else if (op === "pose") {
+      const pose = parsePose(arg);
+      if (pose) out.push({ op, ...pose });
     } else if (op === "view") {
       if (!(VIEW_MODES as readonly string[]).includes(arg)) continue;
       out.push({ op, mode: arg as ViewMode, ...(guids[0] ? { storeyGuid: guids[0] } : {}) });
@@ -299,6 +324,8 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
         // Relatívne kroky sem nepatria: host z nich spraví pózu (applyCameraOp v ifc-viewer.tsx).
         ...(o.fit ? { fit: o.fit } : {}),
       };
+    case "pose":
+      return { type: "SET_CAMERA", preset: "keep", viewpoint: o.viewpoint, ...(o.projection ? { projection: o.projection } : {}) };
     case "view":
       return { type: "SET_VIEW_MODE", mode: o.mode, ...(o.storeyGuid ? { storeyGuid: o.storeyGuid } : {}) };
     case "doc":
@@ -361,6 +388,16 @@ export function cameraSelOp(preset: CameraPreset, selector: OpsSelector, project
     ...(selector.model ? [`m=${selector.model}`] : []),
   ];
   return `camera_sel:${cameraArg(preset, projection, move)}:${fields.join("~")}`;
+}
+
+/** Presná póza kamery (D-117), napr. z uloženého pohľadu. */
+export function poseOp(vp: BridgeViewpoint, projection?: Projection): string {
+  const nums = [vp.position, vp.target, vp.up].flatMap((v) => [v.x, v.y, v.z]);
+  const kv = [
+    ...(vp.orthoSize !== undefined ? [`o=${vp.orthoSize}`] : []),
+    ...(projection ? [`proj=${projection === "orthographic" ? "o" : "p"}`] : []),
+  ];
+  return `pose:${[nums.join(","), ...kv].join("~")}:`;
 }
 
 export function viewModeOp(mode: ViewMode, storeyGuid?: string): string {
