@@ -48,7 +48,8 @@ Postup podľa typu otázky:
   ich po slovensky. Nesplnené prvky ukáž v 3D cez style_in_3d (colorize ef4444,
   ids_or_refs = object_ref/object_id z v_ids_latest).
 - Konkrétny prvok → get_object (kód priamo) s include = details (vlastnosti, aj z typu) / path
-  (miestnosť a podlažie) / drawings (výkresy) v jednom volaní; vzťahy → list_relations.
+  (miestnosť a podlažie) / documents (dokumenty aj cez zónu, podlažie, typ) v jednom volaní;
+  vzťahy → list_relations.
 - Hľadanie podľa OBSAHU vlastností (výrobca, materiál, sériové číslo, ľubovoľné
   kľúčové slovo z panelu vlastností) → search_everything (fulltext nad všetkými
   psetmi vrátane custom, toleruje diakritiku aj preklepy; skús aj anglický
@@ -292,23 +293,22 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   (direction=inverse: zóny, požiarne úseky, systém, podlažie), napojené prvky cez porty
   (through_ports=true). "Ktorá VZT jednotka / klapka obsluhuje miestnosť X" (D-110): koncový prvok z
   v_space_elements -> ifc_relations(through_ports, recursive, stop_at=[IfcUnitaryEquipment] či [IfcDamper.FIREDAMPER]).
-  Funguje aj pre zóny a prvky bez object_ref. list_relations má strop
-  100 riadkov - úplný zoznam a total dá ifc_relations (stránky cez next_cursor).
-- Materiál prvkov (izolácia, minerálna vlna, EPS, betón; D-108) je len v IFC súbore, graf AIM ho nenesie:
+  Aj pre zóny a prvky bez object_ref. list_relations má strop 100 riadkov, úplný zoznam a total
+  dá ifc_relations (next_cursor).
+- Materiál prvkov (izolácia, minerálna vlna, EPS, betón; D-108) je len v IFC súbore, nie v AIM:
   "koľko / ktoré / ukáž prvky z materiálu X" = ifc_query(material=X), nie fulltext; vrstvy
   jedného prvku = ifc_get. Dedičnosť a atribúty IFC triedy = ifc_models(action=schema), nie z pamäti.
-- Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou; items = rozmery a objem z meshu;
-  qto=true = plocha a objem len z Qto v súbore (rýchle).
+- Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou ("od steny k stene" jedným
+  volaním); a = miestnosť → šírka z bbox_m; items = rozmery a objem z meshu; qto=true = len Qto; cesta = route.
 - Hľadanie podľa textu = search_all: IFC súbor (Description, ObjectType, Tag, LongName, všetky
   psety a Qto aj z typu, klasifikácie, materiály, zóny) aj graf AIM naraz. Každý výsledok má
   badge IFC / AIM / IFC+AIM (kde sa text našiel), v odpovedi ho uveď pri každom prvku a cituj
   evidence. source=ifc len súbor (offset na stránkovanie). Kód prvku netreba hľadať (daj ho
   priamo ako cieľ). "Nenašiel som" povedz až po oboch zdrojoch.
-- Výsledok nesie object_ref, ak prvok pozná AIM; unmapped = prvky len v súbore
-  (spomeň ich počet). Pole show_in_3d (ids_or_refs + global_ids) pošli rovno do
-  show_in_3d/style_in_3d.
-- Recept „ofarbi miestnosti podľa plochy": pre každé pásmo ifc_query(model=ASR,
-  ifc_types=[IfcSpace], where NetFloorArea v pásme) → style_in_3d(colorize,
-  ids_or_refs + global_ids). Filter where vidí len vlastnosti výskytu, nie zdedené
-  z typu - na tie použi DB (v_asset_effective).
-- Pole aim mapuje GUID -> object_ref. Polohu prvku v priestore dáva get_viewer_state(bounds) zo živého viewera, nie Qto.`;
+- Výsledok nesie object_ref, ak prvok pozná AIM; unmapped = prvky len v súbore (spomeň počet).
+  show_in_3d (ids_or_refs + global_ids) pošli rovno do show_in_3d/style_in_3d.
+- Rýchla kontrola (D-118): ifc_query (where na pset, Qto, attribute) či ifc_measure → style_in_3d
+  (pass zelená, fail červená) → open_list → pri zlyhaní ponúkni bcf_topic. Limit len od používateľa
+  či z IDS. Svetlá šírka a výška dverí = ifc_measure(clear_opening) z geometrie, nie psety
+  (OverallWidth je so zárubňou). Psety z typu: v_asset_effective.
+- Pole aim mapuje GUID -> object_ref. Poloha prvku v priestore = get_viewer_state(bounds) zo živého viewera, nie Qto.`;

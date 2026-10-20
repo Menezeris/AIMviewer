@@ -1,11 +1,15 @@
 import { clashMemberKey, createClashEngine, type ClashElement } from "@ifc-lite/clash";
 import { GeometryProcessor, type MeshData } from "@ifc-lite/geometry";
+import { renderFrameWorldOffset } from "@ifc-lite/geometry/world-frame";
 import type { IfcDataStore } from "@ifc-lite/parser";
 import { EntityNode } from "@ifc-lite/query";
 
 import { getIfcModels } from "../data/ifc-models";
 
+import { clearOpening } from "./door-clear";
 import { joinToAim } from "./join";
+import { pairDimension, sizeDimensions } from "./measure-dimension";
+import type { MeasureSegment } from "../viewer-measure";
 import { openEngineSession, type EngineModel } from "./session";
 import { ENGINE_VERSION, IFC_GUID_RE, InputError, guidIndex, modelsFor, str, type EngineDeps } from "./tools";
 
@@ -39,8 +43,12 @@ export interface MeshElement {
   name: string | null;
   positions: Float32Array;
   indices: Uint32Array;
+  /** Začiatky telies (položiek reprezentácie) v `indices`, napr. zárubňa, krídlo, kovanie. */
+  parts: number[];
   /** Obálka v rámci meshu (Y-up). */
   bounds: Box;
+  /** Posun rámca meshu do IFC sveta (Z hore, m) z `coordinateInfo`; bez neho 0 (D-124). */
+  worldOffset?: Vec3;
 }
 
 /** Y-up mesh -> IFC (Z hore): x = x, y = -z, z = y. */
@@ -127,7 +135,12 @@ const round = (v: number, digits = 3) => Math.round(v * 10 ** digits) / 10 ** di
 const roundVec = (v: readonly number[]) => v.map((x) => round(x)) as Vec3;
 
 /** Meshe jedného modelu zlúčené po prvkoch, svetové súradnice (world = origin + position). */
-export function elementsFromMeshes(meshes: MeshData[], store: IfcDataStore, model: string): Map<string, MeshElement> {
+export function elementsFromMeshes(
+  meshes: MeshData[],
+  store: IfcDataStore,
+  model: string,
+  worldOffset?: Vec3,
+): Map<string, MeshElement> {
   const groups = new Map<number, MeshData[]>();
   for (const m of meshes) {
     if (!m.positions?.length || !m.indices?.length) continue;
@@ -147,6 +160,7 @@ export function elementsFromMeshes(meshes: MeshData[], store: IfcDataStore, mode
     }
     const positions = new Float32Array(nPos);
     const indices = new Uint32Array(nIdx);
+    const parts: number[] = [];
     let pOff = 0;
     let iOff = 0;
     for (const m of group) {
@@ -157,6 +171,7 @@ export function elementsFromMeshes(meshes: MeshData[], store: IfcDataStore, mode
         positions[pOff + i + 2] = m.positions[i + 2] + o[2];
       }
       const base = pOff / 3;
+      parts.push(iOff);
       for (let i = 0; i < m.indices.length; i++) indices[iOff + i] = m.indices[i] + base;
       pOff += m.positions.length;
       iOff += m.indices.length;
@@ -169,7 +184,9 @@ export function elementsFromMeshes(meshes: MeshData[], store: IfcDataStore, mode
       name: store.entities.getName(expressId) || null,
       positions,
       indices,
+      parts,
       bounds: boundsOf(positions),
+      ...(worldOffset ? { worldOffset } : {}),
     });
   }
   return out;
@@ -198,8 +215,9 @@ async function tessellate(m: EngineModel): Promise<Map<string, MeshElement>> {
     console.warn = () => undefined;
     try {
       await gp.init();
-      const { meshes } = await gp.process(bytes);
-      return elementsFromMeshes(meshes, m.store, m.id);
+      const { meshes, coordinateInfo } = await gp.process(bytes);
+      const o = renderFrameWorldOffset(coordinateInfo);
+      return elementsFromMeshes(meshes, m.store, m.id, [o.x, o.y, o.z]);
     } finally {
       console.log = origLog;
       console.warn = origWarn;
@@ -319,6 +337,8 @@ export async function pairOf(a: MeshElement, b: MeshElement) {
     status: clear === null ? "unknown" : clear < -1e-4 ? "overlap" : clear <= 1e-4 ? "touch" : "gap",
     distance_kind: d?.kind ?? null,
     closest_point: d ? roundVec(toIfc(d.point)) : null,
+    // Konce najkratšej úsečky v IFC svete (D-124): kóta vo vieweri; pri prieniku a dotyku null.
+    closest_points: d ? pairDimension(a, b, d.point, d.distance) : null,
     center_distance_m: round(Math.hypot(ca[0] - cb[0], ca[1] - cb[1], ca[2] - cb[2])),
     bbox_gap_m: { x: round(gap[0]), y: round(gap[1]), z: round(gap[2]), horizontal: round(Math.hypot(gap[0], gap[1])) },
     // a nad b: spodok a - vrch b (napr. klapka nad doskou); záporné = a je pod b.
@@ -336,7 +356,15 @@ function parseTargets(input: Record<string, unknown>): { a: string; b: string; l
   return { a, b, list };
 }
 
-export async function ifcMeasure(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
+/**
+ * `dimensions`: volajúci s `show=true` sem dostane kóty pre viewer (D-124) -
+ * a + b svetlú vzdialenosť, len a rozmery obálky.
+ */
+export async function ifcMeasure(
+  input: Record<string, unknown>,
+  deps: EngineDeps,
+  dimensions?: MeasureSegment[],
+): Promise<string> {
   const { a, b, list } = parseTargets(input);
   const targets = [...new Set([a, b, ...list].filter(Boolean))];
   const refs = targets.filter((t) => !IFC_GUID_RE.test(t));
@@ -390,13 +418,19 @@ export async function ifcMeasure(input: Record<string, unknown>, deps: EngineDep
     source: "geometria (headless tesselácia @ifc-lite/geometry), osi IFC v metroch, Z hore",
     revision: Object.fromEntries([...meshes.keys()].map((id) => [id, revision[id]])),
   };
-  if (a && b) {
+  if (input.clear_opening === true) {
+    if (b) throw new InputError("clear_opening meria dvere jednotlivo: zadaj a alebo items, bez b.");
+    Object.assign(out, clearOpenings(a ? [a, ...list] : list, element, ident, input));
+  } else if (a && b) {
     const ea = element(a);
     const eb = element(b);
     out.a = { ...ident.get(a), size: sizeOf(ea, storeOf(ea)) };
     out.b = { ...ident.get(b), size: sizeOf(eb, storeOf(eb)) };
-    out.distance = await pairOf(ea, eb);
+    const pair = await pairOf(ea, eb);
+    out.distance = pair;
+    if (dimensions && pair.closest_points) dimensions.push(pair.closest_points);
   } else {
+    if (dimensions && a && list.length === 0) dimensions.push(...sizeDimensions(element(a)));
     const items = (a ? [a, ...list] : list).map((t) => {
       const e = element(t);
       return { ...ident.get(t), size: sizeOf(e, storeOf(e)) };
@@ -414,8 +448,82 @@ export async function ifcMeasure(input: Record<string, unknown>, deps: EngineDep
     }
   }
   out.show_in_3d = joined.show_in_3d;
+  if (dimensions) out.view = dimensions.length > 0 ? `kóty vo vieweri: ${dimensions.length}` : "nič na kótovanie (prienik, dotyk alebo items)";
+  if (input.clear_opening === true) return JSON.stringify(out);
   out.note =
     "clear_distance_m = najkratšia vzdialenosť povrchov (záporná = prienik). a_above_b_m = spodok a mínus vrch b. " +
-    "vs_qto porovná mesh s Qto zo súboru (mismatch nad 5 %). Kótu vo vieweri zatiaľ nekreslí - ukáž prvky cez show_in_3d.";
+    "vs_qto porovná mesh s Qto zo súboru (mismatch nad 5 %). show=true nakreslí kótu vo vieweri (a + b: closest_points, len a: hrany obálky X, Y, Z).";
   return JSON.stringify(out);
+}
+
+/** Svetlý otvor dverí z geometrie (dodatok D-118) s pass/fail voči limitu od používateľa. */
+function clearOpenings(
+  targets: string[],
+  element: (t: string) => MeshElement,
+  ident: Map<string, Record<string, unknown>>,
+  input: Record<string, unknown>,
+): Record<string, unknown> {
+  const limit = (key: string) => {
+    if (input[key] === undefined) return undefined;
+    const n = Number(input[key]);
+    if (!Number.isFinite(n) || n <= 0 || n > 10) throw new InputError(`${key} je v metroch (napr. 0.9).`);
+    return n;
+  };
+  const minWidth = limit("min_width_m");
+  const minHeight = limit("min_height_m");
+  const hasLimit = minWidth !== undefined || minHeight !== undefined;
+  const groups = { pass: [] as Record<string, unknown>[], fail: [] as Record<string, unknown>[], unknown: [] as Record<string, unknown>[] };
+  const items = targets.map((t) => {
+    const e = element(t);
+    const id = ident.get(t) ?? {};
+    if (!e.ifcType.startsWith("IfcDoor")) {
+      const row = { ...id, clear_opening: null, result: "unknown", reason: `${e.ifcType}: svetlý otvor meria len IfcDoor` };
+      groups.unknown.push(row);
+      return row;
+    }
+    const measured = clearOpening(e.positions, e.indices, e.parts);
+    const c = typeof measured === "string" ? null : measured;
+    const fails: string[] = [];
+    const reasons: string[] = typeof measured === "string" ? [measured] : [];
+    if (c && c.width_m === null) reasons.push("šírku sa nepodarilo zmerať (bez zárubne po oboch stranách)");
+    let unknown = !c;
+    if (c && minWidth !== undefined) {
+      if (c.width_m === null) unknown = true;
+      else if (c.width_m < minWidth) fails.push(`šírka ${c.width_m} < ${minWidth}`);
+    }
+    if (c && minHeight !== undefined) {
+      if (c.height_m === null) unknown = true;
+      else if (c.height_m < minHeight) fails.push(`výška ${c.height_m} < ${minHeight}`);
+    }
+    const result = !hasLimit ? undefined : fails.length > 0 ? "fail" : unknown ? "unknown" : "pass";
+    const why = [...fails, ...reasons];
+    const row = { ...id, clear_opening: c, ...(result ? { result } : {}), ...(why.length > 0 ? { reason: why.join(", ") } : {}) };
+    if (result) groups[result as keyof typeof groups].push(row);
+    return row;
+  });
+  const style = (rows: Record<string, unknown>[]) => ({
+    ids_or_refs: rows.flatMap((r) => (r.object_id ? [r.object_id as string] : [])),
+    global_ids: rows.flatMap((r) => (r.object_id ? [] : [r.global_id as string])),
+  });
+  return {
+    items,
+    ...(hasLimit
+      ? {
+          check: {
+            limits: { ...(minWidth !== undefined ? { min_width_m: minWidth } : {}), ...(minHeight !== undefined ? { min_height_m: minHeight } : {}) },
+            pass: groups.pass.length,
+            fail: groups.fail.length,
+            unknown: groups.unknown.length,
+            // Vstup pre style_in_3d: pass zelená, fail červená.
+            style_pass: style(groups.pass),
+            style_fail: style(groups.fail),
+          },
+        }
+      : {}),
+    note:
+      "clear_opening z geometrie dverí: width_m = svetlá šírka medzi zárubňami (najužšie miesto cez hĺbku, medián výšok), " +
+      "height_m = od prahu alebo spodku dverí po nadpražie; overall_* = obálka so zárubňou. Psety (AIM_Door.ClearWidth, " +
+      "OverallWidth) nie sú zdroj, len kontrola. Krídlo otvorené o 90° a kľučka sa neodpočítavajú; width_min_m = užšie miesto " +
+      "v niektorej výške (lišta, kovanie). Limit dáva používateľ, nie norma v tooli.",
+  };
 }

@@ -5,7 +5,7 @@ import { LEGEND_SIZES, lensOp, type LegendSize, type LensMode, type LensWire, ty
 
 import type { AskAction } from "./actions";
 import { autoColorSpec, lensGroup, type ResolvedLensFilter } from "./lens-plan";
-import { StyleInputError, describeFilter, parseStyleGroups, pickFilter, type StyleFilter } from "./style-plan";
+import { StyleInputError, describeFilter, documentPage, parseStyleGroups, pickFilter, type StyleFilter } from "./style-plan";
 import { ScopeResolver } from "./style-scope";
 
 /**
@@ -45,6 +45,7 @@ export interface GroupInfo {
   systems?: string[];
   zones?: string[];
   storey?: string;
+  document?: string;
   elements?: number;
 }
 
@@ -86,6 +87,13 @@ export async function resolveFilter(
     out.zoneIds = zones.map((z) => z.id);
     info.zones = zones.map((z) => z.object_ref ?? z.name ?? z.id);
   }
+  const page = documentPage(f);
+  if (str(f.document)) {
+    // Prvky dokumentu ide symbolicky ako zóna (D-104 krok 4): GUIDy si klient stiahne z /api/style-scope.
+    const doc = await scope.pickDocument(str(f.document));
+    out.document = { id: doc.id, ...(page ? { page } : {}) };
+    info.document = (doc.name ?? doc.object_ref ?? doc.id) + (page ? `, s. ${page}` : "");
+  }
   const property = str(f.property);
   if (property) {
     const value = f.value === undefined || f.value === null ? "" : String(f.value).trim();
@@ -101,7 +109,7 @@ export async function resolveFilter(
     if (guids.length > guidBudget.left) {
       throw new StyleInputError(
         `Priveľa konkrétnych prvkov (${guids.length}, strop ${LENS_GUID_CAP} na volanie) - vyber ich filtrom ` +
-          "(ifc_type, storey, system, zone, property) namiesto vymenovania.",
+          "(ifc_type, storey, system, zone, document, property) namiesto vymenovania.",
       );
     }
     guidBudget.left -= guids.length;

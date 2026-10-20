@@ -157,3 +157,25 @@ def test_close_legacy_without_legacy_is_noop() -> None:
     cur = _Cur([])
     assert documents.close_legacy(cur) == {"documents": 0, "edges": 0}
     assert len(cur.calls) == 1
+
+
+def test_document_classification_iso19650() -> None:
+    """Typ informácie (ASR v77): IfcExternalReferenceRelationship z referencie na dokumenty."""
+    f = _model()
+    system = f.createIfcClassification(Source="BSI", Name="ISO 19650 typ informácie")
+    dr = f.createIfcClassificationReference(Identification="DR", Name="Výkres", ReferencedSource=system)
+    sh = f.createIfcClassificationReference(Identification="SH", Name="Výpis", ReferencedSource=system)
+    by_ident = {d.Identification: d for d in f.by_type("IfcDocumentInformation")}
+    f.createIfcExternalReferenceRelationship(
+        RelatingReference=dr, RelatedResourceObjects=[by_ident["OCB_SO01_ASR_D-1-1-03_PODORYS-3NP"]])
+    f.createIfcExternalReferenceRelationship(
+        RelatingReference=sh, RelatedResourceObjects=[by_ident["OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB"]])
+    st = transform.to_staged(f)
+
+    links = {(c.from_ref, c.system_name, c.identification, c.edge_type) for c in st.class_links}
+    assert links == {
+        ("OCB_SO01_ASR_D-1-1-03_PODORYS-3NP", "ISO 19650 typ informácie", "DR", "document_classification"),
+        ("OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB", "ISO 19650 typ informácie", "SH", "document_classification"),
+    }
+    assert {(r.identification, r.name) for r in st.refs} == {("DR", "Výkres"), ("SH", "Výpis")}
+    assert [s.source for s in st.systems] == ["BSI"]

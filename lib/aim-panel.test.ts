@@ -115,3 +115,33 @@ describe("nodeSummaryToAimPanel - vrstva AIM (D-089)", () => {
     expect(empty.derivedTotal).toBeUndefined();
   });
 });
+
+describe("nodeSummaryToAimPanel - dokumenty cez vzťahy (D-104)", () => {
+  it("efektívne dokumenty majú documentId, stranu, cestu a druh; bez nich priame väzby", () => {
+    const panel = nodeSummaryToAimPanel(
+      {
+        ...baseSummary,
+        effectiveDocuments: [
+          { documentId: "d3", name: "D.1.1.03 Pôdorys 3NP", identification: "OCB_ASR_3NP", via: "space", viaName: "3.01", typeCode: "DR" },
+          {
+            documentId: "d9", name: "D.1.1.09 Výpis skladieb", identification: "OCB_ASR_09", page: 3,
+            via: "group", viaName: "S1", through: "S1.01", typeCode: "SH",
+          },
+          { documentId: "d5", name: null, identification: "OCB_PBR_04", via: "direct" },
+        ],
+      },
+      "GUID",
+    );
+    expect(panel.documents).toEqual([
+      { name: "D.1.1.03 Pôdorys 3NP", href: "/drawing/d3", badge: "DR", documentId: "d3", via: "cez miestnosť 3.01" },
+      {
+        name: "D.1.1.09 Výpis skladieb", href: "/drawing/d9?page=3", badge: "SH", documentId: "d9", page: 3,
+        via: "cez skupinu S1 (S1.01)",
+      },
+      { name: "OCB_PBR_04", href: "/drawing/d5", badge: undefined, documentId: "d5", via: "priamo" },
+    ]);
+    expect(nodeSummaryToAimPanel(baseSummary, "GUID").documents).toEqual([
+      { name: "Manuál", href: "/drawing/d1", badge: undefined },
+    ]);
+  });
+});

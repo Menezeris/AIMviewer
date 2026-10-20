@@ -37,10 +37,12 @@ export const FILTER_KEYS = [
   "not_in_system",
   "zone",
   "storey",
+  "document",
+  "page",
 ] as const;
 
-/** Kritériá, ktoré vyžadujú rozbalenie členov v DB (D-096). */
-const SCOPE_KEYS = ["system", "system_type", "not_in_system", "zone", "storey"] as const;
+/** Kritériá, ktoré vyžadujú rozbalenie členov v DB (D-096, dokument D-104). */
+const SCOPE_KEYS = ["system", "system_type", "not_in_system", "zone", "storey", "document"] as const;
 
 export type StyleFilter = Partial<Record<(typeof FILTER_KEYS)[number], unknown>>;
 
@@ -54,7 +56,7 @@ const present = (v: unknown): boolean =>
   v !== undefined && v !== null && v !== false && !(typeof v === "string" && v.trim() === "") &&
   !(Array.isArray(v) && v.length === 0);
 
-/** Ide o rozšírený režim (systém, zóna, podlažie alebo skupiny)? */
+/** Ide o rozšírený režim (systém, zóna, podlažie, dokument alebo skupiny)? */
 export function needsScopedStyle(input: Record<string, unknown>): boolean {
   return Array.isArray(input.groups) || SCOPE_KEYS.some((k) => present(input[k]));
 }
@@ -63,6 +65,15 @@ export function pickFilter(src: Record<string, unknown>): StyleFilter {
   const out: StyleFilter = {};
   for (const k of FILTER_KEYS) if (present(src[k])) out[k] = src[k];
   return out;
+}
+
+/** `page` filtra (D-104 krok 4): kladné celé číslo (aj ako text); bez dokumentu nedáva zmysel. */
+export function documentPage(f: StyleFilter): number | undefined {
+  if (f.page === undefined || f.page === null || f.page === "") return undefined;
+  const page = Number(f.page);
+  if (!Number.isInteger(page) || page < 1) throw new StyleInputError("page musí byť číslo strany od 1.");
+  if (typeof f.document !== "string" || !f.document.trim()) throw new StyleInputError("page platí len spolu s document.");
+  return page;
 }
 
 function normColor(raw: unknown): string {
@@ -82,6 +93,7 @@ export function describeFilter(f: StyleFilter): string {
   if (f.not_in_system) parts.push("bez systému");
   if (f.zone) parts.push(`zóna ${f.zone}`);
   if (f.storey) parts.push(String(f.storey));
+  if (f.document) parts.push(`dokument ${f.document}${f.page ? `, s. ${f.page}` : ""}`);
   if (f.property) parts.push(`${f.property}=${f.value ?? ""}`);
   if (f.query) parts.push(`"${f.query}"`);
   if (f.model) parts.push(`model ${f.model}`);

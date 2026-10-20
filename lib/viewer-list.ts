@@ -2,7 +2,7 @@
  * Zoznam z chatu (D-111): wire formát op `list` v `/ifc?ops=` a jej preklad na
  * bridge správu `OPEN_LIST` forku viewera (`apps/viewer/src/aim/aimList.ts`).
  * Filtre sú tie isté skupiny ako pri Lens z chatu (D-096) vrátane symbolickej
- * zóny `aim_zone`, ktorú klient pred odoslaním nahradí GUIDmi (`lensBridgeMessage`).
+ * zóny `aim_zone` a dokumentu `aim_document`, ktoré klient pred odoslaním nahradí GUIDmi (`lensBridgeMessage`).
  * Jeden zdroj pre server (`lib/llm/list-tool.ts`) aj klienta. Bez závislostí.
  *
  * Op: `list::<base64url JSON>`.
@@ -11,7 +11,7 @@
 import {
   fromBase64Url,
   lensBridgeMessage,
-  lensZoneIds,
+  lensScopeKeys,
   toBase64Url,
   type LensFilterGroup,
   type LensWire,
@@ -81,14 +81,14 @@ export function decodeListWire(raw: string): ListWire | null {
 /** Filtre ako jediné pravidlo Lens - tak sa na ne použije to isté doplnenie zóny. */
 const asLens = (wire: ListWire): LensWire => ({ r: [{ n: wire.n, a: "isolate", g: wire.g }] });
 
-/** Id zón, ktorých GUIDy musí klient stiahnuť pred odoslaním. */
-export function listZoneIds(wire: ListWire): string[] {
-  return lensZoneIds(asLens(wire));
+/** Kľúče zón a dokumentov, ktorých GUIDy musí klient stiahnuť pred odoslaním. */
+export function listScopeKeys(wire: ListWire): string[] {
+  return lensScopeKeys(asLens(wire));
 }
 
-/** Bridge správa `OPEN_LIST`; zóny (`aim_zone`) nahradí GUIDmi z `zoneGuids`. */
-export function listBridgeMessage(wire: ListWire, zoneGuids: ReadonlyMap<string, readonly string[]>): Record<string, unknown> {
-  const lens = lensBridgeMessage("add", asLens(wire), zoneGuids) as { rules?: Array<{ groups: unknown[] }> };
+/** Bridge správa `OPEN_LIST`; zóny a dokumenty nahradí GUIDmi z `scopeGuids`. */
+export function listBridgeMessage(wire: ListWire, scopeGuids: ReadonlyMap<string, readonly string[]>): Record<string, unknown> {
+  const lens = lensBridgeMessage("add", asLens(wire), scopeGuids) as { rules?: Array<{ groups: unknown[] }> };
   return {
     type: "OPEN_LIST",
     name: wire.n,
