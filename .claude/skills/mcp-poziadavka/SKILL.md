@@ -35,7 +35,8 @@ sú v `AGENTS.md`, sekcia "Súbežné session"; tu je postup:
   komentárom v jej PR alebo issue; ak máš `list_sessions`/`send_message`, pošli jej aj správu.
 - **Číslo rozhodnutia:** D-0xx rezervuj komentárom v registri, issue
   [#60](https://github.com/Menezeris/AIMviewer/issues/60) (postup je v jeho tele). Bez
-  rezervácie číslo nepoužívaj.
+  rezervácie číslo nepoužívaj. Ak máš `send_message`, vypýtaj si ho od orchestrátora (ktorá
+  session to je, hovorí telo #60); zapíše ho do registra sám.
 
 ## 2. Over, či to naozaj chýba (najčastejší výsledok)
 Pred kódom si prečítaj `AGENTS.md`, prompt `lib/llm/system-prompt.ts` a **inventár toolov
@@ -94,7 +95,10 @@ a pridaj do `eval/questions.json` otázku z issue (bez overenej hodnoty, ak ju n
 
 ## 6. Výsledok
 - Pred PR zlúč aktuálny `origin/main` do vetvy (merge, nie rebase) a prejdi testy znova.
-- PR do `main` s `Closes #<číslo>` v tele, nikdy merge. Prihlás sa na PR (subscribe) a dotiahni CI.
+- PR do `main` s `Closes #<číslo>` v tele, nikdy merge (ani s trvalým súhlasom; zlučuje len
+  orchestrátor, `AGENTS.md` "Súbežné session"). Prihlás sa na PR (subscribe) a dotiahni CI. Keď
+  je zelený a bez konfliktu, pošli orchestrátorovi repo#číslo a hlavu (`send_message`), inak
+  komentár "Pripravené na zlúčenie" v PR.
 - Do issue krátky komentár: čo vzniklo, odkaz na PR, čo treba po merge (env, migrácia, fork).
 - **Uvoľni miesto** (naraz bežia najviac 3 sessions, ďalšie čakajú so štítkom `fronta`): keď je
   PR otvorený, alebo keď už len čakáš na Samuelovo rozhodnutie, odober z issue štítok `session` a
