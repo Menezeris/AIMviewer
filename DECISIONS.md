@@ -5204,7 +5204,14 @@ namiesto pridávania.
    - `ifc_measure` + `qto` (bývalé `ifc_geometry_area`, `ifc_geometry_volume`: plocha a objem z Qto
      bez tesselácie);
    - `search_all` + `source` all | ifc | aim, `fields`, `fuzzy`, `offset` (bývalé `ifc_search`).
-4. **Ďalšie kroky** (samostatné PR, každý s evalom v novej session): BCF a feedback (zápis a čítanie
+4. **Krok 2 - BCF, pripomienky a dotazy viewera (11 -> 5 toolov):**
+   - `bcf_topic` + `action` create | update | close | viewpoint (zápis, bývalé `bcf_topic_create`,
+     `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`); `bcf_topic_list` ostáva na čítanie;
+   - `feedback` + `action` report | request_tool | comment | start_session (zápis, bývalé
+     `report_feedback`, `request_tool`, `feedback_comment`, `start_queued_session`); `feedback_status`
+     ostáva na čítanie;
+   - `get_viewer_state` + `bounds` alebo cieľ = obálky (bývalé `get_bounds`).
+5. **Ďalšie kroky** (samostatné PR, každý s evalom v novej session): BCF a feedback (zápis a čítanie
    zvlášť), dotazy viewera (`get_viewer_state` + obálky), zdieľané tooly AIM (`search_objects` +
    `mode`, `get_object` + `include`, `show_in_3d` + výber, `set_camera` + režim a reset, `open_node`
    + výkres) s prepisom inštrukcií. `query_view` a `aggregate_objects` ostávajú oddelené (rozdielna

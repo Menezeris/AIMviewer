@@ -1381,7 +1381,7 @@ export class AskToolRuntime {
       in_aim: false,
       source: "ifc",
       ...(hits.length === 1 ? hits[0] : { candidates: hits.slice(0, 5) }),
-      hint: "Prvok je len v IFC súbore (v grafe AIM nie je). Ako cieľ ho do set_section / show_in_3d / get_bounds daj kódom alebo global_id; vlastnosti a podlažie dá ifc_get.",
+      hint: "Prvok je len v IFC súbore (v grafe AIM nie je). Ako cieľ ho do set_section / show_in_3d / get_viewer_state daj kódom alebo global_id; vlastnosti a podlažie dá ifc_get.",
     };
   }
 

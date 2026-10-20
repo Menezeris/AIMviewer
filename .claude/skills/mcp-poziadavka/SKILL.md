@@ -6,7 +6,7 @@ description: Ako vyriešiť požiadavku z MCP konektora AIM (GitHub issue so št
 # Požiadavka z MCP konektora (D-090)
 
 Issue založil Claude počas rozhovoru so Samuelom cez konektor AIM: chýbal mu tool
-(`request_tool`, štítok `novy-tool`) alebo niečo nefungovalo (`report_feedback`, štítok
+(`feedback` s action=request_tool, štítok `novy-tool`) alebo niečo nefungovalo (action=report, štítok
 `pripomienka`). Issue je **jediný záznam** požiadavky; táto session je miesto, kde sa rieši.
 Samuel ju otvorí v Claude a môže ti odpovedať priamo tu.
 

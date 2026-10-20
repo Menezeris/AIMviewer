@@ -10,7 +10,10 @@ import { mcpInstructions } from "../llm/system-prompt";
 
 import { definitionChars, firstSentence, inventoryMarkdown } from "./tool-inventory";
 import { mcpLegacyToolNames, mcpToolDefinitions, mcpToolGroups } from "./tool-list";
+import { BCF_TOOL_NAMES } from "../bcf/tools";
 import { ENGINE_TOOL_NAMES } from "../engine/tool-defs";
+import { FEEDBACK_TOOL_NAMES } from "../feedback/tools";
+import { VIEWER_QUERY_TOOL_NAMES } from "../live/viewer-query-tools";
 import registry from "./tool-registry.json";
 
 /**
@@ -40,8 +43,9 @@ describe("register toolov MCP (D-114)", () => {
     const legacy = [...mcpLegacyToolNames({ engine: true })];
     expect(legacy.length).toBeGreaterThan(0);
     expect(legacy.filter((n) => tools.some((t) => t.name === n) || n in REGISTRY)).toEqual([]);
-    expect(legacy.filter((n) => !ENGINE_TOOL_NAMES.has(n))).toEqual([]);
-    expect(mcpLegacyToolNames({ engine: false }).size).toBe(0);
+    const executable = new Set([...ENGINE_TOOL_NAMES, ...BCF_TOOL_NAMES, ...FEEDBACK_TOOL_NAMES, ...VIEWER_QUERY_TOOL_NAMES]);
+    expect(legacy.filter((n) => !executable.has(n))).toEqual([]);
+    expect([...mcpLegacyToolNames({ engine: false })].some((n) => ENGINE_TOOL_NAMES.has(n))).toBe(false);
   });
 
   it("mená sú jedinečné", () => {

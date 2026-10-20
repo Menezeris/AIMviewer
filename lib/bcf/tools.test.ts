@@ -7,6 +7,8 @@ import type { BcfTopicRow } from "./store";
 import { G1, G2, VIEW_STATE, deps, memoryStore } from "./testing";
 import {
   BCF_TOOL_DEFINITIONS,
+  BCF_TOOL_NAMES,
+  LEGACY_BCF_TOOL_NAMES,
   bcfFirePayload,
   execBcfTool,
   normalizeStatus,
@@ -21,25 +23,30 @@ const run = async (name: string, args: Record<string, unknown>, d: BcfDeps) => {
 };
 
 describe("definície (1:1 s @ifc-lite/mcp, D-087)", () => {
-  it("mená a parametre originálu ostávajú, zápis má readOnlyHint false", () => {
+  it("čítanie a zápis sú zvlášť (D-115): bcf_topic_list read-only, bcf_topic so všetkými parametrami zápisu", () => {
     const byName = new Map(BCF_TOOL_DEFINITIONS.map((t) => [t.name, t]));
-    expect([...byName.keys()]).toEqual([
-      "bcf_topic_create",
-      "bcf_topic_list",
-      "bcf_topic_update",
-      "bcf_topic_close",
-      "bcf_viewpoint_create",
-    ]);
-    const props = (n: string) => Object.keys((byName.get(n)!.inputSchema as { properties: object }).properties);
-    expect(props("bcf_topic_create")).toEqual(
-      expect.arrayContaining(["title", "description", "author", "type", "status", "priority", "assigned_to", "labels"]),
+    expect([...byName.keys()]).toEqual(["bcf_topic_list", "bcf_topic"]);
+    const props = Object.keys((byName.get("bcf_topic")!.inputSchema as { properties: object }).properties);
+    expect(props).toEqual(
+      expect.arrayContaining(["action", "guid", "title", "description", "author", "type", "status", "priority", "assigned_to"]),
     );
-    expect(props("bcf_topic_update")).toEqual(expect.arrayContaining(["guid", "status", "priority", "comment", "modified_by"]));
-    expect(props("bcf_viewpoint_create")).toEqual(expect.arrayContaining(["guid", "selection_global_ids"]));
+    expect(props).toEqual(expect.arrayContaining(["labels", "comment", "modified_by", "selection_global_ids", "capture_view"]));
     expect(byName.get("bcf_topic_list")!.annotations).toBeUndefined();
-    for (const n of ["bcf_topic_create", "bcf_topic_update", "bcf_topic_close", "bcf_viewpoint_create"]) {
-      expect(byName.get(n)!.annotations?.readOnlyHint).toBe(false);
-    }
+    expect(byName.get("bcf_topic")!.annotations?.readOnlyHint).toBe(false);
+    expect([...LEGACY_BCF_TOOL_NAMES].every((n) => BCF_TOOL_NAMES.has(n))).toBe(true);
+  });
+
+  it("bcf_topic action vykoná ten istý zápis ako staré meno, neznáma action je chyba vstupu", async () => {
+    const { store, rows } = memoryStore([{ title: "x" }]);
+    const d = deps({ store });
+    const closed = await run("bcf_topic", { action: "close", guid: "1", comment: "Nie je chyba" }, d);
+    expect(closed.json.topic.status).toBe("closed");
+    expect(rows[0].comments).toHaveLength(1);
+    const created = await run("bcf_topic", { action: "create", title: "Zlé zábradlie", capture_view: false }, d);
+    expect(created.isError).toBe(false);
+    expect(rows).toHaveLength(2);
+    expect((await run("bcf_topic", { action: "zmaz", guid: "1" }, d)).isError).toBe(true);
+    expect((await run("bcf_topic", { title: "bez action" }, d)).isError).toBe(true);
   });
 });
 
