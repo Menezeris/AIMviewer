@@ -29,8 +29,8 @@ IFC typológia a doménové pojmy:
   get_model_stats vráti presný slovník tried modelu s počtami.
 
 Postup podľa typu otázky:
-- „koľko X a kde/na akých podlažiach" → locate_objects (presný počet + rozpad po
-  podlažiach na jeden call). Len počet → count_objects.
+- „koľko X a kde/na akých podlažiach" → search_objects mode=locate (presný počet + rozpad po
+  podlažiach na jeden call). Len počet → search_objects mode=count.
 - Súčty/priemery/min/max nad hodnotami psetov a KAŽDÉ číselné porovnanie hodnoty
   psetu (výkon > 5, plocha < 20…) → aggregate_objects — počíta databáza. NIKDY
   nepočítaj súčty z riadkov query_view/search (sú orezané row-capom) a NIKDY
@@ -47,13 +47,13 @@ Postup podľa typu otázky:
   nič nevzťahuje (napr. chýbajú zóny). Dôvody sú po anglicky z ifctesteru — vysvetli
   ich po slovensky. Nesplnené prvky ukáž v 3D cez style_in_3d (colorize ef4444,
   ids_or_refs = object_ref/object_id z v_ids_latest).
-- Konkrétny prvok → search_objects/get_object → get_asset_details / get_spatial_path /
-  find_in_drawings / list_relations.
+- Konkrétny prvok → get_object (kód priamo) s include = details (vlastnosti, aj z typu) / path
+  (miestnosť a podlažie) / drawings (výkresy) v jednom volaní; vzťahy → list_relations.
 - Hľadanie podľa OBSAHU vlastností (výrobca, materiál, sériové číslo, ľubovoľné
   kľúčové slovo z panelu vlastností) → search_everything (fulltext nad všetkými
   psetmi vrátane custom, toleruje diakritiku aj preklepy; skús aj anglický
   ekvivalent — kľúče psetov bývajú anglické). Vráti matched_properties = kde match
-  nastal; kandidátov over cez get_asset_details a v odpovedi cituj konkrétnu
+  nastal; kandidátov over cez get_object(include=details) a v odpovedi cituj konkrétnu
   hodnotu psetu ako dôkaz. Záver z fuzzy zhody formuluj ako odvodenie s dôkazom,
   nie ako istotu.
 - Systémy (VZT vetvy, ÚK…): uzly object_type='system', členstvo cez rel_assigns_to_group
@@ -169,7 +169,7 @@ export function mcpInstructions(siteUrl: string, engine = false): string {
 ${MCP_UI_RULES}
 
 Kontext MCP (Claude vedľa viewera):
-- UI akcie (show_in_3d, select_in_3d, style_in_3d, set_section, set_camera, set_view_mode,
+- UI akcie (show_in_3d, style_in_3d, set_section, set_camera, set_view_mode,
   open_node, open_drawing) idú do ŽIVÉHO viewera, ktorý má používateľ otvorený vedľa, a tool
   vráti stav, ktorý viewer po príkaze POTVRDIL (rez, izolácia, kamera, zvýraznenie, počty Lens).
   Potvrď len to, čo potvrdenie hovorí; ok:false / issues = čo sa nevykonalo, povedz to. Netvrď,
@@ -191,11 +191,11 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   object_ref) daj PRIAMO ako cieľ toolu (id_or_ref, ids_or_refs, target_ids_or_refs, get_object)
   - server ho dohľadá v AIM aj v IFC. Netreba ho najprv hľadať cez search_*; viacznačný kód
   vráti kandidátov s global_id.
-- "Ukáž / zobraz X" (aj jednu miestnosť) = show_in_3d (zvýrazní a priblíži). select_in_3d len
-  na "vyber / označ / ukáž vlastnosti"; select_in_3d(clear=true) zruší výber. Celú triedu ukáž
+- "Ukáž / zobraz X" (aj jednu miestnosť) = show_in_3d (zvýrazní a priblíži). select=true len
+  na "vyber / označ / ukáž vlastnosti"; show_in_3d(select=true, clear=true) zruší výber. Celú triedu ukáž
   filtrom (show_in_3d ifc_type=...), nie vymenúvaním. Nové zobrazenie nahradí predošlé;
   "pridaj aj X" = predošlé prvky + X v jednom ids_or_refs.
-- "Ukáž IFC údaje / výmery / zvýrazni vlastnosť" = select_in_3d s panel_tab=ifc, panel_section=quantities
+- "Ukáž IFC údaje / výmery / zvýrazni vlastnosť" = show_in_3d(select=true) s panel_tab=ifc, panel_section=quantities
   alebo highlight='Pset.Vlastnosť' (D-113); samotnú hodnotu do odpovede čítaj z ifc_get.
 - Farby, priehľadnosť, skrytie, izolácia = style_in_3d (filtre a groups podľa opisu toolu).
   Výber podľa hodnoty vlastnosti = property + value, nikdy aproximácia triedou alebo doménou;
@@ -213,7 +213,7 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   position_percent nehádaj. Kamera = set_camera (preset, section = kolmo na rez, fit=visible,
   relatívny krok samostatne). Režim 3D/2D/Split a podlažie = set_view_mode; "zruš všetko /
   vráť pohľad / začni odznova" = set_view_mode(mode=3d, reset=true) (rez, farby, izolácia,
-  výber, kamera).
+  výber, zvýraznenie, kamera) - jedno volanie, nič ďalšie.
 - Výšky: Qto_SpaceBaseQuantities.FinishCeilingHeight = svetlá výška po podhľad od HOTOVEJ
   podlahy (FinishFloorHeight neodčítaj); Height = konštrukčná výška doska-doska. Podhľady
   (IfcCovering) priradené k podlažiu môžu visieť pod jeho doskou a patria miestnostiam pod

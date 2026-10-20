@@ -5,7 +5,7 @@ import { LEGACY_ENGINE_TOOL_NAMES, engineToolDefinitions } from "../engine/tool-
 import { FEEDBACK_TOOL_DEFINITIONS, LEGACY_FEEDBACK_TOOL_NAMES } from "../feedback/tools";
 import { LEGACY_VIEWER_QUERY_TOOL_NAMES, VIEWER_QUERY_TOOL_DEFINITIONS } from "../live/viewer-query-tools";
 import type { ToolDefinition } from "../llm/provider";
-import { TOOL_DEFINITIONS } from "../llm/tools";
+import { LEGACY_ASK_TOOL_NAMES, TOOL_DEFINITIONS } from "../llm/tools";
 
 /**
  * Zoznam toolov MCP konektora na jednom mieste (D-114): číta ho route, register
@@ -82,6 +82,7 @@ export function mcpToolDefinitions(opts: ToolListOptions): ToolDefinition[] {
 /** Staré mená zlúčených toolov, ktoré sa ešte vykonajú (D-115); mená motora len s motorom. */
 export function mcpLegacyToolNames({ engine }: ToolListOptions): ReadonlySet<string> {
   return new Set([
+    ...LEGACY_ASK_TOOL_NAMES,
     ...LEGACY_VIEWER_QUERY_TOOL_NAMES,
     ...LEGACY_BCF_TOOL_NAMES,
     ...LEGACY_FEEDBACK_TOOL_NAMES,

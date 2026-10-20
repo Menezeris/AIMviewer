@@ -14,7 +14,7 @@ describe("inštrukcie MCP (D-102)", () => {
   });
 
   it("nesie pravidlá z merania kola 3: kód ako cieľ, show vs select, výšky, podhľad podlažia", () => {
-    for (const rule of ["daj PRIAMO ako cieľ", "= show_in_3d", "select_in_3d(clear=true)", "FinishFloorHeight neodčítaj", "relative_to=ceiling"]) {
+    for (const rule of ["daj PRIAMO ako cieľ", "= show_in_3d", "show_in_3d(select=true, clear=true)", "FinishFloorHeight neodčítaj", "relative_to=ceiling"]) {
       expect(mcp).toContain(rule);
     }
   });

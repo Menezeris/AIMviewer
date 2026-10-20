@@ -54,7 +54,7 @@ V inventári nájdi 2-3 tooly najbližšie k potrebe a do plánu (krok 3) ich vy
 3. **Rozšír existujúci tool** -> nový parameter alebo hodnota enumu (`action`, `mode`,
    `include`...), prípadne pole vo výsledku. Toto je predvolená cesta pre novú schopnosť;
    vzory: D-105 (`style_in_3d action=xray`), D-109 (`ifc_models` s revíziou), D-110
-   (`ifc_relations through_ports`), D-113 (`select_in_3d` panel). Pokračuj krokom 3.
+   (`ifc_relations through_ports`), D-113 (panel vlastností pri výbere). Pokračuj krokom 3.
 4. **Treba nový tool** -> len ak rozšírenie nejde (iný zdroj dát, iné anotácie čítanie/zápis,
    schéma by sa nedala čítať). Záznam D-0xx má sekciu "Zavrhnuté rozšírenie: `<tool>` - prečo
    nie" pre každý z najbližších toolov a nový riadok v `lib/mcp/tool-registry.json` schvaľuje
