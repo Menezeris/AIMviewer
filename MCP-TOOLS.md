@@ -3,7 +3,7 @@
 > Generované z definícií toolov (`lib/mcp/tool-list.ts`), needituj ručne. Obnova:
 > `npx vitest run lib/mcp/tool-registry.test.ts -u`.
 
-Konektor má 41 toolov (s IFC motorom, `ENGINE_ENABLED=1`).
+Konektor má 34 toolov (s IFC motorom, `ENGINE_ENABLED=1`).
 
 **Pravidlo D-114 - najprv napasuj, až potom nový tool:**
 1. Tu nájdi 2-3 najbližšie tooly k tomu, čo treba.
@@ -66,44 +66,30 @@ Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/vie
 - **`open_list`** (D-111, čítanie) - Tabuľka prvkov v paneli Lists vo vieweri (export do CSV/XLSX/PDF): "exportuj dvere na 1NP ako tabuľku", "zoznam tvaroviek s rozmermi do Excelu".
   Parametre: `name`, `columns`, `ifc_type`, `ifc_types`, `domain`, `predefined_type`, `storey`, `system`, `system_type`, `zone`, `property`, `pset`, `value`, `query`, `model`, `global_ids`, `ids_or_refs`
 
-## Dotazy na stav viewera (2)
+## Dotazy na stav viewera (1)
 
 Zdroj: živý viewer (spätný kanál). Definície: lib/live/viewer-query-tools.ts. Len MCP.
 
-- **`get_bounds`** (D-085, čítanie) - Obálky (bounding box) v súradniciach IFC modelu (m, Z hore) z OTVORENÉHO živého viewera: celý model (rozsah a osi) a voliteľne vybrané prvky (min, max, size, center).
-  Parametre: `target_ids_or_refs`, `global_ids`
 - **`get_viewer_state`** (D-085, čítanie) - Čo práve ukazuje OTVORENÝ živý viewer: režim (3d/2d/split) a podlažie, aktívny rez (os, súradnica v IFC, poloha v %), kamera (pozícia a cieľ v IFC), výber a počty skrytých a izolovaných prvkov.
-  Parametre: `items_offset`, `items_limit`
+  Parametre: `bounds`, `target_ids_or_refs`, `global_ids`, `items_offset`, `items_limit`
 
-## BCF témy nad modelmi (5)
+## BCF témy nad modelmi (2)
 
 Zdroj: DB (model_tasks) + session. Definície: lib/bcf/tools.ts. Len MCP.
 
-- **`bcf_topic_create`** (D-099, zápis) - Založí BCF tému (issue) nad modelom federácie (D-099): chyba, kolízia, pripomienka alebo požiadavka na úpravu modelu.
-  Parametre: `title*`, `description`, `author`, `type`, `status`, `priority`, `assigned_to`, `labels`, `model`, `due_date`, `target_ids_or_refs`, `global_ids`, `capture_view`, `start_session`
 - **`bcf_topic_list`** (D-099, čítanie) - BCF témy nad modelmi federácie (D-099), najnovšie prvé: číslo, guid, názov, stav, typ, priorita, komu, model, počet prvkov a komentárov, odkaz na Claude session.
   Parametre: `status`, `model`, `assigned_to`, `guid`, `limit`
-- **`bcf_topic_update`** (D-099, zápis) - Upraví BCF tému alebo k nej pridá komentár (D-099): stav, priorita, komu, popis, štítky, termín.
-  Parametre: `guid*`, `status`, `priority`, `comment`, `modified_by`, `assigned_to`, `title`, `description`, `type`, `labels`, `due_date`, `start_session`
-- **`bcf_topic_close`** (D-099, zápis) - Uzavrie BCF tému (stav closed, D-099) - vybavené bez úpravy modelu; voliteľne s komentárom.
-  Parametre: `guid*`, `modified_by`, `comment`
-- **`bcf_viewpoint_create`** (D-099, zápis) - Nastaví pohľad BCF témy (D-099): prvky (selection_global_ids, target_ids_or_refs) a s capture_view (predvolene true) kameru, rez, režim a výber z otvoreného viewera.
-  Parametre: `guid*`, `selection_global_ids`, `target_ids_or_refs`, `capture_view`
+- **`bcf_topic`** (D-099, zápis) - Zápis BCF témy nad modelom federácie (D-099). action=create: založí tému (chyba, kolízia, pripomienka, požiadavka na úpravu modelu), keď používateľ povie 'založ BCF / tému / issue'; prvky cez target_ids_or_refs alebo global_ids, s capture_view (predvolene) sa vezme výber, kamera, rez a režim z otvoreného viewera. assigned_to='claude' = tému rieši Claude: spustí sa Claude Code session (úprava IFC v OCB, nová revízia); ľudí priraď menom alebo e-mailom. update: stav, priorita, komu, popis, štítky, termín alebo comment; start_session spustí session pre tému Claudovi. close: uzavrie tému bez úpravy modelu. viewpoint: nastaví jediný pohľad témy (selection_global_ids, capture_view).
+  Parametre: `action*=create|update|close|viewpoint`, `guid`, `title`, `description`, `comment`, `status`, `priority`, `assigned_to`, `type`, `labels`, `model`, `due_date`, `author`, `modified_by`, `target_ids_or_refs`, `global_ids`, `selection_global_ids`, `capture_view`, `start_session`
 
-## Pripomienky a požiadavky (5)
+## Pripomienky a požiadavky (2)
 
 Zdroj: GitHub issues + session. Definície: lib/feedback/tools.ts. Len MCP.
 
-- **`request_tool`** (D-090, zápis) - Zapíše POŽIADAVKU NA NOVÝ TOOL (GitHub issue) a hneď spustí Claude Code session, ktorá ho navrhne a naprogramuje (D-090).
-  Parametre: `title*`, `user_request*`, `why_existing_fail*`, `tried_tools`, `proposal`, `area=aim_data|viewer|ifc_engine|model_change|requirements_library|other`, `examples`, `start_session`
-- **`report_feedback`** (D-090, zápis) - Zapíše PRIPOMIENKU ku konektoru (GitHub issue, D-090): chyba toolu (bug), zlé alebo chýbajúce dáta (wrong_data), zlá odpoveď alebo postup (wrong_answer), návrh na zlepšenie (improvement).
-  Parametre: `kind*=bug|wrong_data|wrong_answer|improvement`, `title*`, `description*`, `tool`, `example`, `object_refs`, `start_session`
 - **`feedback_status`** (D-090, čítanie) - Stav pripomienok a požiadaviek na tools (D-090). Bez issue_number vráti otvorené issues konektora (číslo, názov, druh, či beží session); s issue_number stav issue, odkaz na session, PR a posledné komentáre (otázky session na používateľa).
   Parametre: `issue_number`
-- **`feedback_comment`** (D-090, zápis) - Dopíše KOMENTÁR do existujúceho issue konektora, otvoreného aj zatvoreného (štítok mcp, D-090): kolo evalov, výsledky pred / po, poznámka k požiadavke.
-  Parametre: `issue_number*`, `text*`, `kind=eval_round|result|note`, `reopen`
-- **`start_queued_session`** (D-090, zápis) - Spustí Claude Code session pre ďalšiu požiadavku z fronty (D-090): bez issue_number najstaršiu so štítkom fronta, s issue_number konkrétne otvorené issue konektora.
-  Parametre: `issue_number`, `over_limit`
+- **`feedback`** (D-090, zápis) - Zápis do GitHub issues konektora (D-090). Volaj LEN na výslovný pokyn používateľa ('zapíš to', 'založ pripomienku', 'dopíš do #97'); sám to len ponúkni. action=report: PRIPOMIENKA - chyba toolu (bug), zlé dáta (wrong_data), zlá odpoveď (wrong_answer), návrh (improvement); kind, title, description, start_session len keď to používateľ chce. request_tool: POŽIADAVKA NA NOVÝ TOOL až po vyčerpaní existujúcich tools; opíš potrebu (user_request, why_existing_fail, tried_tools s konkrétnymi tools); ak stačí rozšíriť existujúci tool (parameter, akcia, pole vo výsledku), uveď ho v proposal.extend - rozšírenie má prednosť (D-114); spustí session alebo ide do fronty, rovnaká požiadavka sa pripíše ako ďalší výskyt. comment: komentár do existujúceho issue (issue_number, text, kind eval_round | result | note; reopen len na výslovný pokyn). start_session: spustí session pre ďalšie issue z fronty (over_limit len na výslovnú žiadosť).
+  Parametre: `action*=report|request_tool|comment|start_session`, `kind=bug|wrong_data|wrong_answer|improvement|eval_round|result|note`, `title`, `description`, `tool`, `example`, `object_refs`, `user_request`, `why_existing_fail`, `tried_tools`, `proposal`, `area=aim_data|viewer|ifc_engine|model_change|requirements_library|other`, `examples`, `issue_number`, `text`, `reopen`, `over_limit`, `start_session`
 
 ## IFC motor (7)
 
@@ -111,9 +97,9 @@ Zdroj: IFC súbory federácie (@ifc-lite/mcp). Definície: lib/engine/search-all
 
 - **`search_all`** (D-095, čítanie) - Hľadanie podľa textu naraz v OBOCH zdrojoch: IFC súbor (atribúty Name, Description, ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály, zóny, skupiny) a graf AIM v DB (názov, object_ref, importované psety, dokumenty, osoby).
   Parametre: `text*`, `source=all|ifc|aim`, `badges=IFC|AIM|IFC+AIM`, `ifc_types`, `model`, `limit`, `fields=attribute|property|quantity|type_property|classification|material`, `fuzzy`, `offset`
-- **`ifc_models`** (D-084, čítanie) - IFC MOTOR: modely federácie a údaje o súbore. action=revisions (default): aktuálna revízia každého modelu (vNNN, dátum, autor, súhrn zmien, výsledok poistky), history = aj predchádzajúce; info: schéma, jednotky, georeferencovanie a počty entít; materials / classifications: materiály a klasifikácie modelu s počtami; audit: zdravie modelu; schema: atribúty a dedičnosť IFC triedy (type, bez modelu).
+- **`ifc_models`** (D-084, čítanie) - IFC MOTOR: modely federácie, súbor a IFC schéma. action=revisions (default): aktuálna revízia modelu (vNNN, dátum, autor, zmeny), history = aj predchádzajúce; info: schéma IFC, jednotky, georeferencovanie; materials / classifications: zoznam materiálov a klasifikácií s počtami; audit: zdravie modelu; schema: z ktorej triedy IFC trieda dedí a jej atribúty (type, napr. IfcAirTerminal; bez modelu).
   Parametre: `action=revisions|info|materials|classifications|audit|schema`, `model=ASR|VZT`, `history`, `type`, `include_inherited`
-- **`ifc_query`** (D-084, čítanie) - IFC MOTOR: prvky priamo v IFC súbore podľa triedy, podlažia a hodnôt psetov, aj ČÍSELNÉ porovnania (plocha > 20). mode=list (default): prvky s object_ref a poľom show_in_3d pre show_in_3d/style_in_3d; count: presný počet, aj group_by trieda/podlažie/materiál; values: rôzne hodnoty jednej vlastnosti psetu alebo Qto s počtami (pset + name, 'aké hodnoty má X'). material = prvky s materiálom alebo vrstvou skladby (aj z typu), napr. izolácia, EPS, minerálna vlna: total, skladby s hrúbkou a show_in_3d.
+- **`ifc_query`** (D-084, čítanie) - IFC MOTOR: prvky v IFC súbore podľa MATERIÁLU (material: izolácia, minerálna vlna, EPS, betón - aj vrstva skladby a materiál z typu; graf AIM materiály nenesie), triedy, podlažia a hodnôt psetov vrátane ČÍSELNÝCH porovnaní (plocha > 20). mode=list (default): prvky s object_ref a show_in_3d; count: presný počet zo súboru, aj group_by trieda/podlažie/materiál; values: aké hodnoty má vlastnosť psetu alebo Qto a koľko prvkov má ktorú (pset + name).
   Parametre: `mode=list|count|values`, `model=ASR|VZT`, `ifc_types`, `where`, `storey`, `group_by=type|storey|material`, `pset`, `name`, `material`, `limit`
 - **`ifc_get`** (D-084, čítanie) - IFC MOTOR: všetky údaje prvkov priamo z IFC súboru - atribúty, psety výskytu, množstvá (Qto), klasifikácie, materiály (vrstvy skladby s hrúbkou a kategóriou, aj z typu), dokumenty a voliteľne psety z typu.
   Parametre: `targets*`, `model=ASR|VZT`, `include_type_properties`

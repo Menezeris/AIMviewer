@@ -606,7 +606,7 @@
       "id": "bcf-topic-selection",
       "category": "bcf",
       "question": "Vyber tento prvok a vytvor BCF tému: potrubie koliduje s nosníkom, priraď projektantovi VZT, priorita vysoká.",
-      "expect": { "tools_called": ["bcf_topic_create"] },
+      "expect": { "tools_called": ["bcf_topic"] },
       "verified": false,
       "notes": "D-099 (issue #78): téma z výberu živého viewera, priradená človeku = bez session. Len MCP, overenie = scenár cez konektor s otvoreným viewerom."
     },

@@ -175,7 +175,7 @@ Kontext MCP (Claude vedľa viewera):
   Potvrď len to, čo potvrdenie hovorí; ok:false / issues = čo sa nevykonalo, povedz to. Netvrď,
   čo potvrdenie nehovorí (napr. že sa kamera pohla). Bez potvrdenia viewer nepočúva - ponúkni
   odkaz zo správy toolu.
-- get_bounds a get_viewer_state čítajú ten istý viewer v súradniciach IFC (m, Z hore).
+- get_viewer_state číta viewer v súradniciach IFC (m, Z hore); bounds=true alebo cieľ = obálky.
   "Čo mám vybrané" -> get_viewer_state.selection.summary (triedy, podlažia, zostavy), nie vzorka
   items; pri summary.covers=returned povedz, že viewer poslal len časť.
 - Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
@@ -209,7 +209,7 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   pravidlo cituj z odpovede toolu.
 - Rez = set_section: nad podlažím floor + offset_m (1,2 = pôdorys); "X cm pod podhľadom na NP"
   = set_section(floor=NP, relative_to=ceiling, offset_m=-X) - server vezme podhľad miestností
-  podlažia; rez cez prvok = cieľ + fit (along / across / center); presná súradnica z get_bounds,
+  podlažia; rez cez prvok = cieľ + fit (along / across / center); presná súradnica z get_viewer_state(bounds),
   position_percent nehádaj. Kamera = set_camera (preset, section = kolmo na rez, fit=visible,
   relatívny krok samostatne). Režim 3D/2D/Split a podlažie = set_view_mode; "zruš všetko /
   vráť pohľad / začni odznova" = set_view_mode(mode=3d, reset=true) (rez, farby, izolácia,
@@ -229,19 +229,19 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
  */
 const FEEDBACK_RULES = `
 - Issues zakladáš LEN na výslovný pokyn používateľa ("zapíš to", "založ issue", "pošli to na Clauda",
-  "sprav z toho požiadavku"). Sám request_tool ani report_feedback nevolaj.
+  "sprav z toho požiadavku"). Sám tool feedback nevolaj.
 - Keď používateľ potrebuje niečo, čo žiadny tool nevie (a skúsil si query_view, search_everything,
   aggregate_objects, ifc_* a preformulovanie), povedz to rovno, odpoveď si nevymýšľaj ani neaproximuj
   a na koniec jednou vetou ponúkni: "Mám to zapísať ako požiadavku na nový tool?" Pri zlyhaní toolu
   alebo zlej odpovedi ponúkni zápis pripomienky. Ponuku nezopakuj v tom istom rozhovore k tej istej veci.
-- Po pokyne: chýbajúca schopnosť = request_tool (čo chcel, čo si skúsil, prečo to nestačí), chyba alebo
-  zlé dáta = report_feedback (session len keď ju používateľ chce, start_session). Ukáž odkaz na issue
+- Po pokyne: chýbajúca schopnosť = feedback(action=request_tool: čo chcel, čo si skúsil, prečo to nestačí,
+  ktorý tool rozšíriť), chyba alebo zlé dáta = feedback(action=report; session len keď ju používateľ chce). Ukáž odkaz na issue
   a na session alebo poradie vo fronte. Chybu v samotnom IFC modeli sem nezapisuj (to je BCF téma). Stav a otázky session
   na používateľa ukáže feedback_status.
 - Naraz bežia najviac 3 sessions; ďalšie požiadavky idú do fronty (queued). Keď používateľ dá zapísať
   viac položiek naraz (zoznam, dokument), zapíš každú zvlášť, podobné zlúč do jednej, a na konci povedz,
-  koľko session beží a čo čaká. "Spusti ďalšiu" = start_queued_session.
-- "Dopíš do #N ..." (kolo evalov, výsledky pred / po, poznámka) = feedback_comment do existujúceho
+  koľko session beží a čo čaká. "Spusti ďalšiu" = feedback(action=start_session).
+- "Dopíš do #N ..." (kolo evalov, výsledky pred / po, poznámka) = feedback(action=comment) do existujúceho
   issue (aj zatvoreného), nie nové issue; ukáž odkaz na komentár. reopen=true len na výslovný pokyn
   ("otvor ho znova").
 - Issue je verejné: žiadne mená, kontakty ani tokeny, len object_ref, triedy, psety a tools.`;
@@ -252,7 +252,7 @@ const FEEDBACK_RULES = `
  */
 const BCF_RULES = `
 - Chyba alebo nezhoda v MODELI (prvok, vlastnosť, kolízia, pripomienka k prvku, požiadavka na úpravu
-  IFC) = BCF téma: bcf_topic_create, nie request_tool ani report_feedback (tie sú o konektore). Zakladaj
+  IFC) = BCF téma: bcf_topic(action=create), nie feedback (ten je o konektore). Zakladaj
   ju na pokyn používateľa ("založ BCF / tému / issue k tomuto"). "Tento prvok / čo mám vybrané" =
   bez prvkov v argumentoch, capture_view vezme výber a pohľad z viewera; povedz, koľko prvkov téma má a
   či sa pohľad uložil.
@@ -260,7 +260,7 @@ const BCF_RULES = `
   session, ktorá upraví IFC a zverejní revíziu. Človeku priraď podľa mena. Ukáž číslo témy (#N) a odkaz
   na session alebo že čaká vo fronte.
 - "Ukáž tému #N" = bcf_topic_list(guid) a show_in_3d(global_ids); stav, komentár a priradenie =
-  bcf_topic_update; uzavretie bez úpravy modelu = bcf_topic_close.`;
+  bcf_topic(action=update); uzavretie bez úpravy modelu = bcf_topic(action=close).`;
 
 /**
  * Smerovanie medzi DB tools a IFC motorom (D-084) - len keď je motor zapnutý.
@@ -281,7 +281,9 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   Funguje aj pre zóny a prvky bez object_ref. list_relations má strop
   100 riadkov - úplný zoznam ber z ifc_relations a stránkuj cez next_cursor, kým nie je null;
   počet hovor z total, nie z dĺžky stránky.
-- Materiály (D-108): vrstvy aj z typu = ifc_get (materials); "ukáž izoláciu" = ifc_query(material).
+- Materiál prvkov (izolácia, minerálna vlna, EPS, betón; D-108) je len v IFC súbore, graf AIM ho nenesie:
+  "koľko / ktoré / ukáž prvky z materiálu X" = ifc_query(material=X), nie search_everything; vrstvy
+  jedného prvku = ifc_get. Dedičnosť a atribúty IFC triedy = ifc_models(action=schema), nie z pamäti.
 - Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou; items = rozmery a objem z meshu;
   qto=true = plocha a objem len z Qto v súbore (rýchle).
 - Hľadanie podľa textu = search_all: IFC súbor (Description, ObjectType, Tag, LongName, všetky
@@ -298,4 +300,4 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   z typu - na tie použi DB (v_asset_effective).
 - ifc_models: revízia modelu (D-109, history=N), action=info (schéma, jednotky, CRS),
   materials, classifications, audit (zdravie modelu), schema (atribúty IFC triedy).
-  Pole aim mapuje GUID -> object_ref. Polohu prvku v priestore dáva get_bounds (živý viewer), nie Qto.`;
+  Pole aim mapuje GUID -> object_ref. Polohu prvku v priestore dáva get_viewer_state(bounds) zo živého viewera, nie Qto.`;

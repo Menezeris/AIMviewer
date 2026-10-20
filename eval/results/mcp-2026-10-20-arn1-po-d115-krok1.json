@@ -1,0 +1,257 @@
+{
+ "ranAt": "2026-10-20T05:43:00Z",
+ "label": "arn1-po-D-115-krok1",
+ "region": "arn1",
+ "runner": "čerstvá Claude Code session (session_01YKCmvhQUhqDsz8Jp1WXXSE), 20 subagentov paralelne; konektor s novým zoznamom (41 toolov, overené: ifc_query má mode, ifc_count nie je); main c51211a",
+ "note": "Len dátové úlohy (krok 1 mení len tooly motora). C7 hodnotené ako fail: správna trieda, ale z pamäti, nie z toolu.",
+ "tool_list": {
+  "tools": 41,
+  "tools_list_chars_live": 59499,
+  "definition_chars": 55406,
+  "instructions_chars": 14576
+ },
+ "results": [
+  {
+   "id": "D1-pocet-dveri",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "count_objects"
+   ],
+   "duration_ms": 10860,
+   "over_cap": false
+  },
+  {
+   "id": "D2-vzt-jednotky-kde",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "locate_objects"
+   ],
+   "duration_ms": 13598,
+   "over_cap": false
+  },
+  {
+   "id": "D3-pocet-miestnosti",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "count_objects"
+   ],
+   "duration_ms": 12663,
+   "over_cap": false
+  },
+  {
+   "id": "D4-podhlad-qto",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "search_objects",
+    "ifc_get"
+   ],
+   "duration_ms": 16835,
+   "over_cap": false,
+   "note": "search_objects zbytočný, ifc_get berie 3.02 priamo"
+  },
+  {
+   "id": "D5-vyustka-kde",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "get_object"
+   ],
+   "duration_ms": 14906,
+   "over_cap": false
+  },
+  {
+   "id": "D6-nosne-steny",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "aggregate_objects"
+   ],
+   "duration_ms": 16421,
+   "over_cap": false
+  },
+  {
+   "id": "D7-kod-len-v-ifc",
+   "pass": true,
+   "calls": 5,
+   "tools": [
+    "get_object",
+    "ifc_get",
+    "ifc_relations",
+    "get_spatial_path",
+    "show_in_3d"
+   ],
+   "duration_ms": 31974,
+   "over_cap": true,
+   "note": "prvok len v IFC, podlažie cez rodičovské schodisko; show_in_3d nevyžiadané"
+  },
+  {
+   "id": "C1-poziarna-odolnost-dveri",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "aggregate_objects",
+    "query_view"
+   ],
+   "duration_ms": 19678,
+   "over_cap": true,
+   "note": "ifc_query(mode=values) nepoužil; query_view len overenie"
+  },
+  {
+   "id": "C2-mineralna-vlna",
+   "pass": true,
+   "calls": 11,
+   "tools": [
+    "search_everything x8",
+    "get_model_stats",
+    "count_objects",
+    "ifc_query(material)"
+   ],
+   "duration_ms": 33655,
+   "over_cap": true,
+   "note": "REGRESIA: 10 pokusov v AIM DB, až potom ifc_query(material); predtým 1 volanie ifc_material_layers"
+  },
+  {
+   "id": "C3-vzt-potrubie-pocet",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "count_objects",
+    "count_objects"
+   ],
+   "duration_ms": 12976,
+   "over_cap": true,
+   "note": "druhé volanie navyše"
+  },
+  {
+   "id": "C4-revizia-asr",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_models(action=revisions)"
+   ],
+   "duration_ms": 12808,
+   "over_cap": false
+  },
+  {
+   "id": "C5-schema-jednotky-vzt",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_models(action=info)"
+   ],
+   "duration_ms": 12888,
+   "over_cap": false
+  },
+  {
+   "id": "C6-klasifikacia",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "ifc_models(action=classifications)",
+    "query_view"
+   ],
+   "duration_ms": 14366,
+   "over_cap": true,
+   "note": "druhé volanie hľadalo názov TI06"
+  },
+  {
+   "id": "C7-dedenie-triedy",
+   "pass": false,
+   "calls": 1,
+   "tools": [
+    "ifc_query(mode=list)"
+   ],
+   "duration_ms": 16614,
+   "over_cap": false,
+   "note": "REGRESIA: odpoveď z pamäti, ifc_models(action=schema) nenašiel"
+  },
+  {
+   "id": "C8-plocha-miestnosti",
+   "pass": true,
+   "calls": 3,
+   "tools": [
+    "search_objects",
+    "get_object",
+    "ifc_get"
+   ],
+   "duration_ms": 20812,
+   "over_cap": true,
+   "note": "predtým 5 volaní"
+  },
+  {
+   "id": "C9-jednotka-v-miestnosti",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "search_objects",
+    "get_spatial_path"
+   ],
+   "duration_ms": 15089,
+   "over_cap": false
+  },
+  {
+   "id": "C10-typ-jednotky",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "get_object",
+    "get_asset_details"
+   ],
+   "duration_ms": 13837,
+   "over_cap": false
+  },
+  {
+   "id": "C11-text-v-ifc",
+   "pass": true,
+   "calls": 3,
+   "tools": [
+    "ifc_query(mode=values)",
+    "ifc_query(mode=list)",
+    "search_everything"
+   ],
+   "duration_ms": 23059,
+   "over_cap": true,
+   "note": "search_all nepoužil; predtým 1 volanie ifc_search"
+  },
+  {
+   "id": "C12-bcf-otvorene",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "bcf_topic_list"
+   ],
+   "duration_ms": 15460,
+   "over_cap": false
+  },
+  {
+   "id": "C13-otvorene-poziadavky",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "feedback_status"
+   ],
+   "duration_ms": 13470,
+   "over_cap": false
+  }
+ ],
+ "summary": {
+  "pass": "19/20",
+  "calls_total": 44,
+  "calls_total_baseline_same_tasks": 35,
+  "median_calls": 1.5,
+  "over_cap": [
+   "D7",
+   "C1",
+   "C2",
+   "C3",
+   "C6",
+   "C8",
+   "C11"
+  ],
+  "finding": "Zlúčená schopnosť schovaná v opise iného toolu sa horšie hľadá: C2 materiál (1 -> 11 volaní, agent išiel do search_everything), C7 schéma triedy (nenašiel ifc_models action=schema), C11 bez search_all. Zlepšenie: C1 5 -> 2, C8 5 -> 3, D3 2 -> 1. Oprava v kroku 2: schopnosť na začiatku opisu (ifc_query: MATERIÁL, ifc_models: schema = z ktorej triedy dedí) a pravidlo v inštrukciách motora (materiál = ifc_query(material), nie search_everything)."
+ }
+}

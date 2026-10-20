@@ -40,7 +40,7 @@ group by 1, 2 order by p50 desc;
 4. Výsledok ulož do `eval/results/mcp-<YYYY-MM-DD>-<label>.json`:
    `{ranAt, label, region, results: [{id, pass, calls, tools, tool_uses_total, duration_ms, over_cap, note}]}`
    a súhrn (pass, medián volaní, medián času, úlohy nad stropom) zapíš do #97 ako
-   `feedback_comment` s druhom `eval_round`.
+   `feedback(action=comment)` s druhom `eval_round`.
 
 Čas subagenta zahŕňa aj réžiu Claude Code (ToolSearch, spustenie agenta), preto sa porovnávajú
 behy medzi sebou, nie s claude.ai. Pravdu o serveri hovorí `mcp_call_log`.

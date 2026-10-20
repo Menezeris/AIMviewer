@@ -32,7 +32,7 @@ import { startTimer, type CallTimer } from "@/lib/mcp/timing";
 /**
  * MCP konektor pre Claude (D-079): `POST /api/mcp/<MCP_TOKEN>`. Tie isté
  * read-only tools ako `/api/ask`; UI akcie sa odvysielajú do živého viewera
- * (Supabase Realtime, kanál `LIVE_CHANNEL`); get_bounds / get_viewer_state sa
+ * (Supabase Realtime, kanál `LIVE_CHANNEL`); get_viewer_state (stav aj obálky) sa
  * tým istým kanálom viewera pýtajú (D-085); pripomienky a požiadavky na nové
  * tools idú do GitHub issues a spúšťajú Claude session (D-090); BCF témy nad modelmi sú v DB
  * a téma pre Claude spúšťa session (D-099). Bez `MCP_TOKEN` je endpoint
