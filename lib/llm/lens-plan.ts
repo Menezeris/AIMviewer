@@ -5,7 +5,7 @@
  * naraz (combinator AND). DB sa tu nečíta; to robí `style-lens.ts`.
  */
 
-import type { AimZoneRule, AutoColorSource, LensFilterGroup, LensFilterRule, LensWire } from "@/lib/viewer-lens";
+import type { AimDocumentRule, AimZoneRule, AutoColorSource, LensFilterGroup, LensFilterRule, LensWire } from "@/lib/viewer-lens";
 import { StyleInputError } from "./style-plan";
 
 export interface ResolvedLensFilter {
@@ -25,6 +25,8 @@ export interface ResolvedLensFilter {
   guids?: string[];
   /** objects.id zón (IfcZone, IfcSpatialZone, IfcGroup); členov doplní klient. */
   zoneIds?: string[];
+  /** Dokument alebo odkaz na jeho časť (objects.id), voliteľne strana; prvky doplní klient (D-104). */
+  document?: { id: string; page?: number };
 }
 
 /** Regex na presnú zhodu s jedným z mien (pravidlo `group` porovnáva názov skupiny). */
@@ -37,7 +39,7 @@ const BOOL = /^(true|false)$/i;
 
 /** Vyriešený filter -> jedna skupina pravidiel Lens (AND). */
 export function lensGroup(f: ResolvedLensFilter): LensFilterGroup {
-  const rules: (LensFilterRule | AimZoneRule)[] = [];
+  const rules: (LensFilterRule | AimZoneRule | AimDocumentRule)[] = [];
   if (f.types.length > 0) rules.push({ kind: "ifcType", op: "in", values: [...new Set(f.types)] });
   if (f.predefinedType) rules.push({ kind: "predefinedType", op: "in", values: [f.predefinedType.toUpperCase()] });
   if (f.storeys?.length) rules.push({ kind: "storey", op: "in", values: f.storeys });
@@ -62,10 +64,11 @@ export function lensGroup(f: ResolvedLensFilter): LensFilterGroup {
   if (f.model) rules.push({ kind: "model", op: "in", values: [f.model] });
   if (f.guids?.length) rules.push({ kind: "globalId", op: "in", values: f.guids });
   if (f.zoneIds?.length) rules.push({ kind: "aim_zone", ids: f.zoneIds });
+  if (f.document) rules.push({ kind: "aim_document", ...f.document });
   if (rules.length === 0) {
     throw new StyleInputError(
       "Zadaj aspoň jedno kritérium výberu: ifc_type(s)/domain, predefined_type, storey, system, system_type, " +
-        "not_in_system, zone, property+value, model, query alebo ids_or_refs.",
+        "not_in_system, zone, document, property+value, model, query alebo ids_or_refs.",
     );
   }
   return { combinator: "AND", rules: rules as LensFilterRule[] };

@@ -173,6 +173,18 @@ _SPECS: list[RelType] = [
         description="Strom dokumentácie (D-104): časť → nadradený dokument; "
                     "role = RelationshipType (napr. SUBDOCUMENT). IFC resource, nie IfcRel.",
     ),
+    RelType(
+        rel_type="rel_external_reference_relationship",
+        ifc_entity="IfcExternalReferenceRelationship",  # resource, NIE IfcRel (D-104)
+        relating_attr="RelatingReference",     # = klasifikačná referencia = náš to_id
+        relating_end="to",
+        from_object_types=["document"],        # RelatedResourceObjects (IfcDocumentInformation)
+        to_object_types=[],                    # výnimka: to_id → classification_references
+        to_is_classification=True,
+        export_path="resource",
+        description="Klasifikácia dokumentu (D-104), napr. typ informácie ISO 19650. "
+                    "to_id → classification_references. IFC resource, nie IfcRel.",
+    ),
 ]
 
 # Interné ETL `edge_type` (model.py / db.py) → kanonický `rel_type` (D-051).
@@ -187,6 +199,7 @@ EDGE_TYPE_TO_REL_TYPE: dict[str, str] = {
     "referenced": "rel_referenced_in_spatial_structure",
     "has_classification": "rel_associates_classification",
     "document_part": "rel_document_information_relationship",
+    "document_classification": "rel_external_reference_relationship",
 }
 
 

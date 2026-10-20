@@ -4,6 +4,7 @@ import {
   SCOPED_GUID_CAP,
   StyleInputError,
   allocateCap,
+  documentPage,
   intersectSets,
   matchesAttributes,
   matchesProperty,
@@ -20,10 +21,27 @@ describe("needsScopedStyle", () => {
     expect(needsScopedStyle({ action: "hide", storey: "2NP" })).toBe(true);
     expect(needsScopedStyle({ action: "hide", not_in_system: true })).toBe(true);
     expect(needsScopedStyle({ action: "colorize", groups: [] })).toBe(true);
+    expect(needsScopedStyle({ action: "hide", document: "D.1.1.03" })).toBe(true);
   });
   it("pôvodné volania ostávajú na starej ceste", () => {
     expect(needsScopedStyle({ action: "colorize", ifc_type: "IfcDoor", color: "ef4444" })).toBe(false);
     expect(needsScopedStyle({ action: "hide", system: "", not_in_system: false })).toBe(false);
+  });
+});
+
+describe("documentPage (D-104 krok 4)", () => {
+  it("strana len s dokumentom, kladné celé číslo aj ako text", () => {
+    expect(documentPage({ document: "D.1.1.09" })).toBeUndefined();
+    expect(documentPage({ document: "D.1.1.09", page: 3 })).toBe(3);
+    expect(documentPage({ document: "D.1.1.09", page: "4" })).toBe(4);
+    expect(() => documentPage({ document: "D.1.1.09", page: 0 })).toThrow(StyleInputError);
+    expect(() => documentPage({ document: "D.1.1.09", page: 2.5 })).toThrow(StyleInputError);
+    expect(() => documentPage({ page: 3 })).toThrow(/spolu s document/);
+  });
+  it("dokument a strana idú do štítku skupiny aj do filtra", () => {
+    const [g] = parseStyleGroups({ action: "isolate", document: "D.1.1.09", page: 3 }, "isolate");
+    expect(g.label).toBe("dokument D.1.1.09, s. 3");
+    expect(g.filter).toEqual({ document: "D.1.1.09", page: 3 });
   });
 });
 

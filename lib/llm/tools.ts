@@ -2,6 +2,7 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PDF_LINK_SOURCE } from "@/lib/data/constants";
+import { fetchDocumentObjectRows, fetchDocumentTypes, fetchObjectDocuments, typeText } from "@/lib/data/object-documents";
 import { fetchAllPages } from "@/lib/data/pagination";
 import type { ToolDefinition } from "./provider";
 import { docOp, selectOp } from "@/lib/viewer-ops";
@@ -85,6 +86,9 @@ const QUERY_RELATIONS = new Set([
   "rel_assigns_to_actor",
   "rel_assigns_to_group",
   "rel_member_of",
+  "rel_document_information_relationship",
+  "rel_external_reference_relationship",
+  "v_object_documents",
 ]);
 
 /** Povolené operátory filtra query_view (PostgREST). */
@@ -104,6 +108,8 @@ const REL_VIEWS = new Set([
   "rel_assigns_to_actor",
   "rel_assigns_to_group",
   "rel_member_of",
+  "rel_document_information_relationship",
+  "rel_external_reference_relationship",
 ]);
 
 /** Zdroj pre trust loop — deep-linky renderuje UI, nie model. */
@@ -162,7 +168,12 @@ function isUuid(v: string): boolean {
 }
 
 /** Čo `get_object` pridá v tom istom volaní (D-115). */
-export const GET_OBJECT_INCLUDES = ["details", "path", "drawings"] as const;
+export const GET_OBJECT_INCLUDES = ["details", "path", "documents"] as const;
+
+/** Staré hodnoty `include` (D-104: výkresy E4 nahradili dokumenty z modelu); nevypisujú sa. */
+const LEGACY_GET_OBJECT_INCLUDES: Record<string, (typeof GET_OBJECT_INCLUDES)[number]> = {
+  drawings: "documents",
+};
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
@@ -239,8 +250,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "psetov: description, data_type, enum_values, applicable_classes — VÝZNAM a jednotky " +
       "property) a hrany rel_aggregates, rel_contained_in_spatial_structure, " +
       "rel_defines_by_type, rel_associates_document, rel_associates_classification, " +
-      "rel_assigns_to_actor, rel_assigns_to_group, rel_member_of (všetky: from_id→to_id, " +
-      "valid_until null = aktívna). JSONB cesty fungujú v select aj filtri: " +
+      "rel_assigns_to_actor, rel_assigns_to_group, rel_member_of, " +
+      "rel_document_information_relationship (strom dokumentácie: časť→nadradený), " +
+      "rel_external_reference_relationship (druh dokumentu: dokument→classification_references, " +
+      "typ informácie ISO 19650) (všetky: from_id→to_id, valid_until null = aktívna), " +
+      "v_object_documents (dokumenty objektu cez vzťahy, D-104: object_id, document_id, page, via, " +
+      "via_id, depth). JSONB cesty fungujú v select aj filtri: " +
       "properties->Pset_ValveTypeIsolating->>IsNormallyOpen. Join nie je — reťaz dopyty " +
       "cez op 'in' so zoznamom id z predchádzajúceho výsledku.",
     inputSchema: {
@@ -283,7 +298,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "aggregate_objects",
     description:
       "Presné agregácie a ČÍSELNÉ porovnania nad hodnotami psetov — počíta databáza, " +
-      "nikdy nepočítaj z orezaných riadkov. agg=count|sum|avg|min|max nad numerickou " +
+      "nikdy nepočítaj z orezaných riadkov. Výsledok je konečný: neoveruj ho query_view ani " +
+      "ďalším volaním. agg=count|sum|avg|min|max nad numerickou " +
       "hodnotou prop_path (napr. ['VZT_Parametre','AirFlowRate']); group_by (stĺpec: " +
       "object_type|ifc_type|predefined_type|user_defined_type|name|object_ref) alebo " +
       "group_by_path (pset cesta ako kľúč, napr. výrobca). AND filtre " +
@@ -341,8 +357,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "'VV.03.01.040'; prvok len v IFC vráti in_aim:false a global_id): identita, IFC trieda, predefined_type, " +
       "IFC GUID a podlažie (floor). include pridá v tom istom volaní: details = VLASTNOSTI psetov (aj zdedené z " +
       "typu, napr. výrobný typ) a klasifikácie; path = V KTOREJ MIESTNOSTI a podlaží je (aj odvodené geometriou, " +
-      "napr. VZT prvok v miestnosti z ASR); drawings = na ktorých VÝKRESOCH a stranách je. Kód netreba hľadať " +
-      "vopred; na 'čo je X a kde je' stačí jedno volanie.",
+      "napr. VZT prvok v miestnosti z ASR); documents = DOKUMENTY a strany, ktoré k nemu patria, aj zdedené " +
+      "cez typ, zónu, skupinu (skladby), systém, priestorovú zónu (požiarny úsek), podlažie a miestnosť, s cestou " +
+      "(via_name, through) a deep_link na stranu; pri dokumente opačne: ktorých objektov sa týka (počty podľa " +
+      "typu a nositeľa + vzorka). Kód netreba hľadať vopred; na 'čo je X a kde je' stačí jedno volanie.",
     inputSchema: {
       type: "object",
       properties: {
@@ -350,7 +368,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         include: {
           type: "array",
           items: { type: "string", enum: [...GET_OBJECT_INCLUDES] },
-          description: "Čo pridať: details | path | drawings",
+          description: "Čo pridať: details | path | documents",
         },
       },
       required: ["id_or_ref"],
@@ -386,7 +404,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "vopred). select=true = VYBERIE jeden prvok ako klik myšou a otvorí jeho panel vlastností ('vyber / označ " +
       "X', 'ukáž jeho vlastnosti'): panel_tab aim | ifc, panel_section properties | quantities, highlight " +
       "'Pset.Vlastnosť' zvýrazní riadok; panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
-      "select=true výber. Funguje pre prvky s IFC GUID.",
+      "select=true výber. Funguje pre prvky s IFC GUID. Prvky, ktorých sa týka dokument alebo strana, " +
+      "ukáž cez style_in_3d(document, page).",
     inputSchema: {
       type: "object",
       properties: {
@@ -434,6 +453,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "storey rozbalia členov v grafe AIM (NIE id systému v ids_or_refs - to vyberie len " +
       "samotný systém). Prvky mimo systémov: not_in_system=true. Všetky zadané kritériá " +
       "platia naraz (AND), napr. ifc_type=IfcDuctFitting + storey=1NP + system=Prívod. " +
+      "ČOHO SA TÝKA DOKUMENT ('ukáž prvky tohto výkresu / tejto strany') = document (+ page): " +
+      "prvky aj zdedené cez podlažie, zónu, skupinu a typ, bez vymenovania GUIDov; " +
+      "action=xray (zvyšok priesvitný) alebo isolate. " +
       "Viac farieb naraz = groups: [{label, color, ...filter}] (top-level filter platí pre " +
       "všetky skupiny). colorize / transparent / isolate / xray idú do panelu Lens vo vieweri ako " +
       "lens 'AIM chat' (pravidlo = skupina, legenda, počty; prvky mimo pravidiel sú stlmené); " +
@@ -567,6 +589,16 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "string",
           description: "Podlažie (1NP, 2.NP, object_ref): miestnosti a prvky na ňom",
         },
+        document: {
+          type: "string",
+          description:
+            "Dokument podľa id, object_ref alebo názvu (napr. 'D.1.1.03'): prvky, ktorých sa týka, aj " +
+            "zdedené cez nositeľa (get_object(include=documents) pri dokumente dá počty a by_page)",
+        },
+        page: {
+          type: "number",
+          description: "S document: len prvky, ktorých sa týka táto strana (odkaz na časť dokumentu)",
+        },
         groups: {
           type: "array",
           description:
@@ -582,6 +614,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
               system_type: { type: "string" },
               zone: { type: "string" },
               storey: { type: "string" },
+              document: { type: "string" },
+              page: { type: "number" },
               ifc_type: { type: "string" },
               ifc_types: { type: "array", items: { type: "string" } },
               predefined_type: { type: "string" },
@@ -602,7 +636,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     description:
       "UI AKCIA: otvorí výkres/dokument v prehliadačke, voliteľne so zvýrazneným prvkom " +
       "a stranou. Zavolaj, keď používateľ žiada otvoriť/ukázať výkres alebo prvok vo výkrese " +
-      "(document_id a page zisti cez get_object(include=drawings)).",
+      "(document_id a page zisti cez get_object(include=documents)).",
     inputSchema: {
       type: "object",
       properties: {
@@ -1218,7 +1252,9 @@ export class AskToolRuntime {
 
   /** `get_object` s include (D-115): detail + vlastnosti, umiestnenie a výkresy v jednom volaní. */
   private async getObjectWith(input: Record<string, unknown>) {
-    const include = Array.isArray(input.include) ? input.include.map(String) : [];
+    const include = Array.isArray(input.include)
+      ? [...new Set(input.include.map((i) => LEGACY_GET_OBJECT_INCLUDES[String(i)] ?? String(i)))]
+      : [];
     const bad = include.filter((i) => !(GET_OBJECT_INCLUDES as readonly string[]).includes(i));
     if (bad.length > 0) throw new Error(`include: ${GET_OBJECT_INCLUDES.join(" | ")} (neznáme: ${bad.join(", ")}).`);
     const base = (await this.getObject(input)) as Record<string, unknown>;
@@ -1238,7 +1274,7 @@ export class AskToolRuntime {
         } else if (part === "path") {
           extra.path = await this.getSpatialPath({ id });
         } else {
-          extra.drawings = await this.findInDrawings({ id });
+          Object.assign(extra, await this.documentsOf(base as unknown as ObjectRow, input));
         }
       }),
     );
@@ -1487,59 +1523,6 @@ export class AskToolRuntime {
     };
   }
 
-  private async findInDrawings(input: Record<string, unknown>) {
-    const supabase = getSupabaseAdmin();
-    const id = String(input.id ?? "").trim();
-    if (!isUuid(id)) throw new Error("id musí byť UUID (objects.id).");
-
-    const { data: rels, error } = await supabase
-      .from("rel_associates_document")
-      .select("to_id")
-      .eq("from_id", id)
-      .eq("source", PDF_LINK_SOURCE)
-      .is("valid_until", null)
-      .limit(MAX_LIMIT);
-    if (error) throw new Error(error.message);
-
-    const docIds = [...new Set((rels ?? []).map((r) => r.to_id as string))];
-    if (docIds.length === 0) return { drawings: [], hint: "Prvok nie je v žiadnom výkrese (E4)." };
-
-    const { data: docs, error: docErr } = await supabase
-      .from("objects")
-      .select("id, object_type, object_ref, name, properties")
-      .in("id", docIds);
-    if (docErr) throw new Error(docErr.message);
-
-    const source = this.sources.get(id);
-    const out = (docs ?? []).map((d) => {
-      this.addSource(d as ObjectRow);
-      // Strany, na ktorých má prvok región (_drawing_links, D-042).
-      const links = ((d.properties as Record<string, unknown> | null)?.["_drawing_links"] ??
-        []) as { page?: number; target_id?: string }[];
-      const pages = [
-        ...new Set(
-          links
-            .filter((l) => l.target_id === id && typeof l.page === "number")
-            .map((l) => l.page as number)
-        ),
-      ].sort((a, b) => a - b);
-      const entry = {
-        docId: d.id as string,
-        docName: (d.name as string | null) ?? null,
-        page: pages[0] ?? null,
-      };
-      if (source && !source.drawings.some((x) => x.docId === entry.docId)) {
-        source.drawings.push(entry);
-      }
-      return {
-        ...entry,
-        pages,
-        deep_link: `/drawing/${d.id}?focus=${id}${pages[0] ? `&page=${pages[0]}` : ""}`,
-      };
-    });
-    return { drawings: out };
-  }
-
   /**
    * Fulltext v obsahu dokumentov (D-063) — RPC `search_documents` nad
    * `document_pages` (text extrahuje etl/pdf_text.py). Deep-link stavia server.
@@ -1584,6 +1567,121 @@ export class AskToolRuntime {
       ...r,
       deep_link: `/drawing/${r.document_id}?page=${r.page}`,
     }));
+  }
+
+  /**
+   * Dokumenty objektu cez vzťahy (D-104, `lib/data/object-documents.ts`, ten istý zdroj
+   * ako AIM karta): jeden riadok na dokument a stranu, najbližšia cesta prvá. `via` = druh
+   * nositeľa, `via_name` = nositeľ, `through` = najbližší nositeľ k objektu, ak je iný.
+   */
+  private async objectDocuments(objectId: string) {
+    const { documents, nodes } = await fetchObjectDocuments(objectId);
+    for (const n of nodes) this.addSource(n);
+    const types = await fetchDocumentTypes([...new Set(documents.map((d) => d.documentId))]);
+    return documents.map((d) => {
+      const type = typeText(types.get(d.documentId));
+      return {
+        document_id: d.documentId,
+        document: d.name,
+        identification: d.identification,
+        ...(type ? { type } : {}),
+        ...(d.page ? { page: d.page } : {}),
+        via: d.via,
+        ...(d.viaName ? { via_name: d.viaName } : {}),
+        ...(d.through ? { through: d.through } : {}),
+        ...(d.alsoVia ? { also_via: d.alsoVia } : {}),
+        deep_link: `/drawing/${d.documentId}${d.page ? `?page=${d.page}` : ""}`,
+      };
+    });
+  }
+
+  /**
+   * `get_object(include=documents)` (D-104, D-115): dokumenty objektu, pri dokumente alebo
+   * odkaze na stranu opačne objekty, ktorých sa týka.
+   */
+  private async documentsOf(obj: ObjectRow, input: Record<string, unknown>) {
+    const supabase = getSupabaseAdmin();
+    if (obj.object_type !== "document" && obj.object_type !== "document_reference") {
+      const documents = await this.objectDocuments(obj.id);
+      let projectDocuments = 0;
+      if (obj.object_type !== "project") {
+        const { data: projects, error: pErr } = await supabase
+          .from("objects")
+          .select("id")
+          .eq("object_type", "project")
+          .is("valid_until", null);
+        if (pErr) throw new Error(pErr.message);
+        const ids = (projects ?? []).map((p) => p.id as string);
+        if (ids.length) {
+          const { count, error } = await supabase
+            .from("rel_associates_document")
+            .select("id", { count: "exact", head: true })
+            .in("from_id", ids)
+            .is("valid_until", null);
+          if (error) throw new Error(error.message);
+          projectDocuments = count ?? 0;
+        }
+      }
+      return {
+        documents,
+        ...(projectDocuments
+          ? { project_documents: projectDocuments, hint_project: "Dokumentácia stavby (projekt) sa prvkom nededí; get_object(<projekt>, include=documents)." }
+          : {}),
+        ...(documents.length === 0
+          ? { hint: "K objektu nevedie z modelu žiadna väzba na dokument (ani cez typ, zónu, skupinu)." }
+          : {}),
+      };
+    }
+
+    const doc = obj;
+    const rows = await fetchDocumentObjectRows(doc);
+    // Objekt raz, s najbližšou cestou (riadky sú zoradené podľa depth).
+    const first = new Map<string, (typeof rows)[number]>();
+    for (const r of rows) if (!first.has(r.object_id)) first.set(r.object_id, r);
+    const holders = await this.loadObjects([...new Set(rows.map((r) => r.via_id).filter(Boolean) as string[])]);
+    const holderName = new Map(holders.map((h) => [h.id, h.name ?? h.object_ref ?? h.id]));
+    const byType: Record<string, number> = {};
+    const byHolder: Record<string, number> = {};
+    for (const r of first.values()) {
+      byType[r.object_type] = (byType[r.object_type] ?? 0) + 1;
+      const h = r.via === "direct" ? "priamo" : `${r.via}: ${holderName.get(r.via_id ?? "") ?? r.via_id}`;
+      byHolder[h] = (byHolder[h] ?? 0) + 1;
+    }
+    // Strany (odkazy na časť dokumentu): objekt sa ráta na každej strane, na ktorej je.
+    const pageObjects = new Map<number, Set<string>>();
+    for (const r of rows) {
+      if (!r.page) continue;
+      const ids = pageObjects.get(r.page) ?? new Set<string>();
+      ids.add(r.object_id);
+      pageObjects.set(r.page, ids);
+    }
+    const byPage = Object.fromEntries([...pageObjects.entries()].sort(([a], [b]) => a - b).map(([p, ids]) => [String(p), ids.size]));
+    const limit = clampLimit(input.limit);
+    const sampleIds = [...first.keys()].slice(0, limit);
+    const sampleMeta = new Map((await this.loadObjects(sampleIds)).map((m) => [m.id, m]));
+    return {
+      objects_total: first.size,
+      by_object_type: byType,
+      by_holder: byHolder,
+      sample: sampleIds.map((id) => {
+        const r = first.get(id)!;
+        return {
+          ...(sampleMeta.get(id) ?? { id }),
+          via: r.via,
+          ...(r.via_id ? { via_name: holderName.get(r.via_id) ?? null } : {}),
+          ...(r.page ? { page: r.page } : {}),
+        };
+      }),
+      ...(first.size > limit ? { truncated: true } : {}),
+      ...(pageObjects.size > 0 ? { by_page: byPage } : {}),
+      ...(first.size > 0
+        ? {
+            in_3d:
+              `Prvky v 3D: style_in_3d(action=xray alebo isolate, document='${doc.object_ref ?? doc.id}'` +
+              (pageObjects.size > 0 ? ", voliteľne page=<strana>)" : ")"),
+          }
+        : {}),
+    };
   }
 
   /** Uzol podľa UUID alebo object_ref — spoločné pre akčné tools. */
@@ -2059,7 +2157,7 @@ export class AskToolRuntime {
     if (!isUuid(docId)) throw new Error("document_id musí byť UUID (objects.id dokumentu).");
     const doc = await this.resolveObject(docId);
     if (!doc || doc.object_type !== "document") {
-      throw new Error("Dokument neexistuje — id výkresu zisti cez get_object(include=drawings).");
+      throw new Error("Dokument neexistuje - id dokumentu zisti cez get_object(include=documents).");
     }
 
     const focusId = typeof input.focus_id === "string" && isUuid(input.focus_id.trim())

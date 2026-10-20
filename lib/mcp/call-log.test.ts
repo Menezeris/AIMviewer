@@ -25,6 +25,7 @@ describe("mcp_call_log (D-100)", () => {
     expect(callAction({ mode: "count" })).toBe("count");
     expect(callAction({ source: "ifc" })).toBe("ifc");
     expect(callAction({ action: "info", mode: "x" })).toBe("info");
+    expect(callAction({ route: "escape", a: "1.01" })).toBe("escape");
   });
 
   it("zapíše riadok", async () => {
