@@ -398,7 +398,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "predefined_type), konkrétne prvky v ids_or_refs (object_ref aj kód prvku ako 'SD04.0001' netreba hľadať " +
       "vopred). select=true = VYBERIE jeden prvok ako klik myšou a otvorí jeho panel vlastností ('vyber / označ " +
       "X', 'ukáž jeho vlastnosti'): panel_tab aim | ifc, panel_section properties | quantities, highlight " +
-      "'Pset.Vlastnosť' zvýrazní riadok; hodnoty do odpovede ber z ifc_get. clear=true zruší zvýraznenie, so " +
+      "'Pset.Vlastnosť' zvýrazní riadok; panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
       "select=true výber. Funguje pre prvky s IFC GUID.",
     inputSchema: {
       type: "object",
@@ -1347,7 +1347,7 @@ export class AskToolRuntime {
       in_aim: false,
       source: "ifc",
       ...(hits.length === 1 ? hits[0] : { candidates: hits.slice(0, 5) }),
-      hint: "Prvok je len v IFC súbore (v grafe AIM nie je). Ako cieľ ho do set_section / show_in_3d / get_viewer_state daj kódom alebo global_id; vlastnosti a podlažie dá ifc_get.",
+      hint: "Prvok je len v IFC súbore (v grafe AIM nie je); storey = podlažie zo súboru (aj cez celok, napr. schodisko). Ako cieľ ho do set_section / show_in_3d / get_viewer_state daj kódom alebo global_id; vlastnosti a materiály dá ifc_get.",
     };
   }
 

@@ -5232,6 +5232,11 @@ namiesto pridávania.
      meno ostáva ako `legacyTools`, `/api/ask` bez motora ho má ďalej), `ifc_query(mode=count)` prijme
      `material` a `ifc_models` má schému triedy na začiatku opisu (C7: jeden z dvoch behov odpovedal z pamäti).
 
+7. **Zvyšky po záverečnom evale** (pridelené orchestrátorom so súhlasom Samuela, bez nového toolu): D7 -
+   `get_object` pre prvok len v IFC vráti `storey` (podlažie nahor cez IfcRelAggregates /
+   IfcRelContainedInSpatialStructure, `lib/engine/names.ts`); V6 - opis výberu neradí `ifc_get`, keď panel
+   hodnoty ukáže sám.
+
 **Zavrhnuté:**
 - *Jeden veľký PR:* regresiu vo výbere toolu by nebolo vidieť po skupinách.
 - *Premenovať všetko na nové mená (`ifc_model`, `find_objects`...):* rozbije porovnanie s
