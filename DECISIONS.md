@@ -5602,6 +5602,44 @@ meshov a jeho výsledok je to, čo sa má ukázať; rozlišovací parameter `sho
 - *Vlastný renderer kót vo forku:* upstream Measure už kreslí, popisuje a maže merania (D-098).
 - *Úsečka zo stredu `closest_point` a obálky clash výsledku:* obálka úsečky neurčuje, ktorá uhlopriečka je
   úsečka.
+### D-120 - Rez: vzhľad reznej plochy z chatu (šrafa, výplň) a vynechanie prvkov z rezu
+
+**Dátum:** 2026-10-20 · **Stav:** časť 1 prijatá (implementovaná), časť 2 čaká na Samuela · **Súvisí:** D-083, D-085, D-092, D-094, D-098, D-114 · **Issues:** #138, #139 · **PR:** Menezeris/ifc-lite (fork), AIMviewer (tento)
+
+**Kontext:** pri reze nad podlažím viewer kreslí rezné plochy so šrafou a žiadny tool ju nevie
+vypnúť; šrafa prekrýva ofarbenie Lens (miestnosti Retail 1/2) a znižuje čitateľnosť (#138).
+Druhá potreba (#139): ukázať celý objem ofarbených miestností (IfcSpace), kým ostatné konštrukcie
+ostanú prerezané.
+
+**Najbližšie tooly (D-114):** `set_section` (rez, widget; vzhľad plochy neovláda), `style_in_3d`
+(farba prvkov, nie rezná plocha, ktorú kreslí renderer rezu), `set_view_mode` (len režim).
+Obe potreby sú parameter `set_section`, nie nový tool.
+
+**Rozhodnutie:**
+1. **Vzhľad reznej plochy (#138):** `set_section` dostane `cap_style` = `hatch | solid | none` a
+   `cap_color` (`#rrggbb`, samotná farba = plná výplň). Platí pri `action=set` aj pri
+   `action=widget` (aktívny rez bez zmeny polohy). Op `section_cap:<cap>[~c=<hex>]:`
+   (`lib/viewer-section-cap.ts`), bridge `SET_SECTION_CAP` vo forku (`aim/sectionCap.ts`).
+   Podľa D-098 nič nové: fork volá tie isté setery store ako tlačidlo Fill slice a popover Cap
+   (`setSectionShowCap`, `setSectionCapStyle`). Preto voľba platí pre všetky roviny a viewer si ju
+   pamätá v prehliadači ako po kliknutí; `hatch` vráti šrafu, ktorá bola pred plnou výplňou.
+   `none` skryje plochy, obrysové čiary rezu ostávajú.
+2. **Vynechanie prvkov z rezu (#139):** fork ani upstream ifc-lite to nevedia. Rovina rezu sa v
+   shaderi uplatňuje pre celé dávky geometrie (bit `flags.y` v uniformách, `packages/renderer`),
+   nie po prvkoch, takže to nejde mostom ani v `apps/viewer/src/aim/`. Riešenie by bolo per-entity
+   tabuľka "nereže sa" v rendereri (vzor: tabuľka farieb #6076) s testom v hlavnom shaderi, v
+   tieňoch a pri výpočte rezných plôch, a parameter `set_section` (napr. `exclude_ids_or_refs`,
+   `exclude_ifc_types`). To je zmena upstream balíka forku (plné CI, odchýlka pri každej
+   synchronizácii, ponuka upstreamu). Čaká na Samuelovo rozhodnutie v #139.
+
+**Zavrhnuté:**
+- *Nový tool `set_section_style`:* to isté ako parameter `set_section` (D-114).
+- *Vzhľad plochy len pre jeden rez:* store forku ho drží ako jednu voľbu pre všetky roviny
+  (#7545 upstream); vlastná per-rez kópia by bola nová funkcia nad rámec D-098.
+- *Ukladanie vzhľadu do uloženého pohľadu (D-117):* zatiaľ nie; dá sa doplniť, keď sa D-117 zlúči.
+
+**Poradie zlúčenia:** najprv fork, potom AIMviewer. Starší viewer `SET_SECTION_CAP` ticho ignoruje.
+
 
 ### D-122 - Uložené pohľady viewera: `saved_view`, zoznam v `get_viewer_state`, obnova v `set_view_mode`
 **Status:** rozhodnuté (2026-10-20, pôvodne D-117, prečíslované pre kolíziu v registri #60; Samuel cez orchestrátora: pohľady sú spoločné pre stavbu a žijú
