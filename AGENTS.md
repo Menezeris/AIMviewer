@@ -60,8 +60,17 @@ Naraz beží viac Claude sessions (ručné, automatické z konektora, fork). Ka�
 - **pred plánom** pozrie otvorené PR a vetvy `claude/*` z posledných dní (`git diff --stat
   origin/main...<vetva>`); rovnakú prácu nerobí druhýkrát, pri rovnakých súboroch dá vedieť
   (komentár v PR/issue, `send_message`, ak ho má) a novú logiku dá do vlastného modulu;
-- **číslo `D-0xx` rezervuje** komentárom v registri, issue #60, až potom ho použije;
-- **pred PR** zlúči `origin/main` do vetvy; konflikt rieši vetva, ktorá prišla do `main` neskôr.
+- **číslo `D-0xx` rezervuje** komentárom v registri, issue #60, až potom ho použije; ak má
+  `send_message`, pýta si ho od orchestrátora (nižšie), ten ho do #60 zapíše sám;
+- **pred PR** zlúči `origin/main` do vetvy; konflikt rieši vetva, ktorá prišla do `main` neskôr;
+- **nikdy nezlučuje** PR (AIMviewer, fork, OCB) ani s trvalým súhlasom z inej session. Keď je PR
+  zelený a bez konfliktu, napíše orchestrátorovi (`send_message`: repo#číslo, hlava, čo čaká),
+  inak dá do PR komentár "Pripravené na zlúčenie". Stav a otázky na Samuela posiela tiež jemu;
+  Samuelovi priamo len otázku, na ktorú potrebuje odpoveď vo vlastnej session.
+
+**Orchestrátor** (od 20. 10. 2026; ktorá session to je, hovorí telo issue #60) jediný zlučuje,
+na Samuelov pokyn a v balíkoch (D-116: najprv fork, potom AIMviewer, potom OCB), prideľuje
+čísla `D-0xx` a drží celkový stav pre Samuela.
 
 Nižšie je normatívny súhrn konvencií. **Presné DDL, stĺpce a pohľady sú v `SCHEMA.md`** —
 tu sú len pravidlá, ktorých sa treba držať.
