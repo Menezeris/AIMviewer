@@ -37,12 +37,12 @@ Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/vie
   Parametre: `ids_or_refs`, `id_or_ref`, `clear`, `global_ids`, `ifc_type`, `predefined_type`, `query`, `object_type`, `select`, `panel_tab=aim|ifc`, `panel_section=properties|quantities`, `highlight`
 - **`style_in_3d`** (D-066, čítanie) - UI AKCIA: ofarbí / skryje / znova zobrazí / izoluje prvky v 3D modeli, alebo resetne pohľad.
   Parametre: `action*=colorize|transparent|hide|show|isolate|xray|show_all|reset_colors`, `mode=add|replace`, `color_by=ifc_type|system|zone|material|model|classification|property|attribute`, `color_by_key`, `color`, `ids_or_refs`, `global_ids`, `ifc_type`, `ifc_types`, `domain=hvac|plumbing|electrical|architecture|structure`, `model`, `predefined_type`, `property`, `value`, `pset`, `query`, `system`, `system_type`, `not_in_system`, `zone`, `storey`, `document`, `page`, `groups`
-- **`open_drawing`** (D-056, čítanie) - UI AKCIA: otvorí výkres/dokument v prehliadačke, voliteľne so zvýrazneným prvkom a stranou.
-  Parametre: `document_id*`, `focus_id`, `page`, `in_viewer`
+- **`open_drawing`** (D-056, čítanie) - UI AKCIA: otvorí výkres/dokument v prehliadačke, voliteľne so zvýrazneným prvkom, stranou, výrezom strany (region = priblíženie na časť strany v karte vo vieweri) a rámikmi okolo textu (highlights).
+  Parametre: `document_id*`, `focus_id`, `page`, `in_viewer`, `region`, `highlights`
 - **`open_node`** (D-056, čítanie) - UI AKCIA: otvorí detailnú kartu uzla (asset, typ, miestnosť, podlažie, systém, osoba, organizácia…).
   Parametre: `id_or_ref*`
-- **`search_documents`** (D-063, čítanie) - Fulltextové vyhľadávanie v OBSAHU dokumentov/výkresov (extrahovaný text PDF strán — legendy, špecifikácie, popisky, pečiatky).
-  Parametre: `q*`, `limit`
+- **`search_documents`** (D-063, čítanie) - OBSAH dokumentov a výkresov (textová vrstva PDF strán: popisky a čísla miestností, kóty, hrúbky, legendy, špecifikácie, pečiatky, text technických správ).
+  Parametre: `q`, `document_id`, `page`, `include_blocks`, `limit`
 - **`set_section`** (D-083, čítanie) - UI AKCIA: rez modelom v 3D. Vodorovný rez nad podlažím = floor + offset_m (výška nad úrovňou podlažia v m, default 1,2 = pôdorysný rez; záporná = pod úrovňou).
   Parametre: `action*=set|clear|widget`, `orientation=horizontal|vertical_x|vertical_z`, `floor`, `offset_m`, `relative_to=floor|ceiling`, `position_percent`, `target_ids_or_refs`, `global_ids`, `fit=along|across|center`, `coordinate_m`, `flipped`, `show_widget`, `cap_style=hatch|solid|none`, `cap_color`
 - **`set_camera`** (D-083, čítanie) - UI AKCIA: kamera v 3D. preset = smer pohľadu (top/bottom/front/back/left/right/iso; fit_all = celý model; section = kolmo na aktívny rez, ako tlačidlo Set view; keep = zachovať smer, default). fit = čo zarámovať pri danom smere: visible (viditeľné, aj izolované prvky), selection (výber vo vieweri).
