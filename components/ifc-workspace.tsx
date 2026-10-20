@@ -14,6 +14,7 @@ import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { CaptureGallery } from "@/components/capture-gallery";
 import { Button } from "@/components/ui/button";
+import { ViewerPicker, useViewerChoice } from "@/components/viewer-picker";
 
 // 3D viewer je embed-nutý ifc-lite viewer cez iframe (postMessage bridge),
 // nie in-process three.js. Rovnaké Props + ViewerApi, takže workspace je bez zmeny.
@@ -74,6 +75,8 @@ export default function IFCWorkspace({
   const searchParams = useSearchParams();
   const viewerApiRef = useRef<ViewerApi | null>(null);
   const [siblingLoading, setSiblingLoading] = useState(false);
+  // Vložený viewer (D-116): produkcia alebo náhľad PR forku z výberu nad 3D.
+  const viewer = useViewerChoice();
 
   // Reality Capture (D-073): AIM karta v 3D odkazuje na /ifc?captures=<spaceId>
   // (soft-nav, iframe sa neremountuje) → galéria priestoru ako overlay nad 3D.
@@ -108,28 +111,37 @@ export default function IFCWorkspace({
 
   return (
     <div className="relative h-full w-full">
-      <IFCViewer
-        models={models}
-        guidMap={guidMap}
-        focus={focus}
-        focusNonce={focusNonce}
-        ops={ops}
-        underlays={underlays}
-        documents={documents}
-        openDocumentId={openDocumentId}
-        captures={captures}
-        decorations={decorations}
-        derivations={derivations}
-        apiRef={viewerApiRef}
-        onPickedElement={handlePickedElement}
-        onNavigate={(href) => router.push(href)}
-        onCaptureClick={(captureId) => {
-          // 3D → host: klik na capture pin → otvor priestor so snímkami (galéria
-          // na /node/[space]). Obojsmernosť „snímka ↔ priestor" (D-073).
-          const pin = captures?.find((c) => c.id === captureId);
-          if (pin?.spaceId) router.push(`/node/${pin.spaceId}`);
-        }}
-      />
+      {viewer.viewerUrl ? (
+        <IFCViewer
+          viewerUrl={viewer.viewerUrl}
+          models={models}
+          guidMap={guidMap}
+          focus={focus}
+          focusNonce={focusNonce}
+          ops={ops}
+          underlays={underlays}
+          documents={documents}
+          openDocumentId={openDocumentId}
+          captures={captures}
+          decorations={decorations}
+          derivations={derivations}
+          apiRef={viewerApiRef}
+          onPickedElement={handlePickedElement}
+          onNavigate={(href) => router.push(href)}
+          onCaptureClick={(captureId) => {
+            // 3D → host: klik na capture pin → otvor priestor so snímkami (galéria
+            // na /node/[space]). Obojsmernosť „snímka ↔ priestor" (D-073).
+            const pin = captures?.find((c) => c.id === captureId);
+            if (pin?.spaceId) router.push(`/node/${pin.spaceId}`);
+          }}
+        />
+      ) : (
+        <div className="flex h-full items-center justify-center rounded-md text-sm text-muted-foreground ring-1 ring-border">
+          {viewer.error ?? "Načítavam náhľad viewera…"}
+        </div>
+      )}
+
+      <ViewerPicker choice={viewer.choice} error={viewer.viewerUrl ? viewer.error : null} onChoose={viewer.setChoice} />
 
       {siblingLoading && (
         <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-background/80 px-3 py-1 text-xs text-muted-foreground shadow backdrop-blur-sm">

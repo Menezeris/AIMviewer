@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-20** - **D-116 (release train, rozširuje D-103):** feature PR forku len rýchla cesta, plné CI raz na balíku `release/aim-*` (merge na pokyn Samuela), výber viewera nad 3D (`?viewer=pr-N`, náhľad PR forku) na živé testovanie s MCP pred zlúčením, smoke po nasadení, tag balíka (ifc-lite #77).
 - **2026-10-19** - **D-112 (meranie z geometrie, #74):** `ifc_measure` tesseluje model ako `clash_check` a meria svetlú vzdialenosť dvoch prvkov (aj ASR voči VZT), výšku nad doskou, rozmery, povrch, pôdorys a objem z meshu s porovnaním s Qto.
 - **2026-10-19** - **D-110 (prechod VZT sieťou, #75):** `ifc_relations(through_ports, recursive, stop_at)` prejde sieť cez porty a vráti najbližšiu jednotku alebo klapku (aj `IfcDamper.FIREDAMPER`) s cestou a `path_show_in_3d`; `max_steps`, `cut_off`.
 - **2026-10-19** - **D-109 (verzia modelu v ifc_models, #73):** aktuálna revízia z `model_revisions` (vNNN, dátum, autor, súhrn, sha256, poistka), `history: N`, cesta k zoznamu zmien v OCB; `loaded` vysvetlené ako cache motora; CRS a hlavička ostávajú v `ifc_model_info`.
@@ -5237,4 +5238,45 @@ namiesto pridávania.
   predchádzajúcimi kolami v `mcp_call_log` a evaloch bez úžitku pre agenta.
 - *Okamžite zmazať staré mená:* claude.ai drží zoznam toolov počas konverzácie, rozpracované
   rozhovory by padali na "Neznámy tool".
+
+---
+
+### D-116 - Release train: rýchle PR, plné CI raz na balík, výber viewera na skúšanie pred zlúčením
+
+**Dátum:** 2026-10-20 · **Stav:** prijaté (Samuel) · **Súvisí:** D-103 (predchodca, rozširuje ho), D-098, D-090 · **PR:** Menezeris/ifc-lite#77, AIMviewer (tento)
+
+**Kontext:** aplikáciu zatiaľ používa len Samuel. Chce nové funkcie vyskúšať naživo vrátane MCP
+skôr, ako idú do produkcie, a zlučovať ich po 3 až 4 naraz, aby plné CI forku (asi 64 kontrol,
+30 až 40 min) bežalo raz za balík, nie za každý PR a každú opravu. Produkcia sa nasadzuje hneď po
+zlúčení a ostáva tak (rýchla spätná väzba je cennejšia než staging, kým nie sú verejní používatelia).
+
+**Rozhodnutie:**
+1. **Feature PR forku ide vždy rýchlou cestou** (`aim-fast.yml`, asi 10 min: AIM testy, typecheck,
+   build viewera, súvisiace viewer testy, bundle). Plné `test.yml` beží len na balíku
+   `release/aim-*`, synchronizácii s originálom a so štítkom `ci:full`.
+2. **Feature PR sa nezlučuje samostatne.** Je pripravený, keď je rýchla cesta zelená a v PR je sekcia
+   "Ako vyskúšať" s odkazom `https://ai-mviewer.vercel.app/ifc?viewer=pr-<číslo>`.
+3. **Výber viewera v AIMvieweri:** `?viewer=pr-N` (alebo čip nad 3D so zoznamom otvorených PR forku)
+   vloží namiesto produkčného viewera náhľad PR. Zoznam a URL náhľadov idú z GitHub Deployments
+   (`/api/viewer-previews`). Povolené sú len produkčný viewer a náhľady projektu `ifc-lite-viewer`.
+   Voľba sa pamätá v karte (sessionStorage), takže navigácie AI docku a MCP ju nezrušia; MCP
+   príkazy idú do otvorenej stránky AIMviewera, teda do vybraného viewera.
+4. **Balík:** na Samuelov pokyn ("zlúč 73, 74, 76") agent vytvorí `release/aim-<dátum>`, zlúči PR
+   merge commitmi, vyrieši konflikty, otvorí balíkový PR s plným CI a vlastným náhľadom. Do `main`
+   ide na Samuelov pokyn. Postup: skill `release-train` vo forku.
+5. **Po zlúčení:** tag `aim-release-<dátum>-<sha>`, smoke test produkcie po nasadení (most `READY`
+   a `QUERY view_state`), červený smoke založí issue; návrat cez Vercel Instant Rollback.
+6. Nové MCP tooly v AIMvieweri sa naďalej zlučujú rovno (testovací konektor na náhľad by bol
+   zložitý); toto rozhodnutie sa týka zmien vo vieweri.
+
+**Zavrhnuté:**
+- *Nasadzovať produkciu len zo zeleného nočného behu:* Samuel by novú funkciu nevidel hneď;
+  verejnosť zatiaľ nie je.
+- *Merge queue GitHubu:* na osobnom účte nie je dostupná; balík robí to isté ručne.
+
+**Potrebné nastavenie:** vo Verceli projekt `ifc-lite-viewer`, Deployment Protection, Vercel
+Authentication vypnúť pre Preview, inak sa náhľad v iframe nenačíta. Pre zoznam náhľadov stačí
+`FEEDBACK_GITHUB_TOKEN` (alebo vlastný `GITHUB_PREVIEWS_TOKEN`).
+
+**Detail:** `docs/FORK_MAINTENANCE.md` vo forku, sekcia "Release train".
 
