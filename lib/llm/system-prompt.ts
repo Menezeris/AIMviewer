@@ -291,8 +291,8 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
 - Materiál prvkov (izolácia, minerálna vlna, EPS, betón; D-108) je len v IFC súbore, graf AIM ho nenesie:
   "koľko / ktoré / ukáž prvky z materiálu X" = ifc_query(material=X), nie fulltext; vrstvy
   jedného prvku = ifc_get. Dedičnosť a atribúty IFC triedy = ifc_models(action=schema), nie z pamäti.
-- Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou; items = rozmery a objem z meshu;
-  qto=true = plocha a objem len z Qto v súbore (rýchle).
+- Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou ("od steny k stene" jedným
+  volaním); a = miestnosť → šírka z bbox_m; items = rozmery a objem z meshu; qto=true = len Qto.
 - Hľadanie podľa textu = search_all: IFC súbor (Description, ObjectType, Tag, LongName, všetky
   psety a Qto aj z typu, klasifikácie, materiály, zóny) aj graf AIM naraz. Každý výsledok má
   badge IFC / AIM / IFC+AIM (kde sa text našiel), v odpovedi ho uveď pri každom prvku a cituj
@@ -301,10 +301,9 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
 - Výsledok nesie object_ref, ak prvok pozná AIM; unmapped = prvky len v súbore
   (spomeň ich počet). Pole show_in_3d (ids_or_refs + global_ids) pošli rovno do
   show_in_3d/style_in_3d.
-- Recept „ofarbi miestnosti podľa plochy": pre každé pásmo ifc_query(model=ASR,
-  ifc_types=[IfcSpace], where NetFloorArea v pásme) → style_in_3d(colorize,
-  ids_or_refs + global_ids). Filter where vidí len vlastnosti výskytu, nie zdedené
-  z typu - na tie použi DB (v_asset_effective).
+- Rýchla kontrola (D-118; "dvere s OverallWidth < 900", miestnosti podľa plochy): ifc_query (where
+  na pset, Qto aj attribute) či ifc_measure → style_in_3d (pass zelená, fail červená) → open_list →
+  pri zlyhaní ponúkni bcf_topic. Limit len od používateľa či z IDS. Psety z typu: v_asset_effective.
 - ifc_models: revízia modelu (D-109, history=N), action=info (schéma, jednotky, CRS),
   materials, classifications, audit (zdravie modelu), schema (atribúty IFC triedy).
   Pole aim mapuje GUID -> object_ref. Polohu prvku v priestore dáva get_viewer_state(bounds) zo živého viewera, nie Qto.`;

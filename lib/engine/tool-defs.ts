@@ -19,17 +19,19 @@ const whereSchema = {
   maxItems: 3,
   description:
     "Podmienky na hodnoty psetov (AND), napr. [{pset:'Qto_SpaceBaseQuantities', name:'NetFloorArea', " +
-    "op:'>', value:20}]. Prvá podmienka smie mať aj op contains/exists/matches, ďalšie len = != > < >= <=. " +
-    "Čítajú sa vlastnosti výskytu (nie zdedené z typu).",
+    "op:'>', value:20}]. IFC atribút namiesto psetu: {attribute:'OverallWidth', op:'<', value:900} (jednotky " +
+    "súboru, na ASR mm; potrebuje ifc_types). Prvá podmienka na pset smie mať aj op contains/exists/matches, " +
+    "ďalšie len = != > < >= <=. Čítajú sa vlastnosti výskytu (nie zdedené z typu).",
   items: {
     type: "object",
     properties: {
       pset: { type: "string" },
       name: { type: "string" },
+      attribute: { type: "string", description: "IFC atribút entity (OverallWidth, OverallHeight, LongName, Tag) namiesto pset + name" },
       op: { type: "string", enum: OPS as unknown as string[] },
       value: { description: "Číslo, text alebo boolean (pri exists netreba)" },
     },
-    required: ["pset", "name", "op"],
+    required: ["op"],
   },
 };
 
@@ -169,7 +171,9 @@ export function engineToolDefinitions(): ToolDefinition[] {
       description:
         "IFC MOTOR: meranie z geometrie (nie z Qto). a + b = svetlá vzdialenosť povrchov dvoch prvkov (aj ASR " +
         "voči VZT; záporná = prienik), vzdialenosť stredov, medzera obálok po osiach X/Y/Z a vodorovne, " +
-        "a_above_b_m = výška spodku a nad vrchom b (napr. klapka nad doskou: b = doska). Len a alebo items = " +
+        "a_above_b_m = výška spodku a nad vrchom b (napr. klapka nad doskou: b = doska). \"Od steny k stene\" = " +
+        "jedno volanie a + b (dve steny), clear_distance_m je svetlá vzdialenosť; šírka obdĺžnikovej miestnosti " +
+        "alebo chodby = a = miestnosť (IfcSpace), bbox_m x/y. Len a alebo items = " +
         "rozmery obálky, povrch, pôdorys a objem z meshu, porovnané s Qto zo súboru (vs_qto, mismatch nad 5 %), " +
         "pri viacerých aj súčet. Objem množiny podľa filtra: GUIDy z ifc_query do items (max 50). Prvé volanie " +
         "nad modelom ho tesseluje (ASR ~4 s), ďalšie sú rýchle.",
