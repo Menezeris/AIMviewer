@@ -16,8 +16,8 @@ export const MAX_STYLE_GROUPS = 12;
 export const SCOPED_GUID_CAP = 500;
 
 const HEX6 = /^[0-9a-f]{6}$/;
-/** Akcie, pri ktorých má skupina farbu (Lens, D-096); pri izolácii je farba voliteľná. */
-const COLOR_ACTIONS = new Set(["colorize", "transparent", "isolate"]);
+/** Akcie, pri ktorých má skupina farbu (Lens, D-096); pri izolácii a X-ray je farba voliteľná. */
+const COLOR_ACTIONS = new Set(["colorize", "transparent", "isolate", "xray"]);
 
 /** Kľúče filtra, ktoré smie niesť top-level vstup aj skupina. */
 export const FILTER_KEYS = [
@@ -99,7 +99,7 @@ export function parseStyleGroups(input: Record<string, unknown>, action: string)
     if (!COLOR_ACTIONS.has(action)) return "";
     const c = normColor(raw);
     // Izolované prvky ostanú v pôvodnom vzhľade, kým farbu niekto nežiada (Samuel, 2026-10-19).
-    if (!c && action === "isolate") return "";
+    if (!c && (action === "isolate" || action === "xray")) return "";
     if (!HEX6.test(c)) throw new StyleInputError(`${where} musí byť hex RRGGBB (napr. ef4444 pre červenú).`);
     return c;
   };
@@ -107,7 +107,7 @@ export function parseStyleGroups(input: Record<string, unknown>, action: string)
     return [{ label: describeFilter(base), color: colorOf(input.color, "color"), filter: base }];
   }
   if (!COLOR_ACTIONS.has(action)) {
-    throw new StyleInputError("groups platí len s action=colorize, transparent alebo isolate (každá skupina má vlastnú farbu).");
+    throw new StyleInputError("groups platí len s action=colorize, transparent, isolate alebo xray (každá skupina má vlastnú farbu).");
   }
   const raw = input.groups as unknown[];
   if (raw.length === 0) throw new StyleInputError("groups je prázdne - zadaj aspoň jednu skupinu {color, filter}.");

@@ -91,6 +91,36 @@ describe("ifc_relations (D-097)", () => {
     expect(back.json.items[0].global_id).toBe(guid("DS1"));
   });
 
+  it("prechod sieťou (D-110): stop_at trieda aj Trieda.PREDEFINED, cesta a path_show_in_3d", async () => {
+    const ahu = await run({ target: guid("DS1"), through_ports: true, recursive: true, stop_at: ["IfcUnitaryEquipment"] });
+    expect(ahu.isError).toBe(false);
+    expect(ahu.json.reached).toEqual([
+      expect.objectContaining({ global_id: guid("AHU"), ifc_type: "IfcUnitaryEquipment", steps: 4, path: [guid("DS1"), guid("DMP"), guid("DS2"), guid("FD1"), guid("AHU")] }),
+    ]);
+    expect(ahu.json.path_show_in_3d.global_ids).toHaveLength(5);
+    // Obyčajná klapka DMP nie je požiarna: prechod ide cez ňu až po FD1 a ďalej nie.
+    const fire = await run({ target: guid("DS1"), through_ports: true, recursive: true, stop_at: ["IfcDamper.FIREDAMPER"] });
+    expect(fire.json.reached.map((r: { global_id: string; steps: number; predefined_type: string }) => [r.global_id, r.steps, r.predefined_type])).toEqual([
+      [guid("FD1"), 3, "FIREDAMPER"],
+    ]);
+    expect(guids(fire.json.items)).toEqual([guid("DMP"), guid("DS2"), guid("FD1")].sort());
+    // Trieda bez typu zastaví na prvej klapke.
+    const any = await run({ target: guid("DS1"), through_ports: true, recursive: true, stop_at: ["IfcDamper"] });
+    expect(any.json.reached.map((r: { global_id: string }) => r.global_id)).toEqual([guid("DMP")]);
+  });
+
+  it("prechod sieťou: max_steps oreže, bez stop_at celá sieť s hĺbkou a via", async () => {
+    const short = await run({ target: guid("DS1"), through_ports: true, recursive: true, stop_at: ["IfcUnitaryEquipment"], max_steps: 2 });
+    expect(short.json.reached).toEqual([]);
+    expect(short.json.cut_off).toMatch(/max_steps/);
+    const all = await run({ target: guid("AHU"), through_ports: true, recursive: true });
+    expect(all.json.total).toBe(4);
+    expect(all.json.items.find((i: { global_id: string }) => i.global_id === guid("DS1"))).toMatchObject({ depth: 4, via: guid("DMP") });
+    expect(all.json.filter).not.toHaveProperty("rel_types");
+    const bad = await run({ target: guid("DS1"), through_ports: true, stop_at: ["IfcDamper"] });
+    expect(bad.isError).toBe(true);
+  });
+
   it("systém: členovia a spätne systém prvku", async () => {
     const members = await run({ target: guid("SYS"), direction: "forward" });
     expect(guids(members.json.items)).toEqual([guid("DMP"), guid("DS1")].sort());
