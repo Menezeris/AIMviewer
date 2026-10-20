@@ -105,14 +105,15 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
   });
 
   it("chýbajúce povinné pole je chyba vstupu, nič sa nevolá", async () => {
-    const res = await execFeedbackTool("request_tool", { title: "x" }, deps());
+    const res = await execFeedbackTool("feedback", { action: "request_tool", title: "x" }, deps());
     expect(res).toEqual({ text: "Chýba user_request.", isError: true });
-    const bad = await execFeedbackTool("report_feedback", { kind: "spam", title: "a", description: "b" }, deps());
+    const bad = await execFeedbackTool("feedback", { action: "report", kind: "spam", title: "a", description: "b" }, deps());
+    expect(await execFeedbackTool("request_tool", { title: "x" }, deps())).toEqual({ text: "Neznámy tool: request_tool", isError: true });
     expect(bad.isError).toBe(true);
   });
 
   it("bez tokenu vráti koncept issue, aby sa požiadavka nestratila", async () => {
-    const res = await execFeedbackTool("request_tool", toolArgs, deps());
+    const res = await execFeedbackTool("feedback", { action: "request_tool", ...toolArgs }, deps());
     expect(res.isError).toBe(true);
     const out = JSON.parse(res.text);
     expect(out.error).toContain("FEEDBACK_GITHUB_TOKEN");
@@ -127,7 +128,7 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
       "POST /repos/Menezeris/AIMviewer/issues/12/labels": () => ({ json: [] }),
     });
     const fire = vi.fn(async () => ({ sessionId: "session_1", sessionUrl: "https://claude.ai/code/session_1" }));
-    const res = await execFeedbackTool("request_tool", toolArgs, deps({ client: gh.client, fire }));
+    const res = await execFeedbackTool("feedback", { action: "request_tool", ...toolArgs }, deps({ client: gh.client, fire }));
     expect(res.isError).toBe(false);
     expect(JSON.parse(res.text)).toMatchObject({
       issue: { number: 12 },
@@ -155,7 +156,7 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
       "GET /repos/Menezeris/AIMviewer/issues": () => ({ json: [other] }),
       "POST /repos/Menezeris/AIMviewer/issues": () => ({ status: 201, json: issue() }),
     });
-    const res = await execFeedbackTool("request_tool", toolArgs, deps({ client: gh.client }));
+    const res = await execFeedbackTool("feedback", { action: "request_tool", ...toolArgs }, deps({ client: gh.client }));
     expect(JSON.parse(res.text).other_open).toEqual([
       { number: 7, title: "Nový tool: Zóny podľa požiarneho úseku", session: true },
     ]);
@@ -175,7 +176,7 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
       "POST /repos/Menezeris/AIMviewer/issues/12/comments": () => ({ status: 201, json: { id: 2 } }),
     });
     const fire = vi.fn();
-    const res = await execFeedbackTool("request_tool", toolArgs, deps({ client: gh.client, fire }));
+    const res = await execFeedbackTool("feedback", { action: "request_tool", ...toolArgs }, deps({ client: gh.client, fire }));
     expect(JSON.parse(res.text)).toMatchObject({ duplicate: true, session: null });
     expect(fire).not.toHaveBeenCalled();
     expect(gh.calls.filter((c) => c.method === "POST")).toHaveLength(1);
@@ -189,7 +190,7 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
       "POST /repos/Menezeris/AIMviewer/issues/12/labels": () => ({ json: [] }),
     });
     const fire = vi.fn(async () => ({ sessionId: "s", sessionUrl: "https://claude.ai/code/s" }));
-    await execFeedbackTool("request_tool", toolArgs, deps({ client: gh.client, fire }));
+    await execFeedbackTool("feedback", { action: "request_tool", ...toolArgs }, deps({ client: gh.client, fire }));
     expect((fire.mock.calls[0] as unknown as [string])[0]).toContain("opakovanie: ano");
   });
 
@@ -198,7 +199,7 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
       "GET /repos/Menezeris/AIMviewer/issues": () => ({ json: [] }),
       "POST /repos/Menezeris/AIMviewer/issues": () => ({ status: 201, json: issue() }),
     });
-    const res = await execFeedbackTool("request_tool", toolArgs, deps({ client: gh.client }));
+    const res = await execFeedbackTool("feedback", { action: "request_tool", ...toolArgs }, deps({ client: gh.client }));
     const out = JSON.parse(res.text);
     expect(res.isError).toBe(false);
     expect(out.session).toBeNull();
@@ -218,8 +219,8 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
       },
     });
     const res = await execFeedbackTool(
-      "report_feedback",
-      { kind: "bug", title: "a", description: "b" },
+      "feedback",
+      { action: "report", kind: "bug", title: "a", description: "b" },
       deps({ client: gh.client }),
     );
     expect(res.isError).toBe(false);
@@ -233,8 +234,8 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
       "POST /repos/Menezeris/AIMviewer/issues": () => ({ status: 201, json: issue() }),
     });
     await execFeedbackTool(
-      "report_feedback",
-      { kind: "bug", title: "a", description: "konektor /api/mcp/tajny-token-123 padá" },
+      "feedback",
+      { action: "report", kind: "bug", title: "a", description: "konektor /api/mcp/tajny-token-123 padá" },
       deps({ client: gh.client, secrets: ["tajny-token-123"] }),
     );
     const body = (gh.calls[1].body as { body: string }).body;
@@ -311,26 +312,26 @@ describe("feedback_comment: komentár do issue konektora (D-090, #98)", () => {
     });
 
   it("je zápisový tool a overí vstup bez volania GitHubu", async () => {
-    expect(await execFeedbackTool("feedback_comment", { text: "x" }, deps())).toMatchObject({ isError: true });
+    expect(await execFeedbackTool("feedback", { action: "comment", text: "x" }, deps())).toMatchObject({ isError: true });
     // D-115: to isté cez feedback(action=comment); neznáma action je chyba vstupu.
     expect(await execFeedbackTool("feedback", { action: "comment", issue_number: 12 }, deps())).toEqual({
       text: "Chýba text.",
       isError: true,
     });
     expect((await execFeedbackTool("feedback", { action: "zmaz" }, deps())).text).toContain("request_tool");
-    expect(await execFeedbackTool("feedback_comment", { issue_number: 12 }, deps())).toEqual({
+    expect(await execFeedbackTool("feedback", { action: "comment", issue_number: 12 }, deps())).toEqual({
       text: "Chýba text.",
       isError: true,
     });
-    const bad = await execFeedbackTool("feedback_comment", { issue_number: 12, text: "x", kind: "spam" }, deps());
+    const bad = await execFeedbackTool("feedback", { action: "comment", issue_number: 12, text: "x", kind: "spam" }, deps());
     expect(bad.text).toContain("eval_round");
   });
 
   it("zapíše komentár s nadpisom druhu, skrytou značkou a vráti odkaz", async () => {
     const gh = commented();
     const res = await execFeedbackTool(
-      "feedback_comment",
-      { issue_number: 12, text: "| eval | pred | po |\n|---|---|---|\n| a | 5 | 3 |", kind: "eval_round" },
+      "feedback",
+      { action: "comment", issue_number: 12, text: "| eval | pred | po |\n|---|---|---|\n| a | 5 | 3 |", kind: "eval_round" },
       deps({ client: gh.client }),
     );
     expect(res.isError).toBe(false);
@@ -349,8 +350,8 @@ describe("feedback_comment: komentár do issue konektora (D-090, #98)", () => {
   it("tajomstvá z textu skryje", async () => {
     const gh = commented();
     await execFeedbackTool(
-      "feedback_comment",
-      { issue_number: 12, text: "token tajny-token-123" },
+      "feedback",
+      { action: "comment", issue_number: 12, text: "token tajny-token-123" },
       deps({ client: gh.client, secrets: ["tajny-token-123"] }),
     );
     const body = (gh.calls[1].body as { body: string }).body;
@@ -370,7 +371,7 @@ describe("feedback_comment: komentár do issue konektora (D-090, #98)", () => {
   it("do zatvoreného issue zapíše komentár a bez reopen ho nechá zatvorené", async () => {
     const gh = closed();
     const out = JSON.parse(
-      (await execFeedbackTool("feedback_comment", { issue_number: 12, text: "x" }, deps({ client: gh.client }))).text,
+      (await execFeedbackTool("feedback", { action: "comment", issue_number: 12, text: "x" }, deps({ client: gh.client }))).text,
     );
     expect(out).toMatchObject({ issue: { state: "closed" }, comment: { id: 5 }, reopened: false });
     expect(gh.calls.some((c) => c.method === "PATCH")).toBe(false);
@@ -379,7 +380,7 @@ describe("feedback_comment: komentár do issue konektora (D-090, #98)", () => {
   it("reopen=true zatvorené issue najprv znovu otvorí, potom zapíše komentár", async () => {
     const gh = closed();
     const out = JSON.parse(
-      (await execFeedbackTool("feedback_comment", { issue_number: 12, text: "x", reopen: true }, deps({ client: gh.client })))
+      (await execFeedbackTool("feedback", { action: "comment", issue_number: 12, text: "x", reopen: true }, deps({ client: gh.client })))
         .text,
     );
     expect(out).toMatchObject({ issue: { state: "open" }, reopened: true });
@@ -390,7 +391,7 @@ describe("feedback_comment: komentár do issue konektora (D-090, #98)", () => {
   it("reopen pri otvorenom issue nič neotvára", async () => {
     const gh = commented();
     const out = JSON.parse(
-      (await execFeedbackTool("feedback_comment", { issue_number: 12, text: "x", reopen: true }, deps({ client: gh.client })))
+      (await execFeedbackTool("feedback", { action: "comment", issue_number: 12, text: "x", reopen: true }, deps({ client: gh.client })))
         .text,
     );
     expect(out.reopened).toBe(false);
@@ -400,14 +401,14 @@ describe("feedback_comment: komentár do issue konektora (D-090, #98)", () => {
   it("odmietne issue mimo konektora a PR", async () => {
     for (const over of [{ labels: [{ name: "bug" }] }, { pull_request: {} }]) {
       const gh = fakeGithub({ "GET /repos/Menezeris/AIMviewer/issues/12": () => ({ json: issue(over) }) });
-      const res = await execFeedbackTool("feedback_comment", { issue_number: 12, text: "x" }, deps({ client: gh.client }));
+      const res = await execFeedbackTool("feedback", { action: "comment", issue_number: 12, text: "x" }, deps({ client: gh.client }));
       expect(res.isError).toBe(true);
       expect(gh.calls.some((c) => c.method === "POST")).toBe(false);
     }
   });
 
   it("bez tokenu vráti koncept komentára", async () => {
-    const out = JSON.parse((await execFeedbackTool("feedback_comment", { issue_number: 12, text: "x" }, deps())).text);
+    const out = JSON.parse((await execFeedbackTool("feedback", { action: "comment", issue_number: 12, text: "x" }, deps())).text);
     expect(out.error).toContain("FEEDBACK_GITHUB_TOKEN");
     expect(out.draft.issue_number).toBe(12);
   });
@@ -453,7 +454,7 @@ describe("strop súbežných sessions a fronta (D-090)", () => {
       "POST /repos/Menezeris/AIMviewer/issues/12/labels": () => ({ json: [] }),
     });
     const fire = fired();
-    const res = await execFeedbackTool("request_tool", toolArgs, deps({ client: gh.client, fire }));
+    const res = await execFeedbackTool("feedback", { action: "request_tool", ...toolArgs }, deps({ client: gh.client, fire }));
     const out = JSON.parse(res.text);
     expect(out).toMatchObject({ queued: true, session: null });
     expect(out.session_note).toContain("pozícia 1");
@@ -474,7 +475,7 @@ describe("strop súbežných sessions a fronta (D-090)", () => {
       "POST /repos/Menezeris/AIMviewer/issues/12/labels": () => ({ json: [] }),
     });
     const fire = fired();
-    const out = JSON.parse((await execFeedbackTool("request_tool", toolArgs, deps({ client: gh.client, fire }))).text);
+    const out = JSON.parse((await execFeedbackTool("feedback", { action: "request_tool", ...toolArgs }, deps({ client: gh.client, fire }))).text);
     expect(out.queued).toBe(false);
     expect(fire).toHaveBeenCalledTimes(1);
   });
@@ -486,7 +487,7 @@ describe("strop súbežných sessions a fronta (D-090)", () => {
     });
     const fire = fired();
     const out = JSON.parse(
-      (await execFeedbackTool("request_tool", { ...toolArgs, start_session: false }, deps({ client: gh.client, fire })))
+      (await execFeedbackTool("feedback", { action: "request_tool", ...toolArgs, start_session: false }, deps({ client: gh.client, fire })))
         .text,
     );
     expect(out).toMatchObject({ queued: false, session: null });
@@ -503,7 +504,7 @@ describe("strop súbežných sessions a fronta (D-090)", () => {
       "DELETE /repos/Menezeris/AIMviewer/issues/20/labels/fronta": () => ({ json: [] }),
     });
     const fire = fired();
-    const out = JSON.parse((await execFeedbackTool("start_queued_session", {}, deps({ client: gh.client, fire }))).text);
+    const out = JSON.parse((await execFeedbackTool("feedback", { action: "start_session" }, deps({ client: gh.client, fire }))).text);
     expect(out.started).toMatchObject({ number: 20 });
     expect(out.queue_left).toEqual([{ number: 21, title: "Čaká 21" }]);
     expect((fire.mock.calls[0] as unknown as [string])[0]).toContain("druh: pripomienka");
@@ -517,7 +518,7 @@ describe("strop súbežných sessions a fronta (D-090)", () => {
       }),
     });
     const fire = fired();
-    const res = await execFeedbackTool("start_queued_session", {}, deps({ client: gh.client, fire }));
+    const res = await execFeedbackTool("feedback", { action: "start_session" }, deps({ client: gh.client, fire }));
     const out = JSON.parse(res.text);
     expect(out.started).toBeNull();
     expect(out.running.map((i: { number: number }) => i.number)).toEqual([1, 2, 3]);
@@ -527,7 +528,7 @@ describe("strop súbežných sessions a fronta (D-090)", () => {
 
   it("start_queued_session s prázdnou frontou to povie bez chyby", async () => {
     const gh = fakeGithub({ "GET /repos/Menezeris/AIMviewer/issues": () => ({ json: [running(1)] }) });
-    const res = await execFeedbackTool("start_queued_session", {}, deps({ client: gh.client, fire: fired() }));
+    const res = await execFeedbackTool("feedback", { action: "start_session" }, deps({ client: gh.client, fire: fired() }));
     expect(res.isError).toBe(false);
     expect(JSON.parse(res.text).note).toBe("Fronta je prázdna.");
   });

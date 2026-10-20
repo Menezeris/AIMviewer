@@ -4,7 +4,7 @@ import { MINI_BUILDING_BYTES, guid } from "./__fixtures__/mini-building";
 import { clearEngineCache } from "./cache";
 import type { AimRef } from "./join";
 import { editDistance, entityFields, normalizeText, searchEntities, type IndexedEntity } from "./search";
-import { execEngineTool, type EngineDeps } from "./tools";
+import { ifcSearchResult, type EngineDeps } from "./tools";
 
 const fetchImpl = (async () => new Response(MINI_BUILDING_BYTES, { status: 200, headers: { etag: '"mini"' } })) as typeof fetch;
 
@@ -21,11 +21,16 @@ const deps: EngineDeps = {
 };
 
 const run = async (input: Record<string, unknown>) => {
-  const res = await execEngineTool("ifc_search", input, deps);
-  return { ...res, json: res.isError ? null : JSON.parse(res.content) };
+  try {
+    const json = await ifcSearchResult(input, deps);
+    return { isError: false, content: JSON.stringify(json), json };
+  } catch (err) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return { isError: true, content: err instanceof Error ? err.message : String(err), json: null as any };
+  }
 };
 
-describe("ifc_search (D-095)", () => {
+describe("hľadanie v IFC súbore, search_all source=ifc (D-095)", () => {
   afterEach(() => clearEngineCache());
 
   it("nájde LongName bez ohľadu na diakritiku, zdroj ifc+aim pri prvku z AIM", async () => {

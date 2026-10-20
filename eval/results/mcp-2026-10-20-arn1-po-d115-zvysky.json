@@ -1,0 +1,18 @@
+{
+  "ranAt": "2026-10-20T13:50:00Z",
+  "label": "po D-115 zvyškoch (#131, #145, #146), opakovanie D7, V6, C1, C12",
+  "region": "arn1",
+  "runner": "nová cloud session (čerstvý zoznam toolov), každá úloha čerstvý subagent; headless viewer na živom kanáli",
+  "results": [
+    { "id": "D7-kod-len-v-ifc", "pass": true, "calls": 2, "tools": ["get_object(include=path)", "show_in_3d"], "duration_ms": 17183, "over_cap": false, "note": "podlažie 1NP priamo z get_object (storey); show_in_3d navyše a viewer ho nepotvrdil (ešte načítaval modely). Predtým 5 volaní." },
+    { "id": "C1-poziarna-odolnost-dveri", "pass": true, "calls": 1, "tools": ["aggregate_objects(group_by_path=Pset_DoorCommon.FireRating)"], "duration_ms": 13573, "over_cap": false, "note": "32 x EI 30 DP3-C, 65 bez hodnoty, bez overovacieho volania. Predtým 2." },
+    { "id": "C12-bcf-otvorene", "pass": true, "calls": 3, "tools": ["bcf_topic_list(status=open)", "bcf_topic_list(status=in_progress)", "bcf_topic_list"], "duration_ms": 27523, "over_cap": true, "note": "count_without_filter nestačil: agent skúšal stav po stave. Nasleduje by_status (počty podľa stavu) v tom istom volaní. Predtým 2." },
+    { "id": "V6-vyber-a-vlastnosti", "pass": true, "calls": 1, "tools": ["show_in_3d(select=true, panel_tab=ifc, panel_section=properties)"], "duration_ms": 17730, "over_cap": false, "note": "get_viewer_state: selection 1 = DD01.02.0004; stav panela get_viewer_state nevracia. Predtým 2 (ifc_get navyše)." }
+  ],
+  "summary": {
+    "pass": "4/4",
+    "calls": { "D7": "5 -> 2", "C1": "2 -> 1", "C12": "2 -> 3", "V6": "2 -> 1" },
+    "over_cap": ["C12"],
+    "finding": "D7, C1 a V6 sú v strope. C12 sa zhoršil: prázdny výsledok s count_without_filter agenta neodradil od skúšania ďalších stavov; oprava by_status."
+  }
+}

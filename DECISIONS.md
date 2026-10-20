@@ -4923,8 +4923,8 @@ až po kroku 4.
   dokumentov stavby; pri dokumente alebo odkaze na stranu opačne objekty, ktorých sa týka (počty
   podľa typu a nositeľa, vzorka). `query_view` pozná `v_object_documents` a strom dokumentácie.
 - Výkresové väzby z obsahu PDF (E4), ktoré čítali `include=drawings` a `find_in_drawings`, krok 1
-  ukončil, takže vždy vracali prázdno. Staré `include=drawings` aj staré meno `find_in_drawings`
-  (D-115 `legacyTools`) vedú na dokumenty z modelu.
+  ukončil, takže vždy vracali prázdno. Staré `include=drawings` vedie na dokumenty z modelu;
+  staré meno `find_in_drawings` `main` medzitým zrušil spolu s ostatnými menami D-115.
 - Čo z modelu vychádza: zóny cez viac podlaží (Spoločné priestory, Nájomné priestory) nesú pôdorysy
   všetkých podlaží, takže dvere na 1NP dostanú aj pôdorys 3NP a strechy. Pohľad to nefiltruje (je to
   väzba v modeli); presnejšie by bolo viazať pôdorys na zónu podlažia alebo na podlažie (otázka na
@@ -5330,6 +5330,12 @@ namiesto pridávania.
    `LEGACY_ENGINE_TOOL_NAMES`); `mcp_call_log.tool` nesie volané meno, takže sa dá zistiť, kedy ich
    už nikto nevolá. Zmažú sa po dvoch týždňoch bez volania. `callAction` loguje prvý z parametrov
    `action`, `mode`, `source`.
+   **Dodatok 2026-10-20 (Samuel):** staré mená sú zmazané hneď, nečaká sa do 3. 11. Konektor
+   používa len Samuel, staré konverzácie s uloženým zoznamom toolov nepoužije a `mcp_call_log` od
+   06:17 UTC staré mená neukazuje. Zrušené: `legacyTools` v MCP serveri, `mcpLegacyToolNames`,
+   `LEGACY_*_TOOL_NAMES` a vetvy dispatchu, ktoré vykonali staré meno; volanie starým menom vráti
+   "Neznámy tool". `search_everything` ostáva riadnym toolom bez motora (aj `/api/ask`), s motorom ho
+   v MCP nahrádza `search_all` bez aliasu.
 3. **Krok 1 - IFC motor (18 -> 7 toolov):**
    - `ifc_query` + `mode` list | count | values a filter `material` (bývalé `ifc_count`,
      `ifc_property_values`, `ifc_material_layers`);
@@ -5366,12 +5372,17 @@ namiesto pridávania.
      meno ostáva ako `legacyTools`, `/api/ask` bez motora ho má ďalej), `ifc_query(mode=count)` prijme
      `material` a `ifc_models` má schému triedy na začiatku opisu (C7: jeden z dvoch behov odpovedal z pamäti).
 
+7. **Zvyšky po záverečnom evale** (pridelené orchestrátorom so súhlasom Samuela, bez nového toolu): D7 -
+   `get_object` pre prvok len v IFC vráti `storey` (podlažie nahor cez IfcRelAggregates /
+   IfcRelContainedInSpatialStructure, `lib/engine/names.ts`); V6 - opis výberu neradí `ifc_get`, keď panel
+   hodnoty ukáže sám.
+
 **Zavrhnuté:**
 - *Jeden veľký PR:* regresiu vo výbere toolu by nebolo vidieť po skupinách.
 - *Premenovať všetko na nové mená (`ifc_model`, `find_objects`...):* rozbije porovnanie s
   predchádzajúcimi kolami v `mcp_call_log` a evaloch bez úžitku pre agenta.
 - *Okamžite zmazať staré mená:* claude.ai drží zoznam toolov počas konverzácie, rozpracované
-  rozhovory by padali na "Neznámy tool".
+  rozhovory by padali na "Neznámy tool". (Prehodnotené v ten istý deň, dodatok k bodu 2.)
 
 ---
 
@@ -5414,3 +5425,39 @@ Authentication vypnúť pre Preview, inak sa náhľad v iframe nenačíta. Pre z
 
 **Detail:** `docs/FORK_MAINTENANCE.md` vo forku, sekcia "Release train".
 
+
+### D-118 - Rýchle kontroly nad modelom: atribúty v `ifc_query.where` a postup kontroly
+**Dátum:** 2026-10-20 · **Stav:** rozhodnuté (orchestrátor na Samuelov pokyn, rýchla časť issue #77) · **Súvisí:** D-084, D-112, D-111, D-099, D-114
+
+**Kontext:** issue #77 žiada `run_rule_check` (sada pravidiel STN/ČSN, meranie, pass/fail, tabuľka, BCF).
+Samuel chce hneď rýchlu časť nad tým, čo už je. Limity noriem patria do knižnice požiadaviek (IDS,
+`ifc_ids_validate`), nie do konektora. Chýbalo: `ifc_query.where` nevidel IFC atribúty
+(`OverallWidth`, `OverallHeight`), len psety a Qto; upstream selektor atribúty tiež nevie.
+
+**Rozhodnutie (D-114, rozšírenie, nie nový tool):**
+1. `ifc_query.where` prijme podmienku `{attribute, op, value}` namiesto `pset` + `name`. Kandidáti
+   (triedy, podlažie, podmienky na psety) idú z `query_entities` ako doteraz, atribúty sa dofiltrujú
+   z `get_entities_bulk(include=attributes)` po stránkach 1000. Čísla sa porovnávajú číselne, text bez
+   ohľadu na veľkosť písmen; `matches` atribút nevie. Podmienka na atribút potrebuje `ifc_types`,
+   strop 20 000 kandidátov. Platí pre `mode=list` aj `count`.
+2. `ifc_measure` bez zmeny kódu: opis hovorí, že "od steny k stene" je jedno volanie `a` + `b`
+   a šírka obdĺžnikovej miestnosti či chodby je `bbox_m` miestnosti (`a` = IfcSpace).
+3. Inštrukcie MCP: rýchla kontrola = `ifc_query` / `ifc_measure` -> `style_in_3d` (pass zelená,
+   fail červená) -> `open_list` -> pri zlyhaní ponúknuť `bcf_topic`. Limit dáva používateľ alebo IDS,
+   model si ho nevymýšľa. Nahrádza recept "ofarbi miestnosti podľa plochy" (ten istý postup).
+
+**Overenie nad ASR (konektor):** `ifc_measure(SN05.01.0001, SN05.01.0002)` jedným volaním 9,3 m;
+miestnosť 1.10 = 6,796 x 3,221 m, pôdorys z meshu = Qto 21,699 m². DD02.05.04 má `OverallWidth`
+900 (so zárubňou) a zároveň pset `AIM_Door.ClearWidth` 800; `where AIM_Door.ClearWidth < 900` = 40 dverí.
+
+**Zavrhnuté:**
+- *Nový tool `run_rule_check` so sadou limitov:* duplikát IDS bez citácie normy (komentár v #77).
+- *Upstream `check_rules` (`@ifc-lite/rules`) 1:1:* formát je ťažký na ručné písanie a dubluje IDS.
+
+**Otvorené:**
+- Steny ohraničujúce miestnosť sa dnes nedajú zistiť (model nemá `IfcRelSpaceBoundary`,
+  `v_space_elements` steny nepriraďuje), steny určí používateľ alebo výber vo vieweri.
+- Kóta merania vo vieweri: `ifc_measure` vracia jeden najbližší bod, kóta potrebuje oba body
+  dvojice, prevod osí IFC (Z hore) do rámca renderera a novú správu mosta vo forku, ktorá zapíše
+  meranie do upstream `measurementSlice`. Väčší kus, návrh v #77.
+- Nositeľ svetlej šírky dverí (`AIM_Door.ClearWidth`?) potvrdí Samuel.
