@@ -1,4 +1,6 @@
 import { getIfcModels, modelKey } from "../data/ifc-models";
+import type { AskAction } from "../llm/actions";
+import type { MeasureSegment } from "../viewer-measure";
 
 import { cacheSnapshot, getStore, type EngineModelSource } from "./cache";
 import { idsSources, loadIds } from "./ids-sources";
@@ -52,6 +54,8 @@ export interface EngineDeps {
 export interface EngineExecution {
   content: string;
   isError: boolean;
+  /** Príkazy pre živý viewer (kóta `ifc_measure show`, D-124); route ich pošle ako akcie DB tools. */
+  actions?: AskAction[];
 }
 
 export class InputError extends Error {}
@@ -735,14 +739,17 @@ export async function execEngineTool(
       case "ifc_relations":
         content = await ifcRelations(input, deps);
         break;
-      case "ifc_measure":
-        content =
-          input.route !== undefined
-            ? await (await import("./route")).ifcRoute(input, deps)
-            : input.qto === true
-              ? await ifcQto(input, deps)
-              : await (await import("./measure")).ifcMeasure(input, deps);
+      case "ifc_measure": {
+        if (input.route !== undefined || input.qto === true) {
+          content = input.route !== undefined ? await (await import("./route")).ifcRoute(input, deps) : await ifcQto(input, deps);
+          break;
+        }
+        // show=true: kóty pre viewer (D-124) zbiera meranie, príkaz poskladá measure-dimension.
+        const dimensions: MeasureSegment[] | undefined = input.show === true ? [] : undefined;
+        content = await (await import("./measure")).ifcMeasure(input, deps, dimensions);
+        if (dimensions?.length) return { content, isError: false, actions: [(await import("./measure-dimension")).dimensionAction(dimensions)] };
         break;
+      }
       default:
         return { content: `Neznámy tool motora: ${name}`, isError: true };
     }
