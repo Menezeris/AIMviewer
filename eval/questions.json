@@ -500,6 +500,14 @@
       "notes": "D-083: open_drawing in_viewer=true -> op doc."
     },
     {
+      "id": "view-doc-region",
+      "category": "view",
+      "question": "Otvor vedľa rez A a priblíž ho na pravý horný roh, kde je atika.",
+      "expect": { "tools_called": ["open_drawing"], "actions_match": ["doc:[0-9]*~r=[0-9._]+:[0-9a-f-]{36}"] },
+      "verified": false,
+      "notes": "D-117 (#129): open_drawing in_viewer=true s region (výrez strany v %), napr. x=50 y=0 width=50 height=50."
+    },
+    {
       "id": "view-reset",
       "category": "view",
       "question": "Vráť pohľad do pôvodného stavu.",

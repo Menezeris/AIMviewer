@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   SECTION_CLEAR_OP,
   cameraOp,
+  clampDocRegion,
   docOp,
+  docRegionInput,
   opToBridgeMessage,
   parseOps,
   sectionOp,
@@ -76,6 +78,30 @@ describe("viewer ops - pohľad (D-083)", () => {
       { type: "SET_VIEW_MODE", mode: "3d" },
     ]);
     expect(parseOps("doc:1:nie-uuid")).toEqual([]);
+  });
+
+  it("dokument s výrezom strany (D-117): percentá na drôte, zlomky v bridge správe", () => {
+    const op = docOp(DOC, 2, { x: 50, y: 0, w: 50, h: 25 });
+    expect(op).toBe(`doc:2~r=50_0_50_25:${DOC}`);
+    expect(bridge(op)).toEqual([
+      { type: "DOCUMENT_OPEN", documentId: DOC, page: 2, region: { x: 0.5, y: 0, w: 0.5, h: 0.25 } },
+    ]);
+    // Bez strany: výrez na strane, kde karta je.
+    expect(parseOps(docOp(DOC, undefined, { x: 10, y: 10, w: 20, h: 20 }))).toEqual([
+      { op: "doc", documentId: DOC, region: { x: 10, y: 10, w: 20, h: 20 } },
+    ]);
+    // Chybný výrez sa zahodí, dokument sa otvorí celý.
+    expect(parseOps(`doc:3~r=10_abc_5_5:${DOC}`)).toEqual([{ op: "doc", documentId: DOC, page: 3 }]);
+    expect(parseOps(`doc:3~r=120_0_10_10:${DOC}`)).toEqual([{ op: "doc", documentId: DOC, page: 3 }]);
+  });
+
+  it("výrez strany sa oreže do strany", () => {
+    expect(clampDocRegion({ x: -10, y: 90, w: 30, h: 30 })).toEqual({ x: 0, y: 90, w: 20, h: 10 });
+    expect(clampDocRegion({ x: 99.9, y: 0, w: 0.05, h: 10 })).toEqual({ x: 99, y: 0, w: 1, h: 10 });
+    expect(clampDocRegion({ x: 0, y: 0, w: 0, h: 10 })).toBeUndefined();
+    expect(docRegionInput({ x: 50, y: 0, width: 50, height: 50 })).toEqual({ x: 50, y: 0, w: 50, h: 50 });
+    expect(docRegionInput({ x: 50, y: 0, width: "50", height: 50 })).toBeUndefined();
+    expect(docRegionInput("vpravo hore")).toBeUndefined();
     expect(parseOps("view:4d:")).toEqual([]);
   });
 

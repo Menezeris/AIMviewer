@@ -5375,3 +5375,39 @@ nový tool `read_document` s OCR. Overenie nad produkciou ukázalo, že tool nec
 
 **Otvorené (Samuel, #149):** spustenie migrácie a `--from-db` na produkcii; farebný rámik okolo textu
 v karte PDF vo vieweri (zmena forku, D-087) ako ďalší krok, ak priblíženie nestačí.
+
+### D-117 - Výrez strany výkresu z chatu: `open_drawing region`
+
+**Dátum:** 2026-10-20 · **Stav:** navrhnuté (čaká na Samuela, #129) · **Súvisí:** D-114 (rozšírenie namiesto nového toolu), D-104 (dokumenty vo vieweri), D-075, D-083, D-087 · **PR:** Menezeris/ifc-lite#80, AIMviewer (tento)
+
+**Kontext:** #129: používateľ má v 3D narezanú atiku (`SN02.01.0001`, IfcWall PARAPET) a vedľa
+otvorí rez A (`open_drawing in_viewer=true`). Karta sa otvorí len celá; `focus_id` funguje len v
+`/drawing/[id]` a len cez oblasti E4, ktoré atika nemá (sada E3/E4 sa podľa D-104 ruší). Zoom ani
+výrez strany nevie žiadny tool. Najbližšie tooly: `open_drawing` (otvorí kartu so stranou),
+`get_object include=drawings` (výkresy prvku z E4, pre atiku prázdne), `set_camera`/`set_section`
+(len 3D).
+
+**Rozhodnutie:**
+1. **Rozšírenie `open_drawing` o `region`** (D-114, bod 3): výrez strany v % (`x`, `y`, `width`,
+   `height`, počiatok vľavo hore). Karta vo vieweri sa priblíži, aby výrez vyplnil plochu, a
+   vycentruje ho, aj keď je už otvorená. S `region` ide výkres vždy do viewera (`/drawing/[id]` sa
+   podľa D-104 nerozvíja). Výrez mimo strany sa oreže, celý mimo strany = chyba toolu.
+2. **Drôt:** op `doc:<strana>~r=<x>_<y>_<w>_<h>:<id>` (percentá), most `DOCUMENT_OPEN` s
+   voliteľným `region` v zlomkoch 0-1. Starší viewer pole ignoruje a otvorí stranu celú.
+3. **Fork (D-087):** logika v `apps/viewer/src/aim/docRegion.ts` (overenie, zoom, posun, store
+   požiadavky), `PdfDocumentView` len volá hook (jednoriadkové bloky AIM-FORK, súbor je na strope
+   veľkosti).
+4. **Polohu prvku vo výkrese tool nepozná.** Výrez určí používateľ slovne ("vpravo hore", "stred")
+   a model ho prevedie na %. Výsledok s `focus_id` vo vieweri to povie v `note`.
+
+**Otvorené (otázka na Samuela v #129):** automatické priblíženie "na to isté miesto ako 3D"
+potrebuje kalibráciu rezu (2 body na strane = 2 body v rovine rezu IFC, obdoba D-072 pre
+pôdorysy). Žiadny výkres ju dnes nemá a D-104 ju odkladá do programu dokumentov vo vieweri; s ňou
+by `open_drawing` vedel výrez dopočítať z obálky prvku (`get_viewer_state bounds`) a aktívneho rezu.
+
+**Zavrhnuté:**
+- *Nový tool `zoom_drawing`:* ten istý zdroj (karta dokumentu) aj anotácie ako `open_drawing`;
+  rozšírenie stačí (D-114).
+- *`focus_id` vo vieweri cez oblasti E4:* sada E3/E4 sa ruší (D-104) a atika v nej nie je.
+- *Zoom + stred namiesto výrezu:* výrez priamo zodpovedá vete "priblíž pravý horný roh" a nezávisí
+  od veľkosti plochy karty.
