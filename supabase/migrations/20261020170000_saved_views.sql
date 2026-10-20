@@ -6,6 +6,8 @@
 -- Riadok `kind = 'last'` je jediný "Posledný pohľad"; prepíše sa pri každom uložení a obnove.
 -- Práva anon/authenticated nová tabuľka nedostane (default privileges, migrácia 20261016120000).
 
+begin;
+
 create table saved_views (
   id               uuid primary key default gen_random_uuid(),
   kind             text not null default 'saved' check (kind in ('saved', 'last')),
@@ -28,3 +30,5 @@ create unique index uniq_saved_views_last on saved_views (kind) where kind = 'la
 
 comment on table saved_views is
   'D-122: uložené pohľady viewera, spoločné pre stavbu; kind=last = posledný použitý pohľad.';
+
+commit;

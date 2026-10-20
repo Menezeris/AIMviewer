@@ -5616,7 +5616,7 @@ vie zachytiť kameru, rez a režim, ale pohľady sa nemajú miešať so zoznamom
 skryté a izolované prvky len ako počty.
 
 **Rozhodnutie:**
-1. **Tabuľka `saved_views`** (migrácia `20261020120000`, `SCHEMA.md` 2.17): meno (jedinečné bez ohľadu na
+1. **Tabuľka `saved_views`** (migrácia `20261020170000`, `SCHEMA.md` 2.17): meno (jedinečné bez ohľadu na
    veľkosť písmen), popis, `viewpoint` v tvare `model_tasks.viewpoint` (kamera v IFC svete s projekciou,
    rez, režim, podlažie a jeho label), výber, skryté a izolované GlobalId (strop 600 ako HIDE/ISOLATE
    mosta), revízie modelov v čase uloženia, autor. Spoločné pre stavbu, bez vlastníka.
