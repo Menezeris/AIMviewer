@@ -65,7 +65,7 @@ const PRIVACY =
   "Issue je VEREJNÉ (repo konektora je verejné): nepíš mená, telefóny ani e-maily osôb a firiem z modelu, " +
   "heslá ani tokeny. object_ref, IFC triedy, názvy psetov a tools sú v poriadku.";
 
-/** `feedback` action -> handler (D-115); staré mená sú to isté pod vlastným menom. */
+/** `feedback` action -> handler (D-115); hodnoty sú už len vnútorné kľúče handlerov. */
 export const FEEDBACK_ACTIONS = {
   report: "report_feedback",
   request_tool: "request_tool",
@@ -156,10 +156,7 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 ];
 
-/** Staré mená zápisových tools (D-115): nevypisujú sa, ale vykonajú sa. */
-export const LEGACY_FEEDBACK_TOOL_NAMES: ReadonlySet<string> = new Set(Object.values(FEEDBACK_ACTIONS));
-
-export const FEEDBACK_TOOL_NAMES = new Set([...FEEDBACK_TOOL_DEFINITIONS.map((t) => t.name), ...LEGACY_FEEDBACK_TOOL_NAMES]);
+export const FEEDBACK_TOOL_NAMES = new Set(FEEDBACK_TOOL_DEFINITIONS.map((t) => t.name));
 
 export interface FeedbackDeps {
   client: GithubClient | null;
@@ -748,6 +745,8 @@ export async function execFeedbackTool(
       const action = typeof args.action === "string" ? args.action : "";
       if (!(action in FEEDBACK_ACTIONS)) throw new FeedbackInputError(`action: ${Object.keys(FEEDBACK_ACTIONS).join(" | ")}.`);
       name = FEEDBACK_ACTIONS[action as keyof typeof FEEDBACK_ACTIONS];
+    } else if (name !== "feedback_status") {
+      return { text: `Neznámy tool: ${name}`, isError: true };
     }
     switch (name) {
       case "request_tool":
