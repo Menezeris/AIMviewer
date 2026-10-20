@@ -35,6 +35,7 @@ const MAX_RESULT_CHARS = 20_000;
 export const ENGINE_VERSION = "@ifc-lite/mcp@0.27.0";
 /** Operátory, ktoré vie aj selektor (ďalšie podmienky `where` okrem prvej). */
 const SELECTOR_OPS = new Set(["=", "!=", ">", "<", ">=", "<="]);
+const BULK_PAGE = 1000;
 const NAME_RE = /^[A-Za-z0-9_]+$/;
 export const IFC_GUID_RE = /^[0-9A-Za-z_$]{22}$/;
 
@@ -77,22 +78,33 @@ interface Where {
   name: string;
   op: string;
   value?: unknown;
+  /** IFC atribút entity (OverallWidth, LongName...) namiesto psetu (D-118). */
+  attribute?: string;
 }
 
 function parseWhere(raw: unknown): Where[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) throw new InputError("where musí byť pole podmienok.");
   if (raw.length > 3) throw new InputError("where má najviac 3 podmienky.");
-  return raw.map((w, i) => {
+  let psetIndex = 0;
+  return raw.map((w) => {
     const o = (w ?? {}) as Record<string, unknown>;
+    const op = str(o.op);
+    if (!(OPS as readonly string[]).includes(op)) throw new InputError(`op musí byť jeden z ${OPS.join(" ")}.`);
+    const attribute = str(o.attribute);
+    if (attribute) {
+      if (!NAME_RE.test(attribute)) throw new InputError("attribute smie obsahovať len písmená, číslice a _ (napr. OverallWidth).");
+      if (op === "matches") throw new InputError("Atribút nevie op matches - použi contains.");
+      if (op !== "exists" && o.value === undefined) throw new InputError(`Podmienka ${attribute} potrebuje value.`);
+      return { pset: "", name: attribute, op, value: o.value, attribute };
+    }
     const pset = str(o.pset);
     const name = str(o.name);
-    const op = str(o.op);
     if (!NAME_RE.test(pset) || !NAME_RE.test(name)) {
-      throw new InputError("pset a name smú obsahovať len písmená, číslice a _ (napr. Qto_SpaceBaseQuantities).");
+      throw new InputError("pset a name smú obsahovať len písmená, číslice a _ (napr. Qto_SpaceBaseQuantities), alebo zadaj attribute.");
     }
-    if (!(OPS as readonly string[]).includes(op)) throw new InputError(`op musí byť jeden z ${OPS.join(" ")}.`);
-    if (i > 0 && !SELECTOR_OPS.has(op)) throw new InputError("Ďalšie podmienky (okrem prvej) smú mať len = != > < >= <=.");
+    const i = psetIndex++;
+    if (i > 0 && !SELECTOR_OPS.has(op)) throw new InputError("Ďalšie podmienky na psety (okrem prvej) smú mať len = != > < >= <=.");
     if (op !== "exists" && o.value === undefined) throw new InputError(`Podmienka ${pset}.${name} potrebuje value.`);
     if (i > 0 && typeof o.value === "string" && /[,;"']/.test(o.value)) {
       throw new InputError("Hodnota ďalšej podmienky nesmie obsahovať , ; ani úvodzovky.");
@@ -101,14 +113,82 @@ function parseWhere(raw: unknown): Where[] {
   });
 }
 
-/** where -> argumenty query_entities: prvá podmienka ako `property`, ďalšie ako selektor. */
-function whereArgs(where: Where[]): Record<string, unknown> {
+/** where -> argumenty query_entities: prvá podmienka na pset ako `property`, ďalšie ako selektor; atribúty filtruje `scanAttributes`. */
+function whereArgs(all: Where[]): Record<string, unknown> {
+  const where = all.filter((w) => !w.attribute);
   if (where.length === 0) return {};
   const [first, ...rest] = where;
   const out: Record<string, unknown> = {
     property: { pset: first.pset, name: first.name, op: first.op, ...(first.op === "exists" ? {} : { value: first.value }) },
   };
   if (rest.length > 0) out.selector = rest.map((w) => `${w.pset}.${w.name}${w.op}${String(w.value)}`).join(", ");
+  return out;
+}
+
+const attributeConditions = (where: Where[]) => where.filter((w) => w.attribute);
+
+/** Porovnanie hodnoty IFC atribútu: čísla číselne, text bez ohľadu na veľkosť písmen. */
+export function attributeMatches(actual: unknown, w: Pick<Where, "op" | "value">): boolean {
+  const empty = actual === null || actual === undefined || actual === "";
+  if (w.op === "exists") return !empty;
+  if (empty) return w.op === "!=";
+  const a = Number(actual);
+  const b = Number(w.value);
+  const numeric = typeof actual !== "boolean" && typeof w.value !== "boolean" && Number.isFinite(a) && Number.isFinite(b) && w.value !== "";
+  const text = (v: unknown) => String(v).toLowerCase();
+  switch (w.op) {
+    case "=":
+      return numeric ? a === b : text(actual) === text(w.value);
+    case "!=":
+      return numeric ? a !== b : text(actual) !== text(w.value);
+    case "contains":
+      return text(actual).includes(text(w.value));
+    case ">":
+      return numeric && a > b;
+    case "<":
+      return numeric && a < b;
+    case ">=":
+      return numeric && a >= b;
+    case "<=":
+      return numeric && a <= b;
+    default:
+      return false;
+  }
+}
+
+/** Strop kandidátov na filter atribútov (atribúty čítame po stránkach cez get_entities_bulk). */
+const MAX_ATTRIBUTE_SCAN = 20_000;
+
+/**
+ * Prvky, ktoré spĺňajú aj podmienky na IFC atribúty (D-118). Upstream selektor
+ * atribúty nevie, preto kandidátov z query_entities (triedy, psety, podlažie)
+ * dofiltrujeme podľa `attributes` z get_entities_bulk.
+ */
+async function scanAttributes(
+  session: EngineSession,
+  baseArgs: Record<string, unknown>,
+  conditions: Where[],
+): Promise<Array<{ globalId?: string; type?: string; name?: string }>> {
+  const out: Array<{ globalId?: string; type?: string; name?: string }> = [];
+  for (let offset = 0; ; offset += BULK_PAGE) {
+    const page = structured<{ count: number; truncated?: boolean; entities?: Array<{ expressId: number }> }>(
+      await session.call("query_entities", { ...baseArgs, limit: BULK_PAGE, offset, fields: ["globalId"] }),
+    );
+    if (page.count > MAX_ATTRIBUTE_SCAN) {
+      throw new InputError(`Filter atribútov prejde najviac ${MAX_ATTRIBUTE_SCAN} prvkov (kandidátov je ${page.count}) - zúž ifc_types, storey alebo podmienku na pset.`);
+    }
+    const ids = (page.entities ?? []).map((e) => e.expressId);
+    if (ids.length > 0) {
+      const bulk = structured<{ entities: Record<string, { globalId?: string; type?: string; name?: string; attributes?: Array<{ name: string; value: unknown }> }> }>(
+        await session.call("get_entities_bulk", { model_id: baseArgs.model_id, express_ids: ids, include: ["attributes"] }),
+      );
+      for (const e of Object.values(bulk.entities ?? {})) {
+        const ok = conditions.every((w) => attributeMatches(e.attributes?.find((x) => x.name === w.attribute)?.value, w));
+        if (ok) out.push({ globalId: e.globalId, type: e.type, name: e.name });
+      }
+    }
+    if (!page.truncated) break;
+  }
   return out;
 }
 
@@ -201,6 +281,7 @@ async function ifcQuery(input: Record<string, unknown>, deps: EngineDeps): Promi
   if (types.length === 0 && where.length === 0 && !storeyLabel) {
     throw new InputError("Zadaj aspoň ifc_types, where alebo storey.");
   }
+  if (types.length === 0 && attributeConditions(where).length > 0) throw new InputError("Podmienka na attribute potrebuje ifc_types (napr. [IfcDoor]).");
   const { models, revision } = await modelsFor([modelId], deps);
   const session = await openEngineSession(models);
   const args: Record<string, unknown> = {
@@ -211,9 +292,13 @@ async function ifcQuery(input: Record<string, unknown>, deps: EngineDeps): Promi
     fields: ["globalId", "type", "name"],
   };
   if (storeyLabel) args.in_storey = await storeyGuid(session, modelId, storeyLabel);
-  const res = structured<{ count: number; truncated: boolean; entities: Array<{ globalId?: string; type?: string; name?: string }> }>(
-    await session.call("query_entities", args),
-  );
+  const attrs = attributeConditions(where);
+  const res =
+    attrs.length > 0
+      ? await scanAttributes(session, args, attrs).then((all) => ({ count: all.length, truncated: false, entities: all.slice(0, limit) }))
+      : structured<{ count: number; truncated: boolean; entities: Array<{ globalId?: string; type?: string; name?: string }> }>(
+          await session.call("query_entities", args),
+        );
   const rows = (res.entities ?? []).map((e) => ({ global_id: e.globalId ?? "", ifc_type: e.type ?? null, name: e.name ?? null }));
   const joined = await joinToAim(rows, deps.lookup);
   return envelope({
@@ -310,9 +395,13 @@ async function ifcCount(input: Record<string, unknown>, deps: EngineDeps): Promi
   const { models, revision } = await modelsFor([modelId], deps);
   const session = await openEngineSession(models);
   if (where.length > 0) {
-    const res = structured<{ count: number }>(
-      await session.call("query_entities", { model_id: modelId, ...(type ? { types: [type] } : {}), ...whereArgs(where), limit: 1 }),
-    );
+    const args = { model_id: modelId, ...(type ? { types: [type] } : {}), ...whereArgs(where) };
+    const attrs = attributeConditions(where);
+    if (attrs.length > 0 && !type) throw new InputError("Podmienka na attribute potrebuje ifc_types (napr. [IfcDoor]).");
+    const res =
+      attrs.length > 0
+        ? { count: (await scanAttributes(session, args, attrs)).length }
+        : structured<{ count: number }>(await session.call("query_entities", { ...args, limit: 1 }));
     return envelope({ model: modelId, revision: revision[modelId], total: res.count, ...(type ? { ifc_type: type } : {}), where });
   }
   const res = structured<{ total: number; groupBy?: string; groups?: Array<{ key: string; count: number }> }>(
@@ -366,7 +455,6 @@ async function ifcPropertyValues(input: Record<string, unknown>, deps: EngineDep
 }
 
 const MISSING = "(missing)";
-const BULK_PAGE = 1000;
 
 /** Histogram hodnoty z množstiev (Qto) pre všetky prvky typu - po stránkach, ako guidIndex. */
 async function quantityValues(

@@ -681,6 +681,22 @@
       "expect": { "tools_called": ["ifc_measure"], "answer_matches": ["1[,.]43"] },
       "verified": false,
       "notes": "D-112 (issue #74): ifc_measure(a, b) cez ASR a VZT; clear_distance_m 1.433 na revízii z 2026-10-19 (lokálne meranie, nie eval beh)."
+    },
+    {
+      "id": "quick-check-door-width",
+      "category": "count",
+      "question": "Koľko dverí v ASR má OverallWidth menej ako 900 mm? Ofarbi ich na červeno.",
+      "expect": { "tools_called": ["ifc_query", "style_in_3d"] },
+      "verified": false,
+      "notes": "D-118 (issue #77): ifc_query(ifc_types=[IfcDoor], where=[{attribute:'OverallWidth', op:'<', value:900}]) -> style_in_3d(colorize ef4444). Počet neoverený."
+    },
+    {
+      "id": "quick-check-room-width",
+      "category": "location",
+      "question": "Aká široká je miestnosť 1.10?",
+      "expect": { "tools_called": ["ifc_measure"], "answer_matches": ["3[,.]2"] },
+      "verified": false,
+      "notes": "D-118 (issue #77): ifc_measure(a=1.10) -> bbox_m 6.796 x 3.221 (konektor 2026-10-20)."
     }
   ]
 }
