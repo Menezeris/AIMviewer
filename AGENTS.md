@@ -258,7 +258,17 @@ Nová RPC pre LLM = vždy read-only `stable` + `set search_path` + interné whit
 (relation/op/stĺpce), identifikátory `format('%I')`, literály `format('%L')` — vzor
 `search_everything`/`aggregate_objects` (D-059/D-060).
 
-Chýbajúci tool alebo pripomienka z konektora = GitHub issue (`request_tool`/`report_feedback`, D-090);
+Chýbajúci tool alebo pripomienka z konektora = GitHub issue (`feedback` s action request_tool / report, D-090);
 session, ktorá ho rieši, postupuje podľa skillu `.claude/skills/mcp-poziadavka/SKILL.md`.
-Chyba v IFC modeli = BCF téma v `model_tasks` (`bcf_topic_*`, BCF API `/api/bcf`, D-099), nie issue;
+
+**Najprv napasuj, až potom nový tool (D-114).** Každý tool navyše predlžuje načítanie konektora
+a agentovi sťažuje výber. Pred novou schopnosťou v konektore (aj mimo issue z konektora):
+1. prehľadaj `MCP-TOOLS.md` (inventár generovaný z definícií) a vypíš 2-3 najbližšie tooly;
+2. skús v tomto poradí: lepší opis alebo inštrukcia (schopnosť už existuje), nový parameter alebo
+   hodnota enumu (`action`, `mode`, `include`...), pole vo výsledku existujúceho toolu;
+3. nový tool len keď nejde ani jedno - záznam D-0xx má sekciu "Zavrhnuté rozšírenie: `<tool>` -
+   prečo nie" a nový riadok v `lib/mcp/tool-registry.json` (meno -> rozhodnutie) schvaľuje Samuel.
+   Test registra pustí len tooly, ktoré v ňom sú; pevný strop počtu nie je.
+Zmena opisu alebo parametrov toolu = obnov inventár (`npx vitest run lib/mcp/tool-registry.test.ts -u`).
+Chyba v IFC modeli = BCF téma v `model_tasks` (`bcf_topic`, `bcf_topic_list`, BCF API `/api/bcf`, D-099), nie issue;
 téma pre Claude sa rieši v repe OCB (skill `bcf-tema`, workflow `uloha`).

@@ -67,7 +67,7 @@ describe("ifc_search (D-095)", () => {
   it("prázdny výsledok poradí druhý zdroj, zlý vstup je chyba toolu", async () => {
     const none = await run({ text: "karuselove" });
     expect(none.json.total).toBe(0);
-    expect(none.json.hint).toContain("search_everything");
+    expect(none.json.hint).toContain("search_all");
     expect((await run({ text: "x" })).isError).toBe(true);
     expect((await run({ text: "abc", fields: ["geometry"] })).content).toContain("fields");
   });

@@ -78,6 +78,13 @@ describe("ifc_material_layers a materiály v ifc_get (D-108)", () => {
   });
 
   it("krátky dopyt odmietne", async () => {
+    // D-115: ifc_query(mode=count, material) = ten istý total bez zoznamu prvkov.
+    const full = await run("ifc_material_layers", { material: "izol" });
+    const count = await run("ifc_query", { mode: "count", material: "izol" });
+    expect(count.json.total).toBe(full.json.total);
+    expect(count.json.sets).toEqual(full.json.sets);
+    expect(count.json.items).toBeUndefined();
+    expect((await run("ifc_query", { mode: "values", material: "izol" })).isError).toBe(true);
     const r = await run("ifc_material_layers", { material: "e" });
     expect(r.isError).toBe(true);
     expect(r.content).toMatch(/aspoň 2 znaky/);

@@ -1,0 +1,422 @@
+{
+ "ranAt": "2026-10-20T05:21:00Z",
+ "label": "arn1-pred-D-115",
+ "region": "arn1",
+ "runner": "Claude Code subagent (general-purpose), MCP konektor AIM so zoznamom toolov z main 5a439f5 (52 toolov, definície 61 617 znakov, inštrukcie 14 995 znakov); headless viewer (Chromium + WebGPU SwiftShader) na produkčnom /ifc?live=, fork dpl_9zrQFaw; ASR v076 (zverejnená 04:31, motor ju načítaval prvý raz)",
+ "note": "Základ pred zlúčením toolov (D-115). Dátové úlohy paralelne (20 agentov naraz), úlohy vo vieweri po jednej v poradí V1, V2, E2 (pokračovanie V2), E3, E1, V4 (setup + meraná druhá správa), V3, V5, V6, V7. E4 vynechaná: potrebuje výber používateľa. Headless viewer stratil WebGPU zariadenie (hláška 'The graphics device was lost' aj po reštarte), preto rámovanie kamery na prvok nejde overiť (preset top funguje); V1 a E1 sú hodnotené podľa voľby toolu, výberu a rezu. Studené ifc_* volania 4-9 s: nová revízia ASR + veľa nových inštancií z paralelného behu.",
+ "tool_list": {
+  "tools": 52,
+  "definition_chars": 61617,
+  "instructions_chars": 14995
+ },
+ "server_p50_ms": {
+  "count_objects": 143,
+  "search_objects": 97,
+  "get_object": 278,
+  "locate_objects": 553,
+  "get_spatial_path": 431,
+  "get_asset_details": 110,
+  "bcf_topic_list": 112,
+  "feedback_status": 449,
+  "get_bounds": 292,
+  "get_viewer_state": 596,
+  "set_camera": 672,
+  "select_in_3d": 680,
+  "set_view_mode": 794,
+  "set_section": 926,
+  "style_in_3d_isolate": 626,
+  "show_in_3d": 2081,
+  "ifc_models": 2844,
+  "ifc_get": 2962,
+  "ifc_count": 4531,
+  "ifc_model_info": 4336,
+  "ifc_search": 4862,
+  "ifc_relations": 5091,
+  "ifc_classifications_list": 5739,
+  "ifc_property_values": 6494,
+  "ifc_material_layers": 7157,
+  "ifc_schema_describe": 1592,
+  "ifc_geometry_area": 1948
+ },
+ "results": [
+  {
+   "id": "D1-pocet-dveri",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "count_objects"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 8524,
+   "over_cap": false
+  },
+  {
+   "id": "D2-vzt-jednotky-kde",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "locate_objects"
+   ],
+   "tool_uses_total": 4,
+   "duration_ms": 11783,
+   "over_cap": false
+  },
+  {
+   "id": "D3-pocet-miestnosti",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "count_objects",
+    "count_objects"
+   ],
+   "tool_uses_total": 4,
+   "duration_ms": 11871,
+   "over_cap": true,
+   "note": "overoval dvoma filtrami"
+  },
+  {
+   "id": "D4-podhlad-qto",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "search_objects",
+    "ifc_get"
+   ],
+   "tool_uses_total": 4,
+   "duration_ms": 20904,
+   "over_cap": false
+  },
+  {
+   "id": "D5-vyustka-kde",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "get_object"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 12649,
+   "over_cap": false
+  },
+  {
+   "id": "D6-nosne-steny",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_property_values"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 19989,
+   "over_cap": false
+  },
+  {
+   "id": "D7-kod-len-v-ifc",
+   "pass": true,
+   "calls": 4,
+   "tools": [
+    "get_object",
+    "ifc_get",
+    "ifc_relations",
+    "get_spatial_path"
+   ],
+   "tool_uses_total": 8,
+   "duration_ms": 38626,
+   "over_cap": true,
+   "note": "get_object nájde, ale podlažie nedá pre prvok len v IFC"
+  },
+  {
+   "id": "C1-poziarna-odolnost-dveri",
+   "pass": true,
+   "calls": 5,
+   "tools": [
+    "ifc_property_values",
+    "aggregate_objects",
+    "search_everything",
+    "search_everything",
+    "aggregate_objects"
+   ],
+   "tool_uses_total": 8,
+   "duration_ms": 29606,
+   "over_cap": true,
+   "note": "správne po 1. volaní, potom overoval cez DB; jedno volanie s chybným parametrom"
+  },
+  {
+   "id": "C2-mineralna-vlna",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_material_layers"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 19724,
+   "over_cap": false
+  },
+  {
+   "id": "C3-vzt-potrubie-pocet",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_count"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 13342,
+   "over_cap": false
+  },
+  {
+   "id": "C4-revizia-asr",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_models"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 13491,
+   "over_cap": false
+  },
+  {
+   "id": "C5-schema-jednotky-vzt",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_model_info"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 12064,
+   "over_cap": false
+  },
+  {
+   "id": "C6-klasifikacia",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_classifications_list"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 15048,
+   "over_cap": false
+  },
+  {
+   "id": "C7-dedenie-triedy",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_schema_describe"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 11406,
+   "over_cap": false
+  },
+  {
+   "id": "C8-plocha-miestnosti",
+   "pass": true,
+   "calls": 5,
+   "tools": [
+    "search_objects",
+    "get_object",
+    "ifc_geometry_area",
+    "search_everything",
+    "query_view"
+   ],
+   "tool_uses_total": 9,
+   "duration_ms": 24871,
+   "over_cap": true,
+   "note": "get_object nevracia Qto; plochu hľadal v troch zdrojoch"
+  },
+  {
+   "id": "C9-jednotka-v-miestnosti",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "get_object",
+    "get_spatial_path"
+   ],
+   "tool_uses_total": 4,
+   "duration_ms": 12868,
+   "over_cap": false
+  },
+  {
+   "id": "C10-typ-jednotky",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "get_object",
+    "get_asset_details"
+   ],
+   "tool_uses_total": 4,
+   "duration_ms": 12370,
+   "over_cap": false
+  },
+  {
+   "id": "C11-text-v-ifc",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_search"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 23888,
+   "over_cap": false
+  },
+  {
+   "id": "C12-bcf-otvorene",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "bcf_topic_list"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 9599,
+   "over_cap": false
+  },
+  {
+   "id": "C13-otvorene-poziadavky",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "feedback_status"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 12205,
+   "over_cap": false
+  },
+  {
+   "id": "V5-2d-podorys",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "set_view_mode"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 6567,
+   "note": "mode 2d, storey 2NP (27hbQtAo...)",
+   "over_cap": false
+  },
+  {
+   "id": "V6-vyber-a-vlastnosti",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "get_object",
+    "select_in_3d"
+   ],
+   "tool_uses_total": 4,
+   "duration_ms": 11166,
+   "over_cap": true,
+   "note": "select_in_3d berie object_ref priamo, get_object navyše; panel IFC / Properties"
+  },
+  {
+   "id": "V7-obalka-prvku",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "get_bounds"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 8615,
+   "note": "0,31 x 1,02 x 2,16 m",
+   "over_cap": false
+  },
+  {
+   "id": "V1-ukaz-miestnost",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "show_in_3d"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 9469,
+   "note": "výber a focus 3.02 OK; kameru nemožno overiť: headless viewer stratil WebGPU zariadenie (SwiftShader, hláška The graphics device was lost), rámovanie na prvok nefunguje ani cez set_camera, preset top áno",
+   "over_cap": false
+  },
+  {
+   "id": "V2-izoluj-nosne",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "style_in_3d"
+   ],
+   "tool_uses_total": 4,
+   "duration_ms": 11981,
+   "note": "isolated 185",
+   "over_cap": false
+  },
+  {
+   "id": "E2-pridaj-schodiska",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "style_in_3d"
+   ],
+   "tool_uses_total": 2,
+   "duration_ms": 7223,
+   "note": "isolated 185 -> 190",
+   "over_cap": false
+  },
+  {
+   "id": "E3-rez-pod-podhladom",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "set_section"
+   ],
+   "tool_uses_total": 3,
+   "duration_ms": 12983,
+   "note": "rez horizontal 12,20 m, potvrdený viewerom",
+   "over_cap": false
+  },
+  {
+   "id": "E1-rez-schodiskom",
+   "pass": true,
+   "calls": 4,
+   "tools": [
+    "get_object",
+    "set_section",
+    "style_in_3d",
+    "set_camera"
+   ],
+   "tool_uses_total": 7,
+   "duration_ms": 21647,
+   "note": "rez vertical IFC Y 4,159, izolácia nosných 176/185, kamera preset=section (smer kolmo na rez; rámovanie neoverené kvôli strate WebGPU)",
+   "over_cap": false
+  },
+  {
+   "id": "V4-zrus-vyber",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "select_in_3d"
+   ],
+   "tool_uses_total": 2,
+   "duration_ms": 5036,
+   "note": "setup (search_objects, select_in_3d) 12,3 s; selection 0",
+   "over_cap": false
+  },
+  {
+   "id": "V3-zrus-vsetko",
+   "pass": true,
+   "calls": 3,
+   "tools": [
+    "set_view_mode",
+    "select_in_3d",
+    "show_in_3d"
+   ],
+   "tool_uses_total": 5,
+   "duration_ms": 10061,
+   "over_cap": true,
+   "note": "bez rezu, izolácie, výberu; 3 volania, o 1 nad stropom (reset nezruší výber a focus)"
+  }
+ ],
+ "summary": {
+  "pass": "30/30",
+  "median_calls": 1.0,
+  "median_duration_ms": 12288,
+  "over_cap": [
+   "D3",
+   "D7",
+   "C1",
+   "C8",
+   "V6",
+   "V3"
+  ],
+  "finding": "Všetky úlohy správne, ale 6 z 30 nad stropom volaní a všetky z rovnakého dôvodu: agent nevie, že jeden tool už vie viac, alebo podobné tooly overuje navzájom. D7 a C8: get_object nevráti podlažie prvku len v IFC ani Qto, agent skáče po ifc_get, ifc_relations, ifc_geometry_area, query_view. C1: ifc_property_values dal odpoveď hneď, agent ju overoval cez aggregate_objects a search_everything. D3: count_objects dvakrát s iným filtrom. V3: reset nezruší výber ani focus (set_view_mode + select_in_3d + show_in_3d). V6: get_object pred select_in_3d, hoci select_in_3d berie object_ref. Presne tieto miesta rieši zlúčenie D-115 (get_object include, search_objects mode, show_in_3d select, set_camera reset)."
+ }
+}

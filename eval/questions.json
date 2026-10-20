@@ -307,7 +307,7 @@
       "id": "doc-drawings-of",
       "category": "documents",
       "question": "Aké dokumenty patria k miestnosti 3.01?",
-      "expect": { "tools_called": ["find_documents"], "answer_matches": ["Pôdorys 3NP", "N3\\.01|PBR"] },
+      "expect": { "tools_called": ["get_object"], "answer_matches": ["Pôdorys 3NP", "N3\\.01|PBR"] },
       "verified": false,
       "notes": "D-104 krok 2: výkresové väzby z obsahu PDF (E4) sú zrušené. 3.01 má dokumenty cez zónu NJ - 3NP (D.1.1.03 Pôdorys 3NP), požiarny úsek N3.01 (PBR) a tepelnú zónu Z3 (PENB, zónovanie); overené dotazom na v_object_documents na prod 20. 10., nie eval behom."
     },
@@ -573,7 +573,7 @@
       "question": "Nájdi karuselové dvere.",
       "expect": { "answer_matches": ["DD01\\.08\\.0001"] },
       "verified": false,
-      "notes": "D-095: Description 'Karuselové dvere' je len v IFC (ASR, IfcDoor 1_YiIDK5n2fvfP1VGIobML), graf AIM ho nenesie. ifc_search je len v MCP (/ask motor nemá), overenie = scenár cez konektor."
+      "notes": "D-095: Description 'Karuselové dvere' je len v IFC (ASR, IfcDoor 1_YiIDK5n2fvfP1VGIobML), graf AIM ho nenesie. search_all(source=ifc) je len v MCP (/ask motor nemá), overenie = scenár cez konektor."
     },
     {
       "id": "search-ifc-zone-longname",
@@ -581,7 +581,7 @@
       "question": "Ukáž prenajímateľné priestory.",
       "expect": { "answer_matches": ["Nájomné priestory"] },
       "verified": false,
-      "notes": "D-095: IfcZone 'Nájomné priestory' má LongName 'Nájomné priestory (prenajímateľné)' len v IFC (ASR). ifc_search je len v MCP, overenie = scenár cez konektor."
+      "notes": "D-095: IfcZone 'Nájomné priestory' má LongName 'Nájomné priestory (prenajímateľné)' len v IFC (ASR). search_all(source=ifc) je len v MCP, overenie = scenár cez konektor."
     },
     {
       "id": "search-all-badges",
@@ -603,7 +603,7 @@
       "id": "bcf-topic-selection",
       "category": "bcf",
       "question": "Vyber tento prvok a vytvor BCF tému: potrubie koliduje s nosníkom, priraď projektantovi VZT, priorita vysoká.",
-      "expect": { "tools_called": ["bcf_topic_create"] },
+      "expect": { "tools_called": ["bcf_topic"] },
       "verified": false,
       "notes": "D-099 (issue #78): téma z výberu živého viewera, priradená človeku = bez session. Len MCP, overenie = scenár cez konektor s otvoreným viewerom."
     },
@@ -627,17 +627,17 @@
       "id": "view-select-panel-ifc",
       "category": "view",
       "question": "Vyber miestnosť 2.01 a ukáž jej IFC výmery, zvýrazni čistú podlahovú plochu.",
-      "expect": { "tools_called": ["select_in_3d"], "actions_match": ["select:[^:]*s=quantities"] },
+      "expect": { "tools_called": ["show_in_3d"], "actions_match": ["select:[^:]*s=quantities"] },
       "verified": false,
-      "notes": "D-113 (issue #71): select_in_3d(id_or_ref=2.01, panel_section=quantities alebo highlight=Qto_SpaceBaseQuantities.NetFloorArea -> sekcia Quantities); hodnotu NetFloorArea z ifc_get."
+      "notes": "D-113 (issue #71), D-115: show_in_3d(select=true, id_or_ref=2.01, panel_section=quantities alebo highlight=Qto_SpaceBaseQuantities.NetFloorArea -> sekcia Quantities); hodnotu NetFloorArea z ifc_get."
     },
     {
       "id": "materials-insulation-layers",
       "category": "ifc_engine",
       "question": "Ukáž všetky vrstvy izolácie v modeli ASR.",
-      "expect": { "tools_called": ["ifc_material_layers"] },
+      "expect": { "tools_called": ["ifc_query"] },
       "verified": false,
-      "notes": "D-108 (issue #69): ifc_material_layers(material=izol) a show_in_3d z jeho show_in_3d; nie hádanie podľa názvu skladby. Počet over voči súboru ASR."
+      "notes": "D-108 (issue #69), D-115: ifc_query(material=izol) a show_in_3d z jeho show_in_3d; nie hádanie podľa názvu skladby. Počet over voči súboru ASR."
     },
     {
       "id": "materials-assembly-layers",
@@ -659,9 +659,9 @@
       "id": "model-crs",
       "category": "ifc_engine",
       "question": "Aký súradnicový systém používa model ASR?",
-      "expect": { "tools_called": ["ifc_model_info"] },
+      "expect": { "tools_called": ["ifc_models"] },
       "verified": false,
-      "notes": "D-109 (issue #73): georeferencia a CRS z ifc_model_info (prevzatý z balíka), nie odhad."
+      "notes": "D-109 (issue #73): georeferencia a CRS z ifc_models(action=info) (prevzatý model_info balíka, D-115), nie odhad."
     },
     {
       "id": "network-ahu-for-room",
@@ -683,7 +683,7 @@
       "id": "doc-object-page",
       "category": "documents",
       "question": "V ktorom dokumente a na ktorej strane je popísaná skladba podlahy ST01.20.0012?",
-      "expect": { "tools_called": ["find_documents"], "answer_matches": ["Výpis skladieb", "\\b3\\b"] },
+      "expect": { "tools_called": ["get_object"], "answer_matches": ["Výpis skladieb", "\\b3\\b"] },
       "verified": false,
       "notes": "D-104 krok 2: IfcCovering ST01.20.0012 -> skupina S1.01 -> S1 -> IfcDocumentReference D.1.1.09 strana 3; overené na prod 20. 10., nie eval behom."
     },
@@ -691,9 +691,9 @@
       "id": "doc-covers",
       "category": "documents",
       "question": "Ktorých miestností a zón sa týka dokument D.1.3.04 Pôdorys 3NP PBR?",
-      "expect": { "tools_called": ["find_documents"], "answer_matches": ["N3\\."] },
+      "expect": { "tools_called": ["get_object"], "answer_matches": ["N3\\."] },
       "verified": false,
-      "notes": "D-104 krok 2: opačný smer, find_documents document=OCB_SO01_PBR_D-1-3-04_PODORYS-3NP (požiarne úseky N3.* a ich miestnosti a prvky)."
+      "notes": "D-104 krok 2: opačný smer, get_object(OCB_SO01_PBR_D-1-3-04_PODORYS-3NP, include=documents) (požiarne úseky N3.* a ich miestnosti a prvky)."
     }
   ]
 }

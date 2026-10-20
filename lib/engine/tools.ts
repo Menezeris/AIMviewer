@@ -3,6 +3,7 @@ import { getIfcModels, modelKey } from "../data/ifc-models";
 import { cacheSnapshot, getStore, type EngineModelSource } from "./cache";
 import { idsSources, loadIds } from "./ids-sources";
 import { execPassthroughTool, isPassthroughTool } from "./passthrough";
+import { passthroughName } from "./passthrough-defs";
 import { joinToAim, type GuidLookup } from "./join";
 import { ifcMaterialLayers } from "./materials";
 import { ifcRelations } from "./relations";
@@ -20,7 +21,7 @@ import {
 } from "./search";
 import { openEngineSession, type EngineModel, type EngineSession, type EngineToolResult } from "./session";
 import { resolveStorey } from "./storey";
-import { OPS } from "./tool-defs";
+import { MODEL_ACTIONS, OPS, QUERY_MODES, type ModelAction } from "./tool-defs";
 
 /**
  * Tools IFC motora pre MCP konektor (D-084, fáza 1): `ifc_*` nad IFC súbormi
@@ -434,7 +435,7 @@ export async function ifcSearchResult(input: Record<string, unknown>, deps: Engi
     items: joined.items.map((i) => ({ ...i, source: i.object_id ? "ifc+aim" : "ifc" })),
     show_in_3d: joined.show_in_3d,
     ...(hits.length === 0
-      ? { hint: "V IFC súbore nič - skús search_everything (graf AIM: importované psety, dokumenty), synonymum alebo anglický výraz." }
+      ? { hint: "V IFC súbore nič - skús search_all (aj graf AIM: importované psety, dokumenty), synonymum alebo anglický výraz." }
       : {}),
   };
 }
@@ -513,6 +514,115 @@ async function ifcIdsValidate(input: Record<string, unknown>, deps: EngineDeps):
   });
 }
 
+/** `ifc_models` action -> meno toolu balíka, alebo null pre vlastné revisions (D-115). */
+function modelActionUpstream(raw: unknown): string | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const action = str(raw);
+  if (!(action in MODEL_ACTIONS)) throw new InputError(`action: ${Object.keys(MODEL_ACTIONS).join(" | ")}.`);
+  return MODEL_ACTIONS[action as ModelAction];
+}
+
+/** Vstup prevzatého toolu: `model` z ifc_models je `model_id` balíka. */
+function modelActionArgs(input: Record<string, unknown>): Record<string, unknown> {
+  const { model, model_id, type, include_inherited } = input;
+  return {
+    ...(model_id !== undefined || model !== undefined ? { model_id: model_id ?? model } : {}),
+    ...(type !== undefined ? { type } : {}),
+    ...(include_inherited !== undefined ? { include_inherited } : {}),
+  };
+}
+
+/**
+ * `ifc_query` s režimom (D-115): list = dotaz na prvky, count = počet, values =
+ * histogram hodnôt, material = prvky s materiálom; každý režim má vlastný
+ * handler, zlúčené je len meno a schéma.
+ */
+async function ifcQueryMode(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
+  const mode = str(input.mode) || "list";
+  if (!(QUERY_MODES as readonly string[]).includes(mode)) throw new InputError(`mode: ${QUERY_MODES.join(" | ")}.`);
+  if (str(input.material)) {
+    if (mode === "values") throw new InputError("material sa nekombinuje s mode=values.");
+    // count = ten istý výpočet (total a skladby platia za všetky), len bez zoznamu prvkov.
+    if (mode === "count") {
+      const full = JSON.parse(await ifcMaterialLayers({ ...input, limit: 1 }, deps)) as Record<string, unknown>;
+      for (const key of ["items", "show_in_3d", "truncated", "note"]) delete full[key];
+      return JSON.stringify(full);
+    }
+    return ifcMaterialLayers(input, deps);
+  }
+  // count a values majú jednu triedu; prijmú aj starší tvar ifc_type.
+  const one = { ...input, ifc_type: input.ifc_type ?? sanitizeTypes(input.ifc_types)[0] };
+  if (mode === "count") return ifcCount(one, deps);
+  if (mode === "values") return ifcPropertyValues(one, deps);
+  return ifcQuery(input, deps);
+}
+
+/**
+ * `ifc_measure` s qto=true (D-115): plocha a objem z Qto v súbore cez prevzaté
+ * `geometry_area` / `geometry_volume`, bez tesselácie geometrie.
+ */
+async function ifcQto(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
+  const list = Array.isArray(input.items) ? input.items.map((v) => str(v)).filter(Boolean) : [];
+  const targets = [...new Set([str(input.a), ...list].filter(Boolean))];
+  if (targets.length === 0) throw new InputError("Zadaj a alebo items: object_ref, objects.id alebo IFC GlobalId.");
+  if (targets.length > 50) throw new InputError("items má najviac 50 prvkov.");
+  const refs = targets.filter((t) => !IFC_GUID_RE.test(t));
+  const resolved = refs.length > 0 ? await deps.resolveTargets(refs) : new Map<string, string>();
+  const guidFor = (t: string) => (IFC_GUID_RE.test(t) ? t : resolved.get(t));
+  const missing = targets.filter((t) => !guidFor(t));
+  if (missing.length > 0) throw new InputError(`Bez IFC GUID v AIM: ${missing.join(", ")} - zadaj IFC GlobalId.`);
+
+  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? getIfcModels)().map((m) => m.id);
+  const { models, revision } = await modelsFor(modelIds, deps);
+  const session = await openEngineSession(models);
+  const found: Array<{ input: string; global_id: string; model: EngineModel; express_id: number }> = [];
+  for (const t of targets) {
+    const g = guidFor(t)!;
+    for (const m of models) {
+      const id = (await guidIndex(session, m)).get(g);
+      if (id !== undefined) {
+        found.push({ input: t, global_id: g, model: m, express_id: id });
+        break;
+      }
+    }
+  }
+  const notIn = targets.filter((t) => !found.some((f) => f.input === t));
+  if (notIn.length > 0) throw new InputError(`Nie je v ${modelIds.join("/")}: ${notIn.join(", ")}.`);
+
+  const values = new Map<string, { area_m2: number | null; volume_m3: number | null }>();
+  const units: Record<string, string> = {};
+  for (const m of new Set(found.map((f) => f.model))) {
+    const mine = found.filter((f) => f.model === m);
+    const args = { model_id: m.id, express_ids: mine.map((f) => f.express_id) };
+    type Q = { results?: Array<{ expressId: number; area?: number | null; volume?: number | null }>; unit?: string };
+    const area = structured<Q>(await session.call("geometry_area", args));
+    const volume = structured<Q>(await session.call("geometry_volume", args));
+    if (area.unit) units.area = area.unit;
+    if (volume.unit) units.volume = volume.unit;
+    for (const f of mine) {
+      values.set(f.input, {
+        area_m2: area.results?.find((r) => r.expressId === f.express_id)?.area ?? null,
+        volume_m3: volume.results?.find((r) => r.expressId === f.express_id)?.volume ?? null,
+      });
+    }
+  }
+  const joined = await joinToAim(
+    found.map((f) => ({ global_id: f.global_id, model: f.model.id, input: f.input })),
+    deps.lookup,
+  );
+  return envelope({
+    source: "Qto v IFC súbore (IfcElementQuantity), nie geometria",
+    revision: Object.fromEntries([...new Set(found.map((f) => f.model.id))].map((id) => [id, revision[id]])),
+    units,
+    items: joined.items.map(({ aim_url, ...rest }) => {
+      void aim_url;
+      return { ...rest, ...values.get(rest.input as string) };
+    }),
+    show_in_3d: joined.show_in_3d,
+    note: "null = Qto v súbore chýba; plochu a objem z geometrie dá ifc_measure bez qto.",
+  });
+}
+
 /** Vykoná `ifc_*` tool. Chyby vstupu a motora sa vracajú ako výsledok toolu, nie výnimka. */
 export async function execEngineTool(
   name: string,
@@ -522,11 +632,15 @@ export async function execEngineTool(
   try {
     let content: string;
     switch (name) {
-      case "ifc_models":
+      case "ifc_models": {
+        // D-115: údaje o súbore z prevzatých tools balíka pod jedným menom.
+        const upstream = modelActionUpstream(input.action);
+        if (upstream) return await execPassthroughTool(passthroughName(upstream), modelActionArgs(input), deps);
         content = await ifcModels(input, deps);
         break;
+      }
       case "ifc_query":
-        content = await ifcQuery(input, deps);
+        content = await ifcQueryMode(input, deps);
         break;
       case "ifc_search":
         content = await ifcSearch(input, deps);
@@ -550,7 +664,7 @@ export async function execEngineTool(
         content = await ifcMaterialLayers(input, deps);
         break;
       case "ifc_measure":
-        content = await (await import("./measure")).ifcMeasure(input, deps);
+        content = input.qto === true ? await ifcQto(input, deps) : await (await import("./measure")).ifcMeasure(input, deps);
         break;
       default:
         if (isPassthroughTool(name)) return await execPassthroughTool(name, input, deps);

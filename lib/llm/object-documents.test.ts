@@ -1,7 +1,8 @@
 /**
- * find_documents (D-104 krok 2) nad napodobenou DB: `v_object_documents` vracia riadky pre
- * každú cestu (zóna aj nadradená zóna), tool z nich spraví jeden riadok na dokument a stranu
- * s najbližšou cestou a v opačnom smere počty objektov podľa typu a nositeľa.
+ * `get_object(include=documents)` (D-104 krok 2, D-115) nad napodobenou DB:
+ * `v_object_documents` vracia riadky pre každú cestu (zóna aj nadradená zóna), tool z nich
+ * spraví jeden riadok na dokument a stranu s najbližšou cestou a pri dokumente počty
+ * objektov podľa typu a nositeľa.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -87,17 +88,17 @@ beforeEach(() => {
   }));
 });
 
-async function run(input: Record<string, unknown>) {
+async function run(idOrRef: string, include: string[] = ["documents"]) {
   const rt = new AskToolRuntime();
-  const res = await rt.exec("find_documents", input);
+  const res = await rt.exec("get_object", { id_or_ref: idOrRef, include });
   expect(res.isError).toBe(false);
   return JSON.parse(res.content);
 }
 
-describe("find_documents (D-104)", () => {
+describe("get_object include=documents (D-104)", () => {
   it("objekt: dokument raz s najbližšou cestou, ďalší nositelia v also_via, dokumentácia stavby len počtom", async () => {
-    const out = await run({ object: "3.01" });
-    expect(out.object.id).toBe("sp");
+    const out = await run("3.01");
+    expect(out.id).toBe("sp");
     expect(out.documents).toEqual([
       expect.objectContaining({
         document: "D.1.1.03 Pôdorys 3NP", via: "zone", via_name: "NJ - 3NP",
@@ -109,28 +110,31 @@ describe("find_documents (D-104)", () => {
   });
 
   it("objekt so stranou: deep_link otvorí dokument na strane", async () => {
-    const out = await run({ object: "ST01.20.0012" });
+    const out = await run("ST01.20.0012");
     expect(out.documents[0]).toMatchObject({
       document: "D.1.1.09 Výpis skladieb", page: 3, via: "group", via_name: "S1", deep_link: "/drawing/d9?page=3",
     });
   });
 
   it("dokument: objekty raz, počty podľa typu a nositeľa", async () => {
-    const out = await run({ document: "OCB_SO01_ASR_D-1-1-03_PODORYS-3NP" });
+    const out = await run("OCB_SO01_ASR_D-1-1-03_PODORYS-3NP");
     expect(out.objects_total).toBe(2);
     expect(out.by_object_type).toEqual({ space: 1, zone: 1 });
     expect(out.by_holder).toEqual({ "zone: NJ - 3NP": 1, priamo: 1 });
   });
 
   it("odkaz na stranu hľadá cez reference_id", async () => {
-    const out = await run({ document: "OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB#page=3" });
+    const out = await run("OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB#page=3");
     expect(out.objects_total).toBe(1);
     expect(out.sample[0]).toMatchObject({ id: "st", page: 3, via_name: "S1" });
   });
 
-  it("práve jedno z object / document", async () => {
+  it("staré include=drawings a find_in_drawings (D-115) vrátia dokumenty z modelu", async () => {
+    const out = await run("ST01.20.0012", ["drawings"]);
+    expect(out.documents[0]).toMatchObject({ document: "D.1.1.09 Výpis skladieb", page: 3 });
+    expect(out.drawings).toBeUndefined();
     const rt = new AskToolRuntime();
-    expect((await rt.exec("find_documents", {})).isError).toBe(true);
-    expect((await rt.exec("find_documents", { object: "3.01", document: "x" })).isError).toBe(true);
+    const legacy = JSON.parse((await rt.exec("find_in_drawings", { id: "st" })).content);
+    expect(legacy.documents).toHaveLength(1);
   });
 });

@@ -65,100 +65,22 @@ const PRIVACY =
   "Issue je VEREJNÉ (repo konektora je verejné): nepíš mená, telefóny ani e-maily osôb a firiem z modelu, " +
   "heslá ani tokeny. object_ref, IFC triedy, názvy psetov a tools sú v poriadku.";
 
+/** `feedback` action -> handler (D-115); staré mená sú to isté pod vlastným menom. */
+export const FEEDBACK_ACTIONS = {
+  report: "report_feedback",
+  request_tool: "request_tool",
+  comment: "feedback_comment",
+  start_session: "start_queued_session",
+} as const;
+
 export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
-  {
-    name: "request_tool",
-    description:
-      "Zapíše POŽIADAVKU NA NOVÝ TOOL (GitHub issue) a hneď spustí Claude Code session, ktorá ho navrhne a " +
-      "naprogramuje (D-090). Volaj LEN na výslovný pokyn používateľa ('zapíš to', 'založ issue'); sám to len " +
-      "ponúkni, a to až po vyčerpaní existujúcich tools (query_view, search_everything, aggregate_objects, " +
-      "ifc_*...). Opíš potrebu, nie riešenie: čo chcel používateľ, čo si skúsil a prečo to nestačí. Rovnaká " +
-      "požiadavka (rovnaký title alebo proposal.name) sa pripíše k otvorenému issue ako ďalší výskyt. Naraz " +
-      "bežia najviac 3 sessions; ďalšie issues idú do fronty (queued=true) a spúšťa ich start_queued_session. " +
-      PRIVACY,
-    inputSchema: {
-      type: "object",
-      properties: {
-        title: { type: "string", description: `Čo má nový tool vedieť, krátko (max ${MAX_TITLE} znakov).` },
-        user_request: {
-          type: "string",
-          description: "Otázka alebo úloha používateľa, ideálne doslovne.",
-        },
-        why_existing_fail: {
-          type: "string",
-          description: "Prečo existujúce tools nestačia (čo chýba: dáta, filter, výpočet, akcia vo vieweri...).",
-        },
-        tried_tools: {
-          type: "array",
-          items: { type: "string" },
-          description: "Skúšané volania a čo vrátili, napr. 'query_view v_space_elements: nemá stĺpec plochy'.",
-        },
-        proposal: {
-          type: "object",
-          description: "Voliteľný návrh toolu; session ho môže zmeniť.",
-          properties: {
-            name: { type: "string", description: "snake_case meno, napr. list_rooms_without_lighting" },
-            description: { type: "string" },
-            inputs: { type: "string", description: "Parametre a ich význam." },
-            output: { type: "string", description: "Čo má vrátiť." },
-          },
-        },
-        area: {
-          type: "string",
-          enum: [...AREAS],
-          description:
-            "Kde to asi patrí: aim_data (DB), viewer (3D), ifc_engine (ifc_*), model_change (úprava IFC), " +
-            "requirements_library (knižnica požiadaviek), other.",
-        },
-        examples: {
-          type: "array",
-          items: { type: "string" },
-          description: "Ďalšie otázky, ktoré by tool pokryl.",
-        },
-        start_session: {
-          type: "boolean",
-          description: "false = len zapísať, session nespúšťať ani nedávať do fronty (predvolene true).",
-        },
-      },
-      required: ["title", "user_request", "why_existing_fail"],
-    },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-  },
-  {
-    name: "report_feedback",
-    description:
-      "Zapíše PRIPOMIENKU ku konektoru (GitHub issue, D-090): chyba toolu (bug), zlé alebo chýbajúce dáta " +
-      "(wrong_data), zlá odpoveď alebo postup (wrong_answer), návrh na zlepšenie (improvement). Volaj LEN na " +
-      "výslovný pokyn používateľa ('zapíš si to', 'založ pripomienku'); keď tool zjavne zlyhal, len to ponúkni. " +
-      "start_session=true hneď spustí Claude Code session, ktorá to rieši - len keď to používateľ chce. " +
-      "Chybu v IFC modeli nezapisuj sem, to je BCF téma (bcf_topic_create, D-099). " +
-      PRIVACY,
-    inputSchema: {
-      type: "object",
-      properties: {
-        kind: { type: "string", enum: [...FEEDBACK_KINDS], description: "Druh pripomienky." },
-        title: { type: "string", description: `Jedna veta (max ${MAX_TITLE} znakov).` },
-        description: { type: "string", description: "Čo je zle a čo by bolo správne." },
-        tool: { type: "string", description: "Tool, ktorého sa to týka (ak nejaký)." },
-        example: { type: "string", description: "Otázka alebo volanie (argumenty), na ktorom sa to ukázalo." },
-        object_refs: {
-          type: "array",
-          items: { type: "string" },
-          description: "object_ref prvkov, ktorých sa to týka.",
-        },
-        start_session: { type: "boolean", description: "Hneď spustiť session, ktorá to rieši (predvolene nie)." },
-      },
-      required: ["kind", "title", "description"],
-    },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-  },
   {
     name: "feedback_status",
     description:
       "Stav pripomienok a požiadaviek na tools (D-090). Bez issue_number vráti otvorené issues konektora " +
       "(číslo, názov, druh, či beží session); s issue_number stav issue, odkaz na session, PR a posledné " +
       "komentáre (otázky session na používateľa). Zoznam ukáže aj sessions: koľko beží z koľkých a čo je vo " +
-      "fronte. Použi pred request_tool, keď tušíš, že požiadavka už existuje.",
+      "fronte. Použi pred feedback(action=request_tool), keď tušíš, že požiadavka už existuje.",
     inputSchema: {
       type: "object",
       properties: {
@@ -168,51 +90,76 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
     annotations: { readOnlyHint: true, openWorldHint: true },
   },
   {
-    name: "feedback_comment",
+    name: "feedback",
     description:
-      "Dopíše KOMENTÁR do existujúceho issue konektora, otvoreného aj zatvoreného (štítok mcp, D-090): kolo " +
-      "evalov, výsledky pred / po, poznámka k požiadavke. Volaj LEN na výslovný pokyn používateľa ('dopíš do #97 " +
-      "kolo 2'); nové issue nezakladá a session nespúšťa. reopen=true zatvorené issue znovu otvorí, LEN keď to " +
-      "používateľ výslovne povie ('otvor ho znova'). Vráti odkaz na komentár; feedback_status ho ukáže v last_comments. " +
+      "Zápis do GitHub issues konektora (D-090). Volaj LEN na výslovný pokyn používateľa ('zapíš to', 'založ " +
+      "pripomienku', 'dopíš do #97'); sám to len ponúkni. action=report: PRIPOMIENKA - chyba toolu (bug), zlé " +
+      "dáta (wrong_data), zlá odpoveď (wrong_answer), návrh (improvement); kind, title, description, " +
+      "start_session len keď to používateľ chce. request_tool: POŽIADAVKA NA NOVÝ TOOL až po vyčerpaní existujúcich " +
+      "tools; opíš potrebu (user_request, why_existing_fail, tried_tools s konkrétnymi tools); ak stačí rozšíriť " +
+      "existujúci tool (parameter, akcia, pole vo výsledku), uveď ho v proposal.extend - rozšírenie má prednosť " +
+      "(D-114); spustí session alebo ide do fronty, rovnaká požiadavka sa pripíše ako ďalší výskyt. comment: " +
+      "komentár do existujúceho issue (issue_number, text, kind eval_round | result | note; reopen len na " +
+      "výslovný pokyn). start_session: spustí session pre ďalšie issue z fronty (over_limit len na výslovnú " +
+      "žiadosť). Chyba v IFC modeli sem nepatrí, to je BCF téma (bcf_topic). " +
       PRIVACY,
     inputSchema: {
       type: "object",
       properties: {
-        issue_number: { type: "integer", description: "Číslo otvoreného issue konektora." },
-        text: { type: "string", description: `Text komentára v markdown (max ${MAX_COMMENT} znakov).` },
+        action: { type: "string", enum: Object.keys(FEEDBACK_ACTIONS) },
         kind: {
           type: "string",
-          enum: [...COMMENT_KINDS],
-          description: "Druh komentára (nadpis): eval_round (kolo evalov), result (výsledok), note (poznámka, predvolene).",
+          enum: [...FEEDBACK_KINDS, ...COMMENT_KINDS],
+          description: "report: bug | wrong_data | wrong_answer | improvement; comment: eval_round | result | note",
         },
-        reopen: {
-          type: "boolean",
-          description: "true = zatvorené issue znovu otvoriť (len na výslovný pokyn používateľa; predvolene nie).",
+        title: { type: "string", description: `report, request_tool: jedna veta (max ${MAX_TITLE} znakov)` },
+        description: { type: "string", description: "report: čo je zle a čo by bolo správne" },
+        tool: { type: "string", description: "report: tool, ktorého sa to týka" },
+        example: { type: "string", description: "report: otázka alebo volanie, na ktorom sa to ukázalo" },
+        object_refs: { type: "array", items: { type: "string" }, description: "report: object_ref dotknutých prvkov" },
+        user_request: { type: "string", description: "request_tool: otázka používateľa, ideálne doslovne" },
+        why_existing_fail: {
+          type: "string",
+          description: "request_tool: prečo existujúce tools nestačia (dáta, filter, výpočet, akcia vo vieweri...)",
         },
+        tried_tools: {
+          type: "array",
+          items: { type: "string" },
+          description: "request_tool: skúšané volania (tool a parametre) a čo vrátili",
+        },
+        proposal: {
+          type: "object",
+          description: "request_tool: voliteľný návrh; session ho môže zmeniť",
+          properties: {
+            extend: { type: "string", description: "Existujúci tool na rozšírenie a ako, napr. 'get_object: include=qto'" },
+            name: { type: "string", description: "snake_case meno nového toolu" },
+            description: { type: "string" },
+            inputs: { type: "string" },
+            output: { type: "string" },
+          },
+        },
+        area: {
+          type: "string",
+          enum: [...AREAS],
+          description: "request_tool: aim_data | viewer | ifc_engine | model_change | requirements_library | other",
+        },
+        examples: { type: "array", items: { type: "string" }, description: "request_tool: ďalšie otázky, ktoré by tool pokryl" },
+        issue_number: { type: "integer", description: "comment: číslo issue; start_session: konkrétne issue z fronty" },
+        text: { type: "string", description: `comment: text v markdown (max ${MAX_COMMENT} znakov)` },
+        reopen: { type: "boolean", description: "comment: znovu otvoriť zatvorené issue (len na výslovný pokyn)" },
+        over_limit: { type: "boolean", description: "start_session: aj nad strop 3 sessions (len na výslovnú žiadosť)" },
+        start_session: { type: "boolean", description: "report: hneď spustiť session; request_tool: false = len zapísať" },
       },
-      required: ["issue_number", "text"],
-    },
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-  },
-  {
-    name: "start_queued_session",
-    description:
-      "Spustí Claude Code session pre ďalšiu požiadavku z fronty (D-090): bez issue_number najstaršiu so " +
-      "štítkom fronta, s issue_number konkrétne otvorené issue konektora. Volaj, keď používateľ povie 'spusti " +
-      "ďalšiu' (napr. po notifikácii, že sa uvoľnilo miesto). Pri plnom strope nič nespustí a vráti, čo beží; " +
-      "over_limit=true strop obíde, len keď to používateľ výslovne chce.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        issue_number: { type: "integer", description: "Konkrétne issue; bez neho najstaršie vo fronte." },
-        over_limit: { type: "boolean", description: "Spustiť aj nad strop (len na výslovnú žiadosť)." },
-      },
+      required: ["action"],
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
 ];
 
-export const FEEDBACK_TOOL_NAMES = new Set(FEEDBACK_TOOL_DEFINITIONS.map((t) => t.name));
+/** Staré mená zápisových tools (D-115): nevypisujú sa, ale vykonajú sa. */
+export const LEGACY_FEEDBACK_TOOL_NAMES: ReadonlySet<string> = new Set(Object.values(FEEDBACK_ACTIONS));
+
+export const FEEDBACK_TOOL_NAMES = new Set([...FEEDBACK_TOOL_DEFINITIONS.map((t) => t.name), ...LEGACY_FEEDBACK_TOOL_NAMES]);
 
 export interface FeedbackDeps {
   client: GithubClient | null;
@@ -326,7 +273,9 @@ interface Draft {
 const SESSION_NOTE =
   "## Pre session, ktorá to rieši\n" +
   "Postup je v skille `.claude/skills/mcp-poziadavka/SKILL.md` (D-090): najprv over, či to nejde " +
-  "existujúcim toolom alebo postupom (potom stačí úprava inštrukcií), potom záznam D-0xx, pri nástroji " +
+  "existujúcim toolom alebo postupom (potom stačí úprava inštrukcií); ak nie, skús rozšíriť existujúci " +
+  "tool z inventára `MCP-TOOLS.md` (parameter, akcia, pole vo výsledku) - nový tool až keď to nejde " +
+  "(D-114). Potom záznam D-0xx, pri nástroji " +
   "viewera alebo motora pravidlo D-087. Otázky na Samuela patria do session a sem ako komentár. Výsledok je " +
   "PR s `Closes #<číslo>`, nikdy merge.";
 
@@ -339,6 +288,7 @@ export function draftToolRequest(args: Record<string, unknown>, now: Date): Draf
   const area: Area = (AREAS as readonly string[]).includes(args.area as string) ? (args.area as Area) : "other";
   const p = typeof args.proposal === "object" && args.proposal !== null ? (args.proposal as Record<string, unknown>) : {};
   const proposal = {
+    extend: str(p.extend, MAX_TEXT, "proposal.extend"),
     name: slug(str(p.name, 80, "proposal.name")).replace(/-/g, "_"),
     description: str(p.description, MAX_TEXT, "proposal.description"),
     inputs: str(p.inputs, MAX_TEXT, "proposal.inputs"),
@@ -352,8 +302,9 @@ export function draftToolRequest(args: Record<string, unknown>, now: Date): Draf
     `## Prečo existujúce tools nestačia\n${why}`,
   ];
   if (tried.length) parts.push(`### Skúšané tools\n${bullets(tried)}`);
-  if (proposal.name || proposal.description || proposal.inputs || proposal.output) {
+  if (proposal.extend || proposal.name || proposal.description || proposal.inputs || proposal.output) {
     const rows = [
+      proposal.extend && `- **Rozšíriť existujúci:** ${proposal.extend}`,
       proposal.name && `- **Meno:** \`${proposal.name}\``,
       proposal.description && `- **Čo robí:** ${proposal.description}`,
       proposal.inputs && `- **Vstupy:** ${proposal.inputs}`,
@@ -570,7 +521,7 @@ async function record(d: Draft, deps: FeedbackDeps): Promise<{ text: string; isE
     const position = queuedIssues(open).filter((i) => i.number !== issue.number).length + 1;
     sessionNote =
       `Issue je vo fronte (pozícia ${position}). ${queueText(running, max)} ` +
-      "Keď niektorá skončí, Samuel dostane notifikáciu; ďalšiu spustí start_queued_session.";
+      "Keď niektorá skončí, Samuel dostane notifikáciu; ďalšiu spustí feedback(action=start_session).";
   } else {
     try {
       session = await startSession(client, deps.fire, issue, draft.kind, duplicate);
@@ -793,6 +744,11 @@ export async function execFeedbackTool(
   deps: FeedbackDeps = defaultFeedbackDeps(),
 ): Promise<{ text: string; isError: boolean }> {
   try {
+    if (name === "feedback") {
+      const action = typeof args.action === "string" ? args.action : "";
+      if (!(action in FEEDBACK_ACTIONS)) throw new FeedbackInputError(`action: ${Object.keys(FEEDBACK_ACTIONS).join(" | ")}.`);
+      name = FEEDBACK_ACTIONS[action as keyof typeof FEEDBACK_ACTIONS];
+    }
     switch (name) {
       case "request_tool":
         return await record(draftToolRequest(args, deps.now()), deps);

@@ -74,8 +74,8 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
 
   it("tools zápisu nie sú read-only, stav áno", () => {
     const by = Object.fromEntries(FEEDBACK_TOOL_DEFINITIONS.map((t) => [t.name, t.annotations]));
-    expect(by.request_tool).toMatchObject({ readOnlyHint: false, destructiveHint: false, openWorldHint: true });
-    expect(by.report_feedback).toMatchObject({ readOnlyHint: false });
+    expect(Object.keys(by)).toEqual(["feedback_status", "feedback"]);
+    expect(by.feedback).toMatchObject({ readOnlyHint: false, destructiveHint: false, openWorldHint: true });
     expect(by.feedback_status).toMatchObject({ readOnlyHint: true });
   });
 
@@ -88,6 +88,13 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
     expect(d.body).toContain("`rooms_without_lighting`");
     expect(parseMarker(d.body)).toEqual({ v: 1, kind: "tool", fp: "tool:rooms-without-lighting" });
     expect(d.start).toBe(true);
+  });
+
+  it("návrh rozšíriť existujúci tool ide do issue pred návrhom nového (D-114)", () => {
+    const d = draftToolRequest({ ...toolArgs, proposal: { extend: "get_object: include=qto", name: "x" } }, NOW);
+    expect(d.body).toContain("- **Rozšíriť existujúci:** get_object: include=qto");
+    expect(d.body.indexOf("Rozšíriť existujúci")).toBeLessThan(d.body.indexOf("**Meno:**"));
+    expect(d.body).toContain("MCP-TOOLS.md");
   });
 
   it("pripomienka spúšťa session len na požiadanie a má štítok druhu", () => {
@@ -304,9 +311,13 @@ describe("feedback_comment: komentár do issue konektora (D-090, #98)", () => {
     });
 
   it("je zápisový tool a overí vstup bez volania GitHubu", async () => {
-    const def = FEEDBACK_TOOL_DEFINITIONS.find((t) => t.name === "feedback_comment")!;
-    expect(def.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false, openWorldHint: true });
     expect(await execFeedbackTool("feedback_comment", { text: "x" }, deps())).toMatchObject({ isError: true });
+    // D-115: to isté cez feedback(action=comment); neznáma action je chyba vstupu.
+    expect(await execFeedbackTool("feedback", { action: "comment", issue_number: 12 }, deps())).toEqual({
+      text: "Chýba text.",
+      isError: true,
+    });
+    expect((await execFeedbackTool("feedback", { action: "zmaz" }, deps())).text).toContain("request_tool");
     expect(await execFeedbackTool("feedback_comment", { issue_number: 12 }, deps())).toEqual({
       text: "Chýba text.",
       isError: true,

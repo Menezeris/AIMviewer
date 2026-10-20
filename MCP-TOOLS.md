@@ -1,0 +1,97 @@
+# Inventár toolov MCP konektora
+
+> Generované z definícií toolov (`lib/mcp/tool-list.ts`), needituj ručne. Obnova:
+> `npx vitest run lib/mcp/tool-registry.test.ts -u`.
+
+Konektor má 27 toolov (s IFC motorom, `ENGINE_ENABLED=1`).
+
+**Pravidlo D-114 - najprv napasuj, až potom nový tool:**
+1. Tu nájdi 2-3 najbližšie tooly k tomu, čo treba.
+2. Skús schopnosť dať do nich v tomto poradí: nový parameter alebo hodnota enumu
+   (`action`, `mode`, `include`...), pole vo výsledku, lepší opis alebo inštrukcia
+   (ak schopnosť už existuje, len ju agent nenašiel).
+3. Nový tool len keď nejde ani jedno; záznam rozhodnutia má sekciu
+   "Zavrhnuté rozšírenie: `<tool>` - prečo nie" a nový riadok v
+   `lib/mcp/tool-registry.json` schvaľuje Samuel v issue.
+
+Legenda: `*` = povinný parameter, `=a|b` = povolené hodnoty, v zátvorke rozhodnutie,
+ktoré tool zaviedlo, a či číta alebo zapisuje (zápis si v claude.ai pýta súhlas).
+
+## AIM graf, pohľad a navigácia (15)
+
+Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/view-tools.ts, lib/llm/list-tool.ts. Aj chat `/api/ask`.
+
+- **`get_model_stats`** (D-056, čítanie) - Slovník modelu: počty uzlov podľa object_type, zoznam IFC tried assetov (ifc_type × predefined_type) s počtami, zoznam psetov (názvy + počet properties), podlažia, systémy, klasifikačné systémy a dokumenty.
+  Parametre: žiadne
+- **`search_objects`** (D-056, čítanie) - Nájde, SPOČÍTA alebo LOKALIZUJE uzly grafu AIM podľa identity a IFC typológie. mode=list (default): riadky; count: presný počet ('koľko X je v budove'; z riadkov list nepočítaj, sú orezané); locate: presný počet + rozpad po podlažiach a miestnostiach so vzorkou ('koľko X a kde / na ktorých podlažiach', predvolene object_type asset, alebo ids z predošlého hľadania). `query` hľadá v názve, object_ref, IFC triede aj predefined_type (ilike). ifc_type = IFC trieda (IfcDoor), predefined_type = podtyp (AIRCONDITIONINGUNIT je predefined_type, NIE ifc_type).
+  Parametre: `mode=list|count|locate`, `query`, `object_type`, `ifc_type`, `predefined_type`, `ids`, `limit`
+- **`query_view`** (D-056, čítanie) - Generický read-only dopyt nad ľubovoľnou tabuľkou/view v DB (celá dátová vrstva).
+  Parametre: `relation*`, `select`, `filters`, `order`, `count_only`, `limit`
+- **`aggregate_objects`** (D-060, čítanie) - Presné agregácie a ČÍSELNÉ porovnania nad hodnotami psetov — počíta databáza, nikdy nepočítaj z orezaných riadkov. agg=count|sum|avg|min|max nad numerickou hodnotou prop_path (napr. ['VZT_Parametre','AirFlowRate']); group_by (stĺpec: object_type|ifc_type|predefined_type|user_defined_type|name|object_ref) alebo group_by_path (pset cesta ako kľúč, napr. výrobca).
+  Parametre: `relation`, `agg`, `prop_path`, `group_by`, `group_by_path`, `filters`, `ids`, `max_groups`, `return_rows`
+- **`get_object`** (D-056, čítanie) - Detail jedného uzla podľa UUID, object_ref (napr. 'DD01.06.03') alebo kódu prvku (meno ako 'VV.03.01.040'; prvok len v IFC vráti in_aim:false a global_id): identita, IFC trieda, predefined_type, IFC GUID a podlažie (floor). include pridá v tom istom volaní: details = VLASTNOSTI psetov (aj zdedené z typu, napr. výrobný typ) a klasifikácie; path = V KTOREJ MIESTNOSTI a podlaží je (aj odvodené geometriou, napr. VZT prvok v miestnosti z ASR); documents = DOKUMENTY a strany, ktoré k nemu patria, aj zdedené cez typ, zónu, skupinu (skladby), systém, priestorovú zónu (požiarny úsek), podlažie a miestnosť, s cestou (via_name, through) a deep_link na stranu; pri dokumente opačne: ktorých objektov sa týka (počty podľa typu a nositeľa + vzorka).
+  Parametre: `id_or_ref*`, `include=details|path|documents`
+- **`list_relations`** (D-056, čítanie) - Vzťahy uzla cez kanonické views: rel_aggregates (dekompozícia štruktúry), rel_contained_in_spatial_structure (prvok v priestore/podlaží, natívne zo súboru), rel_referenced_in_spatial_structure (prvok sa nachádza aj v priestore — odvodené geometriou naprieč modelmi, role inside|partial), rel_defines_by_type (occurrence→typ), rel_associates_document (uzol→dokument), rel_associates_classification, rel_assigns_to_actor (zodpovednosti, aktor→uzol), rel_assigns_to_group (člen→systém), rel_member_of (osoba→organizácia).
+  Parametre: `rel_type*`, `from_id`, `to_id`, `limit`
+- **`show_in_3d`** (D-056, čítanie) - UI AKCIA: UKÁŽ alebo VYBER prvky v 3D. Predvolene zvýrazní (oranžovo) a priblíži prvky - 'ukáž / zobraz X', aj jednu miestnosť (skrytú viewer zapne).
+  Parametre: `ids_or_refs`, `id_or_ref`, `clear`, `global_ids`, `ifc_type`, `predefined_type`, `query`, `object_type`, `select`, `panel_tab=aim|ifc`, `panel_section=properties|quantities`, `highlight`
+- **`style_in_3d`** (D-066, čítanie) - UI AKCIA: ofarbí / skryje / znova zobrazí / izoluje prvky v 3D modeli, alebo resetne pohľad.
+  Parametre: `action*=colorize|transparent|hide|show|isolate|xray|show_all|reset_colors`, `mode=add|replace`, `color_by=ifc_type|system|zone|material|model|classification|property|attribute`, `color_by_key`, `color`, `ids_or_refs`, `global_ids`, `ifc_type`, `ifc_types`, `domain=hvac|plumbing|electrical|architecture|structure`, `model`, `predefined_type`, `property`, `value`, `pset`, `query`, `system`, `system_type`, `not_in_system`, `zone`, `storey`, `groups`
+- **`open_drawing`** (D-056, čítanie) - UI AKCIA: otvorí výkres/dokument v prehliadačke, voliteľne so zvýrazneným prvkom a stranou.
+  Parametre: `document_id*`, `focus_id`, `page`, `in_viewer`
+- **`open_node`** (D-056, čítanie) - UI AKCIA: otvorí detailnú kartu uzla (asset, typ, miestnosť, podlažie, systém, osoba, organizácia…).
+  Parametre: `id_or_ref*`
+- **`search_documents`** (D-063, čítanie) - Fulltextové vyhľadávanie v OBSAHU dokumentov/výkresov (extrahovaný text PDF strán — legendy, špecifikácie, popisky, pečiatky).
+  Parametre: `q*`, `limit`
+- **`set_section`** (D-083, čítanie) - UI AKCIA: rez modelom v 3D. Vodorovný rez nad podlažím = floor + offset_m (výška nad úrovňou podlažia v m, default 1,2 = pôdorysný rez; záporná = pod úrovňou).
+  Parametre: `action*=set|clear|widget`, `orientation=horizontal|vertical_x|vertical_z`, `floor`, `offset_m`, `relative_to=floor|ceiling`, `position_percent`, `target_ids_or_refs`, `global_ids`, `fit=along|across|center`, `coordinate_m`, `flipped`, `show_widget`
+- **`set_camera`** (D-083, čítanie) - UI AKCIA: kamera v 3D. preset = smer pohľadu (top/bottom/front/back/left/right/iso; fit_all = celý model; section = kolmo na aktívny rez, ako tlačidlo Set view; keep = zachovať smer, default). fit = čo zarámovať pri danom smere: visible (viditeľné, aj izolované prvky), selection (výber vo vieweri).
+  Parametre: `preset=top|bottom|front|back|left|right|iso|fit_all|keep|section`, `fit=visible|selection`, `target_ids_or_refs`, `global_ids`, `ifc_type`, `ifc_types`, `domain=hvac|plumbing|electrical|architecture|structure`, `model`, `zoom_percent`, `orbit_h_deg`, `orbit_v_deg`, `pan_x_percent`, `pan_y_percent`, `projection=perspective|orthographic`
+- **`set_view_mode`** (D-083, čítanie) - UI AKCIA: prepne viewer medzi 3D, 2D (pôdorys podlažia) a Split (2D + 3D vedľa seba). 2D s kalibrovaným výkresom ukáže PDF pôdorys, inak model zhora s rezom 1,2 m nad podlahou.
+  Parametre: `mode*=3d|2d|split`, `floor`, `reset`
+- **`open_list`** (D-111, čítanie) - Tabuľka prvkov v paneli Lists vo vieweri (export do CSV/XLSX/PDF): "exportuj dvere na 1NP ako tabuľku", "zoznam tvaroviek s rozmermi do Excelu".
+  Parametre: `name`, `columns`, `ifc_type`, `ifc_types`, `domain`, `predefined_type`, `storey`, `system`, `system_type`, `zone`, `property`, `pset`, `value`, `query`, `model`, `global_ids`, `ids_or_refs`
+
+## Dotazy na stav viewera (1)
+
+Zdroj: živý viewer (spätný kanál). Definície: lib/live/viewer-query-tools.ts. Len MCP.
+
+- **`get_viewer_state`** (D-085, čítanie) - Čo práve ukazuje OTVORENÝ živý viewer: režim (3d/2d/split) a podlažie, aktívny rez (os, súradnica v IFC, poloha v %), kamera (pozícia a cieľ v IFC), výber a počty skrytých a izolovaných prvkov.
+  Parametre: `bounds`, `target_ids_or_refs`, `global_ids`, `items_offset`, `items_limit`
+
+## BCF témy nad modelmi (2)
+
+Zdroj: DB (model_tasks) + session. Definície: lib/bcf/tools.ts. Len MCP.
+
+- **`bcf_topic_list`** (D-099, čítanie) - BCF témy nad modelmi federácie (D-099), najnovšie prvé: číslo, guid, názov, stav, typ, priorita, komu, model, počet prvkov a komentárov, odkaz na Claude session.
+  Parametre: `status`, `model`, `assigned_to`, `guid`, `limit`
+- **`bcf_topic`** (D-099, zápis) - Zápis BCF témy nad modelom federácie (D-099). action=create: založí tému (chyba, kolízia, pripomienka, požiadavka na úpravu modelu), keď používateľ povie 'založ BCF / tému / issue'; prvky cez target_ids_or_refs alebo global_ids, s capture_view (predvolene) sa vezme výber, kamera, rez a režim z otvoreného viewera. assigned_to='claude' = tému rieši Claude: spustí sa Claude Code session (úprava IFC v OCB, nová revízia); ľudí priraď menom alebo e-mailom. update: stav, priorita, komu, popis, štítky, termín alebo comment; start_session spustí session pre tému Claudovi. close: uzavrie tému bez úpravy modelu. viewpoint: nastaví jediný pohľad témy (selection_global_ids, capture_view).
+  Parametre: `action*=create|update|close|viewpoint`, `guid`, `title`, `description`, `comment`, `status`, `priority`, `assigned_to`, `type`, `labels`, `model`, `due_date`, `author`, `modified_by`, `target_ids_or_refs`, `global_ids`, `selection_global_ids`, `capture_view`, `start_session`
+
+## Pripomienky a požiadavky (2)
+
+Zdroj: GitHub issues + session. Definície: lib/feedback/tools.ts. Len MCP.
+
+- **`feedback_status`** (D-090, čítanie) - Stav pripomienok a požiadaviek na tools (D-090). Bez issue_number vráti otvorené issues konektora (číslo, názov, druh, či beží session); s issue_number stav issue, odkaz na session, PR a posledné komentáre (otázky session na používateľa).
+  Parametre: `issue_number`
+- **`feedback`** (D-090, zápis) - Zápis do GitHub issues konektora (D-090). Volaj LEN na výslovný pokyn používateľa ('zapíš to', 'založ pripomienku', 'dopíš do #97'); sám to len ponúkni. action=report: PRIPOMIENKA - chyba toolu (bug), zlé dáta (wrong_data), zlá odpoveď (wrong_answer), návrh (improvement); kind, title, description, start_session len keď to používateľ chce. request_tool: POŽIADAVKA NA NOVÝ TOOL až po vyčerpaní existujúcich tools; opíš potrebu (user_request, why_existing_fail, tried_tools s konkrétnymi tools); ak stačí rozšíriť existujúci tool (parameter, akcia, pole vo výsledku), uveď ho v proposal.extend - rozšírenie má prednosť (D-114); spustí session alebo ide do fronty, rovnaká požiadavka sa pripíše ako ďalší výskyt. comment: komentár do existujúceho issue (issue_number, text, kind eval_round | result | note; reopen len na výslovný pokyn). start_session: spustí session pre ďalšie issue z fronty (over_limit len na výslovnú žiadosť).
+  Parametre: `action*=report|request_tool|comment|start_session`, `kind=bug|wrong_data|wrong_answer|improvement|eval_round|result|note`, `title`, `description`, `tool`, `example`, `object_refs`, `user_request`, `why_existing_fail`, `tried_tools`, `proposal`, `area=aim_data|viewer|ifc_engine|model_change|requirements_library|other`, `examples`, `issue_number`, `text`, `reopen`, `over_limit`, `start_session`
+
+## IFC motor (7)
+
+Zdroj: IFC súbory federácie (@ifc-lite/mcp). Definície: lib/engine/search-all.ts, lib/engine/tool-defs.ts, lib/engine/passthrough-defs.ts. Len MCP.
+
+- **`search_all`** (D-095, čítanie) - Hľadanie podľa textu naraz v OBOCH zdrojoch: IFC súbor (atribúty Name, Description, ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály, zóny, skupiny) a graf AIM v DB (názov, object_ref, importované psety, dokumenty, osoby).
+  Parametre: `text*`, `source=all|ifc|aim`, `badges=IFC|AIM|IFC+AIM`, `ifc_types`, `model`, `limit`, `fields=attribute|property|quantity|type_property|classification|material`, `fuzzy`, `offset`
+- **`ifc_models`** (D-084, čítanie) - IFC MOTOR: IFC SCHÉMA, modely federácie a údaje súboru. action=schema: z ktorej triedy IFC trieda dedí, celá línia dedičnosti a atribúty (type, napr. IfcAirTerminal; bez modelu) - neodpovedaj z pamäti. revisions (default): aktuálna revízia modelu (vNNN, dátum, autor, zmeny), history = aj predchádzajúce; info: schéma IFC, jednotky, georeferencovanie; materials / classifications: zoznam materiálov a klasifikácií s počtami; audit: zdravie modelu.
+  Parametre: `action=revisions|info|materials|classifications|audit|schema`, `model=ASR|VZT`, `history`, `type`, `include_inherited`
+- **`ifc_query`** (D-084, čítanie) - IFC MOTOR: prvky v IFC súbore podľa MATERIÁLU (material: izolácia, minerálna vlna, EPS, betón - aj vrstva skladby a materiál z typu; graf AIM materiály nenesie), triedy, podlažia a hodnôt psetov vrátane ČÍSELNÝCH porovnaní (plocha > 20). mode=list (default): prvky s object_ref a show_in_3d; count: presný počet zo súboru, aj group_by trieda/podlažie/materiál; values: aké hodnoty má vlastnosť psetu alebo Qto a koľko prvkov má ktorú (pset + name).
+  Parametre: `mode=list|count|values`, `model=ASR|VZT`, `ifc_types`, `where`, `storey`, `group_by=type|storey|material`, `pset`, `name`, `material`, `limit`
+- **`ifc_get`** (D-084, čítanie) - IFC MOTOR: všetky údaje prvkov priamo z IFC súboru - atribúty, psety výskytu, množstvá (Qto), klasifikácie, materiály (vrstvy skladby s hrúbkou a kategóriou, aj z typu), dokumenty a voliteľne psety z typu.
+  Parametre: `targets*`, `model=ASR|VZT`, `include_type_properties`
+- **`ifc_ids_validate`** (D-084, čítanie) - IFC MOTOR: skontroluje model TERAZ voči IDS z knižnice požiadaviek (nič neukladá).
+  Parametre: `model*=ASR|VZT`, `ids*`, `spec`, `failures_per_spec`
+- **`ifc_relations`** (D-097, čítanie) - IFC MOTOR: všetky IFC vzťahy jednej entity priamo zo súboru, aj entity mimo grafu AIM (zóna, systém, port): členovia zón/skupín/systémov (IfcRelAssignsToGroup), kam prvok patrí, podlažie a miestnosť (IfcRelContainedIn/ReferencedInSpatialStructure), agregácia a vnorenie (IfcRelAggregates/IfcRelNests), typ, otvory a výplne (Voids/Fills), hranice priestoru, porty, dokumenty, klasifikácie, materiály. direction: forward = entita je Relating (skupina -> členovia, podlažie -> prvky, celok -> časti, prvok -> porty), inverse = kam entita patrí. recursive rozvinie vnorené zóny/systémy (bez rel_types len cez IfcRelAssignsToGroup). through_ports = prvky napojené cez porty (IfcRelConnectsPorts), jeden krok; s recursive=true prechod celou sieťou cez porty a stop_at (napr. IfcUnitaryEquipment, IfcDamper.FIREDAMPER) = najbližšia jednotka alebo klapka s cestou (reached, path_show_in_3d).
+  Parametre: `target*`, `model=ASR|VZT`, `rel_types`, `direction=forward|inverse|both`, `recursive`, `through_ports`, `stop_at`, `max_steps`, `limit`, `cursor`
+- **`ifc_measure`** (D-112, čítanie) - IFC MOTOR: meranie z geometrie (nie z Qto). a + b = svetlá vzdialenosť povrchov dvoch prvkov (aj ASR voči VZT; záporná = prienik), vzdialenosť stredov, medzera obálok po osiach X/Y/Z a vodorovne, a_above_b_m = výška spodku a nad vrchom b (napr. klapka nad doskou: b = doska).
+  Parametre: `a`, `b`, `items`, `model=ASR|VZT`, `qto`

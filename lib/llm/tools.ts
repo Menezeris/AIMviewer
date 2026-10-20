@@ -33,7 +33,7 @@ const MAX_LIMIT = 100;
 const SHOW_3D_CAP = 100;
 /** Max dĺžka JSON payloadu tool výsledku (ochrana kontextu). */
 const MAX_RESULT_CHARS = 12_000;
-/** Koľko prvkov naraz zvládne lokalizácia (locate_objects). */
+/** Koľko prvkov naraz zvládne lokalizácia (search_objects mode=locate). */
 const LOCATE_CAP = 500;
 /** Veľkosť dávky pre `.in()` filtre (limit dĺžky URL v PostgREST). */
 const IN_CHUNK = 100;
@@ -86,6 +86,7 @@ const QUERY_RELATIONS = new Set([
   "rel_assigns_to_group",
   "rel_member_of",
   "rel_document_information_relationship",
+  "rel_external_reference_relationship",
   "v_object_documents",
 ]);
 
@@ -107,6 +108,7 @@ const REL_VIEWS = new Set([
   "rel_assigns_to_group",
   "rel_member_of",
   "rel_document_information_relationship",
+  "rel_external_reference_relationship",
 ]);
 
 /** Zdroj pre trust loop — deep-linky renderuje UI, nie model. */
@@ -164,6 +166,27 @@ function isUuid(v: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
 
+/** Čo `get_object` pridá v tom istom volaní (D-115). */
+export const GET_OBJECT_INCLUDES = ["details", "path", "documents"] as const;
+
+/** Staré hodnoty `include` (D-104: výkresy E4 nahradili dokumenty z modelu); nevypisujú sa. */
+const LEGACY_GET_OBJECT_INCLUDES: Record<string, (typeof GET_OBJECT_INCLUDES)[number]> = {
+  drawings: "documents",
+};
+
+/**
+ * Staré mená zlúčených toolov (D-115): v zozname už nie sú, ale dispatch ich
+ * vykoná (klient si zoznam toolov drží počas konverzácie).
+ */
+export const LEGACY_ASK_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "count_objects",
+  "locate_objects",
+  "get_asset_details",
+  "get_spatial_path",
+  "find_in_drawings",
+  "select_in_3d",
+]);
+
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "get_model_stats",
@@ -179,22 +202,23 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "search_objects",
     description:
-      "Vyhľadanie uzlov grafu (objects) podľa IDENTITY a IFC typológie. `query` hľadá naraz " +
-      "v názve, object_ref, IFC triede aj predefined_type (ilike). Filtre: object_type " +
-      "(asset, asset_type, space, floor, building, site, system, document, person, " +
-      "organization), ifc_type = IFC trieda (napr. IfcDoor, IfcUnitaryEquipment), " +
-      "predefined_type = IFC enum podtypu (napr. AIRCONDITIONINGUNIT, VAV). POZOR: podtyp " +
-      "ako AIRCONDITIONINGUNIT je predefined_type, NIE ifc_type. Obsah VLASTNOSTÍ (psety) " +
-      "tento tool nevidí — na to je search_everything. Na počty použi count_objects, " +
-      "na slovník hodnôt get_model_stats.",
+      "Nájde, SPOČÍTA alebo LOKALIZUJE uzly grafu AIM podľa identity a IFC typológie. mode=list (default): " +
+      "riadky; count: presný počet ('koľko X je v budove'; z riadkov list nepočítaj, sú orezané); locate: presný " +
+      "počet + rozpad po podlažiach a miestnostiach so vzorkou ('koľko X a kde / na ktorých podlažiach', " +
+      "predvolene object_type asset, alebo ids z predošlého hľadania). `query` hľadá v názve, object_ref, IFC " +
+      "triede aj predefined_type (ilike). ifc_type = IFC trieda (IfcDoor), predefined_type = podtyp " +
+      "(AIRCONDITIONINGUNIT je predefined_type, NIE ifc_type). Obsah psetov nevidí - na to search_everything; " +
+      "slovník tried a psetov dá get_model_stats.",
     inputSchema: {
       type: "object",
       properties: {
+        mode: { type: "string", enum: ["list", "count", "locate"] },
         query: { type: "string", description: "Hľadaný text (názov/object_ref/ifc_type/predefined_type, ilike)" },
-        object_type: { type: "string", description: "Filter na object_type" },
-        ifc_type: { type: "string", description: "Filter na IFC triedu (case-insensitive zhoda)" },
-        predefined_type: { type: "string", description: "Filter na IFC predefined_type enum (case-insensitive zhoda)" },
-        limit: { type: "number", description: `Max riadkov (default ${DEFAULT_LIMIT}, strop ${MAX_LIMIT})` },
+        object_type: { type: "string", description: "asset, asset_type, space, floor, building, site, system, document, person, organization" },
+        ifc_type: { type: "string", description: "IFC trieda (case-insensitive zhoda)" },
+        predefined_type: { type: "string", description: "IFC predefined_type enum (case-insensitive zhoda)" },
+        ids: { type: "array", items: { type: "string" }, description: "locate: konkrétne objects.id namiesto filtrov" },
+        limit: { type: "number", description: `list: max riadkov (default ${DEFAULT_LIMIT}, strop ${MAX_LIMIT})` },
       },
     },
   },
@@ -208,7 +232,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "sériové číslo, ľubovoľné kľúčové slovo) alebo keď search_objects nič nenašiel. " +
       "Vracia score, match_kind, úryvok (headline) a matched_properties = v ktorom psete/" +
       "property match nastal — cituj to ako dôkaz. Kandidátov ďalej over cez " +
-      "get_asset_details/get_object; hľadané slovo skús aj v angličtine (kľúče psetov " +
+      "get_object(include=details); hľadané slovo skús aj v angličtine (kľúče psetov " +
       "bývajú anglické: HeatRecovery, Manufacturer…).",
     inputSchema: {
       type: "object",
@@ -222,40 +246,6 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         limit: { type: "number", description: `Max riadkov (default ${DEFAULT_LIMIT}, strop ${MAX_LIMIT})` },
       },
       required: ["q"],
-    },
-  },
-  {
-    name: "count_objects",
-    description:
-      "Presný počet uzlov vyhovujúcich filtrom (rovnaké filtre ako search_objects). " +
-      "Použi na otázky typu 'koľko X je v projekte' — search_objects vracia max " +
-      `${MAX_LIMIT} riadkov, takže počítať z jeho výsledkov je nespoľahlivé.`,
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Hľadaný text (názov/object_ref/ifc_type/predefined_type, ilike)" },
-        object_type: { type: "string", description: "Filter na object_type" },
-        ifc_type: { type: "string", description: "Filter na IFC triedu (case-insensitive zhoda)" },
-        predefined_type: { type: "string", description: "Filter na IFC predefined_type enum (case-insensitive zhoda)" },
-      },
-    },
-  },
-  {
-    name: "locate_objects",
-    description:
-      "Nájde prvky podľa filtrov (rovnaké ako search_objects) a rovno určí, na ktorom " +
-      "podlaží a v ktorej miestnosti sú — vráti presný celkový počet + rozpad po podlažiach " +
-      "so vzorkou prvkov. Ideálne na otázky 'koľko X je v projekte a kde/na akých podlažiach'. " +
-      "Alternatívne miesto filtrov prijme zoznam ids z predchádzajúceho hľadania.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Hľadaný text (názov/object_ref/ifc_type/predefined_type, ilike)" },
-        object_type: { type: "string", description: "Filter na object_type (default asset)" },
-        ifc_type: { type: "string", description: "Filter na IFC triedu (case-insensitive zhoda)" },
-        predefined_type: { type: "string", description: "Filter na IFC predefined_type enum (case-insensitive zhoda)" },
-        ids: { type: "array", items: { type: "string" }, description: "Alternatíva k filtrom: konkrétne objects.id" },
-      },
     },
   },
   {
@@ -273,9 +263,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "property) a hrany rel_aggregates, rel_contained_in_spatial_structure, " +
       "rel_defines_by_type, rel_associates_document, rel_associates_classification, " +
       "rel_assigns_to_actor, rel_assigns_to_group, rel_member_of, " +
-      "rel_document_information_relationship (strom dokumentácie: časť→nadradený) (všetky: " +
-      "from_id→to_id, valid_until null = aktívna), v_object_documents (dokumenty objektu cez " +
-      "vzťahy, D-104: object_id, document_id, page, via, via_id, depth). JSONB cesty fungujú v select aj filtri: " +
+      "rel_document_information_relationship (strom dokumentácie: časť→nadradený), " +
+      "rel_external_reference_relationship (druh dokumentu: dokument→classification_references, " +
+      "typ informácie ISO 19650) (všetky: from_id→to_id, valid_until null = aktívna), " +
+      "v_object_documents (dokumenty objektu cez vzťahy, D-104: object_id, document_id, page, via, " +
+      "via_id, depth). JSONB cesty fungujú v select aj filtri: " +
       "properties->Pset_ValveTypeIsolating->>IsNormallyOpen. Join nie je — reťaz dopyty " +
       "cez op 'in' so zoznamom id z predchádzajúceho výsledku.",
     inputSchema: {
@@ -324,7 +316,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "group_by_path (pset cesta ako kľúč, napr. výrobca). AND filtre " +
       "{column|path, op eq|neq|gt|gte|lt|lte|ilike|is, value} — gt/lt nad path porovnáva " +
       "NUMERICKY (v query_view sa JSONB porovnáva ako text — na čísla vždy toto). " +
-      "ids = zúženie na konkrétne prvky (reťazenie s locate_objects/search_everything). " +
+      "ids = zúženie na konkrétne prvky (reťazenie so search_objects/search_everything). " +
       "return_rows=true vráti top 50 riadkov s hodnotou (implicitne len tie, čo hodnotu " +
       "majú). Nenumerické hodnoty preskočí a reportuje v skipped_non_numeric. " +
       "relation: objects | v_asset_effective (dedičnosť type→occurrence — pre psety " +
@@ -372,31 +364,25 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "get_object",
     description:
-      "Detail jedného uzla podľa UUID, object_ref (napr. 'DD01.06.03') alebo kódu prvku " +
-      "(meno ako 'VV.03.01.040'; prvok len v IFC vráti in_aim:false a global_id): " +
-      "identita, IFC trieda, predefined_type, aktívny IFC GUID a podlažie (floor) - na " +
-      "'čo je X a kde je' stačí jedno volanie.",
+      "Detail jedného uzla podľa UUID, object_ref (napr. 'DD01.06.03') alebo kódu prvku (meno ako " +
+      "'VV.03.01.040'; prvok len v IFC vráti in_aim:false a global_id): identita, IFC trieda, predefined_type, " +
+      "IFC GUID a podlažie (floor). include pridá v tom istom volaní: details = VLASTNOSTI psetov (aj zdedené z " +
+      "typu, napr. výrobný typ) a klasifikácie; path = V KTOREJ MIESTNOSTI a podlaží je (aj odvodené geometriou, " +
+      "napr. VZT prvok v miestnosti z ASR); documents = DOKUMENTY a strany, ktoré k nemu patria, aj zdedené " +
+      "cez typ, zónu, skupinu (skladby), systém, priestorovú zónu (požiarny úsek), podlažie a miestnosť, s cestou " +
+      "(via_name, through) a deep_link na stranu; pri dokumente opačne: ktorých objektov sa týka (počty podľa " +
+      "typu a nositeľa + vzorka). Kód netreba hľadať vopred; na 'čo je X a kde je' stačí jedno volanie.",
     inputSchema: {
       type: "object",
       properties: {
         id_or_ref: { type: "string", description: "objects.id (UUID), object_ref alebo kód prvku (meno v AIM / IFC)" },
+        include: {
+          type: "array",
+          items: { type: "string", enum: [...GET_OBJECT_INCLUDES] },
+          description: "Čo pridať: details | path | documents",
+        },
       },
       required: ["id_or_ref"],
-    },
-  },
-  {
-    name: "get_asset_details",
-    description:
-      "Efektívne vlastnosti assetu (dedičnosť type→occurrence, v_asset_effective) + " +
-      "klasifikácie (v_asset_classifications, union vlastných a zdedených) + dokumenty prvku " +
-      "cez vzťahy (zóna, typ, skupina, priestorová zóna; detail find_documents). " +
-      "Len pre object_type='asset'.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "objects.id assetu (UUID)" },
-      },
-      required: ["id"],
     },
   },
   {
@@ -421,30 +407,15 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
   {
-    name: "get_spatial_path",
-    description:
-      "Priestorové zaradenie uzla — cesta nahor (asset → space → floor → building → site) " +
-      "cez rel_contained_in_spatial_structure a rel_aggregates, plus `referenced_in` = miestnosti, " +
-      "v ktorých prvok geometricky leží (rel_referenced_in_spatial_structure, napr. VZT prvok z iného " +
-      "modelu než miestnosti). Odpovedá na 'v ktorej miestnosti/podlaží je X'.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "objects.id (UUID)" },
-      },
-      required: ["id"],
-    },
-  },
-  {
     name: "show_in_3d",
     description:
-      "UI AKCIA: otvorí 3D model so zvýraznenými a priblíženými prvkami. Zavolaj, keď " +
-      "používateľ žiada prvky UKÁZAŤ/ZOBRAZIŤ v 3D - aj jednu miestnosť ('ukáž miestnosť 3.02'; " +
-      "skrytú miestnosť viewer zapne a priblíži). Hromadné zobrazenie podľa typu " +
-      "(napr. všetky dvere) = pošli PRIAMO filter (ifc_type/query/predefined_type), server " +
-      "prvky dohľadá sám. Konkrétnu množinu prvkov pošli v ids_or_refs (JEDEN call; object_ref " +
-      "ako '3.02' aj kód prvku ako 'SD04.0001' netreba hľadať vopred). Zvýraznenie je oranžové; clear=true ho zruší (ostatné " +
-      "farby ostanú). Funguje len pre prvky s IFC GUID (sú z IFC modelu).",
+      "UI AKCIA: UKÁŽ alebo VYBER prvky v 3D. Predvolene zvýrazní (oranžovo) a priblíži prvky - 'ukáž / " +
+      "zobraz X', aj jednu miestnosť (skrytú viewer zapne). Celú triedu pošli filtrom (ifc_type, query, " +
+      "predefined_type), konkrétne prvky v ids_or_refs (object_ref aj kód prvku ako 'SD04.0001' netreba hľadať " +
+      "vopred). select=true = VYBERIE jeden prvok ako klik myšou a otvorí jeho panel vlastností ('vyber / označ " +
+      "X', 'ukáž jeho vlastnosti'): panel_tab aim | ifc, panel_section properties | quantities, highlight " +
+      "'Pset.Vlastnosť' zvýrazní riadok; hodnoty do odpovede ber z ifc_get. clear=true zruší zvýraznenie, so " +
+      "select=true výber. Funguje pre prvky s IFC GUID.",
     inputSchema: {
       type: "object",
       properties: {
@@ -454,7 +425,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           description: `objects.id (UUID), object_ref alebo kód prvku (meno v IFC) na zvýraznenie (1–${SHOW_3D_CAP})`,
         },
         id_or_ref: { type: "string", description: "Alternatíva pre jediný prvok" },
-        clear: { type: "boolean", description: "true = len zrušiť oranžové zvýraznenie z predošlého show_in_3d" },
+        clear: { type: "boolean", description: "true = zrušiť zvýraznenie (so select=true výber)" },
         global_ids: {
           type: "array",
           items: { type: "string" },
@@ -469,31 +440,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         predefined_type: { type: "string", description: "Filter namiesto ids: PredefinedType" },
         query: { type: "string", description: "Filter namiesto ids: fulltext (názov/ref/typ)" },
         object_type: { type: "string", description: "Filter namiesto ids: objects.object_type" },
-      },
-    },
-  },
-  {
-    name: "select_in_3d",
-    description:
-      "UI AKCIA: VYBERIE jeden prvok v 3D presne ako klik myšou — viewer ho označí, " +
-      "priblíži naň kameru a otvorí jeho panel vlastností priamo v 3D pohľade (IFC " +
-      "vlastnosti + AIM karta). Zavolaj LEN keď používateľ chce prvok VYBRAŤ/OZNAČIŤ " +
-      "(kliknúť naň) alebo vidieť jeho VLASTNOSTI v 3D; 'ukáž/zobraz X' = show_in_3d. Rozdiel: show_in_3d prvky " +
-      "zvýrazní a priblíži (aj mnoho naraz, panel vlastností neotvorí); open_node otvorí " +
-      "samostatnú kartu uzla MIMO 3D pohľadu. Jeden prvok na call; funguje len pre " +
-      "prvky s IFC GUID (sú z IFC modelu). clear=true výber zruší (ako klik do prázdna). " +
-      "Panel (D-113): panel_tab = aim (AIM karta, default) | ifc (dáta zo súboru), panel_section = " +
-      "properties | quantities (výmery), highlight = 'Pset.Vlastnosť' rozbalí sadu, posunie a zvýrazní " +
-      "riadok (prepne na IFC / Properties; len psety výskytu, Qto_* otvorí sekciu Quantities). Hodnoty na odpoveď ber z ifc_get, panel " +
-      "ich len ukáže používateľovi.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id_or_ref: { type: "string", description: "objects.id (UUID), object_ref alebo kód prvku (meno v IFC)" },
-        clear: { type: "boolean", description: "true = zrušiť výber vo vieweri (id_or_ref netreba)" },
-        panel_tab: { type: "string", enum: ["aim", "ifc"], description: "Záložka panelu vlastností" },
-        panel_section: { type: "string", enum: ["properties", "quantities"], description: "Sekcia IFC panelu" },
-        highlight: { type: "string", description: "Zvýrazniť vlastnosť: 'Pset_WallCommon.FireRating'" },
+        select: { type: "boolean", description: "Vybrať jeden prvok ako klik (id_or_ref) a otvoriť panel vlastností" },
+        panel_tab: { type: "string", enum: ["aim", "ifc"], description: "select: záložka panelu vlastností" },
+        panel_section: { type: "string", enum: ["properties", "quantities"], description: "select: sekcia IFC panelu" },
+        highlight: { type: "string", description: "select: zvýrazniť vlastnosť, napr. 'Pset_WallCommon.FireRating'" },
       },
     },
   },
@@ -681,7 +631,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     description:
       "UI AKCIA: otvorí výkres/dokument v prehliadačke, voliteľne so zvýrazneným prvkom " +
       "a stranou. Zavolaj, keď používateľ žiada otvoriť/ukázať výkres alebo prvok vo výkrese " +
-      "(document_id a page zisti cez find_documents).",
+      "(document_id a page zisti cez get_object(include=documents)).",
     inputSchema: {
       type: "object",
       properties: {
@@ -726,30 +676,6 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         limit: { type: "number", description: "Max výsledkov (default 10, strop 50)" },
       },
       required: ["q"],
-    },
-  },
-  {
-    name: "find_documents",
-    description:
-      "Dokumenty z IFC modelu cez vzťahy (D-104). object = prvok, miestnosť, zóna, typ...: " +
-      "ktoré dokumenty (a strany) k nemu patria a cez čo - priamo, cez typ, zónu (aj cez " +
-      "miestnosť), skupinu (skladby), systém, priestorovú zónu (požiarny úsek, tepelná " +
-      "zóna), a prvok aj cez podlažie (pôdorysy profesií) a miestnosť (ASR pôdorys), " +
-      "vrátane nadradených zón/skupín. document = dokument (id, object_ref " +
-      "= Identification): ktorých objektov sa týka (počty podľa typu a nositeľa + vzorka). " +
-      "Projekt, budova a pozemok sa nededia (projekt vráti len počet). Odpoveď nesie " +
-      "deep_link na otvorenie PDF na strane; v odpovedi cituj cestu (cez zónu NJ - 3NP, " +
-      "cez skladbu S1, strana 3). Obsah textu PDF hľadá search_documents.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        object: { type: "string", description: "objects.id alebo object_ref objektu" },
-        document: {
-          type: "string",
-          description: "objects.id alebo object_ref (Identification) dokumentu - opačný smer",
-        },
-        limit: { type: "number", description: `Max objektov vo vzorke (default ${DEFAULT_LIMIT}, strop ${MAX_LIMIT})` },
-      },
     },
   },
   ...VIEW_TOOL_DEFINITIONS,
@@ -828,6 +754,10 @@ export class AskToolRuntime {
       case "get_model_stats":
         return this.getModelStats();
       case "search_objects":
+        // D-115: počet a lokalizácia sú režimy toho istého hľadania.
+        if (input.mode === "count") return this.countObjects(input);
+        if (input.mode === "locate") return this.locateObjects(input);
+        if (input.mode !== undefined && input.mode !== "list") throw new Error("mode: list | count | locate.");
         return this.searchObjects(input);
       case "search_everything":
         return this.searchEverything(input);
@@ -840,18 +770,24 @@ export class AskToolRuntime {
       case "aggregate_objects":
         return this.aggregateObjects(input);
       case "get_object":
-        return this.getObject(input);
+        return this.getObjectWith(input);
       case "get_asset_details":
         return this.getAssetDetails(input);
       case "list_relations":
         return this.listRelations(input);
       case "get_spatial_path":
         return this.getSpatialPath(input);
+      case "find_in_drawings":
+        // D-115 staré meno; výkresy E4 nahradili dokumenty z modelu (D-104).
+        return { documents: await this.objectDocuments(String(input.id ?? "").trim()) };
       case "search_documents":
         return this.searchDocuments(input);
-      case "find_documents":
-        return this.findDocuments(input);
       case "show_in_3d":
+        if (input.select === true) {
+          // D-115: výber ako klik je režim show_in_3d; jeden prvok aj z ids_or_refs.
+          const first = Array.isArray(input.ids_or_refs) ? input.ids_or_refs[0] : undefined;
+          return this.selectIn3d({ ...input, id_or_ref: input.id_or_ref ?? first });
+        }
         return this.showIn3d(input);
       case "select_in_3d":
         return this.selectIn3d(input);
@@ -1322,6 +1258,37 @@ export class AskToolRuntime {
     };
   }
 
+  /** `get_object` s include (D-115): detail + vlastnosti, umiestnenie a výkresy v jednom volaní. */
+  private async getObjectWith(input: Record<string, unknown>) {
+    const include = Array.isArray(input.include)
+      ? [...new Set(input.include.map((i) => LEGACY_GET_OBJECT_INCLUDES[String(i)] ?? String(i)))]
+      : [];
+    const bad = include.filter((i) => !(GET_OBJECT_INCLUDES as readonly string[]).includes(i));
+    if (bad.length > 0) throw new Error(`include: ${GET_OBJECT_INCLUDES.join(" | ")} (neznáme: ${bad.join(", ")}).`);
+    const base = (await this.getObject(input)) as Record<string, unknown>;
+    if (include.length === 0) return base;
+    const id = typeof base.id === "string" ? base.id : null;
+    if (!id) {
+      return { ...base, include_note: "Prvok nie je v grafe AIM: vlastnosti, materiály a podlažie zo súboru dá ifc_get." };
+    }
+    const extra: Record<string, unknown> = {};
+    await Promise.all(
+      include.map(async (part) => {
+        if (part === "details") {
+          extra.details =
+            base.object_type === "asset"
+              ? await this.getAssetDetails({ id })
+              : { note: "Vlastnosti s dedením z typu sú len pre asset; psety iných uzlov dá query_view alebo ifc_get." };
+        } else if (part === "path") {
+          extra.path = await this.getSpatialPath({ id });
+        } else {
+          Object.assign(extra, await this.documentsOf(base as unknown as ObjectRow, input));
+        }
+      }),
+    );
+    return { ...base, ...extra };
+  }
+
   private async getObject(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
     const idOrRef = String(input.id_or_ref ?? "").trim();
@@ -1399,7 +1366,7 @@ export class AskToolRuntime {
       in_aim: false,
       source: "ifc",
       ...(hits.length === 1 ? hits[0] : { candidates: hits.slice(0, 5) }),
-      hint: "Prvok je len v IFC súbore (v grafe AIM nie je). Ako cieľ ho do set_section / show_in_3d / get_bounds daj kódom alebo global_id; vlastnosti a podlažie dá ifc_get.",
+      hint: "Prvok je len v IFC súbore (v grafe AIM nie je). Ako cieľ ho do set_section / show_in_3d / get_viewer_state daj kódom alebo global_id; vlastnosti a podlažie dá ifc_get.",
     };
   }
 
@@ -1455,8 +1422,7 @@ export class AskToolRuntime {
         name: (eff.type_name as string | null) ?? null,
       });
     }
-    const documents = (await this.objectDocuments(id)).slice(0, 15);
-    return { ...eff, classifications, documents };
+    return { ...eff, classifications };
   }
 
   private async listRelations(input: Record<string, unknown>) {
@@ -1667,16 +1633,13 @@ export class AskToolRuntime {
     return [...out.values()];
   }
 
-  /** find_documents (D-104): dokumenty objektu, alebo objekty dokumentu. */
-  private async findDocuments(input: Record<string, unknown>) {
+  /**
+   * `get_object(include=documents)` (D-104, D-115): dokumenty objektu, pri dokumente alebo
+   * odkaze na stranu opačne objekty, ktorých sa týka.
+   */
+  private async documentsOf(obj: ObjectRow, input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
-    const objectArg = String(input.object ?? "").trim();
-    const documentArg = String(input.document ?? "").trim();
-    if (!objectArg === !documentArg) throw new Error("Zadaj práve jedno: object alebo document.");
-
-    if (objectArg) {
-      const obj = await this.resolveObject(objectArg);
-      if (!obj) return { found: false, hint: "Objekt neexistuje - skús search_objects." };
+    if (obj.object_type !== "document" && obj.object_type !== "document_reference") {
       const documents = await this.objectDocuments(obj.id);
       let projectDocuments = 0;
       if (obj.object_type !== "project") {
@@ -1698,10 +1661,9 @@ export class AskToolRuntime {
         }
       }
       return {
-        object: obj,
         documents,
         ...(projectDocuments
-          ? { project_documents: projectDocuments, hint_project: "Dokumentácia stavby (projekt) sa prvkom nededí; find_documents object=<projekt>." }
+          ? { project_documents: projectDocuments, hint_project: "Dokumentácia stavby (projekt) sa prvkom nededí; get_object(<projekt>, include=documents)." }
           : {}),
         ...(documents.length === 0
           ? { hint: "K objektu nevedie z modelu žiadna väzba na dokument (ani cez typ, zónu, skupinu)." }
@@ -1709,10 +1671,7 @@ export class AskToolRuntime {
       };
     }
 
-    const doc = await this.resolveObject(documentArg);
-    if (!doc || (doc.object_type !== "document" && doc.object_type !== "document_reference")) {
-      return { found: false, hint: "Dokument neexistuje - object_ref je Identification (napr. OCB_SO01_ASR_D-1-1-03_PODORYS-3NP); zoznam cez query_view relation=objects object_type=document." };
-    }
+    const doc = obj;
     const column = doc.object_type === "document_reference" ? "reference_id" : "document_id";
     const { data, error } = await supabase
       .from("v_object_documents")
@@ -1745,7 +1704,6 @@ export class AskToolRuntime {
     const sampleIds = [...first.keys()].slice(0, limit);
     const sampleMeta = new Map((await this.loadObjects(sampleIds)).map((m) => [m.id, m]));
     return {
-      document: doc,
       objects_total: first.size,
       by_object_type: byType,
       by_holder: byHolder,
@@ -2235,7 +2193,7 @@ export class AskToolRuntime {
     if (!isUuid(docId)) throw new Error("document_id musí byť UUID (objects.id dokumentu).");
     const doc = await this.resolveObject(docId);
     if (!doc || doc.object_type !== "document") {
-      throw new Error("Dokument neexistuje - id dokumentu zisti cez find_documents.");
+      throw new Error("Dokument neexistuje - id dokumentu zisti cez get_object(include=documents).");
     }
 
     const focusId = typeof input.focus_id === "string" && isUuid(input.focus_id.trim())
