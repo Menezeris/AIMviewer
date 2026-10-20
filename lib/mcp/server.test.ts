@@ -150,4 +150,16 @@ describe("MCP server (D-079)", () => {
     expect(payloadMethods([{ method: "tools/list" }, { id: 2 }, { method: "ping" }])).toEqual(["tools/list", "ping"]);
     expect(payloadMethods("x")).toEqual([]);
   });
+
+  it("staré meno zlúčeného toolu sa vykoná, ale v tools/list nie je (D-115)", async () => {
+    const d = deps({ legacyTools: new Set(["ifc_count"]) });
+    const list = await handleMcpPayload({ jsonrpc: "2.0", id: 1, method: "tools/list" }, d);
+    expect(JSON.stringify(list)).not.toContain("ifc_count");
+    const call = await handleMcpPayload(
+      { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "ifc_count", arguments: {} } },
+      d,
+    );
+    expect(JSON.stringify(call)).toContain("97");
+    expect(d.callTool).toHaveBeenCalledWith("ifc_count", {});
+  });
 });

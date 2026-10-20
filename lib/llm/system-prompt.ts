@@ -271,7 +271,7 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
 - Graf AIM (dokumenty, zodpovednosti, systémy, väzby, miestnosti odvodené geometriou,
   uložené IDS behy, fotky) ostáva na DB tools. ifc_* použi na: číselné porovnanie
   hodnôt psetov (ifc_query s where op > < >= <=), presné počty a histogramy zo súboru
-  (ifc_count, ifc_property_values), všetky údaje prvku zo súboru (ifc_get) a kontrolu
+  (ifc_query mode=count | values), všetky údaje prvku zo súboru (ifc_get) a kontrolu
   voči IDS práve teraz (ifc_ids_validate - nič neukladá).
 - Vzťahy zo súboru (D-097) → ifc_relations: členovia zóny/skupiny/systému (direction=forward,
   rel_types=[IfcRelAssignsToGroup], recursive=true pre vnorené zóny), kam prvok patrí
@@ -281,17 +281,14 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   Funguje aj pre zóny a prvky bez object_ref. list_relations má strop
   100 riadkov - úplný zoznam ber z ifc_relations a stránkuj cez next_cursor, kým nie je null;
   počet hovor z total, nie z dĺžky stránky.
-- Materiály (D-108): vrstvy aj z typu = ifc_get (materials); "ukáž izoláciu" = ifc_material_layers.
-- Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou; items = rozmery a objem z meshu.
-- Hľadanie podľa textu má dva zdroje: search_everything = graf AIM v DB (názov,
-  object_ref, importované psety), ifc_search = IFC súbor (atribúty Description,
-  ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály,
-  zóny a skupiny). Popis prvku, LongName zóny a neimportované psety nájde len
-  ifc_search. Kód prvku netreba hľadať (daj ho priamo ako cieľ). Na hľadanie podľa textu
-  použi najprv search_all (oba zdroje naraz):
-  každý výsledok má badge IFC / AIM / IFC+AIM (kde sa text našiel), v odpovedi ho
-  uveď pri každom prvku a cituj evidence ako dôkaz; badges filtruje. "Nenašiel som"
-  povedz až po oboch zdrojoch.
+- Materiály (D-108): vrstvy aj z typu = ifc_get (materials); "ukáž izoláciu" = ifc_query(material).
+- Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou; items = rozmery a objem z meshu;
+  qto=true = plocha a objem len z Qto v súbore (rýchle).
+- Hľadanie podľa textu = search_all: IFC súbor (Description, ObjectType, Tag, LongName, všetky
+  psety a Qto aj z typu, klasifikácie, materiály, zóny) aj graf AIM naraz. Každý výsledok má
+  badge IFC / AIM / IFC+AIM (kde sa text našiel), v odpovedi ho uveď pri každom prvku a cituj
+  evidence. source=ifc len súbor (offset na stránkovanie). Kód prvku netreba hľadať (daj ho
+  priamo ako cieľ). "Nenašiel som" povedz až po oboch zdrojoch.
 - Výsledok nesie object_ref, ak prvok pozná AIM; unmapped = prvky len v súbore
   (spomeň ich počet). Pole show_in_3d (ids_or_refs + global_ids) pošli rovno do
   show_in_3d/style_in_3d.
@@ -299,10 +296,6 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   ifc_types=[IfcSpace], where NetFloorArea v pásme) → style_in_3d(colorize,
   ids_or_refs + global_ids). Filter where vidí len vlastnosti výskytu, nie zdedené
   z typu - na tie použi DB (v_asset_effective).
-- Verzia modelu (D-109) = ifc_models (revízia, dátum, autor, history=N); CRS a hlavička = ifc_model_info.
-- Prevzaté tools balíka (D-087, parametre ako v balíku, model_id = ASR | VZT):
-  ifc_model_info (schéma, jednotky, georeferencovanie), ifc_materials_list,
-  ifc_classifications_list, ifc_model_audit (zdravie modelu), ifc_geometry_area a
-  ifc_geometry_volume (z Qto v súbore, nie z geometrie - null = Qto chýba) a
-  ifc_schema_describe (atribúty IFC triedy). Pole aim mapuje GUID -> object_ref.
-  Polohu prvku v priestore dáva get_bounds (živý viewer), nie Qto.`;
+- ifc_models: revízia modelu (D-109, history=N), action=info (schéma, jednotky, CRS),
+  materials, classifications, audit (zdravie modelu), schema (atribúty IFC triedy).
+  Pole aim mapuje GUID -> object_ref. Polohu prvku v priestore dáva get_bounds (živý viewer), nie Qto.`;

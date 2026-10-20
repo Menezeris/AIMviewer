@@ -1,5 +1,7 @@
 import type { ToolDefinition } from "../llm/provider";
 
+import { SEARCH_FIELDS } from "./search";
+
 /**
  * Kombinované hľadanie `search_all` (D-095 dodatok, issue #66): jedno volanie
  * hľadá text naraz v IFC súbore (`ifc_search`) aj v grafe AIM v DB
@@ -10,6 +12,8 @@ import type { ToolDefinition } from "../llm/provider";
  */
 
 export const BADGES = ["IFC", "AIM", "IFC+AIM"] as const;
+/** Zdroj hľadania (D-115): all = oba, ifc = len súbor (bývalý `ifc_search`), aim = len graf AIM. */
+export const SOURCES = ["all", "ifc", "aim"] as const;
 export type Badge = (typeof BADGES)[number];
 
 const DEFAULT_LIMIT = 30;
@@ -21,18 +25,17 @@ const MAX_RESULT_CHARS = 20_000;
 export const SEARCH_ALL_TOOL: ToolDefinition = {
   name: "search_all",
   description:
-    "Kombinované hľadanie textu naraz v OBOCH zdrojoch: IFC súbor (ako ifc_search: atribúty Description, " +
-    "ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály, zóny) aj graf AIM v DB " +
-    "(ako search_everything: názov, object_ref, importované psety, dokumenty, osoby). Výsledky sú spojené podľa " +
-    "prvku a každý má badge, KDE sa text našiel: IFC = len v IFC súbore, AIM = len v grafe AIM, IFC+AIM = v oboch. " +
-    "Badge hovorí o zhode textu, nie o tom, či prvok AIM pozná - to ukazuje object_ref (null = prvok je len v " +
-    "súbore). Dôkaz je v evidence.ifc (pole a hodnota) a evidence.aim (matched_properties, úryvok). Vstup badges " +
-    "vyfiltruje len vybrané badge; counts = počty po badge pred filtrom. Použi ako prvý krok pri hľadaní podľa " +
-    "textu; v odpovedi uveď badge pri každom prvku.",
+    "Hľadanie podľa textu naraz v OBOCH zdrojoch: IFC súbor (atribúty Name, Description, ObjectType, Tag, " +
+    "LongName, všetky psety a Qto aj z typu, klasifikácie, materiály, zóny, skupiny) a graf AIM v DB (názov, " +
+    "object_ref, importované psety, dokumenty, osoby). Výsledky sú spojené podľa prvku a každý má badge, KDE sa " +
+    "text našiel: IFC, AIM alebo IFC+AIM; object_ref null = prvok je len v súbore. Dôkaz je v evidence (pole a " +
+    "hodnota). source=ifc = len IFC súbor (aj fields, fuzzy, offset na stránkovanie), source=aim = len graf AIM. " +
+    "Kód prvku netreba hľadať, daj ho priamo ako cieľ toolu. V odpovedi uveď badge pri každom prvku.",
   inputSchema: {
     type: "object",
     properties: {
       text: { type: "string", description: "Hľadaný text (slová, kód, hodnota; min 2 znaky)" },
+      source: { type: "string", enum: [...SOURCES], description: "all (default) | ifc | aim" },
       badges: {
         type: "array",
         items: { type: "string", enum: [...BADGES] },
@@ -45,6 +48,13 @@ export const SEARCH_ALL_TOOL: ToolDefinition = {
       },
       model: { type: "string", description: "Voliteľne IFC model; obmedzí aj AIM časť na prvky z neho. Inak všetky" },
       limit: { type: "number", description: `Max výsledkov (1-${MAX_LIMIT}, default ${DEFAULT_LIMIT})` },
+      fields: {
+        type: "array",
+        items: { type: "string", enum: [...SEARCH_FIELDS] },
+        description: "IFC časť len v týchto poliach: attribute | property | quantity | type_property | classification | material",
+      },
+      fuzzy: { type: "boolean", description: "IFC časť: tolerovať preklepy (default true)" },
+      offset: { type: "number", description: "source=ifc: posun pre stránkovanie (default 0)" },
     },
     required: ["text"],
   },
@@ -180,10 +190,32 @@ export async function execSearchAll(
   const model = typeof input.model === "string" && input.model.trim() ? input.model.trim() : undefined;
   const rawLimit = typeof input.limit === "number" && Number.isFinite(input.limit) ? Math.floor(input.limit) : DEFAULT_LIMIT;
   const limit = Math.min(Math.max(rawLimit, 1), MAX_LIMIT);
+  const source = typeof input.source === "string" && input.source ? input.source : "all";
+  if (!(SOURCES as readonly string[]).includes(source)) {
+    return { content: `Chyba toolu: source: ${SOURCES.join(" | ")}.`, isError: true };
+  }
+  // fields a fuzzy idú do IFC časti; offset len pri source=ifc (spojený výsledok sa nestránkuje).
+  const ifcExtra = {
+    ...(input.fields !== undefined ? { fields: input.fields } : {}),
+    ...(input.fuzzy !== undefined ? { fuzzy: input.fuzzy } : {}),
+    ...(ifcTypes.length > 0 ? { ifc_types: ifcTypes } : {}),
+    ...(model ? { model } : {}),
+  };
+  try {
+    if (source === "ifc") {
+      const res = await deps.ifc({ text, limit, ...(input.offset !== undefined ? { offset: input.offset } : {}), ...ifcExtra });
+      return { content: clip(JSON.stringify({ source: "IFC súbor", ...res })), isError: false };
+    }
+    if (source === "aim") {
+      return { content: clip(JSON.stringify({ source: "graf AIM v DB", result: await deps.aim({ q: text, limit }) })), isError: false };
+    }
+  } catch (err) {
+    return { content: `Chyba toolu: ${errText(err)}`, isError: true };
+  }
 
   const errors: Record<string, string> = {};
   const [ifcRes, aimRes] = await Promise.allSettled([
-    deps.ifc({ text, limit: PER_SOURCE, ...(ifcTypes.length > 0 ? { ifc_types: ifcTypes } : {}), ...(model ? { model } : {}) }),
+    deps.ifc({ text, limit: PER_SOURCE, ...ifcExtra }),
     deps.aim({ q: text, limit: PER_SOURCE }),
   ]);
   let ifc: IfcSearchItem[] = [];
@@ -219,7 +251,7 @@ export async function execSearchAll(
   const globalIds = [...new Set(items.filter((it) => !it.object_id && it.global_id).map((it) => it.global_id as string))];
 
   const result = {
-    sources: { ifc: "IFC súbor (ifc_search)", aim: "graf AIM v DB (search_everything)" },
+    sources: { ifc: "IFC súbor", aim: "graf AIM v DB" },
     counts,
     ...(badgesIn.length > 0 ? { badges: badgesIn } : {}),
     total: filtered.length,
@@ -232,9 +264,10 @@ export async function execSearchAll(
       ? { hint: "Nič v IFC ani v AIM - skús synonymum, anglický výraz alebo kratší tvar slova." }
       : {}),
   };
-  let content = JSON.stringify(result);
-  if (content.length > MAX_RESULT_CHARS) {
-    content = content.slice(0, MAX_RESULT_CHARS) + `... [orezané, ${content.length} znakov - zúž dotaz, badges alebo limit]`;
-  }
-  return { content, isError: false };
+  return { content: clip(JSON.stringify(result)), isError: false };
+}
+
+function clip(content: string): string {
+  if (content.length <= MAX_RESULT_CHARS) return content;
+  return content.slice(0, MAX_RESULT_CHARS) + `... [orezané, ${content.length} znakov - zúž dotaz, badges alebo limit]`;
 }

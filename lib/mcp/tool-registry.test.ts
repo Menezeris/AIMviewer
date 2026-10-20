@@ -9,7 +9,8 @@ vi.mock("server-only", () => ({}));
 import { mcpInstructions } from "../llm/system-prompt";
 
 import { definitionChars, firstSentence, inventoryMarkdown } from "./tool-inventory";
-import { mcpToolDefinitions, mcpToolGroups } from "./tool-list";
+import { mcpLegacyToolNames, mcpToolDefinitions, mcpToolGroups } from "./tool-list";
+import { ENGINE_TOOL_NAMES } from "../engine/tool-defs";
 import registry from "./tool-registry.json";
 
 /**
@@ -33,6 +34,14 @@ describe("register toolov MCP (D-114)", () => {
       "Nový tool: najprv skús rozšíriť existujúci (MCP-TOOLS.md, AGENTS.md D-114); " +
         "ak naozaj treba nový, pridaj ho do lib/mcp/tool-registry.json s číslom rozhodnutia.",
     ).toEqual({ missing: [], extra: [] });
+  });
+
+  it("staré mená zlúčených toolov (D-115) sa nevypisujú, ale motor ich vykoná", () => {
+    const legacy = [...mcpLegacyToolNames({ engine: true })];
+    expect(legacy.length).toBeGreaterThan(0);
+    expect(legacy.filter((n) => tools.some((t) => t.name === n) || n in REGISTRY)).toEqual([]);
+    expect(legacy.filter((n) => !ENGINE_TOOL_NAMES.has(n))).toEqual([]);
+    expect(mcpLegacyToolNames({ engine: false }).size).toBe(0);
   });
 
   it("mená sú jedinečné", () => {
