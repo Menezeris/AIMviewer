@@ -276,16 +276,14 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
 - Vzťahy zo súboru (D-097) → ifc_relations: členovia zóny/skupiny/systému (direction=forward,
   rel_types=[IfcRelAssignsToGroup], recursive=true pre vnorené zóny), kam prvok patrí
   (direction=inverse: zóny, požiarne úseky, systém, podlažie), napojené prvky cez porty
-  (through_ports=true). "Ktorá VZT jednotka / požiarna klapka obsluhuje miestnosť X" = koncový prvok
-  v miestnosti (query_view v_space_elements) -> ifc_relations(through_ports=true, recursive=true,
-  stop_at=[IfcUnitaryEquipment] alebo [IfcDamper.FIREDAMPER]); cestu ukáž cez path_show_in_3d (D-110).
+  (through_ports=true). "Ktorá VZT jednotka / klapka obsluhuje miestnosť X" (D-110): koncový prvok z
+  v_space_elements -> ifc_relations(through_ports, recursive, stop_at=[IfcUnitaryEquipment] alebo
+  [IfcDamper.FIREDAMPER]), cesta = path_show_in_3d.
   Funguje aj pre zóny a prvky bez object_ref. list_relations má strop
   100 riadkov - úplný zoznam ber z ifc_relations a stránkuj cez next_cursor, kým nie je null;
   počet hovor z total, nie z dĺžky stránky.
-- Materiály a skladby (D-108): vrstvy prvku alebo typu (poradie, materiál, hrúbka, kategória,
-  aj zdedené z typu) vracia ifc_get v poli materials. "Ukáž izoláciu / EPS / minerálnu vlnu"
-  = ifc_material_layers(material=izol) - nájde prvky podľa vrstvy, nie podľa názvu skladby;
-  jeho show_in_3d pošli do show_in_3d/style_in_3d.
+- Materiály (D-108): vrstvy prvku aj z typu = ifc_get (materials). "Ukáž izoláciu / EPS" =
+  ifc_material_layers(material=izol), hľadá podľa vrstvy, nie názvu skladby.
 - Hľadanie podľa textu má dva zdroje: search_everything = graf AIM v DB (názov,
   object_ref, importované psety), ifc_search = IFC súbor (atribúty Description,
   ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály,
@@ -302,8 +300,7 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   ifc_types=[IfcSpace], where NetFloorArea v pásme) → style_in_3d(colorize,
   ids_or_refs + global_ids). Filter where vidí len vlastnosti výskytu, nie zdedené
   z typu - na tie použi DB (v_asset_effective).
-- Verzia modelu (D-109): "je to najnovšie / čo sa zmenilo v ASR" = ifc_models (revízia vNNN, dátum,
-  autor, súhrn, history=N); súradnicový systém, jednotky a hlavička súboru = ifc_model_info.
+- Verzia modelu (D-109) = ifc_models (revízia, dátum, autor, history=N); CRS a hlavička = ifc_model_info.
 - Prevzaté tools balíka (D-087, parametre ako v balíku, model_id = ASR | VZT):
   ifc_model_info (schéma, jednotky, georeferencovanie), ifc_materials_list,
   ifc_classifications_list, ifc_model_audit (zdravie modelu), ifc_geometry_area a
