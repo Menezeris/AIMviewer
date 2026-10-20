@@ -75,6 +75,15 @@ describe("viewer-lens (D-096)", () => {
     expect(parseOps(lensOp("add", { r: [{ n: "x", a: "isolate", c: "#000000", g }] }))).toEqual([]);
   });
 
+  it("X-ray (D-105): príznak x ide do mosta ako xray, s izoláciou naraz nie", () => {
+    const g = WIRE.r![0].g;
+    const [o] = parseOps(lensOp("add", { r: [{ n: "SDK", a: "isolate", g }], x: 1 }, "r4"));
+    const msg = opToBridgeMessage(o) as Record<string, unknown>;
+    expect(msg).toMatchObject({ type: "APPLY_LENS", xray: true, rules: [{ name: "SDK", action: "isolate" }] });
+    expect(msg).not.toHaveProperty("isolate");
+    expect(parseOps(lensOp("add", { r: [{ n: "x", a: "isolate", g }], i: 1, x: 1 }))).toEqual([]);
+  });
+
   it("op bez zóny sa preloží priamo cez opToBridgeMessage", () => {
     const [o] = parseOps(lensOp("add", { ac: { source: "group" } }, "r2"));
     expect(opToBridgeMessage(o)).toEqual({ type: "APPLY_LENS", mode: "add", rev: "r2", autoColor: { source: "group" } });

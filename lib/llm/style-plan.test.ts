@@ -64,6 +64,11 @@ describe("parseStyleGroups", () => {
     expect(parseStyleGroups({ zone: "Nájomné priestory" }, "isolate")[0].color).toBe("");
     expect(parseStyleGroups({ zone: "Nájomné priestory", color: "#22C55E" }, "isolate")[0].color).toBe("22c55e");
   });
+  it("X-ray (D-105) ako izolácia: farba voliteľná, groups povolené", () => {
+    expect(parseStyleGroups({ ifc_type: "IfcWall" }, "xray")[0].color).toBe("");
+    const g = parseStyleGroups({ groups: [{ color: "f97316", system: "X" }, { system: "Y" }] }, "xray");
+    expect(g.map((x) => x.color)).toEqual(["f97316", ""]);
+  });
   it("groups platia aj pre transparent a isolate; transparent farbu vyžaduje", () => {
     const g = parseStyleGroups({ groups: [{ color: "ef4444", system: "X" }, { system: "Y" }] }, "isolate");
     expect(g.map((x) => x.color)).toEqual(["ef4444", ""]);

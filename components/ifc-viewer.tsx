@@ -13,6 +13,7 @@ import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { opToBridgeMessage, parseOps } from "@/lib/viewer-ops";
 import { MAX_ZONE_GUIDS, lensBridgeMessage, lensZoneIds } from "@/lib/viewer-lens";
+import { listBridgeMessage, listZoneIds } from "@/lib/viewer-list";
 import type { LiveQueryPayload, LiveReplyPayload } from "@/lib/live/protocol";
 import { hasRelativeStep, relativeViewpoint, type CameraMove, type ViewerCamera } from "@/lib/viewer-camera";
 import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
@@ -293,6 +294,8 @@ export function IFCViewer({
         else if (o.op === "lens" && lensZoneIds(o.wire).length > 0) {
           // Zóna z grafu AIM (D-096): GUIDy jej miestností a prvkov si klient stiahne sám.
           post(lensBridgeMessage(o.mode, o.wire, await fetchZoneGuids(lensZoneIds(o.wire)), o.rev));
+        } else if (o.op === "list" && listZoneIds(o.wire).length > 0) {
+          post(listBridgeMessage(o.wire, await fetchZoneGuids(listZoneIds(o.wire))));
         } else post(opToBridgeMessage(o));
         // Reset farieb vypne aj AIM chat lens, zobraziť všetko zruší izoláciu z chatu (D-096).
         if (o.op === "reset_colors") post({ type: "APPLY_LENS", mode: "clear" });

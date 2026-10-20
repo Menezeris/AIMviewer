@@ -4,6 +4,7 @@ import { cacheSnapshot, getStore, type EngineModelSource } from "./cache";
 import { idsSources, loadIds } from "./ids-sources";
 import { execPassthroughTool, isPassthroughTool } from "./passthrough";
 import { joinToAim, type GuidLookup } from "./join";
+import { ifcMaterialLayers } from "./materials";
 import { ifcRelations } from "./relations";
 import { revisionsFor, type ModelRevisionRow, type RevisionSource } from "./revisions";
 import {
@@ -260,7 +261,7 @@ async function ifcGet(input: Record<string, unknown>, deps: EngineDeps): Promise
 
   const { models } = await modelsFor(modelIds, deps);
   const session = await openEngineSession(models);
-  const include = ["attributes", "properties", "quantities", "classifications", "documents", ...(includeType ? ["type_properties"] : [])];
+  const include = ["attributes", "properties", "quantities", "classifications", "materials", "documents", ...(includeType ? ["type_properties"] : [])];
   const found: Array<Record<string, unknown> & { global_id: string }> = [];
   const missing: string[] = [];
   const where = new Map<string, { modelId: string; expressId: number }>();
@@ -544,6 +545,9 @@ export async function execEngineTool(
         break;
       case "ifc_relations":
         content = await ifcRelations(input, deps);
+        break;
+      case "ifc_material_layers":
+        content = await ifcMaterialLayers(input, deps);
         break;
       default:
         if (isPassthroughTool(name)) return await execPassthroughTool(name, input, deps);

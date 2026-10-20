@@ -103,7 +103,8 @@ export function engineToolDefinitions(): ToolDefinition[] {
       name: "ifc_get",
       description:
         "IFC MOTOR: všetky údaje prvkov priamo z IFC súboru - atribúty, psety výskytu, množstvá (Qto), " +
-        "klasifikácie, dokumenty a voliteľne psety z typu. Ciele = object_ref, objects.id alebo IFC GlobalId.",
+        "klasifikácie, materiály (vrstvy skladby s hrúbkou a kategóriou, aj z typu), dokumenty a voliteľne " +
+        "psety z typu. Ciele = object_ref, objects.id alebo IFC GlobalId.",
       inputSchema: {
         type: "object",
         properties: {
@@ -193,6 +194,24 @@ export function engineToolDefinitions(): ToolDefinition[] {
           cursor: { type: "string", description: "next_cursor z predchádzajúcej stránky" },
         },
         required: ["target"],
+      },
+    },
+    {
+      name: "ifc_material_layers",
+      description:
+        "IFC MOTOR: prvky, ktorých materiál obsahuje hľadaný materiál alebo kategóriu - aj ako jedna vrstva " +
+        "zloženej skladby (IfcMaterialLayerSet), zložka alebo profil, vrátane materiálu z typu. Na \"ukáž " +
+        "izoláciu / EPS / minerálnu vlnu\"; hľadá bez diakritiky v názve materiálu, vrstvy aj kategórie. Vráti " +
+        "total, súhrn podľa skladby (sets) s nájdenými vrstvami a hrúbkou, prvky a show_in_3d za všetky nájdené.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          material: { type: "string", description: "Časť názvu materiálu, vrstvy alebo kategórie (napr. izol, EPS, minerál, betón)" },
+          model: { ...model, description: "Voliteľne model; inak všetky" },
+          ifc_types: { type: "array", items: { type: "string" }, description: "Len tieto triedy (default IfcElement so všetkými podtriedami)" },
+          limit: { type: "number", description: "Max vypísaných prvkov (1-500, default 100); total, sets a show_in_3d platia pre všetky" },
+        },
+        required: ["material"],
       },
     },
     ...passthroughDefinitions(models),
