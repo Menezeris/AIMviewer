@@ -21,8 +21,9 @@ export interface McpCallLogRow {
 
 /** `args.action`, ak ju tool má (style_in_3d, set_section...); inak null. */
 export function callAction(args: Record<string, unknown>): string | null {
-  // Zlúčené tooly (D-115) majú rozlišovač action, mode alebo source; prvý vyplnený ide do logu.
-  for (const key of ["action", "mode", "source"]) {
+  // Zlúčené tooly (D-115) majú rozlišovač action, mode alebo source, ifc_measure route (D-121);
+  // prvý vyplnený ide do logu.
+  for (const key of ["action", "mode", "source", "route"]) {
     if (typeof args[key] === "string" && args[key]) return (args[key] as string).slice(0, 40);
   }
   return null;
