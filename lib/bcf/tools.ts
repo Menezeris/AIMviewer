@@ -62,7 +62,8 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
       "BCF témy nad modelmi federácie (D-099), najnovšie prvé: číslo, guid, názov, stav, typ, priorita, " +
       "komu, model, počet prvkov a komentárov, odkaz na Claude session. Filtre status, model, assigned_to " +
       "('claude' = témy pre Claude). S guid (alebo číslom témy) vráti detail: popis, komentáre, pohľad " +
-      "(kamera, rez, výber) a GlobalId prvkov - prvky ukáž cez show_in_3d(global_ids).",
+      "(kamera, rez, výber) a GlobalId prvkov - prvky ukáž cez show_in_3d(global_ids). Prázdny výsledok " +
+      "s filtrom nesie count_without_filter (počet všetkých tém), znova bez filtra nevolaj.",
     inputSchema: {
       type: "object",
       properties: {
@@ -376,13 +377,21 @@ async function list(args: Record<string, unknown>, deps: BcfDeps) {
   if (args.guid !== undefined && args.guid !== "") return { topic: detail(await loadTopic(deps, args.guid)) };
   const n = Number(args.limit);
   const limit = Number.isFinite(n) && n > 0 ? Math.min(LIST_MAX, Math.trunc(n)) : LIST_DEFAULT;
-  const { rows, total } = await deps.store.list({
+  const filter = {
     status: normalizeStatus(args.status),
     model: text(args.model, 40) || undefined,
     assigned_to: text(args.assigned_to, 200) || undefined,
-    limit,
-  });
-  return { count: total, returned: rows.length, topics: rows.map(summary) };
+  };
+  const { rows, total } = await deps.store.list({ ...filter, limit });
+  // Prázdny výsledok s filtrom povie aj počet všetkých tém, inak agent volá znova bez filtra (#97, C12).
+  const filtered = Boolean(filter.status || filter.model || filter.assigned_to);
+  const all = total === 0 && filtered ? (await deps.store.list({ limit: 1 })).total : undefined;
+  return {
+    count: total,
+    ...(all !== undefined ? { count_without_filter: all } : {}),
+    returned: rows.length,
+    topics: rows.map(summary),
+  };
 }
 
 async function update(args: Record<string, unknown>, deps: BcfDeps) {

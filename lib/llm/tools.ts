@@ -296,7 +296,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "aggregate_objects",
     description:
       "Presné agregácie a ČÍSELNÉ porovnania nad hodnotami psetov — počíta databáza, " +
-      "nikdy nepočítaj z orezaných riadkov. agg=count|sum|avg|min|max nad numerickou " +
+      "nikdy nepočítaj z orezaných riadkov. Výsledok je konečný: neoveruj ho query_view ani " +
+      "ďalším volaním. agg=count|sum|avg|min|max nad numerickou " +
       "hodnotou prop_path (napr. ['VZT_Parametre','AirFlowRate']); group_by (stĺpec: " +
       "object_type|ifc_type|predefined_type|user_defined_type|name|object_ref) alebo " +
       "group_by_path (pset cesta ako kľúč, napr. výrobca). AND filtre " +

@@ -27,7 +27,7 @@ Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/vie
   Parametre: `mode=list|count|locate`, `query`, `object_type`, `ifc_type`, `predefined_type`, `ids`, `limit`
 - **`query_view`** (D-056, čítanie) - Generický read-only dopyt nad ľubovoľnou tabuľkou/view v DB (celá dátová vrstva).
   Parametre: `relation*`, `select`, `filters`, `order`, `count_only`, `limit`
-- **`aggregate_objects`** (D-060, čítanie) - Presné agregácie a ČÍSELNÉ porovnania nad hodnotami psetov — počíta databáza, nikdy nepočítaj z orezaných riadkov. agg=count|sum|avg|min|max nad numerickou hodnotou prop_path (napr. ['VZT_Parametre','AirFlowRate']); group_by (stĺpec: object_type|ifc_type|predefined_type|user_defined_type|name|object_ref) alebo group_by_path (pset cesta ako kľúč, napr. výrobca).
+- **`aggregate_objects`** (D-060, čítanie) - Presné agregácie a ČÍSELNÉ porovnania nad hodnotami psetov — počíta databáza, nikdy nepočítaj z orezaných riadkov.
   Parametre: `relation`, `agg`, `prop_path`, `group_by`, `group_by_path`, `filters`, `ids`, `max_groups`, `return_rows`
 - **`get_object`** (D-056, čítanie) - Detail jedného uzla podľa UUID, object_ref (napr. 'DD01.06.03') alebo kódu prvku (meno ako 'VV.03.01.040'; prvok len v IFC vráti in_aim:false a global_id): identita, IFC trieda, predefined_type, IFC GUID a podlažie (floor). include pridá v tom istom volaní: details = VLASTNOSTI psetov (aj zdedené z typu, napr. výrobný typ) a klasifikácie; path = V KTOREJ MIESTNOSTI a podlaží je (aj odvodené geometriou, napr. VZT prvok v miestnosti z ASR); drawings = na ktorých VÝKRESOCH a stranách je.
   Parametre: `id_or_ref*`, `include=details|path|drawings`
