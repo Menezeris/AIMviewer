@@ -281,7 +281,9 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   Funguje aj pre zóny a prvky bez object_ref. list_relations má strop
   100 riadkov - úplný zoznam ber z ifc_relations a stránkuj cez next_cursor, kým nie je null;
   počet hovor z total, nie z dĺžky stránky.
-- Materiály (D-108): vrstvy aj z typu = ifc_get (materials); "ukáž izoláciu" = ifc_query(material).
+- Materiál prvkov (izolácia, minerálna vlna, EPS, betón; D-108) je len v IFC súbore, graf AIM ho nenesie:
+  "koľko / ktoré / ukáž prvky z materiálu X" = ifc_query(material=X), nie search_everything; vrstvy
+  jedného prvku = ifc_get. Dedičnosť a atribúty IFC triedy = ifc_models(action=schema), nie z pamäti.
 - Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou; items = rozmery a objem z meshu;
   qto=true = plocha a objem len z Qto v súbore (rýchle).
 - Hľadanie podľa textu = search_all: IFC súbor (Description, ObjectType, Tag, LongName, všetky

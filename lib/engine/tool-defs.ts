@@ -53,11 +53,10 @@ export function engineToolDefinitions(): ToolDefinition[] {
     {
       name: "ifc_models",
       description:
-        "IFC MOTOR: modely federácie a údaje o súbore. action=revisions (default): aktuálna revízia každého " +
-        "modelu (vNNN, dátum, autor, súhrn zmien, výsledok poistky), history = aj predchádzajúce; info: schéma, " +
-        "jednotky, georeferencovanie a počty entít; materials / classifications: materiály a klasifikácie modelu " +
-        "s počtami; audit: zdravie modelu; schema: atribúty a dedičnosť IFC triedy (type, bez modelu). " +
-        "Zavolaj aj, keď nevieš, ktorý model (ASR/VZT) prvky nesie.",
+        "IFC MOTOR: modely federácie, súbor a IFC schéma. action=revisions (default): aktuálna revízia modelu " +
+        "(vNNN, dátum, autor, zmeny), history = aj predchádzajúce; info: schéma IFC, jednotky, georeferencovanie; " +
+        "materials / classifications: zoznam materiálov a klasifikácií s počtami; audit: zdravie modelu; " +
+        "schema: z ktorej triedy IFC trieda dedí a jej atribúty (type, napr. IfcAirTerminal; bez modelu).",
       inputSchema: {
         type: "object",
         properties: {
@@ -72,12 +71,11 @@ export function engineToolDefinitions(): ToolDefinition[] {
     {
       name: "ifc_query",
       description:
-        "IFC MOTOR: prvky priamo v IFC súbore podľa triedy, podlažia a hodnôt psetov, aj ČÍSELNÉ porovnania " +
-        "(plocha > 20). mode=list (default): prvky s object_ref a poľom show_in_3d pre show_in_3d/style_in_3d; " +
-        "count: presný počet, aj group_by trieda/podlažie/materiál; values: rôzne hodnoty jednej vlastnosti psetu " +
-        "alebo Qto s počtami (pset + name, 'aké hodnoty má X'). material = prvky s materiálom alebo vrstvou skladby " +
-        "(aj z typu), napr. izolácia, EPS, minerálna vlna: total, skladby s hrúbkou a show_in_3d. Číta vlastnosti " +
-        "výskytu, nie zdedené z typu.",
+        "IFC MOTOR: prvky v IFC súbore podľa MATERIÁLU (material: izolácia, minerálna vlna, EPS, betón - aj " +
+        "vrstva skladby a materiál z typu; graf AIM materiály nenesie), triedy, podlažia a hodnôt psetov vrátane " +
+        "ČÍSELNÝCH porovnaní (plocha > 20). mode=list (default): prvky s object_ref a show_in_3d; count: presný " +
+        "počet zo súboru, aj group_by trieda/podlažie/materiál; values: aké hodnoty má vlastnosť psetu alebo Qto " +
+        "a koľko prvkov má ktorú (pset + name). Číta vlastnosti výskytu, nie zdedené z typu.",
       inputSchema: {
         type: "object",
         properties: {
