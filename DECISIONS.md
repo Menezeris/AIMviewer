@@ -5514,3 +5514,36 @@ sú riadky vzťahov, nie trasa.
 **Otvorené:** dvere DD02.05.14 majú navyše hranicu s 2.02 (geometria vidí len 2.01 | 2.10), recept ju nemaže;
 DD04.07.02 (vstup do akustickej zásteny na streche) nemá miestnosť ani z jednej strany. Čiara trasy vo vieweri
 (nie len zvýraznenie prvkov) potrebuje správu mosta vo forku.
+
+---
+
+### D-124 - Kóta vo vieweri: `ifc_measure show` cez nástroj Measure forku
+**Status:** rozhodnuté (2026-10-20, Samuel cez orchestrátora), číslo pridelené v registri #60. Nadväzuje na
+D-112 (meranie z geometrie), D-098 (most volá existujúce funkcie viewera) a D-114 (najprv napasuj).
+
+**Kontext:** `ifc_measure` vracal svetlú vzdialenosť a rozmery len ako čísla; vo vieweri sa dali ukázať len
+prvky, nie čiara, medzi ktorou sa meralo.
+
+**Rozhodnutie:**
+1. **Fork nekreslí nič nové.** Nový príkaz mosta `MEASURE_SHOW { segments: [{ a, b }], keep? }` (body
+   v IFC svete, Z hore, m; najviac 12) vloží úseky do upstream nástroja Measure ako hotové merania, tou istou
+   cestou ako dva kliky (`addMeasurePoint` + `completeMeasurement`). Kreslí ich `MeasurementSceneLayer`
+   s jednotkami viewera aj bez otvoreného nástroja a používateľ ich vymaže ako vlastné. Prevod IFC svet ->
+   render rámec je ten istý ako pri póze kamery od hosta (`ifcPointToRender`, `bcfWorldOffset`). Kóty od
+   hosta si fork pamätá: ďalší príkaz bez `keep` ich nahradí, merania používateľa nechá.
+2. **`ifc_measure` (`lib/engine/measure-dimension.ts`):** pri a + b vracia `closest_points` (konce najkratšej
+   úsečky v IFC svete). Clash engine dáva len stred úsečky, konce sú najbližšie body každého meshu k nemu (pre
+   dvojicu s minimom presne tie isté body). `show=true` pošle kótu do živého viewera: a + b = táto úsečka,
+   len a = tri hrany obálky X, Y, Z. Pri prieniku a dotyku nie je čo kótovať.
+3. **Rámec meshu:** headless tesselácia si pamätá posun do IFC sveta z `coordinateInfo`
+   (`renderFrameWorldOffset`), aby body sedeli aj pri modeli s RTC posunom (ASR v76 má posun 0).
+4. Akcie z nástrojov motora idú do viewera tou istou cestou ako akcie DB tools (`deliverActions` v MCP route,
+   s potvrdením `APPLIED`).
+
+**Zavrhnuté rozšírenie: nový tool `show_dimension` - prečo nie:** body počíta `ifc_measure` z tých istých
+meshov a jeho výsledok je to, čo sa má ukázať; rozlišovací parameter `show` stačí (D-114).
+
+**Zavrhnuté:**
+- *Vlastný renderer kót vo forku:* upstream Measure už kreslí, popisuje a maže merania (D-098).
+- *Úsečka zo stredu `closest_point` a obálky clash výsledku:* obálka úsečky neurčuje, ktorá uhlopriečka je
+  úsečka.
