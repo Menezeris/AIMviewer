@@ -50,8 +50,11 @@ describe("hľadanie podľa kódu (D-102)", () => {
 
   it("findByNames nájde prvok podľa mena aj Tagu v súbore", async () => {
     const hits = await findByNames(["1.02", "tagA", "neexistuje"], opts);
-    expect(hits.get("1.02")).toEqual([{ global_id: guid("SPB"), ifc_type: "IfcSpace", model: "MINI", name: "1.02" }]);
-    expect(hits.get("tagA")?.[0].global_id).toBe(guid("WALA"));
+    expect(hits.get("1.02")).toEqual([
+      { global_id: guid("SPB"), ifc_type: "IfcSpace", model: "MINI", name: "1.02", storey: { name: "1NP", global_id: guid("ST1") } },
+    ]);
+    // D-115 (eval D7): podlažie aj pre prvok len v súbore, tu cez IfcRelContainedInSpatialStructure.
+    expect(hits.get("tagA")?.[0]).toMatchObject({ global_id: guid("WALA"), storey: { name: "1NP" } });
     expect(hits.has("neexistuje")).toBe(false);
   });
 

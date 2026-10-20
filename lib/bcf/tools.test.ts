@@ -8,7 +8,6 @@ import { G1, G2, VIEW_STATE, deps, memoryStore } from "./testing";
 import {
   BCF_TOOL_DEFINITIONS,
   BCF_TOOL_NAMES,
-  LEGACY_BCF_TOOL_NAMES,
   bcfFirePayload,
   execBcfTool,
   normalizeStatus,
@@ -33,10 +32,10 @@ describe("definície (1:1 s @ifc-lite/mcp, D-087)", () => {
     expect(props).toEqual(expect.arrayContaining(["labels", "comment", "modified_by", "selection_global_ids", "capture_view"]));
     expect(byName.get("bcf_topic_list")!.annotations).toBeUndefined();
     expect(byName.get("bcf_topic")!.annotations?.readOnlyHint).toBe(false);
-    expect([...LEGACY_BCF_TOOL_NAMES].every((n) => BCF_TOOL_NAMES.has(n))).toBe(true);
+    expect([...BCF_TOOL_NAMES]).toEqual(["bcf_topic_list", "bcf_topic"]);
   });
 
-  it("bcf_topic action vykoná ten istý zápis ako staré meno, neznáma action je chyba vstupu", async () => {
+  it("bcf_topic vykoná zápis podľa action, neznáma action aj staré meno sú chyba", async () => {
     const { store, rows } = memoryStore([{ title: "x" }]);
     const d = deps({ store });
     const closed = await run("bcf_topic", { action: "close", guid: "1", comment: "Nie je chyba" }, d);
@@ -47,6 +46,7 @@ describe("definície (1:1 s @ifc-lite/mcp, D-087)", () => {
     expect(rows).toHaveLength(2);
     expect((await run("bcf_topic", { action: "zmaz", guid: "1" }, d)).isError).toBe(true);
     expect((await run("bcf_topic", { title: "bez action" }, d)).isError).toBe(true);
+    expect((await run("bcf_topic_close", { guid: "1" }, d)).isError).toBe(true);
   });
 });
 
@@ -73,10 +73,10 @@ describe("pomocné funkcie", () => {
   });
 });
 
-describe("bcf_topic_create", () => {
+describe("bcf_topic action=create", () => {
   it("bez prvkov vezme výber a pohľad z viewera; téma pre človeka session nespúšťa", async () => {
     const d = deps();
-    const r = await run("bcf_topic_create", { title: "Potrubie koliduje s nosníkom", assigned_to: "Projektant VZT", priority: "High" }, d);
+    const r = await run("bcf_topic", { action: "create", title: "Potrubie koliduje s nosníkom", assigned_to: "Projektant VZT", priority: "High" }, d);
     expect(r.isError).toBe(false);
     expect(r.json.topic).toMatchObject({ number: 1, status: "open", components: 2, assigned_to: "Projektant VZT" });
     expect(r.json.viewpoint_saved).toBe(true);
@@ -86,14 +86,14 @@ describe("bcf_topic_create", () => {
 
   it("zadané prvky majú prednosť pred výberom, pohľad sa uloží aj tak", async () => {
     const { store, rows } = memoryStore();
-    const r = await run("bcf_topic_create", { title: "t", target_ids_or_refs: ["DD01.06.03"] }, deps({ store }));
+    const r = await run("bcf_topic", { action: "create", title: "t", target_ids_or_refs: ["DD01.06.03"] }, deps({ store }));
     expect(r.json.topic.components).toBe(1);
     expect(rows[0].components).toEqual([G2]);
     expect(rows[0].viewpoint).toMatchObject({ source: "viewer" });
   });
 
   it("bez viewera vznikne téma bez pohľadu a povie prečo", async () => {
-    const r = await run("bcf_topic_create", { title: "t", global_ids: [G1] }, deps({ captureView: async () => "viewer neodpovedal" }));
+    const r = await run("bcf_topic", { action: "create", title: "t", global_ids: [G1] }, deps({ captureView: async () => "viewer neodpovedal" }));
     expect(r.json.viewpoint_saved).toBe(false);
     expect(r.json.view_note).toMatch(/viewer neodpovedal/);
     expect(r.json.topic.components).toBe(1);
@@ -102,7 +102,7 @@ describe("bcf_topic_create", () => {
   it("téma pre Claude spustí session, zapíše odkaz, stav a komentár", async () => {
     const { store, rows } = memoryStore();
     const d = deps({ store });
-    const r = await run("bcf_topic_create", { title: "Doplň Pset_SpaceCommon.Reference", assigned_to: "Claude", model: "ASR" }, d);
+    const r = await run("bcf_topic", { action: "create", title: "Doplň Pset_SpaceCommon.Reference", assigned_to: "Claude", model: "ASR" }, d);
     expect(r.json.session).toEqual({ url: "https://claude.ai/code/session_1" });
     expect(r.json.topic.status).toBe("in_progress");
     expect(rows[0].session_url).toBe("https://claude.ai/code/session_1");
@@ -116,32 +116,32 @@ describe("bcf_topic_create", () => {
       { status: "in_progress", session_url: "u1" },
       { status: "in_progress", session_url: "u2" },
     ]);
-    const full = await run("bcf_topic_create", { title: "t", assigned_to: "claude" }, deps({ store: busy.store, maxSessions: 2 }));
+    const full = await run("bcf_topic", { action: "create", title: "t", assigned_to: "claude" }, deps({ store: busy.store, maxSessions: 2 }));
     expect(full.json).toMatchObject({ session: null, queued: true });
     expect(full.json.session_note).toMatch(/#1, #2/);
 
-    const none = await run("bcf_topic_create", { title: "t", assigned_to: "claude" }, deps({ fire: null }));
+    const none = await run("bcf_topic", { action: "create", title: "t", assigned_to: "claude" }, deps({ fire: null }));
     expect(none.json).toMatchObject({ session: null, queued: true });
     expect(none.json.session_note).toMatch(/CLAUDE_BCF_ROUTINE_FIRE_URL/);
   });
 
   it("chybný vstup vráti chybu bez zápisu", async () => {
     const { store, rows } = memoryStore();
-    expect((await run("bcf_topic_create", { title: " " }, deps({ store }))).isError).toBe(true);
-    expect((await run("bcf_topic_create", { title: "t", due_date: "zajtra" }, deps({ store }))).text).toMatch(/YYYY-MM-DD/);
+    expect((await run("bcf_topic", { action: "create", title: " " }, deps({ store }))).isError).toBe(true);
+    expect((await run("bcf_topic", { action: "create", title: "t", due_date: "zajtra" }, deps({ store }))).text).toMatch(/YYYY-MM-DD/);
     expect(rows).toHaveLength(0);
   });
 });
 
-describe("bcf_topic_update / close / list / viewpoint", () => {
+describe("bcf_topic action=update / close / viewpoint, bcf_topic_list", () => {
   it("priradenie Claudovi spustí session raz; komentár sa pripojí", async () => {
     const { store, rows } = memoryStore([{ title: "Okno bez FireRating" }]);
     const d = deps({ store });
-    const r = await run("bcf_topic_update", { guid: "#1", assigned_to: "claude", comment: "Oprav podľa IDS" }, d);
+    const r = await run("bcf_topic", { action: "update", guid: "#1", assigned_to: "claude", comment: "Oprav podľa IDS" }, d);
     expect(r.json.session).toEqual({ url: "https://claude.ai/code/session_1" });
     expect(r.json.comment_added).toBe(true);
     expect(rows[0].comments.map((c) => c.comment)).toEqual(["Oprav podľa IDS", expect.stringMatching(/session_1/)]);
-    const again = await run("bcf_topic_update", { guid: "#1", start_session: true }, d);
+    const again = await run("bcf_topic", { action: "update", guid: "#1", start_session: true }, d);
     expect(again.json.session).toBeNull();
     expect(again.json.session_note).toMatch(/už bola spustená/);
     expect(d.fired).toHaveLength(1);
@@ -149,17 +149,17 @@ describe("bcf_topic_update / close / list / viewpoint", () => {
 
   it("session píše stav a výsledok; BCF stav sa prevedie", async () => {
     const { store, rows } = memoryStore([{ assigned_to: "claude", status: "in_progress", session_url: "u" }]);
-    const r = await run("bcf_topic_update", { guid: rows[0].id, status: "Resolved", comment: "Revízia v74", modified_by: "Claude (OCB)" }, deps({ store }));
+    const r = await run("bcf_topic", { action: "update", guid: rows[0].id, status: "Resolved", comment: "Revízia v74", modified_by: "Claude (OCB)" }, deps({ store }));
     expect(r.json.topic).toMatchObject({ status: "resolved", comments: 1 });
     expect(rows[0].modified_by).toBe("Claude (OCB)");
   });
 
   it("close uzavrie s komentárom; neznáma téma je chyba", async () => {
     const { store, rows } = memoryStore([{ title: "x" }]);
-    const r = await run("bcf_topic_close", { guid: "1", comment: "Nie je chyba" }, deps({ store }));
+    const r = await run("bcf_topic", { action: "close", guid: "1", comment: "Nie je chyba" }, deps({ store }));
     expect(r.json.topic.status).toBe("closed");
     expect(rows[0].comments).toHaveLength(1);
-    const miss = await run("bcf_topic_close", { guid: "#9" }, deps({ store }));
+    const miss = await run("bcf_topic", { action: "close", guid: "#9" }, deps({ store }));
     expect(miss.isError).toBe(true);
     expect(miss.text).toMatch(/#9 neexistuje/);
   });
@@ -173,16 +173,20 @@ describe("bcf_topic_update / close / list / viewpoint", () => {
     expect(all.json).toMatchObject({ count: 1, topics: [{ number: 2, title: "b" }] });
     const mine = await run("bcf_topic_list", { assigned_to: "claude", status: "open" }, deps({ store }));
     expect(mine.json.count).toBe(1);
+    expect(mine.json.by_status).toEqual({ open: 1 });
+    const none = await run("bcf_topic_list", { status: "closed" }, deps({ store }));
+    expect(none.json).toMatchObject({ count: 0, by_status: { open: 2 }, topics: [] });
+    expect((await run("bcf_topic_list", {}, deps({ store }))).json).not.toHaveProperty("by_status");
     const one = await run("bcf_topic_list", { guid: "#1" }, deps({ store }));
     expect(one.json.topic).toMatchObject({ number: 1, global_ids: [G1], global_ids_truncated: false, comment_list: [] });
   });
 
   it("viewpoint nahradí prvky a pohľad; bez prvkov aj pohľadu je to chyba", async () => {
     const { store, rows } = memoryStore([{ title: "x", components: [G1] }]);
-    const r = await run("bcf_viewpoint_create", { guid: "#1", selection_global_ids: [G2] }, deps({ store }));
+    const r = await run("bcf_topic", { action: "viewpoint", guid: "#1", selection_global_ids: [G2] }, deps({ store }));
     expect(r.json).toMatchObject({ selection: 1, viewpoint_from_viewer: true });
     expect(rows[0].components).toEqual([G2]);
-    const empty = await run("bcf_viewpoint_create", { guid: "#1", capture_view: false }, deps({ store }));
+    const empty = await run("bcf_topic", { action: "viewpoint", guid: "#1", capture_view: false }, deps({ store }));
     expect(empty.isError).toBe(true);
   });
 });
@@ -214,13 +218,13 @@ describe("oznámenie viewerom (D-099 dodatok)", () => {
     const notify = vi.fn(async () => undefined);
     const d = deps({ notify });
     await run("bcf_topic_list", {}, d);
-    await run("bcf_topic_create", { title: " " }, d);
+    await run("bcf_topic", { action: "create", title: " " }, d);
     expect(notify).not.toHaveBeenCalled();
-    await run("bcf_topic_create", { title: "t" }, d);
-    await run("bcf_topic_update", { guid: "#1", comment: "c" }, d);
-    await run("bcf_topic_close", { guid: "#1" }, d);
+    await run("bcf_topic", { action: "create", title: "t" }, d);
+    await run("bcf_topic", { action: "update", guid: "#1", comment: "c" }, d);
+    await run("bcf_topic", { action: "close", guid: "#1" }, d);
     expect(notify).toHaveBeenCalledTimes(3);
-    const broken = await run("bcf_topic_create", { title: "u" }, deps({ notify: async () => Promise.reject(new Error("x")) }));
+    const broken = await run("bcf_topic", { action: "create", title: "u" }, deps({ notify: async () => Promise.reject(new Error("x")) }));
     expect(broken.isError).toBe(false);
   });
 });

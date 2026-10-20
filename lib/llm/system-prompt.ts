@@ -185,6 +185,9 @@ Kontext MCP (Claude vedľa viewera):
 - get_viewer_state číta viewer v súradniciach IFC (m, Z hore); bounds=true alebo cieľ = obálky.
   "Čo mám vybrané" -> get_viewer_state.selection.summary (triedy, podlažia, zostavy), nie vzorka
   items; pri summary.covers=returned povedz, že viewer poslal len časť.
+- Pôvod funkcií viewera (#80): vrstva AIM vo forku = AIM karta a záložka AIM, 2D plán a podklady
+  (D-072), dokumenty (D-075, D-104), odvodenia (D-089), Lens z chatu (D-096) a príkazy z konektora;
+  ostatné (rez, merania, panely Lens, BCF, IDS, zoznamy) je pôvodné ifc-lite.
 - Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
   výkres ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
 - Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${FEEDBACK_RULES}${BCF_RULES}${engine ? ENGINE_RULES : ""}`;
@@ -204,7 +207,7 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   filtrom (show_in_3d ifc_type=...), nie vymenúvaním. Nové zobrazenie nahradí predošlé;
   "pridaj aj X" = predošlé prvky + X v jednom ids_or_refs.
 - "Ukáž IFC údaje / výmery / zvýrazni vlastnosť" = show_in_3d(select=true) s panel_tab=ifc, panel_section=quantities
-  alebo highlight='Pset.Vlastnosť' (D-113); samotnú hodnotu do odpovede čítaj z ifc_get.
+  alebo highlight='Pset.Vlastnosť' (D-113); panel hodnoty ukáže, ifc_get len keď sa pýta na hodnotu.
 - Farby, priehľadnosť, skrytie, izolácia = style_in_3d (filtre a groups podľa opisu toolu).
   Výber podľa hodnoty vlastnosti = property + value, nikdy aproximácia triedou alebo doménou;
   názov vlastnosti over cez v_property_dictionary. Systém / zóna / podlažie ako filter system /
@@ -251,8 +254,7 @@ const FEEDBACK_RULES = `
   koľko session beží a čo čaká. "Spusti ďalšiu" = feedback(action=start_session).
 - "Dopíš do #N ..." (kolo evalov, výsledky pred / po, poznámka) = feedback(action=comment) do existujúceho
   issue (aj zatvoreného), nie nové issue; ukáž odkaz na komentár. reopen=true len na výslovný pokyn
-  ("otvor ho znova").
-- Issue je verejné: žiadne mená, kontakty ani tokeny, len object_ref, triedy, psety a tools.`;
+  ("otvor ho znova").`;
 
 /**
  * BCF témy nad modelmi federácie (D-099) - len MCP; téma pre Claude spustí
@@ -287,13 +289,12 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   (through_ports=true). "Ktorá VZT jednotka / klapka obsluhuje miestnosť X" (D-110): koncový prvok z
   v_space_elements -> ifc_relations(through_ports, recursive, stop_at=[IfcUnitaryEquipment] či [IfcDamper.FIREDAMPER]).
   Funguje aj pre zóny a prvky bez object_ref. list_relations má strop
-  100 riadkov - úplný zoznam ber z ifc_relations a stránkuj cez next_cursor, kým nie je null;
-  počet hovor z total, nie z dĺžky stránky.
+  100 riadkov - úplný zoznam a total dá ifc_relations (stránky cez next_cursor).
 - Materiál prvkov (izolácia, minerálna vlna, EPS, betón; D-108) je len v IFC súbore, graf AIM ho nenesie:
   "koľko / ktoré / ukáž prvky z materiálu X" = ifc_query(material=X), nie fulltext; vrstvy
   jedného prvku = ifc_get. Dedičnosť a atribúty IFC triedy = ifc_models(action=schema), nie z pamäti.
-- Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou; items = rozmery a objem z meshu;
-  qto=true = plocha a objem len z Qto v súbore (rýchle).
+- Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou ("od steny k stene" jedným
+  volaním); a = miestnosť → šírka z bbox_m; items = rozmery a objem z meshu; qto=true = len Qto.
 - Hľadanie podľa textu = search_all: IFC súbor (Description, ObjectType, Tag, LongName, všetky
   psety a Qto aj z typu, klasifikácie, materiály, zóny) aj graf AIM naraz. Každý výsledok má
   badge IFC / AIM / IFC+AIM (kde sa text našiel), v odpovedi ho uveď pri každom prvku a cituj
@@ -302,10 +303,7 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
 - Výsledok nesie object_ref, ak prvok pozná AIM; unmapped = prvky len v súbore
   (spomeň ich počet). Pole show_in_3d (ids_or_refs + global_ids) pošli rovno do
   show_in_3d/style_in_3d.
-- Recept „ofarbi miestnosti podľa plochy": pre každé pásmo ifc_query(model=ASR,
-  ifc_types=[IfcSpace], where NetFloorArea v pásme) → style_in_3d(colorize,
-  ids_or_refs + global_ids). Filter where vidí len vlastnosti výskytu, nie zdedené
-  z typu - na tie použi DB (v_asset_effective).
-- ifc_models: revízia modelu (D-109, history=N), action=info (schéma, jednotky, CRS),
-  materials, classifications, audit (zdravie modelu), schema (atribúty IFC triedy).
-  Pole aim mapuje GUID -> object_ref. Polohu prvku v priestore dáva get_viewer_state(bounds) zo živého viewera, nie Qto.`;
+- Rýchla kontrola (D-118; "dvere s OverallWidth < 900", miestnosti podľa plochy): ifc_query (where
+  na pset, Qto aj attribute) či ifc_measure → style_in_3d (pass zelená, fail červená) → open_list →
+  pri zlyhaní ponúkni bcf_topic. Limit len od používateľa či z IDS. Psety z typu: v_asset_effective.
+- Pole aim mapuje GUID -> object_ref. Polohu prvku v priestore dáva get_viewer_state(bounds) zo živého viewera, nie Qto.`;

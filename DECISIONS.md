@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-20** - **D-116 (release train, rozširuje D-103):** feature PR forku len rýchla cesta, plné CI raz na balíku `release/aim-*` (merge na pokyn Samuela), výber viewera nad 3D (`?viewer=pr-N`, náhľad PR forku) na živé testovanie s MCP pred zlúčením, smoke po nasadení, tag balíka (ifc-lite #77).
 - **2026-10-19** - **D-112 (meranie z geometrie, #74):** `ifc_measure` tesseluje model ako `clash_check` a meria svetlú vzdialenosť dvoch prvkov (aj ASR voči VZT), výšku nad doskou, rozmery, povrch, pôdorys a objem z meshu s porovnaním s Qto.
 - **2026-10-19** - **D-110 (prechod VZT sieťou, #75):** `ifc_relations(through_ports, recursive, stop_at)` prejde sieť cez porty a vráti najbližšiu jednotku alebo klapku (aj `IfcDamper.FIREDAMPER`) s cestou a `path_show_in_3d`; `max_steps`, `cut_off`.
 - **2026-10-19** - **D-109 (verzia modelu v ifc_models, #73):** aktuálna revízia z `model_revisions` (vNNN, dátum, autor, súhrn, sha256, poistka), `history: N`, cesta k zoznamu zmien v OCB; `loaded` vysvetlené ako cache motora; CRS a hlavička ostávajú v `ifc_model_info`.
@@ -4922,8 +4923,8 @@ až po kroku 4.
   dokumentov stavby; pri dokumente alebo odkaze na stranu opačne objekty, ktorých sa týka (počty
   podľa typu a nositeľa, vzorka). `query_view` pozná `v_object_documents` a strom dokumentácie.
 - Výkresové väzby z obsahu PDF (E4), ktoré čítali `include=drawings` a `find_in_drawings`, krok 1
-  ukončil, takže vždy vracali prázdno. Staré `include=drawings` aj staré meno `find_in_drawings`
-  (D-115 `legacyTools`) vedú na dokumenty z modelu.
+  ukončil, takže vždy vracali prázdno. Staré `include=drawings` vedie na dokumenty z modelu;
+  staré meno `find_in_drawings` `main` medzitým zrušil spolu s ostatnými menami D-115.
 - Čo z modelu vychádza: zóny cez viac podlaží (Spoločné priestory, Nájomné priestory) nesú pôdorysy
   všetkých podlaží, takže dvere na 1NP dostanú aj pôdorys 3NP a strechy. Pohľad to nefiltruje (je to
   väzba v modeli); presnejšie by bolo viazať pôdorys na zónu podlažia alebo na podlažie (otázka na
@@ -5309,6 +5310,12 @@ namiesto pridávania.
    `LEGACY_ENGINE_TOOL_NAMES`); `mcp_call_log.tool` nesie volané meno, takže sa dá zistiť, kedy ich
    už nikto nevolá. Zmažú sa po dvoch týždňoch bez volania. `callAction` loguje prvý z parametrov
    `action`, `mode`, `source`.
+   **Dodatok 2026-10-20 (Samuel):** staré mená sú zmazané hneď, nečaká sa do 3. 11. Konektor
+   používa len Samuel, staré konverzácie s uloženým zoznamom toolov nepoužije a `mcp_call_log` od
+   06:17 UTC staré mená neukazuje. Zrušené: `legacyTools` v MCP serveri, `mcpLegacyToolNames`,
+   `LEGACY_*_TOOL_NAMES` a vetvy dispatchu, ktoré vykonali staré meno; volanie starým menom vráti
+   "Neznámy tool". `search_everything` ostáva riadnym toolom bez motora (aj `/api/ask`), s motorom ho
+   v MCP nahrádza `search_all` bez aliasu.
 3. **Krok 1 - IFC motor (18 -> 7 toolov):**
    - `ifc_query` + `mode` list | count | values a filter `material` (bývalé `ifc_count`,
      `ifc_property_values`, `ifc_material_layers`);
@@ -5345,10 +5352,92 @@ namiesto pridávania.
      meno ostáva ako `legacyTools`, `/api/ask` bez motora ho má ďalej), `ifc_query(mode=count)` prijme
      `material` a `ifc_models` má schému triedy na začiatku opisu (C7: jeden z dvoch behov odpovedal z pamäti).
 
+7. **Zvyšky po záverečnom evale** (pridelené orchestrátorom so súhlasom Samuela, bez nového toolu): D7 -
+   `get_object` pre prvok len v IFC vráti `storey` (podlažie nahor cez IfcRelAggregates /
+   IfcRelContainedInSpatialStructure, `lib/engine/names.ts`); V6 - opis výberu neradí `ifc_get`, keď panel
+   hodnoty ukáže sám.
+
 **Zavrhnuté:**
 - *Jeden veľký PR:* regresiu vo výbere toolu by nebolo vidieť po skupinách.
 - *Premenovať všetko na nové mená (`ifc_model`, `find_objects`...):* rozbije porovnanie s
   predchádzajúcimi kolami v `mcp_call_log` a evaloch bez úžitku pre agenta.
 - *Okamžite zmazať staré mená:* claude.ai drží zoznam toolov počas konverzácie, rozpracované
-  rozhovory by padali na "Neznámy tool".
+  rozhovory by padali na "Neznámy tool". (Prehodnotené v ten istý deň, dodatok k bodu 2.)
 
+---
+
+### D-116 - Release train: rýchle PR, plné CI raz na balík, výber viewera na skúšanie pred zlúčením
+
+**Dátum:** 2026-10-20 · **Stav:** prijaté (Samuel) · **Súvisí:** D-103 (predchodca, rozširuje ho), D-098, D-090 · **PR:** Menezeris/ifc-lite#77, AIMviewer (tento)
+
+**Kontext:** aplikáciu zatiaľ používa len Samuel. Chce nové funkcie vyskúšať naživo vrátane MCP
+skôr, ako idú do produkcie, a zlučovať ich po 3 až 4 naraz, aby plné CI forku (asi 64 kontrol,
+30 až 40 min) bežalo raz za balík, nie za každý PR a každú opravu. Produkcia sa nasadzuje hneď po
+zlúčení a ostáva tak (rýchla spätná väzba je cennejšia než staging, kým nie sú verejní používatelia).
+
+**Rozhodnutie:**
+1. **Feature PR forku ide vždy rýchlou cestou** (`aim-fast.yml`, asi 10 min: AIM testy, typecheck,
+   build viewera, súvisiace viewer testy, bundle). Plné `test.yml` beží len na balíku
+   `release/aim-*`, synchronizácii s originálom a so štítkom `ci:full`.
+2. **Feature PR sa nezlučuje samostatne.** Je pripravený, keď je rýchla cesta zelená a v PR je sekcia
+   "Ako vyskúšať" s odkazom `https://ai-mviewer.vercel.app/ifc?viewer=pr-<číslo>`.
+3. **Výber viewera v AIMvieweri:** `?viewer=pr-N` (alebo čip nad 3D so zoznamom otvorených PR forku)
+   vloží namiesto produkčného viewera náhľad PR. Zoznam a URL náhľadov idú z GitHub Deployments
+   (`/api/viewer-previews`). Povolené sú len produkčný viewer a náhľady projektu `ifc-lite-viewer`.
+   Voľba sa pamätá v karte (sessionStorage), takže navigácie AI docku a MCP ju nezrušia; MCP
+   príkazy idú do otvorenej stránky AIMviewera, teda do vybraného viewera.
+4. **Balík:** na Samuelov pokyn ("zlúč 73, 74, 76") agent vytvorí `release/aim-<dátum>`, zlúči PR
+   merge commitmi, vyrieši konflikty, otvorí balíkový PR s plným CI a vlastným náhľadom. Do `main`
+   ide na Samuelov pokyn. Postup: skill `release-train` vo forku.
+5. **Po zlúčení:** tag `aim-release-<dátum>-<sha>`, smoke test produkcie po nasadení (most `READY`
+   a `QUERY view_state`), červený smoke založí issue; návrat cez Vercel Instant Rollback.
+6. Nové MCP tooly v AIMvieweri sa naďalej zlučujú rovno (testovací konektor na náhľad by bol
+   zložitý); toto rozhodnutie sa týka zmien vo vieweri.
+
+**Zavrhnuté:**
+- *Nasadzovať produkciu len zo zeleného nočného behu:* Samuel by novú funkciu nevidel hneď;
+  verejnosť zatiaľ nie je.
+- *Merge queue GitHubu:* na osobnom účte nie je dostupná; balík robí to isté ručne.
+
+**Potrebné nastavenie:** vo Verceli projekt `ifc-lite-viewer`, Deployment Protection, Vercel
+Authentication vypnúť pre Preview, inak sa náhľad v iframe nenačíta. Pre zoznam náhľadov stačí
+`FEEDBACK_GITHUB_TOKEN` (alebo vlastný `GITHUB_PREVIEWS_TOKEN`).
+
+**Detail:** `docs/FORK_MAINTENANCE.md` vo forku, sekcia "Release train".
+
+
+### D-118 - Rýchle kontroly nad modelom: atribúty v `ifc_query.where` a postup kontroly
+**Dátum:** 2026-10-20 · **Stav:** rozhodnuté (orchestrátor na Samuelov pokyn, rýchla časť issue #77) · **Súvisí:** D-084, D-112, D-111, D-099, D-114
+
+**Kontext:** issue #77 žiada `run_rule_check` (sada pravidiel STN/ČSN, meranie, pass/fail, tabuľka, BCF).
+Samuel chce hneď rýchlu časť nad tým, čo už je. Limity noriem patria do knižnice požiadaviek (IDS,
+`ifc_ids_validate`), nie do konektora. Chýbalo: `ifc_query.where` nevidel IFC atribúty
+(`OverallWidth`, `OverallHeight`), len psety a Qto; upstream selektor atribúty tiež nevie.
+
+**Rozhodnutie (D-114, rozšírenie, nie nový tool):**
+1. `ifc_query.where` prijme podmienku `{attribute, op, value}` namiesto `pset` + `name`. Kandidáti
+   (triedy, podlažie, podmienky na psety) idú z `query_entities` ako doteraz, atribúty sa dofiltrujú
+   z `get_entities_bulk(include=attributes)` po stránkach 1000. Čísla sa porovnávajú číselne, text bez
+   ohľadu na veľkosť písmen; `matches` atribút nevie. Podmienka na atribút potrebuje `ifc_types`,
+   strop 20 000 kandidátov. Platí pre `mode=list` aj `count`.
+2. `ifc_measure` bez zmeny kódu: opis hovorí, že "od steny k stene" je jedno volanie `a` + `b`
+   a šírka obdĺžnikovej miestnosti či chodby je `bbox_m` miestnosti (`a` = IfcSpace).
+3. Inštrukcie MCP: rýchla kontrola = `ifc_query` / `ifc_measure` -> `style_in_3d` (pass zelená,
+   fail červená) -> `open_list` -> pri zlyhaní ponúknuť `bcf_topic`. Limit dáva používateľ alebo IDS,
+   model si ho nevymýšľa. Nahrádza recept "ofarbi miestnosti podľa plochy" (ten istý postup).
+
+**Overenie nad ASR (konektor):** `ifc_measure(SN05.01.0001, SN05.01.0002)` jedným volaním 9,3 m;
+miestnosť 1.10 = 6,796 x 3,221 m, pôdorys z meshu = Qto 21,699 m². DD02.05.04 má `OverallWidth`
+900 (so zárubňou) a zároveň pset `AIM_Door.ClearWidth` 800; `where AIM_Door.ClearWidth < 900` = 40 dverí.
+
+**Zavrhnuté:**
+- *Nový tool `run_rule_check` so sadou limitov:* duplikát IDS bez citácie normy (komentár v #77).
+- *Upstream `check_rules` (`@ifc-lite/rules`) 1:1:* formát je ťažký na ručné písanie a dubluje IDS.
+
+**Otvorené:**
+- Steny ohraničujúce miestnosť sa dnes nedajú zistiť (model nemá `IfcRelSpaceBoundary`,
+  `v_space_elements` steny nepriraďuje), steny určí používateľ alebo výber vo vieweri.
+- Kóta merania vo vieweri: `ifc_measure` vracia jeden najbližší bod, kóta potrebuje oba body
+  dvojice, prevod osí IFC (Z hore) do rámca renderera a novú správu mosta vo forku, ktorá zapíše
+  meranie do upstream `measurementSlice`. Väčší kus, návrh v #77.
+- Nositeľ svetlej šírky dverí (`AIM_Door.ClearWidth`?) potvrdí Samuel.

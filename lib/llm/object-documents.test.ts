@@ -129,12 +129,9 @@ describe("get_object include=documents (D-104)", () => {
     expect(out.sample[0]).toMatchObject({ id: "st", page: 3, via_name: "S1" });
   });
 
-  it("staré include=drawings a find_in_drawings (D-115) vrátia dokumenty z modelu", async () => {
+  it("staré include=drawings vráti dokumenty z modelu", async () => {
     const out = await run("ST01.20.0012", ["drawings"]);
     expect(out.documents[0]).toMatchObject({ document: "D.1.1.09 Výpis skladieb", page: 3 });
     expect(out.drawings).toBeUndefined();
-    const rt = new AskToolRuntime();
-    const legacy = JSON.parse((await rt.exec("find_in_drawings", { id: "st" })).content);
-    expect(legacy.documents).toHaveLength(1);
   });
 });
