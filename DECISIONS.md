@@ -4215,6 +4215,10 @@ nočné plné CI na `main`.
 > D-záznam vyššie.
 
 - **2026-10-19** - **D-108 (materiálové vrstvy z IFC, #69):** `ifc_get` vracia materiály (vrstvy, hrúbky, kategórie, aj z typu), nový `ifc_material_layers` nájde prvky podľa materiálu alebo kategórie vrstvy so súhrnom podľa skladby a `show_in_3d`.
+- **2026-10-19** - **D-113 (panel vlastností z chatu, #71):** `select_in_3d` s `panel_tab`, `panel_section` a `highlight`; fork prepne záložku AIM | IFC, sekciu a zvýrazní vlastnosť cez upstream `pendingPropertyFocus` bez režimu úprav.
+- **2026-10-19** - **D-111 (zoznam z chatu, #70):** `open_list` s filtrami ako `style_in_3d` a stĺpcami otvorí builder panela Lists (fork `OPEN_LIST`, návrh zoznamu); Run a Export (CSV/XLSX/PDF) robí používateľ.
+- **2026-10-19** - **D-106 (Odvodené záznamy ako strom, #93):** jeden AIM badge a odlíšená sekcia, strom vzťah > IFC trieda / PredefinedType > inštancia s počtami, host posiela `other.predefinedType`.
+- **2026-10-19** - **D-105 (X-ray context z chatu, #106):** `style_in_3d action=xray` cez AIM chat lens s príznakom `x: 1`, fork dá zjednotenie pravidiel do kanála ghost viewera (ako tlačidlo duch), `mode=add` rozšíri, `show_all` zruší; drôtový model zatiaľ nie (renderer ho nemá).
 - **2026-10-19** - **D-104 (dokumenty z IFC):** jedna sada dokumentov z IFC (stará sada E3 sa odstráni), ETL podľa IfcDocumentInformation vrátane stromu a odkazov na strany, efektívne dokumenty objektu cez vzťahy (typ, skupina, zóna, priestorová zóna, odvodené) v DB aj v tooloch, prehliadanie a preklikávanie PDF cieľovo vo vieweri (fork), súbory v buckete podľa `Identification`.
 - **2026-10-19** - **D-103 (rýchle CI forku, rozširuje D-098):** rýchla cesta aj pre PR s úpravami pôvodných viewer súborov len vnútri AIM-FORK blokov (build viewera, súvisiace viewer testy, ratchet viewer JS), nočné plné CI na `main`, nálezy review bota neblokujú merge okrem bezpečnostných (ifc-lite #69).
 - **2026-10-19** - **D-102 (kolo 3 latencie MCP):** kód prvku (SD04.0001, VV.03.01.040) ako cieľ všetkých toolov cez meno v AIM a IFC Name/Tag, predčítané indexy motora (`ifc_search` 2 až 90 ms), kód bez preklepu, `set_section relative_to=ceiling` z Qto miestností (vážený medián), `get_object` s podlažím, kamera na miestnosť a `CLEAR_SELECTION` vo forku.
@@ -4904,6 +4908,115 @@ až po kroku 4.
 
 ---
 
+### D-105 - X-ray context z chatu: `style_in_3d action=xray`, drôtový model zatiaľ nie
+**Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #106).
+Nadväzuje na D-096 (Lens z chatu), D-101 (izolácia z chatu, `mode: add`), D-087 a D-098 (najprv
+existujúce funkcie viewera).
+
+**Kontext:** viewer má X-ray context: tlačidlo "duch" v paneli prvku, panel kolízií aj zoznamy
+ho píšu do kanála `ghostExceptEntities` a vo vieweri ho ukazuje čip "X-ray context · N".
+Konektor ho nevedel spustiť. Náhrada cez Lens (zvyšok `transparent`, vybrané `colorize`) vybrané
+prvky prefarbí, takže stratia pôvodný vzhľad (#106: SDK priečky a podhľady na 2NP plne, zvyšok
+duchovo).
+
+**Rozhodnutie:**
+1. `style_in_3d` dostane `action=xray` s rovnakými filtrami a `groups` ako `isolate` (farba
+   voliteľná). Server zostaví tú istú AIM chat lens ako pri izolácii, len s príznakom `x: 1`
+   (most `APPLY_LENS xray: true`).
+2. Fork (Menezeris/ifc-lite, `aim/aimLens.ts`) vyhodnotí pravidlá tým istým federovaným filtrom
+   ako izoláciu z chatu a zjednotenie (cez `resolvePresentationIds`) dá do kanála ghost
+   (`setGhostExceptEntities`). Žiadna nová vizualizácia: je to ten istý kanál ako tlačidlo
+   "duch". Farebné skupiny sa navyše ofarbia v lens.
+3. `mode=add` rozšíri doterajší X-ray z chatu, ak ho kanál stále drží. `show_all` (Lens
+   `unisolate` aj `SHOW_ALL`) ho zruší. Izolácia a X-ray sú vo vieweri vzájomne výlučné; prechod
+   z jedného na druhý uvoľní kanál chatu, správa s oboma príznakmi sa odmietne.
+4. Odpoveď toolu a súhrn `APPLIED` nesú počty ako pri izolácii, navyše `isolation.xray: true`.
+
+**Zavrhnuté:**
+- *Ghost cez SDK (`bim.viewer`):* SDK kanál ghost nemá; nový SDK namespace by bol zásah do
+  upstream balíka kvôli jednej správe.
+- *Samostatný bridge príkaz `XRAY` s GUIDmi:* stratil by filtre vyhodnocované vo vieweri (typ,
+  podlažie, vlastnosť, model) a počty, ktoré už Lens dáva.
+
+**Otvorené:** drôtový model (wireframe) pre množinu prvkov. Renderer forku ani upstreamu taký režim
+nemá (hrany kreslí len pri kolíziách a zónach); bol by to nový renderovací režim v upstream kóde.
+Necháva sa, kým ho nebude mať upstream alebo kým Samuel nerozhodne o vlastnej vrstve.
+### D-106 - Odvodené záznamy v paneli vlastností ako strom
+**Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #93).
+Nadväzuje na D-089 (vrstva odvodení, AIM záznamy v Relationship records).
+
+**Kontext:** sekcia "Odvodené záznamy" (fork, záložka IFC, Relationship records) mala AIM badge
+pri každom riadku a jeden plochý zoznam (priestor, priestorové zóny, zóny cez priestor). Pri viac
+ako pár záznamoch sa v ňom ťažko orientovalo a badge na každom riadku zahlcoval.
+
+**Rozhodnutie:**
+1. Jeden AIM badge pri nadpise sekcie a odlíšený rám celej sekcie, aby bolo jasné, že ide o
+   dáta AIM, nie o IFC súbor.
+2. Strom s počtami: vzťah a smer (`IfcRelReferencedInSpatialStructure`, `IfcZone cez priestor`)
+   > IFC trieda / PredefinedType (`IfcSpatialZone / THERMAL`) > inštancie s rolou inside/partial.
+   Prvé dve úrovne otvorené, trieda nad 20 riadkov zbalená. Klik na inštanciu vyberie prvok ako
+   doteraz.
+3. Host posiela `other.predefinedType` (z `objects.predefined_type`, `NOTDEFINED` = null); pole je
+   voliteľné, starší viewer ho ignoruje.
+
+**Zavrhnuté:**
+- *Zoskupenie podľa pravidla odvodenia:* priestor a priestorová zóna idú tým istým IFC vzťahom;
+  pravidlo je v tooltipe skupiny.
+### D-111 - Zoznam z chatu: `open_list` otvorí builder panela Lists
+**Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #70).
+Nadväzuje na D-087 a D-098 (najprv existujúce funkcie viewera), D-096 (filtre Lens z chatu).
+
+**Kontext:** "Exportuj všetky dvere na 1NP ako tabuľku" konektor nevedel: prvky nájde
+(`ifc_query`), ale panel Lists viewera neotvorí. Upstream panel Lists vie zoznam podľa filtrov a
+stĺpcov aj export (CSV, XLSX, PDF) a návrh zoznamu (`pendingListDraft`) mu už odovzdáva "Create
+list" z vyhľadávania. `ListDefinition.groups` sú tie isté `FilterGroup` ako pravidlá Lens.
+
+**Rozhodnutie:**
+1. Nový tool `open_list` (`lib/llm/list-tool.ts`, stĺpce `lib/llm/list-columns.ts`): filtre ako
+   `style_in_3d` (zostavia sa tou istou cestou ako skupina Lens, vrátane systému, zóny, podlažia
+   a vlastnosti), aspoň jeden povinný; `columns` slovami (atribúty, storey/space/building,
+   material, classification, model, `Pset.Vlastnosť`, `Qto_X.Množstvo`), default Name, GlobalId,
+   ObjectType, podlažie.
+2. Op `list` (`lib/viewer-list.ts`) -> most `OPEN_LIST`; zónu doplní klient GUIDmi ako pri Lens.
+   Fork (Menezeris/ifc-lite#74, `aim/aimList.ts`) zostaví `ListDefinition`, odovzdá ho ako návrh a
+   otvorí panel Lists v builderi.
+3. Spustenie a export robí používateľ tlačidlom (Run, Export): stiahnutie súboru z iframe bez
+   kliku používateľa prehliadač nemá dovoliť. Tool to v odpovedi povie.
+
+**Zavrhnuté:**
+- *Export na serveri (CSV z DB alebo IFC motora s odkazom na stiahnutie):* nový zápis do úložiska a
+  druhá implementácia stĺpcov a jednotiek popri upstream exporte.
+- *Uložené zoznamy (`list_presets` z issue):* žijú v localStorage prehliadača, server ich nevidí.
+### D-113 - Panel vlastností z chatu: záložka, sekcia a zvýraznená vlastnosť
+**Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #71).
+Nadväzuje na D-077 (AIM | IFC inspektor), D-082 (výber ako klik), D-098 (najprv existujúce funkcie viewera).
+
+**Kontext:** `select_in_3d` otvoril panel vlastností vždy na záložke AIM. "Ukáž IFC údaje miestnosti
+4.01" alebo "zvýrazni čistú podlahovú plochu" Claude nevedel: nevedel prepnúť na IFC, otvoriť sekciu
+Quantities ani ukázať konkrétnu vlastnosť. Viewer to všetko má: prepínač AIM | IFC vo forku, sekcie
+upstream panela (`propertiesActiveTab`) a skok na vlastnosť (`pendingPropertyFocus`, ktorým bSDD
+karta otvára "Edit in Properties": rozbalí pset, posunie a zvýrazní riadok).
+
+**Rozhodnutie:**
+1. `select_in_3d` má `panel_tab` (aim | ifc), `panel_section` (properties | quantities) a
+   `highlight` (`Pset.Vlastnosť`, delí sa na prvej bodke). Chybný vstup je chyba toolu. `highlight` na
+   `Qto_*` otvorí sekciu Quantities (tam upstream focus riadok nezvýrazní) a výsledok to povie.
+2. Op `select:~t=..~s=..~p=..~v=..:<guid>` (`selectOp`, mená psetu a vlastnosti zakódované, aby
+   oddeľovače ops neprešli) -> `SELECT { guid, panel: { tab, section, focus } }`. Bez panela ostáva
+   `select::<guid>` a správa ako doteraz.
+3. Fork (Menezeris/ifc-lite#75): lenivý `SELECT` panel overí (neplatný = nič sa nevyberie), po výbere
+   prepne záložku a sekciu a vlastnosť zvýrazní cez `pendingPropertyFocus`. Focus vždy prepne na IFC /
+   Properties. Upstream focus zapína režim úprav (pracovný priestor Model); focus z chatu ho
+   nezapína (jednoriadkový blok AIM-FORK v `PropertiesPanel.tsx`).
+4. Obsah panelu sa Claudovi nevracia: hodnoty berie z `ifc_get` (tie isté dáta zo súboru), panel ich
+   ukazuje používateľovi.
+
+**Zavrhnuté:**
+- *Samostatný tool `set_properties_panel`:* panel patrí k vybranému prvku; jedna správa po výbere
+  nemá preteky medzi výberom a prepnutím, ktoré panel pri zmene výberu resetuje.
+- *Vrátiť obsah panelu cez live kanál:* duplikát `ifc_get`.
+
+**Otvorené:** zvýraznenie vlastnosti typu (zdedenej) a vlastnosti v Quantities upstream focus nevie.
 ### D-108 - Materiálové vrstvy z IFC: `ifc_get` s materiálmi, `ifc_material_layers`
 **Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #69).
 Nadväzuje na D-084 (IFC motor), D-087 (najprv tools balíka). D-107 je ponechané pre D-104 krok 2.

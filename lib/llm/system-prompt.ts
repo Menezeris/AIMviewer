@@ -116,7 +116,8 @@ Postup podľa typu otázky:
   material, model, property + color_by_key Pset.Vlastnosť); farby zvolí viewer a
   legenda príde v počtoch. Skrytie (hide) len na výslovnú žiadosť, ide mimo Lens a
   zvyšok ostáva normálny. Izolácia (isolate) ukáže len vybrané v pôvodnom vzhľade;
-  color pridaj len vtedy, keď ich používateľ chce aj ofarbiť.
+  color pridaj len vtedy, keď ich používateľ chce aj ofarbiť. „Vybrané plne, ostatné
+  duchovo / priesvitne / X-ray" → xray (vybrané v pôvodnom vzhľade, zvyšok X-ray context).
 - Systém, zóna, podlažie v 3D (D-096): „zafarbi prívodnú vetvu" → style_in_3d(system=
   'Prívod-1NP' alebo 'Prívod' pre všetky prívody) - NIKDY neposielaj id systému v
   ids_or_refs (vyberie len samotný systém, nie jeho členov). Zóna (IfcZone, požiarny
@@ -125,7 +126,7 @@ Postup podľa typu otázky:
   IfcSpace / IfcSpatialZone); podlažie → storey; prvky bez systému →
   not_in_system=true. Kritériá sa kombinujú ako AND v JEDNOM calle („tvarovky na 2NP v
   prívode" = ifc_type=IfcDuctFitting + storey=2NP + system=Prívod). Viac farieb naraz →
-  groups (colorize, transparent alebo isolate): top-level filter spoločný, v skupine
+  groups (colorize, transparent, isolate alebo xray): top-level filter spoločný, v skupine
   system/color/label.
   Systém nesie predefined_type (VENTILATION/EXHAUST...) aj ObjectType (napr. Přiváděný
   / Odváděný vzduch); oba vie system_type. Prívod od nasávania a odvod od výfuku
@@ -194,11 +195,15 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   na "vyber / označ / ukáž vlastnosti"; select_in_3d(clear=true) zruší výber. Celú triedu ukáž
   filtrom (show_in_3d ifc_type=...), nie vymenúvaním. Nové zobrazenie nahradí predošlé;
   "pridaj aj X" = predošlé prvky + X v jednom ids_or_refs.
+- "Ukáž IFC údaje / výmery / zvýrazni vlastnosť" = select_in_3d s panel_tab=ifc, panel_section=quantities
+  alebo highlight='Pset.Vlastnosť' (D-113); samotnú hodnotu do odpovede čítaj z ifc_get.
 - Farby, priehľadnosť, skrytie, izolácia = style_in_3d (filtre a groups podľa opisu toolu).
   Výber podľa hodnoty vlastnosti = property + value, nikdy aproximácia triedou alebo doménou;
   názov vlastnosti over cez v_property_dictionary. Systém / zóna / podlažie ako filter system /
   zone / storey, nikdy id systému v ids_or_refs; prívod a odvod rozlíši len názov systému.
-  "Pridaj k izolácii aj X" = isolate s mode=add. Skrytie (hide) len na výslovnú žiadosť;
+  "Pridaj k izolácii aj X" = isolate s mode=add. "Vybrané plne, zvyšok duchovo / X-ray" = xray
+  (nie transparent + colorize). "Exportuj / tabuľka / do Excelu" = open_list (filtre ako
+  style_in_3d, columns); stiahnutie spustí používateľ v paneli Lists (D-111). Skrytie (hide) len na výslovnú žiadosť;
   izoluj bez farby, ak farbu nechcú. Farby: červená ef4444, zelená 22c55e, modrá 3b82f6, žltá
   eab308, oranžová f97316, fialová a855f7; inak zvoľ odlíšiteľné a uveď legendu. Počty na
   pravidlo cituj z odpovede toolu.
