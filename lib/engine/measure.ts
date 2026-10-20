@@ -5,6 +5,7 @@ import { EntityNode } from "@ifc-lite/query";
 
 import { getIfcModels } from "../data/ifc-models";
 
+import { clearOpening } from "./door-clear";
 import { joinToAim } from "./join";
 import { openEngineSession, type EngineModel } from "./session";
 import { ENGINE_VERSION, IFC_GUID_RE, InputError, guidIndex, modelsFor, str, type EngineDeps } from "./tools";
@@ -39,6 +40,8 @@ export interface MeshElement {
   name: string | null;
   positions: Float32Array;
   indices: Uint32Array;
+  /** Začiatky telies (položiek reprezentácie) v `indices`, napr. zárubňa, krídlo, kovanie. */
+  parts: number[];
   /** Obálka v rámci meshu (Y-up). */
   bounds: Box;
 }
@@ -147,6 +150,7 @@ export function elementsFromMeshes(meshes: MeshData[], store: IfcDataStore, mode
     }
     const positions = new Float32Array(nPos);
     const indices = new Uint32Array(nIdx);
+    const parts: number[] = [];
     let pOff = 0;
     let iOff = 0;
     for (const m of group) {
@@ -157,6 +161,7 @@ export function elementsFromMeshes(meshes: MeshData[], store: IfcDataStore, mode
         positions[pOff + i + 2] = m.positions[i + 2] + o[2];
       }
       const base = pOff / 3;
+      parts.push(iOff);
       for (let i = 0; i < m.indices.length; i++) indices[iOff + i] = m.indices[i] + base;
       pOff += m.positions.length;
       iOff += m.indices.length;
@@ -169,6 +174,7 @@ export function elementsFromMeshes(meshes: MeshData[], store: IfcDataStore, mode
       name: store.entities.getName(expressId) || null,
       positions,
       indices,
+      parts,
       bounds: boundsOf(positions),
     });
   }
@@ -390,7 +396,10 @@ export async function ifcMeasure(input: Record<string, unknown>, deps: EngineDep
     source: "geometria (headless tesselácia @ifc-lite/geometry), osi IFC v metroch, Z hore",
     revision: Object.fromEntries([...meshes.keys()].map((id) => [id, revision[id]])),
   };
-  if (a && b) {
+  if (input.clear_opening === true) {
+    if (b) throw new InputError("clear_opening meria dvere jednotlivo: zadaj a alebo items, bez b.");
+    Object.assign(out, clearOpenings(a ? [a, ...list] : list, element, ident, input));
+  } else if (a && b) {
     const ea = element(a);
     const eb = element(b);
     out.a = { ...ident.get(a), size: sizeOf(ea, storeOf(ea)) };
@@ -414,8 +423,81 @@ export async function ifcMeasure(input: Record<string, unknown>, deps: EngineDep
     }
   }
   out.show_in_3d = joined.show_in_3d;
+  if (input.clear_opening === true) return JSON.stringify(out);
   out.note =
     "clear_distance_m = najkratšia vzdialenosť povrchov (záporná = prienik). a_above_b_m = spodok a mínus vrch b. " +
     "vs_qto porovná mesh s Qto zo súboru (mismatch nad 5 %). Kótu vo vieweri zatiaľ nekreslí - ukáž prvky cez show_in_3d.";
   return JSON.stringify(out);
+}
+
+/** Svetlý otvor dverí z geometrie (dodatok D-118) s pass/fail voči limitu od používateľa. */
+function clearOpenings(
+  targets: string[],
+  element: (t: string) => MeshElement,
+  ident: Map<string, Record<string, unknown>>,
+  input: Record<string, unknown>,
+): Record<string, unknown> {
+  const limit = (key: string) => {
+    if (input[key] === undefined) return undefined;
+    const n = Number(input[key]);
+    if (!Number.isFinite(n) || n <= 0 || n > 10) throw new InputError(`${key} je v metroch (napr. 0.9).`);
+    return n;
+  };
+  const minWidth = limit("min_width_m");
+  const minHeight = limit("min_height_m");
+  const hasLimit = minWidth !== undefined || minHeight !== undefined;
+  const groups = { pass: [] as Record<string, unknown>[], fail: [] as Record<string, unknown>[], unknown: [] as Record<string, unknown>[] };
+  const items = targets.map((t) => {
+    const e = element(t);
+    const id = ident.get(t) ?? {};
+    if (!e.ifcType.startsWith("IfcDoor")) {
+      const row = { ...id, clear_opening: null, result: "unknown", reason: `${e.ifcType}: svetlý otvor meria len IfcDoor` };
+      groups.unknown.push(row);
+      return row;
+    }
+    const measured = clearOpening(e.positions, e.indices, e.parts);
+    const c = typeof measured === "string" ? null : measured;
+    const fails: string[] = [];
+    const reasons: string[] = typeof measured === "string" ? [measured] : [];
+    if (c && c.width_m === null) reasons.push("šírku sa nepodarilo zmerať (bez zárubne po oboch stranách)");
+    let unknown = !c;
+    if (c && minWidth !== undefined) {
+      if (c.width_m === null) unknown = true;
+      else if (c.width_m < minWidth) fails.push(`šírka ${c.width_m} < ${minWidth}`);
+    }
+    if (c && minHeight !== undefined) {
+      if (c.height_m === null) unknown = true;
+      else if (c.height_m < minHeight) fails.push(`výška ${c.height_m} < ${minHeight}`);
+    }
+    const result = !hasLimit ? undefined : fails.length > 0 ? "fail" : unknown ? "unknown" : "pass";
+    const why = [...fails, ...reasons];
+    const row = { ...id, clear_opening: c, ...(result ? { result } : {}), ...(why.length > 0 ? { reason: why.join(", ") } : {}) };
+    if (result) groups[result as keyof typeof groups].push(row);
+    return row;
+  });
+  const style = (rows: Record<string, unknown>[]) => ({
+    ids_or_refs: rows.flatMap((r) => (r.object_id ? [r.object_id as string] : [])),
+    global_ids: rows.flatMap((r) => (r.object_id ? [] : [r.global_id as string])),
+  });
+  return {
+    items,
+    ...(hasLimit
+      ? {
+          check: {
+            limits: { ...(minWidth !== undefined ? { min_width_m: minWidth } : {}), ...(minHeight !== undefined ? { min_height_m: minHeight } : {}) },
+            pass: groups.pass.length,
+            fail: groups.fail.length,
+            unknown: groups.unknown.length,
+            // Vstup pre style_in_3d: pass zelená, fail červená.
+            style_pass: style(groups.pass),
+            style_fail: style(groups.fail),
+          },
+        }
+      : {}),
+    note:
+      "clear_opening z geometrie dverí: width_m = svetlá šírka medzi zárubňami (najužšie miesto cez hĺbku, medián výšok), " +
+      "height_m = od prahu alebo spodku dverí po nadpražie; overall_* = obálka so zárubňou. Psety (AIM_Door.ClearWidth, " +
+      "OverallWidth) nie sú zdroj, len kontrola. Krídlo otvorené o 90° a kľučka sa neodpočítavajú; width_min_m = užšie miesto " +
+      "v niektorej výške (lišta, kovanie). Limit dáva používateľ, nie norma v tooli.",
+  };
 }
