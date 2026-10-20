@@ -5024,6 +5024,26 @@ klasifikácia dokumentu, nie ako text v `Purpose`:
 - Krok 3 (plán vyššie) tým dostáva: `meta` kľúč `Druh` v zozname dokumentov, druh v AIM karte a v
   `get_object(include=documents)`; podklady výkresov = dokumenty typu DR, ktoré nesie podlažie.
 
+**Dodatok 2026-10-20 - krok 3 urobený (viewer a dáta pre neho).** Fork Menezeris/ifc-lite#81,
+AIMviewer vetva `claude/lucid-wright-g4qmwq-krok3` (stavia na #121):
+- Lišta viewera: skupina `aim` prvá v `PANEL_GROUPS` s panelmi Documents, AIM layers (sekcia zo
+  stromu je vlastný panel `aim-layers`) a Drawing underlays. Uložené rozloženie si poradie nechá,
+  skupina sa ukáže po "Reset layout" (vlastná migrácia rozloženia sa nerobí).
+- Panel dokumentov zoskupuje podľa priečinka alebo kľúča `meta`, filter hľadá v názve, priečinku
+  aj `meta` bez diakritiky; "Len pre výber" berie dokumenty z AIM karty výberu (žiadna nová
+  správa mosta). Viac hodnôt v jednom kľúči oddeľuje `; ` (pôdorys strechy 4NP aj 5NP).
+- `DOCUMENTS_LOAD.meta` (`lib/data/document-meta.ts`): Identifikácia, Časť, Druh, Nositeľ,
+  Podlažie, Revízia, Formát, Vlastník; kľúč je rovno slovenský popisok, viewer ich nepozná
+  vopred. Projekt je nositeľom len pri dokumente, ktorý nič iné nenesie. Pôdorys podlažia
+  (dokument na podlaží, druh DR alebo neznámy) je `kind = drawing`, `storeyGuid` len pri jednom
+  podlaží. Stará vetva E3 (rola `drawing`, priečinok "Výkresy") zmizla.
+- AIM karta (`/api/element`) nesie dokumenty prvku z `v_object_documents` (najviac 40) s
+  `documentId`, stranou, cestou (`priamo`, `cez priestorovú zónu N3.01`) a kódom druhu; klik
+  ich otvorí vo vieweri na strane. Tooly aj karta čítajú z `lib/data/object-documents.ts`.
+- Podklady výkresov: dokumenty, ktoré nesie podlažie (rola sa nefiltruje). ETL pri upserte
+  objektu zachová kľúče hostiteľa (`HOST_PROPERTY_KEYS = ("_georef",)` v `etl/db.py`), takže
+  re-ETL kalibráciu nezmaže.
+
 ---
 
 ### D-105 - X-ray context z chatu: `style_in_3d action=xray`, drôtový model zatiaľ nie
