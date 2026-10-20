@@ -376,7 +376,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        id_or_ref: { type: "string", description: "objects.id (UUID), object_ref alebo kód prvku (meno v AIM / IFC)" },
+        id_or_ref: { type: "string", description: "objects.id (UUID), object_ref, kód prvku (meno v AIM / IFC) alebo kód dokumentu (D.1.1.09)" },
         include: {
           type: "array",
           items: { type: "string", enum: [...GET_OBJECT_INCLUDES] },
@@ -412,8 +412,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     description:
       "UI AKCIA: UKÁŽ alebo VYBER prvky v 3D. Predvolene zvýrazní (oranžovo) a priblíži prvky - 'ukáž / " +
       "zobraz X', aj jednu miestnosť (skrytú viewer zapne). Celú triedu pošli filtrom (ifc_type, query, " +
-      "predefined_type), konkrétne prvky v ids_or_refs (object_ref aj kód prvku ako 'SD04.0001' netreba hľadať " +
-      "vopred). select=true = VYBERIE jeden prvok ako klik myšou a otvorí jeho panel vlastností ('vyber / označ " +
+      "predefined_type), konkrétne prvky v ids_or_refs (object_ref, kód prvku ako 'SD04.0001' aj číslo miestnosti ako '3.02' " +
+      "netreba hľadať vopred). select=true = VYBERIE jeden prvok ako klik myšou a otvorí jeho panel vlastností ('vyber / označ " +
       "X', 'ukáž jeho vlastnosti'): panel_tab aim | ifc, panel_section properties | quantities, highlight " +
       "'Pset.Vlastnosť' zvýrazní riadok; panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
       "select=true výber. Funguje pre prvky s IFC GUID. Prvky, ktorých sa týka dokument alebo strana, " +
