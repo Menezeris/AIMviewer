@@ -47,7 +47,7 @@ function store(choice: ViewerChoice) {
 }
 
 /**
- * Ktorý viewer vložiť (D-114). `?viewer=` v URL má prednosť a uloží sa do
+ * Ktorý viewer vložiť (D-116). `?viewer=` v URL má prednosť a uloží sa do
  * sessionStorage, takže navigácie AI docku a MCP v tej istej karte (nové `?focus=`,
  * `?ops=`) viewer nevrátia na produkciu. `viewerUrl` je null, kým sa náhľad PR
  * nezistí; `error` povie, prečo sa nedá vložiť.
@@ -111,7 +111,7 @@ export function useViewerChoice() {
 }
 
 /**
- * Čip nad 3D na výber viewera (D-114): produkcia alebo náhľad otvoreného PR
+ * Čip nad 3D na výber viewera (D-116): produkcia alebo náhľad otvoreného PR
  * forku. Zoznam sa načíta až pri otvorení.
  */
 export function ViewerPicker({

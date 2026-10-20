@@ -47,48 +47,15 @@ const TARGET_PROPS = {
 
 const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 
+/** `bcf_topic` action -> zápisový handler (D-115); staré mená sú to isté pod vlastným menom. */
+export const BCF_ACTIONS = {
+  create: "bcf_topic_create",
+  update: "bcf_topic_update",
+  close: "bcf_topic_close",
+  viewpoint: "bcf_viewpoint_create",
+} as const;
+
 export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
-  {
-    name: "bcf_topic_create",
-    description:
-      "Založí BCF tému (issue) nad modelom federácie (D-099): chyba, kolízia, pripomienka alebo požiadavka na " +
-      "úpravu modelu. Volaj, keď používateľ povie 'založ BCF / tému / issue k tomuto prvku'. Prvky: " +
-      "target_ids_or_refs alebo global_ids; bez nich a s capture_view (predvolene) sa vezme výber, kamera, rez " +
-      "a režim z OTVORENÉHO živého viewera ako BCF pohľad. assigned_to='claude' = tému rieši Claude: hneď sa " +
-      "spustí Claude Code session (úprava IFC v OCB, nová revízia); ľudí priraď menom alebo e-mailom, session " +
-      "sa vtedy nespúšťa. Vráti guid a číslo témy (#N) na ďalšie volania.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        title: { type: "string", description: `Názov témy (max ${MAX_TITLE} znakov).` },
-        description: { type: "string", description: "Čo je zle a čo by bolo správne (diktovaný text)." },
-        author: { type: "string", description: `Kto tému zakladá (predvolene '${DEFAULT_AUTHOR}').` },
-        type: { type: "string", description: "BCF topic_type: Issue (predvolené), Clash, Request, Remark..." },
-        status: { type: "string", description: `Stav (predvolene open): ${STATUS_TEXT}` },
-        priority: { type: "string", description: "Priorita, napr. High, Normal, Low." },
-        assigned_to: {
-          type: "string",
-          description: "Komu: 'claude' (spustí session, ktorá to vyrieši) alebo meno/e-mail človeka.",
-        },
-        labels: { type: "array", items: { type: "string" }, description: "Štítky, napr. VZT, ASR, kolizia." },
-        model: { type: "string", description: "Model federácie (ASR, VZT...); bez neho téma nad celou federáciou." },
-        due_date: { type: "string", description: "Termín YYYY-MM-DD." },
-        ...TARGET_PROPS,
-        capture_view: {
-          type: "boolean",
-          description:
-            "Uložiť pohľad z otvoreného viewera (kamera, rez, režim, podlažie, výber); predvolene true. Bez " +
-            "otvoreného viewera téma vznikne bez pohľadu.",
-        },
-        start_session: {
-          type: "boolean",
-          description: "Pri assigned_to='claude': false = len zapísať, session nespúšťať (predvolene true).",
-        },
-      },
-      required: ["title"],
-    },
-    annotations: WRITE,
-  },
   {
     name: "bcf_topic_list",
     description:
@@ -108,66 +75,47 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
   {
-    name: "bcf_topic_update",
+    name: "bcf_topic",
     description:
-      "Upraví BCF tému alebo k nej pridá komentár (D-099): stav, priorita, komu, popis, štítky, termín. " +
-      "Priradenie Claudovi (assigned_to='claude') alebo start_session=true spustí Claude session, ak ešte " +
-      "nebeží. Session, ktorá tému rieši, cez tento tool píše postup a výsledok.",
+      "Zápis BCF témy nad modelom federácie (D-099). action=create: založí tému (chyba, kolízia, pripomienka, " +
+      "požiadavka na úpravu modelu), keď používateľ povie 'založ BCF / tému / issue'; prvky cez target_ids_or_refs " +
+      "alebo global_ids, s capture_view (predvolene) sa vezme výber, kamera, rez a režim z otvoreného viewera. " +
+      "assigned_to='claude' = tému rieši Claude: spustí sa Claude Code session (úprava IFC v OCB, nová revízia); " +
+      "ľudí priraď menom alebo e-mailom. update: stav, priorita, komu, popis, štítky, termín alebo comment; " +
+      "start_session spustí session pre tému Claudovi. close: uzavrie tému bez úpravy modelu. viewpoint: nastaví " +
+      "jediný pohľad témy (selection_global_ids, capture_view). Vráti guid a číslo témy (#N).",
     inputSchema: {
       type: "object",
       properties: {
-        guid: { type: "string", description: "guid témy alebo číslo (#12)." },
+        action: { type: "string", enum: Object.keys(BCF_ACTIONS) },
+        guid: { type: "string", description: "update, close, viewpoint: guid témy alebo číslo (#12)" },
+        title: { type: "string", description: `create: názov témy (max ${MAX_TITLE} znakov)` },
+        description: { type: "string", description: "Čo je zle a čo by bolo správne" },
+        comment: { type: "string", description: "update, close: komentár k téme" },
         status: { type: "string", description: STATUS_TEXT },
-        priority: { type: "string" },
-        comment: { type: "string", description: "Komentár k téme." },
-        modified_by: { type: "string", description: `Kto mení (predvolene '${DEFAULT_AUTHOR}').` },
-        assigned_to: { type: "string", description: "'claude' alebo meno/e-mail; prázdny reťazec zruší priradenie." },
-        title: { type: "string" },
-        description: { type: "string" },
-        type: { type: "string", description: "BCF topic_type." },
-        labels: { type: "array", items: { type: "string" }, description: "Nahradí štítky." },
-        due_date: { type: "string", description: "YYYY-MM-DD; prázdny reťazec zruší termín." },
-        start_session: { type: "boolean", description: "Spustiť session pre tému priradenú Claudovi (aj z fronty)." },
+        priority: { type: "string", description: "High, Normal, Low" },
+        assigned_to: { type: "string", description: "'claude' alebo meno/e-mail; prázdny reťazec zruší priradenie" },
+        type: { type: "string", description: "BCF topic_type: Issue (predvolené), Clash, Request, Remark..." },
+        labels: { type: "array", items: { type: "string" }, description: "Štítky (update ich nahradí)" },
+        model: { type: "string", description: "create: model federácie; bez neho téma nad celou federáciou" },
+        due_date: { type: "string", description: "YYYY-MM-DD; prázdny reťazec zruší termín" },
+        author: { type: "string", description: `create: kto zakladá (predvolene '${DEFAULT_AUTHOR}')` },
+        modified_by: { type: "string", description: `Kto mení (predvolene '${DEFAULT_AUTHOR}')` },
+        ...TARGET_PROPS,
+        selection_global_ids: { type: "array", items: { type: "string" }, description: "viewpoint: IFC GlobalId prvkov" },
+        capture_view: { type: "boolean", description: "create, viewpoint: pohľad z otvoreného viewera (predvolene true)" },
+        start_session: { type: "boolean", description: "Pri téme pre Claude: false = nespúšťať session; update: true = spustiť" },
       },
-      required: ["guid"],
-    },
-    annotations: WRITE,
-  },
-  {
-    name: "bcf_topic_close",
-    description: "Uzavrie BCF tému (stav closed, D-099) - vybavené bez úpravy modelu; voliteľne s komentárom.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        guid: { type: "string", description: "guid témy alebo číslo (#12)." },
-        modified_by: { type: "string" },
-        comment: { type: "string", description: "Prečo sa uzatvára." },
-      },
-      required: ["guid"],
-    },
-    annotations: { ...WRITE, idempotentHint: true },
-  },
-  {
-    name: "bcf_viewpoint_create",
-    description:
-      "Nastaví pohľad BCF témy (D-099): prvky (selection_global_ids, target_ids_or_refs) a s capture_view " +
-      "(predvolene true) kameru, rez, režim a výber z otvoreného viewera. Téma má jeden pohľad, nový nahradí " +
-      "starý.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        guid: { type: "string", description: "guid témy alebo číslo (#12)." },
-        selection_global_ids: { type: "array", items: { type: "string" }, description: "IFC GlobalId prvkov." },
-        target_ids_or_refs: TARGET_PROPS.target_ids_or_refs,
-        capture_view: { type: "boolean", description: "Pohľad z otvoreného viewera (predvolene true)." },
-      },
-      required: ["guid"],
+      required: ["action"],
     },
     annotations: WRITE,
   },
 ];
 
-export const BCF_TOOL_NAMES = new Set(BCF_TOOL_DEFINITIONS.map((t) => t.name));
+/** Staré mená zápisových tools (D-115): nevypisujú sa, ale vykonajú sa. */
+export const LEGACY_BCF_TOOL_NAMES: ReadonlySet<string> = new Set(Object.values(BCF_ACTIONS));
+
+export const BCF_TOOL_NAMES = new Set([...BCF_TOOL_DEFINITIONS.map((t) => t.name), ...LEGACY_BCF_TOOL_NAMES]);
 
 /** Pohľad z viewera: BCF viewpoint + GlobalId výberu. */
 export interface CapturedView {
@@ -326,7 +274,7 @@ export async function maybeStartSession(topic: BcfTopicRow, deps: BcfDeps, wante
       queued: true,
       note:
         "Session sa nespustila: routine 'AIM: BCF téma' nie je nastavená na serveri (CLAUDE_BCF_ROUTINE_FIRE_URL, " +
-        "CLAUDE_BCF_ROUTINE_TOKEN). Téma čaká; bcf_topic_update(start_session=true) ju spustí po nastavení.",
+        "CLAUDE_BCF_ROUTINE_TOKEN). Téma čaká; bcf_topic(action=update, start_session=true) ju spustí po nastavení.",
     };
   }
   const since = new Date(deps.now().getTime() - STALE_HOURS * 3600_000);
@@ -337,7 +285,7 @@ export async function maybeStartSession(topic: BcfTopicRow, deps: BcfDeps, wante
       queued: true,
       note:
         `Téma čaká vo fronte: bežia ${running.length} z ${deps.maxSessions} sessions ` +
-        `(${running.map((t) => `#${t.number}`).join(", ")}). Spusť ju neskôr cez bcf_topic_update(start_session=true).`,
+        `(${running.map((t) => `#${t.number}`).join(", ")}). Spusť ju neskôr cez bcf_topic(action=update, start_session=true).`,
     };
   }
   let fired: RoutineFireResult;
@@ -420,7 +368,7 @@ async function create(args: Record<string, unknown>, deps: BcfDeps) {
     session: s.session,
     queued: s.queued,
     session_note: s.note,
-    hint: guids.length ? "Prvky témy ukáž cez show_in_3d(global_ids)." : "Téma nemá prvky; doplň ich cez bcf_viewpoint_create.",
+    hint: guids.length ? "Prvky témy ukáž cez show_in_3d(global_ids)." : "Téma nemá prvky; doplň ich cez bcf_topic(action=viewpoint).",
   };
 }
 
@@ -501,6 +449,11 @@ const WRITES: Record<string, (args: Record<string, unknown>, deps: BcfDeps) => P
   bcf_viewpoint_create: viewpoint,
 };
 
+function bcfAction(raw: unknown): string {
+  if (typeof raw === "string" && raw in BCF_ACTIONS) return BCF_ACTIONS[raw as keyof typeof BCF_ACTIONS];
+  throw new BcfInputError(`action: ${Object.keys(BCF_ACTIONS).join(" | ")}.`);
+}
+
 export async function execBcfTool(
   name: string,
   args: Record<string, unknown>,
@@ -508,7 +461,7 @@ export async function execBcfTool(
 ): Promise<{ text: string; isError: boolean }> {
   try {
     if (name === "bcf_topic_list") return { text: json(await list(args, deps)), isError: false };
-    const write = WRITES[name];
+    const write = WRITES[name === "bcf_topic" ? bcfAction(args.action) : name];
     if (!write) return { text: `Neznámy tool: ${name}`, isError: true };
     const result = await write(args, deps);
     // Oznámenie je pohodlie: zlyhanie nemá zhodiť zápis, ktorý už prebehol.

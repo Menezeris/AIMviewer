@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { listViewerPreviews, previewForPull } from "@/lib/viewer-previews";
 
 /**
- * Náhľady viewera z PR forku pre výber viewera nad 3D (D-114).
+ * Náhľady viewera z PR forku pre výber viewera nad 3D (D-116).
  * `GET` = otvorené PR s náhľadom; `GET ?pr=73` = jeden PR (aj zatvorený).
  * Odpoveď je verejná a krátko cachovaná: obsahuje len čísla, názvy PR a URL
  * náhľadov verejného forku.

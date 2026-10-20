@@ -105,3 +105,40 @@ describe("execSearchAll", () => {
     expect((await execSearchAll({ text: "dvere" }, { ifc: fail, aim: fail })).isError).toBe(true);
   });
 });
+
+describe("search_all source (D-115)", () => {
+  it("source=ifc vráti len IFC časť s offset a fields, source=aim len graf AIM", async () => {
+    let ifcInput: Record<string, unknown> = {};
+    const ifcRes = await execSearchAll(
+      { text: "karusel", source: "ifc", offset: 30, fields: ["attribute"], fuzzy: false },
+      {
+        ifc: async (input) => {
+          ifcInput = input;
+          return { items: [door] };
+        },
+        aim: async () => {
+          throw new Error("AIM sa pri source=ifc nevolá");
+        },
+      },
+    );
+    expect(ifcRes.isError).toBe(false);
+    expect(ifcInput).toMatchObject({ text: "karusel", offset: 30, fields: ["attribute"], fuzzy: false });
+    expect(JSON.parse(ifcRes.content).items).toHaveLength(1);
+
+    const aimRes = await execSearchAll(
+      { text: "karusel", source: "aim" },
+      { ifc: async () => { throw new Error("IFC sa pri source=aim nevolá"); }, aim: async () => [aimDoc] },
+    );
+    expect(JSON.parse(aimRes.content).result).toEqual([aimDoc]);
+    expect((await run({ text: "karusel", source: "zle" })).isError).toBe(true);
+  });
+
+  it("fields a fuzzy idú aj do IFC časti spojeného hľadania", async () => {
+    let ifcInput: Record<string, unknown> = {};
+    await execSearchAll(
+      { text: "karusel", fields: ["property"], fuzzy: false },
+      { ifc: async (input) => ((ifcInput = input), { items: [] }), aim: async () => [] },
+    );
+    expect(ifcInput).toMatchObject({ fields: ["property"], fuzzy: false });
+  });
+});

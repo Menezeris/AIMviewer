@@ -7,7 +7,7 @@ import { listViewerPreviews, previewForPull } from "./viewer-previews";
 
 const PREVIEW = "https://ifc-lite-viewer-ltdf94wdg-assetinspaces-projects.vercel.app";
 
-describe("výber viewera (D-114)", () => {
+describe("výber viewera (D-116)", () => {
   it("povolí produkciu a náhľady forku, nič iné", () => {
     expect(isAllowedViewerUrl("https://ifc-lite-viewer.vercel.app")).toBe(true);
     expect(isAllowedViewerUrl(`${PREVIEW}/?models=x`)).toBe(true);
@@ -67,7 +67,7 @@ function fakeGithub() {
   };
 }
 
-describe("náhľady PR forku z GitHub Deployments (D-114)", () => {
+describe("náhľady PR forku z GitHub Deployments (D-116)", () => {
   it("vráti URL len pre úspešný náhľad nášho Vercel projektu", async () => {
     const previews = await listViewerPreviews(fakeGithub());
     expect(previews.map((p) => [p.number, p.url])).toEqual([

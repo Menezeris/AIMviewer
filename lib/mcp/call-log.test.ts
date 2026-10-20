@@ -21,6 +21,12 @@ describe("mcp_call_log (D-100)", () => {
     expect(callAction({})).toBeNull();
   });
 
+  it("zlúčené tooly (D-115): rozlišovač action, mode alebo source", () => {
+    expect(callAction({ mode: "count" })).toBe("count");
+    expect(callAction({ source: "ifc" })).toBe("ifc");
+    expect(callAction({ action: "info", mode: "x" })).toBe("info");
+  });
+
   it("zapíše riadok", async () => {
     const insert = vi.fn(async () => ({ error: null }));
     await writeCallLog(row, insert);

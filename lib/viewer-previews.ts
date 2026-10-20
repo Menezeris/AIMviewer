@@ -3,7 +3,7 @@ import "server-only";
 import { isAllowedViewerUrl, type ViewerPreview } from "./viewer-source";
 
 /**
- * Náhľady viewera z otvorených PR forku (D-114): GitHub Deployments API, kam
+ * Náhľady viewera z otvorených PR forku (D-116): GitHub Deployments API, kam
  * Vercel hlási každý náhľad (`environment: Preview`, `environment_url`). Fork je
  * verejný, stačí ľubovoľný token: `GITHUB_PREVIEWS_TOKEN`, inak token konektora
  * `FEEDBACK_GITHUB_TOKEN`. Výsledok sa cachuje 60 s, takže otvorené karty limit

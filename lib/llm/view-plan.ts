@@ -152,7 +152,7 @@ export function planViewMode(
     if (mode !== "3d") throw new ViewInputError("reset platí len s mode=3d.");
     // Zloží existujúce ops: bez rezu, 3D, všetko viditeľné, bez farieb, bez výberu (D-102), izometria.
     return {
-      ops: [SECTION_CLEAR_OP, viewModeOp("3d"), "show_all::", "reset_colors::", "clear_selection::", cameraOp("iso")],
+      ops: [SECTION_CLEAR_OP, viewModeOp("3d"), "show_all::", "reset_colors::", "clear_selection::", "clear_focus::", cameraOp("iso")],
       label: "3D: pôvodný pohľad",
       result: { ok: true, reset: true },
     };

@@ -148,7 +148,7 @@ interface Props {
   onNavigate?: (href: string) => void;
   /** Klik na capture pin v 3D (D-073) — host otvorí galériu/panorámu. */
   onCaptureClick?: (captureId: string) => void;
-  /** Vložený viewer (D-114): produkčný, alebo náhľad PR forku z výberu viewera.
+  /** Vložený viewer (D-116): produkčný, alebo náhľad PR forku z výberu viewera.
    *  Overený volajúcim (lib/viewer-source.ts); zmena remountne iframe. */
   viewerUrl?: string;
 }
@@ -211,7 +211,7 @@ export function IFCViewer({
     return u.toString();
   }, [models, viewerOrigin, viewerUrl]);
 
-  // Stabilný kľúč — iframe sa remountuje len keď sa zmenia URL modelov alebo viewer (D-114).
+  // Stabilný kľúč — iframe sa remountuje len keď sa zmenia URL modelov alebo viewer (D-116).
   const modelsKey = `${viewerUrl}#${models.map((m) => m.url).join("|")}`;
 
   // Reset stavu pri zmene modelov — React pattern „adjust state during render"

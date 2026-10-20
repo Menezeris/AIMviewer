@@ -1,5 +1,5 @@
 /**
- * Ktorý viewer sa vloží do /ifc (D-114). Predvolene produkčný viewer forku;
+ * Ktorý viewer sa vloží do /ifc (D-116). Predvolene produkčný viewer forku;
  * na vyskúšanie PR forku pred zlúčením jeho Vercel náhľad, vybraný cez
  * `?viewer=pr-<číslo>` (alebo celú URL náhľadu). Povolené sú len produkčný
  * viewer a náhľady projektu `ifc-lite-viewer` v tíme assetinspaces, aby odkaz

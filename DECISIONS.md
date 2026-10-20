@@ -4214,7 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
-- **2026-10-20** - **D-114 (release train, rozširuje D-103):** feature PR forku len rýchla cesta, plné CI raz na balíku `release/aim-*` (merge na pokyn Samuela), výber viewera nad 3D (`?viewer=pr-N`, náhľad PR forku) na živé testovanie s MCP pred zlúčením, smoke po nasadení, tag balíka (ifc-lite #77).
+- **2026-10-20** - **D-116 (release train, rozširuje D-103):** feature PR forku len rýchla cesta, plné CI raz na balíku `release/aim-*` (merge na pokyn Samuela), výber viewera nad 3D (`?viewer=pr-N`, náhľad PR forku) na živé testovanie s MCP pred zlúčením, smoke po nasadení, tag balíka (ifc-lite #77).
 - **2026-10-19** - **D-112 (meranie z geometrie, #74):** `ifc_measure` tesseluje model ako `clash_check` a meria svetlú vzdialenosť dvoch prvkov (aj ASR voči VZT), výšku nad doskou, rozmery, povrch, pôdorys a objem z meshu s porovnaním s Qto.
 - **2026-10-19** - **D-110 (prechod VZT sieťou, #75):** `ifc_relations(through_ports, recursive, stop_at)` prejde sieť cez porty a vráti najbližšiu jednotku alebo klapku (aj `IfcDamper.FIREDAMPER`) s cestou a `path_show_in_3d`; `max_steps`, `cut_off`.
 - **2026-10-19** - **D-109 (verzia modelu v ifc_models, #73):** aktuálna revízia z `model_revisions` (vNNN, dátum, autor, súhrn, sha256, poistka), `history: N`, cesta k zoznamu zmien v OCB; `loaded` vysvetlené ako cache motora; CRS a hlavička ostávajú v `ifc_model_info`.
@@ -5137,9 +5137,111 @@ a tesselácia ASR aj VZT) 6,7 s lokálne, ďalšie 9-340 ms.
 **Otvorené:** kreslená kóta vo vieweri potrebuje správu mosta vo forku (bod a, bod b, popis); tool
 zatiaľ vracia `show_in_3d` na oba prvky. Objem neuzavretého meshu (časť miestností) sa nehlási.
 
+### D-114 - Najprv napasuj, až potom nový tool: inventár a register toolov konektora
+**Status:** rozhodnuté (2026-10-20, Samuel v #97). Nadväzuje na D-087 (najprv originál), D-090
+(požiadavky z konektora) a D-098 (najprv to, čo už existuje); D-102 už raz zamietol nový tool
+(`find_element`) v prospech rozšírenia.
+
+**Kontext:** konektor má 52 toolov (s motorom), `tools/list` okolo 64 000 znakov a inštrukcie ďalších
+15 000, teda 20-25 tisíc tokenov pred prvou otázkou. 19 toolov nebolo nikdy zavolaných. Merania
+D-101 a D-102 ukázali, že agent si medzi podobnými toolmi vyberá zle (`select_in_3d` namiesto
+`show_in_3d`, séria `search_*` namiesto `get_object`). Väčšina rozhodnutí D-105 až D-113 rozšírila
+existujúci tool, ale D-108, D-111 a D-112 pridali nové a žiadne pravidlo to neriadilo: skill
+`mcp-poziadavka` v kroku 2 poznal len "ide to existujúcimi tools" a "treba nový tool" a jeho zoznam
+súborov s definíciami bol neúplný.
+
+**Rozhodnutie:**
+1. **Zoznam toolov na jednom mieste:** `lib/mcp/tool-list.ts` (`mcpToolGroups`, `mcpToolDefinitions`);
+   číta ho MCP route, register aj inventár.
+2. **Inventár `MCP-TOOLS.md`** generovaný z definícií (skupina, zdroj, súbory, prvá veta opisu,
+   parametre s hodnotami enumu, rozhodnutie, čítanie/zápis). Test ho porovná s kódom
+   (`toMatchFileSnapshot`), obnova `npx vitest run lib/mcp/tool-registry.test.ts -u`.
+3. **Register `lib/mcp/tool-registry.json`** (meno -> rozhodnutie, ktoré tool zaviedlo). Test
+   `lib/mcp/tool-registry.test.ts` pustí len tooly, ktoré v ňom sú, a overí, že rozhodnutie existuje v
+   `DECISIONS.md`. **Pevný strop počtu nie je** (Samuel: počet sa môže meniť, keď je na to dôvod);
+   test len vypíše počet a znaky definícií a inštrukcií.
+4. **Poradie pri novej schopnosti** (`AGENTS.md`, skill `mcp-poziadavka` krok 2): najbližšie 2-3 tooly
+   z inventára -> lepší opis alebo inštrukcia -> nový parameter alebo hodnota enumu -> pole vo
+   výsledku -> nový tool. Nový tool má v zázname sekciu "Zavrhnuté rozšírenie: `<tool>` - prečo nie"
+   a riadok v registri schvaľuje Samuel v issue.
+5. **Konektor:** `request_tool` má `proposal.extend` (ktorý existujúci tool rozšíriť) a v opise
+   prednosť rozšírenia; poznámka pre session v issue odkazuje na inventár a D-114.
+6. `vitest.config.mts` s aliasom `@/`, aby testy mohli importovať moduly toolov, ktoré ho používajú.
+
+**Zavrhnuté:**
+- *Strop počtu toolov v teste (ratchet):* počet nie je cieľ; cieľ je rýchle načítanie, dobrý výber
+  toolu a rozširovanie namiesto pridávania. Register stačí na to, aby bol nový tool v review vidieť.
+- *Nový tool `get_capabilities` (#80) ako inventár za behu:* klient už zoznam toolov má; inventár je
+  pre session, ktorá kód mení, nie pre agenta v rozhovore.
+
+**Ďalej:** D-115 zlúči tooly s rovnakým zdrojom do toolov s rozlišovacím parametrom.
+
+### D-115 - Zlúčenie MCP toolov do toolov s rozlišovacím parametrom
+**Status:** rozhodnuté (2026-10-20, Samuel v #97), zavádza sa po skupinách. Nadväzuje na D-114
+(najprv napasuj) a mení D-087 (prevzaté tools balíka už nie sú v zozname pod vlastným menom) a
+D-099 (BCF mená, krok 2).
+
+**Kontext:** 52 toolov, okolo 79 000 znakov pred prvou otázkou a agent si medzi podobnými toolmi
+vyberá zle. Základ pred zlúčením (`eval/results/mcp-2026-10-20-arn1-pred-d115.json`): 30/30
+správne, 6 úloh nad stropom volaní, všetky preto, že agent nevie, čo jeden tool už vie (D7, C8:
+`get_object` bez podlažia prvku len v IFC a bez Qto; C1, D3: overovanie podobnými toolmi; V3, V6).
+Samuel: počet toolov nie je cieľ, cieľ je rýchle načítanie, dobrý výber toolu a rozširovanie
+namiesto pridávania.
+
+**Rozhodnutie:**
+1. Zlučujú sa tooly s rovnakým zdrojom do jedného s rozlišovacím parametrom (`action`, `mode`,
+   `source`). Handlery ostávajú, mení sa dispatch a schéma. Čítanie a zápis sa nemiešajú (anotácie).
+   Mená sa zachovávajú, kde sa dá (telemetria a evaly ostanú porovnateľné).
+2. **Prechod:** staré mená sa nevypisujú, ale volanie nimi prejde (`legacyTools` v MCP serveri,
+   `LEGACY_ENGINE_TOOL_NAMES`); `mcp_call_log.tool` nesie volané meno, takže sa dá zistiť, kedy ich
+   už nikto nevolá. Zmažú sa po dvoch týždňoch bez volania. `callAction` loguje prvý z parametrov
+   `action`, `mode`, `source`.
+3. **Krok 1 - IFC motor (18 -> 7 toolov):**
+   - `ifc_query` + `mode` list | count | values a filter `material` (bývalé `ifc_count`,
+     `ifc_property_values`, `ifc_material_layers`);
+   - `ifc_models` + `action` revisions | info | materials | classifications | audit | schema
+     (bývalé `ifc_model_info`, `ifc_materials_list`, `ifc_classifications_list`, `ifc_model_audit`,
+     `ifc_schema_describe`; parametre idú do balíka 1:1, test parity schém ostáva);
+   - `ifc_measure` + `qto` (bývalé `ifc_geometry_area`, `ifc_geometry_volume`: plocha a objem z Qto
+     bez tesselácie);
+   - `search_all` + `source` all | ifc | aim, `fields`, `fuzzy`, `offset` (bývalé `ifc_search`).
+4. **Krok 2 - BCF, pripomienky a dotazy viewera (11 -> 5 toolov):**
+   - `bcf_topic` + `action` create | update | close | viewpoint (zápis, bývalé `bcf_topic_create`,
+     `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`); `bcf_topic_list` ostáva na čítanie;
+   - `feedback` + `action` report | request_tool | comment | start_session (zápis, bývalé
+     `report_feedback`, `request_tool`, `feedback_comment`, `start_queued_session`); `feedback_status`
+     ostáva na čítanie;
+   - `get_viewer_state` + `bounds` alebo cieľ = obálky (bývalé `get_bounds`).
+5. **Eval kroku 1 (lekcia):** schopnosť schovaná v opise iného toolu sa hľadá horšie - C2 materiál 1 -> 11
+   volaní (agent išiel do `search_everything`), C7 schéma triedy z pamäti. Pravidlo: zlúčená schopnosť
+   stojí na začiatku opisu veľkými písmenami (MATERIÁL, SPOČÍTA, VYBER...) a inštrukcie ju menujú pri
+   type otázky. Zlučuje sa len tam, kde agent dnes preukázateľne blúdi.
+6. **Krok 3 - zdieľané tooly AIM (aj `/api/ask`, 22 -> 16 toolov):**
+   - `search_objects` + `mode` list | count | locate (bývalé `count_objects`, `locate_objects`);
+   - `get_object` + `include` details | path | drawings (bývalé `get_asset_details`,
+     `get_spatial_path`, `find_in_drawings`; D7, C8 až C10 potrebovali reťaz volaní);
+   - `show_in_3d` + `select` (bývalé `select_in_3d`; V1 voľba medzi nimi);
+   - reset (`set_view_mode reset`) zruší aj zvýraznenie (V3 potreboval 3 volania).
+   - **Nezlúčené:** `set_view_mode` a `set_camera`, `open_node` a `open_drawing` - schémy sa neprekrývajú,
+     úspora je malá a režim "2D pôdorys" pod menom kamery by sa hľadal horšie (lekcia z bodu 5).
+     `query_view` a `aggregate_objects` ostávajú oddelené (rozdielna sémantika porovnaní).
+   - **Eval kroku 2** (`eval/results/mcp-2026-10-20-arn1-po-d115-krok2.json`): C2 11 -> 2 volania po oprave
+     opisov, C3, C6, C13 a V7 jedným volaním; agenti ale obchádzali `search_all` cez `search_everything`
+     (C11, C1), lebo zdieľané inštrukcie chatu posielajú hľadanie v psetoch tam. Preto v MCP s motorom
+     `search_all` nahrádza `search_everything` v zozname, opisoch aj inštrukciách (`withSearchAll`; staré
+     meno ostáva ako `legacyTools`, `/api/ask` bez motora ho má ďalej), `ifc_query(mode=count)` prijme
+     `material` a `ifc_models` má schému triedy na začiatku opisu (C7: jeden z dvoch behov odpovedal z pamäti).
+
+**Zavrhnuté:**
+- *Jeden veľký PR:* regresiu vo výbere toolu by nebolo vidieť po skupinách.
+- *Premenovať všetko na nové mená (`ifc_model`, `find_objects`...):* rozbije porovnanie s
+  predchádzajúcimi kolami v `mcp_call_log` a evaloch bez úžitku pre agenta.
+- *Okamžite zmazať staré mená:* claude.ai drží zoznam toolov počas konverzácie, rozpracované
+  rozhovory by padali na "Neznámy tool".
+
 ---
 
-### D-114 - Release train: rýchle PR, plné CI raz na balík, výber viewera na skúšanie pred zlúčením
+### D-116 - Release train: rýchle PR, plné CI raz na balík, výber viewera na skúšanie pred zlúčením
 
 **Dátum:** 2026-10-20 · **Stav:** prijaté (Samuel) · **Súvisí:** D-103 (predchodca, rozširuje ho), D-098, D-090 · **PR:** Menezeris/ifc-lite#77, AIMviewer (tento)
 

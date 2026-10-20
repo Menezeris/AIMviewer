@@ -95,11 +95,11 @@ prvok (`target_ids_or_refs` / `global_ids` + `fit` along/across/center) a na sú
 (`coordinate_m`). Súradnice sú IFC svet (m, Z hore), počíta ich viewer. Vyžaduje fork s
 bridge správami `QUERY`/`QUERY_RESULT`.
 
-**IFC motor (D-084, voliteľne):** env `ENGINE_ENABLED=1` pridá tools `ifc_models`,
-`ifc_query`, `ifc_get`, `ifc_count`, `ifc_property_values`, `ifc_ids_validate` a 7 tools
-prevzatých z balíka 1:1 (D-087: `ifc_model_info`, `ifc_materials_list`,
-`ifc_classifications_list`, `ifc_model_audit`, `ifc_geometry_area`, `ifc_geometry_volume`,
-`ifc_schema_describe`), ktoré čítajú
+**IFC motor (D-084, voliteľne):** env `ENGINE_ENABLED=1` pridá `search_all` a tools
+`ifc_models` (revízie a cez `action` aj prevzaté tools balíka: info, materiály, klasifikácie,
+audit, schéma), `ifc_query` (`mode` list | count | values, `material`), `ifc_get`,
+`ifc_ids_validate`, `ifc_relations` a `ifc_measure` (D-115 ich zlúčil, úplný zoznam je v
+`MCP-TOOLS.md`), ktoré čítajú
 priamo IFC súbory federácie cez `@ifc-lite/mcp` (číselné filtre psetov, histogramy, IDS
 kontrola teraz). IDS pre `ifc_ids_validate` sa berú z env `IDS_SOURCES` =
 `{"<id>": "<https URL .ids>"}` (bez neho je kontrola nedostupná). Zatiaľ zámerne
@@ -107,9 +107,9 @@ nenastavené: IDS sa kontroluje v IDS paneli viewera forku, zdroj IDS pre server
 otvorené rozhodnutie (dodatok D-084 z 2026-10-18). `ENGINE_SPIKE=1`
 (len preview) pridá diagnostický `ifc_engine_probe`.
 
-**Pripomienky a nové tools (D-090):** `request_tool` (chýbajúci tool), `report_feedback`
-(pripomienka), `feedback_comment` (komentár do issue, voliteľne ho znovu otvorí) a `feedback_status` zapisujú a
-čítajú GitHub issues v repe konektora; požiadavka na
+**Pripomienky a nové tools (D-090):** `feedback` (`action` request_tool = chýbajúci tool, report =
+pripomienka, comment = komentár do issue, start_session = ďalšia z fronty; D-115) a `feedback_status`
+zapisujú a čítajú GitHub issues v repe konektora; požiadavka na
 tool hneď spustí Claude Code session, ktorá ju rieši podľa skillu `.claude/skills/mcp-poziadavka`.
 Nastavenie:
 1. **GitHub token:** fine-grained PAT, repo `Menezeris/AIMviewer`, Issues: read and write
@@ -120,13 +120,13 @@ Nastavenie:
    `Menezeris/AIMviewer`** (bez neho session nemá prístup, overené na #58), konektory GitHub a
    aim-viewer a model (Opus pre stavbu tools; predvolený je Sonnet).
 3. Voliteľne `FEEDBACK_MAX_SESSIONS` (predvolene 3): koľko sessions beží naraz, ďalšie issues čakajú
-   so štítkom `fronta` a spúšťa ich `start_queued_session` ("spusti ďalšiu požiadavku").
+   so štítkom `fronta` a spúšťa ich `feedback(action=start_session)` ("spusti ďalšiu požiadavku").
 4. Redeploy. Bez tokenu tools vrátia koncept issue; bez routine issue vznikne a session čaká
    (ďalšie zavolanie tej istej požiadavky ju spustí). Session, ktorá zlyhala, sa spustí znova po
    odobratí štítku `session` z issue.
 
-**BCF témy nad modelmi (D-099):** `bcf_topic_create`, `bcf_topic_list`, `bcf_topic_update`,
-`bcf_topic_close` a `bcf_viewpoint_create` (tvar 1:1 z `@ifc-lite/mcp`) ukladajú témy do
+**BCF témy nad modelmi (D-099):** `bcf_topic_list` (čítanie) a `bcf_topic` (`action` create | update |
+close | viewpoint; D-115 zlúčil pôvodné `bcf_topic_*` z `@ifc-lite/mcp`) ukladajú témy do
 `model_tasks` (migrácia `20261019120000`). Téma bez prvkov vezme výber a pohľad z otvoreného
 živého viewera. Téma priradená Claudovi (`assigned_to: claude`) spustí Claude Code session:
 1. **Routine:** claude.ai/code/routines -> nová routine **"AIM: BCF téma"** (bez rozvrhu, nová
@@ -138,7 +138,7 @@ Nastavenie:
    > repe Menezeris/OCB (najprv ho prečítaj); AIMviewer slúži len na čítanie ETL a rozhodnutí.
    > Ak chýba repo OCB alebo konektor aim-viewer, napíš, čo chýba, a skonči.
 2. Voliteľne `BCF_MAX_SESSIONS` (predvolene 3). Bez routine alebo nad stropom téma čaká a spustí ju
-   `bcf_topic_update` so `start_session=true`.
+   `bcf_topic(action=update)` so `start_session=true`.
 3. **BCF panel viewera:** nič netreba nastavovať. Viewer si témy načíta sám z `/api/bcf` (čítanie
    bez tokenu) a po zmene z chatu ich obnoví (živý kanál). Zápis priamo z panela je voliteľný: Vercel
    env `BCF_API_TOKEN` (aspoň 16 znakov), voliteľne `BCF_API_USER`, a v paneli Pripojiť server ->

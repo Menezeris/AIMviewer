@@ -38,7 +38,7 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "target_ids_or_refs alebo global_ids + fit: along (zvislo pozdĺž dlhšej strany prvku, napr. po " +
       "dĺžke ramena schodiska), across (zvislo naprieč), center (stredom prvku na zadanej orientation). " +
       "Presná poloha = orientation + coordinate_m v súradniciach IFC (vertical_x reže na IFC X, " +
-      "vertical_z na IFC Y, horizontal na IFC Z - výške); súradnice dá get_bounds. position_percent " +
+      "vertical_z na IFC Y, horizontal na IFC Z - výške); súradnice dá get_viewer_state(bounds). position_percent " +
       "(0-100 % obálky celej scény, nie budovy) len ako posledná možnosť. action=clear rez zruší. Čistý pohľad bez widgetu rezu = " +
       "show_widget=false (pri set) alebo action=widget, show_widget=false (rez ostáva). Príklad 'ukáž strop " +
       "nad miestnosťou na 2NP, kade idú potrubia': set_section(floor=3NP, offset_m=-0.4) + " +
@@ -123,13 +123,13 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "UI AKCIA: prepne viewer medzi 3D, 2D (pôdorys podlažia) a Split (2D + 3D vedľa seba). 2D s " +
       "kalibrovaným výkresom ukáže PDF pôdorys, inak model zhora s rezom 1,2 m nad podlahou. Na " +
       "prehliadku budovy podlažie po podlaží volaj mode=2d s floor postupne (krok na pokyn používateľa). " +
-      "reset=true s mode=3d vráti pôvodný pohľad (bez rezu, farieb a skrytia, izometria).",
+      "reset=true s mode=3d vráti pôvodný pohľad (bez rezu, farieb, skrytia, výberu a zvýraznenia, izometria).",
     inputSchema: {
       type: "object",
       properties: {
         mode: { type: "string", enum: ["3d", "2d", "split"] },
         floor: floorProp,
-        reset: { type: "boolean", description: "S mode=3d: zruší rez, farby, skrytie a vráti kameru" },
+        reset: { type: "boolean", description: "S mode=3d: zruší rez, farby, skrytie, výber a zvýraznenie a vráti kameru" },
       },
       required: ["mode"],
     },

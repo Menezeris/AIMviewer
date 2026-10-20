@@ -142,6 +142,42 @@ describe("ifc_* tools (D-084 fáza 1)", () => {
     expect(r.json.note).toContain("ifc_get");
   });
 
+  it("D-115: ifc_query mode=count a mode=values dajú to isté ako staré ifc_count a ifc_property_values", async () => {
+    const count = { model: "MINI", group_by: "type" };
+    expect((await run("ifc_query", { ...count, mode: "count" })).json).toEqual((await run("ifc_count", count)).json);
+    const where = [{ pset: "Qto_SpaceBaseQuantities", name: "NetFloorArea", op: "<=", value: 8 }];
+    const c = await run("ifc_query", { model: "MINI", mode: "count", ifc_types: ["IfcSpace"], where });
+    expect(c.json).toEqual((await run("ifc_count", { model: "MINI", ifc_type: "IfcSpace", where })).json);
+    const values = { model: "MINI", pset: "Qto_SpaceBaseQuantities", name: "NetFloorArea" };
+    const v = await run("ifc_query", { ...values, mode: "values", ifc_types: ["IfcSpace"] });
+    expect(v.json).toEqual((await run("ifc_property_values", { ...values, ifc_type: "IfcSpace" })).json);
+    expect((await run("ifc_query", { model: "MINI", mode: "zle" })).isError).toBe(true);
+  });
+
+  it("D-115: ifc_models action prevolá tool balíka, model ako model_id", async () => {
+    const info = await run("ifc_models", { action: "info", model: "MINI" });
+    expect(info.isError).toBe(false);
+    expect(info.json).toMatchObject({ tool: "model_info", model: "MINI" });
+    const old = (await run("ifc_model_info", { model_id: "MINI" })).json;
+    expect({ ...info.json.result, loadedAt: 0 }).toEqual({ ...old.result, loadedAt: 0 });
+    const schema = await run("ifc_models", { action: "schema", type: "IfcWall" });
+    expect(schema.json.tool).toBe("schema_describe");
+    expect((await run("ifc_models", { action: "info" })).isError).toBe(true);
+    expect((await run("ifc_models", { action: "zle" })).isError).toBe(true);
+    expect((await run("ifc_models", {})).json.models).toBeTruthy();
+  });
+
+  it("D-115: ifc_measure qto=true číta plochu z Qto bez tesselácie", async () => {
+    const r = await run("ifc_measure", { qto: true, items: [guid("SPA"), guid("SPB")] });
+    expect(r.isError).toBe(false);
+    expect(r.json.source).toContain("Qto");
+    const spa = r.json.items.find((i: { global_id: string }) => i.global_id === guid("SPA"));
+    expect(spa).toMatchObject({ object_ref: "1.01" });
+    expect(spa).toHaveProperty("area_m2");
+    expect(spa).toHaveProperty("volume_m3");
+    expect((await run("ifc_measure", { qto: true })).isError).toBe(true);
+  });
+
   it("ifc_get: cieľ cez object_ref aj priamo cez GUID, chýbajúci sa nahlási", async () => {
     const r = await run("ifc_get", { targets: ["W-A", guid("SPB"), "NEEXISTUJE"] });
     expect(r.isError).toBe(false);

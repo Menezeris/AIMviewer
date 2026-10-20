@@ -1,5 +1,5 @@
 {
-  "note": "D-100: úlohy pre konektor aim-viewer (#97). Každú rieši čerstvý Claude agent len s toolmi aim-viewer; meria sa počet volaní, čas a výsledok. Postup je v eval/MCP-EVAL.md. max_calls = strop volaní aim-viewer (bez ToolSearch); budget_s = cieľ celej odpovede. viewer=true potrebuje otvorený živý viewer (?live=). Hodnoty overené cez konektor 2026-10-19 nad ASR v73 a VZT v2.",
+  "note": "D-100: úlohy pre konektor aim-viewer (#97). Každú rieši čerstvý Claude agent len s toolmi aim-viewer; meria sa počet volaní, čas a výsledok. Postup je v eval/MCP-EVAL.md. max_calls = strop volaní aim-viewer (bez ToolSearch); budget_s = cieľ celej odpovede. viewer=true potrebuje otvorený živý viewer (?live=). Hodnoty overené cez konektor 2026-10-19 nad ASR v73 a VZT v2. D-115: úlohy C* a V5-V7 pokrývajú tooly určené na zlúčenie (pole covers = dnešné meno toolu); pred zlúčením sa merajú ako základ.",
   "tasks": [
     {
       "id": "D1-pocet-dveri",
@@ -69,6 +69,176 @@
       "notes": "D-102: prvok len v IFC (bez object_ref); get_object(kód) ho nájde cez IFC Name, podlažie dá ifc_get alebo get_bounds."
     },
     {
+      "id": "C1-poziarna-odolnost-dveri",
+      "category": "data",
+      "viewer": false,
+      "question": "Aké požiarne odolnosti majú dvere a koľko je ktorých?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["EI ?30 ?DP3", "\\b32\\b"] },
+      "covers": ["ifc_property_values"],
+      "notes": "Pset_DoorCommon.FireRating v ASR: 32 x EI 30 DP3-C, 65 bez hodnoty."
+    },
+    {
+      "id": "C2-mineralna-vlna",
+      "category": "data",
+      "viewer": false,
+      "question": "Koľko prvkov v modeli obsahuje minerálnu vlnu?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["\\b424\\b"] },
+      "covers": ["ifc_material_layers"],
+      "notes": "Aj ako vrstva skladby (LOP panel 356, akustická zástena 42...). ASR v076."
+    },
+    {
+      "id": "C3-vzt-potrubie-pocet",
+      "category": "data",
+      "viewer": false,
+      "question": "Koľko segmentov potrubia je v modeli VZT?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["\\b495\\b"] },
+      "covers": ["ifc_count"],
+      "notes": "IfcDuctSegment v súbore VZT (AIM ich nemusí mať všetky)."
+    },
+    {
+      "id": "C4-revizia-asr",
+      "category": "data",
+      "viewer": false,
+      "question": "Ktorá revízia modelu architektúry je aktuálna a kto ju zverejnil?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["(?i)v0\\d\\d|revízi"] },
+      "covers": ["ifc_models"],
+      "notes": "Hodnota sa mení s každou revíziou z OCB; pred behom over ifc_models (20. 10.: v076, Claude (OCB))."
+    },
+    {
+      "id": "C5-schema-jednotky-vzt",
+      "category": "data",
+      "viewer": false,
+      "question": "V akej schéme IFC a v akých jednotkách dĺžky je model VZT?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["IFC4X3", "(?i)mm|milimetr"] },
+      "covers": ["ifc_model_info"],
+      "notes": "lengthUnitScale 0.001."
+    },
+    {
+      "id": "C6-klasifikacia",
+      "category": "data",
+      "viewer": false,
+      "question": "Aký klasifikačný systém používa model architektúry a ktorá položka je najčastejšia?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["(?i)uniformat", "TI06"] },
+      "covers": ["ifc_classifications_list"],
+      "notes": "TI06 398 prvkov."
+    },
+    {
+      "id": "C7-dedenie-triedy",
+      "category": "data",
+      "viewer": false,
+      "question": "Z ktorej IFC triedy priamo dedí IfcAirTerminal?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["IfcFlowTerminal"] },
+      "covers": ["ifc_schema_describe"]
+    },
+    {
+      "id": "C8-plocha-miestnosti",
+      "category": "data",
+      "viewer": false,
+      "question": "Aká je plocha miestnosti 3.02?",
+      "max_calls": 2,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["230[.,]9"] },
+      "covers": ["ifc_geometry_area", "get_object"],
+      "notes": "Qto NetFloorArea 230,95 m2 (D4 zvyšok kola 3: get_object nevracia Qto)."
+    },
+    {
+      "id": "C9-jednotka-v-miestnosti",
+      "category": "data",
+      "viewer": false,
+      "question": "V ktorej miestnosti je VZT jednotka JV.01.01.001?",
+      "max_calls": 2,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["2\\.14", "2NP"] },
+      "covers": ["get_spatial_path"],
+      "notes": "Natívne na 2NP, odvodene (referenced) v miestnosti 2.14."
+    },
+    {
+      "id": "C10-typ-jednotky",
+      "category": "data",
+      "viewer": false,
+      "question": "Aký výrobný typ má VZT jednotka JV.01.01.001?",
+      "max_calls": 2,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["(?i)DUPLEX ?4500"] },
+      "covers": ["get_asset_details"],
+      "notes": "Pset_UnitaryEquipmentTypeCommon.Reference."
+    },
+    {
+      "id": "C11-text-v-ifc",
+      "category": "data",
+      "viewer": false,
+      "question": "Ktoré prvky majú v IFC uvedené EI 30 DP3?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["\\b32\\b", "(?i)dver|IfcDoor"] },
+      "covers": ["ifc_search", "search_all"]
+    },
+    {
+      "id": "C12-bcf-otvorene",
+      "category": "data",
+      "viewer": false,
+      "question": "Sú nad modelmi otvorené nejaké BCF témy?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["(?i)žiadn|nie sú|\\b0\\b|#\\d+"] },
+      "covers": ["bcf_topic_list"],
+      "notes": "20. 10.: 0 otvorených; hodnota sa mení."
+    },
+    {
+      "id": "C13-otvorene-poziadavky",
+      "category": "data",
+      "viewer": false,
+      "question": "Aké požiadavky na konektor sú teraz otvorené?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["#\\d+|(?i)žiadn"] },
+      "covers": ["feedback_status"]
+    },
+    {
+      "id": "V5-2d-podorys",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Prepni na 2D pôdorys 2NP.",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "viewer_state": "mode 2d, podlažie 2NP" },
+      "covers": ["set_view_mode"]
+    },
+    {
+      "id": "V6-vyber-a-vlastnosti",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Vyber dvere DD01.02.0004 a otvor ich vlastnosti z IFC.",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "viewer_state": "selection.count = 1 (DD01.02.0004), panel IFC" },
+      "covers": ["select_in_3d"]
+    },
+    {
+      "id": "V7-obalka-prvku",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Aké veľké sú vo vieweri dvere DD01.02.0004 (obálka)?",
+      "max_calls": 1,
+      "budget_s": 5,
+      "expect": { "answer_matches": ["(?i)\\bm\\b|metr|mm"] },
+      "covers": ["get_bounds"]
+    },
+    {
       "id": "V1-ukaz-miestnost",
       "category": "viewer",
       "viewer": true,
@@ -76,7 +246,7 @@
       "max_calls": 1,
       "budget_s": 5,
       "expect": { "tools_called": ["show_in_3d"], "viewer_state": "kamera sa pohla (camera v APPLIED alebo get_viewer_state iná než pred úlohou)" },
-      "notes": "D-102: miestnosť je vo forku skrytá, FOCUS ju zapne a priblíži; select_in_3d tu nie je správna voľba."
+      "notes": "D-102: miestnosť je vo forku skrytá, FOCUS ju zapne a priblíži; výber (select=true) tu nie je správna voľba."
     },
     {
       "id": "V2-izoluj-nosne",
@@ -137,8 +307,8 @@
       "question": "Zruš výber.",
       "max_calls": 1,
       "budget_s": 5,
-      "expect": { "tools_called": ["select_in_3d"], "viewer_state": "selection.count = 0" },
-      "notes": "D-102: select_in_3d(clear=true), CLEAR_SELECTION vo forku."
+      "expect": { "tools_called": ["show_in_3d"], "viewer_state": "selection.count = 0" },
+      "notes": "D-102: CLEAR_SELECTION vo forku; D-115: show_in_3d(select=true, clear=true) (predtým select_in_3d)."
     },
     {
       "id": "V3-zrus-vsetko",

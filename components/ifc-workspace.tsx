@@ -75,7 +75,7 @@ export default function IFCWorkspace({
   const searchParams = useSearchParams();
   const viewerApiRef = useRef<ViewerApi | null>(null);
   const [siblingLoading, setSiblingLoading] = useState(false);
-  // Vložený viewer (D-114): produkcia alebo náhľad PR forku z výberu nad 3D.
+  // Vložený viewer (D-116): produkcia alebo náhľad PR forku z výberu nad 3D.
   const viewer = useViewerChoice();
 
   // Reality Capture (D-073): AIM karta v 3D odkazuje na /ifc?captures=<spaceId>
