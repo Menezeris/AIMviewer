@@ -310,7 +310,7 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     case "doc":
       return { type: "DOCUMENT_OPEN", documentId: o.documentId, ...(o.page ? { page: o.page } : {}) };
     case "lens":
-      // Zónu (`aim_zone`) doplní klient pred odoslaním; tu ostane prázdna.
+      // Zónu (`aim_zone`) a dokument (`aim_document`) doplní klient pred odoslaním; tu ostanú prázdne.
       return lensBridgeMessage(o.mode, o.wire, new Map(), o.rev);
     case "list":
       // Zónu doplní klient pred odoslaním, ako pri Lens.

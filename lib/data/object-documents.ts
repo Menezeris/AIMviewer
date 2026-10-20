@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { fetchAllPages } from "@/lib/data/pagination";
 import {
   dedupeObjectDocuments,
   type DocumentType,
@@ -55,6 +56,45 @@ export async function fetchObjectDocuments(
     rows.flatMap((r) => [r.document_id, r.via_id, r.via_nearest_id].filter(Boolean) as string[]),
   );
   return { documents: dedupeObjectDocuments(rows, new Map(nodes.map((n) => [n.id, n]))), nodes };
+}
+
+/** Riadok `v_object_documents` z pohľadu dokumentu: objekt, ktorého sa dokument týka. */
+export interface DocumentObjectRow {
+  object_id: string;
+  object_type: string;
+  via: string;
+  via_id: string | null;
+  depth: number;
+  page: number | null;
+}
+
+/**
+ * Objekty, ktorých sa dokument týka (D-104 krok 4), aj zdedené cez nositeľa
+ * (podlažie, zóna, skupina, typ). `document_reference` = len cez ten odkaz na
+ * časť dokumentu, `page` = len odkazy na tú stranu. Zoradené podľa `depth`, takže
+ * prvý riadok objektu je jeho najbližšia cesta. Stránkuje: pôdorys podlažia
+ * presahuje strop odpovede PostgREST (1000 riadkov).
+ */
+export async function fetchDocumentObjectRows(
+  doc: { id: string; object_type: string },
+  page?: number,
+): Promise<DocumentObjectRow[]> {
+  const supabase = getSupabaseAdmin();
+  const column = doc.object_type === "document_reference" ? "reference_id" : "document_id";
+  return fetchAllPages<DocumentObjectRow>((from, to) => {
+    let q = supabase
+      .from("v_object_documents")
+      .select("object_id, object_type, via, via_id, depth, page")
+      .eq(column, doc.id);
+    if (page) q = q.eq("page", page);
+    return q
+      .order("depth")
+      .order("object_id")
+      .order("via_id")
+      .order("page")
+      .order("via_nearest_id")
+      .range(from, to) as unknown as PromiseLike<{ data: DocumentObjectRow[] | null; error: { message: string } | null }>;
+  });
 }
 
 /**

@@ -2,7 +2,7 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PDF_LINK_SOURCE } from "@/lib/data/constants";
-import { fetchDocumentTypes, fetchObjectDocuments, typeText } from "@/lib/data/object-documents";
+import { fetchDocumentObjectRows, fetchDocumentTypes, fetchObjectDocuments, typeText } from "@/lib/data/object-documents";
 import { fetchAllPages } from "@/lib/data/pagination";
 import type { ToolDefinition } from "./provider";
 import { docOp, selectOp } from "@/lib/viewer-ops";
@@ -404,7 +404,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "vopred). select=true = VYBERIE jeden prvok ako klik myšou a otvorí jeho panel vlastností ('vyber / označ " +
       "X', 'ukáž jeho vlastnosti'): panel_tab aim | ifc, panel_section properties | quantities, highlight " +
       "'Pset.Vlastnosť' zvýrazní riadok; panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
-      "select=true výber. Funguje pre prvky s IFC GUID.",
+      "select=true výber. Funguje pre prvky s IFC GUID. Prvky, ktorých sa týka dokument alebo strana, " +
+      "ukáž cez style_in_3d(document, page).",
     inputSchema: {
       type: "object",
       properties: {
@@ -452,6 +453,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "storey rozbalia členov v grafe AIM (NIE id systému v ids_or_refs - to vyberie len " +
       "samotný systém). Prvky mimo systémov: not_in_system=true. Všetky zadané kritériá " +
       "platia naraz (AND), napr. ifc_type=IfcDuctFitting + storey=1NP + system=Prívod. " +
+      "ČOHO SA TÝKA DOKUMENT ('ukáž prvky tohto výkresu / tejto strany') = document (+ page): " +
+      "prvky aj zdedené cez podlažie, zónu, skupinu a typ, bez vymenovania GUIDov; " +
+      "action=xray (zvyšok priesvitný) alebo isolate. " +
       "Viac farieb naraz = groups: [{label, color, ...filter}] (top-level filter platí pre " +
       "všetky skupiny). colorize / transparent / isolate / xray idú do panelu Lens vo vieweri ako " +
       "lens 'AIM chat' (pravidlo = skupina, legenda, počty; prvky mimo pravidiel sú stlmené); " +
@@ -585,6 +589,16 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "string",
           description: "Podlažie (1NP, 2.NP, object_ref): miestnosti a prvky na ňom",
         },
+        document: {
+          type: "string",
+          description:
+            "Dokument podľa id, object_ref alebo názvu (napr. 'D.1.1.03'): prvky, ktorých sa týka, aj " +
+            "zdedené cez nositeľa (get_object(include=documents) pri dokumente dá počty a by_page)",
+        },
+        page: {
+          type: "number",
+          description: "S document: len prvky, ktorých sa týka táto strana (odkaz na časť dokumentu)",
+        },
         groups: {
           type: "array",
           description:
@@ -600,6 +614,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
               system_type: { type: "string" },
               zone: { type: "string" },
               storey: { type: "string" },
+              document: { type: "string" },
+              page: { type: "number" },
               ifc_type: { type: "string" },
               ifc_types: { type: "array", items: { type: "string" } },
               predefined_type: { type: "string" },
@@ -1618,22 +1634,7 @@ export class AskToolRuntime {
     }
 
     const doc = obj;
-    const column = doc.object_type === "document_reference" ? "reference_id" : "document_id";
-    const { data, error } = await supabase
-      .from("v_object_documents")
-      .select("object_id, object_type, via, via_id, depth, page")
-      .eq(column, doc.id)
-      .order("depth")
-      .limit(5000);
-    if (error) throw new Error(error.message);
-    const rows = (data ?? []) as {
-      object_id: string;
-      object_type: string;
-      via: string;
-      via_id: string | null;
-      depth: number;
-      page: number | null;
-    }[];
+    const rows = await fetchDocumentObjectRows(doc);
     // Objekt raz, s najbližšou cestou (riadky sú zoradené podľa depth).
     const first = new Map<string, (typeof rows)[number]>();
     for (const r of rows) if (!first.has(r.object_id)) first.set(r.object_id, r);
@@ -1646,6 +1647,15 @@ export class AskToolRuntime {
       const h = r.via === "direct" ? "priamo" : `${r.via}: ${holderName.get(r.via_id ?? "") ?? r.via_id}`;
       byHolder[h] = (byHolder[h] ?? 0) + 1;
     }
+    // Strany (odkazy na časť dokumentu): objekt sa ráta na každej strane, na ktorej je.
+    const pageObjects = new Map<number, Set<string>>();
+    for (const r of rows) {
+      if (!r.page) continue;
+      const ids = pageObjects.get(r.page) ?? new Set<string>();
+      ids.add(r.object_id);
+      pageObjects.set(r.page, ids);
+    }
+    const byPage = Object.fromEntries([...pageObjects.entries()].sort(([a], [b]) => a - b).map(([p, ids]) => [String(p), ids.size]));
     const limit = clampLimit(input.limit);
     const sampleIds = [...first.keys()].slice(0, limit);
     const sampleMeta = new Map((await this.loadObjects(sampleIds)).map((m) => [m.id, m]));
@@ -1663,6 +1673,14 @@ export class AskToolRuntime {
         };
       }),
       ...(first.size > limit ? { truncated: true } : {}),
+      ...(pageObjects.size > 0 ? { by_page: byPage } : {}),
+      ...(first.size > 0
+        ? {
+            in_3d:
+              `Prvky v 3D: style_in_3d(action=xray alebo isolate, document='${doc.object_ref ?? doc.id}'` +
+              (pageObjects.size > 0 ? ", voliteľne page=<strana>)" : ")"),
+          }
+        : {}),
     };
   }
 
