@@ -8,6 +8,7 @@ import { resolveTargets } from "@/lib/llm/view-tools";
 import { liveChannel } from "./broadcast";
 import { MAX_QUERY_GUIDS, type ViewerQuery } from "./protocol";
 import { queryLiveViewer, type QueryOutcome } from "./query";
+import { withSectionOrientation } from "./section-orientation";
 import { lookupSelectionContext } from "./selection-context";
 import { DEFAULT_ITEMS_LIMIT, MAX_ITEMS_LIMIT, lookupGuidsFor, summarizeSelection, type ViewerSelection } from "./selection-summary";
 
@@ -140,7 +141,7 @@ export async function execViewerQueryTool(
       return { text: outcomeError(outcome ?? { ok: false, reason: "not_configured" }, channel, site), isError: true };
     }
     if (!outcome.reply.ok) return { text: `Viewer odpovedal chybou: ${outcome.reply.error}`, isError: true };
-    const result = await withAimRefs(outcome.reply.result, input);
+    const result = withSectionOrientation(await withAimRefs(outcome.reply.result, input));
     const lensState = await lens;
     const withLens = lensState !== undefined && result && typeof result === "object" ? { ...result, lens: lensState } : result;
     return { text: JSON.stringify(withLens), isError: false };
