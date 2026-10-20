@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PDF_LINK_SOURCE } from "@/lib/data/constants";
 import { fetchAllPages } from "@/lib/data/pagination";
 import type { ToolDefinition } from "./provider";
-import { docOp } from "@/lib/viewer-ops";
+import { docOp, selectOp } from "@/lib/viewer-ops";
 import { mergeIfcActions, type AskAction } from "./actions";
 import { DOMAIN_IFC_TYPES, sanitizeIfcType, sanitizeModelName } from "./ifc-selector";
 import { LIST_TOOL_DEFINITIONS, LIST_TOOL_NAMES, execListTool } from "./list-tool";
@@ -13,6 +13,7 @@ import { engineEnabled, resolveNamesToGuids } from "@/lib/engine/aim-lookup";
 import { execScopedStyle } from "./style-scope";
 import { needsScopedStyle } from "./style-plan";
 import { LENS_STYLE_ACTIONS, execLensStyle } from "./style-lens";
+import { selectPanelInput, selectPanelNote } from "./select-panel";
 
 /**
  * Read-only tools LLM rozhrania (D-056) — tool-calling nad whitelistom, NIE
@@ -473,12 +474,19 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "(kliknúť naň) alebo vidieť jeho VLASTNOSTI v 3D; 'ukáž/zobraz X' = show_in_3d. Rozdiel: show_in_3d prvky " +
       "zvýrazní a priblíži (aj mnoho naraz, panel vlastností neotvorí); open_node otvorí " +
       "samostatnú kartu uzla MIMO 3D pohľadu. Jeden prvok na call; funguje len pre " +
-      "prvky s IFC GUID (sú z IFC modelu). clear=true výber zruší (ako klik do prázdna).",
+      "prvky s IFC GUID (sú z IFC modelu). clear=true výber zruší (ako klik do prázdna). " +
+      "Panel (D-113): panel_tab = aim (AIM karta, default) | ifc (dáta zo súboru), panel_section = " +
+      "properties | quantities (výmery), highlight = 'Pset.Vlastnosť' rozbalí sadu, posunie a zvýrazní " +
+      "riadok (prepne na IFC / Properties; len psety výskytu, Qto_* otvorí sekciu Quantities). Hodnoty na odpoveď ber z ifc_get, panel " +
+      "ich len ukáže používateľovi.",
     inputSchema: {
       type: "object",
       properties: {
         id_or_ref: { type: "string", description: "objects.id (UUID), object_ref alebo kód prvku (meno v IFC)" },
         clear: { type: "boolean", description: "true = zrušiť výber vo vieweri (id_or_ref netreba)" },
+        panel_tab: { type: "string", enum: ["aim", "ifc"], description: "Záložka panelu vlastností" },
+        panel_section: { type: "string", enum: ["properties", "quantities"], description: "Sekcia IFC panelu" },
+        highlight: { type: "string", description: "Zvýrazniť vlastnosť: 'Pset_WallCommon.FireRating'" },
       },
     },
   },
@@ -1794,6 +1802,8 @@ export class AskToolRuntime {
    * panel vlastností; AIM kartu dotiahne host po ENTITY_SELECTED ako pri kliku.
    */
   private async selectIn3d(input: Record<string, unknown>) {
+    // Panel sa overí pred hľadaním prvku: zlý vstup nemá stáť dotaz do DB.
+    selectPanelInput(input);
     if (input.clear === true) {
       // D-102: výber sa dá zrušiť ako klik do prázdna.
       this.actions.push({ type: "navigate", url: `/ifc?ops=clear_selection::&r=${Date.now().toString(36)}`, label: "Zrušiť výber" });
@@ -1821,12 +1831,14 @@ export class AskToolRuntime {
     }
     if (!guid) throw new Error("Prvok neexistuje — najprv ho nájdi cez search_objects.");
 
+    const panel = selectPanelInput(input);
     this.actions.push({
       type: "navigate",
-      url: `/ifc?ops=${encodeURIComponent(`select::${guid}`)}&r=${Date.now().toString(36)}`,
+      url: `/ifc?ops=${encodeURIComponent(selectOp(guid, panel))}&r=${Date.now().toString(36)}`,
       label: `3D: výber ${label}`,
     });
-    return { ok: true, opened: "3d", selected: label, ifc_guid: guid };
+    const note = selectPanelNote(input);
+    return { ok: true, opened: "3d", selected: label, ifc_guid: guid, ...(panel ? { panel } : {}), ...(note ? { note } : {}) };
   }
 
   /**
