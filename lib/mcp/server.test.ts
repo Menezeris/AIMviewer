@@ -151,15 +151,13 @@ describe("MCP server (D-079)", () => {
     expect(payloadMethods("x")).toEqual([]);
   });
 
-  it("staré meno zlúčeného toolu sa vykoná, ale v tools/list nie je (D-115)", async () => {
-    const d = deps({ legacyTools: new Set(["ifc_count"]) });
-    const list = await handleMcpPayload({ jsonrpc: "2.0", id: 1, method: "tools/list" }, d);
-    expect(JSON.stringify(list)).not.toContain("ifc_count");
+  it("tool mimo tools/list sa nevykoná, ani staré meno zlúčeného toolu (D-115)", async () => {
+    const d = deps();
     const call = await handleMcpPayload(
       { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "ifc_count", arguments: {} } },
       d,
     );
-    expect(JSON.stringify(call)).toContain("97");
-    expect(d.callTool).toHaveBeenCalledWith("ifc_count", {});
+    expect(JSON.stringify(call)).toContain("Neznámy tool: ifc_count");
+    expect(d.callTool).not.toHaveBeenCalled();
   });
 });

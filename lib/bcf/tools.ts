@@ -47,7 +47,7 @@ const TARGET_PROPS = {
 
 const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 
-/** `bcf_topic` action -> zápisový handler (D-115); staré mená sú to isté pod vlastným menom. */
+/** `bcf_topic` action -> zápisový handler (D-115); hodnoty sú už len vnútorné kľúče handlerov. */
 export const BCF_ACTIONS = {
   create: "bcf_topic_create",
   update: "bcf_topic_update",
@@ -112,10 +112,7 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 ];
 
-/** Staré mená zápisových tools (D-115): nevypisujú sa, ale vykonajú sa. */
-export const LEGACY_BCF_TOOL_NAMES: ReadonlySet<string> = new Set(Object.values(BCF_ACTIONS));
-
-export const BCF_TOOL_NAMES = new Set([...BCF_TOOL_DEFINITIONS.map((t) => t.name), ...LEGACY_BCF_TOOL_NAMES]);
+export const BCF_TOOL_NAMES = new Set(BCF_TOOL_DEFINITIONS.map((t) => t.name));
 
 /** Pohľad z viewera: BCF viewpoint + GlobalId výberu. */
 export interface CapturedView {
@@ -461,7 +458,7 @@ export async function execBcfTool(
 ): Promise<{ text: string; isError: boolean }> {
   try {
     if (name === "bcf_topic_list") return { text: json(await list(args, deps)), isError: false };
-    const write = WRITES[name === "bcf_topic" ? bcfAction(args.action) : name];
+    const write = name === "bcf_topic" ? WRITES[bcfAction(args.action)] : undefined;
     if (!write) return { text: `Neznámy tool: ${name}`, isError: true };
     const result = await write(args, deps);
     // Oznámenie je pohodlie: zlyhanie nemá zhodiť zápis, ktorý už prebehol.

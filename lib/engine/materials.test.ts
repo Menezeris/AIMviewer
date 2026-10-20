@@ -51,11 +51,11 @@ describe("matchMaterial (D-108)", () => {
   });
 });
 
-describe("ifc_material_layers a materiály v ifc_get (D-108)", () => {
+describe("ifc_query s material a materiály v ifc_get (D-108, D-115)", () => {
   afterEach(() => clearEngineCache());
 
   it("izolácia: vrstva z typu aj zložka dosky, súhrn podľa skladby a show_in_3d", async () => {
-    const r = await run("ifc_material_layers", { material: "izol" });
+    const r = await run("ifc_query", { material: "izol" });
     expect(r.isError).toBe(false);
     expect(r.json.total).toBe(3);
     expect(r.json.sets.map((s: { set: string; count: number }) => [s.set, s.count])).toEqual([
@@ -70,7 +70,7 @@ describe("ifc_material_layers a materiály v ifc_get (D-108)", () => {
   });
 
   it("ifc_types a limit: len steny, vypísaná jedna, total a show_in_3d za všetky", async () => {
-    const r = await run("ifc_material_layers", { material: "betón", ifc_types: ["IfcWall"], limit: 1 });
+    const r = await run("ifc_query", { material: "betón", ifc_types: ["IfcWall"], limit: 1 });
     expect(r.json.total).toBe(3);
     expect(r.json.items).toHaveLength(1);
     expect(r.json.truncated).toBe(true);
@@ -79,13 +79,13 @@ describe("ifc_material_layers a materiály v ifc_get (D-108)", () => {
 
   it("krátky dopyt odmietne", async () => {
     // D-115: ifc_query(mode=count, material) = ten istý total bez zoznamu prvkov.
-    const full = await run("ifc_material_layers", { material: "izol" });
+    const full = await run("ifc_query", { material: "izol" });
     const count = await run("ifc_query", { mode: "count", material: "izol" });
     expect(count.json.total).toBe(full.json.total);
     expect(count.json.sets).toEqual(full.json.sets);
     expect(count.json.items).toBeUndefined();
     expect((await run("ifc_query", { mode: "values", material: "izol" })).isError).toBe(true);
-    const r = await run("ifc_material_layers", { material: "e" });
+    const r = await run("ifc_query", { material: "e" });
     expect(r.isError).toBe(true);
     expect(r.content).toMatch(/aspoň 2 znaky/);
   });
