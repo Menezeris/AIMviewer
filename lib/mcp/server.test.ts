@@ -110,6 +110,24 @@ describe("MCP server (D-079)", () => {
     });
   });
 
+  it("tools/call: každý blok okrem posledného končí zalomením, aby sa riadky nezlepili", async () => {
+    const link = "Kóta: https://example.test/ifc?ops=measure&r=abc";
+    const res = await handleMcpPayload(
+      { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "count_objects" } },
+      deps({ callTool: async () => ({ text: ['{"view":"kóty vo vieweri: 1"}', `Odoslané do živého viewera. Záložný odkaz:\n${link}`, "Vykonané vo vieweri (193 ms)."], isError: false }) }),
+    );
+    const content = (res as { result: { content: { text: string }[] } }).result.content;
+    expect(content.map((c) => c.text)).toEqual([
+      '{"view":"kóty vo vieweri: 1"}\n',
+      `Odoslané do živého viewera. Záložný odkaz:\n${link}\n`,
+      "Vykonané vo vieweri (193 ms).",
+    ]);
+    // Tak, ako ich spojí klient: odkaz ostane celý a JSON sa dá prečítať.
+    const joined = content.map((c) => c.text).join("");
+    expect(joined.split("\n")).toContain(link);
+    expect(JSON.parse(content[0].text)).toEqual({ view: "kóty vo vieweri: 1" });
+  });
+
   it("neznámy tool je chyba parametrov, nie pád", async () => {
     const res = await handleMcpPayload(
       { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "drop_table" } },
