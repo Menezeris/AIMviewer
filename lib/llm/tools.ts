@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PDF_LINK_SOURCE } from "@/lib/data/constants";
 import { fetchAllPages } from "@/lib/data/pagination";
 import type { ToolDefinition } from "./provider";
-import { docOp, selectOp } from "@/lib/viewer-ops";
+import { docOp, docRegionInput, selectOp } from "@/lib/viewer-ops";
 import { mergeIfcActions, type AskAction } from "./actions";
 import { DOMAIN_IFC_TYPES, sanitizeIfcType, sanitizeModelName } from "./ifc-selector";
 import { LIST_TOOL_DEFINITIONS, LIST_TOOL_NAMES, execListTool } from "./list-tool";
@@ -613,9 +613,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "open_drawing",
     description:
-      "UI AKCIA: otvorí výkres/dokument v prehliadačke, voliteľne so zvýrazneným prvkom " +
-      "a stranou. Zavolaj, keď používateľ žiada otvoriť/ukázať výkres alebo prvok vo výkrese " +
-      "(document_id a page zisti cez get_object(include=drawings)).",
+      "UI AKCIA: otvorí výkres/dokument v prehliadačke, voliteľne so zvýrazneným prvkom, " +
+      "stranou a výrezom strany (region = priblíženie na časť strany v karte vo vieweri). " +
+      "Zavolaj, keď používateľ žiada otvoriť/ukázať výkres alebo prvok vo výkrese, alebo " +
+      "priblížiť výkres na miesto (document_id a page zisti cez get_object(include=drawings)).",
     inputSchema: {
       type: "object",
       properties: {
@@ -627,6 +628,22 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           description:
             "true = otvorí dokument ako kartu vedľa 3D modelu vo vieweri (bez zvýraznenia " +
             "prvku); default false = samostatná prehliadačka výkresu",
+        },
+        region: {
+          type: "object",
+          description:
+            "Voliteľné: výrez strany v % (0-100, počiatok vľavo hore), napr. pravý horný roh = " +
+            "{x:50,y:0,width:50,height:50}. Karta sa priblíži, aby výrez vyplnil plochu, a vycentruje " +
+            "ho; aj pre už otvorenú kartu. S region sa výkres vždy otvorí vo vieweri (in_viewer). " +
+            "Polohu prvku vo výkrese tool nepozná: výrez určí používateľ slovne (vpravo hore, " +
+            "stred, ľavý okraj...) a ďalší krok sa odvodí z predchádzajúceho výrezu.",
+          properties: {
+            x: { type: "number", description: "Ľavý okraj výrezu v % šírky strany" },
+            y: { type: "number", description: "Horný okraj výrezu v % výšky strany" },
+            width: { type: "number", description: "Šírka výrezu v % šírky strany" },
+            height: { type: "number", description: "Výška výrezu v % výšky strany" },
+          },
+          required: ["x", "y", "width", "height"],
         },
       },
       required: ["document_id"],
@@ -2096,14 +2113,31 @@ export class AskToolRuntime {
         : null;
 
     const label = doc.name ?? doc.object_ref ?? "výkres";
-    if (input.in_viewer === true) {
-      // Karta dokumentu vedľa 3D (D-075 DOCUMENT_OPEN cez op `doc`, D-083).
+    const region = docRegionInput(input.region);
+    if (input.region !== undefined && !region) {
+      throw new Error("region musí mať x, y, width, height v % strany (0-100) a ležať na strane.");
+    }
+    if (input.in_viewer === true || region) {
+      // Karta dokumentu vedľa 3D (D-075 DOCUMENT_OPEN cez op `doc`, D-083), výrez strany D-117.
       this.actions.push({
         type: "navigate",
-        url: `/ifc?ops=${encodeURIComponent(docOp(doc.id, page ?? undefined))}&r=${Date.now().toString(36)}`,
+        url: `/ifc?ops=${encodeURIComponent(docOp(doc.id, page ?? undefined, region))}&r=${Date.now().toString(36)}`,
         label: `Viewer: ${label}`,
       });
-      return { ok: true, opened: "viewer_document", document: label, ...(page ? { page } : {}) };
+      return {
+        ok: true,
+        opened: "viewer_document",
+        document: label,
+        ...(page ? { page } : {}),
+        ...(region ? { region: { x: region.x, y: region.y, width: region.w, height: region.h } } : {}),
+        ...(focusId
+          ? {
+              note:
+                "focus_id karta vo vieweri nezvýrazní; polohu prvku vo výkrese tool nepozná. " +
+                "Na priblíženie použi region (výrez strany v %).",
+            }
+          : {}),
+      };
     }
 
     const params = new URLSearchParams();

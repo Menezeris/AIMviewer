@@ -13,7 +13,7 @@
  * a na súradnici IFC sveta `section:<y|x|z>~c=<m>::`,
  * `section_clear::`, `section_gizmo:<0|1>:`, `camera:<preset>[~proj=o|p]:<guid.guid...>` (fit a relatívne kroky
  * `~fit=..~z=..~oh=..~ov=..~px=..~py=..` a `camera_sel:<arg>:<selektor>`, D-094/D-098, `lib/viewer-camera.ts`),
- * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>:<documentId>`.
+ * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>[~r=<x>_<y>_<w>_<h>]:<documentId>` (výrez strany v %, D-117).
  * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
  */
 
@@ -24,6 +24,14 @@ import { cameraMoveArgs, parseCameraMove, type CameraMove } from "./viewer-camer
 export interface OpsSelector {
   types?: string[];
   model?: string;
+}
+
+/** Výrez strany dokumentu (D-117): x, y = ľavý horný roh, w, h = rozmer, všetko v % strany. */
+export interface DocRegion {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export const SECTION_AXES = ["y", "x", "z"] as const;
@@ -83,7 +91,7 @@ export type ViewerOp =
   | { op: "section_gizmo"; showGizmo: boolean }
   | ({ op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[]; selector?: OpsSelector } & CameraMove)
   | { op: "view"; mode: ViewMode; storeyGuid?: string }
-  | { op: "doc"; documentId: string; page?: number }
+  | { op: "doc"; documentId: string; page?: number; region?: DocRegion }
   | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire }
   /** Zoznam z chatu do panela Lists (D-111), formát v `lib/viewer-list.ts`. */
   | { op: "list"; wire: ListWire };
@@ -114,6 +122,41 @@ function parseArg(arg: string): [string, Record<string, string>] {
     if (i > 0) kv[r.slice(0, i)] = r.slice(i + 1);
   }
   return [head, kv];
+}
+
+/**
+ * Výrez strany z `r=x_y_w_h` (D-117): percentá, orezané do strany; prázdny alebo
+ * mimo strany = bez výrezu (karta sa otvorí celá).
+ */
+export function parseDocRegion(raw: string | undefined): DocRegion | undefined {
+  if (!raw) return undefined;
+  const parts = raw.split("_").map((v) => finite(v, -1000, 1000));
+  if (parts.length !== 4 || parts.some((v) => v === undefined)) return undefined;
+  return clampDocRegion({ x: parts[0]!, y: parts[1]!, w: parts[2]!, h: parts[3]! });
+}
+
+/** Výrez z parametra toolu `region` ({x, y, width, height} v %, D-117); undefined = chybný alebo mimo strany. */
+export function docRegionInput(raw: unknown): DocRegion | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const n = [r.x, r.y, r.width, r.height];
+  if (!n.every((v) => typeof v === "number" && Number.isFinite(v))) return undefined;
+  const [x, y, w, h] = n as number[];
+  return clampDocRegion({ x, y, w, h });
+}
+
+/** Výrez orezaný do strany (0-100 %), najmenej 1 % na os; undefined = celý mimo strany. */
+export function clampDocRegion(r: DocRegion): DocRegion | undefined {
+  const axis = (start: number, size: number): [number, number] | undefined => {
+    const lo = Math.max(0, start);
+    const hi = Math.min(100, start + size);
+    if (!(hi - lo > 0)) return undefined;
+    const len = Math.max(1, hi - lo);
+    return [Math.min(lo, 100 - len), len];
+  };
+  const x = axis(r.x, r.w);
+  const y = axis(r.y, r.h);
+  return x && y ? { x: x[0], y: y[0], w: x[1], h: y[1] } : undefined;
 }
 
 function finite(raw: string | undefined, min: number, max: number): number | undefined {
@@ -244,8 +287,15 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "doc") {
       const documentId = joined;
       if (!UUID.test(documentId)) continue;
-      const page = finite(arg, 1, 100_000);
-      out.push({ op, documentId, ...(page !== undefined ? { page: Math.floor(page) } : {}) });
+      const [pageArg, kv] = parseArg(arg);
+      const page = finite(pageArg, 1, 100_000);
+      const region = parseDocRegion(kv.r);
+      out.push({
+        op,
+        documentId,
+        ...(page !== undefined ? { page: Math.floor(page) } : {}),
+        ...(region ? { region } : {}),
+      });
     }
   }
   return out;
@@ -302,7 +352,15 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     case "view":
       return { type: "SET_VIEW_MODE", mode: o.mode, ...(o.storeyGuid ? { storeyGuid: o.storeyGuid } : {}) };
     case "doc":
-      return { type: "DOCUMENT_OPEN", documentId: o.documentId, ...(o.page ? { page: o.page } : {}) };
+      return {
+        type: "DOCUMENT_OPEN",
+        documentId: o.documentId,
+        ...(o.page ? { page: o.page } : {}),
+        // Fork čaká zlomky strany (0-1), drôt nesie percentá.
+        ...(o.region
+          ? { region: { x: o.region.x / 100, y: o.region.y / 100, w: o.region.w / 100, h: o.region.h / 100 } }
+          : {}),
+      };
     case "lens":
       // Zónu (`aim_zone`) doplní klient pred odoslaním; tu ostane prázdna.
       return lensBridgeMessage(o.mode, o.wire, new Map(), o.rev);
@@ -367,6 +425,7 @@ export function viewModeOp(mode: ViewMode, storeyGuid?: string): string {
   return `view:${mode}:${storeyGuid ?? ""}`;
 }
 
-export function docOp(documentId: string, page?: number): string {
-  return `doc:${page ?? ""}:${documentId}`;
+export function docOp(documentId: string, page?: number, region?: DocRegion): string {
+  const r = region ? `~r=${[region.x, region.y, region.w, region.h].map((v) => +v.toFixed(2)).join("_")}` : "";
+  return `doc:${page ?? ""}${r}:${documentId}`;
 }
