@@ -5135,3 +5135,42 @@ a tesselácia ASR aj VZT) 6,7 s lokálne, ďalšie 9-340 ms.
 
 **Otvorené:** kreslená kóta vo vieweri potrebuje správu mosta vo forku (bod a, bod b, popis); tool
 zatiaľ vracia `show_in_3d` na oba prvky. Objem neuzavretého meshu (časť miestností) sa nehlási.
+
+### D-114 - Najprv napasuj, až potom nový tool: inventár a register toolov konektora
+**Status:** rozhodnuté (2026-10-20, Samuel v #97). Nadväzuje na D-087 (najprv originál), D-090
+(požiadavky z konektora) a D-098 (najprv to, čo už existuje); D-102 už raz zamietol nový tool
+(`find_element`) v prospech rozšírenia.
+
+**Kontext:** konektor má 52 toolov (s motorom), `tools/list` okolo 64 000 znakov a inštrukcie ďalších
+15 000, teda 20-25 tisíc tokenov pred prvou otázkou. 19 toolov nebolo nikdy zavolaných. Merania
+D-101 a D-102 ukázali, že agent si medzi podobnými toolmi vyberá zle (`select_in_3d` namiesto
+`show_in_3d`, séria `search_*` namiesto `get_object`). Väčšina rozhodnutí D-105 až D-113 rozšírila
+existujúci tool, ale D-108, D-111 a D-112 pridali nové a žiadne pravidlo to neriadilo: skill
+`mcp-poziadavka` v kroku 2 poznal len "ide to existujúcimi tools" a "treba nový tool" a jeho zoznam
+súborov s definíciami bol neúplný.
+
+**Rozhodnutie:**
+1. **Zoznam toolov na jednom mieste:** `lib/mcp/tool-list.ts` (`mcpToolGroups`, `mcpToolDefinitions`);
+   číta ho MCP route, register aj inventár.
+2. **Inventár `MCP-TOOLS.md`** generovaný z definícií (skupina, zdroj, súbory, prvá veta opisu,
+   parametre s hodnotami enumu, rozhodnutie, čítanie/zápis). Test ho porovná s kódom
+   (`toMatchFileSnapshot`), obnova `npx vitest run lib/mcp/tool-registry.test.ts -u`.
+3. **Register `lib/mcp/tool-registry.json`** (meno -> rozhodnutie, ktoré tool zaviedlo). Test
+   `lib/mcp/tool-registry.test.ts` pustí len tooly, ktoré v ňom sú, a overí, že rozhodnutie existuje v
+   `DECISIONS.md`. **Pevný strop počtu nie je** (Samuel: počet sa môže meniť, keď je na to dôvod);
+   test len vypíše počet a znaky definícií a inštrukcií.
+4. **Poradie pri novej schopnosti** (`AGENTS.md`, skill `mcp-poziadavka` krok 2): najbližšie 2-3 tooly
+   z inventára -> lepší opis alebo inštrukcia -> nový parameter alebo hodnota enumu -> pole vo
+   výsledku -> nový tool. Nový tool má v zázname sekciu "Zavrhnuté rozšírenie: `<tool>` - prečo nie"
+   a riadok v registri schvaľuje Samuel v issue.
+5. **Konektor:** `request_tool` má `proposal.extend` (ktorý existujúci tool rozšíriť) a v opise
+   prednosť rozšírenia; poznámka pre session v issue odkazuje na inventár a D-114.
+6. `vitest.config.mts` s aliasom `@/`, aby testy mohli importovať moduly toolov, ktoré ho používajú.
+
+**Zavrhnuté:**
+- *Strop počtu toolov v teste (ratchet):* počet nie je cieľ; cieľ je rýchle načítanie, dobrý výber
+  toolu a rozširovanie namiesto pridávania. Register stačí na to, aby bol nový tool v review vidieť.
+- *Nový tool `get_capabilities` (#80) ako inventár za behu:* klient už zoznam toolov má; inventár je
+  pre session, ktorá kód mení, nie pre agenta v rozhovore.
+
+**Ďalej:** D-115 zlúči tooly s rovnakým zdrojom do toolov s rozlišovacím parametrom.
