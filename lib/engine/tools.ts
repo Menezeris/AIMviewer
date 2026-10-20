@@ -549,6 +549,9 @@ export async function execEngineTool(
       case "ifc_material_layers":
         content = await ifcMaterialLayers(input, deps);
         break;
+      case "ifc_measure":
+        content = await (await import("./measure")).ifcMeasure(input, deps);
+        break;
       default:
         if (isPassthroughTool(name)) return await execPassthroughTool(name, input, deps);
         return { content: `Neznámy tool motora: ${name}`, isError: true };

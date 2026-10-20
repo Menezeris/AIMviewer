@@ -673,6 +673,14 @@
       "expect": { "tools_called": ["ifc_relations"] },
       "verified": false,
       "notes": "D-110 (issue #75): koncový prvok v 3.02 (v_space_elements) -> ifc_relations(through_ports=true, recursive=true, stop_at=[IfcUnitaryEquipment]) a stop_at=[IfcDamper.FIREDAMPER]; cesta cez path_show_in_3d."
+    },
+    {
+      "id": "ifc-measure-distance",
+      "category": "location",
+      "question": "Aká je vzdialenosť medzi stenou SN07.04.0005 a potrubím PO.02?",
+      "expect": { "tools_called": ["ifc_measure"], "answer_matches": ["1[,.]43"] },
+      "verified": false,
+      "notes": "D-112 (issue #74): ifc_measure(a, b) cez ASR a VZT; clear_distance_m 1.433 na revízii z 2026-10-19 (lokálne meranie, nie eval beh)."
     }
   ]
 }

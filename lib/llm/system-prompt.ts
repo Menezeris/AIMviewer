@@ -277,13 +277,12 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   rel_types=[IfcRelAssignsToGroup], recursive=true pre vnorené zóny), kam prvok patrí
   (direction=inverse: zóny, požiarne úseky, systém, podlažie), napojené prvky cez porty
   (through_ports=true). "Ktorá VZT jednotka / klapka obsluhuje miestnosť X" (D-110): koncový prvok z
-  v_space_elements -> ifc_relations(through_ports, recursive, stop_at=[IfcUnitaryEquipment] alebo
-  [IfcDamper.FIREDAMPER]), cesta = path_show_in_3d.
+  v_space_elements -> ifc_relations(through_ports, recursive, stop_at=[IfcUnitaryEquipment] či [IfcDamper.FIREDAMPER]).
   Funguje aj pre zóny a prvky bez object_ref. list_relations má strop
   100 riadkov - úplný zoznam ber z ifc_relations a stránkuj cez next_cursor, kým nie je null;
   počet hovor z total, nie z dĺžky stránky.
-- Materiály (D-108): vrstvy prvku aj z typu = ifc_get (materials). "Ukáž izoláciu / EPS" =
-  ifc_material_layers(material=izol), hľadá podľa vrstvy, nie názvu skladby.
+- Materiály (D-108): vrstvy aj z typu = ifc_get (materials); "ukáž izoláciu" = ifc_material_layers.
+- Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou; items = rozmery a objem z meshu.
 - Hľadanie podľa textu má dva zdroje: search_everything = graf AIM v DB (názov,
   object_ref, importované psety), ifc_search = IFC súbor (atribúty Description,
   ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály,

@@ -222,6 +222,25 @@ export function engineToolDefinitions(): ToolDefinition[] {
         required: ["material"],
       },
     },
+    {
+      name: "ifc_measure",
+      description:
+        "IFC MOTOR: meranie z geometrie (nie z Qto). a + b = svetlá vzdialenosť povrchov dvoch prvkov (aj ASR " +
+        "voči VZT; záporná = prienik), vzdialenosť stredov, medzera obálok po osiach X/Y/Z a vodorovne, " +
+        "a_above_b_m = výška spodku a nad vrchom b (napr. klapka nad doskou: b = doska). Len a alebo items = " +
+        "rozmery obálky, povrch, pôdorys a objem z meshu, porovnané s Qto zo súboru (vs_qto, mismatch nad 5 %), " +
+        "pri viacerých aj súčet. Objem množiny podľa filtra: GUIDy z ifc_query do items (max 50). Prvé volanie " +
+        "nad modelom ho tesseluje (ASR ~4 s), ďalšie sú rýchle.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          a: { type: "string", description: "Prvý prvok: object_ref, objects.id alebo IFC GlobalId" },
+          b: { type: "string", description: "Druhý prvok na vzdialenosť" },
+          items: { type: "array", items: { type: "string" }, description: "Prvky na rozmery a výmery (max 50)" },
+          model: { ...model, description: "Voliteľne model; inak sa prvky hľadajú vo všetkých" },
+        },
+      },
+    },
     ...passthroughDefinitions(models),
   ];
 }

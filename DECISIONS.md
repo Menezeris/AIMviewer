@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-112 (meranie z geometrie, #74):** `ifc_measure` tesseluje model ako `clash_check` a meria svetlú vzdialenosť dvoch prvkov (aj ASR voči VZT), výšku nad doskou, rozmery, povrch, pôdorys a objem z meshu s porovnaním s Qto.
 - **2026-10-19** - **D-110 (prechod VZT sieťou, #75):** `ifc_relations(through_ports, recursive, stop_at)` prejde sieť cez porty a vráti najbližšiu jednotku alebo klapku (aj `IfcDamper.FIREDAMPER`) s cestou a `path_show_in_3d`; `max_steps`, `cut_off`.
 - **2026-10-19** - **D-109 (verzia modelu v ifc_models, #73):** aktuálna revízia z `model_revisions` (vNNN, dátum, autor, súhrn, sha256, poistka), `history: N`, cesta k zoznamu zmien v OCB; `loaded` vysvetlené ako cache motora; CRS a hlavička ostávajú v `ifc_model_info`.
 - **2026-10-19** - **D-108 (materiálové vrstvy z IFC, #69):** `ifc_get` vracia materiály (vrstvy, hrúbky, kategórie, aj z typu), nový `ifc_material_layers` nájde prvky podľa materiálu alebo kategórie vrstvy so súhrnom podľa skladby a `show_in_3d`.
@@ -5096,3 +5097,41 @@ IfcRelConnectsPorts) je v súbore celá.
 **Zavrhnuté:**
 - *Nový tool `trace_network`:* zdvojil by prechod portov z `ifc_relations` a pridal definíciu.
 - *Prechod cez priradenie systému:* systémy sú v modeli neúplné; porty sú zdroj pravdy siete.
+### D-112 - Meranie z geometrie: `ifc_measure` (vzdialenosť, výška, výmery z meshu)
+**Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #74).
+Nadväzuje na D-084 (motor v procese), D-087 (najprv upstream tool), D-097 (vlastný tool motora).
+
+**Kontext:** "Aká je vzdialenosť medzi týmito stenami?" a "ako vysoko nad podlahou je klapka?" konektor
+nevedel. `ifc_geometry_area` / `ifc_geometry_volume` a upstream `geometry_bbox` čítajú len Qto,
+`get_bounds` dáva obálky z DB. Skutočnú geometriu má `@ifc-lite/mcp` iba v `clash_check` (headless
+tesselácia `@ifc-lite/geometry`, na Verceli zmeraná v D-084: kolízie VZT 4,1 s studené); upstream
+tool na meranie nemá (`geometry_get` a `raycast` hlásia UNSUPPORTED).
+
+**Rozhodnutie:**
+1. Nový tool motora `ifc_measure` (`lib/engine/measure.ts`). Model sa tesseluje rovnako ako v
+   `clash_check` (`GeometryProcessor`, bez inštancovania), raz na zdieľaný store (cache inštancie);
+   prvky sa zostavia vlastne, lebo upstream adaptér clash vynecháva priestorové prvky (IfcSpace).
+2. `a` + `b`: svetlá vzdialenosť povrchov upstream clash enginom (režim clearance s explicitnými
+   členmi `membersA/B`, `distanceKind: mesh`, záporná = prienik), najbližší bod, vzdialenosť stredov,
+   medzera obálok po osiach IFC a vodorovne, `a_above_b_m` (spodok a mínus vrch b: klapka nad doskou).
+3. `a` alebo `items` (max 50): rozmery obálky, povrch, pôdorys (priemet plôch s normálou hore) a
+   objem z meshu (len pri uzavretom meshi), vedľa Qto zo súboru (`Qto_*BaseQuantities` pred inými,
+   Net pred Gross) s príznakom nezhody nad 5 %; pri viacerých aj súčet. Množina podľa filtra =
+   GUIDy z `ifc_query`.
+4. Modely federácie sú v jednom rámci súradníc (overené na ASR a VZT: bez posunu, `origin` +
+   pozícia), takže dvojica môže byť z rôznych modelov. Výstup v osiach IFC (Z hore), metre.
+5. `@ifc-lite/clash`, `@ifc-lite/geometry` a `@ifc-lite/query` sú priame závislosti (MPL-2.0, tie isté
+   verzie, ktoré už ťahá `@ifc-lite/mcp`) a `serverExternalPackages`.
+
+**Overenie na aktuálnych modeloch:** stena ASR SN07.04.0005 - potrubie VZT PO.02 1,433 m
+(`mesh`); vyústka VV.02.01.006 2,727 m nad doskou SD02.03.0001; objem steny z meshu 5,283 m³ =
+Qto; pôdorys miestnosti 2.01 230,947 m² oproti NetFloorArea 230,954 m². Studené volanie (parsovanie
+a tesselácia ASR aj VZT) 6,7 s lokálne, ďalšie 9-340 ms.
+
+**Zavrhnuté:**
+- *`clash_check` s veľkou clearance:* selektory sú len triedy, nie konkrétne prvky, a IfcSpace vynechá.
+- *Meranie vo vieweri (upstream nástroj Measure):* výsledok by sa Claudovi nevrátil a fungoval by len
+  s otvoreným viewerom.
+
+**Otvorené:** kreslená kóta vo vieweri potrebuje správu mosta vo forku (bod a, bod b, popis); tool
+zatiaľ vracia `show_in_3d` na oba prvky. Objem neuzavretého meshu (časť miestností) sa nehlási.

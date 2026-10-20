@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   // bundler nemá prepisovať. Súbory, ktoré trasovanie nevidí (WASM pre kolízie
   // resolvnutý cez createRequire, xmldom importovaný vypočítaným názvom pre
   // IDS), sa do funkcie MCP konektora pribalia explicitne.
-  serverExternalPackages: ["@ifc-lite/mcp", "@ifc-lite/parser", "@ifc-lite/sdk"],
+  serverExternalPackages: ["@ifc-lite/mcp", "@ifc-lite/parser", "@ifc-lite/sdk", "@ifc-lite/clash", "@ifc-lite/geometry", "@ifc-lite/query"],
   outputFileTracingIncludes: {
     "/api/mcp/[token]": [
       "./node_modules/@ifc-lite/wasm/pkg/*.wasm",
