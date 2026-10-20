@@ -19,8 +19,10 @@
  */
 
 import { LENS_MODES, decodeLensWire, lensBridgeMessage, type LensMode, type LensWire } from "./viewer-lens";
+import { parseSectionCapArg, sectionCapBridgeMessage, type SectionCapOp } from "./viewer-section-cap";
 import { decodeListWire, listBridgeMessage, type ListWire } from "./viewer-list";
 import { cameraMoveArgs, parseCameraMove, type CameraMove } from "./viewer-camera";
+import { decodeMeasureWire, type MeasureSegment } from "./viewer-measure";
 
 export interface OpsSelector {
   types?: string[];
@@ -93,13 +95,17 @@ export type ViewerOp =
       showGizmo?: boolean;
     }
   | { op: "section_clear" }
+  /** Vzhľad reznej plochy (D-120), `lib/viewer-section-cap.ts`. */
+  | SectionCapOp
   | { op: "section_gizmo"; showGizmo: boolean }
   | ({ op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[]; selector?: OpsSelector } & CameraMove)
   | { op: "view"; mode: ViewMode; storeyGuid?: string }
   | { op: "doc"; documentId: string; page?: number; region?: DocRegion; highlights?: DocRegion[] }
   | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire }
   /** Zoznam z chatu do panela Lists (D-111), formát v `lib/viewer-list.ts`. */
-  | { op: "list"; wire: ListWire };
+  | { op: "list"; wire: ListWire }
+  /** Kóty v IFC svete do nástroja Measure forku (D-124), formát v `lib/viewer-measure.ts`. */
+  | { op: "measure"; segments: MeasureSegment[]; keep?: boolean };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -278,6 +284,9 @@ export function parseOps(raw: string): ViewerOp[] {
       out.push({ op });
     } else if (op === "section_gizmo" && (arg === "0" || arg === "1")) {
       out.push({ op, showGizmo: arg === "1" });
+    } else if (op === "section_cap") {
+      const cap = parseSectionCapArg(arg);
+      if (cap) out.push(cap);
     } else if (op === "section") {
       const [axis, kv] = parseArg(arg);
       const flip = {
@@ -340,6 +349,9 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "list") {
       const wire = decodeListWire(joined);
       if (wire) out.push({ op, wire });
+    } else if (op === "measure") {
+      const segments = decodeMeasureWire(joined);
+      if (segments) out.push({ op, segments, ...(arg === "keep" ? { keep: true } : {}) });
     } else if (op === "doc") {
       const documentId = joined;
       if (!UUID.test(documentId)) continue;
@@ -397,6 +409,8 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
       return { type: "SET_SECTION", action: "clear" };
     case "section_gizmo":
       return { type: "SET_SECTION", action: "gizmo", showGizmo: o.showGizmo };
+    case "section_cap":
+      return sectionCapBridgeMessage(o);
     case "camera":
       return {
         type: "SET_CAMERA",
@@ -420,11 +434,13 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
         ...(o.highlights?.length ? { highlights: o.highlights.map(toFraction) } : {}),
       };
     case "lens":
-      // Zónu (`aim_zone`) doplní klient pred odoslaním; tu ostane prázdna.
+      // Zónu (`aim_zone`) a dokument (`aim_document`) doplní klient pred odoslaním; tu ostanú prázdne.
       return lensBridgeMessage(o.mode, o.wire, new Map(), o.rev);
     case "list":
       // Zónu doplní klient pred odoslaním, ako pri Lens.
       return listBridgeMessage(o.wire, new Map());
+    case "measure":
+      return { type: "MEASURE_SHOW", segments: o.segments, ...(o.keep ? { keep: true } : {}) };
   }
 }
 

@@ -20,6 +20,15 @@ describe("lens-plan (D-096)", () => {
     expect(g.rules[3]).toMatchObject({ groupClass: "IfcSystem", op: "matches", valueKind: "regex" });
   });
 
+  it("dokument (D-104 krok 4): symbolické pravidlo aim_document so stranou, s triedou AND", () => {
+    const g = lensGroup({ types: ["IfcWall"], document: { id: "d", page: 3 } });
+    expect(g.rules).toEqual([
+      { kind: "ifcType", op: "in", values: ["IfcWall"] },
+      { kind: "aim_document", id: "d", page: 3 },
+    ]);
+    expect(lensGroup({ types: [], document: { id: "d" } }).rules).toEqual([{ kind: "aim_document", id: "d" }]);
+  });
+
   it("presné mená systémov ako regex s escapovaním", () => {
     const re = new RegExp(exactNamesRegex(["Prívod-1NP", "a.b (c)"]));
     expect(re.test("Prívod-1NP")).toBe(true);

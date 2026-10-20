@@ -5044,6 +5044,27 @@ AIMviewer vetva `claude/lucid-wright-g4qmwq-krok3` (stavia na #121):
   objektu zachová kľúče hostiteľa (`HOST_PROPERTY_KEYS = ("_georef",)` v `etl/db.py`), takže
   re-ETL kalibráciu nezmaže.
 
+**Dodatok 2026-10-20 - krok 4: z dokumentu na prvky v 3D (Samuel, bez nového D).** Samuel
+pomenoval krokom 4 preklik "ukáž, čoho sa týka tento výkres / táto strana" (bod 4 rozhodnutia);
+text strán a odstránenie starej sady zo zoznamu krokov vyššie idú po ňom. Podľa D-114 bez
+nového toolu:
+- Tooly: `style_in_3d` a `open_list` dostali filter `document` (id, object_ref alebo názov, napr.
+  `D.1.1.03`; odkaz na časť dokumentu len podľa id alebo presného object_ref) a `page`. Prvky sú
+  tie isté ako v `get_object(include=documents)` pri dokumente: `v_object_documents` aj zdedené cez
+  podlažie, zónu, skupinu a typ, do 3D len uzly s geometriou (asset, space, spatial_zone).
+  Kombinuje sa s ostatnými filtrami (AND). `show_in_3d` sa nemení (strop 100 prvkov na
+  zvýraznenie), jeho popis posiela na `style_in_3d`.
+- Veľký dokument necestuje v URL: lens nesie symbolické pravidlo `aim_document {id, page}` ako
+  zónu `aim_zone` (D-096) a klient si GUIDy stiahne z `/api/style-scope?document=<id>[&page=N]`
+  (strop mosta 5000). Skrytie a zobrazenie (`hide`/`show`) idú starou cestou s GUIDmi (strop 500).
+- `get_object` pri dokumente stránkuje `v_object_documents` (predtým `.limit(5000)` ticho orezal
+  na 1000 riadkov PostgREST, pôdorys podlažia ich má viac), vracia `by_page` (počet objektov na
+  stranu) a `in_3d` s presným volaním `style_in_3d`.
+- Fork: tlačidlo "Ukázať v 3D" v lište otvoreného PDF pošle `DOCUMENT_SHOW_3D {documentId, page}`
+  s čítanou stranou; host odpovie `APPLY_LENS` (replace, X-ray podľa D-105, štítok = meno
+  dokumentu). Strana bez vlastných prvkov (titulná strana, pôdorys bez odkazov na strany) ukáže
+  celý dokument. Viewer väzby dokumentov nedrží, rozhoduje graf AIM.
+
 ---
 
 ### D-105 - X-ray context z chatu: `style_in_3d action=xray`, drôtový model zatiaľ nie
@@ -5460,6 +5481,164 @@ miestnosť 1.10 = 6,796 x 3,221 m, pôdorys z meshu = Qto 21,699 m². DD02.05.04
 - Kóta merania vo vieweri: `ifc_measure` vracia jeden najbližší bod, kóta potrebuje oba body
   dvojice, prevod osí IFC (Z hore) do rámca renderera a novú správu mosta vo forku, ktorá zapíše
   meranie do upstream `measurementSlice`. Väčší kus, návrh v #77.
+- ~~Nositeľ svetlej šírky dverí (`AIM_Door.ClearWidth`?) potvrdí Samuel.~~ Rozhodnuté dodatkom nižšie:
+  svetlosť dverí sa meria z geometrie, psety sú len kontrola.
+
+**Dodatok (2026-10-20, druhá časť #77): svetlá šírka a výška dverí z geometrie.** Samuel (cez
+orchestrátora): svetlosť sa MERIA, `AIM_Door.ClearWidth` ani `OverallWidth` nie sú zdroj pravdy.
+- *Rozšírenie (D-114):* `ifc_measure` dostal `clear_opening=true` (a alebo `items`, max 50, napr. GUIDy
+  dverí z `ifc_query storey=1NP`) a voliteľné limity `min_width_m` / `min_height_m` od používateľa.
+  Výsledok na dvere: `width_m`, `height_m`, `width_min_m`, obálka so zárubňou, `result` pass/fail/unknown
+  s dôvodom; súhrn `check` s `style_pass` / `style_fail` rovno pre `style_in_3d`. Limity noriem v tooli nie sú.
+- *Algoritmus (`lib/engine/door-clear.ts`):* mesher dáva každé teleso reprezentácie zvlášť (zárubňa,
+  krídlo, sklo, kovanie, prah), `MeshElement.parts` si ich pamätá. Osi dverí z pôdorysu (obdĺžnik
+  s najmenšou plochou), z telies sa odstráni výplň otvoru: teleso zasiahnuté lúčom po hĺbke v strednej
+  časti otvoru (krídlo, sklo, posuvné panely), vnútorné nízke teleso (kľučka, madlo, paniková tyč) a
+  vnútorný prstenec okolo stredu (rám krídla so sklom). Ostane zárubňa, nadpražie, prah, prípadne portál
+  v tvare U (výťah). Šírka = lúče po šírke v mriežke výšok x hĺbok, najužšie miesto cez hĺbku (doraz),
+  medián výšok; výška = od prahu alebo spodku dverí po nadpražie. Karuselové dvere a dvere bez zárubne
+  vrátia dôvod namiesto čísla.
+- *Overenie na ASR* (súbor z verejného bucketu, etag `5bf4ca79...-2`, ten istý, ktorý číta konektor):
+  97 dverí za ~5 s vrátane tesselácie. Všetkých 90 dverí s `AIM_Door` má šírku zhodnú na mm. Výška:
+  53 zhodne, 29 o 3-4 mm nižšia (prah 4 mm, pset ho ignoruje), 8 výťahových o 50 mm vyššia (portál
+  2,15 m nad posuvnými panelmi 2,10 m). 6 presklených dverí (DD02.04.*, DD03.04.*) má v modeli len
+  kovanie, bez rámu a krídla, a nemá ani `AIM_Door` -> unknown s dôvodom; karuselové DD01.08.0001
+  -> unknown. Konektorom: `ifc_query storey=1NP where AIM_Door.ClearWidth < 800` = 12 dverí.
+- *Zavrhnuté:* svetlosť z `IfcOpeningElement` (to je stavebný otvor 900 x 2300 pre DD02.05.04, nie
+  svetlosť zárubne 800 x 2100); svetlosť z krídla (pri dorazovej zárubni je krídlo širšie ako
+  priechod, výťah má viac panelov); nový tool (D-114, ide to parametrom `ifc_measure`).
+- *Hranice:* krídlo otvorené o 90° a kľučka sa od šírky neodpočítavajú; dvere z jedného telesa
+  (zárubňa aj krídlo v jednom telese) sa nedajú rozdeliť a vrátia dôvod.
+
+### D-121 - Najkratšia a úniková cesta: `ifc_measure route` nad hranicami priestorov zo súboru
+**Status:** rozhodnuté (2026-10-20, Samuel v #76), číslo pridelené v registri #60. Nadväzuje na D-112 (meranie
+z geometrie), D-114 (najprv napasuj) a D-086 (úprava IFC receptom v OCB).
+
+**Kontext:** "Aká je najkratšia pochôdzna cesta z týchto dverí k tamtým?" a "aká dlhá je úniková cesta z
+miestnosti?" konektor nevedel. Triáž v #76 navrhla graf miestností a dverí a postavila dve otázky: dolný
+odhad alebo pochôdzna sieť (navmesh) a odkiaľ vziať väzbu dvere - miestnosť.
+
+**Rozhodnutie (Samuel, 20. 10.):**
+1. **Dĺžka = DOLNÝ ODHAD:** priamky v pôdoryse cez miestnosti medzi dverami (štart a cieľ v strede prvku,
+   miestnosti alebo dverí), schodisko = dĺžka ramien (priemet dlhšej strany a prevýšenie). Nábytok, tvar L,
+   šírku priechodu ani zámky nezohľadní a výstup to hovorí (`length_kind`, `note`). Navmesh nie.
+2. **Graf zo súboru, štandardne IFC:** dvere a miestnosť spája `IfcRelSpaceBoundary` (RelatingSpace =
+   IfcSpace, RelatedBuildingElement = IfcDoor; dvere medzi dvoma miestnosťami = dve väzby). Chýbajúce väzby
+   doplní recept v OCB (`recepty/ASR/v078-hranice-priestorov.py`, revízia v078 nad v077), nie tool.
+3. **Tool:** `ifc_measure` dostane `route` = `shortest` (a -> b) | `escape` (a -> najbližší východ). Výstup:
+   `length_m`, poradie miestností, dverí a schodísk (`steps` so `segment_m`), `storey_changes`, ďalšie
+   východy (`other_exits`), `show_in_3d` trasy a súhrn grafu. Modul `lib/engine/route.ts`.
+4. **Východ** = dvere s `Pset_DoorCommon.IsExternal` alebo s jedinou hranicou `EXTERNAL`, len na najnižšom
+   podlaží, ktoré také dvere má (terén). Vonkajšie dvere vyššie (strecha, terasa ASR DD04.06.01) sa vypíšu
+   (`upper_external_doors_not_exits`), za cieľ úniku sa neberú.
+5. **Podlažia spája schodisko** (`IfcStair`, nie rebrík): spodok = miestnosť jeho podlažia, v ktorej pôdoryse
+   leží stred schodiska, vrch = taká miestnosť na podlaží nad ním (inak najväčší prekryv obálok). Výťahy v
+   grafe nie sú (pri úniku sa nepoužívajú).
+6. **Limity dĺžok podľa noriem (STN 73 0802) tool neposudzuje**, patria do knižnice IDS s klauzulou.
+
+**Zistenie na ASR v76 (zverejnená):** hranice 1. úrovne v súbore už sú (720, 151 pri 93 dverách z 97, Revit
+export); triáž v #76 robila staršiu revíziu. Schodiskový priestor 2NP (2.20) existuje, IfcSpace netreba
+dopĺňať. Chýba ale 12 väzieb, hlavne CHÚC 1.06 - vonkajšie dvere DD01.06.08 a 1.06 - lobby (DD01.02.03),
+takže z 2NP až 4NP na v76 **nevedie úniková cesta** (tool vráti chybu s počtom dosiahnuteľných miestností).
+Recept v078 z geometrie (bod 0,6 m pred a za krídlom) pridá 12 väzieb a opraví 12 príznakov
+`InternalOrExternalBoundary` (dvere medzi dvoma miestnosťami označené EXTERNAL, vonkajšie DD04.06.01 INTERNAL);
+druhý beh nič nemení, GlobalId existujúcich sa nemenia, počty tried +12 `IfcRelSpaceBoundary1stLevel`.
+
+**Overenie na lokálnom v078:** úniková cesta z 2.01 33,0 m (2.13, 2.20, schodisko SC01.0001, 1.23, CHÚC 1.06,
+DD01.06.08), z 4.01 52,8 m (tri schodiská), z 1.05 11,9 m; najkratšia 2.01 -> 1.05 29,7 m. Prvé volanie
+s tesseláciou ASR 4,8 s, ďalšie okolo 30 ms.
+
+**Zavrhnuté rozšírenie: nový tool `shortest_path` - prečo nie:** štart a cieľ sa zadávajú ako pri meraní
+(a, b), výsledok je dĺžka z geometrie a tool zdieľa tesseláciu modelu s `ifc_measure`; rozlišovací parameter
+`route` stačí (D-114, D-115). `ifc_relations` s `recursive` (D-110) prechádza vzťahy bez dĺžok a jeho výstup
+sú riadky vzťahov, nie trasa.
+
+**Zavrhnuté:**
+- *Väzby dvere - miestnosť len z geometrie v toole:* výsledok by nebol v súbore, viewer ani IDS by ho nevideli;
+  Samuel chce štandardné IFC väzby (geometriu používa len recept, raz).
+- *Výťah v únikovej ceste:* pri požiari sa nepoužíva; najkratšia cesta výťahom by potrebovala väzbu kabíny
+  na podlažia, ktorú model nemá.
+
+**Otvorené:** dvere DD02.05.14 majú navyše hranicu s 2.02 (geometria vidí len 2.01 | 2.10), recept ju nemaže;
+DD04.07.02 (vstup do akustickej zásteny na streche) nemá miestnosť ani z jednej strany. Čiara trasy vo vieweri
+(nie len zvýraznenie prvkov) potrebuje správu mosta vo forku.
+
+**Dodatok 2026-10-20 (Samuel cez orchestrátora):** 12 opráv `InternalOrExternalBoundary` áno; navyše hranica
+DD02.05.14 - 2.02 sa v receptoch odoberá (pravidlo: väzba dverí s miestnosťou, ktorú geometria nevidí na žiadnej
+strane, keď dvere majú obe strany v iných miestnostiach; viac ako 1 prípad = len výpis); dvere na strechu nie sú
+východ. **Otočné (karuselové) dvere nie sú únikový východ:** tool vylúči dvere s `OperationType` REVOLVING*
+(výskyt, inak typ) a vypíše ich v `revolving_doors_not_exits`; priechodné ostávajú. V ASR v76 má typ DD01.08
+"Karuselové dvere" chybne DOUBLE_SWING_RIGHT, recept v078 ho opraví na REVOLVING.
+
+---
+
+### D-124 - Kóta vo vieweri: `ifc_measure show` cez nástroj Measure forku
+**Status:** rozhodnuté (2026-10-20, Samuel cez orchestrátora), číslo pridelené v registri #60. Nadväzuje na
+D-112 (meranie z geometrie), D-098 (most volá existujúce funkcie viewera) a D-114 (najprv napasuj).
+
+**Kontext:** `ifc_measure` vracal svetlú vzdialenosť a rozmery len ako čísla; vo vieweri sa dali ukázať len
+prvky, nie čiara, medzi ktorou sa meralo.
+
+**Rozhodnutie:**
+1. **Fork nekreslí nič nové.** Nový príkaz mosta `MEASURE_SHOW { segments: [{ a, b }], keep? }` (body
+   v IFC svete, Z hore, m; najviac 12) vloží úseky do upstream nástroja Measure ako hotové merania, tou istou
+   cestou ako dva kliky (`addMeasurePoint` + `completeMeasurement`). Kreslí ich `MeasurementSceneLayer`
+   s jednotkami viewera aj bez otvoreného nástroja a používateľ ich vymaže ako vlastné. Prevod IFC svet ->
+   render rámec je ten istý ako pri póze kamery od hosta (`ifcPointToRender`, `bcfWorldOffset`). Kóty od
+   hosta si fork pamätá: ďalší príkaz bez `keep` ich nahradí, merania používateľa nechá.
+2. **`ifc_measure` (`lib/engine/measure-dimension.ts`):** pri a + b vracia `closest_points` (konce najkratšej
+   úsečky v IFC svete). Clash engine dáva len stred úsečky, konce sú najbližšie body každého meshu k nemu (pre
+   dvojicu s minimom presne tie isté body). `show=true` pošle kótu do živého viewera: a + b = táto úsečka,
+   len a = tri hrany obálky X, Y, Z. Pri prieniku a dotyku nie je čo kótovať.
+3. **Rámec meshu:** headless tesselácia si pamätá posun do IFC sveta z `coordinateInfo`
+   (`renderFrameWorldOffset`), aby body sedeli aj pri modeli s RTC posunom (ASR v76 má posun 0).
+4. Akcie z nástrojov motora idú do viewera tou istou cestou ako akcie DB tools (`deliverActions` v MCP route,
+   s potvrdením `APPLIED`).
+
+**Zavrhnuté rozšírenie: nový tool `show_dimension` - prečo nie:** body počíta `ifc_measure` z tých istých
+meshov a jeho výsledok je to, čo sa má ukázať; rozlišovací parameter `show` stačí (D-114).
+
+**Zavrhnuté:**
+- *Vlastný renderer kót vo forku:* upstream Measure už kreslí, popisuje a maže merania (D-098).
+- *Úsečka zo stredu `closest_point` a obálky clash výsledku:* obálka úsečky neurčuje, ktorá uhlopriečka je
+  úsečka.
+### D-120 - Rez: vzhľad reznej plochy z chatu (šrafa, výplň) a vynechanie prvkov z rezu
+
+**Dátum:** 2026-10-20 · **Stav:** časť 1 prijatá (implementovaná), časť 2 čaká na Samuela · **Súvisí:** D-083, D-085, D-092, D-094, D-098, D-114 · **Issues:** #138, #139 · **PR:** Menezeris/ifc-lite (fork), AIMviewer (tento)
+
+**Kontext:** pri reze nad podlažím viewer kreslí rezné plochy so šrafou a žiadny tool ju nevie
+vypnúť; šrafa prekrýva ofarbenie Lens (miestnosti Retail 1/2) a znižuje čitateľnosť (#138).
+Druhá potreba (#139): ukázať celý objem ofarbených miestností (IfcSpace), kým ostatné konštrukcie
+ostanú prerezané.
+
+**Najbližšie tooly (D-114):** `set_section` (rez, widget; vzhľad plochy neovláda), `style_in_3d`
+(farba prvkov, nie rezná plocha, ktorú kreslí renderer rezu), `set_view_mode` (len režim).
+Obe potreby sú parameter `set_section`, nie nový tool.
+
+**Rozhodnutie:**
+1. **Vzhľad reznej plochy (#138):** `set_section` dostane `cap_style` = `hatch | solid | none` a
+   `cap_color` (`#rrggbb`, samotná farba = plná výplň). Platí pri `action=set` aj pri
+   `action=widget` (aktívny rez bez zmeny polohy). Op `section_cap:<cap>[~c=<hex>]:`
+   (`lib/viewer-section-cap.ts`), bridge `SET_SECTION_CAP` vo forku (`aim/sectionCap.ts`).
+   Podľa D-098 nič nové: fork volá tie isté setery store ako tlačidlo Fill slice a popover Cap
+   (`setSectionShowCap`, `setSectionCapStyle`). Preto voľba platí pre všetky roviny a viewer si ju
+   pamätá v prehliadači ako po kliknutí; `hatch` vráti šrafu, ktorá bola pred plnou výplňou.
+   `none` skryje plochy, obrysové čiary rezu ostávajú.
+2. **Vynechanie prvkov z rezu (#139):** fork ani upstream ifc-lite to nevedia. Rovina rezu sa v
+   shaderi uplatňuje pre celé dávky geometrie (bit `flags.y` v uniformách, `packages/renderer`),
+   nie po prvkoch, takže to nejde mostom ani v `apps/viewer/src/aim/`. Riešenie by bolo per-entity
+   tabuľka "nereže sa" v rendereri (vzor: tabuľka farieb #6076) s testom v hlavnom shaderi, v
+   tieňoch a pri výpočte rezných plôch, a parameter `set_section` (napr. `exclude_ids_or_refs`,
+   `exclude_ifc_types`). To je zmena upstream balíka forku (plné CI, odchýlka pri každej
+   synchronizácii, ponuka upstreamu). Čaká na Samuelovo rozhodnutie v #139.
+
+**Zavrhnuté:**
+- *Nový tool `set_section_style`:* to isté ako parameter `set_section` (D-114).
+- *Vzhľad plochy len pre jeden rez:* store forku ho drží ako jednu voľbu pre všetky roviny
+  (#7545 upstream); vlastná per-rez kópia by bola nová funkcia nad rámec D-098.
+- *Ukladanie vzhľadu do uloženého pohľadu (D-117):* zatiaľ nie; dá sa doplniť, keď sa D-117 zlúči.
+
+**Poradie zlúčenia:** najprv fork, potom AIMviewer. Starší viewer `SET_SECTION_CAP` ticho ignoruje.
 - Nositeľ svetlej šírky dverí (`AIM_Door.ClearWidth`?) potvrdí Samuel.
 
 ---

@@ -168,24 +168,46 @@ export function engineToolDefinitions(): ToolDefinition[] {
     {
       name: "ifc_measure",
       description:
-        "IFC MOTOR: meranie z geometrie (nie z Qto). a + b = svetlá vzdialenosť povrchov dvoch prvkov (aj ASR " +
+        "IFC MOTOR: meranie z geometrie (nie z Qto). clear_opening + items (dvere z ifc_query, max 50) = svetlá " +
+        "šírka a výška dverí medzi zárubňami a od prahu po nadpražie z geometrie, nie z psetov (OverallWidth je so " +
+        "zárubňou); s min_width_m / min_height_m aj pass/fail a check.style_pass / style_fail pre style_in_3d. " +
+        "KÓTA vo vieweri: show=true (a + b čiara medzi najbližšími bodmi s dĺžkou, len a hrany obálky X, Y, Z). " +
+        "a + b = svetlá vzdialenosť povrchov dvoch prvkov (aj ASR " +
         "voči VZT; záporná = prienik), vzdialenosť stredov, medzera obálok po osiach X/Y/Z a vodorovne, " +
         "a_above_b_m = výška spodku a nad vrchom b (napr. klapka nad doskou: b = doska). \"Od steny k stene\" = " +
         "jedno volanie a + b (dve steny), clear_distance_m je svetlá vzdialenosť; šírka obdĺžnikovej miestnosti " +
         "alebo chodby = a = miestnosť (IfcSpace), bbox_m x/y. Len a alebo items = " +
         "rozmery obálky, povrch, pôdorys a objem z meshu, porovnané s Qto zo súboru (vs_qto, mismatch nad 5 %), " +
-        "pri viacerých aj súčet. Objem množiny podľa filtra: GUIDy z ifc_query do items (max 50). Prvé volanie " +
+        "pri viacerých aj súčet. Objem množiny podľa filtra: GUIDy z ifc_query do items (max 50). CESTA PO BUDOVE " +
+        "(route): shortest = najkratšia cesta z a do b (miestnosť, dvere alebo prvok), escape = úniková cesta z a " +
+        "k najbližším vonkajším dverám na teréne; dĺžka v m je DOLNÝ ODHAD (priamky v pôdoryse cez miestnosti a " +
+        "dvere zo súboru, IfcRelSpaceBoundary), poradie miestností a dverí, zmeny podlaží, show_in_3d. Prvé volanie " +
         "nad modelom ho tesseluje (ASR ~4 s), ďalšie sú rýchle.",
       inputSchema: {
         type: "object",
         properties: {
-          a: { type: "string", description: "Prvý prvok: object_ref, objects.id alebo IFC GlobalId" },
-          b: { type: "string", description: "Druhý prvok na vzdialenosť" },
+          a: { type: "string", description: "Prvý prvok: object_ref, objects.id alebo IFC GlobalId; pri route štart" },
+          b: { type: "string", description: "Druhý prvok na vzdialenosť; pri route=shortest cieľ" },
+          route: {
+            type: "string",
+            enum: ["shortest", "escape"],
+            description: "Cesta po budove (dolný odhad): shortest z a do b, escape z a k najbližšiemu východu",
+          },
           items: { type: "array", items: { type: "string" }, description: "Prvky na rozmery a výmery (max 50)" },
           model: { ...model, description: "Voliteľne model; inak sa prvky hľadajú vo všetkých" },
           qto: {
             type: "boolean",
             description: "Len plocha a objem z Qto v súbore (a alebo items), bez tesselácie geometrie - rýchle",
+          },
+          clear_opening: {
+            type: "boolean",
+            description: "Svetlá šírka a výška dverí (IfcDoor, a alebo items) z geometrie zárubne, bez krídla a kovania",
+          },
+          min_width_m: { type: "number", description: "clear_opening: limit svetlej šírky v m od používateľa -> pass/fail" },
+          min_height_m: { type: "number", description: "clear_opening: limit svetlej výšky v m od používateľa -> pass/fail" },
+          show: {
+            type: "boolean",
+            description: "true = kóta v živom vieweri (nástroj Measure); predošlé kóty od Claude nahradí, vlastné merania nie",
           },
         },
       },

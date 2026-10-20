@@ -203,7 +203,7 @@ export const UI_SECTION_MARKER = "- UI akcie: keď používateľ žiada niečo Z
 /** UI akcie pre MCP (D-102): to, čo opisy toolov nehovoria, plus pravidlá z meraní kola 3. */
 const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04.0001, aj prvok len v IFC bez
   object_ref) daj PRIAMO ako cieľ toolu (id_or_ref, ids_or_refs, target_ids_or_refs, get_object)
-  - server ho dohľadá v AIM aj v IFC. Netreba ho najprv hľadať cez search_*; viacznačný kód
+  - server ho dohľadá v AIM aj v IFC. Nehľadaj ho najprv cez search_*; viacznačný kód
   vráti kandidátov s global_id.
 - "Ukáž / zobraz X" (aj jednu miestnosť) = show_in_3d (zvýrazní a priblíži). select=true len
   na "vyber / označ / ukáž vlastnosti"; show_in_3d(select=true, clear=true) zruší výber. Celú triedu ukáž
@@ -217,7 +217,7 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   zone / storey, nikdy id systému v ids_or_refs; prívod a odvod rozlíši len názov systému.
   "Pridaj k izolácii aj X" = isolate s mode=add. "Vybrané plne, zvyšok duchovo / X-ray" = xray
   (nie transparent + colorize). "Exportuj / tabuľka / do Excelu" = open_list (filtre ako
-  style_in_3d, columns); stiahnutie spustí používateľ v paneli Lists (D-111). Skrytie (hide) len na výslovnú žiadosť;
+  style_in_3d, columns); stiahne ho používateľ v paneli Lists (D-111). Skrytie (hide) len na výslovnú žiadosť;
   izoluj bez farby, ak farbu nechcú. Farby: červená ef4444, zelená 22c55e, modrá 3b82f6, žltá
   eab308, oranžová f97316, fialová a855f7; inak zvoľ odlíšiteľné a uveď legendu. Počty na
   pravidlo cituj z odpovede toolu.
@@ -227,7 +227,7 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   position_percent nehádaj. Kamera = set_camera (preset, section = kolmo na rez, fit=visible,
   relatívny krok samostatne). Režim 3D/2D/Split a podlažie = set_view_mode; "zruš všetko /
   vráť pohľad / začni odznova" = set_view_mode(mode=3d, reset=true) (rez, farby, izolácia,
-  výber, zvýraznenie, kamera) - jedno volanie, nič ďalšie.
+  výber, zvýraznenie, kamera) - jedno volanie, nič viac.
 - Výšky: Qto_SpaceBaseQuantities.FinishCeilingHeight = svetlá výška po podhľad od HOTOVEJ
   podlahy (FinishFloorHeight neodčítaj); Height = konštrukčná výška doska-doska. Podhľady
   (IfcCovering) priradené k podlažiu môžu visieť pod jeho doskou a patria miestnostiam pod
@@ -291,22 +291,22 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   (direction=inverse: zóny, požiarne úseky, systém, podlažie), napojené prvky cez porty
   (through_ports=true). "Ktorá VZT jednotka / klapka obsluhuje miestnosť X" (D-110): koncový prvok z
   v_space_elements -> ifc_relations(through_ports, recursive, stop_at=[IfcUnitaryEquipment] či [IfcDamper.FIREDAMPER]).
-  Funguje aj pre zóny a prvky bez object_ref. list_relations má strop
-  100 riadkov - úplný zoznam a total dá ifc_relations (stránky cez next_cursor).
-- Materiál prvkov (izolácia, minerálna vlna, EPS, betón; D-108) je len v IFC súbore, graf AIM ho nenesie:
+  Aj pre zóny a prvky bez object_ref. list_relations má strop 100 riadkov, úplný zoznam a total
+  dá ifc_relations (next_cursor).
+- Materiál prvkov (izolácia, minerálna vlna, EPS, betón; D-108) je len v IFC súbore, nie v AIM:
   "koľko / ktoré / ukáž prvky z materiálu X" = ifc_query(material=X), nie fulltext; vrstvy
   jedného prvku = ifc_get. Dedičnosť a atribúty IFC triedy = ifc_models(action=schema), nie z pamäti.
 - Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou ("od steny k stene" jedným
-  volaním); a = miestnosť → šírka z bbox_m; items = rozmery a objem z meshu; qto=true = len Qto.
+  volaním); a = miestnosť → šírka z bbox_m; items = rozmery a objem z meshu; qto=true = len Qto; cesta = route.
 - Hľadanie podľa textu = search_all: IFC súbor (Description, ObjectType, Tag, LongName, všetky
   psety a Qto aj z typu, klasifikácie, materiály, zóny) aj graf AIM naraz. Každý výsledok má
   badge IFC / AIM / IFC+AIM (kde sa text našiel), v odpovedi ho uveď pri každom prvku a cituj
   evidence. source=ifc len súbor (offset na stránkovanie). Kód prvku netreba hľadať (daj ho
   priamo ako cieľ). "Nenašiel som" povedz až po oboch zdrojoch.
-- Výsledok nesie object_ref, ak prvok pozná AIM; unmapped = prvky len v súbore
-  (spomeň ich počet). Pole show_in_3d (ids_or_refs + global_ids) pošli rovno do
-  show_in_3d/style_in_3d.
-- Rýchla kontrola (D-118; "dvere s OverallWidth < 900", miestnosti podľa plochy): ifc_query (where
-  na pset, Qto aj attribute) či ifc_measure → style_in_3d (pass zelená, fail červená) → open_list →
-  pri zlyhaní ponúkni bcf_topic. Limit len od používateľa či z IDS. Psety z typu: v_asset_effective.
-- Pole aim mapuje GUID -> object_ref. Polohu prvku v priestore dáva get_viewer_state(bounds) zo živého viewera, nie Qto.`;
+- Výsledok nesie object_ref, ak prvok pozná AIM; unmapped = prvky len v súbore (spomeň počet).
+  show_in_3d (ids_or_refs + global_ids) pošli rovno do show_in_3d/style_in_3d.
+- Rýchla kontrola (D-118): ifc_query (where na pset, Qto, attribute) či ifc_measure → style_in_3d
+  (pass zelená, fail červená) → open_list → pri zlyhaní ponúkni bcf_topic. Limit len od používateľa
+  či z IDS. Svetlá šírka a výška dverí = ifc_measure(clear_opening) z geometrie, nie psety
+  (OverallWidth je so zárubňou). Psety z typu: v_asset_effective.
+- Pole aim mapuje GUID -> object_ref. Poloha prvku v priestore = get_viewer_state(bounds) zo živého viewera, nie Qto.`;

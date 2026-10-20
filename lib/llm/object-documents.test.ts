@@ -11,11 +11,12 @@ vi.mock("server-only", () => ({}));
 type Row = Record<string, unknown>;
 const tables: Record<string, Row[]> = {};
 
-/** Minimálny PostgREST builder: eq / in / is / order / limit + count head. */
+/** Minimálny PostgREST builder: eq / in / is / order / limit / range + count head. */
 function builder(table: string) {
   const filters: ((r: Row) => boolean)[] = [];
   let head = false;
   let order: string | null = null;
+  let offset = 0;
   let limit = Infinity;
   const b = {
     select(_cols: string, opts?: { count?: string; head?: boolean }) {
@@ -35,7 +36,13 @@ function builder(table: string) {
       return b;
     },
     order(col: string) {
-      order = col;
+      // Prvé zoradenie rozhoduje; ďalšie (rozstrel pri stránkovaní) mock nepotrebuje.
+      order ??= col;
+      return b;
+    },
+    range(from: number, to: number) {
+      offset = from;
+      limit = to - from + 1;
       return b;
     },
     limit(n: number) {
@@ -45,7 +52,8 @@ function builder(table: string) {
     then(resolve: (v: { data: Row[] | null; error: null; count: number }) => unknown) {
       let rows = (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
       if (order) rows = [...rows].sort((a, z) => Number(a[order!]) - Number(z[order!]));
-      rows = rows.slice(0, limit);
+      // Ako PostgREST na Supabase: najviac 1000 riadkov v odpovedi bez ohľadu na limit.
+      rows = rows.slice(offset, offset + Math.min(limit, 1000));
       return Promise.resolve(resolve({ data: head ? null : rows, error: null, count: rows.length }));
     },
   };
@@ -127,6 +135,23 @@ describe("get_object include=documents (D-104)", () => {
     expect(out.by_holder).toEqual({ "zone: NJ - 3NP": 1, priamo: 1 });
   });
 
+  it("dokument so stranami: počty po stranách a návod na prvky v 3D (D-104 krok 4)", async () => {
+    const out = await run("OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB");
+    expect(out.by_page).toEqual({ "3": 1 });
+    expect(out.in_3d).toContain("document='OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB'");
+    expect(out.in_3d).toContain("page=");
+  });
+
+  it("dokument nad strop odpovede PostgREST: stránkuje, nič neoreže", async () => {
+    tables.v_object_documents = Array.from({ length: 2300 }, (_, i) => ({
+      object_id: `a${i}`, object_type: "asset", document_id: "d1", reference_id: null, page: null,
+      via: "floor", via_id: "f1", via_nearest_id: "f1", depth: 1,
+    }));
+    const out = await run("OCB_SO01_ASR_D-1-1-01_PODORYS-1NP");
+    expect(out.objects_total).toBe(2300);
+    expect(out.by_page).toBeUndefined();
+  });
+
   it("odkaz na stranu hľadá cez reference_id", async () => {
     const out = await run("OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB#page=3");
     expect(out.objects_total).toBe(1);
@@ -137,5 +162,52 @@ describe("get_object include=documents (D-104)", () => {
     const out = await run("ST01.20.0012", ["drawings"]);
     expect(out.documents[0]).toMatchObject({ document: "D.1.1.09 Výpis skladieb", page: 3 });
     expect(out.drawings).toBeUndefined();
+  });
+});
+
+describe("style_in_3d document (D-104 krok 4)", () => {
+  const decodeLens = (url: string) => {
+    const ops = decodeURIComponent(new URL(url, "http://x").searchParams.get("ops") ?? "");
+    const payload = ops.split(":")[2];
+    return JSON.parse(Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+  };
+
+  it("xray so stranou: symbolické pravidlo aim_document, GUIDy necestujú v URL", async () => {
+    const rt = new AskToolRuntime();
+    const res = await rt.exec("style_in_3d", { action: "xray", document: "D.1.1.09", page: 3 });
+    expect(res.isError).toBe(false);
+    expect(JSON.parse(res.content).groups[0]).toMatchObject({ document: "D.1.1.09 Výpis skladieb, s. 3" });
+    const wire = decodeLens((rt.actions[0] as { url: string }).url);
+    expect(wire.x).toBe(1);
+    expect(wire.r[0].g[0].rules).toEqual([{ kind: "aim_document", id: "d9", page: 3 }]);
+  });
+
+  it("odkaz na stranu podľa object_ref je ten odkaz, nie celý dokument", async () => {
+    const rt = new AskToolRuntime();
+    await rt.exec("style_in_3d", { action: "isolate", document: "OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB#page=3" });
+    expect(decodeLens((rt.actions[0] as { url: string }).url).r[0].g[0].rules).toEqual([{ kind: "aim_document", id: "r3" }]);
+  });
+
+  it("skrytie: prvky dokumentu z v_object_documents, len tie s geometriou", async () => {
+    tables.ifc_guid_history = [
+      { object_id: "sp", ifc_guid: "0SpaceGuid000000000001", source: "ifc:asr", valid_until: null },
+      { object_id: "np", ifc_guid: "0ZoneGuid0000000000001", source: "ifc:asr", valid_until: null },
+    ];
+    const rt = new AskToolRuntime();
+    const res = await rt.exec("style_in_3d", { action: "hide", document: "OCB_SO01_ASR_D-1-1-03_PODORYS-3NP" });
+    expect(JSON.parse(res.content)).toMatchObject({ ok: true, elements: 1, document: "D.1.1.03 Pôdorys 3NP" });
+    const ops = decodeURIComponent(new URL((rt.actions[0] as { url: string }).url, "http://x").searchParams.get("ops") ?? "");
+    expect(ops).toContain("0SpaceGuid000000000001");
+    expect(ops).not.toContain("0ZoneGuid0000000000001");
+  });
+
+  it("nejednoznačný dokument a strana bez dokumentu sú chyby vstupu", async () => {
+    const rt = new AskToolRuntime();
+    const amb = await rt.exec("style_in_3d", { action: "xray", document: "Pôdorys" });
+    expect(amb.isError).toBe(true);
+    expect(amb.content).toContain("nejednoznačný");
+    const noDoc = await rt.exec("style_in_3d", { action: "xray", zone: "NJ - 3NP", page: 2 });
+    expect(noDoc.isError).toBe(true);
+    expect(noDoc.content).toContain("spolu s document");
   });
 });
