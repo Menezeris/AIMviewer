@@ -1,0 +1,370 @@
+{
+ "ranAt": "2026-10-20T06:07:00Z",
+ "label": "arn1-po-D-115",
+ "region": "arn1",
+ "runner": "čerstvá Claude Code session (session_01KqUf4xHycfYbNYFVUwBcYa), main 8d76325 (27 toolov), dátové úlohy paralelne, viewer po jednej; headless viewer (SwiftShader, kamera na prvok sa nehýbe - stratené WebGPU zariadenie, viď základ)",
+ "tool_list": {
+  "tools": 27,
+  "tools_list_chars_live": 49169,
+  "instructions_chars_live": 14971,
+  "baseline": {
+   "tools": 52,
+   "definition_chars": 61617,
+   "instructions_chars": 14995
+  }
+ },
+ "results": [
+  {
+   "id": "D1-pocet-dveri",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "search_objects(mode=count)"
+   ],
+   "duration_ms": 7997,
+   "over_cap": false
+  },
+  {
+   "id": "D2-vzt-jednotky-kde",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "search_objects(mode=locate)"
+   ],
+   "duration_ms": 11375,
+   "over_cap": false
+  },
+  {
+   "id": "D3-pocet-miestnosti",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "search_objects(mode=count)"
+   ],
+   "duration_ms": 7243,
+   "over_cap": false
+  },
+  {
+   "id": "D4-podhlad-qto",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "get_object(include=details)",
+    "ifc_get"
+   ],
+   "duration_ms": 10950,
+   "over_cap": false,
+   "note": "3,05 m"
+  },
+  {
+   "id": "D5-vyustka-kde",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "get_object(include=details,path)"
+   ],
+   "duration_ms": 13262,
+   "over_cap": false
+  },
+  {
+   "id": "D6-nosne-steny",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_query(mode=values)"
+   ],
+   "duration_ms": 9757,
+   "over_cap": false
+  },
+  {
+   "id": "D7-kod-len-v-ifc",
+   "pass": true,
+   "calls": 5,
+   "tools": [
+    "get_object(include=path)",
+    "ifc_get",
+    "ifc_relations",
+    "get_object(SC01.0001, include=path)",
+    "show_in_3d"
+   ],
+   "duration_ms": 23789,
+   "over_cap": true,
+   "note": "prvok len v IFC: podlažie cez rodiča, show_in_3d nevyžiadané"
+  },
+  {
+   "id": "C1-poziarna-odolnost-dveri",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "aggregate_objects",
+    "query_view"
+   ],
+   "duration_ms": 17062,
+   "over_cap": true,
+   "note": "druhé volanie overovacie"
+  },
+  {
+   "id": "C2-mineralna-vlna",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_query(mode=count, material)"
+   ],
+   "duration_ms": 12520,
+   "over_cap": false,
+   "note": "základ 1, po kroku 1 11"
+  },
+  {
+   "id": "C3-vzt-potrubie-pocet",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_query(mode=count)"
+   ],
+   "duration_ms": 11866,
+   "over_cap": false
+  },
+  {
+   "id": "C4-revizia-asr",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_models(action=revisions)"
+   ],
+   "duration_ms": 12007,
+   "over_cap": false
+  },
+  {
+   "id": "C5-schema-jednotky-vzt",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_models(action=info)"
+   ],
+   "duration_ms": 6977,
+   "over_cap": false
+  },
+  {
+   "id": "C6-klasifikacia",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_models(action=classifications)"
+   ],
+   "duration_ms": 9734,
+   "over_cap": false
+  },
+  {
+   "id": "C7-dedenie-triedy",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_models(action=schema)"
+   ],
+   "duration_ms": 8256,
+   "over_cap": false,
+   "note": "z toolu"
+  },
+  {
+   "id": "C8-plocha-miestnosti",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "get_object(include=details)",
+    "ifc_get"
+   ],
+   "duration_ms": 10718,
+   "over_cap": false,
+   "note": "základ 5"
+  },
+  {
+   "id": "C9-jednotka-v-miestnosti",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "get_object(include=path)"
+   ],
+   "duration_ms": 11686,
+   "over_cap": false,
+   "note": "základ 2"
+  },
+  {
+   "id": "C10-typ-jednotky",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "get_object(include=details)"
+   ],
+   "duration_ms": 7512,
+   "over_cap": false,
+   "note": "základ 2"
+  },
+  {
+   "id": "C11-text-v-ifc",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "search_all(source=ifc)"
+   ],
+   "duration_ms": 12762,
+   "over_cap": false
+  },
+  {
+   "id": "C12-bcf-otvorene",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "bcf_topic_list(status=open)",
+    "bcf_topic_list"
+   ],
+   "duration_ms": 11631,
+   "over_cap": true,
+   "note": "po prázdnom výsledku ešte bez filtra"
+  },
+  {
+   "id": "C13-otvorene-poziadavky",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "feedback_status"
+   ],
+   "duration_ms": 11851,
+   "over_cap": false
+  },
+  {
+   "id": "V5-2d-podorys",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "set_view_mode(mode=2d)"
+   ],
+   "duration_ms": 7347,
+   "over_cap": false
+  },
+  {
+   "id": "V6-vyber-a-vlastnosti",
+   "pass": true,
+   "calls": 2,
+   "tools": [
+    "show_in_3d(select=true, panel_tab=ifc)",
+    "ifc_get"
+   ],
+   "duration_ms": 12629,
+   "over_cap": true,
+   "note": "ifc_get na vypísanie vlastností (opis to tak radí)"
+  },
+  {
+   "id": "V7-obalka-prvku",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "ifc_measure"
+   ],
+   "duration_ms": 15962,
+   "over_cap": false,
+   "note": "0,31 x 1,02 x 2,16 m"
+  },
+  {
+   "id": "V1-ukaz-miestnost",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "show_in_3d"
+   ],
+   "duration_ms": 6984,
+   "over_cap": false,
+   "note": "focus 3.02, bez select; kamera neoverená (headless)"
+  },
+  {
+   "id": "V2-izoluj-nosne",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "style_in_3d(action=isolate)"
+   ],
+   "duration_ms": 8939,
+   "over_cap": false,
+   "note": "185"
+  },
+  {
+   "id": "E2-pridaj-schodiska",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "style_in_3d(action=isolate, mode=add)"
+   ],
+   "duration_ms": 6321,
+   "over_cap": false,
+   "note": "185 -> 190"
+  },
+  {
+   "id": "E3-rez-pod-podhladom",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "set_section(relative_to=ceiling)"
+   ],
+   "duration_ms": 11864,
+   "over_cap": false,
+   "note": "12,20 m"
+  },
+  {
+   "id": "E1-rez-schodiskom",
+   "pass": true,
+   "calls": 4,
+   "tools": [
+    "set_section",
+    "style_in_3d",
+    "set_view_mode",
+    "set_camera(preset=section)"
+   ],
+   "duration_ms": 21913,
+   "over_cap": false
+  },
+  {
+   "id": "V4-zrus-vyber",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "show_in_3d(select=true, clear=true)"
+   ],
+   "duration_ms": 4655,
+   "over_cap": false
+  },
+  {
+   "id": "V3-zrus-vsetko",
+   "pass": true,
+   "calls": 1,
+   "tools": [
+    "set_view_mode(reset=true)"
+   ],
+   "duration_ms": 7404,
+   "over_cap": false,
+   "note": "základ 3; reset ruší aj výber a focus"
+  }
+ ],
+ "summary": {
+  "pass": "30/30",
+  "pass_baseline": "30/30",
+  "median_calls": 1.0,
+  "calls_total": 42,
+  "calls_total_baseline": 51,
+  "median_duration_ms": 11162,
+  "median_duration_ms_baseline": 12288,
+  "over_cap": [
+   "D7",
+   "C1",
+   "C12",
+   "V6"
+  ],
+  "over_cap_baseline": [
+   "D3",
+   "D7",
+   "C1",
+   "C8",
+   "V6",
+   "V3"
+  ],
+  "finding": "Po D-115 (52 -> 27 toolov) všetkých 30 úloh správne, volaní 51 -> 42, nad stropom 6 -> 4. Zlúčenie pomohlo tam, kde agent blúdil: C8 5 -> 2, C9 a C10 2 -> 1 (get_object include), V3 3 -> 1 (reset), D3 2 -> 1 (search_objects mode). Ostáva: D7 (prvok len v IFC, podlažie cez rodiča), overovacie volania C1 a C12, V6 ifc_get po výbere (opis to radí)."
+ }
+}
