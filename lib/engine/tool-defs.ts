@@ -41,9 +41,16 @@ export function engineToolDefinitions(): ToolDefinition[] {
     {
       name: "ifc_models",
       description:
-        "IFC MOTOR: zoznam IFC modelov federácie, ktoré vie motor čítať, a či sú načítané. " +
-        "Zavolaj, keď nevieš, ktorý model (ASR/VZT) obsahuje hľadané prvky.",
-      inputSchema: { type: "object", properties: {} },
+        "IFC MOTOR: zoznam IFC modelov federácie a ich aktuálna revízia (vNNN, dátum, autor, súhrn " +
+        "zmien, sha256, výsledok poistky: pridané/odobraté objekty). history = aj predchádzajúce revízie. " +
+        "Na \"je toto najnovšie VZT?\" a \"čo sa zmenilo\"; hlavičku súboru, jednotky a súradnicový " +
+        "systém dáva ifc_model_info. Zavolaj aj, keď nevieš, ktorý model (ASR/VZT) obsahuje hľadané prvky.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          history: { type: "number", description: "Koľko posledných revízií na model (1-20); bez neho len aktuálna" },
+        },
+      },
     },
     {
       name: "ifc_query",

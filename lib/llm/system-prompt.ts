@@ -299,6 +299,8 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   ifc_types=[IfcSpace], where NetFloorArea v pásme) → style_in_3d(colorize,
   ids_or_refs + global_ids). Filter where vidí len vlastnosti výskytu, nie zdedené
   z typu - na tie použi DB (v_asset_effective).
+- Verzia modelu (D-109): "je to najnovšie / čo sa zmenilo v ASR" = ifc_models (revízia vNNN, dátum,
+  autor, súhrn, history=N); súradnicový systém, jednotky a hlavička súboru = ifc_model_info.
 - Prevzaté tools balíka (D-087, parametre ako v balíku, model_id = ASR | VZT):
   ifc_model_info (schéma, jednotky, georeferencovanie), ifc_materials_list,
   ifc_classifications_list, ifc_model_audit (zdravie modelu), ifc_geometry_area a

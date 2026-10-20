@@ -319,6 +319,7 @@ naming convention finálny tvar) sú v DECISIONS §7.
 > Kompaktný reverse-chrono log. Detail ku každému bodu je v `DECISIONS.md` (D-0xx);
 > aktuálny stav je hore v sekcii „Stav".
 
+- **2026-10-19** - **D-109 (verzia modelu, #73):** `ifc_models` s revíziou a históriou (`lib/engine/revisions.ts`, `lib/data/model-revisions.ts`), veta v MCP inštrukciách. Overené: vitest 297/297 (tvar revízie, návrat, história, chyba DB), `tsc`, eslint.
 - **2026-10-19** - **D-108 (materiálové vrstvy, #69):** `ifc_get` s `materials`, nový `ifc_material_layers` (`lib/engine/materials.ts`, fixture `mini-materials.ts`), veta v MCP inštrukciách. Overené: vitest 299/299 (nové testy vrstvy z typu, zložky, súhrn, limit), `tsc`, eslint.
 - **2026-10-19** - **D-113 (panel vlastností z chatu, #71):** `select_in_3d` (`panel_tab`, `panel_section`, `highlight`, `lib/llm/select-panel.ts`), op `select` s panelom (`selectOp`), fork Menezeris/ifc-lite#75. Overené: vitest, `tsc`, eslint; fork 100/100, mutácie 6/6 OBSERVED, živo v iframe (IFC / Properties, zvýraznený riadok bez režimu úprav, Quantities, späť na AIM).
 - **2026-10-19** - **D-111 (zoznam z chatu, #70):** tool `open_list` (`lib/llm/list-tool.ts`, `list-columns.ts`), op `list` (`lib/viewer-list.ts`, zóna ako pri Lens), most `OPEN_LIST` vo forku Menezeris/ifc-lite#74. Overené: vitest 298/298, `tsc`, eslint; fork 15/15, mutácie 5/5 OBSERVED, živo v iframe (5 dverí, 3 stĺpce).

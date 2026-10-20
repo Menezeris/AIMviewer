@@ -1,4 +1,4 @@
-import { getIfcModels } from "../data/ifc-models";
+import { getIfcModels, modelKey } from "../data/ifc-models";
 
 import { cacheSnapshot, getStore, type EngineModelSource } from "./cache";
 import { idsSources, loadIds } from "./ids-sources";
@@ -6,6 +6,7 @@ import { execPassthroughTool, isPassthroughTool } from "./passthrough";
 import { joinToAim, type GuidLookup } from "./join";
 import { ifcMaterialLayers } from "./materials";
 import { ifcRelations } from "./relations";
+import { revisionsFor, type ModelRevisionRow, type RevisionSource } from "./revisions";
 import {
   SEARCH_FIELDS,
   exactNameHits,
@@ -42,6 +43,8 @@ export interface EngineDeps {
   resolveTargets: (targets: string[]) => Promise<Map<string, string>>;
   env?: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
+  /** Revízie modelov z DB (D-109); bez nej `ifc_models` revíziu nevracia. */
+  revisions?: RevisionSource;
 }
 
 export interface EngineExecution {
@@ -155,13 +158,35 @@ function envelope(base: Record<string, unknown>): string {
   return text.slice(0, MAX_RESULT_CHARS) + `... [orezané, ${text.length} znakov - zúž dotaz alebo limit]`;
 }
 
-async function ifcModels(deps: EngineDeps): Promise<string> {
+async function ifcModels(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
   const loaded = new Map(cacheSnapshot().map((c) => [c.id, c]));
+  const sources = (deps.sources ?? getIfcModels)();
+  const history = input.history === undefined ? 0 : clamp(input.history, 1, 20, 5);
+  // Kľúč revízie = meno súboru v buckete (ASR.ifc -> ASR), nie id modelu (D-086).
+  const keyOf = (m: { id: string; url: string }) => modelKey(m.url) ?? m.id;
+  let rows: ModelRevisionRow[] = [];
+  let revisionError: string | undefined;
+  if (deps.revisions) {
+    try {
+      rows = await deps.revisions(sources.map(keyOf), Math.max(history, 1));
+    } catch (err) {
+      revisionError = err instanceof Error ? err.message : String(err);
+    }
+  }
   return envelope({
-    models: (deps.sources ?? getIfcModels)().map((m) => {
+    models: sources.map((m) => {
       const c = loaded.get(m.id);
-      return { model: m.id, label: m.label, loaded: Boolean(c), ...(c ? { size: c.size, etag: c.etag } : {}) };
+      const rev = deps.revisions && !revisionError ? revisionsFor(keyOf(m), rows, history) : null;
+      return {
+        model: m.id,
+        label: m.label,
+        loaded: Boolean(c),
+        ...(c ? { size: c.size, etag: c.etag } : {}),
+        ...(rev ? { revision: rev.current, ...(rev.history ? { history: rev.history } : {}) } : {}),
+      };
     }),
+    loaded_means: "IFC motor na serveri má súbor v cache; nesúvisí s tým, či ho ukazuje viewer.",
+    ...(revisionError ? { revision_error: revisionError } : {}),
     ids_sources: idsSources(deps.env).map((s) => s.id),
   });
 }
@@ -498,7 +523,7 @@ export async function execEngineTool(
     let content: string;
     switch (name) {
       case "ifc_models":
-        content = await ifcModels(deps);
+        content = await ifcModels(input, deps);
         break;
       case "ifc_query":
         content = await ifcQuery(input, deps);

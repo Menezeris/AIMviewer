@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-109 (verzia modelu v ifc_models, #73):** aktuálna revízia z `model_revisions` (vNNN, dátum, autor, súhrn, sha256, poistka), `history: N`, cesta k zoznamu zmien v OCB; `loaded` vysvetlené ako cache motora; CRS a hlavička ostávajú v `ifc_model_info`.
 - **2026-10-19** - **D-108 (materiálové vrstvy z IFC, #69):** `ifc_get` vracia materiály (vrstvy, hrúbky, kategórie, aj z typu), nový `ifc_material_layers` nájde prvky podľa materiálu alebo kategórie vrstvy so súhrnom podľa skladby a `show_in_3d`.
 - **2026-10-19** - **D-113 (panel vlastností z chatu, #71):** `select_in_3d` s `panel_tab`, `panel_section` a `highlight`; fork prepne záložku AIM | IFC, sekciu a zvýrazní vlastnosť cez upstream `pendingPropertyFocus` bez režimu úprav.
 - **2026-10-19** - **D-111 (zoznam z chatu, #70):** `open_list` s filtrami ako `style_in_3d` a stĺpcami otvorí builder panela Lists (fork `OPEN_LIST`, návrh zoznamu); Run a Export (CSV/XLSX/PDF) robí používateľ.
@@ -5043,3 +5044,30 @@ nemá (`material=` v selektore `query_entities` odmietne).
 - *Filter materiálu v selektore balíka:* balík ho zámerne odmieta ako nestratovo nepodporovaný.
 - *Mapovanie na kategórie (tepelná izolácia = EPS, XPS, MW...):* bez číselníka v knižnici by bolo
   domnienkou; ak bude treba, patrí do knižnice požiadaviek, nie do toolu.
+### D-109 - Verzia modelu v `ifc_models`: revízia z `model_revisions`, história
+**Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #73).
+Nadväzuje na D-084 (IFC motor), D-086 (revízie modelov), D-087, D-102 (menej toolov).
+
+**Kontext:** "Je toto najnovšie VZT?" konektor nevedel: `ifc_models` vracal len kód, štítok a
+`loaded`, ktoré Claude čítal ako "viewer model nemá" (v skutočnosti cache motora na serveri).
+Revízie modelov (číslo, základ, autor, dátum, sha256, recept, súhrn, výsledok poistky) sú od D-086
+v `model_revisions`, žiaden tool ich nečítal. Hlavičku súboru, jednotky a súradnicový systém už
+dáva `ifc_model_info` (prevzatý z balíka, D-087).
+
+**Rozhodnutie:**
+1. Bez nového toolu: `ifc_models` pri každom modeli vracia aktuálnu revíziu (`v075`, základ,
+   `published_at`, autor, súhrn, sha256, veľkosť, recept, poistka: počet objektov, pridané a
+   odobraté GUIDy s počtom, zmena počtu podľa tried) a cestu k úplnému zoznamu zmien v OCB
+   (`zmeny/<MODEL>/vNNN.json`, v DB nie je). `history: N` pridá posledných N revízií.
+2. Kľúč revízie je meno súboru v buckete (`ASR.ifc` -> `ASR`), nie id modelu. Aktuálna revízia sa
+   dočíta zvlášť, ak nie je medzi najnovšími (návrat cez `model_publish revert`).
+3. `loaded_means` v odpovedi vysvetľuje, že `loaded` je cache motora, nie stav viewera. Chyba DB
+   zoznam modelov nezhodí (`revision_error`).
+4. "Aký súradnicový systém / jednotky / kto súbor vytvoril" ostáva na `ifc_model_info` (veta v
+   inštrukciách).
+
+**Zavrhnuté:**
+- *Nový tool `get_model_info`:* zdvojil by `ifc_models` aj `ifc_model_info` a pridal definíciu, ktorú
+  D-102 škrtá.
+- *Diff prvkov medzi revíziami v tooli:* zmenené prvky (modify) nesie len zoznam zmien v OCB;
+  pridané a odobraté dáva poistka.
