@@ -4,7 +4,7 @@ import { MINI_BUILDING_BYTES, guid } from "./__fixtures__/mini-building";
 import { clearEngineCache } from "./cache";
 import type { AimRef } from "./join";
 import { normalizeStoreyLabel, resolveStorey } from "./storey";
-import { execEngineTool, type EngineDeps } from "./tools";
+import { attributeMatches, execEngineTool, type EngineDeps } from "./tools";
 
 const IDS_URL = "https://example.test/storey.ids";
 const STOREY_IDS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -83,6 +83,31 @@ describe("ifc_* tools (D-084 fáza 1)", () => {
       ],
     });
     expect(r.json.total).toBe(2);
+  });
+
+  it("ifc_query: podmienka na IFC atribút (D-118), aj s podmienkou na pset a v count", async () => {
+    const r = await run("ifc_query", {
+      model: "MINI",
+      ifc_types: ["IfcSpace"],
+      where: [{ attribute: "LongName", op: "contains", value: "kancel" }],
+    });
+    expect(r.isError).toBe(false);
+    expect(r.json.total).toBe(1);
+    expect(r.json.items[0].object_ref).toBe("1.01");
+    const mixed = await run("ifc_query", {
+      model: "MINI",
+      ifc_types: ["IfcSpace"],
+      where: [
+        { pset: "Qto_SpaceBaseQuantities", name: "NetFloorArea", op: ">", value: 5 },
+        { attribute: "LongName", op: "!=", value: "Sklad" },
+      ],
+    });
+    expect(mixed.json.items.map((i: { global_id: string }) => i.global_id).sort()).toEqual([guid("SPA"), guid("SPC")].sort());
+    const c = await run("ifc_query", { model: "MINI", mode: "count", ifc_types: ["IfcWall"], where: [{ attribute: "Tag", op: "=", value: "TAGA" }] });
+    expect(c.json.total).toBe(1);
+    const noType = await run("ifc_query", { model: "MINI", where: [{ attribute: "LongName", op: "exists" }] });
+    expect(noType.isError).toBe(true);
+    expect(noType.content).toContain("ifc_types");
   });
 
   it("ifc_query: podlažie podľa štítku AIM (1.NP = 1NP v modeli)", async () => {
@@ -219,5 +244,17 @@ describe("podlažia (D-049)", () => {
     expect(["3NP", "3.NP", "3. NP", "3np", "3NP_VZT"].map(normalizeStoreyLabel)).toEqual(Array(5).fill("3NP"));
     expect(resolveStorey("2NP", [{ globalId: "g1", name: "1NP" }, { globalId: "g2", name: "2.NP" }])).toBe("g2");
     expect(resolveStorey("9NP", [{ globalId: "g1", name: "1NP" }])).toBeNull();
+  });
+});
+
+describe("attributeMatches (D-118)", () => {
+  it("čísla číselne, text bez veľkosti písmen, prázdna hodnota neprejde porovnaním", () => {
+    expect(attributeMatches(900, { op: "<", value: 1000 })).toBe(true);
+    expect(attributeMatches(900, { op: "<", value: "900" })).toBe(false);
+    expect(attributeMatches("USERDEFINED", { op: "=", value: "userdefined" })).toBe(true);
+    expect(attributeMatches(undefined, { op: "<", value: 900 })).toBe(false);
+    expect(attributeMatches(undefined, { op: "!=", value: 900 })).toBe(true);
+    expect(attributeMatches("", { op: "exists" })).toBe(false);
+    expect(attributeMatches("Dvere", { op: ">", value: 5 })).toBe(false);
   });
 });
