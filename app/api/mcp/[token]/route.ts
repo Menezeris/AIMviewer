@@ -3,15 +3,13 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import { NextResponse, after } from "next/server";
 
 import { defaultBcfDeps } from "@/lib/bcf/runtime";
-import { BCF_TOOL_DEFINITIONS, BCF_TOOL_NAMES, execBcfTool } from "@/lib/bcf/tools";
-import { PROBE_TOOL } from "@/lib/engine/probe-def";
+import { BCF_TOOL_NAMES, execBcfTool } from "@/lib/bcf/tools";
 import { SEARCH_ALL_TOOL } from "@/lib/engine/search-all";
-import { ENGINE_TOOL_NAMES, engineToolDefinitions } from "@/lib/engine/tool-defs";
-import { FEEDBACK_TOOL_DEFINITIONS, FEEDBACK_TOOL_NAMES, execFeedbackTool } from "@/lib/feedback/tools";
+import { ENGINE_TOOL_NAMES } from "@/lib/engine/tool-defs";
+import { FEEDBACK_TOOL_NAMES, execFeedbackTool } from "@/lib/feedback/tools";
 import { broadcastLive, liveChannel } from "@/lib/live/broadcast";
 import { readBackSection } from "@/lib/live/section-readback";
 import {
-  VIEWER_QUERY_TOOL_DEFINITIONS,
   VIEWER_QUERY_TOOL_NAMES,
   execViewerQueryTool,
 } from "@/lib/live/viewer-query-tools";
@@ -19,8 +17,9 @@ import { lensCountsText } from "@/lib/live/lens-counts";
 import { ACK_TIMEOUT_MS, appliedText, notAppliedText } from "@/lib/live/applied-text";
 import { expectApplied } from "@/lib/live/warm-channel";
 import { mcpInstructions } from "@/lib/llm/system-prompt";
-import { AskToolRuntime, TOOL_DEFINITIONS } from "@/lib/llm/tools";
+import { AskToolRuntime } from "@/lib/llm/tools";
 import { callAction, writeCallLog } from "@/lib/mcp/call-log";
+import { mcpToolDefinitions } from "@/lib/mcp/tool-list";
 import {
   handleMcpPayload,
   parseErrorResponse,
@@ -187,14 +186,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   const deps: McpServerDeps = {
     serverInfo: { name: "aim-viewer", version: "1.0.0" },
     instructions: mcpInstructions(siteUrl(), ENGINE_ENABLED),
-    tools: [
-      ...TOOL_DEFINITIONS,
-      ...VIEWER_QUERY_TOOL_DEFINITIONS,
-      ...BCF_TOOL_DEFINITIONS,
-      ...FEEDBACK_TOOL_DEFINITIONS,
-      ...(ENGINE_ENABLED ? [SEARCH_ALL_TOOL, ...engineToolDefinitions()] : []),
-      ...(ENGINE_SPIKE ? [PROBE_TOOL] : []),
-    ],
+    tools: mcpToolDefinitions({ engine: ENGINE_ENABLED, spike: ENGINE_SPIKE }),
     callTool,
   };
   // D-100: Claude sa pripája (initialize / tools/list) -> modely motora sa načítajú vopred,

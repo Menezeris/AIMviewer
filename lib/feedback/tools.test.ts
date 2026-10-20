@@ -90,6 +90,13 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
     expect(d.start).toBe(true);
   });
 
+  it("návrh rozšíriť existujúci tool ide do issue pred návrhom nového (D-114)", () => {
+    const d = draftToolRequest({ ...toolArgs, proposal: { extend: "get_object: include=qto", name: "x" } }, NOW);
+    expect(d.body).toContain("- **Rozšíriť existujúci:** get_object: include=qto");
+    expect(d.body.indexOf("Rozšíriť existujúci")).toBeLessThan(d.body.indexOf("**Meno:**"));
+    expect(d.body).toContain("MCP-TOOLS.md");
+  });
+
   it("pripomienka spúšťa session len na požiadanie a má štítok druhu", () => {
     const d = draftFeedback({ kind: "wrong_data", title: "Plocha 0 m2", description: "x" }, NOW);
     expect(d.labels).toEqual(["mcp", "pripomienka", "data"]);

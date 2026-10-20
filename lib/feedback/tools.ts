@@ -72,7 +72,9 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
       "Zapíše POŽIADAVKU NA NOVÝ TOOL (GitHub issue) a hneď spustí Claude Code session, ktorá ho navrhne a " +
       "naprogramuje (D-090). Volaj LEN na výslovný pokyn používateľa ('zapíš to', 'založ issue'); sám to len " +
       "ponúkni, a to až po vyčerpaní existujúcich tools (query_view, search_everything, aggregate_objects, " +
-      "ifc_*...). Opíš potrebu, nie riešenie: čo chcel používateľ, čo si skúsil a prečo to nestačí. Rovnaká " +
+      "ifc_*...). Opíš potrebu, nie riešenie: čo chcel používateľ, čo si skúsil a prečo to nestačí. Ak by " +
+      "stačilo rozšíriť existujúci tool (nový parameter, akcia, pole vo výsledku), uveď ho v proposal.extend - " +
+      "rozšírenie má prednosť pred novým toolom (D-114). Rovnaká " +
       "požiadavka (rovnaký title alebo proposal.name) sa pripíše k otvorenému issue ako ďalší výskyt. Naraz " +
       "bežia najviac 3 sessions; ďalšie issues idú do fronty (queued=true) a spúšťa ich start_queued_session. " +
       PRIVACY,
@@ -91,12 +93,18 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
         tried_tools: {
           type: "array",
           items: { type: "string" },
-          description: "Skúšané volania a čo vrátili, napr. 'query_view v_space_elements: nemá stĺpec plochy'.",
+          description:
+            "Skúšané volania (konkrétny tool a parametre) a čo vrátili, napr. 'query_view v_space_elements: " +
+            "nemá stĺpec plochy'.",
         },
         proposal: {
           type: "object",
-          description: "Voliteľný návrh toolu; session ho môže zmeniť.",
+          description: "Voliteľný návrh; session ho môže zmeniť.",
           properties: {
+            extend: {
+              type: "string",
+              description: "Existujúci tool, ktorý by sa dal rozšíriť, a ako, napr. 'get_object: include=qto'.",
+            },
             name: { type: "string", description: "snake_case meno, napr. list_rooms_without_lighting" },
             description: { type: "string" },
             inputs: { type: "string", description: "Parametre a ich význam." },
@@ -326,7 +334,9 @@ interface Draft {
 const SESSION_NOTE =
   "## Pre session, ktorá to rieši\n" +
   "Postup je v skille `.claude/skills/mcp-poziadavka/SKILL.md` (D-090): najprv over, či to nejde " +
-  "existujúcim toolom alebo postupom (potom stačí úprava inštrukcií), potom záznam D-0xx, pri nástroji " +
+  "existujúcim toolom alebo postupom (potom stačí úprava inštrukcií); ak nie, skús rozšíriť existujúci " +
+  "tool z inventára `MCP-TOOLS.md` (parameter, akcia, pole vo výsledku) - nový tool až keď to nejde " +
+  "(D-114). Potom záznam D-0xx, pri nástroji " +
   "viewera alebo motora pravidlo D-087. Otázky na Samuela patria do session a sem ako komentár. Výsledok je " +
   "PR s `Closes #<číslo>`, nikdy merge.";
 
@@ -339,6 +349,7 @@ export function draftToolRequest(args: Record<string, unknown>, now: Date): Draf
   const area: Area = (AREAS as readonly string[]).includes(args.area as string) ? (args.area as Area) : "other";
   const p = typeof args.proposal === "object" && args.proposal !== null ? (args.proposal as Record<string, unknown>) : {};
   const proposal = {
+    extend: str(p.extend, MAX_TEXT, "proposal.extend"),
     name: slug(str(p.name, 80, "proposal.name")).replace(/-/g, "_"),
     description: str(p.description, MAX_TEXT, "proposal.description"),
     inputs: str(p.inputs, MAX_TEXT, "proposal.inputs"),
@@ -352,8 +363,9 @@ export function draftToolRequest(args: Record<string, unknown>, now: Date): Draf
     `## Prečo existujúce tools nestačia\n${why}`,
   ];
   if (tried.length) parts.push(`### Skúšané tools\n${bullets(tried)}`);
-  if (proposal.name || proposal.description || proposal.inputs || proposal.output) {
+  if (proposal.extend || proposal.name || proposal.description || proposal.inputs || proposal.output) {
     const rows = [
+      proposal.extend && `- **Rozšíriť existujúci:** ${proposal.extend}`,
       proposal.name && `- **Meno:** \`${proposal.name}\``,
       proposal.description && `- **Čo robí:** ${proposal.description}`,
       proposal.inputs && `- **Vstupy:** ${proposal.inputs}`,

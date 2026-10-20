@@ -38,22 +38,32 @@ sú v `AGENTS.md`, sekcia "Súbežné session"; tu je postup:
   rezervácie číslo nepoužívaj.
 
 ## 2. Over, či to naozaj chýba (najčastejší výsledok)
-Pred kódom si prečítaj `AGENTS.md`, prompt `lib/llm/system-prompt.ts` a zoznam tools
-(`lib/llm/tools.ts`, `lib/live/viewer-query-tools.ts`, `lib/engine/tool-defs.ts`,
-`lib/feedback/tools.ts`). Pri požiadavke na viewer over aj existujúce funkcie forku a originálu
-(D-098): store a `CameraCallbacks`, SDK, `@ifc-lite/mcp`, embed protokol, akcie UI (tlačidlá,
-ViewCube). Ak funkcia existuje, stačí ju sprístupniť cez most, nič nové nevymýšľaj. Potom rozhodni:
-- **Ide to existujúcimi tools** (zlý postup modelu) -> oprava je v `system-prompt.ts` alebo v
-  opise toolu, nie nový tool. Zmena LLM vrstvy = evaly (D-057), pozri krok 4.
-- **Chýbajú dáta** (model ich nenesie, ETL ich neberie) -> nový tool to nevyrieši. Napíš do
-  issue, ktoré dáta a odkiaľ by museli prísť (ETL, F13 úprava modelu, knižnica), a navrhni
-  postup. Kód len ak je to malé a jasné (napr. pole, ktoré ETL zahadzuje).
-- **Treba nový tool** -> pokračuj krokom 2.
+Pred kódom si prečítaj `AGENTS.md`, prompt `lib/llm/system-prompt.ts` a **inventár toolov
+`MCP-TOOLS.md`** (generovaný zo všetkých definícií, aj BCF, feedback a `ifc_*`). Pri požiadavke na
+viewer over aj existujúce funkcie forku a originálu (D-098): store a `CameraCallbacks`, SDK,
+`@ifc-lite/mcp`, embed protokol, akcie UI (tlačidlá, ViewCube). Ak funkcia existuje, stačí ju
+sprístupniť cez most, nič nové nevymýšľaj.
+
+V inventári nájdi 2-3 tooly najbližšie k potrebe a do plánu (krok 3) ich vypíš s tým, prečo
+(ne)stačia. Potom rozhodni v tomto poradí (**D-114**, prvé, čo sedí):
+1. **Ide to existujúcimi tools** (zlý postup modelu) -> oprava je v `system-prompt.ts` alebo v
+   opise toolu, nie nový tool. Zmena LLM vrstvy = evaly (D-057), pozri krok 5.
+2. **Chýbajú dáta** (model ich nenesie, ETL ich neberie) -> nový tool to nevyrieši. Napíš do
+   issue, ktoré dáta a odkiaľ by museli prísť (ETL, F13 úprava modelu, knižnica), a navrhni
+   postup. Kód len ak je to malé a jasné (napr. pole, ktoré ETL zahadzuje).
+3. **Rozšír existujúci tool** -> nový parameter alebo hodnota enumu (`action`, `mode`,
+   `include`...), prípadne pole vo výsledku. Toto je predvolená cesta pre novú schopnosť;
+   vzory: D-105 (`style_in_3d action=xray`), D-109 (`ifc_models` s revíziou), D-110
+   (`ifc_relations through_ports`), D-113 (`select_in_3d` panel). Pokračuj krokom 3.
+4. **Treba nový tool** -> len ak rozšírenie nejde (iný zdroj dát, iné anotácie čítanie/zápis,
+   schéma by sa nedala čítať). Záznam D-0xx má sekciu "Zavrhnuté rozšírenie: `<tool>` - prečo
+   nie" pre každý z najbližších toolov a nový riadok v `lib/mcp/tool-registry.json` schvaľuje
+   Samuel v issue (bez riadku test registra neprejde). Pokračuj krokom 3.
 
 ## 3. Plán a otázky
 - Napíš do issue komentár s plánom (5-10 riadkov): čo tool robí, vstupy, výstup, kde žije,
   ktoré rozhodnutia D-0xx sa ho týkajú, čo overíš. Ten istý text povedz v session.
-- **Kde tool žije:**
+- **Kde tool žije** (pri rozšírení: kde žije rozširovaný tool, `MCP-TOOLS.md` uvádza súbory):
   - dáta AIM v DB -> `lib/llm/tools.ts` (+ nová RPC len read-only `stable`, `set search_path`,
     whitelisty, `format('%I'/'%L')`, vzor `search_everything`/`aggregate_objects`, D-059/D-060);
   - viewer alebo IFC motor -> **D-087**: najprv tool z `@ifc-lite/mcp` 1:1, adaptér vo forku
@@ -73,6 +83,8 @@ ViewCube). Ak funkcia existuje, stačí ju sprístupniť cez most, nič nové ne
   predvolené read-only; zápis musí prepísať `readOnlyHint: false`.
 - Testy vitest vedľa kódu (vzor `lib/feedback/tools.test.ts`, `lib/mcp/server.test.ts`),
   `npx tsc --noEmit`, `npx eslint <zmenené súbory>`, `npx vitest run`.
+- Zmena opisu alebo parametrov toolu mení inventár: obnov ho
+  `npx vitest run lib/mcp/tool-registry.test.ts -u` a `MCP-TOOLS.md` commitni s kódom.
 - Zosúlaď `ROADMAP.md` (changelog), `SCHEMA.md` pri zmene DB, README pri novom env.
 
 ## 5. Evaly (D-057)
