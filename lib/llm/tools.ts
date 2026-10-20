@@ -452,7 +452,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "lens 'AIM chat' (pravidlo = skupina, legenda, počty; prvky mimo pravidiel sú stlmené); " +
       "ďalšie volania pridávajú pravidlá (mode=replace začne odznova), počty na pravidlo " +
       "vráti živý viewer v odpovedi. Farby podľa hodnoty (systémy, triedy, materiál, " +
-      "vlastnosť...) = color_by, viewer zvolí farby a vráti legendu. Farby určuje používateľ; " +
+      "vlastnosť...) = color_by, viewer zvolí farby a vráti legendu; filtre volania (ifc_type, storey...) " +
+      "obmedzia farby, legendu aj počty na tieto prvky, bez filtra pri izolácii len viditeľné. Legendu na celú " +
+      "plochu = action=legend (legend_size large/normal). Miestnosti (IfcSpace) a zóny sú vo vieweri predvolene " +
+      "skryté: farbenie či izolácia ich zapne sama, ručne show/hide s ifc_type=IfcSpace; v 2D pôdoryse sú " +
+      "ofarbené miestnosti vyplnené a popísané. Farby určuje používateľ; " +
       "keď ich nepovie, zvoľ dobre odlíšiteľné a povedz ich. " +
       "Efekty sa hromadia, kým ich nezruší show_all/reset_colors (reset_colors vypne aj " +
       "lens). Viac operácií = viac callov (pokojne v jednom kole).",
@@ -461,13 +465,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         action: {
           type: "string",
-          enum: ["colorize", "transparent", "hide", "show", "isolate", "xray", "show_all", "reset_colors"],
+          enum: ["colorize", "transparent", "hide", "show", "isolate", "xray", "show_all", "reset_colors", "legend"],
           description:
             "colorize=ofarbiť (vyžaduje color), transparent=priehľadne s farbou, hide=skryť, " +
             "show=znova zobraziť skryté, isolate=zobraziť LEN vybrané (ostatné skryť; bez color " +
             "ostanú v pôvodnom vzhľade, color len keď ho používateľ chce), xray=vybrané plné v pôvodnom " +
             "vzhľade a zvyšok modelu priesvitný (X-ray context, ako tlačidlo duch; filtre ako isolate), " +
-            "show_all=zrušiť skrývanie, izoláciu a X-ray, reset_colors=zrušiť ofarbenie a lens",
+            "show_all=zrušiť skrývanie, izoláciu a X-ray, reset_colors=zrušiť ofarbenie a lens, " +
+            "legend=len veľkosť legendy Lens (legend_size), bez filtrov",
         },
         mode: {
           type: "string",
@@ -481,6 +486,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "string",
           enum: ["ifc_type", "system", "zone", "material", "model", "classification", "property", "attribute"],
           description: "Farby podľa hodnoty (action=colorize, bez color a groups): každá hodnota iná farba, legenda vo vieweri",
+        },
+        legend_size: {
+          type: "string",
+          enum: ["large", "normal"],
+          description:
+            "Legenda Lens: large = panel Lens ako veľké okno cez takmer celý viewer, legenda bez orezania " +
+            "('zväčši legendu na celú stranu'); normal = späť do lišty. S action=legend (predvolene large) " +
+            "alebo spolu s colorize/color_by",
         },
         color_by_key: {
           type: "string",
@@ -1824,10 +1837,11 @@ export class AskToolRuntime {
       xray: "X-ray",
       show_all: "zobraziť všetko",
       reset_colors: "zrušiť farby",
+      legend: "legenda",
     };
     if (!(action in opLabel)) {
       throw new Error(
-        "action musí byť colorize | transparent | hide | show | isolate | xray | show_all | reset_colors."
+        "action musí byť colorize | transparent | hide | show | isolate | xray | show_all | reset_colors | legend."
       );
     }
 

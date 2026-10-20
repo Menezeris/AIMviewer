@@ -681,6 +681,38 @@
       "expect": { "tools_called": ["ifc_measure"], "answer_matches": ["1[,.]43"] },
       "verified": false,
       "notes": "D-112 (issue #74): ifc_measure(a, b) cez ASR a VZT; clear_distance_m 1.433 na revízii z 2026-10-19 (lokálne meranie, nie eval beh)."
+    },
+    {
+      "id": "style-spaces-visible",
+      "category": "view",
+      "question": "Zobraz mi všetky prenajímateľné plochy.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-119 (issue #136): style_in_3d(isolate, zone=Nájomné priestory, ifc_type=IfcSpace); viewer miestnosti zapne sám, odpoveď nesmie radiť zapínať ich ručne."
+    },
+    {
+      "id": "style-color-by-scoped-legend",
+      "category": "view",
+      "question": "Izoluj steny na 1NP a zafarbi ich podľa materiálu. Aké farby majú?",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-119 (issue #135): color_by=material s ifc_type=IfcWall, storey=1NP; legenda len za steny 1NP (nie 49 materiálov celého modelu)."
+    },
+    {
+      "id": "style-legend-large",
+      "category": "view",
+      "question": "Vieš zväčšiť legendu, aby som ju videl na celú stranu?",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-119 (issue #135): style_in_3d(action=legend, legend_size=large)."
+    },
+    {
+      "id": "spaces-2d-plan-colors",
+      "category": "view",
+      "question": "Ukáž mi 1NP v 2D a ofarbi retail 1 modrou a retail 2 oranžovou.",
+      "expect": { "tools_called": ["set_view_mode", "style_in_3d"] },
+      "verified": false,
+      "notes": "D-119 (issue #137): set_view_mode(2d, 1NP) + style_in_3d(colorize, groups zone NJ - Retail 1/2, ifc_type=IfcSpace); fork miestnosti v 2D vyplní a popíše."
     }
   ]
 }

@@ -1,11 +1,11 @@
 import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { lensOp, type LensMode, type LensWire, type LensWireRule } from "@/lib/viewer-lens";
+import { LEGEND_SIZES, lensOp, type LegendSize, type LensMode, type LensWire, type LensWireRule } from "@/lib/viewer-lens";
 
 import type { AskAction } from "./actions";
 import { autoColorSpec, lensGroup, type ResolvedLensFilter } from "./lens-plan";
-import { StyleInputError, parseStyleGroups, type StyleFilter } from "./style-plan";
+import { StyleInputError, describeFilter, parseStyleGroups, pickFilter, type StyleFilter } from "./style-plan";
 import { ScopeResolver } from "./style-scope";
 
 /**
@@ -23,8 +23,16 @@ const IFC_GUID_RE = /^[0-9A-Za-z_$]{22}$/;
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 const strList = (v: unknown): string[] => (Array.isArray(v) ? (v as unknown[]).map(str).filter(Boolean) : []);
 
-/** Akcie `style_in_3d`, ktoré idú cez Lens (skrytie ostáva na kanáli skrývania viewera). */
-export const LENS_STYLE_ACTIONS = new Set(["colorize", "transparent", "isolate", "xray"]);
+/** Akcie `style_in_3d`, ktoré idú cez Lens (skrytie ostáva na kanáli skrývania viewera); `legend` = len panel legendy (D-119). */
+export const LENS_STYLE_ACTIONS = new Set(["colorize", "transparent", "isolate", "xray", "legend"]);
+
+/** `legend_size` toolu (D-119); bez hodnoty `undefined`, pri akcii legend predvolene `large`. */
+export function legendSize(raw: unknown): LegendSize | undefined {
+  const v = str(raw).toLowerCase();
+  if (!v) return undefined;
+  if (!(LEGEND_SIZES as readonly string[]).includes(v)) throw new StyleInputError(`legend_size musí byť ${LEGEND_SIZES.join(" alebo ")}.`);
+  return v as LegendSize;
+}
 
 export interface LensStyleOptions {
   /** IFC domény -> triedy (zdieľané so selektorom v `tools.ts`). */
@@ -121,19 +129,60 @@ export async function execLensStyle(
   const mode: LensMode = str(input.mode) === "replace" ? "replace" : "add";
   const rev = lensRev();
   const colorBy = str(input.color_by);
+  const legend = legendSize(input.legend_size);
+
+  // Len veľkosť legendy (D-119): panel Lens ako veľké okno alebo späť, lens ostane.
+  if (action === "legend") {
+    const size = legend ?? "large";
+    push({
+      type: "navigate",
+      url: `/ifc?ops=${encodeURIComponent(lensOp("add", { l: size }, rev))}&r=${Date.now().toString(36)}`,
+      label: size === "large" ? "3D: veľká legenda" : "3D: legenda späť do panelu",
+    });
+    return {
+      rev,
+      result: {
+        ok: true,
+        applied: action,
+        legend_size: size,
+        note:
+          size === "large"
+            ? "Panel Lens je veľké plávajúce okno, legenda v ňom nie je orezaná; legend_size=normal ho vráti do lišty."
+            : "Panel Lens je späť v lište.",
+      },
+    };
+  }
 
   if (colorBy) {
     if (action !== "colorize") throw new StyleInputError("color_by platí len s action=colorize.");
     if (Array.isArray(input.groups)) throw new StyleInputError("color_by a groups sa nekombinujú - farby určí hodnota.");
     const ac = autoColorSpec(colorBy, str(input.color_by_key));
+    // Filter volania obmedzí farby, legendu aj počty na tieto prvky (D-119, #135); bez filtra viewer
+    // pri izolácii alebo skrytí vezme viditeľné prvky.
+    const filter = pickFilter(input);
+    const info: GroupInfo = { label: describeFilter(filter) };
+    const scoped = Object.keys(filter).length > 0;
+    const s = scoped
+      ? [lensGroup(await resolveFilter(new ScopeResolver(getSupabaseAdmin()), filter, opts, info, { left: LENS_GUID_CAP }))]
+      : undefined;
     push({
       type: "navigate",
-      url: `/ifc?ops=${encodeURIComponent(lensOp("replace", { ac }, rev))}&r=${Date.now().toString(36)}`,
-      label: `3D: farby podľa ${colorBy}`,
+      url: `/ifc?ops=${encodeURIComponent(lensOp("replace", { ac, ...(s ? { s } : {}), ...(legend ? { l: legend } : {}) }, rev))}&r=${Date.now().toString(36)}`,
+      label: `3D: farby podľa ${colorBy}${scoped ? ` - ${info.label}` : ""}`,
     });
     return {
       rev,
-      result: { ok: true, applied: action, lens: "AIM chat", color_by: colorBy, auto_color: ac },
+      result: {
+        ok: true,
+        applied: action,
+        lens: "AIM chat",
+        color_by: colorBy,
+        auto_color: ac,
+        scope: scoped
+          ? { filter: info, note: "farby, legenda a počty len pre prvky filtra" }
+          : { note: "bez filtra: pri izolácii alebo skrytí len viditeľné prvky, inak celý model" },
+        ...(legend ? { legend_size: legend } : {}),
+      },
     };
   }
 
@@ -152,6 +201,7 @@ export async function execLensStyle(
   }
   const wire: LensWire = {
     r: rules,
+    ...(legend ? { l: legend } : {}),
     ...(action === "isolate" ? { i: 1 as const } : {}),
     ...(action === "xray" ? { x: 1 as const } : {}),
   };

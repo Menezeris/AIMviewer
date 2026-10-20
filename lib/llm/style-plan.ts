@@ -59,7 +59,7 @@ export function needsScopedStyle(input: Record<string, unknown>): boolean {
   return Array.isArray(input.groups) || SCOPE_KEYS.some((k) => present(input[k]));
 }
 
-function pickFilter(src: Record<string, unknown>): StyleFilter {
+export function pickFilter(src: Record<string, unknown>): StyleFilter {
   const out: StyleFilter = {};
   for (const k of FILTER_KEYS) if (present(src[k])) out[k] = src[k];
   return out;

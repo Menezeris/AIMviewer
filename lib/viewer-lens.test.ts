@@ -89,3 +89,30 @@ describe("viewer-lens (D-096)", () => {
     expect(opToBridgeMessage(o)).toEqual({ type: "APPLY_LENS", mode: "add", rev: "r2", autoColor: { source: "group" } });
   });
 });
+
+describe("viewer-lens: rozsah farieb podľa hodnoty a legenda (D-119)", () => {
+  const WALLS = { combinator: "AND" as const, rules: [{ kind: "ifcType", op: "in", values: ["IfcWall"] }, { kind: "storey", op: "in", values: ["1NP"] }] };
+
+  it("s ide do mosta ako autoColorScope, l ako legend; zóna v rozsahu sa nahradí GUIDmi", () => {
+    const wire: LensWire = { ac: { source: "material" }, s: [WALLS, { combinator: "AND", rules: [{ kind: "aim_zone", ids: [Z1] }] }], l: "large" };
+    const [o] = parseOps(lensOp("replace", wire, "r9"));
+    expect(o).toMatchObject({ op: "lens", wire });
+    expect(lensZoneIds(wire)).toEqual([Z1]);
+    const msg = lensBridgeMessage("replace", wire, new Map([[Z1, ["g1", "g2"]]]), "r9");
+    expect(msg).toMatchObject({ type: "APPLY_LENS", autoColor: { source: "material" }, legend: "large" });
+    expect(msg.autoColorScope).toEqual([WALLS, { combinator: "AND", rules: [{ kind: "globalId", op: "in", values: ["g1", "g2"] }] }]);
+  });
+
+  it("rozsah bez ac, prázdny rozsah a neznáma veľkosť legendy sa zahodia", () => {
+    const enc = (w: unknown) => lensOp("replace", w as LensWire).split(":")[2];
+    expect(decodeLensWire(enc({ s: [WALLS] }))).toBeNull();
+    expect(decodeLensWire(enc({ ac: { source: "material" }, s: [] }))).toBeNull();
+    expect(decodeLensWire(enc({ l: "huge" }))).toBeNull();
+  });
+
+  it("samotná legenda: add bez pravidiel nesie len legend", () => {
+    const [o] = parseOps(lensOp("add", { l: "normal" }, "r1"));
+    expect(o).toMatchObject({ op: "lens", mode: "add", wire: { l: "normal" } });
+    expect(opToBridgeMessage(o)).toEqual({ type: "APPLY_LENS", mode: "add", rev: "r1", legend: "normal" });
+  });
+});
