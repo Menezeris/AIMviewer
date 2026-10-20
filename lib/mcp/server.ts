@@ -65,6 +65,15 @@ export const INVALID_PARAMS = -32602;
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
+/**
+ * Klient (claude.ai) lepí textové bloky bez oddeľovača, takže riadok za blokom
+ * by sa prilepil na jeho koniec - napr. záložný odkaz na "Vykonané vo vieweri".
+ * Každý blok okrem posledného preto končí zalomením (JSON ho ako biely znak znesie).
+ */
+function separated(text: string, more: boolean): string {
+  return more && !text.endsWith("\n") ? `${text}\n` : text;
+}
+
 async function handleOne(
   msg: unknown,
   deps: McpServerDeps,
@@ -119,7 +128,7 @@ async function handleOne(
       try {
         const res = await deps.callTool(name, args);
         return ok(id, {
-          content: res.text.map((text) => ({ type: "text", text })),
+          content: res.text.map((text, i) => ({ type: "text", text: separated(text, i < res.text.length - 1) })),
           isError: res.isError,
         });
       } catch (e) {
