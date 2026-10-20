@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { fetchAllPages } from "@/lib/data/pagination";
+import { fetchDocumentObjectRows } from "@/lib/data/object-documents";
 import { normalizeStoreyLabel } from "@/lib/engine/storey";
 
 import type { AskAction } from "./actions";
@@ -11,6 +12,7 @@ import {
   SCOPED_GUID_CAP,
   StyleInputError,
   allocateCap,
+  documentPage,
   intersectSets,
   matchesAttributes,
   matchesProperty,
@@ -31,7 +33,8 @@ import {
  * rekurzívne cez vnorené skupiny); IfcZone a IfcSpatialZone = miestnosti a vždy
  * aj prvky v nich alebo dotýkajúce sa ich (contained + referenced); podlažie = miestnosti podlažia a prvky natívne
  * na podlaží alebo v jeho miestnostiach (bez odvodených referencií, aby prvok
- * nepatril na dve podlažia).
+ * nepatril na dve podlažia); dokument = objekty, ktorých sa týka, aj zdedené cez
+ * nositeľa (`v_object_documents`, D-104 krok 4), voliteľne len jedna strana.
  */
 
 const IN_CHUNK = 100;
@@ -62,6 +65,7 @@ export class ScopeResolver {
   private systems?: TypedRow[];
   private groupish?: TypedRow[];
   private floors?: NamedRow[];
+  private documents?: TypedRow[];
   private allSystemMembers?: Set<string>;
 
   constructor(private readonly db: SupabaseClient) {}
@@ -196,6 +200,36 @@ export class ScopeResolver {
     return ids;
   }
 
+  /**
+   * Dokument podľa id, object_ref alebo názvu (aj jeho časti, napr. 'D.1.1.03'); odkaz
+   * na časť dokumentu (strana skladby) len podľa id alebo presného object_ref.
+   */
+  async pickDocument(want: string): Promise<TypedRow> {
+    this.documents ??= await this.nodesOfTypes(["document", "document_reference"]);
+    const docs = this.documents.filter((d) => d.object_type === "document");
+    const w = want.trim().toLowerCase();
+    const ref = this.documents.find(
+      (d) => d.object_type === "document_reference" && (d.id.toLowerCase() === w || (d.object_ref ?? "").toLowerCase() === w),
+    );
+    if (ref) return ref;
+    const picked = pickNamed(docs, want);
+    if (picked.length === 1) return picked[0];
+    const label = (d: TypedRow) => d.name ?? d.object_ref ?? d.id;
+    if (picked.length === 0) {
+      throw new StyleInputError(`Dokument '${want}' sa nenašiel. Hľadaj ho cez search_documents (vráti id a object_ref).`);
+    }
+    throw new StyleInputError(
+      `Dokument '${want}' je nejednoznačný (${picked.length}): ${picked.slice(0, 10).map(label).join(", ")} - zadaj id alebo object_ref.`,
+    );
+  }
+
+  /** Objekty, ktorých sa dokument (alebo jeho strana) týka, aj zdedené cez nositeľa. */
+  async documentMembers(want: string, page: number | undefined): Promise<{ doc: TypedRow; ids: Set<string> }> {
+    const doc = await this.pickDocument(want);
+    const rows = await fetchDocumentObjectRows(doc, page);
+    return { doc, ids: new Set(rows.filter((r) => STYLABLE_OBJECT_TYPES.has(r.object_type)).map((r) => r.object_id)) };
+  }
+
   /** Podlažie podľa id, object_ref alebo názvu (1NP = 1.NP = 1 NP). */
   async pickFloor(want: string): Promise<NamedRow> {
     this.floors ??= await fetchAllPages<NamedRow>((from, to) =>
@@ -258,7 +292,7 @@ export class ScopeResolver {
   async attributeCandidates(types: string[], predefinedType: string, query: string): Promise<Set<string>> {
     if (types.length === 0 && !predefinedType && !query) {
       throw new StyleInputError(
-        "Zadaj aspoň jedno kritérium výberu: system, system_type, zone, storey, ids_or_refs, ifc_type(s)/domain, predefined_type alebo query.",
+        "Zadaj aspoň jedno kritérium výberu: system, system_type, zone, storey, document, ids_or_refs, ifc_type(s)/domain, predefined_type alebo query.",
       );
     }
     const rows = await fetchAllPages<{ id: string }>((from, to) => {
@@ -318,7 +352,9 @@ interface ResolvedGroup {
   systems?: string[];
   zones?: string[];
   storey?: string;
+  document?: string;
 }
+
 
 async function resolveGroup(
   scope: ScopeResolver,
@@ -342,6 +378,12 @@ async function resolveGroup(
     const s = await scope.storeyMembers(str(f.storey));
     sets.push(s.ids);
     out.storey = s.label;
+  }
+  const page = documentPage(f);
+  if (str(f.document)) {
+    const d = await scope.documentMembers(str(f.document), page);
+    sets.push(d.ids);
+    out.document = (d.doc.name ?? d.doc.object_ref ?? d.doc.id) + (page ? `, s. ${page}` : "");
   }
   sets.push(await scope.explicitIds(f));
 
@@ -433,6 +475,7 @@ export async function execScopedStyle(
     ...(r.systems ? { systems: r.systems } : {}),
     ...(r.zones ? { zones: r.zones } : {}),
     ...(r.storey ? { storey: r.storey } : {}),
+    ...(r.document ? { document: r.document } : {}),
   }));
   const note =
     applied < total

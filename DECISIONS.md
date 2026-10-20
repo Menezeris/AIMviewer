@@ -5044,6 +5044,27 @@ AIMviewer vetva `claude/lucid-wright-g4qmwq-krok3` (stavia na #121):
   objektu zachová kľúče hostiteľa (`HOST_PROPERTY_KEYS = ("_georef",)` v `etl/db.py`), takže
   re-ETL kalibráciu nezmaže.
 
+**Dodatok 2026-10-20 - krok 4: z dokumentu na prvky v 3D (Samuel, bez nového D).** Samuel
+pomenoval krokom 4 preklik "ukáž, čoho sa týka tento výkres / táto strana" (bod 4 rozhodnutia);
+text strán a odstránenie starej sady zo zoznamu krokov vyššie idú po ňom. Podľa D-114 bez
+nového toolu:
+- Tooly: `style_in_3d` a `open_list` dostali filter `document` (id, object_ref alebo názov, napr.
+  `D.1.1.03`; odkaz na časť dokumentu len podľa id alebo presného object_ref) a `page`. Prvky sú
+  tie isté ako v `get_object(include=documents)` pri dokumente: `v_object_documents` aj zdedené cez
+  podlažie, zónu, skupinu a typ, do 3D len uzly s geometriou (asset, space, spatial_zone).
+  Kombinuje sa s ostatnými filtrami (AND). `show_in_3d` sa nemení (strop 100 prvkov na
+  zvýraznenie), jeho popis posiela na `style_in_3d`.
+- Veľký dokument necestuje v URL: lens nesie symbolické pravidlo `aim_document {id, page}` ako
+  zónu `aim_zone` (D-096) a klient si GUIDy stiahne z `/api/style-scope?document=<id>[&page=N]`
+  (strop mosta 5000). Skrytie a zobrazenie (`hide`/`show`) idú starou cestou s GUIDmi (strop 500).
+- `get_object` pri dokumente stránkuje `v_object_documents` (predtým `.limit(5000)` ticho orezal
+  na 1000 riadkov PostgREST, pôdorys podlažia ich má viac), vracia `by_page` (počet objektov na
+  stranu) a `in_3d` s presným volaním `style_in_3d`.
+- Fork: tlačidlo "Ukázať v 3D" v lište otvoreného PDF pošle `DOCUMENT_SHOW_3D {documentId, page}`
+  s čítanou stranou; host odpovie `APPLY_LENS` (replace, X-ray podľa D-105, štítok = meno
+  dokumentu). Strana bez vlastných prvkov (titulná strana, pôdorys bez odkazov na strany) ukáže
+  celý dokument. Viewer väzby dokumentov nedrží, rozhoduje graf AIM.
+
 ---
 
 ### D-105 - X-ray context z chatu: `style_in_3d action=xray`, drôtový model zatiaľ nie

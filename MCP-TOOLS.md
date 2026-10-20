@@ -36,7 +36,7 @@ Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/vie
 - **`show_in_3d`** (D-056, čítanie) - UI AKCIA: UKÁŽ alebo VYBER prvky v 3D. Predvolene zvýrazní (oranžovo) a priblíži prvky - 'ukáž / zobraz X', aj jednu miestnosť (skrytú viewer zapne).
   Parametre: `ids_or_refs`, `id_or_ref`, `clear`, `global_ids`, `ifc_type`, `predefined_type`, `query`, `object_type`, `select`, `panel_tab=aim|ifc`, `panel_section=properties|quantities`, `highlight`
 - **`style_in_3d`** (D-066, čítanie) - UI AKCIA: ofarbí / skryje / znova zobrazí / izoluje prvky v 3D modeli, alebo resetne pohľad.
-  Parametre: `action*=colorize|transparent|hide|show|isolate|xray|show_all|reset_colors`, `mode=add|replace`, `color_by=ifc_type|system|zone|material|model|classification|property|attribute`, `color_by_key`, `color`, `ids_or_refs`, `global_ids`, `ifc_type`, `ifc_types`, `domain=hvac|plumbing|electrical|architecture|structure`, `model`, `predefined_type`, `property`, `value`, `pset`, `query`, `system`, `system_type`, `not_in_system`, `zone`, `storey`, `groups`
+  Parametre: `action*=colorize|transparent|hide|show|isolate|xray|show_all|reset_colors`, `mode=add|replace`, `color_by=ifc_type|system|zone|material|model|classification|property|attribute`, `color_by_key`, `color`, `ids_or_refs`, `global_ids`, `ifc_type`, `ifc_types`, `domain=hvac|plumbing|electrical|architecture|structure`, `model`, `predefined_type`, `property`, `value`, `pset`, `query`, `system`, `system_type`, `not_in_system`, `zone`, `storey`, `document`, `page`, `groups`
 - **`open_drawing`** (D-056, čítanie) - UI AKCIA: otvorí výkres/dokument v prehliadačke, voliteľne so zvýrazneným prvkom a stranou.
   Parametre: `document_id*`, `focus_id`, `page`, `in_viewer`
 - **`open_node`** (D-056, čítanie) - UI AKCIA: otvorí detailnú kartu uzla (asset, typ, miestnosť, podlažie, systém, osoba, organizácia…).
@@ -50,7 +50,7 @@ Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/vie
 - **`set_view_mode`** (D-083, čítanie) - UI AKCIA: prepne viewer medzi 3D, 2D (pôdorys podlažia) a Split (2D + 3D vedľa seba). 2D s kalibrovaným výkresom ukáže PDF pôdorys, inak model zhora s rezom 1,2 m nad podlahou.
   Parametre: `mode*=3d|2d|split`, `floor`, `reset`
 - **`open_list`** (D-111, čítanie) - Tabuľka prvkov v paneli Lists vo vieweri (export do CSV/XLSX/PDF): "exportuj dvere na 1NP ako tabuľku", "zoznam tvaroviek s rozmermi do Excelu".
-  Parametre: `name`, `columns`, `ifc_type`, `ifc_types`, `domain`, `predefined_type`, `storey`, `system`, `system_type`, `zone`, `property`, `pset`, `value`, `query`, `model`, `global_ids`, `ids_or_refs`
+  Parametre: `name`, `columns`, `ifc_type`, `ifc_types`, `domain`, `predefined_type`, `storey`, `system`, `system_type`, `zone`, `document`, `page`, `property`, `pset`, `value`, `query`, `model`, `global_ids`, `ids_or_refs`
 
 ## Dotazy na stav viewera (1)
 

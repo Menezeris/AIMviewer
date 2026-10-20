@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { opToBridgeMessage, parseOps } from "./viewer-ops";
-import { decodeListWire, listBridgeMessage, listOp, listZoneIds, type ListWire } from "./viewer-list";
+import { decodeListWire, listBridgeMessage, listOp, listScopeKeys, type ListWire } from "./viewer-list";
 
 const Z1 = "11111111-1111-4111-8111-111111111111";
 const WIRE: ListWire = {
@@ -28,7 +28,7 @@ describe("zoznam z chatu (D-111)", () => {
   });
 
   it("zóna sa doplní GUIDmi ako pri Lens; id zón vie klient vopred", () => {
-    expect(listZoneIds(WIRE)).toEqual([Z1]);
+    expect(listScopeKeys(WIRE)).toEqual([Z1]);
     const msg = listBridgeMessage(WIRE, new Map([[Z1, ["A", "B"]]])) as { groups: Array<{ rules: unknown[] }> };
     expect(msg.groups[0].rules[1]).toEqual({ kind: "globalId", op: "in", values: ["A", "B"] });
   });
