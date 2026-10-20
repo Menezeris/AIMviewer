@@ -503,6 +503,14 @@ a `element_in_zone` (bez hrán: IFC na prvok v IfcZone vzťah nemá). Pohľad **
 = prvok v IfcZone cez priestory (prvok v priestore natívne alebo referenciou, priestor člen zóny
 priamo alebo cez vnorenú zónu); prázdny, keď je `element_in_zone` vypnuté.
 
+**`v_object_documents`** (D-104 krok 2, migrácia 20261020090000) = dokumenty objektu cez vzťahy:
+`object_id`, `object_type`, `object_ref`, `document_id` (pri odkaze na časť jeho dokument),
+`reference_id`, `page`, `via` (`direct|type|zone|group|system|spatial_zone`), `via_id` (nositeľ
+dokumentu), `via_nearest_id` (najbližší nositeľ k objektu), `via_space_id`, `depth`, `path`, `role`,
+`source`. Ide od nositeľov (`rel_associates_document`) nadol cez `rel_assigns_to_group`,
+`rel_aggregates` (skupina, priestorová zóna), `rel_defines_by_type`, `rel_referenced_in_spatial_structure`
+(priestorová zóna) a `v_zone_elements`; projekt sa nededí; väzby E4 (`pdf_link (E4)`) vynecháva.
+
 ### 2.16 Log volaní MCP konektora (D-100, migrácia 20261019140000)
 
 `mcp_call_log` = jedno volanie toolu konektora: `tool`, `action` (`args.action`, ak ju tool má),

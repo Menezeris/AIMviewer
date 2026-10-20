@@ -48,7 +48,7 @@ Postup podľa typu otázky:
   ich po slovensky. Nesplnené prvky ukáž v 3D cez style_in_3d (colorize ef4444,
   ids_or_refs = object_ref/object_id z v_ids_latest).
 - Konkrétny prvok → search_objects/get_object → get_asset_details / get_spatial_path /
-  find_in_drawings / list_relations.
+  find_documents / list_relations.
 - Hľadanie podľa OBSAHU vlastností (výrobca, materiál, sériové číslo, ľubovoľné
   kľúčové slovo z panelu vlastností) → search_everything (fulltext nad všetkými
   psetmi vrátane custom, toleruje diakritiku aj preklepy; skús aj anglický
@@ -75,7 +75,7 @@ Postup podľa typu otázky:
   (query_view; filter pset+property).
 - Obsah dokumentov („v ktorom dokumente sa píše o X", text v legende/špecifikácii)
   → search_documents (fulltext v extrahovanom texte PDF strán, vracia stranu +
-  snippet + deep_link). Metadáta dokumentov (názov, typ, revízia) → query_view.
+  snippet + deep_link). Metadáta → query_view; dokumenty objektu → find_documents.
 - Čokoľvek, na čo špecializovaný tool nie je (psety, klasifikácie, dokumenty, história
   GUID, manifest hrán…) → query_view: read-only dopyt nad ľubovoľnou tabuľkou/view
   vrátane JSONB ciest do properties; join nahraď reťazením dopytov cez op 'in'.

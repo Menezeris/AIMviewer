@@ -4909,6 +4909,27 @@ až po kroku 4.
   overená cez sha256, `dry_run`, `close_legacy_documents`).
 - Knižnica dokumentov vo vieweri berie priečinok zo stromu dokumentácie (koreň PD sa vynecháva).
 
+**Dodatok 2026-10-20 - krok 2 (dokumenty objektu cez vzťahy, Samuel potvrdil).**
+- Pohľad `v_object_documents` (migrácia `20261020090000`): objekt -> dokument (alebo strana pri
+  `document_reference`) a cez čo: `direct`, `type`, `zone` / `group` / `system` (členstvo, prvok
+  aj cez miestnosť v zóne z `v_zone_elements`), `spatial_zone` (aj odvodené
+  `element_in_spatial_zone`), a cez nadradené zóny a skupiny (`rel_assigns_to_group`,
+  `rel_aggregates`). Ide sa od nositeľov dokumentov nadol, nie od všetkých objektov: na prod 14 769
+  riadkov pre 1 543 objektov, celý pohľad 85 ms, jeden objekt 60 ms. Projekt sa nededí.
+- Tool `find_documents` (MCP aj `/ask`): `object` = dokumenty objektu, jeden riadok na dokument a
+  stranu s najbližšou cestou (`via_name`, `through`, `also_via`) a odkazom na otvorenie na strane;
+  `document` = objekty dokumentu (počty podľa typu a nositeľa, vzorka). `get_asset_details` nesie
+  dokumenty prvku, `query_view` pozná `v_object_documents` a strom dokumentácie.
+- `find_in_drawings` je zrušený: čítal len výkresové väzby z obsahu PDF (E4), ktoré krok 1 ukončil,
+  takže vždy vracal prázdno. Nahrádza ho `find_documents`.
+- Čo z modelu vychádza: zóny cez viac podlaží (Spoločné priestory, Nájomné priestory) nesú pôdorysy
+  všetkých podlaží, takže dvere na 1NP dostanú aj pôdorys 3NP a strechy. Pohľad to nefiltruje (je to
+  väzba v modeli); presnejšie by bolo viazať pôdorys na zónu podlažia alebo na podlažie (otázka na
+  Samuela v PR).
+- Poučenie z kroku 1: úloha z BCF témy #3 (ASR v75, 19. 10. 17:07) bežala s ETL z `main` ešte pred
+  merge #105 a starý ETL vrátil starú sadu dokumentov a uzavrel strom; náprava = `reetl` po merge.
+  Kým zmena ETL nie je v `main`, každé re-ETL z iných workflowov ju prepíše.
+
 ---
 
 ### D-105 - X-ray context z chatu: `style_in_3d action=xray`, drôtový model zatiaľ nie
