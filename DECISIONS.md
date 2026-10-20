@@ -5481,7 +5481,34 @@ miestnosť 1.10 = 6,796 x 3,221 m, pôdorys z meshu = Qto 21,699 m². DD02.05.04
 - Kóta merania vo vieweri: `ifc_measure` vracia jeden najbližší bod, kóta potrebuje oba body
   dvojice, prevod osí IFC (Z hore) do rámca renderera a novú správu mosta vo forku, ktorá zapíše
   meranie do upstream `measurementSlice`. Väčší kus, návrh v #77.
-- Nositeľ svetlej šírky dverí (`AIM_Door.ClearWidth`?) potvrdí Samuel.
+- ~~Nositeľ svetlej šírky dverí (`AIM_Door.ClearWidth`?) potvrdí Samuel.~~ Rozhodnuté dodatkom nižšie:
+  svetlosť dverí sa meria z geometrie, psety sú len kontrola.
+
+**Dodatok (2026-10-20, druhá časť #77): svetlá šírka a výška dverí z geometrie.** Samuel (cez
+orchestrátora): svetlosť sa MERIA, `AIM_Door.ClearWidth` ani `OverallWidth` nie sú zdroj pravdy.
+- *Rozšírenie (D-114):* `ifc_measure` dostal `clear_opening=true` (a alebo `items`, max 50, napr. GUIDy
+  dverí z `ifc_query storey=1NP`) a voliteľné limity `min_width_m` / `min_height_m` od používateľa.
+  Výsledok na dvere: `width_m`, `height_m`, `width_min_m`, obálka so zárubňou, `result` pass/fail/unknown
+  s dôvodom; súhrn `check` s `style_pass` / `style_fail` rovno pre `style_in_3d`. Limity noriem v tooli nie sú.
+- *Algoritmus (`lib/engine/door-clear.ts`):* mesher dáva každé teleso reprezentácie zvlášť (zárubňa,
+  krídlo, sklo, kovanie, prah), `MeshElement.parts` si ich pamätá. Osi dverí z pôdorysu (obdĺžnik
+  s najmenšou plochou), z telies sa odstráni výplň otvoru: teleso zasiahnuté lúčom po hĺbke v strednej
+  časti otvoru (krídlo, sklo, posuvné panely), vnútorné nízke teleso (kľučka, madlo, paniková tyč) a
+  vnútorný prstenec okolo stredu (rám krídla so sklom). Ostane zárubňa, nadpražie, prah, prípadne portál
+  v tvare U (výťah). Šírka = lúče po šírke v mriežke výšok x hĺbok, najužšie miesto cez hĺbku (doraz),
+  medián výšok; výška = od prahu alebo spodku dverí po nadpražie. Karuselové dvere a dvere bez zárubne
+  vrátia dôvod namiesto čísla.
+- *Overenie na ASR* (súbor z verejného bucketu, etag `5bf4ca79...-2`, ten istý, ktorý číta konektor):
+  97 dverí za ~5 s vrátane tesselácie. Všetkých 90 dverí s `AIM_Door` má šírku zhodnú na mm. Výška:
+  53 zhodne, 29 o 3-4 mm nižšia (prah 4 mm, pset ho ignoruje), 8 výťahových o 50 mm vyššia (portál
+  2,15 m nad posuvnými panelmi 2,10 m). 6 presklených dverí (DD02.04.*, DD03.04.*) má v modeli len
+  kovanie, bez rámu a krídla, a nemá ani `AIM_Door` -> unknown s dôvodom; karuselové DD01.08.0001
+  -> unknown. Konektorom: `ifc_query storey=1NP where AIM_Door.ClearWidth < 800` = 12 dverí.
+- *Zavrhnuté:* svetlosť z `IfcOpeningElement` (to je stavebný otvor 900 x 2300 pre DD02.05.04, nie
+  svetlosť zárubne 800 x 2100); svetlosť z krídla (pri dorazovej zárubni je krídlo širšie ako
+  priechod, výťah má viac panelov); nový tool (D-114, ide to parametrom `ifc_measure`).
+- *Hranice:* krídlo otvorené o 90° a kľučka sa od šírky neodpočítavajú; dvere z jedného telesa
+  (zárubňa aj krídlo v jednom telese) sa nedajú rozdeliť a vrátia dôvod.
 
 ### D-121 - Najkratšia a úniková cesta: `ifc_measure route` nad hranicami priestorov zo súboru
 **Status:** rozhodnuté (2026-10-20, Samuel v #76), číslo pridelené v registri #60. Nadväzuje na D-112 (meranie

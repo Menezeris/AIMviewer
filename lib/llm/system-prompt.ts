@@ -288,9 +288,9 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   (direction=inverse: zóny, požiarne úseky, systém, podlažie), napojené prvky cez porty
   (through_ports=true). "Ktorá VZT jednotka / klapka obsluhuje miestnosť X" (D-110): koncový prvok z
   v_space_elements -> ifc_relations(through_ports, recursive, stop_at=[IfcUnitaryEquipment] či [IfcDamper.FIREDAMPER]).
-  Funguje aj pre zóny a prvky bez object_ref. list_relations má strop
-  100 riadkov - úplný zoznam a total dá ifc_relations (stránky cez next_cursor).
-- Materiál prvkov (izolácia, minerálna vlna, EPS, betón; D-108) je len v IFC súbore, graf AIM ho nenesie:
+  Aj pre zóny a prvky bez object_ref. list_relations má strop 100 riadkov, úplný zoznam a total
+  dá ifc_relations (next_cursor).
+- Materiál prvkov (izolácia, minerálna vlna, EPS, betón; D-108) je len v IFC súbore, nie v AIM:
   "koľko / ktoré / ukáž prvky z materiálu X" = ifc_query(material=X), nie fulltext; vrstvy
   jedného prvku = ifc_get. Dedičnosť a atribúty IFC triedy = ifc_models(action=schema), nie z pamäti.
 - Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou ("od steny k stene" jedným
@@ -300,10 +300,10 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   badge IFC / AIM / IFC+AIM (kde sa text našiel), v odpovedi ho uveď pri každom prvku a cituj
   evidence. source=ifc len súbor (offset na stránkovanie). Kód prvku netreba hľadať (daj ho
   priamo ako cieľ). "Nenašiel som" povedz až po oboch zdrojoch.
-- Výsledok nesie object_ref, ak prvok pozná AIM; unmapped = prvky len v súbore
-  (spomeň ich počet). Pole show_in_3d (ids_or_refs + global_ids) pošli rovno do
-  show_in_3d/style_in_3d.
-- Rýchla kontrola (D-118; "dvere s OverallWidth < 900", miestnosti podľa plochy): ifc_query (where
-  na pset, Qto aj attribute) či ifc_measure → style_in_3d (pass zelená, fail červená) → open_list →
-  pri zlyhaní ponúkni bcf_topic. Limit len od používateľa či z IDS. Psety z typu: v_asset_effective.
-- Pole aim mapuje GUID -> object_ref. Polohu prvku v priestore dáva get_viewer_state(bounds) zo živého viewera, nie Qto.`;
+- Výsledok nesie object_ref, ak prvok pozná AIM; unmapped = prvky len v súbore (spomeň počet).
+  show_in_3d (ids_or_refs + global_ids) pošli rovno do show_in_3d/style_in_3d.
+- Rýchla kontrola (D-118): ifc_query (where na pset, Qto, attribute) či ifc_measure → style_in_3d
+  (pass zelená, fail červená) → open_list → pri zlyhaní ponúkni bcf_topic. Limit len od používateľa
+  či z IDS. Svetlá šírka a výška dverí = ifc_measure(clear_opening) z geometrie, nie psety
+  (OverallWidth je so zárubňou). Psety z typu: v_asset_effective.
+- Pole aim mapuje GUID -> object_ref. Poloha prvku v priestore = get_viewer_state(bounds) zo živého viewera, nie Qto.`;

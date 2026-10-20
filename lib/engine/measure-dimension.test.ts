@@ -30,6 +30,7 @@ function cube(o: [number, number, number], s = 1, worldOffset?: [number, number,
     name: null,
     positions: new Float32Array(v),
     indices: new Uint32Array(f),
+    parts: [0],
     bounds: { min: o, max: [o[0] + s, o[1] + s, o[2] + s] },
     ...(worldOffset ? { worldOffset } : {}),
   };
