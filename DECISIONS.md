@@ -4945,6 +4945,62 @@ v ktorých je; miestnosť od podlažia nededí (ostane pri ASR pôdoryse, PBR do
 úsek), budova, pozemok a projekt sa nededia. Výsledok: dvere na 1NP majú pôdorysy 1NP všetkých
 profesií, nie pôdorys 3NP a strechy ako pri zónach cez viac podlaží.
 
+**Dodatok 2026-10-20 - plán kroku 3 (viewer).** Zistený stav pred krokom 3:
+- Zoznam dokumentov pre viewer (`DOCUMENTS_LOAD`, `lib/data/documents.ts`) posiela len súbory a v
+  `meta` len `revision`, `status`, `purpose` (v ASR prázdne); nové stĺpce kroku 1 (`identification`,
+  `last_revision_time`, `electronic_format`, `document_owner`) a nositeľov neposiela. Vetva
+  `kind = drawing` čaká na rolu `drawing` (E3), ktorú IFC dokumenty nemajú.
+- AIM karta (`/api/element`, `lib/data/object.ts`) berie len priame väzby (po v76 len miestnosť a
+  jej ASR pôdorys), bez strany a cesty; klik pošle `AIM_NAVIGATE` na `/drawing/[id]` a odíde z 3D.
+- Podklady výkresov (`fetchUnderlayDrawings`) hľadajú väzbu podlažie -> dokument s rolou `drawing`,
+  takže sú od kroku 1 prázdne. Kalibrácia sa píše do `objects.properties._georef`, ktoré každé
+  re-ETL prepíše (upsert `properties = excluded.properties`).
+- Vo forku: skupiny lišty sú zoznam `PANEL_GROUPS` v `lib/panels/registry.ts` bez sentinelu,
+  `DocumentsPanel` zoskupuje len podľa `folder` a filtruje len názov, `AimCard` dokumentu pozná len
+  `href`. `bridge-protocol.ts`, `HierarchyPanel.tsx` a `PdfDocumentView.tsx` sú na limite veľkosti.
+
+Postup (D-087: najprv fork, potom AIMviewer; každá časť je spätne kompatibilná, nové polia sú
+voliteľné a starší viewer ich ignoruje):
+1. **Fork, lišta:** skupina `aim` prvá v `PANEL_GROUPS` (popisky v `i18n/catalogues/aim-fork.en.ts`),
+   do nej `documents` (z Coordinate), `drawing-underlay` (z Author) a nový panel `aim-layers`
+   (`aim/AimLayersPanel.tsx` nad existujúcim `AimLayersSectionBody`, na celú výšku); sekcia AIM
+   VRSTVY z ľavého stromu zmizne (dva riadky v `HierarchyPanel` preč, menej zásahov do upstreamu).
+   Ribbon AIM otvára panel vrstiev namiesto ľavého stromu. Upstream testy, ktoré čakajú `hierarchy`
+   ako prvý panel lišty, sa upravia v sentineloch. Uložené rozloženie lišty si poradie nechá
+   (migrácia rozloženia forku mení len nedotknuté predvolené poradie): nová skupina sa ukáže po
+   "Reset layout"; vlastná migrácia sa nerobí.
+2. **Fork, panel Dokumenty:** logika v `aim/documentsQuery.ts` (čisté funkcie, testy `node:test`),
+   `DocumentsPanel` ju len volá. Zoskupenie "podľa" = priečinok (strom dokumentácie) alebo
+   ľubovoľný kľúč `meta`, ktorý majú poslané dokumenty (zoznam kľúčov viewer nedrží); hľadanie
+   v názve a všetkých hodnotách `meta` bez ohľadu na diakritiku; prepínač "len pre výber" ukáže
+   dokumenty z AIM karty aktuálneho výberu (ten istý zdroj, žiadna nová správa) s cestou "cez
+   N3.01" a klik otvorí PDF na strane (`openDocument(id, {page})`). Texty cez katalóg forku.
+3. **Fork, AIM karta:** položka dokumentu dostane voliteľné `documentId`, `page`, `via`; ak ich
+   má a viewer dokument pozná, klik otvorí PDF vo vieweri na strane, inak ako doteraz `href`.
+4. **AIMviewer, dáta:** `objectDocuments` z `lib/llm/tools.ts` sa presunie do
+   `lib/data/object-documents.ts` (jeden kód pre tooly, AIM kartu aj panel; doplní sa filter
+   `valid_until`). `/api/element` dá do karty efektívne dokumenty z `v_object_documents` (bez
+   dokumentácie projektu, tá je v paneli) s `documentId`, `page`, `via` a `href` ako zálohou.
+   `DOCUMENTS_LOAD` pošle v `meta` kľúče `Identifikácia`, `Časť` (časť stromu, napr. D.1.1),
+   `Nositeľ` (typy nositeľov dokumentu: podlažie, miestnosť, zóna, požiarny úsek...), `Podlažie`
+   (podlažia, ktoré dokument nesú), `Revízia` (dátum `last_revision_time`), `Formát`, `Vlastník`;
+   mŕtva vetva E3 (`kind = drawing` z roly, priečinok "Výkresy") zmizne.
+5. **AIMviewer, podklady:** zdroj podkladov = dokumenty, ktoré nesie podlažie (po v76 pôdorysy
+   všetkých profesií), nie rola `drawing`. ETL pri upserte zachová kľúče, ktoré píše host
+   (`_georef`), aby re-ETL kalibráciu nezmazal. Kalibrácia sa robí znova nad IFC pôdorysmi.
+6. **Overenie:** testy forku (`aim-feature` skill: tsc, `node:test`, kontroly veľkosti, i18n a
+   fast lane), vitest AIMviewera, naživo Playwright nad preview: lišta s AIM navrchu, zoskupenie
+   podľa časti a podlažia, "len pre výber" na 3.01 a DD01.07.01, otvorenie D.1.1.09 na strane 3
+   z karty podlahy ST01.20.0012.
+
+Mimo kroku 3: hľadanie v obsahu PDF (krok 4, `document_pages` je na prod prázdna) a preklik z
+dokumentu na prvky v 3D (ďalší program bodu 4).
+
+Otvorené pre Samuela: **druh dokumentu** (výkres, technická správa, výpočet, posudok) model
+nenesie (`Purpose`, `IntendedUse`, `Scope`, `Status` sú v ASR prázdne), takže zoskupenie podľa
+druhu a rozlíšenie výkresu pre podklady z dát nejde. Návrh: doplniť ho receptom do
+`IfcDocumentInformation.Purpose` (model je nositeľ), nie odvodzovať z mena súboru vo vieweri.
+
 ---
 
 ### D-105 - X-ray context z chatu: `style_in_3d action=xray`, drôtový model zatiaľ nie
