@@ -7,6 +7,7 @@ import type { ToolDefinition } from "./provider";
 import { docOp, selectOp } from "@/lib/viewer-ops";
 import { mergeIfcActions, type AskAction } from "./actions";
 import { DOMAIN_IFC_TYPES, sanitizeIfcType, sanitizeModelName } from "./ifc-selector";
+import { LIST_TOOL_DEFINITIONS, LIST_TOOL_NAMES, execListTool } from "./list-tool";
 import { VIEW_TOOL_DEFINITIONS, VIEW_TOOL_NAMES, execViewTool } from "./view-tools";
 import { engineEnabled, resolveNamesToGuids } from "@/lib/engine/aim-lookup";
 import { execScopedStyle } from "./style-scope";
@@ -506,7 +507,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "samotný systém). Prvky mimo systémov: not_in_system=true. Všetky zadané kritériá " +
       "platia naraz (AND), napr. ifc_type=IfcDuctFitting + storey=1NP + system=Prívod. " +
       "Viac farieb naraz = groups: [{label, color, ...filter}] (top-level filter platí pre " +
-      "všetky skupiny). colorize / transparent / isolate idú do panelu Lens vo vieweri ako " +
+      "všetky skupiny). colorize / transparent / isolate / xray idú do panelu Lens vo vieweri ako " +
       "lens 'AIM chat' (pravidlo = skupina, legenda, počty; prvky mimo pravidiel sú stlmené); " +
       "ďalšie volania pridávajú pravidlá (mode=replace začne odznova), počty na pravidlo " +
       "vráti živý viewer v odpovedi. Farby podľa hodnoty (systémy, triedy, materiál, " +
@@ -519,18 +520,19 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         action: {
           type: "string",
-          enum: ["colorize", "transparent", "hide", "show", "isolate", "show_all", "reset_colors"],
+          enum: ["colorize", "transparent", "hide", "show", "isolate", "xray", "show_all", "reset_colors"],
           description:
             "colorize=ofarbiť (vyžaduje color), transparent=priehľadne s farbou, hide=skryť, " +
             "show=znova zobraziť skryté, isolate=zobraziť LEN vybrané (ostatné skryť; bez color " +
-            "ostanú v pôvodnom vzhľade, color len keď ho používateľ chce), show_all=zrušiť skrývanie " +
-            "a izoláciu, reset_colors=zrušiť ofarbenie a lens",
+            "ostanú v pôvodnom vzhľade, color len keď ho používateľ chce), xray=vybrané plné v pôvodnom " +
+            "vzhľade a zvyšok modelu priesvitný (X-ray context, ako tlačidlo duch; filtre ako isolate), " +
+            "show_all=zrušiť skrývanie, izoláciu a X-ray, reset_colors=zrušiť ofarbenie a lens",
         },
         mode: {
           type: "string",
           enum: ["add", "replace"],
           description:
-            "Lens (colorize/transparent/isolate): add = pridať k doterajším pravidlám (predvolené; pri isolate " +
+            "Lens (colorize/transparent/isolate/xray): add = pridať k doterajším pravidlám (predvolené; pri isolate a xray " +
             "rozšíri aktuálnu izoláciu, napr. 'pridaj aj schodiská' = isolate + mode=add, jeden call), replace = " +
             "začať odznova (nová izolácia)",
         },
@@ -733,6 +735,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
   ...VIEW_TOOL_DEFINITIONS,
+  ...LIST_TOOL_DEFINITIONS,
 ];
 
 export interface ToolExecution {
@@ -842,6 +845,7 @@ export class AskToolRuntime {
         return this.openNode(input);
       default:
         if (VIEW_TOOL_NAMES.has(name)) return execViewTool(name, input, (a) => this.actions.push(a));
+        if (LIST_TOOL_NAMES.has(name)) return execListTool(name, input, (a) => this.actions.push(a));
         throw new Error(`Neznámy tool '${name}'.`);
     }
   }
@@ -1851,12 +1855,13 @@ export class AskToolRuntime {
       hide: "skrytie",
       show: "zobrazenie",
       isolate: "izolácia",
+      xray: "X-ray",
       show_all: "zobraziť všetko",
       reset_colors: "zrušiť farby",
     };
     if (!(action in opLabel)) {
       throw new Error(
-        "action musí byť colorize | transparent | hide | show | isolate | show_all | reset_colors."
+        "action musí byť colorize | transparent | hide | show | isolate | xray | show_all | reset_colors."
       );
     }
 
@@ -1872,7 +1877,7 @@ export class AskToolRuntime {
       return { ok: true, applied: action };
     }
 
-    // Farbenie, priehľadnosť a izolácia nad Lens vo vieweri (D-096): pravidlá s AND, skupiny, počty.
+    // Farbenie, priehľadnosť, izolácia a X-ray nad Lens vo vieweri (D-096, D-105): pravidlá s AND, skupiny, počty.
     if (LENS_STYLE_ACTIONS.has(action)) {
       const { result, rev } = await execLensStyle(action, input, (a) => this.actions.push(a), {
         domainTypes: DOMAIN_IFC_TYPES,

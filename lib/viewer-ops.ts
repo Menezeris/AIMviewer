@@ -18,6 +18,7 @@
  */
 
 import { LENS_MODES, decodeLensWire, lensBridgeMessage, type LensMode, type LensWire } from "./viewer-lens";
+import { decodeListWire, listBridgeMessage, type ListWire } from "./viewer-list";
 import { cameraMoveArgs, parseCameraMove, type CameraMove } from "./viewer-camera";
 
 export interface OpsSelector {
@@ -83,7 +84,9 @@ export type ViewerOp =
   | ({ op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[]; selector?: OpsSelector } & CameraMove)
   | { op: "view"; mode: ViewMode; storeyGuid?: string }
   | { op: "doc"; documentId: string; page?: number }
-  | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire };
+  | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire }
+  /** Zoznam z chatu do panela Lists (D-111), formát v `lib/viewer-list.ts`. */
+  | { op: "list"; wire: ListWire };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -235,6 +238,9 @@ export function parseOps(raw: string): ViewerOp[] {
       if (!wire) continue;
       const rev = kv.r && /^[A-Za-z0-9_-]{1,64}$/.test(kv.r) ? kv.r : undefined;
       out.push({ op, mode: mode as LensMode, ...(rev ? { rev } : {}), wire });
+    } else if (op === "list") {
+      const wire = decodeListWire(joined);
+      if (wire) out.push({ op, wire });
     } else if (op === "doc") {
       const documentId = joined;
       if (!UUID.test(documentId)) continue;
@@ -300,6 +306,9 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     case "lens":
       // Zónu (`aim_zone`) doplní klient pred odoslaním; tu ostane prázdna.
       return lensBridgeMessage(o.mode, o.wire, new Map(), o.rev);
+    case "list":
+      // Zónu doplní klient pred odoslaním, ako pri Lens.
+      return listBridgeMessage(o.wire, new Map());
   }
 }
 
