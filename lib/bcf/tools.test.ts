@@ -173,6 +173,9 @@ describe("bcf_topic action=update / close / viewpoint, bcf_topic_list", () => {
     expect(all.json).toMatchObject({ count: 1, topics: [{ number: 2, title: "b" }] });
     const mine = await run("bcf_topic_list", { assigned_to: "claude", status: "open" }, deps({ store }));
     expect(mine.json.count).toBe(1);
+    expect(mine.json).not.toHaveProperty("count_without_filter");
+    const none = await run("bcf_topic_list", { status: "closed" }, deps({ store }));
+    expect(none.json).toMatchObject({ count: 0, count_without_filter: 2, topics: [] });
     const one = await run("bcf_topic_list", { guid: "#1" }, deps({ store }));
     expect(one.json.topic).toMatchObject({ number: 1, global_ids: [G1], global_ids_truncated: false, comment_list: [] });
   });
