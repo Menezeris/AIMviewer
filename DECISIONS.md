@@ -4930,6 +4930,21 @@ až po kroku 4.
   merge #105 a starý ETL vrátil starú sadu dokumentov a uzavrel strom; náprava = `reetl` po merge.
   Kým zmena ETL nie je v `main`, každé re-ETL z iných workflowov ju prepíše.
 
+**Dodatok 2026-10-20 - nositelia dokumentov podľa praxe (Samuel).** Model sa upraví receptom OCB
+`recepty/ASR/v076-dokumenty-nositelia.py` (revízia ASR v76):
+- podlažie (IfcBuildingStorey) nesie pôdorysy všetkých profesií svojho podlažia (1NP: ASR, PBR,
+  základy, strop nad 1NP; 2NP a 3NP: ASR, PBR; 4NP: strecha, PBR; 5NP: strecha - jeden výkres pre
+  4NP a 5NP);
+- miestnosť (IfcSpace) nesie len ASR pôdorys svojho podlažia;
+- zóna (IfcZone) nesie len zónové dokumenty: ASR pôdorysy zo zón (15 väzieb) sa odoberú; požiarne
+  úseky (PBR pôdorysy, technická správa, výpočet rizika) a tepelné zóny (PENB, SF.02) ostávajú;
+- budova (IfcBuilding) nesie výkresy pre všetky podlažia (TP.01, SF.01), pozemok (IfcSite) situácie
+  (C.01 až C.03, D.1.3.01); projekt ostáva nositeľom celej dokumentácie.
+Pohľad `v_object_documents` (migrácia `20261020120000`): prvok dedí dokumenty podlažia a miestnosti,
+v ktorých je; miestnosť od podlažia nededí (ostane pri ASR pôdoryse, PBR dostane cez požiarny
+úsek), budova, pozemok a projekt sa nededia. Výsledok: dvere na 1NP majú pôdorysy 1NP všetkých
+profesií, nie pôdorys 3NP a strechy ako pri zónach cez viac podlaží.
+
 ---
 
 ### D-105 - X-ray context z chatu: `style_in_3d action=xray`, drôtový model zatiaľ nie

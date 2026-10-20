@@ -509,7 +509,10 @@ priamo alebo cez vnorenú zónu); prázdny, keď je `element_in_zone` vypnuté.
 dokumentu), `via_nearest_id` (najbližší nositeľ k objektu), `via_space_id`, `depth`, `path`, `role`,
 `source`. Ide od nositeľov (`rel_associates_document`) nadol cez `rel_assigns_to_group`,
 `rel_aggregates` (skupina, priestorová zóna), `rel_defines_by_type`, `rel_referenced_in_spatial_structure`
-(priestorová zóna) a `v_zone_elements`; projekt sa nededí; väzby E4 (`pdf_link (E4)`) vynecháva.
+(priestorová zóna) a `v_zone_elements`, a prvok (asset) aj z podlažia a miestnosti, v ktorých je
+(`rel_contained_in_spatial_structure`, `rel_referenced_in_spatial_structure`; dodatok migrácia
+20261020120000). Miestnosť ani priestorová zóna od podlažia nededia; projekt, budova a pozemok sa
+nededia; väzby E4 (`pdf_link (E4)`) vynecháva. `via` je aj `floor` a `space`.
 
 ### 2.16 Log volaní MCP konektora (D-100, migrácia 20261019140000)
 

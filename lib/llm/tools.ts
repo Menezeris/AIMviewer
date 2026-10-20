@@ -733,10 +733,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     description:
       "Dokumenty z IFC modelu cez vzťahy (D-104). object = prvok, miestnosť, zóna, typ...: " +
       "ktoré dokumenty (a strany) k nemu patria a cez čo - priamo, cez typ, zónu (aj cez " +
-      "miestnosť), skupinu (skladby), systém alebo priestorovú zónu (požiarny úsek, " +
-      "tepelná zóna), vrátane nadradených zón/skupín. document = dokument (id, object_ref " +
+      "miestnosť), skupinu (skladby), systém, priestorovú zónu (požiarny úsek, tepelná " +
+      "zóna), a prvok aj cez podlažie (pôdorysy profesií) a miestnosť (ASR pôdorys), " +
+      "vrátane nadradených zón/skupín. document = dokument (id, object_ref " +
       "= Identification): ktorých objektov sa týka (počty podľa typu a nositeľa + vzorka). " +
-      "Dokumentácia stavby na projekte sa prvkom nededí - vráti sa len počet. Odpoveď nesie " +
+      "Projekt, budova a pozemok sa nededia (projekt vráti len počet). Odpoveď nesie " +
       "deep_link na otvorenie PDF na strane; v odpovedi cituj cestu (cez zónu NJ - 3NP, " +
       "cez skladbu S1, strana 3). Obsah textu PDF hľadá search_documents.",
     inputSchema: {
