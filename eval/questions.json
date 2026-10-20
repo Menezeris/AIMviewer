@@ -393,9 +393,9 @@
       "id": "doc-read-legend",
       "category": "documents_content",
       "question": "Prečítaj legendu materiálov z výkresu D.1.1.01 Pôdorys 1NP.",
-      "expect": { "tools_called": ["search_documents"], "answer_matches": ["kerami"] },
-      "verified": false,
-      "notes": "D-123 (#149): čítanie strany (document_id bez q). Lokálne overené: na strane je 'LEGENDA MATERIÁLOV' a 'keramická dlažba'."
+      "expect": { "tools_called": ["search_documents"], "answer_matches": ["[Kk]a[cč][ií]rek|KAČÍREK", "XPS"] },
+      "verified": true,
+      "notes": "D-123 (#149): čítanie strany (document_id bez q). Overené na prod 20. 10. (eval kolo dnešných zlúčení): legenda má 15 položiek (železobetón ... kačírek, izolácia XPS ... hydroizolácia); 'keramické murivo' je len v poznámke strany, nie v legende."
     },
     {
       "id": "doc-show-label",
