@@ -5466,7 +5466,7 @@ miestnosť 1.10 = 6,796 x 3,221 m, pôdorys z meshu = Qto 21,699 m². DD02.05.04
 
 ### D-123 - Text dokumentov z textovej vrstvy PDF: naplnenie zo storage, riadky s polohou, čítanie strany v `search_documents`
 
-**Dátum:** 2026-10-20 · **Stav:** prijaté (Samuel cez orchestrátora: rámik áno, OCR nie, výmery z výkresu len na žiadosť); otvorené naplnenie produkcie · **Súvisí:** D-063 (rozširuje), D-104, D-117, D-114, D-090 · **Issue:** #149
+**Dátum:** 2026-10-20 · **Stav:** prijaté (Samuel cez orchestrátora: rámik áno, OCR nie, výmery z výkresu len na žiadosť); produkcia naplnená · **Súvisí:** D-063 (rozširuje), D-104, D-117, D-114, D-090 · **Issue:** #149
 
 **Kontext:** požiadavka z konektora (#149): spočítať murivo na 1NP z PDF výkresu D.1.1.01 a vedieť
 čítať, hľadať a ukazovať text vo všetkých výkresoch a technických správach. Návrh z konverzácie bol
@@ -5527,7 +5527,10 @@ nový tool `read_document` s OCR. Overenie nad produkciou ukázalo, že tool nec
    ktoré sa môžu rozísť. Odporúčanie: DB ostáva zdrojom pre hľadanie aj čítanie (jeden extraktor, rýchle),
    variant B len ako záloha, keď dokument v `document_pages` chýba. Rozhodne Samuel (#149).
 
-**Otvorené (Samuel, #149):** kto a kedy spustí migráciu a `--from-db` na produkcii; či chce variant B.
+**Stav produkcie (2026-10-20):** Samuel zvolil variant s DB (variant B sa nerobí). Migráciu `20261020160000`
+a naplnenie `document_pages` spustil orchestrátor cez Management API tou istou extrakciou ako
+`etl/pdf_text.py`: 44 dokumentov, 553 strán, všetky s `blocks`; `search_documents("požiarna odolnosť")` na
+produkcii vracia pôdorysy PBR. Nový alebo zmenený dokument: `python -m etl.pdf_text --from-db --only <ref>`.
 
 ### D-117 - Výrez strany výkresu z chatu: `open_drawing region`
 
