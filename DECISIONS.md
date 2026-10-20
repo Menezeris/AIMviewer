@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-106 (Odvodené záznamy ako strom, #93):** jeden AIM badge a odlíšená sekcia, strom vzťah > IFC trieda / PredefinedType > inštancia s počtami, host posiela `other.predefinedType`.
 - **2026-10-19** - **D-105 (X-ray context z chatu, #106):** `style_in_3d action=xray` cez AIM chat lens s príznakom `x: 1`, fork dá zjednotenie pravidiel do kanála ghost viewera (ako tlačidlo duch), `mode=add` rozšíri, `show_all` zruší; drôtový model zatiaľ nie (renderer ho nemá).
 - **2026-10-19** - **D-104 (dokumenty z IFC):** jedna sada dokumentov z IFC (stará sada E3 sa odstráni), ETL podľa IfcDocumentInformation vrátane stromu a odkazov na strany, efektívne dokumenty objektu cez vzťahy (typ, skupina, zóna, priestorová zóna, odvodené) v DB aj v tooloch, prehliadanie a preklikávanie PDF cieľovo vo vieweri (fork), súbory v buckete podľa `Identification`.
 - **2026-10-19** - **D-103 (rýchle CI forku, rozširuje D-098):** rýchla cesta aj pre PR s úpravami pôvodných viewer súborov len vnútri AIM-FORK blokov (build viewera, súvisiace viewer testy, ratchet viewer JS), nočné plné CI na `main`, nálezy review bota neblokujú merge okrem bezpečnostných (ifc-lite #69).
@@ -4937,3 +4938,24 @@ duchovo).
 **Otvorené:** drôtový model (wireframe) pre množinu prvkov. Renderer forku ani upstreamu taký režim
 nemá (hrany kreslí len pri kolíziách a zónach); bol by to nový renderovací režim v upstream kóde.
 Necháva sa, kým ho nebude mať upstream alebo kým Samuel nerozhodne o vlastnej vrstve.
+### D-106 - Odvodené záznamy v paneli vlastností ako strom
+**Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #93).
+Nadväzuje na D-089 (vrstva odvodení, AIM záznamy v Relationship records).
+
+**Kontext:** sekcia "Odvodené záznamy" (fork, záložka IFC, Relationship records) mala AIM badge
+pri každom riadku a jeden plochý zoznam (priestor, priestorové zóny, zóny cez priestor). Pri viac
+ako pár záznamoch sa v ňom ťažko orientovalo a badge na každom riadku zahlcoval.
+
+**Rozhodnutie:**
+1. Jeden AIM badge pri nadpise sekcie a odlíšený rám celej sekcie, aby bolo jasné, že ide o
+   dáta AIM, nie o IFC súbor.
+2. Strom s počtami: vzťah a smer (`IfcRelReferencedInSpatialStructure`, `IfcZone cez priestor`)
+   > IFC trieda / PredefinedType (`IfcSpatialZone / THERMAL`) > inštancie s rolou inside/partial.
+   Prvé dve úrovne otvorené, trieda nad 20 riadkov zbalená. Klik na inštanciu vyberie prvok ako
+   doteraz.
+3. Host posiela `other.predefinedType` (z `objects.predefined_type`, `NOTDEFINED` = null); pole je
+   voliteľné, starší viewer ho ignoruje.
+
+**Zavrhnuté:**
+- *Zoskupenie podľa pravidla odvodenia:* priestor a priestorová zóna idú tým istým IFC vzťahom;
+  pravidlo je v tooltipe skupiny.
