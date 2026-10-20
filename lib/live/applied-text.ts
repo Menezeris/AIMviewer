@@ -1,4 +1,5 @@
 import type { LiveAppliedPayload } from "./protocol";
+import { withSectionOrientation } from "./section-orientation";
 
 /**
  * Text pre model po potvrdení príkazu vo vieweri (D-101). Stav je ten, ktorý
@@ -12,7 +13,7 @@ export function appliedText(tool: string, a: LiveAppliedPayload, elapsedMs?: num
   const head = a.ok
     ? `Vykonané vo vieweri${elapsedMs !== undefined ? ` (${elapsedMs} ms)` : ""}.`
     : `Vo vieweri sa nevykonalo všetko: ${a.issues.join("; ")}.`;
-  const state = a.state === undefined ? "" : ` Stav po príkaze: ${JSON.stringify(a.state)}.`;
+  const state = a.state === undefined ? "" : ` Stav po príkaze: ${JSON.stringify(withSectionOrientation(a.state))}.`;
   // D-092: rez nad podlažím má sedieť s eleváciou z DB, inak ho nepotvrdzuj.
   const section =
     tool === "set_section"

@@ -10,6 +10,7 @@ import { listSavedViews } from "@/lib/views/tools";
 import { liveChannel } from "./broadcast";
 import { MAX_QUERY_GUIDS, type ViewerQuery } from "./protocol";
 import { queryLiveViewer, type QueryOutcome } from "./query";
+import { withSectionOrientation } from "./section-orientation";
 import { lookupSelectionContext } from "./selection-context";
 import { DEFAULT_ITEMS_LIMIT, MAX_ITEMS_LIMIT, lookupGuidsFor, summarizeSelection, type ViewerSelection } from "./selection-summary";
 
@@ -26,7 +27,8 @@ export const VIEWER_QUERY_TOOL_DEFINITIONS: ToolDefinition[] = [
       "Čo práve ukazuje OTVORENÝ živý viewer: režim (3d/2d/split) a podlažie, aktívny rez (os, súradnica v IFC, " +
       "poloha v %), kamera (pozícia a cieľ v IFC), výber a počty skrytých a izolovaných prvkov. Výber: count, " +
       "truncated, summary (počty podľa IFC triedy, podlažia, rodičovskej zostavy a modelu) a stránka items; na " +
-      "'čo mám vybrané' odpovedaj zo summary. bounds=true alebo cieľ (target_ids_or_refs, global_ids) = namiesto " +
+      "'čo mám vybrané' odpovedaj zo summary. lens = AIM chat lens zo style_in_3d (pravidlá s počtami, izolácia " +
+      "alebo X-ray s počtom prvkov). bounds=true alebo cieľ (target_ids_or_refs, global_ids) = namiesto " +
       "stavu obálky v súradniciach IFC (m, Z hore): celý model a prvky (min, max, size, center, section_axis), " +
       "napr. pred presným rezom set_section(orientation, coordinate_m); zostava bez geometrie sa zráta z častí, " +
       "missing = prvky bez geometrie. ULOŽENÉ POHĽADY: saved_views=true = zoznam a opis uložených pohľadov stavby " +
@@ -120,24 +122,41 @@ async function withAimRefs(result: unknown, input: Record<string, unknown>): Pro
   };
 }
 
+/** Súhrn lens k stavu čaká kratšie než samotný stav: lens, ktorá sa ešte vyhodnocuje, stav nezdrží. */
+const LENS_IN_STATE_TIMEOUT_MS = 2_500;
+
+/**
+ * AIM chat lens k stavu viewera (#97): `lens_state` bez verzie = posledná lens a izolácia
+ * či X-ray z chatu (pravidlá, počty, bez GUID). Bez odpovede sa kľúč vynechá.
+ */
+async function lensOfState(channel: string, query: typeof queryLiveViewer): Promise<unknown> {
+  const outcome = await query(channel, "lens_state", [], { timeoutMs: LENS_IN_STATE_TIMEOUT_MS }).catch(() => null);
+  return outcome?.ok && outcome.reply.ok ? outcome.reply.result : undefined;
+}
+
 export async function execViewerQueryTool(
   name: string,
   input: Record<string, unknown>,
   site: string,
+  query: typeof queryLiveViewer = queryLiveViewer,
 ): Promise<{ text: string; isError: boolean }> {
   const channel = liveChannel();
   try {
     if (input.saved_views === true) {
       return { text: JSON.stringify(await listSavedViews(defaultSavedViewDeps())), isError: false };
     }
-    const query = viewerQueryOf(input);
-    const guids = query === "bounds" && (input.target_ids_or_refs || input.global_ids) ? await resolveTargets(input) : [];
-    const outcome = channel ? await queryLiveViewer(channel, query, guids.slice(0, MAX_QUERY_GUIDS)) : null;
+    const kind = viewerQueryOf(input);
+    const guids = kind === "bounds" && (input.target_ids_or_refs || input.global_ids) ? await resolveTargets(input) : [];
+    const lens = channel && kind === "view_state" ? lensOfState(channel, query) : undefined;
+    const outcome = channel ? await query(channel, kind, guids.slice(0, MAX_QUERY_GUIDS)) : null;
     if (!outcome || !outcome.ok) {
       return { text: outcomeError(outcome ?? { ok: false, reason: "not_configured" }, channel, site), isError: true };
     }
     if (!outcome.reply.ok) return { text: `Viewer odpovedal chybou: ${outcome.reply.error}`, isError: true };
-    return { text: JSON.stringify(await withAimRefs(outcome.reply.result, input)), isError: false };
+    const result = withSectionOrientation(await withAimRefs(outcome.reply.result, input));
+    const lensState = await lens;
+    const withLens = lensState !== undefined && result && typeof result === "object" ? { ...result, lens: lensState } : result;
+    return { text: JSON.stringify(withLens), isError: false };
   } catch (err) {
     if (err instanceof ViewInputError) return { text: err.message, isError: true };
     return { text: `Chyba: ${err instanceof Error ? err.message : String(err)}`, isError: true };

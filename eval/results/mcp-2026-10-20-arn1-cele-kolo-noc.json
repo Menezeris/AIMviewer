@@ -1,0 +1,396 @@
+{
+  "ranAt": "2026-10-20T21:48:00Z",
+  "label": "celé kolo mcp-tasks po balíku forku 2 a D-119 (bez D-121, D-122)",
+  "region": "arn1",
+  "runner": "nová cloud session (čerstvý zoznam toolov), každá úloha čerstvý subagent; headless produkčný viewer na živom kanáli; setup ako prvá správa toho istého subagenta",
+  "results": [
+    {
+      "id": "D1-pocet-dveri",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "search_objects(mode=count, IfcDoor)"
+      ],
+      "duration_ms": 6630,
+      "over_cap": false,
+      "note": "97"
+    },
+    {
+      "id": "D2-vzt-jednotky-kde",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "search_objects(mode=locate, IfcUnitaryEquipment)"
+      ],
+      "duration_ms": 8254,
+      "over_cap": false,
+      "note": "3 jednotky, 1NP/2NP/3NP"
+    },
+    {
+      "id": "D3-pocet-miestnosti",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "get_model_stats"
+      ],
+      "duration_ms": 7759,
+      "over_cap": false,
+      "note": "83"
+    },
+    {
+      "id": "D4-podhlad-qto",
+      "pass": true,
+      "calls": 2,
+      "tools": [
+        "get_object(3.02, include=details)",
+        "ifc_get(3.02)"
+      ],
+      "duration_ms": 12304,
+      "over_cap": false,
+      "note": "3050 mm (FinishCeilingHeight)"
+    },
+    {
+      "id": "D5-vyustka-kde",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "get_object(VV.03.01.040, include=details,path)"
+      ],
+      "duration_ms": 10094,
+      "over_cap": false,
+      "note": "IfcAirTerminal DIFFUSER, 3NP"
+    },
+    {
+      "id": "D6-nosne-steny",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "ifc_query(values, IfcWall, LoadBearing)"
+      ],
+      "duration_ms": 9919,
+      "over_cap": false,
+      "note": "86 zo 168"
+    },
+    {
+      "id": "D7-kod-len-v-ifc",
+      "pass": true,
+      "calls": 2,
+      "tools": [
+        "get_object(SD04.0001, include=path)",
+        "show_in_3d(SD04.0001)"
+      ],
+      "duration_ms": 12191,
+      "over_cap": false,
+      "note": "IfcStairFlight 1NP; show_in_3d navyše, v strope"
+    },
+    {
+      "id": "C1-poziarna-odolnost-dveri",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "aggregate_objects(count, group_by FireRating)"
+      ],
+      "duration_ms": 11115,
+      "over_cap": false,
+      "note": "EI 30 DP3-C 32, bez hodnoty 65"
+    },
+    {
+      "id": "C2-mineralna-vlna",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "ifc_query(material=minerál, count)"
+      ],
+      "duration_ms": 13086,
+      "over_cap": false,
+      "note": "424"
+    },
+    {
+      "id": "C3-vzt-potrubie-pocet",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "ifc_query(count, VZT, group_by=type)"
+      ],
+      "duration_ms": 11095,
+      "over_cap": false,
+      "note": "495 IfcDuctSegment"
+    },
+    {
+      "id": "C4-revizia-asr",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "ifc_models(revisions)"
+      ],
+      "duration_ms": 9544,
+      "over_cap": false,
+      "note": "v076, Claude (OCB)"
+    },
+    {
+      "id": "C5-schema-jednotky-vzt",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "ifc_models(info, VZT)"
+      ],
+      "duration_ms": 7420,
+      "over_cap": false,
+      "note": "IFC4X3, mm"
+    },
+    {
+      "id": "C6-klasifikacia",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "ifc_models(classifications, ASR)"
+      ],
+      "duration_ms": 10605,
+      "over_cap": false,
+      "note": "Uniformat, TI06 398"
+    },
+    {
+      "id": "C7-dedenie-triedy",
+      "pass": true,
+      "calls": 0,
+      "tools": [],
+      "duration_ms": 8876,
+      "over_cap": false,
+      "note": "IfcFlowTerminal zo znalosti schémy, bez toolu (správne)"
+    },
+    {
+      "id": "C8-plocha-miestnosti",
+      "pass": true,
+      "calls": 2,
+      "tools": [
+        "get_object(3.02, include=details)",
+        "ifc_get(3.02)"
+      ],
+      "duration_ms": 12471,
+      "over_cap": false,
+      "note": "230,95 m2"
+    },
+    {
+      "id": "C9-jednotka-v-miestnosti",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "get_object(JV.01.01.001, include=path)"
+      ],
+      "duration_ms": 10456,
+      "over_cap": false,
+      "note": "2.14, 2NP"
+    },
+    {
+      "id": "C10-typ-jednotky",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "get_object(JV.01.01.001, include=details)"
+      ],
+      "duration_ms": 7791,
+      "over_cap": false,
+      "note": "DUPLEX 4500 Multi Eco-V"
+    },
+    {
+      "id": "C11-text-v-ifc",
+      "pass": true,
+      "calls": 2,
+      "tools": [
+        "search_all(EI 30 DP3, source=ifc)",
+        "ifc_query(values, IfcDoor, FireRating)"
+      ],
+      "duration_ms": 16062,
+      "over_cap": true,
+      "note": "32 dverí; ifc_query len ako kontrola search_all"
+    },
+    {
+      "id": "C12-bcf-otvorene",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "bcf_topic_list(status=open)"
+      ],
+      "duration_ms": 6643,
+      "over_cap": false,
+      "note": "žiadna otvorená"
+    },
+    {
+      "id": "C13-otvorene-poziadavky",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "feedback_status"
+      ],
+      "duration_ms": 8840,
+      "over_cap": false,
+      "note": "#76, #72, #97, #139"
+    },
+    {
+      "id": "V5-2d-podorys",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "set_view_mode(2d, 2NP)"
+      ],
+      "duration_ms": 7976,
+      "over_cap": false,
+      "note": "mode=2d, 2NP"
+    },
+    {
+      "id": "V6-vyber-a-vlastnosti",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "show_in_3d(select=true, panel_tab=ifc)"
+      ],
+      "duration_ms": 12946,
+      "over_cap": false,
+      "note": "selection 1 = DD01.02.0004"
+    },
+    {
+      "id": "V7-obalka-prvku",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "ifc_measure(a, show=true)"
+      ],
+      "duration_ms": 20561,
+      "over_cap": false,
+      "note": "0,31 x 1,02 x 2,16 m, 3 kóty"
+    },
+    {
+      "id": "V1-ukaz-miestnost",
+      "pass": true,
+      "calls": 2,
+      "tools": [
+        "search_objects(query=3.02)",
+        "show_in_3d(ids_or_refs=[3.02])"
+      ],
+      "duration_ms": 10158,
+      "over_cap": true,
+      "note": "focus 3.02; search_objects zbytočný (opis show_in_3d doplnený o číslo miestnosti)"
+    },
+    {
+      "id": "V2-izoluj-nosne",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "style_in_3d(isolate, LoadBearing=true)"
+      ],
+      "duration_ms": 10453,
+      "over_cap": false,
+      "note": "176 (viewer 185)"
+    },
+    {
+      "id": "E2-pridaj-schodiska",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "style_in_3d(isolate, IfcStair+IfcStairFlight, mode=add)"
+      ],
+      "duration_ms": 6663,
+      "over_cap": false,
+      "note": "185 -> 190"
+    },
+    {
+      "id": "E3-rez-pod-podhladom",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "set_section(3NP, relative_to=ceiling, offset_m=-0.05)"
+      ],
+      "duration_ms": 13529,
+      "over_cap": false,
+      "note": "Z 12,20 m"
+    },
+    {
+      "id": "E1-rez-schodiskom",
+      "pass": true,
+      "calls": 4,
+      "tools": [
+        "set_section(SD04.0001, fit=along)",
+        "style_in_3d(isolate, LoadBearing)",
+        "get_viewer_state",
+        "set_camera(preset=section)"
+      ],
+      "duration_ms": 21731,
+      "over_cap": false,
+      "note": "rez Y 4,159, izolácia, kamera kolmo"
+    },
+    {
+      "id": "E4-co-mam-oznacene",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "get_viewer_state"
+      ],
+      "duration_ms": 6402,
+      "over_cap": false,
+      "note": "setup zvýraznil 20 stien (nie výber); zvislý rez opísal ako vodorovný (doplnené section.orientation)"
+    },
+    {
+      "id": "V4-zrus-vyber",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "show_in_3d(select=true, clear=true)"
+      ],
+      "duration_ms": 4345,
+      "over_cap": false,
+      "note": "selection 0"
+    },
+    {
+      "id": "V3-zrus-vsetko",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "set_view_mode(3d, reset=true)"
+      ],
+      "duration_ms": 9143,
+      "over_cap": false,
+      "note": "bez rezu, izolácie, farieb, výberu"
+    },
+    {
+      "id": "V8-dokument-v-3d",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "style_in_3d(xray, document=D.1.3.04)"
+      ],
+      "duration_ms": 13209,
+      "over_cap": false,
+      "note": "X-ray 782"
+    },
+    {
+      "id": "V9-strana-v-3d",
+      "pass": true,
+      "calls": 3,
+      "tools": [
+        "search_all(D.1.1.09)",
+        "get_object(#page=3, include=documents)",
+        "style_in_3d(xray, document, page=3)"
+      ],
+      "duration_ms": 18846,
+      "over_cap": true,
+      "note": "S1 strecha, 45; search_all zbytočný (opis get_object doplnený o kód dokumentu)"
+    }
+  ],
+  "summary": {
+    "pass": "33/33",
+    "median_calls": 1,
+    "max_calls": 4,
+    "median_duration_ms": 10158,
+    "over_cap": [
+      "C11-text-v-ifc",
+      "V1-ukaz-miestnost",
+      "V9-strana-v-3d"
+    ],
+    "target_97": "bežná úloha do 3 volaní: splnené (jediná nad 3 je E1 so stropom 4)",
+    "fixes_in_pr": [
+      "show_in_3d: číslo miestnosti netreba hľadať (V1)",
+      "get_object: kód dokumentu (V9)",
+      "section.orientation v stave viewera (E4)"
+    ]
+  }
+}
