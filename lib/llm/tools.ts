@@ -5,7 +5,16 @@ import { PDF_LINK_SOURCE } from "@/lib/data/constants";
 import { fetchDocumentObjectRows, fetchDocumentTypes, fetchObjectDocuments, typeText } from "@/lib/data/object-documents";
 import { fetchAllPages } from "@/lib/data/pagination";
 import type { ToolDefinition } from "./provider";
-import { docOp, selectOp } from "@/lib/viewer-ops";
+import { docHighlightsInput, docOp, docRegionInput, selectOp } from "@/lib/viewer-ops";
+import {
+  PAGE_BLOCKS_CAP,
+  PAGE_TEXT_CAP,
+  compactBlocks,
+  highlightsRegion,
+  matchBlocks,
+  parseBlocks,
+  type TextBlock,
+} from "./document-text";
 import { mergeIfcActions, type AskAction } from "./actions";
 import { DOMAIN_IFC_TYPES, sanitizeIfcType, sanitizeModelName } from "./ifc-selector";
 import { LIST_TOOL_DEFINITIONS, LIST_TOOL_NAMES, execListTool } from "./list-tool";
@@ -166,6 +175,9 @@ function sanitizeQuery(raw: unknown): string {
 function isUuid(v: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
+
+/** Kód dokumentu z jeho názvu ("D.1.3.04 Pôdorys 3NP PBR"); object_ref je "OCB_SO01_PBR_D-1-3-04_...". */
+const DOCUMENT_CODE_RE = /^[A-Z](\.\d+){2,}$/i;
 
 /** Čo `get_object` pridá v tom istom volaní (D-115). */
 export const GET_OBJECT_INCLUDES = ["details", "path", "documents"] as const;
@@ -480,7 +492,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             "show=znova zobraziť skryté, isolate=zobraziť LEN vybrané (ostatné skryť; bez color " +
             "ostanú v pôvodnom vzhľade, color len keď ho používateľ chce), xray=vybrané plné v pôvodnom " +
             "vzhľade a zvyšok modelu priesvitný (X-ray context, ako tlačidlo duch; filtre ako isolate), " +
-            "show_all=zrušiť skrývanie, izoláciu a X-ray, reset_colors=zrušiť ofarbenie a lens, " +
+            "show_all=zrušiť skrývanie, izoláciu, X-ray aj rez (rez vráti set_section), reset_colors=zrušiť ofarbenie a lens, " +
             "legend=len veľkosť legendy Lens (legend_size), bez filtrov",
         },
         mode: {
@@ -647,9 +659,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "open_drawing",
     description:
-      "UI AKCIA: otvorí výkres/dokument v prehliadačke, voliteľne so zvýrazneným prvkom " +
-      "a stranou. Zavolaj, keď používateľ žiada otvoriť/ukázať výkres alebo prvok vo výkrese " +
-      "(document_id a page zisti cez get_object(include=documents)).",
+      "UI AKCIA: otvorí výkres/dokument v prehliadačke, voliteľne so zvýrazneným prvkom, " +
+      "stranou, výrezom strany (region = priblíženie na časť strany v karte vo vieweri) a " +
+      "rámikmi okolo textu (highlights). Zavolaj, keď používateľ žiada otvoriť/ukázať výkres " +
+      "alebo prvok vo výkrese, priblížiť výkres na miesto alebo ukázať/zvýrazniť text v ňom " +
+      "(document_id a page zisti cez get_object(include=documents), text cez search_documents).",
     inputSchema: {
       type: "object",
       properties: {
@@ -661,6 +675,39 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           description:
             "true = otvorí dokument ako kartu vedľa 3D modelu vo vieweri (bez zvýraznenia " +
             "prvku); default false = samostatná prehliadačka výkresu",
+        },
+        region: {
+          type: "object",
+          description:
+            "Voliteľné: výrez strany v % (0-100, počiatok vľavo hore), napr. pravý horný roh = " +
+            "{x:50,y:0,width:50,height:50}. Karta sa priblíži, aby výrez vyplnil plochu, a vycentruje " +
+            "ho; aj pre už otvorenú kartu. S region sa výkres vždy otvorí vo vieweri (in_viewer). " +
+            "Polohu prvku vo výkrese tool nepozná: výrez určí používateľ slovne (vpravo hore, " +
+            "stred, ľavý okraj...) a ďalší krok sa odvodí z predchádzajúceho výrezu.",
+          properties: {
+            x: { type: "number", description: "Ľavý okraj výrezu v % šírky strany" },
+            y: { type: "number", description: "Horný okraj výrezu v % výšky strany" },
+            width: { type: "number", description: "Šírka výrezu v % šírky strany" },
+            height: { type: "number", description: "Výška výrezu v % výšky strany" },
+          },
+          required: ["x", "y", "width", "height"],
+        },
+        highlights: {
+          type: "array",
+          description:
+            "Voliteľné: rámiky okolo textu na strane page, v % strany (najviac 20) - daj sem " +
+            "regions[].bbox zo search_documents. Bez region sa karta priblíži na rámiky. " +
+            "Vždy vo vieweri; ďalšie otvorenie dokumentu rámiky zruší.",
+          items: {
+            type: "object",
+            properties: {
+              x: { type: "number" },
+              y: { type: "number" },
+              width: { type: "number" },
+              height: { type: "number" },
+            },
+            required: ["x", "y", "width", "height"],
+          },
         },
       },
       required: ["document_id"],
@@ -682,18 +729,41 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "search_documents",
     description:
-      "Fulltextové vyhľadávanie v OBSAHU dokumentov/výkresov (extrahovaný text PDF strán — " +
-      "legendy, špecifikácie, popisky, pečiatky). Vracia dokument, stranu, snippet a " +
-      "deep_link na otvorenie výkresu na danej strane. Použi na otázky 'v ktorom dokumente " +
-      "sa píše o X'. POZOR: výkresy sú prevažne grafika — text býva riedky; ak dokument " +
-      "nemá extrahovaný text, nenájde sa tu (metadáta dokumentov hľadá query_view/search).",
+      "OBSAH dokumentov a výkresov (textová vrstva PDF strán: popisky a čísla miestností, kóty, " +
+      "hrúbky, legendy, špecifikácie, pečiatky, text technických správ). Tri spôsoby: " +
+      "(1) q = fulltext vo všetkých dokumentoch -> dokument, strana, snippet, deep_link a regions; " +
+      "(2) q + document_id = hľadanie len v tom dokumente (napr. 'ukáž vo výkrese popisok 1.05', " +
+      "'nájdi v technickej správe požiarnu odolnosť'); (3) document_id bez q = PREČÍTA stranu " +
+      "(page, default 1): celý text, s include_blocks aj riadky s polohou na strane (legenda, " +
+      "kóty). regions = kde na strane text je (bbox v %): 'ukáž/zvýrazni vo výkrese' = " +
+      "open_drawing(document_id, page, highlights=[regions[].bbox]) - karta sa priblíži a text " +
+      "orámuje. Slová sa hľadajú aj v inom tvare (skloňovanie). Výmery a objemy (murivo, plochy) " +
+      "počítaj z kót výkresu LEN na výslovnú žiadosť 'z výkresu' a ako hrubý odhad; inak vždy z " +
+      "modelu (ifc_measure, Qto). Metadáta dokumentov (názov, typ, revízia) hľadá query_view.",
     inputSchema: {
       type: "object",
       properties: {
-        q: { type: "string", description: "Hľadaný text (min 2 znaky)" },
+        q: {
+          type: "string",
+          description: "Hľadaný text (min 2 znaky); bez q a s document_id = čítanie strany",
+        },
+        document_id: {
+          type: "string",
+          description:
+            "Voliteľné: dokument (objects.id UUID alebo object_ref, napr. " +
+            "OCB_SO01_ASR_D-1-1-01_PODORYS-1NP) - hľadanie alebo čítanie len v ňom",
+        },
+        page: {
+          type: "number",
+          description: "Čítanie: číslo strany (default 1); s q obmedzí zhody na stranu",
+        },
+        include_blocks: {
+          type: "boolean",
+          description:
+            "Čítanie: aj riadky textu s polohou {t, x, y, w, h} v % strany (počiatok vľavo hore)",
+        },
         limit: { type: "number", description: "Max výsledkov (default 10, strop 50)" },
       },
-      required: ["q"],
     },
   },
   ...VIEW_TOOL_DEFINITIONS,
@@ -1308,7 +1378,7 @@ export class AskToolRuntime {
       .limit(1);
     if (error) throw new Error(error.message);
     let row = data?.[0] as (ObjectRow & { user_defined_type?: string | null }) | undefined;
-    let matchedBy: "name" | undefined;
+    let matchedBy: "name" | "document_code" | undefined;
     if (!row && col === "object_ref") {
       // Kód prvku býva meno, nie object_ref (VV.03.01.040), alebo prvok nie je v AIM vôbec (D-102).
       const { data: named, error: nameErr } = await supabase
@@ -1324,6 +1394,10 @@ export class AskToolRuntime {
       }
       row = rows[0];
       matchedBy = row ? "name" : undefined;
+      if (!row) {
+        row = (await this.documentByCode(idOrRef)) ?? undefined;
+        matchedBy = row ? "document_code" : undefined;
+      }
       if (!row) {
         const inIfc = await this.findInIfc(idOrRef);
         if (inIfc) return inIfc;
@@ -1537,35 +1611,55 @@ export class AskToolRuntime {
   }
 
   /**
-   * Fulltext v obsahu dokumentov (D-063) — RPC `search_documents` nad
-   * `document_pages` (text extrahuje etl/pdf_text.py). Deep-link stavia server.
+   * Obsah dokumentov (D-063, D-123) - RPC `search_documents` nad `document_pages`
+   * (text a riadky s polohou extrahuje etl/pdf_text.py). S `document_id` hľadá len
+   * v ňom, bez `q` číta stranu. Deep-link a výrezy pre open_drawing stavia server.
    */
   private async searchDocuments(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
     const q = String(input.q ?? "").trim().slice(0, 200);
+    const docInput = String(input.document_id ?? "").trim();
+    const page =
+      typeof input.page === "number" && Number.isFinite(input.page) && input.page >= 1
+        ? Math.floor(input.page)
+        : null;
+
+    let doc: ObjectRow | null = null;
+    if (docInput) {
+      doc = await this.resolveObject(docInput);
+      if (!doc || doc.object_type !== "document") {
+        throw new Error(`Dokument '${docInput}' sa nenašiel (document_id = objects.id alebo object_ref dokumentu).`);
+      }
+    }
+    if (!q) {
+      if (!doc) throw new Error("Zadaj q (hľadaný text) alebo document_id (čítanie strany).");
+      return this.readDocumentPage(doc, page ?? 1, input.include_blocks === true);
+    }
     if (q.length < 2) throw new Error("q musí mať aspoň 2 znaky.");
 
     const { data, error } = await supabase.rpc("search_documents", {
       q,
       max_rows: clampLimit(input.limit),
+      ...(doc ? { doc_id: doc.id } : {}),
     });
     if (error) throw new Error(error.message);
 
-    const rows = (data ?? []) as {
+    const rows = ((data ?? []) as {
       document_id: string;
       document_ref: string | null;
       document_name: string | null;
       page: number;
       rank: number;
       snippet: string | null;
-    }[];
+    }[]).filter((r) => page === null || r.page === page);
     if (rows.length === 0) {
       return {
         rows,
-        hint:
-          "Žiadna zhoda v extrahovanom texte — dokument nemusí mať textovú vrstvu " +
-          "(výkresy sú prevažne grafika). Metadáta dokumentov skús cez query_view " +
-          "relation=documents/objects alebo search_everything.",
+        hint: doc
+          ? "V tomto dokumente zhoda nie je. Skús kratší tvar slova, kód alebo číslo, alebo " +
+            "prečítaj stranu (document_id bez q)."
+          : "Žiadna zhoda v extrahovanom texte. Skús kratší tvar slova, kód alebo číslo; " +
+            "metadáta dokumentov (názov, typ) hľadá query_view relation=documents/objects.",
       };
     }
     for (const r of rows) {
@@ -1576,10 +1670,68 @@ export class AskToolRuntime {
         name: r.document_name ?? null,
       });
     }
-    return rows.map((r) => ({
-      ...r,
-      deep_link: `/drawing/${r.document_id}?page=${r.page}`,
-    }));
+
+    // Riadky s polohou len pre strany zhôd (D-123); bez nich (stará extrakcia) regions chýba.
+    const blocksByPage = new Map<string, TextBlock[]>();
+    const { data: pages, error: pagesError } = await supabase
+      .from("document_pages")
+      .select("document_id, page, blocks")
+      .in("document_id", [...new Set(rows.map((r) => r.document_id))])
+      .in("page", [...new Set(rows.map((r) => r.page))]);
+    if (pagesError) throw new Error(pagesError.message);
+    for (const p of (pages ?? []) as { document_id: string; page: number; blocks: unknown }[]) {
+      blocksByPage.set(`${p.document_id}:${p.page}`, parseBlocks(p.blocks));
+    }
+
+    return rows.map((r) => {
+      const matches = matchBlocks(blocksByPage.get(`${r.document_id}:${r.page}`) ?? [], q);
+      return {
+        ...r,
+        deep_link: `/drawing/${r.document_id}?page=${r.page}`,
+        ...(matches.length > 0 ? { regions: matches } : {}),
+      };
+    });
+  }
+
+  /** Čítanie strany dokumentu (D-123): text, voliteľne riadky s polohou. */
+  private async readDocumentPage(doc: ObjectRow, page: number, includeBlocks: boolean) {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("document_pages")
+      .select(includeBlocks ? "page, text, blocks" : "page, text")
+      .eq("document_id", doc.id)
+      .order("page");
+    if (error) throw new Error(error.message);
+    const all = (data ?? []) as unknown as { page: number; text: string; blocks?: unknown }[];
+    const document = { document_id: doc.id, document_ref: doc.object_ref, document_name: doc.name };
+    if (all.length === 0) {
+      return {
+        ...document,
+        hint:
+          "Dokument nemá extrahovaný text (document_pages). Načíta ho ETL " +
+          "`python -m etl.pdf_text --from-db`; sken bez textovej vrstvy by potreboval OCR.",
+      };
+    }
+    const pagesWithText = all.map((p) => p.page);
+    const hit = all.find((p) => p.page === page);
+    if (!hit) {
+      return { ...document, page, text: null, pages_with_text: pagesWithText, hint: "Strana nemá text." };
+    }
+    const blocks = includeBlocks ? parseBlocks(hit.blocks) : [];
+    return {
+      ...document,
+      page,
+      pages_with_text: pagesWithText,
+      text: hit.text.slice(0, PAGE_TEXT_CAP),
+      ...(hit.text.length > PAGE_TEXT_CAP ? { text_truncated: true, text_length: hit.text.length } : {}),
+      ...(includeBlocks
+        ? {
+            blocks: compactBlocks(blocks),
+            ...(blocks.length > PAGE_BLOCKS_CAP ? { blocks_truncated: true, blocks_total: blocks.length } : {}),
+          }
+        : {}),
+      deep_link: `/drawing/${doc.id}?page=${page}`,
+    };
   }
 
   /**
@@ -1710,9 +1862,26 @@ export class AskToolRuntime {
       .is("valid_until", null)
       .limit(1);
     if (error) throw new Error(error.message);
-    const row = (data?.[0] as ObjectRow | undefined) ?? null;
+    const row = (data?.[0] as ObjectRow | undefined) ?? (col === "object_ref" ? await this.documentByCode(value) : null);
     if (row) this.addSource(row);
     return row;
+  }
+
+  /**
+   * Dokument podľa kódu, ktorým ho volá používateľ (D.1.3.04): je na začiatku názvu,
+   * nie v object_ref. Len jednoznačná zhoda; style_in_3d má vlastný výber (pickDocument).
+   */
+  private async documentByCode(code: string): Promise<ObjectRow | null> {
+    if (!DOCUMENT_CODE_RE.test(code)) return null;
+    const { data, error } = await getSupabaseAdmin()
+      .from("objects")
+      .select("id, object_type, object_ref, name, ifc_type, predefined_type, user_defined_type")
+      .eq("object_type", "document")
+      .ilike("name", `${code} %`)
+      .is("valid_until", null)
+      .limit(2);
+    if (error) throw new Error(error.message);
+    return data?.length === 1 ? (data[0] as ObjectRow) : null;
   }
 
   private async showIn3d(input: Record<string, unknown>) {
@@ -2183,14 +2352,39 @@ export class AskToolRuntime {
         : null;
 
     const label = doc.name ?? doc.object_ref ?? "výkres";
-    if (input.in_viewer === true) {
-      // Karta dokumentu vedľa 3D (D-075 DOCUMENT_OPEN cez op `doc`, D-083).
+    const highlights = docHighlightsInput(input.highlights);
+    if (input.highlights !== undefined && Array.isArray(input.highlights) && input.highlights.length > 0 && highlights.length === 0) {
+      throw new Error("highlights = [{x, y, width, height}] v % strany (0-100), aspoň jeden na strane.");
+    }
+    // Bez výrezu sa karta priblíži na rámiky (D-123): ich obal, najmenej 15 % na os.
+    const region =
+      docRegionInput(input.region) ??
+      (input.region === undefined && highlights.length > 0 ? highlightsRegion(highlights) : undefined);
+    if (input.region !== undefined && !region) {
+      throw new Error("region musí mať x, y, width, height v % strany (0-100) a ležať na strane.");
+    }
+    if (input.in_viewer === true || region) {
+      // Karta dokumentu vedľa 3D (D-075 DOCUMENT_OPEN cez op `doc`, D-083), výrez strany D-117, rámiky D-123.
       this.actions.push({
         type: "navigate",
-        url: `/ifc?ops=${encodeURIComponent(docOp(doc.id, page ?? undefined))}&r=${Date.now().toString(36)}`,
+        url: `/ifc?ops=${encodeURIComponent(docOp(doc.id, page ?? undefined, region, highlights))}&r=${Date.now().toString(36)}`,
         label: `Viewer: ${label}`,
       });
-      return { ok: true, opened: "viewer_document", document: label, ...(page ? { page } : {}) };
+      return {
+        ok: true,
+        opened: "viewer_document",
+        document: label,
+        ...(page ? { page } : {}),
+        ...(region ? { region: { x: region.x, y: region.y, width: region.w, height: region.h } } : {}),
+        ...(highlights.length > 0 ? { highlights: highlights.length } : {}),
+        ...(focusId
+          ? {
+              note:
+                "focus_id karta vo vieweri nezvýrazní; polohu prvku vo výkrese tool nepozná. " +
+                "Na priblíženie použi region (výrez strany v %).",
+            }
+          : {}),
+      };
     }
 
     const params = new URLSearchParams();

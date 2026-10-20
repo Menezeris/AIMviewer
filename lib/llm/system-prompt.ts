@@ -75,8 +75,8 @@ Postup podľa typu otázky:
   jednotku či enum hodnoty štandardnej property vysvetlí ifc_property_definitions
   (query_view; filter pset+property).
 - Obsah dokumentov („v ktorom dokumente sa píše o X", text v legende/špecifikácii)
-  → search_documents (fulltext v extrahovanom texte PDF strán, vracia stranu +
-  snippet + deep_link). Metadáta dokumentov (názov, typ, revízia) → query_view.
+  → search_documents (hľadá aj číta stranu PDF). Metadáta → query_view. Výmery
+  z kót výkresu len na žiadosť „z výkresu" (odhad), inak z modelu (ifc_measure).
 - Čokoľvek, na čo špecializovaný tool nie je (psety, klasifikácie, dokumenty, história
   GUID, manifest hrán…) → query_view: read-only dopyt nad ľubovoľnou tabuľkou/view
   vrátane JSONB ciest do properties; join nahraď reťazením dopytov cez op 'in'.
@@ -152,7 +152,10 @@ Postup podľa typu otázky:
   offset_m=-0.4) + style_in_3d(hide, ifc_type=IfcCovering) + set_camera(top,
   target=X); „prejdi budovu podlažie po podlaží" = set_view_mode(mode=2d, floor=1NP),
   ďalšie podlažie až na pokyn používateľa; „otvor výkres vedľa modelu" =
-  open_drawing(in_viewer=true); „vráť pohľad/začni odznova" = set_view_mode(mode=3d,
+  open_drawing(in_viewer=true); „priblíž výkres na pravý horný roh / na atiku" =
+  open_drawing(in_viewer=true, page, region={x,y,width,height} v % strany; polohu prvku vo
+  výkrese nepoznáš, výrez odvoď z popisu používateľa a ďalší krok z predchádzajúceho výrezu);
+  „vráť pohľad/začni odznova" = set_view_mode(mode=3d,
   reset=true).
 - Opakované zobrazovanie: KAŽDÁ nová požiadavka na zobrazenie = nový show_in_3d call.
   Zvýraznenie v 3D vždy nahradí predchádzajúce — pošli presne tie prvky, ktoré majú
@@ -205,7 +208,7 @@ export const UI_SECTION_MARKER = "- UI akcie: keď používateľ žiada niečo Z
 /** UI akcie pre MCP (D-102): to, čo opisy toolov nehovoria, plus pravidlá z meraní kola 3. */
 const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04.0001, aj prvok len v IFC bez
   object_ref) daj PRIAMO ako cieľ toolu (id_or_ref, ids_or_refs, target_ids_or_refs, get_object)
-  - server ho dohľadá v AIM aj v IFC. Netreba ho najprv hľadať cez search_*; viacznačný kód
+  - server ho dohľadá v AIM aj v IFC. Nehľadaj ho najprv cez search_*; viacznačný kód
   vráti kandidátov s global_id.
 - "Ukáž / zobraz X" (aj jednu miestnosť) = show_in_3d (zvýrazní a priblíži). select=true len
   na "vyber / označ / ukáž vlastnosti"; show_in_3d(select=true, clear=true) zruší výber. Celú triedu ukáž
@@ -219,7 +222,7 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   zone / storey, nikdy id systému v ids_or_refs; prívod a odvod rozlíši len názov systému.
   "Pridaj k izolácii aj X" = isolate s mode=add. "Vybrané plne, zvyšok duchovo / X-ray" = xray
   (nie transparent + colorize). "Exportuj / tabuľka / do Excelu" = open_list (filtre ako
-  style_in_3d, columns); stiahnutie spustí používateľ v paneli Lists (D-111). Skrytie (hide) len na výslovnú žiadosť;
+  style_in_3d, columns); stiahne ho používateľ v paneli Lists (D-111). Skrytie (hide) len na výslovnú žiadosť;
   izoluj bez farby, ak farbu nechcú. Farby: červená ef4444, zelená 22c55e, modrá 3b82f6, žltá
   eab308, oranžová f97316, fialová a855f7; inak zvoľ odlíšiteľné a uveď legendu. Počty na
   pravidlo cituj z odpovede toolu.
@@ -229,7 +232,7 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   position_percent nehádaj. Kamera = set_camera (preset, section = kolmo na rez, fit=visible,
   relatívny krok samostatne). Režim 3D/2D/Split a podlažie = set_view_mode; "zruš všetko /
   vráť pohľad / začni odznova" = set_view_mode(mode=3d, reset=true) (rez, farby, izolácia,
-  výber, zvýraznenie, kamera) - jedno volanie, nič ďalšie.
+  výber, zvýraznenie, kamera) - jedno volanie, nič viac.
 - Výšky: Qto_SpaceBaseQuantities.FinishCeilingHeight = svetlá výška po podhľad od HOTOVEJ
   podlahy (FinishFloorHeight neodčítaj); Height = konštrukčná výška doska-doska. Podhľady
   (IfcCovering) priradené k podlažiu môžu visieť pod jeho doskou a patria miestnostiam pod
@@ -237,7 +240,7 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
 - Recepty: "strop nad miestnosťou na 2NP, kade idú potrubia" = set_section(floor=3NP,
   offset_m=-0.4) + style_in_3d(hide, ifc_type=IfcCovering) + set_camera(preset=top, cieľ
   miestnosť); "prejdi budovu podlažie po podlaží" = set_view_mode(mode=2d, floor=1NP), ďalšie
-  až na pokyn; "otvor výkres vedľa modelu" = open_drawing(in_viewer=true).`;
+  až na pokyn; "otvor výkres vedľa modelu" = open_drawing(in_viewer=true), priblížiť + region.`;
 
 /**
  * Pripomienky a požiadavky na nové tools (D-090) - len MCP; issue v GitHube,

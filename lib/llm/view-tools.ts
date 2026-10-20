@@ -9,6 +9,7 @@ import { CAMERA_FITS, CAMERA_RANGES } from "@/lib/viewer-camera";
 import type { AskAction } from "./actions";
 import type { ToolDefinition } from "./provider";
 import { planCamera } from "./camera-plan";
+import { SECTION_CAPS, planSectionCap } from "../viewer-section-cap";
 import { DOMAIN_IFC_TYPES } from "./ifc-selector";
 import { ViewInputError, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
 
@@ -40,7 +41,9 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "Presná poloha = orientation + coordinate_m v súradniciach IFC (vertical_x reže na IFC X, " +
       "vertical_z na IFC Y, horizontal na IFC Z - výške); súradnice dá get_viewer_state(bounds). position_percent " +
       "(0-100 % obálky celej scény, nie budovy) len ako posledná možnosť. action=clear rez zruší. Čistý pohľad bez widgetu rezu = " +
-      "show_widget=false (pri set) alebo action=widget, show_widget=false (rez ostáva). Príklad 'ukáž strop " +
+      "show_widget=false (pri set) alebo action=widget, show_widget=false (rez ostáva). Rezná plocha = cap_style " +
+      "(hatch = šrafa, solid = plná výplň, none = bez plochy, ostanú obrysy) a cap_color; aktívny rez bez zmeny " +
+      "polohy = action=widget + cap_style ('vypni šrafu' = action=widget, cap_style=none alebo solid). Príklad 'ukáž strop " +
       "nad miestnosťou na 2NP, kade idú potrubia': set_section(floor=3NP, offset_m=-0.4) + " +
       "style_in_3d(hide, ifc_type=IfcCovering) + set_camera(preset=top, target=miestnosť).",
     inputSchema: {
@@ -76,6 +79,12 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "boolean",
           description: "false = skryť widget rezu (rovina a jej obrys) pre čistý pohľad, rez ostáva aktívny; true = zobraziť",
         },
+        cap_style: {
+          type: "string",
+          enum: [...SECTION_CAPS],
+          description: "Rezná plocha: hatch = šrafa, solid = plná výplň, none = bez plochy (viewer si voľbu pamätá)",
+        },
+        cap_color: { type: "string", description: "Farba výplne reznej plochy #rrggbb (bez cap_style = solid)" },
       },
       required: ["action"],
     },
@@ -139,6 +148,13 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
 
 export const VIEW_TOOL_NAMES = new Set(VIEW_TOOL_DEFINITIONS.map((t) => t.name));
 
+/** `cap_style` / `cap_color` (D-120); chybný vstup = ViewInputError. */
+function sectionCapPlan(input: Record<string, unknown>) {
+  const cap = planSectionCap(input);
+  if (cap && "error" in cap) throw new ViewInputError(cap.error);
+  return cap;
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Podlažie AIM (object_ref, názov s normalizáciou, alebo UUID) -> label, aktívny GUID, elevácia. */
@@ -199,7 +215,11 @@ export async function execViewTool(
   push: (action: AskAction) => void,
 ): Promise<Record<string, unknown>> {
   let plan: ViewPlan;
-  if (name === "set_section") {
+  const cap = name === "set_section" ? sectionCapPlan(input) : null;
+  if (cap && input.action === "widget" && typeof input.show_widget !== "boolean") {
+    // Len vzhľad reznej plochy aktívneho rezu (D-120).
+    plan = { ops: [], label: "3D", result: { ok: true } };
+  } else if (name === "set_section") {
     const floor = input.action === "set" ? await resolveFloor(input.floor) : null;
     const targets = input.action === "set" && (input.target_ids_or_refs || input.global_ids) ? await resolveTargets(input) : [];
     if (input.relative_to === "ceiling") {
@@ -220,6 +240,7 @@ export async function execViewTool(
   } else {
     throw new Error(`Neznámy tool pohľadu '${name}'.`);
   }
+  if (cap) plan = { ops: [...plan.ops, cap.op], label: `${plan.label}, ${cap.label}`, result: { ...plan.result, ...cap.result } };
   push({
     type: "navigate",
     url: `/ifc?ops=${encodeURIComponent(plan.ops.join(";"))}&r=${Date.now().toString(36)}`,

@@ -5603,6 +5603,150 @@ meshov a jeho výsledok je to, čo sa má ukázať; rozlišovací parameter `sho
 - *Vlastný renderer kót vo forku:* upstream Measure už kreslí, popisuje a maže merania (D-098).
 - *Úsečka zo stredu `closest_point` a obálky clash výsledku:* obálka úsečky neurčuje, ktorá uhlopriečka je
   úsečka.
+### D-120 - Rez: vzhľad reznej plochy z chatu (šrafa, výplň) a vynechanie prvkov z rezu
+
+**Dátum:** 2026-10-20 · **Stav:** časť 1 prijatá (implementovaná), časť 2 čaká na Samuela · **Súvisí:** D-083, D-085, D-092, D-094, D-098, D-114 · **Issues:** #138, #139 · **PR:** Menezeris/ifc-lite (fork), AIMviewer (tento)
+
+**Kontext:** pri reze nad podlažím viewer kreslí rezné plochy so šrafou a žiadny tool ju nevie
+vypnúť; šrafa prekrýva ofarbenie Lens (miestnosti Retail 1/2) a znižuje čitateľnosť (#138).
+Druhá potreba (#139): ukázať celý objem ofarbených miestností (IfcSpace), kým ostatné konštrukcie
+ostanú prerezané.
+
+**Najbližšie tooly (D-114):** `set_section` (rez, widget; vzhľad plochy neovláda), `style_in_3d`
+(farba prvkov, nie rezná plocha, ktorú kreslí renderer rezu), `set_view_mode` (len režim).
+Obe potreby sú parameter `set_section`, nie nový tool.
+
+**Rozhodnutie:**
+1. **Vzhľad reznej plochy (#138):** `set_section` dostane `cap_style` = `hatch | solid | none` a
+   `cap_color` (`#rrggbb`, samotná farba = plná výplň). Platí pri `action=set` aj pri
+   `action=widget` (aktívny rez bez zmeny polohy). Op `section_cap:<cap>[~c=<hex>]:`
+   (`lib/viewer-section-cap.ts`), bridge `SET_SECTION_CAP` vo forku (`aim/sectionCap.ts`).
+   Podľa D-098 nič nové: fork volá tie isté setery store ako tlačidlo Fill slice a popover Cap
+   (`setSectionShowCap`, `setSectionCapStyle`). Preto voľba platí pre všetky roviny a viewer si ju
+   pamätá v prehliadači ako po kliknutí; `hatch` vráti šrafu, ktorá bola pred plnou výplňou.
+   `none` skryje plochy, obrysové čiary rezu ostávajú.
+2. **Vynechanie prvkov z rezu (#139):** fork ani upstream ifc-lite to nevedia. Rovina rezu sa v
+   shaderi uplatňuje pre celé dávky geometrie (bit `flags.y` v uniformách, `packages/renderer`),
+   nie po prvkoch, takže to nejde mostom ani v `apps/viewer/src/aim/`. Riešenie by bolo per-entity
+   tabuľka "nereže sa" v rendereri (vzor: tabuľka farieb #6076) s testom v hlavnom shaderi, v
+   tieňoch a pri výpočte rezných plôch, a parameter `set_section` (napr. `exclude_ids_or_refs`,
+   `exclude_ifc_types`). To je zmena upstream balíka forku (plné CI, odchýlka pri každej
+   synchronizácii, ponuka upstreamu). Čaká na Samuelovo rozhodnutie v #139.
+
+**Zavrhnuté:**
+- *Nový tool `set_section_style`:* to isté ako parameter `set_section` (D-114).
+- *Vzhľad plochy len pre jeden rez:* store forku ho drží ako jednu voľbu pre všetky roviny
+  (#7545 upstream); vlastná per-rez kópia by bola nová funkcia nad rámec D-098.
+- *Ukladanie vzhľadu do uloženého pohľadu (D-117):* zatiaľ nie; dá sa doplniť, keď sa D-117 zlúči.
+
+**Poradie zlúčenia:** najprv fork, potom AIMviewer. Starší viewer `SET_SECTION_CAP` ticho ignoruje.
+- Nositeľ svetlej šírky dverí (`AIM_Door.ClearWidth`?) potvrdí Samuel.
+
+---
+
+### D-123 - Text dokumentov z textovej vrstvy PDF: naplnenie zo storage, riadky s polohou, čítanie strany v `search_documents`
+
+**Dátum:** 2026-10-20 · **Stav:** prijaté (Samuel cez orchestrátora: rámik áno, OCR nie, výmery z výkresu len na žiadosť); produkcia naplnená · **Súvisí:** D-063 (rozširuje), D-104, D-117, D-114, D-090 · **Issue:** #149
+
+**Kontext:** požiadavka z konektora (#149): spočítať murivo na 1NP z PDF výkresu D.1.1.01 a vedieť
+čítať, hľadať a ukazovať text vo všetkých výkresoch a technických správach. Návrh z konverzácie bol
+nový tool `read_document` s OCR. Overenie nad produkciou ukázalo, že tool nechýba, chýbajú dáta:
+- `document_pages` bolo prázdne (0 strán), preto `search_documents` nevrátil nič ani pre "stavba".
+  `etl/pdf_text.py` čítal len starý manifest E3 (`podklady/docs.csv`, mená `OCB_DPS_...`) a lokálne PDF;
+  dokumenty z IFC (D-104, `OCB_SO01_...`, PDF v buckete `documents`) doňho nikdy nevošli.
+- Všetkých 44 živých PDF v storage má textovú vrstvu (spolu okolo 900 tis. znakov). Pôdorys 1NP má
+  11 tis. znakov: čísla a názvy miestností, kóty, hrúbky, označenia dverí, legendy. OCR netreba.
+- RPC hľadalo celé slová bez stemmingu, takže "požiarna odolnosť" nenašla "požiarnej odolnosti".
+
+**Rozhodnutie (D-114 bod 2 a 3, žiadny nový tool):**
+1. **Dáta:** `python -m etl.pdf_text --from-db` vezme živé dokumenty z DB (`valid_until is null`,
+   `documents.location` = URL PDF), stiahne ich a zapíše text strán. Manifestový beh ostáva.
+2. **Poloha textu:** nový stĺpec `document_pages.blocks` = riadky textu strany `{t, x, y, w, h}` v % strany
+   (počiatok vľavo hore, `page.get_text("dict")`), aby sa dalo povedať, KDE na strane text je.
+3. **`search_documents` rozšírený** (nie nový `read_document`): `document_id` (UUID alebo object_ref),
+   `page`, `include_blocks`; `q` už nie je povinné.
+   - `q` = fulltext ako doteraz, každá zhoda má navyše `regions` (riadky so zhodou: text, presný `bbox` a
+     `region` najmenej 15 % na os okolo neho);
+   - `q` + `document_id` = hľadanie len v tom dokumente (RPC `doc_id`);
+   - `document_id` bez `q` = čítanie strany: celý text (strop 20 000 znakov), `pages_with_text`, s
+     `include_blocks` riadky s polohou (strop 1 500).
+   `region` má tvar parametra `open_drawing region` (D-117), takže "ukáž vo výkrese X" = `search_documents`
+   a potom `open_drawing` s výrezom. Zvýraznenie je zatiaľ priblíženie na výrez.
+4. **Skloňovanie:** RPC hľadá slová dopytu ako prefixy; slovo z písmen od 6 znakov stratí posledné 2 znaky
+   (hrubá náhrada stemmingu), kódy a čísla (`dd01`, `ei30`, `1.05`) ostávajú celé. Tú istú logiku má
+   `queryStems` v `lib/llm/document-text.ts` pre výber riadkov.
+5. **Výpočty z výkresu** (objem muriva z kót) sú odhad z textu a polohy kót; prompt to žiada povedať a
+   presnejšie čísla odkazuje na IFC (`ifc_measure`, Qto).
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool `read_document`:* robí to isté nad tými istými dátami (`document_pages`) s tou istou
+  anotáciou (čítanie); `search_documents` s `document_id` to pokryje bez ďalšieho toolu v zozname.
+- *`open_drawing highlight_text`:* `open_drawing` je UI akcia bez prístupu k textu; vyhľadanie patrí do
+  čítacieho toolu a výsledok (výrez) sa mu podá cez `region` z D-117.
+- *`get_object include=text`:* `get_object` je o prvku a jeho väzbách, text dokumentu je iný zdroj
+  a strany by zahltili výsledok.
+- *OCR:* žiadny dnešný dokument ho nepotrebuje; pridá sa, keď príde sken bez textovej vrstvy.
+
+**Dodatok 2026-10-20 (Samuelove odpovede cez orchestrátora):**
+6. **Rámik okolo textu áno:** `open_drawing highlights=[{x, y, width, height}]` (v %, najviac 20, typicky
+   `regions[].bbox` zo `search_documents`), op `doc:<strana>[~r=...][~h=x_y_w_h_...]:<id>` a `DOCUMENT_OPEN
+   highlights` (zlomky strany). Bez `region` sa karta priblíži na obal rámikov (najmenej 15 % na os). Rámik
+   nemá 1 % minimum výrezu, aby tenký riadok ostal tenký. Kreslí ho fork (Menezeris/ifc-lite#86, nadväzuje na
+   D-117 #80) ako vrstvu nad stranou v `aim/docRegion.ts`; ďalší `DOCUMENT_OPEN` rámiky nahradí alebo zruší.
+7. **OCR mimo rozsahu.**
+8. **Výmery z výkresu len na výslovnú žiadosť:** objem muriva, plochy a podobne z kót PDF počíta agent len na
+   žiadosť "z výkresu" a ako hrubý odhad; inak vždy z modelu (`ifc_measure`, Qto). Pravidlo je v opise
+   `search_documents` a v inštrukciách.
+9. **Prečo text v DB (otázka Samuela) a variant bez DB:** hľadanie naprieč všetkými dokumentmi ("v ktorom
+   dokumente sa píše o X") potrebuje index; prehľadať 44 PDF (okolo 900 tis. znakov, desiatky MB) pri každej
+   otázke by trvalo sekundy až desiatky sekúnd a záviselo by od storage. Čítanie jednej strany
+   (`document_id` + `page`) ale index nepotrebuje: **variant B** = server pri čítaní strany stiahne PDF zo
+   `documents.location` a vytiahne text a riadky s polohou za behu (pdf.js v Node, rovnaký výstup ako
+   `blocks`), s krátkou cache. Výhoda: funguje hneď a pre nový dokument bez ETL; nevýhoda: nová závislosť
+   servera (pdf.js), sekundy na prvé čítanie veľkého PDF a dva kódy extrakcie (Python v ETL, JS na serveri),
+   ktoré sa môžu rozísť. Odporúčanie: DB ostáva zdrojom pre hľadanie aj čítanie (jeden extraktor, rýchle),
+   variant B len ako záloha, keď dokument v `document_pages` chýba. Rozhodne Samuel (#149).
+
+**Stav produkcie (2026-10-20):** Samuel zvolil variant s DB (variant B sa nerobí). Migráciu `20261020160000`
+a naplnenie `document_pages` spustil orchestrátor cez Management API tou istou extrakciou ako
+`etl/pdf_text.py`: 44 dokumentov, 553 strán, všetky s `blocks`; `search_documents("požiarna odolnosť")` na
+produkcii vracia pôdorysy PBR. Nový alebo zmenený dokument: `python -m etl.pdf_text --from-db --only <ref>`.
+
+### D-117 - Výrez strany výkresu z chatu: `open_drawing region`
+
+**Dátum:** 2026-10-20 · **Stav:** navrhnuté (čaká na Samuela, #129) · **Súvisí:** D-114 (rozšírenie namiesto nového toolu), D-104 (dokumenty vo vieweri), D-075, D-083, D-087 · **PR:** Menezeris/ifc-lite#80, AIMviewer (tento)
+
+**Kontext:** #129: používateľ má v 3D narezanú atiku (`SN02.01.0001`, IfcWall PARAPET) a vedľa
+otvorí rez A (`open_drawing in_viewer=true`). Karta sa otvorí len celá; `focus_id` funguje len v
+`/drawing/[id]` a len cez oblasti E4, ktoré atika nemá (sada E3/E4 sa podľa D-104 ruší). Zoom ani
+výrez strany nevie žiadny tool. Najbližšie tooly: `open_drawing` (otvorí kartu so stranou),
+`get_object include=drawings` (výkresy prvku z E4, pre atiku prázdne), `set_camera`/`set_section`
+(len 3D).
+
+**Rozhodnutie:**
+1. **Rozšírenie `open_drawing` o `region`** (D-114, bod 3): výrez strany v % (`x`, `y`, `width`,
+   `height`, počiatok vľavo hore). Karta vo vieweri sa priblíži, aby výrez vyplnil plochu, a
+   vycentruje ho, aj keď je už otvorená. S `region` ide výkres vždy do viewera (`/drawing/[id]` sa
+   podľa D-104 nerozvíja). Výrez mimo strany sa oreže, celý mimo strany = chyba toolu.
+2. **Drôt:** op `doc:<strana>~r=<x>_<y>_<w>_<h>:<id>` (percentá), most `DOCUMENT_OPEN` s
+   voliteľným `region` v zlomkoch 0-1. Starší viewer pole ignoruje a otvorí stranu celú.
+3. **Fork (D-087):** logika v `apps/viewer/src/aim/docRegion.ts` (overenie, zoom, posun, store
+   požiadavky), `PdfDocumentView` len volá hook (jednoriadkové bloky AIM-FORK, súbor je na strope
+   veľkosti).
+4. **Polohu prvku vo výkrese tool nepozná.** Výrez určí používateľ slovne ("vpravo hore", "stred")
+   a model ho prevedie na %. Výsledok s `focus_id` vo vieweri to povie v `note`.
+
+**Otvorené (otázka na Samuela v #129):** automatické priblíženie "na to isté miesto ako 3D"
+potrebuje kalibráciu rezu (2 body na strane = 2 body v rovine rezu IFC, obdoba D-072 pre
+pôdorysy). Žiadny výkres ju dnes nemá a D-104 ju odkladá do programu dokumentov vo vieweri; s ňou
+by `open_drawing` vedel výrez dopočítať z obálky prvku (`get_viewer_state bounds`) a aktívneho rezu.
+
+**Zavrhnuté:**
+- *Nový tool `zoom_drawing`:* ten istý zdroj (karta dokumentu) aj anotácie ako `open_drawing`;
+  rozšírenie stačí (D-114).
+- *`focus_id` vo vieweri cez oblasti E4:* sada E3/E4 sa ruší (D-104) a atika v nej nie je.
+- *Zoom + stred namiesto výrezu:* výrez priamo zodpovedá vete "priblíž pravý horný roh" a nezávisí
+  od veľkosti plochy karty.
 
 ### D-119 - Miestnosti a farby z chatu: zapnutie IfcSpace, výplň v 2D, rozsah a veľká legenda Color by
 

@@ -1,0 +1,191 @@
+{
+  "ranAt": "2026-10-20T19:41:00Z",
+  "label": "dnešné zlúčenia na produkcii: D-104 krok 4, D-117, D-118, D-120, D-121, D-123, D-124",
+  "region": "arn1",
+  "runner": "nová cloud session (čerstvý zoznam toolov), každá úloha čerstvý subagent; headless produkčný viewer (balík ifc-lite #87) na živom kanáli. Úlohy 9, 12 a 13 opakované o 20:03, lebo v prvom behu zaspal kontajner s headless viewerom.",
+  "results": [
+    {
+      "id": "V8-dokument-v-3d",
+      "pass": true,
+      "calls": 2,
+      "tools": [
+        "get_object(D.1.3.04) -> nenájdené",
+        "style_in_3d(xray, document=D.1.3.04)"
+      ],
+      "duration_ms": 22785,
+      "over_cap": true,
+      "note": "X-ray 782 prvkov, viewer potvrdil. get_object nevie kód dokumentu z názvu (object_ref je OCB_..._D-1-3-04_...), oprava v tomto PR. Z dôvodu toho volania nad stropom."
+    },
+    {
+      "id": "V9-strana-v-3d",
+      "pass": true,
+      "calls": 5,
+      "tools": [
+        "search_documents(q)",
+        "query_view(objects, object_ref ilike)",
+        "get_object(include=documents)",
+        "style_in_3d(xray, document, page=3)",
+        "search_documents(document_id, page=3)"
+      ],
+      "duration_ms": 40030,
+      "over_cap": true,
+      "note": "Strana 3 = skladba S1 (strecha), 45 prvkov v X-ray, viewer potvrdil. Tri volania len na nájdenie dokumentu podľa kódu D.1.1.09 (rovnaká príčina ako V8)."
+    },
+    {
+      "id": "view-doc-region",
+      "pass": true,
+      "calls": 2,
+      "tools": [
+        "search_documents(q=rez A)",
+        "open_drawing(in_viewer, region 50_0_50_50)"
+      ],
+      "duration_ms": 20792,
+      "over_cap": false,
+      "note": "doc:1~r=50_0_50_50:<uuid>, viewer potvrdil (D-117)."
+    },
+    {
+      "id": "view-section-cap-off",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "set_section(set, 1NP, offset_m=1, cap_style=none)"
+      ],
+      "duration_ms": 14567,
+      "over_cap": false,
+      "note": "section_cap:none, viewer potvrdil, rez 1 m nad 1NP (D-120)."
+    },
+    {
+      "id": "route-escape-105",
+      "pass": false,
+      "calls": 3,
+      "tools": [
+        "ifc_measure(route=escape, a=1.05) -> chyba",
+        "get_object(include=path)",
+        "ifc_measure(route=escape, a=guid) -> chyba"
+      ],
+      "duration_ms": 35120,
+      "over_cap": false,
+      "note": "D-121 na prod revízii ASR v076: graf priestorov rozpojený (42 z 83 miestností), z 1.05 nevedie cesta k vonkajším dverám. Chyba je pravdivá, chýbajúce väzby dopĺňa recept v078 (ešte nie je nasadený). Lokálne na v078 11,9 m."
+    },
+    {
+      "id": "route-shortest-105-110",
+      "pass": false,
+      "calls": 4,
+      "tools": [
+        "ifc_measure(route=shortest) -> chyba",
+        "search_objects x2",
+        "ifc_measure(route=shortest, uuid) -> chyba"
+      ],
+      "duration_ms": 29712,
+      "over_cap": false,
+      "note": "'Medzi 1.05 a 1.10 nevedie cesta cez dvere a schodiská v grafe modelu ASR.' Rovnaká príčina ako route-escape-105 (v076 bez väzieb), agent zbytočne skúšal UUID."
+    },
+    {
+      "id": "quick-check-door-width",
+      "pass": true,
+      "calls": 4,
+      "tools": [
+        "aggregate_objects -> prázdne",
+        "aggregate_objects",
+        "ifc_query(IfcDoor, where OverallWidth<900)",
+        "style_in_3d(colorize ef4444)"
+      ],
+      "duration_ms": 51179,
+      "over_cap": false,
+      "note": "28 dverí, viewer potvrdil 28 ofarbených. Agent najprv hľadal OverallWidth v psetoch (aggregate_objects), až potom ifc_query where (D-118). Počet zo súboru neoverený nezávisle."
+    },
+    {
+      "id": "quick-check-room-width",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "ifc_measure(a=1.10)"
+      ],
+      "duration_ms": 19775,
+      "over_cap": false,
+      "note": "3,22 m (obálka 6,80 x 3,22)."
+    },
+    {
+      "id": "door-clear-width-geometry",
+      "pass": true,
+      "calls": 7,
+      "tools": [
+        "search_objects(locate)",
+        "get_object",
+        "aggregate_objects(AIM_Door.ClearWidth<800) x3",
+        "search_objects(locate)",
+        "style_in_3d(colorize)"
+      ],
+      "duration_ms": 55599,
+      "over_cap": false,
+      "note": "12 dverí (700 mm), viewer potvrdil (opakovaný beh). Agent použil pset AIM_Door.ClearWidth, nie ifc_measure clear_opening z geometrie; výsledok sedí s očakávaním. Prvý beh: viewer neodpovedal (uspaný kontajner evalu)."
+    },
+    {
+      "id": "doc-content-fire",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "search_documents(q)"
+      ],
+      "duration_ms": 12556,
+      "over_cap": false,
+      "note": "D.1.1.01 Pôdorys 1NP, strana 1, SN11 01 EI30 (D-123)."
+    },
+    {
+      "id": "doc-read-legend",
+      "pass": true,
+      "calls": 2,
+      "tools": [
+        "search_documents(q, document)",
+        "search_documents(document_id, page=1, include_blocks)"
+      ],
+      "duration_ms": 23415,
+      "over_cap": false,
+      "note": "15 položiek legendy správne. Očakávanie 'kerami' bolo chybné (keramika nie je v legende), opravené v questions.json."
+    },
+    {
+      "id": "doc-show-label",
+      "pass": true,
+      "calls": 2,
+      "tools": [
+        "search_documents(q=1.05, document)",
+        "open_drawing(page=1, highlights)"
+      ],
+      "duration_ms": 22735,
+      "over_cap": false,
+      "note": "doc:1~r=31.2_49.2_15_15~h=38.3_56.1_0.8_1.2, viewer potvrdil (opakovaný beh). Rámik ešte nekreslí (fork #86 v ďalšom balíku). Headless Chromium 141 stranu nevykreslil: pdf.js 6.3.289 volá Map.getOrInsertComputed."
+    },
+    {
+      "id": "kota-dvere",
+      "pass": true,
+      "calls": 1,
+      "tools": [
+        "ifc_measure(a, b, show=true)"
+      ],
+      "duration_ms": 27263,
+      "over_cap": false,
+      "note": "10,539 m, kóta vo vieweri potvrdená aj popisom 10.539 m v headless vieweri (D-124, opakovaný beh)."
+    }
+  ],
+  "summary": {
+    "pass": "11/13",
+    "median_calls": 2,
+    "median_duration_ms": 23415,
+    "over_cap": [
+      "V8-dokument-v-3d",
+      "V9-strana-v-3d"
+    ],
+    "failed": [
+      "route-escape-105",
+      "route-shortest-105-110"
+    ],
+    "findings": [
+      "D-121 route na prod (ASR v076) nefunguje ani na 1NP: graf priestorov rozpojený, čaká na recept v078.",
+      "get_object a search_documents nepoznali kód dokumentu z názvu (D.1.3.04): V8 a V9 nad stropom; oprava v PR s týmto súborom.",
+      "style_in_3d show_all vypne aj rez (upstream resetVisibilityReasons), opis toolu to nehovorí.",
+      "fork: pdf.js 6.3.289 potrebuje Map.prototype.getOrInsertComputed; Chromium 141 nevykreslí stranu výkresu.",
+      "get_viewer_state nevracia lens ani izoláciu/X-ray z chatu (isolated_count null pri aktívnom X-ray); vidno ich len v stave po príkaze.",
+      "X-ray z dokumentu show_all zruší (overené znova); návrat izolácie z prvého behu sa nezopakoval."
+    ]
+  }
+}

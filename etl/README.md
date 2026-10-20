@@ -68,6 +68,12 @@ sú PDF lokálne (`podklady/FINAL`, rovnaký kontrakt ako E4):
 python -m etl.pdf_text --dry-run   # extrakcia + report, bez zápisu
 python -m etl.pdf_text             # idempotentný zápis (delete+insert per dokument)
 ```
+Dokumenty z IFC (D-104) v manifeste nie sú; ich PDF ležia v buckete `documents`. Text všetkých
+živých dokumentov (aj riadky s polohou na strane, `document_pages.blocks`, D-123) načíta:
+```bash
+python -m etl.pdf_text --from-db --dry-run   # stiahne PDF, report, bez zápisu
+python -m etl.pdf_text --from-db             # zápis; --only <object_ref> = jeden dokument
+```
 
 ### Dokumenty z IFC (D-104)
 Dokumentáciu nesie model: každý `IfcDocumentInformation` je `document` s `object_ref` =
