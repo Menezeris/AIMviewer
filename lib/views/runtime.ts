@@ -8,7 +8,7 @@ import { currentModelRevisions, supabaseSavedViewStore } from "./store";
 import type { SavedViewDeps } from "./tools";
 
 /**
- * Produkčné závislosti uložených pohľadov (D-117): DB a živý viewer.
+ * Produkčné závislosti uložených pohľadov (D-122): DB a živý viewer.
  * Logika je v `tools.ts` a `plan.ts` a testuje sa bez nich.
  */
 

@@ -688,7 +688,7 @@
       "question": "Rež to ako minule, ale o meter nižšie.",
       "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
-      "notes": "D-117 (issue #72): set_view_mode(saved_view='Posledný pohľad', section_offset_m=-1); predtým uložený pohľad cez saved_view(action=save). Len MCP so živým viewerom."
+      "notes": "D-122 (issue #72): set_view_mode(saved_view='Posledný pohľad', section_offset_m=-1); predtým uložený pohľad cez saved_view(action=save). Len MCP so živým viewerom."
     }
   ]
 }

@@ -16,7 +16,7 @@ import {
 } from "../viewer-ops";
 
 /**
- * Čistá logika uložených pohľadov (D-117): odpoveď `view_state` -> záznam,
+ * Čistá logika uložených pohľadov (D-122): odpoveď `view_state` -> záznam,
  * záznam -> opis pre model a viewer ops obnovy. DB a živý kanál sú v `tools.ts`
  * a `runtime.ts`; tu sa nič nečíta ani nezapisuje.
  */
@@ -93,7 +93,7 @@ function sectionOf(raw: unknown): SavedSection | null {
 
 /**
  * Odpoveď `view_state` (D-085) -> stav na uloženie a poznámky, čo sa uložiť nedalo.
- * Starší viewer nevracia `hidden_guids`/`isolated_guids` (fork D-117): skrytie a
+ * Starší viewer nevracia `hidden_guids`/`isolated_guids` (fork D-122): skrytie a
  * izolácia sa potom neuložia, len to povieme.
  */
 export function captureFromState(result: unknown): { state: CapturedState; notes: string[] } {

@@ -1,4 +1,4 @@
-/** Spoločné pomôcky testov uložených pohľadov (D-117): úložisko v pamäti a stav viewera. */
+/** Spoločné pomôcky testov uložených pohľadov (D-122): úložisko v pamäti a stav viewera. */
 
 import type { SavedViewRow } from "./plan";
 import type { SavedViewStore } from "./store";
@@ -9,7 +9,7 @@ export const G2 = "1hOSvn6df7F8_7GcBWlS5a";
 export const G3 = "0K3dl0Rbv5cvC0BzkOVRSm";
 export const STOREY = "27hbQtAoP6qvoEYhPARoI7";
 
-/** Odpoveď `view_state` forku s D-117 (skryté a izolované GUIDy). */
+/** Odpoveď `view_state` forku s D-122 (skryté a izolované GUIDy). */
 export const VIEW_STATE = {
   frame: "ifc_world",
   units: "m",

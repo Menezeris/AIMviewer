@@ -36,7 +36,7 @@ export const VIEWER_QUERY_TOOL_DEFINITIONS: ToolDefinition[] = [
       type: "object",
       properties: {
         bounds: { type: "boolean", description: "Obálky namiesto stavu (bez cieľa len obálka modelu)" },
-        saved_views: { type: "boolean", description: "Namiesto stavu zoznam uložených pohľadov (D-117)" },
+        saved_views: { type: "boolean", description: "Namiesto stavu zoznam uložených pohľadov (D-122)" },
         target_ids_or_refs: {
           type: "array",
           items: { type: "string" },
@@ -114,7 +114,7 @@ async function withAimRefs(result: unknown, input: Record<string, unknown>): Pro
     delete rest.items;
     selection = { ...rest, ...summarizeSelection(r.selection, ctx, input) };
   }
-  // GUIDy skrytých a izolovaných (D-117) sú pre uloženie pohľadu; Claudovi stačia počty.
+  // GUIDy skrytých a izolovaných (D-122) sú pre uloženie pohľadu; Claudovi stačia počty.
   const { hidden_guids: _h, isolated_guids: _i, ...state } = r as typeof r & { hidden_guids?: unknown; isolated_guids?: unknown };
   void _h;
   void _i;

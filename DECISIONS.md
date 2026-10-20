@@ -5281,7 +5281,7 @@ Authentication vypnúť pre Preview, inak sa náhľad v iframe nenačíta. Pre z
 **Detail:** `docs/FORK_MAINTENANCE.md` vo forku, sekcia "Release train".
 
 
-### D-117 - Uložené pohľady viewera: `saved_view`, zoznam v `get_viewer_state`, obnova v `set_view_mode`
+### D-122 - Uložené pohľady viewera: `saved_view`, zoznam v `get_viewer_state`, obnova v `set_view_mode`
 **Status:** rozhodnuté (2026-10-20, Samuel cez orchestrátora: pohľady sú spoločné pre stavbu a žijú
 samostatne, nie pri BCF témach; riadok registra `saved_view` čaká na súhlas v #72). Nadväzuje na D-085
 (`view_state`), D-098 (presná póza `SET_CAMERA {viewpoint}`), D-099 (tvar viewpointu), D-114 (najprv

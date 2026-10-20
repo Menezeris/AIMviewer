@@ -146,7 +146,7 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
   const actions = runtime.finalActions();
   if (!res.isError && actions.length > 0) {
     const site = siteUrl();
-    // Obnova uloženého pohľadu nesie stovky GUID (D-117): taký odkaz Claudovi nič nepovie.
+    // Obnova uloženého pohľadu nesie stovky GUID (D-122): taký odkaz Claudovi nič nepovie.
     const links = actions
       .map((a) => `${a.label}: ${a.url.length > MAX_LINK ? "(príkaz je na odkaz pridlhý, ide len do živého viewera)" : `${site}${a.url}`}`)
       .join("\n");

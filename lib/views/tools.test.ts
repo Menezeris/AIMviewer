@@ -11,7 +11,7 @@ const run = async (deps: ReturnType<typeof testDeps>, args: Record<string, unkno
   return { ...r, json: r.isError ? null : JSON.parse(r.text) };
 };
 
-describe("saved_view (D-117)", () => {
+describe("saved_view (D-122)", () => {
   it("save uloží stav viewera, revízie a podlažie a prepíše 'Posledný pohľad'", async () => {
     const deps = testDeps();
     const r = await run(deps, { action: "save", name: "Pôdorys technickej miestnosti 3.14", description: "rez nad 2NP" });
@@ -93,7 +93,7 @@ describe("saved_view (D-117)", () => {
   });
 });
 
-describe("plán obnovy (D-117)", () => {
+describe("plán obnovy (D-122)", () => {
   const row = () => {
     const { state } = captureFromState(VIEW_STATE);
     return { id: "x", kind: "saved" as const, name: "A", description: null, model_revisions: {}, author: null, created_at: "", updated_at: "", last_used_at: null, ...state };
@@ -144,7 +144,7 @@ describe("plán obnovy (D-117)", () => {
   });
 });
 
-describe("op pose (D-117)", () => {
+describe("op pose (D-122)", () => {
   it("neplatná póza sa zahodí (vstup je z URL)", () => {
     expect(parseOps("pose:1,2,3,4,5,6,0,0,0:")).toEqual([]);
     expect(parseOps("pose:1,2,3:")).toEqual([]);

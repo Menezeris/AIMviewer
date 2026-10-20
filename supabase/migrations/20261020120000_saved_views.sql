@@ -1,4 +1,4 @@
--- D-117: uložené pohľady viewera (#72).
+-- D-122: uložené pohľady viewera (#72).
 --
 -- Pohľad je spoločný pre stavbu (nie osobný) a žije samostatne, nie pri BCF témach.
 -- `viewpoint` má ten istý tvar ako `model_tasks.viewpoint` (D-099): kamera v IFC svete, rez,
@@ -27,4 +27,4 @@ create unique index uniq_saved_views_name on saved_views (lower(name)) where kin
 create unique index uniq_saved_views_last on saved_views (kind) where kind = 'last';
 
 comment on table saved_views is
-  'D-117: uložené pohľady viewera, spoločné pre stavbu; kind=last = posledný použitý pohľad.';
+  'D-122: uložené pohľady viewera, spoločné pre stavbu; kind=last = posledný použitý pohľad.';

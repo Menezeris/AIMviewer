@@ -63,7 +63,7 @@ Zdroj: živý viewer (spätný kanál). Definície: lib/live/viewer-query-tools.
 
 Zdroj: DB (saved_views) + živý viewer. Definície: lib/views/tools.ts (zoznam v get_viewer_state, obnova v set_view_mode). Len MCP.
 
-- **`saved_view`** (D-117, zápis) - ULOŽÍ POHĽAD viewera pod menom (spoločný pre stavbu, D-117): 'ulož to ako Pôdorys technickej miestnosti 3.14'. action=save vezme z otvoreného viewera kameru a projekciu, rez, režim a podlažie, izolované, skryté a vybrané prvky (farby z style_in_3d sa neukladajú); existujúce meno prepíše len s overwrite=true. rename: name -> new_name. delete: zmaže pohľad.
+- **`saved_view`** (D-122, zápis) - ULOŽÍ POHĽAD viewera pod menom (spoločný pre stavbu, D-122): 'ulož to ako Pôdorys technickej miestnosti 3.14'. action=save vezme z otvoreného viewera kameru a projekciu, rez, režim a podlažie, izolované, skryté a vybrané prvky (farby z style_in_3d sa neukladajú); existujúce meno prepíše len s overwrite=true. rename: name -> new_name. delete: zmaže pohľad.
   Parametre: `action*=save|rename|delete`, `name*`, `new_name`, `description`, `overwrite`, `author`
 
 ## BCF témy nad modelmi (2)

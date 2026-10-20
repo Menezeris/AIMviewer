@@ -5,7 +5,7 @@ import { LAST_VIEW_NAME, captureFromState, describeView, isLastName, planRestore
 import type { SavedViewStore } from "./store";
 
 /**
- * Uložené pohľady viewera (D-117), len v MCP konektore. Zápis je tool
+ * Uložené pohľady viewera (D-122), len v MCP konektore. Zápis je tool
  * `saved_view` (save | rename | delete); zoznam číta `get_viewer_state(saved_views)`
  * a obnovu robí `set_view_mode(saved_view)`, lebo to sú existujúce tooly na
  * čítanie a pohľad (D-114). Závislosti (DB, živý viewer) sú v `runtime.ts`.
@@ -21,7 +21,7 @@ export const SAVED_VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "saved_view",
     description:
-      "ULOŽÍ POHĽAD viewera pod menom (spoločný pre stavbu, D-117): 'ulož to ako Pôdorys technickej miestnosti 3.14'. " +
+      "ULOŽÍ POHĽAD viewera pod menom (spoločný pre stavbu, D-122): 'ulož to ako Pôdorys technickej miestnosti 3.14'. " +
       "action=save vezme z otvoreného viewera kameru a projekciu, rez, režim a podlažie, izolované, skryté a vybrané prvky " +
       "(farby z style_in_3d sa neukladajú); existujúce meno prepíše len s overwrite=true. rename: name -> new_name. " +
       "delete: zmaže pohľad. Zoznam a opis pohľadov = get_viewer_state(saved_views=true); obnova = " +

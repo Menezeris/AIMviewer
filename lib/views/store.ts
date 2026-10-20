@@ -5,7 +5,7 @@ import { getSupabaseAdmin } from "../supabase/server";
 import type { SavedViewRow } from "./plan";
 
 /**
- * Uloženie pohľadov (D-117): tabuľka `saved_views`. Tools pracujú cez rozhranie
+ * Uloženie pohľadov (D-122): tabuľka `saved_views`. Tools pracujú cez rozhranie
  * `SavedViewStore`, takže sú testovateľné bez DB (vzor `lib/bcf/store.ts`).
  */
 

@@ -14,7 +14,7 @@
  * `section_clear::`, `section_gizmo:<0|1>:`, `camera:<preset>[~proj=o|p]:<guid.guid...>` (fit a relatívne kroky
  * `~fit=..~z=..~oh=..~ov=..~px=..~py=..` a `camera_sel:<arg>:<selektor>`, D-094/D-098, `lib/viewer-camera.ts`),
  * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>:<documentId>`.
- * Presná póza kamery z uloženého pohľadu (D-117): `pose:<px,py,pz,tx,ty,tz,ux,uy,uz>[~o=<m>][~proj=o|p]:`
+ * Presná póza kamery z uloženého pohľadu (D-122): `pose:<px,py,pz,tx,ty,tz,ux,uy,uz>[~o=<m>][~proj=o|p]:`
  * (IFC svet, m; `o` = polovica výšky ortografického pohľadu).
  * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
  */
@@ -84,7 +84,7 @@ export type ViewerOp =
   | { op: "section_clear" }
   | { op: "section_gizmo"; showGizmo: boolean }
   | ({ op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[]; selector?: OpsSelector } & CameraMove)
-  /** Presná póza (D-117): fork ju prenesie do kamery ako `SET_CAMERA {viewpoint}` (D-098). */
+  /** Presná póza (D-122): fork ju prenesie do kamery ako `SET_CAMERA {viewpoint}` (D-098). */
   | { op: "pose"; viewpoint: BridgeViewpoint; projection?: Projection }
   | { op: "view"; mode: ViewMode; storeyGuid?: string }
   | { op: "doc"; documentId: string; page?: number }
@@ -390,7 +390,7 @@ export function cameraSelOp(preset: CameraPreset, selector: OpsSelector, project
   return `camera_sel:${cameraArg(preset, projection, move)}:${fields.join("~")}`;
 }
 
-/** Presná póza kamery (D-117), napr. z uloženého pohľadu. */
+/** Presná póza kamery (D-122), napr. z uloženého pohľadu. */
 export function poseOp(vp: BridgeViewpoint, projection?: Projection): string {
   const nums = [vp.position, vp.target, vp.up].flatMap((v) => [v.x, v.y, v.z]);
   const kv = [

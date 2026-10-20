@@ -511,7 +511,7 @@ po fázach `exec`, `broadcast`, `lens`, `readback`, `engine_load`), `region` (`V
 Argumenty sa neukladajú. Zapisuje `/api/mcp/<token>` po odoslaní odpovede; slúži na p50/p95
 latencie (`eval/MCP-EVAL.md`).
 
-### 2.17 Uložené pohľady viewera (D-117, migrácia 20261020120000)
+### 2.17 Uložené pohľady viewera (D-122, migrácia 20261020120000)
 
 **Deklarovaná extenzia** (IFC pohľady nenesie; BCF viewpoint patrí téme). `saved_views` = pohľad
 viewera spoločný pre stavbu: `name` (jedinečné bez ohľadu na veľkosť písmen medzi `kind = 'saved'`),
