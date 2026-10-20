@@ -177,13 +177,21 @@ export function engineToolDefinitions(): ToolDefinition[] {
         "jedno volanie a + b (dve steny), clear_distance_m je svetlá vzdialenosť; šírka obdĺžnikovej miestnosti " +
         "alebo chodby = a = miestnosť (IfcSpace), bbox_m x/y. Len a alebo items = " +
         "rozmery obálky, povrch, pôdorys a objem z meshu, porovnané s Qto zo súboru (vs_qto, mismatch nad 5 %), " +
-        "pri viacerých aj súčet. Objem množiny podľa filtra: GUIDy z ifc_query do items (max 50). Prvé volanie " +
+        "pri viacerých aj súčet. Objem množiny podľa filtra: GUIDy z ifc_query do items (max 50). CESTA PO BUDOVE " +
+        "(route): shortest = najkratšia cesta z a do b (miestnosť, dvere alebo prvok), escape = úniková cesta z a " +
+        "k najbližším vonkajším dverám na teréne; dĺžka v m je DOLNÝ ODHAD (priamky v pôdoryse cez miestnosti a " +
+        "dvere zo súboru, IfcRelSpaceBoundary), poradie miestností a dverí, zmeny podlaží, show_in_3d. Prvé volanie " +
         "nad modelom ho tesseluje (ASR ~4 s), ďalšie sú rýchle.",
       inputSchema: {
         type: "object",
         properties: {
-          a: { type: "string", description: "Prvý prvok: object_ref, objects.id alebo IFC GlobalId" },
-          b: { type: "string", description: "Druhý prvok na vzdialenosť" },
+          a: { type: "string", description: "Prvý prvok: object_ref, objects.id alebo IFC GlobalId; pri route štart" },
+          b: { type: "string", description: "Druhý prvok na vzdialenosť; pri route=shortest cieľ" },
+          route: {
+            type: "string",
+            enum: ["shortest", "escape"],
+            description: "Cesta po budove (dolný odhad): shortest z a do b, escape z a k najbližšiemu východu",
+          },
           items: { type: "array", items: { type: "string" }, description: "Prvky na rozmery a výmery (max 50)" },
           model: { ...model, description: "Voliteľne model; inak sa prvky hľadajú vo všetkých" },
           qto: {

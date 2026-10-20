@@ -5488,3 +5488,56 @@ orchestrátora): svetlosť sa MERIA, `AIM_Door.ClearWidth` ani `OverallWidth` ni
   priechod, výťah má viac panelov); nový tool (D-114, ide to parametrom `ifc_measure`).
 - *Hranice:* krídlo otvorené o 90° a kľučka sa od šírky neodpočítavajú; dvere z jedného telesa
   (zárubňa aj krídlo v jednom telese) sa nedajú rozdeliť a vrátia dôvod.
+
+### D-121 - Najkratšia a úniková cesta: `ifc_measure route` nad hranicami priestorov zo súboru
+**Status:** rozhodnuté (2026-10-20, Samuel v #76), číslo pridelené v registri #60. Nadväzuje na D-112 (meranie
+z geometrie), D-114 (najprv napasuj) a D-086 (úprava IFC receptom v OCB).
+
+**Kontext:** "Aká je najkratšia pochôdzna cesta z týchto dverí k tamtým?" a "aká dlhá je úniková cesta z
+miestnosti?" konektor nevedel. Triáž v #76 navrhla graf miestností a dverí a postavila dve otázky: dolný
+odhad alebo pochôdzna sieť (navmesh) a odkiaľ vziať väzbu dvere - miestnosť.
+
+**Rozhodnutie (Samuel, 20. 10.):**
+1. **Dĺžka = DOLNÝ ODHAD:** priamky v pôdoryse cez miestnosti medzi dverami (štart a cieľ v strede prvku,
+   miestnosti alebo dverí), schodisko = dĺžka ramien (priemet dlhšej strany a prevýšenie). Nábytok, tvar L,
+   šírku priechodu ani zámky nezohľadní a výstup to hovorí (`length_kind`, `note`). Navmesh nie.
+2. **Graf zo súboru, štandardne IFC:** dvere a miestnosť spája `IfcRelSpaceBoundary` (RelatingSpace =
+   IfcSpace, RelatedBuildingElement = IfcDoor; dvere medzi dvoma miestnosťami = dve väzby). Chýbajúce väzby
+   doplní recept v OCB (`recepty/ASR/v078-hranice-priestorov.py`, revízia v078 nad v077), nie tool.
+3. **Tool:** `ifc_measure` dostane `route` = `shortest` (a -> b) | `escape` (a -> najbližší východ). Výstup:
+   `length_m`, poradie miestností, dverí a schodísk (`steps` so `segment_m`), `storey_changes`, ďalšie
+   východy (`other_exits`), `show_in_3d` trasy a súhrn grafu. Modul `lib/engine/route.ts`.
+4. **Východ** = dvere s `Pset_DoorCommon.IsExternal` alebo s jedinou hranicou `EXTERNAL`, len na najnižšom
+   podlaží, ktoré také dvere má (terén). Vonkajšie dvere vyššie (strecha, terasa ASR DD04.06.01) sa vypíšu
+   (`upper_external_doors_not_exits`), za cieľ úniku sa neberú.
+5. **Podlažia spája schodisko** (`IfcStair`, nie rebrík): spodok = miestnosť jeho podlažia, v ktorej pôdoryse
+   leží stred schodiska, vrch = taká miestnosť na podlaží nad ním (inak najväčší prekryv obálok). Výťahy v
+   grafe nie sú (pri úniku sa nepoužívajú).
+6. **Limity dĺžok podľa noriem (STN 73 0802) tool neposudzuje**, patria do knižnice IDS s klauzulou.
+
+**Zistenie na ASR v76 (zverejnená):** hranice 1. úrovne v súbore už sú (720, 151 pri 93 dverách z 97, Revit
+export); triáž v #76 robila staršiu revíziu. Schodiskový priestor 2NP (2.20) existuje, IfcSpace netreba
+dopĺňať. Chýba ale 12 väzieb, hlavne CHÚC 1.06 - vonkajšie dvere DD01.06.08 a 1.06 - lobby (DD01.02.03),
+takže z 2NP až 4NP na v76 **nevedie úniková cesta** (tool vráti chybu s počtom dosiahnuteľných miestností).
+Recept v078 z geometrie (bod 0,6 m pred a za krídlom) pridá 12 väzieb a opraví 12 príznakov
+`InternalOrExternalBoundary` (dvere medzi dvoma miestnosťami označené EXTERNAL, vonkajšie DD04.06.01 INTERNAL);
+druhý beh nič nemení, GlobalId existujúcich sa nemenia, počty tried +12 `IfcRelSpaceBoundary1stLevel`.
+
+**Overenie na lokálnom v078:** úniková cesta z 2.01 33,0 m (2.13, 2.20, schodisko SC01.0001, 1.23, CHÚC 1.06,
+DD01.06.08), z 4.01 52,8 m (tri schodiská), z 1.05 11,9 m; najkratšia 2.01 -> 1.05 29,7 m. Prvé volanie
+s tesseláciou ASR 4,8 s, ďalšie okolo 30 ms.
+
+**Zavrhnuté rozšírenie: nový tool `shortest_path` - prečo nie:** štart a cieľ sa zadávajú ako pri meraní
+(a, b), výsledok je dĺžka z geometrie a tool zdieľa tesseláciu modelu s `ifc_measure`; rozlišovací parameter
+`route` stačí (D-114, D-115). `ifc_relations` s `recursive` (D-110) prechádza vzťahy bez dĺžok a jeho výstup
+sú riadky vzťahov, nie trasa.
+
+**Zavrhnuté:**
+- *Väzby dvere - miestnosť len z geometrie v toole:* výsledok by nebol v súbore, viewer ani IDS by ho nevideli;
+  Samuel chce štandardné IFC väzby (geometriu používa len recept, raz).
+- *Výťah v únikovej ceste:* pri požiari sa nepoužíva; najkratšia cesta výťahom by potrebovala väzbu kabíny
+  na podlažia, ktorú model nemá.
+
+**Otvorené:** dvere DD02.05.14 majú navyše hranicu s 2.02 (geometria vidí len 2.01 | 2.10), recept ju nemaže;
+DD04.07.02 (vstup do akustickej zásteny na streche) nemá miestnosť ani z jednej strany. Čiara trasy vo vieweri
+(nie len zvýraznenie prvkov) potrebuje správu mosta vo forku.
