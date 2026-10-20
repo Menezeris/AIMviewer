@@ -246,7 +246,7 @@
       "max_calls": 1,
       "budget_s": 5,
       "expect": { "tools_called": ["show_in_3d"], "viewer_state": "kamera sa pohla (camera v APPLIED alebo get_viewer_state iná než pred úlohou)" },
-      "notes": "D-102: miestnosť je vo forku skrytá, FOCUS ju zapne a priblíži; select_in_3d tu nie je správna voľba."
+      "notes": "D-102: miestnosť je vo forku skrytá, FOCUS ju zapne a priblíži; výber (select=true) tu nie je správna voľba."
     },
     {
       "id": "V2-izoluj-nosne",
@@ -307,8 +307,8 @@
       "question": "Zruš výber.",
       "max_calls": 1,
       "budget_s": 5,
-      "expect": { "tools_called": ["select_in_3d"], "viewer_state": "selection.count = 0" },
-      "notes": "D-102: select_in_3d(clear=true), CLEAR_SELECTION vo forku."
+      "expect": { "tools_called": ["show_in_3d"], "viewer_state": "selection.count = 0" },
+      "notes": "D-102: CLEAR_SELECTION vo forku; D-115: show_in_3d(select=true, clear=true) (predtým select_in_3d)."
     },
     {
       "id": "V3-zrus-vsetko",

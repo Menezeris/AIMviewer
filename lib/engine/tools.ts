@@ -435,7 +435,7 @@ export async function ifcSearchResult(input: Record<string, unknown>, deps: Engi
     items: joined.items.map((i) => ({ ...i, source: i.object_id ? "ifc+aim" : "ifc" })),
     show_in_3d: joined.show_in_3d,
     ...(hits.length === 0
-      ? { hint: "V IFC súbore nič - skús search_everything (graf AIM: importované psety, dokumenty), synonymum alebo anglický výraz." }
+      ? { hint: "V IFC súbore nič - skús search_all (aj graf AIM: importované psety, dokumenty), synonymum alebo anglický výraz." }
       : {}),
   };
 }
@@ -541,7 +541,13 @@ async function ifcQueryMode(input: Record<string, unknown>, deps: EngineDeps): P
   const mode = str(input.mode) || "list";
   if (!(QUERY_MODES as readonly string[]).includes(mode)) throw new InputError(`mode: ${QUERY_MODES.join(" | ")}.`);
   if (str(input.material)) {
-    if (mode !== "list") throw new InputError("material sa nekombinuje s mode count/values - total vráti aj zoznam.");
+    if (mode === "values") throw new InputError("material sa nekombinuje s mode=values.");
+    // count = ten istý výpočet (total a skladby platia za všetky), len bez zoznamu prvkov.
+    if (mode === "count") {
+      const full = JSON.parse(await ifcMaterialLayers({ ...input, limit: 1 }, deps)) as Record<string, unknown>;
+      for (const key of ["items", "show_in_3d", "truncated", "note"]) delete full[key];
+      return JSON.stringify(full);
+    }
     return ifcMaterialLayers(input, deps);
   }
   // count a values majú jednu triedu; prijmú aj starší tvar ifc_type.

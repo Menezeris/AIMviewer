@@ -5211,11 +5211,25 @@ namiesto pridávania.
      `report_feedback`, `request_tool`, `feedback_comment`, `start_queued_session`); `feedback_status`
      ostáva na čítanie;
    - `get_viewer_state` + `bounds` alebo cieľ = obálky (bývalé `get_bounds`).
-5. **Ďalšie kroky** (samostatné PR, každý s evalom v novej session): BCF a feedback (zápis a čítanie
-   zvlášť), dotazy viewera (`get_viewer_state` + obálky), zdieľané tooly AIM (`search_objects` +
-   `mode`, `get_object` + `include`, `show_in_3d` + výber, `set_camera` + režim a reset, `open_node`
-   + výkres) s prepisom inštrukcií. `query_view` a `aggregate_objects` ostávajú oddelené (rozdielna
-   sémantika porovnaní).
+5. **Eval kroku 1 (lekcia):** schopnosť schovaná v opise iného toolu sa hľadá horšie - C2 materiál 1 -> 11
+   volaní (agent išiel do `search_everything`), C7 schéma triedy z pamäti. Pravidlo: zlúčená schopnosť
+   stojí na začiatku opisu veľkými písmenami (MATERIÁL, SPOČÍTA, VYBER...) a inštrukcie ju menujú pri
+   type otázky. Zlučuje sa len tam, kde agent dnes preukázateľne blúdi.
+6. **Krok 3 - zdieľané tooly AIM (aj `/api/ask`, 22 -> 16 toolov):**
+   - `search_objects` + `mode` list | count | locate (bývalé `count_objects`, `locate_objects`);
+   - `get_object` + `include` details | path | drawings (bývalé `get_asset_details`,
+     `get_spatial_path`, `find_in_drawings`; D7, C8 až C10 potrebovali reťaz volaní);
+   - `show_in_3d` + `select` (bývalé `select_in_3d`; V1 voľba medzi nimi);
+   - reset (`set_view_mode reset`) zruší aj zvýraznenie (V3 potreboval 3 volania).
+   - **Nezlúčené:** `set_view_mode` a `set_camera`, `open_node` a `open_drawing` - schémy sa neprekrývajú,
+     úspora je malá a režim "2D pôdorys" pod menom kamery by sa hľadal horšie (lekcia z bodu 5).
+     `query_view` a `aggregate_objects` ostávajú oddelené (rozdielna sémantika porovnaní).
+   - **Eval kroku 2** (`eval/results/mcp-2026-10-20-arn1-po-d115-krok2.json`): C2 11 -> 2 volania po oprave
+     opisov, C3, C6, C13 a V7 jedným volaním; agenti ale obchádzali `search_all` cez `search_everything`
+     (C11, C1), lebo zdieľané inštrukcie chatu posielajú hľadanie v psetoch tam. Preto v MCP s motorom
+     `search_all` nahrádza `search_everything` v zozname, opisoch aj inštrukciách (`withSearchAll`; staré
+     meno ostáva ako `legacyTools`, `/api/ask` bez motora ho má ďalej), `ifc_query(mode=count)` prijme
+     `material` a `ifc_models` má schému triedy na začiatku opisu (C7: jeden z dvoch behov odpovedal z pamäti).
 
 **Zavrhnuté:**
 - *Jeden veľký PR:* regresiu vo výbere toolu by nebolo vidieť po skupinách.

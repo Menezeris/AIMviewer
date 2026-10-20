@@ -14,6 +14,7 @@ import { BCF_TOOL_NAMES } from "../bcf/tools";
 import { ENGINE_TOOL_NAMES } from "../engine/tool-defs";
 import { FEEDBACK_TOOL_NAMES } from "../feedback/tools";
 import { VIEWER_QUERY_TOOL_NAMES } from "../live/viewer-query-tools";
+import { LEGACY_ASK_TOOL_NAMES } from "../llm/tools";
 import registry from "./tool-registry.json";
 
 /**
@@ -43,9 +44,24 @@ describe("register toolov MCP (D-114)", () => {
     const legacy = [...mcpLegacyToolNames({ engine: true })];
     expect(legacy.length).toBeGreaterThan(0);
     expect(legacy.filter((n) => tools.some((t) => t.name === n) || n in REGISTRY)).toEqual([]);
-    const executable = new Set([...ENGINE_TOOL_NAMES, ...BCF_TOOL_NAMES, ...FEEDBACK_TOOL_NAMES, ...VIEWER_QUERY_TOOL_NAMES]);
+    // Mená DB tools vykoná AskToolRuntime (route na ne padne ako posledná možnosť).
+    const executable = new Set([
+      ...ENGINE_TOOL_NAMES,
+      ...BCF_TOOL_NAMES,
+      ...FEEDBACK_TOOL_NAMES,
+      ...VIEWER_QUERY_TOOL_NAMES,
+      ...LEGACY_ASK_TOOL_NAMES,
+      "search_everything",
+    ]);
     expect(legacy.filter((n) => !executable.has(n))).toEqual([]);
     expect([...mcpLegacyToolNames({ engine: false })].some((n) => ENGINE_TOOL_NAMES.has(n))).toBe(false);
+  });
+
+  it("s motorom search_all nahrádza search_everything v zozname, opisoch aj inštrukciách (D-115)", () => {
+    expect(tools.some((t) => t.name === "search_everything")).toBe(false);
+    expect(tools.filter((t) => t.description.includes("search_everything")).map((t) => t.name)).toEqual([]);
+    expect(mcpInstructions("https://example.test", true)).not.toContain("search_everything");
+    expect(mcpToolDefinitions({ engine: false }).some((t) => t.name === "search_everything")).toBe(true);
   });
 
   it("mená sú jedinečné", () => {
