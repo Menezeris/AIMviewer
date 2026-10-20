@@ -176,6 +176,9 @@ function isUuid(v: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
 
+/** Kód dokumentu z jeho názvu ("D.1.3.04 Pôdorys 3NP PBR"); object_ref je "OCB_SO01_PBR_D-1-3-04_...". */
+const DOCUMENT_CODE_RE = /^[A-Z](\.\d+){2,}$/i;
+
 /** Čo `get_object` pridá v tom istom volaní (D-115). */
 export const GET_OBJECT_INCLUDES = ["details", "path", "documents"] as const;
 
@@ -1362,7 +1365,7 @@ export class AskToolRuntime {
       .limit(1);
     if (error) throw new Error(error.message);
     let row = data?.[0] as (ObjectRow & { user_defined_type?: string | null }) | undefined;
-    let matchedBy: "name" | undefined;
+    let matchedBy: "name" | "document_code" | undefined;
     if (!row && col === "object_ref") {
       // Kód prvku býva meno, nie object_ref (VV.03.01.040), alebo prvok nie je v AIM vôbec (D-102).
       const { data: named, error: nameErr } = await supabase
@@ -1378,6 +1381,10 @@ export class AskToolRuntime {
       }
       row = rows[0];
       matchedBy = row ? "name" : undefined;
+      if (!row) {
+        row = (await this.documentByCode(idOrRef)) ?? undefined;
+        matchedBy = row ? "document_code" : undefined;
+      }
       if (!row) {
         const inIfc = await this.findInIfc(idOrRef);
         if (inIfc) return inIfc;
@@ -1842,9 +1849,26 @@ export class AskToolRuntime {
       .is("valid_until", null)
       .limit(1);
     if (error) throw new Error(error.message);
-    const row = (data?.[0] as ObjectRow | undefined) ?? null;
+    const row = (data?.[0] as ObjectRow | undefined) ?? (col === "object_ref" ? await this.documentByCode(value) : null);
     if (row) this.addSource(row);
     return row;
+  }
+
+  /**
+   * Dokument podľa kódu, ktorým ho volá používateľ (D.1.3.04): je na začiatku názvu,
+   * nie v object_ref. Len jednoznačná zhoda; style_in_3d má vlastný výber (pickDocument).
+   */
+  private async documentByCode(code: string): Promise<ObjectRow | null> {
+    if (!DOCUMENT_CODE_RE.test(code)) return null;
+    const { data, error } = await getSupabaseAdmin()
+      .from("objects")
+      .select("id, object_type, object_ref, name, ifc_type, predefined_type, user_defined_type")
+      .eq("object_type", "document")
+      .ilike("name", `${code} %`)
+      .is("valid_until", null)
+      .limit(2);
+    if (error) throw new Error(error.message);
+    return data?.length === 1 ? (data[0] as ObjectRow) : null;
   }
 
   private async showIn3d(input: Record<string, unknown>) {
