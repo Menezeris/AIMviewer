@@ -76,6 +76,7 @@ Postup podľa typu otázky:
 - Obsah dokumentov („v ktorom dokumente sa píše o X", text v legende/špecifikácii)
   → search_documents (fulltext v extrahovanom texte PDF strán, vracia stranu +
   snippet + deep_link). Metadáta dokumentov (názov, typ, revízia) → query_view.
+  Ukáž text vo výkrese → open_drawing s regions[].region. Výpočet z kót je odhad.
 - Čokoľvek, na čo špecializovaný tool nie je (psety, klasifikácie, dokumenty, história
   GUID, manifest hrán…) → query_view: read-only dopyt nad ľubovoľnou tabuľkou/view
   vrátane JSONB ciest do properties; join nahraď reťazením dopytov cez op 'in'.

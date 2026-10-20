@@ -5,6 +5,14 @@ import { PDF_LINK_SOURCE } from "@/lib/data/constants";
 import { fetchAllPages } from "@/lib/data/pagination";
 import type { ToolDefinition } from "./provider";
 import { docOp, selectOp } from "@/lib/viewer-ops";
+import {
+  PAGE_BLOCKS_CAP,
+  PAGE_TEXT_CAP,
+  compactBlocks,
+  matchBlocks,
+  parseBlocks,
+  type TextBlock,
+} from "./document-text";
 import { mergeIfcActions, type AskAction } from "./actions";
 import { DOMAIN_IFC_TYPES, sanitizeIfcType, sanitizeModelName } from "./ifc-selector";
 import { LIST_TOOL_DEFINITIONS, LIST_TOOL_NAMES, execListTool } from "./list-tool";
@@ -636,18 +644,39 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "search_documents",
     description:
-      "Fulltextové vyhľadávanie v OBSAHU dokumentov/výkresov (extrahovaný text PDF strán — " +
-      "legendy, špecifikácie, popisky, pečiatky). Vracia dokument, stranu, snippet a " +
-      "deep_link na otvorenie výkresu na danej strane. Použi na otázky 'v ktorom dokumente " +
-      "sa píše o X'. POZOR: výkresy sú prevažne grafika — text býva riedky; ak dokument " +
-      "nemá extrahovaný text, nenájde sa tu (metadáta dokumentov hľadá query_view/search).",
+      "OBSAH dokumentov a výkresov (textová vrstva PDF strán: popisky a čísla miestností, kóty, " +
+      "hrúbky, legendy, špecifikácie, pečiatky, text technických správ). Tri spôsoby: " +
+      "(1) q = fulltext vo všetkých dokumentoch -> dokument, strana, snippet, deep_link a regions; " +
+      "(2) q + document_id = hľadanie len v tom dokumente (napr. 'ukáž vo výkrese popisok 1.05', " +
+      "'nájdi v technickej správe požiarnu odolnosť'); (3) document_id bez q = PREČÍTA stranu " +
+      "(page, default 1): celý text, s include_blocks aj riadky s polohou na strane (legenda, " +
+      "kóty, výpočet z výkresu). regions = výrezy strany v %, kde text je: daj ich do " +
+      "open_drawing region (in_viewer) a miesto sa priblíži. Slová sa hľadajú aj v inom tvare " +
+      "(skloňovanie). Metadáta dokumentov (názov, typ, revízia) hľadá query_view.",
     inputSchema: {
       type: "object",
       properties: {
-        q: { type: "string", description: "Hľadaný text (min 2 znaky)" },
+        q: {
+          type: "string",
+          description: "Hľadaný text (min 2 znaky); bez q a s document_id = čítanie strany",
+        },
+        document_id: {
+          type: "string",
+          description:
+            "Voliteľné: dokument (objects.id UUID alebo object_ref, napr. " +
+            "OCB_SO01_ASR_D-1-1-01_PODORYS-1NP) - hľadanie alebo čítanie len v ňom",
+        },
+        page: {
+          type: "number",
+          description: "Čítanie: číslo strany (default 1); s q obmedzí zhody na stranu",
+        },
+        include_blocks: {
+          type: "boolean",
+          description:
+            "Čítanie: aj riadky textu s polohou {t, x, y, w, h} v % strany (počiatok vľavo hore)",
+        },
         limit: { type: "number", description: "Max výsledkov (default 10, strop 50)" },
       },
-      required: ["q"],
     },
   },
   ...VIEW_TOOL_DEFINITIONS,
@@ -1542,35 +1571,55 @@ export class AskToolRuntime {
   }
 
   /**
-   * Fulltext v obsahu dokumentov (D-063) — RPC `search_documents` nad
-   * `document_pages` (text extrahuje etl/pdf_text.py). Deep-link stavia server.
+   * Obsah dokumentov (D-063, D-123) - RPC `search_documents` nad `document_pages`
+   * (text a riadky s polohou extrahuje etl/pdf_text.py). S `document_id` hľadá len
+   * v ňom, bez `q` číta stranu. Deep-link a výrezy pre open_drawing stavia server.
    */
   private async searchDocuments(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
     const q = String(input.q ?? "").trim().slice(0, 200);
+    const docInput = String(input.document_id ?? "").trim();
+    const page =
+      typeof input.page === "number" && Number.isFinite(input.page) && input.page >= 1
+        ? Math.floor(input.page)
+        : null;
+
+    let doc: ObjectRow | null = null;
+    if (docInput) {
+      doc = await this.resolveObject(docInput);
+      if (!doc || doc.object_type !== "document") {
+        throw new Error(`Dokument '${docInput}' sa nenašiel (document_id = objects.id alebo object_ref dokumentu).`);
+      }
+    }
+    if (!q) {
+      if (!doc) throw new Error("Zadaj q (hľadaný text) alebo document_id (čítanie strany).");
+      return this.readDocumentPage(doc, page ?? 1, input.include_blocks === true);
+    }
     if (q.length < 2) throw new Error("q musí mať aspoň 2 znaky.");
 
     const { data, error } = await supabase.rpc("search_documents", {
       q,
       max_rows: clampLimit(input.limit),
+      ...(doc ? { doc_id: doc.id } : {}),
     });
     if (error) throw new Error(error.message);
 
-    const rows = (data ?? []) as {
+    const rows = ((data ?? []) as {
       document_id: string;
       document_ref: string | null;
       document_name: string | null;
       page: number;
       rank: number;
       snippet: string | null;
-    }[];
+    }[]).filter((r) => page === null || r.page === page);
     if (rows.length === 0) {
       return {
         rows,
-        hint:
-          "Žiadna zhoda v extrahovanom texte — dokument nemusí mať textovú vrstvu " +
-          "(výkresy sú prevažne grafika). Metadáta dokumentov skús cez query_view " +
-          "relation=documents/objects alebo search_everything.",
+        hint: doc
+          ? "V tomto dokumente zhoda nie je. Skús kratší tvar slova, kód alebo číslo, alebo " +
+            "prečítaj stranu (document_id bez q)."
+          : "Žiadna zhoda v extrahovanom texte. Skús kratší tvar slova, kód alebo číslo; " +
+            "metadáta dokumentov (názov, typ) hľadá query_view relation=documents/objects.",
       };
     }
     for (const r of rows) {
@@ -1581,10 +1630,68 @@ export class AskToolRuntime {
         name: r.document_name ?? null,
       });
     }
-    return rows.map((r) => ({
-      ...r,
-      deep_link: `/drawing/${r.document_id}?page=${r.page}`,
-    }));
+
+    // Riadky s polohou len pre strany zhôd (D-123); bez nich (stará extrakcia) regions chýba.
+    const blocksByPage = new Map<string, TextBlock[]>();
+    const { data: pages, error: pagesError } = await supabase
+      .from("document_pages")
+      .select("document_id, page, blocks")
+      .in("document_id", [...new Set(rows.map((r) => r.document_id))])
+      .in("page", [...new Set(rows.map((r) => r.page))]);
+    if (pagesError) throw new Error(pagesError.message);
+    for (const p of (pages ?? []) as { document_id: string; page: number; blocks: unknown }[]) {
+      blocksByPage.set(`${p.document_id}:${p.page}`, parseBlocks(p.blocks));
+    }
+
+    return rows.map((r) => {
+      const matches = matchBlocks(blocksByPage.get(`${r.document_id}:${r.page}`) ?? [], q);
+      return {
+        ...r,
+        deep_link: `/drawing/${r.document_id}?page=${r.page}`,
+        ...(matches.length > 0 ? { regions: matches } : {}),
+      };
+    });
+  }
+
+  /** Čítanie strany dokumentu (D-123): text, voliteľne riadky s polohou. */
+  private async readDocumentPage(doc: ObjectRow, page: number, includeBlocks: boolean) {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("document_pages")
+      .select(includeBlocks ? "page, text, blocks" : "page, text")
+      .eq("document_id", doc.id)
+      .order("page");
+    if (error) throw new Error(error.message);
+    const all = (data ?? []) as unknown as { page: number; text: string; blocks?: unknown }[];
+    const document = { document_id: doc.id, document_ref: doc.object_ref, document_name: doc.name };
+    if (all.length === 0) {
+      return {
+        ...document,
+        hint:
+          "Dokument nemá extrahovaný text (document_pages). Načíta ho ETL " +
+          "`python -m etl.pdf_text --from-db`; sken bez textovej vrstvy by potreboval OCR.",
+      };
+    }
+    const pagesWithText = all.map((p) => p.page);
+    const hit = all.find((p) => p.page === page);
+    if (!hit) {
+      return { ...document, page, text: null, pages_with_text: pagesWithText, hint: "Strana nemá text." };
+    }
+    const blocks = includeBlocks ? parseBlocks(hit.blocks) : [];
+    return {
+      ...document,
+      page,
+      pages_with_text: pagesWithText,
+      text: hit.text.slice(0, PAGE_TEXT_CAP),
+      ...(hit.text.length > PAGE_TEXT_CAP ? { text_truncated: true, text_length: hit.text.length } : {}),
+      ...(includeBlocks
+        ? {
+            blocks: compactBlocks(blocks),
+            ...(blocks.length > PAGE_BLOCKS_CAP ? { blocks_truncated: true, blocks_total: blocks.length } : {}),
+          }
+        : {}),
+      deep_link: `/drawing/${doc.id}?page=${page}`,
+    };
   }
 
   /** Uzol podľa UUID alebo object_ref — spoločné pre akčné tools. */

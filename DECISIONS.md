@@ -5291,3 +5291,51 @@ Authentication vypnúť pre Preview, inak sa náhľad v iframe nenačíta. Pre z
 
 **Detail:** `docs/FORK_MAINTENANCE.md` vo forku, sekcia "Release train".
 
+
+---
+
+### D-123 - Text dokumentov z textovej vrstvy PDF: naplnenie zo storage, riadky s polohou, čítanie strany v `search_documents`
+
+**Dátum:** 2026-10-20 · **Stav:** navrhnuté (čaká na Samuela: naplnenie produkcie, rámik vo vieweri) · **Súvisí:** D-063 (rozširuje), D-104, D-117, D-114, D-090 · **Issue:** #149
+
+**Kontext:** požiadavka z konektora (#149): spočítať murivo na 1NP z PDF výkresu D.1.1.01 a vedieť
+čítať, hľadať a ukazovať text vo všetkých výkresoch a technických správach. Návrh z konverzácie bol
+nový tool `read_document` s OCR. Overenie nad produkciou ukázalo, že tool nechýba, chýbajú dáta:
+- `document_pages` bolo prázdne (0 strán), preto `search_documents` nevrátil nič ani pre "stavba".
+  `etl/pdf_text.py` čítal len starý manifest E3 (`podklady/docs.csv`, mená `OCB_DPS_...`) a lokálne PDF;
+  dokumenty z IFC (D-104, `OCB_SO01_...`, PDF v buckete `documents`) doňho nikdy nevošli.
+- Všetkých 44 živých PDF v storage má textovú vrstvu (spolu okolo 900 tis. znakov). Pôdorys 1NP má
+  11 tis. znakov: čísla a názvy miestností, kóty, hrúbky, označenia dverí, legendy. OCR netreba.
+- RPC hľadalo celé slová bez stemmingu, takže "požiarna odolnosť" nenašla "požiarnej odolnosti".
+
+**Rozhodnutie (D-114 bod 2 a 3, žiadny nový tool):**
+1. **Dáta:** `python -m etl.pdf_text --from-db` vezme živé dokumenty z DB (`valid_until is null`,
+   `documents.location` = URL PDF), stiahne ich a zapíše text strán. Manifestový beh ostáva.
+2. **Poloha textu:** nový stĺpec `document_pages.blocks` = riadky textu strany `{t, x, y, w, h}` v % strany
+   (počiatok vľavo hore, `page.get_text("dict")`), aby sa dalo povedať, KDE na strane text je.
+3. **`search_documents` rozšírený** (nie nový `read_document`): `document_id` (UUID alebo object_ref),
+   `page`, `include_blocks`; `q` už nie je povinné.
+   - `q` = fulltext ako doteraz, každá zhoda má navyše `regions` (riadky so zhodou: text, presný `bbox` a
+     `region` najmenej 15 % na os okolo neho);
+   - `q` + `document_id` = hľadanie len v tom dokumente (RPC `doc_id`);
+   - `document_id` bez `q` = čítanie strany: celý text (strop 20 000 znakov), `pages_with_text`, s
+     `include_blocks` riadky s polohou (strop 1 500).
+   `region` má tvar parametra `open_drawing region` (D-117), takže "ukáž vo výkrese X" = `search_documents`
+   a potom `open_drawing` s výrezom. Zvýraznenie je zatiaľ priblíženie na výrez.
+4. **Skloňovanie:** RPC hľadá slová dopytu ako prefixy; slovo z písmen od 6 znakov stratí posledné 2 znaky
+   (hrubá náhrada stemmingu), kódy a čísla (`dd01`, `ei30`, `1.05`) ostávajú celé. Tú istú logiku má
+   `queryStems` v `lib/llm/document-text.ts` pre výber riadkov.
+5. **Výpočty z výkresu** (objem muriva z kót) sú odhad z textu a polohy kót; prompt to žiada povedať a
+   presnejšie čísla odkazuje na IFC (`ifc_measure`, Qto).
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool `read_document`:* robí to isté nad tými istými dátami (`document_pages`) s tou istou
+  anotáciou (čítanie); `search_documents` s `document_id` to pokryje bez ďalšieho toolu v zozname.
+- *`open_drawing highlight_text`:* `open_drawing` je UI akcia bez prístupu k textu; vyhľadanie patrí do
+  čítacieho toolu a výsledok (výrez) sa mu podá cez `region` z D-117.
+- *`get_object include=text`:* `get_object` je o prvku a jeho väzbách, text dokumentu je iný zdroj
+  a strany by zahltili výsledok.
+- *OCR:* žiadny dnešný dokument ho nepotrebuje; pridá sa, keď príde sken bez textovej vrstvy.
+
+**Otvorené (Samuel, #149):** spustenie migrácie a `--from-db` na produkcii; farebný rámik okolo textu
+v karte PDF vo vieweri (zmena forku, D-087) ako ďalší krok, ak priblíženie nestačí.

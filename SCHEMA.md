@@ -410,9 +410,15 @@ create table document_pages (
 create index idx_document_pages_tsv on document_pages
   using gin (to_tsvector('simple', lower(f_unaccent(text))));
 
--- RPC pre LLM tool: search_documents(q, max_rows) → document_id, document_ref,
---   document_name, page, rank, snippet (ts_headline)
+-- RPC pre LLM tool: search_documents(q, max_rows, doc_id) → document_id, document_ref,
+--   document_name, page, rank, snippet (ts_headline); slová dopytu ako prefixy (D-123)
+
+-- D-123 (migrácia 20261020160000): riadky textu strany s polohou
+alter table document_pages add column blocks jsonb;  -- [{t, x, y, w, h}] v % strany, vľavo hore
 ```
+
+Plní `python -m etl.pdf_text --from-db` (živé dokumenty, PDF zo storage, D-123) alebo
+manifestový beh. Dokumenty z IFC (D-104) sú len v `--from-db`.
 
 ### 2.11 Statický IFC slovník psetov (D-061, migrácia 20260714120000)
 
