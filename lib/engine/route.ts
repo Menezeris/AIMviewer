@@ -18,7 +18,8 @@ import { ENGINE_VERSION, IFC_GUID_RE, InputError, guidIndex, modelsFor, str, typ
  * Dĺžka v miestnosti = priamka v pôdoryse medzi dverami (štart a cieľ v strede
  * prvku), schodisko = dĺžka ramien. Je to DOLNÝ ODHAD: nábytok, tvar L ani
  * šírku priechodu nezohľadní, výstup to hovorí. Východ (escape) = dvere s
- * Pset_DoorCommon.IsExternal alebo s jedinou hranicou EXTERNAL. Limity dĺžok
+ * Pset_DoorCommon.IsExternal alebo s jedinou hranicou EXTERNAL, nie otočné
+ * (OperationType REVOLVING*, výskyt alebo typ). Limity dĺžok
  * podľa noriem tool neposudzuje (patria do knižnice IDS).
  */
 
@@ -63,6 +64,8 @@ export interface NavData {
   stairs: NavStair[];
   /** Vonkajšie dvere nad podlažím východov (do úvahy sa neberú). */
   upperExits: string[];
+  /** Otočné (karuselové) dvere: priechodné, ale nie únikový východ. */
+  revolving: string[];
 }
 
 /** Štart alebo cieľ: miestnosť, dvere, alebo bod v miestnosti (stred prvku). */
@@ -164,19 +167,25 @@ export function navDataFromModel(store: IfcDataStore, meshes: Map<string, MeshEl
     }
   }
   const doors = new Map<string, NavDoor>();
+  const revolving: string[] = [];
   for (const [id, set] of doorSpaces) {
     const gid = store.entities.getGlobalId(id);
     const e = gid ? meshes.get(gid) : undefined;
     if (!gid || !e) continue;
     const node = new EntityNode(store, id);
     const isExternal = node.property("Pset_DoorCommon", "IsExternal") === true;
+    // Otočné (karuselové) dvere nie sú únikový východ; OperationType výskytu, inak z typu.
+    const operation = (n: EntityNode | null) => enumOf(n?.allAttributes().find((a) => a.name === "OperationType")?.value);
+    const op = operation(node) || operation(node.definingType());
+    const isRevolving = op.startsWith("REVOLVING");
+    if (isRevolving) revolving.push(gid);
     doors.set(gid, {
       globalId: gid,
       name: e.name,
       center: planCenter(ifcBox(e.bounds)),
       storey: node.storey()?.name ?? null,
       spaces: [...set].sort(),
-      exit: isExternal || (doorExternal.has(id) && set.size === 1),
+      exit: !isRevolving && (isExternal || (doorExternal.has(id) && set.size === 1)),
     });
   }
 
@@ -235,7 +244,7 @@ export function navDataFromModel(store: IfcDataStore, meshes: Map<string, MeshEl
       upperExits.push(d.globalId);
     }
   }
-  return { spaces, doors, stairs, upperExits };
+  return { spaces, doors, stairs, upperExits, revolving };
 }
 
 interface Edge {
@@ -488,6 +497,7 @@ export async function ifcRoute(input: Record<string, unknown>, deps: EngineDeps)
       ...(nav.upperExits.length > 0
         ? { upper_external_doors_not_exits: nav.upperExits.map((g) => nav.doors.get(g)?.name ?? g) }
         : {}),
+      ...(nav.revolving.length > 0 ? { revolving_doors_not_exits: nav.revolving.map((g) => nav.doors.get(g)?.name ?? g) } : {}),
     },
     show_in_3d,
     note:
