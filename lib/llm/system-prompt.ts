@@ -292,7 +292,7 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   "koľko / ktoré / ukáž prvky z materiálu X" = ifc_query(material=X), nie fulltext; vrstvy
   jedného prvku = ifc_get. Dedičnosť a atribúty IFC triedy = ifc_models(action=schema), nie z pamäti.
 - Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou; items = rozmery a objem z meshu;
-  qto=true = plocha a objem len z Qto v súbore (rýchle).
+  qto=true = plocha a objem len z Qto v súbore (rýchle). Pochôdzna a úniková cesta = route (dolný odhad).
 - Hľadanie podľa textu = search_all: IFC súbor (Description, ObjectType, Tag, LongName, všetky
   psety a Qto aj z typu, klasifikácie, materiály, zóny) aj graf AIM naraz. Každý výsledok má
   badge IFC / AIM / IFC+AIM (kde sa text našiel), v odpovedi ho uveď pri každom prvku a cituj

@@ -664,7 +664,12 @@ export async function execEngineTool(
         content = await ifcMaterialLayers(input, deps);
         break;
       case "ifc_measure":
-        content = input.qto === true ? await ifcQto(input, deps) : await (await import("./measure")).ifcMeasure(input, deps);
+        content =
+          input.route !== undefined
+            ? await (await import("./route")).ifcRoute(input, deps)
+            : input.qto === true
+              ? await ifcQto(input, deps)
+              : await (await import("./measure")).ifcMeasure(input, deps);
         break;
       default:
         if (isPassthroughTool(name)) return await execPassthroughTool(name, input, deps);
