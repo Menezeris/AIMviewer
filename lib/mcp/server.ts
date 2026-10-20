@@ -30,8 +30,6 @@ export interface McpServerDeps {
   serverInfo: { name: string; version: string };
   instructions: string;
   tools: ToolDefinition[];
-  /** Staré mená zlúčených toolov (D-115): nie sú v `tools/list`, ale volanie prejde. */
-  legacyTools?: ReadonlySet<string>;
   callTool: (name: string, args: Record<string, unknown>) => Promise<McpToolResult>;
 }
 
@@ -114,7 +112,7 @@ async function handleOne(
       });
     case "tools/call": {
       const name = typeof params.name === "string" ? params.name : "";
-      if (!deps.tools.some((t) => t.name === name) && !deps.legacyTools?.has(name)) {
+      if (!deps.tools.some((t) => t.name === name)) {
         return fail(id, INVALID_PARAMS, `Neznámy tool: ${name || "(chýba name)"}`);
       }
       const args = isObject(params.arguments) ? params.arguments : {};

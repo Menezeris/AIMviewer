@@ -5196,6 +5196,12 @@ namiesto pridávania.
    `LEGACY_ENGINE_TOOL_NAMES`); `mcp_call_log.tool` nesie volané meno, takže sa dá zistiť, kedy ich
    už nikto nevolá. Zmažú sa po dvoch týždňoch bez volania. `callAction` loguje prvý z parametrov
    `action`, `mode`, `source`.
+   **Dodatok 2026-10-20 (Samuel):** staré mená sú zmazané hneď, nečaká sa do 3. 11. Konektor
+   používa len Samuel, staré konverzácie s uloženým zoznamom toolov nepoužije a `mcp_call_log` od
+   06:17 UTC staré mená neukazuje. Zrušené: `legacyTools` v MCP serveri, `mcpLegacyToolNames`,
+   `LEGACY_*_TOOL_NAMES` a vetvy dispatchu, ktoré vykonali staré meno; volanie starým menom vráti
+   "Neznámy tool". `search_everything` ostáva riadnym toolom bez motora (aj `/api/ask`), s motorom ho
+   v MCP nahrádza `search_all` bez aliasu.
 3. **Krok 1 - IFC motor (18 -> 7 toolov):**
    - `ifc_query` + `mode` list | count | values a filter `material` (bývalé `ifc_count`,
      `ifc_property_values`, `ifc_material_layers`);
@@ -5242,7 +5248,7 @@ namiesto pridávania.
 - *Premenovať všetko na nové mená (`ifc_model`, `find_objects`...):* rozbije porovnanie s
   predchádzajúcimi kolami v `mcp_call_log` a evaloch bez úžitku pre agenta.
 - *Okamžite zmazať staré mená:* claude.ai drží zoznam toolov počas konverzácie, rozpracované
-  rozhovory by padali na "Neznámy tool".
+  rozhovory by padali na "Neznámy tool". (Prehodnotené v ten istý deň, dodatok k bodu 2.)
 
 ---
 
