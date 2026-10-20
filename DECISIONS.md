@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-105 (X-ray context z chatu, #106):** `style_in_3d action=xray` cez AIM chat lens s príznakom `x: 1`, fork dá zjednotenie pravidiel do kanála ghost viewera (ako tlačidlo duch), `mode=add` rozšíri, `show_all` zruší; drôtový model zatiaľ nie (renderer ho nemá).
 - **2026-10-19** - **D-104 (dokumenty z IFC):** jedna sada dokumentov z IFC (stará sada E3 sa odstráni), ETL podľa IfcDocumentInformation vrátane stromu a odkazov na strany, efektívne dokumenty objektu cez vzťahy (typ, skupina, zóna, priestorová zóna, odvodené) v DB aj v tooloch, prehliadanie a preklikávanie PDF cieľovo vo vieweri (fork), súbory v buckete podľa `Identification`.
 - **2026-10-19** - **D-103 (rýchle CI forku, rozširuje D-098):** rýchla cesta aj pre PR s úpravami pôvodných viewer súborov len vnútri AIM-FORK blokov (build viewera, súvisiace viewer testy, ratchet viewer JS), nočné plné CI na `main`, nálezy review bota neblokujú merge okrem bezpečnostných (ifc-lite #69).
 - **2026-10-19** - **D-102 (kolo 3 latencie MCP):** kód prvku (SD04.0001, VV.03.01.040) ako cieľ všetkých toolov cez meno v AIM a IFC Name/Tag, predčítané indexy motora (`ifc_search` 2 až 90 ms), kód bez preklepu, `set_section relative_to=ceiling` z Qto miestností (vážený medián), `get_object` s podlažím, kamera na miestnosť a `CLEAR_SELECTION` vo forku.
@@ -4900,3 +4901,39 @@ až po kroku 4.
 - Produkcia: re-ETL bez novej revízie robí nový workflow `reetl` v OCB (aktuálna revízia
   overená cez sha256, `dry_run`, `close_legacy_documents`).
 - Knižnica dokumentov vo vieweri berie priečinok zo stromu dokumentácie (koreň PD sa vynecháva).
+
+---
+
+### D-105 - X-ray context z chatu: `style_in_3d action=xray`, drôtový model zatiaľ nie
+**Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #106).
+Nadväzuje na D-096 (Lens z chatu), D-101 (izolácia z chatu, `mode: add`), D-087 a D-098 (najprv
+existujúce funkcie viewera).
+
+**Kontext:** viewer má X-ray context: tlačidlo "duch" v paneli prvku, panel kolízií aj zoznamy
+ho píšu do kanála `ghostExceptEntities` a vo vieweri ho ukazuje čip "X-ray context · N".
+Konektor ho nevedel spustiť. Náhrada cez Lens (zvyšok `transparent`, vybrané `colorize`) vybrané
+prvky prefarbí, takže stratia pôvodný vzhľad (#106: SDK priečky a podhľady na 2NP plne, zvyšok
+duchovo).
+
+**Rozhodnutie:**
+1. `style_in_3d` dostane `action=xray` s rovnakými filtrami a `groups` ako `isolate` (farba
+   voliteľná). Server zostaví tú istú AIM chat lens ako pri izolácii, len s príznakom `x: 1`
+   (most `APPLY_LENS xray: true`).
+2. Fork (Menezeris/ifc-lite, `aim/aimLens.ts`) vyhodnotí pravidlá tým istým federovaným filtrom
+   ako izoláciu z chatu a zjednotenie (cez `resolvePresentationIds`) dá do kanála ghost
+   (`setGhostExceptEntities`). Žiadna nová vizualizácia: je to ten istý kanál ako tlačidlo
+   "duch". Farebné skupiny sa navyše ofarbia v lens.
+3. `mode=add` rozšíri doterajší X-ray z chatu, ak ho kanál stále drží. `show_all` (Lens
+   `unisolate` aj `SHOW_ALL`) ho zruší. Izolácia a X-ray sú vo vieweri vzájomne výlučné; prechod
+   z jedného na druhý uvoľní kanál chatu, správa s oboma príznakmi sa odmietne.
+4. Odpoveď toolu a súhrn `APPLIED` nesú počty ako pri izolácii, navyše `isolation.xray: true`.
+
+**Zavrhnuté:**
+- *Ghost cez SDK (`bim.viewer`):* SDK kanál ghost nemá; nový SDK namespace by bol zásah do
+  upstream balíka kvôli jednej správe.
+- *Samostatný bridge príkaz `XRAY` s GUIDmi:* stratil by filtre vyhodnocované vo vieweri (typ,
+  podlažie, vlastnosť, model) a počty, ktoré už Lens dáva.
+
+**Otvorené:** drôtový model (wireframe) pre množinu prvkov. Renderer forku ani upstreamu taký režim
+nemá (hrany kreslí len pri kolíziách a zónach); bol by to nový renderovací režim v upstream kóde.
+Necháva sa, kým ho nebude mať upstream alebo kým Samuel nerozhodne o vlastnej vrstve.
