@@ -617,6 +617,14 @@
       "expect": { "tools_called": ["style_in_3d"] },
       "verified": false,
       "notes": "D-105 (issue #106): očakávané style_in_3d(action=xray, storey=2NP, ...) jedným callom, nie transparent + colorize. Len MCP so živým viewerom."
+    },
+    {
+      "id": "view-open-list-export",
+      "category": "view",
+      "question": "Exportuj všetky dvere na 1NP ako tabuľku s názvom, požiarnou odolnosťou a šírkou.",
+      "expect": { "tools_called": ["open_list"] },
+      "verified": false,
+      "notes": "D-111 (issue #70): open_list(ifc_type=IfcDoor, storey=1NP, columns=[Name, Pset_DoorCommon.FireRating, Qto_DoorBaseQuantities.Width]); odpoveď povie, nech používateľ stlačí Run a Export. Len so živým viewerom."
     }
   ]
 }

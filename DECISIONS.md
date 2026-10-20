@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-19** - **D-111 (zoznam z chatu, #70):** `open_list` s filtrami ako `style_in_3d` a stĺpcami otvorí builder panela Lists (fork `OPEN_LIST`, návrh zoznamu); Run a Export (CSV/XLSX/PDF) robí používateľ.
 - **2026-10-19** - **D-106 (Odvodené záznamy ako strom, #93):** jeden AIM badge a odlíšená sekcia, strom vzťah > IFC trieda / PredefinedType > inštancia s počtami, host posiela `other.predefinedType`.
 - **2026-10-19** - **D-105 (X-ray context z chatu, #106):** `style_in_3d action=xray` cez AIM chat lens s príznakom `x: 1`, fork dá zjednotenie pravidiel do kanála ghost viewera (ako tlačidlo duch), `mode=add` rozšíri, `show_all` zruší; drôtový model zatiaľ nie (renderer ho nemá).
 - **2026-10-19** - **D-104 (dokumenty z IFC):** jedna sada dokumentov z IFC (stará sada E3 sa odstráni), ETL podľa IfcDocumentInformation vrátane stromu a odkazov na strany, efektívne dokumenty objektu cez vzťahy (typ, skupina, zóna, priestorová zóna, odvodené) v DB aj v tooloch, prehliadanie a preklikávanie PDF cieľovo vo vieweri (fork), súbory v buckete podľa `Identification`.
@@ -4959,3 +4960,28 @@ ako pár záznamoch sa v ňom ťažko orientovalo a badge na každom riadku zahl
 **Zavrhnuté:**
 - *Zoskupenie podľa pravidla odvodenia:* priestor a priestorová zóna idú tým istým IFC vzťahom;
   pravidlo je v tooltipe skupiny.
+### D-111 - Zoznam z chatu: `open_list` otvorí builder panela Lists
+**Status:** rozhodnuté (2026-10-19, strážna session na základe Samuelovho poverenia, issue #70).
+Nadväzuje na D-087 a D-098 (najprv existujúce funkcie viewera), D-096 (filtre Lens z chatu).
+
+**Kontext:** "Exportuj všetky dvere na 1NP ako tabuľku" konektor nevedel: prvky nájde
+(`ifc_query`), ale panel Lists viewera neotvorí. Upstream panel Lists vie zoznam podľa filtrov a
+stĺpcov aj export (CSV, XLSX, PDF) a návrh zoznamu (`pendingListDraft`) mu už odovzdáva "Create
+list" z vyhľadávania. `ListDefinition.groups` sú tie isté `FilterGroup` ako pravidlá Lens.
+
+**Rozhodnutie:**
+1. Nový tool `open_list` (`lib/llm/list-tool.ts`, stĺpce `lib/llm/list-columns.ts`): filtre ako
+   `style_in_3d` (zostavia sa tou istou cestou ako skupina Lens, vrátane systému, zóny, podlažia
+   a vlastnosti), aspoň jeden povinný; `columns` slovami (atribúty, storey/space/building,
+   material, classification, model, `Pset.Vlastnosť`, `Qto_X.Množstvo`), default Name, GlobalId,
+   ObjectType, podlažie.
+2. Op `list` (`lib/viewer-list.ts`) -> most `OPEN_LIST`; zónu doplní klient GUIDmi ako pri Lens.
+   Fork (Menezeris/ifc-lite#74, `aim/aimList.ts`) zostaví `ListDefinition`, odovzdá ho ako návrh a
+   otvorí panel Lists v builderi.
+3. Spustenie a export robí používateľ tlačidlom (Run, Export): stiahnutie súboru z iframe bez
+   kliku používateľa prehliadač nemá dovoliť. Tool to v odpovedi povie.
+
+**Zavrhnuté:**
+- *Export na serveri (CSV z DB alebo IFC motora s odkazom na stiahnutie):* nový zápis do úložiska a
+  druhá implementácia stĺpcov a jednotiek popri upstream exporte.
+- *Uložené zoznamy (`list_presets` z issue):* žijú v localStorage prehliadača, server ich nevidí.

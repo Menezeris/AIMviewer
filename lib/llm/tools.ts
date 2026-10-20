@@ -7,6 +7,7 @@ import type { ToolDefinition } from "./provider";
 import { docOp } from "@/lib/viewer-ops";
 import { mergeIfcActions, type AskAction } from "./actions";
 import { DOMAIN_IFC_TYPES, sanitizeIfcType, sanitizeModelName } from "./ifc-selector";
+import { LIST_TOOL_DEFINITIONS, LIST_TOOL_NAMES, execListTool } from "./list-tool";
 import { VIEW_TOOL_DEFINITIONS, VIEW_TOOL_NAMES, execViewTool } from "./view-tools";
 import { engineEnabled, resolveNamesToGuids } from "@/lib/engine/aim-lookup";
 import { execScopedStyle } from "./style-scope";
@@ -726,6 +727,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
   ...VIEW_TOOL_DEFINITIONS,
+  ...LIST_TOOL_DEFINITIONS,
 ];
 
 export interface ToolExecution {
@@ -835,6 +837,7 @@ export class AskToolRuntime {
         return this.openNode(input);
       default:
         if (VIEW_TOOL_NAMES.has(name)) return execViewTool(name, input, (a) => this.actions.push(a));
+        if (LIST_TOOL_NAMES.has(name)) return execListTool(name, input, (a) => this.actions.push(a));
         throw new Error(`Neznámy tool '${name}'.`);
     }
   }

@@ -66,14 +66,14 @@ const MAX_RULES = 24;
 const HEX = /^#[0-9a-f]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function toBase64Url(text: string): string {
+export function toBase64Url(text: string): string {
   const bytes = new TextEncoder().encode(text);
   let bin = "";
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function fromBase64Url(raw: string): string | null {
+export function fromBase64Url(raw: string): string | null {
   if (!/^[A-Za-z0-9_-]*$/.test(raw)) return null;
   try {
     const bin = atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
