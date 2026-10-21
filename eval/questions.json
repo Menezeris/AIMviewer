@@ -921,6 +921,14 @@
       "expect": { "tools_called": ["set_section"] },
       "verified": false,
       "notes": "D-128 (issue #173): set_section(action=widget, hatch_pattern=diagonal, hatch_angle_deg=45, hatch_spacing_px nad 8)."
+    },
+    {
+      "id": "drawing-label-door",
+      "category": "documents_content",
+      "question": "Ktoré dvere sú na pôdoryse 1NP v bubline 08 DD01?",
+      "expect": { "tools_called": ["search_documents"] },
+      "verified": false,
+      "notes": "D-130 (issue #167): search_documents(document_id=OCB_SO01_ASR_D-1-1-01_PODORYS-1NP, include_links=true) -> DD01.08.0001 (jediný výskyt typu DD01.08 na 1NP). Hodnota overená nad produkciou 2026-10-21, eval nespustený."
     }
   ]
 }

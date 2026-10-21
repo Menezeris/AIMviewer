@@ -6184,3 +6184,44 @@ druhá os by typ prepísala náhodne. Export IFC existuje len vo forku (upstream
 **Dôsledky:** bez migrácie a bez nového env. Fork (vetva D-127): skupiny médií v "Len pre výber". Pre
 OCB: recept na klasifikáciu `Druh média` pre obrázky v IFC (dnes žiadne, takže až s prvým fotodokumentom
 v modeli). Export AIM vrstiev je zaparkovaný v #202.
+
+---
+
+### D-130 - Popisky na výkrese ako odkazy na prvok: párovanie z textovej vrstvy ako AIM vrstva
+**Status:** rozhodnuté (2026-10-21), číslo pridelil orchestrátor (register #60). **Issue:** #167. Nadväzuje na
+D-076 (identifikátorové odkazy vo forku), D-082 (výber ako klik), D-123 (riadky textu s polohou), D-114,
+D-129 (údaj v IFC alebo AIM vrstva s odznakom), D-087/D-091 (čo patrí do forku).
+
+**Kontext:** Samuel chce, aby bubliny na výkrese (napr. `08 DD01`) boli odkazy ako v jeho pôvodnom PDF
+prehliadači: klik otvorí panel vlastností zodpovedajúceho IFC prvku (DD01.08.0001). Fork to od D-076 vie
+len čiastočne: `PageIdentifierLinks` je predvolene vypnutý (nastavenie v localStorage), kód hľadá regexom a
+typový kód otvorí typ, nie výskyt. Na pôdoryse 1NP je bublina dvojriadková: hlava `DD01` (typ prvku) a pod
+ňou buď `05.04` (plný kód DD01.05.04), alebo len `08` (typ DD01.08, číslo výskytu `.0001` na výkrese nie je).
+Na rozhodnutie, ktoré dvere to sú, treba podlažie výkresu a výskyty typu na ňom, čo má host v DB, nie fork.
+
+**Rozhodnutie:**
+1. **Párovanie robí host** (`lib/data/drawing-labels.ts`, čistá funkcia nad `document_pages.blocks`):
+   - **popisok prvku** = riadok `[A-Z]{2}\d{2}` a číslo tesne pod ním (rovnaký stred na osi x, do 1,2 % strany
+     nižšie): `NN.NN` = plný kód, `NN` = typový kód;
+   - **kód miestnosti** = riadok `\d\.\d{2}`, len ak taká miestnosť (`object_ref`) je na podlaží výkresu;
+   - **priradenie:** plný kód = prvok s tým `object_ref`; typový kód = výskyty typu (`object_ref` začína kódom a
+     bodkou) na podlaží výkresu: jeden = jednoznačné, viac = kandidáti, žiadny = nespárované;
+   - podlažie výkresu = nositeľ dokumentu typu `floor` (to isté ako `storeyGuid` v `DOCUMENTS_LOAD`, D-104).
+   Výsledok je **AIM vrstva** (odvodenie, D-089/D-129): nič sa nezapisuje do IFC ani do DB.
+2. **Konektor:** `search_documents include_links` (D-114 bod 3, žiadny nový tool) pri čítaní strany vráti
+   `links` = popisok, `bbox` v %, `object_ref`, GUID a stav (`unique` / `candidates` / `none`).
+3. **Viewer:** host po `DOCUMENTS_LOAD` pošle `DOCUMENT_LINKS` pre pôdorysy podlaží (dokument, strana, oblasti v
+   zlomkoch strany, ciele s GUID). Fork (`apps/viewer/src/aim/docLinks.ts`) nakreslí nad stranou klikateľné
+   oblasti (imperatívna vrstva ako rámiky D-123) a klik vyberie prvok ako klik do modelu (`selectPickedGlobalId`,
+   D-082) a otvorí panel vlastností; pri kandidátoch ukáže malý výber. Oblasť aj výber nesú odznak AIM
+   (odvodené z popisku, nie z IFC). Fork nič nepočíta (D-091, D-098).
+4. **Stav dát (1NP, strana 1):** 52 bubliniek prvkov: 38 plných kódov presne, 4 typové kódy s jediným výskytom
+   na 1NP (aj `08 DD01` -> DD01.08.0001), 9 typových kódov s viacerými výskytmi (kandidáti), 1 nespárovaný
+   (`OV01` nad výškovou kótou `00.00`). Kódy miestností: 46 popiskov, 23 miestností 1NP, všetky jednoznačné.
+
+**Zavrhnuté:**
+- *Zapnúť a doladiť D-076 vo forku:* fork nepozná podlažie výskytov z DB ani konvenciu `.0001` a výber výskytu
+  podľa podlažia by bol druhý výpočet popri AIMvieweri; D-076 ostáva ako všeobecná funkcia originálu.
+- *Kandidátov rozlíšiť polohou na výkrese:* potrebuje kalibráciu výkresu k modelu (D-072, D-117 otvorené); keď
+  bude, host môže z kandidátov vybrať najbližší a stav `candidates` zmizne bez zmeny drôtu.
+- *Nový tool `drawing_links`:* ten istý zdroj (`document_pages`) a tá istá anotácia ako `search_documents`.

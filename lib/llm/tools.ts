@@ -4,6 +4,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PDF_LINK_SOURCE } from "@/lib/data/constants";
 import { fetchDocumentObjectRows, fetchDocumentTypes, fetchObjectDocuments, typeText } from "@/lib/data/object-documents";
 import { fetchAllPages } from "@/lib/data/pagination";
+import { fetchDocumentLinks } from "@/lib/data/drawing-links";
+import { linkSummary } from "@/lib/data/drawing-labels";
 import type { ToolDefinition } from "./provider";
 import { docHighlightsInput, docOp, docRegionInput, selectOp } from "@/lib/viewer-ops";
 import {
@@ -805,7 +807,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "(2) q + document_id = hľadanie len v tom dokumente (napr. 'ukáž vo výkrese popisok 1.05', " +
       "'nájdi v technickej správe požiarnu odolnosť'); (3) document_id bez q = PREČÍTA stranu " +
       "(page, default 1): celý text, s include_blocks aj riadky s polohou na strane (legenda, " +
-      "kóty). regions = kde na strane text je (bbox v %): 'ukáž/zvýrazni vo výkrese' = " +
+      "kóty), s include_links popisky prvkov a miestností spárované s prvkami (bublina '08 DD01' -> " +
+      "DD01.08.0001; AIM odvodenie, vo vieweri sú to klikateľné odkazy). regions = kde na strane text " +
+      "je (bbox v %): 'ukáž/zvýrazni vo výkrese' = " +
       "open_drawing(document_id, page, highlights=[regions[].bbox]) - karta sa priblíži a text " +
       "orámuje. Slová sa hľadajú aj v inom tvare (skloňovanie). Výmery a objemy (murivo, plochy) " +
       "počítaj z kót výkresu LEN na výslovnú žiadosť 'z výkresu' a ako hrubý odhad; inak vždy z " +
@@ -831,6 +835,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "boolean",
           description:
             "Čítanie: aj riadky textu s polohou {t, x, y, w, h} v % strany (počiatok vľavo hore)",
+        },
+        include_links: {
+          type: "boolean",
+          description:
+            "Čítanie: aj popisky na strane spárované s prvkami (text, code, bbox v %, status " +
+            "unique/candidates/none, targets s object_ref a GUID); kandidáti = typ má na podlaží viac výskytov",
         },
         limit: { type: "number", description: "Max výsledkov (default 10, strop 50)" },
       },
@@ -1801,7 +1811,7 @@ export class AskToolRuntime {
     }
     if (!q) {
       if (!doc) throw new Error("Zadaj q (hľadaný text) alebo document_id (čítanie strany).");
-      return this.readDocumentPage(doc, page ?? 1, input.include_blocks === true);
+      return this.readDocumentPage(doc, page ?? 1, input.include_blocks === true, input.include_links === true);
     }
     if (q.length < 2) throw new Error("q musí mať aspoň 2 znaky.");
 
@@ -1861,8 +1871,8 @@ export class AskToolRuntime {
     });
   }
 
-  /** Čítanie strany dokumentu (D-123): text, voliteľne riadky s polohou. */
-  private async readDocumentPage(doc: ObjectRow, page: number, includeBlocks: boolean) {
+  /** Čítanie strany dokumentu (D-123): text, voliteľne riadky s polohou a odkazy z popiskov (D-130). */
+  private async readDocumentPage(doc: ObjectRow, page: number, includeBlocks: boolean, includeLinks = false) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("document_pages")
@@ -1886,6 +1896,7 @@ export class AskToolRuntime {
       return { ...document, page, text: null, pages_with_text: pagesWithText, hint: "Strana nemá text." };
     }
     const blocks = includeBlocks ? parseBlocks(hit.blocks) : [];
+    const links = includeLinks ? ((await fetchDocumentLinks(doc.id, page))[0]?.links ?? []) : null;
     return {
       ...document,
       page,
@@ -1896,6 +1907,15 @@ export class AskToolRuntime {
         ? {
             blocks: compactBlocks(blocks),
             ...(blocks.length > PAGE_BLOCKS_CAP ? { blocks_truncated: true, blocks_total: blocks.length } : {}),
+          }
+        : {}),
+      ...(links
+        ? {
+            links,
+            links_summary: linkSummary(links),
+            links_note:
+              "AIM odvodenie (D-130): popisok -> prvok podľa object_ref; typový kód (DD01 08) = jediný výskyt " +
+              "typu na podlaží výkresu, inak candidates. Vo vieweri je popisok klikateľný.",
           }
         : {}),
       deep_link: `/drawing/${doc.id}?page=${page}`,
