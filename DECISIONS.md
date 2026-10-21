@@ -5912,10 +5912,13 @@ možné overiť, či je celý v zábere (#166).
 2. **#168, AIMviewer:** `selectIn3d` hneď povie, či vlastnosť je v dátach AIM prvku (`property.in_aim`,
    hodnota, presné mená; pri chýbajúcej zoznam psetov), z `v_asset_effective` (dedičnosť z typu, D-021).
    `highlight` na Qto už neotvára len sekciu, zvýrazní riadok ako ostatné.
-3. **#169:** prepínač AIM | IFC zmizol, panel ukazuje vždy IFC obsah. AIM karta (dokumenty aj cez zónu,
-   podlažie a typ, zodpovednosti, história GUID, "Otvoriť celý detail", Reality Capture) ostáva ako
-   **zbalený riadok** nad IFC obsahom, takže nič nezmizne. `panel_tab` vypadol zo schémy `show_in_3d`;
-   starý vstup sa ticho ignoruje (staršie odkazy `t=` fork prijme a nič nenastaví).
+3. **#169 (podľa D-129):** záložka AIM aj AIM karta z panela vypadli, panel je čisto IFC. Vrstva AIM:
+   posledná zmena prvku receptom (revízia vNNN, model a BCF téma z `model_tasks` s prvkom vo výbere,
+   `fetchLastElementChange`) a história GUID sú riadky s odznakom AIM nad IFC obsahom (vzor D-089);
+   dokumenty zdedené cez zónu, podlažie, skupinu, systém alebo miestnosť majú v paneli Documents
+   ("Len pre výber") odznak AIM (`aim: true`, priamo a cez typ sú v IFC). Zodpovednosti, odkaz
+   Reality Capture a "Otvoriť celý detail" z panela vypadli (D-129 body 2, 4, 6). `panel_tab` vypadol
+   zo schémy `show_in_3d`; starý vstup sa ticho ignoruje (staršie odkazy `t=` fork prijme a nič nenastaví).
 4. **#179 - rozšírenie `set_view_mode` o `panels`** (D-114 bod 2): {lens | properties | underlays |
    documents | lists | model_tree: open | close | toggle, all: close}, aj bez `mode`. Nová op
    `panels:~<panel>=<akcia>...:` -> bridge `SET_PANELS`; fork volá existujúce akcie store (lišta, rail,
@@ -5936,6 +5939,8 @@ možné overiť, či je celý v zábere (#166).
   rozloženie mení používateľ, chat ho len číta. Panel `legend`: legenda je časť Lens (`style_in_3d
   legend_size`, D-119), zavrie sa s ním.
 - *Opraviť upstream fade v `PropertiesPanel` (blok AIM-FORK):* stále by chýbali výmery a psety typu.
+- *Zbalený blok "AIM platforma" v paneli (prvý návrh v #169):* zamietnuté v D-129, vlastné rozhranie
+  popri IFC.
 
 **Otvorené:** pôvodných 779 % z #166 sa lokálne nezopakovalo (úzka karta 264-378 px výrez umiestnila
 správne); výsledok teraz hlási viditeľný rozsah, takže ďalší výskyt sa dá overiť priamo. Na mobile
