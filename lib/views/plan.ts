@@ -204,6 +204,8 @@ export function planRestore(row: SavedViewRow, offsetRaw: unknown): { plan: View
     const coordinate = round3(s.coordinate + offset);
     if (Math.abs(coordinate) > SECTION_COORDINATE_LIMIT) throw new ViewInputError("Rez po posune je mimo rozsahu modelu.");
     section = { ...s, coordinate };
+    // Percento patrí pôvodnej súradnici; po posune by v poslednom pohľade klamalo (súradnica pri obnove vyhráva).
+    if (offset) delete section.position_percent;
     ops.push(sectionOp({ axis: s.axis, coordinate, flipped: s.flipped, showGizmo: s.show_gizmo }));
   } else if (s && s.position_percent !== undefined) {
     ops.push(sectionOp({ axis: s.axis, position: s.position_percent, flipped: s.flipped, showGizmo: s.show_gizmo }));
