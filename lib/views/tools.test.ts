@@ -80,6 +80,8 @@ describe("saved_view (D-122)", () => {
     expect(plan.result).toMatchObject({ restored: "A", section_offset_m: -1 });
     const last = await deps.store.last();
     expect(last?.viewpoint.section?.coordinate).toBe(3.2);
+    // Percento z pôvodného rezu by k novej súradnici nesedelo (eval D-122: 13,725 % pri 0,2 m).
+    expect(last?.viewpoint.section?.position_percent).toBeUndefined();
     expect(deps.store.rows.find((x) => x.kind === "saved")?.last_used_at).toBe("2026-10-20T12:30:00.000Z");
     // "ako minule, ale o meter nižšie" = posledný pohľad znova s posunom
     const again = await restoreSavedView({ saved_view: "Posledný pohľad", section_offset_m: -1 }, deps);
