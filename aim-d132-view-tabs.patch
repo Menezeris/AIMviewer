@@ -1,0 +1,2192 @@
+From f277e90d46492e56b627b37b55a6839a30cba765 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 11:28:31 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?AIM=20D-132:=20z=C3=A1lo=C5=BEky=20viewera?=
+ =?UTF-8?q?=20(3D,=20p=C3=B4dorys,=20poh=C4=BEad,=20dokument),=20Ved=C4=BE?=
+ =?UTF-8?q?a,=20rezn=C3=BD=20box=20z=20chatu?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Lišta záložiek nad strednou plochou: aktívna záložka na celú plochu, dokument
+zbalí 3D, Vedľa dá k nej dokument alebo pôdorys (2D plán D-072). Stav canvasu
+(kamera, rovina alebo box, zámok, rez podlažia) sa pri prepnutí odloží a vráti.
+Most VIEW_TABS, SET_SECTION_BOX, DOCUMENT_OPEN layout, view_state.tabs a box
+v section; SET_VIEW_MODE ide cez záložky. Logika stredného panela z AIM-FORK
+bloku ViewerLayout.tsx do aim/useAimCenterPanes.ts.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017ieoHNEFuzozjBpaHgHMCC
+---
+ apps/viewer/src/aim/AimBridge.tsx             |  16 +-
+ apps/viewer/src/aim/AimViewTabsBar.tsx        | 126 +++++++++
+ apps/viewer/src/aim/DocumentsRibbonTab.tsx    |  42 +--
+ apps/viewer/src/aim/docBridge.ts              |   7 +
+ apps/viewer/src/aim/sectionBox.test.ts        |  30 ++
+ apps/viewer/src/aim/sectionBox.ts             |  64 +++++
+ apps/viewer/src/aim/tabs-protocol.ts          |  79 ++++++
+ apps/viewer/src/aim/useAimCenterPanes.ts      | 110 ++++++++
+ apps/viewer/src/aim/useAimViewCommands.ts     |  29 +-
+ apps/viewer/src/aim/viewQueries.ts            |  33 ++-
+ apps/viewer/src/aim/viewTabsApply.ts          | 259 ++++++++++++++++++
+ apps/viewer/src/aim/viewTabsLayout.ts         |  64 +++++
+ apps/viewer/src/aim/viewTabsPlan.test.ts      | 137 +++++++++
+ apps/viewer/src/aim/viewTabsPlan.ts           | 154 +++++++++++
+ apps/viewer/src/aim/viewTabsStore.ts          |  55 ++++
+ .../src/components/documents/DocumentPane.tsx |   8 +-
+ .../src/components/viewer/ViewerLayout.tsx    | 108 +-------
+ .../ribbon/command-labels.guard.test.tsx      |   6 +-
+ 18 files changed, 1184 insertions(+), 143 deletions(-)
+ create mode 100644 apps/viewer/src/aim/AimViewTabsBar.tsx
+ create mode 100644 apps/viewer/src/aim/sectionBox.test.ts
+ create mode 100644 apps/viewer/src/aim/sectionBox.ts
+ create mode 100644 apps/viewer/src/aim/tabs-protocol.ts
+ create mode 100644 apps/viewer/src/aim/useAimCenterPanes.ts
+ create mode 100644 apps/viewer/src/aim/viewTabsApply.ts
+ create mode 100644 apps/viewer/src/aim/viewTabsLayout.ts
+ create mode 100644 apps/viewer/src/aim/viewTabsPlan.test.ts
+ create mode 100644 apps/viewer/src/aim/viewTabsPlan.ts
+ create mode 100644 apps/viewer/src/aim/viewTabsStore.ts
+
+diff --git a/apps/viewer/src/aim/AimBridge.tsx b/apps/viewer/src/aim/AimBridge.tsx
+index 336193792..8f205c242 100644
+--- a/apps/viewer/src/aim/AimBridge.tsx
++++ b/apps/viewer/src/aim/AimBridge.tsx
+@@ -36,11 +36,15 @@ import { handleDocumentMessage, wireDocumentEvents } from './docBridge.js';
+ import { useAimDecorationsStore } from './aimDecorationsStore.js';
+ import { useAimDerivationsStore } from './aimDerivationsStore.js';
+ import { isViewMessage } from './view-protocol.js';
++import { withTabs } from './viewTabsStore.js';
+ import { applySectionCap, isSectionCapMessage } from './sectionCap.js';
+ import { isDerivationsMessage } from './derivations-protocol.js';
+ import { isBcfLoadMessage, loadBcfTopics } from './bcf-protocol.js';
+ import { dispatchLensMessage, isLensEnvelope, lensSettled, resetLensFromChat } from './lens-protocol.js';
+-import { appliedViewState, prepareFocusView, setFocusProvider, useAimViewCommands } from './useAimViewCommands.js';
++import { appliedViewState, prepareFocusView, runSectionBox, setFocusProvider, useAimViewCommands } from './useAimViewCommands.js';
++
++/** Správy AIM D-132 sa overia až v lenivom module; tu len typ (vstupný balík). */
++const aimTyped = (d: unknown, type: string) => !!d && typeof d === 'object' && (d as { source?: unknown }).source === SOURCE && (d as { type?: unknown }).type === type;
+ 
+ /** Príkazy viditeľnosti idú bránou; dáta panelov a dokumentov nie (D-101). */
+ const VISIBILITY = new Set(['FOCUS', 'SELECT', 'HIGHLIGHT_FILTER', 'CLEAR_FILTER', 'RESET_COLORS', 'COLORIZE', 'HIDE', 'SHOW', 'ISOLATE', 'SHOW_ALL']);
+@@ -131,6 +135,16 @@ export function AimBridge() {
+         else gate.run(() => viewCommands.current(msg, origin()));
+         return;
+       }
++      if (aimTyped(e.data, 'VIEW_TABS')) {
++        const raw: unknown = e.data; // Záložky z chatu (D-132), overenie aj vykonanie v lenivom module, v poradí
++        gate.run(() => { const p = withTabs((m) => m.runTabsMessage(raw, noteIssue)); if (p) track(p); });
++        return;
++      }
++      if (aimTyped(e.data, 'SET_SECTION_BOX')) {
++        const raw: unknown = e.data; // Rezný box (D-132)
++        gate.run(() => runSectionBox(raw));
++        return;
++      }
+       if (isSectionCapMessage(e.data)) {
+         const msg = e.data; // Vzhľad reznej plochy (D-120)
+         gate.run(() => applySectionCap(msg, useViewerStore.getState));
+diff --git a/apps/viewer/src/aim/AimViewTabsBar.tsx b/apps/viewer/src/aim/AimViewTabsBar.tsx
+new file mode 100644
+index 000000000..c609cb54a
+--- /dev/null
++++ b/apps/viewer/src/aim/AimViewTabsBar.tsx
+@@ -0,0 +1,126 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Lišta záložiek nad strednou plochou (AIM D-132, #165): 3D, pôdorysy podlaží,
++ * uložené pohľady z chatu a otvorené dokumenty. Aktívna záložka má celú plochu;
++ * "Vedľa" dá k nej druhú (dokument, alebo pôdorys ako 2D plán vedľa 3D). Lenivo
++ * z `ViewerLayout.tsx`; na mobile sa neukazuje (dokument tam je prekrytie D-075).
++ * Lišta tiež dodá záložkám funkcie viewera (`TabDeps`) z hookov pôdorysu.
++ */
++
++import { useEffect, useMemo, useRef } from 'react';
++import { Box, FileText, LayoutTemplate, Scan, X } from 'lucide-react';
++import { cn } from '@/lib/utils';
++import { useViewerStore } from '@/store';
++import { useViewMode } from '@/hooks/useViewMode';
++import { useFloorplanView } from '@/hooks/useFloorplanView';
++import { besidePair, type ViewTabKind } from './viewTabsPlan.js';
++import { useAimViewTabs } from './viewTabsStore.js';
++import { activate, beside, close, openPlan, syncDocs } from './viewTabsApply.js';
++
++const ICON: Record<ViewTabKind, typeof Box> = { '3d': Box, plan: LayoutTemplate, view: Scan, doc: FileText };
++const SELECT = 'h-6 max-w-40 rounded border bg-background px-1 text-[11px] text-muted-foreground';
++const warn = (issue: string) => console.warn('[aim-tabs]', issue);
++
++export function AimViewTabsBar() {
++  const isMobile = useViewerStore((s) => s.isMobile);
++  const { storeys, storeyHasDrawing } = useViewMode();
++  const { enterDrawingView, enterSplitView, exitSplitView } = useFloorplanView();
++  useEffect(() => {
++    useAimViewTabs.setState({ deps: { storeys, storeyHasDrawing, enterDrawingView, enterSplitView, exitSplitView } });
++  }, [storeys, storeyHasDrawing, enterDrawingView, enterSplitView, exitSplitView]);
++  useEffect(() => () => useAimViewTabs.setState({ deps: null }), []);
++
++  // Karty dokumentov D-075 -> záložky (nová aktívna karta = aktívna záložka).
++  const docTabs = useViewerStore((s) => s.docTabs);
++  const docs = useViewerStore((s) => s.viewerDocuments);
++  const activeDocTabId = useViewerStore((s) => s.activeDocTabId);
++  const prevSyncedRef = useRef<string | null>(null);
++  useEffect(() => {
++    if (isMobile) return;
++    const opened = activeDocTabId && activeDocTabId !== prevSyncedRef.current ? activeDocTabId : null;
++    prevSyncedRef.current = activeDocTabId;
++    syncDocs(docTabs.map((t) => ({ docId: t.docId, label: docs.get(t.docId)?.name ?? t.docId })), opened);
++  }, [docTabs, docs, activeDocTabId, isMobile]);
++
++  const tabs = useAimViewTabs((s) => s.tabs);
++  const activeId = useAimViewTabs((s) => s.activeId);
++  const besideId = useAimViewTabs((s) => s.besideId);
++  const pairable = useMemo(
++    () => tabs.filter((t) => besidePair({ tabs, activeId, besideId }, activeId, t.id)),
++    [tabs, activeId, besideId],
++  );
++  if (isMobile) return null;
++
++  return (
++    <div className="flex h-7 shrink-0 items-stretch border-b bg-muted/30" data-testid="aim-view-tabs">
++      <div role="tablist" aria-label="Záložky pohľadov" className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
++        {tabs.map((tab) => {
++          const Icon = ICON[tab.kind];
++          const isActive = tab.id === activeId;
++          const isBeside = tab.id === besideId;
++          return (
++            <div
++              key={tab.id}
++              className={cn(
++                'flex max-w-48 shrink-0 items-center border-r',
++                isActive ? 'bg-background' : isBeside ? 'bg-background/70' : 'hover:bg-muted/70',
++              )}
++            >
++              <button
++                type="button"
++                role="tab"
++                aria-selected={isActive}
++                title={isBeside ? `${tab.label} (vedľa)` : tab.label}
++                onClick={() => activate(tab.id, warn)}
++                onAuxClick={(e) => { if (e.button === 1 && tab.kind !== '3d') close(tab.id, warn); }}
++                className={cn(
++                  'flex min-w-0 items-center gap-1 py-1 pl-2 pr-1 text-[11px]',
++                  isActive ? 'font-medium' : 'text-muted-foreground',
++                )}
++              >
++                <Icon className="size-3 shrink-0" aria-hidden />
++                <span className="truncate">{tab.label}</span>
++                {isBeside && <span className="text-[10px] text-muted-foreground">vedľa</span>}
++              </button>
++              {tab.kind !== '3d' && (
++                <button
++                  type="button"
++                  aria-label={`Zavrieť ${tab.label}`}
++                  onClick={() => close(tab.id, warn)}
++                  className="mr-1 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
++                >
++                  <X className="size-3" aria-hidden />
++                </button>
++              )}
++            </div>
++          );
++        })}
++      </div>
++      <div className="flex shrink-0 items-center gap-1 px-1">
++        <select
++          aria-label="Otvoriť pôdorys"
++          className={SELECT}
++          value=""
++          disabled={storeys.length === 0}
++          onChange={(e) => { if (e.target.value) openPlan(e.target.value, {}, warn); }}
++        >
++          <option value="">+ Pôdorys</option>
++          {storeys.map((s) => <option key={s.key} value={s.guid}>{s.name}</option>)}
++        </select>
++        <select
++          aria-label="Vedľa aktívnej záložky"
++          className={SELECT}
++          value={besideId ?? ''}
++          disabled={pairable.length === 0 && besideId === null}
++          onChange={(e) => beside(e.target.value || null, warn)}
++        >
++          <option value="">Vedľa: nič</option>
++          {pairable.map((t) => <option key={t.id} value={t.id}>{`Vedľa: ${t.label}`}</option>)}
++        </select>
++      </div>
++    </div>
++  );
++}
+diff --git a/apps/viewer/src/aim/DocumentsRibbonTab.tsx b/apps/viewer/src/aim/DocumentsRibbonTab.tsx
+index acdf893df..aae345654 100644
+--- a/apps/viewer/src/aim/DocumentsRibbonTab.tsx
++++ b/apps/viewer/src/aim/DocumentsRibbonTab.tsx
+@@ -9,7 +9,7 @@
+  *
+  *   · Documents  — the project document library (D-075), `documents` panel
+  *   · Underlays  — georeferenced PDF drawing underlays (D-072)
+- *   · 3D | 2D | Split (+ storey) — the workspace view mode (D-075)
++ *   · (the 3D | 2D | Split switch moved to the view tab bar above the center, AIM D-132)
+  *   · Derivations: the AIM derivations layer (D-089, DerivationsRibbonGroup.tsx),
+  *     whose rules open the `aim-layers` panel (D-104)
+  *
+@@ -26,12 +26,9 @@
+  */
+ 
+ import { lazy, Suspense } from 'react';
+-import { Columns2, Files, Map as MapIcon } from 'lucide-react';
+-import { DisplayAll, HideSelected, IsometricView, List, Refresh, TopView } from '@/icons';
++import { Files, Map as MapIcon } from 'lucide-react';
++import { DisplayAll, HideSelected, List, Refresh } from '@/icons';
+ import { useViewerStore } from '@/store';
+-import { useViewMode } from '@/hooks/useViewMode';
+-import { viewModeDisabledReason } from '@/hooks/viewModeCore';
+-import { VIEW_MODES, StoreyPicker } from '@/components/viewer/ViewModeSwitcher';
+ import {
+   RibbonGroup,
+   RibbonGroupDivider,
+@@ -54,28 +51,18 @@ const DERIVATIONS_UI: DerivationsRibbonUi = {
+   icons: { shown: DisplayAll, hidden: HideSelected, rules: List, recompute: Refresh },
+ };
+ 
+-/** Ribbon icons for the view modes, keyed by the shared `VIEW_MODES` ids. */
+-const MODE_ICONS = {
+-  '3d': IsometricView,
+-  '2d': TopView,
+-  split: Columns2,
+-} as const;
+-
+ export function DocumentsRibbonTab() {
+   // The two fork panels are single-tenant sidebar panels like every other
+   // one, so their store flag IS the latched state (same read the mobile
+   // toolbar uses); `toggleWorkspacePanel` handles the docking rules.
+   const documentsPanelVisible = useViewerStore((s) => s.documentsPanelVisible);
+   const underlayPanelVisible = useViewerStore((s) => s.underlayPanelVisible);
+-  const calibrating = useViewerStore((s) => s.underlayCalibration !== null);
+ 
+-  const { mode, setMode, storeys } = useViewMode();
+   const derivationsLayer = useAimDerivationsStore((s) => s.layer);
+   const relationsVisible = useAimDerivationsStore((s) => s.relationsVisible);
+   // AIM layers are a workspace panel of the AIM rail group (D-104), toggled like the library panels.
+   const layersOpen = useViewerStore((s) => s.sidebarActivePanel === 'aim-layers');
+   const toggleLayers = () => useViewerStore.getState().toggleWorkspacePanel('aim-layers', 'ribbon');
+-  const disabledReason = viewModeDisabledReason({ calibrating, storeyCount: storeys.length });
+   // The library buttons run the same registered `panel:*` commands as the
+   // command palette (surface-commands-panels.ts), so ribbon and palette share
+   // one label and one action.
+@@ -104,29 +91,6 @@ export function DocumentsRibbonTab() {
+ 
+       <RibbonGroupDivider />
+ 
+-      {/* Same control as the classic toolbar's segmented switcher, in ribbon
+-          shape: identical modes, identical gating, identical storey picker. */}
+-      <RibbonGroup label="View mode">
+-        {VIEW_MODES.map((m) => (
+-          <RibbonContentLargeButton
+-            key={m.id}
+-            icon={MODE_ICONS[m.id]}
+-            contentLabel={m.label}
+-            contentSource="extension"
+-            contentId={`aim-view-mode:${m.id}`}
+-            tooltip={disabledReason ?? m.title}
+-            active={mode === m.id}
+-            disabled={disabledReason !== null}
+-            onClick={() => setMode(m.id)}
+-          />
+-        ))}
+-        <div className="flex h-full items-center pl-1">
+-          <StoreyPicker className="h-7" />
+-        </div>
+-      </RibbonGroup>
+-
+-      <RibbonGroupDivider />
+-
+       <Suspense fallback={null}>
+         <DerivationsRibbonGroup
+           ui={DERIVATIONS_UI}
+diff --git a/apps/viewer/src/aim/docBridge.ts b/apps/viewer/src/aim/docBridge.ts
+index 3ee1a4514..e322a548e 100644
+--- a/apps/viewer/src/aim/docBridge.ts
++++ b/apps/viewer/src/aim/docBridge.ts
+@@ -14,6 +14,8 @@ import { parsePlacement, serializePlacement } from '@ifc-lite/drawing-underlay';
+ import { useViewerStore } from '../store/index.js';
+ import { SOURCE, type InboundMessage, type OutboundMessage } from './bridge-protocol.js';
+ import { noteIssue, track } from './command-gate.js';
++import { documentLayout } from './tabs-protocol.js';
++import { useAimViewTabs, withTabs } from './viewTabsStore.js';
+ import { normalizeDocHighlights, normalizeDocRegion, regionApplied, useAimDocRegionStore } from './docRegion.js';
+ 
+ /** Výrez strany z chatu čaká na otvorenie PDF; dlhšie ako ACK by APPLIED len oneskorilo. */
+@@ -56,7 +58,12 @@ export function handleDocumentMessage(msg: InboundMessage): boolean {
+     case 'DOCUMENT_OPEN': {
+       // Deep link (D-075): otvor dokument ako kartu. Neznáme id je no-op
+       // (openDocument si to ustráži) — host mohol poslať staršiu linku.
++      // AIM D-132: záložka na celú plochu, alebo (`layout: 'split'`) vedľa 3D.
++      useAimViewTabs.setState({ bridgeDocId: msg.documentId });
+       useViewerStore.getState().openDocument(msg.documentId, msg.page !== undefined ? { page: msg.page } : undefined);
++      const layout = documentLayout(msg);
++      const p = withTabs((m) => m.showDoc(msg.documentId, layout, noteIssue));
++      if (p) track(p);
+       // Výrez strany z chatu (D-117): karta sa priblíži, keď je PDF otvorené.
+       const region = normalizeDocRegion(msg.region);
+       if (region) {
+diff --git a/apps/viewer/src/aim/sectionBox.test.ts b/apps/viewer/src/aim/sectionBox.test.ts
+new file mode 100644
+index 000000000..675adcba9
+--- /dev/null
++++ b/apps/viewer/src/aim/sectionBox.test.ts
+@@ -0,0 +1,30 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import { isSectionBoxMessage, orderedBox, toSectionBox } from './sectionBox.js';
++
++const S = 'aim-bridge' as const;
++const box = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 2, z: 3 } };
++
++describe('rezný box z chatu (AIM D-132)', () => {
++  it('SET_SECTION_BOX: práve jeden cieľ, prvky s okrajom alebo obálka s kladným rozmerom', () => {
++    assert.ok(isSectionBoxMessage({ source: S, type: 'SET_SECTION_BOX', guids: ['G1'], marginM: 0.5 }));
++    assert.ok(isSectionBoxMessage({ source: S, type: 'SET_SECTION_BOX', box }));
++    assert.ok(!isSectionBoxMessage({ source: S, type: 'SET_SECTION_BOX', guids: ['G1'], box }));
++    assert.ok(!isSectionBoxMessage({ source: S, type: 'SET_SECTION_BOX' }));
++    assert.ok(!isSectionBoxMessage({ source: S, type: 'SET_SECTION_BOX', guids: [] }));
++    assert.ok(!isSectionBoxMessage({ source: S, type: 'SET_SECTION_BOX', box, marginM: 1 }));
++    assert.ok(!isSectionBoxMessage({ source: S, type: 'SET_SECTION_BOX', guids: ['G1'], marginM: 21 }));
++    assert.ok(!isSectionBoxMessage({ source: S, type: 'SET_SECTION_BOX', box: { min: box.max, max: box.min } }));
++    assert.ok(!isSectionBoxMessage({ source: S, type: 'SET_SECTION_BOX', guids: Array.from({ length: 101 }, (_, i) => `G${i}`) }));
++  });
++
++  it('box s okrajom do tvaru upstreamu a rohy po prevode osí znova zoradené', () => {
++    assert.deepStrictEqual(toSectionBox(box, 0.5), { min: [-0.5, -0.5, -0.5], max: [1.5, 2.5, 3.5] });
++    assert.deepStrictEqual(orderedBox({ x: 1, y: 0, z: -3 }, { x: 0, y: 2, z: -1 }), { min: { x: 0, y: 0, z: -3 }, max: { x: 1, y: 2, z: -1 } });
++  });
++});
+diff --git a/apps/viewer/src/aim/sectionBox.ts b/apps/viewer/src/aim/sectionBox.ts
+new file mode 100644
+index 000000000..0c754b8b2
+--- /dev/null
++++ b/apps/viewer/src/aim/sectionBox.ts
+@@ -0,0 +1,64 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Rezný box z chatu (AIM D-132): pohľad je orez, rovina alebo box (#165,
++ * "Výstuž stĺpa S12"). `SET_SECTION_BOX` nastaví box upstreamu
++ * (`setSectionBox`, #5513) okolo obálky prvkov s okrajom, alebo na presnú
++ * obálku v IFC svete (obnova uloženého pohľadu D-122). `view_state.section.box`
++ * ho vráti v IFC svete. Nič nové nepočíta: obálky sú tie isté ako pri rezoch
++ * cez prvok (`viewQueries.ts`). Protokol je tu, vykonanie lenivo v `applySectionBox`.
++ */
++
++import { SOURCE } from './bridge-protocol.js';
++
++type Vec3Wire = { x: number; y: number; z: number };
++
++export interface SectionBoxMessage {
++  source: typeof SOURCE;
++  type: 'SET_SECTION_BOX';
++  /** Box okolo obálky týchto prvkov (+ `marginM` na každú stranu). */
++  guids?: string[];
++  marginM?: number;
++  /** Presná obálka v IFC svete (Z hore, m). */
++  box?: { min: Vec3Wire; max: Vec3Wire };
++}
++
++const MAX_GUIDS = 100;
++export const BOX_MARGIN_RANGE = { min: 0, max: 20 } as const;
++const LIMIT = 1e7;
++const num = (v: unknown, min: number, max: number) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
++const isVec = (v: unknown): v is Vec3Wire => {
++  const p = v as Record<string, unknown> | null;
++  return !!p && typeof p === 'object' && num(p.x, -LIMIT, LIMIT) && num(p.y, -LIMIT, LIMIT) && num(p.z, -LIMIT, LIMIT);
++};
++
++export function isSectionBoxMessage(data: unknown): data is SectionBoxMessage {
++  if (!data || typeof data !== 'object') return false;
++  const m = data as Record<string, unknown>;
++  if (m.source !== SOURCE || m.type !== 'SET_SECTION_BOX') return false;
++  const byGuids = Array.isArray(m.guids) && m.guids.length > 0 && m.guids.length <= MAX_GUIDS
++    && m.guids.every((g) => typeof g === 'string' && g.length > 0);
++  const box = m.box as { min?: unknown; max?: unknown } | undefined;
++  const byBox = !!box && typeof box === 'object' && isVec(box.min) && isVec(box.max)
++    && box.min.x < box.max.x && box.min.y < box.max.y && box.min.z < box.max.z;
++  if (byGuids === byBox) return false; // práve jeden cieľ
++  return m.marginM === undefined || (byGuids && num(m.marginM, BOX_MARGIN_RANGE.min, BOX_MARGIN_RANGE.max));
++}
++
++/** Render-rámcový box -> `SectionBox` upstreamu (polia [x, y, z]), s okrajom. */
++export function toSectionBox(box: { min: Vec3Wire; max: Vec3Wire }, margin = 0) {
++  return {
++    min: [box.min.x - margin, box.min.y - margin, box.min.z - margin] as [number, number, number],
++    max: [box.max.x + margin, box.max.y + margin, box.max.z + margin] as [number, number, number],
++  };
++}
++
++/** IFC svet -> render rámec mení poradie a znamienko osí: rohy sa po prevode znovu zoradia. */
++export function orderedBox(a: Vec3Wire, b: Vec3Wire): { min: Vec3Wire; max: Vec3Wire } {
++  return {
++    min: { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), z: Math.min(a.z, b.z) },
++    max: { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y), z: Math.max(a.z, b.z) },
++  };
++}
+diff --git a/apps/viewer/src/aim/tabs-protocol.ts b/apps/viewer/src/aim/tabs-protocol.ts
+new file mode 100644
+index 000000000..e351217bf
+--- /dev/null
++++ b/apps/viewer/src/aim/tabs-protocol.ts
+@@ -0,0 +1,79 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Záložky z chatu (AIM D-132, #165): `VIEW_TABS` otvorí pôdorys podlažia alebo
++ * uložený pohľad do záložky, prepne, dá vedľa a zavrie. Stav vracia
++ * `view_state.tabs`. Vlastný modul, lebo `bridge-protocol.ts` a
++ * `view-protocol.ts` sú na rozpočte veľkosti.
++ *
++ * Uložený pohľad (D-122) otvára host takto: najprv `VIEW_TABS open` (nová
++ * záložka sa stane aktívnou a predošlá si zapamätá kameru a rez), potom tie
++ * isté príkazy ako obnova pohľadu (rez, izolácia, póza kamery). Viewer si tak
++ * nepamätá definíciu pohľadu, len stav záložky počas relácie.
++ */
++
++import { SOURCE } from './bridge-protocol.js';
++
++export const TAB_ACTIONS = ['open', 'activate', 'beside', 'unbeside', 'close'] as const;
++export type TabAction = (typeof TAB_ACTIONS)[number];
++
++export interface TabOpenWire {
++  kind: 'plan' | 'view';
++  /** Pôdorys: GlobalId podlažia. */
++  storeyGuid?: string;
++  /** Uložený pohľad: id riadku `saved_views` a jeho meno. */
++  viewId?: string;
++  label?: string;
++  /** Kamera zamknutá (ťahanie posúva), pri pohľade zhora aj zboku. */
++  locked?: boolean;
++}
++
++export interface TabsMessage {
++  source: typeof SOURCE;
++  type: 'VIEW_TABS';
++  action: TabAction;
++  /** activate / beside / close: id, `3d`, menovka alebo GlobalId podlažia; close aj `all`. */
++  tab?: string;
++  open?: TabOpenWire;
++  /** S open: nová záložka ide vedľa doterajšej aktívnej. */
++  beside?: boolean;
++}
++
++const MAX_TEXT = 200;
++const isText = (v: unknown) => typeof v === 'string' && v.trim().length > 0 && v.length <= MAX_TEXT;
++const optional = (v: unknown, ok: (x: unknown) => boolean) => v === undefined || ok(v);
++
++function isOpen(v: unknown): v is TabOpenWire {
++  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
++  const o = v as Record<string, unknown>;
++  if (!optional(o.locked, (x) => typeof x === 'boolean') || !optional(o.label, isText)) return false;
++  if (o.kind === 'plan') return isText(o.storeyGuid) && o.viewId === undefined;
++  if (o.kind === 'view') return isText(o.viewId) && isText(o.label) && o.storeyGuid === undefined;
++  return false;
++}
++
++export function isTabsMessage(data: unknown): data is TabsMessage {
++  if (!data || typeof data !== 'object') return false;
++  const m = data as Record<string, unknown>;
++  if (m.source !== SOURCE || m.type !== 'VIEW_TABS') return false;
++  if (!optional(m.beside, (x) => typeof x === 'boolean')) return false;
++  switch (m.action) {
++    case 'open':
++      return isOpen(m.open) && m.tab === undefined;
++    case 'activate':
++    case 'beside':
++    case 'close':
++      return isText(m.tab) && m.open === undefined && m.beside === undefined;
++    case 'unbeside':
++      return m.tab === undefined && m.open === undefined && m.beside === undefined;
++    default:
++      return false;
++  }
++}
++
++/** Rozloženie karty dokumentu pri `DOCUMENT_OPEN` (AIM D-132): záložka na celú plochu, alebo vedľa 3D. */
++export function documentLayout(msg: unknown): 'tab' | 'split' {
++  return (msg as { layout?: unknown } | null)?.layout === 'split' ? 'split' : 'tab';
++}
+diff --git a/apps/viewer/src/aim/useAimCenterPanes.ts b/apps/viewer/src/aim/useAimCenterPanes.ts
+new file mode 100644
+index 000000000..26d6740fc
+--- /dev/null
++++ b/apps/viewer/src/aim/useAimCenterPanes.ts
+@@ -0,0 +1,110 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Stredná plocha viewera (AIM-FORK, `ViewerLayout.tsx`): 2D plán D-072, 3D
++ * canvas a panel dokumentu D-075, od D-132 riadené záložkami. Presunuté sem z
++ * AIM-FORK bloku `ViewerLayout.tsx` (súbor je na rozpočte veľkosti), správanie
++ * panelov je to isté: všetky tri sú stále pripojené (WebGPU canvas sa nikdy
++ * neremountuje) a len sa zbaľujú.
++ *
++ * D-132 (karty dokumentov sa do záložiek zosúlaďujú v lenivej lište `AimViewTabsBar`):
++ * dokument sa ukáže len ako aktívna záložka (3D sa zbalí, dokument má
++ * celú plochu) alebo vedľa 3D záložky ("Vedľa"); keď je aktívna 3D záložka,
++ * otvorené dokumenty čakajú v lište.
++ */
++
++import { useCallback, useEffect, useMemo, useRef } from 'react';
++import type { PanelImperativeHandle } from 'react-resizable-panels';
++import { useViewerStore } from '@/store';
++import { useFloorplanView } from '@/hooks/useFloorplanView';
++import { centerLayout } from './viewTabsLayout.js';
++import { useAimViewTabs } from './viewTabsStore.js';
++
++/** Šírka panela dokumentu pri prvom otvorení vedľa 3D, % strednej skupiny. */
++const DOC_PANE_OPEN_PCT = '42%';
++
++/** react-resizable-panels v4 berie percentá len ako reťazec; holé číslo sú pixely. */
++function resizePanelPct(panel: PanelImperativeHandle, size: string): void {
++  (panel.resize as unknown as (size: string) => void)(size);
++}
++
++export function useAimCenterPanes(isMobile: boolean) {
++  // D-072 split: panel plánu sa rozbalí a zbalí s `underlaySplitView`.
++  const underlaySplitView = useViewerStore((s) => s.underlaySplitView);
++  const planePanelRef = useRef<PanelImperativeHandle>(null);
++  useEffect(() => {
++    const panel = planePanelRef.current;
++    if (!panel) return;
++    if (underlaySplitView && panel.isCollapsed()) panel.expand();
++    else if (!underlaySplitView && !panel.isCollapsed()) panel.collapse();
++  }, [underlaySplitView]);
++
++  // 3D sa zbalí pri 2D na celú plochu (D-075) alebo pri dokumente ako aktívnej záložke (D-132).
++  const underlayPlanFull = useViewerStore((s) => s.underlayPlanFull);
++  const tabs = useAimViewTabs((s) => s.tabs);
++  const activeId = useAimViewTabs((s) => s.activeId);
++  const besideId = useAimViewTabs((s) => s.besideId);
++  const layout = useMemo(() => centerLayout({ tabs, activeId, besideId }), [tabs, activeId, besideId]);
++  const collapse3d = underlayPlanFull || (!isMobile && layout.collapse3d);
++  const collapse3dRef = useRef(collapse3d);
++  collapse3dRef.current = collapse3d;
++  const viewport3dPanelRef = useRef<PanelImperativeHandle>(null);
++  useEffect(() => {
++    const panel = viewport3dPanelRef.current;
++    if (!panel) return;
++    if (collapse3d && !panel.isCollapsed()) panel.collapse();
++    else if (!collapse3d && panel.isCollapsed()) panel.expand();
++  }, [collapse3d]);
++  // Ťahanie úchytky smie 3D zbaliť len vtedy, keď to chce rozloženie.
++  const onViewport3dResize = useCallback(() => {
++    const panel = viewport3dPanelRef.current;
++    if (panel?.isCollapsed() && !collapse3dRef.current) panel.expand();
++  }, []);
++
++  // Panel dokumentu: otvorené karty mimo 2D na celú plochu a (D-132) aktívna alebo vedľa.
++  const docPaneOpen = useViewerStore((s) => s.docTabs.length > 0);
++  const docPaneVisible = docPaneOpen && !underlayPlanFull && (isMobile || layout.docPane);
++  const docPaneVisibleRef = useRef(docPaneVisible);
++  docPaneVisibleRef.current = docPaneVisible;
++  const docPanelRef = useRef<PanelImperativeHandle>(null);
++  useEffect(() => {
++    const panel = docPanelRef.current;
++    if (!panel) return;
++    if (docPaneVisible && panel.isCollapsed()) {
++      panel.expand();
++      // Panel začína na 0 a je posledný v skupine: prvé otvorenie by bolo len prúžok.
++      if (panel.getSize().asPercentage < 20) resizePanelPct(panel, DOC_PANE_OPEN_PCT);
++    } else if (!docPaneVisible && !panel.isCollapsed()) {
++      panel.collapse();
++    }
++  }, [docPaneVisible]);
++  // Ťahanie nesmie zbaliť viditeľný panel (opätovné otvorenie karty ho nerozbalí).
++  const onDocPaneResize = useCallback(() => {
++    const panel = docPanelRef.current;
++    if (panel?.isCollapsed() && docPaneVisibleRef.current) {
++      panel.expand();
++      if (panel.getSize().asPercentage < 20) resizePanelPct(panel, DOC_PANE_OPEN_PCT);
++    }
++  }, []);
++
++  // D-075: otvorená karta nesmie zostať neviditeľná. 2D na celú plochu ju skrýva,
++  // preto ho zruší; na mobile prekrytie plánu zakryje dokument, preto split zavrie.
++  const { exitSplitView } = useFloorplanView();
++  const activeDocTabId = useViewerStore((s) => s.activeDocTabId);
++  const prevActiveDocRef = useRef(activeDocTabId);
++  useEffect(() => {
++    const prev = prevActiveDocRef.current;
++    prevActiveDocRef.current = activeDocTabId;
++    if (!activeDocTabId || activeDocTabId === prev) return;
++    const s = useViewerStore.getState();
++    if (s.underlayPlanFull) s.setUnderlayPlanFull(false);
++    if (isMobile && s.underlaySplitView) exitSplitView();
++  }, [activeDocTabId, isMobile, exitSplitView]);
++
++  return {
++    underlaySplitView, underlayPlanFull, planePanelRef, viewport3dPanelRef, onViewport3dResize,
++    docPaneOpen, docPaneVisible, docPanelRef, onDocPaneResize,
++  };
++}
+diff --git a/apps/viewer/src/aim/useAimViewCommands.ts b/apps/viewer/src/aim/useAimViewCommands.ts
+index 975f07611..15240ccbe 100644
+--- a/apps/viewer/src/aim/useAimViewCommands.ts
++++ b/apps/viewer/src/aim/useAimViewCommands.ts
+@@ -20,6 +20,7 @@ import { useViewMode } from '@/hooks/useViewMode';
+ import type { BimContext } from '@ifc-lite/sdk';
+ import { guidForEntity, resolveGuids, resolveSelector } from './bridge-protocol.js';
+ import type { ViewInboundMessage } from './view-protocol.js';
++import { preloadTabs, withTabs } from './viewTabsStore.js';
+ import { VIEWER_AXIS, cameraStep, focusViewStep, pickStorey, storeyCutPercent } from './viewCommands.js';
+ import { placementCoordinateInfo } from '@/lib/section/placement-coordinate-info';
+ import { sectionRenderBounds as sectionBoundsWith } from './sectionRange.js';
+@@ -48,6 +49,9 @@ let camera: Promise<typeof import('./viewCamera.js')> | null = null;
+ const loadCamera = () => (camera ??= import('./viewCamera.js'));
+ let panels: Promise<typeof import('./aimPanels.js')> | null = null;
+ const loadPanels = () => (panels ??= import('./aimPanels.js'));
++/** Rezný box (AIM D-132): modul stiahnutý pri pripojení, aby box bežal v poradí s ostatnými príkazmi. */
++let boxModules: [typeof import('./viewQueries.js'), typeof import('./sectionBox.js')] | null = null;
++const loadBox = () => Promise.all([loadQueries(), import('./sectionBox.js')]).then((m) => (boxModules = m));
+ let measure: Promise<typeof import('./measureShow.js')> | null = null;
+ /** Kóty od hosta (AIM D-124) - lenivo, mimo vstupného balíka. */
+ const loadMeasure = () => (measure ??= import('./measureShow.js'));
+@@ -69,6 +73,16 @@ function applyGizmo(show: boolean | undefined): void {
+   if (state.sectionPlane.showGizmo !== want) state.setSectionPlaneShowGizmo(state.sectionPlane.id, want);
+ }
+ 
++/** Rezný box (AIM D-132) - tie isté obálky ako rez cez prvok, lenivo. */
++export function runSectionBox(raw: unknown): void {
++  const run = ([q, b]: NonNullable<typeof boxModules>) => {
++    if (!b.isSectionBoxMessage(raw)) return noteIssue('SET_SECTION_BOX: neplatná správa');
++    track(q.applySectionBox(raw, GUIDS).then((ok) => { if (!ok) noteIssue('SET_SECTION_BOX: prvky bez geometrie'); }));
++  };
++  if (boxModules) run(boxModules);
++  else track(loadBox().then(run));
++}
++
+ /** Stav pre `APPLIED` (D-101): rez, režim, výber a viditeľnosť po vykonaní príkazov. */
+ export async function appliedViewState(): Promise<Record<string, unknown>> {
+   const q = await loadQueries();
+@@ -76,7 +90,7 @@ export async function appliedViewState(): Promise<Record<string, unknown>> {
+   return {
+     mode: s.mode, storey_guid: s.storey_guid, section: s.section, camera: s.camera,
+     selection_count: s.selection.count, hidden_count: s.hidden_count, isolated_count: s.isolated_count, focus: s.focus,
+-    panels: s.panels, ...(s.property_focus ? { property_focus: s.property_focus } : {}), ...(s.document ? { document: s.document } : {}),
++    panels: s.panels, tabs: s.tabs, ...(s.property_focus ? { property_focus: s.property_focus } : {}), ...(s.document ? { document: s.document } : {}),
+   };
+ }
+ 
+@@ -88,6 +102,9 @@ export function useAimViewCommands(bim: BimContext) {
+   useEffect(() => {
+     // Dotazy stavu sa stiahnu hneď po pripojení: prvé `APPLIED` (D-101) na ne inak čakalo (D-102).
+     void loadQueries();
++    // Záložky a rezný box (D-132) tiež: ich príkazy idú synchrónne v poradí s ďalšími.
++    void preloadTabs();
++    void loadBox();
+     return () => { lastGizmo = undefined; };
+   }, [bim]);
+   const run = (msg: ViewInboundMessage, origin = '*') => {
+@@ -165,7 +182,15 @@ export function useAimViewCommands(bim: BimContext) {
+           noteIssue('SET_VIEW_MODE: podlažie sa vo vieweri nenašlo');
+           return;
+         }
+-        setMode(msg.mode, storey);
++        // AIM D-132: 3D = záložka 3D, 2D = pôdorys podlažia v záložke, Split = pôdorys vedľa 3D.
++        const target = storey ?? activeStorey ?? storeys[0];
++        const p = withTabs((m) => {
++          if (msg.mode === '3d') { m.activate('3d', noteIssue); m.beside(null, noteIssue); return; }
++          if (!target) return noteIssue('SET_VIEW_MODE: model nemá podlažia');
++          if (msg.mode === 'split') m.activate('3d', noteIssue);
++          m.openPlan(target.guid, { beside: msg.mode === 'split' }, noteIssue);
++        });
++        if (p) track(p);
+         return;
+       }
+       case 'QUERY': {
+diff --git a/apps/viewer/src/aim/viewQueries.ts b/apps/viewer/src/aim/viewQueries.ts
+index 13b9841b9..45c27e5af 100644
+--- a/apps/viewer/src/aim/viewQueries.ts
++++ b/apps/viewer/src/aim/viewQueries.ts
+@@ -26,11 +26,14 @@ import { summarizeSelection, visibilityGuids, type SelectedEntityInfo } from './
+ import { describePanels } from './aimPanelsPlan.js';
+ import { useAimInspectorStore } from './aimInspectorStore.js';
+ import { useAimDocRegionStore } from './docRegion.js';
++import { useAimViewTabs } from './viewTabsStore.js';
++import { describeTabs } from './viewTabsPlan.js';
++import { orderedBox, toSectionBox, type SectionBoxMessage } from './sectionBox.js';
+ import type { guidForEntity, resolveGuids } from './bridge-protocol.js';
+ import type { SectionPlaneAxis } from '@/store/types';
+ import type { SectionAxis, SectionFit, ViewInboundMessage, ViewQueryResult } from './view-protocol.js';
+ import {
+-  cutPercent, hostAxis, viewerAxis, ifcCoordinateToRender, renderBoxToIfc, renderDirToIfc, renderPointToIfc, sectionThroughBox, unionBoxes,
++  cutPercent, hostAxis, viewerAxis, ifcCoordinateToRender, ifcPointToRender, renderBoxToIfc, renderDirToIfc, renderPointToIfc, sectionThroughBox, unionBoxes,
+   type Box3, type Vec3,
+ } from './viewFrame.js';
+ 
+@@ -183,6 +186,12 @@ export function queryViewState(state: State, g: GuidHelpers) {
+     const ifc = renderPointToIfc(point, offset);
+     const coord = axis === 'x' ? ifc.x : axis === 'y' ? ifc.z : ifc.y;
+     section = { axis, crosses: SECTION_AXIS_IN_IFC[axis], position_percent: mm(plane.position), ...(range ? { coordinate: mm(coord) } : {}), flipped: plane.flipped, show_gizmo: plane.showGizmo };
++    // Rezný box (AIM D-132): obálka v IFC svete namiesto roviny.
++    if (plane.box) {
++      const [a, b] = [plane.box.min, plane.box.max].map(([x, y, z]) => renderPointToIfc({ x, y, z }, offset));
++      const box = orderedBox(a, b);
++      section = { box: { min: roundVec(box.min), max: roundVec(box.max) }, show_gizmo: plane.showGizmo };
++    }
+   }
+   const camera = getGlobalRenderer()?.getCamera();
+   const selected = state.selectedEntityIds.size > 0
+@@ -207,6 +216,8 @@ export function queryViewState(state: State, g: GuidHelpers) {
+     panels: describePanels(state),
+     property_focus: useAimInspectorStore.getState().propertyFocus,
+     document: useAimDocRegionStore.getState().visible,
++    // AIM D-132: záložky (aktívna a tá vedľa).
++    tabs: describeTabs(useAimViewTabs.getState()),
+   };
+ }
+ 
+@@ -259,6 +270,26 @@ export function cutThroughTarget(msg: TargetSection, isCurrent: () => boolean, g
+   return Promise.resolve(false);
+ }
+ 
++/**
++ * `SET_SECTION_BOX` (AIM D-132): box okolo prvkov s okrajom, alebo presná obálka
++ * v IFC svete. Prvky bez geometrie (ešte prúdi) sa skúšajú znova ako rez cez prvok.
++ */
++export function applySectionBox(msg: SectionBoxMessage, g: GuidHelpers, attempt = 0): Promise<boolean> {
++  const state = useViewerStore.getState();
++  if (msg.box) {
++    const offset = worldOffset(state);
++    state.setSectionBox(toSectionBox(orderedBox(ifcPointToRender(msg.box.min, offset), ifcPointToRender(msg.box.max, offset))));
++    return Promise.resolve(true);
++  }
++  const union = renderBoundsOfGuids(state, msg.guids ?? [], g).union;
++  if (union) {
++    state.setSectionBox(toSectionBox(union, msg.marginM ?? 0.5));
++    return Promise.resolve(true);
++  }
++  if (attempt < SECTION_RETRIES) return new Promise((r) => setTimeout(r, SECTION_RETRY_MS)).then(() => applySectionBox(msg, g, attempt + 1));
++  return Promise.resolve(false);
++}
++
+ /** `QUERY` -> `QUERY_RESULT` rodičovi s tým istým id; chyba výpočtu sa vráti ako `ok: false`. */
+ export function answerQuery(msg: Extract<ViewInboundMessage, { type: 'QUERY' }>, origin: string, g: GuidHelpers): void {
+   const reply = (r: ViewQueryResult) => window.parent.postMessage(r, origin);
+diff --git a/apps/viewer/src/aim/viewTabsApply.ts b/apps/viewer/src/aim/viewTabsApply.ts
+new file mode 100644
+index 000000000..8e60c3d66
+--- /dev/null
++++ b/apps/viewer/src/aim/viewTabsApply.ts
+@@ -0,0 +1,259 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Vykonanie záložiek viewera (AIM D-132), lenivo z lišty a z mosta. Viewer má
++ * jeden 3D canvas; záložky 3D, pôdorys a uložený pohľad sa v ňom striedajú.
++ * Pri odchode zo záložky sa jej stav uloží (kamera a projekcia cez
++ * `getViewpoint`, celá sada rovín rezu, zámok kamery a rez podlažia D-072),
++ * pri návrate sa vráti. Prvé otvorenie pôdorysu = `enterDrawingView` (kolmo
++ * zhora, zamknuté, rez nad podlahou); uložený pohľad nastaví host príkazmi po
++ * `VIEW_TABS open` (D-122 obnova). Nič nové nepočíta: len existujúce cesty
++ * viewera (D-098).
++ */
++
++import { useViewerStore } from '@/store';
++import type { CameraViewpoint, SectionPlane } from '@/store/types';
++import { orderedSectionPlanes, sectionPlaneCount } from '@/lib/section/section-plane-set';
++import { clearSectionCut } from '@/store/section-active';
++import {
++  activateTab, besideRefusal, closeAll, closeTab, docTabId, isSceneTab, openTab, planTabId, resolveTabRef, setBeside,
++  syncDocTabs, viewTabId, type ViewTab, type ViewTabsState,
++} from './viewTabsPlan.js';
++import { useAimViewTabs } from './viewTabsStore.js';
++import { isTabsMessage, type TabsMessage } from './tabs-protocol.js';
++
++interface SceneSnapshot {
++  viewpoint: CameraViewpoint | null;
++  projection: 'perspective' | 'orthographic';
++  planes: SectionPlane[] | null;
++  activeIndex: number;
++  sectionVisible: boolean;
++  locked: boolean;
++  cut: number | null;
++  storeyGuid: string | null;
++}
++
++/** Stav canvasu podľa záložky; len počas relácie (zabudne sa so záložkou). */
++const snapshots = new Map<string, SceneSnapshot>();
++
++type Note = (issue: string) => void;
++
++function capture(): SceneSnapshot {
++  const s = useViewerStore.getState();
++  const all = orderedSectionPlanes(s.sectionPlane, s.inactiveSectionPlanes);
++  const cutting = sectionPlaneCount(s.sectionPlane, s.inactiveSectionPlanes) > 0;
++  return {
++    viewpoint: s.cameraCallbacks.getViewpoint?.() ?? null,
++    projection: s.projectionMode === 'orthographic' ? 'orthographic' : 'perspective',
++    planes: cutting ? all.map((p) => ({ ...p, box: p.box ? { min: [...p.box.min], max: [...p.box.max] } : undefined })) : null,
++    activeIndex: Math.max(0, all.findIndex((p) => p.id === s.sectionPlane.id)),
++    sectionVisible: s.sceneState.section.visible !== false,
++    locked: s.underlayViewLocked,
++    cut: s.underlayCut,
++    storeyGuid: s.underlayActiveStoreyGuid,
++  };
++}
++
++function restore(snap: SceneSnapshot): void {
++  const s = useViewerStore.getState();
++  if (snap.planes) {
++    s.installSectionPlanes(snap.planes, snap.activeIndex);
++    useViewerStore.setState({ sceneState: { ...useViewerStore.getState().sceneState, section: { visible: snap.sectionVisible } } });
++  } else {
++    clearSectionCut(useViewerStore.getState);
++  }
++  s.setUnderlayCut(snap.cut);
++  s.setUnderlayViewLocked(snap.locked);
++  s.setUnderlayActiveStoreyGuid(snap.storeyGuid);
++  if (s.projectionMode !== snap.projection) s.setProjectionMode(snap.projection);
++  if (snap.viewpoint) s.cameraCallbacks.applyViewpoint?.(snap.viewpoint, false);
++}
++
++/** Záložka, ktorej stav má byť v canvase: aktívna 3D strana, inak tá vedľa, inak doterajšia. */
++function sceneTabOf(t: ViewTabsState, current: string): string {
++  const active = t.tabs.find((x) => x.id === t.activeId);
++  const beside = t.tabs.find((x) => x.id === t.besideId);
++  if (isSceneTab(active)) return active!.id;
++  if (isSceneTab(beside)) return beside!.id;
++  return t.tabs.some((x) => x.id === current) ? current : '3d';
++}
++
++/** Prvé zobrazenie záložky bez uloženého stavu. */
++function enterFresh(tab: ViewTab, note: Note): void {
++  const s = useViewerStore.getState();
++  if (tab.kind === 'plan') {
++    const deps = useAimViewTabs.getState().deps;
++    const storey = deps?.storeys.find((x) => x.guid === tab.storeyGuid);
++    if (deps && storey) deps.enterDrawingView(storey.info);
++    else note('VIEW_TABS: podlažie pôdorysu sa vo vieweri nenašlo');
++    return;
++  }
++  if (tab.kind === 'view') {
++    // Čistý canvas; rez, izoláciu a kameru pošle host hneď po otvorení (D-122 obnova).
++    clearSectionCut(useViewerStore.getState);
++    s.setUnderlayCut(null);
++    s.setUnderlayActiveStoreyGuid(null);
++    s.setUnderlayViewLocked(tab.locked === true);
++    if (tab.locked && s.projectionMode !== 'orthographic') s.setProjectionMode('orthographic');
++    return;
++  }
++  // 3D bez uloženého stavu (len pri štarte): voľná kamera bez zámku.
++  s.setUnderlayCut(null);
++  s.setUnderlayViewLocked(false);
++}
++
++/** Pôdorys ako 2D panel plánu vedľa voľnej 3D (D-072 split) zapne alebo vypne. */
++function syncPlanBeside(next: ViewTabsState, note: Note): void {
++  const s = useViewerStore.getState();
++  const deps = useAimViewTabs.getState().deps;
++  const active = next.tabs.find((t) => t.id === next.activeId);
++  const beside = next.tabs.find((t) => t.id === next.besideId);
++  const guid = active?.kind === '3d' && beside?.kind === 'plan' ? beside.storeyGuid : undefined;
++  if (!guid) {
++    if (s.underlaySplitView) deps?.exitSplitView();
++    return;
++  }
++  const storey = deps?.storeys.find((x) => x.guid === guid);
++  if (!deps || !storey) return note('VIEW_TABS: podlažie pôdorysu sa vo vieweri nenašlo');
++  if (!deps.storeyHasDrawing(guid)) return note('pôdorys vedľa 3D zatiaľ len s kalibrovaným podkladom (D-072); bez neho otvor pôdorys v záložke');
++  if (s.underlaySplitView && s.underlayActiveStoreyGuid === guid) return;
++  // Split si nastaví vlastnú kameru (home); 3D záložka si ju po návrate vráti zo stavu.
++  const keep = capture();
++  deps.enterSplitView(storey.info);
++  if (keep.viewpoint) s.cameraCallbacks.applyViewpoint?.(keep.viewpoint, false);
++}
++
++/**
++ * Zapíše nový stav záložiek: keď sa mení záložka v canvase, odloží stav
++ * doterajšej a vráti (alebo prvýkrát nastaví) novú; karta dokumentu D-075 sa
++ * prepne na aktívny dokument.
++ */
++export function commit(next: ViewTabsState, note: Note = () => {}): void {
++  const store = useAimViewTabs.getState();
++  const prevScene = store.sceneId;
++  const scene = sceneTabOf(next, prevScene);
++  if (scene !== prevScene) {
++    if (store.tabs.some((t) => t.id === prevScene)) snapshots.set(prevScene, capture());
++    // Panel plánu vedľa 3D patrí 3D záložke; pred prepnutím canvasu sa zavrie.
++    if (useViewerStore.getState().underlaySplitView) store.deps?.exitSplitView();
++    const snap = snapshots.get(scene);
++    const tab = next.tabs.find((t) => t.id === scene);
++    if (snap) restore(snap);
++    else if (tab) enterFresh(tab, note);
++  }
++  for (const id of snapshots.keys()) if (!next.tabs.some((t) => t.id === id)) snapshots.delete(id);
++  useAimViewTabs.setState({ tabs: next.tabs, activeId: next.activeId, besideId: next.besideId, sceneId: scene });
++  syncPlanBeside(next, note);
++  const doc = [next.tabs.find((t) => t.id === next.activeId), next.tabs.find((t) => t.id === next.besideId)].find((t) => t?.kind === 'doc');
++  const vs = useViewerStore.getState();
++  if (doc?.docId && vs.activeDocTabId !== doc.docId) vs.setActiveDocTab(doc.docId);
++}
++
++const current = (): ViewTabsState => {
++  const s = useAimViewTabs.getState();
++  return { tabs: s.tabs, activeId: s.activeId, besideId: s.besideId };
++};
++
++/** Lišta a most: prepnúť, dať vedľa, zavrieť (zavretie dokumentu zavrie aj kartu D-075). */
++export function activate(id: string, note?: Note): void {
++  commit(activateTab(current(), id), note);
++}
++
++export function beside(id: string | null, note: Note = () => {}): void {
++  const s = current();
++  if (id !== null) {
++    const refusal = besideRefusal(s, s.activeId, id);
++    if (refusal) return note(`VIEW_TABS: ${refusal}`);
++  }
++  commit(setBeside(s, id), note);
++}
++
++export function close(id: string, note?: Note): void {
++  const s = current();
++  if (id === 'all') {
++    for (const t of s.tabs) if (t.docId) useViewerStore.getState().closeDocTab(t.docId);
++    return commit(closeAll(current()), note);
++  }
++  const tab = s.tabs.find((t) => t.id === id);
++  if (tab?.docId) useViewerStore.getState().closeDocTab(tab.docId);
++  commit(closeTab(current(), id), note);
++}
++
++/** Pôdorys podlažia do záložky (z lišty aj z chatu). */
++export function openPlan(storeyGuid: string, opts: { beside?: boolean } = {}, note: Note = () => {}): void {
++  const storey = useAimViewTabs.getState().deps?.storeys.find((x) => x.guid === storeyGuid);
++  if (!storey) return note('VIEW_TABS: podlažie sa vo vieweri nenašlo');
++  const tab: ViewTab = { id: planTabId(storeyGuid), kind: 'plan', label: storey.name, storeyGuid };
++  const s = current();
++  if (opts.beside) {
++    const refusal = besideRefusal(openTab(s, tab), s.activeId, tab.id);
++    if (refusal) return note(`VIEW_TABS: ${refusal}`);
++  }
++  commit(openTab(s, tab, opts), note);
++}
++
++/**
++ * Karty dokumentov D-075 -> záložky; volá ho `useAimCenterPanes` pri zmene
++ * kariet. Nová aktívna karta sa stane aktívnou záložkou (alebo ide vedľa 3D).
++ */
++export function syncDocs(docs: readonly { docId: string; label: string }[], openedDocId: string | null): void {
++  // Kartu z mosta rozloží `showDoc` (aj keď už bola aktívnou kartou D-075).
++  const fromBridge = openedDocId !== null && openedDocId === useAimViewTabs.getState().bridgeDocId;
++  if (fromBridge) useAimViewTabs.setState({ bridgeDocId: null });
++  commit(syncDocTabs(current(), docs, openedDocId && !fromBridge ? { docId: openedDocId, beside: false } : null));
++}
++
++const openDocs = () => {
++  const s = useViewerStore.getState();
++  return s.docTabs.map((t) => ({ docId: t.docId, label: s.viewerDocuments.get(t.docId)?.name ?? t.docId }));
++};
++
++/**
++ * `DOCUMENT_OPEN` (AIM D-132): `tab` = dokument na celú plochu, `split` = vedľa
++ * 3D strany (aktívnej, inak tej, ktorá je v canvase).
++ */
++export function showDoc(docId: string, layout: 'tab' | 'split', note: Note = () => {}): void {
++  let next = syncDocTabs(current(), openDocs(), null);
++  const id = docTabId(docId);
++  if (!next.tabs.some((t) => t.id === id)) return note('DOCUMENT_OPEN: dokument nie je v knižnici viewera');
++  if (layout === 'tab') next = { ...activateTab(next, id), besideId: null };
++  else {
++    const active = next.tabs.find((t) => t.id === next.activeId);
++    const scene = isSceneTab(active) ? next.activeId : useAimViewTabs.getState().sceneId;
++    next = setBeside({ ...activateTab(next, scene), besideId: null }, id);
++  }
++  commit(next, note);
++}
++
++/** `VIEW_TABS` z mosta (AIM D-132); overí sa tu, mimo vstupného balíka. */
++export function runTabsMessage(raw: unknown, note: Note): void {
++  if (!isTabsMessage(raw)) return note('VIEW_TABS: neplatná správa');
++  const msg: TabsMessage = raw;
++  const s = current();
++  if (msg.action === 'open' && msg.open) {
++    const o = msg.open;
++    if (o.kind === 'plan') return openPlan(o.storeyGuid!, { beside: msg.beside }, note);
++    const tab: ViewTab = { id: viewTabId(o.viewId!), kind: 'view', label: o.label!, locked: o.locked === true };
++    // Znova otvorený pohľad začína od definície, nie od stavu z minulého otvorenia.
++    snapshots.delete(tab.id);
++    if (msg.beside) {
++      const refusal = besideRefusal(openTab(s, tab), s.activeId, tab.id);
++      if (refusal) return note(`VIEW_TABS: ${refusal}`);
++    }
++    const reopened = useAimViewTabs.getState().sceneId === tab.id;
++    commit(openTab(s, tab, { beside: msg.beside }), note);
++    if (reopened) enterFresh(tab, note);
++    return;
++  }
++  if (msg.action === 'unbeside') return beside(null, note);
++  const ref = msg.tab ?? '';
++  if (msg.action === 'close' && ref.trim().toLowerCase() === 'all') return close('all', note);
++  const tab = resolveTabRef(s, ref);
++  if (!tab) return note(`VIEW_TABS: záložka '${ref}' nie je otvorená`);
++  if (msg.action === 'activate') return activate(tab.id, note);
++  if (msg.action === 'beside') return beside(tab.id, note);
++  if (tab.kind === '3d') return note('VIEW_TABS: záložka 3D sa nedá zavrieť');
++  close(tab.id, note);
++}
+diff --git a/apps/viewer/src/aim/viewTabsLayout.ts b/apps/viewer/src/aim/viewTabsLayout.ts
+new file mode 100644
+index 000000000..45fc62221
+--- /dev/null
++++ b/apps/viewer/src/aim/viewTabsLayout.ts
+@@ -0,0 +1,64 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Záložky viewera (AIM D-132): typy, počiatočný stav a rozloženie strednej
++ * plochy. Malý modul vo vstupnom balíku (`ViewerLayout` -> `useAimCenterPanes`);
++ * ostatná logika záložiek (`viewTabsPlan.ts`) sa načíta lenivo s lištou.
++ */
++
++export type ViewTabKind = '3d' | 'plan' | 'view' | 'doc';
++
++export interface ViewTab {
++  id: string;
++  kind: ViewTabKind;
++  label: string;
++  /** Pôdorys: GlobalId podlažia. */
++  storeyGuid?: string;
++  /** Karta dokumentu: id dokumentu v `viewerDocuments`. */
++  docId?: string;
++  /** Uložený pohľad: kamera zamknutá (ťahanie posúva, neotáča). */
++  locked?: boolean;
++}
++
++export interface ViewTabsState {
++  tabs: ViewTab[];
++  activeId: string;
++  /** Záložka vedľa aktívnej ("Vedľa"); null = aktívna na celú plochu. */
++  besideId: string | null;
++}
++
++export const TAB_3D: ViewTab = { id: '3d', kind: '3d', label: '3D' };
++
++export const initialTabs = (): ViewTabsState => ({ tabs: [TAB_3D], activeId: TAB_3D.id, besideId: null });
++
++/** 3D záložky zdieľajú jeden canvas (3d, pôdorys, uložený pohľad). */
++export const isSceneTab = (t: ViewTab | undefined) => !!t && t.kind !== 'doc';
++
++const byId = (s: ViewTabsState, id: string | null) => (id ? s.tabs.find((t) => t.id === id) : undefined);
++
++/** Rozloženie strednej plochy pre `ViewerLayout` (AIM-FORK blok, `useAimCenterPanes`). */
++export interface CenterLayout {
++  /** 3D canvas zbalený (dokument na celú plochu). */
++  collapse3d: boolean;
++  /** Panel dokumentu viditeľný (aktívny alebo vedľa). */
++  docPane: boolean;
++  /** Dokument, ktorý má panel ukázať. */
++  docId: string | null;
++  /** Pôdorys ako 2D panel plánu vedľa voľnej 3D (D-072 split). */
++  planBeside: string | null;
++}
++
++export function centerLayout(s: ViewTabsState): CenterLayout {
++  const active = byId(s, s.activeId);
++  const beside = byId(s, s.besideId);
++  const doc = active?.kind === 'doc' ? active : beside?.kind === 'doc' ? beside : undefined;
++  return {
++    collapse3d: active?.kind === 'doc' && !beside,
++    docPane: !!doc,
++    docId: doc?.docId ?? null,
++    // Len vedľa voľnej 3D; pri dokumente je pôdorys sám 3D stranou (zamknutý pohľad v canvase).
++    planBeside: active?.kind === '3d' && beside?.kind === 'plan' ? (beside.storeyGuid ?? null) : null,
++  };
++}
+diff --git a/apps/viewer/src/aim/viewTabsPlan.test.ts b/apps/viewer/src/aim/viewTabsPlan.test.ts
+new file mode 100644
+index 000000000..26ffd28c0
+--- /dev/null
++++ b/apps/viewer/src/aim/viewTabsPlan.test.ts
+@@ -0,0 +1,137 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import {
++  activateTab, besidePair, besideRefusal, centerLayout, closeAll, closeTab, describeTabs, initialTabs,
++  openTab, resolveTabRef, setBeside, syncDocTabs, type ViewTab,
++} from './viewTabsPlan.js';
++import { documentLayout, isTabsMessage } from './tabs-protocol.js';
++
++const S = 'aim-bridge' as const;
++const plan1: ViewTab = { id: 'plan:G1', kind: 'plan', label: '1NP', storeyGuid: 'G1' };
++const plan2: ViewTab = { id: 'plan:G2', kind: 'plan', label: '2NP', storeyGuid: 'G2' };
++const view: ViewTab = { id: 'view:V1', kind: 'view', label: 'Rez A-A', locked: true };
++const doc = (id: string): { docId: string; label: string } => ({ docId: id, label: `${id}.pdf` });
++
++describe('záložky viewera (AIM D-132)', () => {
++  it('3D je vždy prvá, aktívna a nedá sa zavrieť', () => {
++    const s = initialTabs();
++    assert.deepStrictEqual(s.tabs.map((t) => t.id), ['3d']);
++    assert.strictEqual(closeTab(s, '3d'), s);
++    assert.deepStrictEqual(closeAll(openTab(openTab(s, plan1), view)).tabs.map((t) => t.id), ['3d']);
++  });
++
++  it('otvorenie pridá na koniec a aktivuje; druhé otvorenie len prepne a obnoví menovku', () => {
++    let s = openTab(openTab(initialTabs(), plan1), view);
++    assert.deepStrictEqual(s.tabs.map((t) => t.id), ['3d', 'plan:G1', 'view:V1']);
++    assert.strictEqual(s.activeId, 'view:V1');
++    s = openTab(s, { ...plan1, label: '1NP nové' });
++    assert.strictEqual(s.tabs.length, 3);
++    assert.strictEqual(s.activeId, 'plan:G1');
++    assert.strictEqual(s.tabs[1].label, '1NP nové');
++  });
++
++  it('zavretie aktívnej prepne na predchádzajúcu, alebo na tú vedľa', () => {
++    let s = openTab(openTab(initialTabs(), plan1), plan2);
++    s = closeTab(s, 'plan:G2');
++    assert.strictEqual(s.activeId, 'plan:G1');
++    s = syncDocTabs(s, [doc('D1')], { docId: 'D1', beside: true });
++    assert.strictEqual(s.besideId, 'doc:D1');
++    s = closeTab(s, 'plan:G1');
++    assert.strictEqual(s.activeId, 'doc:D1');
++    assert.strictEqual(s.besideId, null);
++  });
++
++  it('vedľa seba: 3D + dokument, pohľad + dokument, 3D + pôdorys; nie dve 3D ani dva dokumenty', () => {
++    let s = openTab(openTab(initialTabs(), plan1), view);
++    s = syncDocTabs(s, [doc('D1'), doc('D2')], null);
++    assert.deepStrictEqual(besidePair(s, '3d', 'doc:D1'), { active: '3d', beside: 'doc:D1' });
++    assert.deepStrictEqual(besidePair(s, 'view:V1', 'doc:D1'), { active: 'view:V1', beside: 'doc:D1' });
++    assert.deepStrictEqual(besidePair(s, 'plan:G1', '3d'), { active: '3d', beside: 'plan:G1' });
++    assert.strictEqual(besidePair(s, 'plan:G1', 'view:V1'), null);
++    assert.strictEqual(besidePair(s, 'doc:D1', 'doc:D2'), null);
++    assert.match(besideRefusal(s, 'plan:G1', 'view:V1') ?? '', /jeden 3D canvas/);
++    assert.match(besideRefusal(s, 'doc:D1', 'doc:D2') ?? '', /dva dokumenty/);
++    assert.strictEqual(besideRefusal(s, '3d', 'doc:D1'), null);
++    // Neprípustná dvojica stav nemení.
++    const active = activateTab(s, 'view:V1');
++    assert.strictEqual(setBeside(active, 'plan:G1'), active);
++  });
++
++  it('prepnutie na záložku vedľa vymení strany, na inú zruší neprípustnú dvojicu', () => {
++    let s = syncDocTabs(openTab(initialTabs(), plan1), [doc('D1')], null);
++    s = setBeside(activateTab(s, '3d'), 'doc:D1');
++    s = activateTab(s, 'doc:D1');
++    assert.deepStrictEqual([s.activeId, s.besideId], ['doc:D1', '3d']);
++    // Pôdorys + dokument je prípustné: dvojica ostane.
++    s = activateTab(s, 'plan:G1');
++    assert.deepStrictEqual([s.activeId, s.besideId], ['plan:G1', '3d']);
++    s = setBeside(s, null);
++    assert.strictEqual(s.besideId, null);
++  });
++
++  it('karty dokumentov sa zosúladia s docTabs; otvorenie aktivuje, beside dá vedľa 3D', () => {
++    let s = syncDocTabs(initialTabs(), [doc('D1')], { docId: 'D1', beside: false });
++    assert.strictEqual(s.activeId, 'doc:D1');
++    s = syncDocTabs(activateTab(s, '3d'), [doc('D1'), doc('D2')], { docId: 'D2', beside: true });
++    assert.deepStrictEqual([s.activeId, s.besideId], ['3d', 'doc:D2']);
++    s = syncDocTabs(s, [doc('D1')], null);
++    assert.deepStrictEqual(s.tabs.map((t) => t.id), ['3d', 'doc:D1']);
++    assert.strictEqual(s.besideId, null);
++  });
++
++  it('rozloženie: dokument sám = 3D zbalená, vedľa = oba, pôdorys vedľa 3D = panel plánu', () => {
++    let s = syncDocTabs(openTab(initialTabs(), plan1), [doc('D1')], { docId: 'D1', beside: false });
++    assert.deepStrictEqual(centerLayout(s), { collapse3d: true, docPane: true, docId: 'D1', planBeside: null });
++    s = setBeside(activateTab(s, 'plan:G1'), 'doc:D1');
++    assert.deepStrictEqual(centerLayout(s), { collapse3d: false, docPane: true, docId: 'D1', planBeside: null });
++    s = setBeside(activateTab(s, '3d'), 'plan:G1');
++    assert.deepStrictEqual(centerLayout(s), { collapse3d: false, docPane: false, docId: null, planBeside: 'G1' });
++    // Dokument k dvojici 3D + pôdorys: pôdorys ostane ako 3D strana (zamknutý canvas), nie 2D panel.
++    assert.deepStrictEqual(centerLayout(activateTab(s, 'doc:D1')), { collapse3d: false, docPane: true, docId: 'D1', planBeside: null });
++  });
++
++  it('odkaz z chatu: id, menovka bez veľkosti písmen, GlobalId podlažia, id dokumentu', () => {
++    const s = syncDocTabs(openTab(openTab(initialTabs(), plan1), view), [doc('D1')], null);
++    assert.strictEqual(resolveTabRef(s, '3D')?.id, '3d');
++    assert.strictEqual(resolveTabRef(s, 'rez a-a')?.id, 'view:V1');
++    assert.strictEqual(resolveTabRef(s, 'G1')?.id, 'plan:G1');
++    assert.strictEqual(resolveTabRef(s, 'D1')?.id, 'doc:D1');
++    assert.strictEqual(resolveTabRef(s, 'nič'), undefined);
++    assert.strictEqual(resolveTabRef(s, '  '), undefined);
++  });
++
++  it('view_state.tabs: druh, menovka, podlažie, dokument, aktívna a vedľa', () => {
++    const s = setBeside(syncDocTabs(openTab(initialTabs(), plan1), [doc('D1')], null), 'doc:D1');
++    assert.deepStrictEqual(describeTabs(s), [
++      { id: '3d', kind: '3d', label: '3D', active: false, beside: false },
++      { id: 'plan:G1', kind: 'plan', label: '1NP', storey_guid: 'G1', active: true, beside: false },
++      { id: 'doc:D1', kind: 'doc', label: 'D1.pdf', document_id: 'D1', active: false, beside: true },
++    ]);
++  });
++
++  it('VIEW_TABS: open pôdorysu a pohľadu, activate/beside/close s odkazom, unbeside bez', () => {
++    assert.ok(isTabsMessage({ source: S, type: 'VIEW_TABS', action: 'open', open: { kind: 'plan', storeyGuid: 'G1' } }));
++    assert.ok(isTabsMessage({ source: S, type: 'VIEW_TABS', action: 'open', open: { kind: 'view', viewId: 'V1', label: 'Rez', locked: true }, beside: true }));
++    assert.ok(!isTabsMessage({ source: S, type: 'VIEW_TABS', action: 'open', open: { kind: 'view', viewId: 'V1' } }));
++    assert.ok(!isTabsMessage({ source: S, type: 'VIEW_TABS', action: 'open', open: { kind: 'plan' } }));
++    assert.ok(!isTabsMessage({ source: S, type: 'VIEW_TABS', action: 'open', open: { kind: 'doc', storeyGuid: 'G1' } }));
++    assert.ok(isTabsMessage({ source: S, type: 'VIEW_TABS', action: 'close', tab: 'all' }));
++    assert.ok(!isTabsMessage({ source: S, type: 'VIEW_TABS', action: 'activate' }));
++    assert.ok(isTabsMessage({ source: S, type: 'VIEW_TABS', action: 'unbeside' }));
++    assert.ok(!isTabsMessage({ source: S, type: 'VIEW_TABS', action: 'unbeside', tab: '3d' }));
++    assert.ok(!isTabsMessage({ source: 'x', type: 'VIEW_TABS', action: 'unbeside' }));
++    assert.ok(!isTabsMessage({ source: S, type: 'VIEW_TABS', action: 'open', open: { kind: 'plan', storeyGuid: 'x'.repeat(201) } }));
++  });
++
++  it('DOCUMENT_OPEN layout: predvolene záložka, split len výslovne', () => {
++    assert.strictEqual(documentLayout({ layout: 'split' }), 'split');
++    assert.strictEqual(documentLayout({ layout: 'tab' }), 'tab');
++    assert.strictEqual(documentLayout({}), 'tab');
++    assert.strictEqual(documentLayout(null), 'tab');
++  });
++});
+diff --git a/apps/viewer/src/aim/viewTabsPlan.ts b/apps/viewer/src/aim/viewTabsPlan.ts
+new file mode 100644
+index 000000000..723d9f86c
+--- /dev/null
++++ b/apps/viewer/src/aim/viewTabsPlan.ts
+@@ -0,0 +1,154 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Záložky viewera (AIM D-132, #165): jedna záložka = jeden otvorený pohľad na
++ * celú plochu, ako v Revite. Tu je len čistá logika bez store: zoznam, aktívna
++ * záložka, "Vedľa" (druhá záložka vedľa aktívnej) a z toho rozloženie strednej
++ * plochy. Vykonanie (kamera, rez, zámok, pôdorys) je v `viewTabsApply.ts`,
++ * store v `viewTabsStore.ts`.
++ *
++ * Druhy: `3d` (voľná kamera, vždy prvá, nedá sa zavrieť), `plan` (pôdorys
++ * podlažia za behu z IfcBuildingStorey: zamknutý kolmý pohľad zhora s rezom,
++ * D-072), `view` (uložený pohľad hosta, D-122: orez a zamknutá kamera) a `doc`
++ * (karta dokumentu D-075). Viewer má jeden 3D canvas, preto vedľa seba môže byť
++ * najviac jedna 3D záložka; druhá je dokument, alebo pôdorys ako 2D panel plánu
++ * (D-072, len s kalibrovaným podkladom).
++ */
++
++import { TAB_3D, isSceneTab, type ViewTab, type ViewTabsState } from './viewTabsLayout.js';
++
++export { TAB_3D, centerLayout, initialTabs, isSceneTab, type CenterLayout, type ViewTab, type ViewTabKind, type ViewTabsState } from './viewTabsLayout.js';
++
++export const planTabId = (storeyGuid: string) => `plan:${storeyGuid}`;
++export const docTabId = (docId: string) => `doc:${docId}`;
++export const viewTabId = (viewId: string) => `view:${viewId}`;
++
++const byId = (s: ViewTabsState, id: string | null) => (id ? s.tabs.find((t) => t.id === id) : undefined);
++
++/**
++ * Otvorí záložku (alebo nájde už otvorenú s tým istým id, menovka sa obnoví) a
++ * urobí ju aktívnou. `beside` = nová záložka ide vedľa doterajšej aktívnej.
++ */
++export function openTab(s: ViewTabsState, tab: ViewTab, opts: { beside?: boolean } = {}): ViewTabsState {
++  const exists = s.tabs.some((t) => t.id === tab.id);
++  const tabs = exists ? s.tabs.map((t) => (t.id === tab.id ? { ...t, ...tab } : t)) : [...s.tabs, tab];
++  const next = { ...s, tabs };
++  if (opts.beside && tab.id !== s.activeId) {
++    const pair = besidePair(next, s.activeId, tab.id);
++    if (pair) return { ...next, activeId: pair.active, besideId: pair.beside };
++  }
++  return activateTab(next, tab.id);
++}
++
++/**
++ * Prepne na záložku. Keď je to záložka zobrazená vedľa, ostane dvojica (len sa
++ * vymení, ktorá je aktívna); inak sa "Vedľa" zruší, ak by nová dvojica nebola
++ * prípustná.
++ */
++export function activateTab(s: ViewTabsState, id: string): ViewTabsState {
++  if (!byId(s, id)) return s;
++  if (id === s.besideId) return { ...s, activeId: id, besideId: s.activeId };
++  const keep = s.besideId && besidePair(s, id, s.besideId);
++  return { ...s, activeId: id, besideId: keep ? s.besideId : null };
++}
++
++/**
++ * Prípustná dvojica vedľa seba: nikdy dve záložky toho istého druhu canvasu
++ * (dve 3D, dva dokumenty sú jeden panel), pôdorys vedľa voľnej 3D ide ako 2D
++ * panel plánu. Vráti, ktorá je aktívna (3D strana) a ktorá vedľa.
++ */
++export function besidePair(s: ViewTabsState, a: string, b: string): { active: string; beside: string } | null {
++  const ta = byId(s, a);
++  const tb = byId(s, b);
++  if (!ta || !tb || ta.id === tb.id) return null;
++  if (isSceneTab(ta) && tb.kind === 'doc') return { active: ta.id, beside: tb.id };
++  if (ta.kind === 'doc' && isSceneTab(tb)) return { active: ta.id, beside: tb.id };
++  // Pôdorys vedľa voľnej 3D: 3D je aktívna, pôdorys je 2D panel plánu.
++  if (ta.kind === '3d' && tb.kind === 'plan') return { active: ta.id, beside: tb.id };
++  if (ta.kind === 'plan' && tb.kind === '3d') return { active: tb.id, beside: ta.id };
++  return null;
++}
++
++/** Dôvod, prečo dvojica nejde (pre `APPLIED` a lištu), alebo null. */
++export function besideRefusal(s: ViewTabsState, a: string, b: string): string | null {
++  if (besidePair(s, a, b)) return null;
++  const ta = byId(s, a);
++  const tb = byId(s, b);
++  if (!ta || !tb) return 'záložka nie je otvorená';
++  if (ta.id === tb.id) return 'záložka nemôže byť vedľa seba samej';
++  if (ta.kind === 'doc' && tb.kind === 'doc') return 'dva dokumenty vedľa seba zatiaľ nejdú';
++  return 'viewer má jeden 3D canvas: vedľa 3D ide dokument alebo pôdorys (2D plán), nie druhý 3D pohľad';
++}
++
++/** "Vedľa" pre aktívnu záložku; null = zrušiť. */
++export function setBeside(s: ViewTabsState, id: string | null): ViewTabsState {
++  if (id === null) return { ...s, besideId: null };
++  const pair = besidePair(s, s.activeId, id);
++  return pair ? { ...s, activeId: pair.active, besideId: pair.beside } : s;
++}
++
++/**
++ * Zavrie záložku (3D sa zavrieť nedá). Zavretá aktívna prepne na tú vedľa,
++ * inak na predchádzajúcu v poradí, ako prehliadač.
++ */
++export function closeTab(s: ViewTabsState, id: string): ViewTabsState {
++  const idx = s.tabs.findIndex((t) => t.id === id);
++  if (idx < 0 || s.tabs[idx].kind === '3d') return s;
++  const tabs = s.tabs.filter((t) => t.id !== id);
++  if (id === s.besideId) return { ...s, tabs, besideId: null };
++  if (id !== s.activeId) return { ...s, tabs };
++  const fallback = s.besideId ?? tabs[Math.max(0, idx - 1)]?.id ?? TAB_3D.id;
++  return { tabs, activeId: fallback, besideId: null };
++}
++
++/** Všetky okrem 3D zavreté, aktívna 3D. */
++export const closeAll = (s: ViewTabsState): ViewTabsState => ({ tabs: s.tabs.filter((t) => t.kind === '3d'), activeId: TAB_3D.id, besideId: null });
++
++/**
++ * Zosúladí záložky dokumentov s kartami D-075 (`docTabs`): nové karty pribudnú
++ * na koniec, zavreté zmiznú. Otvorenie karty (nová aktívna karta) ju urobí
++ * aktívnou záložkou, okrem `beside` (otvoriť vedľa doterajšej).
++ */
++export function syncDocTabs(
++  s: ViewTabsState,
++  docs: readonly { docId: string; label: string }[],
++  opened: { docId: string; beside: boolean } | null,
++): ViewTabsState {
++  const want = new Map(docs.map((d) => [docTabId(d.docId), d]));
++  let next = s;
++  for (const t of s.tabs) if (t.kind === 'doc' && !want.has(t.id)) next = closeTab(next, t.id);
++  const have = new Set(next.tabs.map((t) => t.id));
++  const added = docs.filter((d) => !have.has(docTabId(d.docId))).map((d): ViewTab => ({ id: docTabId(d.docId), kind: 'doc', label: d.label, docId: d.docId }));
++  next = { ...next, tabs: [...next.tabs.map((t) => (t.kind === 'doc' && want.has(t.id) ? { ...t, label: want.get(t.id)!.label } : t)), ...added] };
++  if (opened) {
++    const id = docTabId(opened.docId);
++    if (byId(next, id) && id !== next.activeId && id !== next.besideId) {
++      next = opened.beside && isSceneTab(byId(next, next.activeId)) ? setBeside(next, id) : activateTab(next, id);
++    }
++  }
++  return next;
++}
++
++/** Odkaz z chatu: id, `3d`, menovka (bez ohľadu na veľkosť písmen) alebo GlobalId podlažia. */
++export function resolveTabRef(s: ViewTabsState, ref: string): ViewTab | undefined {
++  const want = ref.trim().toLowerCase();
++  if (!want) return undefined;
++  return s.tabs.find((t) => t.id.toLowerCase() === want)
++    ?? s.tabs.find((t) => t.label.toLowerCase() === want)
++    ?? s.tabs.find((t) => t.storeyGuid?.toLowerCase() === want || t.docId?.toLowerCase() === want);
++}
++
++/** `view_state.tabs` (AIM D-132): zoznam, aktívna a tá vedľa. */
++export function describeTabs(s: ViewTabsState) {
++  return s.tabs.map((t) => ({
++    id: t.id,
++    kind: t.kind,
++    label: t.label,
++    ...(t.storeyGuid ? { storey_guid: t.storeyGuid } : {}),
++    ...(t.docId ? { document_id: t.docId } : {}),
++    active: t.id === s.activeId,
++    beside: t.id === s.besideId,
++  }));
++}
+diff --git a/apps/viewer/src/aim/viewTabsStore.ts b/apps/viewer/src/aim/viewTabsStore.ts
+new file mode 100644
+index 000000000..cf0ce24de
+--- /dev/null
++++ b/apps/viewer/src/aim/viewTabsStore.ts
+@@ -0,0 +1,55 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Store záložiek viewera (AIM D-132). Vlastný malý zustand store ako uložené
++ * rezy upstreamu (`savedSectionCutsStore.ts`), nie slice `ViewerState`
++ * (`store/index.ts` je na rozpočte veľkosti). Záložky žijú len počas relácie;
++ * trvalý je uložený pohľad hosta (D-122). Logika je v `viewTabsPlan.ts`,
++ * vykonanie v `viewTabsApply.ts` (lenivo).
++ */
++
++import { create } from 'zustand';
++import type { StoreyInfo } from '@/hooks/useFloorplanView';
++import { initialTabs, type ViewTabsState } from './viewTabsLayout.js';
++
++/** Podlažie, ako ho pozná prepínač pôdorysu (`useViewMode().storeys`). */
++export interface TabStorey { guid: string; name: string; info: StoreyInfo }
++
++/** Funkcie viewera pre záložky; dodá ich lišta (hooky `useViewMode` / `useFloorplanView`). */
++export interface TabDeps {
++  storeys: readonly TabStorey[];
++  storeyHasDrawing: (guid: string) => boolean;
++  enterDrawingView: (storey: StoreyInfo) => void;
++  enterSplitView: (storey: StoreyInfo) => void;
++  exitSplitView: () => void;
++}
++
++interface ViewTabsStore extends ViewTabsState {
++  /** Záložka, ktorej stav je práve v 3D canvase (kamera, rez, zámok). */
++  sceneId: string;
++  deps: TabDeps | null;
++  /** Kartu otvoril most (`DOCUMENT_OPEN`): záložku nastaví `showDoc`, nie synchronizácia kariet. */
++  bridgeDocId: string | null;
++}
++
++type TabsModule = typeof import('./viewTabsApply.js');
++let tabsModule: TabsModule | null = null;
++let tabsLoad: Promise<TabsModule> | null = null;
++/** Most ho stiahne pri pripojení, aby príkazy hosta bežali synchrónne a v poradí. */
++export const preloadTabs = () => (tabsLoad ??= import('./viewTabsApply.js').then((m) => (tabsModule = m)));
++
++/**
++ * Vykoná krok záložiek hneď, keď je modul načítaný: nasledujúce príkazy hosta (rez,
++ * kamera po `VIEW_TABS open`) tak patria už novej záložke. Inak po načítaní (Promise pre `track`).
++ */
++export function withTabs(fn: (m: TabsModule) => void): Promise<void> | undefined {
++  if (tabsModule) {
++    fn(tabsModule);
++    return undefined;
++  }
++  return preloadTabs().then(fn);
++}
++
++export const useAimViewTabs = create<ViewTabsStore>(() => ({ ...initialTabs(), sceneId: '3d', deps: null, bridgeDocId: null }));
+diff --git a/apps/viewer/src/components/documents/DocumentPane.tsx b/apps/viewer/src/components/documents/DocumentPane.tsx
+index bbf55cb4c..db639f164 100644
+--- a/apps/viewer/src/components/documents/DocumentPane.tsx
++++ b/apps/viewer/src/components/documents/DocumentPane.tsx
+@@ -23,7 +23,9 @@ import { ImageDocumentView } from './ImageDocumentView';
+ import { AimDocumentShow3d } from '@/aim/AimDocumentShow3d';
+ // <<< AIM-FORK
+ 
+-export function DocumentPane() {
++// >>> AIM-FORK: on desktop the view tab bar lists the documents, so the pane hides its own strip (AIM D-132)
++export function DocumentPane({ hideTabs = false }: { hideTabs?: boolean } = {}) {
++// <<< AIM-FORK
+   const docs = useViewerStore((s) => s.viewerDocuments);
+   const tabs = useViewerStore((s) => s.docTabs);
+   const activeId = useViewerStore((s) => s.activeDocTabId);
+@@ -39,9 +41,9 @@ export function DocumentPane() {
+ 
+   return (
+     <div className="flex h-full w-full flex-col overflow-hidden border-l bg-background">
+-      {/* >>> AIM-FORK: the tab strip shares its row with "Ukázať v 3D" (D-104 step 4) */}
++      {/* >>> AIM-FORK: the tab strip shares its row with "Ukázať v 3D" (D-104 step 4); D-132 tab bar replaces the strip */}
+       <div className="flex items-stretch border-b">
+-      <div role="tablist" aria-label="Open documents" className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
++      <div role="tablist" aria-label="Open documents" className={cn('flex min-w-0 flex-1 items-stretch overflow-x-auto', hideTabs && 'hidden')}>
+       {/* <<< AIM-FORK */}
+         {tabs.map((tab) => {
+           const doc = docs.get(tab.docId);
+diff --git a/apps/viewer/src/components/viewer/ViewerLayout.tsx b/apps/viewer/src/components/viewer/ViewerLayout.tsx
+index 6911d453a..dec0c5087 100644
+--- a/apps/viewer/src/components/viewer/ViewerLayout.tsx
++++ b/apps/viewer/src/components/viewer/ViewerLayout.tsx
+@@ -28,8 +28,8 @@ import { MobileBottomSheet, useVisualViewportBottomInset } from './MobileBottomS
+ import { MobilePanelLauncher } from './MobilePanelLauncher';
+ import { MobilePanelSheet } from './MobilePanelSheet';
+ import { ShieldAlert } from 'lucide-react';
+-// >>> AIM-FORK: D-075 document/2D view coordination
+-import { useFloorplanView } from '@/hooks/useFloorplanView';
++// >>> AIM-FORK: D-072/D-075 center panes and D-132 view tabs (logic in aim/useAimCenterPanes.ts)
++import { useAimCenterPanes } from '@/aim/useAimCenterPanes';
+ // <<< AIM-FORK
+ import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
+ import { ExtensionKeyboardBindings } from '@/components/extensions/ExtensionKeyboardBindings';
+@@ -51,6 +51,7 @@ import { useOverlayCompositor } from './schedule/useOverlayCompositor';
+ // Lazy: the 2D plan and document panes (pdf.js surfaces) are off the boot path.
+ const DrawingPlanPane = lazy(() => import('@/components/viewer/DrawingPlanPane').then((m) => ({ default: m.DrawingPlanPane })));
+ const DocumentPane = lazy(() => import('@/components/documents/DocumentPane').then((m) => ({ default: m.DocumentPane })));
++const AimViewTabsBar = lazy(() => import('@/aim/AimViewTabsBar').then((m) => ({ default: m.AimViewTabsBar })));
+ // <<< AIM-FORK
+ import { CommandPalette } from './CommandPalette';
+ import { SearchModal } from './SearchModal';
+@@ -76,16 +77,7 @@ import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
+ /** Technical query flag rendered as code by the localized safe-mode notice. */
+ const SAFE_MODE_QUERY_FLAG = '?safe=0';
+ 
+-// >>> AIM-FORK: D-075 document pane sizing
+-/** First-open width of the document pane, as a % of the center group. */
+-const DOC_PANE_OPEN_PCT = '42%';
+-
+-/** react-resizable-panels v4 parses CSS-like strings ('42%', '300px') at
+- *  runtime, but the shipped `resize` type only admits `number` — and a bare
+- *  number means PIXELS there, so percentages MUST go through as strings. */
+-function resizePanelPct(panel: PanelImperativeHandle, size: string): void {
+-  (panel.resize as unknown as (size: string) => void)(size);
+-}
++// >>> AIM-FORK: D-075 document pane sizing moved to aim/useAimCenterPanes.ts (AIM D-132)
+ // <<< AIM-FORK
+ 
+ export function ViewerLayout() {
+@@ -232,86 +224,11 @@ export function ViewerLayout() {
+   const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch); // "Reset layout" (#5854) restores the pane width
+   useEffect(() => { if (layoutResetEpoch > 0) leftPanelRef.current?.resize(`${LEFT_PANEL_DEFAULT_SIZE}%`); }, [layoutResetEpoch]);
+ 
+-  // >>> AIM-FORK: D-072 split plan / D-075 2D mode + document pane (center split)
+-  // D-072 split view: the 2D plan Panel is always mounted (so ViewportContainer
+-  // never remounts / loses its WebGPU renderer) and collapses/expands with the
+-  // `underlaySplitView` flag, like the left hierarchy panel above.
+-  const underlaySplitView = useViewerStore((s) => s.underlaySplitView);
+-  const planePanelRef = useRef<PanelImperativeHandle>(null);
+-  useEffect(() => {
+-    const panel = planePanelRef.current;
+-    if (!panel) return;
+-    if (underlaySplitView && panel.isCollapsed()) panel.expand();
+-    else if (!underlaySplitView && !panel.isCollapsed()) panel.collapse();
+-  }, [underlaySplitView]);
+-
+-  // D-075 2D mode: the mirror move — the 3D panel collapses to zero while the
+-  // plan pane fills the center. Same always-mounted guarantee, in reverse.
+-  const underlayPlanFull = useViewerStore((s) => s.underlayPlanFull);
+-  const viewport3dPanelRef = useRef<PanelImperativeHandle>(null);
+-  useEffect(() => {
+-    const panel = viewport3dPanelRef.current;
+-    if (!panel) return;
+-    if (underlayPlanFull && !panel.isCollapsed()) panel.collapse();
+-    else if (!underlayPlanFull && panel.isCollapsed()) panel.expand();
+-  }, [underlayPlanFull]);
+-  // `collapsible` also lets a resize-handle DRAG snap the panel to zero — a
+-  // state no view-mode flag describes (blank center, every handle hidden).
+-  // Only the 2D mode may collapse the 3D viewport; undo drag-collapses.
+-  const onViewport3dResize = useCallback(() => {
+-    const panel = viewport3dPanelRef.current;
+-    if (!panel) return;
+-    if (panel.isCollapsed() && !useViewerStore.getState().underlayPlanFull) panel.expand();
+-  }, []);
+-
+-  // D-075 document pane: expands while document tabs are open OUTSIDE the 2D
+-  // full-plan mode (2D promises the plan the whole center), collapses when
+-  // the last tab closes. Same always-mounted pattern as the 2D pane.
+-  const docPaneOpen = useViewerStore((s) => s.docTabs.length > 0);
+-  const docPaneVisible = docPaneOpen && !underlayPlanFull;
+-  const docPanelRef = useRef<PanelImperativeHandle>(null);
+-  useEffect(() => {
+-    const panel = docPanelRef.current;
+-    if (!panel) return;
+-    if (docPaneVisible && panel.isCollapsed()) {
+-      panel.expand();
+-      // expand() restores the last size, but this panel STARTS at 0 and is
+-      // the group's last child — the first open can come up as a sliver.
+-      // Enforce a readable width; later drags persist via expand() as usual.
+-      if (panel.getSize().asPercentage < 20) resizePanelPct(panel, DOC_PANE_OPEN_PCT);
+-    } else if (!docPaneVisible && !panel.isCollapsed()) {
+-      panel.collapse();
+-    }
+-  }, [docPaneVisible]);
+-  // Mirror guard: a drag must not collapse the pane while tabs are open —
+-  // openDocument on an existing tab is a no-op, so nothing would re-expand it
+-  // and host-pushed tabs would be stuck invisible.
+-  const onDocPaneResize = useCallback(() => {
+-    const panel = docPanelRef.current;
+-    if (!panel) return;
+-    const s = useViewerStore.getState();
+-    if (panel.isCollapsed() && s.docTabs.length > 0 && !s.underlayPlanFull) {
+-      panel.expand();
+-      if (panel.getSize().asPercentage < 20) resizePanelPct(panel, DOC_PANE_OPEN_PCT);
+-    }
+-  }, []);
+-
+-  // D-075: opening/focusing a document tab must never happen invisibly. The
+-  // 2D full-plan mode hides the doc pane by design — drop it to Split so the
+-  // tab shows beside the plan; on mobile the split plan overlay covers the
+-  // doc overlay, so opening a document exits the split (reading the document
+-  // is the more recent intent there — one surface at a time on a phone).
+-  const { exitSplitView } = useFloorplanView();
+-  const activeDocTabId = useViewerStore((s) => s.activeDocTabId);
+-  const prevActiveDocRef = useRef(activeDocTabId);
+-  useEffect(() => {
+-    const prev = prevActiveDocRef.current;
+-    prevActiveDocRef.current = activeDocTabId;
+-    if (!activeDocTabId || activeDocTabId === prev) return;
+-    const s = useViewerStore.getState();
+-    if (s.underlayPlanFull) s.setUnderlayPlanFull(false);
+-    if (isMobile && s.underlaySplitView) exitSplitView();
+-  }, [activeDocTabId, isMobile, exitSplitView]);
++  // >>> AIM-FORK: D-072 split plan, D-075 2D mode + document pane, D-132 view tabs (aim/useAimCenterPanes.ts)
++  const {
++    underlaySplitView, underlayPlanFull, planePanelRef, viewport3dPanelRef, onViewport3dResize,
++    docPaneOpen, docPaneVisible, docPanelRef, onDocPaneResize,
++  } = useAimCenterPanes(isMobile);
+   // <<< AIM-FORK
+   const containerRef = useRef<HTMLDivElement>(null);
+ 
+@@ -412,7 +329,9 @@ export function ViewerLayout() {
+                       <ModelWorkspaceSplit>
+                       {/* >>> AIM-FORK: D-072 2D plan | 3D | D-075 document pane. The plan and
+                           document Panels are collapsible so ViewportContainer stays mounted. */}
+-                      <PanelGroup orientation="horizontal" className="h-full w-full">
++                      <div className="flex h-full w-full min-w-0 flex-col">
++                      <Suspense fallback={null}><AimViewTabsBar /></Suspense>
++                      <PanelGroup orientation="horizontal" className="min-h-0 w-full flex-1">
+                         <Panel id="drawing-plan-panel" defaultSize={0} minSize={20} collapsible collapsedSize={0} panelRef={planePanelRef}>
+                           <Suspense fallback={null}><DrawingPlanPane /></Suspense>
+                         </Panel>
+@@ -452,9 +371,10 @@ export function ViewerLayout() {
+                           className={`w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize ${docPaneVisible ? '' : 'hidden'}`}
+                         />
+                         <Panel id="document-pane-panel" defaultSize={0} minSize={20} collapsible collapsedSize={0} panelRef={docPanelRef} onResize={onDocPaneResize}>
+-                          <Suspense fallback={null}><DocumentPane /></Suspense>
++                          <Suspense fallback={null}><DocumentPane hideTabs /></Suspense>
+                         </Panel>
+                       </PanelGroup>
++                      </div>
+                       {/* <<< AIM-FORK */}
+                       </ModelWorkspaceSplit>
+                     </div>
+diff --git a/apps/viewer/src/components/viewer/ribbon/command-labels.guard.test.tsx b/apps/viewer/src/components/viewer/ribbon/command-labels.guard.test.tsx
+index 15808d584..25bb46e1e 100644
+--- a/apps/viewer/src/components/viewer/ribbon/command-labels.guard.test.tsx
++++ b/apps/viewer/src/components/viewer/ribbon/command-labels.guard.test.tsx
+@@ -172,9 +172,9 @@ it('#5870/#5878 mounts every ribbon command with its registry name across the he
+   // converted to typed IDs. Drop each count to zero with that tab's migration.
+   assert.deepEqual(rawByTab, {
+     file: 0, home: 0, view: 0, elements: 0, analyze: 0, author: 0,
+-    // >>> AIM-FORK: the Documents tab's 3D | 2D | Split view-mode buttons are raw
+-    // fork controls (no registry id yet); this row ratchets down, never up.
+-    documents: 3,
++    // >>> AIM-FORK: the Documents tab had raw 3D | 2D | Split buttons; they moved to the
++    // view tab bar (AIM D-132), so the row is down to zero and stays there.
++    documents: 0,
+     // <<< AIM-FORK
+   });
+   assert.deepEqual(renderedIds,
+-- 
+2.43.0
+
+
+From 6a7ba46349669e3a26587cb5357dc91f9fc00e0e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 12:31:15 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?AIM=20D-132:=20muta=C4=8Dn=C3=A9=20d=C3=B4k?=
+ =?UTF-8?q?azy=20pre=20revert=20oracle,=20FORK=5FMAINTENANCE=20riadky?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017ieoHNEFuzozjBpaHgHMCC
+---
+ docs/FORK_MAINTENANCE.md                      |   6 +-
+ .../aim-d132-view-tabs/mutations/README.md    |  56 +++++++
+ .../mutations/box-and-guids.patch             |  13 ++
+ .../mutations/close-3d.patch                  |  13 ++
+ .../mutations/close-to-3d.patch               |  13 ++
+ .../mutations/doc-beside-collapses.patch      |  13 ++
+ .../mutations/doc-open-ignored.patch          |  13 ++
+ .../mutations/layout-default-split.patch      |  11 ++
+ .../mutations/margin-ignored.patch            |  13 ++
+ .../mutations/plan-beside-any.patch           |  12 ++
+ .../mutations/ref-case-sensitive.patch        |  13 ++
+ .../aim-d132-view-tabs/mutations/summary.json | 156 ++++++++++++++++++
+ .../mutations/two-scenes-beside.patch         |  13 ++
+ .../mutations/view-without-label.patch        |  13 ++
+ 14 files changed, 355 insertions(+), 3 deletions(-)
+ create mode 100644 docs/architecture/evidence/aim-d132-view-tabs/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-d132-view-tabs/mutations/box-and-guids.patch
+ create mode 100644 docs/architecture/evidence/aim-d132-view-tabs/mutations/close-3d.patch
+ create mode 100644 docs/architecture/evidence/aim-d132-view-tabs/mutations/close-to-3d.patch
+ create mode 100644 docs/architecture/evidence/aim-d132-view-tabs/mutations/doc-beside-collapses.patch
+ create mode 100644 docs/architecture/evidence/aim-d132-view-tabs/mutations/doc-open-ignored.patch
+ create mode 100644 docs/architecture/evidence/aim-d132-view-tabs/mutations/layout-default-split.patch
+ create mode 100644 docs/architecture/evidence/aim-d132-view-tabs/mutations/margin-ignored.patch
+ create mode 100644 docs/architecture/evidence/aim-d132-view-tabs/mutations/plan-beside-any.patch
+ create mode 100644 docs/architecture/evidence/aim-d132-view-tabs/mutations/ref-case-sensitive.patch
+ create mode 100644 docs/architecture/evidence/aim-d132-view-tabs/mutations/summary.json
+ create mode 100644 docs/architecture/evidence/aim-d132-view-tabs/mutations/two-scenes-beside.patch
+ create mode 100644 docs/architecture/evidence/aim-d132-view-tabs/mutations/view-without-label.patch
+
+diff --git a/docs/FORK_MAINTENANCE.md b/docs/FORK_MAINTENANCE.md
+index f943097c6..16a93fbad 100644
+--- a/docs/FORK_MAINTENANCE.md
++++ b/docs/FORK_MAINTENANCE.md
+@@ -50,7 +50,7 @@ git grep -n ">>> AIM-FORK" -- apps/ packages/
+ | `apps/viewer/src/bootstrap.tsx` | 1 | assetin design-kit import order — tokens first, after `index.css` (D-070; upstream moved the entry imports here from `main.tsx`) |
+ | `apps/viewer/src/App.tsx` | 2 | `import { AimBridge }` + `<AimBridge />` mount inside `SourceHostProvider` |
+ | `apps/viewer/src/hooks/useModelUrlAutoload.ts` | 3 | `?models=` federated autoload + origin allowlist (`lib/autoload.ts`), `AUTOLOAD_COMPLETE_EVENT` for AimBridge |
+-| `apps/viewer/src/components/viewer/ViewerLayout.tsx` | 6 | D-072 2D plan pane + D-075 document pane in the center split (around upstream's `ModelWorkspaceSplit`), view-mode effects |
++| `apps/viewer/src/components/viewer/ViewerLayout.tsx` | 6 | D-072 2D plan pane + D-075 document pane in the center split (around upstream's `ModelWorkspaceSplit`) and the AIM D-132 view tab bar above it; the pane logic lives in `aim/useAimCenterPanes.ts` |
+ | `apps/viewer/src/components/viewer/MobileBottomSheet.tsx` | 1 | `z-50` so sheets sit above the full-screen plan/document overlays |
+ | `apps/viewer/src/components/viewer/MobileToolbar.tsx` | 2 | `<ViewModeSwitcher />` (D-075) |
+ | `apps/viewer/src/components/viewer/PropertiesPanel.tsx` | 8 | AIM \| IFC inspector tabs + `<AimCard />`, native content wrapped, mobile scroll host (D-077); a property focus from the chat highlights the row without entering edit mode (AIM D-113) |
+@@ -76,7 +76,7 @@ git grep -n ">>> AIM-FORK" -- apps/ packages/
+ | `apps/viewer/src/lib/panels/registry.ts` | 5 | AIM rail group `aim`, first of all groups (D-104), and the fork-only workspace panels `documents`, `aim-layers`, `drawing-underlay` in it, appended last |
+ | `apps/viewer/src/lib/panels/renderPanelBody.tsx` | 2 | bodies of the three fork panels |
+ | `apps/viewer/src/components/documents/DocumentsPanel.tsx` | 5 | fork file (D-075); grouping by host `meta`, metadata search and documents of the selection come from `aim/documentsQuery.ts` and `aim/AimDocumentsControls.tsx` (D-104) |
+-| `apps/viewer/src/components/documents/DocumentPane.tsx` | 3 | fork file (D-075); "Ukázať v 3D" at the end of the tab strip for the page being read, `aim/AimDocumentShow3d.tsx` posts `DOCUMENT_SHOW_3D` (D-104 step 4) |
++| `apps/viewer/src/components/documents/DocumentPane.tsx` | 4 | fork file (D-075); "Ukázať v 3D" at the end of the tab strip for the page being read, `aim/AimDocumentShow3d.tsx` posts `DOCUMENT_SHOW_3D` (D-104 step 4); `hideTabs` hides the strip on desktop, where the AIM D-132 view tab bar lists the documents |
+ | `apps/viewer/src/store/slices/sidebarSlice.test.ts` | 4 | the AIM rail group leads the rail (D-104), so Hierarchy is asserted first among upstream's groups |
+ | `apps/viewer/src/i18n/en.ts` | 2 | fork catalogue `catalogues/aim-fork.en.ts` (panel titles, `ribbon.tab.documents` = "AIM") |
+ | `packages/renderer/src/index.ts` | 5 | generic external-overlay hook + registry — **upstream-PR candidate** |
+@@ -461,7 +461,7 @@ fork's current counts as baseline rows instead of rewriting that UI in the same
+ | `check-jsx-a11y` | `scripts/jsx-a11y-baseline.json` | role-based `group` / `radio` widgets and the clickable identifier-link box in the underlay / identifier-link / view-mode UI |
+ | `check-type-scale` | `scripts/type-scale-baseline.json` | `text-[Npx]` in the AIM card, documents, underlay and identifier-link panels (upstream itself is at zero) |
+ | perf ratchet `bundle` | `tests/perf-ratchets/bundle.json` (`viewer-entry-js-bytes`, `viewer-eager-js-bytes`) | raised in the 2026-10 sync by the fork's boot-path code (~32 kB entry, ~70 kB eager): the AIM bridge and slices, and the AIM-FORK wiring in PropertiesPanel / Viewport / HierarchyPanel / ViewportContainer. Panels, panes and overlays are `lazy()` (−100 kB); the daily lowering job only lowers it again. Entry raised again 2026-10-18 by +3,333 B for AIM D-085 (view queries, section through an element): the feature itself loads lazily, the entry keeps the message checks and the loader (+968 B over `main`, which was already 2,365 B above the old ceiling) |
+-| ribbon command guard (`command-labels.guard.test.tsx`) | `rawByTab` (`AIM-FORK` row) | `documents: 3` — the 3D / 2D / Split buttons of the fork's AIM tab (id `documents`), which have no surface-command id yet; the Derivations buttons (D-089) carry `data-ribbon-extension` and do not count |
++| ribbon command guard (`command-labels.guard.test.tsx`) | `rawByTab` (`AIM-FORK` row) | `documents: 0` — the 3D / 2D / Split buttons left the fork's AIM tab (id `documents`) for the AIM D-132 view tab bar; the Derivations buttons (D-089) carry `data-ribbon-extension` and do not count |
+ 
+ They ratchet **down**: moving a panel's copy into `catalogues/aim-fork.en.ts`, switching to
+ `IconButton`, or splitting a file lowers its row (`--update`). Never raise a row for new fork
+diff --git a/docs/architecture/evidence/aim-d132-view-tabs/mutations/README.md b/docs/architecture/evidence/aim-d132-view-tabs/mutations/README.md
+new file mode 100644
+index 000000000..0d07040d3
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d132-view-tabs/mutations/README.md
+@@ -0,0 +1,56 @@
++<!-- This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this
++     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
++
++# AIM D-132 view tabs: surgical mutation evidence
++
++AIM D-132 (#165) adds view tabs to the AIM layer in `apps/viewer/src/aim/`:
++- One tab is one open view on the whole center area: 3D (always first), a storey plan (the D-072 locked top-down cut), a saved view of the host (D-122) and a D-075 document.
++- A document tab collapses the 3D panel the same way the 2D mode does. "Vedľa" puts a second tab beside the active one: a document beside a 3D view, or a storey plan as the D-072 2D plan beside free 3D. Two 3D views side by side are refused (one WebGPU canvas).
++- Switching tabs stores the canvas state of the tab being left (camera, the whole plane set or box, lock, storey cut) and restores it on return.
++- The bridge gets `VIEW_TABS`, `SET_SECTION_BOX`, `DOCUMENT_OPEN layout` and `view_state.tabs` / `section.box`. `SET_VIEW_MODE` goes through the tabs.
++
++The pure logic lives in `viewTabsPlan.ts`, `viewTabsLayout.ts` (the small part the entry chunk needs), `tabs-protocol.ts` and `sectionBox.ts`. The tests import exports that do not exist on `main`, so reverting production makes them fail to load and the CI revert oracle reports INCONCLUSIVE. Each main decision was instead checked with a surgical mutation.
++
++Each patch is written mutant->fixed and reverse-applied by the oracle. Every run ended `OBSERVED` (exit 0) with restoration verified against `origin/main`. The records are in `summary.json`.
++
++| Patch | Module | Mutation | Test |
++|---|---|---|---|
++| `close-3d.patch` | `viewTabsPlan.ts` | the 3D tab can be closed | `viewTabsPlan.test.ts` |
++| `close-to-3d.patch` | `viewTabsPlan.ts` | closing the active tab always falls back to 3D, not to the tab beside or the previous one | `viewTabsPlan.test.ts` |
++| `two-scenes-beside.patch` | `viewTabsPlan.ts` | any two 3D tabs may stand side by side | `viewTabsPlan.test.ts` |
++| `doc-open-ignored.patch` | `viewTabsPlan.ts` | a newly opened document card does not become the active tab | `viewTabsPlan.test.ts` |
++| `ref-case-sensitive.patch` | `viewTabsPlan.ts` | a chat reference to a tab is case sensitive | `viewTabsPlan.test.ts` |
++| `doc-beside-collapses.patch` | `viewTabsLayout.ts` | an active document collapses 3D even with a tab beside it | `viewTabsPlan.test.ts` |
++| `plan-beside-any.patch` | `viewTabsLayout.ts` | a plan beside a document is shown as the 2D plan pane | `viewTabsPlan.test.ts` |
++| `view-without-label.patch` | `tabs-protocol.ts` | a saved view tab opens without a label | `viewTabsPlan.test.ts` |
++| `layout-default-split.patch` | `tabs-protocol.ts` | `DOCUMENT_OPEN` without a layout opens beside 3D | `viewTabsPlan.test.ts` |
++| `box-and-guids.patch` | `sectionBox.ts` | `SET_SECTION_BOX` accepts elements and a box at once | `sectionBox.test.ts` |
++| `margin-ignored.patch` | `sectionBox.ts` | the margin around the elements is dropped | `sectionBox.test.ts` |
++
++The following is store, DOM and renderer glue with no unit test, and was verified live:
++- `viewTabsApply.ts` (canvas state per tab, plan and split entry, document card sync), `viewTabsStore.ts`.
++- `useAimCenterPanes.ts` (moved from the `ViewerLayout.tsx` AIM-FORK block), `AimViewTabsBar.tsx`.
++- The `AimBridge.tsx`, `docBridge.ts`, `useAimViewCommands.ts` and `viewQueries.ts` wiring.
++
++The live check ran in a local fork viewer embedded in a host page with `public/_fixtures/AC20-FZK-Haus.ifc`, driven by Playwright posting bridge messages and `ACK_REQUEST`:
++- `SET_VIEW_MODE 2d` opened the Dachgeschoss plan tab (orthographic, locked).
++- `DOCUMENT_OPEN` opened the PDF as the active tab on the whole center area, 3D collapsed.
++- `VIEW_TABS activate 3D` came back to perspective 3D without a cut. `beside` put the PDF beside 3D.
++- `VIEW_TABS open` a view + `SET_SECTION_BOX` + `SET_CAMERA front` kept the box in the view tab. 3D came back without the box, and the view tab came back with it.
++- `beside 3D` from a view tab was refused with an `APPLIED` issue (one 3D canvas). `close all` left only 3D.
++
++Bundle (`vite build` of the branch and of `claude/aim-d127-panely` @ 67d78612a, same machine):
++- `viewer-entry-js-bytes` +2,275 B against the base (protocol checks, tabs and section box run in lazy modules); inside the tolerance, no ceiling raise.
++- `viewer-eager-js-bytes` +3,659 B, inside the tolerance.
++
++## Replay
++
++Use a clean checkout with dependencies. Copy the patches outside the tree, then run, for example:
++
++```bash
++node scripts/check-test-revert-oracle.mjs --base origin/main \
++  --only apps/viewer/src/aim/viewTabsPlan.ts \
++  --test apps/viewer/src/aim/viewTabsPlan.test.ts \
++  --mutation /tmp/d132-mut/close-3d.patch --ci --json
++```
+diff --git a/docs/architecture/evidence/aim-d132-view-tabs/mutations/box-and-guids.patch b/docs/architecture/evidence/aim-d132-view-tabs/mutations/box-and-guids.patch
+new file mode 100644
+index 000000000..b6cb92a70
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d132-view-tabs/mutations/box-and-guids.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/sectionBox.ts a/apps/viewer/src/aim/sectionBox.ts
++index b9c9f24c7..0c754b8b2 100644
++--- b/apps/viewer/src/aim/sectionBox.ts
+++++ a/apps/viewer/src/aim/sectionBox.ts
++@@ -43,7 +43,7 @@ export function isSectionBoxMessage(data: unknown): data is SectionBoxMessage {
++   const box = m.box as { min?: unknown; max?: unknown } | undefined;
++   const byBox = !!box && typeof box === 'object' && isVec(box.min) && isVec(box.max)
++     && box.min.x < box.max.x && box.min.y < box.max.y && box.min.z < box.max.z;
++-  if (!byGuids && !byBox) return false;
+++  if (byGuids === byBox) return false; // práve jeden cieľ
++   return m.marginM === undefined || (byGuids && num(m.marginM, BOX_MARGIN_RANGE.min, BOX_MARGIN_RANGE.max));
++ }
++ 
+diff --git a/docs/architecture/evidence/aim-d132-view-tabs/mutations/close-3d.patch b/docs/architecture/evidence/aim-d132-view-tabs/mutations/close-3d.patch
+new file mode 100644
+index 000000000..fb77d82da
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d132-view-tabs/mutations/close-3d.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/viewTabsPlan.ts a/apps/viewer/src/aim/viewTabsPlan.ts
++index 6bb2c221f..723d9f86c 100644
++--- b/apps/viewer/src/aim/viewTabsPlan.ts
+++++ a/apps/viewer/src/aim/viewTabsPlan.ts
++@@ -95,7 +95,7 @@ export function setBeside(s: ViewTabsState, id: string | null): ViewTabsState {
++  */
++ export function closeTab(s: ViewTabsState, id: string): ViewTabsState {
++   const idx = s.tabs.findIndex((t) => t.id === id);
++-  if (idx < 0) return s;
+++  if (idx < 0 || s.tabs[idx].kind === '3d') return s;
++   const tabs = s.tabs.filter((t) => t.id !== id);
++   if (id === s.besideId) return { ...s, tabs, besideId: null };
++   if (id !== s.activeId) return { ...s, tabs };
+diff --git a/docs/architecture/evidence/aim-d132-view-tabs/mutations/close-to-3d.patch b/docs/architecture/evidence/aim-d132-view-tabs/mutations/close-to-3d.patch
+new file mode 100644
+index 000000000..c8b4c50c9
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d132-view-tabs/mutations/close-to-3d.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/viewTabsPlan.ts a/apps/viewer/src/aim/viewTabsPlan.ts
++index 6eb7febaf..723d9f86c 100644
++--- b/apps/viewer/src/aim/viewTabsPlan.ts
+++++ a/apps/viewer/src/aim/viewTabsPlan.ts
++@@ -99,7 +99,7 @@ export function closeTab(s: ViewTabsState, id: string): ViewTabsState {
++   const tabs = s.tabs.filter((t) => t.id !== id);
++   if (id === s.besideId) return { ...s, tabs, besideId: null };
++   if (id !== s.activeId) return { ...s, tabs };
++-  const fallback = TAB_3D.id;
+++  const fallback = s.besideId ?? tabs[Math.max(0, idx - 1)]?.id ?? TAB_3D.id;
++   return { tabs, activeId: fallback, besideId: null };
++ }
++ 
+diff --git a/docs/architecture/evidence/aim-d132-view-tabs/mutations/doc-beside-collapses.patch b/docs/architecture/evidence/aim-d132-view-tabs/mutations/doc-beside-collapses.patch
+new file mode 100644
+index 000000000..1b5dd9124
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d132-view-tabs/mutations/doc-beside-collapses.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/viewTabsLayout.ts a/apps/viewer/src/aim/viewTabsLayout.ts
++index 2e95666cd..45fc62221 100644
++--- b/apps/viewer/src/aim/viewTabsLayout.ts
+++++ a/apps/viewer/src/aim/viewTabsLayout.ts
++@@ -55,7 +55,7 @@ export function centerLayout(s: ViewTabsState): CenterLayout {
++   const beside = byId(s, s.besideId);
++   const doc = active?.kind === 'doc' ? active : beside?.kind === 'doc' ? beside : undefined;
++   return {
++-    collapse3d: active?.kind === 'doc',
+++    collapse3d: active?.kind === 'doc' && !beside,
++     docPane: !!doc,
++     docId: doc?.docId ?? null,
++     // Len vedľa voľnej 3D; pri dokumente je pôdorys sám 3D stranou (zamknutý pohľad v canvase).
+diff --git a/docs/architecture/evidence/aim-d132-view-tabs/mutations/doc-open-ignored.patch b/docs/architecture/evidence/aim-d132-view-tabs/mutations/doc-open-ignored.patch
+new file mode 100644
+index 000000000..1163cc0b1
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d132-view-tabs/mutations/doc-open-ignored.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/viewTabsPlan.ts a/apps/viewer/src/aim/viewTabsPlan.ts
++index f7ea2356d..723d9f86c 100644
++--- b/apps/viewer/src/aim/viewTabsPlan.ts
+++++ a/apps/viewer/src/aim/viewTabsPlan.ts
++@@ -122,7 +122,7 @@ export function syncDocTabs(
++   const have = new Set(next.tabs.map((t) => t.id));
++   const added = docs.filter((d) => !have.has(docTabId(d.docId))).map((d): ViewTab => ({ id: docTabId(d.docId), kind: 'doc', label: d.label, docId: d.docId }));
++   next = { ...next, tabs: [...next.tabs.map((t) => (t.kind === 'doc' && want.has(t.id) ? { ...t, label: want.get(t.id)!.label } : t)), ...added] };
++-  if (opened && false) {
+++  if (opened) {
++     const id = docTabId(opened.docId);
++     if (byId(next, id) && id !== next.activeId && id !== next.besideId) {
++       next = opened.beside && isSceneTab(byId(next, next.activeId)) ? setBeside(next, id) : activateTab(next, id);
+diff --git a/docs/architecture/evidence/aim-d132-view-tabs/mutations/layout-default-split.patch b/docs/architecture/evidence/aim-d132-view-tabs/mutations/layout-default-split.patch
+new file mode 100644
+index 000000000..a32c31092
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d132-view-tabs/mutations/layout-default-split.patch
+@@ -0,0 +1,11 @@
++diff --git b/apps/viewer/src/aim/tabs-protocol.ts a/apps/viewer/src/aim/tabs-protocol.ts
++index 27f56675c..e351217bf 100644
++--- b/apps/viewer/src/aim/tabs-protocol.ts
+++++ a/apps/viewer/src/aim/tabs-protocol.ts
++@@ -75,5 +75,5 @@ export function isTabsMessage(data: unknown): data is TabsMessage {
++ 
++ /** Rozloženie karty dokumentu pri `DOCUMENT_OPEN` (AIM D-132): záložka na celú plochu, alebo vedľa 3D. */
++ export function documentLayout(msg: unknown): 'tab' | 'split' {
++-  return (msg as { layout?: unknown } | null)?.layout === 'tab' ? 'tab' : 'split';
+++  return (msg as { layout?: unknown } | null)?.layout === 'split' ? 'split' : 'tab';
++ }
+diff --git a/docs/architecture/evidence/aim-d132-view-tabs/mutations/margin-ignored.patch b/docs/architecture/evidence/aim-d132-view-tabs/mutations/margin-ignored.patch
+new file mode 100644
+index 000000000..e2b364127
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d132-view-tabs/mutations/margin-ignored.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/sectionBox.ts a/apps/viewer/src/aim/sectionBox.ts
++index 3969bf60d..0c754b8b2 100644
++--- b/apps/viewer/src/aim/sectionBox.ts
+++++ a/apps/viewer/src/aim/sectionBox.ts
++@@ -50,7 +50,7 @@ export function isSectionBoxMessage(data: unknown): data is SectionBoxMessage {
++ /** Render-rámcový box -> `SectionBox` upstreamu (polia [x, y, z]), s okrajom. */
++ export function toSectionBox(box: { min: Vec3Wire; max: Vec3Wire }, margin = 0) {
++   return {
++-    min: [box.min.x, box.min.y, box.min.z] as [number, number, number],
+++    min: [box.min.x - margin, box.min.y - margin, box.min.z - margin] as [number, number, number],
++     max: [box.max.x + margin, box.max.y + margin, box.max.z + margin] as [number, number, number],
++   };
++ }
+diff --git a/docs/architecture/evidence/aim-d132-view-tabs/mutations/plan-beside-any.patch b/docs/architecture/evidence/aim-d132-view-tabs/mutations/plan-beside-any.patch
+new file mode 100644
+index 000000000..52b5076ba
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d132-view-tabs/mutations/plan-beside-any.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/viewTabsLayout.ts a/apps/viewer/src/aim/viewTabsLayout.ts
++index f617d1107..45fc62221 100644
++--- b/apps/viewer/src/aim/viewTabsLayout.ts
+++++ a/apps/viewer/src/aim/viewTabsLayout.ts
++@@ -59,6 +59,6 @@ export function centerLayout(s: ViewTabsState): CenterLayout {
++     docPane: !!doc,
++     docId: doc?.docId ?? null,
++     // Len vedľa voľnej 3D; pri dokumente je pôdorys sám 3D stranou (zamknutý pohľad v canvase).
++-    planBeside: beside?.kind === 'plan' ? (beside.storeyGuid ?? null) : null,
+++    planBeside: active?.kind === '3d' && beside?.kind === 'plan' ? (beside.storeyGuid ?? null) : null,
++   };
++ }
+diff --git a/docs/architecture/evidence/aim-d132-view-tabs/mutations/ref-case-sensitive.patch b/docs/architecture/evidence/aim-d132-view-tabs/mutations/ref-case-sensitive.patch
+new file mode 100644
+index 000000000..c92979b1b
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d132-view-tabs/mutations/ref-case-sensitive.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/viewTabsPlan.ts a/apps/viewer/src/aim/viewTabsPlan.ts
++index 82eaf6f6e..723d9f86c 100644
++--- b/apps/viewer/src/aim/viewTabsPlan.ts
+++++ a/apps/viewer/src/aim/viewTabsPlan.ts
++@@ -133,7 +133,7 @@ export function syncDocTabs(
++ 
++ /** Odkaz z chatu: id, `3d`, menovka (bez ohľadu na veľkosť písmen) alebo GlobalId podlažia. */
++ export function resolveTabRef(s: ViewTabsState, ref: string): ViewTab | undefined {
++-  const want = ref.trim();
+++  const want = ref.trim().toLowerCase();
++   if (!want) return undefined;
++   return s.tabs.find((t) => t.id.toLowerCase() === want)
++     ?? s.tabs.find((t) => t.label.toLowerCase() === want)
+diff --git a/docs/architecture/evidence/aim-d132-view-tabs/mutations/summary.json b/docs/architecture/evidence/aim-d132-view-tabs/mutations/summary.json
+new file mode 100644
+index 000000000..f66637ab7
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d132-view-tabs/mutations/summary.json
+@@ -0,0 +1,156 @@
++{
++  "box-and-guids": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/sectionBox.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "f277e90d46492e56b627b37b55a6839a30cba765",
++    "production": [
++      "apps/viewer/src/aim/sectionBox.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/sectionBox.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "close-3d": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTabsPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "f277e90d46492e56b627b37b55a6839a30cba765",
++    "production": [
++      "apps/viewer/src/aim/viewTabsPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTabsPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "close-to-3d": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTabsPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "f277e90d46492e56b627b37b55a6839a30cba765",
++    "production": [
++      "apps/viewer/src/aim/viewTabsPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTabsPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "doc-beside-collapses": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTabsPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "f277e90d46492e56b627b37b55a6839a30cba765",
++    "production": [
++      "apps/viewer/src/aim/viewTabsLayout.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTabsPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "doc-open-ignored": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTabsPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "f277e90d46492e56b627b37b55a6839a30cba765",
++    "production": [
++      "apps/viewer/src/aim/viewTabsPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTabsPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "layout-default-split": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTabsPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "f277e90d46492e56b627b37b55a6839a30cba765",
++    "production": [
++      "apps/viewer/src/aim/tabs-protocol.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTabsPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "margin-ignored": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/sectionBox.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "f277e90d46492e56b627b37b55a6839a30cba765",
++    "production": [
++      "apps/viewer/src/aim/sectionBox.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/sectionBox.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "plan-beside-any": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTabsPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "f277e90d46492e56b627b37b55a6839a30cba765",
++    "production": [
++      "apps/viewer/src/aim/viewTabsLayout.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTabsPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "ref-case-sensitive": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTabsPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "f277e90d46492e56b627b37b55a6839a30cba765",
++    "production": [
++      "apps/viewer/src/aim/viewTabsPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTabsPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "two-scenes-beside": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTabsPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "f277e90d46492e56b627b37b55a6839a30cba765",
++    "production": [
++      "apps/viewer/src/aim/viewTabsPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTabsPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "view-without-label": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTabsPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "f277e90d46492e56b627b37b55a6839a30cba765",
++    "production": [
++      "apps/viewer/src/aim/tabs-protocol.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTabsPlan.test.ts"
++    ],
++    "restoration": "verified"
++  }
++}
+diff --git a/docs/architecture/evidence/aim-d132-view-tabs/mutations/two-scenes-beside.patch b/docs/architecture/evidence/aim-d132-view-tabs/mutations/two-scenes-beside.patch
+new file mode 100644
+index 000000000..40bafdf8d
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d132-view-tabs/mutations/two-scenes-beside.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/viewTabsPlan.ts a/apps/viewer/src/aim/viewTabsPlan.ts
++index 7ded9e9e2..723d9f86c 100644
++--- b/apps/viewer/src/aim/viewTabsPlan.ts
+++++ a/apps/viewer/src/aim/viewTabsPlan.ts
++@@ -66,7 +66,7 @@ export function besidePair(s: ViewTabsState, a: string, b: string): { active: st
++   if (isSceneTab(ta) && tb.kind === 'doc') return { active: ta.id, beside: tb.id };
++   if (ta.kind === 'doc' && isSceneTab(tb)) return { active: ta.id, beside: tb.id };
++   // Pôdorys vedľa voľnej 3D: 3D je aktívna, pôdorys je 2D panel plánu.
++-  if (isSceneTab(ta) && isSceneTab(tb)) return { active: ta.id, beside: tb.id };
+++  if (ta.kind === '3d' && tb.kind === 'plan') return { active: ta.id, beside: tb.id };
++   if (ta.kind === 'plan' && tb.kind === '3d') return { active: tb.id, beside: ta.id };
++   return null;
++ }
+diff --git a/docs/architecture/evidence/aim-d132-view-tabs/mutations/view-without-label.patch b/docs/architecture/evidence/aim-d132-view-tabs/mutations/view-without-label.patch
+new file mode 100644
+index 000000000..df3e957e0
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d132-view-tabs/mutations/view-without-label.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/tabs-protocol.ts a/apps/viewer/src/aim/tabs-protocol.ts
++index 78bd82fbf..e351217bf 100644
++--- b/apps/viewer/src/aim/tabs-protocol.ts
+++++ a/apps/viewer/src/aim/tabs-protocol.ts
++@@ -50,7 +50,7 @@ function isOpen(v: unknown): v is TabOpenWire {
++   const o = v as Record<string, unknown>;
++   if (!optional(o.locked, (x) => typeof x === 'boolean') || !optional(o.label, isText)) return false;
++   if (o.kind === 'plan') return isText(o.storeyGuid) && o.viewId === undefined;
++-  if (o.kind === 'view') return isText(o.viewId) && o.storeyGuid === undefined;
+++  if (o.kind === 'view') return isText(o.viewId) && isText(o.label) && o.storeyGuid === undefined;
++   return false;
++ }
++ 
+-- 
+2.43.0
+
