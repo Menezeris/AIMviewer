@@ -6,6 +6,7 @@ import { defaultBcfDeps } from "@/lib/bcf/runtime";
 import { BCF_TOOL_NAMES, execBcfTool } from "@/lib/bcf/tools";
 import { SEARCH_ALL_TOOL } from "@/lib/engine/search-all";
 import { ENGINE_TOOL_NAMES } from "@/lib/engine/tool-defs";
+import { CALIBRATE_UNDERLAY_TOOL } from "@/lib/engine/underlay-tool-def";
 import { FEEDBACK_TOOL_NAMES, execFeedbackTool } from "@/lib/feedback/tools";
 import { broadcastLive, liveChannel } from "@/lib/live/broadcast";
 import { readBackSection } from "@/lib/live/section-readback";
@@ -96,7 +97,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<Mc
     res = await runTool(name, args, timer);
     return res;
   } finally {
-    if (name === SEARCH_ALL_TOOL.name || ENGINE_TOOL_NAMES.has(name)) {
+    if (name === SEARCH_ALL_TOOL.name || name === CALIBRATE_UNDERLAY_TOOL.name || ENGINE_TOOL_NAMES.has(name)) {
       const loadMs = await engineLoadMs(since).catch(() => 0);
       if (loadMs > 0) timer.add("engine_load", loadMs);
     }
@@ -130,6 +131,15 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
   }
   if (VIEWER_QUERY_TOOL_NAMES.has(name)) {
     const res = await timer.phase("exec", () => execViewerQueryTool(name, args, siteUrl()));
+    return { text: [res.text], isError: res.isError };
+  }
+  if (ENGINE_ENABLED && name === CALIBRATE_UNDERLAY_TOOL.name) {
+    // Kalibrácia podkladu (D-133): IFC motor + zápis _georef; lenivo ako ostatné tools motora.
+    const [{ execCalibrateUnderlay }, { defaultUnderlayDeps }] = await Promise.all([
+      import("@/lib/engine/underlay-tool"),
+      import("@/lib/engine/underlay-runtime"),
+    ]);
+    const res = await timer.phase("exec", () => execCalibrateUnderlay(args, defaultUnderlayDeps()));
     return { text: [res.text], isError: res.isError };
   }
   if (ENGINE_ENABLED && name === SEARCH_ALL_TOOL.name) {
