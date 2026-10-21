@@ -1,0 +1,416 @@
+From 2039467acdd9c7427f67380a8c326311bb660bea Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 09:19:56 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?AIM=20D-131:=20m=C3=A9di=C3=A1=20Reality=20?=
+ =?UTF-8?q?Capture=20v=20paneli=20Documents=20pri=20v=C3=BDbere,=20zoskupe?=
+ =?UTF-8?q?n=C3=A9=20pod=C4=BEa=20druhu=20m=C3=A9dia?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011qHFgBHEAYai1dRf16Feve
+---
+ apps/viewer/src/aim/AimDocumentsControls.tsx | 64 +++++++++++++++++---
+ apps/viewer/src/aim/bridge-protocol.ts       |  2 +
+ apps/viewer/src/aim/documentsQuery.test.ts   | 21 ++++++-
+ apps/viewer/src/aim/documentsQuery.ts        | 44 ++++++++++++++
+ 4 files changed, 122 insertions(+), 9 deletions(-)
+
+diff --git a/apps/viewer/src/aim/AimDocumentsControls.tsx b/apps/viewer/src/aim/AimDocumentsControls.tsx
+index 3834068b5..7f93c2a3a 100644
+--- a/apps/viewer/src/aim/AimDocumentsControls.tsx
++++ b/apps/viewer/src/aim/AimDocumentsControls.tsx
+@@ -12,7 +12,9 @@
+  *   · AimSelectionDocuments: effective documents of the selected element from
+  *     AIM_PANEL_DATA, with the path and page; a click opens the PDF in the
+  *     viewer at that page. Documents inherited through zone, storey or group
+- *     carry an AIM badge (AIM D-129): they are an AIM layer, not IFC.
++ *     carry an AIM badge (AIM D-129): they are an AIM layer, not IFC. Reality
++ *     Capture media of the selected space follow, grouped by media kind, also
++ *     with the AIM badge (AIM D-131); a click opens the host's gallery.
+  *
+  * Grouping and search are pure functions in documentsQuery.ts; the view state
+  * lives in a small local store so the panel keeps it across re-mounts.
+@@ -20,11 +22,11 @@
+ 
+ import { useMemo, type ReactNode } from 'react';
+ import { create } from 'zustand';
+-import { FileText } from 'lucide-react';
++import { Camera, FileText } from 'lucide-react';
+ import { cn } from '@/lib/utils';
+ import { useViewerStore, type ViewerDocument } from '@/store';
+ import { postAimNavigate, useAimPanelStore } from './aimPanelStore';
+-import { GROUP_BY_FOLDER, metaKeys, selectionDocuments } from './documentsQuery';
++import { GROUP_BY_FOLDER, metaKeys, selectionDocuments, selectionMedia, type CaptureMediaWire } from './documentsQuery';
+ 
+ interface AimDocumentsView {
+   /** `GROUP_BY_FOLDER` or a `meta` key. */
+@@ -92,16 +94,20 @@ export function AimSelectionDocuments({ docs, filter }: { docs: ReadonlyMap<stri
+     () => (panel.status === 'ready' ? selectionDocuments(panel.data.documents, docs, filter) : []),
+     [panel, docs, filter],
+   );
++  const media = useMemo(
++    () => (panel.status === 'ready' ? selectionMedia(panel.data.captureMedia, filter) : []),
++    [panel, filter],
++  );
+   if (panel.status === 'idle') return <Hint>Vyber prvok v 3D alebo v strome.</Hint>;
+   if (panel.status === 'loading') return <Hint>Načítavam dokumenty výberu...</Hint>;
+   if (panel.status === 'empty') return <Hint>Prvok nie je v AIM, dokumenty k nemu nie sú.</Hint>;
+-  const total = panel.data.documents?.length ?? 0;
++  const total = (panel.data.documents?.length ?? 0) + (panel.data.captureMedia?.length ?? 0);
+   return (
+     <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1" data-aim-selection-documents>
+       <div className="truncate px-1.5 pb-0.5 pt-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground" title={panel.data.title}>
+         {panel.data.title} · {total}
+       </div>
+-      {items.length === 0 ? (
++      {items.length === 0 && media.length === 0 ? (
+         <Hint>{total === 0 ? 'K prvku nevedie žiadny dokument.' : 'Žiadny dokument výberu nezodpovedá hľadaniu.'}</Hint>
+       ) : (
+         items.map((item) => (
+@@ -120,9 +126,7 @@ export function AimSelectionDocuments({ docs, filter }: { docs: ReadonlyMap<stri
+               </span>
+               {item.via && (
+                 <span className="flex min-w-0 items-center gap-1 text-2xs text-muted-foreground">
+-                  {item.aim && (
+-                    <span className="shrink-0 border border-primary/50 bg-primary/10 px-1 font-mono font-bold leading-none text-primary" title="Zdedené cez vzťah: vrstva AIM, nie je v IFC">AIM</span>
+-                  )}
++                  {item.aim && <AimBadge title="Zdedené cez vzťah: vrstva AIM, nie je v IFC" />}
+                   <span className="truncate">{item.via}</span>
+                 </span>
+               )}
+@@ -130,10 +134,54 @@ export function AimSelectionDocuments({ docs, filter }: { docs: ReadonlyMap<stri
+           </button>
+         ))
+       )}
++      {media.map(([label, list]) => (
++        <div key={label} data-aim-capture-media={label}>
++          <div className="truncate px-1.5 pb-0.5 pt-2 text-2xs font-medium text-muted-foreground">
++            {label} · {list.length}
++          </div>
++          {list.map((item) => (
++            <CaptureMediaRow key={item.id} item={item} />
++          ))}
++        </div>
++      ))}
+     </div>
+   );
+ }
+ 
++/** One Reality Capture medium (AIM D-131): thumbnail, date, AIM badge; opens the host's gallery. */
++function CaptureMediaRow({ item }: { item: CaptureMediaWire }) {
++  return (
++    <button
++      type="button"
++      onClick={() => postAimNavigate(item.href)}
++      title={`${item.name}: otvoriť galériu Reality Capture v AIMvieweri`}
++      className="flex w-full min-w-0 items-start gap-1.5 rounded px-1.5 py-1 text-left hover:bg-muted/60"
++    >
++      {item.thumbUrl ? (
++        <img src={item.thumbUrl} alt="" loading="lazy" className="mt-0.5 size-6 shrink-0 rounded-sm object-cover" />
++      ) : (
++        <Camera className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
++      )}
++      <span className="min-w-0 flex-1">
++        <span className="block truncate text-2xs">
++          {item.name}
++          {item.capturedAt && <span className="ml-1.5 text-2xs text-muted-foreground">{item.capturedAt}</span>}
++        </span>
++        <span className="flex min-w-0 items-center gap-1 text-2xs text-muted-foreground">
++          <AimBadge title="Reality Capture: vrstva AIM v databáze, nie je v IFC" />
++          {item.via && <span className="truncate">{item.via}</span>}
++        </span>
++      </span>
++    </button>
++  );
++}
++
++function AimBadge({ title }: { title: string }) {
++  return (
++    <span className="shrink-0 border border-primary/50 bg-primary/10 px-1 font-mono font-bold leading-none text-primary" title={title}>AIM</span>
++  );
++}
++
+ function Hint({ children }: { children: ReactNode }) {
+   return <div className="p-6 text-center text-2xs text-muted-foreground">{children}</div>;
+ }
+diff --git a/apps/viewer/src/aim/bridge-protocol.ts b/apps/viewer/src/aim/bridge-protocol.ts
+index 155929d3c..12016fd4e 100644
+--- a/apps/viewer/src/aim/bridge-protocol.ts
++++ b/apps/viewer/src/aim/bridge-protocol.ts
+@@ -47,6 +47,8 @@ export interface AimPanelData {
+   responsibilities?: { name: string; role: string; org?: string; href?: string }[];
+   /** Reality-capture summary — count + host link opening the gallery. */
+   captures?: { count: number; href: string };
++  /** AIM D-131: Reality Capture media of the space, grouped by kind in the Documents panel. */
++  captureMedia?: import('./documentsQuery.js').CaptureMediaWire[];
+   /** GUID history entries (bitemporal validity; `active` = current GUID). */
+   history?: { guid: string; validFrom: string; validUntil?: string; active: boolean }[];
+   /** AIM D-129: last change by a recipe (model revision vNNN, BCF topic title, date). */
+diff --git a/apps/viewer/src/aim/documentsQuery.test.ts b/apps/viewer/src/aim/documentsQuery.test.ts
+index 5bb52154e..bd31f3794 100644
+--- a/apps/viewer/src/aim/documentsQuery.test.ts
++++ b/apps/viewer/src/aim/documentsQuery.test.ts
+@@ -4,7 +4,7 @@
+ 
+ import { describe, it } from 'node:test';
+ import assert from 'node:assert/strict';
+-import { foldText, GROUP_BY_FOLDER, groupDocuments, matchesFilter, metaKeys, selectionDocuments, show3dTarget, type QueryDocument } from './documentsQuery';
++import { foldText, GROUP_BY_FOLDER, groupDocuments, matchesFilter, metaKeys, selectionDocuments, selectionMedia, show3dTarget, type CaptureMediaWire, type QueryDocument } from './documentsQuery';
+ 
+ const plan3: QueryDocument = {
+   id: 'd3', name: 'D.1.1.03 Pôdorys 3NP', folder: ['D.1.1 ASR'],
+@@ -91,6 +91,25 @@ describe('documentsQuery (D-104)', () => {
+     assert.deepEqual(items.map((i) => i.aim ?? false), [false, true]);
+   });
+ 
++  it('groups the selection\'s Reality Capture media by kind and filters them (AIM D-131)', () => {
++    const photo = (id: string, name: string, thumbUrl?: string): CaptureMediaWire => ({
++      id, name, kind: 'FOTO', kindLabel: 'Fotografia', href: '/ifc?captures=s1', via: 'v miestnosti 3.12', capturedAt: '2026-10-01',
++      ...(thumbUrl ? { thumbUrl } : {}),
++    });
++    const pano: CaptureMediaWire = { id: 'm3', name: 'Stred', kind: 'PANO360', kindLabel: '360° panoráma', href: '/ifc?captures=s1' };
++    const media = [photo('m2', 'Vstup', 'https://cdn/m2_thumb'), pano, photo('m1', 'Okno', 'javascript:alert(1)')];
++    const groups = selectionMedia(media);
++    assert.deepEqual(groups.map(([label, list]) => [label, list.map((m) => m.id)]), [
++      ['360° panoráma', ['m3']],
++      ['Fotografia', ['m2', 'm1']],
++    ]);
++    assert.equal(groups[1][1][0].thumbUrl, 'https://cdn/m2_thumb');
++    assert.equal('thumbUrl' in groups[1][1][1], false);
++    assert.deepEqual(selectionMedia(media, 'panorama').map(([label]) => label), ['360° panoráma']);
++    assert.deepEqual(selectionMedia(media, 'okno 3.12').map(([, list]) => list.map((m) => m.id)), [['m1']]);
++    assert.deepEqual(selectionMedia(undefined), []);
++  });
++
+   it('asks the host for elements of the page being read, only for host documents', () => {
+     assert.deepEqual(show3dTarget('d9', 3), { documentId: 'd9', page: 3 });
+     assert.deepEqual(show3dTarget('d9', 0), { documentId: 'd9' });
+diff --git a/apps/viewer/src/aim/documentsQuery.ts b/apps/viewer/src/aim/documentsQuery.ts
+index 78fbc7fbc..64121f1ef 100644
+--- a/apps/viewer/src/aim/documentsQuery.ts
++++ b/apps/viewer/src/aim/documentsQuery.ts
+@@ -141,6 +141,50 @@ export function selectionDocuments<D extends QueryDocument>(
+   return out;
+ }
+ 
++/**
++ * One Reality Capture medium of the selected space (`AimPanelData.captureMedia`,
++ * AIM D-131): an AIM layer from the host's DB, not an IFC document and not in
++ * DOCUMENTS_LOAD. A click navigates the host to `href` (the space's gallery).
++ */
++export interface CaptureMediaWire {
++  id: string;
++  name: string;
++  /** Media kind code (FOTO, PANO360, SKEN). */
++  kind: string;
++  /** Media kind name, the group heading. */
++  kindLabel: string;
++  href: string;
++  thumbUrl?: string;
++  /** `YYYY-MM-DD`. */
++  capturedAt?: string;
++  /** "v miestnosti X" or "cez miestnosť X". */
++  via?: string;
++}
++
++/**
++ * The selection's media grouped by kind (AIM D-131), filtered like the
++ * documents (name, kind, path, date). Groups by name; media keep the host's
++ * order (newest first). A thumbnail that is not http(s) is dropped.
++ */
++export function selectionMedia(
++  media: readonly CaptureMediaWire[] | undefined,
++  filter = '',
++): [string, CaptureMediaWire[]][] {
++  const byKind = new Map<string, CaptureMediaWire[]>();
++  for (const item of media ?? []) {
++    const probe: QueryDocument = { id: item.id, name: [item.name, item.kindLabel, item.via ?? '', item.capturedAt ?? ''].join(' ') };
++    if (!matchesFilter(probe, filter)) continue;
++    const { thumbUrl, ...rest } = item;
++    const safe = thumbUrl && /^https?:\/\//i.test(thumbUrl) ? { ...rest, thumbUrl } : rest;
++    const label = item.kindLabel || item.kind;
++    const list = byKind.get(label);
++    if (list) list.push(safe);
++    else byKind.set(label, [safe]);
++  }
++  const collator = new Intl.Collator('sk', { numeric: true });
++  return [...byKind.entries()].sort(([a], [b]) => collator.compare(a, b));
++}
++
+ /**
+  * Payload of DOCUMENT_SHOW_3D for an open document: only host documents (a file
+  * opened locally has no elements in the host's graph), the page only when it is
+-- 
+2.43.0
+
+
+From d9fa64f62331c59d35cee3180d75b9b4de7b258a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 09:20:34 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?AIM=20D-131:=20muta=C4=8Dn=C3=A9=20d=C3=B4k?=
+ =?UTF-8?q?azy=20pre=20m=C3=A9di=C3=A1=20Reality=20Capture=20v=20paneli=20?=
+ =?UTF-8?q?Documents?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011qHFgBHEAYai1dRf16Feve
+---
+ .../mutations/README.md                       | 26 +++++++++++
+ .../mutations/media-filter-ignored.patch      | 13 ++++++
+ .../mutations/media-groups-unsorted.patch     | 14 ++++++
+ .../mutations/media-unsafe-thumb-kept.patch   | 13 ++++++
+ .../mutations/summary.json                    | 44 +++++++++++++++++++
+ 5 files changed, 110 insertions(+)
+ create mode 100644 docs/architecture/evidence/aim-d131-capture-media/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-d131-capture-media/mutations/media-filter-ignored.patch
+ create mode 100644 docs/architecture/evidence/aim-d131-capture-media/mutations/media-groups-unsorted.patch
+ create mode 100644 docs/architecture/evidence/aim-d131-capture-media/mutations/media-unsafe-thumb-kept.patch
+ create mode 100644 docs/architecture/evidence/aim-d131-capture-media/mutations/summary.json
+
+diff --git a/docs/architecture/evidence/aim-d131-capture-media/mutations/README.md b/docs/architecture/evidence/aim-d131-capture-media/mutations/README.md
+new file mode 100644
+index 000000000..c6fcca4d6
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d131-capture-media/mutations/README.md
+@@ -0,0 +1,26 @@
++<!-- This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this
++     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
++
++# AIM D-131 Reality Capture media: surgical mutation evidence
++
++AIM D-131 shows the Reality Capture media of the selected space in the Documents panel
++("Len pre výber"), below the selection's documents, grouped by media kind with an AIM badge.
++The host sends them in `AimPanelData.captureMedia`; a click navigates the host to the space's
++gallery. The pure logic is `selectionMedia` in `documentsQuery.ts`. The changed test imports an
++export that does not exist on `main`, so reverting production makes it fail to load and the CI
++revert oracle reports INCONCLUSIVE. Each main decision was instead checked with a surgical
++mutation.
++
++Each patch is written mutant->fixed and reverse-applied by the oracle. Every run ended
++`OBSERVED` (exit 0) with restoration verified against `origin/main`. The records are in
++`summary.json`.
++
++| Patch | Module | Mutation | Test |
++|---|---|---|---|
++| `media-filter-ignored.patch` | `documentsQuery.ts` | the panel filter does not apply to media | `documentsQuery.test.ts` |
++| `media-unsafe-thumb-kept.patch` | `documentsQuery.ts` | a thumbnail URL that is not http(s) reaches `<img src>` | `documentsQuery.test.ts` |
++| `media-groups-unsorted.patch` | `documentsQuery.ts` | media kind groups keep arrival order instead of name order | `documentsQuery.test.ts` |
++
++The rows and group headings in `AimDocumentsControls.tsx` are React glue with no unit test, and
++were verified live in an embedded viewer driven by Playwright posting `AIM_PANEL_DATA`.
+diff --git a/docs/architecture/evidence/aim-d131-capture-media/mutations/media-filter-ignored.patch b/docs/architecture/evidence/aim-d131-capture-media/mutations/media-filter-ignored.patch
+new file mode 100644
+index 000000000..4f52f1803
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d131-capture-media/mutations/media-filter-ignored.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/documentsQuery.ts a/apps/viewer/src/aim/documentsQuery.ts
++index 2d17a6f80..64121f1ef 100644
++--- b/apps/viewer/src/aim/documentsQuery.ts
+++++ a/apps/viewer/src/aim/documentsQuery.ts
++@@ -173,7 +173,7 @@ export function selectionMedia(
++   const byKind = new Map<string, CaptureMediaWire[]>();
++   for (const item of media ?? []) {
++     const probe: QueryDocument = { id: item.id, name: [item.name, item.kindLabel, item.via ?? '', item.capturedAt ?? ''].join(' ') };
++-    void probe;
+++    if (!matchesFilter(probe, filter)) continue;
++     const { thumbUrl, ...rest } = item;
++     const safe = thumbUrl && /^https?:\/\//i.test(thumbUrl) ? { ...rest, thumbUrl } : rest;
++     const label = item.kindLabel || item.kind;
+diff --git a/docs/architecture/evidence/aim-d131-capture-media/mutations/media-groups-unsorted.patch b/docs/architecture/evidence/aim-d131-capture-media/mutations/media-groups-unsorted.patch
+new file mode 100644
+index 000000000..588327772
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d131-capture-media/mutations/media-groups-unsorted.patch
+@@ -0,0 +1,14 @@
++diff --git b/apps/viewer/src/aim/documentsQuery.ts a/apps/viewer/src/aim/documentsQuery.ts
++index 3f0591f57..64121f1ef 100644
++--- b/apps/viewer/src/aim/documentsQuery.ts
+++++ a/apps/viewer/src/aim/documentsQuery.ts
++@@ -182,8 +182,7 @@ export function selectionMedia(
++     else byKind.set(label, [safe]);
++   }
++   const collator = new Intl.Collator('sk', { numeric: true });
++-  void collator;
++-  return [...byKind.entries()];
+++  return [...byKind.entries()].sort(([a], [b]) => collator.compare(a, b));
++ }
++ 
++ /**
+diff --git a/docs/architecture/evidence/aim-d131-capture-media/mutations/media-unsafe-thumb-kept.patch b/docs/architecture/evidence/aim-d131-capture-media/mutations/media-unsafe-thumb-kept.patch
+new file mode 100644
+index 000000000..13e644e28
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d131-capture-media/mutations/media-unsafe-thumb-kept.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/documentsQuery.ts a/apps/viewer/src/aim/documentsQuery.ts
++index 1efd43cd7..64121f1ef 100644
++--- b/apps/viewer/src/aim/documentsQuery.ts
+++++ a/apps/viewer/src/aim/documentsQuery.ts
++@@ -175,7 +175,7 @@ export function selectionMedia(
++     const probe: QueryDocument = { id: item.id, name: [item.name, item.kindLabel, item.via ?? '', item.capturedAt ?? ''].join(' ') };
++     if (!matchesFilter(probe, filter)) continue;
++     const { thumbUrl, ...rest } = item;
++-    const safe = thumbUrl ? { ...rest, thumbUrl } : rest;
+++    const safe = thumbUrl && /^https?:\/\//i.test(thumbUrl) ? { ...rest, thumbUrl } : rest;
++     const label = item.kindLabel || item.kind;
++     const list = byKind.get(label);
++     if (list) list.push(safe);
+diff --git a/docs/architecture/evidence/aim-d131-capture-media/mutations/summary.json b/docs/architecture/evidence/aim-d131-capture-media/mutations/summary.json
+new file mode 100644
+index 000000000..95ac89b3c
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d131-capture-media/mutations/summary.json
+@@ -0,0 +1,44 @@
++{
++  "media-filter-ignored": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/documentsQuery.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "2039467acdd9c7427f67380a8c326311bb660bea",
++    "production": [
++      "apps/viewer/src/aim/documentsQuery.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/documentsQuery.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "media-groups-unsorted": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/documentsQuery.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "2039467acdd9c7427f67380a8c326311bb660bea",
++    "production": [
++      "apps/viewer/src/aim/documentsQuery.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/documentsQuery.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "media-unsafe-thumb-kept": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/documentsQuery.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "2039467acdd9c7427f67380a8c326311bb660bea",
++    "production": [
++      "apps/viewer/src/aim/documentsQuery.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/documentsQuery.test.ts"
++    ],
++    "restoration": "verified"
++  }
++}
+-- 
+2.43.0
+
