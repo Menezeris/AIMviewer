@@ -5,11 +5,11 @@ const { ROWS } = vi.hoisted(() => ({
   ROWS: Array.from({ length: 139 }, (_, i) => ({
     id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
     object_type: "asset",
-    object_ref: `VV.${String(i).padStart(3, "0")}`,
-    name: `VV.${String(i).padStart(3, "0")}`,
+    // Dĺžky ako na produkcii: object_ref je IFC GlobalId (22 znakov), meno kód vyústky.
+    object_ref: `21EwBzpoD2audfgTy${String(i).padStart(5, "0")}`,
+    name: `VV.03.02.${String(i).padStart(3, "0")}`,
     ifc_type: "IfcAirTerminal",
     predefined_type: i < 2 ? "GRILLE" : "DIFFUSER",
-    valid_until: null,
   })) as Record<string, unknown>[],
 }));
 
@@ -23,7 +23,7 @@ vi.mock("@/lib/supabase/server", () => {
     const rows = () => ROWS.filter((r) => filters.every((f) => f(r)));
     const q = {
       select: () => q,
-      is: (col: string, v: unknown) => (filters.push((r) => r[col] === v), q),
+      is: (col: string, v: unknown) => (filters.push((r) => (r[col] ?? null) === v), q),
       eq: (col: string, v: unknown) => (filters.push((r) => r[col] === v), q),
       ilike: (col: string, v: string) => (filters.push((r) => String(r[col]).toLowerCase() === v.toLowerCase()), q),
       or: () => q,
@@ -54,12 +54,23 @@ describe("search_objects mode=list stránkuje (eval D-126, N2)", () => {
       pages += 1;
     }
     expect(new Set(seen).size).toBe(139);
-    expect(pages).toBeLessThanOrEqual(3);
+    // 139 pri strope 100 sú aspoň 2 strany; bez vynechaných stĺpcov boli 3 (63 riadkov na stranu).
+    expect(pages).toBe(2);
   });
 
-  it("úplný zoznam ostáva pole riadkov ako predtým, prázdny radí fulltext", async () => {
-    const grilles = JSON.parse((await new AskToolRuntime().exec("search_objects", { predefined_type: "GRILLE" })).content);
-    expect(grilles.map((r: { object_ref: string }) => r.object_ref)).toEqual(["VV.000", "VV.001"]);
+  it("stĺpce určené filtrom sú raz v same, riadky ich nemajú", async () => {
+    const res = JSON.parse((await new AskToolRuntime().exec("search_objects", { predefined_type: "GRILLE" })).content);
+    expect(res).toMatchObject({ total: 2, truncated: false, same: { predefined_type: "GRILLE" } });
+    expect(res.rows.map((r: { name: string }) => r.name)).toEqual(["VV.03.02.000", "VV.03.02.001"]);
+    expect(res.rows[0]).not.toHaveProperty("predefined_type");
+    expect(res.rows[0]).toHaveProperty("ifc_type", "IfcAirTerminal");
+  });
+
+  it("bez filtra stĺpca ostáva pole celých riadkov, prázdny výsledok radí fulltext", async () => {
+    const all = JSON.parse((await new AskToolRuntime().exec("search_objects", { query: "VV", limit: 5 })).content);
+    expect(all).toMatchObject({ total: 139, returned: 5 });
+    expect(all).not.toHaveProperty("same");
+    expect(all.rows[0]).toHaveProperty("ifc_type");
     const none = JSON.parse((await new AskToolRuntime().exec("search_objects", { ifc_type: "IfcDoor" })).content);
     expect(none).toMatchObject({ rows: [] });
     expect(none.hint).toContain("search_everything");

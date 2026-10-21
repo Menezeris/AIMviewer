@@ -54,6 +54,32 @@ const MAX_LIMIT = 100;
 const SHOW_3D_CAP = 100;
 /** Max dĺžka JSON payloadu tool výsledku (ochrana kontextu). */
 const MAX_RESULT_CHARS = 12_000;
+
+/** Stĺpce search_objects, ktoré môže určiť filter (eval D-126, N2). */
+const FILTER_COLUMNS = ["object_type", "ifc_type", "predefined_type"] as const;
+
+/**
+ * Stĺpec, ktorý určuje filter a má na strane jednu hodnotu, sa z riadkov vynechá a uvedie raz
+ * v `same`. Riadok vyústky je tak o štvrtinu kratší a do výsledku sa zmestí viac riadkov.
+ */
+export function hoistFilterColumns<T extends object>(
+  rows: T[],
+  input: Record<string, unknown>,
+): { same: Record<string, unknown> | null; rows: Partial<T>[] } {
+  const same: Record<string, unknown> = {};
+  const cell = (r: T, col: string) => (r as Record<string, unknown>)[col];
+  for (const col of FILTER_COLUMNS) {
+    if (typeof input[col] !== "string" || !input[col] || rows.length === 0) continue;
+    const v = cell(rows[0], col);
+    if (rows.every((r) => cell(r, col) === v)) same[col] = v;
+  }
+  const keys = Object.keys(same);
+  if (keys.length === 0) return { same: null, rows };
+  return {
+    same,
+    rows: rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !keys.includes(k))) as Partial<T>),
+  };
+}
 /** Koľko prvkov naraz zvládne lokalizácia (search_objects mode=locate). */
 const LOCATE_CAP = 500;
 /** Veľkosť dávky pre `.in()` filtre (limit dĺžky URL v PostgREST). */
@@ -219,7 +245,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "predvolene object_type asset, alebo ids z predošlého hľadania). `query` hľadá v názve, object_ref, IFC " +
       "triede aj predefined_type (ilike). ifc_type = IFC trieda (IfcDoor), predefined_type = podtyp " +
       "(AIRCONDITIONINGUNIT je predefined_type, NIE ifc_type). Obsah psetov ani účel miestnosti (lobby, sklad) " +
-      "nevidí - na to search_everything. list nad 100 riadkov stránkuj cez offset; " +
+      "nevidí - na to search_everything. list nad 100 riadkov stránkuj cez offset; stĺpce určené filtrom sú raz v same; " +
       "slovník tried a psetov dá get_model_stats.",
     inputSchema: {
       type: "object",
@@ -964,11 +990,13 @@ export class AskToolRuntime {
     }
     // Eval D-126 (N2): list s limit=100 pri 139 vyústkach vrátil 100 riadkov bez znamenia, že chýba zvyšok.
     const page = pageInfo(count ?? offset + rows.length, offset, rows.length);
-    if (!page.truncated && offset === 0) return rows;
+    const { same, rows: narrow } = hoistFilterColumns(rows, input);
+    if (!page.truncated && offset === 0 && !same) return rows;
     return {
       ...page,
       ...(page.truncated ? { hint: `Výsledok je orezaný: ďalšia strana offset=${page.next_offset}.` } : {}),
-      rows,
+      ...(same ? { same } : {}),
+      rows: narrow,
     };
   }
 
