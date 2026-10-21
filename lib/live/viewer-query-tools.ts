@@ -4,6 +4,8 @@ import { lookupGuids } from "@/lib/engine/aim-lookup";
 import type { ToolDefinition } from "@/lib/llm/provider";
 import { ViewInputError } from "@/lib/llm/view-plan";
 import { resolveTargets } from "@/lib/llm/view-tools";
+import { defaultSavedViewDeps } from "@/lib/views/runtime";
+import { listSavedViews } from "@/lib/views/tools";
 
 import { liveChannel } from "./broadcast";
 import { MAX_QUERY_GUIDS, type ViewerQuery } from "./protocol";
@@ -29,11 +31,14 @@ export const VIEWER_QUERY_TOOL_DEFINITIONS: ToolDefinition[] = [
       "alebo X-ray s počtom prvkov). bounds=true alebo cieľ (target_ids_or_refs, global_ids) = namiesto " +
       "stavu obálky v súradniciach IFC (m, Z hore): celý model a prvky (min, max, size, center, section_axis), " +
       "napr. pred presným rezom set_section(orientation, coordinate_m); zostava bez geometrie sa zráta z častí, " +
-      "missing = prvky bez geometrie.",
+      "missing = prvky bez geometrie. ULOŽENÉ POHĽADY: saved_views=true = zoznam a opis uložených pohľadov stavby " +
+      "(rez, režim, podlažie, kamera, počty prvkov) a 'Posledný pohľad', aj bez otvoreného viewera; obnova cez " +
+      "set_view_mode(saved_view).",
     inputSchema: {
       type: "object",
       properties: {
         bounds: { type: "boolean", description: "Obálky namiesto stavu (bez cieľa len obálka modelu)" },
+        saved_views: { type: "boolean", description: "Namiesto stavu zoznam uložených pohľadov (D-122)" },
         target_ids_or_refs: {
           type: "array",
           items: { type: "string" },
@@ -105,8 +110,12 @@ async function withAimRefs(result: unknown, input: Record<string, unknown>): Pro
     delete rest.items;
     selection = { ...rest, ...summarizeSelection(r.selection, ctx, input) };
   }
+  // GUIDy skrytých a izolovaných (D-122) sú pre uloženie pohľadu; Claudovi stačia počty.
+  const { hidden_guids: _h, isolated_guids: _i, ...state } = r as typeof r & { hidden_guids?: unknown; isolated_guids?: unknown };
+  void _h;
+  void _i;
   return {
-    ...r,
+    ...state,
     ...(r.elements ? { elements: r.elements.map((e) => ({ ...e, ...ref(e.guid) })) } : {}),
     ...(r.selection ? { selection } : {}),
     ...(aimError ? { aim_refs_error: aimError } : {}),
@@ -133,6 +142,9 @@ export async function execViewerQueryTool(
 ): Promise<{ text: string; isError: boolean }> {
   const channel = liveChannel();
   try {
+    if (input.saved_views === true) {
+      return { text: JSON.stringify(await listSavedViews(defaultSavedViewDeps())), isError: false };
+    }
     const kind = viewerQueryOf(input);
     const guids = kind === "bounds" && (input.target_ids_or_refs || input.global_ids) ? await resolveTargets(input) : [];
     const lens = channel && kind === "view_state" ? lensOfState(channel, query) : undefined;

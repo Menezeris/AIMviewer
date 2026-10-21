@@ -21,6 +21,8 @@ import type { AskAction } from "@/lib/llm/actions";
 import { AskToolRuntime } from "@/lib/llm/tools";
 import { callAction, writeCallLog } from "@/lib/mcp/call-log";
 import { mcpToolDefinitions } from "@/lib/mcp/tool-list";
+import { defaultSavedViewDeps } from "@/lib/views/runtime";
+import { SAVED_VIEW_TOOL_NAMES, execSavedViewTool } from "@/lib/views/tools";
 import {
   handleMcpPayload,
   parseErrorResponse,
@@ -44,6 +46,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const NO_STORE = { "Cache-Control": "no-store" };
+/** Dlhší záložný odkaz sa do odpovede nevypisuje. */
+const MAX_LINK = 2000;
 
 function tokenMatches(given: string): boolean {
   const expected = process.env.MCP_TOKEN?.trim();
@@ -114,6 +118,10 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
     const res = await timer.phase("exec", () => execBcfTool(name, args, defaultBcfDeps()));
     return { text: [res.text], isError: res.isError };
   }
+  if (SAVED_VIEW_TOOL_NAMES.has(name)) {
+    const res = await timer.phase("exec", () => execSavedViewTool(name, args, defaultSavedViewDeps()));
+    return { text: [res.text], isError: res.isError };
+  }
   if (FEEDBACK_TOOL_NAMES.has(name)) {
     const res = await timer.phase("exec", () => execFeedbackTool(name, args));
     return { text: [res.text], isError: res.isError };
@@ -154,7 +162,10 @@ async function deliverActions(
 ): Promise<string[]> {
   const text: string[] = [];
   const site = siteUrl();
-  const links = actions.map((a) => `${a.label}: ${site}${a.url}`).join("\n");
+  // Obnova uloženého pohľadu nesie stovky GUID (D-122): taký odkaz Claudovi nič nepovie.
+  const links = actions
+    .map((a) => `${a.label}: ${a.url.length > MAX_LINK ? "(príkaz je na odkaz pridlhý, ide len do živého viewera)" : `${site}${a.url}`}`)
+    .join("\n");
   const channel = liveChannel();
   if (!channel) {
     text.push(`Živý viewer nie je nastavený (chýba LIVE_CHANNEL). Odkaz na otvorenie:\n${links}`);

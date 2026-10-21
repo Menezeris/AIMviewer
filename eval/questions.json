@@ -790,6 +790,14 @@
       "expect": { "tools_called": ["ifc_query", "ifc_measure", "style_in_3d"], "answer_matches": ["\\b12\\b"] },
       "verified": false,
       "notes": "D-118 dodatok (issue #77): ifc_query(IfcDoor, storey=1NP) -> ifc_measure(items, clear_opening, min_width_m=0.8) -> style_in_3d(check.style_fail, ef4444). 12 = počet podľa AIM_Door.ClearWidth < 800 na 1NP (konektor 2026-10-20), geometria dáva tie isté šírky; eval behom neoverené."
+    },
+    {
+      "id": "saved-view-restore-lower",
+      "category": "view",
+      "question": "Rež to ako minule, ale o meter nižšie.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-122 (issue #72): set_view_mode(saved_view='Posledný pohľad', section_offset_m=-1); predtým uložený pohľad cez saved_view(action=save). Len MCP so živým viewerom."
     }
   ]
 }
