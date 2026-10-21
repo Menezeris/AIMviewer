@@ -1,5 +1,6 @@
 import type { LiveAppliedPayload } from "./protocol";
 import { withSectionOrientation } from "./section-orientation";
+import { visibleArea, type ViewerCamera } from "../viewer-camera";
 
 /**
  * Text pre model po potvrdení príkazu vo vieweri (D-101). Stav je ten, ktorý
@@ -9,11 +10,20 @@ import { withSectionOrientation } from "./section-orientation";
 
 export const ACK_TIMEOUT_MS = 3000;
 
+/** Po `set_camera` k stavu pridá viditeľnú oblasť z koncovej kamery (D-128). */
+function withVisibleArea(tool: string, state: unknown): unknown {
+  if (tool !== "set_camera" || !state || typeof state !== "object") return state;
+  const camera = (state as { camera?: unknown }).camera;
+  if (!camera || typeof camera !== "object") return state;
+  const visible = visibleArea(camera as ViewerCamera);
+  return visible ? { ...state, visible } : state;
+}
+
 export function appliedText(tool: string, a: LiveAppliedPayload, elapsedMs?: number): string {
   const head = a.ok
     ? `Vykonané vo vieweri${elapsedMs !== undefined ? ` (${elapsedMs} ms)` : ""}.`
     : `Vo vieweri sa nevykonalo všetko: ${a.issues.join("; ")}.`;
-  const state = a.state === undefined ? "" : ` Stav po príkaze: ${JSON.stringify(withSectionOrientation(a.state))}.`;
+  const state = a.state === undefined ? "" : ` Stav po príkaze: ${JSON.stringify(withVisibleArea(tool, withSectionOrientation(a.state)))}.`;
   // D-092: rez nad podlažím má sedieť s eleváciou z DB, inak ho nepotvrdzuj.
   const section =
     tool === "set_section"

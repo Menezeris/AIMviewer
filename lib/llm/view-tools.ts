@@ -4,12 +4,12 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { resolveTargetsToGuids } from "@/lib/engine/aim-lookup";
 import { normalizeStoreyLabel } from "@/lib/engine/storey";
 import { CAMERA_PRESETS } from "@/lib/viewer-ops";
-import { CAMERA_FITS, CAMERA_RANGES } from "@/lib/viewer-camera";
+import { CAMERA_AREAS, CAMERA_FITS, CAMERA_RANGES, DEFAULT_MARGIN_PERCENT } from "@/lib/viewer-camera";
 
 import type { AskAction } from "./actions";
 import type { ToolDefinition } from "./provider";
 import { planCamera } from "./camera-plan";
-import { SECTION_CAPS, planSectionCap } from "../viewer-section-cap";
+import { HATCH_PATTERNS, HATCH_RANGES, SECTION_CAPS, planSectionCap } from "../viewer-section-cap";
 import { DOMAIN_IFC_TYPES } from "./ifc-selector";
 import { ViewInputError, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
 import { SECTION_SHIFT_RANGE } from "../views/plan";
@@ -43,7 +43,8 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "vertical_z na IFC Y, horizontal na IFC Z - výške); súradnice dá get_viewer_state(bounds). position_percent " +
       "(0-100 % obálky celej scény, nie budovy) len ako posledná možnosť. action=clear rez zruší. Čistý pohľad bez widgetu rezu = " +
       "show_widget=false (pri set) alebo action=widget, show_widget=false (rez ostáva). Rezná plocha = cap_style " +
-      "(hatch = šrafa, solid = plná výplň, none = bez plochy, ostanú obrysy) a cap_color; aktívny rez bez zmeny " +
+      "(hatch = šrafa, solid = plná výplň, none = bez plochy, ostanú obrysy) a cap_color; šrafa = hatch_pattern " +
+      "(predvolene diagonal 45°), hatch_angle_deg, hatch_spacing_px, hatch_line_width_px; aktívny rez bez zmeny " +
       "polohy = action=widget + cap_style ('vypni šrafu' = action=widget, cap_style=none alebo solid). Príklad 'ukáž strop " +
       "nad miestnosťou na 2NP, kade idú potrubia': set_section(floor=3NP, offset_m=-0.4) + " +
       "style_in_3d(hide, ifc_type=IfcCovering) + set_camera(preset=top, target=miestnosť).",
@@ -86,6 +87,23 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
           description: "Rezná plocha: hatch = šrafa, solid = plná výplň, none = bez plochy (viewer si voľbu pamätá)",
         },
         cap_color: { type: "string", description: "Farba výplne reznej plochy #rrggbb (bez cap_style = solid)" },
+        hatch_pattern: {
+          type: "string",
+          enum: [...HATCH_PATTERNS],
+          description: "Vzor šrafy (bez cap_style = hatch): diagonal (predvolený), diagonal_reverse, cross = mriežka, crosshatch = krížom 45°, horizontal, vertical, dots, brick, insulation",
+        },
+        hatch_angle_deg: {
+          type: "number",
+          description: `Uhol šrafy v stupňoch (${HATCH_RANGES.angleDeg.min} až ${HATCH_RANGES.angleDeg.max}, ako pole Uhol v paneli rezu; diagonal default 45), len diagonal, diagonal_reverse, cross, crosshatch`,
+        },
+        hatch_spacing_px: {
+          type: "number",
+          description: `Rozstup čiar šrafy v pixeloch obrazovky (${HATCH_RANGES.spacingPx.min} až ${HATCH_RANGES.spacingPx.max}, default 8)`,
+        },
+        hatch_line_width_px: {
+          type: "number",
+          description: `Hrúbka čiary šrafy v pixeloch (${HATCH_RANGES.widthPx.min} až ${HATCH_RANGES.widthPx.max}, default 1)`,
+        },
       },
       required: ["action"],
     },
@@ -97,13 +115,16 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "model; section = kolmo na aktívny rez, ako tlačidlo Set view; keep = zachovať smer, default). fit = čo " +
       "zarámovať pri danom smere: visible (viditeľné, aj izolované prvky), selection (výber vo vieweri). Cieľ " +
       "prvkami (target_ids_or_refs alebo global_ids) alebo filtrom ako style_in_3d (ifc_type, ifc_types, " +
-      "domain, model) zarámuje kameru naň. Relatívne kroky od aktuálneho pohľadu, vždy v SAMOSTATNOM volaní " +
+      "domain, model) zarámuje kameru naň s okrajom margin_percent (default 40 %); s preset=section najprv kolmo " +
+      "na rez, potom rámovanie cieľa. area (left/right/top/bottom podľa obrazu, front/back bližšie/ďalej) " +
+      "zarámuje len cieľové prvky (alebo výber pri fit=selection) v tej tretine. Potvrdenie viewera vráti koncovú " +
+      "kameru a visible (stred, šírka a výška záberu v m). Relatívne kroky od aktuálneho pohľadu, vždy v SAMOSTATNOM volaní " +
       "bez presetu, fit, cieľa a projection: zoom_percent (+ priblíž, - oddiaľ), orbit_h_deg (+ doľava), " +
       "orbit_v_deg (+ viac zhora), pan_x_percent/pan_y_percent (% pohľadu, + doprava/hore). projection " +
       "orthographic = bez perspektívy (pôdorys, fasáda). Príklady: 'oddiaľ o 15 %' = zoom_percent=-15; " +
       "'izolované VZT v iso na celú obrazovku' = preset=iso, fit=visible, projection=perspective; 'rez " +
-      "schodiskom kolmo' = set_section cez schodisko, potom preset=section, fit=visible. Polohu kamery po " +
-      "zmene over cez get_viewer_state.",
+      "schodiskom kolmo' = set_section cez schodisko, potom preset=section, fit=visible; 'atika vľavo v reze' = " +
+      "set_section + search_objects(PARAPET) + set_camera(preset=section, target_ids_or_refs=atiky, area=left).",
     inputSchema: {
       type: "object",
       properties: {
@@ -124,6 +145,15 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         pan_x_percent: { type: "number", description: "Posun pohľadu v % šírky (-100 až 100), + = doprava" },
         pan_y_percent: { type: "number", description: "Posun pohľadu v % výšky (-100 až 100), + = hore" },
         projection: { type: "string", enum: ["perspective", "orthographic"] },
+        margin_percent: {
+          type: "number",
+          description: `Okraj okolo cieľa v % jeho veľkosti (${CAMERA_RANGES.marginPercent.min} až ${CAMERA_RANGES.marginPercent.max}, s cieľom default ${DEFAULT_MARGIN_PERCENT}); tenký prvok = väčší okraj`,
+        },
+        area: {
+          type: "string",
+          enum: [...CAMERA_AREAS],
+          description: "Len časť cieľa (alebo výberu) podľa smeru pohľadu: left/right/top/bottom na obrazovke, front/back bližšie/ďalej od kamery",
+        },
       },
     },
   },

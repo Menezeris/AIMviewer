@@ -34,7 +34,7 @@ describe("tools pohľadu (D-083 fáza 1)", () => {
 
   it("kamera zhora na miestnosť bez perspektívy", () => {
     const p = planCamera({ preset: "top", projection: "orthographic" }, [ROOM]);
-    expect(parseOps(p.ops[0])).toEqual([{ op: "camera", preset: "top", projection: "orthographic", guids: [ROOM] }]);
+    expect(parseOps(p.ops[0])).toEqual([{ op: "camera", preset: "top", projection: "orthographic", guids: [ROOM], marginPercent: 40 }]);
     expect(() => planCamera({ preset: "diagonal" }, [])).toThrow(ViewInputError);
   });
 

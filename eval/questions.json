@@ -838,6 +838,22 @@
       "expect": { "tools_called": ["feedback_status"] },
       "verified": false,
       "notes": "D-126 (issue #171): feedback_status(state=closed, verified=false). Len MCP s FEEDBACK_GITHUB_TOKEN."
+    },
+    {
+      "id": "section-parapet-left",
+      "category": "view",
+      "question": "Sprav zvislý rez po dĺžke budovy a priblíž mi atiku na ľavej strane.",
+      "expect": { "tools_called": ["set_section", "set_camera"] },
+      "verified": false,
+      "notes": "D-128 (issue #172): set_section + search_objects(PARAPET) + set_camera(preset=section, target_ids_or_refs, area=left), najviac 3 volania; okraj predvolene 40 %, visible v potvrdení viewera."
+    },
+    {
+      "id": "section-hatch-diagonal",
+      "category": "view",
+      "question": "Daj na rez diagonálnu šrafu pod 45 stupňov s väčším rozstupom.",
+      "expect": { "tools_called": ["set_section"] },
+      "verified": false,
+      "notes": "D-128 (issue #173): set_section(action=widget, hatch_pattern=diagonal, hatch_angle_deg=45, hatch_spacing_px nad 8)."
     }
   ]
 }

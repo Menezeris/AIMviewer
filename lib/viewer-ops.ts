@@ -12,7 +12,8 @@
  * rez cez prvky (D-085) `section:<auto|y|x|z>~fit=<along|across|center>:<guid.guid...>`
  * a na súradnici IFC sveta `section:<y|x|z>~c=<m>::`,
  * `section_clear::`, `section_gizmo:<0|1>:`, `camera:<preset>[~proj=o|p]:<guid.guid...>` (fit a relatívne kroky
- * `~fit=..~z=..~oh=..~ov=..~px=..~py=..` a `camera_sel:<arg>:<selektor>`, D-094/D-098, `lib/viewer-camera.ts`),
+ * `~fit=..~z=..~oh=..~ov=..~px=..~py=..`, okraj a časť cieľa `~mg=..~ar=..` (D-128) a `camera_sel:<arg>:<selektor>`,
+ * D-094/D-098, `lib/viewer-camera.ts`),
  * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>[~r=<x>_<y>_<w>_<h>][~h=<x>_<y>_<w>_<h>_...]:<documentId>`
  * (výrez strany v %, D-117; rámiky okolo textu v %, po štyroch číslach, D-123).
  * Presná póza kamery z uloženého pohľadu (D-122): `pose:<px,py,pz,tx,ty,tz,ux,uy,uz>[~o=<m>][~proj=o|p]:`
@@ -23,7 +24,7 @@
 import { LENS_MODES, decodeLensWire, lensBridgeMessage, type LensMode, type LensWire } from "./viewer-lens";
 import { parseSectionCapArg, sectionCapBridgeMessage, type SectionCapOp } from "./viewer-section-cap";
 import { decodeListWire, listBridgeMessage, type ListWire } from "./viewer-list";
-import { cameraMoveArgs, parseCameraMove, type BridgeViewpoint, type CameraMove } from "./viewer-camera";
+import { cameraMoveArgs, marginToPadding, parseCameraMove, type BridgeViewpoint, type CameraMove } from "./viewer-camera";
 import { decodeMeasureWire, type MeasureSegment } from "./viewer-measure";
 
 export interface OpsSelector {
@@ -445,6 +446,9 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
         ...(o.selector ? { selector: o.selector } : {}),
         // Relatívne kroky sem nepatria: host z nich spraví pózu (applyCameraOp v ifc-viewer.tsx).
         ...(o.fit ? { fit: o.fit } : {}),
+        // Okraj a časť cieľa (D-128): fork rámuje `frameBounds` s okrajom; starší fork ich ignoruje.
+        ...(o.marginPercent !== undefined ? { padding: marginToPadding(o.marginPercent) } : {}),
+        ...(o.area ? { area: o.area } : {}),
       };
     case "pose":
       return { type: "SET_CAMERA", preset: "keep", viewpoint: o.viewpoint, ...(o.projection ? { projection: o.projection } : {}) };
