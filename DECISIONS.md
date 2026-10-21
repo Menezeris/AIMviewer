@@ -5994,7 +5994,7 @@ zdedené dokumenty s odznakom). Reality Capture v paneli Documents a voľba expo
 
 ### D-131 - Reality Capture v paneli Documents, druh média ako druhá os klasifikácie, export AIM vrstiev do IFC
 **Status:** rozhodnuté (2026-10-21, session pre #192 podľa D-129), číslo pridelené v registri #60. Body 1 a 2
-implementované, bod 3 navrhnutý (samostatná úloha). Nadväzuje na D-073 (Reality Capture), D-089 (odvodené
+implementované, bod 3 navrhnutý a zaparkovaný (#202). Nadväzuje na D-073 (Reality Capture), D-089 (odvodené
 vzťahy), D-104 (dokumenty, klasifikácia dokumentu), D-127 (odznak AIM v paneli Documents), D-129.
 
 **Kontext:** D-129 nechal Reality Capture ako AIM vrstvu (body a médiá v DB, `aim_` hrany), ale vo vieweri
@@ -6024,7 +6024,8 @@ druhá os by typ prepísala náhodne. Export IFC existuje len vo forku (upstream
      bez zmeny forku. Atribúty `ElectronicFormat` (kľúč "Formát") a `LastRevisionTime` ("Revízia") už `meta`
      nesie; `CreationTime`, `Purpose`, `ValidFrom`/`ValidUntil` dopĺňa recept, `meta` ich ukáže, keď ich
      ETL začne ukladať (dnes ich `documents` nemá, samostatný krok).
-3. **Export IFC s AIM vrstvami (návrh, samostatný fork PR + AIMviewer PR).**
+3. **Export IFC s AIM vrstvami (návrh; zaparkované, #202).** Samuel 21. 10.: export ostáva ako doteraz, návrh
+   nižšie je podklad pre #202.
    - **Miesto:** export vo forku (jediný zápis IFC v platforme). Dialóg exportu dostane v bloku `AIM-FORK`
      voľbu "Zahrnúť AIM vrstvy" (len vo vložení v AIMvieweri, predvolene vypnutá). Zápis AIM entít je čistý
      modul `apps/viewer/src/aim/aimIfcExport.ts`, ktorý doplní riadky STEP k výstupu `StepExporter`
@@ -6060,4 +6061,4 @@ druhá os by typ prepísala náhodne. Export IFC existuje len vo forku (upstream
 
 **Dôsledky:** bez migrácie a bez nového env. Fork (vetva D-127): skupiny médií v "Len pre výber". Pre
 OCB: recept na klasifikáciu `Druh média` pre obrázky v IFC (dnes žiadne, takže až s prvým fotodokumentom
-v modeli). Export AIM vrstiev ostáva otvorený v #192.
+v modeli). Export AIM vrstiev je zaparkovaný v #202.
