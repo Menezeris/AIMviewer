@@ -24,7 +24,7 @@ Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/vie
 - **`get_model_stats`** (D-056, čítanie) - Slovník modelu: počty uzlov podľa object_type, zoznam IFC tried assetov (ifc_type × predefined_type) s počtami, zoznam psetov (názvy + počet properties), podlažia, systémy, klasifikačné systémy a dokumenty.
   Parametre: žiadne
 - **`search_objects`** (D-056, čítanie) - Nájde, SPOČÍTA alebo LOKALIZUJE uzly grafu AIM podľa identity a IFC typológie. mode=list (default): riadky; count: presný počet ('koľko X je v budove'; z riadkov list nepočítaj, sú orezané); locate: presný počet + rozpad po podlažiach a miestnostiach so vzorkou ('koľko X a kde / na ktorých podlažiach', predvolene object_type asset, alebo ids z predošlého hľadania). `query` hľadá v názve, object_ref, IFC triede aj predefined_type (ilike). ifc_type = IFC trieda (IfcDoor), predefined_type = podtyp (AIRCONDITIONINGUNIT je predefined_type, NIE ifc_type).
-  Parametre: `mode=list|count|locate`, `query`, `object_type`, `ifc_type`, `predefined_type`, `ids`, `limit`
+  Parametre: `mode=list|count|locate`, `query`, `object_type`, `ifc_type`, `predefined_type`, `ids`, `limit`, `offset`
 - **`query_view`** (D-056, čítanie) - Generický read-only dopyt nad ľubovoľnou tabuľkou/view v DB (celá dátová vrstva).
   Parametre: `relation*`, `select`, `filters`, `order`, `count_only`, `limit`, `offset`, `related`
 - **`aggregate_objects`** (D-060, čítanie) - Presné agregácie a ČÍSELNÉ porovnania nad hodnotami psetov — počíta databáza, nikdy nepočítaj z orezaných riadkov.
@@ -70,7 +70,7 @@ Zdroj: DB (saved_views) + živý viewer. Definície: lib/views/tools.ts (zoznam 
 
 Zdroj: DB (model_tasks) + session. Definície: lib/bcf/tools.ts. Len MCP.
 
-- **`bcf_topic_list`** (D-099, čítanie) - BCF témy nad modelmi federácie (D-099), najnovšie prvé: číslo, guid, názov, stav, typ, priorita, komu, model, počet prvkov a komentárov, odkaz na Claude session.
+- **`bcf_topic_list`** (D-099, čítanie) - BCF témy nad modelmi federácie (D-099; issues a požiadavky konektora dá feedback_status), najnovšie prvé: číslo, guid, názov, stav, typ, priorita, komu, model, počet prvkov a komentárov, odkaz na Claude session.
   Parametre: `status`, `model`, `assigned_to`, `guid`, `limit`
 - **`bcf_topic`** (D-099, zápis) - Zápis BCF témy nad modelom federácie (D-099). action=create: založí tému (chyba, kolízia, pripomienka, požiadavka na úpravu modelu), keď používateľ povie 'založ BCF / tému / issue'; prvky cez target_ids_or_refs alebo global_ids, s capture_view (predvolene) sa vezme výber, kamera, rez a režim z otvoreného viewera. assigned_to='claude' = tému rieši Claude: spustí sa Claude Code session (úprava IFC v OCB, nová revízia); ľudí priraď menom alebo e-mailom. update: stav, priorita, komu, popis, štítky, termín alebo comment; start_session spustí session pre tému Claudovi. close: uzavrie tému bez úpravy modelu. viewpoint: nastaví jediný pohľad témy (selection_global_ids, capture_view).
   Parametre: `action*=create|update|close|viewpoint`, `guid`, `title`, `description`, `comment`, `status`, `priority`, `assigned_to`, `type`, `labels`, `model`, `due_date`, `author`, `modified_by`, `target_ids_or_refs`, `global_ids`, `selection_global_ids`, `capture_view`, `start_session`

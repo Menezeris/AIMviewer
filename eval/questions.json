@@ -804,16 +804,16 @@
       "category": "count",
       "question": "Ktoré vyústky (IfcAirTerminal) sú v priestore 2.01? Daj úplný zoznam.",
       "expect": { "tools_called": ["query_view"] },
-      "verified": false,
-      "notes": "D-126 (issue #181): query_view relation=v_space_elements (space_ref=2.01, element_ifc_type=IfcAirTerminal) alebo relation=objects s related={relation: rel_referenced_in_spatial_structure, node: 2.01}. Konektor 2026-10-21: v_space_elements 20 riadkov (contained aj referenced); odpoveď nesmie byť z orezanej strany (truncated)."
+      "verified": true,
+      "notes": "D-126 (issue #181): query_view relation=v_space_elements (space_ref=2.01, element_ifc_type=IfcAirTerminal) alebo relation=objects s related={relation: rel_referenced_in_spatial_structure, node: 2.01}. Konektor 2026-10-21: v_space_elements 20 riadkov (contained aj referenced); odpoveď nesmie byť z orezanej strany (truncated). Eval 2026-10-21 (D-126): 20 vyústiek DIFFUSER inside; prvé volanie s filtrom ifc_type zlyhalo (stĺpec je element_ifc_type)."
     },
     {
       "id": "air-terminals-count-paged",
       "category": "count",
       "question": "Koľko je v budove vyústiek? Vypíš ich všetky.",
       "expect": { "tools_called": ["query_view"], "answer_matches": ["\\b139\\b"] },
-      "verified": false,
-      "notes": "D-126 (issue #181): query_view(objects, ifc_type=IfcAirTerminal) vráti total=139, truncated=true, next_offset=100; druhá strana offset=100 dá zvyšných 39. 139 z konektora 2026-10-21 (aggregate_objects s filters)."
+      "verified": true,
+      "notes": "D-126 (issue #181): query_view(objects, ifc_type=IfcAirTerminal) vráti total=139, truncated=true, next_offset=100; druhá strana offset=100 dá zvyšných 39. 139 z konektora 2026-10-21 (aggregate_objects s filters). Eval 2026-10-21: 139 overené; agent šiel cez search_objects (10 volaní), 100 riadkov sa nezmestilo do výsledku a next_offset preskakoval riadky - opravené fitPage."
     },
     {
       "id": "rentable-spaces",
@@ -821,15 +821,15 @@
       "question": "Ukáž mi prenajímateľné priestory.",
       "expect": { "tools_called": ["search_all", "show_in_3d"] },
       "verified": false,
-      "notes": "D-126 (issue #174): search_all(prenajímateľné) nájde IfcZone Nájomné priestory (LongName) a cez related jej priestory, ich id sú v show_in_3d.ids_or_refs. Počet priestorov zóny neoverený."
+      "notes": "D-126 (issue #174): search_all(prenajímateľné) nájde IfcZone Nájomné priestory (LongName) a cez related jej priestory, ich id sú v show_in_3d.ids_or_refs. Počet priestorov zóny neoverený. Eval 2026-10-21: zóna Nájomné priestory má 32 miestností (style_in_3d zone); agent search_all nezavolal."
     },
     {
       "id": "lobby-space",
       "category": "search",
       "question": "Zvýrazni mi lobby.",
       "expect": { "tools_called": ["search_all", "show_in_3d"], "answer_matches": ["1\\.01"] },
-      "verified": false,
-      "notes": "D-126 (issue #174): search_all(lobby) vráti priestor 1.01 (LongName Lobby) ako prvý výsledok, nie search_objects. Konektor 2026-10-21."
+      "verified": true,
+      "notes": "D-126 (issue #174): search_all(lobby) vráti priestor 1.01 (LongName Lobby) ako prvý výsledok, nie search_objects. Konektor 2026-10-21. Eval 2026-10-21: 1.01 nájdené cez search_all po prázdnom search_objects."
     },
     {
       "id": "closed-unverified-issues",
@@ -837,6 +837,9 @@
       "question": "Ktoré issues sme už dokončili, ale ešte nie sú skontrolované?",
       "expect": { "tools_called": ["feedback_status"] },
       "verified": false,
+      "notes": "D-126 (issue #171): feedback_status(state=closed, verified=false). Len MCP s FEEDBACK_GITHUB_TOKEN. Eval 2026-10-21: agent vzal 'issues' ako BCF témy (bcf_topic_list status=resolved); otázka je dvojznačná."
+    },
+    {
       "notes": "D-126 (issue #171): feedback_status(state=closed, verified=false). Len MCP s FEEDBACK_GITHUB_TOKEN."
     },
     {
