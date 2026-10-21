@@ -1,6 +1,6 @@
 # AIM D-131: médiá Reality Capture v paneli Documents, zoskupené podľa druhu média
 
-Stavia na vetve `claude/aim-d127-panely` (PR #97, D-127/D-129). AIM rozhodnutie **D-131**, issue Menezeris/AIMviewer#192, AIMviewer časť v PR na vetve `claude/mcp-192-reality-capture`.
+Stavia na vetve `claude/aim-d127-panely` @ `626ed8707` (PR #97, D-127/D-129). AIM rozhodnutie **D-131**, issue Menezeris/AIMviewer#192, AIMviewer časť v PR na vetve `claude/mcp-192-reality-capture`.
 
 ## Čo sa mení
 - `AimPanelData.captureMedia` (bridge-protocol.ts): médiá Reality Capture vybraného priestoru z hosta (vrstva AIM v DB, nie IFC dokument, nie v `DOCUMENTS_LOAD`).
@@ -13,7 +13,7 @@ Len `apps/viewer/src/aim/` + dôkazy: `check-aim-fork-only` = **aim-only**.
 
 ## Overenie
 - AIM testy `documentsQuery.test.ts` + `bridge-protocol.test.ts`: 39/39; `tsc --noEmit -p apps/viewer` čisté (po builde balíkov).
-- Guardy: rtc-frame-copies, module-size, i18n-literals, test-glob-coverage OK.
+- Guardy: rtc-frame-copies, module-size (exit 0, `bridge-protocol.ts` 458/458), i18n-literals, test-glob-coverage OK.
 - Bundle: vstup +4 B, ratchet `check` prešiel bez zvýšenia stropu.
 - Mutačné dôkazy (`docs/architecture/evidence/aim-d131-capture-media/mutations/`): 3/3 `OBSERVED`, obnova overená. Štítok **`revert-oracle-exempt`** pri otvorení PR.
 - Živo: viewer v iframe (FZK-Haus, Playwright), `AIM_PANEL_DATA` pre IfcSpace Buero s 1 dokumentom a 3 médiami. Skupiny "360° panoráma · 1" a "Fotografia · 2" s odznakom AIM, náhľad `https` sa zobrazil, `javascript:` nie. Klik poslal `AIM_NAVIGATE /ifc?captures=s1`, filter "panorama" nechal len panorámu.

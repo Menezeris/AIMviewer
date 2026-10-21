@@ -1,6 +1,6 @@
-From 2039467acdd9c7427f67380a8c326311bb660bea Mon Sep 17 00:00:00 2001
+From 4052aaecf2a8039ea703da96e52851ca1c5ce4c7 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
-Date: Wed, 21 Oct 2026 09:19:56 +0000
+Date: Wed, 21 Oct 2026 09:41:46 +0000
 Subject: [PATCH 1/2] =?UTF-8?q?AIM=20D-131:=20m=C3=A9di=C3=A1=20Reality=20?=
  =?UTF-8?q?Capture=20v=20paneli=20Documents=20pri=20v=C3=BDbere,=20zoskupe?=
  =?UTF-8?q?n=C3=A9=20pod=C4=BEa=20druhu=20m=C3=A9dia?=
@@ -12,10 +12,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_011qHFgBHEAYai1dRf16Feve
 ---
  apps/viewer/src/aim/AimDocumentsControls.tsx | 64 +++++++++++++++++---
- apps/viewer/src/aim/bridge-protocol.ts       |  2 +
+ apps/viewer/src/aim/bridge-protocol.ts       |  4 +-
  apps/viewer/src/aim/documentsQuery.test.ts   | 21 ++++++-
  apps/viewer/src/aim/documentsQuery.ts        | 44 ++++++++++++++
- 4 files changed, 122 insertions(+), 9 deletions(-)
+ 4 files changed, 122 insertions(+), 11 deletions(-)
 
 diff --git a/apps/viewer/src/aim/AimDocumentsControls.tsx b/apps/viewer/src/aim/AimDocumentsControls.tsx
 index 3834068b5..7f93c2a3a 100644
@@ -136,18 +136,20 @@ index 3834068b5..7f93c2a3a 100644
    return <div className="p-6 text-center text-2xs text-muted-foreground">{children}</div>;
  }
 diff --git a/apps/viewer/src/aim/bridge-protocol.ts b/apps/viewer/src/aim/bridge-protocol.ts
-index 155929d3c..12016fd4e 100644
+index 1796b36ce..8053b3750 100644
 --- a/apps/viewer/src/aim/bridge-protocol.ts
 +++ b/apps/viewer/src/aim/bridge-protocol.ts
-@@ -47,6 +47,8 @@ export interface AimPanelData {
+@@ -44,8 +44,8 @@ export interface AimPanelData {
+   // --- v2 typed sections (D-077: AIM inspector) ---
+   /** Responsible persons/organizations for the element (host DB roles). */
    responsibilities?: { name: string; role: string; org?: string; href?: string }[];
-   /** Reality-capture summary — count + host link opening the gallery. */
-   captures?: { count: number; href: string };
-+  /** AIM D-131: Reality Capture media of the space, grouped by kind in the Documents panel. */
-+  captureMedia?: import('./documentsQuery.js').CaptureMediaWire[];
+-  /** Reality-capture summary — count + host link opening the gallery. */
+-  captures?: { count: number; href: string };
++  captures?: { count: number; href: string }; // reality-capture summary: count + host link opening the gallery
++  captureMedia?: import('./documentsQuery.js').CaptureMediaWire[]; // AIM D-131: media of the space, by kind in Documents
    /** GUID history entries (bitemporal validity; `active` = current GUID). */
    history?: { guid: string; validFrom: string; validUntil?: string; active: boolean }[];
-   /** AIM D-129: last change by a recipe (model revision vNNN, BCF topic title, date). */
+   lastChange?: { model: string; revision: string; title: string; date: string }; // AIM D-129: last recipe change (vNNN, BCF topic)
 diff --git a/apps/viewer/src/aim/documentsQuery.test.ts b/apps/viewer/src/aim/documentsQuery.test.ts
 index 5bb52154e..bd31f3794 100644
 --- a/apps/viewer/src/aim/documentsQuery.test.ts
@@ -246,9 +248,9 @@ index 78fbc7fbc..64121f1ef 100644
 2.43.0
 
 
-From d9fa64f62331c59d35cee3180d75b9b4de7b258a Mon Sep 17 00:00:00 2001
+From 31f941b8da86e4057c271879ffb84c97fbfaa68b Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
-Date: Wed, 21 Oct 2026 09:20:34 +0000
+Date: Wed, 21 Oct 2026 09:42:08 +0000
 Subject: [PATCH 2/2] =?UTF-8?q?AIM=20D-131:=20muta=C4=8Dn=C3=A9=20d=C3=B4k?=
  =?UTF-8?q?azy=20pre=20m=C3=A9di=C3=A1=20Reality=20Capture=20v=20paneli=20?=
  =?UTF-8?q?Documents?=
@@ -363,7 +365,7 @@ index 000000000..13e644e28
 +     if (list) list.push(safe);
 diff --git a/docs/architecture/evidence/aim-d131-capture-media/mutations/summary.json b/docs/architecture/evidence/aim-d131-capture-media/mutations/summary.json
 new file mode 100644
-index 000000000..95ac89b3c
+index 000000000..ed2309c62
 --- /dev/null
 +++ b/docs/architecture/evidence/aim-d131-capture-media/mutations/summary.json
 @@ -0,0 +1,44 @@
@@ -373,7 +375,7 @@ index 000000000..95ac89b3c
 +    "exitCode": 0,
 +    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/documentsQuery.test.ts; that file has a green, attributable baseline.",
 +    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
-+    "head": "2039467acdd9c7427f67380a8c326311bb660bea",
++    "head": "4052aaecf2a8039ea703da96e52851ca1c5ce4c7",
 +    "production": [
 +      "apps/viewer/src/aim/documentsQuery.ts"
 +    ],
@@ -387,7 +389,7 @@ index 000000000..95ac89b3c
 +    "exitCode": 0,
 +    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/documentsQuery.test.ts; that file has a green, attributable baseline.",
 +    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
-+    "head": "2039467acdd9c7427f67380a8c326311bb660bea",
++    "head": "4052aaecf2a8039ea703da96e52851ca1c5ce4c7",
 +    "production": [
 +      "apps/viewer/src/aim/documentsQuery.ts"
 +    ],
@@ -401,7 +403,7 @@ index 000000000..95ac89b3c
 +    "exitCode": 0,
 +    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/documentsQuery.test.ts; that file has a green, attributable baseline.",
 +    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
-+    "head": "2039467acdd9c7427f67380a8c326311bb660bea",
++    "head": "4052aaecf2a8039ea703da96e52851ca1c5ce4c7",
 +    "production": [
 +      "apps/viewer/src/aim/documentsQuery.ts"
 +    ],
