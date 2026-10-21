@@ -23,6 +23,9 @@ where created_at > now() - interval '1 hour'
 group by 1, 2 order by p50 desc;
 ```
 
+Volanie odmietnuté pre neznámy parameter (D-126) sa nevykoná, ale zapíše sa s `action` =
+`unknown_param:<mená>`, `ms` 0 a `ok` false; v dotaze vyššie má vlastnú skupinu.
+
 ## Beh (Claude Code session s konektorom aim-viewer)
 1. Pri úlohách `viewer: true` musí byť otvorený živý viewer (`/ifc?live=<LIVE_CHANNEL>`) a nikto
    iný ho počas behu nepoužíva, kanál je spoločný. Bez viewera pusti len `category: data`.
