@@ -1,0 +1,797 @@
+From a0d7fd3196667b278ed801951920a30e1ae26fbf Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 09:20:55 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?AIM=20D-130:=20popisky=20na=20v=C3=BDkrese?=
+ =?UTF-8?q?=20ako=20odkazy=20na=20prvok=20(DOCUMENT=5FLINKS,=20vrstva=20na?=
+ =?UTF-8?q?d=20stranou=20PDF)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Host (AIMviewer) spáruje bubliny a kódy miestností z textovej vrstvy PDF s prvkami
+(AIM vrstva) a pošle DOCUMENT_LINKS. aim/docLinks.ts nakreslí nad stranou karty
+klikateľné oblasti; klik vyberie prvok ako klik do modelu (D-082) a otvorí panel
+vlastností, pri viacerých kandidátoch ukáže výber s odznakom AIM.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01FsvvvFuMXYt71te8FTSmAK
+---
+ apps/viewer/src/aim/AimBridge.tsx    |   2 +
+ apps/viewer/src/aim/docLinks.test.ts | 108 ++++++++++++
+ apps/viewer/src/aim/docLinks.ts      | 255 +++++++++++++++++++++++++++
+ apps/viewer/src/aim/docRegion.ts     |   2 +
+ 4 files changed, 367 insertions(+)
+ create mode 100644 apps/viewer/src/aim/docLinks.test.ts
+ create mode 100644 apps/viewer/src/aim/docLinks.ts
+
+diff --git a/apps/viewer/src/aim/AimBridge.tsx b/apps/viewer/src/aim/AimBridge.tsx
+index aee9cf57c..e5bc5972a 100644
+--- a/apps/viewer/src/aim/AimBridge.tsx
++++ b/apps/viewer/src/aim/AimBridge.tsx
+@@ -24,6 +24,7 @@ import { useBim } from '../sdk/BimProvider.js';
+ import { useViewerStore } from '../store/index.js';
+ import { AUTOLOAD_COMPLETE_EVENT, parseAutoloadUrls } from '../lib/autoload.js';
+ import { selectPickedGlobalId } from '../components/viewer/viewport-selection.js';
++import { isDocLinksMessage, useAimDocLinksStore } from './docLinks.js';
+ import {
+   SOURCE, FILTER_COLOR, FOCUS_COLOR, isInboundMessage, guidForEntity, resolveGuids, resolveSelector,
+   type InboundMessage, type OutboundMessage,
+@@ -153,6 +154,7 @@ export function AimBridge() {
+         useAimDerivationsStore.getState().setLayer(e.data.layer);
+         return;
+       }
++      if (isDocLinksMessage(e.data)) return void useAimDocLinksStore.getState().setDocuments(e.data.documents); // popisky -> prvky (AIM D-130)
+       if (isBcfLoadMessage(e.data, parentOriginRef.current)) {
+         loadBcfTopics(e.data, useViewerStore.getState); // AIM host's BCF topics, read-only (D-099)
+         return;
+diff --git a/apps/viewer/src/aim/docLinks.test.ts b/apps/viewer/src/aim/docLinks.test.ts
+new file mode 100644
+index 000000000..58f875067
+--- /dev/null
++++ b/apps/viewer/src/aim/docLinks.test.ts
+@@ -0,0 +1,108 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert/strict';
++import {
++  isDocLinksMessage,
++  linkTitle,
++  MAX_TARGETS,
++  normalizeDocLinks,
++  pageKey,
++  useAimDocLinksStore,
++} from './docLinks.js';
++
++const door = { guid: '0DoorGuid0000000000001', ref: 'DD01.08.0001' };
++const link = (over: Record<string, unknown> = {}) => ({
++  x: 0.1, y: 0.2, w: 0.003, h: 0.009, label: 'DD01 08', status: 'unique', targets: [door], ...over,
++});
++
++describe('isDocLinksMessage (AIM D-130)', () => {
++  it('accepts only the bridge source with a documents array', () => {
++    assert.equal(isDocLinksMessage({ source: 'aim-bridge', type: 'DOCUMENT_LINKS', documents: [] }), true);
++    assert.equal(isDocLinksMessage({ source: 'other', type: 'DOCUMENT_LINKS', documents: [] }), false);
++    assert.equal(isDocLinksMessage({ source: 'aim-bridge', type: 'DOCUMENT_OPEN', documents: [] }), false);
++    assert.equal(isDocLinksMessage({ source: 'aim-bridge', type: 'DOCUMENT_LINKS', documents: {} }), false);
++    assert.equal(isDocLinksMessage(null), false);
++  });
++});
++
++describe('normalizeDocLinks (AIM D-130)', () => {
++  it('keys links by document and page', () => {
++    const pages = normalizeDocLinks([{ documentId: 'doc', page: 1, links: [link()] }]);
++    assert.deepEqual([...pages.keys()], [pageKey('doc', 1)]);
++    assert.deepEqual(pages.get(pageKey('doc', 1)), [
++      { x: 0.1, y: 0.2, w: 0.003, h: 0.009, label: 'DD01 08', status: 'unique', targets: [door] },
++    ]);
++  });
++
++  it('drops pages with a bad id or page and links without position or targets', () => {
++    const pages = normalizeDocLinks([
++      { documentId: '', page: 1, links: [link()] },
++      { documentId: 'doc', page: 0, links: [link()] },
++      { documentId: 'doc', page: 1.5, links: [link()] },
++      {
++        documentId: 'doc',
++        page: 2,
++        links: [
++          link({ x: Number.NaN }),
++          link({ w: 0 }),
++          link({ x: 1.2 }),
++          link({ targets: [] }),
++          link({ targets: [{ guid: 'g' }] }),
++        ],
++      },
++    ]);
++    assert.equal(pages.size, 0);
++  });
++
++  it('clips links to the page and derives the status from the targets', () => {
++    const [clipped, single] = normalizeDocLinks([
++      {
++        documentId: 'doc',
++        page: 1,
++        links: [
++          link({ x: -0.1, w: 0.2, y: 0.95, h: 0.1 }),
++          link({ status: 'candidates', targets: [door, { guid: 'bad' }] }),
++        ],
++      },
++    ]).get(pageKey('doc', 1))!;
++    assert.equal(clipped.x, 0);
++    assert.ok(Math.abs(clipped.w - 0.1) < 1e-9);
++    assert.ok(Math.abs(clipped.y + clipped.h - 1) < 1e-9);
++    assert.equal(single.status, 'unique');
++    assert.deepEqual(single.targets, [door]);
++  });
++
++  it('caps the candidates and keeps more than one as candidates', () => {
++    const many = Array.from({ length: MAX_TARGETS + 4 }, (_, i) => ({ guid: `g${i}`, ref: `SN05.01.${i}` }));
++    const [l] = normalizeDocLinks([{ documentId: 'doc', page: 1, links: [link({ targets: many })] }]).get(
++      pageKey('doc', 1),
++    )!;
++    assert.equal(l.status, 'candidates');
++    assert.equal(l.targets.length, MAX_TARGETS);
++  });
++});
++
++describe('linkTitle (AIM D-130)', () => {
++  it('names the element and marks the link as an AIM derivation', () => {
++    assert.equal(linkTitle({ ...link(), status: 'unique', targets: [door] }), 'DD01 08 -> DD01.08.0001 (AIM: odvodené z popisku)');
++    assert.equal(
++      linkTitle({ ...link(), label: 'SN05 01', status: 'candidates', targets: [door, { guid: 'x', ref: 'SN05.01.0002', name: 'Murivo' }] }),
++      'SN05 01 -> kandidáti (2): DD01.08.0001, SN05.01.0002 (AIM: odvodené z popisku)',
++    );
++  });
++});
++
++describe('useAimDocLinksStore (AIM D-130)', () => {
++  it('replaces all pages on every message and bumps the nonce', () => {
++    const store = useAimDocLinksStore.getState();
++    const before = store.nonce;
++    store.setDocuments([{ documentId: 'doc', page: 1, links: [link()] }]);
++    assert.equal(useAimDocLinksStore.getState().pages.size, 1);
++    useAimDocLinksStore.getState().setDocuments([]);
++    assert.equal(useAimDocLinksStore.getState().pages.size, 0);
++    assert.equal(useAimDocLinksStore.getState().nonce, before + 2);
++  });
++});
+diff --git a/apps/viewer/src/aim/docLinks.ts b/apps/viewer/src/aim/docLinks.ts
+new file mode 100644
+index 000000000..16bf73fa0
+--- /dev/null
++++ b/apps/viewer/src/aim/docLinks.ts
+@@ -0,0 +1,255 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Popisky na výkrese ako odkazy na prvok (AIM D-130). Host spáruje bubliny a kódy
++ * miestností z textovej vrstvy PDF s prvkami (AIM vrstva: odvodenie, nie IFC) a pošle
++ * `DOCUMENT_LINKS` (oblasti v zlomkoch strany, ciele s GUID). Táto vrstva ich nakreslí
++ * nad stranou karty ako klikateľné oblasti (imperatívne, ako rámiky D-123 v docRegion)
++ * a klik vyberie prvok ako klik do modelu (D-082) a otvorí panel vlastností. Viac
++ * kandidátov = malý výber. Fork nič nepočíta, len kreslí a vyberá (D-091, D-098).
++ */
++
++import { useEffect, type RefObject } from 'react';
++import { create } from 'zustand';
++import { useViewerStore } from '../store/index.js';
++import { toGlobalIdFromModels } from '../store/globalId.js';
++import { selectPickedGlobalId } from '../components/viewer/viewport-selection.js';
++import { SOURCE, resolveGuids } from './bridge-protocol.js';
++
++export interface DocLinkTarget {
++  guid: string;
++  ref: string;
++  name?: string;
++}
++
++/** Oblasť popisku v zlomkoch strany (0-1, počiatok vľavo hore). */
++export interface DocLink {
++  x: number;
++  y: number;
++  w: number;
++  h: number;
++  label: string;
++  status: 'unique' | 'candidates';
++  targets: DocLinkTarget[];
++}
++
++export interface DocLinksMessage {
++  source: typeof SOURCE;
++  type: 'DOCUMENT_LINKS';
++  documents: unknown[];
++}
++
++/** Najviac oblastí na stranu (pôdorys 1NP ich má okolo 100) a kandidátov na oblasť. */
++export const MAX_LINKS_PER_PAGE = 600;
++export const MAX_TARGETS = 12;
++const MAX_TEXT = 80;
++
++export function isDocLinksMessage(data: unknown): data is DocLinksMessage {
++  if (!data || typeof data !== 'object') return false;
++  const msg = data as { source?: unknown; type?: unknown; documents?: unknown };
++  return msg.source === SOURCE && msg.type === 'DOCUMENT_LINKS' && Array.isArray(msg.documents);
++}
++
++const text = (v: unknown): string | null =>
++  typeof v === 'string' && v.trim() ? v.trim().slice(0, MAX_TEXT) : null;
++const unit = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
++
++function normalizeTarget(raw: unknown): DocLinkTarget | null {
++  if (!raw || typeof raw !== 'object') return null;
++  const t = raw as Record<string, unknown>;
++  const guid = text(t.guid);
++  const ref = text(t.ref);
++  if (!guid || !ref) return null;
++  const name = text(t.name);
++  return name ? { guid, ref, name } : { guid, ref };
++}
++
++function normalizeLink(raw: unknown): DocLink | null {
++  if (!raw || typeof raw !== 'object') return null;
++  const l = raw as Record<string, unknown>;
++  if (![l.x, l.y, l.w, l.h].every(unit)) return null;
++  const [x0, y0, w0, h0] = [l.x, l.y, l.w, l.h] as number[];
++  if (w0 <= 0 || h0 <= 0 || x0 >= 1 || y0 >= 1 || x0 + w0 <= 0 || y0 + h0 <= 0) return null;
++  const targets = (Array.isArray(l.targets) ? l.targets : [])
++    .map(normalizeTarget)
++    .filter((t): t is DocLinkTarget => t !== null)
++    .slice(0, MAX_TARGETS);
++  if (targets.length === 0) return null;
++  const x = Math.max(0, x0);
++  const y = Math.max(0, y0);
++  return {
++    x,
++    y,
++    // Mimo strany sa oreže, vnútri ostáva rozmer presný.
++    w: x0 < 0 || x0 + w0 > 1 ? Math.min(x0 + w0, 1) - x : w0,
++    h: y0 < 0 || y0 + h0 > 1 ? Math.min(y0 + h0, 1) - y : h0,
++    label: text(l.label) ?? targets[0].ref,
++    status: targets.length > 1 ? 'candidates' : 'unique',
++    targets,
++  };
++}
++
++/** Kľúč strany dokumentu v store. */
++export const pageKey = (docId: string, page: number) => `${docId}#${page}`;
++
++/** `documents` z drôtu (nedôveryhodný postMessage) -> oblasti po stranách. */
++export function normalizeDocLinks(documents: readonly unknown[]): Map<string, DocLink[]> {
++  const out = new Map<string, DocLink[]>();
++  for (const raw of documents) {
++    if (!raw || typeof raw !== 'object') continue;
++    const d = raw as Record<string, unknown>;
++    const docId = text(d.documentId);
++    const page = d.page;
++    if (!docId || typeof page !== 'number' || !Number.isInteger(page) || page < 1) continue;
++    const links = (Array.isArray(d.links) ? d.links : [])
++      .slice(0, MAX_LINKS_PER_PAGE)
++      .map(normalizeLink)
++      .filter((l): l is DocLink => l !== null);
++    if (links.length > 0) out.set(pageKey(docId, page), links);
++  }
++  return out;
++}
++
++/** Popis oblasti (title): kam vedie a že je to odvodenie AIM, nie údaj z IFC. */
++export function linkTitle(link: DocLink): string {
++  const [first] = link.targets;
++  const to =
++    link.status === 'unique'
++      ? `${first.ref}${first.name ? ` ${first.name}` : ''}`
++      : `kandidáti (${link.targets.length}): ${link.targets.map((t) => t.ref).join(', ')}`;
++  return `${link.label} -> ${to} (AIM: odvodené z popisku)`;
++}
++
++interface DocLinksState {
++  pages: Map<string, DocLink[]>;
++  /** Mení sa pri každej správe, vrstvy sa prekreslia. */
++  nonce: number;
++  setDocuments: (documents: readonly unknown[]) => void;
++}
++
++export const useAimDocLinksStore = create<DocLinksState>((set, get) => ({
++  pages: new Map(),
++  nonce: 0,
++  setDocuments: (documents) => set({ pages: normalizeDocLinks(documents), nonce: get().nonce + 1 }),
++}));
++
++/**
++ * Vyber prvok ako klik do modelu (D-082): selekcia (ENTITY_SELECTED ide hostovi ako pri
++ * kliku) a panel vlastností. Kamera ostáva, používateľ je vo výkrese. false = prvok nie je
++ * v načítaných modeloch.
++ */
++export function selectDocLinkTarget(guid: string): boolean {
++  const state = useViewerStore.getState();
++  const [ref] = resolveGuids(state.models, [guid]);
++  if (!ref) return false;
++  selectPickedGlobalId(toGlobalIdFromModels(state.models, ref.modelId, ref.expressId));
++  useViewerStore.getState().openPanelInHome('properties', 'programmatic');
++  return true;
++}
++
++const LAYER_ATTR = 'data-aim-links';
++const PICKER_ATTR = 'data-aim-link-picker';
++const pct = (v: number) => `${+(v * 100).toFixed(3)}%`;
++
++/** Ukáž, že prvok vo vieweri nie je (napr. model ešte nebol načítaný). */
++function flagMissing(el: HTMLElement): void {
++  el.style.background = 'rgba(239, 68, 68, 0.25)';
++  el.title = `${el.title} - prvok nie je v načítaných modeloch`;
++}
++
++function stopPointer(el: HTMLElement): void {
++  // Karta sa ťahaním posúva; klik na odkaz ju posúvať nemá.
++  el.addEventListener('pointerdown', (e) => e.stopPropagation());
++  el.addEventListener('pointerup', (e) => e.stopPropagation());
++}
++
++function openPicker(layer: HTMLElement, link: DocLink): void {
++  const prev = layer.querySelector(`:scope > [${PICKER_ATTR}]`);
++  const same = prev?.getAttribute(PICKER_ATTR) === link.label + pct(link.x) + pct(link.y);
++  prev?.remove();
++  if (same) return; // druhý klik výber zavrie
++  const box = document.createElement('div');
++  box.setAttribute(PICKER_ATTR, link.label + pct(link.x) + pct(link.y));
++  Object.assign(box.style, {
++    position: 'absolute', left: pct(link.x), top: pct(link.y + link.h), pointerEvents: 'auto', zIndex: '1',
++    minWidth: '11rem', maxWidth: '16rem', padding: '4px', fontSize: '11px', lineHeight: '1.35',
++    background: 'var(--background, #fff)', color: 'var(--foreground, #111)', border: '1px solid rgba(0,0,0,0.15)',
++    borderRadius: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
++  });
++  stopPointer(box);
++  const head = document.createElement('div');
++  head.textContent = `AIM · ${link.label} · kandidáti na podlaží: ${link.targets.length}`;
++  Object.assign(head.style, { padding: '2px 6px', opacity: '0.7', fontWeight: '600' });
++  box.appendChild(head);
++  for (const t of link.targets) {
++    const item = document.createElement('button');
++    item.type = 'button';
++    item.textContent = t.name ? `${t.ref} ${t.name}` : t.ref;
++    Object.assign(item.style, {
++      display: 'block', width: '100%', textAlign: 'left', padding: '2px 6px', borderRadius: '3px',
++      background: 'transparent', border: '0', cursor: 'pointer', color: 'inherit', font: 'inherit',
++    });
++    item.addEventListener('click', () => {
++      if (selectDocLinkTarget(t.guid)) box.remove();
++      else flagMissing(item);
++    });
++    box.appendChild(item);
++  }
++  layer.appendChild(box);
++}
++
++function linkBox(layer: HTMLElement, link: DocLink): HTMLElement {
++  const el = document.createElement('div');
++  el.setAttribute('role', 'button');
++  el.tabIndex = 0;
++  el.title = linkTitle(link);
++  Object.assign(el.style, {
++    position: 'absolute', left: pct(link.x), top: pct(link.y), width: pct(link.w), height: pct(link.h),
++    pointerEvents: 'auto', cursor: 'pointer', borderRadius: '2px',
++    background: link.status === 'unique' ? 'rgba(16, 185, 129, 0.18)' : 'rgba(59, 130, 246, 0.18)',
++    boxShadow: `inset 0 -2px 0 0 ${link.status === 'unique' ? 'rgba(16, 185, 129, 0.6)' : 'rgba(59, 130, 246, 0.6)'}`,
++  });
++  stopPointer(el);
++  const activate = () => {
++    if (link.status === 'candidates') openPicker(layer, link);
++    else if (!selectDocLinkTarget(link.targets[0].guid)) flagMissing(el);
++  };
++  el.addEventListener('click', activate);
++  el.addEventListener('keydown', (e) => {
++    if (e.key !== 'Enter' && e.key !== ' ') return;
++    e.preventDefault();
++    activate();
++  });
++  return el;
++}
++
++/** Vrstva odkazov nad každou vykreslenou stranou dokumentu; prekreslí sa pri novej správe. */
++function syncLinkLayers(pageEls: Map<number, HTMLDivElement> | null, docId: string, state: DocLinksState): void {
++  if (!pageEls) return;
++  for (const [page, el] of pageEls) {
++    const layer = el.querySelector<HTMLDivElement>(`:scope > [${LAYER_ATTR}]`);
++    const links = state.pages.get(pageKey(docId, page));
++    if (!links) {
++      layer?.remove();
++      continue;
++    }
++    if (layer?.getAttribute(LAYER_ATTR) === String(state.nonce)) continue;
++    layer?.remove();
++    const next = document.createElement('div');
++    next.setAttribute(LAYER_ATTR, String(state.nonce));
++    // Nad výrezovým plátnom karty (ako odkazy D-076), pod rámikmi by klik nešiel.
++    Object.assign(next.style, { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: '10' });
++    for (const link of links) next.appendChild(linkBox(next, link));
++    el.appendChild(next);
++  }
++}
++
++/** Kreslí odkazy z popiskov nad stranami karty (volá useAimDocRegion, AIM-FORK blok). */
++export function useAimDocLinks(docId: string, pageElsRef: RefObject<Map<number, HTMLDivElement>>): void {
++  const state = useAimDocLinksStore();
++  useEffect(() => {
++    syncLinkLayers(pageElsRef.current, docId, state);
++  });
++}
+diff --git a/apps/viewer/src/aim/docRegion.ts b/apps/viewer/src/aim/docRegion.ts
+index a9a8c2bf6..7d4fa8317 100644
+--- a/apps/viewer/src/aim/docRegion.ts
++++ b/apps/viewer/src/aim/docRegion.ts
+@@ -17,6 +17,7 @@
+ 
+ import { useEffect, useRef, type RefObject } from 'react';
+ import { create } from 'zustand';
++import { useAimDocLinks } from './docLinks.js';
+ 
+ /** Výrez strany v zlomkoch (0-1), počiatok vľavo hore. */
+ export interface DocRegion {
+@@ -197,6 +198,7 @@ const CONTENT_PADDING_PX = 24;
+  * čakajúceho výrezu hneď skončí.
+  */
+ export function useAimDocRegion(v: DocRegionViewInputs): void {
++  useAimDocLinks(v.docId, v.pageElsRef); // odkazy z popiskov výkresu (AIM D-130)
+   const request = useAimDocRegionStore((s) => (s.request?.docId === v.docId ? s.request : null));
+   const highlights = useAimDocRegionStore((s) => (s.highlights?.docId === v.docId ? s.highlights : null));
+   const zoomedRef = useRef<number | null>(null);
+-- 
+2.43.0
+
+
+From 45c24710aec5b5072d9944ea1ac20b92503ab70a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 09:39:48 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?AIM=20D-130:=20muta=C4=8Dn=C3=A9=20d=C3=B4k?=
+ =?UTF-8?q?azy=20pre=20revert=20oracle=20(docLinks)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01FsvvvFuMXYt71te8FTSmAK
+---
+ .../aim-d130-doc-links/mutations/README.md    |  35 ++++++
+ .../mutations/empty-targets-kept.patch        |  12 ++
+ .../mutations/page-not-integer.patch          |  13 ++
+ .../mutations/source-unchecked.patch          |  13 ++
+ .../mutations/status-from-wire.patch          |  13 ++
+ .../mutations/store-merges.patch              |  13 ++
+ .../aim-d130-doc-links/mutations/summary.json | 114 ++++++++++++++++++
+ .../mutations/targets-uncapped.patch          |  14 +++
+ .../mutations/title-without-aim.patch         |  13 ++
+ .../mutations/unclipped.patch                 |  15 +++
+ 10 files changed, 255 insertions(+)
+ create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/empty-targets-kept.patch
+ create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/page-not-integer.patch
+ create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/source-unchecked.patch
+ create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/status-from-wire.patch
+ create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/store-merges.patch
+ create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/summary.json
+ create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/targets-uncapped.patch
+ create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/title-without-aim.patch
+ create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/unclipped.patch
+
+diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/README.md b/docs/architecture/evidence/aim-d130-doc-links/mutations/README.md
+new file mode 100644
+index 000000000..546a104f4
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/README.md
+@@ -0,0 +1,35 @@
++<!-- This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this
++     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
++
++# AIM D-130 popisky na výkrese ako odkazy: chirurgické mutácie
++
++Zmena pridáva `apps/viewer/src/aim/docLinks.ts`: správu `DOCUMENT_LINKS` od hosta (popisky výkresu spárované s prvkami, AIM vrstva), jej overenie, store a vrstvu klikateľných oblastí nad stranou PDF karty. Klik vyberie prvok ako klik do modelu (`selectPickedGlobalId`, AIM D-082) a otvorí panel vlastností; pri viacerých kandidátoch ukáže výber s odznakom AIM. `AimBridge.tsx` správu len odovzdá do store (jeden riadok), `docRegion.ts` vrstvu pripojí ku karte (jeden riadok v `useAimDocRegion`). Test `docLinks.test.ts` importuje nový modul, takže revert produkcie na base (zmazanie `docLinks.ts`) test nenačíta a revert oracle hlási INCONCLUSIVE. Každé hlavné rozhodnutie modulu je preto overené chirurgickou mutáciou.
++
++Každý patch je zapísaný mutant -> oprava (smer `git diff base...head`); oracle ho aplikuje spätne. Každý beh skončil `OBSERVED` (exit 0) s overeným obnovením, base `origin/main`. Záznamy sú v `summary.json`.
++
++| Patch | Mutácia | Test, ktorý sčervenal |
++|---|---|---|
++| `source-unchecked.patch` | správa sa prijme bez `source: 'aim-bridge'` | `docLinks.test.ts` |
++| `empty-targets-kept.patch` | oblasť bez platného cieľa (GUID + kód) sa nakreslí | `docLinks.test.ts` |
++| `page-not-integer.patch` | strana 1,5 sa prijme | `docLinks.test.ts` |
++| `unclipped.patch` | oblasť mimo strany sa neoreže | `docLinks.test.ts` |
++| `status-from-wire.patch` | stav berie z drôtu, nie z počtu platných cieľov (jeden cieľ by otvoril výber) | `docLinks.test.ts` |
++| `targets-uncapped.patch` | počet kandidátov nemá strop | `docLinks.test.ts` |
++| `title-without-aim.patch` | popis oblasti nehovorí, že ide o odvodenie AIM (D-129) | `docLinks.test.ts` |
++| `store-merges.patch` | nová správa strany pridá k starým namiesto náhrady | `docLinks.test.ts` |
++
++Kreslenie vrstvy a výber prvku sú DOM a store glue bez unit testu; overené naživo: lokálny viewer v iframe hostiteľskej stránky, model `ASR.ifc` z produkcie AIM a pôdorys `D.1.1.01 Pôdorys 1NP` (PDF z produkcie), `DOCUMENT_LINKS` vygenerovaný funkciami hosta (`lib/data/drawing-labels.ts` v AIMvieweri) nad skutočnými riadkami strany. Na strane bolo 97 oblastí; klik na bublinu `DD01 08` poslal hostovi `ENTITY_SELECTED` s GUID `1_YiIDK5n2fvfP1VGIobML` (DD01.08.0001) a panel vlastností ukázal IfcDoor na 1NP; klik na `OV01 01` otvoril výber "AIM · OV01 01 · kandidáti na podlaží: 2" a voľba druhého kandidáta poslala `ENTITY_SELECTED` `3sAWwiVnb4mf5GPnoLjzDO` (OV01.01.234) a výber zavrela. Raster PDF sa v headless Chromiu (swiftshader, strata WebGPU zariadenia) nevykreslil; vrstva odkazov, kliky a výber áno.
++
++Balík (`scripts/perf-ratchet`, vetva aj `main` postavené rovnako): `viewer-entry-js-bytes` 3 166 384 (main 3 166 728), `viewer-eager-js-bytes` 19 358 235 (main 19 352 630, +5 605); oboje v tolerancii stropu, strop sa nemení.
++
++## Prehratie
++
++Čistý checkout vetvy s nainštalovanými závislosťami. Patche skopíruj mimo strom (oracle odmietne špinavý strom), potom napríklad:
++
++```bash
++node scripts/check-test-revert-oracle.mjs --base origin/main \
++  --only apps/viewer/src/aim/docLinks.ts \
++  --test apps/viewer/src/aim/docLinks.test.ts \
++  --mutation /tmp/d130-mut/unclipped.patch --ci --json
++```
+diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/empty-targets-kept.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/empty-targets-kept.patch
+new file mode 100644
+index 000000000..339c47aae
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/empty-targets-kept.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
++index 35e8c56ec..16bf73fa0 100644
++--- b/apps/viewer/src/aim/docLinks.ts
+++++ a/apps/viewer/src/aim/docLinks.ts
++@@ -76,6 +76,7 @@ function normalizeLink(raw: unknown): DocLink | null {
++     .map(normalizeTarget)
++     .filter((t): t is DocLinkTarget => t !== null)
++     .slice(0, MAX_TARGETS);
+++  if (targets.length === 0) return null;
++   const x = Math.max(0, x0);
++   const y = Math.max(0, y0);
++   return {
+diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/page-not-integer.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/page-not-integer.patch
+new file mode 100644
+index 000000000..f115c8d29
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/page-not-integer.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
++index 29b8887bc..16bf73fa0 100644
++--- b/apps/viewer/src/aim/docLinks.ts
+++++ a/apps/viewer/src/aim/docLinks.ts
++@@ -102,7 +102,7 @@ export function normalizeDocLinks(documents: readonly unknown[]): Map<string, Do
++     const d = raw as Record<string, unknown>;
++     const docId = text(d.documentId);
++     const page = d.page;
++-    if (!docId || typeof page !== 'number' || page < 1) continue;
+++    if (!docId || typeof page !== 'number' || !Number.isInteger(page) || page < 1) continue;
++     const links = (Array.isArray(d.links) ? d.links : [])
++       .slice(0, MAX_LINKS_PER_PAGE)
++       .map(normalizeLink)
+diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/source-unchecked.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/source-unchecked.patch
+new file mode 100644
+index 000000000..16163ca81
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/source-unchecked.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
++index cf71e4bec..16bf73fa0 100644
++--- b/apps/viewer/src/aim/docLinks.ts
+++++ a/apps/viewer/src/aim/docLinks.ts
++@@ -49,7 +49,7 @@ const MAX_TEXT = 80;
++ export function isDocLinksMessage(data: unknown): data is DocLinksMessage {
++   if (!data || typeof data !== 'object') return false;
++   const msg = data as { source?: unknown; type?: unknown; documents?: unknown };
++-  return msg.type === 'DOCUMENT_LINKS' && Array.isArray(msg.documents);
+++  return msg.source === SOURCE && msg.type === 'DOCUMENT_LINKS' && Array.isArray(msg.documents);
++ }
++ 
++ const text = (v: unknown): string | null =>
+diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/status-from-wire.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/status-from-wire.patch
+new file mode 100644
+index 000000000..6432ce49d
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/status-from-wire.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
++index 6ef638ca2..16bf73fa0 100644
++--- b/apps/viewer/src/aim/docLinks.ts
+++++ a/apps/viewer/src/aim/docLinks.ts
++@@ -86,7 +86,7 @@ function normalizeLink(raw: unknown): DocLink | null {
++     w: x0 < 0 || x0 + w0 > 1 ? Math.min(x0 + w0, 1) - x : w0,
++     h: y0 < 0 || y0 + h0 > 1 ? Math.min(y0 + h0, 1) - y : h0,
++     label: text(l.label) ?? targets[0].ref,
++-    status: l.status === 'candidates' ? 'candidates' : 'unique',
+++    status: targets.length > 1 ? 'candidates' : 'unique',
++     targets,
++   };
++ }
+diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/store-merges.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/store-merges.patch
+new file mode 100644
+index 000000000..75202311b
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/store-merges.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
++index 5f0f7770e..16bf73fa0 100644
++--- b/apps/viewer/src/aim/docLinks.ts
+++++ a/apps/viewer/src/aim/docLinks.ts
++@@ -132,7 +132,7 @@ interface DocLinksState {
++ export const useAimDocLinksStore = create<DocLinksState>((set, get) => ({
++   pages: new Map(),
++   nonce: 0,
++-  setDocuments: (documents) => set({ pages: new Map([...get().pages, ...normalizeDocLinks(documents)]), nonce: get().nonce + 1 }),
+++  setDocuments: (documents) => set({ pages: normalizeDocLinks(documents), nonce: get().nonce + 1 }),
++ }));
++ 
++ /**
+diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/summary.json b/docs/architecture/evidence/aim-d130-doc-links/mutations/summary.json
+new file mode 100644
+index 000000000..e149891b2
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/summary.json
+@@ -0,0 +1,114 @@
++{
++  "empty-targets-kept": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "a0d7fd3196667b278ed801951920a30e1ae26fbf",
++    "production": [
++      "apps/viewer/src/aim/docLinks.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docLinks.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "page-not-integer": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "a0d7fd3196667b278ed801951920a30e1ae26fbf",
++    "production": [
++      "apps/viewer/src/aim/docLinks.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docLinks.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "source-unchecked": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "a0d7fd3196667b278ed801951920a30e1ae26fbf",
++    "production": [
++      "apps/viewer/src/aim/docLinks.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docLinks.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "status-from-wire": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "a0d7fd3196667b278ed801951920a30e1ae26fbf",
++    "production": [
++      "apps/viewer/src/aim/docLinks.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docLinks.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "store-merges": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "a0d7fd3196667b278ed801951920a30e1ae26fbf",
++    "production": [
++      "apps/viewer/src/aim/docLinks.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docLinks.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "targets-uncapped": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "a0d7fd3196667b278ed801951920a30e1ae26fbf",
++    "production": [
++      "apps/viewer/src/aim/docLinks.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docLinks.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "title-without-aim": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "a0d7fd3196667b278ed801951920a30e1ae26fbf",
++    "production": [
++      "apps/viewer/src/aim/docLinks.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docLinks.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "unclipped": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "a0d7fd3196667b278ed801951920a30e1ae26fbf",
++    "production": [
++      "apps/viewer/src/aim/docLinks.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docLinks.test.ts"
++    ],
++    "restoration": "verified"
++  }
++}
+diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/targets-uncapped.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/targets-uncapped.patch
+new file mode 100644
+index 000000000..94b6875dc
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/targets-uncapped.patch
+@@ -0,0 +1,14 @@
++diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
++index b62a626b5..16bf73fa0 100644
++--- b/apps/viewer/src/aim/docLinks.ts
+++++ a/apps/viewer/src/aim/docLinks.ts
++@@ -74,7 +74,8 @@ function normalizeLink(raw: unknown): DocLink | null {
++   if (w0 <= 0 || h0 <= 0 || x0 >= 1 || y0 >= 1 || x0 + w0 <= 0 || y0 + h0 <= 0) return null;
++   const targets = (Array.isArray(l.targets) ? l.targets : [])
++     .map(normalizeTarget)
++-    .filter((t): t is DocLinkTarget => t !== null);
+++    .filter((t): t is DocLinkTarget => t !== null)
+++    .slice(0, MAX_TARGETS);
++   if (targets.length === 0) return null;
++   const x = Math.max(0, x0);
++   const y = Math.max(0, y0);
+diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/title-without-aim.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/title-without-aim.patch
+new file mode 100644
+index 000000000..30f4a5b0e
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/title-without-aim.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
++index c5d948cfd..16bf73fa0 100644
++--- b/apps/viewer/src/aim/docLinks.ts
+++++ a/apps/viewer/src/aim/docLinks.ts
++@@ -119,7 +119,7 @@ export function linkTitle(link: DocLink): string {
++     link.status === 'unique'
++       ? `${first.ref}${first.name ? ` ${first.name}` : ''}`
++       : `kandidáti (${link.targets.length}): ${link.targets.map((t) => t.ref).join(', ')}`;
++-  return `${link.label} -> ${to}`;
+++  return `${link.label} -> ${to} (AIM: odvodené z popisku)`;
++ }
++ 
++ interface DocLinksState {
+diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/unclipped.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/unclipped.patch
+new file mode 100644
+index 000000000..48e5861b7
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/unclipped.patch
+@@ -0,0 +1,15 @@
++diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
++index 43602504d..16bf73fa0 100644
++--- b/apps/viewer/src/aim/docLinks.ts
+++++ a/apps/viewer/src/aim/docLinks.ts
++@@ -77,8 +77,8 @@ function normalizeLink(raw: unknown): DocLink | null {
++     .filter((t): t is DocLinkTarget => t !== null)
++     .slice(0, MAX_TARGETS);
++   if (targets.length === 0) return null;
++-  const x = x0;
++-  const y = y0;
+++  const x = Math.max(0, x0);
+++  const y = Math.max(0, y0);
++   return {
++     x,
++     y,
+-- 
+2.43.0
+
