@@ -838,6 +838,14 @@
       "expect": { "tools_called": ["feedback_status"] },
       "verified": false,
       "notes": "D-126 (issue #171): feedback_status(state=closed, verified=false). Len MCP s FEEDBACK_GITHUB_TOKEN. Eval 2026-10-21: agent vzal 'issues' ako BCF témy (bcf_topic_list status=resolved); otázka je dvojznačná."
+    },
+    {
+      "id": "drawing-label-door",
+      "category": "documents_content",
+      "question": "Ktoré dvere sú na pôdoryse 1NP v bubline 08 DD01?",
+      "expect": { "tools_called": ["search_documents"] },
+      "verified": false,
+      "notes": "D-130 (issue #167): search_documents(document_id=OCB_SO01_ASR_D-1-1-01_PODORYS-1NP, include_links=true) -> DD01.08.0001 (jediný výskyt typu DD01.08 na 1NP). Hodnota overená nad produkciou 2026-10-21, eval nespustený."
     }
   ]
 }
