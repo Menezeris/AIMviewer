@@ -21,6 +21,8 @@ export interface WarmChannel {
   send(event: string, payload: unknown): Promise<void>;
   onReply(id: string, cb: (p: LiveReplyPayload) => void): () => void;
   onApplied(cmdId: string, cb: (p: LiveAppliedPayload) => void): () => void;
+  /** Okná viewera (`viewer`), ktoré na kanáli odpovedali za posledných `withinMs` (D-125). */
+  recentViewers(withinMs: number, now?: number): string[];
 }
 
 type Open = (channel: string) => Promise<QueryChannel | null>;
@@ -74,11 +76,20 @@ async function create(name: string, open: Open, forget: () => void): Promise<{ w
   if (!ch) return null;
   const replies = new Map<string, (p: LiveReplyPayload) => void>();
   const applied = new Map<string, (p: LiveAppliedPayload) => void>();
+  // Kedy ktoré okno naposledy odpovedalo (D-125): viac okien = stav sa môže líšiť.
+  const viewers = new Map<string, number>();
+  const sawViewer = (v: string | undefined) => {
+    if (v) viewers.set(v, Date.now());
+  };
   ch.on("broadcast", { event: LIVE_REPLY_EVENT }, ({ payload }) => {
-    if (isLiveReply(payload)) replies.get(payload.id)?.(payload);
+    if (!isLiveReply(payload)) return;
+    sawViewer(payload.viewer);
+    replies.get(payload.id)?.(payload);
   });
   ch.on("broadcast", { event: LIVE_APPLIED_EVENT }, ({ payload }) => {
-    if (isLiveApplied(payload)) applied.get(payload.cmdId)?.(payload);
+    if (!isLiveApplied(payload)) return;
+    sawViewer(payload.viewer);
+    applied.get(payload.cmdId)?.(payload);
   });
   const subscribed = await new Promise<boolean>((resolve) => {
     const timer = setTimeout(() => resolve(false), SUBSCRIBE_TIMEOUT_MS);
@@ -107,6 +118,7 @@ async function create(name: string, open: Open, forget: () => void): Promise<{ w
       applied.set(cmdId, cb);
       return () => applied.delete(cmdId);
     },
+    recentViewers: (withinMs, now = Date.now()) => [...viewers].filter(([, at]) => now - at <= withinMs).map(([v]) => v),
   };
   return { warm, close: () => ch.close() };
 }
@@ -136,4 +148,10 @@ export async function expectApplied(
       off();
     }
   };
+}
+
+/** Koľko okien viewera na kanáli odpovedalo za posledných `withinMs` (D-125); bez teplého kanála 0. */
+export async function recentViewerCount(name: string, withinMs: number, open: Open = connect): Promise<number> {
+  const w = cache.has(name) ? await warmChannel(name, open) : null;
+  return w ? w.recentViewers(withinMs).length : 0;
 }

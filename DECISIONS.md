@@ -5844,6 +5844,69 @@ skryté a izolované prvky len ako počty.
 ofarbené); výber viac prvkov sa uloží, ale obnoví len jeden (viewer vyberá jeden prvok, D-082);
 izolácia nad 600 prvkov sa oreže a výsledok to povie.
 
+### D-125 - Živý stav viewera v odpovediach: identita viewera, zmeny mimo príkazov, priestory v Lens, výplň v reze a malá legenda
+
+**Dátum:** 2026-10-21 · **Stav:** navrhnuté (čaká na Samuela) · **Súvisí:** D-085, D-096, D-101, D-105, D-114, D-116, D-119 · **Issues:** #182, #180, #177, #178, #175 · **PR:** AIMviewer (tento), Menezeris/ifc-lite (fork)
+
+**Kontext:** päť pripomienok z konektora z 21. 10. k jednej úlohe (izolácia miestnosti 2.01 s
+vyústkami, farby VZT): priestor sa po farbení vykreslil plný alebo zmizol, stav v odpovedi a v
+`get_viewer_state` sa striedal medzi dvoma verziami a nezhodoval sa s obrazovkou, izoláciu vypnutú
+používateľom nič nehlásilo, farbenie podľa `system_type` zobralo aj systémy, ktoré nepatrili, a
+zabudnutý rez skryl väčšinu výsledku; `action=legend` otvoril celý panel Lens s predvolenými
+lenses a ofarbená miestnosť nebola v pôdoryse vidno.
+
+**Overenie (D-114, reprodukcia vo forku v iframe, FZK-Haus):**
+- colorize na IfcSpace = Lens alfa 1, miestnosť je nepriehľadný kváder a prvky vnútri nevidno;
+- pravidlo prekryté novším ostane v súhrne s `count 0` ako platné;
+- izolácia z chatu zrušená používateľom (kláves A) sa v súhrne lens hlási ďalej, aj po ďalšej lens;
+- výplň miestností (D-119) sa kreslí len v režime 2D, nie v 3D s rezom a pohľadom zhora;
+- na živý kanál odpovedá každý otvorený viewer a vyhrá prvá odpoveď; stav a lens v
+  `get_viewer_state` sú dve otázky, ktoré mohli zodpovedať dve rôzne karty alebo zariadenia, a
+  odpovede nemali identitu viewera. Jediná cesta k "striedaniu dvoch verzií".
+Existujúce tooly to nepokryjú: chyba je v obsahu odpovedí a vo vykreslení, nie v postupe modelu.
+
+**Rozhodnutie (rozšírenie existujúcich toolov, žiadny nový tool):**
+1. **Identita viewera (AIMviewer):** okno s `?live=` posiela v `reply` a `applied` náhodné `viewer`
+   id (na načítanie stránky). `get_viewer_state` zbiera odpovede ešte chvíľu po prvej, stav aj lens
+   berie z toho istého viewera a pri viac ako jednom vráti `viewers` s varovaním (zavrieť ostatné
+   okná). Potvrdenie príkazu nesie to isté varovanie, ak teplý kanál nedávno videl viac viewerov.
+2. **Zmeny mimo príkazov (fork):** viewer si pamätá stav po poslednom potvrdenom príkaze
+   (`APPLIED`): izolácia a X-ray, rez, skryté, výber, režim a podlažie, AIM chat lens. Pri ďalšom
+   príkaze vráti `changed_outside_commands` (čo sa zmenilo pred ním, napr. "izoláciu vypol
+   používateľ"), `view_state` vráti `changed_since_last_command`. Kamera sa neporovnáva (mení sa
+   stále).
+3. **Súhrn lens (fork):** pravidlo bez zhody má `matched: false` (prekryté novším alebo nič
+   nenašlo); izolácia a X-ray z chatu `active: false` s dôvodom, keď ich kanál už nedrží; AIM chat
+   lens vypnutá v paneli vráti `stored_rules`.
+4. **Priestory v Lens (fork):** farebné pravidlo z chatu dostane pre IfcSpace a IfcSpatialZone
+   priesvitnú variantu (rovnaká farba, alfa 0,3 ako `transparent`), takže miestnosť ostane
+   priehľadná a prvky v nej vidno. Počty sa spočítajú pod pôvodné pravidlo.
+5. **Výplň miestností v reze (fork):** `AimRoomFillLayer` kreslí aj v 3D, keď je aktívny vodorovný
+   rez a kamera hľadí zhora (pôdorys bez režimu 2D); len miestnosti preťaté rezom. Vyplní aj vybranú
+   miestnosť (farbou výberu), nielen ofarbenú.
+6. **Malá legenda (fork + AIMviewer):** `legend: compact` = plávajúca karta len s AIM chat lens
+   (farba, názov pravidla alebo hodnoty, počet), panel Lens sa neotvára a veľké okno sa zavrie.
+   `style_in_3d action=legend` je predvolene `compact`; `large` a `normal` ostávajú.
+7. **`style_in_3d` (AIMviewer):** `clear_section=true` zruší rez v tom istom volaní; pri isolate,
+   xray a colorize s aktívnym rezom odpoveď varuje a navrhne `set_section action=clear`; pri
+   `system_type` (alebo `system`), ktorý zobral viac systémov, vráti zoznam systémov s typom a
+   počtom členov a upozorní, že niektorý nemusí patrieť. Opis: `mode=replace` pri isolate a xray
+   nahradí aj farby z predošlých volaní, na IfcSpace netreba ďalšie pravidlo `transparent`.
+
+**Zavrhnuté rozšírenie a nové tooly:**
+- *Nový tool na živý stav:* stav ide v odpovedi príkazu (D-101) a v `get_viewer_state`; chýbala len
+  jeho pravdivosť a rozdiel.
+- *Parameter `expect_state`:* zmeny mimo príkazov sa vrátia samé, model ich vidí v ďalšej odpovedi.
+- *Adresovanie otázky konkrétnemu vieweru:* príkazy majú ísť do všetkých okien (zrkadlo na
+  telefóne); stačí párovať odpovede a varovať.
+- *`space_display=floor|volume|outline` a objem v perspektíve:* výplň nad scénou by v perspektíve
+  prekrývala model; ostáva otvorená otázka pre Samuela (#175).
+- *Zmena farby priestorov v balíku `lens` alebo v rendereri:* upstream súbory = plné CI a údržba;
+  pravidlo navyše v AIM vrstve stačí.
+
+**Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežia; do `eval/questions.json` pribudnú
+otázky z issues.
+
 ### D-126 - Úplné a stránkované výsledky DB tools, hľadanie cez vzťahy, overenie zatvorených issues
 
 **Status:** rozhodnuté (2026-10-21, číslo pridelil orchestrátor). Issues #181, #174, #171, #176. Nadväzuje na

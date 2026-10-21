@@ -800,6 +800,46 @@
       "notes": "D-122 (issue #72): set_view_mode(saved_view='Posledný pohľad', section_offset_m=-1); predtým uložený pohľad cez saved_view(action=save). Len MCP so živým viewerom."
     },
     {
+      "id": "space-isolate-terminals",
+      "category": "view",
+      "question": "Izoluj miestnosť 2.01 a vzduchotechnické koncové prvky v nej, koncové prvky ofarbi na červeno.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-125 (issue #182): jeden style_in_3d isolate s groups (miestnosť, terminály ef4444); žiadne ďalšie transparent pravidlo na IfcSpace, farba miestnosti ostane priesvitná. Len MCP so živým viewerom."
+    },
+    {
+      "id": "user-turned-off-isolation",
+      "category": "view",
+      "question": "Pridaj k izolácii aj potrubia v tej miestnosti.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-125 (issue #180): ak odpoveď nesie changed_outside_commands (izoláciu vypol používateľ), model to povie a nestavia na starej izolácii. Scenár so živým viewerom a ručným zrušením izolácie."
+    },
+    {
+      "id": "color-ventilation-supply-exhaust",
+      "category": "view",
+      "question": "Ukáž len model VZT, prívodné potrubie červené a odvodné modré.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-125 (issue #177): pri system_type výsledok vypíše system_members a varovanie, model zúži cez system=<presný názov> alebo to povie; pri aktívnom reze riadok POZOR a clear_section=true."
+    },
+    {
+      "id": "legend-compact",
+      "category": "view",
+      "question": "Ukáž legendu.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-125 (issue #178): style_in_3d action=legend bez legend_size = malá karta AIM chat lens."
+    },
+    {
+      "id": "space-fill-plan-cut",
+      "category": "view",
+      "question": "Ofarbi miestnosť 1.01 na oranžovo a ukáž ju v pôdoryse 1NP zhora.",
+      "expect": { "tools_called": ["style_in_3d", "set_section", "set_camera"] },
+      "verified": false,
+      "notes": "D-125 (issue #175): výplň miestnosti aj v 3D pri reze 1NP + 1,2 m a set_camera top (alebo set_view_mode 2d); výplň sa overuje len vizuálne."
+    },
+    {
       "id": "air-terminals-in-space-201",
       "category": "count",
       "question": "Ktoré vyústky (IfcAirTerminal) sú v priestore 2.01? Daj úplný zoznam.",
