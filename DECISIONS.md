@@ -5844,6 +5844,51 @@ skryté a izolované prvky len ako počty.
 ofarbené); výber viac prvkov sa uloží, ale obnoví len jeden (viewer vyberá jeden prvok, D-082);
 izolácia nad 600 prvkov sa oreže a výsledok to povie.
 
+### D-126 - Úplné a stránkované výsledky DB tools, hľadanie cez vzťahy, overenie zatvorených issues
+
+**Status:** rozhodnuté (2026-10-21, číslo pridelil orchestrátor). Issues #181, #174, #171, #176. Nadväzuje na
+D-056 (`query_view`), D-060 (`aggregate_objects`), D-090 (feedback), D-095 (`search_all`) a D-114.
+
+**Kontext (reprodukcia na produkcii):**
+- `query_view` nemal parameter `offset`; server neznámy parameter ticho zahodil, takže "druhá strana"
+  vrátila prvú. Bez `order` nebolo poradie stabilné a výsledok nehlásil, že je orezaný (100 zo 139).
+- `aggregate_objects(ifc_type=...)` navrchu, nie vo `filters`, vrátil počet všetkých objektov (2221):
+  ten istý problém, neznámy parameter sa ignoruje.
+- `search_all(lobby)` priestor 1.01 nájde (LongName), ale `search_all(prenajímateľné)` nájde len zónu
+  "Nájomné priestory", nie jej priestory; model musel ďalej cez vzťahy.
+- `feedback_status` ukazoval len otvorené issues; nebolo vidieť, čo je zatvorené a ešte neoverené.
+- 403 pri komentári do zatvoreného #137 prišiel z GitHub konektora claude.ai (token GitHub App),
+  `feedback action=comment` konektora AIM do zatvoreného issue zapíše (overené na #137).
+
+**Rozhodnutie (všetko rozšírenie existujúcich toolov, D-114; bez migrácie):**
+1. **Neznámy parameter = chyba** pre každý tool MCP servera: výsledok `isError` so zoznamom povolených
+   parametrov. Nepodporovaný filter sa tak nikdy neignoruje ticho.
+2. **`query_view`**: parameter `offset`, vo výsledku `total` (presný počet), `returned`, `truncated`,
+   `offset` a `next_offset`. Poradie je vždy stabilné: za voliteľný `order` sa pridá kľúč relácie
+   (`id`, pri pohľadoch bez `id` ich prirodzený kľúč), takže strany sa neprekrývajú.
+3. **`query_view related`** = `{relation: rel_*, node: id alebo object_ref, direction: to|from}` nad
+   reláciami uzlov (`objects`, `v_asset_effective`, ...): len riadky so vzťahom na daný uzol, spolu s
+   filtrami a stránkovaním (napr. IfcAirTerminal s `rel_referenced_in_spatial_structure` na 2.01).
+   Ide v TS dvoma dopytmi (hrany, potom `id in`), strop 500 susedov, nad ním chyba s radou zúžiť.
+   Obsah miestnosti ostáva `v_space_elements` (contained aj referenced naraz).
+4. **`search_all related`** (predvolene true): pre zhody, ktoré sú zónou, priestorovou zónou, skupinou
+   (`rel_assigns_to_group`, člen -> skupina) alebo aktérom (`rel_assigns_to_actor`, aktér -> objekt),
+   pridá blok `related` s členmi z grafu AIM (vzťah, cez ktorý uzol, strop 50 na skupinu) a členov dá
+   do `show_in_3d.ids_or_refs`. Systémy sa nerozbaľujú (stovky prvkov; na to je `ifc_relations`).
+5. **`feedback_status state=open|closed|all`**, `verified`, `limit`: zatvorené issues s `closed_at`,
+   PR z časovej osi a `verification` = `overene` | `vratene` (štítky) | `neoverene`.
+   **`feedback action=comment verification=overene|vratene`** zapíše komentár a nastaví štítok
+   (druhý odoberie), aj na zatvorenom issue.
+6. Prompt: priestor podľa mena alebo účelu cez `search_all`, `truncated` = stránkuj `next_offset`,
+   overenie zatvoreného issue cez `feedback`, nie GitHub konektor.
+
+**Zavrhnuté:**
+- *Nový tool na join alebo stránkovanie:* `query_view` už je generický dopyt, `related` je jeho filter.
+- *RPC s joinom v SQL:* migrácia a ďalšia SQL funkcia kvôli tomu, čo zvládnu dva dopyty so stropom.
+- *`where` na psety v `search_all` (#174):* zdvojilo by `ifc_query` a `aggregate_objects` (tie berú
+  `ids` zo search_all).
+- *Nastavenie práv GitHub App z kódu:* je to nastavenie účtu (Samuel), postup je v #176.
+
 ### D-127 - Panel vlastností len IFC, lepivé zvýraznenie vlastnosti, panely z chatu, výrez dokumentu podľa karty
 **Status:** rozhodnuté (2026-10-21, číslo pridelil orchestrátor, register #60). Issues #168, #169, #179, #166.
 Nadväzuje na D-077 (AIM karta v paneli), D-113 (panel vlastností pri výbere), D-114 (najprv napasuj),

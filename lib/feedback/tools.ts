@@ -20,6 +20,12 @@ export const LABEL_FEEDBACK = "pripomienka";
 export const LABEL_SESSION = "session";
 /** Čaká na voľné miesto (strop súbežných sessions). */
 export const LABEL_QUEUE = "fronta";
+/** Overenie zatvoreného issue (D-126): Samuel ho skontroloval, alebo ho vrátil. */
+export const VERIFICATIONS = ["overene", "vratene"] as const;
+type Verification = (typeof VERIFICATIONS)[number];
+export const STATES = ["open", "closed", "all"] as const;
+const DEFAULT_STATUS_LIMIT = 20;
+const MAX_STATUS_LIMIT = 50;
 
 export const AREAS = ["aim_data", "viewer", "ifc_engine", "model_change", "requirements_library", "other"] as const;
 export const FEEDBACK_KINDS = ["bug", "wrong_data", "wrong_answer", "improvement"] as const;
@@ -80,11 +86,16 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
       "Stav pripomienok a požiadaviek na tools (D-090). Bez issue_number vráti otvorené issues konektora " +
       "(číslo, názov, druh, či beží session); s issue_number stav issue, odkaz na session, PR a posledné " +
       "komentáre (otázky session na používateľa). Zoznam ukáže aj sessions: koľko beží z koľkých a čo je vo " +
-      "fronte. Použi pred feedback(action=request_tool), keď tušíš, že požiadavka už existuje.",
+      "fronte. state=closed|all: aj zatvorené issues s closed_at, PR a overením (verification overene | " +
+      "vratene | neoverene); 'čo je hotové, ale neoverené' = state=closed, verified=false. Použi pred " +
+      "feedback(action=request_tool), keď tušíš, že požiadavka už existuje.",
     inputSchema: {
       type: "object",
       properties: {
-        issue_number: { type: "integer", description: "Číslo issue; bez neho zoznam otvorených." },
+        issue_number: { type: "integer", description: "Číslo issue; bez neho zoznam." },
+        state: { type: "string", enum: [...STATES], description: "Zoznam: open (default) | closed | all" },
+        verified: { type: "boolean", description: "state=closed|all: true = len overené, false = ešte neoverené" },
+        limit: { type: "integer", description: `state=closed|all: max issues (default ${DEFAULT_STATUS_LIMIT}, max ${MAX_STATUS_LIMIT})` },
       },
     },
     annotations: { readOnlyHint: true, openWorldHint: true },
@@ -99,8 +110,9 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
       "tools; opíš potrebu (user_request, why_existing_fail, tried_tools s konkrétnymi tools); ak stačí rozšíriť " +
       "existujúci tool (parameter, akcia, pole vo výsledku), uveď ho v proposal.extend - rozšírenie má prednosť " +
       "(D-114); spustí session alebo ide do fronty, rovnaká požiadavka sa pripíše ako ďalší výskyt. comment: " +
-      "komentár do existujúceho issue (issue_number, text, kind eval_round | result | note; reopen len na " +
-      "výslovný pokyn). start_session: spustí session pre ďalšie issue z fronty (over_limit len na výslovnú " +
+      "komentár do existujúceho issue, aj zatvoreného (issue_number, text, kind eval_round | result | note; " +
+      "verification=overene | vratene zapíše overenie hotového issue; reopen len na výslovný pokyn; GitHub " +
+      "konektor na to netreba). start_session: spustí session pre ďalšie issue z fronty (over_limit len na výslovnú " +
       "žiadosť). Chyba v IFC modeli sem nepatrí, to je BCF téma (bcf_topic). " +
       PRIVACY,
     inputSchema: {
@@ -147,6 +159,11 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
         issue_number: { type: "integer", description: "comment: číslo issue; start_session: konkrétne issue z fronty" },
         text: { type: "string", description: `comment: text v markdown (max ${MAX_COMMENT} znakov)` },
         reopen: { type: "boolean", description: "comment: znovu otvoriť zatvorené issue (len na výslovný pokyn)" },
+        verification: {
+          type: "string",
+          enum: [...VERIFICATIONS],
+          description: "comment: overene = skontrolované a funguje, vratene = nefunguje (štítok na issue)",
+        },
         over_limit: { type: "boolean", description: "start_session: aj nad strop 3 sessions (len na výslovnú žiadosť)" },
         start_session: { type: "boolean", description: "report: hneď spustiť session; request_tool: false = len zapísať" },
       },
@@ -617,7 +634,25 @@ export function parseCommentKind(body: string): CommentKind | null {
   }
 }
 
-export function draftComment(args: Record<string, unknown>, now: Date): { number: number; body: string } {
+const VERIFICATION_TEXT: Record<Verification, string> = { overene: "overené", vratene: "vrátené" };
+
+function parseVerification(v: unknown): Verification | null {
+  if (v === undefined) return null;
+  if (!(VERIFICATIONS as readonly string[]).includes(v as string)) {
+    throw new FeedbackInputError(`verification musí byť jedno z: ${VERIFICATIONS.join(", ")}.`);
+  }
+  return v as Verification;
+}
+
+/** Overenie zatvoreného issue podľa štítku (D-126); bez štítku = neoverené. */
+export function verificationOf(i: GithubIssue): Verification | "neoverene" {
+  return VERIFICATIONS.find((v) => hasLabel(i, v)) ?? "neoverene";
+}
+
+export function draftComment(
+  args: Record<string, unknown>,
+  now: Date,
+): { number: number; body: string; verification: Verification | null } {
   const number = typeof args.issue_number === "number" ? Math.trunc(args.issue_number) : NaN;
   if (!(number >= 1)) throw new FeedbackInputError("Chýba issue_number (kladné číslo).");
   const text = str(args.text, MAX_COMMENT, "text", true);
@@ -625,10 +660,12 @@ export function draftComment(args: Record<string, unknown>, now: Date): { number
     throw new FeedbackInputError(`kind musí byť jedno z: ${COMMENT_KINDS.join(", ")}.`);
   }
   const kind = (args.kind as CommentKind | undefined) ?? "note";
+  const verification = parseVerification(args.verification);
   return {
     number,
+    verification,
     body: [
-      `**${COMMENT_TEXT[kind]}** (${stamp(now)}, \`feedback_comment\`)`,
+      `**${COMMENT_TEXT[kind]}${verification ? `, overenie: ${VERIFICATION_TEXT[verification]}` : ""}** (${stamp(now)}, \`feedback_comment\`)`,
       text,
       `<!-- aim-mcp-comment ${JSON.stringify({ v: 1, kind })} -->`,
     ].join("\n\n"),
@@ -659,11 +696,17 @@ async function comment(args: Record<string, unknown>, deps: FeedbackDeps): Promi
   const reopened = args.reopen === true && issue.state !== "open";
   if (reopened) await client.reopenIssue(d.number);
   const c = await client.addComment(d.number, body);
+  if (d.verification) {
+    // Jeden stav overenia: nový štítok pridá, opačný odoberie (komentár je už zapísaný).
+    await client.addLabels(d.number, [d.verification]);
+    for (const other of VERIFICATIONS.filter((v) => v !== d.verification)) await client.removeLabel(d.number, other);
+  }
   return {
     text: json({
       issue: { number: issue.number, url: issue.html_url, title: issue.title, state: reopened ? "open" : issue.state },
       comment: { id: c.id, url: c.html_url },
       reopened,
+      ...(d.verification ? { verification: d.verification } : {}),
     }),
     isError: false,
   };
@@ -680,6 +723,12 @@ async function status(args: Record<string, unknown>, deps: FeedbackDeps): Promis
   }
   const client = deps.client;
   const n = typeof args.issue_number === "number" ? Math.trunc(args.issue_number) : null;
+  const state = args.state ?? "open";
+  if (!(STATES as readonly string[]).includes(state as string)) throw new FeedbackInputError(`state: ${STATES.join(" | ")}.`);
+  if (n === null && state !== "open") return closedList(state as "closed" | "all", args, client);
+  if (args.verified !== undefined || args.limit !== undefined) {
+    throw new FeedbackInputError("verified a limit platia len pre zoznam so state=closed | all.");
+  }
   if (n === null) {
     const open = await client.listOpenIssues(LABEL_MCP);
     const { running, stale } = runningSessions(open, deps.now());
@@ -718,6 +767,7 @@ async function status(args: Record<string, unknown>, deps: FeedbackDeps): Promis
       title: issue.title,
       state: issue.state,
       state_reason: issue.state_reason ?? null,
+      ...(issue.state === "closed" ? { verification: verificationOf(issue) } : {}),
       labels: issue.labels.map((l) => l.name),
       url: issue.html_url,
       session_url: sessionUrl,
@@ -729,6 +779,53 @@ async function status(args: Record<string, unknown>, deps: FeedbackDeps): Promis
         // Dopísané cez feedback_comment (kolo evalov, výsledok, poznámka).
         via_connector: parseCommentKind(c.body),
         text: excerpt(c.body),
+      })),
+    }),
+    isError: false,
+  };
+}
+
+/** Zoznam vrátane zatvorených issues s PR a overením (D-126, #171). */
+async function closedList(
+  state: "closed" | "all",
+  args: Record<string, unknown>,
+  client: GithubClient,
+): Promise<{ text: string; isError: boolean }> {
+  if (args.verified !== undefined && typeof args.verified !== "boolean") throw new FeedbackInputError("verified: true | false.");
+  const rawLimit = args.limit === undefined ? DEFAULT_STATUS_LIMIT : args.limit;
+  if (typeof rawLimit !== "number" || !Number.isFinite(rawLimit) || rawLimit < 1) throw new FeedbackInputError("limit: kladné číslo.");
+  const limit = Math.min(Math.trunc(rawLimit), MAX_STATUS_LIMIT);
+  const all = await client.listIssues(LABEL_MCP, state);
+  const closed = all.filter((i) => i.state === "closed");
+  const matches = all.filter((i) => {
+    if (args.verified === undefined) return true;
+    if (i.state !== "closed") return false;
+    return (verificationOf(i) === "overene") === args.verified;
+  });
+  const shown = matches.slice(0, limit);
+  // PR len pri zatvorených (časová os issue); jeho výpadok zoznam nezhodí.
+  const prs = await Promise.all(
+    shown.map((i) => (i.state === "closed" ? client.linkedPullRequests(i.number).catch(() => []) : Promise.resolve([]))),
+  );
+  return {
+    text: json({
+      state,
+      ...(args.verified !== undefined ? { verified: args.verified } : {}),
+      total: matches.length,
+      returned: shown.length,
+      truncated: matches.length > shown.length,
+      closed_unverified: closed.filter((i) => verificationOf(i) !== "overene").length,
+      note: "Z posledných 100 upravených issues konektora; overenie = štítok overene | vratene.",
+      issues: shown.map((i, k) => ({
+        number: i.number,
+        title: i.title,
+        state: i.state,
+        kind: parseMarker(i.body)?.kind ?? null,
+        ...(i.state === "closed"
+          ? { state_reason: i.state_reason ?? null, closed_at: i.closed_at ?? null, verification: verificationOf(i), pull_requests: prs[k] }
+          : { session: hasLabel(i, LABEL_SESSION), queued: hasLabel(i, LABEL_QUEUE) }),
+        labels: i.labels.map((l) => l.name),
+        url: i.html_url,
       })),
     }),
     isError: false,
