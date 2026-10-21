@@ -5960,7 +5960,11 @@ D-090 (požiadavky z konektora, routine), D-099 (BCF routine).
    `start_queued_session` ju prečíta (výslovný `narocnost` pri start_session ju prebije). Zvolené pred štítkom:
    komentár nesie aj dôvod, štítky `narocnost:*` by rozšírili sadu štítkov, ktorú dnes nikto nečíta okrem
    servera, a značky v komentároch server už používa (`aim-mcp-session`, `aim-mcp-comment`).
-6. **Eskalácia:** STANDARD session pri náročnej úlohe napíše do issue "Eskalácia na HARD: <dôvod>" a skončí;
+6. **Dôvera značke a dôvodu (review):** `start_queued_session` číta značku `aim-mcp-triage` len z komentárov
+   účtu, ktorému patrí `FEEDBACK_GITHUB_TOKEN` (`GET /user`, login účtu servera); cudzí komentár by inak vedel
+   prepnúť routine. Ak sa login nedá zistiť, značky sa ignorujú a ide HARD. `narocnost_dovod` sa pred zápisom
+   zbaví `<`, `>` a zlomov riadkov a skráti na 200 znakov, aby nevložil falošnú značku pred pravú.
+7. **Eskalácia:** STANDARD session pri náročnej úlohe napíše do issue "Eskalácia na HARD: <dôvod>" a skončí;
    orchestrátor po 2 neúspechoch alebo pri eskalácii spustí HARD. Postup je v `docs/orchestration.md`.
 
 **Zavrhnuté:**

@@ -296,7 +296,9 @@ export function parseTriageArgs(args: Record<string, unknown>): Triage {
   if (v !== undefined && !(NAROCNOST as readonly string[]).includes(v as string)) {
     throw new FeedbackInputError(`narocnost musí byť jedno z: ${NAROCNOST.join(", ")}.`);
   }
-  return { requested: (v as Narocnost | undefined) ?? null, reason: str(args.narocnost_dovod, MAX_REASON, "narocnost_dovod") };
+  // Dôvod ide do verejného komentára vedľa skrytej značky: bez <, > a zlomov riadkov nevie vložiť falošnú.
+  const reason = str(args.narocnost_dovod, MAX_REASON * 2, "narocnost_dovod").replace(/[<>]/g, "").replace(/\s+/g, " ").trim();
+  return { requested: (v as Narocnost | undefined) ?? null, reason: reason.slice(0, MAX_REASON) };
 }
 
 /** Značka triedenia z komentára: skutočne použitá náročnosť a to, čo sa navrhlo. */
@@ -700,8 +702,10 @@ async function startQueued(
   // Náročnosť: výslovný parameter, inak posledné triedenie zapamätané pri zaradení do fronty (D-134).
   let triage = parseTriageArgs(args);
   if (triage.requested === null) {
-    const comments = await client.listComments(target.number).catch(() => []);
-    const saved = [...comments].reverse().find((c) => parseTriage(c.body));
+    // Len komentáre účtu servera (token); cudzí komentár so značkou by vedel prepnúť routine.
+    const me = await client.viewerLogin().catch(() => null);
+    const comments = me ? await client.listComments(target.number).catch(() => []) : [];
+    const saved = [...comments].reverse().find((c) => c.user?.login === me && parseTriage(c.body));
     const parsed = saved ? parseTriage(saved.body) : null;
     if (parsed) triage = { requested: parsed.requested ?? parsed.level, reason: triageReasonOf(saved!.body) };
   }
