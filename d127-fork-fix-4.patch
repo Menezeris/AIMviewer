@@ -1,0 +1,176 @@
+From 6e1130d9289beca143a6d8d5ed7255b238e8cbef Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 10:18:17 +0000
+Subject: [PATCH] =?UTF-8?q?AIM=20D-127:=20nov=C3=A1=20rel=C3=A1cia=20mosta?=
+ =?UTF-8?q?=20zastav=C3=AD=20zv=C3=BDraznenie=20vlastnosti=20z=20predo?=
+ =?UTF-8?q?=C5=A1lej=20(review=20minor)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013pTmyabGpJyMo1eWHhfymn
+---
+ apps/viewer/src/aim/aimInspectorStore.ts           | 11 ++++++++++-
+ apps/viewer/src/aim/aimPanelView.ts                |  1 +
+ apps/viewer/src/aim/aimPanelViewPlan.test.ts       | 10 ++++++++++
+ apps/viewer/src/aim/docBridge.ts                   |  6 ++++--
+ .../evidence/aim-d127-panels/mutations/README.md   |  1 +
+ .../mutations/reset-keeps-running.patch            | 12 ++++++++++++
+ .../aim-d127-panels/mutations/summary.json         | 14 ++++++++++++++
+ 7 files changed, 52 insertions(+), 3 deletions(-)
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/reset-keeps-running.patch
+
+diff --git a/apps/viewer/src/aim/aimInspectorStore.ts b/apps/viewer/src/aim/aimInspectorStore.ts
+index 114af9c4..3c03870c 100644
+--- a/apps/viewer/src/aim/aimInspectorStore.ts
++++ b/apps/viewer/src/aim/aimInspectorStore.ts
+@@ -23,11 +23,20 @@ export interface PropertyFocusState {
+ interface AimInspectorState {
+   propertyFocus: PropertyFocusState | null;
+   setPropertyFocus: (focus: PropertyFocusState | null) => void;
++  /** Zastaví bežiace zvýraznenie (observer, takt); registruje ho lenivý `aimPanelView`. */
++  stopFocus: (() => void) | null;
++  /** Nová relácia mosta: zvýraznenie z predošlej sa zastaví a zabudne (AIM D-127). */
++  resetFocus: () => void;
+ }
+ 
+-export const useAimInspectorStore = create<AimInspectorState>((set) => ({
++export const useAimInspectorStore = create<AimInspectorState>((set, get) => ({
+   propertyFocus: null,
+   setPropertyFocus: (propertyFocus) => set({ propertyFocus }),
++  stopFocus: null,
++  resetFocus: () => {
++    get().stopFocus?.();
++    set({ propertyFocus: null });
++  },
+ }));
+ 
+ /**
+diff --git a/apps/viewer/src/aim/aimPanelView.ts b/apps/viewer/src/aim/aimPanelView.ts
+index 23fce9a0..cafd16c4 100644
+--- a/apps/viewer/src/aim/aimPanelView.ts
++++ b/apps/viewer/src/aim/aimPanelView.ts
+@@ -101,6 +101,7 @@ export function applyPanelView(view: AimPanelView, target: Target, noteIssue: (t
+       finish();
+     };
+     stopActive = stop;
++    useAimInspectorStore.setState({ stopFocus: clearPropertyFocus }); // reset novej relácie mosta (docBridge.ts)
+ 
+     const start = () => {
+       const sections = focusSections(focus.pset);
+diff --git a/apps/viewer/src/aim/aimPanelViewPlan.test.ts b/apps/viewer/src/aim/aimPanelViewPlan.test.ts
+index 1dd33866..17956c60 100644
+--- a/apps/viewer/src/aim/aimPanelViewPlan.test.ts
++++ b/apps/viewer/src/aim/aimPanelViewPlan.test.ts
+@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
+ import assert from 'node:assert';
+ 
+ import { isInboundMessage } from './bridge-protocol.js';
++import { useAimInspectorStore } from './aimInspectorStore.js';
+ import { focusSections, isQuantitySetName, matchName, panelPlan, parsePanelView, propKeyEntity, selectPanel } from './aimPanelViewPlan.js';
+ 
+ const S = 'aim-bridge' as const;
+@@ -70,4 +71,13 @@ describe('panel vlastností z chatu (AIM D-113)', () => {
+     assert.equal(matchName(['Height', ' width '], 'Width'), 1);
+     assert.equal(matchName([null, undefined, 'Area'], 'Width'), -1);
+   });
++
++  it('nová relácia mosta zastaví bežiace zvýraznenie a zabudne výsledok', () => {
++    let stopped = 0;
++    useAimInspectorStore.setState({ stopFocus: () => { stopped += 1; } });
++    useAimInspectorStore.getState().setPropertyFocus({ pset: 'P', property: 'X', found: true });
++    useAimInspectorStore.getState().resetFocus();
++    assert.equal(stopped, 1);
++    assert.equal(useAimInspectorStore.getState().propertyFocus, null);
++  });
+ });
+diff --git a/apps/viewer/src/aim/docBridge.ts b/apps/viewer/src/aim/docBridge.ts
+index 3ee1a451..9a633d50 100644
+--- a/apps/viewer/src/aim/docBridge.ts
++++ b/apps/viewer/src/aim/docBridge.ts
+@@ -7,13 +7,14 @@
+  * knižnica dokumentov, podklady výkresov, otvorenie karty s výrezom a rámikmi a
+  * udalosti z viewera späť hostovi. Vyčlenené z `AimBridge.tsx` (strop veľkosti
+  * modulu); AimBridge sem len odovzdá správu a pri štarte relácie zavolá
+- * `wireDocumentEvents`.
++ * `wireDocumentEvents` (resetuje aj stav relácie: výrez karty, zvýraznenie vlastnosti).
+  */
+ 
+ import { parsePlacement, serializePlacement } from '@ifc-lite/drawing-underlay';
+ import { useViewerStore } from '../store/index.js';
+ import { SOURCE, type InboundMessage, type OutboundMessage } from './bridge-protocol.js';
+ import { noteIssue, track } from './command-gate.js';
++import { useAimInspectorStore } from './aimInspectorStore.js';
+ import { normalizeDocHighlights, normalizeDocRegion, regionApplied, useAimDocRegionStore } from './docRegion.js';
+ 
+ /** Výrez strany z chatu čaká na otvorenie PDF; dlhšie ako ACK by APPLIED len oneskorilo. */
+@@ -75,8 +76,9 @@ export function handleDocumentMessage(msg: InboundMessage): boolean {
+ 
+ /** Udalosti viewera o dokumentoch späť hostovi; volá sa pri štarte relácie mosta. */
+ export function wireDocumentEvents(post: (msg: OutboundMessage) => void): void {
+-  // Viditeľný rozsah karty z predošlej relácie nepatrí novej (AIM D-127).
++  // Viditeľný rozsah karty ani zvýraznenie vlastnosti z predošlej relácie nepatria novej (AIM D-127).
+   useAimDocRegionStore.setState({ visible: null });
++  useAimInspectorStore.getState().resetFocus();
+ 
+   // Kalibrácia uložená vo viewri → host ju perzistuje do
+   // documents.properties._georef (D-072). Session-only bez hosta.
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/README.md b/docs/architecture/evidence/aim-d127-panels/mutations/README.md
+index 0981de59..85ca88cc 100644
+--- a/docs/architecture/evidence/aim-d127-panels/mutations/README.md
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/README.md
+@@ -26,6 +26,7 @@ Each patch is written mutant->fixed and reverse-applied by the oracle. Every run
+ | `inside-no-tolerance.patch` | `docVisible.ts` | "region fully visible" has no rounding tolerance | `docRegion.test.ts` |
+ | `visible-unclamped.patch` | `docVisible.ts` | the visible part is not clamped to the page | `docRegion.test.ts` |
+ | `clear-no-waiter.patch` | `docRegion.ts` | clearing a region request never resolves `regionApplied` | `docRegion.test.ts` |
++| `reset-keeps-running.patch` | `aimInspectorStore.ts` | a new bridge session forgets the focus result but leaves its observer running | `aimPanelViewPlan.test.ts` |
+ | `aim-badge-dropped.patch` | `documentsQuery.ts` | a document inherited through a relation loses its AIM flag (D-129) | `documentsQuery.test.ts` |
+ 
+ The following is store, DOM and renderer glue with no unit test, and was verified live:
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/reset-keeps-running.patch b/docs/architecture/evidence/aim-d127-panels/mutations/reset-keeps-running.patch
+new file mode 100644
+index 00000000..47994579
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/reset-keeps-running.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/aimInspectorStore.ts a/apps/viewer/src/aim/aimInspectorStore.ts
++index 1cb4937e..3c03870c 100644
++--- b/apps/viewer/src/aim/aimInspectorStore.ts
+++++ a/apps/viewer/src/aim/aimInspectorStore.ts
++@@ -34,6 +34,7 @@ export const useAimInspectorStore = create<AimInspectorState>((set, get) => ({
++   setPropertyFocus: (propertyFocus) => set({ propertyFocus }),
++   stopFocus: null,
++   resetFocus: () => {
+++    get().stopFocus?.();
++     set({ propertyFocus: null });
++   },
++ }));
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/summary.json b/docs/architecture/evidence/aim-d127-panels/mutations/summary.json
+index ae423643..5e58de2f 100644
+--- a/docs/architecture/evidence/aim-d127-panels/mutations/summary.json
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/summary.json
+@@ -139,6 +139,20 @@
+     ],
+     "restoration": "verified"
+   },
++  "reset-keeps-running": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimPanelViewPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "ffcd39ae0bf844ad4a44565f430f0250084c52ca",
++    "production": [
++      "apps/viewer/src/aim/aimInspectorStore.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimPanelViewPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
+   "visible-unclamped": {
+     "verdict": "OBSERVED",
+     "exitCode": 0,
+-- 
+2.43.0
+
