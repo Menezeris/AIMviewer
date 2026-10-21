@@ -1,0 +1,49 @@
+From c0ec0a29655f8d732df01a9fc7d897376d4d20c9 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 09:09:24 +0000
+Subject: [PATCH] =?UTF-8?q?AIM=20D-127:=20review=20minor=20-=20visible=20p?=
+ =?UTF-8?q?ri=20teardowne=20mosta,=20zatvorenie=20vlastnost=C3=AD=20v=20sp?=
+ =?UTF-8?q?odnej=20polovici=20splitu?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013pTmyabGpJyMo1eWHhfymn
+---
+ apps/viewer/src/aim/AimBridge.tsx | 2 +-
+ apps/viewer/src/aim/aimPanels.ts  | 5 +++--
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/apps/viewer/src/aim/AimBridge.tsx b/apps/viewer/src/aim/AimBridge.tsx
+index 522976d4..9a50b30a 100644
+--- a/apps/viewer/src/aim/AimBridge.tsx
++++ b/apps/viewer/src/aim/AimBridge.tsx
+@@ -268,7 +268,7 @@ export function AimBridge() {
+       useCapturePinsStore.getState().setPins([]);
+       useAimDecorationsStore.getState().clear();
+       useAimDerivationsStore.getState().clear();
+-      useAimDocRegionStore.setState({ request: null, highlights: null }); // D-117/D-123: výrez ani rámiky nepatria ďalšej relácii
++      useAimDocRegionStore.setState({ request: null, highlights: null, visible: null }); // D-117/D-123/D-127: výrez, rámiky ani rozsah nepatria ďalšej relácii
+       resetLensFromChat(); // D-096: izolácia a AIM chat lens neprežijú odpojenie mostu
+       setFocusProvider(undefined);
+       resetCommandState(); // problémy a kroky z predošlej relácie nepatria do ďalšieho APPLIED
+diff --git a/apps/viewer/src/aim/aimPanels.ts b/apps/viewer/src/aim/aimPanels.ts
+index 9b0e0f31..a6a37651 100644
+--- a/apps/viewer/src/aim/aimPanels.ts
++++ b/apps/viewer/src/aim/aimPanels.ts
+@@ -39,8 +39,9 @@ function closePanel(s: Store, key: PanelKey): void {
+       s.setListPanelVisible(false);
+       return;
+     case 'properties':
+-      // Vlastnosti sú záloha pravého stĺpca: zavrieť ich = zbaliť stĺpec, keď ho práve držia.
+-      if (s.sidebarActivePanel === 'properties' && s.sidebarMode !== 'collapsed') s.setSidebarMode('collapsed');
++      // Vlastnosti sú záloha pravého stĺpca: v spodnej polovici splitu ju uvoľnia, v hornej zbalia stĺpec.
++      if (s.sidebarSecondaryPanel === 'properties') s.setSidebarSecondaryPanel(null);
++      else if (s.sidebarActivePanel === 'properties' && s.sidebarMode !== 'collapsed') s.setSidebarMode('collapsed');
+       return;
+   }
+ }
+-- 
+2.43.0
+
