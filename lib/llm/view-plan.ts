@@ -9,6 +9,10 @@ import {
   sectionOp,
   viewModeOp,
   VIEW_MODES,
+  PANEL_ACTIONS,
+  panelsOp,
+  VIEWER_PANELS,
+  type PanelsRequest,
   type SectionFit,
   type ViewMode,
 } from "../viewer-ops";
@@ -162,4 +166,25 @@ export function planViewMode(
     label: `Viewer: ${mode.toUpperCase()}${floor ? ` ${floor.label}` : ""}`,
     result: { ok: true, mode, ...(floor ? { floor: floor.label } : {}) },
   };
+}
+
+/**
+ * Panely viewera (D-127): `panels` = {lens: "close", properties: "open", ...}, `all` len "close".
+ * Bez `panels` null; chybný vstup = ViewInputError (model ho opraví).
+ */
+export function planPanels(input: Record<string, unknown>): { op: string; label: string; result: { panels: PanelsRequest } } | null {
+  const raw = input.panels;
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) throw new ViewInputError("panels = {lens|properties|underlays|documents|lists|model_tree|all: open|close|toggle}.");
+  const out: PanelsRequest = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const known = (VIEWER_PANELS as readonly string[]).includes(k) || k === "all";
+    if (!known) throw new ViewInputError(`panels: neznámy panel '${k}' (lens, properties, underlays, documents, lists, model_tree, all).`);
+    if (!(PANEL_ACTIONS as readonly unknown[]).includes(v)) throw new ViewInputError(`panels.${k}: open, close alebo toggle.`);
+    if (k === "all" && v !== "close") throw new ViewInputError("panels.all: len close (zatvorí všetky panely, okrem tých, ktoré správa otvára).");
+    out[k as keyof PanelsRequest] = v as PanelsRequest[keyof PanelsRequest];
+  }
+  if (Object.keys(out).length === 0) throw new ViewInputError("panels: aspoň jeden panel.");
+  const label = Object.entries(out).map(([k, v]) => `${k} ${v}`).join(", ");
+  return { op: panelsOp(out), label: `Panely: ${label}`, result: { panels: out } };
 }

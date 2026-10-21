@@ -878,6 +878,33 @@
       "expect": { "tools_called": ["feedback_status"] },
       "verified": false,
       "notes": "D-126 (issue #171): feedback_status(state=closed, verified=false). Len MCP s FEEDBACK_GITHUB_TOKEN. Eval 2026-10-21: agent vzal 'issues' ako BCF témy (bcf_topic_list status=resolved); otázka je dvojznačná."
+    },
+    {
+      "notes": "D-126 (issue #171): feedback_status(state=closed, verified=false). Len MCP s FEEDBACK_GITHUB_TOKEN."
+    },
+    {
+      "id": "select-highlight-fire-compartment",
+      "category": "view",
+      "question": "Vyber dvere DD01.08.0001 a ukáž mi v paneli vlastnosť AIM_FireSafety.FireCompartments.",
+      "expect": { "tools_called": ["show_in_3d"] },
+      "verified": false,
+      "notes": "D-127 (issue #168): show_in_3d(select=true, id_or_ref=DD01.08.0001, highlight=AIM_FireSafety.FireCompartments) -> property.in_aim=true, hodnota N1.01; zvýraznenie drží do ďalšieho výberu. Len MCP so živým viewerom."
+    },
+    {
+      "id": "panels-close-all-but-properties",
+      "category": "view",
+      "question": "Zavri všetky panely okrem vlastností.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-127 (issue #179): set_view_mode(panels={all:'close', properties:'open'}) -> stav panelov v odpovedi. Len MCP so živým viewerom."
+    },
+    {
+      "id": "drawing-region-visible",
+      "category": "view",
+      "question": "Otvor pôdorys 1NP a priblíž tabuľku miestností vpravo dole.",
+      "expect": { "tools_called": ["open_drawing"] },
+      "verified": false,
+      "notes": "D-127 (issue #166): open_drawing(region={x:70,y:70,width:30,height:30}) -> document.region_fully_visible=true v stave po príkaze. Len MCP so živým viewerom."
     }
   ]
 }

@@ -18,6 +18,7 @@
  * Presná póza kamery z uloženého pohľadu (D-122): `pose:<px,py,pz,tx,ty,tz,ux,uy,uz>[~o=<m>][~proj=o|p]:`
  * (IFC svet, m; `o` = polovica výšky ortografického pohľadu).
  * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
+ * Panely (D-127): `panels:~<panel>=<open|close|toggle>~...:` (`all` len `close`).
  */
 
 import { LENS_MODES, decodeLensWire, lensBridgeMessage, type LensMode, type LensWire } from "./viewer-lens";
@@ -62,7 +63,10 @@ export type Projection = "perspective" | "orthographic";
 /** Výška rezu nad úrovňou podlažia (m) - rozsah, ktorý server aj klient prijmú. */
 export const SECTION_OFFSET_RANGE = { min: -5, max: 20 } as const;
 
-/** Panel vlastností po výbere (D-113): záložka AIM | IFC, sekcia, zvýraznená vlastnosť. */
+/**
+ * Panel vlastností po výbere (D-113): sekcia a zvýraznená vlastnosť. Záložka AIM | IFC
+ * zanikla (D-127); `t=` sa z drôtu ešte prečíta kvôli starším odkazom, server ho neposiela.
+ */
 export const PANEL_TABS = ["aim", "ifc"] as const;
 export const PANEL_SECTIONS = ["properties", "quantities"] as const;
 export interface SelectPanel {
@@ -70,6 +74,13 @@ export interface SelectPanel {
   section?: (typeof PANEL_SECTIONS)[number];
   focus?: { pset: string; property: string };
 }
+
+/** Panely viewera z chatu (D-127): mená zhodné s mostom forku (`view-protocol.ts`). */
+export const VIEWER_PANELS = ["lens", "properties", "underlays", "documents", "lists", "model_tree"] as const;
+export type ViewerPanel = (typeof VIEWER_PANELS)[number];
+export const PANEL_ACTIONS = ["open", "close", "toggle"] as const;
+export type PanelAction = (typeof PANEL_ACTIONS)[number];
+export type PanelsRequest = Partial<Record<ViewerPanel | "all", PanelAction>>;
 
 export type ViewerOp =
   | { op: "colorize"; guids: string[]; color: string }
@@ -109,7 +120,9 @@ export type ViewerOp =
   /** Zoznam z chatu do panela Lists (D-111), formát v `lib/viewer-list.ts`. */
   | { op: "list"; wire: ListWire }
   /** Kóty v IFC svete do nástroja Measure forku (D-124), formát v `lib/viewer-measure.ts`. */
-  | { op: "measure"; segments: MeasureSegment[]; keep?: boolean };
+  | { op: "measure"; segments: MeasureSegment[]; keep?: boolean }
+  /** Otvorenie / zatvorenie panelov (D-127). */
+  | { op: "panels"; panels: PanelsRequest };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -283,6 +296,23 @@ function parsePose(arg: string): { viewpoint: BridgeViewpoint; projection?: Proj
   };
 }
 
+/** `~lens=close~properties=open` -> panely; `all` len s `close`, nič platné = null. */
+function parsePanels(arg: string): PanelsRequest | null {
+  const [, kv] = parseArg(arg);
+  const out: PanelsRequest = {};
+  for (const [k, v] of Object.entries(kv)) {
+    if (!(PANEL_ACTIONS as readonly string[]).includes(v)) continue;
+    if ((VIEWER_PANELS as readonly string[]).includes(k) || (k === "all" && v === "close")) out[k as ViewerPanel | "all"] = v as PanelAction;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/** Op panelov (D-127): `panels:~lens=close~...:`. */
+export function panelsOp(panels: PanelsRequest): string {
+  const kv = Object.entries(panels).map(([k, v]) => `${k}=${v}`);
+  return `panels:~${kv.join("~")}:`;
+}
+
 /** Rozparsuje `ops`; neznáme alebo chybné časti sa ticho zahodia (vstup je z URL). */
 export function parseOps(raw: string): ViewerOp[] {
   const out: ViewerOp[] = [];
@@ -377,6 +407,9 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "measure") {
       const segments = decodeMeasureWire(joined);
       if (segments) out.push({ op, segments, ...(arg === "keep" ? { keep: true } : {}) });
+    } else if (op === "panels") {
+      const panels = parsePanels(arg);
+      if (panels) out.push({ op, panels });
     } else if (op === "doc") {
       const documentId = joined;
       if (!UUID.test(documentId)) continue;
@@ -468,6 +501,8 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
       return listBridgeMessage(o.wire, new Map());
     case "measure":
       return { type: "MEASURE_SHOW", segments: o.segments, ...(o.keep ? { keep: true } : {}) };
+    case "panels":
+      return { type: "SET_PANELS", panels: o.panels };
   }
 }
 
