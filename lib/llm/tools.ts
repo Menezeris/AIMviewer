@@ -246,6 +246,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "triede aj predefined_type (ilike). ifc_type = IFC trieda (IfcDoor), predefined_type = podtyp " +
       "(AIRCONDITIONINGUNIT je predefined_type, NIE ifc_type). Obsah psetov ani účel miestnosti (lobby, sklad) " +
       "nevidí - na to search_everything. list nad 100 riadkov stránkuj cez offset; stĺpce určené filtrom sú raz v same; " +
+      "rozpad podľa podtypu nerátaj z riadkov - dá ho aggregate_objects(group_by=predefined_type); " +
       "slovník tried a psetov dá get_model_stats.",
     inputSchema: {
       type: "object",
@@ -257,7 +258,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         predefined_type: { type: "string", description: "IFC predefined_type enum (case-insensitive zhoda)" },
         ids: { type: "array", items: { type: "string" }, description: "locate: konkrétne objects.id namiesto filtrov" },
         limit: { type: "number", description: `list: max riadkov (default ${DEFAULT_LIMIT}, strop ${MAX_LIMIT})` },
-        offset: { type: "number", description: "list: posun strany; orezaný výsledok má total a next_offset" },
+        offset: { type: "number", description: "list: posun strany; ďalšia strana = next_offset, nie offset+limit; strany neposielaj súbežne" },
       },
     },
   },
@@ -344,7 +345,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         count_only: { type: "boolean", description: "true = vráť len presný počet riadkov" },
         limit: { type: "number", description: `Max riadkov (default ${DEFAULT_LIMIT}, strop ${MAX_LIMIT})` },
-        offset: { type: "number", description: "Posun strany (default 0); ďalšia strana = next_offset z výsledku" },
+        offset: { type: "number", description: "Posun strany (default 0); ďalšia strana = next_offset, nie offset+limit; strany neposielaj súbežne" },
         related: {
           type: "object",
           properties: {
