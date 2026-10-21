@@ -269,6 +269,7 @@ Nová RPC pre LLM = vždy read-only `stable` + `set search_path` + interné whit
 
 Chýbajúci tool alebo pripomienka z konektora = GitHub issue (`feedback` s action request_tool / report, D-090);
 session, ktorá ho rieši, postupuje podľa skillu `.claude/skills/mcp-poziadavka/SKILL.md`.
+Náročnosť požiadavky (STANDARD Sonnet / HARD Opus routine, D-134) a eskalácia: `docs/orchestration.md`.
 
 **Najprv napasuj, až potom nový tool (D-114).** Každý tool navyše predlžuje načítanie konektora
 a agentovi sťažuje výber. Pred novou schopnosťou v konektore (aj mimo issue z konektora):

@@ -95,6 +95,11 @@ export class GithubClient {
     return this.call("POST", `${this.base}/issues`, input);
   }
 
+  /** Login účtu, ktorému patrí token (komu server pripisuje svoje komentáre). */
+  async viewerLogin(): Promise<string> {
+    return (await this.call<{ login: string }>("GET", "/user")).login;
+  }
+
   getIssue(number: number): Promise<GithubIssue> {
     return this.call("GET", `${this.base}/issues/${number}`);
   }

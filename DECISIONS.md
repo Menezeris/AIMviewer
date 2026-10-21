@@ -6334,3 +6334,48 @@ poznal len 3D, 2D a Split.
 **Otvorené:** pôdorys vedľa 3D bez kalibrovaného podkladu (vektorový plán upstreamu žije v režime úprav
 modelu, nie na čítanie); zvislý podklad pre rezy po D-133; zoznam uložených pohľadov v lište forku (dnes z chatu);
 mobil má zatiaľ starý prepínač.
+
+---
+
+### D-134 - Náročnosť požiadavky z konektora: routines STANDARD (Sonnet) a HARD (Opus)
+**Status:** rozhodnuté (2026-10-21, Samuel cez orchestrátora), číslo pridelené v registri #60. Nadväzuje na
+D-090 (požiadavky z konektora, routine), D-099 (BCF routine).
+
+**Kontext:** každá požiadavka z konektora spúšťala routine s Opusom, aj keď išlo o jasnú malú zmenu. Cieľ je
+šetriť tokeny: jasné a lokálne zadania rieši Sonnet, náročné Opus.
+
+**Rozhodnutie:**
+1. **Dve routines.** Model je vlastnosť routine, `/fire` ho nezmení. HARD (Opus) je doterajšia routine,
+   premenovaná na "AIM: Hard Issues" (env `CLAUDE_ROUTINE_FIRE_URL`, `CLAUDE_ROUTINE_TOKEN`). STANDARD
+   (Sonnet) je "AIM: Standard Issues" (env `CLAUDE_ROUTINE_STANDARD_FIRE_URL`, `CLAUDE_ROUTINE_STANDARD_TOKEN`).
+   Server má `standardRoutine()` vedľa `feedbackRoutine()` v `lib/feedback/routine.ts`.
+2. **O náročnosti rozhoduje Claude v konektore** pri zakladaní issue, lebo má kontext rozhovoru so Samuelom.
+   `feedback` (report, request_tool) a `start_session` dostanú `narocnost: standard | hard` a krátky
+   `narocnost_dovod`. Pravidlo je v opise toolu: STANDARD = jasné a lokálne (reprodukovateľná chyba, malá
+   zmena, test, opis toolu); HARD = nejasné zadanie, architektúra, naprieč modulmi, DB schéma alebo migrácia,
+   fork (ifc-lite), nový tool. Pri pochybnosti: nejasné zadanie -> HARD, inak STANDARD.
+3. **Spätná kompatibilita:** chýbajúci parameter alebo nenastavená STANDARD routine = HARD ako doteraz.
+4. **Záznam triedenia:** komentár k odkazu na session nesie riadok `triedenie: STANDARD - <dôvod>` a skrytú
+   značku `aim-mcp-triage {level, requested}`; `level` je skutočne použitá routine, `requested` návrh
+   (rozdiel = fallback, v riadku poznámka). Štatistika sa počíta z týchto komentárov (komentáre s
+   `aim-mcp-session`; komentár fronty má predponu "Fronta:" a štatistiku nezvyšuje). Štítky session/fronta/pr
+   sa nemenia.
+5. **Fronta:** issue vo fronte si náročnosť pamätá v komentári "Fronta: triedenie: ..." so značkou;
+   `start_queued_session` ju prečíta (výslovný `narocnost` pri start_session ju prebije). Zvolené pred štítkom:
+   komentár nesie aj dôvod, štítky `narocnost:*` by rozšírili sadu štítkov, ktorú dnes nikto nečíta okrem
+   servera, a značky v komentároch server už používa (`aim-mcp-session`, `aim-mcp-comment`).
+6. **Dôvera značke a dôvodu (review):** `start_queued_session` číta značku `aim-mcp-triage` len z komentárov
+   účtu, ktorému patrí `FEEDBACK_GITHUB_TOKEN` (`GET /user`, login účtu servera); cudzí komentár by inak vedel
+   prepnúť routine. Ak sa login nedá zistiť, značky sa ignorujú a ide HARD. `narocnost_dovod` sa pred zápisom
+   zbaví `<`, `>` a zlomov riadkov a skráti na 200 znakov, aby nevložil falošnú značku pred pravú.
+7. **Eskalácia:** STANDARD session pri náročnej úlohe napíše do issue "Eskalácia na HARD: <dôvod>" a skončí;
+   orchestrátor po 2 neúspechoch alebo pri eskalácii spustí HARD. Postup je v `docs/orchestration.md`.
+
+**Zavrhnuté:**
+- *Routine na triedenie, ktorá spúšťa iné routines:* routine nemá `fire_trigger` a potrebovala by tokeny
+  oboch routines v environmente.
+- *GitHub Actions na triedenie:* beh nie je session, v ktorej Samuel odpovedá.
+- *Prepínanie modelu jednej routine:* stav a súbeh sessions (model je vlastnosť routine).
+
+**Dôsledky:** zmena opisu a parametrov toolu `feedback` (inventár `MCP-TOOLS.md`), evaly D-057 zatiaľ bez
+behu (v cloude chýbajú Supabase kľúče), na Verceli treba obe dvojice env (STANDARD už nastavená).

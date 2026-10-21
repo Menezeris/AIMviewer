@@ -37,12 +37,24 @@ export interface RoutineConfig {
   env: string;
 }
 
-/** Routine "AIM: požiadavka z konektora" (D-090). */
+/** Routine "AIM: Hard Issues" (D-090, od D-134 premenovaná z "AIM: požiadavka z konektora"; Opus). */
 export function feedbackRoutine(): RoutineConfig {
   return {
     url: process.env.CLAUDE_ROUTINE_FIRE_URL,
     token: process.env.CLAUDE_ROUTINE_TOKEN,
     env: "CLAUDE_ROUTINE_FIRE_URL, CLAUDE_ROUTINE_TOKEN",
+  };
+}
+
+/**
+ * Routine "AIM: Standard Issues" (D-134, Sonnet): jasné a lokálne zadania. Model je
+ * vlastnosť routine, `/fire` ho nezmení, preto druhá routine popri "AIM: Hard Issues".
+ */
+export function standardRoutine(): RoutineConfig {
+  return {
+    url: process.env.CLAUDE_ROUTINE_STANDARD_FIRE_URL,
+    token: process.env.CLAUDE_ROUTINE_STANDARD_TOKEN,
+    env: "CLAUDE_ROUTINE_STANDARD_FIRE_URL, CLAUDE_ROUTINE_STANDARD_TOKEN",
   };
 }
 

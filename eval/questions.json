@@ -977,6 +977,14 @@
       "expect": { "tools_called": ["set_section", "saved_view", "set_view_mode"] },
       "verified": false,
       "notes": "D-132 (issue #165): set_section(fit=along) cez schodisko, set_camera(preset=section, orthographic), saved_view(save, view_type=section, locked=true), set_view_mode(view=meno) a set_view_mode(mode=2d, floor). Poradie volaní nie je pevné."
+    },
+    {
+      "id": "feedback-triage-standard",
+      "category": "feedback",
+      "question": "Zapíš pripomienku: opis toolu get_object má preklep v slove 'vlastnosti'. Hneď spusti session.",
+      "expect": { "tools_called": ["feedback"] },
+      "verified": false,
+      "notes": "D-134: jasná lokálna zmena opisu -> feedback(action=report, narocnost=standard, narocnost_dovod). Parameter narocnost sa v eval harnessi nekontroluje (expect nemá argumenty), overenie = scenár cez konektor. Len MCP a zapisuje do GitHubu."
     }
   ]
 }
