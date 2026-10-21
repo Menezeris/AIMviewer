@@ -6111,3 +6111,76 @@ plochy len `cap_style`/`cap_color`). Obe potreby sú parametre existujúcich too
 
 **Poradie zlúčenia:** najprv fork, potom AIMviewer. Starší viewer nové polia `SET_CAMERA` a
 `SET_SECTION_CAP` ignoruje (rámuje ako doteraz, šrafa ostane uložená).
+
+---
+
+### D-131 - Reality Capture v paneli Documents, druh média ako druhá os klasifikácie, export AIM vrstiev do IFC
+**Status:** rozhodnuté (2026-10-21, session pre #192 podľa D-129), číslo pridelené v registri #60. Body 1 a 2
+implementované, bod 3 navrhnutý a zaparkovaný (#202). Nadväzuje na D-073 (Reality Capture), D-089 (odvodené
+vzťahy), D-104 (dokumenty, klasifikácia dokumentu), D-127 (odznak AIM v paneli Documents), D-129.
+
+**Kontext:** D-129 nechal Reality Capture ako AIM vrstvu (body a médiá v DB, `aim_` hrany), ale vo vieweri
+boli len piny a odkaz z AIM karty, ktorá s D-127 vypadla. Dokumenty sa triedia len podľa typu informácie
+ISO 19650 (ASR v077) a `fetchDocumentTypes` berie prvú klasifikáciu dokumentu bez ohľadu na systém, takže
+druhá os by typ prepísala náhodne. Export IFC existuje len vo forku (upstream `@ifc-lite/export`,
+`StepExporter`, dialógy exportu vo vieweri); AIMviewer ani ETL IFC nezapisujú.
+
+**Rozhodnutie:**
+1. **Médiá Reality Capture v paneli Documents.** `GET /api/element/[id]` pri priestore vráti aktívne médiá
+   jeho bodov (`aim_rel_capture_located` -> `aim_rel_capture_media`), pri prvku v priestore médiá toho
+   priestoru s cestou "cez miestnosť X" (ako zdedené dokumenty D-104). Render schéma `AimPanelData` dostane
+   vlastné pole `captureMedia` (nie riadky v `documents`: médiá nie sú v knižnici `DOCUMENTS_LOAD` a nemajú
+   IFC dokument). Fork v režime "Len pre výber" ukáže pod dokumentmi skupiny podľa druhu média, riadok má
+   odznak AIM, náhľad, dátum snímky a cestu; klik otvorí galériu priestoru v hostovi (`/ifc?captures=<id>`,
+   ktorá vie aj 360°). Hľadanie panela filtruje aj médiá. Piny bez zmeny. Strop 40 médií ako pri dokumentoch.
+2. **Druhá os klasifikácie dokumentov: systém `Druh média`** s kódmi `FOTO` (Fotografia), `PANO360`
+   (360° panoráma), `SKEN` (Sken). Rovnaký mechanizmus ako typ informácie (D-104): `IfcClassification` +
+   `IfcClassificationReference` na `IfcDocumentInformation` cez `IfcExternalReferenceRelationship`.
+   - **Dokumenty v IFC:** recept v OCB (D-086) priradí referenciu systému `Druh média`; ETL ju načíta bez
+     zmeny (`document_classification`, `rel_external_reference_relationship`).
+   - **Médiá v DB:** **odvodenie** z `captures.kind` (`photo` -> `FOTO`, `pano360` -> `PANO360`), žiadny
+     nový stĺpec ani migrácia; druh je vlastnosť bodu (jeden bod = jeden druh snímok). Sken pribudne ako nová
+     hodnota `captures.kind` (`scan`) spolu s jeho uploadom.
+   - **Host:** klasifikácie dokumentu sa čítajú po systémoch. Systém `Druh média` dáva kľúč `meta` "Druh
+     média", všetky ostatné ostávajú v "Druh" (typ informácie), takže "Zoskupiť" vo vieweri ponúkne novú os
+     bez zmeny forku. Atribúty `ElectronicFormat` (kľúč "Formát") a `LastRevisionTime` ("Revízia") už `meta`
+     nesie; `CreationTime`, `Purpose`, `ValidFrom`/`ValidUntil` dopĺňa recept, `meta` ich ukáže, keď ich
+     ETL začne ukladať (dnes ich `documents` nemá, samostatný krok).
+3. **Export IFC s AIM vrstvami (návrh; zaparkované, #202).** Samuel 21. 10.: export ostáva ako doteraz, návrh
+   nižšie je podklad pre #202.
+   - **Miesto:** export vo forku (jediný zápis IFC v platforme). Dialóg exportu dostane v bloku `AIM-FORK`
+     voľbu "Zahrnúť AIM vrstvy" (len vo vložení v AIMvieweri, predvolene vypnutá). Zápis AIM entít je čistý
+     modul `apps/viewer/src/aim/aimIfcExport.ts`, ktorý doplní riadky STEP k výstupu `StepExporter`
+     (pred `ENDSEC`), s testom a overením súboru cez ifcopenshell.
+   - **Dáta:** viewer si ich pri exporte vypýta od hosta (bridge `AIM_EXPORT_LAYERS_REQUEST` ->
+     `AIM_EXPORT_LAYERS`): body (GUID odvodený z `objects.id`, meno, GUID priestoru, poloha a `yaw`), médiá
+     (názov, URL, formát, `captured_at`, kód druhu) a odvodené vzťahy ako páry GUID. Polohu z rámca viewera
+     do súradníc IFC prepočíta fork (pozná posun a os Y-up modelu).
+   - **Mapovanie (overené v IFC4X3_ADD2, ifcopenshell 2026-10-21):** bod = `IfcAnnotation`
+     (`PredefinedType=USERDEFINED`, `ObjectType='RealityCapture'`; enum má aj `SURVEY`, ten je pre geodetické
+     body, nie snímky), `ObjectPlacement` = `IfcLocalPlacement` s `IfcAxis2Placement3D` (`Location`
+     `IfcCartesianPoint`, `Axis` (0,0,1), `RefDirection` (cos yaw, sin yaw, 0) = smer pohľadu); `IfcAnnotation`
+     je `IfcProduct`, do priestoru ide cez `IfcRelContainedInSpatialStructure` (`RelatingStructure` =
+     `IfcSpace`). Médium = `IfcDocumentInformation` (`Identification` id média, `Location` URL,
+     `ElectronicFormat` MIME, `CreationTime` = `captured_at`, `Purpose` 'Reality Capture') +
+     `IfcRelAssociatesDocument` na anotáciu + referencia `Druh média` cez `IfcExternalReferenceRelationship`.
+     Odvodené vzťahy (D-089) = `IfcRelReferencedInSpatialStructure`, len keď oba konce sú v exportovanom
+     súbore (vzťahy medzi súbormi ostávajú vo vrstve, D-089 bod 7).
+   - **Rozsah:** jedna voľba pre všetky AIM vrstvy (Reality Capture aj odvodené vzťahy), bez výberu
+     jednotlivých bodov. Export je jednorazový výstup, revíziu modelu nezakladá (D-129 bod 4).
+
+**Zavrhnuté:**
+- *Médiá ako riadky `documents` v AIM karte:* fork ich otváral ako PDF z knižnice, médiá v knižnici nie sú
+  a zoskupenie podľa druhu by sa miešalo s cestou "cez zónu".
+- *Nový stĺpec `capture_media.media_kind` (migrácia):* druh je daný bodom (`captures.kind`); stĺpec by
+  duplikoval údaj a mohol sa s bodom rozísť.
+- *Druh média ako pset alebo `meta` bez klasifikácie:* D-011/D-104 triedia dokumenty klasifikáciou, nie
+  vlastným poľom; recept v OCB by inak nemal IFC nositeľa.
+- *Export AIM vrstiev v ETL alebo v AIMvieweri (ifcopenshell na serveri):* Samuel pracuje len vo vieweri
+  (D-129) a export tam už je; druhý zapisovač IFC by sa rozišiel s exportom forku.
+- *Implementácia exportu v tomto kroku:* zmena upstream dialógu exportu (plné CI, D-116) a nový bridge
+  kontrakt s prepočtom súradníc sú samostatná práca; body 1 a 2 ju nepotrebujú.
+
+**Dôsledky:** bez migrácie a bez nového env. Fork (vetva D-127): skupiny médií v "Len pre výber". Pre
+OCB: recept na klasifikáciu `Druh média` pre obrázky v IFC (dnes žiadne, takže až s prvým fotodokumentom
+v modeli). Export AIM vrstiev je zaparkovaný v #202.

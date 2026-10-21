@@ -163,4 +163,12 @@ describe("nodeSummaryToAimPanel - AIM vrstva v IFC paneli (D-129)", () => {
     expect(panel.lastChange).toEqual({ model: "ASR", revision: "v076", title: "Doplniť FireRating", date: "2026-10-20" });
     expect(nodeSummaryToAimPanel(baseSummary, "GUID").lastChange).toBeUndefined();
   });
+
+  it("médiá Reality Capture prejdú do panela len keď sú (D-131)", () => {
+    const captureMedia = [
+      { id: "m1", name: "Vstup", kind: "FOTO", kindLabel: "Fotografia", href: "/ifc?captures=s1", via: "v miestnosti 3.12" },
+    ];
+    expect(nodeSummaryToAimPanel({ ...baseSummary, captureMedia }, "GUID").captureMedia).toEqual(captureMedia);
+    expect(nodeSummaryToAimPanel({ ...baseSummary, captureMedia: [] }, "GUID")).not.toHaveProperty("captureMedia");
+  });
 });

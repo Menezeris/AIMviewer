@@ -1,5 +1,6 @@
 import type { NodeSummary } from "@/lib/data/object";
 import type { CaptureSummary } from "@/lib/data/capture-placement";
+import type { CaptureMediaEntry } from "@/lib/data/media-kind";
 import type { NodeSectionsData } from "@/lib/data/relations";
 import type { DerivedRelationWire } from "@/lib/derivations";
 import { viaText, type ObjectDocument } from "@/lib/data/object-documents-core";
@@ -38,6 +39,11 @@ export interface AimPanelData {
   responsibilities?: { name: string; role: string; org?: string; href?: string }[];
   /** Reality Capture súhrn — počet + host link na galériu priestoru. */
   captures?: { count: number; href: string };
+  /**
+   * Médiá Reality Capture priestoru (D-131): vrstva AIM v paneli Documents ("Len pre
+   * výber"), vo vieweri zoskupené podľa `kindLabel` s odznakom AIM.
+   */
+  captureMedia?: CaptureMediaEntry[];
   /** História GUID (bitemporálna platnosť; `active` = aktuálny GUID). */
   history?: { guid: string; validFrom: string; validUntil?: string; active: boolean }[];
   /** Posledná zmena prvku receptom (D-129): revízia modelu a BCF téma; riadok s odznakom AIM v IFC paneli. */
@@ -58,6 +64,8 @@ export interface ElementDetail extends NodeSummary {
   responsibilities?: NodeSectionsData["responsibilities"];
   guidHistory?: NodeSectionsData["guidHistory"];
   captures?: CaptureSummary | null;
+  /** Médiá Reality Capture priestoru (D-131) - `captureMediaEntries`. */
+  captureMedia?: CaptureMediaEntry[];
   /** Posledná zmena receptom (D-129) - `fetchLastElementChange`. */
   lastChange?: { model: string; revision: string; title: string; date: string } | null;
   /** Odvodené vzťahy (D-089) - `fetchDerivedRelations`. */
@@ -171,6 +179,7 @@ export function nodeSummaryToAimPanel(
       active: h.active,
     })),
     ...(summary.lastChange ? { lastChange: summary.lastChange } : {}),
+    ...(summary.captureMedia?.length ? { captureMedia: summary.captureMedia } : {}),
     derivedRelations: summary.derived?.relations.length ? summary.derived.relations : undefined,
     derivedTotal: summary.derived?.relations.length ? summary.derived.total : undefined,
     actions: [
