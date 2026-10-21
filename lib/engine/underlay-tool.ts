@@ -175,14 +175,13 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   if (!doc) throw new UnderlayInputError(`Dokument ${p.documentId} neexistuje (UUID alebo object_ref).`);
   const pg = await deps.page(doc.id, p.page);
   if (!pg) throw new UnderlayInputError(`Dokument ${doc.object_ref ?? doc.id} nemá stranu ${p.page} s textom (document_pages; ETL etl.pdf_text --from-db).`);
-  const needLines = p.mode !== "manual" || p.refine;
-  if (needLines && !pg.lines) {
+  // Čiary nesú aj rozmer strany (body), bez neho sa nedajú prepočítať ani ručné body v %.
+  if (!pg.lines) {
     throw new UnderlayInputError(
-      `Strana ${p.page} nemá čiary výkresu (document_pages.lines): nie je to vektorový výkres, alebo ich ETL ešte nenačítalo (python -m etl.pdf_text --from-db --only ${doc.object_ref ?? doc.id}). Bez nich ide len mode=manual s refine=false.`,
+      `Strana ${p.page} nemá čiary výkresu (document_pages.lines): nie je to vektorový výkres, alebo ich ETL ešte nenačítalo (python -m etl.pdf_text --from-db --only ${doc.object_ref ?? doc.id}).`,
     );
   }
-  const pageSize: P2 | null = pg.lines?.size ?? null;
-  if (!pageSize) throw new UnderlayInputError("Chýba rozmer strany (document_pages.lines.size); načítaj stranu cez ETL.");
+  const pageSize: P2 = pg.lines.size;
 
   // Rovina: rez zo section_plane, inak pôdorys podlažia (z argumentu alebo z väzby dokumentu).
   let floor = p.floor;
@@ -197,7 +196,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     }
   }
   const model = await deps.model({ model: p.model, floor });
-  const segs = pg.lines?.segs ?? [];
+  const segs = pg.lines.segs;
   const pairs = p.pairs.map((x) => ({
     pdf_pt: [(x.page_pct[0] / 100) * pageSize[0], (1 - x.page_pct[1] / 100) * pageSize[1]] as P2,
     plane_m: x.model_m,
