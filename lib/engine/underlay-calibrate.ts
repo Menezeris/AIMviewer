@@ -450,7 +450,7 @@ export interface CalibrationResult {
   scale_ratio: number;
   rotation_deg: number;
   mirrored: boolean;
-  start: { method: "room_labels" | "levels_axes" | "pairs"; points: number; median_mm: number | null };
+  start: { method: "room_labels" | "levels_axes" | "levels_scan" | "pairs"; points: number; median_mm: number | null };
   icp_pairs: number;
   quality: Quality;
   cross_validation_max_mm: number;
@@ -540,13 +540,13 @@ export interface SectionInput {
   pageSize: P2;
   blocks: PageBlock[];
   lines: PageLine[];
-  /** Poloha osí po smere u (m), kľúč = popisok osi na výkrese (`1`, `A`). */
-  axes: Record<string, number>;
+  /** Poloha osí po smere u (m), kľúč = popisok osi na výkrese (`1`, `A`); bez nich sken. */
+  axes?: Record<string, number>;
   /** Rez modelu rovinou pohľadu, (u, v) = (po reze, výška Z). */
   cut: Seg[];
 }
 
-/** Rez: výškové kóty -> mierka a výška, osi -> posun a smer pohľadu, potom ICP. */
+/** Rez: výškové kóty -> mierka a výška, osi (alebo sken) -> posun a smer pohľadu, potom ICP. */
 export function calibrateSection(input: SectionInput): CalibrationResult {
   const H = input.pageSize[1];
   // Kóta: hodnota proti spodku textu (text stojí nad čiarou úrovne, stály posun dorovná ICP).
@@ -561,23 +561,64 @@ export function calibrateSection(input: SectionInput): CalibrationResult {
   if (close.length >= 3) [s, z0] = lineFit(close);
   if (!(s > 0)) throw new CalibrationError("Výškové kóty nedávajú kladnú mierku (strana otočená?).");
 
-  const axes: P2[] = [];
-  for (const b of input.blocks) {
-    const h = input.axes[b.t.trim()];
-    if (h !== undefined) axes.push([blockCenter(b, input.pageSize)[0], h]);
-  }
-  if (axes.length < 2) throw new CalibrationError(`Na strane sú ${axes.length} popisky osí z pôdorysu; treba aspoň 2 (alebo mode=manual).`);
-  let best: { res: number; sign: 1 | -1; t: number } | null = null;
-  for (const sign of [1, -1] as const) {
-    const t = median(axes.map(([x, h]) => h - sign * s * x));
-    const res = median(axes.map(([x, h]) => Math.abs(h - (sign * s * x + t))));
-    if (!best || res < best.res) best = { res, sign, t };
-  }
-  const start: Affine = [best!.sign * s, 0, best!.t, 0, s, z0];
   const pdf = linesToPoints(input.lines);
   const ifc = samplePoints(input.cut, IFC_STEP_M);
-  const anchors = axes.map(([x]): P2 => [x, median(levels.map(([y]) => y))]);
-  return finish(pdf, ifc, start, best!.sign < 0, { method: "levels_axes", points: levels.length + axes.length, median_mm: Math.round(best!.res * 1000) }, anchors);
+  const axes: P2[] = [];
+  for (const b of input.blocks) {
+    const h = input.axes?.[b.t.trim()];
+    if (h !== undefined) axes.push([blockCenter(b, input.pageSize)[0], h]);
+  }
+  const anchorY = median(levels.map(([y]) => y));
+  if (axes.length >= 2) {
+    let best: { res: number; sign: 1 | -1; t: number } | null = null;
+    for (const sign of [1, -1] as const) {
+      const t = median(axes.map(([x, h]) => h - sign * s * x));
+      const res = median(axes.map(([x, h]) => Math.abs(h - (sign * s * x + t))));
+      if (!best || res < best.res) best = { res, sign, t };
+    }
+    const start: Affine = [best!.sign * s, 0, best!.t, 0, s, z0];
+    const anchors = axes.map(([x]): P2 => [x, anchorY]);
+    return finish(pdf, ifc, start, best!.sign < 0, { method: "levels_axes", points: levels.length + axes.length, median_mm: Math.round(best!.res * 1000) }, anchors);
+  }
+  // Bez osí: vodorovný posun a smer pohľadu skenovaním (najviac bodov PDF pri reze IFC).
+  const scan = scanOffset(pdf, ifc, s, z0);
+  if (!scan) throw new CalibrationError("Rez: bez osí sa nepodarilo nájsť vodorovný posun (čiary PDF sa s rezom modelu neprekrývajú).");
+  const start: Affine = [scan.sign * s, 0, scan.t, 0, s, z0];
+  const xs: number[] = [];
+  for (let i = 0; i < pdf.length; i += 2) xs.push(pdf[i]);
+  xs.sort((a, b) => a - b);
+  const anchors: P2[] = [[quantile(xs, 0.1), anchorY], [quantile(xs, 0.9), anchorY]];
+  return finish(pdf, ifc, start, scan.sign < 0, { method: "levels_scan", points: levels.length, median_mm: null }, anchors);
+}
+
+/**
+ * Vodorovný posun rezu bez osí: pri známej mierke a výške (kóty) skúša posun po 0,25 m a
+ * oba smery pohľadu, vyhrá ten s najviac bodmi PDF do 0,2 m od rezu IFC.
+ */
+function scanOffset(pdf: Float64Array, ifc: Float64Array, s: number, z0: number): { sign: 1 | -1; t: number } | null {
+  const src = decimate(pdf, 16);
+  const grid = new PointGrid(decimate(ifc, 2), 0.2);
+  const [u0, , u1] = bounds(ifc, 0);
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  for (let i = 0; i < src.length; i += 2) {
+    x0 = Math.min(x0, src[i]);
+    x1 = Math.max(x1, src[i]);
+  }
+  let best: { sign: 1 | -1; t: number; n: number } | null = null;
+  for (const sign of [1, -1] as const) {
+    // Obraz strany [sign·s·x0, sign·s·x1] + t musí prekryť rez [u0, u1].
+    const a = Math.min(sign * s * x0, sign * s * x1);
+    const b = Math.max(sign * s * x0, sign * s * x1);
+    for (let t = u0 - b; t <= u1 - a; t += 0.25) {
+      let n = 0;
+      for (let i = 0; i < src.length; i += 2) {
+        if (grid.nearest(sign * s * src[i] + t, s * src[i + 1] + z0)[0] >= 0) n++;
+      }
+      if (!best || n > best.n) best = { sign, t, n };
+    }
+  }
+  return best && best.n > 0 ? { sign: best.sign, t: best.t } : null;
 }
 
 /** Ručné dvojice (strana -> rovina), voliteľne doladené ICP. */

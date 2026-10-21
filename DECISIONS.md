@@ -5950,22 +5950,28 @@ nemá `_georef` ani jeden výkres. Konektor nevie podklad nastaviť. Prototyp na
   do 9 mm; kontrolné body rezu (osi z pôdorysu, výškové kóty) medián 6 až 12 mm.
 
 **Rozhodnutie:**
-1. **Väzba je pohľad + strana PDF**, nie podlažie (Samuel, #170 a #165). Pohľad je uložená definícia D-132
-   (kamera kolmo, rezná rovina alebo box, filter, voliteľne podklad); podlažia sú automatické pohľady. Kalibrácia
-   je AIM vrstva (D-129): `plane` (`origin`, `u`, `v` v IFC svete, m), `affine` z bodov strany PDF (vľavo dole,
-   y hore) do metrov v (u, v), `calibration` (body pre ručnú úpravu), `quality` (medián a p90 v mm, metóda,
-   čas). Pôdorys je `plane` u = X, v = Y vo výške podlažia, teda dnešný `_georef` v1 sa číta bez migrácie.
-   Presné uloženie v pohľade určuje D-132.
+1. **Kalibrácia žije v `_georef` dokumentu, v2 = zoznam kalibrácií** (Samuel, #165 a #170; prvý návrh
+   "v pohľade" padol). Je to vlastnosť dvojice strana PDF a rovina modelu, nie pohľadu: ručný pohľad D-132 nesie
+   len `{document_id, page}`, automatické pôdorysy sa odvodia za behu z podlažia. Položka v2: `page`,
+   `page_size`, `storey_guid`/`storey_z`, `plane` (null = vodorovne vo výške podlažia, presne v1; inak
+   `{origin, u, v}` v IFC svete, `u × v` = normála ku kamere, affine nie je zrkadlový), `affine` z bodov strany
+   PDF (vľavo dole) do metrov (u, v), `calibration`, `region` (výrez strany pri viac výkresoch), `source`
+   (`manual` z panela Underlays, `auto` z toolu), `quality` (metóda, medián, p90, krížová validácia).
+   Automatická neprepíše ručnú bez `force`: ručné dorovnanie je posledné slovo. Prechod bez migrácie: PATCH
+   zlúči v1 z panela ako `manual`, host posiela forku v1 (pôdorysná položka) a popri tom `georefV2`
+   (`lib/data/georef.ts`).
 2. **Čiary výkresu z ETL:** `document_pages.lines` = hrubé úsečky strany `[x1, y1, x2, y2, w]` v bodoch strany
    (počiatok vľavo dole ako `_georef`), hrúbka čiary aspoň 0,99 pt, len vektorové výkresy (aspoň 200 takých
    úsečiek na strane). Ten istý extraktor ako `blocks` (`etl/pdf_text.py`, pymupdf); server parser PDF nemá
    (D-123).
 3. **Výpočet v IFC motore** (`lib/engine/underlay-calibrate.ts`): rez meshov rovinou pohľadu v tom istom rámci
-   ako viewer (D-124), hrubý štart z textu (pôdorys: popisky miestností proti IfcSpace; rez: výškové kóty a
-   popisky osí, polohy osí a rovina rezu zo značky na kalibrovanom pôdoryse), trimmed ICP s podobnosťou a
-   pevným smerom pohľadu, kvalita s krížovou validáciou.
-4. **Nový tool `calibrate_underlay` (zápis):** `view`, `document_id`, `page`, `mode=dry_run|auto|manual`,
-   `pairs`. `dry_run` (predvolené) nič neuloží a ukáže náhľad; zápis za bránou `UNDERLAY_WRITE_ENABLED` a len
+   ako viewer (D-124; pôdorys len konštrukcie, rez všetko okrem priestorov a nábytku), hrubý štart z textu
+   (pôdorys: popisky miestností proti IfcSpace; rez: výškové kóty na mierku a výšku, vodorovný posun a smer
+   pohľadu z popiskov osí, alebo bez nich skenovaním s rovnakým výsledkom), trimmed ICP s podobnosťou a
+   pevným smerom pohľadu, kvalita s krížovou validáciou. Nad meshami motora: 1NP medián 10 mm, p90 20 mm,
+   rezy 8 mm.
+4. **Nový tool `calibrate_underlay` (zápis):** `document_id`, `page`, `floor` (pôdorys) alebo
+   `section_plane` (rez), `mode=dry_run|auto|manual`, `pairs`, `force`. `dry_run` (predvolené) nič neuloží a ukáže náhľad; zápis za bránou `UNDERLAY_WRITE_ENABLED` a len
    pod prahom chyby (medián 50 mm). Na produkciu až po tabuľke skúšobného behu so Samuelovým slovom.
 5. **Viewer:** zvislý podklad (rovina s u, v) je rozšírenie balíka `@ifc-lite/drawing-underlay` vo forku.
 

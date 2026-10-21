@@ -195,15 +195,18 @@ describe("calibrateSection", () => {
     }
     for (const [name, h] of Object.entries(axes)) blocks.push(block(name, applyAffine(inv, [h, 15.5])));
 
-    const res = calibrateSection({ pageSize: PAGE, blocks, lines, axes, cut });
-    expect(res.start.method).toBe("levels_axes");
-    expect(res.mirrored).toBe(true);
-    for (const p of [[0, 0], [PAGE[0], 0], [0, PAGE[1]], PAGE] as P2[]) {
-      const a = applyAffine(res.affine, p);
-      const b = applyAffine(T, p);
-      expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeLessThan(0.005);
+    // S osami z pôdorysu aj bez nich (sken vodorovného posunu a smeru pohľadu).
+    for (const [withAxes, method] of [[true, "levels_axes"], [false, "levels_scan"]] as const) {
+      const res = calibrateSection({ pageSize: PAGE, blocks, lines, axes: withAxes ? axes : undefined, cut });
+      expect(res.start.method).toBe(method);
+      expect(res.mirrored).toBe(true);
+      for (const p of [[0, 0], [PAGE[0], 0], [0, PAGE[1]], PAGE] as P2[]) {
+        const a = applyAffine(res.affine, p);
+        const b = applyAffine(T, p);
+        expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeLessThan(0.005);
+      }
+      expect(res.quality.median_mm).toBeLessThan(5);
     }
-    expect(res.quality.median_mm).toBeLessThan(5);
   });
 
   it("málo kót vráti CalibrationError", () => {

@@ -7,13 +7,17 @@ import {
   isCrossOriginBlocked,
 } from "@/lib/api-guard";
 import { isValidGeorefV1 } from "@/lib/data/drawing";
+import { calibrationFromV1, isValidCalibration, mergeCalibration, type GeorefCalibration, type GeorefV1 } from "@/lib/data/georef";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 /**
- * Zápis georeferencie výkresu (D-072): PATCH uloží `_georef` v1 JSON do
+ * Zápis georeferencie výkresu (D-072): PATCH uloží kalibráciu do `_georef` v
  * `properties` dokumentového objektu (`objects.properties`, rezervovaný
  * `_` kľúč ako `_drawing_links` — tabuľka `documents` properties nemá).
  * Volá ho host stránka po bridge správe `UNDERLAY_SAVE` z embed viewera.
+ * D-133: `_georef` je v2 (zoznam kalibrácií); v1 z panela sa zlúči ako
+ * `source: manual` na miesto tej istej strany a podlažia, `calibration` (v2
+ * položka) sa zlúči tak, ako prišla. Ručná je posledné slovo, preto tu `force`.
  *
  * Ochrana: viewer je zatiaľ verejný read-only (D-025/D-026), takže JEDINÝ
  * zapisovací endpoint je za env bránou — default VYPNUTÝ, demo/staging si ho
@@ -73,10 +77,11 @@ export async function PATCH(
   } catch {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
-  const georef = (body as { georef?: unknown } | null)?.georef;
-  if (!isValidGeorefV1(georef)) {
-    return NextResponse.json({ error: "invalid _georef payload" }, { status: 400 });
-  }
+  const b = body as { georef?: unknown; calibration?: unknown } | null;
+  let next: GeorefCalibration;
+  if (isValidGeorefV1(b?.georef)) next = calibrationFromV1(b!.georef as GeorefV1, "manual");
+  else if (isValidCalibration(b?.calibration)) next = b!.calibration as GeorefCalibration;
+  else return NextResponse.json({ error: "invalid _georef payload" }, { status: 400 });
 
   const supabase = getSupabaseAdmin();
 
@@ -91,10 +96,10 @@ export async function PATCH(
     return NextResponse.json({ error: "document not found" }, { status: 404 });
   }
 
-  const properties = {
-    ...((obj.properties as Record<string, unknown> | null) ?? {}),
-    _georef: georef,
-  };
+  const current = (obj.properties as Record<string, unknown> | null) ?? {};
+  const merged = mergeCalibration(current._georef, next, true);
+  if (!merged.ok) return NextResponse.json({ error: "merge failed" }, { status: 409 });
+  const properties = { ...current, _georef: merged.georef };
   const { error: uErr } = await supabase
     .from("objects")
     .update({ properties })
