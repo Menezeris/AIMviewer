@@ -16,7 +16,7 @@ import {
 } from "@/lib/live/viewer-query-tools";
 import { lensCountsText } from "@/lib/live/lens-counts";
 import { ACK_TIMEOUT_MS, appliedText, notAppliedText } from "@/lib/live/applied-text";
-import { expectApplied } from "@/lib/live/warm-channel";
+import { expectApplied, recentViewerCount } from "@/lib/live/warm-channel";
 import { mcpInstructions } from "@/lib/llm/system-prompt";
 import type { AskAction } from "@/lib/llm/actions";
 import { AskToolRuntime } from "@/lib/llm/tools";
@@ -49,6 +49,8 @@ export const maxDuration = 60;
 const NO_STORE = { "Cache-Control": "no-store" };
 /** Dlhší záložný odkaz sa do odpovede nevypisuje. */
 const MAX_LINK = 2000;
+/** Okná viewera, ktoré odpovedali za toto obdobie, sa rátajú do varovania o viacerých oknách (D-125). */
+const VIEWERS_WINDOW_MS = 60_000;
 
 function tokenMatches(given: string): boolean {
   const expected = process.env.MCP_TOKEN?.trim();
@@ -195,7 +197,9 @@ async function deliverActions(
     if (sent.ok && waitApplied && actions.some((a) => a.url.startsWith("/ifc"))) {
       const t0 = Date.now();
       const applied = await timer.phase("ack", () => waitApplied(ACK_TIMEOUT_MS));
-      text.push(applied ? appliedText(name, applied, Date.now() - t0) : notAppliedText(ACK_TIMEOUT_MS));
+      // Viac okien viewera za poslednú minútu (D-125): potvrdenie je len z jedného.
+      const viewers = applied ? await recentViewerCount(channel, VIEWERS_WINDOW_MS).catch(() => 0) : 0;
+      text.push(applied ? appliedText(name, applied, Date.now() - t0, { args, viewers }) : notAppliedText(ACK_TIMEOUT_MS));
     } else if (sent.ok) {
       // Bez teplého kanála pôvodné čítanie stavu (D-096 počty Lens, D-092 poloha rezu).
       if (lensRev) text.push(await timer.phase("lens", () => lensCountsText(channel, lensRev)));

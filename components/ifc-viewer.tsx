@@ -6,6 +6,7 @@ import { nodeSummaryToAimPanel, type ElementDetail } from "@/lib/aim-panel";
 import type { SelectedElement } from "@/lib/data/drawing";
 import type { UnderlayDrawingWire } from "@/lib/data/drawing";
 import type { DocumentWire } from "@/lib/data/documents";
+import type { DocumentLinksWire } from "@/lib/data/drawing-links";
 import type { CaptureViewerWire } from "@/lib/data/captures";
 import type { TreeDecorations } from "@/lib/data/decoration-counts";
 import type { DerivationsLayerWire } from "@/lib/derivations";
@@ -49,6 +50,7 @@ import { PROD_VIEWER_URL } from "@/lib/viewer-source";
  *                   SET_VIEW_MODE{mode,storeyGuid} (D-083; pohľad bez
  *                   súradníc, podlažie prepočíta viewer) ·
  *                   DOCUMENT_OPEN{documentId,page} ·
+ *                   DOCUMENT_LINKS{documents} (D-130; popisky pôdorysov ako odkazy) ·
  *                   AIM_PANEL_DATA{guid,data} · AIM_PANEL_EMPTY{guid,reason} ·
  *                   AIM_DERIVATIONS_LOAD{layer} (D-089; vrstva AIM nad modelmi,
  *                   typy v lib/derivations.ts) · AIM_BCF_LOAD{baseUrl,projectId}
@@ -172,6 +174,8 @@ interface Props {
   decorations?: TreeDecorations;
   /** Vrstva AIM nad modelmi (D-089) — AIM_DERIVATIONS_LOAD po MODELS_LOADED. */
   derivations?: DerivationsLayerWire | null;
+  /** Popisky pôdorysov ako odkazy na prvok (D-130) — DOCUMENT_LINKS po DOCUMENTS_LOAD. */
+  documentLinks?: DocumentLinksWire[] | null;
   apiRef?: React.RefObject<ViewerApi | null>;
   onSelect?: (element: SelectedElement) => void;
   onPickedElement?: (objectId: string, guid: string) => void;
@@ -196,6 +200,7 @@ export function IFCViewer({
   captures,
   decorations,
   derivations,
+  documentLinks,
   apiRef,
   onSelect,
   onPickedElement,
@@ -451,6 +456,8 @@ export function IFCViewer({
           // výkresy idú v oboch správach (prepojenie cez documentId/storeyGuid).
           if (documents && documents.length > 0) {
             post({ type: "DOCUMENTS_LOAD", documents });
+            // Popisky pôdorysov ako odkazy (D-130): až keď viewer knižnicu dokumentov má.
+            if (documentLinks && documentLinks.length > 0) post({ type: "DOCUMENT_LINKS", documents: documentLinks });
             // Deep link `?doc=<id>` — otvor kartu až keď viewer knižnicu má.
             if (openDocumentId) {
               post({ type: "DOCUMENT_OPEN", documentId: openDocumentId });
@@ -638,8 +645,9 @@ export function IFCViewer({
   useEffect(() => {
     if (!loadedRef.current) return;
     post({ type: "DOCUMENTS_LOAD", documents: documents ?? [] });
+    post({ type: "DOCUMENT_LINKS", documents: documentLinks ?? [] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documents]);
+  }, [documents, documentLinks]);
 
   // ── AIM dekorácie stromu (D-077) — re-send po zmene (router.refresh po ETL).
   // Pred MODELS_LOADED ich pošle handler MODELS_LOADED vyššie.

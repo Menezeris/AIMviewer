@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { hasRelativeStep, relativeViewpoint, type ViewerCamera } from "./viewer-camera";
+import { hasRelativeStep, relativeViewpoint, visibleArea, type ViewerCamera } from "./viewer-camera";
+import { appliedText } from "./live/applied-text";
 
 /** Kamera 10 m južne od cieľa vo výške cieľa, pohľad na sever (IFC: Y sever, Z hore). */
 const SOUTH: ViewerCamera = {
@@ -62,5 +63,37 @@ describe("relativeViewpoint (D-098)", () => {
   it("hasRelativeStep: fit nie je relatívny krok", () => {
     expect(hasRelativeStep({ fit: "visible" })).toBe(false);
     expect(hasRelativeStep({ panY: 5 })).toBe(true);
+    expect(hasRelativeStep({ marginPercent: 40, area: "left" })).toBe(false);
+  });
+});
+
+describe("visibleArea (D-128)", () => {
+  it("perspektíva: výška = 2 * vzdialenosť * tan(FOV/2), šírka * pomer, smery obrazu v IFC", () => {
+    const v = visibleArea(SOUTH)!;
+    expect(v.height_m).toBeCloseTo(20, 3);
+    expect(v.width_m).toBeCloseTo(40, 3);
+    close(v.center, 0, 0, 0);
+    // Pohľad na sever: doprava = východ (+X), hore = +Z.
+    close(v.right, 1, 0, 0);
+    close(v.up, 0, 0, 1);
+  });
+
+  it("ortografia: výška = 2 * ortho_size bez ohľadu na vzdialenosť", () => {
+    const v = visibleArea({ ...SOUTH, projection: "orthographic", ortho_size: 0.63, aspect: 1.5 })!;
+    expect(v.height_m).toBeCloseTo(1.26, 3);
+    expect(v.width_m).toBeCloseTo(1.89, 3);
+  });
+
+  it("chýbajúci pomer alebo ortho_size = null, nehádame", () => {
+    expect(visibleArea({ ...SOUTH, aspect: undefined })).toBeNull();
+    expect(visibleArea({ ...SOUTH, projection: "orthographic" })).toBeNull();
+    expect(visibleArea({ ...SOUTH, position: SOUTH.target })).toBeNull();
+  });
+
+  it("potvrdenie set_camera nesie visible, iné tooly nie", () => {
+    const applied = { cmdId: "c1", ok: true, issues: [], state: { camera: SOUTH } };
+    expect(appliedText("set_camera", applied)).toContain('"visible":{"center":{"x":0,"y":0,"z":0},"width_m":40,"height_m":20');
+    expect(appliedText("set_section", applied)).not.toContain("visible");
+    expect(appliedText("set_camera", { ...applied, state: { camera: null } })).not.toContain("visible");
   });
 });

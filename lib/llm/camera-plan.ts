@@ -6,20 +6,38 @@ import {
   type OpsSelector,
   type Projection,
 } from "../viewer-ops";
-import { CAMERA_FITS, CAMERA_RANGES, hasRelativeStep, type CameraFit, type CameraMove } from "../viewer-camera";
+import {
+  CAMERA_AREAS,
+  CAMERA_FITS,
+  CAMERA_RANGES,
+  DEFAULT_MARGIN_PERCENT,
+  hasRelativeStep,
+  type CameraArea,
+  type CameraFit,
+  type CameraMove,
+} from "../viewer-camera";
 
 import { DOMAIN_IFC_TYPES, sanitizeIfcType, sanitizeModelName } from "./ifc-selector";
 import { ViewInputError, type ViewPlan } from "./view-plan";
 
 /**
  * Čistá logika `set_camera` (D-083, rozšírenie D-094, revízia D-098): preset, fit, cieľ (GUIDy
- * alebo selektor ako `style_in_3d`) a relatívne kroky -> op `camera`/`camera_sel`
+ * alebo selektor ako `style_in_3d`), okraj a časť cieľa (D-128) a relatívne kroky -> op `camera`/`camera_sel`
  * a odpoveď pre model. Dohľadanie cieľov v DB robí `view-tools.ts`.
  */
 
 const FIT_LABEL: Record<CameraFit, string> = {
   visible: "na viditeľné",
   selection: "na výber",
+};
+
+const AREA_LABEL: Record<CameraArea, string> = {
+  left: "ľavá časť",
+  right: "pravá časť",
+  top: "horná časť",
+  bottom: "dolná časť",
+  front: "predná časť",
+  back: "zadná časť",
 };
 
 function rangeNum(raw: unknown, name: string, range: { min: number; max: number }): number | undefined {
@@ -91,6 +109,32 @@ export function planCamera(input: Record<string, unknown>, targetGuids: string[]
   if (px !== undefined) move.panX = px;
   if (py !== undefined) move.panY = py;
   const relative = hasRelativeStep(move);
+
+  // Okraj a časť cieľa (D-128) rámuje fork z obálok prvkov: cieľ alebo výber, nie viditeľné.
+  const framesBoxes = hasTarget || fit === "selection";
+  const areaRaw = input.area === undefined || input.area === null ? "" : String(input.area).trim();
+  if (areaRaw && !(CAMERA_AREAS as readonly string[]).includes(areaRaw)) {
+    throw new ViewInputError(`area musí byť jedna z ${CAMERA_AREAS.join(", ")}.`);
+  }
+  const area = (areaRaw || undefined) as CameraArea | undefined;
+  const marginGiven = input.margin_percent !== undefined && input.margin_percent !== null;
+  if ((area || marginGiven) && !framesBoxes) {
+    throw new ViewInputError(
+      "area a margin_percent potrebujú cieľ (target_ids_or_refs, global_ids, ifc_type(s), domain, model) alebo fit=selection.",
+    );
+  }
+  if (marginGiven) {
+    const r = CAMERA_RANGES.marginPercent;
+    const m = input.margin_percent;
+    if (typeof m !== "number" || !Number.isFinite(m) || m < r.min || m > r.max) {
+      throw new ViewInputError(`margin_percent musí byť číslo v rozsahu ${r.min} až ${r.max}.`);
+    }
+    move.marginPercent = m;
+  } else if (framesBoxes && (hasTarget || area)) {
+    // Cieľ bez okraja: predvolený okraj, nie tesný záber upstreamu (#172). Samotný fit=selection ostáva ako tlačidlo.
+    move.marginPercent = DEFAULT_MARGIN_PERCENT;
+  }
+  if (area) move.area = area;
   // Relatívny krok sa počíta z aktuálnej pózy; preset, fit či cieľ ju menia
   // animáciou, takže v jednom volaní by sa krok počítal zo starej (D-098).
   if (relative && (preset !== "keep" || fit || hasTarget || projection)) {
@@ -112,6 +156,8 @@ export function planCamera(input: Record<string, unknown>, targetGuids: string[]
   if (selector) parts.push(`na ${selector.types ? selector.types.slice(0, 3).join("+") : ""}${selector.model ? ` v ${selector.model}` : ""}`.trim());
   else if (targetGuids.length > 0) parts.push(`na vybrané prvky (${targetGuids.length})`);
   if (fit) parts.push(FIT_LABEL[fit]);
+  if (area) parts.push(AREA_LABEL[area]);
+  if (marginGiven) parts.push(`okraj ${move.marginPercent} %`);
   if (move.orbitH !== undefined || move.orbitV !== undefined) parts.push(`otočenie ${move.orbitH ?? 0}°/${move.orbitV ?? 0}°`);
   if (move.zoomPercent !== undefined) parts.push(move.zoomPercent > 0 ? `priblíženie ${move.zoomPercent} %` : `oddialenie ${-move.zoomPercent} %`);
   if (move.panX !== undefined || move.panY !== undefined) parts.push("posun");
@@ -131,7 +177,9 @@ export function planCamera(input: Record<string, unknown>, targetGuids: string[]
       ...(move.orbitV !== undefined ? { orbit_v_deg: move.orbitV } : {}),
       ...(move.panX !== undefined ? { pan_x_percent: move.panX } : {}),
       ...(move.panY !== undefined ? { pan_y_percent: move.panY } : {}),
-      note: "Odoslané do viewera; novú polohu a cieľ kamery over cez get_viewer_state.",
+      ...(move.marginPercent !== undefined ? { margin_percent: move.marginPercent } : {}),
+      ...(area ? { area } : {}),
+      note: "Odoslané do viewera; potvrdenie viewera vráti koncovú kameru a viditeľnú oblasť (visible), get_viewer_state netreba.",
     },
   };
 }

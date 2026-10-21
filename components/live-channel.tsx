@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Radio } from "lucide-react";
 
 import { isSafeViewerUrl, mergeIfcActions, type AskAction } from "@/lib/llm/actions";
-import { LIVE_APPLIED_EVENT, LIVE_QUERY_EVENT, LIVE_REPLY_EVENT, isCmdId, isLiveQuery } from "@/lib/live/protocol";
+import { LIVE_APPLIED_EVENT, LIVE_QUERY_EVENT, LIVE_REPLY_EVENT, isCmdId, isLiveQuery, newViewerId } from "@/lib/live/protocol";
 import { applyLive, deferCmdIds, parseIfcCommandUrl, setAppliedSink } from "@/lib/live/viewer-apply-bus";
 import { BCF_CHANGED_WINDOW_EVENT, LIVE_BCF_EVENT } from "@/lib/live/bcf-event";
 import { LIVE_REVISION_EVENT, parseRevisionNotice, revisionToast } from "@/lib/live/revision";
@@ -25,9 +25,14 @@ import { answerViewerQuery } from "@/lib/live/viewer-query-bus";
  * D-101: na `/ifc` sa príkaz vykoná na mieste (`viewer-apply-bus`) a URL sa len
  * prepíše - bez `router.push` a serverového renderu stránky pri každom úkone.
  * Potvrdenie forku (`APPLIED`) ide späť udalosťou `applied` s `cmdId` príkazu.
+ *
+ * D-125: odpovede a potvrdenia nesú `viewer` (identita okna), lebo na kanál môže
+ * odpovedať viac okien naraz a server ich inak nerozlíši.
  */
 
 const STORAGE_KEY = "aim-live-channel";
+/** Identita tohto okna na kanáli (D-125): server podľa nej pozná, že odpovedá viac okien. */
+const VIEWER_ID = newViewerId();
 const LIVE_EVENT = "command";
 /** Príkazy doručené do tohto okna sa zlúčia do jednej akcie (jedno volanie toolu = jeden príkaz). */
 const BATCH_MS = 50;
@@ -139,7 +144,7 @@ export function LiveChannel() {
         .on("broadcast", { event: LIVE_QUERY_EVENT }, ({ payload }) => {
           if (!isLiveQuery(payload)) return;
           void answerViewerQuery(payload).then((reply) =>
-            sub.send({ type: "broadcast", event: LIVE_REPLY_EVENT, payload: reply }),
+            sub.send({ type: "broadcast", event: LIVE_REPLY_EVENT, payload: { ...reply, viewer: VIEWER_ID } }),
           );
         })
         .subscribe((s) => {
@@ -150,7 +155,7 @@ export function LiveChannel() {
         });
       // Potvrdenie príkazu z forku (D-101) späť serveru.
       const unregisterSink = setAppliedSink((applied) => {
-        void sub.send({ type: "broadcast", event: LIVE_APPLIED_EVENT, payload: applied });
+        void sub.send({ type: "broadcast", event: LIVE_APPLIED_EVENT, payload: { ...applied, viewer: VIEWER_ID } });
       });
       cleanup = () => {
         unregisterSink();
