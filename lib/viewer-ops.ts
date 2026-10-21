@@ -14,7 +14,8 @@
  * `section_clear::`, `section_gizmo:<0|1>:`, `camera:<preset>[~proj=o|p]:<guid.guid...>` (fit a relatívne kroky
  * `~fit=..~z=..~oh=..~ov=..~px=..~py=..` a `camera_sel:<arg>:<selektor>`, D-094/D-098, `lib/viewer-camera.ts`),
  * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>[~r=<x>_<y>_<w>_<h>][~h=<x>_<y>_<w>_<h>_...]:<documentId>`
- * (výrez strany v %, D-117; rámiky okolo textu v %, po štyroch číslach, D-123).
+ * (výrez strany v %, D-117; rámiky okolo textu v %, po štyroch číslach, D-123; `~l=s` = vedľa 3D, D-132).
+ * Záložky a rezný box (D-132): `tab:<action>:<base64url JSON>`, `section_box:...`, formát v `lib/viewer-tabs.ts`.
  * Presná póza kamery z uloženého pohľadu (D-122): `pose:<px,py,pz,tx,ty,tz,ux,uy,uz>[~o=<m>][~proj=o|p]:`
  * (IFC svet, m; `o` = polovica výšky ortografického pohľadu).
  * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
@@ -25,6 +26,7 @@ import { parseSectionCapArg, sectionCapBridgeMessage, type SectionCapOp } from "
 import { decodeListWire, listBridgeMessage, type ListWire } from "./viewer-list";
 import { cameraMoveArgs, parseCameraMove, type BridgeViewpoint, type CameraMove } from "./viewer-camera";
 import { decodeMeasureWire, type MeasureSegment } from "./viewer-measure";
+import { parseTabsOp, tabsBridgeMessage, type TabsOp } from "./viewer-tabs";
 
 export interface OpsSelector {
   types?: string[];
@@ -104,7 +106,10 @@ export type ViewerOp =
   /** Presná póza (D-122): fork ju prenesie do kamery ako `SET_CAMERA {viewpoint}` (D-098). */
   | { op: "pose"; viewpoint: BridgeViewpoint; projection?: Projection }
   | { op: "view"; mode: ViewMode; storeyGuid?: string }
-  | { op: "doc"; documentId: string; page?: number; region?: DocRegion; highlights?: DocRegion[] }
+  /** layout split = karta vedľa 3D, inak záložka na celú plochu (D-132). */
+  | { op: "doc"; documentId: string; page?: number; region?: DocRegion; highlights?: DocRegion[]; layout?: "split" }
+  /** Záložky viewera a rezný box (D-132), `lib/viewer-tabs.ts`. */
+  | TabsOp
   | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire }
   /** Zoznam z chatu do panela Lists (D-111), formát v `lib/viewer-list.ts`. */
   | { op: "list"; wire: ListWire }
@@ -377,6 +382,9 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "measure") {
       const segments = decodeMeasureWire(joined);
       if (segments) out.push({ op, segments, ...(arg === "keep" ? { keep: true } : {}) });
+    } else if (op === "tab" || op === "section_box") {
+      const t = parseTabsOp(op, arg, joined);
+      if (t) out.push(t);
     } else if (op === "doc") {
       const documentId = joined;
       if (!UUID.test(documentId)) continue;
@@ -390,6 +398,7 @@ export function parseOps(raw: string): ViewerOp[] {
         ...(page !== undefined ? { page: Math.floor(page) } : {}),
         ...(region ? { region } : {}),
         ...(highlights.length > 0 ? { highlights } : {}),
+        ...(kv.l === "s" ? { layout: "split" as const } : {}),
       });
     }
   }
@@ -459,7 +468,11 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
         ...(o.region ? { region: toFraction(o.region) } : {}),
         // Rámiky (D-123): fork ich nakreslí na strane `page`; prázdne = staré zruší.
         ...(o.highlights?.length ? { highlights: o.highlights.map(toFraction) } : {}),
+        ...(o.layout ? { layout: o.layout } : {}),
       };
+    case "tab":
+    case "section_box":
+      return tabsBridgeMessage(o);
     case "lens":
       // Zónu (`aim_zone`) a dokument (`aim_document`) doplní klient pred odoslaním; tu ostanú prázdne.
       return lensBridgeMessage(o.mode, o.wire, new Map(), o.rev);
@@ -536,8 +549,9 @@ export function viewModeOp(mode: ViewMode, storeyGuid?: string): string {
   return `view:${mode}:${storeyGuid ?? ""}`;
 }
 
-export function docOp(documentId: string, page?: number, region?: DocRegion, highlights?: DocRegion[]): string {
+export function docOp(documentId: string, page?: number, region?: DocRegion, highlights?: DocRegion[], layout?: "split"): string {
   const r = region ? `~r=${pctList(region)}` : "";
   const h = highlights?.length ? `~h=${highlights.map(pctList).join("_")}` : "";
-  return `doc:${page ?? ""}${r}${h}:${documentId}`;
+  const l = layout === "split" ? "~l=s" : "";
+  return `doc:${page ?? ""}${r}${h}${l}:${documentId}`;
 }

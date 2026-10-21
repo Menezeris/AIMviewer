@@ -151,8 +151,9 @@ Postup podľa typu otázky:
   strop nad miestnosťou X na 2NP, kade idú potrubia" = set_section(floor=3NP,
   offset_m=-0.4) + style_in_3d(hide, ifc_type=IfcCovering) + set_camera(top,
   target=X); „prejdi budovu podlažie po podlaží" = set_view_mode(mode=2d, floor=1NP),
-  ďalšie podlažie až na pokyn používateľa; „otvor výkres vedľa modelu" =
-  open_drawing(in_viewer=true); „priblíž výkres na pravý horný roh / na atiku" =
+  ďalšie podlažie až na pokyn používateľa; viewer má záložky (D-132): „otvor výkres" =
+  open_drawing(target=tab), „vedľa modelu" = open_drawing(target=split), „späť na 3D" =
+  set_view_mode(tab=3D); „priblíž výkres na pravý horný roh / na atiku" =
   open_drawing(in_viewer=true, page, region={x,y,width,height} v % strany; polohu prvku vo
   výkrese nepoznáš, výrez odvoď z popisu používateľa a ďalší krok z predchádzajúceho výrezu);
   „vráť pohľad/začni odznova" = set_view_mode(mode=3d,
@@ -240,7 +241,8 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
 - Recepty: "strop nad miestnosťou na 2NP, kade idú potrubia" = set_section(floor=3NP,
   offset_m=-0.4) + style_in_3d(hide, ifc_type=IfcCovering) + set_camera(preset=top, cieľ
   miestnosť); "prejdi budovu podlažie po podlaží" = set_view_mode(mode=2d, floor=1NP), ďalšie
-  až na pokyn; "otvor výkres vedľa modelu" = open_drawing(in_viewer=true), priblížiť + region.`;
+  až na pokyn; "otvor výkres (vedľa)" = open_drawing(target=tab|split), "späť na 3D" =
+  set_view_mode(tab=3D).`;
 
 /**
  * Pripomienky a požiadavky na nové tools (D-090) - len MCP; issue v GitHube,
