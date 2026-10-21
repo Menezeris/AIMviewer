@@ -1,0 +1,889 @@
+From 219fa0d6cfea16025999735447a4d40fddd4cc72 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 08:16:28 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?feat(aim):=20kamera=20na=20cie=C4=BE=20v=20?=
+ =?UTF-8?q?reze=20s=20okrajom=20a=20=C4=8Das=C5=A5ou=20cie=C4=BEa,=20vzor?=
+ =?UTF-8?q?=20=C5=A1rafy=20z=20chatu=20(AIM=20D-128)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+SET_CAMERA nesie padding a area: fork zarámuje obálky cieľa alebo výberu
+existujúcim cameraCallbacks.frameBounds s okrajom a area vyberie prvky v
+krajnej tretine obrazu podľa smeru (aim/cameraArea.ts). Rámovanie sa čaká
+do konca animácie, takže APPLIED hlási koncovú kameru (AIMviewer#172).
+
+SET_SECTION_CAP nesie pattern, angleDeg, secondaryAngleDeg, spacingPx a
+widthPx; fork ich zapíše setterom setSectionCapStyle ako popover Cap
+(AIMviewer#173). Bez zmeny packages/renderer.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01EkqUKCBW9ptRq9y9vseC84
+---
+ apps/viewer/src/aim/cameraArea.test.ts  | 69 ++++++++++++++++++++++
+ apps/viewer/src/aim/cameraArea.ts       | 76 +++++++++++++++++++++++++
+ apps/viewer/src/aim/sectionCap.test.ts  | 29 ++++++++++
+ apps/viewer/src/aim/sectionCap.ts       | 38 +++++++++++--
+ apps/viewer/src/aim/view-camera.test.ts |  8 +++
+ apps/viewer/src/aim/view-protocol.ts    | 13 ++++-
+ apps/viewer/src/aim/viewCamera.ts       | 72 +++++++++++++++++++----
+ apps/viewer/src/aim/viewQueries.ts      |  2 +-
+ 8 files changed, 290 insertions(+), 17 deletions(-)
+ create mode 100644 apps/viewer/src/aim/cameraArea.test.ts
+ create mode 100644 apps/viewer/src/aim/cameraArea.ts
+
+diff --git a/apps/viewer/src/aim/cameraArea.test.ts b/apps/viewer/src/aim/cameraArea.test.ts
+new file mode 100644
+index 000000000..a8efe109b
+--- /dev/null
++++ b/apps/viewer/src/aim/cameraArea.test.ts
+@@ -0,0 +1,69 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import { pickArea, screenAxes, type ScreenAxes } from './cameraArea.js';
++import type { Box3 } from './viewFrame.js';
++
++const box = (minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): Box3 => ({
++  min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ },
++});
++
++/**
++ * Strecha 30 x 12 m v render rámci (Y hore), atiky 0,3 m hrubé a 1 m vysoké:
++ * ľavá a pravá po hĺbke (Z), predná a zadná cez celú šírku (X).
++ */
++const LEFT = box(0, 10, 0, 0.3, 11, 12);
++const RIGHT = box(29.7, 10, 0, 30, 11, 12);
++const FRONT = box(0, 10, 11.7, 30, 11, 12);
++const BACK = box(0, 10, 0, 30, 11, 0.3);
++const PARAPETS = [LEFT, RIGHT, FRONT, BACK];
++
++/** Pohľad spredu kolmo na rez (kamera na +Z, pozerá na -Z): doprava = +X, hore = +Y. */
++const FROM_FRONT: ScreenAxes = { right: { x: 1, y: 0, z: 0 }, up: { x: 0, y: 1, z: 0 }, forward: { x: 0, y: 0, z: -1 } };
++
++describe('screenAxes (AIM D-128)', () => {
++  it('pohľad spredu: doprava +X, hore +Y, smer pohľadu -Z', () => {
++    // deepEqual: -0 z vektorového súčinu je to isté ako 0.
++    assert.deepEqual(screenAxes({ position: { x: 0, y: 0, z: 10 }, target: { x: 0, y: 0, z: 0 }, up: { x: 0, y: 1, z: 0 } }), FROM_FRONT);
++  });
++  it('degenerovaná póza = null', () => {
++    assert.strictEqual(screenAxes({ position: { x: 1, y: 1, z: 1 }, target: { x: 1, y: 1, z: 1 }, up: { x: 0, y: 1, z: 0 } }), null);
++    assert.strictEqual(screenAxes({ position: { x: 0, y: 10, z: 0 }, target: { x: 0, y: 0, z: 0 }, up: { x: 0, y: 1, z: 0 } }), null);
++  });
++});
++
++describe('pickArea (AIM D-128, AIMviewer#172)', () => {
++  it('atika vľavo: len ľavá, prvky cez celú šírku nie', () => {
++    assert.deepStrictEqual(pickArea(PARAPETS, 'left', FROM_FRONT), [0]);
++    assert.deepStrictEqual(pickArea(PARAPETS, 'right', FROM_FRONT), [1]);
++  });
++  it('front/back podľa vzdialenosti od kamery', () => {
++    assert.deepStrictEqual(pickArea(PARAPETS, 'front', FROM_FRONT), [2]);
++    assert.deepStrictEqual(pickArea(PARAPETS, 'back', FROM_FRONT), [3]);
++  });
++  it('top/bottom po výške obrazu', () => {
++    const floors = [box(0, 0, 0, 30, 0.3, 12), box(0, 3, 0, 30, 3.3, 12), box(0, 6, 0, 30, 6.3, 12)];
++    assert.deepStrictEqual(pickArea(floors, 'top', FROM_FRONT), [2]);
++    assert.deepStrictEqual(pickArea(floors, 'bottom', FROM_FRONT), [0]);
++  });
++  it('otočený pohľad zozadu prehodí ľavú a pravú stranu', () => {
++    const fromBack: ScreenAxes = { right: { x: -1, y: 0, z: 0 }, up: { x: 0, y: 1, z: 0 }, forward: { x: 0, y: 0, z: 1 } };
++    assert.deepStrictEqual(pickArea(PARAPETS, 'left', fromBack), [1]);
++  });
++  it('viac prvkov v tretine vráti všetky', () => {
++    assert.deepStrictEqual(pickArea([LEFT, box(1, 0, 0, 2, 1, 1), RIGHT], 'left', FROM_FRONT), [0, 1]);
++  });
++  it('prázdna tretina: prvok najbližšie k okraju, nikdy nič', () => {
++    const wide = [box(0, 0, 0, 30, 1, 1), box(5, 0, 0, 29, 1, 1)];
++    assert.deepStrictEqual(pickArea(wide, 'left', FROM_FRONT), [0]);
++    assert.deepStrictEqual(pickArea(wide, 'right', FROM_FRONT), [1]);
++  });
++  it('jeden alebo žiadny prvok ostáva', () => {
++    assert.deepStrictEqual(pickArea([FRONT], 'left', FROM_FRONT), [0]);
++    assert.deepStrictEqual(pickArea([], 'left', FROM_FRONT), []);
++  });
++});
+diff --git a/apps/viewer/src/aim/cameraArea.ts b/apps/viewer/src/aim/cameraArea.ts
+new file mode 100644
+index 000000000..7dfa34883
+--- /dev/null
++++ b/apps/viewer/src/aim/cameraArea.ts
+@@ -0,0 +1,76 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Časť cieľa podľa smeru pohľadu (AIM D-128, AIMviewer#172): "atika na ľavej
++ * strane" = z cieľových prvkov tie, ktorých stred leží v ľavej tretine ich
++ * spoločnej obálky na obrazovke. Čisté výpočty nad obálkami a osami kamery v
++ * render rámci, bez store; vykonanie je v `viewCamera.ts`.
++ */
++
++import type { Box3, Vec3 } from './viewFrame.js';
++import type { CameraArea } from './view-protocol.js';
++
++/** Osi obrazu v render rámci: doprava, hore a smer pohľadu (od kamery). */
++export interface ScreenAxes { right: Vec3; up: Vec3; forward: Vec3 }
++
++const sub = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
++const dot = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
++const cross = (a: Vec3, b: Vec3): Vec3 => ({ x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x });
++const norm = (a: Vec3): Vec3 => {
++  const l = Math.hypot(a.x, a.y, a.z) || 1;
++  return { x: a.x / l, y: a.y / l, z: a.z / l };
++};
++
++/** Osi obrazu z pózy kamery; degenerovaná póza (kamera v cieli, `up` v smere pohľadu) = null. */
++export function screenAxes(pose: { position: Vec3; target: Vec3; up: Vec3 }): ScreenAxes | null {
++  const f = sub(pose.target, pose.position);
++  if (Math.hypot(f.x, f.y, f.z) < 1e-9) return null;
++  const forward = norm(f);
++  const r = cross(forward, pose.up);
++  if (Math.hypot(r.x, r.y, r.z) < 1e-9) return null;
++  const right = norm(r);
++  return { right, up: norm(cross(right, forward)), forward };
++}
++
++/** Os a strana pre časť: left = malé hodnoty na osi doprava, front = bližšie ku kamere. */
++const AREA_AXIS: Record<CameraArea, { axis: keyof ScreenAxes; high: boolean }> = {
++  left: { axis: 'right', high: false },
++  right: { axis: 'right', high: true },
++  bottom: { axis: 'up', high: false },
++  top: { axis: 'up', high: true },
++  front: { axis: 'forward', high: false },
++  back: { axis: 'forward', high: true },
++};
++
++/** Rozsah obálky na osi: stred +- polovice rozmerov premietnuté na os. */
++function span(box: Box3, axis: Vec3): { lo: number; hi: number; mid: number } {
++  const c = { x: (box.min.x + box.max.x) / 2, y: (box.min.y + box.max.y) / 2, z: (box.min.z + box.max.z) / 2 };
++  const h = { x: (box.max.x - box.min.x) / 2, y: (box.max.y - box.min.y) / 2, z: (box.max.z - box.min.z) / 2 };
++  const mid = dot(c, axis);
++  const r = Math.abs(axis.x) * h.x + Math.abs(axis.y) * h.y + Math.abs(axis.z) * h.z;
++  return { lo: mid - r, hi: mid + r, mid };
++}
++
++/**
++ * Indexy obálok v danej časti: stred v krajnej tretine spoločného rozsahu na osi.
++ * Prvok cez celú šírku (atika na prednej strane) má stred v strede a do ľavej
++ * tretiny nepatrí. Keď v tretine nie je nič, vráti prvok so stredom najbližšie k
++ * okraju, aby rámovanie nikdy neostalo prázdne.
++ */
++export function pickArea(boxes: readonly Box3[], area: CameraArea, axes: ScreenAxes): number[] {
++  if (boxes.length <= 1) return boxes.map((_, i) => i);
++  const { axis, high } = AREA_AXIS[area];
++  const spans = boxes.map((b) => span(b, axes[axis]));
++  const lo = Math.min(...spans.map((s) => s.lo));
++  const hi = Math.max(...spans.map((s) => s.hi));
++  const third = (hi - lo) / 3;
++  const picked = spans.flatMap((s, i) => ((high ? s.mid >= hi - third : s.mid <= lo + third) ? [i] : []));
++  if (picked.length > 0) return picked;
++  let best = 0;
++  spans.forEach((s, i) => {
++    if (high ? s.mid > spans[best].mid : s.mid < spans[best].mid) best = i;
++  });
++  return [best];
++}
+diff --git a/apps/viewer/src/aim/sectionCap.test.ts b/apps/viewer/src/aim/sectionCap.test.ts
+index 353c4f9eb..c12f2a4fd 100644
+--- a/apps/viewer/src/aim/sectionCap.test.ts
++++ b/apps/viewer/src/aim/sectionCap.test.ts
+@@ -25,6 +25,8 @@ describe('isSectionCapMessage', () => {
+       { source: S, type: 'SET_SECTION_CAP', cap: 'none' },
+       { source: S, type: 'SET_SECTION_CAP', cap: 'solid', fillColor: '#FFaa00' },
+       { source: S, type: 'SET_SECTION_CAP', cap: 'hatch' },
++      { source: S, type: 'SET_SECTION_CAP', cap: 'hatch', pattern: 'crossHatch', angleDeg: 45, secondaryAngleDeg: -45, spacingPx: 8, widthPx: 1 },
++      { source: S, type: 'SET_SECTION_CAP', cap: 'hatch', pattern: 'concrete', spacingPx: 64, widthPx: 16 },
+     ]) assert.ok(isSectionCapMessage(m), JSON.stringify(m));
+   });
+   it('odmietne cudzí zdroj, neznámy vzhľad a zlú farbu', () => {
+@@ -34,6 +36,13 @@ describe('isSectionCapMessage', () => {
+       { source: S, type: 'SET_SECTION_CAP' },
+       { source: S, type: 'SET_SECTION_CAP', cap: 'solid', fillColor: 'red' },
+       { source: S, type: 'SET_SECTION_CAP', cap: 'solid', fillColor: '#fff' },
++      // Vzor šrafy len pri hatch, len vzory renderera a rozsahy popoveru Cap (AIM D-128).
++      { source: S, type: 'SET_SECTION_CAP', cap: 'solid', pattern: 'diagonal' },
++      { source: S, type: 'SET_SECTION_CAP', cap: 'hatch', pattern: 'solid' },
++      { source: S, type: 'SET_SECTION_CAP', cap: 'hatch', pattern: 'zigzag' },
++      { source: S, type: 'SET_SECTION_CAP', cap: 'hatch', pattern: 'diagonal', angleDeg: 200 },
++      { source: S, type: 'SET_SECTION_CAP', cap: 'hatch', pattern: 'diagonal', spacingPx: 1 },
++      { source: S, type: 'SET_SECTION_CAP', cap: 'hatch', pattern: 'diagonal', widthPx: '2' },
+       null,
+     ]) assert.ok(!isSectionCapMessage(m), JSON.stringify(m));
+   });
+@@ -56,6 +65,20 @@ describe('planSectionCap', () => {
+     assert.strictEqual(planSectionCap({ showCap: true, capStyle: style('solid') }, { cap: 'hatch' }, 'concrete').style?.pattern, 'concrete');
+     assert.strictEqual(planSectionCap({ showCap: true, capStyle: style('solid') }, { cap: 'hatch' }).style?.pattern, 'diagonal');
+   });
++  it('hatch so vzorom od hosta zapíše vzor, uhly, rozstup a hrúbku a zapamätá si ho (AIM D-128)', () => {
++    const plan = planSectionCap({ showCap: true, capStyle: { ...style('vertical'), angleRad: 0 } },
++      { cap: 'hatch', pattern: 'crossHatch', angleDeg: 30, secondaryAngleDeg: -60, spacingPx: 12, widthPx: 2 });
++    assert.strictEqual(plan.style?.pattern, 'crossHatch');
++    assert.ok(Math.abs((plan.style?.angleRad ?? 0) - Math.PI / 6) < 1e-12);
++    assert.ok(Math.abs((plan.style?.secondaryAngleRad ?? 0) + Math.PI / 3) < 1e-12);
++    assert.strictEqual(plan.style?.spacingPx, 12);
++    assert.strictEqual(plan.style?.widthPx, 2);
++    assert.strictEqual(plan.remember, 'crossHatch');
++  });
++  it('bez vzoru hatch uhol ani rozstup nemení (staré správanie D-120)', () => {
++    const plan = planSectionCap({ showCap: true, capStyle: style('diagonal') }, { cap: 'hatch', angleDeg: 10, spacingPx: 20 });
++    assert.deepStrictEqual(plan.style, { pattern: 'diagonal' });
++  });
+ });
+ 
+ describe('applySectionCap', () => {
+@@ -79,4 +102,10 @@ describe('applySectionCap', () => {
+     applySectionCap({ source: S, type: 'SET_SECTION_CAP', cap: 'none' }, () => s);
+     assert.deepStrictEqual(calls, ['show:false']);
+   });
++  it('diagonála 45° od hosta prepíše uložený zvislý vzor (AIMviewer#173)', () => {
++    const { s, calls } = store(false, 'vertical');
++    applySectionCap({ source: S, type: 'SET_SECTION_CAP', cap: 'hatch', pattern: 'diagonal', angleDeg: 45, spacingPx: 8, widthPx: 1 }, () => s);
++    assert.deepStrictEqual(calls, ['style:diagonal', 'show:true']);
++    assert.ok(Math.abs(s.sectionPlane.capStyle.angleRad - Math.PI / 4) < 1e-12);
++  });
+ });
+diff --git a/apps/viewer/src/aim/sectionCap.ts b/apps/viewer/src/aim/sectionCap.ts
+index e253b1d00..c64483c6a 100644
+--- a/apps/viewer/src/aim/sectionCap.ts
++++ b/apps/viewer/src/aim/sectionCap.ts
+@@ -8,7 +8,9 @@
+  * funkcia: tie isté setery store ako tlačidlo Fill slice a popover Cap
+  * (`setSectionShowCap`, `setSectionCapStyle`), takže voľba platí pre všetky
+  * roviny a viewer si ju pamätá v prehliadači ako po kliknutí. `none` skryje
+- * len plochy, obrysové čiary rezu ostávajú.
++ * len plochy, obrysové čiary rezu ostávajú. Vzor, uhol, rozstup a hrúbku šrafy
++ * (AIM D-128, AIMviewer#173) zapíše ten istý setter ako polia popoveru Cap;
++ * host posiela vzor už vo forme renderera (`HATCH_PATTERN_IDS`).
+  */
+ 
+ import type { SectionCapHatchId, SectionCapStyle } from '@/store/types';
+@@ -23,16 +25,33 @@ export interface SectionCapMessage {
+   cap: SectionCap;
+   /** Farba výplne `#rrggbb`; priehľadnosť ostáva z aktuálneho štýlu. */
+   fillColor?: string;
++  /** Vzor šrafy (len `hatch`); bez neho sa vráti posledná šrafa. */
++  pattern?: SectionCapHatchId;
++  /** Uhol ako pole Uhol v popoveri Cap, v stupňoch. */
++  angleDeg?: number;
++  /** Druhá sada čiar krížovej šrafy, v stupňoch. */
++  secondaryAngleDeg?: number;
++  spacingPx?: number;
++  widthPx?: number;
+ }
+ 
+ const HEX = /^#[0-9a-f]{6}$/i;
++/** Vzory šrafy renderera, ktoré smie poslať host (`solid` je `cap: 'solid'`). */
++const HATCHES: readonly SectionCapHatchId[] = ['diagonal', 'crossHatch', 'horizontal', 'vertical', 'concrete', 'brick', 'insulation'];
++/** Rozsahy ako polia popoveru Cap (`SectionCapControls`); druhý uhol krížovej šrafy = uhol - 90°. */
++const RANGES = { angleDeg: [-180, 180], secondaryAngleDeg: [-270, 270], spacingPx: [2, 64], widthPx: [1, 16] } as const;
++
++const inRange = (v: unknown, [min, max]: readonly [number, number]) =>
++  v === undefined || (typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max);
+ 
+ export function isSectionCapMessage(data: unknown): data is SectionCapMessage {
+   if (!data || typeof data !== 'object') return false;
+   const m = data as Record<string, unknown>;
+   return m.source === SOURCE && m.type === 'SET_SECTION_CAP'
+     && (SECTION_CAPS as readonly unknown[]).includes(m.cap)
+-    && (m.fillColor === undefined || (typeof m.fillColor === 'string' && HEX.test(m.fillColor)));
++    && (m.fillColor === undefined || (typeof m.fillColor === 'string' && HEX.test(m.fillColor)))
++    && (m.pattern === undefined || (m.cap === 'hatch' && (HATCHES as readonly unknown[]).includes(m.pattern)))
++    && (Object.keys(RANGES) as (keyof typeof RANGES)[]).every((k) => inRange(m[k], RANGES[k]));
+ }
+ 
+ /** Šrafa, na ktorú sa vráti `hatch`, keď je práve plná výplň (ako Fill slice). */
+@@ -48,20 +67,29 @@ export interface CapPlan {
+ /** Čo nastaviť v store; čistá funkcia nad aktuálnym štýlom. */
+ export function planSectionCap(
+   current: { showCap: boolean; capStyle: SectionCapStyle },
+-  msg: Pick<SectionCapMessage, 'cap' | 'fillColor'>,
++  msg: Omit<SectionCapMessage, 'source' | 'type'>,
+   lastHatch: SectionCapHatchId = DEFAULT_HATCH,
+ ): CapPlan {
+   const pattern = current.capStyle.pattern;
+   const remember = pattern !== 'solid' ? pattern : undefined;
+   if (msg.cap === 'none') return { showCap: false, ...(remember ? { remember } : {}) };
+   const style: Partial<SectionCapStyle> = {
+-    pattern: msg.cap === 'solid' ? 'solid' : remember ?? lastHatch,
++    pattern: msg.cap === 'solid' ? 'solid' : msg.pattern ?? remember ?? lastHatch,
+   };
++  if (msg.cap === 'hatch' && msg.pattern) {
++    const rad = (deg: number) => (deg * Math.PI) / 180;
++    if (msg.angleDeg !== undefined) style.angleRad = rad(msg.angleDeg);
++    if (msg.secondaryAngleDeg !== undefined) style.secondaryAngleRad = rad(msg.secondaryAngleDeg);
++    if (msg.spacingPx !== undefined) style.spacingPx = msg.spacingPx;
++    if (msg.widthPx !== undefined) style.widthPx = msg.widthPx;
++  }
+   if (msg.fillColor) {
+     const n = parseInt(msg.fillColor.slice(1), 16);
+     style.fillColor = [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, current.capStyle.fillColor[3]];
+   }
+-  return { showCap: true, style, ...(remember ? { remember } : {}) };
++  // Šrafa od hosta je nová voľba, na ktorú sa vráti ďalší `hatch` bez vzoru.
++  const next = msg.cap === 'hatch' && msg.pattern ? msg.pattern : remember;
++  return { showCap: true, style, ...(next ? { remember: next } : {}) };
+ }
+ 
+ let lastHatch: SectionCapHatchId = DEFAULT_HATCH;
+diff --git a/apps/viewer/src/aim/view-camera.test.ts b/apps/viewer/src/aim/view-camera.test.ts
+index f0385f417..45f50af76 100644
+--- a/apps/viewer/src/aim/view-camera.test.ts
++++ b/apps/viewer/src/aim/view-camera.test.ts
+@@ -23,6 +23,10 @@ describe('SET_CAMERA kamera (AIM D-098)', () => {
+       { source: S, type: 'SET_CAMERA', preset: 'keep', selector: { model: 'VZT' } },
+       { source: S, type: 'SET_CAMERA', preset: 'keep', viewpoint: VP },
+       { source: S, type: 'SET_CAMERA', preset: 'keep', viewpoint: { ...VP, orthoSize: 12.5 }, projection: 'orthographic' },
++      // Okraj a časť cieľa (AIM D-128).
++      { source: S, type: 'SET_CAMERA', preset: 'section', guids: [G], padding: 1.4, area: 'left' },
++      { source: S, type: 'SET_CAMERA', preset: 'front', fit: 'selection', padding: 1, area: 'back' },
++      { source: S, type: 'SET_CAMERA', preset: 'keep', selector: { types: ['IfcWall'] }, padding: 4 },
+     ]) {
+       assert.equal(isViewMessage(msg), true, JSON.stringify(msg));
+     }
+@@ -44,6 +48,10 @@ describe('SET_CAMERA kamera (AIM D-098)', () => {
+       { source: S, type: 'SET_CAMERA', preset: 'keep', viewpoint: { ...VP, position: { x: Number.NaN, y: 0, z: 0 } } },
+       { source: S, type: 'SET_CAMERA', preset: 'keep', viewpoint: { ...VP, orthoSize: 0 } },
+       { source: S, type: 'SET_CAMERA', preset: 'keep', viewpoint: { position: VP.position, target: VP.target } },
++      { source: S, type: 'SET_CAMERA', preset: 'section', guids: [G], padding: 0.5 },
++      { source: S, type: 'SET_CAMERA', preset: 'section', guids: [G], padding: 5 },
++      { source: S, type: 'SET_CAMERA', preset: 'section', guids: [G], padding: '1.4' },
++      { source: S, type: 'SET_CAMERA', preset: 'section', guids: [G], area: 'middle' },
+     ]) {
+       assert.equal(isViewMessage(msg), false, JSON.stringify(msg));
+     }
+diff --git a/apps/viewer/src/aim/view-protocol.ts b/apps/viewer/src/aim/view-protocol.ts
+index 2f47bd2ec..70270680d 100644
+--- a/apps/viewer/src/aim/view-protocol.ts
++++ b/apps/viewer/src/aim/view-protocol.ts
+@@ -23,6 +23,11 @@ export type CameraPreset = (typeof CAMERA_PRESETS)[number];
+ /** Rámovanie pri zachovanom smere: viditeľné prvky (`fitAll`) alebo výber (`frameSelection`). */
+ export const CAMERA_FITS = ['visible', 'selection'] as const;
+ export type CameraFit = (typeof CAMERA_FITS)[number];
++/** Časť cieľa podľa smeru pohľadu (AIM D-128): tretina obrazu po šírke, výške alebo hĺbke. */
++export const CAMERA_AREAS = ['left', 'right', 'top', 'bottom', 'front', 'back'] as const;
++export type CameraArea = (typeof CAMERA_AREAS)[number];
++/** Násobok obálky pri rámovaní s okrajom (1 = od hrany po hranu, host posiela 1 + okraj v %). */
++export const CAMERA_PADDING = { min: 1, max: 4 } as const;
+ /** Presná póza kamery v IFC svete (Z hore, m); host ju počíta pre relatívne kroky (AIM D-098). */
+ export interface BridgeViewpoint {
+   position: { x: number; y: number; z: number };
+@@ -78,6 +83,10 @@ export type ViewInboundMessage =
+       selector?: OpsSelector;
+       fit?: CameraFit;
+       viewpoint?: BridgeViewpoint;
++      /** Okraj rámovania cieľa alebo výberu (AIM D-128), pre `frameBounds`. */
++      padding?: number;
++      /** Zarámovať len prvky cieľa alebo výberu v danej tretine obrazu (AIM D-128). */
++      area?: CameraArea;
+     }
+   | { source: typeof SOURCE; type: 'SET_VIEW_MODE'; mode: BridgeViewMode; storeyGuid?: string }
+   | { source: typeof SOURCE; type: 'QUERY'; id: string; query: ViewQuery; guids?: string[] }
+@@ -152,7 +161,9 @@ export function isViewMessage(data: unknown): data is ViewInboundMessage {
+         && optional(m.guids, isGuidList)
+         && optional(m.selector, isSelector)
+         && optional(m.fit, (f) => (CAMERA_FITS as readonly unknown[]).includes(f))
+-        && optional(m.viewpoint, isViewpoint);
++        && optional(m.viewpoint, isViewpoint)
++        && optional(m.padding, (p) => inRange(p, CAMERA_PADDING.min, CAMERA_PADDING.max))
++        && optional(m.area, (a) => (CAMERA_AREAS as readonly unknown[]).includes(a));
+       if (!valid) return false;
+       // Jeden cieľ rámovania; póza nahrádza smer presetu.
+       const targets = [m.guids !== undefined && (m.guids as string[]).length > 0, m.selector !== undefined, m.fit !== undefined];
+diff --git a/apps/viewer/src/aim/viewCamera.ts b/apps/viewer/src/aim/viewCamera.ts
+index e1831f452..f9b4064f2 100644
+--- a/apps/viewer/src/aim/viewCamera.ts
++++ b/apps/viewer/src/aim/viewCamera.ts
+@@ -7,12 +7,14 @@
+  * smer cez `cameraCallbacks` (preset, home, fitAll), pohľad kolmo na rez ako
+  * tlačidlo Set view (#7545, `presetViewForAxis` / `customPlaneViewpoint`),
+  * póza od hosta cez `applyViewpoint` (tá istá cesta ako BCF), rámovanie cez
+- * `bim.viewer.flyTo`, `fitAll` (viditeľné, #5884) a `frameSelection`.
++ * `bim.viewer.flyTo`, `fitAll` (viditeľné, #5884) a `frameSelection`. Okraj a
++ * časť cieľa (AIM D-128) rámuje `frameBounds` s okrajom nad obálkami prvkov.
+  * Relatívny zoom/orbit/posun počíta host a pošle hotovú pózu. Lenivý modul -
+  * vo vstupnom balíku nie je.
+  */
+ 
+ import { useViewerStore } from '@/store';
++import { toGlobalIdFromModels } from '@/store/globalId';
+ import { activeSectionPlane } from '@/store/section-active';
+ import { bcfWorldOffset } from '@/hooks/bcf/viewpoint-world-frame';
+ import { customPlaneViewpoint } from '@/lib/section/section-set-view';
+@@ -21,7 +23,9 @@ import type { BimContext } from '@ifc-lite/sdk';
+ import type { resolveGuids, resolveSelector } from './bridge-protocol.js';
+ import type { BridgeViewpoint, ViewInboundMessage } from './view-protocol.js';
+ import type { CameraStep } from './viewCommands.js';
+-import { ifcDirToRender, ifcPointToRender } from './viewFrame.js';
++import { ifcDirToRender, ifcPointToRender, unionBoxes, type Box3 } from './viewFrame.js';
++import { renderBoundsOfIds } from './viewQueries.js';
++import { pickArea, screenAxes } from './cameraArea.js';
+ import { noteIssue } from './command-gate.js';
+ 
+ type State = ReturnType<typeof useViewerStore.getState>;
+@@ -35,6 +39,8 @@ const FRAME_SLACK_MS = 50;
+ /** Rovnaké trvanie ako tlačidlo Set view. */
+ const SECTION_VIEW_MS = 400;
+ const VIEWPOINT_MS = 300;
++/** Rámovanie cieľa (`flyTo`, `fitAll`, `frameSelection`, `frameBounds`) animuje 300 ms. */
++const FRAME_MS = 300;
+ 
+ /** Novší príkaz zruší rámovanie, ktoré ešte čaká na koniec animácie staršieho. */
+ let latest = 0;
+@@ -95,8 +101,57 @@ function setDirection(state: State, msg: CameraMessage, step: CameraStep): numbe
+   }
+ }
+ 
+-function frameTarget(msg: CameraMessage, bim: BimContext, g: TargetHelpers): void {
++/** Obálky cieľa alebo výberu po prvkoch (zostava = jej časti), render rámec; prvky bez geometrie vypadnú. */
++function frameBoxes(state: State, msg: CameraMessage, g: TargetHelpers): Box3[] {
++  let ids: number[];
++  if (msg.guids?.length || msg.selector) {
++    const refs = msg.guids?.length ? g.resolveGuids(state.models, msg.guids) : g.resolveSelector(state.models, msg.selector!);
++    ids = refs.map((r) => toGlobalIdFromModels(state.models, r.modelId, r.expressId));
++  } else {
++    ids = state.selectedEntityIds.size > 0
++      ? [...state.selectedEntityIds]
++      : state.selectedEntityId !== null ? [state.selectedEntityId] : [];
++  }
++  return ids.map((id) => renderBoundsOfIds(state, [id])).filter((b): b is Box3 => b !== null);
++}
++
++/**
++ * Okraj a časť cieľa (AIM D-128): z obálok prvkov vyberie časť podľa aktuálneho
++ * smeru (`pickArea`) a zarámuje ich `frameBounds` s okrajom; smer ostáva.
++ * Promise skončí po animácii, aby `APPLIED` hlásilo koncovú pózu.
++ */
++async function frameWithMargin(msg: CameraMessage, g: TargetHelpers): Promise<void> {
++  const state = useViewerStore.getState();
++  const cam = state.cameraCallbacks;
++  let boxes = frameBoxes(state, msg, g);
++  if (boxes.length === 0) {
++    noteIssue(msg.fit === 'selection' ? 'SET_CAMERA: výber bez geometrie' : 'SET_CAMERA: cieľ bez prvkov');
++    return;
++  }
++  if (msg.area) {
++    const vp = cam.getViewpoint?.();
++    const axes = vp ? screenAxes(vp) : null;
++    if (!axes) {
++      cameraNotReady('area');
++      return;
++    }
++    boxes = pickArea(boxes, msg.area, axes).map((i) => boxes[i]);
++  }
++  const box = unionBoxes(boxes);
++  if (!box || !cam.frameBounds) {
++    cameraNotReady('frame');
++    return;
++  }
++  const ok = await cam.frameBounds(box.min, box.max, { padding: msg.padding, durationMs: FRAME_MS });
++  if (!ok) noteIssue('SET_CAMERA: cieľ bez platnej obálky');
++}
++
++function frameTarget(msg: CameraMessage, bim: BimContext, g: TargetHelpers): Promise<void> {
+   const state = useViewerStore.getState();
++  if (msg.padding !== undefined || msg.area) {
++    if (msg.guids?.length || msg.selector || msg.fit === 'selection') return frameWithMargin(msg, g);
++    noteIssue('SET_CAMERA: okraj a časť potrebujú cieľ alebo výber');
++  }
+   if (msg.guids?.length || msg.selector) {
+     const refs = msg.guids?.length ? g.resolveGuids(state.models, msg.guids) : g.resolveSelector(state.models, msg.selector!);
+     if (refs.length > 0) bim.viewer.flyTo(refs);
+@@ -106,6 +161,8 @@ function frameTarget(msg: CameraMessage, bim: BimContext, g: TargetHelpers): voi
+   } else if (msg.fit === 'selection') {
+     state.cameraCallbacks.frameSelection?.();
+   }
++  // Rámovanie animuje; `APPLIED` (D-101) čítalo kameru pred koncom a hlásilo pózu presetu (AIMviewer#172).
++  return new Promise<void>((r) => setTimeout(r, FRAME_MS + FRAME_SLACK_MS));
+ }
+ 
+ /**
+@@ -121,12 +178,7 @@ export function runCamera(msg: CameraMessage, step: CameraStep, bim: BimContext,
+   // Promise skončí po animácii a rámovaní, aby `APPLIED` (D-101) hlásilo koncovú pózu.
+   const settle = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+   if (!msg.guids?.length && !msg.selector && !msg.fit) return wait > 0 ? settle(wait + FRAME_SLACK_MS) : Promise.resolve();
+-  const frame = () => {
+-    if (token === latest) frameTarget(msg, bim, g);
+-  };
+-  if (wait <= 0) {
+-    frame();
+-    return Promise.resolve();
+-  }
++  const frame = () => (token === latest ? frameTarget(msg, bim, g) : Promise.resolve());
++  if (wait <= 0) return frame();
+   return settle(wait + FRAME_SLACK_MS).then(frame);
+ }
+diff --git a/apps/viewer/src/aim/viewQueries.ts b/apps/viewer/src/aim/viewQueries.ts
+index b10efd785..2f1e87673 100644
+--- a/apps/viewer/src/aim/viewQueries.ts
++++ b/apps/viewer/src/aim/viewQueries.ts
+@@ -64,7 +64,7 @@ export const SECTION_AXIS_IN_IFC = { x: 'IFC X', y: 'IFC Z (výška)', z: 'IFC Y
+ export const worldOffset = (state: State): Vec3 => bcfWorldOffset(state.models, state.geometryResult);
+ 
+ /** Render-rámcová obálka prvkov viewera (globálne id; zostava bez geometrie = jej časti). */
+-function renderBoundsOfIds(state: State, ids: readonly number[]): Box3 | null {
++export function renderBoundsOfIds(state: State, ids: readonly number[]): Box3 | null {
+   const scene = getGlobalRenderer()?.getScene();
+   if (!scene || ids.length === 0) return null;
+   const boxOf = (id: number): Box3 | null => scene.getEntityBoundingBox(id) ?? scene.getInstancedEntityBounds(id) ?? null;
+-- 
+2.43.0
+
+
+From 49ed7048495c9bd43016d7bc6d29c4fde9a724e0 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 08:42:23 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?docs(aim):=20muta=C4=8Dn=C3=A9=20d=C3=B4kaz?=
+ =?UTF-8?q?y=20D-128=20(kamera=20s=20okrajom=20a=20=C4=8Das=C5=A5ou=20cie?=
+ =?UTF-8?q?=C4=BEa,=20vzor=20=C5=A1rafy)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01EkqUKCBW9ptRq9y9vseC84
+---
+ .../aim-d128-camera-hatch/mutations/README.md |  35 ++++++
+ .../mutations/area-fallback-first.patch       |  13 ++
+ .../mutations/area-front-is-far.patch         |  13 ++
+ .../mutations/area-half-not-third.patch       |  13 ++
+ .../mutations/axes-degenerate-accepted.patch  |  13 ++
+ .../mutations/cap-angle-degrees.patch         |  13 ++
+ .../mutations/cap-pattern-ignored.patch       |  13 ++
+ .../mutations/cap-pattern-on-solid.patch      |  13 ++
+ .../mutations/padding-unbounded.patch         |  13 ++
+ .../mutations/summary.json                    | 114 ++++++++++++++++++
+ 10 files changed, 253 insertions(+)
+ create mode 100644 docs/architecture/evidence/aim-d128-camera-hatch/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-d128-camera-hatch/mutations/area-fallback-first.patch
+ create mode 100644 docs/architecture/evidence/aim-d128-camera-hatch/mutations/area-front-is-far.patch
+ create mode 100644 docs/architecture/evidence/aim-d128-camera-hatch/mutations/area-half-not-third.patch
+ create mode 100644 docs/architecture/evidence/aim-d128-camera-hatch/mutations/axes-degenerate-accepted.patch
+ create mode 100644 docs/architecture/evidence/aim-d128-camera-hatch/mutations/cap-angle-degrees.patch
+ create mode 100644 docs/architecture/evidence/aim-d128-camera-hatch/mutations/cap-pattern-ignored.patch
+ create mode 100644 docs/architecture/evidence/aim-d128-camera-hatch/mutations/cap-pattern-on-solid.patch
+ create mode 100644 docs/architecture/evidence/aim-d128-camera-hatch/mutations/padding-unbounded.patch
+ create mode 100644 docs/architecture/evidence/aim-d128-camera-hatch/mutations/summary.json
+
+diff --git a/docs/architecture/evidence/aim-d128-camera-hatch/mutations/README.md b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/README.md
+new file mode 100644
+index 000000000..5486f665d
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/README.md
+@@ -0,0 +1,35 @@
++<!-- This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this
++     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
++
++# AIM D-128 camera margin and area, section hatch: surgical mutation evidence
++
++The change extends two AIM bridge messages in `apps/viewer/src/aim/`. `SET_CAMERA` carries `padding` and `area`: the viewer frames the target or the selection with the existing `cameraCallbacks.frameBounds(min, max, {padding})`, and `area` keeps only the elements whose centre lies in the outer third of the view (left/right, top/bottom, front/back), computed by the new pure module `cameraArea.ts`. Framing is now awaited, so `APPLIED` reports the final camera instead of the preset pose (AIMviewer#172). `SET_SECTION_CAP` carries `pattern`, `angleDeg`, `secondaryAngleDeg`, `spacingPx` and `widthPx`, written with `setSectionCapStyle`, the setter of the Cap popover (AIMviewer#173). No change to `packages/renderer`.
++
++`cameraArea.test.ts` imports the new module, so reverting production makes it fail to load and the CI revert oracle reports INCONCLUSIVE. Each main decision of the tested modules was checked with a surgical mutation instead. Each patch is written mutant->fixed; the oracle reverse-applies it. Every run ended `OBSERVED` (exit 0) with restoration verified, against base `origin/main`. Full records: `summary.json`.
++
++| Patch | Module | Mutation | Test that went red |
++|---|---|---|---|
++| `area-half-not-third.patch` | `cameraArea.ts` | the area is the half instead of the outer third, so a parapet across the full width counts as left | `cameraArea.test.ts` |
++| `area-fallback-first.patch` | `cameraArea.ts` | with an empty third the first element is framed, not the one nearest the edge | `cameraArea.test.ts` |
++| `area-front-is-far.patch` | `cameraArea.ts` | `front` picks the elements far from the camera | `cameraArea.test.ts` |
++| `axes-degenerate-accepted.patch` | `cameraArea.ts` | an `up` along the view direction gives screen axes instead of null | `cameraArea.test.ts` |
++| `cap-pattern-ignored.patch` | `sectionCap.ts` | the host pattern is ignored and the stored hatch comes back (the vertical hatch of #173) | `sectionCap.test.ts` |
++| `cap-angle-degrees.patch` | `sectionCap.ts` | the angle is written in degrees where the store keeps radians | `sectionCap.test.ts` |
++| `cap-pattern-on-solid.patch` | `sectionCap.ts` | a pattern is accepted with `cap: 'solid'` | `sectionCap.test.ts` |
++| `padding-unbounded.patch` | `view-protocol.ts` | `SET_CAMERA.padding` is not bounded to 1..4 | `view-camera.test.ts` |
++
++`viewCamera.ts` is store and renderer glue with no unit test. It was driven live: local fork viewer embedded in a host page, `tests/models/ara3d/AC20-FZK-Haus.ifc`, Playwright posting bridge messages. After `SET_SECTION axis=z position=50` and `SET_CAMERA preset=section` (orthographic, target X 6), `SET_CAMERA preset=section selector=IfcWall padding=1.4 area=left` came back in `APPLIED` with target X 3.705 and `ortho_size` 4.689, `area=right` with X 9.705; a following `QUERY view_state` returned the same pose, so `APPLIED` carries the final camera. `SET_SECTION_CAP` with `pattern=diagonal angleDeg=45 spacingPx=12` replaced a stored `vertical` hatch in the persisted cap style (`angleRad` 0.785, `spacingPx` 12), `crossHatch 0/-90` and `concrete` likewise. The container's software WebGPU lost the device, so there are no rendered screenshots; check the hatch picture with the "Ako vyskúšať" link.
++
++## Replay
++
++Use a clean checkout of the branch with dependencies installed and copy the patches outside the tree (the oracle refuses a dirty tree), for example:
++
++```bash
++node scripts/check-test-revert-oracle.mjs --base origin/main \
++  --only apps/viewer/src/aim/cameraArea.ts \
++  --test apps/viewer/src/aim/cameraArea.test.ts \
++  --mutation /tmp/d128-mut/area-half-not-third.patch --ci --json
++```
++
++`sectionCap.ts` patches use `--test apps/viewer/src/aim/sectionCap.test.ts`, `padding-unbounded.patch` uses `--only apps/viewer/src/aim/view-protocol.ts --test apps/viewer/src/aim/view-camera.test.ts`.
+diff --git a/docs/architecture/evidence/aim-d128-camera-hatch/mutations/area-fallback-first.patch b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/area-fallback-first.patch
+new file mode 100644
+index 000000000..c24ac4e24
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/area-fallback-first.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/cameraArea.ts a/apps/viewer/src/aim/cameraArea.ts
++index 792f1eabc..7dfa34883 100644
++--- b/apps/viewer/src/aim/cameraArea.ts
+++++ a/apps/viewer/src/aim/cameraArea.ts
++@@ -70,7 +70,7 @@ export function pickArea(boxes: readonly Box3[], area: CameraArea, axes: ScreenA
++   if (picked.length > 0) return picked;
++   let best = 0;
++   spans.forEach((s, i) => {
++-    void s; void i;
+++    if (high ? s.mid > spans[best].mid : s.mid < spans[best].mid) best = i;
++   });
++   return [best];
++ }
+diff --git a/docs/architecture/evidence/aim-d128-camera-hatch/mutations/area-front-is-far.patch b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/area-front-is-far.patch
+new file mode 100644
+index 000000000..afcb0adc7
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/area-front-is-far.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/cameraArea.ts a/apps/viewer/src/aim/cameraArea.ts
++index d07924551..7dfa34883 100644
++--- b/apps/viewer/src/aim/cameraArea.ts
+++++ a/apps/viewer/src/aim/cameraArea.ts
++@@ -40,7 +40,7 @@ const AREA_AXIS: Record<CameraArea, { axis: keyof ScreenAxes; high: boolean }> =
++   right: { axis: 'right', high: true },
++   bottom: { axis: 'up', high: false },
++   top: { axis: 'up', high: true },
++-  front: { axis: 'forward', high: true },
+++  front: { axis: 'forward', high: false },
++   back: { axis: 'forward', high: true },
++ };
++ 
+diff --git a/docs/architecture/evidence/aim-d128-camera-hatch/mutations/area-half-not-third.patch b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/area-half-not-third.patch
+new file mode 100644
+index 000000000..d0fb295a0
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/area-half-not-third.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/cameraArea.ts a/apps/viewer/src/aim/cameraArea.ts
++index 94092d798..7dfa34883 100644
++--- b/apps/viewer/src/aim/cameraArea.ts
+++++ a/apps/viewer/src/aim/cameraArea.ts
++@@ -66,7 +66,7 @@ export function pickArea(boxes: readonly Box3[], area: CameraArea, axes: ScreenA
++   const lo = Math.min(...spans.map((s) => s.lo));
++   const hi = Math.max(...spans.map((s) => s.hi));
++   const third = (hi - lo) / 3;
++-  const picked = spans.flatMap((s, i) => ((high ? s.mid >= (lo + hi) / 2 : s.mid <= (lo + hi) / 2) ? [i] : []));
+++  const picked = spans.flatMap((s, i) => ((high ? s.mid >= hi - third : s.mid <= lo + third) ? [i] : []));
++   if (picked.length > 0) return picked;
++   let best = 0;
++   spans.forEach((s, i) => {
+diff --git a/docs/architecture/evidence/aim-d128-camera-hatch/mutations/axes-degenerate-accepted.patch b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/axes-degenerate-accepted.patch
+new file mode 100644
+index 000000000..711e692e0
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/axes-degenerate-accepted.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/cameraArea.ts a/apps/viewer/src/aim/cameraArea.ts
++index 1b3b73cda..7dfa34883 100644
++--- b/apps/viewer/src/aim/cameraArea.ts
+++++ a/apps/viewer/src/aim/cameraArea.ts
++@@ -29,7 +29,7 @@ export function screenAxes(pose: { position: Vec3; target: Vec3; up: Vec3 }): Sc
++   if (Math.hypot(f.x, f.y, f.z) < 1e-9) return null;
++   const forward = norm(f);
++   const r = cross(forward, pose.up);
++-
+++  if (Math.hypot(r.x, r.y, r.z) < 1e-9) return null;
++   const right = norm(r);
++   return { right, up: norm(cross(right, forward)), forward };
++ }
+diff --git a/docs/architecture/evidence/aim-d128-camera-hatch/mutations/cap-angle-degrees.patch b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/cap-angle-degrees.patch
+new file mode 100644
+index 000000000..1ed66b0bf
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/cap-angle-degrees.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/sectionCap.ts a/apps/viewer/src/aim/sectionCap.ts
++index d81767b64..c64483c6a 100644
++--- b/apps/viewer/src/aim/sectionCap.ts
+++++ a/apps/viewer/src/aim/sectionCap.ts
++@@ -77,7 +77,7 @@ export function planSectionCap(
++     pattern: msg.cap === 'solid' ? 'solid' : msg.pattern ?? remember ?? lastHatch,
++   };
++   if (msg.cap === 'hatch' && msg.pattern) {
++-    const rad = (deg: number) => deg;
+++    const rad = (deg: number) => (deg * Math.PI) / 180;
++     if (msg.angleDeg !== undefined) style.angleRad = rad(msg.angleDeg);
++     if (msg.secondaryAngleDeg !== undefined) style.secondaryAngleRad = rad(msg.secondaryAngleDeg);
++     if (msg.spacingPx !== undefined) style.spacingPx = msg.spacingPx;
+diff --git a/docs/architecture/evidence/aim-d128-camera-hatch/mutations/cap-pattern-ignored.patch b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/cap-pattern-ignored.patch
+new file mode 100644
+index 000000000..af822d1ed
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/cap-pattern-ignored.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/sectionCap.ts a/apps/viewer/src/aim/sectionCap.ts
++index 1ecb54b19..c64483c6a 100644
++--- b/apps/viewer/src/aim/sectionCap.ts
+++++ a/apps/viewer/src/aim/sectionCap.ts
++@@ -74,7 +74,7 @@ export function planSectionCap(
++   const remember = pattern !== 'solid' ? pattern : undefined;
++   if (msg.cap === 'none') return { showCap: false, ...(remember ? { remember } : {}) };
++   const style: Partial<SectionCapStyle> = {
++-    pattern: msg.cap === 'solid' ? 'solid' : remember ?? lastHatch,
+++    pattern: msg.cap === 'solid' ? 'solid' : msg.pattern ?? remember ?? lastHatch,
++   };
++   if (msg.cap === 'hatch' && msg.pattern) {
++     const rad = (deg: number) => (deg * Math.PI) / 180;
+diff --git a/docs/architecture/evidence/aim-d128-camera-hatch/mutations/cap-pattern-on-solid.patch b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/cap-pattern-on-solid.patch
+new file mode 100644
+index 000000000..c2183462a
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/cap-pattern-on-solid.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/sectionCap.ts a/apps/viewer/src/aim/sectionCap.ts
++index 5970d13e1..c64483c6a 100644
++--- b/apps/viewer/src/aim/sectionCap.ts
+++++ a/apps/viewer/src/aim/sectionCap.ts
++@@ -50,7 +50,7 @@ export function isSectionCapMessage(data: unknown): data is SectionCapMessage {
++   return m.source === SOURCE && m.type === 'SET_SECTION_CAP'
++     && (SECTION_CAPS as readonly unknown[]).includes(m.cap)
++     && (m.fillColor === undefined || (typeof m.fillColor === 'string' && HEX.test(m.fillColor)))
++-    && (m.pattern === undefined || ((HATCHES as readonly unknown[]).includes(m.pattern)))
+++    && (m.pattern === undefined || (m.cap === 'hatch' && (HATCHES as readonly unknown[]).includes(m.pattern)))
++     && (Object.keys(RANGES) as (keyof typeof RANGES)[]).every((k) => inRange(m[k], RANGES[k]));
++ }
++ 
+diff --git a/docs/architecture/evidence/aim-d128-camera-hatch/mutations/padding-unbounded.patch b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/padding-unbounded.patch
+new file mode 100644
+index 000000000..566a74aa4
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/padding-unbounded.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/view-protocol.ts a/apps/viewer/src/aim/view-protocol.ts
++index c24fb4a03..70270680d 100644
++--- b/apps/viewer/src/aim/view-protocol.ts
+++++ a/apps/viewer/src/aim/view-protocol.ts
++@@ -162,7 +162,7 @@ export function isViewMessage(data: unknown): data is ViewInboundMessage {
++         && optional(m.selector, isSelector)
++         && optional(m.fit, (f) => (CAMERA_FITS as readonly unknown[]).includes(f))
++         && optional(m.viewpoint, isViewpoint)
++-        && optional(m.padding, (p) => typeof p === "number")
+++        && optional(m.padding, (p) => inRange(p, CAMERA_PADDING.min, CAMERA_PADDING.max))
++         && optional(m.area, (a) => (CAMERA_AREAS as readonly unknown[]).includes(a));
++       if (!valid) return false;
++       // Jeden cieľ rámovania; póza nahrádza smer presetu.
+diff --git a/docs/architecture/evidence/aim-d128-camera-hatch/mutations/summary.json b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/summary.json
+new file mode 100644
+index 000000000..90245d726
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d128-camera-hatch/mutations/summary.json
+@@ -0,0 +1,114 @@
++{
++  "area-fallback-first": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/cameraArea.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "219fa0d6cfea16025999735447a4d40fddd4cc72",
++    "production": [
++      "apps/viewer/src/aim/cameraArea.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/cameraArea.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "area-front-is-far": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/cameraArea.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "219fa0d6cfea16025999735447a4d40fddd4cc72",
++    "production": [
++      "apps/viewer/src/aim/cameraArea.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/cameraArea.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "area-half-not-third": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/cameraArea.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "219fa0d6cfea16025999735447a4d40fddd4cc72",
++    "production": [
++      "apps/viewer/src/aim/cameraArea.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/cameraArea.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "axes-degenerate-accepted": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/cameraArea.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "219fa0d6cfea16025999735447a4d40fddd4cc72",
++    "production": [
++      "apps/viewer/src/aim/cameraArea.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/cameraArea.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "cap-angle-degrees": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/sectionCap.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "219fa0d6cfea16025999735447a4d40fddd4cc72",
++    "production": [
++      "apps/viewer/src/aim/sectionCap.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/sectionCap.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "cap-pattern-ignored": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/sectionCap.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "219fa0d6cfea16025999735447a4d40fddd4cc72",
++    "production": [
++      "apps/viewer/src/aim/sectionCap.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/sectionCap.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "cap-pattern-on-solid": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/sectionCap.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "219fa0d6cfea16025999735447a4d40fddd4cc72",
++    "production": [
++      "apps/viewer/src/aim/sectionCap.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/sectionCap.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "padding-unbounded": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/view-camera.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "219fa0d6cfea16025999735447a4d40fddd4cc72",
++    "production": [
++      "apps/viewer/src/aim/view-protocol.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/view-camera.test.ts"
++    ],
++    "restoration": "verified"
++  }
++}
+\ No newline at end of file
+-- 
+2.43.0
+
