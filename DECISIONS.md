@@ -5951,3 +5951,47 @@ D-056 (`query_view`), D-060 (`aggregate_objects`), D-090 (feedback), D-095 (`sea
 - *`where` na psety v `search_all` (#174):* zdvojilo by `ifc_query` a `aggregate_objects` (tie berú
   `ids` zo search_all).
 - *Nastavenie práv GitHub App z kódu:* je to nastavenie účtu (Samuel), postup je v #176.
+
+### D-129 - Viewer je jediné rozhranie: údaj buď v IFC, alebo AIM vrstva s odznakom
+**Status:** rozhodnuté (2026-10-21, Samuel cez orchestrátora), číslo pridelené v registri #60. Nadväzuje na
+D-077 (AIM inspector), D-086 (IFC je master, revízie), D-089 (odvodenia ako AIM vrstva), D-073 (Reality
+Capture), D-104 (dokumenty z IFC) a #169.
+
+**Kontext:** panel vlastností vo vieweri mal dve záložky, AIM a IFC. AIM karta niesla zodpovednosti,
+dokumenty zdedené cez zónu, typ a podlažie, Reality Capture, históriu GUID a odkaz na detail v AIMvieweri.
+Samuel pracuje už len vo vieweri a vlastné rozhranie popri IFC nechce.
+
+**Rozhodnutie:**
+1. **Žiadna samostatná AIM karta ani záložka.** Panel vlastností ukazuje IFC. Údaj má jedno z dvoch miest:
+   - **patrí do modelu**: dostane sa do IFC receptom v OCB (D-086) a viewer ho ukáže natívne ako každý
+     IFC údaj;
+   - **vzniká len v AIM** (odvodený, historický, prevádzkový): je to **AIM vrstva** v existujúcich paneloch
+     vieweru, riadok s odznakom AIM, vzorom sú odvodené vzťahy v Relationship records (D-089).
+2. **Zodpovednosti (zámer, zatiaľ bez implementácie):** v IFC cez `IfcRelAssignsToActor` na prvku,
+   priestore alebo type (`IfcActor`, pri nájomcovi `IfcOccupant`, s `IfcPerson`, `IfcOrganization` a rolou
+   `IfcActorRole`). Na produkcii dnes nie je ani jeden záznam; keď budú dáta (správca, prevádzkovateľ,
+   nájomca), pôjdu receptom.
+3. **Dokumenty:** priame väzby sú v IFC (`IfcRelAssociatesDocument`, od ASR v076), dokument na type platí
+   pre výskyty. Zdedené cez zónu a podlažie (D-104, `v_object_documents`) sú AIM vrstva: v paneli Documents
+   ("Len pre výber") s odznakom AIM. Triedenie dokumentov ide cez klasifikáciu na `IfcDocumentInformation`
+   (`IfcExternalReferenceRelationship`, ako typ informácie ISO 19650 vo v077). Ďalšie osi (napr. druh média)
+   sú ďalší klasifikačný systém, atribúty `ElectronicFormat`, `CreationTime`, `Purpose`, `ValidFrom`/`ValidUntil`.
+4. **Reality Capture ostáva AIM vrstva** (D-073: body a médiá v DB, `aim_` hrany), nie revízia IFC pri
+   každej fotke. Vo vieweri: piny ako dnes a médiá v paneli Documents pri priestore s odznakom AIM.
+   Pri exporte IFC sa export opýta, či zahrnúť aj AIM vrstvy; vtedy sa bod zapíše ako `IfcAnnotation`
+   (`USERDEFINED`, `ObjectType` RealityCapture, `ObjectPlacement` nesie polohu a smer pohľadu, bod ako
+   `IfcCartesianPoint`, v priestore cez `IfcRelContainedInSpatialStructure`) a médiá ako dokumenty
+   priradené k anotácii. Rovnaká voľba platí pre ostatné AIM vrstvy (odvodené vzťahy D-089).
+5. **História GUID a revízia prvku:** AIM vrstva v IFC paneli, riadky s odznakom AIM (platí od revízie,
+   posledná zmena v revízii vNNN, recept alebo BCF téma). IFC revízie naprieč verziami nenesie.
+6. **Odkaz na celý detail v AIMvieweri** z panela vypadáva.
+
+**Zavrhnuté:**
+- *Zbalený blok "AIM platforma" v paneli* (prvý návrh v #169): vlastné rozhranie popri IFC, presne to, čo
+  Samuel nechce.
+- *Reality Capture priamo v IFC pri každej fotke:* každá fotka by bola revízia modelu (recept, poistka,
+  re-ETL), pri prevádzkových dátach zbytočne ťažké. IFC zápis až pri exporte.
+
+**Dôsledky:** #169 rieši session D-127 podľa tohto zápisu (záložka a karta preč, história ako AIM riadky,
+zdedené dokumenty s odznakom). Reality Capture v paneli Documents a voľba exportu AIM vrstiev sú samostatná
+úloha vo fronte.

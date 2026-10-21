@@ -29,6 +29,14 @@ export function callAction(args: Record<string, unknown>): string | null {
   return null;
 }
 
+/**
+ * Volanie odmietnuté pre neznámy parameter (D-126) sa nevykoná, ale zapíše sa, aby bolo v logu
+ * vidno, koľko volaní stálo: `action` = `unknown_param:<mená>`, `ms` 0, `ok` false.
+ */
+export function rejectedCallRow(tool: string, unknown: string[], region: string | null): McpCallLogRow {
+  return { tool, action: `unknown_param:${unknown.join(",")}`.slice(0, 40), ms: 0, ok: false, cold: false, phases: {}, region };
+}
+
 type Insert = (row: McpCallLogRow) => Promise<{ error: { message: string } | null }>;
 
 const defaultInsert: Insert = async (row) => {

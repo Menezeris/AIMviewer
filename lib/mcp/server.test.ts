@@ -20,6 +20,7 @@ function deps(overrides: Partial<McpServerDeps> = {}): McpServerDeps {
       },
     ],
     callTool: vi.fn(async () => ({ text: ['{"count":97}'], isError: false })),
+    onRejected: vi.fn(),
     ...overrides,
   };
 }
@@ -140,6 +141,7 @@ describe("MCP server (D-079)", () => {
       d,
     );
     expect(d.callTool).not.toHaveBeenCalled();
+    expect(d.onRejected).toHaveBeenCalledWith("count_objects", ["offset"]);
     const r = (res as { result: { content: { text: string }[]; isError: boolean } }).result;
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toContain("'offset'");

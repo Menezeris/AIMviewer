@@ -19,7 +19,7 @@ import { expectApplied, recentViewerCount } from "@/lib/live/warm-channel";
 import { mcpInstructions } from "@/lib/llm/system-prompt";
 import type { AskAction } from "@/lib/llm/actions";
 import { AskToolRuntime } from "@/lib/llm/tools";
-import { callAction, writeCallLog } from "@/lib/mcp/call-log";
+import { callAction, rejectedCallRow, writeCallLog } from "@/lib/mcp/call-log";
 import { mcpToolDefinitions } from "@/lib/mcp/tool-list";
 import { defaultSavedViewDeps } from "@/lib/views/runtime";
 import { SAVED_VIEW_TOOL_NAMES, execSavedViewTool } from "@/lib/views/tools";
@@ -217,6 +217,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     instructions: mcpInstructions(siteUrl(), ENGINE_ENABLED),
     tools: mcpToolDefinitions({ engine: ENGINE_ENABLED, spike: ENGINE_SPIKE }),
     callTool,
+    onRejected: (name, unknown) => after(() => writeCallLog(rejectedCallRow(name, unknown, process.env.VERCEL_REGION ?? null))),
   };
   // D-100: Claude sa pripája (initialize / tools/list) -> modely motora sa načítajú vopred,
   // prvé ifc_* volanie potom nečaká na stiahnutie a parsovanie.
