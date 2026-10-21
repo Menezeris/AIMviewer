@@ -1,6 +1,6 @@
-From a782b4b5bd4dc012a351a77c0994d9f25158a856 Mon Sep 17 00:00:00 2001
+From 9c7cc011174995c0701676f18c9d99c32bcf900c Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
-Date: Wed, 21 Oct 2026 09:45:14 +0000
+Date: Wed, 21 Oct 2026 10:08:16 +0000
 Subject: [PATCH 1/2] =?UTF-8?q?AIM=20D-130:=20popisky=20na=20v=C3=BDkrese?=
  =?UTF-8?q?=20ako=20odkazy=20na=20prvok=20(DOCUMENT=5FLINKS,=20vrstva=20na?=
  =?UTF-8?q?d=20stranou=20PDF)?=
@@ -11,48 +11,47 @@ Content-Transfer-Encoding: 8bit
 Host (AIMviewer) spáruje bubliny a kódy miestností z textovej vrstvy PDF s prvkami
 (AIM vrstva) a pošle DOCUMENT_LINKS. aim/docLinks.ts nakreslí nad stranou karty
 klikateľné oblasti; klik vyberie prvok ako klik do modelu (D-082) a otvorí panel
-vlastností, pri viacerých kandidátoch ukáže výber s odznakom AIM. AimBridge.tsx
-ostáva na 400 riadkoch: obsluha ide cez existujúci riadok a import docRegion.
+vlastností, pri viacerých kandidátoch ukáže výber s odznakom AIM. Správu prijíma
+vlastný poslucháč v docLinks.ts (zapína ho docBridge.wireDocumentEvents), AimBridge
+ani bridge-protocol sa nemenia.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01FsvvvFuMXYt71te8FTSmAK
 ---
- apps/viewer/src/aim/AimBridge.tsx    |   4 +-
- apps/viewer/src/aim/docLinks.test.ts | 120 ++++++++++++
- apps/viewer/src/aim/docLinks.ts      | 262 +++++++++++++++++++++++++++
- apps/viewer/src/aim/docRegion.ts     |   4 +
- 4 files changed, 388 insertions(+), 2 deletions(-)
+ apps/viewer/src/aim/docBridge.ts     |   2 +
+ apps/viewer/src/aim/docLinks.test.ts | 131 ++++++++++++
+ apps/viewer/src/aim/docLinks.ts      | 295 +++++++++++++++++++++++++++
+ apps/viewer/src/aim/docRegion.ts     |   2 +
+ 4 files changed, 430 insertions(+)
  create mode 100644 apps/viewer/src/aim/docLinks.test.ts
  create mode 100644 apps/viewer/src/aim/docLinks.ts
 
-diff --git a/apps/viewer/src/aim/AimBridge.tsx b/apps/viewer/src/aim/AimBridge.tsx
-index 522976d49..9b4d81b2f 100644
---- a/apps/viewer/src/aim/AimBridge.tsx
-+++ b/apps/viewer/src/aim/AimBridge.tsx
-@@ -32,7 +32,7 @@ import { isCommandMessage, type AppliedMessage, type CommandInboundMessage } fro
- import { createCommandGate, noteIssue, resetCommandState, settled, takeIssues, track } from './command-gate.js';
- import { useAimPanelStore } from './aimPanelStore.js';
- import { useCapturePinsStore } from './capturePinsStore.js';
--import { normalizeDocHighlights, normalizeDocRegion, regionApplied, useAimDocRegionStore } from './docRegion.js';
-+import { handleDocLinksMessage, normalizeDocHighlights, normalizeDocRegion, regionApplied, useAimDocRegionStore } from './docRegion.js';
- import { useAimDecorationsStore } from './aimDecorationsStore.js';
- import { useAimDerivationsStore } from './aimDerivationsStore.js';
- import { isViewMessage } from './view-protocol.js';
-@@ -158,7 +158,7 @@ export function AimBridge() {
-         loadBcfTopics(e.data, useViewerStore.getState); // AIM host's BCF topics, read-only (D-099)
-         return;
-       }
--      if (!isInboundMessage(e.data)) return;
-+      if (handleDocLinksMessage(e.data) || !isInboundMessage(e.data)) return; // DOCUMENT_LINKS: popisky -> prvky (AIM D-130)
-       if (VISIBILITY.has(e.data.type)) {
-         const msg = e.data;
-         gate.run(() => runVisibility(msg));
+diff --git a/apps/viewer/src/aim/docBridge.ts b/apps/viewer/src/aim/docBridge.ts
+index 3ee1a4514..9014e4eb4 100644
+--- a/apps/viewer/src/aim/docBridge.ts
++++ b/apps/viewer/src/aim/docBridge.ts
+@@ -15,6 +15,7 @@ import { useViewerStore } from '../store/index.js';
+ import { SOURCE, type InboundMessage, type OutboundMessage } from './bridge-protocol.js';
+ import { noteIssue, track } from './command-gate.js';
+ import { normalizeDocHighlights, normalizeDocRegion, regionApplied, useAimDocRegionStore } from './docRegion.js';
++import { listenDocLinks } from './docLinks.js';
+ 
+ /** Výrez strany z chatu čaká na otvorenie PDF; dlhšie ako ACK by APPLIED len oneskorilo. */
+ const REGION_WAIT_MS = 2200;
+@@ -77,6 +78,7 @@ export function handleDocumentMessage(msg: InboundMessage): boolean {
+ export function wireDocumentEvents(post: (msg: OutboundMessage) => void): void {
+   // Viditeľný rozsah karty z predošlej relácie nepatrí novej (AIM D-127).
+   useAimDocRegionStore.setState({ visible: null });
++  listenDocLinks(); // DOCUMENT_LINKS: popisky výkresu -> prvky (AIM D-130, docLinks.ts)
+ 
+   // Kalibrácia uložená vo viewri → host ju perzistuje do
+   // documents.properties._georef (D-072). Session-only bez hosta.
 diff --git a/apps/viewer/src/aim/docLinks.test.ts b/apps/viewer/src/aim/docLinks.test.ts
 new file mode 100644
-index 000000000..aa2682110
+index 000000000..b09a06182
 --- /dev/null
 +++ b/apps/viewer/src/aim/docLinks.test.ts
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,131 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
@@ -60,6 +59,7 @@ index 000000000..aa2682110
 +import { describe, it } from 'node:test';
 +import assert from 'node:assert/strict';
 +import {
++  acceptsDocLinksEvent,
 +  handleDocLinksMessage,
 +  isDocLinksMessage,
 +  linkTitle,
@@ -173,12 +173,22 @@ index 000000000..aa2682110
 +    assert.deepEqual([...useAimDocLinksStore.getState().pages.keys()], [pageKey('d2', 3)]);
 +  });
 +});
++
++describe('acceptsDocLinksEvent (AIM D-130)', () => {
++  const parent = {};
++  it('accepts only the parent frame from the referrer origin', () => {
++    assert.equal(acceptsDocLinksEvent({ source: parent, origin: 'https://aim.example' }, parent, 'https://aim.example/ifc'), true);
++    assert.equal(acceptsDocLinksEvent({ source: {}, origin: 'https://aim.example' }, parent, 'https://aim.example/ifc'), false);
++    assert.equal(acceptsDocLinksEvent({ source: parent, origin: 'https://evil.example' }, parent, 'https://aim.example/ifc'), false);
++    assert.equal(acceptsDocLinksEvent({ source: parent, origin: 'https://any.example' }, parent, ''), true);
++  });
++});
 diff --git a/apps/viewer/src/aim/docLinks.ts b/apps/viewer/src/aim/docLinks.ts
 new file mode 100644
-index 000000000..4011a3603
+index 000000000..d9d8aebcf
 --- /dev/null
 +++ b/apps/viewer/src/aim/docLinks.ts
-@@ -0,0 +1,262 @@
+@@ -0,0 +1,295 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
@@ -233,11 +243,44 @@ index 000000000..4011a3603
 +  return msg.source === SOURCE && msg.type === 'DOCUMENT_LINKS' && Array.isArray(msg.documents);
 +}
 +
-+/** Obsluha v AimBridge (bez vlastného riadku, súbor je na strope): true = správa vybavená. */
++/** Vybaví `DOCUMENT_LINKS`; false = správa sem nepatrí. */
 +export function handleDocLinksMessage(data: unknown): boolean {
 +  if (!isDocLinksMessage(data)) return false;
 +  useAimDocLinksStore.getState().setDocuments(data.documents);
 +  return true;
++}
++
++/**
++ * Origin hosta ako v AimBridge: z referrera; bez neho len kontrola rodiča.
++ * Pre test sa dá podať `referrer`.
++ */
++export function acceptsDocLinksEvent(
++  e: { source: unknown; origin: string },
++  parent: unknown,
++  referrer: string,
++): boolean {
++  if (e.source !== parent) return false;
++  if (!referrer) return true;
++  try {
++    return e.origin === new URL(referrer).origin;
++  } catch {
++    return false;
++  }
++}
++
++let listening = false;
++
++/**
++ * Vlastný poslucháč `DOCUMENT_LINKS` (nie v AimBridge: strop veľkosti a `isInboundMessage`
++ * v bridge-protocol neznáme typy odmietne). Rovnaká kontrola rodiča a originu ako most;
++ * zapne ho `wireDocumentEvents` v docBridge.ts, raz za život stránky.
++ */
++export function listenDocLinks(): void {
++  if (listening || typeof window === 'undefined' || window.parent === window) return;
++  listening = true;
++  window.addEventListener('message', (e) => {
++    if (acceptsDocLinksEvent(e, window.parent, document.referrer)) handleDocLinksMessage(e.data);
++  });
 +}
 +
 +const text = (v: unknown): string | null =>
@@ -442,20 +485,18 @@ index 000000000..4011a3603
 +  });
 +}
 diff --git a/apps/viewer/src/aim/docRegion.ts b/apps/viewer/src/aim/docRegion.ts
-index 4cb043a04..73bdd9bff 100644
+index 4cb043a04..4710f5e04 100644
 --- a/apps/viewer/src/aim/docRegion.ts
 +++ b/apps/viewer/src/aim/docRegion.ts
-@@ -23,6 +23,9 @@
+@@ -23,6 +23,7 @@
  import { useEffect, useRef, type RefObject } from 'react';
  import { create } from 'zustand';
  import { describeVisible, type DocVisibleState } from './docVisible.js';
 +import { useAimDocLinks } from './docLinks.js';
-+
-+export { handleDocLinksMessage } from './docLinks.js'; // AimBridge ju berie s importom docRegion (strop riadkov)
  
  /** Výrez strany v zlomkoch (0-1), počiatok vľavo hore. */
  export interface DocRegion {
-@@ -224,6 +227,7 @@ const CONTENT_PADDING_PX = 24;
+@@ -224,6 +225,7 @@ const CONTENT_PADDING_PX = 24;
   * čakajúceho výrezu hneď skončí.
   */
  export function useAimDocRegion(v: DocRegionViewInputs): void {
@@ -467,9 +508,9 @@ index 4cb043a04..73bdd9bff 100644
 2.43.0
 
 
-From b1770d3b50c36a3169923e55d3675396dc9546b0 Mon Sep 17 00:00:00 2001
+From f5fe6369af45e92ec9cd817866b88a024e3e26fe Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
-Date: Wed, 21 Oct 2026 09:55:49 +0000
+Date: Wed, 21 Oct 2026 10:19:37 +0000
 Subject: [PATCH 2/2] =?UTF-8?q?AIM=20D-130:=20muta=C4=8Dn=C3=A9=20d=C3=B4k?=
  =?UTF-8?q?azy=20pre=20revert=20oracle=20(docLinks)?=
 MIME-Version: 1.0
@@ -479,21 +520,25 @@ Content-Transfer-Encoding: 8bit
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01FsvvvFuMXYt71te8FTSmAK
 ---
- .../aim-d130-doc-links/mutations/README.md    |  36 +++++
+ .../aim-d130-doc-links/mutations/README.md    |  38 +++++
  .../mutations/empty-targets-kept.patch        |  12 ++
+ .../mutations/frame-unchecked.patch           |  12 ++
  .../mutations/handler-claims-all.patch        |  13 ++
+ .../mutations/origin-unchecked.patch          |  13 ++
  .../mutations/page-not-integer.patch          |  13 ++
  .../mutations/source-unchecked.patch          |  13 ++
  .../mutations/status-from-wire.patch          |  13 ++
  .../mutations/store-merges.patch              |  13 ++
- .../aim-d130-doc-links/mutations/summary.json | 128 ++++++++++++++++++
+ .../aim-d130-doc-links/mutations/summary.json | 156 ++++++++++++++++++
  .../mutations/targets-uncapped.patch          |  14 ++
  .../mutations/title-without-aim.patch         |  13 ++
  .../mutations/unclipped.patch                 |  15 ++
- 11 files changed, 283 insertions(+)
+ 13 files changed, 338 insertions(+)
  create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/README.md
  create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/empty-targets-kept.patch
+ create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/frame-unchecked.patch
  create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/handler-claims-all.patch
+ create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/origin-unchecked.patch
  create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/page-not-integer.patch
  create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/source-unchecked.patch
  create mode 100644 docs/architecture/evidence/aim-d130-doc-links/mutations/status-from-wire.patch
@@ -505,24 +550,26 @@ Claude-Session: https://claude.ai/code/session_01FsvvvFuMXYt71te8FTSmAK
 
 diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/README.md b/docs/architecture/evidence/aim-d130-doc-links/mutations/README.md
 new file mode 100644
-index 000000000..c9999e9fd
+index 000000000..9971a8516
 --- /dev/null
 +++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/README.md
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,38 @@
 +<!-- This Source Code Form is subject to the terms of the Mozilla Public
 +     License, v. 2.0. If a copy of the MPL was not distributed with this
 +     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
 +
 +# AIM D-130 popisky na výkrese ako odkazy: chirurgické mutácie
 +
-+Zmena pridáva `apps/viewer/src/aim/docLinks.ts`: správu `DOCUMENT_LINKS` od hosta (popisky výkresu spárované s prvkami, AIM vrstva), jej overenie, store a vrstvu klikateľných oblastí nad stranou PDF karty. Klik vyberie prvok ako klik do modelu (`selectPickedGlobalId`, AIM D-082) a otvorí panel vlastností; pri viacerých kandidátoch ukáže výber s odznakom AIM. `AimBridge.tsx` ostáva na 400 riadkoch: `handleDocLinksMessage` (z `docLinks.ts`, re-export cez existujúci import `docRegion.ts`) sa volá v existujúcom riadku pred `isInboundMessage`; `docRegion.ts` vrstvu pripojí ku karte (jeden riadok v `useAimDocRegion`). Test `docLinks.test.ts` importuje nový modul, takže revert produkcie na base (zmazanie `docLinks.ts`) test nenačíta a revert oracle hlási INCONCLUSIVE. Každé hlavné rozhodnutie modulu je preto overené chirurgickou mutáciou.
++Zmena pridáva `apps/viewer/src/aim/docLinks.ts`: správu `DOCUMENT_LINKS` od hosta (popisky výkresu spárované s prvkami, AIM vrstva), jej overenie, store a vrstvu klikateľných oblastí nad stranou PDF karty. Klik vyberie prvok ako klik do modelu (`selectPickedGlobalId`, AIM D-082) a otvorí panel vlastností; pri viacerých kandidátoch ukáže výber s odznakom AIM. Správu prijíma vlastný poslucháč v `docLinks.ts` (`listenDocLinks`, rovnaká kontrola rodiča a originu ako most, `acceptsDocLinksEvent`), zapína ho `wireDocumentEvents` v `docBridge.ts`; `AimBridge.tsx` ani `bridge-protocol.ts` sa nemenia. `docRegion.ts` vrstvu pripojí ku karte (jeden riadok v `useAimDocRegion`). Test `docLinks.test.ts` importuje nový modul, takže revert produkcie na base (zmazanie `docLinks.ts`) test nenačíta a revert oracle hlási INCONCLUSIVE. Každé hlavné rozhodnutie modulu je preto overené chirurgickou mutáciou.
 +
-+Každý patch je zapísaný mutant -> oprava (smer `git diff base...head`); oracle ho aplikuje spätne. Každý beh skončil `OBSERVED` (exit 0) s overeným obnovením, base = hlava #97 `626ed8707` (`claude/aim-d127-panely`), na ktorej patch stojí. Záznamy sú v `summary.json`.
++Každý patch je zapísaný mutant -> oprava (smer `git diff base...head`); oracle ho aplikuje spätne. Každý beh skončil `OBSERVED` (exit 0) s overeným obnovením, base = hlava #97 `67d78612a` (`claude/aim-d127-panely`), na ktorej patch stojí. Záznamy sú v `summary.json`.
 +
 +| Patch | Mutácia | Test, ktorý sčervenal |
 +|---|---|---|
 +| `source-unchecked.patch` | správa sa prijme bez `source: 'aim-bridge'` | `docLinks.test.ts` |
-+| `handler-claims-all.patch` | obsluha v AimBridge "vybaví" aj inú správu, ostatné by sa zahodili | `docLinks.test.ts` |
++| `handler-claims-all.patch` | obsluha "vybaví" aj inú správu | `docLinks.test.ts` |
++| `frame-unchecked.patch` | poslucháč prijme správu z iného okna než rodič | `docLinks.test.ts` |
++| `origin-unchecked.patch` | poslucháč prijme správu z iného originu než hostiteľ z referrera | `docLinks.test.ts` |
 +| `empty-targets-kept.patch` | oblasť bez platného cieľa (GUID + kód) sa nakreslí | `docLinks.test.ts` |
 +| `page-not-integer.patch` | strana 1,5 sa prijme | `docLinks.test.ts` |
 +| `unclipped.patch` | oblasť mimo strany sa neoreže | `docLinks.test.ts` |
@@ -533,29 +580,29 @@ index 000000000..c9999e9fd
 +
 +Kreslenie vrstvy a výber prvku sú DOM a store glue bez unit testu; overené naživo: lokálny viewer v iframe hostiteľskej stránky, model `ASR.ifc` z produkcie AIM a pôdorys `D.1.1.01 Pôdorys 1NP` (PDF z produkcie), `DOCUMENT_LINKS` vygenerovaný funkciami hosta (`lib/data/drawing-labels.ts` v AIMvieweri) nad skutočnými riadkami strany. Na strane bolo 97 oblastí; klik na bublinu `DD01 08` poslal hostovi `ENTITY_SELECTED` s GUID `1_YiIDK5n2fvfP1VGIobML` (DD01.08.0001) a panel vlastností ukázal IfcDoor na 1NP; klik na `OV01 01` otvoril výber "AIM · OV01 01 · kandidáti na podlaží: 2" a voľba druhého kandidáta poslala `ENTITY_SELECTED` `3sAWwiVnb4mf5GPnoLjzDO` (OV01.01.234) a výber zavrela. Raster PDF sa v headless Chromiu (swiftshader, strata WebGPU zariadenia) nevykreslil; vrstva odkazov, kliky a výber áno.
 +
-+Balík (`scripts/perf-ratchet`, vetva aj báza `626ed8707` postavené rovnako): `viewer-entry-js-bytes` 3 164 573 (báza 3 164 978), `viewer-eager-js-bytes` 19 361 572 (báza 19 355 933, +5 639); oboje v tolerancii stropu, strop sa nemení.
++Balík (`scripts/perf-ratchet`, vetva aj báza `67d78612a` postavené rovnako): `viewer-entry-js-bytes` 3 164 652 (báza 3 165 065), `viewer-eager-js-bytes` 19 361 936 (báza 19 356 020, +5 916); oboje v tolerancii stropu, strop sa nemení.
 +
 +## Prehratie
 +
 +Čistý checkout vetvy s nainštalovanými závislosťami. Patche skopíruj mimo strom (oracle odmietne špinavý strom), potom napríklad:
 +
 +```bash
-+node scripts/check-test-revert-oracle.mjs --base 626ed8707 \
++node scripts/check-test-revert-oracle.mjs --base 67d78612a \
 +  --only apps/viewer/src/aim/docLinks.ts \
 +  --test apps/viewer/src/aim/docLinks.test.ts \
 +  --mutation /tmp/d130-mut/unclipped.patch --ci --json
 +```
 diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/empty-targets-kept.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/empty-targets-kept.patch
 new file mode 100644
-index 000000000..6e4f51295
+index 000000000..9ff34f81a
 --- /dev/null
 +++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/empty-targets-kept.patch
 @@ -0,0 +1,12 @@
 +diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
-+index 51db98c65..4011a3603 100644
++index d8e321357..d9d8aebcf 100644
 +--- b/apps/viewer/src/aim/docLinks.ts
 ++++ a/apps/viewer/src/aim/docLinks.ts
-+@@ -83,6 +83,7 @@ function normalizeLink(raw: unknown): DocLink | null {
++@@ -116,6 +116,7 @@ function normalizeLink(raw: unknown): DocLink | null {
 +     .map(normalizeTarget)
 +     .filter((t): t is DocLinkTarget => t !== null)
 +     .slice(0, MAX_TARGETS);
@@ -563,36 +610,73 @@ index 000000000..6e4f51295
 +   const x = Math.max(0, x0);
 +   const y = Math.max(0, y0);
 +   return {
+diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/frame-unchecked.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/frame-unchecked.patch
+new file mode 100644
+index 000000000..a63d1a8f5
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/frame-unchecked.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
++index 0753d7bfd..d9d8aebcf 100644
++--- b/apps/viewer/src/aim/docLinks.ts
+++++ a/apps/viewer/src/aim/docLinks.ts
++@@ -68,6 +68,7 @@ export function acceptsDocLinksEvent(
++   parent: unknown,
++   referrer: string,
++ ): boolean {
+++  if (e.source !== parent) return false;
++   if (!referrer) return true;
++   try {
++     return e.origin === new URL(referrer).origin;
 diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/handler-claims-all.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/handler-claims-all.patch
 new file mode 100644
-index 000000000..cd66c0c0b
+index 000000000..a0daf002d
 --- /dev/null
 +++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/handler-claims-all.patch
 @@ -0,0 +1,13 @@
 +diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
-+index d514f0c4e..4011a3603 100644
++index e2faa9115..d9d8aebcf 100644
 +--- b/apps/viewer/src/aim/docLinks.ts
 ++++ a/apps/viewer/src/aim/docLinks.ts
 +@@ -54,7 +54,7 @@ export function isDocLinksMessage(data: unknown): data is DocLinksMessage {
 + 
-+ /** Obsluha v AimBridge (bez vlastného riadku, súbor je na strope): true = správa vybavená. */
++ /** Vybaví `DOCUMENT_LINKS`; false = správa sem nepatrí. */
 + export function handleDocLinksMessage(data: unknown): boolean {
 +-  if (!isDocLinksMessage(data)) return true;
 ++  if (!isDocLinksMessage(data)) return false;
 +   useAimDocLinksStore.getState().setDocuments(data.documents);
 +   return true;
 + }
+diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/origin-unchecked.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/origin-unchecked.patch
+new file mode 100644
+index 000000000..d4f0bfa9d
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/origin-unchecked.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
++index def3ac82a..d9d8aebcf 100644
++--- b/apps/viewer/src/aim/docLinks.ts
+++++ a/apps/viewer/src/aim/docLinks.ts
++@@ -71,7 +71,7 @@ export function acceptsDocLinksEvent(
++   if (e.source !== parent) return false;
++   if (!referrer) return true;
++   try {
++-    return new URL(referrer).origin.length > 0;
+++    return e.origin === new URL(referrer).origin;
++   } catch {
++     return false;
++   }
 diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/page-not-integer.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/page-not-integer.patch
 new file mode 100644
-index 000000000..94f7e3f3c
+index 000000000..0163e33b7
 --- /dev/null
 +++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/page-not-integer.patch
 @@ -0,0 +1,13 @@
 +diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
-+index 1b6a75f0f..4011a3603 100644
++index 2d6ce566d..d9d8aebcf 100644
 +--- b/apps/viewer/src/aim/docLinks.ts
 ++++ a/apps/viewer/src/aim/docLinks.ts
-+@@ -109,7 +109,7 @@ export function normalizeDocLinks(documents: readonly unknown[]): Map<string, Do
++@@ -142,7 +142,7 @@ export function normalizeDocLinks(documents: readonly unknown[]): Map<string, Do
 +     const d = raw as Record<string, unknown>;
 +     const docId = text(d.documentId);
 +     const page = d.page;
@@ -603,12 +687,12 @@ index 000000000..94f7e3f3c
 +       .map(normalizeLink)
 diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/source-unchecked.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/source-unchecked.patch
 new file mode 100644
-index 000000000..1d1fd88b0
+index 000000000..05a190cf6
 --- /dev/null
 +++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/source-unchecked.patch
 @@ -0,0 +1,13 @@
 +diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
-+index bc9b3531c..4011a3603 100644
++index 31da23819..d9d8aebcf 100644
 +--- b/apps/viewer/src/aim/docLinks.ts
 ++++ a/apps/viewer/src/aim/docLinks.ts
 +@@ -49,7 +49,7 @@ const MAX_TEXT = 80;
@@ -619,18 +703,18 @@ index 000000000..1d1fd88b0
 ++  return msg.source === SOURCE && msg.type === 'DOCUMENT_LINKS' && Array.isArray(msg.documents);
 + }
 + 
-+ /** Obsluha v AimBridge (bez vlastného riadku, súbor je na strope): true = správa vybavená. */
++ /** Vybaví `DOCUMENT_LINKS`; false = správa sem nepatrí. */
 diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/status-from-wire.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/status-from-wire.patch
 new file mode 100644
-index 000000000..427a8f383
+index 000000000..475cad5fb
 --- /dev/null
 +++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/status-from-wire.patch
 @@ -0,0 +1,13 @@
 +diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
-+index f8ea02868..4011a3603 100644
++index b6547de87..d9d8aebcf 100644
 +--- b/apps/viewer/src/aim/docLinks.ts
 ++++ a/apps/viewer/src/aim/docLinks.ts
-+@@ -93,7 +93,7 @@ function normalizeLink(raw: unknown): DocLink | null {
++@@ -126,7 +126,7 @@ function normalizeLink(raw: unknown): DocLink | null {
 +     w: x0 < 0 || x0 + w0 > 1 ? Math.min(x0 + w0, 1) - x : w0,
 +     h: y0 < 0 || y0 + h0 > 1 ? Math.min(y0 + h0, 1) - y : h0,
 +     label: text(l.label) ?? targets[0].ref,
@@ -641,15 +725,15 @@ index 000000000..427a8f383
 + }
 diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/store-merges.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/store-merges.patch
 new file mode 100644
-index 000000000..be3e216a0
+index 000000000..64f84bcbe
 --- /dev/null
 +++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/store-merges.patch
 @@ -0,0 +1,13 @@
 +diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
-+index e31c2828b..4011a3603 100644
++index 5016febd9..d9d8aebcf 100644
 +--- b/apps/viewer/src/aim/docLinks.ts
 ++++ a/apps/viewer/src/aim/docLinks.ts
-+@@ -139,7 +139,7 @@ interface DocLinksState {
++@@ -172,7 +172,7 @@ interface DocLinksState {
 + export const useAimDocLinksStore = create<DocLinksState>((set, get) => ({
 +   pages: new Map(),
 +   nonce: 0,
@@ -660,17 +744,31 @@ index 000000000..be3e216a0
 + /**
 diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/summary.json b/docs/architecture/evidence/aim-d130-doc-links/mutations/summary.json
 new file mode 100644
-index 000000000..3ab924ff8
+index 000000000..165816efd
 --- /dev/null
 +++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/summary.json
-@@ -0,0 +1,128 @@
+@@ -0,0 +1,156 @@
 +{
 +  "empty-targets-kept": {
 +    "verdict": "OBSERVED",
 +    "exitCode": 0,
 +    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
-+    "base": "626ed87078bd7460723c1524ba80382ae290ee44",
-+    "head": "a782b4b5bd4dc012a351a77c0994d9f25158a856",
++    "base": "67d78612aad3cff89303ad331f84299050b912da",
++    "head": "9c7cc011174995c0701676f18c9d99c32bcf900c",
++    "production": [
++      "apps/viewer/src/aim/docLinks.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docLinks.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "frame-unchecked": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
++    "base": "67d78612aad3cff89303ad331f84299050b912da",
++    "head": "9c7cc011174995c0701676f18c9d99c32bcf900c",
 +    "production": [
 +      "apps/viewer/src/aim/docLinks.ts"
 +    ],
@@ -683,8 +781,22 @@ index 000000000..3ab924ff8
 +    "verdict": "OBSERVED",
 +    "exitCode": 0,
 +    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
-+    "base": "626ed87078bd7460723c1524ba80382ae290ee44",
-+    "head": "a782b4b5bd4dc012a351a77c0994d9f25158a856",
++    "base": "67d78612aad3cff89303ad331f84299050b912da",
++    "head": "9c7cc011174995c0701676f18c9d99c32bcf900c",
++    "production": [
++      "apps/viewer/src/aim/docLinks.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docLinks.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "origin-unchecked": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
++    "base": "67d78612aad3cff89303ad331f84299050b912da",
++    "head": "9c7cc011174995c0701676f18c9d99c32bcf900c",
 +    "production": [
 +      "apps/viewer/src/aim/docLinks.ts"
 +    ],
@@ -697,8 +809,8 @@ index 000000000..3ab924ff8
 +    "verdict": "OBSERVED",
 +    "exitCode": 0,
 +    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
-+    "base": "626ed87078bd7460723c1524ba80382ae290ee44",
-+    "head": "a782b4b5bd4dc012a351a77c0994d9f25158a856",
++    "base": "67d78612aad3cff89303ad331f84299050b912da",
++    "head": "9c7cc011174995c0701676f18c9d99c32bcf900c",
 +    "production": [
 +      "apps/viewer/src/aim/docLinks.ts"
 +    ],
@@ -711,8 +823,8 @@ index 000000000..3ab924ff8
 +    "verdict": "OBSERVED",
 +    "exitCode": 0,
 +    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
-+    "base": "626ed87078bd7460723c1524ba80382ae290ee44",
-+    "head": "a782b4b5bd4dc012a351a77c0994d9f25158a856",
++    "base": "67d78612aad3cff89303ad331f84299050b912da",
++    "head": "9c7cc011174995c0701676f18c9d99c32bcf900c",
 +    "production": [
 +      "apps/viewer/src/aim/docLinks.ts"
 +    ],
@@ -725,8 +837,8 @@ index 000000000..3ab924ff8
 +    "verdict": "OBSERVED",
 +    "exitCode": 0,
 +    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
-+    "base": "626ed87078bd7460723c1524ba80382ae290ee44",
-+    "head": "a782b4b5bd4dc012a351a77c0994d9f25158a856",
++    "base": "67d78612aad3cff89303ad331f84299050b912da",
++    "head": "9c7cc011174995c0701676f18c9d99c32bcf900c",
 +    "production": [
 +      "apps/viewer/src/aim/docLinks.ts"
 +    ],
@@ -739,8 +851,8 @@ index 000000000..3ab924ff8
 +    "verdict": "OBSERVED",
 +    "exitCode": 0,
 +    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
-+    "base": "626ed87078bd7460723c1524ba80382ae290ee44",
-+    "head": "a782b4b5bd4dc012a351a77c0994d9f25158a856",
++    "base": "67d78612aad3cff89303ad331f84299050b912da",
++    "head": "9c7cc011174995c0701676f18c9d99c32bcf900c",
 +    "production": [
 +      "apps/viewer/src/aim/docLinks.ts"
 +    ],
@@ -753,8 +865,8 @@ index 000000000..3ab924ff8
 +    "verdict": "OBSERVED",
 +    "exitCode": 0,
 +    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
-+    "base": "626ed87078bd7460723c1524ba80382ae290ee44",
-+    "head": "a782b4b5bd4dc012a351a77c0994d9f25158a856",
++    "base": "67d78612aad3cff89303ad331f84299050b912da",
++    "head": "9c7cc011174995c0701676f18c9d99c32bcf900c",
 +    "production": [
 +      "apps/viewer/src/aim/docLinks.ts"
 +    ],
@@ -767,8 +879,8 @@ index 000000000..3ab924ff8
 +    "verdict": "OBSERVED",
 +    "exitCode": 0,
 +    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
-+    "base": "626ed87078bd7460723c1524ba80382ae290ee44",
-+    "head": "a782b4b5bd4dc012a351a77c0994d9f25158a856",
++    "base": "67d78612aad3cff89303ad331f84299050b912da",
++    "head": "9c7cc011174995c0701676f18c9d99c32bcf900c",
 +    "production": [
 +      "apps/viewer/src/aim/docLinks.ts"
 +    ],
@@ -781,8 +893,8 @@ index 000000000..3ab924ff8
 +    "verdict": "OBSERVED",
 +    "exitCode": 0,
 +    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docLinks.test.ts; that file has a green, attributable baseline.",
-+    "base": "626ed87078bd7460723c1524ba80382ae290ee44",
-+    "head": "a782b4b5bd4dc012a351a77c0994d9f25158a856",
++    "base": "67d78612aad3cff89303ad331f84299050b912da",
++    "head": "9c7cc011174995c0701676f18c9d99c32bcf900c",
 +    "production": [
 +      "apps/viewer/src/aim/docLinks.ts"
 +    ],
@@ -794,15 +906,15 @@ index 000000000..3ab924ff8
 +}
 diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/targets-uncapped.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/targets-uncapped.patch
 new file mode 100644
-index 000000000..67e844d28
+index 000000000..24cf900fc
 --- /dev/null
 +++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/targets-uncapped.patch
 @@ -0,0 +1,14 @@
 +diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
-+index 4e1be410d..4011a3603 100644
++index 4df7f60f4..d9d8aebcf 100644
 +--- b/apps/viewer/src/aim/docLinks.ts
 ++++ a/apps/viewer/src/aim/docLinks.ts
-+@@ -81,7 +81,8 @@ function normalizeLink(raw: unknown): DocLink | null {
++@@ -114,7 +114,8 @@ function normalizeLink(raw: unknown): DocLink | null {
 +   if (w0 <= 0 || h0 <= 0 || x0 >= 1 || y0 >= 1 || x0 + w0 <= 0 || y0 + h0 <= 0) return null;
 +   const targets = (Array.isArray(l.targets) ? l.targets : [])
 +     .map(normalizeTarget)
@@ -814,15 +926,15 @@ index 000000000..67e844d28
 +   const y = Math.max(0, y0);
 diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/title-without-aim.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/title-without-aim.patch
 new file mode 100644
-index 000000000..f59797ceb
+index 000000000..cb0dcc252
 --- /dev/null
 +++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/title-without-aim.patch
 @@ -0,0 +1,13 @@
 +diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
-+index 3c6743698..4011a3603 100644
++index 18195654f..d9d8aebcf 100644
 +--- b/apps/viewer/src/aim/docLinks.ts
 ++++ a/apps/viewer/src/aim/docLinks.ts
-+@@ -126,7 +126,7 @@ export function linkTitle(link: DocLink): string {
++@@ -159,7 +159,7 @@ export function linkTitle(link: DocLink): string {
 +     link.status === 'unique'
 +       ? `${first.ref}${first.name ? ` ${first.name}` : ''}`
 +       : `kandidáti (${link.targets.length}): ${link.targets.map((t) => t.ref).join(', ')}`;
@@ -833,15 +945,15 @@ index 000000000..f59797ceb
 + interface DocLinksState {
 diff --git a/docs/architecture/evidence/aim-d130-doc-links/mutations/unclipped.patch b/docs/architecture/evidence/aim-d130-doc-links/mutations/unclipped.patch
 new file mode 100644
-index 000000000..41187aa2e
+index 000000000..fef461060
 --- /dev/null
 +++ b/docs/architecture/evidence/aim-d130-doc-links/mutations/unclipped.patch
 @@ -0,0 +1,15 @@
 +diff --git b/apps/viewer/src/aim/docLinks.ts a/apps/viewer/src/aim/docLinks.ts
-+index 1441d6a3d..4011a3603 100644
++index 465e8edc3..d9d8aebcf 100644
 +--- b/apps/viewer/src/aim/docLinks.ts
 ++++ a/apps/viewer/src/aim/docLinks.ts
-+@@ -84,8 +84,8 @@ function normalizeLink(raw: unknown): DocLink | null {
++@@ -117,8 +117,8 @@ function normalizeLink(raw: unknown): DocLink | null {
 +     .filter((t): t is DocLinkTarget => t !== null)
 +     .slice(0, MAX_TARGETS);
 +   if (targets.length === 0) return null;
