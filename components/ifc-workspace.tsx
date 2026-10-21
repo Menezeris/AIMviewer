@@ -10,6 +10,7 @@ import type { DocumentWire } from "@/lib/data/documents";
 import type { CaptureViewerWire } from "@/lib/data/captures";
 import type { TreeDecorations } from "@/lib/data/decoration-counts";
 import type { DerivationsLayerWire } from "@/lib/derivations";
+import type { DocumentLinksWire } from "@/lib/data/drawing-links";
 import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { CaptureGallery } from "@/components/capture-gallery";
@@ -50,6 +51,7 @@ export default function IFCWorkspace({
   captures,
   decorations,
   derivations,
+  documentLinks,
 }: {
   models: IfcModel[];
   guidMap: GuidMap;
@@ -70,6 +72,8 @@ export default function IFCWorkspace({
   decorations?: TreeDecorations;
   /** Vrstva AIM nad modelmi (D-089): register pravidiel odvodení a revízie modelov. */
   derivations?: DerivationsLayerWire | null;
+  /** Popisky pôdorysov ako odkazy na prvok (D-130, AIM vrstva). */
+  documentLinks?: DocumentLinksWire[] | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -125,6 +129,7 @@ export default function IFCWorkspace({
           captures={captures}
           decorations={decorations}
           derivations={derivations}
+          documentLinks={documentLinks}
           apiRef={viewerApiRef}
           onPickedElement={handlePickedElement}
           onNavigate={(href) => router.push(href)}

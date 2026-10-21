@@ -149,6 +149,11 @@ export class ScopeResolver {
     return picked;
   }
 
+  /** Počet členov každého systému zvlášť (D-125): koľko prvkov pridal do farbenia. */
+  async systemMemberCounts(systems: TypedRow[]): Promise<number[]> {
+    return Promise.all(systems.map(async (s) => (await this.closure([s.id])).size));
+  }
+
   async systemMembers(f: StyleFilter): Promise<{ ids: Set<string>; matched: string[] }> {
     const picked = await this.pickSystems(f);
     return {

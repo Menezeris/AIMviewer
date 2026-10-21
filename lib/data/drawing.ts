@@ -4,6 +4,7 @@ import { unstable_cache } from "next/cache";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { AIM_CACHE } from "@/lib/data/constants";
+import { primaryV1, toGeorefV2, type GeorefV2 } from "@/lib/data/georef";
 
 /**
  * Data-access vrstva pre in-app prehliadačku výkresov (D-042 fáza C). Číta zdrojové
@@ -139,15 +140,17 @@ export const fetchDrawing = unstable_cache(
 
 /**
  * Wire tvar jedného podkladu pre embed viewer (bridge `UNDERLAYS_LOAD`).
- * `georef` sa posiela ako surové `properties._georef` JSON — viewer si ho
- * validuje sám (`parsePlacement` v @ifc-lite/drawing-underlay), takže tu
- * netreba duplikovať celú schému.
+ * `georef` je v1 (`parsePlacement` v @ifc-lite/drawing-underlay ho validuje
+ * sám): pôdorysná kalibrácia strany, ktorú dnešný fork vie zobraziť.
+ * `georefV2` (D-133) nesie všetky kalibrácie dokumentu vrátane rezov
+ * (`plane`); fork ho začne čítať s pohľadmi D-132.
  */
 export interface UnderlayDrawingWire {
   documentId: string;
   name: string;
   pdfUrl: string;
   georef?: unknown;
+  georefV2?: GeorefV2;
 }
 
 /**
@@ -231,12 +234,15 @@ async function fetchUnderlayDrawingsImpl(): Promise<UnderlayDrawingWire[]> {
     const location = (doc.location as string | null) ?? null;
     const obj = objById.get(id);
     if (!location || !obj) continue; // bez verejného PDF nie je čo podložiť
-    const georef = (obj.properties as Record<string, unknown> | null)?.["_georef"];
+    const raw = (obj.properties as Record<string, unknown> | null)?.["_georef"];
+    const v2 = raw !== undefined ? toGeorefV2(raw) : null;
+    const v1 = v2 ? primaryV1(v2) : null;
     out.push({
       documentId: id,
       name: (obj.name as string | null) ?? id,
       pdfUrl: location,
-      ...(georef !== undefined ? { georef } : {}),
+      ...(v1 ? { georef: v1 } : {}),
+      ...(v2 && v2.calibrations.length > 0 ? { georefV2: v2 } : {}),
     });
   }
   return out;

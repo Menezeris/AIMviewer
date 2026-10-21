@@ -133,15 +133,42 @@ describe("nodeSummaryToAimPanel - dokumenty cez vzťahy (D-104)", () => {
       "GUID",
     );
     expect(panel.documents).toEqual([
-      { name: "D.1.1.03 Pôdorys 3NP", href: "/drawing/d3", badge: "DR", documentId: "d3", via: "cez miestnosť 3.01" },
+      { name: "D.1.1.03 Pôdorys 3NP", href: "/drawing/d3", badge: "DR", documentId: "d3", via: "cez miestnosť 3.01", aim: true },
       {
         name: "D.1.1.09 Výpis skladieb", href: "/drawing/d9?page=3", badge: "SH", documentId: "d9", page: 3,
-        via: "cez skupinu S1 (S1.01)",
+        via: "cez skupinu S1 (S1.01)", aim: true,
       },
       { name: "OCB_PBR_04", href: "/drawing/d5", badge: undefined, documentId: "d5", via: "priamo" },
     ]);
     expect(nodeSummaryToAimPanel(baseSummary, "GUID").documents).toEqual([
       { name: "Manuál", href: "/drawing/d1", badge: undefined },
     ]);
+  });
+});
+
+describe("nodeSummaryToAimPanel - AIM vrstva v IFC paneli (D-129)", () => {
+  it("dokument cez typ nie je AIM, cez zónu áno; posledná zmena receptom prejde do panela", () => {
+    const panel = nodeSummaryToAimPanel(
+      {
+        ...baseSummary,
+        effectiveDocuments: [
+          { documentId: "t1", name: "Typový list", identification: null, via: "type", viaName: "D1" },
+          { documentId: "z1", name: "Požiarna správa", identification: null, via: "zone", viaName: "N1.01" },
+        ],
+        lastChange: { model: "ASR", revision: "v076", title: "Doplniť FireRating", date: "2026-10-20" },
+      },
+      "GUID",
+    );
+    expect(panel.documents?.map((d) => d.aim ?? false)).toEqual([false, true]);
+    expect(panel.lastChange).toEqual({ model: "ASR", revision: "v076", title: "Doplniť FireRating", date: "2026-10-20" });
+    expect(nodeSummaryToAimPanel(baseSummary, "GUID").lastChange).toBeUndefined();
+  });
+
+  it("médiá Reality Capture prejdú do panela len keď sú (D-131)", () => {
+    const captureMedia = [
+      { id: "m1", name: "Vstup", kind: "FOTO", kindLabel: "Fotografia", href: "/ifc?captures=s1", via: "v miestnosti 3.12" },
+    ];
+    expect(nodeSummaryToAimPanel({ ...baseSummary, captureMedia }, "GUID").captureMedia).toEqual(captureMedia);
+    expect(nodeSummaryToAimPanel({ ...baseSummary, captureMedia: [] }, "GUID")).not.toHaveProperty("captureMedia");
   });
 });

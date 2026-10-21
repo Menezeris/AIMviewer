@@ -117,9 +117,10 @@ Postup podľa typu otázky:
   material, model, property + color_by_key Pset.Vlastnosť); farby zvolí viewer a
   legenda príde v počtoch; filtre volania (ifc_type, storey...) ju obmedzia na tieto
   prvky (bez filtra po izolácii len viditeľné), takže legendu cituj ako farby zobrazených
-  prvkov. „Zväčši legendu / na celú stranu" → action=legend (legend_size=normal vráti).
+  prvkov. „Ukáž legendu" → action=legend (malá karta); na celú stranu legend_size=large.
   Miestnosti (IfcSpace) vo vieweri zapne farbenie aj izolácia sama, „zobraz miestnosti" =
-  show s ifc_type=IfcSpace; v 2D sú ofarbené miestnosti vyplnené a popísané (D-119).
+  show s ifc_type=IfcSpace; ich farba ostane priesvitná (transparent netreba), v pôdoryse
+  (2D, vodorovný rez zhora) sú ofarbené aj vybrané vyplnené (D-119, D-125).
   Skrytie (hide) len na výslovnú žiadosť, ide mimo Lens a
   zvyšok ostáva normálny. Izolácia (isolate) ukáže len vybrané v pôvodnom vzhľade;
   color pridaj len vtedy, keď ich používateľ chce aj ofarbiť. „Vybrané plne, ostatné
@@ -185,20 +186,21 @@ export function mcpInstructions(siteUrl: string, engine = false): string {
 ${MCP_UI_RULES}
 
 Kontext MCP (Claude vedľa viewera):
-- UI akcie (show_in_3d, style_in_3d, set_section, set_camera, set_view_mode,
-  open_node, open_drawing) idú do ŽIVÉHO viewera, ktorý má používateľ otvorený vedľa, a tool
-  vráti stav, ktorý viewer po príkaze POTVRDIL (rez, izolácia, kamera, zvýraznenie, počty Lens).
-  Potvrď len to, čo potvrdenie hovorí; ok:false / issues = čo sa nevykonalo, povedz to. Netvrď,
-  čo potvrdenie nehovorí (napr. že sa kamera pohla). Bez potvrdenia viewer nepočúva - ponúkni
-  odkaz zo správy toolu.
+- UI akcie (show_in_3d, style_in_3d, set_section, set_camera, set_view_mode, open_node,
+  open_drawing) idú do ŽIVÉHO viewera vedľa a tool vráti stav, ktorý viewer po príkaze
+  POTVRDIL (rez, izolácia, kamera, zvýraznenie, počty Lens).
+  Potvrď len to, čo potvrdenie hovorí (nie napr. že sa kamera pohla); ok:false / issues = čo sa
+  nevykonalo, povedz to. Bez potvrdenia viewer nepočúva - ponúkni
+  odkaz zo správy toolu. Viewer mení aj používateľ (D-125): changed_outside_commands,
+  inactive a active=false = čo už neplatí; POZOR povedz.
 - get_viewer_state číta viewer v súradniciach IFC (m, Z hore); bounds=true alebo cieľ = obálky.
   "Čo mám vybrané" -> get_viewer_state.selection.summary (triedy, podlažia, zostavy), nie vzorka
   items; pri summary.covers=returned povedz, že viewer poslal len časť.
-- Pôvod funkcií viewera (#80): vrstva AIM vo forku = AIM karta a záložka AIM, 2D plán a podklady
-  (D-072), dokumenty (D-075, D-104), odvodenia (D-089), Lens z chatu (D-096) a príkazy z konektora;
-  ostatné (rez, merania, panely Lens, BCF, IDS, zoznamy) je pôvodné ifc-lite.
-- Odkazy na detail tvor ako ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>,
-  výkres ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
+- Pôvod funkcií viewera (#80): AIM vrstva forku = AIM karta a záložka, 2D plán a podklady,
+  dokumenty, odvodenia, Lens z chatu a príkazy konektora; ostatné (rez, merania, panely Lens, BCF,
+  IDS, zoznamy) je pôvodné ifc-lite.
+- Odkazy: detail ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>, výkres
+  ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
 - Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${FEEDBACK_RULES}${BCF_RULES}${engine ? ENGINE_RULES : ""}`;
   return engine ? withSearchAll(text) : text;
 }
@@ -215,8 +217,8 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   na "vyber / označ / ukáž vlastnosti"; show_in_3d(select=true, clear=true) zruší výber. Celú triedu ukáž
   filtrom (show_in_3d ifc_type=...), nie vymenúvaním. Nové zobrazenie nahradí predošlé;
   "pridaj aj X" = predošlé prvky + X v jednom ids_or_refs.
-- "Ukáž IFC údaje / výmery / zvýrazni vlastnosť" = show_in_3d(select=true) s panel_tab=ifc, panel_section=quantities
-  alebo highlight='Pset.Vlastnosť' (D-113); panel hodnoty ukáže, ifc_get len keď sa pýta na hodnotu.
+- "Ukáž IFC údaje / výmery / zvýrazni vlastnosť" = show_in_3d(select=true) s panel_section=quantities
+  alebo highlight='Pset.Vlastnosť' (D-113, aj Qto); panel hodnoty ukáže, ifc_get len keď sa pýta na hodnotu.
 - Farby, priehľadnosť, skrytie, izolácia = style_in_3d (filtre a groups podľa opisu toolu).
   Výber podľa hodnoty vlastnosti = property + value, nikdy aproximácia triedou alebo doménou;
   názov vlastnosti over cez v_property_dictionary. Systém / zóna / podlažie ako filter system /
@@ -230,7 +232,7 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
 - Rez = set_section: nad podlažím floor + offset_m (1,2 = pôdorys); "X cm pod podhľadom na NP"
   = set_section(floor=NP, relative_to=ceiling, offset_m=-X) - server vezme podhľad miestností
   podlažia; rez cez prvok = cieľ + fit (along / across / center); presná súradnica z get_viewer_state(bounds),
-  position_percent nehádaj. Kamera = set_camera (preset, section = kolmo na rez, fit=visible,
+  position_percent nehádaj. Kamera = set_camera (preset, section = kolmo na rez, cieľ, area,
   relatívny krok samostatne). Režim 3D/2D/Split a podlažie = set_view_mode; "zruš všetko /
   vráť pohľad / začni odznova" = set_view_mode(mode=3d, reset=true) (rez, farby, izolácia,
   výber, zvýraznenie, kamera) - jedno volanie, nič viac.

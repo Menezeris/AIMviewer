@@ -22,6 +22,8 @@ export interface DocumentMetaInput {
   folder?: readonly string[];
   /** Druh, napr. "DR Výkres" (typ informácie ISO 19650). */
   type?: string;
+  /** Druh média, napr. "Fotografia" (systém `Druh média`, D-131). */
+  mediaKind?: string;
   holders: readonly DocumentHolder[];
   lastRevisionTime: string | null;
   electronicFormat: string | null;
@@ -66,6 +68,7 @@ export function documentMeta(input: DocumentMetaInput): Record<string, string> {
   put("Identifikácia", input.identification);
   put("Časť", input.folder?.[0]);
   put("Druh", input.type);
+  put("Druh média", input.mediaKind);
   const others = input.holders.filter((h) => h.objectType !== "project");
   put("Nositeľ", join((others.length > 0 ? others : input.holders).map((h) => HOLDER_LABEL[h.objectType] ?? h.objectType)));
   put("Podlažie", join(input.holders.filter((h) => h.objectType === "floor" && h.name).map((h) => h.name as string)));
