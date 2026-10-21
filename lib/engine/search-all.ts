@@ -29,7 +29,9 @@ export const SEARCH_ALL_TOOL: ToolDefinition = {
     "LongName, všetky psety a Qto aj z typu, klasifikácie, materiály, zóny, skupiny) a graf AIM v DB (názov, " +
     "object_ref, importované psety, dokumenty, osoby). Výsledky sú spojené podľa prvku a každý má badge, KDE sa " +
     "text našiel: IFC, AIM alebo IFC+AIM; object_ref null = prvok je len v súbore. Dôkaz je v evidence (pole a " +
-    "hodnota). source=ifc = len IFC súbor (aj fields, fuzzy, offset na stránkovanie), source=aim = len graf AIM. " +
+    "hodnota). Zhoda na zóne, skupine alebo aktérovi pridá ich členov z grafu AIM (related, napr. " +
+    "'prenajímateľné' -> zóna Nájomné priestory -> jej priestory; členovia sú aj v show_in_3d). " +
+    "source=ifc = len IFC súbor (aj fields, fuzzy, offset na stránkovanie), source=aim = len graf AIM. " +
     "Kód prvku netreba hľadať, daj ho priamo ako cieľ toolu. V odpovedi uveď badge pri každom prvku.",
   inputSchema: {
     type: "object",
@@ -55,6 +57,7 @@ export const SEARCH_ALL_TOOL: ToolDefinition = {
       },
       fuzzy: { type: "boolean", description: "IFC časť: tolerovať preklepy (default true)" },
       offset: { type: "number", description: "source=ifc: posun pre stránkovanie (default 0)" },
+      related: { type: "boolean", description: "Členovia nájdených zón, skupín a aktérov (default true)" },
     },
     required: ["text"],
   },
@@ -161,11 +164,22 @@ export function combineResults(ifc: IfcSearchItem[], aim: AimSearchRow[]): Searc
     .map((v) => v.item);
 }
 
+/** Členovia zóny, skupiny alebo aktéra, ktorý sa našiel (D-126, `related`). */
+export interface RelatedGroup {
+  via: "rel_assigns_to_group" | "rel_assigns_to_actor";
+  node: { object_id: string; object_ref: string | null; name: string | null; object_type: string };
+  members_total: number;
+  truncated: boolean;
+  members: { object_id: string; object_ref: string | null; name: string | null; object_type: string; ifc_type: string | null }[];
+}
+
 export interface SearchAllDeps {
   /** `ifc_search` (vracia `items`). */
   ifc: (input: Record<string, unknown>) => Promise<{ items: IfcSearchItem[] }>;
   /** `search_everything` (riadky alebo `{rows, hint}`). */
   aim: (input: Record<string, unknown>) => Promise<unknown>;
+  /** Členovia nájdených zón, skupín a aktérov z grafu AIM; bez neho sa `related` nerobí. */
+  related?: (ids: string[]) => Promise<RelatedGroup[]>;
 }
 
 const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e)).slice(0, 300);
@@ -247,7 +261,17 @@ export async function execSearchAll(
   for (const it of all) counts[it.badge]++;
   const filtered = badgesIn.length > 0 ? all.filter((it) => badgesIn.includes(it.badge)) : all;
   const items = filtered.slice(0, limit);
-  const idsOrRefs = [...new Set(items.map((it) => it.object_id).filter((v): v is string => Boolean(v)))];
+  const itemIds = items.map((it) => it.object_id).filter((v): v is string => Boolean(v));
+  let related: RelatedGroup[] = [];
+  if (input.related !== false && deps.related && itemIds.length > 0) {
+    try {
+      related = await deps.related(itemIds);
+    } catch (err) {
+      errors.related = errText(err);
+    }
+  }
+  // Členovia (priestory zóny) idú do 3D hneď za zhody: "ukáž prenajímateľné priestory" = jedno volanie.
+  const idsOrRefs = [...new Set([...itemIds, ...related.flatMap((g) => g.members.map((m) => m.object_id))])];
   const globalIds = [...new Set(items.filter((it) => !it.object_id && it.global_id).map((it) => it.global_id as string))];
 
   const result = {
@@ -259,6 +283,7 @@ export async function execSearchAll(
     truncated: filtered.length > items.length,
     ...(Object.keys(errors).length > 0 ? { errors } : {}),
     items,
+    ...(related.length > 0 ? { related } : {}),
     ...(items.length > 0 ? { show_in_3d: { ids_or_refs: idsOrRefs, global_ids: globalIds } } : {}),
     ...(all.length === 0
       ? { hint: "Nič v IFC ani v AIM - skús synonymum, anglický výraz alebo kratší tvar slova." }

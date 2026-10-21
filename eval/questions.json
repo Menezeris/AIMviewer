@@ -838,6 +838,46 @@
       "expect": { "tools_called": ["style_in_3d", "set_section", "set_camera"] },
       "verified": false,
       "notes": "D-125 (issue #175): výplň miestnosti aj v 3D pri reze 1NP + 1,2 m a set_camera top (alebo set_view_mode 2d); výplň sa overuje len vizuálne."
+    },
+    {
+      "id": "air-terminals-in-space-201",
+      "category": "count",
+      "question": "Ktoré vyústky (IfcAirTerminal) sú v priestore 2.01? Daj úplný zoznam.",
+      "expect": { "tools_called": ["query_view"] },
+      "verified": false,
+      "notes": "D-126 (issue #181): query_view relation=v_space_elements (space_ref=2.01, element_ifc_type=IfcAirTerminal) alebo relation=objects s related={relation: rel_referenced_in_spatial_structure, node: 2.01}. Konektor 2026-10-21: v_space_elements 20 riadkov (contained aj referenced); odpoveď nesmie byť z orezanej strany (truncated)."
+    },
+    {
+      "id": "air-terminals-count-paged",
+      "category": "count",
+      "question": "Koľko je v budove vyústiek? Vypíš ich všetky.",
+      "expect": { "tools_called": ["query_view"], "answer_matches": ["\\b139\\b"] },
+      "verified": false,
+      "notes": "D-126 (issue #181): query_view(objects, ifc_type=IfcAirTerminal) vráti total=139, truncated=true, next_offset=100; druhá strana offset=100 dá zvyšných 39. 139 z konektora 2026-10-21 (aggregate_objects s filters)."
+    },
+    {
+      "id": "rentable-spaces",
+      "category": "search",
+      "question": "Ukáž mi prenajímateľné priestory.",
+      "expect": { "tools_called": ["search_all", "show_in_3d"] },
+      "verified": false,
+      "notes": "D-126 (issue #174): search_all(prenajímateľné) nájde IfcZone Nájomné priestory (LongName) a cez related jej priestory, ich id sú v show_in_3d.ids_or_refs. Počet priestorov zóny neoverený."
+    },
+    {
+      "id": "lobby-space",
+      "category": "search",
+      "question": "Zvýrazni mi lobby.",
+      "expect": { "tools_called": ["search_all", "show_in_3d"], "answer_matches": ["1\\.01"] },
+      "verified": false,
+      "notes": "D-126 (issue #174): search_all(lobby) vráti priestor 1.01 (LongName Lobby) ako prvý výsledok, nie search_objects. Konektor 2026-10-21."
+    },
+    {
+      "id": "closed-unverified-issues",
+      "category": "feedback",
+      "question": "Ktoré issues sme už dokončili, ale ešte nie sú skontrolované?",
+      "expect": { "tools_called": ["feedback_status"] },
+      "verified": false,
+      "notes": "D-126 (issue #171): feedback_status(state=closed, verified=false). Len MCP s FEEDBACK_GITHUB_TOKEN."
     }
   ]
 }

@@ -263,8 +263,8 @@ const FEEDBACK_RULES = `
   viac položiek naraz (zoznam, dokument), zapíš každú zvlášť, podobné zlúč do jednej, a na konci povedz,
   koľko session beží a čo čaká. "Spusti ďalšiu" = feedback(action=start_session).
 - "Dopíš do #N ..." (kolo evalov, výsledky pred / po, poznámka) = feedback(action=comment) do existujúceho
-  issue (aj zatvoreného), nie nové issue; ukáž odkaz na komentár. reopen=true len na výslovný pokyn
-  ("otvor ho znova").`;
+  issue (aj zatvoreného; overenie = verification), nie nové issue ani GitHub konektor; ukáž odkaz.
+  reopen=true len na výslovný pokyn.`;
 
 /**
  * BCF témy nad modelmi federácie (D-099) - len MCP; téma pre Claude spustí
@@ -305,8 +305,8 @@ IFC motor (tools ifc_*, D-084) číta priamo IFC súbory federácie (ASR, VZT):
   jedného prvku = ifc_get. Dedičnosť a atribúty IFC triedy = ifc_models(action=schema), nie z pamäti.
 - Meranie (D-112) = ifc_measure: a + b = vzdialenosť a výška nad doskou ("od steny k stene" jedným
   volaním); a = miestnosť → šírka z bbox_m; items = rozmery a objem z meshu; qto=true = len Qto; cesta = route.
-- Hľadanie podľa textu = search_all: IFC súbor (Description, ObjectType, Tag, LongName, všetky
-  psety a Qto aj z typu, klasifikácie, materiály, zóny) aj graf AIM naraz. Každý výsledok má
+- Hľadanie podľa textu (aj priestor podľa účelu, napr. lobby) = search_all: IFC súbor
+  aj graf AIM naraz, zóna vráti aj priestory (related). Každý výsledok má
   badge IFC / AIM / IFC+AIM (kde sa text našiel), v odpovedi ho uveď pri každom prvku a cituj
   evidence. source=ifc len súbor (offset na stránkovanie). Kód prvku netreba hľadať (daj ho
   priamo ako cieľ). "Nenašiel som" povedz až po oboch zdrojoch.

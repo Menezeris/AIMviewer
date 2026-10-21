@@ -603,3 +603,65 @@ describe("routine /fire (D-090)", () => {
     ).rejects.toThrow("BCF_URL, BCF_TOKEN");
   });
 });
+
+describe("zatvorené issues a overenie (D-126, #171)", () => {
+  const prTimeline = [
+    {
+      event: "cross-referenced",
+      source: { issue: { number: 148, html_url: "pr148", title: "D-119", state: "closed", pull_request: { merged_at: "t" } } },
+    },
+  ];
+
+  it("state=closed, verified=false: zatvorené bez štítku overene s PR a počtom neoverených", async () => {
+    const gh = fakeGithub({
+      "GET /repos/Menezeris/AIMviewer/issues": () => ({
+        json: [
+          issue({ number: 137, state: "closed", state_reason: "completed", closed_at: "2026-10-20T20:21:26Z" }),
+          issue({ number: 63, state: "closed", labels: [{ name: "mcp" }, { name: "overene" }] }),
+          issue({ number: 64, state: "closed", labels: [{ name: "mcp" }, { name: "vratene" }] }),
+          issue({ number: 99, pull_request: {} }),
+        ],
+      }),
+      "GET /repos/Menezeris/AIMviewer/issues/137/timeline": () => ({ json: prTimeline }),
+      "GET /repos/Menezeris/AIMviewer/issues/64/timeline": () => ({ json: [] }),
+    });
+    const res = await execFeedbackTool("feedback_status", { state: "closed", verified: false }, deps({ client: gh.client }));
+    const out = JSON.parse(res.text);
+    expect(gh.calls[0].url).toContain("state=closed");
+    expect(out).toMatchObject({ state: "closed", total: 2, returned: 2, truncated: false, closed_unverified: 2 });
+    expect(out.issues[0]).toMatchObject({
+      number: 137,
+      closed_at: "2026-10-20T20:21:26Z",
+      verification: "neoverene",
+      pull_requests: [{ number: 148, merged: true }],
+    });
+    expect(out.issues[1]).toMatchObject({ number: 64, verification: "vratene" });
+  });
+
+  it("neplatný state a verified bez zoznamu zatvorených sú chyba", async () => {
+    const gh = fakeGithub({});
+    expect((await execFeedbackTool("feedback_status", { state: "done" }, deps({ client: gh.client }))).isError).toBe(true);
+    expect((await execFeedbackTool("feedback_status", { verified: true }, deps({ client: gh.client }))).isError).toBe(true);
+    expect(gh.calls).toHaveLength(0);
+  });
+
+  it("comment verification=overene pridá štítok, odoberie vratene, aj na zatvorenom issue", async () => {
+    const gh = fakeGithub({
+      "GET /repos/Menezeris/AIMviewer/issues/12": () => ({ json: issue({ state: "closed", labels: [{ name: "mcp" }, { name: "vratene" }] }) }),
+      "POST /repos/Menezeris/AIMviewer/issues/12/comments": () => ({ status: 201, json: { id: 5, html_url: "c5" } }),
+      "POST /repos/Menezeris/AIMviewer/issues/12/labels": () => ({ json: [] }),
+      "DELETE /repos/Menezeris/AIMviewer/issues/12/labels/vratene": () => ({ json: [] }),
+    });
+    const res = await execFeedbackTool(
+      "feedback",
+      { action: "comment", issue_number: 12, text: "Skontrolované vo vieweri.", kind: "result", verification: "overene" },
+      deps({ client: gh.client }),
+    );
+    expect(res.isError).toBe(false);
+    expect(JSON.parse(res.text)).toMatchObject({ verification: "overene", issue: { state: "closed" } });
+    expect(gh.calls.find((c) => c.url.endsWith("/comments"))?.body).toMatchObject({ body: expect.stringContaining("overenie: overené") });
+    expect(gh.calls.find((c) => c.url.endsWith("/labels"))?.body).toEqual({ labels: ["overene"] });
+    expect(gh.calls.some((c) => c.method === "DELETE" && c.url.endsWith("/labels/vratene"))).toBe(true);
+    expect(() => draftComment({ issue_number: 12, text: "x", verification: "ok" }, NOW)).toThrow(/verification/);
+  });
+});

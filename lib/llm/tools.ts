@@ -24,6 +24,16 @@ import { execScopedStyle } from "./style-scope";
 import { needsScopedStyle } from "./style-plan";
 import { LENS_STYLE_ACTIONS, execLensStyle } from "./style-lens";
 import { selectPanelInput, selectPanelNote } from "./select-panel";
+import {
+  RELATED_CAP,
+  clampOffset,
+  orderTerms,
+  pageInfo,
+  parseRelated,
+  sortRows,
+  type OrderTerm,
+  type RelatedSpec,
+} from "./query-view";
 
 /**
  * Read-only tools LLM rozhrania (D-056) — tool-calling nad whitelistom, NIE
@@ -268,8 +278,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "typ informácie ISO 19650) (všetky: from_id→to_id, valid_until null = aktívna), " +
       "v_object_documents (dokumenty objektu cez vzťahy, D-104: object_id, document_id, page, via, " +
       "via_id, depth). JSONB cesty fungujú v select aj filtri: " +
-      "properties->Pset_ValveTypeIsolating->>IsNormallyOpen. Join nie je — reťaz dopyty " +
-      "cez op 'in' so zoznamom id z predchádzajúceho výsledku.",
+      "properties->Pset_ValveTypeIsolating->>IsNormallyOpen. Výsledok má total, returned, truncated a " +
+      "next_offset (poradie je stabilné, ďalšia strana = offset=next_offset). Uzly so vzťahom na iný uzol " +
+      "jedným volaním = related (napr. IfcAirTerminal s rel_referenced_in_spatial_structure na priestor 2.01); " +
+      "obsah miestnosti naraz (contained aj referenced) dá v_space_elements.",
     inputSchema: {
       type: "object",
       properties: {
@@ -302,6 +314,21 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         count_only: { type: "boolean", description: "true = vráť len presný počet riadkov" },
         limit: { type: "number", description: `Max riadkov (default ${DEFAULT_LIMIT}, strop ${MAX_LIMIT})` },
+        offset: { type: "number", description: "Posun strany (default 0); ďalšia strana = next_offset z výsledku" },
+        related: {
+          type: "object",
+          properties: {
+            relation: { type: "string", description: "Kanonický view hrán rel_*" },
+            node: { type: "string", description: "id alebo object_ref uzla na druhom konci hrany" },
+            direction: {
+              type: "string",
+              enum: ["to", "from"],
+              description: "to (default) = hrana vedie z riadku NA node (prvok v priestore, člen zóny); from = z node na riadok (objekty aktéra)",
+            },
+          },
+          required: ["relation", "node"],
+          description: "Len uzly so vzťahom na node (relácie uzlov: objects, v_asset_effective, v_floors, v_actors...)",
+        },
       },
       required: ["relation"],
     },
@@ -1129,7 +1156,11 @@ export class AskToolRuntime {
     };
   }
 
-  /** Generický read-only dopyt nad whitelistom relácií (celá dátová vrstva). */
+  /**
+   * Generický read-only dopyt nad whitelistom relácií (celá dátová vrstva).
+   * D-126: vždy stabilné poradie (kľúč relácie za `order`), `offset` a súhrn
+   * strany (total, truncated, next_offset); `related` zúži uzly na susedov uzla.
+   */
   private async queryView(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
     const relation = String(input.relation ?? "").trim();
@@ -1144,52 +1175,95 @@ export class AskToolRuntime {
           (c): c is string => typeof c === "string" && COLUMN_RE.test(c)
         )
       : [];
-    const select = selectCols.length > 0 ? selectCols.join(", ") : "*";
-
     const countOnly = input.count_only === true;
-    let q = countOnly
-      ? supabase.from(relation).select("*", { count: "exact", head: true })
-      : supabase.from(relation).select(select).limit(clampLimit(input.limit));
+    const limit = clampLimit(input.limit);
+    const offset = clampOffset(input.offset);
+    const related = parseRelated(input.related, relation, REL_VIEWS);
 
-    const filters = Array.isArray(input.filters) ? (input.filters as unknown[]) : [];
-    for (const f of filters) {
-      if (typeof f !== "object" || f === null) continue;
-      const { column, op, value } = f as { column?: unknown; op?: unknown; value?: unknown };
-      const col = String(column ?? "");
-      const operator = String(op ?? "");
-      if (!COLUMN_RE.test(col)) throw new Error(`Neplatný stĺpec '${col}'.`);
-      if (!QUERY_OPS.has(operator))
-        throw new Error(`Neplatný operátor '${operator}' — povolené: ${[...QUERY_OPS].join(", ")}.`);
-      // PostgREST porovnáva JSONB cesty ako TEXT ('9' > '10') → číselné porovnanie
-      // psetov musí ísť cez aggregate_objects (guidance error, viditeľný v trace).
-      if (col.includes("->") && ["gt", "gte", "lt", "lte"].includes(operator)) {
+    const rawOrder = input.order as { column?: unknown; ascending?: unknown } | undefined;
+    let order: OrderTerm | null = null;
+    if (rawOrder !== undefined) {
+      if (typeof rawOrder?.column !== "string" || !COLUMN_RE.test(rawOrder.column))
+        throw new Error("order.column: stĺpec relácie.");
+      order = { column: rawOrder.column, ascending: rawOrder.ascending !== false };
+    }
+    const terms = orderTerms(relation, order);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const applyFilters = (q: any) => {
+      const filters = Array.isArray(input.filters) ? (input.filters as unknown[]) : [];
+      for (const f of filters) {
+        if (typeof f !== "object" || f === null) throw new Error("filters: pole objektov {column, op, value}.");
+        const { column, op, value } = f as { column?: unknown; op?: unknown; value?: unknown };
+        const col = String(column ?? "");
+        const operator = String(op ?? "");
+        if (!COLUMN_RE.test(col)) throw new Error(`Neplatný stĺpec '${col}'.`);
+        if (!QUERY_OPS.has(operator))
+          throw new Error(`Neplatný operátor '${operator}' — povolené: ${[...QUERY_OPS].join(", ")}.`);
+        // PostgREST porovnáva JSONB cesty ako TEXT ('9' > '10') → číselné porovnanie
+        // psetov musí ísť cez aggregate_objects (guidance error, viditeľný v trace).
+        if (col.includes("->") && ["gt", "gte", "lt", "lte"].includes(operator)) {
+          throw new Error(
+            `Porovnanie '${operator}' nad JSONB cestou tu porovnáva text ('9' > '10'), nie ` +
+              `čísla — použi aggregate_objects s filters: [{path: [...], op: '${operator}', ` +
+              `value: '...'}] (numericky bezpečné; return_rows=true vráti riadky).`
+          );
+        }
+        if (operator === "in") {
+          const vals = Array.isArray(value) ? value : [value];
+          if (vals.length > IN_CHUNK)
+            throw new Error(`Filter 'in' berie najviac ${IN_CHUNK} hodnôt (${vals.length}); zúž ho alebo použi related.`);
+          q = q.in(col, vals);
+        } else if (operator === "is") {
+          q = q.is(col, value === "null" ? null : (value as boolean | null));
+        } else {
+          q = q[operator](col, value);
+        }
+      }
+      return q;
+    };
+
+    let rows: Record<string, unknown>[];
+    let total: number;
+    if (related) {
+      const ids = await this.relatedIds(related);
+      if (ids.length > RELATED_CAP) {
         throw new Error(
-          `Porovnanie '${operator}' nad JSONB cestou tu porovnáva text ('9' > '10'), nie ` +
-            `čísla — použi aggregate_objects s filters: [{path: [...], op: '${operator}', ` +
-            `value: '...'}] (numericky bezpečné; return_rows=true vráti riadky).`
+          `Uzol má ${ids.length} susedov cez ${related.relation} (strop ${RELATED_CAP}); zúž dopyt filtrami inej relácie.`
         );
       }
-      if (operator === "in") {
-        const vals = Array.isArray(value) ? value : [value];
-        q = q.in(col, vals.slice(0, IN_CHUNK));
-      } else if (operator === "is") {
-        q = q.is(col, value === "null" ? null : (value as boolean | null));
-      } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        q = (q as any)[operator](col, value);
+      if (order?.column.includes("->")) throw new Error("order nad JSONB cestou s related nejde; zoraď podľa stĺpca.");
+      // Spojené dávky sa zoraďujú v TS, preto riadok nesie aj stĺpce poradia.
+      const cols = selectCols.length > 0 ? [...new Set([...selectCols, ...terms.map((t) => t.column)])] : [];
+      const all: Record<string, unknown>[] = [];
+      for (let i = 0; i < ids.length; i += IN_CHUNK) {
+        const q = applyFilters(
+          supabase.from(relation).select(cols.length > 0 ? cols.join(", ") : "*").in("id", ids.slice(i, i + IN_CHUNK))
+        );
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+        all.push(...((data ?? []) as Record<string, unknown>[]));
       }
+      total = all.length;
+      if (countOnly) return { count: total };
+      rows = sortRows(all, terms).slice(offset, offset + limit);
+    } else {
+      const select = selectCols.length > 0 ? selectCols.join(", ") : "*";
+      let q = countOnly
+        ? supabase.from(relation).select("*", { count: "exact", head: true })
+        : supabase.from(relation).select(select, { count: "exact" });
+      q = applyFilters(q);
+      if (!countOnly) {
+        for (const t of terms) q = q.order(t.column, { ascending: t.ascending });
+        q = q.range(offset, offset + limit - 1);
+      }
+      const { data, count, error } = await q;
+      if (error) throw new Error(error.message);
+      if (countOnly) return { count: count ?? 0 };
+      rows = (data ?? []) as Record<string, unknown>[];
+      total = count ?? offset + rows.length;
     }
 
-    const order = input.order as { column?: unknown; ascending?: unknown } | undefined;
-    if (!countOnly && order && typeof order.column === "string" && COLUMN_RE.test(order.column)) {
-      q = q.order(order.column, { ascending: order.ascending !== false });
-    }
-
-    const { data, count, error } = await q;
-    if (error) throw new Error(error.message);
-    if (countOnly) return { count: count ?? 0 };
-
-    const rows = (data ?? []) as Record<string, unknown>[];
     // Uzly do zdrojov (trust loop) — podľa tvaru riadku (objects/v_* views).
     for (const r of rows) {
       if (typeof r.id === "string" && (typeof r.object_type === "string" || relation === "v_asset_effective")) {
@@ -1201,7 +1275,41 @@ export class AskToolRuntime {
         });
       }
     }
-    return { rows, row_count: rows.length };
+    const page = pageInfo(total, offset, rows.length);
+    return {
+      ...page,
+      ...(page.truncated ? { hint: `Výsledok je orezaný: ďalšia strana offset=${page.next_offset}.` } : {}),
+      rows,
+    };
+  }
+
+  /** Susedia uzla cez kanonický view hrán (`related` v query_view, D-126). */
+  private async relatedIds(spec: RelatedSpec): Promise<string[]> {
+    const supabase = getSupabaseAdmin();
+    let nodeId = spec.node;
+    if (!isUuid(nodeId)) {
+      const { data, error } = await supabase
+        .from("objects")
+        .select("id")
+        .eq("object_ref", spec.node)
+        .is("valid_until", null)
+        .limit(2);
+      if (error) throw new Error(error.message);
+      const hit = (data ?? []) as { id: string }[];
+      if (hit.length === 0) throw new Error(`related.node '${spec.node}' nie je object_ref ani id uzla.`);
+      nodeId = hit[0].id;
+    }
+    const [match, other] = spec.direction === "to" ? (["to_id", "from_id"] as const) : (["from_id", "to_id"] as const);
+    const edges = await fetchAllPages<{ from_id: string; to_id: string }>((from, to) =>
+      supabase
+        .from(spec.relation)
+        .select("from_id, to_id")
+        .eq(match, nodeId)
+        .is("valid_until", null)
+        .order("id")
+        .range(from, to)
+    );
+    return [...new Set(edges.map((e) => e[other]).filter((v): v is string => typeof v === "string"))];
   }
 
   /**
