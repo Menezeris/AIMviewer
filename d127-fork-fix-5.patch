@@ -1,0 +1,159 @@
+From 1b9be54a7b7f2edd4f6b8123c3454c20b9967ac3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 10:47:00 +0000
+Subject: [PATCH] =?UTF-8?q?AIM=20D-127:=20v=C3=BDmera=20z=20typu=20v=20pro?=
+ =?UTF-8?q?perty=5Ffocus=20(review=20minor)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Panel kreslí v Quantities sekciu výskytu pred sekciou typu; zásah v druhej
+sekcii hlási from_type, pri jedinej sekcii sa nehlási nič (z DOM sa to určiť nedá).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013pTmyabGpJyMo1eWHhfymn
+---
+ apps/viewer/src/aim/aimPanelView.ts                | 10 +++++++---
+ apps/viewer/src/aim/aimPanelViewPlan.test.ts       |  9 ++++++++-
+ apps/viewer/src/aim/aimPanelViewPlan.ts            | 10 ++++++++++
+ .../evidence/aim-d127-panels/mutations/README.md   |  1 +
+ .../mutations/quantity-never-type.patch            | 11 +++++++++++
+ .../aim-d127-panels/mutations/summary.json         | 14 ++++++++++++++
+ 6 files changed, 51 insertions(+), 4 deletions(-)
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/quantity-never-type.patch
+
+diff --git a/apps/viewer/src/aim/aimPanelView.ts b/apps/viewer/src/aim/aimPanelView.ts
+index cafd16c4..d261d0f1 100644
+--- a/apps/viewer/src/aim/aimPanelView.ts
++++ b/apps/viewer/src/aim/aimPanelView.ts
+@@ -17,7 +17,7 @@
+ 
+ import { useViewerStore } from '../store/index.js';
+ import { useAimInspectorStore, type PropertyFocusState } from './aimInspectorStore.js';
+-import { focusSections, matchName, panelPlan, propKeyEntity, type AimPanelView, type PanelSection } from './aimPanelViewPlan.js';
++import { focusSections, matchName, panelPlan, propKeyEntity, quantityFromType, type AimPanelView, type PanelSection } from './aimPanelViewPlan.js';
+ 
+ const SETTLE_TIMEOUT_MS = 5000;
+ /** Ako dlho sa riadok hľadá v jednej sekcii, kým sa skúsi druhá (panel sa vykresľuje postupne). */
+@@ -26,7 +26,7 @@ const FOCUS_ATTR = 'data-aim-focus';
+ 
+ type Target = { modelId: string; expressId: number };
+ type Focus = { pset: string; property: string };
+-type Hit = { el: Element; section: PanelSection; fromType: boolean };
++type Hit = { el: Element; section: PanelSection; fromType?: boolean };
+ 
+ let stopActive: (() => void) | null = null;
+ 
+@@ -65,7 +65,11 @@ function locate(scope: ParentNode, focus: Focus, target: Target, section: PanelS
+   if (section !== 'quantities') return null; // riadky psetov nesú `data-prop-key` vyššie
+   const rows = [...(trigger.parentElement?.querySelectorAll('.group\\/copyrow') ?? [])];
+   const j = matchName(rows.map((r) => r.querySelector('span.font-medium')?.textContent), focus.property);
+-  return j < 0 ? null : { el: rows[j], section, fromType: false };
++  if (j < 0) return null;
++  // Výskyt je v DOM pred typom, takže pri rovnakom mene sady vyhrá výskyt (matchName = prvý zásah).
++  const box = trigger.closest('section');
++  const boxes = box?.parentElement ? [...box.parentElement.children].filter((c) => c.tagName === 'SECTION') : [];
++  return { el: rows[j], section, fromType: quantityFromType(box ? boxes.indexOf(box) : -1, boxes.length) };
+ }
+ 
+ /**
+diff --git a/apps/viewer/src/aim/aimPanelViewPlan.test.ts b/apps/viewer/src/aim/aimPanelViewPlan.test.ts
+index 17956c60..18118684 100644
+--- a/apps/viewer/src/aim/aimPanelViewPlan.test.ts
++++ b/apps/viewer/src/aim/aimPanelViewPlan.test.ts
+@@ -7,7 +7,7 @@ import assert from 'node:assert';
+ 
+ import { isInboundMessage } from './bridge-protocol.js';
+ import { useAimInspectorStore } from './aimInspectorStore.js';
+-import { focusSections, isQuantitySetName, matchName, panelPlan, parsePanelView, propKeyEntity, selectPanel } from './aimPanelViewPlan.js';
++import { focusSections, isQuantitySetName, matchName, panelPlan, parsePanelView, propKeyEntity, quantityFromType, selectPanel } from './aimPanelViewPlan.js';
+ 
+ const S = 'aim-bridge' as const;
+ const GUID = '0MJFXziqDE$gGyPWwro9fJ';
+@@ -80,4 +80,11 @@ describe('panel vlastností z chatu (AIM D-113)', () => {
+     assert.equal(stopped, 1);
+     assert.equal(useAimInspectorStore.getState().propertyFocus, null);
+   });
++
++  it('výmera z typu: druhá sekcia Quantities je typ, pri jedinej sa to určiť nedá', () => {
++    assert.equal(quantityFromType(0, 2), false);
++    assert.equal(quantityFromType(1, 2), true);
++    assert.equal(quantityFromType(0, 1), undefined);
++    assert.equal(quantityFromType(-1, 0), undefined);
++  });
+ });
+diff --git a/apps/viewer/src/aim/aimPanelViewPlan.ts b/apps/viewer/src/aim/aimPanelViewPlan.ts
+index 49cdb639..a8cb96ca 100644
+--- a/apps/viewer/src/aim/aimPanelViewPlan.ts
++++ b/apps/viewer/src/aim/aimPanelViewPlan.ts
+@@ -89,3 +89,13 @@ export function matchName(names: ReadonlyArray<string | null | undefined>, want:
+   const exact = names.findIndex((n) => same(n, want));
+   return exact >= 0 ? exact : names.findIndex((n) => sameLoose(n, want));
+ }
++
++/**
++ * Výmera z typu? Panel kreslí v Quantities sekciu výskytu vždy pred sekciou typu a
++ * prázdnu vynechá: zásah v druhej sekcii je z typu, pri jedinej sekcii sa to z DOM
++ * určiť nedá (undefined).
++ */
++export function quantityFromType(sectionIndex: number, sectionCount: number): boolean | undefined {
++  if (sectionIndex < 0 || sectionCount < 2) return undefined;
++  return sectionIndex > 0;
++}
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/README.md b/docs/architecture/evidence/aim-d127-panels/mutations/README.md
+index 85ca88cc..6568c50a 100644
+--- a/docs/architecture/evidence/aim-d127-panels/mutations/README.md
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/README.md
+@@ -26,6 +26,7 @@ Each patch is written mutant->fixed and reverse-applied by the oracle. Every run
+ | `inside-no-tolerance.patch` | `docVisible.ts` | "region fully visible" has no rounding tolerance | `docRegion.test.ts` |
+ | `visible-unclamped.patch` | `docVisible.ts` | the visible part is not clamped to the page | `docRegion.test.ts` |
+ | `clear-no-waiter.patch` | `docRegion.ts` | clearing a region request never resolves `regionApplied` | `docRegion.test.ts` |
++| `quantity-never-type.patch` | `aimPanelViewPlan.ts` | a quantity set drawn from the type is reported as the occurrence's | `aimPanelViewPlan.test.ts` |
+ | `reset-keeps-running.patch` | `aimInspectorStore.ts` | a new bridge session forgets the focus result but leaves its observer running | `aimPanelViewPlan.test.ts` |
+ | `aim-badge-dropped.patch` | `documentsQuery.ts` | a document inherited through a relation loses its AIM flag (D-129) | `documentsQuery.test.ts` |
+ 
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/quantity-never-type.patch b/docs/architecture/evidence/aim-d127-panels/mutations/quantity-never-type.patch
+new file mode 100644
+index 00000000..80ae346f
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/quantity-never-type.patch
+@@ -0,0 +1,11 @@
++diff --git b/apps/viewer/src/aim/aimPanelViewPlan.ts a/apps/viewer/src/aim/aimPanelViewPlan.ts
++index 202b17d6..a8cb96ca 100644
++--- b/apps/viewer/src/aim/aimPanelViewPlan.ts
+++++ a/apps/viewer/src/aim/aimPanelViewPlan.ts
++@@ -97,5 +97,5 @@ export function matchName(names: ReadonlyArray<string | null | undefined>, want:
++  */
++ export function quantityFromType(sectionIndex: number, sectionCount: number): boolean | undefined {
++   if (sectionIndex < 0 || sectionCount < 2) return undefined;
++-  return false;
+++  return sectionIndex > 0;
++ }
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/summary.json b/docs/architecture/evidence/aim-d127-panels/mutations/summary.json
+index 5e58de2f..baeb58d0 100644
+--- a/docs/architecture/evidence/aim-d127-panels/mutations/summary.json
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/summary.json
+@@ -139,6 +139,20 @@
+     ],
+     "restoration": "verified"
+   },
++  "quantity-never-type": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimPanelViewPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "6ebb0bfe239b2576e9b9582fdbb390f165e84e70",
++    "production": [
++      "apps/viewer/src/aim/aimPanelViewPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimPanelViewPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
+   "reset-keeps-running": {
+     "verdict": "OBSERVED",
+     "exitCode": 0,
+-- 
+2.43.0
+
