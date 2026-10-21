@@ -1,0 +1,237 @@
+From 4128c09d038dd1563d0b31a097cc363088d59f01 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 10:27:33 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?AIM=20D-131:=20n=C3=A1h=C4=BEad=20pinu=20Re?=
+ =?UTF-8?q?ality=20Capture=20len=20http(s),=20spolo=C4=8Dn=C3=A9=20safeThu?=
+ =?UTF-8?q?mbUrl?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011qHFgBHEAYai1dRf16Feve
+---
+ apps/viewer/src/aim/CapturePinLayer.tsx    |  3 ++-
+ apps/viewer/src/aim/documentsQuery.test.ts | 10 +++++++++-
+ apps/viewer/src/aim/documentsQuery.ts      |  8 +++++++-
+ 3 files changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/apps/viewer/src/aim/CapturePinLayer.tsx b/apps/viewer/src/aim/CapturePinLayer.tsx
+index 1b1261917..48dd6a840 100644
+--- a/apps/viewer/src/aim/CapturePinLayer.tsx
++++ b/apps/viewer/src/aim/CapturePinLayer.tsx
+@@ -18,6 +18,7 @@ import { Camera, Orbit } from 'lucide-react';
+ 
+ import { useViewerStore } from '../store/index.js';
+ import { useCapturePinsStore } from './capturePinsStore.js';
++import { safeThumbUrl } from './documentsQuery.js';
+ import { AimRoomFillLayer } from './AimRoomFillLayer.js';
+ 
+ interface ProjectedPin {
+@@ -93,7 +94,7 @@ export function CapturePinLayer() {
+         id: p.id,
+         kind: p.kind,
+         name: p.name,
+-        thumbUrl: p.thumbUrl,
++        thumbUrl: safeThumbUrl(p.thumbUrl),
+         screen: project(p.world),
+       }));
+       const serialized = next
+diff --git a/apps/viewer/src/aim/documentsQuery.test.ts b/apps/viewer/src/aim/documentsQuery.test.ts
+index bd31f3794..df25d1de4 100644
+--- a/apps/viewer/src/aim/documentsQuery.test.ts
++++ b/apps/viewer/src/aim/documentsQuery.test.ts
+@@ -4,7 +4,7 @@
+ 
+ import { describe, it } from 'node:test';
+ import assert from 'node:assert/strict';
+-import { foldText, GROUP_BY_FOLDER, groupDocuments, matchesFilter, metaKeys, selectionDocuments, selectionMedia, show3dTarget, type CaptureMediaWire, type QueryDocument } from './documentsQuery';
++import { foldText, GROUP_BY_FOLDER, groupDocuments, matchesFilter, metaKeys, selectionDocuments, safeThumbUrl, selectionMedia, show3dTarget, type CaptureMediaWire, type QueryDocument } from './documentsQuery';
+ 
+ const plan3: QueryDocument = {
+   id: 'd3', name: 'D.1.1.03 Pôdorys 3NP', folder: ['D.1.1 ASR'],
+@@ -110,6 +110,14 @@ describe('documentsQuery (D-104)', () => {
+     assert.deepEqual(selectionMedia(undefined), []);
+   });
+ 
++  it('passes only http(s) thumbnails to <img src> (media rows and capture pins)', () => {
++    assert.equal(safeThumbUrl('https://cdn/t.jpg'), 'https://cdn/t.jpg');
++    assert.equal(safeThumbUrl('HTTP://cdn/t.jpg'), 'HTTP://cdn/t.jpg');
++    assert.equal(safeThumbUrl('javascript:alert(1)'), undefined);
++    assert.equal(safeThumbUrl('data:image/svg+xml,<svg/>'), undefined);
++    assert.equal(safeThumbUrl(undefined), undefined);
++  });
++
+   it('asks the host for elements of the page being read, only for host documents', () => {
+     assert.deepEqual(show3dTarget('d9', 3), { documentId: 'd9', page: 3 });
+     assert.deepEqual(show3dTarget('d9', 0), { documentId: 'd9' });
+diff --git a/apps/viewer/src/aim/documentsQuery.ts b/apps/viewer/src/aim/documentsQuery.ts
+index 64121f1ef..c7ff53e92 100644
+--- a/apps/viewer/src/aim/documentsQuery.ts
++++ b/apps/viewer/src/aim/documentsQuery.ts
+@@ -161,6 +161,11 @@ export interface CaptureMediaWire {
+   via?: string;
+ }
+ 
++/** A host thumbnail for `<img src>` only when it is http(s) (media rows, capture pins). */
++export function safeThumbUrl(url: string | undefined): string | undefined {
++  return url && /^https?:\/\//i.test(url) ? url : undefined;
++}
++
+ /**
+  * The selection's media grouped by kind (AIM D-131), filtered like the
+  * documents (name, kind, path, date). Groups by name; media keep the host's
+@@ -175,7 +180,8 @@ export function selectionMedia(
+     const probe: QueryDocument = { id: item.id, name: [item.name, item.kindLabel, item.via ?? '', item.capturedAt ?? ''].join(' ') };
+     if (!matchesFilter(probe, filter)) continue;
+     const { thumbUrl, ...rest } = item;
+-    const safe = thumbUrl && /^https?:\/\//i.test(thumbUrl) ? { ...rest, thumbUrl } : rest;
++    const url = safeThumbUrl(thumbUrl);
++    const safe = url ? { ...rest, thumbUrl: url } : rest;
+     const label = item.kindLabel || item.kind;
+     const list = byKind.get(label);
+     if (list) list.push(safe);
+-- 
+2.43.0
+
+
+From aa825027f01bec924ccf0887c9327d2667a37702 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 10:27:55 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?AIM=20D-131:=20mut=C3=A1cie=20po=20safeThum?=
+ =?UTF-8?q?bUrl?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011qHFgBHEAYai1dRf16Feve
+---
+ .../mutations/README.md                       |  4 ++--
+ .../mutations/media-filter-ignored.patch      |  8 ++++----
+ .../mutations/media-groups-unsorted.patch     |  4 ++--
+ .../mutations/media-unsafe-thumb-kept.patch   | 20 +++++++++----------
+ .../mutations/summary.json                    |  6 +++---
+ 5 files changed, 21 insertions(+), 21 deletions(-)
+
+diff --git a/docs/architecture/evidence/aim-d131-capture-media/mutations/README.md b/docs/architecture/evidence/aim-d131-capture-media/mutations/README.md
+index c6fcca4d6..c14ab9d93 100644
+--- a/docs/architecture/evidence/aim-d131-capture-media/mutations/README.md
++++ b/docs/architecture/evidence/aim-d131-capture-media/mutations/README.md
+@@ -10,7 +10,7 @@ The host sends them in `AimPanelData.captureMedia`; a click navigates the host t
+ gallery. The pure logic is `selectionMedia` in `documentsQuery.ts`. The changed test imports an
+ export that does not exist on `main`, so reverting production makes it fail to load and the CI
+ revert oracle reports INCONCLUSIVE. Each main decision was instead checked with a surgical
+-mutation.
++mutation. `safeThumbUrl` also guards the capture pin thumbnails in `CapturePinLayer.tsx` (D-073 pins had no check; review follow-up).
+ 
+ Each patch is written mutant->fixed and reverse-applied by the oracle. Every run ended
+ `OBSERVED` (exit 0) with restoration verified against `origin/main`. The records are in
+@@ -19,7 +19,7 @@ Each patch is written mutant->fixed and reverse-applied by the oracle. Every run
+ | Patch | Module | Mutation | Test |
+ |---|---|---|---|
+ | `media-filter-ignored.patch` | `documentsQuery.ts` | the panel filter does not apply to media | `documentsQuery.test.ts` |
+-| `media-unsafe-thumb-kept.patch` | `documentsQuery.ts` | a thumbnail URL that is not http(s) reaches `<img src>` | `documentsQuery.test.ts` |
++| `media-unsafe-thumb-kept.patch` | `documentsQuery.ts` | `safeThumbUrl` passes a thumbnail that is not http(s) to `<img src>` (media rows and capture pins) | `documentsQuery.test.ts` |
+ | `media-groups-unsorted.patch` | `documentsQuery.ts` | media kind groups keep arrival order instead of name order | `documentsQuery.test.ts` |
+ 
+ The rows and group headings in `AimDocumentsControls.tsx` are React glue with no unit test, and
+diff --git a/docs/architecture/evidence/aim-d131-capture-media/mutations/media-filter-ignored.patch b/docs/architecture/evidence/aim-d131-capture-media/mutations/media-filter-ignored.patch
+index 4f52f1803..84642d014 100644
+--- a/docs/architecture/evidence/aim-d131-capture-media/mutations/media-filter-ignored.patch
++++ b/docs/architecture/evidence/aim-d131-capture-media/mutations/media-filter-ignored.patch
+@@ -1,13 +1,13 @@
+ diff --git b/apps/viewer/src/aim/documentsQuery.ts a/apps/viewer/src/aim/documentsQuery.ts
+-index 2d17a6f80..64121f1ef 100644
++index 5cebf2bd6..c7ff53e92 100644
+ --- b/apps/viewer/src/aim/documentsQuery.ts
+ +++ a/apps/viewer/src/aim/documentsQuery.ts
+-@@ -173,7 +173,7 @@ export function selectionMedia(
++@@ -178,7 +178,7 @@ export function selectionMedia(
+    const byKind = new Map<string, CaptureMediaWire[]>();
+    for (const item of media ?? []) {
+      const probe: QueryDocument = { id: item.id, name: [item.name, item.kindLabel, item.via ?? '', item.capturedAt ?? ''].join(' ') };
+ -    void probe;
+ +    if (!matchesFilter(probe, filter)) continue;
+      const { thumbUrl, ...rest } = item;
+-     const safe = thumbUrl && /^https?:\/\//i.test(thumbUrl) ? { ...rest, thumbUrl } : rest;
+-     const label = item.kindLabel || item.kind;
++     const url = safeThumbUrl(thumbUrl);
++     const safe = url ? { ...rest, thumbUrl: url } : rest;
+diff --git a/docs/architecture/evidence/aim-d131-capture-media/mutations/media-groups-unsorted.patch b/docs/architecture/evidence/aim-d131-capture-media/mutations/media-groups-unsorted.patch
+index 588327772..f1ff37906 100644
+--- a/docs/architecture/evidence/aim-d131-capture-media/mutations/media-groups-unsorted.patch
++++ b/docs/architecture/evidence/aim-d131-capture-media/mutations/media-groups-unsorted.patch
+@@ -1,8 +1,8 @@
+ diff --git b/apps/viewer/src/aim/documentsQuery.ts a/apps/viewer/src/aim/documentsQuery.ts
+-index 3f0591f57..64121f1ef 100644
++index c44ba6010..c7ff53e92 100644
+ --- b/apps/viewer/src/aim/documentsQuery.ts
+ +++ a/apps/viewer/src/aim/documentsQuery.ts
+-@@ -182,8 +182,7 @@ export function selectionMedia(
++@@ -188,8 +188,7 @@ export function selectionMedia(
+      else byKind.set(label, [safe]);
+    }
+    const collator = new Intl.Collator('sk', { numeric: true });
+diff --git a/docs/architecture/evidence/aim-d131-capture-media/mutations/media-unsafe-thumb-kept.patch b/docs/architecture/evidence/aim-d131-capture-media/mutations/media-unsafe-thumb-kept.patch
+index 13e644e28..019194161 100644
+--- a/docs/architecture/evidence/aim-d131-capture-media/mutations/media-unsafe-thumb-kept.patch
++++ b/docs/architecture/evidence/aim-d131-capture-media/mutations/media-unsafe-thumb-kept.patch
+@@ -1,13 +1,13 @@
+ diff --git b/apps/viewer/src/aim/documentsQuery.ts a/apps/viewer/src/aim/documentsQuery.ts
+-index 1efd43cd7..64121f1ef 100644
++index c0852a494..c7ff53e92 100644
+ --- b/apps/viewer/src/aim/documentsQuery.ts
+ +++ a/apps/viewer/src/aim/documentsQuery.ts
+-@@ -175,7 +175,7 @@ export function selectionMedia(
+-     const probe: QueryDocument = { id: item.id, name: [item.name, item.kindLabel, item.via ?? '', item.capturedAt ?? ''].join(' ') };
+-     if (!matchesFilter(probe, filter)) continue;
+-     const { thumbUrl, ...rest } = item;
+--    const safe = thumbUrl ? { ...rest, thumbUrl } : rest;
+-+    const safe = thumbUrl && /^https?:\/\//i.test(thumbUrl) ? { ...rest, thumbUrl } : rest;
+-     const label = item.kindLabel || item.kind;
+-     const list = byKind.get(label);
+-     if (list) list.push(safe);
++@@ -163,7 +163,7 @@ export interface CaptureMediaWire {
++ 
++ /** A host thumbnail for `<img src>` only when it is http(s) (media rows, capture pins). */
++ export function safeThumbUrl(url: string | undefined): string | undefined {
++-  return url;
+++  return url && /^https?:\/\//i.test(url) ? url : undefined;
++ }
++ 
++ /**
+diff --git a/docs/architecture/evidence/aim-d131-capture-media/mutations/summary.json b/docs/architecture/evidence/aim-d131-capture-media/mutations/summary.json
+index ed2309c62..66d7119a0 100644
+--- a/docs/architecture/evidence/aim-d131-capture-media/mutations/summary.json
++++ b/docs/architecture/evidence/aim-d131-capture-media/mutations/summary.json
+@@ -4,7 +4,7 @@
+     "exitCode": 0,
+     "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/documentsQuery.test.ts; that file has a green, attributable baseline.",
+     "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
+-    "head": "4052aaecf2a8039ea703da96e52851ca1c5ce4c7",
++    "head": "4128c09d038dd1563d0b31a097cc363088d59f01",
+     "production": [
+       "apps/viewer/src/aim/documentsQuery.ts"
+     ],
+@@ -18,7 +18,7 @@
+     "exitCode": 0,
+     "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/documentsQuery.test.ts; that file has a green, attributable baseline.",
+     "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
+-    "head": "4052aaecf2a8039ea703da96e52851ca1c5ce4c7",
++    "head": "4128c09d038dd1563d0b31a097cc363088d59f01",
+     "production": [
+       "apps/viewer/src/aim/documentsQuery.ts"
+     ],
+@@ -32,7 +32,7 @@
+     "exitCode": 0,
+     "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/documentsQuery.test.ts; that file has a green, attributable baseline.",
+     "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
+-    "head": "4052aaecf2a8039ea703da96e52851ca1c5ce4c7",
++    "head": "4128c09d038dd1563d0b31a097cc363088d59f01",
+     "production": [
+       "apps/viewer/src/aim/documentsQuery.ts"
+     ],
+-- 
+2.43.0
+
