@@ -34,6 +34,15 @@ describe("documentMeta (D-104 krok 3)", () => {
     expect(projectOnly).toEqual({ "Nositeľ": "projekt" });
   });
 
+  it("druh média je druhá os vedľa typu informácie (D-131)", () => {
+    const meta = documentMeta({
+      identification: null, type: "RP Správa", mediaKind: "Fotografia",
+      holders: [{ objectType: "space", name: "3.12" }],
+      lastRevisionTime: null, electronicFormat: "image/jpeg", owner: null,
+    });
+    expect(meta).toEqual({ "Druh": "RP Správa", "Druh média": "Fotografia", "Nositeľ": "miestnosť", "Formát": "JPEG" });
+  });
+
   it("pôdorys podlažia: výkres na podlaží, storeyGuid len pri jednom podlaží", () => {
     const floor = (name: string, ifcGuid: string) => ({ objectType: "floor", name, ifcGuid });
     expect(floorDrawing([floor("1NP", "g1"), { objectType: "project", name: "OCB" }], "DR")).toEqual({

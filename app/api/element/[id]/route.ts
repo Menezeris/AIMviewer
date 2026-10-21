@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 
 import { fetchNodeSummary } from "@/lib/data/object";
 import { fetchNodeSections } from "@/lib/data/relations";
-import { fetchCaptureSummaryForObject } from "@/lib/data/captures";
+import { fetchCaptureSummaryForObject, fetchCapturesForSpace, type CaptureSummary } from "@/lib/data/captures";
+import { captureMediaEntries } from "@/lib/data/media-kind";
 import { fetchLastElementChange } from "@/lib/data/model-revisions";
 import { fetchDerivedRelations } from "@/lib/data/derivations";
 import { fetchDocumentTypes, fetchObjectDocuments } from "@/lib/data/object-documents";
@@ -60,6 +61,7 @@ export async function GET(
       captures,
       derived,
       lastChange: await lastChangeOf(sections.guidHistory),
+      captureMedia: await captureMediaOf(captures, summary.objectType !== "space"),
       ...(docs ? { effectiveDocuments: docs } : {}),
     };
     // Read-only súhrn (revaliduje sa s ostatnými AIM dátami po 60 s). Cache v
@@ -85,4 +87,16 @@ async function lastChangeOf(history: ElementDetail["guidHistory"]): Promise<Elem
     console.error("[api/element] lastChange", err);
     return null;
   });
+}
+
+/** D-131: médiá Reality Capture priestoru (aj pre prvok v ňom); chyba čítania kartu nezhodí. */
+async function captureMediaOf(cap: CaptureSummary, inherited: boolean): Promise<ElementDetail["captureMedia"]> {
+  if (!cap.spaceId || cap.count === 0) return undefined;
+  const space = { id: cap.spaceId, name: cap.spaceName };
+  return fetchCapturesForSpace(cap.spaceId)
+    .then((points) => captureMediaEntries(points, space, inherited))
+    .catch((err) => {
+      console.error("[api/element] captureMedia", err);
+      return undefined;
+    });
 }
