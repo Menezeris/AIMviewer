@@ -124,14 +124,32 @@ async function withAimRefs(result: unknown, input: Record<string, unknown>): Pro
 
 /** Súhrn lens k stavu čaká kratšie než samotný stav: lens, ktorá sa ešte vyhodnocuje, stav nezdrží. */
 const LENS_IN_STATE_TIMEOUT_MS = 2_500;
+/** Po prvej odpovedi sa ešte toľko čaká na ďalšie okná viewera (D-125). */
+export const VIEWERS_COLLECT_MS = 400;
+
+const repliesOf = (o: QueryOutcome | null | undefined) => (o?.ok ? [o.reply, ...(o.others ?? [])] : []);
 
 /**
  * AIM chat lens k stavu viewera (#97): `lens_state` bez verzie = posledná lens a izolácia
- * či X-ray z chatu (pravidlá, počty, bez GUID). Bez odpovede sa kľúč vynechá.
+ * či X-ray z chatu (pravidlá, počty, bez GUID). Z toho istého okna ako stav (D-125); bez
+ * odpovede sa kľúč vynechá.
  */
-async function lensOfState(channel: string, query: typeof queryLiveViewer): Promise<unknown> {
-  const outcome = await query(channel, "lens_state", [], { timeoutMs: LENS_IN_STATE_TIMEOUT_MS }).catch(() => null);
-  return outcome?.ok && outcome.reply.ok ? outcome.reply.result : undefined;
+export function lensOfState(outcome: QueryOutcome | null, viewer: string | undefined): unknown {
+  const replies = repliesOf(outcome);
+  const reply = replies.find((r) => viewer !== undefined && r.viewer === viewer) ?? (viewer === undefined ? replies[0] : undefined);
+  return reply?.ok ? reply.result : undefined;
+}
+
+/** Viac okien viewera na kanáli (D-125): každé má vlastný stav, prvá odpoveď nemusí byť obrazovka používateľa. */
+export function viewersNote(...outcomes: (QueryOutcome | null | undefined)[]): { count: number; warning: string } | null {
+  const ids = new Set(outcomes.flatMap(repliesOf).map((r) => r.viewer).filter((v): v is string => !!v));
+  if (ids.size < 2) return null;
+  return {
+    count: ids.size,
+    warning:
+      `Na živý kanál odpovedá ${ids.size} okien viewera (karty alebo zariadenia s ?live=). Stav je z jedného z nich, ` +
+      "príkazy idú do všetkých a ich stav sa môže líšiť; ak používateľ vidí niečo iné, nech zavrie ostatné okná.",
+  };
 }
 
 export async function execViewerQueryTool(
@@ -147,16 +165,24 @@ export async function execViewerQueryTool(
     }
     const kind = viewerQueryOf(input);
     const guids = kind === "bounds" && (input.target_ids_or_refs || input.global_ids) ? await resolveTargets(input) : [];
-    const lens = channel && kind === "view_state" ? lensOfState(channel, query) : undefined;
-    const outcome = channel ? await query(channel, kind, guids.slice(0, MAX_QUERY_GUIDS)) : null;
+    const state = kind === "view_state";
+    const collect = state ? { collectMs: VIEWERS_COLLECT_MS } : {};
+    const lens =
+      channel && state
+        ? query(channel, "lens_state", [], { timeoutMs: LENS_IN_STATE_TIMEOUT_MS, ...collect }).catch(() => null)
+        : undefined;
+    const outcome = channel ? await query(channel, kind, guids.slice(0, MAX_QUERY_GUIDS), collect) : null;
     if (!outcome || !outcome.ok) {
       return { text: outcomeError(outcome ?? { ok: false, reason: "not_configured" }, channel, site), isError: true };
     }
     if (!outcome.reply.ok) return { text: `Viewer odpovedal chybou: ${outcome.reply.error}`, isError: true };
     const result = withSectionOrientation(await withAimRefs(outcome.reply.result, input));
-    const lensState = await lens;
-    const withLens = lensState !== undefined && result && typeof result === "object" ? { ...result, lens: lensState } : result;
-    return { text: JSON.stringify(withLens), isError: false };
+    const lensOutcome = (await lens) ?? null;
+    const lensState = lensOfState(lensOutcome, outcome.reply.viewer);
+    const viewers = viewersNote(outcome, lensOutcome);
+    const extra = { ...(lensState !== undefined ? { lens: lensState } : {}), ...(viewers ? { viewers } : {}) };
+    const out = result && typeof result === "object" ? { ...result, ...extra } : result;
+    return { text: JSON.stringify(out), isError: false };
   } catch (err) {
     if (err instanceof ViewInputError) return { text: err.message, isError: true };
     return { text: `Chyba: ${err instanceof Error ? err.message : String(err)}`, isError: true };

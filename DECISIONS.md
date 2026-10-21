@@ -5844,6 +5844,69 @@ skryté a izolované prvky len ako počty.
 ofarbené); výber viac prvkov sa uloží, ale obnoví len jeden (viewer vyberá jeden prvok, D-082);
 izolácia nad 600 prvkov sa oreže a výsledok to povie.
 
+### D-125 - Živý stav viewera v odpovediach: identita viewera, zmeny mimo príkazov, priestory v Lens, výplň v reze a malá legenda
+
+**Dátum:** 2026-10-21 · **Stav:** navrhnuté (čaká na Samuela) · **Súvisí:** D-085, D-096, D-101, D-105, D-114, D-116, D-119 · **Issues:** #182, #180, #177, #178, #175 · **PR:** AIMviewer (tento), Menezeris/ifc-lite (fork)
+
+**Kontext:** päť pripomienok z konektora z 21. 10. k jednej úlohe (izolácia miestnosti 2.01 s
+vyústkami, farby VZT): priestor sa po farbení vykreslil plný alebo zmizol, stav v odpovedi a v
+`get_viewer_state` sa striedal medzi dvoma verziami a nezhodoval sa s obrazovkou, izoláciu vypnutú
+používateľom nič nehlásilo, farbenie podľa `system_type` zobralo aj systémy, ktoré nepatrili, a
+zabudnutý rez skryl väčšinu výsledku; `action=legend` otvoril celý panel Lens s predvolenými
+lenses a ofarbená miestnosť nebola v pôdoryse vidno.
+
+**Overenie (D-114, reprodukcia vo forku v iframe, FZK-Haus):**
+- colorize na IfcSpace = Lens alfa 1, miestnosť je nepriehľadný kváder a prvky vnútri nevidno;
+- pravidlo prekryté novším ostane v súhrne s `count 0` ako platné;
+- izolácia z chatu zrušená používateľom (kláves A) sa v súhrne lens hlási ďalej, aj po ďalšej lens;
+- výplň miestností (D-119) sa kreslí len v režime 2D, nie v 3D s rezom a pohľadom zhora;
+- na živý kanál odpovedá každý otvorený viewer a vyhrá prvá odpoveď; stav a lens v
+  `get_viewer_state` sú dve otázky, ktoré mohli zodpovedať dve rôzne karty alebo zariadenia, a
+  odpovede nemali identitu viewera. Jediná cesta k "striedaniu dvoch verzií".
+Existujúce tooly to nepokryjú: chyba je v obsahu odpovedí a vo vykreslení, nie v postupe modelu.
+
+**Rozhodnutie (rozšírenie existujúcich toolov, žiadny nový tool):**
+1. **Identita viewera (AIMviewer):** okno s `?live=` posiela v `reply` a `applied` náhodné `viewer`
+   id (na načítanie stránky). `get_viewer_state` zbiera odpovede ešte chvíľu po prvej, stav aj lens
+   berie z toho istého viewera a pri viac ako jednom vráti `viewers` s varovaním (zavrieť ostatné
+   okná). Potvrdenie príkazu nesie to isté varovanie, ak teplý kanál nedávno videl viac viewerov.
+2. **Zmeny mimo príkazov (fork):** viewer si pamätá stav po poslednom potvrdenom príkaze
+   (`APPLIED`): izolácia a X-ray, rez, skryté, výber, režim a podlažie, AIM chat lens. Pri ďalšom
+   príkaze vráti `changed_outside_commands` (čo sa zmenilo pred ním, napr. "izoláciu vypol
+   používateľ"), `view_state` vráti `changed_since_last_command`. Kamera sa neporovnáva (mení sa
+   stále).
+3. **Súhrn lens (fork):** pravidlo bez zhody má `matched: false` (prekryté novším alebo nič
+   nenašlo); izolácia a X-ray z chatu `active: false` s dôvodom, keď ich kanál už nedrží; AIM chat
+   lens vypnutá v paneli vráti `stored_rules`.
+4. **Priestory v Lens (fork):** farebné pravidlo z chatu dostane pre IfcSpace a IfcSpatialZone
+   priesvitnú variantu (rovnaká farba, alfa 0,3 ako `transparent`), takže miestnosť ostane
+   priehľadná a prvky v nej vidno. Počty sa spočítajú pod pôvodné pravidlo.
+5. **Výplň miestností v reze (fork):** `AimRoomFillLayer` kreslí aj v 3D, keď je aktívny vodorovný
+   rez a kamera hľadí zhora (pôdorys bez režimu 2D); len miestnosti preťaté rezom. Vyplní aj vybranú
+   miestnosť (farbou výberu), nielen ofarbenú.
+6. **Malá legenda (fork + AIMviewer):** `legend: compact` = plávajúca karta len s AIM chat lens
+   (farba, názov pravidla alebo hodnoty, počet), panel Lens sa neotvára a veľké okno sa zavrie.
+   `style_in_3d action=legend` je predvolene `compact`; `large` a `normal` ostávajú.
+7. **`style_in_3d` (AIMviewer):** `clear_section=true` zruší rez v tom istom volaní; pri isolate,
+   xray a colorize s aktívnym rezom odpoveď varuje a navrhne `set_section action=clear`; pri
+   `system_type` (alebo `system`), ktorý zobral viac systémov, vráti zoznam systémov s typom a
+   počtom členov a upozorní, že niektorý nemusí patrieť. Opis: `mode=replace` pri isolate a xray
+   nahradí aj farby z predošlých volaní, na IfcSpace netreba ďalšie pravidlo `transparent`.
+
+**Zavrhnuté rozšírenie a nové tooly:**
+- *Nový tool na živý stav:* stav ide v odpovedi príkazu (D-101) a v `get_viewer_state`; chýbala len
+  jeho pravdivosť a rozdiel.
+- *Parameter `expect_state`:* zmeny mimo príkazov sa vrátia samé, model ich vidí v ďalšej odpovedi.
+- *Adresovanie otázky konkrétnemu vieweru:* príkazy majú ísť do všetkých okien (zrkadlo na
+  telefóne); stačí párovať odpovede a varovať.
+- *`space_display=floor|volume|outline` a objem v perspektíve:* výplň nad scénou by v perspektíve
+  prekrývala model; ostáva otvorená otázka pre Samuela (#175).
+- *Zmena farby priestorov v balíku `lens` alebo v rendereri:* upstream súbory = plné CI a údržba;
+  pravidlo navyše v AIM vrstve stačí.
+
+**Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežia; do `eval/questions.json` pribudnú
+otázky z issues.
+
 ### D-126 - Úplné a stránkované výsledky DB tools, hľadanie cez vzťahy, overenie zatvorených issues
 
 **Status:** rozhodnuté (2026-10-21, číslo pridelil orchestrátor). Issues #181, #174, #171, #176. Nadväzuje na
@@ -5991,6 +6054,65 @@ Samuel pracuje už len vo vieweri a vlastné rozhranie popri IFC nechce.
 **Dôsledky:** #169 rieši session D-127 podľa tohto zápisu (záložka a karta preč, história ako AIM riadky,
 zdedené dokumenty s odznakom). Reality Capture v paneli Documents a voľba exportu AIM vrstiev sú samostatná
 úloha vo fronte.
+
+---
+
+### D-128 - Kamera na cieľ v reze s okrajom a časťou cieľa, vzor šrafy reznej plochy
+
+**Dátum:** 2026-10-21 · **Stav:** prijaté (implementované) · **Súvisí:** D-083, D-094, D-098, D-101, D-114, D-120 · **Issues:** #172, #173, #97 · **PR:** Menezeris/ifc-lite (fork), AIMviewer (tento)
+
+**Kontext:** "priblíž atiku na ľavej strane v reze" stálo asi 8 volaní (#172): `set_camera` s cieľom
+a `preset=section` hlásilo pózu presetu (stred budovy), záber tenkého prvku bol príliš tesný a ľavú
+stranu musel model hľadať cez `get_viewer_state(bounds)` a posúvať kameru. Pri reze sa šrafa
+kreslila zvislo a vzor sa nedal zvoliť (#173).
+
+**Reprodukcia:** fork pri `preset=section` s cieľom nastaví smer kolmo na rez a po jeho animácii
+zarámuje cieľ (`aim/viewCamera.ts`, AIMviewer #65), ale rámovanie trvá ďalších 300 ms a `APPLIED`
+(D-101) čítal kameru hneď po jeho spustení. Rámovanie išlo cez `flyTo` s predvoleným okrajom upstreamu.
+Šrafa: `cap_style=hatch` (D-120) vracia vzor a uhol uložené v prehliadači; vzor `diagonal` s
+uhlom 0° kreslí zvislé čiary.
+
+**Najbližšie tooly (D-114):** `set_camera` (smer, cieľ, fit; chýba okraj, časť cieľa a koncová
+póza), `get_viewer_state` (len čítanie), `show_in_3d select` (smer nerieši), `set_section` (vzhľad
+plochy len `cap_style`/`cap_color`). Obe potreby sú parametre existujúcich toolov.
+
+**Rozhodnutie:**
+1. **`set_camera margin_percent`** (0 až 300, s cieľom predvolene 40): okraj okolo cieľa. Fork
+   rámuje existujúcim `cameraCallbacks.frameBounds(min, max, {padding: 1 + m/100})` (D-098), smer
+   kamery ostáva. Wire `~m=<%>`, bridge `SET_CAMERA.padding`.
+2. **`set_camera area`** = `left | right | top | bottom | front | back` (wire `~a=<l|r|t|b|f|k>`,
+   bridge `SET_CAMERA.area`): z cieľových prvkov alebo výberu (`fit=selection`) fork po nastavení
+   smeru vyberie tie, ktorých stred leží v krajnej tretine ich spoločnej obálky v smere obrazu
+   (left/right po šírke, top/bottom po výške, front/back bližšie/ďalej od kamery); keď v tretine
+   nič nie je, vezme prvok najbližšie k okraju. Čistá funkcia `aim/cameraArea.ts` s testom. Bez
+   cieľa a výberu `area` nejde (chyba s radou).
+3. **Koncová póza:** fork počká na koniec rámovania, `APPLIED` nesie koncovú kameru. Host pri
+   `set_camera` dopočíta `visible` (stred, šírka a výška viditeľnej oblasti v metroch v rovine
+   cieľa; `visibleArea` v `lib/viewer-camera.ts`), takže `get_viewer_state` netreba.
+4. **`set_section` vzor šrafy:** `hatch_pattern` = `diagonal | diagonal_reverse | cross |
+   crosshatch | horizontal | vertical | dots | brick | insulation`, `hatch_angle_deg`,
+   `hatch_spacing_px` (2 až 64), `hatch_line_width_px` (1 až 16), rozsahy ako popover Cap. Mapovanie
+   na vzory renderera (`dots` = `concrete`, `cross` = `crossHatch` 0°/90°, `crosshatch` = 45°/-45°,
+   `diagonal_reverse` = -45°) robí host (`lib/viewer-section-cap.ts`); bridge `SET_SECTION_CAP`
+   nesie `pattern`, `angleDeg`, `secondaryAngleDeg`, `spacingPx`, `widthPx` a fork ich zapíše setterom
+   `setSectionCapStyle` (ten istý ako popover Cap). `cap_style=hatch` bez vzoru = diagonálna 45°,
+   8 px, 1 px (predvolené upstreamu), výsledok teda nezávisí od uloženej voľby. Parametre šrafy bez
+   `cap_style` znamenajú `hatch`; výsledok vráti použitý vzor, uhol, rozstup a hrúbku.
+5. Recept v opise `set_camera`: atika vľavo v reze = `set_section` + `search_objects(PARAPET)` +
+   `set_camera(preset=section, cieľ, area=left)`. Prompt sa nezväčšuje (limit MCP inštrukcií).
+
+**Zavrhnuté:**
+- *Nový tool na "zarámuj časť budovy":* to isté ako parameter `set_camera` (D-114).
+- *Relatívny krok v tom istom volaní ako cieľ:* krok sa počíta z koncovej pózy, ktorú host pred
+  volaním nepozná (D-098); okraj `margin_percent` nahrádza následný `zoom_percent`.
+- *Rozstup šrafy v mm:* renderer kreslí šrafu v pixeloch obrazovky; mm by boli zmena
+  `packages/renderer`.
+- *Vzor podľa materiálu rezaného prvku:* renderer nemá materiál pri reznej ploche; neskôr.
+
+**Poradie zlúčenia:** najprv fork, potom AIMviewer. Starší viewer nové polia `SET_CAMERA` a
+`SET_SECTION_CAP` ignoruje (rámuje ako doteraz, šrafa ostane uložená).
+
+---
 
 ### D-131 - Reality Capture v paneli Documents, druh média ako druhá os klasifikácie, export AIM vrstiev do IFC
 **Status:** rozhodnuté (2026-10-21, session pre #192 podľa D-129), číslo pridelené v registri #60. Body 1 a 2
