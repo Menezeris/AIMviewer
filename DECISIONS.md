@@ -5932,3 +5932,47 @@ Samuel pracuje už len vo vieweri a vlastné rozhranie popri IFC nechce.
 **Dôsledky:** #169 rieši session D-127 podľa tohto zápisu (záložka a karta preč, história ako AIM riadky,
 zdedené dokumenty s odznakom). Reality Capture v paneli Documents a voľba exportu AIM vrstiev sú samostatná
 úloha vo fronte.
+
+### D-133 - Automatická kalibrácia podkladov výkresov: pohľad + strana PDF, rez modelu a čiary výkresu
+
+**Dátum:** 2026-10-21 · **Stav:** prijaté (Samuel cez orchestrátora, #170), implementácia po krokoch · **Súvisí:**
+D-072 (podklady, `_georef`), D-104, D-123 (text s polohou), D-124 (rámec motora), D-129 (AIM vrstva), D-132
+(pohľady a záložky, #165), D-114 · **Issue:** #170
+
+**Kontext:** podklady (panel Underlays, D-072) sa kalibrujú ručne dvoma bodmi a od D-104 (pôdorysy z IFC)
+nemá `_georef` ani jeden výkres. Konektor nevie podklad nastaviť. Prototyp nad produkčnými dátami (ASR v077,
+`document_pages.blocks`, PDF zo storage):
+- **len text** (popisky miestností `1.01` proti ťažiskám IfcSpace): chyba na kontrolnom bode okolo 1 m, popisky
+  nie sú v ťažiskách; osi `IfcGrid` model nemá, dvere majú vo výkrese len typový kód (`DD01`);
+- **text ako štart + doladenie na geometriu** (hrubé čiary PDF proti rezu modelu, trimmed ICP s podobnosťou):
+  pôdorys 1NP medián 15 mm, p90 30 mm, 2NP 16 a 36 mm; zvislé rezy A a B medián 8 mm, p90 13 až 14 mm, mierka
+  1:49,92 až 1:49,96 pri výkrese 1:50. Krížová validácia (fit na polovici, test na druhej) do 19 mm, pri rezoch
+  do 9 mm; kontrolné body rezu (osi z pôdorysu, výškové kóty) medián 6 až 12 mm.
+
+**Rozhodnutie:**
+1. **Väzba je pohľad + strana PDF**, nie podlažie (Samuel, #170 a #165). Pohľad je uložená definícia D-132
+   (kamera kolmo, rezná rovina alebo box, filter, voliteľne podklad); podlažia sú automatické pohľady. Kalibrácia
+   je AIM vrstva (D-129): `plane` (`origin`, `u`, `v` v IFC svete, m), `affine` z bodov strany PDF (vľavo dole,
+   y hore) do metrov v (u, v), `calibration` (body pre ručnú úpravu), `quality` (medián a p90 v mm, metóda,
+   čas). Pôdorys je `plane` u = X, v = Y vo výške podlažia, teda dnešný `_georef` v1 sa číta bez migrácie.
+   Presné uloženie v pohľade určuje D-132.
+2. **Čiary výkresu z ETL:** `document_pages.lines` = hrubé úsečky strany `[x1, y1, x2, y2, w]` v bodoch strany
+   (počiatok vľavo dole ako `_georef`), hrúbka čiary aspoň 0,99 pt, len vektorové výkresy (aspoň 200 takých
+   úsečiek na strane). Ten istý extraktor ako `blocks` (`etl/pdf_text.py`, pymupdf); server parser PDF nemá
+   (D-123).
+3. **Výpočet v IFC motore** (`lib/engine/underlay-calibrate.ts`): rez meshov rovinou pohľadu v tom istom rámci
+   ako viewer (D-124), hrubý štart z textu (pôdorys: popisky miestností proti IfcSpace; rez: výškové kóty a
+   popisky osí, polohy osí a rovina rezu zo značky na kalibrovanom pôdoryse), trimmed ICP s podobnosťou a
+   pevným smerom pohľadu, kvalita s krížovou validáciou.
+4. **Nový tool `calibrate_underlay` (zápis):** `view`, `document_id`, `page`, `mode=dry_run|auto|manual`,
+   `pairs`. `dry_run` (predvolené) nič neuloží a ukáže náhľad; zápis za bránou `UNDERLAY_WRITE_ENABLED` a len
+   pod prahom chyby (medián 50 mm). Na produkciu až po tabuľke skúšobného behu so Samuelovým slovom.
+5. **Viewer:** zvislý podklad (rovina s u, v) je rozšírenie balíka `@ifc-lite/drawing-underlay` vo forku.
+
+**Zavrhnuté rozšírenie:**
+- *`open_drawing`:* UI akcia bez prístupu k dátam a čítacia anotácia (ako v D-123); kalibrácia zapisuje.
+- *`set_view_mode calibrate=...`:* prepína zobrazenie a je čítací; kalibrácia je trvalý zápis dát (Samuel, #170).
+- *`ifc_measure`:* meria prvky, čítací; podklad nie je prvok modelu a výsledok sa ukladá.
+
+**Zavrhnuté:** len popisky bez doladenia (chyba okolo 1 m); parser PDF na serveri (D-123, dva extraktory);
+kalibrácia viazaná na podlažie (nepokryje rezy a detaily).

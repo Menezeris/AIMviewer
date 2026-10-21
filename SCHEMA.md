@@ -416,6 +416,10 @@ create index idx_document_pages_tsv on document_pages
 
 -- D-123 (migrácia 20261020160000): riadky textu strany s polohou
 alter table document_pages add column blocks jsonb;  -- [{t, x, y, w, h}] v % strany, vľavo hore
+
+-- D-133 (migrácia 20261021120000): hrubé čiary výkresu pre kalibráciu podkladu
+alter table document_pages add column lines jsonb;   -- [[x1, y1, x2, y2, w]] v bodoch strany, vľavo dole;
+                                                     -- čiary od 0,99 pt, len vektorové výkresy, inak null
 ```
 
 Plní `python -m etl.pdf_text --from-db` (živé dokumenty, PDF zo storage, D-123) alebo

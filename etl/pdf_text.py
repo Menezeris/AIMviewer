@@ -22,6 +22,10 @@ ukladajú riadky textu s polohou (`blocks`, bbox v % strany, počiatok vľavo
 hore), aby tool vedel povedať, KDE na strane text je (výrez pre open_drawing
 region, D-117).
 
+D-133: pri vektorových výkresoch sa ukladajú aj hrubé čiary strany (`lines`,
+`[x1, y1, x2, y2, w]` v bodoch strany, počiatok vľavo dole), z ktorých IFC motor
+kalibruje podklad (pôdorys, rez) na rez modelom.
+
 Spustenie (z koreňa repa):
     python -m etl.pdf_text [--dry-run] [--manifest podklady/docs.csv]
     python -m etl.pdf_text --from-db [--dry-run] [--only <object_ref>]
@@ -117,17 +121,59 @@ def page_blocks(page_dict: dict, width: float, height: float) -> list[dict]:
     return out
 
 
-def extract_pages_with_blocks(pdf_path: Path) -> list[tuple[int, str, list[dict]]]:
-    """(strana 1-based, normalizovaný text, riadky s polohou) pre neprázdne strany."""
-    pages: list[tuple[int, str, list[dict]]] = []
+# D-133: hrubé čiary (rezané konštrukcie) od tejto hrúbky; tenké sú kóty, šrafy, osi.
+LINE_MIN_WIDTH = 0.99
+# Strana s menej hrubými úsečkami nie je vektorový výkres (správa, tabuľka) -> lines = null.
+LINE_MIN_COUNT = 200
+
+
+def page_lines(drawings: list[dict], height: float) -> Optional[list[list[float]]]:
+    """Hrubé úsečky strany pre kalibráciu podkladu (D-133).
+
+    Vstup je `page.get_drawings()`; čiary (`l`) a strany obdĺžnikov (`re`) od
+    `LINE_MIN_WIDTH`, krivky sa vynechajú (oblúky dverí). Výstup `[x1, y1, x2, y2, w]`
+    v bodoch strany s počiatkom vľavo dole (y hore, ako `_georef` D-072), zaokrúhlené
+    na 0,1 pt. Menej ako `LINE_MIN_COUNT` úsečiek = nie výkres, vráti None.
+    """
+    out: list[list[float]] = []
+
+    def add(x1: float, y1: float, x2: float, y2: float, w: float) -> None:
+        a = [round(x1, 1), round(height - y1, 1), round(x2, 1), round(height - y2, 1)]
+        if a[:2] != a[2:]:
+            out.append(a + [round(w, 2)])
+
+    for d in drawings:
+        w = d.get("width") or 0.0
+        if w < LINE_MIN_WIDTH:
+            continue
+        for item in d.get("items", []):
+            if item[0] == "l":
+                add(item[1].x, item[1].y, item[2].x, item[2].y, w)
+            elif item[0] == "re":
+                r = item[1]
+                add(r.x0, r.y0, r.x1, r.y0, w)
+                add(r.x1, r.y0, r.x1, r.y1, w)
+                add(r.x1, r.y1, r.x0, r.y1, w)
+                add(r.x0, r.y1, r.x0, r.y0, w)
+    return out if len(out) >= LINE_MIN_COUNT else None
+
+
+def extract_pages_full(pdf_path: Path) -> list[tuple[int, str, list[dict], Optional[list[list[float]]]]]:
+    """(strana, text, riadky s polohou, hrubé čiary alebo None) pre neprázdne strany."""
+    pages: list[tuple[int, str, list[dict], Optional[list[list[float]]]]] = []
     with fitz.open(pdf_path) as doc:
         for i, page in enumerate(doc, start=1):
             text = _WS_RE.sub(" ", page.get_text("text")).strip()
             if text:
                 rect = page.rect
                 blocks = page_blocks(page.get_text("dict"), rect.width, rect.height)
-                pages.append((i, text, blocks))
+                pages.append((i, text, blocks, page_lines(page.get_drawings(), rect.height)))
     return pages
+
+
+def extract_pages_with_blocks(pdf_path: Path) -> list[tuple[int, str, list[dict]]]:
+    """(strana 1-based, normalizovaný text, riadky s polohou) pre neprázdne strany."""
+    return [(n, text, blocks) for n, text, blocks, _ in extract_pages_full(pdf_path)]
 
 
 @dataclass
@@ -153,21 +199,34 @@ def _db_docs(cur, only: Optional[str]) -> list[DbDoc]:
     return [DbDoc(str(r[0]), r[1], r[2]) for r in cur.fetchall()]
 
 
-def _write_pages(cur, doc_id: str, pages: list[tuple[int, str, list[dict]]]) -> None:
+Page = tuple[int, str, list[dict], Optional[list[list[float]]]]
+
+
+def _write_pages(cur, doc_id: str, pages: list[Page]) -> None:
     # Idempotencia: plný refresh strán dokumentu.
     cur.execute("delete from document_pages where document_id = %s", (doc_id,))
-    for page_no, text, blocks in pages:
+    for page_no, text, blocks, lines in pages:
         cur.execute(
-            "insert into document_pages (document_id, page, text, blocks) "
-            "values (%s, %s, %s, %s::jsonb)",
-            (doc_id, page_no, text, json.dumps(blocks, ensure_ascii=False)),
+            "insert into document_pages (document_id, page, text, blocks, lines) "
+            "values (%s, %s, %s, %s::jsonb, %s::jsonb)",
+            (
+                doc_id,
+                page_no,
+                text,
+                json.dumps(blocks, ensure_ascii=False),
+                json.dumps(lines, separators=(",", ":")) if lines is not None else None,
+            ),
         )
 
 
-def _report(ref: str, pages: list[tuple[int, str, list[dict]]]) -> None:
-    total_chars = sum(len(t) for _, t, _ in pages)
-    lines = sum(len(b) for _, _, b in pages)
-    print(f"  {ref:46s} strán s textom {len(pages):3d}  znakov {total_chars:7d}  riadkov {lines:5d}")
+def _report(ref: str, pages: list[Page]) -> None:
+    total_chars = sum(len(p[1]) for p in pages)
+    lines = sum(len(p[2]) for p in pages)
+    segs = sum(len(p[3] or []) for p in pages)
+    print(
+        f"  {ref:46s} strán s textom {len(pages):3d}  znakov {total_chars:7d}  riadkov {lines:5d}"
+        f"  čiar {segs:6d}"
+    )
 
 
 def run_from_db(dry_run: bool, only: Optional[str]) -> int:
@@ -185,7 +244,7 @@ def run_from_db(dry_run: bool, only: Optional[str]) -> int:
                 try:
                     with urllib.request.urlopen(d.location, timeout=60) as resp:
                         pdf_path.write_bytes(resp.read())
-                    pages = extract_pages_with_blocks(pdf_path)
+                    pages = extract_pages_full(pdf_path)
                 except Exception as exc:  # noqa: BLE001 - jeden zlý súbor nezhodí beh
                     skipped.append(f"{d.object_ref} ({exc})")
                     continue
@@ -240,7 +299,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             if not pdf_path.exists():
                 skipped.append(f"{row.container_name} (PDF chýba: {row.source_path})")
                 continue
-            pages = extract_pages_with_blocks(pdf_path)
+            pages = extract_pages_full(pdf_path)
             _report(row.container_name, pages)
             if cur is None:
                 continue
