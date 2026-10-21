@@ -3,7 +3,7 @@ import "server-only";
 import type { ToolDefinition } from "@/lib/llm/provider";
 import { GithubClient, GithubError, parseRepo, type GithubIssue } from "../github/client";
 
-import { fireRoutine, routineConfigured, type RoutineFireResult } from "./routine";
+import { fireRoutine, routineConfigured, standardRoutine, type RoutineFireResult } from "./routine";
 
 /**
  * Pripomienky a požiadavky na nové tools z MCP konektora (D-090), len v MCP.
@@ -61,6 +61,11 @@ const COMMENT_TEXT: Record<CommentKind, string> = {
   note: "Poznámka",
 };
 
+/** Náročnosť požiadavky (D-134): ktorá routine ju rieši. */
+export const NAROCNOST = ["standard", "hard"] as const;
+export type Narocnost = (typeof NAROCNOST)[number];
+const MAX_REASON = 200;
+
 const MAX_TITLE = 120;
 const MAX_TEXT = 4000;
 const MAX_ITEMS = 10;
@@ -113,7 +118,10 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
       "komentár do existujúceho issue, aj zatvoreného (issue_number, text, kind eval_round | result | note; " +
       "verification=overene | vratene zapíše overenie hotového issue; reopen len na výslovný pokyn; GitHub " +
       "konektor na to netreba). start_session: spustí session pre ďalšie issue z fronty (over_limit len na výslovnú " +
-      "žiadosť). Chyba v IFC modeli sem nepatrí, to je BCF téma (bcf_topic). " +
+      "žiadosť). Pri report, request_tool a start_session uveď narocnost (rozhodne, ktorá routine to rieši): " +
+      "standard = jasné a lokálne (reprodukovateľná chyba, malá zmena, test, opis toolu); hard = nejasné zadanie, " +
+      "architektúra, naprieč modulmi, DB schéma alebo migrácia, fork (ifc-lite), nový tool. Nejasné zadanie = hard, " +
+      "inak standard; dôvod daj do narocnost_dovod. Chyba v IFC modeli sem nepatrí, to je BCF téma (bcf_topic). " +
       PRIVACY,
     inputSchema: {
       type: "object",
@@ -166,6 +174,12 @@ export const FEEDBACK_TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         over_limit: { type: "boolean", description: "start_session: aj nad strop 3 sessions (len na výslovnú žiadosť)" },
         start_session: { type: "boolean", description: "report: hneď spustiť session; request_tool: false = len zapísať" },
+        narocnost: {
+          type: "string",
+          enum: [...NAROCNOST],
+          description: "report, request_tool, start_session: standard (jasné, lokálne) | hard (nejasné, architektúra, schéma, fork, nový tool); bez neho hard",
+        },
+        narocnost_dovod: { type: "string", description: `narocnost: dôvod jednou vetou (max ${MAX_REASON} znakov)` },
       },
       required: ["action"],
     },
@@ -179,6 +193,8 @@ export interface FeedbackDeps {
   client: GithubClient | null;
   /** Spustí session; `null` = routine nie je nastavená. */
   fire: ((text: string) => Promise<RoutineFireResult>) | null;
+  /** Routine STANDARD (D-134); `null` = nie je nastavená, všetko ide na HARD (`fire`). */
+  fireStandard?: ((text: string) => Promise<RoutineFireResult>) | null;
   now: () => Date;
   /** Tajomstvá, ktoré sa do verejného issue nesmú dostať. */
   secrets: string[];
@@ -186,9 +202,11 @@ export interface FeedbackDeps {
 
 export function defaultFeedbackDeps(): FeedbackDeps {
   const token = process.env.FEEDBACK_GITHUB_TOKEN?.trim();
+  const standard = standardRoutine();
   return {
     client: token ? new GithubClient(token, parseRepo(process.env.FEEDBACK_REPO)) : null,
     fire: routineConfigured() ? (text) => fireRoutine(text) : null,
+    fireStandard: routineConfigured(standard) ? (text) => fireRoutine(text, fetch, standard) : null,
     now: () => new Date(),
     secrets: [
       process.env.MCP_TOKEN,
@@ -196,6 +214,7 @@ export function defaultFeedbackDeps(): FeedbackDeps {
       process.env.LIVE_CHANNEL,
       process.env.FEEDBACK_GITHUB_TOKEN,
       process.env.CLAUDE_ROUTINE_TOKEN,
+      process.env.CLAUDE_ROUTINE_STANDARD_TOKEN,
     ].filter((s): s is string => Boolean(s && s.trim().length >= 6)),
   };
 }
@@ -262,6 +281,57 @@ export function parseSessionUrl(body: string): string | null {
     return null;
   }
 }
+
+/** Triedenie náročnosti (D-134): riadok v komentári + skrytá značka (aj na štatistiku). */
+const TRIAGE_RE = /<!-- aim-mcp-triage (\{[^}]*\}) -->/;
+
+export interface Triage {
+  /** Čo navrhol Claude; `null` = nezadal. */
+  requested: Narocnost | null;
+  reason: string;
+}
+
+export function parseTriageArgs(args: Record<string, unknown>): Triage {
+  const v = args.narocnost;
+  if (v !== undefined && !(NAROCNOST as readonly string[]).includes(v as string)) {
+    throw new FeedbackInputError(`narocnost musí byť jedno z: ${NAROCNOST.join(", ")}.`);
+  }
+  return { requested: (v as Narocnost | undefined) ?? null, reason: str(args.narocnost_dovod, MAX_REASON, "narocnost_dovod") };
+}
+
+/** Značka triedenia z komentára: skutočne použitá náročnosť a to, čo sa navrhlo. */
+export function parseTriage(body: string): { level: Narocnost; requested: Narocnost | null } | null {
+  const m = TRIAGE_RE.exec(body);
+  if (!m) return null;
+  try {
+    const p = JSON.parse(m[1]) as { level?: unknown; requested?: unknown };
+    const ok = (x: unknown): x is Narocnost => (NAROCNOST as readonly string[]).includes(x as string);
+    return ok(p.level) ? { level: p.level, requested: ok(p.requested) ? p.requested : null } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Routine pre náročnosť; STANDARD bez nastavenia (alebo bez návrhu) padá na HARD ako doteraz. */
+export function pickFire(deps: FeedbackDeps, requested: Narocnost | null) {
+  if (requested === "standard" && deps.fireStandard) return { fire: deps.fireStandard, level: "standard" as Narocnost };
+  return deps.fire ? { fire: deps.fire, level: "hard" as Narocnost } : null;
+}
+
+/** Dôvod z uloženého riadku "triedenie: LEVEL - dôvod" (bez poznámky v zátvorke na konci). */
+function triageReasonOf(body: string): string {
+  const m = /triedenie: (?:STANDARD|HARD) - ([^\n]*)/.exec(body);
+  return (m?.[1] ?? "").replace(/\s*\((?:nezadané, predvolené|STANDARD nie je nastavená)\)$/, "").replace(/^bez dôvodu$/, "");
+}
+
+export function triageLine(t: Triage, level: Narocnost): string {
+  const note = t.requested === null ? "nezadané, predvolené" : t.requested !== level ? "STANDARD nie je nastavená" : "";
+  const reason = [t.reason, note && `(${note})`].filter(Boolean).join(" ");
+  return `triedenie: ${level.toUpperCase()} - ${reason || "bez dôvodu"}`;
+}
+
+const triageMarker = (t: Triage, level: Narocnost) =>
+  `<!-- aim-mcp-triage ${JSON.stringify({ v: 1, level, requested: t.requested })} -->`;
 
 function redact(text: string, secrets: string[]): string {
   let out = text;
@@ -381,7 +451,13 @@ export function draftFeedback(args: Record<string, unknown>, now: Date): Draft {
 }
 
 /** Text pre `<routine-fire-payload>`; session si podrobnosti prečíta z issue. */
-export function firePayload(repo: string, issue: GithubIssue, kind: Draft["kind"], repeated: boolean): string {
+export function firePayload(
+  repo: string,
+  issue: GithubIssue,
+  kind: Draft["kind"],
+  repeated: boolean,
+  level: Narocnost = "hard",
+): string {
   return [
     "Požiadavka z MCP konektora AIM (D-090).",
     `repo: ${repo}`,
@@ -390,6 +466,7 @@ export function firePayload(repo: string, issue: GithubIssue, kind: Draft["kind"
     `druh: ${kind === "tool" ? "novy-tool" : "pripomienka"}`,
     `nazov: ${issue.title}`,
     `opakovanie: ${repeated ? "ano" : "nie"}`,
+    `narocnost: ${level}`,
   ].join("\n");
 }
 
@@ -424,26 +501,31 @@ export function queuedIssues(open: GithubIssue[]): GithubIssue[] {
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
-/** Spustí session k issue a zapíše odkaz; štítok `fronta` sa vymení za `session`. */
+/** Spustí session k issue a zapíše odkaz s triedením; štítok `fronta` sa vymení za `session`. */
 async function startSession(
   client: GithubClient,
-  fire: NonNullable<FeedbackDeps["fire"]>,
+  deps: FeedbackDeps,
   issue: GithubIssue,
   kind: Draft["kind"],
   repeated: boolean,
-): Promise<{ url: string }> {
+  triage: Triage,
+): Promise<{ url: string; level: Narocnost }> {
   const repo = `${client.target.owner}/${client.target.repo}`;
-  const fired = await fire(firePayload(repo, issue, kind, repeated));
+  const picked = pickFire(deps, triage.requested);
+  if (!picked) throw new Error("Routine nie je nastavená.");
+  const fired = await picked.fire(firePayload(repo, issue, kind, repeated, picked.level));
+  const line = redact(triageLine(triage, picked.level), deps.secrets);
   // Odkaz a štítky pri issue sú pohodlie: zlyhanie nemá zhodiť výsledok, session už beží.
   await client
     .addComment(
       issue.number,
-      `Claude session pre túto požiadavku: ${fired.sessionUrl}\n\n<!-- aim-mcp-session ${JSON.stringify({ url: fired.sessionUrl })} -->`,
+      `Claude session pre túto požiadavku: ${fired.sessionUrl}\n\n${line}\n\n` +
+        `<!-- aim-mcp-session ${JSON.stringify({ url: fired.sessionUrl })} -->\n${triageMarker(triage, picked.level)}`,
     )
     .catch(() => undefined);
   await client.addLabels(issue.number, [LABEL_SESSION]).catch(() => undefined);
   if (hasLabel(issue, LABEL_QUEUE)) await client.removeLabel(issue.number, LABEL_QUEUE).catch(() => undefined);
-  return { url: fired.sessionUrl };
+  return { url: fired.sessionUrl, level: picked.level };
 }
 
 const queueText = (running: GithubIssue[], max: number) =>
@@ -475,7 +557,14 @@ async function createWithLabels(client: GithubClient, d: Draft): Promise<GithubI
   }
 }
 
-async function record(d: Draft, deps: FeedbackDeps): Promise<{ text: string; isError: boolean }> {
+/** Fronta si náročnosť pamätá v komentári so značkou; `start_queued_session` ju prečíta (D-134). */
+async function rememberTriage(client: GithubClient, number: number, t: Triage, secrets: string[]): Promise<void> {
+  if (t.requested === null) return;
+  const line = redact(triageLine(t, t.requested), secrets);
+  await client.addComment(number, `Fronta: ${line}\n\n${triageMarker(t, t.requested)}`).catch(() => undefined);
+}
+
+async function record(d: Draft, deps: FeedbackDeps, triage: Triage): Promise<{ text: string; isError: boolean }> {
   const draft = { ...d, body: redact(d.body, deps.secrets), repeat: redact(d.repeat, deps.secrets) };
   if (!deps.client) {
     return {
@@ -518,27 +607,28 @@ async function record(d: Draft, deps: FeedbackDeps): Promise<{ text: string; isE
   const hasSession = hasLabel(issue, LABEL_SESSION);
   const max = maxSessions();
   const { running } = runningSessions(open, deps.now());
-  let session: { url: string } | null = null;
+  let session: { url: string; level: Narocnost } | null = null;
   let queued = false;
   let sessionNote: string;
   if (!draft.start) {
     sessionNote = "Session sa nespúšťala (start_session nebolo zapnuté).";
   } else if (hasSession) {
     sessionNote = "Session pre toto issue už bola spustená - odkaz je v komentároch issue (feedback_status).";
-  } else if (!deps.fire) {
+  } else if (!pickFire(deps, triage.requested)) {
     sessionNote =
       "Session sa nespustila: routine nie je nastavená na serveri (CLAUDE_ROUTINE_FIRE_URL, CLAUDE_ROUTINE_TOKEN). " +
       "Issue čaká; opakované zavolanie po nastavení session spustí.";
   } else if (running.length >= max) {
     queued = true;
     if (!hasLabel(issue, LABEL_QUEUE)) await client.addLabels(issue.number, [LABEL_QUEUE]).catch(() => undefined);
+    await rememberTriage(client, issue.number, triage, deps.secrets);
     const position = queuedIssues(open).filter((i) => i.number !== issue.number).length + 1;
     sessionNote =
       `Issue je vo fronte (pozícia ${position}). ${queueText(running, max)} ` +
       "Keď niektorá skončí, Samuel dostane notifikáciu; ďalšiu spustí feedback(action=start_session).";
   } else {
     try {
-      session = await startSession(client, deps.fire, issue, draft.kind, duplicate);
+      session = await startSession(client, deps, issue, draft.kind, duplicate, triage);
       sessionNote = "Session beží; otázky položí v nej aj ako komentár v issue.";
     } catch (err) {
       sessionNote = `Session sa nespustila: ${err instanceof Error ? err.message : String(err)}. Issue čaká.`;
@@ -566,7 +656,7 @@ async function startQueued(
   if (!deps.client) {
     return { text: "Zápis do GitHubu nie je nastavený (chýba FEEDBACK_GITHUB_TOKEN na serveri).", isError: true };
   }
-  if (!deps.fire) {
+  if (!deps.fire && !deps.fireStandard) {
     return {
       text: "Routine nie je nastavená na serveri (CLAUDE_ROUTINE_FIRE_URL, CLAUDE_ROUTINE_TOKEN), session sa nedá spustiť.",
       isError: true,
@@ -607,7 +697,15 @@ async function startQueued(
     };
   }
   const kind = parseMarker(target.body)?.kind ?? "tool";
-  const session = await startSession(client, deps.fire, target, kind, false);
+  // Náročnosť: výslovný parameter, inak posledné triedenie zapamätané pri zaradení do fronty (D-134).
+  let triage = parseTriageArgs(args);
+  if (triage.requested === null) {
+    const comments = await client.listComments(target.number).catch(() => []);
+    const saved = [...comments].reverse().find((c) => parseTriage(c.body));
+    const parsed = saved ? parseTriage(saved.body) : null;
+    if (parsed) triage = { requested: parsed.requested ?? parsed.level, reason: triageReasonOf(saved!.body) };
+  }
+  const session = await startSession(client, deps, target, kind, false, triage);
   return {
     text: json({
       started: { number: target.number, title: target.title, url: target.html_url },
@@ -847,9 +945,9 @@ export async function execFeedbackTool(
     }
     switch (name) {
       case "request_tool":
-        return await record(draftToolRequest(args, deps.now()), deps);
+        return await record(draftToolRequest(args, deps.now()), deps, parseTriageArgs(args));
       case "report_feedback":
-        return await record(draftFeedback(args, deps.now()), deps);
+        return await record(draftFeedback(args, deps.now()), deps, parseTriageArgs(args));
       case "feedback_status":
         return await status(args, deps);
       case "feedback_comment":

@@ -5,7 +5,7 @@ vi.mock("server-only", () => ({}));
 
 import { GithubClient } from "../github/client";
 
-import { fireRoutine, ROUTINE_BETA } from "./routine";
+import { fireRoutine, ROUTINE_BETA, routineConfigured, standardRoutine } from "./routine";
 import {
   draftComment,
   draftFeedback,
@@ -15,7 +15,9 @@ import {
   marker,
   parseCommentKind,
   parseMarker,
+  parseTriage,
   slug,
+  triageLine,
   type FeedbackDeps,
 } from "./tools";
 
@@ -587,6 +589,17 @@ describe("routine /fire (D-090)", () => {
     await expect(fireRoutine("x", fetchImpl as unknown as typeof fetch)).rejects.toThrow("HTTP 429");
   });
 
+  it("standardRoutine číta vlastné env a menuje ich v chybe (D-134)", async () => {
+    vi.stubEnv("CLAUDE_ROUTINE_STANDARD_FIRE_URL", "");
+    vi.stubEnv("CLAUDE_ROUTINE_STANDARD_TOKEN", "");
+    const cfg = standardRoutine();
+    expect(routineConfigured(cfg)).toBe(false);
+    await expect(fireRoutine("x", vi.fn() as unknown as typeof fetch, cfg)).rejects.toThrow(/CLAUDE_ROUTINE_STANDARD_FIRE_URL/);
+    vi.stubEnv("CLAUDE_ROUTINE_STANDARD_FIRE_URL", "https://api.anthropic.com/v1/x/fire");
+    vi.stubEnv("CLAUDE_ROUTINE_STANDARD_TOKEN", "tok");
+    expect(routineConfigured(standardRoutine())).toBe(true);
+  });
+
   it("iná routine (BCF téma, D-099) ide na svoju URL a chyba menuje jej env", async () => {
     vi.stubEnv("CLAUDE_ROUTINE_FIRE_URL", URL_OK);
     vi.stubEnv("CLAUDE_ROUTINE_TOKEN", "tok");
@@ -663,5 +676,120 @@ describe("zatvorené issues a overenie (D-126, #171)", () => {
     expect(gh.calls.find((c) => c.url.endsWith("/labels"))?.body).toEqual({ labels: ["overene"] });
     expect(gh.calls.some((c) => c.method === "DELETE" && c.url.endsWith("/labels/vratene"))).toBe(true);
     expect(() => draftComment({ issue_number: 12, text: "x", verification: "ok" }, NOW)).toThrow(/verification/);
+  });
+});
+
+describe("náročnosť požiadavky: STANDARD a HARD routine (D-134)", () => {
+  const routes = () => ({
+    "GET /repos/Menezeris/AIMviewer/issues": () => ({ json: [] }),
+    "POST /repos/Menezeris/AIMviewer/issues": () => ({ status: 201, json: issue() }),
+    "POST /repos/Menezeris/AIMviewer/issues/12/comments": () => ({ status: 201, json: { id: 1 } }),
+    "POST /repos/Menezeris/AIMviewer/issues/12/labels": () => ({ json: [] }),
+  });
+  const mk = (name: string) =>
+    vi.fn<(text: string) => Promise<{ sessionId: string; sessionUrl: string }>>(async () => ({
+      sessionId: name,
+      sessionUrl: `https://claude.ai/code/${name}`,
+    }));
+  const sessionComment = (gh: ReturnType<typeof fakeGithub>) =>
+    (gh.calls.find((c) => c.url.endsWith("/issues/12/comments"))!.body as { body: string }).body;
+
+  it("opis a schéma toolu nesú náročnosť a pravidlo triedenia", () => {
+    const t = FEEDBACK_TOOL_DEFINITIONS.find((d) => d.name === "feedback")!;
+    const props = (t.inputSchema as { properties: Record<string, { enum?: string[] }> }).properties;
+    expect(props.narocnost.enum).toEqual(["standard", "hard"]);
+    expect(props.narocnost_dovod).toBeDefined();
+    expect(t.description).toMatch(/standard = jasné a lokálne/);
+    expect(t.description).toMatch(/Nejasné zadanie = hard/);
+  });
+
+  it("standard spustí STANDARD routine a zapíše triedenie k odkazu na session", async () => {
+    const gh = fakeGithub(routes());
+    const hard = mk("hard");
+    const std = mk("std");
+    const res = await execFeedbackTool(
+      "feedback",
+      { action: "request_tool", ...toolArgs, narocnost: "standard", narocnost_dovod: "malá zmena opisu" },
+      deps({ client: gh.client, fire: hard, fireStandard: std }),
+    );
+    expect(JSON.parse(res.text).session).toMatchObject({ url: "https://claude.ai/code/std", level: "standard" });
+    expect(std).toHaveBeenCalledTimes(1);
+    expect(hard).not.toHaveBeenCalled();
+    expect(std.mock.calls[0][0]).toContain("narocnost: standard");
+    const body = sessionComment(gh);
+    expect(body).toContain("triedenie: STANDARD - malá zmena opisu");
+    expect(parseTriage(body)).toEqual({ level: "standard", requested: "standard" });
+  });
+
+  it("hard a chýbajúci parameter idú na HARD routine", async () => {
+    for (const extra of [{ narocnost: "hard", narocnost_dovod: "schéma" }, {}]) {
+      const gh = fakeGithub(routes());
+      const hard = mk("hard");
+      const std = mk("std");
+      await execFeedbackTool("feedback", { action: "request_tool", ...toolArgs, ...extra }, deps({ client: gh.client, fire: hard, fireStandard: std }));
+      expect(hard).toHaveBeenCalledTimes(1);
+      expect(std).not.toHaveBeenCalled();
+      expect(hard.mock.calls[0][0]).toContain("narocnost: hard");
+      expect(parseTriage(sessionComment(gh))?.level).toBe("hard");
+    }
+    expect(triageLine({ requested: null, reason: "" }, "hard")).toBe("triedenie: HARD - (nezadané, predvolené)");
+  });
+
+  it("standard bez nastavenej STANDARD routine padne na HARD a komentár to povie", async () => {
+    const gh = fakeGithub(routes());
+    const hard = mk("hard");
+    await execFeedbackTool(
+      "feedback",
+      { action: "request_tool", ...toolArgs, narocnost: "standard", narocnost_dovod: "test" },
+      deps({ client: gh.client, fire: hard }),
+    );
+    expect(hard).toHaveBeenCalledTimes(1);
+    const body = sessionComment(gh);
+    expect(body).toContain("triedenie: HARD - test (STANDARD nie je nastavená)");
+    expect(parseTriage(body)).toEqual({ level: "hard", requested: "standard" });
+  });
+
+  it("neplatná náročnosť je chyba vstupu", async () => {
+    const res = await execFeedbackTool("feedback", { action: "request_tool", ...toolArgs, narocnost: "easy" }, deps());
+    expect(res).toMatchObject({ isError: true });
+    expect(res.text).toContain("narocnost");
+  });
+
+  it("fronta si náročnosť zapamätá a start_queued_session ju použije", async () => {
+    const running = (n: number) =>
+      issue({ number: n, title: `Beží ${n}`, labels: [{ name: "mcp" }, { name: "session" }], updated_at: "2026-10-18T21:00:00Z" });
+    const queuedGh = fakeGithub({
+      ...routes(),
+      "GET /repos/Menezeris/AIMviewer/issues": () => ({ json: [running(1), running(2), running(3)] }),
+    });
+    const std = mk("std");
+    const hard = mk("hard");
+    const out = JSON.parse(
+      (
+        await execFeedbackTool(
+          "feedback",
+          { action: "request_tool", ...toolArgs, narocnost: "standard", narocnost_dovod: "test" },
+          deps({ client: queuedGh.client, fire: hard, fireStandard: std }),
+        )
+      ).text,
+    );
+    expect(out.queued).toBe(true);
+    const remembered = sessionComment(queuedGh);
+    expect(remembered).toContain("Fronta: triedenie: STANDARD - test");
+
+    const gh = fakeGithub({
+      "GET /repos/Menezeris/AIMviewer/issues": () => ({
+        json: [issue({ number: 20, body: marker({ v: 1, kind: "feedback", fp: "f" }), labels: [{ name: "mcp" }, { name: "fronta" }] })],
+      }),
+      "GET /repos/Menezeris/AIMviewer/issues/20/comments": () => ({ json: [{ id: 1, body: remembered, created_at: "t", user: null }] }),
+      "POST /repos/Menezeris/AIMviewer/issues/20/comments": () => ({ status: 201, json: { id: 2 } }),
+      "POST /repos/Menezeris/AIMviewer/issues/20/labels": () => ({ json: [] }),
+      "DELETE /repos/Menezeris/AIMviewer/issues/20/labels/fronta": () => ({ json: [] }),
+    });
+    await execFeedbackTool("feedback", { action: "start_session" }, deps({ client: gh.client, fire: hard, fireStandard: std }));
+    expect(std).toHaveBeenCalledTimes(1);
+    expect(hard).not.toHaveBeenCalled();
+    const posted = gh.calls.find((c) => c.method === "POST" && c.url.endsWith("/issues/20/comments"))!;
+    expect((posted.body as { body: string }).body).toContain("triedenie: STANDARD - test");
   });
 });

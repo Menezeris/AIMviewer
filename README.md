@@ -114,7 +114,10 @@ tool hneď spustí Claude Code session, ktorá ju rieši podľa skillu `.claude/
 Nastavenie:
 1. **GitHub token:** fine-grained PAT, repo `Menezeris/AIMviewer`, Issues: read and write
    (Metadata: read sa pridá sám) -> Vercel env `FEEDBACK_GITHUB_TOKEN`. Iné repo: `FEEDBACK_REPO=owner/repo`.
-2. **Routine:** claude.ai/code/routines -> "AIM: požiadavka z konektora" -> Edit -> Add another
+2. **Routine (D-134, dve):** HARD "AIM: Hard Issues" (Opus; predtým "AIM: požiadavka z konektora") a
+   STANDARD "AIM: Standard Issues" (Sonnet, env `CLAUDE_ROUTINE_STANDARD_FIRE_URL` a
+   `CLAUDE_ROUTINE_STANDARD_TOKEN`, nastavenie rovnaké; bez nich ide všetko na HARD, pozri
+   `docs/orchestration.md`). claude.ai/code/routines -> routine -> Edit -> Add another
    trigger -> API -> skopíruj URL do `CLAUDE_ROUTINE_FIRE_URL` a Generate token do
    `CLAUDE_ROUTINE_TOKEN` (zobrazí sa raz). V tej istej routine **pridaj repo
    `Menezeris/AIMviewer`** (bez neho session nemá prístup, overené na #58), konektory GitHub a
