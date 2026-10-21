@@ -1,0 +1,308 @@
+From c0ec0a29655f8d732df01a9fc7d897376d4d20c9 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 09:09:24 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?AIM=20D-127:=20review=20minor=20-=20visible?=
+ =?UTF-8?q?=20pri=20teardowne=20mosta,=20zatvorenie=20vlastnost=C3=AD=20v?=
+ =?UTF-8?q?=20spodnej=20polovici=20splitu?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013pTmyabGpJyMo1eWHhfymn
+---
+ apps/viewer/src/aim/AimBridge.tsx | 2 +-
+ apps/viewer/src/aim/aimPanels.ts  | 5 +++--
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/apps/viewer/src/aim/AimBridge.tsx b/apps/viewer/src/aim/AimBridge.tsx
+index 522976d4..9a50b30a 100644
+--- a/apps/viewer/src/aim/AimBridge.tsx
++++ b/apps/viewer/src/aim/AimBridge.tsx
+@@ -268,7 +268,7 @@ export function AimBridge() {
+       useCapturePinsStore.getState().setPins([]);
+       useAimDecorationsStore.getState().clear();
+       useAimDerivationsStore.getState().clear();
+-      useAimDocRegionStore.setState({ request: null, highlights: null }); // D-117/D-123: výrez ani rámiky nepatria ďalšej relácii
++      useAimDocRegionStore.setState({ request: null, highlights: null, visible: null }); // D-117/D-123/D-127: výrez, rámiky ani rozsah nepatria ďalšej relácii
+       resetLensFromChat(); // D-096: izolácia a AIM chat lens neprežijú odpojenie mostu
+       setFocusProvider(undefined);
+       resetCommandState(); // problémy a kroky z predošlej relácie nepatria do ďalšieho APPLIED
+diff --git a/apps/viewer/src/aim/aimPanels.ts b/apps/viewer/src/aim/aimPanels.ts
+index 9b0e0f31..a6a37651 100644
+--- a/apps/viewer/src/aim/aimPanels.ts
++++ b/apps/viewer/src/aim/aimPanels.ts
+@@ -39,8 +39,9 @@ function closePanel(s: Store, key: PanelKey): void {
+       s.setListPanelVisible(false);
+       return;
+     case 'properties':
+-      // Vlastnosti sú záloha pravého stĺpca: zavrieť ich = zbaliť stĺpec, keď ho práve držia.
+-      if (s.sidebarActivePanel === 'properties' && s.sidebarMode !== 'collapsed') s.setSidebarMode('collapsed');
++      // Vlastnosti sú záloha pravého stĺpca: v spodnej polovici splitu ju uvoľnia, v hornej zbalia stĺpec.
++      if (s.sidebarSecondaryPanel === 'properties') s.setSidebarSecondaryPanel(null);
++      else if (s.sidebarActivePanel === 'properties' && s.sidebarMode !== 'collapsed') s.setSidebarMode('collapsed');
+       return;
+   }
+ }
+-- 
+2.43.0
+
+
+From 9e7ad8ecb14380261e075b7c62d9e978d384fc6e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 09:48:00 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?AIM=20D-127:=20dokumenty=20z=20AimBridge=20?=
+ =?UTF-8?q?do=20docBridge.ts=20(rezerva=20pre=20bal=C3=ADk=20s=20#96)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+DOCUMENT_OPEN s výrezom a rámikmi, UNDERLAYS_LOAD, DOCUMENTS_LOAD a udalosti
+dokumentov späť hostovi sú v docBridge.ts; AimBridge.tsx 334 riadkov. Reset
+viditeľného rozsahu pri novej relácii je vo wireDocumentEvents, riadok
+teardownu ostáva ako na main (bez konfliktu s #96).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013pTmyabGpJyMo1eWHhfymn
+---
+ apps/viewer/src/aim/AimBridge.tsx | 78 ++-----------------------
+ apps/viewer/src/aim/docBridge.ts  | 94 +++++++++++++++++++++++++++++++
+ 2 files changed, 100 insertions(+), 72 deletions(-)
+ create mode 100644 apps/viewer/src/aim/docBridge.ts
+
+diff --git a/apps/viewer/src/aim/AimBridge.tsx b/apps/viewer/src/aim/AimBridge.tsx
+index 9a50b30a..33619379 100644
+--- a/apps/viewer/src/aim/AimBridge.tsx
++++ b/apps/viewer/src/aim/AimBridge.tsx
+@@ -19,7 +19,6 @@
+  */
+ 
+ import { useEffect, useRef, useState } from 'react';
+-import { parsePlacement, serializePlacement } from '@ifc-lite/drawing-underlay';
+ import { useBim } from '../sdk/BimProvider.js';
+ import { useViewerStore } from '../store/index.js';
+ import { AUTOLOAD_COMPLETE_EVENT, parseAutoloadUrls } from '../lib/autoload.js';
+@@ -32,7 +31,8 @@ import { isCommandMessage, type AppliedMessage, type CommandInboundMessage } fro
+ import { createCommandGate, noteIssue, resetCommandState, settled, takeIssues, track } from './command-gate.js';
+ import { useAimPanelStore } from './aimPanelStore.js';
+ import { useCapturePinsStore } from './capturePinsStore.js';
+-import { normalizeDocHighlights, normalizeDocRegion, regionApplied, useAimDocRegionStore } from './docRegion.js';
++import { useAimDocRegionStore } from './docRegion.js';
++import { handleDocumentMessage, wireDocumentEvents } from './docBridge.js';
+ import { useAimDecorationsStore } from './aimDecorationsStore.js';
+ import { useAimDerivationsStore } from './aimDerivationsStore.js';
+ import { isViewMessage } from './view-protocol.js';
+@@ -51,7 +51,6 @@ const loadVisibility = () => (visibility ??= import('./visibility-commands.js'))
+ 
+ /** Najdlhšie čakanie `APPLIED` na asynchrónne kroky (rez cez prvok, kamera, Lens); host čaká 3 s. */
+ const ACK_WAIT_MS = 2500;
+-const REGION_WAIT_MS = 2200; // výrez strany z chatu čaká na otvorenie PDF (AIM D-127)
+ /** Ak geometria po ohlásení modelov neprestane prúdiť, príkazy sa pustia aj tak. */
+ const STREAM_GRACE_MS = 30_000;
+ 
+@@ -172,56 +171,6 @@ export function AimBridge() {
+         case 'AIM_PANEL_EMPTY':
+           useAimPanelStore.getState().resolve(e.data.guid, { reason: e.data.reason });
+           break;
+-        case 'UNDERLAYS_LOAD': {
+-          // Georeferencované PDF podklady (D-072): host posiela zoznam
+-          // dokumentov naviazaných na podlažia + perzistované _georef.
+-          // Placement JSON je untrusted — validuje ho parsePlacement;
+-          // nevalidný georef = výkres bez umiestnenia (kalibruje sa znova).
+-          const drawings = e.data.drawings.map((d) => ({
+-            id: d.documentId,
+-            name: d.name,
+-            pdfUrl: d.pdfUrl,
+-            placement: d.georef !== undefined ? parsePlacement(d.georef) : null,
+-          }));
+-          useViewerStore.getState().setUnderlayDrawings(drawings);
+-          break;
+-        }
+-        case 'DOCUMENTS_LOAD': {
+-          // Projektové dokumenty (D-075): host posiela knižnicu dokumentov
+-          // (výkresy/dokumenty/obrázky) pre in-viewer Documents panel.
+-          // Súrodenec UNDERLAYS_LOAD — kalibrované výkresy chodia v oboch.
+-          const docs = e.data.documents.map((d) => ({
+-            id: d.documentId,
+-            name: d.name,
+-            kind: d.kind,
+-            url: d.url,
+-            mime: d.mime,
+-            storeyGuid: d.storeyGuid ?? null,
+-            folder: d.folder,
+-            meta: d.meta,
+-          }));
+-          useViewerStore.getState().setViewerDocuments(docs);
+-          break;
+-        }
+-        case 'DOCUMENT_OPEN': {
+-          // Deep link (D-075): otvor dokument ako kartu. Neznáme id je no-op
+-          // (openDocument si to ustráži) — host mohol poslať staršiu linku.
+-          useViewerStore
+-            .getState()
+-            .openDocument(e.data.documentId, e.data.page !== undefined ? { page: e.data.page } : undefined);
+-          // Výrez strany z chatu (D-117): karta sa priblíži, keď je PDF otvorené.
+-          const region = normalizeDocRegion(e.data.region);
+-          if (region) {
+-            const nonce = useAimDocRegionStore.getState().requestRegion(e.data.documentId, region, e.data.page);
+-            // APPLIED (D-101) počká, kým karta výrez naozaj ukáže, a nesie viditeľný rozsah (AIM D-127).
+-            track(regionApplied(nonce, REGION_WAIT_MS).then((ok) => ok || noteIssue('DOCUMENT_OPEN: výrez strany sa ešte nepoužil (dokument sa načítava)')));
+-          }
+-          // Rámiky okolo nájdeného textu (D-123); DOCUMENT_OPEN bez nich staré zruší.
+-          useAimDocRegionStore
+-            .getState()
+-            .setHighlights(e.data.documentId, normalizeDocHighlights(e.data.highlights), e.data.page);
+-          break;
+-        }
+         case 'CAPTURES_LOAD':
+           // Reality Capture pins (D-073): host pushes capture points with world
+           // coords; the billboard layer (CapturePinLayer) renders them.
+@@ -231,33 +180,18 @@ export function AimBridge() {
+           // Per-GUID badge counts (D-077) — HierarchyPanel rows render pills.
+           useAimDecorationsStore.getState().setDecorations(e.data.decorations);
+           break;
++        default:
++          handleDocumentMessage(e.data); // podklady, knižnica a karta dokumentu (docBridge.ts)
+       }
+     }
+ 
+-    // Kalibrácia uložená vo viewri → host ju perzistuje do
+-    // documents.properties._georef (D-072). Session-only bez hosta.
+-    useViewerStore.getState().setUnderlaySaveHandler((documentId, placement) => {
+-      post({
+-        source: SOURCE,
+-        type: 'UNDERLAY_SAVE',
+-        documentId,
+-        georef: serializePlacement(placement),
+-      });
+-    });
++    wireDocumentEvents(post); // kalibrácia podkladu a taby dokumentov -> host (docBridge.ts)
+ 
+     // 3D -> host: a capture pin click opens its gallery/panorama host-side (D-073).
+     useCapturePinsStore.getState().setEmitClick((captureId) => {
+       post({ source: SOURCE, type: 'CAPTURE_PIN_CLICK', captureId });
+     });
+ 
+-    // Tab dokumentu otvorený/zavretý vo viewri → host recents/analytics (D-075).
+-    useViewerStore.getState().setDocumentEventHandler(({ docId, event }) => {
+-      // Session-local files never leave the viewer — the host has no use for
+-      // (and no way to resolve) `local:` ids.
+-      if (docId.startsWith('local:')) return;
+-      post({ source: SOURCE, type: 'DOCUMENT_EVENT', documentId: docId, event });
+-    });
+-
+     window.addEventListener('message', onMessage);
+     post({ source: SOURCE, type: 'READY' });
+     return () => {
+@@ -268,7 +202,7 @@ export function AimBridge() {
+       useCapturePinsStore.getState().setPins([]);
+       useAimDecorationsStore.getState().clear();
+       useAimDerivationsStore.getState().clear();
+-      useAimDocRegionStore.setState({ request: null, highlights: null, visible: null }); // D-117/D-123/D-127: výrez, rámiky ani rozsah nepatria ďalšej relácii
++      useAimDocRegionStore.setState({ request: null, highlights: null }); // D-117/D-123: výrez ani rámiky nepatria ďalšej relácii
+       resetLensFromChat(); // D-096: izolácia a AIM chat lens neprežijú odpojenie mostu
+       setFocusProvider(undefined);
+       resetCommandState(); // problémy a kroky z predošlej relácie nepatria do ďalšieho APPLIED
+diff --git a/apps/viewer/src/aim/docBridge.ts b/apps/viewer/src/aim/docBridge.ts
+new file mode 100644
+index 00000000..3ee1a451
+--- /dev/null
++++ b/apps/viewer/src/aim/docBridge.ts
+@@ -0,0 +1,94 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Dokumenty a podklady v moste hosta (D-072, D-075, D-117, D-123, AIM D-127):
++ * knižnica dokumentov, podklady výkresov, otvorenie karty s výrezom a rámikmi a
++ * udalosti z viewera späť hostovi. Vyčlenené z `AimBridge.tsx` (strop veľkosti
++ * modulu); AimBridge sem len odovzdá správu a pri štarte relácie zavolá
++ * `wireDocumentEvents`.
++ */
++
++import { parsePlacement, serializePlacement } from '@ifc-lite/drawing-underlay';
++import { useViewerStore } from '../store/index.js';
++import { SOURCE, type InboundMessage, type OutboundMessage } from './bridge-protocol.js';
++import { noteIssue, track } from './command-gate.js';
++import { normalizeDocHighlights, normalizeDocRegion, regionApplied, useAimDocRegionStore } from './docRegion.js';
++
++/** Výrez strany z chatu čaká na otvorenie PDF; dlhšie ako ACK by APPLIED len oneskorilo. */
++const REGION_WAIT_MS = 2200;
++
++/** Vybaví správu o dokumentoch; false = správa sem nepatrí. */
++export function handleDocumentMessage(msg: InboundMessage): boolean {
++  switch (msg.type) {
++    case 'UNDERLAYS_LOAD': {
++      // Georeferencované PDF podklady (D-072): host posiela zoznam
++      // dokumentov naviazaných na podlažia + perzistované _georef.
++      // Placement JSON je untrusted — validuje ho parsePlacement;
++      // nevalidný georef = výkres bez umiestnenia (kalibruje sa znova).
++      const drawings = msg.drawings.map((d) => ({
++        id: d.documentId,
++        name: d.name,
++        pdfUrl: d.pdfUrl,
++        placement: d.georef !== undefined ? parsePlacement(d.georef) : null,
++      }));
++      useViewerStore.getState().setUnderlayDrawings(drawings);
++      return true;
++    }
++    case 'DOCUMENTS_LOAD': {
++      // Projektové dokumenty (D-075): host posiela knižnicu dokumentov
++      // (výkresy/dokumenty/obrázky) pre in-viewer Documents panel.
++      // Súrodenec UNDERLAYS_LOAD — kalibrované výkresy chodia v oboch.
++      const docs = msg.documents.map((d) => ({
++        id: d.documentId,
++        name: d.name,
++        kind: d.kind,
++        url: d.url,
++        mime: d.mime,
++        storeyGuid: d.storeyGuid ?? null,
++        folder: d.folder,
++        meta: d.meta,
++      }));
++      useViewerStore.getState().setViewerDocuments(docs);
++      return true;
++    }
++    case 'DOCUMENT_OPEN': {
++      // Deep link (D-075): otvor dokument ako kartu. Neznáme id je no-op
++      // (openDocument si to ustráži) — host mohol poslať staršiu linku.
++      useViewerStore.getState().openDocument(msg.documentId, msg.page !== undefined ? { page: msg.page } : undefined);
++      // Výrez strany z chatu (D-117): karta sa priblíži, keď je PDF otvorené.
++      const region = normalizeDocRegion(msg.region);
++      if (region) {
++        const nonce = useAimDocRegionStore.getState().requestRegion(msg.documentId, region, msg.page);
++        // APPLIED (D-101) počká, kým karta výrez naozaj ukáže, a nesie viditeľný rozsah (AIM D-127).
++        track(regionApplied(nonce, REGION_WAIT_MS).then((ok) => ok || noteIssue('DOCUMENT_OPEN: výrez strany sa ešte nepoužil (dokument sa načítava)')));
++      }
++      // Rámiky okolo nájdeného textu (D-123); DOCUMENT_OPEN bez nich staré zruší.
++      useAimDocRegionStore.getState().setHighlights(msg.documentId, normalizeDocHighlights(msg.highlights), msg.page);
++      return true;
++    }
++    default:
++      return false;
++  }
++}
++
++/** Udalosti viewera o dokumentoch späť hostovi; volá sa pri štarte relácie mosta. */
++export function wireDocumentEvents(post: (msg: OutboundMessage) => void): void {
++  // Viditeľný rozsah karty z predošlej relácie nepatrí novej (AIM D-127).
++  useAimDocRegionStore.setState({ visible: null });
++
++  // Kalibrácia uložená vo viewri → host ju perzistuje do
++  // documents.properties._georef (D-072). Session-only bez hosta.
++  useViewerStore.getState().setUnderlaySaveHandler((documentId, placement) => {
++    post({ source: SOURCE, type: 'UNDERLAY_SAVE', documentId, georef: serializePlacement(placement) });
++  });
++
++  // Tab dokumentu otvorený/zavretý vo viewri → host recents/analytics (D-075).
++  useViewerStore.getState().setDocumentEventHandler(({ docId, event }) => {
++    // Session-local files never leave the viewer — the host has no use for
++    // (and no way to resolve) `local:` ids.
++    if (docId.startsWith('local:')) return;
++    post({ source: SOURCE, type: 'DOCUMENT_EVENT', documentId: docId, event });
++  });
++}
+-- 
+2.43.0
+
