@@ -1,0 +1,414 @@
+From 105120f7771b21235dffacb9bb49a5db39441bb8 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 09:00:40 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?AIM=20D-127:=20moduly=20pod=20strop=20ve?=
+ =?UTF-8?q?=C4=BEkosti=20(docVisible.ts=20z=20docRegion.ts,=20krat=C5=A1?=
+ =?UTF-8?q?=C3=AD=20AimBridge=20a=20bridge-protocol)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013pTmyabGpJyMo1eWHhfymn
+---
+ apps/viewer/src/aim/AimBridge.tsx      |  5 +-
+ apps/viewer/src/aim/bridge-protocol.ts |  8 ++-
+ apps/viewer/src/aim/docRegion.test.ts  | 13 ++++-
+ apps/viewer/src/aim/docRegion.ts       | 68 +++-----------------------
+ apps/viewer/src/aim/docVisible.ts      | 68 ++++++++++++++++++++++++++
+ 5 files changed, 90 insertions(+), 72 deletions(-)
+ create mode 100644 apps/viewer/src/aim/docVisible.ts
+
+diff --git a/apps/viewer/src/aim/AimBridge.tsx b/apps/viewer/src/aim/AimBridge.tsx
+index f2f2bc50..522976d4 100644
+--- a/apps/viewer/src/aim/AimBridge.tsx
++++ b/apps/viewer/src/aim/AimBridge.tsx
+@@ -51,8 +51,7 @@ const loadVisibility = () => (visibility ??= import('./visibility-commands.js'))
+ 
+ /** Najdlhšie čakanie `APPLIED` na asynchrónne kroky (rez cez prvok, kamera, Lens); host čaká 3 s. */
+ const ACK_WAIT_MS = 2500;
+-/** Výrez strany z chatu čaká na otvorenie PDF; dlhšie ako ACK by APPLIED len oneskorilo. */
+-const REGION_WAIT_MS = 2200;
++const REGION_WAIT_MS = 2200; // výrez strany z chatu čaká na otvorenie PDF (AIM D-127)
+ /** Ak geometria po ohlásení modelov neprestane prúdiť, príkazy sa pustia aj tak. */
+ const STREAM_GRACE_MS = 30_000;
+ 
+@@ -215,7 +214,7 @@ export function AimBridge() {
+           if (region) {
+             const nonce = useAimDocRegionStore.getState().requestRegion(e.data.documentId, region, e.data.page);
+             // APPLIED (D-101) počká, kým karta výrez naozaj ukáže, a nesie viditeľný rozsah (AIM D-127).
+-            track(regionApplied(nonce, REGION_WAIT_MS).then((ok) => { if (!ok) noteIssue('DOCUMENT_OPEN: výrez strany sa ešte nepoužil (dokument sa načítava)'); }));
++            track(regionApplied(nonce, REGION_WAIT_MS).then((ok) => ok || noteIssue('DOCUMENT_OPEN: výrez strany sa ešte nepoužil (dokument sa načítava)')));
+           }
+           // Rámiky okolo nájdeného textu (D-123); DOCUMENT_OPEN bez nich staré zruší.
+           useAimDocRegionStore
+diff --git a/apps/viewer/src/aim/bridge-protocol.ts b/apps/viewer/src/aim/bridge-protocol.ts
+index 155929d3..1796b36c 100644
+--- a/apps/viewer/src/aim/bridge-protocol.ts
++++ b/apps/viewer/src/aim/bridge-protocol.ts
+@@ -23,9 +23,8 @@ export const FILTER_COLOR = '#60a5fa';
+ export const FOCUS_COLOR = '#f97316';
+ 
+ /**
+- * AIM panel data of the selected element, host-driven. Since AIM D-129 no card
+- * renders it: AIM layer rows (last change, GUID history), derived relations and
+- * the Documents panel read their fields; `sections`/`actions` are not shown. All `href`s are host-relative paths
++ * AIM panel data of the selected element, host-driven; since AIM D-129 no card: AIM layer rows, derived
++ * relations and the Documents panel read its fields. All `href`s are host-relative paths
+  * (e.g. /node/{id}) bounced back via AIM_NAVIGATE — never navigated here.
+  */
+ export interface AimPanelData {
+@@ -49,8 +48,7 @@ export interface AimPanelData {
+   captures?: { count: number; href: string };
+   /** GUID history entries (bitemporal validity; `active` = current GUID). */
+   history?: { guid: string; validFrom: string; validUntil?: string; active: boolean }[];
+-  /** AIM D-129: last change by a recipe (model revision vNNN, BCF topic title, date). */
+-  lastChange?: { model: string; revision: string; title: string; date: string };
++  lastChange?: { model: string; revision: string; title: string; date: string }; // AIM D-129: last recipe change (vNNN, BCF topic)
+   /** D-089: derived relations of the element (Relationship records); see derivations-protocol.ts. */
+   derivedRelations?: DerivedRelationWire[];
+   derivedTotal?: number;
+diff --git a/apps/viewer/src/aim/docRegion.test.ts b/apps/viewer/src/aim/docRegion.test.ts
+index fe6da65e..4f0c0b1c 100644
+--- a/apps/viewer/src/aim/docRegion.test.ts
++++ b/apps/viewer/src/aim/docRegion.test.ts
+@@ -10,14 +10,13 @@ import {
+   normalizeDocHighlights,
+   normalizeDocRegion,
+   regionApplied,
+-  regionInside,
+   regionScroll,
+   regionZoom,
+-  visiblePart,
+   useAimDocRegionStore,
+   REGION_ZOOM_MAX,
+   REGION_ZOOM_MIN,
+ } from './docRegion.js';
++import { describeVisible, regionInside, visiblePart } from './docVisible.js';
+ 
+ describe('normalizeDocRegion (D-117)', () => {
+   it('accepts a page region in fractions', () => {
+@@ -170,6 +169,16 @@ describe('viditeľný rozsah karty (AIM D-127, #166)', () => {
+     assert.equal(regionInside({ x: 0.7, y: 0.7, w: 0.3, h: 0.3 }, null), false);
+   });
+ 
++  it('stav pre view_state: percentá strany, zoom, karta a či je výrez v zábere', () => {
++    const state = describeVisible('d', 1, 3.333, { left: -500, top: -1000, width: 2000, height: 4000 }, { left: 0, top: 0, width: 400, height: 800 }, { x: 0.3, y: 0.3, w: 0.1, h: 0.1 });
++    assert.deepEqual(state, {
++      document_id: 'd', page: 1, zoom_percent: 333, card: { width: 400, height: 800 },
++      visible: { x: 25, y: 25, width: 20, height: 20 },
++      region: { x: 30, y: 30, width: 10, height: 10 }, region_fully_visible: true,
++    });
++    assert.equal(describeVisible('d', 1, 1, { left: 0, top: 0, width: 10, height: 10 }, { left: 0, top: 0, width: 5, height: 5 }, undefined).region, undefined);
++  });
++
+   it('úzka karta: zoom podľa jej skutočnej šírky dá celý výrez do záberu', () => {
+     // Karta 300 x 900 px, strana pri zoome 1 široká 276 px (A1 na šírku), výrez 30 % x 30 %.
+     const region = { x: 0.7, y: 0.7, w: 0.3, h: 0.3 };
+diff --git a/apps/viewer/src/aim/docRegion.ts b/apps/viewer/src/aim/docRegion.ts
+index 3e3b12ad..4cb043a0 100644
+--- a/apps/viewer/src/aim/docRegion.ts
++++ b/apps/viewer/src/aim/docRegion.ts
+@@ -22,6 +22,7 @@
+ 
+ import { useEffect, useRef, type RefObject } from 'react';
+ import { create } from 'zustand';
++import { describeVisible, type DocVisibleState } from './docVisible.js';
+ 
+ /** Výrez strany v zlomkoch (0-1), počiatok vľavo hore. */
+ export interface DocRegion {
+@@ -86,46 +87,6 @@ export function regionScroll(
+   return { left: Math.max(0, cx - viewport.width / 2), top: Math.max(0, cy - viewport.height / 2) };
+ }
+ 
+-/**
+- * Viditeľná časť strany v zlomkoch (0-1): `page` a `viewport` sú obdĺžniky v
+- * súradniciach okna (getBoundingClientRect). null = strana nie je v zábere.
+- */
+-export function visiblePart(
+-  page: { left: number; top: number; width: number; height: number },
+-  viewport: { left: number; top: number; width: number; height: number },
+-): DocRegion | null {
+-  if (page.width <= 0 || page.height <= 0) return null;
+-  const x0 = clamp((viewport.left - page.left) / page.width, 0, 1);
+-  const y0 = clamp((viewport.top - page.top) / page.height, 0, 1);
+-  const x1 = clamp((viewport.left + viewport.width - page.left) / page.width, 0, 1);
+-  const y1 = clamp((viewport.top + viewport.height - page.top) / page.height, 0, 1);
+-  return x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
+-}
+-
+-/** Je výrez celý vnútri viditeľnej časti (tolerancia 0,5 % strany na zaokrúhlenie)? */
+-export function regionInside(region: DocRegion, visible: DocRegion | null): boolean {
+-  if (!visible) return false;
+-  const eps = 0.005;
+-  return region.x >= visible.x - eps && region.y >= visible.y - eps
+-    && region.x + region.w <= visible.x + visible.w + eps && region.y + region.h <= visible.y + visible.h + eps;
+-}
+-
+-/** Zlomky -> percentá strany (ako `region` v open_drawing), na dve desatinné miesta. */
+-const toPct = (r: DocRegion) => ({ x: +(r.x * 100).toFixed(2), y: +(r.y * 100).toFixed(2), width: +(r.w * 100).toFixed(2), height: +(r.h * 100).toFixed(2) });
+-
+-/** Stav karty pre `view_state` (AIM D-127): čo z aktívnej strany je naozaj vidno. */
+-export interface DocVisibleState {
+-  document_id: string;
+-  page: number;
+-  zoom_percent: number;
+-  /** Plocha karty v px. */
+-  card: { width: number; height: number };
+-  /** Viditeľná časť strany v % strany; null = strana mimo záberu. */
+-  visible: { x: number; y: number; width: number; height: number } | null;
+-  region?: { x: number; y: number; width: number; height: number };
+-  region_fully_visible?: boolean;
+-}
+-
+ /** Najviac rámikov naraz; viac by výkres zakrylo. */
+ export const MAX_HIGHLIGHTS = 20;
+ /** Najmenší rámik (0,1 % strany): riadok textu býva vysoký 0,4-1 %. */
+@@ -358,30 +319,13 @@ export function useAimDocRegion(v: DocRegionViewInputs): void {
+   }, [v.docId]);
+ }
+ 
+-/** Zapíše, čo zo strany `page` je v ploche karty vidno (AIM D-127). */
+-function publishVisible(
+-  docId: string,
+-  root: HTMLElement,
+-  pageEls: Map<number, HTMLDivElement> | null,
+-  page: number,
+-  zoom: number,
+-  region: DocRegion | undefined,
+-): void {
++/** Zapíše, čo zo strany `page` je v ploche karty vidno (AIM D-127, výpočet v `docVisible.ts`). */
++function publishVisible(docId: string, root: HTMLElement, pageEls: Map<number, HTMLDivElement> | null, page: number, zoom: number, region: DocRegion | undefined): void {
+   const el = pageEls?.get(page);
+   if (!el) return;
+-  const rootRect = root.getBoundingClientRect();
+-  const viewport = { left: rootRect.left, top: rootRect.top, width: root.clientWidth, height: root.clientHeight };
+-  const part = visiblePart(el.getBoundingClientRect(), viewport);
+-  useAimDocRegionStore.setState({
+-    visible: {
+-      document_id: docId,
+-      page,
+-      zoom_percent: Math.round(zoom * 100),
+-      card: { width: Math.round(viewport.width), height: Math.round(viewport.height) },
+-      visible: part && toPct(part),
+-      ...(region ? { region: toPct(region), region_fully_visible: regionInside(region, part) } : {}),
+-    },
+-  });
++  const r = root.getBoundingClientRect();
++  const viewport = { left: r.left, top: r.top, width: root.clientWidth, height: root.clientHeight };
++  useAimDocRegionStore.setState({ visible: describeVisible(docId, page, zoom, el.getBoundingClientRect(), viewport, region) });
+ }
+ 
+ const LAYER_ATTR = 'data-aim-highlights';
+diff --git a/apps/viewer/src/aim/docVisible.ts b/apps/viewer/src/aim/docVisible.ts
+new file mode 100644
+index 00000000..b128d219
+--- /dev/null
++++ b/apps/viewer/src/aim/docVisible.ts
+@@ -0,0 +1,68 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Viditeľný rozsah karty dokumentu (AIM D-127, #166): čo z aktívnej strany je
++ * naozaj v ploche karty a či je výrez z chatu celý v zábere. Čisté výpočty;
++ * `docRegion.ts` ich volá po výreze a pri posune a výsledok ide do `view_state`.
++ */
++
++import type { DocRegion } from './docRegion.js';
++
++const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
++
++/**
++ * Viditeľná časť strany v zlomkoch (0-1): `page` a `viewport` sú obdĺžniky v
++ * súradniciach okna (getBoundingClientRect). null = strana nie je v zábere.
++ */
++export function visiblePart(
++  page: { left: number; top: number; width: number; height: number },
++  viewport: { left: number; top: number; width: number; height: number },
++): DocRegion | null {
++  if (page.width <= 0 || page.height <= 0) return null;
++  const x0 = clamp((viewport.left - page.left) / page.width, 0, 1);
++  const y0 = clamp((viewport.top - page.top) / page.height, 0, 1);
++  const x1 = clamp((viewport.left + viewport.width - page.left) / page.width, 0, 1);
++  const y1 = clamp((viewport.top + viewport.height - page.top) / page.height, 0, 1);
++  return x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
++}
++
++/** Je výrez celý vnútri viditeľnej časti (tolerancia 0,5 % strany na zaokrúhlenie)? */
++export function regionInside(region: DocRegion, visible: DocRegion | null): boolean {
++  if (!visible) return false;
++  const eps = 0.005;
++  return region.x >= visible.x - eps && region.y >= visible.y - eps
++    && region.x + region.w <= visible.x + visible.w + eps && region.y + region.h <= visible.y + visible.h + eps;
++}
++
++/** Zlomky -> percentá strany (ako `region` v open_drawing), na dve desatinné miesta. */
++const toPct = (r: DocRegion) => ({ x: +(r.x * 100).toFixed(2), y: +(r.y * 100).toFixed(2), width: +(r.w * 100).toFixed(2), height: +(r.h * 100).toFixed(2) });
++
++/** Stav karty pre `view_state` (AIM D-127): čo z aktívnej strany je naozaj vidno. */
++export interface DocVisibleState {
++  document_id: string;
++  page: number;
++  zoom_percent: number;
++  /** Plocha karty v px. */
++  card: { width: number; height: number };
++  /** Viditeľná časť strany v % strany; null = strana mimo záberu. */
++  visible: { x: number; y: number; width: number; height: number } | null;
++  region?: { x: number; y: number; width: number; height: number };
++  region_fully_visible?: boolean;
++}
++
++type Rect = { left: number; top: number; width: number; height: number };
++
++/** Stav karty z obdĺžnikov strany a plochy (súradnice okna) pre `view_state`. */
++export function describeVisible(docId: string, page: number, zoom: number, pageRect: Rect, viewport: Rect, region: DocRegion | undefined): DocVisibleState {
++  const part = visiblePart(pageRect, viewport);
++  return {
++    document_id: docId,
++    page,
++    zoom_percent: Math.round(zoom * 100),
++    card: { width: Math.round(viewport.width), height: Math.round(viewport.height) },
++    visible: part && toPct(part),
++    ...(region ? { region: toPct(region), region_fully_visible: regionInside(region, part) } : {}),
++  };
++}
+-- 
+2.43.0
+
+
+From 27ced8e8e4c5437ba6f042e9adb01131263c6c51 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 09:01:09 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?AIM=20D-127:=20mut=C3=A1cie=20po=20rozdelen?=
+ =?UTF-8?q?=C3=AD=20docRegion.ts?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013pTmyabGpJyMo1eWHhfymn
+---
+ .../evidence/aim-d127-panels/mutations/README.md       |  6 +++---
+ .../aim-d127-panels/mutations/clear-no-waiter.patch    |  4 ++--
+ .../mutations/inside-no-tolerance.patch                | 10 +++++-----
+ .../evidence/aim-d127-panels/mutations/summary.json    | 10 +++++-----
+ .../aim-d127-panels/mutations/visible-unclamped.patch  | 10 +++++-----
+ 5 files changed, 20 insertions(+), 20 deletions(-)
+
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/README.md b/docs/architecture/evidence/aim-d127-panels/mutations/README.md
+index 6f18c2d4..0981de59 100644
+--- a/docs/architecture/evidence/aim-d127-panels/mutations/README.md
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/README.md
+@@ -10,7 +10,7 @@ AIM D-127 changes the AIM layer in `apps/viewer/src/aim/` (#169 follows AIM D-12
+ - `SET_PANELS` opens, closes or toggles panels.
+ - A chat page region re-fits when the card is resized, and `view_state` reports the visible part of the page.
+ 
+-The pure logic lives in three modules: `aimPanelViewPlan.ts`, the new `aimPanelsPlan.ts`, and `docRegion.ts` (`visiblePart`, `regionInside`, `regionApplied`). The message check lives in `view-protocol.ts`. The changed tests import exports that do not exist on `main`, so reverting production makes them fail to load and the CI revert oracle reports INCONCLUSIVE. Each main decision was instead checked with a surgical mutation.
++The pure logic lives in four modules: `aimPanelViewPlan.ts`, the new `aimPanelsPlan.ts`, `docVisible.ts` (`visiblePart`, `regionInside`, `describeVisible`, split out of `docRegion.ts` for the module size gate) and `docRegion.ts` (`regionApplied`). The message check lives in `view-protocol.ts`. The changed tests import exports that do not exist on `main`, so reverting production makes them fail to load and the CI revert oracle reports INCONCLUSIVE. Each main decision was instead checked with a surgical mutation.
+ 
+ Each patch is written mutant->fixed and reverse-applied by the oracle. Every run ended `OBSERVED` (exit 0) with restoration verified against `origin/main`. The records are in `summary.json`.
+ 
+@@ -23,8 +23,8 @@ Each patch is written mutant->fixed and reverse-applied by the oracle. Every run
+ | `open-before-close.patch` | `aimPanelsPlan.ts` | opening runs before closing, so a shared slot gets closed again | `aimPanelsPlan.test.ts` |
+ | `floating-ignored.patch` | `aimPanelsPlan.ts` | a floating panel is reported as docked or closed | `aimPanelsPlan.test.ts` |
+ | `all-open-accepted.patch` | `view-protocol.ts` | `all: open` passes the bridge check | `aimPanelsPlan.test.ts` |
+-| `inside-no-tolerance.patch` | `docRegion.ts` | "region fully visible" has no rounding tolerance | `docRegion.test.ts` |
+-| `visible-unclamped.patch` | `docRegion.ts` | the visible part is not clamped to the page | `docRegion.test.ts` |
++| `inside-no-tolerance.patch` | `docVisible.ts` | "region fully visible" has no rounding tolerance | `docRegion.test.ts` |
++| `visible-unclamped.patch` | `docVisible.ts` | the visible part is not clamped to the page | `docRegion.test.ts` |
+ | `clear-no-waiter.patch` | `docRegion.ts` | clearing a region request never resolves `regionApplied` | `docRegion.test.ts` |
+ | `aim-badge-dropped.patch` | `documentsQuery.ts` | a document inherited through a relation loses its AIM flag (D-129) | `documentsQuery.test.ts` |
+ 
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/clear-no-waiter.patch b/docs/architecture/evidence/aim-d127-panels/mutations/clear-no-waiter.patch
+index 3a65b5f9..d1b15169 100644
+--- a/docs/architecture/evidence/aim-d127-panels/mutations/clear-no-waiter.patch
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/clear-no-waiter.patch
+@@ -1,8 +1,8 @@
+ diff --git b/apps/viewer/src/aim/docRegion.ts a/apps/viewer/src/aim/docRegion.ts
+-index 11102941..3e3b12ad 100644
++index 9468544a..4cb043a0 100644
+ --- b/apps/viewer/src/aim/docRegion.ts
+ +++ a/apps/viewer/src/aim/docRegion.ts
+-@@ -234,7 +234,7 @@ export const useAimDocRegionStore = create<DocRegionState>((set, get) => ({
++@@ -195,7 +195,7 @@ export const useAimDocRegionStore = create<DocRegionState>((set, get) => ({
+    },
+    clear: (nonce) => {
+      if (get().request?.nonce === nonce) set({ request: null });
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/inside-no-tolerance.patch b/docs/architecture/evidence/aim-d127-panels/mutations/inside-no-tolerance.patch
+index 3b494528..93552e08 100644
+--- a/docs/architecture/evidence/aim-d127-panels/mutations/inside-no-tolerance.patch
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/inside-no-tolerance.patch
+@@ -1,8 +1,8 @@
+-diff --git b/apps/viewer/src/aim/docRegion.ts a/apps/viewer/src/aim/docRegion.ts
+-index dccde65b..3e3b12ad 100644
+---- b/apps/viewer/src/aim/docRegion.ts
+-+++ a/apps/viewer/src/aim/docRegion.ts
+-@@ -105,7 +105,7 @@ export function visiblePart(
++diff --git b/apps/viewer/src/aim/docVisible.ts a/apps/viewer/src/aim/docVisible.ts
++index 8401c14d..b128d219 100644
++--- b/apps/viewer/src/aim/docVisible.ts
+++++ a/apps/viewer/src/aim/docVisible.ts
++@@ -31,7 +31,7 @@ export function visiblePart(
+  /** Je výrez celý vnútri viditeľnej časti (tolerancia 0,5 % strany na zaokrúhlenie)? */
+  export function regionInside(region: DocRegion, visible: DocRegion | null): boolean {
+    if (!visible) return false;
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/summary.json b/docs/architecture/evidence/aim-d127-panels/mutations/summary.json
+index 2ea0e5bb..ae423643 100644
+--- a/docs/architecture/evidence/aim-d127-panels/mutations/summary.json
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/summary.json
+@@ -46,7 +46,7 @@
+     "exitCode": 0,
+     "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docRegion.test.ts; that file has a green, attributable baseline.",
+     "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
+-    "head": "4c9d2f22d8d85776551781df9a417fa24436a62f",
++    "head": "105120f7771b21235dffacb9bb49a5db39441bb8",
+     "production": [
+       "apps/viewer/src/aim/docRegion.ts"
+     ],
+@@ -74,9 +74,9 @@
+     "exitCode": 0,
+     "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docRegion.test.ts; that file has a green, attributable baseline.",
+     "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
+-    "head": "4c9d2f22d8d85776551781df9a417fa24436a62f",
++    "head": "105120f7771b21235dffacb9bb49a5db39441bb8",
+     "production": [
+-      "apps/viewer/src/aim/docRegion.ts"
++      "apps/viewer/src/aim/docVisible.ts"
+     ],
+     "tests": [
+       "apps/viewer/src/aim/docRegion.test.ts"
+@@ -144,9 +144,9 @@
+     "exitCode": 0,
+     "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docRegion.test.ts; that file has a green, attributable baseline.",
+     "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
+-    "head": "4c9d2f22d8d85776551781df9a417fa24436a62f",
++    "head": "105120f7771b21235dffacb9bb49a5db39441bb8",
+     "production": [
+-      "apps/viewer/src/aim/docRegion.ts"
++      "apps/viewer/src/aim/docVisible.ts"
+     ],
+     "tests": [
+       "apps/viewer/src/aim/docRegion.test.ts"
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/visible-unclamped.patch b/docs/architecture/evidence/aim-d127-panels/mutations/visible-unclamped.patch
+index 3c089607..e23fb23b 100644
+--- a/docs/architecture/evidence/aim-d127-panels/mutations/visible-unclamped.patch
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/visible-unclamped.patch
+@@ -1,8 +1,8 @@
+-diff --git b/apps/viewer/src/aim/docRegion.ts a/apps/viewer/src/aim/docRegion.ts
+-index 3e0e38ef..3e3b12ad 100644
+---- b/apps/viewer/src/aim/docRegion.ts
+-+++ a/apps/viewer/src/aim/docRegion.ts
+-@@ -95,7 +95,7 @@ export function visiblePart(
++diff --git b/apps/viewer/src/aim/docVisible.ts a/apps/viewer/src/aim/docVisible.ts
++index d10126a4..b128d219 100644
++--- b/apps/viewer/src/aim/docVisible.ts
+++++ a/apps/viewer/src/aim/docVisible.ts
++@@ -21,7 +21,7 @@ export function visiblePart(
+    viewport: { left: number; top: number; width: number; height: number },
+  ): DocRegion | null {
+    if (page.width <= 0 || page.height <= 0) return null;
+-- 
+2.43.0
+
