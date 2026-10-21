@@ -118,3 +118,35 @@ export function pageInfo(total: number, offset: number, returned: number) {
     next_offset: truncated ? offset + returned : null,
   };
 }
+
+/**
+ * Strana, ktorá sa nezmestí do `maxChars`, sa skráti po celých riadkoch a súhrn sa prepočíta.
+ * Inak by orezanie textu skrylo koniec strany a next_offset by ho preskočil (eval D-126:
+ * 100 vyústiek s returned=100, viditeľných 74, ďalšia strana od 100).
+ */
+export function fitPage(result: unknown, maxChars: number): unknown {
+  if (typeof result !== "object" || result === null) return result;
+  const r = result as Record<string, unknown>;
+  if (!Array.isArray(r.rows) || typeof r.total !== "number" || typeof r.offset !== "number") return result;
+  if (JSON.stringify(r).length <= maxChars) return result;
+  const rows = r.rows as unknown[];
+  const offset = r.offset;
+  const page = (k: number) => {
+    const next = offset + k;
+    return {
+      ...r,
+      ...pageInfo(r.total as number, offset, k),
+      hint: `Strana skrátená na ${k} riadkov (dĺžka výsledku): ďalšia strana offset=${next}; menej stĺpcev v select zmestí viac.`,
+      rows: rows.slice(0, k),
+    };
+  };
+  let lo = 0;
+  let hi = rows.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (JSON.stringify(page(mid)).length <= maxChars) lo = mid;
+    else hi = mid - 1;
+  }
+  // Ani jeden riadok sa nezmestí (napr. select * s veľkými psetmi): aspoň jeden, aby sa strana posunula.
+  return page(Math.max(lo, Math.min(1, rows.length)));
+}
