@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { opToBridgeMessage, parseOps } from "../viewer-ops";
 
-import { LAST_VIEW_NAME, MAX_VIEW_GUIDS, captureFromState, planRestore } from "./plan";
+import { LAST_VIEW_NAME, MAX_VIEW_GUIDS, captureFromState, describeView, planRestore } from "./plan";
 import { G1, G2, G3, STOREY, VIEW_STATE, testDeps } from "./testing";
 import { execSavedViewTool, listSavedViews, restoreSavedView } from "./tools";
 
@@ -27,6 +27,19 @@ describe("saved_view (D-122)", () => {
     const last = await deps.store.last();
     expect(last?.name).toBe(LAST_VIEW_NAME);
     expect(last?.isolated).toEqual([G1, G2]);
+  });
+
+  it("D-132: save s druhom pohľadu, zámkom a podkladom; neplatný druh alebo dokument je chyba", async () => {
+    const deps = testDeps();
+    const doc = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
+    const r = await run(deps, { action: "save", name: "Rez A-A", view_type: "section", locked: true, underlay_document_id: doc, underlay_page: 2 });
+    expect(r.isError).toBe(false);
+    const row = deps.store.rows.find((x) => x.kind === "saved")!;
+    expect(row.viewpoint).toMatchObject({ view_type: "section", locked: true, underlay: { document_id: doc, page: 2 } });
+    expect(r.json.saved).toMatchObject({ view_type: "section", locked: true, underlay: { document_id: doc, page: 2 } });
+    expect((await run(deps, { action: "save", name: "X", view_type: "rez" })).text).toContain("view_type");
+    expect((await run(deps, { action: "save", name: "X", underlay_document_id: "abc" })).text).toContain("UUID");
+    expect((await run(deps, { action: "save", name: "X", underlay_document_id: doc, underlay_page: 0 })).text).toContain("underlay_page");
   });
 
   it("rovnaké meno (bez ohľadu na veľkosť písmen) prepíše len s overwrite", async () => {
@@ -101,10 +114,10 @@ describe("plán obnovy (D-122)", () => {
     return { id: "x", kind: "saved" as const, name: "A", description: null, model_revisions: {}, author: null, created_at: "", updated_at: "", last_used_at: null, ...state };
   };
 
-  it("poradie: čistý stav, režim, rez, izolácia, skrytie, výber, póza kamery na konci", () => {
+  it("poradie: záložka pohľadu (D-132), čistý stav, rez, izolácia, skrytie, výber, póza kamery na konci", () => {
     const { plan } = planRestore(row(), undefined);
     const kinds = plan.ops.map((o) => o.split(":")[0]);
-    expect(kinds).toEqual(["section_clear", "view", "show_all", "reset_colors", "clear_selection", "clear_focus", "section", "isolate", "hide", "select", "pose"]);
+    expect(kinds).toEqual(["tab", "section_clear", "show_all", "reset_colors", "clear_selection", "clear_focus", "section", "isolate", "hide", "select", "pose"]);
     const msgs = parseOps(plan.ops.join(";")).map(opToBridgeMessage);
     expect(msgs.at(-1)).toEqual({
       type: "SET_CAMERA",
@@ -116,9 +129,27 @@ describe("plán obnovy (D-122)", () => {
     expect(msgs).toContainEqual({ type: "HIDE", guids: [G3] });
   });
 
-  it("2D pohľad vráti režim aj podlažie", () => {
-    const r = { ...row(), viewpoint: { ...row().viewpoint, mode: "2d" as const } };
-    expect(planRestore(r, 0).plan.ops[1]).toBe(`view:2d:${STOREY}`);
+  it("D-132: pohľad sa otvorí do záložky s id a menom; 2D = zamknutá záložka, bez rezu vodorovný rez nad podlažím", () => {
+    const first = parseOps(planRestore(row(), 0).plan.ops[0]).map(opToBridgeMessage);
+    expect(first).toEqual([{ type: "VIEW_TABS", action: "open", open: { kind: "view", viewId: "x", label: "A" } }]);
+    const r = { ...row(), viewpoint: { ...row().viewpoint, mode: "2d" as const, section: null } };
+    const { plan } = planRestore(r, 0);
+    expect(parseOps(plan.ops[0]).map(opToBridgeMessage)[0]).toMatchObject({ open: { locked: true } });
+    expect(plan.ops).toContain(`section:y~h=1.2:${STOREY}`);
+    expect(plan.ops.some((o) => o.startsWith("view:"))).toBe(false);
+    expect(plan.result).toMatchObject({ view_type: "plan", locked: true, tab: "A" });
+  });
+
+  it("D-132: rezný box sa uloží z view_state a obnoví ako section_box; posun naň nejde", () => {
+    const box = { min: { x: 1, y: 2, z: 0 }, max: { x: 3, y: 4, z: 3.5 } };
+    const { state } = captureFromState({ ...VIEW_STATE, section: { box, show_gizmo: false } });
+    expect(state.viewpoint.section).toEqual({ box, show_gizmo: false });
+    const r = { ...row(), viewpoint: { ...state.viewpoint, locked: true, view_type: "detail" as const } };
+    const { plan } = planRestore(r, undefined);
+    expect(plan.ops).toContain("section_box:1,2,0,3,4,3.5:");
+    expect(parseOps("section_box:1,2,0,3,4,3.5:").map(opToBridgeMessage)).toEqual([{ type: "SET_SECTION_BOX", box }]);
+    expect(() => planRestore(r, -1)).toThrow("rezný box");
+    expect(describeView(r)).toMatchObject({ view_type: "detail", locked: true });
   });
 
   it("posun bez rezu so súradnicou a mimo rozsahu je chyba", () => {

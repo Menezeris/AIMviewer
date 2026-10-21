@@ -6,7 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { AIM_CACHE } from "@/lib/data/constants";
 import { documentFolder, referencePage } from "@/lib/data/document-tree";
 import { documentMeta, floorDrawing, type DocumentHolder } from "@/lib/data/document-meta";
-import { fetchDocumentTypes, fetchNodes, typeText } from "@/lib/data/object-documents";
+import { fetchDocumentClassifications, fetchNodes, typeText } from "@/lib/data/object-documents";
 
 /**
  * Data-access vrstva pre in-viewer knižnicu dokumentov (D-075): mapuje
@@ -76,9 +76,10 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
   );
 
   // Nositelia (D-104 krok 3): kto dokument nesie (podlažie, miestnosť, zóna...) a druh
-  // (typ informácie ISO 19650). Z nich je `meta` na zoskupenie a pôdorys podlažia.
+  // (typ informácie ISO 19650) a druh média (D-131). Z nich je `meta` na zoskupenie a
+  // pôdorys podlažia.
   const fileIds = [...docById.keys()].filter((id) => nameOf.has(id));
-  const [holdersByDoc, types] = await Promise.all([fetchHolders(fileIds), fetchDocumentTypes(fileIds)]);
+  const [holdersByDoc, classes] = await Promise.all([fetchHolders(fileIds), fetchDocumentClassifications(fileIds)]);
 
   const out: DocumentWire[] = [];
   for (const obj of objsRes.data ?? []) {
@@ -93,7 +94,7 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
     if (!mime) continue;
     const name = (obj.name as string | null) ?? id;
     const holders = holdersByDoc.get(id) ?? [];
-    const type = types.get(id);
+    const { type, mediaKind } = classes.get(id) ?? {};
     const plan = floorDrawing(holders, type?.code);
     const kind: DocumentWire["kind"] = plan.drawing ? "drawing" : mime.startsWith("image/") ? "image" : "document";
 
@@ -103,6 +104,7 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
       identification: (doc.identification as string | null) ?? null,
       folder: tree,
       type: typeText(type),
+      mediaKind: mediaKind?.name ?? mediaKind?.code,
       holders,
       lastRevisionTime: (doc.last_revision_time as string | null) ?? null,
       electronicFormat: (doc.electronic_format as string | null) ?? mime,

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import type { queryLiveViewer } from "./query";
-import { VIEWER_QUERY_TOOL_DEFINITIONS, execViewerQueryTool, viewerQueryOf } from "./viewer-query-tools";
+import { VIEWER_QUERY_TOOL_DEFINITIONS, execViewerQueryTool, lensOfState, viewerQueryOf, viewersNote } from "./viewer-query-tools";
 
 describe("get_viewer_state s obálkami (D-115)", () => {
   it("bounds alebo cieľ = obálky; inak stav", () => {
@@ -53,5 +53,34 @@ describe("get_viewer_state nesie AIM chat lens (#97)", () => {
     const bounds = fakeQuery("ok");
     await execViewerQueryTool("get_viewer_state", { bounds: true }, "https://x.test", bounds.fn);
     expect(bounds.asked).toEqual(["bounds"]);
+  });
+});
+
+describe("viac okien viewera na kanáli (D-125, #182)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const A = { mode: "3d", isolated_count: 21 };
+  const B = { mode: "3d", isolated_count: null };
+  const LENS_A = { active: true, rules: [{ name: "Priestor", count: 1 }] };
+  const LENS_B = { active: false, rules: [] };
+
+  it("stav a lens z toho istého okna, aj keď lens prvé odpovedalo iné okno; varovanie s počtom okien", async () => {
+    vi.stubEnv("LIVE_CHANNEL", "test-channel");
+    const fn = (async (_ch: string, query: string) =>
+      query === "lens_state"
+        ? { ok: true, reply: { id: "l", ok: true, result: LENS_B, viewer: "b" }, others: [{ id: "l", ok: true, result: LENS_A, viewer: "a" }] }
+        : { ok: true, reply: { id: "s", ok: true, result: A, viewer: "a" }, others: [{ id: "s", ok: true, result: B, viewer: "b" }] }) as unknown as typeof queryLiveViewer;
+    const out = JSON.parse((await execViewerQueryTool("get_viewer_state", {}, "https://x.test", fn)).text);
+    expect(out.isolated_count).toBe(21);
+    expect(out.lens).toEqual(LENS_A);
+    expect(out.viewers.count).toBe(2);
+    expect(out.viewers.warning).toMatch(/2 okien viewera/);
+  });
+
+  it("jedno okno: bez varovania; staršie okno bez identity berie prvú odpoveď", () => {
+    const one = { ok: true as const, reply: { id: "s", ok: true as const, result: A, viewer: "a" }, others: [] };
+    expect(viewersNote(one, one)).toBeNull();
+    expect(lensOfState({ ok: true, reply: { id: "l", ok: true, result: LENS_A } }, undefined)).toEqual(LENS_A);
+    // Okno so stavom lens neposlalo: radšej nič než lens iného okna.
+    expect(lensOfState({ ok: true, reply: { id: "l", ok: true, result: LENS_B, viewer: "b" } }, "a")).toBeUndefined();
   });
 });

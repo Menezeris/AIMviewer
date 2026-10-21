@@ -9,6 +9,7 @@ import {
   type ObjectDocumentNode,
   type ViewRow,
 } from "@/lib/data/object-documents-core";
+import { splitDocumentClassifications, type DocumentClassification } from "@/lib/data/media-kind";
 
 export * from "@/lib/data/object-documents-core";
 
@@ -98,13 +99,16 @@ export async function fetchDocumentObjectRows(
 }
 
 /**
- * Druh dokumentov z klasifikácie (`rel_external_reference_relationship`, migrácia
- * `20261020150000`). Bez migrácie alebo bez klasifikácie vráti prázdnu mapu:
- * druh je doplnok, nie podmienka zoznamu.
+ * Klasifikácie dokumentov (`rel_external_reference_relationship`, migrácia
+ * `20261020150000`) po osiach: typ informácie ISO 19650 a druh média (D-131).
+ * Bez migrácie alebo bez klasifikácie vráti prázdnu mapu: druh je doplnok, nie
+ * podmienka zoznamu.
  */
-export async function fetchDocumentTypes(documentIds: readonly string[]): Promise<Map<string, DocumentType>> {
-  const out = new Map<string, DocumentType>();
-  if (documentIds.length === 0) return out;
+export async function fetchDocumentClassifications(
+  documentIds: readonly string[],
+): Promise<Map<string, DocumentClassification>> {
+  const empty = new Map<string, DocumentClassification>();
+  if (documentIds.length === 0) return empty;
   const supabase = getSupabaseAdmin();
   const rels: { from_id: string; to_id: string }[] = [];
   for (let i = 0; i < documentIds.length; i += IN_CHUNK) {
@@ -113,22 +117,38 @@ export async function fetchDocumentTypes(documentIds: readonly string[]): Promis
       .select("from_id, to_id")
       .in("from_id", documentIds.slice(i, i + IN_CHUNK))
       .is("valid_until", null);
-    if (error) return out;
+    if (error) return empty;
     rels.push(...((data ?? []) as { from_id: string; to_id: string }[]));
   }
   const refIds = [...new Set(rels.map((r) => r.to_id))];
-  if (refIds.length === 0) return out;
+  if (refIds.length === 0) return empty;
   const { data: refs, error } = await supabase
     .from("classification_references")
-    .select("id, identification, name")
+    .select("id, identification, name, system_id")
     .in("id", refIds);
-  if (error) return out;
-  const refById = new Map(
-    ((refs ?? []) as { id: string; identification: string; name: string | null }[]).map((r) => [r.id, r]),
+  if (error) return empty;
+  type RefRow = { id: string; identification: string; name: string | null; system_id: string };
+  const refRows = (refs ?? []) as RefRow[];
+  const { data: systems, error: sErr } = await supabase
+    .from("classification_systems")
+    .select("id, name")
+    .in("id", [...new Set(refRows.map((r) => r.system_id))]);
+  if (sErr) return empty;
+  const systemName = new Map(((systems ?? []) as { id: string; name: string }[]).map((s) => [s.id, s.name]));
+  const refById = new Map(refRows.map((r) => [r.id, r]));
+  return splitDocumentClassifications(
+    rels.flatMap((r) => {
+      const ref = refById.get(r.to_id);
+      return ref
+        ? [{ documentId: r.from_id, code: ref.identification, name: ref.name, system: systemName.get(ref.system_id) ?? null }]
+        : [];
+    }),
   );
-  for (const r of rels) {
-    const ref = refById.get(r.to_id);
-    if (ref && !out.has(r.from_id)) out.set(r.from_id, { code: ref.identification, name: ref.name });
-  }
+}
+
+/** Typ informácie dokumentov (ISO 19650), bez druhu média (D-104, D-131). */
+export async function fetchDocumentTypes(documentIds: readonly string[]): Promise<Map<string, DocumentType>> {
+  const out = new Map<string, DocumentType>();
+  for (const [id, c] of await fetchDocumentClassifications(documentIds)) if (c.type) out.set(id, c.type);
   return out;
 }

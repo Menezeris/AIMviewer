@@ -67,11 +67,14 @@ export interface LensWire {
   ac?: { source: AutoColorSource; psetName?: string; propertyName?: string };
   /** Rozsah `ac` (D-119): farby podľa hodnoty, legenda a počty len pre prvky týchto skupín (AND v skupine). */
   s?: LensFilterGroup[];
-  /** Veľkosť legendy (D-119): `large` = panel Lens ako veľké okno, `normal` = späť do lišty. */
+  /**
+   * Veľkosť legendy (D-119): `large` = panel Lens ako veľké okno, `normal` = späť do lišty,
+   * `compact` = malá karta len s AIM chat lens, panel Lens zavretý (D-125).
+   */
   l?: LegendSize;
 }
 
-export const LEGEND_SIZES = ["large", "normal"] as const;
+export const LEGEND_SIZES = ["compact", "large", "normal"] as const;
 export type LegendSize = (typeof LEGEND_SIZES)[number];
 
 /** Najviac zón a dokumentov v jednej správe (každý = jeden dopyt na `/api/style-scope`). */
