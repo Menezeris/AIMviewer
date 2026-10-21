@@ -13,6 +13,13 @@ import { HATCH_PATTERNS, HATCH_RANGES, SECTION_CAPS, planSectionCap } from "../v
 import { DOMAIN_IFC_TYPES } from "./ifc-selector";
 import { ViewInputError, planPanels, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
 import { SECTION_SHIFT_RANGE } from "../views/plan";
+import { hasTabParams, planViewTabs } from "./view-tabs";
+
+/** `view` je to isté ako `saved_view` (D-132); prázdne = žiadny pohľad. */
+const savedViewName = (input: Record<string, unknown>): string | undefined => {
+  const v = typeof input.view === "string" && input.view.trim() ? input.view : input.saved_view;
+  return typeof v === "string" && v.trim() !== "" ? v : undefined;
+};
 
 /**
  * UI tools pohľadu (D-083 fáza 1): rez, kamera, režim 3D/2D/Split. Vydávajú
@@ -45,7 +52,8 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "show_widget=false (pri set) alebo action=widget, show_widget=false (rez ostáva). Rezná plocha = cap_style " +
       "(hatch = šrafa, solid = plná výplň, none = bez plochy, ostanú obrysy) a cap_color; šrafa = hatch_pattern " +
       "(predvolene diagonal 45°), hatch_angle_deg, hatch_spacing_px, hatch_line_width_px; aktívny rez bez zmeny " +
-      "polohy = action=widget + cap_style ('vypni šrafu' = action=widget, cap_style=none alebo solid). Príklad 'ukáž strop " +
+      "polohy = action=widget + cap_style ('vypni šrafu' = action=widget, cap_style=none alebo solid). Rezný box okolo " +
+      "prvkov (detail, napr. 'výstuž stĺpa S12') = box=true + cieľ (+ margin_m, default 0,5 m). Príklad 'ukáž strop " +
       "nad miestnosťou na 2NP, kade idú potrubia': set_section(floor=3NP, offset_m=-0.4) + " +
       "style_in_3d(hide, ifc_type=IfcCovering) + set_camera(preset=top, target=miestnosť).",
     inputSchema: {
@@ -87,6 +95,8 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
           description: "Rezná plocha: hatch = šrafa, solid = plná výplň, none = bez plochy (viewer si voľbu pamätá)",
         },
         cap_color: { type: "string", description: "Farba výplne reznej plochy #rrggbb (bez cap_style = solid)" },
+        box: { type: "boolean", description: "S action=set a cieľom: rezný box okolo obálky prvkov namiesto roviny (D-132)" },
+        margin_m: { type: "number", description: "S box: okraj boxu na každú stranu v m (0 až 20, default 0,5)" },
         hatch_pattern: {
           type: "string",
           enum: [...HATCH_PATTERNS],
@@ -160,14 +170,18 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "set_view_mode",
     description:
-      "UI AKCIA: prepne viewer medzi 3D, 2D (pôdorys podlažia) a Split (2D + 3D vedľa seba). 2D s " +
+      "UI AKCIA: záložky vieweru (D-132, ako v Revite): každý pohľad je záložka na celú plochu. mode=3d = záložka 3D, " +
+      "mode=2d + floor = pôdorys podlažia v záložke, mode=split = pôdorys vedľa 3D (s kalibrovaným podkladom). 2D s " +
       "kalibrovaným výkresom ukáže PDF pôdorys, inak model zhora s rezom 1,2 m nad podlahou; miestnosti " +
       "ofarbené cez style_in_3d sú v ňom vyplnené farbou a popísané názvom. Na " +
       "prehliadku budovy podlažie po podlaží volaj mode=2d s floor postupne (krok na pokyn používateľa). " +
       "reset=true s mode=3d vráti pôvodný pohľad (bez rezu, farieb, skrytia, výberu a zvýraznenia, izometria). " +
-      "ULOŽENÝ POHĽAD: saved_view=meno obnoví pohľad uložený cez saved_view (režim, rez, izolácia, skrytie, " +
-      "kamera; mode netreba); 'ako minule' = saved_view='Posledný pohľad'; section_offset_m posunie rez po jeho " +
-      "osi ('o meter nižšie' = -1). Zoznam: get_viewer_state(saved_views=true). PANELY: panels otvorí, zavrie alebo " +
+      "ULOŽENÝ POHĽAD: view (alebo saved_view)=meno ho otvorí do vlastnej záložky (rez alebo box, zamknutá kamera, " +
+      "izolácia, skrytie; mode netreba); 'ako minule' = view='Posledný pohľad'; section_offset_m posunie rez po jeho " +
+      "osi ('o meter nižšie' = -1). Zoznam: get_viewer_state(saved_views=true). ZÁLOŽKY: tab=menovka prepne " +
+      "('späť na 3D' = tab='3D'), beside=menovka dá záložku vedľa aktívnej (dokument vedľa 3D alebo pohľadu; none " +
+      "zruší), close_tab=menovka alebo all zavrie. Otvorené záložky (tabs) vráti stav po príkaze aj get_viewer_state. " +
+      "Dokument do záložky = open_drawing(target=tab). PANELY: panels otvorí, zavrie alebo " +
       "prepne panely (lens, properties, underlays, documents, lists, model_tree; all=close = čistý pohľad, " +
       "napr. {all: 'close', properties: 'open'} = všetko okrem vlastností), aj bez mode; výsledok vráti stav " +
       "všetkých panelov (open, where left/right/bottom/floating, size).",
@@ -177,7 +191,11 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         mode: { type: "string", enum: ["3d", "2d", "split"] },
         floor: floorProp,
         reset: { type: "boolean", description: "S mode=3d: zruší rez, farby, skrytie, výber a zvýraznenie a vráti kameru" },
-        saved_view: { type: "string", description: "Meno uloženého pohľadu na obnovu (bez mode)" },
+        saved_view: { type: "string", description: "Meno uloženého pohľadu na obnovu (bez mode); to isté ako view" },
+        view: { type: "string", description: "Meno uloženého pohľadu: otvorí ho do záložky (bez mode)" },
+        tab: { type: "string", description: "Prepnúť na otvorenú záložku: '3D', menovka pôdorysu, pohľadu alebo dokumentu" },
+        beside: { type: "string", description: "Záložka vedľa aktívnej (napr. dokument vedľa 3D); 'none' = aktívna na celú plochu" },
+        close_tab: { type: "string", description: "Zavrieť záložku (menovka) alebo 'all' (ostane 3D)" },
         panels: {
           type: "object",
           description: "Panely: {panel: open|close|toggle}; all len close",
@@ -267,6 +285,9 @@ export async function execViewTool(
   if (cap && input.action === "widget" && typeof input.show_widget !== "boolean") {
     // Len vzhľad reznej plochy aktívneho rezu (D-120).
     plan = { ops: [], label: "3D", result: { ok: true } };
+  } else if (name === "set_section" && input.action === "set" && input.box === true) {
+    const { planSectionBox } = await import("./view-tabs");
+    plan = planSectionBox(input, await resolveTargets(input));
   } else if (name === "set_section") {
     const floor = input.action === "set" ? await resolveFloor(input.floor) : null;
     const targets = input.action === "set" && (input.target_ids_or_refs || input.global_ids) ? await resolveTargets(input) : [];
@@ -283,9 +304,11 @@ export async function execViewTool(
     }
   } else if (name === "set_camera") {
     plan = planCamera(input, await resolveTargets(input));
-  } else if (name === "set_view_mode" && typeof input.saved_view === "string" && input.saved_view.trim() !== "") {
+  } else if (name === "set_view_mode" && hasTabParams(input)) {
+    plan = planViewTabs(input);
+  } else if (name === "set_view_mode" && savedViewName(input)) {
     const [{ restoreSavedView }, { defaultSavedViewDeps }] = await Promise.all([import("@/lib/views/tools"), import("@/lib/views/runtime")]);
-    plan = await restoreSavedView(input, defaultSavedViewDeps());
+    plan = await restoreSavedView({ ...input, saved_view: savedViewName(input) }, defaultSavedViewDeps());
   } else if (name === "set_view_mode") {
     // D-127: samotné panely nepotrebujú režim.
     const panelsOnly = input.panels !== undefined && input.mode === undefined && input.reset !== true;

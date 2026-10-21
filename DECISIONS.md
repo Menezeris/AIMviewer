@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-21** - **D-132 (záložky vo vieweri, #165):** pohľad = orez (kamera zamknutá kolmo + rovina alebo box), záložka = otvorený pohľad na celú plochu (3D, pôdorys podlažia za behu, uložený pohľad, dokument), Vedľa medzi záložkami, `open_drawing target`, `set_view_mode view/tab/beside/close_tab`, `set_section box`, `view_state.tabs`.
 - **2026-10-20** - **D-119 (miestnosti a farby z chatu, #135 #136 #137):** Lens z chatu a `show` zapnú skryté IfcSpace/IfcSpatialZone, fork v 2D vyplní a popíše ofarbené miestnosti, `color_by` rešpektuje filter volania (inak viditeľné prvky) cez `capturedScope`, `style_in_3d action=legend` s `legend_size` zväčší legendu.
 - **2026-10-20** - **D-116 (release train, rozširuje D-103):** feature PR forku len rýchla cesta, plné CI raz na balíku `release/aim-*` (merge na pokyn Samuela), výber viewera nad 3D (`?viewer=pr-N`, náhľad PR forku) na živé testovanie s MCP pred zlúčením, smoke po nasadení, tag balíka (ifc-lite #77).
 - **2026-10-19** - **D-112 (meranie z geometrie, #74):** `ifc_measure` tesseluje model ako `clash_check` a meria svetlú vzdialenosť dvoch prvkov (aj ASR voči VZT), výšku nad doskou, rozmery, povrch, pôdorys a objem z meshu s porovnaním s Qto.
@@ -6277,3 +6278,59 @@ nemá `_georef` ani jeden výkres. Konektor nevie podklad nastaviť. Prototyp na
 
 **Zavrhnuté:** len popisky bez doladenia (chyba okolo 1 m); parser PDF na serveri (D-123, dva extraktory);
 kalibrácia viazaná na podlažie (nepokryje rezy a detaily).
+
+---
+
+### D-132 - Záložky vo vieweri: pohľad je orez, záložka je otvorený pohľad
+**Status:** rozhodnuté (2026-10-21, Samuel cez orchestrátora; číslo pridelené v registri #60). Issue #165,
+fork patch nad `claude/aim-d127-panely` (fork #97). Nadväzuje na D-072 (pôdorys s podkladom, zámok
+kamery), D-075 (karty dokumentov, režim 2D na celú plochu), D-098 (najprv existujúce funkcie), D-114 (najprv
+napasuj), D-122 (uložené pohľady), D-127 (panely z chatu), D-129 (AIM vrstva). Kalibráciu podkladu k pohľadu
+rieši D-133 (#170).
+
+**Kontext:** Samuel chce prepínať medzi pohľadmi na celú obrazovku ako v Revite (3D, pôdorys, rez, PDF), nie
+mať výkres ako kartu vedľa 3D. `open_drawing(in_viewer)` otvoril dokument vždy vedľa 3D; `set_view_mode`
+poznal len 3D, 2D a Split.
+
+**Rozhodnutie:**
+1. **Pohľad je orez nad tým istým modelom:** kamera zamknutá kolmo (ortografická, zhora alebo zboku) a rezná
+   rovina alebo rezný box. 2D nie je režim ani prepínač, ale typ pohľadu. Filter a grafika rezu sú samostatná
+   funkcia neskôr.
+2. **Pôdorysy podlaží sú automatické pohľady za behu** z IfcBuildingStorey (fork, dnešné `enterDrawingView`
+   D-072: zhora, zamknuté, rez 1,2 m nad podlahou); v DB sa neukladajú. Podklad je dokument s `_georef` na
+   podlažie ako dnes; kalibrácia ostáva v `_georef` dokumentu (D-133 ho rozšíri o rovinu).
+3. **Ručný pohľad = riadok `saved_views` (D-122), bez migrácie:** do `viewpoint` pribudne `view_type`
+   (3d | plan | section | detail), `camera.locked`, `section.box` (obálka v IFC svete) a `underlay`
+   (`document_id`, `page`, len väzba). Riadok vzniká pri ručnom pohľade alebo uložení upraveného pôdorysu.
+4. **Záložka = otvorený pohľad, len počas relácie** (fork, `apps/viewer/src/aim/viewTabs*`): 3D (vždy prvá),
+   pôdorysy, uložené pohľady a dokumenty D-075. Aktívna záložka má celú plochu; dokument zbalí 3D panel tým
+   istým spôsobom ako režim 2D (canvas sa neremountuje). Pri prepnutí sa stav canvasu záložky (kamera, celá
+   sada rovín alebo box, zámok, rez podlažia) odloží a pri návrate vráti. Prepínač 3D | 2D | Split zmizol z
+   pásu AIM.
+5. **"Vedľa" medzi záložkami:** viewer má jeden 3D canvas, preto vedľa seba ide 3D alebo pohľad + dokument,
+   3D + pôdorys ako 2D plán (panel D-072, zatiaľ len s kalibrovaným podkladom), nie dva 3D pohľady.
+6. **Chat bez nového toolu (D-114):**
+   - `open_drawing target=tab|split` (predvolené `tab`, `in_viewer` ostáva);
+   - `set_view_mode`: `view` (alias `saved_view`) otvorí uložený pohľad do záložky, `mode=2d floor` = pôdorys
+     v záložke, `mode=split` = pôdorys vedľa 3D, `mode=3d` = záložka 3D, `tab` prepne, `beside` dá vedľa
+     (`none` zruší), `close_tab` zavrie (`all`);
+   - `set_section box=true` + cieľ (+ `margin_m`) = rezný box okolo prvkov;
+   - `saved_view save` s `view_type`, `locked`, `underlay_document_id`, `underlay_page`; box a rovinu vezme z viewera;
+   - `get_viewer_state` vráti `tabs` (druh, menovka, aktívna, vedľa) a `section.box`.
+7. **Most:** `VIEW_TABS` (open | activate | beside | unbeside | close), `SET_SECTION_BOX`, `DOCUMENT_OPEN layout`,
+   `view_state.tabs`; `SET_VIEW_MODE` ide cez záložky. Op `tab:` a `section_box:` v `lib/viewer-tabs.ts`.
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool `view_tabs` (návrh z issue):* záložky sú prepnutie zobrazenia, to robí `set_view_mode`
+  (čítanie, UI akcia); dokument otvára `open_drawing`. Nový tool by len zdvojil ich vstupy.
+- *Záložky ako trvalé dáta:* Samuel, záložky sú len počas relácie; trvalý je uložený pohľad.
+
+**Zavrhnuté:**
+- *Prepínač 3D | 2D | Split ako hlavné rozhranie:* 2D je typ pohľadu (Samuel).
+- *Automatické pôdorysy ako riadky v DB:* Samuel, za behu z modelu; kalibrácia ostáva na dokumente.
+- *Filter viditeľnosti v pohľade (pravidlo):* neskôr, samostatná funkcia (Samuel).
+- *Dve 3D záložky vedľa seba:* druhý renderer (WebGPU) je iný rozsah.
+
+**Otvorené:** pôdorys vedľa 3D bez kalibrovaného podkladu (vektorový plán upstreamu žije v režime úprav
+modelu, nie na čítanie); zvislý podklad pre rezy po D-133; zoznam uložených pohľadov v lište forku (dnes z chatu);
+mobil má zatiaľ starý prepínač.

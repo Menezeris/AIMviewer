@@ -945,6 +945,38 @@
       "expect": { "tools_called": ["calibrate_underlay"] },
       "verified": false,
       "notes": "D-133 (issue #170): calibrate_underlay(document_id=OCB_SO01_ASR_D-1-1-05_REZ-A, section_plane={axis:x, coordinate_m:47.42}). Prototyp: medián 8 mm."
+    },
+    {
+      "id": "view-tab-floor-plan",
+      "category": "viewer",
+      "question": "Otvor pôdorys 1NP v novej záložke a 3D model nechaj vo vlastnej.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-132 (issue #165): set_view_mode(mode=2d, floor=1NP) otvorí pôdorys do záložky, 3D ostane prvou záložkou. Overí sa až s viewerom s fork patchom D-132."
+    },
+    {
+      "id": "view-tab-back-to-3d",
+      "category": "viewer",
+      "question": "Prepni späť na 3D model bez straty rezu a kamery.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-132 (issue #165): set_view_mode(tab=3D); stav 3D záložky vráti fork. Nie reset."
+    },
+    {
+      "id": "view-tab-drawing",
+      "category": "viewer",
+      "question": "Otvor výkres pôdorysu 1NP na celú obrazovku, potom ho zavri a vráť sa na 3D.",
+      "expect": { "tools_called": ["open_drawing", "set_view_mode"] },
+      "verified": false,
+      "notes": "D-132 (issue #165): open_drawing(target=tab), potom set_view_mode(close_tab=menovka) alebo tab=3D; document_id z search_documents alebo get_object."
+    },
+    {
+      "id": "view-tab-section-and-plan",
+      "category": "viewer",
+      "question": "Vytvor záložku so zvislým rezom cez schodisko a ďalšiu s pôdorysom.",
+      "expect": { "tools_called": ["set_section", "saved_view", "set_view_mode"] },
+      "verified": false,
+      "notes": "D-132 (issue #165): set_section(fit=along) cez schodisko, set_camera(preset=section, orthographic), saved_view(save, view_type=section, locked=true), set_view_mode(view=meno) a set_view_mode(mode=2d, floor). Poradie volaní nie je pevné."
     }
   ]
 }

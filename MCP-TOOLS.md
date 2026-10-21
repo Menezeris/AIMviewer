@@ -38,17 +38,17 @@ Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/vie
 - **`style_in_3d`** (D-066, čítanie) - UI AKCIA: ofarbí / skryje / znova zobrazí / izoluje prvky v 3D modeli, alebo resetne pohľad.
   Parametre: `action*=colorize|transparent|hide|show|isolate|xray|show_all|reset_colors|legend`, `mode=add|replace`, `color_by=ifc_type|system|zone|material|model|classification|property|attribute`, `legend_size=compact|large|normal`, `clear_section`, `color_by_key`, `color`, `ids_or_refs`, `global_ids`, `ifc_type`, `ifc_types`, `domain=hvac|plumbing|electrical|architecture|structure`, `model`, `predefined_type`, `property`, `value`, `pset`, `query`, `system`, `system_type`, `not_in_system`, `zone`, `storey`, `document`, `page`, `groups`
 - **`open_drawing`** (D-056, čítanie) - UI AKCIA: otvorí výkres/dokument v prehliadačke, voliteľne so zvýrazneným prvkom, stranou, výrezom strany (region = priblíženie na časť strany v karte vo vieweri) a rámikmi okolo textu (highlights).
-  Parametre: `document_id*`, `focus_id`, `page`, `in_viewer`, `region`, `highlights`
+  Parametre: `document_id*`, `focus_id`, `page`, `in_viewer`, `target=tab|split`, `region`, `highlights`
 - **`open_node`** (D-056, čítanie) - UI AKCIA: otvorí detailnú kartu uzla (asset, typ, miestnosť, podlažie, systém, osoba, organizácia…).
   Parametre: `id_or_ref*`
 - **`search_documents`** (D-063, čítanie) - OBSAH dokumentov a výkresov (textová vrstva PDF strán: popisky a čísla miestností, kóty, hrúbky, legendy, špecifikácie, pečiatky, text technických správ).
   Parametre: `q`, `document_id`, `page`, `include_blocks`, `include_links`, `limit`
 - **`set_section`** (D-083, čítanie) - UI AKCIA: rez modelom v 3D. Vodorovný rez nad podlažím = floor + offset_m (výška nad úrovňou podlažia v m, default 1,2 = pôdorysný rez; záporná = pod úrovňou).
-  Parametre: `action*=set|clear|widget`, `orientation=horizontal|vertical_x|vertical_z`, `floor`, `offset_m`, `relative_to=floor|ceiling`, `position_percent`, `target_ids_or_refs`, `global_ids`, `fit=along|across|center`, `coordinate_m`, `flipped`, `show_widget`, `cap_style=hatch|solid|none`, `cap_color`, `hatch_pattern=diagonal|diagonal_reverse|cross|crosshatch|horizontal|vertical|dots|brick|insulation`, `hatch_angle_deg`, `hatch_spacing_px`, `hatch_line_width_px`
+  Parametre: `action*=set|clear|widget`, `orientation=horizontal|vertical_x|vertical_z`, `floor`, `offset_m`, `relative_to=floor|ceiling`, `position_percent`, `target_ids_or_refs`, `global_ids`, `fit=along|across|center`, `coordinate_m`, `flipped`, `show_widget`, `cap_style=hatch|solid|none`, `cap_color`, `box`, `margin_m`, `hatch_pattern=diagonal|diagonal_reverse|cross|crosshatch|horizontal|vertical|dots|brick|insulation`, `hatch_angle_deg`, `hatch_spacing_px`, `hatch_line_width_px`
 - **`set_camera`** (D-083, čítanie) - UI AKCIA: kamera v 3D. preset = smer pohľadu (top/bottom/front/back/left/right/iso; fit_all = celý model; section = kolmo na aktívny rez, ako tlačidlo Set view; keep = zachovať smer, default). fit = čo zarámovať pri danom smere: visible (viditeľné, aj izolované prvky), selection (výber vo vieweri).
   Parametre: `preset=top|bottom|front|back|left|right|iso|fit_all|keep|section`, `fit=visible|selection`, `target_ids_or_refs`, `global_ids`, `ifc_type`, `ifc_types`, `domain=hvac|plumbing|electrical|architecture|structure`, `model`, `zoom_percent`, `orbit_h_deg`, `orbit_v_deg`, `pan_x_percent`, `pan_y_percent`, `projection=perspective|orthographic`, `margin_percent`, `area=left|right|top|bottom|front|back`
-- **`set_view_mode`** (D-083, čítanie) - UI AKCIA: prepne viewer medzi 3D, 2D (pôdorys podlažia) a Split (2D + 3D vedľa seba). 2D s kalibrovaným výkresom ukáže PDF pôdorys, inak model zhora s rezom 1,2 m nad podlahou; miestnosti ofarbené cez style_in_3d sú v ňom vyplnené farbou a popísané názvom.
-  Parametre: `mode=3d|2d|split`, `floor`, `reset`, `saved_view`, `panels`, `section_offset_m`
+- **`set_view_mode`** (D-083, čítanie) - UI AKCIA: záložky vieweru (D-132, ako v Revite): každý pohľad je záložka na celú plochu. mode=3d = záložka 3D, mode=2d + floor = pôdorys podlažia v záložke, mode=split = pôdorys vedľa 3D (s kalibrovaným podkladom). 2D s kalibrovaným výkresom ukáže PDF pôdorys, inak model zhora s rezom 1,2 m nad podlahou; miestnosti ofarbené cez style_in_3d sú v ňom vyplnené farbou a popísané názvom.
+  Parametre: `mode=3d|2d|split`, `floor`, `reset`, `saved_view`, `view`, `tab`, `beside`, `close_tab`, `panels`, `section_offset_m`
 - **`open_list`** (D-111, čítanie) - Tabuľka prvkov v paneli Lists vo vieweri (export do CSV/XLSX/PDF): "exportuj dvere na 1NP ako tabuľku", "zoznam tvaroviek s rozmermi do Excelu".
   Parametre: `name`, `columns`, `ifc_type`, `ifc_types`, `domain`, `predefined_type`, `storey`, `system`, `system_type`, `zone`, `document`, `page`, `property`, `pset`, `value`, `query`, `model`, `global_ids`, `ids_or_refs`
 
@@ -64,7 +64,7 @@ Zdroj: živý viewer (spätný kanál). Definície: lib/live/viewer-query-tools.
 Zdroj: DB (saved_views) + živý viewer. Definície: lib/views/tools.ts (zoznam v get_viewer_state, obnova v set_view_mode). Len MCP.
 
 - **`saved_view`** (D-122, zápis) - ULOŽÍ POHĽAD viewera pod menom (spoločný pre stavbu, D-122): 'ulož to ako Pôdorys technickej miestnosti 3.14'. action=save vezme z otvoreného viewera kameru a projekciu, rez, režim a podlažie, izolované, skryté a vybrané prvky (farby z style_in_3d sa neukladajú); existujúce meno prepíše len s overwrite=true. rename: name -> new_name. delete: zmaže pohľad.
-  Parametre: `action*=save|rename|delete`, `name*`, `new_name`, `description`, `overwrite`, `author`
+  Parametre: `action*=save|rename|delete`, `name*`, `new_name`, `description`, `overwrite`, `author`, `view_type=3d|plan|section|detail`, `locked`, `underlay_document_id`, `underlay_page`
 
 ## BCF témy nad modelmi (2)
 

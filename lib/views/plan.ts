@@ -9,11 +9,11 @@ import {
   poseOp,
   sectionOp,
   selectOp,
-  viewModeOp,
   type Projection,
   type SectionAxis,
   type ViewMode,
 } from "../viewer-ops";
+import { sectionBoxOp, tabOp, type Box3 } from "../viewer-tabs";
 
 /**
  * Čistá logika uložených pohľadov (D-122): odpoveď `view_state` -> záznam,
@@ -31,9 +31,16 @@ const LAST_ALIASES = new Set(["posledny pohlad", "posledny", "last", "posledný 
 
 export const isLastName = (name: string) => LAST_ALIASES.has(name.trim().toLowerCase());
 
+/** Druh pohľadu (D-132): pôdorys, rez, detail (box) alebo 3D. */
+export const VIEW_TYPES = ["3d", "plan", "section", "detail"] as const;
+export type ViewType = (typeof VIEW_TYPES)[number];
+
 /** Rez, ako ho vracia `view_state` (os hosta: y = výška = IFC Z). */
 export interface SavedSection {
-  axis: SectionAxis;
+  /** Chýba pri reznom boxe (D-132). */
+  axis?: SectionAxis;
+  /** Rezný box v IFC svete (D-132) namiesto roviny. */
+  box?: Box3;
   crosses?: string;
   position_percent?: number;
   coordinate?: number;
@@ -50,6 +57,10 @@ export interface SavedViewpoint {
   storey_label?: string | null;
   camera: ViewerCamera | null;
   section: SavedSection | null;
+  /** D-132: druh pohľadu, zamknutá kamera a väzba na podklad (dokument + strana, kalibrácia je v `_georef`). */
+  view_type?: ViewType;
+  locked?: boolean;
+  underlay?: { document_id: string; page: number } | null;
   selection_count: number;
   hidden_count: number;
   isolated_count: number | null;
@@ -79,7 +90,16 @@ const guidList = (v: unknown): string[] =>
   Array.isArray(v) ? [...new Set(v.filter((g): g is string => typeof g === "string" && g !== ""))].slice(0, MAX_VIEW_GUIDS) : [];
 const count = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
 
+const vec = (v: unknown) =>
+  isObj(v) && [v.x, v.y, v.z].every((c) => typeof c === "number" && Number.isFinite(c)) ? { x: v.x as number, y: v.y as number, z: v.z as number } : null;
+
 function sectionOf(raw: unknown): SavedSection | null {
+  if (isObj(raw) && isObj(raw.box)) {
+    // Rezný box (D-132): obálka v IFC svete.
+    const min = vec(raw.box.min);
+    const max = vec(raw.box.max);
+    return min && max ? { box: { min, max }, ...(typeof raw.show_gizmo === "boolean" ? { show_gizmo: raw.show_gizmo } : {}) } : null;
+  }
   if (!isObj(raw) || !(SECTION_AXES as readonly unknown[]).includes(raw.axis)) return null;
   const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
   const s: SavedSection = { axis: raw.axis as SectionAxis };
@@ -146,6 +166,9 @@ export function describeView(row: SavedViewRow) {
     ...(row.kind === "last" ? { last: true } : {}),
     description: row.description,
     mode: vp.mode,
+    view_type: vp.view_type ?? (vp.mode === "2d" ? "plan" : "3d"),
+    ...(vp.locked ? { locked: true } : {}),
+    ...(vp.underlay ? { underlay: vp.underlay } : {}),
     storey: vp.storey_label ?? vp.storey_guid,
     section: vp.section,
     camera: cam ? { projection: cam.projection ?? null, position: cam.position, target: cam.target } : null,
@@ -187,27 +210,36 @@ export function planRestore(row: SavedViewRow, offsetRaw: unknown): { plan: View
   }
   const vp = row.viewpoint;
   const s = vp.section;
-  if (offset !== 0 && (!s || s.coordinate === undefined)) {
+  if (offset !== 0 && (!s || (s.coordinate === undefined && !s.box))) {
     throw new ViewInputError(`Pohľad '${row.name}' nemá rez so súradnicou, section_offset_m sa nedá použiť; nastav rez cez set_section.`);
   }
   const mode: ViewMode = vp.mode ?? "3d";
+  // D-132: pohľad sa otvorí do vlastnej záložky (predošlá si zapamätá stav), potom sa na ňu použije
+  // ten istý zápis ako predtým. Pôdorys (2D) je zamknutý pohľad zhora s rezom nad podlažím, nie režim.
+  const plan2d = mode === "2d" && vp.storey_guid;
+  const locked = vp.locked === true || Boolean(plan2d);
   const ops = [
+    tabOp("open", { open: { kind: "view", viewId: row.id, label: row.name, ...(locked ? { locked: true } : {}) } }),
     SECTION_CLEAR_OP,
-    viewModeOp(mode, mode !== "3d" ? (vp.storey_guid ?? undefined) : undefined),
     "show_all::",
     "reset_colors::",
     "clear_selection::",
     "clear_focus::",
   ];
   let section: SavedSection | null = s;
-  if (s && s.coordinate !== undefined) {
+  if (s?.box) {
+    if (offset) throw new ViewInputError(`Pohľad '${row.name}' má rezný box, section_offset_m sa naň nedá použiť.`);
+    ops.push(sectionBoxOp(s.box));
+  } else if (plan2d && !s) {
+    ops.push(sectionOp({ storeyGuid: vp.storey_guid ?? undefined, offsetM: 1.2 }));
+  } else if (s?.axis && s.coordinate !== undefined) {
     const coordinate = round3(s.coordinate + offset);
     if (Math.abs(coordinate) > SECTION_COORDINATE_LIMIT) throw new ViewInputError("Rez po posune je mimo rozsahu modelu.");
     section = { ...s, coordinate };
     // Percento patrí pôvodnej súradnici; po posune by v poslednom pohľade klamalo (súradnica pri obnove vyhráva).
     if (offset) delete section.position_percent;
     ops.push(sectionOp({ axis: s.axis, coordinate, flipped: s.flipped, showGizmo: s.show_gizmo }));
-  } else if (s && s.position_percent !== undefined) {
+  } else if (s?.axis && s.position_percent !== undefined) {
     ops.push(sectionOp({ axis: s.axis, position: s.position_percent, flipped: s.flipped, showGizmo: s.show_gizmo }));
   }
   if (row.isolated && row.isolated.length > 0) ops.push(`isolate::${row.isolated.join(".")}`);
@@ -227,14 +259,17 @@ export function planRestore(row: SavedViewRow, offsetRaw: unknown): { plan: View
       result: {
         ok: true,
         restored: row.name,
-        mode,
+        tab: row.name,
+        view_type: vp.view_type ?? (plan2d ? "plan" : "3d"),
+        locked,
+        ...(vp.underlay ? { underlay: vp.underlay } : {}),
         section,
         ...(offset ? { section_offset_m: offset } : {}),
         isolated: row.isolated ? row.isolated.length : null,
         hidden: row.hidden.length,
         camera: Boolean(pose),
         ...(notes.length ? { notes } : {}),
-        note: "Odoslané do viewera; zapísané ako 'Posledný pohľad'. Upravený pohľad ulož cez saved_view(action=save).",
+        note: "Otvorené v záložke viewera; zapísané ako 'Posledný pohľad'. Upravený pohľad ulož cez saved_view(action=save). Späť na 3D = set_view_mode(tab='3D').",
       },
     },
     restored: { viewpoint: { ...vp, section }, selection: row.selection, hidden: row.hidden, isolated: row.isolated },

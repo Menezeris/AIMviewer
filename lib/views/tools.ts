@@ -1,7 +1,7 @@
 import type { ToolDefinition } from "../llm/provider";
 import { ViewInputError, type ViewPlan } from "../llm/view-plan";
 
-import { LAST_VIEW_NAME, captureFromState, describeView, isLastName, planRestore, type SavedViewRow } from "./plan";
+import { LAST_VIEW_NAME, VIEW_TYPES, captureFromState, describeView, isLastName, planRestore, type SavedViewRow, type ViewType } from "./plan";
 import type { SavedViewStore } from "./store";
 
 /**
@@ -26,7 +26,12 @@ export const SAVED_VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "(farby z style_in_3d sa neukladajú); existujúce meno prepíše len s overwrite=true. rename: name -> new_name. " +
       "delete: zmaže pohľad. Zoznam a opis pohľadov = get_viewer_state(saved_views=true); obnova = " +
       "set_view_mode(saved_view=meno, section_offset_m=-1 pre 'rez o meter nižšie'). Uloženie aj obnova sa zapíšu " +
-      "ako 'Posledný pohľad' ('ako minule' = saved_view='Posledný pohľad').",
+      "ako 'Posledný pohľad' ('ako minule' = saved_view='Posledný pohľad'). POHĽAD AKO V REVITE (D-132) = orez: " +
+      "view_type (plan | section | detail | 3d), locked=true zamkne kameru (pohľad kolmo, ťahanie posúva), rovinu alebo " +
+      "rezný box (set_section box=true) vezme z viewera; underlay_document_id + underlay_page naviaže PDF podklad " +
+      "(kalibrácia je pri dokumente). Postup 'detail výstuže stĺpa S12': set_section(action=set, box=true, " +
+      "target_ids_or_refs=[S12]), set_camera(preset=front, projection=orthographic, fit=visible), saved_view(save, " +
+      "view_type=detail, locked=true).",
     inputSchema: {
       type: "object",
       properties: {
@@ -36,6 +41,10 @@ export const SAVED_VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         description: { type: "string", description: "save: čo pohľad ukazuje (voliteľné)" },
         overwrite: { type: "boolean", description: "save: prepísať pohľad s rovnakým menom" },
         author: { type: "string", description: `Kto ukladá (predvolene '${DEFAULT_VIEW_AUTHOR}')` },
+        view_type: { type: "string", enum: [...VIEW_TYPES], description: "save: druh pohľadu (default plan pri 2D, inak 3d)" },
+        locked: { type: "boolean", description: "save: kamera zamknutá kolmo (pôdorys, rez, detail)" },
+        underlay_document_id: { type: "string", description: "save: objects.id PDF podkladu pohľadu (UUID)" },
+        underlay_page: { type: "number", description: "save: strana podkladu (default 1)" },
       },
       required: ["action", "name"],
     },
@@ -77,6 +86,24 @@ async function loadView(deps: Pick<SavedViewDeps, "store">, raw: unknown): Promi
   );
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** D-132: druh pohľadu, zámok a väzba na podklad z parametrov uloženia. */
+function viewDefinition(args: Record<string, unknown>, mode: string | null) {
+  if (args.view_type !== undefined && !(VIEW_TYPES as readonly unknown[]).includes(args.view_type)) {
+    throw new ViewInputError(`view_type: ${VIEW_TYPES.join(" | ")}.`);
+  }
+  const doc = args.underlay_document_id;
+  if (doc !== undefined && (typeof doc !== "string" || !UUID.test(doc))) throw new ViewInputError("underlay_document_id: objects.id dokumentu (UUID).");
+  const page = args.underlay_page ?? 1;
+  if (typeof page !== "number" || !Number.isInteger(page) || page < 1) throw new ViewInputError("underlay_page: celé číslo od 1.");
+  return {
+    view_type: (args.view_type as ViewType | undefined) ?? (mode === "2d" ? "plan" : "3d"),
+    ...(args.locked === true ? { locked: true } : {}),
+    ...(typeof doc === "string" ? { underlay: { document_id: doc, page } } : {}),
+  };
+}
+
 async function save(args: Record<string, unknown>, deps: SavedViewDeps) {
   const name = nameOf(args.name);
   if (isLastName(name)) throw new ViewInputError(`'${LAST_VIEW_NAME}' sa zapisuje sám; zvoľ iné meno.`);
@@ -87,6 +114,7 @@ async function save(args: Record<string, unknown>, deps: SavedViewDeps) {
   const raw = await deps.viewState();
   if (typeof raw === "string") throw new ViewInputError(`Pohľad sa nedá uložiť: ${raw}.`);
   const { state, notes } = captureFromState(raw);
+  Object.assign(state.viewpoint, viewDefinition(args, state.viewpoint.mode));
   if (state.viewpoint.storey_guid) state.viewpoint.storey_label = await deps.storeyLabel(state.viewpoint.storey_guid).catch(() => null);
   const author = text(args.author, 200) || DEFAULT_VIEW_AUTHOR;
   const write = {

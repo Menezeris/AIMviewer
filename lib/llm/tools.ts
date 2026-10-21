@@ -744,8 +744,15 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         in_viewer: {
           type: "boolean",
           description:
-            "true = otvorí dokument ako kartu vedľa 3D modelu vo vieweri (bez zvýraznenia " +
-            "prvku); default false = samostatná prehliadačka výkresu",
+            "true = otvorí dokument vo vieweri (bez zvýraznenia prvku), ako záložku podľa target; " +
+            "default false = samostatná prehliadačka výkresu",
+        },
+        target: {
+          type: "string",
+          enum: ["tab", "split"],
+          description:
+            "Vo vieweri (D-132): tab = vlastná záložka na celú plochu (default), split = vedľa 3D alebo " +
+            "pohľadu ('otvor výkres vedľa modelu'). Zadaný target otvára vo vieweri aj bez in_viewer.",
         },
         region: {
           type: "object",
@@ -2560,16 +2567,22 @@ export class AskToolRuntime {
     if (input.region !== undefined && !region) {
       throw new Error("region musí mať x, y, width, height v % strany (0-100) a ležať na strane.");
     }
-    if (input.in_viewer === true || region) {
-      // Karta dokumentu vedľa 3D (D-075 DOCUMENT_OPEN cez op `doc`, D-083), výrez strany D-117, rámiky D-123.
+    if (input.target !== undefined && input.target !== "tab" && input.target !== "split") {
+      throw new Error("target: tab (záložka na celú plochu) alebo split (vedľa 3D).");
+    }
+    if (input.in_viewer === true || region || input.target !== undefined) {
+      // Dokument vo vieweri (D-075 DOCUMENT_OPEN cez op `doc`, D-083), výrez strany D-117, rámiky D-123,
+      // záložka na celú plochu alebo vedľa 3D (D-132).
+      const layout = input.target === "split" ? "split" : undefined;
       this.actions.push({
         type: "navigate",
-        url: `/ifc?ops=${encodeURIComponent(docOp(doc.id, page ?? undefined, region, highlights))}&r=${Date.now().toString(36)}`,
+        url: `/ifc?ops=${encodeURIComponent(docOp(doc.id, page ?? undefined, region, highlights, layout))}&r=${Date.now().toString(36)}`,
         label: `Viewer: ${label}`,
       });
       return {
         ok: true,
         opened: "viewer_document",
+        layout: layout ?? "tab",
         document: label,
         ...(page ? { page } : {}),
         ...(region ? { region: { x: region.x, y: region.y, width: region.w, height: region.h } } : {}),
