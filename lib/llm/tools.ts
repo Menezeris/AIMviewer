@@ -29,6 +29,7 @@ import {
   clampOffset,
   orderTerms,
   pageInfo,
+  fitPage,
   parseRelated,
   sortRows,
   type OrderTerm,
@@ -217,7 +218,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "počet + rozpad po podlažiach a miestnostiach so vzorkou ('koľko X a kde / na ktorých podlažiach', " +
       "predvolene object_type asset, alebo ids z predošlého hľadania). `query` hľadá v názve, object_ref, IFC " +
       "triede aj predefined_type (ilike). ifc_type = IFC trieda (IfcDoor), predefined_type = podtyp " +
-      "(AIRCONDITIONINGUNIT je predefined_type, NIE ifc_type). Obsah psetov nevidí - na to search_everything; " +
+      "(AIRCONDITIONINGUNIT je predefined_type, NIE ifc_type). Obsah psetov ani účel miestnosti (lobby, sklad) " +
+      "nevidí - na to search_everything. list nad 100 riadkov stránkuj cez offset; " +
       "slovník tried a psetov dá get_model_stats.",
     inputSchema: {
       type: "object",
@@ -229,6 +231,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         predefined_type: { type: "string", description: "IFC predefined_type enum (case-insensitive zhoda)" },
         ids: { type: "array", items: { type: "string" }, description: "locate: konkrétne objects.id namiesto filtrov" },
         limit: { type: "number", description: `list: max riadkov (default ${DEFAULT_LIMIT}, strop ${MAX_LIMIT})` },
+        offset: { type: "number", description: "list: posun strany; orezaný výsledok má total a next_offset" },
       },
     },
   },
@@ -281,7 +284,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "properties->Pset_ValveTypeIsolating->>IsNormallyOpen. Výsledok má total, returned, truncated a " +
       "next_offset (poradie je stabilné, ďalšia strana = offset=next_offset). Uzly so vzťahom na iný uzol " +
       "jedným volaním = related (napr. IfcAirTerminal s rel_referenced_in_spatial_structure na priestor 2.01); " +
-      "obsah miestnosti naraz (contained aj referenced) dá v_space_elements.",
+      "obsah miestnosti naraz (contained aj referenced) dá v_space_elements (space_ref, element_ref, " +
+      "element_ifc_type, element_predefined_type, relation, role).",
     inputSchema: {
       type: "object",
       properties: {
@@ -844,7 +848,7 @@ export class AskToolRuntime {
 
   async exec(name: string, input: Record<string, unknown>): Promise<ToolExecution> {
     try {
-      const result = await this.dispatch(name, input);
+      const result = fitPage(await this.dispatch(name, input), MAX_RESULT_CHARS);
       let content = JSON.stringify(result);
       if (content.length > MAX_RESULT_CHARS) {
         content = content.slice(0, MAX_RESULT_CHARS) + "…(orezané)";
@@ -936,21 +940,36 @@ export class AskToolRuntime {
   private async searchObjects(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
     const limit = clampLimit(input.limit);
+    const offset = clampOffset(input.offset);
     const q = this.applyObjectFilters(
       supabase
         .from("objects")
-        .select("id, object_type, object_ref, name, ifc_type, predefined_type"),
+        .select("id, object_type, object_ref, name, ifc_type, predefined_type", { count: "exact" }),
       input
-    ).limit(limit);
+    )
+      .order("id", { ascending: true })
+      .range(offset, offset + limit - 1);
 
-    const { data, error } = await q;
+    const { data, count, error } = await q;
     if (error) throw new Error(error.message);
     const rows = (data ?? []) as ObjectRow[];
     for (const r of rows) this.addSource(r);
-    if (rows.length === 0) {
-      return { rows, hint: "Nič sa nenašlo — zavolaj get_model_stats a over hodnoty filtrov." };
+    if (rows.length === 0 && offset === 0) {
+      return {
+        rows,
+        hint:
+          "Nič sa nenašlo v názve ani kóde — skús fulltext search_everything (v MCP search_all; vidí psety, " +
+          "napr. 'lobby' miestnosti 1.01), slovník tried dá get_model_stats.",
+      };
     }
-    return rows;
+    // Eval D-126 (N2): list s limit=100 pri 139 vyústkach vrátil 100 riadkov bez znamenia, že chýba zvyšok.
+    const page = pageInfo(count ?? offset + rows.length, offset, rows.length);
+    if (!page.truncated && offset === 0) return rows;
+    return {
+      ...page,
+      ...(page.truncated ? { hint: `Výsledok je orezaný: ďalšia strana offset=${page.next_offset}.` } : {}),
+      rows,
+    };
   }
 
   /**
