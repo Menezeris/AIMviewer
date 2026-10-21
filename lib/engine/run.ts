@@ -4,6 +4,7 @@ import { fetchModelRevisions } from "../data/model-revisions";
 import { AskToolRuntime } from "../llm/tools";
 
 import { lookupGuids, resolveTargetsToGuids } from "./aim-lookup";
+import { fetchRelatedMembers } from "./related-members";
 import { execSearchAll } from "./search-all";
 import { execEngineTool, ifcSearchResult, type EngineExecution } from "./tools";
 
@@ -19,5 +20,6 @@ export function runSearchAll(args: Record<string, unknown>): Promise<EngineExecu
   return execSearchAll(args, {
     ifc: (input) => ifcSearchResult(input, deps),
     aim: (input) => runtime.searchEverything(input),
+    related: fetchRelatedMembers,
   });
 }
