@@ -5844,6 +5844,69 @@ skryté a izolované prvky len ako počty.
 ofarbené); výber viac prvkov sa uloží, ale obnoví len jeden (viewer vyberá jeden prvok, D-082);
 izolácia nad 600 prvkov sa oreže a výsledok to povie.
 
+### D-125 - Živý stav viewera v odpovediach: identita viewera, zmeny mimo príkazov, priestory v Lens, výplň v reze a malá legenda
+
+**Dátum:** 2026-10-21 · **Stav:** navrhnuté (čaká na Samuela) · **Súvisí:** D-085, D-096, D-101, D-105, D-114, D-116, D-119 · **Issues:** #182, #180, #177, #178, #175 · **PR:** AIMviewer (tento), Menezeris/ifc-lite (fork)
+
+**Kontext:** päť pripomienok z konektora z 21. 10. k jednej úlohe (izolácia miestnosti 2.01 s
+vyústkami, farby VZT): priestor sa po farbení vykreslil plný alebo zmizol, stav v odpovedi a v
+`get_viewer_state` sa striedal medzi dvoma verziami a nezhodoval sa s obrazovkou, izoláciu vypnutú
+používateľom nič nehlásilo, farbenie podľa `system_type` zobralo aj systémy, ktoré nepatrili, a
+zabudnutý rez skryl väčšinu výsledku; `action=legend` otvoril celý panel Lens s predvolenými
+lenses a ofarbená miestnosť nebola v pôdoryse vidno.
+
+**Overenie (D-114, reprodukcia vo forku v iframe, FZK-Haus):**
+- colorize na IfcSpace = Lens alfa 1, miestnosť je nepriehľadný kváder a prvky vnútri nevidno;
+- pravidlo prekryté novším ostane v súhrne s `count 0` ako platné;
+- izolácia z chatu zrušená používateľom (kláves A) sa v súhrne lens hlási ďalej, aj po ďalšej lens;
+- výplň miestností (D-119) sa kreslí len v režime 2D, nie v 3D s rezom a pohľadom zhora;
+- na živý kanál odpovedá každý otvorený viewer a vyhrá prvá odpoveď; stav a lens v
+  `get_viewer_state` sú dve otázky, ktoré mohli zodpovedať dve rôzne karty alebo zariadenia, a
+  odpovede nemali identitu viewera. Jediná cesta k "striedaniu dvoch verzií".
+Existujúce tooly to nepokryjú: chyba je v obsahu odpovedí a vo vykreslení, nie v postupe modelu.
+
+**Rozhodnutie (rozšírenie existujúcich toolov, žiadny nový tool):**
+1. **Identita viewera (AIMviewer):** okno s `?live=` posiela v `reply` a `applied` náhodné `viewer`
+   id (na načítanie stránky). `get_viewer_state` zbiera odpovede ešte chvíľu po prvej, stav aj lens
+   berie z toho istého viewera a pri viac ako jednom vráti `viewers` s varovaním (zavrieť ostatné
+   okná). Potvrdenie príkazu nesie to isté varovanie, ak teplý kanál nedávno videl viac viewerov.
+2. **Zmeny mimo príkazov (fork):** viewer si pamätá stav po poslednom potvrdenom príkaze
+   (`APPLIED`): izolácia a X-ray, rez, skryté, výber, režim a podlažie, AIM chat lens. Pri ďalšom
+   príkaze vráti `changed_outside_commands` (čo sa zmenilo pred ním, napr. "izoláciu vypol
+   používateľ"), `view_state` vráti `changed_since_last_command`. Kamera sa neporovnáva (mení sa
+   stále).
+3. **Súhrn lens (fork):** pravidlo bez zhody má `matched: false` (prekryté novším alebo nič
+   nenašlo); izolácia a X-ray z chatu `active: false` s dôvodom, keď ich kanál už nedrží; AIM chat
+   lens vypnutá v paneli vráti `stored_rules`.
+4. **Priestory v Lens (fork):** farebné pravidlo z chatu dostane pre IfcSpace a IfcSpatialZone
+   priesvitnú variantu (rovnaká farba, alfa 0,3 ako `transparent`), takže miestnosť ostane
+   priehľadná a prvky v nej vidno. Počty sa spočítajú pod pôvodné pravidlo.
+5. **Výplň miestností v reze (fork):** `AimRoomFillLayer` kreslí aj v 3D, keď je aktívny vodorovný
+   rez a kamera hľadí zhora (pôdorys bez režimu 2D); len miestnosti preťaté rezom. Vyplní aj vybranú
+   miestnosť (farbou výberu), nielen ofarbenú.
+6. **Malá legenda (fork + AIMviewer):** `legend: compact` = plávajúca karta len s AIM chat lens
+   (farba, názov pravidla alebo hodnoty, počet), panel Lens sa neotvára a veľké okno sa zavrie.
+   `style_in_3d action=legend` je predvolene `compact`; `large` a `normal` ostávajú.
+7. **`style_in_3d` (AIMviewer):** `clear_section=true` zruší rez v tom istom volaní; pri isolate,
+   xray a colorize s aktívnym rezom odpoveď varuje a navrhne `set_section action=clear`; pri
+   `system_type` (alebo `system`), ktorý zobral viac systémov, vráti zoznam systémov s typom a
+   počtom členov a upozorní, že niektorý nemusí patrieť. Opis: `mode=replace` pri isolate a xray
+   nahradí aj farby z predošlých volaní, na IfcSpace netreba ďalšie pravidlo `transparent`.
+
+**Zavrhnuté rozšírenie a nové tooly:**
+- *Nový tool na živý stav:* stav ide v odpovedi príkazu (D-101) a v `get_viewer_state`; chýbala len
+  jeho pravdivosť a rozdiel.
+- *Parameter `expect_state`:* zmeny mimo príkazov sa vrátia samé, model ich vidí v ďalšej odpovedi.
+- *Adresovanie otázky konkrétnemu vieweru:* príkazy majú ísť do všetkých okien (zrkadlo na
+  telefóne); stačí párovať odpovede a varovať.
+- *`space_display=floor|volume|outline` a objem v perspektíve:* výplň nad scénou by v perspektíve
+  prekrývala model; ostáva otvorená otázka pre Samuela (#175).
+- *Zmena farby priestorov v balíku `lens` alebo v rendereri:* upstream súbory = plné CI a údržba;
+  pravidlo navyše v AIM vrstve stačí.
+
+**Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežia; do `eval/questions.json` pribudnú
+otázky z issues.
+
 ### D-126 - Úplné a stránkované výsledky DB tools, hľadanie cez vzťahy, overenie zatvorených issues
 
 **Status:** rozhodnuté (2026-10-21, číslo pridelil orchestrátor). Issues #181, #174, #171, #176. Nadväzuje na
@@ -5888,6 +5951,65 @@ D-056 (`query_view`), D-060 (`aggregate_objects`), D-090 (feedback), D-095 (`sea
 - *`where` na psety v `search_all` (#174):* zdvojilo by `ifc_query` a `aggregate_objects` (tie berú
   `ids` zo search_all).
 - *Nastavenie práv GitHub App z kódu:* je to nastavenie účtu (Samuel), postup je v #176.
+
+### D-127 - Panel vlastností len IFC, lepivé zvýraznenie vlastnosti, panely z chatu, výrez dokumentu podľa karty
+**Status:** rozhodnuté (2026-10-21, číslo pridelil orchestrátor, register #60). Issues #168, #169, #179, #166.
+Nadväzuje na D-077 (AIM karta v paneli), D-113 (panel vlastností pri výbere), D-114 (najprv napasuj),
+D-117 (výrez strany), D-101 (`APPLIED` so stavom), D-085 (`view_state`), D-098 (najprv existujúce) a D-104
+(skupina AIM v lište).
+
+**Kontext:** `show_in_3d(select, highlight)` zvýraznil riadok len na 2,4 s (upstream skok z bSDD karty
+zvýraznenie zhasne), výmery (Qto) a psety zdedené z typu nezvýraznil vôbec a výsledok nepovedal, či
+vlastnosť na prvku je (#168). Samuel pracuje už len vo vieweri a prepínač AIM | IFC v paneli nechce (#169;
+zadanie spresnilo D-129: AIM karta tiež preč, údaje len AIM ako vrstva s odznakom). Panely (Lens, vlastnosti, podklady,
+zoznamy, strom modelu) sa z chatu nedali zavrieť ani prepnúť (#179). Výrez strany v úzkej karte nebolo
+možné overiť, či je celý v zábere (#166).
+
+**Rozhodnutie:**
+1. **#168, fork:** zvýraznenie z chatu ide vlastnou cestou nad DOM panela (`aimPanelView.ts`): nájde riadok
+   v Properties (`data-prop-key`, výskyt aj typ) alebo v Quantities (sada a meno), zbalenú sadu rozbalí jej
+   vlastným tlačidlom, riadok vycentruje a označí `data-aim-focus` (štýl v `assetin-theme.css`). Označenie
+   drží MutationObserver do ďalšieho výberu. Upstream `pendingPropertyFocus` sa už nepoužíva.
+   `view_state` a `APPLIED` nesú `property_focus` {found, section, from_type}; nenájdená vlastnosť je
+   problém v `APPLIED`.
+2. **#168, AIMviewer:** `selectIn3d` hneď povie, či vlastnosť je v dátach AIM prvku (`property.in_aim`,
+   hodnota, presné mená; pri chýbajúcej zoznam psetov), z `v_asset_effective` (dedičnosť z typu, D-021).
+   `highlight` na Qto už neotvára len sekciu, zvýrazní riadok ako ostatné.
+3. **#169 (podľa D-129):** záložka AIM aj AIM karta z panela vypadli, panel je čisto IFC. Vrstva AIM:
+   posledná zmena prvku receptom (revízia vNNN, model a BCF téma z `model_tasks` s prvkom vo výbere,
+   `fetchLastElementChange`) a história GUID sú riadky s odznakom AIM nad IFC obsahom (vzor D-089);
+   dokumenty zdedené cez zónu, podlažie, skupinu, systém alebo miestnosť majú v paneli Documents
+   ("Len pre výber") odznak AIM (`aim: true`, priamo a cez typ sú v IFC). Zodpovednosti, odkaz
+   Reality Capture a "Otvoriť celý detail" z panela vypadli (D-129 body 2, 4, 6). `panel_tab` vypadol
+   zo schémy `show_in_3d`; starý vstup sa ticho ignoruje (staršie odkazy `t=` fork prijme a nič nenastaví).
+4. **#179 - rozšírenie `set_view_mode` o `panels`** (D-114 bod 2): {lens | properties | underlays |
+   documents | lists | model_tree: open | close | toggle, all: close}, aj bez `mode`. Nová op
+   `panels:~<panel>=<akcia>...:` -> bridge `SET_PANELS`; fork volá existujúce akcie store (lišta, rail,
+   krížik panela, `aimPanels.ts`). `all=close` zavrie všetko okrem panelov, ktoré správa otvára ("zavri
+   všetko okrem vlastností"). Stav všetkých panelov (open, where left/right/bottom/floating/window, snap a
+   veľkosť plávajúceho, šírka pravého stĺpca) je v `view_state`, teda v `get_viewer_state` aj v stave po
+   každom príkaze.
+5. **#166, fork:** zoom výrezu sa počítal z plochy karty už v D-117; nové je, že sa prepočíta, keď sa
+   plocha karty po otvorení zmení (split, ukotvenie, šírka stĺpca) alebo príde skutočný pomer strany,
+   kým kartou nepohne používateľ. `APPLIED` počká na vykonanie výrezu a `view_state.document` nesie
+   viditeľnú časť strany v %, veľkosť karty, zoom a `region_fully_visible`.
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool `set_panel`:* panely sú súčasť pohľadu; `set_view_mode` je UI akcia pohľadu na čítanie a
+  stav vracia `view_state` (D-114).
+- *`get_viewer_state` na ovládanie panelov:* tool je čítanie, zmena patrí do UI akcie.
+- *Poloha a veľkosť panelov z chatu (`position`, `size`):* fork ich vie len ako plávajúce okno; pevné
+  rozloženie mení používateľ, chat ho len číta. Panel `legend`: legenda je časť Lens (`style_in_3d
+  legend_size`, D-119), zavrie sa s ním.
+- *Opraviť upstream fade v `PropertiesPanel` (blok AIM-FORK):* stále by chýbali výmery a psety typu.
+- *Zbalený blok "AIM platforma" v paneli (prvý návrh v #169):* zamietnuté v D-129, vlastné rozhranie
+  popri IFC.
+
+**Otvorené:** pôvodných 779 % z #166 sa lokálne nezopakovalo (úzka karta 264-378 px výrez umiestnila
+správne); výsledok teraz hlási viditeľný rozsah, takže ďalší výskyt sa dá overiť priamo. Na mobile
+je jeden panel naraz, `SET_PANELS` vtedy nesplnené kroky vráti ako problém.
+
+**Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežali; do `eval/questions.json` pribudli otázky z issues.
 
 ### D-129 - Viewer je jediné rozhranie: údaj buď v IFC, alebo AIM vrstva s odznakom
 **Status:** rozhodnuté (2026-10-21, Samuel cez orchestrátora), číslo pridelené v registri #60. Nadväzuje na

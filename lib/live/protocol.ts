@@ -26,9 +26,13 @@ export interface LiveQueryPayload {
   rev?: string;
 }
 
+/**
+ * `viewer` = náhodná identita okna s `?live=` na jedno načítanie stránky (D-125): na kanál
+ * môže odpovedať viac okien (karty, telefón) a ich stav sa líši; starší klient ju nemá.
+ */
 export type LiveReplyPayload =
-  | { id: string; ok: true; result: unknown }
-  | { id: string; ok: false; error: string };
+  | { id: string; ok: true; result: unknown; viewer?: string }
+  | { id: string; ok: false; error: string; viewer?: string };
 
 const isStr = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 
@@ -45,10 +49,22 @@ export function isLiveQuery(p: unknown): p is LiveQueryPayload {
   );
 }
 
+/** Identita okna viewera (D-125): krátky reťazec, inak sa ignoruje. */
+export const isViewerId = (v: unknown): v is string => isStr(v) && v.length <= MAX_ID;
+
+/** Nová identita okna viewera pri načítaní stránky (D-125). */
+export function newViewerId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
 export function isLiveReply(p: unknown): p is LiveReplyPayload {
   if (!p || typeof p !== "object") return false;
   const r = p as Record<string, unknown>;
-  return isStr(r.id) && (r.ok === true || (r.ok === false && typeof r.error === "string"));
+  return (
+    isStr(r.id) &&
+    (r.viewer === undefined || isViewerId(r.viewer)) &&
+    (r.ok === true || (r.ok === false && typeof r.error === "string"))
+  );
 }
 
 /**
@@ -59,6 +75,8 @@ export const LIVE_APPLIED_EVENT = "applied";
 
 export interface LiveAppliedPayload {
   cmdId: string;
+  /** Okno, ktoré príkaz potvrdilo (D-125). */
+  viewer?: string;
   ok: boolean;
   /** Čo sa vo vieweri vykonať nedalo (napr. prvok sa nenašiel). */
   issues: string[];
@@ -70,5 +88,11 @@ export const isCmdId = (v: unknown): v is string => isStr(v) && v.length <= MAX_
 export function isLiveApplied(p: unknown): p is LiveAppliedPayload {
   if (!p || typeof p !== "object") return false;
   const a = p as Record<string, unknown>;
-  return isCmdId(a.cmdId) && typeof a.ok === "boolean" && Array.isArray(a.issues) && a.issues.every((i) => typeof i === "string");
+  return (
+    isCmdId(a.cmdId) &&
+    (a.viewer === undefined || isViewerId(a.viewer)) &&
+    typeof a.ok === "boolean" &&
+    Array.isArray(a.issues) &&
+    a.issues.every((i) => typeof i === "string")
+  );
 }

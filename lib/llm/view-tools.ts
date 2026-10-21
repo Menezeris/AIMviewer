@@ -3,7 +3,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { resolveTargetsToGuids } from "@/lib/engine/aim-lookup";
 import { normalizeStoreyLabel } from "@/lib/engine/storey";
-import { CAMERA_PRESETS } from "@/lib/viewer-ops";
+import { CAMERA_PRESETS, PANEL_ACTIONS, VIEWER_PANELS } from "@/lib/viewer-ops";
 import { CAMERA_AREAS, CAMERA_FITS, CAMERA_RANGES, DEFAULT_MARGIN_PERCENT } from "@/lib/viewer-camera";
 
 import type { AskAction } from "./actions";
@@ -11,7 +11,7 @@ import type { ToolDefinition } from "./provider";
 import { planCamera } from "./camera-plan";
 import { HATCH_PATTERNS, HATCH_RANGES, SECTION_CAPS, planSectionCap } from "../viewer-section-cap";
 import { DOMAIN_IFC_TYPES } from "./ifc-selector";
-import { ViewInputError, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
+import { ViewInputError, planPanels, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
 import { SECTION_SHIFT_RANGE } from "../views/plan";
 
 /**
@@ -167,7 +167,10 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "reset=true s mode=3d vráti pôvodný pohľad (bez rezu, farieb, skrytia, výberu a zvýraznenia, izometria). " +
       "ULOŽENÝ POHĽAD: saved_view=meno obnoví pohľad uložený cez saved_view (režim, rez, izolácia, skrytie, " +
       "kamera; mode netreba); 'ako minule' = saved_view='Posledný pohľad'; section_offset_m posunie rez po jeho " +
-      "osi ('o meter nižšie' = -1). Zoznam: get_viewer_state(saved_views=true).",
+      "osi ('o meter nižšie' = -1). Zoznam: get_viewer_state(saved_views=true). PANELY: panels otvorí, zavrie alebo " +
+      "prepne panely (lens, properties, underlays, documents, lists, model_tree; all=close = čistý pohľad, " +
+      "napr. {all: 'close', properties: 'open'} = všetko okrem vlastností), aj bez mode; výsledok vráti stav " +
+      "všetkých panelov (open, where left/right/bottom/floating, size).",
     inputSchema: {
       type: "object",
       properties: {
@@ -175,6 +178,13 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         floor: floorProp,
         reset: { type: "boolean", description: "S mode=3d: zruší rez, farby, skrytie, výber a zvýraznenie a vráti kameru" },
         saved_view: { type: "string", description: "Meno uloženého pohľadu na obnovu (bez mode)" },
+        panels: {
+          type: "object",
+          description: "Panely: {panel: open|close|toggle}; all len close",
+          properties: Object.fromEntries(
+            [...VIEWER_PANELS, "all"].map((k) => [k, { type: "string", enum: k === "all" ? ["close"] : [...PANEL_ACTIONS] }]),
+          ),
+        },
         section_offset_m: {
           type: "number",
           description: `So saved_view: posun rezu po jeho osi v m (${SECTION_SHIFT_RANGE.min} až ${SECTION_SHIFT_RANGE.max}, záporné = nižšie)`,
@@ -277,11 +287,22 @@ export async function execViewTool(
     const [{ restoreSavedView }, { defaultSavedViewDeps }] = await Promise.all([import("@/lib/views/tools"), import("@/lib/views/runtime")]);
     plan = await restoreSavedView(input, defaultSavedViewDeps());
   } else if (name === "set_view_mode") {
-    plan = planViewMode(input, input.reset === true ? null : await resolveFloor(input.floor));
+    // D-127: samotné panely nepotrebujú režim.
+    const panelsOnly = input.panels !== undefined && input.mode === undefined && input.reset !== true;
+    plan = panelsOnly ? { ops: [], label: "", result: { ok: true } } : planViewMode(input, input.reset === true ? null : await resolveFloor(input.floor));
   } else {
     throw new Error(`Neznámy tool pohľadu '${name}'.`);
   }
   if (cap) plan = { ops: [...plan.ops, cap.op], label: `${plan.label}, ${cap.label}`, result: { ...plan.result, ...cap.result } };
+  // Panely (D-127) idú po režime aj po obnove uloženého pohľadu.
+  const panels = name === "set_view_mode" ? planPanels(input) : null;
+  if (panels) {
+    plan = {
+      ops: [...plan.ops, panels.op],
+      label: plan.label ? `${plan.label}, ${panels.label}` : panels.label,
+      result: { ...plan.result, ...panels.result },
+    };
+  }
   push({
     type: "navigate",
     url: `/ifc?ops=${encodeURIComponent(plan.ops.join(";"))}&r=${Date.now().toString(36)}`,

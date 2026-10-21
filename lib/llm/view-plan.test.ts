@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseOps } from "../viewer-ops";
 import { planCamera } from "./camera-plan";
-import { ViewInputError, planSection, planViewMode } from "./view-plan";
+import { ViewInputError, planPanels, planSection, planViewMode } from "./view-plan";
 
 const FLOOR = { label: "3NP", guid: "3ig6N2jJz05g7H9Fq$ftkL" };
 const ROOM = "1KphWFyMb8dRV6rhVkyU6y";
@@ -91,5 +91,19 @@ describe("set_section: widget rezu (#63)", () => {
       { op: "section_gizmo", showGizmo: false },
     ]);
     expect(() => planSection({ action: "widget" }, null)).toThrow(ViewInputError);
+  });
+});
+
+describe("panely (D-127)", () => {
+  it("panels -> op SET_PANELS, all len close, chybný vstup = chyba", () => {
+    const p = planPanels({ panels: { all: "close", properties: "open" } })!;
+    expect(parseOps(p.op)).toEqual([{ op: "panels", panels: { all: "close", properties: "open" } }]);
+    expect(p.result).toEqual({ panels: { all: "close", properties: "open" } });
+    expect(planPanels({})).toBeNull();
+    expect(() => planPanels({ panels: { all: "open" } })).toThrow(ViewInputError);
+    expect(() => planPanels({ panels: { legend: "close" } })).toThrow(/neznámy panel/);
+    expect(() => planPanels({ panels: { lens: "hide" } })).toThrow(/open, close/);
+    expect(() => planPanels({ panels: {} })).toThrow(/aspoň/);
+    expect(() => planPanels({ panels: "lens" })).toThrow(ViewInputError);
   });
 });

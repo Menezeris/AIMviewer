@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { fetchNodeSummary } from "@/lib/data/object";
 import { fetchNodeSections } from "@/lib/data/relations";
 import { fetchCaptureSummaryForObject } from "@/lib/data/captures";
+import { fetchLastElementChange } from "@/lib/data/model-revisions";
 import { fetchDerivedRelations } from "@/lib/data/derivations";
 import { fetchDocumentTypes, fetchObjectDocuments } from "@/lib/data/object-documents";
 import type { ElementDetail } from "@/lib/aim-panel";
@@ -58,6 +59,7 @@ export async function GET(
       guidHistory: sections.guidHistory,
       captures,
       derived,
+      lastChange: await lastChangeOf(sections.guidHistory),
       ...(docs ? { effectiveDocuments: docs } : {}),
     };
     // Read-only súhrn (revaliduje sa s ostatnými AIM dátami po 60 s). Cache v
@@ -73,4 +75,14 @@ export async function GET(
     console.error(`[api/element/${id}]`, err);
     return NextResponse.json({ error: "server error" }, { status: 500 });
   }
+}
+
+/** D-129: posledná zmena aktívneho GUID receptom; chyba čítania kartu nezhodí. */
+async function lastChangeOf(history: ElementDetail["guidHistory"]): Promise<ElementDetail["lastChange"]> {
+  const guid = history?.find((h) => h.active)?.ifcGuid;
+  if (!guid) return null;
+  return fetchLastElementChange(guid).catch((err) => {
+    console.error("[api/element] lastChange", err);
+    return null;
+  });
 }
