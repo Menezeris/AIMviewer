@@ -1,0 +1,2443 @@
+From 4c9d2f22d8d85776551781df9a417fa24436a62f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 08:01:58 +0000
+Subject: [PATCH 1/4] =?UTF-8?q?AIM=20D-127:=20panel=20vlastnost=C3=AD=20le?=
+ =?UTF-8?q?n=20IFC,=20lepiv=C3=A9=20zv=C3=BDraznenie=20vlastnosti,=20panel?=
+ =?UTF-8?q?y=20z=20chatu,=20vidite=C4=BEn=C3=BD=20v=C3=BDrez=20dokumentu?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- #168: zvýraznenie vlastnosti z chatu (SELECT panel.focus) cez vlastnú cestu nad DOM
+  panela: pset aj výmera (Qto/BaseQuantities), výskyt aj typ, zbalená sada sa rozbalí,
+  riadok sa vycentruje a ostane označený do ďalšieho výberu; výsledok ide do APPLIED
+  (property_focus, problém keď vlastnosť na prvku nie je).
+- #169: bez prepínača AIM | IFC; AIM karta je zbalený riadok nad IFC obsahom.
+- #179: SET_PANELS (lens, properties, underlays, documents, lists, model_tree, all=close)
+  existujúcimi akciami store; view_state/APPLIED nesie stav panelov.
+- #166: výrez strany sa prepočíta pri zmene plochy karty, kým ňou nepohne používateľ;
+  view_state/APPLIED nesie viditeľný rozsah strany a region_fully_visible.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013pTmyabGpJyMo1eWHhfymn
+---
+ apps/viewer/src/aim/AimBridge.tsx            |  10 +-
+ apps/viewer/src/aim/AimCard.tsx              |  13 +-
+ apps/viewer/src/aim/AimInspectorTabs.tsx     |  69 ++----
+ apps/viewer/src/aim/aimInspectorStore.ts     |  30 ++-
+ apps/viewer/src/aim/aimPanelView.ts          | 208 ++++++++++++++++---
+ apps/viewer/src/aim/aimPanelViewPlan.test.ts |  44 ++--
+ apps/viewer/src/aim/aimPanelViewPlan.ts      |  54 +++--
+ apps/viewer/src/aim/aimPanels.ts             |  65 ++++++
+ apps/viewer/src/aim/aimPanelsPlan.test.ts    |  62 ++++++
+ apps/viewer/src/aim/aimPanelsPlan.ts         |  85 ++++++++
+ apps/viewer/src/aim/assetin-theme.css        |  11 +
+ apps/viewer/src/aim/docRegion.test.ts        |  42 ++++
+ apps/viewer/src/aim/docRegion.ts             | 162 ++++++++++++++-
+ apps/viewer/src/aim/useAimViewCommands.ts    |   7 +
+ apps/viewer/src/aim/view-protocol.ts         |  18 ++
+ apps/viewer/src/aim/viewQueries.ts           |   7 +
+ apps/viewer/src/aim/visibility-commands.ts   |   2 +-
+ 17 files changed, 751 insertions(+), 138 deletions(-)
+ create mode 100644 apps/viewer/src/aim/aimPanels.ts
+ create mode 100644 apps/viewer/src/aim/aimPanelsPlan.test.ts
+ create mode 100644 apps/viewer/src/aim/aimPanelsPlan.ts
+
+diff --git a/apps/viewer/src/aim/AimBridge.tsx b/apps/viewer/src/aim/AimBridge.tsx
+index aee9cf57..11aea032 100644
+--- a/apps/viewer/src/aim/AimBridge.tsx
++++ b/apps/viewer/src/aim/AimBridge.tsx
+@@ -32,7 +32,7 @@ import { isCommandMessage, type AppliedMessage, type CommandInboundMessage } fro
+ import { createCommandGate, noteIssue, resetCommandState, settled, takeIssues, track } from './command-gate.js';
+ import { useAimPanelStore } from './aimPanelStore.js';
+ import { useCapturePinsStore } from './capturePinsStore.js';
+-import { normalizeDocHighlights, normalizeDocRegion, useAimDocRegionStore } from './docRegion.js';
++import { normalizeDocHighlights, normalizeDocRegion, regionApplied, useAimDocRegionStore } from './docRegion.js';
+ import { useAimDecorationsStore } from './aimDecorationsStore.js';
+ import { useAimDerivationsStore } from './aimDerivationsStore.js';
+ import { isViewMessage } from './view-protocol.js';
+@@ -51,6 +51,8 @@ const loadVisibility = () => (visibility ??= import('./visibility-commands.js'))
+ 
+ /** Najdlhšie čakanie `APPLIED` na asynchrónne kroky (rez cez prvok, kamera, Lens); host čaká 3 s. */
+ const ACK_WAIT_MS = 2500;
++/** Výrez strany z chatu čaká na otvorenie PDF; dlhšie ako ACK by APPLIED len oneskorilo. */
++const REGION_WAIT_MS = 2200;
+ /** Ak geometria po ohlásení modelov neprestane prúdiť, príkazy sa pustia aj tak. */
+ const STREAM_GRACE_MS = 30_000;
+ 
+@@ -210,7 +212,11 @@ export function AimBridge() {
+             .openDocument(e.data.documentId, e.data.page !== undefined ? { page: e.data.page } : undefined);
+           // Výrez strany z chatu (D-117): karta sa priblíži, keď je PDF otvorené.
+           const region = normalizeDocRegion(e.data.region);
+-          if (region) useAimDocRegionStore.getState().requestRegion(e.data.documentId, region, e.data.page);
++          if (region) {
++            const nonce = useAimDocRegionStore.getState().requestRegion(e.data.documentId, region, e.data.page);
++            // APPLIED (D-101) počká, kým karta výrez naozaj ukáže, a nesie viditeľný rozsah (AIM D-127).
++            track(regionApplied(nonce, REGION_WAIT_MS).then((ok) => { if (!ok) noteIssue('DOCUMENT_OPEN: výrez strany sa ešte nepoužil (dokument sa načítava)'); }));
++          }
+           // Rámiky okolo nájdeného textu (D-123); DOCUMENT_OPEN bez nich staré zruší.
+           useAimDocRegionStore
+             .getState()
+diff --git a/apps/viewer/src/aim/AimCard.tsx b/apps/viewer/src/aim/AimCard.tsx
+index e38e1b48..6f403105 100644
+--- a/apps/viewer/src/aim/AimCard.tsx
++++ b/apps/viewer/src/aim/AimCard.tsx
+@@ -13,7 +13,7 @@
+  * Renders nothing when standalone (not embedded) — zero upstream impact.
+  */
+ 
+-import { Database, FileText, ExternalLink, Users, Camera, History } from 'lucide-react';
++import { ChevronDown, Database, FileText, ExternalLink, Users, Camera, History } from 'lucide-react';
+ import { Badge } from '@/components/ui/badge';
+ import { Button } from '@/components/ui/button';
+ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+@@ -222,20 +222,25 @@ function AimCardBody({ data }: { data: AimPanelData }) {
+   );
+ }
+ 
+-export function AimCard() {
++/** `open` / `onOpenChange` = controlled by the PropertiesPanel block (AIM D-127, collapsed by default). */
++export function AimCard({ open, onOpenChange }: { open?: boolean; onOpenChange?: (open: boolean) => void } = {}) {
+   const embedded = useAimPanelStore((s) => s.embedded);
+   const panel = useAimPanelStore((s) => s.panel);
+ 
+   if (!embedded || panel.status === 'idle') return null;
+ 
+   return (
+-    <Collapsible defaultOpen className="border-b border-l-2 border-l-amber-500">
+-      <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
++    <Collapsible
++      {...(open === undefined ? { defaultOpen: true } : { open, onOpenChange })}
++      className="border-b border-l-2 border-l-amber-500"
++    >
++      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
+         <Database className="h-4 w-4 text-amber-600 dark:text-amber-500" />
+         <span className="font-medium text-sm">AIM</span>
+         <Badge variant="outline" className="text-[9px] px-1 py-0 uppercase tracking-wider border-amber-500/50 text-amber-700 dark:text-amber-400">
+           platforma
+         </Badge>
++        <ChevronDown className="size-3 ml-auto shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
+       </CollapsibleTrigger>
+       <CollapsibleContent>
+         {panel.status === 'loading' && (
+diff --git a/apps/viewer/src/aim/AimInspectorTabs.tsx b/apps/viewer/src/aim/AimInspectorTabs.tsx
+index 7a190b80..0e5556b4 100644
+--- a/apps/viewer/src/aim/AimInspectorTabs.tsx
++++ b/apps/viewer/src/aim/AimInspectorTabs.tsx
+@@ -3,75 +3,44 @@
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
+ /**
+- * AIM | IFC inspector switch (D-077) — the tab bar shown at the top of the
+- * PropertiesPanel when the viewer is embedded in the AIM host and an element
+- * is selected. "AIM" shows the host-fed AimCard (platform data), "IFC" shows
+- * the panel's native file-derived content; PropertiesPanel hides its native
+- * subtree via `useAimNativeHidden` (a `hidden`/`contents` wrapper, so the
+- * upstream layout is untouched when the tab bar is inactive). Standalone
+- * (non-embedded) mode renders nothing — zero upstream impact.
++ * AIM block in the PropertiesPanel (D-077; AIM D-127 dropped the AIM | IFC tab
++ * bar, #169). The panel always shows its native IFC content; the host-fed
++ * AimCard (platform data: documents via zone/storey/type, responsibilities,
++ * GUID history, "open full detail") sits above it as one collapsed row, so no
++ * AIM data leaves the viewer. `useAimNativeHidden` stays for the existing
++ * AIM-FORK wiring in PropertiesPanel and is always false now. Standalone
++ * (non-embedded) mode renders nothing: zero upstream impact.
+  */
+ 
+ import { lazy, Suspense } from 'react';
+-import { Database, FileBox } from 'lucide-react';
+-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+ import { useViewerStore } from '@/store';
+ import { useAimPanelStore } from './aimPanelStore';
+-import { useAimInspectorStore, type InspectorTab } from './aimInspectorStore';
++import { useAimInspectorStore } from './aimInspectorStore';
+ // PropertiesPanel ho berie cez existujúci import tohto modulu (súbor je na strope veľkosti).
+ export { isReadOnlyFocus } from './aimInspectorStore';
+-// Lazy: the card only renders under the AIM tab inside the AIM host.
++// Lazy: the card only renders inside the AIM host.
+ const AimCard = lazy(() => import('./AimCard').then((m) => ({ default: m.AimCard })));
+ 
+-/** True while the tab bar is active AND the AIM tab is selected — the
+- *  PropertiesPanel hides its native content subtree for that state. */
++/** Native IFC content is never hidden since AIM D-127 (one panel, IFC). */
+ export function useAimNativeHidden(): boolean {
+-  const embedded = useAimPanelStore((s) => s.embedded);
+-  const panel = useAimPanelStore((s) => s.panel);
+-  const tab = useAimInspectorStore((s) => s.tab);
+-  return embedded && panel.status !== 'idle' && tab === 'aim';
++  return false;
+ }
+ 
+ export function AimInspectorTabs() {
+   const embedded = useAimPanelStore((s) => s.embedded);
+   const panel = useAimPanelStore((s) => s.panel);
+-  const tab = useAimInspectorStore((s) => s.tab);
+-  const setTab = useAimInspectorStore((s) => s.setTab);
+-  // On mobile the panel is one scroll column owned by the bottom sheet, so the
+-  // AIM card must flow at natural height. A `flex-1` internal scroller would be
+-  // squeezed by the header/tab bar above it (same failure the IFC tab hit).
++  const open = useAimInspectorStore((s) => s.cardOpen);
++  const setOpen = useAimInspectorStore((s) => s.setCardOpen);
++  // On mobile the panel is one scroll column owned by the bottom sheet: the card flows at natural height.
+   const isMobile = useViewerStore((s) => s.isMobile);
+ 
+-  // No host / no selection: no tab bar, PropertiesPanel shows native content.
++  // No host / no selection: nothing above the native content.
+   if (!embedded || panel.status === 'idle') return null;
+ 
++  // `data-aim-inspector` marks the panel body for the chat property focus (aimPanelView.ts).
+   return (
+-    <>
+-      <Tabs value={tab} onValueChange={(v) => setTab(v as InspectorTab)} className="shrink-0">
+-        <TabsList className="properties-tabs-list w-full shrink-0">
+-          <TabsTrigger
+-            value="aim"
+-            title="AIM platforma"
+-            className="properties-tab-trigger flex-1 min-w-0 uppercase text-[11px] tracking-wide"
+-          >
+-            <Database className="h-3 w-3 shrink-0 panel-compact-icon" />
+-            <span className="panel-compact-text">AIM</span>
+-          </TabsTrigger>
+-          <TabsTrigger
+-            value="ifc"
+-            title="Natívne IFC dáta"
+-            className="properties-tab-trigger flex-1 min-w-0 uppercase text-[11px] tracking-wide"
+-          >
+-            <FileBox className="h-3 w-3 shrink-0 panel-compact-icon" />
+-            <span className="panel-compact-text">IFC</span>
+-          </TabsTrigger>
+-        </TabsList>
+-      </Tabs>
+-      {tab === 'aim' && (
+-        <div className={isMobile ? '' : 'flex-1 min-h-0 overflow-y-auto'}>
+-          <Suspense fallback={null}><AimCard /></Suspense>
+-        </div>
+-      )}
+-    </>
++    <div data-aim-inspector className={open && !isMobile ? 'shrink-0 max-h-[50%] overflow-y-auto' : 'shrink-0'}>
++      <Suspense fallback={null}><AimCard open={open} onOpenChange={setOpen} /></Suspense>
++    </div>
+   );
+ }
+diff --git a/apps/viewer/src/aim/aimInspectorStore.ts b/apps/viewer/src/aim/aimInspectorStore.ts
+index 23c88f5b..63e23c5c 100644
+--- a/apps/viewer/src/aim/aimInspectorStore.ts
++++ b/apps/viewer/src/aim/aimInspectorStore.ts
+@@ -3,24 +3,38 @@
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
+ /**
+- * Stav prepínača AIM | IFC (D-077) a značka "focus z chatu" (AIM D-113), bez
+- * UI: číta ho `AimInspectorTabs` aj lenivý `visibility-commands` (SELECT s
+- * `panel`), takže lenivý modul nepotiahne komponent záložiek.
++ * Stav AIM karty v paneli vlastností (D-077; od AIM D-127 bez prepínača AIM | IFC,
++ * karta je zbalený blok nad IFC obsahom) a výsledok zvýraznenia vlastnosti z chatu
++ * (AIM D-113, D-127), bez UI: číta ho `AimInspectorTabs`, lenivý `aimPanelView`
++ * aj `view_state` (APPLIED), takže lenivé moduly nepotiahnu komponent karty.
+  */
+ 
+ import { create } from 'zustand';
+ import type { PropertyFocusTarget } from '../store/slices/uiSlice.js';
+ 
+-export type InspectorTab = 'aim' | 'ifc';
++/** Zvýraznená vlastnosť z chatu (AIM D-127): kde sa našla, alebo že na prvku nie je. */
++export interface PropertyFocusState {
++  pset: string;
++  property: string;
++  found: boolean;
++  section?: 'properties' | 'quantities';
++  /** true = riadok je v psete zdedenom z typu. */
++  from_type?: boolean;
++}
+ 
+ interface AimInspectorState {
+-  tab: InspectorTab;
+-  setTab: (tab: InspectorTab) => void;
++  /** AIM karta nad IFC obsahom: predvolene zbalená (AIM D-127). */
++  cardOpen: boolean;
++  setCardOpen: (open: boolean) => void;
++  propertyFocus: PropertyFocusState | null;
++  setPropertyFocus: (focus: PropertyFocusState | null) => void;
+ }
+ 
+ export const useAimInspectorStore = create<AimInspectorState>((set) => ({
+-  tab: 'aim',
+-  setTab: (tab) => set({ tab }),
++  cardOpen: false,
++  setCardOpen: (cardOpen) => set({ cardOpen }),
++  propertyFocus: null,
++  setPropertyFocus: (propertyFocus) => set({ propertyFocus }),
+ }));
+ 
+ /**
+diff --git a/apps/viewer/src/aim/aimPanelView.ts b/apps/viewer/src/aim/aimPanelView.ts
+index c3e4ad79..23fce9a0 100644
+--- a/apps/viewer/src/aim/aimPanelView.ts
++++ b/apps/viewer/src/aim/aimPanelView.ts
+@@ -3,29 +3,81 @@
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
+ /**
+- * Panel vlastností z chatu (AIM D-113): `SELECT` s `panel` po výbere prepne
+- * záložku AIM | IFC, sekciu upstream panela (Properties | Quantities) a
+- * zvýrazní vlastnosť tou istou cestou ako skok z bSDD karty
+- * (`pendingPropertyFocus`: rozbalí pset, posunie a zvýrazní riadok), len bez
+- * režimu úprav. Validácia a plán sú v `aimPanelViewPlan.ts`; tu sa čaká, kým
+- * sa výber prejaví v store, lebo panel pri zmene výberu focus zahadzuje.
++ * Panel vlastností z chatu (AIM D-113, D-127): `SELECT` s `panel` po výbere
++ * prepne sekciu upstream panela (Properties | Quantities) a zvýrazní vlastnosť.
++ *
++ * Upstream skok z bSDD karty (`pendingPropertyFocus`) zvýraznenie po 2,4 s zhasne
++ * a nevie výmery ani pset zdedený z typu (AIM D-127, #168). Preto vlastná cesta nad
++ * DOM panela: nájde riadok (pset aj Qto, výskyt aj typ), zbalenú sadu rozbalí jej
++ * vlastným tlačidlom, riadok vycentruje a označí atribútom `data-aim-focus`
++ * (štýl v `assetin-theme.css`). Označenie drží MutationObserver, kým sa nezmení
++ * výber; keď React riadok prekreslí (prepnutie sekcie, načítanie), označí ho znova.
++ * Výsledok (našla sa / nie je) ide do store pre `view_state` a do `APPLIED`.
+  */
+ 
+ import { useViewerStore } from '../store/index.js';
+-import { markReadOnlyFocus, useAimInspectorStore } from './aimInspectorStore.js';
+-import { focusFor, panelPlan, type AimPanelView } from './aimPanelViewPlan.js';
++import { useAimInspectorStore, type PropertyFocusState } from './aimInspectorStore.js';
++import { focusSections, matchName, panelPlan, propKeyEntity, type AimPanelView, type PanelSection } from './aimPanelViewPlan.js';
+ 
+ const SETTLE_TIMEOUT_MS = 5000;
++/** Ako dlho sa riadok hľadá v jednej sekcii, kým sa skúsi druhá (panel sa vykresľuje postupne). */
++const SECTION_SEARCH_MS = 900;
++const FOCUS_ATTR = 'data-aim-focus';
++
++type Target = { modelId: string; expressId: number };
++type Focus = { pset: string; property: string };
++type Hit = { el: Element; section: PanelSection; fromType: boolean };
++
++let stopActive: (() => void) | null = null;
++
++/** Zruší zvýraznenie z chatu (nový SELECT, iný výber). */
++export function clearPropertyFocus(): void {
++  const stop = stopActive;
++  stopActive = null;
++  stop?.();
++}
++
++/** Obsah panela vlastností: rodič AIM bloku, inak celý dokument. */
++function panelScope(): ParentNode {
++  return document.querySelector('[data-aim-inspector]')?.parentElement ?? document;
++}
++
++/** Riadok vlastnosti v aktuálne vykreslenej sekcii; zbalenú sadu rozbalí (raz). */
++function locate(scope: ParentNode, focus: Focus, target: Target, section: PanelSection, opened: Set<Element>): Hit | null {
++  if (section === 'properties') {
++    for (const row of scope.querySelectorAll('[data-prop-key]')) {
++      const id = propKeyEntity(row.getAttribute('data-prop-key') ?? '', focus.pset, focus.property);
++      if (id !== null) return { el: row, section, fromType: id !== target.expressId };
++    }
++  }
++  // Hlavička sady = tlačidlo Collapsible (Radix nesie `data-state`) s tučným menom sady.
++  const triggers = [...scope.querySelectorAll('button[data-state]')].filter((b) => b.querySelector('span.font-bold'));
++  const i = matchName(triggers.map((b) => b.querySelector('span.font-bold')?.textContent), focus.pset);
++  if (i < 0) return null;
++  const trigger = triggers[i] as HTMLElement;
++  if (trigger.getAttribute('data-state') === 'closed') {
++    if (!opened.has(trigger)) {
++      opened.add(trigger);
++      trigger.click(); // rozbalí ako používateľ (upstream si stav zapamätá)
++    }
++    return null;
++  }
++  if (section !== 'quantities') return null; // riadky psetov nesú `data-prop-key` vyššie
++  const rows = [...(trigger.parentElement?.querySelectorAll('.group\\/copyrow') ?? [])];
++  const j = matchName(rows.map((r) => r.querySelector('span.font-medium')?.textContent), focus.property);
++  return j < 0 ? null : { el: rows[j], section, fromType: false };
++}
+ 
+ /**
+- * Po výbere prvku `modelId:expressId` nastaví záložku, sekciu a focus.
+- * Focus ide až o dva snímky po tom, čo store nesie nový výber: efekt panela
+- * pri zmene výberu `pendingPropertyFocus` zahadzuje.
++ * Po výbere prvku `modelId:expressId` nastaví sekciu a zvýrazní vlastnosť.
++ * Promise skončí, keď sa riadok našiel alebo sa zistilo, že na prvku nie je;
++ * zvýraznenie potom trvá do ďalšieho výberu.
+  */
+-export function applyPanelView(view: AimPanelView, target: { modelId: string; expressId: number }, noteIssue: (text: string) => void): Promise<void> {
++export function applyPanelView(view: AimPanelView, target: Target, noteIssue: (text: string) => void): Promise<void> {
++  clearPropertyFocus();
+   const plan = panelPlan(view);
+   const store = useViewerStore;
+-  if (plan.tab) useAimInspectorStore.getState().setTab(plan.tab);
++  useAimInspectorStore.getState().setPropertyFocus(null);
+   if (plan.section) store.getState().setPropertiesActiveTab(plan.section);
+   const focus = plan.focus;
+   if (!focus) return Promise.resolve();
+@@ -33,28 +85,122 @@ export function applyPanelView(view: AimPanelView, target: { modelId: string; ex
+     const sel = store.getState().selectedEntity;
+     return !!sel && sel.modelId === target.modelId && sel.expressId === target.expressId;
+   };
++  const report = (state: PropertyFocusState | null) => useAimInspectorStore.getState().setPropertyFocus(state);
++
+   return new Promise<void>((resolve) => {
++    let done = false;
++    const finish = () => {
++      if (done) return;
++      done = true;
++      resolve();
++    };
++    const cleanups: Array<() => void> = [];
++    const stop = () => {
++      for (const c of cleanups.splice(0)) c();
++      document.querySelectorAll(`[${FOCUS_ATTR}]`).forEach((el) => el.removeAttribute(FOCUS_ATTR));
++      finish();
++    };
++    stopActive = stop;
++
++    const start = () => {
++      const sections = focusSections(focus.pset);
++      const opened = new Set<Element>();
++      const startedAt = Date.now();
++      let section = sections[0];
++      let found: Hit | null = null;
++      if (plan.section !== section) store.getState().setPropertiesActiveTab(section);
++
++      const mark = (first: boolean): boolean => {
++        const hit = locate(panelScope(), focus, target, section, opened);
++        if (!hit) return false;
++        document.querySelectorAll(`[${FOCUS_ATTR}]`).forEach((el) => el !== hit.el && el.removeAttribute(FOCUS_ATTR));
++        if (!hit.el.hasAttribute(FOCUS_ATTR)) hit.el.setAttribute(FOCUS_ATTR, '');
++        if (first) {
++          const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
++          hit.el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
++        }
++        found = hit;
++        return true;
++      };
++      const tick = () => {
++        if (found) {
++          // Lepivé: React riadok prekreslil alebo vymenil, označ ho znova (bez posunu).
++          if (!found.el.isConnected || !found.el.hasAttribute(FOCUS_ATTR)) {
++            section = store.getState().propertiesActiveTab === 'quantities' ? 'quantities' : 'properties';
++            mark(false);
++          }
++          return;
++        }
++        if (mark(true)) {
++          const hit = found as Hit | null;
++          report({ ...focus, found: true, section: hit!.section, ...(hit!.fromType ? { from_type: true } : {}) });
++          finish();
++          return;
++        }
++        const elapsed = Date.now() - startedAt;
++        if (section === sections[0] && elapsed > SECTION_SEARCH_MS) {
++          section = sections[1];
++          store.getState().setPropertiesActiveTab(section);
++        } else if (section === sections[1] && elapsed > 2 * SECTION_SEARCH_MS) {
++          section = sections[0];
++          store.getState().setPropertiesActiveTab(section);
++          report({ ...focus, found: false });
++          noteIssue(`SELECT: vlastnosť ${focus.pset}.${focus.property} na prvku v IFC paneli nie je`);
++          if (stopActive === stop) stopActive = null;
++          stop();
++        }
++      };
++      let raf = 0;
++      const schedule = () => {
++        if (!raf) {
++          raf = requestAnimationFrame(() => {
++            raf = 0;
++            tick();
++          });
++        }
++      };
++      const observer = new MutationObserver(schedule);
++      observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-state', FOCUS_ATTR] });
++      // Vlastný takt hľadania: panel môže dokresliť obsah aj bez sledovanej mutácie.
++      const poll = setInterval(() => {
++        if (!found) schedule();
++      }, 150);
++      cleanups.push(() => {
++        observer.disconnect();
++        clearInterval(poll);
++        if (raf) cancelAnimationFrame(raf);
++      });
++      schedule();
++    };
++
++    let armed = false;
++    let settle: ReturnType<typeof setTimeout> | undefined;
+     const arm = () => {
+-      requestAnimationFrame(() =>
+-        requestAnimationFrame(() => {
+-          const next = focusFor(store.getState().selectedEntity, target, focus);
+-          if (next) store.getState().setPendingPropertyFocus(markReadOnlyFocus(next));
+-          else noteIssue('SELECT: výber sa zmenil skôr, než sa zvýraznila vlastnosť');
+-          resolve();
+-        }),
+-      );
++      armed = true;
++      if (settle) clearTimeout(settle);
++      start();
+     };
+-    if (matches()) return arm();
+-    const timer = setTimeout(() => {
+-      unsubscribe();
++    // Zvýraznenie patrí vybranému prvku: iný výber ho zruší.
++    const unsubscribe = store.subscribe((s, prev) => {
++      if (s.selectedEntity === prev.selectedEntity) return;
++      if (matches()) {
++        if (!armed) arm();
++      } else if (armed) {
++        if (stopActive === stop) stopActive = null;
++        stop();
++        report(null);
++      }
++    });
++    cleanups.push(unsubscribe);
++    if (matches()) {
++      arm();
++      return;
++    }
++    settle = setTimeout(() => {
+       noteIssue('SELECT: panel vlastností sa nezmenil, výber sa neprejavil');
+-      resolve();
++      if (stopActive === stop) stopActive = null;
++      stop();
+     }, SETTLE_TIMEOUT_MS);
+-    const unsubscribe = store.subscribe(() => {
+-      if (!matches()) return;
+-      clearTimeout(timer);
+-      unsubscribe();
+-      arm();
+-    });
++    cleanups.push(() => clearTimeout(settle));
+   });
+ }
+diff --git a/apps/viewer/src/aim/aimPanelViewPlan.test.ts b/apps/viewer/src/aim/aimPanelViewPlan.test.ts
+index 1a2723b1..1dd33866 100644
+--- a/apps/viewer/src/aim/aimPanelViewPlan.test.ts
++++ b/apps/viewer/src/aim/aimPanelViewPlan.test.ts
+@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
+ import assert from 'node:assert';
+ 
+ import { isInboundMessage } from './bridge-protocol.js';
+-import { focusFor, panelPlan, parsePanelView, selectPanel } from './aimPanelViewPlan.js';
++import { focusSections, isQuantitySetName, matchName, panelPlan, parsePanelView, propKeyEntity, selectPanel } from './aimPanelViewPlan.js';
+ 
+ const S = 'aim-bridge' as const;
+ const GUID = '0MJFXziqDE$gGyPWwro9fJ';
+@@ -33,25 +33,41 @@ describe('panel vlastností z chatu (AIM D-113)', () => {
+     assert.strictEqual(parsePanelView({ focus: { pset: 'P', property: 'x'.repeat(201) } }), null);
+   });
+ 
+-  it('plán: focus vždy pod IFC v sekcii Properties, sekcia bez záložky ide pod IFC', () => {
++  it('plán (AIM D-127): sekcia podľa sady vlastnosti, záložka sa už nenastavuje', () => {
+     assert.deepEqual(panelPlan({ tab: 'aim', section: 'quantities', focus: { pset: 'P', property: 'X' } }), {
+-      tab: 'ifc',
+       section: 'properties',
+       focus: { pset: 'P', property: 'X' },
+     });
+-    assert.deepEqual(panelPlan({ section: 'quantities' }), { tab: 'ifc', section: 'quantities' });
+-    assert.deepEqual(panelPlan({ tab: 'aim' }), { tab: 'aim' });
++    assert.deepEqual(panelPlan({ focus: { pset: 'Qto_DoorBaseQuantities', property: 'Width' } }), {
++      section: 'quantities',
++      focus: { pset: 'Qto_DoorBaseQuantities', property: 'Width' },
++    });
++    assert.deepEqual(panelPlan({ section: 'quantities' }), { section: 'quantities' });
++    assert.deepEqual(panelPlan({ tab: 'aim' }), {});
+     assert.deepEqual(panelPlan({}), {});
+   });
+ 
+-  it('focus len pre prvok zo SELECT, nie pre medzičasom iný výber', () => {
+-    const target = { modelId: 'm1', expressId: 7 };
+-    const focus = { pset: 'Pset_WallCommon', property: 'FireRating' };
+-    assert.deepEqual(focusFor({ modelId: 'm1', expressId: 7 }, target, focus), {
+-      modelId: 'm1', entityId: 7, psetName: 'Pset_WallCommon', propName: 'FireRating',
+-    });
+-    assert.strictEqual(focusFor({ modelId: 'm1', expressId: 8 }, target, focus), null);
+-    assert.strictEqual(focusFor({ modelId: 'm2', expressId: 7 }, target, focus), null);
+-    assert.strictEqual(focusFor(null, target, focus), null);
++  it('výmery: Qto_ a BaseQuantities sa hľadajú najprv v Quantities, ostatné v Properties', () => {
++    assert.equal(isQuantitySetName('Qto_WallBaseQuantities'), true);
++    assert.equal(isQuantitySetName('qto_x'), true);
++    assert.equal(isQuantitySetName('BaseQuantities'), true);
++    assert.equal(isQuantitySetName('AIM_FireSafety'), false);
++    assert.deepEqual(focusSections('Qto_SpaceBaseQuantities'), ['quantities', 'properties']);
++    assert.deepEqual(focusSections('AIM_FireSafety'), ['properties', 'quantities']);
++  });
++
++  it('kľúč riadka panela: výskyt aj typ, presne aj bez ohľadu na veľkosť písmen', () => {
++    assert.equal(propKeyEntity('412:AIM_FireSafety:FireCompartments', 'AIM_FireSafety', 'FireCompartments'), 412);
++    assert.equal(propKeyEntity('90:Pset_DoorCommon:FireRating', 'pset_doorcommon', 'firerating'), 90);
++    assert.equal(propKeyEntity('412:AIM_FireSafety:FireCompartment', 'AIM_FireSafety', 'FireCompartments'), null);
++    assert.equal(propKeyEntity('412:Other:FireCompartments', 'AIM_FireSafety', 'FireCompartments'), null);
++    assert.equal(propKeyEntity(':AIM_FireSafety:FireCompartments', 'AIM_FireSafety', 'FireCompartments'), null);
++    assert.equal(propKeyEntity('x:AIM_FireSafety:FireCompartments', 'AIM_FireSafety', 'FireCompartments'), null);
++  });
++
++  it('meno sady alebo riadka: presná zhoda má prednosť pred voľnou', () => {
++    assert.equal(matchName(['width', 'Width'], 'Width'), 1);
++    assert.equal(matchName(['Height', ' width '], 'Width'), 1);
++    assert.equal(matchName([null, undefined, 'Area'], 'Width'), -1);
+   });
+ });
+diff --git a/apps/viewer/src/aim/aimPanelViewPlan.ts b/apps/viewer/src/aim/aimPanelViewPlan.ts
+index b4babcaf..49cdb639 100644
+--- a/apps/viewer/src/aim/aimPanelViewPlan.ts
++++ b/apps/viewer/src/aim/aimPanelViewPlan.ts
+@@ -6,14 +6,16 @@
+  * Panel vlastností z chatu (AIM D-113): validácia `panel` v správe `SELECT` a
+  * čo z neho viewer nastaví. Bez store; aplikácia je v `aimPanelView.ts`, volá ju
+  * lenivý `visibility-commands.ts` (vstupný balík validáciu nenesie).
++ *
++ * AIM D-127: panel má len IFC obsah (prepínač AIM | IFC zmizol), `tab` sa ešte
++ * prijme kvôli starším odkazom, ale nič nenastaví. Zvýraznená vlastnosť môže
++ * byť aj výmera (Qto) alebo vlastnosť zdedená z typu a drží sa do ďalšieho výberu.
+  */
+ 
+-import type { InspectorTab } from './aimInspectorStore.js';
+-
+ export type PanelSection = 'properties' | 'quantities';
+ 
+ export interface AimPanelView {
+-  tab?: InspectorTab;
++  tab?: 'aim' | 'ifc';
+   section?: PanelSection;
+   focus?: { pset: string; property: string };
+ }
+@@ -29,7 +31,7 @@ export function parsePanelView(raw: unknown): AimPanelView | null {
+   const out: AimPanelView = {};
+   if (p.tab !== undefined) {
+     if (typeof p.tab !== 'string' || !TABS.has(p.tab)) return null;
+-    out.tab = p.tab as InspectorTab;
++    out.tab = p.tab as 'aim' | 'ifc';
+   }
+   if (p.section !== undefined) {
+     if (typeof p.section !== 'string' || !SECTIONS.has(p.section)) return null;
+@@ -51,21 +53,39 @@ export function selectPanel(raw: unknown): AimPanelView | undefined | null {
+   return raw === undefined || raw === null ? undefined : parsePanelView(raw);
+ }
+ 
++/** Výmery: sady `Qto_` aj `BaseQuantities` sú v sekcii Quantities. */
++export const isQuantitySetName = (pset: string): boolean => /^(Qto_|BaseQuantities$)/i.test(pset.trim());
++
++/** Čo sa má nastaviť: sekcia podľa focusu (výmera = Quantities), inak podľa `section`. */
++export function panelPlan(view: AimPanelView): { section?: PanelSection; focus?: { pset: string; property: string } } {
++  if (view.focus) return { section: isQuantitySetName(view.focus.pset) ? 'quantities' : 'properties', focus: view.focus };
++  return view.section ? { section: view.section } : {};
++}
++
++/** Poradie sekcií, v ktorých sa vlastnosť hľadá: najprv podľa mena sady, potom druhá. */
++export function focusSections(pset: string): PanelSection[] {
++  return isQuantitySetName(pset) ? ['quantities', 'properties'] : ['properties', 'quantities'];
++}
++
++const same = (a: string | null | undefined, b: string) => (a ?? '').trim() === b.trim();
++const sameLoose = (a: string | null | undefined, b: string) => (a ?? '').trim().toLowerCase() === b.trim().toLowerCase();
++
+ /**
+- * Focus pre panel, len ak je vybraný stále prvok zo `SELECT`: medzičasom iný výber
+- * (rýchly ďalší SELECT, klik) by dostal vlastnosť určenú pre predchádzajúci prvok.
++ * Kľúč riadka upstream panela je `<entityId>:<pset>:<vlastnosť>` (`PropertySetCard`).
++ * Vráti id entity riadka (výskyt alebo typ), ak riadok patrí hľadanej vlastnosti.
+  */
+-export function focusFor(
+-  sel: { modelId: string; expressId: number } | null | undefined,
+-  target: { modelId: string; expressId: number },
+-  focus: { pset: string; property: string },
+-): { modelId: string; entityId: number; psetName: string; propName: string } | null {
+-  if (!sel || sel.modelId !== target.modelId || sel.expressId !== target.expressId) return null;
+-  return { modelId: sel.modelId, entityId: sel.expressId, psetName: focus.pset, propName: focus.property };
++export function propKeyEntity(key: string, pset: string, property: string): number | null {
++  const i = key.indexOf(':');
++  if (i <= 0) return null;
++  const id = Number(key.slice(0, i));
++  if (!Number.isInteger(id)) return null;
++  const rest = key.slice(i + 1);
++  if (same(rest, `${pset}:${property}`) || sameLoose(rest, `${pset}:${property}`)) return id;
++  return null;
+ }
+ 
+-/** Čo sa má nastaviť: focus vlastnosti žije v sekcii Properties pod záložkou IFC. */
+-export function panelPlan(view: AimPanelView): { tab?: InspectorTab; section?: PanelSection; focus?: { pset: string; property: string } } {
+-  if (view.focus) return { tab: 'ifc', section: 'properties', focus: view.focus };
+-  return { ...(view.tab ? { tab: view.tab } : {}), ...(view.section ? { tab: view.tab ?? 'ifc', section: view.section } : {}) };
++/** Index mena v zozname: presná zhoda, inak bez ohľadu na veľkosť písmen; -1 = nie je. */
++export function matchName(names: ReadonlyArray<string | null | undefined>, want: string): number {
++  const exact = names.findIndex((n) => same(n, want));
++  return exact >= 0 ? exact : names.findIndex((n) => sameLoose(n, want));
+ }
+diff --git a/apps/viewer/src/aim/aimPanels.ts b/apps/viewer/src/aim/aimPanels.ts
+new file mode 100644
+index 00000000..9b0e0f31
+--- /dev/null
++++ b/apps/viewer/src/aim/aimPanels.ts
+@@ -0,0 +1,65 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * `SET_PANELS` z chatu (AIM D-127, #179): otvorí, zavrie alebo prepne panely tými
++ * istými akciami store ako lišta, rail a krížik panela (nič nové). Plán a opis
++ * stavu sú v `aimPanelsPlan.ts`; tento modul sa načíta lenivo prvou správou.
++ */
++
++import { useViewerStore } from '../store/index.js';
++import { closePanelWindow } from '../services/panel-windows.js';
++import { PANEL_ID, panelInfo, planPanels, type PanelKey, type PanelsRequest } from './aimPanelsPlan.js';
++
++type Store = ReturnType<typeof useViewerStore.getState>;
++
++/** Vypne panel bez toho, aby otvoril iný stĺpec: plávajúce a samostatné okno zavrie, ukotvený skryje. */
++function closePanel(s: Store, key: PanelKey): void {
++  const id = PANEL_ID[key];
++  if (key === 'model_tree') {
++    s.setLeftPanelCollapsed(true);
++    return;
++  }
++  s.closeFloatingPanel(id);
++  if (s.poppedOutIds.includes(id)) closePanelWindow(id);
++  switch (key) {
++    case 'lens':
++      // Veľká legenda (AIM D-119) je plávajúci Lens: zavretím zmizne aj jej príznak.
++      delete document.documentElement.dataset.aimBigLegend;
++      s.setLensPanelVisible(false);
++      return;
++    case 'underlays':
++      s.setUnderlayPanelVisible(false);
++      return;
++    case 'documents':
++      s.setDocumentsPanelVisible(false);
++      return;
++    case 'lists':
++      s.setListPanelVisible(false);
++      return;
++    case 'properties':
++      // Vlastnosti sú záloha pravého stĺpca: zavrieť ich = zbaliť stĺpec, keď ho práve držia.
++      if (s.sidebarActivePanel === 'properties' && s.sidebarMode !== 'collapsed') s.setSidebarMode('collapsed');
++      return;
++  }
++}
++
++function openPanel(s: Store, key: PanelKey): void {
++  if (key === 'model_tree') s.setLeftPanelCollapsed(false);
++  else s.showWorkspacePanel(PANEL_ID[key], 'programmatic');
++}
++
++/** Vykoná požiadavku; čo sa nepodarilo (napr. mobil s jedným panelom), zapíše ako problém pre `APPLIED`. */
++export function applyPanels(req: PanelsRequest, noteIssue: (text: string) => void): void {
++  const store = useViewerStore;
++  const steps = planPanels(req, (key) => panelInfo(store.getState(), key).open);
++  for (const step of steps) {
++    if (step.open) openPanel(store.getState(), step.key);
++    else closePanel(store.getState(), step.key);
++  }
++  const failed = steps.filter((step) => panelInfo(store.getState(), step.key).open !== step.open);
++  if (failed.length > 0) {
++    noteIssue(`SET_PANELS: ${failed.map((f) => `${f.key} ${f.open ? 'sa neotvoril' : 'sa nezavrel'}`).join(', ')}`);
++  }
++}
+diff --git a/apps/viewer/src/aim/aimPanelsPlan.test.ts b/apps/viewer/src/aim/aimPanelsPlan.test.ts
+new file mode 100644
+index 00000000..3a32c9ed
+--- /dev/null
++++ b/apps/viewer/src/aim/aimPanelsPlan.test.ts
+@@ -0,0 +1,62 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import { isViewMessage, isPanelsRequest } from './view-protocol.js';
++import { describePanels, panelInfo, planPanels, type PanelsStateLike } from './aimPanelsPlan.js';
++
++const S = 'aim-bridge' as const;
++
++const base: PanelsStateLike = {
++  leftPanelCollapsed: false,
++  sidebarMode: 'expanded',
++  sidebarActivePanel: 'lens',
++  sidebarSecondaryPanel: null,
++  sidebarWidthPct: 22.4,
++  floatingPanels: [],
++  poppedOutIds: [],
++  listPanelVisible: false,
++};
++
++describe('panely z chatu (AIM D-127)', () => {
++  it('SET_PANELS: známe panely a akcie, all len close, aspoň jedna položka', () => {
++    assert.equal(isViewMessage({ source: S, type: 'SET_PANELS', panels: { lens: 'close' } }), true);
++    assert.equal(isViewMessage({ source: S, type: 'SET_PANELS', panels: { all: 'close', properties: 'open' } }), true);
++    assert.equal(isPanelsRequest({ all: 'open' }), false);
++    assert.equal(isPanelsRequest({ legend: 'close' }), false);
++    assert.equal(isPanelsRequest({ lens: 'hide' }), false);
++    assert.equal(isPanelsRequest({}), false);
++    assert.equal(isPanelsRequest([]), false);
++    assert.equal(isViewMessage({ source: S, type: 'SET_PANELS' }), false);
++  });
++
++  it('plán: all zavrie všetko okrem výslovne otvorených, zatváranie ide prvé, toggle podľa stavu', () => {
++    const open = new Set(['lens', 'model_tree']);
++    const steps = planPanels({ all: 'close', properties: 'open' }, (k) => open.has(k));
++    assert.deepEqual(steps.at(-1), { key: 'properties', open: true });
++    assert.equal(steps.filter((s) => s.open).length, 1);
++    assert.equal(steps.length, 6);
++    assert.deepEqual(planPanels({ lens: 'toggle', lists: 'toggle' }, (k) => open.has(k)), [
++      { key: 'lens', open: false },
++      { key: 'lists', open: true },
++    ]);
++  });
++
++  it('stav: ukotvený vpravo, vľavo, dole, plávajúci so snapom a veľkosťou, samostatné okno', () => {
++    assert.deepEqual(panelInfo(base, 'lens'), { open: true, where: 'right' });
++    assert.deepEqual(panelInfo(base, 'properties'), { open: false });
++    assert.deepEqual(panelInfo(base, 'model_tree'), { open: true, where: 'left' });
++    assert.deepEqual(panelInfo({ ...base, listPanelVisible: true }, 'lists'), { open: true, where: 'bottom' });
++    const floating = { ...base, floatingPanels: [{ id: 'lens', snap: 'right', w: 360.4, h: 459.6 }] };
++    assert.deepEqual(panelInfo(floating, 'lens'), { open: true, where: 'floating', snap: 'right', size: { w: 360, h: 460 } });
++    assert.deepEqual(panelInfo({ ...base, poppedOutIds: ['documents'] }, 'documents'), { open: true, where: 'window' });
++    assert.deepEqual(panelInfo({ ...base, sidebarMode: 'collapsed' }, 'lens'), { open: false });
++    assert.deepEqual(panelInfo({ ...base, sidebarSecondaryPanel: 'drawing-underlay' }, 'underlays'), { open: true, where: 'right' });
++    const all = describePanels(base);
++    assert.equal(all.right_width_pct, 22);
++    assert.equal(describePanels({ ...base, sidebarMode: 'collapsed' }).right_width_pct, null);
++  });
++});
+diff --git a/apps/viewer/src/aim/aimPanelsPlan.ts b/apps/viewer/src/aim/aimPanelsPlan.ts
+new file mode 100644
+index 00000000..b7fde688
+--- /dev/null
++++ b/apps/viewer/src/aim/aimPanelsPlan.ts
+@@ -0,0 +1,85 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Panely z chatu (AIM D-127, #179): `SET_PANELS` otvorí, zavrie alebo prepne
++ * panely viewera a `view_state` / `APPLIED` vráti stav všetkých. Tu je rozpis akcií
++ * a opis stavu, bez store (mená a validácia drôtu sú vo `view-protocol.ts`, vykonanie
++ * v `aimPanels.ts`, lenivo cez `useAimViewCommands`).
++ *
++ * Mená na drôte -> panel upstreamu: `lens` -> `lens`, `properties` -> `properties`,
++ * `underlays` -> `drawing-underlay`, `documents` -> `documents`, `lists` -> `lists`
++ * (spodný pás), `model_tree` -> `hierarchy` (ľavý stĺpec). `all` = všetky.
++ */
++
++import { PANEL_KEYS, type PanelKey, type PanelsRequest } from './view-protocol.js';
++
++export { PANEL_KEYS, type PanelKey, type PanelsRequest };
++
++/** Panel upstreamu (`WorkspacePanelId`) pre meno na drôte. */
++export const PANEL_ID = {
++  lens: 'lens',
++  properties: 'properties',
++  underlays: 'drawing-underlay',
++  documents: 'documents',
++  lists: 'lists',
++  model_tree: 'hierarchy',
++} as const satisfies Record<PanelKey, string>;
++
++/**
++ * Konečné kroky: `all` zavrie všetky panely okrem tých, ktoré správa výslovne
++ * otvára ("zavri všetko okrem 3D a vlastností"); `toggle` sa rozhodne podľa stavu.
++ * Zatváranie ide pred otváraním, aby otvorený panel nezavrel spoločný slot.
++ */
++export function planPanels(req: PanelsRequest, isOpen: (key: PanelKey) => boolean): { key: PanelKey; open: boolean }[] {
++  const want = new Map<PanelKey, boolean>();
++  if (req.all === 'close') for (const k of PANEL_KEYS) want.set(k, false);
++  for (const k of PANEL_KEYS) {
++    const a = req[k];
++    if (a === 'open') want.set(k, true);
++    else if (a === 'close') want.set(k, false);
++    else if (a === 'toggle') want.set(k, !isOpen(k));
++  }
++  const steps = [...want].map(([key, open]) => ({ key, open }));
++  return [...steps.filter((s) => !s.open), ...steps.filter((s) => s.open)];
++}
++
++/** Stav store, z ktorého sa číta, kde panel je (podmnožina `ViewerState`). */
++export interface PanelsStateLike {
++  leftPanelCollapsed: boolean;
++  sidebarMode: string;
++  sidebarActivePanel: string;
++  sidebarSecondaryPanel: string | null;
++  sidebarWidthPct: number;
++  floatingPanels: ReadonlyArray<{ id: string; snap: string; w: number; h: number }>;
++  poppedOutIds: ReadonlyArray<string>;
++  listPanelVisible: boolean;
++}
++
++export interface PanelInfo {
++  open: boolean;
++  /** left | right | bottom = ukotvený, floating = plávajúce okno (snap, w, h px), window = samostatné okno. */
++  where?: 'left' | 'right' | 'bottom' | 'floating' | 'window';
++  snap?: string;
++  size?: { w: number; h: number };
++}
++
++/** Kde je panel (`key`) podľa stavu store. */
++export function panelInfo(s: PanelsStateLike, key: PanelKey): PanelInfo {
++  const id = PANEL_ID[key];
++  if (key === 'model_tree') return s.leftPanelCollapsed ? { open: false } : { open: true, where: 'left' };
++  const floating = s.floatingPanels.find((p) => p.id === id);
++  if (floating) return { open: true, where: 'floating', snap: floating.snap, size: { w: Math.round(floating.w), h: Math.round(floating.h) } };
++  if (s.poppedOutIds.includes(id)) return { open: true, where: 'window' };
++  if (key === 'lists') return s.listPanelVisible ? { open: true, where: 'bottom' } : { open: false };
++  const docked = s.sidebarMode !== 'collapsed' && (s.sidebarActivePanel === id || s.sidebarSecondaryPanel === id);
++  return docked ? { open: true, where: 'right' } : { open: false };
++}
++
++/** Stav všetkých panelov pre `view_state` a `APPLIED` (+ šírka pravého stĺpca v % okna). */
++export function describePanels(s: PanelsStateLike): Record<PanelKey, PanelInfo> & { right_width_pct: number | null } {
++  const out = {} as Record<PanelKey, PanelInfo>;
++  for (const k of PANEL_KEYS) out[k] = panelInfo(s, k);
++  return { ...out, right_width_pct: s.sidebarMode === 'collapsed' ? null : Math.round(s.sidebarWidthPct) };
++}
+diff --git a/apps/viewer/src/aim/assetin-theme.css b/apps/viewer/src/aim/assetin-theme.css
+index 3a6198db..bd45c7cb 100644
+--- a/apps/viewer/src/aim/assetin-theme.css
++++ b/apps/viewer/src/aim/assetin-theme.css
+@@ -117,3 +117,14 @@ body {
+ html[data-aim-big-legend] [data-tour="lens-legend"] > .overflow-y-auto {
+   max-height: none;
+ }
++
++/* AIM D-127 (#168): vlastnosť zvýraznená z chatu (show_in_3d highlight) ostáva označená do
++   ďalšieho výberu; atribút nastavuje aim/aimPanelView.ts, farby ako upstream focus z bSDD. */
++[data-aim-focus] {
++  background-color: rgb(254 243 199 / 0.7);
++  box-shadow: inset 0 0 0 2px rgb(251 191 36);
++}
++.dark [data-aim-focus] {
++  background-color: rgb(120 53 15 / 0.4);
++  box-shadow: inset 0 0 0 2px rgb(245 158 11);
++}
+diff --git a/apps/viewer/src/aim/docRegion.test.ts b/apps/viewer/src/aim/docRegion.test.ts
+index 974d73fa..fe6da65e 100644
+--- a/apps/viewer/src/aim/docRegion.test.ts
++++ b/apps/viewer/src/aim/docRegion.test.ts
+@@ -9,8 +9,11 @@ import {
+   MAX_HIGHLIGHTS,
+   normalizeDocHighlights,
+   normalizeDocRegion,
++  regionApplied,
++  regionInside,
+   regionScroll,
+   regionZoom,
++  visiblePart,
+   useAimDocRegionStore,
+   REGION_ZOOM_MAX,
+   REGION_ZOOM_MIN,
+@@ -149,3 +152,42 @@ describe('useAimDocRegionStore highlights (D-123)', () => {
+     assert.equal(useAimDocRegionStore.getState().highlights, null);
+   });
+ });
++
++describe('viditeľný rozsah karty (AIM D-127, #166)', () => {
++  it('časť strany v ploche karty v zlomkoch, mimo záberu null', () => {
++    const page = { left: -500, top: -1000, width: 2000, height: 4000 };
++    assert.deepEqual(visiblePart(page, { left: 0, top: 0, width: 400, height: 800 }), { x: 0.25, y: 0.25, w: 0.2, h: 0.2 });
++    assert.deepEqual(visiblePart({ left: 0, top: 0, width: 100, height: 100 }, { left: -50, top: -50, width: 500, height: 500 }), { x: 0, y: 0, w: 1, h: 1 });
++    assert.equal(visiblePart({ left: 1000, top: 0, width: 100, height: 100 }, { left: 0, top: 0, width: 500, height: 500 }), null);
++    assert.equal(visiblePart({ left: 0, top: 0, width: 0, height: 100 }, { left: 0, top: 0, width: 500, height: 500 }), null);
++  });
++
++  it('výrez je celý v zábere len vnútri viditeľnej časti (tolerancia zaokrúhlenia)', () => {
++    const visible = { x: 0.6, y: 0.6, w: 0.45, h: 0.45 };
++    assert.equal(regionInside({ x: 0.7, y: 0.7, w: 0.3, h: 0.3 }, visible), true);
++    assert.equal(regionInside({ x: 0.598, y: 0.7, w: 0.3, h: 0.3 }, visible), true);
++    assert.equal(regionInside({ x: 0.5, y: 0.7, w: 0.3, h: 0.3 }, visible), false);
++    assert.equal(regionInside({ x: 0.7, y: 0.7, w: 0.3, h: 0.3 }, null), false);
++  });
++
++  it('úzka karta: zoom podľa jej skutočnej šírky dá celý výrez do záberu', () => {
++    // Karta 300 x 900 px, strana pri zoome 1 široká 276 px (A1 na šírku), výrez 30 % x 30 %.
++    const region = { x: 0.7, y: 0.7, w: 0.3, h: 0.3 };
++    const viewport = { width: 300, height: 900 };
++    const zoom = regionZoom(region, 276, viewport, 1.414);
++    const pageW = 276 * zoom;
++    assert.ok(region.w * pageW <= viewport.width - 24 + 1e-6);
++    assert.ok((region.h * pageW) / 1.414 <= viewport.height - 24 + 1e-6);
++  });
++
++  it('requestRegion vráti nonce, clear ho potvrdí čakajúcemu; bez clear vyprší', async () => {
++    const store = useAimDocRegionStore.getState();
++    const nonce = store.requestRegion('doc-a', { x: 0.1, y: 0.1, w: 0.2, h: 0.2 });
++    const applied = regionApplied(nonce, 1000);
++    useAimDocRegionStore.getState().clear(nonce);
++    assert.equal(await applied, true);
++    const other = useAimDocRegionStore.getState().requestRegion('doc-a', { x: 0.1, y: 0.1, w: 0.2, h: 0.2 });
++    assert.ok(other > nonce);
++    assert.equal(await regionApplied(other, 10), false);
++  });
++});
+diff --git a/apps/viewer/src/aim/docRegion.ts b/apps/viewer/src/aim/docRegion.ts
+index a9a8c2bf..3e3b12ad 100644
+--- a/apps/viewer/src/aim/docRegion.ts
++++ b/apps/viewer/src/aim/docRegion.ts
+@@ -13,6 +13,11 @@
+  * `highlights` (obdĺžniky v zlomkoch strany, napr. riadky zo search_documents).
+  * Hook ich nakreslí ako vrstvu nad stranou (vedľa textovej vrstvy pdf.js, tiež
+  * imperatívne) a drží ich, kým nepríde ďalší DOCUMENT_OPEN.
++ *
++ * Skutočná veľkosť karty (AIM D-127, #166): výrez sa prepočíta, keď sa plocha
++ * karty po otvorení zmení (split, ukotvenie, šírka stĺpca) alebo keď prídu
++ * skutočné rozmery strany, kým používateľ kartou sám nepohne. Viditeľný rozsah
++ * strany (a či je výrez celý v zábere) ide do `view_state` / `APPLIED`.
+  */
+ 
+ import { useEffect, useRef, type RefObject } from 'react';
+@@ -81,6 +86,46 @@ export function regionScroll(
+   return { left: Math.max(0, cx - viewport.width / 2), top: Math.max(0, cy - viewport.height / 2) };
+ }
+ 
++/**
++ * Viditeľná časť strany v zlomkoch (0-1): `page` a `viewport` sú obdĺžniky v
++ * súradniciach okna (getBoundingClientRect). null = strana nie je v zábere.
++ */
++export function visiblePart(
++  page: { left: number; top: number; width: number; height: number },
++  viewport: { left: number; top: number; width: number; height: number },
++): DocRegion | null {
++  if (page.width <= 0 || page.height <= 0) return null;
++  const x0 = clamp((viewport.left - page.left) / page.width, 0, 1);
++  const y0 = clamp((viewport.top - page.top) / page.height, 0, 1);
++  const x1 = clamp((viewport.left + viewport.width - page.left) / page.width, 0, 1);
++  const y1 = clamp((viewport.top + viewport.height - page.top) / page.height, 0, 1);
++  return x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
++}
++
++/** Je výrez celý vnútri viditeľnej časti (tolerancia 0,5 % strany na zaokrúhlenie)? */
++export function regionInside(region: DocRegion, visible: DocRegion | null): boolean {
++  if (!visible) return false;
++  const eps = 0.005;
++  return region.x >= visible.x - eps && region.y >= visible.y - eps
++    && region.x + region.w <= visible.x + visible.w + eps && region.y + region.h <= visible.y + visible.h + eps;
++}
++
++/** Zlomky -> percentá strany (ako `region` v open_drawing), na dve desatinné miesta. */
++const toPct = (r: DocRegion) => ({ x: +(r.x * 100).toFixed(2), y: +(r.y * 100).toFixed(2), width: +(r.w * 100).toFixed(2), height: +(r.h * 100).toFixed(2) });
++
++/** Stav karty pre `view_state` (AIM D-127): čo z aktívnej strany je naozaj vidno. */
++export interface DocVisibleState {
++  document_id: string;
++  page: number;
++  zoom_percent: number;
++  /** Plocha karty v px. */
++  card: { width: number; height: number };
++  /** Viditeľná časť strany v % strany; null = strana mimo záberu. */
++  visible: { x: number; y: number; width: number; height: number } | null;
++  region?: { x: number; y: number; width: number; height: number };
++  region_fully_visible?: boolean;
++}
++
+ /** Najviac rámikov naraz; viac by výkres zakrylo. */
+ export const MAX_HIGHLIGHTS = 20;
+ /** Najmenší rámik (0,1 % strany): riadok textu býva vysoký 0,4-1 %. */
+@@ -135,16 +180,40 @@ export interface DocRegionRequest {
+ 
+ interface DocRegionState {
+   request: DocRegionRequest | null;
++  /** Viditeľný rozsah otvorenej karty (AIM D-127); null = žiadna karta s PDF. */
++  visible: DocVisibleState | null;
+   /** Rámiky okolo textu (D-123); null = žiadne. */
+   highlights: DocHighlights | null;
+-  requestRegion: (docId: string, region: DocRegion, page?: number) => void;
++  /** Vráti `nonce` požiadavky (na čakanie cez `regionApplied`). */
++  requestRegion: (docId: string, region: DocRegion, page?: number) => number;
+   /** Nahradí rámiky; prázdny zoznam ich zruší (každý DOCUMENT_OPEN). */
+   setHighlights: (docId: string, rects: DocRegion[], page?: number) => void;
+   clear: (nonce: number) => void;
+ }
+ 
++let lastNonce = 0;
++
++/** Čakajúci na vykonanie výrezu podľa `nonce` (APPLIED čaká, kým karta výrez naozaj ukáže). */
++const waiters = new Map<number, () => void>();
++
++/** true = výrez s týmto `nonce` sa vykonal do `timeoutMs`. */
++export function regionApplied(nonce: number, timeoutMs: number): Promise<boolean> {
++  return new Promise((resolve) => {
++    const timer = setTimeout(() => {
++      waiters.delete(nonce);
++      resolve(false);
++    }, timeoutMs);
++    waiters.set(nonce, () => {
++      clearTimeout(timer);
++      waiters.delete(nonce);
++      resolve(true);
++    });
++  });
++}
++
+ export const useAimDocRegionStore = create<DocRegionState>((set, get) => ({
+   request: null,
++  visible: null,
+   highlights: null,
+   setHighlights: (docId, rects, page) =>
+     set({
+@@ -158,17 +227,14 @@ export const useAimDocRegionStore = create<DocRegionState>((set, get) => ({
+               nonce: (get().highlights?.nonce ?? 0) + 1,
+             },
+     }),
+-  requestRegion: (docId, region, page) =>
+-    set({
+-      request: {
+-        docId,
+-        region,
+-        ...(page !== undefined ? { page } : {}),
+-        nonce: (get().request?.nonce ?? 0) + 1,
+-      },
+-    }),
++  requestRegion: (docId, region, page) => {
++    const nonce = ++lastNonce;
++    set({ request: { docId, region, ...(page !== undefined ? { page } : {}), nonce } });
++    return nonce;
++  },
+   clear: (nonce) => {
+     if (get().request?.nonce === nonce) set({ request: null });
++    waiters.get(nonce)?.();
+   },
+ }));
+ 
+@@ -201,6 +267,10 @@ export function useAimDocRegion(v: DocRegionViewInputs): void {
+   const highlights = useAimDocRegionStore((s) => (s.highlights?.docId === v.docId ? s.highlights : null));
+   const zoomedRef = useRef<number | null>(null);
+   const highlightPageRef = useRef<{ nonce: number; page: number } | null>(null);
++  /** Posledný výrez z chatu: platí, kým kartou nepohne používateľ (#166). */
++  const fitRef = useRef<{ region: DocRegion; page: number; width: number; height: number; aspect: number } | null>(null);
++  const zoomRef = useRef(v.zoom);
++  zoomRef.current = v.zoom;
+   useEffect(() => {
+     // Rámiky (D-123): stranu zafixuje prvé kreslenie, aby nepreskakovali pri listovaní.
+     if (!highlights) {
+@@ -215,9 +285,9 @@ export function useAimDocRegion(v: DocRegionViewInputs): void {
+     if (!request || !v.pdf || v.bodyWidth <= 0 || !root) return;
+     const page = request.page ?? v.currentPage;
+     const viewport = { width: root.clientWidth, height: root.clientHeight };
++    const aspect = v.aspects.get(page) ?? v.aspects.get(0) ?? 1 / 1.414;
+     if (zoomedRef.current !== request.nonce) {
+       zoomedRef.current = request.nonce;
+-      const aspect = v.aspects.get(page) ?? v.aspects.get(0) ?? 1 / 1.414;
+       const target = regionZoom(request.region, v.bodyWidth - CONTENT_PADDING_PX, viewport, aspect);
+       if (Math.abs(target - v.zoom) > 1e-3) {
+         v.zoomTo()(target);
+@@ -240,8 +310,78 @@ export function useAimDocRegion(v: DocRegionViewInputs): void {
+     );
+     root.scrollLeft = pos.left;
+     root.scrollTop = pos.top;
++    fitRef.current = { region: request.region, page, ...viewport, aspect };
++    publishVisible(v.docId, root, v.pageElsRef.current, page, zoomRef.current, request.region);
+     useAimDocRegionStore.getState().clear(request.nonce);
+   });
++  // Plocha karty sa po otvorení mení (split, ukotvenie, šírka stĺpca) a skutočný pomer
++  // strany príde až s PDF: výrez z chatu sa vtedy prepočíta, kým kartou nepohne používateľ.
++  const aspectKey = fitRef.current ? (v.aspects.get(fitRef.current.page) ?? v.aspects.get(0) ?? 0) : 0;
++  useEffect(() => {
++    const root = v.scrollRef.current;
++    if (!root) return;
++    const refit = () => {
++      const fit = fitRef.current;
++      if (!fit || useAimDocRegionStore.getState().request) return;
++      const aspect = v.aspects.get(fit.page) ?? v.aspects.get(0) ?? fit.aspect;
++      const moved = Math.abs(root.clientWidth - fit.width) > 2 || Math.abs(root.clientHeight - fit.height) > 2;
++      if (moved || Math.abs(aspect - fit.aspect) > 1e-3) useAimDocRegionStore.getState().requestRegion(v.docId, fit.region, fit.page);
++    };
++    const release = () => {
++      fitRef.current = null;
++    };
++    let raf = 0;
++    const onScroll = () => {
++      if (raf) return;
++      raf = requestAnimationFrame(() => {
++        raf = 0;
++        const page = fitRef.current?.page ?? v.currentPage;
++        publishVisible(v.docId, root, v.pageElsRef.current, page, zoomRef.current, fitRef.current?.region);
++      });
++    };
++    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(refit);
++    ro?.observe(root);
++    refit();
++    const gestures = ['wheel', 'pointerdown', 'keydown', 'touchstart'] as const;
++    for (const g of gestures) root.addEventListener(g, release, { passive: true });
++    root.addEventListener('scroll', onScroll, { passive: true });
++    return () => {
++      ro?.disconnect();
++      for (const g of gestures) root.removeEventListener(g, release);
++      root.removeEventListener('scroll', onScroll);
++      if (raf) cancelAnimationFrame(raf);
++    };
++  }, [v.docId, v.scrollRef, v.pageElsRef, v.currentPage, v.aspects, aspectKey]);
++  // Zatvorená karta už nič neukazuje.
++  useEffect(() => () => {
++    if (useAimDocRegionStore.getState().visible?.document_id === v.docId) useAimDocRegionStore.setState({ visible: null });
++  }, [v.docId]);
++}
++
++/** Zapíše, čo zo strany `page` je v ploche karty vidno (AIM D-127). */
++function publishVisible(
++  docId: string,
++  root: HTMLElement,
++  pageEls: Map<number, HTMLDivElement> | null,
++  page: number,
++  zoom: number,
++  region: DocRegion | undefined,
++): void {
++  const el = pageEls?.get(page);
++  if (!el) return;
++  const rootRect = root.getBoundingClientRect();
++  const viewport = { left: rootRect.left, top: rootRect.top, width: root.clientWidth, height: root.clientHeight };
++  const part = visiblePart(el.getBoundingClientRect(), viewport);
++  useAimDocRegionStore.setState({
++    visible: {
++      document_id: docId,
++      page,
++      zoom_percent: Math.round(zoom * 100),
++      card: { width: Math.round(viewport.width), height: Math.round(viewport.height) },
++      visible: part && toPct(part),
++      ...(region ? { region: toPct(region), region_fully_visible: regionInside(region, part) } : {}),
++    },
++  });
+ }
+ 
+ const LAYER_ATTR = 'data-aim-highlights';
+diff --git a/apps/viewer/src/aim/useAimViewCommands.ts b/apps/viewer/src/aim/useAimViewCommands.ts
+index d7429674..975f0761 100644
+--- a/apps/viewer/src/aim/useAimViewCommands.ts
++++ b/apps/viewer/src/aim/useAimViewCommands.ts
+@@ -46,6 +46,8 @@ const sectionRenderBounds = (state: Parameters<typeof sectionBoundsWith>[0]) =>
+ const GUIDS = { resolveGuids, guidForEntity, sectionRenderBounds };
+ let camera: Promise<typeof import('./viewCamera.js')> | null = null;
+ const loadCamera = () => (camera ??= import('./viewCamera.js'));
++let panels: Promise<typeof import('./aimPanels.js')> | null = null;
++const loadPanels = () => (panels ??= import('./aimPanels.js'));
+ let measure: Promise<typeof import('./measureShow.js')> | null = null;
+ /** Kóty od hosta (AIM D-124) - lenivo, mimo vstupného balíka. */
+ const loadMeasure = () => (measure ??= import('./measureShow.js'));
+@@ -74,6 +76,7 @@ export async function appliedViewState(): Promise<Record<string, unknown>> {
+   return {
+     mode: s.mode, storey_guid: s.storey_guid, section: s.section, camera: s.camera,
+     selection_count: s.selection.count, hidden_count: s.hidden_count, isolated_count: s.isolated_count, focus: s.focus,
++    panels: s.panels, ...(s.property_focus ? { property_focus: s.property_focus } : {}), ...(s.document ? { document: s.document } : {}),
+   };
+ }
+ 
+@@ -152,6 +155,10 @@ export function useAimViewCommands(bim: BimContext) {
+         track(loadMeasure().then((m) => m.showMeasurements(msg)));
+         return;
+       }
++      case 'SET_PANELS': {
++        track(loadPanels().then((m) => m.applyPanels(msg.panels, noteIssue)));
++        return;
++      }
+       case 'SET_VIEW_MODE': {
+         const storey = pickStorey(storeys, msg.storeyGuid);
+         if (storey === null) {
+diff --git a/apps/viewer/src/aim/view-protocol.ts b/apps/viewer/src/aim/view-protocol.ts
+index 2f47bd2e..ce9d6aee 100644
+--- a/apps/viewer/src/aim/view-protocol.ts
++++ b/apps/viewer/src/aim/view-protocol.ts
+@@ -40,6 +40,20 @@ export type SectionFit = (typeof SECTION_FITS)[number];
+ export const VIEW_QUERIES = ['bounds', 'view_state'] as const;
+ export type ViewQuery = (typeof VIEW_QUERIES)[number];
+ 
++/** Panely z chatu (AIM D-127): mená na drôte, mapovanie a vykonanie v `aimPanelsPlan.ts` / `aimPanels.ts`. */
++export const PANEL_KEYS = ['lens', 'properties', 'underlays', 'documents', 'lists', 'model_tree'] as const;
++export type PanelKey = (typeof PANEL_KEYS)[number];
++const PANEL_ACTIONS: readonly unknown[] = ['open', 'close', 'toggle'];
++export type PanelsRequest = Partial<Record<PanelKey | 'all', 'open' | 'close' | 'toggle'>>;
++
++/** `panels` zo správy hosta: aspoň jedna položka, `all` len `close` (čistý pohľad). */
++export function isPanelsRequest(raw: unknown): raw is PanelsRequest {
++  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
++  const entries = Object.entries(raw as Record<string, unknown>);
++  return entries.length > 0 && entries.every(([k, v]) =>
++    PANEL_ACTIONS.includes(v) && ((PANEL_KEYS as readonly string[]).includes(k) || (k === 'all' && v === 'close')));
++}
++
+ /** Výška rezu nad úrovňou podlažia v metroch - rovnaký rozsah ako host. */
+ export const SECTION_OFFSET_RANGE = { min: -5, max: 20 } as const;
+ const MAX_GUIDS = 600;
+@@ -81,6 +95,8 @@ export type ViewInboundMessage =
+     }
+   | { source: typeof SOURCE; type: 'SET_VIEW_MODE'; mode: BridgeViewMode; storeyGuid?: string }
+   | { source: typeof SOURCE; type: 'QUERY'; id: string; query: ViewQuery; guids?: string[] }
++  /** Panely z chatu (AIM D-127): otvoriť, zavrieť, prepnúť; `all` len zavrieť. */
++  | { source: typeof SOURCE; type: 'SET_PANELS'; panels: PanelsRequest }
+   /** Kóty v IFC svete (Z hore, m) do nástroja Measure (AIM D-124); `keep` = pridať k predošlým od hosta. */
+   | { source: typeof SOURCE; type: 'MEASURE_SHOW'; segments: { a: Vec3Wire; b: Vec3Wire }[]; keep?: boolean };
+ 
+@@ -169,6 +185,8 @@ export function isViewMessage(data: unknown): data is ViewInboundMessage {
+         && m.segments.length <= MAX_MEASURE_SEGMENTS
+         && m.segments.every((s) => !!s && typeof s === 'object' && isVec((s as { a?: unknown }).a) && isVec((s as { b?: unknown }).b))
+         && optional(m.keep, (k) => typeof k === 'boolean');
++    case 'SET_PANELS':
++      return isPanelsRequest(m.panels);
+     case 'QUERY':
+       return isId(m.id)
+         && (VIEW_QUERIES as readonly unknown[]).includes(m.query)
+diff --git a/apps/viewer/src/aim/viewQueries.ts b/apps/viewer/src/aim/viewQueries.ts
+index b10efd78..13b9841b 100644
+--- a/apps/viewer/src/aim/viewQueries.ts
++++ b/apps/viewer/src/aim/viewQueries.ts
+@@ -23,6 +23,9 @@ import { expandToGeometryBearingIds } from '@/utils/aggregation';
+ import { deriveViewMode } from '@/hooks/viewModeCore';
+ import { RelationshipType } from '@ifc-lite/data';
+ import { summarizeSelection, visibilityGuids, type SelectedEntityInfo } from './selectionSummary.js';
++import { describePanels } from './aimPanelsPlan.js';
++import { useAimInspectorStore } from './aimInspectorStore.js';
++import { useAimDocRegionStore } from './docRegion.js';
+ import type { guidForEntity, resolveGuids } from './bridge-protocol.js';
+ import type { SectionPlaneAxis } from '@/store/types';
+ import type { SectionAxis, SectionFit, ViewInboundMessage, ViewQueryResult } from './view-protocol.js';
+@@ -200,6 +203,10 @@ export function queryViewState(state: State, g: GuidHelpers) {
+     isolated_guids: state.isolatedEntities ? visibilityGuids(state.isolatedEntities, guidOf) : null,
+     // Oranžové zvýraznenie z FOCUS (#94): bez neho sa nedalo povedať, čo je to za farbu.
+     ...(g.focus ? { focus: g.focus() } : {}),
++    // AIM D-127: panely (#179), zvýraznená vlastnosť v paneli (#168) a viditeľný výrez karty dokumentu (#166).
++    panels: describePanels(state),
++    property_focus: useAimInspectorStore.getState().propertyFocus,
++    document: useAimDocRegionStore.getState().visible,
+   };
+ }
+ 
+diff --git a/apps/viewer/src/aim/visibility-commands.ts b/apps/viewer/src/aim/visibility-commands.ts
+index a75cdd6b..63beb8a5 100644
+--- a/apps/viewer/src/aim/visibility-commands.ts
++++ b/apps/viewer/src/aim/visibility-commands.ts
+@@ -116,7 +116,7 @@ export function runVisibilityCommand(
+       // Výber ako klik myšou (D-082): ENTITY_SELECTED musí ísť hostovi, preto nie je programový.
+       const panel = selectPanel(msg.panel);
+       if (panel === null) {
+-        d.noteIssue('SELECT: neplatný panel (tab aim|ifc, section properties|quantities, focus pset + property)');
++        d.noteIssue('SELECT: neplatný panel (section properties|quantities, focus pset + property)');
+         return true;
+       }
+       const state = useViewerStore.getState();
+-- 
+2.43.0
+
+
+From 8a5c8b160f9dc7b37366535c7f7068e88e651564 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 08:10:57 +0000
+Subject: [PATCH 2/4] =?UTF-8?q?AIM=20D-127:=20muta=C4=8Dn=C3=A9=20d=C3=B4k?=
+ =?UTF-8?q?azy=20pre=20revert=20oracle?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013pTmyabGpJyMo1eWHhfymn
+---
+ .../aim-d127-panels/mutations/README.md       |  55 +++++++
+ .../mutations/all-closes-explicit.patch       |  13 ++
+ .../mutations/all-open-accepted.patch         |  13 ++
+ .../mutations/clear-no-waiter.patch           |  13 ++
+ .../mutations/floating-ignored.patch          |  13 ++
+ .../mutations/inside-no-tolerance.patch       |  13 ++
+ .../mutations/loose-before-exact.patch        |  11 ++
+ .../mutations/open-before-close.patch         |  13 ++
+ .../mutations/propkey-ignores-pset.patch      |  13 ++
+ .../mutations/qto-in-properties.patch         |  13 ++
+ .../aim-d127-panels/mutations/summary.json    | 142 ++++++++++++++++++
+ .../mutations/visible-unclamped.patch         |  13 ++
+ 12 files changed, 325 insertions(+)
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/all-closes-explicit.patch
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/all-open-accepted.patch
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/clear-no-waiter.patch
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/floating-ignored.patch
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/inside-no-tolerance.patch
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/loose-before-exact.patch
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/open-before-close.patch
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/propkey-ignores-pset.patch
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/qto-in-properties.patch
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/summary.json
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/visible-unclamped.patch
+
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/README.md b/docs/architecture/evidence/aim-d127-panels/mutations/README.md
+new file mode 100644
+index 00000000..40fbeb84
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/README.md
+@@ -0,0 +1,55 @@
++<!-- This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this
++     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
++
++# AIM D-127 panels: surgical mutation evidence
++
++AIM D-127 changes the AIM layer in `apps/viewer/src/aim/`:
++- A chat property focus (`SELECT` `panel.focus`) stays highlighted until the next selection. It also reaches quantities and type psets.
++- The AIM | IFC tab bar is gone; the AIM card is a collapsed row.
++- `SET_PANELS` opens, closes or toggles panels.
++- A chat page region re-fits when the card is resized, and `view_state` reports the visible part of the page.
++
++The pure logic lives in three modules: `aimPanelViewPlan.ts`, the new `aimPanelsPlan.ts`, and `docRegion.ts` (`visiblePart`, `regionInside`, `regionApplied`). The message check lives in `view-protocol.ts`. The changed tests import exports that do not exist on `main`, so reverting production makes them fail to load and the CI revert oracle reports INCONCLUSIVE. Each main decision was instead checked with a surgical mutation.
++
++Each patch is written mutant->fixed and reverse-applied by the oracle. Every run ended `OBSERVED` (exit 0) with restoration verified against `origin/main`. The records are in `summary.json`.
++
++| Patch | Module | Mutation | Test |
++|---|---|---|---|
++| `qto-in-properties.patch` | `aimPanelViewPlan.ts` | a Qto focus opens Properties instead of Quantities | `aimPanelViewPlan.test.ts` |
++| `propkey-ignores-pset.patch` | `aimPanelViewPlan.ts` | a row key matches on the property name alone, any pset | `aimPanelViewPlan.test.ts` |
++| `loose-before-exact.patch` | `aimPanelViewPlan.ts` | a case-insensitive name wins over the exact one | `aimPanelViewPlan.test.ts` |
++| `all-closes-explicit.patch` | `aimPanelsPlan.ts` | `all: close` also closes the panels the message opens | `aimPanelsPlan.test.ts` |
++| `open-before-close.patch` | `aimPanelsPlan.ts` | opening runs before closing, so a shared slot gets closed again | `aimPanelsPlan.test.ts` |
++| `floating-ignored.patch` | `aimPanelsPlan.ts` | a floating panel is reported as docked or closed | `aimPanelsPlan.test.ts` |
++| `all-open-accepted.patch` | `view-protocol.ts` | `all: open` passes the bridge check | `aimPanelsPlan.test.ts` |
++| `inside-no-tolerance.patch` | `docRegion.ts` | "region fully visible" has no rounding tolerance | `docRegion.test.ts` |
++| `visible-unclamped.patch` | `docRegion.ts` | the visible part is not clamped to the page | `docRegion.test.ts` |
++| `clear-no-waiter.patch` | `docRegion.ts` | clearing a region request never resolves `regionApplied` | `docRegion.test.ts` |
++
++The following is store, DOM and renderer glue with no unit test, and was verified live:
++- `aimPanelView.ts`: DOM focus with a MutationObserver.
++- `aimPanels.ts`: store actions.
++- The `useAimDocRegion` refit, `AimInspectorTabs.tsx` and `AimCard.tsx`.
++- The `viewQueries.ts` / `useAimViewCommands.ts` wiring.
++
++The live check ran in a local fork viewer embedded in a host page with the `BURKWIL_DX_B.ifc` model, driven by Playwright posting bridge messages and `ACK_REQUEST`:
++- A focus on `AC_Pset_RenovationAndPhasing.Renovation Status` scrolled into view and was still marked after 7.5 s. A collapsed pset was expanded. `BaseQuantities.Width` was marked in Quantities. A missing property came back `found: false` with an `APPLIED` issue. Selecting another door cleared the mark.
++- `SET_PANELS all=close` hid every panel. Lens, the tree and lists opened, and their reported state matched the screen.
++- `DOCUMENT_OPEN` with a 30 % region in a 378 px card reported `region_fully_visible: true`. Narrowing the card to 264 px kept the region in view.
++
++Bundle (`vite build` of branch and `main`, same machine):
++- `viewer-entry-js-bytes` 3,164,374, which is -2,354 B against `main` (the tab bar is gone).
++- `viewer-eager-js-bytes` +2,665 B.
++- `perf-ratchet check` passes without a ceiling raise.
++
++## Replay
++
++Use a clean checkout with dependencies. Copy the patches outside the tree, then run, for example:
++
++```bash
++node scripts/check-test-revert-oracle.mjs --base origin/main \
++  --only apps/viewer/src/aim/aimPanelsPlan.ts \
++  --test apps/viewer/src/aim/aimPanelsPlan.test.ts \
++  --mutation /tmp/d127-mut/open-before-close.patch --ci --json
++```
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/all-closes-explicit.patch b/docs/architecture/evidence/aim-d127-panels/mutations/all-closes-explicit.patch
+new file mode 100644
+index 00000000..a4622f37
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/all-closes-explicit.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimPanelsPlan.ts a/apps/viewer/src/aim/aimPanelsPlan.ts
++index 95818620..b7fde688 100644
++--- b/apps/viewer/src/aim/aimPanelsPlan.ts
+++++ a/apps/viewer/src/aim/aimPanelsPlan.ts
++@@ -37,7 +37,7 @@ export function planPanels(req: PanelsRequest, isOpen: (key: PanelKey) => boolea
++   if (req.all === 'close') for (const k of PANEL_KEYS) want.set(k, false);
++   for (const k of PANEL_KEYS) {
++     const a = req[k];
++-    if (a === 'open' && req.all !== 'close') want.set(k, true);
+++    if (a === 'open') want.set(k, true);
++     else if (a === 'close') want.set(k, false);
++     else if (a === 'toggle') want.set(k, !isOpen(k));
++   }
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/all-open-accepted.patch b/docs/architecture/evidence/aim-d127-panels/mutations/all-open-accepted.patch
+new file mode 100644
+index 00000000..49b77268
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/all-open-accepted.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/view-protocol.ts a/apps/viewer/src/aim/view-protocol.ts
++index 51b3a620..ce9d6aee 100644
++--- b/apps/viewer/src/aim/view-protocol.ts
+++++ a/apps/viewer/src/aim/view-protocol.ts
++@@ -51,7 +51,7 @@ export function isPanelsRequest(raw: unknown): raw is PanelsRequest {
++   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
++   const entries = Object.entries(raw as Record<string, unknown>);
++   return entries.length > 0 && entries.every(([k, v]) =>
++-    PANEL_ACTIONS.includes(v) && ((PANEL_KEYS as readonly string[]).includes(k) || k === 'all'));
+++    PANEL_ACTIONS.includes(v) && ((PANEL_KEYS as readonly string[]).includes(k) || (k === 'all' && v === 'close')));
++ }
++ 
++ /** Výška rezu nad úrovňou podlažia v metroch - rovnaký rozsah ako host. */
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/clear-no-waiter.patch b/docs/architecture/evidence/aim-d127-panels/mutations/clear-no-waiter.patch
+new file mode 100644
+index 00000000..3a65b5f9
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/clear-no-waiter.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docRegion.ts a/apps/viewer/src/aim/docRegion.ts
++index 11102941..3e3b12ad 100644
++--- b/apps/viewer/src/aim/docRegion.ts
+++++ a/apps/viewer/src/aim/docRegion.ts
++@@ -234,7 +234,7 @@ export const useAimDocRegionStore = create<DocRegionState>((set, get) => ({
++   },
++   clear: (nonce) => {
++     if (get().request?.nonce === nonce) set({ request: null });
++-    void waiters;
+++    waiters.get(nonce)?.();
++   },
++ }));
++ 
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/floating-ignored.patch b/docs/architecture/evidence/aim-d127-panels/mutations/floating-ignored.patch
+new file mode 100644
+index 00000000..278f9edd
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/floating-ignored.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimPanelsPlan.ts a/apps/viewer/src/aim/aimPanelsPlan.ts
++index b8cde543..b7fde688 100644
++--- b/apps/viewer/src/aim/aimPanelsPlan.ts
+++++ a/apps/viewer/src/aim/aimPanelsPlan.ts
++@@ -70,7 +70,7 @@ export function panelInfo(s: PanelsStateLike, key: PanelKey): PanelInfo {
++   const id = PANEL_ID[key];
++   if (key === 'model_tree') return s.leftPanelCollapsed ? { open: false } : { open: true, where: 'left' };
++   const floating = s.floatingPanels.find((p) => p.id === id);
++-  if (floating && false) return { open: true, where: 'floating', snap: floating.snap, size: { w: Math.round(floating.w), h: Math.round(floating.h) } };
+++  if (floating) return { open: true, where: 'floating', snap: floating.snap, size: { w: Math.round(floating.w), h: Math.round(floating.h) } };
++   if (s.poppedOutIds.includes(id)) return { open: true, where: 'window' };
++   if (key === 'lists') return s.listPanelVisible ? { open: true, where: 'bottom' } : { open: false };
++   const docked = s.sidebarMode !== 'collapsed' && (s.sidebarActivePanel === id || s.sidebarSecondaryPanel === id);
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/inside-no-tolerance.patch b/docs/architecture/evidence/aim-d127-panels/mutations/inside-no-tolerance.patch
+new file mode 100644
+index 00000000..3b494528
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/inside-no-tolerance.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docRegion.ts a/apps/viewer/src/aim/docRegion.ts
++index dccde65b..3e3b12ad 100644
++--- b/apps/viewer/src/aim/docRegion.ts
+++++ a/apps/viewer/src/aim/docRegion.ts
++@@ -105,7 +105,7 @@ export function visiblePart(
++ /** Je výrez celý vnútri viditeľnej časti (tolerancia 0,5 % strany na zaokrúhlenie)? */
++ export function regionInside(region: DocRegion, visible: DocRegion | null): boolean {
++   if (!visible) return false;
++-  const eps = 0;
+++  const eps = 0.005;
++   return region.x >= visible.x - eps && region.y >= visible.y - eps
++     && region.x + region.w <= visible.x + visible.w + eps && region.y + region.h <= visible.y + visible.h + eps;
++ }
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/loose-before-exact.patch b/docs/architecture/evidence/aim-d127-panels/mutations/loose-before-exact.patch
+new file mode 100644
+index 00000000..3438b67c
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/loose-before-exact.patch
+@@ -0,0 +1,11 @@
++diff --git b/apps/viewer/src/aim/aimPanelViewPlan.ts a/apps/viewer/src/aim/aimPanelViewPlan.ts
++index f9c7647a..49cdb639 100644
++--- b/apps/viewer/src/aim/aimPanelViewPlan.ts
+++++ a/apps/viewer/src/aim/aimPanelViewPlan.ts
++@@ -87,5 +87,5 @@ export function propKeyEntity(key: string, pset: string, property: string): numb
++ /** Index mena v zozname: presná zhoda, inak bez ohľadu na veľkosť písmen; -1 = nie je. */
++ export function matchName(names: ReadonlyArray<string | null | undefined>, want: string): number {
++   const exact = names.findIndex((n) => same(n, want));
++-  const loose = names.findIndex((n) => sameLoose(n, want)); return loose >= 0 ? loose : exact;
+++  return exact >= 0 ? exact : names.findIndex((n) => sameLoose(n, want));
++ }
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/open-before-close.patch b/docs/architecture/evidence/aim-d127-panels/mutations/open-before-close.patch
+new file mode 100644
+index 00000000..4af7e5ae
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/open-before-close.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimPanelsPlan.ts a/apps/viewer/src/aim/aimPanelsPlan.ts
++index 46db511f..b7fde688 100644
++--- b/apps/viewer/src/aim/aimPanelsPlan.ts
+++++ a/apps/viewer/src/aim/aimPanelsPlan.ts
++@@ -42,7 +42,7 @@ export function planPanels(req: PanelsRequest, isOpen: (key: PanelKey) => boolea
++     else if (a === 'toggle') want.set(k, !isOpen(k));
++   }
++   const steps = [...want].map(([key, open]) => ({ key, open }));
++-  return [...steps.filter((s) => s.open), ...steps.filter((s) => !s.open)];
+++  return [...steps.filter((s) => !s.open), ...steps.filter((s) => s.open)];
++ }
++ 
++ /** Stav store, z ktorého sa číta, kde panel je (podmnožina `ViewerState`). */
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/propkey-ignores-pset.patch b/docs/architecture/evidence/aim-d127-panels/mutations/propkey-ignores-pset.patch
+new file mode 100644
+index 00000000..0355ee28
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/propkey-ignores-pset.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimPanelViewPlan.ts a/apps/viewer/src/aim/aimPanelViewPlan.ts
++index 5529bfc7..49cdb639 100644
++--- b/apps/viewer/src/aim/aimPanelViewPlan.ts
+++++ a/apps/viewer/src/aim/aimPanelViewPlan.ts
++@@ -80,7 +80,7 @@ export function propKeyEntity(key: string, pset: string, property: string): numb
++   const id = Number(key.slice(0, i));
++   if (!Number.isInteger(id)) return null;
++   const rest = key.slice(i + 1);
++-  if (rest.endsWith(`:${property}`)) return id;
+++  if (same(rest, `${pset}:${property}`) || sameLoose(rest, `${pset}:${property}`)) return id;
++   return null;
++ }
++ 
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/qto-in-properties.patch b/docs/architecture/evidence/aim-d127-panels/mutations/qto-in-properties.patch
+new file mode 100644
+index 00000000..02373ac3
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/qto-in-properties.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimPanelViewPlan.ts a/apps/viewer/src/aim/aimPanelViewPlan.ts
++index 6ba8e8cf..49cdb639 100644
++--- b/apps/viewer/src/aim/aimPanelViewPlan.ts
+++++ a/apps/viewer/src/aim/aimPanelViewPlan.ts
++@@ -58,7 +58,7 @@ export const isQuantitySetName = (pset: string): boolean => /^(Qto_|BaseQuantiti
++ 
++ /** Čo sa má nastaviť: sekcia podľa focusu (výmera = Quantities), inak podľa `section`. */
++ export function panelPlan(view: AimPanelView): { section?: PanelSection; focus?: { pset: string; property: string } } {
++-  if (view.focus) return { section: isQuantitySetName(view.focus.pset) ? 'quantities' : 'properties', focus: view.focus, section: 'properties' as PanelSection };
+++  if (view.focus) return { section: isQuantitySetName(view.focus.pset) ? 'quantities' : 'properties', focus: view.focus };
++   return view.section ? { section: view.section } : {};
++ }
++ 
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/summary.json b/docs/architecture/evidence/aim-d127-panels/mutations/summary.json
+new file mode 100644
+index 00000000..54b0c6df
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/summary.json
+@@ -0,0 +1,142 @@
++{
++  "all-closes-explicit": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimPanelsPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "4c9d2f22d8d85776551781df9a417fa24436a62f",
++    "production": [
++      "apps/viewer/src/aim/aimPanelsPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimPanelsPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "all-open-accepted": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimPanelsPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "4c9d2f22d8d85776551781df9a417fa24436a62f",
++    "production": [
++      "apps/viewer/src/aim/view-protocol.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimPanelsPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "clear-no-waiter": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docRegion.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "4c9d2f22d8d85776551781df9a417fa24436a62f",
++    "production": [
++      "apps/viewer/src/aim/docRegion.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docRegion.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "floating-ignored": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimPanelsPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "4c9d2f22d8d85776551781df9a417fa24436a62f",
++    "production": [
++      "apps/viewer/src/aim/aimPanelsPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimPanelsPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "inside-no-tolerance": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docRegion.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "4c9d2f22d8d85776551781df9a417fa24436a62f",
++    "production": [
++      "apps/viewer/src/aim/docRegion.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docRegion.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "loose-before-exact": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimPanelViewPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "4c9d2f22d8d85776551781df9a417fa24436a62f",
++    "production": [
++      "apps/viewer/src/aim/aimPanelViewPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimPanelViewPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "open-before-close": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimPanelsPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "4c9d2f22d8d85776551781df9a417fa24436a62f",
++    "production": [
++      "apps/viewer/src/aim/aimPanelsPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimPanelsPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "propkey-ignores-pset": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimPanelViewPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "4c9d2f22d8d85776551781df9a417fa24436a62f",
++    "production": [
++      "apps/viewer/src/aim/aimPanelViewPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimPanelViewPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "qto-in-properties": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimPanelViewPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "4c9d2f22d8d85776551781df9a417fa24436a62f",
++    "production": [
++      "apps/viewer/src/aim/aimPanelViewPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimPanelViewPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "visible-unclamped": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docRegion.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "4c9d2f22d8d85776551781df9a417fa24436a62f",
++    "production": [
++      "apps/viewer/src/aim/docRegion.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docRegion.test.ts"
++    ],
++    "restoration": "verified"
++  }
++}
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/visible-unclamped.patch b/docs/architecture/evidence/aim-d127-panels/mutations/visible-unclamped.patch
+new file mode 100644
+index 00000000..3c089607
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/visible-unclamped.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docRegion.ts a/apps/viewer/src/aim/docRegion.ts
++index 3e0e38ef..3e3b12ad 100644
++--- b/apps/viewer/src/aim/docRegion.ts
+++++ a/apps/viewer/src/aim/docRegion.ts
++@@ -95,7 +95,7 @@ export function visiblePart(
++   viewport: { left: number; top: number; width: number; height: number },
++ ): DocRegion | null {
++   if (page.width <= 0 || page.height <= 0) return null;
++-  const x0 = (viewport.left - page.left) / page.width;
+++  const x0 = clamp((viewport.left - page.left) / page.width, 0, 1);
++   const y0 = clamp((viewport.top - page.top) / page.height, 0, 1);
++   const x1 = clamp((viewport.left + viewport.width - page.left) / page.width, 0, 1);
++   const y1 = clamp((viewport.top + viewport.height - page.top) / page.height, 0, 1);
+-- 
+2.43.0
+
+
+From 9871b0cf05b98acde2c5ee32bce9fcc8448c9b02 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 08:26:27 +0000
+Subject: [PATCH 3/4] =?UTF-8?q?AIM=20D-127/D-129:=20bez=20AIM=20karty,=20A?=
+ =?UTF-8?q?IM=20riadky=20v=20IFC=20paneli,=20odznak=20AIM=20pri=20zdeden?=
+ =?UTF-8?q?=C3=BDch=20dokumentoch?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+#169 podľa D-129: AIM karta a odkaz na detail z panela vypadli. Posledná zmena
+receptom (revízia, BCF téma) a história GUID sú riadky vrstvy AIM s odznakom
+nad IFC obsahom (vzor odvodených vzťahov D-089). Dokumenty zdedené cez zónu,
+podlažie alebo skupinu majú v paneli Documents (Len pre výber) odznak AIM.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013pTmyabGpJyMo1eWHhfymn
+---
+ apps/viewer/src/aim/AimBridge.tsx            |   2 +-
+ apps/viewer/src/aim/AimCard.tsx              | 262 -------------------
+ apps/viewer/src/aim/AimDocumentsControls.tsx |  14 +-
+ apps/viewer/src/aim/AimInspectorTabs.tsx     |  61 +++--
+ apps/viewer/src/aim/aimInspectorStore.ts     |  11 +-
+ apps/viewer/src/aim/aimPanelStore.ts         |   4 +-
+ apps/viewer/src/aim/bridge-protocol.ts       |  14 +-
+ apps/viewer/src/aim/documentsQuery.test.ts   |  11 +
+ apps/viewer/src/aim/documentsQuery.ts        |   5 +
+ 9 files changed, 81 insertions(+), 303 deletions(-)
+ delete mode 100644 apps/viewer/src/aim/AimCard.tsx
+
+diff --git a/apps/viewer/src/aim/AimBridge.tsx b/apps/viewer/src/aim/AimBridge.tsx
+index 11aea032..f2f2bc50 100644
+--- a/apps/viewer/src/aim/AimBridge.tsx
++++ b/apps/viewer/src/aim/AimBridge.tsx
+@@ -378,7 +378,7 @@ export function AimBridge() {
+     }
+     const guid = guidForEntity(useViewerStore.getState().models, selectedEntity);
+     if (guid) {
+-      // AimCard shows its skeleton immediately; the host answers with
++      // AIM layer rows wait for the host's answer:
+       // AIM_PANEL_DATA / AIM_PANEL_EMPTY (or the store times out quietly).
+       useAimPanelStore.getState().beginLoading(guid);
+       window.parent.postMessage({ source: SOURCE, type: 'ENTITY_SELECTED', guid } satisfies OutboundMessage, targetOrigin);
+diff --git a/apps/viewer/src/aim/AimCard.tsx b/apps/viewer/src/aim/AimCard.tsx
+deleted file mode 100644
+index 6f403105..00000000
+--- a/apps/viewer/src/aim/AimCard.tsx
++++ /dev/null
+@@ -1,262 +0,0 @@
+-/* This Source Code Form is subject to the terms of the Mozilla Public
+- * License, v. 2.0. If a copy of the MPL was not distributed with this
+- * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+-
+-/**
+- * AIM card — platform (database) data for the selected element, rendered at
+- * the top of the PropertiesPanel when the viewer is embedded in the AIM host.
+- * Purely presentational: the host sends a generic render schema
+- * (AimPanelData) and every link is bounced back over the bridge
+- * (postAimNavigate) so navigation happens in the parent app, never here.
+- * Exception (D-104): a document the viewer's library holds opens here, at the
+- * card's page, so the 3D view stays; the others still navigate the host.
+- * Renders nothing when standalone (not embedded) — zero upstream impact.
+- */
+-
+-import { ChevronDown, Database, FileText, ExternalLink, Users, Camera, History } from 'lucide-react';
+-import { Badge } from '@/components/ui/badge';
+-import { Button } from '@/components/ui/button';
+-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+-import { useAimPanelStore, postAimNavigate, type AimPanelData } from './aimPanelStore';
+-import { useViewerStore } from '@/store';
+-
+-/**
+- * Opens a card document in the viewer at its page when the library has it
+- * (DOCUMENTS_LOAD); null = the row navigates the host instead.
+- */
+-function openInViewer(documentId: string | undefined, page: number | undefined): (() => boolean) | null {
+-  if (!documentId) return null;
+-  return () => {
+-    const { viewerDocuments, openDocument } = useViewerStore.getState();
+-    if (!viewerDocuments.has(documentId)) return false;
+-    openDocument(documentId, { page });
+-    return true;
+-  };
+-}
+-
+-function AimLink({ href, children, className, onOpen }: {
+-  href: string; children: React.ReactNode; className?: string; onOpen?: (() => boolean) | null;
+-}) {
+-  return (
+-    <a
+-      href={href}
+-      className={className}
+-      onClick={(e) => {
+-        e.preventDefault();
+-        if (onOpen?.()) return;
+-        postAimNavigate(href);
+-      }}
+-    >
+-      {children}
+-    </a>
+-  );
+-}
+-
+-function AimCardBody({ data }: { data: AimPanelData }) {
+-  return (
+-    <div className="border-t">
+-      {/* Title + badges */}
+-      <div className="px-3 py-2 space-y-1">
+-        <div className="flex items-center gap-2 min-w-0">
+-          <span className="font-medium text-sm truncate" title={data.title}>{data.title}</span>
+-          {data.badges?.map((b) => (
+-            <Badge
+-              key={b.label}
+-              variant={b.tone === 'accent' ? 'default' : 'secondary'}
+-              className="text-[10px] px-1.5 py-0 shrink-0"
+-            >
+-              {b.label}
+-            </Badge>
+-          ))}
+-        </div>
+-        {data.subtitle && (
+-          <div className="font-mono text-[10px] text-muted-foreground truncate" title={data.subtitle}>
+-            {data.subtitle}
+-          </div>
+-        )}
+-      </div>
+-
+-      {/* Generic sections */}
+-      {data.sections?.map((section) => (
+-        <div key={section.label}>
+-          <div className="px-3 pt-1.5 pb-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+-            {section.label}
+-          </div>
+-          <div className="divide-y border-t">
+-            {section.rows.map((row, i) => (
+-              <div key={`${row.label}-${i}`} className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
+-                <span className="text-muted-foreground truncate" title={row.label}>{row.label}</span>
+-                {row.href ? (
+-                  <AimLink href={row.href} className="font-medium truncate text-primary hover:underline" >
+-                    {row.value}
+-                  </AimLink>
+-                ) : (
+-                  <span className={`font-medium truncate ${row.mono ? 'font-mono text-xs' : ''}`} title={row.value}>
+-                    {row.value}
+-                  </span>
+-                )}
+-              </div>
+-            ))}
+-          </div>
+-        </div>
+-      ))}
+-
+-      {/* Documents */}
+-      {data.documents && data.documents.length > 0 && (
+-        <div>
+-          <div className="px-3 pt-1.5 pb-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+-            Dokumenty ({data.documents.length})
+-          </div>
+-          <div className="divide-y border-t">
+-            {data.documents.map((doc, i) => (
+-              <AimLink
+-                key={`${doc.href}-${i}`}
+-                href={doc.href}
+-                className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/50 min-w-0"
+-                onOpen={openInViewer(doc.documentId, doc.page)}
+-              >
+-                <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+-                <span className="flex-1 min-w-0">
+-                  <span className="block truncate" title={doc.name}>
+-                    {doc.name}
+-                    {doc.page && <span className="ml-1.5 text-2xs text-muted-foreground">s. {doc.page}</span>}
+-                  </span>
+-                  {doc.via && <span className="block truncate text-2xs text-muted-foreground" title={doc.via}>{doc.via}</span>}
+-                </span>
+-                {doc.badge && (
+-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">{doc.badge}</Badge>
+-                )}
+-              </AimLink>
+-            ))}
+-          </div>
+-        </div>
+-      )}
+-
+-      {/* Responsibilities (v2, D-077) — who is responsible for the element */}
+-      {data.responsibilities && data.responsibilities.length > 0 && (
+-        <div>
+-          <div className="px-3 pt-1.5 pb-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+-            Zodpovednosti ({data.responsibilities.length})
+-          </div>
+-          <div className="divide-y border-t">
+-            {data.responsibilities.map((resp, i) => {
+-              const body = (
+-                <>
+-                  <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+-                  <span className="truncate" title={resp.name}>{resp.name}</span>
+-                  <span className="text-xs text-muted-foreground truncate shrink-0" title={resp.role}>
+-                    {resp.role}
+-                    {resp.org ? ` · ${resp.org}` : ''}
+-                  </span>
+-                </>
+-              );
+-              const cls = 'flex items-center gap-2 px-3 py-1.5 text-sm min-w-0';
+-              return resp.href ? (
+-                <AimLink key={`${resp.name}-${i}`} href={resp.href} className={`${cls} hover:bg-muted/50`}>
+-                  {body}
+-                </AimLink>
+-              ) : (
+-                <div key={`${resp.name}-${i}`} className={cls}>{body}</div>
+-              );
+-            })}
+-          </div>
+-        </div>
+-      )}
+-
+-      {/* Reality Capture summary (v2, D-077) */}
+-      {data.captures && data.captures.count > 0 && (
+-        <AimLink
+-          href={data.captures.href}
+-          className="flex items-center gap-2 px-3 py-1.5 text-sm border-t hover:bg-muted/50 min-w-0"
+-        >
+-          <Camera className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+-          <span className="truncate flex-1">Reality Capture ({data.captures.count})</span>
+-          <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" />
+-        </AimLink>
+-      )}
+-
+-      {/* GUID history (v2, D-077) — bitemporal validity, read-only */}
+-      {data.history && data.history.length > 0 && (
+-        <div>
+-          <div className="flex items-center gap-1.5 px-3 pt-1.5 pb-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+-            <History className="h-3 w-3" />
+-            História GUID ({data.history.length})
+-          </div>
+-          <div className="divide-y border-t">
+-            {data.history.map((h, i) => (
+-              <div key={`${h.guid}-${i}`} className="flex items-center gap-2 px-3 py-1 text-xs min-w-0">
+-                <span
+-                  className={`font-mono truncate ${h.active ? 'font-semibold' : 'text-muted-foreground'}`}
+-                  title={h.guid}
+-                >
+-                  {h.guid}
+-                </span>
+-                <span className="text-muted-foreground shrink-0 ml-auto">
+-                  {h.validFrom}
+-                  {h.validUntil ? ` – ${h.validUntil}` : h.active ? ' – teraz' : ''}
+-                </span>
+-              </div>
+-            ))}
+-          </div>
+-        </div>
+-      )}
+-
+-      {/* Actions */}
+-      {data.actions && data.actions.length > 0 && (
+-        <div className="flex flex-wrap gap-2 px-3 py-2 border-t">
+-          {data.actions.map((action) => (
+-            <Button
+-              key={action.href}
+-              variant={action.primary ? 'default' : 'outline'}
+-              size="sm"
+-              className="h-7 text-xs gap-1.5"
+-              onClick={() => postAimNavigate(action.href)}
+-            >
+-              {action.label}
+-              <ExternalLink className="h-3 w-3" />
+-            </Button>
+-          ))}
+-        </div>
+-      )}
+-    </div>
+-  );
+-}
+-
+-/** `open` / `onOpenChange` = controlled by the PropertiesPanel block (AIM D-127, collapsed by default). */
+-export function AimCard({ open, onOpenChange }: { open?: boolean; onOpenChange?: (open: boolean) => void } = {}) {
+-  const embedded = useAimPanelStore((s) => s.embedded);
+-  const panel = useAimPanelStore((s) => s.panel);
+-
+-  if (!embedded || panel.status === 'idle') return null;
+-
+-  return (
+-    <Collapsible
+-      {...(open === undefined ? { defaultOpen: true } : { open, onOpenChange })}
+-      className="border-b border-l-2 border-l-amber-500"
+-    >
+-      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
+-        <Database className="h-4 w-4 text-amber-600 dark:text-amber-500" />
+-        <span className="font-medium text-sm">AIM</span>
+-        <Badge variant="outline" className="text-[9px] px-1 py-0 uppercase tracking-wider border-amber-500/50 text-amber-700 dark:text-amber-400">
+-          platforma
+-        </Badge>
+-        <ChevronDown className="size-3 ml-auto shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
+-      </CollapsibleTrigger>
+-      <CollapsibleContent>
+-        {panel.status === 'loading' && (
+-          <div className="border-t px-3 py-2 space-y-1.5 animate-pulse">
+-            <div className="h-3.5 w-2/3 rounded bg-muted" />
+-            <div className="h-3 w-1/2 rounded bg-muted" />
+-            <div className="h-3 w-3/5 rounded bg-muted" />
+-          </div>
+-        )}
+-        {panel.status === 'empty' && (
+-          <div className="border-t px-3 py-2 text-xs text-muted-foreground">
+-            Tento element nemá záznam v AIM databáze.
+-          </div>
+-        )}
+-        {panel.status === 'ready' && <AimCardBody data={panel.data} />}
+-      </CollapsibleContent>
+-    </Collapsible>
+-  );
+-}
+diff --git a/apps/viewer/src/aim/AimDocumentsControls.tsx b/apps/viewer/src/aim/AimDocumentsControls.tsx
+index a6adf5fe..3834068b 100644
+--- a/apps/viewer/src/aim/AimDocumentsControls.tsx
++++ b/apps/viewer/src/aim/AimDocumentsControls.tsx
+@@ -10,8 +10,9 @@
+  *     and the "len pre výber" switch (the panel's filter searches name and
+  *     metadata through documentsQuery.ts);
+  *   · AimSelectionDocuments: effective documents of the selected element from
+- *     the AIM card (AIM_PANEL_DATA), with the path and page; a click opens the
+- *     PDF in the viewer at that page.
++ *     AIM_PANEL_DATA, with the path and page; a click opens the PDF in the
++ *     viewer at that page. Documents inherited through zone, storey or group
++ *     carry an AIM badge (AIM D-129): they are an AIM layer, not IFC.
+  *
+  * Grouping and search are pure functions in documentsQuery.ts; the view state
+  * lives in a small local store so the panel keeps it across re-mounts.
+@@ -117,7 +118,14 @@ export function AimSelectionDocuments({ docs, filter }: { docs: ReadonlyMap<stri
+                 {item.name}
+                 {item.page && <span className="ml-1.5 text-2xs text-muted-foreground">s. {item.page}</span>}
+               </span>
+-              {item.via && <span className="block truncate text-2xs text-muted-foreground">{item.via}</span>}
++              {item.via && (
++                <span className="flex min-w-0 items-center gap-1 text-2xs text-muted-foreground">
++                  {item.aim && (
++                    <span className="shrink-0 border border-primary/50 bg-primary/10 px-1 font-mono font-bold leading-none text-primary" title="Zdedené cez vzťah: vrstva AIM, nie je v IFC">AIM</span>
++                  )}
++                  <span className="truncate">{item.via}</span>
++                </span>
++              )}
+             </span>
+           </button>
+         ))
+diff --git a/apps/viewer/src/aim/AimInspectorTabs.tsx b/apps/viewer/src/aim/AimInspectorTabs.tsx
+index 0e5556b4..048b1bbe 100644
+--- a/apps/viewer/src/aim/AimInspectorTabs.tsx
++++ b/apps/viewer/src/aim/AimInspectorTabs.tsx
+@@ -3,44 +3,65 @@
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
+ /**
+- * AIM block in the PropertiesPanel (D-077; AIM D-127 dropped the AIM | IFC tab
+- * bar, #169). The panel always shows its native IFC content; the host-fed
+- * AimCard (platform data: documents via zone/storey/type, responsibilities,
+- * GUID history, "open full detail") sits above it as one collapsed row, so no
+- * AIM data leaves the viewer. `useAimNativeHidden` stays for the existing
+- * AIM-FORK wiring in PropertiesPanel and is always false now. Standalone
++ * AIM layer rows in the PropertiesPanel (D-077; AIM D-127 and D-129, #169).
++ * The panel is IFC only: no AIM | IFC tab bar and no AIM card. What exists only
++ * in AIM shows as rows inside one tinted frame with an AIM badge, the pattern of
++ * the derived relations in Relationship records (D-089): the element's last
++ * change by a recipe (model revision and BCF topic) and its GUID history.
++ * Documents inherited through zone, storey or group are in the Documents panel
++ * ("Len pre výber", AimDocumentsControls). `useAimNativeHidden` stays for the
++ * existing AIM-FORK wiring in PropertiesPanel and is always false. Standalone
+  * (non-embedded) mode renders nothing: zero upstream impact.
+  */
+ 
+-import { lazy, Suspense } from 'react';
+-import { useViewerStore } from '@/store';
+ import { useAimPanelStore } from './aimPanelStore';
+-import { useAimInspectorStore } from './aimInspectorStore';
+ // PropertiesPanel ho berie cez existujúci import tohto modulu (súbor je na strope veľkosti).
+ export { isReadOnlyFocus } from './aimInspectorStore';
+-// Lazy: the card only renders inside the AIM host.
+-const AimCard = lazy(() => import('./AimCard').then((m) => ({ default: m.AimCard })));
+ 
+ /** Native IFC content is never hidden since AIM D-127 (one panel, IFC). */
+ export function useAimNativeHidden(): boolean {
+   return false;
+ }
+ 
++function Row({ label, value, title }: { label: string; value: string; title?: string }) {
++  return (
++    <div className="flex items-baseline gap-2 py-0.5 text-xs" title={title}>
++      <span className="w-28 shrink-0 text-zinc-500">{label}</span>
++      <span className="min-w-0 flex-1 truncate font-mono text-2xs">{value}</span>
++    </div>
++  );
++}
++
+ export function AimInspectorTabs() {
+   const embedded = useAimPanelStore((s) => s.embedded);
+   const panel = useAimPanelStore((s) => s.panel);
+-  const open = useAimInspectorStore((s) => s.cardOpen);
+-  const setOpen = useAimInspectorStore((s) => s.setCardOpen);
+-  // On mobile the panel is one scroll column owned by the bottom sheet: the card flows at natural height.
+-  const isMobile = useViewerStore((s) => s.isMobile);
+-
+-  // No host / no selection: nothing above the native content.
+   if (!embedded || panel.status === 'idle') return null;
+-
++  const data = panel.status === 'ready' ? panel.data : null;
++  const change = data?.lastChange;
++  const history = data?.history ?? [];
+   // `data-aim-inspector` marks the panel body for the chat property focus (aimPanelView.ts).
++  if (!change && history.length === 0) return <div data-aim-inspector hidden />;
+   return (
+-    <div data-aim-inspector className={open && !isMobile ? 'shrink-0 max-h-[50%] overflow-y-auto' : 'shrink-0'}>
+-      <Suspense fallback={null}><AimCard open={open} onOpenChange={setOpen} /></Suspense>
++    <div data-aim-inspector className="mx-3 my-2 shrink-0 border border-primary/30 bg-primary/5 px-2 py-1.5">
++      <div className="mb-1 flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wider text-zinc-500">
++        <span className="shrink-0 border border-primary/50 bg-primary/10 px-1 py-0.5 font-mono text-2xs font-bold leading-none text-primary">AIM</span>
++        <span>Revízia a identita</span>
++      </div>
++      {change && (
++        <Row
++          label="Posledná zmena"
++          value={`${change.revision} ${change.model}, ${change.date}`}
++          title={`Recept podľa BCF témy: ${change.title}`}
++        />
++      )}
++      {history.map((h) => (
++        <Row
++          key={`${h.guid}:${h.validFrom}`}
++          label={h.active ? 'GUID od' : 'Predtým GUID'}
++          value={h.active ? `${h.validFrom} ${h.guid}` : `${h.validFrom} - ${h.validUntil ?? ''} ${h.guid}`}
++          title={h.guid}
++        />
++      ))}
+     </div>
+   );
+ }
+diff --git a/apps/viewer/src/aim/aimInspectorStore.ts b/apps/viewer/src/aim/aimInspectorStore.ts
+index 63e23c5c..114af9c4 100644
+--- a/apps/viewer/src/aim/aimInspectorStore.ts
++++ b/apps/viewer/src/aim/aimInspectorStore.ts
+@@ -3,10 +3,8 @@
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
+ /**
+- * Stav AIM karty v paneli vlastností (D-077; od AIM D-127 bez prepínača AIM | IFC,
+- * karta je zbalený blok nad IFC obsahom) a výsledok zvýraznenia vlastnosti z chatu
+- * (AIM D-113, D-127), bez UI: číta ho `AimInspectorTabs`, lenivý `aimPanelView`
+- * aj `view_state` (APPLIED), takže lenivé moduly nepotiahnu komponent karty.
++ * Výsledok zvýraznenia vlastnosti z chatu (AIM D-113, D-127) a značka "focus z
++ * chatu", bez UI: zapisuje ho lenivý `aimPanelView`, číta `view_state` (APPLIED).
+  */
+ 
+ import { create } from 'zustand';
+@@ -23,16 +21,11 @@ export interface PropertyFocusState {
+ }
+ 
+ interface AimInspectorState {
+-  /** AIM karta nad IFC obsahom: predvolene zbalená (AIM D-127). */
+-  cardOpen: boolean;
+-  setCardOpen: (open: boolean) => void;
+   propertyFocus: PropertyFocusState | null;
+   setPropertyFocus: (focus: PropertyFocusState | null) => void;
+ }
+ 
+ export const useAimInspectorStore = create<AimInspectorState>((set) => ({
+-  cardOpen: false,
+-  setCardOpen: (cardOpen) => set({ cardOpen }),
+   propertyFocus: null,
+   setPropertyFocus: (propertyFocus) => set({ propertyFocus }),
+ }));
+diff --git a/apps/viewer/src/aim/aimPanelStore.ts b/apps/viewer/src/aim/aimPanelStore.ts
+index ee60d74c..d68fe331 100644
+--- a/apps/viewer/src/aim/aimPanelStore.ts
++++ b/apps/viewer/src/aim/aimPanelStore.ts
+@@ -9,8 +9,8 @@
+  * under src/aim so upstream rebases touch zero shared files.
+  *
+  * The payload is a host-driven render schema: the host decides labels, rows,
+- * sections and links; this side renders it generically (see AimCard.tsx).
+- * New AIM fields therefore never require a viewer redeploy.
++ * sections and links. Since AIM D-129 there is no AIM card: the AIM layer rows
++ * (AimInspectorTabs.tsx), Relationship records and the Documents panel read it.
+  */
+ 
+ import { create } from 'zustand';
+diff --git a/apps/viewer/src/aim/bridge-protocol.ts b/apps/viewer/src/aim/bridge-protocol.ts
+index d794c1bc..155929d3 100644
+--- a/apps/viewer/src/aim/bridge-protocol.ts
++++ b/apps/viewer/src/aim/bridge-protocol.ts
+@@ -23,9 +23,9 @@ export const FILTER_COLOR = '#60a5fa';
+ export const FOCUS_COLOR = '#f97316';
+ 
+ /**
+- * AIM card render schema — host-driven: the AIM app decides labels, rows,
+- * sections and links; AimCard.tsx renders it generically, so new AIM fields
+- * never require a viewer redeploy. All `href`s are host-relative paths
++ * AIM panel data of the selected element, host-driven. Since AIM D-129 no card
++ * renders it: AIM layer rows (last change, GUID history), derived relations and
++ * the Documents panel read their fields; `sections`/`actions` are not shown. All `href`s are host-relative paths
+  * (e.g. /node/{id}) bounced back via AIM_NAVIGATE — never navigated here.
+  */
+ export interface AimPanelData {
+@@ -49,6 +49,8 @@ export interface AimPanelData {
+   captures?: { count: number; href: string };
+   /** GUID history entries (bitemporal validity; `active` = current GUID). */
+   history?: { guid: string; validFrom: string; validUntil?: string; active: boolean }[];
++  /** AIM D-129: last change by a recipe (model revision vNNN, BCF topic title, date). */
++  lastChange?: { model: string; revision: string; title: string; date: string };
+   /** D-089: derived relations of the element (Relationship records); see derivations-protocol.ts. */
+   derivedRelations?: DerivedRelationWire[];
+   derivedTotal?: number;
+@@ -146,8 +148,8 @@ export type InboundMessage =
+   | { source: typeof SOURCE; type: 'ISOLATE'; guids?: string[]; selector?: OpsSelector }
+   | { source: typeof SOURCE; type: 'SHOW_ALL' }
+   | { source: typeof SOURCE; type: 'RESET_COLORS' }
+-  // AIM panel data for the selected element (host DB → AimCard in the
+-  // PropertiesPanel). Guid-stamped so stale answers are dropped store-side.
++  // AIM panel data for the selected element (host DB → AIM layer rows,
++  // Relationship records and Documents). Guid-stamped so stale answers are dropped store-side.
+   | { source: typeof SOURCE; type: 'AIM_PANEL_DATA'; guid: string; data: AimPanelData }
+   | { source: typeof SOURCE; type: 'AIM_PANEL_EMPTY'; guid: string; reason: string }
+   // Georeferenced PDF underlays (D-072): the host pushes its drawing list
+@@ -171,7 +173,7 @@ export type OutboundMessage =
+   | { source: typeof SOURCE; type: 'MODELS_LOADED'; count: number }
+   | { source: typeof SOURCE; type: 'ENTITY_SELECTED'; guid: string }
+   | { source: typeof SOURCE; type: 'ENTITY_DESELECTED' }
+-  // Click on a link inside the AimCard — the parent app performs the
++  // Click on an AIM link (a document outside the library) — the parent app performs the
+   // navigation (href is a host-relative path, e.g. /node/{id}).
+   | { source: typeof SOURCE; type: 'AIM_NAVIGATE'; href: string }
+   // A drawing was (re)calibrated in the viewer — the host persists the
+diff --git a/apps/viewer/src/aim/documentsQuery.test.ts b/apps/viewer/src/aim/documentsQuery.test.ts
+index 7b599907..5bb52154 100644
+--- a/apps/viewer/src/aim/documentsQuery.test.ts
++++ b/apps/viewer/src/aim/documentsQuery.test.ts
+@@ -80,6 +80,17 @@ describe('documentsQuery (D-104)', () => {
+     assert.deepEqual(selectionDocuments(undefined, library), []);
+   });
+ 
++  it('marks documents inherited through a relation as the AIM layer (AIM D-129)', () => {
++    const items = selectionDocuments(
++      [
++        { name: 'Typový list', href: '/drawing/t1', via: 'cez typ D1' },
++        { name: 'Požiarna správa', href: '/drawing/z1', via: 'cez zónu N1.01', aim: true },
++      ],
++      new Map(),
++    );
++    assert.deepEqual(items.map((i) => i.aim ?? false), [false, true]);
++  });
++
+   it('asks the host for elements of the page being read, only for host documents', () => {
+     assert.deepEqual(show3dTarget('d9', 3), { documentId: 'd9', page: 3 });
+     assert.deepEqual(show3dTarget('d9', 0), { documentId: 'd9' });
+diff --git a/apps/viewer/src/aim/documentsQuery.ts b/apps/viewer/src/aim/documentsQuery.ts
+index ca17e6a7..78fbc7fb 100644
+--- a/apps/viewer/src/aim/documentsQuery.ts
++++ b/apps/viewer/src/aim/documentsQuery.ts
+@@ -93,6 +93,8 @@ export interface AimCardDocumentWire {
+   page?: number;
+   /** How the element reaches the document, e.g. "cez zónu NJ - 3NP". */
+   via?: string;
++  /** AIM D-129: inherited through zone, storey, group... (an AIM layer, not in IFC). */
++  aim?: boolean;
+ }
+ 
+ export interface SelectionDocument<D extends QueryDocument> {
+@@ -102,6 +104,8 @@ export interface SelectionDocument<D extends QueryDocument> {
+   doc: D | null;
+   page?: number;
+   via?: string;
++  /** AIM layer (D-129): shown with an AIM badge. */
++  aim?: boolean;
+   href: string;
+ }
+ 
+@@ -130,6 +134,7 @@ export function selectionDocuments<D extends QueryDocument>(
+       doc,
+       ...(entry.page ? { page: entry.page } : {}),
+       ...(entry.via ? { via: entry.via } : {}),
++      ...(entry.aim === true ? { aim: true } : {}),
+       href: entry.href,
+     });
+   });
+-- 
+2.43.0
+
+
+From 14d15ee5e790c6b5f9346bb0a6bfc45bbe65d467 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 08:30:23 +0000
+Subject: [PATCH 4/4] =?UTF-8?q?AIM=20D-127:=20mut=C3=A1cia=20pre=20odznak?=
+ =?UTF-8?q?=20AIM=20dokumentov,=20bal=C3=ADk=20po=20D-129?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013pTmyabGpJyMo1eWHhfymn
+---
+ .../evidence/aim-d127-panels/mutations/README.md   | 11 ++++++-----
+ .../mutations/aim-badge-dropped.patch              | 12 ++++++++++++
+ .../aim-d127-panels/mutations/summary.json         | 14 ++++++++++++++
+ 3 files changed, 32 insertions(+), 5 deletions(-)
+ create mode 100644 docs/architecture/evidence/aim-d127-panels/mutations/aim-badge-dropped.patch
+
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/README.md b/docs/architecture/evidence/aim-d127-panels/mutations/README.md
+index 40fbeb84..6f18c2d4 100644
+--- a/docs/architecture/evidence/aim-d127-panels/mutations/README.md
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/README.md
+@@ -4,9 +4,9 @@
+ 
+ # AIM D-127 panels: surgical mutation evidence
+ 
+-AIM D-127 changes the AIM layer in `apps/viewer/src/aim/`:
++AIM D-127 changes the AIM layer in `apps/viewer/src/aim/` (#169 follows AIM D-129):
+ - A chat property focus (`SELECT` `panel.focus`) stays highlighted until the next selection. It also reaches quantities and type psets.
+-- The AIM | IFC tab bar is gone; the AIM card is a collapsed row.
++- The AIM | IFC tab bar and the AIM card are gone. The element's last recipe change and its GUID history are AIM layer rows with an AIM badge, and inherited documents carry an AIM badge in the Documents panel.
+ - `SET_PANELS` opens, closes or toggles panels.
+ - A chat page region re-fits when the card is resized, and `view_state` reports the visible part of the page.
+ 
+@@ -26,6 +26,7 @@ Each patch is written mutant->fixed and reverse-applied by the oracle. Every run
+ | `inside-no-tolerance.patch` | `docRegion.ts` | "region fully visible" has no rounding tolerance | `docRegion.test.ts` |
+ | `visible-unclamped.patch` | `docRegion.ts` | the visible part is not clamped to the page | `docRegion.test.ts` |
+ | `clear-no-waiter.patch` | `docRegion.ts` | clearing a region request never resolves `regionApplied` | `docRegion.test.ts` |
++| `aim-badge-dropped.patch` | `documentsQuery.ts` | a document inherited through a relation loses its AIM flag (D-129) | `documentsQuery.test.ts` |
+ 
+ The following is store, DOM and renderer glue with no unit test, and was verified live:
+ - `aimPanelView.ts`: DOM focus with a MutationObserver.
+@@ -38,9 +39,9 @@ The live check ran in a local fork viewer embedded in a host page with the `BURK
+ - `SET_PANELS all=close` hid every panel. Lens, the tree and lists opened, and their reported state matched the screen.
+ - `DOCUMENT_OPEN` with a 30 % region in a 378 px card reported `region_fully_visible: true`. Narrowing the card to 264 px kept the region in view.
+ 
+-Bundle (`vite build` of branch and `main`, same machine):
+-- `viewer-entry-js-bytes` 3,164,374, which is -2,354 B against `main` (the tab bar is gone).
+-- `viewer-eager-js-bytes` +2,665 B.
++Bundle (`vite build` of branch and `main`, same machine, after the D-129 commit):
++- `viewer-entry-js-bytes` 3,164,980, which is -1,748 B against `main` (the tab bar and the card are gone).
++- `viewer-eager-js-bytes` +3,211 B, inside the tolerance.
+ - `perf-ratchet check` passes without a ceiling raise.
+ 
+ ## Replay
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/aim-badge-dropped.patch b/docs/architecture/evidence/aim-d127-panels/mutations/aim-badge-dropped.patch
+new file mode 100644
+index 00000000..0a4f12f1
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/aim-badge-dropped.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/documentsQuery.ts a/apps/viewer/src/aim/documentsQuery.ts
++index a4548a8c..78fbc7fb 100644
++--- b/apps/viewer/src/aim/documentsQuery.ts
+++++ a/apps/viewer/src/aim/documentsQuery.ts
++@@ -134,6 +134,7 @@ export function selectionDocuments<D extends QueryDocument>(
++       doc,
++       ...(entry.page ? { page: entry.page } : {}),
++       ...(entry.via ? { via: entry.via } : {}),
+++      ...(entry.aim === true ? { aim: true } : {}),
++       href: entry.href,
++     });
++   });
+diff --git a/docs/architecture/evidence/aim-d127-panels/mutations/summary.json b/docs/architecture/evidence/aim-d127-panels/mutations/summary.json
+index 54b0c6df..2ea0e5bb 100644
+--- a/docs/architecture/evidence/aim-d127-panels/mutations/summary.json
++++ b/docs/architecture/evidence/aim-d127-panels/mutations/summary.json
+@@ -1,4 +1,18 @@
+ {
++  "aim-badge-dropped": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/documentsQuery.test.ts; that file has a green, attributable baseline.",
++    "base": "75ddabcea7619821307c5f86581d59d2e16e9cde",
++    "head": "9871b0cf05b98acde2c5ee32bce9fcc8448c9b02",
++    "production": [
++      "apps/viewer/src/aim/documentsQuery.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/documentsQuery.test.ts"
++    ],
++    "restoration": "verified"
++  },
+   "all-closes-explicit": {
+     "verdict": "OBSERVED",
+     "exitCode": 0,
+-- 
+2.43.0
+
