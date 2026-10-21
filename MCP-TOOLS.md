@@ -3,7 +3,7 @@
 > Generované z definícií toolov (`lib/mcp/tool-list.ts`), needituj ručne. Obnova:
 > `npx vitest run lib/mcp/tool-registry.test.ts -u`.
 
-Konektor má 28 toolov (s IFC motorom, `ENGINE_ENABLED=1`).
+Konektor má 29 toolov (s IFC motorom, `ENGINE_ENABLED=1`).
 
 **Pravidlo D-114 - najprv napasuj, až potom nový tool:**
 1. Tu nájdi 2-3 najbližšie tooly k tomu, čo treba.
@@ -84,9 +84,9 @@ Zdroj: GitHub issues + session. Definície: lib/feedback/tools.ts. Len MCP.
 - **`feedback`** (D-090, zápis) - Zápis do GitHub issues konektora (D-090). Volaj LEN na výslovný pokyn používateľa ('zapíš to', 'založ pripomienku', 'dopíš do #97'); sám to len ponúkni. action=report: PRIPOMIENKA - chyba toolu (bug), zlé dáta (wrong_data), zlá odpoveď (wrong_answer), návrh (improvement); kind, title, description, start_session len keď to používateľ chce. request_tool: POŽIADAVKA NA NOVÝ TOOL až po vyčerpaní existujúcich tools; opíš potrebu (user_request, why_existing_fail, tried_tools s konkrétnymi tools); ak stačí rozšíriť existujúci tool (parameter, akcia, pole vo výsledku), uveď ho v proposal.extend - rozšírenie má prednosť (D-114); spustí session alebo ide do fronty, rovnaká požiadavka sa pripíše ako ďalší výskyt. comment: komentár do existujúceho issue, aj zatvoreného (issue_number, text, kind eval_round | result | note; verification=overene | vratene zapíše overenie hotového issue; reopen len na výslovný pokyn; GitHub konektor na to netreba). start_session: spustí session pre ďalšie issue z fronty (over_limit len na výslovnú žiadosť).
   Parametre: `action*=report|request_tool|comment|start_session`, `kind=bug|wrong_data|wrong_answer|improvement|eval_round|result|note`, `title`, `description`, `tool`, `example`, `object_refs`, `user_request`, `why_existing_fail`, `tried_tools`, `proposal`, `area=aim_data|viewer|ifc_engine|model_change|requirements_library|other`, `examples`, `issue_number`, `text`, `reopen`, `verification=overene|vratene`, `over_limit`, `start_session`
 
-## IFC motor (7)
+## IFC motor (8)
 
-Zdroj: IFC súbory federácie (@ifc-lite/mcp). Definície: lib/engine/search-all.ts, lib/engine/tool-defs.ts, lib/engine/passthrough-defs.ts. Len MCP.
+Zdroj: IFC súbory federácie (@ifc-lite/mcp). Definície: lib/engine/search-all.ts, lib/engine/tool-defs.ts, lib/engine/passthrough-defs.ts, lib/engine/underlay-tool.ts. Len MCP.
 
 - **`search_all`** (D-095, čítanie) - Hľadanie podľa textu naraz v OBOCH zdrojoch: IFC súbor (atribúty Name, Description, ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály, zóny, skupiny) a graf AIM v DB (názov, object_ref, importované psety, dokumenty, osoby).
   Parametre: `text*`, `source=all|ifc|aim`, `badges=IFC|AIM|IFC+AIM`, `ifc_types`, `model`, `limit`, `fields=attribute|property|quantity|type_property|classification|material`, `fuzzy`, `offset`, `related`
@@ -102,3 +102,5 @@ Zdroj: IFC súbory federácie (@ifc-lite/mcp). Definície: lib/engine/search-all
   Parametre: `target*`, `model=ASR|VZT`, `rel_types`, `direction=forward|inverse|both`, `recursive`, `through_ports`, `stop_at`, `max_steps`, `limit`, `cursor`
 - **`ifc_measure`** (D-112, čítanie) - IFC MOTOR: meranie z geometrie (nie z Qto). clear_opening + items (dvere z ifc_query, max 50) = svetlá šírka a výška dverí medzi zárubňami a od prahu po nadpražie z geometrie, nie z psetov (OverallWidth je so zárubňou); s min_width_m / min_height_m aj pass/fail a check.style_pass / style_fail pre style_in_3d.
   Parametre: `a`, `b`, `route=shortest|escape`, `items`, `model=ASR|VZT`, `qto`, `clear_opening`, `min_width_m`, `min_height_m`, `show`
+- **`calibrate_underlay`** (D-133, zápis) - KALIBRÁCIA PODKLADU výkresu (PDF strana) pod IFC model (D-133): mierka, rotácia a posun strany voči modelu, výsledok sa ukladá do kalibrácie dokumentu (panel Underlays vo vieweri).
+  Parametre: `document_id*`, `page`, `mode=dry_run|auto|manual`, `floor`, `section_plane`, `pairs`, `refine`, `max_error_mm`, `force`, `model`

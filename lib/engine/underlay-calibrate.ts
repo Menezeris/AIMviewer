@@ -625,11 +625,11 @@ function scanOffset(pdf: Float64Array, ifc: Float64Array, s: number, z0: number)
 export function calibratePairs(
   pairs: { pdf_pt: P2; plane_m: P2 }[],
   refine?: { lines: PageLine[]; cut: Seg[]; mirror: boolean },
+  mirror = refine?.mirror ?? false,
 ): CalibrationResult {
   if (pairs.length < 2) throw new CalibrationError("mode=manual potrebuje aspoň 2 dvojice bodov.");
   const P = pairs.map((p) => p.pdf_pt);
   const Q = pairs.map((p) => p.plane_m);
-  const mirror = refine?.mirror ?? false;
   const start = fitSimilarity(P, Q, mirror);
   if (!start) throw new CalibrationError("Dvojice bodov sú zhodné, podobnosť sa nedá určiť.");
   const info = { method: "pairs" as const, points: P.length, median_mm: pairs.length > 2 ? medianResidualMm(start, P, Q) : null };

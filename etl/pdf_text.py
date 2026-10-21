@@ -22,8 +22,8 @@ ukladajú riadky textu s polohou (`blocks`, bbox v % strany, počiatok vľavo
 hore), aby tool vedel povedať, KDE na strane text je (výrez pre open_drawing
 region, D-117).
 
-D-133: pri vektorových výkresoch sa ukladajú aj hrubé čiary strany (`lines`,
-`[x1, y1, x2, y2, w]` v bodoch strany, počiatok vľavo dole), z ktorých IFC motor
+D-133: pri vektorových výkresoch sa ukladajú aj hrubé čiary strany (`lines` =
+`{size: [W, H], segs: [[x1, y1, x2, y2, w]]}` v bodoch strany, počiatok vľavo dole), z ktorých IFC motor
 kalibruje podklad (pôdorys, rez) na rez modelom.
 
 Spustenie (z koreňa repa):
@@ -127,13 +127,14 @@ LINE_MIN_WIDTH = 0.99
 LINE_MIN_COUNT = 200
 
 
-def page_lines(drawings: list[dict], height: float) -> Optional[list[list[float]]]:
+def page_lines(drawings: list[dict], width: float, height: float) -> Optional[dict]:
     """Hrubé úsečky strany pre kalibráciu podkladu (D-133).
 
     Vstup je `page.get_drawings()`; čiary (`l`) a strany obdĺžnikov (`re`) od
-    `LINE_MIN_WIDTH`, krivky sa vynechajú (oblúky dverí). Výstup `[x1, y1, x2, y2, w]`
-    v bodoch strany s počiatkom vľavo dole (y hore, ako `_georef` D-072), zaokrúhlené
-    na 0,1 pt. Menej ako `LINE_MIN_COUNT` úsečiek = nie výkres, vráti None.
+    `LINE_MIN_WIDTH`, krivky sa vynechajú (oblúky dverí). Výstup `{size: [W, H], segs:
+    [[x1, y1, x2, y2, w]]}` v bodoch strany s počiatkom vľavo dole (y hore, ako `_georef`
+    D-072), zaokrúhlené na 0,1 pt; `size` je rámec, v ktorom kalibrácia počíta. Menej ako
+    `LINE_MIN_COUNT` úsečiek = nie výkres, vráti None.
     """
     out: list[list[float]] = []
 
@@ -155,19 +156,21 @@ def page_lines(drawings: list[dict], height: float) -> Optional[list[list[float]
                 add(r.x1, r.y0, r.x1, r.y1, w)
                 add(r.x1, r.y1, r.x0, r.y1, w)
                 add(r.x0, r.y1, r.x0, r.y0, w)
-    return out if len(out) >= LINE_MIN_COUNT else None
+    if len(out) < LINE_MIN_COUNT:
+        return None
+    return {"size": [round(width, 2), round(height, 2)], "segs": out}
 
 
-def extract_pages_full(pdf_path: Path) -> list[tuple[int, str, list[dict], Optional[list[list[float]]]]]:
+def extract_pages_full(pdf_path: Path) -> list[tuple[int, str, list[dict], Optional[dict]]]:
     """(strana, text, riadky s polohou, hrubé čiary alebo None) pre neprázdne strany."""
-    pages: list[tuple[int, str, list[dict], Optional[list[list[float]]]]] = []
+    pages: list[tuple[int, str, list[dict], Optional[dict]]] = []
     with fitz.open(pdf_path) as doc:
         for i, page in enumerate(doc, start=1):
             text = _WS_RE.sub(" ", page.get_text("text")).strip()
             if text:
                 rect = page.rect
                 blocks = page_blocks(page.get_text("dict"), rect.width, rect.height)
-                pages.append((i, text, blocks, page_lines(page.get_drawings(), rect.height)))
+                pages.append((i, text, blocks, page_lines(page.get_drawings(), rect.width, rect.height)))
     return pages
 
 
@@ -199,7 +202,7 @@ def _db_docs(cur, only: Optional[str]) -> list[DbDoc]:
     return [DbDoc(str(r[0]), r[1], r[2]) for r in cur.fetchall()]
 
 
-Page = tuple[int, str, list[dict], Optional[list[list[float]]]]
+Page = tuple[int, str, list[dict], Optional[dict]]
 
 
 def _write_pages(cur, doc_id: str, pages: list[Page]) -> None:
@@ -222,7 +225,7 @@ def _write_pages(cur, doc_id: str, pages: list[Page]) -> None:
 def _report(ref: str, pages: list[Page]) -> None:
     total_chars = sum(len(p[1]) for p in pages)
     lines = sum(len(p[2]) for p in pages)
-    segs = sum(len(p[3] or []) for p in pages)
+    segs = sum(len((p[3] or {}).get("segs", [])) for p in pages)
     print(
         f"  {ref:46s} strán s textom {len(pages):3d}  znakov {total_chars:7d}  riadkov {lines:5d}"
         f"  čiar {segs:6d}"

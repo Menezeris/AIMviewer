@@ -5960,7 +5960,7 @@ nemá `_georef` ani jeden výkres. Konektor nevie podklad nastaviť. Prototyp na
    Automatická neprepíše ručnú bez `force`: ručné dorovnanie je posledné slovo. Prechod bez migrácie: PATCH
    zlúči v1 z panela ako `manual`, host posiela forku v1 (pôdorysná položka) a popri tom `georefV2`
    (`lib/data/georef.ts`).
-2. **Čiary výkresu z ETL:** `document_pages.lines` = hrubé úsečky strany `[x1, y1, x2, y2, w]` v bodoch strany
+2. **Čiary výkresu z ETL:** `document_pages.lines` = `{size: [W, H], segs}`, hrubé úsečky strany `[x1, y1, x2, y2, w]` v bodoch strany
    (počiatok vľavo dole ako `_georef`), hrúbka čiary aspoň 0,99 pt, len vektorové výkresy (aspoň 200 takých
    úsečiek na strane). Ten istý extraktor ako `blocks` (`etl/pdf_text.py`, pymupdf); server parser PDF nemá
    (D-123).

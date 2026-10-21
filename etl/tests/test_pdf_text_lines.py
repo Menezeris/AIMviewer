@@ -25,8 +25,10 @@ def _pdf(tmp_path: Path, thick: int) -> Path:
 
 def test_lines_bottom_left_points_and_thick_only(tmp_path: Path) -> None:
     pages = extract_pages_full(_pdf(tmp_path, LINE_MIN_COUNT))
-    lines = pages[0][3]
-    assert lines is not None and len(lines) == LINE_MIN_COUNT + 4
+    data = pages[0][3]
+    assert data is not None and data["size"] == [400, 200]
+    lines = data["segs"]
+    assert len(lines) == LINE_MIN_COUNT + 4
     # Prvá čiara y = 10 od vrchu strany 200 -> 190 od spodku (počiatok vľavo dole).
     assert lines[0] == [10.0, 190.0, 110.0, 190.0, 1.4]
     assert all(seg[4] >= 0.99 for seg in lines)
@@ -45,4 +47,4 @@ def test_page_lines_skips_curves_and_points() -> None:
         {"width": 1.0, "items": [("c", p(0, 0), p(1, 1), p(2, 2), p(3, 3)), ("l", p(5, 5), p(5, 5))]},
         {"width": 0.5, "items": [("l", p(0, 0), p(10, 0))]},
     ]
-    assert page_lines(d, 100) is None
+    assert page_lines(d, 100, 100) is None

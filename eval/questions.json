@@ -838,6 +838,22 @@
       "expect": { "tools_called": ["feedback_status"] },
       "verified": false,
       "notes": "D-126 (issue #171): feedback_status(state=closed, verified=false). Len MCP s FEEDBACK_GITHUB_TOKEN. Eval 2026-10-21: agent vzal 'issues' ako BCF témy (bcf_topic_list status=resolved); otázka je dvojznačná."
+    },
+    {
+      "id": "calibrate-underlay-1np",
+      "category": "viewer",
+      "question": "Skalibruj podklad D.1.1.01 Pôdorys 1NP pod model a ukáž mi odchýlku.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-133 (issue #170): calibrate_underlay(document_id=OCB_SO01_ASR_D-1-1-01_PODORYS-1NP, mode=dry_run); bez výslovného 'ulož' nezapisovať. Prototyp: mierka 1:49,95, medián okolo 10 mm. Len MCP s ENGINE_ENABLED."
+    },
+    {
+      "id": "calibrate-underlay-rez-a",
+      "category": "viewer",
+      "question": "Skontroluj, ako presne sedí rez A na model, rovina rezu je X = 47,42 m.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-133 (issue #170): calibrate_underlay(document_id=OCB_SO01_ASR_D-1-1-05_REZ-A, section_plane={axis:x, coordinate_m:47.42}). Prototyp: medián 8 mm."
     }
   ]
 }

@@ -418,7 +418,7 @@ create index idx_document_pages_tsv on document_pages
 alter table document_pages add column blocks jsonb;  -- [{t, x, y, w, h}] v % strany, vľavo hore
 
 -- D-133 (migrácia 20261021120000): hrubé čiary výkresu pre kalibráciu podkladu
-alter table document_pages add column lines jsonb;   -- [[x1, y1, x2, y2, w]] v bodoch strany, vľavo dole;
+alter table document_pages add column lines jsonb;   -- {size: [W, H], segs: [[x1, y1, x2, y2, w]]} v bodoch strany, vľavo dole;
                                                      -- čiary od 0,99 pt, len vektorové výkresy, inak null
 ```
 

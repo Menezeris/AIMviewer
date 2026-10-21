@@ -1,6 +1,7 @@
 import { BCF_TOOL_DEFINITIONS } from "../bcf/tools";
 import { PROBE_TOOL } from "../engine/probe-def";
 import { SEARCH_ALL_TOOL } from "../engine/search-all";
+import { CALIBRATE_UNDERLAY_TOOL } from "../engine/underlay-tool-def";
 import { engineToolDefinitions } from "../engine/tool-defs";
 import { FEEDBACK_TOOL_DEFINITIONS } from "../feedback/tools";
 import { VIEWER_QUERY_TOOL_DEFINITIONS } from "../live/viewer-query-tools";
@@ -79,9 +80,9 @@ export function mcpToolGroups({ engine }: ToolListOptions): ToolGroup[] {
     groups.push({
       group: "IFC motor",
       source: "IFC súbory federácie (@ifc-lite/mcp)",
-      file: "lib/engine/search-all.ts, lib/engine/tool-defs.ts, lib/engine/passthrough-defs.ts",
+      file: "lib/engine/search-all.ts, lib/engine/tool-defs.ts, lib/engine/passthrough-defs.ts, lib/engine/underlay-tool.ts",
       mcpOnly: true,
-      tools: [SEARCH_ALL_TOOL, ...engineToolDefinitions()],
+      tools: [SEARCH_ALL_TOOL, ...engineToolDefinitions(), CALIBRATE_UNDERLAY_TOOL],
     });
   }
   return groups;
