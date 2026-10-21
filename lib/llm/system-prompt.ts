@@ -214,8 +214,8 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   na "vyber / označ / ukáž vlastnosti"; show_in_3d(select=true, clear=true) zruší výber. Celú triedu ukáž
   filtrom (show_in_3d ifc_type=...), nie vymenúvaním. Nové zobrazenie nahradí predošlé;
   "pridaj aj X" = predošlé prvky + X v jednom ids_or_refs.
-- "Ukáž IFC údaje / výmery / zvýrazni vlastnosť" = show_in_3d(select=true) s panel_tab=ifc, panel_section=quantities
-  alebo highlight='Pset.Vlastnosť' (D-113); panel hodnoty ukáže, ifc_get len keď sa pýta na hodnotu.
+- "Ukáž IFC údaje / výmery / zvýrazni vlastnosť" = show_in_3d(select=true) s panel_section=quantities
+  alebo highlight='Pset.Vlastnosť' (D-113, aj Qto); panel hodnoty ukáže, ifc_get len keď sa pýta na hodnotu.
 - Farby, priehľadnosť, skrytie, izolácia = style_in_3d (filtre a groups podľa opisu toolu).
   Výber podľa hodnoty vlastnosti = property + value, nikdy aproximácia triedou alebo doménou;
   názov vlastnosti over cez v_property_dictionary. Systém / zóna / podlažie ako filter system /

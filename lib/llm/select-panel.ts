@@ -1,17 +1,13 @@
-import { PANEL_SECTIONS, PANEL_TABS, type SelectPanel } from "../viewer-ops";
+import { PANEL_SECTIONS, type SelectPanel } from "../viewer-ops";
 
 /**
  * Vstup `select_in_3d` pre panel vlastností (D-113) -> `SelectPanel` op `select`.
  * Bez panela `undefined`; chybný vstup je chyba toolu (model ju vidí a opraví),
- * nie ticho zahodený panel.
+ * nie ticho zahodený panel. Panel má od D-127 len IFC obsah: `panel_tab` sa už
+ * neponúka a starý vstup sa ignoruje; výmera (Qto) sa zvýrazní v sekcii Quantities.
  */
 export function selectPanelInput(input: Record<string, unknown>): SelectPanel | undefined {
   const panel: SelectPanel = {};
-  const tab = input.panel_tab;
-  if (tab !== undefined) {
-    if (!(PANEL_TABS as readonly unknown[]).includes(tab)) throw new Error("panel_tab: aim alebo ifc.");
-    panel.tab = tab as SelectPanel["tab"];
-  }
   const section = input.panel_section;
   if (section !== undefined) {
     if (!(PANEL_SECTIONS as readonly unknown[]).includes(section)) throw new Error("panel_section: properties alebo quantities.");
@@ -25,20 +21,43 @@ export function selectPanelInput(input: Record<string, unknown>): SelectPanel | 
     if (!pset || !property || pset.length > 200 || property.length > 200) {
       throw new Error("highlight: 'Pset.Vlastnosť', napr. Pset_WallCommon.FireRating.");
     }
-    if (/^Qto_/i.test(pset)) {
-      // Výmery sú v sekcii Quantities, kde upstream focus riadok nezvýrazní.
-      panel.tab = "ifc";
-      panel.section = "quantities";
-    } else {
-      panel.focus = { pset, property };
-    }
+    panel.focus = { pset, property };
+    // Sekciu podľa sady určí viewer (Qto -> Quantities); explicitnú sekciu focus prebije.
+    delete panel.section;
   }
-  return panel.tab || panel.section || panel.focus ? panel : undefined;
+  return panel.section || panel.focus ? panel : undefined;
 }
 
-/** Poznámka do výsledku toolu, keď sa highlight nedá splniť doslova. */
-export function selectPanelNote(input: Record<string, unknown>): string | undefined {
-  return typeof input.highlight === "string" && /^\s*Qto_/i.test(input.highlight)
-    ? "Výmery (Qto) viewer zvýrazniť nevie: otvorená je sekcia Quantities, hodnotu povedz z ifc_get."
-    : undefined;
+export interface PropertyLookup {
+  /** Vlastnosť je v dátach AIM prvku (aj zdedená z typu). */
+  in_aim: boolean;
+  /** Presné mená, ak sa líšia veľkosťou písmen od zadaných. */
+  pset?: string;
+  property?: string;
+  value?: unknown;
+  /** Psety prvku, keď sa vlastnosť nenašla (na opravu mena). */
+  psets?: string[];
+}
+
+const PSET_LIST_MAX = 30;
+
+/**
+ * Je `pset.property` v properties prvku (D-127)? Zhoda bez ohľadu na veľkosť písmen,
+ * presná má prednosť. Rezervované `_kľúče` nie sú psety.
+ */
+export function lookupProperty(properties: unknown, pset: string, property: string): PropertyLookup {
+  const props = properties && typeof properties === "object" && !Array.isArray(properties) ? (properties as Record<string, unknown>) : {};
+  const psets = Object.keys(props).filter((k) => !k.startsWith("_"));
+  const pick = (names: string[], want: string) => names.find((n) => n === want) ?? names.find((n) => n.toLowerCase() === want.toLowerCase());
+  const psetName = pick(psets, pset);
+  const set = psetName ? props[psetName] : undefined;
+  const fields = set && typeof set === "object" && !Array.isArray(set) ? (set as Record<string, unknown>) : null;
+  const propName = fields ? pick(Object.keys(fields), property) : undefined;
+  if (!fields || !propName) return { in_aim: false, psets: psets.slice(0, PSET_LIST_MAX) };
+  return {
+    in_aim: true,
+    ...(psetName !== pset ? { pset: psetName } : {}),
+    ...(propName !== property ? { property: propName } : {}),
+    value: fields[propName],
+  };
 }

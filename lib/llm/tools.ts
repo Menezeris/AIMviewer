@@ -23,7 +23,7 @@ import { engineEnabled, resolveNamesToGuids } from "@/lib/engine/aim-lookup";
 import { execScopedStyle } from "./style-scope";
 import { needsScopedStyle } from "./style-plan";
 import { LENS_STYLE_ACTIONS, execLensStyle } from "./style-lens";
-import { selectPanelInput, selectPanelNote } from "./select-panel";
+import { lookupProperty, selectPanelInput, type PropertyLookup } from "./select-panel";
 
 /**
  * Read-only tools LLM rozhrania (D-056) — tool-calling nad whitelistom, NIE
@@ -413,9 +413,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "UI AKCIA: UKÁŽ alebo VYBER prvky v 3D. Predvolene zvýrazní (oranžovo) a priblíži prvky - 'ukáž / " +
       "zobraz X', aj jednu miestnosť (skrytú viewer zapne). Celú triedu pošli filtrom (ifc_type, query, " +
       "predefined_type), konkrétne prvky v ids_or_refs (object_ref, kód prvku ako 'SD04.0001' aj číslo miestnosti ako '3.02' " +
-      "netreba hľadať vopred). select=true = VYBERIE jeden prvok ako klik myšou a otvorí jeho panel vlastností ('vyber / označ " +
-      "X', 'ukáž jeho vlastnosti'): panel_tab aim | ifc, panel_section properties | quantities, highlight " +
-      "'Pset.Vlastnosť' zvýrazní riadok; panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
+      "netreba hľadať vopred). select=true = VYBERIE jeden prvok ako klik myšou a otvorí jeho IFC panel vlastností ('vyber / označ " +
+      "X', 'ukáž jeho vlastnosti'): panel_section properties | quantities, highlight 'Pset.Vlastnosť' (aj Qto výmera) rozbalí " +
+      "sadu, prescrolluje a zvýrazní riadok do ďalšieho výberu; výsledok povie, či vlastnosť na prvku je (property.in_aim, " +
+      "property_focus.found zo živého viewera). Panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
       "select=true výber. Funguje pre prvky s IFC GUID. Prvky, ktorých sa týka dokument alebo strana, " +
       "ukáž cez style_in_3d(document, page).",
     inputSchema: {
@@ -443,9 +444,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         query: { type: "string", description: "Filter namiesto ids: fulltext (názov/ref/typ)" },
         object_type: { type: "string", description: "Filter namiesto ids: objects.object_type" },
         select: { type: "boolean", description: "Vybrať jeden prvok ako klik (id_or_ref) a otvoriť panel vlastností" },
-        panel_tab: { type: "string", enum: ["aim", "ifc"], description: "select: záložka panelu vlastností" },
         panel_section: { type: "string", enum: ["properties", "quantities"], description: "select: sekcia IFC panelu" },
-        highlight: { type: "string", description: "select: zvýrazniť vlastnosť, napr. 'Pset_WallCommon.FireRating'" },
+        highlight: { type: "string", description: "select: zvýrazniť vlastnosť, napr. 'Pset_WallCommon.FireRating' alebo 'Qto_DoorBaseQuantities.Width'" },
       },
     },
   },
@@ -680,8 +680,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "object",
           description:
             "Voliteľné: výrez strany v % (0-100, počiatok vľavo hore), napr. pravý horný roh = " +
-            "{x:50,y:0,width:50,height:50}. Karta sa priblíži, aby výrez vyplnil plochu, a vycentruje " +
-            "ho; aj pre už otvorenú kartu. S region sa výkres vždy otvorí vo vieweri (in_viewer). " +
+            "{x:50,y:0,width:50,height:50}. Karta sa priblíži podľa svojej skutočnej veľkosti, aby výrez vyplnil plochu, " +
+            "a vycentruje ho; aj pre už otvorenú kartu. Stav po príkaze nesie document.visible (viditeľná časť strany v %) " +
+            "a region_fully_visible. S region sa výkres vždy otvorí vo vieweri (in_viewer). " +
             "Polohu prvku vo výkrese tool nepozná: výrez určí používateľ slovne (vpravo hore, " +
             "stred, ľavý okraj...) a ďalší krok sa odvodí z predchádzajúceho výrezu.",
           properties: {
@@ -2058,8 +2059,17 @@ export class AskToolRuntime {
       url: `/ifc?ops=${encodeURIComponent(selectOp(guid, panel))}&r=${Date.now().toString(36)}`,
       label: `3D: výber ${label}`,
     });
-    const note = selectPanelNote(input);
-    return { ok: true, opened: "3d", selected: label, ifc_guid: guid, ...(panel ? { panel } : {}), ...(note ? { note } : {}) };
+    // D-127: či zvýraznená vlastnosť na prvku je, povie hneď AIM; IFC panel to potvrdí v stave po príkaze.
+    const property = panel?.focus && obj ? await this.propertyOf(obj, panel.focus.pset, panel.focus.property) : undefined;
+    return { ok: true, opened: "3d", selected: label, ifc_guid: guid, ...(panel ? { panel } : {}), ...(property ? { property } : {}) };
+  }
+
+  /** `pset.property` v dátach AIM prvku (výskyt s dedičnosťou z typu, D-021) - D-127. */
+  private async propertyOf(obj: ObjectRow, pset: string, property: string): Promise<PropertyLookup> {
+    const relation = obj.object_type === "asset" ? "v_asset_effective" : "objects";
+    const { data, error } = await getSupabaseAdmin().from(relation).select("properties").eq("id", obj.id).limit(1);
+    if (error) throw new Error(error.message);
+    return lookupProperty((data?.[0] as { properties?: unknown } | undefined)?.properties, pset, property);
   }
 
   /**

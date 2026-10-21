@@ -5843,3 +5843,58 @@ skryté a izolované prvky len ako počty.
 **Otvorené:** farby z `style_in_3d colorize` a AIM chat Lens sa neukladajú (viewer nevracia, čo je
 ofarbené); výber viac prvkov sa uloží, ale obnoví len jeden (viewer vyberá jeden prvok, D-082);
 izolácia nad 600 prvkov sa oreže a výsledok to povie.
+
+### D-127 - Panel vlastností len IFC, lepivé zvýraznenie vlastnosti, panely z chatu, výrez dokumentu podľa karty
+**Status:** rozhodnuté (2026-10-21, číslo pridelil orchestrátor, register #60). Issues #168, #169, #179, #166.
+Nadväzuje na D-077 (AIM karta v paneli), D-113 (panel vlastností pri výbere), D-114 (najprv napasuj),
+D-117 (výrez strany), D-101 (`APPLIED` so stavom), D-085 (`view_state`), D-098 (najprv existujúce) a D-104
+(skupina AIM v lište).
+
+**Kontext:** `show_in_3d(select, highlight)` zvýraznil riadok len na 2,4 s (upstream skok z bSDD karty
+zvýraznenie zhasne), výmery (Qto) a psety zdedené z typu nezvýraznil vôbec a výsledok nepovedal, či
+vlastnosť na prvku je (#168). Samuel pracuje už len vo vieweri a prepínač AIM | IFC v paneli nechce (#169,
+upresnené: preč má ísť len riadok prepínača, AIM dáta ostávajú). Panely (Lens, vlastnosti, podklady,
+zoznamy, strom modelu) sa z chatu nedali zavrieť ani prepnúť (#179). Výrez strany v úzkej karte nebolo
+možné overiť, či je celý v zábere (#166).
+
+**Rozhodnutie:**
+1. **#168, fork:** zvýraznenie z chatu ide vlastnou cestou nad DOM panela (`aimPanelView.ts`): nájde riadok
+   v Properties (`data-prop-key`, výskyt aj typ) alebo v Quantities (sada a meno), zbalenú sadu rozbalí jej
+   vlastným tlačidlom, riadok vycentruje a označí `data-aim-focus` (štýl v `assetin-theme.css`). Označenie
+   drží MutationObserver do ďalšieho výberu. Upstream `pendingPropertyFocus` sa už nepoužíva.
+   `view_state` a `APPLIED` nesú `property_focus` {found, section, from_type}; nenájdená vlastnosť je
+   problém v `APPLIED`.
+2. **#168, AIMviewer:** `selectIn3d` hneď povie, či vlastnosť je v dátach AIM prvku (`property.in_aim`,
+   hodnota, presné mená; pri chýbajúcej zoznam psetov), z `v_asset_effective` (dedičnosť z typu, D-021).
+   `highlight` na Qto už neotvára len sekciu, zvýrazní riadok ako ostatné.
+3. **#169:** prepínač AIM | IFC zmizol, panel ukazuje vždy IFC obsah. AIM karta (dokumenty aj cez zónu,
+   podlažie a typ, zodpovednosti, história GUID, "Otvoriť celý detail", Reality Capture) ostáva ako
+   **zbalený riadok** nad IFC obsahom, takže nič nezmizne. `panel_tab` vypadol zo schémy `show_in_3d`;
+   starý vstup sa ticho ignoruje (staršie odkazy `t=` fork prijme a nič nenastaví).
+4. **#179 - rozšírenie `set_view_mode` o `panels`** (D-114 bod 2): {lens | properties | underlays |
+   documents | lists | model_tree: open | close | toggle, all: close}, aj bez `mode`. Nová op
+   `panels:~<panel>=<akcia>...:` -> bridge `SET_PANELS`; fork volá existujúce akcie store (lišta, rail,
+   krížik panela, `aimPanels.ts`). `all=close` zavrie všetko okrem panelov, ktoré správa otvára ("zavri
+   všetko okrem vlastností"). Stav všetkých panelov (open, where left/right/bottom/floating/window, snap a
+   veľkosť plávajúceho, šírka pravého stĺpca) je v `view_state`, teda v `get_viewer_state` aj v stave po
+   každom príkaze.
+5. **#166, fork:** zoom výrezu sa počítal z plochy karty už v D-117; nové je, že sa prepočíta, keď sa
+   plocha karty po otvorení zmení (split, ukotvenie, šírka stĺpca) alebo príde skutočný pomer strany,
+   kým kartou nepohne používateľ. `APPLIED` počká na vykonanie výrezu a `view_state.document` nesie
+   viditeľnú časť strany v %, veľkosť karty, zoom a `region_fully_visible`.
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool `set_panel`:* panely sú súčasť pohľadu; `set_view_mode` je UI akcia pohľadu na čítanie a
+  stav vracia `view_state` (D-114).
+- *`get_viewer_state` na ovládanie panelov:* tool je čítanie, zmena patrí do UI akcie.
+- *Poloha a veľkosť panelov z chatu (`position`, `size`):* fork ich vie len ako plávajúce okno; pevné
+  rozloženie mení používateľ, chat ho len číta. Panel `legend`: legenda je časť Lens (`style_in_3d
+  legend_size`, D-119), zavrie sa s ním.
+- *Opraviť upstream fade v `PropertiesPanel` (blok AIM-FORK):* stále by chýbali výmery a psety typu.
+
+**Otvorené:** pôvodných 779 % z #166 sa lokálne nezopakovalo (úzka karta 264-378 px výrez umiestnila
+správne); výsledok teraz hlási viditeľný rozsah, takže ďalší výskyt sa dá overiť priamo. Na mobile
+je jeden panel naraz, `SET_PANELS` vtedy nesplnené kroky vráti ako problém.
+
+**Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežali; do `eval/questions.json` pribudli otázky z issues.
+
