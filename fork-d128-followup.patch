@@ -1,0 +1,72 @@
+From 15bf181571d9900c5243ebda5a835dbb109913f5 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 21 Oct 2026 09:26:39 +0000
+Subject: [PATCH] =?UTF-8?q?fix(aim):=20okraj=20a=20=C4=8Das=C5=A5=20bez=20?=
+ =?UTF-8?q?cie=C4=BEa=20hl=C3=A1sia=20probl=C3=A9m,=20screenAxes=20s=20NaN?=
+ =?UTF-8?q?=20vr=C3=A1ti=20null=20(AIM=20D-128=20follow-up)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Nálezy review na ifc-lite#98: SET_CAMERA s padding alebo area bez cieľa,
+selektora a fit skončil v runCamera pred frameTarget a voľba sa ticho
+zahodila; teraz ide do frameTarget a APPLIED.issues ju nahlási.
+screenAxes pri NaN v póze vracal NaN osi; porovnanie !(x >= eps) vráti null.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01EkqUKCBW9ptRq9y9vseC84
+---
+ apps/viewer/src/aim/cameraArea.test.ts | 2 ++
+ apps/viewer/src/aim/cameraArea.ts      | 5 +++--
+ apps/viewer/src/aim/viewCamera.ts      | 4 +++-
+ 3 files changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/apps/viewer/src/aim/cameraArea.test.ts b/apps/viewer/src/aim/cameraArea.test.ts
+index a8efe109b..4af6cff0b 100644
+--- a/apps/viewer/src/aim/cameraArea.test.ts
++++ b/apps/viewer/src/aim/cameraArea.test.ts
+@@ -33,6 +33,8 @@ describe('screenAxes (AIM D-128)', () => {
+   it('degenerovaná póza = null', () => {
+     assert.strictEqual(screenAxes({ position: { x: 1, y: 1, z: 1 }, target: { x: 1, y: 1, z: 1 }, up: { x: 0, y: 1, z: 0 } }), null);
+     assert.strictEqual(screenAxes({ position: { x: 0, y: 10, z: 0 }, target: { x: 0, y: 0, z: 0 }, up: { x: 0, y: 1, z: 0 } }), null);
++    assert.strictEqual(screenAxes({ position: { x: Number.NaN, y: 0, z: 10 }, target: { x: 0, y: 0, z: 0 }, up: { x: 0, y: 1, z: 0 } }), null);
++    assert.strictEqual(screenAxes({ position: { x: 0, y: 0, z: 10 }, target: { x: 0, y: 0, z: 0 }, up: { x: 0, y: Number.NaN, z: 0 } }), null);
+   });
+ });
+ 
+diff --git a/apps/viewer/src/aim/cameraArea.ts b/apps/viewer/src/aim/cameraArea.ts
+index 7dfa34883..7f1243844 100644
+--- a/apps/viewer/src/aim/cameraArea.ts
++++ b/apps/viewer/src/aim/cameraArea.ts
+@@ -26,10 +26,11 @@ const norm = (a: Vec3): Vec3 => {
+ /** Osi obrazu z pózy kamery; degenerovaná póza (kamera v cieli, `up` v smere pohľadu) = null. */
+ export function screenAxes(pose: { position: Vec3; target: Vec3; up: Vec3 }): ScreenAxes | null {
+   const f = sub(pose.target, pose.position);
+-  if (Math.hypot(f.x, f.y, f.z) < 1e-9) return null;
++  // `!(x >= eps)`: aj NaN v póze vráti null (`NaN < eps` je false).
++  if (!(Math.hypot(f.x, f.y, f.z) >= 1e-9)) return null;
+   const forward = norm(f);
+   const r = cross(forward, pose.up);
+-  if (Math.hypot(r.x, r.y, r.z) < 1e-9) return null;
++  if (!(Math.hypot(r.x, r.y, r.z) >= 1e-9)) return null;
+   const right = norm(r);
+   return { right, up: norm(cross(right, forward)), forward };
+ }
+diff --git a/apps/viewer/src/aim/viewCamera.ts b/apps/viewer/src/aim/viewCamera.ts
+index f9b4064f2..6c16ebd2f 100644
+--- a/apps/viewer/src/aim/viewCamera.ts
++++ b/apps/viewer/src/aim/viewCamera.ts
+@@ -177,7 +177,9 @@ export function runCamera(msg: CameraMessage, step: CameraStep, bim: BimContext,
+   const wait = setDirection(state, msg, step);
+   // Promise skončí po animácii a rámovaní, aby `APPLIED` (D-101) hlásilo koncovú pózu.
+   const settle = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+-  if (!msg.guids?.length && !msg.selector && !msg.fit) return wait > 0 ? settle(wait + FRAME_SLACK_MS) : Promise.resolve();
++  // Okraj alebo časť bez cieľa ide do `frameTarget`, aby ich zahodenie hlásilo `APPLIED.issues`.
++  const framing = msg.guids?.length || msg.selector || msg.fit || msg.padding !== undefined || msg.area;
++  if (!framing) return wait > 0 ? settle(wait + FRAME_SLACK_MS) : Promise.resolve();
+   const frame = () => (token === latest ? frameTarget(msg, bim, g) : Promise.resolve());
+   if (wait <= 0) return frame();
+   return settle(wait + FRAME_SLACK_MS).then(frame);
+-- 
+2.43.0
+
