@@ -74,6 +74,23 @@ function separated(text: string, more: boolean): string {
   return more && !text.endsWith("\n") ? `${text}\n` : text;
 }
 
+/**
+ * Neznámy parameter toolu je chyba, nie ticho ignorovaný vstup (D-126, #181:
+ * `offset` v query_view a `ifc_type` navrchu aggregate_objects vrátili zlé
+ * dáta bez varovania). Schéma s `additionalProperties: true` pustí čokoľvek.
+ */
+export function unknownArguments(tool: ToolDefinition, args: Record<string, unknown>): string | null {
+  const schema = tool.inputSchema as { properties?: Record<string, unknown>; additionalProperties?: unknown };
+  if (!isObject(schema.properties) || schema.additionalProperties === true) return null;
+  const allowed = Object.keys(schema.properties);
+  const unknown = Object.keys(args).filter((k) => !allowed.includes(k));
+  if (unknown.length === 0) return null;
+  return (
+    `Chyba toolu: ${tool.name} nepozná parameter ${unknown.map((k) => `'${k}'`).join(", ")}; nič sa nevykonalo. ` +
+    `Povolené: ${allowed.join(", ") || "(žiadne)"}. Filtre patria do parametra filters, ak ho tool má.`
+  );
+}
+
 async function handleOne(
   msg: unknown,
   deps: McpServerDeps,
@@ -121,10 +138,13 @@ async function handleOne(
       });
     case "tools/call": {
       const name = typeof params.name === "string" ? params.name : "";
-      if (!deps.tools.some((t) => t.name === name)) {
+      const tool = deps.tools.find((t) => t.name === name);
+      if (!tool) {
         return fail(id, INVALID_PARAMS, `Neznámy tool: ${name || "(chýba name)"}`);
       }
       const args = isObject(params.arguments) ? params.arguments : {};
+      const bad = unknownArguments(tool, args);
+      if (bad) return ok(id, { content: [{ type: "text", text: bad }], isError: true });
       try {
         const res = await deps.callTool(name, args);
         return ok(id, {

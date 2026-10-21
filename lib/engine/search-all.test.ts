@@ -142,3 +142,46 @@ describe("search_all source (D-115)", () => {
     expect(ifcInput).toMatchObject({ fields: ["property"], fuzzy: false });
   });
 });
+
+describe("search_all related (D-126, #174)", () => {
+  const ZONE_ID = "00000000-0000-0000-0000-0000000000aa";
+  const zoneInAim: IfcSearchItem = { ...zone, object_id: ZONE_ID, object_ref: "Nájomné priestory" };
+  const group = {
+    via: "rel_assigns_to_group" as const,
+    node: { object_id: ZONE_ID, object_ref: "Nájomné priestory", name: "Nájomné priestory", object_type: "zone" },
+    members_total: 2,
+    truncated: false,
+    members: [
+      { object_id: "00000000-0000-0000-0000-0000000000b1", object_ref: "1.02", name: "1.02", object_type: "space", ifc_type: "IfcSpace" },
+      { object_id: "00000000-0000-0000-0000-0000000000b2", object_ref: "1.03", name: "1.03", object_type: "space", ifc_type: "IfcSpace" },
+    ],
+  };
+
+  it("zhoda na zóne pridá jej priestory do related aj do show_in_3d jedným volaním", async () => {
+    const asked: string[][] = [];
+    const res = await execSearchAll(
+      { text: "prenajímateľné" },
+      { ifc: async () => ({ items: [zoneInAim] }), aim: async () => [], related: async (ids) => (asked.push(ids), [group]) },
+    );
+    const out = JSON.parse(res.content);
+    expect(asked).toEqual([[ZONE_ID]]);
+    expect(out.related).toEqual([group]);
+    expect(out.show_in_3d.ids_or_refs).toEqual([ZONE_ID, ...group.members.map((m) => m.object_id)]);
+  });
+
+  it("related=false vzťahy nesleduje, chyba vzťahov nezhodí hľadanie", async () => {
+    let called = false;
+    const off = await execSearchAll(
+      { text: "prenajímateľné", related: false },
+      { ifc: async () => ({ items: [zoneInAim] }), aim: async () => [], related: async () => ((called = true), [group]) },
+    );
+    expect(called).toBe(false);
+    expect(JSON.parse(off.content).related).toBeUndefined();
+    const failing = await execSearchAll(
+      { text: "prenajímateľné" },
+      { ifc: async () => ({ items: [zoneInAim] }), aim: async () => [], related: async () => { throw new Error("DB dole"); } },
+    );
+    expect(failing.isError).toBe(false);
+    expect(JSON.parse(failing.content).errors).toEqual({ related: "DB dole" });
+  });
+});
