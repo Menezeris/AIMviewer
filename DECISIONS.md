@@ -6054,3 +6054,60 @@ Samuel pracuje už len vo vieweri a vlastné rozhranie popri IFC nechce.
 **Dôsledky:** #169 rieši session D-127 podľa tohto zápisu (záložka a karta preč, história ako AIM riadky,
 zdedené dokumenty s odznakom). Reality Capture v paneli Documents a voľba exportu AIM vrstiev sú samostatná
 úloha vo fronte.
+
+---
+
+### D-128 - Kamera na cieľ v reze s okrajom a časťou cieľa, vzor šrafy reznej plochy
+
+**Dátum:** 2026-10-21 · **Stav:** prijaté (implementované) · **Súvisí:** D-083, D-094, D-098, D-101, D-114, D-120 · **Issues:** #172, #173, #97 · **PR:** Menezeris/ifc-lite (fork), AIMviewer (tento)
+
+**Kontext:** "priblíž atiku na ľavej strane v reze" stálo asi 8 volaní (#172): `set_camera` s cieľom
+a `preset=section` hlásilo pózu presetu (stred budovy), záber tenkého prvku bol príliš tesný a ľavú
+stranu musel model hľadať cez `get_viewer_state(bounds)` a posúvať kameru. Pri reze sa šrafa
+kreslila zvislo a vzor sa nedal zvoliť (#173).
+
+**Reprodukcia:** fork pri `preset=section` s cieľom nastaví smer kolmo na rez a po jeho animácii
+zarámuje cieľ (`aim/viewCamera.ts`, AIMviewer #65), ale rámovanie trvá ďalších 300 ms a `APPLIED`
+(D-101) čítal kameru hneď po jeho spustení. Rámovanie išlo cez `flyTo` s predvoleným okrajom upstreamu.
+Šrafa: `cap_style=hatch` (D-120) vracia vzor a uhol uložené v prehliadači; vzor `diagonal` s
+uhlom 0° kreslí zvislé čiary.
+
+**Najbližšie tooly (D-114):** `set_camera` (smer, cieľ, fit; chýba okraj, časť cieľa a koncová
+póza), `get_viewer_state` (len čítanie), `show_in_3d select` (smer nerieši), `set_section` (vzhľad
+plochy len `cap_style`/`cap_color`). Obe potreby sú parametre existujúcich toolov.
+
+**Rozhodnutie:**
+1. **`set_camera margin_percent`** (0 až 300, s cieľom predvolene 40): okraj okolo cieľa. Fork
+   rámuje existujúcim `cameraCallbacks.frameBounds(min, max, {padding: 1 + m/100})` (D-098), smer
+   kamery ostáva. Wire `~m=<%>`, bridge `SET_CAMERA.padding`.
+2. **`set_camera area`** = `left | right | top | bottom | front | back` (wire `~a=<l|r|t|b|f|k>`,
+   bridge `SET_CAMERA.area`): z cieľových prvkov alebo výberu (`fit=selection`) fork po nastavení
+   smeru vyberie tie, ktorých stred leží v krajnej tretine ich spoločnej obálky v smere obrazu
+   (left/right po šírke, top/bottom po výške, front/back bližšie/ďalej od kamery); keď v tretine
+   nič nie je, vezme prvok najbližšie k okraju. Čistá funkcia `aim/cameraArea.ts` s testom. Bez
+   cieľa a výberu `area` nejde (chyba s radou).
+3. **Koncová póza:** fork počká na koniec rámovania, `APPLIED` nesie koncovú kameru. Host pri
+   `set_camera` dopočíta `visible` (stred, šírka a výška viditeľnej oblasti v metroch v rovine
+   cieľa; `visibleArea` v `lib/viewer-camera.ts`), takže `get_viewer_state` netreba.
+4. **`set_section` vzor šrafy:** `hatch_pattern` = `diagonal | diagonal_reverse | cross |
+   crosshatch | horizontal | vertical | dots | brick | insulation`, `hatch_angle_deg`,
+   `hatch_spacing_px` (2 až 64), `hatch_line_width_px` (1 až 16), rozsahy ako popover Cap. Mapovanie
+   na vzory renderera (`dots` = `concrete`, `cross` = `crossHatch` 0°/90°, `crosshatch` = 45°/-45°,
+   `diagonal_reverse` = -45°) robí host (`lib/viewer-section-cap.ts`); bridge `SET_SECTION_CAP`
+   nesie `pattern`, `angleDeg`, `secondaryAngleDeg`, `spacingPx`, `widthPx` a fork ich zapíše setterom
+   `setSectionCapStyle` (ten istý ako popover Cap). `cap_style=hatch` bez vzoru = diagonálna 45°,
+   8 px, 1 px (predvolené upstreamu), výsledok teda nezávisí od uloženej voľby. Parametre šrafy bez
+   `cap_style` znamenajú `hatch`; výsledok vráti použitý vzor, uhol, rozstup a hrúbku.
+5. Recept v opise `set_camera`: atika vľavo v reze = `set_section` + `search_objects(PARAPET)` +
+   `set_camera(preset=section, cieľ, area=left)`. Prompt sa nezväčšuje (limit MCP inštrukcií).
+
+**Zavrhnuté:**
+- *Nový tool na "zarámuj časť budovy":* to isté ako parameter `set_camera` (D-114).
+- *Relatívny krok v tom istom volaní ako cieľ:* krok sa počíta z koncovej pózy, ktorú host pred
+  volaním nepozná (D-098); okraj `margin_percent` nahrádza následný `zoom_percent`.
+- *Rozstup šrafy v mm:* renderer kreslí šrafu v pixeloch obrazovky; mm by boli zmena
+  `packages/renderer`.
+- *Vzor podľa materiálu rezaného prvku:* renderer nemá materiál pri reznej ploche; neskôr.
+
+**Poradie zlúčenia:** najprv fork, potom AIMviewer. Starší viewer nové polia `SET_CAMERA` a
+`SET_SECTION_CAP` ignoruje (rámuje ako doteraz, šrafa ostane uložená).
