@@ -2,6 +2,7 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { LEGEND_SIZES, lensOp, type LegendSize, type LensMode, type LensWire, type LensWireRule } from "@/lib/viewer-lens";
+import { SECTION_CLEAR_OP } from "@/lib/viewer-ops";
 
 import type { AskAction } from "./actions";
 import { autoColorSpec, lensGroup, type ResolvedLensFilter } from "./lens-plan";
@@ -26,7 +27,7 @@ const strList = (v: unknown): string[] => (Array.isArray(v) ? (v as unknown[]).m
 /** Akcie `style_in_3d`, ktoré idú cez Lens (skrytie ostáva na kanáli skrývania viewera); `legend` = len panel legendy (D-119). */
 export const LENS_STYLE_ACTIONS = new Set(["colorize", "transparent", "isolate", "xray", "legend"]);
 
-/** `legend_size` toolu (D-119); bez hodnoty `undefined`, pri akcii legend predvolene `large`. */
+/** `legend_size` toolu (D-119); bez hodnoty `undefined`, pri akcii legend predvolene `compact` (D-125). */
 export function legendSize(raw: unknown): LegendSize | undefined {
   const v = str(raw).toLowerCase();
   if (!v) return undefined;
@@ -43,6 +44,9 @@ export interface GroupInfo {
   label: string;
   color?: string;
   systems?: string[];
+  /** Pri viacerých systémoch každý s typom a počtom členov (D-125, #177). */
+  system_members?: { system: string; type: string | null; elements: number }[];
+  warning?: string;
   zones?: string[];
   storey?: string;
   document?: string;
@@ -74,6 +78,7 @@ export async function resolveFilter(
     if (names.length === 0) throw new StyleInputError("Vybrané systémy nemajú v modeli názov, Lens ich nevie vybrať.");
     out.systemNames = [...new Set(names)];
     info.systems = systems.map((s) => s.object_ref ?? s.name ?? s.id);
+    if (systems.length > 1) await describeSystems(scope, systems, info);
   }
   if (str(f.storey)) {
     const floor = await scope.pickFloor(str(f.storey));
@@ -119,6 +124,32 @@ export async function resolveFilter(
   return out;
 }
 
+/** Najviac systémov, ktorým sa rátajú členovia (každý = dopyt do grafu). */
+const MAX_DESCRIBED_SYSTEMS = 12;
+
+/**
+ * Viac systémov v jednej skupine (#177): `system_type` alebo meno zoberie všetky zhody, aj
+ * tie, ktoré k skupine nepatria (Odpadné hospodárstvo vo VENTILATION). Odpoveď vypíše každý
+ * systém s typom a počtom členov a varuje, aby model skontroloval názvy.
+ */
+async function describeSystems(scope: ScopeResolver, systems: Awaited<ReturnType<ScopeResolver["pickSystems"]>>, info: GroupInfo) {
+  const shown = systems.slice(0, MAX_DESCRIBED_SYSTEMS);
+  const counts = await scope.systemMemberCounts(shown);
+  info.system_members = shown.map((s, i) => ({
+    system: s.object_ref ?? s.name ?? s.id,
+    type: [s.predefined_type, s.user_defined_type].filter(Boolean).join(" / ") || null,
+    elements: counts[i],
+  }));
+  info.warning =
+    `Filter zobral ${systems.length} systémov. Over podľa názvov, či všetky patria do skupiny '${info.label}'; ` +
+    "ak nie, zúž ju cez system=<presný názov> a povedz používateľovi, ktoré systémy si vynechal.";
+}
+
+/** Ops viewera pred lens: `clear_section=true` zruší rez v tom istom príkaze (#177). */
+function sectionPrefix(input: Record<string, unknown>): string {
+  return input.clear_section === true ? `${SECTION_CLEAR_OP};` : "";
+}
+
 /** Krátka značka verzie lens: páruje odoslanú lens s otázkou na počty. */
 export function lensRev(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -139,13 +170,13 @@ export async function execLensStyle(
   const colorBy = str(input.color_by);
   const legend = legendSize(input.legend_size);
 
-  // Len veľkosť legendy (D-119): panel Lens ako veľké okno alebo späť, lens ostane.
+  // Len legenda (D-119, D-125): malá karta, panel Lens ako veľké okno alebo späť, lens ostane.
   if (action === "legend") {
-    const size = legend ?? "large";
+    const size = legend ?? "compact";
     push({
       type: "navigate",
       url: `/ifc?ops=${encodeURIComponent(lensOp("add", { l: size }, rev))}&r=${Date.now().toString(36)}`,
-      label: size === "large" ? "3D: veľká legenda" : "3D: legenda späť do panelu",
+      label: { compact: "3D: legenda AIM chat", large: "3D: veľká legenda", normal: "3D: legenda späť do panelu" }[size],
     });
     return {
       rev,
@@ -153,10 +184,11 @@ export async function execLensStyle(
         ok: true,
         applied: action,
         legend_size: size,
-        note:
-          size === "large"
-            ? "Panel Lens je veľké plávajúce okno, legenda v ňom nie je orezaná; legend_size=normal ho vráti do lišty."
-            : "Panel Lens je späť v lište.",
+        note: {
+          compact: "Malá karta vo vieweri ukazuje len legendu AIM chat lens (farba, názov, počet); panel Lens je zavretý.",
+          large: "Panel Lens je veľké plávajúce okno, legenda v ňom nie je orezaná; legend_size=normal ho vráti do lišty.",
+          normal: "Panel Lens je späť v lište.",
+        }[size],
       },
     };
   }
@@ -175,7 +207,7 @@ export async function execLensStyle(
       : undefined;
     push({
       type: "navigate",
-      url: `/ifc?ops=${encodeURIComponent(lensOp("replace", { ac, ...(s ? { s } : {}), ...(legend ? { l: legend } : {}) }, rev))}&r=${Date.now().toString(36)}`,
+      url: `/ifc?ops=${encodeURIComponent(sectionPrefix(input) + lensOp("replace", { ac, ...(s ? { s } : {}), ...(legend ? { l: legend } : {}) }, rev))}&r=${Date.now().toString(36)}`,
       label: `3D: farby podľa ${colorBy}${scoped ? ` - ${info.label}` : ""}`,
     });
     return {
@@ -190,6 +222,7 @@ export async function execLensStyle(
           ? { filter: info, note: "farby, legenda a počty len pre prvky filtra" }
           : { note: "bez filtra: pri izolácii alebo skrytí len viditeľné prvky, inak celý model" },
         ...(legend ? { legend_size: legend } : {}),
+        ...(input.clear_section === true ? { section_cleared: true } : {}),
       },
     };
   }
@@ -216,7 +249,7 @@ export async function execLensStyle(
   const verb = { colorize: "ofarbenie", transparent: "priehľadnosť", isolate: "izolácia", xray: "X-ray" }[action] ?? action;
   push({
     type: "navigate",
-    url: `/ifc?ops=${encodeURIComponent(lensOp(mode, wire, rev))}&r=${Date.now().toString(36)}`,
+    url: `/ifc?ops=${encodeURIComponent(sectionPrefix(input) + lensOp(mode, wire, rev))}&r=${Date.now().toString(36)}`,
     label: groups.length > 1 ? `3D: ${verb} ${groups.length} skupín (Lens)` : `3D: ${verb} - ${groups[0].label}`,
   });
   return {
@@ -227,6 +260,8 @@ export async function execLensStyle(
       lens: "AIM chat",
       mode,
       groups: infos,
+      ...(input.clear_section === true ? { section_cleared: true } : {}),
+      ...(infos.some((i) => i.warning) ? { warnings: infos.filter((i) => i.warning).map((i) => i.warning) } : {}),
       ...(action === "isolate"
         ? { isolated: "viewer zobrazí len tieto prvky; bez farby ostanú v pôvodnom vzhľade, show_all izoláciu zruší" }
         : {}),

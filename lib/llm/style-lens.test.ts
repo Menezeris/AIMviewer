@@ -1,0 +1,61 @@
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => ({}) }));
+
+import type { AskAction } from "./actions";
+import { execLensStyle, resolveFilter, type GroupInfo } from "./style-lens";
+import type { ScopeResolver } from "./style-scope";
+
+const OPTS = { domainTypes: { hvac: ["IfcDuctSegment"] } };
+const opsOf = (a: AskAction) => decodeURIComponent(new URL(a.url, "http://x").searchParams.get("ops") ?? "");
+
+describe("style_in_3d legenda a rez (D-125)", () => {
+  it("action=legend je predvolene malá karta (compact), large a normal ostávajú", async () => {
+    const pushed: AskAction[] = [];
+    const { result } = await execLensStyle("legend", {}, (a) => pushed.push(a), OPTS);
+    expect(result.legend_size).toBe("compact");
+    expect(pushed[0].label).toBe("3D: legenda AIM chat");
+    await execLensStyle("legend", { legend_size: "large" }, (a) => pushed.push(a), OPTS);
+    expect(pushed[1].label).toBe("3D: veľká legenda");
+  });
+
+  it("clear_section=true dá pred lens op zrušenie rezu v tom istom príkaze (#177)", async () => {
+    const pushed: AskAction[] = [];
+    const { result } = await execLensStyle("isolate", { ifc_type: "IfcDuctSegment", clear_section: true }, (a) => pushed.push(a), OPTS);
+    expect(opsOf(pushed[0])).toMatch(/^section_clear::;lens:add/);
+    expect(result.section_cleared).toBe(true);
+    await execLensStyle("isolate", { ifc_type: "IfcDuctSegment" }, (a) => pushed.push(a), OPTS);
+    expect(opsOf(pushed[1])).toMatch(/^lens:add/);
+  });
+});
+
+describe("viac systémov vo filtri (#177)", () => {
+  const SYSTEMS = [
+    { id: "s1", object_type: "system", object_ref: "Prívod", name: "Prívod", predefined_type: "VENTILATION", user_defined_type: null },
+    { id: "s2", object_type: "system", object_ref: "Odpadné hospodárstvo", name: "Odpadné hospodárstvo", predefined_type: "VENTILATION", user_defined_type: null },
+  ];
+  const scope = (systems: typeof SYSTEMS) =>
+    ({
+      pickSystems: async () => systems,
+      systemMemberCounts: async (s: typeof SYSTEMS) => s.map((x) => (x.id === "s1" ? 120 : 4)),
+      explicitIds: async () => null,
+    }) as unknown as ScopeResolver;
+
+  it("vypíše každý systém s typom a počtom členov a varuje", async () => {
+    const info: GroupInfo = { label: "Privodne" };
+    await resolveFilter(scope(SYSTEMS), { system_type: "VENTILATION" }, OPTS, info, { left: 10 });
+    expect(info.system_members).toEqual([
+      { system: "Prívod", type: "VENTILATION", elements: 120 },
+      { system: "Odpadné hospodárstvo", type: "VENTILATION", elements: 4 },
+    ]);
+    expect(info.warning).toMatch(/zobral 2 systémov.*'Privodne'/);
+  });
+
+  it("jeden systém bez varovania", async () => {
+    const info: GroupInfo = { label: "Prívod" };
+    await resolveFilter(scope(SYSTEMS.slice(0, 1)), { system: "Prívod" }, OPTS, info, { left: 10 });
+    expect(info.system_members).toBeUndefined();
+    expect(info.warning).toBeUndefined();
+  });
+});

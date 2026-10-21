@@ -25,7 +25,7 @@ import { engineEnabled, resolveNamesToGuids } from "@/lib/engine/aim-lookup";
 import { execScopedStyle } from "./style-scope";
 import { needsScopedStyle } from "./style-plan";
 import { LENS_STYLE_ACTIONS, execLensStyle } from "./style-lens";
-import { selectPanelInput, selectPanelNote } from "./select-panel";
+import { lookupProperty, selectPanelInput, type PropertyLookup } from "./select-panel";
 import {
   RELATED_CAP,
   clampOffset,
@@ -473,9 +473,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "UI AKCIA: UKÁŽ alebo VYBER prvky v 3D. Predvolene zvýrazní (oranžovo) a priblíži prvky - 'ukáž / " +
       "zobraz X', aj jednu miestnosť (skrytú viewer zapne). Celú triedu pošli filtrom (ifc_type, query, " +
       "predefined_type), konkrétne prvky v ids_or_refs (object_ref, kód prvku ako 'SD04.0001' aj číslo miestnosti ako '3.02' " +
-      "netreba hľadať vopred). select=true = VYBERIE jeden prvok ako klik myšou a otvorí jeho panel vlastností ('vyber / označ " +
-      "X', 'ukáž jeho vlastnosti'): panel_tab aim | ifc, panel_section properties | quantities, highlight " +
-      "'Pset.Vlastnosť' zvýrazní riadok; panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
+      "netreba hľadať vopred). select=true = VYBERIE jeden prvok ako klik myšou a otvorí jeho IFC panel vlastností ('vyber / označ " +
+      "X', 'ukáž jeho vlastnosti'): panel_section properties | quantities, highlight 'Pset.Vlastnosť' (aj Qto výmera) rozbalí " +
+      "sadu, prescrolluje a zvýrazní riadok do ďalšieho výberu; výsledok povie, či vlastnosť na prvku je (property.in_aim, " +
+      "property_focus.found zo živého viewera). Panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
       "select=true výber. Funguje pre prvky s IFC GUID. Prvky, ktorých sa týka dokument alebo strana, " +
       "ukáž cez style_in_3d(document, page).",
     inputSchema: {
@@ -503,9 +504,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         query: { type: "string", description: "Filter namiesto ids: fulltext (názov/ref/typ)" },
         object_type: { type: "string", description: "Filter namiesto ids: objects.object_type" },
         select: { type: "boolean", description: "Vybrať jeden prvok ako klik (id_or_ref) a otvoriť panel vlastností" },
-        panel_tab: { type: "string", enum: ["aim", "ifc"], description: "select: záložka panelu vlastností" },
         panel_section: { type: "string", enum: ["properties", "quantities"], description: "select: sekcia IFC panelu" },
-        highlight: { type: "string", description: "select: zvýrazniť vlastnosť, napr. 'Pset_WallCommon.FireRating'" },
+        highlight: { type: "string", description: "select: zvýrazniť vlastnosť, napr. 'Pset_WallCommon.FireRating' alebo 'Qto_DoorBaseQuantities.Width'" },
       },
     },
   },
@@ -534,10 +534,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "ďalšie volania pridávajú pravidlá (mode=replace začne odznova), počty na pravidlo " +
       "vráti živý viewer v odpovedi. Farby podľa hodnoty (systémy, triedy, materiál, " +
       "vlastnosť...) = color_by, viewer zvolí farby a vráti legendu; filtre volania (ifc_type, storey...) " +
-      "obmedzia farby, legendu aj počty na tieto prvky, bez filtra pri izolácii len viditeľné. Legendu na celú " +
-      "plochu = action=legend (legend_size large/normal). Miestnosti (IfcSpace) a zóny sú vo vieweri predvolene " +
-      "skryté: farbenie či izolácia ich zapne sama, ručne show/hide s ifc_type=IfcSpace; v 2D pôdoryse sú " +
-      "ofarbené miestnosti vyplnené a popísané. Farby určuje používateľ; " +
+      "obmedzia farby, legendu aj počty na tieto prvky, bez filtra pri izolácii len viditeľné. 'Ukáž legendu' = " +
+      "action=legend (malá karta len s AIM chat lens; legend_size large = veľké okno, normal = panel). Miestnosti " +
+      "(IfcSpace) a zóny sú vo vieweri predvolene skryté: farbenie či izolácia ich zapne sama, ručne show/hide s " +
+      "ifc_type=IfcSpace; farba miestnosti ostane priesvitná (prvky v nej vidno, NEPRIDÁVAJ transparent pravidlo); " +
+      "v pôdoryse (2D alebo vodorovný rez s pohľadom zhora) sú ofarbené aj vybrané miestnosti vyplnené a popísané. " +
+      "Odpoveď vráti stav po príkaze: pravidlo s inactive nič nezafarbilo, izolácia s active=false už neplatí, " +
+      "changed_outside_commands = čo zmenil používateľ od predošlého príkazu, POZOR = upozornenie (aktívny rez, " +
+      "viac systémov vo filtri, viac okien viewera) - povedz ho používateľovi. Farby určuje používateľ; " +
       "keď ich nepovie, zvoľ dobre odlíšiteľné a povedz ich. " +
       "Efekty sa hromadia, kým ich nezruší show_all/reset_colors (reset_colors vypne aj " +
       "lens). Viac operácií = viac callov (pokojne v jednom kole).",
@@ -553,7 +557,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             "ostanú v pôvodnom vzhľade, color len keď ho používateľ chce), xray=vybrané plné v pôvodnom " +
             "vzhľade a zvyšok modelu priesvitný (X-ray context, ako tlačidlo duch; filtre ako isolate), " +
             "show_all=zrušiť skrývanie, izoláciu, X-ray aj rez (rez vráti set_section), reset_colors=zrušiť ofarbenie a lens, " +
-            "legend=len veľkosť legendy Lens (legend_size), bez filtrov",
+            "legend=len legenda AIM chat lens (legend_size; predvolene malá karta), bez filtrov",
         },
         mode: {
           type: "string",
@@ -561,7 +565,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           description:
             "Lens (colorize/transparent/isolate/xray): add = pridať k doterajším pravidlám (predvolené; pri isolate a xray " +
             "rozšíri aktuálnu izoláciu, napr. 'pridaj aj schodiská' = isolate + mode=add, jeden call), replace = " +
-            "začať odznova (nová izolácia)",
+            "začať odznova (nová izolácia; zmaže aj farby a priehľadnosť z predošlých volaní, preto farby daj do " +
+            "groups toho istého volania)",
         },
         color_by: {
           type: "string",
@@ -570,11 +575,17 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         legend_size: {
           type: "string",
-          enum: ["large", "normal"],
+          enum: ["compact", "large", "normal"],
           description:
-            "Legenda Lens: large = panel Lens ako veľké okno cez takmer celý viewer, legenda bez orezania " +
-            "('zväčši legendu na celú stranu'); normal = späť do lišty. S action=legend (predvolene large) " +
-            "alebo spolu s colorize/color_by",
+            "Legenda: compact = malá karta len s legendou AIM chat lens, bez panelu Lens (predvolené pri action=legend); " +
+            "large = panel Lens ako veľké okno cez takmer celý viewer ('zväčši legendu na celú stranu'); normal = " +
+            "späť do lišty. S action=legend alebo spolu s colorize/color_by",
+        },
+        clear_section: {
+          type: "boolean",
+          description:
+            "true = v tom istom volaní zruší aktívny rez (napr. zabudnutý vodorovný rez z predošlej úlohy pri " +
+            "isolate, xray alebo colorize celého systému)",
         },
         color_by_key: {
           type: "string",
@@ -740,8 +751,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "object",
           description:
             "Voliteľné: výrez strany v % (0-100, počiatok vľavo hore), napr. pravý horný roh = " +
-            "{x:50,y:0,width:50,height:50}. Karta sa priblíži, aby výrez vyplnil plochu, a vycentruje " +
-            "ho; aj pre už otvorenú kartu. S region sa výkres vždy otvorí vo vieweri (in_viewer). " +
+            "{x:50,y:0,width:50,height:50}. Karta sa priblíži podľa svojej skutočnej veľkosti, aby výrez vyplnil plochu, " +
+            "a vycentruje ho; aj pre už otvorenú kartu. Stav po príkaze nesie document.visible (viditeľná časť strany v %) " +
+            "a region_fully_visible. S region sa výkres vždy otvorí vo vieweri (in_viewer). " +
             "Polohu prvku vo výkrese tool nepozná: výrez určí používateľ slovne (vpravo hore, " +
             "stred, ľavý okraj...) a ďalší krok sa odvodí z predchádzajúceho výrezu.",
           properties: {
@@ -2234,8 +2246,17 @@ export class AskToolRuntime {
       url: `/ifc?ops=${encodeURIComponent(selectOp(guid, panel))}&r=${Date.now().toString(36)}`,
       label: `3D: výber ${label}`,
     });
-    const note = selectPanelNote(input);
-    return { ok: true, opened: "3d", selected: label, ifc_guid: guid, ...(panel ? { panel } : {}), ...(note ? { note } : {}) };
+    // D-127: či zvýraznená vlastnosť na prvku je, povie hneď AIM; IFC panel to potvrdí v stave po príkaze.
+    const property = panel?.focus && obj ? await this.propertyOf(obj, panel.focus.pset, panel.focus.property) : undefined;
+    return { ok: true, opened: "3d", selected: label, ifc_guid: guid, ...(panel ? { panel } : {}), ...(property ? { property } : {}) };
+  }
+
+  /** `pset.property` v dátach AIM prvku (výskyt s dedičnosťou z typu, D-021) - D-127. */
+  private async propertyOf(obj: ObjectRow, pset: string, property: string): Promise<PropertyLookup> {
+    const relation = obj.object_type === "asset" ? "v_asset_effective" : "objects";
+    const { data, error } = await getSupabaseAdmin().from(relation).select("properties").eq("id", obj.id).limit(1);
+    if (error) throw new Error(error.message);
+    return lookupProperty((data?.[0] as { properties?: unknown } | undefined)?.properties, pset, property);
   }
 
   /**

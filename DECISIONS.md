@@ -5844,6 +5844,69 @@ skryté a izolované prvky len ako počty.
 ofarbené); výber viac prvkov sa uloží, ale obnoví len jeden (viewer vyberá jeden prvok, D-082);
 izolácia nad 600 prvkov sa oreže a výsledok to povie.
 
+### D-125 - Živý stav viewera v odpovediach: identita viewera, zmeny mimo príkazov, priestory v Lens, výplň v reze a malá legenda
+
+**Dátum:** 2026-10-21 · **Stav:** navrhnuté (čaká na Samuela) · **Súvisí:** D-085, D-096, D-101, D-105, D-114, D-116, D-119 · **Issues:** #182, #180, #177, #178, #175 · **PR:** AIMviewer (tento), Menezeris/ifc-lite (fork)
+
+**Kontext:** päť pripomienok z konektora z 21. 10. k jednej úlohe (izolácia miestnosti 2.01 s
+vyústkami, farby VZT): priestor sa po farbení vykreslil plný alebo zmizol, stav v odpovedi a v
+`get_viewer_state` sa striedal medzi dvoma verziami a nezhodoval sa s obrazovkou, izoláciu vypnutú
+používateľom nič nehlásilo, farbenie podľa `system_type` zobralo aj systémy, ktoré nepatrili, a
+zabudnutý rez skryl väčšinu výsledku; `action=legend` otvoril celý panel Lens s predvolenými
+lenses a ofarbená miestnosť nebola v pôdoryse vidno.
+
+**Overenie (D-114, reprodukcia vo forku v iframe, FZK-Haus):**
+- colorize na IfcSpace = Lens alfa 1, miestnosť je nepriehľadný kváder a prvky vnútri nevidno;
+- pravidlo prekryté novším ostane v súhrne s `count 0` ako platné;
+- izolácia z chatu zrušená používateľom (kláves A) sa v súhrne lens hlási ďalej, aj po ďalšej lens;
+- výplň miestností (D-119) sa kreslí len v režime 2D, nie v 3D s rezom a pohľadom zhora;
+- na živý kanál odpovedá každý otvorený viewer a vyhrá prvá odpoveď; stav a lens v
+  `get_viewer_state` sú dve otázky, ktoré mohli zodpovedať dve rôzne karty alebo zariadenia, a
+  odpovede nemali identitu viewera. Jediná cesta k "striedaniu dvoch verzií".
+Existujúce tooly to nepokryjú: chyba je v obsahu odpovedí a vo vykreslení, nie v postupe modelu.
+
+**Rozhodnutie (rozšírenie existujúcich toolov, žiadny nový tool):**
+1. **Identita viewera (AIMviewer):** okno s `?live=` posiela v `reply` a `applied` náhodné `viewer`
+   id (na načítanie stránky). `get_viewer_state` zbiera odpovede ešte chvíľu po prvej, stav aj lens
+   berie z toho istého viewera a pri viac ako jednom vráti `viewers` s varovaním (zavrieť ostatné
+   okná). Potvrdenie príkazu nesie to isté varovanie, ak teplý kanál nedávno videl viac viewerov.
+2. **Zmeny mimo príkazov (fork):** viewer si pamätá stav po poslednom potvrdenom príkaze
+   (`APPLIED`): izolácia a X-ray, rez, skryté, výber, režim a podlažie, AIM chat lens. Pri ďalšom
+   príkaze vráti `changed_outside_commands` (čo sa zmenilo pred ním, napr. "izoláciu vypol
+   používateľ"), `view_state` vráti `changed_since_last_command`. Kamera sa neporovnáva (mení sa
+   stále).
+3. **Súhrn lens (fork):** pravidlo bez zhody má `matched: false` (prekryté novším alebo nič
+   nenašlo); izolácia a X-ray z chatu `active: false` s dôvodom, keď ich kanál už nedrží; AIM chat
+   lens vypnutá v paneli vráti `stored_rules`.
+4. **Priestory v Lens (fork):** farebné pravidlo z chatu dostane pre IfcSpace a IfcSpatialZone
+   priesvitnú variantu (rovnaká farba, alfa 0,3 ako `transparent`), takže miestnosť ostane
+   priehľadná a prvky v nej vidno. Počty sa spočítajú pod pôvodné pravidlo.
+5. **Výplň miestností v reze (fork):** `AimRoomFillLayer` kreslí aj v 3D, keď je aktívny vodorovný
+   rez a kamera hľadí zhora (pôdorys bez režimu 2D); len miestnosti preťaté rezom. Vyplní aj vybranú
+   miestnosť (farbou výberu), nielen ofarbenú.
+6. **Malá legenda (fork + AIMviewer):** `legend: compact` = plávajúca karta len s AIM chat lens
+   (farba, názov pravidla alebo hodnoty, počet), panel Lens sa neotvára a veľké okno sa zavrie.
+   `style_in_3d action=legend` je predvolene `compact`; `large` a `normal` ostávajú.
+7. **`style_in_3d` (AIMviewer):** `clear_section=true` zruší rez v tom istom volaní; pri isolate,
+   xray a colorize s aktívnym rezom odpoveď varuje a navrhne `set_section action=clear`; pri
+   `system_type` (alebo `system`), ktorý zobral viac systémov, vráti zoznam systémov s typom a
+   počtom členov a upozorní, že niektorý nemusí patrieť. Opis: `mode=replace` pri isolate a xray
+   nahradí aj farby z predošlých volaní, na IfcSpace netreba ďalšie pravidlo `transparent`.
+
+**Zavrhnuté rozšírenie a nové tooly:**
+- *Nový tool na živý stav:* stav ide v odpovedi príkazu (D-101) a v `get_viewer_state`; chýbala len
+  jeho pravdivosť a rozdiel.
+- *Parameter `expect_state`:* zmeny mimo príkazov sa vrátia samé, model ich vidí v ďalšej odpovedi.
+- *Adresovanie otázky konkrétnemu vieweru:* príkazy majú ísť do všetkých okien (zrkadlo na
+  telefóne); stačí párovať odpovede a varovať.
+- *`space_display=floor|volume|outline` a objem v perspektíve:* výplň nad scénou by v perspektíve
+  prekrývala model; ostáva otvorená otázka pre Samuela (#175).
+- *Zmena farby priestorov v balíku `lens` alebo v rendereri:* upstream súbory = plné CI a údržba;
+  pravidlo navyše v AIM vrstve stačí.
+
+**Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežia; do `eval/questions.json` pribudnú
+otázky z issues.
+
 ### D-126 - Úplné a stránkované výsledky DB tools, hľadanie cez vzťahy, overenie zatvorených issues
 
 **Status:** rozhodnuté (2026-10-21, číslo pridelil orchestrátor). Issues #181, #174, #171, #176. Nadväzuje na
@@ -5889,6 +5952,65 @@ D-056 (`query_view`), D-060 (`aggregate_objects`), D-090 (feedback), D-095 (`sea
   `ids` zo search_all).
 - *Nastavenie práv GitHub App z kódu:* je to nastavenie účtu (Samuel), postup je v #176.
 
+### D-127 - Panel vlastností len IFC, lepivé zvýraznenie vlastnosti, panely z chatu, výrez dokumentu podľa karty
+**Status:** rozhodnuté (2026-10-21, číslo pridelil orchestrátor, register #60). Issues #168, #169, #179, #166.
+Nadväzuje na D-077 (AIM karta v paneli), D-113 (panel vlastností pri výbere), D-114 (najprv napasuj),
+D-117 (výrez strany), D-101 (`APPLIED` so stavom), D-085 (`view_state`), D-098 (najprv existujúce) a D-104
+(skupina AIM v lište).
+
+**Kontext:** `show_in_3d(select, highlight)` zvýraznil riadok len na 2,4 s (upstream skok z bSDD karty
+zvýraznenie zhasne), výmery (Qto) a psety zdedené z typu nezvýraznil vôbec a výsledok nepovedal, či
+vlastnosť na prvku je (#168). Samuel pracuje už len vo vieweri a prepínač AIM | IFC v paneli nechce (#169;
+zadanie spresnilo D-129: AIM karta tiež preč, údaje len AIM ako vrstva s odznakom). Panely (Lens, vlastnosti, podklady,
+zoznamy, strom modelu) sa z chatu nedali zavrieť ani prepnúť (#179). Výrez strany v úzkej karte nebolo
+možné overiť, či je celý v zábere (#166).
+
+**Rozhodnutie:**
+1. **#168, fork:** zvýraznenie z chatu ide vlastnou cestou nad DOM panela (`aimPanelView.ts`): nájde riadok
+   v Properties (`data-prop-key`, výskyt aj typ) alebo v Quantities (sada a meno), zbalenú sadu rozbalí jej
+   vlastným tlačidlom, riadok vycentruje a označí `data-aim-focus` (štýl v `assetin-theme.css`). Označenie
+   drží MutationObserver do ďalšieho výberu. Upstream `pendingPropertyFocus` sa už nepoužíva.
+   `view_state` a `APPLIED` nesú `property_focus` {found, section, from_type}; nenájdená vlastnosť je
+   problém v `APPLIED`.
+2. **#168, AIMviewer:** `selectIn3d` hneď povie, či vlastnosť je v dátach AIM prvku (`property.in_aim`,
+   hodnota, presné mená; pri chýbajúcej zoznam psetov), z `v_asset_effective` (dedičnosť z typu, D-021).
+   `highlight` na Qto už neotvára len sekciu, zvýrazní riadok ako ostatné.
+3. **#169 (podľa D-129):** záložka AIM aj AIM karta z panela vypadli, panel je čisto IFC. Vrstva AIM:
+   posledná zmena prvku receptom (revízia vNNN, model a BCF téma z `model_tasks` s prvkom vo výbere,
+   `fetchLastElementChange`) a história GUID sú riadky s odznakom AIM nad IFC obsahom (vzor D-089);
+   dokumenty zdedené cez zónu, podlažie, skupinu, systém alebo miestnosť majú v paneli Documents
+   ("Len pre výber") odznak AIM (`aim: true`, priamo a cez typ sú v IFC). Zodpovednosti, odkaz
+   Reality Capture a "Otvoriť celý detail" z panela vypadli (D-129 body 2, 4, 6). `panel_tab` vypadol
+   zo schémy `show_in_3d`; starý vstup sa ticho ignoruje (staršie odkazy `t=` fork prijme a nič nenastaví).
+4. **#179 - rozšírenie `set_view_mode` o `panels`** (D-114 bod 2): {lens | properties | underlays |
+   documents | lists | model_tree: open | close | toggle, all: close}, aj bez `mode`. Nová op
+   `panels:~<panel>=<akcia>...:` -> bridge `SET_PANELS`; fork volá existujúce akcie store (lišta, rail,
+   krížik panela, `aimPanels.ts`). `all=close` zavrie všetko okrem panelov, ktoré správa otvára ("zavri
+   všetko okrem vlastností"). Stav všetkých panelov (open, where left/right/bottom/floating/window, snap a
+   veľkosť plávajúceho, šírka pravého stĺpca) je v `view_state`, teda v `get_viewer_state` aj v stave po
+   každom príkaze.
+5. **#166, fork:** zoom výrezu sa počítal z plochy karty už v D-117; nové je, že sa prepočíta, keď sa
+   plocha karty po otvorení zmení (split, ukotvenie, šírka stĺpca) alebo príde skutočný pomer strany,
+   kým kartou nepohne používateľ. `APPLIED` počká na vykonanie výrezu a `view_state.document` nesie
+   viditeľnú časť strany v %, veľkosť karty, zoom a `region_fully_visible`.
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool `set_panel`:* panely sú súčasť pohľadu; `set_view_mode` je UI akcia pohľadu na čítanie a
+  stav vracia `view_state` (D-114).
+- *`get_viewer_state` na ovládanie panelov:* tool je čítanie, zmena patrí do UI akcie.
+- *Poloha a veľkosť panelov z chatu (`position`, `size`):* fork ich vie len ako plávajúce okno; pevné
+  rozloženie mení používateľ, chat ho len číta. Panel `legend`: legenda je časť Lens (`style_in_3d
+  legend_size`, D-119), zavrie sa s ním.
+- *Opraviť upstream fade v `PropertiesPanel` (blok AIM-FORK):* stále by chýbali výmery a psety typu.
+- *Zbalený blok "AIM platforma" v paneli (prvý návrh v #169):* zamietnuté v D-129, vlastné rozhranie
+  popri IFC.
+
+**Otvorené:** pôvodných 779 % z #166 sa lokálne nezopakovalo (úzka karta 264-378 px výrez umiestnila
+správne); výsledok teraz hlási viditeľný rozsah, takže ďalší výskyt sa dá overiť priamo. Na mobile
+je jeden panel naraz, `SET_PANELS` vtedy nesplnené kroky vráti ako problém.
+
+**Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežali; do `eval/questions.json` pribudli otázky z issues.
+
 ### D-129 - Viewer je jediné rozhranie: údaj buď v IFC, alebo AIM vrstva s odznakom
 **Status:** rozhodnuté (2026-10-21, Samuel cez orchestrátora), číslo pridelené v registri #60. Nadväzuje na
 D-077 (AIM inspector), D-086 (IFC je master, revízie), D-089 (odvodenia ako AIM vrstva), D-073 (Reality
@@ -5932,6 +6054,138 @@ Samuel pracuje už len vo vieweri a vlastné rozhranie popri IFC nechce.
 **Dôsledky:** #169 rieši session D-127 podľa tohto zápisu (záložka a karta preč, história ako AIM riadky,
 zdedené dokumenty s odznakom). Reality Capture v paneli Documents a voľba exportu AIM vrstiev sú samostatná
 úloha vo fronte.
+
+---
+
+### D-128 - Kamera na cieľ v reze s okrajom a časťou cieľa, vzor šrafy reznej plochy
+
+**Dátum:** 2026-10-21 · **Stav:** prijaté (implementované) · **Súvisí:** D-083, D-094, D-098, D-101, D-114, D-120 · **Issues:** #172, #173, #97 · **PR:** Menezeris/ifc-lite (fork), AIMviewer (tento)
+
+**Kontext:** "priblíž atiku na ľavej strane v reze" stálo asi 8 volaní (#172): `set_camera` s cieľom
+a `preset=section` hlásilo pózu presetu (stred budovy), záber tenkého prvku bol príliš tesný a ľavú
+stranu musel model hľadať cez `get_viewer_state(bounds)` a posúvať kameru. Pri reze sa šrafa
+kreslila zvislo a vzor sa nedal zvoliť (#173).
+
+**Reprodukcia:** fork pri `preset=section` s cieľom nastaví smer kolmo na rez a po jeho animácii
+zarámuje cieľ (`aim/viewCamera.ts`, AIMviewer #65), ale rámovanie trvá ďalších 300 ms a `APPLIED`
+(D-101) čítal kameru hneď po jeho spustení. Rámovanie išlo cez `flyTo` s predvoleným okrajom upstreamu.
+Šrafa: `cap_style=hatch` (D-120) vracia vzor a uhol uložené v prehliadači; vzor `diagonal` s
+uhlom 0° kreslí zvislé čiary.
+
+**Najbližšie tooly (D-114):** `set_camera` (smer, cieľ, fit; chýba okraj, časť cieľa a koncová
+póza), `get_viewer_state` (len čítanie), `show_in_3d select` (smer nerieši), `set_section` (vzhľad
+plochy len `cap_style`/`cap_color`). Obe potreby sú parametre existujúcich toolov.
+
+**Rozhodnutie:**
+1. **`set_camera margin_percent`** (0 až 300, s cieľom predvolene 40): okraj okolo cieľa. Fork
+   rámuje existujúcim `cameraCallbacks.frameBounds(min, max, {padding: 1 + m/100})` (D-098), smer
+   kamery ostáva. Wire `~m=<%>`, bridge `SET_CAMERA.padding`.
+2. **`set_camera area`** = `left | right | top | bottom | front | back` (wire `~a=<l|r|t|b|f|k>`,
+   bridge `SET_CAMERA.area`): z cieľových prvkov alebo výberu (`fit=selection`) fork po nastavení
+   smeru vyberie tie, ktorých stred leží v krajnej tretine ich spoločnej obálky v smere obrazu
+   (left/right po šírke, top/bottom po výške, front/back bližšie/ďalej od kamery); keď v tretine
+   nič nie je, vezme prvok najbližšie k okraju. Čistá funkcia `aim/cameraArea.ts` s testom. Bez
+   cieľa a výberu `area` nejde (chyba s radou).
+3. **Koncová póza:** fork počká na koniec rámovania, `APPLIED` nesie koncovú kameru. Host pri
+   `set_camera` dopočíta `visible` (stred, šírka a výška viditeľnej oblasti v metroch v rovine
+   cieľa; `visibleArea` v `lib/viewer-camera.ts`), takže `get_viewer_state` netreba.
+4. **`set_section` vzor šrafy:** `hatch_pattern` = `diagonal | diagonal_reverse | cross |
+   crosshatch | horizontal | vertical | dots | brick | insulation`, `hatch_angle_deg`,
+   `hatch_spacing_px` (2 až 64), `hatch_line_width_px` (1 až 16), rozsahy ako popover Cap. Mapovanie
+   na vzory renderera (`dots` = `concrete`, `cross` = `crossHatch` 0°/90°, `crosshatch` = 45°/-45°,
+   `diagonal_reverse` = -45°) robí host (`lib/viewer-section-cap.ts`); bridge `SET_SECTION_CAP`
+   nesie `pattern`, `angleDeg`, `secondaryAngleDeg`, `spacingPx`, `widthPx` a fork ich zapíše setterom
+   `setSectionCapStyle` (ten istý ako popover Cap). `cap_style=hatch` bez vzoru = diagonálna 45°,
+   8 px, 1 px (predvolené upstreamu), výsledok teda nezávisí od uloženej voľby. Parametre šrafy bez
+   `cap_style` znamenajú `hatch`; výsledok vráti použitý vzor, uhol, rozstup a hrúbku.
+5. Recept v opise `set_camera`: atika vľavo v reze = `set_section` + `search_objects(PARAPET)` +
+   `set_camera(preset=section, cieľ, area=left)`. Prompt sa nezväčšuje (limit MCP inštrukcií).
+
+**Zavrhnuté:**
+- *Nový tool na "zarámuj časť budovy":* to isté ako parameter `set_camera` (D-114).
+- *Relatívny krok v tom istom volaní ako cieľ:* krok sa počíta z koncovej pózy, ktorú host pred
+  volaním nepozná (D-098); okraj `margin_percent` nahrádza následný `zoom_percent`.
+- *Rozstup šrafy v mm:* renderer kreslí šrafu v pixeloch obrazovky; mm by boli zmena
+  `packages/renderer`.
+- *Vzor podľa materiálu rezaného prvku:* renderer nemá materiál pri reznej ploche; neskôr.
+
+**Poradie zlúčenia:** najprv fork, potom AIMviewer. Starší viewer nové polia `SET_CAMERA` a
+`SET_SECTION_CAP` ignoruje (rámuje ako doteraz, šrafa ostane uložená).
+
+---
+
+### D-131 - Reality Capture v paneli Documents, druh média ako druhá os klasifikácie, export AIM vrstiev do IFC
+**Status:** rozhodnuté (2026-10-21, session pre #192 podľa D-129), číslo pridelené v registri #60. Body 1 a 2
+implementované, bod 3 navrhnutý a zaparkovaný (#202). Nadväzuje na D-073 (Reality Capture), D-089 (odvodené
+vzťahy), D-104 (dokumenty, klasifikácia dokumentu), D-127 (odznak AIM v paneli Documents), D-129.
+
+**Kontext:** D-129 nechal Reality Capture ako AIM vrstvu (body a médiá v DB, `aim_` hrany), ale vo vieweri
+boli len piny a odkaz z AIM karty, ktorá s D-127 vypadla. Dokumenty sa triedia len podľa typu informácie
+ISO 19650 (ASR v077) a `fetchDocumentTypes` berie prvú klasifikáciu dokumentu bez ohľadu na systém, takže
+druhá os by typ prepísala náhodne. Export IFC existuje len vo forku (upstream `@ifc-lite/export`,
+`StepExporter`, dialógy exportu vo vieweri); AIMviewer ani ETL IFC nezapisujú.
+
+**Rozhodnutie:**
+1. **Médiá Reality Capture v paneli Documents.** `GET /api/element/[id]` pri priestore vráti aktívne médiá
+   jeho bodov (`aim_rel_capture_located` -> `aim_rel_capture_media`), pri prvku v priestore médiá toho
+   priestoru s cestou "cez miestnosť X" (ako zdedené dokumenty D-104). Render schéma `AimPanelData` dostane
+   vlastné pole `captureMedia` (nie riadky v `documents`: médiá nie sú v knižnici `DOCUMENTS_LOAD` a nemajú
+   IFC dokument). Fork v režime "Len pre výber" ukáže pod dokumentmi skupiny podľa druhu média, riadok má
+   odznak AIM, náhľad, dátum snímky a cestu; klik otvorí galériu priestoru v hostovi (`/ifc?captures=<id>`,
+   ktorá vie aj 360°). Hľadanie panela filtruje aj médiá. Piny bez zmeny. Strop 40 médií ako pri dokumentoch.
+2. **Druhá os klasifikácie dokumentov: systém `Druh média`** s kódmi `FOTO` (Fotografia), `PANO360`
+   (360° panoráma), `SKEN` (Sken). Rovnaký mechanizmus ako typ informácie (D-104): `IfcClassification` +
+   `IfcClassificationReference` na `IfcDocumentInformation` cez `IfcExternalReferenceRelationship`.
+   - **Dokumenty v IFC:** recept v OCB (D-086) priradí referenciu systému `Druh média`; ETL ju načíta bez
+     zmeny (`document_classification`, `rel_external_reference_relationship`).
+   - **Médiá v DB:** **odvodenie** z `captures.kind` (`photo` -> `FOTO`, `pano360` -> `PANO360`), žiadny
+     nový stĺpec ani migrácia; druh je vlastnosť bodu (jeden bod = jeden druh snímok). Sken pribudne ako nová
+     hodnota `captures.kind` (`scan`) spolu s jeho uploadom.
+   - **Host:** klasifikácie dokumentu sa čítajú po systémoch. Systém `Druh média` dáva kľúč `meta` "Druh
+     média", všetky ostatné ostávajú v "Druh" (typ informácie), takže "Zoskupiť" vo vieweri ponúkne novú os
+     bez zmeny forku. Atribúty `ElectronicFormat` (kľúč "Formát") a `LastRevisionTime` ("Revízia") už `meta`
+     nesie; `CreationTime`, `Purpose`, `ValidFrom`/`ValidUntil` dopĺňa recept, `meta` ich ukáže, keď ich
+     ETL začne ukladať (dnes ich `documents` nemá, samostatný krok).
+3. **Export IFC s AIM vrstvami (návrh; zaparkované, #202).** Samuel 21. 10.: export ostáva ako doteraz, návrh
+   nižšie je podklad pre #202.
+   - **Miesto:** export vo forku (jediný zápis IFC v platforme). Dialóg exportu dostane v bloku `AIM-FORK`
+     voľbu "Zahrnúť AIM vrstvy" (len vo vložení v AIMvieweri, predvolene vypnutá). Zápis AIM entít je čistý
+     modul `apps/viewer/src/aim/aimIfcExport.ts`, ktorý doplní riadky STEP k výstupu `StepExporter`
+     (pred `ENDSEC`), s testom a overením súboru cez ifcopenshell.
+   - **Dáta:** viewer si ich pri exporte vypýta od hosta (bridge `AIM_EXPORT_LAYERS_REQUEST` ->
+     `AIM_EXPORT_LAYERS`): body (GUID odvodený z `objects.id`, meno, GUID priestoru, poloha a `yaw`), médiá
+     (názov, URL, formát, `captured_at`, kód druhu) a odvodené vzťahy ako páry GUID. Polohu z rámca viewera
+     do súradníc IFC prepočíta fork (pozná posun a os Y-up modelu).
+   - **Mapovanie (overené v IFC4X3_ADD2, ifcopenshell 2026-10-21):** bod = `IfcAnnotation`
+     (`PredefinedType=USERDEFINED`, `ObjectType='RealityCapture'`; enum má aj `SURVEY`, ten je pre geodetické
+     body, nie snímky), `ObjectPlacement` = `IfcLocalPlacement` s `IfcAxis2Placement3D` (`Location`
+     `IfcCartesianPoint`, `Axis` (0,0,1), `RefDirection` (cos yaw, sin yaw, 0) = smer pohľadu); `IfcAnnotation`
+     je `IfcProduct`, do priestoru ide cez `IfcRelContainedInSpatialStructure` (`RelatingStructure` =
+     `IfcSpace`). Médium = `IfcDocumentInformation` (`Identification` id média, `Location` URL,
+     `ElectronicFormat` MIME, `CreationTime` = `captured_at`, `Purpose` 'Reality Capture') +
+     `IfcRelAssociatesDocument` na anotáciu + referencia `Druh média` cez `IfcExternalReferenceRelationship`.
+     Odvodené vzťahy (D-089) = `IfcRelReferencedInSpatialStructure`, len keď oba konce sú v exportovanom
+     súbore (vzťahy medzi súbormi ostávajú vo vrstve, D-089 bod 7).
+   - **Rozsah:** jedna voľba pre všetky AIM vrstvy (Reality Capture aj odvodené vzťahy), bez výberu
+     jednotlivých bodov. Export je jednorazový výstup, revíziu modelu nezakladá (D-129 bod 4).
+
+**Zavrhnuté:**
+- *Médiá ako riadky `documents` v AIM karte:* fork ich otváral ako PDF z knižnice, médiá v knižnici nie sú
+  a zoskupenie podľa druhu by sa miešalo s cestou "cez zónu".
+- *Nový stĺpec `capture_media.media_kind` (migrácia):* druh je daný bodom (`captures.kind`); stĺpec by
+  duplikoval údaj a mohol sa s bodom rozísť.
+- *Druh média ako pset alebo `meta` bez klasifikácie:* D-011/D-104 triedia dokumenty klasifikáciou, nie
+  vlastným poľom; recept v OCB by inak nemal IFC nositeľa.
+- *Export AIM vrstiev v ETL alebo v AIMvieweri (ifcopenshell na serveri):* Samuel pracuje len vo vieweri
+  (D-129) a export tam už je; druhý zapisovač IFC by sa rozišiel s exportom forku.
+- *Implementácia exportu v tomto kroku:* zmena upstream dialógu exportu (plné CI, D-116) a nový bridge
+  kontrakt s prepočtom súradníc sú samostatná práca; body 1 a 2 ju nepotrebujú.
+
+**Dôsledky:** bez migrácie a bez nového env. Fork (vetva D-127): skupiny médií v "Len pre výber". Pre
+OCB: recept na klasifikáciu `Druh média` pre obrázky v IFC (dnes žiadne, takže až s prvým fotodokumentom
+v modeli). Export AIM vrstiev je zaparkovaný v #202.
+
+---
 
 ### D-130 - Popisky na výkrese ako odkazy na prvok: párovanie z textovej vrstvy ako AIM vrstva
 **Status:** rozhodnuté (2026-10-21), číslo pridelil orchestrátor (register #60). **Issue:** #167. Nadväzuje na

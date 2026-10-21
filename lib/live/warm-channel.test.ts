@@ -4,7 +4,7 @@ vi.mock("server-only", () => ({}));
 
 import { LIVE_APPLIED_EVENT, LIVE_REPLY_EVENT } from "./protocol";
 import type { QueryChannel } from "./query";
-import { expectApplied, forgetWarmChannels, warmChannel } from "./warm-channel";
+import { expectApplied, forgetWarmChannels, recentViewerCount, warmChannel } from "./warm-channel";
 
 /** Falošný kanál: počíta prihlásenia a dovolí "vieweru" poslať reply a applied. */
 function fakeChannel(status = "SUBSCRIBED") {
@@ -86,5 +86,19 @@ describe("teplý živý kanál (D-101)", () => {
     const f = fakeChannel("CHANNEL_ERROR");
     await expect(expectApplied("k", "c1", f.open)).resolves.toBeNull();
     await expect(expectApplied("k", "c1", async () => null)).resolves.toBeNull();
+  });
+});
+
+describe("okná viewera na teplom kanáli (D-125)", () => {
+  it("pamätá si, ktoré okná odpovedali (reply aj applied), staré po čase nerátá", async () => {
+    const f = fakeChannel();
+    const w = await warmChannel("k", f.open);
+    f.emit(LIVE_REPLY_EVENT, { id: "q", ok: true, result: 1, viewer: "a" });
+    f.emit(LIVE_APPLIED_EVENT, { cmdId: "c", ok: true, issues: [], viewer: "b" });
+    f.emit(LIVE_REPLY_EVENT, { id: "q", ok: true, result: 1 });
+    expect(w!.recentViewers(60_000).sort()).toEqual(["a", "b"]);
+    expect(w!.recentViewers(60_000, Date.now() + 120_000)).toEqual([]);
+    expect(await recentViewerCount("k", 60_000, f.open)).toBe(2);
+    expect(await recentViewerCount("iny", 60_000, f.open)).toBe(0);
   });
 });
