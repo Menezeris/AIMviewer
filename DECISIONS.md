@@ -6634,6 +6634,74 @@ nemetrické jednotky, treba doplniť z `ifc_models`. Evaly (D-057) v cloud sessi
 
 ---
 
+---
+
+### D-137 - Čiara trasy vo vieweri: `ifc_measure route` + `show` kreslí únikovú cestu 1,6 m nad podlahou
+**Status:** rozhodnuté (2026-10-22, issue #223 zo Samuelovho rozhovoru cez konektor), číslo pridelené orchestrátorom
+v registri #60. Nadväzuje na D-121 (trasa z grafu zo súboru), D-124 (kóta cez most forku), D-087/D-091/D-098
+(fork len tenko kreslí, výpočet robí host) a D-114 (najprv napasuj).
+
+**Kontext:** `ifc_measure route=escape` vracia kroky a dĺžku, `show=true` pri trase nekreslil nič a `show_in_3d`
+len izoluje prvky; ofarbené miestnosti zakryjú vnútro (#222). Samuel chce trasu vidieť ako **červenú plnú čiaru
+vo výške 1,6 m nad pochôdznou plochou** (nad podlahovou krytinou a nad každým stupňom schodiska), **stredom
+každých dverí**. D-121 to nechal otvorené ("čiara trasy potrebuje správu mosta vo forku").
+
+**Najbližšie tooly (D-114):** `ifc_measure show` (kóty cez upstream Measure, úsečky po 12, prerušovaná čiara
+v ink farbe s popisom vzdialenosti), `ifc_measure route` (body trasy nevracia), `show_in_3d` (prvky, nie čiara).
+Riešenie = `show=true` aj pri `route`, nie nový tool.
+
+**Rozhodnutie:**
+1. **Host počíta body (`lib/engine/route-line.ts`).** Z krokov trasy D-121: štart (stred miestnosti alebo prvku),
+   stred každých dverí, os každého ramena schodiska, cieľ. Výška = pochôdzna plocha + 1,6 m. Plocha v miestnosti
+   a pri dverách = najvyšší povrch IfcSlab / IfcCovering / IfcRamp(Flight) pod bodom (zvislý lúč v okne -0,6 až
+   +0,4 m okolo spodku IfcSpace, pri dverách okolo spodku dverí), bez zásahu spodok IfcSpace. Stropná krytina je
+   pod doskou podlažia a nevyhrá. Priamka v miestnosti má vzorky každých 0,5 m (zmena úrovne podlahy, krytina).
+2. **Schodisko plynulo šikmo (rozhodnutie Samuela v #223, 22. 10.):** na ramene je referenčná čiara, ktorá spája
+   nábehové hrany stupňov (sklon ramena); úniková čiara ide rovnobežne s ňou 1,6 m nad ňou, merané zvislo nad
+   hranou každého stupňa; na podestách a podlahe vodorovne. Stupne = horné vodorovné plochy ramena (IfcStairFlight;
+   bez ramien časti schodiska), nad ktorými z prvku už nič nie je, zoskupené podľa výšky; plochy pod 50 % mediánu
+   (vrch stredového stĺpa, madlo) sa vynechajú. Nábeh = ťažisko stupňa posunuté proti smeru chôdze o polovicu
+   hĺbky (hĺbka = plocha / šírka ramena), takže to platí aj pre točité ramená. Čiara začína pätou o stupeň pred
+   prvým nábehom (úroveň podlahy); keď sú dva nábehy ďalej ako 1,5 stupňa (podesta), ide vodorovne k päte
+   ďalšieho ramena; horná podesta v prvku vodorovne do jej stredu. Ramená podľa výšky, pri zostupe obrátene;
+   prvok bez vodorovných plôch = os obálky v smere stúpania. Schodisko sa v úseku miestnosti neráta (priamka od
+   dverí k ramenu ide v pôdoryse aj nad otvorom schodiska a nesmie klesnúť na stupne).
+3. **Zjednodušenie a limit:** Douglas-Peucker 2 cm, najviac 400 bodov (tolerancia sa zdvojnásobí, kým sa
+   nevojdú); drôt na cm, aby URL ostala krátka. Posun rámca do IFC sveta ako pri kótach (`worldOffset`, D-124).
+4. **Most:** op `route:<hex>:<x,y,z|...>` (`lib/viewer-route.ts`) -> správa `ROUTE_SHOW { points, color }`,
+   prázdne body = zmazať. Nová čiara nahradí predošlú; `reset_colors` (reset farieb) ju zmaže. Výsledok toolu
+   má `line` (počet bodov, výška, farba).
+5. **Fork (`apps/viewer/src/aim/`):** `AimRouteLayer` kreslí SVG lomenú čiaru (`#dc2626`, plná, 3 px) cez
+   `projectToScreen` ako `AimRoomFillLayer` (D-119), pripojená v `CapturePinLayer`; body prevedie do render rámca
+   `ifcPointToRender` + `bcfWorldOffset` ako kóty. Čiara je vrstva nad scénou (bez hĺbky), takže je vidieť aj
+   cez steny a dosky; to je pri trase cez viac podlaží žiadané.
+
+**Zavrhnuté rozšírenie: nový tool `show_route` - prečo nie:** body vznikajú z tej istej trasy a tesselácie ako
+`ifc_measure route`; rozlišovací parameter `show` už existuje (D-124, D-114).
+
+**Zavrhnuté:**
+- *Upstream polyline meranie forku (`polylineMeasurements`):* nemá farbu ani plnú čiaru a pridá popis dĺžky
+  meranej po lomenej čiare (pri schodoch iná ako dĺžka D-121); upravovať upstream komponent = plné CI.
+- *Kóty `MEASURE_SHOW` po úsekoch:* limit 12 úsekov, prerušované s popisom pri každom úseku.
+- *3D čiara v rendereri (hĺbkový test):* zmena `packages/renderer` (plné CI, odchýlka od upstreamu) bez
+  potreby; trasa má byť vidieť aj cez dosky.
+- *Schodovito (vodorovne nad každým stupňom, zvislý skok pri podstupnici):* prvá verzia podľa znenia issue;
+  Samuel v #223 chce plynulú čiaru rovnobežnú s čiarou nábehov.
+- *Os obálky ramena:* na točitom schodisku trafí stupne z rôznych výšok (overené na FZK-Haus).
+
+**Overenie:** vitest na mini budove (doska, krytina 1,65 m, 10 stupňov dole aj hore presne 1,6 m nad každým
+nábehom, podesta vodorovne, stredy dverí) a lokálne na `AC20-FZK-Haus.ifc` (fixture forku): úniková cesta z Galerie
+cez točité schodisko k Terrassentuer, plynulo z 4,25 na 2,13 m, 17 bodov; fork čiaru nakreslil a prázdna správa ju
+zmazala. Prvý pokus po osi obálky na točitom schodisku skákal hore-dole (os trafí stupne z rôznych výšok), preto
+stupne z horných plôch.
+
+**Hranice:** dĺžka a poradie ostávajú dolným odhadom D-121 (priamky v pôdoryse), čiara len kreslí tú istú trasu
+cez skutočné výšky; priamka v miestnosti tvaru L môže ísť cez stenu; schodisko bez vodorovných plôch (napr. len
+šikmá doska) ide šikmo po osi obálky; ramená s viacerými stupňami v tej istej výške (vedľa seba) sa zlúčia do
+jedného stredu; hĺbka podesty je odhad z plochy (pri tvare L nepresná, čiara ostáva vodorovná).
+
+---
+
 ### D-145 - "Ukázať v 3D" pri PDF s podlažím: Solo podlažia a rezové nástroje namiesto samotného X-ray
 
 **Dátum:** 2026-10-22 · **Issue:** #214 · **Fork PR:** Menezeris/ifc-lite#116 · **Nadväzuje na:** D-072, D-098, D-104 (krok 4), D-105, D-114

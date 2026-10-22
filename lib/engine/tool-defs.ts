@@ -181,7 +181,8 @@ export function engineToolDefinitions(): ToolDefinition[] {
         "pri viacerých aj súčet. Objem množiny podľa filtra: GUIDy z ifc_query do items (max 50). CESTA PO BUDOVE " +
         "(route): shortest = najkratšia cesta z a do b (miestnosť, dvere alebo prvok), escape = úniková cesta z a " +
         "k najbližším vonkajším dverám na teréne; dĺžka v m je DOLNÝ ODHAD (priamky v pôdoryse cez miestnosti a " +
-        "dvere zo súboru, IfcRelSpaceBoundary), poradie miestností a dverí, zmeny podlaží, show_in_3d. Prvé volanie " +
+        "dvere zo súboru, IfcRelSpaceBoundary), poradie miestností a dverí, zmeny podlaží, show_in_3d; route + show=true " +
+        "nakreslí trasu vo vieweri červenou plnou čiarou 1,6 m nad podlahou a stupňami, stredom dverí. Prvé volanie " +
         "nad modelom ho tesseluje (ASR ~4 s), ďalšie sú rýchle.",
       inputSchema: {
         type: "object",
@@ -207,7 +208,9 @@ export function engineToolDefinitions(): ToolDefinition[] {
           min_height_m: { type: "number", description: "clear_opening: limit svetlej výšky v m od používateľa -> pass/fail" },
           show: {
             type: "boolean",
-            description: "true = kóta v živom vieweri (nástroj Measure); predošlé kóty od Claude nahradí, vlastné merania nie",
+            description:
+              "true = kóta v živom vieweri (nástroj Measure); predošlé kóty od Claude nahradí, vlastné merania nie. " +
+              "S route = čiara trasy (červená, 1,6 m nad podlahou), nahradí predošlú; zmaže ju reset farieb",
           },
         },
       },
