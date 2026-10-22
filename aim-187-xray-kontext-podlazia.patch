@@ -1,0 +1,340 @@
+From ec725a9012aec0e1b039dc041d738cc1455eb2a3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 17:18:15 +0000
+Subject: [PATCH] AIM D-140 (#187): X-ray kontext len pre zvolene podlazia
+ (APPLY_LENS xrayStoreys)
+
+APPLY_LENS s xray dostane volitelne pole xrayStoreys (stitky podlazi, napr. 1NP):
+prvky ostatnych podlazi (ASR aj VZT, porovnanie podla normalizovaneho stitku)
+sa skryju kanalom hiddenEntities, kym X-ray z chatu trva. Plne prvky X-ray sa
+neskryju, prvky mimo podlazi ostanu v ghost kontexte. Zrusenie (unisolate, clear,
+novy X-ray) vrati len to, co skryl chat; rucne skrytie pouzivatela ostane.
+Logika v aim/aimXrayStoreysPlan.ts (test), store lepidlo v aimXrayStoreys.ts
+(lenivo z aimLens.ts). Bez zmeny upstream suborov.
+
+Claude-Session: https://claude.ai/code/session_015SFExem4tQuvpGB1vHsYuT
+---
+ apps/viewer/src/aim/aimLens.ts                | 17 ++++-
+ apps/viewer/src/aim/aimLensPlan.ts            |  9 +++
+ apps/viewer/src/aim/aimXrayStoreys.ts         | 54 +++++++++++++++
+ .../viewer/src/aim/aimXrayStoreysPlan.test.ts | 68 +++++++++++++++++++
+ apps/viewer/src/aim/aimXrayStoreysPlan.ts     | 49 +++++++++++++
+ apps/viewer/src/aim/lens-protocol.ts          |  5 ++
+ 6 files changed, 199 insertions(+), 3 deletions(-)
+ create mode 100644 apps/viewer/src/aim/aimXrayStoreys.ts
+ create mode 100644 apps/viewer/src/aim/aimXrayStoreysPlan.test.ts
+ create mode 100644 apps/viewer/src/aim/aimXrayStoreysPlan.ts
+
+diff --git a/apps/viewer/src/aim/aimLens.ts b/apps/viewer/src/aim/aimLens.ts
+index 393d2071..a970e716 100644
+--- a/apps/viewer/src/aim/aimLens.ts
++++ b/apps/viewer/src/aim/aimLens.ts
+@@ -36,6 +36,8 @@ import {
+ import { noteIssue } from './command-gate.js';
+ import { applyLegendSize, autoColorScope, revealAfterLens, revealGatesFor } from './aimLensScope.js';
+ import { useAimLegendStore } from './aimLegendStore.js';
++import { hideOutsideStoreys, restoreHidden } from './aimXrayStoreys.js';
++import { mergeLabels } from './aimXrayStoreysPlan.js';
+ 
+ const SLOT = AUTO_COLOR_FROM_LIST_ID;
+ const POLL_MS = 100;
+@@ -46,7 +48,7 @@ let appliedRev: string | undefined;
+ /** Verzia, ktorej izolácia ešte beží (vyhodnotenie je asynchrónne). */
+ let pendingIsolationRev: string | null = null;
+ /** Izolácia alebo X-ray z chatu: počty a presné id v kanáli (uvoľní sa len, ak ich kanál stále drží). */
+-let isolation: (AimIsolation & { ids: number[]; raw: number[] }) | null = null;
++let isolation: (AimIsolation & { ids: number[]; raw: number[]; hiddenIds?: number[] }) | null = null;
+ /** Poradie izolácií: staršia, ktorá dobehne po novšej alebo po zrušení, sa zahodí. */
+ let isolationGen = 0;
+ /** Verzia, ktorej izolácia zlyhala (`LENS_QUERY` ju nahlási ako chybu, nie úspech). */
+@@ -82,6 +84,8 @@ function releaseIsolation(): void {
+   pendingIsolationRev = null;
+   isolationFailedRev = null;
+   clearOwnedChannel();
++  // X-ray s kontextom podlaží (D-140): vrátiť skryté ostatné podlažia, ručné skrytie ostane.
++  restoreHidden(isolation?.hiddenIds);
+   isolation = null;
+ }
+ 
+@@ -100,6 +104,8 @@ async function isolate(msg: ApplyLensMessage, rules: Lens['rules'], tag: string,
+   const owns = isolation && ownsChannel(useViewerStore.getState(), isolation);
+   const prev = msg.mode === 'add' && owns && !!isolation?.xray === xray ? isolation : null;
+   if (prev) for (const id of prev.raw) raw.add(id);
++  // Skryté podlažia predošlého X-ray sa vždy vrátia; kontext sa nižšie vyráta nanovo (pri `add` ako zjednotenie).
++  restoreHidden(isolation?.hiddenIds);
+   // Druhý kanál z chatu (izolácia po X-ray a naopak) uvoľniť, inak by ostal visieť.
+   if (owns && !!isolation?.xray !== xray) clearOwnedChannel();
+   // Zostava bez geometrie (schodisko ako kontajner) sa izoluje cez svoje časti, ako v paneli Lens.
+@@ -114,11 +120,16 @@ async function isolate(msg: ApplyLensMessage, rules: Lens['rules'], tag: string,
+     if (ruleIsolationOwnsChannel(now.isolatedEntities, ids)) now.clearIsolation();
+     if (ids.length > 0) now.isolateEntities(ids);
+   }
++  // Kontext len pre zvolené podlažia (D-140, #187): ostatné podlažia skryť, plné prvky X-ray nie.
++  const labels = xray && (msg.xrayStoreys || prev?.storeys) ? mergeLabels(prev?.storeys, msg.xrayStoreys ?? []) : undefined;
++  const hiddenIds = labels && ids.length > 0 ? hideOutsideStoreys(labels, new Set(ids)) : undefined;
+   isolation = {
+     ...(msg.rev ? { rev: msg.rev } : {}),
+     rules: [...(prev?.rules ?? []), ...rules.map((r) => ({ name: r.name, count: matched.get(r.id)?.size ?? 0 }))],
+     isolated: raw.size,
+     ...(xray ? { xray: true as const } : {}),
++    ...(labels ? { storeys: labels, hidden: hiddenIds?.length ?? 0 } : {}),
++    ...(hiddenIds ? { hiddenIds } : {}),
+     ids,
+     raw: [...raw],
+   };
+@@ -204,11 +215,11 @@ function endScoping(): void {
+ /** Izolácia (X-ray) z chatu pre hosta, bez interných id. */
+ function isolationSummary(): AimIsolation | null {
+   if (!isolation) return null;
+-  const { rev, rules, isolated, xray } = isolation;
++  const { rev, rules, isolated, xray, storeys, hidden } = isolation;
+   // Kanál drží niečo iné alebo nič (kláves A, Zobraziť všetko, iná izolácia): izolácia z chatu už neplatí (D-125).
+   const gone = pendingIsolationRev === null && !ownsChannel(useViewerStore.getState(), isolation);
+   return {
+-    rev, rules, isolated, ...(xray ? { xray } : {}),
++    rev, rules, isolated, ...(xray ? { xray } : {}), ...(storeys ? { storeys, hidden } : {}),
+     ...(gone ? { active: false as const, note: `${xray ? 'X-ray' : 'izolácia'} z chatu už vo vieweri nie je (zrušil ju používateľ alebo iný príkaz)` } : {}),
+   };
+ }
+diff --git a/apps/viewer/src/aim/aimLensPlan.ts b/apps/viewer/src/aim/aimLensPlan.ts
+index 1ee44f14..8240d203 100644
+--- a/apps/viewer/src/aim/aimLensPlan.ts
++++ b/apps/viewer/src/aim/aimLensPlan.ts
+@@ -26,6 +26,10 @@ export const MAX_AIM_RULES = 24;
+ /** Spolu GlobalId v pravidlách `globalId` jednej správy (zóna z AIM, konkrétne prvky). */
+ export const MAX_AIM_GLOBAL_IDS = 5000;
+ const MAX_GROUPS = 8;
++/** Najviac podlaží v kontexte X-ray (D-140): 1 až 8 neprázdnych krátkych štítkov. */
++const MAX_XRAY_STOREYS = 8;
++export const isXrayStoreys = (v: unknown): v is string[] =>
++  Array.isArray(v) && v.length > 0 && v.length <= MAX_XRAY_STOREYS && v.every((s) => shortStr(s, 60));
+ /** Hodnota modelu, ktorú žiadny model nemá: neznámy model nesmie matchnúť všetko. */
+ const NO_MODEL = '__aim_no_model__';
+ const HEX = /^#[0-9a-fA-F]{6}$/;
+@@ -60,6 +64,8 @@ export function parseLensMessage(data: LensInboundMessage): ApplyLensMessage | L
+   if (m.xray !== undefined && typeof m.xray !== 'boolean') return null;
+   // Izolácia aj X-ray naraz si odporujú (viewer ich drží ako vzájomne výlučné kanály).
+   if (m.isolate === true && m.xray === true) return null;
++  // Kontext podlaží (D-140, #187) má zmysel len pri X-ray.
++  if (m.xrayStoreys !== undefined && (m.xray !== true || !isXrayStoreys(m.xrayStoreys))) return null;
+   if (m.autoColor !== undefined) {
+     const a = m.autoColor as Record<string, unknown> | null;
+     if (!a || typeof a !== 'object' || !AUTO_SOURCES.has(a.source as string)) return null;
+@@ -209,6 +215,9 @@ export interface AimIsolation {
+   isolated: number;
+   /** Zjednotenie je v X-ray kanáli (zvyšok priesvitný), nie v izolácii (D-105). */
+   xray?: true;
++  /** X-ray len s podlažiami (D-140, #187): štítky v kontexte a počet skrytých prvkov ostatných podlaží. */
++  storeys?: string[];
++  hidden?: number;
+   /** false = kanál už izoláciu z chatu nedrží (zrušil ju používateľ alebo iný príkaz, D-125). */
+   active?: false;
+   note?: string;
+diff --git a/apps/viewer/src/aim/aimXrayStoreys.ts b/apps/viewer/src/aim/aimXrayStoreys.ts
+new file mode 100644
+index 00000000..960e7cdd
+--- /dev/null
++++ b/apps/viewer/src/aim/aimXrayStoreys.ts
+@@ -0,0 +1,54 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Kontext X-ray len pre zvolené podlažia (AIM D-140, #187): store lepidlo k `aimXrayStoreysPlan.ts`.
++ * Ostatné podlažia sa skryjú kanálom skrytia viewera (`hiddenEntities`) a chat si pamätá, čo skryl
++ * sám, aby X-ray z chatu pri zrušení vrátil len tie prvky (ručné skrytie používateľa ostane).
++ * Načítava sa lenivo z `aimLens.ts`.
++ */
++
++import { useViewerStore } from '@/store';
++import { toGlobalIdFromModels } from '@/store/globalId';
++import { idsOutsideStoreys, type StoreyModel } from './aimXrayStoreysPlan.js';
++
++type State = ReturnType<typeof useViewerStore.getState>;
++
++/** Podlažia všetkých načítaných modelov s ich prvkami (priamo obsiahnutými aj cez miestnosť). */
++function storeyModels(state: State): StoreyModel[] {
++  const out: StoreyModel[] = [];
++  for (const [modelId, model] of state.models) {
++    const store = model.ifcDataStore;
++    const hierarchy = store?.spatialHierarchy;
++    if (!store || !hierarchy) continue;
++    const buckets = [...hierarchy.byStorey].map(([storeyId, direct]) => {
++      const members = new Set(direct);
++      // Miestnosť podlažia a prvky v nej (`bySpace`) patria podlažiu rovnako ako pravidlo `storey` v Lens.
++      for (const [spaceId, elements] of hierarchy.bySpace ?? []) {
++        if (hierarchy.elementToStorey.get(spaceId) !== storeyId) continue;
++        members.add(spaceId);
++        for (const id of elements) members.add(id);
++      }
++      return { name: store.entities.getName(storeyId), members: [...members] };
++    });
++    out.push({ buckets, toGlobal: (expressId) => toGlobalIdFromModels(state.models, modelId, expressId) });
++  }
++  return out;
++}
++
++/** Skryje prvky podlaží mimo kontextu; vráti id, ktoré skryl NOVO (tie sa pri zrušení vrátia). */
++export function hideOutsideStoreys(wanted: readonly string[], keep: ReadonlySet<number>): number[] {
++  const state = useViewerStore.getState();
++  const owned = idsOutsideStoreys(storeyModels(state), wanted, keep).filter((id) => !state.hiddenEntities.has(id));
++  if (owned.length > 0) state.hideEntities(owned);
++  return owned;
++}
++
++/** Vráti prvky, ktoré skrylo X-ray z chatu a ktoré sú stále skryté (ručné odkrytie nechá tak). */
++export function restoreHidden(owned: readonly number[] | undefined): void {
++  if (!owned || owned.length === 0) return;
++  const state = useViewerStore.getState();
++  const still = owned.filter((id) => state.hiddenEntities.has(id));
++  if (still.length > 0) state.showEntities(still);
++}
+diff --git a/apps/viewer/src/aim/aimXrayStoreysPlan.test.ts b/apps/viewer/src/aim/aimXrayStoreysPlan.test.ts
+new file mode 100644
+index 00000000..f1617c6c
+--- /dev/null
++++ b/apps/viewer/src/aim/aimXrayStoreysPlan.test.ts
+@@ -0,0 +1,68 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import { idsOutsideStoreys, mergeLabels, storeyLabel, type StoreyModel } from './aimXrayStoreysPlan.js';
++import { isXrayStoreys, parseLensMessage } from './aimLensPlan.js';
++import type { LensInboundMessage } from './lens-protocol.js';
++
++const S = 'aim-bridge';
++const ASR: StoreyModel = {
++  buckets: [
++    { name: '1NP', members: [1, 2, 3] },
++    { name: '2NP', members: [4, 5] },
++    { name: '3NP', members: [6] },
++  ],
++  toGlobal: (id) => id,
++};
++// VZT model: iné meno podlažia, globálne id posunuté o 1000.
++const VZT: StoreyModel = {
++  buckets: [
++    { name: '1NP_VZT', members: [1, 2] },
++    { name: '2.NP_VZT', members: [3] },
++  ],
++  toGlobal: (id) => id + 1000,
++};
++
++describe('X-ray kontext len pre podlažia (AIM #187)', () => {
++  it('štítok podlažia zahodí prponu modelu, bodky a medzery', () => {
++    assert.equal(storeyLabel('1.NP_VZT'), '1NP');
++    assert.equal(storeyLabel('2 np'), '2NP');
++  });
++
++  it('skryje ostatné podlažia ASR aj VZT, kontext 1NP ostane', () => {
++    const out = idsOutsideStoreys([ASR, VZT], ['1NP'], new Set());
++    assert.deepEqual(out.sort((a, b) => a - b), [4, 5, 6, 1003]);
++  });
++
++  it('plné prvky X-ray (keep) sa neskryjú, aj keď sú na inom podlaží', () => {
++    const out = idsOutsideStoreys([ASR], ['1NP'], new Set([4]));
++    assert.deepEqual(out.sort((a, b) => a - b), [5, 6]);
++  });
++
++  it('prvok v podlaží kontextu aj mimo neho (zostava) ostane; viac podlaží v kontexte', () => {
++    const shared: StoreyModel = { buckets: [{ name: '1NP', members: [1, 9] }, { name: '2NP', members: [9, 2] }], toGlobal: (id) => id };
++    assert.deepEqual(idsOutsideStoreys([shared], ['1NP'], new Set()), [2]);
++    assert.deepEqual(idsOutsideStoreys([ASR], ['1NP', '2.NP'], new Set()), [6]);
++  });
++
++  it('mergeLabels pri add rozšíri kontext, nezúži ho', () => {
++    assert.deepEqual(mergeLabels(['1NP'], ['2.NP', '1np']), ['1NP', '2NP']);
++    assert.deepEqual(mergeLabels(undefined, []), []);
++  });
++
++  it('správa APPLY_LENS: xrayStoreys len s xray a platným zoznamom', () => {
++    const base = { source: S, type: 'APPLY_LENS', mode: 'replace', rules: [{ name: 'S', action: 'isolate', groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcCovering'] }] }] }] };
++    const parse = (extra: object) => parseLensMessage({ ...base, ...extra } as unknown as LensInboundMessage);
++    assert.ok(parse({ xray: true, xrayStoreys: ['1NP'] }));
++    assert.equal(parse({ xrayStoreys: ['1NP'] }), null, 'bez xray');
++    assert.equal(parse({ isolate: true, xrayStoreys: ['1NP'] }), null, 's izoláciou');
++    assert.equal(parse({ xray: true, xrayStoreys: [] }), null);
++    assert.equal(parse({ xray: true, xrayStoreys: [''] }), null);
++    assert.equal(parse({ xray: true, xrayStoreys: 'nope' }), null);
++    assert.equal(isXrayStoreys(new Array(9).fill('1NP')), false);
++  });
++});
+diff --git a/apps/viewer/src/aim/aimXrayStoreysPlan.ts b/apps/viewer/src/aim/aimXrayStoreysPlan.ts
+new file mode 100644
+index 00000000..b38eeb41
+--- /dev/null
++++ b/apps/viewer/src/aim/aimXrayStoreysPlan.ts
+@@ -0,0 +1,49 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Kontext X-ray len pre zvolené podlažia (AIM D-140, #187): čistá logika bez store.
++ * Podlažia sa porovnávajú podľa normalizovaného štítku (1NP = 1.NP = 1 NP, prípona
++ * `_VZT` sa zahodí), rovnako ako v AIMvieweri, aby ASR aj VZT podlažie rovnakého
++ * poschodia patrili k sebe. Napojenie na store je v `aimXrayStoreys.ts`.
++ */
++
++/** Štítok podlažia: `1.NP_VZT` -> `1NP` (zhoda s `normalizeStoreyLabel` hosta). */
++export function storeyLabel(raw: string): string {
++  return raw.toUpperCase().split('_')[0].replace(/[\s.]/g, '');
++}
++
++/** Podlažie jedného modelu: meno a prvky, ktoré mu patria (lokálne expressId, aj cez miestnosť). */
++export interface StoreyBucket {
++  name: string;
++  members: readonly number[];
++}
++
++/** Model federácie: jeho podlažia a preklad lokálneho id na globálne id renderera. */
++export interface StoreyModel {
++  buckets: readonly StoreyBucket[];
++  toGlobal: (expressId: number) => number;
++}
++
++/** Zjednotenie štítkov (`add` rozšíri doterajší kontext, nezúži ho). */
++export function mergeLabels(prev: readonly string[] | undefined, next: readonly string[]): string[] {
++  return [...new Set([...(prev ?? []), ...next].map(storeyLabel).filter(Boolean))];
++}
++
++/**
++ * Globálne id prvkov podlaží, ktoré v kontexte NIE sú; `keep` (plné prvky X-ray) a prvky bez
++ * podlažia sa nedotknú. Prvok vo viacerých podlažiach (zostava) zostane, ak patrí aspoň do jedného z kontextu.
++ */
++export function idsOutsideStoreys(models: readonly StoreyModel[], wanted: readonly string[], keep: ReadonlySet<number>): number[] {
++  const want = new Set(wanted.map(storeyLabel));
++  const inside = new Set<number>();
++  const outside = new Set<number>();
++  for (const model of models) {
++    for (const bucket of model.buckets) {
++      const target = want.has(storeyLabel(bucket.name)) ? inside : outside;
++      for (const id of bucket.members) target.add(model.toGlobal(id));
++    }
++  }
++  return [...outside].filter((id) => !inside.has(id) && !keep.has(id));
++}
+diff --git a/apps/viewer/src/aim/lens-protocol.ts b/apps/viewer/src/aim/lens-protocol.ts
+index 7346f0d2..a1e9ec1a 100644
+--- a/apps/viewer/src/aim/lens-protocol.ts
++++ b/apps/viewer/src/aim/lens-protocol.ts
+@@ -44,6 +44,11 @@ export type LensInboundMessage =
+       isolate?: boolean;
+       /** X-ray context: zjednotenie pravidiel ostane plné, zvyšok priesvitný (kanál ghost viewera, AIM D-105). */
+       xray?: boolean;
++      /**
++       * Kontext X-ray len pre tieto podlažia (štítky 1NP, 2NP; AIM D-140, #187): prvky ostatných podlaží sa skryjú,
++       * kým X-ray z chatu trvá. Platí len s `xray`; prvky mimo podlaží (terén) ostanú v ghost kontexte.
++       */
++      xrayStoreys?: string[];
+       autoColor?: AimAutoColorWire;
+       /**
+        * Rozsah farieb podľa hodnoty (AIM D-119): `FilterGroup[]` ako pri pravidlách; legenda a
+-- 
+2.43.0
+
