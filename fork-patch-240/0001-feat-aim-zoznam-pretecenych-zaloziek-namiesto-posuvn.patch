@@ -1,0 +1,273 @@
+From 0f05cdbf478487f181002a0c4ccdf188c82a0d7b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 16:25:26 +0000
+Subject: [PATCH] feat(aim): zoznam pretecenych zaloziek namiesto posuvnika
+ (D-132, #240)
+
+Lista zaloziek: pri nedostatku miesta idu ostatne zalozky do rozbalovacieho
+zoznamu (+N) na konci listy; 3D ostava pripnuta, aktivna a zalozka vedla su
+vzdy viditelne. Logika v cistej funkcii viewTabsFit.ts s testom.
+---
+ apps/viewer/src/aim/AimViewTabsBar.tsx  | 97 +++++++++++++++++++++++--
+ apps/viewer/src/aim/viewTabsFit.test.ts | 49 +++++++++++++
+ apps/viewer/src/aim/viewTabsFit.ts      | 48 ++++++++++++
+ 3 files changed, 189 insertions(+), 5 deletions(-)
+ create mode 100644 apps/viewer/src/aim/viewTabsFit.test.ts
+ create mode 100644 apps/viewer/src/aim/viewTabsFit.ts
+
+diff --git a/apps/viewer/src/aim/AimViewTabsBar.tsx b/apps/viewer/src/aim/AimViewTabsBar.tsx
+index 512b6bad..1def29c8 100644
+--- a/apps/viewer/src/aim/AimViewTabsBar.tsx
++++ b/apps/viewer/src/aim/AimViewTabsBar.tsx
+@@ -11,8 +11,8 @@
+  * (`AimPlanOrbitHint`, #188). Lišta tiež dodá záložkám funkcie viewera (`TabDeps`) z hookov pôdorysu.
+  */
+ 
+-import { useEffect, useMemo, useRef } from 'react';
+-import { Box, FileText, LayoutTemplate, Scan, X } from 'lucide-react';
++import { useEffect, useMemo, useRef, useState } from 'react';
++import { Box, ChevronDown, FileText, LayoutTemplate, Scan, X } from 'lucide-react';
+ import { cn } from '@/lib/utils';
+ import { useViewerStore } from '@/store';
+ import { useViewMode } from '@/hooks/useViewMode';
+@@ -21,9 +21,13 @@ import { besidePair, type ViewTabKind } from './viewTabsPlan.js';
+ import { useAimViewTabs } from './viewTabsStore.js';
+ import { activate, beside, close, openPlan, syncDocs } from './viewTabsApply.js';
+ import { AimPlanOrbitHint } from './AimPlanOrbitHint.js';
++import { fitTabs } from './viewTabsFit.js';
+ 
+ const ICON: Record<ViewTabKind, typeof Box> = { '3d': Box, plan: LayoutTemplate, view: Scan, doc: FileText };
+ const SELECT = 'h-6 max-w-40 rounded border bg-background px-1 text-2xs text-muted-foreground';
++/** Miesto jednej záložky a tlačidla zoznamu pri preteku (px), #240. */
++const SLOT_PX = 128;
++const MORE_PX = 40;
+ const warn = (issue: string) => console.warn('[aim-tabs]', issue);
+ 
+ export function AimViewTabsBar() {
+@@ -54,13 +58,43 @@ export function AimViewTabsBar() {
+     () => tabs.filter((t) => besidePair({ tabs, activeId, besideId }, activeId, t.id)),
+     [tabs, activeId, besideId],
+   );
++  // Pretek (#240): namiesto posuvníka zoznam ostatných záložiek na konci lišty.
++  const areaRef = useRef<HTMLDivElement>(null);
++  const [areaWidth, setAreaWidth] = useState<number | null>(null);
++  useEffect(() => {
++    const el = areaRef.current;
++    if (!el || typeof ResizeObserver === 'undefined') return;
++    const ro = new ResizeObserver(([entry]) => setAreaWidth(Math.round(entry.contentRect.width)));
++    ro.observe(el);
++    return () => ro.disconnect();
++  }, [isMobile]);
++  const [moreOpen, setMoreOpen] = useState(false);
++  useEffect(() => {
++    if (!moreOpen) return;
++    const onDown = (e: MouseEvent) => { if (!areaRef.current?.contains(e.target as Node)) setMoreOpen(false); };
++    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMoreOpen(false); };
++    document.addEventListener('mousedown', onDown);
++    document.addEventListener('keydown', onKey);
++    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
++  }, [moreOpen]);
++  const fit = useMemo(
++    () => fitTabs({
++      ids: tabs.map((t) => t.id), activeId, besideId, slotWidth: SLOT_PX, moreWidth: MORE_PX,
++      available: areaWidth ?? Number.POSITIVE_INFINITY,
++    }),
++    [tabs, activeId, besideId, areaWidth],
++  );
++  const visibleTabs = tabs.filter((t) => fit.visible.includes(t.id));
++  const hiddenTabs = tabs.filter((t) => fit.hidden.includes(t.id));
++  useEffect(() => { if (hiddenTabs.length === 0) setMoreOpen(false); }, [hiddenTabs.length]);
+   if (isMobile) return null;
+ 
+   return (
+     <div className="relative flex h-7 shrink-0 items-stretch border-b bg-muted/30" data-testid="aim-view-tabs">
+       <AimPlanOrbitHint />
+-      <div role="tablist" aria-label="Záložky pohľadov" className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
+-        {tabs.map((tab) => {
++      <div ref={areaRef} className="relative flex min-w-0 flex-1 items-stretch">
++      <div role="tablist" aria-label="Záložky pohľadov" className="flex min-w-0 items-stretch overflow-hidden">
++        {visibleTabs.map((tab) => {
+           const Icon = ICON[tab.kind];
+           const isActive = tab.id === activeId;
+           const isBeside = tab.id === besideId;
+@@ -68,7 +102,7 @@ export function AimViewTabsBar() {
+             <div
+               key={tab.id}
+               className={cn(
+-                'flex max-w-48 shrink-0 items-center border-r',
++                'flex w-32 shrink-0 items-center border-r',
+                 isActive ? 'bg-background' : isBeside ? 'bg-background/70' : 'hover:bg-muted/70',
+               )}
+             >
+@@ -102,6 +136,59 @@ export function AimViewTabsBar() {
+           );
+         })}
+       </div>
++      {hiddenTabs.length > 0 && (
++        <>
++          <button
++            type="button"
++            aria-label={`Ďalšie záložky (${hiddenTabs.length})`}
++            aria-haspopup="menu"
++            aria-expanded={moreOpen}
++            title={`Ďalšie záložky (${hiddenTabs.length})`}
++            onClick={() => setMoreOpen((o) => !o)}
++            className="flex min-h-6 shrink-0 items-center gap-0.5 border-r px-1.5 text-2xs text-muted-foreground hover:bg-muted/70"
++            data-testid="aim-view-tabs-more"
++          >
++            <span>{`+${hiddenTabs.length}`}</span>
++            <ChevronDown className="size-3" aria-hidden />
++          </button>
++          {moreOpen && (
++            <div
++              role="menu"
++              aria-label="Ďalšie záložky"
++              className="absolute right-0 top-full z-50 max-h-64 w-64 overflow-y-auto rounded-b border bg-background py-0.5 shadow-md"
++            >
++              {hiddenTabs.map((tab) => {
++                const Icon = ICON[tab.kind];
++                return (
++                  <div key={tab.id} className="flex items-center hover:bg-muted/70">
++                    <button
++                      type="button"
++                      role="menuitem"
++                      title={tab.label}
++                      onClick={() => { activate(tab.id, warn); setMoreOpen(false); }}
++                      className="flex min-h-6 min-w-0 flex-1 items-center gap-1 px-2 py-1 text-left text-2xs"
++                    >
++                      <Icon className="size-3 shrink-0" aria-hidden />
++                      <span className="truncate">{tab.label}</span>
++                    </button>
++                    {tab.kind !== '3d' && (
++                      <button
++                        type="button"
++                        aria-label={`Zavrieť ${tab.label}`}
++                        onClick={() => close(tab.id, warn)}
++                        className="mr-1 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
++                      >
++                        <X className="size-3" aria-hidden />
++                      </button>
++                    )}
++                  </div>
++                );
++              })}
++            </div>
++          )}
++        </>
++      )}
++      </div>
+       <div className="flex shrink-0 items-center gap-1 px-1">
+         <select
+           aria-label="Otvoriť pôdorys"
+diff --git a/apps/viewer/src/aim/viewTabsFit.test.ts b/apps/viewer/src/aim/viewTabsFit.test.ts
+new file mode 100644
+index 00000000..06f0357d
+--- /dev/null
++++ b/apps/viewer/src/aim/viewTabsFit.test.ts
+@@ -0,0 +1,49 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import { fitTabs } from './viewTabsFit.js';
++
++const ids = ['3d', 'a', 'b', 'c', 'd', 'e'];
++const base = { ids, activeId: '3d', besideId: null, slotWidth: 100, moreWidth: 40 };
++
++describe('lišta záložiek: zoznam pretečených (AIM D-132, #240)', () => {
++  it('keď sa zmestia všetky, nič nie je skryté', () => {
++    assert.deepStrictEqual(fitTabs({ ...base, available: 600 }), { visible: ids, hidden: [] });
++  });
++
++  it('pri preteku sa odpočíta tlačidlo zoznamu a zvyšok ide do zoznamu', () => {
++    const r = fitTabs({ ...base, available: 400 }); // (400 - 40) / 100 = 3 miesta
++    assert.deepStrictEqual(r.visible, ['3d', 'a', 'b']);
++    assert.deepStrictEqual(r.hidden, ['c', 'd', 'e']);
++  });
++
++  it('aktívna záložka z preteku je viditeľná, poradie ostáva pôvodné', () => {
++    const r = fitTabs({ ...base, available: 400, activeId: 'e' });
++    assert.deepStrictEqual(r.visible, ['3d', 'a', 'e']);
++    assert.deepStrictEqual(r.hidden, ['b', 'c', 'd']);
++  });
++
++  it('záložka vedľa má prednosť pred ostatnými, aktívna pred záložkou vedľa', () => {
++    assert.deepStrictEqual(fitTabs({ ...base, available: 400, activeId: 'c', besideId: 'e' }).visible, ['3d', 'c', 'e']);
++    assert.deepStrictEqual(fitTabs({ ...base, available: 300, activeId: 'c', besideId: 'e' }).visible, ['3d', 'c']);
++  });
++
++  it('3D ostáva pripnutá aj v úzkej lište, aktívna sa nezmestí len keď je miesto jedno', () => {
++    assert.deepStrictEqual(fitTabs({ ...base, available: 20, activeId: 'c' }).visible, ['3d']);
++    assert.deepStrictEqual(fitTabs({ ...base, available: 20, activeId: 'c' }).hidden, ['a', 'b', 'c', 'd', 'e']);
++  });
++
++  it('neznáme id aktívnej alebo vedľa sa ignoruje', () => {
++    const r = fitTabs({ ...base, available: 400, activeId: 'zzz', besideId: 'yyy' });
++    assert.deepStrictEqual(r.visible, ['3d', 'a', 'b']);
++  });
++
++  it('presne na hranici sa zmestia všetky bez tlačidla', () => {
++    assert.strictEqual(fitTabs({ ...base, available: 600 }).hidden.length, 0);
++    assert.strictEqual(fitTabs({ ...base, available: 599 }).hidden.length, 1);
++  });
++});
+diff --git a/apps/viewer/src/aim/viewTabsFit.ts b/apps/viewer/src/aim/viewTabsFit.ts
+new file mode 100644
+index 00000000..344390d8
+--- /dev/null
++++ b/apps/viewer/src/aim/viewTabsFit.ts
+@@ -0,0 +1,48 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Lišta záložiek (AIM D-132, #240): ktoré záložky sa zmestia a ktoré idú do
++ * rozbaľovacieho zoznamu na konci lišty (ako v prehliadači alebo Revite).
++ * Čistá funkcia bez DOM; šírky dodá lišta z `ResizeObserver`.
++ *
++ * Pravidlá: keď sa zmestia všetky, zoznam sa nekreslí. Inak sa viditeľné miesta
++ * (po odpočítaní tlačidla zoznamu) plnia v poradí: 3D (vždy pripnutá prvá),
++ * aktívna, záložka vedľa, potom ostatné podľa poradia na lište. Viditeľné
++ * záložky ostávajú v pôvodnom poradí; aktívna sa teda do viditeľnej časti
++ * dostane sama, bez zmeny poradia v `view_state.tabs`.
++ */
++
++export interface FitInput {
++  /** Id záložiek v poradí na lište (prvá je 3D). */
++  ids: readonly string[];
++  activeId: string;
++  besideId: string | null;
++  /** Šírka jedného miesta záložky v px (menovka je orezaná na túto šírku). */
++  slotWidth: number;
++  /** Šírka tlačidla zoznamu v px. */
++  moreWidth: number;
++  /** Šírka lišty určená na záložky v px. */
++  available: number;
++}
++
++export interface FitResult {
++  visible: string[];
++  hidden: string[];
++}
++
++export function fitTabs({ ids, activeId, besideId, slotWidth, moreWidth, available }: FitInput): FitResult {
++  const slot = Math.max(1, slotWidth);
++  if (ids.length * slot <= available) return { visible: [...ids], hidden: [] };
++
++  // Aspoň jedno miesto (3D), aj keď je lišta užšia než tlačidlo.
++  const capacity = Math.max(1, Math.floor((available - moreWidth) / slot));
++  const priority = [ids[0], activeId, besideId, ...ids].filter((id): id is string => id !== null && ids.includes(id));
++  const keep = new Set<string>();
++  for (const id of priority) {
++    if (keep.size >= capacity) break;
++    keep.add(id);
++  }
++  return { visible: ids.filter((id) => keep.has(id)), hidden: ids.filter((id) => !keep.has(id)) };
++}
+-- 
+2.43.0
+
