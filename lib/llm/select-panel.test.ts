@@ -68,6 +68,23 @@ describe("select_in_3d s panelom vlastností (D-113)", () => {
   });
 });
 
+describe("viacnásobný výber (#217)", () => {
+  const H = "1abcdefghijklmnopqrstu";
+
+  it("select nesie všetky GUIDy do mosta, prvý ostáva guid", () => {
+    const raw = selectOp([G, H, G]);
+    expect(raw).toBe(`select::${G}.${H}.${G}`);
+    expect(parseOps(raw).map(opToBridgeMessage)).toEqual([{ type: "SELECT", guid: G, guids: [G, H] }]);
+  });
+
+  it("panel ide s viacnásobným výberom a jeden prvok ostáva bez guids", () => {
+    const panel = { section: "quantities" as const };
+    expect(parseOps(selectOp([G, H], panel)).map(opToBridgeMessage)).toEqual([{ type: "SELECT", guid: G, guids: [G, H], panel }]);
+    expect(selectOp([G])).toBe(`select::${G}`);
+    expect(parseOps(selectOp([G])).map(opToBridgeMessage)).toEqual([{ type: "SELECT", guid: G }]);
+  });
+});
+
 describe("panely z chatu (D-127)", () => {
   it("op panels -> SET_PANELS, all len close, neplatné sa zahodí", () => {
     const raw = panelsOp({ all: "close", properties: "open" });
