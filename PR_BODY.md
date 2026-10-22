@@ -7,7 +7,7 @@ AIM #207 / D-135, host Menezeris/AIMviewer (PR "Closes #207"). Cieľ: znížiť 
 - Archív nemá `Content-Encoding`, `fetch` vráti gzip bajty. Nový `aim/modelFile.ts` ich podľa magického čísla `1f 8b` rozbalí cez `DecompressionStream('gzip')`; obyčajné IFC prejde bez zmeny.
 - Meno modelu ostáva `ASR.ifc` (z `archive/ASR/v078.ifc.gz`), lebo most, revízie (`aim/derivations.ts` `modelKey`) a filtre (`"VZT" ~ "VZT.ifc"`) párujú model podľa mena.
 - Modul sa načíta lenivo (`await import`) až pri autoloade, vstupný balík sa nemení.
-- `aim-feature`: živé overenie nikdy na produkčných modeloch AIM (bucket má malú bezplatnú kvótu egressu).
+- Skilly `aim-feature`, `steward`, `release-train`: živé overenie nikdy na produkčných modeloch AIM. Odkaz "Ako vyskúšať" je len pre Samuela, session skúša na lokálnom vieweri s testovacím modelom. Dôvod: cached egress Supabase 14,66 GB z 5 GB, cca 75 načítaní z prehliadačov za deň (D-135).
 
 ## Upstream súbory (len AIM-FORK bloky, režim `fork-blocks`)
 - `hooks/useModelUrlAutoload.ts`: v existujúcom bloku `loadOne` volá `aimModelFile` namiesto ručného `new File`.

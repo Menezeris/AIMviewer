@@ -1,7 +1,7 @@
 From 93ad989589af55eeb3a80344322b05ee5d2f172b Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 22 Oct 2026 04:00:14 +0000
-Subject: [PATCH 1/2] =?UTF-8?q?feat(aim):=20autoload=20rozbal=C3=AD=20gzip?=
+Subject: [PATCH 1/3] =?UTF-8?q?feat(aim):=20autoload=20rozbal=C3=AD=20gzip?=
  =?UTF-8?q?=20arch=C3=ADv=20rev=C3=ADzie=20a=20zachov=C3=A1=20meno=20model?=
  =?UTF-8?q?u=20(AIM=20D-135)?=
 MIME-Version: 1.0
@@ -190,7 +190,7 @@ index 16a93fba..cf255723 100644
 From bb448ae052efd2739b031974c9d7e5b625dc4c38 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Thu, 22 Oct 2026 04:00:14 +0000
-Subject: [PATCH 2/2] =?UTF-8?q?test(aim):=20muta=C4=8Dn=C3=A9=20d=C3=B4kaz?=
+Subject: [PATCH 2/3] =?UTF-8?q?test(aim):=20muta=C4=8Dn=C3=A9=20d=C3=B4kaz?=
  =?UTF-8?q?y=20pre=20autoload=20arch=C3=ADvu=20(AIM=20D-135)?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -429,6 +429,58 @@ index 00000000..3c302e13
 +  }
 +}
 \ No newline at end of file
+-- 
+2.43.0
+
+
+From 4da6ff1185617fe0abdaad8100916bfb91d8952e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 04:04:40 +0000
+Subject: [PATCH 3/3] =?UTF-8?q?docs(skills):=20sessions=20neotv=C3=A1raj?=
+ =?UTF-8?q?=C3=BA=20produk=C4=8Dn=C3=A9=20modely=20AIM=20(AIM=20D-135)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+steward a release-train: odkaz "Ako vyskúšať" je len pre Samuela, session
+skúša na lokálnom vieweri s testovacím modelom.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_014FhVBxbEwKUi8TVr4MqZpm
+---
+ .claude/skills/release-train/SKILL.md | 3 ++-
+ .claude/skills/steward/SKILL.md       | 4 +++-
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/.claude/skills/release-train/SKILL.md b/.claude/skills/release-train/SKILL.md
+index 1313c5d2..9c08114c 100644
+--- a/.claude/skills/release-train/SKILL.md
++++ b/.claude/skills/release-train/SKILL.md
+@@ -61,7 +61,8 @@ exceed it together. Over the limit: say so in the batch PR and ask.
+   modules (the oracle judges the whole batch; aim-feature skill, step 4).
+ - **Test link** for Samuel: the AIM host with the batch's viewer preview,
+   `https://ai-mviewer.vercel.app/ifc?viewer=pr-<batch PR number>`, and per feature what
+-  to try (the "Ako vyskúšať" lines of the merged PRs).
++  to try (the "Ako vyskúšať" lines of the merged PRs). The link is for Samuel only: a
++  session never opens it (production models, AIM D-135).
+ 
+ ## 5. Full CI, then Samuel
+ 
+diff --git a/.claude/skills/steward/SKILL.md b/.claude/skills/steward/SKILL.md
+index 2b4c698d..a6f3e65d 100644
+--- a/.claude/skills/steward/SKILL.md
++++ b/.claude/skills/steward/SKILL.md
+@@ -28,7 +28,9 @@ pull requests" and "Release train".
+ - An **"Ako vyskúšať"** section in the body, in Slovak: the test link
+   `https://ai-mviewer.vercel.app/ifc?viewer=pr-<this PR number>` (the AIM host with this
+   PR's viewer preview) and 2-5 concrete steps: what to click, which MCP prompt to send,
+-  what Samuel should see. Try them yourself first, live, where the session can.
++  what Samuel should see. Try them yourself first on the local viewer with the test model
++  (aim-feature skill, step 5). Never open that link or the AIM host's `/ifc` from a session:
++  it downloads the production models from a bucket with a small free egress quota (AIM D-135).
+ 
+ ## What does not block it
+ 
 -- 
 2.43.0
 

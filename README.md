@@ -1,7 +1,7 @@
 # Fork patch AIM D-135 (#207)
 
 Base: Menezeris/ifc-lite `main` @ 625cabd74d067e89e8d8afbb003c4d35f95fe519.
-sha256 `aim-d135-archive-autoload.patch`: 08c8d204c693a69ba8f9c59eced18652bdda5217d628b297cf7be55dfbfafbc1
+sha256 `aim-d135-archive-autoload.patch`: ec4d0a11eded096047c00ab1f7379305c1c3920cc0ac958a8b8c84ea1ad52af6
 
 ```bash
 git checkout -b claude/aim-d135-archiv 625cabd74
