@@ -14,3 +14,6 @@ MCP cast (show_in_3d clear=true, view_state.focus) uz existuje od D-101; host sa
 
 ## Poznamky
 - Test pure logiky prebehol (3/3). `tsc`, zdrojove kontroly, perf ratchet a zivy test v cloud session nebezali (bez node_modules a bez Playwright behu): pred zlucenim dobehnut kroky 2 az 5 skillu aim-feature.
+
+## Rozhodnutie
+Cislo D-144 (pridelil orchestrator). Zaznam do `DECISIONS.md` prida host PR po zluceni balika forku: klik bez tahania a Esc rusia zvyraznenie z FOCUS, FOCUS na objemoch (IfcSpace, IfcSpatialZone) je priesvitny (alfa 0,3); zavrhnute: novy tool (clear uz existuje od D-101), rusenie pri kazdej zmene vyberu (SELECT ho ruší sám, klik na scénu stačí).
