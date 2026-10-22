@@ -14,6 +14,19 @@ description: Ako overiť zmeny AIM Viewera naživo v tomto repe — build/launch
 - Chromium: `/opt/pw-browsers/chromium`; playwright modul nainštaluj do scratchpadu
   (`npm i playwright`), NIE do repa. Nespúšťaj `playwright install`.
 
+## Modely: nikdy produkčné IFC (D-135)
+- Bucket Supabase má bezplatný egress; jedno otvorenie produkčnej federácie stálo 34,5 MB. Živé
+  overenie **nesťahuje** `.../public/ifc/*` (ani archív): nepúšťaj `/ifc` ani IFC motor s predvoleným
+  zoznamom modelov a nevolaj `ifc_*` tools konektora len kvôli overeniu.
+- Testovací model `AC20-FZK-Haus.ifc` (2,5 MB, fixtures forku, GitHub release, nie Supabase):
+  `curl -sSL -o <scratchpad>/fzk/AC20-FZK-Haus.ifc https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5`
+  (meno = sha256 z `tests/models/manifest.json` forku), servíruj lokálne (`python3 -m http.server`
+  v adresári modelu, alebo `public/` dev servera) a nastav `NEXT_PUBLIC_IFC_URLS="Test|http://localhost:<port>/AC20-FZK-Haus.ifc"`.
+  Produkčný viewer forku pustí len origin bucketu, preto k lokálnemu modelu spusti lokálny viewer
+  forku s `VITE_AIM_MODEL_ORIGINS=http://localhost:<port>` a `NEXT_PUBLIC_IFC_VIEWER_URL` naň.
+- Motor a unit testy: fixtures v `lib/engine/__fixtures__/` (mini budova v pamäti).
+- Hlavičky bucketu (Cache-Control, veľkosť) len `curl -I` alebo `curl -r 0-0 -D -`.
+
 ## Recept (PDF prehliadačka / drawing-*)
 1. Testovacie viacstranové PDF sa dá vygenerovať čistým Pythonom (raw PDF syntax,
    `zlib` streamy, base-14 Helvetica — bez závislostí) do `public/devtest-drawing.pdf`;

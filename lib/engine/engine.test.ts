@@ -1,3 +1,5 @@
+import { gzipSync } from "node:zlib";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_CONFIG,
@@ -9,7 +11,7 @@ import {
 } from "@ifc-lite/mcp";
 
 import { MINI_BUILDING_BYTES, guid } from "./__fixtures__/mini-building";
-import { clearEngineCache, getStore } from "./cache";
+import { clearEngineCache, getStore, setArchiveResolver } from "./cache";
 import { modelFromStore, parseIfcBytes } from "./loader";
 import { ENGINE_UPSTREAM_TOOLS, callEngineTool } from "./session";
 
@@ -66,6 +68,56 @@ describe("IFC motor - cache (D-084)", () => {
     expect(again.cold).toBe(false);
     expect(again.entry).toBe(first.entry);
     expect(f.counts().gets).toBe(1);
+  });
+});
+
+describe("IFC motor - archív revízie (D-135)", () => {
+  afterEach(() => {
+    clearEngineCache();
+    setArchiveResolver(null);
+  });
+  const ARCHIVE = "https://example.test/archive/mini/v007.ifc.gz";
+
+  /** Úložisko s gzip archívom a pôvodným súborom; zaznamená, čo sa sťahovalo. */
+  function storage(opts: { archiveStatus?: number } = {}) {
+    const calls: string[] = [];
+    const impl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url);
+      calls.push(`${init?.method ?? "GET"} ${u}`);
+      if (init?.method === "HEAD") return new Response(null, { status: 200, headers: { etag: '"cur"' } });
+      if (u === ARCHIVE) {
+        if (opts.archiveStatus) return new Response("x", { status: opts.archiveStatus });
+        return new Response(gzipSync(MINI_BUILDING_BYTES), { status: 200, headers: { etag: '"gz"' } });
+      }
+      return new Response(MINI_BUILDING_BYTES, { status: 200, headers: { etag: '"cur"' } });
+    });
+    return { impl: impl as unknown as typeof fetch, calls };
+  }
+
+  it("stiahne a rozbalí archív, ETag berie z HEAD pôvodnej URL, celý súbor nesťahuje", async () => {
+    const s = storage();
+    const res = await getStore(SRC, { fetchImpl: s.impl, archive: async () => ARCHIVE });
+    expect(s.calls).toEqual([`HEAD ${SRC.url}`, `GET ${ARCHIVE}`]);
+    expect(res.entry.etag).toBe('"cur"');
+    expect(res.entry.size).toBe(MINI_BUILDING_BYTES.byteLength);
+    expect(res.entry.store.entities.getExpressIdByGlobalId(guid("WALA"))).toBeGreaterThan(0);
+  });
+
+  it("zaregistrovaný resolver platí bez deps; bez revízie ide pôvodná URL", async () => {
+    setArchiveResolver(async () => null);
+    const s = storage();
+    await getStore(SRC, { fetchImpl: s.impl });
+    expect(s.calls).toEqual([`GET ${SRC.url}`]);
+  });
+
+  it("chybný archív alebo resolver = pôvodná URL", async () => {
+    const s = storage({ archiveStatus: 404 });
+    await getStore(SRC, { fetchImpl: s.impl, archive: async () => ARCHIVE });
+    expect(s.calls.at(-1)).toBe(`GET ${SRC.url}`);
+    clearEngineCache();
+    const t = storage();
+    await getStore(SRC, { fetchImpl: t.impl, archive: async () => { throw new Error("db"); } });
+    expect(t.calls).toEqual([`GET ${SRC.url}`]);
   });
 });
 

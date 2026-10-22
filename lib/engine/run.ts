@@ -4,9 +4,13 @@ import { fetchModelRevisions } from "../data/model-revisions";
 import { AskToolRuntime } from "../llm/tools";
 
 import { lookupGuids, resolveTargetsToGuids } from "./aim-lookup";
+import { installArchiveSource } from "./archive-source";
 import { fetchRelatedMembers } from "./related-members";
 import { execSearchAll } from "./search-all";
 import { execEngineTool, ifcSearchResult, type EngineExecution } from "./tools";
+
+// D-135: modely motora z nemenného archívu revízie (cca 5-krát menej egressu).
+installArchiveSource();
 
 /** `ifc_*` tool s reálnym prepojením na DB AIM (D-084); importuje sa lenivo z MCP route. */
 export function runEngineTool(name: string, args: Record<string, unknown>): Promise<EngineExecution> {

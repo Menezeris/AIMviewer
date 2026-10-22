@@ -2,10 +2,14 @@ import "server-only";
 
 import { getIfcModels } from "../data/ifc-models";
 
+import { installArchiveSource } from "./archive-source";
 import { getStore } from "./cache";
 import { nameIndex } from "./search";
 import { openEngineSession, type EngineModel } from "./session";
 import { guidIndex } from "./tools";
+
+// D-135: modely motora z nemenného archívu revízie (cca 5-krát menej egressu).
+installArchiveSource();
 
 /**
  * Predčítanie modelov federácie do cache motora (D-100). MCP route ho spúšťa

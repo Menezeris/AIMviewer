@@ -15,27 +15,55 @@ export interface IfcModel {
   revision?: number;
 }
 
-/** Kľúč modelu v `model_revisions` = meno súboru v buckete bez `.ifc` (`…/ifc/ASR.ifc` → `ASR`). */
+/**
+ * Kľúč modelu v `model_revisions` = meno súboru v buckete bez `.ifc` (`…/ifc/ASR.ifc` → `ASR`);
+ * pozná aj archív revízie (`…/ifc/archive/ASR/v078.ifc.gz` → `ASR`, D-135).
+ */
 export function modelKey(url: string): string | null {
   const path = url.split(/[?#]/)[0];
-  const m = /\/([^/]+)\.ifc$/i.exec(path);
+  const m = /\/archive\/([^/]+)\/v\d+\.ifc\.gz$/i.exec(path) ?? /\/([^/]+)\.ifc$/i.exec(path);
   return m ? decodeURIComponent(m[1]) : null;
 }
 
 /**
- * Pripojí aktuálnu revíziu ku každému modelu, ktorý ju má (D-086): `?rev=N` v URL
- * zmení `src` iframe viewera, takže po novej revízii sa model načíta znova a cache
- * prehliadača nevráti starý súbor. Model bez revízie ostáva bez zmeny.
+ * Nemenný archív revízie (D-086) vedľa aktuálneho súboru: `…/ifc/ASR.ifc` + 78 →
+ * `…/ifc/archive/ASR/v078.ifc.gz`. Kľúč sa po nahratí nemení (`immutable`, rok), takže
+ * prehliadač model stiahne raz na revíziu, a gzip je cca 5-krát menší (D-135).
+ */
+export function archiveUrl(url: string, revision: number): string | null {
+  const key = modelKey(url);
+  if (key === null || /\.gz$/i.test(url.split(/[?#]/)[0])) return null;
+  const u = new URL(url);
+  u.search = "";
+  u.hash = "";
+  u.pathname = u.pathname.replace(/[^/]+$/, `archive/${encodeURIComponent(key)}/v${String(revision).padStart(3, "0")}.ifc.gz`);
+  return u.toString();
+}
+
+/** Viewer číta archív revízie (D-135); `NEXT_PUBLIC_IFC_ARCHIVE=0` vráti `?rev=` na aktuálnom kľúči. */
+export function archiveEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.NEXT_PUBLIC_IFC_ARCHIVE !== "0";
+}
+
+/**
+ * Pripojí aktuálnu revíziu ku každému modelu, ktorý ju má (D-086). Predvolene URL
+ * ukáže na nemenný archív revízie (D-135); bez archívu `?rev=N` na aktuálnom kľúči.
+ * Obe zmenia `src` iframe viewera, takže po novej revízii sa model načíta znova a
+ * cache prehliadača nevráti starý súbor. Model bez revízie ostáva bez zmeny.
  */
 export function withRevisions(
   models: IfcModel[],
   current: { model: string; revision: number }[],
+  opts: { archive?: boolean } = {},
 ): IfcModel[] {
+  const archive = opts.archive ?? archiveEnabled();
   const byKey = new Map(current.map((r) => [r.model, r.revision]));
   return models.map((m) => {
     const key = modelKey(m.url);
     const revision = key ? byKey.get(key) : undefined;
     if (revision === undefined) return m;
+    const archived = archive ? archiveUrl(m.url, revision) : null;
+    if (archived) return { ...m, url: archived, revision };
     const url = new URL(m.url);
     url.searchParams.set("rev", String(revision));
     return { ...m, url: url.toString(), revision };
