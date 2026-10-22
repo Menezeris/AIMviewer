@@ -1,0 +1,531 @@
+From 34969134c5298f0381551646047d01d6afbd7ac6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 12:24:07 +0000
+Subject: [PATCH 1/2] feat(aim): posun panela vlastnosti a sledovanie
+ zvyrazneneho riadka (AIM #183)
+
+SCROLL_PANEL (up, down, top, bottom) posunie skrolovaci kontajner panela
+vlastnosti. SELECT s highlight uz neposuva jednorazovym scrollIntoView, ktory
+riadok minul, ked panel po vybere dokreslil obsah nad nim: revealRow riadok
+vycentruje a drzi vo vyreze, kym sa panel ustali alebo zasiahne pouzivatel.
+
+Claude-Session: https://claude.ai/code/session_01EqhZsbD2rjqp9eprckvAd6
+---
+ apps/viewer/src/aim/aimPanelScroll.ts         | 95 +++++++++++++++++++
+ .../viewer/src/aim/aimPanelScrollPlan.test.ts | 48 ++++++++++
+ apps/viewer/src/aim/aimPanelScrollPlan.ts     | 48 ++++++++++
+ apps/viewer/src/aim/aimPanelView.ts           |  8 +-
+ apps/viewer/src/aim/useAimViewCommands.ts     |  6 ++
+ apps/viewer/src/aim/view-protocol.ts          |  5 +
+ 6 files changed, 206 insertions(+), 4 deletions(-)
+ create mode 100644 apps/viewer/src/aim/aimPanelScroll.ts
+ create mode 100644 apps/viewer/src/aim/aimPanelScrollPlan.test.ts
+ create mode 100644 apps/viewer/src/aim/aimPanelScrollPlan.ts
+
+diff --git a/apps/viewer/src/aim/aimPanelScroll.ts b/apps/viewer/src/aim/aimPanelScroll.ts
+new file mode 100644
+index 00000000..8560520f
+--- /dev/null
++++ b/apps/viewer/src/aim/aimPanelScroll.ts
+@@ -0,0 +1,95 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Posun panela vlastností (AIM #183): `SCROLL_PANEL` z chatu ("posuň dole", "hore",
++ * "na začiatok") a udržanie zvýrazneného riadka vo výreze po `SELECT` s `highlight`.
++ *
++ * Jednorazové `scrollIntoView` riadok minulo: panel po výbere dokresľuje obsah nad ním
++ * (atribúty, sady z typu, rozbalenie sady) a riadok sa posunul pod viditeľnú časť.
++ * `revealRow` preto po prvom posune sleduje polohu riadka, kým sa panel ustáli,
++ * a keď riadok vypadne z výrezu, vycentruje ho znova. Posúva len skrolovací kontajner
++ * panela (nie okolité stránky) a skončí pri prvom zásahu používateľa.
++ */
++
++import { centeredTop, rowVisible, scrollTarget, type PanelScroll } from './aimPanelScrollPlan.js';
++
++/** Ako dlho po prvom posune sa riadok sleduje (panel sa dokresľuje najviac pár stoviek ms). */
++const FOLLOW_MS = 3000;
++/** Snímky bez pohybu skrolovania, kým sa riadok opravuje (nebojuje s plynulým posunom). */
++const IDLE_FRAMES = 2;
++const USER_EVENTS = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
++
++let stopReveal: (() => void) | null = null;
++
++const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
++
++/** Najbližší skrolovací predok (Radix ScrollArea viewport, na mobile kontajner spodného panela). */
++export function scrollerOf(el: Element | null): HTMLElement | null {
++  for (let p = el?.parentElement; p && p !== document.body; p = p.parentElement) {
++    const oy = getComputedStyle(p).overflowY;
++    if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') return p;
++  }
++  return null;
++}
++
++/** Skrolovací kontajner panela vlastností (z AIM bloku, inak z prvého riadka vlastností). */
++export function panelScroller(): HTMLElement | null {
++  const anchor = document.querySelector('[data-aim-inspector]') ?? document.querySelector('[data-prop-key]');
++  return scrollerOf(anchor);
++}
++
++/** Zruší sledovanie riadka (nový výber, ručný pokyn na posun, zásah používateľa). */
++export function cancelReveal(): void {
++  const stop = stopReveal;
++  stopReveal = null;
++  stop?.();
++}
++
++/**
++ * Vycentruje riadok v skrolovacom kontajneri a drží ho vo výreze, kým sa panel ustáli.
++ * `getRow` vracia aktuálny prvok (React ho môže prekresliť inou inštanciou).
++ */
++export function revealRow(getRow: () => Element | null): void {
++  cancelReveal();
++  const startedAt = Date.now();
++  let raf = 0;
++  let lastTop = -1;
++  let idle = 0;
++  let first = true;
++  const stop = () => {
++    cancelAnimationFrame(raf);
++    for (const e of USER_EVENTS) document.removeEventListener(e, stop, true);
++    if (stopReveal === stop) stopReveal = null;
++  };
++  const step = () => {
++    raf = requestAnimationFrame(step);
++    if (Date.now() - startedAt > FOLLOW_MS) return stop();
++    const row = getRow();
++    const sc = row?.isConnected ? scrollerOf(row) : null;
++    if (!row || !sc) return;
++    idle = sc.scrollTop === lastTop ? idle + 1 : 0;
++    lastTop = sc.scrollTop;
++    if (!first && idle < IDLE_FRAMES) return;
++    const r = row.getBoundingClientRect();
++    const v = sc.getBoundingClientRect();
++    if (v.height === 0 || (!first && rowVisible({ top: r.top, height: r.height }, { top: v.top, height: v.height }))) return;
++    const top = centeredTop({ top: r.top, height: r.height }, { top: v.top, height: v.height }, sc.scrollTop, sc.scrollHeight);
++    sc.scrollTo({ top, behavior: first && !reduceMotion() ? 'smooth' : 'auto' });
++    first = false;
++  };
++  stopReveal = stop;
++  // Vlastné zásahy (koliesko, dotyk, kláves, klik) ruší sledovanie; programové kliky na sady nie.
++  for (const e of USER_EVENTS) document.addEventListener(e, stop, { capture: true, passive: true });
++  raf = requestAnimationFrame(step);
++}
++
++/** Pokyn z chatu: posun panela vlastností. Čo sa nepodarilo, zapíše ako problém pre `APPLIED`. */
++export function scrollPanel(dir: PanelScroll, noteIssue: (text: string) => void): void {
++  cancelReveal();
++  const sc = panelScroller();
++  if (!sc) return noteIssue('SCROLL_PANEL: panel vlastností nie je otvorený');
++  if (sc.scrollHeight <= sc.clientHeight) return; // celý obsah je vidieť, nie je čo posúvať
++  sc.scrollTo({ top: scrollTarget(dir, sc.scrollTop, sc.clientHeight, sc.scrollHeight), behavior: reduceMotion() ? 'auto' : 'smooth' });
++}
+diff --git a/apps/viewer/src/aim/aimPanelScrollPlan.test.ts b/apps/viewer/src/aim/aimPanelScrollPlan.test.ts
+new file mode 100644
+index 00000000..9db3f191
+--- /dev/null
++++ b/apps/viewer/src/aim/aimPanelScrollPlan.test.ts
+@@ -0,0 +1,48 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import { centeredTop, isPanelScroll, rowVisible, scrollTarget } from './aimPanelScrollPlan.js';
++import { isViewMessage } from './view-protocol.js';
++
++const S = 'aim-bridge';
++
++describe('posun panela vlastností (AIM #183)', () => {
++  it('SCROLL_PANEL prejde obálkou mosta len so známym smerom', () => {
++    for (const direction of ['up', 'down', 'top', 'bottom']) {
++      assert.equal(isViewMessage({ source: S, type: 'SCROLL_PANEL', direction }), true);
++    }
++    assert.equal(isViewMessage({ source: S, type: 'SCROLL_PANEL', direction: 'left' }), false);
++    assert.equal(isViewMessage({ source: S, type: 'SCROLL_PANEL' }), false);
++    assert.equal(isPanelScroll(3), false);
++  });
++
++  it('down a up posúvajú o 80 % výšky a držia sa v rozsahu', () => {
++    assert.equal(scrollTarget('down', 0, 500, 2000), 400);
++    assert.equal(scrollTarget('down', 1400, 500, 2000), 1500);
++    assert.equal(scrollTarget('up', 400, 500, 2000), 0);
++    assert.equal(scrollTarget('up', 1000, 500, 2000), 600);
++    assert.equal(scrollTarget('top', 900, 500, 2000), 0);
++    assert.equal(scrollTarget('bottom', 0, 500, 2000), 1500);
++    assert.equal(scrollTarget('bottom', 0, 500, 300), 0, 'obsah kratší ako okno');
++  });
++
++  it('centeredTop vycentruje riadok a neprekročí rozsah', () => {
++    const view = { top: 100, height: 400 };
++    // riadok 600 px pod vrchom okna, výška 20: stred okna = 200 -> posun o 600 - 190 = 410
++    assert.equal(centeredTop({ top: 700, height: 20 }, view, 0, 3000), 410);
++    assert.equal(centeredTop({ top: 110, height: 20 }, view, 50, 3000), 0, 'nie pod nulu');
++    assert.equal(centeredTop({ top: 5000, height: 20 }, view, 0, 1000), 600, 'nie za koniec');
++  });
++
++  it('rowVisible vyžaduje riadok celý v okne s okrajom', () => {
++    const view = { top: 100, height: 400 };
++    assert.equal(rowVisible({ top: 300, height: 20 }, view), true);
++    assert.equal(rowVisible({ top: 110, height: 20 }, view), false, 'v okraji hore');
++    assert.equal(rowVisible({ top: 470, height: 20 }, view), false, 'v okraji dole');
++    assert.equal(rowVisible({ top: 900, height: 20 }, view), false, 'pod oknom, ako riadok NetVolume v #183');
++  });
++});
+diff --git a/apps/viewer/src/aim/aimPanelScrollPlan.ts b/apps/viewer/src/aim/aimPanelScrollPlan.ts
+new file mode 100644
+index 00000000..4b1d660c
+--- /dev/null
++++ b/apps/viewer/src/aim/aimPanelScrollPlan.ts
+@@ -0,0 +1,48 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Posun panela vlastností z chatu (AIM #183): čistá matematika bez DOM.
++ * Vykonanie a sledovanie zvýrazneného riadka je v `aimPanelScroll.ts`.
++ */
++
++export const PANEL_SCROLLS = ['up', 'down', 'top', 'bottom'] as const;
++export type PanelScroll = (typeof PANEL_SCROLLS)[number];
++
++export const isPanelScroll = (v: unknown): v is PanelScroll => (PANEL_SCROLLS as readonly unknown[]).includes(v);
++
++/** Krok `up` / `down`: časť viditeľnej výšky, aby ostal kontext z predošlého zobrazenia. */
++export const PAGE_FRACTION = 0.8;
++
++const clamp = (top: number, clientH: number, scrollH: number) => Math.max(0, Math.min(top, Math.max(0, scrollH - clientH)));
++
++/** Nová poloha `scrollTop` pre pokyn (vždy v rozsahu 0 .. scrollH - clientH). */
++export function scrollTarget(dir: PanelScroll, top: number, clientH: number, scrollH: number): number {
++  switch (dir) {
++    case 'top':
++      return 0;
++    case 'bottom':
++      return clamp(scrollH, clientH, scrollH);
++    case 'up':
++      return clamp(top - clientH * PAGE_FRACTION, clientH, scrollH);
++    case 'down':
++      return clamp(top + clientH * PAGE_FRACTION, clientH, scrollH);
++  }
++}
++
++export interface Box {
++  top: number;
++  height: number;
++}
++
++/** Poloha `scrollTop`, pri ktorej je riadok `row` v strede okna `view` (obe v súradniciach obrazovky). */
++export function centeredTop(row: Box, view: Box, top: number, scrollH: number): number {
++  return clamp(top + (row.top - view.top) - (view.height - row.height) / 2, view.height, scrollH);
++}
++
++/** Riadok je celý v okne s okrajom (zlomok výšky okna) hore aj dole. */
++export function rowVisible(row: Box, view: Box, margin = 0.1): boolean {
++  const pad = view.height * margin;
++  return row.top >= view.top + pad && row.top + row.height <= view.top + view.height - pad;
++}
+diff --git a/apps/viewer/src/aim/aimPanelView.ts b/apps/viewer/src/aim/aimPanelView.ts
+index 23fce9a0..67c3dacc 100644
+--- a/apps/viewer/src/aim/aimPanelView.ts
++++ b/apps/viewer/src/aim/aimPanelView.ts
+@@ -17,6 +17,7 @@
+ 
+ import { useViewerStore } from '../store/index.js';
+ import { useAimInspectorStore, type PropertyFocusState } from './aimInspectorStore.js';
++import { cancelReveal, revealRow } from './aimPanelScroll.js';
+ import { focusSections, matchName, panelPlan, propKeyEntity, type AimPanelView, type PanelSection } from './aimPanelViewPlan.js';
+ 
+ const SETTLE_TIMEOUT_MS = 5000;
+@@ -35,6 +36,7 @@ export function clearPropertyFocus(): void {
+   const stop = stopActive;
+   stopActive = null;
+   stop?.();
++  cancelReveal();
+ }
+ 
+ /** Obsah panela vlastností: rodič AIM bloku, inak celý dokument. */
+@@ -115,11 +117,9 @@ export function applyPanelView(view: AimPanelView, target: Target, noteIssue: (t
+         if (!hit) return false;
+         document.querySelectorAll(`[${FOCUS_ATTR}]`).forEach((el) => el !== hit.el && el.removeAttribute(FOCUS_ATTR));
+         if (!hit.el.hasAttribute(FOCUS_ATTR)) hit.el.setAttribute(FOCUS_ATTR, '');
+-        if (first) {
+-          const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+-          hit.el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+-        }
+         found = hit;
++        // Riadok sa vycentruje a drží vo výreze, kým sa panel ustáli (AIM #183); `found` vždy nesie aktuálny prvok.
++        if (first) revealRow(() => (found as Hit | null)?.el ?? null);
+         return true;
+       };
+       const tick = () => {
+diff --git a/apps/viewer/src/aim/useAimViewCommands.ts b/apps/viewer/src/aim/useAimViewCommands.ts
+index 93e29add..c9b71468 100644
+--- a/apps/viewer/src/aim/useAimViewCommands.ts
++++ b/apps/viewer/src/aim/useAimViewCommands.ts
+@@ -57,6 +57,8 @@ let camera: Promise<typeof import('./viewCamera.js')> | null = null;
+ const loadCamera = () => (camera ??= import('./viewCamera.js'));
+ let panels: Promise<typeof import('./aimPanels.js')> | null = null;
+ const loadPanels = () => (panels ??= import('./aimPanels.js'));
++let panelScroll: Promise<typeof import('./aimPanelScroll.js')> | null = null;
++const loadPanelScroll = () => (panelScroll ??= import('./aimPanelScroll.js'));
+ /** Rezný box (AIM D-132): modul stiahnutý pri pripojení, aby box bežal v poradí s ostatnými príkazmi. */
+ let boxModules: [typeof import('./viewQueries.js'), typeof import('./sectionBox.js')] | null = null;
+ const loadBox = () => Promise.all([loadQueries(), import('./sectionBox.js')]).then((m) => (boxModules = m));
+@@ -202,6 +204,10 @@ export function useAimViewCommands(bim: BimContext) {
+         track(loadPanels().then((m) => m.applyPanels(msg.panels, noteIssue)));
+         return;
+       }
++      case 'SCROLL_PANEL': {
++        track(loadPanelScroll().then((m) => m.scrollPanel(msg.direction, noteIssue)));
++        return;
++      }
+       case 'SET_VIEW_MODE': {
+         const storey = pickStorey(storeys, msg.storeyGuid);
+         if (storey === null) {
+diff --git a/apps/viewer/src/aim/view-protocol.ts b/apps/viewer/src/aim/view-protocol.ts
+index e32294fa..8aa8ce9d 100644
+--- a/apps/viewer/src/aim/view-protocol.ts
++++ b/apps/viewer/src/aim/view-protocol.ts
+@@ -16,6 +16,7 @@
+  */
+ 
+ import { SOURCE, type OpsSelector } from './bridge-protocol.js';
++import { isPanelScroll, type PanelScroll } from './aimPanelScrollPlan.js';
+ 
+ /** keep = smer sa nemení, section = kolmo na aktívny rez ako tlačidlo Set view (AIM D-098). */
+ export const CAMERA_PRESETS = ['top', 'bottom', 'front', 'back', 'left', 'right', 'iso', 'fit_all', 'keep', 'section'] as const;
+@@ -108,6 +109,8 @@ export type ViewInboundMessage =
+   | { source: typeof SOURCE; type: 'QUERY'; id: string; query: ViewQuery; guids?: string[] }
+   /** Panely z chatu (AIM D-127): otvoriť, zavrieť, prepnúť; `all` len zavrieť. */
+   | { source: typeof SOURCE; type: 'SET_PANELS'; panels: PanelsRequest }
++  /** Posun panela vlastností (AIM #183): o stranu hore / dole, na začiatok, na koniec. */
++  | { source: typeof SOURCE; type: 'SCROLL_PANEL'; direction: PanelScroll }
+   /** Kóty v IFC svete (Z hore, m) do nástroja Measure (AIM D-124); `keep` = pridať k predošlým od hosta. */
+   | { source: typeof SOURCE; type: 'MEASURE_SHOW'; segments: { a: Vec3Wire; b: Vec3Wire }[]; keep?: boolean }
+   /** Čiara trasy v IFC svete (Z hore, m) od hosta (AIM D-137); nahradí predošlú, prázdne body ju zmažú. */
+@@ -208,6 +211,8 @@ export function isViewMessage(data: unknown): data is ViewInboundMessage {
+         && optional(m.color, (c) => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c));
+     case 'SET_PANELS':
+       return isPanelsRequest(m.panels);
++    case 'SCROLL_PANEL':
++      return isPanelScroll(m.direction);
+     case 'QUERY':
+       return isId(m.id)
+         && (VIEW_QUERIES as readonly unknown[]).includes(m.query)
+-- 
+2.43.0
+
+
+From 00d3e9bbd6b5e7df26772386f42d92408231f5b7 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 12:25:02 +0000
+Subject: [PATCH 2/2] docs(aim): mutacne dokazy pre posun panela vlastnosti
+ (AIM #183)
+
+Claude-Session: https://claude.ai/code/session_01EqhZsbD2rjqp9eprckvAd6
+---
+ .../aim-183-panel-scroll/mutations/README.md  | 30 +++++++++++++
+ .../mutations/bottom-unclamped.patch          | 13 ++++++
+ .../mutations/centre-offset-sign.patch        | 13 ++++++
+ .../mutations/direction-unchecked.patch       | 13 ++++++
+ .../mutations/page-fraction-full.patch        | 13 ++++++
+ .../mutations/summary.json                    | 42 +++++++++++++++++++
+ .../mutations/visible-margin-ignored.patch    | 12 ++++++
+ 7 files changed, 136 insertions(+)
+ create mode 100644 docs/architecture/evidence/aim-183-panel-scroll/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-183-panel-scroll/mutations/bottom-unclamped.patch
+ create mode 100644 docs/architecture/evidence/aim-183-panel-scroll/mutations/centre-offset-sign.patch
+ create mode 100644 docs/architecture/evidence/aim-183-panel-scroll/mutations/direction-unchecked.patch
+ create mode 100644 docs/architecture/evidence/aim-183-panel-scroll/mutations/page-fraction-full.patch
+ create mode 100644 docs/architecture/evidence/aim-183-panel-scroll/mutations/summary.json
+ create mode 100644 docs/architecture/evidence/aim-183-panel-scroll/mutations/visible-margin-ignored.patch
+
+diff --git a/docs/architecture/evidence/aim-183-panel-scroll/mutations/README.md b/docs/architecture/evidence/aim-183-panel-scroll/mutations/README.md
+new file mode 100644
+index 00000000..a2ea6ed1
+--- /dev/null
++++ b/docs/architecture/evidence/aim-183-panel-scroll/mutations/README.md
+@@ -0,0 +1,30 @@
++<!-- This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this
++     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
++
++# AIM #183 panel scroll: surgical mutation evidence
++
++The change adds `SCROLL_PANEL` (scroll the properties panel up, down, to the top or the bottom on the chat's command) and replaces the one-shot `scrollIntoView` of a highlighted property row with `revealRow`, which keeps the row in view while the panel settles. The pure maths is the new `aimPanelScrollPlan.ts`, the message check is in `view-protocol.ts`. The test (`aimPanelScrollPlan.test.ts`) imports a module that does not exist on `main`, so reverting production makes it fail to load and the revert oracle reports INCONCLUSIVE; each decision was checked with a surgical mutation instead.
++
++Each patch is written mutant to fixed (`git diff -R` of the mutated file). Every run ended `OBSERVED` (exit 0) with restoration verified, against base `origin/main`. Records: `summary.json`.
++
++| Patch | Module | Mutation |
++|---|---|---|
++| `page-fraction-full.patch` | `aimPanelScrollPlan.ts` | up / down step is the whole visible height, so no context stays from the previous view |
++| `centre-offset-sign.patch` | `aimPanelScrollPlan.ts` | the row is placed below the centre instead of at it |
++| `visible-margin-ignored.patch` | `aimPanelScrollPlan.ts` | a row at the very edge counts as visible, so it is not re-centred |
++| `bottom-unclamped.patch` | `aimPanelScrollPlan.ts` | `bottom` goes past the end of the content |
++| `direction-unchecked.patch` | `view-protocol.ts` | `SCROLL_PANEL` accepts any direction |
++
++`aimPanelScroll.ts` (DOM: scroll container lookup, row following, user-input cancel) and the `useAimViewCommands.ts` case are renderer glue with no unit test.
++
++## Replay
++
++```bash
++node scripts/check-test-revert-oracle.mjs --base origin/main \
++  --only apps/viewer/src/aim/aimPanelScrollPlan.ts \
++  --test apps/viewer/src/aim/aimPanelScrollPlan.test.ts \
++  --mutation /tmp/mut/centre-offset-sign.patch --ci --json
++```
++
++The `direction-unchecked` patch uses `--only apps/viewer/src/aim/view-protocol.ts`. Copy the patches outside the tree first, the oracle refuses a dirty tree.
+diff --git a/docs/architecture/evidence/aim-183-panel-scroll/mutations/bottom-unclamped.patch b/docs/architecture/evidence/aim-183-panel-scroll/mutations/bottom-unclamped.patch
+new file mode 100644
+index 00000000..943ec487
+--- /dev/null
++++ b/docs/architecture/evidence/aim-183-panel-scroll/mutations/bottom-unclamped.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimPanelScrollPlan.ts a/apps/viewer/src/aim/aimPanelScrollPlan.ts
++index 1be55fcd..4b1d660c 100644
++--- b/apps/viewer/src/aim/aimPanelScrollPlan.ts
+++++ a/apps/viewer/src/aim/aimPanelScrollPlan.ts
++@@ -23,7 +23,7 @@ export function scrollTarget(dir: PanelScroll, top: number, clientH: number, scr
++     case 'top':
++       return 0;
++     case 'bottom':
++-      return scrollH;
+++      return clamp(scrollH, clientH, scrollH);
++     case 'up':
++       return clamp(top - clientH * PAGE_FRACTION, clientH, scrollH);
++     case 'down':
+diff --git a/docs/architecture/evidence/aim-183-panel-scroll/mutations/centre-offset-sign.patch b/docs/architecture/evidence/aim-183-panel-scroll/mutations/centre-offset-sign.patch
+new file mode 100644
+index 00000000..6dc161fb
+--- /dev/null
++++ b/docs/architecture/evidence/aim-183-panel-scroll/mutations/centre-offset-sign.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimPanelScrollPlan.ts a/apps/viewer/src/aim/aimPanelScrollPlan.ts
++index da5d607f..4b1d660c 100644
++--- b/apps/viewer/src/aim/aimPanelScrollPlan.ts
+++++ a/apps/viewer/src/aim/aimPanelScrollPlan.ts
++@@ -38,7 +38,7 @@ export interface Box {
++ 
++ /** Poloha `scrollTop`, pri ktorej je riadok `row` v strede okna `view` (obe v súradniciach obrazovky). */
++ export function centeredTop(row: Box, view: Box, top: number, scrollH: number): number {
++-  return clamp(top + (row.top - view.top) - -(view.height - row.height) / 2, view.height, scrollH);
+++  return clamp(top + (row.top - view.top) - (view.height - row.height) / 2, view.height, scrollH);
++ }
++ 
++ /** Riadok je celý v okne s okrajom (zlomok výšky okna) hore aj dole. */
+diff --git a/docs/architecture/evidence/aim-183-panel-scroll/mutations/direction-unchecked.patch b/docs/architecture/evidence/aim-183-panel-scroll/mutations/direction-unchecked.patch
+new file mode 100644
+index 00000000..e3a66043
+--- /dev/null
++++ b/docs/architecture/evidence/aim-183-panel-scroll/mutations/direction-unchecked.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/view-protocol.ts a/apps/viewer/src/aim/view-protocol.ts
++index 012f2d9b..8aa8ce9d 100644
++--- b/apps/viewer/src/aim/view-protocol.ts
+++++ a/apps/viewer/src/aim/view-protocol.ts
++@@ -212,7 +212,7 @@ export function isViewMessage(data: unknown): data is ViewInboundMessage {
++     case 'SET_PANELS':
++       return isPanelsRequest(m.panels);
++     case 'SCROLL_PANEL':
++-      return true;
+++      return isPanelScroll(m.direction);
++     case 'QUERY':
++       return isId(m.id)
++         && (VIEW_QUERIES as readonly unknown[]).includes(m.query)
+diff --git a/docs/architecture/evidence/aim-183-panel-scroll/mutations/page-fraction-full.patch b/docs/architecture/evidence/aim-183-panel-scroll/mutations/page-fraction-full.patch
+new file mode 100644
+index 00000000..5098f8fd
+--- /dev/null
++++ b/docs/architecture/evidence/aim-183-panel-scroll/mutations/page-fraction-full.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimPanelScrollPlan.ts a/apps/viewer/src/aim/aimPanelScrollPlan.ts
++index 6bd82ffb..4b1d660c 100644
++--- b/apps/viewer/src/aim/aimPanelScrollPlan.ts
+++++ a/apps/viewer/src/aim/aimPanelScrollPlan.ts
++@@ -13,7 +13,7 @@ export type PanelScroll = (typeof PANEL_SCROLLS)[number];
++ export const isPanelScroll = (v: unknown): v is PanelScroll => (PANEL_SCROLLS as readonly unknown[]).includes(v);
++ 
++ /** Krok `up` / `down`: časť viditeľnej výšky, aby ostal kontext z predošlého zobrazenia. */
++-export const PAGE_FRACTION = 1;
+++export const PAGE_FRACTION = 0.8;
++ 
++ const clamp = (top: number, clientH: number, scrollH: number) => Math.max(0, Math.min(top, Math.max(0, scrollH - clientH)));
++ 
+diff --git a/docs/architecture/evidence/aim-183-panel-scroll/mutations/summary.json b/docs/architecture/evidence/aim-183-panel-scroll/mutations/summary.json
+new file mode 100644
+index 00000000..b834ea23
+--- /dev/null
++++ b/docs/architecture/evidence/aim-183-panel-scroll/mutations/summary.json
+@@ -0,0 +1,42 @@
++{
++  "bottom-unclamped": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimPanelScrollPlan.test.ts; that file has a green, attributable baseline.",
++    "restoration": "verified",
++    "base": "6a47a50de6321f3174621c00f42f23d43f0ec4eb",
++    "head": "5e59052ef5e518db583a038b47747d043ca7400a"
++  },
++  "centre-offset-sign": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimPanelScrollPlan.test.ts; that file has a green, attributable baseline.",
++    "restoration": "verified",
++    "base": "6a47a50de6321f3174621c00f42f23d43f0ec4eb",
++    "head": "5e59052ef5e518db583a038b47747d043ca7400a"
++  },
++  "direction-unchecked": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimPanelScrollPlan.test.ts; that file has a green, attributable baseline.",
++    "restoration": "verified",
++    "base": "6a47a50de6321f3174621c00f42f23d43f0ec4eb",
++    "head": "5e59052ef5e518db583a038b47747d043ca7400a"
++  },
++  "page-fraction-full": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimPanelScrollPlan.test.ts; that file has a green, attributable baseline.",
++    "restoration": "verified",
++    "base": "6a47a50de6321f3174621c00f42f23d43f0ec4eb",
++    "head": "5e59052ef5e518db583a038b47747d043ca7400a"
++  },
++  "visible-margin-ignored": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimPanelScrollPlan.test.ts; that file has a green, attributable baseline.",
++    "restoration": "verified",
++    "base": "6a47a50de6321f3174621c00f42f23d43f0ec4eb",
++    "head": "5e59052ef5e518db583a038b47747d043ca7400a"
++  }
++}
+\ No newline at end of file
+diff --git a/docs/architecture/evidence/aim-183-panel-scroll/mutations/visible-margin-ignored.patch b/docs/architecture/evidence/aim-183-panel-scroll/mutations/visible-margin-ignored.patch
+new file mode 100644
+index 00000000..6d9f8b8b
+--- /dev/null
++++ b/docs/architecture/evidence/aim-183-panel-scroll/mutations/visible-margin-ignored.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/aimPanelScrollPlan.ts a/apps/viewer/src/aim/aimPanelScrollPlan.ts
++index 21f4e8be..4b1d660c 100644
++--- b/apps/viewer/src/aim/aimPanelScrollPlan.ts
+++++ a/apps/viewer/src/aim/aimPanelScrollPlan.ts
++@@ -43,6 +43,6 @@ export function centeredTop(row: Box, view: Box, top: number, scrollH: number):
++ 
++ /** Riadok je celý v okne s okrajom (zlomok výšky okna) hore aj dole. */
++ export function rowVisible(row: Box, view: Box, margin = 0.1): boolean {
++-  const pad = 0;
+++  const pad = view.height * margin;
++   return row.top >= view.top + pad && row.top + row.height <= view.top + view.height - pad;
++ }
+-- 
+2.43.0
+
