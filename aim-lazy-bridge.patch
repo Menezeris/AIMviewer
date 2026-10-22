@@ -1,0 +1,819 @@
+From 8df30e22f1c3f417816d5d3b2194464457b91f97 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:32:30 +0000
+Subject: [PATCH 1/3] perf(viewer): most AIM lenivo v embede, bridge-protocol
+ mimo eager
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+App.tsx (AIM-FORK riadok) mountuje AimBridgeMount namiesto AimBridge: mimo
+embedu nič, v embede React.lazy(AimBridge). Vo vstupe ostáva len príznak
+embedu, závoj počas ?models= autoloadu a latch konca autoloadu (autoloadLatch.ts),
+aby most pripojený až po autoloade ohlásil MODELS_LOADED hneď. Listener,
+brána príkazov (D-101) aj READY sú v moste bez zmeny; host posiela správy až
+po READY (dáta a príkazy po MODELS_LOADED), takže poradie ostáva.
+
+Pomocníky zo vstupu (bim, selectPickedGlobalId, toggleGlobalIdInSelection)
+dostane lenivý most cez props, aby bundler nevytiahol viewport-selection.ts
+zo vstupu (FORK_MAINTENANCE, Pre-approved raises bod 1). SOURCE a
+guidForEntity sú v bridge-core.ts (bridge-protocol ich znova exportuje),
+AimDerivedRelations berie resolveGuids až v lenivom tele: bridge-protocol.ts
+už nie je v eager balíku.
+
+Meranie (vite build, measure-bundle.mjs), base release/aim-2026-10-22-6:
+viewer-entry-js-bytes 3178068 -> 3156601 (-21467)
+viewer-eager-js-bytes 19387319 -> 19344560 (-42759)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01JdhmUCMyzNPHfCUyxYGwTX
+---
+ apps/viewer/src/App.tsx                     |  4 +-
+ apps/viewer/src/aim/AimBridge.tsx           | 59 +++++----------
+ apps/viewer/src/aim/AimBridgeMount.tsx      | 79 +++++++++++++++++++++
+ apps/viewer/src/aim/AimDerivedRelations.tsx | 34 +++++----
+ apps/viewer/src/aim/aimPanelStore.ts        |  3 +-
+ apps/viewer/src/aim/autoloadLatch.test.ts   | 37 ++++++++++
+ apps/viewer/src/aim/autoloadLatch.ts        | 34 +++++++++
+ apps/viewer/src/aim/bridge-core.ts          | 23 ++++++
+ apps/viewer/src/aim/bridge-protocol.ts      | 12 +---
+ apps/viewer/src/aim/derivations-protocol.ts |  2 +-
+ apps/viewer/src/aim/docBridge.ts            | 12 ++--
+ apps/viewer/src/aim/hierarchyPanel.ts       |  3 +-
+ 12 files changed, 227 insertions(+), 75 deletions(-)
+ create mode 100644 apps/viewer/src/aim/AimBridgeMount.tsx
+ create mode 100644 apps/viewer/src/aim/autoloadLatch.test.ts
+ create mode 100644 apps/viewer/src/aim/autoloadLatch.ts
+ create mode 100644 apps/viewer/src/aim/bridge-core.ts
+
+diff --git a/apps/viewer/src/App.tsx b/apps/viewer/src/App.tsx
+index 0b1d8390..d8e942bc 100644
+--- a/apps/viewer/src/App.tsx
++++ b/apps/viewer/src/App.tsx
+@@ -17,7 +17,7 @@ import { ViewerLayout } from './components/viewer/ViewerLayout';
+ import { BimProvider } from './sdk/BimProvider';
+ import { ExtensionHostProvider } from './sdk/ExtensionHostProvider';
+ // >>> AIM-FORK: mount the AIM iframe-bridge layer (see apps/viewer/src/aim/, docs/FORK_MAINTENANCE.md)
+-import { AimBridge } from './aim/AimBridge';
++import { AimBridgeMount } from './aim/AimBridgeMount';
+ // <<< AIM-FORK
+ import { SourceHostProvider } from './services/sources/SourceHostProvider';
+ import type { FileSourceProviderFactory } from './services/sources/source-host';
+@@ -133,7 +133,7 @@ export function App({ sourceProviders }: AppProps = {}) {
+               #5478 item 22), anchored to the viewport's bottom-right above
+               the status bar, rather than the whole window's here. */}
+           {/* >>> AIM-FORK: postMessage bridge for iframe embedding (no-op outside an AIM host) */}
+-          <AimBridge />
++          <AimBridgeMount />
+           {/* <<< AIM-FORK */}
+           <ViewerLayout />
+           <StaleDeploymentNotice />
+diff --git a/apps/viewer/src/aim/AimBridge.tsx b/apps/viewer/src/aim/AimBridge.tsx
+index 78c9d6de..94633487 100644
+--- a/apps/viewer/src/aim/AimBridge.tsx
++++ b/apps/viewer/src/aim/AimBridge.tsx
+@@ -18,11 +18,8 @@
+  * original ViewerApi shape.
+  */
+ 
+-import { useEffect, useRef, useState } from 'react';
+-import { useBim } from '../sdk/BimProvider.js';
++import { useEffect, useRef } from 'react';
+ import { useViewerStore } from '../store/index.js';
+-import { AUTOLOAD_COMPLETE_EVENT, parseAutoloadUrls } from '../lib/autoload.js';
+-import { selectPickedGlobalId, toggleGlobalIdInSelection } from '../components/viewer/viewport-selection.js';
+ import {
+   SOURCE, FILTER_COLOR, FOCUS_COLOR, isInboundMessage, guidForEntity, resolveGuids, resolveSelector,
+   type InboundMessage, type OutboundMessage,
+@@ -43,14 +40,14 @@ import { isBcfLoadMessage, loadBcfTopics } from './bcf-protocol.js';
+ import { dispatchLensMessage, isLensEnvelope, lensSettled, listSettled, resetLensFromChat } from './lens-protocol.js';
+ import { appliedViewState, prepareFocusView, runSectionBox, setChangesProvider, setFocusProvider, useAimViewCommands } from './useAimViewCommands.js';
+ import { createViewChangeTracker } from './viewChanges.js';
++import type { AutoloadLatch } from './autoloadLatch.js';
++import type { BridgeEntryDeps } from './AimBridgeMount.js';
+ 
+ /** Správy AIM D-132 sa overia až v lenivom module; tu len typ (vstupný balík). */
+ const aimTyped = (d: unknown, type: string) => !!d && typeof d === 'object' && (d as { source?: unknown }).source === SOURCE && (d as { type?: unknown }).type === type;
+ 
+ /** Príkazy viditeľnosti idú bránou; dáta panelov a dokumentov nie (D-101). */
+ const VISIBILITY = new Set(['FOCUS', 'SELECT', 'HIGHLIGHT_FILTER', 'CLEAR_FILTER', 'RESET_COLORS', 'COLORIZE', 'HIDE', 'SHOW', 'ISOLATE', 'SHOW_ALL']);
+-/** Helpery zo vstupného balíka pre lenivý modul príkazov viditeľnosti. */
+-const VIS_DEPS = { resolveGuids, resolveSelector, selectPickedGlobalId, addToSelection: toggleGlobalIdInSelection, noteIssue, track, FOCUS_COLOR, FILTER_COLOR, prepareFocusView };
+ let visibility: Promise<typeof import('./visibility-commands.js')> | null = null;
+ const loadVisibility = () => (visibility ??= import('./visibility-commands.js'));
+ 
+@@ -59,8 +56,11 @@ const ACK_WAIT_MS = 2500;
+ /** Ak geometria po ohlásení modelov neprestane prúdiť, príkazy sa pustia aj tak. */
+ const STREAM_GRACE_MS = 30_000;
+ 
+-export function AimBridge() {
+-  const bim = useBim();
++/** Lenivo z AimBridgeMount, len v embede; príznak embedu a závoj autoloadu drží on. */
++export function AimBridge({ autoload, entry }: { autoload: AutoloadLatch; entry: BridgeEntryDeps }) {
++  const { bim, selectPickedGlobalId } = entry;
++  /** Helpery pre lenivý modul príkazov viditeľnosti. */
++  const visDeps = { resolveGuids, resolveSelector, selectPickedGlobalId, addToSelection: entry.addToSelection, noteIssue, track, FOCUS_COLOR, FILTER_COLOR, prepareFocusView };
+   const parentOriginRef = useRef<string | null>(null);
+   const embeddedRef = useRef(false);
+   // Brána príkazov (AIM D-101): do načítania modelov a dotečenia geometrie sa
+@@ -85,7 +85,6 @@ export function AimBridge() {
+     // This app is only ever embedded by the AIM host, so the referrer at
+     // mount time IS the trusted origin — no build-time config needed.
+     parentOriginRef.current = document.referrer ? new URL(document.referrer).origin : null;
+-    useAimPanelStore.getState().setEmbedded(true, parentOriginRef.current);
+ 
+     function post(msg: OutboundMessage) {
+       window.parent.postMessage(msg, parentOriginRef.current ?? '*');
+@@ -105,8 +104,8 @@ export function AimBridge() {
+       removeFocusDismiss = m.installFocusDismiss(bim); // klik a Esc zrušia oranžovú z FOCUS (#94)
+     });
+     const runVisibility = (msg: InboundMessage | CommandInboundMessage) => {
+-      if (vis) vis.runVisibilityCommand(msg, bim, VIS_DEPS);
+-      else track(loadVisibility().then((m) => m.runVisibilityCommand(msg, bim, VIS_DEPS)));
++      if (vis) vis.runVisibilityCommand(msg, bim, visDeps);
++      else track(loadVisibility().then((m) => m.runVisibilityCommand(msg, bim, visDeps)));
+     };
+ 
+     // `ACK_REQUEST` ide bránou za príkazmi, preto ich vidí vykonané; počká ešte na ich asynchrónne kroky.
+@@ -210,7 +209,7 @@ export function AimBridge() {
+       }
+     }
+ 
+-    wireDocumentEvents(post); // kalibrácia podkladu a taby dokumentov -> host (docBridge.ts)
++    wireDocumentEvents(post, selectPickedGlobalId); // kalibrácia podkladu a taby dokumentov -> host (docBridge.ts)
+ 
+     // 3D -> host: a capture pin click opens its gallery/panorama host-side (D-073).
+     useCapturePinsStore.getState().setEmitClick((captureId) => {
+@@ -261,32 +260,16 @@ export function AimBridge() {
+     );
+   };
+   const autoloadingRef = useRef(false);
+-  // Veil počas ?models= autoloadu v embede: sekvenčný download beží s
+-  // `loading === false` (fetch fáza), takže by v iframe hosta preblikla
+-  // IFClite welcome obrazovka, kým sa nenačíta prvý model. Kým autoload
+-  // beží a scéna je prázdna, prekryjeme viewer neutrálnym loadingom;
+-  // po prvom modeli sa odkryje progresívne (zvyšok federácie sa doťahuje
+-  // už nad viditeľnou scénou). AUTOLOAD_COMPLETE_EVENT fire-uje vždy, aj
+-  // keď všetky URL zlyhajú — veil teda nemôže visieť navždy.
+-  const [autoloadVeil, setAutoloadVeil] = useState(
+-    () =>
+-      window.parent !== window &&
+-      parseAutoloadUrls(window.location.search, window.location.href).length > 0,
+-  );
+   useEffect(() => {
+     if (!embeddedRef.current) return;
+-    autoloadingRef.current =
+-      parseAutoloadUrls(window.location.search, window.location.href).length > 0;
++    autoloadingRef.current = autoload.active;
+     if (!autoloadingRef.current) return;
+-    const onAutoloadComplete = () => {
+-      // Autoload skončil — od tejto chvíle prípadné ďalšie (manuálne) loady
+-      // ohlasuje štandardný 0 → N latch nižšie.
++    // Autoload skončil (aj pred pripojením mosta) — od tejto chvíle prípadné ďalšie
++    // (manuálne) loady ohlasuje štandardný 0 → N latch nižšie.
++    return autoload.onComplete(() => {
+       autoloadingRef.current = false;
+-      setAutoloadVeil(false);
+       announceModels();
+-    };
+-    window.addEventListener(AUTOLOAD_COMPLETE_EVENT, onAutoloadComplete);
+-    return () => window.removeEventListener(AUTOLOAD_COMPLETE_EVENT, onAutoloadComplete);
++    });
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, []);
+   useEffect(() => {
+@@ -347,15 +330,5 @@ export function AimBridge() {
+     }
+   }, [selectedEntity]);
+ 
+-  // Veil (viď vyššie): render nad celým viewerom, kým autoload nedodá prvý
+-  // model. `modelCount === 0` ho zhodí hneď, ako je čo ukázať.
+-  if (autoloadVeil && modelCount === 0) {
+-    return (
+-      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-4 bg-white dark:bg-black">
+-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+-        <p className="font-mono text-sm text-zinc-500 dark:text-[#565f89]">Loading model…</p>
+-      </div>
+-    );
+-  }
+   return null;
+ }
+diff --git a/apps/viewer/src/aim/AimBridgeMount.tsx b/apps/viewer/src/aim/AimBridgeMount.tsx
+new file mode 100644
+index 00000000..0d59b764
+--- /dev/null
++++ b/apps/viewer/src/aim/AimBridgeMount.tsx
+@@ -0,0 +1,79 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Vstupná časť mosta AIM (App.tsx): v embede lenivo načíta AimBridge, mimo embedu nič.
++ * Host posiela príkazy až po READY, ktoré most pošle po pripojení, takže lenivé načítanie
++ * žiadny príkaz nestratí. Tu ostáva len to, čo musí platiť od prvého renderu: príznak
++ * embedu, závoj počas `?models=` autoloadu a záchyt konca autoloadu (most sa môže
++ * pripojiť až po ňom).
++ */
++
++import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
++import { useViewerStore } from '../store/index.js';
++import { AUTOLOAD_COMPLETE_EVENT, parseAutoloadUrls } from '../lib/autoload.js';
++import { useBim } from '../sdk/BimProvider.js';
++import { selectPickedGlobalId, toggleGlobalIdInSelection } from '../components/viewer/viewport-selection.js';
++import { useAimPanelStore } from './aimPanelStore.js';
++import { createAutoloadLatch } from './autoloadLatch.js';
++
++/**
++ * Čo most potrebuje zo vstupného balíka: lenivý modul by import týchto modulov vytiahol
++ * do zdieľaného chunku (FORK_MAINTENANCE, Pre-approved raises bod 1), preto ich dostane odtiaľto.
++ */
++export interface BridgeEntryDeps {
++  bim: ReturnType<typeof useBim>;
++  selectPickedGlobalId: typeof selectPickedGlobalId;
++  addToSelection: typeof toggleGlobalIdInSelection;
++}
++
++const AimBridge = lazy(() => import('./AimBridge.js').then((m) => ({ default: m.AimBridge })));
++
++export function AimBridgeMount() {
++  const [embedded] = useState(() => window.parent !== window);
++  // Veil počas ?models= autoloadu v embede: sekvenčný download beží s
++  // `loading === false` (fetch fáza), takže by v iframe hosta preblikla
++  // IFClite welcome obrazovka, kým sa nenačíta prvý model. Kým autoload
++  // beží a scéna je prázdna, prekryjeme viewer neutrálnym loadingom;
++  // po prvom modeli sa odkryje progresívne (zvyšok federácie sa doťahuje
++  // už nad viditeľnou scénou). AUTOLOAD_COMPLETE_EVENT fire-uje vždy, aj
++  // keď všetky URL zlyhajú — veil teda nemôže visieť navždy.
++  const [autoloadVeil, setAutoloadVeil] = useState(
++    () => embedded && parseAutoloadUrls(window.location.search, window.location.href).length > 0,
++  );
++  const [latch] = useState(() => createAutoloadLatch(autoloadVeil));
++  const modelCount = useViewerStore((s) => s.models.size);
++  const bim = useBim();
++  const entry = useMemo<BridgeEntryDeps>(() => ({ bim, selectPickedGlobalId, addToSelection: toggleGlobalIdInSelection }), [bim]);
++
++  useEffect(() => {
++    if (!embedded) return;
++    // This app is only ever embedded by the AIM host, so the referrer at
++    // mount time IS the trusted origin — no build-time config needed.
++    useAimPanelStore.getState().setEmbedded(true, document.referrer ? new URL(document.referrer).origin : null);
++    if (!latch.active) return;
++    const onAutoloadComplete = () => {
++      setAutoloadVeil(false);
++      latch.complete();
++    };
++    window.addEventListener(AUTOLOAD_COMPLETE_EVENT, onAutoloadComplete);
++    return () => window.removeEventListener(AUTOLOAD_COMPLETE_EVENT, onAutoloadComplete);
++  }, [embedded, latch]);
++
++  if (!embedded) return null;
++  return (
++    <>
++      {/* Veil (viď vyššie): nad celým viewerom, kým autoload nedodá prvý model. */}
++      {autoloadVeil && modelCount === 0 && (
++        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-4 bg-white dark:bg-black">
++          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
++          <p className="font-mono text-sm text-zinc-500 dark:text-[#565f89]">Loading model…</p>
++        </div>
++      )}
++      <Suspense fallback={null}>
++        <AimBridge autoload={latch} entry={entry} />
++      </Suspense>
++    </>
++  );
++}
+diff --git a/apps/viewer/src/aim/AimDerivedRelations.tsx b/apps/viewer/src/aim/AimDerivedRelations.tsx
+index d5092343..03714300 100644
+--- a/apps/viewer/src/aim/AimDerivedRelations.tsx
++++ b/apps/viewer/src/aim/AimDerivedRelations.tsx
+@@ -20,14 +20,32 @@ import { lazy, Suspense, useMemo } from 'react';
+ import { useViewerStore } from '@/store';
+ import { toGlobalIdFromModels } from '@/store/globalId';
+ import { selectPickedGlobalId } from '@/components/viewer/viewport-selection';
+-import { resolveGuids } from './bridge-protocol';
++import type { resolveGuids as ResolveGuids } from './bridge-protocol';
+ import { derivedRelationsOf, type DerivedRelationWire } from './derivations-protocol';
+ import { useAimPanelStore } from './aimPanelStore';
+ import { useAimDerivationsStore } from './aimDerivationsStore';
+ import { visibleDerivedRelations } from './derivations';
+ 
++interface LazyBodyProps {
++  relations: DerivedRelationWire[];
++  more: number;
++}
++
++/** Telo skupiny aj s resolveGuids lenivo: bridge-protocol.ts tak nie je v eager balíku. */
+ const AimDerivedRelationsBody = lazy(() =>
+-  import('./AimDerivedRelationsBody').then((m) => ({ default: m.AimDerivedRelationsBody })),
++  Promise.all([import('./AimDerivedRelationsBody'), import('./bridge-protocol')]).then(([m, { resolveGuids }]) => ({
++    default: function AimDerivedRelationsLazyBody({ relations, more }: LazyBodyProps) {
++      const models = useViewerStore((s) => s.models);
++      const selectableGuids = useMemo(() => {
++        const guids = new Set<string>();
++        for (const r of relations) {
++          if (r.other.guid !== null && resolveGuids(models, [r.other.guid]).length > 0) guids.add(r.other.guid);
++        }
++        return guids;
++      }, [relations, models]);
++      return <m.AimDerivedRelationsBody relations={relations} more={more} selectableGuids={selectableGuids} onSelectGuid={(guid) => selectByGuid(guid, resolveGuids)} />;
++    },
++  })),
+ );
+ 
+ const EMPTY = { relations: [] as DerivedRelationWire[], total: 0 };
+@@ -53,7 +71,7 @@ export function useAimDerivedRelationCount(): number {
+ }
+ 
+ /** Select the other end like a viewport click (the same path AimBridge SELECT takes). */
+-function selectByGuid(guid: string): void {
++function selectByGuid(guid: string, resolveGuids: typeof ResolveGuids): void {
+   const state = useViewerStore.getState();
+   const [ref] = resolveGuids(state.models, [guid]);
+   if (!ref) return;
+@@ -65,18 +83,10 @@ function selectByGuid(guid: string): void {
+ /** The AIM group inside Relationship records; null when there is nothing to show. */
+ export function AimDerivedRelations() {
+   const { relations, more } = useAimDerivedRelations();
+-  const models = useViewerStore((s) => s.models);
+-  const selectableGuids = useMemo(() => {
+-    const guids = new Set<string>();
+-    for (const r of relations) {
+-      if (r.other.guid !== null && resolveGuids(models, [r.other.guid]).length > 0) guids.add(r.other.guid);
+-    }
+-    return guids;
+-  }, [relations, models]);
+   if (relations.length === 0 && more <= 0) return null;
+   return (
+     <Suspense fallback={null}>
+-      <AimDerivedRelationsBody relations={relations} more={more} selectableGuids={selectableGuids} onSelectGuid={selectByGuid} />
++      <AimDerivedRelationsBody relations={relations} more={more} />
+     </Suspense>
+   );
+ }
+diff --git a/apps/viewer/src/aim/aimPanelStore.ts b/apps/viewer/src/aim/aimPanelStore.ts
+index d68fe331..db99dad5 100644
+--- a/apps/viewer/src/aim/aimPanelStore.ts
++++ b/apps/viewer/src/aim/aimPanelStore.ts
+@@ -15,7 +15,8 @@
+ 
+ import { create } from 'zustand';
+ 
+-import { SOURCE, type AimPanelData, type OutboundMessage } from './bridge-protocol.js';
++import type { AimPanelData, OutboundMessage } from './bridge-protocol.js';
++import { SOURCE } from './bridge-core.js';
+ 
+ export type { AimPanelData };
+ 
+diff --git a/apps/viewer/src/aim/autoloadLatch.test.ts b/apps/viewer/src/aim/autoloadLatch.test.ts
+new file mode 100644
+index 00000000..973951ee
+--- /dev/null
++++ b/apps/viewer/src/aim/autoloadLatch.test.ts
+@@ -0,0 +1,37 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import { createAutoloadLatch } from './autoloadLatch.js';
++
++describe('createAutoloadLatch (lenivý most AIM)', () => {
++  it('callback prihlásený pred koncom autoloadu beží pri konci, raz', () => {
++    const latch = createAutoloadLatch(true);
++    let calls = 0;
++    latch.onComplete(() => calls++);
++    assert.strictEqual(calls, 0);
++    latch.complete();
++    latch.complete();
++    assert.strictEqual(calls, 1);
++  });
++
++  it('most pripojený až po konci autoloadu dostane callback hneď', () => {
++    const latch = createAutoloadLatch(true);
++    latch.complete();
++    let calls = 0;
++    latch.onComplete(() => calls++);
++    assert.strictEqual(calls, 1);
++  });
++
++  it('odhlásený callback (odpojený most) sa nezavolá', () => {
++    const latch = createAutoloadLatch(true);
++    let calls = 0;
++    const off = latch.onComplete(() => calls++);
++    off();
++    latch.complete();
++    assert.strictEqual(calls, 0);
++  });
++});
+diff --git a/apps/viewer/src/aim/autoloadLatch.ts b/apps/viewer/src/aim/autoloadLatch.ts
+new file mode 100644
+index 00000000..d937cd36
+--- /dev/null
++++ b/apps/viewer/src/aim/autoloadLatch.ts
+@@ -0,0 +1,34 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Koniec `?models=` autoloadu pre lenivý most (AimBridgeMount.tsx): udalosť zachytí
++ * vstupná časť od prvého renderu, most sa môže pripojiť až po nej a MODELS_LOADED
++ * ohlási hneď po pripojení.
++ */
++
++export interface AutoloadLatch {
++  /** V embede beží autoload z URL. */
++  active: boolean;
++  /** Callback na koniec autoloadu; hneď, ak už nastal. Vráti odhlásenie. */
++  onComplete: (fn: () => void) => () => void;
++}
++
++export function createAutoloadLatch(active: boolean): AutoloadLatch & { complete: () => void } {
++  let done = false;
++  const waiting = new Set<() => void>();
++  return {
++    active,
++    onComplete: (fn) => {
++      if (done) { fn(); return () => {}; }
++      waiting.add(fn);
++      return () => { waiting.delete(fn); };
++    },
++    complete: () => {
++      done = true;
++      for (const fn of waiting) fn();
++      waiting.clear();
++    },
++  };
++}
+diff --git a/apps/viewer/src/aim/bridge-core.ts b/apps/viewer/src/aim/bridge-core.ts
+new file mode 100644
+index 00000000..310aacd9
+--- /dev/null
++++ b/apps/viewer/src/aim/bridge-core.ts
+@@ -0,0 +1,23 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Časť mosta AIM, ktorú potrebujú moduly vo vstupnom balíku (aimPanelStore, strom,
++ * derivations-protocol): bez ďalších importov, aby kvôli nim nebol v eager balíku
++ * celý bridge-protocol.ts (ten ich znova exportuje).
++ */
++
++import type { EntityRef } from '../store/index.js';
++import type { GuidResolvableModel } from './bridge-protocol.js';
++
++export const SOURCE = 'aim-bridge' as const;
++
++/** GlobalId for a given EntityRef, or undefined if the model/entity is gone. */
++export function guidForEntity(
++  models: ReadonlyMap<string, GuidResolvableModel>,
++  ref: EntityRef,
++): string | undefined {
++  const model = models.get(ref.modelId);
++  return model?.ifcDataStore?.entities.getGlobalId(ref.expressId) || undefined;
++}
+diff --git a/apps/viewer/src/aim/bridge-protocol.ts b/apps/viewer/src/aim/bridge-protocol.ts
+index 6ee2e325..d10e0234 100644
+--- a/apps/viewer/src/aim/bridge-protocol.ts
++++ b/apps/viewer/src/aim/bridge-protocol.ts
+@@ -13,8 +13,9 @@
+ 
+ import type { EntityRef } from '../store/index.js';
+ import type { DerivedRelationWire } from './derivations-protocol.js';
++import { SOURCE } from './bridge-core.js';
+ 
+-export const SOURCE = 'aim-bridge' as const;
++export { SOURCE, guidForEntity } from './bridge-core.js';
+ 
+ /** Blue-400 — matches the old FILTER_COLOR in the AIM three.js viewer. */
+ export const FILTER_COLOR = '#60a5fa';
+@@ -389,15 +390,6 @@ export function resolveGuids(
+   return refs;
+ }
+ 
+-/** GlobalId for a given EntityRef, or undefined if the model/entity is gone. */
+-export function guidForEntity(
+-  models: ReadonlyMap<string, GuidResolvableModel>,
+-  ref: EntityRef,
+-): string | undefined {
+-  const model = models.get(ref.modelId);
+-  return model?.ifcDataStore?.entities.getGlobalId(ref.expressId) || undefined;
+-}
+-
+ /** Minimal structural view of an entity table for selector resolution. */
+ export interface SelectorEntityTable {
+   count: number;
+diff --git a/apps/viewer/src/aim/derivations-protocol.ts b/apps/viewer/src/aim/derivations-protocol.ts
+index 0f7787e7..ee4c5bf6 100644
+--- a/apps/viewer/src/aim/derivations-protocol.ts
++++ b/apps/viewer/src/aim/derivations-protocol.ts
+@@ -11,7 +11,7 @@
+  * budget. Mirror of the host types in the AIM repo (`lib/derivations.ts`).
+  */
+ 
+-import { SOURCE } from './bridge-protocol.js';
++import { SOURCE } from './bridge-core.js';
+ 
+ /**
+  * One derivation rule of the AIM layer (D-089, host `derivation_rules`) with
+diff --git a/apps/viewer/src/aim/docBridge.ts b/apps/viewer/src/aim/docBridge.ts
+index a7e1b150..07c2f8d2 100644
+--- a/apps/viewer/src/aim/docBridge.ts
++++ b/apps/viewer/src/aim/docBridge.ts
+@@ -13,7 +13,6 @@
+ import { parsePlacement, serializePlacement } from '@ifc-lite/drawing-underlay';
+ import { useViewerStore } from '../store/index.js';
+ import { toGlobalIdFromModels } from '../store/globalId.js';
+-import { selectPickedGlobalId } from '../components/viewer/viewport-selection.js';
+ import { SOURCE, resolveGuids, type InboundMessage, type OutboundMessage } from './bridge-protocol.js';
+ import { noteIssue, track } from './command-gate.js';
+ import { documentLayout } from './tabs-protocol.js';
+@@ -87,7 +86,7 @@ export function handleDocumentMessage(msg: InboundMessage): boolean {
+  * Výber prvku z odkazu vo výkrese ako klik do modelu (AIM D-082, D-130): selekcia
+  * (ENTITY_SELECTED ide hostovi ako pri kliku) a panel vlastností, kamera ostáva.
+  */
+-function selectAsClick(guid: string): boolean {
++function selectAsClick(guid: string, selectPickedGlobalId: (globalId: number) => void): boolean {
+   const state = useViewerStore.getState();
+   const [ref] = resolveGuids(state.models, [guid]);
+   if (!ref) return false;
+@@ -96,11 +95,14 @@ function selectAsClick(guid: string): boolean {
+   return true;
+ }
+ 
+-/** Udalosti viewera o dokumentoch späť hostovi; volá sa pri štarte relácie mosta. */
+-export function wireDocumentEvents(post: (msg: OutboundMessage) => void): void {
++/**
++ * Udalosti viewera o dokumentoch späť hostovi; volá sa pri štarte relácie mosta. Výber ako klik
++ * dodá most zo vstupného balíka (lenivý modul neimportuje viewport-selection.ts).
++ */
++export function wireDocumentEvents(post: (msg: OutboundMessage) => void, selectPickedGlobalId: (globalId: number) => void): void {
+   // Viditeľný rozsah karty z predošlej relácie nepatrí novej (AIM D-127).
+   useAimDocRegionStore.setState({ visible: null });
+-  listenDocLinks(selectAsClick); // DOCUMENT_LINKS: popisky výkresu -> prvky (AIM D-130, docLinks.ts)
++  listenDocLinks((guid) => selectAsClick(guid, selectPickedGlobalId)); // DOCUMENT_LINKS: popisky výkresu -> prvky (AIM D-130, docLinks.ts)
+ 
+   // Kalibrácia uložená vo viewri → host ju perzistuje do
+   // documents.properties._georef (D-072). Session-only bez hosta.
+diff --git a/apps/viewer/src/aim/hierarchyPanel.ts b/apps/viewer/src/aim/hierarchyPanel.ts
+index 0f0040a2..16e273f3 100644
+--- a/apps/viewer/src/aim/hierarchyPanel.ts
++++ b/apps/viewer/src/aim/hierarchyPanel.ts
+@@ -10,4 +10,5 @@
+  */
+ 
+ export { useAimDecorationsStore } from './aimDecorationsStore';
+-export { guidForEntity, type AimTreeDecoration } from './bridge-protocol';
++export { guidForEntity } from './bridge-core';
++export type { AimTreeDecoration } from './bridge-protocol';
+-- 
+2.43.0
+
+
+From 2f476c65755c68ae7c94ca06e1647a0f2bf0984c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:32:44 +0000
+Subject: [PATCH 2/3] =?UTF-8?q?perf(viewer):=20strop=20viewer-entry-js-byt?=
+ =?UTF-8?q?es=203178068=20->=203156601,=20viewer-eager-js-bytes=2019369949?=
+ =?UTF-8?q?=20->=2019344560=20(zn=C3=AD=C5=BEenie)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Namerané na 8df30e22 (lenivý most AIM), vite build + measure-bundle.mjs.
+Pred (release/aim-2026-10-22-6, 9711d534): entry 3178068, eager 19387319.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01JdhmUCMyzNPHfCUyxYGwTX
+---
+ tests/perf-ratchets/bundle.json | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/tests/perf-ratchets/bundle.json b/tests/perf-ratchets/bundle.json
+index c84994de..c7d3a4ed 100644
+--- a/tests/perf-ratchets/bundle.json
++++ b/tests/perf-ratchets/bundle.json
+@@ -22,14 +22,14 @@
+       "metric": "raw-bytes",
+       "unit": "bytes",
+       "description": "raw size of the single <script type=\"module\" src> chunk of apps/viewer/dist/index.html",
+-      "ceiling": 3178068,
++      "ceiling": 3156601,
+       "tolerance": {
+         "kind": "relative",
+         "value": 0.001
+       },
+       "provenance": {
+-        "commit": "42b8030b77c74f16306151a6e506ad29ea3e87fe",
+-        "measuredAt": "2026-10-22T16:39:00.000Z"
++        "commit": "8df30e22f1c3f417816d5d3b2194464457b91f97",
++        "measuredAt": "2026-10-22T18:32:38.000Z"
+       }
+     },
+     {
+@@ -37,14 +37,14 @@
+       "metric": "raw-bytes",
+       "unit": "bytes",
+       "description": "summed raw size of every JS file dist/index.html loads eagerly: the module <script src> plus <link rel=modulepreload>",
+-      "ceiling": 19369949,
++      "ceiling": 19344560,
+       "tolerance": {
+         "kind": "relative",
+         "value": 0.001
+       },
+       "provenance": {
+-        "commit": "5313b1eb5ab5f110a1b576d762c0cbda6f4281b7",
+-        "measuredAt": "2026-10-21T13:48:53.000Z"
++        "commit": "8df30e22f1c3f417816d5d3b2194464457b91f97",
++        "measuredAt": "2026-10-22T18:32:38.000Z"
+       }
+     }
+   ]
+-- 
+2.43.0
+
+
+From 0eecf4fec44e8fc7c630143ec92a936aaa5233c5 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:36:49 +0000
+Subject: [PATCH 3/3] =?UTF-8?q?test(aim):=20muta=C4=8Dn=C3=A9=20d=C3=B4kaz?=
+ =?UTF-8?q?y=20latchu=20autoloadu=20(leniv=C3=BD=20most,=203x=20OBSERVED)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01JdhmUCMyzNPHfCUyxYGwTX
+---
+ .../aim-lazy-bridge/mutations/README.md       | 41 +++++++++++++++++
+ .../mutations/complete-repeats.patch          | 12 +++++
+ .../mutations/late-subscriber-waits.patch     | 12 +++++
+ .../aim-lazy-bridge/mutations/summary.json    | 44 +++++++++++++++++++
+ .../mutations/unsubscribe-noop.patch          | 13 ++++++
+ 5 files changed, 122 insertions(+)
+ create mode 100644 docs/architecture/evidence/aim-lazy-bridge/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-lazy-bridge/mutations/complete-repeats.patch
+ create mode 100644 docs/architecture/evidence/aim-lazy-bridge/mutations/late-subscriber-waits.patch
+ create mode 100644 docs/architecture/evidence/aim-lazy-bridge/mutations/summary.json
+ create mode 100644 docs/architecture/evidence/aim-lazy-bridge/mutations/unsubscribe-noop.patch
+
+diff --git a/docs/architecture/evidence/aim-lazy-bridge/mutations/README.md b/docs/architecture/evidence/aim-lazy-bridge/mutations/README.md
+new file mode 100644
+index 00000000..429518e4
+--- /dev/null
++++ b/docs/architecture/evidence/aim-lazy-bridge/mutations/README.md
+@@ -0,0 +1,41 @@
++<!-- This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this
++     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
++
++# AIM lazy bridge: surgical mutation evidence
++
++The change loads the AIM bridge (`AimBridge.tsx` and everything only it imports) lazily, from the new
++`AimBridgeMount.tsx`, and only when the viewer is embedded. The entry part keeps the embed flag, the
++autoload veil and a latch for the end of the `?models=` autoload (`autoloadLatch.ts`), so a bridge that
++attaches after the autoload has finished still announces `MODELS_LOADED`. The test
++(`autoloadLatch.test.ts`) imports the new module, so reverting it to the base makes the test file fail to
++load and the CI revert oracle (`Changed tests observe production`) reports INCONCLUSIVE. Each decision of
++the latch was instead checked with a surgical mutation.
++
++Each patch is written mutant→fixed (the orientation of `git diff base...head`); the oracle reverse-applies
++it. Every run ended `OBSERVED` (exit 0) with restoration verified, against base
++`release/aim-2026-10-22-6` (`9711d534`). The full records are in `summary.json`.
++
++| Patch | Mutation | Test that went red |
++|---|---|---|
++| `late-subscriber-waits.patch` | a bridge that subscribes after the autoload ended waits forever (no immediate call) | `autoloadLatch.test.ts` |
++| `complete-repeats.patch` | a second end of the autoload calls the subscribers again | `autoloadLatch.test.ts` |
++| `unsubscribe-noop.patch` | unsubscribing (bridge unmounted) does not remove the callback | `autoloadLatch.test.ts` |
++
++`AimBridgeMount.tsx`, the `AimBridge.tsx` wiring, `bridge-core.ts` and the moved `resolveGuids` in
++`AimDerivedRelations.tsx` are React and bundler glue with no unit test; they were verified live: the built
++viewer before and after the change embedded in a host page with `AC20-FZK-Haus.ifc` autoloaded
++(same origin), Playwright posting `QUERY bounds`, `SET_SECTION` 40 %, `FOCUS`, `SET_SECTION` 60 % and
++`ACK_REQUEST` synchronously on `MODELS_LOADED`. Both builds answered the same: `READY`, `MODELS_LOADED`,
++`QUERY_RESULT` ok, `APPLIED` ok with no issues, section at 60 % (3.391 m), focus 1; the veil showed from the
++first frames. The standalone viewer (no parent frame) no longer fetches the bridge chunks
++(`viewQueries`, `sectionBox`).
++
++## Replay
++
++```bash
++node scripts/check-test-revert-oracle.mjs --base <base> \
++  --only apps/viewer/src/aim/autoloadLatch.ts \
++  --test apps/viewer/src/aim/autoloadLatch.test.ts \
++  --mutation /tmp/lazy-bridge-mut/late-subscriber-waits.patch --ci --json
++```
+diff --git a/docs/architecture/evidence/aim-lazy-bridge/mutations/complete-repeats.patch b/docs/architecture/evidence/aim-lazy-bridge/mutations/complete-repeats.patch
+new file mode 100644
+index 00000000..5017e9ac
+--- /dev/null
++++ b/docs/architecture/evidence/aim-lazy-bridge/mutations/complete-repeats.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/autoloadLatch.ts a/apps/viewer/src/aim/autoloadLatch.ts
++index e2efa8f1..d937cd36 100644
++--- b/apps/viewer/src/aim/autoloadLatch.ts
+++++ a/apps/viewer/src/aim/autoloadLatch.ts
++@@ -28,6 +28,7 @@ export function createAutoloadLatch(active: boolean): AutoloadLatch & { complete
++     complete: () => {
++       done = true;
++       for (const fn of waiting) fn();
+++      waiting.clear();
++     },
++   };
++ }
+diff --git a/docs/architecture/evidence/aim-lazy-bridge/mutations/late-subscriber-waits.patch b/docs/architecture/evidence/aim-lazy-bridge/mutations/late-subscriber-waits.patch
+new file mode 100644
+index 00000000..e05d828b
+--- /dev/null
++++ b/docs/architecture/evidence/aim-lazy-bridge/mutations/late-subscriber-waits.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/autoloadLatch.ts a/apps/viewer/src/aim/autoloadLatch.ts
++index ca3f563e..d937cd36 100644
++--- b/apps/viewer/src/aim/autoloadLatch.ts
+++++ a/apps/viewer/src/aim/autoloadLatch.ts
++@@ -21,6 +21,7 @@ export function createAutoloadLatch(active: boolean): AutoloadLatch & { complete
++   return {
++     active,
++     onComplete: (fn) => {
+++      if (done) { fn(); return () => {}; }
++       waiting.add(fn);
++       return () => { waiting.delete(fn); };
++     },
+diff --git a/docs/architecture/evidence/aim-lazy-bridge/mutations/summary.json b/docs/architecture/evidence/aim-lazy-bridge/mutations/summary.json
+new file mode 100644
+index 00000000..dea9a734
+--- /dev/null
++++ b/docs/architecture/evidence/aim-lazy-bridge/mutations/summary.json
+@@ -0,0 +1,44 @@
++{
++  "complete-repeats": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/autoloadLatch.test.ts; that file has a green, attributable baseline.",
++    "base": "9711d5349abff3b90577058d7bb27f18294cf91a",
++    "head": "2f476c65755c68ae7c94ca06e1647a0f2bf0984c",
++    "production": [
++      "apps/viewer/src/aim/autoloadLatch.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/autoloadLatch.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "late-subscriber-waits": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/autoloadLatch.test.ts; that file has a green, attributable baseline.",
++    "base": "9711d5349abff3b90577058d7bb27f18294cf91a",
++    "head": "2f476c65755c68ae7c94ca06e1647a0f2bf0984c",
++    "production": [
++      "apps/viewer/src/aim/autoloadLatch.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/autoloadLatch.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "unsubscribe-noop": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/autoloadLatch.test.ts; that file has a green, attributable baseline.",
++    "base": "9711d5349abff3b90577058d7bb27f18294cf91a",
++    "head": "2f476c65755c68ae7c94ca06e1647a0f2bf0984c",
++    "production": [
++      "apps/viewer/src/aim/autoloadLatch.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/autoloadLatch.test.ts"
++    ],
++    "restoration": "verified"
++  }
++}
+diff --git a/docs/architecture/evidence/aim-lazy-bridge/mutations/unsubscribe-noop.patch b/docs/architecture/evidence/aim-lazy-bridge/mutations/unsubscribe-noop.patch
+new file mode 100644
+index 00000000..fcd6f88f
+--- /dev/null
++++ b/docs/architecture/evidence/aim-lazy-bridge/mutations/unsubscribe-noop.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/autoloadLatch.ts a/apps/viewer/src/aim/autoloadLatch.ts
++index ebe2eeff..d937cd36 100644
++--- b/apps/viewer/src/aim/autoloadLatch.ts
+++++ a/apps/viewer/src/aim/autoloadLatch.ts
++@@ -23,7 +23,7 @@ export function createAutoloadLatch(active: boolean): AutoloadLatch & { complete
++     onComplete: (fn) => {
++       if (done) { fn(); return () => {}; }
++       waiting.add(fn);
++-      return () => {};
+++      return () => { waiting.delete(fn); };
++     },
++     complete: () => {
++       done = true;
+-- 
+2.43.0
+
