@@ -90,7 +90,7 @@ export type ViewerOp =
   | { op: "hide" | "show" | "isolate"; guids: string[] }
   | { op: "colorize_sel"; selector: OpsSelector; color: string }
   | { op: "hide_sel" | "show_sel" | "isolate_sel"; selector: OpsSelector }
-  | { op: "select"; guid: string; panel?: SelectPanel }
+  | { op: "select"; guid: string; /** Všetky GUIDy výberu, keď je ich viac (#217); `guid` je prvý. */ guids?: string[]; panel?: SelectPanel }
   | { op: "show_all" }
   | { op: "reset_colors" }
   /** Zruší oranžové zvýraznenie z show_in_3d, ostatné farby nechá (D-101, #94). */
@@ -275,13 +275,13 @@ function parsePanel(arg: string): SelectPanel | undefined {
 }
 
 /** Op výberu (D-082) s voliteľným panelom (D-113). */
-export function selectOp(guid: string, panel?: SelectPanel): string {
+export function selectOp(guid: string | readonly string[], panel?: SelectPanel): string {
   const kv = [
     panel?.tab ? `t=${panel.tab}` : "",
     panel?.section ? `s=${panel.section}` : "",
     panel?.focus ? `p=${encName(panel.focus.pset)}~v=${encName(panel.focus.property)}` : "",
   ].filter(Boolean);
-  return `select:${kv.length ? `~${kv.join("~")}` : ""}:${guid}`;
+  return `select:${kv.length ? `~${kv.join("~")}` : ""}:${typeof guid === "string" ? guid : guid.join(".")}`;
 }
 
 const vec = (n: number[], i: number) => ({ x: n[i], y: n[i + 1], z: n[i + 2] });
@@ -335,9 +335,10 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if ((op === "hide_sel" || op === "show_sel" || op === "isolate_sel") && sel) {
       out.push({ op, selector: sel });
     } else if (op === "select" && guids.length > 0) {
-      // Výber je jeden prvok (D-082) - prípadné ďalšie GUIDy sa ignorujú.
+      // Výber ako klik (D-082); viac GUIDov = viacnásobný výber (#217), panel patrí prvému.
       const panel = parsePanel(arg);
-      out.push({ op, guid: guids[0], ...(panel ? { panel } : {}) });
+      const all = [...new Set(guids)];
+      out.push({ op, guid: all[0], ...(all.length > 1 ? { guids: all } : {}), ...(panel ? { panel } : {}) });
     } else if (op === "show_all" || op === "reset_colors" || op === "section_clear" || op === "clear_focus" || op === "clear_selection") {
       out.push({ op });
     } else if (op === "section_gizmo" && (arg === "0" || arg === "1")) {
@@ -459,7 +460,7 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     case "isolate_sel":
       return { type: "ISOLATE", selector: o.selector };
     case "select":
-      return { type: "SELECT", guid: o.guid, ...(o.panel ? { panel: o.panel } : {}) };
+      return { type: "SELECT", guid: o.guid, ...(o.guids ? { guids: o.guids } : {}), ...(o.panel ? { panel: o.panel } : {}) };
     case "show_all":
       return { type: "SHOW_ALL" };
     case "reset_colors":

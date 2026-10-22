@@ -473,7 +473,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "UI AKCIA: UKÁŽ alebo VYBER prvky v 3D. Predvolene zvýrazní (oranžovo) a priblíži prvky - 'ukáž / " +
       "zobraz X', aj jednu miestnosť (skrytú viewer zapne). Celú triedu pošli filtrom (ifc_type, query, " +
       "predefined_type), konkrétne prvky v ids_or_refs (object_ref, kód prvku ako 'SD04.0001' aj číslo miestnosti ako '3.02' " +
-      "netreba hľadať vopred). select=true = VYBERIE jeden prvok ako klik myšou a otvorí jeho IFC panel vlastností ('vyber / označ " +
+      "netreba hľadať vopred). select=true = VYBERIE prvok (viac prvkov v ids_or_refs = viacnásobný výber, odpoveď vráti všetky) ako klik myšou a otvorí jeho IFC panel vlastností ('vyber / označ " +
       "X', 'ukáž jeho vlastnosti'): panel_section properties | quantities, highlight 'Pset.Vlastnosť' (aj Qto výmera) rozbalí " +
       "sadu, prescrolluje a zvýrazní riadok do ďalšieho výberu; výsledok povie, či vlastnosť na prvku je (property.in_aim, " +
       "property_focus.found zo živého viewera). Panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
@@ -503,7 +503,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         predefined_type: { type: "string", description: "Filter namiesto ids: PredefinedType" },
         query: { type: "string", description: "Filter namiesto ids: fulltext (názov/ref/typ)" },
         object_type: { type: "string", description: "Filter namiesto ids: objects.object_type" },
-        select: { type: "boolean", description: "Vybrať jeden prvok ako klik (id_or_ref) a otvoriť panel vlastností" },
+        select: { type: "boolean", description: "Vybrať prvok ako klik (id_or_ref alebo ids_or_refs, viac prvkov = všetky vybrané) a otvoriť panel vlastností prvého" },
         panel_section: { type: "string", enum: ["properties", "quantities"], description: "select: sekcia IFC panelu" },
         highlight: { type: "string", description: "select: zvýrazniť vlastnosť, napr. 'Pset_WallCommon.FireRating' alebo 'Qto_DoorBaseQuantities.Width'" },
       },
@@ -863,6 +863,9 @@ export interface ToolExecution {
 }
 
 /** Runtime jednej /api/ask požiadavky: vykonáva tools + zbiera zdroje a trace. */
+/** Strop prvkov jedného viacnásobného výberu (#217): GUIDy idú v URL `ops`. */
+const MAX_SELECT_REFS = 200;
+
 export class AskToolRuntime {
   private sources = new Map<string, AskSource>();
   readonly trace: AskToolTrace[] = [];
@@ -948,9 +951,8 @@ export class AskToolRuntime {
         return this.searchDocuments(input);
       case "show_in_3d":
         if (input.select === true) {
-          // D-115: výber ako klik je režim show_in_3d; jeden prvok aj z ids_or_refs.
-          const first = Array.isArray(input.ids_or_refs) ? input.ids_or_refs[0] : undefined;
-          return this.selectIn3d({ ...input, id_or_ref: input.id_or_ref ?? first });
+          // D-115: výber ako klik je režim show_in_3d; viac prvkov z ids_or_refs je viacnásobný výber (#217).
+          return this.selectIn3d(input);
         }
         return this.showIn3d(input);
       case "style_in_3d":
@@ -2225,7 +2227,44 @@ export class AskToolRuntime {
       this.actions.push({ type: "navigate", url: `/ifc?ops=clear_selection::&r=${Date.now().toString(36)}`, label: "Zrušiť výber" });
       return { ok: true, cleared: "výber" };
     }
-    const ref = String(input.id_or_ref ?? "").trim();
+    const refs = [
+      ...new Set(
+        [input.id_or_ref, ...(Array.isArray(input.ids_or_refs) ? input.ids_or_refs : [])]
+          .map((r) => String(r ?? "").trim())
+          .filter(Boolean)
+      ),
+    ];
+    if (refs.length === 0) throw new Error("Prvok neexistuje — najprv ho nájdi cez search_objects.");
+    if (refs.length > MAX_SELECT_REFS) throw new Error(`Výber má najviac ${MAX_SELECT_REFS} prvkov, dostal som ${refs.length}.`);
+    const items: Array<{ label: string; guid: string; obj: ObjectRow | null }> = [];
+    for (const ref of refs) {
+      const item = await this.guidForSelect(ref);
+      if (!items.some((i) => i.guid === item.guid)) items.push(item);
+    }
+    const [primary] = items;
+
+    const panel = selectPanelInput(input);
+    const multi = items.length > 1;
+    this.actions.push({
+      type: "navigate",
+      url: `/ifc?ops=${encodeURIComponent(selectOp(items.map((i) => i.guid), panel))}&r=${Date.now().toString(36)}`,
+      label: multi ? `3D: výber ${items.length} prvkov` : `3D: výber ${primary.label}`,
+    });
+    // D-127: či zvýraznená vlastnosť na prvku je, povie hneď AIM; IFC panel to potvrdí v stave po príkaze.
+    const property = panel?.focus && primary.obj ? await this.propertyOf(primary.obj, panel.focus.pset, panel.focus.property) : undefined;
+    return {
+      ok: true,
+      opened: "3d",
+      selected: multi ? items.map((i) => i.label) : primary.label,
+      ifc_guid: primary.guid,
+      ...(multi ? { ifc_guids: items.map((i) => i.guid), selected_count: items.length } : {}),
+      ...(panel ? { panel } : {}),
+      ...(property ? { property } : {}),
+    };
+  }
+
+  /** Prvok výberu -> popis a aktuálny IFC GUID (D-082, D-102); chyba, ak ho viewer nemá. */
+  private async guidForSelect(ref: string): Promise<{ label: string; guid: string; obj: ObjectRow | null }> {
     const obj = await this.resolveObject(ref);
     let label = ref;
     let guid: string | undefined;
@@ -2242,20 +2281,11 @@ export class AskToolRuntime {
       if (!guid) {
         throw new Error(`${label} nemá IFC GUID — nie je v 3D modeli (kartu otvor cez open_node).`);
       }
-    } else if (ref && !isUuid(ref)) {
+    } else if (!isUuid(ref)) {
       guid = (await resolveNamesToGuids([ref])).get(ref); // kód prvku (D-102)
     }
-    if (!guid) throw new Error("Prvok neexistuje — najprv ho nájdi cez search_objects.");
-
-    const panel = selectPanelInput(input);
-    this.actions.push({
-      type: "navigate",
-      url: `/ifc?ops=${encodeURIComponent(selectOp(guid, panel))}&r=${Date.now().toString(36)}`,
-      label: `3D: výber ${label}`,
-    });
-    // D-127: či zvýraznená vlastnosť na prvku je, povie hneď AIM; IFC panel to potvrdí v stave po príkaze.
-    const property = panel?.focus && obj ? await this.propertyOf(obj, panel.focus.pset, panel.focus.property) : undefined;
-    return { ok: true, opened: "3d", selected: label, ifc_guid: guid, ...(panel ? { panel } : {}), ...(property ? { property } : {}) };
+    if (!guid) throw new Error(`Prvok ${ref} neexistuje — najprv ho nájdi cez search_objects.`);
+    return { label, guid, obj };
   }
 
   /** `pset.property` v dátach AIM prvku (výskyt s dedičnosťou z typu, D-021) - D-127. */
