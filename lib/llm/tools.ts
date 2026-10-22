@@ -560,6 +560,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             "show_all=zrušiť skrývanie, izoláciu, X-ray aj rez (rez vráti set_section), reset_colors=zrušiť ofarbenie a lens, " +
             "legend=len legenda AIM chat lens (legend_size; predvolene malá karta), bez filtrov",
         },
+        opacity: {
+          type: "number",
+          description:
+            "colorize: 0.05 až 1. Menej ako 1 = priesvitná farba (prvky vnútri a za nimi je vidno), 1 = plná farba. " +
+            "Bez hodnoty sú IfcSpace a zóny priesvitné, ostatné prvky plné. Viewer kreslí jednu úroveň priesvitnosti, " +
+            "presná hodnota ešte nemení stupeň. Veľké prvky (steny, dosky) farbi priesvitne, ak majú ostať vidno ďalšie farby",
+        },
         mode: {
           type: "string",
           enum: ["add", "replace"],
@@ -707,6 +714,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             properties: {
               label: { type: "string" },
               color: { type: "string", description: "Hex RRGGBB" },
+              opacity: { type: "number", description: "0.05 až 1; menej ako 1 = priesvitná farba, 1 = plná" },
               system: { type: "string" },
               system_type: { type: "string" },
               zone: { type: "string" },

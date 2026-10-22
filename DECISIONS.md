@@ -6518,3 +6518,32 @@ pole `inactive` v stave Lens. Preto trasa fungovala až ako druhé volanie.
   nového parametra (D-114, rozšírenie len opisom). Nový tool netreba.
 - Opis `style_in_3d` pravidlo uvádza; inventár `MCP-TOOLS.md` sa nezmenil (test registra prešiel).
 - *Evaly D-057 nepobežali* (cloud bez Supabase kľúčov); otázka `style-overlay-path-on-top` je v `eval/questions.json`.
+
+### D-139 - style_in_3d colorize: priesvitnosť farby (`opacity`) a predvolene priesvitné priestory a zóny
+**Status:** rozhodnuté (2026-10-22, issue #222; číslo D-139 navrhnuté orchestrátorovi, potvrdenie čaká). Nadväzuje na D-125
+bod 4 (priesvitná varianta farby priestoru), D-138 (priorita pravidiel), #175 (priestor = vyplnená podstava, Samuelovo rozhodnutie).
+
+**Kontext:** colorize IfcSpace (izby 2.01 s 3 dverami, schodom a východom) dal nepriehľadnú hmotu, prvky vnútri nebolo vidno.
+D-125 bod 4 rieši priesvitnosť vo forku pre pravidlo podľa triedy; farba cez `ids_or_refs` (miestnosti z `ifc_query`) ju
+nedostala a model nemal spôsob, ako priesvitnosť žiadať pre iné veľké prvky (dosky, steny).
+
+**Overenie existujúceho (D-098, D-114):** Lens už pozná akciu `transparent` (farba + priesvitnosť), `xray` a `isolate`; wire
+formát nenesie hodnotu alfa. Chýba teda len host: kedy akciu `transparent` poslať. Fork netreba meniť, patch nie je.
+
+**Rozhodnutie (host, `lib/llm/style-lens.ts`, `style-plan.ts`):**
+1. Nový voliteľný parameter `opacity` (0.05 až 1, na úrovni volania aj skupiny v `groups`). `opacity < 1` pri colorize pošle
+   pravidlo ako `transparent` (rovnaká farba, priesvitná). `opacity = 1` vynúti plnú farbu.
+2. Bez `opacity` sú priesvitné skupiny, ktoré sú len z IfcSpace / IfcSpatialZone / IfcZone: podľa tried filtra, pri
+   konkrétnych prvkoch (`ids_or_refs`, `global_ids`) podľa tried prvkov v DB. Skupina sa v odpovedi označí `opacity` a
+   `opacity_default`.
+3. Priesvitnosť má jednu úroveň (fork alfa 0,3): hodnota `opacity` rozhoduje len medzi plnou a priesvitnou farbou, odpoveď to
+   neskrýva. Presný stupeň by vyžadoval pole alfa vo wire a patch forku; otvorené, kým to nikto nepotrebuje.
+4. Varovanie v odpovedi: plne ofarbené veľké prvky (steny, dosky, strecha, krytina) v colorize s viac skupinami môžu zakryť
+   ostatné farby, odpoveď navrhne `opacity=0.3`.
+5. Duplicitné pravidlá pre priestory z issue (obyčajné a "miestnosti"): host posiela jedno pravidlo na skupinu; druhé pravidlo
+   v súhrne Lens pochádza z lens viewera (výplň miestností, D-119/D-125), host ho nevytvára. Nezmenené, vysvetlené tu.
+
+**Zavrhnuté:** nový tool alebo `space_display` (D-114); zmena renderera (upstream); `opacity` v pôvodnej hodnote ako alfa
+vo wire (fork patch bez využitia).
+**Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `style-colorize-space-translucent` je v
+`eval/questions.json`.

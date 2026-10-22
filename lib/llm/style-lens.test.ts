@@ -90,3 +90,33 @@ describe("xray so storey filtrom (#187)", () => {
     expect(xrayStoreyWarning(["1NP"], true)).toMatch(/clear_section=true zrušil/);
   });
 });
+
+describe("priehľadnosť colorize (D-139, #222)", () => {
+  const rulesOf = (a: AskAction) => (JSON.parse(Buffer.from(opsOf(a).split(":").pop() ?? "", "base64url").toString()) as { r: { n: string; a: string }[] }).r;
+
+  it("colorize IfcSpace je predvolene priesvitný, opacity=1 vynúti plnú farbu", async () => {
+    const pushed: AskAction[] = [];
+    const { result } = await execLensStyle("colorize", { ifc_type: "IfcSpace", color: "22c55e" }, (a) => pushed.push(a), OPTS);
+    expect(rulesOf(pushed[0])[0].a).toBe("transparent");
+    expect((result.groups as GroupInfo[])[0].opacity).toBe(0.3);
+    await execLensStyle("colorize", { ifc_type: "IfcSpace", color: "22c55e", opacity: 1 }, (a) => pushed.push(a), OPTS);
+    expect(rulesOf(pushed[1])[0].a).toBe("colorize");
+  });
+
+  it("opacity < 1 spraví priesvitnou aj iný prvok, opacity mimo rozsahu je chyba", async () => {
+    const pushed: AskAction[] = [];
+    await execLensStyle("colorize", { ifc_type: "IfcWall", color: "ef4444", opacity: 0.3 }, (a) => pushed.push(a), OPTS);
+    expect(rulesOf(pushed[0])[0].a).toBe("transparent");
+    await expect(execLensStyle("colorize", { ifc_type: "IfcWall", color: "ef4444", opacity: 2 }, () => {}, OPTS)).rejects.toThrow(/opacity/);
+  });
+
+  it("plne ofarbená stena spolu s ďalšou farbou varuje, že zakryje ostatné", async () => {
+    const { result } = await execLensStyle(
+      "colorize",
+      { groups: [{ color: "999999", ifc_type: "IfcWall" }, { color: "f97316", ifc_type: "IfcDoor" }] },
+      () => {},
+      OPTS,
+    );
+    expect((result.warnings as string[]).join(" ")).toMatch(/zakryť/);
+  });
+});

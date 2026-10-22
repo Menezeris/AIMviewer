@@ -36,6 +36,13 @@ export function legendSize(raw: unknown): LegendSize | undefined {
   return v as LegendSize;
 }
 
+/** Priestory a zóny: veľké objemy, ktoré plná farba zmení na nepriehľadnú hmotu (D-139, #222). */
+const SPACE_LIKE_TYPES = new Set(["ifcspace", "ifcspatialzone", "ifczone"]);
+/** Ďalšie veľké prvky, ktoré pri plnej farbe zakryjú to, čo obklopujú (len varovanie). */
+const BULKY_TYPES = new Set(["ifcslab", "ifcwall", "ifcwallstandardcase", "ifcroof", "ifccovering", "ifcplate", "ifccurtainwall"]);
+
+const lowerTypes = (types: string[]): string[] => types.map((t) => t.toLowerCase());
+
 export interface LensStyleOptions {
   /** IFC domény -> triedy (zdieľané so selektorom v `tools.ts`). */
   domainTypes: Record<string, string[]>;
@@ -48,10 +55,27 @@ export interface GroupInfo {
   /** Pri viacerých systémoch každý s typom a počtom členov (D-125, #177). */
   system_members?: { system: string; type: string | null; elements: number }[];
   warning?: string;
+  /** Priesvitná farba (D-139): hodnota, ktorú žiadal model, alebo predvolená pre priestory. */
+  opacity?: number;
+  opacity_default?: string;
   zones?: string[];
   storey?: string;
   document?: string;
   elements?: number;
+}
+
+/** Predvolená priesvitnosť priestorov a zón pri colorize; viewer ju kreslí fixnou alfou akcie transparent (fork 0,3). */
+const SPACE_DEFAULT_OPACITY = 0.3;
+
+/** Skupina colorize je len z priestorov / zón: podľa tried filtra, pri konkrétnych prvkoch podľa tried v DB. */
+async function isSpaceLike(scope: ScopeResolver, f: StyleFilter, types: string[], guidCount: number): Promise<boolean> {
+  const lt = lowerTypes(types);
+  if (lt.length > 0) return lt.every((t) => SPACE_LIKE_TYPES.has(t));
+  if (guidCount === 0) return false;
+  const ids = await scope.explicitIds(f);
+  if (!ids || ids.size === 0) return false;
+  const rows = await scope.rows([...ids]);
+  return rows.length > 0 && rows.every((r) => SPACE_LIKE_TYPES.has((r.ifc_type ?? "").toLowerCase()) || r.object_type === "space");
 }
 
 export async function resolveFilter(
@@ -249,11 +273,29 @@ export async function execLensStyle(
   const budget = { left: LENS_GUID_CAP };
   const rules: LensWireRule[] = [];
   const infos: GroupInfo[] = [];
+  const bulkyOpaque: string[] = [];
+  let hasOtherColored = false;
   for (const g of groups) {
     const info: GroupInfo = { label: g.label, ...(g.color ? { color: `#${g.color}` } : {}) };
     const filter = await resolveFilter(scope, g.filter, opts, info, budget);
     // Izolovaná (X-ray) skupina bez farby ostane v pôvodnom vzhľade (len kanál izolácie / ghost viewera).
-    const a = action === "transparent" ? "transparent" : g.color ? "colorize" : "isolate";
+    let a: LensWireRule["a"] = action === "transparent" ? "transparent" : g.color ? "colorize" : "isolate";
+    if (a === "colorize") {
+      // Priehľadnosť (D-139, #222): opacity < 1 = priesvitná varianta; bez opacity ju dostanú priestory a zóny
+      // (podľa tried filtra, pri ids_or_refs podľa tried prvkov v DB), opacity=1 vynúti plnú farbu.
+      const spaceLike = g.opacity === undefined && (await isSpaceLike(scope, g.filter, filter.types, filter.guids?.length ?? 0));
+      if ((g.opacity !== undefined && g.opacity < 1) || spaceLike) {
+        a = "transparent";
+        info.opacity = g.opacity ?? SPACE_DEFAULT_OPACITY;
+        if (spaceLike) info.opacity_default = "priestory a zóny sú predvolene priesvitné (opacity=1 = plná farba)";
+      } else {
+        const lt = lowerTypes(filter.types);
+        if (lt.length > 0 && lt.every((t) => BULKY_TYPES.has(t))) bulkyOpaque.push(g.label);
+        else hasOtherColored = true;
+      }
+    } else if (a === "transparent" && g.opacity !== undefined) {
+      info.opacity = g.opacity;
+    }
     rules.push({ n: g.label, a, ...(g.color ? { c: `#${g.color}` } : {}), g: [lensGroup(filter)] });
     infos.push(info);
   }
@@ -287,6 +329,12 @@ export async function execLensStyle(
   if (action === "xray") {
     const storeys = [...new Set(infos.flatMap((i) => (i.storey ? [i.storey] : [])))];
     if (storeys.length > 0) warnings.push(xrayStoreyWarning(storeys, input.clear_section === true));
+  }
+  if (bulkyOpaque.length > 0 && (hasOtherColored || groups.length > 1)) {
+    warnings.push(
+      `Plne ofarbené veľké prvky (${bulkyOpaque.join(", ")}) môžu zakryť ostatné farby v tomto volaní. ` +
+        "Daj im opacity=0.3 (priesvitné) alebo ich nefarb a zvýrazni len to, čo je vnútri.",
+    );
   }
   const verb = { colorize: "ofarbenie", transparent: "priehľadnosť", isolate: "izolácia", xray: "X-ray" }[action] ?? action;
   push({
