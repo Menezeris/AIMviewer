@@ -1035,6 +1035,22 @@
       "notes": "D-137 (issue #223): ifc_measure(route=escape, a=4.01, show=true) -> červená plná čiara 1,6 m nad podlahou a stupňami, stredom dverí; odpoveď cituje dĺžku (dolný odhad) a východ. Overená hodnota z v078: 52,8 m (D-121), na produkčnej revízii neoverené."
     },
     {
+      "id": "select-class-by-filter",
+      "category": "viewer",
+      "question": "Vyber vo vieweri všetky klapky (IfcDamper).",
+      "expect": { "tools_called": ["show_in_3d"] },
+      "verified": false,
+      "notes": "D-151 (issue #242): show_in_3d(ifc_type=IfcDamper, select=true) vyberie celú triedu jedným volaním, bez search_objects a vymenúvania ids. Počet neoverený (prod model)."
+    },
+    {
+      "id": "hide-model-except-route",
+      "category": "viewer",
+      "question": "Vypni všetky ostatné potrubia vo VZT okrem zaznačenej trasy VV.03.02.022.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-151 (issue #246): style_in_3d(action=hide, model=VZT, exclude_ids_or_refs=[trasa]) jedným volaním, ASR sa nedotkne."
+    },
+    {
       "id": "panel-scroll-down",
       "category": "viewer",
       "question": "Posuň panel vlastností trochu nižšie.",

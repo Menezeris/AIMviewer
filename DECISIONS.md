@@ -6702,6 +6702,44 @@ jedného stredu; hĺbka podesty je odhad z plochy (pri tvare L nepresná, čiara
 
 ---
 
+### D-145 - "Ukázať v 3D" pri PDF s podlažím: Solo podlažia a rezové nástroje namiesto samotného X-ray
+
+**Dátum:** 2026-10-22 · **Issue:** #214 · **Fork PR:** Menezeris/ifc-lite#116 · **Nadväzuje na:** D-072, D-098, D-104 (krok 4), D-105, D-114
+
+**Kontext:** Tlačidlo "Ukázať v 3D" pri otvorenom PDF poslalo `DOCUMENT_SHOW_3D` a host odpovedal X-ray lens (D-105). Používateľ videl len X-ray kontext bez izolovaného podlažia a bez možnosti posunúť rez. Viewer pritom Solo podlažia aj panel Add a plane (Down, Front, Side, Face) má, len sa po kliku nepoužili.
+
+**Rozhodnutie (len sprístupnenie existujúcich funkcií viewera, D-098; žiadny nový tool, host sa nemení):**
+1. Fork (`AimDocumentShow3d.tsx`, nový čistý modul `show3dSoloPlan.ts`): dokument viazaný na podlažie (`storeyGuid` z `DOCUMENTS_LOAD`, D-072) po kliku zavolá existujúce `applyLevelDisplayMode('solo', refs)` (podlažie vo všetkých modeloch federácie) a `setActiveTool('section')`, kde je Add a plane.
+2. Dokument bez podlažia alebo s nenačítaným podlažím ostáva pri `DOCUMENT_SHOW_3D` a X-ray lens (D-104, D-105) bez zmeny.
+3. Wire protokol sa nemení, AIMviewer nemá kód. `DOCUMENT_SHOW_3D` sa pre dokument s podlažím neposiela.
+
+**Kompromis:** Pri Solo sa X-ray lens hosta nepošle, takže prvky konkrétnej strany PDF sa nezvýraznia, viditeľné je celé podlažie. Dôvod: lens `isolate` by skryl zvyšok podlažia a rušil by Solo; zvýraznenie strany v Solo podlaží je možné doplniť neskôr (napr. farbením cez existujúci lens), ak ho Samuel bude chcieť.
+
+**Poradie nasadenia:** najprv fork (Menezeris/ifc-lite#116), potom AIMviewer (tento záznam); zmena v AIMvieweri je len dokumentácia.
+
+**Otvorené:** živé overenie vo forku (či `setActiveTool('section')` pri prázdnom reze vždy ukáže menu Add a plane) a plný CI forku, ktoré v cloud session nepobežali.
+
+---
+
+### D-151 - Výber z filtra (`show_in_3d select`) a skrytie s výnimkou (`style_in_3d hide`), len v hoste
+
+**Dátum:** 2026-10-22 · **Issue:** #242, #246 · **Nadväzuje na:** D-066, D-096, D-098, D-102, D-114, D-115
+
+**Kontext:** (#242) `show_in_3d(ifc_type=IfcDamper, select=true)` zlyhal, hoci zvýraznenie tým istým filtrom ide; model musel najprv volať `search_objects` a poslať 24 ids. (#246) "vypni ostatné potrubia okrem trasy" vyžadovalo dve volania (hide modelu, potom show trasy); `isolate` by skryl aj ostatné modely.
+
+**Najprv to, čo existuje (D-098, D-114):** ops sú `;`-oddelené a viewer ich aplikuje postupne (`applyOps` v `ifc-viewer.tsx`), `hide_sel`/`show` a viacnásobný `select` bridge už existujú. Najbližšie tooly: `show_in_3d` (filter je už pri zvýraznení), `style_in_3d` (hide, selektor modelu), `ifc_query`. Fork netreba, nový tool netreba.
+
+**Rozhodnutie (parametre existujúcich toolov, žiadny nový tool, žiadna zmena forku):**
+1. `show_in_3d select=true` prijme aj `global_ids` a filter `ifc_type`, `predefined_type`, `query`, `object_type` (rovnaké kritériá ako zvýraznenie). Filter rozloží host na GUIDy a pošle jeden viacnásobný `select`. Strop 200 prvkov (ako dnes pri ids); viac zhôd je chyba s radou zúžiť, výber by inak bol ticho neúplný. Prvky bez GUID sa nahlásia (`skipped_without_guid`).
+2. `style_in_3d action=hide` prijme `exclude_ids_or_refs` (id, object_ref, kód prvku) a `exclude_global_ids` (spolu najviac 300). Host výnimky rozloží na GUIDy a: pri selektore (model, trieda, doména) a pri systéme/zóne/podlaží pošle za skrytie op `show` výnimiek v tej istej akcii; pri výbere z DB ich odpočíta zo skrývaných GUIDov. Neznáma výnimka sa nahlási (`excluded_skipped`), samé neznáme výnimky skrytie zastavia (inak by sa skrylo všetko).
+3. "Izolácia len v rámci jedného modelu" = `hide` + `model` + výnimky; samostatný `scope` pri `isolate` sa nezavádza (isolate ide cez Lens a skrýva všetko mimo pravidla). `exclude_*` s inou akciou ako hide je chyba s touto radou.
+
+**Zavrhnuté:** nový parameter `scope` pri `isolate` (Lens nevie "skry len v modeli", vyžadovalo by to zmenu forku); nový tool na výber.
+
+**Doplnok (2026-10-22, časť 2 z #246): `style_in_3d action=clear_isolation`.** Samostatné zrušenie len X-ray a izolácie z chatu bez rezu, skrytých prvkov a farieb. Najprv to, čo existuje (D-098): fork má bridge správu `APPLY_LENS mode=unisolate` (`aimLens.ts`: `releaseIsolation` uvoľní kanál izolácie alebo ghost, ak ho drží chat; AIM lens s farbami nechá), host ju dnes posielal len spolu so `SHOW_ALL` pri `show_all`. Fork sa preto nemení, patch netreba. Rozhodnutie (D-114, parameter existujúceho toolu): nová hodnota `action=clear_isolation` (bez filtrov) pošle op `clear_isolation::`, ktorý host preloží len na `APPLY_LENS unisolate`. Obmedzenie: ruší izoláciu a X-ray, ktoré nastavil chat (`isolate`, `xray`); ručne zapnutý duch alebo izolácia používateľa ostanú, kanál nepatrí chatu. Zavrhnuté: nová bridge správa vo forku (duplikuje `unisolate`), `scope` pri `show_all` (menil by význam existujúcej akcie).
+
+---
+
 ### D-146 - Posun panela vlastností z chatu (`set_view_mode panel_scroll`) a opravená cesta k riadku Qto (#183)
 
 **Dátum:** 2026-10-22 · **Issue:** #183 · **Nadväzuje na:** D-113, D-114, D-127, D-098
