@@ -6451,8 +6451,8 @@ Archív samotný 20. 10. zníži z 6,2 GB na cca 1,3 GB; na 160 MB za deň treba
 Skilly forku `steward` a `release-train` preto hovoria, že odkaz "Ako vyskúšať" je len pre Samuela a session
 skúša na lokálnom vieweri s testovacím modelom.
 
-**Otvorené pre Samuela (nie je v tomto PR):**
-- *Predčítanie motora len pri pripojení:* `preloadEngineModels` len pri `initialize`/`tools/list`, nie pri prvej
+**Otvorené pre Samuela (nie je v prvom PR):**
+- *Predčítanie motora len pri pripojení (schválené, dodatok nižšie):* `preloadEngineModels` len pri `initialize`/`tools/list`, nie pri prvej
   požiadavke na studenú inštanciu (časť D-101). Inštancia, ktorá obslúži len DB tools (78 až 90 % volaní),
   potom nič nesťahuje; cena je dlhšie prvé `ifc_*` volanie na novej inštancii.
 - *Modely cez CDN Vercelu:* host servíruje `/models/archive/...` ako rewrite na archív s dlhou cache, prehliadače
@@ -6469,3 +6469,30 @@ skúša na lokálnom vieweri s testovacím modelom.
 `NEXT_PUBLIC_IFC_ARCHIVE=1` (Production aj Preview) a redeploy, potom v DevTools uvidí `v078.ifc.gz`
 (cca 4,5 MB) a pri ďalšom otvorení "(disk cache)". Live kanál, uložené pohľady (`model_revisions`
 podľa kľúča) a `ifc_models` sa nemenia.
+
+**Dodatok (2026-10-22, Samuel schválil návrh a s podmienkou "zahriatie motora smie spomaliť najviac jeden
+prompt v rozhovore"): predčítanie motora len v rozhovore, ktorý motor používa.**
+- *Meranie (`mcp_call_log` 19. až 21. 10., 1 278 volaní, rozhovor = volania s medzerou do 15 min):* 26
+  rozhovorov, 182 studených inštancií (1 na 7 volaní, pri evaloch s paralelnými subagentmi až 51 v jednom
+  rozhovore), 18 rozhovorov použilo motor, 209 volaní motora. 48 studených inštancií začalo rovno volaním
+  motora a 45 volaní motora čakalo na načítanie aj s dnešným predčítaním, takže "každá inštancia predčíta"
+  nespĺňala podmienku ani dnes; predčítanie pomáha len inštanciám, ktoré začnú DB toolom.
+- *Varianty na tých istých dátach (stiahnutie = oba modely):*
+  | Variant | Stiahnutí 19./20./21. 10. | Pomalé prompty |
+  |---|---|---|
+  | doteraz: každá studená inštancia | 38 / 105 / 39 = 182 | ako dnes |
+  | pri `initialize`/`tools/list` | nerieši recykláciu, ďalšie inštancie rozhovoru by čakali | viac |
+  | len pri volaní motora (čisto lenivo) | 14 / 55 / 14 = 83 (odhad: teplé volanie ide na poslednú inštanciu) | 83, každá nová inštancia s motorom |
+  | **motor použitý v posledných 30 min (zvolené)** | 25 / 81 / 29 = 135 | 17 = prvé volanie motora po pauze (18 rozhovorov s motorom) |
+- *Rozhodnutie:* `lib/mcp/engine-warm.ts`. Volanie toolu motora (`ifc_*`, `search_all`, `calibrate_underlay`)
+  predčíta hneď. Iná požiadavka (DB tool, `initialize`, `tools/list`) na nezahriatej inštancii v `after()`
+  overí v `mcp_call_log` (index `tool, created_at`), či niekto volal motor za posledných 30 min, najviac raz
+  za minútu na inštanciu. Ak áno, predčíta ako doteraz, inak nič. DB tools na motor nečakajú (kontrola aj
+  predčítanie bežia po odpovedi). Chyba kontroly = nepredčítať. Okno 30 min, nie 15: pauza v rozhovore
+  dlhšia než 15 min by spomalila druhý prompt (15 min: 130 stiahnutí a 20 pomalých, 60 min: 149 a 11).
+  Signál je spoločný pre všetkých (demo má jedného používateľa a evaly).
+- *Úspora:* 182 -> 135 stiahnutí (-26 %), s archívom 6,3 GB -> cca 0,97 GB za 3 dni (-85 %). Na deň cca
+  180 / 580 / 210 MB; nad cieľom 160 MB je hlavne 20. 10. s celým kolom evalu (pravidlo 5, `eval/MCP-EVAL.md`).
+  DB tools s motorom ako záložnou cestou (`get_object` kód len v IFC, `set_section relative_to=ceiling`,
+  mená v tooloch viewera) načítajú motor až pri potrebe a nie sú v signáli.
+- *Evaly D-057 nepobežali* (cloud session nemá Supabase kľúče; LLM vrstva, tooly ani prompt sa nemenia).

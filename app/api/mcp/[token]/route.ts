@@ -20,7 +20,8 @@ import { expectApplied, recentViewerCount } from "@/lib/live/warm-channel";
 import { mcpInstructions } from "@/lib/llm/system-prompt";
 import type { AskAction } from "@/lib/llm/actions";
 import { AskToolRuntime } from "@/lib/llm/tools";
-import { callAction, rejectedCallRow, writeCallLog } from "@/lib/mcp/call-log";
+import { callAction, engineUseQuery, rejectedCallRow, writeCallLog } from "@/lib/mcp/call-log";
+import { ENGINE_WANT_WINDOW_MS, engineUsedSince, engineWarmDecision, isEngineTool, payloadToolNames, type EngineWarmState } from "@/lib/mcp/engine-warm";
 import { mcpToolDefinitions } from "@/lib/mcp/tool-list";
 import { defaultSavedViewDeps } from "@/lib/views/runtime";
 import { SAVED_VIEW_TOOL_NAMES, execSavedViewTool } from "@/lib/views/tools";
@@ -75,8 +76,35 @@ const ENGINE_ENABLED = process.env.ENGINE_ENABLED === "1" || ENGINE_SPIKE;
 
 /** Prvé volanie v tejto inštancii funkcie = studený štart (D-100). */
 let instanceWarm = false;
-/** Predčítanie motora už v tejto inštancii beží alebo dobehlo (D-101). */
-let enginePreloaded = false;
+/** Zahriatie motora v tejto inštancii (D-101, D-135): predčítané / kedy sa overovalo použitie. */
+let engineWarm: EngineWarmState = { preloaded: false, checkedAt: null };
+
+const ENGINE_TOOLS_LOGGED = [...ENGINE_TOOL_NAMES, SEARCH_ALL_TOOL.name, CALIBRATE_UNDERLAY_TOOL.name];
+
+async function preloadEngine(): Promise<void> {
+  const [{ preloadEngineModels }] = await Promise.all([import("@/lib/engine/preload"), import("@/lib/engine/run")]);
+  await preloadEngineModels();
+}
+
+/** Zahriatie motora podľa D-135 (`lib/mcp/engine-warm.ts`); beží v `after()`, odpoveď nečaká. */
+function warmEngine(payload: unknown): void {
+  const methods = payloadMethods(payload);
+  const req = {
+    engineCall: payloadToolNames(payload).some((n) => isEngineTool(n, ENGINE_TOOL_NAMES)),
+    connect: methods.some((m) => m === "initialize" || m === "tools/list"),
+  };
+  const { decision, state } = engineWarmDecision(engineWarm, Date.now(), req);
+  engineWarm = state;
+  if (decision === "preload") after(preloadEngine);
+  if (decision === "check") {
+    after(async () => {
+      const since = new Date(Date.now() - ENGINE_WANT_WINDOW_MS);
+      if (engineWarm.preloaded || !(await engineUsedSince(since, ENGINE_TOOLS_LOGGED, engineUseQuery))) return;
+      engineWarm = { ...engineWarm, preloaded: true };
+      await preloadEngine();
+    });
+  }
+}
 
 /** Čas, ktorý volanie strávilo načítaním modelov do cache motora (0 = boli teplé). */
 async function engineLoadMs(since: number): Promise<number> {
@@ -229,17 +257,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     callTool,
     onRejected: (name, unknown) => after(() => writeCallLog(rejectedCallRow(name, unknown, process.env.VERCEL_REGION ?? null))),
   };
-  // D-100: Claude sa pripája (initialize / tools/list) -> modely motora sa načítajú vopred,
-  // prvé ifc_* volanie potom nečaká na stiahnutie a parsovanie.
-  // D-101: aj prvá požiadavka na studenú inštanciu (Claude sa nepripája nanovo, ale
-  // volanie trafí novú inštanciu) - import motora a modely, kým beží DB tool.
-  if (ENGINE_ENABLED && (!enginePreloaded || payloadMethods(payload).some((m) => m === "initialize" || m === "tools/list"))) {
-    enginePreloaded = true;
-    after(async () => {
-      const [{ preloadEngineModels }] = await Promise.all([import("@/lib/engine/preload"), import("@/lib/engine/run")]);
-      await preloadEngineModels();
-    });
-  }
+  // D-100/D-101: modely motora sa načítajú vopred, aby ifc_* volanie nečakalo; D-135: len keď
+  // rozhovor motor používa (tool motora teraz alebo v posledných 30 min), DB tools nečakajú.
+  if (ENGINE_ENABLED) warmEngine(payload);
   const response = await handleMcpPayload(payload, deps);
   if (response === null) return new NextResponse(null, { status: 202, headers: NO_STORE });
   return NextResponse.json(response, { headers: NO_STORE });
