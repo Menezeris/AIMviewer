@@ -1,0 +1,1084 @@
+From 0a34a84619721e154d9a4d1f62261e2d43c8b409 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 17:43:07 +0000
+Subject: [PATCH 1/2] AIM D-125 doplnok (#175): podstava ofarbenej miestnosti v
+ 3D nad krytinou, miestnosti bez bledej hmoty
+
+Farba AIM chat lens na IfcSpace (varianta transparent, alfa 0,3) sa v rendereri
+miesala so 70 % povodnej azurovej farby miestnosti a kreslila nepriehladne.
+Miestnosti z varianty ~vol sa uz do renderera neposielaju (aim/aimLensPaint.ts),
+ostanu nativne priesvitne. Podstavu ofarbenych a vybranych miestnosti kresli v 3D
+mimo podorysu vrstva AimRoomFill3d cez vyplne renderera (kanal IfcAnnotation,
+hlbkovy test), 3 cm nad vrchom podlahovej krytiny, vo farbe Lens ako v podoryse.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LSBxuy8e3xKmGida9PDdRn
+---
+ apps/viewer/src/aim/AimRoomFillLayer.tsx      |  89 +++++++-
+ apps/viewer/src/aim/aimLensPaint.ts           |  32 +++
+ apps/viewer/src/aim/aimLensPlan.ts            |   5 +-
+ apps/viewer/src/aim/aimRoomFill3d.test.ts     | 114 ++++++++++
+ apps/viewer/src/aim/aimRoomFill3d.ts          | 205 ++++++++++++++++++
+ apps/viewer/src/aim/aimRoomFill3dStore.ts     |  25 +++
+ .../viewer/useViewportSymbolicUploads.ts      |  13 +-
+ apps/viewer/src/hooks/useLens.ts              |  10 +-
+ docs/FORK_MAINTENANCE.md                      |   2 +
+ 9 files changed, 481 insertions(+), 14 deletions(-)
+ create mode 100644 apps/viewer/src/aim/aimLensPaint.ts
+ create mode 100644 apps/viewer/src/aim/aimRoomFill3d.test.ts
+ create mode 100644 apps/viewer/src/aim/aimRoomFill3d.ts
+ create mode 100644 apps/viewer/src/aim/aimRoomFill3dStore.ts
+
+diff --git a/apps/viewer/src/aim/AimRoomFillLayer.tsx b/apps/viewer/src/aim/AimRoomFillLayer.tsx
+index 0978f824..f8ab87b6 100644
+--- a/apps/viewer/src/aim/AimRoomFillLayer.tsx
++++ b/apps/viewer/src/aim/AimRoomFillLayer.tsx
+@@ -13,9 +13,12 @@
+  * D-125 (#175): to isté aj v 3D, keď je aktívny vodorovný rez a kamera hľadí
+  * zhora (pôdorys cez `set_section` + `set_camera top`), pre miestnosti preťaté
+  * rezom. Vyplní aj vybranú miestnosť farbou výberu, nielen ofarbenú Lens.
++ *
++ * Doplnok D-125 (#175): v 3D mimo pôdorysu kreslí podstavu `AimRoomFill3d` cez
++ * výplne renderera, kúsok nad podlahovou krytinou a zakrytú stenami pred ňou.
+  */
+ 
+-import { useMemo } from 'react';
++import { useEffect, useMemo } from 'react';
+ import type { MeshData } from '@ifc-lite/geometry';
+ import { IfcTypeEnum, type SpatialNode } from '@ifc-lite/data';
+ import { useViewerStore } from '../store/index.js';
+@@ -27,6 +30,8 @@ import { placementCoordinateInfo } from '@/lib/section/placement-coordinate-info
+ import { getGlobalRenderer } from '@/hooks/useBCF';
+ import { cutsRoom, footprintOutline, footprintPath, looksDown, spaceFootprint, type Footprint, type Vec3 } from './aimRoomFill.js';
+ import { sectionRenderBounds } from './sectionRange.js';
++import { fillsRoom, floorLevel, roomFills, type Box3, type RoomFill3d } from './aimRoomFill3d.js';
++import { useAimRoomFill3dStore } from './aimRoomFill3dStore.js';
+ 
+ /** Farba vybranej miestnosti, ktorú Lens neofarbila. */
+ const SELECTED_COLOR = '#2563eb';
+@@ -40,12 +45,12 @@ interface Room {
+   footprint: Footprint;
+ }
+ 
+-/** Meshe miestností podľa globalId zo všetkých modelov federácie. */
+-function spaceMeshes(state: State): Map<number, MeshData[]> {
++/** Meshe triedy (IfcSpace, IfcCovering) podľa globalId zo všetkých modelov federácie. */
++function meshesOf(state: State, ifcType = 'IfcSpace'): Map<number, MeshData[]> {
+   const out = new Map<number, MeshData[]>();
+   const add = (meshes: readonly MeshData[] | undefined) => {
+     for (const m of meshes ?? []) {
+-      if (m.ifcType !== 'IfcSpace') continue;
++      if (m.ifcType !== ifcType) continue;
+       const list = out.get(m.expressId);
+       if (list) list.push(m);
+       else out.set(m.expressId, [m]);
+@@ -56,6 +61,24 @@ function spaceMeshes(state: State): Map<number, MeshData[]> {
+   return out;
+ }
+ 
++/** Obálky krytín vo svete (kandidáti na podlahu; výšku vyberie `floorLevel`). */
++function coveringBoxes(state: State): Box3[] {
++  const out: Box3[] = [];
++  for (const parts of meshesOf(state, 'IfcCovering').values()) {
++    const b: Box3 = { minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity };
++    for (const { positions: p, origin } of parts) {
++      const [ox, oy, oz] = [origin?.[0] ?? 0, origin?.[1] ?? 0, origin?.[2] ?? 0];
++      for (let i = 0; i + 2 < p.length; i += 3) {
++        b.minX = Math.min(b.minX, p[i] + ox); b.maxX = Math.max(b.maxX, p[i] + ox);
++        b.minY = Math.min(b.minY, p[i + 1] + oy); b.maxY = Math.max(b.maxY, p[i + 1] + oy);
++        b.minZ = Math.min(b.minZ, p[i + 2] + oz); b.maxZ = Math.max(b.maxZ, p[i + 2] + oz);
++      }
++    }
++    if (Number.isFinite(b.minY)) out.push(b);
++  }
++  return out;
++}
++
+ /** Popisy miestností (LongName, inak Name) podľa lokálneho id v modeli. */
+ function spaceLabels(root: SpatialNode | undefined): Map<number, string> {
+   const out = new Map<number, string>();
+@@ -120,12 +143,58 @@ function roomsToFill(
+   return rooms;
+ }
+ 
++/** Ofarbené alebo vybrané miestnosti? (spoločná podmienka 2D aj 3D výplne) */
++function useColored(): boolean {
++  return useViewerStore((s) => (s.activeLensId !== null && s.lensColorMap.size > 0) || s.selectedEntityIds.size > 0 || s.selectedEntityId !== null);
++}
++
++/**
++ * Podstava ofarbených a vybraných miestností v 3D (doplnok D-125, #175): výplne
++ * renderera nad krytinou; `off` = kreslí SVG pôdorys, farba by sa zdvojila.
++ */
++function AimRoomFill3d({ off }: { off: boolean }) {
++  const on = useColored() && !off;
++  const lensColorMap = useViewerStore((s) => s.lensColorMap);
++  const lensHidden = useViewerStore((s) => s.lensHiddenIds);
++  const selectedIds = useViewerStore((s) => s.selectedEntityIds);
++  const selectedId = useViewerStore((s) => s.selectedEntityId);
++  const sectionPlane = useViewerStore((s) => s.sectionPlane);
++  const hidden = useViewerStore((s) => s.hiddenEntities);
++  const isolated = useViewerStore((s) => s.isolatedEntities);
++  const models = useViewerStore((s) => s.models);
++  const geometryResult = useViewerStore((s) => s.geometryResult);
++  const setFills = useAimRoomFill3dStore((s) => s.setFills);
++  const meshes = useMemo(() => (on ? meshesOf(useViewerStore.getState()) : new Map<number, MeshData[]>()), [on, models, geometryResult]);
++  const coverings = useMemo(() => (on ? coveringBoxes(useViewerStore.getState()) : []), [on, models, geometryResult]);
++  const footprints = useMemo(() => new Map<number, Footprint | null>(), [meshes]);
++  const fills = useMemo(() => {
++    const out: RoomFill3d[] = [];
++    if (!on || meshes.size === 0) return out;
++    const state = useViewerStore.getState();
++    const cutY = horizontalCut(state);
++    for (const [id, color] of roomColors(state, meshes)) {
++      const parts = meshes.get(id);
++      if (!parts || !state.isEntityVisible(id) || state.lensHiddenIds.has(id)) continue;
++      let fp = footprints.get(id);
++      if (fp === undefined) {
++        fp = spaceFootprint(parts);
++        footprints.set(id, fp);
++      }
++      const level = fp ? floorLevel(fp, coverings) : 0;
++      if (fp && fillsRoom(level, cutY)) out.push(...roomFills(fp, level, color));
++    }
++    return out;
++  }, [on, meshes, coverings, footprints, lensColorMap, lensHidden, selectedIds, selectedId, sectionPlane, hidden, isolated]);
++  useEffect(() => setFills(fills), [fills, setFills]);
++  useEffect(() => () => setFills([]), [setFills]);
++  return null;
++}
++
+ export function AimRoomFillLayer() {
+   const planView = useViewerStore((s) => s.underlayViewLocked && !s.underlaySplitView);
+   // Vodorovný rez v 3D (D-125): vrstva sleduje kameru, či hľadí zhora.
+   const downCut = useViewerStore((s) => !planView && activeSectionPlane(s)?.axis === 'down');
+   const lensColorMap = useViewerStore((s) => s.lensColorMap);
+-  const activeLensId = useViewerStore((s) => s.activeLensId);
+   const selectedIds = useViewerStore((s) => s.selectedEntityIds);
+   const selectedId = useViewerStore((s) => s.selectedEntityId);
+   const sectionPlane = useViewerStore((s) => s.sectionPlane);
+@@ -133,14 +202,14 @@ export function AimRoomFillLayer() {
+   const models = useViewerStore((s) => s.models);
+   const geometryResult = useViewerStore((s) => s.geometryResult);
+   const project = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
+-  const colored = (activeLensId !== null && lensColorMap.size > 0) || selectedIds.size > 0 || selectedId !== null;
++  const colored = useColored();
+   const tick = useProjectorTick((planView || downCut) && colored && !!project);
+   const camera = downCut ? getGlobalRenderer()?.getCamera() : null;
+   const plan3d = downCut && !!camera && looksDown(camera.getPosition(), camera.getTarget());
+   const active = (planView || plan3d) && colored && !!project;
+ 
+   // Pôdorys sa počíta raz na geometriu; farby, výber, rez a podlažie len vyberajú.
+-  const meshes = useMemo(() => (active ? spaceMeshes(useViewerStore.getState()) : new Map()), [active, models, geometryResult]);
++  const meshes = useMemo(() => (active ? meshesOf(useViewerStore.getState()) : new Map()), [active, models, geometryResult]);
+   const footprints = useMemo(() => new Map<number, Footprint | null>(), [meshes]);
+   const rooms = useMemo(() => {
+     if (!active || meshes.size === 0) return [];
+@@ -149,10 +218,13 @@ export function AimRoomFillLayer() {
+     return plan3d && cutY === null ? [] : roomsToFill(state, meshes, footprints, cutY);
+   }, [active, plan3d, meshes, footprints, lensColorMap, selectedIds, selectedId, sectionPlane, storeyGuid]);
+ 
+-  if (!active || rooms.length === 0 || !project) return null;
++  const fill3d = <AimRoomFill3d off={planView || plan3d} />;
++  if (!active || rooms.length === 0 || !project) return fill3d;
+   void tick; // nový tick = tie isté body na nových súradniciach obrazovky
+   const toScreen = (p: Vec3) => project(p);
+   return (
++    <>
++    {fill3d}
+     <svg className="absolute inset-0 pointer-events-none z-20" style={{ overflow: 'visible' }} data-aim-room-fill={rooms.length}>
+       {rooms.map((room) => {
+         const d = footprintPath(room.footprint.triangles, toScreen);
+@@ -184,5 +256,6 @@ export function AimRoomFillLayer() {
+         ) : null;
+       })}
+     </svg>
++    </>
+   );
+ }
+diff --git a/apps/viewer/src/aim/aimLensPaint.ts b/apps/viewer/src/aim/aimLensPaint.ts
+new file mode 100644
+index 00000000..ff6d08bd
+--- /dev/null
++++ b/apps/viewer/src/aim/aimLensPaint.ts
+@@ -0,0 +1,32 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Farby AIM chat lens do renderera (AIM D-125 doplnok, #175). Malý modul bez
++ * závislostí: volá ho eager `useLens` (blok AIM-FORK), logika lens je lenivá.
++ *
++ * Renderer farbu s alfou 0,3 (akcia `transparent`) kreslí nepriehľadne a zmiešanú
++ * so 70 % pôvodnej farby miestnosti, takže ofarbené miestnosti a zóny sú bledá
++ * azúrová hmota. Prvky z varianty `~vol` (IfcSpace, IfcSpatialZone) sa preto do
++ * renderera neposielajú: ostanú natívne priesvitné, farbu Lens miestnosti nesie
++ * podstava (`AimRoomFill3d`); `lensColorMap`, počty a súhrn sa nemenia.
++ */
++
++/** Prípona id priesvitnej varianty pravidla pre miestnosti a zóny (D-125). */
++export const VOLUME_SUFFIX = '~vol';
++/** Meno AIM chat lens (rovnaké ako `AIM_LENS_NAME` v `aimLensPlan.ts`). */
++const AIM_LENS = 'AIM chat';
++
++export function paintedColors<T>(
++  colors: Map<number, T>,
++  lens: { name: string; rules: readonly { id: string }[] } | null | undefined,
++  ruleIds: ReadonlyMap<string, readonly number[]>,
++): Map<number, T> {
++  if (!lens || lens.name !== AIM_LENS) return colors;
++  const skip = lens.rules.filter((r) => r.id.endsWith(VOLUME_SUFFIX)).flatMap((r) => ruleIds.get(r.id) ?? []);
++  if (skip.length === 0) return colors;
++  const out = new Map(colors);
++  for (const id of skip) out.delete(id);
++  return out;
++}
+diff --git a/apps/viewer/src/aim/aimLensPlan.ts b/apps/viewer/src/aim/aimLensPlan.ts
+index 1ee44f14..93a7ef0f 100644
+--- a/apps/viewer/src/aim/aimLensPlan.ts
++++ b/apps/viewer/src/aim/aimLensPlan.ts
+@@ -20,6 +20,7 @@
+ import { isFilterGroup, type FilterGroup, type FilterRule } from '@ifc-lite/rules';
+ import type { AutoColorLegendEntry, AutoColorSpec, Lens, LensRule } from '@ifc-lite/lens';
+ import { AIM_LENS_MODES, type LensInboundMessage } from './lens-protocol.js';
++import { VOLUME_SUFFIX } from './aimLensPaint.js';
+ 
+ export const AIM_LENS_NAME = 'AIM chat';
+ export const MAX_AIM_RULES = 24;
+@@ -33,8 +34,8 @@ const AUTO_SOURCES = new Set(['ifcType', 'attribute', 'property', 'quantity', 'c
+ const ACTIONS = new Set(['colorize', 'transparent', 'hide', 'isolate']);
+ /** Triedy, ktoré viewer kreslí ako priehľadný objem: plná farba by zakryla prvky v nich (D-125). */
+ export const VOLUME_CLASSES = ['IfcSpace', 'IfcSpatialZone'];
+-/** Prípona id priesvitnej varianty pravidla pre miestnosti a zóny. */
+-export const VOLUME_SUFFIX = '~vol';
++/** Prípona id priesvitnej varianty pravidla pre miestnosti a zóny (aj v `aimLensPaint.ts`). */
++export { VOLUME_SUFFIX };
+ const isVariant = (r: LensRule) => r.id.endsWith(VOLUME_SUFFIX);
+ 
+ export type ApplyLensMessage = Extract<LensInboundMessage, { type: 'APPLY_LENS' }>;
+diff --git a/apps/viewer/src/aim/aimRoomFill3d.test.ts b/apps/viewer/src/aim/aimRoomFill3d.test.ts
+new file mode 100644
+index 00000000..623e5aab
+--- /dev/null
++++ b/apps/viewer/src/aim/aimRoomFill3d.test.ts
+@@ -0,0 +1,114 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import assert from 'node:assert/strict';
++import { describe, it } from 'node:test';
++
++import { spaceFootprint, type Footprint } from './aimRoomFill.js';
++import { FILL_ALPHA, LIFT, fillsRoom, floorLevel, footprintRings, hexRgba, roomFills, type Box3 } from './aimRoomFill3d.js';
++import { VOLUME_SUFFIX, paintedColors } from './aimLensPaint.js';
++import { AIM_LENS_NAME, VOLUME_SUFFIX as PLAN_SUFFIX } from './aimLensPlan.js';
++
++/** Spodná plocha obdĺžnika (x, z) vo výške y ako dva trojuholníky. */
++function rect(x0: number, z0: number, w: number, d: number, y = 1): Footprint['triangles'] {
++  const [a, b, c, e] = [[x0, z0], [x0 + w, z0], [x0 + w, z0 + d], [x0, z0 + d]].map(([x, z]) => ({ x, y, z }));
++  return [a, b, c, a, c, e];
++}
++const fp = (triangles: Footprint['triangles'], y = 1): Footprint => ({ triangles, anchor: { x: 2, y, z: 1.5 }, top: y + 2.5 });
++const box = (minX: number, minZ: number, maxX: number, maxZ: number, minY: number, maxY: number): Box3 => ({ minX, minY, minZ, maxX, maxY, maxZ });
++
++describe('podstava miestnosti v 3D (AIM D-125 doplnok, #175)', () => {
++  const room = fp(rect(0, 0, 4, 3));
++
++  it('výška = vrch podlahovej krytiny nad pôdorysom + LIFT, inak spodok miestnosti', () => {
++    assert.equal(floorLevel(room, []), 1 + LIFT);
++    const floor = box(0, 0, 4, 3, 1, 1.08);
++    assert.ok(Math.abs(floorLevel(room, [floor]) - (1.08 + LIFT)) < 1e-9);
++  });
++
++  it('podhľad, krytina iného podlažia a susednej miestnosti výšku nemenia', () => {
++    const ceiling = box(0, 0, 4, 3, 3.4, 3.42);
++    const below = box(0, 0, 4, 3, -2, -1.9);
++    const neighbour = box(4, 0, 8, 3, 1, 1.2);
++    const touching = box(3.99, 0, 8, 3, 1, 1.2);
++    assert.equal(floorLevel(room, [ceiling, below, neighbour, touching]), 1 + LIFT);
++    // Najvyššia z prekrývajúcich krytín (napr. dlažba a koberec).
++    assert.ok(Math.abs(floorLevel(room, [box(0, 0, 2, 3, 1, 1.05), box(1, 0, 4, 3, 1, 1.1)]) - (1.1 + LIFT)) < 1e-9);
++  });
++
++  it('pri vodorovnom reze len podstava pod rezom', () => {
++    assert.equal(fillsRoom(1.1, null), true);
++    assert.equal(fillsRoom(1.1, 2.2), true);
++    assert.equal(fillsRoom(1.1, 0.5), false);
++  });
++
++  it('farba Lens s alfou pôdorysu; zlá farba nič', () => {
++    assert.deepEqual(hexRgba('#ff8000', 0.45), [1, 128 / 255, 0, 0.45]);
++    assert.equal(hexRgba('red', 1), null);
++    assert.deepEqual(roomFills(room, 1.1, 'nope'), []);
++  });
++
++  it('jeden polygón na miestnosť, body lokálne k ťažisku, výška v origin', () => {
++    const [fill, ...rest] = roomFills(room, 1.1, '#22c55e');
++    assert.equal(rest.length, 0);
++    assert.deepEqual(fill.origin, [2, 1.1, 1.5]);
++    assert.equal(fill.worldY, 0);
++    assert.equal(fill.color[3], FILL_ALPHA);
++    assert.equal(fill.definesExtent, false);
++    assert.equal(fill.points.length, 8, 'obdĺžnik = 4 vrcholy obrysu, bez uhlopriečky');
++    assert.equal(fill.holesOffsets.length, 0);
++    const xs = [0, 2, 4, 6].map((i) => fill.points[i] + 2);
++    assert.deepEqual([Math.min(...xs), Math.max(...xs)], [0, 4]);
++  });
++
++  it('diera (šachta) v miestnosti a miestnosť z dvoch oddelených častí', () => {
++    // Rámik 6 x 6 okolo diery 2 x 2: štyri pásy.
++    const frame = [...rect(0, 0, 6, 2), ...rect(0, 4, 6, 2), ...rect(0, 2, 2, 2), ...rect(4, 2, 2, 2)];
++    const rings = footprintRings(frame);
++    assert.ok(rings);
++    assert.equal(rings.length, 1, 'T-spoje pásov (vrchol na hrane suseda) sa rozdelia');
++    assert.equal(rings[0].holes.length, 1);
++    const fill = roomFills(fp(frame), 1, '#000000')[0];
++    assert.equal(fill.holesOffsets.length, 1);
++    assert.equal(footprintRings([...rect(0, 0, 2, 2), ...rect(5, 5, 2, 2)])?.length, 2);
++  });
++
++  it('obrys sa nedá uzavrieť (sused s opačným otočením trojuholníkov): výplň po trojuholníkoch', () => {
++    const tris = [...rect(0, 0, 2, 2), ...rect(2, 0, 2, 2).reverse()];
++    assert.equal(footprintRings(tris), null);
++    const fills = roomFills(fp(tris), 1, '#000000');
++    assert.equal(fills.length, 4);
++    assert.ok(fills.every((f) => f.points.length === 6));
++  });
++
++  it('podstava z geometrie miestnosti: spodná plocha kvádra', () => {
++    const positions = new Float32Array([0, 1, 0, 4, 1, 0, 4, 1, 3, 0, 1, 3, 0, 3.5, 0, 4, 3.5, 0, 4, 3.5, 3, 0, 3.5, 3]);
++    const indices = new Uint32Array([0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6]);
++    const space = spaceFootprint([{ positions, indices }]);
++    assert.ok(space);
++    assert.equal(roomFills(space, floorLevel(space, []), '#3b82f6').length, 1);
++  });
++});
++
++describe('farby AIM chat lens do renderera (#175)', () => {
++  const colors = new Map([[1, 'a'], [2, 'b'], [3, 'c']]);
++  const rules = [{ id: `aim-t-0${VOLUME_SUFFIX}` }, { id: 'aim-t-0' }];
++  const ids = new Map([[`aim-t-0${VOLUME_SUFFIX}`, [1, 2]], ['aim-t-0', [3]]]);
++
++  it('miestnosti a zóny z varianty ~vol vynechá, ostatné prvky nechá', () => {
++    const out = paintedColors(colors, { name: AIM_LENS_NAME, rules }, ids);
++    assert.deepEqual([...out.keys()], [3]);
++    assert.equal(colors.size, 3, 'vstup sa nemení (lensColorMap a súhrn ho potrebujú celý)');
++  });
++
++  it('cudzia lens a lens bez miestností: tá istá mapa', () => {
++    assert.equal(paintedColors(colors, { name: 'Color by Material', rules }, ids), colors);
++    assert.equal(paintedColors(colors, { name: AIM_LENS_NAME, rules: [{ id: 'aim-t-0' }] }, ids), colors);
++    assert.equal(paintedColors(colors, null, ids), colors);
++  });
++
++  it('prípona varianty je v pláne aj v malom module rovnaká', () => {
++    assert.equal(PLAN_SUFFIX, VOLUME_SUFFIX);
++  });
++});
+diff --git a/apps/viewer/src/aim/aimRoomFill3d.ts b/apps/viewer/src/aim/aimRoomFill3d.ts
+new file mode 100644
+index 00000000..0d2c2547
+--- /dev/null
++++ b/apps/viewer/src/aim/aimRoomFill3d.ts
+@@ -0,0 +1,205 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Výplň podstavy miestnosti v 3D perspektíve (AIM D-125 doplnok, #175). Spodná
++ * plocha IfcSpace leží na doske, teda pod podlahovou krytinou (IfcCovering), a
++ * farba Lens na objeme je v rendereri zmiešaná s pôvodnou farbou miestnosti.
++ * Podstava sa preto kreslí ako výplň renderera (kanál výplní IfcAnnotation:
++ * hĺbkový test, bez zápisu hĺbky) kúsok nad vrchom krytiny, vo farbe Lens ako v
++ * pôdoryse. Čistá matematika bez store; viewer je Y-up.
++ */
++
++import type { Footprint } from './aimRoomFill.js';
++
++/** Výplň v tvare `SymbolicFillInput` renderera (body [x, z] lokálne k `origin`). */
++export interface RoomFill3d {
++  points: Float32Array;
++  holesOffsets: Uint32Array;
++  worldY: number;
++  origin: [number, number, number];
++  color: [number, number, number, number];
++  definesExtent: false;
++}
++
++/** Obálka prvku vo svete (krytina). */
++export interface Box3 {
++  minX: number; minY: number; minZ: number;
++  maxX: number; maxY: number; maxZ: number;
++}
++
++/** Priehľadnosť výplne, rovnaká ako v pôdoryse (`AimRoomFillLayer`). */
++export const FILL_ALPHA = 0.45;
++/**
++ * Výplň nad vrchom krytiny, m. Výplne renderera majú záporný depth bias, ktorý ich
++ * v reverse-Z odtlačí od kamery: 3 mm nad krytinou výplň zmizla, 2 cm už nie (živo, #175).
++ */
++export const LIFT = 0.03;
++/** Najvyššia krytina nad spodkom miestnosti, ktorá sa ráta za podlahovú, m. */
++export const MAX_RISE = 0.25;
++/** Krytina tesne pod spodkom miestnosti (zaokrúhlenie modelu), m. */
++const BELOW = 0.05;
++/** Najmenší prekryv obálok v pôdoryse, m² (susedná miestnosť sa len dotýka). */
++const MIN_OVERLAP = 0.05;
++
++/**
++ * Výška výplne: najvyšší vrch krytiny, ktorá v pôdoryse prekrýva miestnosť a leží
++ * pri jej spodku (nie podhľad), plus `LIFT`; bez takej krytiny spodok miestnosti.
++ */
++export function floorLevel(fp: Footprint, coverings: readonly Box3[]): number {
++  const floor = fp.anchor.y;
++  let minX = Infinity; let maxX = -Infinity; let minZ = Infinity; let maxZ = -Infinity;
++  for (const p of fp.triangles) {
++    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
++    minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
++  }
++  let top = floor;
++  for (const c of coverings) {
++    if (c.maxY < floor - BELOW || c.maxY > floor + MAX_RISE || c.minY > floor + MAX_RISE) continue;
++    const ox = Math.min(maxX, c.maxX) - Math.max(minX, c.minX);
++    const oz = Math.min(maxZ, c.maxZ) - Math.max(minZ, c.minZ);
++    if (ox <= 0 || oz <= 0 || ox * oz < MIN_OVERLAP) continue;
++    top = Math.max(top, c.maxY);
++  }
++  return top + LIFT;
++}
++
++/** `#rrggbb` -> RGBA 0..1 s danou alfou; zlý vstup `null`. */
++export function hexRgba(hex: string, alpha: number): [number, number, number, number] | null {
++  const m = /^#([0-9a-f]{6})$/i.exec(hex);
++  if (!m) return null;
++  const n = parseInt(m[1], 16);
++  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, alpha];
++}
++
++type P2 = { x: number; z: number };
++
++/** Plocha slučky so znamienkom (x, z). */
++function loopArea(loop: readonly P2[]): number {
++  let a = 0;
++  for (let i = 0; i < loop.length; i++) {
++    const p = loop[i];
++    const q = loop[(i + 1) % loop.length];
++    a += p.x * q.z - q.x * p.z;
++  }
++  return a / 2;
++}
++
++function inside(p: P2, loop: readonly P2[]): boolean {
++  let hit = false;
++  for (let i = 0, j = loop.length - 1; i < loop.length; j = i++) {
++    const [a, b] = [loop[i], loop[j]];
++    if ((a.z > p.z) !== (b.z > p.z) && p.x < ((b.x - a.x) * (p.z - a.z)) / (b.z - a.z) + a.x) hit = !hit;
++  }
++  return hit;
++}
++
++/** Vrcholy ležiace vnútri úsečky a-b (T-spoj triangulácie), zoradené od a. */
++function splitAt(a: P2, b: P2, verts: readonly P2[]): P2[] {
++  const [dx, dz] = [b.x - a.x, b.z - a.z];
++  const len2 = dx * dx + dz * dz;
++  const on: { t: number; p: P2 }[] = [];
++  for (const p of verts) {
++    const t = ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2;
++    if (t <= 1e-6 || t >= 1 - 1e-6) continue;
++    const cross = (p.x - a.x) * dz - (p.z - a.z) * dx;
++    if (Math.abs(cross) / Math.sqrt(len2) < 5e-4) on.push({ t, p });
++  }
++  return [a, ...on.sort((u, v) => u.t - v.t).map((o) => o.p), b];
++}
++
++/**
++ * Obrysy pôdorysu z trojuholníkov: hrany jediného trojuholníka spojené do slučiek
++ * (vrcholy párované na mm, hrany rozdelené na T-spojoch). Najväčšia slučka je
++ * obrys, slučky v ňom diery (stĺp, šachta), ostatné samostatné obrysy (miestnosť
++ * z viac častí). Nedá sa uzavrieť = `null` (výplň potom po trojuholníkoch).
++ */
++export function footprintRings(triangles: Footprint['triangles']): { outer: P2[]; holes: P2[][] }[] | null {
++  const key = (p: P2) => `${Math.round(p.x * 1000)},${Math.round(p.z * 1000)}`;
++  const verts = new Map<string, P2>();
++  for (const p of triangles) verts.set(key(p), p);
++  const vertList = [...verts.values()];
++  const count = new Map<string, number>();
++  const edges: [P2, P2][] = [];
++  for (let i = 0; i + 2 < triangles.length; i += 3) {
++    for (const [a0, b0] of [[triangles[i], triangles[i + 1]], [triangles[i + 1], triangles[i + 2]], [triangles[i + 2], triangles[i]]]) {
++      if (key(a0) === key(b0)) continue;
++      const chain = splitAt(a0, b0, vertList);
++      for (let j = 0; j + 1 < chain.length; j++) {
++        const [a, b] = [chain[j], chain[j + 1]];
++        const [ka, kb] = [key(a), key(b)];
++        if (ka === kb) continue;
++        const k = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
++        count.set(k, (count.get(k) ?? 0) + 1);
++        edges.push([a, b]);
++      }
++    }
++  }
++  const next = new Map<string, P2[]>();
++  for (const [a, b] of edges) {
++    const [ka, kb] = [key(a), key(b)];
++    if (count.get(ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`) !== 1) continue;
++    const list = next.get(ka);
++    if (list) list.push(b); else next.set(ka, [b]);
++  }
++  const loops: P2[][] = [];
++  for (const [start, targets] of next) {
++    while (targets.length > 0) {
++      const loop: P2[] = [];
++      let cur = targets.pop() as P2;
++      for (let guard = 0; guard <= edges.length; guard++) {
++        loop.push({ x: cur.x, z: cur.z });
++        const k = key(cur);
++        if (k === start) break;
++        const out = next.get(k);
++        if (!out || out.length === 0) break;
++        cur = out.pop() as P2;
++      }
++      if (loop.length < 3 || key(loop[loop.length - 1]) !== start) return null;
++      loops.push(loop);
++    }
++  }
++  loops.sort((a, b) => Math.abs(loopArea(b)) - Math.abs(loopArea(a)));
++  const polys: { outer: P2[]; holes: P2[][] }[] = [];
++  for (const loop of loops) {
++    const owner = polys.find((p) => inside(loop[0], p.outer) && !p.holes.some((h) => inside(loop[0], h)));
++    if (owner) owner.holes.push(loop);
++    else polys.push({ outer: loop, holes: [] });
++  }
++  return polys;
++}
++
++/**
++ * Výplne podstavy: jeden polygón (obrys s dierami) na súvislú časť miestnosti;
++ * renderer robí z každej výplne s `origin` samostatný buffer, preto nie po
++ * trojuholníkoch (tie len ako záloha, keď sa obrys nedá uzavrieť). Body sú lokálne
++ * k ťažisku, aby veľké súradnice nestratili presnosť vo float32.
++ */
++export function roomFills(fp: Footprint, worldY: number, hex: string, alpha = FILL_ALPHA): RoomFill3d[] {
++  const color = hexRgba(hex, alpha);
++  if (!color) return [];
++  const origin: [number, number, number] = [fp.anchor.x, worldY, fp.anchor.z];
++  const tris = fp.triangles;
++  const polys = footprintRings(tris) ?? Array.from({ length: Math.floor(tris.length / 3) }, (_, i) => ({ outer: tris.slice(i * 3, i * 3 + 3), holes: [] }));
++  return polys.map(({ outer, holes }) => {
++    const rings = [outer, ...holes];
++    const points = new Float32Array(rings.reduce((n, r) => n + r.length * 2, 0));
++    const holesOffsets = new Uint32Array(holes.length);
++    let v = 0;
++    rings.forEach((ring, r) => {
++      if (r > 0) holesOffsets[r - 1] = v;
++      for (const p of ring) {
++        points[v * 2] = p.x - origin[0];
++        points[v * 2 + 1] = p.z - origin[2];
++        v++;
++      }
++    });
++    return { points, holesOffsets, worldY: 0, origin, color, definesExtent: false as const };
++  });
++}
++
++/** Pri vodorovnom reze (`cutY`) len miestnosti s podstavou pod rezom; bez rezu všetky. */
++export function fillsRoom(level: number, cutY: number | null): boolean {
++  return cutY === null || level <= cutY;
++}
+diff --git a/apps/viewer/src/aim/aimRoomFill3dStore.ts b/apps/viewer/src/aim/aimRoomFill3dStore.ts
+new file mode 100644
+index 00000000..b927b198
+--- /dev/null
++++ b/apps/viewer/src/aim/aimRoomFill3dStore.ts
+@@ -0,0 +1,25 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Výplne podstavy miestností v 3D (AIM D-125 doplnok, #175). Počíta ich lenivá
++ * vrstva `AimRoomFill3d`; `useViewportSymbolicUploads` (blok AIM-FORK) ich pridá
++ * k výplniam IfcAnnotation, lebo renderer má na výplne jeden kanál. Samostatný
++ * malý store (ako `capturePinsStore`), aby eager kód neťahal výpočet.
++ */
++
++import { create } from 'zustand';
++import type { RoomFill3d } from './aimRoomFill3d.js';
++
++interface AimRoomFill3dState {
++  fills: readonly RoomFill3d[];
++  setFills: (fills: readonly RoomFill3d[]) => void;
++}
++
++const NONE: readonly RoomFill3d[] = [];
++
++export const useAimRoomFill3dStore = create<AimRoomFill3dState>((set) => ({
++  fills: NONE,
++  setFills: (fills) => set((s) => (fills.length === 0 && s.fills.length === 0 ? s : { fills: fills.length === 0 ? NONE : fills })),
++}));
+diff --git a/apps/viewer/src/components/viewer/useViewportSymbolicUploads.ts b/apps/viewer/src/components/viewer/useViewportSymbolicUploads.ts
+index b7066324..f72210f6 100644
+--- a/apps/viewer/src/components/viewer/useViewportSymbolicUploads.ts
++++ b/apps/viewer/src/components/viewer/useViewportSymbolicUploads.ts
+@@ -6,6 +6,9 @@ import { useEffect, type MutableRefObject } from 'react';
+ import type { Renderer, SymbolicFillInput, SymbolicTextInput } from '@ifc-lite/renderer';
+ import { rendererLineVertexData, type RendererLineVertices } from '@/lib/renderer/line-overlay-rte';
+ import { uploadGuarded } from './gpu-owned-upload.js';
++// >>> AIM-FORK: podstava ofarbených miestností v 3D (AIM D-125, #175) ide kanálom výplní IfcAnnotation
++import { useAimRoomFill3dStore } from '@/aim/aimRoomFill3dStore';
++// <<< AIM-FORK
+ 
+ type UploadTarget = Pick<Renderer, 'setLineOverlay' | 'uploadAnnotationFills3D' | 'uploadAnnotationTexts3D'>;
+ type RendererRef = MutableRefObject<UploadTarget | null>;
+@@ -44,12 +47,18 @@ export function useViewportSymbolicUploads(params: {
+   useLineUpload(rendererRef, isInitialized, gpuRecoveryEpoch, 'annotation', annotation, true, annotationCountRef);
+   useLineUpload(rendererRef, isInitialized, gpuRecoveryEpoch, 'alignment', alignment);
+   useLineUpload(rendererRef, isInitialized, gpuRecoveryEpoch, 'grid', grid, gridVisible);
++  // >>> AIM-FORK: výplne IfcAnnotation + podstava miestností z AIM (D-125, #175)
++  const aimFills = useAimRoomFill3dStore((s) => s.fills);
+   useEffect(() => {
+     const renderer = rendererRef.current;
+     if (!renderer || !isInitialized) return;
+-    uploadGuarded('uploadAnnotationFills3D', () => renderer.uploadAnnotationFills3D(fills),
++    const all = aimFills.length === 0 ? fills : [...fills, ...aimFills];
++    uploadGuarded('uploadAnnotationFills3D', () => renderer.uploadAnnotationFills3D(all),
+       () => renderer.uploadAnnotationFills3D([]));
+-  }, [rendererRef, isInitialized, gpuRecoveryEpoch, fills]);
++    // Renderer kreslí na požiadanie: farba miestnosti sa mení bez pohybu kamery.
++    (renderer as Partial<Pick<Renderer, 'requestRender'>>).requestRender?.();
++  }, [rendererRef, isInitialized, gpuRecoveryEpoch, fills, aimFills]);
++  // <<< AIM-FORK
+   useEffect(() => {
+     const renderer = rendererRef.current;
+     if (!renderer || !isInitialized) return;
+diff --git a/apps/viewer/src/hooks/useLens.ts b/apps/viewer/src/hooks/useLens.ts
+index 07836940..0b04718a 100644
+--- a/apps/viewer/src/hooks/useLens.ts
++++ b/apps/viewer/src/hooks/useLens.ts
+@@ -42,6 +42,9 @@ import { evaluateLensGroups } from '@/lib/lens/evaluate-lens-groups';
+ import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
+ import { toast } from '@/components/ui/toast';
+ import { planLensHiddenSync, ruleIsolationOwnsChannel } from '@/components/viewer/lens-visibility-ownership';
++// >>> AIM-FORK: farby AIM chat lens do renderera (AIM D-125, #175)
++import { paintedColors } from '@/aim/aimLensPaint';
++// <<< AIM-FORK
+ 
+ const EMPTY_LENS_HIDDEN: ReadonlySet<number> = new Set<number>();
+ 
+@@ -163,8 +166,11 @@ export function useLens(): void {
+     // Apply colors via overlay system — original batches are never modified.
+     // Remember the exact overlay so the compare overlay can restore it on
+     // teardown instead of blanking the channel the lens still owns.
+-      useViewerStore.getState().setLensAppliedColors(colorMap.size > 0 ? colorMap : null);
+-      useViewerStore.getState().setPendingColorUpdates(colorMap);
++      // >>> AIM-FORK: miestnosti AIM chat lens bez farby v rendereri, farbu nesie podstava (AIM D-125, #175)
++      const painted = paintedColors(colorMap, activeLens, ruleEntityIds);
++      useViewerStore.getState().setLensAppliedColors(painted.size > 0 ? painted : null);
++      useViewerStore.getState().setPendingColorUpdates(painted);
++      // <<< AIM-FORK
+ 
+       posthog.capture('lens_applied', {
+         mode: isAutoColor ? 'auto_color' : 'rules',
+diff --git a/docs/FORK_MAINTENANCE.md b/docs/FORK_MAINTENANCE.md
+index bda23b2b..88b72c0d 100644
+--- a/docs/FORK_MAINTENANCE.md
++++ b/docs/FORK_MAINTENANCE.md
+@@ -84,6 +84,8 @@ git grep -n ">>> AIM-FORK" -- apps/ packages/
+ | `packages/collab-server/src/bin.ts` | 3 | fail-closed startup guard (replaces upstream's warn-only block) |
+ | `apps/viewer/src/components/viewer/tools/SectionHint.tsx` | 1 | no Section hint while the AIM host hides the section widget (`showGizmo` false, D-101) |
+ | `apps/viewer/src/components/viewer/tools/SectionVisualization.tsx` | 1 | no cardinal drag handle while the section widget is hidden (D-101) |
++| `apps/viewer/src/hooks/useLens.ts` | 2 | rooms of the AIM chat lens are left out of the renderer colours (`aim/aimLensPaint.ts`, AIM D-125 / #175): the renderer paints an alpha-0.3 override opaque and 70 % the room's own colour, so the room stays natively translucent and its floor fill carries the Lens colour |
++| `apps/viewer/src/components/viewer/useViewportSymbolicUploads.ts` | 2 | AIM room floor fills in 3D (`aim/aimRoomFill3dStore.ts`, AIM D-125 / #175) appended to the IfcAnnotation fills: the renderer has one fill channel |
+ | `scripts/lib/presentation-channel-allowlist.mjs` | 1 | `aim/aimLens.ts` in `REQUIRES_ROUTING_MARKER`: AIM chat isolation routes through `resolvePresentationIds` (D-096) |
+ 
+ If you resolve a conflict here, grep for `AIM-FORK` to confirm you kept all our
+-- 
+2.43.0
+
+
+From a30f841e608ec5ba015ad95631ce5a4a0aadf196 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 17:54:41 +0000
+Subject: [PATCH 2/2] AIM D-125 doplnok (#175): mutacne dokazy pre revert
+ oracle
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LSBxuy8e3xKmGida9PDdRn
+---
+ .../aim-175-room-floor-3d/mutations/README.md |  36 +++++
+ .../mutations/above-cut-filled.patch          |  11 ++
+ .../mutations/ceiling-counted.patch           |  13 ++
+ .../mutations/color-channels.patch            |  13 ++
+ .../mutations/covering-ignored.patch          |  13 ++
+ .../mutations/foreign-lens-unpainted.patch    |  13 ++
+ .../mutations/hole-as-outer.patch             |  15 ++
+ .../mutations/neighbour-counted.patch         |  13 ++
+ .../mutations/rooms-painted.patch             |  12 ++
+ .../mutations/summary.json                    | 128 ++++++++++++++++++
+ .../mutations/tjunction-unsplit.patch         |  13 ++
+ 11 files changed, 280 insertions(+)
+ create mode 100644 docs/architecture/evidence/aim-175-room-floor-3d/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-175-room-floor-3d/mutations/above-cut-filled.patch
+ create mode 100644 docs/architecture/evidence/aim-175-room-floor-3d/mutations/ceiling-counted.patch
+ create mode 100644 docs/architecture/evidence/aim-175-room-floor-3d/mutations/color-channels.patch
+ create mode 100644 docs/architecture/evidence/aim-175-room-floor-3d/mutations/covering-ignored.patch
+ create mode 100644 docs/architecture/evidence/aim-175-room-floor-3d/mutations/foreign-lens-unpainted.patch
+ create mode 100644 docs/architecture/evidence/aim-175-room-floor-3d/mutations/hole-as-outer.patch
+ create mode 100644 docs/architecture/evidence/aim-175-room-floor-3d/mutations/neighbour-counted.patch
+ create mode 100644 docs/architecture/evidence/aim-175-room-floor-3d/mutations/rooms-painted.patch
+ create mode 100644 docs/architecture/evidence/aim-175-room-floor-3d/mutations/summary.json
+ create mode 100644 docs/architecture/evidence/aim-175-room-floor-3d/mutations/tjunction-unsplit.patch
+
+diff --git a/docs/architecture/evidence/aim-175-room-floor-3d/mutations/README.md b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/README.md
+new file mode 100644
+index 00000000..5ef27bb5
+--- /dev/null
++++ b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/README.md
+@@ -0,0 +1,36 @@
++<!-- This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this
++     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
++
++# AIM D-125 addendum (#175): room floor fill in 3D, surgical mutation evidence
++
++The change adds the floor fill of coloured or selected rooms in the 3D perspective (`aimRoomFill3d.ts`, drawn through the renderer's IfcAnnotation fill channel 3 cm above the floor covering) and leaves the rooms of the AIM chat lens out of the renderer colours (`aimLensPaint.ts`), so the room volume stays natively translucent instead of a pale opaque mass. The test (`aimRoomFill3d.test.ts`) imports both new modules, so reverting them to the base makes the test fail to load and the CI revert oracle (`Changed tests observe production`) reports INCONCLUSIVE. Each main behavioural decision was instead checked with a surgical mutation.
++
++Each patch is written mutant->fixed (the orientation of `git diff base...head`); the oracle reverse-applies it. Every run ended `OBSERVED` (exit 0) with restoration verified, against base `origin/main` (c988e100). The full records are in `summary.json`.
++
++| Patch | Module | Mutation | Test that went red |
++|---|---|---|---|
++| `covering-ignored.patch` | `aimRoomFill3d.ts` | the fill height ignores the floor covering (stays under it, the bug of #175) | `aimRoomFill3d.test.ts` |
++| `ceiling-counted.patch` | `aimRoomFill3d.ts` | a covering high above the room floor (ceiling) or on another storey counts as the floor | `aimRoomFill3d.test.ts` |
++| `neighbour-counted.patch` | `aimRoomFill3d.ts` | a covering that only touches the room (neighbouring room) counts | `aimRoomFill3d.test.ts` |
++| `above-cut-filled.patch` | `aimRoomFill3d.ts` | a room whose floor is above the horizontal cut is still filled | `aimRoomFill3d.test.ts` |
++| `hole-as-outer.patch` | `aimRoomFill3d.ts` | a loop inside the room outline (shaft) becomes a second outline instead of a hole | `aimRoomFill3d.test.ts` |
++| `tjunction-unsplit.patch` | `aimRoomFill3d.ts` | triangle edges are not split at T-junctions, so inner edges look like boundary | `aimRoomFill3d.test.ts` |
++| `color-channels.patch` | `aimRoomFill3d.ts` | the Lens hex colour is read with red and blue swapped | `aimRoomFill3d.test.ts` |
++| `rooms-painted.patch` | `aimLensPaint.ts` | rooms of the `~vol` variant are still sent to the renderer (pale opaque mass) | `aimRoomFill3d.test.ts` |
++| `foreign-lens-unpainted.patch` | `aimLensPaint.ts` | a lens that is not the AIM chat lens also loses its room colours | `aimRoomFill3d.test.ts` |
++
++`AimRoomFillLayer.tsx` (the `AimRoomFill3d` component), `aimRoomFill3dStore.ts` and the two `AIM-FORK` blocks (`useLens.ts`, `useViewportSymbolicUploads.ts`) are store and renderer glue with no unit test of their own (the related viewer tests of both upstream files pass, 120/120). They were verified live: local fork viewer embedded in a host page, a synthetic IFC4 model (slab, two IfcSpace 5 x 5 m, an IfcCovering FLOORING 8 cm in each, two walls), full Chromium with WebGPU (SwiftShader) under Xvfb, Playwright posting `APPLY_LENS` (Lobby `#22c55e`, Retail `#3b82f6` by GlobalId). Before: both rooms pale azure, Lens colours indistinguishable, the floor under the covering. After: a green and a blue floor fill at y 0.11 (covering top 0.08 + 0.03), the room volumes translucent, the front wall hides the fill behind it, still visible zoomed out; a selected room gets a blue fill. A fill 3 mm above the covering was hidden by the fill pipeline's negative depth bias, 2 cm was visible, hence the 3 cm lift. The renderer draws on demand, so the upload asks for a frame.
++
++## Replay
++
++Use a clean checkout of the branch with dependencies installed. Copy the patches outside the tree, because the oracle refuses a dirty tree. Then run, for example:
++
++```bash
++node scripts/check-test-revert-oracle.mjs --base origin/main \
++  --only apps/viewer/src/aim/aimRoomFill3d.ts \
++  --test apps/viewer/src/aim/aimRoomFill3d.test.ts \
++  --mutation /tmp/aim175-mut/covering-ignored.patch --ci --json
++```
++
++The `aimLensPaint.ts` patches (`rooms-painted`, `foreign-lens-unpainted`) use `--only apps/viewer/src/aim/aimLensPaint.ts`.
+diff --git a/docs/architecture/evidence/aim-175-room-floor-3d/mutations/above-cut-filled.patch b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/above-cut-filled.patch
+new file mode 100644
+index 00000000..7af9d0d2
+--- /dev/null
++++ b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/above-cut-filled.patch
+@@ -0,0 +1,11 @@
++diff --git b/apps/viewer/src/aim/aimRoomFill3d.ts a/apps/viewer/src/aim/aimRoomFill3d.ts
++index ea8cdf5c..0d2c2547 100644
++--- b/apps/viewer/src/aim/aimRoomFill3d.ts
+++++ a/apps/viewer/src/aim/aimRoomFill3d.ts
++@@ -201,5 +201,5 @@ export function roomFills(fp: Footprint, worldY: number, hex: string, alpha = FI
++ 
++ /** Pri vodorovnom reze (`cutY`) len miestnosti s podstavou pod rezom; bez rezu všetky. */
++ export function fillsRoom(level: number, cutY: number | null): boolean {
++-  return cutY === null || level <= cutY + 1e9;
+++  return cutY === null || level <= cutY;
++ }
+diff --git a/docs/architecture/evidence/aim-175-room-floor-3d/mutations/ceiling-counted.patch b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/ceiling-counted.patch
+new file mode 100644
+index 00000000..e3dd6693
+--- /dev/null
++++ b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/ceiling-counted.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimRoomFill3d.ts a/apps/viewer/src/aim/aimRoomFill3d.ts
++index f955bc74..0d2c2547 100644
++--- b/apps/viewer/src/aim/aimRoomFill3d.ts
+++++ a/apps/viewer/src/aim/aimRoomFill3d.ts
++@@ -56,7 +56,7 @@ export function floorLevel(fp: Footprint, coverings: readonly Box3[]): number {
++   }
++   let top = floor;
++   for (const c of coverings) {
++-    if (c.maxY < floor - BELOW) continue;
+++    if (c.maxY < floor - BELOW || c.maxY > floor + MAX_RISE || c.minY > floor + MAX_RISE) continue;
++     const ox = Math.min(maxX, c.maxX) - Math.max(minX, c.minX);
++     const oz = Math.min(maxZ, c.maxZ) - Math.max(minZ, c.minZ);
++     if (ox <= 0 || oz <= 0 || ox * oz < MIN_OVERLAP) continue;
+diff --git a/docs/architecture/evidence/aim-175-room-floor-3d/mutations/color-channels.patch b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/color-channels.patch
+new file mode 100644
+index 00000000..2d5e06e2
+--- /dev/null
++++ b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/color-channels.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimRoomFill3d.ts a/apps/viewer/src/aim/aimRoomFill3d.ts
++index 9611867d..0d2c2547 100644
++--- b/apps/viewer/src/aim/aimRoomFill3d.ts
+++++ a/apps/viewer/src/aim/aimRoomFill3d.ts
++@@ -70,7 +70,7 @@ export function hexRgba(hex: string, alpha: number): [number, number, number, nu
++   const m = /^#([0-9a-f]{6})$/i.exec(hex);
++   if (!m) return null;
++   const n = parseInt(m[1], 16);
++-  return [(n & 255) / 255, ((n >> 8) & 255) / 255, ((n >> 16) & 255) / 255, alpha];
+++  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, alpha];
++ }
++ 
++ type P2 = { x: number; z: number };
+diff --git a/docs/architecture/evidence/aim-175-room-floor-3d/mutations/covering-ignored.patch b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/covering-ignored.patch
+new file mode 100644
+index 00000000..20850d93
+--- /dev/null
++++ b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/covering-ignored.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimRoomFill3d.ts a/apps/viewer/src/aim/aimRoomFill3d.ts
++index b7b719d0..0d2c2547 100644
++--- b/apps/viewer/src/aim/aimRoomFill3d.ts
+++++ a/apps/viewer/src/aim/aimRoomFill3d.ts
++@@ -60,7 +60,7 @@ export function floorLevel(fp: Footprint, coverings: readonly Box3[]): number {
++     const ox = Math.min(maxX, c.maxX) - Math.max(minX, c.minX);
++     const oz = Math.min(maxZ, c.maxZ) - Math.max(minZ, c.minZ);
++     if (ox <= 0 || oz <= 0 || ox * oz < MIN_OVERLAP) continue;
++-    top = Math.max(top, floor);
+++    top = Math.max(top, c.maxY);
++   }
++   return top + LIFT;
++ }
+diff --git a/docs/architecture/evidence/aim-175-room-floor-3d/mutations/foreign-lens-unpainted.patch b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/foreign-lens-unpainted.patch
+new file mode 100644
+index 00000000..f205affd
+--- /dev/null
++++ b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/foreign-lens-unpainted.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimLensPaint.ts a/apps/viewer/src/aim/aimLensPaint.ts
++index ee3768d6..ff6d08bd 100644
++--- b/apps/viewer/src/aim/aimLensPaint.ts
+++++ a/apps/viewer/src/aim/aimLensPaint.ts
++@@ -23,7 +23,7 @@ export function paintedColors<T>(
++   lens: { name: string; rules: readonly { id: string }[] } | null | undefined,
++   ruleIds: ReadonlyMap<string, readonly number[]>,
++ ): Map<number, T> {
++-  if (!lens) return colors;
+++  if (!lens || lens.name !== AIM_LENS) return colors;
++   const skip = lens.rules.filter((r) => r.id.endsWith(VOLUME_SUFFIX)).flatMap((r) => ruleIds.get(r.id) ?? []);
++   if (skip.length === 0) return colors;
++   const out = new Map(colors);
+diff --git a/docs/architecture/evidence/aim-175-room-floor-3d/mutations/hole-as-outer.patch b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/hole-as-outer.patch
+new file mode 100644
+index 00000000..bc49f9c7
+--- /dev/null
++++ b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/hole-as-outer.patch
+@@ -0,0 +1,15 @@
++diff --git b/apps/viewer/src/aim/aimRoomFill3d.ts a/apps/viewer/src/aim/aimRoomFill3d.ts
++index 63c3410a..0d2c2547 100644
++--- b/apps/viewer/src/aim/aimRoomFill3d.ts
+++++ a/apps/viewer/src/aim/aimRoomFill3d.ts
++@@ -164,8 +164,8 @@ export function footprintRings(triangles: Footprint['triangles']): { outer: P2[]
++   const polys: { outer: P2[]; holes: P2[][] }[] = [];
++   for (const loop of loops) {
++     const owner = polys.find((p) => inside(loop[0], p.outer) && !p.holes.some((h) => inside(loop[0], h)));
++-    void owner;
++-    polys.push({ outer: loop, holes: [] });
+++    if (owner) owner.holes.push(loop);
+++    else polys.push({ outer: loop, holes: [] });
++   }
++   return polys;
++ }
+diff --git a/docs/architecture/evidence/aim-175-room-floor-3d/mutations/neighbour-counted.patch b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/neighbour-counted.patch
+new file mode 100644
+index 00000000..9808b60c
+--- /dev/null
++++ b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/neighbour-counted.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimRoomFill3d.ts a/apps/viewer/src/aim/aimRoomFill3d.ts
++index 9bad7935..0d2c2547 100644
++--- b/apps/viewer/src/aim/aimRoomFill3d.ts
+++++ a/apps/viewer/src/aim/aimRoomFill3d.ts
++@@ -59,7 +59,7 @@ export function floorLevel(fp: Footprint, coverings: readonly Box3[]): number {
++     if (c.maxY < floor - BELOW || c.maxY > floor + MAX_RISE || c.minY > floor + MAX_RISE) continue;
++     const ox = Math.min(maxX, c.maxX) - Math.max(minX, c.minX);
++     const oz = Math.min(maxZ, c.maxZ) - Math.max(minZ, c.minZ);
++-    if (ox < 0 || oz < 0) continue;
+++    if (ox <= 0 || oz <= 0 || ox * oz < MIN_OVERLAP) continue;
++     top = Math.max(top, c.maxY);
++   }
++   return top + LIFT;
+diff --git a/docs/architecture/evidence/aim-175-room-floor-3d/mutations/rooms-painted.patch b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/rooms-painted.patch
+new file mode 100644
+index 00000000..e0f3edf0
+--- /dev/null
++++ b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/rooms-painted.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/aimLensPaint.ts a/apps/viewer/src/aim/aimLensPaint.ts
++index 8f563289..ff6d08bd 100644
++--- b/apps/viewer/src/aim/aimLensPaint.ts
+++++ a/apps/viewer/src/aim/aimLensPaint.ts
++@@ -27,6 +27,6 @@ export function paintedColors<T>(
++   const skip = lens.rules.filter((r) => r.id.endsWith(VOLUME_SUFFIX)).flatMap((r) => ruleIds.get(r.id) ?? []);
++   if (skip.length === 0) return colors;
++   const out = new Map(colors);
++-  for (const id of skip) void id;
+++  for (const id of skip) out.delete(id);
++   return out;
++ }
+diff --git a/docs/architecture/evidence/aim-175-room-floor-3d/mutations/summary.json b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/summary.json
+new file mode 100644
+index 00000000..2826fdfc
+--- /dev/null
++++ b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/summary.json
+@@ -0,0 +1,128 @@
++{
++  "above-cut-filled": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimRoomFill3d.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "0a34a84619721e154d9a4d1f62261e2d43c8b409",
++    "production": [
++      "apps/viewer/src/aim/aimRoomFill3d.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimRoomFill3d.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "ceiling-counted": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimRoomFill3d.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "0a34a84619721e154d9a4d1f62261e2d43c8b409",
++    "production": [
++      "apps/viewer/src/aim/aimRoomFill3d.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimRoomFill3d.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "color-channels": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimRoomFill3d.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "0a34a84619721e154d9a4d1f62261e2d43c8b409",
++    "production": [
++      "apps/viewer/src/aim/aimRoomFill3d.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimRoomFill3d.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "covering-ignored": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimRoomFill3d.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "0a34a84619721e154d9a4d1f62261e2d43c8b409",
++    "production": [
++      "apps/viewer/src/aim/aimRoomFill3d.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimRoomFill3d.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "foreign-lens-unpainted": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimRoomFill3d.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "0a34a84619721e154d9a4d1f62261e2d43c8b409",
++    "production": [
++      "apps/viewer/src/aim/aimLensPaint.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimRoomFill3d.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "hole-as-outer": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimRoomFill3d.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "0a34a84619721e154d9a4d1f62261e2d43c8b409",
++    "production": [
++      "apps/viewer/src/aim/aimRoomFill3d.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimRoomFill3d.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "neighbour-counted": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimRoomFill3d.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "0a34a84619721e154d9a4d1f62261e2d43c8b409",
++    "production": [
++      "apps/viewer/src/aim/aimRoomFill3d.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimRoomFill3d.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "rooms-painted": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimRoomFill3d.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "0a34a84619721e154d9a4d1f62261e2d43c8b409",
++    "production": [
++      "apps/viewer/src/aim/aimLensPaint.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimRoomFill3d.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "tjunction-unsplit": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/aimRoomFill3d.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "0a34a84619721e154d9a4d1f62261e2d43c8b409",
++    "production": [
++      "apps/viewer/src/aim/aimRoomFill3d.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/aimRoomFill3d.test.ts"
++    ],
++    "restoration": "verified"
++  }
++}
+\ No newline at end of file
+diff --git a/docs/architecture/evidence/aim-175-room-floor-3d/mutations/tjunction-unsplit.patch b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/tjunction-unsplit.patch
+new file mode 100644
+index 00000000..038abb79
+--- /dev/null
++++ b/docs/architecture/evidence/aim-175-room-floor-3d/mutations/tjunction-unsplit.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimRoomFill3d.ts a/apps/viewer/src/aim/aimRoomFill3d.ts
++index 0126e7f6..0d2c2547 100644
++--- b/apps/viewer/src/aim/aimRoomFill3d.ts
+++++ a/apps/viewer/src/aim/aimRoomFill3d.ts
++@@ -106,7 +106,7 @@ function splitAt(a: P2, b: P2, verts: readonly P2[]): P2[] {
++     const cross = (p.x - a.x) * dz - (p.z - a.z) * dx;
++     if (Math.abs(cross) / Math.sqrt(len2) < 5e-4) on.push({ t, p });
++   }
++-  return [a, b];
+++  return [a, ...on.sort((u, v) => u.t - v.t).map((o) => o.p), b];
++ }
++ 
++ /**
+-- 
+2.43.0
+
