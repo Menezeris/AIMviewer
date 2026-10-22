@@ -1049,6 +1049,14 @@
       "expect": { "tools_called": ["style_in_3d"] },
       "verified": false,
       "notes": "D-151 (issue #246): style_in_3d(action=hide, model=VZT, exclude_ids_or_refs=[trasa]) jedným volaním, ASR sa nedotkne."
+    },
+    {
+      "id": "panel-scroll-down",
+      "category": "viewer",
+      "question": "Posuň panel vlastností trochu nižšie.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-146 (issue #183): set_view_mode(panel_scroll=down) bez mode; odpoveď nesmie tvrdiť, že vie, kde je koniec panela. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     }
   ]
 }

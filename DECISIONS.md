@@ -6738,3 +6738,47 @@ jedného stredu; hĺbka podesty je odhad z plochy (pri tvare L nepresná, čiara
 
 **Doplnok (2026-10-22, časť 2 z #246): `style_in_3d action=clear_isolation`.** Samostatné zrušenie len X-ray a izolácie z chatu bez rezu, skrytých prvkov a farieb. Najprv to, čo existuje (D-098): fork má bridge správu `APPLY_LENS mode=unisolate` (`aimLens.ts`: `releaseIsolation` uvoľní kanál izolácie alebo ghost, ak ho drží chat; AIM lens s farbami nechá), host ju dnes posielal len spolu so `SHOW_ALL` pri `show_all`. Fork sa preto nemení, patch netreba. Rozhodnutie (D-114, parameter existujúceho toolu): nová hodnota `action=clear_isolation` (bez filtrov) pošle op `clear_isolation::`, ktorý host preloží len na `APPLY_LENS unisolate`. Obmedzenie: ruší izoláciu a X-ray, ktoré nastavil chat (`isolate`, `xray`); ručne zapnutý duch alebo izolácia používateľa ostanú, kanál nepatrí chatu. Zavrhnuté: nová bridge správa vo forku (duplikuje `unisolate`), `scope` pri `show_all` (menil by význam existujúcej akcie).
 
+---
+
+### D-146 - Posun panela vlastností z chatu (`set_view_mode panel_scroll`) a opravená cesta k riadku Qto (#183)
+
+**Dátum:** 2026-10-22 · **Issue:** #183 · **Nadväzuje na:** D-113, D-114, D-127, D-098
+
+**Kontext:** Samuel overil naživo (komentáre z 22. 10. 12:14 UTC): `show_in_3d(SL02.01.0044, select=true,
+panel_section=quantities, highlight=Qto_ColumnBaseQuantities.NetVolume)` vráti `property_focus.found=true`, ale panel
+sa neposunie na riadok NetVolume, ostane pod viditeľnou časťou. Druhá požiadavka: Claude má vedieť panel vlastností
+posunúť na pokyn ("posuň dole", "hore", "na začiatok"), aby sa používateľ dostal ku každej sekcii bez myši.
+
+**Overenie existujúceho (D-098, D-114):** `highlight` na `Qto_*` už funguje od D-127 (nie je to chýbajúca schopnosť, ako
+tvrdil prvý komentár k issue): fork nájde riadok, rozbalí sadu a označí ho. Chyba bola v posune. Najbližšie tooly:
+`show_in_3d` (výber + `highlight`, rieši riadok, nie voľný posun) a `set_view_mode` (panely D-127: otvoriť, zavrieť,
+stav; posun nemá). Pole `panels` vo `view_state` stav posunu nenesie.
+
+**Príčina (fork `aim/aimPanelView.ts`):** riadok sa po nájdení posúval jednorazovým plynulým `scrollIntoView`. Panel po
+výbere prvku dokresľuje obsah nad riadkom (atribúty, sady zdedené z typu, rozbalenie sady Qto), takže sa riadok po
+dopočítaní cieľa posunul pod viditeľnú časť a nikto ho znova nevycentroval. `scrollIntoView` navyše posúva všetkých
+skrolovacích predkov, nie len kontajner panela. Živo to nebolo možné reprodukovať (bez produkčných modelov, D-135).
+
+**Rozhodnutie:**
+1. **Oprava (fork):** `revealRow` (`aimPanelScroll.ts`) vycentruje riadok v skrolovacom kontajneri panela a 3 s ho
+   sleduje: keď po ustálení skrolovania riadok vypadne z výrezu (rezerva 10 %), vycentruje ho znova bez animácie.
+   Skončí pri koliesku, dotyku, klávese, kliku alebo novom výbere. `scrollIntoView` zo `aimPanelView.ts` odišiel.
+2. **Posun na pokyn = parameter existujúceho toolu (D-114 bod 3), nový tool nie:** `set_view_mode panel_scroll=up|down|
+   top|bottom` -> op `panel_scroll:<smer>:` -> správa mosta `SCROLL_PANEL { direction }`. `up` / `down` posunú o 80 %
+   výšky okna panela, `top` / `bottom` na začiatok / koniec. Funguje aj bez `mode`; s `panels={properties:'open'}` sa panel
+   najprv otvorí (posun ide po paneloch). Posúva sa len panel vlastností (IFC obsah, D-127); iné panely nie.
+3. **Hranice:** hodnotu posunu viewer nevracia (host nevie, či je panel na konci); pri zatvorenom paneli príde problém
+   `SCROLL_PANEL: panel vlastností nie je otvorený` v `APPLIED`. Pokyn zruší prebiehajúce sledovanie riadka.
+
+**Zavrhnuté rozšírenie: `show_in_3d` - prečo nie:** voľný posun nemá s výberom prvku nič spoločné a `show_in_3d` bez
+`ids_or_refs` nedáva zmysel; `highlight` už riadok vycentruje. **Zavrhnutý nový tool `scroll_panel`:** `set_view_mode`
+už nesie panely a rozlišovací parameter stačí (D-114).
+
+**Zavrhnuté:** *posun cez `scrollIntoView` na prvý riadok sekcie* (neumožní "o kus ďalej"); *systémový prompt* (MCP
+inštrukcie sú tesne pod stropom 15 000 znakov, pokyn je v opise toolu).
+
+**Dôsledky:** bez migrácie a env. Fork vetva (PR do ifc-lite): nový `aimPanelScroll.ts`, `aimPanelScrollPlan.ts`, správa
+`SCROLL_PANEL`; poradie zlúčenia fork, potom AIMviewer. Inventár `MCP-TOOLS.md` obnovený. **Evaly (D-057):** v cloud session
+nepobežali (bez Supabase kľúčov); otázka `panel-scroll-down` je v `eval/questions.json`. **Testy:** vitest (`view-plan`,
+`select-panel`), fork `aimPanelScrollPlan.test.ts` s mutačnými dôkazmi.
+

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseOps } from "../viewer-ops";
 import { planCamera } from "./camera-plan";
-import { ViewInputError, planPanels, planSection, planViewMode } from "./view-plan";
+import { ViewInputError, planPanels, planPanelScroll, planSection, planViewMode } from "./view-plan";
 
 const FLOOR = { label: "3NP", guid: "3ig6N2jJz05g7H9Fq$ftkL" };
 const ROOM = "1KphWFyMb8dRV6rhVkyU6y";
@@ -105,5 +105,19 @@ describe("panely (D-127)", () => {
     expect(() => planPanels({ panels: { lens: "hide" } })).toThrow(/open, close/);
     expect(() => planPanels({ panels: {} })).toThrow(/aspoň/);
     expect(() => planPanels({ panels: "lens" })).toThrow(ViewInputError);
+  });
+});
+
+describe("posun panela vlastností (D-146)", () => {
+  it("panel_scroll -> op panel_scroll, chybný smer = chyba, bez neho null", () => {
+    for (const direction of ["up", "down", "top", "bottom"]) {
+      const p = planPanelScroll({ panel_scroll: direction })!;
+      expect(parseOps(p.op)).toEqual([{ op: "panel_scroll", direction }]);
+      expect(p.result).toEqual({ panel_scroll: direction });
+    }
+    expect(planPanelScroll({ panel_scroll: " down " })!.result).toEqual({ panel_scroll: "down" });
+    expect(planPanelScroll({})).toBeNull();
+    expect(() => planPanelScroll({ panel_scroll: "left" })).toThrow(ViewInputError);
+    expect(() => planPanelScroll({ panel_scroll: 3 })).toThrow(/up, down, top, bottom/);
   });
 });
