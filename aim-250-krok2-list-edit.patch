@@ -1,0 +1,825 @@
+From 54fbc7b129024c32ea18f1142fa627e18e593af6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 15:36:17 +0000
+Subject: [PATCH] =?UTF-8?q?feat(aim):=20open=5Flist=20update=20-=20st?=
+ =?UTF-8?q?=C4=BApce,=20triedy,=20odobratie=20filtrov,=20prepnutie=20podla?=
+ =?UTF-8?q?=C5=BEia=20a=20modelu,=20farby=20a=20export=20(AIM=20D-149,=20k?=
+ =?UTF-8?q?rok=202)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+LIST_UPDATE dostane edit (addColumns/removeColumns, addTypes/removeTypes,
+removeFilters) v novom čistom module aim/aimListEditPlan.ts; zmena spustí
+zoznam znova cestou D-148. Podlažie a model pri úprave nahradia doterajšie
+pravidlo (AND dvoch podlaží bol prázdny zoznam). view.colorBy volá upstream
+"Color by" tabuľky (Lens auto-color); podlažie, priestor a zónu odmietne s
+vysvetlením. view.export ukáže zvýraznené tlačidlo Download (lenivý modul
+aim/AimListExportCue.tsx), klik používateľa zavolá upstream handleExport;
+stiahnutie bez kliku iframe nepustí (D-111). Stav zoznamu má color_by a
+export_ready.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01XU4uXPgQrCLsmRDSm5r3sU
+---
+ apps/viewer/src/aim/AimListExportCue.tsx      |  40 +++++
+ apps/viewer/src/aim/aimListControl.ts         |  74 ++++++---
+ apps/viewer/src/aim/aimListEditPlan.test.ts   | 111 +++++++++++++
+ apps/viewer/src/aim/aimListEditPlan.ts        | 149 ++++++++++++++++++
+ apps/viewer/src/aim/aimListState.ts           |   7 +-
+ apps/viewer/src/aim/aimListTable.ts           |  58 +++++--
+ apps/viewer/src/aim/aimListViewPlan.ts        |  36 ++++-
+ apps/viewer/src/aim/aimListViewStore.ts       |   8 +
+ apps/viewer/src/aim/lens-protocol.ts          |   4 +-
+ .../viewer/lists/ListResultsTable.tsx         |  14 +-
+ .../viewer/src/i18n/catalogues/aim-fork.en.ts |   4 +
+ docs/FORK_MAINTENANCE.md                      |   2 +-
+ 12 files changed, 462 insertions(+), 45 deletions(-)
+ create mode 100644 apps/viewer/src/aim/AimListExportCue.tsx
+ create mode 100644 apps/viewer/src/aim/aimListEditPlan.test.ts
+ create mode 100644 apps/viewer/src/aim/aimListEditPlan.ts
+
+diff --git a/apps/viewer/src/aim/AimListExportCue.tsx b/apps/viewer/src/aim/AimListExportCue.tsx
+new file mode 100644
+index 00000000..8af4b1ed
+--- /dev/null
++++ b/apps/viewer/src/aim/AimListExportCue.tsx
+@@ -0,0 +1,40 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Zvýraznené tlačidlo "Stiahnuť CSV" pri Exporte tabuľky zoznamu (AIM D-149, krok 2).
++ * Chat export spustiť nemôže: stiahnutie bez kliku prehliadač v iframe nepustí (D-111).
++ * Klik zavolá upstream export tabuľky (`handleExport`) s formátom z chatu.
++ */
++
++import { Download, X } from 'lucide-react';
++import { EXPORT_LABELS, type ExportFormat } from '@/lib/lists/export';
++import { useTranslation } from '@/i18n';
++
++export function AimListExportCue({ format, onExport, onDismiss }: {
++  format: ExportFormat; onExport(format: ExportFormat): void; onDismiss(): void;
++}) {
++  const { t } = useTranslation();
++  return (
++    <div data-testid="aim-list-export-cue" className="flex items-center gap-1 px-2 py-1.5 border-b">
++      <button
++        type="button"
++        title={t('aimFork.listExport.hint')}
++        onClick={() => onExport(format)}
++        className="min-h-6 inline-flex items-center gap-1 rounded border border-primary bg-primary/10 px-2 text-2xs font-medium text-primary ring-2 ring-primary/40 animate-pulse hover:bg-primary/20"
++      >
++        <Download className="h-3.5 w-3.5" />
++        {t('aimFork.listExport.action', { format: EXPORT_LABELS[format] })}
++      </button>
++      <button
++        type="button"
++        aria-label={t('aimFork.listExport.dismiss')}
++        onClick={onDismiss}
++        className="min-h-6 min-w-6 inline-flex items-center justify-center rounded hover:bg-muted"
++      >
++        <X className="h-3 w-3" />
++      </button>
++    </div>
++  );
++}
+diff --git a/apps/viewer/src/aim/aimListControl.ts b/apps/viewer/src/aim/aimListControl.ts
+index 46d8fda4..e92668e3 100644
+--- a/apps/viewer/src/aim/aimListControl.ts
++++ b/apps/viewer/src/aim/aimListControl.ts
+@@ -9,6 +9,8 @@
+  * tabuľky, `handleGroupingFromTable`), nový filter spustí tabuľku znova cestou
+  * D-148, zoradenie, hľadanie a maximalizáciu vykonajú háky v `ListResultsTable` a
+  * `BottomStrip`. Stav zoznamu pre `view_state` a `APPLIED` opisuje `aimListState.ts`.
++ * Krok 2: `edit` (stĺpce, triedy, odobratie filtrov, `aimListEditPlan.ts`) spustí zoznam
++ * znova, farby podľa stĺpca a ponuku exportu vykoná hák tabuľky upstream cestami.
+  */
+ 
+ import type { FilterGroup } from '@ifc-lite/rules';
+@@ -22,6 +24,7 @@ import { resolveModelRules } from './aimLensPlan.js';
+ import { chatListDefinition, noteListOpened, noteListUpdated } from './aimListRun.js';
+ import { andGroups, findColumn, nextGrouping, parseAddedGroups, parseListView, refLabel,
+   type AimListColumnRef, type AimListView } from './aimListViewPlan.js';
++import { editColumns, editTypes, hasEdit, parseListEdit, removeFilterKinds } from './aimListEditPlan.js';
+ import { pendingMaximize, pendingTableRequest, requestListTable, requestStripMaximize, tableState, takeViewRequested } from './aimListViewStore.js';
+ 
+ type ListUpdateMessage = Extract<LensInboundMessage, { type: 'LIST_UPDATE' }>;
+@@ -44,23 +47,36 @@ function columnIds(def: ListDefinition, refs: AimListColumnRef[] | undefined): s
+   return ids;
+ }
+ 
+-/** Zoskupenie a súčty z `view` do definície; ostatné (zoradenie, hľadanie, maximalizácia) ako požiadavky hákom. */
++/** Stĺpce, ktoré Lens farbiť nevie (upstream by ich ticho preložil na triedu IFC). */
++const NO_COLOR = new Set(['spatial', 'zone', 'geometry']);
++
++/** Id stĺpca na farby; stĺpec, ktorý Lens nevie, je problém v `APPLIED`. */
++function colorColumnId(def: ListDefinition, ref: AimListColumnRef): string | undefined {
++  const col = findColumn(def.columns, ref);
++  if (col && NO_COLOR.has(col.source)) {
++    noteIssue(`Zoznam: podľa stĺpca ${refLabel(ref)} (podlažie, priestor, zóna) Lens farbiť nevie; vyber stĺpec vlastnosti, atribútu, materiálu alebo modelu`);
++    return undefined;
++  }
++  return columnIds(def, [ref])?.[0];
++}
++
++/** Zoskupenie a súčty z `view` do definície; ostatné (zoradenie, hľadanie, farby, export, maximalizácia) ako požiadavky hákom. */
+ export function applyListView(def: ListDefinition, view: AimListView): ListDefinition {
+   let next = def;
+   if (view.groupBy || view.sum) {
+     const grouping = nextGrouping(def.grouping, columnIds(def, view.groupBy), columnIds(def, view.sum));
+     next = { ...def, grouping };
+   }
+-  if (view.sort !== undefined || view.search !== undefined) {
+-    let sort: { columnId: string; dir: 'asc' | 'desc' } | null | undefined;
+-    if (view.sort === null) sort = null;
+-    else if (view.sort) {
+-      const id = columnIds(def, [view.sort.column])?.[0];
+-      if (id) sort = { columnId: id, dir: view.sort.dir };
+-    }
+-    if (sort !== undefined || view.search !== undefined) {
+-      requestListTable({ target: next.id, ...(sort !== undefined ? { sort } : {}), ...(view.search !== undefined ? { search: view.search } : {}) });
+-    }
++  let sort: { columnId: string; dir: 'asc' | 'desc' } | null | undefined;
++  if (view.sort === null) sort = null;
++  else if (view.sort) {
++    const id = columnIds(def, [view.sort.column])?.[0];
++    if (id) sort = { columnId: id, dir: view.sort.dir };
++  }
++  const colorBy = view.colorBy === null ? null : view.colorBy ? colorColumnId(def, view.colorBy) : undefined;
++  if (sort !== undefined || view.search !== undefined || colorBy !== undefined || view.export) {
++    requestListTable({ target: next.id, ...(sort !== undefined ? { sort } : {}), ...(view.search !== undefined ? { search: view.search } : {}),
++      ...(colorBy !== undefined ? { colorBy } : {}), ...(view.export ? { export: view.export } : {}) });
+   }
+   if (view.maximize !== undefined) requestStripMaximize(view.maximize);
+   return next;
+@@ -73,7 +89,8 @@ function sameGrouping(a: ListGrouping | undefined, b: ListGrouping | undefined):
+ export function updateListFromChat(msg: ListUpdateMessage): void {
+   const view = parseListView((msg as { view?: unknown }).view);
+   const added = parseAddedGroups((msg as { groups?: unknown }).groups);
+-  if (!view || !added) {
++  const edit = parseListEdit(msg.edit);
++  if (!view || !added || !edit) {
+     noteIssue('Zoznam: viewer úpravu odmietol (neplatné filtre alebo stĺpce)');
+     return;
+   }
+@@ -85,24 +102,37 @@ export function updateListFromChat(msg: ListUpdateMessage): void {
+     return;
+   }
+   let def = base;
+-  if (added.length > 0) {
+-    const models = [...s.models.values()].map((m) => ({ name: m.name, fingerprint: m.sourceFingerprint }));
+-    const groups = andGroups(base.groups, resolveModelRules(added, models));
+-    if (!groups) {
+-      noteIssue('Zoznam: filter sa nedá pridať k skupine OR so zoznamom; otvor zoznam znova cez open_list');
++  let removed: string[] = [];
++  const rerun = added.length > 0 || hasEdit(edit);
++  if (rerun) {
++    // Poradie: odobrať filtre, upraviť triedy, pridať filtre (podlažie a model nahradia staré).
++    let groups: FilterGroup[] | string = removeFilterKinds(base.groups, edit.removeFilters ?? []);
++    if (typeof groups !== 'string') groups = editTypes(groups, edit);
++    let cols: ReturnType<typeof editColumns> = { columns: base.columns, grouping: base.grouping, removed: [] };
++    if (typeof groups !== 'string' && added.length > 0) {
++      const models = [...s.models.values()].map((m) => ({ name: m.name, fingerprint: m.sourceFingerprint }));
++      groups = andGroups(groups, resolveModelRules(added, models))
++        ?? 'filter sa nedá pridať k skupine OR so zoznamom; otvor zoznam znova cez open_list';
++    }
++    if (typeof groups !== 'string') cols = editColumns(base.columns, base.grouping, edit);
++    if (typeof groups === 'string' || 'error' in cols) {
++      noteIssue(`Zoznam: úpravu viewer nevykonal (${typeof groups === 'string' ? groups : 'error' in cols ? cols.error : ''})`);
+       return;
+     }
+-    // Nový beh má vlastné id: podľa neho `APPLIED` pozná, že výsledok je už ten zúžený.
+-    def = { ...base, id: crypto.randomUUID(), groups: groups as FilterGroup[], updatedAt: Date.now() };
++    // Nový beh má vlastné id: podľa neho `APPLIED` pozná, že výsledok je už ten upravený.
++    def = { ...base, id: crypto.randomUUID(), groups, columns: cols.columns, grouping: cols.grouping, updatedAt: Date.now() };
++    removed = cols.removed;
+   }
+   const prevTable = tableState();
+   def = applyListView(def, view);
+   s.setListPanelVisible(true);
+-  if (added.length > 0 || !shown) {
+-    // Nový beh prekreslí tabuľku: zoradenie a hľadanie, ktoré ukazovala, sa prenesú na nový výsledok.
++  if (rerun || !shown) {
++    // Nový beh prekreslí tabuľku: zoradenie a hľadanie, ktoré ukazovala, sa prenesú na nový výsledok
++    // (zoradenie podľa odobratého stĺpca nie); farby a export z tejto správy ostanú v požiadavke.
+     if (prevTable && shown && prevTable.listId === shown.id) {
+       const req = pendingTableRequest();
+-      requestListTable({ target: def.id, sort: req && req.sort !== undefined ? req.sort : prevTable.sort, search: req?.search ?? prevTable.search });
++      const kept = prevTable.sort && !removed.includes(prevTable.sort.columnId) ? prevTable.sort : null;
++      requestListTable({ ...req, target: def.id, sort: req && req.sort !== undefined ? req.sort : kept, search: req?.search ?? prevTable.search });
+     }
+     // Nový filter alebo zoznam, ktorý ešte nebežal: spustí ho hák D-148.
+     noteListOpened(def, true);
+diff --git a/apps/viewer/src/aim/aimListEditPlan.test.ts b/apps/viewer/src/aim/aimListEditPlan.test.ts
+new file mode 100644
+index 00000000..b1488cb6
+--- /dev/null
++++ b/apps/viewer/src/aim/aimListEditPlan.test.ts
+@@ -0,0 +1,111 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import type { ColumnDefinition, ListGrouping } from '@ifc-lite/lists';
++import type { FilterGroup } from '@ifc-lite/rules';
++import { editColumns, editTypes, hasEdit, parseListEdit, removeFilterKinds } from './aimListEditPlan.js';
++import { andGroups, describeListState, parseListView } from './aimListViewPlan.js';
++
++const COLUMNS: ColumnDefinition[] = [
++  { id: 'col-0', source: 'attribute', propertyName: 'Name' },
++  { id: 'col-1', source: 'spatial', propertyName: 'Storey', label: 'Podlažie' },
++  { id: 'col-2', source: 'quantity', psetName: 'Qto_ColumnBaseQuantities', propertyName: 'NetVolume' },
++];
++const VOL = { source: 'quantity' as const, psetName: 'Qto_ColumnBaseQuantities', propertyName: 'NetVolume' };
++const FIRE = { source: 'property' as const, psetName: 'Pset_ColumnCommon', propertyName: 'FireRating' };
++const rule = (r: Record<string, unknown>) => r as never;
++const TYPES = rule({ kind: 'ifcType', op: 'in', values: ['IfcColumn'] });
++const NP1 = rule({ kind: 'storey', op: 'in', values: ['1NP'] });
++const ASR = rule({ kind: 'model', op: 'in', values: ['fp-asr'] });
++const PROP = rule({ kind: 'property', psetName: 'Pset_ColumnCommon', propertyName: 'LoadBearing', op: 'equals', value: 'true' });
++const LIST: FilterGroup[] = [{ combinator: 'AND', rules: [TYPES, NP1, PROP] }];
++
++describe('úprava obsahu zoznamu z chatu (AIM D-149, krok 2)', () => {
++  it('edit: platný prejde, chybný celý zahodí', () => {
++    assert.deepStrictEqual(parseListEdit(undefined), {});
++    assert.strictEqual(hasEdit({}), false);
++    const ok = parseListEdit({ addColumns: [{ ...FIRE, label: 'Požiar' }], removeColumns: [VOL], addTypes: ['IfcBeam'],
++      removeTypes: ['IfcColumn'], removeFilters: ['storey', 'all'] });
++    assert.deepStrictEqual(ok, { addColumns: [{ ...FIRE, label: 'Požiar' }], removeColumns: [VOL], addTypes: ['IfcBeam'],
++      removeTypes: ['IfcColumn'], removeFilters: ['storey', 'all'] });
++    assert.strictEqual(hasEdit(ok!), true);
++    assert.strictEqual(parseListEdit({ addTypes: ['Beam'] }), null);
++    assert.strictEqual(parseListEdit({ addTypes: [] }), null);
++    assert.strictEqual(parseListEdit({ removeFilters: ['ifcType'] }), null);
++    assert.strictEqual(parseListEdit({ addColumns: [{ source: 'property', propertyName: 'X' }] }), null, 'pset bez sady');
++    assert.strictEqual(parseListEdit({ addColumns: [{ ...FIRE, label: 5 }] }), null);
++    assert.strictEqual(parseListEdit([]), null);
++  });
++
++  it('stĺpce: nové na koniec s novým id bez duplicít, odobratý zmizne aj zo zoskupenia a súčtov', () => {
++    const grouping: ListGrouping = { columnId: 'col-1', columnIds: ['col-1'], sumColumnIds: ['col-2'], view: 'schedule' };
++    const out = editColumns(COLUMNS, grouping, { addColumns: [FIRE, { ...VOL }], removeColumns: [{ source: 'spatial', propertyName: 'Podlažie' }] });
++    assert.ok(!('error' in out));
++    assert.deepStrictEqual(out.columns.map((c) => c.id), ['col-0', 'col-2', 'col-3']);
++    assert.deepStrictEqual(out.columns[2], { id: 'col-3', ...FIRE });
++    assert.deepStrictEqual(out.removed, ['col-1']);
++    assert.deepStrictEqual(out.grouping, { columnId: '', columnIds: [], sumColumnIds: ['col-2'], view: 'schedule' });
++    const gone = editColumns(COLUMNS, { columnId: 'col-1', columnIds: ['col-1'], sumColumnIds: [] }, { removeColumns: [{ source: 'spatial', propertyName: 'Storey' }] });
++    assert.ok(!('error' in gone) && gone.grouping === undefined, 'bez zoskupenia aj súčtov je grouping preč');
++    const same = editColumns(COLUMNS, grouping, { addColumns: [FIRE] });
++    assert.ok(!('error' in same) && same.grouping === grouping);
++  });
++
++  it('stĺpce: neznámy alebo posledný stĺpec je chyba', () => {
++    assert.deepStrictEqual(editColumns(COLUMNS, undefined, { removeColumns: [FIRE] }), { error: 'stĺpec Pset_ColumnCommon.FireRating v zozname nie je' });
++    assert.deepStrictEqual(editColumns(COLUMNS.slice(0, 1), undefined, { removeColumns: [{ source: 'attribute', propertyName: 'Name' }] }),
++      { error: 'zoznam by ostal bez stĺpcov' });
++  });
++
++  it('triedy: rozšíri a zúži pravidlo IFC trieda v každej skupine', () => {
++    const two: FilterGroup[] = [...LIST, { combinator: 'AND', rules: [TYPES, ASR] }];
++    const out = editTypes(two, { addTypes: ['IfcBeam', 'ifccolumn'], removeTypes: [] });
++    assert.ok(Array.isArray(out));
++    assert.deepStrictEqual(out.map((g) => (g.rules[0] as { values: string[] }).values), [['IfcColumn', 'IfcBeam'], ['IfcColumn', 'IfcBeam']]);
++    assert.deepStrictEqual(out[0].rules.slice(1), [NP1, PROP], 'ostatné pravidlá ostanú');
++    const narrowed = editTypes(out, { removeTypes: ['IFCCOLUMN'] });
++    assert.ok(Array.isArray(narrowed));
++    assert.deepStrictEqual((narrowed[0].rules[0] as { values: string[] }).values, ['IfcBeam']);
++  });
++
++  it('triedy: zoznam bez tried, neznáma alebo posledná trieda je chyba', () => {
++    assert.match(String(editTypes([{ combinator: 'AND', rules: [NP1] }], { addTypes: ['IfcBeam'] })), /nemá filter IFC tried/);
++    assert.strictEqual(editTypes(LIST, { removeTypes: ['IfcWall'] }), 'trieda IfcWall v zozname nie je');
++    assert.match(String(editTypes(LIST, { removeTypes: ['IfcColumn'] })), /bez tried/);
++    assert.deepStrictEqual(editTypes(LIST, {}), LIST);
++  });
++
++  it('filtre: odobratie druhu, all nechá triedy, celý model je chyba', () => {
++    assert.deepStrictEqual(removeFilterKinds(LIST, ['storey']), [{ combinator: 'AND', rules: [TYPES, PROP] }]);
++    assert.deepStrictEqual(removeFilterKinds(LIST, ['all']), [{ combinator: 'AND', rules: [TYPES] }]);
++    assert.match(String(removeFilterKinds(LIST, ['model'])), /nemá filter model/);
++    assert.match(String(removeFilterKinds([{ combinator: 'AND', rules: [NP1] }], ['all'])), /celý model/);
++    assert.deepStrictEqual(removeFilterKinds(LIST, []), LIST);
++  });
++
++  it('podlažie a model sa prepínajú: nové pravidlo nahradí staré, ostatné filtre sa pridajú cez AND', () => {
++    const NP3 = rule({ kind: 'storey', op: 'in', values: ['3NP'] });
++    const out = andGroups([{ combinator: 'AND', rules: [TYPES, NP1, ASR] }], [{ combinator: 'AND', rules: [NP3] }]);
++    assert.deepStrictEqual(out, [{ combinator: 'AND', rules: [TYPES, ASR, NP3] }]);
++    const both = andGroups([{ combinator: 'OR', rules: [NP1] }], [{ combinator: 'AND', rules: [NP3, PROP] }]);
++    assert.deepStrictEqual(both, [{ combinator: 'AND', rules: [NP3, PROP] }], 'OR skupina, z ktorej ostane nič, sa dá zúžiť');
++  });
++
++  it('view: farby a export; stav ich povie', () => {
++    assert.deepStrictEqual(parseListView({ colorBy: FIRE, export: 'xlsx' }), { colorBy: FIRE, export: 'xlsx' });
++    assert.deepStrictEqual(parseListView({ colorBy: null }), { colorBy: null });
++    assert.strictEqual(parseListView({ export: 'docx' }), null);
++    assert.strictEqual(parseListView({ colorBy: { source: 'nope', propertyName: 'X' } }), null);
++    const state = describeListState({ name: 'Stĺpy', columns: COLUMNS, groups: LIST }, {
++      panelOpen: true, executing: false, rows: 3, table: null, maximized: false, colorBy: 'col-2', exportReady: 'csv',
++    });
++    assert.strictEqual(state.color_by, 'Qto_ColumnBaseQuantities.NetVolume');
++    assert.strictEqual(state.export_ready, 'csv');
++    const plain = describeListState({ name: 'Stĺpy', columns: COLUMNS, groups: LIST }, { panelOpen: true, executing: false, rows: 3, table: null, maximized: false });
++    assert.ok(!('color_by' in plain) && !('export_ready' in plain));
++  });
++});
+diff --git a/apps/viewer/src/aim/aimListEditPlan.ts b/apps/viewer/src/aim/aimListEditPlan.ts
+new file mode 100644
+index 00000000..e6cde34a
+--- /dev/null
++++ b/apps/viewer/src/aim/aimListEditPlan.ts
+@@ -0,0 +1,149 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Úprava obsahu otvoreného zoznamu z chatu (AIM D-149, krok 2): časť `edit` správy
++ * `LIST_UPDATE` pridá alebo odoberie stĺpce a triedy entít a odoberie filtre. Čisté
++ * funkcie nad `ListDefinition`; chyba je text pre `APPLIED` a zoznam sa vtedy nemení.
++ * Lepidlo je v `aimListControl.ts`.
++ */
++
++import type { FilterGroup, FilterRule } from '@ifc-lite/rules';
++import type { ColumnDefinition, ListGrouping } from '@ifc-lite/lists';
++import { findColumn, nextGrouping, parseColumnRef, refLabel, type AimListColumnRef } from './aimListViewPlan.js';
++
++/** Druhy pravidiel, ktoré chat vie odobrať; `all` = všetky okrem tried. */
++const FILTER_KINDS = new Set(['storey', 'model', 'property', 'group', 'globalId', 'name', 'predefinedType', 'all']);
++const MAX_ITEMS = 16;
++/** Pset a Qto stĺpec bez mena sady nie je stĺpec (ako `NEEDS_SET` v `aimListPlan.ts`). */
++const NEEDS_SET = new Set<string>(['property', 'quantity']);
++
++export interface AimListEdit {
++  addColumns?: (AimListColumnRef & { label?: string })[];
++  removeColumns?: AimListColumnRef[];
++  addTypes?: string[];
++  removeTypes?: string[];
++  removeFilters?: string[];
++}
++
++const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
++const strList = (raw: unknown, ok: (s: string) => boolean): string[] | null =>
++  Array.isArray(raw) && raw.length <= MAX_ITEMS && raw.every((s) => typeof s === 'string' && ok(s)) ? (raw as string[]) : null;
++const isIfcClass = (s: string) => /^Ifc[A-Za-z0-9]{1,60}$/i.test(s);
++
++/** Plná validácia `edit` zo správy hosta; `null` = neplatné (správa sa zahodí), bez `edit` prázdny objekt. */
++export function parseListEdit(raw: unknown): AimListEdit | null {
++  if (raw === undefined) return {};
++  if (!isObj(raw)) return null;
++  const out: AimListEdit = {};
++  for (const key of ['addColumns', 'removeColumns'] as const) {
++    if (raw[key] === undefined) continue;
++    const list = raw[key];
++    if (!Array.isArray(list) || list.length === 0 || list.length > MAX_ITEMS) return null;
++    const refs = list.map((c) => {
++      const ref = parseColumnRef(c);
++      if (!ref || (NEEDS_SET.has(ref.source) && !ref.psetName)) return null;
++      const label = (c as Record<string, unknown>).label;
++      if (label === undefined) return ref;
++      return typeof label === 'string' && label && label.length <= 120 ? { ...ref, label } : null;
++    });
++    if (!refs.every((r) => r !== null)) return null;
++    out[key] = refs as AimListColumnRef[];
++  }
++  for (const key of ['addTypes', 'removeTypes'] as const) {
++    if (raw[key] === undefined) continue;
++    const list = strList(raw[key], isIfcClass);
++    if (!list || list.length === 0) return null;
++    out[key] = list;
++  }
++  if (raw.removeFilters !== undefined) {
++    const list = strList(raw.removeFilters, (s) => FILTER_KINDS.has(s));
++    if (!list || list.length === 0) return null;
++    out.removeFilters = list;
++  }
++  return out;
++}
++
++export const hasEdit = (e: AimListEdit) => Object.keys(e).length > 0;
++
++type ColumnsOut = { columns: ColumnDefinition[]; grouping: ListGrouping | undefined; removed: string[] } | { error: string };
++
++/**
++ * Stĺpce po úprave: nové na koniec (s novým id, existujúci stĺpec sa nezdvojí), odobraté
++ * zmiznú aj zo zoskupenia a súčtov. Neznámy stĺpec alebo zoznam bez stĺpcov = chyba.
++ */
++export function editColumns(columns: readonly ColumnDefinition[], grouping: ListGrouping | undefined, edit: AimListEdit): ColumnsOut {
++  const removed: string[] = [];
++  for (const ref of edit.removeColumns ?? []) {
++    const col = findColumn(columns, ref);
++    if (!col) return { error: `stĺpec ${refLabel(ref)} v zozname nie je` };
++    removed.push(col.id);
++  }
++  const kept = columns.filter((c) => !removed.includes(c.id));
++  let next = Math.max(-1, ...columns.map((c) => Number(/^col-(\d+)$/.exec(c.id)?.[1] ?? -1))) + 1;
++  const out = [...kept];
++  for (const ref of edit.addColumns ?? []) {
++    if (findColumn(out, ref)) continue;
++    const { label, ...rest } = ref as AimListColumnRef & { label?: string };
++    out.push({ id: `col-${next++}`, ...rest, ...(label ? { label } : {}) });
++  }
++  if (out.length === 0) return { error: 'zoznam by ostal bez stĺpcov' };
++  if (removed.length === 0) return { columns: out, grouping, removed };
++  const prevGroups = grouping ? (grouping.columnIds?.length ? grouping.columnIds : grouping.columnId ? [grouping.columnId] : []) : [];
++  const g = nextGrouping(grouping, prevGroups.filter((id) => !removed.includes(id)),
++    (grouping?.sumColumnIds ?? []).filter((id) => !removed.includes(id)));
++  return { columns: out, grouping: g, removed };
++}
++
++const fold = (s: string) => s.trim().toLowerCase();
++const isTypeRule = (r: FilterRule): r is Extract<FilterRule, { kind: 'ifcType' }> => r.kind === 'ifcType' && r.op === 'in';
++
++/**
++ * Triedy entít po úprave: pravidlo "IFC trieda je jedna z" v každej skupine sa rozšíri
++ * alebo zúži. Zoznam bez takého pravidla by pridanie triedy zúžilo, preto je to chyba,
++ * rovnako ako odobratie triedy, ktorá v zozname nie je, alebo poslednej triedy.
++ */
++export function editTypes(groups: readonly FilterGroup[], edit: AimListEdit): FilterGroup[] | string {
++  const add = edit.addTypes ?? [];
++  const remove = new Set((edit.removeTypes ?? []).map(fold));
++  if (add.length === 0 && remove.size === 0) return [...groups];
++  const live = groups.filter((g) => g.rules.length > 0);
++  if (!live.some((g) => g.rules.some(isTypeRule))) {
++    return 'zoznam nemá filter IFC tried; otvor nový zoznam cez open_list s ifc_types';
++  }
++  const seen = new Set<string>();
++  const out: FilterGroup[] = [];
++  for (const g of live) {
++    const rules: FilterRule[] = [];
++    for (const r of g.rules) {
++      if (!isTypeRule(r)) {
++        rules.push(r);
++        continue;
++      }
++      r.values.forEach((v) => remove.has(fold(v)) && seen.add(fold(v)));
++      const values = r.values.filter((v) => !remove.has(fold(v)));
++      for (const t of add) if (!values.some((v) => fold(v) === fold(t))) values.push(t);
++      if (values.length === 0) return 'zoznam by ostal bez tried; odober triedu až po pridaní inej';
++      rules.push({ ...r, values });
++    }
++    out.push({ ...g, rules });
++  }
++  const missing = (edit.removeTypes ?? []).filter((t) => !seen.has(fold(t)));
++  if (missing.length) return `trieda ${missing.join(', ')} v zozname nie je`;
++  return out;
++}
++
++/**
++ * Filtre po odobratí druhov pravidiel (`all` = všetky okrem tried). Skupina bez pravidiel
++ * odpadne; zoznam bez jediného pravidla by niesol celý model, preto je to chyba.
++ */
++export function removeFilterKinds(groups: readonly FilterGroup[], kinds: readonly string[]): FilterGroup[] | string {
++  if (kinds.length === 0) return [...groups];
++  const all = kinds.includes('all');
++  const drop = (r: FilterRule) => (all ? r.kind !== 'ifcType' : kinds.includes(r.kind));
++  if (!all && !groups.some((g) => g.rules.some(drop))) return `zoznam nemá filter ${kinds.join(', ')}`;
++  const out = groups.map((g) => ({ ...g, rules: g.rules.filter((r) => !drop(r)) })).filter((g) => g.rules.length > 0);
++  if (out.length === 0) return 'zoznam by ostal bez filtra (celý model); nechaj aspoň triedu alebo podlažie';
++  return out;
++}
+diff --git a/apps/viewer/src/aim/aimListState.ts b/apps/viewer/src/aim/aimListState.ts
+index 3e4163e1..2e7cf553 100644
+--- a/apps/viewer/src/aim/aimListState.ts
++++ b/apps/viewer/src/aim/aimListState.ts
+@@ -20,13 +20,16 @@ export function describeList(): Record<string, unknown> | null {
+   const shown = s.listResult ? listRunDefinition(s.listResult) : null;
+   const def = shown ?? chatListDefinition();
+   if (!def) return { panel_open: s.listPanelVisible, has_result: false };
+-  const table = tableState();
++  const report = tableState();
++  const table = report && report.listId === def.id ? report : null;
+   const strip = stripState();
+   return describeListState(def, {
+     panelOpen: s.listPanelVisible,
+     executing: s.listExecuting,
+     rows: shown && s.listResult ? s.listResult.totalCount : null,
+-    table: table && table.listId === def.id ? table : null,
++    table,
+     maximized: strip?.active === 'lists' && strip.maximized,
++    colorBy: table?.colorBy ?? null,
++    exportReady: table?.exportReady ?? null,
+   });
+ }
+diff --git a/apps/viewer/src/aim/aimListTable.ts b/apps/viewer/src/aim/aimListTable.ts
+index 4e47839e..33566a22 100644
+--- a/apps/viewer/src/aim/aimListTable.ts
++++ b/apps/viewer/src/aim/aimListTable.ts
+@@ -3,18 +3,26 @@
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
+ /**
+- * Hák v upstream `ListResultsTable` (AIM D-149): vykoná zoradenie a hľadanie z chatu
+- * nad lokálnym stavom tabuľky a zapíše, čo tabuľka ukazuje (zoradenie, hľadanie,
+- * počet viditeľných riadkov, súčty v jednotke tabuľky) pre `view_state`.
++ * Hák v upstream `ListResultsTable` (AIM D-149): vykoná zoradenie, hľadanie, farby
++ * podľa stĺpca (upstream "Color by", krok 2) a ponuku exportu z chatu nad lokálnym
++ * stavom tabuľky a zapíše, čo tabuľka ukazuje (zoradenie, hľadanie, počet viditeľných
++ * riadkov, súčty v jednotke tabuľky, farby, ponúknutý export) pre `view_state`.
++ * Vráti zvýraznené tlačidlo exportu (alebo null) pre lištu akcií tabuľky.
+  */
+ 
+-import { useEffect, useSyncExternalStore } from 'react';
+-import type { ListResult } from '@ifc-lite/lists';
++import { Suspense, createElement, lazy, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
++import type { ColumnDefinition, ListResult } from '@ifc-lite/lists';
++import type { ExportFormat } from '@/lib/lists/export';
+ import { listRunDefinition } from '@/lib/lists/run-provenance';
++import { AUTO_COLOR_FROM_LIST_ID } from '@/lib/lens/persistence';
++import { useViewerStore } from '@/store';
+ import { pendingTableRequest, reportTable, subscribeListView, takeTableRequest } from './aimListViewStore.js';
+ 
+ type Dir = 'asc' | 'desc';
+ 
++/** Tlačidlo exportu z chatu sa načíta až pri prvej ponuke, vstupný balík nerastie. */
++const AimListExportCue = lazy(() => import('./AimListExportCue').then((m) => ({ default: m.AimListExportCue })));
++
+ export interface AimListTableBinding {
+   result: ListResult;
+   sortCol: number | null;
+@@ -26,12 +34,20 @@ export interface AimListTableBinding {
+   setSortCol: (col: number | null) => void;
+   setSortDir: (dir: Dir) => void;
+   setSearch: (query: string) => void;
++  /** Stĺpec upstream "Color by" (index) a jeho akcie z tabuľky. */
++  colorByColIdx: number | null;
++  setColorByColIdx: (col: number | null) => void;
++  onColorBy: (col: ColumnDefinition, colIdx: number) => void;
++  onExport: (format: ExportFormat) => void;
+ }
+ 
+-export function useAimListTable(b: AimListTableBinding): void {
+-  const { result, sortCol, sortDir, search, visibleRows, sums, unitSymbol, setSortCol, setSortDir, setSearch } = b;
++export function useAimListTable(b: AimListTableBinding): ReactNode {
++  const { result, sortCol, sortDir, search, visibleRows, sums, unitSymbol, setSortCol, setSortDir, setSearch,
++    colorByColIdx, setColorByColIdx, onColorBy, onExport } = b;
+   const request = useSyncExternalStore(subscribeListView, pendingTableRequest, pendingTableRequest);
+   const listId = listRunDefinition(result)?.id ?? null;
++  const colorActive = useViewerStore((s) => s.activeLensId === AUTO_COLOR_FROM_LIST_ID);
++  const [exportReady, setExportReady] = useState<ExportFormat | null>(null);
+ 
+   useEffect(() => {
+     if (!request || (request.target !== null && request.target !== listId)) return;
+@@ -47,8 +63,20 @@ export function useAimListTable(b: AimListTableBinding): void {
+       }
+     }
+     if (r.search !== undefined) setSearch(r.search);
+-  }, [request, listId, result, setSortCol, setSortDir, setSearch]);
++    if (r.colorBy) {
++      const idx = result.columns.findIndex((c) => c.id === r.colorBy);
++      if (idx >= 0) onColorBy(result.columns[idx], idx);
++    } else if (r.colorBy === null) {
++      // Zrušiť len farby z tabuľky; Lens z chatu ("AIM chat") v tom istom slote nechať.
++      const s = useViewerStore.getState();
++      const lens = s.savedLenses.find((l) => l.id === AUTO_COLOR_FROM_LIST_ID);
++      if (s.activeLensId === AUTO_COLOR_FROM_LIST_ID && lens?.name.startsWith('Color by ')) s.setActiveLens(null);
++      setColorByColIdx(null);
++    }
++    if (r.export) setExportReady(r.export);
++  }, [request, listId, result, setSortCol, setSortDir, setSearch, onColorBy, setColorByColIdx]);
+ 
++  const colorColumn = colorActive && colorByColIdx !== null ? result.columns[colorByColIdx] : undefined;
+   useEffect(() => {
+     const column = sortCol === null ? undefined : result.columns[sortCol];
+     reportTable({
+@@ -60,8 +88,20 @@ export function useAimListTable(b: AimListTableBinding): void {
+         const unit = unitSymbol(result.columns.findIndex((c) => c.id === columnId));
+         return { columnId, value, ...(unit ? { unit } : {}) };
+       }),
++      colorBy: colorColumn?.id ?? null,
++      exportReady,
+     });
+-  }, [listId, result, sortCol, sortDir, search, visibleRows, sums, unitSymbol]);
++  }, [listId, result, sortCol, sortDir, search, visibleRows, sums, unitSymbol, colorColumn, exportReady]);
+ 
+   useEffect(() => () => reportTable(null), []);
++
++  if (!exportReady) return null;
++  return createElement(Suspense, { fallback: null }, createElement(AimListExportCue, {
++    format: exportReady,
++    onExport: (format: ExportFormat) => {
++      setExportReady(null);
++      onExport(format);
++    },
++    onDismiss: () => setExportReady(null),
++  }));
+ }
+diff --git a/apps/viewer/src/aim/aimListViewPlan.ts b/apps/viewer/src/aim/aimListViewPlan.ts
+index f7068dbc..b3b66211 100644
+--- a/apps/viewer/src/aim/aimListViewPlan.ts
++++ b/apps/viewer/src/aim/aimListViewPlan.ts
+@@ -31,13 +31,20 @@ export interface AimListView {
+   groupBy?: AimListColumnRef[];
+   /** Rýchle hľadanie v riadkoch tabuľky (prázdne = zrušiť). */
+   search?: string;
++  /** Farby prvkov v 3D podľa hodnoty stĺpca (upstream "Color by"); `null` = zrušiť. */
++  colorBy?: AimListColumnRef | null;
++  /** Formát, ktorý sa ponúkne na stiahnutie zvýrazneným tlačidlom (klik je na používateľovi). */
++  export?: AimListExportFormat;
+ }
+ 
++export type AimListExportFormat = 'csv' | 'xlsx' | 'pdf';
++const EXPORT_FORMATS = new Set<string>(['csv', 'xlsx', 'pdf']);
++
+ const MAX_VIEW_COLUMNS = 8;
+ const SOURCES = new Set<string>(['attribute', 'property', 'quantity', 'material', 'classification', 'spatial', 'model', 'zone', 'geometry']);
+ const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+ 
+-function parseColumnRef(raw: unknown): AimListColumnRef | null {
++export function parseColumnRef(raw: unknown): AimListColumnRef | null {
+   if (!isObj(raw) || typeof raw.source !== 'string' || !SOURCES.has(raw.source)) return null;
+   if (typeof raw.propertyName !== 'string' || raw.propertyName.length > 200) return null;
+   if (raw.psetName !== undefined && (typeof raw.psetName !== 'string' || !raw.psetName || raw.psetName.length > 200)) return null;
+@@ -82,6 +89,15 @@ export function parseListView(raw: unknown): AimListView | null {
+     if (typeof raw.search !== 'string' || raw.search.length > 200) return null;
+     out.search = raw.search;
+   }
++  if (raw.colorBy !== undefined) {
++    const column = raw.colorBy === null ? null : parseColumnRef(raw.colorBy);
++    if (raw.colorBy !== null && !column) return null;
++    out.colorBy = column;
++  }
++  if (raw.export !== undefined) {
++    if (typeof raw.export !== 'string' || !EXPORT_FORMATS.has(raw.export)) return null;
++    out.export = raw.export as AimListExportFormat;
++  }
+   return out;
+ }
+ 
+@@ -118,21 +134,27 @@ export function findColumn(columns: readonly ColumnDefinition[], ref: AimListCol
+ /** Meno stĺpca od hosta pre hlásenie, že ho zoznam nemá. */
+ export const refLabel = (ref: AimListColumnRef) => (ref.psetName ? `${ref.psetName}.${ref.propertyName}` : ref.propertyName || ref.source);
+ 
++/** Podlažie a model sa pri úprave prepínajú: nové pravidlo nahradí staré toho druhu (krok 2). */
++const SWITCH_KINDS = new Set(['storey', 'model']);
++
+ /**
+  * Pridá filtre (AND) k filtrom zoznamu. Skupiny zoznamu sa medzi sebou spájajú ako OR,
+  * preto sa nové pravidlá pridajú do každej skupiny; skupina OR s viac pravidlami sa
+- * bez vnorenia zúžiť nedá (`null`). Zoznam bez filtrov dostane nové skupiny.
++ * bez vnorenia zúžiť nedá (`null`). Zoznam bez filtrov dostane nové skupiny. Nové
++ * podlažie alebo model nahradí doterajšie pravidlo toho druhu (AND dvoch podlaží je prázdny).
+  */
+ export function andGroups(existing: readonly FilterGroup[], added: readonly FilterGroup[]): FilterGroup[] | null {
+   const rules = added.flatMap((g) => (g.combinator === 'AND' || g.rules.length === 1 ? g.rules : []));
+   if (rules.length !== added.reduce((n, g) => n + g.rules.length, 0)) return null;
+   if (rules.length === 0) return [...existing];
++  const switched = new Set(rules.filter((r) => SWITCH_KINDS.has(r.kind)).map((r) => r.kind));
+   const live = existing.filter((g) => g.rules.length > 0);
+   if (live.length === 0) return [{ combinator: 'AND', rules }];
+   const out: FilterGroup[] = [];
+   for (const g of live) {
+-    if (g.combinator === 'OR' && g.rules.length > 1) return null;
+-    out.push({ combinator: 'AND', rules: [...g.rules, ...rules] });
++    const kept = g.rules.filter((r) => !switched.has(r.kind));
++    if (g.combinator === 'OR' && kept.length > 1) return null;
++    out.push({ combinator: 'AND', rules: [...kept, ...rules] });
+   }
+   return out;
+ }
+@@ -175,6 +197,9 @@ export interface ListStateInput {
+   table: { sort: { columnId: string; dir: 'asc' | 'desc' } | null; search: string; visibleRows: number;
+     sums: { columnId: string; value: number; unit?: string }[] } | null;
+   maximized: boolean;
++  /** Stĺpec, podľa ktorého sú prvky v 3D ofarbené (id), a formát ponúknutý na stiahnutie. */
++  colorBy?: string | null;
++  exportReady?: AimListExportFormat | null;
+ }
+ 
+ const round = (v: number) => Math.round(v * 1e6) / 1e6;
+@@ -203,5 +228,8 @@ export function describeListState(def: { name: string; columns: ColumnDefinition
+     // Súčty sú za riadky, ktoré tabuľka ukazuje (po hľadaní a "len viditeľné"), v jej jednotke.
+     sums: (s.table?.sums ?? []).map((x) => ({ column: label(x.columnId), value: round(x.value), ...(x.unit ? { unit: x.unit } : {}) })),
+     maximized: s.maximized,
++    ...(s.colorBy ? { color_by: label(s.colorBy) } : {}),
++    // Stiahnutie bez kliku prehliadač v iframe nepustí (D-111): tlačidlo čaká na používateľa.
++    ...(s.exportReady ? { export_ready: s.exportReady } : {}),
+   };
+ }
+diff --git a/apps/viewer/src/aim/aimListViewStore.ts b/apps/viewer/src/aim/aimListViewStore.ts
+index 01a05ecc..e60334fd 100644
+--- a/apps/viewer/src/aim/aimListViewStore.ts
++++ b/apps/viewer/src/aim/aimListViewStore.ts
+@@ -16,6 +16,10 @@ export interface ListTableRequest {
+   /** Id stĺpca a smer; null = zrušiť zoradenie. */
+   sort?: { columnId: string; dir: 'asc' | 'desc' } | null;
+   search?: string;
++  /** Id stĺpca na farby prvkov v 3D; null = zrušiť (krok 2). */
++  colorBy?: string | null;
++  /** Formát, ktorý tabuľka ponúkne zvýrazneným tlačidlom na stiahnutie. */
++  export?: 'csv' | 'xlsx' | 'pdf';
+ }
+ 
+ /** Čo tabuľka výsledkov práve ukazuje (zapisuje hák v `ListResultsTable`). */
+@@ -27,6 +31,10 @@ export interface ListTableReport {
+   visibleRows: number;
+   /** Súčty viditeľných riadkov v jednotke tabuľky. */
+   sums: { columnId: string; value: number; unit?: string }[];
++  /** Stĺpec s farbami prvkov v 3D (id), ak je "Color by" z tabuľky aktívne. */
++  colorBy: string | null;
++  /** Formát ponúknutý na stiahnutie (čaká na klik používateľa). */
++  exportReady: 'csv' | 'xlsx' | 'pdf' | null;
+ }
+ 
+ export interface StripReport {
+diff --git a/apps/viewer/src/aim/lens-protocol.ts b/apps/viewer/src/aim/lens-protocol.ts
+index f2f27734..ae3bb8d1 100644
+--- a/apps/viewer/src/aim/lens-protocol.ts
++++ b/apps/viewer/src/aim/lens-protocol.ts
+@@ -72,10 +72,12 @@ export type LensInboundMessage =
+     }
+   | {
+       source: typeof SOURCE;
+-      /** Úprava otvoreného zoznamu (D-149): `groups` pribudnú k filtrom (AND) a tabuľka sa spustí znova. */
++      /** Úprava otvoreného zoznamu (D-149): `groups` pribudnú k filtrom (AND, podlažie a model nahradia staré),
++       *  `edit` mení stĺpce, triedy a odoberá filtre; tabuľka sa spustí znova. */
+       type: 'LIST_UPDATE';
+       groups?: unknown[];
+       view?: unknown;
++      edit?: unknown;
+     };
+ 
+ /** Stĺpec zoznamu z chatu, tvar `ColumnDefinition` z `@ifc-lite/lists` bez `id`. */
+diff --git a/apps/viewer/src/components/viewer/lists/ListResultsTable.tsx b/apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
+index c2bd6563..3bde6bbe 100644
+--- a/apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
++++ b/apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
+@@ -37,7 +37,7 @@ import { ColumnResizeHandle } from './ColumnResizeHandle';
+ import { formatCellValue, compareCells, detectNumericColumns, autoColumnWidth,
+   buildGroupedView, flatTotals, buildScheduleRows, rebuildGrouping,
+   type DisplayItem, type Totals, type ScheduleRow } from './list-table-utils';
+-// >>> AIM-FORK: zoradenie, hľadanie a súčty z chatu (D-149)
++// >>> AIM-FORK: zoradenie, hľadanie, súčty, farby a export z chatu (D-149)
+ import { useAimListTable } from '@/aim/aimListTable';
+ // <<< AIM-FORK
+ interface ListResultsTableProps {
+@@ -171,10 +171,6 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
+       groupKeys: [],
+     };
+   }, [isGrouped, displayRows, columns, groupColumnIds, sumColumnIds, expandedGroups, sortCol, sortDir]);
+-  // >>> AIM-FORK: zoradenie, hľadanie a súčty z chatu (D-149)
+-  useAimListTable({ result, sortCol, sortDir, search: searchQuery, visibleRows: sortedRows.length, sums: totals.sums,
+-    unitSymbol: unitResolver.unitSymbol, setSortCol, setSortDir, setSearch: setSearchQuery });
+-  // <<< AIM-FORK
+ 
+   const columnWidths = useMemo(
+     () => columns.map((c, i) => widthOverrides[c.id] ?? autoColumnWidth(c.label ?? c.propertyName, result.rows, i)),
+@@ -256,6 +252,11 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
+       toast.error(t('lists.resultsTable.exportFailed', { message: error instanceof Error ? error.message : 'Unknown error' }));
+     });
+   }, [listName, columns, sortedRows, grouping, sortCol, sortDir, numericCols, columnWidths, modelUnits, unitDisplayOverrides, t]);
++  // >>> AIM-FORK: zoradenie, hľadanie, súčty, farby a ponuka exportu z chatu (D-149)
++  const aimExportCue = useAimListTable({ result, sortCol, sortDir, search: searchQuery, visibleRows: sortedRows.length, sums: totals.sums,
++    unitSymbol: unitResolver.unitSymbol, setSortCol, setSortDir, setSearch: setSearchQuery,
++    colorByColIdx, setColorByColIdx, onColorBy: handleColorByColumn, onExport: handleExport });
++  // <<< AIM-FORK
+   // Every rendered line's member rows, in the virtualizer's index space: a
+   // group header selects its whole subtree, a schedule row its tuple (#6368).
+   const selectionLines = useMemo<ListRow[][]>(
+@@ -266,7 +267,8 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
+     <ListResultChrome result={result} visibleCount={sortedRows.length}
+       filters={<ListResultsFilters searchQuery={searchQuery} onSearch={setSearchQuery} visibleOnly={filterByVisibility}
+         onToggleVisible={() => setFilterByVisibility(value => !value)} count={sortedRows.length} total={result.rows.length} />}
+-      actions={<ListResultsExports onExport={handleExport} />}>
++      // AIM-FORK (D-149): next 1 line
++      actions={<>{aimExportCue}<ListResultsExports onExport={handleExport} /></>}>
+       {/* Grouping / totals control strip */}
+       {(isGrouped || showSumRow) && onGroupingChange && (
+         <ListGroupingBar
+diff --git a/apps/viewer/src/i18n/catalogues/aim-fork.en.ts b/apps/viewer/src/i18n/catalogues/aim-fork.en.ts
+index 935180b4..8e6bf95e 100644
+--- a/apps/viewer/src/i18n/catalogues/aim-fork.en.ts
++++ b/apps/viewer/src/i18n/catalogues/aim-fork.en.ts
+@@ -25,6 +25,10 @@ export const aimForkEn = {
+   /** Offer after an orbit attempt in the locked plan tab (AIM #188, D-132)). */
+   'aimFork.planOrbit.message': 'The plan is a locked top view. Switch to 3D? (Enter)',
+   'aimFork.planOrbit.action': 'Switch to 3D',
++  /** Highlighted download button after an export request from the AIM chat (AIM D-149): the browser needs the user's click. */
++  'aimFork.listExport.action': 'Download {format}',
++  'aimFork.listExport.hint': 'Requested from the AIM chat: click to download',
++  'aimFork.listExport.dismiss': 'Dismiss download offer',
+   /** Fork-only ribbon tab (D-072 / D-075, labelled AIM since D-089); keyed like upstream's `ribbon.tab.*` because the band reads `t(`ribbon.tab.${tab}`)`. */
+   'ribbon.tab.documents': 'AIM',
+ } as const;
+diff --git a/docs/FORK_MAINTENANCE.md b/docs/FORK_MAINTENANCE.md
+index bed9ee1f..3efd8d10 100644
+--- a/docs/FORK_MAINTENANCE.md
++++ b/docs/FORK_MAINTENANCE.md
+@@ -60,7 +60,7 @@ git grep -n ">>> AIM-FORK" -- apps/ packages/
+ | `apps/viewer/src/components/viewer/HierarchyPanel.tsx` | 2 | AIM tree decorations — row → IFC GlobalId → badge counts (D-077), one import from `aim/hierarchyPanel.ts` because the file sits at its module-size budget; AIM LAYERS moved to the `aim-layers` panel (D-104) |
+ | `apps/viewer/src/components/viewer/hierarchy/ModelHeaderRow.tsx` | 2 | `<AimModelRevision />` model revision pill on MODELS rows (D-089) |
+ | `apps/viewer/src/components/viewer/lists/ListPanel.tsx` | 2 | `useAimListAutoRun(handleExecuteList, hasData)` (import + one call): `open_list run=true` runs the table after opening, logic in `aim/aimListRun.ts` (D-148) |
+-| `apps/viewer/src/components/viewer/lists/ListResultsTable.tsx` | 2 | `useAimListTable({...})` (import + one call): sort, quick search and sums from chat over the table's local state, and what the table shows for `view_state`; logic in `aim/aimListTable.ts` (D-149) |
++| `apps/viewer/src/components/viewer/lists/ListResultsTable.tsx` | 3 | `useAimListTable({...})` (import + one call below `handleExport`): sort, quick search, sums, upstream "Color by" and the export offer from chat over the table's local state, and what the table shows for `view_state`; the `actions` prop also renders the returned highlighted download button (one-line block); logic in `aim/aimListTable.ts`, button `aim/AimListExportCue.tsx` (lazy) (D-149) |
+ | `apps/viewer/src/components/viewer/BottomStrip.tsx` | 2 | `useAimStripMaximize(...)` (import + one call): `open_list maximize` maximizes the strip with the Lists panel through the strip's own `isMaximized` state; logic in `aim/aimStripMaximize.ts` (D-149) |
+ | `apps/viewer/src/components/viewer/properties/RelationshipsCard.tsx` | 3 | `<AimDerivedRelations />` AIM group in Relationship records + its rows in the card count (D-089) |
+ | `apps/viewer/src/components/viewer/hierarchy/HierarchyNode.tsx` | 4 | AIM badge icons + per-GUID counts (D-077) |
+-- 
+2.43.0
+
