@@ -6744,3 +6744,60 @@ inštrukcie sú tesne pod stropom 15 000 znakov, pokyn je v opise toolu).
 nepobežali (bez Supabase kľúčov); otázka `panel-scroll-down` je v `eval/questions.json`. **Testy:** vitest (`view-plan`,
 `select-panel`), fork `aimPanelScrollPlan.test.ts` s mutačnými dôkazmi.
 
+
+---
+
+### D-150 - Všetky panely UI v `set_view_mode panels`, zoznam odvodený z forku, posun na položku a zoom panelu (#179)
+
+**Dátum:** 2026-10-22 · **Issue:** #179 (overenie "vrátené" z 22. 10. 05:44 UTC) · **Nadväzuje na:** D-127 (panely z chatu),
+D-146 (posun panela vlastností), D-114, D-098, D-091, D-087 · **Mimo rozsahu:** panel Lists (maximalizácia a úpravy zoznamu rieši D-149)
+
+**Kontext:** D-127 pustil do `panels` šesť panelov (lens, properties, underlays, documents, lists, model_tree). Samuel overil
+naživo, že funguje open a close, ale chýba panel BCF topics (v UI Alt+3), v UI sú ďalšie panely, o ktorých chat nevie, a nedá sa
+posunúť obsah otvoreného panela ani ho priblížiť, aby chat ukázal konkrétne miesto.
+
+**Overenie existujúceho (D-098, D-114):** najbližšie tooly sú `set_view_mode` (UI akcia pohľadu, nesie `panels` a `panel_scroll`),
+`get_viewer_state` (čítanie, nesie `view_state.panels`) a `show_in_3d` (výber a `highlight` riadku vlastnosti). Upstream registra
+panelov `WORKSPACE_PANELS` je jediný zdroj panelov rail-u, skratiek Alt+N a hostov (sidebar, plávajúce okno, spodný pás), všetky
+cez `renderPanelBody`. `showWorkspacePanel` a príznaky spodného pásu (`bottom-panels.ts`) otvárajú a zatvárajú ľubovoľný z nich.
+Nič z toho nebolo treba vymýšľať, fork to len sprístupní.
+
+**Rozhodnutie:**
+1. **Zoznam panelov z registra, nie z ručného zoznamu (fork):** `aim/aimPanelList.ts` odvodí mená z `WORKSPACE_PANELS`. Meno na
+   drôte je id panela (`bcf`, `compare`, `validation`, `clash`, `script`, `zones`...), výnimky sú dve historické z D-127
+   (`underlays` = `drawing-underlay`, `model_tree` = `hierarchy`). Skratka Alt+N je podľa poradia v registri (prvých desať), ako
+   v `ActivityBar`. Test `aimPanelList.test.ts` stráži, že každý panel registra má meno, je jedinečné a je vo `view_state`;
+   nový panel v UI sa tak objaví sám a ak by sa zoznam rozišiel s registrom, test padne.
+2. **`SET_PANELS` pre všetky panely:** otvorenie ide cez `showWorkspacePanel` (ako rail), zatvorenie podľa domova: spodný pás
+   vypne svoj príznak, dolná polovica splitu sa uvoľní, panel s príznakom v pravom stĺpci príznak vypne a stĺpec sa vráti na
+   ďalší alebo na vlastnosti, panel bez príznaka vráti stĺpec na vlastnosti (ako krížik). Vlastnosti sa pri `all=close`
+   zatvárajú ako posledné, inak by ich vrátil zatvorený susedný panel. Neznáme meno už nezahodí celú správu: viewer ho nahlási v
+   `APPLIED` so zoznamom platných mien a vykoná ostatné.
+3. **Host:** `panels` prijme ľubovoľné meno v tvare identifikátora (existenciu posudzuje viewer, zoznam má jeden zdroj, fork).
+   Opis toolu uvádza bežné panely a odkazuje na `get_viewer_state` (panels). `view_state.panels` nesie každý panel registra s
+   `open`, `where`, `home` (side, bottom, left) a `shortcut` a výsledok po každom príkaze to isté.
+4. **Posun obsahu ľubovoľného panela (zovšeobecnenie D-146, nie duplikát):** `panel_scroll` ostáva reťazec (up, down, top,
+   bottom, panel vlastností) a pribudol objekt `{panel?, to | item | percent}`: `item` = text položky (hľadá sa v rozbalenom
+   obsahu, bez diakritiky a veľkosti písmen, položku vycentruje rovnaký `revealRow` z D-146), `percent` = poloha 0 až 100. Správa
+   `SCROLL_PANEL` dostala `panel`, `item`, `percent` (práve jedno z `direction`, `item`, `percent`). Obsah panela sa nájde cez značku
+   `data-aim-panel` na obálke v `renderPanelBody` (blok AIM-FORK, `display: contents`, bez vplyvu na rozloženie).
+5. **Zoom panela:** nový parameter `panel_zoom = {panel?, zoom: in | out | reset | 0,5 až 2,5}` -> správa `ZOOM_PANEL`, CSS
+   `zoom` na koreňoch obsahu panela (krok 1,25), zabudne sa so zatvorením panela. Je to zväčšenie na ukázanie miesta, nie nastavenie
+   používateľa.
+6. **Stav posunu:** `view_state.panel_view` {panel, scroll_pct, at_top, at_bottom, zoom, item?} z posledného príkazu na posun alebo
+   zoom (D-146 hlásilo, že viewer koniec panela nevracia; teraz ho vracia, pre posledne posúvaný panel).
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool `set_panel`:* panely sú súčasť pohľadu (D-127, D-114).
+- *`get_viewer_state` na ovládanie:* tool je čítanie, zmena patrí do UI akcie. Zoznam panelov ale vracia on.
+- *Ručný zoznam panelov v hoste (enum):* po pridaní panela do UI by chýbal (presne chyba z overenia). Fork je jediný zdroj.
+- *Posun cez `scrollIntoView` na sekciu podľa mena:* panely nemajú jednotné sekcie, text položky funguje v každom.
+- *Poloha a veľkosť panelov z chatu (`position`, `size`):* zostáva zavrhnuté z D-127.
+
+**Otvorené:** panel Lists sa tu nemení (maximalizácia, Run, filter, export rieši D-149). `item` hľadá len v zobrazenom obsahu
+(zbalená sekcia sa neprehľadáva a viewer to nahlási). CSS `zoom` sa nedalo overiť v živom vieweri (cloud session bez zostavených
+balíkov forku), preto je v PR "Ako vyskúšať". Mutačné dôkazy forku pre revert oracle chýbajú (plytký klon bez `origin/main`).
+
+**Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežali; do `eval/questions.json` pribudli `panel-bcf-open` a
+`panel-scroll-item`. **Testy:** vitest (`view-plan`, `select-panel`), fork `aimPanelList.test.ts`, `aimPanelsPlan.test.ts`,
+`aimPanelScrollPlan.test.ts`.
