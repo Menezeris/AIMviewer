@@ -102,6 +102,8 @@ describe("panely (D-127)", () => {
     expect(planPanels({})).toBeNull();
     expect(() => planPanels({ panels: { all: "open" } })).toThrow(ViewInputError);
     expect(() => planPanels({ panels: { legend: "close" } })).toThrow(/neznámy panel/);
+    expect(planPanels({ panels: { drawing: "open" } })!.result).toEqual({ panels: { drawing: "open" } });
+    expect(() => planPanels({ panels: { tiles: "open" } })).toThrow(/drawing/);
     expect(() => planPanels({ panels: { lens: "hide" } })).toThrow(/open, close/);
     expect(() => planPanels({ panels: {} })).toThrow(/aspoň/);
     expect(() => planPanels({ panels: "lens" })).toThrow(ViewInputError);

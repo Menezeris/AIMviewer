@@ -52,7 +52,7 @@ export function planViewTabs(input: Record<string, unknown>): ViewPlan {
     result: {
       ok: true,
       tabs: done,
-      note: "Zoznam záložiek (aktívna, vedľa) vráti viewer v stave po príkaze (tabs). Vedľa seba ide 3D alebo pohľad + dokument, alebo 3D + pôdorys s podkladom; dva 3D pohľady nie.",
+      note: "Zoznam záložiek (aktívna, vedľa) vráti viewer v stave po príkaze (tabs). Vedľa seba ide 3D alebo pohľad + dokument, alebo 3D + pôdorys s podkladom; dva 3D pohľady nie. Pôdorys bez podkladu pod 3D = set_section(floor) + panels={drawing: 'open'} (D-136).",
     },
   };
 }

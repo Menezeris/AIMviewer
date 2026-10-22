@@ -182,9 +182,9 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "('späť na 3D' = tab='3D'), beside=menovka dá záložku vedľa aktívnej (dokument vedľa 3D alebo pohľadu; none " +
       "zruší), close_tab=menovka alebo all zavrie. Otvorené záložky (tabs) vráti stav po príkaze aj get_viewer_state. " +
       "Dokument do záložky = open_drawing(target=tab). PANELY: panels otvorí, zavrie alebo " +
-      "prepne panely (lens, properties, underlays, documents, lists, model_tree; all=close = čistý pohľad, " +
+      "prepne panely (lens, properties, underlays, documents, lists, model_tree, drawing; all=close = čistý pohľad, " +
       "napr. {all: 'close', properties: 'open'} = všetko okrem vlastností), aj bez mode; výsledok vráti stav " +
-      "všetkých panelov (open, where left/right/bottom/floating, size). POSUN PANELA VLASTNOSTÍ: panel_scroll=down|up " +
+      "všetkých panelov (open, where left/right/bottom/floating, size). drawing = 2D výkres aktuálneho rezu z modelu (bez podkladu, D-136) v spodnom páse pod 3D. POSUN PANELA VLASTNOSTÍ: panel_scroll=down|up " +
       "(o 80 % výšky) | top | bottom na pokyn 'posuň dole', 'hore', 'na začiatok', 'na koniec' (aj bez mode; s " +
       "panels={properties:'open'} ho najprv otvorí); výber prvku a riadok vlastnosti ide cez show_in_3d (highlight).",
     inputSchema: {

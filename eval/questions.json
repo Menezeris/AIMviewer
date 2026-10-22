@@ -1027,6 +1027,14 @@
       "notes": "D-139 (issue #222): miestnosti sú pri colorize priesvitné aj cez ids_or_refs, dvere a schod vnútri je vidno. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     },
     {
+      "id": "view-3d-and-plan-no-underlay",
+      "category": "viewer",
+      "question": "Rozdeľ viewer, 3D a pôdorys 1NP naraz na jednej obrazovke.",
+      "expect": { "tools_called": ["set_section", "set_view_mode"] },
+      "verified": false,
+      "notes": "D-136 (issue #210): pôdorys bez kalibrovaného podkladu = set_section(action=set, floor=1NP) + set_view_mode(panels={drawing: 'open'}); s podkladom ide aj set_view_mode(mode=split, floor=1NP). Overí sa až s viewerom s fork patchom D-136."
+    },
+    {
       "id": "feedback-triage-standard",
       "category": "feedback",
       "question": "Zapíš pripomienku: opis toolu get_object má preklep v slove 'vlastnosti'. Hneď spusti session.",
