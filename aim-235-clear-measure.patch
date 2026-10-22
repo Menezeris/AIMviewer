@@ -1,0 +1,72 @@
+From d952df320cbfcab0dd4f625372037e39fdcaa2a3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 15:48:45 +0000
+Subject: [PATCH] AIM: MEASURE_SHOW s prazdnymi usekmi zmaze koty od hosta
+ (D-152, #235)
+
+---
+ apps/viewer/src/aim/measure-show.test.ts | 21 +++++++++++++++++++--
+ apps/viewer/src/aim/view-protocol.ts     |  4 ++--
+ 2 files changed, 21 insertions(+), 4 deletions(-)
+
+diff --git a/apps/viewer/src/aim/measure-show.test.ts b/apps/viewer/src/aim/measure-show.test.ts
+index 76866e74..63b7046d 100644
+--- a/apps/viewer/src/aim/measure-show.test.ts
++++ b/apps/viewer/src/aim/measure-show.test.ts
+@@ -68,11 +68,28 @@ describe('kóta od hosta, MEASURE_SHOW (AIM D-124)', () => {
+     assert.deepEqual(state.pendingMeasurePoint, userPoint);
+   });
+ 
+-  it('správa: 1 až 12 úsekov s konečnými súradnicami, keep len boolean', () => {
++  it('prázdna správa zmaže kóty od hosta, meranie používateľa a rozpracovaný bod ostanú (AIM D-152)', () => {
++    const origin = { x: 0, y: 0, z: 0 };
++    state.addMeasurePoint({ x: 0, y: 0, z: 0, screenX: 0, screenY: 0 });
++    state.completeMeasurement({ x: 0, y: 1, z: 0, screenX: 0, screenY: 0 });
++    const userId = state.measurements[0].id;
++    const userPoint = { x: 9, y: 9, z: 9, screenX: 5, screenY: 5 };
++    state.addMeasurePoint(userPoint);
++    addHostMeasurements(get, setPending, { segments: [seg(0, 1), seg(0, 2)] }, origin);
++    assert.equal(state.measurements.length, 3);
++    assert.deepEqual(addHostMeasurements(get, setPending, { segments: [] }, origin), []);
++    assert.deepEqual(state.measurements.map((m) => m.id), [userId]);
++    assert.deepEqual(state.pendingMeasurePoint, userPoint);
++    // Druhé zmazanie už nemá čo mazať.
++    addHostMeasurements(get, setPending, { segments: [] }, origin);
++    assert.deepEqual(state.measurements.map((m) => m.id), [userId]);
++  });
++
++  it('správa: 0 až 12 úsekov s konečnými súradnicami, keep len boolean', () => {
+     assert.equal(isViewMessage({ source: S, type: 'MEASURE_SHOW', segments: [seg(0, 1)] }), true);
+     assert.equal(isViewMessage({ source: S, type: 'MEASURE_SHOW', segments: [seg(0, 1)], keep: true }), true);
++    assert.equal(isViewMessage({ source: S, type: 'MEASURE_SHOW', segments: [] }), true);
+     for (const bad of [
+-      { source: S, type: 'MEASURE_SHOW', segments: [] },
+       { source: S, type: 'MEASURE_SHOW', segments: Array(13).fill(seg(0, 1)) },
+       { source: S, type: 'MEASURE_SHOW', segments: [{ a: { x: 0, y: 0, z: 0 } }] },
+       { source: S, type: 'MEASURE_SHOW', segments: [{ a: { x: 0, y: 0, z: Number.NaN }, b: { x: 1, y: 0, z: 0 } }] },
+diff --git a/apps/viewer/src/aim/view-protocol.ts b/apps/viewer/src/aim/view-protocol.ts
+index 8aa8ce9d..24b6c749 100644
+--- a/apps/viewer/src/aim/view-protocol.ts
++++ b/apps/viewer/src/aim/view-protocol.ts
+@@ -111,7 +111,7 @@ export type ViewInboundMessage =
+   | { source: typeof SOURCE; type: 'SET_PANELS'; panels: PanelsRequest }
+   /** Posun panela vlastností (AIM #183): o stranu hore / dole, na začiatok, na koniec. */
+   | { source: typeof SOURCE; type: 'SCROLL_PANEL'; direction: PanelScroll }
+-  /** Kóty v IFC svete (Z hore, m) do nástroja Measure (AIM D-124); `keep` = pridať k predošlým od hosta. */
++  /** Kóty v IFC svete (Z hore, m) do nástroja Measure (AIM D-124); `keep` = pridať k predošlým od hosta, prázdne `segments` = zmazať kóty od hosta (D-152). */
+   | { source: typeof SOURCE; type: 'MEASURE_SHOW'; segments: { a: Vec3Wire; b: Vec3Wire }[]; keep?: boolean }
+   /** Čiara trasy v IFC svete (Z hore, m) od hosta (AIM D-137); nahradí predošlú, prázdne body ju zmažú. */
+   | { source: typeof SOURCE; type: 'ROUTE_SHOW'; points: Vec3Wire[]; color?: string };
+@@ -198,8 +198,8 @@ export function isViewMessage(data: unknown): data is ViewInboundMessage {
+     case 'SET_VIEW_MODE':
+       return (VIEW_MODES as readonly unknown[]).includes(m.mode) && optional(m.storeyGuid, isStr);
+     case 'MEASURE_SHOW':
++      // Prázdny zoznam = zmazať kóty od hosta, merania používateľa ostanú (AIM D-152).
+       return Array.isArray(m.segments)
+-        && m.segments.length > 0
+         && m.segments.length <= MAX_MEASURE_SEGMENTS
+         && m.segments.every((s) => !!s && typeof s === 'object' && isVec((s as { a?: unknown }).a) && isVec((s as { b?: unknown }).b))
+         && optional(m.keep, (k) => typeof k === 'boolean');
+-- 
+2.43.0
+
