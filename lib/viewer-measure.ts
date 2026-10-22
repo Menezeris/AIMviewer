@@ -2,7 +2,7 @@
  * Kóta vo vieweri (D-124): úseky medzi dvoma bodmi v IFC svete (m, Z hore),
  * ktoré fork vloží do svojho nástroja Measure (`MEASURE_SHOW`). Wire v `ops`:
  * `measure:<keep>:<ax,ay,az,bx,by,bz>|<...>`; `keep` = pridať k predošlým kótam
- * od hosta, inak ich nahradiť. Čisté funkcie - zdieľa ich server aj klient.
+ * od hosta, inak ich nahradiť; bez úsekov (`measure::`) ich len zmazať (D-152). Čisté funkcie - zdieľa ich server aj klient.
  */
 
 export interface MeasurePoint {

@@ -21,7 +21,8 @@
  * (IFC svet, m; `o` = polovica výšky ortografického pohľadu).
  * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
  * Panely (D-127): `panels:~<panel>=<open|close|toggle>~...:` (`all` len `close`).
- * Posun panela vlastností (D-146): `panel_scroll:<up|down|top|bottom>:`.
+ * Posun obsahu panela (D-146, D-150): `panel_scroll:<up|down|top|bottom>:`, alebo `panel_scroll:-~p=<panel>~i=<text>~pct=<n>:`;
+ * zoom `panel_zoom:<in|out|reset|n>~p=<panel>:`.
  * Čiara trasy (D-137): `route:<hex>:<x,y,z|...>` (prázdne body = zmazať), formát v `lib/viewer-route.ts`.
  */
 
@@ -81,15 +82,30 @@ export interface SelectPanel {
   focus?: { pset: string; property: string };
 }
 
-/** Panely viewera z chatu (D-127): mená zhodné s mostom forku (`view-protocol.ts`). */
-export const VIEWER_PANELS = ["lens", "properties", "underlays", "documents", "lists", "model_tree"] as const;
-export type ViewerPanel = (typeof VIEWER_PANELS)[number];
+/**
+ * Panely viewera z chatu (D-127, D-150): meno panela je id z registra panelov forku (`bcf`, `compare`, `lens`,
+ * `properties`, `lists`...; historické `underlays` a `model_tree`). Zoznam nie je tu, drží ho fork a vracia ho
+ * `view_state.panels` aj so skratkami; host len skontroluje tvar mena, neznáme meno viewer nahlási v `APPLIED`.
+ */
+export const PANEL_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
 export const PANEL_ACTIONS = ["open", "close", "toggle"] as const;
 export type PanelAction = (typeof PANEL_ACTIONS)[number];
-export type PanelsRequest = Partial<Record<ViewerPanel | "all", PanelAction>>;
-/** Posun panela vlastností (D-146): o stranu hore / dole, na začiatok, na koniec; mená zhodné s mostom forku. */
+export type PanelsRequest = Record<string, PanelAction>;
+/** Posun obsahu panela (D-146, D-150): o stranu hore / dole, na začiatok, na koniec; mená zhodné s mostom forku. */
 export const PANEL_SCROLLS = ["up", "down", "top", "bottom"] as const;
 export type PanelScroll = (typeof PANEL_SCROLLS)[number];
+/** Cieľ posunu: smer, položka podľa textu alebo poloha v % (práve jedno); `panel` chýba = panel vlastností. */
+export interface PanelScrollTarget {
+  direction?: PanelScroll;
+  item?: string;
+  percent?: number;
+  panel?: string;
+}
+/** Zoom obsahu panela (D-150): krok `in` / `out`, `reset` alebo násobok v rozsahu viewera. */
+export const PANEL_ZOOM_RANGE = { min: 0.5, max: 2.5 } as const;
+export const PANEL_ZOOM_STEPS = ["in", "out", "reset"] as const;
+export type PanelZoom = (typeof PANEL_ZOOM_STEPS)[number] | number;
+export const PANEL_ITEM_MAX = 80;
 
 export type ViewerOp =
   | { op: "colorize"; guids: string[]; color: string }
@@ -133,14 +149,16 @@ export type ViewerOp =
   | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire }
   /** Zoznam z chatu do panela Lists (D-111), formát v `lib/viewer-list.ts`. */
   | { op: "list"; wire: ListWire }
-  /** Kóty v IFC svete do nástroja Measure forku (D-124), formát v `lib/viewer-measure.ts`. */
+  /** Kóty v IFC svete do nástroja Measure forku (D-124), formát v `lib/viewer-measure.ts`; prázdne úseky = zmazať kóty od hosta (D-152). */
   | { op: "measure"; segments: MeasureSegment[]; keep?: boolean }
   /** Čiara trasy v IFC svete (D-137), formát v `lib/viewer-route.ts`; prázdne body = zmazať. */
   | { op: "route"; color: string; points: MeasurePoint[] }
   /** Otvorenie / zatvorenie panelov (D-127). */
   | { op: "panels"; panels: PanelsRequest }
-  /** Posun panela vlastností (D-146). */
-  | { op: "panel_scroll"; direction: PanelScroll };
+  /** Posun obsahu panela (D-146, D-150). */
+  | ({ op: "panel_scroll" } & PanelScrollTarget)
+  /** Zoom obsahu panela (D-150). */
+  | { op: "panel_zoom"; zoom: PanelZoom; panel?: string };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -314,20 +332,58 @@ function parsePose(arg: string): { viewpoint: BridgeViewpoint; projection?: Proj
   };
 }
 
-/** `~lens=close~properties=open` -> panely; `all` len s `close`, nič platné = null. */
+/** `~lens=close~bcf=open` -> panely; `all` len s `close`, nič platné = null. */
 function parsePanels(arg: string): PanelsRequest | null {
   const [, kv] = parseArg(arg);
   const out: PanelsRequest = {};
   for (const [k, v] of Object.entries(kv)) {
-    if (!(PANEL_ACTIONS as readonly string[]).includes(v)) continue;
-    if ((VIEWER_PANELS as readonly string[]).includes(k) || (k === "all" && v === "close")) out[k as ViewerPanel | "all"] = v as PanelAction;
+    if (!(PANEL_ACTIONS as readonly string[]).includes(v) || !PANEL_NAME.test(k)) continue;
+    if (k !== "all" || v === "close") out[k] = v as PanelAction;
   }
   return Object.keys(out).length > 0 ? out : null;
 }
 
-/** Op posunu panela vlastností (D-146): `panel_scroll:down:`. */
-export function panelScrollOp(direction: PanelScroll): string {
-  return `panel_scroll:${direction}:`;
+/**
+ * Op posunu panela (D-146, D-150): `panel_scroll:down:` (panel vlastností), alebo hlava `-` s parametrami
+ * `~p=<panel>~i=<text, encodeURIComponent a ~ ako %7E>~pct=<0-100>`; smer, `i` a `pct` sú vzájomne výlučné.
+ */
+export function panelScrollOp(target: PanelScroll | PanelScrollTarget): string {
+  const t: PanelScrollTarget = typeof target === "string" ? { direction: target } : target;
+  const kv = [
+    ...(t.panel ? [`p=${t.panel}`] : []),
+    ...(t.item !== undefined ? [`i=${encodeURIComponent(t.item).replace(/~/g, "%7E")}`] : []),
+    ...(t.percent !== undefined ? [`pct=${t.percent}`] : []),
+  ];
+  return `panel_scroll:${[t.direction ?? "-", ...kv].join("~")}:`;
+}
+
+function parsePanelScroll(arg: string): PanelScrollTarget | null {
+  const [head, kv] = parseArg(arg);
+  const direction = (PANEL_SCROLLS as readonly string[]).includes(head) ? (head as PanelScroll) : undefined;
+  let item: string | undefined;
+  if (kv.i !== undefined) {
+    try { item = decodeURIComponent(kv.i); } catch { return null; }
+    if (item.trim().length === 0 || item.length > PANEL_ITEM_MAX) return null;
+  }
+  const percent = kv.pct !== undefined ? finite(kv.pct, 0, 100) : undefined;
+  if (kv.pct !== undefined && percent === undefined) return null;
+  if ([direction, item, percent].filter((v) => v !== undefined).length !== 1) return null;
+  if (kv.p !== undefined && !PANEL_NAME.test(kv.p)) return null;
+  if (direction === undefined && head !== "-") return null;
+  return { ...(direction ? { direction } : {}), ...(item !== undefined ? { item } : {}), ...(percent !== undefined ? { percent } : {}), ...(kv.p ? { panel: kv.p } : {}) };
+}
+
+/** Op zoomu panela (D-150): `panel_zoom:in~p=bcf:`, `panel_zoom:1.5:`. */
+export function panelZoomOp(zoom: PanelZoom, panel?: string): string {
+  return `panel_zoom:${zoom}${panel ? `~p=${panel}` : ""}:`;
+}
+
+function parsePanelZoom(arg: string): { zoom: PanelZoom; panel?: string } | null {
+  const [head, kv] = parseArg(arg);
+  const step = (PANEL_ZOOM_STEPS as readonly string[]).includes(head) ? (head as PanelZoom) : undefined;
+  const zoom = step ?? finite(head, PANEL_ZOOM_RANGE.min, PANEL_ZOOM_RANGE.max);
+  if (zoom === undefined || (kv.p !== undefined && !PANEL_NAME.test(kv.p))) return null;
+  return { zoom, ...(kv.p ? { panel: kv.p } : {}) };
 }
 
 /** Op panelov (D-127): `panels:~lens=close~...:`. */
@@ -429,7 +485,8 @@ export function parseOps(raw: string): ViewerOp[] {
       const wire = decodeListWire(joined);
       if (wire) out.push({ op, wire });
     } else if (op === "measure") {
-      const segments = decodeMeasureWire(joined);
+      // Prázdne telo = zmazať kóty od hosta (D-152); `keep` bez úsekov nedáva zmysel.
+      const segments = joined === "" ? (arg === "keep" ? null : []) : decodeMeasureWire(joined);
       if (segments) out.push({ op, segments, ...(arg === "keep" ? { keep: true } : {}) });
     } else if (op === "route") {
       const line = parseRouteOp(arg, joined);
@@ -441,7 +498,11 @@ export function parseOps(raw: string): ViewerOp[] {
       const panels = parsePanels(arg);
       if (panels) out.push({ op, panels });
     } else if (op === "panel_scroll") {
-      if ((PANEL_SCROLLS as readonly string[]).includes(arg)) out.push({ op, direction: arg as PanelScroll });
+      const target = parsePanelScroll(arg);
+      if (target) out.push({ op, ...target });
+    } else if (op === "panel_zoom") {
+      const z = parsePanelZoom(arg);
+      if (z) out.push({ op, ...z });
     } else if (op === "doc") {
       const documentId = joined;
       if (!UUID.test(documentId)) continue;
@@ -548,7 +609,15 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     case "panels":
       return { type: "SET_PANELS", panels: o.panels };
     case "panel_scroll":
-      return { type: "SCROLL_PANEL", direction: o.direction };
+      return {
+        type: "SCROLL_PANEL",
+        ...(o.direction ? { direction: o.direction } : {}),
+        ...(o.item !== undefined ? { item: o.item } : {}),
+        ...(o.percent !== undefined ? { percent: o.percent } : {}),
+        ...(o.panel ? { panel: o.panel } : {}),
+      };
+    case "panel_zoom":
+      return { type: "ZOOM_PANEL", zoom: o.zoom, ...(o.panel ? { panel: o.panel } : {}) };
   }
 }
 
