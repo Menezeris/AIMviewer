@@ -1,0 +1,387 @@
+From 62546beeb189096c00a38caad468ca0cd3255791 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 13:23:45 +0000
+Subject: [PATCH] feat(aim): open_list run=true spusti tabulku a APPLIED nesie
+ stav zoznamu (AIM D-148)
+
+---
+ apps/viewer/src/aim/AimBridge.tsx             |  9 ++-
+ apps/viewer/src/aim/aimList.ts                | 11 ++-
+ apps/viewer/src/aim/aimListPlan.test.ts       |  6 ++
+ apps/viewer/src/aim/aimListPlan.ts            |  1 +
+ apps/viewer/src/aim/aimListRun.ts             | 78 +++++++++++++++++++
+ apps/viewer/src/aim/aimListRunPlan.test.ts    | 47 +++++++++++
+ apps/viewer/src/aim/aimListRunPlan.ts         | 55 +++++++++++++
+ apps/viewer/src/aim/lens-protocol.ts          |  8 ++
+ .../src/components/viewer/lists/ListPanel.tsx |  6 ++
+ docs/FORK_MAINTENANCE.md                      |  1 +
+ 10 files changed, 218 insertions(+), 4 deletions(-)
+ create mode 100644 apps/viewer/src/aim/aimListRun.ts
+ create mode 100644 apps/viewer/src/aim/aimListRunPlan.test.ts
+ create mode 100644 apps/viewer/src/aim/aimListRunPlan.ts
+
+diff --git a/apps/viewer/src/aim/AimBridge.tsx b/apps/viewer/src/aim/AimBridge.tsx
+index 22394b95..78c9d6de 100644
+--- a/apps/viewer/src/aim/AimBridge.tsx
++++ b/apps/viewer/src/aim/AimBridge.tsx
+@@ -40,7 +40,7 @@ import { withTabs } from './viewTabsStore.js';
+ import { applySectionCap, isSectionCapMessage } from './sectionCap.js';
+ import { isDerivationsMessage } from './derivations-protocol.js';
+ import { isBcfLoadMessage, loadBcfTopics } from './bcf-protocol.js';
+-import { dispatchLensMessage, isLensEnvelope, lensSettled, resetLensFromChat } from './lens-protocol.js';
++import { dispatchLensMessage, isLensEnvelope, lensSettled, listSettled, resetLensFromChat } from './lens-protocol.js';
+ import { appliedViewState, prepareFocusView, runSectionBox, setChangesProvider, setFocusProvider, useAimViewCommands } from './useAimViewCommands.js';
+ import { createViewChangeTracker } from './viewChanges.js';
+ 
+@@ -111,12 +111,17 @@ export function AimBridge() {
+ 
+     // `ACK_REQUEST` ide bránou za príkazmi, preto ich vidí vykonané; počká ešte na ich asynchrónne kroky.
+     async function answerAck(cmdId: string) {
++      const listP = listSettled(ACK_WAIT_MS); // beh zoznamu z chatu (D-148) čaká súbežne s ostatnými krokmi
+       const done = await settled(ACK_WAIT_MS);
+       // null = lens z chatu sa nepoužila; chyba výpočtu súhrnu je problém, nie úspech.
+       const lens = await lensSettled(ACK_WAIT_MS).catch((err: unknown) => {
+         noteIssue(`Lens: ${err instanceof Error ? err.message : String(err)}`);
+         return null;
+       });
++      const list = await listP.catch((err: unknown) => {
++        noteIssue(`Zoznam: ${err instanceof Error ? err.message : String(err)}`);
++        return null;
++      });
+       const state = await appliedViewState().catch((err: unknown) => {
+         noteIssue(`stav viewera: ${err instanceof Error ? err.message : String(err)}`);
+         return undefined;
+@@ -124,7 +129,7 @@ export function AimBridge() {
+       // Problémy až po stave a Lens, aby ich chyby patrili do tohto potvrdenia.
+       const issues = takeIssues();
+       if (!done) issues.push('niektoré kroky vo vieweri ešte bežia');
+-      const extra = { ...(lens ? { lens } : {}), ...changes.ackedState() };
++      const extra = { ...(lens ? { lens } : {}), ...(list ? { list } : {}), ...changes.ackedState() };
+       const applied: AppliedMessage = { source: SOURCE, type: 'APPLIED', cmdId, ok: issues.length === 0, issues, state: state && { ...state, ...extra } };
+       window.parent.postMessage(applied, origin());
+     }
+diff --git a/apps/viewer/src/aim/aimList.ts b/apps/viewer/src/aim/aimList.ts
+index 0c01e150..40e1a5e2 100644
+--- a/apps/viewer/src/aim/aimList.ts
++++ b/apps/viewer/src/aim/aimList.ts
+@@ -6,13 +6,14 @@
+  * Zoznam z chatu vo vieweri (AIM D-111): `OPEN_LIST` odovzdá upstream panelu
+  * Lists návrh zoznamu (`pendingListDraft`), tou istou cestou ako "Create list"
+  * z vyhľadávania. Builder sa otvorí s filtrami a stĺpcami; spustenie a export
+- * (CSV/XLSX/PDF) urobí používateľ v paneli. Načítava sa lenivo pri prvej správe.
++ * (CSV/XLSX/PDF) urobí používateľ v paneli; s `run` (D-148) sa tabuľka spustí sama. Načítava sa lenivo pri prvej správe.
+  */
+ 
+ import { useViewerStore } from '@/store';
+ import { listDefinitionFromChat, parseOpenList } from './aimListPlan.js';
+ import type { LensInboundMessage } from './lens-protocol.js';
+ import { noteIssue } from './command-gate.js';
++import { noteListOpened, resetListRun, settledListSummary } from './aimListRun.js';
+ 
+ export function openListFromChat(data: LensInboundMessage): void {
+   const msg = parseOpenList(data);
+@@ -22,6 +23,12 @@ export function openListFromChat(data: LensInboundMessage): void {
+   }
+   const state = useViewerStore.getState();
+   const models = [...state.models.values()].map((m) => ({ name: m.name, fingerprint: m.sourceFingerprint }));
+-  state.setPendingListDraft(listDefinitionFromChat(msg, models, crypto.randomUUID(), Date.now()));
++  const definition = listDefinitionFromChat(msg, models, crypto.randomUUID(), Date.now());
++  noteListOpened(definition, msg.run === true); // s `run` tabuľku po zobrazení panela spustí hook (D-148)
++  state.setPendingListDraft(definition);
+   state.setListPanelVisible(true);
+ }
++
++/** Súhrn behu zoznamu z chatu pre `APPLIED` (D-148). */
++export const listSummary = settledListSummary;
++export const resetListFromChat = resetListRun;
+diff --git a/apps/viewer/src/aim/aimListPlan.test.ts b/apps/viewer/src/aim/aimListPlan.test.ts
+index 7f8654ac..bbdda5f5 100644
+--- a/apps/viewer/src/aim/aimListPlan.test.ts
++++ b/apps/viewer/src/aim/aimListPlan.test.ts
+@@ -57,4 +57,10 @@ describe('zoznam z chatu (AIM D-111)', () => {
+     assert.equal(parseOpenList(msg({ groups: [{ combinator: 'XOR', rules: [] }] })), null);
+     assert.equal(parseOpenList(msg({ name: '' })), null);
+   });
++
++  it('run (D-148): musí byť boolean, inak sa správa zahodí', () => {
++    assert.ok(parseOpenList(msg({ run: true })));
++    assert.ok(parseOpenList(msg()));
++    assert.equal(parseOpenList(msg({ run: 'ano' as unknown as boolean })), null);
++  });
+ });
+diff --git a/apps/viewer/src/aim/aimListPlan.ts b/apps/viewer/src/aim/aimListPlan.ts
+index 25d09e80..1be4aca2 100644
+--- a/apps/viewer/src/aim/aimListPlan.ts
++++ b/apps/viewer/src/aim/aimListPlan.ts
+@@ -30,6 +30,7 @@ const shortStr = (v: unknown, max: number): v is string => typeof v === 'string'
+ export function parseOpenList(data: LensInboundMessage): OpenListMessage | null {
+   const m = data as unknown as Record<string, unknown>;
+   if (m.type !== 'OPEN_LIST' || !shortStr(m.name, 120)) return null;
++  if (m.run !== undefined && typeof m.run !== 'boolean') return null;
+   if (!Array.isArray(m.groups) || m.groups.length === 0 || m.groups.length > MAX_GROUPS || !m.groups.every(isFilterGroup)) return null;
+   let ids = 0;
+   for (const g of m.groups as FilterGroup[]) for (const r of g.rules) if (r.kind === 'globalId') ids += r.values.length;
+diff --git a/apps/viewer/src/aim/aimListRun.ts b/apps/viewer/src/aim/aimListRun.ts
+new file mode 100644
+index 00000000..c25f249f
+--- /dev/null
++++ b/apps/viewer/src/aim/aimListRun.ts
+@@ -0,0 +1,78 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Spustenie zoznamu z chatu (AIM D-148): `OPEN_LIST` s `run: true` si zapíše
++ * požiadavku, hook `useAimListAutoRun` v `ListPanel` ju po zobrazení panela
++ * vykoná existujúcim `handleExecuteList` a `APPLIED` z nej zloží súhrn
++ * (`settledListSummary`). Nič z upstream sa nekopíruje.
++ */
++
++import { useEffect, useSyncExternalStore } from 'react';
++import type { ListDefinition } from '@/lib/lists';
++import { listRunDefinition } from '@/lib/lists/run-provenance';
++import { useViewerStore } from '@/store';
++import { summarizeListRun, type ListRunRequest, type ListRunSnapshot, type ListRunSummary } from './aimListRunPlan.js';
++
++const POLL_MS = 50;
++
++let request: ListRunRequest | null = null;
++let pending: ListDefinition | null = null;
++const listeners = new Set<() => void>();
++const emit = () => listeners.forEach((l) => l());
++
++/** `OPEN_LIST` otvoril zoznam; s `run` ho hook po zobrazení panela spustí. */
++export function noteListOpened(definition: ListDefinition, run: boolean): void {
++  request = { id: definition.id, name: definition.name, run, started: false };
++  pending = run ? definition : null;
++  emit();
++}
++
++function snapshot(): ListRunSnapshot {
++  const s = useViewerStore.getState();
++  const def = s.listResult ? listRunDefinition(s.listResult) : null;
++  return {
++    executing: s.listExecuting,
++    error: s.listError,
++    result: s.listResult ? { id: def?.id ?? null, totalCount: s.listResult.totalCount } : null,
++  };
++}
++
++/** Súhrn pre `APPLIED`: null = zoznam z chatu sa nepoužil; počká na dobehnutie behu najviac `timeoutMs`. */
++export async function settledListSummary(timeoutMs: number): Promise<ListRunSummary | null> {
++  const started = Date.now();
++  for (;;) {
++    if (!request) return null;
++    const timedOut = Date.now() - started >= timeoutMs;
++    const summary = summarizeListRun(request, snapshot(), timedOut);
++    if (summary) return summary;
++    await new Promise((r) => setTimeout(r, POLL_MS));
++  }
++}
++
++export function resetListRun(): void {
++  request = null;
++  pending = null;
++}
++
++const subscribe = (l: () => void) => {
++  listeners.add(l);
++  return () => void listeners.delete(l);
++};
++const hasPending = () => pending !== null;
++
++/**
++ * Volá sa v `ListPanel` s jeho `handleExecuteList`: keď čaká zoznam z chatu s `run`
++ * a panel má dáta, tabuľku spustí raz. Bez dát čaká (modely sa ešte stavajú).
++ */
++export function useAimListAutoRun(execute: (definition: ListDefinition) => void, hasData: boolean): void {
++  const waiting = useSyncExternalStore(subscribe, hasPending, hasPending);
++  useEffect(() => {
++    if (!waiting || !hasData || !pending || !request) return;
++    const definition = pending;
++    pending = null;
++    request = { ...request, started: true };
++    execute(definition);
++  }, [waiting, hasData, execute]);
++}
+diff --git a/apps/viewer/src/aim/aimListRunPlan.test.ts b/apps/viewer/src/aim/aimListRunPlan.test.ts
+new file mode 100644
+index 00000000..1166a63c
+--- /dev/null
++++ b/apps/viewer/src/aim/aimListRunPlan.test.ts
+@@ -0,0 +1,47 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import { summarizeListRun, type ListRunRequest, type ListRunSnapshot } from './aimListRunPlan.js';
++
++const REQ: ListRunRequest = { id: 'l1', name: 'Stĺpy', run: true, started: true };
++const IDLE: ListRunSnapshot = { executing: false, error: null, result: null };
++
++describe('beh zoznamu z chatu (AIM D-148)', () => {
++  it('bez run: zoznam je len otvorený v builderi', () => {
++    assert.deepEqual(summarizeListRun({ ...REQ, run: false, started: false }, IDLE, false), { name: 'Stĺpy', status: 'opened' });
++  });
++
++  it('hotovo: výsledok tejto definície a počet riadkov', () => {
++    const snap = { ...IDLE, result: { id: 'l1', totalCount: 12 } };
++    assert.deepEqual(summarizeListRun(REQ, snap, false), { name: 'Stĺpy', status: 'done', rows: 12 });
++  });
++
++  it('cudzí výsledok (iný beh) nie je náš: čaká, po vypršaní beží', () => {
++    const snap = { ...IDLE, result: { id: 'iny', totalCount: 3 } };
++    assert.equal(summarizeListRun(REQ, snap, false), null);
++    assert.equal(summarizeListRun(REQ, snap, true)?.status, 'running');
++  });
++
++  it('beží, kým trvá výpočet, aj keď je starý výsledok tej istej definície', () => {
++    const snap = { executing: true, error: null, result: { id: 'l1', totalCount: 1 } };
++    assert.equal(summarizeListRun(REQ, snap, false), null);
++    assert.equal(summarizeListRun(REQ, snap, true)?.status, 'running');
++  });
++
++  it('chyba výpočtu sa hlási hneď', () => {
++    assert.deepEqual(summarizeListRun(REQ, { ...IDLE, error: 'zlý regex' }, false), { name: 'Stĺpy', status: 'failed', error: 'zlý regex' });
++  });
++
++  it('hook ešte nespustil: čaká, po vypršaní not_started s dôvodom', () => {
++    const waiting = { ...REQ, started: false };
++    assert.equal(summarizeListRun(waiting, IDLE, false), null);
++    const out = summarizeListRun(waiting, IDLE, true);
++    assert.equal(out?.status, 'not_started');
++    assert.match(out?.reason ?? '', /model|panel/);
++  });
++
++});
+diff --git a/apps/viewer/src/aim/aimListRunPlan.ts b/apps/viewer/src/aim/aimListRunPlan.ts
+new file mode 100644
+index 00000000..f7793ec9
+--- /dev/null
++++ b/apps/viewer/src/aim/aimListRunPlan.ts
+@@ -0,0 +1,55 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Spustenie zoznamu z chatu (AIM D-148): čisté rozhodnutie, čo povedať hostu o
++ * tabuľke po `OPEN_LIST`. Store sa tu nečíta; lepidlo je v `aimListRun.ts`.
++ */
++
++export type ListRunStatus = 'opened' | 'running' | 'done' | 'failed' | 'not_started';
++
++export interface ListRunRequest {
++  /** Id návrhu zoznamu (`ListDefinition.id`), podľa neho sa pozná výsledok tohto behu. */
++  id: string;
++  name: string;
++  /** `run` zo správy `OPEN_LIST`. */
++  run: boolean;
++  /** Hook spustil tabuľku (volal `handleExecuteList`). */
++  started: boolean;
++}
++
++export interface ListRunSnapshot {
++  executing: boolean;
++  error: string | null;
++  /** Id definície posledného výsledku a jeho počet riadkov; null = žiadny výsledok. */
++  result: { id: string | null; totalCount: number } | null;
++}
++
++export interface ListRunSummary {
++  name: string;
++  status: ListRunStatus;
++  rows?: number;
++  error?: string;
++  reason?: string;
++}
++
++/**
++ * `null` = ešte sa nerozhodlo (čakať); inak súhrn pre `APPLIED`. Po vypršaní
++ * čakania (`timedOut`) sa nedokončený beh hlási ako `running`, nespustený ako
++ * `not_started` s dôvodom.
++ */
++export function summarizeListRun(req: ListRunRequest, snap: ListRunSnapshot, timedOut: boolean): ListRunSummary | null {
++  const base = { name: req.name };
++  if (!req.run) return { ...base, status: 'opened' };
++  if (!req.started) {
++    return timedOut
++      ? { ...base, status: 'not_started', reason: 'nie je načítaný model s dátami alebo sa panel Lists nezobrazil' }
++      : null;
++  }
++  if (snap.error) return { ...base, status: 'failed', error: snap.error };
++  if (snap.result && snap.result.id === req.id && !snap.executing) {
++    return { ...base, status: 'done', rows: snap.result.totalCount };
++  }
++  return timedOut ? { ...base, status: 'running' } : null;
++}
+diff --git a/apps/viewer/src/aim/lens-protocol.ts b/apps/viewer/src/aim/lens-protocol.ts
+index 475c1f5e..7346f0d2 100644
+--- a/apps/viewer/src/aim/lens-protocol.ts
++++ b/apps/viewer/src/aim/lens-protocol.ts
+@@ -62,6 +62,8 @@ export type LensInboundMessage =
+       /** Zoznam z chatu (AIM D-111): builder panela Lists s filtrami a stĺpcami. */
+       type: 'OPEN_LIST';
+       name: string;
++      /** Tabuľku po otvorení rovno spustiť (D-148). */
++      run?: boolean;
+       /** `FilterGroup[]` ako pri Lens; pravidlo `model` nesie mená modelov. */
+       groups: unknown[];
+       columns: AimListColumnWire[];
+@@ -101,7 +103,13 @@ export function lensSettled(timeoutMs: number): Promise<unknown> {
+   return lensModule ? lensModule.then((m) => m.settledLensSummary(timeoutMs)) : Promise.resolve(null);
+ }
+ 
++/** Pre `APPLIED` (D-148): počká na beh zoznamu z chatu a vráti jeho súhrn; bez zoznamu null. */
++export function listSettled(timeoutMs: number): Promise<unknown> {
++  return listModule ? listModule.then((m) => m.listSummary(timeoutMs)) : Promise.resolve(null);
++}
++
+ /** Odpojenie mostu: upratať len vtedy, keď chat Lens vôbec použil. */
+ export function resetLensFromChat(): void {
+   void lensModule?.then((m) => m.resetAimLens());
++  void listModule?.then((m) => m.resetListFromChat());
+ }
+diff --git a/apps/viewer/src/components/viewer/lists/ListPanel.tsx b/apps/viewer/src/components/viewer/lists/ListPanel.tsx
+index e87d4f8d..c4bbf85b 100644
+--- a/apps/viewer/src/components/viewer/lists/ListPanel.tsx
++++ b/apps/viewer/src/components/viewer/lists/ListPanel.tsx
+@@ -35,6 +35,9 @@ import { ListErrorBox } from './ListErrorBox';
+ import { ListLibrary } from './ListLibrary';
+ import { useTranslation } from '@/i18n/useTranslation';
+ import { formatLocaleCount } from './formatLocaleCount';
++// >>> AIM-FORK: open_list run=true spustí tabuľku po otvorení (D-148)
++import { useAimListAutoRun } from '@/aim/aimListRun';
++// <<< AIM-FORK
+ 
+ type PanelView = 'library' | 'builder' | 'results';
+ 
+@@ -123,6 +126,9 @@ export function ListPanel() {
+       }
+     })(); });
+   }, [hasData, modelProviderPairs, setActiveListId, setListResult, setListExecuting, setListError, t]);
++  // >>> AIM-FORK: open_list run=true (D-148)
++  useAimListAutoRun(handleExecuteList, hasData);
++  // <<< AIM-FORK
+ 
+   const handleCreateNew = useCallback(() => {
+     setEditingList(null);
+diff --git a/docs/FORK_MAINTENANCE.md b/docs/FORK_MAINTENANCE.md
+index cf255723..bda23b2b 100644
+--- a/docs/FORK_MAINTENANCE.md
++++ b/docs/FORK_MAINTENANCE.md
+@@ -59,6 +59,7 @@ git grep -n ">>> AIM-FORK" -- apps/ packages/
+ | `apps/viewer/src/components/documents/PdfDocumentView.tsx` | 2 | page region from the AIM chat (D-117): one import and one `useAimDocRegion` call from `aim/docRegion.ts`, one-line blocks because the file sits at its module-size budget; the same call draws the text highlights (D-123), no further edit |
+ | `apps/viewer/src/components/viewer/HierarchyPanel.tsx` | 2 | AIM tree decorations — row → IFC GlobalId → badge counts (D-077), one import from `aim/hierarchyPanel.ts` because the file sits at its module-size budget; AIM LAYERS moved to the `aim-layers` panel (D-104) |
+ | `apps/viewer/src/components/viewer/hierarchy/ModelHeaderRow.tsx` | 2 | `<AimModelRevision />` model revision pill on MODELS rows (D-089) |
++| `apps/viewer/src/components/viewer/lists/ListPanel.tsx` | 2 | `useAimListAutoRun(handleExecuteList, hasData)` (import + one call): `open_list run=true` runs the table after opening, logic in `aim/aimListRun.ts` (D-148) |
+ | `apps/viewer/src/components/viewer/properties/RelationshipsCard.tsx` | 3 | `<AimDerivedRelations />` AIM group in Relationship records + its rows in the card count (D-089) |
+ | `apps/viewer/src/components/viewer/hierarchy/HierarchyNode.tsx` | 4 | AIM badge icons + per-GUID counts (D-077) |
+ | `apps/viewer/src/components/viewer/Viewport.tsx` | 2 | `useDrawingUnderlay` (D-072) |
+-- 
+2.43.0
+
