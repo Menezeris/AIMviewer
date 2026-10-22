@@ -59,6 +59,8 @@ const strList = (v: unknown): string[] =>
 export interface ScopedStyleOptions {
   /** IFC domény -> triedy (zdieľané s množinovým selektorom v `tools.ts`). */
   domainTypes: Record<string, string[]>;
+  /** Ops pridané za hlavné (výnimka pri hide, #246: show výnimiek po skrytí). */
+  extraOps?: string[];
 }
 
 export class ScopeResolver {
@@ -461,6 +463,7 @@ export async function execScopedStyle(
   resolved.forEach((r, i) => {
     if (take[i] > 0) ops.push(styleOp(action, groups[i].color, r.guids.slice(0, take[i])));
   });
+  ops.push(...(opts.extraOps ?? []));
   const applied = take.reduce((a, b) => a + b, 0);
   const verb = { colorize: "ofarbenie", hide: "skrytie", show: "zobrazenie", isolate: "izolácia" }[action] ?? action;
   push({

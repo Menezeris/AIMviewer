@@ -872,6 +872,14 @@
       "notes": "D-126 (issue #181): query_view relation=v_space_elements (space_ref=2.01, element_ifc_type=IfcAirTerminal) alebo relation=objects s related={relation: rel_referenced_in_spatial_structure, node: 2.01}. Konektor 2026-10-21: v_space_elements 20 riadkov (contained aj referenced); odpoveď nesmie byť z orezanej strany (truncated). Eval 2026-10-21 (D-126): 20 vyústiek DIFFUSER inside; prvé volanie s filtrom ifc_type zlyhalo (stĺpec je element_ifc_type)."
     },
     {
+      "id": "doors-in-space-101-boundary",
+      "category": "relations",
+      "question": "Ktoré dvere (IfcDoor) patria k miestnosti 1.01? Daj úplný zoznam vrátane otáčavých dverí.",
+      "expect": { "tools_called": ["query_view"], "answer_matches": ["DD01\\.08\\.0001"] },
+      "verified": false,
+      "notes": "D-156 (issue #245): query_view relation=v_space_elements (space_ref=1.01, element_ifc_type=IfcDoor); po migrácii a re-ETL musí byť medzi riadkami relation=boundary aj DD01.08.0001 (otáčavé dvere, v 1NP len cez IfcRelSpaceBoundary). Pred re-ETL ich pohľad nevráti. Hodnota zatiaľ neoverená na produkcii."
+    },
+    {
       "id": "air-terminals-count-paged",
       "category": "count",
       "question": "Koľko je v budove vyústiek? Vypíš ich všetky.",
@@ -1057,6 +1065,54 @@
       "expect": { "tools_called": ["ifc_measure"] },
       "verified": false,
       "notes": "D-137 (issue #223): ifc_measure(route=escape, a=4.01, show=true) -> červená plná čiara 1,6 m nad podlahou a stupňami, stredom dverí; odpoveď cituje dĺžku (dolný odhad) a východ. Overená hodnota z v078: 52,8 m (D-121), na produkčnej revízii neoverené."
+    },
+    {
+      "id": "select-class-by-filter",
+      "category": "viewer",
+      "question": "Vyber vo vieweri všetky klapky (IfcDamper).",
+      "expect": { "tools_called": ["show_in_3d"] },
+      "verified": false,
+      "notes": "D-151 (issue #242): show_in_3d(ifc_type=IfcDamper, select=true) vyberie celú triedu jedným volaním, bez search_objects a vymenúvania ids. Počet neoverený (prod model)."
+    },
+    {
+      "id": "hide-model-except-route",
+      "category": "viewer",
+      "question": "Vypni všetky ostatné potrubia vo VZT okrem zaznačenej trasy VV.03.02.022.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-151 (issue #246): style_in_3d(action=hide, model=VZT, exclude_ids_or_refs=[trasa]) jedným volaním, ASR sa nedotkne."
+    },
+    {
+      "id": "panel-scroll-down",
+      "category": "viewer",
+      "question": "Posuň panel vlastností trochu nižšie.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-146 (issue #183): set_view_mode(panel_scroll=down) bez mode; odpoveď nesmie tvrdiť, že vie, kde je koniec panela. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "measure-door-lining-faces",
+      "category": "location",
+      "question": "Zmeraj šírku dverí DD02.05.04 medzi vnútornými lícami zárubne a ukáž len túto jednu kótu.",
+      "expect": { "tools_called": ["ifc_measure"], "answer_matches": ["0[,.]8"] },
+      "verified": false,
+      "notes": "D-155 (issue #236): ifc_measure(a=DD02.05.04, face_a=+x, face_b=-x, show=true) -> faces.distance_m, jedna kóta. 0,8 = clear_opening z konektora 2026-10-22 (zo zárubne), plochami neoverené; evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "panel-bcf-open",
+      "category": "viewer",
+      "question": "Otvor panel BCF topics a zavri všetky ostatné panely.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-150 (issue #179): set_view_mode(panels={all: 'close', bcf: 'open'}) bez mode; BCF topics je panel bcf (Alt+3). Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "panel-scroll-item",
+      "category": "viewer",
+      "question": "Posuň panel vlastností na výmery a priblíž ho.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-150 (issue #179): set_view_mode(panel_scroll={item: 'Quantities'}, panel_zoom={zoom: 'in'}); stav posunu v panel_view. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     }
   ]
 }

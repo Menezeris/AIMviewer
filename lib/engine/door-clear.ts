@@ -1,4 +1,4 @@
-import { toIfc } from "./measure";
+import { toIfc, type Vec3 } from "./measure";
 
 /**
  * Svetlá šírka a výška dverí z geometrie (dodatok D-118, `ifc_measure clear_opening`).
@@ -38,6 +38,8 @@ export interface ClearOpening {
   samples: { width: number; height: number };
   /** Telesá dverí: všetky a výplň otvoru (krídlo, sklo, kovanie), ktorá sa do merania neráta. */
   bodies: { total: number; fill: number };
+  /** Konce zmeranej šírky a výšky v IFC (Z hore, bez posunu rámca) na kótu vo vieweri (D-155). */
+  segments?: { width?: [Vec3, Vec3]; height?: [Vec3, Vec3] };
 }
 
 function cross(o: P2, a: P2, b: P2): number {
@@ -118,6 +120,12 @@ function rayHits(tri: Float64Array, s: number, t: number, w: number, s0: number,
  * `floor` = dolná hranica, keď pod `at` nie je žiadna plocha (spodok dverí bez prahu).
  */
 export function gapAround(hits: number[], at: number, floor?: number): number | null {
+  const span = spanAround(hits, at, floor);
+  return span && span[1] - span[0];
+}
+
+/** Ako `gapAround`, ale vráti obe plochy [dole, hore] (konce kóty). */
+export function spanAround(hits: number[], at: number, floor?: number): [number, number] | null {
   let below = -Infinity;
   let above = Infinity;
   let nBelow = 0;
@@ -129,7 +137,7 @@ export function gapAround(hits: number[], at: number, floor?: number): number | 
   }
   if (nBelow === 0 && floor !== undefined) below = floor;
   if (nBelow % 2 === 1 || !Number.isFinite(below) || !Number.isFinite(above)) return null;
-  return above - below;
+  return [below, above];
 }
 
 function median(xs: number[]): number {
@@ -155,6 +163,87 @@ const SILL = 0.1;
  */
 export function clearOpening(positions: Float32Array, indices: Uint32Array, parts: number[] = [0]): ClearOpening | string {
   if (indices.length < 3) return "dvere nemajú geometriu";
+  const { center, u, v, bodies, fill, uMin, uMax, vMin, vMax, zMin, zMax } = doorLayout(positions, indices, parts);
+  const depth = (j: number) => vMin + (vMax - vMin) * frac(j, DEPTHS);
+  const uMid = (uMin + uMax) / 2;
+  const zMid = (zMin + zMax) / 2;
+  const kept = bodies.filter((_, n) => !fill[n]);
+  // Karuselové dvere a iné priestorové zostavy nemajú rovinu otvoru.
+  if (vMax - vMin > ROUND_DOOR * (uMax - uMin)) return "nie je plochá dverová zostava (napr. karuselové dvere)";
+  if (kept.length === 0) return "dvere nemajú zárubňu ani portál oddelený od krídla";
+  const tri = new Float64Array(kept.reduce((n, b) => n + b.length, 0));
+  kept.reduce((off, b) => (tri.set(b, off), off + b.length), 0);
+  // Bod v osiach dverí (u, v, z) -> IFC.
+  const ifcAt = (pu: number, pv: number, pz: number): Vec3 => [
+    center[0] + u[0] * pu + v[0] * pv,
+    center[1] + u[1] * pu + v[1] * pv,
+    pz,
+  ];
+
+  // Šírka: os u (0), rovina (v, z) = (1, 2); najužšie miesto cez hĺbku (doraz zárubne).
+  const perHeight: { gap: number; at: [Vec3, Vec3] }[] = [];
+  let widthSamples = 0;
+  for (let h = 0; h < WIDTH_HEIGHTS; h++) {
+    const z = zMin + (zMax - zMin) * (0.1 + 0.8 * frac(h, WIDTH_HEIGHTS));
+    let narrowest: { gap: number; at: [Vec3, Vec3] } | null = null;
+    for (let j = 0; j < DEPTHS; j++) {
+      const s = spanAround(rayHits(tri, 1, 2, 0, depth(j), z), uMid);
+      const g = s && s[1] - s[0];
+      if (s === null || g === null || g < MIN_GAP) continue;
+      widthSamples++;
+      if (!narrowest || g < narrowest.gap) narrowest = { gap: g, at: [ifcAt(s[0], depth(j), z), ifcAt(s[1], depth(j), z)] };
+    }
+    if (narrowest) perHeight.push(narrowest);
+  }
+
+  // Výška: os z (2), rovina (u, v) = (0, 1); dole prah, bez neho spodok dverí (podlaha).
+  const perColumn: { gap: number; at: [Vec3, Vec3] }[] = [];
+  let heightSamples = 0;
+  for (const c of HEIGHT_COLUMNS) {
+    const uc = uMin + (uMax - uMin) * (c + JITTER);
+    let lowest: { gap: number; at: [Vec3, Vec3] } | null = null;
+    for (let j = 0; j < DEPTHS; j++) {
+      const s = spanAround(rayHits(tri, 0, 1, 2, uc, depth(j)), zMid, zMin);
+      const g = s && s[1] - s[0];
+      if (s === null || g === null || g < MIN_GAP) continue;
+      heightSamples++;
+      if (!lowest || g < lowest.gap) lowest = { gap: g, at: [ifcAt(uc, depth(j), s[0]), ifcAt(uc, depth(j), s[1])] };
+    }
+    if (lowest) perColumn.push(lowest);
+  }
+
+  const width = perHeight.length > 0 ? median(perHeight.map((p) => p.gap)) : null;
+  const height = perColumn.length > 0 ? median(perColumn.map((p) => p.gap)) : null;
+  const widthMin = perHeight.length > 0 ? Math.min(...perHeight.map((p) => p.gap)) : null;
+  // Kóta = vzorka najbližšie k mediánu (pri párnom počte medián nie je žiadna vzorka), pri zhode
+  // bližšie k stredu (šírka v polovici výšky, výška v strede šírky).
+  const nearest = (xs: { gap: number; at: [Vec3, Vec3] }[], m: number | null) => {
+    if (m === null) return undefined;
+    const score = (x: (typeof xs)[number], i: number) => Math.abs(x.gap - m) * 1e3 + Math.abs(i - (xs.length - 1) / 2) * 1e-6;
+    return xs.reduce((best, x, i) => (score(x, i) < score(xs[best], best) ? i : best), 0);
+  };
+  const wi = nearest(perHeight, width);
+  const hi = nearest(perColumn, height);
+  const wAt = wi === undefined ? undefined : perHeight[wi].at;
+  const hAt = hi === undefined ? undefined : perColumn[hi].at;
+  return {
+    width_m: width === null ? null : round(width),
+    height_m: height === null ? null : round(height),
+    width_min_m: widthMin !== null && width !== null && widthMin < width - 0.001 ? round(widthMin) : null,
+    overall_width_m: round(uMax - uMin),
+    overall_height_m: round(zMax - zMin),
+    depth_m: round(vMax - vMin),
+    samples: { width: widthSamples, height: heightSamples },
+    bodies: { total: bodies.length, fill: fill.filter(Boolean).length },
+    ...(wAt || hAt ? { segments: { ...(wAt ? { width: wAt } : {}), ...(hAt ? { height: hAt } : {}) } } : {}),
+  };
+}
+
+/**
+ * Osi dverí, telesá v nich a maska výplne otvoru (krídlo, sklo, kovanie). Zdieľa ju svetlý otvor
+ * aj meranie plôch (D-155), aby hrana krídla nebola "plocha" zárubne.
+ */
+export function doorLayout(positions: Float32Array, indices: Uint32Array, parts: number[] = [0]) {
   const ifc = new Float64Array(positions.length);
   const plan: P2[] = [];
   const seen = new Set<string>();
@@ -220,55 +309,7 @@ export function clearOpening(positions: Float32Array, indices: Uint32Array, part
     }
     return false;
   });
-  const kept = bodies.filter((_, n) => !fill[n]);
-  // Karuselové dvere a iné priestorové zostavy nemajú rovinu otvoru.
-  if (vMax - vMin > ROUND_DOOR * (uMax - uMin)) return "nie je plochá dverová zostava (napr. karuselové dvere)";
-  if (kept.length === 0) return "dvere nemajú zárubňu ani portál oddelený od krídla";
-  const tri = new Float64Array(kept.reduce((n, b) => n + b.length, 0));
-  kept.reduce((off, b) => (tri.set(b, off), off + b.length), 0);
-
-  // Šírka: os u (0), rovina (v, z) = (1, 2); najužšie miesto cez hĺbku (doraz zárubne).
-  const perHeight: number[] = [];
-  let widthSamples = 0;
-  for (let h = 0; h < WIDTH_HEIGHTS; h++) {
-    const z = zMin + (zMax - zMin) * (0.1 + 0.8 * frac(h, WIDTH_HEIGHTS));
-    let narrowest = Infinity;
-    for (let j = 0; j < DEPTHS; j++) {
-      const g = gapAround(rayHits(tri, 1, 2, 0, depth(j), z), uMid);
-      if (g === null || g < MIN_GAP) continue;
-      widthSamples++;
-      narrowest = Math.min(narrowest, g);
-    }
-    if (Number.isFinite(narrowest)) perHeight.push(narrowest);
-  }
-
-  // Výška: os z (2), rovina (u, v) = (0, 1); dole prah, bez neho spodok dverí (podlaha).
-  const perColumn: number[] = [];
-  let heightSamples = 0;
-  for (const c of HEIGHT_COLUMNS) {
-    const uc = uMin + (uMax - uMin) * (c + JITTER);
-    let lowest = Infinity;
-    for (let j = 0; j < DEPTHS; j++) {
-      const g = gapAround(rayHits(tri, 0, 1, 2, uc, depth(j)), zMid, zMin);
-      if (g === null || g < MIN_GAP) continue;
-      heightSamples++;
-      lowest = Math.min(lowest, g);
-    }
-    if (Number.isFinite(lowest)) perColumn.push(lowest);
-  }
-
-  const width = perHeight.length > 0 ? median(perHeight) : null;
-  const widthMin = perHeight.length > 0 ? Math.min(...perHeight) : null;
-  return {
-    width_m: width === null ? null : round(width),
-    height_m: perColumn.length > 0 ? round(median(perColumn)) : null,
-    width_min_m: widthMin !== null && width !== null && widthMin < width - 0.001 ? round(widthMin) : null,
-    overall_width_m: round(uMax - uMin),
-    overall_height_m: round(zMax - zMin),
-    depth_m: round(vMax - vMin),
-    samples: { width: widthSamples, height: heightSamples },
-    bodies: { total: bodies.length, fill: fill.filter(Boolean).length },
-  };
+  return { center, u, v, bodies, fill, uMin, uMax, vMin, vMax, zMin, zMax };
 }
 
 const round = (x: number) => Math.round(x * 1000) / 1000;
