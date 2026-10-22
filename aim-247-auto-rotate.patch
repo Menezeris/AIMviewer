@@ -1,0 +1,357 @@
+From b14efd319b396627cba343b45dfaaeaa6f35534f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 16:40:55 +0000
+Subject: [PATCH] AIM #247: plynule otacanie kamery dokola (AUTO_ROTATE)
+
+Sprava mosta AUTO_ROTATE start|stop (rychlost, smer): slucka po snimkoch cez
+cameraCallbacks.applyViewpoint otaca pohlad okolo ciela. Zastavi ho stop, tah,
+koliesko, dotyk na platne, Esc a kazdy iny pohyb kamery. Cista matematika v
+aim/autoRotatePlan.ts s testom, beh v lenivom aim/autoRotate.ts.
+---
+ apps/viewer/src/aim/autoRotate.ts          | 68 +++++++++++++++++
+ apps/viewer/src/aim/autoRotatePlan.test.ts | 86 ++++++++++++++++++++++
+ apps/viewer/src/aim/autoRotatePlan.ts      | 62 ++++++++++++++++
+ apps/viewer/src/aim/useAimViewCommands.ts  | 25 ++++++-
+ apps/viewer/src/aim/view-protocol.ts       |  9 +++
+ 5 files changed, 248 insertions(+), 2 deletions(-)
+ create mode 100644 apps/viewer/src/aim/autoRotate.ts
+ create mode 100644 apps/viewer/src/aim/autoRotatePlan.test.ts
+ create mode 100644 apps/viewer/src/aim/autoRotatePlan.ts
+
+diff --git a/apps/viewer/src/aim/autoRotate.ts b/apps/viewer/src/aim/autoRotate.ts
+new file mode 100644
+index 00000000..d0719081
+--- /dev/null
++++ b/apps/viewer/src/aim/autoRotate.ts
+@@ -0,0 +1,68 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Plynulé otáčanie kamery dokola (AIM #247): `AUTO_ROTATE start` z chatu rozbehne slučku po snímkoch, ktorá cez
++ * existujúci `cameraCallbacks.applyViewpoint` otáča pohľad okolo cieľa; matematika je v `autoRotatePlan.ts`.
++ * Zastaví ho `AUTO_ROTATE stop`, ťah, koliesko alebo dotyk na plátne, Esc a každý iný pohyb kamery (ViewCube,
++ * ďalší príkaz kamery). Lenivý modul - vo vstupnom balíku nie je a nič z vstupu neimportuje.
++ */
++
++import { useViewerStore } from '@/store';
++import { poseMoved, rotationAngle, stepPose, type AutoRotateDirection } from './autoRotatePlan.js';
++
++export interface AutoRotateHooks {
++  /** Zlyhanie kroku (ide do `APPLIED.issues`). */
++  noteIssue: (message: string) => void;
++  /** Slučka skončila sama (zásah používateľa, iná kamera); nevolá sa pri `stopAutoRotate` ani novom štarte. */
++  onEnded: () => void;
++}
++
++let stopCurrent: ((notify: boolean) => void) | null = null;
++
++export const isAutoRotating = (): boolean => stopCurrent !== null;
++
++export function stopAutoRotate(): void {
++  stopCurrent?.(false);
++}
++
++/** Rozbehne otáčanie (nahradí bežiace); false = kamera nie je pripravená. */
++export function startAutoRotate(speedDegS: number, direction: AutoRotateDirection, hooks: AutoRotateHooks): boolean {
++  const cam = () => useViewerStore.getState().cameraCallbacks;
++  const read = () => cam().getViewpoint?.() ?? null;
++  const first = read();
++  if (!first || !cam().applyViewpoint) {
++    hooks.noteIssue('AUTO_ROTATE: kamera viewera ešte nie je pripravená');
++    return false;
++  }
++  stopCurrent?.(false);
++
++  let last = first;
++  let prev = performance.now();
++  let raf = 0;
++  const onUser = (e: Event) => {
++    if (e.type === 'keydown' ? (e as KeyboardEvent).key === 'Escape' : e.target instanceof HTMLCanvasElement) stop(true);
++  };
++  const EVENTS = ['pointerdown', 'wheel', 'touchstart', 'keydown'] as const;
++  const stop = (notify: boolean) => {
++    cancelAnimationFrame(raf);
++    for (const t of EVENTS) window.removeEventListener(t, onUser, true);
++    stopCurrent = null;
++    if (notify) hooks.onEnded();
++  };
++  const tick = (now: number) => {
++    const cur = read();
++    // Kamera zmizla alebo sa pohla inak než naším krokom: používateľ alebo iný príkaz ju prevzal.
++    if (!cur || poseMoved(last, cur)) return stop(true);
++    const next = stepPose(cur, rotationAngle(speedDegS, direction, now - prev));
++    prev = now;
++    cam().applyViewpoint?.(next, false);
++    last = read() ?? next;
++    raf = requestAnimationFrame(tick);
++  };
++  for (const t of EVENTS) window.addEventListener(t, onUser, { capture: true, passive: true });
++  stopCurrent = stop;
++  raf = requestAnimationFrame(tick);
++  return true;
++}
+diff --git a/apps/viewer/src/aim/autoRotatePlan.test.ts b/apps/viewer/src/aim/autoRotatePlan.test.ts
+new file mode 100644
+index 00000000..14354060
+--- /dev/null
++++ b/apps/viewer/src/aim/autoRotatePlan.test.ts
+@@ -0,0 +1,86 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import assert from 'node:assert/strict';
++import { describe, it } from 'node:test';
++
++import { AUTO_ROTATE_SPEED, MAX_STEP_MS, poseMoved, rotateAboutY, rotationAngle, stepPose, type Pose } from './autoRotatePlan.js';
++import { isViewMessage } from './view-protocol.js';
++
++const S = 'aim-bridge';
++// Render rámec (Y hore): kamera 10 m pred cieľom, teda na juhu (IFC -Y = render +Z), pohľad na sever.
++const pose = (): Pose => ({ position: { x: 5, y: 3, z: 12 }, target: { x: 5, y: 3, z: 2 }, up: { x: 0, y: 1, z: 0 } });
++const near = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
++
++describe('AUTO_ROTATE: matematika otáčania (AIM #247)', () => {
++  it('left obieha kameru doľava (juh -> západ = render -X), right doprava', () => {
++    const left = stepPose(pose(), rotationAngle(90, 'left', 1000 / 12));
++    const right = stepPose(pose(), rotationAngle(90, 'right', 1000 / 12));
++    assert.ok(left.position.x < 5, 'doľava = X klesá');
++    assert.ok(right.position.x > 5, 'doprava = X rastie');
++    near(left.position.x - 5, -(right.position.x - 5));
++  });
++
++  it('otáča okolo cieľa: vzdialenosť, výška a cieľ ostanú, po 360 stupňoch je pohľad pôvodný', () => {
++    let vp = pose();
++    for (let i = 0; i < 360; i++) vp = stepPose(vp, rotationAngle(90, 'left', 1000 / 90));
++    assert.deepEqual(vp.target, pose().target);
++    near(vp.position.y, 3);
++    near(Math.hypot(vp.position.x - 5, vp.position.z - 2), 10);
++    near(vp.position.x, 5);
++    near(vp.position.z, 12);
++  });
++
++  it('rýchlosť sa mení s časom: 90 stupňov za sekundu = štvrťotáčka za 1000 ms', () => {
++    const v = rotateAboutY({ x: 0, y: 0, z: 10 }, Math.PI / 2);
++    near(v.x, 10);
++    near(rotationAngle(90, 'right', 100), (Math.PI / 2) / 10);
++    assert.equal(rotationAngle(30, 'left', 50) < 0, true);
++  });
++
++  it('dlhý krok (karta v pozadí) sa zreže na MAX_STEP_MS, záporný čas je nula', () => {
++    assert.equal(rotationAngle(10, 'right', 60_000), rotationAngle(10, 'right', MAX_STEP_MS));
++    assert.equal(rotationAngle(10, 'right', -5), 0);
++  });
++
++  it('up sa otočí s kamerou: pohľad zhora sa točí v rovine, zvislý up ostane', () => {
++    const top: Pose = { position: { x: 0, y: 20, z: 0 }, target: { x: 0, y: 0, z: 0 }, up: { x: 0, y: 0, z: -1 } };
++    const turned = stepPose(top, Math.PI / 2);
++    near(turned.position.x, 0);
++    near(turned.position.y, 20);
++    assert.ok(Math.abs(turned.up.x) > 0.99, 'up sa stočil do osi X');
++    assert.deepEqual(stepPose(pose(), 0.3).up, { x: 0, y: 1, z: 0 });
++  });
++
++  it('poseMoved: vlastný krok nie je zásah, posun alebo iný cieľ áno', () => {
++    const a = pose();
++    assert.equal(poseMoved(a, { ...a }), false);
++    assert.equal(poseMoved(a, { ...a, position: { ...a.position, x: a.position.x + 1e-6 } }), false);
++    assert.equal(poseMoved(a, { ...a, position: { ...a.position, x: a.position.x + 0.5 } }), true);
++    assert.equal(poseMoved(a, { ...a, target: { ...a.target, y: a.target.y + 0.5 } }), true);
++  });
++});
++
++describe('AUTO_ROTATE: obálka mosta', () => {
++  it('prejde start so rýchlosťou a smerom aj samotné stop', () => {
++    for (const msg of [
++      { source: S, type: 'AUTO_ROTATE', action: 'start' },
++      { source: S, type: 'AUTO_ROTATE', action: 'start', speedDegS: 5, direction: 'right' },
++      { source: S, type: 'AUTO_ROTATE', action: 'start', speedDegS: AUTO_ROTATE_SPEED.max, direction: 'left' },
++      { source: S, type: 'AUTO_ROTATE', action: 'stop' },
++    ]) assert.equal(isViewMessage(msg), true, JSON.stringify(msg));
++  });
++
++  it('odmietne neznámu akciu, smer, rýchlosť mimo rozsahu, NaN a cudzí zdroj', () => {
++    for (const msg of [
++      { source: S, type: 'AUTO_ROTATE' },
++      { source: S, type: 'AUTO_ROTATE', action: 'spin' },
++      { source: S, type: 'AUTO_ROTATE', action: 'start', direction: 'up' },
++      { source: S, type: 'AUTO_ROTATE', action: 'start', speedDegS: 0 },
++      { source: S, type: 'AUTO_ROTATE', action: 'start', speedDegS: AUTO_ROTATE_SPEED.max + 1 },
++      { source: S, type: 'AUTO_ROTATE', action: 'start', speedDegS: Number.NaN },
++      { source: 'x', type: 'AUTO_ROTATE', action: 'start' },
++    ]) assert.equal(isViewMessage(msg), false, JSON.stringify(msg));
++  });
++});
+diff --git a/apps/viewer/src/aim/autoRotatePlan.ts b/apps/viewer/src/aim/autoRotatePlan.ts
+new file mode 100644
+index 00000000..0422028c
+--- /dev/null
++++ b/apps/viewer/src/aim/autoRotatePlan.ts
+@@ -0,0 +1,62 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Plynulé otáčanie kamery dokola (AIM #247, `AUTO_ROTATE` z chatu): čistá matematika bez store a DOM.
++ * Beh po snímkoch a zastavenie pri zásahu používateľa je v `autoRotate.ts`.
++ *
++ * Otáča sa kamera okolo zvislej osi (render rámec, Y hore) cez `target` aktuálneho pohľadu, rovnako ako
++ * ťah myšou vodorovne. Smer `left` zodpovedá kladnému `orbit_h_deg` hosta: kamera obieha cieľ doľava
++ * (zhora v smere hodinových ručičiek).
++ */
++
++export const AUTO_ROTATE_ACTIONS = ['start', 'stop'] as const;
++export type AutoRotateAction = (typeof AUTO_ROTATE_ACTIONS)[number];
++export const AUTO_ROTATE_DIRECTIONS = ['left', 'right'] as const;
++export type AutoRotateDirection = (typeof AUTO_ROTATE_DIRECTIONS)[number];
++/** Rýchlosť v stupňoch za sekundu - rovnaký rozsah ako host (`lib/viewer-camera.ts`). */
++export const AUTO_ROTATE_SPEED = { min: 0.5, max: 90, default: 10 } as const;
++/** Najdlhší krok medzi snímkami: po návrate z pozadia sa kamera neskočí o celé sekundy. */
++export const MAX_STEP_MS = 100;
++
++export interface Vec3 { x: number; y: number; z: number }
++export interface Pose { position: Vec3; target: Vec3; up: Vec3 }
++
++/** Uhol otočenia okolo +Y v radiánoch za `dtMs`; `left` je záporný (zhora v smere hodinových ručičiek). */
++export function rotationAngle(speedDegS: number, direction: AutoRotateDirection, dtMs: number): number {
++  const dt = Math.max(0, Math.min(dtMs, MAX_STEP_MS));
++  const rad = (speedDegS * Math.PI / 180) * (dt / 1000);
++  return direction === 'left' ? -rad : rad;
++}
++
++/** Pravotočivá rotácia okolo +Y (rovnaká konvencia ako `animateHorizontalRotation` vo Viewporte). */
++export function rotateAboutY(v: Vec3, angle: number): Vec3 {
++  const c = Math.cos(angle);
++  const s = Math.sin(angle);
++  return { x: v.x * c + v.z * s, y: v.y, z: -v.x * s + v.z * c };
++}
++
++/** Pohľad po otočení o `angle` okolo zvislej osi cez `target`; `up` sa otočí s ním (pohľad zhora sa tak točí v rovine). */
++export function stepPose<T extends Pose>(vp: T, angle: number): T {
++  const offset = rotateAboutY({
++    x: vp.position.x - vp.target.x, y: vp.position.y - vp.target.y, z: vp.position.z - vp.target.z,
++  }, angle);
++  return {
++    ...vp,
++    position: { x: vp.target.x + offset.x, y: vp.target.y + offset.y, z: vp.target.z + offset.z },
++    up: rotateAboutY(vp.up, angle),
++  };
++}
++
++const REL_EPS = 1e-4;
++
++/** Pohla sa kamera inak než naším krokom (ťah, ViewCube, iný príkaz)? Tolerancia sa mierou vzdialenosti. */
++export function poseMoved(expected: Pose, actual: Pose): boolean {
++  const dist = Math.hypot(
++    expected.position.x - expected.target.x, expected.position.y - expected.target.y, expected.position.z - expected.target.z,
++  );
++  const eps = REL_EPS * Math.max(dist, 1);
++  const far = (a: Vec3, b: Vec3) => Math.abs(a.x - b.x) > eps || Math.abs(a.y - b.y) > eps || Math.abs(a.z - b.z) > eps;
++  return far(expected.position, actual.position) || far(expected.target, actual.target);
++}
+diff --git a/apps/viewer/src/aim/useAimViewCommands.ts b/apps/viewer/src/aim/useAimViewCommands.ts
+index c9b71468..9610f0c3 100644
+--- a/apps/viewer/src/aim/useAimViewCommands.ts
++++ b/apps/viewer/src/aim/useAimViewCommands.ts
+@@ -27,6 +27,7 @@ import { placementCoordinateInfo } from '@/lib/section/placement-coordinate-info
+ import { sectionRenderBounds as sectionBoundsWith } from './sectionRange.js';
+ import { noteIssue, track } from './command-gate.js';
+ import { waitCameraSettled } from './cameraSettle.js';
++import { AUTO_ROTATE_SPEED } from './autoRotatePlan.js';
+ 
+ type FocusSummary = () => { count: number; guids: string[] };
+ /** Zvýraznenie z FOCUS (#94) - poskytne ho AimBridge po lenivom načítaní príkazov viditeľnosti. */
+@@ -59,6 +60,11 @@ let panels: Promise<typeof import('./aimPanels.js')> | null = null;
+ const loadPanels = () => (panels ??= import('./aimPanels.js'));
+ let panelScroll: Promise<typeof import('./aimPanelScroll.js')> | null = null;
+ const loadPanelScroll = () => (panelScroll ??= import('./aimPanelScroll.js'));
++/** Otáčanie kamery dokola (AIM #247) - lenivo, bežiaca slučka sa pri odpojení mosta zastaví. */
++let autoRotate: Promise<typeof import('./autoRotate.js')> | null = null;
++const loadAutoRotate = () => (autoRotate ??= import('./autoRotate.js'));
++/** Otáčanie práve beží: `APPLIED` nečaká na ustálenie kamery, ktorá sa nikdy neustáli. */
++let autoRotating = false;
+ /** Rezný box (AIM D-132): modul stiahnutý pri pripojení, aby box bežal v poradí s ostatnými príkazmi. */
+ let boxModules: [typeof import('./viewQueries.js'), typeof import('./sectionBox.js')] | null = null;
+ const loadBox = () => Promise.all([loadQueries(), import('./sectionBox.js')]).then((m) => (boxModules = m));
+@@ -99,9 +105,10 @@ export function runSectionBox(raw: unknown): void {
+ export async function appliedViewState(): Promise<Record<string, unknown>> {
+   const q = await loadQueries();
+   // Kamera po obnove pohľadu ešte dobieha animáciu; stav má niesť jej cieľ (AIM #97, D-122).
+-  const settled = await waitCameraSettled(() => useViewerStore.getState().cameraCallbacks.getViewpoint?.() ?? null);
++  const settled = await waitCameraSettled(() => (autoRotating ? null : useViewerStore.getState().cameraCallbacks.getViewpoint?.() ?? null));
+   const s = q.queryViewState(useViewerStore.getState(), { ...GUIDS, focus: focusProvider });
+   return {
++    ...(autoRotating ? { auto_rotate: true } : {}),
+     mode: s.mode, storey_guid: s.storey_guid, section: s.section, camera: s.camera,
+     // Limit vypršal počas pohybu (používateľ otáča kamerou): póza nie je cieľ, nech to host vie.
+     ...(settled ? {} : { camera_moving: true }),
+@@ -121,7 +128,11 @@ export function useAimViewCommands(bim: BimContext) {
+     // Záložky a rezný box (D-132) tiež: ich príkazy idú synchrónne v poradí s ďalšími.
+     void preloadTabs();
+     void loadBox();
+-    return () => { lastGizmo = undefined; };
++    return () => {
++      lastGizmo = undefined;
++      autoRotating = false;
++      void autoRotate?.then((m) => m.stopAutoRotate());
++    };
+   }, [bim]);
+   /** Záložka 3D bez zvyšného zámku kamery, rezu podlažia a ortografickej projekcie (#216). */
+   const free3d = () => {
+@@ -204,6 +215,16 @@ export function useAimViewCommands(bim: BimContext) {
+         track(loadPanels().then((m) => m.applyPanels(msg.panels, noteIssue)));
+         return;
+       }
++      case 'AUTO_ROTATE': {
++        track(loadAutoRotate().then((m) => {
++          if (msg.action === 'stop') { m.stopAutoRotate(); autoRotating = false; return; }
++          autoRotating = m.startAutoRotate(msg.speedDegS ?? AUTO_ROTATE_SPEED.default, msg.direction ?? 'left', {
++            noteIssue,
++            onEnded: () => { autoRotating = false; },
++          });
++        }));
++        return;
++      }
+       case 'SCROLL_PANEL': {
+         track(loadPanelScroll().then((m) => m.scrollPanel(msg.direction, noteIssue)));
+         return;
+diff --git a/apps/viewer/src/aim/view-protocol.ts b/apps/viewer/src/aim/view-protocol.ts
+index 8aa8ce9d..739c9056 100644
+--- a/apps/viewer/src/aim/view-protocol.ts
++++ b/apps/viewer/src/aim/view-protocol.ts
+@@ -17,6 +17,9 @@
+ 
+ import { SOURCE, type OpsSelector } from './bridge-protocol.js';
+ import { isPanelScroll, type PanelScroll } from './aimPanelScrollPlan.js';
++import {
++  AUTO_ROTATE_ACTIONS, AUTO_ROTATE_DIRECTIONS, AUTO_ROTATE_SPEED, type AutoRotateAction, type AutoRotateDirection,
++} from './autoRotatePlan.js';
+ 
+ /** keep = smer sa nemení, section = kolmo na aktívny rez ako tlačidlo Set view (AIM D-098). */
+ export const CAMERA_PRESETS = ['top', 'bottom', 'front', 'back', 'left', 'right', 'iso', 'fit_all', 'keep', 'section'] as const;
+@@ -111,6 +114,8 @@ export type ViewInboundMessage =
+   | { source: typeof SOURCE; type: 'SET_PANELS'; panels: PanelsRequest }
+   /** Posun panela vlastností (AIM #183): o stranu hore / dole, na začiatok, na koniec. */
+   | { source: typeof SOURCE; type: 'SCROLL_PANEL'; direction: PanelScroll }
++  /** Plynulé otáčanie kamery okolo cieľa (AIM #247); `start` nahradí bežiace, zastaví ho `stop`, zásah používateľa aj iný pohyb kamery. */
++  | { source: typeof SOURCE; type: 'AUTO_ROTATE'; action: AutoRotateAction; speedDegS?: number; direction?: AutoRotateDirection }
+   /** Kóty v IFC svete (Z hore, m) do nástroja Measure (AIM D-124); `keep` = pridať k predošlým od hosta. */
+   | { source: typeof SOURCE; type: 'MEASURE_SHOW'; segments: { a: Vec3Wire; b: Vec3Wire }[]; keep?: boolean }
+   /** Čiara trasy v IFC svete (Z hore, m) od hosta (AIM D-137); nahradí predošlú, prázdne body ju zmažú. */
+@@ -213,6 +218,10 @@ export function isViewMessage(data: unknown): data is ViewInboundMessage {
+       return isPanelsRequest(m.panels);
+     case 'SCROLL_PANEL':
+       return isPanelScroll(m.direction);
++    case 'AUTO_ROTATE':
++      return (AUTO_ROTATE_ACTIONS as readonly unknown[]).includes(m.action)
++        && optional(m.speedDegS, (v) => inRange(v, AUTO_ROTATE_SPEED.min, AUTO_ROTATE_SPEED.max))
++        && optional(m.direction, (d) => (AUTO_ROTATE_DIRECTIONS as readonly unknown[]).includes(d));
+     case 'QUERY':
+       return isId(m.id)
+         && (VIEW_QUERIES as readonly unknown[]).includes(m.query)
+-- 
+2.43.0
+
