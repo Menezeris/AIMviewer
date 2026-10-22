@@ -6699,3 +6699,22 @@ stupne z horných plôch.
 cez skutočné výšky; priamka v miestnosti tvaru L môže ísť cez stenu; schodisko bez vodorovných plôch (napr. len
 šikmá doska) ide šikmo po osi obálky; ramená s viacerými stupňami v tej istej výške (vedľa seba) sa zlúčia do
 jedného stredu; hĺbka podesty je odhad z plochy (pri tvare L nepresná, čiara ostáva vodorovná).
+
+---
+
+### D-145 - "Ukázať v 3D" pri PDF s podlažím: Solo podlažia a rezové nástroje namiesto samotného X-ray
+
+**Dátum:** 2026-10-22 · **Issue:** #214 · **Fork PR:** Menezeris/ifc-lite#116 · **Nadväzuje na:** D-072, D-098, D-104 (krok 4), D-105, D-114
+
+**Kontext:** Tlačidlo "Ukázať v 3D" pri otvorenom PDF poslalo `DOCUMENT_SHOW_3D` a host odpovedal X-ray lens (D-105). Používateľ videl len X-ray kontext bez izolovaného podlažia a bez možnosti posunúť rez. Viewer pritom Solo podlažia aj panel Add a plane (Down, Front, Side, Face) má, len sa po kliku nepoužili.
+
+**Rozhodnutie (len sprístupnenie existujúcich funkcií viewera, D-098; žiadny nový tool, host sa nemení):**
+1. Fork (`AimDocumentShow3d.tsx`, nový čistý modul `show3dSoloPlan.ts`): dokument viazaný na podlažie (`storeyGuid` z `DOCUMENTS_LOAD`, D-072) po kliku zavolá existujúce `applyLevelDisplayMode('solo', refs)` (podlažie vo všetkých modeloch federácie) a `setActiveTool('section')`, kde je Add a plane.
+2. Dokument bez podlažia alebo s nenačítaným podlažím ostáva pri `DOCUMENT_SHOW_3D` a X-ray lens (D-104, D-105) bez zmeny.
+3. Wire protokol sa nemení, AIMviewer nemá kód. `DOCUMENT_SHOW_3D` sa pre dokument s podlažím neposiela.
+
+**Kompromis:** Pri Solo sa X-ray lens hosta nepošle, takže prvky konkrétnej strany PDF sa nezvýraznia, viditeľné je celé podlažie. Dôvod: lens `isolate` by skryl zvyšok podlažia a rušil by Solo; zvýraznenie strany v Solo podlaží je možné doplniť neskôr (napr. farbením cez existujúci lens), ak ho Samuel bude chcieť.
+
+**Poradie nasadenia:** najprv fork (Menezeris/ifc-lite#116), potom AIMviewer (tento záznam); zmena v AIMvieweri je len dokumentácia.
+
+**Otvorené:** živé overenie vo forku (či `setActiveTool('section')` pri prázdnom reze vždy ukáže menu Add a plane) a plný CI forku, ktoré v cloud session nepobežali.
