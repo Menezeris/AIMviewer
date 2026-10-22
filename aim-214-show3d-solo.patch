@@ -1,0 +1,224 @@
+From db53e8cd118ebb282e06ff9a47221ec392c05a22 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 09:47:17 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?feat(aim):=20Uk=C3=A1za=C5=A5=20v=203D=20pr?=
+ =?UTF-8?q?i=20dokumente=20s=20podla=C5=BE=C3=ADm=20izoluje=20podla=C5=BEi?=
+ =?UTF-8?q?e=20(Solo)=20a=20otvor=C3=AD=20rezov=C3=A9=20n=C3=A1stroje=20(D?=
+ =?UTF-8?q?-145,=20#214)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ apps/viewer/src/aim/AimDocumentShow3d.tsx  | 23 +++++++++++---
+ apps/viewer/src/aim/show3dSoloPlan.test.ts | 32 +++++++++++++++++++
+ apps/viewer/src/aim/show3dSoloPlan.ts      | 37 ++++++++++++++++++++++
+ 3 files changed, 88 insertions(+), 4 deletions(-)
+ create mode 100644 apps/viewer/src/aim/show3dSoloPlan.test.ts
+ create mode 100644 apps/viewer/src/aim/show3dSoloPlan.ts
+
+diff --git a/apps/viewer/src/aim/AimDocumentShow3d.tsx b/apps/viewer/src/aim/AimDocumentShow3d.tsx
+index 4ad79cc1..6c182a6a 100644
+--- a/apps/viewer/src/aim/AimDocumentShow3d.tsx
++++ b/apps/viewer/src/aim/AimDocumentShow3d.tsx
+@@ -9,25 +9,40 @@
+  * DOCUMENT_SHOW_3D with the page being read (the tab's view state in the
+  * store); the host resolves
+  * the elements that page (or, without own elements, the whole document) refers
+- * to and shows them as an X-ray lens. Rendered only inside the AIM host and
+- * only for documents the host sent.
++ * to and shows them as an X-ray lens. A document bound to a storey (plan) goes
++ * the other way (D-145): the storey is isolated (Solo) and the Section tool opens
++ * (Add a plane), both existing viewer functions; no host round trip.
++ * Rendered only inside the AIM host and only for documents the host sent.
+  */
+ 
+ import { Box } from 'lucide-react';
+ import { useViewerStore } from '@/store';
++import { applyLevelDisplayMode } from '@/store/levelDisplay';
++import { useFloorplanView } from '@/hooks/useFloorplanView';
+ import { postAimDocumentShow3d, useAimPanelStore } from './aimPanelStore';
+ import { show3dTarget } from './documentsQuery';
++import { soloRefs } from './show3dSoloPlan';
+ 
+ export function AimDocumentShow3d({ docId }: { docId: string }) {
+   const embedded = useAimPanelStore((s) => s.embedded);
+   const page = useViewerStore((s) => s.docTabs.find((t) => t.docId === docId)?.view.page ?? 1);
++  const storeyGuid = useViewerStore((s) => s.viewerDocuments.get(docId)?.storeyGuid);
++  const { storeyOptions } = useFloorplanView();
+   const target = show3dTarget(docId, page);
+   if (!embedded || !target) return null;
++  const solo = soloRefs(storeyGuid, storeyOptions.map((o) => ({ guid: o.guid, ...o.info })));
++  const show = () => {
++    if (!solo) return postAimDocumentShow3d(target);
++    applyLevelDisplayMode('solo', solo);
++    useViewerStore.getState().setActiveTool('section', 'programmatic');
++  };
+   return (
+     <button
+       type="button"
+-      onClick={() => postAimDocumentShow3d(target)}
+-      title={`Ukázať v 3D prvky, ktorých sa týka strana ${page} (bez vlastných prvkov celý dokument)`}
++      onClick={show}
++      title={solo
++        ? 'Ukázať v 3D podlažie dokumentu samostatne (Solo) s rezovými nástrojmi'
++        : `Ukázať v 3D prvky, ktorých sa týka strana ${page} (bez vlastných prvkov celý dokument)`}
+       className="mx-1 my-0.5 flex shrink-0 items-center gap-1 self-center rounded border px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground"
+       data-aim-document-show-3d
+     >
+diff --git a/apps/viewer/src/aim/show3dSoloPlan.test.ts b/apps/viewer/src/aim/show3dSoloPlan.test.ts
+new file mode 100644
+index 00000000..befe6853
+--- /dev/null
++++ b/apps/viewer/src/aim/show3dSoloPlan.test.ts
+@@ -0,0 +1,32 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import { soloRefs } from './show3dSoloPlan.js';
++
++const STOREYS = [
++  { guid: 'G1', modelId: 'ASR', expressId: 10 },
++  { guid: 'G2', modelId: 'ASR', expressId: 20 },
++  { guid: 'G1', modelId: 'VZT', expressId: 7 },
++];
++
++describe('Ukázať v 3D pri dokumente s podlažím (AIM D-145)', () => {
++  it('podlažie dokumentu sa izoluje vo všetkých modeloch federácie', () => {
++    assert.deepStrictEqual(soloRefs('G1', STOREYS), [
++      { modelId: 'ASR', expressId: 10 },
++      { modelId: 'VZT', expressId: 7 },
++    ]);
++    assert.deepStrictEqual(soloRefs('G2', STOREYS), [{ modelId: 'ASR', expressId: 20 }]);
++  });
++
++  it('dokument bez podlažia alebo s nenačítaným podlažím ostáva pri X-ray lens hosta', () => {
++    assert.strictEqual(soloRefs(undefined, STOREYS), null);
++    assert.strictEqual(soloRefs(null, STOREYS), null);
++    assert.strictEqual(soloRefs('', STOREYS), null);
++    assert.strictEqual(soloRefs('G9', STOREYS), null);
++    assert.strictEqual(soloRefs('G1', []), null);
++  });
++});
+diff --git a/apps/viewer/src/aim/show3dSoloPlan.ts b/apps/viewer/src/aim/show3dSoloPlan.ts
+new file mode 100644
+index 00000000..ce142694
+--- /dev/null
++++ b/apps/viewer/src/aim/show3dSoloPlan.ts
+@@ -0,0 +1,37 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * "Ukázať v 3D" pri dokumente s podlažím (AIM D-145): pure choice of what the
++ * click does. A document bound to a storey (`storeyGuid` from DOCUMENTS_LOAD,
++ * D-072) isolates that storey (Solo, the viewer's own level-display mode) and
++ * opens the Section tool (Add a plane: Down, Front, Side, Face) instead of the
++ * host's X-ray lens; any other document keeps the DOCUMENT_SHOW_3D lens (D-104).
++ * The store / tool calls are in AimDocumentShow3d.tsx.
++ */
++
++export interface SoloStorey {
++  guid: string;
++  modelId: string;
++  expressId: number;
++}
++
++export interface SoloRef {
++  modelId: string;
++  expressId: number;
++}
++
++/**
++ * Storey refs to solo for a document bound to `storeyGuid`: one per federated
++ * model that has the storey (a unified storey has a ref per model, as in
++ * `applyLevelDisplayMode`). `null` = the document has no loaded storey, so the
++ * caller falls back to the host's X-ray lens.
++ */
++export function soloRefs(storeyGuid: string | null | undefined, storeys: readonly SoloStorey[]): SoloRef[] | null {
++  if (!storeyGuid) return null;
++  const refs = storeys
++    .filter((s) => s.guid === storeyGuid)
++    .map(({ modelId, expressId }) => ({ modelId, expressId }));
++  return refs.length > 0 ? refs : null;
++}
+-- 
+2.43.0
+
+
+From 8477d5e91497ed39854c87893e78abf19b72e82f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 09:47:49 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?test(aim):=20muta=C4=8Dn=C3=A9=20d=C3=B4kaz?=
+ =?UTF-8?q?y=20pre=20show3dSoloPlan=20(D-145,=20#214)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ .../evidence/aim-d145-show3d-solo/README.md          | 12 ++++++++++++
+ .../mutations/01-bez-filtra-podla-guid.patch         | 11 +++++++++++
+ .../mutations/02-prazdny-zoznam-namiesto-null.patch  |  9 +++++++++
+ 3 files changed, 32 insertions(+)
+ create mode 100644 docs/architecture/evidence/aim-d145-show3d-solo/README.md
+ create mode 100644 docs/architecture/evidence/aim-d145-show3d-solo/mutations/01-bez-filtra-podla-guid.patch
+ create mode 100644 docs/architecture/evidence/aim-d145-show3d-solo/mutations/02-prazdny-zoznam-namiesto-null.patch
+
+diff --git a/docs/architecture/evidence/aim-d145-show3d-solo/README.md b/docs/architecture/evidence/aim-d145-show3d-solo/README.md
+new file mode 100644
+index 00000000..00cb12d5
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d145-show3d-solo/README.md
+@@ -0,0 +1,12 @@
++# AIM D-145: Ukázať v 3D pri dokumente s podlažím (Solo + rezové nástroje)
++
++Mutačné dôkazy pre `apps/viewer/src/aim/show3dSoloPlan.test.ts` (mutant -> opravené, `git apply` na mutovaný súbor).
++Každý mutant musí položiť test:
++
++| Patch | Mutácia | Test |
++|---|---|---|
++| `mutations/01-bez-filtra-podla-guid.patch` | `soloRefs` neberie len podlažie dokumentu, ale všetky | padá 2/2 |
++| `mutations/02-prazdny-zoznam-namiesto-null.patch` | nenačítané podlažie vráti `[]` namiesto `null` (tlačidlo by nepošlo X-ray lens hosta) | padá 1/2 |
++
++Spustené lokálne cez `node --experimental-strip-types --test` nad kópiou modulu a testu (bez node_modules);
++oficiálny `check-test-revert-oracle.mjs` v cloud session nebeží (chýba `design-kit`), preto na PR štítok `revert-oracle-exempt`.
+diff --git a/docs/architecture/evidence/aim-d145-show3d-solo/mutations/01-bez-filtra-podla-guid.patch b/docs/architecture/evidence/aim-d145-show3d-solo/mutations/01-bez-filtra-podla-guid.patch
+new file mode 100644
+index 00000000..0fbfe6e9
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d145-show3d-solo/mutations/01-bez-filtra-podla-guid.patch
+@@ -0,0 +1,11 @@
++--- a/apps/viewer/src/aim/show3dSoloPlan.ts
+++++ b/apps/viewer/src/aim/show3dSoloPlan.ts
++@@ -31,7 +31,7 @@
++ export function soloRefs(storeyGuid: string | null | undefined, storeys: readonly SoloStorey[]): SoloRef[] | null {
++   if (!storeyGuid) return null;
++   const refs = storeys
++-    .filter(() => true)
+++    .filter((s) => s.guid === storeyGuid)
++     .map(({ modelId, expressId }) => ({ modelId, expressId }));
++   return refs.length > 0 ? refs : null;
++ }
+diff --git a/docs/architecture/evidence/aim-d145-show3d-solo/mutations/02-prazdny-zoznam-namiesto-null.patch b/docs/architecture/evidence/aim-d145-show3d-solo/mutations/02-prazdny-zoznam-namiesto-null.patch
+new file mode 100644
+index 00000000..6837781e
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d145-show3d-solo/mutations/02-prazdny-zoznam-namiesto-null.patch
+@@ -0,0 +1,9 @@
++--- a/apps/viewer/src/aim/show3dSoloPlan.ts
+++++ b/apps/viewer/src/aim/show3dSoloPlan.ts
++@@ -33,5 +33,5 @@
++   const refs = storeys
++     .filter((s) => s.guid === storeyGuid)
++     .map(({ modelId, expressId }) => ({ modelId, expressId }));
++-  return refs;
+++  return refs.length > 0 ? refs : null;
++ }
+-- 
+2.43.0
+
