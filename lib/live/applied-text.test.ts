@@ -60,6 +60,14 @@ describe("úpravy zoznamu v potvrdení (D-149)", () => {
     expect(t).toContain("Zoradenie sa neprejavilo");
     expect(t).toContain("súčet nehlás");
   });
+  it("farby a export (krok 2): potvrdí len to, čo viewer hlási", () => {
+    const t = text({ ...DONE, color_by: "Pset_ColumnCommon.FireRating", export_ready: "csv" }, { action: "update", color_by: "Pset_ColumnCommon.FireRating", export: "csv" });
+    expect(t).toContain("ofarbené podľa stĺpca Pset_ColumnCommon.FireRating");
+    expect(t).toContain("tlačidlo Stiahnuť CSV");
+    const no = text(DONE, { action: "update", color_by: "storey", export: "xlsx" });
+    expect(no).toContain("ofarbenie nepotvrdzuj");
+    expect(no).toContain("tlačidlom Export");
+  });
   it("starý fork bez stavu tabuľky: úpravy nepotvrdzuj; bez úprav ticho", () => {
     expect(text({ status: "done", rows: 3 }, { action: "update" })).toContain("nepotvrdzuj");
     expect(text({ status: "done", rows: 3 }, {})).not.toContain("nepotvrdzuj");

@@ -51,7 +51,7 @@ Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/vie
 - **`set_view_mode`** (D-083, čítanie, vždy načítaný) - UI AKCIA: záložky vieweru (D-132, ako v Revite): každý pohľad je záložka na celú plochu. mode=3d = záložka 3D, mode=2d + floor = pôdorys podlažia v záložke, mode=split = pôdorys vedľa 3D (s kalibrovaným podkladom). 2D s kalibrovaným výkresom ukáže PDF pôdorys, inak model zhora s rezom 1,2 m nad podlahou; miestnosti ofarbené cez style_in_3d sú v ňom vyplnené farbou a popísané názvom.
   Parametre: `mode=3d|2d|split`, `floor`, `reset`, `saved_view`, `view`, `tab`, `beside`, `close_tab`, `panels`, `panel_scroll`, `panel_zoom`, `section_offset_m`
 - **`open_list`** (D-111, čítanie) - Tabuľka prvkov v paneli Lists vo vieweri (export do CSV/XLSX/PDF): "exportuj dvere na 1NP ako tabuľku", "zoznam tvaroviek s rozmermi do Excelu".
-  Parametre: `name`, `columns`, `run`, `action=open|update`, `maximize`, `sort_by`, `sort_dir=asc|desc`, `sum`, `group_by`, `search`, `ifc_type`, `ifc_types`, `domain`, `predefined_type`, `storey`, `system`, `system_type`, `zone`, `document`, `page`, `property`, `pset`, `value`, `query`, `model`, `global_ids`, `ids_or_refs`
+  Parametre: `name`, `columns`, `run`, `action=open|update`, `maximize`, `sort_by`, `sort_dir=asc|desc`, `sum`, `group_by`, `search`, `add_columns`, `remove_columns`, `add_types`, `remove_types`, `remove_filter=storey|model|property|system|system_type|zone|document|global_ids|ids_or_refs|query|...`, `color_by`, `export=csv|xlsx|pdf`, `ifc_type`, `ifc_types`, `domain`, `predefined_type`, `storey`, `system`, `system_type`, `zone`, `document`, `page`, `property`, `pset`, `value`, `query`, `model`, `global_ids`, `ids_or_refs`
 
 ## Dotazy na stav viewera (1)
 
