@@ -1,0 +1,849 @@
+From 053ecab65af38297f119a447359bdd21d44689bb Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 14:04:11 +0000
+Subject: [PATCH] AIM #179: vsetky panely UI v SET_PANELS, posun a zoom panelov
+
+Zoznam panelov pre chat je odvodeny z WORKSPACE_PANELS (aimPanelList.ts), nie z rucneho zoznamu:
+BCF topics (Alt+3) a dalsie panely sa daju otvorit, zavriet a prepnut, view_state ich vypise
+vsetky s domovom a klavesovou skratkou. SCROLL_PANEL dostal panel, item a percent, nova
+sprava ZOOM_PANEL. renderPanelBody znaci panel data-aim-panel (blok AIM-FORK).
+---
+ apps/viewer/src/aim/aimPanelList.test.ts      |  67 ++++++++++
+ apps/viewer/src/aim/aimPanelList.ts           |  63 +++++++++
+ apps/viewer/src/aim/aimPanelScroll.ts         | 123 ++++++++++++++++--
+ .../viewer/src/aim/aimPanelScrollPlan.test.ts |  49 ++++++-
+ apps/viewer/src/aim/aimPanelScrollPlan.ts     |  57 +++++++-
+ apps/viewer/src/aim/aimPanels.ts              |  44 +++++--
+ apps/viewer/src/aim/aimPanelsPlan.test.ts     |  22 +++-
+ apps/viewer/src/aim/aimPanelsPlan.ts          |  69 +++++-----
+ apps/viewer/src/aim/useAimViewCommands.ts     |   8 +-
+ apps/viewer/src/aim/view-protocol.ts          |  32 +++--
+ apps/viewer/src/aim/viewQueries.ts            |   3 +
+ .../viewer/src/lib/panels/renderPanelBody.tsx |   4 +-
+ 12 files changed, 475 insertions(+), 66 deletions(-)
+ create mode 100644 apps/viewer/src/aim/aimPanelList.test.ts
+ create mode 100644 apps/viewer/src/aim/aimPanelList.ts
+
+diff --git a/apps/viewer/src/aim/aimPanelList.test.ts b/apps/viewer/src/aim/aimPanelList.test.ts
+new file mode 100644
+index 00000000..b8495f4c
+--- /dev/null
++++ b/apps/viewer/src/aim/aimPanelList.test.ts
+@@ -0,0 +1,67 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import { WORKSPACE_PANELS } from '@/lib/panels/registry';
++import { PANEL_KEYS, isPanelKey, panelCatalog, panelIdOf, shortcutOf, wireName } from './aimPanelList.js';
++import { describePanels, type PanelsStore } from './aimPanelsPlan.js';
++import { isPanelsRequest } from './view-protocol.js';
++
++const quiet: PanelsStore = {
++  leftPanelCollapsed: true,
++  sidebarMode: 'expanded',
++  sidebarActivePanel: 'properties',
++  sidebarSecondaryPanel: null,
++  sidebarWidthPct: 22,
++  floatingPanels: [],
++  poppedOutIds: [],
++  listPanelVisible: false,
++};
++
++describe('zoznam panelov z chatu je odvodený z registra (AIM D-150, #179)', () => {
++  it('každý panel registra má meno na drôte, ktoré sa vráti na jeho id (nič nechýba, nič sa nezdvojí)', () => {
++    assert.equal(PANEL_KEYS.length, WORKSPACE_PANELS.length);
++    assert.equal(new Set(PANEL_KEYS).size, PANEL_KEYS.length, 'mená sú jedinečné');
++    for (const p of WORKSPACE_PANELS) {
++      assert.ok(isPanelKey(wireName(p.id)), `panel ${p.id} chýba v zozname pre chat`);
++      assert.equal(panelIdOf(wireName(p.id)), p.id);
++    }
++  });
++
++  it('historické mená z D-127 platia ďalej, ostatné sú id registra (BCF topics = bcf)', () => {
++    assert.equal(wireName('drawing-underlay'), 'underlays');
++    assert.equal(wireName('hierarchy'), 'model_tree');
++    for (const legacy of ['lens', 'properties', 'underlays', 'documents', 'lists', 'model_tree']) assert.ok(isPanelKey(legacy), legacy);
++    assert.ok(isPanelKey('bcf'));
++    assert.equal(isPanelKey('legend'), false);
++    assert.throws(() => panelIdOf('legend'));
++  });
++
++  it('klávesové skratky Alt+N podľa poradia registra, rovnako ako rail: Alt+3 je BCF', () => {
++    assert.equal(shortcutOf('properties'), 'Alt+1');
++    assert.equal(shortcutOf('bcf'), 'Alt+3');
++    assert.equal(shortcutOf(WORKSPACE_PANELS[9].id), 'Alt+0');
++    assert.equal(shortcutOf(WORKSPACE_PANELS[10].id), undefined);
++    assert.equal(panelCatalog().filter((r) => r.shortcut).length, 10);
++  });
++
++  it('view_state nesie všetky panely registra s domovom a skratkou, aj zatvorené', () => {
++    const state = describePanels(quiet);
++    for (const p of WORKSPACE_PANELS) {
++      const info = state[wireName(p.id)];
++      assert.ok(info, `panel ${p.id} chýba vo view_state`);
++      assert.equal((info as { home?: string }).home, p.region);
++    }
++    assert.equal(state.bcf.shortcut, 'Alt+3');
++    assert.equal(state.bcf.open, false);
++    assert.equal(state.properties.open, true);
++    assert.equal(state.model_tree.open, false);
++  });
++
++  it('SET_PANELS prijme každé meno z registra', () => {
++    for (const key of PANEL_KEYS) assert.equal(isPanelsRequest({ [key]: 'toggle' }), true, key);
++  });
++});
+diff --git a/apps/viewer/src/aim/aimPanelList.ts b/apps/viewer/src/aim/aimPanelList.ts
+new file mode 100644
+index 00000000..569ab5e1
+--- /dev/null
++++ b/apps/viewer/src/aim/aimPanelList.ts
+@@ -0,0 +1,63 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Zoznam panelov pre chat (AIM D-150, #179), odvodený z registra panelov upstreamu
++ * (`WORKSPACE_PANELS`), nie z ručného zoznamu: nový panel v UI sa tu objaví sám a
++ * test (`aimPanelList.test.ts`) stráži, že žiadny nechýba.
++ *
++ * Meno na drôte = id v registri; výnimky sú historické mená z D-127, ktoré host už
++ * používa (`underlays` -> `drawing-underlay`, `model_tree` -> `hierarchy`). Klávesová
++ * skratka je Alt+N podľa poradia v registri (prvých desať, 1-9 a 0), rovnako ako
++ * `ActivityBar` (`ALT_KEY`).
++ */
++
++import { WORKSPACE_PANELS, type PanelRegion, type WorkspacePanelId } from '@/lib/panels/registry';
++
++/** Historické mená z D-127 (host ich pozná): meno na drôte -> id v registri. */
++const LEGACY_WIRE: Readonly<Record<string, WorkspacePanelId>> = {
++  underlays: 'drawing-underlay',
++  model_tree: 'hierarchy',
++};
++
++const WIRE_OF = new Map<WorkspacePanelId, string>(Object.entries(LEGACY_WIRE).map(([wire, id]) => [id, wire]));
++
++/** Meno panela na drôte pre id v registri. */
++export const wireName = (id: WorkspacePanelId): string => WIRE_OF.get(id) ?? id;
++
++/** Mená všetkých panelov UI na drôte, v poradí registra. */
++export const PANEL_KEYS: readonly string[] = WORKSPACE_PANELS.map((p) => wireName(p.id));
++export type PanelKey = string;
++
++const ID_OF = new Map<string, WorkspacePanelId>(WORKSPACE_PANELS.map((p) => [wireName(p.id), p.id]));
++
++export const isPanelKey = (k: string): boolean => ID_OF.has(k);
++
++/** Panel upstreamu (`WorkspacePanelId`) pre meno na drôte. */
++export function panelIdOf(key: PanelKey): WorkspacePanelId {
++  const id = ID_OF.get(key);
++  if (!id) throw new Error(`Neznámy panel '${key}'`);
++  return id;
++}
++
++/** Alt+N podľa poradia v registri (1-9, potom 0); ďalšie panely skratku nemajú. */
++export function shortcutOf(id: WorkspacePanelId): string | undefined {
++  const i = WORKSPACE_PANELS.findIndex((p) => p.id === id);
++  return i >= 0 && i < 10 ? `Alt+${i < 9 ? i + 1 : 0}` : undefined;
++}
++
++export interface PanelCatalogRow {
++  key: PanelKey;
++  /** Kde sa otvára: side = pravý stĺpec, bottom = spodný pás, left = ľavý stĺpec. */
++  home: PanelRegion;
++  shortcut?: string;
++}
++
++/** Katalóg panelov (meno, domov, skratka) pre `view_state`. */
++export function panelCatalog(): PanelCatalogRow[] {
++  return WORKSPACE_PANELS.map((p) => {
++    const shortcut = shortcutOf(p.id);
++    return { key: wireName(p.id), home: p.region, ...(shortcut ? { shortcut } : {}) };
++  });
++}
+diff --git a/apps/viewer/src/aim/aimPanelScroll.ts b/apps/viewer/src/aim/aimPanelScroll.ts
+index 8560520f..66bfafbd 100644
+--- a/apps/viewer/src/aim/aimPanelScroll.ts
++++ b/apps/viewer/src/aim/aimPanelScroll.ts
+@@ -3,8 +3,9 @@
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
+ /**
+- * Posun panela vlastností (AIM #183): `SCROLL_PANEL` z chatu ("posuň dole", "hore",
+- * "na začiatok") a udržanie zvýrazneného riadka vo výreze po `SELECT` s `highlight`.
++ * Posun a zoom panelov (AIM #183, D-150): `SCROLL_PANEL` z chatu ("posuň dole", "hore",
++ * "na začiatok", "na položku X", "na polovicu") pre ľubovoľný panel UI, `ZOOM_PANEL`
++ * ("zväčši panel") a udržanie zvýrazneného riadka vo výreze po `SELECT` s `highlight`.
+  *
+  * Jednorazové `scrollIntoView` riadok minulo: panel po výbere dokresľuje obsah nad ním
+  * (atribúty, sady z typu, rozbalenie sady) a riadok sa posunul pod viditeľnú časť.
+@@ -13,7 +14,8 @@
+  * panela (nie okolité stránky) a skončí pri prvom zásahu používateľa.
+  */
+ 
+-import { centeredTop, rowVisible, scrollTarget, type PanelScroll } from './aimPanelScrollPlan.js';
++import { panelIdOf, isPanelKey, PANEL_KEYS } from './aimPanelList.js';
++import { centeredTop, foldText, percentTarget, rowVisible, scrollPercent, scrollTarget, zoomTarget, type PanelScrollRequest, type PanelZoom } from './aimPanelScrollPlan.js';
+ 
+ /** Ako dlho po prvom posune sa riadok sleduje (panel sa dokresľuje najviac pár stoviek ms). */
+ const FOLLOW_MS = 3000;
+@@ -85,11 +87,114 @@ export function revealRow(getRow: () => Element | null): void {
+   raf = requestAnimationFrame(step);
+ }
+ 
+-/** Pokyn z chatu: posun panela vlastností. Čo sa nepodarilo, zapíše ako problém pre `APPLIED`. */
+-export function scrollPanel(dir: PanelScroll, noteIssue: (text: string) => void): void {
++/** Panel bez `panel` v správe = panel vlastností (D-146). */
++const DEFAULT_PANEL = 'properties';
++
++/** Posledný posun a zoom od chatu: `view_state.panel_view` povie, kam sa panel dostal. */
++interface PanelViewState {
++  panel: string;
++  scroll_pct: number;
++  at_top: boolean;
++  at_bottom: boolean;
++  zoom: number;
++  item?: string;
++}
++let lastView: PanelViewState | null = null;
++const zooms = new Map<string, number>();
++
++/** Zoom panelu sa po zatvorení zabudne (nový obsah vzniká s predvoleným zoomom). */
++export function forgetPanelZoom(panel: string): void {
++  zooms.delete(panel);
++  if (lastView?.panel === panel) lastView = null;
++}
++
++/** Stav posledného posunu / zoomu pre `view_state` (null = chat panel zatiaľ neposúval). */
++export const panelViewState = (): PanelViewState | null => lastView;
++
++/** Viditeľný koreň obsahu panela: prvý zo značiek `data-aim-panel` (sidebar, plávajúce okno, spodný pás), ktorý má rozmer. */
++function panelRoots(panel: string): HTMLElement[] {
++  const marks = [...document.querySelectorAll<HTMLElement>(`[data-aim-panel="${panelIdOf(panel)}"]`)];
++  const roots = marks.flatMap((m) => [...m.children] as HTMLElement[]);
++  return roots.filter((r) => r.getBoundingClientRect().width > 0);
++}
++
++/** Skrolovací kontajner panela: panel vlastností cez svoje kotvy, ostatné cez najväčší skrolovateľný prvok v koreni. */
++function scrollerFor(panel: string): HTMLElement | null {
++  if (panel === DEFAULT_PANEL) {
++    const sc = panelScroller();
++    if (sc) return sc;
++  }
++  let best: HTMLElement | null = null;
++  for (const root of panelRoots(panel)) {
++    for (const el of [root, ...root.querySelectorAll<HTMLElement>('*')]) {
++      const oy = getComputedStyle(el).overflowY;
++      if ((oy !== 'auto' && oy !== 'scroll' && oy !== 'overlay') || el.clientHeight === 0) continue;
++      if (!best || el.clientHeight * el.clientWidth > best.clientHeight * best.clientWidth) best = el;
++    }
++  }
++  return best;
++}
++
++/** Najhlbší prvok, ktorého vlastný text obsahuje hľadaný text (bez diakritiky a veľkosti písmen). */
++function findItem(sc: HTMLElement, needle: string): Element | null {
++  const want = foldText(needle);
++  let hit: Element | null = null;
++  const walker = document.createTreeWalker(sc, NodeFilter.SHOW_TEXT);
++  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
++    const el = n.parentElement;
++    if (!el || !foldText(n.textContent ?? '').includes(want)) continue;
++    if (el.getClientRects().length === 0) continue; // skrytý (zbalená sekcia, display: none)
++    hit = el;
++    break;
++  }
++  return hit;
++}
++
++function recordView(panel: string, sc: HTMLElement, item?: string): void {
++  const pct = scrollPercent(sc.scrollTop, sc.clientHeight, sc.scrollHeight);
++  lastView = {
++    panel, scroll_pct: pct, at_top: sc.scrollTop <= 1, at_bottom: sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 1,
++    zoom: zooms.get(panel) ?? 1, ...(item ? { item } : {}),
++  };
++}
++
++/** Pokyn z chatu: posun panela (smer, položka podľa textu, poloha v %). Čo sa nepodarilo, zapíše ako problém pre `APPLIED`. */
++export function scrollPanel(req: PanelScrollRequest, noteIssue: (text: string) => void): void {
+   cancelReveal();
+-  const sc = panelScroller();
+-  if (!sc) return noteIssue('SCROLL_PANEL: panel vlastností nie je otvorený');
+-  if (sc.scrollHeight <= sc.clientHeight) return; // celý obsah je vidieť, nie je čo posúvať
+-  sc.scrollTo({ top: scrollTarget(dir, sc.scrollTop, sc.clientHeight, sc.scrollHeight), behavior: reduceMotion() ? 'auto' : 'smooth' });
++  const panel = req.panel ?? DEFAULT_PANEL;
++  if (!isPanelKey(panel)) return noteIssue(`SCROLL_PANEL: neznámy panel '${panel}' (platné: ${PANEL_KEYS.join(', ')})`);
++  const sc = scrollerFor(panel);
++  if (!sc) return noteIssue(`SCROLL_PANEL: panel ${panel} nie je otvorený`);
++  const behavior = reduceMotion() ? 'auto' : 'smooth';
++  if (req.item !== undefined) {
++    const row = findItem(sc, req.item);
++    if (!row) return noteIssue(`SCROLL_PANEL: položka '${req.item}' sa v paneli ${panel} nenašla (zbalená sekcia sa neprehľadáva)`);
++    revealRow(() => row);
++    recordView(panel, sc, req.item);
++    return;
++  }
++  if (sc.scrollHeight > sc.clientHeight) {
++    const top = req.percent !== undefined
++      ? percentTarget(req.percent, sc.clientHeight, sc.scrollHeight)
++      : scrollTarget(req.direction ?? 'down', sc.scrollTop, sc.clientHeight, sc.scrollHeight);
++    sc.scrollTo({ top, behavior });
++    // Stav po dobehnutí animácie: cieľ je známy vopred, preto ho zapíšeme z neho.
++    lastView = {
++      panel, scroll_pct: scrollPercent(top, sc.clientHeight, sc.scrollHeight), at_top: top <= 1,
++      at_bottom: top + sc.clientHeight >= sc.scrollHeight - 1, zoom: zooms.get(panel) ?? 1,
++    };
++  } else recordView(panel, sc);
++}
++
++/** Pokyn z chatu: zoom obsahu panela (CSS `zoom` na jeho koreňoch), zabudne sa so zatvorením panela. */
++export function zoomPanel(zoom: PanelZoom, panelName: string | undefined, noteIssue: (text: string) => void): void {
++  const panel = panelName ?? DEFAULT_PANEL;
++  if (!isPanelKey(panel)) return noteIssue(`ZOOM_PANEL: neznámy panel '${panel}' (platné: ${PANEL_KEYS.join(', ')})`);
++  const roots = panelRoots(panel);
++  if (roots.length === 0) return noteIssue(`ZOOM_PANEL: panel ${panel} nie je otvorený`);
++  const next = zoomTarget(zoom, zooms.get(panel) ?? 1);
++  zooms.set(panel, next);
++  for (const root of roots) root.style.zoom = next === 1 ? '' : String(next);
++  const sc = scrollerFor(panel);
++  if (sc) recordView(panel, sc);
+ }
+diff --git a/apps/viewer/src/aim/aimPanelScrollPlan.test.ts b/apps/viewer/src/aim/aimPanelScrollPlan.test.ts
+index 9db3f191..d8489c36 100644
+--- a/apps/viewer/src/aim/aimPanelScrollPlan.test.ts
++++ b/apps/viewer/src/aim/aimPanelScrollPlan.test.ts
+@@ -5,7 +5,7 @@
+ import { describe, it } from 'node:test';
+ import assert from 'node:assert';
+ 
+-import { centeredTop, isPanelScroll, rowVisible, scrollTarget } from './aimPanelScrollPlan.js';
++import { centeredTop, foldText, isPanelScroll, isPanelScrollRequest, isPanelZoom, percentTarget, rowVisible, scrollPercent, scrollTarget, zoomTarget } from './aimPanelScrollPlan.js';
+ import { isViewMessage } from './view-protocol.js';
+ 
+ const S = 'aim-bridge';
+@@ -45,4 +45,51 @@ describe('posun panela vlastností (AIM #183)', () => {
+     assert.equal(rowVisible({ top: 470, height: 20 }, view), false, 'v okraji dole');
+     assert.equal(rowVisible({ top: 900, height: 20 }, view), false, 'pod oknom, ako riadok NetVolume v #183');
+   });
++
++  it('SCROLL_PANEL: práve jedno z direction, item, percent; panel je identifikátor (D-150)', () => {
++    const ok = (m: Record<string, unknown>) => isViewMessage({ source: S, type: 'SCROLL_PANEL', ...m });
++    assert.equal(ok({ panel: 'bcf', direction: 'down' }), true);
++    assert.equal(ok({ panel: 'bcf', item: 'Dvere D12' }), true);
++    assert.equal(ok({ panel: 'lists', percent: 50 }), true);
++    assert.equal(ok({ percent: 0 }), true);
++    assert.equal(ok({ direction: 'down', percent: 5 }), false, 'dva druhy cieľa naraz');
++    assert.equal(ok({ item: '   ' }), false);
++    assert.equal(ok({ item: 'x'.repeat(81) }), false);
++    assert.equal(ok({ percent: 101 }), false);
++    assert.equal(ok({ percent: Number.NaN }), false);
++    assert.equal(ok({ panel: 'bad name', direction: 'up' }), false);
++    assert.equal(isPanelScrollRequest({}), false);
++  });
++
++  it('poloha v % a spätné číslo sedia, krátky obsah dá 0', () => {
++    assert.equal(percentTarget(50, 500, 2000), 750);
++    assert.equal(percentTarget(100, 500, 2000), 1500);
++    assert.equal(percentTarget(-5, 500, 2000), 0);
++    assert.equal(percentTarget(50, 500, 300), 0);
++    assert.equal(scrollPercent(750, 500, 2000), 50);
++    assert.equal(scrollPercent(0, 500, 300), 0);
++  });
++
++  it('hľadanie položky ignoruje diakritiku, veľkosť písmen a medzery', () => {
++    assert.equal(foldText('  Čistý   Objem '), 'cisty objem');
++    assert.ok(foldText('NetVolume (m³)').includes(foldText('netvolume')));
++  });
++
++  it('ZOOM_PANEL: in / out po kroku 1,25, reset, číslo, rozsah 0,5 až 2,5', () => {
++    const ok = (zoom: unknown, extra: Record<string, unknown> = {}) => isViewMessage({ source: S, type: 'ZOOM_PANEL', zoom, ...extra });
++    assert.equal(ok('in'), true);
++    assert.equal(ok(1.5, { panel: 'bcf' }), true);
++    assert.equal(ok(3), false);
++    assert.equal(ok(0.4), false);
++    assert.equal(ok('big'), false);
++    assert.equal(ok('in', { panel: 'a b' }), false);
++    assert.equal(isPanelZoom('reset'), true);
++    assert.equal(zoomTarget('in', 1), 1.25);
++    assert.equal(zoomTarget('out', 1.25), 1);
++    assert.equal(zoomTarget('in', 2.4), 2.5, 'strop');
++    assert.equal(zoomTarget('out', 0.55), 0.5, 'spodok');
++    assert.equal(zoomTarget('reset', 2), 1);
++    assert.equal(zoomTarget(1.8, 1), 1.8);
++  });
+ });
++
+diff --git a/apps/viewer/src/aim/aimPanelScrollPlan.ts b/apps/viewer/src/aim/aimPanelScrollPlan.ts
+index 4b1d660c..df62079f 100644
+--- a/apps/viewer/src/aim/aimPanelScrollPlan.ts
++++ b/apps/viewer/src/aim/aimPanelScrollPlan.ts
+@@ -3,7 +3,7 @@
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
+ /**
+- * Posun panela vlastností z chatu (AIM #183): čistá matematika bez DOM.
++ * Posun a zoom panelov z chatu (AIM #183, D-150): čistá matematika bez DOM.
+  * Vykonanie a sledovanie zvýrazneného riadka je v `aimPanelScroll.ts`.
+  */
+ 
+@@ -46,3 +46,58 @@ export function rowVisible(row: Box, view: Box, margin = 0.1): boolean {
+   const pad = view.height * margin;
+   return row.top >= view.top + pad && row.top + row.height <= view.top + view.height - pad;
+ }
++
++/** Pokyn na posun (`SCROLL_PANEL`): smer, položka podľa textu alebo poloha v %; práve jedno z troch. */
++export interface PanelScrollRequest {
++  direction?: PanelScroll;
++  item?: string;
++  percent?: number;
++  panel?: string;
++}
++
++const PANEL_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
++export const MAX_ITEM_LENGTH = 80;
++
++export function isPanelScrollRequest(m: Record<string, unknown>): boolean {
++  if (m.panel !== undefined && !(typeof m.panel === 'string' && PANEL_NAME.test(m.panel))) return false;
++  const given = [m.direction, m.item, m.percent].filter((v) => v !== undefined);
++  if (given.length !== 1) return false;
++  if (m.direction !== undefined) return isPanelScroll(m.direction);
++  if (m.item !== undefined) return typeof m.item === 'string' && m.item.trim().length > 0 && m.item.length <= MAX_ITEM_LENGTH;
++  return typeof m.percent === 'number' && Number.isFinite(m.percent) && m.percent >= 0 && m.percent <= 100;
++}
++
++/** Poloha `scrollTop` pre polohu v % rozsahu posunu (0 = začiatok, 100 = koniec). */
++export function percentTarget(percent: number, clientH: number, scrollH: number): number {
++  const range = Math.max(0, scrollH - clientH);
++  return clamp(range * (Math.max(0, Math.min(100, percent)) / 100), clientH, scrollH);
++}
++
++/** Poloha posunu v % rozsahu (0 pri obsahu, ktorý sa zmestí do okna). */
++export function scrollPercent(top: number, clientH: number, scrollH: number): number {
++  const range = scrollH - clientH;
++  return range <= 0 ? 0 : Math.round(Math.max(0, Math.min(1, top / range)) * 100);
++}
++
++/** Text bez diakritiky a veľkosti písmen, medzery zlúčené: "Čistý objem " ~ "cisty objem". */
++export function foldText(s: string): string {
++  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
++}
++
++/** Zoom obsahu panela: `in` / `out` / `reset` alebo násobok v rozsahu. */
++export const PANEL_ZOOM_RANGE = { min: 0.5, max: 2.5 } as const;
++const ZOOM_STEP = 1.25;
++export type PanelZoom = 'in' | 'out' | 'reset' | number;
++
++export function isPanelZoom(v: unknown): v is PanelZoom {
++  if (v === 'in' || v === 'out' || v === 'reset') return true;
++  return typeof v === 'number' && Number.isFinite(v) && v >= PANEL_ZOOM_RANGE.min && v <= PANEL_ZOOM_RANGE.max;
++}
++
++const roundZoom = (z: number) => Math.round(z * 100) / 100;
++
++/** Nový zoom z pokynu; `in` / `out` násobia o krok 1,25 a držia sa v rozsahu. */
++export function zoomTarget(zoom: PanelZoom, current: number): number {
++  const next = zoom === 'reset' ? 1 : zoom === 'in' ? current * ZOOM_STEP : zoom === 'out' ? current / ZOOM_STEP : zoom;
++  return roundZoom(Math.max(PANEL_ZOOM_RANGE.min, Math.min(PANEL_ZOOM_RANGE.max, next)));
++}
+diff --git a/apps/viewer/src/aim/aimPanels.ts b/apps/viewer/src/aim/aimPanels.ts
+index a6a37651..0ab82345 100644
+--- a/apps/viewer/src/aim/aimPanels.ts
++++ b/apps/viewer/src/aim/aimPanels.ts
+@@ -3,21 +3,26 @@
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
+ /**
+- * `SET_PANELS` z chatu (AIM D-127, #179): otvorí, zavrie alebo prepne panely tými
+- * istými akciami store ako lišta, rail a krížik panela (nič nové). Plán a opis
++ * `SET_PANELS` z chatu (AIM D-127, D-150, #179): otvorí, zavrie alebo prepne ľubovoľný
++ * panel UI tými istými akciami store ako lišta, rail a krížik panela (nič nové). Plán a opis
+  * stavu sú v `aimPanelsPlan.ts`; tento modul sa načíta lenivo prvou správou.
+  */
+ 
+ import { useViewerStore } from '../store/index.js';
+ import { closePanelWindow } from '../services/panel-windows.js';
+-import { PANEL_ID, panelInfo, planPanels, type PanelKey, type PanelsRequest } from './aimPanelsPlan.js';
++import { SIDEBAR_PANEL_FLAGS } from '../store/store-sync.js';
++import { BOTTOM_PANEL_SETTER, isBottomPanel } from '../lib/panels/bottom-panels.js';
++import { panelIdOf } from './aimPanelList.js';
++import { panelInfo, planPanels, validPanelNames, type PanelKey, type PanelsRequest } from './aimPanelsPlan.js';
++import { forgetPanelZoom } from './aimPanelScroll.js';
+ 
+ type Store = ReturnType<typeof useViewerStore.getState>;
+ 
+ /** Vypne panel bez toho, aby otvoril iný stĺpec: plávajúce a samostatné okno zavrie, ukotvený skryje. */
+ function closePanel(s: Store, key: PanelKey): void {
+-  const id = PANEL_ID[key];
+-  if (key === 'model_tree') {
++  const id = panelIdOf(key);
++  forgetPanelZoom(key);
++  if (id === 'hierarchy') {
+     s.setLeftPanelCollapsed(true);
+     return;
+   }
+@@ -43,18 +48,41 @@ function closePanel(s: Store, key: PanelKey): void {
+       if (s.sidebarSecondaryPanel === 'properties') s.setSidebarSecondaryPanel(null);
+       else if (s.sidebarActivePanel === 'properties' && s.sidebarMode !== 'collapsed') s.setSidebarMode('collapsed');
+       return;
++    default:
++      closeGenericPanel(s, id);
+   }
+ }
+ 
++/**
++ * Ostatné panely registra (D-150): spodný pás vypne svojím príznakom, dolná polovica splitu sa uvoľní,
++ * panel s príznakom v pravom stĺpci ho vypne (stĺpec sa sám vráti na ďalší alebo na vlastnosti) a panel
++ * bez príznaka (zones, cost...) vráti stĺpec na vlastnosti, ako ho zatvára krížik.
++ */
++function closeGenericPanel(s: Store, id: ReturnType<typeof panelIdOf>): void {
++  if (isBottomPanel(id)) {
++    s[BOTTOM_PANEL_SETTER[id]](false);
++    return;
++  }
++  if (s.sidebarSecondaryPanel === id) {
++    s.setSidebarSecondaryPanel(null);
++    return;
++  }
++  const flag = SIDEBAR_PANEL_FLAGS.find(([, panel]) => panel === id)?.[0];
++  if (flag) useViewerStore.setState({ [flag]: false });
++  else if (s.sidebarActivePanel === id) s.setSidebarActivePanel('properties');
++}
++
+ function openPanel(s: Store, key: PanelKey): void {
+-  if (key === 'model_tree') s.setLeftPanelCollapsed(false);
+-  else s.showWorkspacePanel(PANEL_ID[key], 'programmatic');
++  const id = panelIdOf(key);
++  if (id === 'hierarchy') s.setLeftPanelCollapsed(false);
++  else s.showWorkspacePanel(id, 'programmatic');
+ }
+ 
+ /** Vykoná požiadavku; čo sa nepodarilo (napr. mobil s jedným panelom), zapíše ako problém pre `APPLIED`. */
+ export function applyPanels(req: PanelsRequest, noteIssue: (text: string) => void): void {
+   const store = useViewerStore;
+-  const steps = planPanels(req, (key) => panelInfo(store.getState(), key).open);
++  const { steps, unknown } = planPanels(req, (key) => panelInfo(store.getState(), key).open);
++  if (unknown.length > 0) noteIssue(`SET_PANELS: neznámy panel ${unknown.join(', ')} (platné: ${validPanelNames()})`);
+   for (const step of steps) {
+     if (step.open) openPanel(store.getState(), step.key);
+     else closePanel(store.getState(), step.key);
+diff --git a/apps/viewer/src/aim/aimPanelsPlan.test.ts b/apps/viewer/src/aim/aimPanelsPlan.test.ts
+index 3a32c9ed..0d609e93 100644
+--- a/apps/viewer/src/aim/aimPanelsPlan.test.ts
++++ b/apps/viewer/src/aim/aimPanelsPlan.test.ts
+@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
+ import assert from 'node:assert';
+ 
+ import { isViewMessage, isPanelsRequest } from './view-protocol.js';
+-import { describePanels, panelInfo, planPanels, type PanelsStateLike } from './aimPanelsPlan.js';
++import { PANEL_KEYS, describePanels, panelInfo, planPanels, type PanelsStateLike } from './aimPanelsPlan.js';
+ 
+ const S = 'aim-bridge' as const;
+ 
+@@ -26,7 +26,8 @@ describe('panely z chatu (AIM D-127)', () => {
+     assert.equal(isViewMessage({ source: S, type: 'SET_PANELS', panels: { lens: 'close' } }), true);
+     assert.equal(isViewMessage({ source: S, type: 'SET_PANELS', panels: { all: 'close', properties: 'open' } }), true);
+     assert.equal(isPanelsRequest({ all: 'open' }), false);
+-    assert.equal(isPanelsRequest({ legend: 'close' }), false);
++    assert.equal(isPanelsRequest({ 'legend!': 'close' }), false, 'meno musí byť identifikátor');
++    assert.equal(isPanelsRequest({ legend: 'close' }), true, 'neznáme meno prejde, viewer ho nahlási v APPLIED');
+     assert.equal(isPanelsRequest({ lens: 'hide' }), false);
+     assert.equal(isPanelsRequest({}), false);
+     assert.equal(isPanelsRequest([]), false);
+@@ -35,14 +36,17 @@ describe('panely z chatu (AIM D-127)', () => {
+ 
+   it('plán: all zavrie všetko okrem výslovne otvorených, zatváranie ide prvé, toggle podľa stavu', () => {
+     const open = new Set(['lens', 'model_tree']);
+-    const steps = planPanels({ all: 'close', properties: 'open' }, (k) => open.has(k));
++    const { steps } = planPanels({ all: 'close', properties: 'open' }, (k) => open.has(k));
+     assert.deepEqual(steps.at(-1), { key: 'properties', open: true });
+     assert.equal(steps.filter((s) => s.open).length, 1);
+-    assert.equal(steps.length, 6);
+-    assert.deepEqual(planPanels({ lens: 'toggle', lists: 'toggle' }, (k) => open.has(k)), [
++    assert.equal(steps.length, PANEL_KEYS.length);
++    assert.deepEqual(planPanels({ lens: 'toggle', lists: 'toggle' }, (k) => open.has(k)).steps, [
+       { key: 'lens', open: false },
+       { key: 'lists', open: true },
+     ]);
++    const closeAll = planPanels({ all: 'close' }, () => true).steps;
++    assert.equal(closeAll.at(-1)?.key, 'properties', 'vlastnosti sa zatvárajú ako posledné, inak by ich zatvorený panel stĺpca vrátil');
++    assert.deepEqual(planPanels({ bcf: 'open', nezname: 'close' }, () => false), { steps: [{ key: 'bcf', open: true }], unknown: ['nezname'] });
+   });
+ 
+   it('stav: ukotvený vpravo, vľavo, dole, plávajúci so snapom a veľkosťou, samostatné okno', () => {
+@@ -59,4 +63,12 @@ describe('panely z chatu (AIM D-127)', () => {
+     assert.equal(all.right_width_pct, 22);
+     assert.equal(describePanels({ ...base, sidebarMode: 'collapsed' }).right_width_pct, null);
+   });
++
++  it('stav: spodný pás a panely bez príznaka (BCF Alt+3, Script, Gantt, zones)', () => {
++    assert.deepEqual(panelInfo({ ...base, sidebarActivePanel: 'bcf' }, 'bcf'), { open: true, where: 'right' });
++    assert.deepEqual(panelInfo(base, 'bcf'), { open: false });
++    assert.deepEqual(panelInfo({ ...base, scriptPanelVisible: true }, 'script'), { open: true, where: 'bottom' });
++    assert.deepEqual(panelInfo({ ...base, ganttPanelVisible: false }, 'gantt'), { open: false });
++    assert.deepEqual(panelInfo({ ...base, sidebarActivePanel: 'zones' }, 'zones'), { open: true, where: 'right' });
++  });
+ });
+diff --git a/apps/viewer/src/aim/aimPanelsPlan.ts b/apps/viewer/src/aim/aimPanelsPlan.ts
+index 5c914544..8a1e7e69 100644
+--- a/apps/viewer/src/aim/aimPanelsPlan.ts
++++ b/apps/viewer/src/aim/aimPanelsPlan.ts
+@@ -3,38 +3,30 @@
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
+ /**
+- * Panely z chatu (AIM D-127, #179): `SET_PANELS` otvorí, zavrie alebo prepne
+- * panely viewera a `view_state` / `APPLIED` vráti stav všetkých. Tu je rozpis akcií
+- * a opis stavu, bez store (mená a validácia drôtu sú vo `view-protocol.ts`, vykonanie
+- * v `aimPanels.ts`, lenivo cez `useAimViewCommands`).
+- *
+- * Mená na drôte -> panel upstreamu: `lens` -> `lens`, `properties` -> `properties`,
+- * `underlays` -> `drawing-underlay`, `documents` -> `documents`, `lists` -> `lists`
+- * (spodný pás), `model_tree` -> `hierarchy` (ľavý stĺpec). `all` = všetky.
++ * Panely z chatu (AIM D-127, D-150, #179): `SET_PANELS` otvorí, zavrie alebo prepne
++ * ľubovoľný panel UI a `view_state` / `APPLIED` vráti stav všetkých. Tu je rozpis akcií
++ * a opis stavu, bez store (zoznam panelov je odvodený z registra v `aimPanelList.ts`,
++ * validácia drôtu vo `view-protocol.ts`, vykonanie v `aimPanels.ts`, lenivo cez
++ * `useAimViewCommands`). `all` = všetky panely.
+  */
+ 
++import { BOTTOM_PANEL_FLAG, isBottomPanel, type BottomPanelFlag } from '@/lib/panels/bottom-panels';
+ import { sideDockedPanels } from './aimSideDock.js';
+-import { PANEL_KEYS, type PanelKey, type PanelsRequest } from './view-protocol.js';
++import { PANEL_KEYS, isPanelKey, panelCatalog, panelIdOf, type PanelKey } from './aimPanelList.js';
++import type { PanelsRequest } from './view-protocol.js';
+ 
+ export { PANEL_KEYS, type PanelKey, type PanelsRequest };
+ 
+-/** Panel upstreamu (`WorkspacePanelId`) pre meno na drôte. */
+-export const PANEL_ID = {
+-  lens: 'lens',
+-  properties: 'properties',
+-  underlays: 'drawing-underlay',
+-  documents: 'documents',
+-  lists: 'lists',
+-  model_tree: 'hierarchy',
+-} as const satisfies Record<PanelKey, string>;
+-
+ /**
+  * Konečné kroky: `all` zavrie všetky panely okrem tých, ktoré správa výslovne
+  * otvára ("zavri všetko okrem 3D a vlastností"); `toggle` sa rozhodne podľa stavu.
+- * Zatváranie ide pred otváraním, aby otvorený panel nezavrel spoločný slot.
++ * Zatváranie ide pred otváraním, aby otvorený panel nezavrel spoločný slot, a panel
++ * vlastností sa zatvára ako posledný (zatvorený panel stĺpca sa vráti na vlastnosti,
++ * tie sa zbalia až nakoniec). Neznáme mená sú v `unknown`, nie v krokoch.
+  */
+-export function planPanels(req: PanelsRequest, isOpen: (key: PanelKey) => boolean): { key: PanelKey; open: boolean }[] {
++export function planPanels(req: PanelsRequest, isOpen: (key: PanelKey) => boolean): { steps: { key: PanelKey; open: boolean }[]; unknown: string[] } {
+   const want = new Map<PanelKey, boolean>();
++  const unknown = Object.keys(req).filter((k) => k !== 'all' && !isPanelKey(k));
+   if (req.all === 'close') for (const k of PANEL_KEYS) want.set(k, false);
+   for (const k of PANEL_KEYS) {
+     const a = req[k];
+@@ -43,7 +35,11 @@ export function planPanels(req: PanelsRequest, isOpen: (key: PanelKey) => boolea
+     else if (a === 'toggle') want.set(k, !isOpen(k));
+   }
+   const steps = [...want].map(([key, open]) => ({ key, open }));
+-  return [...steps.filter((s) => !s.open), ...steps.filter((s) => s.open)];
++  const closing = steps.filter((s) => !s.open);
++  return {
++    steps: [...closing.filter((s) => s.key !== 'properties'), ...closing.filter((s) => s.key === 'properties'), ...steps.filter((s) => s.open)],
++    unknown,
++  };
+ }
+ 
+ /** Stav store, z ktorého sa číta, kde panel je (podmnožina `ViewerState`). */
+@@ -58,22 +54,29 @@ export interface PanelsStateLike {
+   listPanelVisible: boolean;
+ }
+ 
++/** Stav store s príznakmi spodného pásu (každý panel pásu má vlastný príznak, `bottom-panels.ts`). */
++export type PanelsStore = PanelsStateLike & Partial<Record<BottomPanelFlag, boolean>>;
++
+ export interface PanelInfo {
+   open: boolean;
+   /** left | right | bottom = ukotvený, floating = plávajúce okno (snap, w, h px), window = samostatné okno. */
+   where?: 'left' | 'right' | 'bottom' | 'floating' | 'window';
+   snap?: string;
+   size?: { w: number; h: number };
++  /** Domov panela: side = pravý stĺpec, bottom = spodný pás, left = ľavý stĺpec. */
++  home?: string;
++  /** Klávesová skratka (Alt+N podľa registra), ak ju panel má. */
++  shortcut?: string;
+ }
+ 
+ /** Kde je panel (`key`) podľa stavu store. */
+-export function panelInfo(s: PanelsStateLike, key: PanelKey): PanelInfo {
+-  const id = PANEL_ID[key];
+-  if (key === 'model_tree') return s.leftPanelCollapsed ? { open: false } : { open: true, where: 'left' };
++export function panelInfo(s: PanelsStore, key: PanelKey): PanelInfo {
++  const id = panelIdOf(key);
++  if (id === 'hierarchy') return s.leftPanelCollapsed ? { open: false } : { open: true, where: 'left' };
+   const floating = s.floatingPanels.find((p) => p.id === id);
+   if (floating) return { open: true, where: 'floating', snap: floating.snap, size: { w: Math.round(floating.w), h: Math.round(floating.h) } };
+   if (s.poppedOutIds.includes(id)) return { open: true, where: 'window' };
+-  if (key === 'lists') return s.listPanelVisible ? { open: true, where: 'bottom' } : { open: false };
++  if (isBottomPanel(id)) return s[BOTTOM_PANEL_FLAG[id]] === true ? { open: true, where: 'bottom' } : { open: false };
+   const { primary, secondary } = sideDockedPanels({
+     sidebarMode: s.sidebarMode,
+     sidebarActivePanel: s.sidebarActivePanel,
+@@ -83,9 +86,17 @@ export function panelInfo(s: PanelsStateLike, key: PanelKey): PanelInfo {
+   return id === primary || id === secondary ? { open: true, where: 'right' } : { open: false };
+ }
+ 
+-/** Stav všetkých panelov pre `view_state` a `APPLIED` (+ šírka pravého stĺpca v % okna). */
+-export function describePanels(s: PanelsStateLike): Record<PanelKey, PanelInfo> & { right_width_pct: number | null } {
++/**
++ * Stav všetkých panelov UI pre `view_state` a `APPLIED` (+ šírka pravého stĺpca v % okna): každý panel
++ * registra s `open`, `where`, domovom a klávesovou skratkou, aby chat vedel, aké panely existujú.
++ */
++export function describePanels(s: PanelsStore): Record<PanelKey, PanelInfo> & { right_width_pct: number | null } {
+   const out = {} as Record<PanelKey, PanelInfo>;
+-  for (const k of PANEL_KEYS) out[k] = panelInfo(s, k);
++  for (const row of panelCatalog()) {
++    out[row.key] = { ...panelInfo(s, row.key), home: row.home, ...(row.shortcut ? { shortcut: row.shortcut } : {}) };
++  }
+   return { ...out, right_width_pct: s.sidebarMode === 'collapsed' ? null : Math.round(s.sidebarWidthPct) };
+ }
++
++/** Zoznam platných mien pre hlásenie neznámeho panela. */
++export const validPanelNames = (): string => PANEL_KEYS.join(', ');
+diff --git a/apps/viewer/src/aim/useAimViewCommands.ts b/apps/viewer/src/aim/useAimViewCommands.ts
+index c9b71468..7d34f874 100644
+--- a/apps/viewer/src/aim/useAimViewCommands.ts
++++ b/apps/viewer/src/aim/useAimViewCommands.ts
+@@ -106,7 +106,7 @@ export async function appliedViewState(): Promise<Record<string, unknown>> {
+     // Limit vypršal počas pohybu (používateľ otáča kamerou): póza nie je cieľ, nech to host vie.
+     ...(settled ? {} : { camera_moving: true }),
+     selection_count: s.selection.count, hidden_count: s.hidden_count, isolated_count: s.isolated_count, focus: s.focus,
+-    panels: s.panels, tabs: s.tabs, ...(s.property_focus ? { property_focus: s.property_focus } : {}), ...(s.document ? { document: s.document } : {}),
++    panels: s.panels, ...(s.panel_view ? { panel_view: s.panel_view } : {}), tabs: s.tabs, ...(s.property_focus ? { property_focus: s.property_focus } : {}), ...(s.document ? { document: s.document } : {}),
+   };
+ }
+ 
+@@ -205,7 +205,11 @@ export function useAimViewCommands(bim: BimContext) {
+         return;
+       }
+       case 'SCROLL_PANEL': {
+-        track(loadPanelScroll().then((m) => m.scrollPanel(msg.direction, noteIssue)));
++        track(loadPanelScroll().then((m) => m.scrollPanel(msg, noteIssue)));
++        return;
++      }
++      case 'ZOOM_PANEL': {
++        track(loadPanelScroll().then((m) => m.zoomPanel(msg.zoom, msg.panel, noteIssue)));
+         return;
+       }
+       case 'SET_VIEW_MODE': {
+diff --git a/apps/viewer/src/aim/view-protocol.ts b/apps/viewer/src/aim/view-protocol.ts
+index 8aa8ce9d..4c63272c 100644
+--- a/apps/viewer/src/aim/view-protocol.ts
++++ b/apps/viewer/src/aim/view-protocol.ts
+@@ -16,7 +16,8 @@
+  */
+ 
+ import { SOURCE, type OpsSelector } from './bridge-protocol.js';
+-import { isPanelScroll, type PanelScroll } from './aimPanelScrollPlan.js';
++import { isPanelScrollRequest, isPanelZoom, type PanelScroll, type PanelZoom } from './aimPanelScrollPlan.js';
++import { PANEL_KEYS, type PanelKey } from './aimPanelList.js';
+ 
+ /** keep = smer sa nemení, section = kolmo na aktívny rez ako tlačidlo Set view (AIM D-098). */
+ export const CAMERA_PRESETS = ['top', 'bottom', 'front', 'back', 'left', 'right', 'iso', 'fit_all', 'keep', 'section'] as const;
+@@ -46,18 +47,22 @@ export type SectionFit = (typeof SECTION_FITS)[number];
+ export const VIEW_QUERIES = ['bounds', 'view_state'] as const;
+ export type ViewQuery = (typeof VIEW_QUERIES)[number];
+ 
+-/** Panely z chatu (AIM D-127): mená na drôte, mapovanie a vykonanie v `aimPanelsPlan.ts` / `aimPanels.ts`. */
+-export const PANEL_KEYS = ['lens', 'properties', 'underlays', 'documents', 'lists', 'model_tree'] as const;
+-export type PanelKey = (typeof PANEL_KEYS)[number];
++/**
++ * Panely z chatu (AIM D-127, D-150): mená na drôte sú odvodené z registra panelov (`aimPanelList.ts`),
++ * mapovanie a vykonanie je v `aimPanelsPlan.ts` / `aimPanels.ts`. Správa nesie ľubovoľné mená, neznáme
++ * viewer nahlási ako problém v `APPLIED` (so zoznamom platných), nezahodí celú správu.
++ */
++export { PANEL_KEYS, type PanelKey };
+ const PANEL_ACTIONS: readonly unknown[] = ['open', 'close', 'toggle'];
+-export type PanelsRequest = Partial<Record<PanelKey | 'all', 'open' | 'close' | 'toggle'>>;
++const PANEL_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
++export type PanelsRequest = Record<string, 'open' | 'close' | 'toggle'>;
+ 
+ /** `panels` zo správy hosta: aspoň jedna položka, `all` len `close` (čistý pohľad). */
+ export function isPanelsRequest(raw: unknown): raw is PanelsRequest {
+   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+   const entries = Object.entries(raw as Record<string, unknown>);
+-  return entries.length > 0 && entries.every(([k, v]) =>
+-    PANEL_ACTIONS.includes(v) && ((PANEL_KEYS as readonly string[]).includes(k) || (k === 'all' && v === 'close')));
++  return entries.length > 0 && entries.length <= 64 && entries.every(([k, v]) =>
++    PANEL_ACTIONS.includes(v) && PANEL_NAME.test(k) && (k !== 'all' || v === 'close'));
+ }
+ 
+ /** Výška rezu nad úrovňou podlažia v metroch - rovnaký rozsah ako host. */
+@@ -109,8 +114,13 @@ export type ViewInboundMessage =
+   | { source: typeof SOURCE; type: 'QUERY'; id: string; query: ViewQuery; guids?: string[] }
+   /** Panely z chatu (AIM D-127): otvoriť, zavrieť, prepnúť; `all` len zavrieť. */
+   | { source: typeof SOURCE; type: 'SET_PANELS'; panels: PanelsRequest }
+-  /** Posun panela vlastností (AIM #183): o stranu hore / dole, na začiatok, na koniec. */
+-  | { source: typeof SOURCE; type: 'SCROLL_PANEL'; direction: PanelScroll }
++  /**
++   * Posun obsahu panela (AIM #183, D-150): o stranu hore / dole, na začiatok, na koniec (`direction`), na
++   * položku podľa textu (`item`) alebo na polohu v % (`percent`); `panel` chýba = panel vlastností.
++   */
++  | { source: typeof SOURCE; type: 'SCROLL_PANEL'; direction?: PanelScroll; panel?: PanelKey; item?: string; percent?: number }
++  /** Zoom obsahu panela (AIM D-150): `in` / `out` / `reset` alebo násobok; `panel` chýba = panel vlastností. */
++  | { source: typeof SOURCE; type: 'ZOOM_PANEL'; zoom: PanelZoom; panel?: PanelKey }
+   /** Kóty v IFC svete (Z hore, m) do nástroja Measure (AIM D-124); `keep` = pridať k predošlým od hosta. */
+   | { source: typeof SOURCE; type: 'MEASURE_SHOW'; segments: { a: Vec3Wire; b: Vec3Wire }[]; keep?: boolean }
+   /** Čiara trasy v IFC svete (Z hore, m) od hosta (AIM D-137); nahradí predošlú, prázdne body ju zmažú. */
+@@ -212,7 +222,9 @@ export function isViewMessage(data: unknown): data is ViewInboundMessage {
+     case 'SET_PANELS':
+       return isPanelsRequest(m.panels);
+     case 'SCROLL_PANEL':
+-      return isPanelScroll(m.direction);
++      return isPanelScrollRequest(m);
++    case 'ZOOM_PANEL':
++      return isPanelZoom(m.zoom) && optional(m.panel, (p) => typeof p === 'string' && PANEL_NAME.test(p));
+     case 'QUERY':
+       return isId(m.id)
+         && (VIEW_QUERIES as readonly unknown[]).includes(m.query)
+diff --git a/apps/viewer/src/aim/viewQueries.ts b/apps/viewer/src/aim/viewQueries.ts
+index 18c777b7..7c34cda8 100644
+--- a/apps/viewer/src/aim/viewQueries.ts
++++ b/apps/viewer/src/aim/viewQueries.ts
+@@ -24,6 +24,7 @@ import { deriveViewMode } from '@/hooks/viewModeCore';
+ import { RelationshipType } from '@ifc-lite/data';
+ import { summarizeSelection, visibilityGuids, type SelectedEntityInfo } from './selectionSummary.js';
+ import { describePanels } from './aimPanelsPlan.js';
++import { panelViewState } from './aimPanelScroll.js';
+ import { useAimInspectorStore } from './aimInspectorStore.js';
+ import { useAimDocRegionStore } from './docRegion.js';
+ import { useAimViewTabs } from './viewTabsStore.js';
+@@ -218,6 +219,8 @@ export function queryViewState(state: State, g: GuidHelpers) {
+     ...(g.changes ? { changed_since_last_command: g.changes() } : {}),
+     // AIM D-127: panely (#179), zvýraznená vlastnosť v paneli (#168) a viditeľný výrez karty dokumentu (#166).
+     panels: describePanels(state),
++    // AIM D-150: kam chat posunul alebo priblížil obsah panela (lenivý modul, kým sa nepoužil, nie je čo hlásiť).
++    panel_view: panelViewState(),
+     property_focus: useAimInspectorStore.getState().propertyFocus,
+     document: useAimDocRegionStore.getState().visible,
+     // AIM D-132: záložky (aktívna a tá vedľa).
+diff --git a/apps/viewer/src/lib/panels/renderPanelBody.tsx b/apps/viewer/src/lib/panels/renderPanelBody.tsx
+index 51b7b385..a8ea3038 100644
+--- a/apps/viewer/src/lib/panels/renderPanelBody.tsx
++++ b/apps/viewer/src/lib/panels/renderPanelBody.tsx
+@@ -173,7 +173,9 @@ function PointCloudPanelBody({ onClose }: { onClose: () => void }) {
+ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
+   const body = panelBody(id, onClose);
+   const gate = panelModelGateMode(id);
+-  return <AssistantSourceContext panel={id}>{gate ? <PanelModelGate id={id} mode={gate} onClose={onClose}>{body}</PanelModelGate> : body}</AssistantSourceContext>;
++  // >>> AIM-FORK: panel id marker for chat scroll / zoom (D-150); `contents` keeps the layout of the original line
++  return <div data-aim-panel={id} className="contents"><AssistantSourceContext panel={id}>{gate ? <PanelModelGate id={id} mode={gate} onClose={onClose}>{body}</PanelModelGate> : body}</AssistantSourceContext></div>;
++  // <<< AIM-FORK
+ }
+ 
+ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
+-- 
+2.43.0
+
