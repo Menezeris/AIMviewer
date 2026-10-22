@@ -6718,3 +6718,23 @@ jedného stredu; hĺbka podesty je odhad z plochy (pri tvare L nepresná, čiara
 **Poradie nasadenia:** najprv fork (Menezeris/ifc-lite#116), potom AIMviewer (tento záznam); zmena v AIMvieweri je len dokumentácia.
 
 **Otvorené:** živé overenie vo forku (či `setActiveTool('section')` pri prázdnom reze vždy ukáže menu Add a plane) a plný CI forku, ktoré v cloud session nepobežali.
+
+### D-148 - `open_list run=true`: zoznam sa po otvorení rovno spustí a odpoveď toolu povie, či beží
+
+**Dátum:** 2026-10-22 · **Issue:** #248 (nadväzuje na #185) · **Fork PR:** Menezeris/ifc-lite (balík s #123) · **Nadväzuje na:** D-098, D-101, D-111, D-114, D-141
+
+**Kontext:** `open_list` otvoril panel Lists v builderi a Run musel stlačiť človek. Samuel: zoznamy sú podstatné, výsledok má byť vidieť hneď. Spustenie tabuľky je `handleExecuteList` v upstream `ListPanel.tsx` (lokálny stav panela), zvonka sa nedá zavolať.
+
+**Najbližšie tooly (D-114):** `open_list` (rozšírime), `style_in_3d` (jeho `APPLIED` nesie súhrn Lens, rovnaká cesta potvrdenia), `set_view_mode panels` (len otvára panely, nespúšťa). Nový tool netreba.
+
+**Rozhodnutie:**
+1. `open_list` dostane parameter `run` (boolean, default false). Op `list` nesie príznak `r`, bridge správa `OPEN_LIST` pole `run`.
+2. Fork: logika v `aim/aimListRun.ts` a hook `useAimListAutoRun`, v upstream `ListPanel.tsx` jediný riadok v AIM-FORK bloku, ktorý hook zavolá s existujúcim `handleExecuteList`. Žiadna kópia upstream kódu.
+3. Potvrdenie: `APPLIED.state.list` = `{name, status: running|done|failed|opened|not_started, rows?, error?, reason?}`. `appliedText` z toho pridá vetu: tabuľka beží alebo hotová (počet riadkov), alebo prečo nie (nie je načítaný model, chyba výpočtu, panel sa nezobrazil, výpočet ešte beží).
+4. Bez `run` sa správanie nemení; `state.list.status` je vtedy `opened`.
+
+**Zavrhnuté rozšírenie:** nový tool `run_list` - dva volania namiesto jedného a zbytočný ďalší tool v konektore (D-114). `set_view_mode panels` - otvára len panel, nevie spustiť tabuľku.
+
+**Poradie nasadenia:** najprv fork, potom AIMviewer. Starší fork pole `run` ignoruje: `APPLIED` nemá `state.list` a text toolu povie, že spustenie sa nepotvrdilo.
+
+**Otvorené:** živé overenie na teste modeli forku a plné CI forku v cloud session nepobežali; evaly (D-057) tiež nie (opis toolu sa zmenil), otázka je v `eval/questions.json`.

@@ -51,7 +51,8 @@ export const LIST_TOOL_DEFINITIONS: ToolDefinition[] = [
       "\"zoznam tvaroviek s rozmermi do Excelu\". Filtre ako style_in_3d (ifc_type, storey, system, zone, property/value, " +
       "global_ids, ids_or_refs, model), všetky platia naraz. columns = atribúty (Name, GlobalId, ObjectType, Tag...), " +
       "storey / space / building, material, classification, model alebo Pset.Vlastnosť / Qto_X.Množstvo. Viewer otvorí " +
-      "zoznam v builderi; povedz používateľovi, nech stlačí Run a potom Export - súbor stiahne on sám.",
+      "zoznam v builderi; povedz používateľovi, nech stlačí Run a potom Export - súbor stiahne on sám. " +
+      "run=true tabuľku hneď spustí (výsledok je vidieť bez kliku); odpoveď povie, či beží.",
     inputSchema: {
       type: "object",
       properties: {
@@ -61,6 +62,7 @@ export const LIST_TOOL_DEFINITIONS: ToolDefinition[] = [
           items: { type: "string" },
           description: "Stĺpce v poradí; default Name, GlobalId, ObjectType, storey",
         },
+        run: { type: "boolean", description: "true = tabuľku po otvorení rovno spustiť (default false: builder, Run stlačí používateľ)" },
         ...filterProps,
       },
     },
@@ -87,10 +89,11 @@ export async function execListTool(
   if (lensFilter.rules.length === 0) {
     throw new StyleInputError("Zadaj aspoň jeden filter (ifc_type, storey, system, zone, property, global_ids...), inak by zoznam niesol celý model.");
   }
+  const run = input.run === true;
   const listName = (typeof input.name === "string" && input.name.trim() ? input.name.trim() : group.label).slice(0, 120);
   push({
     type: "navigate",
-    url: `/ifc?ops=${encodeURIComponent(listOp({ n: listName, g: [lensFilter], c: columns }))}&r=${Date.now().toString(36)}`,
+    url: `/ifc?ops=${encodeURIComponent(listOp({ n: listName, g: [lensFilter], c: columns, ...(run ? { r: 1 as const } : {}) }))}&r=${Date.now().toString(36)}`,
     label: `3D: zoznam - ${listName}`,
   });
   return {
@@ -99,6 +102,9 @@ export async function execListTool(
     name: listName,
     filter: info,
     columns: columns.map((c) => (c.p ? `${c.p}.${c.k}` : c.k || c.s)),
-    next_step: "Vo vieweri sa otvoril panel Lists so zoznamom v builderi: používateľ stlačí Run a potom Export (CSV, XLSX, PDF).",
+    run,
+    next_step: run
+      ? "Panel Lists sa otvára a tabuľka sa spúšťa: či beží, povie potvrdenie viewera (state.list) nižšie. Export (CSV, XLSX, PDF) robí používateľ."
+      : "Vo vieweri sa otvoril panel Lists so zoznamom v builderi: používateľ stlačí Run a potom Export (CSV, XLSX, PDF).",
   };
 }
