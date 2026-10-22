@@ -1,0 +1,419 @@
+From 3dc9ff6550e4073be9d3038b44b76cdc70fc14d3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 09:23:33 +0000
+Subject: [PATCH] feat(aim): posun PDF karty tahanim lavym tlacidlom mysi (AIM
+ #213)
+
+---
+ apps/viewer/src/aim/docPan.test.ts            |  53 ++++++++
+ apps/viewer/src/aim/docPan.ts                 | 120 ++++++++++++++++++
+ apps/viewer/src/aim/docRegion.ts              |   2 +
+ .../aim-213-doc-pan/mutations/README.md       |  16 +++
+ .../mutations/click-threshold.patch           |  13 ++
+ .../mutations/left-button-only.patch          |  13 ++
+ .../mutations/links-clickable.patch           |  13 ++
+ .../mutations/mouse-and-pen-only.patch        |  13 ++
+ .../mutations/scroll-direction.patch          |  13 ++
+ .../aim-213-doc-pan/mutations/summary.json    |  38 ++++++
+ .../mutations/text-selection-kept.patch       |  13 ++
+ 11 files changed, 307 insertions(+)
+ create mode 100644 apps/viewer/src/aim/docPan.test.ts
+ create mode 100644 apps/viewer/src/aim/docPan.ts
+ create mode 100644 docs/architecture/evidence/aim-213-doc-pan/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-213-doc-pan/mutations/click-threshold.patch
+ create mode 100644 docs/architecture/evidence/aim-213-doc-pan/mutations/left-button-only.patch
+ create mode 100644 docs/architecture/evidence/aim-213-doc-pan/mutations/links-clickable.patch
+ create mode 100644 docs/architecture/evidence/aim-213-doc-pan/mutations/mouse-and-pen-only.patch
+ create mode 100644 docs/architecture/evidence/aim-213-doc-pan/mutations/scroll-direction.patch
+ create mode 100644 docs/architecture/evidence/aim-213-doc-pan/mutations/summary.json
+ create mode 100644 docs/architecture/evidence/aim-213-doc-pan/mutations/text-selection-kept.patch
+
+diff --git a/apps/viewer/src/aim/docPan.test.ts b/apps/viewer/src/aim/docPan.test.ts
+new file mode 100644
+index 00000000..a9f02803
+--- /dev/null
++++ b/apps/viewer/src/aim/docPan.test.ts
+@@ -0,0 +1,53 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert/strict';
++import { canStartPan, movePan, PAN_THRESHOLD_PX, startPan } from './docPan.js';
++
++/** Cieľ, ktorý patrí pod dané selektory (napr. text pdf.js alebo tlačidlo). */
++const within = (...inside: string[]) => ({
++  closest: (sel: string) => (inside.some((i) => sel.includes(i)) ? {} : null),
++});
++const mouse = (target: unknown, over: Record<string, unknown> = {}) =>
++  ({ button: 0, pointerType: 'mouse', target, ...over });
++
++describe('canStartPan (AIM #213)', () => {
++  it('starts on empty page area with the left mouse button', () => {
++    assert.equal(canStartPan(mouse(within())), true);
++    assert.equal(canStartPan(mouse(within(), { pointerType: 'pen' })), true);
++  });
++  it('leaves text selection to pdf.js text spans', () => {
++    assert.equal(canStartPan(mouse(within('.pdf-doc-text-layer span'))), false);
++  });
++  it('leaves clickable drawing labels (D-130) and controls alone', () => {
++    assert.equal(canStartPan(mouse(within('[role="button"]'))), false);
++    assert.equal(canStartPan(mouse(within('button'))), false);
++  });
++  it('ignores other buttons, touch and missing targets', () => {
++    assert.equal(canStartPan(mouse(within(), { button: 1 })), false);
++    assert.equal(canStartPan(mouse(within(), { button: 2 })), false);
++    assert.equal(canStartPan(mouse(within(), { pointerType: 'touch' })), false);
++    assert.equal(canStartPan(mouse(null)), false);
++    assert.equal(canStartPan(mouse({})), false);
++  });
++});
++
++describe('movePan (AIM #213)', () => {
++  it('stays a click below the threshold', () => {
++    const s = startPan(100, 100, 50, 80);
++    assert.equal(movePan(s, 100 + PAN_THRESHOLD_PX - 1, 100), null);
++    assert.equal(s.active, false);
++  });
++  it('scrolls opposite to the drag once past the threshold', () => {
++    const s = startPan(100, 100, 50, 80);
++    assert.deepEqual(movePan(s, 130, 90), { left: 20, top: 90 });
++    assert.equal(s.active, true);
++  });
++  it('keeps panning after the pointer returns near the start', () => {
++    const s = startPan(0, 0, 10, 10);
++    movePan(s, 20, 0);
++    assert.deepEqual(movePan(s, 1, 0), { left: 9, top: 10 });
++  });
++});
+diff --git a/apps/viewer/src/aim/docPan.ts b/apps/viewer/src/aim/docPan.ts
+new file mode 100644
+index 00000000..d1f32291
+--- /dev/null
++++ b/apps/viewer/src/aim/docPan.ts
+@@ -0,0 +1,120 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Posun PDF karty ťahaním ľavým tlačidlom myši (AIM #213). Upstream karta sa
++ * posúva len kolieskom (natívny scroll) a stredným tlačidlom (autoscroll
++ * prehliadača). Ťahanie začne len na prázdnej ploche strany: výber textu
++ * (text pdf.js) a klikateľné prvky (odkazy z popiskov D-130, tlačidlá, vstupy)
++ * ostávajú nedotknuté. Dotyk sa nemení, ten posúva natívne.
++ */
++
++/** Posun v px, od ktorého sa gesto berie ako ťahanie (menší je klik). */
++export const PAN_THRESHOLD_PX = 4;
++
++const TEXT_SELECTOR = '.pdf-doc-text-layer span';
++const INTERACTIVE_SELECTOR =
++  'button, a, input, select, textarea, label, summary, [role="button"], [contenteditable="true"]';
++
++/** Najmenšie, čo z cieľa udalosti treba (testovateľné bez DOM). */
++export interface PanTarget {
++  closest(selector: string): unknown;
++}
++
++export interface PanStartEvent {
++  button: number;
++  pointerType: string;
++  target: unknown;
++}
++
++/** Môže tento stlačený bod začať ťahanie? Len myš/pero, ľavé tlačidlo, mimo textu a ovládačov. */
++export function canStartPan(e: PanStartEvent): boolean {
++  if (e.button !== 0) return false;
++  if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return false;
++  const t = e.target as Partial<PanTarget> | null;
++  if (!t || typeof t.closest !== 'function') return false;
++  return !t.closest(TEXT_SELECTOR) && !t.closest(INTERACTIVE_SELECTOR);
++}
++
++export interface PanState {
++  startX: number;
++  startY: number;
++  scrollLeft: number;
++  scrollTop: number;
++  active: boolean;
++}
++
++export function startPan(x: number, y: number, scrollLeft: number, scrollTop: number): PanState {
++  return { startX: x, startY: y, scrollLeft, scrollTop, active: false };
++}
++
++/** Nová poloha scrollu pre aktuálny bod; `active` sa zapne po prekročení prahu a ostane. */
++export function movePan(s: PanState, x: number, y: number): { left: number; top: number } | null {
++  const dx = x - s.startX;
++  const dy = y - s.startY;
++  if (!s.active) {
++    if (Math.hypot(dx, dy) < PAN_THRESHOLD_PX) return null;
++    s.active = true;
++  }
++  return { left: s.scrollLeft - dx, top: s.scrollTop - dy };
++}
++
++const STYLE_ATTR = 'data-aim-doc-pan-style';
++const PANNING_ATTR = 'data-aim-panning';
++const CSS = `
++.pdf-doc-text-layer { cursor: grab; }
++[${PANNING_ATTR}] { user-select: none; }
++[${PANNING_ATTR}] .pdf-doc-text-layer, [${PANNING_ATTR}] .pdf-doc-text-layer span { cursor: grabbing !important; }
++`;
++
++function ensureStyle(doc: Document): void {
++  if (doc.head.querySelector(`style[${STYLE_ATTR}]`)) return;
++  const style = doc.createElement('style');
++  style.setAttribute(STYLE_ATTR, '');
++  style.textContent = CSS;
++  doc.head.appendChild(style);
++}
++
++/** Zapojí ťahanie na posuvnú plochu karty; vráti odpojenie. */
++export function attachDocPan(root: HTMLElement): () => void {
++  ensureStyle(root.ownerDocument);
++  let pan: PanState | null = null;
++  let pointerId = -1;
++
++  const end = () => {
++    if (pan?.active && root.hasPointerCapture?.(pointerId)) root.releasePointerCapture(pointerId);
++    root.removeAttribute(PANNING_ATTR);
++    pan = null;
++  };
++  const onDown = (e: PointerEvent) => {
++    if (!canStartPan(e)) return;
++    pan = startPan(e.clientX, e.clientY, root.scrollLeft, root.scrollTop);
++    pointerId = e.pointerId;
++  };
++  const onMove = (e: PointerEvent) => {
++    if (!pan || e.pointerId !== pointerId) return;
++    if ((e.buttons & 1) === 0) return end(); // tlačidlo pustené mimo karty
++    const was = pan.active;
++    const to = movePan(pan, e.clientX, e.clientY);
++    if (!to) return;
++    if (!was) {
++      root.setPointerCapture(pointerId);
++      root.setAttribute(PANNING_ATTR, '');
++      root.ownerDocument.defaultView?.getSelection()?.removeAllRanges();
++    }
++    root.scrollLeft = to.left;
++    root.scrollTop = to.top;
++  };
++  root.addEventListener('pointerdown', onDown);
++  root.addEventListener('pointermove', onMove);
++  root.addEventListener('pointerup', end);
++  root.addEventListener('pointercancel', end);
++  return () => {
++    end();
++    root.removeEventListener('pointerdown', onDown);
++    root.removeEventListener('pointermove', onMove);
++    root.removeEventListener('pointerup', end);
++    root.removeEventListener('pointercancel', end);
++  };
++}
+diff --git a/apps/viewer/src/aim/docRegion.ts b/apps/viewer/src/aim/docRegion.ts
+index 4710f5e0..09ddb5e1 100644
+--- a/apps/viewer/src/aim/docRegion.ts
++++ b/apps/viewer/src/aim/docRegion.ts
+@@ -24,6 +24,7 @@ import { useEffect, useRef, type RefObject } from 'react';
+ import { create } from 'zustand';
+ import { describeVisible, type DocVisibleState } from './docVisible.js';
+ import { useAimDocLinks } from './docLinks.js';
++import { attachDocPan } from './docPan.js';
+ 
+ /** Výrez strany v zlomkoch (0-1), počiatok vľavo hore. */
+ export interface DocRegion {
+@@ -226,6 +227,7 @@ const CONTENT_PADDING_PX = 24;
+  */
+ export function useAimDocRegion(v: DocRegionViewInputs): void {
+   useAimDocLinks(v.docId, v.pageElsRef); // odkazy z popiskov výkresu (AIM D-130)
++  useEffect(() => (v.scrollRef.current ? attachDocPan(v.scrollRef.current) : undefined), [v.scrollRef]); // posun ťahaním (AIM #213)
+   const request = useAimDocRegionStore((s) => (s.request?.docId === v.docId ? s.request : null));
+   const highlights = useAimDocRegionStore((s) => (s.highlights?.docId === v.docId ? s.highlights : null));
+   const zoomedRef = useRef<number | null>(null);
+diff --git a/docs/architecture/evidence/aim-213-doc-pan/mutations/README.md b/docs/architecture/evidence/aim-213-doc-pan/mutations/README.md
+new file mode 100644
+index 00000000..4d73a58a
+--- /dev/null
++++ b/docs/architecture/evidence/aim-213-doc-pan/mutations/README.md
+@@ -0,0 +1,16 @@
++# Mutacne dokazy AIM #213 (posun PDF karty tahanim)
++
++Modul `apps/viewer/src/aim/docPan.ts` je novy, takze revert oracle by bol INCONCLUSIVE; kazde rozhodnutie
++ma chirurgicky patch (mutant -> opravene) overeny
++`node scripts/check-test-revert-oracle.mjs --base origin/main --only apps/viewer/src/aim/docPan.ts --test apps/viewer/src/aim/docPan.test.ts --mutation <patch> --ci --json`.
++
++| Patch | Rozhodnutie |
++|---|---|
++| left-button-only | tahanie len lavym tlacidlom |
++| mouse-and-pen-only | dotyk sa nemeni (nativny scroll, pinch) |
++| text-selection-kept | tahanie nezacina na texte pdf.js (vyber textu) |
++| links-clickable | tahanie nezacina na odkazoch a tlacidlach (popisky D-130) |
++| click-threshold | pod 4 px je to klik, nie tahanie |
++| scroll-direction | smer posunu |
++
++Vsetkych 6: OBSERVED, restoration verified (`summary.json`).
+diff --git a/docs/architecture/evidence/aim-213-doc-pan/mutations/click-threshold.patch b/docs/architecture/evidence/aim-213-doc-pan/mutations/click-threshold.patch
+new file mode 100644
+index 00000000..6ea68dbb
+--- /dev/null
++++ b/docs/architecture/evidence/aim-213-doc-pan/mutations/click-threshold.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docPan.ts a/apps/viewer/src/aim/docPan.ts
++index d1dd3dd2..d1f32291 100644
++--- b/apps/viewer/src/aim/docPan.ts
+++++ a/apps/viewer/src/aim/docPan.ts
++@@ -54,7 +54,7 @@ export function movePan(s: PanState, x: number, y: number): { left: number; top:
++   const dx = x - s.startX;
++   const dy = y - s.startY;
++   if (!s.active) {
++-    if (false) return null;
+++    if (Math.hypot(dx, dy) < PAN_THRESHOLD_PX) return null;
++     s.active = true;
++   }
++   return { left: s.scrollLeft - dx, top: s.scrollTop - dy };
+diff --git a/docs/architecture/evidence/aim-213-doc-pan/mutations/left-button-only.patch b/docs/architecture/evidence/aim-213-doc-pan/mutations/left-button-only.patch
+new file mode 100644
+index 00000000..756769fd
+--- /dev/null
++++ b/docs/architecture/evidence/aim-213-doc-pan/mutations/left-button-only.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docPan.ts a/apps/viewer/src/aim/docPan.ts
++index de741924..d1f32291 100644
++--- b/apps/viewer/src/aim/docPan.ts
+++++ a/apps/viewer/src/aim/docPan.ts
++@@ -30,7 +30,7 @@ export interface PanStartEvent {
++ 
++ /** Môže tento stlačený bod začať ťahanie? Len myš/pero, ľavé tlačidlo, mimo textu a ovládačov. */
++ export function canStartPan(e: PanStartEvent): boolean {
++-  if (false) return false;
+++  if (e.button !== 0) return false;
++   if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return false;
++   const t = e.target as Partial<PanTarget> | null;
++   if (!t || typeof t.closest !== 'function') return false;
+diff --git a/docs/architecture/evidence/aim-213-doc-pan/mutations/links-clickable.patch b/docs/architecture/evidence/aim-213-doc-pan/mutations/links-clickable.patch
+new file mode 100644
+index 00000000..663e7481
+--- /dev/null
++++ b/docs/architecture/evidence/aim-213-doc-pan/mutations/links-clickable.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docPan.ts a/apps/viewer/src/aim/docPan.ts
++index 27ffd7dd..d1f32291 100644
++--- b/apps/viewer/src/aim/docPan.ts
+++++ a/apps/viewer/src/aim/docPan.ts
++@@ -34,7 +34,7 @@ export function canStartPan(e: PanStartEvent): boolean {
++   if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return false;
++   const t = e.target as Partial<PanTarget> | null;
++   if (!t || typeof t.closest !== 'function') return false;
++-  return !t.closest(TEXT_SELECTOR);
+++  return !t.closest(TEXT_SELECTOR) && !t.closest(INTERACTIVE_SELECTOR);
++ }
++ 
++ export interface PanState {
+diff --git a/docs/architecture/evidence/aim-213-doc-pan/mutations/mouse-and-pen-only.patch b/docs/architecture/evidence/aim-213-doc-pan/mutations/mouse-and-pen-only.patch
+new file mode 100644
+index 00000000..6d6f5da4
+--- /dev/null
++++ b/docs/architecture/evidence/aim-213-doc-pan/mutations/mouse-and-pen-only.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docPan.ts a/apps/viewer/src/aim/docPan.ts
++index 2e3c2a77..d1f32291 100644
++--- b/apps/viewer/src/aim/docPan.ts
+++++ a/apps/viewer/src/aim/docPan.ts
++@@ -31,7 +31,7 @@ export interface PanStartEvent {
++ /** Môže tento stlačený bod začať ťahanie? Len myš/pero, ľavé tlačidlo, mimo textu a ovládačov. */
++ export function canStartPan(e: PanStartEvent): boolean {
++   if (e.button !== 0) return false;
++-  
+++  if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return false;
++   const t = e.target as Partial<PanTarget> | null;
++   if (!t || typeof t.closest !== 'function') return false;
++   return !t.closest(TEXT_SELECTOR) && !t.closest(INTERACTIVE_SELECTOR);
+diff --git a/docs/architecture/evidence/aim-213-doc-pan/mutations/scroll-direction.patch b/docs/architecture/evidence/aim-213-doc-pan/mutations/scroll-direction.patch
+new file mode 100644
+index 00000000..d631539e
+--- /dev/null
++++ b/docs/architecture/evidence/aim-213-doc-pan/mutations/scroll-direction.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docPan.ts a/apps/viewer/src/aim/docPan.ts
++index 35c81aa7..d1f32291 100644
++--- b/apps/viewer/src/aim/docPan.ts
+++++ a/apps/viewer/src/aim/docPan.ts
++@@ -57,7 +57,7 @@ export function movePan(s: PanState, x: number, y: number): { left: number; top:
++     if (Math.hypot(dx, dy) < PAN_THRESHOLD_PX) return null;
++     s.active = true;
++   }
++-  return { left: s.scrollLeft + dx, top: s.scrollTop + dy };
+++  return { left: s.scrollLeft - dx, top: s.scrollTop - dy };
++ }
++ 
++ const STYLE_ATTR = 'data-aim-doc-pan-style';
+diff --git a/docs/architecture/evidence/aim-213-doc-pan/mutations/summary.json b/docs/architecture/evidence/aim-213-doc-pan/mutations/summary.json
+new file mode 100644
+index 00000000..f626f62d
+--- /dev/null
++++ b/docs/architecture/evidence/aim-213-doc-pan/mutations/summary.json
+@@ -0,0 +1,38 @@
++{
++  "feature": "aim-213-doc-pan",
++  "production": "apps/viewer/src/aim/docPan.ts",
++  "test": "apps/viewer/src/aim/docPan.test.ts",
++  "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++  "results": [
++    {
++      "mutation": "click-threshold.patch",
++      "verdict": "OBSERVED",
++      "restoration": "verified"
++    },
++    {
++      "mutation": "left-button-only.patch",
++      "verdict": "OBSERVED",
++      "restoration": "verified"
++    },
++    {
++      "mutation": "links-clickable.patch",
++      "verdict": "OBSERVED",
++      "restoration": "verified"
++    },
++    {
++      "mutation": "mouse-and-pen-only.patch",
++      "verdict": "OBSERVED",
++      "restoration": "verified"
++    },
++    {
++      "mutation": "scroll-direction.patch",
++      "verdict": "OBSERVED",
++      "restoration": "verified"
++    },
++    {
++      "mutation": "text-selection-kept.patch",
++      "verdict": "OBSERVED",
++      "restoration": "verified"
++    }
++  ]
++}
+\ No newline at end of file
+diff --git a/docs/architecture/evidence/aim-213-doc-pan/mutations/text-selection-kept.patch b/docs/architecture/evidence/aim-213-doc-pan/mutations/text-selection-kept.patch
+new file mode 100644
+index 00000000..19f82eb9
+--- /dev/null
++++ b/docs/architecture/evidence/aim-213-doc-pan/mutations/text-selection-kept.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docPan.ts a/apps/viewer/src/aim/docPan.ts
++index 43f2f49e..d1f32291 100644
++--- b/apps/viewer/src/aim/docPan.ts
+++++ a/apps/viewer/src/aim/docPan.ts
++@@ -34,7 +34,7 @@ export function canStartPan(e: PanStartEvent): boolean {
++   if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return false;
++   const t = e.target as Partial<PanTarget> | null;
++   if (!t || typeof t.closest !== 'function') return false;
++-  return !t.closest(INTERACTIVE_SELECTOR);
+++  return !t.closest(TEXT_SELECTOR) && !t.closest(INTERACTIVE_SELECTOR);
++ }
++ 
++ export interface PanState {
+-- 
+2.43.0
+
