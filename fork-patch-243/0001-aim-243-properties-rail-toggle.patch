@@ -1,0 +1,110 @@
+From 2207c6cf37b617efe6fa6304e152fcedb1afe02c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 16:25:09 +0000
+Subject: [PATCH] fix(aim): properties rail icon toggles the right column off
+ (AIM #243)
+
+Second click on the properties icon re-opened the fallback panel instead of
+closing it. Logic lives in aim/aimRailToggle.ts, usePanelControls wires it
+inside an AIM-FORK block.
+---
+ apps/viewer/src/aim/aimRailToggle.test.ts | 32 +++++++++++++++++++++++
+ apps/viewer/src/aim/aimRailToggle.ts      | 17 ++++++++++++
+ apps/viewer/src/hooks/usePanelControls.ts | 11 ++++++++
+ 3 files changed, 60 insertions(+)
+ create mode 100644 apps/viewer/src/aim/aimRailToggle.test.ts
+ create mode 100644 apps/viewer/src/aim/aimRailToggle.ts
+
+diff --git a/apps/viewer/src/aim/aimRailToggle.test.ts b/apps/viewer/src/aim/aimRailToggle.test.ts
+new file mode 100644
+index 00000000..710d03db
+--- /dev/null
++++ b/apps/viewer/src/aim/aimRailToggle.test.ts
+@@ -0,0 +1,32 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import { propertiesClickCollapses } from './aimRailToggle.js';
++import type { SideDockInput } from './aimSideDock.js';
++
++const base: SideDockInput = {
++  sidebarMode: 'expanded',
++  sidebarActivePanel: 'properties',
++  sidebarSecondaryPanel: null,
++  detached: new Set(),
++};
++
++describe('ikona vlastností ako prepínač (AIM #243)', () => {
++  it('otvorené vlastnosti: klik zbalí stĺpec', () => {
++    assert.equal(propertiesClickCollapses('properties', base), true);
++  });
++
++  it('iný panel v stĺpci, zbalený stĺpec alebo odpojené vlastnosti: klik nezbaľuje', () => {
++    assert.equal(propertiesClickCollapses('properties', { ...base, sidebarActivePanel: 'lens' }), false);
++    assert.equal(propertiesClickCollapses('properties', { ...base, sidebarMode: 'collapsed' }), false);
++    assert.equal(propertiesClickCollapses('properties', { ...base, detached: new Set(['properties']) }), false);
++  });
++
++  it('ostatné ikony sa nemenia', () => {
++    assert.equal(propertiesClickCollapses('lens', { ...base, sidebarActivePanel: 'lens' }), false);
++  });
++});
+diff --git a/apps/viewer/src/aim/aimRailToggle.ts b/apps/viewer/src/aim/aimRailToggle.ts
+new file mode 100644
+index 00000000..a443ca9b
+--- /dev/null
++++ b/apps/viewer/src/aim/aimRailToggle.ts
+@@ -0,0 +1,17 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Ikona vlastností v ráile ako prepínač (AIM #243). Vlastnosti sú záloha pravého stĺpca,
++ * preto ich `toggleWorkspacePanel` pri druhom kliku znova "otvorilo" (zavretie iného panela
++ * padne späť na vlastnosti) a stĺpec ostal otvorený. Zavrieť ich znamená zbaliť stĺpec,
++ * rovnako ako `SET_PANELS` (`aimPanels.ts`) a ako ikona hierarchie zbalí ľavý panel.
++ */
++
++import { sideDockedPanels, type SideDockInput } from './aimSideDock.js';
++
++/** Klik na ikonu vlastností má zbaliť stĺpec, ak sú práve vidno ako primárny panel stĺpca. */
++export function propertiesClickCollapses(id: string, s: SideDockInput): boolean {
++  return id === 'properties' && sideDockedPanels(s).primary === 'properties';
++}
+diff --git a/apps/viewer/src/hooks/usePanelControls.ts b/apps/viewer/src/hooks/usePanelControls.ts
+index 83248022..dd253aef 100644
+--- a/apps/viewer/src/hooks/usePanelControls.ts
++++ b/apps/viewer/src/hooks/usePanelControls.ts
+@@ -26,6 +26,7 @@ import { BOTTOM_PANEL_SETTER, isBottomPanel, isBottomPanelOpen } from '@/lib/pan
+ import { useBottomPanelFlags } from './useBottomPanelFlags';
+ // >>> AIM-FORK
+ import { sideDockedPanels } from '@/aim/aimSideDock';
++import { propertiesClickCollapses } from '@/aim/aimRailToggle';
+ // <<< AIM-FORK
+ import { openPanelWindow, closePanelWindow } from '@/services/panel-windows';
+ 
+@@ -146,6 +147,16 @@ export function usePanelControls(): PanelControls {
+       useViewerStore.getState().setSidebarSecondaryPanel(null);
+       return;
+     }
++    // >>> AIM-FORK: properties icon toggles off by collapsing the column (#243)
++    {
++      const st = useViewerStore.getState();
++      const detached = new Set<string>([...st.floatingPanels.map((p) => p.id), ...st.poppedOutIds]);
++      if (propertiesClickCollapses(id, { ...st, detached })) {
++        st.setSidebarMode('collapsed');
++        return;
++      }
++    }
++    // <<< AIM-FORK
+     if (isBottomPanel(id)) useViewerStore.getState().toggleBottomPanel(id, source);
+     else useViewerStore.getState().toggleWorkspacePanel(id, source);
+   }, []);
+-- 
+2.43.0
+
