@@ -40,4 +40,13 @@ describe("zoznam z chatu (D-111)", () => {
     expect(decodeListWire(enc({ ...WIRE, c: [] }))).toBeNull();
     expect(decodeListWire("!!")).toBeNull();
   });
+
+  it("run (D-148): príznak ide cez op do bridge správy, bez neho správa run nenesie", () => {
+    const [o] = parseOps(listOp({ ...WIRE, r: 1 }));
+    expect(opToBridgeMessage(o)).toMatchObject({ type: "OPEN_LIST", run: true });
+    const [plain] = parseOps(listOp(WIRE));
+    expect(opToBridgeMessage(plain)).not.toHaveProperty("run");
+    const enc = (w: unknown) => listOp(w as ListWire).slice("list::".length);
+    expect(decodeListWire(enc({ ...WIRE, r: 2 }))).toBeNull();
+  });
 });

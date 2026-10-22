@@ -664,6 +664,14 @@
       "notes": "D-111 (issue #70): open_list(ifc_type=IfcDoor, storey=1NP, columns=[Name, Pset_DoorCommon.FireRating, Qto_DoorBaseQuantities.Width]); odpoveď povie, nech používateľ stlačí Run a Export. Len so živým viewerom."
     },
     {
+      "id": "view-open-list-run",
+      "category": "view",
+      "question": "Ukáž mi tabuľku všetkých stĺpov s objemom, nech ju hneď vidím.",
+      "expect": { "tools_called": ["open_list"] },
+      "verified": false,
+      "notes": "D-148 (issue #248): open_list(ifc_type=IfcColumn, run=true, columns=[Name, storey, Qto_ColumnBaseQuantities.NetVolume]); odpoveď povie, či tabuľka beží (state.list). Len so živým viewerom."
+    },
+    {
       "id": "view-select-panel-ifc",
       "category": "view",
       "question": "Vyber miestnosť 2.01 a ukáž jej IFC výmery, zvýrazni čistú podlahovú plochu.",
