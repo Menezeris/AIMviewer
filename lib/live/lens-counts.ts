@@ -1,5 +1,7 @@
 import "server-only";
 
+import { inactiveRuleWarnings } from "@/lib/llm/style-overlap";
+
 import { queryLiveViewer } from "./query";
 
 /** Server čaká dlhšie než klient (7 s) a fork (6 s): navigácia, zóna a vyhodnotenie lens. */
@@ -24,5 +26,7 @@ export async function lensCountsText(
       : "Počty z Lens sa nepodarilo načítať; používateľ ich vidí v paneli Lens.";
   }
   if (!outcome.reply.ok) return `Počty z Lens: viewer odpovedal chybou (${outcome.reply.error}).`;
-  return `Počty vo vieweri (Lens AIM chat): ${JSON.stringify(outcome.reply.result)}`;
+  const result = outcome.reply.result;
+  const warn = inactiveRuleWarnings((result as { rules?: unknown } | null)?.rules).map((w) => `POZOR: ${w}\n`).join("");
+  return `${warn}Počty vo vieweri (Lens AIM chat): ${JSON.stringify(result)}`;
 }

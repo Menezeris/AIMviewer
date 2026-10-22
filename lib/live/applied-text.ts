@@ -1,3 +1,4 @@
+import { inactiveRuleWarnings } from "../llm/style-overlap";
 import type { LiveAppliedPayload } from "./protocol";
 import { withSectionOrientation } from "./section-orientation";
 import { visibleArea, type ViewerCamera } from "../viewer-camera";
@@ -50,6 +51,7 @@ export function appliedWarnings(tool: string, a: LiveAppliedPayload, ctx: Applie
         "(set_section action=clear alebo style_in_3d clear_section=true) a povedz to používateľovi.",
     );
   }
+  if (tool === "style_in_3d") out.push(...inactiveRuleWarnings(((a.state ?? {}) as { lens?: { rules?: unknown } }).lens?.rules));
   if ((ctx.viewers ?? 0) > 1) {
     out.push(
       `Na živý kanál odpovedá ${ctx.viewers} okien viewera; potvrdenie je z jedného z nich a ich stav sa môže líšiť. ` +
