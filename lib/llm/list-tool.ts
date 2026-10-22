@@ -1,10 +1,17 @@
 import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { listOp, type ListColumnWire, type ListViewWire } from "@/lib/viewer-list";
+import {
+  LIST_EXPORT_FORMATS,
+  listOp,
+  type ListColumnWire,
+  type ListEditWire,
+  type ListExportFormat,
+  type ListViewWire,
+} from "@/lib/viewer-list";
 
 import type { AskAction } from "./actions";
-import { DOMAIN_IFC_TYPES } from "./ifc-selector";
+import { DOMAIN_IFC_TYPES, sanitizeIfcType } from "./ifc-selector";
 import { parseListColumn } from "./list-columns";
 import { lensGroup } from "./lens-plan";
 import type { ToolDefinition } from "./provider";
@@ -22,9 +29,30 @@ import { ScopeResolver } from "./style-scope";
  * "Excel hlasom" (D-149): `action=update` upraví práve otvorený zoznam (filtre pribudnú
  * cez AND a tabuľka sa spustí znova), `maximize`, `sort_by`, `sum`, `group_by` a `search`
  * platia pri otvorení aj úprave. Stav zoznamu vráti potvrdenie viewera a `get_viewer_state`.
+ * Krok 2: pri `update` pribudnú a ubudnú stĺpce a triedy, odoberú sa filtre, podlažie a model
+ * sa prepnú (nahradia staré), `color_by` ofarbí prvky podľa stĺpca a `export` ponúkne stiahnutie.
  */
 
 const DEFAULT_COLUMNS = ["Name", "GlobalId", "ObjectType", "storey"];
+
+/** `remove_filter` -> druh pravidla filtra vo vieweri (zóna, dokument a prvky sú tam GlobalId). */
+const REMOVE_FILTER_KINDS: Record<string, string> = {
+  storey: "storey",
+  model: "model",
+  property: "property",
+  system: "group",
+  system_type: "group",
+  zone: "globalId",
+  document: "globalId",
+  global_ids: "globalId",
+  ids_or_refs: "globalId",
+  query: "name",
+  predefined_type: "predefinedType",
+  all: "all",
+};
+const REMOVE_FILTER_KEYS = Object.keys(REMOVE_FILTER_KINDS);
+/** Edit parametre `update` (krok 2). */
+const EDIT_KEYS = ["add_columns", "remove_columns", "add_types", "remove_types", "remove_filter"];
 const MAX_COLUMNS = 30;
 
 const filterProps = {
@@ -59,7 +87,11 @@ export const LIST_TOOL_DEFINITIONS: ToolDefinition[] = [
       "run=true tabuľku hneď spustí (výsledok je vidieť bez kliku); odpoveď povie, či beží. " +
       "ÚPRAVA OTVORENÉHO ZOZNAMU ('filtruj 3NP', 'zoraď podľa objemu', 'sčítaj NetVolume', 'na celú obrazovku'): " +
       "action=update s filtrami (pribudnú k filtrom zoznamu, tabuľka sa spustí znova) a/alebo maximize, sort_by + sort_dir, " +
-      "sum, group_by, search; nový zoznam nezakladaj. Stĺpce v sort_by, sum a group_by píš ako v columns a musia v zozname byť. " +
+      "sum, group_by, search; nový zoznam nezakladaj. Stĺpce v sort_by, sum, group_by a color_by píš ako v columns a musia v zozname byť. " +
+      "Pri update: add_columns / remove_columns ('pridaj FireRating'), add_types / remove_types ('pridaj aj nosníky a steny' = IfcBeam, IfcWall), " +
+      "remove_filter ('zruš filter podlažia', 'zruš všetky filtre' = all, triedy ostanú); storey a model PREPNÚ podlažie či model (nahradia doterajšie), " +
+      "ostatné filtre pribudnú cez AND. color_by = farby prvkov v 3D podľa hodnoty stĺpca (Lens, legenda; nie podlažie/priestor). " +
+      "export = csv | xlsx | pdf: viewer zvýrazní tlačidlo Stiahnuť, súbor stiahne používateľ klikom (bez kliku prehliadač nedovolí) - povedz mu to. " +
       "Potvrdenie (state.list) a get_viewer_state vrátia stav zoznamu vrátane súčtov (sums) za viditeľné riadky - súčet " +
       "povedz z neho, nepočítaj ho inými toolmi.",
     inputSchema: {
@@ -83,6 +115,17 @@ export const LIST_TOOL_DEFINITIONS: ToolDefinition[] = [
         sum: { type: "array", items: { type: "string" }, description: "Stĺpce so súčtom (Qto_X.NetVolume...); [] zruší súčty" },
         group_by: { type: "array", items: { type: "string" }, description: "Zoskupenie podľa stĺpcov, vonkajšie prvé (storey...); [] zruší" },
         search: { type: "string", description: "Rýchle hľadanie textu v riadkoch tabuľky; prázdny reťazec zruší" },
+        add_columns: { type: "array", items: { type: "string" }, description: "update: stĺpce na pridanie (ako columns)" },
+        remove_columns: { type: "array", items: { type: "string" }, description: "update: stĺpce na odobratie" },
+        add_types: { type: "array", items: { type: "string" }, description: "update: IFC triedy na pridanie (IfcBeam...)" },
+        remove_types: { type: "array", items: { type: "string" }, description: "update: IFC triedy na odobratie" },
+        remove_filter: {
+          type: "array",
+          items: { type: "string", enum: REMOVE_FILTER_KEYS },
+          description: "update: odobrať filtre tohto druhu; all = všetky okrem tried",
+        },
+        color_by: { type: "string", description: "Farby prvkov v 3D podľa hodnoty stĺpca (ako v columns); prázdny reťazec zruší" },
+        export: { type: "string", enum: [...LIST_EXPORT_FORMATS], description: "Ponúknuť stiahnutie v tomto formáte (klik používateľa)" },
         ...filterProps,
       },
     },
@@ -99,6 +142,8 @@ export async function execListTool(
   if (name !== "open_list") throw new Error(`Neznámy tool '${name}'.`);
   const view = parseListViewInput(input);
   if (input.action === "update") return execListUpdate(input, view, push);
+  const editKey = EDIT_KEYS.find((k) => input[k] !== undefined);
+  if (editKey) throw new StyleInputError(`${editKey} platí len s action=update (úprava otvoreného zoznamu).`);
   if (input.action !== undefined && input.action !== "open") throw new StyleInputError("action je open alebo update.");
   const rawColumns = Array.isArray(input.columns) ? input.columns.map((c) => String(c)).filter((c) => c.trim()) : [];
   if (rawColumns.length > MAX_COLUMNS) throw new StyleInputError(`Najviac ${MAX_COLUMNS} stĺpcov.`);
@@ -164,6 +209,17 @@ export function parseListViewInput(input: Record<string, unknown>): ListViewWire
   const gb = columnList(input.group_by, "group_by");
   if (gb) v.gb = gb;
   if (input.search !== undefined) v.q = String(input.search).slice(0, 200);
+  if (input.color_by !== undefined) {
+    const col = String(input.color_by).trim();
+    v.cb = col ? parseListColumn(col) : null;
+    if (v.cb?.s === "spatial") {
+      throw new StyleInputError(`Podľa stĺpca '${col}' Lens farbiť nevie (podlažie, priestor); vyber vlastnosť, atribút, materiál alebo model.`);
+    }
+  }
+  if (input.export !== undefined) {
+    if (!(LIST_EXPORT_FORMATS as readonly unknown[]).includes(input.export)) throw new StyleInputError("export je csv, xlsx alebo pdf.");
+    v.x = input.export as ListExportFormat;
+  }
   return Object.keys(v).length ? v : undefined;
 }
 
@@ -176,6 +232,52 @@ function viewSummary(v: ListViewWire): Record<string, unknown> {
     ...(v.sum ? { sum: v.sum.map(colName) } : {}),
     ...(v.gb ? { group_by: v.gb.map(colName) } : {}),
     ...(v.q !== undefined ? { search: v.q } : {}),
+    ...(v.cb !== undefined ? { color_by: v.cb ? colName(v.cb) : null } : {}),
+    ...(v.x ? { export: v.x } : {}),
+  };
+}
+
+function typeList(raw: unknown, key: string): string[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw) || raw.length === 0) throw new StyleInputError(`${key} je neprázdne pole IFC tried (napr. ["IfcBeam"]).`);
+  const out = raw.map(sanitizeIfcType);
+  const bad = out.filter((t) => !/^Ifc[A-Za-z0-9]+$/i.test(t));
+  if (bad.length || out.length > 16) throw new StyleInputError(`${key}: IFC triedy v tvare IfcBeam, IfcWall (najviac 16).`);
+  return out;
+}
+
+/** `add_columns`, `remove_columns`, `add_types`, `remove_types`, `remove_filter` -> `ListEditWire`; nič = undefined. */
+export function parseListEditInput(input: Record<string, unknown>): ListEditWire | undefined {
+  const e: ListEditWire = {};
+  for (const [key, field] of [["add_columns", "ac"], ["remove_columns", "rc"]] as const) {
+    const raw = input[key];
+    if (raw === undefined) continue;
+    if (!Array.isArray(raw) || raw.length === 0) throw new StyleInputError(`${key} je neprázdne pole stĺpcov.`);
+    if (raw.length > 16) throw new StyleInputError(`${key}: najviac 16 stĺpcov.`);
+    e[field] = raw.map((c) => parseListColumn(String(c)));
+  }
+  const at = typeList(input.add_types, "add_types");
+  if (at) e.at = at;
+  const rt = typeList(input.remove_types, "remove_types");
+  if (rt) e.rt = rt;
+  if (input.remove_filter !== undefined) {
+    const raw = Array.isArray(input.remove_filter) ? input.remove_filter : [input.remove_filter];
+    const kinds = raw.map((k) => REMOVE_FILTER_KINDS[String(k)]);
+    if (raw.length === 0 || kinds.some((k) => !k)) {
+      throw new StyleInputError(`remove_filter: ${REMOVE_FILTER_KEYS.join(", ")} (triedy odober cez remove_types).`);
+    }
+    e.rf = [...new Set(kinds)];
+  }
+  return Object.keys(e).length ? e : undefined;
+}
+
+function editSummary(e: ListEditWire): Record<string, unknown> {
+  return {
+    ...(e.ac ? { add_columns: e.ac.map(colName) } : {}),
+    ...(e.rc ? { remove_columns: e.rc.map(colName) } : {}),
+    ...(e.at ? { add_types: e.at } : {}),
+    ...(e.rt ? { remove_types: e.rt } : {}),
+    ...(e.rf ? { remove_filter: e.rf } : {}),
   };
 }
 
@@ -186,8 +288,9 @@ async function execListUpdate(
   push: (a: AskAction) => void,
 ): Promise<Record<string, unknown>> {
   if (input.columns !== undefined) {
-    throw new StyleInputError("Stĺpce otvoreného zoznamu sa zatiaľ meniť nedajú: otvor nový zoznam cez open_list s columns.");
+    throw new StyleInputError("Pri update stĺpce meň cez add_columns / remove_columns, columns platí len pre nový zoznam.");
   }
+  const edit = parseListEditInput(input);
   const hasFilter = FILTER_KEYS.some((k) => input[k] !== undefined);
   let groups: ReturnType<typeof lensGroup>[] = [];
   let info: GroupInfo | undefined;
@@ -201,21 +304,30 @@ async function execListUpdate(
     if (lensFilter.rules.length === 0) throw new StyleInputError("Filter nič nevybral; skús iné podlažie, triedu alebo vlastnosť.");
     groups = [lensFilter];
   }
-  if (!hasFilter && !view) {
-    throw new StyleInputError("action=update potrebuje filter (storey, property/value...) alebo maximize, sort_by, sum, group_by, search.");
+  if (!hasFilter && !view && !edit) {
+    throw new StyleInputError(
+      "action=update potrebuje filter (storey, property/value...), add/remove_columns, add/remove_types, remove_filter " +
+        "alebo maximize, sort_by, sum, group_by, search, color_by, export.",
+    );
   }
   push({
     type: "navigate",
-    url: listUrl({ n: "", g: groups, c: [], u: 1, ...(view ? { v: view } : {}) }),
+    url: listUrl({ n: "", g: groups, c: [], u: 1, ...(view ? { v: view } : {}), ...(edit ? { e: edit } : {}) }),
     label: "3D: úprava zoznamu",
   });
   return {
     ok: true,
     updated: "lists",
     ...(info ? { added_filter: info } : {}),
+    ...(edit ? { edit: editSummary(edit) } : {}),
     ...(view ? { view: viewSummary(view) } : {}),
-    next_step: hasFilter
-      ? "Filter pribudol k zoznamu a tabuľka sa spúšťa znova; stav (riadky, súčty) je v potvrdení viewera (state.list)."
-      : "Zoznam sa upravuje; stav (zoradenie, súčty, maximalizácia) je v potvrdení viewera (state.list).",
+    next_step: [
+      hasFilter || edit
+        ? "Zoznam sa upravil a tabuľka sa spúšťa znova (podlažie a model nahradia doterajšie); stav (stĺpce, filtre, riadky, súčty) je v potvrdení viewera (state.list), problémy v ňom povedz."
+        : "Zoznam sa upravuje; stav (zoradenie, súčty, farby, maximalizácia) je v potvrdení viewera (state.list).",
+      ...(view?.x
+        ? [`Stiahnutie ${view.x.toUpperCase()} nespustíš: vo vieweri je zvýraznené tlačidlo Stiahnuť, používateľ naň klikne.`]
+        : []),
+    ].join(" "),
   };
 }

@@ -7,7 +7,8 @@
  *
  * Op: `list::<base64url JSON>`. S `u: 1` je to úprava otvoreného zoznamu (`LIST_UPDATE`,
  * D-149): filtre pribudnú k filtrom zoznamu, `v` nesie zoskupenie, súčty, zoradenie,
- * hľadanie a maximalizáciu panela (aj pri otvorení).
+ * hľadanie a maximalizáciu panela (aj pri otvorení), farby podľa stĺpca a ponuku exportu;
+ * `e` (len s `u`) pridá alebo odoberie stĺpce a triedy a odoberie filtre (D-149, krok 2).
  */
 
 import {
@@ -53,6 +54,29 @@ export interface ListViewWire {
   gb?: ListColumnWire[];
   /** Rýchle hľadanie v riadkoch. */
   q?: string;
+  /** Farby prvkov v 3D podľa stĺpca (upstream "Color by"); null = zrušiť. */
+  cb?: ListColumnWire | null;
+  /** Formát, ktorý viewer ponúkne zvýrazneným tlačidlom na stiahnutie (klik je na používateľovi). */
+  x?: ListExportFormat;
+}
+
+export const LIST_EXPORT_FORMATS = ["csv", "xlsx", "pdf"] as const;
+export type ListExportFormat = (typeof LIST_EXPORT_FORMATS)[number];
+
+/** Druhy filtrov (pravidlá `FilterRule.kind`), ktoré sa dajú odobrať; `all` = všetky okrem tried. */
+export const LIST_FILTER_KINDS = ["storey", "model", "property", "group", "globalId", "name", "predefinedType", "all"] as const;
+
+/** Úprava obsahu otvoreného zoznamu (D-149, krok 2); nezadané sa nemení. */
+export interface ListEditWire {
+  /** Pridať stĺpce (na koniec). */
+  ac?: ListColumnWire[];
+  /** Odobrať stĺpce. */
+  rc?: ListColumnWire[];
+  /** Pridať / odobrať IFC triedy. */
+  at?: string[];
+  rt?: string[];
+  /** Odobrať filtre podľa druhu. */
+  rf?: string[];
 }
 
 export interface ListWire {
@@ -66,6 +90,8 @@ export interface ListWire {
   /** 1 = upraviť otvorený zoznam namiesto nového (D-149). */
   u?: 1;
   v?: ListViewWire;
+  /** Úprava obsahu, len s `u`. */
+  e?: ListEditWire;
 }
 
 const MAX_COLUMNS = 40;
@@ -86,7 +112,20 @@ function isView(v: unknown): v is ListViewWire {
     const cols = v[key];
     if (cols !== undefined && (!Array.isArray(cols) || cols.length > MAX_VIEW_COLUMNS || !cols.every(isColumn))) return false;
   }
+  if (v.cb !== undefined && v.cb !== null && !isColumn(v.cb)) return false;
+  if (v.x !== undefined && !(LIST_EXPORT_FORMATS as readonly unknown[]).includes(v.x)) return false;
   return v.q === undefined || (typeof v.q === "string" && v.q.length <= 200);
+}
+
+const MAX_EDIT_ITEMS = 16;
+const isIfcClass = (t: unknown) => typeof t === "string" && /^Ifc[A-Za-z0-9]{1,60}$/i.test(t);
+
+function isEdit(e: unknown): e is ListEditWire {
+  if (!isObj(e) || Object.keys(e).length === 0) return false;
+  const list = (raw: unknown, ok: (x: unknown) => boolean) =>
+    raw === undefined || (Array.isArray(raw) && raw.length > 0 && raw.length <= MAX_EDIT_ITEMS && raw.every(ok));
+  return list(e.ac, isColumn) && list(e.rc, isColumn) && list(e.at, isIfcClass) && list(e.rt, isIfcClass)
+    && list(e.rf, (k) => (LIST_FILTER_KINDS as readonly unknown[]).includes(k));
 }
 
 export function listOp(wire: ListWire): string {
@@ -108,6 +147,7 @@ export function decodeListWire(raw: string): ListWire | null {
   const update = parsed.u === 1;
   if (!update && !parsed.n) return null;
   if (parsed.v !== undefined && !isView(parsed.v)) return null;
+  if (parsed.e !== undefined && (!update || !isEdit(parsed.e))) return null;
   const { g, c } = parsed;
   if (!Array.isArray(g) || g.length > MAX_GROUPS) return null;
   for (const grp of g) {
@@ -132,23 +172,33 @@ export function listScopeKeys(wire: ListWire): string[] {
 export function listBridgeMessage(wire: ListWire, scopeGuids: ReadonlyMap<string, readonly string[]>): Record<string, unknown> {
   const lens = lensBridgeMessage("add", asLens(wire), scopeGuids) as { rules?: Array<{ groups: unknown[] }> };
   const view = wire.v ? { view: viewMessage(wire.v) } : {};
-  if (wire.u) return { type: "LIST_UPDATE", groups: wire.g.length ? lens.rules?.[0]?.groups ?? [] : [], ...view };
+  if (wire.u) {
+    const edit = wire.e ? { edit: editMessage(wire.e) } : {};
+    return { type: "LIST_UPDATE", groups: wire.g.length ? lens.rules?.[0]?.groups ?? [] : [], ...view, ...edit };
+  }
   return {
     type: "OPEN_LIST",
     name: wire.n,
     ...(wire.r ? { run: true } : {}),
     groups: lens.rules?.[0]?.groups ?? [],
-    columns: wire.c.map((c) => ({
-      source: c.s,
-      propertyName: c.k,
-      ...(c.p ? { psetName: c.p } : {}),
-      ...(c.l ? { label: c.l } : {}),
-    })),
+    columns: wire.c.map(columnDef),
     ...view,
   };
 }
 
 const columnRef = (c: ListColumnWire) => ({ source: c.s, propertyName: c.k, ...(c.p ? { psetName: c.p } : {}) });
+const columnDef = (c: ListColumnWire) => ({ ...columnRef(c), ...(c.l ? { label: c.l } : {}) });
+
+/** `edit` správy `LIST_UPDATE` pre fork (`aim/aimListEditPlan.ts`). */
+function editMessage(e: ListEditWire): Record<string, unknown> {
+  return {
+    ...(e.ac ? { addColumns: e.ac.map(columnDef) } : {}),
+    ...(e.rc ? { removeColumns: e.rc.map(columnRef) } : {}),
+    ...(e.at ? { addTypes: e.at } : {}),
+    ...(e.rt ? { removeTypes: e.rt } : {}),
+    ...(e.rf ? { removeFilters: e.rf } : {}),
+  };
+}
 
 /** `view` správy pre fork (`aim/aimListViewPlan.ts`): stĺpce menom, nie id. */
 function viewMessage(v: ListViewWire): Record<string, unknown> {
@@ -158,5 +208,7 @@ function viewMessage(v: ListViewWire): Record<string, unknown> {
     ...(v.sum ? { sum: v.sum.map(columnRef) } : {}),
     ...(v.gb ? { groupBy: v.gb.map(columnRef) } : {}),
     ...(v.q !== undefined ? { search: v.q } : {}),
+    ...(v.cb !== undefined ? { colorBy: v.cb && columnRef(v.cb) } : {}),
+    ...(v.x ? { export: v.x } : {}),
   };
 }

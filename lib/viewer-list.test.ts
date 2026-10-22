@@ -73,4 +73,17 @@ describe("úprava zoznamu cez op list (D-149)", () => {
     expect(decodeListWire(enc({ ...WIRE, n: "" }))).toBeNull();
     expect(decodeListWire(enc({ ...WIRE, v: { o: null, sum: [] } }))).not.toBeNull();
   });
+
+  it("krok 2: edit len s u=1 a len platný; farby a export vo view", () => {
+    const edit = { ac: [{ s: "property", p: "Pset_ColumnCommon", k: "FireRating" }], at: ["IfcBeam"], rf: ["storey", "all"] };
+    const ok = decodeListWire(enc({ ...UPDATE, e: edit, v: { cb: null, x: "csv" } }));
+    expect(ok?.e).toEqual(edit);
+    expect(decodeListWire(enc({ ...WIRE, e: edit }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, e: {} }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, e: { at: ["Beam"] } }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, e: { rf: ["ifcType"] } }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, e: { rc: [{ s: "property", k: "X" }] } }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, v: { x: "docx" } }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, v: { cb: { s: "sql", k: "x" } } }))).toBeNull();
+  });
 });

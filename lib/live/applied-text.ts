@@ -79,11 +79,16 @@ type ListState = {
   sums?: Array<{ column?: string; value?: number; unit?: string }>;
   maximized?: boolean;
   sort?: { column?: string; dir?: string } | null;
+  color_by?: string;
+  export_ready?: string;
 };
 
-const VIEW_ARGS = ["maximize", "sort_by", "sum", "group_by", "search"];
+const VIEW_ARGS = ["maximize", "sort_by", "sum", "group_by", "search", "color_by", "export"];
 
-/** Úpravy zoznamu (D-149): súčty povedané vetou, a čo sa z `maximize`/`sort_by`/`sum` nevykonalo. */
+/**
+ * Úpravy zoznamu (D-149): súčty povedané vetou, a čo sa z `maximize`/`sort_by`/`sum` nevykonalo;
+ * krok 2: farby podľa stĺpca a ponuka exportu (stiahnutie je na kliku používateľa).
+ */
 export function listViewText(tool: string, state: unknown, args: Record<string, unknown> = {}): string {
   if (tool !== "open_list") return "";
   const l = state && typeof state === "object" ? (state as { list?: ListState }).list : undefined;
@@ -103,6 +108,17 @@ export function listViewText(tool: string, state: unknown, args: Record<string, 
   }
   if (typeof args.sort_by === "string" && args.sort_by.trim() && !l.sort && l.status === "done") {
     out.push("Zoradenie sa neprejavilo (stĺpec v zozname nie je).");
+  }
+  if (typeof args.color_by === "string" && args.color_by.trim()) {
+    if (l.color_by) out.push(`Prvky v 3D sú ofarbené podľa stĺpca ${l.color_by}, legenda je v paneli Lens.`);
+    else if (l.status === "done") out.push("Farby podľa stĺpca sa nepoužili (pozri problémy viewera): ofarbenie nepotvrdzuj.");
+  }
+  if (typeof args.export === "string") {
+    if (l.export_ready) {
+      out.push(`Vo vieweri svieti tlačidlo Stiahnuť ${l.export_ready.toUpperCase()}: povedz používateľovi, nech naň klikne (bez kliku prehliadač súbor nestiahne).`);
+    } else if (l.status === "done") {
+      out.push("Ponuka exportu sa nezobrazila: nech používateľ exportuje tlačidlom Export v tabuľke.");
+    }
   }
   return out.length ? ` ${out.join(" ")}` : "";
 }
