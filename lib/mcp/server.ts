@@ -138,6 +138,7 @@ async function handleOne(
           // Default: tool nemení dáta (UI akcie menia len pohľad vo vieweri);
           // tool, ktorý zapisuje, to prepíše vlastnými anotáciami (D-084).
           annotations: { readOnlyHint: true, openWorldHint: false, ...t.annotations },
+          ...(t.meta ? { _meta: t.meta } : {}),
         })),
       });
     case "tools/call": {

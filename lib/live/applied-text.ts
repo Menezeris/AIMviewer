@@ -61,6 +61,18 @@ export function appliedWarnings(tool: string, a: LiveAppliedPayload, ctx: Applie
   return out;
 }
 
+/** Stav tabuľky po `open_list` (D-148): beží, hotová alebo prečo nie. */
+export function listStateText(tool: string, state: unknown, run: boolean): string {
+  if (tool !== "open_list") return "";
+  const l = state && typeof state === "object" ? (state as { list?: { name?: string; status?: string; rows?: number; error?: string; reason?: string } }).list : undefined;
+  if (!l) return run ? " Viewer neposlal stav zoznamu (staršia verzia viewera?): netvrď, že tabuľka beží; nech používateľ stlačí Run." : "";
+  if (l.status === "done") return ` Tabuľka je spustená a hotová: ${l.rows ?? 0} riadkov.`;
+  if (l.status === "running") return " Tabuľka beží, výsledok sa ešte počíta; používateľ ho uvidí v paneli Lists.";
+  if (l.status === "failed") return ` Tabuľka sa nespustila: ${l.error ?? "chyba výpočtu"}.`;
+  if (l.status === "not_started") return ` Tabuľka sa nespustila: ${l.reason ?? "panel Lists sa nezobrazil"}. Používateľ ju spustí tlačidlom Run.`;
+  return run ? "" : " Zoznam je otvorený v builderi, Run stlačí používateľ.";
+}
+
 export function appliedText(tool: string, a: LiveAppliedPayload, elapsedMs?: number, ctx: AppliedContext = {}): string {
   const head = a.ok
     ? `Vykonané vo vieweri${elapsedMs !== undefined ? ` (${elapsedMs} ms)` : ""}.`
@@ -72,7 +84,8 @@ export function appliedText(tool: string, a: LiveAppliedPayload, elapsedMs?: num
       ? " Pri reze nad podlažím má section.coordinate zodpovedať floor_elevation_model_units + offset_m; ak nie, povedz to a rez nepotvrdzuj."
       : "";
   const warnings = appliedWarnings(tool, a, ctx).map((w) => ` POZOR: ${w}`).join("");
-  return `${head}${state}${section}${warnings}`;
+  const list = listStateText(tool, a.state, ctx.args?.run === true);
+  return `${head}${state}${section}${list}${warnings}`;
 }
 
 export function notAppliedText(timeoutMs: number): string {

@@ -43,6 +43,8 @@ export interface ListWire {
   n: string;
   g: LensFilterGroup[];
   c: ListColumnWire[];
+  /** 1 = tabuľku po otvorení rovno spustiť (D-148). */
+  r?: 1;
 }
 
 const MAX_COLUMNS = 40;
@@ -70,6 +72,7 @@ export function decodeListWire(raw: string): ListWire | null {
     if (!isObj(grp) || (grp.combinator !== "AND" && grp.combinator !== "OR") || !Array.isArray(grp.rules)) return null;
     if (grp.rules.length === 0 || !grp.rules.every((r) => isObj(r) && typeof r.kind === "string")) return null;
   }
+  if (parsed.r !== undefined && parsed.r !== 1) return null;
   if (!Array.isArray(c) || c.length === 0 || c.length > MAX_COLUMNS) return null;
   for (const col of c) {
     if (!isObj(col) || !(LIST_COLUMN_SOURCES as readonly unknown[]).includes(col.s) || typeof col.k !== "string") return null;
@@ -92,6 +95,7 @@ export function listBridgeMessage(wire: ListWire, scopeGuids: ReadonlyMap<string
   return {
     type: "OPEN_LIST",
     name: wire.n,
+    ...(wire.r ? { run: true } : {}),
     groups: lens.rules?.[0]?.groups ?? [],
     columns: wire.c.map((c) => ({
       source: c.s,
