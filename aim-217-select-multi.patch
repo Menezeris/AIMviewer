@@ -1,0 +1,115 @@
+From ce5b5507df4ea787774ffd7aa0097a74f21502a6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 07:58:33 +0000
+Subject: [PATCH] aim: SELECT s viac GUIDmi oznaci vsetky prvky (AIM #217)
+
+Sprava SELECT dostane volitelne guids; prvy GUID nesie panel a kameru
+zaramuje vsetky. Starsi host bez guids sa nemeni.
+---
+ apps/viewer/src/aim/AimBridge.tsx            |  4 ++--
+ apps/viewer/src/aim/aimPanelViewPlan.test.ts |  6 ++++++
+ apps/viewer/src/aim/bridge-protocol.ts       |  5 +++--
+ apps/viewer/src/aim/visibility-commands.ts   | 11 +++++++++--
+ 4 files changed, 20 insertions(+), 6 deletions(-)
+
+diff --git a/apps/viewer/src/aim/AimBridge.tsx b/apps/viewer/src/aim/AimBridge.tsx
+index 13071f6f..be1fee2c 100644
+--- a/apps/viewer/src/aim/AimBridge.tsx
++++ b/apps/viewer/src/aim/AimBridge.tsx
+@@ -22,7 +22,7 @@ import { useEffect, useRef, useState } from 'react';
+ import { useBim } from '../sdk/BimProvider.js';
+ import { useViewerStore } from '../store/index.js';
+ import { AUTOLOAD_COMPLETE_EVENT, parseAutoloadUrls } from '../lib/autoload.js';
+-import { selectPickedGlobalId } from '../components/viewer/viewport-selection.js';
++import { selectPickedGlobalId, toggleGlobalIdInSelection } from '../components/viewer/viewport-selection.js';
+ import {
+   SOURCE, FILTER_COLOR, FOCUS_COLOR, isInboundMessage, guidForEntity, resolveGuids, resolveSelector,
+   type InboundMessage, type OutboundMessage,
+@@ -50,7 +50,7 @@ const aimTyped = (d: unknown, type: string) => !!d && typeof d === 'object' && (
+ /** Príkazy viditeľnosti idú bránou; dáta panelov a dokumentov nie (D-101). */
+ const VISIBILITY = new Set(['FOCUS', 'SELECT', 'HIGHLIGHT_FILTER', 'CLEAR_FILTER', 'RESET_COLORS', 'COLORIZE', 'HIDE', 'SHOW', 'ISOLATE', 'SHOW_ALL']);
+ /** Helpery zo vstupného balíka pre lenivý modul príkazov viditeľnosti. */
+-const VIS_DEPS = { resolveGuids, resolveSelector, selectPickedGlobalId, noteIssue, track, FOCUS_COLOR, FILTER_COLOR, prepareFocusView };
++const VIS_DEPS = { resolveGuids, resolveSelector, selectPickedGlobalId, addToSelection: toggleGlobalIdInSelection, noteIssue, track, FOCUS_COLOR, FILTER_COLOR, prepareFocusView };
+ let visibility: Promise<typeof import('./visibility-commands.js')> | null = null;
+ const loadVisibility = () => (visibility ??= import('./visibility-commands.js'));
+ 
+diff --git a/apps/viewer/src/aim/aimPanelViewPlan.test.ts b/apps/viewer/src/aim/aimPanelViewPlan.test.ts
+index 1dd33866..a899bdcf 100644
+--- a/apps/viewer/src/aim/aimPanelViewPlan.test.ts
++++ b/apps/viewer/src/aim/aimPanelViewPlan.test.ts
+@@ -21,6 +21,12 @@ describe('panel vlastností z chatu (AIM D-113)', () => {
+     );
+   });
+ 
++  it('SELECT s viac GUIDmi (AIM #217) prejde, guids musí byť pole reťazcov', () => {
++    assert.equal(isInboundMessage({ source: S, type: 'SELECT', guid: GUID, guids: [GUID, '1abcdefghijklmnopqrstu'] }), true);
++    assert.equal(isInboundMessage({ source: S, type: 'SELECT', guid: GUID, guids: 'x' }), false);
++    assert.equal(isInboundMessage({ source: S, type: 'SELECT', guid: GUID, guids: [1] }), false);
++  });
++
+   it('neplatný panel zahodí celú správu (null), chýbajúci panel nie (undefined)', () => {
+     assert.strictEqual(selectPanel(undefined), undefined);
+     assert.strictEqual(selectPanel(null), undefined);
+diff --git a/apps/viewer/src/aim/bridge-protocol.ts b/apps/viewer/src/aim/bridge-protocol.ts
+index 8053b375..dce12c6a 100644
+--- a/apps/viewer/src/aim/bridge-protocol.ts
++++ b/apps/viewer/src/aim/bridge-protocol.ts
+@@ -135,7 +135,7 @@ export type InboundMessage =
+   // Výber ako klik myšou (D-082 v AIM repe): selekcia, panel a kamera; ENTITY_SELECTED
+   // sa echuje hostovi (AIM karta ako po kliku). `panel` (D-113): záložka, sekcia a
+   // zvýraznená vlastnosť; validuje ho lenivý SELECT (`aimPanelViewPlan.ts`).
+-  | { source: typeof SOURCE; type: 'SELECT'; guid: string; panel?: unknown }
++  | { source: typeof SOURCE; type: 'SELECT'; guid: string; guids?: string[]; panel?: unknown }
+   | { source: typeof SOURCE; type: 'HIGHLIGHT_FILTER'; guids: string[] }
+   | { source: typeof SOURCE; type: 'CLEAR_FILTER' }
+   // AI dock viewer ops (D-066 in the AIM repo) — colorize/visibility over
+@@ -313,7 +313,8 @@ export function isInboundMessage(data: unknown): data is InboundMessage {
+     case 'HIGHLIGHT_FILTER':
+       return isStringArray(msg.guids);
+     case 'SELECT':
+-      return typeof msg.guid === 'string' && msg.guid.length > 0;
++      // `guids` = viacnásobný výber (AIM #217); `guid` je prvý a nesie panel.
++      return typeof msg.guid === 'string' && msg.guid.length > 0 && (msg.guids === undefined || isStringArray(msg.guids));
+     case 'CLEAR_FILTER':
+     case 'SHOW_ALL':
+     case 'RESET_COLORS':
+diff --git a/apps/viewer/src/aim/visibility-commands.ts b/apps/viewer/src/aim/visibility-commands.ts
+index 63beb8a5..96ff97d0 100644
+--- a/apps/viewer/src/aim/visibility-commands.ts
++++ b/apps/viewer/src/aim/visibility-commands.ts
+@@ -24,6 +24,8 @@ export interface VisibilityDeps {
+   resolveGuids: typeof resolveGuids;
+   resolveSelector: typeof resolveSelector;
+   selectPickedGlobalId: (globalId: number | null) => void;
++  /** Pridá prvok k výberu ako Ctrl+klik (viacnásobný SELECT, AIM #217). */
++  addToSelection: (globalId: number) => void;
+   noteIssue: (text: string) => void;
+   track: (p: Promise<unknown>) => void;
+   /** Pohľad pred zarámovaním (2D/split na podlaží cieľa alebo 3D, #97 V1); kľúč podlažia `modelId:expressId`. */
+@@ -120,15 +122,20 @@ export function runVisibilityCommand(
+         return true;
+       }
+       const state = useViewerStore.getState();
+-      const [ref] = d.resolveGuids(state.models, [msg.guid]);
++      // Prvý GUID nesie panel; ďalšie (AIM #217) sa pridajú ako Ctrl+klik. Neznáme sa preskočia.
++      const wanted = [...new Set([msg.guid, ...(msg.guids ?? [])])];
++      const refs = wanted.flatMap((g) => d.resolveGuids(state.models, [g]).slice(0, 1));
++      const [ref] = refs;
+       if (!ref) {
+         d.noteIssue('SELECT: prvok sa vo vieweri nenašiel');
+         return true;
+       }
++      if (refs.length < wanted.length) d.noteIssue(`SELECT: vo vieweri sa nenašlo ${wanted.length - refs.length} z ${wanted.length} prvkov`);
+       clearFocus(bim); // oranžová by prekryla selekčné zvýraznenie
+       d.selectPickedGlobalId(toGlobalIdFromModels(state.models, ref.modelId, ref.expressId));
++      for (const extra of refs.slice(1)) d.addToSelection(toGlobalIdFromModels(state.models, extra.modelId, extra.expressId));
+       useViewerStore.getState().openPanelInHome('properties', 'programmatic');
+-      d.track(frameRefs(bim, [ref], 'SELECT', d.noteIssue));
++      d.track(frameRefs(bim, refs, 'SELECT', d.noteIssue));
+       if (panel) d.track(applyPanelView(panel, ref, d.noteIssue));
+       return true;
+     }
+-- 
+2.43.0
+
