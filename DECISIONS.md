@@ -6721,6 +6721,25 @@ jedného stredu; hĺbka podesty je odhad z plochy (pri tvare L nepresná, čiara
 
 ---
 
+### D-151 - Výber z filtra (`show_in_3d select`) a skrytie s výnimkou (`style_in_3d hide`), len v hoste
+
+**Dátum:** 2026-10-22 · **Issue:** #242, #246 · **Nadväzuje na:** D-066, D-096, D-098, D-102, D-114, D-115
+
+**Kontext:** (#242) `show_in_3d(ifc_type=IfcDamper, select=true)` zlyhal, hoci zvýraznenie tým istým filtrom ide; model musel najprv volať `search_objects` a poslať 24 ids. (#246) "vypni ostatné potrubia okrem trasy" vyžadovalo dve volania (hide modelu, potom show trasy); `isolate` by skryl aj ostatné modely.
+
+**Najprv to, čo existuje (D-098, D-114):** ops sú `;`-oddelené a viewer ich aplikuje postupne (`applyOps` v `ifc-viewer.tsx`), `hide_sel`/`show` a viacnásobný `select` bridge už existujú. Najbližšie tooly: `show_in_3d` (filter je už pri zvýraznení), `style_in_3d` (hide, selektor modelu), `ifc_query`. Fork netreba, nový tool netreba.
+
+**Rozhodnutie (parametre existujúcich toolov, žiadny nový tool, žiadna zmena forku):**
+1. `show_in_3d select=true` prijme aj `global_ids` a filter `ifc_type`, `predefined_type`, `query`, `object_type` (rovnaké kritériá ako zvýraznenie). Filter rozloží host na GUIDy a pošle jeden viacnásobný `select`. Strop 200 prvkov (ako dnes pri ids); viac zhôd je chyba s radou zúžiť, výber by inak bol ticho neúplný. Prvky bez GUID sa nahlásia (`skipped_without_guid`).
+2. `style_in_3d action=hide` prijme `exclude_ids_or_refs` (id, object_ref, kód prvku) a `exclude_global_ids` (spolu najviac 300). Host výnimky rozloží na GUIDy a: pri selektore (model, trieda, doména) a pri systéme/zóne/podlaží pošle za skrytie op `show` výnimiek v tej istej akcii; pri výbere z DB ich odpočíta zo skrývaných GUIDov. Neznáma výnimka sa nahlási (`excluded_skipped`), samé neznáme výnimky skrytie zastavia (inak by sa skrylo všetko).
+3. "Izolácia len v rámci jedného modelu" = `hide` + `model` + výnimky; samostatný `scope` pri `isolate` sa nezavádza (isolate ide cez Lens a skrýva všetko mimo pravidla). `exclude_*` s inou akciou ako hide je chyba s touto radou.
+
+**Zavrhnuté:** nový parameter `scope` pri `isolate` (Lens nevie "skry len v modeli", vyžadovalo by to zmenu forku); nový tool na výber.
+
+**Otvorené:** časť (2) z #246, samostatné zrušenie len X-ray/izolácie bez rezu a skrytých prvkov (napr. `action=clear_isolation`), tu nie je: vyžaduje bridge správu vo forku (dnes `show_all` zruší aj skrytie), čaká na rozhodnutie Samuela. Evaly (D-057) nepobežali (cloud session bez Supabase kľúčov), otázky sú v `eval/questions.json`.
+
+---
+
 ### D-152 - Zmazanie kót od Claude: `ifc_measure clear=true` a `reset_colors` vo vieweri
 
 **Dátum:** 2026-10-22 · **Issue:** #235 · **Nadväzuje na:** D-098, D-114, D-124, D-137

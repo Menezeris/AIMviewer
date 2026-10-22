@@ -319,6 +319,7 @@ naming convention finálny tvar) sú v DECISIONS §7.
 > Kompaktný reverse-chrono log. Detail ku každému bodu je v `DECISIONS.md` (D-0xx);
 > aktuálny stav je hore v sekcii „Stav".
 
+- **2026-10-22** - **D-151 (#242, #246):** `show_in_3d select=true` prijme filter (`ifc_type`, `predefined_type`, `query`) a `global_ids` (celá trieda jedným volaním, max 200); `style_in_3d action=hide` prijme `exclude_ids_or_refs` / `exclude_global_ids` (skry model okrem trasy jedným volaním). Len host, fork bez zmeny; samostatné zrušenie X-ray/izolácie ostáva otvorené.
 - **2026-10-22** - **D-152 (#235):** `ifc_measure clear=true` a `style_in_3d reset_colors` zmažú kóty a trasu od Claude vo vieweri (merania používateľa ostanú); fork povolil prázdny `MEASURE_SHOW`. Najprv fork, potom AIMviewer.
 - **2026-10-22** - **D-145 (#214):** "Ukázať v 3D" pri PDF viazanom na podlažie izoluje podlažie (Solo) a otvorí rezové nástroje (Add a plane) namiesto samotného X-ray; dokument bez podlažia ostáva pri X-ray lens. Len fork (Menezeris/ifc-lite#116), host bez zmeny; pri Solo sa prvky strany nezvýraznia. Najprv fork, potom AIMviewer.
 - **2026-10-22** - **D-140 (#230):** `set_section relative_to=ceiling` berie výšku z geometrie `IfcCovering` CEILING podlažia (spodok pre záporný, horný okraj pre kladný offset), Qto `FinishCeilingHeight` len záloha; odpoveď nesie `ceiling.source` a `warning` pri nezhode nad 2 cm.
