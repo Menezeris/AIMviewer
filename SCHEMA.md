@@ -300,6 +300,10 @@ create trigger trg_relationships_validate before insert or update on relationshi
 geometriou, `role` inside|partial). Stĺpce: space_id/ref/name/long_name, element_id/ref/name,
 element_ifc_type, element_predefined_type, relation, role, source. Len aktívne hrany.
 
+**Dodatok D-156 (migrácia 20261022180000):** `rel_space_boundary` (`IfcRelSpaceBoundary`, prvok -> priestor,
+`role` physical|virtual|notdefined, jedna hrana na pár, plní ETL) a tretia vetva `v_space_elements` s
+`relation = 'boundary'`, len keď pre ten pár nie je aktívny `contained` ani `referenced`.
+
 ```sql
 -- Effective asset: dedičnosť type→occurrence (occurrence prepíše)
 create view v_asset_effective as
