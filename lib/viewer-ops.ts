@@ -149,7 +149,7 @@ export type ViewerOp =
   | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire }
   /** Zoznam z chatu do panela Lists (D-111), formát v `lib/viewer-list.ts`. */
   | { op: "list"; wire: ListWire }
-  /** Kóty v IFC svete do nástroja Measure forku (D-124), formát v `lib/viewer-measure.ts`. */
+  /** Kóty v IFC svete do nástroja Measure forku (D-124), formát v `lib/viewer-measure.ts`; prázdne úseky = zmazať kóty od hosta (D-152). */
   | { op: "measure"; segments: MeasureSegment[]; keep?: boolean }
   /** Čiara trasy v IFC svete (D-137), formát v `lib/viewer-route.ts`; prázdne body = zmazať. */
   | { op: "route"; color: string; points: MeasurePoint[] }
@@ -485,7 +485,8 @@ export function parseOps(raw: string): ViewerOp[] {
       const wire = decodeListWire(joined);
       if (wire) out.push({ op, wire });
     } else if (op === "measure") {
-      const segments = decodeMeasureWire(joined);
+      // Prázdne telo = zmazať kóty od hosta (D-152); `keep` bez úsekov nedáva zmysel.
+      const segments = joined === "" ? (arg === "keep" ? null : []) : decodeMeasureWire(joined);
       if (segments) out.push({ op, segments, ...(arg === "keep" ? { keep: true } : {}) });
     } else if (op === "route") {
       const line = parseRouteOp(arg, joined);

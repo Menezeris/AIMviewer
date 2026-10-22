@@ -7005,3 +7005,26 @@ balíkov forku), preto je v PR "Ako vyskúšať". Mutačné dôkazy forku pre re
 6. Fork: nový čistý modul `aim/aimListEditPlan.ts` (+ test), lepidlo v `aim/aimListControl.ts`, hák `aim/aimListTable.ts` dostane farby a export; v upstream `ListResultsTable.tsx` sa AIM-FORK blok háku presunie pod `handleExport` a prop `actions` dostane tlačidlo (jednoriadkový AIM-FORK blok). `bridge-protocol.ts` ani `BottomStrip.tsx` sa nemenia.
 
 **Zavrhnuté (krok 2):** automatické stiahnutie z chatu (prehliadač v iframe ho bez kliku zablokuje; zvýraznené tlačidlo je poctivejšie ako tvrdiť, že sa stiahlo). Vlastné farbenie riadkov tabuľky (upstream ho nemá; farby prvkov a legenda stačia). Farbenie podľa podlažia cez Lens (auto-color ho nevie; podlažia ofarbí `style_in_3d` po skupinách).
+
+---
+
+**Otvorené:** časť (2) z #246, samostatné zrušenie len X-ray/izolácie bez rezu a skrytých prvkov (napr. `action=clear_isolation`), tu nie je: vyžaduje bridge správu vo forku (dnes `show_all` zruší aj skrytie), čaká na rozhodnutie Samuela. Evaly (D-057) nepobežali (cloud session bez Supabase kľúčov), otázky sú v `eval/questions.json`.
+
+---
+
+### D-152 - Zmazanie kót od Claude: `ifc_measure clear=true` a `reset_colors` vo vieweri
+
+**Dátum:** 2026-10-22 · **Issue:** #235 · **Nadväzuje na:** D-098, D-114, D-124, D-137
+
+**Kontext:** `ifc_measure show=true` kreslí kóty do nástroja Measure (D-124), ale Claude ich nevedel zmazať: `set_section clear` ani `style_in_3d reset_colors` sa ich netýkali (reset farieb mazal len čiaru trasy, D-137). Používateľ ich musel mazať ručne.
+
+**Overené (D-098):** upstream `clearMeasurements` a `deleteMeasurement` existujú (measurementSlice), fork si id kót od hosta pamätá (`hostMeasurements.ts`) a ďalší `MEASURE_SHOW` bez `keep` ich zmaže, merania používateľa nechá. Chýbala len správa "nahraď ničím": most prázdny zoznam úsekov odmietal. Používateľ má v upstream vieweri chip "Merania" vľavo hore s košom (po zatvorení nástroja Measure) a kôš v paneli Merania; vlastné tlačidlo preto nepridávame.
+
+**Rozhodnutie (parameter existujúceho toolu, D-114, nový tool nie):**
+1. `ifc_measure clear=true` zmaže kóty aj čiaru trasy od Claude (op `measure::` a `route:dc2626:`); nič sa nemeria, merania používateľa ostanú.
+2. `style_in_3d action=reset_colors` maže vo vieweri aj kóty od Claude, rovnako ako od D-137 čiaru trasy (`components/ifc-viewer.tsx`).
+3. Fork (len `apps/viewer/src/aim/view-protocol.ts`): `MEASURE_SHOW` s prázdnym `segments` je platný a zmaže len kóty od hosta. `bridge-protocol.ts` sa nemení.
+
+**Zavrhnuté rozšírenie:** nový tool nie (D-114). `set_section clear` nie, rez a kóty sú dve nezávislé veci. Kôš pre "len moje kóty" pre používateľa nie: chip upstream maže všetky merania, čo používateľ pri "zmaž merania" čaká.
+
+**Poradie nasadenia:** najprv fork (patch `aim-235-clear-measure.patch`), potom tento PR. Starší fork prázdnu správu zahodí (neprejde kontrolou mosta), kóty ostanú a používateľ ich zmaže chipom.

@@ -567,7 +567,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "izolácia len v rámci jedného modelu = hide + model + výnimky, isolate by skryl aj ostatné modely). " +
       "Samostatné vypnutie X-ray alebo izolácie = clear_isolation (nezruší rez, skryté prvky ani farby; show_all zruší všetko). " +
       "Efekty sa hromadia, kým ich nezruší show_all/reset_colors (reset_colors vypne aj " +
-      "lens). Viac operácií = viac callov (pokojne v jednom kole).",
+      "lens, čiaru trasy a kóty od Claude). Viac operácií = viac callov (pokojne v jednom kole).",
     inputSchema: {
       type: "object",
       properties: {
@@ -580,7 +580,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             "ostanú v pôvodnom vzhľade, color len keď ho používateľ chce), xray=vybrané plné v pôvodnom " +
             "vzhľade a zvyšok modelu priesvitný (X-ray context, ako tlačidlo duch; filtre ako isolate), " +
             "clear_isolation=zrušiť LEN izoláciu a X-ray z chatu (rez, skryté prvky a farby ostanú; bez filtrov), " +
-            "show_all=zrušiť skrývanie, izoláciu, X-ray aj rez (rez vráti set_section), reset_colors=zrušiť ofarbenie, lens a čiaru trasy, " +
+            "show_all=zrušiť skrývanie, izoláciu, X-ray aj rez (rez vráti set_section), reset_colors=zrušiť ofarbenie, lens, čiaru trasy a kóty od Claude, " +
             "legend=len legenda AIM chat lens (legend_size; predvolene malá karta), bez filtrov",
         },
         opacity: {

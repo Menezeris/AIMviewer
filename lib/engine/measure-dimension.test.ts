@@ -96,4 +96,17 @@ describe("kóta k ifc_measure (D-124)", () => {
     const size = await execEngineTool("ifc_measure", { a: guid("W1"), show: true }, deps);
     expect(JSON.parse(size.content).view).toBe("kóty vo vieweri: 3");
   });
+
+  it("ifc_measure clear=true: príkaz zmaže kóty aj trasu, bez merania; prázdny wire neprejde ako chyba", async () => {
+    const cleared = await execEngineTool("ifc_measure", { clear: true }, deps);
+    expect(cleared.isError).toBe(false);
+    expect(cleared.actions).toHaveLength(1);
+    const ops = parseOps(new URLSearchParams(cleared.actions![0].url.split("?")[1]).get("ops")!);
+    expect(ops.map(opToBridgeMessage)).toEqual([
+      { type: "MEASURE_SHOW", segments: [] },
+      { type: "ROUTE_SHOW", color: "#dc2626", points: [] },
+    ]);
+    // keep bez úsekov nedáva zmysel a zahodí sa.
+    expect(parseOps("measure:keep:")).toEqual([]);
+  });
 });

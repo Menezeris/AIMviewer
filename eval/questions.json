@@ -1113,6 +1113,14 @@
       "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
       "notes": "D-150 (issue #179): set_view_mode(panel_scroll={item: 'Quantities'}, panel_zoom={zoom: 'in'}); stav posunu v panel_view. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "clear-measure-dimensions",
+      "category": "viewer",
+      "question": "Zmaž kóty, ktoré si mi nakreslil vo vieweri.",
+      "expect": { "tools_called": ["ifc_measure"] },
+      "verified": false,
+      "notes": "D-152 (issue #235): ifc_measure(clear=true) zmaže kóty a trasu od Claude, merania používateľa ostanú. Bez overenej hodnoty (vyžaduje živý viewer)."
     }
   ]
 }
