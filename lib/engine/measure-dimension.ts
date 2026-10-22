@@ -1,5 +1,6 @@
 import type { AskAction } from "../llm/actions";
 import { measureOp, type MeasureSegment } from "../viewer-measure";
+import { routeOp } from "../viewer-route";
 
 import { toIfc, type MeshElement, type Vec3 } from "./measure";
 
@@ -97,5 +98,14 @@ export function dimensionAction(segments: readonly MeasureSegment[]): AskAction 
     type: "navigate",
     url: `/ifc?ops=${encodeURIComponent(measureOp(segments))}&r=${Date.now().toString(36)}`,
     label: segments.length === 1 ? "Kóta" : `Kóty: ${segments.length}`,
+  };
+}
+
+/** Príkaz pre živý viewer (D-152): zmaže kóty od Claude aj čiaru trasy; merania používateľa ostanú. */
+export function clearDimensionsAction(): AskAction {
+  return {
+    type: "navigate",
+    url: `/ifc?ops=${encodeURIComponent(`${measureOp([])};${routeOp([])}`)}&r=${Date.now().toString(36)}`,
+    label: "Zmazať kóty",
   };
 }

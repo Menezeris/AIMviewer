@@ -183,7 +183,8 @@ export function engineToolDefinitions(): ToolDefinition[] {
         "k najbližším vonkajším dverám na teréne; dĺžka v m je DOLNÝ ODHAD (priamky v pôdoryse cez miestnosti a " +
         "dvere zo súboru, IfcRelSpaceBoundary), poradie miestností a dverí, zmeny podlaží, show_in_3d; route + show=true " +
         "nakreslí trasu vo vieweri červenou plnou čiarou 1,6 m nad podlahou a stupňami, stredom dverí. Prvé volanie " +
-        "nad modelom ho tesseluje (ASR ~4 s), ďalšie sú rýchle.",
+        "nad modelom ho tesseluje (ASR ~4 s), ďalšie sú rýchle. clear=true zmaže kóty a trasu, ktoré Claude nakreslil " +
+        "(show=true), vlastné merania používateľa nechá; bez ďalších parametrov.",
       inputSchema: {
         type: "object",
         properties: {
@@ -206,6 +207,10 @@ export function engineToolDefinitions(): ToolDefinition[] {
           },
           min_width_m: { type: "number", description: "clear_opening: limit svetlej šírky v m od používateľa -> pass/fail" },
           min_height_m: { type: "number", description: "clear_opening: limit svetlej výšky v m od používateľa -> pass/fail" },
+          clear: {
+            type: "boolean",
+            description: "true = zmazať kóty a čiaru trasy od Claude vo vieweri (D-152); merania používateľa ostanú, nič sa nemeria",
+          },
           show: {
             type: "boolean",
             description:

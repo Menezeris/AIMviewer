@@ -741,6 +741,11 @@ export async function execEngineTool(
         content = await ifcRelations(input, deps);
         break;
       case "ifc_measure": {
+        if (input.clear === true) {
+          // D-152: kóty a čiara trasy od Claude preč, merania používateľa ostanú.
+          const { clearDimensionsAction } = await import("./measure-dimension");
+          return { content: JSON.stringify({ view: "kóty a trasa od Claude zmazané (merania používateľa ostali)" }), isError: false, actions: [clearDimensionsAction()] };
+        }
         if (input.route !== undefined) {
           // show=true: čiara trasy pre viewer (D-137), príkaz poskladá route-line.
           const line: Vec3[] | undefined = input.show === true ? [] : undefined;

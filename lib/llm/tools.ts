@@ -546,7 +546,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "viac systémov vo filtri, viac okien viewera) - povedz ho používateľovi. Farby určuje používateľ; " +
       "keď ich nepovie, zvoľ dobre odlíšiteľné a povedz ich. " +
       "Efekty sa hromadia, kým ich nezruší show_all/reset_colors (reset_colors vypne aj " +
-      "lens). Viac operácií = viac callov (pokojne v jednom kole).",
+      "lens, čiaru trasy a kóty od Claude). Viac operácií = viac callov (pokojne v jednom kole).",
     inputSchema: {
       type: "object",
       properties: {
@@ -558,7 +558,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             "show=znova zobraziť skryté, isolate=zobraziť LEN vybrané (ostatné skryť; bez color " +
             "ostanú v pôvodnom vzhľade, color len keď ho používateľ chce), xray=vybrané plné v pôvodnom " +
             "vzhľade a zvyšok modelu priesvitný (X-ray context, ako tlačidlo duch; filtre ako isolate), " +
-            "show_all=zrušiť skrývanie, izoláciu, X-ray aj rez (rez vráti set_section), reset_colors=zrušiť ofarbenie, lens a čiaru trasy, " +
+            "show_all=zrušiť skrývanie, izoláciu, X-ray aj rez (rez vráti set_section), reset_colors=zrušiť ofarbenie, lens, čiaru trasy a kóty od Claude, " +
             "legend=len legenda AIM chat lens (legend_size; predvolene malá karta), bez filtrov",
         },
         opacity: {
