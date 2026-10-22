@@ -31,3 +31,40 @@ export async function fetchModelRevisions(models: string[], perModel: number): P
   }
   return out;
 }
+
+/** Posledná zmena prvku receptom (D-129): BCF téma s výberom prvku, ktorá zverejnila revíziu. */
+export interface ElementChange {
+  model: string;
+  /** vNNN. */
+  revision: string;
+  title: string;
+  date: string;
+}
+
+/** Najnovšia téma (`model_tasks`) s prvkom vo výbere a zverejnenou revíziou; null = žiadna. */
+export async function fetchLastElementChange(guid: string): Promise<ElementChange | null> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("model_tasks")
+    .select("model, title, result_revision, updated_at")
+    .contains("components", [guid])
+    .not("result_revision", "is", null)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(`model_tasks: ${error.message}`);
+  const row = (data?.[0] ?? null) as { model: string; title: string; result_revision: number; updated_at: string } | null;
+  return row
+    ? { model: row.model, revision: `v${String(row.result_revision).padStart(3, "0")}`, title: row.title, date: row.updated_at.slice(0, 10) }
+    : null;
+}
+
+/** Aktuálna revízia modelu (`model_revisions.is_current`) alebo null, keď model revíziu nemá. */
+export async function fetchCurrentRevision(model: string): Promise<number | null> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("model_revisions")
+    .select("revision")
+    .eq("model", model)
+    .eq("is_current", true)
+    .maybeSingle();
+  if (error) throw new Error(`model_revisions: ${error.message}`);
+  return (data as { revision: number } | null)?.revision ?? null;
+}

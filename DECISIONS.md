@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-21** - **D-132 (záložky vo vieweri, #165):** pohľad = orez (kamera zamknutá kolmo + rovina alebo box), záložka = otvorený pohľad na celú plochu (3D, pôdorys podlažia za behu, uložený pohľad, dokument), Vedľa medzi záložkami, `open_drawing target`, `set_view_mode view/tab/beside/close_tab`, `set_section box`, `view_state.tabs`.
 - **2026-10-20** - **D-119 (miestnosti a farby z chatu, #135 #136 #137):** Lens z chatu a `show` zapnú skryté IfcSpace/IfcSpatialZone, fork v 2D vyplní a popíše ofarbené miestnosti, `color_by` rešpektuje filter volania (inak viditeľné prvky) cez `capturedScope`, `style_in_3d action=legend` s `legend_size` zväčší legendu.
 - **2026-10-20** - **D-116 (release train, rozširuje D-103):** feature PR forku len rýchla cesta, plné CI raz na balíku `release/aim-*` (merge na pokyn Samuela), výber viewera nad 3D (`?viewer=pr-N`, náhľad PR forku) na živé testovanie s MCP pred zlúčením, smoke po nasadení, tag balíka (ifc-lite #77).
 - **2026-10-19** - **D-112 (meranie z geometrie, #74):** `ifc_measure` tesseluje model ako `clash_check` a meria svetlú vzdialenosť dvoch prvkov (aj ASR voči VZT), výšku nad doskou, rozmery, povrch, pôdorys a objem z meshu s porovnaním s Qto.
@@ -5843,6 +5844,737 @@ skryté a izolované prvky len ako počty.
 **Otvorené:** farby z `style_in_3d colorize` a AIM chat Lens sa neukladajú (viewer nevracia, čo je
 ofarbené); výber viac prvkov sa uloží, ale obnoví len jeden (viewer vyberá jeden prvok, D-082);
 izolácia nad 600 prvkov sa oreže a výsledok to povie.
+
+### D-125 - Živý stav viewera v odpovediach: identita viewera, zmeny mimo príkazov, priestory v Lens, výplň v reze a malá legenda
+
+**Dátum:** 2026-10-21 · **Stav:** navrhnuté (čaká na Samuela) · **Súvisí:** D-085, D-096, D-101, D-105, D-114, D-116, D-119 · **Issues:** #182, #180, #177, #178, #175 · **PR:** AIMviewer (tento), Menezeris/ifc-lite (fork)
+
+**Kontext:** päť pripomienok z konektora z 21. 10. k jednej úlohe (izolácia miestnosti 2.01 s
+vyústkami, farby VZT): priestor sa po farbení vykreslil plný alebo zmizol, stav v odpovedi a v
+`get_viewer_state` sa striedal medzi dvoma verziami a nezhodoval sa s obrazovkou, izoláciu vypnutú
+používateľom nič nehlásilo, farbenie podľa `system_type` zobralo aj systémy, ktoré nepatrili, a
+zabudnutý rez skryl väčšinu výsledku; `action=legend` otvoril celý panel Lens s predvolenými
+lenses a ofarbená miestnosť nebola v pôdoryse vidno.
+
+**Overenie (D-114, reprodukcia vo forku v iframe, FZK-Haus):**
+- colorize na IfcSpace = Lens alfa 1, miestnosť je nepriehľadný kváder a prvky vnútri nevidno;
+- pravidlo prekryté novším ostane v súhrne s `count 0` ako platné;
+- izolácia z chatu zrušená používateľom (kláves A) sa v súhrne lens hlási ďalej, aj po ďalšej lens;
+- výplň miestností (D-119) sa kreslí len v režime 2D, nie v 3D s rezom a pohľadom zhora;
+- na živý kanál odpovedá každý otvorený viewer a vyhrá prvá odpoveď; stav a lens v
+  `get_viewer_state` sú dve otázky, ktoré mohli zodpovedať dve rôzne karty alebo zariadenia, a
+  odpovede nemali identitu viewera. Jediná cesta k "striedaniu dvoch verzií".
+Existujúce tooly to nepokryjú: chyba je v obsahu odpovedí a vo vykreslení, nie v postupe modelu.
+
+**Rozhodnutie (rozšírenie existujúcich toolov, žiadny nový tool):**
+1. **Identita viewera (AIMviewer):** okno s `?live=` posiela v `reply` a `applied` náhodné `viewer`
+   id (na načítanie stránky). `get_viewer_state` zbiera odpovede ešte chvíľu po prvej, stav aj lens
+   berie z toho istého viewera a pri viac ako jednom vráti `viewers` s varovaním (zavrieť ostatné
+   okná). Potvrdenie príkazu nesie to isté varovanie, ak teplý kanál nedávno videl viac viewerov.
+2. **Zmeny mimo príkazov (fork):** viewer si pamätá stav po poslednom potvrdenom príkaze
+   (`APPLIED`): izolácia a X-ray, rez, skryté, výber, režim a podlažie, AIM chat lens. Pri ďalšom
+   príkaze vráti `changed_outside_commands` (čo sa zmenilo pred ním, napr. "izoláciu vypol
+   používateľ"), `view_state` vráti `changed_since_last_command`. Kamera sa neporovnáva (mení sa
+   stále).
+3. **Súhrn lens (fork):** pravidlo bez zhody má `matched: false` (prekryté novším alebo nič
+   nenašlo); izolácia a X-ray z chatu `active: false` s dôvodom, keď ich kanál už nedrží; AIM chat
+   lens vypnutá v paneli vráti `stored_rules`.
+4. **Priestory v Lens (fork):** farebné pravidlo z chatu dostane pre IfcSpace a IfcSpatialZone
+   priesvitnú variantu (rovnaká farba, alfa 0,3 ako `transparent`), takže miestnosť ostane
+   priehľadná a prvky v nej vidno. Počty sa spočítajú pod pôvodné pravidlo.
+5. **Výplň miestností v reze (fork):** `AimRoomFillLayer` kreslí aj v 3D, keď je aktívny vodorovný
+   rez a kamera hľadí zhora (pôdorys bez režimu 2D); len miestnosti preťaté rezom. Vyplní aj vybranú
+   miestnosť (farbou výberu), nielen ofarbenú.
+6. **Malá legenda (fork + AIMviewer):** `legend: compact` = plávajúca karta len s AIM chat lens
+   (farba, názov pravidla alebo hodnoty, počet), panel Lens sa neotvára a veľké okno sa zavrie.
+   `style_in_3d action=legend` je predvolene `compact`; `large` a `normal` ostávajú.
+7. **`style_in_3d` (AIMviewer):** `clear_section=true` zruší rez v tom istom volaní; pri isolate,
+   xray a colorize s aktívnym rezom odpoveď varuje a navrhne `set_section action=clear`; pri
+   `system_type` (alebo `system`), ktorý zobral viac systémov, vráti zoznam systémov s typom a
+   počtom členov a upozorní, že niektorý nemusí patrieť. Opis: `mode=replace` pri isolate a xray
+   nahradí aj farby z predošlých volaní, na IfcSpace netreba ďalšie pravidlo `transparent`.
+
+**Zavrhnuté rozšírenie a nové tooly:**
+- *Nový tool na živý stav:* stav ide v odpovedi príkazu (D-101) a v `get_viewer_state`; chýbala len
+  jeho pravdivosť a rozdiel.
+- *Parameter `expect_state`:* zmeny mimo príkazov sa vrátia samé, model ich vidí v ďalšej odpovedi.
+- *Adresovanie otázky konkrétnemu vieweru:* príkazy majú ísť do všetkých okien (zrkadlo na
+  telefóne); stačí párovať odpovede a varovať.
+- *`space_display=floor|volume|outline` a objem v perspektíve:* výplň nad scénou by v perspektíve
+  prekrývala model; ostáva otvorená otázka pre Samuela (#175).
+- *Zmena farby priestorov v balíku `lens` alebo v rendereri:* upstream súbory = plné CI a údržba;
+  pravidlo navyše v AIM vrstve stačí.
+
+**Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežia; do `eval/questions.json` pribudnú
+otázky z issues.
+
+### D-126 - Úplné a stránkované výsledky DB tools, hľadanie cez vzťahy, overenie zatvorených issues
+
+**Status:** rozhodnuté (2026-10-21, číslo pridelil orchestrátor). Issues #181, #174, #171, #176. Nadväzuje na
+D-056 (`query_view`), D-060 (`aggregate_objects`), D-090 (feedback), D-095 (`search_all`) a D-114.
+
+**Kontext (reprodukcia na produkcii):**
+- `query_view` nemal parameter `offset`; server neznámy parameter ticho zahodil, takže "druhá strana"
+  vrátila prvú. Bez `order` nebolo poradie stabilné a výsledok nehlásil, že je orezaný (100 zo 139).
+- `aggregate_objects(ifc_type=...)` navrchu, nie vo `filters`, vrátil počet všetkých objektov (2221):
+  ten istý problém, neznámy parameter sa ignoruje.
+- `search_all(lobby)` priestor 1.01 nájde (LongName), ale `search_all(prenajímateľné)` nájde len zónu
+  "Nájomné priestory", nie jej priestory; model musel ďalej cez vzťahy.
+- `feedback_status` ukazoval len otvorené issues; nebolo vidieť, čo je zatvorené a ešte neoverené.
+- 403 pri komentári do zatvoreného #137 prišiel z GitHub konektora claude.ai (token GitHub App),
+  `feedback action=comment` konektora AIM do zatvoreného issue zapíše (overené na #137).
+
+**Rozhodnutie (všetko rozšírenie existujúcich toolov, D-114; bez migrácie):**
+1. **Neznámy parameter = chyba** pre každý tool MCP servera: výsledok `isError` so zoznamom povolených
+   parametrov. Nepodporovaný filter sa tak nikdy neignoruje ticho.
+2. **`query_view`**: parameter `offset`, vo výsledku `total` (presný počet), `returned`, `truncated`,
+   `offset` a `next_offset`. Poradie je vždy stabilné: za voliteľný `order` sa pridá kľúč relácie
+   (`id`, pri pohľadoch bez `id` ich prirodzený kľúč), takže strany sa neprekrývajú.
+3. **`query_view related`** = `{relation: rel_*, node: id alebo object_ref, direction: to|from}` nad
+   reláciami uzlov (`objects`, `v_asset_effective`, ...): len riadky so vzťahom na daný uzol, spolu s
+   filtrami a stránkovaním (napr. IfcAirTerminal s `rel_referenced_in_spatial_structure` na 2.01).
+   Ide v TS dvoma dopytmi (hrany, potom `id in`), strop 500 susedov, nad ním chyba s radou zúžiť.
+   Obsah miestnosti ostáva `v_space_elements` (contained aj referenced naraz).
+4. **`search_all related`** (predvolene true): pre zhody, ktoré sú zónou, priestorovou zónou, skupinou
+   (`rel_assigns_to_group`, člen -> skupina) alebo aktérom (`rel_assigns_to_actor`, aktér -> objekt),
+   pridá blok `related` s členmi z grafu AIM (vzťah, cez ktorý uzol, strop 50 na skupinu) a členov dá
+   do `show_in_3d.ids_or_refs`. Systémy sa nerozbaľujú (stovky prvkov; na to je `ifc_relations`).
+5. **`feedback_status state=open|closed|all`**, `verified`, `limit`: zatvorené issues s `closed_at`,
+   PR z časovej osi a `verification` = `overene` | `vratene` (štítky) | `neoverene`.
+   **`feedback action=comment verification=overene|vratene`** zapíše komentár a nastaví štítok
+   (druhý odoberie), aj na zatvorenom issue.
+6. Prompt: priestor podľa mena alebo účelu cez `search_all`, `truncated` = stránkuj `next_offset`,
+   overenie zatvoreného issue cez `feedback`, nie GitHub konektor.
+
+**Zavrhnuté:**
+- *Nový tool na join alebo stránkovanie:* `query_view` už je generický dopyt, `related` je jeho filter.
+- *RPC s joinom v SQL:* migrácia a ďalšia SQL funkcia kvôli tomu, čo zvládnu dva dopyty so stropom.
+- *`where` na psety v `search_all` (#174):* zdvojilo by `ifc_query` a `aggregate_objects` (tie berú
+  `ids` zo search_all).
+- *Nastavenie práv GitHub App z kódu:* je to nastavenie účtu (Samuel), postup je v #176.
+
+### D-127 - Panel vlastností len IFC, lepivé zvýraznenie vlastnosti, panely z chatu, výrez dokumentu podľa karty
+**Status:** rozhodnuté (2026-10-21, číslo pridelil orchestrátor, register #60). Issues #168, #169, #179, #166.
+Nadväzuje na D-077 (AIM karta v paneli), D-113 (panel vlastností pri výbere), D-114 (najprv napasuj),
+D-117 (výrez strany), D-101 (`APPLIED` so stavom), D-085 (`view_state`), D-098 (najprv existujúce) a D-104
+(skupina AIM v lište).
+
+**Kontext:** `show_in_3d(select, highlight)` zvýraznil riadok len na 2,4 s (upstream skok z bSDD karty
+zvýraznenie zhasne), výmery (Qto) a psety zdedené z typu nezvýraznil vôbec a výsledok nepovedal, či
+vlastnosť na prvku je (#168). Samuel pracuje už len vo vieweri a prepínač AIM | IFC v paneli nechce (#169;
+zadanie spresnilo D-129: AIM karta tiež preč, údaje len AIM ako vrstva s odznakom). Panely (Lens, vlastnosti, podklady,
+zoznamy, strom modelu) sa z chatu nedali zavrieť ani prepnúť (#179). Výrez strany v úzkej karte nebolo
+možné overiť, či je celý v zábere (#166).
+
+**Rozhodnutie:**
+1. **#168, fork:** zvýraznenie z chatu ide vlastnou cestou nad DOM panela (`aimPanelView.ts`): nájde riadok
+   v Properties (`data-prop-key`, výskyt aj typ) alebo v Quantities (sada a meno), zbalenú sadu rozbalí jej
+   vlastným tlačidlom, riadok vycentruje a označí `data-aim-focus` (štýl v `assetin-theme.css`). Označenie
+   drží MutationObserver do ďalšieho výberu. Upstream `pendingPropertyFocus` sa už nepoužíva.
+   `view_state` a `APPLIED` nesú `property_focus` {found, section, from_type}; nenájdená vlastnosť je
+   problém v `APPLIED`.
+2. **#168, AIMviewer:** `selectIn3d` hneď povie, či vlastnosť je v dátach AIM prvku (`property.in_aim`,
+   hodnota, presné mená; pri chýbajúcej zoznam psetov), z `v_asset_effective` (dedičnosť z typu, D-021).
+   `highlight` na Qto už neotvára len sekciu, zvýrazní riadok ako ostatné.
+3. **#169 (podľa D-129):** záložka AIM aj AIM karta z panela vypadli, panel je čisto IFC. Vrstva AIM:
+   posledná zmena prvku receptom (revízia vNNN, model a BCF téma z `model_tasks` s prvkom vo výbere,
+   `fetchLastElementChange`) a história GUID sú riadky s odznakom AIM nad IFC obsahom (vzor D-089);
+   dokumenty zdedené cez zónu, podlažie, skupinu, systém alebo miestnosť majú v paneli Documents
+   ("Len pre výber") odznak AIM (`aim: true`, priamo a cez typ sú v IFC). Zodpovednosti, odkaz
+   Reality Capture a "Otvoriť celý detail" z panela vypadli (D-129 body 2, 4, 6). `panel_tab` vypadol
+   zo schémy `show_in_3d`; starý vstup sa ticho ignoruje (staršie odkazy `t=` fork prijme a nič nenastaví).
+4. **#179 - rozšírenie `set_view_mode` o `panels`** (D-114 bod 2): {lens | properties | underlays |
+   documents | lists | model_tree: open | close | toggle, all: close}, aj bez `mode`. Nová op
+   `panels:~<panel>=<akcia>...:` -> bridge `SET_PANELS`; fork volá existujúce akcie store (lišta, rail,
+   krížik panela, `aimPanels.ts`). `all=close` zavrie všetko okrem panelov, ktoré správa otvára ("zavri
+   všetko okrem vlastností"). Stav všetkých panelov (open, where left/right/bottom/floating/window, snap a
+   veľkosť plávajúceho, šírka pravého stĺpca) je v `view_state`, teda v `get_viewer_state` aj v stave po
+   každom príkaze.
+5. **#166, fork:** zoom výrezu sa počítal z plochy karty už v D-117; nové je, že sa prepočíta, keď sa
+   plocha karty po otvorení zmení (split, ukotvenie, šírka stĺpca) alebo príde skutočný pomer strany,
+   kým kartou nepohne používateľ. `APPLIED` počká na vykonanie výrezu a `view_state.document` nesie
+   viditeľnú časť strany v %, veľkosť karty, zoom a `region_fully_visible`.
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool `set_panel`:* panely sú súčasť pohľadu; `set_view_mode` je UI akcia pohľadu na čítanie a
+  stav vracia `view_state` (D-114).
+- *`get_viewer_state` na ovládanie panelov:* tool je čítanie, zmena patrí do UI akcie.
+- *Poloha a veľkosť panelov z chatu (`position`, `size`):* fork ich vie len ako plávajúce okno; pevné
+  rozloženie mení používateľ, chat ho len číta. Panel `legend`: legenda je časť Lens (`style_in_3d
+  legend_size`, D-119), zavrie sa s ním.
+- *Opraviť upstream fade v `PropertiesPanel` (blok AIM-FORK):* stále by chýbali výmery a psety typu.
+- *Zbalený blok "AIM platforma" v paneli (prvý návrh v #169):* zamietnuté v D-129, vlastné rozhranie
+  popri IFC.
+
+**Otvorené:** pôvodných 779 % z #166 sa lokálne nezopakovalo (úzka karta 264-378 px výrez umiestnila
+správne); výsledok teraz hlási viditeľný rozsah, takže ďalší výskyt sa dá overiť priamo. Na mobile
+je jeden panel naraz, `SET_PANELS` vtedy nesplnené kroky vráti ako problém.
+
+**Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežali; do `eval/questions.json` pribudli otázky z issues.
+
+### D-129 - Viewer je jediné rozhranie: údaj buď v IFC, alebo AIM vrstva s odznakom
+**Status:** rozhodnuté (2026-10-21, Samuel cez orchestrátora), číslo pridelené v registri #60. Nadväzuje na
+D-077 (AIM inspector), D-086 (IFC je master, revízie), D-089 (odvodenia ako AIM vrstva), D-073 (Reality
+Capture), D-104 (dokumenty z IFC) a #169.
+
+**Kontext:** panel vlastností vo vieweri mal dve záložky, AIM a IFC. AIM karta niesla zodpovednosti,
+dokumenty zdedené cez zónu, typ a podlažie, Reality Capture, históriu GUID a odkaz na detail v AIMvieweri.
+Samuel pracuje už len vo vieweri a vlastné rozhranie popri IFC nechce.
+
+**Rozhodnutie:**
+1. **Žiadna samostatná AIM karta ani záložka.** Panel vlastností ukazuje IFC. Údaj má jedno z dvoch miest:
+   - **patrí do modelu**: dostane sa do IFC receptom v OCB (D-086) a viewer ho ukáže natívne ako každý
+     IFC údaj;
+   - **vzniká len v AIM** (odvodený, historický, prevádzkový): je to **AIM vrstva** v existujúcich paneloch
+     vieweru, riadok s odznakom AIM, vzorom sú odvodené vzťahy v Relationship records (D-089).
+2. **Zodpovednosti (zámer, zatiaľ bez implementácie):** v IFC cez `IfcRelAssignsToActor` na prvku,
+   priestore alebo type (`IfcActor`, pri nájomcovi `IfcOccupant`, s `IfcPerson`, `IfcOrganization` a rolou
+   `IfcActorRole`). Na produkcii dnes nie je ani jeden záznam; keď budú dáta (správca, prevádzkovateľ,
+   nájomca), pôjdu receptom.
+3. **Dokumenty:** priame väzby sú v IFC (`IfcRelAssociatesDocument`, od ASR v076), dokument na type platí
+   pre výskyty. Zdedené cez zónu a podlažie (D-104, `v_object_documents`) sú AIM vrstva: v paneli Documents
+   ("Len pre výber") s odznakom AIM. Triedenie dokumentov ide cez klasifikáciu na `IfcDocumentInformation`
+   (`IfcExternalReferenceRelationship`, ako typ informácie ISO 19650 vo v077). Ďalšie osi (napr. druh média)
+   sú ďalší klasifikačný systém, atribúty `ElectronicFormat`, `CreationTime`, `Purpose`, `ValidFrom`/`ValidUntil`.
+4. **Reality Capture ostáva AIM vrstva** (D-073: body a médiá v DB, `aim_` hrany), nie revízia IFC pri
+   každej fotke. Vo vieweri: piny ako dnes a médiá v paneli Documents pri priestore s odznakom AIM.
+   Pri exporte IFC sa export opýta, či zahrnúť aj AIM vrstvy; vtedy sa bod zapíše ako `IfcAnnotation`
+   (`USERDEFINED`, `ObjectType` RealityCapture, `ObjectPlacement` nesie polohu a smer pohľadu, bod ako
+   `IfcCartesianPoint`, v priestore cez `IfcRelContainedInSpatialStructure`) a médiá ako dokumenty
+   priradené k anotácii. Rovnaká voľba platí pre ostatné AIM vrstvy (odvodené vzťahy D-089).
+5. **História GUID a revízia prvku:** AIM vrstva v IFC paneli, riadky s odznakom AIM (platí od revízie,
+   posledná zmena v revízii vNNN, recept alebo BCF téma). IFC revízie naprieč verziami nenesie.
+6. **Odkaz na celý detail v AIMvieweri** z panela vypadáva.
+
+**Zavrhnuté:**
+- *Zbalený blok "AIM platforma" v paneli* (prvý návrh v #169): vlastné rozhranie popri IFC, presne to, čo
+  Samuel nechce.
+- *Reality Capture priamo v IFC pri každej fotke:* každá fotka by bola revízia modelu (recept, poistka,
+  re-ETL), pri prevádzkových dátach zbytočne ťažké. IFC zápis až pri exporte.
+
+**Dôsledky:** #169 rieši session D-127 podľa tohto zápisu (záložka a karta preč, história ako AIM riadky,
+zdedené dokumenty s odznakom). Reality Capture v paneli Documents a voľba exportu AIM vrstiev sú samostatná
+úloha vo fronte.
+
+---
+
+### D-128 - Kamera na cieľ v reze s okrajom a časťou cieľa, vzor šrafy reznej plochy
+
+**Dátum:** 2026-10-21 · **Stav:** prijaté (implementované) · **Súvisí:** D-083, D-094, D-098, D-101, D-114, D-120 · **Issues:** #172, #173, #97 · **PR:** Menezeris/ifc-lite (fork), AIMviewer (tento)
+
+**Kontext:** "priblíž atiku na ľavej strane v reze" stálo asi 8 volaní (#172): `set_camera` s cieľom
+a `preset=section` hlásilo pózu presetu (stred budovy), záber tenkého prvku bol príliš tesný a ľavú
+stranu musel model hľadať cez `get_viewer_state(bounds)` a posúvať kameru. Pri reze sa šrafa
+kreslila zvislo a vzor sa nedal zvoliť (#173).
+
+**Reprodukcia:** fork pri `preset=section` s cieľom nastaví smer kolmo na rez a po jeho animácii
+zarámuje cieľ (`aim/viewCamera.ts`, AIMviewer #65), ale rámovanie trvá ďalších 300 ms a `APPLIED`
+(D-101) čítal kameru hneď po jeho spustení. Rámovanie išlo cez `flyTo` s predvoleným okrajom upstreamu.
+Šrafa: `cap_style=hatch` (D-120) vracia vzor a uhol uložené v prehliadači; vzor `diagonal` s
+uhlom 0° kreslí zvislé čiary.
+
+**Najbližšie tooly (D-114):** `set_camera` (smer, cieľ, fit; chýba okraj, časť cieľa a koncová
+póza), `get_viewer_state` (len čítanie), `show_in_3d select` (smer nerieši), `set_section` (vzhľad
+plochy len `cap_style`/`cap_color`). Obe potreby sú parametre existujúcich toolov.
+
+**Rozhodnutie:**
+1. **`set_camera margin_percent`** (0 až 300, s cieľom predvolene 40): okraj okolo cieľa. Fork
+   rámuje existujúcim `cameraCallbacks.frameBounds(min, max, {padding: 1 + m/100})` (D-098), smer
+   kamery ostáva. Wire `~m=<%>`, bridge `SET_CAMERA.padding`.
+2. **`set_camera area`** = `left | right | top | bottom | front | back` (wire `~a=<l|r|t|b|f|k>`,
+   bridge `SET_CAMERA.area`): z cieľových prvkov alebo výberu (`fit=selection`) fork po nastavení
+   smeru vyberie tie, ktorých stred leží v krajnej tretine ich spoločnej obálky v smere obrazu
+   (left/right po šírke, top/bottom po výške, front/back bližšie/ďalej od kamery); keď v tretine
+   nič nie je, vezme prvok najbližšie k okraju. Čistá funkcia `aim/cameraArea.ts` s testom. Bez
+   cieľa a výberu `area` nejde (chyba s radou).
+3. **Koncová póza:** fork počká na koniec rámovania, `APPLIED` nesie koncovú kameru. Host pri
+   `set_camera` dopočíta `visible` (stred, šírka a výška viditeľnej oblasti v metroch v rovine
+   cieľa; `visibleArea` v `lib/viewer-camera.ts`), takže `get_viewer_state` netreba.
+4. **`set_section` vzor šrafy:** `hatch_pattern` = `diagonal | diagonal_reverse | cross |
+   crosshatch | horizontal | vertical | dots | brick | insulation`, `hatch_angle_deg`,
+   `hatch_spacing_px` (2 až 64), `hatch_line_width_px` (1 až 16), rozsahy ako popover Cap. Mapovanie
+   na vzory renderera (`dots` = `concrete`, `cross` = `crossHatch` 0°/90°, `crosshatch` = 45°/-45°,
+   `diagonal_reverse` = -45°) robí host (`lib/viewer-section-cap.ts`); bridge `SET_SECTION_CAP`
+   nesie `pattern`, `angleDeg`, `secondaryAngleDeg`, `spacingPx`, `widthPx` a fork ich zapíše setterom
+   `setSectionCapStyle` (ten istý ako popover Cap). `cap_style=hatch` bez vzoru = diagonálna 45°,
+   8 px, 1 px (predvolené upstreamu), výsledok teda nezávisí od uloženej voľby. Parametre šrafy bez
+   `cap_style` znamenajú `hatch`; výsledok vráti použitý vzor, uhol, rozstup a hrúbku.
+5. Recept v opise `set_camera`: atika vľavo v reze = `set_section` + `search_objects(PARAPET)` +
+   `set_camera(preset=section, cieľ, area=left)`. Prompt sa nezväčšuje (limit MCP inštrukcií).
+
+**Zavrhnuté:**
+- *Nový tool na "zarámuj časť budovy":* to isté ako parameter `set_camera` (D-114).
+- *Relatívny krok v tom istom volaní ako cieľ:* krok sa počíta z koncovej pózy, ktorú host pred
+  volaním nepozná (D-098); okraj `margin_percent` nahrádza následný `zoom_percent`.
+- *Rozstup šrafy v mm:* renderer kreslí šrafu v pixeloch obrazovky; mm by boli zmena
+  `packages/renderer`.
+- *Vzor podľa materiálu rezaného prvku:* renderer nemá materiál pri reznej ploche; neskôr.
+
+**Poradie zlúčenia:** najprv fork, potom AIMviewer. Starší viewer nové polia `SET_CAMERA` a
+`SET_SECTION_CAP` ignoruje (rámuje ako doteraz, šrafa ostane uložená).
+
+---
+
+### D-131 - Reality Capture v paneli Documents, druh média ako druhá os klasifikácie, export AIM vrstiev do IFC
+**Status:** rozhodnuté (2026-10-21, session pre #192 podľa D-129), číslo pridelené v registri #60. Body 1 a 2
+implementované, bod 3 navrhnutý a zaparkovaný (#202). Nadväzuje na D-073 (Reality Capture), D-089 (odvodené
+vzťahy), D-104 (dokumenty, klasifikácia dokumentu), D-127 (odznak AIM v paneli Documents), D-129.
+
+**Kontext:** D-129 nechal Reality Capture ako AIM vrstvu (body a médiá v DB, `aim_` hrany), ale vo vieweri
+boli len piny a odkaz z AIM karty, ktorá s D-127 vypadla. Dokumenty sa triedia len podľa typu informácie
+ISO 19650 (ASR v077) a `fetchDocumentTypes` berie prvú klasifikáciu dokumentu bez ohľadu na systém, takže
+druhá os by typ prepísala náhodne. Export IFC existuje len vo forku (upstream `@ifc-lite/export`,
+`StepExporter`, dialógy exportu vo vieweri); AIMviewer ani ETL IFC nezapisujú.
+
+**Rozhodnutie:**
+1. **Médiá Reality Capture v paneli Documents.** `GET /api/element/[id]` pri priestore vráti aktívne médiá
+   jeho bodov (`aim_rel_capture_located` -> `aim_rel_capture_media`), pri prvku v priestore médiá toho
+   priestoru s cestou "cez miestnosť X" (ako zdedené dokumenty D-104). Render schéma `AimPanelData` dostane
+   vlastné pole `captureMedia` (nie riadky v `documents`: médiá nie sú v knižnici `DOCUMENTS_LOAD` a nemajú
+   IFC dokument). Fork v režime "Len pre výber" ukáže pod dokumentmi skupiny podľa druhu média, riadok má
+   odznak AIM, náhľad, dátum snímky a cestu; klik otvorí galériu priestoru v hostovi (`/ifc?captures=<id>`,
+   ktorá vie aj 360°). Hľadanie panela filtruje aj médiá. Piny bez zmeny. Strop 40 médií ako pri dokumentoch.
+2. **Druhá os klasifikácie dokumentov: systém `Druh média`** s kódmi `FOTO` (Fotografia), `PANO360`
+   (360° panoráma), `SKEN` (Sken). Rovnaký mechanizmus ako typ informácie (D-104): `IfcClassification` +
+   `IfcClassificationReference` na `IfcDocumentInformation` cez `IfcExternalReferenceRelationship`.
+   - **Dokumenty v IFC:** recept v OCB (D-086) priradí referenciu systému `Druh média`; ETL ju načíta bez
+     zmeny (`document_classification`, `rel_external_reference_relationship`).
+   - **Médiá v DB:** **odvodenie** z `captures.kind` (`photo` -> `FOTO`, `pano360` -> `PANO360`), žiadny
+     nový stĺpec ani migrácia; druh je vlastnosť bodu (jeden bod = jeden druh snímok). Sken pribudne ako nová
+     hodnota `captures.kind` (`scan`) spolu s jeho uploadom.
+   - **Host:** klasifikácie dokumentu sa čítajú po systémoch. Systém `Druh média` dáva kľúč `meta` "Druh
+     média", všetky ostatné ostávajú v "Druh" (typ informácie), takže "Zoskupiť" vo vieweri ponúkne novú os
+     bez zmeny forku. Atribúty `ElectronicFormat` (kľúč "Formát") a `LastRevisionTime` ("Revízia") už `meta`
+     nesie; `CreationTime`, `Purpose`, `ValidFrom`/`ValidUntil` dopĺňa recept, `meta` ich ukáže, keď ich
+     ETL začne ukladať (dnes ich `documents` nemá, samostatný krok).
+3. **Export IFC s AIM vrstvami (návrh; zaparkované, #202).** Samuel 21. 10.: export ostáva ako doteraz, návrh
+   nižšie je podklad pre #202.
+   - **Miesto:** export vo forku (jediný zápis IFC v platforme). Dialóg exportu dostane v bloku `AIM-FORK`
+     voľbu "Zahrnúť AIM vrstvy" (len vo vložení v AIMvieweri, predvolene vypnutá). Zápis AIM entít je čistý
+     modul `apps/viewer/src/aim/aimIfcExport.ts`, ktorý doplní riadky STEP k výstupu `StepExporter`
+     (pred `ENDSEC`), s testom a overením súboru cez ifcopenshell.
+   - **Dáta:** viewer si ich pri exporte vypýta od hosta (bridge `AIM_EXPORT_LAYERS_REQUEST` ->
+     `AIM_EXPORT_LAYERS`): body (GUID odvodený z `objects.id`, meno, GUID priestoru, poloha a `yaw`), médiá
+     (názov, URL, formát, `captured_at`, kód druhu) a odvodené vzťahy ako páry GUID. Polohu z rámca viewera
+     do súradníc IFC prepočíta fork (pozná posun a os Y-up modelu).
+   - **Mapovanie (overené v IFC4X3_ADD2, ifcopenshell 2026-10-21):** bod = `IfcAnnotation`
+     (`PredefinedType=USERDEFINED`, `ObjectType='RealityCapture'`; enum má aj `SURVEY`, ten je pre geodetické
+     body, nie snímky), `ObjectPlacement` = `IfcLocalPlacement` s `IfcAxis2Placement3D` (`Location`
+     `IfcCartesianPoint`, `Axis` (0,0,1), `RefDirection` (cos yaw, sin yaw, 0) = smer pohľadu); `IfcAnnotation`
+     je `IfcProduct`, do priestoru ide cez `IfcRelContainedInSpatialStructure` (`RelatingStructure` =
+     `IfcSpace`). Médium = `IfcDocumentInformation` (`Identification` id média, `Location` URL,
+     `ElectronicFormat` MIME, `CreationTime` = `captured_at`, `Purpose` 'Reality Capture') +
+     `IfcRelAssociatesDocument` na anotáciu + referencia `Druh média` cez `IfcExternalReferenceRelationship`.
+     Odvodené vzťahy (D-089) = `IfcRelReferencedInSpatialStructure`, len keď oba konce sú v exportovanom
+     súbore (vzťahy medzi súbormi ostávajú vo vrstve, D-089 bod 7).
+   - **Rozsah:** jedna voľba pre všetky AIM vrstvy (Reality Capture aj odvodené vzťahy), bez výberu
+     jednotlivých bodov. Export je jednorazový výstup, revíziu modelu nezakladá (D-129 bod 4).
+
+**Zavrhnuté:**
+- *Médiá ako riadky `documents` v AIM karte:* fork ich otváral ako PDF z knižnice, médiá v knižnici nie sú
+  a zoskupenie podľa druhu by sa miešalo s cestou "cez zónu".
+- *Nový stĺpec `capture_media.media_kind` (migrácia):* druh je daný bodom (`captures.kind`); stĺpec by
+  duplikoval údaj a mohol sa s bodom rozísť.
+- *Druh média ako pset alebo `meta` bez klasifikácie:* D-011/D-104 triedia dokumenty klasifikáciou, nie
+  vlastným poľom; recept v OCB by inak nemal IFC nositeľa.
+- *Export AIM vrstiev v ETL alebo v AIMvieweri (ifcopenshell na serveri):* Samuel pracuje len vo vieweri
+  (D-129) a export tam už je; druhý zapisovač IFC by sa rozišiel s exportom forku.
+- *Implementácia exportu v tomto kroku:* zmena upstream dialógu exportu (plné CI, D-116) a nový bridge
+  kontrakt s prepočtom súradníc sú samostatná práca; body 1 a 2 ju nepotrebujú.
+
+**Dôsledky:** bez migrácie a bez nového env. Fork (vetva D-127): skupiny médií v "Len pre výber". Pre
+OCB: recept na klasifikáciu `Druh média` pre obrázky v IFC (dnes žiadne, takže až s prvým fotodokumentom
+v modeli). Export AIM vrstiev je zaparkovaný v #202.
+
+---
+
+### D-130 - Popisky na výkrese ako odkazy na prvok: párovanie z textovej vrstvy ako AIM vrstva
+**Status:** rozhodnuté (2026-10-21), číslo pridelil orchestrátor (register #60). **Issue:** #167. Nadväzuje na
+D-076 (identifikátorové odkazy vo forku), D-082 (výber ako klik), D-123 (riadky textu s polohou), D-114,
+D-129 (údaj v IFC alebo AIM vrstva s odznakom), D-087/D-091 (čo patrí do forku).
+
+**Kontext:** Samuel chce, aby bubliny na výkrese (napr. `08 DD01`) boli odkazy ako v jeho pôvodnom PDF
+prehliadači: klik otvorí panel vlastností zodpovedajúceho IFC prvku (DD01.08.0001). Fork to od D-076 vie
+len čiastočne: `PageIdentifierLinks` je predvolene vypnutý (nastavenie v localStorage), kód hľadá regexom a
+typový kód otvorí typ, nie výskyt. Na pôdoryse 1NP je bublina dvojriadková: hlava `DD01` (typ prvku) a pod
+ňou buď `05.04` (plný kód DD01.05.04), alebo len `08` (typ DD01.08, číslo výskytu `.0001` na výkrese nie je).
+Na rozhodnutie, ktoré dvere to sú, treba podlažie výkresu a výskyty typu na ňom, čo má host v DB, nie fork.
+
+**Rozhodnutie:**
+1. **Párovanie robí host** (`lib/data/drawing-labels.ts`, čistá funkcia nad `document_pages.blocks`):
+   - **popisok prvku** = riadok `[A-Z]{2}\d{2}` a číslo tesne pod ním (rovnaký stred na osi x, do 1,2 % strany
+     nižšie): `NN.NN` = plný kód, `NN` = typový kód;
+   - **kód miestnosti** = riadok `\d\.\d{2}`, len ak taká miestnosť (`object_ref`) je na podlaží výkresu;
+   - **priradenie:** plný kód = prvok s tým `object_ref`; typový kód = výskyty typu (`object_ref` začína kódom a
+     bodkou) na podlaží výkresu: jeden = jednoznačné, viac = kandidáti, žiadny = nespárované;
+   - podlažie výkresu = nositeľ dokumentu typu `floor` (to isté ako `storeyGuid` v `DOCUMENTS_LOAD`, D-104).
+   Výsledok je **AIM vrstva** (odvodenie, D-089/D-129): nič sa nezapisuje do IFC ani do DB.
+2. **Konektor:** `search_documents include_links` (D-114 bod 3, žiadny nový tool) pri čítaní strany vráti
+   `links` = popisok, `bbox` v %, `object_ref`, GUID a stav (`unique` / `candidates` / `none`).
+3. **Viewer:** host po `DOCUMENTS_LOAD` pošle `DOCUMENT_LINKS` pre pôdorysy podlaží (dokument, strana, oblasti v
+   zlomkoch strany, ciele s GUID). Fork (`apps/viewer/src/aim/docLinks.ts`) nakreslí nad stranou klikateľné
+   oblasti (imperatívna vrstva ako rámiky D-123) a klik vyberie prvok ako klik do modelu (`selectPickedGlobalId`,
+   D-082) a otvorí panel vlastností; pri kandidátoch ukáže malý výber. Oblasť aj výber nesú odznak AIM
+   (odvodené z popisku, nie z IFC). Fork nič nepočíta (D-091, D-098).
+4. **Stav dát (1NP, strana 1):** 52 bubliniek prvkov: 38 plných kódov presne, 4 typové kódy s jediným výskytom
+   na 1NP (aj `08 DD01` -> DD01.08.0001), 9 typových kódov s viacerými výskytmi (kandidáti), 1 nespárovaný
+   (`OV01` nad výškovou kótou `00.00`). Kódy miestností: 46 popiskov, 23 miestností 1NP, všetky jednoznačné.
+
+**Zavrhnuté:**
+- *Zapnúť a doladiť D-076 vo forku:* fork nepozná podlažie výskytov z DB ani konvenciu `.0001` a výber výskytu
+  podľa podlažia by bol druhý výpočet popri AIMvieweri; D-076 ostáva ako všeobecná funkcia originálu.
+- *Kandidátov rozlíšiť polohou na výkrese:* potrebuje kalibráciu výkresu k modelu (D-072, D-117 otvorené); keď
+  bude, host môže z kandidátov vybrať najbližší a stav `candidates` zmizne bez zmeny drôtu.
+- *Nový tool `drawing_links`:* ten istý zdroj (`document_pages`) a tá istá anotácia ako `search_documents`.
+
+---
+
+### D-133 - Automatická kalibrácia podkladov výkresov: pohľad + strana PDF, rez modelu a čiary výkresu
+
+**Dátum:** 2026-10-21 · **Stav:** prijaté (Samuel cez orchestrátora, #170), implementácia po krokoch · **Súvisí:**
+D-072 (podklady, `_georef`), D-104, D-123 (text s polohou), D-124 (rámec motora), D-129 (AIM vrstva), D-132
+(pohľady a záložky, #165), D-114 · **Issue:** #170
+
+**Kontext:** podklady (panel Underlays, D-072) sa kalibrujú ručne dvoma bodmi a od D-104 (pôdorysy z IFC)
+nemá `_georef` ani jeden výkres. Konektor nevie podklad nastaviť. Prototyp nad produkčnými dátami (ASR v077,
+`document_pages.blocks`, PDF zo storage):
+- **len text** (popisky miestností `1.01` proti ťažiskám IfcSpace): chyba na kontrolnom bode okolo 1 m, popisky
+  nie sú v ťažiskách; osi `IfcGrid` model nemá, dvere majú vo výkrese len typový kód (`DD01`);
+- **text ako štart + doladenie na geometriu** (hrubé čiary PDF proti rezu modelu, trimmed ICP s podobnosťou):
+  pôdorys 1NP medián 15 mm, p90 30 mm, 2NP 16 a 36 mm; zvislé rezy A a B medián 8 mm, p90 13 až 14 mm, mierka
+  1:49,92 až 1:49,96 pri výkrese 1:50. Krížová validácia (fit na polovici, test na druhej) do 19 mm, pri rezoch
+  do 9 mm; kontrolné body rezu (osi z pôdorysu, výškové kóty) medián 6 až 12 mm.
+
+**Rozhodnutie:**
+1. **Kalibrácia žije v `_georef` dokumentu, v2 = zoznam kalibrácií** (Samuel, #165 a #170; prvý návrh
+   "v pohľade" padol). Je to vlastnosť dvojice strana PDF a rovina modelu, nie pohľadu: ručný pohľad D-132 nesie
+   len `{document_id, page}`, automatické pôdorysy sa odvodia za behu z podlažia. Položka v2: `page`,
+   `page_size`, `storey_guid`/`storey_z`, `plane` (null = vodorovne vo výške podlažia, presne v1; inak
+   `{origin, u, v}` v IFC svete, `u × v` = normála ku kamere, affine nie je zrkadlový), `affine` z bodov strany
+   PDF (vľavo dole) do metrov (u, v), `calibration`, `region` (výrez strany pri viac výkresoch), `source`
+   (`manual` z panela Underlays, `auto` z toolu), `quality` (metóda, medián, p90, krížová validácia).
+   Automatická neprepíše ručnú bez `force`: ručné dorovnanie je posledné slovo. Prechod bez migrácie: PATCH
+   zlúči v1 z panela ako `manual`, host posiela forku v1 (pôdorysná položka) a popri tom `georefV2`
+   (`lib/data/georef.ts`).
+2. **Čiary výkresu z ETL:** `document_pages.lines` = `{size: [W, H], segs}`, hrubé úsečky strany `[x1, y1, x2, y2, w]` v bodoch strany
+   (počiatok vľavo dole ako `_georef`), hrúbka čiary aspoň 0,99 pt, len vektorové výkresy (aspoň 200 takých
+   úsečiek na strane). Ten istý extraktor ako `blocks` (`etl/pdf_text.py`, pymupdf); server parser PDF nemá
+   (D-123).
+3. **Výpočet v IFC motore** (`lib/engine/underlay-calibrate.ts`): rez meshov rovinou pohľadu v tom istom rámci
+   ako viewer (D-124; pôdorys len konštrukcie, rez všetko okrem priestorov a nábytku), hrubý štart z textu
+   (pôdorys: popisky miestností proti IfcSpace; rez: výškové kóty na mierku a výšku, vodorovný posun a smer
+   pohľadu z popiskov osí, alebo bez nich skenovaním s rovnakým výsledkom), trimmed ICP s podobnosťou a
+   pevným smerom pohľadu, kvalita s krížovou validáciou. Nad meshami motora: 1NP medián 10 mm, p90 20 mm,
+   rezy 8 mm.
+4. **Nový tool `calibrate_underlay` (zápis):** `document_id`, `page`, `floor` (pôdorys) alebo
+   `section_plane` (rez), `mode=dry_run|auto|manual`, `pairs`, `force`. `dry_run` (predvolené) nič neuloží a ukáže náhľad; zápis za bránou `UNDERLAY_WRITE_ENABLED` a len
+   pod prahom chyby (medián 50 mm). Na produkciu až po tabuľke skúšobného behu so Samuelovým slovom.
+5. **Viewer:** zvislý podklad (rovina s u, v) je rozšírenie balíka `@ifc-lite/drawing-underlay` vo forku.
+
+**Zavrhnuté rozšírenie:**
+- *`open_drawing`:* UI akcia bez prístupu k dátam a čítacia anotácia (ako v D-123); kalibrácia zapisuje.
+- *`set_view_mode calibrate=...`:* prepína zobrazenie a je čítací; kalibrácia je trvalý zápis dát (Samuel, #170).
+- *`ifc_measure`:* meria prvky, čítací; podklad nie je prvok modelu a výsledok sa ukladá.
+
+**Zavrhnuté:** len popisky bez doladenia (chyba okolo 1 m); parser PDF na serveri (D-123, dva extraktory);
+kalibrácia viazaná na podlažie (nepokryje rezy a detaily).
+
+---
+
+### D-132 - Záložky vo vieweri: pohľad je orez, záložka je otvorený pohľad
+**Status:** rozhodnuté (2026-10-21, Samuel cez orchestrátora; číslo pridelené v registri #60). Issue #165,
+fork patch nad `claude/aim-d127-panely` (fork #97). Nadväzuje na D-072 (pôdorys s podkladom, zámok
+kamery), D-075 (karty dokumentov, režim 2D na celú plochu), D-098 (najprv existujúce funkcie), D-114 (najprv
+napasuj), D-122 (uložené pohľady), D-127 (panely z chatu), D-129 (AIM vrstva). Kalibráciu podkladu k pohľadu
+rieši D-133 (#170).
+
+**Kontext:** Samuel chce prepínať medzi pohľadmi na celú obrazovku ako v Revite (3D, pôdorys, rez, PDF), nie
+mať výkres ako kartu vedľa 3D. `open_drawing(in_viewer)` otvoril dokument vždy vedľa 3D; `set_view_mode`
+poznal len 3D, 2D a Split.
+
+**Rozhodnutie:**
+1. **Pohľad je orez nad tým istým modelom:** kamera zamknutá kolmo (ortografická, zhora alebo zboku) a rezná
+   rovina alebo rezný box. 2D nie je režim ani prepínač, ale typ pohľadu. Filter a grafika rezu sú samostatná
+   funkcia neskôr.
+2. **Pôdorysy podlaží sú automatické pohľady za behu** z IfcBuildingStorey (fork, dnešné `enterDrawingView`
+   D-072: zhora, zamknuté, rez 1,2 m nad podlahou); v DB sa neukladajú. Podklad je dokument s `_georef` na
+   podlažie ako dnes; kalibrácia ostáva v `_georef` dokumentu (D-133 ho rozšíri o rovinu).
+3. **Ručný pohľad = riadok `saved_views` (D-122), bez migrácie:** do `viewpoint` pribudne `view_type`
+   (3d | plan | section | detail), `camera.locked`, `section.box` (obálka v IFC svete) a `underlay`
+   (`document_id`, `page`, len väzba). Riadok vzniká pri ručnom pohľade alebo uložení upraveného pôdorysu.
+4. **Záložka = otvorený pohľad, len počas relácie** (fork, `apps/viewer/src/aim/viewTabs*`): 3D (vždy prvá),
+   pôdorysy, uložené pohľady a dokumenty D-075. Aktívna záložka má celú plochu; dokument zbalí 3D panel tým
+   istým spôsobom ako režim 2D (canvas sa neremountuje). Pri prepnutí sa stav canvasu záložky (kamera, celá
+   sada rovín alebo box, zámok, rez podlažia) odloží a pri návrate vráti. Prepínač 3D | 2D | Split zmizol z
+   pásu AIM.
+5. **"Vedľa" medzi záložkami:** viewer má jeden 3D canvas, preto vedľa seba ide 3D alebo pohľad + dokument,
+   3D + pôdorys ako 2D plán (panel D-072, zatiaľ len s kalibrovaným podkladom), nie dva 3D pohľady.
+6. **Chat bez nového toolu (D-114):**
+   - `open_drawing target=tab|split` (predvolené `tab`, `in_viewer` ostáva);
+   - `set_view_mode`: `view` (alias `saved_view`) otvorí uložený pohľad do záložky, `mode=2d floor` = pôdorys
+     v záložke, `mode=split` = pôdorys vedľa 3D, `mode=3d` = záložka 3D, `tab` prepne, `beside` dá vedľa
+     (`none` zruší), `close_tab` zavrie (`all`);
+   - `set_section box=true` + cieľ (+ `margin_m`) = rezný box okolo prvkov;
+   - `saved_view save` s `view_type`, `locked`, `underlay_document_id`, `underlay_page`; box a rovinu vezme z viewera;
+   - `get_viewer_state` vráti `tabs` (druh, menovka, aktívna, vedľa) a `section.box`.
+7. **Most:** `VIEW_TABS` (open | activate | beside | unbeside | close), `SET_SECTION_BOX`, `DOCUMENT_OPEN layout`,
+   `view_state.tabs`; `SET_VIEW_MODE` ide cez záložky. Op `tab:` a `section_box:` v `lib/viewer-tabs.ts`.
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool `view_tabs` (návrh z issue):* záložky sú prepnutie zobrazenia, to robí `set_view_mode`
+  (čítanie, UI akcia); dokument otvára `open_drawing`. Nový tool by len zdvojil ich vstupy.
+- *Záložky ako trvalé dáta:* Samuel, záložky sú len počas relácie; trvalý je uložený pohľad.
+
+**Zavrhnuté:**
+- *Prepínač 3D | 2D | Split ako hlavné rozhranie:* 2D je typ pohľadu (Samuel).
+- *Automatické pôdorysy ako riadky v DB:* Samuel, za behu z modelu; kalibrácia ostáva na dokumente.
+- *Filter viditeľnosti v pohľade (pravidlo):* neskôr, samostatná funkcia (Samuel).
+- *Dve 3D záložky vedľa seba:* druhý renderer (WebGPU) je iný rozsah.
+
+**Otvorené:** pôdorys vedľa 3D bez kalibrovaného podkladu (vektorový plán upstreamu žije v režime úprav
+modelu, nie na čítanie); zvislý podklad pre rezy po D-133; zoznam uložených pohľadov v lište forku (dnes z chatu);
+mobil má zatiaľ starý prepínač.
+
+---
+
+### D-134 - Náročnosť požiadavky z konektora: routines STANDARD (Sonnet) a HARD (Opus)
+**Status:** rozhodnuté (2026-10-21, Samuel cez orchestrátora), číslo pridelené v registri #60. Nadväzuje na
+D-090 (požiadavky z konektora, routine), D-099 (BCF routine).
+
+**Kontext:** každá požiadavka z konektora spúšťala routine s Opusom, aj keď išlo o jasnú malú zmenu. Cieľ je
+šetriť tokeny: jasné a lokálne zadania rieši Sonnet, náročné Opus.
+
+**Rozhodnutie:**
+1. **Dve routines.** Model je vlastnosť routine, `/fire` ho nezmení. HARD (Opus) je doterajšia routine,
+   premenovaná na "AIM: Hard Issues" (env `CLAUDE_ROUTINE_FIRE_URL`, `CLAUDE_ROUTINE_TOKEN`). STANDARD
+   (Sonnet) je "AIM: Standard Issues" (env `CLAUDE_ROUTINE_STANDARD_FIRE_URL`, `CLAUDE_ROUTINE_STANDARD_TOKEN`).
+   Server má `standardRoutine()` vedľa `feedbackRoutine()` v `lib/feedback/routine.ts`.
+2. **O náročnosti rozhoduje Claude v konektore** pri zakladaní issue, lebo má kontext rozhovoru so Samuelom.
+   `feedback` (report, request_tool) a `start_session` dostanú `narocnost: standard | hard` a krátky
+   `narocnost_dovod`. Pravidlo je v opise toolu: STANDARD = jasné a lokálne (reprodukovateľná chyba, malá
+   zmena, test, opis toolu); HARD = nejasné zadanie, architektúra, naprieč modulmi, DB schéma alebo migrácia,
+   fork (ifc-lite), nový tool. Pri pochybnosti: nejasné zadanie -> HARD, inak STANDARD.
+3. **Spätná kompatibilita:** chýbajúci parameter alebo nenastavená STANDARD routine = HARD ako doteraz.
+4. **Záznam triedenia:** komentár k odkazu na session nesie riadok `triedenie: STANDARD - <dôvod>` a skrytú
+   značku `aim-mcp-triage {level, requested}`; `level` je skutočne použitá routine, `requested` návrh
+   (rozdiel = fallback, v riadku poznámka). Štatistika sa počíta z týchto komentárov (komentáre s
+   `aim-mcp-session`; komentár fronty má predponu "Fronta:" a štatistiku nezvyšuje). Štítky session/fronta/pr
+   sa nemenia.
+5. **Fronta:** issue vo fronte si náročnosť pamätá v komentári "Fronta: triedenie: ..." so značkou;
+   `start_queued_session` ju prečíta (výslovný `narocnost` pri start_session ju prebije). Zvolené pred štítkom:
+   komentár nesie aj dôvod, štítky `narocnost:*` by rozšírili sadu štítkov, ktorú dnes nikto nečíta okrem
+   servera, a značky v komentároch server už používa (`aim-mcp-session`, `aim-mcp-comment`).
+6. **Dôvera značke a dôvodu (review):** `start_queued_session` číta značku `aim-mcp-triage` len z komentárov
+   účtu, ktorému patrí `FEEDBACK_GITHUB_TOKEN` (`GET /user`, login účtu servera); cudzí komentár by inak vedel
+   prepnúť routine. Ak sa login nedá zistiť, značky sa ignorujú a ide HARD. `narocnost_dovod` sa pred zápisom
+   zbaví `<`, `>` a zlomov riadkov a skráti na 200 znakov, aby nevložil falošnú značku pred pravú.
+7. **Eskalácia:** STANDARD session pri náročnej úlohe napíše do issue "Eskalácia na HARD: <dôvod>" a skončí;
+   orchestrátor po 2 neúspechoch alebo pri eskalácii spustí HARD. Postup je v `docs/orchestration.md`.
+
+**Zavrhnuté:**
+- *Routine na triedenie, ktorá spúšťa iné routines:* routine nemá `fire_trigger` a potrebovala by tokeny
+  oboch routines v environmente.
+- *GitHub Actions na triedenie:* beh nie je session, v ktorej Samuel odpovedá.
+- *Prepínanie modelu jednej routine:* stav a súbeh sessions (model je vlastnosť routine).
+
+**Dôsledky:** zmena opisu a parametrov toolu `feedback` (inventár `MCP-TOOLS.md`), evaly D-057 zatiaľ bez
+behu (v cloude chýbajú Supabase kľúče), na Verceli treba obe dvojice env (STANDARD už nastavená).
+
+### D-135 - Egress Supabase: viewer a IFC motor čítajú nemenný archív revízie, sessions testujú na malom modeli
+**Status:** rozhodnuté (2026-10-22, Samuel v #207, číslo pridelené v registri #60). Nadväzuje na D-044
+(geometria v prehliadači), D-084 (IFC motor), D-086 (revízie a archív), D-087/D-098 (fork len tenko).
+
+**Kontext:** bezplatný plán Supabase prekročil kvótu cached egress (cca 5,5 GB za obdobie), od 21. 11. 2026
+platí Fair Use Policy. Hlavný zdroj sú IFC federácie: `ifc/ASR.ifc` (24,7 MB) a `ifc/VZT.ifc` (9,8 MB) s
+`Cache-Control: max-age=60`, bez kompresie (`content-encoding` chýba). Zistenia (22. 10., len čítanie):
+- Host dáva viewerovi `?models=<url>,<url>` s `?rev=N` (D-086); fork ich sťahuje obyčajným `fetch(url)`
+  (`hooks/useModelUrlAutoload.ts`), takže platí len HTTP cache prehliadača: po 60 s podmienená požiadavka,
+  v novom profile (Playwright v sessions, iný náhľad Vercelu = iná partícia cache) celých 34,5 MB.
+- Cache modelov vo forku (`services/ifc-cache.ts`, IndexedDB) má kľúč z obsahu súboru: šetrí parsovanie,
+  nie sťahovanie, súbor sa musí stiahnuť, aby sa kľúč vôbec spočítal. Egress neznižuje.
+- IFC motor (D-084) sťahuje oba modely pri každej studenej inštancii funkcie (MCP `initialize`/`tools/list`
+  ich načíta vopred, D-100/D-101), `cache: "no-store"`, teda 34,5 MB na inštanciu.
+- Archív revízií z D-086 už existuje: `ifc/archive/<MODEL>/vNNN.ifc.gz`, gzip, `upsert=false`,
+  `Cache-Control: max-age=31536000, immutable`. Aktuálne `v078` ASR 4,49 MB a `v004` VZT 2,69 MB, spolu
+  7,18 MB proti 34,47 MB (-79 %). Obsah kľúča sa nikdy nemení (nová revízia = nový kľúč, návrat = nová
+  revízia), preto je dlhá cache bezpečná.
+
+**Rozhodnutie:**
+1. **Viewer načíta archív aktuálnej revízie.** `withRevisions` (`lib/data/ifc-models.ts`) pre model so
+   známou revíziou dá namiesto `.../ifc/ASR.ifc?rev=78` adresu `.../ifc/archive/ASR/v078.ifc.gz` (v tom
+   istom adresári ako pôvodný súbor, takže funguje aj pre `NEXT_PUBLIC_IFC_URLS`). Nová revízia = nová URL,
+   iframe sa obnoví ako doteraz cez `?rev=`. Model bez revízie (DB nedostupná, migrácia chýba) ostáva na
+   pôvodnom kľúči. **Predvolene vypnuté:** archív platí len pri `NEXT_PUBLIC_IFC_ARCHIVE=1`, ktoré Samuel
+   zapne na Verceli až po nasadení forku z bodu 2 (inak by viewer dostal gzip, ktorý nevie načítať).
+   `modelKey` pozná oba tvary URL. URL sa skladá z mena modelu rovnako ako `archive_key` v
+   `etl/model_publish.py`; `model_revisions.archive_path` nesie ten istý kľúč, prechod naň má zmysel až
+   keby sa schéma archívu menila.
+2. **Fork rozbalí gzip a zachová meno modelu.** Autoload (`useModelUrlAutoload`, blok AIM-FORK) pošle
+   stiahnuté bajty cez `aim/modelFile.ts`: začiatok `1f 8b` = `DecompressionStream('gzip')`; meno súboru z
+   `archive/<MODEL>/vNNN.ifc.gz` je `<MODEL>.ifc`, lebo most, revízie a filtre (`"VZT" ~ "VZT.ifc"`,
+   `aim/derivations.ts`) párujú model podľa mena. Bez zmeny parsera a upstream loadera. Zlučuje sa pred
+   AIMviewerom (D-116); host je bezpečný aj skôr, lebo archív zapína až `NEXT_PUBLIC_IFC_ARCHIVE=1`.
+3. **IFC motor sťahuje archív.** `getStore` (`lib/engine/cache.ts`) zistí aktuálnu revíziu modelu
+   (`model_revisions`, server) a stiahne archív, rozbalí ho (`zlib`, strop 512 MB). ETag na kontrolu zmeny
+   berie z HEAD pôvodného kľúča **pred** čítaním revízie: publikácia zapíše DB skôr než kľúč, takže súbeh dá
+   najviac jedno načítanie navyše, nikdy nový ETag pri starej revízii. Bez revízie alebo pri chybe archívu
+   stiahne pôvodný kľúč. Motor nepotrebuje fork, platí hneď po nasadení hosta.
+4. **Nahrávanie sa nemení.** `etl.model_publish` už archív píše nemenne s dlhou cache; aktuálny kľúč
+   `ifc/<MODEL>.ifc` ostáva s `max-age=60`, lebo ho prepisuje každá revízia (ETL, OCB recept, `sync`,
+   staré odkazy) a CDN bezplatného plánu by pri dlhej cache vracala starý súbor. OCB (workflow `uloha`) a
+   ETL sa tým nedotýkajú; nič sa nenahráva, nastavenie bucketu netreba.
+5. **Sessions a testy nesťahujú produkčné modely.** Živé overovanie viewera aj motora beží na malom
+   testovacom modeli (`AC20-FZK-Haus.ifc` z fixtures forku, lokálny server), nie na `ifc/*.ifc` z bucketu.
+   Hlavičky sa overujú `curl -I` alebo `-r 0-0`, nikdy celým stiahnutím. Pravidlo je v `AGENTS.md`, v
+   skilloch `verify` a `mcp-poziadavka` a vo forku v `aim-feature`. "Ako vyskúšať" pre Samuela ostáva na
+   produkcii (jeden prehliadač, po bode 1 z cache).
+
+**Úspora (odhad z veľkostí, rozpis z logov Supabase nebol dostupný, API logov vracalo 429):**
+| Prípad | Doteraz | Po D-135 |
+|---|---|---|
+| prvé otvorenie viewera v prehliadači / novom profile / náhľade | 34,5 MB | 7,2 MB |
+| ďalšie otvorenie v tom istom prehliadači, tá istá revízia | podmienená požiadavka každých 60 s | 0 (bez požiadavky) |
+| studená inštancia IFC motora (MCP) | 34,5 MB | 7,2 MB (+ 2 HEAD) |
+| živé overenie v session | 34,5 MB na beh | 0 (testovací model) |
+
+Kvóta 5,5 GB = cca 160 plných načítaní federácie; po zmene to isté stojí cca 1,15 GB.
+
+**Odkiaľ sa sťahuje (Supabase Usage od Samuela + `mcp_call_log`, 22. 10.):** cached egress 14,66 GB z 5 GB
+od 17. 10. (19. 10. cca 2,5 GB, 20. 10. cca 6,2 GB, 21. 10. cca 3,3 GB), bežný egress 0,99 GB. Cieľ od 17. 11.:
+5 GB za mesiac, teda cca 160 MB za deň. Zdroje:
+| Zdroj | Cesta v kóde / skille | 19. / 20. / 21. 10. |
+|---|---|---|
+| IFC motor: každá studená inštancia MCP predčíta oba modely (D-100/D-101, `preloadEngineModels`) | `app/api/mcp/[token]/route.ts`, evaly `eval/MCP-EVAL.md`, sessions a routines volajúce konektor | 38 / 105 / 39 studených inštancií = aspoň 1,3 / 3,6 / 1,35 GB |
+| prehliadač v novom profile (Playwright v sessions, náhľady Vercelu) | fork `steward` "Try them yourself first, live" s odkazom `ai-mviewer.vercel.app/ifc?viewer=pr-N`, `release-train` test link, živý viewer pri evale (`/ifc?live=`) | zvyšok, cca 1,2 / 2,6 / 1,9 GB = 35 / 75 / 55 načítaní |
+Studené inštancie bez tool callu (len `initialize`) v logu nie sú, motor je teda skôr väčší podiel.
+Archív samotný 20. 10. zníži z 6,2 GB na cca 1,3 GB; na 160 MB za deň treba aj pravidlo 5 a jeden z návrhov nižšie.
+Skilly forku `steward` a `release-train` preto hovoria, že odkaz "Ako vyskúšať" je len pre Samuela a session
+skúša na lokálnom vieweri s testovacím modelom.
+
+**Otvorené pre Samuela (nie je v prvom PR):**
+- *Predčítanie motora len pri pripojení (schválené, dodatok nižšie):* `preloadEngineModels` len pri `initialize`/`tools/list`, nie pri prvej
+  požiadavke na studenú inštanciu (časť D-101). Inštancia, ktorá obslúži len DB tools (78 až 90 % volaní),
+  potom nič nesťahuje; cena je dlhšie prvé `ifc_*` volanie na novej inštancii.
+- *Modely cez CDN Vercelu:* host servíruje `/models/archive/...` ako rewrite na archív s dlhou cache, prehliadače
+  aj motor čítajú z CDN Vercelu a Supabase vidí stiahnutie raz na revíziu a región. Treba overiť, či Vercel
+  (Hobby) cachuje externý rewrite, a pridať origin hosta do `VITE_AIM_MODEL_ORIGINS` forku (aj náhľady).
+
+**Zavrhnuté:**
+- *Dlhá cache na aktuálnom kľúči:* kľúč sa prepisuje, prehliadače aj CDN by držali starú revíziu.
+- *Spoliehať sa na IndexedDB cache forku:* kľúč z obsahu, súbor sa aj tak sťahuje.
+- *Kompresia `Content-Encoding` na aktuálnom kľúči:* Supabase Storage ju nenastavuje; gzip archív už je.
+- *Presun úložiska alebo Pro plán:* Pro ostáva záloha (#207), presun je zbytočne veľký krok.
+
+**Dôsledky:** fork patch (gzip + meno) ide pred AIMviewerom; po nasadení forku Samuel nastaví na Verceli
+`NEXT_PUBLIC_IFC_ARCHIVE=1` (Production aj Preview) a redeploy, potom v DevTools uvidí `v078.ifc.gz`
+(cca 4,5 MB) a pri ďalšom otvorení "(disk cache)". Live kanál, uložené pohľady (`model_revisions`
+podľa kľúča) a `ifc_models` sa nemenia.
+
+**Dodatok (2026-10-22, Samuel schválil návrh a s podmienkou "zahriatie motora smie spomaliť najviac jeden
+prompt v rozhovore"): predčítanie motora len v rozhovore, ktorý motor používa.**
+- *Meranie (`mcp_call_log` 19. až 21. 10., 1 278 volaní, rozhovor = volania s medzerou do 15 min):* 26
+  rozhovorov, 182 studených inštancií (1 na 7 volaní, pri evaloch s paralelnými subagentmi až 51 v jednom
+  rozhovore), 18 rozhovorov použilo motor, 209 volaní motora. 48 studených inštancií začalo rovno volaním
+  motora a 45 volaní motora čakalo na načítanie aj s dnešným predčítaním, takže "každá inštancia predčíta"
+  nespĺňala podmienku ani dnes; predčítanie pomáha len inštanciám, ktoré začnú DB toolom.
+- *Varianty na tých istých dátach (stiahnutie = oba modely):*
+  | Variant | Stiahnutí 19./20./21. 10. | Pomalé prompty |
+  |---|---|---|
+  | doteraz: každá studená inštancia | 38 / 105 / 39 = 182 | ako dnes |
+  | pri `initialize`/`tools/list` | nerieši recykláciu, ďalšie inštancie rozhovoru by čakali | viac |
+  | len pri volaní motora (čisto lenivo) | 14 / 55 / 14 = 83 (odhad: teplé volanie ide na poslednú inštanciu) | 83, každá nová inštancia s motorom |
+  | **motor použitý v posledných 30 min (zvolené)** | 25 / 81 / 29 = 135 | 17 = prvé volanie motora po pauze (18 rozhovorov s motorom) |
+- *Rozhodnutie:* `lib/mcp/engine-warm.ts`. Volanie toolu motora (`ifc_*`, `search_all`, `calibrate_underlay`)
+  predčíta hneď. Iná požiadavka (DB tool, `initialize`, `tools/list`) na nezahriatej inštancii v `after()`
+  overí v `mcp_call_log` (index `tool, created_at`), či niekto volal motor za posledných 30 min, najviac raz
+  za minútu na inštanciu. Ak áno, predčíta ako doteraz, inak nič. DB tools na motor nečakajú (kontrola aj
+  predčítanie bežia po odpovedi). Chyba kontroly = nepredčítať. Okno 30 min, nie 15: pauza v rozhovore
+  dlhšia než 15 min by spomalila druhý prompt (15 min: 130 stiahnutí a 20 pomalých, 60 min: 149 a 11).
+  Signál je spoločný pre všetkých (demo má jedného používateľa a evaly).
+- *Úspora:* 182 -> 135 stiahnutí (-26 %), s archívom 6,3 GB -> cca 0,97 GB za 3 dni (-85 %). Na deň cca
+  180 / 580 / 210 MB; nad cieľom 160 MB je hlavne 20. 10. s celým kolom evalu (pravidlo 5, `eval/MCP-EVAL.md`).
+  DB tools s motorom ako záložnou cestou (`get_object` kód len v IFC, `set_section relative_to=ceiling`,
+  mená v tooloch viewera) načítajú motor až pri potrebe a nie sú v signáli.
+- *Evaly D-057 nepobežali* (cloud session nemá Supabase kľúče; LLM vrstva, tooly ani prompt sa nemenia).
+
+### D-138 - style_in_3d: priorita prekrytých pravidiel a hlasné varovanie pri pravidle bez zásahu
+**Status:** rozhodnuté (2026-10-22, issue #221; číslo D-138 navrhnuté orchestrátorovi, potvrdenie čaká). Nadväzuje na
+D-096 (Lens z chatu), D-125 (`inactive`) a #219 (varovania pri mode=replace).
+
+**Kontext:** engine Lens vo forku farbí **prvou zhodou** (`packages/lens/src/engine.ts`). Nové volanie (mode=add)
+dáva svoje pravidlá pred staršie, takže novšie prebije staršie. V rámci jedného volania ale host posielal skupiny v
+poradí `groups`, takže PRVÁ skupina vyhrala a posledná ("trasa navrch") dostala 0 prvkov; v odpovedi to bolo len
+pole `inactive` v stave Lens. Preto trasa fungovala až ako druhé volanie.
+
+**Rozhodnutie:**
+- *Priorita:* pri prekrytí vyhráva **neskoršia skupina v `groups`**, rovnako ako novšie volanie. Rovnako v mode
+  add aj replace. Host (`lib/llm/style-overlap.ts`, `lensPriorityOrder`) posiela pravidlá volania vo wire v opačnom
+  poradí. Fork ani wire formát sa nemenia (patch nie je), v paneli Lens je navrchu pravidlo s najvyššou prioritou.
+- *Varovanie:* pravidlo s 0 prvkami nahlási text s počtami (`lens-counts.ts`) aj potvrdenie vo vieweri
+  (`applied-text.ts`) ako `POZOR: ...` s názvom pravidla. Dôvod: pod ním je pravidlo so zásahom -> "prekryté
+  pravidlami X, Y alebo filter nič nenašiel" (host nevie rozlíšiť, počty sú z viewera); inak -> "filter nič nenašiel".
+  Pri colorize s viac skupinami odpoveď hneď pripomenie pravidlo priority (`warnings`).
+- *Zavrhnuté:* parameter `overlay=true` / `priority` na skupine: "posledná skupina navrchu" dáva to isté bez
+  nového parametra (D-114, rozšírenie len opisom). Nový tool netreba.
+- Opis `style_in_3d` pravidlo uvádza; inventár `MCP-TOOLS.md` sa nezmenil (test registra prešiel).
+- *Evaly D-057 nepobežali* (cloud bez Supabase kľúčov); otázka `style-overlay-path-on-top` je v `eval/questions.json`.
+
+### D-139 - style_in_3d colorize: priesvitnosť farby (`opacity`) a predvolene priesvitné priestory a zóny
+**Status:** rozhodnuté (2026-10-22, issue #222; číslo D-139 navrhnuté orchestrátorovi, potvrdenie čaká). Nadväzuje na D-125
+bod 4 (priesvitná varianta farby priestoru), D-138 (priorita pravidiel), #175 (priestor = vyplnená podstava, Samuelovo rozhodnutie).
+
+**Kontext:** colorize IfcSpace (izby 2.01 s 3 dverami, schodom a východom) dal nepriehľadnú hmotu, prvky vnútri nebolo vidno.
+D-125 bod 4 rieši priesvitnosť vo forku pre pravidlo podľa triedy; farba cez `ids_or_refs` (miestnosti z `ifc_query`) ju
+nedostala a model nemal spôsob, ako priesvitnosť žiadať pre iné veľké prvky (dosky, steny).
+
+**Overenie existujúceho (D-098, D-114):** Lens už pozná akciu `transparent` (farba + priesvitnosť), `xray` a `isolate`; wire
+formát nenesie hodnotu alfa. Chýba teda len host: kedy akciu `transparent` poslať. Fork netreba meniť, patch nie je.
+
+**Rozhodnutie (host, `lib/llm/style-lens.ts`, `style-plan.ts`):**
+1. Nový voliteľný parameter `opacity` (0.05 až 1, na úrovni volania aj skupiny v `groups`). `opacity < 1` pri colorize pošle
+   pravidlo ako `transparent` (rovnaká farba, priesvitná). `opacity = 1` vynúti plnú farbu.
+2. Bez `opacity` sú priesvitné skupiny, ktoré sú len z IfcSpace / IfcSpatialZone / IfcZone: podľa tried filtra, pri
+   konkrétnych prvkoch (`ids_or_refs`, `global_ids`) podľa tried prvkov v DB. Skupina sa v odpovedi označí `opacity` a
+   `opacity_default`.
+3. Priesvitnosť má jednu úroveň (fork alfa 0,3): hodnota `opacity` rozhoduje len medzi plnou a priesvitnou farbou, odpoveď to
+   neskrýva. Presný stupeň by vyžadoval pole alfa vo wire a patch forku; otvorené, kým to nikto nepotrebuje.
+4. Varovanie v odpovedi: plne ofarbené veľké prvky (steny, dosky, strecha, krytina) v colorize s viac skupinami môžu zakryť
+   ostatné farby, odpoveď navrhne `opacity=0.3`.
+5. Duplicitné pravidlá pre priestory z issue (obyčajné a "miestnosti"): host posiela jedno pravidlo na skupinu; druhé pravidlo
+   v súhrne Lens pochádza z lens viewera (výplň miestností, D-119/D-125), host ho nevytvára. Nezmenené, vysvetlené tu.
+
+**Zavrhnuté:** nový tool alebo `space_display` (D-114); zmena renderera (upstream); `opacity` v pôvodnej hodnote ako alfa
+vo wire (fork patch bez využitia).
+**Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `style-colorize-space-translucent` je v
+`eval/questions.json`.
+
+### D-141 - Spodná stavová lišta hostu pod viewerom: výber viewera a Live neprekrývajú panely
+**Status:** rozhodnuté (2026-10-22, issue #185; číslo D-141 navrhnuté orchestrátorovi, potvrdenie čaká). Nadväzuje na D-116
+(výber viewera), D-079 (živý kanál), D-091 (AIM funkcia predvolene v hoste), D-127 (panely z chatu, #179), D-111 (`open_list`).
+
+**Kontext:** po `open_list` sa otvoril builder panela Lists, ale tlačidlo Run bolo pri spodku viewera a prekrývali ho dva overlaye
+hostu vľavo dole: čip "Viewer: Produkcia" (`viewer-picker.tsx`, absolútne nad iframe) a indikátor Live (`live-channel.tsx`,
+fixed). Tabuľka sa nedala spustiť. Označenie "batch" v kóde nie je (`BATCH_MS` je len zlučovanie príkazov kanála).
+
+**Overenie existujúceho (D-098, D-114):** D-127 rieši len otváranie, zatváranie a stav panelov (`set_view_mode panels`), prekrytie
+nemení. `open_list` parameter `run` nemá (`lib/llm/list-tool.ts`, `MCP-TOOLS.md`). Pruh nie je vo forku, je to vrstva hostu.
+
+**Rozhodnutie (host, fork bez zmeny):**
+1. `ifc-workspace.tsx` je stĺpec: viewer (iframe s vlastnou stavovou lištou s počtami prvkov) a pod ním 28 px vysoká stavová
+   lišta hostu. Overlaye už nelezú nad viewer, takže neprekrývajú žiadny panel ani jeho Run, nech je panel ukotvený kdekoľvek.
+2. Lišta nesie `ViewerPicker` (ponuka a chyba sa otvárajú nahor nad lištu) a indikátor Live. Indikátor sa vloží portálom do
+   slotu `aim-live-slot`; mimo `/ifc` ostáva fixed vľavo dole ako doteraz. Toast Live ostáva fixed, je `pointer-events-none`.
+3. Prekrytie je tým odstránené len v hoste. Veľkosť a maximalizácia panela Lists (bod 2 zo zadania) je vec forku a rozloženia
+   panelov (#211).
+
+**Zavrhnuté / odložené:**
+- *`open_list run=true`* (bod 3 zo zadania): spustenie je `handleExecuteList` lokálne v upstream `ListPanel.tsx`; hotový zoznam
+  by vyžadoval zásah do upstream súboru (plné CI forku, kolízia s #211). Builder s Run po oprave prekrytia funguje, tak sa
+  nerobí; ak ho Samuel chce, je to samostatná úloha (parameter `run` + správa `OPEN_LIST`, D-114).
+- *Presunúť čipy do vlastnej lišty viewera (fork)*: upstream `StatusBar` by sa menil kvôli čipu hostu; zbytočné, host má vlastnú.
+**Evaly (D-057):** LLM vrstva sa nemení.
+
+---
 
 ---
 

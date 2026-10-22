@@ -45,6 +45,13 @@ describe("documentPage (D-104 krok 4)", () => {
   });
 });
 
+describe("floor ako alias storey (#219)", () => {
+  it("skupina s floor dostane filter storey", () => {
+    const g = parseStyleGroups({ groups: [{ color: "ef4444", ifc_type: "IfcWall", predefined_type: "SHEAR", floor: "3NP" }] }, "colorize");
+    expect(g[0].filter).toEqual({ ifc_type: "IfcWall", predefined_type: "SHEAR", storey: "3NP" });
+  });
+});
+
 describe("parseStyleGroups", () => {
   it("bez groups je jedna skupina z top-level filtra", () => {
     const g = parseStyleGroups({ action: "colorize", color: "#EF4444", system: "Prívod", storey: "1NP" }, "colorize");

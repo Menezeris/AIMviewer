@@ -25,6 +25,7 @@ export interface GithubIssue {
   comments: number;
   created_at: string;
   updated_at: string;
+  closed_at?: string | null;
   pull_request?: unknown;
 }
 
@@ -94,14 +95,24 @@ export class GithubClient {
     return this.call("POST", `${this.base}/issues`, input);
   }
 
+  /** Login účtu, ktorému patrí token (komu server pripisuje svoje komentáre). */
+  async viewerLogin(): Promise<string> {
+    return (await this.call<{ login: string }>("GET", "/user")).login;
+  }
+
   getIssue(number: number): Promise<GithubIssue> {
     return this.call("GET", `${this.base}/issues/${number}`);
   }
 
   /** Otvorené issues so štítkom (bez PR), najnovšie upravené prvé. */
-  async listOpenIssues(label: string, perPage = 100): Promise<GithubIssue[]> {
+  listOpenIssues(label: string, perPage = 100): Promise<GithubIssue[]> {
+    return this.listIssues(label, "open", perPage);
+  }
+
+  /** Issues so štítkom v danom stave (bez PR), najnovšie upravené prvé (D-126). */
+  async listIssues(label: string, state: "open" | "closed" | "all", perPage = 100): Promise<GithubIssue[]> {
     const q = new URLSearchParams({
-      state: "open",
+      state,
       labels: label,
       sort: "updated",
       direction: "desc",

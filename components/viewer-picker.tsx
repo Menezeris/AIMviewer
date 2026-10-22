@@ -150,8 +150,9 @@ export function ViewerPicker({
   }
 
   return (
-    // Nad indikátorom Live, keď je zapnutý (--aim-live-inset nastavuje LiveChannel).
-    <div className="absolute bottom-[calc(0.75rem+var(--aim-live-inset,0px))] left-3 z-20 flex max-w-[min(26rem,calc(100%-1.5rem))] flex-col items-start gap-1 text-xs">
+    // Čip v spodnej stavovej lište pod viewerom (#185); zoznam a chyba sa otvárajú nahor, nad lištu.
+    <div className="relative flex items-center text-xs">
+      <div className="absolute bottom-full left-0 z-20 mb-1 flex w-80 max-w-[calc(100vw-1.5rem)] flex-col items-start gap-1">
       {open && (
         <div
           role="listbox"
@@ -190,12 +191,13 @@ export function ViewerPicker({
         </div>
       )}
       {error && <div className="rounded-md bg-destructive/90 px-2 py-1 text-white shadow">{error}</div>}
+      </div>
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         className={
-          "flex items-center gap-1 rounded-full px-3 py-1 shadow backdrop-blur-sm " +
+          "flex items-center gap-1 rounded-full px-3 py-0.5 " +
           (isProd ? "bg-background/80 text-muted-foreground" : "bg-amber-500/90 font-medium text-black")
         }
       >

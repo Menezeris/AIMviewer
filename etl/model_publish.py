@@ -51,7 +51,10 @@ EXIT_GUARD = 2
 EXIT_CONFLICT = 3
 # Udalosť živého kanála (D-079), na ktorú viewer obnoví modely (`components/live-channel.tsx`).
 LIVE_REVISION_EVENT = "model_revision"
+# Aktuálny kľúč sa prepisuje každou revíziou, preto krátka cache. Archív sa nikdy neprepíše
+# (upsert=false), preto dlhá: viewer aj IFC motor čítajú práve archív (D-135).
 CURRENT_CACHE_CONTROL = "max-age=60"
+ARCHIVE_CACHE_CONTROL = "max-age=31536000, immutable"
 
 
 class Conflict(Exception):
@@ -295,7 +298,7 @@ def publish(
                 raise ValueError(f"{model}: revízia v{new_rev} nie je vyššia ako v{top}")
             key = archive_key(model, new_rev)
             _put(key, compress(data), upsert=False, content_type="application/gzip",
-                 cache_control="max-age=31536000, immutable")
+                 cache_control=ARCHIVE_CACHE_CONTROL)
             cur.execute("update model_revisions set is_current = false where model = %s and is_current",
                         (model,))
             cur.execute(

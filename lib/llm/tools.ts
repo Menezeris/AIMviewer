@@ -4,6 +4,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PDF_LINK_SOURCE } from "@/lib/data/constants";
 import { fetchDocumentObjectRows, fetchDocumentTypes, fetchObjectDocuments, typeText } from "@/lib/data/object-documents";
 import { fetchAllPages } from "@/lib/data/pagination";
+import { fetchDocumentLinks } from "@/lib/data/drawing-links";
+import { linkSummary } from "@/lib/data/drawing-labels";
 import type { ToolDefinition } from "./provider";
 import { docHighlightsInput, docOp, docRegionInput, selectOp } from "@/lib/viewer-ops";
 import {
@@ -23,7 +25,18 @@ import { engineEnabled, resolveNamesToGuids } from "@/lib/engine/aim-lookup";
 import { execScopedStyle } from "./style-scope";
 import { needsScopedStyle } from "./style-plan";
 import { LENS_STYLE_ACTIONS, execLensStyle } from "./style-lens";
-import { selectPanelInput, selectPanelNote } from "./select-panel";
+import { lookupProperty, selectPanelInput, type PropertyLookup } from "./select-panel";
+import {
+  RELATED_CAP,
+  clampOffset,
+  orderTerms,
+  pageInfo,
+  fitPage,
+  parseRelated,
+  sortRows,
+  type OrderTerm,
+  type RelatedSpec,
+} from "./query-view";
 
 /**
  * Read-only tools LLM rozhrania (D-056) — tool-calling nad whitelistom, NIE
@@ -43,6 +56,32 @@ const MAX_LIMIT = 100;
 const SHOW_3D_CAP = 100;
 /** Max dĺžka JSON payloadu tool výsledku (ochrana kontextu). */
 const MAX_RESULT_CHARS = 12_000;
+
+/** Stĺpce search_objects, ktoré môže určiť filter (eval D-126, N2). */
+const FILTER_COLUMNS = ["object_type", "ifc_type", "predefined_type"] as const;
+
+/**
+ * Stĺpec, ktorý určuje filter a má na strane jednu hodnotu, sa z riadkov vynechá a uvedie raz
+ * v `same`. Riadok vyústky je tak o štvrtinu kratší a do výsledku sa zmestí viac riadkov.
+ */
+export function hoistFilterColumns<T extends object>(
+  rows: T[],
+  input: Record<string, unknown>,
+): { same: Record<string, unknown> | null; rows: Partial<T>[] } {
+  const same: Record<string, unknown> = {};
+  const cell = (r: T, col: string) => (r as Record<string, unknown>)[col];
+  for (const col of FILTER_COLUMNS) {
+    if (typeof input[col] !== "string" || !input[col] || rows.length === 0) continue;
+    const v = cell(rows[0], col);
+    if (rows.every((r) => cell(r, col) === v)) same[col] = v;
+  }
+  const keys = Object.keys(same);
+  if (keys.length === 0) return { same: null, rows };
+  return {
+    same,
+    rows: rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !keys.includes(k))) as Partial<T>),
+  };
+}
 /** Koľko prvkov naraz zvládne lokalizácia (search_objects mode=locate). */
 const LOCATE_CAP = 500;
 /** Veľkosť dávky pre `.in()` filtre (limit dĺžky URL v PostgREST). */
@@ -207,7 +246,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "počet + rozpad po podlažiach a miestnostiach so vzorkou ('koľko X a kde / na ktorých podlažiach', " +
       "predvolene object_type asset, alebo ids z predošlého hľadania). `query` hľadá v názve, object_ref, IFC " +
       "triede aj predefined_type (ilike). ifc_type = IFC trieda (IfcDoor), predefined_type = podtyp " +
-      "(AIRCONDITIONINGUNIT je predefined_type, NIE ifc_type). Obsah psetov nevidí - na to search_everything; " +
+      "(AIRCONDITIONINGUNIT je predefined_type, NIE ifc_type). Obsah psetov ani účel miestnosti (lobby, sklad) " +
+      "nevidí - na to search_everything. list nad 100 riadkov stránkuj cez offset; stĺpce určené filtrom sú raz v same; " +
+      "rozpad podľa podtypu nerátaj z riadkov - dá ho aggregate_objects(group_by=predefined_type); " +
       "slovník tried a psetov dá get_model_stats.",
     inputSchema: {
       type: "object",
@@ -219,6 +260,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         predefined_type: { type: "string", description: "IFC predefined_type enum (case-insensitive zhoda)" },
         ids: { type: "array", items: { type: "string" }, description: "locate: konkrétne objects.id namiesto filtrov" },
         limit: { type: "number", description: `list: max riadkov (default ${DEFAULT_LIMIT}, strop ${MAX_LIMIT})` },
+        offset: { type: "number", description: "list: posun strany; ďalšia strana = next_offset, nie offset+limit; strany neposielaj súbežne" },
       },
     },
   },
@@ -268,8 +310,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "typ informácie ISO 19650) (všetky: from_id→to_id, valid_until null = aktívna), " +
       "v_object_documents (dokumenty objektu cez vzťahy, D-104: object_id, document_id, page, via, " +
       "via_id, depth). JSONB cesty fungujú v select aj filtri: " +
-      "properties->Pset_ValveTypeIsolating->>IsNormallyOpen. Join nie je — reťaz dopyty " +
-      "cez op 'in' so zoznamom id z predchádzajúceho výsledku.",
+      "properties->Pset_ValveTypeIsolating->>IsNormallyOpen. Výsledok má total, returned, truncated a " +
+      "next_offset (poradie je stabilné, ďalšia strana = offset=next_offset). Uzly so vzťahom na iný uzol " +
+      "jedným volaním = related (napr. IfcAirTerminal s rel_referenced_in_spatial_structure na priestor 2.01); " +
+      "obsah miestnosti naraz (contained aj referenced) dá v_space_elements (space_ref, element_ref, " +
+      "element_ifc_type, element_predefined_type, relation, role).",
     inputSchema: {
       type: "object",
       properties: {
@@ -302,6 +347,21 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         count_only: { type: "boolean", description: "true = vráť len presný počet riadkov" },
         limit: { type: "number", description: `Max riadkov (default ${DEFAULT_LIMIT}, strop ${MAX_LIMIT})` },
+        offset: { type: "number", description: "Posun strany (default 0); ďalšia strana = next_offset, nie offset+limit; strany neposielaj súbežne" },
+        related: {
+          type: "object",
+          properties: {
+            relation: { type: "string", description: "Kanonický view hrán rel_*" },
+            node: { type: "string", description: "id alebo object_ref uzla na druhom konci hrany" },
+            direction: {
+              type: "string",
+              enum: ["to", "from"],
+              description: "to (default) = hrana vedie z riadku NA node (prvok v priestore, člen zóny); from = z node na riadok (objekty aktéra)",
+            },
+          },
+          required: ["relation", "node"],
+          description: "Len uzly so vzťahom na node (relácie uzlov: objects, v_asset_effective, v_floors, v_actors...)",
+        },
       },
       required: ["relation"],
     },
@@ -414,9 +474,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "UI AKCIA: UKÁŽ alebo VYBER prvky v 3D. Predvolene zvýrazní (oranžovo) a priblíži prvky - 'ukáž / " +
       "zobraz X', aj jednu miestnosť (skrytú viewer zapne). Celú triedu pošli filtrom (ifc_type, query, " +
       "predefined_type), konkrétne prvky v ids_or_refs (object_ref, kód prvku ako 'SD04.0001' aj číslo miestnosti ako '3.02' " +
-      "netreba hľadať vopred). select=true = VYBERIE jeden prvok ako klik myšou a otvorí jeho panel vlastností ('vyber / označ " +
-      "X', 'ukáž jeho vlastnosti'): panel_tab aim | ifc, panel_section properties | quantities, highlight " +
-      "'Pset.Vlastnosť' zvýrazní riadok; panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
+      "netreba hľadať vopred). select=true = VYBERIE prvok (viac prvkov v ids_or_refs = viacnásobný výber, odpoveď vráti všetky) ako klik myšou a otvorí jeho IFC panel vlastností ('vyber / označ " +
+      "X', 'ukáž jeho vlastnosti'): panel_section properties | quantities, highlight 'Pset.Vlastnosť' (aj Qto výmera) rozbalí " +
+      "sadu, prescrolluje a zvýrazní riadok do ďalšieho výberu; výsledok povie, či vlastnosť na prvku je (property.in_aim, " +
+      "property_focus.found zo živého viewera). Panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
       "select=true výber. Funguje pre prvky s IFC GUID. Prvky, ktorých sa týka dokument alebo strana, " +
       "ukáž cez style_in_3d(document, page).",
     inputSchema: {
@@ -443,10 +504,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         predefined_type: { type: "string", description: "Filter namiesto ids: PredefinedType" },
         query: { type: "string", description: "Filter namiesto ids: fulltext (názov/ref/typ)" },
         object_type: { type: "string", description: "Filter namiesto ids: objects.object_type" },
-        select: { type: "boolean", description: "Vybrať jeden prvok ako klik (id_or_ref) a otvoriť panel vlastností" },
-        panel_tab: { type: "string", enum: ["aim", "ifc"], description: "select: záložka panelu vlastností" },
+        select: { type: "boolean", description: "Vybrať prvok ako klik (id_or_ref alebo ids_or_refs, viac prvkov = všetky vybrané) a otvoriť panel vlastností prvého" },
         panel_section: { type: "string", enum: ["properties", "quantities"], description: "select: sekcia IFC panelu" },
-        highlight: { type: "string", description: "select: zvýrazniť vlastnosť, napr. 'Pset_WallCommon.FireRating'" },
+        highlight: { type: "string", description: "select: zvýrazniť vlastnosť, napr. 'Pset_WallCommon.FireRating' alebo 'Qto_DoorBaseQuantities.Width'" },
       },
     },
   },
@@ -470,15 +530,20 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "prvky aj zdedené cez podlažie, zónu, skupinu a typ, bez vymenovania GUIDov; " +
       "action=xray (zvyšok priesvitný) alebo isolate. " +
       "Viac farieb naraz = groups: [{label, color, ...filter}] (top-level filter platí pre " +
-      "všetky skupiny). colorize / transparent / isolate / xray idú do panelu Lens vo vieweri ako " +
+      "všetky skupiny). Pri prekrytí vyhráva NESKORŠIA skupina v groups aj novšie volanie: konkrétnu trasu " +
+      "alebo výnimku daj ako poslednú skupinu, širšie farby pred ňu (jedno volanie stačí). colorize / transparent / isolate / xray idú do panelu Lens vo vieweri ako " +
       "lens 'AIM chat' (pravidlo = skupina, legenda, počty; prvky mimo pravidiel sú stlmené); " +
       "ďalšie volania pridávajú pravidlá (mode=replace začne odznova), počty na pravidlo " +
       "vráti živý viewer v odpovedi. Farby podľa hodnoty (systémy, triedy, materiál, " +
       "vlastnosť...) = color_by, viewer zvolí farby a vráti legendu; filtre volania (ifc_type, storey...) " +
-      "obmedzia farby, legendu aj počty na tieto prvky, bez filtra pri izolácii len viditeľné. Legendu na celú " +
-      "plochu = action=legend (legend_size large/normal). Miestnosti (IfcSpace) a zóny sú vo vieweri predvolene " +
-      "skryté: farbenie či izolácia ich zapne sama, ručne show/hide s ifc_type=IfcSpace; v 2D pôdoryse sú " +
-      "ofarbené miestnosti vyplnené a popísané. Farby určuje používateľ; " +
+      "obmedzia farby, legendu aj počty na tieto prvky, bez filtra pri izolácii len viditeľné. 'Ukáž legendu' = " +
+      "action=legend (malá karta len s AIM chat lens; legend_size large = veľké okno, normal = panel). Miestnosti " +
+      "(IfcSpace) a zóny sú vo vieweri predvolene skryté: farbenie či izolácia ich zapne sama, ručne show/hide s " +
+      "ifc_type=IfcSpace; farba miestnosti ostane priesvitná (prvky v nej vidno, NEPRIDÁVAJ transparent pravidlo); " +
+      "v pôdoryse (2D alebo vodorovný rez s pohľadom zhora) sú ofarbené aj vybrané miestnosti vyplnené a popísané. " +
+      "Odpoveď vráti stav po príkaze: pravidlo s inactive nič nezafarbilo (POZOR ho vysvetlí: prekryté vs filter nič nenašiel), izolácia s active=false už neplatí, " +
+      "changed_outside_commands = čo zmenil používateľ od predošlého príkazu, POZOR = upozornenie (aktívny rez, " +
+      "viac systémov vo filtri, viac okien viewera) - povedz ho používateľovi. Farby určuje používateľ; " +
       "keď ich nepovie, zvoľ dobre odlíšiteľné a povedz ich. " +
       "Efekty sa hromadia, kým ich nezruší show_all/reset_colors (reset_colors vypne aj " +
       "lens). Viac operácií = viac callov (pokojne v jednom kole).",
@@ -494,7 +559,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             "ostanú v pôvodnom vzhľade, color len keď ho používateľ chce), xray=vybrané plné v pôvodnom " +
             "vzhľade a zvyšok modelu priesvitný (X-ray context, ako tlačidlo duch; filtre ako isolate), " +
             "show_all=zrušiť skrývanie, izoláciu, X-ray aj rez (rez vráti set_section), reset_colors=zrušiť ofarbenie a lens, " +
-            "legend=len veľkosť legendy Lens (legend_size), bez filtrov",
+            "legend=len legenda AIM chat lens (legend_size; predvolene malá karta), bez filtrov",
+        },
+        opacity: {
+          type: "number",
+          description:
+            "colorize: 0.05 až 1. Menej ako 1 = priesvitná farba (prvky vnútri a za nimi je vidno), 1 = plná farba. " +
+            "Bez hodnoty sú IfcSpace a zóny priesvitné, ostatné prvky plné. Viewer kreslí jednu úroveň priesvitnosti, " +
+            "presná hodnota ešte nemení stupeň. Veľké prvky (steny, dosky) farbi priesvitne, ak majú ostať vidno ďalšie farby",
         },
         mode: {
           type: "string",
@@ -502,7 +574,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           description:
             "Lens (colorize/transparent/isolate/xray): add = pridať k doterajším pravidlám (predvolené; pri isolate a xray " +
             "rozšíri aktuálnu izoláciu, napr. 'pridaj aj schodiská' = isolate + mode=add, jeden call), replace = " +
-            "začať odznova (nová izolácia)",
+            "začať odznova (zmaže aj farby a priehľadnosť z predošlých volaní, odpoveď to oznámi vo warnings; " +
+            "izolácia nad existujúcou farbou = mode=add, alebo farby daj do groups toho istého volania)",
         },
         color_by: {
           type: "string",
@@ -511,11 +584,17 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         legend_size: {
           type: "string",
-          enum: ["large", "normal"],
+          enum: ["compact", "large", "normal"],
           description:
-            "Legenda Lens: large = panel Lens ako veľké okno cez takmer celý viewer, legenda bez orezania " +
-            "('zväčši legendu na celú stranu'); normal = späť do lišty. S action=legend (predvolene large) " +
-            "alebo spolu s colorize/color_by",
+            "Legenda: compact = malá karta len s legendou AIM chat lens, bez panelu Lens (predvolené pri action=legend); " +
+            "large = panel Lens ako veľké okno cez takmer celý viewer ('zväčši legendu na celú stranu'); normal = " +
+            "späť do lišty. S action=legend alebo spolu s colorize/color_by",
+        },
+        clear_section: {
+          type: "boolean",
+          description:
+            "true = v tom istom volaní zruší aktívny rez (napr. zabudnutý vodorovný rez z predošlej úlohy pri " +
+            "isolate, xray alebo colorize celého systému)",
         },
         color_by_key: {
           type: "string",
@@ -636,6 +715,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             properties: {
               label: { type: "string" },
               color: { type: "string", description: "Hex RRGGBB" },
+              opacity: { type: "number", description: "0.05 až 1; menej ako 1 = priesvitná farba, 1 = plná" },
               system: { type: "string" },
               system_type: { type: "string" },
               zone: { type: "string" },
@@ -674,15 +754,23 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         in_viewer: {
           type: "boolean",
           description:
-            "true = otvorí dokument ako kartu vedľa 3D modelu vo vieweri (bez zvýraznenia " +
-            "prvku); default false = samostatná prehliadačka výkresu",
+            "true = otvorí dokument vo vieweri (bez zvýraznenia prvku), ako záložku podľa target; " +
+            "default false = samostatná prehliadačka výkresu",
+        },
+        target: {
+          type: "string",
+          enum: ["tab", "split"],
+          description:
+            "Vo vieweri (D-132): tab = vlastná záložka na celú plochu (default), split = vedľa 3D alebo " +
+            "pohľadu ('otvor výkres vedľa modelu'). Zadaný target otvára vo vieweri aj bez in_viewer.",
         },
         region: {
           type: "object",
           description:
             "Voliteľné: výrez strany v % (0-100, počiatok vľavo hore), napr. pravý horný roh = " +
-            "{x:50,y:0,width:50,height:50}. Karta sa priblíži, aby výrez vyplnil plochu, a vycentruje " +
-            "ho; aj pre už otvorenú kartu. S region sa výkres vždy otvorí vo vieweri (in_viewer). " +
+            "{x:50,y:0,width:50,height:50}. Karta sa priblíži podľa svojej skutočnej veľkosti, aby výrez vyplnil plochu, " +
+            "a vycentruje ho; aj pre už otvorenú kartu. Stav po príkaze nesie document.visible (viditeľná časť strany v %) " +
+            "a region_fully_visible. S region sa výkres vždy otvorí vo vieweri (in_viewer). " +
             "Polohu prvku vo výkrese tool nepozná: výrez určí používateľ slovne (vpravo hore, " +
             "stred, ľavý okraj...) a ďalší krok sa odvodí z predchádzajúceho výrezu.",
           properties: {
@@ -736,7 +824,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "(2) q + document_id = hľadanie len v tom dokumente (napr. 'ukáž vo výkrese popisok 1.05', " +
       "'nájdi v technickej správe požiarnu odolnosť'); (3) document_id bez q = PREČÍTA stranu " +
       "(page, default 1): celý text, s include_blocks aj riadky s polohou na strane (legenda, " +
-      "kóty). regions = kde na strane text je (bbox v %): 'ukáž/zvýrazni vo výkrese' = " +
+      "kóty), s include_links popisky prvkov a miestností spárované s prvkami (bublina '08 DD01' -> " +
+      "DD01.08.0001; AIM odvodenie, vo vieweri sú to klikateľné odkazy). regions = kde na strane text " +
+      "je (bbox v %): 'ukáž/zvýrazni vo výkrese' = " +
       "open_drawing(document_id, page, highlights=[regions[].bbox]) - karta sa priblíži a text " +
       "orámuje. Slová sa hľadajú aj v inom tvare (skloňovanie). Výmery a objemy (murivo, plochy) " +
       "počítaj z kót výkresu LEN na výslovnú žiadosť 'z výkresu' a ako hrubý odhad; inak vždy z " +
@@ -763,6 +853,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           description:
             "Čítanie: aj riadky textu s polohou {t, x, y, w, h} v % strany (počiatok vľavo hore)",
         },
+        include_links: {
+          type: "boolean",
+          description:
+            "Čítanie: aj popisky na strane spárované s prvkami (text, code, bbox v %, status " +
+            "unique/candidates/none, targets s object_ref a GUID); kandidáti = typ má na podlaží viac výskytov",
+        },
         limit: { type: "number", description: "Max výsledkov (default 10, strop 50)" },
       },
     },
@@ -777,6 +873,9 @@ export interface ToolExecution {
 }
 
 /** Runtime jednej /api/ask požiadavky: vykonáva tools + zbiera zdroje a trace. */
+/** Strop prvkov jedného viacnásobného výberu (#217): GUIDy idú v URL `ops`. */
+const MAX_SELECT_REFS = 200;
+
 export class AskToolRuntime {
   private sources = new Map<string, AskSource>();
   readonly trace: AskToolTrace[] = [];
@@ -818,7 +917,7 @@ export class AskToolRuntime {
 
   async exec(name: string, input: Record<string, unknown>): Promise<ToolExecution> {
     try {
-      const result = await this.dispatch(name, input);
+      const result = fitPage(await this.dispatch(name, input), MAX_RESULT_CHARS);
       let content = JSON.stringify(result);
       if (content.length > MAX_RESULT_CHARS) {
         content = content.slice(0, MAX_RESULT_CHARS) + "…(orezané)";
@@ -862,9 +961,8 @@ export class AskToolRuntime {
         return this.searchDocuments(input);
       case "show_in_3d":
         if (input.select === true) {
-          // D-115: výber ako klik je režim show_in_3d; jeden prvok aj z ids_or_refs.
-          const first = Array.isArray(input.ids_or_refs) ? input.ids_or_refs[0] : undefined;
-          return this.selectIn3d({ ...input, id_or_ref: input.id_or_ref ?? first });
+          // D-115: výber ako klik je režim show_in_3d; viac prvkov z ids_or_refs je viacnásobný výber (#217).
+          return this.selectIn3d(input);
         }
         return this.showIn3d(input);
       case "style_in_3d":
@@ -910,21 +1008,38 @@ export class AskToolRuntime {
   private async searchObjects(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
     const limit = clampLimit(input.limit);
+    const offset = clampOffset(input.offset);
     const q = this.applyObjectFilters(
       supabase
         .from("objects")
-        .select("id, object_type, object_ref, name, ifc_type, predefined_type"),
+        .select("id, object_type, object_ref, name, ifc_type, predefined_type", { count: "exact" }),
       input
-    ).limit(limit);
+    )
+      .order("id", { ascending: true })
+      .range(offset, offset + limit - 1);
 
-    const { data, error } = await q;
+    const { data, count, error } = await q;
     if (error) throw new Error(error.message);
     const rows = (data ?? []) as ObjectRow[];
     for (const r of rows) this.addSource(r);
-    if (rows.length === 0) {
-      return { rows, hint: "Nič sa nenašlo — zavolaj get_model_stats a over hodnoty filtrov." };
+    if (rows.length === 0 && offset === 0) {
+      return {
+        rows,
+        hint:
+          "Nič sa nenašlo v názve ani kóde — skús fulltext search_everything (v MCP search_all; vidí psety, " +
+          "napr. 'lobby' miestnosti 1.01), slovník tried dá get_model_stats.",
+      };
     }
-    return rows;
+    // Eval D-126 (N2): list s limit=100 pri 139 vyústkach vrátil 100 riadkov bez znamenia, že chýba zvyšok.
+    const page = pageInfo(count ?? offset + rows.length, offset, rows.length);
+    const { same, rows: narrow } = hoistFilterColumns(rows, input);
+    if (!page.truncated && offset === 0 && !same) return rows;
+    return {
+      ...page,
+      ...(page.truncated ? { hint: `Výsledok je orezaný: ďalšia strana offset=${page.next_offset}.` } : {}),
+      ...(same ? { same } : {}),
+      rows: narrow,
+    };
   }
 
   /**
@@ -1119,7 +1234,11 @@ export class AskToolRuntime {
     };
   }
 
-  /** Generický read-only dopyt nad whitelistom relácií (celá dátová vrstva). */
+  /**
+   * Generický read-only dopyt nad whitelistom relácií (celá dátová vrstva).
+   * D-126: vždy stabilné poradie (kľúč relácie za `order`), `offset` a súhrn
+   * strany (total, truncated, next_offset); `related` zúži uzly na susedov uzla.
+   */
   private async queryView(input: Record<string, unknown>) {
     const supabase = getSupabaseAdmin();
     const relation = String(input.relation ?? "").trim();
@@ -1134,52 +1253,95 @@ export class AskToolRuntime {
           (c): c is string => typeof c === "string" && COLUMN_RE.test(c)
         )
       : [];
-    const select = selectCols.length > 0 ? selectCols.join(", ") : "*";
-
     const countOnly = input.count_only === true;
-    let q = countOnly
-      ? supabase.from(relation).select("*", { count: "exact", head: true })
-      : supabase.from(relation).select(select).limit(clampLimit(input.limit));
+    const limit = clampLimit(input.limit);
+    const offset = clampOffset(input.offset);
+    const related = parseRelated(input.related, relation, REL_VIEWS);
 
-    const filters = Array.isArray(input.filters) ? (input.filters as unknown[]) : [];
-    for (const f of filters) {
-      if (typeof f !== "object" || f === null) continue;
-      const { column, op, value } = f as { column?: unknown; op?: unknown; value?: unknown };
-      const col = String(column ?? "");
-      const operator = String(op ?? "");
-      if (!COLUMN_RE.test(col)) throw new Error(`Neplatný stĺpec '${col}'.`);
-      if (!QUERY_OPS.has(operator))
-        throw new Error(`Neplatný operátor '${operator}' — povolené: ${[...QUERY_OPS].join(", ")}.`);
-      // PostgREST porovnáva JSONB cesty ako TEXT ('9' > '10') → číselné porovnanie
-      // psetov musí ísť cez aggregate_objects (guidance error, viditeľný v trace).
-      if (col.includes("->") && ["gt", "gte", "lt", "lte"].includes(operator)) {
+    const rawOrder = input.order as { column?: unknown; ascending?: unknown } | undefined;
+    let order: OrderTerm | null = null;
+    if (rawOrder !== undefined) {
+      if (typeof rawOrder?.column !== "string" || !COLUMN_RE.test(rawOrder.column))
+        throw new Error("order.column: stĺpec relácie.");
+      order = { column: rawOrder.column, ascending: rawOrder.ascending !== false };
+    }
+    const terms = orderTerms(relation, order);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const applyFilters = (q: any) => {
+      const filters = Array.isArray(input.filters) ? (input.filters as unknown[]) : [];
+      for (const f of filters) {
+        if (typeof f !== "object" || f === null) throw new Error("filters: pole objektov {column, op, value}.");
+        const { column, op, value } = f as { column?: unknown; op?: unknown; value?: unknown };
+        const col = String(column ?? "");
+        const operator = String(op ?? "");
+        if (!COLUMN_RE.test(col)) throw new Error(`Neplatný stĺpec '${col}'.`);
+        if (!QUERY_OPS.has(operator))
+          throw new Error(`Neplatný operátor '${operator}' — povolené: ${[...QUERY_OPS].join(", ")}.`);
+        // PostgREST porovnáva JSONB cesty ako TEXT ('9' > '10') → číselné porovnanie
+        // psetov musí ísť cez aggregate_objects (guidance error, viditeľný v trace).
+        if (col.includes("->") && ["gt", "gte", "lt", "lte"].includes(operator)) {
+          throw new Error(
+            `Porovnanie '${operator}' nad JSONB cestou tu porovnáva text ('9' > '10'), nie ` +
+              `čísla — použi aggregate_objects s filters: [{path: [...], op: '${operator}', ` +
+              `value: '...'}] (numericky bezpečné; return_rows=true vráti riadky).`
+          );
+        }
+        if (operator === "in") {
+          const vals = Array.isArray(value) ? value : [value];
+          if (vals.length > IN_CHUNK)
+            throw new Error(`Filter 'in' berie najviac ${IN_CHUNK} hodnôt (${vals.length}); zúž ho alebo použi related.`);
+          q = q.in(col, vals);
+        } else if (operator === "is") {
+          q = q.is(col, value === "null" ? null : (value as boolean | null));
+        } else {
+          q = q[operator](col, value);
+        }
+      }
+      return q;
+    };
+
+    let rows: Record<string, unknown>[];
+    let total: number;
+    if (related) {
+      const ids = await this.relatedIds(related);
+      if (ids.length > RELATED_CAP) {
         throw new Error(
-          `Porovnanie '${operator}' nad JSONB cestou tu porovnáva text ('9' > '10'), nie ` +
-            `čísla — použi aggregate_objects s filters: [{path: [...], op: '${operator}', ` +
-            `value: '...'}] (numericky bezpečné; return_rows=true vráti riadky).`
+          `Uzol má ${ids.length} susedov cez ${related.relation} (strop ${RELATED_CAP}); zúž dopyt filtrami inej relácie.`
         );
       }
-      if (operator === "in") {
-        const vals = Array.isArray(value) ? value : [value];
-        q = q.in(col, vals.slice(0, IN_CHUNK));
-      } else if (operator === "is") {
-        q = q.is(col, value === "null" ? null : (value as boolean | null));
-      } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        q = (q as any)[operator](col, value);
+      if (order?.column.includes("->")) throw new Error("order nad JSONB cestou s related nejde; zoraď podľa stĺpca.");
+      // Spojené dávky sa zoraďujú v TS, preto riadok nesie aj stĺpce poradia.
+      const cols = selectCols.length > 0 ? [...new Set([...selectCols, ...terms.map((t) => t.column)])] : [];
+      const all: Record<string, unknown>[] = [];
+      for (let i = 0; i < ids.length; i += IN_CHUNK) {
+        const q = applyFilters(
+          supabase.from(relation).select(cols.length > 0 ? cols.join(", ") : "*").in("id", ids.slice(i, i + IN_CHUNK))
+        );
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+        all.push(...((data ?? []) as Record<string, unknown>[]));
       }
+      total = all.length;
+      if (countOnly) return { count: total };
+      rows = sortRows(all, terms).slice(offset, offset + limit);
+    } else {
+      const select = selectCols.length > 0 ? selectCols.join(", ") : "*";
+      let q = countOnly
+        ? supabase.from(relation).select("*", { count: "exact", head: true })
+        : supabase.from(relation).select(select, { count: "exact" });
+      q = applyFilters(q);
+      if (!countOnly) {
+        for (const t of terms) q = q.order(t.column, { ascending: t.ascending });
+        q = q.range(offset, offset + limit - 1);
+      }
+      const { data, count, error } = await q;
+      if (error) throw new Error(error.message);
+      if (countOnly) return { count: count ?? 0 };
+      rows = (data ?? []) as Record<string, unknown>[];
+      total = count ?? offset + rows.length;
     }
 
-    const order = input.order as { column?: unknown; ascending?: unknown } | undefined;
-    if (!countOnly && order && typeof order.column === "string" && COLUMN_RE.test(order.column)) {
-      q = q.order(order.column, { ascending: order.ascending !== false });
-    }
-
-    const { data, count, error } = await q;
-    if (error) throw new Error(error.message);
-    if (countOnly) return { count: count ?? 0 };
-
-    const rows = (data ?? []) as Record<string, unknown>[];
     // Uzly do zdrojov (trust loop) — podľa tvaru riadku (objects/v_* views).
     for (const r of rows) {
       if (typeof r.id === "string" && (typeof r.object_type === "string" || relation === "v_asset_effective")) {
@@ -1191,7 +1353,41 @@ export class AskToolRuntime {
         });
       }
     }
-    return { rows, row_count: rows.length };
+    const page = pageInfo(total, offset, rows.length);
+    return {
+      ...page,
+      ...(page.truncated ? { hint: `Výsledok je orezaný: ďalšia strana offset=${page.next_offset}.` } : {}),
+      rows,
+    };
+  }
+
+  /** Susedia uzla cez kanonický view hrán (`related` v query_view, D-126). */
+  private async relatedIds(spec: RelatedSpec): Promise<string[]> {
+    const supabase = getSupabaseAdmin();
+    let nodeId = spec.node;
+    if (!isUuid(nodeId)) {
+      const { data, error } = await supabase
+        .from("objects")
+        .select("id")
+        .eq("object_ref", spec.node)
+        .is("valid_until", null)
+        .limit(2);
+      if (error) throw new Error(error.message);
+      const hit = (data ?? []) as { id: string }[];
+      if (hit.length === 0) throw new Error(`related.node '${spec.node}' nie je object_ref ani id uzla.`);
+      nodeId = hit[0].id;
+    }
+    const [match, other] = spec.direction === "to" ? (["to_id", "from_id"] as const) : (["from_id", "to_id"] as const);
+    const edges = await fetchAllPages<{ from_id: string; to_id: string }>((from, to) =>
+      supabase
+        .from(spec.relation)
+        .select("from_id, to_id")
+        .eq(match, nodeId)
+        .is("valid_until", null)
+        .order("id")
+        .range(from, to)
+    );
+    return [...new Set(edges.map((e) => e[other]).filter((v): v is string => typeof v === "string"))];
   }
 
   /**
@@ -1654,7 +1850,7 @@ export class AskToolRuntime {
     }
     if (!q) {
       if (!doc) throw new Error("Zadaj q (hľadaný text) alebo document_id (čítanie strany).");
-      return this.readDocumentPage(doc, page ?? 1, input.include_blocks === true);
+      return this.readDocumentPage(doc, page ?? 1, input.include_blocks === true, input.include_links === true);
     }
     if (q.length < 2) throw new Error("q musí mať aspoň 2 znaky.");
 
@@ -1714,8 +1910,8 @@ export class AskToolRuntime {
     });
   }
 
-  /** Čítanie strany dokumentu (D-123): text, voliteľne riadky s polohou. */
-  private async readDocumentPage(doc: ObjectRow, page: number, includeBlocks: boolean) {
+  /** Čítanie strany dokumentu (D-123): text, voliteľne riadky s polohou a odkazy z popiskov (D-130). */
+  private async readDocumentPage(doc: ObjectRow, page: number, includeBlocks: boolean, includeLinks = false) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("document_pages")
@@ -1739,6 +1935,7 @@ export class AskToolRuntime {
       return { ...document, page, text: null, pages_with_text: pagesWithText, hint: "Strana nemá text." };
     }
     const blocks = includeBlocks ? parseBlocks(hit.blocks) : [];
+    const links = includeLinks ? ((await fetchDocumentLinks(doc.id, page))[0]?.links ?? []) : null;
     return {
       ...document,
       page,
@@ -1749,6 +1946,15 @@ export class AskToolRuntime {
         ? {
             blocks: compactBlocks(blocks),
             ...(blocks.length > PAGE_BLOCKS_CAP ? { blocks_truncated: true, blocks_total: blocks.length } : {}),
+          }
+        : {}),
+      ...(links
+        ? {
+            links,
+            links_summary: linkSummary(links),
+            links_note:
+              "AIM odvodenie (D-130): popisok -> prvok podľa object_ref; typový kód (DD01 08) = jediný výskyt " +
+              "typu na podlaží výkresu, inak candidates. Vo vieweri je popisok klikateľný.",
           }
         : {}),
       deep_link: `/drawing/${doc.id}?page=${page}`,
@@ -2051,7 +2257,44 @@ export class AskToolRuntime {
       this.actions.push({ type: "navigate", url: `/ifc?ops=clear_selection::&r=${Date.now().toString(36)}`, label: "Zrušiť výber" });
       return { ok: true, cleared: "výber" };
     }
-    const ref = String(input.id_or_ref ?? "").trim();
+    const refs = [
+      ...new Set(
+        [input.id_or_ref, ...(Array.isArray(input.ids_or_refs) ? input.ids_or_refs : [])]
+          .map((r) => String(r ?? "").trim())
+          .filter(Boolean)
+      ),
+    ];
+    if (refs.length === 0) throw new Error("Prvok neexistuje — najprv ho nájdi cez search_objects.");
+    if (refs.length > MAX_SELECT_REFS) throw new Error(`Výber má najviac ${MAX_SELECT_REFS} prvkov, dostal som ${refs.length}.`);
+    const items: Array<{ label: string; guid: string; obj: ObjectRow | null }> = [];
+    for (const ref of refs) {
+      const item = await this.guidForSelect(ref);
+      if (!items.some((i) => i.guid === item.guid)) items.push(item);
+    }
+    const [primary] = items;
+
+    const panel = selectPanelInput(input);
+    const multi = items.length > 1;
+    this.actions.push({
+      type: "navigate",
+      url: `/ifc?ops=${encodeURIComponent(selectOp(items.map((i) => i.guid), panel))}&r=${Date.now().toString(36)}`,
+      label: multi ? `3D: výber ${items.length} prvkov` : `3D: výber ${primary.label}`,
+    });
+    // D-127: či zvýraznená vlastnosť na prvku je, povie hneď AIM; IFC panel to potvrdí v stave po príkaze.
+    const property = panel?.focus && primary.obj ? await this.propertyOf(primary.obj, panel.focus.pset, panel.focus.property) : undefined;
+    return {
+      ok: true,
+      opened: "3d",
+      selected: multi ? items.map((i) => i.label) : primary.label,
+      ifc_guid: primary.guid,
+      ...(multi ? { ifc_guids: items.map((i) => i.guid), selected_count: items.length } : {}),
+      ...(panel ? { panel } : {}),
+      ...(property ? { property } : {}),
+    };
+  }
+
+  /** Prvok výberu -> popis a aktuálny IFC GUID (D-082, D-102); chyba, ak ho viewer nemá. */
+  private async guidForSelect(ref: string): Promise<{ label: string; guid: string; obj: ObjectRow | null }> {
     const obj = await this.resolveObject(ref);
     let label = ref;
     let guid: string | undefined;
@@ -2068,19 +2311,19 @@ export class AskToolRuntime {
       if (!guid) {
         throw new Error(`${label} nemá IFC GUID — nie je v 3D modeli (kartu otvor cez open_node).`);
       }
-    } else if (ref && !isUuid(ref)) {
+    } else if (!isUuid(ref)) {
       guid = (await resolveNamesToGuids([ref])).get(ref); // kód prvku (D-102)
     }
-    if (!guid) throw new Error("Prvok neexistuje — najprv ho nájdi cez search_objects.");
+    if (!guid) throw new Error(`Prvok ${ref} neexistuje — najprv ho nájdi cez search_objects.`);
+    return { label, guid, obj };
+  }
 
-    const panel = selectPanelInput(input);
-    this.actions.push({
-      type: "navigate",
-      url: `/ifc?ops=${encodeURIComponent(selectOp(guid, panel))}&r=${Date.now().toString(36)}`,
-      label: `3D: výber ${label}`,
-    });
-    const note = selectPanelNote(input);
-    return { ok: true, opened: "3d", selected: label, ifc_guid: guid, ...(panel ? { panel } : {}), ...(note ? { note } : {}) };
+  /** `pset.property` v dátach AIM prvku (výskyt s dedičnosťou z typu, D-021) - D-127. */
+  private async propertyOf(obj: ObjectRow, pset: string, property: string): Promise<PropertyLookup> {
+    const relation = obj.object_type === "asset" ? "v_asset_effective" : "objects";
+    const { data, error } = await getSupabaseAdmin().from(relation).select("properties").eq("id", obj.id).limit(1);
+    if (error) throw new Error(error.message);
+    return lookupProperty((data?.[0] as { properties?: unknown } | undefined)?.properties, pset, property);
   }
 
   /**
@@ -2384,16 +2627,22 @@ export class AskToolRuntime {
     if (input.region !== undefined && !region) {
       throw new Error("region musí mať x, y, width, height v % strany (0-100) a ležať na strane.");
     }
-    if (input.in_viewer === true || region) {
-      // Karta dokumentu vedľa 3D (D-075 DOCUMENT_OPEN cez op `doc`, D-083), výrez strany D-117, rámiky D-123.
+    if (input.target !== undefined && input.target !== "tab" && input.target !== "split") {
+      throw new Error("target: tab (záložka na celú plochu) alebo split (vedľa 3D).");
+    }
+    if (input.in_viewer === true || region || input.target !== undefined) {
+      // Dokument vo vieweri (D-075 DOCUMENT_OPEN cez op `doc`, D-083), výrez strany D-117, rámiky D-123,
+      // záložka na celú plochu alebo vedľa 3D (D-132).
+      const layout = input.target === "split" ? "split" : undefined;
       this.actions.push({
         type: "navigate",
-        url: `/ifc?ops=${encodeURIComponent(docOp(doc.id, page ?? undefined, region, highlights))}&r=${Date.now().toString(36)}`,
+        url: `/ifc?ops=${encodeURIComponent(docOp(doc.id, page ?? undefined, region, highlights, layout))}&r=${Date.now().toString(36)}`,
         label: `Viewer: ${label}`,
       });
       return {
         ok: true,
         opened: "viewer_document",
+        layout: layout ?? "tab",
         document: label,
         ...(page ? { page } : {}),
         ...(region ? { region: { x: region.x, y: region.y, width: region.w, height: region.h } } : {}),

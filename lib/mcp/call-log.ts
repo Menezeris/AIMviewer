@@ -29,6 +29,14 @@ export function callAction(args: Record<string, unknown>): string | null {
   return null;
 }
 
+/**
+ * Volanie odmietnuté pre neznámy parameter (D-126) sa nevykoná, ale zapíše sa, aby bolo v logu
+ * vidno, koľko volaní stálo: `action` = `unknown_param:<mená>`, `ms` 0, `ok` false.
+ */
+export function rejectedCallRow(tool: string, unknown: string[], region: string | null): McpCallLogRow {
+  return { tool, action: `unknown_param:${unknown.join(",")}`.slice(0, 40), ms: 0, ok: false, cold: false, phases: {}, region };
+}
+
 type Insert = (row: McpCallLogRow) => Promise<{ error: { message: string } | null }>;
 
 const defaultInsert: Insert = async (row) => {
@@ -43,4 +51,16 @@ export async function writeCallLog(row: McpCallLogRow, insert: Insert = defaultI
   } catch (err) {
     console.warn(`[mcp] call log: ${err instanceof Error ? err.message : String(err)}`);
   }
+}
+
+/** Volal niekto tool motora od `sinceIso` (D-135)? Pre `engineUsedSince` v `engine-warm.ts`. */
+export async function engineUseQuery(sinceIso: string, tools: string[]): Promise<boolean> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("mcp_call_log")
+    .select("id")
+    .gte("created_at", sinceIso)
+    .in("tool", tools)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  return (data ?? []).length > 0;
 }

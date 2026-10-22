@@ -59,7 +59,7 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "bcf_topic_list",
     description:
-      "BCF témy nad modelmi federácie (D-099), najnovšie prvé: číslo, guid, názov, stav, typ, priorita, " +
+      "BCF témy nad modelmi federácie (D-099; issues a požiadavky konektora dá feedback_status), najnovšie prvé: číslo, guid, názov, stav, typ, priorita, " +
       "komu, model, počet prvkov a komentárov, odkaz na Claude session. Filtre status, model, assigned_to " +
       "('claude' = témy pre Claude). S guid (alebo číslom témy) vráti detail: popis, komentáre, pohľad " +
       "(kamera, rez, výber) a GlobalId prvkov - prvky ukáž cez show_in_3d(global_ids). S filtrom vráti aj " +

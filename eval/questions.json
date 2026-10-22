@@ -800,6 +800,217 @@
       "notes": "D-122 (issue #72): set_view_mode(saved_view='Posledný pohľad', section_offset_m=-1); predtým uložený pohľad cez saved_view(action=save). Len MCP so živým viewerom."
     },
     {
+      "id": "space-isolate-terminals",
+      "category": "view",
+      "question": "Izoluj miestnosť 2.01 a vzduchotechnické koncové prvky v nej, koncové prvky ofarbi na červeno.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-125 (issue #182): jeden style_in_3d isolate s groups (miestnosť, terminály ef4444); žiadne ďalšie transparent pravidlo na IfcSpace, farba miestnosti ostane priesvitná. Len MCP so živým viewerom."
+    },
+    {
+      "id": "user-turned-off-isolation",
+      "category": "view",
+      "question": "Pridaj k izolácii aj potrubia v tej miestnosti.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-125 (issue #180): ak odpoveď nesie changed_outside_commands (izoláciu vypol používateľ), model to povie a nestavia na starej izolácii. Scenár so živým viewerom a ručným zrušením izolácie."
+    },
+    {
+      "id": "color-ventilation-supply-exhaust",
+      "category": "view",
+      "question": "Ukáž len model VZT, prívodné potrubie červené a odvodné modré.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-125 (issue #177): pri system_type výsledok vypíše system_members a varovanie, model zúži cez system=<presný názov> alebo to povie; pri aktívnom reze riadok POZOR a clear_section=true."
+    },
+    {
+      "id": "legend-compact",
+      "category": "view",
+      "question": "Ukáž legendu.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-125 (issue #178): style_in_3d action=legend bez legend_size = malá karta AIM chat lens."
+    },
+    {
+      "id": "space-fill-plan-cut",
+      "category": "view",
+      "question": "Ofarbi miestnosť 1.01 na oranžovo a ukáž ju v pôdoryse 1NP zhora.",
+      "expect": { "tools_called": ["style_in_3d", "set_section", "set_camera"] },
+      "verified": false,
+      "notes": "D-125 (issue #175): výplň miestnosti aj v 3D pri reze 1NP + 1,2 m a set_camera top (alebo set_view_mode 2d); výplň sa overuje len vizuálne."
+    },
+    {
+      "id": "air-terminals-in-space-201",
+      "category": "count",
+      "question": "Ktoré vyústky (IfcAirTerminal) sú v priestore 2.01? Daj úplný zoznam.",
+      "expect": { "tools_called": ["query_view"] },
+      "verified": true,
+      "notes": "D-126 (issue #181): query_view relation=v_space_elements (space_ref=2.01, element_ifc_type=IfcAirTerminal) alebo relation=objects s related={relation: rel_referenced_in_spatial_structure, node: 2.01}. Konektor 2026-10-21: v_space_elements 20 riadkov (contained aj referenced); odpoveď nesmie byť z orezanej strany (truncated). Eval 2026-10-21 (D-126): 20 vyústiek DIFFUSER inside; prvé volanie s filtrom ifc_type zlyhalo (stĺpec je element_ifc_type)."
+    },
+    {
+      "id": "air-terminals-count-paged",
+      "category": "count",
+      "question": "Koľko je v budove vyústiek? Vypíš ich všetky.",
+      "expect": { "tools_called": ["query_view"], "answer_matches": ["\\b139\\b"] },
+      "verified": true,
+      "notes": "D-126 (issue #181): query_view(objects, ifc_type=IfcAirTerminal) vráti total=139, truncated=true, next_offset=100; druhá strana offset=100 dá zvyšných 39. 139 z konektora 2026-10-21 (aggregate_objects s filters). Eval 2026-10-21: 139 overené; agent šiel cez search_objects (10 volaní), 100 riadkov sa nezmestilo do výsledku a next_offset preskakoval riadky - opravené fitPage."
+    },
+    {
+      "id": "rentable-spaces",
+      "category": "search",
+      "question": "Ukáž mi prenajímateľné priestory.",
+      "expect": { "tools_called": ["search_all", "show_in_3d"] },
+      "verified": false,
+      "notes": "D-126 (issue #174): search_all(prenajímateľné) nájde IfcZone Nájomné priestory (LongName) a cez related jej priestory, ich id sú v show_in_3d.ids_or_refs. Počet priestorov zóny neoverený. Eval 2026-10-21: zóna Nájomné priestory má 32 miestností (style_in_3d zone); agent search_all nezavolal."
+    },
+    {
+      "id": "lobby-space",
+      "category": "search",
+      "question": "Zvýrazni mi lobby.",
+      "expect": { "tools_called": ["search_all", "show_in_3d"], "answer_matches": ["1\\.01"] },
+      "verified": true,
+      "notes": "D-126 (issue #174): search_all(lobby) vráti priestor 1.01 (LongName Lobby) ako prvý výsledok, nie search_objects. Konektor 2026-10-21. Eval 2026-10-21: 1.01 nájdené cez search_all po prázdnom search_objects."
+    },
+    {
+      "id": "closed-unverified-issues",
+      "category": "feedback",
+      "question": "Ktoré issues sme už dokončili, ale ešte nie sú skontrolované?",
+      "expect": { "tools_called": ["feedback_status"] },
+      "verified": false,
+      "notes": "D-126 (issue #171): feedback_status(state=closed, verified=false). Len MCP s FEEDBACK_GITHUB_TOKEN. Eval 2026-10-21: agent vzal 'issues' ako BCF témy (bcf_topic_list status=resolved); otázka je dvojznačná."
+    },
+    {
+      "notes": "D-126 (issue #171): feedback_status(state=closed, verified=false). Len MCP s FEEDBACK_GITHUB_TOKEN."
+    },
+    {
+      "id": "select-highlight-fire-compartment",
+      "category": "view",
+      "question": "Vyber dvere DD01.08.0001 a ukáž mi v paneli vlastnosť AIM_FireSafety.FireCompartments.",
+      "expect": { "tools_called": ["show_in_3d"] },
+      "verified": false,
+      "notes": "D-127 (issue #168): show_in_3d(select=true, id_or_ref=DD01.08.0001, highlight=AIM_FireSafety.FireCompartments) -> property.in_aim=true, hodnota N1.01; zvýraznenie drží do ďalšieho výberu. Len MCP so živým viewerom."
+    },
+    {
+      "id": "panels-close-all-but-properties",
+      "category": "view",
+      "question": "Zavri všetky panely okrem vlastností.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-127 (issue #179): set_view_mode(panels={all:'close', properties:'open'}) -> stav panelov v odpovedi. Len MCP so živým viewerom."
+    },
+    {
+      "id": "drawing-region-visible",
+      "category": "view",
+      "question": "Otvor pôdorys 1NP a priblíž tabuľku miestností vpravo dole.",
+      "expect": { "tools_called": ["open_drawing"] },
+      "verified": false,
+      "notes": "D-127 (issue #166): open_drawing(region={x:70,y:70,width:30,height:30}) -> document.region_fully_visible=true v stave po príkaze. Len MCP so živým viewerom."
+    },
+    {
+      "id": "section-parapet-left",
+      "category": "view",
+      "question": "Sprav zvislý rez po dĺžke budovy a priblíž mi atiku na ľavej strane.",
+      "expect": { "tools_called": ["set_section", "set_camera"] },
+      "verified": false,
+      "notes": "D-128 (issue #172): set_section + search_objects(PARAPET) + set_camera(preset=section, target_ids_or_refs, area=left), najviac 3 volania; okraj predvolene 40 %, visible v potvrdení viewera."
+    },
+    {
+      "id": "section-hatch-diagonal",
+      "category": "view",
+      "question": "Daj na rez diagonálnu šrafu pod 45 stupňov s väčším rozstupom.",
+      "expect": { "tools_called": ["set_section"] },
+      "verified": false,
+      "notes": "D-128 (issue #173): set_section(action=widget, hatch_pattern=diagonal, hatch_angle_deg=45, hatch_spacing_px nad 8)."
+    },
+    {
+      "id": "drawing-label-door",
+      "category": "documents_content",
+      "question": "Ktoré dvere sú na pôdoryse 1NP v bubline 08 DD01?",
+      "expect": { "tools_called": ["search_documents"] },
+      "verified": false,
+      "notes": "D-130 (issue #167): search_documents(document_id=OCB_SO01_ASR_D-1-1-01_PODORYS-1NP, include_links=true) -> DD01.08.0001 (jediný výskyt typu DD01.08 na 1NP). Hodnota overená nad produkciou 2026-10-21, eval nespustený."
+    },
+    {
+      "id": "calibrate-underlay-1np",
+      "category": "viewer",
+      "question": "Skalibruj podklad D.1.1.01 Pôdorys 1NP pod model a ukáž mi odchýlku.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-133 (issue #170): calibrate_underlay(document_id=OCB_SO01_ASR_D-1-1-01_PODORYS-1NP, mode=dry_run); bez výslovného 'ulož' nezapisovať. Prototyp: mierka 1:49,95, medián okolo 10 mm. Len MCP s ENGINE_ENABLED."
+    },
+    {
+      "id": "calibrate-underlay-rez-a",
+      "category": "viewer",
+      "question": "Skontroluj, ako presne sedí rez A na model, rovina rezu je X = 47,42 m.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-133 (issue #170): calibrate_underlay(document_id=OCB_SO01_ASR_D-1-1-05_REZ-A, section_plane={axis:x, coordinate_m:47.42}). Prototyp: medián 8 mm."
+    },
+    {
+      "id": "view-tab-floor-plan",
+      "category": "viewer",
+      "question": "Otvor pôdorys 1NP v novej záložke a 3D model nechaj vo vlastnej.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-132 (issue #165): set_view_mode(mode=2d, floor=1NP) otvorí pôdorys do záložky, 3D ostane prvou záložkou. Overí sa až s viewerom s fork patchom D-132."
+    },
+    {
+      "id": "view-tab-back-to-3d",
+      "category": "viewer",
+      "question": "Prepni späť na 3D model bez straty rezu a kamery.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-132 (issue #165): set_view_mode(tab=3D); stav 3D záložky vráti fork. Nie reset."
+    },
+    {
+      "id": "view-tab-drawing",
+      "category": "viewer",
+      "question": "Otvor výkres pôdorysu 1NP na celú obrazovku, potom ho zavri a vráť sa na 3D.",
+      "expect": { "tools_called": ["open_drawing", "set_view_mode"] },
+      "verified": false,
+      "notes": "D-132 (issue #165): open_drawing(target=tab), potom set_view_mode(close_tab=menovka) alebo tab=3D; document_id z search_documents alebo get_object."
+    },
+    {
+      "id": "view-tab-section-and-plan",
+      "category": "viewer",
+      "question": "Vytvor záložku so zvislým rezom cez schodisko a ďalšiu s pôdorysom.",
+      "expect": { "tools_called": ["set_section", "saved_view", "set_view_mode"] },
+      "verified": false,
+      "notes": "D-132 (issue #165): set_section(fit=along) cez schodisko, set_camera(preset=section, orthographic), saved_view(save, view_type=section, locked=true), set_view_mode(view=meno) a set_view_mode(mode=2d, floor). Poradie volaní nie je pevné."
+    },
+    {
+      "id": "style-overlay-path-on-top",
+      "category": "viewer",
+      "question": "Vyfarbi prívod VZT červenou, odvod modrou a konkrétnu trasu 19 prvkov ružovou navrch, v jednom volaní.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-138 (issue #221): jedno volanie colorize s groups, trasa ako posledná skupina vyhrá pri prekrytí; pravidlo s 0 prvkami sa hlási s dôvodom. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "style-xray-storey-context",
+      "category": "viewer",
+      "question": "Ukáž pôdorys stropov na 1NP: stropy plne, zvyšok priesvitný, pohľad zhora.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "Issue #187: xray s storey nechá priesvitný celý model; odpoveď nesie varovanie a model má skryť ostatné podlažia a dať rez. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "style-colorize-space-translucent",
+      "category": "viewer",
+      "question": "Ofarbi miestnosť 2.01 a susedné miestnosti na zeleno, dvere oranžovo a schodisko oranžovo, nech vidím únikovú cestu.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-139 (issue #222): miestnosti sú pri colorize priesvitné aj cez ids_or_refs, dvere a schod vnútri je vidno. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "feedback-triage-standard",
+      "category": "feedback",
+      "question": "Zapíš pripomienku: opis toolu get_object má preklep v slove 'vlastnosti'. Hneď spusti session.",
+      "expect": { "tools_called": ["feedback"] },
+      "verified": false,
+      "notes": "D-134: jasná lokálna zmena opisu -> feedback(action=report, narocnost=standard, narocnost_dovod). Parameter narocnost sa v eval harnessi nekontroluje (expect nemá argumenty), overenie = scenár cez konektor. Len MCP a zapisuje do GitHubu."
+    },
+    {
       "id": "object-quantities-one-call",
       "category": "details",
       "question": "Ukáž kvantitatívny set jedného stĺpca SL02.01.0030, chcem objem.",

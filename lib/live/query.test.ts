@@ -83,3 +83,36 @@ describe("počty AIM chat lens (D-096)", () => {
     expect(await lensCountsText("k", "r", async () => ({ ok: true, reply: { id: "x", ok: false, error: "boom" } }))).toMatch(/boom/);
   });
 });
+
+describe("zber odpovedí viacerých okien (D-125)", () => {
+  it("s collectMs vráti prvú odpoveď a odpovede ďalších okien, to isté okno znova nie", async () => {
+    const f = fakeChannel();
+    const pending = queryLiveViewer("kanal", "view_state", [], { open: f.open, timeoutMs: 1000, collectMs: 30 });
+    await tick();
+    const id = f.sent[0].payload.id;
+    f.reply({ id, ok: true, result: 1, viewer: "a" });
+    f.reply({ id, ok: true, result: 2, viewer: "b" });
+    f.reply({ id, ok: true, result: 3, viewer: "a" });
+    const out = await pending;
+    expect(out.ok && out.reply.viewer).toBe("a");
+    expect(out.ok && out.others?.map((r) => r.viewer)).toEqual(["b"]);
+  });
+
+  it("bez collectMs skončí hneď pri prvej odpovedi (doterajšie správanie)", async () => {
+    const f = fakeChannel();
+    const pending = queryLiveViewer("kanal", "view_state", [], { open: f.open, timeoutMs: 1000 });
+    await tick();
+    f.reply({ id: f.sent[0].payload.id, ok: true, result: 1, viewer: "a" });
+    const out = await pending;
+    expect(out.ok && out.others).toBeUndefined();
+  });
+
+  it("timeout počas zberu vráti prvú odpoveď, nie chybu", async () => {
+    const f = fakeChannel();
+    const pending = queryLiveViewer("kanal", "view_state", [], { open: f.open, timeoutMs: 20, collectMs: 500 });
+    await tick();
+    f.reply({ id: f.sent[0].payload.id, ok: true, result: 1, viewer: "a" });
+    const out = await pending;
+    expect(out.ok).toBe(true);
+  });
+});

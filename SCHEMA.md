@@ -416,6 +416,10 @@ create index idx_document_pages_tsv on document_pages
 
 -- D-123 (migrácia 20261020160000): riadky textu strany s polohou
 alter table document_pages add column blocks jsonb;  -- [{t, x, y, w, h}] v % strany, vľavo hore
+
+-- D-133 (migrácia 20261021120000): hrubé čiary výkresu pre kalibráciu podkladu
+alter table document_pages add column lines jsonb;   -- {size: [W, H], segs: [[x1, y1, x2, y2, w]]} v bodoch strany, vľavo dole;
+                                                     -- čiary od 0,99 pt, len vektorové výkresy, inak null
 ```
 
 Plní `python -m etl.pdf_text --from-db` (živé dokumenty, PDF zo storage, D-123) alebo
@@ -537,7 +541,10 @@ viewera spoločný pre stavbu: `name` (jedinečné bez ohľadu na veľkosť pís
 `ortho_size`, `section` s osou hosta a `coordinate`, `mode`, `storey_guid`, `storey_label`, počty
 výberu, skrytých a izolovaných), `selection`, `hidden` (IFC GlobalId, strop 600), `isolated`
 (GlobalId, NULL = bez izolácie), `model_revisions` (`{model: revízia}` v čase uloženia, D-086),
-`author`, `created_at`, `updated_at`, `last_used_at`. Jediný riadok `kind = 'last'` = "Posledný
+`author`, `created_at`, `updated_at`, `last_used_at`. Od D-132 (bez migrácie, len tvar jsonb) nesie `viewpoint`
+aj `view_type` (3d | plan | section | detail), `locked` (kamera zamknutá kolmo), `section.box` (rezný box
+`{min, max}` v IFC svete namiesto roviny) a `underlay` (`{document_id, page}`, kalibrácia ostáva v `_georef`
+dokumentu). Jediný riadok `kind = 'last'` = "Posledný
 pohľad", prepíše ho každé uloženie a obnova (`uniq_saved_views_last`). Zapisuje MCP konektor
 (`saved_view`, `set_view_mode(saved_view)`). Práva anon/authenticated nemá (2.12).
 

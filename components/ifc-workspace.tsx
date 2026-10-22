@@ -10,10 +10,12 @@ import type { DocumentWire } from "@/lib/data/documents";
 import type { CaptureViewerWire } from "@/lib/data/captures";
 import type { TreeDecorations } from "@/lib/data/decoration-counts";
 import type { DerivationsLayerWire } from "@/lib/derivations";
+import type { DocumentLinksWire } from "@/lib/data/drawing-links";
 import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { CaptureGallery } from "@/components/capture-gallery";
 import { Button } from "@/components/ui/button";
+import { LIVE_SLOT_ID } from "@/components/live-channel";
 import { ViewerPicker, useViewerChoice } from "@/components/viewer-picker";
 
 // 3D viewer je embed-nutý ifc-lite viewer cez iframe (postMessage bridge),
@@ -50,6 +52,7 @@ export default function IFCWorkspace({
   captures,
   decorations,
   derivations,
+  documentLinks,
 }: {
   models: IfcModel[];
   guidMap: GuidMap;
@@ -70,6 +73,8 @@ export default function IFCWorkspace({
   decorations?: TreeDecorations;
   /** Vrstva AIM nad modelmi (D-089): register pravidiel odvodení a revízie modelov. */
   derivations?: DerivationsLayerWire | null;
+  /** Popisky pôdorysov ako odkazy na prvok (D-130, AIM vrstva). */
+  documentLinks?: DocumentLinksWire[] | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -110,7 +115,9 @@ export default function IFCWorkspace({
   }
 
   return (
-    <div className="relative h-full w-full">
+    <div className="flex h-full w-full flex-col">
+      {/* Viewer s vlastnou stavovou lištou; overlaye hostu ho neprekrývajú (#185). */}
+      <div className="relative min-h-0 flex-1">
       {viewer.viewerUrl ? (
         <IFCViewer
           viewerUrl={viewer.viewerUrl}
@@ -125,6 +132,7 @@ export default function IFCWorkspace({
           captures={captures}
           decorations={decorations}
           derivations={derivations}
+          documentLinks={documentLinks}
           apiRef={viewerApiRef}
           onPickedElement={handlePickedElement}
           onNavigate={(href) => router.push(href)}
@@ -140,8 +148,6 @@ export default function IFCWorkspace({
           {viewer.error ?? "Načítavam náhľad viewera…"}
         </div>
       )}
-
-      <ViewerPicker choice={viewer.choice} error={viewer.viewerUrl ? viewer.error : null} onChoose={viewer.setChoice} />
 
       {siblingLoading && (
         <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-background/80 px-3 py-1 text-xs text-muted-foreground shadow backdrop-blur-sm">
@@ -180,6 +186,13 @@ export default function IFCWorkspace({
           </div>
         </div>
       )}
+      </div>
+
+      {/* Spodná stavová lišta hostu pod viewerom: výber viewera (D-116) a indikátor Live (D-079). */}
+      <div className="flex h-7 shrink-0 items-center gap-1 border-t bg-background px-2" data-host-statusbar>
+        <ViewerPicker choice={viewer.choice} error={viewer.viewerUrl ? viewer.error : null} onChoose={viewer.setChoice} />
+        <div id={LIVE_SLOT_ID} className="flex items-center" />
+      </div>
     </div>
   );
 }

@@ -1,15 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { opToBridgeMessage, parseOps, selectOp } from "../viewer-ops";
+import { opToBridgeMessage, panelsOp, parseOps, selectOp } from "../viewer-ops";
 
-import { selectPanelInput, selectPanelNote } from "./select-panel";
+import { lookupProperty, selectPanelInput } from "./select-panel";
 
 const G = "0MJFXziqDE$gGyPWwro9fq";
 
 describe("select_in_3d s panelom vlastností (D-113)", () => {
   it("vstup toolu -> panel", () => {
     expect(selectPanelInput({ id_or_ref: "x" })).toBeUndefined();
-    expect(selectPanelInput({ panel_tab: "ifc", panel_section: "quantities" })).toEqual({ tab: "ifc", section: "quantities" });
+    expect(selectPanelInput({ panel_section: "quantities" })).toEqual({ section: "quantities" });
+    // D-127: záložka AIM | IFC zanikla, starý vstup sa ignoruje (nie chyba).
+    expect(selectPanelInput({ panel_tab: "aim" })).toBeUndefined();
+    expect(selectPanelInput({ panel_tab: "ifc", panel_section: "properties" })).toEqual({ section: "properties" });
     expect(selectPanelInput({ highlight: " Pset_WallCommon.FireRating " })).toEqual({
       focus: { pset: "Pset_WallCommon", property: "FireRating" },
     });
@@ -17,15 +20,27 @@ describe("select_in_3d s panelom vlastností (D-113)", () => {
     expect(selectPanelInput({ highlight: "Pset_X.U.value" })).toEqual({ focus: { pset: "Pset_X", property: "U.value" } });
   });
 
-  it("Qto sa nezvýrazní: otvorí sekciu Quantities a povie to", () => {
-    const input = { highlight: "Qto_SpaceBaseQuantities.NetFloorArea" };
-    expect(selectPanelInput(input)).toEqual({ tab: "ifc", section: "quantities" });
-    expect(selectPanelNote(input)).toMatch(/Quantities/);
-    expect(selectPanelNote({ highlight: "Pset_WallCommon.FireRating" })).toBeUndefined();
+  it("Qto sa zvýrazní ako ostatné vlastnosti (D-127), sekciu určí viewer", () => {
+    expect(selectPanelInput({ highlight: "Qto_SpaceBaseQuantities.NetFloorArea", panel_section: "properties" })).toEqual({
+      focus: { pset: "Qto_SpaceBaseQuantities", property: "NetFloorArea" },
+    });
+  });
+
+  it("vlastnosť v dátach AIM: presne, bez ohľadu na veľkosť písmen, chýbajúca so zoznamom psetov", () => {
+    const props = { AIM_FireSafety: { FireCompartments: "N1.01" }, Pset_DoorCommon: { IsExternal: false }, _contact: { x: 1 } };
+    expect(lookupProperty(props, "AIM_FireSafety", "FireCompartments")).toEqual({ in_aim: true, value: "N1.01" });
+    expect(lookupProperty(props, "aim_firesafety", "firecompartments")).toEqual({
+      in_aim: true,
+      pset: "AIM_FireSafety",
+      property: "FireCompartments",
+      value: "N1.01",
+    });
+    expect(lookupProperty(props, "Pset_DoorCommon", "FireRating")).toEqual({ in_aim: false, psets: ["AIM_FireSafety", "Pset_DoorCommon"] });
+    expect(lookupProperty(props, "Pset_DoorCommon", "IsExternal")).toEqual({ in_aim: true, value: false });
+    expect(lookupProperty(null, "P", "X")).toEqual({ in_aim: false, psets: [] });
   });
 
   it("chybný vstup je chyba toolu", () => {
-    expect(() => selectPanelInput({ panel_tab: "raw" })).toThrow(/panel_tab/);
     expect(() => selectPanelInput({ panel_section: "bsdd" })).toThrow(/panel_section/);
     expect(() => selectPanelInput({ highlight: "FireRating" })).toThrow(/highlight/);
     expect(() => selectPanelInput({ highlight: ".FireRating" })).toThrow(/highlight/);
@@ -50,5 +65,34 @@ describe("select_in_3d s panelom vlastností (D-113)", () => {
     expect(parseOps(`select::${G}`).map(opToBridgeMessage)).toEqual([{ type: "SELECT", guid: G }]);
     // Neplatné kľúče sa zahodia, výber ostane.
     expect(parseOps(`select:~t=raw~s=bsdd~p=A:${G}`).map(opToBridgeMessage)).toEqual([{ type: "SELECT", guid: G }]);
+  });
+});
+
+describe("viacnásobný výber (#217)", () => {
+  const H = "1abcdefghijklmnopqrstu";
+
+  it("select nesie všetky GUIDy do mosta, prvý ostáva guid", () => {
+    const raw = selectOp([G, H, G]);
+    expect(raw).toBe(`select::${G}.${H}.${G}`);
+    expect(parseOps(raw).map(opToBridgeMessage)).toEqual([{ type: "SELECT", guid: G, guids: [G, H] }]);
+  });
+
+  it("panel ide s viacnásobným výberom a jeden prvok ostáva bez guids", () => {
+    const panel = { section: "quantities" as const };
+    expect(parseOps(selectOp([G, H], panel)).map(opToBridgeMessage)).toEqual([{ type: "SELECT", guid: G, guids: [G, H], panel }]);
+    expect(selectOp([G])).toBe(`select::${G}`);
+    expect(parseOps(selectOp([G])).map(opToBridgeMessage)).toEqual([{ type: "SELECT", guid: G }]);
+  });
+});
+
+describe("panely z chatu (D-127)", () => {
+  it("op panels -> SET_PANELS, all len close, neplatné sa zahodí", () => {
+    const raw = panelsOp({ all: "close", properties: "open" });
+    expect(raw).toBe("panels:~all=close~properties=open:");
+    expect(parseOps(raw).map(opToBridgeMessage)).toEqual([{ type: "SET_PANELS", panels: { all: "close", properties: "open" } }]);
+    expect(parseOps("panels:~lens=toggle~model_tree=close:").map(opToBridgeMessage)).toEqual([
+      { type: "SET_PANELS", panels: { lens: "toggle", model_tree: "close" } },
+    ]);
+    expect(parseOps("panels:~all=open~legend=close~lens=hide:")).toEqual([]);
   });
 });

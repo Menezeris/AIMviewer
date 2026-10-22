@@ -20,6 +20,7 @@ function deps(overrides: Partial<McpServerDeps> = {}): McpServerDeps {
       },
     ],
     callTool: vi.fn(async () => ({ text: ['{"count":97}'], isError: false })),
+    onRejected: vi.fn(),
     ...overrides,
   };
 }
@@ -126,6 +127,25 @@ describe("MCP server (D-079)", () => {
     const joined = content.map((c) => c.text).join("");
     expect(joined.split("\n")).toContain(link);
     expect(JSON.parse(content[0].text)).toEqual({ view: "kóty vo vieweri: 1" });
+  });
+
+  it("neznámy parameter je chyba a tool sa nevolá (D-126, #181)", async () => {
+    const d = deps();
+    const res = await handleMcpPayload(
+      {
+        jsonrpc: "2.0",
+        id: 7,
+        method: "tools/call",
+        params: { name: "count_objects", arguments: { ifc_type: "IfcDoor", offset: 100 } },
+      },
+      d,
+    );
+    expect(d.callTool).not.toHaveBeenCalled();
+    expect(d.onRejected).toHaveBeenCalledWith("count_objects", ["offset"]);
+    const r = (res as { result: { content: { text: string }[]; isError: boolean } }).result;
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain("'offset'");
+    expect(r.content[0].text).toContain("Povolené: ifc_type");
   });
 
   it("neznámy tool je chyba parametrov, nie pád", async () => {
