@@ -1,0 +1,311 @@
+From 770e9f370765ac4d84a39fab68c5c00179cc8f5e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 12:25:11 +0000
+Subject: [PATCH] =?UTF-8?q?feat(aim):=20ponuka=20prepnutia=20do=203D=20pri?=
+ =?UTF-8?q?=20pokuse=20o=20orbit=20v=20zamknutom=20p=C3=B4doryse=20(AIM=20?=
+ =?UTF-8?q?D-147,=20#188)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Pri ťahu orbitovým gestom v zamknutom pôdoryse (D-132) ukáže nenápadnú ponuku
+s tlačidlom, Enter a medzerníkom, ktoré aktivujú záložku 3D. Posun a zoom
+ostávajú, ponuka sa pri posune neukazuje. Všetko v apps/viewer/src/aim/ a
+dva kľúče v aim-fork.en.ts.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_013nSfXbppNgzkp8EyAPPGNc
+---
+ apps/viewer/src/aim/AimPlanOrbitHint.tsx      | 108 ++++++++++++++++++
+ apps/viewer/src/aim/AimViewTabsBar.tsx        |   7 +-
+ apps/viewer/src/aim/planOrbitHint.test.ts     |  50 ++++++++
+ apps/viewer/src/aim/planOrbitHint.ts          |  58 ++++++++++
+ .../viewer/src/i18n/catalogues/aim-fork.en.ts |   3 +
+ 5 files changed, 224 insertions(+), 2 deletions(-)
+ create mode 100644 apps/viewer/src/aim/AimPlanOrbitHint.tsx
+ create mode 100644 apps/viewer/src/aim/planOrbitHint.test.ts
+ create mode 100644 apps/viewer/src/aim/planOrbitHint.ts
+
+diff --git a/apps/viewer/src/aim/AimPlanOrbitHint.tsx b/apps/viewer/src/aim/AimPlanOrbitHint.tsx
+new file mode 100644
+index 00000000..b90fefd6
+--- /dev/null
++++ b/apps/viewer/src/aim/AimPlanOrbitHint.tsx
+@@ -0,0 +1,108 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Nenápadná ponuka pri pokuse o orbit v zamknutom pôdoryse (AIM #188, D-132):
++ * "Pôdorys je zamknutý pohľad zhora. Prepnúť do 3D? (Enter)". Tlačidlo, Enter
++ * a medzerník aktivujú záložku 3D (existujúce `activate`, D-098), Esc ju zavrie.
++ * Počúva okno bez záchytu ukazovateľa, ťah canvasu ostáva upstreamu. Vykreslí ho
++ * `AimViewTabsBar` pod lištou.
++ */
++
++import { useEffect, useRef, useState } from 'react';
++import { useTranslation } from '@/i18n';
++import { resolveNavigationPointerGesture } from '@/lib/navigation/presets.js';
++import { useViewerStore } from '@/store';
++import { useAimViewTabs } from './viewTabsStore.js';
++import { activate } from './viewTabsApply.js';
++import { inLockedPlan, OFFER_TIMEOUT_MS, offerKey, orbitAttempted, startPress, type Press } from './planOrbitHint.js';
++
++const warn = (issue: string) => console.warn('[aim-tabs]', issue);
++
++/** Plán je zamknutý pôdorys v záložke (stav z viewera, bez vlastnej kópie). */
++function lockedPlan(): boolean {
++  const s = useViewerStore.getState();
++  const scene = useAimViewTabs.getState();
++  return inLockedPlan({
++    sceneKind: scene.tabs.find((t) => t.id === scene.sceneId)?.kind,
++    viewLocked: s.underlayViewLocked,
++    splitView: s.underlaySplitView,
++  });
++}
++
++export function AimPlanOrbitHint() {
++  const { t } = useTranslation();
++  const [open, setOpen] = useState(false);
++  const openRef = useRef(false);
++  const press = useRef<Press | null>(null);
++  const setShown = (v: boolean) => { openRef.current = v; setOpen(v); };
++
++  useEffect(() => {
++    const onDown = (e: PointerEvent) => {
++      press.current = null;
++      if (!(e.target instanceof HTMLCanvasElement) || !lockedPlan()) return;
++      const s = useViewerStore.getState();
++      const gesture = resolveNavigationPointerGesture(s.navigationPreset, {
++        tool: s.activeTool, button: e.button, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey,
++        altKey: e.altKey, measureMode: s.measureMode, flyEnabled: s.interactionMode === 'all',
++      });
++      press.current = startPress(e.clientX, e.clientY, gesture);
++    };
++    const onMove = (e: PointerEvent) => {
++      if (!orbitAttempted(press.current, e.clientX, e.clientY)) return;
++      press.current = null;
++      if (lockedPlan()) setShown(true);
++    };
++    const onUp = () => { press.current = null; };
++    const onKey = (e: KeyboardEvent) => {
++      if (!openRef.current) return;
++      const el = e.target instanceof HTMLElement ? e.target : null;
++      const action = offerKey(e.key, el?.tagName ?? 'BODY', el?.isContentEditable === true);
++      if (!action) return;
++      setShown(false);
++      if (action === 'accept') { e.preventDefault(); activate('3d', warn); }
++    };
++    window.addEventListener('pointerdown', onDown, true);
++    window.addEventListener('pointermove', onMove, true);
++    window.addEventListener('pointerup', onUp, true);
++    window.addEventListener('pointercancel', onUp, true);
++    window.addEventListener('keydown', onKey, true);
++    return () => {
++      window.removeEventListener('pointerdown', onDown, true);
++      window.removeEventListener('pointermove', onMove, true);
++      window.removeEventListener('pointerup', onUp, true);
++      window.removeEventListener('pointercancel', onUp, true);
++      window.removeEventListener('keydown', onKey, true);
++    };
++  }, []);
++
++  // Ponuka zmizne sama, aj keď sa záložka alebo zámok zmenia inak (lišta, chat).
++  const locked = useViewerStore((s) => s.underlayViewLocked);
++  const onPlanTab = useAimViewTabs((s) => s.tabs.find((x) => x.id === s.sceneId)?.kind === 'plan');
++  const stillPlan = locked && onPlanTab;
++  useEffect(() => {
++    if (!open) return;
++    if (!stillPlan) return setShown(false);
++    const id = window.setTimeout(() => setShown(false), OFFER_TIMEOUT_MS);
++    return () => window.clearTimeout(id);
++  }, [open, stillPlan]);
++
++  if (!open) return null;
++  return (
++    <div
++      role="status"
++      data-testid="aim-plan-orbit-hint"
++      className="absolute left-1/2 top-full z-30 mt-2 flex -translate-x-1/2 items-center gap-2 rounded-md border bg-background/95 px-2 py-1 text-2xs shadow-md"
++    >
++      <span>{t('aimFork.planOrbit.message')}</span>
++      <button
++        type="button"
++        onClick={() => { setShown(false); activate('3d', warn); }}
++        className="min-h-6 min-w-6 rounded border px-2 font-medium hover:bg-muted"
++      >
++        {t('aimFork.planOrbit.action')}
++      </button>
++    </div>
++  );
++}
+diff --git a/apps/viewer/src/aim/AimViewTabsBar.tsx b/apps/viewer/src/aim/AimViewTabsBar.tsx
+index 34a5a0e9..512b6bad 100644
+--- a/apps/viewer/src/aim/AimViewTabsBar.tsx
++++ b/apps/viewer/src/aim/AimViewTabsBar.tsx
+@@ -7,7 +7,8 @@
+  * uložené pohľady z chatu a otvorené dokumenty. Aktívna záložka má celú plochu;
+  * "Vedľa" dá k nej druhú (dokument, alebo pôdorys ako 2D plán vedľa 3D). Lenivo
+  * z `ViewerLayout.tsx`; na mobile sa neukazuje (dokument tam je prekrytie D-075).
+- * Lišta tiež dodá záložkám funkcie viewera (`TabDeps`) z hookov pôdorysu.
++ * Pod lištou sa pri pokuse o orbit v zamknutom pôdoryse ukáže ponuka prepnúť do 3D
++ * (`AimPlanOrbitHint`, #188). Lišta tiež dodá záložkám funkcie viewera (`TabDeps`) z hookov pôdorysu.
+  */
+ 
+ import { useEffect, useMemo, useRef } from 'react';
+@@ -19,6 +20,7 @@ import { useFloorplanView } from '@/hooks/useFloorplanView';
+ import { besidePair, type ViewTabKind } from './viewTabsPlan.js';
+ import { useAimViewTabs } from './viewTabsStore.js';
+ import { activate, beside, close, openPlan, syncDocs } from './viewTabsApply.js';
++import { AimPlanOrbitHint } from './AimPlanOrbitHint.js';
+ 
+ const ICON: Record<ViewTabKind, typeof Box> = { '3d': Box, plan: LayoutTemplate, view: Scan, doc: FileText };
+ const SELECT = 'h-6 max-w-40 rounded border bg-background px-1 text-2xs text-muted-foreground';
+@@ -55,7 +57,8 @@ export function AimViewTabsBar() {
+   if (isMobile) return null;
+ 
+   return (
+-    <div className="flex h-7 shrink-0 items-stretch border-b bg-muted/30" data-testid="aim-view-tabs">
++    <div className="relative flex h-7 shrink-0 items-stretch border-b bg-muted/30" data-testid="aim-view-tabs">
++      <AimPlanOrbitHint />
+       <div role="tablist" aria-label="Záložky pohľadov" className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
+         {tabs.map((tab) => {
+           const Icon = ICON[tab.kind];
+diff --git a/apps/viewer/src/aim/planOrbitHint.test.ts b/apps/viewer/src/aim/planOrbitHint.test.ts
+new file mode 100644
+index 00000000..1866046e
+--- /dev/null
++++ b/apps/viewer/src/aim/planOrbitHint.test.ts
+@@ -0,0 +1,50 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import assert from 'node:assert/strict';
++import { describe, it } from 'node:test';
++
++import { inLockedPlan, offerKey, orbitAttempted, startPress, ORBIT_ATTEMPT_PX } from './planOrbitHint.js';
++
++describe('pokus o orbit v zamknutom pôdoryse (AIM #188)', () => {
++  it('ťah orbitovým gestom nad prah je pokus o orbit', () => {
++    const p = startPress(100, 100, 'orbit');
++    assert.equal(orbitAttempted(p, 100 + ORBIT_ATTEMPT_PX + 1, 100), true);
++    assert.equal(orbitAttempted(p, 100, 100 - ORBIT_ATTEMPT_PX - 1), true);
++  });
++
++  it('pravé tlačidlo ako fly sa berie ako orbit, rovnako ako v 3D', () => {
++    assert.equal(orbitAttempted(startPress(0, 0, 'fly'), 20, 0), true);
++  });
++
++  it('klik a malý pohyb ponuku nespustia', () => {
++    const p = startPress(100, 100, 'orbit');
++    assert.equal(orbitAttempted(p, 100, 100), false);
++    assert.equal(orbitAttempted(p, 100 + ORBIT_ATTEMPT_PX, 100 - ORBIT_ATTEMPT_PX), false);
++    assert.equal(orbitAttempted(null, 500, 500), false);
++  });
++
++  it('posun (pan) a nástroj ponuku nikdy nespustia', () => {
++    assert.equal(orbitAttempted(startPress(0, 0, 'pan'), 200, 200), false);
++    assert.equal(orbitAttempted(startPress(0, 0, 'tool'), 200, 200), false);
++  });
++
++  it('ponuka len v zamknutom pôdoryse v záložke, nie v 3D ani v splite', () => {
++    assert.equal(inLockedPlan({ sceneKind: 'plan', viewLocked: true, splitView: false }), true);
++    assert.equal(inLockedPlan({ sceneKind: '3d', viewLocked: true, splitView: false }), false);
++    assert.equal(inLockedPlan({ sceneKind: 'plan', viewLocked: false, splitView: false }), false);
++    assert.equal(inLockedPlan({ sceneKind: 'plan', viewLocked: true, splitView: true }), false);
++    assert.equal(inLockedPlan({ sceneKind: undefined, viewLocked: true, splitView: false }), false);
++  });
++
++  it('Enter a medzerník prijmú, Esc zavrie, fokus na ovládacom prvku kláves nechá jemu', () => {
++    assert.equal(offerKey('Enter', 'BODY', false), 'accept');
++    assert.equal(offerKey(' ', 'CANVAS', false), 'accept');
++    assert.equal(offerKey('Escape', 'INPUT', true), 'dismiss');
++    assert.equal(offerKey('Enter', 'BUTTON', false), null);
++    assert.equal(offerKey(' ', 'INPUT', false), null);
++    assert.equal(offerKey('Enter', 'DIV', true), null);
++    assert.equal(offerKey('a', 'BODY', false), null);
++  });
++});
+diff --git a/apps/viewer/src/aim/planOrbitHint.ts b/apps/viewer/src/aim/planOrbitHint.ts
+new file mode 100644
+index 00000000..ade706d8
+--- /dev/null
++++ b/apps/viewer/src/aim/planOrbitHint.ts
+@@ -0,0 +1,58 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Pokus o orbit v zamknutom pôdoryse (AIM #188, D-132) - čisté rozhodnutia bez
++ * Reactu a store. Pôdorys je kolmý pohľad zhora, ťah sa v ňom mení na posun
++ * (`useMouseControls.ts`), takže orbit nedá žiadnu odozvu. Ponuka prepnúť do 3D
++ * sa ukáže, keď sa ťahá gestom, ktoré by v 3D orbitovalo (`orbit`, alebo
++ * pravé tlačidlo ako `fly`), nie gestom posunu (`pan`, nástroj, stredné
++ * tlačidlo, Shift). Gesto rozhoduje upstream `resolveNavigationPointerGesture`
++ * (D-098), tu sa len vyhodnotí.
++ */
++
++import type { ViewTabKind } from './viewTabsLayout.js';
++
++export type DragGesture = 'fly' | 'orbit' | 'pan' | 'tool';
++
++/** Ťah menší než toto (px) je klik, nie pokus o orbit; ako `didDrag` v upstreame. */
++export const ORBIT_ATTEMPT_PX = 5;
++
++/** Ponuka zmizne sama po tomto čase (ms). */
++export const OFFER_TIMEOUT_MS = 8000;
++
++/** Gesto, ktoré by v 3D otáčalo pohľad. */
++export const isOrbitGesture = (g: DragGesture): boolean => g === 'orbit' || g === 'fly';
++
++export interface Press { x: number; y: number; orbit: boolean }
++
++export const startPress = (x: number, y: number, gesture: DragGesture): Press => ({ x, y, orbit: isOrbitGesture(gesture) });
++
++/** Pokus o orbit nastal: ťah orbitovým gestom prešiel prah. */
++export function orbitAttempted(p: Press | null, x: number, y: number): boolean {
++  return p !== null && p.orbit && (Math.abs(x - p.x) > ORBIT_ATTEMPT_PX || Math.abs(y - p.y) > ORBIT_ATTEMPT_PX);
++}
++
++export interface SceneFlags {
++  /** Druh záložky, ktorej stav je v canvase. */
++  sceneKind: ViewTabKind | undefined;
++  viewLocked: boolean;
++  splitView: boolean;
++}
++
++/** Ponuka patrí len zamknutému pôdorysu v záložke (nie 3D, nie split vedľa voľnej 3D). */
++export const inLockedPlan = (f: SceneFlags): boolean => f.sceneKind === 'plan' && f.viewLocked && !f.splitView;
++
++export type OfferKey = 'accept' | 'dismiss' | null;
++
++/**
++ * Kláves k ponuke: Enter a medzerník prijmú, Esc zavrie. Ak je fokus na
++ * ovládacom prvku (tlačidlo, pole, výber), kláves patrí jemu.
++ */
++export function offerKey(key: string, targetTag: string, editable: boolean): OfferKey {
++  if (key === 'Escape') return 'dismiss';
++  if (key !== 'Enter' && key !== ' ') return null;
++  if (editable || ['BUTTON', 'INPUT', 'TEXTAREA', 'SELECT', 'A'].includes(targetTag)) return null;
++  return 'accept';
++}
+diff --git a/apps/viewer/src/i18n/catalogues/aim-fork.en.ts b/apps/viewer/src/i18n/catalogues/aim-fork.en.ts
+index 0d4bf77b..9e5e503e 100644
+--- a/apps/viewer/src/i18n/catalogues/aim-fork.en.ts
++++ b/apps/viewer/src/i18n/catalogues/aim-fork.en.ts
+@@ -22,6 +22,9 @@ export const aimForkEn = {
+   'aimFork.assistant.boundaryDocuments': 'Project document library. Opening a PDF or image produces no analysis result; the documents themselves live in the AIM platform.',
+   /** Empty first option of the 2D storey picker (it has no visible text). */
+   'aimFork.viewMode.noStorey': 'No storey selected',
++  /** Offer after an orbit attempt in the locked plan tab (AIM #188, D-132); the AIM host UI is Slovak. */
++  'aimFork.planOrbit.message': 'Pôdorys je zamknutý pohľad zhora. Prepnúť do 3D? (Enter)',
++  'aimFork.planOrbit.action': 'Prepnúť do 3D',
+   /** Fork-only ribbon tab (D-072 / D-075, labelled AIM since D-089); keyed like upstream's `ribbon.tab.*` because the band reads `t(`ribbon.tab.${tab}`)`. */
+   'ribbon.tab.documents': 'AIM',
+ } as const;
+-- 
+2.43.0
+
