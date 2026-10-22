@@ -219,7 +219,7 @@ function isUuid(v: string): boolean {
 const DOCUMENT_CODE_RE = /^[A-Z](\.\d+){2,}$/i;
 
 /** Čo `get_object` pridá v tom istom volaní (D-115). */
-export const GET_OBJECT_INCLUDES = ["details", "path", "documents"] as const;
+export const GET_OBJECT_INCLUDES = ["details", "path", "documents", "quantities"] as const;
 
 /** Staré hodnoty `include` (D-104: výkresy E4 nahradili dokumenty z modelu); nevypisujú sa. */
 const LEGACY_GET_OBJECT_INCLUDES: Record<string, (typeof GET_OBJECT_INCLUDES)[number]> = {
@@ -432,7 +432,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "napr. VZT prvok v miestnosti z ASR); documents = DOKUMENTY a strany, ktoré k nemu patria, aj zdedené " +
       "cez typ, zónu, skupinu (skladby), systém, priestorovú zónu (požiarny úsek), podlažie a miestnosť, s cestou " +
       "(via_name, through) a deep_link na stranu; pri dokumente opačne: ktorých objektov sa týka (počty podľa " +
-      "typu a nositeľa + vzorka). Kód netreba hľadať vopred; na 'čo je X a kde je' stačí jedno volanie.",
+      "typu a nositeľa + vzorka); quantities = Qto VÝMERY (objem, plocha, dĺžka...) a psety priamo z IFC súboru, z výskytu aj z typu, ako " +
+      "zoznam {qto, name, value, source} v poli ifc (D-142). Kód netreba hľadať vopred; na 'čo je X a kde je' stačí jedno volanie.",
     inputSchema: {
       type: "object",
       properties: {
@@ -440,7 +441,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         include: {
           type: "array",
           items: { type: "string", enum: [...GET_OBJECT_INCLUDES] },
-          description: "Čo pridať: details | path | documents",
+          description: "Čo pridať: details | path | documents | quantities",
         },
       },
       required: ["id_or_ref"],
@@ -529,7 +530,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "prvky aj zdedené cez podlažie, zónu, skupinu a typ, bez vymenovania GUIDov; " +
       "action=xray (zvyšok priesvitný) alebo isolate. " +
       "Viac farieb naraz = groups: [{label, color, ...filter}] (top-level filter platí pre " +
-      "všetky skupiny). colorize / transparent / isolate / xray idú do panelu Lens vo vieweri ako " +
+      "všetky skupiny). Pri prekrytí vyhráva NESKORŠIA skupina v groups aj novšie volanie: konkrétnu trasu " +
+      "alebo výnimku daj ako poslednú skupinu, širšie farby pred ňu (jedno volanie stačí). colorize / transparent / isolate / xray idú do panelu Lens vo vieweri ako " +
       "lens 'AIM chat' (pravidlo = skupina, legenda, počty; prvky mimo pravidiel sú stlmené); " +
       "ďalšie volania pridávajú pravidlá (mode=replace začne odznova), počty na pravidlo " +
       "vráti živý viewer v odpovedi. Farby podľa hodnoty (systémy, triedy, materiál, " +
@@ -539,7 +541,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "(IfcSpace) a zóny sú vo vieweri predvolene skryté: farbenie či izolácia ich zapne sama, ručne show/hide s " +
       "ifc_type=IfcSpace; farba miestnosti ostane priesvitná (prvky v nej vidno, NEPRIDÁVAJ transparent pravidlo); " +
       "v pôdoryse (2D alebo vodorovný rez s pohľadom zhora) sú ofarbené aj vybrané miestnosti vyplnené a popísané. " +
-      "Odpoveď vráti stav po príkaze: pravidlo s inactive nič nezafarbilo, izolácia s active=false už neplatí, " +
+      "Odpoveď vráti stav po príkaze: pravidlo s inactive nič nezafarbilo (POZOR ho vysvetlí: prekryté vs filter nič nenašiel), izolácia s active=false už neplatí, " +
       "changed_outside_commands = čo zmenil používateľ od predošlého príkazu, POZOR = upozornenie (aktívny rez, " +
       "viac systémov vo filtri, viac okien viewera) - povedz ho používateľovi. Farby určuje používateľ; " +
       "keď ich nepovie, zvoľ dobre odlíšiteľné a povedz ich. " +
@@ -559,14 +561,21 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             "show_all=zrušiť skrývanie, izoláciu, X-ray aj rez (rez vráti set_section), reset_colors=zrušiť ofarbenie, lens a čiaru trasy, " +
             "legend=len legenda AIM chat lens (legend_size; predvolene malá karta), bez filtrov",
         },
+        opacity: {
+          type: "number",
+          description:
+            "colorize: 0.05 až 1. Menej ako 1 = priesvitná farba (prvky vnútri a za nimi je vidno), 1 = plná farba. " +
+            "Bez hodnoty sú IfcSpace a zóny priesvitné, ostatné prvky plné. Viewer kreslí jednu úroveň priesvitnosti, " +
+            "presná hodnota ešte nemení stupeň. Veľké prvky (steny, dosky) farbi priesvitne, ak majú ostať vidno ďalšie farby",
+        },
         mode: {
           type: "string",
           enum: ["add", "replace"],
           description:
             "Lens (colorize/transparent/isolate/xray): add = pridať k doterajším pravidlám (predvolené; pri isolate a xray " +
             "rozšíri aktuálnu izoláciu, napr. 'pridaj aj schodiská' = isolate + mode=add, jeden call), replace = " +
-            "začať odznova (nová izolácia; zmaže aj farby a priehľadnosť z predošlých volaní, preto farby daj do " +
-            "groups toho istého volania)",
+            "začať odznova (zmaže aj farby a priehľadnosť z predošlých volaní, odpoveď to oznámi vo warnings; " +
+            "izolácia nad existujúcou farbou = mode=add, alebo farby daj do groups toho istého volania)",
         },
         color_by: {
           type: "string",
@@ -706,6 +715,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             properties: {
               label: { type: "string" },
               color: { type: "string", description: "Hex RRGGBB" },
+              opacity: { type: "number", description: "0.05 až 1; menej ako 1 = priesvitná farba, 1 = plná" },
               system: { type: "string" },
               system_type: { type: "string" },
               zone: { type: "string" },
@@ -1530,6 +1540,10 @@ export class AskToolRuntime {
     const base = (await this.getObject(input)) as Record<string, unknown>;
     if (include.length === 0) return base;
     const id = typeof base.id === "string" ? base.id : null;
+    if (!id && include.includes("quantities")) {
+      // Prvok len v IFC súbore (D-102): výmery z motora podľa global_id, ostatné include nemajú v grafe čo čítať.
+      return { ...base, ifc: await this.ifcElementData(base) };
+    }
     if (!id) {
       return { ...base, include_note: "Prvok nie je v grafe AIM: vlastnosti, materiály a podlažie zo súboru dá ifc_get." };
     }
@@ -1541,6 +1555,8 @@ export class AskToolRuntime {
             base.object_type === "asset"
               ? await this.getAssetDetails({ id })
               : { note: "Vlastnosti s dedením z typu sú len pre asset; psety iných uzlov dá query_view alebo ifc_get." };
+        } else if (part === "quantities") {
+          extra.ifc = await this.ifcElementData(base);
         } else if (part === "path") {
           extra.path = await this.getSpatialPath({ id });
         } else {
@@ -1549,6 +1565,20 @@ export class AskToolRuntime {
       }),
     );
     return { ...base, ...extra };
+  }
+
+  /** Qto výmery a psety jedného prvku z IFC motora (D-142); chyba motora sa vráti ako pole `error`. */
+  private async ifcElementData(base: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!engineEnabled()) return { error: "IFC motor je vypnutý, výmery zo súboru nie sú dostupné." };
+    const target = [base.ifc_guid, base.global_id].find((g): g is string => typeof g === "string" && g.length > 0);
+    if (!target) return { error: "Prvok nemá IFC GUID, výmery zo súboru sa nedajú nájsť." };
+    const [{ runEngineTool }, { shapeIfcElement }] = await Promise.all([import("@/lib/engine/run"), import("@/lib/engine/element-data")]);
+    const res = await runEngineTool("ifc_get", { targets: [target] });
+    if (res.isError) return { error: res.content };
+    const parsed = JSON.parse(res.content) as { items?: Array<Record<string, unknown>>; missing?: string[] };
+    const item = parsed.items?.[0];
+    if (!item) return { error: `Prvok nie je v žiadnom načítanom IFC modeli (${(parsed.missing ?? []).join(", ")}).` };
+    return { ...shapeIfcElement(item) };
   }
 
   private async getObject(input: Record<string, unknown>) {

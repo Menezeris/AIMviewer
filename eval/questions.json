@@ -979,12 +979,52 @@
       "notes": "D-132 (issue #165): set_section(fit=along) cez schodisko, set_camera(preset=section, orthographic), saved_view(save, view_type=section, locked=true), set_view_mode(view=meno) a set_view_mode(mode=2d, floor). Poradie volaní nie je pevné."
     },
     {
+      "id": "style-overlay-path-on-top",
+      "category": "viewer",
+      "question": "Vyfarbi prívod VZT červenou, odvod modrou a konkrétnu trasu 19 prvkov ružovou navrch, v jednom volaní.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-138 (issue #221): jedno volanie colorize s groups, trasa ako posledná skupina vyhrá pri prekrytí; pravidlo s 0 prvkami sa hlási s dôvodom. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "section-below-ceiling-geometry",
+      "category": "viewer",
+      "question": "Daj rez 5 cm pod podhľadom na 2NP.",
+      "expect": { "tools_called": ["set_section"] },
+      "verified": false,
+      "notes": "D-140 (issue #230): relative_to=ceiling berie výšku z geometrie IfcCovering CEILING, Qto len záloha; odpoveď má povedať zdroj (ceiling.source) a pri ceiling.warning nezhodu. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "style-xray-storey-context",
+      "category": "viewer",
+      "question": "Ukáž pôdorys stropov na 1NP: stropy plne, zvyšok priesvitný, pohľad zhora.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "Issue #187: xray s storey nechá priesvitný celý model; odpoveď nesie varovanie a model má skryť ostatné podlažia a dať rez. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "style-colorize-space-translucent",
+      "category": "viewer",
+      "question": "Ofarbi miestnosť 2.01 a susedné miestnosti na zeleno, dvere oranžovo a schodisko oranžovo, nech vidím únikovú cestu.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-139 (issue #222): miestnosti sú pri colorize priesvitné aj cez ids_or_refs, dvere a schod vnútri je vidno. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
       "id": "feedback-triage-standard",
       "category": "feedback",
       "question": "Zapíš pripomienku: opis toolu get_object má preklep v slove 'vlastnosti'. Hneď spusti session.",
       "expect": { "tools_called": ["feedback"] },
       "verified": false,
       "notes": "D-134: jasná lokálna zmena opisu -> feedback(action=report, narocnost=standard, narocnost_dovod). Parameter narocnost sa v eval harnessi nekontroluje (expect nemá argumenty), overenie = scenár cez konektor. Len MCP a zapisuje do GitHubu."
+    },
+    {
+      "id": "object-quantities-one-call",
+      "category": "details",
+      "question": "Ukáž kvantitatívny set jedného stĺpca SL02.01.0030, chcem objem.",
+      "expect": { "tools_called": ["get_object"] },
+      "verified": false,
+      "notes": "D-142 (issue #184): get_object(include=quantities) vráti Qto_ColumnBaseQuantities.NetVolume z IFC v jednom volaní, bez ifc_query mode=values a eliminácie. Hodnota neoverená (vyžaduje IFC motor a prod model)."
     },
     {
       "id": "escape-route-line",

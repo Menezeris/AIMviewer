@@ -43,7 +43,7 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "UI AKCIA: rez modelom v 3D. Vodorovný rez nad podlažím = floor + offset_m (výška nad úrovňou " +
       "podlažia v m, default 1,2 = pôdorysný rez; záporná = pod úrovňou). Pod podhľadom podlažia = " +
       "floor + relative_to=ceiling + offset_m (-0.05 = 5 cm pod podhľadom miestností podlažia; server " +
-      "vezme ich FinishCeilingHeight). Rez cez prvok (aj kódom ako SD04.0001) = " +
+      "vezme výšku z geometrie podhľadov, Qto len ako zálohu; zdroj a nezhodu uvedie v ceiling). Rez cez prvok (aj kódom ako SD04.0001) = " +
       "target_ids_or_refs alebo global_ids + fit: along (zvislo pozdĺž dlhšej strany prvku, napr. po " +
       "dĺžke ramena schodiska), across (zvislo naprieč), center (stredom prvku na zadanej orientation). " +
       "Presná poloha = orientation + coordinate_m v súradniciach IFC (vertical_x reže na IFC X, " +
@@ -66,7 +66,7 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         relative_to: {
           type: "string",
           enum: ["floor", "ceiling"],
-          description: "S floor: ceiling = offset_m sa ráta od podhľadu miestností podlažia (Qto FinishCeilingHeight, server ho zistí sám)",
+          description: "S floor: ceiling = offset_m sa ráta od podhľadu miestností podlažia (výška z geometrie IfcCovering CEILING podlažia, záloha Qto FinishCeilingHeight; server ju zistí sám)",
         },
         position_percent: {
           type: "number",
@@ -295,10 +295,15 @@ export async function execViewTool(
       if (!floor) throw new ViewInputError("relative_to=ceiling potrebuje floor (podlažie, ktorého podhľad).");
       const { storeyCeiling } = await import("@/lib/engine/ceiling");
       const ceiling = await storeyCeiling(floor.label);
-      if (!ceiling) throw new ViewInputError(`Miestnosti podlažia ${floor.label} nemajú Qto FinishCeilingHeight - zadaj offset_m priamo.`);
+      if (!ceiling) throw new ViewInputError(`Podlažie ${floor.label} nemá IfcCovering CEILING ani miestnosti s Qto FinishCeilingHeight - zadaj offset_m priamo.`);
       const offset = typeof input.offset_m === "number" && Number.isFinite(input.offset_m) ? input.offset_m : 0;
-      plan = planSection({ ...input, offset_m: Math.round((ceiling.height_m + offset) * 1000) / 1000 }, floor, targets);
-      plan.result = { ...plan.result, ceiling: { ...ceiling, offset_from_ceiling_m: offset } };
+      // D-140: záporný offset = pod podhľadom (od jeho spodku), inak nad ním (od horného okraja).
+      const reference = offset < 0 ? ceiling.bottom_m : ceiling.top_m;
+      plan = planSection({ ...input, offset_m: Math.round((reference + offset) * 1000) / 1000 }, floor, targets);
+      plan.result = {
+        ...plan.result,
+        ceiling: { ...ceiling, reference: offset < 0 ? "bottom" : "top", reference_m: reference, offset_from_ceiling_m: offset },
+      };
     } else {
       plan = planSection(input, floor, targets);
     }

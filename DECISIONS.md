@@ -6497,6 +6497,143 @@ prompt v rozhovore"): predčítanie motora len v rozhovore, ktorý motor použí
   mená v tooloch viewera) načítajú motor až pri potrebe a nie sú v signáli.
 - *Evaly D-057 nepobežali* (cloud session nemá Supabase kľúče; LLM vrstva, tooly ani prompt sa nemenia).
 
+### D-138 - style_in_3d: priorita prekrytých pravidiel a hlasné varovanie pri pravidle bez zásahu
+**Status:** rozhodnuté (2026-10-22, issue #221; číslo D-138 navrhnuté orchestrátorovi, potvrdenie čaká). Nadväzuje na
+D-096 (Lens z chatu), D-125 (`inactive`) a #219 (varovania pri mode=replace).
+
+**Kontext:** engine Lens vo forku farbí **prvou zhodou** (`packages/lens/src/engine.ts`). Nové volanie (mode=add)
+dáva svoje pravidlá pred staršie, takže novšie prebije staršie. V rámci jedného volania ale host posielal skupiny v
+poradí `groups`, takže PRVÁ skupina vyhrala a posledná ("trasa navrch") dostala 0 prvkov; v odpovedi to bolo len
+pole `inactive` v stave Lens. Preto trasa fungovala až ako druhé volanie.
+
+**Rozhodnutie:**
+- *Priorita:* pri prekrytí vyhráva **neskoršia skupina v `groups`**, rovnako ako novšie volanie. Rovnako v mode
+  add aj replace. Host (`lib/llm/style-overlap.ts`, `lensPriorityOrder`) posiela pravidlá volania vo wire v opačnom
+  poradí. Fork ani wire formát sa nemenia (patch nie je), v paneli Lens je navrchu pravidlo s najvyššou prioritou.
+- *Varovanie:* pravidlo s 0 prvkami nahlási text s počtami (`lens-counts.ts`) aj potvrdenie vo vieweri
+  (`applied-text.ts`) ako `POZOR: ...` s názvom pravidla. Dôvod: pod ním je pravidlo so zásahom -> "prekryté
+  pravidlami X, Y alebo filter nič nenašiel" (host nevie rozlíšiť, počty sú z viewera); inak -> "filter nič nenašiel".
+  Pri colorize s viac skupinami odpoveď hneď pripomenie pravidlo priority (`warnings`).
+- *Zavrhnuté:* parameter `overlay=true` / `priority` na skupine: "posledná skupina navrchu" dáva to isté bez
+  nového parametra (D-114, rozšírenie len opisom). Nový tool netreba.
+- Opis `style_in_3d` pravidlo uvádza; inventár `MCP-TOOLS.md` sa nezmenil (test registra prešiel).
+- *Evaly D-057 nepobežali* (cloud bez Supabase kľúčov); otázka `style-overlay-path-on-top` je v `eval/questions.json`.
+
+### D-139 - style_in_3d colorize: priesvitnosť farby (`opacity`) a predvolene priesvitné priestory a zóny
+**Status:** rozhodnuté (2026-10-22, issue #222; číslo D-139 navrhnuté orchestrátorovi, potvrdenie čaká). Nadväzuje na D-125
+bod 4 (priesvitná varianta farby priestoru), D-138 (priorita pravidiel), #175 (priestor = vyplnená podstava, Samuelovo rozhodnutie).
+
+**Kontext:** colorize IfcSpace (izby 2.01 s 3 dverami, schodom a východom) dal nepriehľadnú hmotu, prvky vnútri nebolo vidno.
+D-125 bod 4 rieši priesvitnosť vo forku pre pravidlo podľa triedy; farba cez `ids_or_refs` (miestnosti z `ifc_query`) ju
+nedostala a model nemal spôsob, ako priesvitnosť žiadať pre iné veľké prvky (dosky, steny).
+
+**Overenie existujúceho (D-098, D-114):** Lens už pozná akciu `transparent` (farba + priesvitnosť), `xray` a `isolate`; wire
+formát nenesie hodnotu alfa. Chýba teda len host: kedy akciu `transparent` poslať. Fork netreba meniť, patch nie je.
+
+**Rozhodnutie (host, `lib/llm/style-lens.ts`, `style-plan.ts`):**
+1. Nový voliteľný parameter `opacity` (0.05 až 1, na úrovni volania aj skupiny v `groups`). `opacity < 1` pri colorize pošle
+   pravidlo ako `transparent` (rovnaká farba, priesvitná). `opacity = 1` vynúti plnú farbu.
+2. Bez `opacity` sú priesvitné skupiny, ktoré sú len z IfcSpace / IfcSpatialZone / IfcZone: podľa tried filtra, pri
+   konkrétnych prvkoch (`ids_or_refs`, `global_ids`) podľa tried prvkov v DB. Skupina sa v odpovedi označí `opacity` a
+   `opacity_default`.
+3. Priesvitnosť má jednu úroveň (fork alfa 0,3): hodnota `opacity` rozhoduje len medzi plnou a priesvitnou farbou, odpoveď to
+   neskrýva. Presný stupeň by vyžadoval pole alfa vo wire a patch forku; otvorené, kým to nikto nepotrebuje.
+4. Varovanie v odpovedi: plne ofarbené veľké prvky (steny, dosky, strecha, krytina) v colorize s viac skupinami môžu zakryť
+   ostatné farby, odpoveď navrhne `opacity=0.3`.
+5. Duplicitné pravidlá pre priestory z issue (obyčajné a "miestnosti"): host posiela jedno pravidlo na skupinu; druhé pravidlo
+   v súhrne Lens pochádza z lens viewera (výplň miestností, D-119/D-125), host ho nevytvára. Nezmenené, vysvetlené tu.
+
+**Zavrhnuté:** nový tool alebo `space_display` (D-114); zmena renderera (upstream); `opacity` v pôvodnej hodnote ako alfa
+vo wire (fork patch bez využitia).
+**Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `style-colorize-space-translucent` je v
+`eval/questions.json`.
+
+### D-140 - set_section relative_to=ceiling: výška podhľadu z geometrie IfcCovering CEILING, Qto len záloha
+**Status:** rozhodnuté (2026-10-22, issue #230; číslo D-140 pridelil orchestrátor (D-141 má #185); zápis do registra čaká). Nadväzuje na D-102
+(rez pod podhľadom), D-092 (rez nad podlažím, elevácia z DB), D-112 (`ifc_measure`, mesh), D-114 (bez nového toolu).
+
+**Kontext:** `relative_to=ceiling` bral výšku z Qto `FinishCeilingHeight` miestností. Na 2NP sa Qto (3,05 m od hotovej podlahy)
+líši od skutočného podhľadu (PH01.10.0010 na z = 8,05 až 8,063 m), rez ho umiestnil mimo podhľadu a podhľad nebolo vidno.
+
+**Rozhodnutie (host, `lib/engine/ceiling.ts`, `lib/llm/view-tools.ts`):**
+1. Výška podhľadu podlažia = z geometrie prvkov `IfcCovering` s `PredefinedType = CEILING` priradených k podlažiu (mesh
+   motora z D-112, svetové Z vrátane posunu rámca D-124, mínus `IfcBuildingStorey.Elevation`). Spodný a horný okraj je
+   vážený medián okrajov krytín (váha = pôdorys), aby osamelá krytina inej výšky nerozhodla.
+2. Referencia rezu: záporný `offset_m` ráta od **spodku** podhľadu (pod ním), nezáporný od **horného okraja** (nad ním).
+3. Qto `FinishCeilingHeight` je záloha, keď podlažie nemá krytinu CEILING s geometriou (alebo sa mesh nedá načítať).
+4. Odpoveď nesie `ceiling.source` (`geometry` | `qto`), `bottom_m`, `top_m`, `coverings`, `qto` a `warning`: pri nezhode nad 2 cm
+   "Qto ... sa líši od geometrie ... použitá je geometria", pri zálohe "Výška je len z Qto ...". Prompt a opis toolu model
+   vedú, aby zdroj a upozornenie povedal používateľovi.
+- *Zavrhnuté:* nový tool alebo parameter (D-114, ide o opravu zdroja výšky v existujúcom `relative_to=ceiling`); samostatné
+  volanie `ifc_measure` v postupe modelu (host to robí sám v jednom volaní `set_section`).
+- *Otvorené:* záporný offset -0,05 od spodku podhľadu stále podhľad (nad rezom) skryje, tak ako každý rez; ak ho má rez
+  ukázať, treba kladný offset (nad horným okrajom ho zvýrazní `style_in_3d`) alebo ho po rezaní zobraziť cez xray.
+- **Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `section-below-ceiling-geometry` je v
+  `eval/questions.json`. **Testy:** `lib/engine/names.test.ts` (mini model `__fixtures__/mini-ceiling.ts`).
+
+### D-141 - Spodná stavová lišta hostu pod viewerom: výber viewera a Live neprekrývajú panely
+**Status:** rozhodnuté (2026-10-22, issue #185; číslo D-141 navrhnuté orchestrátorovi, potvrdenie čaká). Nadväzuje na D-116
+(výber viewera), D-079 (živý kanál), D-091 (AIM funkcia predvolene v hoste), D-127 (panely z chatu, #179), D-111 (`open_list`).
+
+**Kontext:** po `open_list` sa otvoril builder panela Lists, ale tlačidlo Run bolo pri spodku viewera a prekrývali ho dva overlaye
+hostu vľavo dole: čip "Viewer: Produkcia" (`viewer-picker.tsx`, absolútne nad iframe) a indikátor Live (`live-channel.tsx`,
+fixed). Tabuľka sa nedala spustiť. Označenie "batch" v kóde nie je (`BATCH_MS` je len zlučovanie príkazov kanála).
+
+**Overenie existujúceho (D-098, D-114):** D-127 rieši len otváranie, zatváranie a stav panelov (`set_view_mode panels`), prekrytie
+nemení. `open_list` parameter `run` nemá (`lib/llm/list-tool.ts`, `MCP-TOOLS.md`). Pruh nie je vo forku, je to vrstva hostu.
+
+**Rozhodnutie (host, fork bez zmeny):**
+1. `ifc-workspace.tsx` je stĺpec: viewer (iframe s vlastnou stavovou lištou s počtami prvkov) a pod ním 28 px vysoká stavová
+   lišta hostu. Overlaye už nelezú nad viewer, takže neprekrývajú žiadny panel ani jeho Run, nech je panel ukotvený kdekoľvek.
+2. Lišta nesie `ViewerPicker` (ponuka a chyba sa otvárajú nahor nad lištu) a indikátor Live. Indikátor sa vloží portálom do
+   slotu `aim-live-slot`; mimo `/ifc` ostáva fixed vľavo dole ako doteraz. Toast Live ostáva fixed, je `pointer-events-none`.
+3. Prekrytie je tým odstránené len v hoste. Veľkosť a maximalizácia panela Lists (bod 2 zo zadania) je vec forku a rozloženia
+   panelov (#211).
+
+**Zavrhnuté / odložené:**
+- *`open_list run=true`* (bod 3 zo zadania): spustenie je `handleExecuteList` lokálne v upstream `ListPanel.tsx`; hotový zoznam
+  by vyžadoval zásah do upstream súboru (plné CI forku, kolízia s #211). Builder s Run po oprave prekrytia funguje, tak sa
+  nerobí; ak ho Samuel chce, je to samostatná úloha (parameter `run` + správa `OPEN_LIST`, D-114).
+- *Presunúť čipy do vlastnej lišty viewera (fork)*: upstream `StatusBar` by sa menil kvôli čipu hostu; zbytočné, host má vlastnú.
+**Evaly (D-057):** LLM vrstva sa nemení.
+
+---
+
+---
+
+### D-142 - `get_object include=quantities`: Qto výmery a psety jedného prvku z IFC jedným volaním
+
+**Dátum:** 2026-10-22 · **Issue:** #184 · **Nadväzuje na:** D-021, D-084, D-114, D-115
+
+**Kontext:** Používateľ chcel objem (NetVolume) jedného stĺpca. `get_object` vracal len identitu a psety
+z grafu AIM (DB, s dedením z typu cez `v_asset_effective`, D-021), nie Qto z IFC. `ifc_get` Qto vracia, ale
+v session sa nenačítal (ide o tool IFC motora, ktorý nemusí byť vždy v zozname) a model skončil pri štyroch
+volaniach `ifc_query` s odvodzovaním.
+
+**Rozhodnutie (rozšírenie existujúceho toolu, D-114 bod 3, žiadny nový tool):**
+1. `get_object` dostane hodnotu `include=quantities`. Pole `ifc` vo výsledku nesie `quantities`
+   `[{qto, name, value, source}]` a `properties` `[{pset, name, value, source}]`, `source` = `occurrence` |
+   `type`; ďalej `model`, `global_id`, `ifc_type`, `type_name` a `note`.
+2. Dáta berie `ifc_get` (IFC motor), tvarovanie je v `lib/engine/element-data.ts`. DB sa nemení: Qto v grafe
+   AIM nie sú, takže hodnota je vždy zo súboru (aktuálna revízia modelu).
+3. Prvok len v IFC (D-102, `in_aim:false`) dostane `ifc` tiež, podľa `global_id`.
+4. Chyba motora, vypnutý motor alebo chýbajúci GUID sa vráti ako `ifc.error`, ostatné `include` ostávajú
+   použiteľné. `ifc_get` ostáva na viac prvkov naraz a na materiály, klasifikácie a dokumenty.
+5. Prompt (`system-prompt.ts`) sa nemení, je na hranici rozpočtu 15000 znakov (test); pravidlo nesie opis toolu.
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool na výmery:* `get_object` už je tool "čo je X", výmery sú len ďalšie `include`.
+- *`ifc_get`:* funguje, ale nie je spoľahlivo načítaný, vráti sa celý záznam (atribúty, dokumenty) a bez `ifc` cesty
+  sa model musí učiť dva nástroje na jednu otázku.
+- *`show_in_3d select panel_section=quantities`:* UI akcia (zvýraznenie riadku vo viewer paneli, #183), hodnotu
+  Claudovi nevracia.
+
+**Otvorené:** jednotky veličín sa nevypisujú (hodnoty sú v jednotkách IFC súboru, `note` to hovorí); ak má model
+nemetrické jednotky, treba doplniť z `ifc_models`. Evaly (D-057) v cloud session nepobežali, pridaná otázka
+`object-quantities-one-call` (neoverená).
+
+---
+
 ---
 
 ### D-137 - Čiara trasy vo vieweri: `ifc_measure route` + `show` kreslí únikovú cestu 1,6 m nad podlahou

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
+import { usePathname, useRouter } from "next/navigation";
 import { Radio } from "lucide-react";
 
 import { isSafeViewerUrl, mergeIfcActions, type AskAction } from "@/lib/llm/actions";
@@ -37,12 +38,8 @@ const LIVE_EVENT = "command";
 /** Príkazy doručené do tohto okna sa zlúčia do jednej akcie (jedno volanie toolu = jeden príkaz). */
 const BATCH_MS = 50;
 const TOAST_MS = 4000;
-/**
- * Koľko indikátor Live (fixed vľavo dole) zaberá nad spodkom okna. Prvky ukotvené
- * vľavo dole (čip výberu viewera, D-116) sa o túto CSS premennú posunú nad neho.
- */
-const LIVE_INSET_VAR = "--aim-live-inset";
-const LIVE_INSET = "2.25rem";
+/** Miesto v spodnej stavovej lište /ifc, kam sa indikátor Live vloží (#185); inde je fixed vľavo dole. */
+export const LIVE_SLOT_ID = "aim-live-slot";
 
 type Status = "connecting" | "live" | "error";
 
@@ -62,6 +59,7 @@ function readChannel(): string | null {
 
 export function LiveChannel() {
   const router = useRouter();
+  const pathname = usePathname();
   const [channel, setChannel] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("connecting");
   const [toast, setToast] = useState<string | null>(null);
@@ -173,14 +171,13 @@ export function LiveChannel() {
     };
   }, [router]);
 
+  // Slot v stavovej lište sa objaví až po vykreslení stránky, preto ho hľadáme po mounte.
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
   useEffect(() => {
-    if (!channel) return;
-    const root = document.documentElement;
-    root.style.setProperty(LIVE_INSET_VAR, LIVE_INSET);
-    return () => {
-      root.style.removeProperty(LIVE_INSET_VAR);
-    };
-  }, [channel]);
+    // Hľadanie prvku v DOM po commite stránky (synchronizácia s externým stavom).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSlot(document.getElementById(LIVE_SLOT_ID));
+  }, [pathname, channel]);
 
   if (!channel) return null;
 
@@ -189,24 +186,34 @@ export function LiveChannel() {
   const text =
     status === "live" ? "Live" : status === "error" ? "Live: odpojené" : "Live: pripájam…";
 
-  return (
+  const chip = (
     <div
-      className="pointer-events-none fixed bottom-4 left-4 z-[9998] flex flex-col items-start gap-2"
-      aria-live="polite"
+      className="flex items-center gap-2 rounded-full px-3 py-0.5 text-xs text-muted-foreground"
+      title={`Živý kanál: ${channel}`}
     >
+      <span className={`size-2 rounded-full ${dot}`} />
+      <Radio className="size-3.5" />
+      <span>{text}</span>
+    </div>
+  );
+
+  return (
+    <>
+      {slot ? (
+        createPortal(chip, slot)
+      ) : (
+        <div className="pointer-events-none fixed bottom-4 left-4 z-[9998] rounded-full border border-border bg-background/90 shadow">
+          {chip}
+        </div>
+      )}
       {toast && (
-        <div className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground shadow-lg">
+        <div
+          className="pointer-events-none fixed bottom-12 left-4 z-[9998] rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground shadow-lg"
+          aria-live="polite"
+        >
           {toast}
         </div>
       )}
-      <div
-        className="flex items-center gap-2 rounded-full border border-border bg-background/90 px-3 py-1 text-xs text-muted-foreground shadow"
-        title={`Živý kanál: ${channel}`}
-      >
-        <span className={`size-2 rounded-full ${dot}`} />
-        <Radio className="size-3.5" />
-        <span>{text}</span>
-      </div>
-    </div>
+    </>
   );
 }
