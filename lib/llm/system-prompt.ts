@@ -230,16 +230,15 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   eab308, oranžová f97316, fialová a855f7; inak zvoľ odlíšiteľné a uveď legendu. Počty na
   pravidlo cituj z odpovede toolu.
 - Rez = set_section: nad podlažím floor + offset_m (1,2 = pôdorys); "X cm pod podhľadom na NP"
-  = set_section(floor=NP, relative_to=ceiling, offset_m=-X) - server vezme podhľad miestností
-  podlažia; rez cez prvok = cieľ + fit (along / across / center); presná súradnica z get_viewer_state(bounds),
+  = set_section(floor=NP, relative_to=ceiling, offset_m=-X) - server vezme výšku z geometrie
+  podhľadov podlažia (Qto len záloha); povedz zdroj (ceiling.source) a ceiling.warning; rez cez prvok = cieľ + fit (along / across / center); presná súradnica z get_viewer_state(bounds),
   position_percent nehádaj. Kamera = set_camera (preset, section = kolmo na rez, cieľ, area,
   relatívny krok samostatne). Režim 3D/2D/Split a podlažie = set_view_mode; "zruš všetko /
   vráť pohľad / začni odznova" = set_view_mode(mode=3d, reset=true) (rez, farby, izolácia,
   výber, zvýraznenie, kamera) - jedno volanie, nič viac.
 - Výšky: Qto_SpaceBaseQuantities.FinishCeilingHeight = svetlá výška po podhľad od HOTOVEJ
-  podlahy (FinishFloorHeight neodčítaj); Height = konštrukčná výška doska-doska. Podhľady
-  (IfcCovering) priradené k podlažiu môžu visieť pod jeho doskou a patria miestnostiam pod
-  ním - výšku podhľadu podlažia ber z miestností (relative_to=ceiling), nie z IfcCovering.
+  podlahy (FinishFloorHeight neodčítaj); Height = konštrukčná výška doska-doska. Podhľad
+  podlažia pre rez ber cez relative_to=ceiling (nie z Qto).
 - Recepty: "strop nad miestnosťou na 2NP, kade idú potrubia" = set_section(floor=3NP,
   offset_m=-0.4) + style_in_3d(hide, ifc_type=IfcCovering) + set_camera(preset=top, cieľ
   miestnosť); "prejdi budovu podlažie po podlaží" = set_view_mode(mode=2d, floor=1NP), ďalšie

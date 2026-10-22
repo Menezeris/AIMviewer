@@ -3,9 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { MINI_BUILDING_BYTES, guid } from "./__fixtures__/mini-building";
+import { MINI_CEILING_BYTES } from "./__fixtures__/mini-ceiling";
 import { pickUnique } from "./aim-lookup";
 import { clearEngineCache } from "./cache";
-import { storeyCeiling, weightedMedian } from "./ceiling";
+import { ceilingFromCoverings, storeyCeiling, weightedMedian } from "./ceiling";
 import { findByNames } from "./names";
 import { buildNameIndex, editDistance, looksLikeCode, searchEntities, type IndexedEntity } from "./search";
 
@@ -71,11 +72,40 @@ describe("podhľad podlažia (D-102)", () => {
 
   it("medián FinishCeilingHeight miestností podlažia vážený plochou, v metroch", async () => {
     const c = await storeyCeiling("1NP", opts);
-    expect(c).toEqual({ height_m: 3.05, min_m: 3.05, max_m: 3.05, spaces: 1, model: "MINI" });
+    expect(c).toMatchObject({
+      source: "qto",
+      bottom_m: 3.05,
+      top_m: 3.05,
+      coverings: 0,
+      qto: { height_m: 3.05, min_m: 3.05, max_m: 3.05, spaces: 1 },
+      model: "MINI",
+    });
+    expect(c?.warning).toMatch(/len z Qto/);
     expect(await storeyCeiling("2NP", opts)).toBeNull(); // miestnosť bez Qto výšky
     // Openspace 3,05 m (120 m2) prehlasuje WC 2,6 m (4 x 3 m2).
     const rooms = [{ value: 3.05, weight: 120 }, ...Array.from({ length: 4 }, () => ({ value: 2.6, weight: 3 }))];
     expect(weightedMedian(rooms)).toBe(3.05);
     expect(weightedMedian([{ value: 1, weight: 1 }, { value: 2, weight: 1 }, { value: 3, weight: 1 }])).toBe(2);
+  });
+
+  it("geometria IfcCovering CEILING má prednosť pred Qto, nezhoda sa hlási (D-141, #230)", async () => {
+    const geo = {
+      sources: () => [{ id: "MINI", label: "Mini", url: "https://example.test/ceil.ifc" }],
+      fetchImpl: (async () => new Response(MINI_CEILING_BYTES, { status: 200, headers: { etag: '"ceil"' } })) as typeof fetch,
+    };
+    // 2.NP: úroveň 3,5 m, podhľad 6,6 až 6,613 m; Qto 3,05 m by dalo 6,55 m.
+    const c = await storeyCeiling("2NP", geo);
+    expect(c).toMatchObject({ source: "geometry", bottom_m: 3.1, top_m: 3.113, coverings: 1, qto: { height_m: 3.05 }, model: "MINI" });
+    expect(c?.warning).toMatch(/Qto FinishCeilingHeight \(3.05 m\).*3.1 m.*o 0.05 m/);
+    // 1NP nemá krytinu: záloha z Qto bez nezhody.
+    expect(await storeyCeiling("1NP", geo)).toMatchObject({ source: "qto", bottom_m: 3.05 });
+  });
+  it("ceilingFromCoverings: vážený medián okrajov mínus úroveň podlažia", () => {
+    const items = [
+      { bottom: 8.05, top: 8.063, weight: 100 },
+      { bottom: 7.2, top: 7.213, weight: 5 },
+    ];
+    expect(ceilingFromCoverings(items, 5)).toEqual({ bottom_m: 3.05, top_m: 3.063 });
+    expect(ceilingFromCoverings([], 5)).toBeNull();
   });
 });

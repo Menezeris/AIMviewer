@@ -6547,3 +6547,26 @@ formát nenesie hodnotu alfa. Chýba teda len host: kedy akciu `transparent` pos
 vo wire (fork patch bez využitia).
 **Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `style-colorize-space-translucent` je v
 `eval/questions.json`.
+
+### D-141 - set_section relative_to=ceiling: výška podhľadu z geometrie IfcCovering CEILING, Qto len záloha
+**Status:** rozhodnuté (2026-10-22, issue #230; číslo D-141 pridelil orchestrátor, zápis do registra čaká). Nadväzuje na D-102
+(rez pod podhľadom), D-092 (rez nad podlažím, elevácia z DB), D-112 (`ifc_measure`, mesh), D-114 (bez nového toolu).
+
+**Kontext:** `relative_to=ceiling` bral výšku z Qto `FinishCeilingHeight` miestností. Na 2NP sa Qto (3,05 m od hotovej podlahy)
+líši od skutočného podhľadu (PH01.10.0010 na z = 8,05 až 8,063 m), rez ho umiestnil mimo podhľadu a podhľad nebolo vidno.
+
+**Rozhodnutie (host, `lib/engine/ceiling.ts`, `lib/llm/view-tools.ts`):**
+1. Výška podhľadu podlažia = z geometrie prvkov `IfcCovering` s `PredefinedType = CEILING` priradených k podlažiu (mesh
+   motora z D-112, svetové Z vrátane posunu rámca D-124, mínus `IfcBuildingStorey.Elevation`). Spodný a horný okraj je
+   vážený medián okrajov krytín (váha = pôdorys), aby osamelá krytina inej výšky nerozhodla.
+2. Referencia rezu: záporný `offset_m` ráta od **spodku** podhľadu (pod ním), nezáporný od **horného okraja** (nad ním).
+3. Qto `FinishCeilingHeight` je záloha, keď podlažie nemá krytinu CEILING s geometriou (alebo sa mesh nedá načítať).
+4. Odpoveď nesie `ceiling.source` (`geometry` | `qto`), `bottom_m`, `top_m`, `coverings`, `qto` a `warning`: pri nezhode nad 2 cm
+   "Qto ... sa líši od geometrie ... použitá je geometria", pri zálohe "Výška je len z Qto ...". Prompt a opis toolu model
+   vedú, aby zdroj a upozornenie povedal používateľovi.
+- *Zavrhnuté:* nový tool alebo parameter (D-114, ide o opravu zdroja výšky v existujúcom `relative_to=ceiling`); samostatné
+  volanie `ifc_measure` v postupe modelu (host to robí sám v jednom volaní `set_section`).
+- *Otvorené:* záporný offset -0,05 od spodku podhľadu stále podhľad (nad rezom) skryje, tak ako každý rez; ak ho má rez
+  ukázať, treba kladný offset (nad horným okrajom ho zvýrazní `style_in_3d`) alebo ho po rezaní zobraziť cez xray.
+- **Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `section-below-ceiling-geometry` je v
+  `eval/questions.json`. **Testy:** `lib/engine/names.test.ts` (mini model `__fixtures__/mini-ceiling.ts`).
