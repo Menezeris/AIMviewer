@@ -34,7 +34,7 @@ interface Surface {
   tris: Float64Array;
 }
 
-export function surfaceOf(e: MeshElement): Surface {
+function surfaceOf(e: MeshElement): Surface {
   const p = e.positions;
   const out = new Float64Array(e.indices.length * 3);
   for (let i = 0; i < e.indices.length; i++) {
