@@ -6519,10 +6519,13 @@ Riešenie = `show=true` aj pri `route`, nie nový tool.
    a pri dverách = najvyšší povrch IfcSlab / IfcCovering / IfcRamp(Flight) pod bodom (zvislý lúč v okne -0,6 až
    +0,4 m okolo spodku IfcSpace, pri dverách okolo spodku dverí), bez zásahu spodok IfcSpace. Stropná krytina je
    pod doskou podlažia a nevyhrá. Priamka v miestnosti má vzorky každých 0,5 m (zmena úrovne podlahy, krytina).
-2. **Schodisko schodovito:** po každom ramene (IfcStairFlight; bez ramien časti schodiska) po osi v smere stúpania
-   (os, po ktorej sa výška mení viac), vzorky každých 5 cm na vrch stupňa, pri podstupnici zvislý skok; ramená
-   podľa výšky, podesta medzi nimi rovno; pri zostupe obrátene. Schodisko sa v úseku miestnosti neráta (priamka
-   od dverí k ramenu ide v pôdoryse aj nad otvorom schodiska a nesmie klesnúť na stupne).
+2. **Schodisko schodovito:** po každom ramene (IfcStairFlight; bez ramien časti schodiska) stredom každého stupňa:
+   stupne = horné vodorovné plochy prvku (nad nimi z prvku už nič nie je) zoskupené podľa výšky, ťažisko v
+   pôdoryse, podstupnica = zvislý skok v polovici medzi stredmi susedných stupňov. Platí pre rovné aj točité
+   ramená a podesty; plochy pod 50 % mediánu (vrch stredového stĺpa, madlo) sa vynechajú. Ramená podľa výšky,
+   pri zostupe obrátene; prvok bez vodorovných plôch = os obálky v smere stúpania. Schodisko sa v úseku
+   miestnosti neráta (priamka od dverí k ramenu ide v pôdoryse aj nad otvorom schodiska a nesmie klesnúť
+   na stupne).
 3. **Zjednodušenie a limit:** Douglas-Peucker 2 cm, najviac 400 bodov (tolerancia sa zdvojnásobí, kým sa
    nevojdú); drôt na cm, aby URL ostala krátka. Posun rámca do IFC sveta ako pri kótach (`worldOffset`, D-124).
 4. **Most:** op `route:<hex>:<x,y,z|...>` (`lib/viewer-route.ts`) -> správa `ROUTE_SHOW { points, color }`,
@@ -6544,7 +6547,14 @@ Riešenie = `show=true` aj pri `route`, nie nový tool.
   potreby; trasa má byť vidieť aj cez dosky.
 - *Šikmá čiara nad nábehovými hranami:* zadanie hovorí "nad každým stupňom"; otázka je v #223, zmena by bola
   len v `stairLine`.
+- *Os obálky ramena:* na točitom schodisku trafí stupne z rôznych výšok (overené na FZK-Haus).
+
+**Overenie:** vitest na mini budove (doska, krytina 1,65 m, 10 stupňov hore aj dole, stredy dverí) a lokálne na
+`AC20-FZK-Haus.ifc` (fixture forku): úniková cesta z Galerie cez točité schodisko (15 stupňov po 0,177 m) k
+Terrassentuer, 35 bodov, fork čiaru nakreslil a prázdna správa ju zmazala. Prvý pokus po osi obálky na točitom
+schodisku skákal hore-dole (os trafí stupne z rôznych výšok), preto stredy stupňov.
 
 **Hranice:** dĺžka a poradie ostávajú dolným odhadom D-121 (priamky v pôdoryse), čiara len kreslí tú istú trasu
-cez skutočné výšky; priamka v miestnosti tvaru L môže ísť cez stenu; točité stupne a rampy bez ramien idú po osi
-obálky.
+cez skutočné výšky; priamka v miestnosti tvaru L môže ísť cez stenu; schodisko bez vodorovných plôch (napr. len
+šikmá doska) ide šikmo po osi obálky; ramená s viacerými stupňami v tej istej výške (vedľa seba) sa zlúčia do
+jedného stredu.

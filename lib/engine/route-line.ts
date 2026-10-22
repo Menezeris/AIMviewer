@@ -10,8 +10,8 @@ import type { Endpoint, NavData, NavStair, RouteResult } from "./route";
  * 1,6 m nad pochôdznou plochou. Plocha = najvyšší povrch dosky, krytiny
  * alebo rampy pod bodom (zvislý lúč v okne okolo podlahy miestnosti),
  * bez zásahu = spodok IfcSpace. Čiara ide stredom každých dverí, v miestnosti
- * priamo (vzorky každých 0,5 m kopírujú zmenu úrovne podlahy) a po schodisku po
- * osi každého ramena nad každým stupňom (schodovito), podesta rovno.
+ * priamo (vzorky každých 0,5 m kopírujú zmenu úrovne podlahy) a po schodisku
+ * stredom každého stupňa nad jeho vrchom (schodovito), aj na točitom ramene.
  */
 
 export const WALK_HEIGHT_M = 1.6;
@@ -34,7 +34,7 @@ interface Surface {
   tris: Float64Array;
 }
 
-function surfaceOf(e: MeshElement): Surface {
+export function surfaceOf(e: MeshElement): Surface {
   const p = e.positions;
   const out = new Float64Array(e.indices.length * 3);
   for (let i = 0; i < e.indices.length; i++) {
@@ -97,16 +97,70 @@ export function simplify(pts: readonly Vec3[], tol: number): Vec3[] {
   return pts.filter((_, k) => keep[k]);
 }
 
+/** Stupeň: horná vodorovná plocha ramena (ťažisko v pôdoryse, výška, plocha). */
+interface Tread {
+  x: number;
+  y: number;
+  z: number;
+  area: number;
+}
+
 /**
- * Čiara po schodisku zdola nahor: po každom ramene (alebo celom schodisku bez
- * ramien) po osi v smere stúpania, výška = vrch stupňa pod bodom; pri
- * podstupnici zvislý skok. Ramená v poradí podľa výšky, podesta medzi nimi rovno.
+ * Horné vodorovné plochy prvku zoskupené podľa výšky (1 cm): stupne a podesty.
+ * Horná = nad ňou z prvku už nič nie je (spodná plocha stupňa ani päta stĺpa nie).
+ * Malé plochy (vrch stredového stĺpa točitého schodiska, madlo) pod 50 % mediánu
+ * plôch sa vynechajú (FZK-Haus: stĺp 0,031 m², stupeň 0,098 m²).
+ */
+export function treadsOf(s: Surface): Tread[] {
+  const faces: Tread[] = [];
+  const t = s.tris;
+  for (let i = 0; i + 8 < t.length; i += 9) {
+    const [ax, ay, az, bx, by, bz, cx, cy, cz] = t.subarray(i, i + 9);
+    const [ux, uy, uz, vx, vy, vz] = [bx - ax, by - ay, bz - az, cx - ax, cy - ay, cz - az];
+    const n = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+    const len = Math.hypot(n[0], n[1], n[2]);
+    if (len < 1e-9 || Math.abs(n[2]) / len < 0.98) continue;
+    const [x, y, z] = [(ax + bx + cx) / 3, (ay + by + cy) / 3, (az + bz + cz) / 3];
+    if (surfaceZ([s], x, y, z + 0.005, s.box.max[2] + 1) !== null) continue;
+    faces.push({ x, y, z, area: len / 2 });
+  }
+  faces.sort((a, b) => a.z - b.z);
+  const out: Tread[] = [];
+  for (const f of faces) {
+    const last = out[out.length - 1];
+    if (last && f.z - last.z < 0.01) {
+      const a = last.area + f.area;
+      [last.x, last.y, last.z, last.area] = [(last.x * last.area + f.x * f.area) / a, (last.y * last.area + f.y * f.area) / a, (last.z * last.area + f.z * f.area) / a, a];
+    } else out.push({ ...f });
+  }
+  const areas = out.map((g) => g.area).sort((a, b) => a - b);
+  const median = areas[Math.floor(areas.length / 2)] ?? 0;
+  return out.filter((g) => g.area >= Math.max(0.02, 0.5 * median));
+}
+
+/**
+ * Čiara po schodisku zdola nahor, schodovito: stredom každého stupňa (ťažisko
+ * hornej plochy) vo výške jeho vrchu, podstupnica = zvislý skok v polovici medzi
+ * stredmi susedných stupňov. Platí pre rovné aj točité ramená a podesty. Ramená
+ * (inak časti schodiska) v poradí podľa výšky. Prvok bez vodorovných plôch: os
+ * obálky v smere stúpania, výška = vrch pod bodom.
  */
 function stairLine(st: NavStair, meshes: Map<string, MeshElement>): Vec3[] {
   const runs = (st.flights.length > 0 ? st.flights : st.parts).map((g) => meshes.get(g)).filter((e): e is MeshElement => !!e);
   const lines: Vec3[][] = [];
   for (const e of runs) {
     const s = surfaceOf(e);
+    const treads = treadsOf(s);
+    if (treads.length >= 2) {
+      const line: Vec3[] = [[treads[0].x, treads[0].y, treads[0].z]];
+      for (let i = 1; i < treads.length; i++) {
+        const [a, b] = [treads[i - 1], treads[i]];
+        const [mx, my] = [(a.x + b.x) / 2, (a.y + b.y) / 2];
+        line.push([mx, my, a.z], [mx, my, b.z], [b.x, b.y, b.z]);
+      }
+      lines.push(line);
+      continue;
+    }
     const { min, max } = s.box;
     const mid = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2];
     const sample = (axis: 0 | 1): Vec3[] => {
@@ -126,13 +180,7 @@ function stairLine(st: NavStair, meshes: Map<string, MeshElement>): Vec3[] {
     let line = rise(ax) >= rise(ay) ? ax : ay;
     if (line.length < 2) continue;
     if (line[0][2] > line[line.length - 1][2]) line = line.reverse();
-    const stepped: Vec3[] = [line[0]];
-    for (let i = 1; i < line.length; i++) {
-      const prev = stepped[stepped.length - 1];
-      if (Math.abs(line[i][2] - prev[2]) > 0.02) stepped.push([line[i][0], line[i][1], prev[2]]);
-      stepped.push(line[i]);
-    }
-    lines.push(stepped);
+    lines.push(line);
   }
   lines.sort((a, b) => a[0][2] - b[0][2]);
   return lines.flat().map((p): Vec3 => [p[0], p[1], p[2] + WALK_HEIGHT_M]);

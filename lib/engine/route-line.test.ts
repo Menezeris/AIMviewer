@@ -6,7 +6,7 @@ import { MAX_ROUTE_POINTS, decodeRouteWire, encodeRouteWire, routeOp } from "../
 import { guid } from "./__fixtures__/mini-building";
 import { MINI_ROUTE_BYTES } from "./__fixtures__/mini-route";
 import { clearEngineCache } from "./cache";
-import { simplify, surfaceZ } from "./route-line";
+import { simplify, surfaceZ, treadsOf } from "./route-line";
 import { execEngineTool, type EngineDeps } from "./tools";
 
 const deps: EngineDeps = {
@@ -84,6 +84,19 @@ describe("ifc_measure route show - čiara trasy (D-137)", () => {
     expect(surfaceZ([flat(0), flat(2.7)], 0.2, 0.2, -0.6, 0.4)).toBe(0);
     expect(surfaceZ([flat(0)], 0.9, 0.9, -0.6, 0.4)).toBeNull();
     expect(surfaceZ([wall], 0, 0.5, -1, 4)).toBeNull();
+  });
+
+  it("stupne: horné vodorovné plochy podľa výšky, bez spodných plôch a vrchu stĺpa", () => {
+    // Štvorec [x0,x1] x [y0,y1] vo výške z ako dva trojuholníky.
+    const sq = (x0: number, x1: number, y0: number, y1: number, z: number) => [x0, y0, z, x1, y0, z, x1, y1, z, x0, y0, z, x1, y1, z, x0, y1, z];
+    const tris = Float64Array.from([
+      ...sq(0, 1, 0, 0.3, 0.2), // stupeň 1
+      ...sq(0, 1, 0.3, 0.6, 0.4), // stupeň 2
+      ...sq(0, 1, 0.3, 0.6, 0.2), // spodok stupňa 2 (nad ním je jeho vrch)
+      ...sq(1.2, 1.4, 0, 0.2, 1.5), // vrch stĺpa, 0,04 m² (pod polovicou stupňa 0,3 m²)
+    ]);
+    const treads = treadsOf({ box: { min: [0, 0, 0.2], max: [1.4, 0.6, 1.5] }, tris });
+    expect(treads.map((t) => [t.x, t.y, t.z].map((v) => +v.toFixed(3)))).toEqual([[0.5, 0.15, 0.2], [0.5, 0.45, 0.4]]);
   });
 
   it("zjednodušenie nechá rohy a vynechá body na priamke", () => {
