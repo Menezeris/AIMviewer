@@ -15,6 +15,7 @@ import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { CaptureGallery } from "@/components/capture-gallery";
 import { Button } from "@/components/ui/button";
+import { LIVE_SLOT_ID } from "@/components/live-channel";
 import { ViewerPicker, useViewerChoice } from "@/components/viewer-picker";
 
 // 3D viewer je embed-nutý ifc-lite viewer cez iframe (postMessage bridge),
@@ -114,7 +115,9 @@ export default function IFCWorkspace({
   }
 
   return (
-    <div className="relative h-full w-full">
+    <div className="flex h-full w-full flex-col">
+      {/* Viewer s vlastnou stavovou lištou; overlaye hostu ho neprekrývajú (#185). */}
+      <div className="relative min-h-0 flex-1">
       {viewer.viewerUrl ? (
         <IFCViewer
           viewerUrl={viewer.viewerUrl}
@@ -145,8 +148,6 @@ export default function IFCWorkspace({
           {viewer.error ?? "Načítavam náhľad viewera…"}
         </div>
       )}
-
-      <ViewerPicker choice={viewer.choice} error={viewer.viewerUrl ? viewer.error : null} onChoose={viewer.setChoice} />
 
       {siblingLoading && (
         <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-background/80 px-3 py-1 text-xs text-muted-foreground shadow backdrop-blur-sm">
@@ -185,6 +186,13 @@ export default function IFCWorkspace({
           </div>
         </div>
       )}
+      </div>
+
+      {/* Spodná stavová lišta hostu pod viewerom: výber viewera (D-116) a indikátor Live (D-079). */}
+      <div className="flex h-7 shrink-0 items-center gap-1 border-t bg-background px-2" data-host-statusbar>
+        <ViewerPicker choice={viewer.choice} error={viewer.viewerUrl ? viewer.error : null} onChoose={viewer.setChoice} />
+        <div id={LIVE_SLOT_ID} className="flex items-center" />
+      </div>
     </div>
   );
 }
