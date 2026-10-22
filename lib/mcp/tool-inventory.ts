@@ -45,7 +45,8 @@ function paramText(name: string, schema: unknown, required: boolean): string {
 }
 
 function access(t: ToolDefinition): string {
-  return t.annotations?.readOnlyHint === false ? "zápis" : "čítanie";
+  const mode = t.annotations?.readOnlyHint === false ? "zápis" : "čítanie";
+  return t.meta?.["anthropic/alwaysLoad"] === true ? `${mode}, vždy načítaný` : mode;
 }
 
 function toolEntry(t: ToolDefinition, decision: string | undefined): string {
@@ -77,7 +78,8 @@ export function inventoryMarkdown(groups: ToolGroup[], registry: Record<string, 
     "   `lib/mcp/tool-registry.json` schvaľuje Samuel v issue.",
     "",
     "Legenda: `*` = povinný parameter, `=a|b` = povolené hodnoty, v zátvorke rozhodnutie,",
-    "ktoré tool zaviedlo, a či číta alebo zapisuje (zápis si v claude.ai pýta súhlas).",
+    "ktoré tool zaviedlo, a či číta alebo zapisuje (zápis si v claude.ai pýta súhlas);",
+    "\"vždy načítaný\" = `_meta` `anthropic/alwaysLoad`, klient ho nemusí hľadať cez tool_search (D-153).",
   ];
   for (const g of groups) {
     lines.push(

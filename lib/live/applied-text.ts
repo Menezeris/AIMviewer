@@ -61,6 +61,68 @@ export function appliedWarnings(tool: string, a: LiveAppliedPayload, ctx: Applie
   return out;
 }
 
+/** Stav tabuľky po `open_list` (D-148): beží, hotová alebo prečo nie. */
+export function listStateText(tool: string, state: unknown, run: boolean): string {
+  if (tool !== "open_list") return "";
+  const l = state && typeof state === "object" ? (state as { list?: { name?: string; status?: string; rows?: number; error?: string; reason?: string } }).list : undefined;
+  if (!l) return run ? " Viewer neposlal stav zoznamu (staršia verzia viewera?): netvrď, že tabuľka beží; nech používateľ stlačí Run." : "";
+  if (l.status === "done") return ` Tabuľka je spustená a hotová: ${l.rows ?? 0} riadkov.`;
+  if (l.status === "running") return " Tabuľka beží, výsledok sa ešte počíta; používateľ ho uvidí v paneli Lists.";
+  if (l.status === "failed") return ` Tabuľka sa nespustila: ${l.error ?? "chyba výpočtu"}.`;
+  if (l.status === "not_started") return ` Tabuľka sa nespustila: ${l.reason ?? "panel Lists sa nezobrazil"}. Používateľ ju spustí tlačidlom Run.`;
+  return run ? "" : " Zoznam je otvorený v builderi, Run stlačí používateľ.";
+}
+
+type ListState = {
+  status?: string;
+  visible_rows?: number;
+  sums?: Array<{ column?: string; value?: number; unit?: string }>;
+  maximized?: boolean;
+  sort?: { column?: string; dir?: string } | null;
+  color_by?: string;
+  export_ready?: string;
+};
+
+const VIEW_ARGS = ["maximize", "sort_by", "sum", "group_by", "search", "color_by", "export"];
+
+/**
+ * Úpravy zoznamu (D-149): súčty povedané vetou, a čo sa z `maximize`/`sort_by`/`sum` nevykonalo;
+ * krok 2: farby podľa stĺpca a ponuka exportu (stiahnutie je na kliku používateľa).
+ */
+export function listViewText(tool: string, state: unknown, args: Record<string, unknown> = {}): string {
+  if (tool !== "open_list") return "";
+  const l = state && typeof state === "object" ? (state as { list?: ListState }).list : undefined;
+  const asked = VIEW_ARGS.some((k) => args[k] !== undefined) || args.action === "update";
+  if (!l || l.status === "failed" || l.status === "not_started") return "";
+  if (asked && l.sums === undefined) return " Viewer neposlal stav tabuľky (staršia verzia viewera?): zoradenie, súčty a maximalizáciu nepotvrdzuj.";
+  const out: string[] = [];
+  const sums = (l.sums ?? []).filter((x) => typeof x.value === "number");
+  if (sums.length > 0) {
+    const rows = typeof l.visible_rows === "number" ? ` za ${l.visible_rows} zobrazených riadkov` : "";
+    out.push(`Súčty${rows}: ${sums.map((x) => `${x.column} = ${x.value}${x.unit ? ` ${x.unit}` : ""}`).join(", ")}.`);
+  } else if (Array.isArray(args.sum) && args.sum.length > 0 && l.status === "done") {
+    out.push("Súčet sa v tabuľke nezobrazil (stĺpec v zozname nie je alebo tabuľka nie je zobrazená): súčet nehlás.");
+  }
+  if (args.maximize === true && l.maximized === false) {
+    out.push("Panel Lists sa nemaximalizoval (nie je v spodnom pruhu viewera alebo tabuľka ešte nie je zobrazená).");
+  }
+  if (typeof args.sort_by === "string" && args.sort_by.trim() && !l.sort && l.status === "done") {
+    out.push("Zoradenie sa neprejavilo (stĺpec v zozname nie je).");
+  }
+  if (typeof args.color_by === "string" && args.color_by.trim()) {
+    if (l.color_by) out.push(`Prvky v 3D sú ofarbené podľa stĺpca ${l.color_by}, legenda je v paneli Lens.`);
+    else if (l.status === "done") out.push("Farby podľa stĺpca sa nepoužili (pozri problémy viewera): ofarbenie nepotvrdzuj.");
+  }
+  if (typeof args.export === "string") {
+    if (l.export_ready) {
+      out.push(`Vo vieweri svieti tlačidlo Stiahnuť ${l.export_ready.toUpperCase()}: povedz používateľovi, nech naň klikne (bez kliku prehliadač súbor nestiahne).`);
+    } else if (l.status === "done") {
+      out.push("Ponuka exportu sa nezobrazila: nech používateľ exportuje tlačidlom Export v tabuľke.");
+    }
+  }
+  return out.length ? ` ${out.join(" ")}` : "";
+}
+
 export function appliedText(tool: string, a: LiveAppliedPayload, elapsedMs?: number, ctx: AppliedContext = {}): string {
   const head = a.ok
     ? `Vykonané vo vieweri${elapsedMs !== undefined ? ` (${elapsedMs} ms)` : ""}.`
@@ -72,7 +134,8 @@ export function appliedText(tool: string, a: LiveAppliedPayload, elapsedMs?: num
       ? " Pri reze nad podlažím má section.coordinate zodpovedať floor_elevation_model_units + offset_m; ak nie, povedz to a rez nepotvrdzuj."
       : "";
   const warnings = appliedWarnings(tool, a, ctx).map((w) => ` POZOR: ${w}`).join("");
-  return `${head}${state}${section}${warnings}`;
+  const list = listStateText(tool, a.state, ctx.args?.run === true) + listViewText(tool, a.state, ctx.args);
+  return `${head}${state}${section}${list}${warnings}`;
 }
 
 export function notAppliedText(timeoutMs: number): string {

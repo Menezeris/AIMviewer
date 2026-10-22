@@ -135,6 +135,7 @@ const QUERY_RELATIONS = new Set([
   "rel_aggregates",
   "rel_contained_in_spatial_structure",
   "rel_referenced_in_spatial_structure",
+  "rel_space_boundary",
   "v_space_elements",
   "ids_runs",
   "v_ids_latest",
@@ -161,6 +162,7 @@ const REL_VIEWS = new Set([
   "rel_aggregates",
   "rel_contained_in_spatial_structure",
   "rel_referenced_in_spatial_structure",
+  "rel_space_boundary",
   "rel_defines_by_type",
   "rel_associates_document",
   "rel_associates_classification",
@@ -324,8 +326,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "properties->Pset_ValveTypeIsolating->>IsNormallyOpen. Výsledok má total, returned, truncated a " +
       "next_offset (poradie je stabilné, ďalšia strana = offset=next_offset). Uzly so vzťahom na iný uzol " +
       "jedným volaním = related (napr. IfcAirTerminal s rel_referenced_in_spatial_structure na priestor 2.01); " +
-      "obsah miestnosti naraz (contained aj referenced) dá v_space_elements (space_ref, element_ref, " +
-      "element_ifc_type, element_predefined_type, relation, role).",
+      "obsah miestnosti naraz dá v_space_elements (space_ref, element_ref, element_ifc_type, " +
+      "element_predefined_type, relation, role); relation: contained = v miestnosti zo súboru, referenced = " +
+      "odvodené geometriou (role inside|partial), boundary = prvok miestnosť len ohraničuje " +
+      "(IfcRelSpaceBoundary, napr. dvere; role physical|virtual); pár prvok-miestnosť je raz, " +
+      "s prednosťou contained > referenced > boundary. Pohľad nepokrýva všetky vzťahy zo súboru: " +
+      "úplnosť dá ifc_relations.",
     inputSchema: {
       type: "object",
       properties: {
@@ -464,7 +470,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "Vzťahy uzla cez kanonické views: rel_aggregates (dekompozícia štruktúry), " +
       "rel_contained_in_spatial_structure (prvok v priestore/podlaží, natívne zo súboru), " +
       "rel_referenced_in_spatial_structure (prvok sa nachádza aj v priestore — odvodené geometriou " +
-      "naprieč modelmi, role inside|partial), rel_defines_by_type (occurrence→typ), " +
+      "naprieč modelmi, role inside|partial), rel_space_boundary (prvok ohraničuje priestor, " +
+      "IfcRelSpaceBoundary, role physical|virtual), rel_defines_by_type (occurrence→typ), " +
       "rel_associates_document (uzol→dokument), rel_associates_classification, " +
       "rel_assigns_to_actor (zodpovednosti, aktor→uzol), rel_assigns_to_group (člen→systém), " +
       "rel_member_of (osoba→organizácia). Smer je subjekt(from)→objekt(to); zadaj from_id alebo to_id.",
@@ -558,6 +565,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "keď ich nepovie, zvoľ dobre odlíšiteľné a povedz ich. " +
       "VÝNIMKA pri skrytí = hide + exclude_ids_or_refs / exclude_global_ids (skryje filter okrem výnimiek, jedno volanie; " +
       "izolácia len v rámci jedného modelu = hide + model + výnimky, isolate by skryl aj ostatné modely). " +
+      "Samostatné vypnutie X-ray alebo izolácie = clear_isolation (nezruší rez, skryté prvky ani farby; show_all zruší všetko). " +
       "Efekty sa hromadia, kým ich nezruší show_all/reset_colors (reset_colors vypne aj " +
       "lens, čiaru trasy a kóty od Claude). Viac operácií = viac callov (pokojne v jednom kole).",
     inputSchema: {
@@ -565,12 +573,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         action: {
           type: "string",
-          enum: ["colorize", "transparent", "hide", "show", "isolate", "xray", "show_all", "reset_colors", "legend"],
+          enum: ["colorize", "transparent", "hide", "show", "isolate", "xray", "clear_isolation", "show_all", "reset_colors", "legend"],
           description:
             "colorize=ofarbiť (vyžaduje color), transparent=priehľadne s farbou, hide=skryť, " +
             "show=znova zobraziť skryté, isolate=zobraziť LEN vybrané (ostatné skryť; bez color " +
             "ostanú v pôvodnom vzhľade, color len keď ho používateľ chce), xray=vybrané plné v pôvodnom " +
             "vzhľade a zvyšok modelu priesvitný (X-ray context, ako tlačidlo duch; filtre ako isolate), " +
+            "clear_isolation=zrušiť LEN izoláciu a X-ray z chatu (rez, skryté prvky a farby ostanú; bez filtrov), " +
             "show_all=zrušiť skrývanie, izoláciu, X-ray aj rez (rez vráti set_section), reset_colors=zrušiť ofarbenie, lens, čiaru trasy a kóty od Claude, " +
             "legend=len legenda AIM chat lens (legend_size; predvolene malá karta), bez filtrov",
         },
@@ -2427,13 +2436,14 @@ export class AskToolRuntime {
       show: "zobrazenie",
       isolate: "izolácia",
       xray: "X-ray",
+      clear_isolation: "zrušiť izoláciu a X-ray",
       show_all: "zobraziť všetko",
       reset_colors: "zrušiť farby",
       legend: "legenda",
     };
     if (!(action in opLabel)) {
       throw new Error(
-        "action musí byť colorize | transparent | hide | show | isolate | xray | show_all | reset_colors | legend."
+        "action musí byť colorize | transparent | hide | show | isolate | xray | clear_isolation | show_all | reset_colors | legend."
       );
     }
 
@@ -2445,7 +2455,7 @@ export class AskToolRuntime {
     const excludedNote = excluded ? { excluded: excluded.guids.length, ...(excluded.skipped.length ? { excluded_skipped: excluded.skipped } : {}) } : {};
 
     // Globálne resety nepotrebujú prvky.
-    if (action === "show_all" || action === "reset_colors") {
+    if (action === "show_all" || action === "reset_colors" || action === "clear_isolation") {
       this.actions.push({
         type: "navigate",
         url: `/ifc?ops=${encodeURIComponent(`${action}::`)}&r=${nonce()}`,

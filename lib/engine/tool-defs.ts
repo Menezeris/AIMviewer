@@ -171,7 +171,10 @@ export function engineToolDefinitions(): ToolDefinition[] {
         "IFC MOTOR: meranie z geometrie (nie z Qto). clear_opening + items (dvere z ifc_query, max 50) = svetlá " +
         "šírka a výška dverí medzi zárubňami a od prahu po nadpražie z geometrie, nie z psetov (OverallWidth je so " +
         "zárubňou); s min_width_m / min_height_m aj pass/fail a check.style_pass / style_fail pre style_in_3d. " +
-        "KÓTA vo vieweri: show=true (a + b čiara medzi najbližšími bodmi s dĺžkou, len a hrany obálky X, Y, Z). " +
+        "KÓTA vo vieweri: show=true (a + b čiara medzi najbližšími bodmi s dĺžkou, len a hrany obálky X, Y, Z, " +
+        "s axis len jedna os, clear_opening šírka a výška dverí). PLOCHY (face_a + face_b, a alebo a + b): kolmá " +
+        "vzdialenosť dvoch rovnobežných plôch v osiach prvku a (x = width, dlhšia strana pôdorysu; y = depth; z = hore), " +
+        "napr. vnútorné líca zárubne face_a=+x face_b=-x, hrúbka steny +y a -y, svetlá výška +z a -z (prah k nadpražiu). " +
         "a + b = svetlá vzdialenosť povrchov dvoch prvkov (aj ASR " +
         "voči VZT; záporná = prienik), vzdialenosť stredov, medzera obálok po osiach X/Y/Z a vodorovne, " +
         "a_above_b_m = výška spodku a nad vrchom b (napr. klapka nad doskou: b = doska). \"Od steny k stene\" = " +
@@ -204,6 +207,23 @@ export function engineToolDefinitions(): ToolDefinition[] {
           clear_opening: {
             type: "boolean",
             description: "Svetlá šírka a výška dverí (IfcDoor, a alebo items) z geometrie zárubne, bez krídla a kovania",
+          },
+          axis: {
+            type: "string",
+            enum: ["x", "y", "z", "width", "depth", "height"],
+            description: "Len a: jedna os namiesto troch hrán obálky; x/y/z osi IFC sveta, width/depth/height osi prvku",
+          },
+          face_a: {
+            type: "string",
+            enum: ["+x", "-x", "+y", "-y", "+z", "-z"],
+            description:
+              "Plocha prvku a podľa smeru normály v osiach prvku a; s face_b kolmá vzdialenosť plôch. Plochy oproti sebe = " +
+              "svetlá medzera (najbližšie), odvrátené = hrúbka. Pri dverách bez krídla a kovania",
+          },
+          face_b: {
+            type: "string",
+            enum: ["+x", "-x", "+y", "-y", "+z", "-z"],
+            description: "Druhá plocha: na prvku b, bez b na prvku a; rovnaká os ako face_a (osi prvku a)",
           },
           min_width_m: { type: "number", description: "clear_opening: limit svetlej šírky v m od používateľa -> pass/fail" },
           min_height_m: { type: "number", description: "clear_opening: limit svetlej výšky v m od používateľa -> pass/fail" },

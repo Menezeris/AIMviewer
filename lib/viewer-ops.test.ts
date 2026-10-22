@@ -37,6 +37,10 @@ describe("viewer ops - existujúce operácie (D-066, D-082)", () => {
     expect(bridge("clear_selection::")).toEqual([{ type: "CLEAR_SELECTION" }]);
   });
 
+  it("clear_isolation zruší len izoláciu a X-ray z chatu, bez SHOW_ALL (D-151, #246)", () => {
+    expect(bridge("clear_isolation::")).toEqual([{ type: "APPLY_LENS", mode: "unisolate" }]);
+  });
+
   it("chybné časti sa zahodia", () => {
     expect(parseOps("colorize:red:A;isolate::;bogus:x:y")).toEqual([]);
   });

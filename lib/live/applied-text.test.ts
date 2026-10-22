@@ -30,3 +30,46 @@ describe("upozornenia v potvrdení príkazu (D-125)", () => {
     expect(text).toMatch(/POZOR: Na živý kanál odpovedá 2 okien viewera/);
   });
 });
+
+describe("stav tabuľky po open_list (D-148)", () => {
+  const text = (state: Record<string, unknown>, run = true) => appliedText("open_list", applied(state), 5, { args: { run } });
+  it("hotová, beží, zlyhala a nespustená majú každá vlastnú vetu", () => {
+    expect(text({ list: { status: "done", rows: 42 } })).toContain("hotová: 42 riadkov");
+    expect(text({ list: { status: "running" } })).toContain("Tabuľka beží");
+    expect(text({ list: { status: "failed", error: "zlý regex" } })).toContain("nespustila: zlý regex");
+    expect(text({ list: { status: "not_started", reason: "nie je načítaný model" } })).toContain("nie je načítaný model");
+  });
+  it("run bez stavu zoznamu (starý fork) nepotvrdí beh; bez run a iný tool mlčia", () => {
+    expect(text({})).toContain("netvrď, že tabuľka beží");
+    expect(text({}, false)).not.toContain("tabuľka");
+    expect(text({ list: { status: "opened" } }, false)).toContain("Run stlačí používateľ");
+    expect(appliedText("style_in_3d", applied({ list: { status: "done", rows: 1 } }), 5)).not.toContain("riadkov");
+  });
+});
+
+describe("úpravy zoznamu v potvrdení (D-149)", () => {
+  const text = (list: Record<string, unknown> | undefined, args: Record<string, unknown>) =>
+    appliedText("open_list", applied(list ? { list } : {}), 5, { args });
+  const DONE = { status: "done", rows: 52, visible_rows: 7, sort: null, maximized: true, sums: [{ column: "NetVolume", value: 17.5775, unit: "m³" }] };
+  it("súčty povie vetou za zobrazené riadky", () => {
+    expect(text(DONE, { action: "update", sum: ["Qto_ColumnBaseQuantities.NetVolume"] })).toContain("Súčty za 7 zobrazených riadkov: NetVolume = 17.5775 m³.");
+  });
+  it("nevykonaná maximalizácia, zoradenie a súčet sa nehlásia ako hotové", () => {
+    const t = text({ ...DONE, maximized: false, sums: [] }, { maximize: true, sort_by: "Name", sum: ["X.Y"] });
+    expect(t).toContain("nemaximalizoval");
+    expect(t).toContain("Zoradenie sa neprejavilo");
+    expect(t).toContain("súčet nehlás");
+  });
+  it("farby a export (krok 2): potvrdí len to, čo viewer hlási", () => {
+    const t = text({ ...DONE, color_by: "Pset_ColumnCommon.FireRating", export_ready: "csv" }, { action: "update", color_by: "Pset_ColumnCommon.FireRating", export: "csv" });
+    expect(t).toContain("ofarbené podľa stĺpca Pset_ColumnCommon.FireRating");
+    expect(t).toContain("tlačidlo Stiahnuť CSV");
+    const no = text(DONE, { action: "update", color_by: "storey", export: "xlsx" });
+    expect(no).toContain("ofarbenie nepotvrdzuj");
+    expect(no).toContain("tlačidlom Export");
+  });
+  it("starý fork bez stavu tabuľky: úpravy nepotvrdzuj; bez úprav ticho", () => {
+    expect(text({ status: "done", rows: 3 }, { action: "update" })).toContain("nepotvrdzuj");
+    expect(text({ status: "done", rows: 3 }, {})).not.toContain("nepotvrdzuj");
+  });
+});

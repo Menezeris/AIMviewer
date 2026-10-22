@@ -40,4 +40,50 @@ describe("zoznam z chatu (D-111)", () => {
     expect(decodeListWire(enc({ ...WIRE, c: [] }))).toBeNull();
     expect(decodeListWire("!!")).toBeNull();
   });
+
+  it("run (D-148): príznak ide cez op do bridge správy, bez neho správa run nenesie", () => {
+    const [o] = parseOps(listOp({ ...WIRE, r: 1 }));
+    expect(opToBridgeMessage(o)).toMatchObject({ type: "OPEN_LIST", run: true });
+    const [plain] = parseOps(listOp(WIRE));
+    expect(opToBridgeMessage(plain)).not.toHaveProperty("run");
+    const enc = (w: unknown) => listOp(w as ListWire).slice("list::".length);
+    expect(decodeListWire(enc({ ...WIRE, r: 2 }))).toBeNull();
+  });
+});
+
+describe("úprava zoznamu cez op list (D-149)", () => {
+  const enc = (w: unknown) => listOp(w as ListWire).slice("list::".length);
+  const UPDATE: ListWire = { n: "", g: [], c: [], u: 1, v: { m: true, o: { c: { s: "attribute", k: "Name" }, d: "desc" }, q: "" } };
+
+  it("u=1 smie byť bez názvu a stĺpcov a preloží sa na LIST_UPDATE", () => {
+    const [o] = parseOps(listOp(UPDATE));
+    expect(opToBridgeMessage(o)).toEqual({
+      type: "LIST_UPDATE",
+      groups: [],
+      view: { maximize: true, sort: { column: { source: "attribute", propertyName: "Name" }, dir: "desc" }, search: "" },
+    });
+  });
+
+  it("chybný view alebo úprava so stĺpcami sa zahodí; otvorenie bez názvu tiež", () => {
+    expect(decodeListWire(enc({ ...UPDATE, c: [{ s: "attribute", k: "Name" }] }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, v: { m: "yes" } }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, v: { o: { c: { s: "sql", k: "x" }, d: "asc" } } }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, v: { sum: [{ s: "quantity", k: "NetVolume" }] } }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, u: 2 }))).toBeNull();
+    expect(decodeListWire(enc({ ...WIRE, n: "" }))).toBeNull();
+    expect(decodeListWire(enc({ ...WIRE, v: { o: null, sum: [] } }))).not.toBeNull();
+  });
+
+  it("krok 2: edit len s u=1 a len platný; farby a export vo view", () => {
+    const edit = { ac: [{ s: "property", p: "Pset_ColumnCommon", k: "FireRating" }], at: ["IfcBeam"], rf: ["storey", "all"] };
+    const ok = decodeListWire(enc({ ...UPDATE, e: edit, v: { cb: null, x: "csv" } }));
+    expect(ok?.e).toEqual(edit);
+    expect(decodeListWire(enc({ ...WIRE, e: edit }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, e: {} }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, e: { at: ["Beam"] } }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, e: { rf: ["ifcType"] } }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, e: { rc: [{ s: "property", k: "X" }] } }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, v: { x: "docx" } }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, v: { cb: { s: "sql", k: "x" } } }))).toBeNull();
+  });
 });

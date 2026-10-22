@@ -60,6 +60,8 @@ export interface ToolDefinition {
     idempotentHint?: boolean;
     openWorldHint?: boolean;
   };
+  /** MCP `_meta` toolu (D-153), napr. `anthropic/alwaysLoad`; posiela ho len konektor, nie chat. */
+  meta?: Record<string, unknown>;
 }
 
 export interface LlmRequest {
