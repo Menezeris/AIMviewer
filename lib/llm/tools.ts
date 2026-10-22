@@ -611,6 +611,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             "true = v tom istom volaní zruší aktívny rez (napr. zabudnutý vodorovný rez z predošlej úlohy pri " +
             "isolate, xray alebo colorize celého systému)",
         },
+        context_storey: {
+          type: "string",
+          description:
+            "Len s action=xray: kontext X-ray len pre toto podlažie (1NP, 2.NP, object_ref alebo názov), ostatné podlažia " +
+            "(ASR aj VZT) sa skryjú; clear_isolation alebo show_all ich vráti. 'Pôdorys stropov 1NP s konstrukciami pod nimi' = " +
+            "xray + storey=1NP + context_storey=1NP + set_section tesne nad horný okraj + set_camera preset=top",
+        },
         color_by_key: {
           type: "string",
           description: "Pri color_by=property 'Pset.Vlastnosť' (Pset_WallCommon.FireRating), pri attribute meno atribútu (ObjectType)",

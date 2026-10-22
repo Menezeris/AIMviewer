@@ -1,7 +1,8 @@
 import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { LEGEND_SIZES, lensOp, type LegendSize, type LensMode, type LensWire, type LensWireRule } from "@/lib/viewer-lens";
+import { LEGEND_SIZES, MAX_CONTEXT_STOREYS, lensOp, type LegendSize, type LensMode, type LensWire, type LensWireRule } from "@/lib/viewer-lens";
+import { normalizeStoreyLabel } from "@/lib/engine/storey";
 import { SECTION_CLEAR_OP } from "@/lib/viewer-ops";
 
 import type { AskAction } from "./actions";
@@ -176,19 +177,39 @@ function sectionPrefix(input: Record<string, unknown>): string {
 }
 
 /**
- * X-ray s filtrom podlažia (#187): priesvitný kontext je CELÝ model (všetky podlažia, ASR aj VZT), takže
- * pohľad zhora prekrýva podlažia a pôdorys je nečitateľný. Host nevie skryť ostatné podlažia jedným
- * príkazom (stovky prvkov by prekročili strop GUIDov), preto model upozorní a dá postup.
+ * X-ray s filtrom podlažia (#187): bez `context_storey` je priesvitný kontext CELÝ model (všetky podlažia,
+ * ASR aj VZT), takže pohľad zhora prekrýva podlažia a pôdorys je nečitateľný. `context_storey` (fork,
+ * `APPLY_LENS xrayStoreys`) ostatné podlažia skryje; model na to upozorní.
  */
 export function xrayStoreyWarning(storeys: string[], sectionCleared: boolean): string {
   const list = storeys.join(", ");
   return (
     `X-ray s podlažím ${list}: priesvitný kontext je celý model (všetky podlažia, ASR aj VZT), pôdorys zhora bude ` +
-    `prekrytý. Ak používateľ chce čitateľný pôdorys ${list}, skry ostatné podlažia (style_in_3d action=hide, ` +
-    "storey=<iné podlažie>, po jednom), alebo zober isolate celého podlažia a X-ray nad ním, a vodorovným rezom " +
-    "(set_section tesne nad horný okraj prvkov) odstráň, čo je nad ním" +
+    `prekrytý. Ak používateľ chce čitateľný pôdorys ${list}, zopakuj volanie s context_storey=${storeys[0]} ` +
+    "(ostatné podlažia sa skryjú, kontext ostane len toto) a vodorovným rezom (set_section tesne nad horný okraj " +
+    "prvkov) odstráň, čo je nad ním" +
     (sectionCleared ? " (clear_section=true zrušil doterajší rez)." : ".")
   );
+}
+
+/**
+ * `context_storey` (D-140, #187): podlažia, ktoré ostanú v kontexte X-ray (normalizovaný štítok z grafu AIM).
+ * Platí len s action=xray; neznáme podlažie je chyba s ponukou.
+ */
+export async function resolveContextStoreys(
+  scope: ScopeResolver,
+  input: Record<string, unknown>,
+  action: string,
+): Promise<{ labels: string[]; names: string[] }> {
+  const raw = Array.isArray(input.context_storey) ? strList(input.context_storey) : str(input.context_storey) ? [str(input.context_storey)] : [];
+  if (raw.length === 0) return { labels: [], names: [] };
+  if (action !== "xray") throw new StyleInputError("context_storey platí len s action=xray (kontext X-ray len pre zvolené podlažie).");
+  if (raw.length > MAX_CONTEXT_STOREYS) throw new StyleInputError(`context_storey: najviac ${MAX_CONTEXT_STOREYS} podlaží.`);
+  const floors = await Promise.all(raw.map((w) => scope.pickFloor(w)));
+  const names = floors.map((f) => f.object_ref ?? f.name ?? "").filter(Boolean);
+  const labels = [...new Set(floors.map((f) => normalizeStoreyLabel(f.name ?? f.object_ref ?? "")).filter(Boolean))];
+  if (labels.length === 0) throw new StyleInputError("Podlažie z context_storey nemá v modeli názov.");
+  return { labels, names };
 }
 
 /** Krátka značka verzie lens: páruje odoslanú lens s otázkou na počty. */
@@ -299,12 +320,14 @@ export async function execLensStyle(
     rules.push({ n: g.label, a, ...(g.color ? { c: `#${g.color}` } : {}), g: [lensGroup(filter)] });
     infos.push(info);
   }
+  const context = await resolveContextStoreys(scope, input, action);
   const wire: LensWire = {
     // Lens farbí prvou zhodou: posledná skupina volania ide dopredu a vyhrá pri prekrytí (D-138, #221).
     r: lensPriorityOrder(rules),
     ...(legend ? { l: legend } : {}),
     ...(action === "isolate" ? { i: 1 as const } : {}),
     ...(action === "xray" ? { x: 1 as const } : {}),
+    ...(action === "xray" && context.labels.length > 0 ? { cs: context.labels } : {}),
   };
   const warnings: string[] = infos.flatMap((i) => (i.warning ? [i.warning] : []));
   const ignored = ignoredGroupKeys(input);
@@ -328,7 +351,7 @@ export async function execLensStyle(
   }
   if (action === "xray") {
     const storeys = [...new Set(infos.flatMap((i) => (i.storey ? [i.storey] : [])))];
-    if (storeys.length > 0) warnings.push(xrayStoreyWarning(storeys, input.clear_section === true));
+    if (storeys.length > 0 && context.labels.length === 0) warnings.push(xrayStoreyWarning(storeys, input.clear_section === true));
   }
   if (bulkyOpaque.length > 0 && (hasOtherColored || groups.length > 1)) {
     warnings.push(
@@ -356,7 +379,14 @@ export async function execLensStyle(
         ? { isolated: "viewer zobrazí len tieto prvky; bez farby ostanú v pôvodnom vzhľade, show_all izoláciu zruší" }
         : {}),
       ...(action === "xray"
-        ? { xray: "tieto prvky ostanú plné v pôvodnom vzhľade, zvyšok modelu priesvitný (X-ray context); show_all ho zruší" }
+        ? {
+            xray:
+              context.labels.length > 0
+                ? `tieto prvky ostanú plné, kontext je len podlažie ${context.names.join(", ")} (priesvitné), ostatné podlažia sú skryté; ` +
+                  "clear_isolation alebo show_all ich vráti. Prvky mimo podlaží (terén, budova) ostanú priesvitné"
+                : "tieto prvky ostanú plné v pôvodnom vzhľade, zvyšok modelu priesvitný (X-ray context); show_all ho zruší",
+            ...(context.labels.length > 0 ? { context_storey: context.names } : {}),
+          }
         : {}),
     },
   };
