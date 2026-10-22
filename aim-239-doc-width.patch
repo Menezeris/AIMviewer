@@ -1,0 +1,208 @@
+From 35dfd20fc41d5823f1b8ce923ba590594c05697d Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 15:51:26 +0000
+Subject: [PATCH] =?UTF-8?q?AIM=20#239:=20stabilna=20sirka=20PDF=20karty,?=
+ =?UTF-8?q?=20vykres=20sa=20po=20otvoren=C3=AD=20netrasie=20pri=20zoome=20?=
+ =?UTF-8?q?100=20%?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Posuvnik menil sirku plochy, od nej zavisela vyska strany a tym aj potreba posuvnika (slucka).
+scrollbar-gutter: stable a filter sirky aim/docLayout.ts (zlomky px, oscilacia A-B-A).
+---
+ apps/viewer/src/aim/docLayout.test.ts         | 40 +++++++++++++++
+ apps/viewer/src/aim/docLayout.ts              | 49 +++++++++++++++++++
+ apps/viewer/src/aim/useDocBodyWidth.ts        | 23 +++++++++
+ .../components/documents/PdfDocumentView.tsx  | 15 ++----
+ docs/FORK_MAINTENANCE.md                      |  1 +
+ 5 files changed, 116 insertions(+), 12 deletions(-)
+ create mode 100644 apps/viewer/src/aim/docLayout.test.ts
+ create mode 100644 apps/viewer/src/aim/docLayout.ts
+ create mode 100644 apps/viewer/src/aim/useDocBodyWidth.ts
+
+diff --git a/apps/viewer/src/aim/docLayout.test.ts b/apps/viewer/src/aim/docLayout.test.ts
+new file mode 100644
+index 00000000..26070ea3
+--- /dev/null
++++ b/apps/viewer/src/aim/docLayout.test.ts
+@@ -0,0 +1,40 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert/strict';
++import { createBodyWidthSettler } from './docLayout.js';
++
++describe('createBodyWidthSettler (AIM #239)', () => {
++  it('passes the first and plain changing widths through, rounded down', () => {
++    const s = createBodyWidthSettler();
++    assert.equal(s.next(800.6), 800);
++    assert.equal(s.next(640), 640);
++    assert.equal(s.next(700), 700);
++  });
++  it('ignores sub-pixel jitter', () => {
++    const s = createBodyWidthSettler();
++    assert.equal(s.next(800), 800);
++    assert.equal(s.next(800.4), 800);
++  });
++  it('stops the scrollbar oscillation A-B-A on the narrower width', () => {
++    const s = createBodyWidthSettler();
++    assert.equal(s.next(800), 800); // bez posuvníka
++    assert.equal(s.next(785), 785); // zvislý posuvník
++    assert.equal(s.next(800), 785); // posuvník zmizol -> kmitanie, ostať užšie
++    assert.equal(s.next(785), 785);
++    assert.equal(s.next(800), 785); // už zmrazené
++  });
++  it('a real pane resize after the freeze is followed again', () => {
++    const s = createBodyWidthSettler();
++    s.next(800); s.next(785); s.next(800); // zmrazené na 785
++    assert.equal(s.next(783), 783); // pomalé ťahanie deliča po malých krokoch
++    assert.equal(s.next(781), 781);
++    assert.equal(s.next(500), 500);
++  });
++  it('a one-way resize (panel drag) is not mistaken for oscillation', () => {
++    const s = createBodyWidthSettler();
++    for (const w of [800, 780, 760, 740]) assert.equal(s.next(w), w);
++  });
++});
+diff --git a/apps/viewer/src/aim/docLayout.ts b/apps/viewer/src/aim/docLayout.ts
+new file mode 100644
+index 00000000..6d9eec62
+--- /dev/null
++++ b/apps/viewer/src/aim/docLayout.ts
+@@ -0,0 +1,49 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Ustálenie šírky plochy PDF karty (AIM #239). Šírka strany sa odvodzuje od
++ * šírky posúvanej plochy; posuvník ju zmenšuje o ~15 px. Keď je strana pri
++ * zoome 100 % o pár pixelov vyššia než plocha, objaví sa zvislý posuvník,
++ * plocha sa zúži, strana (pomer strán) zníži, posuvník zmizne, plocha sa
++ * rozšíri... a tak dookola, vidno to ako chvenie. Dve poistky: `scrollbar-gutter:
++ * stable` na ploche (posuvník šírku vôbec nemení) a tento filter, ktorý
++ * zahodí zlomky pixela a zastaví kmitanie A-B-A tam, kde gutter nie je podporený.
++ */
++
++/** Zlomky pixela v šírke nie sú zmena rozloženia, len zaokrúhľovanie. */
++const roundDown = (w: number) => Math.floor(w + 1e-6);
++
++export interface BodyWidthSettler {
++  /** Šírka, ktorú má rozloženie použiť pre novo nameranú šírku plochy. */
++  next(measured: number): number;
++}
++
++export function createBodyWidthSettler(): BodyWidthSettler {
++  let current = 0;
++  let before = 0; // šírka pred `current`, na rozpoznanie kmitania A-B-A
++  let frozen = false;
++  return {
++    next(measured) {
++      const w = roundDown(measured);
++      if (w === current) return current;
++      // Zmrazené platí len pre dve kmitajúce šírky; iná šírka je skutočná zmena
++      // veľkosti panela (ťahanie deliča) a rozloženie ju znova sleduje.
++      if (frozen) {
++        if (w === before) return current;
++        frozen = false;
++      }
++      if (w === before && current > 0) {
++        // A -> B -> A: posuvník prepína šírku. Ostať pri užšej (bez posuvníka je
++        // strana len o pár pixelov užšia než plocha, vizuálne bez rozdielu).
++        frozen = true;
++        current = Math.min(current, w);
++        return current;
++      }
++      before = current;
++      current = w;
++      return current;
++    },
++  };
++}
+diff --git a/apps/viewer/src/aim/useDocBodyWidth.ts b/apps/viewer/src/aim/useDocBodyWidth.ts
+new file mode 100644
+index 00000000..e8690bcd
+--- /dev/null
++++ b/apps/viewer/src/aim/useDocBodyWidth.ts
+@@ -0,0 +1,23 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { useEffect, useState, type RefObject } from 'react';
++import { createBodyWidthSettler } from './docLayout.js';
++
++/** Šírka posúvanej plochy PDF karty, ustálená proti kmitaniu od posuvníka (AIM #239, `docLayout.ts`). */
++export function useAimDocBodyWidth(scrollRef: RefObject<HTMLElement | null>): number {
++  const [width, setWidth] = useState(0);
++  useEffect(() => {
++    const el = scrollRef.current;
++    if (!el) return;
++    const settler = createBodyWidthSettler();
++    const observer = new ResizeObserver((entries) => {
++      const r = entries[0]?.contentRect;
++      if (r) setWidth(settler.next(r.width));
++    });
++    observer.observe(el);
++    return () => observer.disconnect();
++  }, [scrollRef]);
++  return width;
++}
+diff --git a/apps/viewer/src/components/documents/PdfDocumentView.tsx b/apps/viewer/src/components/documents/PdfDocumentView.tsx
+index 8d4293b2..589d2669 100644
+--- a/apps/viewer/src/components/documents/PdfDocumentView.tsx
++++ b/apps/viewer/src/components/documents/PdfDocumentView.tsx
+@@ -30,6 +30,7 @@ import {
+ } from '@/lib/pdf/rasterize';
+ import { PageIdentifierLinks } from './PageIdentifierLinks';
+ import { useAimDocRegion } from '@/aim/docRegion'; // >>> AIM-FORK (D-117) <<< AIM-FORK
++import { useAimDocBodyWidth } from '@/aim/useDocBodyWidth'; // >>> AIM-FORK (AIM #239) <<< AIM-FORK
+ 
+ /**
+  * Raster ceiling (longest edge, device px). Deep zoom into drawings needs
+@@ -119,17 +120,7 @@ export function PdfDocumentView({ docId, url }: PdfDocumentViewProps) {
+ 
+   // ── Layout: fit-width base, explicit page heights for virtualization ─────
+   const scrollRef = useRef<HTMLDivElement>(null);
+-  const [bodyWidth, setBodyWidth] = useState(0);
+-  useEffect(() => {
+-    const el = scrollRef.current;
+-    if (!el) return;
+-    const observer = new ResizeObserver((entries) => {
+-      const r = entries[0]?.contentRect;
+-      if (r) setBodyWidth(r.width);
+-    });
+-    observer.observe(el);
+-    return () => observer.disconnect();
+-  }, []);
++  const bodyWidth = useAimDocBodyWidth(scrollRef); // >>> AIM-FORK (AIM #239): width settled against the scrollbar toggling it (page shook at 100 % zoom) <<< AIM-FORK
+   /** Layout width (immediate — placeholders and CSS scale follow this). */
+   const pageWidth = Math.max(0, (bodyWidth - 24) * zoom);
+   /** Raster width (debounced — pdf.js renders only once a gesture settles). */
+@@ -452,7 +443,7 @@ export function PdfDocumentView({ docId, url }: PdfDocumentViewProps) {
+       <div
+         ref={scrollRef}
+         className="min-h-0 flex-1 overflow-auto bg-muted/30"
+-        style={{ touchAction: 'pan-x pan-y' }}
++        style={{ touchAction: 'pan-x pan-y', scrollbarGutter: 'stable' /* >>> AIM-FORK (AIM #239) <<< AIM-FORK */ }}
+         onPointerDown={onTouchPointerDown}
+         onPointerMove={onTouchPointerMove}
+         onPointerUp={onTouchPointerEnd}
+diff --git a/docs/FORK_MAINTENANCE.md b/docs/FORK_MAINTENANCE.md
+index bda23b2b..d7e5cf58 100644
+--- a/docs/FORK_MAINTENANCE.md
++++ b/docs/FORK_MAINTENANCE.md
+@@ -57,6 +57,7 @@ git grep -n ">>> AIM-FORK" -- apps/ packages/
+ | `apps/viewer/src/lib/appearance/pdf/browser-backend.ts` | 1 | pdf.js **legacy build** and its worker (AIM #97): the modern build needs `Map.getOrInsertComputed` and `Math.sumPrecise`, so Safari < 26.2 (all of iOS 18) and Chrome < 147 could not draw a page; guarded by `aim/pdfjs-legacy-build.test.ts` |
+ | `apps/viewer/src/lib/pdf/rasterize.ts` | 1 | the same legacy build for the drawing underlay rasterizer (AIM #97) |
+ | `apps/viewer/src/components/documents/PdfDocumentView.tsx` | 2 | page region from the AIM chat (D-117): one import and one `useAimDocRegion` call from `aim/docRegion.ts`, one-line blocks because the file sits at its module-size budget; the same call draws the text highlights (D-123), no further edit |
++| `apps/viewer/src/components/documents/PdfDocumentView.tsx` | 2 | stable page width (AIM #239): the body-width observer is replaced by one `useAimDocBodyWidth` call from `aim/useDocBodyWidth.ts` (a scrollbar toggling the width shook the page at 100 % zoom), plus `scrollbarGutter: 'stable'` on the scroller |
+ | `apps/viewer/src/components/viewer/HierarchyPanel.tsx` | 2 | AIM tree decorations — row → IFC GlobalId → badge counts (D-077), one import from `aim/hierarchyPanel.ts` because the file sits at its module-size budget; AIM LAYERS moved to the `aim-layers` panel (D-104) |
+ | `apps/viewer/src/components/viewer/hierarchy/ModelHeaderRow.tsx` | 2 | `<AimModelRevision />` model revision pill on MODELS rows (D-089) |
+ | `apps/viewer/src/components/viewer/lists/ListPanel.tsx` | 2 | `useAimListAutoRun(handleExecuteList, hasData)` (import + one call): `open_list run=true` runs the table after opening, logic in `aim/aimListRun.ts` (D-148) |
+-- 
+2.43.0
+
