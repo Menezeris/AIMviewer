@@ -558,6 +558,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "keď ich nepovie, zvoľ dobre odlíšiteľné a povedz ich. " +
       "VÝNIMKA pri skrytí = hide + exclude_ids_or_refs / exclude_global_ids (skryje filter okrem výnimiek, jedno volanie; " +
       "izolácia len v rámci jedného modelu = hide + model + výnimky, isolate by skryl aj ostatné modely). " +
+      "Samostatné vypnutie X-ray alebo izolácie = clear_isolation (nezruší rez, skryté prvky ani farby; show_all zruší všetko). " +
       "Efekty sa hromadia, kým ich nezruší show_all/reset_colors (reset_colors vypne aj " +
       "lens). Viac operácií = viac callov (pokojne v jednom kole).",
     inputSchema: {
@@ -565,12 +566,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         action: {
           type: "string",
-          enum: ["colorize", "transparent", "hide", "show", "isolate", "xray", "show_all", "reset_colors", "legend"],
+          enum: ["colorize", "transparent", "hide", "show", "isolate", "xray", "clear_isolation", "show_all", "reset_colors", "legend"],
           description:
             "colorize=ofarbiť (vyžaduje color), transparent=priehľadne s farbou, hide=skryť, " +
             "show=znova zobraziť skryté, isolate=zobraziť LEN vybrané (ostatné skryť; bez color " +
             "ostanú v pôvodnom vzhľade, color len keď ho používateľ chce), xray=vybrané plné v pôvodnom " +
             "vzhľade a zvyšok modelu priesvitný (X-ray context, ako tlačidlo duch; filtre ako isolate), " +
+            "clear_isolation=zrušiť LEN izoláciu a X-ray z chatu (rez, skryté prvky a farby ostanú; bez filtrov), " +
             "show_all=zrušiť skrývanie, izoláciu, X-ray aj rez (rez vráti set_section), reset_colors=zrušiť ofarbenie, lens a čiaru trasy, " +
             "legend=len legenda AIM chat lens (legend_size; predvolene malá karta), bez filtrov",
         },
@@ -2427,13 +2429,14 @@ export class AskToolRuntime {
       show: "zobrazenie",
       isolate: "izolácia",
       xray: "X-ray",
+      clear_isolation: "zrušiť izoláciu a X-ray",
       show_all: "zobraziť všetko",
       reset_colors: "zrušiť farby",
       legend: "legenda",
     };
     if (!(action in opLabel)) {
       throw new Error(
-        "action musí byť colorize | transparent | hide | show | isolate | xray | show_all | reset_colors | legend."
+        "action musí byť colorize | transparent | hide | show | isolate | xray | clear_isolation | show_all | reset_colors | legend."
       );
     }
 
@@ -2445,7 +2448,7 @@ export class AskToolRuntime {
     const excludedNote = excluded ? { excluded: excluded.guids.length, ...(excluded.skipped.length ? { excluded_skipped: excluded.skipped } : {}) } : {};
 
     // Globálne resety nepotrebujú prvky.
-    if (action === "show_all" || action === "reset_colors") {
+    if (action === "show_all" || action === "reset_colors" || action === "clear_isolation") {
       this.actions.push({
         type: "navigate",
         url: `/ifc?ops=${encodeURIComponent(`${action}::`)}&r=${nonce()}`,

@@ -111,7 +111,7 @@ Postup podľa typu otázky:
 - Farby, priehľadnosť a izolácia idú do panelu Lens vo vieweri (D-096): lens „AIM
   chat", každá skupina = pravidlo s farbou, legenda a počty; prvky mimo pravidiel
   viewer stlmí. Ďalšie colorize/transparent/isolate pravidlá pridávajú (mode=replace
-  začne odznova), reset_colors lens vypne, show_all zruší izoláciu. Počty na pravidlo
+  začne odznova), reset_colors lens vypne, clear_isolation zruší len izoláciu a X-ray (rez, skrytie a farby ostanú), show_all zruší izoláciu aj skrytie a rez. Počty na pravidlo
   vráti viewer v odpovedi toolu („Počty vo vieweri") - cituj ich, nie odhad. „Zafarbi
   podľa systémov / tried / materiálu / modelu / vlastnosti X" → color_by (system, ifc_type,
   material, model, property + color_by_key Pset.Vlastnosť); farby zvolí viewer a
