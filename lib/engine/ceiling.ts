@@ -8,7 +8,7 @@ import { modelsFor, storeyGuid, structured } from "./tools";
 const QSET = "Qto_SpaceBaseQuantities";
 const QNAME = "FinishCeilingHeight";
 
-/** Výška podhľadu podlažia v metroch nad úrovňou podlažia (D-141, pôvodne D-102). */
+/** Výška podhľadu podlažia v metroch nad úrovňou podlažia (D-142, pôvodne D-102). */
 export interface StoreyCeiling {
   /** Odkiaľ je výška: geometria IfcCovering CEILING (mesh), alebo záloha z Qto miestností. */
   source: "geometry" | "qto";
@@ -89,7 +89,7 @@ async function geometryCeiling(session: Session, m: EngineModel, gid: string, st
 /**
  * "Pod podhľadom na 3NP" = podhľad miestností 3NP, nie IfcCovering priradené k
  * podlažiu pri iných dotazoch (v modeli visia pod doskou podlažia a patria miestnostiam
- * pod ním). D-141 (#230): výška sa berie z GEOMETRIE krytín CEILING podlažia (mesh,
+ * pod ním). D-142 (#230): výška sa berie z GEOMETRIE krytín CEILING podlažia (mesh,
  * spodný a horný okraj nad úrovňou podlažia); Qto FinishCeilingHeight (od hotovej
  * podlahy, jednotka podľa modelu) je záloha, a pri nezhode sa upozorní.
  */

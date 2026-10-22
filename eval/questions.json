@@ -992,7 +992,7 @@
       "question": "Daj rez 5 cm pod podhľadom na 2NP.",
       "expect": { "tools_called": ["set_section"] },
       "verified": false,
-      "notes": "D-141 (issue #230): relative_to=ceiling berie výšku z geometrie IfcCovering CEILING, Qto len záloha; odpoveď má povedať zdroj (ceiling.source) a pri ceiling.warning nezhodu. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+      "notes": "D-142 (issue #230): relative_to=ceiling berie výšku z geometrie IfcCovering CEILING, Qto len záloha; odpoveď má povedať zdroj (ceiling.source) a pri ceiling.warning nezhodu. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     },
     {
       "id": "style-xray-storey-context",

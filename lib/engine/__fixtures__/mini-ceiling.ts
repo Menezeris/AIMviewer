@@ -1,7 +1,7 @@
 import { MINI_BUILDING, guid } from "./mini-building";
 
 /**
- * Mini model s podhľadom (D-141, #230): na 2.NP (úroveň 3,5 m) miestnosť s Qto
+ * Mini model s podhľadom (D-142, #230): na 2.NP (úroveň 3,5 m) miestnosť s Qto
  * FinishCeilingHeight 3,05 m a krytina CEILING 4 x 4 x 0,013 m so spodkom na z = 6,6 m
  * (Qto by dalo 6,55 m, teda nezhoda 5 cm). 1NP krytinu nemá.
  */

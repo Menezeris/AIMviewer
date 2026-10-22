@@ -6548,8 +6548,8 @@ vo wire (fork patch bez využitia).
 **Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `style-colorize-space-translucent` je v
 `eval/questions.json`.
 
-### D-141 - set_section relative_to=ceiling: výška podhľadu z geometrie IfcCovering CEILING, Qto len záloha
-**Status:** rozhodnuté (2026-10-22, issue #230; číslo D-141 pridelil orchestrátor, zápis do registra čaká). Nadväzuje na D-102
+### D-142 - set_section relative_to=ceiling: výška podhľadu z geometrie IfcCovering CEILING, Qto len záloha
+**Status:** rozhodnuté (2026-10-22, issue #230; číslo D-141 obsadilo #185, preto D-142; zápis do registra čaká). Nadväzuje na D-102
 (rez pod podhľadom), D-092 (rez nad podlažím, elevácia z DB), D-112 (`ifc_measure`, mesh), D-114 (bez nového toolu).
 
 **Kontext:** `relative_to=ceiling` bral výšku z Qto `FinishCeilingHeight` miestností. Na 2NP sa Qto (3,05 m od hotovej podlahy)
@@ -6570,3 +6570,29 @@ líši od skutočného podhľadu (PH01.10.0010 na z = 8,05 až 8,063 m), rez ho 
   ukázať, treba kladný offset (nad horným okrajom ho zvýrazní `style_in_3d`) alebo ho po rezaní zobraziť cez xray.
 - **Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `section-below-ceiling-geometry` je v
   `eval/questions.json`. **Testy:** `lib/engine/names.test.ts` (mini model `__fixtures__/mini-ceiling.ts`).
+
+### D-141 - Spodná stavová lišta hostu pod viewerom: výber viewera a Live neprekrývajú panely
+**Status:** rozhodnuté (2026-10-22, issue #185; číslo D-141 navrhnuté orchestrátorovi, potvrdenie čaká). Nadväzuje na D-116
+(výber viewera), D-079 (živý kanál), D-091 (AIM funkcia predvolene v hoste), D-127 (panely z chatu, #179), D-111 (`open_list`).
+
+**Kontext:** po `open_list` sa otvoril builder panela Lists, ale tlačidlo Run bolo pri spodku viewera a prekrývali ho dva overlaye
+hostu vľavo dole: čip "Viewer: Produkcia" (`viewer-picker.tsx`, absolútne nad iframe) a indikátor Live (`live-channel.tsx`,
+fixed). Tabuľka sa nedala spustiť. Označenie "batch" v kóde nie je (`BATCH_MS` je len zlučovanie príkazov kanála).
+
+**Overenie existujúceho (D-098, D-114):** D-127 rieši len otváranie, zatváranie a stav panelov (`set_view_mode panels`), prekrytie
+nemení. `open_list` parameter `run` nemá (`lib/llm/list-tool.ts`, `MCP-TOOLS.md`). Pruh nie je vo forku, je to vrstva hostu.
+
+**Rozhodnutie (host, fork bez zmeny):**
+1. `ifc-workspace.tsx` je stĺpec: viewer (iframe s vlastnou stavovou lištou s počtami prvkov) a pod ním 28 px vysoká stavová
+   lišta hostu. Overlaye už nelezú nad viewer, takže neprekrývajú žiadny panel ani jeho Run, nech je panel ukotvený kdekoľvek.
+2. Lišta nesie `ViewerPicker` (ponuka a chyba sa otvárajú nahor nad lištu) a indikátor Live. Indikátor sa vloží portálom do
+   slotu `aim-live-slot`; mimo `/ifc` ostáva fixed vľavo dole ako doteraz. Toast Live ostáva fixed, je `pointer-events-none`.
+3. Prekrytie je tým odstránené len v hoste. Veľkosť a maximalizácia panela Lists (bod 2 zo zadania) je vec forku a rozloženia
+   panelov (#211).
+
+**Zavrhnuté / odložené:**
+- *`open_list run=true`* (bod 3 zo zadania): spustenie je `handleExecuteList` lokálne v upstream `ListPanel.tsx`; hotový zoznam
+  by vyžadoval zásah do upstream súboru (plné CI forku, kolízia s #211). Builder s Run po oprave prekrytia funguje, tak sa
+  nerobí; ak ho Samuel chce, je to samostatná úloha (parameter `run` + správa `OPEN_LIST`, D-114).
+- *Presunúť čipy do vlastnej lišty viewera (fork)*: upstream `StatusBar` by sa menil kvôli čipu hostu; zbytočné, host má vlastnú.
+**Evaly (D-057):** LLM vrstva sa nemení.

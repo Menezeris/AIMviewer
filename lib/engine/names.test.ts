@@ -88,7 +88,7 @@ describe("podhľad podlažia (D-102)", () => {
     expect(weightedMedian([{ value: 1, weight: 1 }, { value: 2, weight: 1 }, { value: 3, weight: 1 }])).toBe(2);
   });
 
-  it("geometria IfcCovering CEILING má prednosť pred Qto, nezhoda sa hlási (D-141, #230)", async () => {
+  it("geometria IfcCovering CEILING má prednosť pred Qto, nezhoda sa hlási (D-142, #230)", async () => {
     const geo = {
       sources: () => [{ id: "MINI", label: "Mini", url: "https://example.test/ceil.ifc" }],
       fetchImpl: (async () => new Response(MINI_CEILING_BYTES, { status: 200, headers: { etag: '"ceil"' } })) as typeof fetch,
