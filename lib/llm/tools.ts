@@ -565,8 +565,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           description:
             "Lens (colorize/transparent/isolate/xray): add = pridať k doterajším pravidlám (predvolené; pri isolate a xray " +
             "rozšíri aktuálnu izoláciu, napr. 'pridaj aj schodiská' = isolate + mode=add, jeden call), replace = " +
-            "začať odznova (nová izolácia; zmaže aj farby a priehľadnosť z predošlých volaní, preto farby daj do " +
-            "groups toho istého volania)",
+            "začať odznova (zmaže aj farby a priehľadnosť z predošlých volaní, odpoveď to oznámi vo warnings; " +
+            "izolácia nad existujúcou farbou = mode=add, alebo farby daj do groups toho istého volania)",
         },
         color_by: {
           type: "string",

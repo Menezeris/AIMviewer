@@ -30,6 +30,20 @@ describe("style_in_3d legenda a rez (D-125)", () => {
   });
 });
 
+describe("isolate a mode=replace (#219)", () => {
+  it("mode=replace upozorní, že zrušil doterajšie pravidlá Lens; predvolené add nie", async () => {
+    const { result } = await execLensStyle("isolate", { ifc_type: "IfcDuctSegment", mode: "replace" }, () => {}, OPTS);
+    expect(String((result.warnings as string[])[0])).toMatch(/mode=replace zrušil/);
+    const add = await execLensStyle("isolate", { ifc_type: "IfcDuctSegment" }, () => {}, OPTS);
+    expect(add.result.warnings).toBeUndefined();
+  });
+
+  it("neznámy kľúč v groups sa nahlási, floor je alias storey", async () => {
+    const { result } = await execLensStyle("isolate", { groups: [{ color: "ef4444", ifc_type: "IfcWall", level: "3NP" }] }, () => {}, OPTS);
+    expect(String((result.warnings as string[])[0])).toMatch(/level/);
+  });
+});
+
 describe("viac systémov vo filtri (#177)", () => {
   const SYSTEMS = [
     { id: "s1", object_type: "system", object_ref: "Prívod", name: "Prívod", predefined_type: "VENTILATION", user_defined_type: null },

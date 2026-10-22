@@ -64,7 +64,22 @@ export function needsScopedStyle(input: Record<string, unknown>): boolean {
 export function pickFilter(src: Record<string, unknown>): StyleFilter {
   const out: StyleFilter = {};
   for (const k of FILTER_KEYS) if (present(src[k])) out[k] = src[k];
+  // Model píše `floor` (ako set_section, set_view_mode); filter podlažia sa volá `storey` (#219).
+  if (out.storey === undefined && present(src.floor)) out.storey = src.floor;
   return out;
+}
+
+/** Kľúče skupiny, ktoré nie sú filter ani label/color: pickFilter ich zahodí, preto ich treba nahlásiť (#219). */
+export function ignoredGroupKeys(input: Record<string, unknown>): string[] {
+  if (!Array.isArray(input.groups)) return [];
+  const known = new Set<string>([...FILTER_KEYS, "label", "color", "floor"]);
+  const out = new Set<string>();
+  for (const g of input.groups) {
+    if (g && typeof g === "object" && !Array.isArray(g)) {
+      for (const k of Object.keys(g)) if (!known.has(k)) out.add(k);
+    }
+  }
+  return [...out];
 }
 
 /** `page` filtra (D-104 krok 4): kladné celé číslo (aj ako text); bez dokumentu nedáva zmysel. */
