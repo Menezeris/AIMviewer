@@ -5908,6 +5908,29 @@ Existujúce tooly to nepokryjú: chyba je v obsahu odpovedí a vo vykreslení, n
 **Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežia; do `eval/questions.json` pribudnú
 otázky z issues.
 
+**Doplnok (2026-10-22, #175 vrátené): podstava miestnosti v 3D perspektíve.** Samuel 21. 10. rozhodol: ofarbená alebo
+vybraná miestnosť sa v perspektíve nezobrazuje ako objem, stačí vyplnená podstava. Overenie 22. 10.: v pohľade zhora
+výplň sedí, v perspektíve je podstava viditeľná len pri skrytej podlahovej krytine (IfcCovering FLOORING) a miestnosti sú
+bledo azúrové bez farieb z Lens. Rozhranie toolov sa nemení, len fork (patch na vetve `claude/aim-175-fork-patch`).
+- *Príčina farby:* bod 4 dáva IfcSpace z AIM chat lens akciu `transparent` (alfa 0,3). Renderer override s alfou aspoň
+  0,2 presunie do nepriehľadnej pipeline a farbu zmieša ako 30 % Lens a 70 % pôvodnej azúrovej farby miestnosti, takže
+  miestnosti vyzerali rovnako a tvorili nepriehľadnú hmotu (komentár z #76). D-139 rátal so skutočnou priesvitnosťou.
+- *Príčina krytiny:* `AimRoomFillLayer` kreslí len v 2D a v 3D zhora s vodorovným rezom (bod 5); v perspektíve bola
+  "výplňou" len spodná stena objemu, ktorá leží na doske pod krytinou.
+- *Rozhodnutie:* (1) prvky priesvitnej varianty AIM chat lens (IfcSpace, IfcSpatialZone) sa do renderera neposielajú,
+  ostanú natívne priesvitné; súhrn, počty a farby v Lens a pôdoryse sa nemenia. (2) Podstavu ofarbených (aj inou lens) a
+  vybraných miestností kreslí fork v 3D mimo pôdorysu cez existujúce výplne renderera (kanál IfcAnnotation, hĺbkový test,
+  steny pred ňou ju zakryjú), vo farbe Lens s priehľadnosťou ako v pôdoryse, 3 cm nad vrchom krytiny, ktorá prekrýva
+  miestnosť a leží do 0,25 m nad jej spodkom (bez krytiny nad spodkom miestnosti). Nie nad vodorovným rezom, nie pri
+  skrytej miestnosti a nie spolu so SVG pôdorysom (farba by sa zdvojila). Upstream len dva bloky AIM-FORK (`useLens.ts`,
+  `useViewportSymbolicUploads.ts`).
+- *Dôsledok:* zóna (IfcSpatialZone) z AIM chat lens v 3D farbu objemu stratí (predtým len bledá zmes), podstavu nemá.
+- *Zavrhnuté:* krytina polopriehľadná pri ofarbenej miestnosti (mení vzhľad iného prvku, ťažko ohraničiť, ktorej
+  krytiny sa týka); obrys alebo šrafa (podstava stačila); zmena miešania farby v rendereri (upstream, plné CI); SVG výplň v
+  perspektíve (bez hĺbkového testu by prekrývala model, preto ju bod 5 obmedzil na pohľad zhora).
+- *Vedľajšie zistenie z #175* (`show_in_3d` s viacerými `ids_or_refs` vybral len prvý): opravené v #217 (22. 10.), po
+  Samuelovom overení; netýka sa D-151.
+
 ### D-126 - Úplné a stránkované výsledky DB tools, hľadanie cez vzťahy, overenie zatvorených issues
 
 **Status:** rozhodnuté (2026-10-21, číslo pridelil orchestrátor). Issues #181, #174, #171, #176. Nadväzuje na
