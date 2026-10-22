@@ -57,6 +57,7 @@ async function handle(req: Request, ctx: { params: Promise<{ path: string[] }> }
       user: process.env.BCF_API_USER?.trim() || "aim",
       authenticated: bearerMatches(req.headers.get("authorization"), expected),
       writeEnabled: expected !== null,
+      origin: new URL(req.url).origin,
     },
   );
   return NextResponse.json(res.body, { status: res.status, headers: CORS });
