@@ -6,7 +6,7 @@ import { SECTION_CLEAR_OP } from "@/lib/viewer-ops";
 
 import type { AskAction } from "./actions";
 import { autoColorSpec, lensGroup, type ResolvedLensFilter } from "./lens-plan";
-import { StyleInputError, describeFilter, documentPage, parseStyleGroups, pickFilter, type StyleFilter } from "./style-plan";
+import { StyleInputError, describeFilter, documentPage, ignoredGroupKeys, parseStyleGroups, pickFilter, type StyleFilter } from "./style-plan";
 import { ScopeResolver } from "./style-scope";
 
 /**
@@ -246,6 +246,20 @@ export async function execLensStyle(
     ...(action === "isolate" ? { i: 1 as const } : {}),
     ...(action === "xray" ? { x: 1 as const } : {}),
   };
+  const warnings: string[] = infos.flatMap((i) => (i.warning ? [i.warning] : []));
+  const ignored = ignoredGroupKeys(input);
+  if (ignored.length > 0) {
+    warnings.push(
+      `Kľúče ${ignored.join(", ")} v groups nie sú filter a boli ignorované - skupina je širšia, než si chcel. ` +
+        "Podlažie sa volá storey (alias floor), ďalšie filtre: ifc_type, predefined_type, system, zone, property...",
+    );
+  }
+  if (mode === "replace" && action !== "transparent") {
+    warnings.push(
+      "mode=replace zrušil doterajšie pravidlá Lens (farby, priehľadnosť z predošlých volaní). Ak majú ostať, " +
+        "použi mode=add (predvolené) alebo ich daj ako groups s farbou do toho istého volania.",
+    );
+  }
   const verb = { colorize: "ofarbenie", transparent: "priehľadnosť", isolate: "izolácia", xray: "X-ray" }[action] ?? action;
   push({
     type: "navigate",
@@ -261,7 +275,7 @@ export async function execLensStyle(
       mode,
       groups: infos,
       ...(input.clear_section === true ? { section_cleared: true } : {}),
-      ...(infos.some((i) => i.warning) ? { warnings: infos.filter((i) => i.warning).map((i) => i.warning) } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
       ...(action === "isolate"
         ? { isolated: "viewer zobrazí len tieto prvky; bez farby ostanú v pôvodnom vzhľade, show_all izoláciu zruší" }
         : {}),
