@@ -6806,6 +6806,47 @@ nepobežali (bez Supabase kľúčov); otázka `panel-scroll-down` je v `eval/que
 
 ---
 
+### D-153 - Načítanie toolov konektora v klientovi: blok v inštrukciách, `anthropic/alwaysLoad`, nastavenie Tool access
+
+**Dátum:** 2026-10-22 · **Issue:** #237 · **Nadväzuje na:** D-079, D-102, D-114, D-115
+
+**Kontext:** v hlasovej session v Claude (claude.ai, mobil) tooly konektora AIM opakovane vypadávajú z načítanej sady a model ich musí znova načítať cez `tool_search`, často viackrát za úlohu. Konektor má 29 toolov, `tools/list` 69 900 znakov (opisy 28 300, najväčší `style_in_3d` 10 700) a inštrukcie 14 900 znakov. O načítaní toolov inštrukcie nehovorili a mená toolov boli až hlboko v texte.
+
+**Zistenia (zdroje, stav 2026-10-22):**
+- claude.ai, Desktop a mobil majú pre konverzáciu nastavenie **Tool access** (`+` alebo `/` -> Connectors -> Tool access): *Auto* (predvolené, Claude sám rozhoduje, ktoré konektory načíta), *On demand* (konektor sa načíta až po vyhľadaní) a *Always available* (všetky konektory sa načítajú na začiatku konverzácie). Prístup sa dá podľa FAQ nastaviť aj pre jeden konektor. Je to jediný zdokumentovaný spôsob, ako vynútiť celú sadu ([support.claude.com 13730515](https://support.claude.com/en/articles/13730515-manage-claude-s-tool-access)). Prah režimu Auto zdokumentovaný nie je.
+- API tool search (`defer_loading`): nájdený tool ostáva načítaný, kým je v histórii blok s výsledkom vyhľadávania ([tool search tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool)). **Hypotéza:** keď klient dlhú históriu zhutní alebo oreže, blok zmizne a tool s ním. To sedí s príznakom. Podobné hlásenia: anthropics/claude-code#77083 (po zhutnení na claude.ai ostanú len tooly z posledného `tool_search`) a #77312 (hlasový režim, "stale tool schema"); bez odpovede Anthropicu.
+- Claude Code dokumentuje `_meta["anthropic/alwaysLoad"]: true` na toole (načíta sa hneď) a pri odložených tooloch načíta na začiatku len mená a serverové inštrukcie. Tie oreže na 4096 znakov ([code.claude.com MCP](https://code.claude.com/docs/en/mcp)); orezané inštrukcie AIM sú v Claude Code naozaj vidieť. Pre claude.ai a aplikácie nie je `alwaysLoad` ani orez zdokumentovaný (hypotéza, že platí rovnako).
+
+**Rozhodnutie:**
+1. **Platforma (len zistenie):** skutočná oprava je nastavenie Tool access *Always available* (alebo pre konektor AIM) v Claude. Orezávanie po zhutnení a správanie hlasového režimu sú na Anthropicu, konektor ich nezmení.
+2. **Blok o načítaní na začiatku inštrukcií** (`lib/mcp/tool-loading.ts`, `mcpServerInstructions`): pokyn načítať na začiatku session celú sadu naraz a pri chýbajúcom toole znova celú sadu, nie po jednom, plus mená všetkých toolov po skupinách (generované z `mcpToolGroups`). Blok má do 1000 znakov (dnes 792). Test overí, že je na začiatku a všetky mená sú v prvých 4096 znakoch. Doménové inštrukcie `mcpInstructions` sa nemenia (rozpočet 15 000 znakov z D-102 platí pre ne, celé inštrukcie majú 15 700).
+3. **`_meta: {"anthropic/alwaysLoad": true}`** na 5 malých jadrových tooloch: `get_object`, `search_objects`, `show_in_3d`, `get_viewer_state`, `set_view_mode` (`ALWAYS_LOAD_TOOLS`). `ToolDefinition.meta` posiela len MCP `tools/list`, chat `/api/ask` nie. V `MCP-TOOLS.md` majú značku "vždy načítaný".
+
+**Zavrhnuté / odložené:**
+- *Skrátenie opisov toolov teraz:* veľký zásah s rizikom pre výber toolu (D-101, D-102), vyžaduje evaly. Merania vyššie sú baseline; ďalší krok, ak Tool access nestačí.
+- *Ďalšie zlučovanie toolov:* D-115 už zlúčilo 52 na 29; menej toolov oneskorenie nevyrieši, kým klient odkladá celé konektory.
+- *Viac toolov s `alwaysLoad`:* odporúčanie Anthropicu je 3-5 vždy načítaných; väčšie tooly (`style_in_3d`) by zaťažili každý rozhovor.
+
+**Overenie:** `lib/mcp/tool-loading.test.ts` (blok, orez 4096, opisy pod 4096, `_meta` v `tools/list`). Evaly (D-057) sa na to nehodia, hlasovú session nejde otestovať automaticky. Ručne (Samuel): Tool access *Always available*, hlasová session s viacerými krokmi a sledovať, či treba znova `tool_search`.
+
+### D-155 - `ifc_measure`: jedna os, kresba svetlého otvoru a vzdialenosť dvoch plôch
+
+**Dátum:** 2026-10-22 · **Issue:** #236 · **Nadväzuje na:** D-084, D-112, D-114, D-118, D-124
+
+**Kontext:** používateľ chcel zmerať len šírku dverí medzi lícami zárubne a vidieť jednu kótu. `ifc_measure` s `a` a `show=true` kreslí tri hrany obálky (X, Y, Z), `clear_opening` vráti šírku a výšku, ale nič nenakreslí, a `a + b` meria najbližšie body celých prvkov, nie zvolené plochy.
+
+**Zistenie:** `ifc_measure` počíta celé na hoste (headless tesselácia `@ifc-lite/geometry` z IFC bajtov, `lib/engine/measure.ts`), viewer len kreslí úseky cez wire `measure:` -> `MEASURE_SHOW` (D-124). Všetko ide bez forku (D-087 sa neuplatní, fork sa nemení).
+
+**Rozhodnutie (D-114: parametre existujúceho toolu, nie nový tool):**
+1. **`axis`** = `x|y|z` (hrana obálky v osiach IFC sveta) alebo `width|depth|height` (osi prvku): len pri samotnom `a`, `show=true` nakreslí jednu kótu, výsledok `axis.length_m`.
+2. **`clear_opening` + `show=true`** nakreslí šírku (vzorka najbližšie k mediánu výšok, na najužšej hĺbke) a výšku (stredný stĺpec) každých dverí, najviac 12 kót = 6 dverí (limit mosta); nad limit to výsledok povie (`view_note`).
+3. **`face_a` + `face_b`** = `+x|-x|+y|-y|+z|-z`: kolmá vzdialenosť dvoch rovnobežných plôch na prvku `a` (bez `b`) alebo `a` a `b`, v osiach prvku `a`. Plocha = trojuholníky s normálou do 2° od osi, zlúčené do rovín (1 mm). Plochy oproti sebe (normála a mieri k b a naopak) = najbližšia dvojica s prekrytím v priemete a medzerou aspoň 5 mm (svetlá medzera, líca zárubne, prah k nadpražiu); odvrátené alebo rovnakým smerom = najväčšie plochy (hrúbka steny). Pri `IfcDoor` sa výplň otvoru (krídlo, sklo, kovanie) vynechá pravidlami svetlého otvoru (`doorLayout`), inak by hrana krídla bola falošná plocha. Kóta v strede prekrytia plôch. Nerovnobežné alebo chýbajúce plochy = chyba s návodom, nie odhad.
+4. **Osi prvku** = obdĺžnik s najmenšou plochou v pôdoryse (ako D-118): x = dlhšia strana (width) otočená k +X sveta (pri zvislej k +Y), y = x otočené o 90° doľava, z = hore. Pri `b` platia osi `a`, aby "+x" znamenalo pre oba prvky to isté.
+
+**Zavrhnuté:** nový tool (D-114, rozšírenie stačí); výber plochy klikom vo vieweri teraz (potreboval by fork a nový most, D-087; neskôr); osi z `IfcObjectPlacement` teraz (presnejšie pri šikmých a okrúhlych prvkoch, ale pôdorysný obdĺžnik pokrýva steny, dvere, stĺpy a nosníky; neskôr).
+
+**Overenie:** `lib/engine/measure-faces.test.ts` (osi otočenej steny, jedna os, hrúbka steny, líca zárubne v oboch poradiach bez krídla a kľučky, svetlá výška s prahom, dva prvky, chyby vstupu, kóty svetlého otvoru, motor na mini modeli s `show`). Evaly (D-057) v cloud session bez Supabase kľúčov nepobežali; otázka `measure-door-lining-faces` v `eval/questions.json`.
+
 ### D-154 - Plynulé otáčanie modelu dokola (`set_camera auto_rotate`), zastaví sa pri zásahu používateľa (#247)
 
 **Dátum:** 2026-10-22 · **Issue:** #247 · **Fork PR:** Menezeris/ifc-lite (patch `fork-patch-247/`) · **Nadväzuje na:** D-083, D-087, D-098, D-114

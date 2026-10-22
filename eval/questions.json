@@ -1067,6 +1067,14 @@
       "notes": "D-146 (issue #183): set_view_mode(panel_scroll=down) bez mode; odpoveď nesmie tvrdiť, že vie, kde je koniec panela. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     },
     {
+      "id": "measure-door-lining-faces",
+      "category": "location",
+      "question": "Zmeraj šírku dverí DD02.05.04 medzi vnútornými lícami zárubne a ukáž len túto jednu kótu.",
+      "expect": { "tools_called": ["ifc_measure"], "answer_matches": ["0[,.]8"] },
+      "verified": false,
+      "notes": "D-155 (issue #236): ifc_measure(a=DD02.05.04, face_a=+x, face_b=-x, show=true) -> faces.distance_m, jedna kóta. 0,8 = clear_opening z konektora 2026-10-22 (zo zárubne), plochami neoverené; evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
       "id": "camera-auto-rotate",
       "category": "viewer",
       "question": "Potoč s tým modelom pomaličky dokola, nech sa točí stále.",

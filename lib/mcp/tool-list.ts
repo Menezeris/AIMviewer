@@ -10,6 +10,8 @@ import { withSearchAll } from "../llm/system-prompt";
 import { TOOL_DEFINITIONS } from "../llm/tools";
 import { SAVED_VIEW_TOOL_DEFINITIONS } from "../views/tools";
 
+import { withAlwaysLoad } from "./tool-loading";
+
 /**
  * Zoznam toolov MCP konektora na jednom mieste (D-114): číta ho route, register
  * toolov (`tool-registry.test.ts`) aj generovaný inventár `MCP-TOOLS.md`, v ktorom
@@ -85,7 +87,8 @@ export function mcpToolGroups({ engine }: ToolListOptions): ToolGroup[] {
       tools: [SEARCH_ALL_TOOL, ...engineToolDefinitions(), CALIBRATE_UNDERLAY_TOOL],
     });
   }
-  return groups;
+  // D-153: jadrové tooly s `anthropic/alwaysLoad`, aby ich klient nemusel hľadať cez tool_search.
+  return groups.map((g) => ({ ...g, tools: g.tools.map(withAlwaysLoad) }));
 }
 
 export function mcpToolDefinitions(opts: ToolListOptions): ToolDefinition[] {
