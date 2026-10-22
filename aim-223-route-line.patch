@@ -1,0 +1,546 @@
+From 42d12d455b5e5b2f1453bd0021426b30037abddd Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 08:21:51 +0000
+Subject: [PATCH 1/2] aim: ciara trasy od hosta ROUTE_SHOW (AIM D-137, #223)
+
+Plna farebna lomena ciara nad scenou (AimRouteLayer) z bodov v IFC svete,
+ktore host vypocital 1,6 m nad podlahou a stupnami; prevod do render ramca
+ako pri kotach, lenivy modul routeShow.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01UHPReHxq7oRAgMeBVUcgpX
+---
+ apps/viewer/src/aim/AimRouteLayer.tsx     | 33 ++++++++++++++++++
+ apps/viewer/src/aim/CapturePinLayer.tsx   |  6 ++--
+ apps/viewer/src/aim/aimRoute.ts           | 37 ++++++++++++++++++++
+ apps/viewer/src/aim/aimRouteStore.ts      | 27 +++++++++++++++
+ apps/viewer/src/aim/route-show.test.ts    | 41 +++++++++++++++++++++++
+ apps/viewer/src/aim/routeShow.ts          | 21 ++++++++++++
+ apps/viewer/src/aim/useAimViewCommands.ts |  7 ++++
+ apps/viewer/src/aim/view-protocol.ts      | 12 ++++++-
+ 8 files changed, 181 insertions(+), 3 deletions(-)
+ create mode 100644 apps/viewer/src/aim/AimRouteLayer.tsx
+ create mode 100644 apps/viewer/src/aim/aimRoute.ts
+ create mode 100644 apps/viewer/src/aim/aimRouteStore.ts
+ create mode 100644 apps/viewer/src/aim/route-show.test.ts
+ create mode 100644 apps/viewer/src/aim/routeShow.ts
+
+diff --git a/apps/viewer/src/aim/AimRouteLayer.tsx b/apps/viewer/src/aim/AimRouteLayer.tsx
+new file mode 100644
+index 00000000..7ad45ff0
+--- /dev/null
++++ b/apps/viewer/src/aim/AimRouteLayer.tsx
+@@ -0,0 +1,33 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Čiara trasy od hosta (AIM D-137, #223): plná farebná lomená čiara nad scénou
++ * (ako `AimRoomFillLayer`), body premietnuté `projectToScreen` pri každom pohybe
++ * kamery. Bez hĺbky: trasu cez viac podlaží vidno aj cez dosky. Kliky prechádzajú
++ * do scény.
++ */
++
++import { useViewerStore } from '../store/index.js';
++import { useProjectorTick } from '@/components/viewport-ui/scene';
++import { routePath } from './aimRoute.js';
++import { useAimRouteStore } from './aimRouteStore.js';
++
++export function AimRouteLayer() {
++  const points = useAimRouteStore((s) => s.points);
++  const color = useAimRouteStore((s) => s.color);
++  const project = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
++  const active = points.length >= 2 && !!project;
++  const tick = useProjectorTick(active);
++  if (!active || !project) return null;
++  void tick; // nový tick = tie isté body na nových súradniciach obrazovky
++  const d = routePath(points, project);
++  if (!d) return null;
++  return (
++    <svg className="absolute inset-0 pointer-events-none z-20" style={{ overflow: 'visible' }} data-aim-route={points.length}>
++      <path d={d} fill="none" stroke="#ffffff" strokeOpacity={0.8} strokeWidth={5} strokeLinejoin="round" strokeLinecap="round" />
++      <path d={d} fill="none" stroke={color} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
++    </svg>
++  );
++}
+diff --git a/apps/viewer/src/aim/CapturePinLayer.tsx b/apps/viewer/src/aim/CapturePinLayer.tsx
+index 122792ad..acbd2d5a 100644
+--- a/apps/viewer/src/aim/CapturePinLayer.tsx
++++ b/apps/viewer/src/aim/CapturePinLayer.tsx
+@@ -19,6 +19,7 @@ import { Camera, Orbit } from 'lucide-react';
+ import { useViewerStore } from '../store/index.js';
+ import { useCapturePinsStore } from './capturePinsStore.js';
+ import { AimRoomFillLayer } from './AimRoomFillLayer.js';
++import { AimRouteLayer } from './AimRouteLayer.js';
+ import { useAimLegendStore } from './aimLegendStore.js';
+ 
+ /** Malá legenda AIM chat lens (D-125) - modul až keď ju chat zapne. */
+@@ -121,14 +122,15 @@ export function CapturePinLayer() {
+     // (new/removed pins need an immediate re-projection).
+   }, [cameraCallbacks, pins.length]);
+ 
+-  // Výplň miestností (D-119, D-125) a malá legenda idú v tom istom lenivom module: ViewportContainer je na strope veľkosti.
++  // Výplň miestností (D-119, D-125), čiara trasy (D-137) a malá legenda idú v tom istom lenivom module: ViewportContainer je na strope veľkosti.
+   if (!bounds) {
+-    return <><AimRoomFillLayer /><AimLegendSlot /><div ref={containerRef} className="absolute inset-0 pointer-events-none" /></>;
++    return <><AimRoomFillLayer /><AimRouteLayer /><AimLegendSlot /><div ref={containerRef} className="absolute inset-0 pointer-events-none" /></>;
+   }
+ 
+   return (
+     <>
+     <AimRoomFillLayer />
++    <AimRouteLayer />
+     <AimLegendSlot />
+     <div
+       ref={containerRef}
+diff --git a/apps/viewer/src/aim/aimRoute.ts b/apps/viewer/src/aim/aimRoute.ts
+new file mode 100644
+index 00000000..ab87f650
+--- /dev/null
++++ b/apps/viewer/src/aim/aimRoute.ts
+@@ -0,0 +1,37 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Čiara trasy od hosta (AIM D-137): `ROUTE_SHOW` nesie body lomenej čiary v IFC
++ * svete (Z hore, m), ktoré host vypočítal 1,6 m nad podlahou a stupňami. Tu len
++ * prevod do render rámca (ten istý ako pri kótach, `ifcPointToRender`) a SVG
++ * cesta z premietnutých bodov. Bez väzby na store viewera (testuje sa samostatne).
++ */
++
++import { ifcPointToRender, type Vec3 } from './viewFrame.js';
++
++/** Body IFC svet -> render rámec viewera. */
++export function routeToRender(points: readonly Vec3[], offset: Vec3): Vec3[] {
++  return points.map((p) => ifcPointToRender(p, offset));
++}
++
++/**
++ * SVG `d` lomenej čiary; bod, ktorý sa nedá premietnuť (za kamerou), ju preruší.
++ * Prázdny reťazec = nie je čo kresliť.
++ */
++export function routePath(points: readonly Vec3[], project: (p: Vec3) => { x: number; y: number } | null): string {
++  const parts: string[] = [];
++  let open = false;
++  for (const p of points) {
++    const s = project(p);
++    if (!s) {
++      open = false;
++      continue;
++    }
++    parts.push(`${open ? 'L' : 'M'}${s.x.toFixed(1)} ${s.y.toFixed(1)}`);
++    open = true;
++  }
++  // Samotné "M" bez úsečky nič nenakreslí.
++  return parts.some((c) => c.startsWith('L')) ? parts.join(' ') : '';
++}
+diff --git a/apps/viewer/src/aim/aimRouteStore.ts b/apps/viewer/src/aim/aimRouteStore.ts
+new file mode 100644
+index 00000000..950c3eea
+--- /dev/null
++++ b/apps/viewer/src/aim/aimRouteStore.ts
+@@ -0,0 +1,27 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Čiara trasy od hosta (AIM D-137): body v render rámci a farba. Samostatný
++ * zustand store (ako `aimLegendStore`), kreslí ho `AimRouteLayer`.
++ */
++
++import { create } from 'zustand';
++
++import type { Vec3 } from './viewFrame.js';
++
++interface AimRouteState {
++  /** Body lomenej čiary v render rámci; prázdne = žiadna čiara. */
++  points: Vec3[];
++  color: string;
++  setRoute: (points: Vec3[], color: string) => void;
++}
++
++export const ROUTE_DEFAULT_COLOR = '#dc2626';
++
++export const useAimRouteStore = create<AimRouteState>((set) => ({
++  points: [],
++  color: ROUTE_DEFAULT_COLOR,
++  setRoute: (points, color) => set({ points, color }),
++}));
+diff --git a/apps/viewer/src/aim/route-show.test.ts b/apps/viewer/src/aim/route-show.test.ts
+new file mode 100644
+index 00000000..c0f98df0
+--- /dev/null
++++ b/apps/viewer/src/aim/route-show.test.ts
+@@ -0,0 +1,41 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import assert from 'node:assert/strict';
++import { describe, it } from 'node:test';
++
++import { routePath, routeToRender } from './aimRoute.js';
++import { MAX_ROUTE_POINTS, isViewMessage } from './view-protocol.js';
++
++const S = 'aim-bridge';
++const pt = (x: number, y = 2, z = 1.6) => ({ x, y, z });
++
++describe('čiara trasy od hosta, ROUTE_SHOW (AIM D-137)', () => {
++  it('body z IFC sveta (Z hore) do render rámca (Y hore, posunutý)', () => {
++    const out = routeToRender([pt(101, 2, 1.6), pt(104, 5, 5.1)], { x: 100, y: 0, z: 0 });
++    assert.deepEqual(out, [{ x: 1, y: 1.6, z: -2 }, { x: 4, y: 5.1, z: -5 }]);
++  });
++
++  it('SVG cesta: lomená čiara, bod za kamerou ju preruší, samotný bod nič nekreslí', () => {
++    const screen = (p: { x: number }) => (p.x < 0 ? null : { x: p.x * 10, y: 5 });
++    assert.equal(routePath([pt(0), pt(1), pt(2)], screen), 'M0.0 5.0 L10.0 5.0 L20.0 5.0');
++    assert.equal(routePath([pt(0), pt(1), pt(-1), pt(3), pt(4)], screen), 'M0.0 5.0 L10.0 5.0 M30.0 5.0 L40.0 5.0');
++    assert.equal(routePath([pt(0), pt(-1)], screen), '');
++    assert.equal(routePath([], screen), '');
++  });
++
++  it('protokol: body ako vektory, prázdne = zmazať, farba #rrggbb, jeden bod ani priveľa nie', () => {
++    assert.equal(isViewMessage({ source: S, type: 'ROUTE_SHOW', points: [pt(0), pt(1)], color: '#dc2626' }), true);
++    assert.equal(isViewMessage({ source: S, type: 'ROUTE_SHOW', points: [pt(0), pt(1)] }), true);
++    assert.equal(isViewMessage({ source: S, type: 'ROUTE_SHOW', points: [] }), true);
++    for (const bad of [
++      { source: S, type: 'ROUTE_SHOW', points: [pt(0)] },
++      { source: S, type: 'ROUTE_SHOW', points: Array(MAX_ROUTE_POINTS + 1).fill(pt(0)) },
++      { source: S, type: 'ROUTE_SHOW', points: [pt(0), { x: 1, y: 2 }] },
++      { source: S, type: 'ROUTE_SHOW', points: [pt(0), pt(Number.NaN)] },
++      { source: S, type: 'ROUTE_SHOW', points: [pt(0), pt(1)], color: 'red' },
++      { source: S, type: 'ROUTE_SHOW', points: 'x' },
++    ]) assert.equal(isViewMessage(bad), false, JSON.stringify(bad).slice(0, 80));
++  });
++});
+diff --git a/apps/viewer/src/aim/routeShow.ts b/apps/viewer/src/aim/routeShow.ts
+new file mode 100644
+index 00000000..c8a17c98
+--- /dev/null
++++ b/apps/viewer/src/aim/routeShow.ts
+@@ -0,0 +1,21 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * `ROUTE_SHOW` (AIM D-137): čiara trasy od hosta nahradí predošlú, prázdne body
++ * ju zmažú. Body prevedie do render rámca ako kóty (`bcfWorldOffset`, D-124).
++ * Lenivý modul.
++ */
++
++import { useViewerStore } from '@/store';
++import { bcfWorldOffset } from '@/hooks/bcf/viewpoint-world-frame';
++import type { ViewInboundMessage } from './view-protocol.js';
++import { routeToRender } from './aimRoute.js';
++import { ROUTE_DEFAULT_COLOR, useAimRouteStore } from './aimRouteStore.js';
++
++export function showRoute(msg: Extract<ViewInboundMessage, { type: 'ROUTE_SHOW' }>): void {
++  const state = useViewerStore.getState();
++  const points = routeToRender(msg.points, bcfWorldOffset(state.models, state.geometryResult));
++  useAimRouteStore.getState().setRoute(points, msg.color ?? ROUTE_DEFAULT_COLOR);
++}
+diff --git a/apps/viewer/src/aim/useAimViewCommands.ts b/apps/viewer/src/aim/useAimViewCommands.ts
+index e7dba25d..7c9fc51f 100644
+--- a/apps/viewer/src/aim/useAimViewCommands.ts
++++ b/apps/viewer/src/aim/useAimViewCommands.ts
+@@ -62,6 +62,8 @@ const loadBox = () => Promise.all([loadQueries(), import('./sectionBox.js')]).th
+ let measure: Promise<typeof import('./measureShow.js')> | null = null;
+ /** Kóty od hosta (AIM D-124) - lenivo, mimo vstupného balíka. */
+ const loadMeasure = () => (measure ??= import('./measureShow.js'));
++let route: Promise<typeof import('./routeShow.js')> | null = null;
++const loadRoute = () => (route ??= import('./routeShow.js'));
+ const TARGETS = { resolveGuids, resolveSelector };
+ 
+ /**
+@@ -183,6 +185,11 @@ export function useAimViewCommands(bim: BimContext) {
+         track(loadMeasure().then((m) => m.showMeasurements(msg)));
+         return;
+       }
++      case 'ROUTE_SHOW': {
++        // Čiara trasy od hosta (AIM D-137) - lenivo, kreslí ju AimRouteLayer.
++        track(loadRoute().then((m) => m.showRoute(msg)));
++        return;
++      }
+       case 'SET_PANELS': {
+         track(loadPanels().then((m) => m.applyPanels(msg.panels, noteIssue)));
+         return;
+diff --git a/apps/viewer/src/aim/view-protocol.ts b/apps/viewer/src/aim/view-protocol.ts
+index 3d0eb256..e32294fa 100644
+--- a/apps/viewer/src/aim/view-protocol.ts
++++ b/apps/viewer/src/aim/view-protocol.ts
+@@ -66,6 +66,8 @@ const MAX_GUIDS = 600;
+ export const MAX_QUERY_GUIDS = 100;
+ /** Najviac kót v jednom `MEASURE_SHOW` - rovnaký limit ako host (AIM D-124). */
+ export const MAX_MEASURE_SEGMENTS = 12;
++/** Najviac bodov čiary trasy v jednom `ROUTE_SHOW` - rovnaký limit ako host (AIM D-137). */
++export const MAX_ROUTE_POINTS = 400;
+ type Vec3Wire = { x: number; y: number; z: number };
+ 
+ export type ViewInboundMessage =
+@@ -107,7 +109,9 @@ export type ViewInboundMessage =
+   /** Panely z chatu (AIM D-127): otvoriť, zavrieť, prepnúť; `all` len zavrieť. */
+   | { source: typeof SOURCE; type: 'SET_PANELS'; panels: PanelsRequest }
+   /** Kóty v IFC svete (Z hore, m) do nástroja Measure (AIM D-124); `keep` = pridať k predošlým od hosta. */
+-  | { source: typeof SOURCE; type: 'MEASURE_SHOW'; segments: { a: Vec3Wire; b: Vec3Wire }[]; keep?: boolean };
++  | { source: typeof SOURCE; type: 'MEASURE_SHOW'; segments: { a: Vec3Wire; b: Vec3Wire }[]; keep?: boolean }
++  /** Čiara trasy v IFC svete (Z hore, m) od hosta (AIM D-137); nahradí predošlú, prázdne body ju zmažú. */
++  | { source: typeof SOURCE; type: 'ROUTE_SHOW'; points: Vec3Wire[]; color?: string };
+ 
+ /** Odpoveď viewera na `QUERY` (viewer -> host). */
+ export type ViewQueryResult =
+@@ -196,6 +200,12 @@ export function isViewMessage(data: unknown): data is ViewInboundMessage {
+         && m.segments.length <= MAX_MEASURE_SEGMENTS
+         && m.segments.every((s) => !!s && typeof s === 'object' && isVec((s as { a?: unknown }).a) && isVec((s as { b?: unknown }).b))
+         && optional(m.keep, (k) => typeof k === 'boolean');
++    case 'ROUTE_SHOW':
++      return Array.isArray(m.points)
++        && m.points.length !== 1
++        && m.points.length <= MAX_ROUTE_POINTS
++        && m.points.every(isVec)
++        && optional(m.color, (c) => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c));
+     case 'SET_PANELS':
+       return isPanelsRequest(m.panels);
+     case 'QUERY':
+-- 
+2.43.0
+
+
+From 56230a5d78b90bf09ee27f385a2816e3c9cb7311 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 08:55:33 +0000
+Subject: [PATCH 2/2] docs(aim): mutacne dokazy pre ciaru trasy (AIM D-137)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01UHPReHxq7oRAgMeBVUcgpX
+---
+ .../aim-d137-route-line/mutations/README.md   | 32 +++++++++
+ .../mutations/color-unchecked.patch           | 13 ++++
+ .../mutations/lone-point-drawn.patch          | 11 +++
+ .../mutations/path-not-broken.patch           | 12 ++++
+ .../mutations/single-point-accepted.patch     | 12 ++++
+ .../mutations/summary.json                    | 72 +++++++++++++++++++
+ .../mutations/world-offset-dropped.patch      | 13 ++++
+ 7 files changed, 165 insertions(+)
+ create mode 100644 docs/architecture/evidence/aim-d137-route-line/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-d137-route-line/mutations/color-unchecked.patch
+ create mode 100644 docs/architecture/evidence/aim-d137-route-line/mutations/lone-point-drawn.patch
+ create mode 100644 docs/architecture/evidence/aim-d137-route-line/mutations/path-not-broken.patch
+ create mode 100644 docs/architecture/evidence/aim-d137-route-line/mutations/single-point-accepted.patch
+ create mode 100644 docs/architecture/evidence/aim-d137-route-line/mutations/summary.json
+ create mode 100644 docs/architecture/evidence/aim-d137-route-line/mutations/world-offset-dropped.patch
+
+diff --git a/docs/architecture/evidence/aim-d137-route-line/mutations/README.md b/docs/architecture/evidence/aim-d137-route-line/mutations/README.md
+new file mode 100644
+index 00000000..0fd8d496
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d137-route-line/mutations/README.md
+@@ -0,0 +1,32 @@
++<!-- This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this
++     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
++
++# AIM D-137 route line: surgical mutation evidence
++
++The change adds the `ROUTE_SHOW` bridge message (AIM #223): the host sends the points of an escape or shortest route in IFC world (computed by the host 1.6 m above the floor, the floor covering and every stair tread, through the centre of each door) and the fork draws them as a solid coloured polyline over the scene (`AimRouteLayer`, mounted in `CapturePinLayer` next to `AimRoomFillLayer`). The pure maths lives in the new `aimRoute.ts` (IFC world to render frame, SVG path from projected points) and the message check in `view-protocol.ts`. The test (`route-show.test.ts`) imports the new module, so reverting it to the base makes the test file fail to load and the CI revert oracle reports INCONCLUSIVE. Each main decision was instead checked with a surgical mutation.
++
++Each patch is written mutant->fixed; the oracle reverse-applies it. Every run ended `OBSERVED` (exit 0) with restoration verified, against base `origin/main`. The full records are in `summary.json`.
++
++| Patch | Module | Mutation | Test that went red |
++|---|---|---|---|
++| `world-offset-dropped.patch` | `aimRoute.ts` | the render frame offset is ignored on X and Y, so the line drifts off a model with an RTC offset | `route-show.test.ts` |
++| `path-not-broken.patch` | `aimRoute.ts` | a point that cannot be projected (behind the camera) does not break the line, so it joins across the gap | `route-show.test.ts` |
++| `lone-point-drawn.patch` | `aimRoute.ts` | a single projected point yields an `M` without a segment instead of nothing | `route-show.test.ts` |
++| `single-point-accepted.patch` | `view-protocol.ts` | a one-point route (not a line) is accepted | `route-show.test.ts` |
++| `color-unchecked.patch` | `view-protocol.ts` | any string passes as the colour, not only `#rrggbb` | `route-show.test.ts` |
++
++`aimRouteStore.ts`, `routeShow.ts`, `AimRouteLayer.tsx`, the `useAimViewCommands.ts` case and the `CapturePinLayer.tsx` mount are store and renderer glue with no unit test. `routeShow.ts` loads on first use (dynamic import from `useAimViewCommands.ts`); the layer sits in the lazy `CapturePinLayer` chunk.
++
++## Replay
++
++Use a clean checkout of the branch with dependencies installed. Copy the patches outside the tree, because the oracle refuses a dirty tree. Then run, for example:
++
++```bash
++node scripts/check-test-revert-oracle.mjs --base origin/main \
++  --only apps/viewer/src/aim/aimRoute.ts \
++  --test apps/viewer/src/aim/route-show.test.ts \
++  --mutation /tmp/d137-mut/path-not-broken.patch --ci --json
++```
++
++The `view-protocol.ts` patches use `--only apps/viewer/src/aim/view-protocol.ts`, the others `--only apps/viewer/src/aim/aimRoute.ts`.
+diff --git a/docs/architecture/evidence/aim-d137-route-line/mutations/color-unchecked.patch b/docs/architecture/evidence/aim-d137-route-line/mutations/color-unchecked.patch
+new file mode 100644
+index 00000000..ada02d7f
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d137-route-line/mutations/color-unchecked.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/view-protocol.ts a/apps/viewer/src/aim/view-protocol.ts
++index c015efc6..e32294fa 100644
++--- b/apps/viewer/src/aim/view-protocol.ts
+++++ a/apps/viewer/src/aim/view-protocol.ts
++@@ -205,7 +205,7 @@ export function isViewMessage(data: unknown): data is ViewInboundMessage {
++         && m.points.length !== 1
++         && m.points.length <= MAX_ROUTE_POINTS
++         && m.points.every(isVec)
++-        && optional(m.color, (c) => typeof c === 'string');
+++        && optional(m.color, (c) => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c));
++     case 'SET_PANELS':
++       return isPanelsRequest(m.panels);
++     case 'QUERY':
+diff --git a/docs/architecture/evidence/aim-d137-route-line/mutations/lone-point-drawn.patch b/docs/architecture/evidence/aim-d137-route-line/mutations/lone-point-drawn.patch
+new file mode 100644
+index 00000000..503e769f
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d137-route-line/mutations/lone-point-drawn.patch
+@@ -0,0 +1,11 @@
++diff --git b/apps/viewer/src/aim/aimRoute.ts a/apps/viewer/src/aim/aimRoute.ts
++index b071f250..ab87f650 100644
++--- b/apps/viewer/src/aim/aimRoute.ts
+++++ a/apps/viewer/src/aim/aimRoute.ts
++@@ -33,5 +33,5 @@ export function routePath(points: readonly Vec3[], project: (p: Vec3) => { x: nu
++     open = true;
++   }
++   // Samotné "M" bez úsečky nič nenakreslí.
++-  return parts.join(' ');
+++  return parts.some((c) => c.startsWith('L')) ? parts.join(' ') : '';
++ }
+diff --git a/docs/architecture/evidence/aim-d137-route-line/mutations/path-not-broken.patch b/docs/architecture/evidence/aim-d137-route-line/mutations/path-not-broken.patch
+new file mode 100644
+index 00000000..5329950f
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d137-route-line/mutations/path-not-broken.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/aimRoute.ts a/apps/viewer/src/aim/aimRoute.ts
++index 50bd9571..ab87f650 100644
++--- b/apps/viewer/src/aim/aimRoute.ts
+++++ a/apps/viewer/src/aim/aimRoute.ts
++@@ -26,6 +26,7 @@ export function routePath(points: readonly Vec3[], project: (p: Vec3) => { x: nu
++   for (const p of points) {
++     const s = project(p);
++     if (!s) {
+++      open = false;
++       continue;
++     }
++     parts.push(`${open ? 'L' : 'M'}${s.x.toFixed(1)} ${s.y.toFixed(1)}`);
+diff --git a/docs/architecture/evidence/aim-d137-route-line/mutations/single-point-accepted.patch b/docs/architecture/evidence/aim-d137-route-line/mutations/single-point-accepted.patch
+new file mode 100644
+index 00000000..a53bb10d
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d137-route-line/mutations/single-point-accepted.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/view-protocol.ts a/apps/viewer/src/aim/view-protocol.ts
++index ea9660da..e32294fa 100644
++--- b/apps/viewer/src/aim/view-protocol.ts
+++++ a/apps/viewer/src/aim/view-protocol.ts
++@@ -202,6 +202,7 @@ export function isViewMessage(data: unknown): data is ViewInboundMessage {
++         && optional(m.keep, (k) => typeof k === 'boolean');
++     case 'ROUTE_SHOW':
++       return Array.isArray(m.points)
+++        && m.points.length !== 1
++         && m.points.length <= MAX_ROUTE_POINTS
++         && m.points.every(isVec)
++         && optional(m.color, (c) => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c));
+diff --git a/docs/architecture/evidence/aim-d137-route-line/mutations/summary.json b/docs/architecture/evidence/aim-d137-route-line/mutations/summary.json
+new file mode 100644
+index 00000000..5ebbd048
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d137-route-line/mutations/summary.json
+@@ -0,0 +1,72 @@
++{
++  "color-unchecked": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/route-show.test.ts; that file has a green, attributable baseline.",
++    "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++    "head": "42d12d455b5e5b2f1453bd0021426b30037abddd",
++    "production": [
++      "apps/viewer/src/aim/view-protocol.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/route-show.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "lone-point-drawn": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/route-show.test.ts; that file has a green, attributable baseline.",
++    "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++    "head": "42d12d455b5e5b2f1453bd0021426b30037abddd",
++    "production": [
++      "apps/viewer/src/aim/aimRoute.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/route-show.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "path-not-broken": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/route-show.test.ts; that file has a green, attributable baseline.",
++    "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++    "head": "42d12d455b5e5b2f1453bd0021426b30037abddd",
++    "production": [
++      "apps/viewer/src/aim/aimRoute.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/route-show.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "single-point-accepted": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/route-show.test.ts; that file has a green, attributable baseline.",
++    "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++    "head": "42d12d455b5e5b2f1453bd0021426b30037abddd",
++    "production": [
++      "apps/viewer/src/aim/view-protocol.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/route-show.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "world-offset-dropped": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/route-show.test.ts; that file has a green, attributable baseline.",
++    "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++    "head": "42d12d455b5e5b2f1453bd0021426b30037abddd",
++    "production": [
++      "apps/viewer/src/aim/aimRoute.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/route-show.test.ts"
++    ],
++    "restoration": "verified"
++  }
++}
+diff --git a/docs/architecture/evidence/aim-d137-route-line/mutations/world-offset-dropped.patch b/docs/architecture/evidence/aim-d137-route-line/mutations/world-offset-dropped.patch
+new file mode 100644
+index 00000000..cf391f05
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d137-route-line/mutations/world-offset-dropped.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimRoute.ts a/apps/viewer/src/aim/aimRoute.ts
++index e32eea2f..ab87f650 100644
++--- b/apps/viewer/src/aim/aimRoute.ts
+++++ a/apps/viewer/src/aim/aimRoute.ts
++@@ -13,7 +13,7 @@ import { ifcPointToRender, type Vec3 } from './viewFrame.js';
++ 
++ /** Body IFC svet -> render rámec viewera. */
++ export function routeToRender(points: readonly Vec3[], offset: Vec3): Vec3[] {
++-  return points.map((p) => ifcPointToRender(p, { x: 0, y: 0, z: offset.z }));
+++  return points.map((p) => ifcPointToRender(p, offset));
++ }
++ 
++ /**
+-- 
+2.43.0
+
