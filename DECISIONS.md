@@ -6496,3 +6496,25 @@ prompt v rozhovore"): predčítanie motora len v rozhovore, ktorý motor použí
   DB tools s motorom ako záložnou cestou (`get_object` kód len v IFC, `set_section relative_to=ceiling`,
   mená v tooloch viewera) načítajú motor až pri potrebe a nie sú v signáli.
 - *Evaly D-057 nepobežali* (cloud session nemá Supabase kľúče; LLM vrstva, tooly ani prompt sa nemenia).
+
+### D-138 - style_in_3d: priorita prekrytých pravidiel a hlasné varovanie pri pravidle bez zásahu
+**Status:** rozhodnuté (2026-10-22, issue #221; číslo D-138 navrhnuté orchestrátorovi, potvrdenie čaká). Nadväzuje na
+D-096 (Lens z chatu), D-125 (`inactive`) a #219 (varovania pri mode=replace).
+
+**Kontext:** engine Lens vo forku farbí **prvou zhodou** (`packages/lens/src/engine.ts`). Nové volanie (mode=add)
+dáva svoje pravidlá pred staršie, takže novšie prebije staršie. V rámci jedného volania ale host posielal skupiny v
+poradí `groups`, takže PRVÁ skupina vyhrala a posledná ("trasa navrch") dostala 0 prvkov; v odpovedi to bolo len
+pole `inactive` v stave Lens. Preto trasa fungovala až ako druhé volanie.
+
+**Rozhodnutie:**
+- *Priorita:* pri prekrytí vyhráva **neskoršia skupina v `groups`**, rovnako ako novšie volanie. Rovnako v mode
+  add aj replace. Host (`lib/llm/style-overlap.ts`, `lensPriorityOrder`) posiela pravidlá volania vo wire v opačnom
+  poradí. Fork ani wire formát sa nemenia (patch nie je), v paneli Lens je navrchu pravidlo s najvyššou prioritou.
+- *Varovanie:* pravidlo s 0 prvkami nahlási text s počtami (`lens-counts.ts`) aj potvrdenie vo vieweri
+  (`applied-text.ts`) ako `POZOR: ...` s názvom pravidla. Dôvod: pod ním je pravidlo so zásahom -> "prekryté
+  pravidlami X, Y alebo filter nič nenašiel" (host nevie rozlíšiť, počty sú z viewera); inak -> "filter nič nenašiel".
+  Pri colorize s viac skupinami odpoveď hneď pripomenie pravidlo priority (`warnings`).
+- *Zavrhnuté:* parameter `overlay=true` / `priority` na skupine: "posledná skupina navrchu" dáva to isté bez
+  nového parametra (D-114, rozšírenie len opisom). Nový tool netreba.
+- Opis `style_in_3d` pravidlo uvádza; inventár `MCP-TOOLS.md` sa nezmenil (test registra prešiel).
+- *Evaly D-057 nepobežali* (cloud bez Supabase kľúčov); otázka `style-overlay-path-on-top` je v `eval/questions.json`.

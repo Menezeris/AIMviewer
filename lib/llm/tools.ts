@@ -529,7 +529,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "prvky aj zdedené cez podlažie, zónu, skupinu a typ, bez vymenovania GUIDov; " +
       "action=xray (zvyšok priesvitný) alebo isolate. " +
       "Viac farieb naraz = groups: [{label, color, ...filter}] (top-level filter platí pre " +
-      "všetky skupiny). colorize / transparent / isolate / xray idú do panelu Lens vo vieweri ako " +
+      "všetky skupiny). Pri prekrytí vyhráva NESKORŠIA skupina v groups aj novšie volanie: konkrétnu trasu " +
+      "alebo výnimku daj ako poslednú skupinu, širšie farby pred ňu (jedno volanie stačí). colorize / transparent / isolate / xray idú do panelu Lens vo vieweri ako " +
       "lens 'AIM chat' (pravidlo = skupina, legenda, počty; prvky mimo pravidiel sú stlmené); " +
       "ďalšie volania pridávajú pravidlá (mode=replace začne odznova), počty na pravidlo " +
       "vráti živý viewer v odpovedi. Farby podľa hodnoty (systémy, triedy, materiál, " +
@@ -539,7 +540,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "(IfcSpace) a zóny sú vo vieweri predvolene skryté: farbenie či izolácia ich zapne sama, ručne show/hide s " +
       "ifc_type=IfcSpace; farba miestnosti ostane priesvitná (prvky v nej vidno, NEPRIDÁVAJ transparent pravidlo); " +
       "v pôdoryse (2D alebo vodorovný rez s pohľadom zhora) sú ofarbené aj vybrané miestnosti vyplnené a popísané. " +
-      "Odpoveď vráti stav po príkaze: pravidlo s inactive nič nezafarbilo, izolácia s active=false už neplatí, " +
+      "Odpoveď vráti stav po príkaze: pravidlo s inactive nič nezafarbilo (POZOR ho vysvetlí: prekryté vs filter nič nenašiel), izolácia s active=false už neplatí, " +
       "changed_outside_commands = čo zmenil používateľ od predošlého príkazu, POZOR = upozornenie (aktívny rez, " +
       "viac systémov vo filtri, viac okien viewera) - povedz ho používateľovi. Farby určuje používateľ; " +
       "keď ich nepovie, zvoľ dobre odlíšiteľné a povedz ich. " +

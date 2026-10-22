@@ -979,6 +979,14 @@
       "notes": "D-132 (issue #165): set_section(fit=along) cez schodisko, set_camera(preset=section, orthographic), saved_view(save, view_type=section, locked=true), set_view_mode(view=meno) a set_view_mode(mode=2d, floor). Poradie volaní nie je pevné."
     },
     {
+      "id": "style-overlay-path-on-top",
+      "category": "viewer",
+      "question": "Vyfarbi prívod VZT červenou, odvod modrou a konkrétnu trasu 19 prvkov ružovou navrch, v jednom volaní.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-138 (issue #221): jedno volanie colorize s groups, trasa ako posledná skupina vyhrá pri prekrytí; pravidlo s 0 prvkami sa hlási s dôvodom. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
       "id": "feedback-triage-standard",
       "category": "feedback",
       "question": "Zapíš pripomienku: opis toolu get_object má preklep v slove 'vlastnosti'. Hneď spusti session.",

@@ -7,6 +7,7 @@ import { SECTION_CLEAR_OP } from "@/lib/viewer-ops";
 import type { AskAction } from "./actions";
 import { autoColorSpec, lensGroup, type ResolvedLensFilter } from "./lens-plan";
 import { StyleInputError, describeFilter, documentPage, ignoredGroupKeys, parseStyleGroups, pickFilter, type StyleFilter } from "./style-plan";
+import { lensPriorityOrder } from "./style-overlap";
 import { ScopeResolver } from "./style-scope";
 
 /**
@@ -241,7 +242,8 @@ export async function execLensStyle(
     infos.push(info);
   }
   const wire: LensWire = {
-    r: rules,
+    // Lens farbí prvou zhodou: posledná skupina volania ide dopredu a vyhrá pri prekrytí (D-138, #221).
+    r: lensPriorityOrder(rules),
     ...(legend ? { l: legend } : {}),
     ...(action === "isolate" ? { i: 1 as const } : {}),
     ...(action === "xray" ? { x: 1 as const } : {}),
@@ -258,6 +260,12 @@ export async function execLensStyle(
     warnings.push(
       "mode=replace zrušil doterajšie pravidlá Lens (farby, priehľadnosť z predošlých volaní). Ak majú ostať, " +
         "použi mode=add (predvolené) alebo ich daj ako groups s farbou do toho istého volania.",
+    );
+  }
+  if (groups.length > 1 && action === "colorize") {
+    warnings.push(
+      "Pri prekrytí vyhráva neskoršia skupina v groups (a novšie volanie s mode=add): konkrétnu trasu alebo výnimku " +
+        "daj ako poslednú skupinu. Pravidlo bez zásahu odpoveď nahlási s dôvodom.",
     );
   }
   const verb = { colorize: "ofarbenie", transparent: "priehľadnosť", isolate: "izolácia", xray: "X-ray" }[action] ?? action;
