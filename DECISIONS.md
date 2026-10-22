@@ -6279,6 +6279,28 @@ nemá `_georef` ani jeden výkres. Konektor nevie podklad nastaviť. Prototyp na
 **Zavrhnuté:** len popisky bez doladenia (chyba okolo 1 m); parser PDF na serveri (D-123, dva extraktory);
 kalibrácia viazaná na podlažie (nepokryje rezy a detaily).
 
+**Doplnok 2026-10-22 (#170, Samuel): vypnúť PDF podklady v 3D.** Podklad ostane kalibrovaný a uložený, len sa v 3D
+nekreslí; pôdorys v 2D a split ostáva. Má to ísť aj z chatu.
+- *Overené (D-098):* `visible` v kalibrácii (`_georef`, oko pri výkrese v paneli Underlays) už existuje, ale je to
+  niečo iné: `setUnderlayVisible` ho **ukladá do DB** (`UNDERLAY_SAVE`) a skrýva podklad **aj v 2D paneli pôdorysu**
+  (`DrawingPlanPane`, `storeyHasDrawing` filtrujú na `visible`). 3D plochu kreslí len `useDrawingUnderlay`
+  (externý overlay renderera), 2D pane je samostatné DOM plátno.
+- *Rozhodnutie:* dve oddelené veci. `visible` kalibrácie ostáva, ako je (trvalé, per výkres). Nový **stav viewera
+  "podklady v 3D"**: globálny, per relácia, do DB sa nezapisuje (po obnove stránky sú podklady v 3D zapnuté).
+  Vypnuté = uložené podklady sa v 3D plátne nekreslia; ghost náhľad počas kalibrácie a zamknutý pôdorysný pohľad
+  (`underlayViewLocked`, kamera zhora) ostávajú, lebo to je 2D. Per výkres nerobím (oko to pokrýva, Samuel hovorí
+  o podkladoch všeobecne).
+- *Chat (D-114, nový tool netreba):* parameter `underlays_3d` (boolean) existujúceho `set_view_mode`, op
+  `underlays3d:<0|1>:`, bridge správa `SET_UNDERLAYS_3D {show}` (vo `view-protocol.ts`, nie v `bridge-protocol.ts`).
+  Stav: `view_state.underlays_3d` (`get_viewer_state` aj `APPLIED`). Panel Underlays má prepínač "Show in 3D".
+- *Zavrhnuté rozšírenie:* `calibrate_underlay` (zapisuje kalibráciu do DB, toto je zobrazenie; nový parameter by
+  tool miešal s dvoma druhmi anotácie); `visible` v `_georef` (ukladá sa a skrýva aj 2D); `panels` (otvára okná, nie
+  vrstvy scény); `style_in_3d` (mení prvky modelu, podklad nie je prvok).
+- *Fork:* patch (format-patch) s logikou a store v `apps/viewer/src/aim/`, upstream len v `AIM-FORK` blokoch
+  (`useDrawingUnderlay.ts`, `DrawingUnderlayPanel.tsx`). Poradie: najprv fork, potom host; bez forku host správu
+  pošle a starší fork ju zahodí (podklady ostanú v 3D).
+- Kalibrácie strechy, základov, statiky a hárkov s viac pôdorysmi sa podľa Samuela zatiaľ nerobia.
+
 ---
 
 ### D-132 - Záložky vo vieweri: pohľad je orez, záložka je otvorený pohľad

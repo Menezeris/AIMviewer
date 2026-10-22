@@ -11,7 +11,7 @@ import type { ToolDefinition } from "./provider";
 import { planCamera } from "./camera-plan";
 import { HATCH_PATTERNS, HATCH_RANGES, SECTION_CAPS, planSectionCap } from "../viewer-section-cap";
 import { DOMAIN_IFC_TYPES } from "./ifc-selector";
-import { ViewInputError, planPanelScroll, planPanels, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
+import { ViewInputError, planPanelScroll, planPanels, planSection, planUnderlays3d, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
 import { SECTION_SHIFT_RANGE } from "../views/plan";
 import { hasTabParams, planViewTabs } from "./view-tabs";
 
@@ -186,7 +186,9 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "napr. {all: 'close', properties: 'open'} = všetko okrem vlastností), aj bez mode; výsledok vráti stav " +
       "všetkých panelov (open, where left/right/bottom/floating, size). POSUN PANELA VLASTNOSTÍ: panel_scroll=down|up " +
       "(o 80 % výšky) | top | bottom na pokyn 'posuň dole', 'hore', 'na začiatok', 'na koniec' (aj bez mode; s " +
-      "panels={properties:'open'} ho najprv otvorí); výber prvku a riadok vlastnosti ide cez show_in_3d (highlight).",
+      "panels={properties:'open'} ho najprv otvorí); výber prvku a riadok vlastnosti ide cez show_in_3d (highlight). " +
+      "PODKLADY PDF V 3D: underlays_3d=false skryje kalibrované podklady v 3D (kalibrácia ostane uložená, pôdorys v 2D " +
+      "a split ostáva), true ich zobrazí; je to stav viewera (get_viewer_state.underlays_3d), nie visible kalibrácie.",
     inputSchema: {
       type: "object",
       properties: {
@@ -209,6 +211,10 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "string",
           enum: [...PANEL_SCROLLS],
           description: "Posun panela vlastností: down/up o stranu, top/bottom na začiatok/koniec",
+        },
+        underlays_3d: {
+          type: "boolean",
+          description: "false = skryť PDF podklady v 3D (kalibrácia ostane, pôdorys v 2D ostane), true = zobraziť; stav viewera, nezapisuje sa do DB",
         },
         section_offset_m: {
           type: "number",
@@ -323,7 +329,7 @@ export async function execViewTool(
     plan = await restoreSavedView({ ...input, saved_view: savedViewName(input) }, defaultSavedViewDeps());
   } else if (name === "set_view_mode") {
     // D-127: samotné panely nepotrebujú režim.
-    const panelsOnly = (input.panels !== undefined || input.panel_scroll !== undefined) && input.mode === undefined && input.reset !== true;
+    const panelsOnly = (input.panels !== undefined || input.panel_scroll !== undefined || input.underlays_3d !== undefined) && input.mode === undefined && input.reset !== true;
     plan = panelsOnly ? { ops: [], label: "", result: { ok: true } } : planViewMode(input, input.reset === true ? null : await resolveFloor(input.floor));
   } else {
     throw new Error(`Neznámy tool pohľadu '${name}'.`);
@@ -336,6 +342,15 @@ export async function execViewTool(
       ops: [...plan.ops, panels.op],
       label: plan.label ? `${plan.label}, ${panels.label}` : panels.label,
       result: { ...plan.result, ...panels.result },
+    };
+  }
+  // Podklady PDF v 3D (D-133 doplnok): stav viewera, ide až po režime.
+  const underlays = name === "set_view_mode" ? planUnderlays3d(input) : null;
+  if (underlays) {
+    plan = {
+      ops: [...plan.ops, underlays.op],
+      label: plan.label ? `${plan.label}, ${underlays.label}` : underlays.label,
+      result: { ...plan.result, ...underlays.result },
     };
   }
   // Posun panela vlastností (D-146) ide po panelih, aby sa najprv otvoril.

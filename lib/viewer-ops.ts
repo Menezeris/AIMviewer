@@ -22,6 +22,7 @@
  * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
  * Panely (D-127): `panels:~<panel>=<open|close|toggle>~...:` (`all` len `close`).
  * Posun panela vlastností (D-146): `panel_scroll:<up|down|top|bottom>:`.
+ * Podklady PDF v 3D (D-133 doplnok): `underlays3d:<0|1>:` (stav viewera, do DB sa nezapisuje).
  * Čiara trasy (D-137): `route:<hex>:<x,y,z|...>` (prázdne body = zmazať), formát v `lib/viewer-route.ts`.
  */
 
@@ -140,7 +141,9 @@ export type ViewerOp =
   /** Otvorenie / zatvorenie panelov (D-127). */
   | { op: "panels"; panels: PanelsRequest }
   /** Posun panela vlastností (D-146). */
-  | { op: "panel_scroll"; direction: PanelScroll };
+  | { op: "panel_scroll"; direction: PanelScroll }
+  /** Zobraziť / skryť podklady PDF v 3D plátne (D-133 doplnok), len stav viewera. */
+  | { op: "underlays3d"; show: boolean };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -330,6 +333,11 @@ export function panelScrollOp(direction: PanelScroll): string {
   return `panel_scroll:${direction}:`;
 }
 
+/** Op podkladov v 3D (D-133 doplnok): `underlays3d:0:` skryje, `underlays3d:1:` zobrazí. */
+export function underlays3dOp(show: boolean): string {
+  return `underlays3d:${show ? 1 : 0}:`;
+}
+
 /** Op panelov (D-127): `panels:~lens=close~...:`. */
 export function panelsOp(panels: PanelsRequest): string {
   const kv = Object.entries(panels).map(([k, v]) => `${k}=${v}`);
@@ -442,6 +450,8 @@ export function parseOps(raw: string): ViewerOp[] {
       if (panels) out.push({ op, panels });
     } else if (op === "panel_scroll") {
       if ((PANEL_SCROLLS as readonly string[]).includes(arg)) out.push({ op, direction: arg as PanelScroll });
+    } else if (op === "underlays3d") {
+      if (arg === "0" || arg === "1") out.push({ op, show: arg === "1" });
     } else if (op === "doc") {
       const documentId = joined;
       if (!UUID.test(documentId)) continue;
@@ -549,6 +559,8 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
       return { type: "SET_PANELS", panels: o.panels };
     case "panel_scroll":
       return { type: "SCROLL_PANEL", direction: o.direction };
+    case "underlays3d":
+      return { type: "SET_UNDERLAYS_3D", show: o.show };
   }
 }
 

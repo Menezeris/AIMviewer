@@ -1073,6 +1073,14 @@
       "expect": { "tools_called": ["ifc_measure"], "answer_matches": ["0[,.]8"] },
       "verified": false,
       "notes": "D-155 (issue #236): ifc_measure(a=DD02.05.04, face_a=+x, face_b=-x, show=true) -> faces.distance_m, jedna kóta. 0,8 = clear_opening z konektora 2026-10-22 (zo zárubne), plochami neoverené; evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "view-underlays-3d-off",
+      "category": "view",
+      "question": "Vypni zobrazenie PDF podkladov v 3D, kalibrácia nech ostane.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-133 doplnok (issue #170): set_view_mode(underlays_3d=false) -> stav viewera, view_state.underlays_3d=false; nie calibrate_underlay ani visible v _georef. Evaly nepobežali (bez Supabase kľúčov)."
     }
   ]
 }
