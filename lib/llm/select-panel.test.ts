@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { opToBridgeMessage, panelsOp, parseOps, selectOp } from "../viewer-ops";
+import { opToBridgeMessage, panelScrollOp, panelsOp, parseOps, selectOp } from "../viewer-ops";
 
 import { lookupProperty, selectPanelInput } from "./select-panel";
 
@@ -94,5 +94,14 @@ describe("panely z chatu (D-127)", () => {
       { type: "SET_PANELS", panels: { lens: "toggle", model_tree: "close" } },
     ]);
     expect(parseOps("panels:~all=open~legend=close~lens=hide:")).toEqual([]);
+  });
+});
+
+describe("posun panela vlastností (D-146)", () => {
+  it("op panel_scroll -> SCROLL_PANEL, neznámy smer sa zahodí", () => {
+    expect(panelScrollOp("down")).toBe("panel_scroll:down:");
+    expect(parseOps("panel_scroll:top:").map(opToBridgeMessage)).toEqual([{ type: "SCROLL_PANEL", direction: "top" }]);
+    expect(parseOps("panel_scroll:left:")).toEqual([]);
+    expect(parseOps("panel_scroll::")).toEqual([]);
   });
 });

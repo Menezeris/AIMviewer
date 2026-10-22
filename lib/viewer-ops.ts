@@ -21,6 +21,7 @@
  * (IFC svet, m; `o` = polovica výšky ortografického pohľadu).
  * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
  * Panely (D-127): `panels:~<panel>=<open|close|toggle>~...:` (`all` len `close`).
+ * Posun panela vlastností (D-146): `panel_scroll:<up|down|top|bottom>:`.
  * Čiara trasy (D-137): `route:<hex>:<x,y,z|...>` (prázdne body = zmazať), formát v `lib/viewer-route.ts`.
  */
 
@@ -86,6 +87,9 @@ export type ViewerPanel = (typeof VIEWER_PANELS)[number];
 export const PANEL_ACTIONS = ["open", "close", "toggle"] as const;
 export type PanelAction = (typeof PANEL_ACTIONS)[number];
 export type PanelsRequest = Partial<Record<ViewerPanel | "all", PanelAction>>;
+/** Posun panela vlastností (D-146): o stranu hore / dole, na začiatok, na koniec; mená zhodné s mostom forku. */
+export const PANEL_SCROLLS = ["up", "down", "top", "bottom"] as const;
+export type PanelScroll = (typeof PANEL_SCROLLS)[number];
 
 export type ViewerOp =
   | { op: "colorize"; guids: string[]; color: string }
@@ -94,6 +98,8 @@ export type ViewerOp =
   | { op: "hide_sel" | "show_sel" | "isolate_sel"; selector: OpsSelector }
   | { op: "select"; guid: string; /** Všetky GUIDy výberu, keď je ich viac (#217); `guid` je prvý. */ guids?: string[]; panel?: SelectPanel }
   | { op: "show_all" }
+  /** Zruší len izoláciu a X-ray z chatu (bridge `APPLY_LENS unisolate`), rez, skryté prvky a farby ostanú (D-151). */
+  | { op: "clear_isolation" }
   | { op: "reset_colors" }
   /** Zruší oranžové zvýraznenie z show_in_3d, ostatné farby nechá (D-101, #94). */
   | { op: "clear_focus" }
@@ -132,7 +138,9 @@ export type ViewerOp =
   /** Čiara trasy v IFC svete (D-137), formát v `lib/viewer-route.ts`; prázdne body = zmazať. */
   | { op: "route"; color: string; points: MeasurePoint[] }
   /** Otvorenie / zatvorenie panelov (D-127). */
-  | { op: "panels"; panels: PanelsRequest };
+  | { op: "panels"; panels: PanelsRequest }
+  /** Posun panela vlastností (D-146). */
+  | { op: "panel_scroll"; direction: PanelScroll };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -317,6 +325,11 @@ function parsePanels(arg: string): PanelsRequest | null {
   return Object.keys(out).length > 0 ? out : null;
 }
 
+/** Op posunu panela vlastností (D-146): `panel_scroll:down:`. */
+export function panelScrollOp(direction: PanelScroll): string {
+  return `panel_scroll:${direction}:`;
+}
+
 /** Op panelov (D-127): `panels:~lens=close~...:`. */
 export function panelsOp(panels: PanelsRequest): string {
   const kv = Object.entries(panels).map(([k, v]) => `${k}=${v}`);
@@ -343,7 +356,7 @@ export function parseOps(raw: string): ViewerOp[] {
       const panel = parsePanel(arg);
       const all = [...new Set(guids)];
       out.push({ op, guid: all[0], ...(all.length > 1 ? { guids: all } : {}), ...(panel ? { panel } : {}) });
-    } else if (op === "show_all" || op === "reset_colors" || op === "section_clear" || op === "clear_focus" || op === "clear_selection") {
+    } else if (op === "show_all" || op === "clear_isolation" || op === "reset_colors" || op === "section_clear" || op === "clear_focus" || op === "clear_selection") {
       out.push({ op });
     } else if (op === "section_gizmo" && (arg === "0" || arg === "1")) {
       out.push({ op, showGizmo: arg === "1" });
@@ -427,6 +440,8 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "panels") {
       const panels = parsePanels(arg);
       if (panels) out.push({ op, panels });
+    } else if (op === "panel_scroll") {
+      if ((PANEL_SCROLLS as readonly string[]).includes(arg)) out.push({ op, direction: arg as PanelScroll });
     } else if (op === "doc") {
       const documentId = joined;
       if (!UUID.test(documentId)) continue;
@@ -470,6 +485,8 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
       return { type: "SELECT", guid: o.guid, ...(o.guids ? { guids: o.guids } : {}), ...(o.panel ? { panel: o.panel } : {}) };
     case "show_all":
       return { type: "SHOW_ALL" };
+    case "clear_isolation":
+      return { type: "APPLY_LENS", mode: "unisolate" };
     case "reset_colors":
       return { type: "RESET_COLORS" };
     case "clear_focus":
@@ -530,6 +547,8 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
       return { type: "ROUTE_SHOW", points: o.points, color: o.color };
     case "panels":
       return { type: "SET_PANELS", panels: o.panels };
+    case "panel_scroll":
+      return { type: "SCROLL_PANEL", direction: o.direction };
   }
 }
 
