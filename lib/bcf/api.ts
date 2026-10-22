@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  documentLabel,
   documentReferenceToDto,
   documentWrite,
   MAX_TOPIC_DOCUMENTS,
@@ -8,7 +9,7 @@ import {
   stripOwnLabel,
   TopicDocumentError,
 } from "./documents";
-import type { BcfComment, BcfTopicRow, BcfTopicWrite, TopicDocumentWrite, TopicStatus } from "./store";
+import type { BcfComment, BcfTopicRow, BcfTopicWrite, TopicDocumentRow, TopicDocumentWrite, TopicStatus } from "./store";
 import { isClaude, maybeStartSession, normalizeStatus, type BcfDeps } from "./tools";
 
 /**
@@ -142,13 +143,32 @@ export function viewpointFromDto(dto: Record<string, unknown>): { viewpoint: Rec
   return { viewpoint: { guid, source: "bcf", bcf: rest }, selection };
 }
 
-export function topicToDto(row: BcfTopicRow, canWrite = true): Record<string, unknown> {
+/**
+ * Hlavička odkazov na dokumenty v opise témy (D-158): BCF panel (upstream
+ * `fetchProjectAsBCF`) DocumentReference nesťahuje, opis ukáže. Pri zápise
+ * z panela sa odreže, v DB je opis bez nej.
+ */
+export const DOCUMENTS_HEADING = "Dokumenty (AIM):";
+
+export function descriptionWithDocuments(description: string | null, docs: TopicDocumentRow[]): string | null {
+  if (docs.length === 0) return description;
+  const block = [DOCUMENTS_HEADING, ...docs.map((d) => `- ${documentLabel(d)}${d.description ? `: ${d.description}` : ""}`)].join("\n");
+  return description ? `${description}\n\n${block}` : block;
+}
+
+export function descriptionWithoutDocuments(description: string | null): string | null {
+  if (!description) return description;
+  const i = description.startsWith(DOCUMENTS_HEADING) ? 0 : description.indexOf(`\n\n${DOCUMENTS_HEADING}`);
+  return i < 0 ? description : description.slice(0, i).trim() || null;
+}
+
+export function topicToDto(row: BcfTopicRow, canWrite = true, docs: TopicDocumentRow[] = []): Record<string, unknown> {
   return {
     guid: row.id,
     server_assigned_id: `#${row.number}`,
     index: row.number,
     title: row.title,
-    description: row.description,
+    description: descriptionWithDocuments(row.description, docs),
     topic_type: row.topic_type,
     topic_status: STATUS_TO_BCF[row.status] ?? row.status,
     priority: row.priority,
@@ -217,7 +237,7 @@ function topicWrite(body: unknown, user: string): BcfTopicWrite & { title: strin
   const due = str(b.due_date, 40);
   return {
     title,
-    description: str(b.description, 8000),
+    description: descriptionWithoutDocuments(str(b.description, 8000)),
     topic_type: str(b.topic_type, 60) ?? "Issue",
     status: status ?? "open",
     priority: str(b.priority, 60),
@@ -312,7 +332,8 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
         const top = Math.min(500, Math.max(1, Number.parseInt(req.query.get("$top") ?? "", 10) || 100));
         const skip = Math.max(0, Number.parseInt(req.query.get("$skip") ?? "", 10) || 0);
         const { rows } = await deps.store.list({ limit: top, offset: skip, ascending: true });
-        return ok(rows.map((r) => topicToDto(r, canWrite)));
+        const docs = await deps.store.documents(rows.map((r) => r.id));
+        return ok(rows.map((r) => topicToDto(r, canWrite, docs.filter((d) => d.task_id === r.id))));
       }
       if (method === "POST") {
         const row = await deps.store.create({ ...topicWrite(req.body, user), author: user });
@@ -328,12 +349,12 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
     const topic = found;
 
     if (s.length === 5) {
-      if (method === "GET") return ok(topicToDto(topic, canWrite));
+      if (method === "GET") return ok(topicToDto(topic, canWrite, await deps.store.documents([topic.id])));
       if (method === "PUT") {
         const row = await deps.store.update(topic.id, topicWrite(req.body, user));
         const started = await startIfClaude(row, isClaude(topic.assigned_to), deps);
         await notified(ctx);
-        return ok(topicToDto(started));
+        return ok(topicToDto(started, true, await deps.store.documents([topic.id])));
       }
       return err(405, "Metóda nie je povolená.");
     }

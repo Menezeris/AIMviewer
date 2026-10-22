@@ -11,7 +11,7 @@ import {
 } from "@ifc-lite/bcf-api";
 
 import { handleBcfApi, PROJECT_ID } from "./api";
-import { G1, G2, deps, memoryStore } from "./testing";
+import { DOC_ID, G1, G2, deps, memoryStore } from "./testing";
 
 /**
  * Protokolová zhoda s klientom, ktorý používa BCF panel viewera (D-099 fáza B):
@@ -60,6 +60,36 @@ describe("@ifc-lite/bcf-api proti /api/bcf", () => {
     expect([...result.project.topics.values()].map((t) => t.title)).toEqual(["Z chatu"]);
     await expect(anon.createTopic(PROJECT_ID, { title: "nie" })).rejects.toThrow();
     expect(s.rows).toHaveLength(1);
+  });
+
+  it("pripomienka na dokumente (D-158) je v tom istom zozname panela, opis nesie dokument a stranu; zápis z panela ho neuloží", async () => {
+    const store = memoryStore([{ title: "Z 3D", components: [G1] }, { title: "Na výkrese", description: "Chýba popis", components: [G2] }]);
+    const s = server(store);
+    store.docs.push({
+      id: "22222222-2222-4222-8222-000000000001",
+      task_id: store.rows[1].id,
+      document_id: DOC_ID,
+      document_ref: "D.1.1.09",
+      document_name: "Pôdorys 1NP",
+      document_revision: "B",
+      page: 2,
+      region: { x: 50, y: 0, width: 50, height: 50 },
+      markup: null,
+      url: null,
+      description: null,
+      author: "Claude (MCP)",
+      created_at: "2026-10-22T00:00:00Z",
+    });
+    const anon = new BcfApiClient({ baseUrl: BASE, fetchFn: s.fetchFn });
+    const result = await fetchProjectAsBCF(anon, PROJECT_ID, { includeSnapshots: false });
+    expect(result.warnings).toEqual([]);
+    const topics = [...result.project.topics.values()];
+    expect(topics.map((t) => t.title)).toEqual(["Z 3D", "Na výkrese"]);
+    expect(topics[0].description).toBeUndefined();
+    expect(topics[1].description).toBe("Chýba popis\n\nDokumenty (AIM):\n- D.1.1.09 (rev. B), strana 2, oblasť x 50 %, y 0 %, 50 x 50 %");
+    // Panel s tokenom pošle opis späť celý; v DB ostane bez bloku dokumentov.
+    await s.client.updateTopic(PROJECT_ID, store.rows[1].id, topicToApiWrite(topics[1]));
+    expect(store.rows[1].description).toBe("Chýba popis");
   });
 
   it("fetchProjectAsBCF načíta témy s komentármi, pohľadom a výberom", async () => {
