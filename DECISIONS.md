@@ -6596,3 +6596,38 @@ nemení. `open_list` parameter `run` nemá (`lib/llm/list-tool.ts`, `MCP-TOOLS.m
   nerobí; ak ho Samuel chce, je to samostatná úloha (parameter `run` + správa `OPEN_LIST`, D-114).
 - *Presunúť čipy do vlastnej lišty viewera (fork)*: upstream `StatusBar` by sa menil kvôli čipu hostu; zbytočné, host má vlastnú.
 **Evaly (D-057):** LLM vrstva sa nemení.
+
+---
+
+---
+
+### D-142 - `get_object include=quantities`: Qto výmery a psety jedného prvku z IFC jedným volaním
+
+**Dátum:** 2026-10-22 · **Issue:** #184 · **Nadväzuje na:** D-021, D-084, D-114, D-115
+
+**Kontext:** Používateľ chcel objem (NetVolume) jedného stĺpca. `get_object` vracal len identitu a psety
+z grafu AIM (DB, s dedením z typu cez `v_asset_effective`, D-021), nie Qto z IFC. `ifc_get` Qto vracia, ale
+v session sa nenačítal (ide o tool IFC motora, ktorý nemusí byť vždy v zozname) a model skončil pri štyroch
+volaniach `ifc_query` s odvodzovaním.
+
+**Rozhodnutie (rozšírenie existujúceho toolu, D-114 bod 3, žiadny nový tool):**
+1. `get_object` dostane hodnotu `include=quantities`. Pole `ifc` vo výsledku nesie `quantities`
+   `[{qto, name, value, source}]` a `properties` `[{pset, name, value, source}]`, `source` = `occurrence` |
+   `type`; ďalej `model`, `global_id`, `ifc_type`, `type_name` a `note`.
+2. Dáta berie `ifc_get` (IFC motor), tvarovanie je v `lib/engine/element-data.ts`. DB sa nemení: Qto v grafe
+   AIM nie sú, takže hodnota je vždy zo súboru (aktuálna revízia modelu).
+3. Prvok len v IFC (D-102, `in_aim:false`) dostane `ifc` tiež, podľa `global_id`.
+4. Chyba motora, vypnutý motor alebo chýbajúci GUID sa vráti ako `ifc.error`, ostatné `include` ostávajú
+   použiteľné. `ifc_get` ostáva na viac prvkov naraz a na materiály, klasifikácie a dokumenty.
+5. Prompt (`system-prompt.ts`) sa nemení, je na hranici rozpočtu 15000 znakov (test); pravidlo nesie opis toolu.
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool na výmery:* `get_object` už je tool "čo je X", výmery sú len ďalšie `include`.
+- *`ifc_get`:* funguje, ale nie je spoľahlivo načítaný, vráti sa celý záznam (atribúty, dokumenty) a bez `ifc` cesty
+  sa model musí učiť dva nástroje na jednu otázku.
+- *`show_in_3d select panel_section=quantities`:* UI akcia (zvýraznenie riadku vo viewer paneli, #183), hodnotu
+  Claudovi nevracia.
+
+**Otvorené:** jednotky veličín sa nevypisujú (hodnoty sú v jednotkách IFC súboru, `note` to hovorí); ak má model
+nemetrické jednotky, treba doplniť z `ifc_models`. Evaly (D-057) v cloud session nepobežali, pridaná otázka
+`object-quantities-one-call` (neoverená).

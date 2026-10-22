@@ -1017,6 +1017,14 @@
       "expect": { "tools_called": ["feedback"] },
       "verified": false,
       "notes": "D-134: jasná lokálna zmena opisu -> feedback(action=report, narocnost=standard, narocnost_dovod). Parameter narocnost sa v eval harnessi nekontroluje (expect nemá argumenty), overenie = scenár cez konektor. Len MCP a zapisuje do GitHubu."
+    },
+    {
+      "id": "object-quantities-one-call",
+      "category": "details",
+      "question": "Ukáž kvantitatívny set jedného stĺpca SL02.01.0030, chcem objem.",
+      "expect": { "tools_called": ["get_object"] },
+      "verified": false,
+      "notes": "D-142 (issue #184): get_object(include=quantities) vráti Qto_ColumnBaseQuantities.NetVolume z IFC v jednom volaní, bez ifc_query mode=values a eliminácie. Hodnota neoverená (vyžaduje IFC motor a prod model)."
     }
   ]
 }
