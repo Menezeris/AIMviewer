@@ -1,0 +1,1292 @@
+From fdf64fa66584d03eb33e5437a92add96e09ad384 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 19:16:19 +0000
+Subject: [PATCH] =?UTF-8?q?feat(aim):=20pripomienka=20na=20PDF=20ako=20BCF?=
+ =?UTF-8?q?=20t=C3=A9ma=20panela=20s=20odkazom=20na=20stranu=20a=20oblas?=
+ =?UTF-8?q?=C5=A5=20(AIM=20D-158,=20#199)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Tlačidlo Pripomienka v lište karty dokumentu: ťah obdĺžnika nad stranou otvorí upstream
+New topic BCF panela a téma dostane BCF DocumentReference (url hosta s page a region).
+Rámiky s číslom na strane, klik otvorí tému. view_state.bcf_local vypíše neuložené
+témy (chat ich uloží cez bcf_topic from_viewer), AIM_BCF_LOAD zlúči témy hosta s
+lokálnymi a načíta odkazy na dokumenty. Export .bcfzip nesie DocumentReference.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011WDf8j4X4NAzZAc2a5M3QA
+---
+ apps/viewer/src/aim/AimDocumentIssue.tsx      |  77 ++++++
+ apps/viewer/src/aim/aimBcf.ts                 |  58 ++++-
+ apps/viewer/src/aim/bcf-protocol.test.ts      |  51 +++-
+ apps/viewer/src/aim/bcf-protocol.ts           |   8 +
+ apps/viewer/src/aim/docIssueModel.test.ts     | 157 ++++++++++++
+ apps/viewer/src/aim/docIssueModel.ts          | 216 +++++++++++++++++
+ apps/viewer/src/aim/docIssues.ts              | 226 ++++++++++++++++++
+ apps/viewer/src/aim/viewQueries.ts            |  13 +-
+ .../src/components/documents/DocumentPane.tsx |   4 +-
+ docs/FORK_MAINTENANCE.md                      |   2 +-
+ .../aim-d158-doc-issues/mutations/README.md   |  35 +++
+ .../mutations/click-is-region.patch           |  12 +
+ .../mutations/doc-refs-not-read.patch         |  13 +
+ .../mutations/frames-any-page.patch           |  13 +
+ .../mutations/merge-any-project.patch         |  13 +
+ .../mutations/merge-drops-local.patch         |  12 +
+ .../mutations/new-topic-ignores-before.patch  |  13 +
+ .../mutations/saved-as-local.patch            |  13 +
+ .../mutations/summary.json                    |  77 ++++++
+ .../mutations/url-any-id.patch                |  13 +
+ 20 files changed, 1000 insertions(+), 26 deletions(-)
+ create mode 100644 apps/viewer/src/aim/AimDocumentIssue.tsx
+ create mode 100644 apps/viewer/src/aim/docIssueModel.test.ts
+ create mode 100644 apps/viewer/src/aim/docIssueModel.ts
+ create mode 100644 apps/viewer/src/aim/docIssues.ts
+ create mode 100644 docs/architecture/evidence/aim-d158-doc-issues/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-d158-doc-issues/mutations/click-is-region.patch
+ create mode 100644 docs/architecture/evidence/aim-d158-doc-issues/mutations/doc-refs-not-read.patch
+ create mode 100644 docs/architecture/evidence/aim-d158-doc-issues/mutations/frames-any-page.patch
+ create mode 100644 docs/architecture/evidence/aim-d158-doc-issues/mutations/merge-any-project.patch
+ create mode 100644 docs/architecture/evidence/aim-d158-doc-issues/mutations/merge-drops-local.patch
+ create mode 100644 docs/architecture/evidence/aim-d158-doc-issues/mutations/new-topic-ignores-before.patch
+ create mode 100644 docs/architecture/evidence/aim-d158-doc-issues/mutations/saved-as-local.patch
+ create mode 100644 docs/architecture/evidence/aim-d158-doc-issues/mutations/summary.json
+ create mode 100644 docs/architecture/evidence/aim-d158-doc-issues/mutations/url-any-id.patch
+
+diff --git a/apps/viewer/src/aim/AimDocumentIssue.tsx b/apps/viewer/src/aim/AimDocumentIssue.tsx
+new file mode 100644
+index 00000000..6be63c2f
+--- /dev/null
++++ b/apps/viewer/src/aim/AimDocumentIssue.tsx
+@@ -0,0 +1,77 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * "Pripomienka" in the document tab strip (AIM D-158), next to "Ukázať v 3D"
++ * in the same AIM-FORK block of components/documents/DocumentPane.tsx. A click
++ * arms drawing: a rectangle dragged over a page (or a click = whole page)
++ * opens the upstream BCF "New topic" form and the topic gets a document
++ * reference to that page and region. The component also keeps the issue
++ * frames on the pages of the open PDF in sync with the BCF project.
++ * Rendered only inside the AIM host and only for the host's documents.
++ */
++
++import { useEffect, useRef } from 'react';
++import { MessageSquarePlus } from 'lucide-react';
++import { useViewerStore } from '@/store';
++import { useAimPanelStore } from './aimPanelStore';
++import { attachIssueDrawing, openIssueForm, syncIssueLayers, useAimDocIssueStore } from './docIssues';
++
++const HINT: Record<'drawing' | 'form', string> = {
++  drawing: 'Ťahaj obdĺžnik na strane (klik = celá strana, Esc zruší)',
++  form: 'Dokonči tému v paneli BCF',
++};
++
++export function AimDocumentIssue({ docId }: { docId: string }) {
++  const embedded = useAimPanelStore((s) => s.embedded);
++  const doc = useViewerStore((s) => s.viewerDocuments.get(docId));
++  const project = useViewerStore((s) => s.bcfProject);
++  const phase = useAimDocIssueStore((s) => (s.docId === docId ? s.phase : 'idle'));
++  const note = useAimDocIssueStore((s) => s.note);
++  const ref = useRef<HTMLButtonElement>(null);
++  const enabled = embedded && !!doc && doc.kind !== 'image' && !docId.startsWith('local:');
++
++  // The tab strip's parent is the pane: the open PDF's pages are inside it.
++  const paneRoot = () => ref.current?.parentElement?.parentElement ?? null;
++
++  useEffect(() => {
++    const root = paneRoot();
++    if (!enabled || !root) return;
++    const sync = () => syncIssueLayers(root, docId);
++    sync();
++    // Pages mount as the PDF loads and on zoom; re-sync when they change.
++    const mo = new MutationObserver((records) => {
++      if (records.some((r) => [...r.addedNodes].some((n) => n instanceof HTMLElement && (n.dataset.page || n.querySelector('[data-page]'))))) sync();
++    });
++    mo.observe(root, { childList: true, subtree: true });
++    return () => mo.disconnect();
++  }, [enabled, docId, project]);
++
++  useEffect(() => {
++    const root = paneRoot();
++    if (!enabled || phase !== 'drawing' || !root) return;
++    return attachIssueDrawing(root, docId, (target) => {
++      if (!target) return useAimDocIssueStore.getState().set({ phase: 'idle', docId: null, note: null });
++      void openIssueForm(target, doc?.name ?? 'Dokument');
++    });
++  }, [enabled, phase, docId, doc?.name]);
++
++  if (!enabled) return null;
++  const busy = phase !== 'idle';
++  const toggle = () => useAimDocIssueStore.getState().set(busy ? { phase: 'idle', docId: null, note: null } : { phase: 'drawing', docId, note: null });
++  return (
++    <button
++      ref={ref}
++      type="button"
++      onClick={toggle}
++      aria-pressed={busy}
++      title={busy ? `${HINT[phase]}. Klik zruší.` : (note ?? 'Pripomienka k miestu na strane: označ oblasť, téma vznikne v paneli BCF (uloží ju chat)')}
++      className={`mx-1 my-0.5 flex min-h-6 shrink-0 items-center gap-1 self-center rounded border px-1.5 py-0.5 text-2xs ${busy ? 'border-red-600 text-red-700' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
++      data-aim-document-issue
++    >
++      <MessageSquarePlus className="size-3" aria-hidden />
++      {busy ? HINT[phase] : 'Pripomienka'}
++    </button>
++  );
++}
+diff --git a/apps/viewer/src/aim/aimBcf.ts b/apps/viewer/src/aim/aimBcf.ts
+index e822e15e..7cd9f28e 100644
+--- a/apps/viewer/src/aim/aimBcf.ts
++++ b/apps/viewer/src/aim/aimBcf.ts
+@@ -11,8 +11,9 @@
+  * entry does.
+  */
+ 
+-import type { BCFProject } from '@ifc-lite/bcf';
++import type { BCFDocumentReference, BCFProject } from '@ifc-lite/bcf';
+ import type { BcfLoadMessage } from './bcf-protocol.js';
++import { mergeAimProject } from './docIssueModel.js';
+ 
+ type BcfApi = Pick<typeof import('@ifc-lite/bcf-api'), 'BcfApiClient' | 'fetchProjectAsBCF'>;
+ 
+@@ -22,19 +23,45 @@ export interface AimBcfDeps {
+   /** The caller's `import('@ifc-lite/bcf-api')`: a dynamic import here would make
+    * vite-plugin-top-level-await rewrite this chunk (scripts/check-tla-chunk-await.mjs). */
+   loadApi: () => Promise<BcfApi>;
++  /** Document references of a topic (AIM D-158); the upstream client has no call for them. */
++  fetchFn?: typeof fetch;
+ }
+ 
++/** Marker the host puts in a topic description when the topic has document references (AIM D-158). */
++export const DOCUMENTS_HEADING = 'Dokumenty (AIM):';
++
+ /**
+- * Replace the viewer's BCF project with the host's topics only when that
+- * cannot lose the user's own work: no project yet, an empty one, or the one
+- * the previous AIM_BCF_LOAD put there. A project the user opened from a file
+- * or a server connection stays.
++ * Document references (AIM D-158) of the host topics that have some: the BCF
++ * panel and the PDF frames read them from the topic, and an export carries them.
++ * Only topics whose description lists documents are asked; a failure leaves the
++ * topic without them (the description still names the document and page).
+  */
+-export function shouldReplaceBcfProject<P extends { topics: { size: number } }>(
+-  current: P | null,
+-  lastLoaded: P | null,
+-): boolean {
+-  return current === null || current === lastLoaded || current.topics.size === 0;
++async function attachDocumentReferences(project: BCFProject, msg: BcfLoadMessage, fetchFn: typeof fetch): Promise<void> {
++  const base = msg.baseUrl.replace(/\/+$/, '');
++  const wanted = [...project.topics.values()].filter((t) => t.description?.includes(DOCUMENTS_HEADING));
++  await Promise.all(wanted.map(async (topic) => {
++    try {
++      const url = `${base}/2.1/projects/${encodeURIComponent(msg.projectId)}/topics/${encodeURIComponent(topic.guid)}/document_references`;
++      const res = await fetchFn(url, { headers: { Accept: 'application/json' } });
++      if (!res.ok) return;
++      const rows = (await res.json()) as unknown;
++      if (!Array.isArray(rows)) return;
++      const refs: BCFDocumentReference[] = [];
++      for (const r of rows as Record<string, unknown>[]) {
++        if (typeof r?.url !== 'string') continue;
++        refs.push({
++          ...(typeof r.guid === 'string' ? { guid: r.guid } : {}),
++          url: r.url,
++          referencedDocument: r.url,
++          isExternal: true,
++          ...(typeof r.description === 'string' ? { description: r.description } : {}),
++        });
++      }
++      if (refs.length) topic.documentReferences = refs;
++    } catch (err) {
++      console.warn('[aim-bridge] AIM_BCF_LOAD: document references', topic.guid, err);
++    }
++  }));
+ }
+ 
+ let lastLoaded: BCFProject | null = null;
+@@ -52,11 +79,16 @@ export async function loadAimBcfTopics(
+   const result = await api.fetchProjectAsBCF(client, msg.projectId, { includeSnapshots: false });
+   if (mine !== generation) return 'stale';
+   if (result.warnings.length > 0) console.warn('[aim-bridge] AIM_BCF_LOAD:', result.warnings);
+-  if (!shouldReplaceBcfProject(deps.getProject(), lastLoaded)) {
++  const fetchFn = deps.fetchFn ?? (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
++  if (fetchFn) await attachDocumentReferences(result.project, msg, fetchFn);
++  if (mine !== generation) return 'stale';
++  // AIM D-158: topics added in the panel (not saved yet) stay; saved ones come back from the host.
++  const next = mergeAimProject(deps.getProject(), result.project, lastLoaded);
++  if (!next) {
+     console.warn('[aim-bridge] AIM_BCF_LOAD: the open BCF project is the user\'s own, AIM topics not loaded');
+     return 'kept';
+   }
+-  deps.setProject(result.project);
+-  lastLoaded = result.project;
++  deps.setProject(next);
++  lastLoaded = next;
+   return 'loaded';
+ }
+diff --git a/apps/viewer/src/aim/bcf-protocol.test.ts b/apps/viewer/src/aim/bcf-protocol.test.ts
+index 0f371f9e..b720fdf0 100644
+--- a/apps/viewer/src/aim/bcf-protocol.test.ts
++++ b/apps/viewer/src/aim/bcf-protocol.test.ts
+@@ -8,7 +8,7 @@ import assert from 'node:assert';
+ import type { BCFProject } from '@ifc-lite/bcf';
+ import { SOURCE } from './bridge-protocol.js';
+ import { isBcfLoadMessage, type BcfLoadMessage } from './bcf-protocol.js';
+-import { loadAimBcfTopics, shouldReplaceBcfProject } from './aimBcf.js';
++import { loadAimBcfTopics } from './aimBcf.js';
+ 
+ const HOST = 'https://aim.example';
+ const msg = (over: Record<string, unknown> = {}) => ({
+@@ -37,14 +37,6 @@ describe('AIM_BCF_LOAD (AIM D-099)', () => {
+     assert.equal(isBcfLoadMessage({ ...msg(), source: 'other' }, HOST), false);
+   });
+ 
+-  it('replaces only an empty, missing or previously loaded AIM project', () => {
+-    const aim = project(2);
+-    assert.equal(shouldReplaceBcfProject(null, null), true);
+-    assert.equal(shouldReplaceBcfProject(project(0), null), true);
+-    assert.equal(shouldReplaceBcfProject(aim, aim), true);
+-    assert.equal(shouldReplaceBcfProject(project(3), aim), false);
+-  });
+-
+   it('pulls the project without a token and keeps the user\'s own project', async () => {
+     const clients: unknown[] = [];
+     const pulled = project(2);
+@@ -75,6 +67,47 @@ describe('AIM_BCF_LOAD (AIM D-099)', () => {
+     assert.equal(current, own);
+   });
+ 
++  it('AIM D-158: keeps topics added in the panel, takes the saved copy back, reads document references', async () => {
++    const DOC = '11111111-1111-4111-8111-111111111111';
++    const ref = `${HOST}/drawing/${DOC}?page=2&region=50_0_25_50#page=2`;
++    const host = (topics: Record<string, unknown>[]): BCFProject => ({
++      version: '2.1',
++      projectId: 'aim',
++      topics: new Map(topics.map((t) => [t.guid as string, { comments: [], viewpoints: [], ...t } as never])),
++    });
++    let pulls = [
++      host([{ guid: 'h1', title: 'z chatu', index: 1 }]),
++      host([{ guid: 'h1', title: 'z chatu', index: 1 }, { guid: 'n1', title: 'z PDF', index: 2, description: 'Chýba\n\nDokumenty (AIM):\n- D.1.1.09, strana 2' }]),
++    ];
++    const loadApi = async () => ({
++      BcfApiClient: class {} as never,
++      fetchProjectAsBCF: (async () => ({ project: pulls.shift()!, warnings: [] })) as never,
++    });
++    const asked: string[] = [];
++    const fetchFn = (async (url: string) => {
++      asked.push(url);
++      return new Response(JSON.stringify([{ guid: 'r1', url: ref, description: 'D.1.1.09, strana 2' }]), { status: 200 });
++    }) as unknown as typeof fetch;
++    let current: BCFProject | null = null;
++    const deps = { getProject: () => current, setProject: (p: BCFProject) => (current = p), loadApi, fetchFn };
++
++    assert.equal(await loadAimBcfTopics(msg() as BcfLoadMessage, deps), 'loaded');
++    assert.deepEqual(asked, []);
++    // Panel "New topic": two local topics (no host index); the chat then saves n1.
++    const withLocal: BCFProject = { ...current!, topics: new Map(current!.topics) };
++    for (const guid of ['n1', 'n2']) withLocal.topics.set(guid, { guid, title: guid, comments: [], viewpoints: [] } as never);
++    current = withLocal;
++    assert.equal(await loadAimBcfTopics(msg() as BcfLoadMessage, deps), 'loaded');
++    const topics = current!.topics;
++    assert.deepEqual([...topics.keys()], ['h1', 'n1', 'n2']);
++    assert.equal(topics.get('n1')!.index, 2);
++    assert.equal(topics.get('n2')!.index, undefined);
++    assert.deepEqual(asked, [`${HOST}/api/bcf/2.1/projects/aim/topics/n1/document_references`]);
++    assert.deepEqual(topics.get('n1')!.documentReferences, [
++      { guid: 'r1', url: ref, referencedDocument: ref, isExternal: true, description: 'D.1.1.09, strana 2' },
++    ]);
++  });
++
+   it('drops a load overtaken by a newer one', async () => {
+     let release!: () => void;
+     const gate = new Promise<void>((r) => (release = r));
+diff --git a/apps/viewer/src/aim/bcf-protocol.ts b/apps/viewer/src/aim/bcf-protocol.ts
+index 91d03e45..3ecd95a6 100644
+--- a/apps/viewer/src/aim/bcf-protocol.ts
++++ b/apps/viewer/src/aim/bcf-protocol.ts
+@@ -45,6 +45,13 @@ export function isBcfLoadMessage(data: unknown, parentOrigin: string | null): da
+   return parentOrigin === null || url.origin === parentOrigin;
+ }
+ 
++/** Project and origin of the last AIM_BCF_LOAD: local topics and PDF issue links (AIM D-158). */
++let aimBcf: { projectId: string; origin: string } | null = null;
++
++export function aimBcfContext(): { projectId: string; origin: string } | null {
++  return aimBcf;
++}
++
+ /**
+  * Start the pull (lazy `aimBcf.ts`). The bridge passes the store getter, so
+  * neither this entry module nor the lazy one imports the store itself.
+@@ -53,6 +60,7 @@ export function loadBcfTopics(
+   msg: BcfLoadMessage,
+   getState: () => { bcfProject: BCFProject | null; setBcfProject: (project: BCFProject) => void },
+ ): void {
++  aimBcf = { projectId: msg.projectId, origin: new URL(msg.baseUrl).origin };
+   void import('./aimBcf.js')
+     .then(({ loadAimBcfTopics }) => loadAimBcfTopics(msg, {
+       getProject: () => getState().bcfProject,
+diff --git a/apps/viewer/src/aim/docIssueModel.test.ts b/apps/viewer/src/aim/docIssueModel.test.ts
+new file mode 100644
+index 00000000..bf60fe0c
+--- /dev/null
++++ b/apps/viewer/src/aim/docIssueModel.test.ts
+@@ -0,0 +1,157 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import type { BCFProject, BCFTopic } from '@ifc-lite/bcf';
++import { readBCF, writeBCF } from '@ifc-lite/bcf';
++import {
++  describeLocalTopics,
++  docIssueReference,
++  docIssueUrl,
++  issuesOnPage,
++  mergeAimProject,
++  newTopicGuid,
++  parseDocIssueUrl,
++  regionFromDrag,
++} from './docIssueModel.js';
++
++const DOC = '11111111-1111-4111-8111-111111111111';
++const HOST = 'https://aim.example';
++
++const topic = (guid: string, over: Partial<BCFTopic> = {}): BCFTopic => ({
++  guid,
++  title: guid,
++  comments: [],
++  viewpoints: [],
++  ...over,
++} as BCFTopic);
++
++const project = (topics: BCFTopic[], projectId = 'aim'): BCFProject => ({
++  version: '2.1',
++  ...(projectId ? { projectId } : {}),
++  topics: new Map(topics.map((t) => [t.guid, t])),
++});
++
++const onPage = (page: number, region = { x: 0.5, y: 0, w: 0.25, h: 0.5 }) => ({
++  documentReferences: [docIssueReference(HOST, 'Pôdorys 1NP', { docId: DOC, page, region })],
++});
++
++describe('pripomienka na PDF (AIM D-158)', () => {
++  it('ťah nad stranou -> oblasť v zlomkoch, orezaná do strany; malý ťah je klik', () => {
++    const page = { left: 100, top: 50, width: 400, height: 200 };
++    assert.deepEqual(regionFromDrag(page, { x: 500, y: 150 }, { x: 300, y: 50 }), { x: 0.5, y: 0, w: 0.5, h: 0.5 });
++    assert.deepEqual(regionFromDrag(page, { x: 0, y: 0 }, { x: 200, y: 100 }), { x: 0, y: 0, w: 0.25, h: 0.25 });
++    assert.equal(regionFromDrag(page, { x: 200, y: 100 }, { x: 201, y: 101 }), null);
++    assert.equal(regionFromDrag({ ...page, width: 0 }, { x: 0, y: 0 }, { x: 9, y: 9 }), null);
++  });
++
++  it('odkaz má tvar BCF API hosta a rozloží sa späť (aj bez oblasti, aj relatívny)', () => {
++    const t = { docId: DOC, page: 2, region: { x: 0.5, y: 0, w: 0.255, h: 0.5 } };
++    const url = docIssueUrl(HOST, t);
++    assert.equal(url, `${HOST}/drawing/${DOC}?page=2&region=50_0_25.5_50#page=2`);
++    assert.deepEqual(parseDocIssueUrl(url), t);
++    assert.deepEqual(parseDocIssueUrl(docIssueUrl(null, { docId: DOC, page: 3, region: null })), { docId: DOC, page: 3, region: null });
++    assert.equal(parseDocIssueUrl('https://cde.example/x.pdf#page=2'), null);
++    assert.equal(parseDocIssueUrl(`${HOST}/drawing/nie-uuid?page=2`), null);
++    assert.equal(parseDocIssueUrl(`${HOST}/drawing/${DOC}?page=0`), null);
++    const ref = docIssueReference(HOST, 'Pôdorys 1NP', t);
++    assert.equal(ref.referencedDocument, url);
++    assert.equal(ref.description, 'Pôdorys 1NP, strana 2, oblasť x 50 %, y 0 %, 25,5 x 50 %');
++  });
++
++  it('rámiky strany: len odkazy na tento dokument a stranu; uložená téma má #N, lokálna N1...', () => {
++    const p = project([
++      topic('a', { index: 7, ...onPage(2) }),
++      topic('b', onPage(2)),
++      topic('c', onPage(1)),
++      topic('d'),
++    ]);
++    assert.deepEqual(
++      issuesOnPage(p, DOC, 2).map((i) => [i.guid, i.label, i.saved]),
++      [['a', '#7', true], ['b', 'N1', false]],
++    );
++    assert.deepEqual(issuesOnPage(p, DOC.toUpperCase(), 1).map((i) => i.label), ['N2']);
++    assert.deepEqual(issuesOnPage(null, DOC, 2), []);
++  });
++
++  it('nová téma panela: prvá, ktorá pred otvorením formulára nebola', () => {
++    const p = project([topic('a'), topic('b')]);
++    assert.equal(newTopicGuid(new Set(['a']), p), 'b');
++    assert.equal(newTopicGuid(new Set(['a', 'b']), p), null);
++    assert.equal(newTopicGuid(new Set(), null), null);
++  });
++
++  it('view_state vypíše len lokálne témy projektu AIM, bez snímky, s odkazom na PDF', () => {
++    const p = project([
++      topic('host', { index: 1 }),
++      topic('mine', {
++        ...onPage(2),
++        topicType: 'Issue',
++        creationAuthor: 'Samuel',
++        comments: [{ guid: 'c', comment: 'pozri', author: 'Samuel', date: '2026-10-22T10:00:00Z' } as never],
++        viewpoints: [{
++          guid: 'vp',
++          snapshot: 'data:image/png;base64,AAAA',
++          perspectiveCamera: { cameraViewPoint: { x: 1, y: 2, z: 3 }, cameraDirection: { x: 0, y: 1, z: 0 }, cameraUpVector: { x: 0, y: 0, z: 1 }, fieldOfView: 60 },
++          components: { selection: [{ ifcGuid: 'G1' }, { ifcGuid: 'G2' }] },
++        } as never],
++      }),
++    ]);
++    const d = describeLocalTopics(p, 'aim');
++    assert.equal(d.count, 1);
++    const [t] = d.topics;
++    assert.equal(t.guid, 'mine');
++    assert.equal(t.creation_author, 'Samuel');
++    assert.deepEqual(t.comments, [{ author: 'Samuel', date: '2026-10-22T10:00:00Z', comment: 'pozri' }]);
++    assert.deepEqual(t.viewpoint, {
++      guid: 'vp',
++      perspective_camera: { camera_view_point: { x: 1, y: 2, z: 3 }, camera_direction: { x: 0, y: 1, z: 0 }, camera_up_vector: { x: 0, y: 0, z: 1 }, field_of_view: 60 },
++      components: { selection: [{ ifc_guid: 'G1' }, { ifc_guid: 'G2' }] },
++    });
++    assert.equal(t.document_references[0].url, `${HOST}/drawing/${DOC}?page=2&region=50_0_25_50#page=2`);
++    assert.deepEqual(describeLocalTopics(p, null), { count: 0, topics: [] });
++    assert.deepEqual(describeLocalTopics(project([topic('x')], 'other'), 'aim'), { count: 0, topics: [] });
++  });
++
++  it('obnova z hosta: témy hosta sa nahradia, lokálne ostanú, uložená lokálna nie je dvakrát; projekt používateľa sa nemení', () => {
++    const previous = project([topic('h1', { index: 1 })]);
++    const current = project([topic('h1', { index: 1, title: 'starý' }), topic('n1'), topic('n2')]);
++    const fresh = project([topic('h1', { index: 1, title: 'nový' }), topic('n2', { index: 2 })]);
++    const merged = mergeAimProject(current, fresh, previous)!;
++    assert.deepEqual([...merged.topics.keys()], ['h1', 'n2', 'n1']);
++    assert.equal(merged.topics.get('h1')!.title, 'nový');
++    assert.equal(merged.topics.get('n2')!.index, 2);
++    assert.equal(mergeAimProject(null, fresh, null), fresh);
++    assert.equal(mergeAimProject(previous, fresh, previous), fresh);
++    assert.equal(mergeAimProject(project([]), fresh, previous), fresh);
++    assert.equal(mergeAimProject(project([topic('f')], ''), fresh, previous), null);
++    assert.equal(mergeAimProject(project([topic('f')]), fresh, null), null);
++  });
++
++  it('export .bcfzip (2.1 aj 3.0) nesie DocumentReference a dá sa znova načítať', async () => {
++    for (const version of ['2.1', '3.0'] as const) {
++      const p: BCFProject = {
++        version,
++        projectId: 'aim',
++        topics: new Map([['3f2504e0-4f89-41d3-9a0c-0305e82c3301', topic('3f2504e0-4f89-41d3-9a0c-0305e82c3301', {
++          title: 'Chýba popis miestnosti',
++          creationDate: '2026-10-22T10:00:00Z',
++          creationAuthor: 'Samuel',
++          topicType: 'Issue',
++          topicStatus: 'Open',
++          ...onPage(2),
++        })]]),
++      };
++      const blob = await writeBCF(p);
++      const back = await readBCF(blob);
++      const [t] = [...back.topics.values()];
++      const refs = t.documentReferences ?? [];
++      assert.equal(refs.length, 1, version);
++      assert.deepEqual(parseDocIssueUrl(refs[0].url ?? refs[0].referencedDocument), { docId: DOC, page: 2, region: { x: 0.5, y: 0, w: 0.25, h: 0.5 } }, version);
++      assert.equal(refs[0].description, 'Pôdorys 1NP, strana 2, oblasť x 50 %, y 0 %, 25 x 50 %', version);
++    }
++  });
++});
+diff --git a/apps/viewer/src/aim/docIssueModel.ts b/apps/viewer/src/aim/docIssueModel.ts
+new file mode 100644
+index 00000000..a8c077d4
+--- /dev/null
++++ b/apps/viewer/src/aim/docIssueModel.ts
+@@ -0,0 +1,216 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Pripomienky na PDF (AIM D-158): čistá logika bez store a DOM. Pripomienka je
++ * obyčajná BCF téma panela (upstream "New topic") s BCF DocumentReference na
++ * stranu a oblasť dokumentu AIM. Odkaz má ten istý tvar ako BCF API hosta
++ * (`<host>/drawing/<id>?page=N&region=x_y_w_h#page=N`, oblasť v %), takže ho
++ * host pri uložení z chatu rozloží späť a export `.bcfzip` ho nesie ďalej.
++ */
++
++import type { BCFDocumentReference, BCFProject, BCFTopic, BCFViewpoint } from '@ifc-lite/bcf';
++
++/** Oblasť strany v zlomkoch (0-1), počiatok vľavo hore (ako `DocRegion`). */
++export interface IssueRegion {
++  x: number;
++  y: number;
++  w: number;
++  h: number;
++}
++
++export interface DocIssueTarget {
++  docId: string;
++  page: number;
++  region: IssueRegion | null;
++}
++
++/** Ťah menší než toto (zlomok strany) je klik, nie oblasť. */
++export const MIN_DRAG = 0.005;
++
++const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
++const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
++const pct = (v: number) => +(v * 100).toFixed(2);
++
++/** Obdĺžnik z dvoch bodov ťahu (px v okne) nad stranou `page` (jej obdĺžnik v okne); null = klik. */
++export function regionFromDrag(
++  page: { left: number; top: number; width: number; height: number },
++  a: { x: number; y: number },
++  b: { x: number; y: number },
++): IssueRegion | null {
++  if (page.width <= 0 || page.height <= 0) return null;
++  const fx = (x: number) => clamp01((x - page.left) / page.width);
++  const fy = (y: number) => clamp01((y - page.top) / page.height);
++  const x0 = Math.min(fx(a.x), fx(b.x));
++  const x1 = Math.max(fx(a.x), fx(b.x));
++  const y0 = Math.min(fy(a.y), fy(b.y));
++  const y1 = Math.max(fy(a.y), fy(b.y));
++  if (x1 - x0 < MIN_DRAG || y1 - y0 < MIN_DRAG) return null;
++  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
++}
++
++/** Odkaz na stranu vo vieweri hosta; bez originu relatívny (host ho prijme aj tak). */
++export function docIssueUrl(origin: string | null, t: DocIssueTarget): string {
++  const q = new URLSearchParams({ page: String(t.page) });
++  if (t.region) q.set('region', [t.region.x, t.region.y, t.region.w, t.region.h].map(pct).join('_'));
++  return `${origin ?? ''}/drawing/${t.docId}?${q.toString()}#page=${t.page}`;
++}
++
++/** Odkaz z DocumentReference -> dokument, strana a oblasť; null = nie je to odkaz AIM. */
++export function parseDocIssueUrl(url: string | undefined): DocIssueTarget | null {
++  if (!url) return null;
++  let u: URL;
++  try {
++    u = new URL(url, 'https://aim.invalid');
++  } catch {
++    return null;
++  }
++  const m = /^\/drawing\/([^/]+)\/?$/.exec(u.pathname);
++  if (!m || !UUID.test(m[1])) return null;
++  const page = Number(u.searchParams.get('page') ?? u.hash.replace(/^#page=/, ''));
++  if (!Number.isInteger(page) || page < 1) return null;
++  const parts = (u.searchParams.get('region') ?? '').split('_').map(Number);
++  const ok = parts.length === 4 && parts.every((v) => Number.isFinite(v)) && parts[2] > 0 && parts[3] > 0;
++  const region = ok
++    ? { x: clamp01(parts[0] / 100), y: clamp01(parts[1] / 100), w: clamp01(parts[2] / 100), h: clamp01(parts[3] / 100) }
++    : null;
++  return { docId: m[1].toLowerCase(), page, region };
++}
++
++/** Čitateľný opis odkazu (BCF Description; v exporte ho uvidia aj iné nástroje). */
++export function docIssueLabel(docName: string, t: DocIssueTarget): string {
++  const parts = [docName, `strana ${t.page}`];
++  if (t.region) {
++    const f = (v: number) => `${pct(v)}`.replace('.', ',');
++    parts.push(`oblasť x ${f(t.region.x)} %, y ${f(t.region.y)} %, ${f(t.region.w)} x ${f(t.region.h)} %`);
++  }
++  return parts.join(', ');
++}
++
++/** BCF DocumentReference pre 2.1 (`referencedDocument`, externý) aj 3.0 (`url`). */
++export function docIssueReference(origin: string | null, docName: string, t: DocIssueTarget): BCFDocumentReference {
++  const url = docIssueUrl(origin, t);
++  return { url, referencedDocument: url, isExternal: true, description: docIssueLabel(docName, t) };
++}
++
++/** Odkazy témy na dokument AIM. */
++export function topicDocTargets(topic: BCFTopic): DocIssueTarget[] {
++  const out: DocIssueTarget[] = [];
++  for (const ref of topic.documentReferences ?? []) {
++    const t = parseDocIssueUrl(ref.url ?? ref.referencedDocument);
++    if (t) out.push(t);
++  }
++  return out;
++}
++
++export interface PageIssue {
++  guid: string;
++  /** Číslo na rámiku: "#N" z hosta, inak poradie neuloženej témy. */
++  label: string;
++  title: string;
++  region: IssueRegion | null;
++  saved: boolean;
++}
++
++/** Pripomienky na strane dokumentu (rámiky nad stranou). */
++export function issuesOnPage(project: BCFProject | null, docId: string, page: number): PageIssue[] {
++  if (!project) return [];
++  const out: PageIssue[] = [];
++  let local = 0;
++  for (const topic of project.topics.values()) {
++    const saved = typeof topic.index === 'number';
++    if (!saved) local += 1;
++    for (const t of topicDocTargets(topic)) {
++      if (t.docId !== docId.toLowerCase() || t.page !== page) continue;
++      out.push({ guid: topic.guid, label: saved ? `#${topic.index}` : `N${local}`, title: topic.title, region: t.region, saved });
++    }
++  }
++  return out;
++}
++
++/** Prvá téma projektu, ktorá nebola v `before` (téma, ktorú práve založil upstream formulár). */
++export function newTopicGuid(before: ReadonlySet<string>, project: BCFProject | null): string | null {
++  for (const guid of project?.topics.keys() ?? []) if (!before.has(guid)) return guid;
++  return null;
++}
++
++/** Témy, ktoré host ešte nemá: v projekte AIM bez čísla (`index`) z BCF API hosta. */
++export function isLocalTopic(topic: BCFTopic): boolean {
++  return typeof topic.index !== 'number';
++}
++
++/** Najviac GlobalId výberu jednej témy vo `view_state` (strop mosta). */
++export const MAX_LOCAL_SELECTION = 600;
++/** Najviac lokálnych tém vo `view_state`. */
++export const MAX_LOCAL_TOPICS = 50;
++
++const xyz = (p: { x: number; y: number; z: number }) => ({ x: p.x, y: p.y, z: p.z });
++
++/** Pohľad v tvare BCF API (snake_case, ako `viewpointToApi`), bez snímky; host ho uloží ako pohľad z panela. */
++export function viewpointDto(vp: BCFViewpoint): Record<string, unknown> {
++  const dto: Record<string, unknown> = { guid: vp.guid };
++  const cam = (c: { cameraViewPoint: { x: number; y: number; z: number }; cameraDirection: { x: number; y: number; z: number }; cameraUpVector: { x: number; y: number; z: number } }) => ({
++    camera_view_point: xyz(c.cameraViewPoint),
++    camera_direction: xyz(c.cameraDirection),
++    camera_up_vector: xyz(c.cameraUpVector),
++  });
++  if (vp.perspectiveCamera) dto.perspective_camera = { ...cam(vp.perspectiveCamera), field_of_view: vp.perspectiveCamera.fieldOfView };
++  if (vp.orthogonalCamera) dto.orthogonal_camera = { ...cam(vp.orthogonalCamera), view_to_world_scale: vp.orthogonalCamera.viewToWorldScale };
++  if (vp.clippingPlanes?.length) {
++    dto.clipping_planes = vp.clippingPlanes.map((p) => ({ location: xyz(p.location), direction: xyz(p.direction) }));
++  }
++  const selection = (vp.components?.selection ?? []).map((c) => c.ifcGuid).filter((g): g is string => typeof g === 'string' && g !== '');
++  if (selection.length) {
++    dto.components = { selection: selection.slice(0, MAX_LOCAL_SELECTION).map((g) => ({ ifc_guid: g })) };
++  }
++  return dto;
++}
++
++/**
++ * Lokálne (neuložené) témy projektu AIM pre `view_state.bcf_local`: chat ich na
++ * pokyn uloží do DB hosta (`bcf_topic action=from_viewer`) s tým istým guid.
++ * Projekt iný než AIM (súbor, vlastný server) sa nevypisuje.
++ */
++export function describeLocalTopics(project: BCFProject | null, aimProjectId: string | null) {
++  if (!project || !aimProjectId || project.projectId !== aimProjectId) return { count: 0, topics: [] };
++  const local = [...project.topics.values()].filter(isLocalTopic);
++  return {
++    count: local.length,
++    topics: local.slice(0, MAX_LOCAL_TOPICS).map((t) => ({
++      guid: t.guid,
++      title: t.title,
++      description: t.description ?? null,
++      topic_type: t.topicType ?? null,
++      topic_status: t.topicStatus ?? null,
++      priority: t.priority ?? null,
++      assigned_to: t.assignedTo ?? null,
++      due_date: t.dueDate ?? null,
++      labels: t.labels ?? [],
++      creation_author: t.creationAuthor ?? null,
++      creation_date: t.creationDate ?? null,
++      comments: t.comments.map((c) => ({ author: c.author ?? null, date: c.date ?? null, comment: c.comment })),
++      viewpoint: t.viewpoints[0] ? viewpointDto(t.viewpoints[0]) : null,
++      document_references: (t.documentReferences ?? []).map((d) => ({
++        url: d.url ?? d.referencedDocument ?? null,
++        description: d.description ?? null,
++      })),
++    })),
++  };
++}
++
++/**
++ * Nový projekt AIM z hosta a doteraz otvorený projekt -> čo dať do panela.
++ * Témy z hosta sa nahradia (aj tie, ktoré chat medzitým uložil z lokálnych:
++ * rovnaký guid, žiadna duplicita), lokálne neuložené ostanú. Projekt
++ * používateľa (súbor, server, iné projectId) sa nemení: null.
++ */
++export function mergeAimProject(current: BCFProject | null, fresh: BCFProject, previous: BCFProject | null): BCFProject | null {
++  if (current === null || current === previous || current.topics.size === 0) return fresh;
++  if (!previous || !fresh.projectId || current.projectId !== fresh.projectId) return null;
++  const topics = new Map(fresh.topics);
++  for (const [guid, topic] of current.topics) {
++    if (isLocalTopic(topic) && !topics.has(guid)) topics.set(guid, topic);
++  }
++  return { ...fresh, topics };
++}
+diff --git a/apps/viewer/src/aim/docIssues.ts b/apps/viewer/src/aim/docIssues.ts
+new file mode 100644
+index 00000000..bfd7a541
+--- /dev/null
++++ b/apps/viewer/src/aim/docIssues.ts
+@@ -0,0 +1,226 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Pripomienka na PDF (AIM D-158), väzba na store a DOM. Tlačidlo v lište karty
++ * dokumentu (`AimDocumentIssue`) zapne kreslenie; ťah obdĺžnika nad stranou
++ * otvorí upstream tok "New topic" BCF panela (to isté tlačidlo, ten istý
++ * formulár) a téma, ktorú panel založí, dostane BCF DocumentReference na
++ * dokument, stranu a oblasť. Téma ostáva lokálna v paneli; do DB hosta ju
++ * uloží chat (`bcf_topic action=from_viewer`). Rámiky s číslom ukazujú
++ * pripomienky na strane, klik otvorí tému v paneli.
++ * Modul je v lenivom chunku karty dokumentu (DocumentPane), nie vo vstupe.
++ */
++
++import { create } from 'zustand';
++import { useViewerStore } from '@/store';
++import { anchorSelector, TOUR_ANCHORS } from '@/lib/tours/anchors';
++import { aimBcfContext } from './bcf-protocol.js';
++import { highlightStyle } from './docRegion.js';
++import { docIssueReference, issuesOnPage, newTopicGuid, regionFromDrag, type DocIssueTarget } from './docIssueModel.js';
++
++export type DocIssuePhase = 'idle' | 'drawing' | 'form';
++
++interface DocIssueState {
++  phase: DocIssuePhase;
++  /** Dokument, nad ktorým sa kreslí alebo pre ktorý je otvorený formulár. */
++  docId: string | null;
++  note: string | null;
++  set: (s: Partial<Pick<DocIssueState, 'phase' | 'docId' | 'note'>>) => void;
++}
++
++export const useAimDocIssueStore = create<DocIssueState>((set) => ({
++  phase: 'idle',
++  docId: null,
++  note: null,
++  set: (s) => set(s),
++}));
++
++/** Ako dlho sa čaká na tlačidlo "New topic" po otvorení panela. */
++const BUTTON_WAIT_MS = 3000;
++/** Neuzavretý formulár po tejto dobe pripomienku pustí (téma by sa nespárovala). */
++const FORM_TIMEOUT_MS = 30 * 60_000;
++const POLL_MS = 400;
++
++const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
++
++async function waitForElement(selector: string, ms: number): Promise<HTMLElement | null> {
++  const end = Date.now() + ms;
++  for (;;) {
++    const el = document.querySelector<HTMLElement>(selector);
++    if (el) return el;
++    if (Date.now() > end) return null;
++    await sleep(50);
++  }
++}
++
++let stopWatch: (() => void) | null = null;
++
++function finish(note: string | null): void {
++  stopWatch?.();
++  stopWatch = null;
++  useAimDocIssueStore.getState().set({ phase: 'idle', docId: null, note });
++}
++
++/**
++ * Otvorí upstream "New topic" a téme, ktorú panel založí, pridá odkaz na PDF.
++ * Zrušený formulár (zoznam tém je späť bez novej témy) pripomienku zahodí.
++ */
++export async function openIssueForm(target: DocIssueTarget, docName: string): Promise<boolean> {
++  stopWatch?.();
++  const store = useViewerStore.getState();
++  store.showWorkspacePanel('bcf', 'programmatic');
++  store.setActiveTopic(null);
++  const button = await waitForElement(anchorSelector(TOUR_ANCHORS.bcfNewTopic), BUTTON_WAIT_MS);
++  if (!button) {
++    finish('Panel BCF sa neotvoril; skús pripomienku znova.');
++    return false;
++  }
++  const before = new Set(useViewerStore.getState().bcfProject?.topics.keys() ?? []);
++  useAimDocIssueStore.getState().set({ phase: 'form', docId: target.docId, note: null });
++  button.click();
++  const ref = docIssueReference(aimBcfContext()?.origin ?? null, docName, target);
++  const started = Date.now();
++  let done = false;
++  const attach = (): boolean => {
++    if (done) return true;
++    const guid = newTopicGuid(before, useViewerStore.getState().bcfProject);
++    if (!guid) return false;
++    // Najprv odhlásiť: updateTopic synchrónne zavolá odber a ten by pripájal znova.
++    done = true;
++    finish(null);
++    const topic = useViewerStore.getState().bcfProject?.topics.get(guid);
++    useViewerStore.getState().updateTopic(guid, { documentReferences: [...(topic?.documentReferences ?? []), ref] });
++    return true;
++  };
++  const unsubscribe = useViewerStore.subscribe((s, prev) => {
++    if (s.bcfProject !== prev.bcfProject) attach();
++  });
++  let timer: ReturnType<typeof setInterval> | null = null;
++  stopWatch = () => {
++    unsubscribe();
++    if (timer) clearInterval(timer);
++  };
++  timer = setInterval(() => {
++    if (attach()) return;
++    // Formulár zmizol a zoznam s tlačidlom je späť: používateľ ho zrušil.
++    const back = document.querySelector(anchorSelector(TOUR_ANCHORS.bcfNewTopic));
++    if ((back && Date.now() - started > POLL_MS) || Date.now() - started > FORM_TIMEOUT_MS) finish(null);
++  }, POLL_MS);
++  return true;
++}
++
++/** Klik na rámik: téma v paneli BCF. */
++export function openIssueTopic(guid: string): void {
++  const store = useViewerStore.getState();
++  store.showWorkspacePanel('bcf', 'programmatic');
++  store.setActiveTopic(guid);
++}
++
++const LAYER_ATTR = 'data-aim-doc-issues';
++const DRAFT_ATTR = 'data-aim-doc-issue-draft';
++
++/** Rámiky pripomienok nad stranami karty (imperatívna vrstva ako rámiky D-123). */
++export function syncIssueLayers(root: HTMLElement, docId: string): void {
++  const project = useViewerStore.getState().bcfProject;
++  for (const pageEl of root.querySelectorAll<HTMLElement>('[data-page]')) {
++    const page = Number(pageEl.dataset.page);
++    const issues = issuesOnPage(project, docId, page);
++    const key = issues.map((i) => `${i.guid}:${i.label}:${JSON.stringify(i.region)}`).join('|');
++    let layer = pageEl.querySelector<HTMLDivElement>(`:scope > [${LAYER_ATTR}]`);
++    if (!issues.length) {
++      layer?.remove();
++      continue;
++    }
++    if (layer?.getAttribute(LAYER_ATTR) === key) continue;
++    layer?.remove();
++    layer = document.createElement('div');
++    layer.setAttribute(LAYER_ATTR, key);
++    Object.assign(layer.style, { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: '4' });
++    for (const issue of issues) {
++      const box = document.createElement('div');
++      const r = issue.region ?? { x: 0, y: 0, w: 0.04, h: 0.03 };
++      box.setAttribute('role', 'button');
++      box.tabIndex = 0;
++      box.title = `${issue.label} ${issue.title}${issue.saved ? '' : ' (neuložená, ulož v chate)'}`;
++      box.setAttribute('aria-label', `Pripomienka ${issue.label}: ${issue.title}`);
++      Object.assign(box.style, {
++        position: 'absolute',
++        ...highlightStyle(r),
++        outline: `2px ${issue.saved ? 'solid' : 'dashed'} #dc2626`,
++        background: 'rgba(220, 38, 38, 0.08)',
++        pointerEvents: 'auto',
++        cursor: 'pointer',
++      });
++      const badge = document.createElement('span');
++      badge.textContent = issue.label;
++      Object.assign(badge.style, {
++        position: 'absolute', left: '0', top: '0', transform: 'translateY(-100%)',
++        background: '#dc2626', color: '#fff', font: '600 11px/1.4 system-ui, sans-serif', padding: '0 4px', borderRadius: '2px',
++      });
++      box.appendChild(badge);
++      const open = () => openIssueTopic(issue.guid);
++      box.addEventListener('click', open);
++      box.addEventListener('keydown', (e) => {
++        if (e.key === 'Enter' || e.key === ' ') {
++          e.preventDefault();
++          open();
++        }
++      });
++      layer.appendChild(box);
++    }
++    pageEl.appendChild(layer);
++  }
++}
++
++/**
++ * Kreslenie obdĺžnika nad stranou: zachytí stlačenie skôr než posun ťahaním
++ * (AIM #213), kreslí náhľad a po pustení vráti cieľ. Escape kreslenie zruší.
++ */
++export function attachIssueDrawing(root: HTMLElement, docId: string, onDone: (t: DocIssueTarget | null) => void): () => void {
++  let start: { x: number; y: number; pageEl: HTMLElement; draft: HTMLDivElement } | null = null;
++  const prevCursor = root.style.cursor;
++  root.style.cursor = 'crosshair';
++  const onDown = (e: PointerEvent) => {
++    if (e.button !== 0) return;
++    const pageEl = (e.target as Element | null)?.closest?.<HTMLElement>('[data-page]');
++    if (!pageEl || !root.contains(pageEl)) return;
++    e.preventDefault();
++    e.stopPropagation();
++    const draft = document.createElement('div');
++    draft.setAttribute(DRAFT_ATTR, '');
++    Object.assign(draft.style, { position: 'absolute', outline: '2px dashed #dc2626', background: 'rgba(220, 38, 38, 0.12)', pointerEvents: 'none', zIndex: '5' });
++    pageEl.appendChild(draft);
++    start = { x: e.clientX, y: e.clientY, pageEl, draft };
++  };
++  const onMove = (e: PointerEvent) => {
++    if (!start) return;
++    const region = regionFromDrag(start.pageEl.getBoundingClientRect(), start, { x: e.clientX, y: e.clientY });
++    Object.assign(start.draft.style, region ? highlightStyle(region) : { width: '0', height: '0' });
++  };
++  const onUp = (e: PointerEvent) => {
++    if (!start) return;
++    const { pageEl, draft } = start;
++    const region = regionFromDrag(pageEl.getBoundingClientRect(), start, { x: e.clientX, y: e.clientY });
++    draft.remove();
++    start = null;
++    // Klik bez ťahu = pripomienka na celú stranu.
++    onDone({ docId, page: Number(pageEl.dataset.page) || 1, region });
++  };
++  const onKey = (e: KeyboardEvent) => {
++    if (e.key === 'Escape') onDone(null);
++  };
++  root.addEventListener('pointerdown', onDown, true);
++  window.addEventListener('pointermove', onMove);
++  window.addEventListener('pointerup', onUp);
++  window.addEventListener('keydown', onKey);
++  return () => {
++    root.style.cursor = prevCursor;
++    start?.draft.remove();
++    root.removeEventListener('pointerdown', onDown, true);
++    window.removeEventListener('pointermove', onMove);
++    window.removeEventListener('pointerup', onUp);
++    window.removeEventListener('keydown', onKey);
++  };
++}
+diff --git a/apps/viewer/src/aim/viewQueries.ts b/apps/viewer/src/aim/viewQueries.ts
+index 18c777b7..ddfa1863 100644
+--- a/apps/viewer/src/aim/viewQueries.ts
++++ b/apps/viewer/src/aim/viewQueries.ts
+@@ -26,6 +26,7 @@ import { summarizeSelection, visibilityGuids, type SelectedEntityInfo } from './
+ import { describePanels } from './aimPanelsPlan.js';
+ import { useAimInspectorStore } from './aimInspectorStore.js';
+ import { useAimDocRegionStore } from './docRegion.js';
++import { aimBcfContext } from './bcf-protocol.js';
+ import { useAimViewTabs } from './viewTabsStore.js';
+ import { describeTabs } from './viewTabsPlan.js';
+ import { orderedBox, toSectionBox, type SectionBoxMessage } from './sectionBox.js';
+@@ -299,8 +300,16 @@ export function answerQuery(msg: Extract<ViewInboundMessage, { type: 'QUERY' }>,
+   const reply = (r: ViewQueryResult) => window.parent.postMessage(r, origin);
+   try {
+     const state = useViewerStore.getState();
+-    const result = msg.query === 'bounds' ? queryBounds(state, msg.guids ?? [], g) : queryViewState(state, g);
+-    reply({ source: msg.source, type: 'QUERY_RESULT', id: msg.id, ok: true, result });
++    if (msg.query === 'bounds') {
++      reply({ source: msg.source, type: 'QUERY_RESULT', id: msg.id, ok: true, result: queryBounds(state, msg.guids ?? [], g) });
++      return;
++    }
++    const result = queryViewState(state, g);
++    // BCF témy pridané v paneli, ktoré host ešte nemá (AIM D-158); modul je lenivý.
++    void import('./docIssueModel.js')
++      .then((m) => ({ ...result, bcf_local: m.describeLocalTopics(useViewerStore.getState().bcfProject, aimBcfContext()?.projectId ?? null) }))
++      .catch(() => result)
++      .then((r) => reply({ source: msg.source, type: 'QUERY_RESULT', id: msg.id, ok: true, result: r }));
+   } catch (err) {
+     reply({ source: msg.source, type: 'QUERY_RESULT', id: msg.id, ok: false, error: err instanceof Error ? err.message : String(err) });
+   }
+diff --git a/apps/viewer/src/components/documents/DocumentPane.tsx b/apps/viewer/src/components/documents/DocumentPane.tsx
+index db639f16..639664e8 100644
+--- a/apps/viewer/src/components/documents/DocumentPane.tsx
++++ b/apps/viewer/src/components/documents/DocumentPane.tsx
+@@ -19,8 +19,9 @@ import { useViewerStore } from '@/store';
+ import { cn } from '@/lib/utils';
+ import { PdfDocumentView } from './PdfDocumentView';
+ import { ImageDocumentView } from './ImageDocumentView';
+-// >>> AIM-FORK: "Ukázať v 3D" for the page being read, answered by the AIM host (D-104 step 4)
++// >>> AIM-FORK: "Ukázať v 3D" for the page being read, answered by the AIM host (D-104 step 4); "Pripomienka" on a page region (D-158)
+ import { AimDocumentShow3d } from '@/aim/AimDocumentShow3d';
++import { AimDocumentIssue } from '@/aim/AimDocumentIssue';
+ // <<< AIM-FORK
+ 
+ // >>> AIM-FORK: on desktop the view tab bar lists the documents, so the pane hides its own strip (AIM D-132)
+@@ -86,6 +87,7 @@ export function DocumentPane({ hideTabs = false }: { hideTabs?: boolean } = {})
+       </div>
+       {/* >>> AIM-FORK: elements of the page in 3D, rendered only inside the AIM host (D-104 step 4) */}
+       {activeId && <AimDocumentShow3d docId={activeId} />}
++      {activeId && <AimDocumentIssue key={activeId} docId={activeId} />}
+       </div>
+       {/* <<< AIM-FORK */}
+       <div className="min-h-0 flex-1">
+diff --git a/docs/FORK_MAINTENANCE.md b/docs/FORK_MAINTENANCE.md
+index bda23b2b..c37b9503 100644
+--- a/docs/FORK_MAINTENANCE.md
++++ b/docs/FORK_MAINTENANCE.md
+@@ -77,7 +77,7 @@ git grep -n ">>> AIM-FORK" -- apps/ packages/
+ | `apps/viewer/src/lib/panels/registry.ts` | 5 | AIM rail group `aim`, first of all groups (D-104), and the fork-only workspace panels `documents`, `aim-layers`, `drawing-underlay` in it, appended last |
+ | `apps/viewer/src/lib/panels/renderPanelBody.tsx` | 2 | bodies of the three fork panels |
+ | `apps/viewer/src/components/documents/DocumentsPanel.tsx` | 5 | fork file (D-075); grouping by host `meta`, metadata search and documents of the selection come from `aim/documentsQuery.ts` and `aim/AimDocumentsControls.tsx` (D-104) |
+-| `apps/viewer/src/components/documents/DocumentPane.tsx` | 4 | fork file (D-075); "Ukázať v 3D" at the end of the tab strip for the page being read, `aim/AimDocumentShow3d.tsx` posts `DOCUMENT_SHOW_3D` (D-104 step 4); `hideTabs` hides the strip on desktop, where the AIM D-132 view tab bar lists the documents |
++| `apps/viewer/src/components/documents/DocumentPane.tsx` | 4 | fork file (D-075); "Ukázať v 3D" at the end of the tab strip for the page being read, `aim/AimDocumentShow3d.tsx` posts `DOCUMENT_SHOW_3D` (D-104 step 4); `hideTabs` hides the strip on desktop, where the AIM D-132 view tab bar lists the documents; "Pripomienka" next to it (`aim/AimDocumentIssue.tsx`, AIM D-158) draws a page region and opens the upstream BCF "New topic" |
+ | `apps/viewer/src/store/slices/sidebarSlice.test.ts` | 4 | the AIM rail group leads the rail (D-104), so Hierarchy is asserted first among upstream's groups |
+ | `apps/viewer/src/i18n/en.ts` | 2 | fork catalogue `catalogues/aim-fork.en.ts` (panel titles, `ribbon.tab.documents` = "AIM") |
+ | `packages/renderer/src/index.ts` | 5 | generic external-overlay hook + registry — **upstream-PR candidate** |
+diff --git a/docs/architecture/evidence/aim-d158-doc-issues/mutations/README.md b/docs/architecture/evidence/aim-d158-doc-issues/mutations/README.md
+new file mode 100644
+index 00000000..d7024b2a
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-doc-issues/mutations/README.md
+@@ -0,0 +1,35 @@
++<!-- This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this
++     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
++
++# AIM D-158 issues on PDF pages: surgical mutation evidence
++
++The change adds "Pripomienka" to the document tab strip: a rectangle dragged over a PDF page opens the upstream BCF "New topic" form and the topic gets a BCF DocumentReference to that page and region; issue frames are drawn on the pages, `view_state.bcf_local` lists topics the AIM host does not have yet, and AIM_BCF_LOAD merges host topics with the local ones and reads their document references. The pure logic is the new `docIssueModel.ts`; its test (`docIssueModel.test.ts`) imports a module that does not exist on the base, so reverting production makes the test fail to load and the CI revert oracle reports INCONCLUSIVE. Each main decision was checked with a surgical mutation instead.
++
++Each patch is written mutant->fixed; the oracle reverse-applies it. Every run ended `OBSERVED` (exit 0) with restoration verified, against base `origin/main`. Records: `summary.json`.
++
++| Patch | Module | Mutation | Test that went red |
++|---|---|---|---|
++| `click-is-region.patch` | `docIssueModel.ts` | a click (drag under 0.5 % of the page) still makes a region | `docIssueModel.test.ts` |
++| `url-any-id.patch` | `docIssueModel.ts` | any /drawing/<x> path is taken as an AIM document | `docIssueModel.test.ts` |
++| `frames-any-page.patch` | `docIssueModel.ts` | frames of every page are drawn on each page | `docIssueModel.test.ts` |
++| `saved-as-local.patch` | `docIssueModel.ts` | host topics (with #N) are listed as unsaved in view_state | `docIssueModel.test.ts` |
++| `merge-drops-local.patch` | `docIssueModel.ts` | a reload from the host drops topics added in the panel | `docIssueModel.test.ts` |
++| `merge-any-project.patch` | `docIssueModel.ts` | the user's own project (file, other server) is merged with AIM topics | `docIssueModel.test.ts` |
++| `new-topic-ignores-before.patch` | `docIssueModel.ts` | the reference goes to the first topic, not the one the form created | `docIssueModel.test.ts` |
++| `doc-refs-not-read.patch` | `aimBcf.ts` | host topics never get their document references | `bcf-protocol.test.ts` |
++
++`docIssues.ts` and `AimDocumentIssue.tsx` are store and DOM glue (drawing, frames, the upstream New topic button) with no unit test; both sit in the lazy DocumentPane chunk. They were verified live: local fork viewer embedded in a host page with a fake BCF API, Playwright dragging a rectangle over page 1 of a test PDF, filling the upstream form, reading `QUERY view_state` (`bcf_local` with the page and region link), reloading host topics (the local topic stays), then serving the same guid as saved topic #2 (no duplicate, frame label `#2`, click opens the topic).
++
++## Replay
++
++Clean checkout of the branch with dependencies installed; copy the patches outside the tree (the oracle refuses a dirty tree):
++
++```bash
++node scripts/check-test-revert-oracle.mjs --base origin/main \
++  --only apps/viewer/src/aim/docIssueModel.ts \
++  --test apps/viewer/src/aim/docIssueModel.test.ts \
++  --mutation /tmp/d158-mut/click-is-region.patch --ci --json
++```
++
++`doc-refs-not-read.patch` uses `--only apps/viewer/src/aim/aimBcf.ts --test apps/viewer/src/aim/bcf-protocol.test.ts`.
+diff --git a/docs/architecture/evidence/aim-d158-doc-issues/mutations/click-is-region.patch b/docs/architecture/evidence/aim-d158-doc-issues/mutations/click-is-region.patch
+new file mode 100644
+index 00000000..463bb940
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-doc-issues/mutations/click-is-region.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/docIssueModel.ts a/apps/viewer/src/aim/docIssueModel.ts
++index 39261858..a8c077d4 100644
++--- b/apps/viewer/src/aim/docIssueModel.ts
+++++ a/apps/viewer/src/aim/docIssueModel.ts
++@@ -46,6 +46,7 @@ export function regionFromDrag(
++   const x1 = Math.max(fx(a.x), fx(b.x));
++   const y0 = Math.min(fy(a.y), fy(b.y));
++   const y1 = Math.max(fy(a.y), fy(b.y));
+++  if (x1 - x0 < MIN_DRAG || y1 - y0 < MIN_DRAG) return null;
++   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
++ }
++ 
+diff --git a/docs/architecture/evidence/aim-d158-doc-issues/mutations/doc-refs-not-read.patch b/docs/architecture/evidence/aim-d158-doc-issues/mutations/doc-refs-not-read.patch
+new file mode 100644
+index 00000000..bd2f70e4
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-doc-issues/mutations/doc-refs-not-read.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimBcf.ts a/apps/viewer/src/aim/aimBcf.ts
++index 5776ba0c..7cd9f28e 100644
++--- b/apps/viewer/src/aim/aimBcf.ts
+++++ a/apps/viewer/src/aim/aimBcf.ts
++@@ -38,7 +38,7 @@ export const DOCUMENTS_HEADING = 'Dokumenty (AIM):';
++  */
++ async function attachDocumentReferences(project: BCFProject, msg: BcfLoadMessage, fetchFn: typeof fetch): Promise<void> {
++   const base = msg.baseUrl.replace(/\/+$/, '');
++-  const wanted = [...project.topics.values()].filter((t) => false && t.description?.includes(DOCUMENTS_HEADING));
+++  const wanted = [...project.topics.values()].filter((t) => t.description?.includes(DOCUMENTS_HEADING));
++   await Promise.all(wanted.map(async (topic) => {
++     try {
++       const url = `${base}/2.1/projects/${encodeURIComponent(msg.projectId)}/topics/${encodeURIComponent(topic.guid)}/document_references`;
+diff --git a/docs/architecture/evidence/aim-d158-doc-issues/mutations/frames-any-page.patch b/docs/architecture/evidence/aim-d158-doc-issues/mutations/frames-any-page.patch
+new file mode 100644
+index 00000000..f79e515e
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-doc-issues/mutations/frames-any-page.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docIssueModel.ts a/apps/viewer/src/aim/docIssueModel.ts
++index dd959b35..a8c077d4 100644
++--- b/apps/viewer/src/aim/docIssueModel.ts
+++++ a/apps/viewer/src/aim/docIssueModel.ts
++@@ -122,7 +122,7 @@ export function issuesOnPage(project: BCFProject | null, docId: string, page: nu
++     const saved = typeof topic.index === 'number';
++     if (!saved) local += 1;
++     for (const t of topicDocTargets(topic)) {
++-      if (t.docId !== docId.toLowerCase()) continue;
+++      if (t.docId !== docId.toLowerCase() || t.page !== page) continue;
++       out.push({ guid: topic.guid, label: saved ? `#${topic.index}` : `N${local}`, title: topic.title, region: t.region, saved });
++     }
++   }
+diff --git a/docs/architecture/evidence/aim-d158-doc-issues/mutations/merge-any-project.patch b/docs/architecture/evidence/aim-d158-doc-issues/mutations/merge-any-project.patch
+new file mode 100644
+index 00000000..99dbc2ef
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-doc-issues/mutations/merge-any-project.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docIssueModel.ts a/apps/viewer/src/aim/docIssueModel.ts
++index c4b2d4ac..a8c077d4 100644
++--- b/apps/viewer/src/aim/docIssueModel.ts
+++++ a/apps/viewer/src/aim/docIssueModel.ts
++@@ -207,7 +207,7 @@ export function describeLocalTopics(project: BCFProject | null, aimProjectId: st
++  */
++ export function mergeAimProject(current: BCFProject | null, fresh: BCFProject, previous: BCFProject | null): BCFProject | null {
++   if (current === null || current === previous || current.topics.size === 0) return fresh;
++-  if (!previous) return null;
+++  if (!previous || !fresh.projectId || current.projectId !== fresh.projectId) return null;
++   const topics = new Map(fresh.topics);
++   for (const [guid, topic] of current.topics) {
++     if (isLocalTopic(topic) && !topics.has(guid)) topics.set(guid, topic);
+diff --git a/docs/architecture/evidence/aim-d158-doc-issues/mutations/merge-drops-local.patch b/docs/architecture/evidence/aim-d158-doc-issues/mutations/merge-drops-local.patch
+new file mode 100644
+index 00000000..d3d7881b
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-doc-issues/mutations/merge-drops-local.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/docIssueModel.ts a/apps/viewer/src/aim/docIssueModel.ts
++index 6738961d..a8c077d4 100644
++--- b/apps/viewer/src/aim/docIssueModel.ts
+++++ a/apps/viewer/src/aim/docIssueModel.ts
++@@ -210,6 +210,7 @@ export function mergeAimProject(current: BCFProject | null, fresh: BCFProject, p
++   if (!previous || !fresh.projectId || current.projectId !== fresh.projectId) return null;
++   const topics = new Map(fresh.topics);
++   for (const [guid, topic] of current.topics) {
+++    if (isLocalTopic(topic) && !topics.has(guid)) topics.set(guid, topic);
++   }
++   return { ...fresh, topics };
++ }
+diff --git a/docs/architecture/evidence/aim-d158-doc-issues/mutations/new-topic-ignores-before.patch b/docs/architecture/evidence/aim-d158-doc-issues/mutations/new-topic-ignores-before.patch
+new file mode 100644
+index 00000000..58028230
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-doc-issues/mutations/new-topic-ignores-before.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docIssueModel.ts a/apps/viewer/src/aim/docIssueModel.ts
++index d14e9132..a8c077d4 100644
++--- b/apps/viewer/src/aim/docIssueModel.ts
+++++ a/apps/viewer/src/aim/docIssueModel.ts
++@@ -131,7 +131,7 @@ export function issuesOnPage(project: BCFProject | null, docId: string, page: nu
++ 
++ /** Prvá téma projektu, ktorá nebola v `before` (téma, ktorú práve založil upstream formulár). */
++ export function newTopicGuid(before: ReadonlySet<string>, project: BCFProject | null): string | null {
++-  for (const guid of project?.topics.keys() ?? []) return guid;
+++  for (const guid of project?.topics.keys() ?? []) if (!before.has(guid)) return guid;
++   return null;
++ }
++ 
+diff --git a/docs/architecture/evidence/aim-d158-doc-issues/mutations/saved-as-local.patch b/docs/architecture/evidence/aim-d158-doc-issues/mutations/saved-as-local.patch
+new file mode 100644
+index 00000000..0d4f4c34
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-doc-issues/mutations/saved-as-local.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docIssueModel.ts a/apps/viewer/src/aim/docIssueModel.ts
++index 06259993..a8c077d4 100644
++--- b/apps/viewer/src/aim/docIssueModel.ts
+++++ a/apps/viewer/src/aim/docIssueModel.ts
++@@ -137,7 +137,7 @@ export function newTopicGuid(before: ReadonlySet<string>, project: BCFProject |
++ 
++ /** Témy, ktoré host ešte nemá: v projekte AIM bez čísla (`index`) z BCF API hosta. */
++ export function isLocalTopic(topic: BCFTopic): boolean {
++-  return true;
+++  return typeof topic.index !== 'number';
++ }
++ 
++ /** Najviac GlobalId výberu jednej témy vo `view_state` (strop mosta). */
+diff --git a/docs/architecture/evidence/aim-d158-doc-issues/mutations/summary.json b/docs/architecture/evidence/aim-d158-doc-issues/mutations/summary.json
+new file mode 100644
+index 00000000..f6bd357e
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-doc-issues/mutations/summary.json
+@@ -0,0 +1,77 @@
++{
++  "base": "origin/main (c988e100)",
++  "runs": [
++    {
++      "patch": "click-is-region.patch",
++      "module": "apps/viewer/src/aim/docIssueModel.ts",
++      "test": "apps/viewer/src/aim/docIssueModel.test.ts",
++      "mutation": "a click (drag under 0.5 % of the page) still makes a region",
++      "exit": 0,
++      "verdict": "OBSERVED",
++      "restoration": "verified"
++    },
++    {
++      "patch": "url-any-id.patch",
++      "module": "apps/viewer/src/aim/docIssueModel.ts",
++      "test": "apps/viewer/src/aim/docIssueModel.test.ts",
++      "mutation": "any /drawing/<x> path is taken as an AIM document",
++      "exit": 0,
++      "verdict": "OBSERVED",
++      "restoration": "verified"
++    },
++    {
++      "patch": "frames-any-page.patch",
++      "module": "apps/viewer/src/aim/docIssueModel.ts",
++      "test": "apps/viewer/src/aim/docIssueModel.test.ts",
++      "mutation": "frames of every page are drawn on each page",
++      "exit": 0,
++      "verdict": "OBSERVED",
++      "restoration": "verified"
++    },
++    {
++      "patch": "saved-as-local.patch",
++      "module": "apps/viewer/src/aim/docIssueModel.ts",
++      "test": "apps/viewer/src/aim/docIssueModel.test.ts",
++      "mutation": "host topics (with #N) are listed as unsaved in view_state",
++      "exit": 0,
++      "verdict": "OBSERVED",
++      "restoration": "verified"
++    },
++    {
++      "patch": "merge-drops-local.patch",
++      "module": "apps/viewer/src/aim/docIssueModel.ts",
++      "test": "apps/viewer/src/aim/docIssueModel.test.ts",
++      "mutation": "a reload from the host drops topics added in the panel",
++      "exit": 0,
++      "verdict": "OBSERVED",
++      "restoration": "verified"
++    },
++    {
++      "patch": "merge-any-project.patch",
++      "module": "apps/viewer/src/aim/docIssueModel.ts",
++      "test": "apps/viewer/src/aim/docIssueModel.test.ts",
++      "mutation": "the user's own project (file, other server) is merged with AIM topics",
++      "exit": 0,
++      "verdict": "OBSERVED",
++      "restoration": "verified"
++    },
++    {
++      "patch": "new-topic-ignores-before.patch",
++      "module": "apps/viewer/src/aim/docIssueModel.ts",
++      "test": "apps/viewer/src/aim/docIssueModel.test.ts",
++      "mutation": "the reference goes to the first topic, not the one the form created",
++      "exit": 0,
++      "verdict": "OBSERVED",
++      "restoration": "verified"
++    },
++    {
++      "patch": "doc-refs-not-read.patch",
++      "module": "apps/viewer/src/aim/aimBcf.ts",
++      "test": "apps/viewer/src/aim/bcf-protocol.test.ts",
++      "mutation": "host topics never get their document references",
++      "exit": 0,
++      "verdict": "OBSERVED",
++      "restoration": "verified"
++    }
++  ]
++}
+\ No newline at end of file
+diff --git a/docs/architecture/evidence/aim-d158-doc-issues/mutations/url-any-id.patch b/docs/architecture/evidence/aim-d158-doc-issues/mutations/url-any-id.patch
+new file mode 100644
+index 00000000..57c59e24
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-doc-issues/mutations/url-any-id.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docIssueModel.ts a/apps/viewer/src/aim/docIssueModel.ts
++index 36ee86b5..a8c077d4 100644
++--- b/apps/viewer/src/aim/docIssueModel.ts
+++++ a/apps/viewer/src/aim/docIssueModel.ts
++@@ -67,7 +67,7 @@ export function parseDocIssueUrl(url: string | undefined): DocIssueTarget | null
++     return null;
++   }
++   const m = /^\/drawing\/([^/]+)\/?$/.exec(u.pathname);
++-  if (!m) return null;
+++  if (!m || !UUID.test(m[1])) return null;
++   const page = Number(u.searchParams.get('page') ?? u.hash.replace(/^#page=/, ''));
++   if (!Number.isInteger(page) || page < 1) return null;
++   const parts = (u.searchParams.get('region') ?? '').split('_').map(Number);
+-- 
+2.43.0
+
