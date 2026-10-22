@@ -987,6 +987,14 @@
       "notes": "D-138 (issue #221): jedno volanie colorize s groups, trasa ako posledná skupina vyhrá pri prekrytí; pravidlo s 0 prvkami sa hlási s dôvodom. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     },
     {
+      "id": "style-colorize-space-translucent",
+      "category": "viewer",
+      "question": "Ofarbi miestnosť 2.01 a susedné miestnosti na zeleno, dvere oranžovo a schodisko oranžovo, nech vidím únikovú cestu.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-139 (issue #222): miestnosti sú pri colorize priesvitné aj cez ids_or_refs, dvere a schod vnútri je vidno. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
       "id": "feedback-triage-standard",
       "category": "feedback",
       "question": "Zapíš pripomienku: opis toolu get_object má preklep v slove 'vlastnosti'. Hneď spusti session.",
