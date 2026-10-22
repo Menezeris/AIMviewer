@@ -6803,3 +6803,28 @@ nepobežali (bez Supabase kľúčov); otázka `panel-scroll-down` je v `eval/que
 **Poradie nasadenia:** najprv fork, potom AIMviewer. Starší fork pole `run` ignoruje: `APPLIED` nemá `state.list` a text toolu povie, že spustenie sa nepotvrdilo.
 
 **Otvorené:** živé overenie na teste modeli forku a plné CI forku v cloud session nepobežali; evaly (D-057) tiež nie (opis toolu sa zmenil), otázka je v `eval/questions.json`.
+
+---
+
+### D-153 - Načítanie toolov konektora v klientovi: blok v inštrukciách, `anthropic/alwaysLoad`, nastavenie Tool access
+
+**Dátum:** 2026-10-22 · **Issue:** #237 · **Nadväzuje na:** D-079, D-102, D-114, D-115
+
+**Kontext:** v hlasovej session v Claude (claude.ai, mobil) tooly konektora AIM opakovane vypadávajú z načítanej sady a model ich musí znova načítať cez `tool_search`, často viackrát za úlohu. Konektor má 29 toolov, `tools/list` 69 900 znakov (opisy 28 300, najväčší `style_in_3d` 10 700) a inštrukcie 14 900 znakov. O načítaní toolov inštrukcie nehovorili a mená toolov boli až hlboko v texte.
+
+**Zistenia (zdroje, stav 2026-10-22):**
+- claude.ai, Desktop a mobil majú pre konverzáciu nastavenie **Tool access** (`+` alebo `/` -> Connectors -> Tool access): *Auto* (predvolené, Claude sám rozhoduje, ktoré konektory načíta), *On demand* (konektor sa načíta až po vyhľadaní) a *Always available* (všetky konektory sa načítajú na začiatku konverzácie). Prístup sa dá podľa FAQ nastaviť aj pre jeden konektor. Je to jediný zdokumentovaný spôsob, ako vynútiť celú sadu ([support.claude.com 13730515](https://support.claude.com/en/articles/13730515-manage-claude-s-tool-access)). Prah režimu Auto zdokumentovaný nie je.
+- API tool search (`defer_loading`): nájdený tool ostáva načítaný, kým je v histórii blok s výsledkom vyhľadávania ([tool search tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool)). **Hypotéza:** keď klient dlhú históriu zhutní alebo oreže, blok zmizne a tool s ním. To sedí s príznakom. Podobné hlásenia: anthropics/claude-code#77083 (po zhutnení na claude.ai ostanú len tooly z posledného `tool_search`) a #77312 (hlasový režim, "stale tool schema"); bez odpovede Anthropicu.
+- Claude Code dokumentuje `_meta["anthropic/alwaysLoad"]: true` na toole (načíta sa hneď) a pri odložených tooloch načíta na začiatku len mená a serverové inštrukcie. Tie oreže na 4096 znakov ([code.claude.com MCP](https://code.claude.com/docs/en/mcp)); orezané inštrukcie AIM sú v Claude Code naozaj vidieť. Pre claude.ai a aplikácie nie je `alwaysLoad` ani orez zdokumentovaný (hypotéza, že platí rovnako).
+
+**Rozhodnutie:**
+1. **Platforma (len zistenie):** skutočná oprava je nastavenie Tool access *Always available* (alebo pre konektor AIM) v Claude. Orezávanie po zhutnení a správanie hlasového režimu sú na Anthropicu, konektor ich nezmení.
+2. **Blok o načítaní na začiatku inštrukcií** (`lib/mcp/tool-loading.ts`, `mcpServerInstructions`): pokyn načítať na začiatku session celú sadu naraz a pri chýbajúcom toole znova celú sadu, nie po jednom, plus mená všetkých toolov po skupinách (generované z `mcpToolGroups`). Blok má do 1000 znakov (dnes 792). Test overí, že je na začiatku a všetky mená sú v prvých 4096 znakoch. Doménové inštrukcie `mcpInstructions` sa nemenia (rozpočet 15 000 znakov z D-102 platí pre ne, celé inštrukcie majú 15 700).
+3. **`_meta: {"anthropic/alwaysLoad": true}`** na 5 malých jadrových tooloch: `get_object`, `search_objects`, `show_in_3d`, `get_viewer_state`, `set_view_mode` (`ALWAYS_LOAD_TOOLS`). `ToolDefinition.meta` posiela len MCP `tools/list`, chat `/api/ask` nie. V `MCP-TOOLS.md` majú značku "vždy načítaný".
+
+**Zavrhnuté / odložené:**
+- *Skrátenie opisov toolov teraz:* veľký zásah s rizikom pre výber toolu (D-101, D-102), vyžaduje evaly. Merania vyššie sú baseline; ďalší krok, ak Tool access nestačí.
+- *Ďalšie zlučovanie toolov:* D-115 už zlúčilo 52 na 29; menej toolov oneskorenie nevyrieši, kým klient odkladá celé konektory.
+- *Viac toolov s `alwaysLoad`:* odporúčanie Anthropicu je 3-5 vždy načítaných; väčšie tooly (`style_in_3d`) by zaťažili každý rozhovor.
+
+**Overenie:** `lib/mcp/tool-loading.test.ts` (blok, orez 4096, opisy pod 4096, `_meta` v `tools/list`). Evaly (D-057) sa na to nehodia, hlasovú session nejde otestovať automaticky. Ručne (Samuel): Tool access *Always available*, hlasová session s viacerými krokmi a sledovať, či treba znova `tool_search`.
