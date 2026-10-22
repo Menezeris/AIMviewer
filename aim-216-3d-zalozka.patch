@@ -1,0 +1,257 @@
+From fc176016f72715d543cd71ac691127c66a0adaeb Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 09:15:21 +0000
+Subject: [PATCH] fix(aim): zalozka 3D ostava perspektivna a volna (AIM #216)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+FOCUS (show_in_3d select) uz neprepina zalozku 3D do 2D a SET_VIEW_MODE 3d
+zrusi zvysny zamok kamery, rez podlazia a ortografickú projekciu aj ked je
+zalozka 3D uz aktivna. Pri FOCUS z pôdorysu idu prechody cez zalozky.
+---
+ apps/viewer/src/aim/sceneMode.test.ts         | 33 +++++++++++++
+ apps/viewer/src/aim/sceneMode.ts              | 46 +++++++++++++++++++
+ apps/viewer/src/aim/useAimViewCommands.ts     | 31 ++++++++++---
+ .../evidence/aim-216-scene-mode/README.md     | 13 ++++++
+ .../mutations/01-scenemode-3d-prijme-2d.patch | 13 ++++++
+ .../mutations/02-settle3d-nechava-zamok.patch | 11 +++++
+ .../mutations/03-settle3d-nechava-ortho.patch | 11 +++++
+ 7 files changed, 152 insertions(+), 6 deletions(-)
+ create mode 100644 apps/viewer/src/aim/sceneMode.test.ts
+ create mode 100644 apps/viewer/src/aim/sceneMode.ts
+ create mode 100644 docs/architecture/evidence/aim-216-scene-mode/README.md
+ create mode 100644 docs/architecture/evidence/aim-216-scene-mode/mutations/01-scenemode-3d-prijme-2d.patch
+ create mode 100644 docs/architecture/evidence/aim-216-scene-mode/mutations/02-settle3d-nechava-zamok.patch
+ create mode 100644 docs/architecture/evidence/aim-216-scene-mode/mutations/03-settle3d-nechava-ortho.patch
+
+diff --git a/apps/viewer/src/aim/sceneMode.test.ts b/apps/viewer/src/aim/sceneMode.test.ts
+new file mode 100644
+index 00000000..2ab71d32
+--- /dev/null
++++ b/apps/viewer/src/aim/sceneMode.test.ts
+@@ -0,0 +1,33 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import assert from 'node:assert/strict';
++import { describe, it } from 'node:test';
++
++import { sceneMode, settle3d } from './sceneMode.js';
++
++describe('režim canvasu podľa záložky (AIM #216)', () => {
++  it('záložka 3D nikdy nie je 2D: zvyšný zámok sa berie ako 3D, split ostáva', () => {
++    assert.equal(sceneMode('3d', '2d'), '3d');
++    assert.equal(sceneMode('3d', '3d'), '3d');
++    assert.equal(sceneMode('3d', 'split'), 'split');
++  });
++
++  it('pôdorys a uložený pohľad si nechajú odvodený režim', () => {
++    assert.equal(sceneMode('plan', '2d'), '2d');
++    assert.equal(sceneMode('plan', 'split'), 'split');
++    assert.equal(sceneMode('view', '2d'), '2d');
++    assert.equal(sceneMode(undefined, '2d'), '2d');
++  });
++
++  it('settle3d: zámok, split alebo ortografická kamera sa po mode=3d zrušia', () => {
++    assert.deepEqual(settle3d({ viewLocked: true, splitView: false, projection: 'orthographic' }), { leaveLocked: true, perspective: true });
++    assert.deepEqual(settle3d({ viewLocked: false, splitView: true, projection: 'perspective' }), { leaveLocked: true, perspective: false });
++    assert.deepEqual(settle3d({ viewLocked: false, splitView: false, projection: 'orthographic' }), { leaveLocked: false, perspective: true });
++  });
++
++  it('settle3d: čistá perspektívna 3D sa nemení', () => {
++    assert.deepEqual(settle3d({ viewLocked: false, splitView: false, projection: 'perspective' }), { leaveLocked: false, perspective: false });
++  });
++});
+diff --git a/apps/viewer/src/aim/sceneMode.ts b/apps/viewer/src/aim/sceneMode.ts
+new file mode 100644
+index 00000000..a1df18a5
+--- /dev/null
++++ b/apps/viewer/src/aim/sceneMode.ts
+@@ -0,0 +1,46 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Režim canvasu podľa záložky (AIM D-132, #216) - čisté výpočty bez Reactu a
++ * store. Režim 3D | 2D | Split sa vo viewer odvodzuje z príznakov podkladov
++ * (`useViewMode`), ale záložka 3D je vždy perspektívna a voľná: zvyšný zámok
++ * kamery (starý 2D) nie je jej režim. Vykonanie je v `useAimViewCommands.ts`.
++ */
++
++import type { ViewTabKind } from './viewTabsLayout.js';
++
++type Mode = '3d' | '2d' | 'split';
++
++/**
++ * Režim, podľa ktorého sa rozhoduje FOCUS: v záložke 3D platí len split (pôdorys
++ * vedľa), zvyšné 2D sa berie ako 3D. Inak by `show_in_3d` select prepínal 3D
++ * záložku do 2D (ortografická kamera zhora, #216).
++ */
++export function sceneMode(sceneKind: ViewTabKind | undefined, mode: Mode): Mode {
++  if (sceneKind === '3d') return mode === 'split' ? 'split' : '3d';
++  return mode;
++}
++
++export interface SceneFlags {
++  viewLocked: boolean;
++  splitView: boolean;
++  projection: 'perspective' | 'orthographic';
++}
++
++export interface Settle3d {
++  /** Zrušiť zámok kamery, rez podlažia a 2D režim (`useViewMode.setMode('3d')`). */
++  leaveLocked: boolean;
++  /** Vrátiť perspektívnu kameru. */
++  perspective: boolean;
++}
++
++/**
++ * Čo ešte treba po aktivácii záložky 3D (`SET_VIEW_MODE 3d`): aktivácia už
++ * aktívnej záložky nič nemení, takže zvyšný zámok alebo ortografická kamera by
++ * ostali (stav hlásil 2d aj po mode=3d, #216).
++ */
++export function settle3d(f: SceneFlags): Settle3d {
++  return { leaveLocked: f.viewLocked || f.splitView, perspective: f.projection !== 'perspective' };
++}
+diff --git a/apps/viewer/src/aim/useAimViewCommands.ts b/apps/viewer/src/aim/useAimViewCommands.ts
+index e7dba25d..0109fe0f 100644
+--- a/apps/viewer/src/aim/useAimViewCommands.ts
++++ b/apps/viewer/src/aim/useAimViewCommands.ts
+@@ -20,7 +20,8 @@ import { useViewMode } from '@/hooks/useViewMode';
+ import type { BimContext } from '@ifc-lite/sdk';
+ import { guidForEntity, resolveGuids, resolveSelector } from './bridge-protocol.js';
+ import type { ViewInboundMessage } from './view-protocol.js';
+-import { preloadTabs, withTabs } from './viewTabsStore.js';
++import { preloadTabs, useAimViewTabs, withTabs } from './viewTabsStore.js';
++import { sceneMode, settle3d } from './sceneMode.js';
+ import { VIEWER_AXIS, cameraStep, focusViewStep, pickStorey, storeyCutPercent } from './viewCommands.js';
+ import { placementCoordinateInfo } from '@/lib/section/placement-coordinate-info';
+ import { sectionRenderBounds as sectionBoundsWith } from './sectionRange.js';
+@@ -118,6 +119,13 @@ export function useAimViewCommands(bim: BimContext) {
+     void loadBox();
+     return () => { lastGizmo = undefined; };
+   }, [bim]);
++  /** Záložka 3D bez zvyšného zámku kamery, rezu podlažia a ortografickej projekcie (#216). */
++  const free3d = () => {
++    const s = useViewerStore.getState();
++    const step = settle3d({ viewLocked: s.underlayViewLocked, splitView: s.underlaySplitView, projection: s.projectionMode === 'orthographic' ? 'orthographic' : 'perspective' });
++    if (step.leaveLocked) setMode('3d');
++    if (step.perspective) s.setProjectionMode('perspective');
++  };
+   const run = (msg: ViewInboundMessage, origin = '*') => {
+     const state = useViewerStore.getState();
+     switch (msg.type) {
+@@ -201,7 +209,9 @@ export function useAimViewCommands(bim: BimContext) {
+           if (msg.mode === 'split') m.activate('3d', noteIssue);
+           m.openPlan(target.guid, { beside: msg.mode === 'split' }, noteIssue);
+         });
+-        if (p) track(p);
++        // 3D vždy perspektívna a voľná, aj keď 3D záložka už bola aktívna (#216).
++        const done = msg.mode === '3d' ? (p ? p.then(free3d) : free3d()) : p;
++        if (done) track(done);
+         return;
+       }
+       case 'QUERY': {
+@@ -215,11 +225,20 @@ export function useAimViewCommands(bim: BimContext) {
+   useEffect(() => {
+     ref.current = run;
+     focusView = (keys) => {
+-      const step = focusViewStep(mode, keys, activeStorey?.key ?? null, new Set(storeys.map((s) => s.key)));
+-      if (step.kind === '3d') setMode('3d');
+-      else if (step.kind === 'storey') {
++      // Záložka 3D sa pri FOCUS nikdy neprepne do 2D; pôdorys prejde cez záložky (#216).
++      const tabs = useAimViewTabs.getState();
++      const kind = tabs.tabs.find((t) => t.id === tabs.sceneId)?.kind;
++      const step = focusViewStep(sceneMode(kind, mode), keys, activeStorey?.key ?? null, new Set(storeys.map((s) => s.key)));
++      if (step.kind === '3d') {
++        const p = withTabs((m) => { m.activate('3d', noteIssue); m.beside(null, noteIssue); });
++        track(Promise.resolve(p).then(free3d));
++      } else if (step.kind === 'storey') {
+         const storey = storeys.find((s) => s.key === step.key);
+-        if (storey) setStorey(storey);
++        if (!storey) return;
++        if (kind === 'plan') {
++          const p = withTabs((m) => m.openPlan(storey.guid, {}, noteIssue));
++          if (p) track(p);
++        } else setStorey(storey);
+       }
+     };
+   });
+diff --git a/docs/architecture/evidence/aim-216-scene-mode/README.md b/docs/architecture/evidence/aim-216-scene-mode/README.md
+new file mode 100644
+index 00000000..7283e8e0
+--- /dev/null
++++ b/docs/architecture/evidence/aim-216-scene-mode/README.md
+@@ -0,0 +1,13 @@
++# AIM #216: zalozka 3D ostava perspektivna a volna
++
++Modul `apps/viewer/src/aim/sceneMode.ts`, test `sceneMode.test.ts`. Mutacne patche (mutant -> opravene,
++`git diff -R` mutovaneho suboru) su v `mutations/`; kazdy po aplikovani na opraveny kod necha test cerveny.
++
++| Patch | Rozhodnutie | Ocakavane |
++|---|---|---|
++| `01-scenemode-3d-prijme-2d.patch` | zalozka 3D neberie zvysny 2D zamok ako svoj rezim | test "zalozka 3D nikdy nie je 2D" padne |
++| `02-settle3d-nechava-zamok.patch` | `mode=3d` zrusi zamok kamery | test `settle3d` padne |
++| `03-settle3d-nechava-ortho.patch` | `mode=3d` vrati perspektivnu kameru | test `settle3d` padne |
++
++Zmutovane testy boli spustene lokalne (`tsx --test`, 1 fail z 4 pri kazdom mutante, 4 pass bez mutacie).
++Oracle `check-test-revert-oracle.mjs` sa v cloud session nespustil (bez node_modules, `pnpm install` padol na 403 pri design-kit).
+diff --git a/docs/architecture/evidence/aim-216-scene-mode/mutations/01-scenemode-3d-prijme-2d.patch b/docs/architecture/evidence/aim-216-scene-mode/mutations/01-scenemode-3d-prijme-2d.patch
+new file mode 100644
+index 00000000..6bdc9514
+--- /dev/null
++++ b/docs/architecture/evidence/aim-216-scene-mode/mutations/01-scenemode-3d-prijme-2d.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/sceneMode.ts a/apps/viewer/src/aim/sceneMode.ts
++index 70979c48..a1df18a5 100644
++--- b/apps/viewer/src/aim/sceneMode.ts
+++++ a/apps/viewer/src/aim/sceneMode.ts
++@@ -19,7 +19,7 @@ type Mode = '3d' | '2d' | 'split';
++  * záložku do 2D (ortografická kamera zhora, #216).
++  */
++ export function sceneMode(sceneKind: ViewTabKind | undefined, mode: Mode): Mode {
++-  if (sceneKind === '3d') return mode;
+++  if (sceneKind === '3d') return mode === 'split' ? 'split' : '3d';
++   return mode;
++ }
++ 
+diff --git a/docs/architecture/evidence/aim-216-scene-mode/mutations/02-settle3d-nechava-zamok.patch b/docs/architecture/evidence/aim-216-scene-mode/mutations/02-settle3d-nechava-zamok.patch
+new file mode 100644
+index 00000000..17c0e32a
+--- /dev/null
++++ b/docs/architecture/evidence/aim-216-scene-mode/mutations/02-settle3d-nechava-zamok.patch
+@@ -0,0 +1,11 @@
++diff --git b/apps/viewer/src/aim/sceneMode.ts a/apps/viewer/src/aim/sceneMode.ts
++index 0cf2c603..a1df18a5 100644
++--- b/apps/viewer/src/aim/sceneMode.ts
+++++ a/apps/viewer/src/aim/sceneMode.ts
++@@ -42,5 +42,5 @@ export interface Settle3d {
++  * ostali (stav hlásil 2d aj po mode=3d, #216).
++  */
++ export function settle3d(f: SceneFlags): Settle3d {
++-  return { leaveLocked: f.splitView, perspective: f.projection !== 'perspective' };
+++  return { leaveLocked: f.viewLocked || f.splitView, perspective: f.projection !== 'perspective' };
++ }
+diff --git a/docs/architecture/evidence/aim-216-scene-mode/mutations/03-settle3d-nechava-ortho.patch b/docs/architecture/evidence/aim-216-scene-mode/mutations/03-settle3d-nechava-ortho.patch
+new file mode 100644
+index 00000000..4d7e0e09
+--- /dev/null
++++ b/docs/architecture/evidence/aim-216-scene-mode/mutations/03-settle3d-nechava-ortho.patch
+@@ -0,0 +1,11 @@
++diff --git b/apps/viewer/src/aim/sceneMode.ts a/apps/viewer/src/aim/sceneMode.ts
++index c0f56947..a1df18a5 100644
++--- b/apps/viewer/src/aim/sceneMode.ts
+++++ a/apps/viewer/src/aim/sceneMode.ts
++@@ -42,5 +42,5 @@ export interface Settle3d {
++  * ostali (stav hlásil 2d aj po mode=3d, #216).
++  */
++ export function settle3d(f: SceneFlags): Settle3d {
++-  return { leaveLocked: f.viewLocked || f.splitView, perspective: false };
+++  return { leaveLocked: f.viewLocked || f.splitView, perspective: f.projection !== 'perspective' };
++ }
+-- 
+2.43.0
+
