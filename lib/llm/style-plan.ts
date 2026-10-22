@@ -50,6 +50,16 @@ export interface StyleGroup {
   label: string;
   color: string;
   filter: StyleFilter;
+  /** Priehľadnosť farby 0.05-1 (D-139); bez hodnoty rozhodne host podľa druhu prvkov. */
+  opacity?: number;
+}
+
+/** `opacity` toolu (D-139): 0.05-1, bez hodnoty `undefined`. */
+export function parseOpacity(raw: unknown, where: string): number | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n) || n < 0.05 || n > 1) throw new StyleInputError(`${where} musí byť číslo 0.05 až 1 (1 = plná farba).`);
+  return n;
 }
 
 const present = (v: unknown): boolean =>
@@ -131,7 +141,8 @@ export function parseStyleGroups(input: Record<string, unknown>, action: string)
     return c;
   };
   if (!Array.isArray(input.groups)) {
-    return [{ label: describeFilter(base), color: colorOf(input.color, "color"), filter: base }];
+    const opacity = parseOpacity(input.opacity, "opacity");
+    return [{ label: describeFilter(base), color: colorOf(input.color, "color"), filter: base, ...(opacity !== undefined ? { opacity } : {}) }];
   }
   if (!COLOR_ACTIONS.has(action)) {
     throw new StyleInputError("groups platí len s action=colorize, transparent, isolate alebo xray (každá skupina má vlastnú farbu).");
@@ -150,7 +161,8 @@ export function parseStyleGroups(input: Record<string, unknown>, action: string)
       throw new StyleInputError(`groups[${i}] nemá žiadny filter (system, zone, storey, ifc_type...).`);
     }
     const label = typeof obj.label === "string" && obj.label.trim() ? obj.label.trim().slice(0, 60) : describeFilter(filter);
-    return { label, color, filter };
+    const opacity = parseOpacity(obj.opacity ?? input.opacity, `groups[${i}].opacity`);
+    return { label, color, filter, ...(opacity !== undefined ? { opacity } : {}) };
   });
 }
 
