@@ -1,0 +1,274 @@
+From 8a7cbd9eab1ad066552c5e6c16978270359da299 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 09:18:45 +0000
+Subject: [PATCH 1/2] fix(aim): zvyraznenie ikon v raile zodpoveda skutocnemu
+ stavu panelov (AIM #212)
+
+Rail (usePanelControls) bral aktivny panel ako ukotveny aj pri zbalenom pravom
+stlpci, kym stav panelov pre SET_PANELS ho hlasil ako zatvoreny. Obe cesty teraz
+citaju aimSideDock.sideDockedPanels.
+---
+ apps/viewer/src/aim/aimPanelsPlan.ts      | 10 ++++-
+ apps/viewer/src/aim/aimSideDock.test.ts   | 50 +++++++++++++++++++++++
+ apps/viewer/src/aim/aimSideDock.ts        | 38 +++++++++++++++++
+ apps/viewer/src/hooks/usePanelControls.ts | 33 ++++++++-------
+ 4 files changed, 112 insertions(+), 19 deletions(-)
+ create mode 100644 apps/viewer/src/aim/aimSideDock.test.ts
+ create mode 100644 apps/viewer/src/aim/aimSideDock.ts
+
+diff --git a/apps/viewer/src/aim/aimPanelsPlan.ts b/apps/viewer/src/aim/aimPanelsPlan.ts
+index b7fde688..5c914544 100644
+--- a/apps/viewer/src/aim/aimPanelsPlan.ts
++++ b/apps/viewer/src/aim/aimPanelsPlan.ts
+@@ -13,6 +13,7 @@
+  * (spodný pás), `model_tree` -> `hierarchy` (ľavý stĺpec). `all` = všetky.
+  */
+ 
++import { sideDockedPanels } from './aimSideDock.js';
+ import { PANEL_KEYS, type PanelKey, type PanelsRequest } from './view-protocol.js';
+ 
+ export { PANEL_KEYS, type PanelKey, type PanelsRequest };
+@@ -73,8 +74,13 @@ export function panelInfo(s: PanelsStateLike, key: PanelKey): PanelInfo {
+   if (floating) return { open: true, where: 'floating', snap: floating.snap, size: { w: Math.round(floating.w), h: Math.round(floating.h) } };
+   if (s.poppedOutIds.includes(id)) return { open: true, where: 'window' };
+   if (key === 'lists') return s.listPanelVisible ? { open: true, where: 'bottom' } : { open: false };
+-  const docked = s.sidebarMode !== 'collapsed' && (s.sidebarActivePanel === id || s.sidebarSecondaryPanel === id);
+-  return docked ? { open: true, where: 'right' } : { open: false };
++  const { primary, secondary } = sideDockedPanels({
++    sidebarMode: s.sidebarMode,
++    sidebarActivePanel: s.sidebarActivePanel,
++    sidebarSecondaryPanel: s.sidebarSecondaryPanel,
++    detached: new Set([...s.floatingPanels.map((p) => p.id), ...s.poppedOutIds]),
++  });
++  return id === primary || id === secondary ? { open: true, where: 'right' } : { open: false };
+ }
+ 
+ /** Stav všetkých panelov pre `view_state` a `APPLIED` (+ šírka pravého stĺpca v % okna). */
+diff --git a/apps/viewer/src/aim/aimSideDock.test.ts b/apps/viewer/src/aim/aimSideDock.test.ts
+new file mode 100644
+index 00000000..9b4976c4
+--- /dev/null
++++ b/apps/viewer/src/aim/aimSideDock.test.ts
+@@ -0,0 +1,50 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import { sideDockedPanels, type SideDockInput } from './aimSideDock.js';
++import { panelInfo, type PanelsStateLike } from './aimPanelsPlan.js';
++
++const base: SideDockInput = {
++  sidebarMode: 'expanded',
++  sidebarActivePanel: 'lens',
++  sidebarSecondaryPanel: null,
++  detached: new Set(),
++};
++
++describe('bočný stĺpec: čo je naozaj vidno (AIM #212)', () => {
++  it('rozbalený stĺpec: aktívny panel je primárny, split je sekundárny', () => {
++    assert.deepEqual(sideDockedPanels(base), { primary: 'lens', secondary: null });
++    assert.deepEqual(sideDockedPanels({ ...base, sidebarSecondaryPanel: 'documents' }), { primary: 'lens', secondary: 'documents' });
++    assert.deepEqual(sideDockedPanels({ ...base, sidebarSecondaryPanel: 'lens' }), { primary: 'lens', secondary: null });
++  });
++
++  it('zbalený stĺpec nezobrazuje nič (ikona vlastností po zatvorení cez SET_PANELS nesvieti)', () => {
++    const collapsed = { ...base, sidebarMode: 'collapsed', sidebarActivePanel: 'properties', sidebarSecondaryPanel: 'documents' };
++    assert.deepEqual(sideDockedPanels(collapsed), { primary: null, secondary: null });
++  });
++
++  it('odpojený aktívny panel: stĺpec padne späť na vlastnosti, a ak sú odpojené aj tie, na nič', () => {
++    assert.deepEqual(sideDockedPanels({ ...base, detached: new Set(['lens']) }), { primary: 'properties', secondary: null });
++    assert.deepEqual(sideDockedPanels({ ...base, detached: new Set(['lens', 'properties']) }), { primary: null, secondary: null });
++    assert.deepEqual(sideDockedPanels({ ...base, sidebarSecondaryPanel: 'documents', detached: new Set(['documents']) }), { primary: 'lens', secondary: null });
++  });
++
++  it('panelInfo číta ten istý zdroj: padnutie na vlastnosti je vidieť aj v hlásenom stave', () => {
++    const s: PanelsStateLike = {
++      leftPanelCollapsed: false,
++      sidebarMode: 'expanded',
++      sidebarActivePanel: 'lens',
++      sidebarSecondaryPanel: null,
++      sidebarWidthPct: 22,
++      floatingPanels: [{ id: 'lens', snap: 'right', w: 300, h: 300 }],
++      poppedOutIds: [],
++      listPanelVisible: false,
++    };
++    assert.deepEqual(panelInfo(s, 'properties'), { open: true, where: 'right' });
++    assert.deepEqual(panelInfo({ ...s, sidebarMode: 'collapsed' }, 'properties'), { open: false });
++  });
++});
+diff --git a/apps/viewer/src/aim/aimSideDock.ts b/apps/viewer/src/aim/aimSideDock.ts
+new file mode 100644
+index 00000000..f52b093b
+--- /dev/null
++++ b/apps/viewer/src/aim/aimSideDock.ts
+@@ -0,0 +1,38 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Ktoré bočné panely sú naozaj vidno v pravom stĺpci (AIM #212). Jediný zdroj pre
++ * zvýraznenie ikon v ráile (`usePanelControls`) aj pre stav panelov v `view_state`
++ * a `APPLIED` (`aimPanelsPlan.ts`), aby sa ikona a hlásený stav nerozišli, nech sa
++ * panel zatvoril klikom, skratkou alebo cez `SET_PANELS`. Zbalený stĺpec nezobrazuje nič.
++ */
++
++export interface SideDockInput {
++  sidebarMode: string;
++  sidebarActivePanel: string;
++  sidebarSecondaryPanel: string | null;
++  /** Panely v plávajúcom okne alebo samostatnom okne (stĺpec ich nezobrazuje). */
++  detached: ReadonlySet<string>;
++}
++
++export interface SideDocked {
++  primary: string | null;
++  secondary: string | null;
++}
++
++/**
++ * Primárny panel stĺpca je aktívny, ak nie je odpojený; inak stĺpec padne späť na
++ * vlastnosti (zrkadlí `SidebarPanelHost`). Dolná polovica splitu platí, ak je iná ako
++ * primárny a nie je odpojená.
++ */
++export function sideDockedPanels(s: SideDockInput): SideDocked {
++  if (s.sidebarMode === 'collapsed') return { primary: null, secondary: null };
++  let primary: string | null = null;
++  if (!s.detached.has(s.sidebarActivePanel)) primary = s.sidebarActivePanel;
++  else if (!s.detached.has('properties')) primary = 'properties';
++  const sec = s.sidebarSecondaryPanel;
++  const secondary = sec && sec !== primary && !s.detached.has(sec) ? sec : null;
++  return { primary, secondary };
++}
+diff --git a/apps/viewer/src/hooks/usePanelControls.ts b/apps/viewer/src/hooks/usePanelControls.ts
+index 310401f8..83248022 100644
+--- a/apps/viewer/src/hooks/usePanelControls.ts
++++ b/apps/viewer/src/hooks/usePanelControls.ts
+@@ -24,6 +24,9 @@ import {
+ } from '@/lib/panels/registry';
+ import { BOTTOM_PANEL_SETTER, isBottomPanel, isBottomPanelOpen } from '@/lib/panels/bottom-panels';
+ import { useBottomPanelFlags } from './useBottomPanelFlags';
++// >>> AIM-FORK
++import { sideDockedPanels } from '@/aim/aimSideDock';
++// <<< AIM-FORK
+ import { openPanelWindow, closePanelWindow } from '@/services/panel-windows';
+ 
+ export type PanelLocation = 'docked' | 'floating' | 'popped' | 'closed';
+@@ -82,23 +85,19 @@ export function usePanelControls(): PanelControls {
+   );
+   const poppedIds = useMemo(() => new Set<WorkspacePanelId>(poppedOutIds), [poppedOutIds]);
+ 
+-  // The side panel actually shown in the right pane — mirrors SidebarPanelHost:
+-  // the active panel, unless it's detached, in which case the pane falls back to
+-  // Information. Used so the rail highlights what is really on screen.
+-  const sideDocked = useMemo<WorkspacePanelId | null>(() => {
+-    if (!floatingIds.has(activePanel) && !poppedIds.has(activePanel)) return activePanel;
+-    if (!floatingIds.has('properties') && !poppedIds.has('properties')) return 'properties';
+-    return null;
+-  }, [activePanel, floatingIds, poppedIds]);
+-
+-  // The panel actually rendered in the lower split half, mirroring
+-  // SidebarPanelHost's `secondaryActive`: set, inline (not floated / popped), and
+-  // distinct from the primary. So the rail reflects it as docked, not closed.
+-  const secondaryDocked = useMemo<WorkspacePanelId | null>(() => {
+-    if (!secondaryPanel || secondaryPanel === sideDocked) return null;
+-    if (floatingIds.has(secondaryPanel) || poppedIds.has(secondaryPanel)) return null;
+-    return secondaryPanel;
+-  }, [secondaryPanel, sideDocked, floatingIds, poppedIds]);
++  // >>> AIM-FORK: rail highlight shares the docked logic with the AIM panel state (#212)
++  // A collapsed right pane shows nothing, so no side panel reads as docked then.
++  const sidebarMode = useViewerStore((s) => s.sidebarMode);
++  const { sideDocked, secondaryDocked } = useMemo(() => {
++    const d = sideDockedPanels({
++      sidebarMode,
++      sidebarActivePanel: activePanel,
++      sidebarSecondaryPanel: secondaryPanel,
++      detached: new Set<string>([...floatingIds, ...poppedIds]),
++    });
++    return { sideDocked: d.primary as WorkspacePanelId | null, secondaryDocked: d.secondary as WorkspacePanelId | null };
++  }, [sidebarMode, activePanel, secondaryPanel, floatingIds, poppedIds]);
++  // <<< AIM-FORK
+ 
+   const isDockedInHome = useCallback(
+     (id: WorkspacePanelId): boolean => {
+-- 
+2.43.0
+
+
+From 2e5937660f1a87023bed0fd559b196653c462513 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 09:19:22 +0000
+Subject: [PATCH 2/2] docs(aim): dokazy mutacii pre aimSideDock (AIM #212)
+
+---
+ .../mutations/01-collapsed-guard.patch              | 12 ++++++++++++
+ .../mutations/02-properties-fallback.patch          | 13 +++++++++++++
+ .../aim-212-rail-highlight/mutations/README.md      | 13 +++++++++++++
+ 3 files changed, 38 insertions(+)
+ create mode 100644 docs/architecture/evidence/aim-212-rail-highlight/mutations/01-collapsed-guard.patch
+ create mode 100644 docs/architecture/evidence/aim-212-rail-highlight/mutations/02-properties-fallback.patch
+ create mode 100644 docs/architecture/evidence/aim-212-rail-highlight/mutations/README.md
+
+diff --git a/docs/architecture/evidence/aim-212-rail-highlight/mutations/01-collapsed-guard.patch b/docs/architecture/evidence/aim-212-rail-highlight/mutations/01-collapsed-guard.patch
+new file mode 100644
+index 00000000..4416a459
+--- /dev/null
++++ b/docs/architecture/evidence/aim-212-rail-highlight/mutations/01-collapsed-guard.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/aimSideDock.ts a/apps/viewer/src/aim/aimSideDock.ts
++index 384afc57..f52b093b 100644
++--- b/apps/viewer/src/aim/aimSideDock.ts
+++++ a/apps/viewer/src/aim/aimSideDock.ts
++@@ -28,6 +28,7 @@ export interface SideDocked {
++  * primárny a nie je odpojená.
++  */
++ export function sideDockedPanels(s: SideDockInput): SideDocked {
+++  if (s.sidebarMode === 'collapsed') return { primary: null, secondary: null };
++   let primary: string | null = null;
++   if (!s.detached.has(s.sidebarActivePanel)) primary = s.sidebarActivePanel;
++   else if (!s.detached.has('properties')) primary = 'properties';
+diff --git a/docs/architecture/evidence/aim-212-rail-highlight/mutations/02-properties-fallback.patch b/docs/architecture/evidence/aim-212-rail-highlight/mutations/02-properties-fallback.patch
+new file mode 100644
+index 00000000..48c0a17a
+--- /dev/null
++++ b/docs/architecture/evidence/aim-212-rail-highlight/mutations/02-properties-fallback.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimSideDock.ts a/apps/viewer/src/aim/aimSideDock.ts
++index 953ffde4..f52b093b 100644
++--- b/apps/viewer/src/aim/aimSideDock.ts
+++++ a/apps/viewer/src/aim/aimSideDock.ts
++@@ -31,7 +31,7 @@ export function sideDockedPanels(s: SideDockInput): SideDocked {
++   if (s.sidebarMode === 'collapsed') return { primary: null, secondary: null };
++   let primary: string | null = null;
++   if (!s.detached.has(s.sidebarActivePanel)) primary = s.sidebarActivePanel;
++-
+++  else if (!s.detached.has('properties')) primary = 'properties';
++   const sec = s.sidebarSecondaryPanel;
++   const secondary = sec && sec !== primary && !s.detached.has(sec) ? sec : null;
++   return { primary, secondary };
+diff --git a/docs/architecture/evidence/aim-212-rail-highlight/mutations/README.md b/docs/architecture/evidence/aim-212-rail-highlight/mutations/README.md
+new file mode 100644
+index 00000000..5cabdb0c
+--- /dev/null
++++ b/docs/architecture/evidence/aim-212-rail-highlight/mutations/README.md
+@@ -0,0 +1,13 @@
++# AIM #212: dôkazy mutácií (aimSideDock)
++
++Test `apps/viewer/src/aim/aimSideDock.test.ts` importuje nový modul, takže revert oracle by bol
++INCONCLUSIVE; mutácie sú ručne zapísané mutant -> opravené (`git diff -R`).
++
++| Patch | Mutácia | Výsledok testu s mutantom |
++|---|---|---|
++| `01-collapsed-guard.patch` | odstránený návrat pri `sidebarMode === 'collapsed'` | 2 testy padajú |
++| `02-properties-fallback.patch` | odstránený návrat stĺpca na vlastnosti pri odpojenom aktívnom paneli | 2 testy padajú |
++
++Overené lokálne: `git apply -R <patch>` + `npx tsx --import ./src/test/vite-module-hooks.mjs --test
++src/aim/aimSideDock.test.ts` -> `fail 2`, po obnove `fail 0`. `check-test-revert-oracle.mjs` sa v cloud
++session nedal spustiť (`tsx` nenájdený, bez `pnpm install`), preto ho spustí rýchle CI.
+-- 
+2.43.0
+
