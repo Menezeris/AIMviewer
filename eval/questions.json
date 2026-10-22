@@ -798,6 +798,14 @@
       "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
       "notes": "D-122 (issue #72): set_view_mode(saved_view='Posledný pohľad', section_offset_m=-1); predtým uložený pohľad cez saved_view(action=save). Len MCP so živým viewerom."
+    },
+    {
+      "id": "object-quantities-one-call",
+      "category": "details",
+      "question": "Ukáž kvantitatívny set jedného stĺpca SL02.01.0030, chcem objem.",
+      "expect": { "tools_called": ["get_object"] },
+      "verified": false,
+      "notes": "D-142 (issue #184): get_object(include=quantities) vráti Qto_ColumnBaseQuantities.NetVolume z IFC v jednom volaní, bez ifc_query mode=values a eliminácie. Hodnota neoverená (vyžaduje IFC motor a prod model)."
     }
   ]
 }

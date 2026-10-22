@@ -180,7 +180,7 @@ function isUuid(v: string): boolean {
 const DOCUMENT_CODE_RE = /^[A-Z](\.\d+){2,}$/i;
 
 /** Čo `get_object` pridá v tom istom volaní (D-115). */
-export const GET_OBJECT_INCLUDES = ["details", "path", "documents"] as const;
+export const GET_OBJECT_INCLUDES = ["details", "path", "documents", "quantities"] as const;
 
 /** Staré hodnoty `include` (D-104: výkresy E4 nahradili dokumenty z modelu); nevypisujú sa. */
 const LEGACY_GET_OBJECT_INCLUDES: Record<string, (typeof GET_OBJECT_INCLUDES)[number]> = {
@@ -372,7 +372,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "napr. VZT prvok v miestnosti z ASR); documents = DOKUMENTY a strany, ktoré k nemu patria, aj zdedené " +
       "cez typ, zónu, skupinu (skladby), systém, priestorovú zónu (požiarny úsek), podlažie a miestnosť, s cestou " +
       "(via_name, through) a deep_link na stranu; pri dokumente opačne: ktorých objektov sa týka (počty podľa " +
-      "typu a nositeľa + vzorka). Kód netreba hľadať vopred; na 'čo je X a kde je' stačí jedno volanie.",
+      "typu a nositeľa + vzorka); quantities = Qto VÝMERY (objem, plocha, dĺžka...) a psety priamo z IFC súboru, z výskytu aj z typu, ako ' +
+      'zoznam {qto, name, value, source} (D-142). Kód netreba hľadať vopred; na 'čo je X a kde je' stačí jedno volanie.",
     inputSchema: {
       type: "object",
       properties: {
@@ -380,7 +381,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         include: {
           type: "array",
           items: { type: "string", enum: [...GET_OBJECT_INCLUDES] },
-          description: "Čo pridať: details | path | documents",
+          description: "Čo pridať: details | path | documents | quantities",
         },
       },
       required: ["id_or_ref"],
@@ -1343,6 +1344,10 @@ export class AskToolRuntime {
     const base = (await this.getObject(input)) as Record<string, unknown>;
     if (include.length === 0) return base;
     const id = typeof base.id === "string" ? base.id : null;
+    if (!id && include.includes("quantities")) {
+      // Prvok len v IFC súbore (D-102): výmery z motora podľa global_id, ostatné include nemajú v grafe čo čítať.
+      return { ...base, ifc: await this.ifcElementData(base) };
+    }
     if (!id) {
       return { ...base, include_note: "Prvok nie je v grafe AIM: vlastnosti, materiály a podlažie zo súboru dá ifc_get." };
     }
@@ -1354,6 +1359,8 @@ export class AskToolRuntime {
             base.object_type === "asset"
               ? await this.getAssetDetails({ id })
               : { note: "Vlastnosti s dedením z typu sú len pre asset; psety iných uzlov dá query_view alebo ifc_get." };
+        } else if (part === "quantities") {
+          extra.ifc = await this.ifcElementData(base);
         } else if (part === "path") {
           extra.path = await this.getSpatialPath({ id });
         } else {
@@ -1362,6 +1369,20 @@ export class AskToolRuntime {
       }),
     );
     return { ...base, ...extra };
+  }
+
+  /** Qto výmery a psety jedného prvku z IFC motora (D-142); chyba motora sa vráti ako pole `error`. */
+  private async ifcElementData(base: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!engineEnabled()) return { error: "IFC motor je vypnutý, výmery zo súboru nie sú dostupné." };
+    const target = [base.ifc_guid, base.global_id].find((g): g is string => typeof g === "string" && g.length > 0);
+    if (!target) return { error: "Prvok nemá IFC GUID, výmery zo súboru sa nedajú nájsť." };
+    const [{ runEngineTool }, { shapeIfcElement }] = await Promise.all([import("@/lib/engine/run"), import("@/lib/engine/element-data")]);
+    const res = await runEngineTool("ifc_get", { targets: [target] });
+    if (res.isError) return { error: res.content };
+    const parsed = JSON.parse(res.content) as { items?: Array<Record<string, unknown>>; missing?: string[] };
+    const item = parsed.items?.[0];
+    if (!item) return { error: `Prvok nie je v žiadnom načítanom IFC modeli (${(parsed.missing ?? []).join(", ")}).` };
+    return { ...shapeIfcElement(item) };
   }
 
   private async getObject(input: Record<string, unknown>) {

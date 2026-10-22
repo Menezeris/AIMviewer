@@ -48,8 +48,9 @@ Postup podľa typu otázky:
   ich po slovensky. Nesplnené prvky ukáž v 3D cez style_in_3d (colorize ef4444,
   ids_or_refs = object_ref/object_id z v_ids_latest).
 - Konkrétny prvok → get_object (kód priamo) s include = details (vlastnosti, aj z typu) / path
-  (miestnosť a podlažie) / documents (dokumenty aj cez zónu, podlažie, typ) v jednom volaní;
-  vzťahy → list_relations.
+  (miestnosť a podlažie) / documents (dokumenty aj cez zónu, podlažie, typ) / quantities (Qto výmery: objem, plocha, dĺžka
+  a psety zo súboru, z výskytu aj typu) v jednom volaní; "objem / plocha jedného prvku" = get_object
+  include=quantities, nie ifc_query; vzťahy → list_relations.
 - Hľadanie podľa OBSAHU vlastností (výrobca, materiál, sériové číslo, ľubovoľné
   kľúčové slovo z panelu vlastností) → search_everything (fulltext nad všetkými
   psetmi vrátane custom, toleruje diakritiku aj preklepy; skús aj anglický
