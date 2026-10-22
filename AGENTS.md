@@ -235,7 +235,8 @@ normalizuje na spoločný label (`1NP_VZT`→`1NP`, D-049).
 
 **Egress modelov (D-135):** viewer aj IFC motor čítajú nemenný archív revízie (`ifc/archive/<MODEL>/vNNN.ifc.gz`),
 nie `ifc/<MODEL>.ifc`. Session a testy produkčné IFC nesťahujú: živé overenie na malom testovacom modeli
-(`AC20-FZK-Haus.ifc` z fixtures forku, lokálne), hlavičky z bucketu len `curl -I` alebo `-r 0-0`.
+(`AC20-FZK-Haus.ifc` z fixtures forku, lokálne), hlavičky z bucketu len `curl -I` alebo `-r 0-0`; session neotvára
+`/ifc` produkcie ani náhľadu (odkaz "Ako vyskúšať" je pre Samuela) a nevolá `ifc_*` tools konektora len na overenie.
 
 **Kde žije AIM funkcia (D-091):** predvolene v AIMvieweri; do forku len zobrazenie, ktoré musí
 byť vnútri panelov viewera (odznak, záznam, lokálny prepínač). Akcie meniace dáta robí host,

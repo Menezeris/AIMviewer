@@ -6434,6 +6434,26 @@ platí Fair Use Policy. Hlavný zdroj sú IFC federácie: `ifc/ASR.ifc` (24,7 MB
 
 Kvóta 5,5 GB = cca 160 plných načítaní federácie; po zmene to isté stojí cca 1,15 GB.
 
+**Odkiaľ sa sťahuje (Supabase Usage od Samuela + `mcp_call_log`, 22. 10.):** cached egress 14,66 GB z 5 GB
+od 17. 10. (19. 10. cca 2,5 GB, 20. 10. cca 6,2 GB, 21. 10. cca 3,3 GB), bežný egress 0,99 GB. Cieľ od 17. 11.:
+5 GB za mesiac, teda cca 160 MB za deň. Zdroje:
+| Zdroj | Cesta v kóde / skille | 19. / 20. / 21. 10. |
+|---|---|---|
+| IFC motor: každá studená inštancia MCP predčíta oba modely (D-100/D-101, `preloadEngineModels`) | `app/api/mcp/[token]/route.ts`, evaly `eval/MCP-EVAL.md`, sessions a routines volajúce konektor | 38 / 105 / 39 studených inštancií = aspoň 1,3 / 3,6 / 1,35 GB |
+| prehliadač v novom profile (Playwright v sessions, náhľady Vercelu) | fork `steward` "Try them yourself first, live" s odkazom `ai-mviewer.vercel.app/ifc?viewer=pr-N`, `release-train` test link, živý viewer pri evale (`/ifc?live=`) | zvyšok, cca 1,2 / 2,6 / 1,9 GB = 35 / 75 / 55 načítaní |
+Studené inštancie bez tool callu (len `initialize`) v logu nie sú, motor je teda skôr väčší podiel.
+Archív samotný 20. 10. zníži z 6,2 GB na cca 1,3 GB; na 160 MB za deň treba aj pravidlo 5 a jeden z návrhov nižšie.
+Skilly forku `steward` a `release-train` preto hovoria, že odkaz "Ako vyskúšať" je len pre Samuela a session
+skúša na lokálnom vieweri s testovacím modelom.
+
+**Otvorené pre Samuela (nie je v tomto PR):**
+- *Predčítanie motora len pri pripojení:* `preloadEngineModels` len pri `initialize`/`tools/list`, nie pri prvej
+  požiadavke na studenú inštanciu (časť D-101). Inštancia, ktorá obslúži len DB tools (78 až 90 % volaní),
+  potom nič nesťahuje; cena je dlhšie prvé `ifc_*` volanie na novej inštancii.
+- *Modely cez CDN Vercelu:* host servíruje `/models/archive/...` ako rewrite na archív s dlhou cache, prehliadače
+  aj motor čítajú z CDN Vercelu a Supabase vidí stiahnutie raz na revíziu a región. Treba overiť, či Vercel
+  (Hobby) cachuje externý rewrite, a pridať origin hosta do `VITE_AIM_MODEL_ORIGINS` forku (aj náhľady).
+
 **Zavrhnuté:**
 - *Dlhá cache na aktuálnom kľúči:* kľúč sa prepisuje, prehliadače aj CDN by držali starú revíziu.
 - *Spoliehať sa na IndexedDB cache forku:* kľúč z obsahu, súbor sa aj tak sťahuje.
