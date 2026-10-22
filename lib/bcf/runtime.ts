@@ -29,8 +29,8 @@ export function bcfMaxSessions(): number {
   return Number.isFinite(n) && n > 0 ? n : 3;
 }
 
-/** `view_state` živého viewera (D-085) -> BCF pohľad; string = prečo sa nedal zachytiť. */
-export async function captureLiveView(): Promise<CapturedView | string> {
+/** `view_state` živého viewera (D-085); string = prečo sa nedal prečítať. */
+export async function liveViewState(): Promise<Record<string, unknown> | string> {
   const channel = liveChannel();
   if (!channel) return "živý viewer nie je nastavený (LIVE_CHANNEL)";
   const outcome = await queryLiveViewer(channel, "view_state");
@@ -38,7 +38,14 @@ export async function captureLiveView(): Promise<CapturedView | string> {
     return outcome.reason === "timeout" ? "viewer neodpovedal (nie je otvorený s ?live=)" : "kanál viewera zlyhal";
   }
   if (!outcome.reply.ok) return `viewer odpovedal chybou: ${outcome.reply.error}`;
-  return viewFromState(outcome.reply.result);
+  const r = outcome.reply.result;
+  return r && typeof r === "object" ? (r as Record<string, unknown>) : {};
+}
+
+/** `view_state` -> BCF pohľad; string = prečo sa nedal zachytiť. */
+export async function captureLiveView(): Promise<CapturedView | string> {
+  const state = await liveViewState();
+  return typeof state === "string" ? state : viewFromState(state);
 }
 
 /** "Témy sa zmenili" na živý kanál; otvorený viewer si ich načíta znova. */
@@ -53,6 +60,7 @@ export function defaultBcfDeps(): BcfDeps {
     store: supabaseBcfStore(),
     fire: routineConfigured(cfg) ? (text) => fireRoutine(text, fetch, cfg) : null,
     captureView: captureLiveView,
+    viewState: liveViewState,
     resolve: resolveTargets,
     now: () => new Date(),
     maxSessions: bcfMaxSessions(),
