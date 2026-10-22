@@ -85,6 +85,25 @@ describe("resolveLabels", () => {
     expect(link.targets[0].ref).toBe("SN05.01.0001");
   });
 
+  it("typový kód s viac výskytmi nesie IFC typ, ktorý klik otvorí (výskyty ostávajú vedľajšie)", () => {
+    const occ = [obj("SN05.01.0001"), obj("SN05.01.0002")];
+    const [link] = resolveLabels(pairLabels([b("SN05", 1, 1), b("01", 1, 1.3)]), [obj("SN05.01", "asset_type"), ...occ]);
+    expect(link).toMatchObject({ status: "candidates", type: { ref: "SN05.01", guid: "g-SN05.01" } });
+    expect(link.targets).toHaveLength(2);
+    const [page] = toLinksWire("doc", [{ page: 1, links: [link] }]);
+    expect(page.links[0].type).toEqual({ guid: "g-SN05.01", ref: "SN05.01" });
+  });
+
+  it("typ bez GUID alebo jediný výskyt typ do odkazu nedá", () => {
+    const labels = pairLabels([b("SN05", 1, 1), b("01", 1, 1.3)]);
+    const two = [obj("SN05.01.0001"), obj("SN05.01.0002")];
+    const [noGuid] = resolveLabels(labels, [{ ...obj("SN05.01", "asset_type"), guid: null }, ...two]);
+    expect(noGuid.type).toBeUndefined();
+    const [one] = resolveLabels(labels, [obj("SN05.01", "asset_type"), obj("SN05.01.0001")]);
+    expect(one).toMatchObject({ status: "unique" });
+    expect(one.type).toBeUndefined();
+  });
+
   it("nenájdený kód je none; číslo bez miestnosti na podlaží vypadne (kóta)", () => {
     const labels = pairLabels([b("OV01", 1, 1), b("00.00", 1, 1.3), b("1.01", 5, 5), b("2.01", 6, 6)]);
     const links = resolveLabels(labels, [obj("2.01", "space", false)]);

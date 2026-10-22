@@ -6220,6 +6220,12 @@ Na rozhodnutie, ktoré dvere to sú, treba podlažie výkresu a výskyty typu na
    na 1NP (aj `08 DD01` -> DD01.08.0001), 9 typových kódov s viacerými výskytmi (kandidáti), 1 nespárovaný
    (`OV01` nad výškovou kótou `00.00`). Kódy miestností: 46 popiskov, 23 miestností 1NP, všetky jednoznačné.
 
+5. **Doplnenie 2026-10-22 (#167, Samuel po teste):** značka typu s viac výskytmi (modrá, `candidates`) otvorí v paneli
+   vlastností **IFC typ** (`asset_type` s presným `object_ref`, napr. SN05.01 = IfcWallType), nie zoznam výskytov. Wire
+   `DOCUMENT_LINKS` dostal voliteľné `type {guid, ref, name?}` na odkaze so stavom `candidates`; výskyty ostávajú v
+   `targets` ako vedľajšia voľba (výber sa ukáže len keď typ vo vieweri nie je). Zelené popisky (`unique`) sa nemenia.
+   Izolácia výskytov typu v 3D nie je súčasťou požiadavky. Bez nového čísla D (úprava D-130).
+
 **Zavrhnuté:**
 - *Zapnúť a doladiť D-076 vo forku:* fork nepozná podlažie výskytov z DB ani konvenciu `.0001` a výber výskytu
   podľa podlažia by bol druhý výpočet popri AIMvieweri; D-076 ostáva ako všeobecná funkcia originálu.
