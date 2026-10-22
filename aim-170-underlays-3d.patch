@@ -1,0 +1,342 @@
+From 96608024535f70496b539edb13555ced9ec052a1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 17:30:36 +0000
+Subject: [PATCH] AIM D-133 doplnok (#170): PDF podklady v 3D zapnut / vypnut
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Nova sprava mosta SET_UNDERLAYS_3D { show } a stav viewera "podklady v 3D"
+(aim/aimUnderlays3d.ts). Vypnute = ulozene podklady sa v 3D platne nekreslia,
+kalibracia (_georef), ghost nahlad pocas kalibracie a zamknuty pôdorysny pohlad
+(2D) ostavaju. Je to iny stav nez placement.visible (oko pri vykrese), ktory sa
+uklada do DB a skryva aj 2D. view_state a APPLIED nesu underlays_3d. Prepinac
+"Show in 3D" je pod panelom Underlays.
+
+Upstream len v AIM-FORK blokoch: useDrawingUnderlay.ts (kopia placementu s
+visible: false) a renderPanelBody.tsx (lenivy prepinac pod panelom).
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TuGgoyHCHNTq9CgrmCgFtD
+---
+ apps/viewer/src/aim/AimUnderlays3dToggle.tsx  | 36 +++++++++++++
+ apps/viewer/src/aim/aimUnderlays3d.test.ts    | 53 +++++++++++++++++++
+ apps/viewer/src/aim/aimUnderlays3d.ts         | 35 ++++++++++++
+ apps/viewer/src/aim/useAimViewCommands.ts     |  7 ++-
+ apps/viewer/src/aim/view-protocol.ts          |  4 ++
+ apps/viewer/src/aim/viewQueries.ts            |  3 ++
+ apps/viewer/src/hooks/useDrawingUnderlay.ts   | 16 +++++-
+ .../viewer/src/i18n/catalogues/aim-fork.en.ts |  3 ++
+ .../viewer/src/lib/panels/renderPanelBody.tsx |  7 ++-
+ 9 files changed, 160 insertions(+), 4 deletions(-)
+ create mode 100644 apps/viewer/src/aim/AimUnderlays3dToggle.tsx
+ create mode 100644 apps/viewer/src/aim/aimUnderlays3d.test.ts
+ create mode 100644 apps/viewer/src/aim/aimUnderlays3d.ts
+
+diff --git a/apps/viewer/src/aim/AimUnderlays3dToggle.tsx b/apps/viewer/src/aim/AimUnderlays3dToggle.tsx
+new file mode 100644
+index 00000000..cf9072c0
+--- /dev/null
++++ b/apps/viewer/src/aim/AimUnderlays3dToggle.tsx
+@@ -0,0 +1,36 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Prepínač "Show in 3D" pod panelom Underlays (AIM D-133 doplnok, #170): vypne alebo
++ * zapne kreslenie PDF podkladov v 3D. Stav drží `aimUnderlays3d.ts`, ten istý ako
++ * `SET_UNDERLAYS_3D` z chatu; kalibrácia ostáva uložená a pôdorys v 2D ostáva.
++ */
++
++import { useTranslation } from '@/i18n';
++import { useAimUnderlays3d } from './aimUnderlays3d.js';
++
++export function AimUnderlays3dToggle() {
++  const { t } = useTranslation();
++  const hidden = useAimUnderlays3d((s) => s.hidden);
++  const setShown = useAimUnderlays3d((s) => s.setShown);
++  return (
++    <div className="flex shrink-0 items-center gap-2 border-t px-3 py-2" data-testid="aim-underlays-3d">
++      <button
++        type="button"
++        role="switch"
++        aria-checked={!hidden}
++        onClick={() => setShown(hidden)}
++        className="flex min-h-6 shrink-0 items-center gap-1.5 rounded border px-2 text-2xs font-medium hover:bg-muted"
++      >
++        <span
++          aria-hidden
++          className={`size-2 rounded-full ${hidden ? 'border border-muted-foreground' : 'bg-primary'}`}
++        />
++        {t('aimFork.underlays3d.label')}
++      </button>
++      <span className="min-w-0 text-2xs text-muted-foreground">{t('aimFork.underlays3d.hint')}</span>
++    </div>
++  );
++}
+diff --git a/apps/viewer/src/aim/aimUnderlays3d.test.ts b/apps/viewer/src/aim/aimUnderlays3d.test.ts
+new file mode 100644
+index 00000000..f5bf5ddc
+--- /dev/null
++++ b/apps/viewer/src/aim/aimUnderlays3d.test.ts
+@@ -0,0 +1,53 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import assert from 'node:assert/strict';
++import { beforeEach, describe, it } from 'node:test';
++
++import { useAimUnderlays3d, underlaysHiddenIn3d, withUnderlay3dVisibility } from './aimUnderlays3d.js';
++import { isViewMessage } from './view-protocol.js';
++import { SOURCE } from './bridge-protocol.js';
++
++describe('podklady PDF v 3D (AIM D-133 doplnok, #170)', () => {
++  beforeEach(() => useAimUnderlays3d.setState({ hidden: false }));
++
++  it('predvolene sú podklady v 3D zapnuté', () => {
++    assert.equal(useAimUnderlays3d.getState().hidden, false);
++  });
++
++  it('setShown(false) ich skryje, setShown(true) vráti', () => {
++    useAimUnderlays3d.getState().setShown(false);
++    assert.equal(useAimUnderlays3d.getState().hidden, true);
++    useAimUnderlays3d.getState().setShown(true);
++    assert.equal(useAimUnderlays3d.getState().hidden, false);
++  });
++
++  it('skrytie platí v 3D, v zamknutom pôdoryse (2D) nie', () => {
++    assert.equal(underlaysHiddenIn3d({ hidden: true, viewLocked: false }), true);
++    assert.equal(underlaysHiddenIn3d({ hidden: true, viewLocked: true }), false);
++    assert.equal(underlaysHiddenIn3d({ hidden: false, viewLocked: false }), false);
++  });
++
++  it('skrytie prepíše len kópiu, placement v store ostane viditeľný a kalibrácia nedotknutá', () => {
++    const placement = { visible: true, affine: [1, 0, 0, 0, 1, 0] };
++    const hiddenCopy = withUnderlay3dVisibility(placement, true);
++    assert.equal(hiddenCopy.visible, false);
++    assert.deepEqual(hiddenCopy.affine, placement.affine);
++    assert.equal(placement.visible, true);
++    assert.equal(withUnderlay3dVisibility(placement, false), placement);
++  });
++
++  it('podklad vypnutý okom (visible kalibrácie) ostane vypnutý aj po zapnutí v 3D', () => {
++    const off = { visible: false };
++    assert.equal(withUnderlay3dVisibility(off, false).visible, false);
++    assert.equal(withUnderlay3dVisibility(off, true).visible, false);
++  });
++
++  it('správa SET_UNDERLAYS_3D prejde len s boolean show', () => {
++    assert.equal(isViewMessage({ source: SOURCE, type: 'SET_UNDERLAYS_3D', show: false }), true);
++    assert.equal(isViewMessage({ source: SOURCE, type: 'SET_UNDERLAYS_3D', show: true }), true);
++    assert.equal(isViewMessage({ source: SOURCE, type: 'SET_UNDERLAYS_3D', show: 'no' }), false);
++    assert.equal(isViewMessage({ source: SOURCE, type: 'SET_UNDERLAYS_3D' }), false);
++  });
++});
+diff --git a/apps/viewer/src/aim/aimUnderlays3d.ts b/apps/viewer/src/aim/aimUnderlays3d.ts
+new file mode 100644
+index 00000000..41757a5b
+--- /dev/null
++++ b/apps/viewer/src/aim/aimUnderlays3d.ts
+@@ -0,0 +1,35 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * PDF podklady v 3D zapnúť / vypnúť (AIM D-133 doplnok, #170). Je to stav viewera
++ * a nezapisuje sa nikam: `visible` v `_georef` (oko pri výkrese v paneli Underlays)
++ * sa ukladá do DB a skrýva podklad aj v 2D paneli pôdorysu, toto skrýva len plochu
++ * podkladu v 3D plátne. Kalibrácia, ghost náhľad počas kalibrácie a zamknutý
++ * pôdorysný pohľad (kamera zhora, `underlayViewLocked`) ostávajú, lebo to je 2D.
++ * Hook `useDrawingUnderlay` číta `hidden` a pre uložené podklady prepíše `visible`.
++ */
++
++import { create } from 'zustand';
++
++interface AimUnderlays3dStore {
++  /** true = uložené podklady sa v 3D nekreslia. Po obnove stránky false (zapnuté). */
++  hidden: boolean;
++  setShown: (show: boolean) => void;
++}
++
++export const useAimUnderlays3d = create<AimUnderlays3dStore>((set) => ({
++  hidden: false,
++  setShown: (show) => set({ hidden: !show }),
++}));
++
++/** Podklady sa v 3D plátne nekreslia: vypnuté a nejde o zamknutý pôdorysný pohľad (2D). */
++export function underlaysHiddenIn3d(flags: { hidden: boolean; viewLocked: boolean }): boolean {
++  return flags.hidden && !flags.viewLocked;
++}
++
++/** Placement pre renderer: pri skrytí `visible: false`, kalibrácia v store ostáva nedotknutá (kópia). */
++export function withUnderlay3dVisibility<T extends { visible: boolean }>(placement: T, hide: boolean): T {
++  return hide && placement.visible ? { ...placement, visible: false } : placement;
++}
+diff --git a/apps/viewer/src/aim/useAimViewCommands.ts b/apps/viewer/src/aim/useAimViewCommands.ts
+index c9b71468..d6c59bfe 100644
+--- a/apps/viewer/src/aim/useAimViewCommands.ts
++++ b/apps/viewer/src/aim/useAimViewCommands.ts
+@@ -27,6 +27,7 @@ import { placementCoordinateInfo } from '@/lib/section/placement-coordinate-info
+ import { sectionRenderBounds as sectionBoundsWith } from './sectionRange.js';
+ import { noteIssue, track } from './command-gate.js';
+ import { waitCameraSettled } from './cameraSettle.js';
++import { useAimUnderlays3d } from './aimUnderlays3d.js';
+ 
+ type FocusSummary = () => { count: number; guids: string[] };
+ /** Zvýraznenie z FOCUS (#94) - poskytne ho AimBridge po lenivom načítaní príkazov viditeľnosti. */
+@@ -106,7 +107,7 @@ export async function appliedViewState(): Promise<Record<string, unknown>> {
+     // Limit vypršal počas pohybu (používateľ otáča kamerou): póza nie je cieľ, nech to host vie.
+     ...(settled ? {} : { camera_moving: true }),
+     selection_count: s.selection.count, hidden_count: s.hidden_count, isolated_count: s.isolated_count, focus: s.focus,
+-    panels: s.panels, tabs: s.tabs, ...(s.property_focus ? { property_focus: s.property_focus } : {}), ...(s.document ? { document: s.document } : {}),
++    panels: s.panels, underlays_3d: s.underlays_3d, tabs: s.tabs, ...(s.property_focus ? { property_focus: s.property_focus } : {}), ...(s.document ? { document: s.document } : {}),
+   };
+ }
+ 
+@@ -204,6 +205,10 @@ export function useAimViewCommands(bim: BimContext) {
+         track(loadPanels().then((m) => m.applyPanels(msg.panels, noteIssue)));
+         return;
+       }
++      case 'SET_UNDERLAYS_3D': {
++        useAimUnderlays3d.getState().setShown(msg.show);
++        return;
++      }
+       case 'SCROLL_PANEL': {
+         track(loadPanelScroll().then((m) => m.scrollPanel(msg.direction, noteIssue)));
+         return;
+diff --git a/apps/viewer/src/aim/view-protocol.ts b/apps/viewer/src/aim/view-protocol.ts
+index 8aa8ce9d..1bf93118 100644
+--- a/apps/viewer/src/aim/view-protocol.ts
++++ b/apps/viewer/src/aim/view-protocol.ts
+@@ -109,6 +109,8 @@ export type ViewInboundMessage =
+   | { source: typeof SOURCE; type: 'QUERY'; id: string; query: ViewQuery; guids?: string[] }
+   /** Panely z chatu (AIM D-127): otvoriť, zavrieť, prepnúť; `all` len zavrieť. */
+   | { source: typeof SOURCE; type: 'SET_PANELS'; panels: PanelsRequest }
++  /** PDF podklady v 3D zapnúť / vypnúť (AIM D-133 doplnok, #170); stav viewera, nič sa neukladá. */
++  | { source: typeof SOURCE; type: 'SET_UNDERLAYS_3D'; show: boolean }
+   /** Posun panela vlastností (AIM #183): o stranu hore / dole, na začiatok, na koniec. */
+   | { source: typeof SOURCE; type: 'SCROLL_PANEL'; direction: PanelScroll }
+   /** Kóty v IFC svete (Z hore, m) do nástroja Measure (AIM D-124); `keep` = pridať k predošlým od hosta. */
+@@ -213,6 +215,8 @@ export function isViewMessage(data: unknown): data is ViewInboundMessage {
+       return isPanelsRequest(m.panels);
+     case 'SCROLL_PANEL':
+       return isPanelScroll(m.direction);
++    case 'SET_UNDERLAYS_3D':
++      return typeof m.show === 'boolean';
+     case 'QUERY':
+       return isId(m.id)
+         && (VIEW_QUERIES as readonly unknown[]).includes(m.query)
+diff --git a/apps/viewer/src/aim/viewQueries.ts b/apps/viewer/src/aim/viewQueries.ts
+index 18c777b7..80695a4f 100644
+--- a/apps/viewer/src/aim/viewQueries.ts
++++ b/apps/viewer/src/aim/viewQueries.ts
+@@ -26,6 +26,7 @@ import { summarizeSelection, visibilityGuids, type SelectedEntityInfo } from './
+ import { describePanels } from './aimPanelsPlan.js';
+ import { useAimInspectorStore } from './aimInspectorStore.js';
+ import { useAimDocRegionStore } from './docRegion.js';
++import { useAimUnderlays3d } from './aimUnderlays3d.js';
+ import { useAimViewTabs } from './viewTabsStore.js';
+ import { describeTabs } from './viewTabsPlan.js';
+ import { orderedBox, toSectionBox, type SectionBoxMessage } from './sectionBox.js';
+@@ -218,6 +219,8 @@ export function queryViewState(state: State, g: GuidHelpers) {
+     ...(g.changes ? { changed_since_last_command: g.changes() } : {}),
+     // AIM D-127: panely (#179), zvýraznená vlastnosť v paneli (#168) a viditeľný výrez karty dokumentu (#166).
+     panels: describePanels(state),
++    // AIM D-133 doplnok (#170): podklady PDF v 3D zobrazené (true) alebo skryté (false); stav viewera.
++    underlays_3d: !useAimUnderlays3d.getState().hidden,
+     property_focus: useAimInspectorStore.getState().propertyFocus,
+     document: useAimDocRegionStore.getState().visible,
+     // AIM D-132: záložky (aktívna a tá vedľa).
+diff --git a/apps/viewer/src/hooks/useDrawingUnderlay.ts b/apps/viewer/src/hooks/useDrawingUnderlay.ts
+index 9e464504..d58973cb 100644
+--- a/apps/viewer/src/hooks/useDrawingUnderlay.ts
++++ b/apps/viewer/src/hooks/useDrawingUnderlay.ts
+@@ -32,6 +32,9 @@ import {
+ import { useViewerStore } from '@/store';
+ import { totalYupOffset } from '@/lib/geo/coordinate-frame';
+ import { openPdfDocument, rasterizePdfPage } from '@/lib/pdf/rasterize';
++// >>> AIM-FORK: PDF underlays on/off in 3D from the AIM host and the panel switch (D-133 addendum)
++import { useAimUnderlays3d, underlaysHiddenIn3d, withUnderlay3dVisibility } from '@/aim/aimUnderlays3d';
++// <<< AIM-FORK
+ 
+ export const UNDERLAY_OVERLAY_ID = 'drawing-underlay';
+ 
+@@ -72,6 +75,11 @@ export function useDrawingUnderlay({ rendererRef, isInitialized }: UseDrawingUnd
+   const models = useViewerStore((s) => s.models);
+   const calibration = useViewerStore((s) => s.underlayCalibration);
+   const underlayCut = useViewerStore((s) => s.underlayCut);
++  // >>> AIM-FORK: hide saved underlays in the 3D canvas only (viewer state, not `_georef.visible`)
++  const aimHidden = useAimUnderlays3d((s) => s.hidden);
++  const aimViewLocked = useViewerStore((s) => s.underlayViewLocked);
++  const aimHide3d = underlaysHiddenIn3d({ hidden: aimHidden, viewLocked: aimViewLocked });
++  // <<< AIM-FORK
+ 
+   const pipelineRef = useRef<PdfPlanePipeline | null>(null);
+   /** drawingId → texture signature of the raster currently on the GPU. */
+@@ -90,7 +98,9 @@ export function useDrawingUnderlay({ rendererRef, isInitialized }: UseDrawingUnd
+ 
+     const entries: RenderEntry[] = [...drawings.values()]
+       .filter((d) => d.placement !== null)
+-      .map((d) => ({ id: d.id, pdfUrl: d.pdfUrl, name: d.name, placement: d.placement! }));
++      // >>> AIM-FORK: placement copy with `visible: false` while the underlays are off in 3D
++      .map((d) => ({ id: d.id, pdfUrl: d.pdfUrl, name: d.name, placement: withUnderlay3dVisibility(d.placement!, aimHide3d) }));
++      // <<< AIM-FORK
+ 
+     // Live ghost preview (Dalux-style "combined view"): once the mode's
+     // point pairs are picked, the drawing shows up immediately as a
+@@ -233,7 +243,9 @@ export function useDrawingUnderlay({ rendererRef, isInitialized }: UseDrawingUnd
+         }
+       })();
+     }
+-  }, [drawings, models, calibration, isInitialized, rendererRef]);
++  // >>> AIM-FORK: re-sync when the 3D switch changes
++  }, [drawings, models, calibration, isInitialized, rendererRef, aimHide3d]);
++  // <<< AIM-FORK
+ 
+   // Depth-always (no z-fight) while a storey cut is active — a top-down floor
+   // plan has nothing above the cut to occlude it; depth-tested + bigger lift
+diff --git a/apps/viewer/src/i18n/catalogues/aim-fork.en.ts b/apps/viewer/src/i18n/catalogues/aim-fork.en.ts
+index 935180b4..7d7b811a 100644
+--- a/apps/viewer/src/i18n/catalogues/aim-fork.en.ts
++++ b/apps/viewer/src/i18n/catalogues/aim-fork.en.ts
+@@ -23,6 +23,9 @@ export const aimForkEn = {
+   /** Empty first option of the 2D storey picker (it has no visible text). */
+   'aimFork.viewMode.noStorey': 'No storey selected',
+   /** Offer after an orbit attempt in the locked plan tab (AIM #188, D-132)). */
++  /** Underlays panel switch (AIM D-133 addendum, #170): hides the PDF underlays in the 3D view only. */
++  'aimFork.underlays3d.label': 'Show in 3D',
++  'aimFork.underlays3d.hint': 'Hides the PDF drawings in the 3D view only. Calibration stays saved; the 2D plan is unchanged.',
+   'aimFork.planOrbit.message': 'The plan is a locked top view. Switch to 3D? (Enter)',
+   'aimFork.planOrbit.action': 'Switch to 3D',
+   /** Fork-only ribbon tab (D-072 / D-075, labelled AIM since D-089); keyed like upstream's `ribbon.tab.*` because the band reads `t(`ribbon.tab.${tab}`)`. */
+diff --git a/apps/viewer/src/lib/panels/renderPanelBody.tsx b/apps/viewer/src/lib/panels/renderPanelBody.tsx
+index 51b7b385..3f320fc2 100644
+--- a/apps/viewer/src/lib/panels/renderPanelBody.tsx
++++ b/apps/viewer/src/lib/panels/renderPanelBody.tsx
+@@ -44,6 +44,9 @@ import { useViewerStore } from '@/store';
+ // An earlier bundler build broke react-dom's CJS interop on a lazy chunk here;
+ // the e2e boot smoke covers that the current one does not.
+ const DrawingUnderlayPanel = lazy(() => import('@/components/viewer/DrawingUnderlayPanel').then((m) => ({ default: m.DrawingUnderlayPanel })));
++// >>> AIM-FORK: "Show in 3D" switch under the Underlays panel (D-133 addendum)
++const AimUnderlays3dToggle = lazy(() => import('@/aim/AimUnderlays3dToggle').then((m) => ({ default: m.AimUnderlays3dToggle })));
++// <<< AIM-FORK
+ const DocumentsPanel = lazy(() => import('@/components/documents/DocumentsPanel').then((m) => ({ default: m.DocumentsPanel })));
+ const AimLayersPanel = lazy(() => import('@/aim/AimLayersPanel').then((m) => ({ default: m.AimLayersPanel })));
+ // <<< AIM-FORK
+@@ -218,7 +221,9 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
+     case 'idsStudio': return <IdsStudioPanelBody />;
+     case 'changeSets': return <ChangeSetPanel onClose={onClose} />;
+     // >>> AIM-FORK: fork-only panels
+-    case 'drawing-underlay': return <ChunkErrorBoundary label="Drawing underlays panel"><Suspense fallback={null}><DrawingUnderlayPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
++    // >>> AIM-FORK: Underlays panel with the "Show in 3D" switch as a footer (D-133 addendum)
++    case 'drawing-underlay': return <ChunkErrorBoundary label="Drawing underlays panel"><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><Suspense fallback={null}><DrawingUnderlayPanel onClose={onClose} /></Suspense></div><Suspense fallback={null}><AimUnderlays3dToggle /></Suspense></div></ChunkErrorBoundary>;
++    // <<< AIM-FORK
+     case 'documents': return <ChunkErrorBoundary label="Documents panel"><Suspense fallback={null}><DocumentsPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
+     case 'aim-layers': return <ChunkErrorBoundary label="AIM layers panel"><Suspense fallback={null}><AimLayersPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
+     // <<< AIM-FORK
+-- 
+2.43.0
+
