@@ -6828,3 +6828,21 @@ nepobežali (bez Supabase kľúčov); otázka `panel-scroll-down` je v `eval/que
 - *Viac toolov s `alwaysLoad`:* odporúčanie Anthropicu je 3-5 vždy načítaných; väčšie tooly (`style_in_3d`) by zaťažili každý rozhovor.
 
 **Overenie:** `lib/mcp/tool-loading.test.ts` (blok, orez 4096, opisy pod 4096, `_meta` v `tools/list`). Evaly (D-057) sa na to nehodia, hlasovú session nejde otestovať automaticky. Ručne (Samuel): Tool access *Always available*, hlasová session s viacerými krokmi a sledovať, či treba znova `tool_search`.
+
+### D-155 - `ifc_measure`: jedna os, kresba svetlého otvoru a vzdialenosť dvoch plôch
+
+**Dátum:** 2026-10-22 · **Issue:** #236 · **Nadväzuje na:** D-084, D-112, D-114, D-118, D-124
+
+**Kontext:** používateľ chcel zmerať len šírku dverí medzi lícami zárubne a vidieť jednu kótu. `ifc_measure` s `a` a `show=true` kreslí tri hrany obálky (X, Y, Z), `clear_opening` vráti šírku a výšku, ale nič nenakreslí, a `a + b` meria najbližšie body celých prvkov, nie zvolené plochy.
+
+**Zistenie:** `ifc_measure` počíta celé na hoste (headless tesselácia `@ifc-lite/geometry` z IFC bajtov, `lib/engine/measure.ts`), viewer len kreslí úseky cez wire `measure:` -> `MEASURE_SHOW` (D-124). Všetko ide bez forku (D-087 sa neuplatní, fork sa nemení).
+
+**Rozhodnutie (D-114: parametre existujúceho toolu, nie nový tool):**
+1. **`axis`** = `x|y|z` (hrana obálky v osiach IFC sveta) alebo `width|depth|height` (osi prvku): len pri samotnom `a`, `show=true` nakreslí jednu kótu, výsledok `axis.length_m`.
+2. **`clear_opening` + `show=true`** nakreslí šírku (vzorka najbližšie k mediánu výšok, na najužšej hĺbke) a výšku (stredný stĺpec) každých dverí, najviac 12 kót = 6 dverí (limit mosta); nad limit to výsledok povie (`view_note`).
+3. **`face_a` + `face_b`** = `+x|-x|+y|-y|+z|-z`: kolmá vzdialenosť dvoch rovnobežných plôch na prvku `a` (bez `b`) alebo `a` a `b`, v osiach prvku `a`. Plocha = trojuholníky s normálou do 2° od osi, zlúčené do rovín (1 mm). Plochy oproti sebe (normála a mieri k b a naopak) = najbližšia dvojica s prekrytím v priemete a medzerou aspoň 5 mm (svetlá medzera, líca zárubne, prah k nadpražiu); odvrátené alebo rovnakým smerom = najväčšie plochy (hrúbka steny). Pri `IfcDoor` sa výplň otvoru (krídlo, sklo, kovanie) vynechá pravidlami svetlého otvoru (`doorLayout`), inak by hrana krídla bola falošná plocha. Kóta v strede prekrytia plôch. Nerovnobežné alebo chýbajúce plochy = chyba s návodom, nie odhad.
+4. **Osi prvku** = obdĺžnik s najmenšou plochou v pôdoryse (ako D-118): x = dlhšia strana (width) otočená k +X sveta (pri zvislej k +Y), y = x otočené o 90° doľava, z = hore. Pri `b` platia osi `a`, aby "+x" znamenalo pre oba prvky to isté.
+
+**Zavrhnuté:** nový tool (D-114, rozšírenie stačí); výber plochy klikom vo vieweri teraz (potreboval by fork a nový most, D-087; neskôr); osi z `IfcObjectPlacement` teraz (presnejšie pri šikmých a okrúhlych prvkoch, ale pôdorysný obdĺžnik pokrýva steny, dvere, stĺpy a nosníky; neskôr).
+
+**Overenie:** `lib/engine/measure-faces.test.ts` (osi otočenej steny, jedna os, hrúbka steny, líca zárubne v oboch poradiach bez krídla a kľučky, svetlá výška s prahom, dva prvky, chyby vstupu, kóty svetlého otvoru, motor na mini modeli s `show`). Evaly (D-057) v cloud session bez Supabase kľúčov nepobežali; otázka `measure-door-lining-faces` v `eval/questions.json`.
