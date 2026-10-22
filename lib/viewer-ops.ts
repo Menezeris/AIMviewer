@@ -21,13 +21,15 @@
  * (IFC svet, m; `o` = polovica výšky ortografického pohľadu).
  * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
  * Panely (D-127): `panels:~<panel>=<open|close|toggle>~...:` (`all` len `close`).
+ * Čiara trasy (D-137): `route:<hex>:<x,y,z|...>` (prázdne body = zmazať), formát v `lib/viewer-route.ts`.
  */
 
 import { LENS_MODES, decodeLensWire, lensBridgeMessage, type LensMode, type LensWire } from "./viewer-lens";
 import { parseSectionCapArg, sectionCapBridgeMessage, type SectionCapOp } from "./viewer-section-cap";
 import { decodeListWire, listBridgeMessage, type ListWire } from "./viewer-list";
 import { cameraMoveArgs, marginToPadding, parseCameraMove, type BridgeViewpoint, type CameraMove } from "./viewer-camera";
-import { decodeMeasureWire, type MeasureSegment } from "./viewer-measure";
+import { decodeMeasureWire, type MeasurePoint, type MeasureSegment } from "./viewer-measure";
+import { parseRouteOp } from "./viewer-route";
 import { parseTabsOp, tabsBridgeMessage, type TabsOp } from "./viewer-tabs";
 
 export interface OpsSelector {
@@ -127,6 +129,8 @@ export type ViewerOp =
   | { op: "list"; wire: ListWire }
   /** Kóty v IFC svete do nástroja Measure forku (D-124), formát v `lib/viewer-measure.ts`. */
   | { op: "measure"; segments: MeasureSegment[]; keep?: boolean }
+  /** Čiara trasy v IFC svete (D-137), formát v `lib/viewer-route.ts`; prázdne body = zmazať. */
+  | { op: "route"; color: string; points: MeasurePoint[] }
   /** Otvorenie / zatvorenie panelov (D-127). */
   | { op: "panels"; panels: PanelsRequest };
 
@@ -413,6 +417,9 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "measure") {
       const segments = decodeMeasureWire(joined);
       if (segments) out.push({ op, segments, ...(arg === "keep" ? { keep: true } : {}) });
+    } else if (op === "route") {
+      const line = parseRouteOp(arg, joined);
+      if (line) out.push({ op, ...line });
     } else if (op === "tab" || op === "section_box") {
       const t = parseTabsOp(op, arg, joined);
       if (t) out.push(t);
@@ -518,6 +525,8 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
       return listBridgeMessage(o.wire, new Map());
     case "measure":
       return { type: "MEASURE_SHOW", segments: o.segments, ...(o.keep ? { keep: true } : {}) };
+    case "route":
+      return { type: "ROUTE_SHOW", points: o.points, color: o.color };
     case "panels":
       return { type: "SET_PANELS", panels: o.panels };
   }

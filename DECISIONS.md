@@ -6496,3 +6496,55 @@ prompt v rozhovore"): predčítanie motora len v rozhovore, ktorý motor použí
   DB tools s motorom ako záložnou cestou (`get_object` kód len v IFC, `set_section relative_to=ceiling`,
   mená v tooloch viewera) načítajú motor až pri potrebe a nie sú v signáli.
 - *Evaly D-057 nepobežali* (cloud session nemá Supabase kľúče; LLM vrstva, tooly ani prompt sa nemenia).
+
+---
+
+### D-137 - Čiara trasy vo vieweri: `ifc_measure route` + `show` kreslí únikovú cestu 1,6 m nad podlahou
+**Status:** rozhodnuté (2026-10-22, issue #223 zo Samuelovho rozhovoru cez konektor), číslo pridelené orchestrátorom
+v registri #60. Nadväzuje na D-121 (trasa z grafu zo súboru), D-124 (kóta cez most forku), D-087/D-091/D-098
+(fork len tenko kreslí, výpočet robí host) a D-114 (najprv napasuj).
+
+**Kontext:** `ifc_measure route=escape` vracia kroky a dĺžku, `show=true` pri trase nekreslil nič a `show_in_3d`
+len izoluje prvky; ofarbené miestnosti zakryjú vnútro (#222). Samuel chce trasu vidieť ako **červenú plnú čiaru
+vo výške 1,6 m nad pochôdznou plochou** (nad podlahovou krytinou a nad každým stupňom schodiska), **stredom
+každých dverí**. D-121 to nechal otvorené ("čiara trasy potrebuje správu mosta vo forku").
+
+**Najbližšie tooly (D-114):** `ifc_measure show` (kóty cez upstream Measure, úsečky po 12, prerušovaná čiara
+v ink farbe s popisom vzdialenosti), `ifc_measure route` (body trasy nevracia), `show_in_3d` (prvky, nie čiara).
+Riešenie = `show=true` aj pri `route`, nie nový tool.
+
+**Rozhodnutie:**
+1. **Host počíta body (`lib/engine/route-line.ts`).** Z krokov trasy D-121: štart (stred miestnosti alebo prvku),
+   stred každých dverí, os každého ramena schodiska, cieľ. Výška = pochôdzna plocha + 1,6 m. Plocha v miestnosti
+   a pri dverách = najvyšší povrch IfcSlab / IfcCovering / IfcRamp(Flight) pod bodom (zvislý lúč v okne -0,6 až
+   +0,4 m okolo spodku IfcSpace, pri dverách okolo spodku dverí), bez zásahu spodok IfcSpace. Stropná krytina je
+   pod doskou podlažia a nevyhrá. Priamka v miestnosti má vzorky každých 0,5 m (zmena úrovne podlahy, krytina).
+2. **Schodisko schodovito:** po každom ramene (IfcStairFlight; bez ramien časti schodiska) po osi v smere stúpania
+   (os, po ktorej sa výška mení viac), vzorky každých 5 cm na vrch stupňa, pri podstupnici zvislý skok; ramená
+   podľa výšky, podesta medzi nimi rovno; pri zostupe obrátene. Schodisko sa v úseku miestnosti neráta (priamka
+   od dverí k ramenu ide v pôdoryse aj nad otvorom schodiska a nesmie klesnúť na stupne).
+3. **Zjednodušenie a limit:** Douglas-Peucker 2 cm, najviac 400 bodov (tolerancia sa zdvojnásobí, kým sa
+   nevojdú); drôt na cm, aby URL ostala krátka. Posun rámca do IFC sveta ako pri kótach (`worldOffset`, D-124).
+4. **Most:** op `route:<hex>:<x,y,z|...>` (`lib/viewer-route.ts`) -> správa `ROUTE_SHOW { points, color }`,
+   prázdne body = zmazať. Nová čiara nahradí predošlú; `reset_colors` (reset farieb) ju zmaže. Výsledok toolu
+   má `line` (počet bodov, výška, farba).
+5. **Fork (`apps/viewer/src/aim/`):** `AimRouteLayer` kreslí SVG lomenú čiaru (`#dc2626`, plná, 3 px) cez
+   `projectToScreen` ako `AimRoomFillLayer` (D-119), pripojená v `CapturePinLayer`; body prevedie do render rámca
+   `ifcPointToRender` + `bcfWorldOffset` ako kóty. Čiara je vrstva nad scénou (bez hĺbky), takže je vidieť aj
+   cez steny a dosky; to je pri trase cez viac podlaží žiadané.
+
+**Zavrhnuté rozšírenie: nový tool `show_route` - prečo nie:** body vznikajú z tej istej trasy a tesselácie ako
+`ifc_measure route`; rozlišovací parameter `show` už existuje (D-124, D-114).
+
+**Zavrhnuté:**
+- *Upstream polyline meranie forku (`polylineMeasurements`):* nemá farbu ani plnú čiaru a pridá popis dĺžky
+  meranej po lomenej čiare (pri schodoch iná ako dĺžka D-121); upravovať upstream komponent = plné CI.
+- *Kóty `MEASURE_SHOW` po úsekoch:* limit 12 úsekov, prerušované s popisom pri každom úseku.
+- *3D čiara v rendereri (hĺbkový test):* zmena `packages/renderer` (plné CI, odchýlka od upstreamu) bez
+  potreby; trasa má byť vidieť aj cez dosky.
+- *Šikmá čiara nad nábehovými hranami:* zadanie hovorí "nad každým stupňom"; otázka je v #223, zmena by bola
+  len v `stairLine`.
+
+**Hranice:** dĺžka a poradie ostávajú dolným odhadom D-121 (priamky v pôdoryse), čiara len kreslí tú istú trasu
+cez skutočné výšky; priamka v miestnosti tvaru L môže ísť cez stenu; točité stupne a rampy bez ramien idú po osi
+obálky.
