@@ -1,0 +1,434 @@
+From 93ad989589af55eeb3a80344322b05ee5d2f172b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 04:00:14 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?feat(aim):=20autoload=20rozbal=C3=AD=20gzip?=
+ =?UTF-8?q?=20arch=C3=ADv=20rev=C3=ADzie=20a=20zachov=C3=A1=20meno=20model?=
+ =?UTF-8?q?u=20(AIM=20D-135)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Host (AIM #207) posiela viewerovi nemenný archív revízie
+ifc/archive/<MODEL>/vNNN.ifc.gz (gzip, Cache-Control rok, immutable)
+namiesto ifc/<MODEL>.ifc s max-age=60. Autoload ho rozbalí cez
+DecompressionStream a model pomenuje <MODEL>.ifc, lebo most, revízie
+a filtre párujú model podľa mena. aim-feature: živé overenie nikdy na
+produkčných modeloch.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_014FhVBxbEwKUi8TVr4MqZpm
+---
+ .claude/skills/aim-feature/SKILL.md          |  6 ++-
+ apps/viewer/src/aim/modelFile.test.ts        | 52 ++++++++++++++++++++
+ apps/viewer/src/aim/modelFile.ts             | 43 ++++++++++++++++
+ apps/viewer/src/hooks/useModelUrlAutoload.ts |  8 +--
+ docs/FORK_MAINTENANCE.md                     |  2 +-
+ 5 files changed, 106 insertions(+), 5 deletions(-)
+ create mode 100644 apps/viewer/src/aim/modelFile.test.ts
+ create mode 100644 apps/viewer/src/aim/modelFile.ts
+
+diff --git a/.claude/skills/aim-feature/SKILL.md b/.claude/skills/aim-feature/SKILL.md
+index dd85c1c3..9ef90c8e 100644
+--- a/.claude/skills/aim-feature/SKILL.md
++++ b/.claude/skills/aim-feature/SKILL.md
+@@ -107,7 +107,11 @@ The AIM bridge is active only inside an iframe. Serve a host page that embeds
+ models from another origin. Drive it with Playwright
+ (`executablePath: '/opt/pw-browsers/chromium'`, `--enable-unsafe-webgpu
+ --use-angle=swiftshader`). Test model with stairs and storeys:
+-`tests/models/ara3d/AC20-FZK-Haus.ifc`. A message sent with the deep link arrives with
++`tests/models/ara3d/AC20-FZK-Haus.ifc`. Never load the production AIM models (the
++`.../storage/v1/object/public/ifc/...` bucket, also its `archive/`) in a live check: the
++bucket has a small free egress quota (AIM D-135); headers only via `curl -I`. To try the
++archive path, gzip the test model locally as `archive/Test/v001.ifc.gz` next to it. A
++message sent with the deep link arrives with
+ `MODELS_LOADED`, before geometry has streamed: anything that needs element bounds must
+ wait or retry.
+ 
+diff --git a/apps/viewer/src/aim/modelFile.test.ts b/apps/viewer/src/aim/modelFile.test.ts
+new file mode 100644
+index 00000000..22a42445
+--- /dev/null
++++ b/apps/viewer/src/aim/modelFile.test.ts
+@@ -0,0 +1,52 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert/strict';
++import { gzipSync } from 'node:zlib';
++import { aimModelFile, aimModelFileName, isGzip } from './modelFile.js';
++
++const BASE = 'https://x.supabase.co/storage/v1/object/public/ifc';
++const IFC = 'ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n';
++
++describe('aimModelFileName', () => {
++  it('revision archive keeps the plain model name', () => {
++    assert.equal(aimModelFileName(new URL(`${BASE}/archive/ASR/v078.ifc.gz`)), 'ASR.ifc');
++    assert.equal(aimModelFileName(new URL(`${BASE}/archive/VZT/v1234.ifc.gz?x=1`)), 'VZT.ifc');
++  });
++
++  it('other URLs: last segment as upstream, trailing .gz dropped', () => {
++    assert.equal(aimModelFileName(new URL(`${BASE}/ASR.ifc?rev=78`)), 'ASR.ifc');
++    assert.equal(aimModelFileName(new URL('https://example.com/m/house.ifc.gz')), 'house.ifc');
++    assert.equal(aimModelFileName(new URL('https://example.com/m/house.ifczip')), 'house.ifczip');
++    assert.equal(aimModelFileName(new URL('https://example.com/')), 'model.ifc');
++  });
++});
++
++describe('isGzip', () => {
++  it('reads the gzip magic number only', () => {
++    assert.equal(isGzip(new Uint8Array([0x1f, 0x8b, 8])), true);
++    assert.equal(isGzip(new Uint8Array([0x1f])), false);
++    assert.equal(isGzip(new TextEncoder().encode('ISO-10303-21;')), false);
++    assert.equal(isGzip(new Uint8Array([0x50, 0x4b, 3, 4])), false);
++  });
++});
++
++describe('aimModelFile', () => {
++  it('unpacks a gzip archive into an IFC file with the model name', async () => {
++    const gz = new Blob([gzipSync(Buffer.from(IFC))], { type: 'application/gzip' });
++    const file = await aimModelFile(new URL(`${BASE}/archive/ASR/v078.ifc.gz`), gz);
++    assert.equal(file.name, 'ASR.ifc');
++    assert.equal(file.type, 'application/x-step');
++    assert.equal(await file.text(), IFC);
++  });
++
++  it('passes a plain IFC through unchanged', async () => {
++    const blob = new Blob([IFC], { type: 'application/octet-stream' });
++    const file = await aimModelFile(new URL(`${BASE}/VZT.ifc?rev=4`), blob);
++    assert.equal(file.name, 'VZT.ifc');
++    assert.equal(file.type, 'application/octet-stream');
++    assert.equal(await file.text(), IFC);
++  });
++});
+diff --git a/apps/viewer/src/aim/modelFile.ts b/apps/viewer/src/aim/modelFile.ts
+new file mode 100644
+index 00000000..b5465955
+--- /dev/null
++++ b/apps/viewer/src/aim/modelFile.ts
+@@ -0,0 +1,43 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * AIM D-135: the host federates each model from its immutable revision archive
++ * (`.../ifc/archive/<MODEL>/vNNN.ifc.gz`, gzip, cached for a year) instead of the
++ * mutable `.../ifc/<MODEL>.ifc`, so the browser downloads a model once per
++ * revision and about five times fewer bytes. The archive carries no
++ * `Content-Encoding`, so the autoload gets gzip bytes and unpacks them here.
++ *
++ * The model keeps its plain name (`ASR.ifc`, not `v078.ifc`): the bridge, the
++ * revision pairing (`derivations.ts` `modelKey`) and model filters
++ * (`"VZT" ~ "VZT.ifc"`) all match a model by its file name.
++ */
++
++const ARCHIVE_RE = /\/archive\/([^/]+)\/v\d+\.ifc\.gz$/i;
++
++/** True when the bytes start with the gzip magic number `1f 8b`. */
++export function isGzip(head: Uint8Array): boolean {
++  return head.length >= 2 && head[0] === 0x1f && head[1] === 0x8b;
++}
++
++/**
++ * File name of an autoloaded model: `<MODEL>.ifc` for a revision archive,
++ * otherwise the last path segment (as upstream) without a trailing `.gz`.
++ */
++export function aimModelFileName(url: URL): string {
++  const archive = ARCHIVE_RE.exec(url.pathname);
++  if (archive) return `${decodeURIComponent(archive[1])}.ifc`;
++  const last = url.pathname.split('/').pop() || 'model.ifc';
++  return last.replace(/\.gz$/i, '') || 'model.ifc';
++}
++
++/** The fetched model as a `File` for `addModel`: gzip unpacked, plain name kept. */
++export async function aimModelFile(url: URL, blob: Blob): Promise<File> {
++  const name = aimModelFileName(url);
++  if (!isGzip(new Uint8Array(await blob.slice(0, 2).arrayBuffer()))) {
++    return new File([blob], name, { type: blob.type || 'application/x-step' });
++  }
++  const unpacked = await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).blob();
++  return new File([unpacked], name, { type: 'application/x-step' });
++}
+diff --git a/apps/viewer/src/hooks/useModelUrlAutoload.ts b/apps/viewer/src/hooks/useModelUrlAutoload.ts
+index fccce214..5ebbb4e4 100644
+--- a/apps/viewer/src/hooks/useModelUrlAutoload.ts
++++ b/apps/viewer/src/hooks/useModelUrlAutoload.ts
+@@ -90,9 +90,11 @@ export function useModelUrlAutoload(): void {
+         const url = new URL(modelUrl);
+         const res = await fetch(url.href);
+         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+-        const blob = await res.blob();
+-        const filename = url.pathname.split('/').pop() || 'model.ifc';
+-        const file = new File([blob], filename, { type: blob.type || 'application/x-step' });
++        // AIM D-135: the host sends immutable revision archives (gzip); unpack
++        // them and keep the plain model name (`ASR.ifc`) the bridge matches on.
++        // Lazy: nothing of it is needed at boot (entry chunk stays as it was).
++        const { aimModelFile } = await import('@/aim/modelFile');
++        const file = await aimModelFile(url, await res.blob());
+         await addModel(file);
+       } catch (err) {
+         const reason = err instanceof Error ? err.message : String(err);
+diff --git a/docs/FORK_MAINTENANCE.md b/docs/FORK_MAINTENANCE.md
+index 16a93fba..cf255723 100644
+--- a/docs/FORK_MAINTENANCE.md
++++ b/docs/FORK_MAINTENANCE.md
+@@ -49,7 +49,7 @@ git grep -n ">>> AIM-FORK" -- apps/ packages/
+ | `apps/viewer/index.html` | 4 | branded title, assetin favicons, Inter font, brand colours (D-070) |
+ | `apps/viewer/src/bootstrap.tsx` | 1 | assetin design-kit import order — tokens first, after `index.css` (D-070; upstream moved the entry imports here from `main.tsx`) |
+ | `apps/viewer/src/App.tsx` | 2 | `import { AimBridge }` + `<AimBridge />` mount inside `SourceHostProvider` |
+-| `apps/viewer/src/hooks/useModelUrlAutoload.ts` | 3 | `?models=` federated autoload + origin allowlist (`lib/autoload.ts`), `AUTOLOAD_COMPLETE_EVENT` for AimBridge |
++| `apps/viewer/src/hooks/useModelUrlAutoload.ts` | 3 | `?models=` federated autoload + origin allowlist (`lib/autoload.ts`), `AUTOLOAD_COMPLETE_EVENT` for AimBridge, gzip revision archives with the plain model name (`aim/modelFile.ts`, AIM D-135) |
+ | `apps/viewer/src/components/viewer/ViewerLayout.tsx` | 6 | D-072 2D plan pane + D-075 document pane in the center split (around upstream's `ModelWorkspaceSplit`) and the AIM D-132 view tab bar above it; the pane logic lives in `aim/useAimCenterPanes.ts` |
+ | `apps/viewer/src/components/viewer/MobileBottomSheet.tsx` | 1 | `z-50` so sheets sit above the full-screen plan/document overlays |
+ | `apps/viewer/src/components/viewer/MobileToolbar.tsx` | 2 | `<ViewModeSwitcher />` (D-075) |
+-- 
+2.43.0
+
+
+From bb448ae052efd2739b031974c9d7e5b625dc4c38 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 04:00:14 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?test(aim):=20muta=C4=8Dn=C3=A9=20d=C3=B4kaz?=
+ =?UTF-8?q?y=20pre=20autoload=20arch=C3=ADvu=20(AIM=20D-135)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_014FhVBxbEwKUi8TVr4MqZpm
+---
+ .../mutations/README.md                       | 34 +++++++++
+ .../mutations/archive-name-dropped.patch      | 13 ++++
+ .../mutations/archive-not-unpacked.patch      | 13 ++++
+ .../mutations/gz-suffix-kept.patch            | 13 ++++
+ .../mutations/gzip-magic-loose.patch          | 13 ++++
+ .../mutations/plain-type-overridden.patch     | 13 ++++
+ .../mutations/summary.json                    | 72 +++++++++++++++++++
+ 7 files changed, 171 insertions(+)
+ create mode 100644 docs/architecture/evidence/aim-d135-archive-autoload/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-d135-archive-autoload/mutations/archive-name-dropped.patch
+ create mode 100644 docs/architecture/evidence/aim-d135-archive-autoload/mutations/archive-not-unpacked.patch
+ create mode 100644 docs/architecture/evidence/aim-d135-archive-autoload/mutations/gz-suffix-kept.patch
+ create mode 100644 docs/architecture/evidence/aim-d135-archive-autoload/mutations/gzip-magic-loose.patch
+ create mode 100644 docs/architecture/evidence/aim-d135-archive-autoload/mutations/plain-type-overridden.patch
+ create mode 100644 docs/architecture/evidence/aim-d135-archive-autoload/mutations/summary.json
+
+diff --git a/docs/architecture/evidence/aim-d135-archive-autoload/mutations/README.md b/docs/architecture/evidence/aim-d135-archive-autoload/mutations/README.md
+new file mode 100644
+index 00000000..16bd5931
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d135-archive-autoload/mutations/README.md
+@@ -0,0 +1,34 @@
++<!-- This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this
++     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
++
++# AIM D-135 archive autoload: surgical mutation evidence
++
++The AIM host now federates each model from its immutable revision archive
++(`.../ifc/archive/<MODEL>/vNNN.ifc.gz`, gzip, `Cache-Control: max-age=31536000, immutable`)
++to cut Supabase egress. The autoload (`hooks/useModelUrlAutoload.ts`, inside its existing
++`AIM-FORK` block) passes the fetched bytes through the new `aim/modelFile.ts`, which unpacks
++gzip and keeps the plain model name (`ASR.ifc`). The test (`aim/modelFile.test.ts`) imports
++the new module, so reverting it to the base makes the test fail to load and the CI revert
++oracle reports INCONCLUSIVE. Each decision of the module was instead checked with a surgical
++mutation.
++
++Each patch is written mutant->fixed; the oracle reverse-applies it. Every run ended `OBSERVED`
++(exit 0) with restoration verified, against base `origin/main`. Records: `summary.json`.
++
++| Patch | Mutation | Test that went red |
++|---|---|---|
++| `archive-name-dropped.patch` | an archive keeps its file name (`v078.ifc`), so bridge and revisions lose the model | `modelFile.test.ts` |
++| `gz-suffix-kept.patch` | a non-archive `.ifc.gz` keeps the `.gz` suffix | `modelFile.test.ts` |
++| `gzip-magic-loose.patch` | gzip detection checks one byte only | `modelFile.test.ts` |
++| `archive-not-unpacked.patch` | gzip bytes reach the parser packed | `modelFile.test.ts` |
++| `plain-type-overridden.patch` | a plain IFC loses its served content type | `modelFile.test.ts` |
++
++## Replay
++
++```bash
++node scripts/check-test-revert-oracle.mjs --base origin/main \
++  --only apps/viewer/src/aim/modelFile.ts \
++  --test apps/viewer/src/aim/modelFile.test.ts \
++  --mutation /tmp/d135-mut/archive-name-dropped.patch --ci --json
++```
+diff --git a/docs/architecture/evidence/aim-d135-archive-autoload/mutations/archive-name-dropped.patch b/docs/architecture/evidence/aim-d135-archive-autoload/mutations/archive-name-dropped.patch
+new file mode 100644
+index 00000000..bd74e28b
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d135-archive-autoload/mutations/archive-name-dropped.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/modelFile.ts a/apps/viewer/src/aim/modelFile.ts
++index 035a2374..b5465955 100644
++--- b/apps/viewer/src/aim/modelFile.ts
+++++ a/apps/viewer/src/aim/modelFile.ts
++@@ -27,7 +27,7 @@ export function isGzip(head: Uint8Array): boolean {
++  */
++ export function aimModelFileName(url: URL): string {
++   const archive = ARCHIVE_RE.exec(url.pathname);
++-  void archive;
+++  if (archive) return `${decodeURIComponent(archive[1])}.ifc`;
++   const last = url.pathname.split('/').pop() || 'model.ifc';
++   return last.replace(/\.gz$/i, '') || 'model.ifc';
++ }
+diff --git a/docs/architecture/evidence/aim-d135-archive-autoload/mutations/archive-not-unpacked.patch b/docs/architecture/evidence/aim-d135-archive-autoload/mutations/archive-not-unpacked.patch
+new file mode 100644
+index 00000000..df6894a6
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d135-archive-autoload/mutations/archive-not-unpacked.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/modelFile.ts a/apps/viewer/src/aim/modelFile.ts
++index 49b9cf58..b5465955 100644
++--- b/apps/viewer/src/aim/modelFile.ts
+++++ a/apps/viewer/src/aim/modelFile.ts
++@@ -35,7 +35,7 @@ export function aimModelFileName(url: URL): string {
++ /** The fetched model as a `File` for `addModel`: gzip unpacked, plain name kept. */
++ export async function aimModelFile(url: URL, blob: Blob): Promise<File> {
++   const name = aimModelFileName(url);
++-  if (!isGzip(new Uint8Array(await blob.slice(0, 2).arrayBuffer())) || true) {
+++  if (!isGzip(new Uint8Array(await blob.slice(0, 2).arrayBuffer()))) {
++     return new File([blob], name, { type: blob.type || 'application/x-step' });
++   }
++   const unpacked = await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).blob();
+diff --git a/docs/architecture/evidence/aim-d135-archive-autoload/mutations/gz-suffix-kept.patch b/docs/architecture/evidence/aim-d135-archive-autoload/mutations/gz-suffix-kept.patch
+new file mode 100644
+index 00000000..ac4a347e
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d135-archive-autoload/mutations/gz-suffix-kept.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/modelFile.ts a/apps/viewer/src/aim/modelFile.ts
++index 26f7140a..b5465955 100644
++--- b/apps/viewer/src/aim/modelFile.ts
+++++ a/apps/viewer/src/aim/modelFile.ts
++@@ -29,7 +29,7 @@ export function aimModelFileName(url: URL): string {
++   const archive = ARCHIVE_RE.exec(url.pathname);
++   if (archive) return `${decodeURIComponent(archive[1])}.ifc`;
++   const last = url.pathname.split('/').pop() || 'model.ifc';
++-  return last || 'model.ifc';
+++  return last.replace(/\.gz$/i, '') || 'model.ifc';
++ }
++ 
++ /** The fetched model as a `File` for `addModel`: gzip unpacked, plain name kept. */
+diff --git a/docs/architecture/evidence/aim-d135-archive-autoload/mutations/gzip-magic-loose.patch b/docs/architecture/evidence/aim-d135-archive-autoload/mutations/gzip-magic-loose.patch
+new file mode 100644
+index 00000000..12f5d653
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d135-archive-autoload/mutations/gzip-magic-loose.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/modelFile.ts a/apps/viewer/src/aim/modelFile.ts
++index 56c77ed2..b5465955 100644
++--- b/apps/viewer/src/aim/modelFile.ts
+++++ a/apps/viewer/src/aim/modelFile.ts
++@@ -18,7 +18,7 @@ const ARCHIVE_RE = /\/archive\/([^/]+)\/v\d+\.ifc\.gz$/i;
++ 
++ /** True when the bytes start with the gzip magic number `1f 8b`. */
++ export function isGzip(head: Uint8Array): boolean {
++-  return head.length >= 1 && head[0] === 0x1f;
+++  return head.length >= 2 && head[0] === 0x1f && head[1] === 0x8b;
++ }
++ 
++ /**
+diff --git a/docs/architecture/evidence/aim-d135-archive-autoload/mutations/plain-type-overridden.patch b/docs/architecture/evidence/aim-d135-archive-autoload/mutations/plain-type-overridden.patch
+new file mode 100644
+index 00000000..5f2de7c8
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d135-archive-autoload/mutations/plain-type-overridden.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/modelFile.ts a/apps/viewer/src/aim/modelFile.ts
++index 3d15b606..b5465955 100644
++--- b/apps/viewer/src/aim/modelFile.ts
+++++ a/apps/viewer/src/aim/modelFile.ts
++@@ -36,7 +36,7 @@ export function aimModelFileName(url: URL): string {
++ export async function aimModelFile(url: URL, blob: Blob): Promise<File> {
++   const name = aimModelFileName(url);
++   if (!isGzip(new Uint8Array(await blob.slice(0, 2).arrayBuffer()))) {
++-    return new File([blob], name, { type: 'application/x-step' });
+++    return new File([blob], name, { type: blob.type || 'application/x-step' });
++   }
++   const unpacked = await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).blob();
++   return new File([unpacked], name, { type: 'application/x-step' });
+diff --git a/docs/architecture/evidence/aim-d135-archive-autoload/mutations/summary.json b/docs/architecture/evidence/aim-d135-archive-autoload/mutations/summary.json
+new file mode 100644
+index 00000000..3c302e13
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d135-archive-autoload/mutations/summary.json
+@@ -0,0 +1,72 @@
++{
++  "archive-name-dropped": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/modelFile.test.ts; that file has a green, attributable baseline.",
++    "base": "625cabd74d067e89e8d8afbb003c4d35f95fe519",
++    "head": "dccd4b120c16f6d2d3cf38dd478022b9543f1dd3",
++    "production": [
++      "apps/viewer/src/aim/modelFile.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/modelFile.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "archive-not-unpacked": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/modelFile.test.ts; that file has a green, attributable baseline.",
++    "base": "625cabd74d067e89e8d8afbb003c4d35f95fe519",
++    "head": "dccd4b120c16f6d2d3cf38dd478022b9543f1dd3",
++    "production": [
++      "apps/viewer/src/aim/modelFile.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/modelFile.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "gz-suffix-kept": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/modelFile.test.ts; that file has a green, attributable baseline.",
++    "base": "625cabd74d067e89e8d8afbb003c4d35f95fe519",
++    "head": "dccd4b120c16f6d2d3cf38dd478022b9543f1dd3",
++    "production": [
++      "apps/viewer/src/aim/modelFile.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/modelFile.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "gzip-magic-loose": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/modelFile.test.ts; that file has a green, attributable baseline.",
++    "base": "625cabd74d067e89e8d8afbb003c4d35f95fe519",
++    "head": "dccd4b120c16f6d2d3cf38dd478022b9543f1dd3",
++    "production": [
++      "apps/viewer/src/aim/modelFile.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/modelFile.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "plain-type-overridden": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/modelFile.test.ts; that file has a green, attributable baseline.",
++    "base": "625cabd74d067e89e8d8afbb003c4d35f95fe519",
++    "head": "dccd4b120c16f6d2d3cf38dd478022b9543f1dd3",
++    "production": [
++      "apps/viewer/src/aim/modelFile.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/modelFile.test.ts"
++    ],
++    "restoration": "verified"
++  }
++}
+\ No newline at end of file
+-- 
+2.43.0
+
