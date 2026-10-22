@@ -6742,6 +6742,8 @@ jedného stredu; hĺbka podesty je odhad z plochy (pri tvare L nepresná, čiara
 
 ---
 
+---
+
 ### D-146 - Posun panela vlastností z chatu (`set_view_mode panel_scroll`) a opravená cesta k riadku Qto (#183)
 
 **Dátum:** 2026-10-22 · **Issue:** #183 · **Nadväzuje na:** D-113, D-114, D-127, D-098
@@ -6992,3 +6994,97 @@ nie je).
 **Overenie:** fork `aim/viewTilesPlan.test.ts` (rozloženia, priradenie, pravidlá, stav), host
 `lib/viewer-tabs.test.ts` (wire, `planLayout`), inventár `MCP-TOOLS.md`. **Evaly D-057 nepobežali** (cloud
 session nemá Supabase kľúče); otázka `view-tiles-four` pridaná a `view-3d-and-plan-no-underlay` (D-136) prepnutá na `layout`, obe bez overenej hodnoty.
+
+---
+
+### D-158 - Pripomienky na dokumentoch: BCF téma s odkazom na dokument, stranu a oblasť strany
+
+**Dátum:** 2026-10-22 · **Stav:** krok 1 schválený (orchestrátor 22. 10., Samuel 22. 10. "áno, riešiť" v #199) · **Issue:** #199 · **Nadväzuje na:** D-099 (BCF témy v `model_tasks`), D-104 (dokumenty z IFC), D-114 (rozšírenie namiesto nového toolu), D-117 (`open_drawing region`), D-123, D-130, D-133
+
+**Kontext:** #199 chce jednotné pripomienky: téma založená nad dokumentom PDF (strana, oblasť), prepojená s IFC entitami až po IfcProject, v jednom zozname s 3D témami, BCF 2.1/3.0 ako export a import, nie zdroj pravdy. Dnes (overené 22. 10.): nositeľ témy je riadok `model_tasks` (D-099) s `components` (IFC GlobalId) a `viewpoint`; tooly `bcf_topic` a `bcf_topic_list`, BCF API `/api/bcf` (čítanie bez tokenu, zápis s tokenom; témy sa podľa dodatku D-099 zakladajú v chate). Väzbu témy na dokument, stranu ani oblasť nemá nič; výrez strany pozná len `open_drawing region` (D-117). Dokument je `objects` + `documents` (D-104), strany v `document_pages`; hash súboru dokumentu sa neukladá.
+
+**Najbližšie tooly (D-114):** `bcf_topic` (rozširujeme: parameter `document`, `remove_document`), `bcf_topic_list` (filter `document` a `page`, odkazy v detaile), `open_drawing` (ukáže miesto, bez zmeny). Nový tool netreba.
+
+**Rozhodnutie:**
+1. **Nositeľ ostáva `model_tasks`** (D-099 zavrhol druhú tabuľku tém). Pripomienka na dokumente je BCF téma ako každá iná, v tom istom zozname.
+2. **Odkaz na dokument = podriadená tabuľka `model_task_documents`** (migrácia `20261022190000`, SCHEMA §2.14), 1:N k téme, jeden riadok = BCF DocumentReference: `document_id` (objects, `on delete set null`) so snímkou `document_ref`, `document_name`, `document_revision` z času založenia (téma prežije re-ETL a novú revíziu dokumentu sa nepresťahuje potichu), `page`, `region` = výrez v % `{x, y, width, height}` vľavo hore ako `open_drawing region` (null = celá strana), `markup` (tvary, zatiaľ prázdne), `url` (cudzí odkaz z importu), `description`, `author`. Strop 20 odkazov na tému.
+3. **IFC entity ostávajú v `components`** (jediný nositeľ väzby na IFC). "Celý projekt" je GlobalId IfcProject, miestnosť a podlažie ich GlobalId; tabuľka `issue_entity` z návrhu v issue by bola druhý nositeľ tej istej väzby.
+4. **Chat:** `bcf_topic` `create`/`update` s `document = {id_or_ref, page, region, description}` (objects.id, object_ref alebo jednoznačný kód `documents.identification`; odkaz na časť dokumentu D-104 vedie na jeho dokument a stranu z `Location`). Strana sa overí voči extrahovaným stranám, oblasť bez strany len pri jednostranovom dokumente, chybný dokument tému nezaloží. `remove_document` = guid odkazu alebo `all`. `bcf_topic_list` filtruje `document` (+ `page`), riadok zoznamu má počet odkazov a detail témy `documents` s pripravenými argumentmi `open_drawing`.
+5. **Jeden zoznam tém (Samuel 22. 10.):** pripomienka na dokumente je v `bcf_topic_list` aj v BCF paneli viewera spolu s ostatnými témami. Upstream `fetchProjectAsBCF` DocumentReference nesťahuje, preto BCF API pridá do `description` témy blok "Dokumenty (AIM):" s kódom, revíziou, stranou a oblasťou; pri zápise z panela (PUT) sa blok odreže, v DB ostáva opis bez neho.
+6. **BCF API 2.1:** `GET /topics/{guid}/document_references` (bez tokenu), `POST` a `PUT .../{guid}` (s tokenom). `url` = `<origin>/drawing/<id>?page=N&region=x_y_w_h#page=N` (`#page` podľa RFC 8118, `region` je náš parameter pre návrat), `description` = "kód (rev. X), strana N, oblasť ...: text". Vlastná adresa sa pri zápise rozloží späť na dokument, stranu a oblasť (opis bez zopakovanej hlavičky), cudzia ostane ako `url`. `document_guid` (dokumenty projektu BCF) zatiaľ nie.
+
+**Kroky:**
+- **1 (táto vetva):** migrácia, `lib/bcf/documents.ts`, úložisko, `bcf_topic`/`bcf_topic_list`, BCF API, testy. Bez forku.
+- **2 (viewer, fork):** pripomienky ako rámiky s číslom nad stranou PDF (vzor rámikov D-123), klik otvorí tému; ťahom označená oblasť do `view_state`, aby ju `bcf_topic create` s `capture_view` vzal. Či zakladať aj tlačidlom vo vieweri (dnes zápis len v chate, bez tokenu vo vieweri), rozhodne Samuel.
+- **3:** export a import `.bcfzip` 2.1 a 3.0 (`@ifc-lite/bcf`), snímka výrezu so zapáleným rámikom (pymupdf v ETL, server parser PDF nemá, D-123), `viewrect` v bodoch strany.
+- **4:** s kalibráciou D-133 prepočet oblasti na IFC súradnice: návrh prvkov v oblasti a 3D pohľad nad ňou; filter zoznamu podľa nadradenej entity; sha256 súboru dokumentu v ETL ako kotva revízie.
+
+**Zavrhnuté:**
+- *Stĺpec `documents jsonb` na `model_tasks`:* filter "pripomienky na tomto dokumente a strane" by išiel cez GIN nad poľom a BCF API potrebuje stabilný guid každého odkazu na PUT.
+- *Nová tabuľka `issues` podľa návrhu v issue:* druhý nositeľ témy vedľa `model_tasks` (zavrhnuté už v D-099).
+- *Nový tool `document_issue`:* tá istá téma a ten istý zápis ako `bcf_topic` (D-114).
+- *Pravidlo v inštrukciách konektora:* strop dĺžky inštrukcií (15 000 znakov) je takmer plný; postup nesie opis `bcf_topic`.
+
+**Poradie nasadenia (produkcia):** len migrácia `20261022190000_bcf_topic_documents.sql` (aditívna, nová tabuľka). Bez nej zápis s `document` a `document_references` vráti chybu DB, ostatné BCF tooly fungujú ako doteraz. Re-ETL netreba.
+
+**Overenie:** `lib/bcf/documents.test.ts` (argument, oblasť, strany, DocumentReference tam a späť, chat create/update/remove/list s filtrom, strop, BCF API s tokenom aj bez; mutácie filtra a návratu opisu testy chytia), `supabase/tests/bcf_topic_documents.sql` (lokálna DB po všetkých migráciách: filter dokument a strana, kontroly, zánik dokumentu nechá snímku, zmazanie témy zmaže odkazy, práva anon/authenticated). Evaly (D-057) v cloud session bez Supabase kľúčov nepobežali; zmena je len v opise a parametroch `bcf_topic` a `bcf_topic_list`, inventár `MCP-TOOLS.md` obnovený.
+
+---
+
+
+---
+
+### D-150 - Všetky panely UI v `set_view_mode panels`, zoznam odvodený z forku, posun na položku a zoom panelu (#179)
+
+**Dátum:** 2026-10-22 · **Issue:** #179 (overenie "vrátené" z 22. 10. 05:44 UTC) · **Nadväzuje na:** D-127 (panely z chatu),
+D-146 (posun panela vlastností), D-114, D-098, D-091, D-087 · **Mimo rozsahu:** panel Lists (maximalizácia a úpravy zoznamu rieši D-149)
+
+**Kontext:** D-127 pustil do `panels` šesť panelov (lens, properties, underlays, documents, lists, model_tree). Samuel overil
+naživo, že funguje open a close, ale chýba panel BCF topics (v UI Alt+3), v UI sú ďalšie panely, o ktorých chat nevie, a nedá sa
+posunúť obsah otvoreného panela ani ho priblížiť, aby chat ukázal konkrétne miesto.
+
+**Overenie existujúceho (D-098, D-114):** najbližšie tooly sú `set_view_mode` (UI akcia pohľadu, nesie `panels` a `panel_scroll`),
+`get_viewer_state` (čítanie, nesie `view_state.panels`) a `show_in_3d` (výber a `highlight` riadku vlastnosti). Upstream registra
+panelov `WORKSPACE_PANELS` je jediný zdroj panelov rail-u, skratiek Alt+N a hostov (sidebar, plávajúce okno, spodný pás), všetky
+cez `renderPanelBody`. `showWorkspacePanel` a príznaky spodného pásu (`bottom-panels.ts`) otvárajú a zatvárajú ľubovoľný z nich.
+Nič z toho nebolo treba vymýšľať, fork to len sprístupní.
+
+**Rozhodnutie:**
+1. **Zoznam panelov z registra, nie z ručného zoznamu (fork):** `aim/aimPanelList.ts` odvodí mená z `WORKSPACE_PANELS`. Meno na
+   drôte je id panela (`bcf`, `compare`, `validation`, `clash`, `script`, `zones`...), výnimky sú dve historické z D-127
+   (`underlays` = `drawing-underlay`, `model_tree` = `hierarchy`). Skratka Alt+N je podľa poradia v registri (prvých desať), ako
+   v `ActivityBar`. Test `aimPanelList.test.ts` stráži, že každý panel registra má meno, je jedinečné a je vo `view_state`;
+   nový panel v UI sa tak objaví sám a ak by sa zoznam rozišiel s registrom, test padne.
+2. **`SET_PANELS` pre všetky panely:** otvorenie ide cez `showWorkspacePanel` (ako rail), zatvorenie podľa domova: spodný pás
+   vypne svoj príznak, dolná polovica splitu sa uvoľní, panel s príznakom v pravom stĺpci príznak vypne a stĺpec sa vráti na
+   ďalší alebo na vlastnosti, panel bez príznaka vráti stĺpec na vlastnosti (ako krížik). Vlastnosti sa pri `all=close`
+   zatvárajú ako posledné, inak by ich vrátil zatvorený susedný panel. Neznáme meno už nezahodí celú správu: viewer ho nahlási v
+   `APPLIED` so zoznamom platných mien a vykoná ostatné.
+3. **Host:** `panels` prijme ľubovoľné meno v tvare identifikátora (existenciu posudzuje viewer, zoznam má jeden zdroj, fork).
+   Opis toolu uvádza bežné panely a odkazuje na `get_viewer_state` (panels). `view_state.panels` nesie každý panel registra s
+   `open`, `where`, `home` (side, bottom, left) a `shortcut` a výsledok po každom príkaze to isté.
+4. **Posun obsahu ľubovoľného panela (zovšeobecnenie D-146, nie duplikát):** `panel_scroll` ostáva reťazec (up, down, top,
+   bottom, panel vlastností) a pribudol objekt `{panel?, to | item | percent}`: `item` = text položky (hľadá sa v rozbalenom
+   obsahu, bez diakritiky a veľkosti písmen, položku vycentruje rovnaký `revealRow` z D-146), `percent` = poloha 0 až 100. Správa
+   `SCROLL_PANEL` dostala `panel`, `item`, `percent` (práve jedno z `direction`, `item`, `percent`). Obsah panela sa nájde cez značku
+   `data-aim-panel` na obálke v `renderPanelBody` (blok AIM-FORK, `display: contents`, bez vplyvu na rozloženie).
+5. **Zoom panela:** nový parameter `panel_zoom = {panel?, zoom: in | out | reset | 0,5 až 2,5}` -> správa `ZOOM_PANEL`, CSS
+   `zoom` na koreňoch obsahu panela (krok 1,25), zabudne sa so zatvorením panela. Je to zväčšenie na ukázanie miesta, nie nastavenie
+   používateľa.
+6. **Stav posunu:** `view_state.panel_view` {panel, scroll_pct, at_top, at_bottom, zoom, item?} z posledného príkazu na posun alebo
+   zoom (D-146 hlásilo, že viewer koniec panela nevracia; teraz ho vracia, pre posledne posúvaný panel).
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool `set_panel`:* panely sú súčasť pohľadu (D-127, D-114).
+- *`get_viewer_state` na ovládanie:* tool je čítanie, zmena patrí do UI akcie. Zoznam panelov ale vracia on.
+- *Ručný zoznam panelov v hoste (enum):* po pridaní panela do UI by chýbal (presne chyba z overenia). Fork je jediný zdroj.
+- *Posun cez `scrollIntoView` na sekciu podľa mena:* panely nemajú jednotné sekcie, text položky funguje v každom.
+- *Poloha a veľkosť panelov z chatu (`position`, `size`):* zostáva zavrhnuté z D-127.
+
+**Otvorené:** panel Lists sa tu nemení (maximalizácia, Run, filter, export rieši D-149). `item` hľadá len v zobrazenom obsahu
+(zbalená sekcia sa neprehľadáva a viewer to nahlási). CSS `zoom` sa nedalo overiť v živom vieweri (cloud session bez zostavených
+balíkov forku), preto je v PR "Ako vyskúšať". Mutačné dôkazy forku pre revert oracle chýbajú (plytký klon bez `origin/main`).
+
+**Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežali; do `eval/questions.json` pribudli `panel-bcf-open` a
+`panel-scroll-item`. **Testy:** vitest (`view-plan`, `select-panel`), fork `aimPanelList.test.ts`, `aimPanelsPlan.test.ts`,
+`aimPanelScrollPlan.test.ts`.

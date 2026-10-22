@@ -3,7 +3,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { resolveTargetsToGuids } from "@/lib/engine/aim-lookup";
 import { normalizeStoreyLabel } from "@/lib/engine/storey";
-import { CAMERA_PRESETS, PANEL_ACTIONS, PANEL_SCROLLS, VIEWER_PANELS } from "@/lib/viewer-ops";
+import { CAMERA_PRESETS, PANEL_ACTIONS, PANEL_ITEM_MAX, PANEL_SCROLLS, PANEL_ZOOM_RANGE, PANEL_ZOOM_STEPS } from "@/lib/viewer-ops";
 import { CAMERA_AREAS, CAMERA_FITS, CAMERA_RANGES, DEFAULT_MARGIN_PERCENT } from "@/lib/viewer-camera";
 
 import type { AskAction } from "./actions";
@@ -11,7 +11,7 @@ import type { ToolDefinition } from "./provider";
 import { planCamera } from "./camera-plan";
 import { HATCH_PATTERNS, HATCH_RANGES, SECTION_CAPS, planSectionCap } from "../viewer-section-cap";
 import { DOMAIN_IFC_TYPES } from "./ifc-selector";
-import { ViewInputError, planPanelScroll, planPanels, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
+import { ViewInputError, planPanelScroll, planPanelZoom, planPanels, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
 import { SECTION_SHIFT_RANGE } from "../views/plan";
 import { hasLayoutParams, hasTabParams, planLayout, planViewTabs } from "./view-tabs";
 import { TILE_LAYOUTS } from "../viewer-tabs";
@@ -189,12 +189,16 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "target=tab), 'none' prázdna; chýbajúce doplní viewer. '3D vľavo, 1NP vpravo' = layout=split_h, tiles=['3D','1NP']. " +
       "Živé 3D je len jedno, ostatné 3D dlaždice ukazujú snímku do kliknutia; 3D tooly pôsobia na živú. Stav: layout v " +
       "get_viewer_state. Späť na jedno okno = layout=single. " +
-      "Dokument do záložky = open_drawing(target=tab). PANELY: panels otvorí, zavrie alebo " +
-      "prepne panely (lens, properties, underlays, documents, lists, model_tree, drawing; all=close = čistý pohľad, " +
-      "napr. {all: 'close', properties: 'open'} = všetko okrem vlastností), aj bez mode; výsledok vráti stav " +
-      "všetkých panelov (open, where left/right/bottom/floating, size). drawing = 2D výkres aktuálneho rezu z modelu (bez podkladu, D-136) v spodnom páse pod 3D. POSUN PANELA VLASTNOSTÍ: panel_scroll=down|up " +
-      "(o 80 % výšky) | top | bottom na pokyn 'posuň dole', 'hore', 'na začiatok', 'na koniec' (aj bez mode; s " +
-      "panels={properties:'open'} ho najprv otvorí); výber prvku a riadok vlastnosti ide cez show_in_3d (highlight).",
+      "Dokument do záložky = open_drawing(target=tab). PANELY: panels otvorí, zavrie alebo prepne ľubovoľný " +
+      "panel UI (napr. lens, properties, bcf = BCF topics Alt+3, lists, model_tree, underlays, documents, compare, " +
+      "validation, clash, drawing = 2D výkres rezu z modelu pod 3D (D-136); all=close = čistý pohľad, {all: 'close', properties: 'open'} = všetko okrem vlastností), " +
+      "aj bez mode. Úplný zoznam panelov s klávesovými skratkami, kde sú a či sú otvorené vráti get_viewer_state " +
+      "(panels), rovnaký stav aj výsledok po príkaze; neznámy panel viewer nahlási s platnými menami. " +
+      "POSUN OBSAHU PANELA: panel_scroll=down|up (o 80 % výšky) | top | bottom na pokyn 'posuň dole', 'hore', " +
+      "'na začiatok' (panel vlastností), alebo {panel, to | item | percent}: item = text položky ('Dvere D12', " +
+      "'NetVolume'; hľadá sa v rozbalenom obsahu), percent = poloha 0 až 100; stav posunu vráti panel_view. " +
+      "ZOOM PANELA: panel_zoom={panel?, zoom: in|out|reset|číslo} ('zväčši panel', 'späť na normál'). Obe aj bez " +
+      "mode; s panels ho najprv otvorí. Výber prvku a riadok vlastnosti ide cez show_in_3d (highlight).",
     inputSchema: {
       type: "object",
       properties: {
@@ -219,15 +223,37 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         panels: {
           type: "object",
-          description: "Panely: {panel: open|close|toggle}; all len close",
-          properties: Object.fromEntries(
-            [...VIEWER_PANELS, "all"].map((k) => [k, { type: "string", enum: k === "all" ? ["close"] : [...PANEL_ACTIONS] }]),
-          ),
+          description: "Panely: {panel: open|close|toggle}; panel = lens, properties, bcf, lists, model_tree... (get_viewer_state, panels); all len close",
+          additionalProperties: { type: "string", enum: [...PANEL_ACTIONS] },
+          properties: { all: { type: "string", enum: ["close"] } },
         },
         panel_scroll: {
-          type: "string",
-          enum: [...PANEL_SCROLLS],
-          description: "Posun panela vlastností: down/up o stranu, top/bottom na začiatok/koniec",
+          description:
+            "Posun obsahu panela: reťazec down/up (o stranu), top/bottom (panel vlastností), alebo objekt " +
+            "{panel?, to: up|down|top|bottom} | {panel?, item: text položky} | {panel?, percent: 0 až 100}",
+          anyOf: [
+            { type: "string", enum: [...PANEL_SCROLLS] },
+            {
+              type: "object",
+              properties: {
+                panel: { type: "string", description: "Meno panela (get_viewer_state, panels); bez neho panel vlastností" },
+                to: { type: "string", enum: [...PANEL_SCROLLS] },
+                item: { type: "string", maxLength: PANEL_ITEM_MAX, description: "Text položky, na ktorú sa panel posunie" },
+                percent: { type: "number", minimum: 0, maximum: 100 },
+              },
+            },
+          ],
+        },
+        panel_zoom: {
+          type: "object",
+          description: `Zoom obsahu panela: zoom = ${PANEL_ZOOM_STEPS.join(" | ")} alebo číslo ${PANEL_ZOOM_RANGE.min} až ${PANEL_ZOOM_RANGE.max}`,
+          properties: {
+            panel: { type: "string", description: "Meno panela (get_viewer_state, panels); bez neho panel vlastností" },
+            zoom: {
+              anyOf: [{ type: "string", enum: [...PANEL_ZOOM_STEPS] }, { type: "number", minimum: PANEL_ZOOM_RANGE.min, maximum: PANEL_ZOOM_RANGE.max }],
+            },
+          },
+          required: ["zoom"],
         },
         section_offset_m: {
           type: "number",
@@ -357,7 +383,7 @@ export async function execViewTool(
     plan = await restoreSavedView({ ...input, saved_view: savedViewName(input) }, defaultSavedViewDeps());
   } else if (name === "set_view_mode") {
     // D-127: samotné panely nepotrebujú režim.
-    const panelsOnly = (input.panels !== undefined || input.panel_scroll !== undefined) && input.mode === undefined && input.reset !== true;
+    const panelsOnly = (input.panels !== undefined || input.panel_scroll !== undefined || input.panel_zoom !== undefined) && input.mode === undefined && input.reset !== true;
     plan = panelsOnly ? { ops: [], label: "", result: { ok: true } } : planViewMode(input, input.reset === true ? null : await resolveFloor(input.floor));
   } else {
     throw new Error(`Neznámy tool pohľadu '${name}'.`);
@@ -372,13 +398,13 @@ export async function execViewTool(
       result: { ...plan.result, ...panels.result },
     };
   }
-  // Posun panela vlastností (D-146) ide po panelih, aby sa najprv otvoril.
-  const scroll = name === "set_view_mode" ? planPanelScroll(input) : null;
-  if (scroll) {
+  // Posun a zoom obsahu panela (D-146, D-150) idú po paneloch, aby sa najprv otvorili.
+  for (const step of name === "set_view_mode" ? [planPanelScroll(input), planPanelZoom(input)] : []) {
+    if (!step) continue;
     plan = {
-      ops: [...plan.ops, scroll.op],
-      label: plan.label ? `${plan.label}, ${scroll.label}` : scroll.label,
-      result: { ...plan.result, ...scroll.result },
+      ops: [...plan.ops, step.op],
+      label: plan.label ? `${plan.label}, ${step.label}` : step.label,
+      result: { ...plan.result, ...step.result },
     };
   }
   push({
