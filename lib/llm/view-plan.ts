@@ -11,6 +11,8 @@ import {
   VIEW_MODES,
   PANEL_ACTIONS,
   panelsOp,
+  panelScrollOp,
+  PANEL_SCROLLS,
   VIEWER_PANELS,
   type PanelsRequest,
   type SectionFit,
@@ -187,4 +189,18 @@ export function planPanels(input: Record<string, unknown>): { op: string; label:
   if (Object.keys(out).length === 0) throw new ViewInputError("panels: aspoň jeden panel.");
   const label = Object.entries(out).map(([k, v]) => `${k} ${v}`).join(", ");
   return { op: panelsOp(out), label: `Panely: ${label}`, result: { panels: out } };
+}
+
+/**
+ * Posun panela vlastností (D-146): `panel_scroll` = up | down | top | bottom ("posuň dole", "hore", "na začiatok").
+ * Bez neho null; chybný vstup = ViewInputError (model ho opraví).
+ */
+export function planPanelScroll(input: Record<string, unknown>): { op: string; label: string; result: { panel_scroll: string } } | null {
+  const raw = input.panel_scroll;
+  if (raw === undefined || raw === null || raw === "") return null;
+  if (typeof raw !== "string" || !(PANEL_SCROLLS as readonly string[]).includes(raw.trim())) {
+    throw new ViewInputError(`panel_scroll: ${PANEL_SCROLLS.join(", ")}.`);
+  }
+  const direction = raw.trim() as (typeof PANEL_SCROLLS)[number];
+  return { op: panelScrollOp(direction), label: `Panel vlastností: ${direction}`, result: { panel_scroll: direction } };
 }

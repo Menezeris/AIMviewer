@@ -3,7 +3,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { resolveTargetsToGuids } from "@/lib/engine/aim-lookup";
 import { normalizeStoreyLabel } from "@/lib/engine/storey";
-import { CAMERA_PRESETS, PANEL_ACTIONS, VIEWER_PANELS } from "@/lib/viewer-ops";
+import { CAMERA_PRESETS, PANEL_ACTIONS, PANEL_SCROLLS, VIEWER_PANELS } from "@/lib/viewer-ops";
 import { CAMERA_AREAS, CAMERA_FITS, CAMERA_RANGES, DEFAULT_MARGIN_PERCENT } from "@/lib/viewer-camera";
 
 import type { AskAction } from "./actions";
@@ -11,7 +11,7 @@ import type { ToolDefinition } from "./provider";
 import { planCamera } from "./camera-plan";
 import { HATCH_PATTERNS, HATCH_RANGES, SECTION_CAPS, planSectionCap } from "../viewer-section-cap";
 import { DOMAIN_IFC_TYPES } from "./ifc-selector";
-import { ViewInputError, planPanels, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
+import { ViewInputError, planPanelScroll, planPanels, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
 import { SECTION_SHIFT_RANGE } from "../views/plan";
 import { hasTabParams, planViewTabs } from "./view-tabs";
 
@@ -184,7 +184,9 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "Dokument do záložky = open_drawing(target=tab). PANELY: panels otvorí, zavrie alebo " +
       "prepne panely (lens, properties, underlays, documents, lists, model_tree; all=close = čistý pohľad, " +
       "napr. {all: 'close', properties: 'open'} = všetko okrem vlastností), aj bez mode; výsledok vráti stav " +
-      "všetkých panelov (open, where left/right/bottom/floating, size).",
+      "všetkých panelov (open, where left/right/bottom/floating, size). POSUN PANELA VLASTNOSTÍ: panel_scroll=down|up " +
+      "(o 80 % výšky) | top | bottom na pokyn 'posuň dole', 'hore', 'na začiatok', 'na koniec' (aj bez mode; s " +
+      "panels={properties:'open'} ho najprv otvorí); výber prvku a riadok vlastnosti ide cez show_in_3d (highlight).",
     inputSchema: {
       type: "object",
       properties: {
@@ -202,6 +204,11 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
           properties: Object.fromEntries(
             [...VIEWER_PANELS, "all"].map((k) => [k, { type: "string", enum: k === "all" ? ["close"] : [...PANEL_ACTIONS] }]),
           ),
+        },
+        panel_scroll: {
+          type: "string",
+          enum: [...PANEL_SCROLLS],
+          description: "Posun panela vlastností: down/up o stranu, top/bottom na začiatok/koniec",
         },
         section_offset_m: {
           type: "number",
@@ -316,7 +323,7 @@ export async function execViewTool(
     plan = await restoreSavedView({ ...input, saved_view: savedViewName(input) }, defaultSavedViewDeps());
   } else if (name === "set_view_mode") {
     // D-127: samotné panely nepotrebujú režim.
-    const panelsOnly = input.panels !== undefined && input.mode === undefined && input.reset !== true;
+    const panelsOnly = (input.panels !== undefined || input.panel_scroll !== undefined) && input.mode === undefined && input.reset !== true;
     plan = panelsOnly ? { ops: [], label: "", result: { ok: true } } : planViewMode(input, input.reset === true ? null : await resolveFloor(input.floor));
   } else {
     throw new Error(`Neznámy tool pohľadu '${name}'.`);
@@ -329,6 +336,15 @@ export async function execViewTool(
       ops: [...plan.ops, panels.op],
       label: plan.label ? `${plan.label}, ${panels.label}` : panels.label,
       result: { ...plan.result, ...panels.result },
+    };
+  }
+  // Posun panela vlastností (D-146) ide po panelih, aby sa najprv otvoril.
+  const scroll = name === "set_view_mode" ? planPanelScroll(input) : null;
+  if (scroll) {
+    plan = {
+      ops: [...plan.ops, scroll.op],
+      label: plan.label ? `${plan.label}, ${scroll.label}` : scroll.label,
+      result: { ...plan.result, ...scroll.result },
     };
   }
   push({
