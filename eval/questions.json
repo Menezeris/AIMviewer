@@ -987,6 +987,14 @@
       "notes": "D-138 (issue #221): jedno volanie colorize s groups, trasa ako posledná skupina vyhrá pri prekrytí; pravidlo s 0 prvkami sa hlási s dôvodom. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     },
     {
+      "id": "style-xray-storey-context",
+      "category": "viewer",
+      "question": "Ukáž pôdorys stropov na 1NP: stropy plne, zvyšok priesvitný, pohľad zhora.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "Issue #187: xray s storey nechá priesvitný celý model; odpoveď nesie varovanie a model má skryť ostatné podlažia a dať rez. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
       "id": "style-colorize-space-translucent",
       "category": "viewer",
       "question": "Ofarbi miestnosť 2.01 a susedné miestnosti na zeleno, dvere oranžovo a schodisko oranžovo, nech vidím únikovú cestu.",
