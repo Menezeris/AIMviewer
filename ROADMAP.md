@@ -319,6 +319,7 @@ naming convention finálny tvar) sú v DECISIONS §7.
 > Kompaktný reverse-chrono log. Detail ku každému bodu je v `DECISIONS.md` (D-0xx);
 > aktuálny stav je hore v sekcii „Stav".
 
+- **2026-10-22** - **D-145 (#214):** "Ukázať v 3D" pri PDF viazanom na podlažie izoluje podlažie (Solo) a otvorí rezové nástroje (Add a plane) namiesto samotného X-ray; dokument bez podlažia ostáva pri X-ray lens. Len fork (Menezeris/ifc-lite#116), host bez zmeny; pri Solo sa prvky strany nezvýraznia. Najprv fork, potom AIMviewer.
 - **2026-10-22** - **D-140 (#230):** `set_section relative_to=ceiling` berie výšku z geometrie `IfcCovering` CEILING podlažia (spodok pre záporný, horný okraj pre kladný offset), Qto `FinishCeilingHeight` len záloha; odpoveď nesie `ceiling.source` a `warning` pri nezhode nad 2 cm.
 - **2026-10-22** - **D-141 (#185):** spodný pruh Viewer: Produkcia a Live už neprekrýva viewer: host má pod iframe vlastnú stavovú lištu (28 px), takže Run v builderi Lists je vždy vidno. Host-only, fork bez zmeny; `open_list run=true` odložené (potrebuje upstream `ListPanel.tsx`).
 - **2026-10-22** - **D-138 (#221):** `style_in_3d` pri prekrytí pravidiel: vyhráva neskoršia skupina v `groups` (Lens farbí prvou zhodou, host obrátil poradie vo wire; mode add aj replace rovnako), pravidlo s 0 prvkami sa hlási ako `POZOR` s dôvodom (prekryté vs filter nič nenašiel). Fork bez zmeny. Overené: vitest, `tsc`, eslint; evaly nepobežali, otázka pridaná.
