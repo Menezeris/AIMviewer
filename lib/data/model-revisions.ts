@@ -56,3 +56,15 @@ export async function fetchLastElementChange(guid: string): Promise<ElementChang
     ? { model: row.model, revision: `v${String(row.result_revision).padStart(3, "0")}`, title: row.title, date: row.updated_at.slice(0, 10) }
     : null;
 }
+
+/** Aktuálna revízia modelu (`model_revisions.is_current`) alebo null, keď model revíziu nemá. */
+export async function fetchCurrentRevision(model: string): Promise<number | null> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("model_revisions")
+    .select("revision")
+    .eq("model", model)
+    .eq("is_current", true)
+    .maybeSingle();
+  if (error) throw new Error(`model_revisions: ${error.message}`);
+  return (data as { revision: number } | null)?.revision ?? null;
+}

@@ -1,3 +1,5 @@
+import { gunzipSync } from "node:zlib";
+
 import type { IfcDataStore } from "@ifc-lite/parser";
 
 import { parseIfcBytes } from "./loader";
@@ -11,6 +13,11 @@ import { parseIfcBytes } from "./loader";
  * požiadavky na ten istý model čakajú na jedno načítanie (single-flight).
  * `unstable_cache` sa nedá použiť - parsovaný store má stovky MB a nie je
  * serializovateľný.
+ *
+ * D-135: bajty sa sťahujú z nemenného archívu aktuálnej revízie (`archive/<MODEL>/
+ * vNNN.ifc.gz`, cca 5-krát menší), ak ho resolver pozná; ETag na kontrolu zmeny je
+ * stále z HEAD pôvodnej URL. Bez resolvera alebo pri chybe archívu sa stiahne
+ * pôvodná URL ako doteraz.
  */
 
 export interface EngineModelSource {
@@ -41,9 +48,20 @@ const REVALIDATE_MS = 60_000;
 const entries = new Map<string, CachedStore>();
 const inflight = new Map<string, Promise<CachedStore>>();
 
+/** URL archívu aktuálnej revízie modelu (D-135) alebo null, keď revíziu nepoznáme. */
+export type ArchiveResolver = (src: EngineModelSource) => Promise<string | null>;
+
+let defaultArchive: ArchiveResolver | null = null;
+
+/** Server (`run.ts`) zaregistruje resolver nad `model_revisions`; testy a skripty bez neho. */
+export function setArchiveResolver(resolver: ArchiveResolver | null): void {
+  defaultArchive = resolver;
+}
+
 interface Deps {
   fetchImpl?: typeof fetch;
   now?: () => number;
+  archive?: ArchiveResolver | null;
 }
 
 async function head(url: string, fetchImpl: typeof fetch): Promise<{ etag: string | null; size: number | null }> {
@@ -53,17 +71,45 @@ async function head(url: string, fetchImpl: typeof fetch): Promise<{ etag: strin
   return { etag: res.headers.get("etag"), size: len ? Number(len) : null };
 }
 
-async function load(src: EngineModelSource, fetchImpl: typeof fetch, now: () => number): Promise<CachedStore> {
+/** Strop rozbaleného modelu: poškodený alebo podvrhnutý archív nezahltí pamäť funkcie. */
+const MAX_UNPACKED_BYTES = 512 * 1024 * 1024;
+
+/** Bajty z archívu revízie (gzip) s ETagom pôvodnej URL; null = archív nepoužiť. */
+async function fromArchive(
+  src: EngineModelSource,
+  fetchImpl: typeof fetch,
+  archive: ArchiveResolver,
+): Promise<{ bytes: Uint8Array; etag: string | null } | null> {
+  try {
+    // HEAD pred revíziou z DB: publikácia zapíše DB skôr než aktuálny kľúč, takže starý ETag
+    // s novou revíziou znamená najviac jedno načítanie navyše, nikdy nový ETag so starou revíziou.
+    const h = await head(src.url, fetchImpl);
+    const url = await archive(src);
+    if (!url) return null;
+    const res = await fetchImpl(url, { cache: "no-store" });
+    if (!res.ok) return null;
+    const bytes = gunzipSync(new Uint8Array(await res.arrayBuffer()), { maxOutputLength: MAX_UNPACKED_BYTES });
+    return { bytes, etag: h.etag };
+  } catch {
+    return null;
+  }
+}
+
+async function load(src: EngineModelSource, fetchImpl: typeof fetch, now: () => number, archive: ArchiveResolver | null): Promise<CachedStore> {
   const started = now();
-  const res = await fetchImpl(src.url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Model ${src.id} sa nepodarilo stiahnuť (${res.status})`);
-  const bytes = new Uint8Array(await res.arrayBuffer());
+  let got = archive ? await fromArchive(src, fetchImpl, archive) : null;
+  if (!got) {
+    const res = await fetchImpl(src.url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`Model ${src.id} sa nepodarilo stiahnuť (${res.status})`);
+    got = { bytes: new Uint8Array(await res.arrayBuffer()), etag: res.headers.get("etag") };
+  }
+  const { bytes, etag } = got;
   const store = await parseIfcBytes(bytes, `${src.id}.ifc`);
   const t = now();
   return {
     id: src.id,
     url: src.url,
-    etag: res.headers.get("etag"),
+    etag,
     size: bytes.byteLength,
     store,
     loadedAt: t,
@@ -91,7 +137,8 @@ export async function getStore(src: EngineModelSource, deps: Deps = {}): Promise
   const pending = inflight.get(src.id);
   if (pending) return { entry: await pending, cold: true };
 
-  const p = load(src, fetchImpl, now)
+  const archive = deps.archive === undefined ? defaultArchive : deps.archive;
+  const p = load(src, fetchImpl, now, archive)
     .then((entry) => {
       entries.set(src.id, entry);
       return entry;

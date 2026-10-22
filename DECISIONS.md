@@ -6379,3 +6379,93 @@ D-090 (požiadavky z konektora, routine), D-099 (BCF routine).
 
 **Dôsledky:** zmena opisu a parametrov toolu `feedback` (inventár `MCP-TOOLS.md`), evaly D-057 zatiaľ bez
 behu (v cloude chýbajú Supabase kľúče), na Verceli treba obe dvojice env (STANDARD už nastavená).
+
+### D-135 - Egress Supabase: viewer a IFC motor čítajú nemenný archív revízie, sessions testujú na malom modeli
+**Status:** rozhodnuté (2026-10-22, Samuel v #207, číslo pridelené v registri #60). Nadväzuje na D-044
+(geometria v prehliadači), D-084 (IFC motor), D-086 (revízie a archív), D-087/D-098 (fork len tenko).
+
+**Kontext:** bezplatný plán Supabase prekročil kvótu cached egress (cca 5,5 GB za obdobie), od 21. 11. 2026
+platí Fair Use Policy. Hlavný zdroj sú IFC federácie: `ifc/ASR.ifc` (24,7 MB) a `ifc/VZT.ifc` (9,8 MB) s
+`Cache-Control: max-age=60`, bez kompresie (`content-encoding` chýba). Zistenia (22. 10., len čítanie):
+- Host dáva viewerovi `?models=<url>,<url>` s `?rev=N` (D-086); fork ich sťahuje obyčajným `fetch(url)`
+  (`hooks/useModelUrlAutoload.ts`), takže platí len HTTP cache prehliadača: po 60 s podmienená požiadavka,
+  v novom profile (Playwright v sessions, iný náhľad Vercelu = iná partícia cache) celých 34,5 MB.
+- Cache modelov vo forku (`services/ifc-cache.ts`, IndexedDB) má kľúč z obsahu súboru: šetrí parsovanie,
+  nie sťahovanie, súbor sa musí stiahnuť, aby sa kľúč vôbec spočítal. Egress neznižuje.
+- IFC motor (D-084) sťahuje oba modely pri každej studenej inštancii funkcie (MCP `initialize`/`tools/list`
+  ich načíta vopred, D-100/D-101), `cache: "no-store"`, teda 34,5 MB na inštanciu.
+- Archív revízií z D-086 už existuje: `ifc/archive/<MODEL>/vNNN.ifc.gz`, gzip, `upsert=false`,
+  `Cache-Control: max-age=31536000, immutable`. Aktuálne `v078` ASR 4,49 MB a `v004` VZT 2,69 MB, spolu
+  7,18 MB proti 34,47 MB (-79 %). Obsah kľúča sa nikdy nemení (nová revízia = nový kľúč, návrat = nová
+  revízia), preto je dlhá cache bezpečná.
+
+**Rozhodnutie:**
+1. **Viewer načíta archív aktuálnej revízie.** `withRevisions` (`lib/data/ifc-models.ts`) pre model so
+   známou revíziou dá namiesto `.../ifc/ASR.ifc?rev=78` adresu `.../ifc/archive/ASR/v078.ifc.gz` (v tom
+   istom adresári ako pôvodný súbor, takže funguje aj pre `NEXT_PUBLIC_IFC_URLS`). Nová revízia = nová URL,
+   iframe sa obnoví ako doteraz cez `?rev=`. Model bez revízie (DB nedostupná, migrácia chýba) ostáva na
+   pôvodnom kľúči. **Predvolene vypnuté:** archív platí len pri `NEXT_PUBLIC_IFC_ARCHIVE=1`, ktoré Samuel
+   zapne na Verceli až po nasadení forku z bodu 2 (inak by viewer dostal gzip, ktorý nevie načítať).
+   `modelKey` pozná oba tvary URL. URL sa skladá z mena modelu rovnako ako `archive_key` v
+   `etl/model_publish.py`; `model_revisions.archive_path` nesie ten istý kľúč, prechod naň má zmysel až
+   keby sa schéma archívu menila.
+2. **Fork rozbalí gzip a zachová meno modelu.** Autoload (`useModelUrlAutoload`, blok AIM-FORK) pošle
+   stiahnuté bajty cez `aim/modelFile.ts`: začiatok `1f 8b` = `DecompressionStream('gzip')`; meno súboru z
+   `archive/<MODEL>/vNNN.ifc.gz` je `<MODEL>.ifc`, lebo most, revízie a filtre (`"VZT" ~ "VZT.ifc"`,
+   `aim/derivations.ts`) párujú model podľa mena. Bez zmeny parsera a upstream loadera. Zlučuje sa pred
+   AIMviewerom (D-116); host je bezpečný aj skôr, lebo archív zapína až `NEXT_PUBLIC_IFC_ARCHIVE=1`.
+3. **IFC motor sťahuje archív.** `getStore` (`lib/engine/cache.ts`) zistí aktuálnu revíziu modelu
+   (`model_revisions`, server) a stiahne archív, rozbalí ho (`zlib`, strop 512 MB). ETag na kontrolu zmeny
+   berie z HEAD pôvodného kľúča **pred** čítaním revízie: publikácia zapíše DB skôr než kľúč, takže súbeh dá
+   najviac jedno načítanie navyše, nikdy nový ETag pri starej revízii. Bez revízie alebo pri chybe archívu
+   stiahne pôvodný kľúč. Motor nepotrebuje fork, platí hneď po nasadení hosta.
+4. **Nahrávanie sa nemení.** `etl.model_publish` už archív píše nemenne s dlhou cache; aktuálny kľúč
+   `ifc/<MODEL>.ifc` ostáva s `max-age=60`, lebo ho prepisuje každá revízia (ETL, OCB recept, `sync`,
+   staré odkazy) a CDN bezplatného plánu by pri dlhej cache vracala starý súbor. OCB (workflow `uloha`) a
+   ETL sa tým nedotýkajú; nič sa nenahráva, nastavenie bucketu netreba.
+5. **Sessions a testy nesťahujú produkčné modely.** Živé overovanie viewera aj motora beží na malom
+   testovacom modeli (`AC20-FZK-Haus.ifc` z fixtures forku, lokálny server), nie na `ifc/*.ifc` z bucketu.
+   Hlavičky sa overujú `curl -I` alebo `-r 0-0`, nikdy celým stiahnutím. Pravidlo je v `AGENTS.md`, v
+   skilloch `verify` a `mcp-poziadavka` a vo forku v `aim-feature`. "Ako vyskúšať" pre Samuela ostáva na
+   produkcii (jeden prehliadač, po bode 1 z cache).
+
+**Úspora (odhad z veľkostí, rozpis z logov Supabase nebol dostupný, API logov vracalo 429):**
+| Prípad | Doteraz | Po D-135 |
+|---|---|---|
+| prvé otvorenie viewera v prehliadači / novom profile / náhľade | 34,5 MB | 7,2 MB |
+| ďalšie otvorenie v tom istom prehliadači, tá istá revízia | podmienená požiadavka každých 60 s | 0 (bez požiadavky) |
+| studená inštancia IFC motora (MCP) | 34,5 MB | 7,2 MB (+ 2 HEAD) |
+| živé overenie v session | 34,5 MB na beh | 0 (testovací model) |
+
+Kvóta 5,5 GB = cca 160 plných načítaní federácie; po zmene to isté stojí cca 1,15 GB.
+
+**Odkiaľ sa sťahuje (Supabase Usage od Samuela + `mcp_call_log`, 22. 10.):** cached egress 14,66 GB z 5 GB
+od 17. 10. (19. 10. cca 2,5 GB, 20. 10. cca 6,2 GB, 21. 10. cca 3,3 GB), bežný egress 0,99 GB. Cieľ od 17. 11.:
+5 GB za mesiac, teda cca 160 MB za deň. Zdroje:
+| Zdroj | Cesta v kóde / skille | 19. / 20. / 21. 10. |
+|---|---|---|
+| IFC motor: každá studená inštancia MCP predčíta oba modely (D-100/D-101, `preloadEngineModels`) | `app/api/mcp/[token]/route.ts`, evaly `eval/MCP-EVAL.md`, sessions a routines volajúce konektor | 38 / 105 / 39 studených inštancií = aspoň 1,3 / 3,6 / 1,35 GB |
+| prehliadač v novom profile (Playwright v sessions, náhľady Vercelu) | fork `steward` "Try them yourself first, live" s odkazom `ai-mviewer.vercel.app/ifc?viewer=pr-N`, `release-train` test link, živý viewer pri evale (`/ifc?live=`) | zvyšok, cca 1,2 / 2,6 / 1,9 GB = 35 / 75 / 55 načítaní |
+Studené inštancie bez tool callu (len `initialize`) v logu nie sú, motor je teda skôr väčší podiel.
+Archív samotný 20. 10. zníži z 6,2 GB na cca 1,3 GB; na 160 MB za deň treba aj pravidlo 5 a jeden z návrhov nižšie.
+Skilly forku `steward` a `release-train` preto hovoria, že odkaz "Ako vyskúšať" je len pre Samuela a session
+skúša na lokálnom vieweri s testovacím modelom.
+
+**Otvorené pre Samuela (nie je v tomto PR):**
+- *Predčítanie motora len pri pripojení:* `preloadEngineModels` len pri `initialize`/`tools/list`, nie pri prvej
+  požiadavke na studenú inštanciu (časť D-101). Inštancia, ktorá obslúži len DB tools (78 až 90 % volaní),
+  potom nič nesťahuje; cena je dlhšie prvé `ifc_*` volanie na novej inštancii.
+- *Modely cez CDN Vercelu:* host servíruje `/models/archive/...` ako rewrite na archív s dlhou cache, prehliadače
+  aj motor čítajú z CDN Vercelu a Supabase vidí stiahnutie raz na revíziu a región. Treba overiť, či Vercel
+  (Hobby) cachuje externý rewrite, a pridať origin hosta do `VITE_AIM_MODEL_ORIGINS` forku (aj náhľady).
+
+**Zavrhnuté:**
+- *Dlhá cache na aktuálnom kľúči:* kľúč sa prepisuje, prehliadače aj CDN by držali starú revíziu.
+- *Spoliehať sa na IndexedDB cache forku:* kľúč z obsahu, súbor sa aj tak sťahuje.
+- *Kompresia `Content-Encoding` na aktuálnom kľúči:* Supabase Storage ju nenastavuje; gzip archív už je.
+- *Presun úložiska alebo Pro plán:* Pro ostáva záloha (#207), presun je zbytočne veľký krok.
+
+**Dôsledky:** fork patch (gzip + meno) ide pred AIMviewerom; po nasadení forku Samuel nastaví na Verceli
+`NEXT_PUBLIC_IFC_ARCHIVE=1` (Production aj Preview) a redeploy, potom v DevTools uvidí `v078.ifc.gz`
+(cca 4,5 MB) a pri ďalšom otvorení "(disk cache)". Live kanál, uložené pohľady (`model_revisions`
+podľa kľúča) a `ifc_models` sa nemenia.

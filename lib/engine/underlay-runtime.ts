@@ -6,10 +6,14 @@ import type { MergeResult } from "../data/georef";
 import { getIfcModels } from "../data/ifc-models";
 import { getSupabaseAdmin } from "../supabase/server";
 
+import { installArchiveSource } from "./archive-source";
 import { meshModel } from "./measure";
 import { openEngineSession } from "./session";
 import { IFC_GUID_RE, modelsFor, storeyGuid, structured, type EngineDeps } from "./tools";
 import type { UnderlayDeps, UnderlayDocument, UnderlayModel, UnderlayPage } from "./underlay-tool";
+
+// D-135: modely motora z nemenného archívu revízie (cca 5-krát menej egressu).
+installArchiveSource();
 
 /**
  * Produkčné závislosti `calibrate_underlay` (D-133): dokument a strany z DB, model z IFC

@@ -27,6 +27,8 @@ Volanie odmietnuté pre neznámy parameter (D-126) sa nevykoná, ale zapíše sa
 `unknown_param:<mená>`, `ms` 0 a `ok` false; v dotaze vyššie má vlastnú skupinu.
 
 ## Beh (Claude Code session s konektorom aim-viewer)
+0. Každé kolo stojí egress Supabase: studená inštancia motora stiahne oba modely (D-135, cieľ cca 160 MB za deň).
+   Celé kolo spúšťaj len na Samuelov pokyn, živý viewer drž v jednom bežnom prehliadači (nie nový profil Playwrightu).
 1. Pri úlohách `viewer: true` musí byť otvorený živý viewer (`/ifc?live=<LIVE_CHANNEL>`) a nikto
    iný ho počas behu nepoužíva, kanál je spoločný. Bez viewera pusti len `category: data`.
 2. Každú úlohu dostane **čerstvý subagent** (nástroj Agent, typ general-purpose) s týmto zadaním:
