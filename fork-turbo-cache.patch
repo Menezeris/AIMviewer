@@ -1,0 +1,110 @@
+From 8c015a99748c7ce5f327491b34425986314e23da Mon Sep 17 00:00:00 2001
+From: Samuel Augustin <samuel.augustin@assetin.sk>
+Date: Thu, 22 Oct 2026 05:39:57 +0000
+Subject: [PATCH] fix(build): stable turbo hash, move per-commit env to the
+ viewer task
+
+VERCEL_GIT_COMMIT_SHA, VERCEL_DEPLOYMENT_ID, VERCEL_SKEW_PROTECTION_ENABLED
+and GITHUB_SHA were listed in the root `build` task env, so they fed the hash
+of every package. Each commit therefore missed the Turbo Remote Cache for all
+57 tasks (including the 3 min @ifc-lite/wasm Rust build), even when nothing
+but the SHA changed.
+
+Only apps/viewer reads them (vite.config.ts: __BUILD_SHA__, assetsDir), so
+they now live in apps/viewer/turbo.json ($TURBO_EXTENDS$ keeps the VITE_*
+list). Dry run with two different SHAs: 0/57 stable hashes before, 56/57
+after (only @ifc-lite/viewer#build differs).
+
+vercel-build.sh no longer claims the Remote Cache is not configured: Vercel
+enables it on its own, without TURBO_TOKEN / TURBO_TEAM.
+---
+ apps/viewer/turbo.json  | 21 +++++++++++++++++++++
+ scripts/vercel-build.sh | 17 +++++++++++------
+ turbo.json              | 12 +++++++-----
+ 3 files changed, 39 insertions(+), 11 deletions(-)
+ create mode 100644 apps/viewer/turbo.json
+
+diff --git a/apps/viewer/turbo.json b/apps/viewer/turbo.json
+new file mode 100644
+index 00000000..6b23b037
+--- /dev/null
++++ b/apps/viewer/turbo.json
+@@ -0,0 +1,21 @@
++{
++  "$schema": "https://turbo.build/schema.json",
++  "extends": ["//"],
++  "tasks": {
++    "build": {
++      "env": [
++        "$TURBO_EXTENDS$",
++        // >>> AIM-FORK: per-commit / per-deployment variables, only for the
++        // viewer bundle. vite.config.ts stamps __BUILD_SHA__ from
++        // VERCEL_GIT_COMMIT_SHA / GITHUB_SHA and names the assets directory
++        // from VERCEL_DEPLOYMENT_ID, so this task legitimately misses on every
++        // commit, but its dependencies (wasm, packages) no longer do.
++        "VERCEL_GIT_COMMIT_SHA",
++        "VERCEL_DEPLOYMENT_ID",
++        "VERCEL_SKEW_PROTECTION_ENABLED",
++        "GITHUB_SHA"
++        // <<< AIM-FORK
++      ]
++    }
++  }
++}
+diff --git a/scripts/vercel-build.sh b/scripts/vercel-build.sh
+index 0352ae43..3078420a 100755
+--- a/scripts/vercel-build.sh
++++ b/scripts/vercel-build.sh
+@@ -49,15 +49,20 @@ else
+   echo "🦀 CARGO_TARGET_DIR unset (no writable Vercel cache dir; using ./target)"
+ fi
+ 
+-# Surface Turbo Remote Cache status in the deploy log. Cache hits show
+-# up as "FULL TURBO" in turbo's banner; if you don't see them, set
+-# TURBO_TEAM + TURBO_TOKEN in the Vercel project env.
++# >>> AIM-FORK: Vercel Remote Cache needs no TURBO_TOKEN / TURBO_TEAM.
++# On a Vercel build turbo authenticates through the build's own OIDC token and
++# prints "Remote caching enabled" by itself. The old message claimed the cache
++# was NOT configured and every deploy rebuilt WASM; the real reason for the
++# misses was per-commit variables in turbo.json `env` (see apps/viewer/turbo.json).
++# Cache hits show up as "cache hit, replaying logs" per task and "FULL TURBO".
+ if [ -n "${TURBO_TOKEN:-}" ] && [ -n "${TURBO_TEAM:-}" ]; then
+-  echo "🚀 Turbo Remote Cache enabled (team=$TURBO_TEAM)"
++  echo "🚀 Turbo Remote Cache: explicit credentials (team=$TURBO_TEAM)"
++elif [ -n "${VERCEL:-}" ]; then
++  echo "🚀 Turbo Remote Cache: Vercel Remote Cache (automatic on Vercel builds, no token needed)"
+ else
+-  echo "⚠️  Turbo Remote Cache NOT configured — every deploy will rebuild WASM from source."
+-  echo "   Set TURBO_TEAM + TURBO_TOKEN in the Vercel project env to enable."
++  echo "ℹ️  Turbo Remote Cache: local cache only (set TURBO_TEAM + TURBO_TOKEN to share one)"
+ fi
++# <<< AIM-FORK
+ 
+ # WASM build memory: the release profile uses FAT LTO (whole-program link held
+ # in memory) when wasm-pack compiles ifc-lite-wasm from source. On a rust-touching
+diff --git a/turbo.json b/turbo.json
+index cb86a68a..21ac17a6 100644
+--- a/turbo.json
++++ b/turbo.json
+@@ -75,11 +75,13 @@
+         "VITE_LLM_FILE_ATTACHMENT_MODELS",
+         "VITE_POSTHOG_KEY",
+         "VITE_POSTHOG_HOST",
+-        "VITE_SOURCEMAP",
+-        "VERCEL_GIT_COMMIT_SHA",
+-        "VERCEL_DEPLOYMENT_ID",
+-        "VERCEL_SKEW_PROTECTION_ENABLED",
+-        "GITHUB_SHA"
++        "VITE_SOURCEMAP"
++        // >>> AIM-FORK: VERCEL_GIT_COMMIT_SHA, VERCEL_DEPLOYMENT_ID,
++        // VERCEL_SKEW_PROTECTION_ENABLED and GITHUB_SHA moved to
++        // apps/viewer/turbo.json. Listed here they changed the hash of EVERY
++        // package on every commit (cache miss for @ifc-lite/wasm and all 56
++        // others, ~$40 of Vercel Build CPU). Only the viewer bundle reads them.
++        // <<< AIM-FORK
+       ]
+     },
+     "typecheck": {
+-- 
+2.43.0
+
