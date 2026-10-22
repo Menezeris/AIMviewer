@@ -297,7 +297,7 @@ export async function execViewTool(
       const ceiling = await storeyCeiling(floor.label);
       if (!ceiling) throw new ViewInputError(`Podlažie ${floor.label} nemá IfcCovering CEILING ani miestnosti s Qto FinishCeilingHeight - zadaj offset_m priamo.`);
       const offset = typeof input.offset_m === "number" && Number.isFinite(input.offset_m) ? input.offset_m : 0;
-      // D-142: záporný offset = pod podhľadom (od jeho spodku), inak nad ním (od horného okraja).
+      // D-140: záporný offset = pod podhľadom (od jeho spodku), inak nad ním (od horného okraja).
       const reference = offset < 0 ? ceiling.bottom_m : ceiling.top_m;
       plan = planSection({ ...input, offset_m: Math.round((reference + offset) * 1000) / 1000 }, floor, targets);
       plan.result = {

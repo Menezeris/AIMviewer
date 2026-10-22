@@ -6548,8 +6548,8 @@ vo wire (fork patch bez využitia).
 **Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `style-colorize-space-translucent` je v
 `eval/questions.json`.
 
-### D-142 - set_section relative_to=ceiling: výška podhľadu z geometrie IfcCovering CEILING, Qto len záloha
-**Status:** rozhodnuté (2026-10-22, issue #230; číslo D-141 obsadilo #185, preto D-142; zápis do registra čaká). Nadväzuje na D-102
+### D-140 - set_section relative_to=ceiling: výška podhľadu z geometrie IfcCovering CEILING, Qto len záloha
+**Status:** rozhodnuté (2026-10-22, issue #230; číslo D-140 pridelil orchestrátor (D-141 má #185); zápis do registra čaká). Nadväzuje na D-102
 (rez pod podhľadom), D-092 (rez nad podlažím, elevácia z DB), D-112 (`ifc_measure`, mesh), D-114 (bez nového toolu).
 
 **Kontext:** `relative_to=ceiling` bral výšku z Qto `FinishCeilingHeight` miestností. Na 2NP sa Qto (3,05 m od hotovej podlahy)
