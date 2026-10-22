@@ -17,12 +17,12 @@ import {
 import { lensCountsText } from "@/lib/live/lens-counts";
 import { ACK_TIMEOUT_MS, appliedText, notAppliedText } from "@/lib/live/applied-text";
 import { expectApplied, recentViewerCount } from "@/lib/live/warm-channel";
-import { mcpInstructions } from "@/lib/llm/system-prompt";
 import type { AskAction } from "@/lib/llm/actions";
 import { AskToolRuntime } from "@/lib/llm/tools";
 import { callAction, engineUseQuery, rejectedCallRow, writeCallLog } from "@/lib/mcp/call-log";
 import { ENGINE_WANT_WINDOW_MS, engineUsedSince, engineWarmDecision, isEngineTool, payloadToolNames, type EngineWarmState } from "@/lib/mcp/engine-warm";
-import { mcpToolDefinitions } from "@/lib/mcp/tool-list";
+import { mcpServerInstructions } from "@/lib/mcp/tool-loading";
+import { mcpToolDefinitions, mcpToolGroups } from "@/lib/mcp/tool-list";
 import { defaultSavedViewDeps } from "@/lib/views/runtime";
 import { SAVED_VIEW_TOOL_NAMES, execSavedViewTool } from "@/lib/views/tools";
 import {
@@ -252,7 +252,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
   const deps: McpServerDeps = {
     serverInfo: { name: "aim-viewer", version: "1.0.0" },
-    instructions: mcpInstructions(siteUrl(), ENGINE_ENABLED),
+    instructions: mcpServerInstructions(siteUrl(), ENGINE_ENABLED, mcpToolGroups({ engine: ENGINE_ENABLED })),
     tools: mcpToolDefinitions({ engine: ENGINE_ENABLED, spike: ENGINE_SPIKE }),
     callTool,
     onRejected: (name, unknown) => after(() => writeCallLog(rejectedCallRow(name, unknown, process.env.VERCEL_REGION ?? null))),
