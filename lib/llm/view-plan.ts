@@ -12,9 +12,16 @@ import {
   PANEL_ACTIONS,
   panelsOp,
   panelScrollOp,
+  panelZoomOp,
+  PANEL_ITEM_MAX,
+  PANEL_NAME,
   PANEL_SCROLLS,
-  VIEWER_PANELS,
+  PANEL_ZOOM_RANGE,
+  PANEL_ZOOM_STEPS,
+  type PanelAction,
   type PanelsRequest,
+  type PanelScrollTarget,
+  type PanelZoom,
   type SectionFit,
   type ViewMode,
 } from "../viewer-ops";
@@ -171,36 +178,75 @@ export function planViewMode(
 }
 
 /**
- * Panely viewera (D-127): `panels` = {lens: "close", properties: "open", ...}, `all` len "close".
- * Bez `panels` null; chybný vstup = ViewInputError (model ho opraví).
+ * Panely viewera (D-127, D-150): `panels` = {lens: "close", bcf: "open", ...}, `all` len "close". Meno je id panela
+ * z registra forku; tvar mena kontroluje host, existenciu viewer (neznáme nahlási v `APPLIED`, zoznam je vo
+ * `view_state.panels`). Bez `panels` null; chybný vstup = ViewInputError (model ho opraví).
  */
 export function planPanels(input: Record<string, unknown>): { op: string; label: string; result: { panels: PanelsRequest } } | null {
   const raw = input.panels;
   if (raw === undefined || raw === null) return null;
-  if (typeof raw !== "object" || Array.isArray(raw)) throw new ViewInputError("panels = {lens|properties|underlays|documents|lists|model_tree|all: open|close|toggle}.");
+  if (typeof raw !== "object" || Array.isArray(raw)) throw new ViewInputError("panels = {<panel>|all: open|close|toggle}, mená panelov vráti get_viewer_state (panels).");
   const out: PanelsRequest = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    const known = (VIEWER_PANELS as readonly string[]).includes(k) || k === "all";
-    if (!known) throw new ViewInputError(`panels: neznámy panel '${k}' (lens, properties, underlays, documents, lists, model_tree, all).`);
+    if (!PANEL_NAME.test(k)) throw new ViewInputError(`panels: neplatné meno panela '${k}' (panely a skratky vráti get_viewer_state, napr. lens, properties, bcf, lists, model_tree).`);
     if (!(PANEL_ACTIONS as readonly unknown[]).includes(v)) throw new ViewInputError(`panels.${k}: open, close alebo toggle.`);
     if (k === "all" && v !== "close") throw new ViewInputError("panels.all: len close (zatvorí všetky panely, okrem tých, ktoré správa otvára).");
-    out[k as keyof PanelsRequest] = v as PanelsRequest[keyof PanelsRequest];
+    out[k] = v as PanelAction;
   }
   if (Object.keys(out).length === 0) throw new ViewInputError("panels: aspoň jeden panel.");
   const label = Object.entries(out).map(([k, v]) => `${k} ${v}`).join(", ");
   return { op: panelsOp(out), label: `Panely: ${label}`, result: { panels: out } };
 }
 
+/** Panel_scroll ako reťazec (D-146, panel vlastností) alebo objekt {panel, to | item | percent} (D-150). */
+function scrollTargetOf(raw: unknown): PanelScrollTarget {
+  if (typeof raw === "string") {
+    if (!(PANEL_SCROLLS as readonly string[]).includes(raw.trim())) throw new ViewInputError(`panel_scroll: ${PANEL_SCROLLS.join(", ")}.`);
+    return { direction: raw.trim() as (typeof PANEL_SCROLLS)[number] };
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ViewInputError(`panel_scroll: ${PANEL_SCROLLS.join(", ")} alebo {panel, to | item | percent}.`);
+  const o = raw as Record<string, unknown>;
+  if (o.panel !== undefined && !(typeof o.panel === "string" && PANEL_NAME.test(o.panel))) throw new ViewInputError("panel_scroll.panel: meno panela (get_viewer_state, panels).");
+  const given = [o.to, o.item, o.percent].filter((v) => v !== undefined);
+  if (given.length !== 1) throw new ViewInputError("panel_scroll: práve jedno z to (up, down, top, bottom), item (text položky), percent (0 až 100).");
+  const panel = o.panel as string | undefined;
+  if (o.to !== undefined) {
+    if (typeof o.to !== "string" || !(PANEL_SCROLLS as readonly string[]).includes(o.to.trim())) throw new ViewInputError(`panel_scroll.to: ${PANEL_SCROLLS.join(", ")}.`);
+    return { direction: o.to.trim() as (typeof PANEL_SCROLLS)[number], ...(panel ? { panel } : {}) };
+  }
+  if (o.item !== undefined) {
+    if (typeof o.item !== "string" || o.item.trim().length === 0 || o.item.trim().length > PANEL_ITEM_MAX) throw new ViewInputError(`panel_scroll.item: text položky, 1 až ${PANEL_ITEM_MAX} znakov.`);
+    return { item: o.item.trim(), ...(panel ? { panel } : {}) };
+  }
+  if (typeof o.percent !== "number" || !Number.isFinite(o.percent) || o.percent < 0 || o.percent > 100) throw new ViewInputError("panel_scroll.percent: číslo 0 až 100 (0 = začiatok, 100 = koniec).");
+  return { percent: o.percent, ...(panel ? { panel } : {}) };
+}
+
 /**
- * Posun panela vlastností (D-146): `panel_scroll` = up | down | top | bottom ("posuň dole", "hore", "na začiatok").
- * Bez neho null; chybný vstup = ViewInputError (model ho opraví).
+ * Posun obsahu panela (D-146, D-150): `panel_scroll` = up | down | top | bottom (panel vlastností), alebo
+ * {panel, to | item | percent}: na položku podľa textu alebo polohu v %. Bez neho null; chybný vstup = ViewInputError.
  */
-export function planPanelScroll(input: Record<string, unknown>): { op: string; label: string; result: { panel_scroll: string } } | null {
+export function planPanelScroll(input: Record<string, unknown>): { op: string; label: string; result: { panel_scroll: PanelScrollTarget | string } } | null {
   const raw = input.panel_scroll;
   if (raw === undefined || raw === null || raw === "") return null;
-  if (typeof raw !== "string" || !(PANEL_SCROLLS as readonly string[]).includes(raw.trim())) {
-    throw new ViewInputError(`panel_scroll: ${PANEL_SCROLLS.join(", ")}.`);
-  }
-  const direction = raw.trim() as (typeof PANEL_SCROLLS)[number];
-  return { op: panelScrollOp(direction), label: `Panel vlastností: ${direction}`, result: { panel_scroll: direction } };
+  const target = scrollTargetOf(raw);
+  const panel = target.panel ?? "properties";
+  const what = target.direction ?? (target.item !== undefined ? `na '${target.item}'` : `na ${target.percent} %`);
+  return { op: panelScrollOp(target), label: `Panel ${panel}: ${what}`, result: { panel_scroll: typeof raw === "string" ? raw.trim() : target } };
+}
+
+/** Zoom obsahu panela (D-150): `panel_zoom` = {panel?, zoom: in | out | reset | 0,5 až 2,5}. Bez neho null. */
+export function planPanelZoom(input: Record<string, unknown>): { op: string; label: string; result: { panel_zoom: { panel?: string; zoom: PanelZoom } } } | null {
+  const raw = input.panel_zoom;
+  if (raw === undefined || raw === null) return null;
+  const hint = `panel_zoom = {panel?, zoom: ${PANEL_ZOOM_STEPS.join(" | ")} | číslo ${PANEL_ZOOM_RANGE.min} až ${PANEL_ZOOM_RANGE.max}}.`;
+  if (typeof raw !== "object" || Array.isArray(raw)) throw new ViewInputError(hint);
+  const o = raw as Record<string, unknown>;
+  if (o.panel !== undefined && !(typeof o.panel === "string" && PANEL_NAME.test(o.panel))) throw new ViewInputError("panel_zoom.panel: meno panela (get_viewer_state, panels).");
+  const z = o.zoom;
+  const ok = (typeof z === "string" && (PANEL_ZOOM_STEPS as readonly string[]).includes(z)) || (typeof z === "number" && Number.isFinite(z) && z >= PANEL_ZOOM_RANGE.min && z <= PANEL_ZOOM_RANGE.max);
+  if (!ok) throw new ViewInputError(hint);
+  const panel = o.panel as string | undefined;
+  const zoom = z as PanelZoom;
+  return { op: panelZoomOp(zoom, panel), label: `Panel ${panel ?? "properties"}: zoom ${zoom}`, result: { panel_zoom: { ...(panel ? { panel } : {}), zoom } } };
 }

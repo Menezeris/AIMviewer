@@ -1081,6 +1081,22 @@
       "expect": { "tools_called": ["ifc_measure"], "answer_matches": ["0[,.]8"] },
       "verified": false,
       "notes": "D-155 (issue #236): ifc_measure(a=DD02.05.04, face_a=+x, face_b=-x, show=true) -> faces.distance_m, jedna kóta. 0,8 = clear_opening z konektora 2026-10-22 (zo zárubne), plochami neoverené; evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "panel-bcf-open",
+      "category": "viewer",
+      "question": "Otvor panel BCF topics a zavri všetky ostatné panely.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-150 (issue #179): set_view_mode(panels={all: 'close', bcf: 'open'}) bez mode; BCF topics je panel bcf (Alt+3). Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "panel-scroll-item",
+      "category": "viewer",
+      "question": "Posuň panel vlastností na výmery a priblíž ho.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-150 (issue #179): set_view_mode(panel_scroll={item: 'Quantities'}, panel_zoom={zoom: 'in'}); stav posunu v panel_view. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     }
   ]
 }
