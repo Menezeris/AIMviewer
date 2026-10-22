@@ -46,3 +46,22 @@ describe("stav tabuľky po open_list (D-148)", () => {
     expect(appliedText("style_in_3d", applied({ list: { status: "done", rows: 1 } }), 5)).not.toContain("riadkov");
   });
 });
+
+describe("úpravy zoznamu v potvrdení (D-149)", () => {
+  const text = (list: Record<string, unknown> | undefined, args: Record<string, unknown>) =>
+    appliedText("open_list", applied(list ? { list } : {}), 5, { args });
+  const DONE = { status: "done", rows: 52, visible_rows: 7, sort: null, maximized: true, sums: [{ column: "NetVolume", value: 17.5775, unit: "m³" }] };
+  it("súčty povie vetou za zobrazené riadky", () => {
+    expect(text(DONE, { action: "update", sum: ["Qto_ColumnBaseQuantities.NetVolume"] })).toContain("Súčty za 7 zobrazených riadkov: NetVolume = 17.5775 m³.");
+  });
+  it("nevykonaná maximalizácia, zoradenie a súčet sa nehlásia ako hotové", () => {
+    const t = text({ ...DONE, maximized: false, sums: [] }, { maximize: true, sort_by: "Name", sum: ["X.Y"] });
+    expect(t).toContain("nemaximalizoval");
+    expect(t).toContain("Zoradenie sa neprejavilo");
+    expect(t).toContain("súčet nehlás");
+  });
+  it("starý fork bez stavu tabuľky: úpravy nepotvrdzuj; bez úprav ticho", () => {
+    expect(text({ status: "done", rows: 3 }, { action: "update" })).toContain("nepotvrdzuj");
+    expect(text({ status: "done", rows: 3 }, {})).not.toContain("nepotvrdzuj");
+  });
+});

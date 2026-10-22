@@ -28,7 +28,8 @@ export const VIEWER_QUERY_TOOL_DEFINITIONS: ToolDefinition[] = [
       "poloha v %), kamera (pozícia a cieľ v IFC), výber a počty skrytých a izolovaných prvkov. Výber: count, " +
       "truncated, summary (počty podľa IFC triedy, podlažia, rodičovskej zostavy a modelu) a stránka items; na " +
       "'čo mám vybrané' odpovedaj zo summary. lens = AIM chat lens zo style_in_3d (pravidlá s počtami, izolácia " +
-      "alebo X-ray s počtom prvkov). bounds=true alebo cieľ (target_ids_or_refs, global_ids) = namiesto " +
+      "alebo X-ray s počtom prvkov). list = zoznam v paneli Lists (open_list): stĺpce, filtre, zoradenie, zoskupenie, " +
+      "sums = súčty za zobrazené riadky v jednotke tabuľky, maximized; na 'koľko je spolu' v otvorenom zozname odpovedaj z nich. bounds=true alebo cieľ (target_ids_or_refs, global_ids) = namiesto " +
       "stavu obálky v súradniciach IFC (m, Z hore): celý model a prvky (min, max, size, center, section_axis), " +
       "napr. pred presným rezom set_section(orientation, coordinate_m); zostava bez geometrie sa zráta z častí, " +
       "missing = prvky bez geometrie. ULOŽENÉ POHĽADY: saved_views=true = zoznam a opis uložených pohľadov stavby " +

@@ -6970,3 +6970,28 @@ balíkov forku), preto je v PR "Ako vyskúšať". Mutačné dôkazy forku pre re
 **Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežali; do `eval/questions.json` pribudli `panel-bcf-open` a
 `panel-scroll-item`. **Testy:** vitest (`view-plan`, `select-panel`), fork `aimPanelList.test.ts`, `aimPanelsPlan.test.ts`,
 `aimPanelScrollPlan.test.ts`.
+
+---
+
+### D-149 - "Excel hlasom" nad panelom Lists: `open_list action=update`, maximalizácia, filter, zoradenie, súčet a stav zoznamu
+
+**Dátum:** 2026-10-22 · **Issue:** #250 (z #179 doplnenia 21. 10. 07:41 a 07:42, #185) · **Fork PR:** Menezeris/ifc-lite (patch na vetve `claude/aim-250-fork-patch`) · **Nadväzuje na:** D-098, D-101, D-111, D-114, D-127, D-148
+
+**Kontext:** Samuel: zoznamy sú podstatné. Claude má jeden otvorený zoznam upravovať po krokoch ("otvor stĺpy, zobraz na celú obrazovku, filtruj 3NP, sumarizuj NetVolume"), nie zakladať nový, a vedieť, čo zoznam práve ukazuje (súčet NetVolume na 3NP sa dal zistiť len obchádzkou cez niekoľko `ifc_query` a výpočet mimo viewera). Čo fork už vie (D-098): zoskupenie a súčty sú v upstream `ListDefinition.grouping` (hlavička tabuľky ich mení cez `handleGroupingFromTable`: `summariseListRows` + `carryListRun`), filter builderu je `definition.groups` (ten istý `FilterGroup` ako `open_list`), zoradenie a rýchle hľadanie sú lokálny stav `ListResultsTable`, maximalizácia lokálny stav `BottomStrip` (tlačidlo Maximize v hlavičke pruhu), export je `exportList`, ktorý v iframe bez kliku používateľa nestiahne súbor (D-111).
+
+**Najbližšie tooly (D-114):** `open_list` (rozšírime), `set_view_mode panels` (D-127, otvára a zatvára panely, tabuľku nemení), `get_viewer_state` (len číta, dostane pole `list`). Nový tool netreba.
+
+**Rozhodnutie:**
+1. `open_list` dostane `action`: `open` (default, dnešné správanie) alebo `update` (upraví práve otvorený zoznam). Pri `update` filtre (`storey`, `ifc_type`, `property`/`value`...) pribudnú ako AND ku každej skupine filtrov zoznamu a tabuľka sa spustí znova cestou D-148 (nové id definície, podľa neho `APPLIED` pozná zúžený výsledok); zoradenie a hľadanie tabuľky sa prenesú na nový výsledok. `columns` pri `update` je zatiaľ chyba.
+2. Pri `open` aj `update`: `maximize` (true/false), `sort_by` + `sort_dir`, `sum` (stĺpce), `group_by` (stĺpce, vonkajšie prvé), `search` (text v riadkoch). Stĺpec sa píše ako v `columns`; viewer ho nájde podľa zdroja a mena (pri psete aj sady), chýbajúci stĺpec je problém v `APPLIED` so zoznamom stĺpcov. Prázdne pole alebo text zruší.
+3. Op `list` nesie `u: 1` (úprava) a `v` (pohľad); bridge správa je `OPEN_LIST` s `view` alebo nová `LIST_UPDATE {groups, view}` v `lens-protocol.ts` forku (nie `bridge-protocol.ts`, ten je na hrane veľkosti). `viewer-ops.ts` sa nemení.
+4. Fork: logika v `aim/aimListControl.ts` a `aim/aimListViewPlan.ts` (čistá, testy), spojka `aim/aimListViewStore.ts`; zoskupenie a súčty idú do `ListDefinition.grouping` tou istou cestou ako hlavička tabuľky. Upstream len dva AIM-FORK háky: `ListResultsTable.tsx` (`useAimListTable`: zoradenie, hľadanie, hlásenie súčtov v jednotke tabuľky) a `BottomStrip.tsx` (`useAimStripMaximize`: ten istý `isMaximized` ako tlačidlo, čaká, kým je Lists aktívny panel pruhu).
+5. Stav zoznamu `list` je v `get_viewer_state` aj v `APPLIED.state.list` po `open_list`: názov, `has_result`, `rows`, `visible_rows`, stĺpce, filtre (krátky opis), zoradenie, hľadanie, `group_by`, `sum_columns`, `sums` (súčty za zobrazené riadky v jednotke tabuľky, tie isté čísla ako päta tabuľky), `maximized`. Platí aj pre zoznam, ktorý zostavil používateľ. `appliedText` súčty povie vetou a nepotvrdí maximalizáciu, zoradenie ani súčet, ktoré sa neprejavili.
+
+**Zavrhnuté rozšírenie:** nový tool `set_list_state` / `update_list` - ďalší tool v konektore na to isté, čo `open_list` už nesie (filtre, stĺpce, D-114). `set_view_mode panels` - otvára panely, obsah a pohľad tabuľky nemení. Súčet cez `aggregate_objects` - počíta nad DB, nie nad tým, čo ukazuje tabuľka (filter, hľadanie, jednotka tabuľky).
+
+**Neskôr (druhý krok #250):** pridať a odobrať stĺpce a triedy entít, odobrať filter, prepnúť model a podlažie (náhrada filtra), export (zvýraznenie tlačidla Export; stiahnutie kliká používateľ), farbenie podľa stĺpca. Maximalizácia funguje pre panel Lists v spodnom pruhu; plávajúci alebo samostatné okno hlási `maximized: false`.
+
+**Poradie nasadenia:** najprv fork, potom AIMviewer. Starší fork `view` a `LIST_UPDATE` ignoruje; `appliedText` vtedy povie, že úpravy nepotvrdzuje.
+
+**Otvorené:** plné CI forku a evaly (D-057) v cloud session nepobežali; otázka je v `eval/questions.json`.

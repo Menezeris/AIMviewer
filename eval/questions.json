@@ -672,6 +672,14 @@
       "notes": "D-148 (issue #248): open_list(ifc_type=IfcColumn, run=true, columns=[Name, storey, Qto_ColumnBaseQuantities.NetVolume]); odpoveď povie, či tabuľka beží (state.list). Len so živým viewerom."
     },
     {
+      "id": "view-list-update-sum",
+      "category": "view",
+      "question": "V otvorenom zozname stĺpov nechaj len 3NP, daj ho na celú obrazovku a sčítaj NetVolume.",
+      "expect": { "tools_called": ["open_list"] },
+      "verified": false,
+      "notes": "D-149 (issue #250): open_list(action=update, storey=3NP, maximize=true, sum=[Qto_ColumnBaseQuantities.NetVolume]); súčet povie zo state.list.sums (v issue #179 vyšlo 3NP = 17.5775 m3), nepočíta ho cez ifc_query. Len so živým viewerom."
+    },
+    {
       "id": "view-select-panel-ifc",
       "category": "view",
       "question": "Vyber miestnosť 2.01 a ukáž jej IFC výmery, zvýrazni čistú podlahovú plochu.",
