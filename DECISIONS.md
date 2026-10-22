@@ -6596,7 +6596,7 @@ volaniach `ifc_query` s odvodzovaním.
 3. Prvok len v IFC (D-102, `in_aim:false`) dostane `ifc` tiež, podľa `global_id`.
 4. Chyba motora, vypnutý motor alebo chýbajúci GUID sa vráti ako `ifc.error`, ostatné `include` ostávajú
    použiteľné. `ifc_get` ostáva na viac prvkov naraz a na materiály, klasifikácie a dokumenty.
-5. Prompt: "objem / plocha jedného prvku" = `get_object include=quantities`, nie `ifc_query`.
+5. Prompt (`system-prompt.ts`) sa nemení, je na hranici rozpočtu 15000 znakov (test); pravidlo nesie opis toolu.
 
 **Zavrhnuté rozšírenie:**
 - *Nový tool na výmery:* `get_object` už je tool "čo je X", výmery sú len ďalšie `include`.
