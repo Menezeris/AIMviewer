@@ -1065,6 +1065,14 @@
       "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
       "notes": "D-146 (issue #183): set_view_mode(panel_scroll=down) bez mode; odpoveď nesmie tvrdiť, že vie, kde je koniec panela. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "camera-auto-rotate",
+      "category": "viewer",
+      "question": "Potoč s tým modelom pomaličky dokola, nech sa točí stále.",
+      "expect": { "tools_called": ["set_camera"] },
+      "verified": false,
+      "notes": "D-154 (issue #247): set_camera(auto_rotate=start, speed_deg_s=nízka) jedným volaním, nie opakované orbit_h_deg. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     }
   ]
 }

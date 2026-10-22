@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { resolveTargetsToGuids } from "@/lib/engine/aim-lookup";
 import { normalizeStoreyLabel } from "@/lib/engine/storey";
 import { CAMERA_PRESETS, PANEL_ACTIONS, PANEL_SCROLLS, VIEWER_PANELS } from "@/lib/viewer-ops";
-import { CAMERA_AREAS, CAMERA_FITS, CAMERA_RANGES, DEFAULT_MARGIN_PERCENT } from "@/lib/viewer-camera";
+import { AUTO_ROTATE_ACTIONS, AUTO_ROTATE_DIRECTIONS, AUTO_ROTATE_SPEED, CAMERA_AREAS, CAMERA_FITS, CAMERA_RANGES, DEFAULT_MARGIN_PERCENT } from "@/lib/viewer-camera";
 
 import type { AskAction } from "./actions";
 import type { ToolDefinition } from "./provider";
@@ -134,7 +134,11 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "orthographic = bez perspektívy (pôdorys, fasáda). Príklady: 'oddiaľ o 15 %' = zoom_percent=-15; " +
       "'izolované VZT v iso na celú obrazovku' = preset=iso, fit=visible, projection=perspective; 'rez " +
       "schodiskom kolmo' = set_section cez schodisko, potom preset=section, fit=visible; 'atika vľavo v reze' = " +
-      "set_section + search_objects(PARAPET) + set_camera(preset=section, target_ids_or_refs=atiky, area=left).",
+      "set_section + search_objects(PARAPET) + set_camera(preset=section, target_ids_or_refs=atiky, area=left). " +
+      "OTÁČANIE DOKOLA (prezentácia): auto_rotate=start plynulo a nepretržite otáča kameru okolo cieľa aktuálneho pohľadu, " +
+      "speed_deg_s (default 10 °/s) a direction left|right (left = ako kladné orbit_h_deg: kamera obieha doľava, model sa zdanlivo točí doprava); samostatné volanie, najprv nastav " +
+      "pohľad. Zastaví ho auto_rotate=stop, ťah, koliesko alebo dotyk používateľa a každý iný príkaz kamery. " +
+      "'Točí sa to pomaličky dokola' = auto_rotate=start, speed_deg_s=5; opakované orbit_h_deg netreba.",
     inputSchema: {
       type: "object",
       properties: {
@@ -155,6 +159,20 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         pan_x_percent: { type: "number", description: "Posun pohľadu v % šírky (-100 až 100), + = doprava" },
         pan_y_percent: { type: "number", description: "Posun pohľadu v % výšky (-100 až 100), + = hore" },
         projection: { type: "string", enum: ["perspective", "orthographic"] },
+        auto_rotate: {
+          type: "string",
+          enum: [...AUTO_ROTATE_ACTIONS],
+          description: "start = plynulé otáčanie dokola, stop = zastaviť; samostatné volanie bez presetu, cieľa a krokov",
+        },
+        speed_deg_s: {
+          type: "number",
+          description: `Rýchlosť otáčania v °/s (${AUTO_ROTATE_SPEED.min} až ${AUTO_ROTATE_SPEED.max}, default ${AUTO_ROTATE_SPEED.default}), len s auto_rotate=start`,
+        },
+        direction: {
+          type: "string",
+          enum: [...AUTO_ROTATE_DIRECTIONS],
+          description: "Smer otáčania, default left (kamera obieha cieľ doľava ako kladné orbit_h_deg), len s auto_rotate=start",
+        },
         margin_percent: {
           type: "number",
           description: `Okraj okolo cieľa v % jeho veľkosti (${CAMERA_RANGES.marginPercent.min} až ${CAMERA_RANGES.marginPercent.max}, s cieľom default ${DEFAULT_MARGIN_PERCENT}); tenký prvok = väčší okraj`,
