@@ -6874,3 +6874,36 @@ nepobežali (bez Supabase kľúčov); otázka `panel-scroll-down` je v `eval/que
 **Poradie nasadenia (produkcia):** 1. migrácia `20261022180000_space_boundary.sql` (pohľad aj bez dát funguje ako doteraz, nič sa nerozbije), 2. re-ETL (workflow `reetl` v Menezeris/OCB, najprv `dry_run`), lebo hrany plní až ETL. Bez re-ETL `boundary` riadky nevzniknú.
 
 **Overenie:** `etl/tests/test_space_boundary.py` (mini IFC: jeden riadok na pár, physical vyhráva, bez emitnutého konca vypadne, manifest), `supabase/tests/space_boundary.sql` (syntetické dáta na lokálnej DB po migráciách: len hranica, contained aj hranica, referenced aj hranica, ukončená hranica, dvere medzi dvoma miestnosťami, odmietnutie hranice na podlažie; pred migráciou zlyhá, po nej prejde), `lib/llm/query-view.test.ts`. Evaly (D-057) v cloud session bez Supabase kľúčov nepobežali; otázka `doors-in-space-101-boundary` je v `eval/questions.json` ako neoverená.
+
+---
+
+### D-158 - Pripomienky na dokumentoch: BCF téma s odkazom na dokument, stranu a oblasť strany
+
+**Dátum:** 2026-10-22 · **Stav:** krok 1 schválený (orchestrátor 22. 10., Samuel 22. 10. "áno, riešiť" v #199) · **Issue:** #199 · **Nadväzuje na:** D-099 (BCF témy v `model_tasks`), D-104 (dokumenty z IFC), D-114 (rozšírenie namiesto nového toolu), D-117 (`open_drawing region`), D-123, D-130, D-133
+
+**Kontext:** #199 chce jednotné pripomienky: téma založená nad dokumentom PDF (strana, oblasť), prepojená s IFC entitami až po IfcProject, v jednom zozname s 3D témami, BCF 2.1/3.0 ako export a import, nie zdroj pravdy. Dnes (overené 22. 10.): nositeľ témy je riadok `model_tasks` (D-099) s `components` (IFC GlobalId) a `viewpoint`; tooly `bcf_topic` a `bcf_topic_list`, BCF API `/api/bcf` (čítanie bez tokenu, zápis s tokenom; témy sa podľa dodatku D-099 zakladajú v chate). Väzbu témy na dokument, stranu ani oblasť nemá nič; výrez strany pozná len `open_drawing region` (D-117). Dokument je `objects` + `documents` (D-104), strany v `document_pages`; hash súboru dokumentu sa neukladá.
+
+**Najbližšie tooly (D-114):** `bcf_topic` (rozširujeme: parameter `document`, `remove_document`), `bcf_topic_list` (filter `document` a `page`, odkazy v detaile), `open_drawing` (ukáže miesto, bez zmeny). Nový tool netreba.
+
+**Rozhodnutie:**
+1. **Nositeľ ostáva `model_tasks`** (D-099 zavrhol druhú tabuľku tém). Pripomienka na dokumente je BCF téma ako každá iná, v tom istom zozname.
+2. **Odkaz na dokument = podriadená tabuľka `model_task_documents`** (migrácia `20261022190000`, SCHEMA §2.14), 1:N k téme, jeden riadok = BCF DocumentReference: `document_id` (objects, `on delete set null`) so snímkou `document_ref`, `document_name`, `document_revision` z času založenia (téma prežije re-ETL a novú revíziu dokumentu sa nepresťahuje potichu), `page`, `region` = výrez v % `{x, y, width, height}` vľavo hore ako `open_drawing region` (null = celá strana), `markup` (tvary, zatiaľ prázdne), `url` (cudzí odkaz z importu), `description`, `author`. Strop 20 odkazov na tému.
+3. **IFC entity ostávajú v `components`** (jediný nositeľ väzby na IFC). "Celý projekt" je GlobalId IfcProject, miestnosť a podlažie ich GlobalId; tabuľka `issue_entity` z návrhu v issue by bola druhý nositeľ tej istej väzby.
+4. **Chat:** `bcf_topic` `create`/`update` s `document = {id_or_ref, page, region, description}` (objects.id, object_ref alebo jednoznačný kód `documents.identification`; odkaz na časť dokumentu D-104 vedie na jeho dokument a stranu z `Location`). Strana sa overí voči extrahovaným stranám, oblasť bez strany len pri jednostranovom dokumente, chybný dokument tému nezaloží. `remove_document` = guid odkazu alebo `all`. `bcf_topic_list` filtruje `document` (+ `page`), riadok zoznamu má počet odkazov a detail témy `documents` s pripravenými argumentmi `open_drawing`.
+5. **BCF API 2.1:** `GET /topics/{guid}/document_references` (bez tokenu), `POST` a `PUT .../{guid}` (s tokenom). `url` = `<origin>/drawing/<id>?page=N&region=x_y_w_h#page=N` (`#page` podľa RFC 8118, `region` je náš parameter pre návrat), `description` = "kód (rev. X), strana N, oblasť ...: text". Vlastná adresa sa pri zápise rozloží späť na dokument, stranu a oblasť (opis bez zopakovanej hlavičky), cudzia ostane ako `url`. `document_guid` (dokumenty projektu BCF) zatiaľ nie.
+
+**Kroky:**
+- **1 (táto vetva):** migrácia, `lib/bcf/documents.ts`, úložisko, `bcf_topic`/`bcf_topic_list`, BCF API, testy. Bez forku.
+- **2 (viewer, fork):** pripomienky ako rámiky s číslom nad stranou PDF (vzor rámikov D-123), klik otvorí tému; ťahom označená oblasť do `view_state`, aby ju `bcf_topic create` s `capture_view` vzal. Či zakladať aj tlačidlom vo vieweri (dnes zápis len v chate, bez tokenu vo vieweri), rozhodne Samuel.
+- **3:** export a import `.bcfzip` 2.1 a 3.0 (`@ifc-lite/bcf`), snímka výrezu so zapáleným rámikom (pymupdf v ETL, server parser PDF nemá, D-123), `viewrect` v bodoch strany.
+- **4:** s kalibráciou D-133 prepočet oblasti na IFC súradnice: návrh prvkov v oblasti a 3D pohľad nad ňou; filter zoznamu podľa nadradenej entity; sha256 súboru dokumentu v ETL ako kotva revízie.
+
+**Zavrhnuté:**
+- *Stĺpec `documents jsonb` na `model_tasks`:* filter "pripomienky na tomto dokumente a strane" by išiel cez GIN nad poľom a BCF API potrebuje stabilný guid každého odkazu na PUT.
+- *Nová tabuľka `issues` podľa návrhu v issue:* druhý nositeľ témy vedľa `model_tasks` (zavrhnuté už v D-099).
+- *Nový tool `document_issue`:* tá istá téma a ten istý zápis ako `bcf_topic` (D-114).
+- *Pravidlo v inštrukciách konektora:* strop dĺžky inštrukcií (15 000 znakov) je takmer plný; postup nesie opis `bcf_topic`.
+
+**Poradie nasadenia (produkcia):** len migrácia `20261022190000_bcf_topic_documents.sql` (aditívna, nová tabuľka). Bez nej zápis s `document` a `document_references` vráti chybu DB, ostatné BCF tooly fungujú ako doteraz. Re-ETL netreba.
+
+**Overenie:** `lib/bcf/documents.test.ts` (argument, oblasť, strany, DocumentReference tam a späť, chat create/update/remove/list s filtrom, strop, BCF API s tokenom aj bez; mutácie filtra a návratu opisu testy chytia), `supabase/tests/bcf_topic_documents.sql` (lokálna DB po všetkých migráciách: filter dokument a strana, kontroly, zánik dokumentu nechá snímku, zmazanie témy zmaže odkazy, práva anon/authenticated). Evaly (D-057) v cloud session bez Supabase kľúčov nepobežali; zmena je len v opise a parametroch `bcf_topic` a `bcf_topic_list`, inventár `MCP-TOOLS.md` obnovený.

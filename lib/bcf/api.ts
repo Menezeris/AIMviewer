@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto";
 
-import type { BcfComment, BcfTopicRow, BcfTopicWrite, TopicStatus } from "./store";
+import {
+  documentReferenceToDto,
+  documentWrite,
+  MAX_TOPIC_DOCUMENTS,
+  parseDocumentReferenceDto,
+  stripOwnLabel,
+  TopicDocumentError,
+} from "./documents";
+import type { BcfComment, BcfTopicRow, BcfTopicWrite, TopicDocumentWrite, TopicStatus } from "./store";
 import { isClaude, maybeStartSession, normalizeStatus, type BcfDeps } from "./tools";
 
 /**
@@ -50,6 +58,8 @@ export interface BcfApiContext {
   authenticated: boolean;
   /** Token na zápis je nastavený (`BCF_API_TOKEN`); bez neho je API len na čítanie. */
   writeEnabled: boolean;
+  /** Origin stránky (odkazy na dokumenty v DocumentReference, D-158). */
+  origin: string;
 }
 
 const ok = (body: unknown, status = 200): BcfApiResponse => ({ status, body });
@@ -225,6 +235,34 @@ async function notified(ctx: BcfApiContext): Promise<void> {
   await ctx.deps.notify?.().catch(() => undefined);
 }
 
+/** DocumentReference DTO -> riadok odkazu (D-158); dokument AIM sa overí a dostane snímku kódu a revízie. */
+async function referenceWrite(body: unknown, topic: BcfTopicRow, ctx: BcfApiContext): Promise<TopicDocumentWrite> {
+  const ref = parseDocumentReferenceDto(body, ctx.origin);
+  if (ref.document_id) {
+    const info = await ctx.deps.store.findDocument(ref.document_id);
+    if (info) {
+      const row = documentWrite(info, { page: ref.page ?? undefined, region: ref.region ?? undefined }, topic.id, ctx.user);
+      return { ...row, description: stripOwnLabel(ref.description, row) };
+    }
+  }
+  // Cudzí odkaz (alebo dokument, ktorý v AIM už nie je) ostáva ako url.
+  const b = (body ?? {}) as Record<string, unknown>;
+  const row: TopicDocumentWrite = {
+    task_id: topic.id,
+    document_id: null,
+    document_ref: null,
+    document_name: null,
+    document_revision: null,
+    page: null,
+    region: null,
+    markup: null,
+    url: ref.url ?? (typeof b.url === "string" ? b.url.trim() : null),
+    description: null,
+    author: ctx.user,
+  };
+  return { ...row, description: stripOwnLabel(ref.description, row) };
+}
+
 async function startIfClaude(row: BcfTopicRow, wasClaude: boolean, deps: BcfDeps): Promise<BcfTopicRow> {
   if (!isClaude(row.assigned_to) || wasClaude) return row;
   return (await maybeStartSession(row, deps, true)).topic;
@@ -314,6 +352,32 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
       return err(405, "Metóda nie je povolená.");
     }
 
+    if (s[5] === "document_references") {
+      if (s.length === 6) {
+        if (method === "GET") return ok((await deps.store.documents([topic.id])).map((d) => documentReferenceToDto(d, ctx.origin)));
+        if (method === "POST") {
+          const existing = await deps.store.documents([topic.id]);
+          if (existing.length >= MAX_TOPIC_DOCUMENTS) return err(400, `Téma má už ${existing.length} odkazov na dokumenty (strop ${MAX_TOPIC_DOCUMENTS}).`);
+          const row = await deps.store.addDocument(await referenceWrite(req.body, topic, ctx));
+          await deps.store.update(topic.id, { modified_by: user });
+          await notified(ctx);
+          return ok(documentReferenceToDto(row, ctx.origin), 201);
+        }
+        return err(405, "Metóda nie je povolená.");
+      }
+      if (s.length === 7 && method === "PUT") {
+        if (!UUID_RE.test(s[6])) return err(404, `Odkaz ${s[6]} neexistuje.`);
+        const patch: Partial<TopicDocumentWrite> = await referenceWrite(req.body, topic, ctx);
+        delete patch.task_id;
+        const row = await deps.store.updateDocument(topic.id, s[6].toLowerCase(), patch);
+        if (!row) return err(404, `Odkaz ${s[6]} neexistuje.`);
+        await deps.store.update(topic.id, { modified_by: user });
+        await notified(ctx);
+        return ok(documentReferenceToDto(row, ctx.origin));
+      }
+      return err(405, "Metóda nie je povolená.");
+    }
+
     if (s[5] === "viewpoints") {
       const current = viewpointToDto(topic);
       if (s.length === 6) {
@@ -343,7 +407,7 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
     }
     return err(404, "Neznáma cesta BCF API.");
   } catch (e) {
-    if (e instanceof ApiInputError) return err(400, e.message);
+    if (e instanceof ApiInputError || e instanceof TopicDocumentError) return err(400, e.message);
     return err(500, e instanceof Error ? e.message : String(e));
   }
 }

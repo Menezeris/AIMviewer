@@ -34,7 +34,7 @@ function server(store = memoryStore()) {
         query: url.searchParams,
         body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
       },
-      { deps: d, user: "samuel", authenticated: headers.get("authorization") === `Bearer ${TOKEN}`, writeEnabled: true },
+      { deps: d, user: "samuel", authenticated: headers.get("authorization") === `Bearer ${TOKEN}`, writeEnabled: true, origin: new URL(BASE).origin },
     );
     return new Response(JSON.stringify(res.body), { status: res.status, headers: { "Content-Type": "application/json" } });
   };

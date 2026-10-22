@@ -8,7 +8,15 @@ import type { ToolDefinition } from "@/lib/llm/provider";
 import { selectionGuids, type ViewerSelection } from "../live/selection-summary";
 import { ViewInputError } from "../llm/view-plan";
 
-import { TOPIC_STATUSES, type BcfStore, type BcfTopicRow, type BcfTopicWrite, type TopicStatus } from "./store";
+import { documentView, MAX_TOPIC_DOCUMENTS, resolveDocumentArg, TopicDocumentError } from "./documents";
+import {
+  TOPIC_STATUSES,
+  type BcfStore,
+  type BcfTopicRow,
+  type BcfTopicWrite,
+  type TopicDocumentRow,
+  type TopicStatus,
+} from "./store";
 
 /**
  * BCF témy nad modelmi federácie (D-099), len v MCP konektore. Mená a
@@ -64,7 +72,8 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
       "('claude' = témy pre Claude). S guid (alebo číslom témy) vráti detail: popis, komentáre, pohľad " +
       "(kamera, rez, výber) a GlobalId prvkov - prvky ukáž cez show_in_3d(global_ids). S filtrom vráti aj " +
       "by_status (počty tém podľa stavu pri ostatných filtroch): na otázku o stave stačí jedno volanie, " +
-      "iné stavy ani bez filtra už nevolaj.",
+      "iné stavy ani bez filtra už nevolaj. document (+ page) = pripomienky na dokumente / strane (D-158); detail " +
+      "témy nesie documents s pripravenými argumentmi open_drawing (strana a oblasť).",
     inputSchema: {
       type: "object",
       properties: {
@@ -72,6 +81,8 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
         model: { type: "string", description: "Model federácie (ASR, VZT...)." },
         assigned_to: { type: "string", description: "Komu je téma priradená." },
         guid: { type: "string", description: "guid témy alebo číslo (#12) - detail jednej témy." },
+        document: { type: "string", description: "Len témy s odkazom na dokument: objects.id, object_ref alebo kód dokumentu." },
+        page: { type: "number", description: "S document: len odkazy na túto stranu." },
         limit: { type: "number", description: `Koľko tém (predvolene ${LIST_DEFAULT}, max ${LIST_MAX}).` },
       },
     },
@@ -85,7 +96,10 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
       "assigned_to='claude' = tému rieši Claude: spustí sa Claude Code session (úprava IFC v OCB, nová revízia); " +
       "ľudí priraď menom alebo e-mailom. update: stav, priorita, komu, popis, štítky, termín alebo comment; " +
       "start_session spustí session pre tému Claudovi. close: uzavrie tému bez úpravy modelu. viewpoint: nastaví " +
-      "jediný pohľad témy (selection_global_ids, capture_view). Vráti guid a číslo témy (#N).",
+      "jediný pohľad témy (selection_global_ids, capture_view). PRIPOMIENKA NA DOKUMENTE (D-158): create alebo update s " +
+      "document = {id_or_ref, page, region, description} pripojí k téme dokument, stranu a oblasť strany (region v % ako " +
+      "open_drawing); prvky, ktorých sa týka (aj IfcSpace, podlažie, IfcProject = celý projekt), daj do target_ids_or_refs. " +
+      "remove_document = guid odkazu alebo 'all'. Vráti guid a číslo témy (#N).",
     inputSchema: {
       type: "object",
       properties: {
@@ -107,6 +121,22 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
         selection_global_ids: { type: "array", items: { type: "string" }, description: "viewpoint: IFC GlobalId prvkov" },
         capture_view: { type: "boolean", description: "create, viewpoint: pohľad z otvoreného viewera (predvolene true)" },
         start_session: { type: "boolean", description: "Pri téme pre Claude: false = nespúšťať session; update: true = spustiť" },
+        document: {
+          type: "object",
+          description: "create, update: pripojí odkaz na dokument (BCF DocumentReference); update pridá ďalší",
+          properties: {
+            id_or_ref: { type: "string", description: "objects.id, object_ref alebo kód dokumentu (search_documents, get_object include=documents)" },
+            page: { type: "number", description: "Strana (od 1); bez nej celý dokument" },
+            region: {
+              type: "object",
+              description: "Oblasť strany v % (0-100, vľavo hore) ako open_drawing region, napr. {x:50,y:0,width:50,height:50}",
+              properties: { x: { type: "number" }, y: { type: "number" }, width: { type: "number" }, height: { type: "number" } },
+            },
+            description: { type: "string", description: "Čo je na tomto mieste dokumentu" },
+          },
+          required: ["id_or_ref"],
+        },
+        remove_document: { type: "string", description: "update: guid odkazu na dokument (z bcf_topic_list) alebo 'all'" },
       },
       required: ["action"],
     },
@@ -299,8 +329,8 @@ export async function maybeStartSession(topic: BcfTopicRow, deps: BcfDeps, wante
   return { session: { url: fired.sessionUrl }, queued: false, note: "Session beží; postup a otázky píše do komentárov témy.", topic: updated };
 }
 
-/** Krátky riadok zoznamu. */
-export function summary(t: BcfTopicRow) {
+/** Krátky riadok zoznamu; `docs` = počet odkazov na dokumenty, keď sa čítali. */
+export function summary(t: BcfTopicRow, docs?: number) {
   return {
     number: t.number,
     guid: t.id,
@@ -314,16 +344,17 @@ export function summary(t: BcfTopicRow) {
     labels: t.labels,
     components: t.components.length,
     comments: t.comments.length,
+    ...(docs ? { documents: docs } : {}),
     session_url: t.session_url,
     result_revision: t.result_revision,
     updated_at: t.updated_at,
   };
 }
 
-/** Detail témy pre model: komentáre, pohľad a orezaný zoznam GlobalId. */
-export function detail(t: BcfTopicRow) {
+/** Detail témy pre model: komentáre, pohľad, odkazy na dokumenty a orezaný zoznam GlobalId. */
+export function detail(t: BcfTopicRow, docs: TopicDocumentRow[] = []) {
   return {
-    ...summary(t),
+    ...summary(t, docs.length),
     description: t.description,
     author: t.author,
     modified_by: t.modified_by,
@@ -334,16 +365,32 @@ export function detail(t: BcfTopicRow) {
     global_ids: t.components.slice(0, DETAIL_COMPONENTS),
     global_ids_truncated: t.components.length > DETAIL_COMPONENTS,
     viewpoint: t.viewpoint,
+    documents: docs.map(documentView),
     comment_list: t.comments,
   };
+}
+
+/** Pripojí odkaz na dokument z argumentu `document` (D-158); strop odkazov na tému. */
+async function attachDocument(
+  deps: BcfDeps,
+  topicId: string,
+  prepared: Awaited<ReturnType<typeof resolveDocumentArg>>,
+): Promise<TopicDocumentRow> {
+  const existing = await deps.store.documents([topicId]);
+  if (existing.length >= MAX_TOPIC_DOCUMENTS) {
+    throw new BcfInputError(`Téma má už ${existing.length} odkazov na dokumenty (strop ${MAX_TOPIC_DOCUMENTS}); zmaž niektorý cez remove_document.`);
+  }
+  return deps.store.addDocument({ ...prepared, task_id: topicId });
 }
 
 const json = (v: unknown) => JSON.stringify(v, null, 1);
 
 async function create(args: Record<string, unknown>, deps: BcfDeps) {
   const title = required(args.title, MAX_TITLE, "title");
-  const { guids, viewpoint, viewNote } = await components(args, deps, "global_ids");
   const author = text(args.author, 200) || DEFAULT_AUTHOR;
+  // Dokument sa overí pred založením, aby chybný odkaz nenechal tému bez neho.
+  const doc = args.document !== undefined ? await resolveDocumentArg(deps.store, args.document, author) : null;
+  const { guids, viewpoint, viewNote } = await components(args, deps, "global_ids");
   const row = await deps.store.create({
     title,
     description: text(args.description, MAX_TEXT) || null,
@@ -359,41 +406,63 @@ async function create(args: Record<string, unknown>, deps: BcfDeps) {
     components: guids,
     viewpoint,
   });
+  const attached = doc ? await deps.store.addDocument({ ...doc, task_id: row.id }) : null;
   const s = await maybeStartSession(row, deps, args.start_session !== false);
   return {
-    topic: summary(s.topic),
+    topic: summary(s.topic, attached ? 1 : 0),
+    ...(attached ? { document: documentView(attached) } : {}),
     viewpoint_saved: Boolean(viewpoint),
     view_note: viewNote,
     session: s.session,
     queued: s.queued,
     session_note: s.note,
-    hint: guids.length ? "Prvky témy ukáž cez show_in_3d(global_ids)." : "Téma nemá prvky; doplň ich cez bcf_topic(action=viewpoint).",
+    hint: [
+      guids.length ? "Prvky témy ukáž cez show_in_3d(global_ids)." : "Téma nemá prvky; doplň ich cez bcf_topic(action=viewpoint).",
+      ...(attached?.document_id ? ["Miesto v dokumente ukáž cez open_drawing s argumentmi document.open_drawing."] : []),
+    ].join(" "),
   };
 }
 
 async function list(args: Record<string, unknown>, deps: BcfDeps) {
-  if (args.guid !== undefined && args.guid !== "") return { topic: detail(await loadTopic(deps, args.guid)) };
+  if (args.guid !== undefined && args.guid !== "") {
+    const t = await loadTopic(deps, args.guid);
+    return { topic: detail(t, await deps.store.documents([t.id])) };
+  }
   const n = Number(args.limit);
   const limit = Number.isFinite(n) && n > 0 ? Math.min(LIST_MAX, Math.trunc(n)) : LIST_DEFAULT;
   const filter = {
     status: normalizeStatus(args.status),
     model: text(args.model, 40) || undefined,
     assigned_to: text(args.assigned_to, 200) || undefined,
+    ...(await documentFilter(args, deps)),
   };
   const { rows, total } = await deps.store.list({ ...filter, limit });
+  const docs = await deps.store.documents(rows.map((r) => r.id));
+  const docCount = new Map<string, number>();
+  for (const d of docs) docCount.set(d.task_id, (docCount.get(d.task_id) ?? 0) + 1);
   // Počty podľa stavu, inak agent skúša stav po stave a potom bez filtra (#97, C12: 3 volania).
-  const filtered = Boolean(filter.status || filter.model || filter.assigned_to);
+  const filtered = Boolean(filter.status || filter.model || filter.assigned_to || filter.document_id);
   const byStatus = filtered ? await countByStatus(deps, filter) : undefined;
   return {
     count: total,
     ...(byStatus ? { by_status: byStatus } : {}),
     returned: rows.length,
-    topics: rows.map(summary),
+    topics: rows.map((r) => summary(r, docCount.get(r.id))),
   };
 }
 
+/** Filter `document` (+ `page`) zoznamu -> objects.id dokumentu; neznámy dokument = chyba, nie prázdny zoznam. */
+async function documentFilter(args: Record<string, unknown>, deps: BcfDeps): Promise<{ document_id?: string; page?: number }> {
+  const ref = text(args.document, 200);
+  if (!ref) return {};
+  const info = await deps.store.findDocument(ref);
+  if (!info) throw new BcfInputError(`Dokument '${ref}' v AIM nie je (search_documents ho nájde).`);
+  const n = Number(args.page);
+  return { document_id: info.id, ...(args.page !== undefined && Number.isInteger(n) && n >= 1 ? { page: n } : {}) };
+}
+
 /** Nenulové počty tém podľa stavu pri filtroch model a assigned_to (tabuľka tém je malá). */
-async function countByStatus(deps: BcfDeps, filter: { model?: string; assigned_to?: string }) {
+async function countByStatus(deps: BcfDeps, filter: { model?: string; assigned_to?: string; document_id?: string; page?: number }) {
   const counts = await Promise.all(
     TOPIC_STATUSES.map(async (status) => [status, (await deps.store.list({ ...filter, status, limit: 1 })).total] as const),
   );
@@ -416,8 +485,13 @@ async function update(args: Record<string, unknown>, deps: BcfDeps) {
   if (l) patch.labels = l;
   const due = dueDate(args.due_date);
   if (due !== undefined) patch.due_date = due;
+  const doc = args.document !== undefined ? await resolveDocumentArg(deps.store, args.document, by) : null;
+  const remove = text(args.remove_document, 60);
+  const removed = remove ? await removeDocuments(deps, topic.id, remove) : 0;
+  const attached = doc ? await attachDocument(deps, topic.id, doc) : null;
 
-  let row = Object.keys(patch).length > 1 ? await deps.store.update(topic.id, patch) : topic;
+  // Zmena odkazov na dokumenty je zmena témy (modified_by, updated_at).
+  let row = Object.keys(patch).length > 1 || attached || removed ? await deps.store.update(topic.id, patch) : topic;
   const comment = text(args.comment, MAX_TEXT);
   if (comment) await deps.store.addComment(topic.id, by, comment);
   const assignedNow = patch.assigned_to !== undefined && isClaude(patch.assigned_to) && !wasClaude;
@@ -430,8 +504,18 @@ async function update(args: Record<string, unknown>, deps: BcfDeps) {
   return {
     topic: summary(row),
     comment_added: Boolean(comment),
+    ...(attached ? { document: documentView(attached) } : {}),
+    ...(remove ? { documents_removed: removed } : {}),
     ...(s ? { session: s.session, queued: s.queued, session_note: s.note } : {}),
   };
+}
+
+async function removeDocuments(deps: BcfDeps, topicId: string, ref: string): Promise<number> {
+  const all = ref.toLowerCase() === "all";
+  if (!all && !UUID_RE.test(ref)) throw new BcfInputError("remove_document: guid odkazu na dokument (bcf_topic_list s guid témy) alebo 'all'.");
+  const n = await deps.store.removeDocuments(topicId, all ? null : ref.toLowerCase());
+  if (!all && n === 0) throw new BcfInputError(`Odkaz ${ref} pri téme nie je.`);
+  return n;
 }
 
 async function close(args: Record<string, unknown>, deps: BcfDeps) {
@@ -483,7 +567,9 @@ export async function execBcfTool(
     await deps.notify?.().catch(() => undefined);
     return { text: json(result), isError: false };
   } catch (err) {
-    if (err instanceof BcfInputError || err instanceof ViewInputError) return { text: err.message, isError: true };
+    if (err instanceof BcfInputError || err instanceof ViewInputError || err instanceof TopicDocumentError) {
+      return { text: err.message, isError: true };
+    }
     return { text: `Chyba: ${err instanceof Error ? err.message : String(err)}`, isError: true };
   }
 }
