@@ -19,6 +19,7 @@ import {
 } from "./document-text";
 import { mergeIfcActions, type AskAction } from "./actions";
 import { DOMAIN_IFC_TYPES, sanitizeIfcType, sanitizeModelName } from "./ifc-selector";
+import { excludeShowOp, parseExclude, type ExcludeInput } from "./style-exclude";
 import { LIST_TOOL_DEFINITIONS, LIST_TOOL_NAMES, execListTool } from "./list-tool";
 import { VIEW_TOOL_DEFINITIONS, VIEW_TOOL_NAMES, execViewTool } from "./view-tools";
 import { engineEnabled, resolveNamesToGuids } from "@/lib/engine/aim-lookup";
@@ -100,6 +101,16 @@ function sanitizeGlobalIds(raw: unknown): string[] {
     .map((v) => v.trim())
     .filter((v) => IFC_GUID_RE.test(v));
   return [...new Set(ids)].slice(0, GLOBAL_IDS_CAP);
+}
+
+/** Je v show_in_3d zadaný filter nad objects (ifc_type, predefined_type, query, object_type)? */
+function hasObjectFilter(input: Record<string, unknown>): boolean {
+  return Boolean(
+    sanitizeQuery(input.query) ||
+      sanitizeQuery(input.ifc_type) ||
+      sanitizeQuery(input.predefined_type) ||
+      (typeof input.object_type === "string" && input.object_type)
+  );
 }
 
 /**
@@ -474,7 +485,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "UI AKCIA: UKÁŽ alebo VYBER prvky v 3D. Predvolene zvýrazní (oranžovo) a priblíži prvky - 'ukáž / " +
       "zobraz X', aj jednu miestnosť (skrytú viewer zapne). Celú triedu pošli filtrom (ifc_type, query, " +
       "predefined_type), konkrétne prvky v ids_or_refs (object_ref, kód prvku ako 'SD04.0001' aj číslo miestnosti ako '3.02' " +
-      "netreba hľadať vopred). select=true = VYBERIE prvok (viac prvkov v ids_or_refs = viacnásobný výber, odpoveď vráti všetky) ako klik myšou a otvorí jeho IFC panel vlastností ('vyber / označ " +
+      "netreba hľadať vopred). select=true = VYBERIE prvok (viac prvkov v ids_or_refs alebo filtrom ifc_type / predefined_type / query = viacnásobný výber, 'vyber všetky IfcDamper' = jedno volanie, najviac 200, odpoveď vráti všetky) ako klik myšou a otvorí jeho IFC panel vlastností ('vyber / označ " +
       "X', 'ukáž jeho vlastnosti'): panel_section properties | quantities, highlight 'Pset.Vlastnosť' (aj Qto výmera) rozbalí " +
       "sadu, prescrolluje a zvýrazní riadok do ďalšieho výberu; výsledok povie, či vlastnosť na prvku je (property.in_aim, " +
       "property_focus.found zo živého viewera). Panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
@@ -504,7 +515,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         predefined_type: { type: "string", description: "Filter namiesto ids: PredefinedType" },
         query: { type: "string", description: "Filter namiesto ids: fulltext (názov/ref/typ)" },
         object_type: { type: "string", description: "Filter namiesto ids: objects.object_type" },
-        select: { type: "boolean", description: "Vybrať prvok ako klik (id_or_ref alebo ids_or_refs, viac prvkov = všetky vybrané) a otvoriť panel vlastností prvého" },
+        select: { type: "boolean", description: "Vybrať prvok ako klik (id_or_ref, ids_or_refs, global_ids ALEBO filter ifc_type / predefined_type / query / object_type = celá trieda jedným volaním, najviac 200) a otvoriť panel vlastností prvého" },
         panel_section: { type: "string", enum: ["properties", "quantities"], description: "select: sekcia IFC panelu" },
         highlight: { type: "string", description: "select: zvýrazniť vlastnosť, napr. 'Pset_WallCommon.FireRating' alebo 'Qto_DoorBaseQuantities.Width'" },
       },
@@ -545,6 +556,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "changed_outside_commands = čo zmenil používateľ od predošlého príkazu, POZOR = upozornenie (aktívny rez, " +
       "viac systémov vo filtri, viac okien viewera) - povedz ho používateľovi. Farby určuje používateľ; " +
       "keď ich nepovie, zvoľ dobre odlíšiteľné a povedz ich. " +
+      "VÝNIMKA pri skrytí = hide + exclude_ids_or_refs / exclude_global_ids (skryje filter okrem výnimiek, jedno volanie; " +
+      "izolácia len v rámci jedného modelu = hide + model + výnimky, isolate by skryl aj ostatné modely). " +
       "Efekty sa hromadia, kým ich nezruší show_all/reset_colors (reset_colors vypne aj " +
       "lens). Viac operácií = viac callov (pokojne v jednom kole).",
     inputSchema: {
@@ -610,6 +623,18 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "array",
           items: { type: "string" },
           description: "objects.id (UUID) alebo object_ref konkrétnych prvkov",
+        },
+        exclude_ids_or_refs: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Len s action=hide: prvky, ktoré ostanú viditeľné (objects.id, object_ref alebo kód prvku). " +
+            "'Skry ostatné potrubia okrem trasy' = hide + model=VZT + exclude_ids_or_refs=trasa, jedno volanie, ostatné modely sa nedotknú",
+        },
+        exclude_global_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Len s action=hide: výnimky ako IFC GlobalId (z ifc_* toolov), najviac 300 aj s exclude_ids_or_refs",
         },
         global_ids: {
           type: "array",
@@ -2264,12 +2289,26 @@ export class AskToolRuntime {
           .filter(Boolean)
       ),
     ];
-    if (refs.length === 0) throw new Error("Prvok neexistuje — najprv ho nájdi cez search_objects.");
-    if (refs.length > MAX_SELECT_REFS) throw new Error(`Výber má najviac ${MAX_SELECT_REFS} prvkov, dostal som ${refs.length}.`);
+    const globalIds = sanitizeGlobalIds(input.global_ids);
+    const filtered = refs.length === 0 && globalIds.length === 0 && hasObjectFilter(input);
+    if (refs.length === 0 && globalIds.length === 0 && !filtered) {
+      throw new Error("Prvok neexistuje — najprv ho nájdi cez search_objects, alebo zadaj filter (ifc_type, predefined_type, query).");
+    }
+    if (refs.length + globalIds.length > MAX_SELECT_REFS) {
+      throw new Error(`Výber má najviac ${MAX_SELECT_REFS} prvkov, dostal som ${refs.length + globalIds.length}.`);
+    }
     const items: Array<{ label: string; guid: string; obj: ObjectRow | null }> = [];
-    for (const ref of refs) {
-      const item = await this.guidForSelect(ref);
+    const add = (item: { label: string; guid: string; obj: ObjectRow | null }) => {
       if (!items.some((i) => i.guid === item.guid)) items.push(item);
+    };
+    for (const ref of refs) add(await this.guidForSelect(ref));
+    for (const guid of globalIds) add({ label: guid, guid, obj: null });
+    let withoutGuid = 0;
+    if (filtered) {
+      // #242: celá trieda jedným volaním, rovnaký filter ako zvýraznenie (ifc_type, predefined_type, query, object_type).
+      const found = await this.selectByFilter(input);
+      for (const item of found.items) add(item);
+      withoutGuid = found.withoutGuid;
     }
     const [primary] = items;
 
@@ -2288,9 +2327,56 @@ export class AskToolRuntime {
       selected: multi ? items.map((i) => i.label) : primary.label,
       ifc_guid: primary.guid,
       ...(multi ? { ifc_guids: items.map((i) => i.guid), selected_count: items.length } : {}),
+      ...(withoutGuid > 0 ? { skipped_without_guid: withoutGuid } : {}),
       ...(panel ? { panel } : {}),
       ...(property ? { property } : {}),
     };
+  }
+
+  /**
+   * Prvky pre select=true z filtra (#242): rovnaké kritériá ako zvýraznenie, najviac MAX_SELECT_REFS;
+   * viac zhôd je chyba (výber by bol ticho neúplný), model filter zúži.
+   */
+  private async selectByFilter(input: Record<string, unknown>) {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await this.applyObjectFilters(
+      supabase.from("objects").select("id, object_type, object_ref, name, ifc_type, predefined_type"),
+      input
+    )
+      .order("object_ref")
+      .limit(MAX_SELECT_REFS + 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as ObjectRow[];
+    if (rows.length === 0) throw new Error("Filtru nezodpovedá žiadny prvok — skús search_objects alebo get_model_stats.");
+    if (rows.length > MAX_SELECT_REFS) {
+      throw new Error(`Filter vybral viac než ${MAX_SELECT_REFS} prvkov, výber ich vie najviac ${MAX_SELECT_REFS} - zúž ho (predefined_type, query) alebo použi zvýraznenie bez select.`);
+    }
+    const guids = await this.guidsOfObjects(rows.map((r) => r.id));
+    const items: Array<{ label: string; guid: string; obj: ObjectRow | null }> = [];
+    for (const r of rows) {
+      const guid = guids.get(r.id);
+      if (guid) items.push({ label: r.object_ref ?? r.name ?? r.id.slice(0, 8), guid, obj: r });
+    }
+    if (items.length === 0) throw new Error("Žiadny z prvkov filtra nemá IFC GUID — nie sú v 3D modeli.");
+    return { items, withoutGuid: rows.length - items.length };
+  }
+
+  /** objects.id -> aktívny IFC GUID (len prvky prítomné v 3D modeli), dávkovo. */
+  private async guidsOfObjects(ids: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const supabase = getSupabaseAdmin();
+    for (let i = 0; i < ids.length; i += IN_CHUNK) {
+      const { data, error } = await supabase
+        .from("ifc_guid_history")
+        .select("object_id, ifc_guid")
+        .in("object_id", ids.slice(i, i + IN_CHUNK))
+        .is("valid_until", null);
+      if (error) throw new Error(error.message);
+      for (const row of data ?? []) {
+        if (row.object_id && row.ifc_guid && !out.has(row.object_id as string)) out.set(row.object_id as string, row.ifc_guid as string);
+      }
+    }
+    return out;
   }
 
   /** Prvok výberu -> popis a aktuálny IFC GUID (D-082, D-102); chyba, ak ho viewer nemá. */
@@ -2353,6 +2439,11 @@ export class AskToolRuntime {
 
     const nonce = () => Date.now().toString(36);
 
+    // Výnimky pri skrytí (#246): rozložia sa na GUIDy, po skrytí ich znova zobrazí `show`.
+    const exclude = parseExclude(input, action);
+    const excluded = exclude ? await this.resolveExcluded(exclude) : null;
+    const excludedNote = excluded ? { excluded: excluded.guids.length, ...(excluded.skipped.length ? { excluded_skipped: excluded.skipped } : {}) } : {};
+
     // Globálne resety nepotrebujú prvky.
     if (action === "show_all" || action === "reset_colors") {
       this.actions.push({
@@ -2374,7 +2465,12 @@ export class AskToolRuntime {
 
     // Skrytie / zobrazenie so systémom, zónou alebo podlažím: členov rozbalí graf AIM (GUIDy).
     if (needsScopedStyle(input)) {
-      return execScopedStyle(action, input, (a) => this.actions.push(a), { domainTypes: DOMAIN_IFC_TYPES });
+      const showOp = excluded && excludeShowOp(excluded.guids);
+      const done = await execScopedStyle(action, input, (a) => this.actions.push(a), {
+        domainTypes: DOMAIN_IFC_TYPES,
+        ...(showOp ? { extraOps: [showOp] } : {}),
+      });
+      return { ...done, ...excludedNote };
     }
 
     let color = "";
@@ -2417,7 +2513,8 @@ export class AskToolRuntime {
       const fields: string[] = [];
       if (selectorTypes.length > 0) fields.push(`t=${selectorTypes.join(".")}`);
       if (modelName) fields.push(`m=${modelName}`);
-      const op = `${action}_sel:${color}:${fields.join("~")}`;
+      const showOp = excluded && excludeShowOp(excluded.guids);
+      const op = [`${action}_sel:${color}:${fields.join("~")}`, ...(showOp ? [showOp] : [])].join(";");
       const scope = domain || (modelName && selectorTypes.length === 0 ? `model ${modelName}` : "");
       const scopeLabel =
         scope ||
@@ -2436,6 +2533,7 @@ export class AskToolRuntime {
           ...(modelName ? { model: modelName } : {}),
         },
         note: "Výber rozloží 3D viewer podľa IFC tried/súboru — triedy mimo modelu sa ticho preskočia.",
+        ...excludedNote,
       };
     }
 
@@ -2576,6 +2674,11 @@ export class AskToolRuntime {
     if (guids.length === 0) {
       throw new Error("Žiadny z vybraných prvkov nemá IFC GUID — nie sú v 3D modeli.");
     }
+    if (excluded) {
+      const keep = new Set(excluded.guids);
+      for (let i = guids.length - 1; i >= 0; i--) if (keep.has(guids[i])) guids.splice(i, 1);
+      if (guids.length === 0) throw new Error("Po odpočítaní výnimiek nezostal žiadny prvok na skrytie.");
+    }
 
     this.actions.push({
       type: "navigate",
@@ -2588,6 +2691,7 @@ export class AskToolRuntime {
       ok: true,
       applied: action,
       elements: guids.length,
+      ...excludedNote,
       ...(color ? { color: `#${color}` } : {}),
       ...(propertyName
         ? { property: propertyName, value: String(input.value ?? ""), psets: propertyPsets }
@@ -2597,6 +2701,48 @@ export class AskToolRuntime {
         : {}),
       ...(skipped.length ? { skipped } : {}),
     };
+  }
+
+  /** Výnimky z `exclude_*` -> IFC GUIDy (id, object_ref, kód prvku v IFC alebo priamo GlobalId); chýbajúce nahlási. */
+  private async resolveExcluded(ex: ExcludeInput): Promise<{ guids: string[]; skipped: string[] }> {
+    const supabase = getSupabaseAdmin();
+    const guids = new Set(ex.globalIds);
+    const rowOf = new Map<string, string>();
+    for (const [col, vals] of [
+      ["id", ex.refs.filter(isUuid)],
+      ["object_ref", ex.refs.filter((r) => !isUuid(r))],
+    ] as const) {
+      for (let i = 0; i < vals.length; i += IN_CHUNK) {
+        const { data, error } = await supabase
+          .from("objects")
+          .select("id, object_ref")
+          .in(col, vals.slice(i, i + IN_CHUNK))
+          .is("valid_until", null);
+        if (error) throw new Error(error.message);
+        for (const row of (data ?? []) as { id: string; object_ref: string | null }[]) {
+          rowOf.set(col === "id" ? row.id : (row.object_ref as string), row.id);
+        }
+      }
+    }
+    const byObject = await this.guidsOfObjects([...new Set(rowOf.values())]);
+    const missing: string[] = [];
+    for (const ref of ex.refs) {
+      const objectId = rowOf.get(ref);
+      const guid = objectId ? byObject.get(objectId) : undefined;
+      if (guid) guids.add(guid);
+      else missing.push(ref);
+    }
+    const byName = missing.length > 0 ? await resolveNamesToGuids(missing) : new Map<string, string>();
+    const skipped: string[] = [];
+    for (const ref of missing) {
+      const guid = byName.get(ref);
+      if (guid) guids.add(guid);
+      else skipped.push(ref);
+    }
+    if (guids.size === 0) {
+      throw new Error(`Žiadna výnimka nemá IFC GUID (${skipped.slice(0, 5).join(", ")}) - bez nich by sa skrylo všetko. Over ich cez search_objects alebo ifc_query.`);
+    }
+    return { guids: [...guids], skipped };
   }
 
   private async openDrawing(input: Record<string, unknown>) {
