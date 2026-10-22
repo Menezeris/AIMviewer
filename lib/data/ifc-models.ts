@@ -40,14 +40,17 @@ export function archiveUrl(url: string, revision: number): string | null {
   return u.toString();
 }
 
-/** Viewer číta archív revízie (D-135); `NEXT_PUBLIC_IFC_ARCHIVE=0` vráti `?rev=` na aktuálnom kľúči. */
+/**
+ * Viewer číta archív revízie len pri `NEXT_PUBLIC_IFC_ARCHIVE=1` (D-135): gzip vie načítať až
+ * fork s D-135, preto ho Samuel zapne na Verceli po nasadení forku. Inak `?rev=` na aktuálnom kľúči.
+ */
 export function archiveEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return env.NEXT_PUBLIC_IFC_ARCHIVE !== "0";
+  return env.NEXT_PUBLIC_IFC_ARCHIVE === "1";
 }
 
 /**
- * Pripojí aktuálnu revíziu ku každému modelu, ktorý ju má (D-086). Predvolene URL
- * ukáže na nemenný archív revízie (D-135); bez archívu `?rev=N` na aktuálnom kľúči.
+ * Pripojí aktuálnu revíziu ku každému modelu, ktorý ju má (D-086). So zapnutým archívom
+ * (`archiveEnabled`) URL ukáže na nemenný archív revízie (D-135), inak `?rev=N` na aktuálnom kľúči.
  * Obe zmenia `src` iframe viewera, takže po novej revízii sa model načíta znova a
  * cache prehliadača nevráti starý súbor. Model bez revízie ostáva bez zmeny.
  */

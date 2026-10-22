@@ -103,11 +103,22 @@ describe("IFC motor - archív revízie (D-135)", () => {
     expect(res.entry.store.entities.getExpressIdByGlobalId(guid("WALA"))).toBeGreaterThan(0);
   });
 
+  it("ETag číta pred revíziou z DB (publikácia medzi nimi nenechá nový ETag pri starej revízii)", async () => {
+    const order: string[] = [];
+    const s = storage();
+    const impl = (async (url: string | URL | Request, init?: RequestInit) => {
+      order.push(init?.method === "HEAD" ? "head" : "get");
+      return s.impl(url, init);
+    }) as typeof fetch;
+    await getStore(SRC, { fetchImpl: impl, archive: async () => { order.push("revision"); return ARCHIVE; } });
+    expect(order).toEqual(["head", "revision", "get"]);
+  });
+
   it("zaregistrovaný resolver platí bez deps; bez revízie ide pôvodná URL", async () => {
     setArchiveResolver(async () => null);
     const s = storage();
     await getStore(SRC, { fetchImpl: s.impl });
-    expect(s.calls).toEqual([`GET ${SRC.url}`]);
+    expect(s.calls).toEqual([`HEAD ${SRC.url}`, `GET ${SRC.url}`]);
   });
 
   it("chybný archív alebo resolver = pôvodná URL", async () => {
@@ -117,7 +128,7 @@ describe("IFC motor - archív revízie (D-135)", () => {
     clearEngineCache();
     const t = storage();
     await getStore(SRC, { fetchImpl: t.impl, archive: async () => { throw new Error("db"); } });
-    expect(t.calls).toEqual([`GET ${SRC.url}`]);
+    expect(t.calls).toEqual([`HEAD ${SRC.url}`, `GET ${SRC.url}`]);
   });
 });
 

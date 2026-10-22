@@ -71,6 +71,9 @@ async function head(url: string, fetchImpl: typeof fetch): Promise<{ etag: strin
   return { etag: res.headers.get("etag"), size: len ? Number(len) : null };
 }
 
+/** Strop rozbaleného modelu: poškodený alebo podvrhnutý archív nezahltí pamäť funkcie. */
+const MAX_UNPACKED_BYTES = 512 * 1024 * 1024;
+
 /** Bajty z archívu revízie (gzip) s ETagom pôvodnej URL; null = archív nepoužiť. */
 async function fromArchive(
   src: EngineModelSource,
@@ -78,13 +81,15 @@ async function fromArchive(
   archive: ArchiveResolver,
 ): Promise<{ bytes: Uint8Array; etag: string | null } | null> {
   try {
+    // HEAD pred revíziou z DB: publikácia zapíše DB skôr než aktuálny kľúč, takže starý ETag
+    // s novou revíziou znamená najviac jedno načítanie navyše, nikdy nový ETag so starou revíziou.
+    const h = await head(src.url, fetchImpl);
     const url = await archive(src);
     if (!url) return null;
-    // HEAD najprv: zmena revízie medzi HEAD a archívom znamená najviac jedno načítanie navyše.
-    const h = await head(src.url, fetchImpl);
     const res = await fetchImpl(url, { cache: "no-store" });
     if (!res.ok) return null;
-    return { bytes: new Uint8Array(gunzipSync(new Uint8Array(await res.arrayBuffer()))), etag: h.etag };
+    const bytes = gunzipSync(new Uint8Array(await res.arrayBuffer()), { maxOutputLength: MAX_UNPACKED_BYTES });
+    return { bytes, etag: h.etag };
   } catch {
     return null;
   }

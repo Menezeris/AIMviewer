@@ -6404,16 +6404,21 @@ platí Fair Use Policy. Hlavný zdroj sú IFC federácie: `ifc/ASR.ifc` (24,7 MB
    známou revíziou dá namiesto `.../ifc/ASR.ifc?rev=78` adresu `.../ifc/archive/ASR/v078.ifc.gz` (v tom
    istom adresári ako pôvodný súbor, takže funguje aj pre `NEXT_PUBLIC_IFC_URLS`). Nová revízia = nová URL,
    iframe sa obnoví ako doteraz cez `?rev=`. Model bez revízie (DB nedostupná, migrácia chýba) ostáva na
-   pôvodnom kľúči. Vypínač `NEXT_PUBLIC_IFC_ARCHIVE=0` vráti `?rev=` na pôvodnom kľúči (napr. kým nie je
-   nasadený fork z bodu 2). `modelKey` pozná oba tvary URL.
+   pôvodnom kľúči. **Predvolene vypnuté:** archív platí len pri `NEXT_PUBLIC_IFC_ARCHIVE=1`, ktoré Samuel
+   zapne na Verceli až po nasadení forku z bodu 2 (inak by viewer dostal gzip, ktorý nevie načítať).
+   `modelKey` pozná oba tvary URL. URL sa skladá z mena modelu rovnako ako `archive_key` v
+   `etl/model_publish.py`; `model_revisions.archive_path` nesie ten istý kľúč, prechod naň má zmysel až
+   keby sa schéma archívu menila.
 2. **Fork rozbalí gzip a zachová meno modelu.** Autoload (`useModelUrlAutoload`, blok AIM-FORK) pošle
    stiahnuté bajty cez `aim/modelFile.ts`: začiatok `1f 8b` = `DecompressionStream('gzip')`; meno súboru z
    `archive/<MODEL>/vNNN.ifc.gz` je `<MODEL>.ifc`, lebo most, revízie a filtre (`"VZT" ~ "VZT.ifc"`,
    `aim/derivations.ts`) párujú model podľa mena. Bez zmeny parsera a upstream loadera. Zlučuje sa pred
-   AIMviewerom (D-116); do nasadenia forku host buď čaká, alebo beží s `NEXT_PUBLIC_IFC_ARCHIVE=0`.
+   AIMviewerom (D-116); host je bezpečný aj skôr, lebo archív zapína až `NEXT_PUBLIC_IFC_ARCHIVE=1`.
 3. **IFC motor sťahuje archív.** `getStore` (`lib/engine/cache.ts`) zistí aktuálnu revíziu modelu
-   (`model_revisions`, server) a stiahne archív, rozbalí ho (`zlib`), ETag na kontrolu zmeny berie ako
-   doteraz z HEAD pôvodného kľúča (HEAD nemá telo). Bez revízie alebo pri chybe archívu stiahne pôvodný kľúč.
+   (`model_revisions`, server) a stiahne archív, rozbalí ho (`zlib`, strop 512 MB). ETag na kontrolu zmeny
+   berie z HEAD pôvodného kľúča **pred** čítaním revízie: publikácia zapíše DB skôr než kľúč, takže súbeh dá
+   najviac jedno načítanie navyše, nikdy nový ETag pri starej revízii. Bez revízie alebo pri chybe archívu
+   stiahne pôvodný kľúč. Motor nepotrebuje fork, platí hneď po nasadení hosta.
 4. **Nahrávanie sa nemení.** `etl.model_publish` už archív píše nemenne s dlhou cache; aktuálny kľúč
    `ifc/<MODEL>.ifc` ostáva s `max-age=60`, lebo ho prepisuje každá revízia (ETL, OCB recept, `sync`,
    staré odkazy) a CDN bezplatného plánu by pri dlhej cache vracala starý súbor. OCB (workflow `uloha`) a
@@ -6460,6 +6465,7 @@ skúša na lokálnom vieweri s testovacím modelom.
 - *Kompresia `Content-Encoding` na aktuálnom kľúči:* Supabase Storage ju nenastavuje; gzip archív už je.
 - *Presun úložiska alebo Pro plán:* Pro ostáva záloha (#207), presun je zbytočne veľký krok.
 
-**Dôsledky:** fork patch (gzip + meno) ide pred AIMviewerom; po nasadení oboch Samuel v DevTools uvidí
-`v078.ifc.gz` (7 MB) a pri ďalšom otvorení "(disk cache)". Live kanál, uložené pohľady (`model_revisions`
+**Dôsledky:** fork patch (gzip + meno) ide pred AIMviewerom; po nasadení forku Samuel nastaví na Verceli
+`NEXT_PUBLIC_IFC_ARCHIVE=1` (Production aj Preview) a redeploy, potom v DevTools uvidí `v078.ifc.gz`
+(cca 4,5 MB) a pri ďalšom otvorení "(disk cache)". Live kanál, uložené pohľady (`model_revisions`
 podľa kľúča) a `ifc_models` sa nemenia.

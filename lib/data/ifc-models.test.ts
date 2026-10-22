@@ -40,10 +40,11 @@ describe("archiveUrl", () => {
 });
 
 describe("archiveEnabled", () => {
-  it("predvolene áno, vypne ho len NEXT_PUBLIC_IFC_ARCHIVE=0", () => {
-    expect(archiveEnabled({})).toBe(true);
-    expect(archiveEnabled({ NEXT_PUBLIC_IFC_ARCHIVE: "1" })).toBe(true);
+  it("predvolene vypnutý (fork bez gzip), zapne ho len NEXT_PUBLIC_IFC_ARCHIVE=1", () => {
+    expect(archiveEnabled({})).toBe(false);
     expect(archiveEnabled({ NEXT_PUBLIC_IFC_ARCHIVE: "0" })).toBe(false);
+    expect(archiveEnabled({ NEXT_PUBLIC_IFC_ARCHIVE: "true" })).toBe(false);
+    expect(archiveEnabled({ NEXT_PUBLIC_IFC_ARCHIVE: "1" })).toBe(true);
   });
 });
 
@@ -69,6 +70,17 @@ describe("withRevisions", () => {
   it("prepíše starý rev v URL", () => {
     const [m] = withRevisions([{ ...MODELS[0], url: `${BASE}/ASR.ifc?rev=71` }], [{ model: "ASR", revision: 73 }], { archive: false });
     expect(m.url).toBe(`${BASE}/ASR.ifc?rev=73`);
+  });
+
+  it("bez voľby a bez env ostáva ?rev= na aktuálnom kľúči", () => {
+    const prev = process.env.NEXT_PUBLIC_IFC_ARCHIVE;
+    delete process.env.NEXT_PUBLIC_IFC_ARCHIVE;
+    try {
+      const [m] = withRevisions(MODELS, [{ model: "ASR", revision: 78 }]);
+      expect(m.url).toBe(`${BASE}/ASR.ifc?rev=78`);
+    } finally {
+      if (prev !== undefined) process.env.NEXT_PUBLIC_IFC_ARCHIVE = prev;
+    }
   });
 
   it("bez revízií vráti modely bez zmeny", () => {
