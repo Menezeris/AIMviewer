@@ -1,0 +1,1886 @@
+From 12182c6acdcc5cace160dcc639fe1eadb2214642 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:53:49 +0000
+Subject: [PATCH 1/5] =?UTF-8?q?AIM=20D-157:=20dla=C5=BEdice=20z=C3=A1lo?=
+ =?UTF-8?q?=C5=BEiek=20(1=20a=C5=BE=204=20okn=C3=A1,=20jedno=20=C5=BEiv?=
+ =?UTF-8?q?=C3=A9=203D,=20sn=C3=ADmky)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Krok 2 dlaždicového rozloženia (AIM #210). Rozloženia single, split_h, split_v,
+tri okná s veľkou dlaždicou vľavo/vpravo/hore/dole, three_h, three_v, grid4;
+každá dlaždica ukazuje jednu záložku. Jediný WebGPU canvas sa presúva do živej
+3D dlaždice (useAimCenterPanes), ostatné 3D dlaždice ukazujú snímku do kliknutia
+(tileShots), dokumenty sú v dlaždici živé. VIEW_TABS action=layout (tiles-protocol),
+view_state.layout, prepínač Rozloženie v lište a výber záložky v hlavičke dlaždice.
+Logika v aim/viewTilesPlan.ts s testom; upstream len AIM-FORK blok ViewerLayout.tsx.
+Oprava testu aimSideDock po zlúčení D-136 s main (drawing2DPanelVisible).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01SLNw3madVzdj6cZmw5V6HJ
+---
+ apps/viewer/src/aim/AimTileGrid.tsx           | 127 ++++++++++++
+ apps/viewer/src/aim/AimViewTabsBar.tsx        |  38 ++--
+ apps/viewer/src/aim/aimSideDock.test.ts       |   1 +
+ apps/viewer/src/aim/tileShots.ts              |  57 ++++++
+ apps/viewer/src/aim/tiles-protocol.ts         |  46 +++++
+ apps/viewer/src/aim/useAimCenterPanes.ts      |  10 +-
+ apps/viewer/src/aim/viewQueries.ts            |   8 +
+ apps/viewer/src/aim/viewTabsApply.ts          | 152 ++++++++++++--
+ apps/viewer/src/aim/viewTabsLayout.ts         |  27 ++-
+ apps/viewer/src/aim/viewTabsStore.ts          |  17 +-
+ apps/viewer/src/aim/viewTilesPlan.test.ts     | 142 +++++++++++++
+ apps/viewer/src/aim/viewTilesPlan.ts          | 190 ++++++++++++++++++
+ .../src/components/viewer/ViewerLayout.tsx    |   9 +-
+ 13 files changed, 784 insertions(+), 40 deletions(-)
+ create mode 100644 apps/viewer/src/aim/AimTileGrid.tsx
+ create mode 100644 apps/viewer/src/aim/tileShots.ts
+ create mode 100644 apps/viewer/src/aim/tiles-protocol.ts
+ create mode 100644 apps/viewer/src/aim/viewTilesPlan.test.ts
+ create mode 100644 apps/viewer/src/aim/viewTilesPlan.ts
+
+diff --git a/apps/viewer/src/aim/AimTileGrid.tsx b/apps/viewer/src/aim/AimTileGrid.tsx
+new file mode 100644
+index 00000000..bab42a1e
+--- /dev/null
++++ b/apps/viewer/src/aim/AimTileGrid.tsx
+@@ -0,0 +1,127 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Dlaždice záložiek (AIM D-157, #210): vrstva nad 3D panelom, lenivo z
++ * `ViewerLayout.tsx`. Každá dlaždica má hlavičku s výberom záložky. Živá 3D
++ * dlaždica je priehľadná: pod ňou je jediný 3D canvas, ktorý `useAimCenterPanes`
++ * posunie do jej obdĺžnika (canvas sa nikdy neremountuje). Ostatné 3D dlaždice
++ * ukazujú snímku (`tileShots.ts`) a klik ich urobí živými; dokument je živý vždy.
++ */
++
++import { useEffect, useRef } from 'react';
++import { cn } from '@/lib/utils';
++import { useViewerStore } from '@/store';
++import { PdfDocumentView } from '@/components/documents/PdfDocumentView';
++import { ImageDocumentView } from '@/components/documents/ImageDocumentView';
++import { TILE_HEADER_PX, isSceneTab, type ViewTab } from './viewTabsLayout.js';
++import { useAimViewTabs } from './viewTabsStore.js';
++import { TILE_RECTS, liveTile, type TileRect } from './viewTilesPlan.js';
++import { activate, putTile } from './viewTabsApply.js';
++import { shotOf } from './tileShots.js';
++
++const warn = (issue: string) => console.warn('[aim-tiles]', issue);
++const pct = (v: number) => `${Math.round(v * 1e4) / 100}%`;
++const place = (r: TileRect) => ({ left: pct(r.x), top: pct(r.y), width: pct(r.w), height: pct(r.h) });
++
++export function AimTileGrid() {
++  const layout = useAimViewTabs((s) => s.layout);
++  const tiles = useAimViewTabs((s) => s.tiles);
++  const tabs = useAimViewTabs((s) => s.tabs);
++  const activeId = useAimViewTabs((s) => s.activeId);
++  const sceneId = useAimViewTabs((s) => s.sceneId);
++  if (layout === 'single') return null;
++  const rects = TILE_RECTS[layout];
++  const live = liveTile({ layout, tiles }, sceneId);
++
++  return (
++    <div className="pointer-events-none absolute inset-0 z-10" data-testid="aim-tile-grid">
++      {rects.map((rect, i) => {
++        const id = tiles[i] ?? null;
++        const tab = id ? tabs.find((t) => t.id === id) : undefined;
++        const isLive = i === live;
++        return (
++          <section
++            key={i}
++            aria-label={`Dlaždica ${i + 1}${tab ? `: ${tab.label}` : ''}`}
++            className={cn('absolute flex flex-col border', id === activeId ? 'border-primary' : 'border-border')}
++            style={place(rect)}
++          >
++            <TileHeader index={i} tab={tab} tabs={tabs} live={isLive} />
++            <div className={cn('min-h-0 flex-1', !isLive && 'pointer-events-auto bg-background')}>
++              {!tab ? (
++                <p className="flex h-full items-center justify-center text-xs text-muted-foreground">Vyber záložku v hlavičke dlaždice</p>
++              ) : tab.kind === 'doc' ? (
++                <DocTile tab={tab} />
++              ) : isLive ? null : (
++                <ShotTile tab={tab} />
++              )}
++            </div>
++          </section>
++        );
++      })}
++    </div>
++  );
++}
++
++function TileHeader({ index, tab, tabs, live }: { index: number; tab: ViewTab | undefined; tabs: readonly ViewTab[]; live: boolean }) {
++  return (
++    <div className="pointer-events-auto flex shrink-0 items-center gap-1 border-b bg-muted/60 px-1" style={{ height: TILE_HEADER_PX - 1 }}>
++      <select
++        aria-label={`Záložka v dlaždici ${index + 1}`}
++        className="h-5 min-w-0 max-w-48 rounded border bg-background px-1 text-2xs"
++        value={tab?.id ?? ''}
++        onChange={(e) => putTile(index, e.target.value || null, warn)}
++      >
++        <option value="">(prázdna)</option>
++        {tabs.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
++      </select>
++      {tab && isSceneTab(tab) && (
++        <span className="truncate text-2xs text-muted-foreground">{live ? 'živé 3D' : 'snímka'}</span>
++      )}
++    </div>
++  );
++}
++
++function DocTile({ tab }: { tab: ViewTab }) {
++  const doc = useViewerStore((s) => (tab.docId ? s.viewerDocuments.get(tab.docId) : undefined));
++  if (!doc) return <p className="p-2 text-xs text-muted-foreground">Dokument sa načítava...</p>;
++  return (
++    <div className="h-full" onPointerDownCapture={() => { if (useAimViewTabs.getState().activeId !== tab.id) activate(tab.id, warn); }}>
++      {doc.kind === 'image'
++        ? <ImageDocumentView key={doc.id} url={doc.url} name={doc.name} />
++        : <PdfDocumentView key={doc.id} docId={doc.id} url={doc.url} />}
++    </div>
++  );
++}
++
++/** 3D dlaždica mimo canvasu: posledný obraz záložky, klik ju urobí živou. */
++function ShotTile({ tab }: { tab: ViewTab }) {
++  const version = useAimViewTabs((s) => s.shots);
++  const ref = useRef<HTMLCanvasElement>(null);
++  const shot = shotOf(tab.id);
++  useEffect(() => {
++    const out = ref.current;
++    const src = shotOf(tab.id);
++    if (!out || !src) return;
++    out.width = src.width;
++    out.height = src.height;
++    out.getContext('2d')?.drawImage(src, 0, 0);
++  }, [tab.id, version]);
++  return (
++    <button
++      type="button"
++      onClick={() => activate(tab.id, warn)}
++      title="Klikni pre živý 3D pohľad"
++      className="group relative flex h-full min-h-6 w-full items-center justify-center bg-background"
++    >
++      {shot ? (
++        <canvas ref={ref} aria-hidden className="h-full w-full object-contain" />
++      ) : null}
++      <span className="absolute bottom-1 rounded bg-background/80 px-1.5 py-0.5 text-2xs text-muted-foreground group-hover:text-foreground">
++        {shot ? 'Klikni pre živý pohľad' : 'Bez snímky - klikni pre živý pohľad'}
++      </span>
++    </button>
++  );
++}
+diff --git a/apps/viewer/src/aim/AimViewTabsBar.tsx b/apps/viewer/src/aim/AimViewTabsBar.tsx
+index 512b6bad..a51ba4f6 100644
+--- a/apps/viewer/src/aim/AimViewTabsBar.tsx
++++ b/apps/viewer/src/aim/AimViewTabsBar.tsx
+@@ -9,6 +9,8 @@
+  * z `ViewerLayout.tsx`; na mobile sa neukazuje (dokument tam je prekrytie D-075).
+  * Pod lištou sa pri pokuse o orbit v zamknutom pôdoryse ukáže ponuka prepnúť do 3D
+  * (`AimPlanOrbitHint`, #188). Lišta tiež dodá záložkám funkcie viewera (`TabDeps`) z hookov pôdorysu.
++ * Prepínač "Rozloženie" rozdelí plochu na 2 až 4 dlaždice (D-157); "Vedľa" pre dvojicu,
++ * ktorú plocha bez dlaždíc nevie (dve 3D, dva dokumenty), prepne na dve dlaždice vedľa seba.
+  */
+ 
+ import { useEffect, useMemo, useRef } from 'react';
+@@ -17,9 +19,10 @@ import { cn } from '@/lib/utils';
+ import { useViewerStore } from '@/store';
+ import { useViewMode } from '@/hooks/useViewMode';
+ import { useFloorplanView } from '@/hooks/useFloorplanView';
+-import { besidePair, type ViewTabKind } from './viewTabsPlan.js';
++import type { ViewTabKind } from './viewTabsPlan.js';
+ import { useAimViewTabs } from './viewTabsStore.js';
+-import { activate, beside, close, openPlan, syncDocs } from './viewTabsApply.js';
++import { activate, beside, close, openPlan, setLayout, syncDocs } from './viewTabsApply.js';
++import { TILE_LAYOUTS, TILE_LAYOUT_LABELS, isTileLayout } from './viewTilesPlan.js';
+ import { AimPlanOrbitHint } from './AimPlanOrbitHint.js';
+ 
+ const ICON: Record<ViewTabKind, typeof Box> = { '3d': Box, plan: LayoutTemplate, view: Scan, doc: FileText };
+@@ -50,10 +53,9 @@ export function AimViewTabsBar() {
+   const tabs = useAimViewTabs((s) => s.tabs);
+   const activeId = useAimViewTabs((s) => s.activeId);
+   const besideId = useAimViewTabs((s) => s.besideId);
+-  const pairable = useMemo(
+-    () => tabs.filter((t) => besidePair({ tabs, activeId, besideId }, activeId, t.id)),
+-    [tabs, activeId, besideId],
+-  );
++  const layout = useAimViewTabs((s) => s.layout);
++  // Vedľa ide každá dvojica: čo nevie plocha bez dlaždíc, rieši rozloženie dvoch dlaždíc (D-157).
++  const pairable = useMemo(() => tabs.filter((t) => t.id !== activeId), [tabs, activeId]);
+   if (isMobile) return null;
+ 
+   return (
+@@ -108,20 +110,30 @@ export function AimViewTabsBar() {
+           className={SELECT}
+           value=""
+           disabled={storeys.length === 0}
+-          onChange={(e) => { if (e.target.value) openPlan(e.target.value, {}, warn); }}
++          onChange={(e) => { if (e.target.value) void openPlan(e.target.value, {}, warn); }}
+         >
+           <option value="">+ Pôdorys</option>
+           {storeys.map((s) => <option key={s.key} value={s.guid}>{s.name}</option>)}
+         </select>
++        {layout === 'single' && (
++          <select
++            aria-label="Vedľa aktívnej záložky"
++            className={SELECT}
++            value={besideId ?? ''}
++            disabled={pairable.length === 0 && besideId === null}
++            onChange={(e) => { void beside(e.target.value || null, warn); }}
++          >
++            <option value="">Vedľa: nič</option>
++            {pairable.map((t) => <option key={t.id} value={t.id}>{`Vedľa: ${t.label}`}</option>)}
++          </select>
++        )}
+         <select
+-          aria-label="Vedľa aktívnej záložky"
++          aria-label="Rozloženie dlaždíc"
+           className={SELECT}
+-          value={besideId ?? ''}
+-          disabled={pairable.length === 0 && besideId === null}
+-          onChange={(e) => beside(e.target.value || null, warn)}
++          value={layout}
++          onChange={(e) => { if (isTileLayout(e.target.value)) void setLayout(e.target.value, [], warn); }}
+         >
+-          <option value="">Vedľa: nič</option>
+-          {pairable.map((t) => <option key={t.id} value={t.id}>{`Vedľa: ${t.label}`}</option>)}
++          {TILE_LAYOUTS.map((l) => <option key={l} value={l}>{`Rozloženie: ${TILE_LAYOUT_LABELS[l]}`}</option>)}
+         </select>
+       </div>
+     </div>
+diff --git a/apps/viewer/src/aim/aimSideDock.test.ts b/apps/viewer/src/aim/aimSideDock.test.ts
+index 9b4976c4..b6f2332c 100644
+--- a/apps/viewer/src/aim/aimSideDock.test.ts
++++ b/apps/viewer/src/aim/aimSideDock.test.ts
+@@ -43,6 +43,7 @@ describe('bočný stĺpec: čo je naozaj vidno (AIM #212)', () => {
+       floatingPanels: [{ id: 'lens', snap: 'right', w: 300, h: 300 }],
+       poppedOutIds: [],
+       listPanelVisible: false,
++      drawing2DPanelVisible: false,
+     };
+     assert.deepEqual(panelInfo(s, 'properties'), { open: true, where: 'right' });
+     assert.deepEqual(panelInfo({ ...s, sidebarMode: 'collapsed' }, 'properties'), { open: false });
+diff --git a/apps/viewer/src/aim/tileShots.ts b/apps/viewer/src/aim/tileShots.ts
+new file mode 100644
+index 00000000..e5a54c95
+--- /dev/null
++++ b/apps/viewer/src/aim/tileShots.ts
+@@ -0,0 +1,57 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Snímky 3D dlaždíc (AIM D-157): viewer má jeden 3D canvas, preto 3D dlaždica
++ * mimo živej ukazuje posledný obraz svojej záložky. Snímka sa robí synchrónne
++ * pri odchode záložky z canvasu (kópia posledného zobrazeného snímku do 2D
++ * canvasu, zmenšená), nie z renderera; nič sa neprekresľuje navyše. Len počas
++ * relácie, zabudne sa so záložkou.
++ */
++
++import { useAimViewTabs } from './viewTabsStore.js';
++
++/** Dlhšia strana snímky v px (4 dlaždice x 1600 px = pamäť pár MB). */
++const MAX_SIDE = 1600;
++
++const shots = new Map<string, HTMLCanvasElement>();
++
++const viewportCanvas = () => document.querySelector<HTMLCanvasElement>('canvas[data-viewport="main"]');
++
++const bump = () => useAimViewTabs.setState((s) => ({ shots: s.shots + 1 }));
++
++/** Odfotí 3D canvas ako snímku záložky `id`; false = canvas nie je alebo je prázdny. */
++export function shoot(id: string): boolean {
++  const src = viewportCanvas();
++  if (!src || src.width === 0 || src.height === 0) return false;
++  const k = Math.min(1, MAX_SIDE / Math.max(src.width, src.height));
++  const out = shots.get(id) ?? document.createElement('canvas');
++  out.width = Math.max(1, Math.round(src.width * k));
++  out.height = Math.max(1, Math.round(src.height * k));
++  const ctx = out.getContext('2d');
++  if (!ctx) return false;
++  try {
++    ctx.drawImage(src, 0, 0, out.width, out.height);
++  } catch {
++    return false;
++  }
++  shots.set(id, out);
++  bump();
++  return true;
++}
++
++export const shotOf = (id: string) => shots.get(id) ?? null;
++export const hasShot = (id: string) => shots.has(id);
++
++/** Zabudne snímky zavretých záložiek. */
++export function pruneShots(open: ReadonlySet<string>): void {
++  let changed = false;
++  for (const id of shots.keys()) {
++    if (!open.has(id)) {
++      shots.delete(id);
++      changed = true;
++    }
++  }
++  if (changed) bump();
++}
+diff --git a/apps/viewer/src/aim/tiles-protocol.ts b/apps/viewer/src/aim/tiles-protocol.ts
+new file mode 100644
+index 00000000..55b2b98a
+--- /dev/null
++++ b/apps/viewer/src/aim/tiles-protocol.ts
+@@ -0,0 +1,46 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Dlaždice z chatu (AIM D-157, #210): `VIEW_TABS` s akciou `layout` nastaví
++ * rozloženie a záložku každej dlaždice. Vlastný modul (mimo `tabs-protocol.ts`,
++ * ktorý číta aj vstupný balík), overuje ho až lenivé vykonanie záložiek.
++ *
++ * Dlaždica na drôte: `{tab}` = otvorená záložka (id, `3d`, menovka alebo GlobalId
++ * podlažia), `{plan}` = pôdorys podlažia podľa GlobalId (otvorí sa, ak nie je),
++ * null = prázdna dlaždica. Chýbajúce dlaždice doplní viewer otvorenými záložkami.
++ */
++
++import { SOURCE } from './bridge-protocol.js';
++import { TILE_RECTS, isTileLayout, type TileLayout } from './viewTilesPlan.js';
++
++export type TileWire = { tab: string } | { plan: string } | null;
++
++export interface TilesMessage {
++  source: typeof SOURCE;
++  type: 'VIEW_TABS';
++  action: 'layout';
++  layout: TileLayout;
++  tiles?: TileWire[];
++}
++
++const MAX_TEXT = 200;
++const isText = (v: unknown) => typeof v === 'string' && v.trim().length > 0 && v.length <= MAX_TEXT;
++
++function isTile(v: unknown): v is TileWire {
++  if (v === null) return true;
++  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
++  const keys = Object.keys(v);
++  const o = v as Record<string, unknown>;
++  if (keys.length !== 1) return false;
++  return keys[0] === 'tab' ? isText(o.tab) : keys[0] === 'plan' ? isText(o.plan) : false;
++}
++
++export function isTilesMessage(data: unknown): data is TilesMessage {
++  if (!data || typeof data !== 'object') return false;
++  const m = data as Record<string, unknown>;
++  if (m.source !== SOURCE || m.type !== 'VIEW_TABS' || m.action !== 'layout' || !isTileLayout(m.layout)) return false;
++  if (m.tiles === undefined) return true;
++  return Array.isArray(m.tiles) && m.tiles.length <= TILE_RECTS[m.layout].length && m.tiles.every(isTile);
++}
+diff --git a/apps/viewer/src/aim/useAimCenterPanes.ts b/apps/viewer/src/aim/useAimCenterPanes.ts
+index 53321e0a..59467497 100644
+--- a/apps/viewer/src/aim/useAimCenterPanes.ts
++++ b/apps/viewer/src/aim/useAimCenterPanes.ts
+@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
+ import type { PanelImperativeHandle } from 'react-resizable-panels';
+ import { useViewerStore } from '@/store';
+ import { useFloorplanView } from '@/hooks/useFloorplanView';
+-import { centerLayout } from './viewTabsLayout.js';
++import { centerLayout, tileFrameStyle } from './viewTabsLayout.js';
+ import { useAimViewTabs } from './viewTabsStore.js';
+ import { useAimPlanRefit } from './useAimPlanRefit.js';
+ 
+@@ -49,7 +49,11 @@ export function useAimCenterPanes(isMobile: boolean) {
+   const tabs = useAimViewTabs((s) => s.tabs);
+   const activeId = useAimViewTabs((s) => s.activeId);
+   const besideId = useAimViewTabs((s) => s.besideId);
+-  const layout = useMemo(() => centerLayout({ tabs, activeId, besideId }), [tabs, activeId, besideId]);
++  // D-157: pri dlaždiciach je 3D panel na celú plochu, canvas sa posunie do živej dlaždice.
++  const tiled = useAimViewTabs((s) => s.layout !== 'single') && !isMobile;
++  const frame = useAimViewTabs((s) => s.frame);
++  const tileFrame = useMemo(() => (tiled ? tileFrameStyle(frame) : undefined), [tiled, frame]);
++  const layout = useMemo(() => centerLayout({ tabs, activeId, besideId }, tiled), [tabs, activeId, besideId, tiled]);
+   const collapse3d = underlayPlanFull || (!isMobile && layout.collapse3d);
+   const collapse3dRef = useRef(collapse3d);
+   collapse3dRef.current = collapse3d;
+@@ -108,6 +112,6 @@ export function useAimCenterPanes(isMobile: boolean) {
+ 
+   return {
+     underlaySplitView, underlayPlanFull, planePanelRef, viewport3dPanelRef, onViewport3dResize,
+-    docPaneOpen, docPaneVisible, docPanelRef, onDocPaneResize,
++    docPaneOpen, docPaneVisible, docPanelRef, onDocPaneResize, tiled, tileFrame,
+   };
+ }
+diff --git a/apps/viewer/src/aim/viewQueries.ts b/apps/viewer/src/aim/viewQueries.ts
+index 18c777b7..40e7529c 100644
+--- a/apps/viewer/src/aim/viewQueries.ts
++++ b/apps/viewer/src/aim/viewQueries.ts
+@@ -28,6 +28,7 @@ import { useAimInspectorStore } from './aimInspectorStore.js';
+ import { useAimDocRegionStore } from './docRegion.js';
+ import { useAimViewTabs } from './viewTabsStore.js';
+ import { describeTabs } from './viewTabsPlan.js';
++import { describeLayout } from './viewTilesPlan.js';
+ import { orderedBox, toSectionBox, type SectionBoxMessage } from './sectionBox.js';
+ import type { guidForEntity, resolveGuids } from './bridge-protocol.js';
+ import type { SectionPlaneAxis } from '@/store/types';
+@@ -222,6 +223,8 @@ export function queryViewState(state: State, g: GuidHelpers) {
+     document: useAimDocRegionStore.getState().visible,
+     // AIM D-132: záložky (aktívna a tá vedľa).
+     tabs: describeTabs(useAimViewTabs.getState()),
++    // AIM D-157: dlaždice (rozloženie, záložka v každej dlaždici, živá 3D).
++    layout: tilesLayout(),
+   };
+ }
+ 
+@@ -305,3 +308,8 @@ export function answerQuery(msg: Extract<ViewInboundMessage, { type: 'QUERY' }>,
+     reply({ source: msg.source, type: 'QUERY_RESULT', id: msg.id, ok: false, error: err instanceof Error ? err.message : String(err) });
+   }
+ }
++
++function tilesLayout() {
++  const t = useAimViewTabs.getState();
++  return describeLayout(t, t, t.sceneId);
++}
+diff --git a/apps/viewer/src/aim/viewTabsApply.ts b/apps/viewer/src/aim/viewTabsApply.ts
+index 61dfade8..02b8ead8 100644
+--- a/apps/viewer/src/aim/viewTabsApply.ts
++++ b/apps/viewer/src/aim/viewTabsApply.ts
+@@ -18,11 +18,17 @@ import type { CameraViewpoint, SectionPlane } from '@/store/types';
+ import { orderedSectionPlanes, sectionPlaneCount } from '@/lib/section/section-plane-set';
+ import { clearSectionCut } from '@/store/section-active';
+ import {
+-  activateTab, besideRefusal, closeAll, closeTab, docTabId, isSceneTab, openTab, planTabId, resolveTabRef, setBeside,
++  activateTab, besidePair, besideRefusal, closeAll, closeTab, docTabId, isSceneTab, openTab, planTabId, resolveTabRef, setBeside,
+   syncDocTabs, viewTabId, type ViewTab, type ViewTabsState,
+ } from './viewTabsPlan.js';
+ import { useAimViewTabs } from './viewTabsStore.js';
+ import { isTabsMessage, type TabsMessage } from './tabs-protocol.js';
++import { isTilesMessage, type TilesMessage } from './tiles-protocol.js';
++import {
++  TILE_RECTS, isTiled, layoutTiles, liveTile, reconcileTiles, setTile, singleTiles, tileScene, type TileLayout, type TilesState,
++} from './viewTilesPlan.js';
++import { hasShot, pruneShots, shoot } from './tileShots.js';
++import { waitCameraSettled } from './cameraSettle.js';
+ 
+ interface SceneSnapshot {
+   viewpoint: CameraViewpoint | null;
+@@ -130,12 +136,22 @@ function syncPlanBeside(next: ViewTabsState, note: Note): void {
+  * doterajšej a vráti (alebo prvýkrát nastaví) novú; karta dokumentu D-075 sa
+  * prepne na aktívny dokument.
+  */
+-export function commit(next: ViewTabsState, note: Note = () => {}): void {
++export function commit(next: ViewTabsState, note: Note = () => {}, tilesNext?: TilesState): void {
+   const store = useAimViewTabs.getState();
+   const prevScene = store.sceneId;
+-  const scene = sceneTabOf(next, prevScene);
++  // D-157: pri dlaždiciach nie je "Vedľa"; aktívna záložka mimo dlaždíc sa do jednej dá.
++  let tiles = tilesNext ?? { layout: store.layout, tiles: store.tiles };
++  if (isTiled(tiles)) {
++    next = { ...next, besideId: null };
++    tiles = reconcileTiles(next, tiles, prevScene);
++  }
++  const scene = isTiled(tiles) ? tileScene(next, tiles, prevScene) : sceneTabOf(next, prevScene);
+   if (scene !== prevScene) {
+-    if (store.tabs.some((t) => t.id === prevScene)) snapshots.set(prevScene, capture());
++    if (store.tabs.some((t) => t.id === prevScene)) {
++      snapshots.set(prevScene, capture());
++      // Odchádzajúca 3D dlaždica si nechá posledný obraz (jeden 3D canvas).
++      if (isTiled(tiles)) shoot(prevScene);
++    }
+     // Panel plánu vedľa 3D patrí 3D záložke; pred prepnutím canvasu sa zavrie.
+     if (useViewerStore.getState().underlaySplitView) store.deps?.exitSplitView();
+     const snap = snapshots.get(scene);
+@@ -144,7 +160,12 @@ export function commit(next: ViewTabsState, note: Note = () => {}): void {
+     else if (tab) enterFresh(tab, note);
+   }
+   for (const id of snapshots.keys()) if (!next.tabs.some((t) => t.id === id)) snapshots.delete(id);
+-  useAimViewTabs.setState({ tabs: next.tabs, activeId: next.activeId, besideId: next.besideId, sceneId: scene });
++  pruneShots(new Set(next.tabs.map((t) => t.id)));
++  const live = liveTile(tiles, scene);
++  useAimViewTabs.setState({
++    tabs: next.tabs, activeId: next.activeId, besideId: next.besideId, sceneId: scene,
++    layout: tiles.layout, tiles: tiles.tiles, frame: live >= 0 ? TILE_RECTS[tiles.layout][live] : null,
++  });
+   syncPlanBeside(next, note);
+   const doc = [next.tabs.find((t) => t.id === next.activeId), next.tabs.find((t) => t.id === next.besideId)].find((t) => t?.kind === 'doc');
+   const vs = useViewerStore.getState();
+@@ -161,20 +182,90 @@ export function activate(id: string, note?: Note): void {
+   commit(activateTab(current(), id), note);
+ }
+ 
+-export function beside(id: string | null, note: Note = () => {}): void {
++/**
++ * "Vedľa": dvojicu, ktorú nevie stredná plocha (dve 3D, dva dokumenty, pôdorys bez
++ * podkladu vedľa 3D), ako aj "Vedľa" pri dlaždiciach rieši rozloženie dvoch
++ * dlaždíc vedľa seba (D-157); `none` dlaždice zruší.
++ */
++export function beside(id: string | null, note: Note = () => {}): Promise<void> | void {
+   const s = current();
+-  if (id !== null) {
+-    const refusal = besideRefusal(s, s.activeId, id);
+-    if (refusal) return note(`VIEW_TABS: ${refusal}`);
++  const tiled = useAimViewTabs.getState().layout !== 'single';
++  if (id === null) {
++    if (tiled) return void commit(s, note, singleTiles());
++    return void commit(setBeside(s, id), note);
+   }
++  if (tiled || needsTiles(s, s.activeId, id)) return setLayout('split_h', [s.activeId, id], note);
+   commit(setBeside(s, id), note);
+ }
+ 
++/** Dvojica vedľa seba ide len cez dlaždice (D-157). */
++function needsTiles(s: ViewTabsState, a: string, b: string): boolean {
++  if (besideRefusal(s, a, b)) return true;
++  const pair = besidePair(s, a, b);
++  const plan = pair && s.tabs.find((t) => t.id === pair.beside && t.kind === 'plan');
++  const deps = useAimViewTabs.getState().deps;
++  return !!plan && !!plan.storeyGuid && !!deps && !deps.storeyHasDrawing(plan.storeyGuid);
++}
++
++let prerenderRun = 0;
++const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
++const settle = async () => {
++  await waitCameraSettled(() => useViewerStore.getState().cameraCallbacks.getViewpoint?.() ?? null);
++  for (let i = 0; i < 3; i++) await nextFrame();
++};
++
++/**
++ * 3D dlaždice bez snímky (napr. pôdorys, ktorý ešte nebol v canvase) sa raz
++ * ukážu v canvase, aby mali obraz; potom sa vráti živá dlaždica a aktívna
++ * záložka. Používateľ alebo ďalší príkaz zmenou záložiek beh preruší.
++ */
++async function prerender(note: Note): Promise<void> {
++  const run = ++prerenderRun;
++  const start = useAimViewTabs.getState();
++  const live = start.sceneId;
++  const active = start.activeId;
++  const missing = start.tiles.filter((id): id is string => {
++    const tab = start.tabs.find((t) => t.id === id);
++    return !!id && id !== live && isSceneTab(tab) && !hasShot(id);
++  });
++  if (missing.length === 0) return;
++  let expected = live;
++  for (const id of missing) {
++    if (run !== prerenderRun || useAimViewTabs.getState().sceneId !== expected) return;
++    commit(activateTab(current(), id), note);
++    expected = id;
++    await settle();
++  }
++  if (run !== prerenderRun || useAimViewTabs.getState().sceneId !== expected) return;
++  commit(activateTab(current(), live), note);
++  if (active !== live) commit(activateTab(current(), active), note);
++}
++
++/**
++ * Rozloženie dlaždíc (lišta aj most): `refs[i]` = id záložky, null = prázdna,
++ * undefined = doplniť. Vráti beh snímok (most naň počká pred `APPLIED`).
++ */
++export function setLayout(layout: TileLayout, refs: readonly (string | null | undefined)[] = [], note: Note = () => {}): Promise<void> | void {
++  const s = current();
++  if (layout === 'single') return void commit(s, note, singleTiles());
++  const store = useAimViewTabs.getState();
++  commit(s, note, layoutTiles(s, { layout: store.layout, tiles: store.tiles }, layout, refs));
++  return prerender(note);
++}
++
++/** Záložka do dlaždice z jej hlavičky; 3D záložka sa tým stane živou. */
++export function putTile(index: number, id: string | null, note: Note = () => {}): void {
++  const store = useAimViewTabs.getState();
++  const s = current();
++  const tiles = setTile(s, { layout: store.layout, tiles: store.tiles }, index, id);
++  commit(id ? activateTab(s, id) : s, note, tiles);
++}
++
+ export function close(id: string, note?: Note): void {
+   const s = current();
+   if (id === 'all') {
+     for (const t of s.tabs) if (t.docId) useViewerStore.getState().closeDocTab(t.docId);
+-    return commit(closeAll(current()), note);
++    return commit(closeAll(current()), note, singleTiles());
+   }
+   const tab = s.tabs.find((t) => t.id === id);
+   if (tab?.docId) useViewerStore.getState().closeDocTab(tab.docId);
+@@ -182,14 +273,17 @@ export function close(id: string, note?: Note): void {
+ }
+ 
+ /** Pôdorys podlažia do záložky (z lišty aj z chatu). */
+-export function openPlan(storeyGuid: string, opts: { beside?: boolean } = {}, note: Note = () => {}): void {
++export function openPlan(storeyGuid: string, opts: { beside?: boolean } = {}, note: Note = () => {}): Promise<void> | void {
+   const storey = useAimViewTabs.getState().deps?.storeys.find((x) => x.guid === storeyGuid);
+   if (!storey) return note('VIEW_TABS: podlažie sa vo vieweri nenašlo');
+   const tab: ViewTab = { id: planTabId(storeyGuid), kind: 'plan', label: storey.name, storeyGuid };
+   const s = current();
+   if (opts.beside) {
+-    const refusal = besideRefusal(openTab(s, tab), s.activeId, tab.id);
+-    if (refusal) return note(`VIEW_TABS: ${refusal}`);
++    const opened = openTab(s, tab);
++    if (useAimViewTabs.getState().layout !== 'single' || needsTiles(opened, s.activeId, tab.id)) {
++      commit({ ...opened, activeId: s.activeId }, note);
++      return setLayout('split_h', [s.activeId, tab.id], note);
++    }
+   }
+   commit(openTab(s, tab, opts), note);
+ }
+@@ -228,7 +322,8 @@ export function showDoc(docId: string, layout: 'tab' | 'split', note: Note = ()
+ }
+ 
+ /** `VIEW_TABS` z mosta (AIM D-132); overí sa tu, mimo vstupného balíka. */
+-export function runTabsMessage(raw: unknown, note: Note): void {
++export function runTabsMessage(raw: unknown, note: Note): Promise<void> | void {
++  if (isTilesMessage(raw)) return runLayout(raw, note);
+   if (!isTabsMessage(raw)) return note('VIEW_TABS: neplatná správa');
+   const msg: TabsMessage = raw;
+   const s = current();
+@@ -238,9 +333,11 @@ export function runTabsMessage(raw: unknown, note: Note): void {
+     const tab: ViewTab = { id: viewTabId(o.viewId!), kind: 'view', label: o.label!, locked: o.locked === true };
+     // Znova otvorený pohľad začína od definície, nie od stavu z minulého otvorenia.
+     snapshots.delete(tab.id);
+-    if (msg.beside) {
+-      const refusal = besideRefusal(openTab(s, tab), s.activeId, tab.id);
+-      if (refusal) return note(`VIEW_TABS: ${refusal}`);
++    if (msg.beside && (useAimViewTabs.getState().layout !== 'single' || needsTiles(openTab(s, tab), s.activeId, tab.id))) {
++      const reopenedTile = useAimViewTabs.getState().sceneId === tab.id;
++      commit(openTab(s, tab), note);
++      if (reopenedTile) enterFresh(tab, note);
++      return setLayout('split_h', [s.activeId, tab.id], note);
+     }
+     const reopened = useAimViewTabs.getState().sceneId === tab.id;
+     commit(openTab(s, tab, { beside: msg.beside }), note);
+@@ -257,3 +354,24 @@ export function runTabsMessage(raw: unknown, note: Note): void {
+   if (tab.kind === '3d') return note('VIEW_TABS: záložka 3D sa nedá zavrieť');
+   close(tab.id, note);
+ }
++
++/** `VIEW_TABS layout` (AIM D-157): pôdorysy z `{plan}` sa otvoria, menovky sa nájdu ako pri `tab`. */
++function runLayout(msg: TilesMessage, note: Note): Promise<void> | void {
++  let s = current();
++  const deps = useAimViewTabs.getState().deps;
++  const refs = (msg.tiles ?? []).map((w): string | null | undefined => {
++    if (w === null) return null;
++    if ('plan' in w) {
++      const storey = deps?.storeys.find((x) => x.guid === w.plan);
++      if (!storey) return void note(`VIEW_TABS: podlažie ${w.plan} sa vo vieweri nenašlo`);
++      const tab: ViewTab = { id: planTabId(storey.guid), kind: 'plan', label: storey.name, storeyGuid: storey.guid };
++      if (!s.tabs.some((t) => t.id === tab.id)) s = { ...s, tabs: [...s.tabs, tab] };
++      return tab.id;
++    }
++    const tab = resolveTabRef(s, w.tab);
++    if (!tab) note(`VIEW_TABS: záložka '${w.tab}' nie je otvorená`);
++    return tab?.id;
++  });
++  if (s !== current()) commit(s, note);
++  return setLayout(msg.layout, refs, note);
++}
+diff --git a/apps/viewer/src/aim/viewTabsLayout.ts b/apps/viewer/src/aim/viewTabsLayout.ts
+index 45fc6222..2b78ee7e 100644
+--- a/apps/viewer/src/aim/viewTabsLayout.ts
++++ b/apps/viewer/src/aim/viewTabsLayout.ts
+@@ -50,7 +50,9 @@ export interface CenterLayout {
+   planBeside: string | null;
+ }
+ 
+-export function centerLayout(s: ViewTabsState): CenterLayout {
++/** `tiled` (AIM D-157): pri dlaždiciach je 3D panel na celú plochu a dlaždice kreslí `AimTileGrid`. */
++export function centerLayout(s: ViewTabsState, tiled = false): CenterLayout {
++  if (tiled) return { collapse3d: false, docPane: false, docId: null, planBeside: null };
+   const active = byId(s, s.activeId);
+   const beside = byId(s, s.besideId);
+   const doc = active?.kind === 'doc' ? active : beside?.kind === 'doc' ? beside : undefined;
+@@ -62,3 +64,26 @@ export function centerLayout(s: ViewTabsState): CenterLayout {
+     planBeside: active?.kind === '3d' && beside?.kind === 'plan' ? (beside.storeyGuid ?? null) : null,
+   };
+ }
++
++/** Výška hlavičky dlaždice (menovka a výber záložky) v px; 3D canvas začína pod ňou (AIM D-157). */
++export const TILE_HEADER_PX = 24;
++
++/** Obdĺžnik dlaždice v zlomkoch strednej plochy (`viewTilesPlan.ts`). */
++export interface TileFrame { x: number; y: number; w: number; h: number }
++
++const pct = (v: number) => `${Math.round(v * 1e4) / 100}%`;
++
++/**
++ * Poloha 3D canvasu v živej dlaždici: pod hlavičkou, 1 px od okraja (deliaca čiara
++ * dlaždíc). null = celá plocha, bez polohovania.
++ */
++export function tileFrameStyle(f: TileFrame | null): Record<string, string> | undefined {
++  if (!f) return undefined;
++  return {
++    position: 'absolute',
++    left: `calc(${pct(f.x)} + 1px)`,
++    top: `calc(${pct(f.y)} + ${TILE_HEADER_PX + 1}px)`,
++    width: `calc(${pct(f.w)} - 2px)`,
++    height: `calc(${pct(f.h)} - ${TILE_HEADER_PX + 2}px)`,
++  };
++}
+diff --git a/apps/viewer/src/aim/viewTabsStore.ts b/apps/viewer/src/aim/viewTabsStore.ts
+index cf0ce24d..82f47186 100644
+--- a/apps/viewer/src/aim/viewTabsStore.ts
++++ b/apps/viewer/src/aim/viewTabsStore.ts
+@@ -13,6 +13,7 @@
+ import { create } from 'zustand';
+ import type { StoreyInfo } from '@/hooks/useFloorplanView';
+ import { initialTabs, type ViewTabsState } from './viewTabsLayout.js';
++import type { TileRect, TilesState } from './viewTilesPlan.js';
+ 
+ /** Podlažie, ako ho pozná prepínač pôdorysu (`useViewMode().storeys`). */
+ export interface TabStorey { guid: string; name: string; info: StoreyInfo }
+@@ -26,12 +27,16 @@ export interface TabDeps {
+   exitSplitView: () => void;
+ }
+ 
+-interface ViewTabsStore extends ViewTabsState {
++interface ViewTabsStore extends ViewTabsState, TilesState {
+   /** Záložka, ktorej stav je práve v 3D canvase (kamera, rez, zámok). */
+   sceneId: string;
+   deps: TabDeps | null;
+   /** Kartu otvoril most (`DOCUMENT_OPEN`): záložku nastaví `showDoc`, nie synchronizácia kariet. */
+   bridgeDocId: string | null;
++  /** Dlaždice (AIM D-157): obdĺžnik živej 3D dlaždice pre 3D canvas, null = celá plocha. */
++  frame: TileRect | null;
++  /** Verzia snímok 3D dlaždíc (`tileShots.ts`), aby sa dlaždice prekreslili. */
++  shots: number;
+ }
+ 
+ type TabsModule = typeof import('./viewTabsApply.js');
+@@ -44,12 +49,14 @@ export const preloadTabs = () => (tabsLoad ??= import('./viewTabsApply.js').then
+  * Vykoná krok záložiek hneď, keď je modul načítaný: nasledujúce príkazy hosta (rez,
+  * kamera po `VIEW_TABS open`) tak patria už novej záložke. Inak po načítaní (Promise pre `track`).
+  */
+-export function withTabs(fn: (m: TabsModule) => void): Promise<void> | undefined {
++export function withTabs(fn: (m: TabsModule) => Promise<void> | void): Promise<void> | undefined {
+   if (tabsModule) {
+-    fn(tabsModule);
+-    return undefined;
++    // Dlaždice (D-157) vrátia beh snímok, na ktorý most počká pred `APPLIED`.
++    return fn(tabsModule) ?? undefined;
+   }
+   return preloadTabs().then(fn);
+ }
+ 
+-export const useAimViewTabs = create<ViewTabsStore>(() => ({ ...initialTabs(), sceneId: '3d', deps: null, bridgeDocId: null }));
++export const useAimViewTabs = create<ViewTabsStore>(() => ({
++  ...initialTabs(), sceneId: '3d', deps: null, bridgeDocId: null, layout: 'single', tiles: [], frame: null, shots: 0,
++}));
+diff --git a/apps/viewer/src/aim/viewTilesPlan.test.ts b/apps/viewer/src/aim/viewTilesPlan.test.ts
+new file mode 100644
+index 00000000..861096c9
+--- /dev/null
++++ b/apps/viewer/src/aim/viewTilesPlan.test.ts
+@@ -0,0 +1,142 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert';
++
++import { initialTabs, openTab, closeTab, type ViewTab, type ViewTabsState } from './viewTabsPlan.js';
++import {
++  TILE_LAYOUTS, TILE_RECTS, describeLayout, isTileLayout, layoutTiles, liveTile, placeTab, reconcileTiles, setTile,
++  singleTiles, tileScene, type TilesState,
++} from './viewTilesPlan.js';
++
++const plan1: ViewTab = { id: 'plan:G1', kind: 'plan', label: '1NP', storeyGuid: 'G1' };
++const plan2: ViewTab = { id: 'plan:G2', kind: 'plan', label: '2NP', storeyGuid: 'G2' };
++const docA: ViewTab = { id: 'doc:A', kind: 'doc', label: 'A.pdf', docId: 'A' };
++const docB: ViewTab = { id: 'doc:B', kind: 'doc', label: 'B.pdf', docId: 'B' };
++
++/** 3D, 1NP, 2NP, A.pdf otvorené; aktívna 3D. */
++function four(): ViewTabsState {
++  const s = openTab(openTab(openTab(openTab(initialTabs(), plan1), plan2), docA), { ...initialTabs().tabs[0] });
++  return { ...s, activeId: '3d' };
++}
++
++describe('dlaždice záložiek (AIM D-157)', () => {
++  it('každé rozloženie má 1 až 4 dlaždice, ktoré pokryjú plochu bez prekrytia', () => {
++    for (const layout of TILE_LAYOUTS) {
++      const rects = TILE_RECTS[layout];
++      assert.ok(rects.length >= 1 && rects.length <= 4, layout);
++      const area = rects.reduce((a, t) => a + t.w * t.h, 0);
++      assert.ok(Math.abs(area - 1) < 1e-9, `${layout}: plocha ${area}`);
++      for (let i = 0; i < rects.length; i++) {
++        for (let j = i + 1; j < rects.length; j++) {
++          const a = rects[i];
++          const b = rects[j];
++          const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
++          const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
++          assert.ok(ox <= 1e-9 || oy <= 1e-9, `${layout}: ${i} a ${j} sa prekrývajú`);
++        }
++      }
++    }
++    assert.deepStrictEqual(TILE_LAYOUTS.map((l) => TILE_RECTS[l].length), [1, 2, 2, 3, 3, 3, 3, 3, 3, 4]);
++  });
++
++  it('pri troch oknách je dlaždica 0 tá veľká a sedí so stranou', () => {
++    assert.deepStrictEqual(TILE_RECTS.three_left[0], { x: 0, y: 0, w: 0.5, h: 1 });
++    assert.deepStrictEqual(TILE_RECTS.three_right[0], { x: 0.5, y: 0, w: 0.5, h: 1 });
++    assert.deepStrictEqual(TILE_RECTS.three_top[0], { x: 0, y: 0, w: 1, h: 0.5 });
++    assert.deepStrictEqual(TILE_RECTS.three_bottom[0], { x: 0, y: 0.5, w: 1, h: 0.5 });
++  });
++
++  it('isTileLayout pozná len rozloženia zo zoznamu', () => {
++    assert.ok(isTileLayout('grid4'));
++    assert.ok(!isTileLayout('2x2'));
++    assert.ok(!isTileLayout(3));
++  });
++
++  it('layoutTiles: požadované záložky, doplnenie aktívnou a ostatnými, bez opakovania', () => {
++    const s = four();
++    assert.deepStrictEqual(layoutTiles(s, singleTiles(), 'split_h', ['3d', 'plan:G1']).tiles, ['3d', 'plan:G1']);
++    // Doplnenie: najprv aktívna, potom poradie lišty.
++    assert.deepStrictEqual(layoutTiles(s, singleTiles(), 'grid4').tiles, ['3d', 'plan:G1', 'plan:G2', 'doc:A']);
++    // Opakovaná a neotvorená záložka sa nahradí doplnením; null = prázdna dlaždica.
++    assert.deepStrictEqual(layoutTiles(s, singleTiles(), 'three_h', ['plan:G2', 'plan:G2', 'doc:X']).tiles, ['plan:G2', '3d', 'plan:G1']);
++    assert.deepStrictEqual(layoutTiles(s, singleTiles(), 'split_v', [undefined, null]).tiles, ['3d', null]);
++    // Málo záložiek = prázdne dlaždice.
++    assert.deepStrictEqual(layoutTiles(initialTabs(), singleTiles(), 'split_h').tiles, ['3d', null]);
++    assert.deepStrictEqual(layoutTiles(s, singleTiles(), 'single'), singleTiles());
++  });
++
++  it('zmena rozloženia drží doterajšie dlaždice v poradí', () => {
++    const s = four();
++    const grid: TilesState = { layout: 'grid4', tiles: ['doc:A', 'plan:G2', '3d', 'plan:G1'] };
++    assert.deepStrictEqual(layoutTiles(s, grid, 'three_left').tiles, ['doc:A', 'plan:G2', '3d']);
++  });
++
++  it('placeTab: prázdna dlaždica, potom rovnaký druh mimo živej 3D, potom posledná mimo živej', () => {
++    let s = openTab(four(), docB);
++    s = { ...s, activeId: '3d' };
++    assert.deepStrictEqual(placeTab(s, { layout: 'split_h', tiles: ['3d', null] }, 'doc:B', '3d').tiles, ['3d', 'doc:B']);
++    // Dokument nahradí dokument, nie 3D pôdorys.
++    assert.deepStrictEqual(placeTab(s, { layout: 'three_left', tiles: ['3d', 'doc:A', 'plan:G1'] }, 'doc:B', '3d').tiles, ['3d', 'doc:B', 'plan:G1']);
++    // 3D záložka nahradí 3D dlaždicu so snímkou, nie živú.
++    assert.deepStrictEqual(placeTab(s, { layout: 'three_left', tiles: ['3d', 'plan:G1', 'doc:A'] }, 'plan:G2', '3d').tiles, ['3d', 'plan:G2', 'doc:A']);
++    // Bez rovnakého druhu: posledná mimo živej.
++    assert.deepStrictEqual(placeTab(s, { layout: 'split_h', tiles: ['3d', 'plan:G1'] }, 'doc:B', 'plan:G1').tiles, ['doc:B', 'plan:G1']);
++    // Už ukázaná alebo bez dlaždíc: bez zmeny.
++    const t: TilesState = { layout: 'split_h', tiles: ['3d', 'doc:A'] };
++    assert.strictEqual(placeTab(s, t, 'doc:A', '3d'), t);
++    assert.deepStrictEqual(placeTab(s, singleTiles(), 'doc:A', '3d'), singleTiles());
++  });
++
++  it('setTile vloží záložku a pri duplicite dlaždice vymení', () => {
++    const s = four();
++    const t: TilesState = { layout: 'split_h', tiles: ['3d', 'plan:G1'] };
++    assert.deepStrictEqual(setTile(s, t, 1, 'doc:A').tiles, ['3d', 'doc:A']);
++    assert.deepStrictEqual(setTile(s, t, 1, '3d').tiles, ['plan:G1', '3d']);
++    assert.deepStrictEqual(setTile(s, t, 0, null).tiles, [null, 'plan:G1']);
++    assert.strictEqual(setTile(s, t, 2, 'doc:A'), t);
++    assert.strictEqual(setTile(s, t, 0, 'doc:X'), t);
++  });
++
++  it('reconcileTiles: zavretá záložka uvoľní dlaždicu pre neukázanú, aktívna sa dostane do dlaždice', () => {
++    let s = four();
++    const t: TilesState = { layout: 'split_h', tiles: ['3d', 'plan:G1'] };
++    s = closeTab({ ...s, activeId: '3d' }, 'plan:G1');
++    assert.deepStrictEqual(reconcileTiles(s, t, '3d').tiles, ['3d', 'plan:G2']);
++    // Prázdna dlaždica ostane prázdna, kým ju nevyplní aktívna.
++    const one: ViewTabsState = { ...initialTabs() };
++    assert.deepStrictEqual(reconcileTiles(one, { layout: 'split_h', tiles: ['3d', 'plan:G9'] }, '3d').tiles, ['3d', null]);
++    // Aktivovaný dokument mimo dlaždíc nahradí dokument.
++    const withB = openTab(four(), docB);
++    assert.deepStrictEqual(reconcileTiles(withB, { layout: 'split_h', tiles: ['3d', 'doc:A'] }, '3d').tiles, ['3d', 'doc:B']);
++  });
++
++  it('tileScene: aktívna 3D, inak doterajšia v dlaždici, inak prvá 3D dlaždica', () => {
++    const s = four();
++    const t: TilesState = { layout: 'split_h', tiles: ['doc:A', 'plan:G1'] };
++    assert.strictEqual(tileScene({ ...s, activeId: 'plan:G2' }, t, '3d'), 'plan:G2');
++    assert.strictEqual(tileScene({ ...s, activeId: 'doc:A' }, t, 'plan:G1'), 'plan:G1');
++    assert.strictEqual(tileScene({ ...s, activeId: 'doc:A' }, t, '3d'), 'plan:G1');
++    assert.strictEqual(tileScene({ ...s, activeId: 'doc:A' }, { layout: 'split_h', tiles: ['doc:A', null] }, '3d'), '3d');
++  });
++
++  it('describeLayout: dlaždice s menovkou, živá 3D a snímky', () => {
++    const s = four();
++    const t: TilesState = { layout: 'three_left', tiles: ['3d', 'plan:G1', null] };
++    assert.strictEqual(liveTile(t, 'plan:G1'), 1);
++    assert.strictEqual(liveTile(singleTiles(), '3d'), -1);
++    assert.deepStrictEqual(describeLayout(s, t, '3d'), {
++      kind: 'three_left',
++      tiles: [
++        { index: 0, tab: '3d', label: '3D', kind: '3d', live: true },
++        { index: 1, tab: 'plan:G1', label: '1NP', kind: 'plan', live: false },
++        { index: 2, tab: null },
++      ],
++      live_tab: '3d',
++    });
++    assert.strictEqual(describeLayout(s, { layout: 'split_h', tiles: ['doc:A', null] }, '3d').live_tab, null);
++    assert.deepStrictEqual(describeLayout(s, singleTiles(), '3d'), { kind: 'single' });
++  });
++});
+diff --git a/apps/viewer/src/aim/viewTilesPlan.ts b/apps/viewer/src/aim/viewTilesPlan.ts
+new file mode 100644
+index 00000000..da020fa0
+--- /dev/null
++++ b/apps/viewer/src/aim/viewTilesPlan.ts
+@@ -0,0 +1,190 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Dlaždice záložiek (AIM D-157, #210), ako Tile Windows v Revite: stredná plocha
++ * sa rozdelí na 2 až 4 dlaždice a každá ukazuje jednu otvorenú záložku. Tu je
++ * len čistá logika bez store (rozloženia, obdĺžniky, priradenie záložiek);
++ * vykonanie je vo `viewTilesApply.ts`, kreslenie v `AimTileGrid.tsx`.
++ *
++ * Viewer má jeden 3D canvas (D-132): práve jedna 3D záložka (3D, pôdorys,
++ * uložený pohľad) je v ňom živá, ostatné 3D dlaždice ukazujú jej poslednú
++ * snímku, kým na ne používateľ neklikne. Dokument je v dlaždici vždy živý.
++ * Dlaždica 0 je pri rozloženiach s tromi oknami tá veľká.
++ */
++
++import { isSceneTab, type ViewTab, type ViewTabsState } from './viewTabsLayout.js';
++
++export const TILE_LAYOUTS = [
++  'single', 'split_h', 'split_v',
++  'three_left', 'three_right', 'three_top', 'three_bottom', 'three_h', 'three_v',
++  'grid4',
++] as const;
++export type TileLayout = (typeof TILE_LAYOUTS)[number];
++
++/** Obdĺžnik dlaždice v zlomkoch strednej plochy (0 až 1). */
++export interface TileRect { x: number; y: number; w: number; h: number }
++
++const H = 1 / 2;
++const T = 1 / 3;
++const r = (x: number, y: number, w: number, h: number): TileRect => ({ x, y, w, h });
++
++export const TILE_RECTS: Record<TileLayout, readonly TileRect[]> = {
++  single: [r(0, 0, 1, 1)],
++  split_h: [r(0, 0, H, 1), r(H, 0, H, 1)],
++  split_v: [r(0, 0, 1, H), r(0, H, 1, H)],
++  three_left: [r(0, 0, H, 1), r(H, 0, H, H), r(H, H, H, H)],
++  three_right: [r(H, 0, H, 1), r(0, 0, H, H), r(0, H, H, H)],
++  three_top: [r(0, 0, 1, H), r(0, H, H, H), r(H, H, H, H)],
++  three_bottom: [r(0, H, 1, H), r(0, 0, H, H), r(H, 0, H, H)],
++  three_h: [r(0, 0, T, 1), r(T, 0, T, 1), r(2 * T, 0, T, 1)],
++  three_v: [r(0, 0, 1, T), r(0, T, 1, T), r(0, 2 * T, 1, T)],
++  grid4: [r(0, 0, H, H), r(H, 0, H, H), r(0, H, H, H), r(H, H, H, H)],
++};
++
++/** Menovky pre prepínač v lište (poradie = `TILE_LAYOUTS`). */
++export const TILE_LAYOUT_LABELS: Record<TileLayout, string> = {
++  single: '1 okno',
++  split_h: '2 vedľa seba',
++  split_v: '2 pod sebou',
++  three_left: '3: veľké vľavo',
++  three_right: '3: veľké vpravo',
++  three_top: '3: veľké hore',
++  three_bottom: '3: veľké dole',
++  three_h: '3 vedľa seba',
++  three_v: '3 pod sebou',
++  grid4: '4 (2x2)',
++};
++
++export const isTileLayout = (v: unknown): v is TileLayout => typeof v === 'string' && (TILE_LAYOUTS as readonly string[]).includes(v);
++
++export interface TilesState {
++  layout: TileLayout;
++  /** Id záložky v každej dlaždici; null = prázdna dlaždica (výber záložky). */
++  tiles: (string | null)[];
++}
++
++export const singleTiles = (): TilesState => ({ layout: 'single', tiles: [] });
++export const isTiled = (t: TilesState) => t.layout !== 'single';
++
++const tabOf = (s: ViewTabsState, id: string | null) => (id ? s.tabs.find((t) => t.id === id) : undefined);
++
++/**
++ * Rozloženie s dlaždicami. `requested[i]`: id záložky, null = prázdna, undefined =
++ * doplniť. Doplní sa z doterajších dlaždíc, aktívnej, tej vedľa a ostatných
++ * otvorených v poradí lišty; jedna záložka je najviac v jednej dlaždici.
++ */
++export function layoutTiles(
++  s: ViewTabsState,
++  prev: TilesState,
++  layout: TileLayout,
++  requested: readonly (string | null | undefined)[] = [],
++): TilesState {
++  if (layout === 'single') return singleTiles();
++  const n = TILE_RECTS[layout].length;
++  const used = new Set<string>();
++  const out: (string | null | undefined)[] = [];
++  for (let i = 0; i < n; i++) {
++    const id = requested[i];
++    if (id && tabOf(s, id) && !used.has(id)) {
++      used.add(id);
++      out.push(id);
++    } else {
++      out.push(id === null ? null : undefined);
++    }
++  }
++  const pool = [...prev.tiles, s.activeId, s.besideId, ...s.tabs.map((t) => t.id)]
++    .filter((id): id is string => !!id && !!tabOf(s, id));
++  const tiles = out.map((id) => {
++    if (id !== undefined) return id;
++    const next = pool.find((p) => !used.has(p));
++    if (!next) return null;
++    used.add(next);
++    return next;
++  });
++  return { layout, tiles };
++}
++
++/**
++ * Kam dať záložku, ktorá ešte nie je v dlaždici: prázdna dlaždica, potom dlaždica
++ * rovnakého druhu (dokument za dokument, 3D za 3D) mimo živej 3D, potom
++ * posledná mimo živej 3D.
++ */
++export function placeTab(s: ViewTabsState, t: TilesState, id: string, liveId: string | null): TilesState {
++  if (!isTiled(t) || t.tiles.includes(id) || !tabOf(s, id)) return t;
++  const scene = isSceneTab(tabOf(s, id));
++  let idx = t.tiles.indexOf(null);
++  if (idx < 0) idx = lastIndex(t.tiles, (x) => x !== liveId && isSceneTab(tabOf(s, x)) === scene);
++  if (idx < 0) idx = lastIndex(t.tiles, (x) => x !== liveId);
++  if (idx < 0) idx = t.tiles.length - 1;
++  return { ...t, tiles: t.tiles.map((x, i) => (i === idx ? id : x)) };
++}
++
++function lastIndex<T>(xs: readonly T[], ok: (x: T) => boolean): number {
++  for (let i = xs.length - 1; i >= 0; i--) if (ok(xs[i])) return i;
++  return -1;
++}
++
++/** Záložka do konkrétnej dlaždice; keď už je v inej, dlaždice sa vymenia. */
++export function setTile(s: ViewTabsState, t: TilesState, index: number, id: string | null): TilesState {
++  if (!isTiled(t) || index < 0 || index >= t.tiles.length) return t;
++  if (id !== null && !tabOf(s, id)) return t;
++  const from = id === null ? -1 : t.tiles.indexOf(id);
++  const tiles = [...t.tiles];
++  if (from >= 0) tiles[from] = tiles[index];
++  tiles[index] = id;
++  return { ...t, tiles };
++}
++
++/**
++ * Po zmene záložiek: zavreté zmiznú (dlaždicu dostane neukázaná otvorená
++ * záložka, inak ostane prázdna) a aktívna záložka mimo dlaždíc sa do jednej dá.
++ */
++export function reconcileTiles(s: ViewTabsState, t: TilesState, liveId: string | null): TilesState {
++  if (!isTiled(t)) return t;
++  const open = (id: string | null) => !!tabOf(s, id);
++  const kept = t.tiles.map((id) => (open(id) ? id : null));
++  const used = new Set(kept.filter((id): id is string => id !== null));
++  const spare = s.tabs.map((x) => x.id).filter((id) => !used.has(id) && id !== s.activeId);
++  const tiles = kept.map((id, i) => {
++    if (id !== null || t.tiles[i] === null) return id;
++    return spare.shift() ?? null;
++  });
++  return placeTab(s, { ...t, tiles }, s.activeId, liveId);
++}
++
++/**
++ * Ktorá záložka má byť v 3D canvase pri dlaždiciach: aktívna 3D záložka,
++ * inak doterajšia, ak je v dlaždici, inak prvá 3D dlaždica, inak doterajšia.
++ */
++export function tileScene(s: ViewTabsState, t: TilesState, current: string): string {
++  const active = tabOf(s, s.activeId);
++  if (isSceneTab(active)) return active!.id;
++  if (t.tiles.includes(current)) return current;
++  const first = t.tiles.find((id) => isSceneTab(tabOf(s, id)));
++  return first ?? current;
++}
++
++/** Index dlaždice so živým 3D canvasom, alebo -1 (3D nie je v rozložení). */
++export const liveTile = (t: TilesState, sceneId: string) => (isTiled(t) ? t.tiles.indexOf(sceneId) : -1);
++
++/** `view_state.layout` (AIM D-157): rozloženie, dlaždice a živá 3D dlaždica. */
++export function describeLayout(s: ViewTabsState, t: TilesState, sceneId: string) {
++  if (!isTiled(t)) return { kind: 'single' as TileLayout };
++  const live = liveTile(t, sceneId);
++  return {
++    kind: t.layout,
++    tiles: t.tiles.map((id, index) => {
++      const tab: ViewTab | undefined = tabOf(s, id);
++      return {
++        index,
++        tab: id,
++        ...(tab ? { label: tab.label, kind: tab.kind } : {}),
++        // 3D dlaždica mimo živej ukazuje snímku, kým na ňu používateľ neklikne.
++        ...(tab && isSceneTab(tab) ? { live: index === live } : {}),
++      };
++    }),
++    live_tab: live >= 0 ? sceneId : null,
++  };
++}
+diff --git a/apps/viewer/src/components/viewer/ViewerLayout.tsx b/apps/viewer/src/components/viewer/ViewerLayout.tsx
+index dec0c508..404613c4 100644
+--- a/apps/viewer/src/components/viewer/ViewerLayout.tsx
++++ b/apps/viewer/src/components/viewer/ViewerLayout.tsx
+@@ -52,6 +52,7 @@ import { useOverlayCompositor } from './schedule/useOverlayCompositor';
+ const DrawingPlanPane = lazy(() => import('@/components/viewer/DrawingPlanPane').then((m) => ({ default: m.DrawingPlanPane })));
+ const DocumentPane = lazy(() => import('@/components/documents/DocumentPane').then((m) => ({ default: m.DocumentPane })));
+ const AimViewTabsBar = lazy(() => import('@/aim/AimViewTabsBar').then((m) => ({ default: m.AimViewTabsBar })));
++const AimTileGrid = lazy(() => import('@/aim/AimTileGrid').then((m) => ({ default: m.AimTileGrid })));
+ // <<< AIM-FORK
+ import { CommandPalette } from './CommandPalette';
+ import { SearchModal } from './SearchModal';
+@@ -227,7 +228,7 @@ export function ViewerLayout() {
+   // >>> AIM-FORK: D-072 split plan, D-075 2D mode + document pane, D-132 view tabs (aim/useAimCenterPanes.ts)
+   const {
+     underlaySplitView, underlayPlanFull, planePanelRef, viewport3dPanelRef, onViewport3dResize,
+-    docPaneOpen, docPaneVisible, docPanelRef, onDocPaneResize,
++    docPaneOpen, docPaneVisible, docPanelRef, onDocPaneResize, tiled, tileFrame,
+   } = useAimCenterPanes(isMobile);
+   // <<< AIM-FORK
+   const containerRef = useRef<HTMLDivElement>(null);
+@@ -339,6 +340,9 @@ export function ViewerLayout() {
+                           className={`w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize ${underlaySplitView && !underlayPlanFull ? '' : 'hidden'}`}
+                         />
+                         <Panel id="aim-viewport-3d-panel" defaultSize={100} minSize={30} collapsible collapsedSize={0} panelRef={viewport3dPanelRef} onResize={onViewport3dResize}>
++                      {/* D-157 tiles: the 3D canvas moves into the live tile, the grid draws the rest. */}
++                      <div className="relative h-full w-full">
++                      <div className="h-full w-full" style={tileFrame}>
+                       {/* <<< AIM-FORK */}
+                       {sideBySideDrawing ? (
+                         // Side-by-side 2D/3D preset (#5515): the drawing docks
+@@ -366,6 +370,9 @@ export function ViewerLayout() {
+                         <ViewportContainer />
+                       )}
+                       {/* >>> AIM-FORK */}
++                      </div>
++                      {tiled && <Suspense fallback={null}><AimTileGrid /></Suspense>}
++                      </div>
+                         </Panel>
+                         <PanelResizeHandle
+                           className={`w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize ${docPaneVisible ? '' : 'hidden'}`}
+-- 
+2.43.0
+
+
+From 787b65ef19408b141df8f0676f2e4d6e3c9902cc Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 19:16:37 +0000
+Subject: [PATCH 2/5] =?UTF-8?q?AIM=20D-157:=20mrie=C5=BEka=20lenivo=20z=20?=
+ =?UTF-8?q?li=C5=A1ty=20(vstupn=C3=BD=20chunk=20bez=20rastu),=20layout=20v?=
+ =?UTF-8?q?=20APPLIED,=20test=20protokolu?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01SLNw3madVzdj6cZmw5V6HJ
+---
+ apps/viewer/src/aim/AimTileGrid.tsx           |  8 +++----
+ apps/viewer/src/aim/AimViewTabsBar.tsx        |  9 +++++++-
+ apps/viewer/src/aim/useAimCenterPanes.ts      |  6 ++---
+ apps/viewer/src/aim/useAimViewCommands.ts     |  2 +-
+ apps/viewer/src/aim/viewTabsApply.ts          |  5 ++--
+ apps/viewer/src/aim/viewTabsLayout.ts         | 23 -------------------
+ apps/viewer/src/aim/viewTabsStore.ts          |  6 ++---
+ apps/viewer/src/aim/viewTilesPlan.test.ts     | 14 +++++++++++
+ apps/viewer/src/aim/viewTilesPlan.ts          | 19 +++++++++++++++
+ .../src/components/viewer/ViewerLayout.tsx    |  8 +++----
+ 10 files changed, 58 insertions(+), 42 deletions(-)
+
+diff --git a/apps/viewer/src/aim/AimTileGrid.tsx b/apps/viewer/src/aim/AimTileGrid.tsx
+index bab42a1e..dec16659 100644
+--- a/apps/viewer/src/aim/AimTileGrid.tsx
++++ b/apps/viewer/src/aim/AimTileGrid.tsx
+@@ -3,8 +3,8 @@
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+ 
+ /**
+- * Dlaždice záložiek (AIM D-157, #210): vrstva nad 3D panelom, lenivo z
+- * `ViewerLayout.tsx`. Každá dlaždica má hlavičku s výberom záložky. Živá 3D
++ * Dlaždice záložiek (AIM D-157, #210): vrstva nad 3D panelom, lenivo z lišty
++ * záložiek cez portál do obalu 3D panela (`data-aim-tiles` v `ViewerLayout.tsx`). Každá dlaždica má hlavičku s výberom záložky. Živá 3D
+  * dlaždica je priehľadná: pod ňou je jediný 3D canvas, ktorý `useAimCenterPanes`
+  * posunie do jej obdĺžnika (canvas sa nikdy neremountuje). Ostatné 3D dlaždice
+  * ukazujú snímku (`tileShots.ts`) a klik ich urobí živými; dokument je živý vždy.
+@@ -15,9 +15,9 @@ import { cn } from '@/lib/utils';
+ import { useViewerStore } from '@/store';
+ import { PdfDocumentView } from '@/components/documents/PdfDocumentView';
+ import { ImageDocumentView } from '@/components/documents/ImageDocumentView';
+-import { TILE_HEADER_PX, isSceneTab, type ViewTab } from './viewTabsLayout.js';
++import { isSceneTab, type ViewTab } from './viewTabsLayout.js';
+ import { useAimViewTabs } from './viewTabsStore.js';
+-import { TILE_RECTS, liveTile, type TileRect } from './viewTilesPlan.js';
++import { TILE_HEADER_PX, TILE_RECTS, liveTile, type TileRect } from './viewTilesPlan.js';
+ import { activate, putTile } from './viewTabsApply.js';
+ import { shotOf } from './tileShots.js';
+ 
+diff --git a/apps/viewer/src/aim/AimViewTabsBar.tsx b/apps/viewer/src/aim/AimViewTabsBar.tsx
+index a51ba4f6..76b80fe1 100644
+--- a/apps/viewer/src/aim/AimViewTabsBar.tsx
++++ b/apps/viewer/src/aim/AimViewTabsBar.tsx
+@@ -13,7 +13,8 @@
+  * ktorú plocha bez dlaždíc nevie (dve 3D, dva dokumenty), prepne na dve dlaždice vedľa seba.
+  */
+ 
+-import { useEffect, useMemo, useRef } from 'react';
++import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
++import { createPortal } from 'react-dom';
+ import { Box, FileText, LayoutTemplate, Scan, X } from 'lucide-react';
+ import { cn } from '@/lib/utils';
+ import { useViewerStore } from '@/store';
+@@ -25,6 +26,8 @@ import { activate, beside, close, openPlan, setLayout, syncDocs } from './viewTa
+ import { TILE_LAYOUTS, TILE_LAYOUT_LABELS, isTileLayout } from './viewTilesPlan.js';
+ import { AimPlanOrbitHint } from './AimPlanOrbitHint.js';
+ 
++const AimTileGrid = lazy(() => import('./AimTileGrid.js').then((m) => ({ default: m.AimTileGrid })));
++
+ const ICON: Record<ViewTabKind, typeof Box> = { '3d': Box, plan: LayoutTemplate, view: Scan, doc: FileText };
+ const SELECT = 'h-6 max-w-40 rounded border bg-background px-1 text-2xs text-muted-foreground';
+ const warn = (issue: string) => console.warn('[aim-tabs]', issue);
+@@ -54,6 +57,9 @@ export function AimViewTabsBar() {
+   const activeId = useAimViewTabs((s) => s.activeId);
+   const besideId = useAimViewTabs((s) => s.besideId);
+   const layout = useAimViewTabs((s) => s.layout);
++  // Dlaždice (D-157) kreslí lenivá mriežka v obale 3D panela, nie vstupný `ViewerLayout`.
++  const [tilesHost, setTilesHost] = useState<HTMLElement | null>(null);
++  useEffect(() => setTilesHost(document.querySelector<HTMLElement>('[data-aim-tiles]')), []);
+   // Vedľa ide každá dvojica: čo nevie plocha bez dlaždíc, rieši rozloženie dvoch dlaždíc (D-157).
+   const pairable = useMemo(() => tabs.filter((t) => t.id !== activeId), [tabs, activeId]);
+   if (isMobile) return null;
+@@ -61,6 +67,7 @@ export function AimViewTabsBar() {
+   return (
+     <div className="relative flex h-7 shrink-0 items-stretch border-b bg-muted/30" data-testid="aim-view-tabs">
+       <AimPlanOrbitHint />
++      {layout !== 'single' && tilesHost && createPortal(<Suspense fallback={null}><AimTileGrid /></Suspense>, tilesHost)}
+       <div role="tablist" aria-label="Záložky pohľadov" className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
+         {tabs.map((tab) => {
+           const Icon = ICON[tab.kind];
+diff --git a/apps/viewer/src/aim/useAimCenterPanes.ts b/apps/viewer/src/aim/useAimCenterPanes.ts
+index 59467497..4ac59298 100644
+--- a/apps/viewer/src/aim/useAimCenterPanes.ts
++++ b/apps/viewer/src/aim/useAimCenterPanes.ts
+@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
+ import type { PanelImperativeHandle } from 'react-resizable-panels';
+ import { useViewerStore } from '@/store';
+ import { useFloorplanView } from '@/hooks/useFloorplanView';
+-import { centerLayout, tileFrameStyle } from './viewTabsLayout.js';
++import { centerLayout } from './viewTabsLayout.js';
+ import { useAimViewTabs } from './viewTabsStore.js';
+ import { useAimPlanRefit } from './useAimPlanRefit.js';
+ 
+@@ -52,7 +52,7 @@ export function useAimCenterPanes(isMobile: boolean) {
+   // D-157: pri dlaždiciach je 3D panel na celú plochu, canvas sa posunie do živej dlaždice.
+   const tiled = useAimViewTabs((s) => s.layout !== 'single') && !isMobile;
+   const frame = useAimViewTabs((s) => s.frame);
+-  const tileFrame = useMemo(() => (tiled ? tileFrameStyle(frame) : undefined), [tiled, frame]);
++  const tileFrame = tiled && frame ? frame : undefined;
+   const layout = useMemo(() => centerLayout({ tabs, activeId, besideId }, tiled), [tabs, activeId, besideId, tiled]);
+   const collapse3d = underlayPlanFull || (!isMobile && layout.collapse3d);
+   const collapse3dRef = useRef(collapse3d);
+@@ -112,6 +112,6 @@ export function useAimCenterPanes(isMobile: boolean) {
+ 
+   return {
+     underlaySplitView, underlayPlanFull, planePanelRef, viewport3dPanelRef, onViewport3dResize,
+-    docPaneOpen, docPaneVisible, docPanelRef, onDocPaneResize, tiled, tileFrame,
++    docPaneOpen, docPaneVisible, docPanelRef, onDocPaneResize, tileFrame,
+   };
+ }
+diff --git a/apps/viewer/src/aim/useAimViewCommands.ts b/apps/viewer/src/aim/useAimViewCommands.ts
+index c9b71468..c900d38d 100644
+--- a/apps/viewer/src/aim/useAimViewCommands.ts
++++ b/apps/viewer/src/aim/useAimViewCommands.ts
+@@ -106,7 +106,7 @@ export async function appliedViewState(): Promise<Record<string, unknown>> {
+     // Limit vypršal počas pohybu (používateľ otáča kamerou): póza nie je cieľ, nech to host vie.
+     ...(settled ? {} : { camera_moving: true }),
+     selection_count: s.selection.count, hidden_count: s.hidden_count, isolated_count: s.isolated_count, focus: s.focus,
+-    panels: s.panels, tabs: s.tabs, ...(s.property_focus ? { property_focus: s.property_focus } : {}), ...(s.document ? { document: s.document } : {}),
++    panels: s.panels, tabs: s.tabs, layout: s.layout, ...(s.property_focus ? { property_focus: s.property_focus } : {}), ...(s.document ? { document: s.document } : {}),
+   };
+ }
+ 
+diff --git a/apps/viewer/src/aim/viewTabsApply.ts b/apps/viewer/src/aim/viewTabsApply.ts
+index 02b8ead8..e5bb53e7 100644
+--- a/apps/viewer/src/aim/viewTabsApply.ts
++++ b/apps/viewer/src/aim/viewTabsApply.ts
+@@ -25,7 +25,8 @@ import { useAimViewTabs } from './viewTabsStore.js';
+ import { isTabsMessage, type TabsMessage } from './tabs-protocol.js';
+ import { isTilesMessage, type TilesMessage } from './tiles-protocol.js';
+ import {
+-  TILE_RECTS, isTiled, layoutTiles, liveTile, reconcileTiles, setTile, singleTiles, tileScene, type TileLayout, type TilesState,
++  TILE_RECTS, isTiled, layoutTiles, liveTile, reconcileTiles, setTile, singleTiles, tileFrameStyle, tileScene, type TileLayout,
++  type TilesState,
+ } from './viewTilesPlan.js';
+ import { hasShot, pruneShots, shoot } from './tileShots.js';
+ import { waitCameraSettled } from './cameraSettle.js';
+@@ -164,7 +165,7 @@ export function commit(next: ViewTabsState, note: Note = () => {}, tilesNext?: T
+   const live = liveTile(tiles, scene);
+   useAimViewTabs.setState({
+     tabs: next.tabs, activeId: next.activeId, besideId: next.besideId, sceneId: scene,
+-    layout: tiles.layout, tiles: tiles.tiles, frame: live >= 0 ? TILE_RECTS[tiles.layout][live] : null,
++    layout: tiles.layout, tiles: tiles.tiles, frame: live >= 0 ? tileFrameStyle(TILE_RECTS[tiles.layout][live]) : null,
+   });
+   syncPlanBeside(next, note);
+   const doc = [next.tabs.find((t) => t.id === next.activeId), next.tabs.find((t) => t.id === next.besideId)].find((t) => t?.kind === 'doc');
+diff --git a/apps/viewer/src/aim/viewTabsLayout.ts b/apps/viewer/src/aim/viewTabsLayout.ts
+index 2b78ee7e..e02aad07 100644
+--- a/apps/viewer/src/aim/viewTabsLayout.ts
++++ b/apps/viewer/src/aim/viewTabsLayout.ts
+@@ -64,26 +64,3 @@ export function centerLayout(s: ViewTabsState, tiled = false): CenterLayout {
+     planBeside: active?.kind === '3d' && beside?.kind === 'plan' ? (beside.storeyGuid ?? null) : null,
+   };
+ }
+-
+-/** Výška hlavičky dlaždice (menovka a výber záložky) v px; 3D canvas začína pod ňou (AIM D-157). */
+-export const TILE_HEADER_PX = 24;
+-
+-/** Obdĺžnik dlaždice v zlomkoch strednej plochy (`viewTilesPlan.ts`). */
+-export interface TileFrame { x: number; y: number; w: number; h: number }
+-
+-const pct = (v: number) => `${Math.round(v * 1e4) / 100}%`;
+-
+-/**
+- * Poloha 3D canvasu v živej dlaždici: pod hlavičkou, 1 px od okraja (deliaca čiara
+- * dlaždíc). null = celá plocha, bez polohovania.
+- */
+-export function tileFrameStyle(f: TileFrame | null): Record<string, string> | undefined {
+-  if (!f) return undefined;
+-  return {
+-    position: 'absolute',
+-    left: `calc(${pct(f.x)} + 1px)`,
+-    top: `calc(${pct(f.y)} + ${TILE_HEADER_PX + 1}px)`,
+-    width: `calc(${pct(f.w)} - 2px)`,
+-    height: `calc(${pct(f.h)} - ${TILE_HEADER_PX + 2}px)`,
+-  };
+-}
+diff --git a/apps/viewer/src/aim/viewTabsStore.ts b/apps/viewer/src/aim/viewTabsStore.ts
+index 82f47186..035a9b47 100644
+--- a/apps/viewer/src/aim/viewTabsStore.ts
++++ b/apps/viewer/src/aim/viewTabsStore.ts
+@@ -13,7 +13,7 @@
+ import { create } from 'zustand';
+ import type { StoreyInfo } from '@/hooks/useFloorplanView';
+ import { initialTabs, type ViewTabsState } from './viewTabsLayout.js';
+-import type { TileRect, TilesState } from './viewTilesPlan.js';
++import type { TilesState } from './viewTilesPlan.js';
+ 
+ /** Podlažie, ako ho pozná prepínač pôdorysu (`useViewMode().storeys`). */
+ export interface TabStorey { guid: string; name: string; info: StoreyInfo }
+@@ -33,8 +33,8 @@ interface ViewTabsStore extends ViewTabsState, TilesState {
+   deps: TabDeps | null;
+   /** Kartu otvoril most (`DOCUMENT_OPEN`): záložku nastaví `showDoc`, nie synchronizácia kariet. */
+   bridgeDocId: string | null;
+-  /** Dlaždice (AIM D-157): obdĺžnik živej 3D dlaždice pre 3D canvas, null = celá plocha. */
+-  frame: TileRect | null;
++  /** Dlaždice (AIM D-157): štýl obalu 3D canvasu v živej dlaždici, null = celá plocha. */
++  frame: Record<string, string> | null;
+   /** Verzia snímok 3D dlaždíc (`tileShots.ts`), aby sa dlaždice prekreslili. */
+   shots: number;
+ }
+diff --git a/apps/viewer/src/aim/viewTilesPlan.test.ts b/apps/viewer/src/aim/viewTilesPlan.test.ts
+index 861096c9..7deb89f4 100644
+--- a/apps/viewer/src/aim/viewTilesPlan.test.ts
++++ b/apps/viewer/src/aim/viewTilesPlan.test.ts
+@@ -10,6 +10,7 @@ import {
+   TILE_LAYOUTS, TILE_RECTS, describeLayout, isTileLayout, layoutTiles, liveTile, placeTab, reconcileTiles, setTile,
+   singleTiles, tileScene, type TilesState,
+ } from './viewTilesPlan.js';
++import { isTilesMessage } from './tiles-protocol.js';
+ 
+ const plan1: ViewTab = { id: 'plan:G1', kind: 'plan', label: '1NP', storeyGuid: 'G1' };
+ const plan2: ViewTab = { id: 'plan:G2', kind: 'plan', label: '2NP', storeyGuid: 'G2' };
+@@ -139,4 +140,17 @@ describe('dlaždice záložiek (AIM D-157)', () => {
+     assert.strictEqual(describeLayout(s, { layout: 'split_h', tiles: ['doc:A', null] }, '3d').live_tab, null);
+     assert.deepStrictEqual(describeLayout(s, singleTiles(), '3d'), { kind: 'single' });
+   });
++
++  it('VIEW_TABS layout: rozloženie zo zoznamu, najviac toľko dlaždíc, dlaždica {tab} | {plan} | null', () => {
++    const m = (o: Record<string, unknown>) => ({ source: 'aim-bridge', type: 'VIEW_TABS', action: 'layout', ...o });
++    assert.ok(isTilesMessage(m({ layout: 'grid4' })));
++    assert.ok(isTilesMessage(m({ layout: 'split_h', tiles: [{ tab: '3D' }, { plan: 'G1' }] })));
++    assert.ok(isTilesMessage(m({ layout: 'three_v', tiles: [null] })));
++    assert.ok(!isTilesMessage(m({ layout: '2x2' })));
++    assert.ok(!isTilesMessage(m({ layout: 'split_v', tiles: [{ tab: 'a' }, { tab: 'b' }, { tab: 'c' }] })));
++    assert.ok(!isTilesMessage(m({ layout: 'split_h', tiles: [{ tab: '3D', plan: 'G1' }] })));
++    assert.ok(!isTilesMessage(m({ layout: 'split_h', tiles: [{ tab: '' }] })));
++    assert.ok(!isTilesMessage({ ...m({ layout: 'single' }), source: 'x' }));
++    assert.ok(!isTilesMessage({ ...m({ layout: 'single' }), action: 'open' }));
++  });
+ });
+diff --git a/apps/viewer/src/aim/viewTilesPlan.ts b/apps/viewer/src/aim/viewTilesPlan.ts
+index da020fa0..ccc27219 100644
+--- a/apps/viewer/src/aim/viewTilesPlan.ts
++++ b/apps/viewer/src/aim/viewTilesPlan.ts
+@@ -57,6 +57,25 @@ export const TILE_LAYOUT_LABELS: Record<TileLayout, string> = {
+   grid4: '4 (2x2)',
+ };
+ 
++/** Výška hlavičky dlaždice (menovka a výber záložky) v px; 3D canvas začína pod ňou. */
++export const TILE_HEADER_PX = 24;
++
++const pct = (v: number) => `${Math.round(v * 1e4) / 100}%`;
++
++/**
++ * Poloha 3D canvasu v živej dlaždici (štýl obalu canvasu v `ViewerLayout`): pod
++ * hlavičkou, 1 px od okraja (deliaca čiara dlaždíc).
++ */
++export function tileFrameStyle(f: TileRect): Record<string, string> {
++  return {
++    position: 'absolute',
++    left: `calc(${pct(f.x)} + 1px)`,
++    top: `calc(${pct(f.y)} + ${TILE_HEADER_PX + 1}px)`,
++    width: `calc(${pct(f.w)} - 2px)`,
++    height: `calc(${pct(f.h)} - ${TILE_HEADER_PX + 2}px)`,
++  };
++}
++
+ export const isTileLayout = (v: unknown): v is TileLayout => typeof v === 'string' && (TILE_LAYOUTS as readonly string[]).includes(v);
+ 
+ export interface TilesState {
+diff --git a/apps/viewer/src/components/viewer/ViewerLayout.tsx b/apps/viewer/src/components/viewer/ViewerLayout.tsx
+index 404613c4..d567da94 100644
+--- a/apps/viewer/src/components/viewer/ViewerLayout.tsx
++++ b/apps/viewer/src/components/viewer/ViewerLayout.tsx
+@@ -52,7 +52,6 @@ import { useOverlayCompositor } from './schedule/useOverlayCompositor';
+ const DrawingPlanPane = lazy(() => import('@/components/viewer/DrawingPlanPane').then((m) => ({ default: m.DrawingPlanPane })));
+ const DocumentPane = lazy(() => import('@/components/documents/DocumentPane').then((m) => ({ default: m.DocumentPane })));
+ const AimViewTabsBar = lazy(() => import('@/aim/AimViewTabsBar').then((m) => ({ default: m.AimViewTabsBar })));
+-const AimTileGrid = lazy(() => import('@/aim/AimTileGrid').then((m) => ({ default: m.AimTileGrid })));
+ // <<< AIM-FORK
+ import { CommandPalette } from './CommandPalette';
+ import { SearchModal } from './SearchModal';
+@@ -228,7 +227,7 @@ export function ViewerLayout() {
+   // >>> AIM-FORK: D-072 split plan, D-075 2D mode + document pane, D-132 view tabs (aim/useAimCenterPanes.ts)
+   const {
+     underlaySplitView, underlayPlanFull, planePanelRef, viewport3dPanelRef, onViewport3dResize,
+-    docPaneOpen, docPaneVisible, docPanelRef, onDocPaneResize, tiled, tileFrame,
++    docPaneOpen, docPaneVisible, docPanelRef, onDocPaneResize, tileFrame,
+   } = useAimCenterPanes(isMobile);
+   // <<< AIM-FORK
+   const containerRef = useRef<HTMLDivElement>(null);
+@@ -340,8 +339,8 @@ export function ViewerLayout() {
+                           className={`w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize ${underlaySplitView && !underlayPlanFull ? '' : 'hidden'}`}
+                         />
+                         <Panel id="aim-viewport-3d-panel" defaultSize={100} minSize={30} collapsible collapsedSize={0} panelRef={viewport3dPanelRef} onResize={onViewport3dResize}>
+-                      {/* D-157 tiles: the 3D canvas moves into the live tile, the grid draws the rest. */}
+-                      <div className="relative h-full w-full">
++                      {/* D-157 tiles: the 3D canvas moves into the live tile; the lazy tabs bar portals the grid here. */}
++                      <div className="relative h-full w-full" data-aim-tiles>
+                       <div className="h-full w-full" style={tileFrame}>
+                       {/* <<< AIM-FORK */}
+                       {sideBySideDrawing ? (
+@@ -371,7 +370,6 @@ export function ViewerLayout() {
+                       )}
+                       {/* >>> AIM-FORK */}
+                       </div>
+-                      {tiled && <Suspense fallback={null}><AimTileGrid /></Suspense>}
+                       </div>
+                         </Panel>
+                         <PanelResizeHandle
+-- 
+2.43.0
+
+
+From 525281a48fd3e64272150d6733ee914557052454 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 19:17:24 +0000
+Subject: [PATCH 3/5] =?UTF-8?q?AIM=20D-157:=20test=20-=20=C5=BEiv=C3=A1=20?=
+ =?UTF-8?q?dla=C5=BEdica=20ostane=20=C5=BEiv=C3=A1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01SLNw3madVzdj6cZmw5V6HJ
+---
+ apps/viewer/src/aim/viewTilesPlan.test.ts | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/apps/viewer/src/aim/viewTilesPlan.test.ts b/apps/viewer/src/aim/viewTilesPlan.test.ts
+index 7deb89f4..c6d6eba0 100644
+--- a/apps/viewer/src/aim/viewTilesPlan.test.ts
++++ b/apps/viewer/src/aim/viewTilesPlan.test.ts
+@@ -120,6 +120,8 @@ describe('dlaždice záložiek (AIM D-157)', () => {
+     assert.strictEqual(tileScene({ ...s, activeId: 'plan:G2' }, t, '3d'), 'plan:G2');
+     assert.strictEqual(tileScene({ ...s, activeId: 'doc:A' }, t, 'plan:G1'), 'plan:G1');
+     assert.strictEqual(tileScene({ ...s, activeId: 'doc:A' }, t, '3d'), 'plan:G1');
++    // Doterajšia živá ostane živá, aj keď nie je prvá 3D dlaždica.
++    assert.strictEqual(tileScene({ ...s, activeId: 'doc:A' }, { layout: 'three_h', tiles: ['plan:G1', 'doc:A', 'plan:G2'] }, 'plan:G2'), 'plan:G2');
+     assert.strictEqual(tileScene({ ...s, activeId: 'doc:A' }, { layout: 'split_h', tiles: ['doc:A', null] }, '3d'), '3d');
+   });
+ 
+-- 
+2.43.0
+
+
+From bc93bf95a98689bc62ab6c2e736af5cc9378f82e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 19:17:43 +0000
+Subject: [PATCH 4/5] =?UTF-8?q?AIM=20D-157:=20muta=C4=8Dn=C3=A9=20d=C3=B4k?=
+ =?UTF-8?q?azy=20(7x=20OBSERVED)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01SLNw3madVzdj6cZmw5V6HJ
+---
+ .../aim-d157-tiles/mutations/README.md        |  44 ++++++++
+ .../mutations/layout-allows-duplicates.patch  |  13 +++
+ .../mutations/place-ignores-kind.patch        |  12 +++
+ .../mutations/protocol-unbounded-tiles.patch  |  11 ++
+ .../mutations/reconcile-no-refill.patch       |  13 +++
+ .../scene-ignores-current-tile.patch          |  12 +++
+ .../mutations/set-tile-no-swap.patch          |  12 +++
+ .../aim-d157-tiles/mutations/summary.json     | 100 ++++++++++++++++++
+ .../mutations/three-bottom-big-on-top.patch   |  13 +++
+ 9 files changed, 230 insertions(+)
+ create mode 100644 docs/architecture/evidence/aim-d157-tiles/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-d157-tiles/mutations/layout-allows-duplicates.patch
+ create mode 100644 docs/architecture/evidence/aim-d157-tiles/mutations/place-ignores-kind.patch
+ create mode 100644 docs/architecture/evidence/aim-d157-tiles/mutations/protocol-unbounded-tiles.patch
+ create mode 100644 docs/architecture/evidence/aim-d157-tiles/mutations/reconcile-no-refill.patch
+ create mode 100644 docs/architecture/evidence/aim-d157-tiles/mutations/scene-ignores-current-tile.patch
+ create mode 100644 docs/architecture/evidence/aim-d157-tiles/mutations/set-tile-no-swap.patch
+ create mode 100644 docs/architecture/evidence/aim-d157-tiles/mutations/summary.json
+ create mode 100644 docs/architecture/evidence/aim-d157-tiles/mutations/three-bottom-big-on-top.patch
+
+diff --git a/docs/architecture/evidence/aim-d157-tiles/mutations/README.md b/docs/architecture/evidence/aim-d157-tiles/mutations/README.md
+new file mode 100644
+index 00000000..acc08787
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d157-tiles/mutations/README.md
+@@ -0,0 +1,44 @@
++<!-- This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this
++     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
++
++# AIM D-157 tiles: surgical mutation evidence
++
++The change adds tiled view tabs to the AIM viewer (`apps/viewer/src/aim/`): layouts of one to four
++tiles, one live 3D tile (the single WebGPU canvas is moved into it) and snapshots for the other 3D
++tiles. The pure logic lives in the new `viewTilesPlan.ts` and the bridge message check in the new
++`tiles-protocol.ts`. The test (`viewTilesPlan.test.ts`) imports both, so reverting them to the base
++makes the test file fail to load and the CI revert oracle reports INCONCLUSIVE. Each main decision of
++the two modules was checked with a surgical mutation instead.
++
++Each patch is written mutant->fixed; the oracle reverse-applies it. Every run ended `OBSERVED`
++(exit 0) with restoration verified, against base `origin/main`. Full records: `summary.json`.
++
++| Patch | Module | Mutation |
++|---|---|---|
++| `layout-allows-duplicates.patch` | `viewTilesPlan.ts` | a requested tab can fill two tiles |
++| `place-ignores-kind.patch` | `viewTilesPlan.ts` | a tab outside the tiles replaces the last non-live tile, not one of the same kind (document for document) |
++| `reconcile-no-refill.patch` | `viewTilesPlan.ts` | a closed tab leaves its tile empty although another open tab is not shown |
++| `scene-ignores-current-tile.patch` | `viewTilesPlan.ts` | the live 3D tile jumps to the first 3D tile when a document becomes active |
++| `set-tile-no-swap.patch` | `viewTilesPlan.ts` | choosing a tab already in another tile duplicates it instead of swapping |
++| `three-bottom-big-on-top.patch` | `viewTilesPlan.ts` | "two on top, one big below" puts the big tile on top |
++| `protocol-unbounded-tiles.patch` | `tiles-protocol.ts` | `VIEW_TABS layout` accepts more tiles than the layout has |
++
++`tileShots.ts`, `viewTabsApply.ts` (commit, prerender), `AimTileGrid.tsx`, `AimViewTabsBar.tsx`, the
++`useAimCenterPanes.ts` frame and the `ViewerLayout.tsx` AIM-FORK wrapper are store, DOM and canvas
++glue without a unit test; they were checked live in an embedded viewer (`AC20-FZK-Haus.ifc`, host page
++posting `VIEW_TABS layout`): the grid, tile headers, the canvas moving into the live tile and back to
++full size with `single`. WebGPU in the session container lost its device, so the snapshot pixels were
++not checked there; the read is the same post-presentation canvas read the BCF capture uses
++(`lib/viewport-capture.ts`).
++
++## Replay
++
++```bash
++node scripts/check-test-revert-oracle.mjs --base origin/main \
++  --only apps/viewer/src/aim/viewTilesPlan.ts \
++  --test apps/viewer/src/aim/viewTilesPlan.test.ts \
++  --mutation /tmp/d157-mut/place-ignores-kind.patch --ci --json
++```
++
++`protocol-unbounded-tiles.patch` uses `--only apps/viewer/src/aim/tiles-protocol.ts`.
+diff --git a/docs/architecture/evidence/aim-d157-tiles/mutations/layout-allows-duplicates.patch b/docs/architecture/evidence/aim-d157-tiles/mutations/layout-allows-duplicates.patch
+new file mode 100644
+index 00000000..57846e4c
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d157-tiles/mutations/layout-allows-duplicates.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/viewTilesPlan.ts a/apps/viewer/src/aim/viewTilesPlan.ts
++index b530ac05..ccc27219 100644
++--- b/apps/viewer/src/aim/viewTilesPlan.ts
+++++ a/apps/viewer/src/aim/viewTilesPlan.ts
++@@ -106,7 +106,7 @@ export function layoutTiles(
++   const out: (string | null | undefined)[] = [];
++   for (let i = 0; i < n; i++) {
++     const id = requested[i];
++-    if (id && tabOf(s, id)) {
+++    if (id && tabOf(s, id) && !used.has(id)) {
++       used.add(id);
++       out.push(id);
++     } else {
+diff --git a/docs/architecture/evidence/aim-d157-tiles/mutations/place-ignores-kind.patch b/docs/architecture/evidence/aim-d157-tiles/mutations/place-ignores-kind.patch
+new file mode 100644
+index 00000000..64bfaf16
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d157-tiles/mutations/place-ignores-kind.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/viewTilesPlan.ts a/apps/viewer/src/aim/viewTilesPlan.ts
++index 902d1da1..ccc27219 100644
++--- b/apps/viewer/src/aim/viewTilesPlan.ts
+++++ a/apps/viewer/src/aim/viewTilesPlan.ts
++@@ -134,6 +134,7 @@ export function placeTab(s: ViewTabsState, t: TilesState, id: string, liveId: st
++   if (!isTiled(t) || t.tiles.includes(id) || !tabOf(s, id)) return t;
++   const scene = isSceneTab(tabOf(s, id));
++   let idx = t.tiles.indexOf(null);
+++  if (idx < 0) idx = lastIndex(t.tiles, (x) => x !== liveId && isSceneTab(tabOf(s, x)) === scene);
++   if (idx < 0) idx = lastIndex(t.tiles, (x) => x !== liveId);
++   if (idx < 0) idx = t.tiles.length - 1;
++   return { ...t, tiles: t.tiles.map((x, i) => (i === idx ? id : x)) };
+diff --git a/docs/architecture/evidence/aim-d157-tiles/mutations/protocol-unbounded-tiles.patch b/docs/architecture/evidence/aim-d157-tiles/mutations/protocol-unbounded-tiles.patch
+new file mode 100644
+index 00000000..2350c795
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d157-tiles/mutations/protocol-unbounded-tiles.patch
+@@ -0,0 +1,11 @@
++diff --git b/apps/viewer/src/aim/tiles-protocol.ts a/apps/viewer/src/aim/tiles-protocol.ts
++index 6e704b0e..55b2b98a 100644
++--- b/apps/viewer/src/aim/tiles-protocol.ts
+++++ a/apps/viewer/src/aim/tiles-protocol.ts
++@@ -42,5 +42,5 @@ export function isTilesMessage(data: unknown): data is TilesMessage {
++   const m = data as Record<string, unknown>;
++   if (m.source !== SOURCE || m.type !== 'VIEW_TABS' || m.action !== 'layout' || !isTileLayout(m.layout)) return false;
++   if (m.tiles === undefined) return true;
++-  return Array.isArray(m.tiles) && m.tiles.every(isTile);
+++  return Array.isArray(m.tiles) && m.tiles.length <= TILE_RECTS[m.layout].length && m.tiles.every(isTile);
++ }
+diff --git a/docs/architecture/evidence/aim-d157-tiles/mutations/reconcile-no-refill.patch b/docs/architecture/evidence/aim-d157-tiles/mutations/reconcile-no-refill.patch
+new file mode 100644
+index 00000000..973928e5
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d157-tiles/mutations/reconcile-no-refill.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/viewTilesPlan.ts a/apps/viewer/src/aim/viewTilesPlan.ts
++index 986087c5..ccc27219 100644
++--- b/apps/viewer/src/aim/viewTilesPlan.ts
+++++ a/apps/viewer/src/aim/viewTilesPlan.ts
++@@ -168,7 +168,7 @@ export function reconcileTiles(s: ViewTabsState, t: TilesState, liveId: string |
++   const spare = s.tabs.map((x) => x.id).filter((id) => !used.has(id) && id !== s.activeId);
++   const tiles = kept.map((id, i) => {
++     if (id !== null || t.tiles[i] === null) return id;
++-    return null;
+++    return spare.shift() ?? null;
++   });
++   return placeTab(s, { ...t, tiles }, s.activeId, liveId);
++ }
+diff --git a/docs/architecture/evidence/aim-d157-tiles/mutations/scene-ignores-current-tile.patch b/docs/architecture/evidence/aim-d157-tiles/mutations/scene-ignores-current-tile.patch
+new file mode 100644
+index 00000000..3389d60f
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d157-tiles/mutations/scene-ignores-current-tile.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/viewTilesPlan.ts a/apps/viewer/src/aim/viewTilesPlan.ts
++index 6743270b..ccc27219 100644
++--- b/apps/viewer/src/aim/viewTilesPlan.ts
+++++ a/apps/viewer/src/aim/viewTilesPlan.ts
++@@ -180,6 +180,7 @@ export function reconcileTiles(s: ViewTabsState, t: TilesState, liveId: string |
++ export function tileScene(s: ViewTabsState, t: TilesState, current: string): string {
++   const active = tabOf(s, s.activeId);
++   if (isSceneTab(active)) return active!.id;
+++  if (t.tiles.includes(current)) return current;
++   const first = t.tiles.find((id) => isSceneTab(tabOf(s, id)));
++   return first ?? current;
++ }
+diff --git a/docs/architecture/evidence/aim-d157-tiles/mutations/set-tile-no-swap.patch b/docs/architecture/evidence/aim-d157-tiles/mutations/set-tile-no-swap.patch
+new file mode 100644
+index 00000000..5cdceed7
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d157-tiles/mutations/set-tile-no-swap.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/viewTilesPlan.ts a/apps/viewer/src/aim/viewTilesPlan.ts
++index c78e5138..ccc27219 100644
++--- b/apps/viewer/src/aim/viewTilesPlan.ts
+++++ a/apps/viewer/src/aim/viewTilesPlan.ts
++@@ -151,6 +151,7 @@ export function setTile(s: ViewTabsState, t: TilesState, index: number, id: stri
++   if (id !== null && !tabOf(s, id)) return t;
++   const from = id === null ? -1 : t.tiles.indexOf(id);
++   const tiles = [...t.tiles];
+++  if (from >= 0) tiles[from] = tiles[index];
++   tiles[index] = id;
++   return { ...t, tiles };
++ }
+diff --git a/docs/architecture/evidence/aim-d157-tiles/mutations/summary.json b/docs/architecture/evidence/aim-d157-tiles/mutations/summary.json
+new file mode 100644
+index 00000000..a3e78895
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d157-tiles/mutations/summary.json
+@@ -0,0 +1,100 @@
++{
++  "layout-allows-duplicates": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTilesPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "787b65ef19408b141df8f0676f2e4d6e3c9902cc",
++    "production": [
++      "apps/viewer/src/aim/viewTilesPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTilesPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "place-ignores-kind": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTilesPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "787b65ef19408b141df8f0676f2e4d6e3c9902cc",
++    "production": [
++      "apps/viewer/src/aim/viewTilesPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTilesPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "protocol-unbounded-tiles": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTilesPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "787b65ef19408b141df8f0676f2e4d6e3c9902cc",
++    "production": [
++      "apps/viewer/src/aim/tiles-protocol.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTilesPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "reconcile-no-refill": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTilesPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "787b65ef19408b141df8f0676f2e4d6e3c9902cc",
++    "production": [
++      "apps/viewer/src/aim/viewTilesPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTilesPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "scene-ignores-current-tile": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTilesPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "525281a48fd3e64272150d6733ee914557052454",
++    "production": [
++      "apps/viewer/src/aim/viewTilesPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTilesPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "set-tile-no-swap": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTilesPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "787b65ef19408b141df8f0676f2e4d6e3c9902cc",
++    "production": [
++      "apps/viewer/src/aim/viewTilesPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTilesPlan.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "three-bottom-big-on-top": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/viewTilesPlan.test.ts; that file has a green, attributable baseline.",
++    "base": "c988e100fbc1249ffcec4c8c5828f6063c1f0f4d",
++    "head": "787b65ef19408b141df8f0676f2e4d6e3c9902cc",
++    "production": [
++      "apps/viewer/src/aim/viewTilesPlan.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/viewTilesPlan.test.ts"
++    ],
++    "restoration": "verified"
++  }
++}
+diff --git a/docs/architecture/evidence/aim-d157-tiles/mutations/three-bottom-big-on-top.patch b/docs/architecture/evidence/aim-d157-tiles/mutations/three-bottom-big-on-top.patch
+new file mode 100644
+index 00000000..c4dce7b9
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d157-tiles/mutations/three-bottom-big-on-top.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/viewTilesPlan.ts a/apps/viewer/src/aim/viewTilesPlan.ts
++index 8642911b..ccc27219 100644
++--- b/apps/viewer/src/aim/viewTilesPlan.ts
+++++ a/apps/viewer/src/aim/viewTilesPlan.ts
++@@ -37,7 +37,7 @@ export const TILE_RECTS: Record<TileLayout, readonly TileRect[]> = {
++   three_left: [r(0, 0, H, 1), r(H, 0, H, H), r(H, H, H, H)],
++   three_right: [r(H, 0, H, 1), r(0, 0, H, H), r(0, H, H, H)],
++   three_top: [r(0, 0, 1, H), r(0, H, H, H), r(H, H, H, H)],
++-  three_bottom: [r(0, 0, 1, H), r(0, H, H, H), r(H, H, H, H)],
+++  three_bottom: [r(0, H, 1, H), r(0, 0, H, H), r(H, 0, H, H)],
++   three_h: [r(0, 0, T, 1), r(T, 0, T, 1), r(2 * T, 0, T, 1)],
++   three_v: [r(0, 0, 1, T), r(0, T, 1, T), r(0, 2 * T, 1, T)],
++   grid4: [r(0, 0, H, H), r(H, 0, H, H), r(0, H, H, H), r(H, H, H, H)],
+-- 
+2.43.0
+
+
+From ddbfbda92bda3c316f30ffc8b98f4a28f38482aa Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 19:29:43 +0000
+Subject: [PATCH 5/5] =?UTF-8?q?AIM=20D-157:=20dla=C5=BEdica=20pon=C3=BAkne?=
+ =?UTF-8?q?=20aj=20neotvoren=C3=BD=20p=C3=B4dorys=20podla=C5=BEia?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01SLNw3madVzdj6cZmw5V6HJ
+---
+ apps/viewer/src/aim/AimTileGrid.tsx | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/apps/viewer/src/aim/AimTileGrid.tsx b/apps/viewer/src/aim/AimTileGrid.tsx
+index dec16659..d9dbcf12 100644
+--- a/apps/viewer/src/aim/AimTileGrid.tsx
++++ b/apps/viewer/src/aim/AimTileGrid.tsx
+@@ -18,7 +18,8 @@ import { ImageDocumentView } from '@/components/documents/ImageDocumentView';
+ import { isSceneTab, type ViewTab } from './viewTabsLayout.js';
+ import { useAimViewTabs } from './viewTabsStore.js';
+ import { TILE_HEADER_PX, TILE_RECTS, liveTile, type TileRect } from './viewTilesPlan.js';
+-import { activate, putTile } from './viewTabsApply.js';
++import { activate, openPlan, putTile } from './viewTabsApply.js';
++import { planTabId } from './viewTabsPlan.js';
+ import { shotOf } from './tileShots.js';
+ 
+ const warn = (issue: string) => console.warn('[aim-tiles]', issue);
+@@ -65,17 +66,28 @@ export function AimTileGrid() {
+   );
+ }
+ 
++/** Výber v hlavičke: otvorená záložka, alebo pôdorys podlažia, ktorý ešte nie je otvorený. */
++function pick(index: number, value: string): void {
++  if (!value.startsWith('storey:')) return putTile(index, value || null, warn);
++  const guid = value.slice('storey:'.length);
++  void openPlan(guid, {}, warn);
++  putTile(index, planTabId(guid), warn);
++}
++
+ function TileHeader({ index, tab, tabs, live }: { index: number; tab: ViewTab | undefined; tabs: readonly ViewTab[]; live: boolean }) {
++  const storeys = useAimViewTabs((s) => s.deps?.storeys);
++  const closed = (storeys ?? []).filter((st) => !tabs.some((t) => t.id === planTabId(st.guid)));
+   return (
+     <div className="pointer-events-auto flex shrink-0 items-center gap-1 border-b bg-muted/60 px-1" style={{ height: TILE_HEADER_PX - 1 }}>
+       <select
+         aria-label={`Záložka v dlaždici ${index + 1}`}
+         className="h-5 min-w-0 max-w-48 rounded border bg-background px-1 text-2xs"
+         value={tab?.id ?? ''}
+-        onChange={(e) => putTile(index, e.target.value || null, warn)}
++        onChange={(e) => pick(index, e.target.value)}
+       >
+         <option value="">(prázdna)</option>
+         {tabs.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
++        {closed.map((st) => <option key={st.guid} value={`storey:${st.guid}`}>{`+ Pôdorys ${st.name}`}</option>)}
+       </select>
+       {tab && isSceneTab(tab) && (
+         <span className="truncate text-2xs text-muted-foreground">{live ? 'živé 3D' : 'snímka'}</span>
+-- 
+2.43.0
+
