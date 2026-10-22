@@ -4,8 +4,8 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => ({}) }));
 
 import type { AskAction } from "./actions";
-import { execLensStyle, resolveFilter, type GroupInfo } from "./style-lens";
-import type { ScopeResolver } from "./style-scope";
+import { execLensStyle, resolveFilter, xrayStoreyWarning, type GroupInfo } from "./style-lens";
+import { ScopeResolver } from "./style-scope";
 
 const OPTS = { domainTypes: { hvac: ["IfcDuctSegment"] } };
 const opsOf = (a: AskAction) => decodeURIComponent(new URL(a.url, "http://x").searchParams.get("ops") ?? "");
@@ -71,5 +71,22 @@ describe("viac systémov vo filtri (#177)", () => {
     await resolveFilter(scope(SYSTEMS.slice(0, 1)), { system: "Prívod" }, OPTS, info, { left: 10 });
     expect(info.system_members).toBeUndefined();
     expect(info.warning).toBeUndefined();
+  });
+});
+
+describe("xray so storey filtrom (#187)", () => {
+  it("upozorní, že kontext je celý model, a dá postup; bez storey nie", async () => {
+    const spy = vi.spyOn(ScopeResolver.prototype, "pickFloor").mockResolvedValue({ id: "f1", object_ref: "1NP", name: "1NP" } as never);
+    const { result } = await execLensStyle("xray", { ifc_type: "IfcCovering", storey: "1NP", mode: "replace" }, () => {}, OPTS);
+    const w = (result.warnings as string[]).join("\n");
+    expect(w).toMatch(/X-ray s podlažím 1NP.*celý model/);
+    expect(w).toMatch(/action=hide/);
+    spy.mockRestore();
+    const plain = await execLensStyle("xray", { ifc_type: "IfcCovering" }, () => {}, OPTS);
+    expect(plain.result.warnings).toBeUndefined();
+  });
+
+  it("zmieni zrušený rez", () => {
+    expect(xrayStoreyWarning(["1NP"], true)).toMatch(/clear_section=true zrušil/);
   });
 });

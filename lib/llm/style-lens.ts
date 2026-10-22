@@ -151,6 +151,22 @@ function sectionPrefix(input: Record<string, unknown>): string {
   return input.clear_section === true ? `${SECTION_CLEAR_OP};` : "";
 }
 
+/**
+ * X-ray s filtrom podlažia (#187): priesvitný kontext je CELÝ model (všetky podlažia, ASR aj VZT), takže
+ * pohľad zhora prekrýva podlažia a pôdorys je nečitateľný. Host nevie skryť ostatné podlažia jedným
+ * príkazom (stovky prvkov by prekročili strop GUIDov), preto model upozorní a dá postup.
+ */
+export function xrayStoreyWarning(storeys: string[], sectionCleared: boolean): string {
+  const list = storeys.join(", ");
+  return (
+    `X-ray s podlažím ${list}: priesvitný kontext je celý model (všetky podlažia, ASR aj VZT), pôdorys zhora bude ` +
+    `prekrytý. Ak používateľ chce čitateľný pôdorys ${list}, skry ostatné podlažia (style_in_3d action=hide, ` +
+    "storey=<iné podlažie>, po jednom), alebo zober isolate celého podlažia a X-ray nad ním, a vodorovným rezom " +
+    "(set_section tesne nad horný okraj prvkov) odstráň, čo je nad ním" +
+    (sectionCleared ? " (clear_section=true zrušil doterajší rez)." : ".")
+  );
+}
+
 /** Krátka značka verzie lens: páruje odoslanú lens s otázkou na počty. */
 export function lensRev(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -267,6 +283,10 @@ export async function execLensStyle(
       "Pri prekrytí vyhráva neskoršia skupina v groups (a novšie volanie s mode=add): konkrétnu trasu alebo výnimku " +
         "daj ako poslednú skupinu. Pravidlo bez zásahu odpoveď nahlási s dôvodom.",
     );
+  }
+  if (action === "xray") {
+    const storeys = [...new Set(infos.flatMap((i) => (i.storey ? [i.storey] : [])))];
+    if (storeys.length > 0) warnings.push(xrayStoreyWarning(storeys, input.clear_section === true));
   }
   const verb = { colorize: "ofarbenie", transparent: "priehľadnosť", isolate: "izolácia", xray: "X-ray" }[action] ?? action;
   push({
