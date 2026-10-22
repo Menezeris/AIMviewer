@@ -6,7 +6,7 @@ import { MAX_ROUTE_POINTS, decodeRouteWire, encodeRouteWire, routeOp } from "../
 import { guid } from "./__fixtures__/mini-building";
 import { MINI_ROUTE_BYTES } from "./__fixtures__/mini-route";
 import { clearEngineCache } from "./cache";
-import { simplify, surfaceZ, treadsOf } from "./route-line";
+import { pitchLine, simplify, surfaceZ, treadsOf } from "./route-line";
 import { execEngineTool, type EngineDeps } from "./tools";
 
 const deps: EngineDeps = {
@@ -32,12 +32,21 @@ async function line(input: Record<string, unknown>) {
 
 const near = (a: number, b: number, tol = 0.011) => Math.abs(a - b) <= tol;
 const at = (pts: P[], x: number, y: number) => pts.filter((p) => near(p.x, x) && near(p.y, y));
+/** Výška čiary nad bodom (x, y) na úseku, ktorý ide pozdĺž osi x (interpolácia po y). */
+function zAt(pts: P[], x: number, y: number): number | null {
+  for (let i = 1; i < pts.length; i++) {
+    const [a, b] = [pts[i - 1], pts[i]];
+    if (!near(a.x, x) || !near(b.x, x) || (y - a.y) * (y - b.y) > 0 || a.y === b.y) continue;
+    return a.z + ((b.z - a.z) * (y - a.y)) / (b.y - a.y);
+  }
+  return null;
+}
 const onStair = (p: P) => p.x > 8.19 && p.x < 9.81 && p.y > 0.49 && p.y < 3.51;
 
 describe("ifc_measure route show - čiara trasy (D-137)", () => {
   afterEach(() => clearEngineCache());
 
-  it("úniková cesta: 1,6 m nad doskou, krytinou a každým stupňom, stredom dverí", async () => {
+  it("úniková cesta: 1,6 m nad doskou, krytinou a nábehom každého stupňa, stredom dverí", async () => {
     const { json, color, points } = await line({ route: "escape", a: guid("R3") });
     expect(color).toBe("#dc2626");
     expect(json.line).toMatchObject({ shown: true, points: points.length, height_m: 1.6 });
@@ -50,25 +59,24 @@ describe("ifc_measure route show - čiara trasy (D-137)", () => {
     const r1 = points.filter((p) => p.x > 0.2 && p.x < 3.8);
     expect(r1.length).toBeGreaterThan(0);
     for (const p of r1) expect(p.z).toBeCloseTo(1.65, 2);
-    // Nad každým z 10 stupňov (vrch 0,35 * k) vodorovný úsek 1,6 m nad ním, dole po schodoch.
-    const stair = points.filter(onStair);
-    for (let k = 1; k <= 10; k++) expect(stair.filter((p) => near(p.z, 0.35 * k + 1.6)).length).toBeGreaterThanOrEqual(2);
-    for (let i = 1; i < stair.length; i++) expect(stair[i].z).toBeLessThanOrEqual(stair[i - 1].z + 1e-9);
-    // Schodovito: podstupnica je zvislý skok (dva body nad sebou), nie šikmina.
-    const risers = stair.filter((p, i) => i > 0 && near(p.x, stair[i - 1].x, 1e-6) && near(p.y, stair[i - 1].y, 1e-6));
-    expect(risers.length).toBeGreaterThanOrEqual(9);
-    // Rameno ide po osi (x 9), nie stredom schodiska v jednom bode (nad 2NP a na podlahe 1NP je už priamka k dverám).
-    for (const p of stair.filter((q) => q.z > 1.61 && q.z < 5.05)) expect(p.x).toBeCloseTo(9, 2);
+    // Rameno (rozhodnutie Samuela v #223): plynulo šikmo 1,6 m nad čiarou nábehových hrán. Päta o stupeň
+    // pred prvým nábehom (y 0,2, podlaha), posledný nábeh y 3,2 vo výške 2NP; medzi nimi nič (jedna priamka).
+    expect(at(points, 9, 0.2).map((p) => p.z)).toEqual([1.6]);
+    expect(at(points, 9, 3.2).map((p) => p.z)).toEqual([5.1]);
+    // Nad nábehom každého z 10 stupňov (y 0,5 + 0,3 k, vrch 0,35 (k + 1)) presne 1,6 m.
+    for (let k = 0; k < 10; k++) expect(zAt(points, 9, 0.5 + 0.3 * k)).toBeCloseTo(0.35 * (k + 1) + 1.6, 2);
+    expect(points.filter(onStair).filter((p) => p.z > 1.61 && p.z < 5.09)).toEqual([]);
     expect(points.length).toBeLessThanOrEqual(MAX_ROUTE_POINTS);
   });
 
-  it("najkratšia cesta hore: po schodoch nahor a do stredu cieľovej miestnosti", async () => {
+  it("najkratšia cesta hore: po šikmej čiare ramena nahor a do stredu cieľovej miestnosti", async () => {
     const { points } = await line({ route: "shortest", a: guid("R1"), b: guid("R3") });
     expect(points[0]).toEqual({ x: 2, y: 2, z: 1.65 });
     expect(points.at(-1)).toEqual({ x: 4, y: 2, z: 5.1 });
-    const stair = points.filter(onStair);
-    expect(stair.length).toBeGreaterThan(10);
-    for (let i = 1; i < stair.length; i++) expect(stair[i].z).toBeGreaterThanOrEqual(stair[i - 1].z - 1e-9);
+    // Hore po tej istej šikmej čiare: päta, potom posledný nábeh a ďalej k dverám D3.
+    const i0 = points.findIndex((p) => near(p.x, 9) && near(p.y, 0.2));
+    expect(points[i0 + 1]).toEqual({ x: 9, y: 3.2, z: 5.1 });
+    expect(zAt(points, 9, 2)).toBeCloseTo(0.35 * 6 + 1.6, 2); // nábeh 6. stupňa
   });
 
   it("bez show čiara nie je a výstup je ako doteraz", async () => {
@@ -97,6 +105,27 @@ describe("ifc_measure route show - čiara trasy (D-137)", () => {
     ]);
     const treads = treadsOf({ box: { min: [0, 0, 0.2], max: [1.4, 0.6, 1.5] }, tris });
     expect(treads.map((t) => [t.x, t.y, t.z].map((v) => +v.toFixed(3)))).toEqual([[0.5, 0.15, 0.2], [0.5, 0.45, 0.4]]);
+  });
+
+  it("čiara nábehov: šikmo po ramene, na podeste vodorovne k päte ďalšieho ramena", () => {
+    // Rameno šírky 1 m pozdĺž y: 3 stupne 0,3 m, podesta 1,2 m, 3 stupne; podstupnica 0,2 m.
+    const t = (y0: number, y1: number, z: number) => ({ x: 0.5, y: (y0 + y1) / 2, z, area: y1 - y0 });
+    const treads = [t(0, 0.3, 0.2), t(0.3, 0.6, 0.4), t(0.6, 0.9, 0.6), t(0.9, 2.1, 0.8), t(2.1, 2.4, 1), t(2.4, 2.7, 1.2), t(2.7, 3, 1.4)];
+    const line = pitchLine(treads).map((p) => p.map((v) => +v.toFixed(3) || 0));
+    expect(line).toEqual([
+      [0.5, -0.3, 0], // päta o stupeň pred prvým nábehom (podlaha)
+      [0.5, 0, 0.2],
+      [0.5, 0.3, 0.4],
+      [0.5, 0.6, 0.6],
+      [0.5, 0.9, 0.8], // nábeh podesty
+      [0.5, 1.8, 0.8], // vodorovne po podeste k päte druhého ramena
+      [0.5, 2.1, 1],
+      [0.5, 2.4, 1.2],
+      [0.5, 2.7, 1.4],
+    ]);
+    // Horná podesta prvku (napr. prechod na podlažie): po nábehu vodorovne do jej stredu.
+    expect(pitchLine(treads.slice(0, 4)).map((p) => p.map((v) => +v.toFixed(3) || 0)).slice(-2)).toEqual([[0.5, 0.9, 0.8], [0.5, 1.5, 0.8]]);
+    expect(pitchLine(treads.slice(0, 1))).toEqual([]);
   });
 
   it("zjednodušenie nechá rohy a vynechá body na priamke", () => {

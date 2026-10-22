@@ -6519,13 +6519,16 @@ Riešenie = `show=true` aj pri `route`, nie nový tool.
    a pri dverách = najvyšší povrch IfcSlab / IfcCovering / IfcRamp(Flight) pod bodom (zvislý lúč v okne -0,6 až
    +0,4 m okolo spodku IfcSpace, pri dverách okolo spodku dverí), bez zásahu spodok IfcSpace. Stropná krytina je
    pod doskou podlažia a nevyhrá. Priamka v miestnosti má vzorky každých 0,5 m (zmena úrovne podlahy, krytina).
-2. **Schodisko schodovito:** po každom ramene (IfcStairFlight; bez ramien časti schodiska) stredom každého stupňa:
-   stupne = horné vodorovné plochy prvku (nad nimi z prvku už nič nie je) zoskupené podľa výšky, ťažisko v
-   pôdoryse, podstupnica = zvislý skok v polovici medzi stredmi susedných stupňov. Platí pre rovné aj točité
-   ramená a podesty; plochy pod 50 % mediánu (vrch stredového stĺpa, madlo) sa vynechajú. Ramená podľa výšky,
-   pri zostupe obrátene; prvok bez vodorovných plôch = os obálky v smere stúpania. Schodisko sa v úseku
-   miestnosti neráta (priamka od dverí k ramenu ide v pôdoryse aj nad otvorom schodiska a nesmie klesnúť
-   na stupne).
+2. **Schodisko plynulo šikmo (rozhodnutie Samuela v #223, 22. 10.):** na ramene je referenčná čiara, ktorá spája
+   nábehové hrany stupňov (sklon ramena); úniková čiara ide rovnobežne s ňou 1,6 m nad ňou, merané zvislo nad
+   hranou každého stupňa; na podestách a podlahe vodorovne. Stupne = horné vodorovné plochy ramena (IfcStairFlight;
+   bez ramien časti schodiska), nad ktorými z prvku už nič nie je, zoskupené podľa výšky; plochy pod 50 % mediánu
+   (vrch stredového stĺpa, madlo) sa vynechajú. Nábeh = ťažisko stupňa posunuté proti smeru chôdze o polovicu
+   hĺbky (hĺbka = plocha / šírka ramena), takže to platí aj pre točité ramená. Čiara začína pätou o stupeň pred
+   prvým nábehom (úroveň podlahy); keď sú dva nábehy ďalej ako 1,5 stupňa (podesta), ide vodorovne k päte
+   ďalšieho ramena; horná podesta v prvku vodorovne do jej stredu. Ramená podľa výšky, pri zostupe obrátene;
+   prvok bez vodorovných plôch = os obálky v smere stúpania. Schodisko sa v úseku miestnosti neráta (priamka od
+   dverí k ramenu ide v pôdoryse aj nad otvorom schodiska a nesmie klesnúť na stupne).
 3. **Zjednodušenie a limit:** Douglas-Peucker 2 cm, najviac 400 bodov (tolerancia sa zdvojnásobí, kým sa
    nevojdú); drôt na cm, aby URL ostala krátka. Posun rámca do IFC sveta ako pri kótach (`worldOffset`, D-124).
 4. **Most:** op `route:<hex>:<x,y,z|...>` (`lib/viewer-route.ts`) -> správa `ROUTE_SHOW { points, color }`,
@@ -6545,16 +6548,17 @@ Riešenie = `show=true` aj pri `route`, nie nový tool.
 - *Kóty `MEASURE_SHOW` po úsekoch:* limit 12 úsekov, prerušované s popisom pri každom úseku.
 - *3D čiara v rendereri (hĺbkový test):* zmena `packages/renderer` (plné CI, odchýlka od upstreamu) bez
   potreby; trasa má byť vidieť aj cez dosky.
-- *Šikmá čiara nad nábehovými hranami:* zadanie hovorí "nad každým stupňom"; otázka je v #223, zmena by bola
-  len v `stairLine`.
+- *Schodovito (vodorovne nad každým stupňom, zvislý skok pri podstupnici):* prvá verzia podľa znenia issue;
+  Samuel v #223 chce plynulú čiaru rovnobežnú s čiarou nábehov.
 - *Os obálky ramena:* na točitom schodisku trafí stupne z rôznych výšok (overené na FZK-Haus).
 
-**Overenie:** vitest na mini budove (doska, krytina 1,65 m, 10 stupňov hore aj dole, stredy dverí) a lokálne na
-`AC20-FZK-Haus.ifc` (fixture forku): úniková cesta z Galerie cez točité schodisko (15 stupňov po 0,177 m) k
-Terrassentuer, 35 bodov, fork čiaru nakreslil a prázdna správa ju zmazala. Prvý pokus po osi obálky na točitom
-schodisku skákal hore-dole (os trafí stupne z rôznych výšok), preto stredy stupňov.
+**Overenie:** vitest na mini budove (doska, krytina 1,65 m, 10 stupňov dole aj hore presne 1,6 m nad každým
+nábehom, podesta vodorovne, stredy dverí) a lokálne na `AC20-FZK-Haus.ifc` (fixture forku): úniková cesta z Galerie
+cez točité schodisko k Terrassentuer, plynulo z 4,25 na 2,13 m, 17 bodov; fork čiaru nakreslil a prázdna správa ju
+zmazala. Prvý pokus po osi obálky na točitom schodisku skákal hore-dole (os trafí stupne z rôznych výšok), preto
+stupne z horných plôch.
 
 **Hranice:** dĺžka a poradie ostávajú dolným odhadom D-121 (priamky v pôdoryse), čiara len kreslí tú istú trasu
 cez skutočné výšky; priamka v miestnosti tvaru L môže ísť cez stenu; schodisko bez vodorovných plôch (napr. len
 šikmá doska) ide šikmo po osi obálky; ramená s viacerými stupňami v tej istej výške (vedľa seba) sa zlúčia do
-jedného stredu.
+jedného stredu; hĺbka podesty je odhad z plochy (pri tvare L nepresná, čiara ostáva vodorovná).

@@ -11,7 +11,8 @@ import type { Endpoint, NavData, NavStair, RouteResult } from "./route";
  * alebo rampy pod bodom (zvislý lúč v okne okolo podlahy miestnosti),
  * bez zásahu = spodok IfcSpace. Čiara ide stredom každých dverí, v miestnosti
  * priamo (vzorky každých 0,5 m kopírujú zmenu úrovne podlahy) a po schodisku
- * stredom každého stupňa nad jeho vrchom (schodovito), aj na točitom ramene.
+ * rovnobežne s čiarou nábehových hrán stupňov (plynulo šikmo, aj na točitom
+ * ramene), na podestách vodorovne.
  */
 
 export const WALK_HEIGHT_M = 1.6;
@@ -97,6 +98,8 @@ export function simplify(pts: readonly Vec3[], tol: number): Vec3[] {
   return pts.filter((_, k) => keep[k]);
 }
 
+const median = (v: number[]) => [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)] ?? 0;
+
 /** Stupeň: horná vodorovná plocha ramena (ťažisko v pôdoryse, výška, plocha). */
 interface Tread {
   x: number;
@@ -133,32 +136,69 @@ export function treadsOf(s: Surface): Tread[] {
       [last.x, last.y, last.z, last.area] = [(last.x * last.area + f.x * f.area) / a, (last.y * last.area + f.y * f.area) / a, (last.z * last.area + f.z * f.area) / a, a];
     } else out.push({ ...f });
   }
-  const areas = out.map((g) => g.area).sort((a, b) => a - b);
-  const median = areas[Math.floor(areas.length / 2)] ?? 0;
-  return out.filter((g) => g.area >= Math.max(0.02, 0.5 * median));
+  const typical = median(out.map((g) => g.area));
+  return out.filter((g) => g.area >= Math.max(0.02, 0.5 * typical));
 }
 
 /**
- * Čiara po schodisku zdola nahor, schodovito: stredom každého stupňa (ťažisko
- * hornej plochy) vo výške jeho vrchu, podstupnica = zvislý skok v polovici medzi
- * stredmi susedných stupňov. Platí pre rovné aj točité ramená a podesty. Ramená
- * (inak časti schodiska) v poradí podľa výšky. Prvok bez vodorovných plôch: os
- * obálky v smere stúpania, výška = vrch pod bodom.
+ * Referenčná čiara ramena (rozhodnutie Samuela v #223): spája nábehové hrany
+ * stupňov, takže je šikmá so sklonom ramena; na podeste a hornom podlaží vodorovne.
+ * Nábeh stupňa = jeho predná hrana: od ťažiska späť proti smeru chôdze o polovicu
+ * hĺbky (hĺbka = plocha / šírka ramena, šírka = medián plochy / medián vzdialenosti
+ * stredov; podesta tak vyjde hlbšia). Začína pätou o jeden stupeň pred prvým
+ * nábehom (výška podlahy), na podeste vedie vodorovne k päte ďalšieho ramena.
+ * Body sú vo výške vrchu stupňa (bez 1,6 m).
+ */
+export function pitchLine(treads: readonly Tread[]): Vec3[] {
+  if (treads.length < 2) return [];
+  const xy = (t: Tread) => [t.x, t.y];
+  const steps = treads.slice(1).map((t, i) => Math.hypot(t.x - treads[i].x, t.y - treads[i].y));
+  const going = median(steps);
+  const rise = median(treads.slice(1).map((t, i) => t.z - treads[i].z));
+  const width = going > 1e-6 ? median(treads.map((t) => t.area)) / going : 0;
+  const unit = (a: number[], b: number[]) => {
+    const d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [(b[0] - a[0]) / d, (b[1] - a[1]) / d];
+  };
+  // Smer chôdze pri stupni i: od predošlého stredu k jeho (prvý stupeň: k ďalšiemu).
+  const dir = (i: number) => (i === 0 ? unit(xy(treads[0]), xy(treads[1])) : unit(xy(treads[i - 1]), xy(treads[i])));
+  const depth = (t: Tread) => (width > 1e-6 ? t.area / width : going);
+  const nosing = treads.map((t, i): Vec3 => {
+    const u = dir(i);
+    const h = Math.min(depth(t), 4 * going) / 2;
+    return [t.x - u[0] * h, t.y - u[1] * h, t.z];
+  });
+  const foot = (i: number): Vec3 => {
+    const u = dir(i);
+    return [nosing[i][0] - u[0] * going, nosing[i][1] - u[1] * going, nosing[i][2] - rise];
+  };
+  const line: Vec3[] = [foot(0), nosing[0]];
+  for (let i = 1; i < treads.length; i++) {
+    // Podesta: medzi nábehmi viac ako 1,5 stupňa -> vodorovne k päte ďalšieho ramena.
+    const gap = Math.hypot(nosing[i][0] - nosing[i - 1][0], nosing[i][1] - nosing[i - 1][1]);
+    if (gap > 1.5 * going) line.push(foot(i));
+    line.push(nosing[i]);
+  }
+  // Horná podesta v prvku: vodorovne do jej stredu.
+  const top = treads[treads.length - 1];
+  if (depth(top) > 1.5 * going) line.push([top.x, top.y, top.z]);
+  return line;
+}
+
+/**
+ * Čiara po schodisku zdola nahor: referenčná čiara ramena (`pitchLine`), plynulo
+ * šikmá, na podestách vodorovne. Platí pre rovné aj točité ramená. Ramená (inak
+ * časti schodiska) v poradí podľa výšky. Prvok bez vodorovných plôch: os obálky
+ * v smere stúpania, výška = vrch pod bodom.
  */
 function stairLine(st: NavStair, meshes: Map<string, MeshElement>): Vec3[] {
   const runs = (st.flights.length > 0 ? st.flights : st.parts).map((g) => meshes.get(g)).filter((e): e is MeshElement => !!e);
   const lines: Vec3[][] = [];
   for (const e of runs) {
     const s = surfaceOf(e);
-    const treads = treadsOf(s);
-    if (treads.length >= 2) {
-      const line: Vec3[] = [[treads[0].x, treads[0].y, treads[0].z]];
-      for (let i = 1; i < treads.length; i++) {
-        const [a, b] = [treads[i - 1], treads[i]];
-        const [mx, my] = [(a.x + b.x) / 2, (a.y + b.y) / 2];
-        line.push([mx, my, a.z], [mx, my, b.z], [b.x, b.y, b.z]);
-      }
-      lines.push(line);
+    const pitch = pitchLine(treadsOf(s));
+    if (pitch.length >= 2) {
+      lines.push(pitch);
       continue;
     }
     const { min, max } = s.box;
