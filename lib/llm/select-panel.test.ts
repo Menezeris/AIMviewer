@@ -78,4 +78,8 @@ describe("panely z chatu (D-127)", () => {
     ]);
     expect(parseOps("panels:~all=open~legend=close~lens=hide:")).toEqual([]);
   });
+
+  it("2D výkres rezu (D-136): drawing ide na most ako ostatné panely", () => {
+    expect(parseOps(panelsOp({ drawing: "open" })).map(opToBridgeMessage)).toEqual([{ type: "SET_PANELS", panels: { drawing: "open" } }]);
+  });
 });

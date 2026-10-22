@@ -175,11 +175,11 @@ export function planViewMode(
 export function planPanels(input: Record<string, unknown>): { op: string; label: string; result: { panels: PanelsRequest } } | null {
   const raw = input.panels;
   if (raw === undefined || raw === null) return null;
-  if (typeof raw !== "object" || Array.isArray(raw)) throw new ViewInputError("panels = {lens|properties|underlays|documents|lists|model_tree|all: open|close|toggle}.");
+  if (typeof raw !== "object" || Array.isArray(raw)) throw new ViewInputError(`panels = {${VIEWER_PANELS.join("|")}|all: open|close|toggle}.`);
   const out: PanelsRequest = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     const known = (VIEWER_PANELS as readonly string[]).includes(k) || k === "all";
-    if (!known) throw new ViewInputError(`panels: neznámy panel '${k}' (lens, properties, underlays, documents, lists, model_tree, all).`);
+    if (!known) throw new ViewInputError(`panels: neznámy panel '${k}' (${VIEWER_PANELS.join(", ")}, all).`);
     if (!(PANEL_ACTIONS as readonly unknown[]).includes(v)) throw new ViewInputError(`panels.${k}: open, close alebo toggle.`);
     if (k === "all" && v !== "close") throw new ViewInputError("panels.all: len close (zatvorí všetky panely, okrem tých, ktoré správa otvára).");
     out[k as keyof PanelsRequest] = v as PanelsRequest[keyof PanelsRequest];

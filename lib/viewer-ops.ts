@@ -78,8 +78,8 @@ export interface SelectPanel {
   focus?: { pset: string; property: string };
 }
 
-/** Panely viewera z chatu (D-127): mená zhodné s mostom forku (`view-protocol.ts`). */
-export const VIEWER_PANELS = ["lens", "properties", "underlays", "documents", "lists", "model_tree"] as const;
+/** Panely viewera z chatu (D-127, `drawing` D-136): mená zhodné s mostom forku (`view-protocol.ts`). */
+export const VIEWER_PANELS = ["lens", "properties", "underlays", "documents", "lists", "model_tree", "drawing"] as const;
 export type ViewerPanel = (typeof VIEWER_PANELS)[number];
 export const PANEL_ACTIONS = ["open", "close", "toggle"] as const;
 export type PanelAction = (typeof PANEL_ACTIONS)[number];

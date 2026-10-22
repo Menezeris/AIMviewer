@@ -182,9 +182,12 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "('späť na 3D' = tab='3D'), beside=menovka dá záložku vedľa aktívnej (dokument vedľa 3D alebo pohľadu; none " +
       "zruší), close_tab=menovka alebo all zavrie. Otvorené záložky (tabs) vráti stav po príkaze aj get_viewer_state. " +
       "Dokument do záložky = open_drawing(target=tab). PANELY: panels otvorí, zavrie alebo " +
-      "prepne panely (lens, properties, underlays, documents, lists, model_tree; all=close = čistý pohľad, " +
+      "prepne panely (lens, properties, underlays, documents, lists, model_tree, drawing; all=close = čistý pohľad, " +
       "napr. {all: 'close', properties: 'open'} = všetko okrem vlastností), aj bez mode; výsledok vráti stav " +
-      "všetkých panelov (open, where left/right/bottom/floating, size).",
+      "všetkých panelov (open, where left/right/bottom/floating, size). drawing = 2D výkres aktuálneho rezu " +
+      "generovaný z modelu (bez podkladu, D-136) v spodnom páse pod 3D: pôdorys podlažia vedľa 3D bez " +
+      "kalibrovaného podkladu = set_section(action=set, floor) + set_view_mode(panels={drawing: 'open'}); 3D ostane " +
+      "voľné, ale rezané na tom podlaží. Dlaždice s viacerými 3D pohľadmi viewer nemá (jeden 3D canvas).",
     inputSchema: {
       type: "object",
       properties: {
