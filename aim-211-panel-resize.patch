@@ -1,0 +1,726 @@
+From 8d1d65aa0c794265a6d1ea25911905bd3049756b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 09:36:06 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?AIM=20#211:=20stlpec=20vlastnosti=20sa=20ch?=
+ =?UTF-8?q?yta=20lahsie,=20p=C3=B4dorys=20sa=20po=20zmene=20velkosti=20zno?=
+ =?UTF-8?q?va=20vyplni?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Uchytka stlpca vlastnosti (SidebarDock) ma zonu chytenia 6 px a lezi tesne pri
+canvase: chyba o par px chytila pôdorys a posunula ho. Zona sa predlzi o 6 px do
+canvasu. Zamknuty kolmy pohlad (pôdorys v zalozke) si po zmene velkosti plochy
+drzal stare mierky, preto ostal ako maly blok pri okraji; novy planRefit.ts ho po
+ustaleni velkosti prisposobi cez fitAll upstreamu.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01FrrpeHSEumb7La71mE3vpS
+---
+ apps/viewer/src/aim/planRefit.test.ts         | 126 ++++++++++++++++++
+ apps/viewer/src/aim/planRefit.ts              |  79 +++++++++++
+ apps/viewer/src/aim/useAimCenterPanes.ts      |   3 +
+ apps/viewer/src/aim/useAimPlanRefit.ts        |  46 +++++++
+ .../components/viewer/sidebar/SidebarDock.tsx |   6 +-
+ 5 files changed, 259 insertions(+), 1 deletion(-)
+ create mode 100644 apps/viewer/src/aim/planRefit.test.ts
+ create mode 100644 apps/viewer/src/aim/planRefit.ts
+ create mode 100644 apps/viewer/src/aim/useAimPlanRefit.ts
+
+diff --git a/apps/viewer/src/aim/planRefit.test.ts b/apps/viewer/src/aim/planRefit.test.ts
+new file mode 100644
+index 00000000..1d93c357
+--- /dev/null
++++ b/apps/viewer/src/aim/planRefit.test.ts
+@@ -0,0 +1,126 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import assert from 'node:assert/strict';
++import { describe, it } from 'node:test';
++
++import {
++  REFIT_MIN_DELTA_PX, REFIT_MIN_SIZE_PX, REFIT_SETTLE_MS, createPlanRefit, shouldRefit,
++  type RefitContext, type Size,
++} from './planRefit.js';
++
++const PLAN: RefitContext = { planInCanvas: true, lockedTopDown: true };
++const size = (width: number, height = 700): Size => ({ width, height });
++
++/** Falošný časovač: `advance` spustí splatné funkcie, `fits` počíta prispôsobenia. */
++function harness(ctx: () => RefitContext = () => PLAN) {
++  let now = 0;
++  let nextId = 1;
++  const timers = new Map<number, { at: number; fn: () => void }>();
++  let fits = 0;
++  const refit = createPlanRefit({
++    context: ctx,
++    fit: () => { fits++; },
++    setTimer: (fn, ms) => { const id = nextId++; timers.set(id, { at: now + ms, fn }); return id; },
++    clearTimer: (id) => { timers.delete(id as number); },
++  });
++  return {
++    refit,
++    advance(ms: number) {
++      now += ms;
++      for (const [id, t] of [...timers]) if (t.at <= now) { timers.delete(id); t.fn(); }
++    },
++    fits: () => fits,
++  };
++}
++
++describe('shouldRefit: kedy sa pôdorys prispôsobí zmene veľkosti (AIM #211)', () => {
++  it('pôdorys v canvase a veľkosť sa zmenila: áno', () => {
++    assert.equal(shouldRefit(size(1200), size(900), PLAN), true);
++    assert.equal(shouldRefit(size(900, 600), size(900, 700), PLAN), true, 'aj len výška');
++  });
++
++  it('šum rozloženia pod prahom: nie', () => {
++    assert.equal(shouldRefit(size(1000), size(1000 + REFIT_MIN_DELTA_PX - 1), PLAN), false);
++    assert.equal(shouldRefit(size(1000), size(1000 - REFIT_MIN_DELTA_PX), PLAN), true, 'presne prah už áno');
++  });
++
++  it('voľná 3D, uložený pohľad alebo dokument: pohľad používateľa sa nemení', () => {
++    assert.equal(shouldRefit(size(1200), size(900), { planInCanvas: false, lockedTopDown: true }), false);
++    assert.equal(shouldRefit(size(1200), size(900), { planInCanvas: true, lockedTopDown: false }), false);
++  });
++
++  it('zbalená plocha (dokument na celú plochu) nie je pohľad na vyplnenie', () => {
++    assert.equal(shouldRefit(size(1200), size(REFIT_MIN_SIZE_PX - 1), PLAN), false);
++    assert.equal(shouldRefit(size(1200), size(900, REFIT_MIN_SIZE_PX - 1), PLAN), false);
++  });
++
++  it('bez východiskovej veľkosti sa nič neprispôsobuje', () => {
++    assert.equal(shouldRefit(null, size(900), PLAN), false);
++  });
++});
++
++describe('createPlanRefit: ťahanie úchytky stĺpca vyvolá jedno prispôsobenie po ustálení', () => {
++  it('desiatky zmien veľkosti počas ťahania = jedno fit po tichu', () => {
++    const h = harness();
++    h.refit.resized(size(1200));
++    h.advance(REFIT_SETTLE_MS);
++    for (let w = 1190; w >= 900; w -= 10) { h.refit.resized(size(w)); h.advance(16); }
++    assert.equal(h.fits(), 0, 'počas ťahania sa nič nehýbe');
++    h.advance(REFIT_SETTLE_MS);
++    assert.equal(h.fits(), 1);
++  });
++
++  it('prvé rozloženie pri štarte len zapíše východiskovú veľkosť', () => {
++    const h = harness();
++    h.refit.resized(size(1200));
++    h.advance(REFIT_SETTLE_MS * 2);
++    assert.equal(h.fits(), 0);
++  });
++
++  it('návrat na pôvodnú veľkosť pred ustálením nič neprispôsobí', () => {
++    const h = harness();
++    h.refit.resized(size(1200));
++    h.advance(REFIT_SETTLE_MS);
++    h.refit.resized(size(800));
++    h.advance(50);
++    h.refit.resized(size(1200));
++    h.advance(REFIT_SETTLE_MS);
++    assert.equal(h.fits(), 0);
++  });
++
++  it('ďalšie ustálenie sa porovnáva s poslednou ustálenou veľkosťou', () => {
++    const h = harness();
++    h.refit.resized(size(1200));
++    h.advance(REFIT_SETTLE_MS);
++    h.refit.resized(size(900));
++    h.advance(REFIT_SETTLE_MS);
++    h.refit.resized(size(900.5));
++    h.advance(REFIT_SETTLE_MS);
++    h.refit.resized(size(1100));
++    h.advance(REFIT_SETTLE_MS);
++    assert.equal(h.fits(), 2);
++  });
++
++  it('kontext sa číta až po ustálení: záložka prepnutá počas ťahania rozhoduje', () => {
++    let ctx = PLAN;
++    const h = harness(() => ctx);
++    h.refit.resized(size(1200));
++    h.advance(REFIT_SETTLE_MS);
++    h.refit.resized(size(900));
++    ctx = { planInCanvas: false, lockedTopDown: false };
++    h.advance(REFIT_SETTLE_MS);
++    assert.equal(h.fits(), 0);
++  });
++
++  it('dispose zruší čakajúce prispôsobenie', () => {
++    const h = harness();
++    h.refit.resized(size(1200));
++    h.advance(REFIT_SETTLE_MS);
++    h.refit.resized(size(900));
++    h.refit.dispose();
++    h.advance(REFIT_SETTLE_MS * 2);
++    assert.equal(h.fits(), 0);
++  });
++});
+diff --git a/apps/viewer/src/aim/planRefit.ts b/apps/viewer/src/aim/planRefit.ts
+new file mode 100644
+index 00000000..2afb98d8
+--- /dev/null
++++ b/apps/viewer/src/aim/planRefit.ts
+@@ -0,0 +1,79 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Pôdorys v záložke (AIM #211): po zmene veľkosti plochy sa znova vyplní. Zamknutý
++ * kolmý pohľad zhora (`enterDrawingView`) si po zmene veľkosti canvasu držal staré
++ * mierky a posun, takže pri zúžení alebo rozšírení stĺpca vlastností ostal pôdorys ako
++ * malý blok pri okraji a vedľa neho prázdna plocha. Ťahanie úchytky stĺpca vyvolá
++ * desiatky zmien veľkosti, preto sa kamera prispôsobí až po ustálení (debounce) a len
++ * keď sa veľkosť naozaj zmenila. Čistý modul bez store a DOM (test), napojenie je v
++ * `useAimPlanRefit.ts`.
++ */
++
++export interface Size { width: number; height: number }
++
++/** Čo o scéne treba vedieť pri rozhodovaní; číta sa až po ustálení, nie pri každej zmene. */
++export interface RefitContext {
++  /** Aktívna 3D strana je pôdorys podlažia (nie 3D, uložený pohľad ani dokument). */
++  planInCanvas: boolean;
++  /** Kamera je zamknutá kolmo zhora (pôdorys, nie voľná 3D). */
++  lockedTopDown: boolean;
++}
++
++/** Zmeny menšie ako toto (px) sú šum rozloženia, pôdorys sa nehýbe. */
++export const REFIT_MIN_DELTA_PX = 4;
++/** Plocha menšia ako toto (px) je zbalený panel, nie pohľad na vyplnenie. */
++export const REFIT_MIN_SIZE_PX = 80;
++/** Ticho po poslednej zmene veľkosti, kým sa pôdorys prispôsobí (ms). */
++export const REFIT_SETTLE_MS = 180;
++
++/** Má sa pôdorys prispôsobiť zmene veľkosti `prev` -> `next`? */
++export function shouldRefit(prev: Size | null, next: Size, ctx: RefitContext): boolean {
++  if (!ctx.planInCanvas || !ctx.lockedTopDown) return false;
++  if (next.width < REFIT_MIN_SIZE_PX || next.height < REFIT_MIN_SIZE_PX) return false;
++  if (!prev) return false;
++  return Math.abs(next.width - prev.width) >= REFIT_MIN_DELTA_PX || Math.abs(next.height - prev.height) >= REFIT_MIN_DELTA_PX;
++}
++
++export interface PlanRefitDeps {
++  context: () => RefitContext;
++  fit: () => void;
++  setTimer?: (fn: () => void, ms: number) => unknown;
++  clearTimer?: (id: unknown) => void;
++}
++
++/**
++ * Regulátor: `resized(size)` sa volá pri každej zmene veľkosti, `fit` prebehne raz po
++ * ustálení. Prvá vzorka (rozloženie pri štarte) len zapíše východiskovú veľkosť.
++ */
++export function createPlanRefit(deps: PlanRefitDeps) {
++  const setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
++  const clearTimer = deps.clearTimer ?? ((id) => clearTimeout(id as ReturnType<typeof setTimeout>));
++  let settled: Size | null = null;
++  let latest: Size | null = null;
++  let timer: unknown = null;
++
++  const settle = () => {
++    timer = null;
++    const next = latest;
++    if (!next) return;
++    const prev = settled;
++    settled = next;
++    if (shouldRefit(prev, next, deps.context())) deps.fit();
++  };
++
++  return {
++    resized(size: Size) {
++      latest = size;
++      if (!settled) settled = size;
++      if (timer !== null) clearTimer(timer);
++      timer = setTimer(settle, REFIT_SETTLE_MS);
++    },
++    dispose() {
++      if (timer !== null) clearTimer(timer);
++      timer = null;
++    },
++  };
++}
+diff --git a/apps/viewer/src/aim/useAimCenterPanes.ts b/apps/viewer/src/aim/useAimCenterPanes.ts
+index 26d6740f..53321e0a 100644
+--- a/apps/viewer/src/aim/useAimCenterPanes.ts
++++ b/apps/viewer/src/aim/useAimCenterPanes.ts
+@@ -21,6 +21,7 @@ import { useViewerStore } from '@/store';
+ import { useFloorplanView } from '@/hooks/useFloorplanView';
+ import { centerLayout } from './viewTabsLayout.js';
+ import { useAimViewTabs } from './viewTabsStore.js';
++import { useAimPlanRefit } from './useAimPlanRefit.js';
+ 
+ /** Šírka panela dokumentu pri prvom otvorení vedľa 3D, % strednej skupiny. */
+ const DOC_PANE_OPEN_PCT = '42%';
+@@ -31,6 +32,8 @@ function resizePanelPct(panel: PanelImperativeHandle, size: string): void {
+ }
+ 
+ export function useAimCenterPanes(isMobile: boolean) {
++  // AIM #211: pôdorys v záložke sa po zmene veľkosti plochy (stĺpec vlastností) znova vyplní.
++  useAimPlanRefit(isMobile);
+   // D-072 split: panel plánu sa rozbalí a zbalí s `underlaySplitView`.
+   const underlaySplitView = useViewerStore((s) => s.underlaySplitView);
+   const planePanelRef = useRef<PanelImperativeHandle>(null);
+diff --git a/apps/viewer/src/aim/useAimPlanRefit.ts b/apps/viewer/src/aim/useAimPlanRefit.ts
+new file mode 100644
+index 00000000..bcb188ce
+--- /dev/null
++++ b/apps/viewer/src/aim/useAimPlanRefit.ts
+@@ -0,0 +1,46 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Napojenie `planRefit.ts` na viewer (AIM #211): sleduje veľkosť strednej plochy
++ * (región `data-floating-snap-bounds`, ktorý sa mení s úchytkou stĺpca vlastností aj
++ * hierarchie) a po ustálení zavolá `fitAll` upstreamu: priblíženie bez zmeny smeru
++ * pohľadu. Nič nové nepočíta (D-098). Volá ho `useAimCenterPanes`.
++ */
++
++import { useEffect } from 'react';
++import { useViewerStore } from '@/store';
++import { createPlanRefit } from './planRefit.js';
++import { useAimViewTabs } from './viewTabsStore.js';
++
++const BOUNDS_SELECTOR = '[data-floating-snap-bounds]';
++
++export function useAimPlanRefit(isMobile: boolean): void {
++  useEffect(() => {
++    if (isMobile || typeof ResizeObserver === 'undefined') return;
++    const el = document.querySelector(BOUNDS_SELECTOR);
++    if (!el) return;
++    const refit = createPlanRefit({
++      context: () => {
++        const tabs = useAimViewTabs.getState();
++        const scene = tabs.tabs.find((t) => t.id === tabs.sceneId);
++        const s = useViewerStore.getState();
++        return {
++          planInCanvas: scene?.kind === 'plan',
++          lockedTopDown: s.underlayViewLocked && s.projectionMode === 'orthographic',
++        };
++      },
++      fit: () => useViewerStore.getState().cameraCallbacks.fitAll?.(),
++    });
++    const ro = new ResizeObserver((entries) => {
++      const box = entries[entries.length - 1]?.contentRect;
++      if (box) refit.resized({ width: box.width, height: box.height });
++    });
++    ro.observe(el);
++    return () => {
++      ro.disconnect();
++      refit.dispose();
++    };
++  }, [isMobile]);
++}
+diff --git a/apps/viewer/src/components/viewer/sidebar/SidebarDock.tsx b/apps/viewer/src/components/viewer/sidebar/SidebarDock.tsx
+index e1471ba7..9e7d1569 100644
+--- a/apps/viewer/src/components/viewer/sidebar/SidebarDock.tsx
++++ b/apps/viewer/src/components/viewer/sidebar/SidebarDock.tsx
+@@ -111,13 +111,17 @@ export function SidebarDock() {
+       {mode === 'expanded' && (
+         <>
+           {/* Resize handle */}
++          {/* >>> AIM-FORK: AIM #211 — the 6 px handle sat flush against the canvas, and a grab that missed
++              it by a few px landed on the plan and panned it. The ::before widens the hit zone 6 px into
++              the canvas; z-10 keeps it above the scene overlays. */}
+           <div
+             onMouseDown={onResizeStart}
+-            className="w-1.5 shrink-0 cursor-col-resize bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors"
++            className="relative z-10 w-1.5 shrink-0 cursor-col-resize bg-border before:absolute before:inset-y-0 before:-left-1.5 before:right-0 before:content-[''] hover:bg-primary/50 active:bg-primary/70 transition-colors"
+             role="separator"
+             aria-orientation="vertical"
+             aria-label={t('shellChrome.sidebarDock.resizeAriaLabel')}
+           />
++          {/* <<< AIM-FORK */}
+           <div
+             className="h-full min-w-0 overflow-hidden panel-container flex flex-col"
+             style={{ width: contentPx ?? `${effectivePct}%` }}
+-- 
+2.43.0
+
+
+From 49d0d9ed6427b3b1ea8215e68520d346ced5b2b1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 09:36:06 +0000
+Subject: [PATCH 2/2] AIM #211: mutacne dokazy planRefit (9x OBSERVED)
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01FrrpeHSEumb7La71mE3vpS
+---
+ .../aim-211-panel-resize/mutations/README.md  |  34 +++++
+ .../mutations/collapsed-size-allowed.patch    |  13 ++
+ .../mutations/delta-threshold-exclusive.patch |  13 ++
+ .../mutations/dispose-keeps-timer.patch       |  15 ++
+ .../mutations/first-sample-triggers.patch     |  13 ++
+ .../mutations/height-ignored.patch            |  13 ++
+ .../mutations/lock-check-dropped.patch        |  13 ++
+ .../mutations/no-debounce-reset.patch         |  12 ++
+ .../mutations/plan-check-dropped.patch        |  13 ++
+ .../mutations/settled-not-updated.patch       |  12 ++
+ .../mutations/summary.json                    | 128 ++++++++++++++++++
+ 11 files changed, 279 insertions(+)
+ create mode 100644 docs/architecture/evidence/aim-211-panel-resize/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-211-panel-resize/mutations/collapsed-size-allowed.patch
+ create mode 100644 docs/architecture/evidence/aim-211-panel-resize/mutations/delta-threshold-exclusive.patch
+ create mode 100644 docs/architecture/evidence/aim-211-panel-resize/mutations/dispose-keeps-timer.patch
+ create mode 100644 docs/architecture/evidence/aim-211-panel-resize/mutations/first-sample-triggers.patch
+ create mode 100644 docs/architecture/evidence/aim-211-panel-resize/mutations/height-ignored.patch
+ create mode 100644 docs/architecture/evidence/aim-211-panel-resize/mutations/lock-check-dropped.patch
+ create mode 100644 docs/architecture/evidence/aim-211-panel-resize/mutations/no-debounce-reset.patch
+ create mode 100644 docs/architecture/evidence/aim-211-panel-resize/mutations/plan-check-dropped.patch
+ create mode 100644 docs/architecture/evidence/aim-211-panel-resize/mutations/settled-not-updated.patch
+ create mode 100644 docs/architecture/evidence/aim-211-panel-resize/mutations/summary.json
+
+diff --git a/docs/architecture/evidence/aim-211-panel-resize/mutations/README.md b/docs/architecture/evidence/aim-211-panel-resize/mutations/README.md
+new file mode 100644
+index 00000000..d425d453
+--- /dev/null
++++ b/docs/architecture/evidence/aim-211-panel-resize/mutations/README.md
+@@ -0,0 +1,34 @@
++<!-- This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this
++     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
++
++# AIM #211 panel resize: surgical mutation evidence
++
++The change adds the new module `apps/viewer/src/aim/planRefit.ts` (pure decision and debounce for refitting a plan tab after the centre area changes size) and a wider hit zone for the properties column handle (`SidebarDock.tsx`, AIM-FORK block). The test `planRefit.test.ts` imports the new module, so reverting it to the base makes the test file fail to load and the CI revert oracle (`Changed tests observe production`) reports INCONCLUSIVE. Each decision of the module was instead checked with a surgical mutation.
++
++Each patch is written mutant to fixed (the orientation of `git diff base...head`); the oracle reverse-applies it. Every run ended `OBSERVED` (exit 0) with restoration verified, against base `origin/main`. The full records are in `summary.json`.
++
++| Patch | Mutation | Test that went red |
++|---|---|---|
++| `plan-check-dropped.patch` | free 3D, a saved view or a document is refitted too, so the user's own view moves | `planRefit.test.ts` |
++| `lock-check-dropped.patch` | a plan tab with an unlocked camera is refitted | `planRefit.test.ts` |
++| `delta-threshold-exclusive.patch` | a change of exactly the threshold does not count | `planRefit.test.ts` |
++| `height-ignored.patch` | only a width change is noticed | `planRefit.test.ts` |
++| `collapsed-size-allowed.patch` | a collapsed centre area (document full screen) is refitted to nothing | `planRefit.test.ts` |
++| `no-debounce-reset.patch` | each resize event keeps its own timer, so a column drag refits many times | `planRefit.test.ts` |
++| `settled-not-updated.patch` | the settled size is never updated, so later checks compare with the first size | `planRefit.test.ts` |
++| `first-sample-triggers.patch` | the layout at start counts as a change | `planRefit.test.ts` |
++| `dispose-keeps-timer.patch` | a pending refit survives `dispose` | `planRefit.test.ts` |
++
++`useAimPlanRefit.ts` (ResizeObserver on the centre region, `fitAll` of upstream) and the `SidebarDock.tsx` class change are store, DOM and layout glue with no unit test; they were checked by reading the code paths and the type check (no live WebGPU in the cloud session, see the PR body).
++
++## Replay
++
++Use a clean checkout of the branch with dependencies installed. Copy the patches outside the tree, because the oracle refuses a dirty tree. Then run, for example:
++
++```bash
++node scripts/check-test-revert-oracle.mjs --base origin/main \
++  --only apps/viewer/src/aim/planRefit.ts \
++  --test apps/viewer/src/aim/planRefit.test.ts \
++  --mutation /tmp/aim211-mut/delta-threshold-exclusive.patch --ci --json
++```
+diff --git a/docs/architecture/evidence/aim-211-panel-resize/mutations/collapsed-size-allowed.patch b/docs/architecture/evidence/aim-211-panel-resize/mutations/collapsed-size-allowed.patch
+new file mode 100644
+index 00000000..d7431f8b
+--- /dev/null
++++ b/docs/architecture/evidence/aim-211-panel-resize/mutations/collapsed-size-allowed.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/planRefit.ts a/apps/viewer/src/aim/planRefit.ts
++index fad54a2b..2afb98d8 100644
++--- b/apps/viewer/src/aim/planRefit.ts
+++++ a/apps/viewer/src/aim/planRefit.ts
++@@ -32,7 +32,7 @@ export const REFIT_SETTLE_MS = 180;
++ /** Má sa pôdorys prispôsobiť zmene veľkosti `prev` -> `next`? */
++ export function shouldRefit(prev: Size | null, next: Size, ctx: RefitContext): boolean {
++   if (!ctx.planInCanvas || !ctx.lockedTopDown) return false;
++-  if (next.width < 0 || next.height < 0) return false;
+++  if (next.width < REFIT_MIN_SIZE_PX || next.height < REFIT_MIN_SIZE_PX) return false;
++   if (!prev) return false;
++   return Math.abs(next.width - prev.width) >= REFIT_MIN_DELTA_PX || Math.abs(next.height - prev.height) >= REFIT_MIN_DELTA_PX;
++ }
+diff --git a/docs/architecture/evidence/aim-211-panel-resize/mutations/delta-threshold-exclusive.patch b/docs/architecture/evidence/aim-211-panel-resize/mutations/delta-threshold-exclusive.patch
+new file mode 100644
+index 00000000..a3c2e9d3
+--- /dev/null
++++ b/docs/architecture/evidence/aim-211-panel-resize/mutations/delta-threshold-exclusive.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/planRefit.ts a/apps/viewer/src/aim/planRefit.ts
++index 60a61e06..2afb98d8 100644
++--- b/apps/viewer/src/aim/planRefit.ts
+++++ a/apps/viewer/src/aim/planRefit.ts
++@@ -34,7 +34,7 @@ export function shouldRefit(prev: Size | null, next: Size, ctx: RefitContext): b
++   if (!ctx.planInCanvas || !ctx.lockedTopDown) return false;
++   if (next.width < REFIT_MIN_SIZE_PX || next.height < REFIT_MIN_SIZE_PX) return false;
++   if (!prev) return false;
++-  return Math.abs(next.width - prev.width) > REFIT_MIN_DELTA_PX || Math.abs(next.height - prev.height) > REFIT_MIN_DELTA_PX;
+++  return Math.abs(next.width - prev.width) >= REFIT_MIN_DELTA_PX || Math.abs(next.height - prev.height) >= REFIT_MIN_DELTA_PX;
++ }
++ 
++ export interface PlanRefitDeps {
+diff --git a/docs/architecture/evidence/aim-211-panel-resize/mutations/dispose-keeps-timer.patch b/docs/architecture/evidence/aim-211-panel-resize/mutations/dispose-keeps-timer.patch
+new file mode 100644
+index 00000000..d7c7dc45
+--- /dev/null
++++ b/docs/architecture/evidence/aim-211-panel-resize/mutations/dispose-keeps-timer.patch
+@@ -0,0 +1,15 @@
++diff --git b/apps/viewer/src/aim/planRefit.ts a/apps/viewer/src/aim/planRefit.ts
++index b8cb4067..2afb98d8 100644
++--- b/apps/viewer/src/aim/planRefit.ts
+++++ a/apps/viewer/src/aim/planRefit.ts
++@@ -71,6 +71,9 @@ export function createPlanRefit(deps: PlanRefitDeps) {
++       if (timer !== null) clearTimer(timer);
++       timer = setTimer(settle, REFIT_SETTLE_MS);
++     },
++-    dispose() {},
+++    dispose() {
+++      if (timer !== null) clearTimer(timer);
+++      timer = null;
+++    },
++   };
++ }
+diff --git a/docs/architecture/evidence/aim-211-panel-resize/mutations/first-sample-triggers.patch b/docs/architecture/evidence/aim-211-panel-resize/mutations/first-sample-triggers.patch
+new file mode 100644
+index 00000000..291611ec
+--- /dev/null
++++ b/docs/architecture/evidence/aim-211-panel-resize/mutations/first-sample-triggers.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/planRefit.ts a/apps/viewer/src/aim/planRefit.ts
++index cb72b1d8..2afb98d8 100644
++--- b/apps/viewer/src/aim/planRefit.ts
+++++ a/apps/viewer/src/aim/planRefit.ts
++@@ -67,7 +67,7 @@ export function createPlanRefit(deps: PlanRefitDeps) {
++   return {
++     resized(size: Size) {
++       latest = size;
++-      if (!settled) settled = { width: 0, height: 0 };
+++      if (!settled) settled = size;
++       if (timer !== null) clearTimer(timer);
++       timer = setTimer(settle, REFIT_SETTLE_MS);
++     },
+diff --git a/docs/architecture/evidence/aim-211-panel-resize/mutations/height-ignored.patch b/docs/architecture/evidence/aim-211-panel-resize/mutations/height-ignored.patch
+new file mode 100644
+index 00000000..7fd2ec53
+--- /dev/null
++++ b/docs/architecture/evidence/aim-211-panel-resize/mutations/height-ignored.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/planRefit.ts a/apps/viewer/src/aim/planRefit.ts
++index c2faa56f..2afb98d8 100644
++--- b/apps/viewer/src/aim/planRefit.ts
+++++ a/apps/viewer/src/aim/planRefit.ts
++@@ -34,7 +34,7 @@ export function shouldRefit(prev: Size | null, next: Size, ctx: RefitContext): b
++   if (!ctx.planInCanvas || !ctx.lockedTopDown) return false;
++   if (next.width < REFIT_MIN_SIZE_PX || next.height < REFIT_MIN_SIZE_PX) return false;
++   if (!prev) return false;
++-  return Math.abs(next.width - prev.width) >= REFIT_MIN_DELTA_PX ;
+++  return Math.abs(next.width - prev.width) >= REFIT_MIN_DELTA_PX || Math.abs(next.height - prev.height) >= REFIT_MIN_DELTA_PX;
++ }
++ 
++ export interface PlanRefitDeps {
+diff --git a/docs/architecture/evidence/aim-211-panel-resize/mutations/lock-check-dropped.patch b/docs/architecture/evidence/aim-211-panel-resize/mutations/lock-check-dropped.patch
+new file mode 100644
+index 00000000..12c705cc
+--- /dev/null
++++ b/docs/architecture/evidence/aim-211-panel-resize/mutations/lock-check-dropped.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/planRefit.ts a/apps/viewer/src/aim/planRefit.ts
++index 0f72e803..2afb98d8 100644
++--- b/apps/viewer/src/aim/planRefit.ts
+++++ a/apps/viewer/src/aim/planRefit.ts
++@@ -31,7 +31,7 @@ export const REFIT_SETTLE_MS = 180;
++ 
++ /** Má sa pôdorys prispôsobiť zmene veľkosti `prev` -> `next`? */
++ export function shouldRefit(prev: Size | null, next: Size, ctx: RefitContext): boolean {
++-  if (!ctx.planInCanvas) return false;
+++  if (!ctx.planInCanvas || !ctx.lockedTopDown) return false;
++   if (next.width < REFIT_MIN_SIZE_PX || next.height < REFIT_MIN_SIZE_PX) return false;
++   if (!prev) return false;
++   return Math.abs(next.width - prev.width) >= REFIT_MIN_DELTA_PX || Math.abs(next.height - prev.height) >= REFIT_MIN_DELTA_PX;
+diff --git a/docs/architecture/evidence/aim-211-panel-resize/mutations/no-debounce-reset.patch b/docs/architecture/evidence/aim-211-panel-resize/mutations/no-debounce-reset.patch
+new file mode 100644
+index 00000000..bf5b076f
+--- /dev/null
++++ b/docs/architecture/evidence/aim-211-panel-resize/mutations/no-debounce-reset.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/planRefit.ts a/apps/viewer/src/aim/planRefit.ts
++index 5d8c1889..2afb98d8 100644
++--- b/apps/viewer/src/aim/planRefit.ts
+++++ a/apps/viewer/src/aim/planRefit.ts
++@@ -68,6 +68,7 @@ export function createPlanRefit(deps: PlanRefitDeps) {
++     resized(size: Size) {
++       latest = size;
++       if (!settled) settled = size;
+++      if (timer !== null) clearTimer(timer);
++       timer = setTimer(settle, REFIT_SETTLE_MS);
++     },
++     dispose() {
+diff --git a/docs/architecture/evidence/aim-211-panel-resize/mutations/plan-check-dropped.patch b/docs/architecture/evidence/aim-211-panel-resize/mutations/plan-check-dropped.patch
+new file mode 100644
+index 00000000..9bec11ca
+--- /dev/null
++++ b/docs/architecture/evidence/aim-211-panel-resize/mutations/plan-check-dropped.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/planRefit.ts a/apps/viewer/src/aim/planRefit.ts
++index a5fda767..2afb98d8 100644
++--- b/apps/viewer/src/aim/planRefit.ts
+++++ a/apps/viewer/src/aim/planRefit.ts
++@@ -31,7 +31,7 @@ export const REFIT_SETTLE_MS = 180;
++ 
++ /** Má sa pôdorys prispôsobiť zmene veľkosti `prev` -> `next`? */
++ export function shouldRefit(prev: Size | null, next: Size, ctx: RefitContext): boolean {
++-  if (!ctx.lockedTopDown) return false;
+++  if (!ctx.planInCanvas || !ctx.lockedTopDown) return false;
++   if (next.width < REFIT_MIN_SIZE_PX || next.height < REFIT_MIN_SIZE_PX) return false;
++   if (!prev) return false;
++   return Math.abs(next.width - prev.width) >= REFIT_MIN_DELTA_PX || Math.abs(next.height - prev.height) >= REFIT_MIN_DELTA_PX;
+diff --git a/docs/architecture/evidence/aim-211-panel-resize/mutations/settled-not-updated.patch b/docs/architecture/evidence/aim-211-panel-resize/mutations/settled-not-updated.patch
+new file mode 100644
+index 00000000..7e1059ac
+--- /dev/null
++++ b/docs/architecture/evidence/aim-211-panel-resize/mutations/settled-not-updated.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/planRefit.ts a/apps/viewer/src/aim/planRefit.ts
++index 46ee4faa..2afb98d8 100644
++--- b/apps/viewer/src/aim/planRefit.ts
+++++ a/apps/viewer/src/aim/planRefit.ts
++@@ -60,6 +60,7 @@ export function createPlanRefit(deps: PlanRefitDeps) {
++     const next = latest;
++     if (!next) return;
++     const prev = settled;
+++    settled = next;
++     if (shouldRefit(prev, next, deps.context())) deps.fit();
++   };
++ 
+diff --git a/docs/architecture/evidence/aim-211-panel-resize/mutations/summary.json b/docs/architecture/evidence/aim-211-panel-resize/mutations/summary.json
+new file mode 100644
+index 00000000..cbeb3fc6
+--- /dev/null
++++ b/docs/architecture/evidence/aim-211-panel-resize/mutations/summary.json
+@@ -0,0 +1,128 @@
++{
++  "collapsed-size-allowed": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/planRefit.test.ts; that file has a green, attributable baseline.",
++    "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++    "head": "b2c7500842634321fb436137367f29b07a862690",
++    "production": [
++      "apps/viewer/src/aim/planRefit.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/planRefit.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "delta-threshold-exclusive": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/planRefit.test.ts; that file has a green, attributable baseline.",
++    "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++    "head": "b2c7500842634321fb436137367f29b07a862690",
++    "production": [
++      "apps/viewer/src/aim/planRefit.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/planRefit.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "dispose-keeps-timer": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/planRefit.test.ts; that file has a green, attributable baseline.",
++    "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++    "head": "b2c7500842634321fb436137367f29b07a862690",
++    "production": [
++      "apps/viewer/src/aim/planRefit.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/planRefit.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "first-sample-triggers": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/planRefit.test.ts; that file has a green, attributable baseline.",
++    "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++    "head": "b2c7500842634321fb436137367f29b07a862690",
++    "production": [
++      "apps/viewer/src/aim/planRefit.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/planRefit.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "height-ignored": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/planRefit.test.ts; that file has a green, attributable baseline.",
++    "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++    "head": "b2c7500842634321fb436137367f29b07a862690",
++    "production": [
++      "apps/viewer/src/aim/planRefit.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/planRefit.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "lock-check-dropped": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/planRefit.test.ts; that file has a green, attributable baseline.",
++    "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++    "head": "b2c7500842634321fb436137367f29b07a862690",
++    "production": [
++      "apps/viewer/src/aim/planRefit.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/planRefit.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "no-debounce-reset": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/planRefit.test.ts; that file has a green, attributable baseline.",
++    "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++    "head": "b2c7500842634321fb436137367f29b07a862690",
++    "production": [
++      "apps/viewer/src/aim/planRefit.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/planRefit.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "plan-check-dropped": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/planRefit.test.ts; that file has a green, attributable baseline.",
++    "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++    "head": "b2c7500842634321fb436137367f29b07a862690",
++    "production": [
++      "apps/viewer/src/aim/planRefit.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/planRefit.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "settled-not-updated": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/planRefit.test.ts; that file has a green, attributable baseline.",
++    "base": "660ebd8635496c3f0150f29a8f009adcaa761e7c",
++    "head": "b2c7500842634321fb436137367f29b07a862690",
++    "production": [
++      "apps/viewer/src/aim/planRefit.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/planRefit.test.ts"
++    ],
++    "restoration": "verified"
++  }
++}
+-- 
+2.43.0
+
