@@ -50,3 +50,27 @@ describe("zoznam z chatu (D-111)", () => {
     expect(decodeListWire(enc({ ...WIRE, r: 2 }))).toBeNull();
   });
 });
+
+describe("úprava zoznamu cez op list (D-149)", () => {
+  const enc = (w: unknown) => listOp(w as ListWire).slice("list::".length);
+  const UPDATE: ListWire = { n: "", g: [], c: [], u: 1, v: { m: true, o: { c: { s: "attribute", k: "Name" }, d: "desc" }, q: "" } };
+
+  it("u=1 smie byť bez názvu a stĺpcov a preloží sa na LIST_UPDATE", () => {
+    const [o] = parseOps(listOp(UPDATE));
+    expect(opToBridgeMessage(o)).toEqual({
+      type: "LIST_UPDATE",
+      groups: [],
+      view: { maximize: true, sort: { column: { source: "attribute", propertyName: "Name" }, dir: "desc" }, search: "" },
+    });
+  });
+
+  it("chybný view alebo úprava so stĺpcami sa zahodí; otvorenie bez názvu tiež", () => {
+    expect(decodeListWire(enc({ ...UPDATE, c: [{ s: "attribute", k: "Name" }] }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, v: { m: "yes" } }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, v: { o: { c: { s: "sql", k: "x" }, d: "asc" } } }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, v: { sum: [{ s: "quantity", k: "NetVolume" }] } }))).toBeNull();
+    expect(decodeListWire(enc({ ...UPDATE, u: 2 }))).toBeNull();
+    expect(decodeListWire(enc({ ...WIRE, n: "" }))).toBeNull();
+    expect(decodeListWire(enc({ ...WIRE, v: { o: null, sum: [] } }))).not.toBeNull();
+  });
+});

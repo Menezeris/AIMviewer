@@ -73,6 +73,40 @@ export function listStateText(tool: string, state: unknown, run: boolean): strin
   return run ? "" : " Zoznam je otvorený v builderi, Run stlačí používateľ.";
 }
 
+type ListState = {
+  status?: string;
+  visible_rows?: number;
+  sums?: Array<{ column?: string; value?: number; unit?: string }>;
+  maximized?: boolean;
+  sort?: { column?: string; dir?: string } | null;
+};
+
+const VIEW_ARGS = ["maximize", "sort_by", "sum", "group_by", "search"];
+
+/** Úpravy zoznamu (D-149): súčty povedané vetou, a čo sa z `maximize`/`sort_by`/`sum` nevykonalo. */
+export function listViewText(tool: string, state: unknown, args: Record<string, unknown> = {}): string {
+  if (tool !== "open_list") return "";
+  const l = state && typeof state === "object" ? (state as { list?: ListState }).list : undefined;
+  const asked = VIEW_ARGS.some((k) => args[k] !== undefined) || args.action === "update";
+  if (!l || l.status === "failed" || l.status === "not_started") return "";
+  if (asked && l.sums === undefined) return " Viewer neposlal stav tabuľky (staršia verzia viewera?): zoradenie, súčty a maximalizáciu nepotvrdzuj.";
+  const out: string[] = [];
+  const sums = (l.sums ?? []).filter((x) => typeof x.value === "number");
+  if (sums.length > 0) {
+    const rows = typeof l.visible_rows === "number" ? ` za ${l.visible_rows} zobrazených riadkov` : "";
+    out.push(`Súčty${rows}: ${sums.map((x) => `${x.column} = ${x.value}${x.unit ? ` ${x.unit}` : ""}`).join(", ")}.`);
+  } else if (Array.isArray(args.sum) && args.sum.length > 0 && l.status === "done") {
+    out.push("Súčet sa v tabuľke nezobrazil (stĺpec v zozname nie je alebo tabuľka nie je zobrazená): súčet nehlás.");
+  }
+  if (args.maximize === true && l.maximized === false) {
+    out.push("Panel Lists sa nemaximalizoval (nie je v spodnom pruhu viewera alebo tabuľka ešte nie je zobrazená).");
+  }
+  if (typeof args.sort_by === "string" && args.sort_by.trim() && !l.sort && l.status === "done") {
+    out.push("Zoradenie sa neprejavilo (stĺpec v zozname nie je).");
+  }
+  return out.length ? ` ${out.join(" ")}` : "";
+}
+
 export function appliedText(tool: string, a: LiveAppliedPayload, elapsedMs?: number, ctx: AppliedContext = {}): string {
   const head = a.ok
     ? `Vykonané vo vieweri${elapsedMs !== undefined ? ` (${elapsedMs} ms)` : ""}.`
@@ -84,7 +118,7 @@ export function appliedText(tool: string, a: LiveAppliedPayload, elapsedMs?: num
       ? " Pri reze nad podlažím má section.coordinate zodpovedať floor_elevation_model_units + offset_m; ak nie, povedz to a rez nepotvrdzuj."
       : "";
   const warnings = appliedWarnings(tool, a, ctx).map((w) => ` POZOR: ${w}`).join("");
-  const list = listStateText(tool, a.state, ctx.args?.run === true);
+  const list = listStateText(tool, a.state, ctx.args?.run === true) + listViewText(tool, a.state, ctx.args);
   return `${head}${state}${section}${list}${warnings}`;
 }
 
