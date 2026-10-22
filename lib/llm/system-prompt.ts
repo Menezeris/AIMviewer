@@ -37,7 +37,7 @@ Postup podľa typu otázky:
   neporovnávaj čísla psetov cez query_view (porovnáva text).
 - „Čo je v miestnosti X / ktoré VZT prvky sú v X" → query_view relation=v_space_elements
   (filter space_id alebo space_ref; relation contained = zo súboru, referenced =
-  odvodené geometriou; role inside/partial). VZT prvky sú natívne len na podlaží, do
+  odvodené geometriou; boundary = len ohraničuje miestnosť, napr. dvere). VZT prvky sú natívne len na podlaží, do
   miestností ich priraďuje až táto odvodená vrstva — pri odpovedi to spomeň.
 - Súlad modelu s požiadavkami (IDS z knižnice požiadaviek — „spĺňa model zadanie?",
   „ktoré miestnosti nespĺňajú požiadavky a prečo") → query_view v_ids_summary (prehľad

@@ -856,6 +856,14 @@
       "notes": "D-126 (issue #181): query_view relation=v_space_elements (space_ref=2.01, element_ifc_type=IfcAirTerminal) alebo relation=objects s related={relation: rel_referenced_in_spatial_structure, node: 2.01}. Konektor 2026-10-21: v_space_elements 20 riadkov (contained aj referenced); odpoveď nesmie byť z orezanej strany (truncated). Eval 2026-10-21 (D-126): 20 vyústiek DIFFUSER inside; prvé volanie s filtrom ifc_type zlyhalo (stĺpec je element_ifc_type)."
     },
     {
+      "id": "doors-in-space-101-boundary",
+      "category": "relations",
+      "question": "Ktoré dvere (IfcDoor) patria k miestnosti 1.01? Daj úplný zoznam vrátane otáčavých dverí.",
+      "expect": { "tools_called": ["query_view"], "answer_matches": ["DD01\\.08\\.0001"] },
+      "verified": false,
+      "notes": "D-156 (issue #245): query_view relation=v_space_elements (space_ref=1.01, element_ifc_type=IfcDoor); po migrácii a re-ETL musí byť medzi riadkami relation=boundary aj DD01.08.0001 (otáčavé dvere, v 1NP len cez IfcRelSpaceBoundary). Pred re-ETL ich pohľad nevráti. Hodnota zatiaľ neoverená na produkcii."
+    },
+    {
       "id": "air-terminals-count-paged",
       "category": "count",
       "question": "Koľko je v budove vyústiek? Vypíš ich všetky.",

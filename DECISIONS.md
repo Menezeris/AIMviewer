@@ -6846,3 +6846,31 @@ nepobežali (bez Supabase kľúčov); otázka `panel-scroll-down` je v `eval/que
 **Zavrhnuté:** nový tool (D-114, rozšírenie stačí); výber plochy klikom vo vieweri teraz (potreboval by fork a nový most, D-087; neskôr); osi z `IfcObjectPlacement` teraz (presnejšie pri šikmých a okrúhlych prvkoch, ale pôdorysný obdĺžnik pokrýva steny, dvere, stĺpy a nosníky; neskôr).
 
 **Overenie:** `lib/engine/measure-faces.test.ts` (osi otočenej steny, jedna os, hrúbka steny, líca zárubne v oboch poradiach bez krídla a kľučky, svetlá výška s prahom, dva prvky, chyby vstupu, kóty svetlého otvoru, motor na mini modeli s `show`). Evaly (D-057) v cloud session bez Supabase kľúčov nepobežali; otázka `measure-door-lining-faces` v `eval/questions.json`.
+
+### D-156 - Hranice priestorov (`IfcRelSpaceBoundary`): `rel_space_boundary` a `v_space_elements` s `relation = 'boundary'`
+
+**Dátum:** 2026-10-22 · **Issue:** #245 · **Nadväzuje na:** D-080, D-098, D-114, D-126
+
+**Kontext:** `query_view v_space_elements` pre lobby 1.01 vrátil 5 dverí, ale otáčavé dvere DD01.08.0001 chýbali. V IFC ležia na podlaží 1NP (`IfcRelContainedInSpatialStructure`) a s miestnosťou ich spája len `IfcRelSpaceBoundary1stLevel`. Dotaz "dvere miestnosti" tak mlčky dal nesprávne "nie je spojené" a opis toolu nepovedal, ktoré vzťahy pohľad pokrýva.
+
+**Zistenie (D-098, najprv existujúce):**
+- **ETL hranice nikde neukladalo.** V `etl/` ani v migráciách nie je `IfcRelSpaceBoundary` ani tabuľka či view na hranice (`relationship_types` ich nemá). Nejde teda o zlý postup modelu a nestačí zmeniť pohľad: dáta v DB chýbajú (D-114 bod 2, "ETL ich zahadzuje" = malé a jasné, riešime v kóde).
+- `ifc_relations` (motor, D-097) hranice číta zo súboru, takže model ich nesie. Je to kontrola úplnosti, nie náhrada pohľadu: nad ním nejde filtrovať ani stránkovať ako nad `v_space_elements`.
+
+**Najbližšie tooly (D-114):** `query_view` (rozširujeme: nová hodnota `relation` v pohľade a nová tabuľka v whiteliste), `list_relations` (dostane `rel_space_boundary` vo whiteliste), `ifc_relations` (zostáva na úplnosť zo súboru). Nový tool netreba.
+
+**Rozhodnutie:**
+1. **ETL** (`etl/transform.py` `_collect_space_boundaries`): každá `IfcRelSpaceBoundary` (aj 1st/2nd level) medzi emitnutým prvkom (asset) a emitnutým priestorom je hrana `space_boundary` -> `rel_space_boundary`, smer prvok (from) -> priestor (to). Jedna hrana na pár (prvok, priestor), lebo IFC má na pár často viac hraníc (každá plocha, obe úrovne). `role` = `PhysicalOrVirtualBoundary` malými písmenami (`physical`, `virtual`, `notdefined`); pri viacerých hraniciach jedného páru vyhráva `physical`. Level a Internal/External sa neukladajú (dostupné cez `ifc_relations`). Hrany bez emitnutého konca vypadnú, žiadne dangling hrany. Federate režim priestory neemituje, hranice sa tam preskočia.
+2. **DB** (migrácia `20261022180000_space_boundary.sql`, aditívna): nový `rel_type` v `relationship_types` (from `asset`, to `space`, `IfcRelSpaceBoundary`), view `rel_space_boundary`, čiastočné indexy po `to_id` a `from_id`, `revoke` pre anon/authenticated (D-079) a `CREATE OR REPLACE VIEW v_space_elements` s treťou vetvou `relation = 'boundary'` (`role` physical|virtual). Stĺpce a ich poradie sa nemenia, pribúdajú len riadky.
+3. **Bez duplicít:** pár (priestor, prvok) sa vypíše raz, s prednosťou `contained` > `referenced` > `boundary`. Hranica sa pridá len vtedy, keď pre ten pár neexistuje aktívny containment ani referencia. Prvok, ktorý je v miestnosti aj ju ohraničuje, ostáva ako doteraz.
+4. **Tool:** `query_view` a `list_relations` majú `rel_space_boundary` vo whiteliste (aj pre `related`); opis `query_view` vymenúva `contained|referenced|boundary`, ich význam a vetu, že pohľad nepokrýva všetky vzťahy zo súboru a úplnosť dá `ifc_relations`. Pokyn v `system-prompt.ts` pri otázke "čo je v miestnosti".
+
+**Zavrhnuté:**
+- *Len opis toolu bez zmeny dát* (druhá možnosť z issue): dvere by ostali neviditeľné vo filtroch a stránkovaní, opis len prizná chybu.
+- *Nový tool* `room_doors` alebo podobný: rozšírenie `query_view` stačí (D-114).
+- *Boundary riadky popri contained/referenced pre ten istý pár:* duplicity (rovnaký prvok dvakrát v počte aj zozname), volajúci by ich musel zlučovať.
+- *Hrana per plocha so všetkými atribútmi (level, internal/external, geometria hranice):* v IFC býva desiatky na miestnosť, nepoužiteľné pre otázky "ktoré dvere", detail ostáva v `ifc_relations`.
+
+**Poradie nasadenia (produkcia):** 1. migrácia `20261022180000_space_boundary.sql` (pohľad aj bez dát funguje ako doteraz, nič sa nerozbije), 2. re-ETL (workflow `reetl` v Menezeris/OCB, najprv `dry_run`), lebo hrany plní až ETL. Bez re-ETL `boundary` riadky nevzniknú.
+
+**Overenie:** `etl/tests/test_space_boundary.py` (mini IFC: jeden riadok na pár, physical vyhráva, bez emitnutého konca vypadne, manifest), `supabase/tests/space_boundary.sql` (syntetické dáta na lokálnej DB po migráciách: len hranica, contained aj hranica, referenced aj hranica, ukončená hranica, dvere medzi dvoma miestnosťami, odmietnutie hranice na podlažie; pred migráciou zlyhá, po nej prejde), `lib/llm/query-view.test.ts`. Evaly (D-057) v cloud session bez Supabase kľúčov nepobežali; otázka `doors-in-space-101-boundary` je v `eval/questions.json` ako neoverená.
