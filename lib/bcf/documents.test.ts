@@ -46,6 +46,7 @@ const row = (over: Partial<TopicDocumentRow> = {}): TopicDocumentRow => ({
   url: null,
   description: null,
   author: "a",
+  document_sha256: null,
   created_at: "2026-10-22T00:00:00Z",
   ...over,
 });

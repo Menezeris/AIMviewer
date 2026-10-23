@@ -121,6 +121,9 @@ create table documents (        -- IfcDocumentInformation (D-014); .Name žije v
 --   referenced_document_id uuid → objects (IfcDocumentReference.ReferencedDocument;
 --   len pri object_type='document_reference', riadok nesie Location/Identification/
 --   Description odkazu, objects.name = Name, inak Description)
+-- + D-158 (migrácia 20261023140000): file_sha256 text (sha256 súboru PDF, 64 hex; kotva
+--   revízie a kľúč keše snímky výrezu; plní etl/pdf_text.py --from-db). Extenzia AIM, IFC
+--   ekvivalent nemá (IfcDocumentInformation nenesie hash súboru).
 
 create table persons (          -- IfcPerson (D-024); objects.name = zobrazované meno
   id          uuid primary key references objects(id) on delete cascade,
@@ -424,6 +427,9 @@ alter table document_pages add column blocks jsonb;  -- [{t, x, y, w, h}] v % st
 -- D-133 (migrácia 20261021120000): hrubé čiary výkresu pre kalibráciu podkladu
 alter table document_pages add column lines jsonb;   -- {size: [W, H], segs: [[x1, y1, x2, y2, w]]} v bodoch strany, vľavo dole;
                                                      -- čiary od 0,99 pt, len vektorové výkresy, inak null
+
+-- D-158 (migrácia 20261023140000): veľkosť zobrazenej strany (s rotáciou) pre RFC 8118 viewrect
+alter table document_pages add column page_size jsonb; -- [šírka, výška] v bodoch PDF
 ```
 
 Plní `python -m etl.pdf_text --from-db` (živé dokumenty, PDF zo storage, D-123) alebo
@@ -508,7 +514,11 @@ object_ref), `document_name`, `document_revision`; `page` (od 1, NULL = celý do
 jsonb pole tvarov (zatiaľ NULL), `url` (cudzí odkaz z BCF importu), `description`, `author`,
 `created_at`. Aspoň jedno z `document_id`, `document_ref`, `url`. Indexy `(task_id, created_at)`,
 `(document_id, page)`. Prvky IFC témy ostávajú v `model_tasks.components`. BCF API url =
-`<origin>/drawing/<id>?page=N&region=x_y_w_h#page=N`. Práva anon/authenticated nemá (2.12).
+`<origin>/drawing/<id>?page=N&region=x_y_w_h#page=N` (+ `&viewrect=l,t,w,h` v bodoch, keď je známe
+`document_pages.page_size`). Práva anon/authenticated nemá (2.12).
+Kroky 3 a 4 (migrácia 20261023140000): `document_sha256` = sha256 súboru dokumentu v čase založenia
+odkazu (z `documents.file_sha256`); snímka výrezu sa kešuje v buckete `documents` pod
+`snapshots/<sha256>/<strana>-<x_y_w_h|full>.png` (render na požiadanie, nie tabuľka).
 
 **Ručné odkazy popiskov na výkrese (D-160, migrácia 20261023130000):** `drawing_link_overrides` = ručné
 priradenie (`assign`) alebo zrušenie (`suppress`) odkazu popisku, má prednosť pred párovaním D-130.
@@ -651,7 +661,9 @@ ekvivalentu — ak existuje, prevziať názov aj enum doslovne.
   (IFC vzťahy nenesú platnosť ani provenance väzby),
 - `ifc_guid_history` + Master UUID (identita naprieč verziami súborov),
 - väzby naprieč IFC súbormi (federácia — natívne až IFC5),
-- revízie súborov modelu a BCF témy vrátane úloh úprav (`model_revisions`, `model_tasks`, D-086, D-099).
+- revízie súborov modelu a BCF témy vrátane úloh úprav (`model_revisions`, `model_tasks`, D-086, D-099),
+  odkazy tém na dokumenty a ich revíziu (`model_task_documents`, `documents.file_sha256`,
+  `document_pages.page_size`, D-158; BCF DocumentReference, IFC hash súboru ani veľkosť strany nenesie).
 Pri exporte ich IFC nenesie → ICDD linksety (D-015), do budúcna IFCX layer komponenty.
 
 ---

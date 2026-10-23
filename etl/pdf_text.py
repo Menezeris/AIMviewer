@@ -26,6 +26,11 @@ D-133: pri vektorových výkresoch sa ukladajú aj hrubé čiary strany (`lines`
 `{size: [W, H], segs: [[x1, y1, x2, y2, w]]}` v bodoch strany, počiatok vľavo dole), z ktorých IFC motor
 kalibruje podklad (pôdorys, rez) na rez modelom.
 
+D-158 (kroky 3 a 4): každá strana dostane `page_size` = [šírka, výška] v bodoch
+(zobrazená strana, s rotáciou; RFC 8118 viewrect odkazu na stranu) a dokument
+`documents.file_sha256` = sha256 súboru PDF (kotva revízie, kľúč keše snímky
+výrezu). Rastre strán sa nerobia, snímka sa renderuje v hoste na požiadanie.
+
 Spustenie (z koreňa repa):
     python -m etl.pdf_text [--dry-run] [--manifest podklady/docs.csv]
     python -m etl.pdf_text --from-db [--dry-run] [--only <object_ref>]
@@ -35,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import re
 import sys
@@ -174,6 +180,21 @@ def extract_pages_full(pdf_path: Path) -> list[tuple[int, str, list[dict], Optio
     return pages
 
 
+def page_sizes(pdf_path: Path) -> dict[int, list[float]]:
+    """D-158: [šírka, výška] každej strany v bodoch (zobrazená strana, s rotáciou)."""
+    with fitz.open(pdf_path) as doc:
+        return {i: [round(p.rect.width, 2), round(p.rect.height, 2)] for i, p in enumerate(doc, start=1)}
+
+
+def file_sha256(pdf_path: Path) -> str:
+    """D-158: sha256 súboru PDF (kotva revízie dokumentu)."""
+    h = hashlib.sha256()
+    with pdf_path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def extract_pages_with_blocks(pdf_path: Path) -> list[tuple[int, str, list[dict]]]:
     """(strana 1-based, normalizovaný text, riadky s polohou) pre neprázdne strany."""
     return [(n, text, blocks) for n, text, blocks, _ in extract_pages_full(pdf_path)]
@@ -205,21 +226,31 @@ def _db_docs(cur, only: Optional[str]) -> list[DbDoc]:
 Page = tuple[int, str, list[dict], Optional[dict]]
 
 
-def _write_pages(cur, doc_id: str, pages: list[Page]) -> None:
+def _write_pages(
+    cur,
+    doc_id: str,
+    pages: list[Page],
+    sizes: Optional[dict[int, list[float]]] = None,
+    sha256: Optional[str] = None,
+) -> None:
     # Idempotencia: plný refresh strán dokumentu.
     cur.execute("delete from document_pages where document_id = %s", (doc_id,))
     for page_no, text, blocks, lines in pages:
+        size = (sizes or {}).get(page_no)
         cur.execute(
-            "insert into document_pages (document_id, page, text, blocks, lines) "
-            "values (%s, %s, %s, %s::jsonb, %s::jsonb)",
+            "insert into document_pages (document_id, page, text, blocks, lines, page_size) "
+            "values (%s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)",
             (
                 doc_id,
                 page_no,
                 text,
                 json.dumps(blocks, ensure_ascii=False),
                 json.dumps(lines, separators=(",", ":")) if lines is not None else None,
+                json.dumps(size) if size is not None else None,
             ),
         )
+    if sha256:
+        cur.execute("update documents set file_sha256 = %s where id = %s", (sha256, doc_id))
 
 
 def _report(ref: str, pages: list[Page]) -> None:
@@ -248,13 +279,15 @@ def run_from_db(dry_run: bool, only: Optional[str]) -> int:
                     with urllib.request.urlopen(d.location, timeout=60) as resp:
                         pdf_path.write_bytes(resp.read())
                     pages = extract_pages_full(pdf_path)
+                    sizes = page_sizes(pdf_path)
+                    sha = file_sha256(pdf_path)
                 except Exception as exc:  # noqa: BLE001 - jeden zlý súbor nezhodí beh
                     skipped.append(f"{d.object_ref} ({exc})")
                     continue
                 _report(d.object_ref, pages)
                 if dry_run:
                     continue
-                _write_pages(cur, d.id, pages)
+                _write_pages(cur, d.id, pages, sizes, sha)
                 written_docs += 1
                 written_pages += len(pages)
         if not dry_run:
@@ -310,7 +343,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             if doc_id is None:
                 skipped.append(f"{row.container_name} (nie je v DB — najprv doc_upload/E3)")
                 continue
-            _write_pages(cur, doc_id, pages)
+            _write_pages(cur, doc_id, pages, page_sizes(pdf_path), file_sha256(pdf_path))
             written_docs += 1
             written_pages += len(pages)
         if conn:

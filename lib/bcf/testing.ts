@@ -35,6 +35,8 @@ export const DOCUMENTS: (DocumentInfo & { aliases: string[] })[] = [
 /** Úložisko v pamäti so správaním `model_tasks` (number, stav, komentáre) a `model_task_documents`. */
 export function memoryStore(seed: Partial<BcfTopicRow>[] = []) {
   const rows: BcfTopicRow[] = [];
+  /** `_georef` dokumentov podľa objects.id (D-133), pre testy kroku 4. */
+  const georefs = new Map<string, unknown>();
   const docs: TopicDocumentRow[] = [];
   let d = 0;
   let n = 0;
@@ -133,6 +135,9 @@ export function memoryStore(seed: Partial<BcfTopicRow>[] = []) {
       }
       return before - docs.length;
     },
+    async georef(documentId) {
+      return georefs.get(documentId) ?? null;
+    },
     async findDocument(idOrRef) {
       const hit = DOCUMENTS.find((x) => x.aliases.includes(idOrRef.trim()));
       if (!hit) return null;
@@ -141,7 +146,7 @@ export function memoryStore(seed: Partial<BcfTopicRow>[] = []) {
       return info as DocumentInfo;
     },
   };
-  return { store, rows, docs };
+  return { store, rows, docs, georefs };
 }
 
 export function deps(over: Partial<BcfDeps> = {}): BcfDeps & { fired: string[] } {

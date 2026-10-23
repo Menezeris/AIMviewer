@@ -100,10 +100,14 @@ export interface TopicDocumentRow {
   url: string | null;
   description: string | null;
   author: string | null;
+  /** sha256 súboru dokumentu v čase založenia (kľúč snímky výrezu, D-158 krok 3). */
+  document_sha256: string | null;
   created_at: string;
+  /** Veľkosť strany v bodoch (`document_pages.page_size`), dopočítaná pri čítaní; nie stĺpec. */
+  page_size?: [number, number] | null;
 }
 
-export type TopicDocumentWrite = Omit<TopicDocumentRow, "id" | "created_at"> & { id?: string };
+export type TopicDocumentWrite = Omit<TopicDocumentRow, "id" | "created_at" | "page_size"> & { id?: string };
 
 /** Dokument v AIM (D-104), na ktorý sa téma odkazuje. */
 export interface DocumentInfo {
@@ -116,6 +120,8 @@ export interface DocumentInfo {
   pages: number | null;
   /** Strana z odkazu na časť dokumentu (IfcDocumentReference, `#page=N`). */
   reference_page: number | null;
+  /** sha256 súboru (`documents.file_sha256` z ETL); null = ešte nepočítané. */
+  sha256?: string | null;
 }
 
 export interface BcfStore {
@@ -139,6 +145,8 @@ export interface BcfStore {
   removeDocuments(taskId: string, id: string | null): Promise<number>;
   /** Dokument podľa objects.id, object_ref alebo identification; odkaz na časť vedie na jeho dokument. */
   findDocument(idOrRef: string): Promise<DocumentInfo | null>;
+  /** Kalibrácie strán dokumentu (`objects.properties._georef`, D-133); null = nekalibrovaný. */
+  georef(documentId: string): Promise<unknown>;
 }
 
 const DOCS = "model_task_documents";
@@ -242,7 +250,19 @@ export function supabaseBcfStore(): BcfStore {
       if (taskIds.length === 0) return [];
       const { data, error } = await db().from(DOCS).select("*").in("task_id", taskIds).order("created_at");
       if (error) fail("Čítanie odkazov na dokumenty zlyhalo", error);
-      return (data ?? []) as TopicDocumentRow[];
+      const rows = (data ?? []) as TopicDocumentRow[];
+      // Veľkosť strany pre RFC 8118 viewrect (D-158 krok 3); chýba = odkaz bez viewrect.
+      const docIds = [...new Set(rows.filter((r) => r.document_id && r.page).map((r) => r.document_id as string))];
+      if (docIds.length === 0) return rows;
+      const pages = [...new Set(rows.map((r) => r.page).filter((p): p is number => typeof p === "number"))];
+      const { data: sizes, error: se } = await db()
+        .from("document_pages")
+        .select("document_id, page, page_size")
+        .in("document_id", docIds)
+        .in("page", pages);
+      if (se) fail("Čítanie veľkosti strán zlyhalo", se);
+      const size = new Map((sizes ?? []).map((s) => [`${s.document_id}:${s.page}`, s.page_size as [number, number] | null]));
+      return rows.map((r) => ({ ...r, page_size: size.get(`${r.document_id}:${r.page}`) ?? null }));
     },
     async addDocument(row) {
       const { data, error } = await db().from(DOCS).insert(row).select("*").single();
@@ -261,6 +281,11 @@ export function supabaseBcfStore(): BcfStore {
       if (error) fail("Mazanie odkazu na dokument zlyhalo", error);
       return count ?? 0;
     },
+    async georef(documentId) {
+      const { data, error } = await db().from("objects").select("properties").eq("id", documentId).maybeSingle();
+      if (error) fail("Čítanie kalibrácie dokumentu zlyhalo", error);
+      return ((data?.properties as Record<string, unknown> | null) ?? {})._georef ?? null;
+    },
     async findDocument(idOrRef) {
       const s = idOrRef.trim();
       const cols = "id, object_type, object_ref, name";
@@ -276,8 +301,15 @@ export function supabaseBcfStore(): BcfStore {
         if (error) fail("Čítanie dokumentu zlyhalo", error);
         obj = data;
       }
-      let ext: { id: string; identification: string | null; revision: string | null; location: string | null; referenced_document_id: string | null } | null = null;
-      const extCols = "id, identification, revision, location, referenced_document_id";
+      let ext: {
+        id: string;
+        identification: string | null;
+        revision: string | null;
+        location: string | null;
+        referenced_document_id: string | null;
+        file_sha256: string | null;
+      } | null = null;
+      const extCols = "id, identification, revision, location, referenced_document_id, file_sha256";
       if (obj) {
         const { data, error } = await db().from("documents").select(extCols).eq("id", obj.id).maybeSingle();
         if (error) fail("Čítanie dokumentu zlyhalo", error);
@@ -315,6 +347,7 @@ export function supabaseBcfStore(): BcfStore {
         revision: ext?.revision ?? null,
         pages: last && last.length ? (last[0] as { page: number }).page : null,
         reference_page: referencePage,
+        sha256: ext?.file_sha256 ?? null,
       };
     },
   };

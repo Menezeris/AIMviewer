@@ -49,6 +49,7 @@ async function documentRow(deps: BcfDeps, topicId: string, ref: { url: string; d
     url: ref.url,
     description: ref.description,
     author,
+    document_sha256: null,
   };
   return row;
 }

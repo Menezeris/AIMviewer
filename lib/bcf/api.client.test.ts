@@ -10,7 +10,10 @@ import {
   viewpointToApi,
 } from "@ifc-lite/bcf-api";
 
-import { handleBcfApi, PROJECT_ID } from "./api";
+import { readBCF, writeBCF } from "@ifc-lite/bcf";
+
+import { handleBcfApi, PROJECT_ID, type SnapshotOutcome } from "./api";
+import type { SnapshotRequest } from "./snapshot";
 import { DOC_ID, G1, G2, deps, memoryStore } from "./testing";
 
 /**
@@ -22,7 +25,7 @@ import { DOC_ID, G1, G2, deps, memoryStore } from "./testing";
 const BASE = "https://aim.example/api/bcf";
 const TOKEN = "t".repeat(32);
 
-function server(store = memoryStore()) {
+function server(store = memoryStore(), snapshot?: (r: SnapshotRequest) => Promise<SnapshotOutcome>) {
   const d = deps({ store: store.store });
   const fetchFn = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
@@ -34,8 +37,16 @@ function server(store = memoryStore()) {
         query: url.searchParams,
         body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
       },
-      { deps: d, user: "samuel", authenticated: headers.get("authorization") === `Bearer ${TOKEN}`, writeEnabled: true, origin: new URL(BASE).origin },
+      {
+        deps: d,
+        user: "samuel",
+        authenticated: headers.get("authorization") === `Bearer ${TOKEN}`,
+        writeEnabled: true,
+        origin: new URL(BASE).origin,
+        ...(snapshot ? { snapshot } : {}),
+      },
     );
+    if (res.binary) return new Response(new Uint8Array(res.binary.bytes), { status: res.status, headers: res.binary.headers });
     return new Response(JSON.stringify(res.body), { status: res.status, headers: { "Content-Type": "application/json" } });
   };
   const client = new BcfApiClient({ baseUrl: BASE, getAccessToken: () => TOKEN, fetchFn });
@@ -78,6 +89,7 @@ describe("@ifc-lite/bcf-api proti /api/bcf", () => {
       url: null,
       description: null,
       author: "Claude (MCP)",
+      document_sha256: null,
       created_at: "2026-10-22T00:00:00Z",
     });
     const anon = new BcfApiClient({ baseUrl: BASE, fetchFn: s.fetchFn });
@@ -178,5 +190,39 @@ describe("@ifc-lite/bcf-api proti /api/bcf", () => {
     const t = again.project.topics.get(created.guid)!;
     expect(t.comments).toHaveLength(2);
     expect(t.viewpoints[0].guid).toBe("vp-panel");
+  });
+
+  it("snímka výrezu dokumentu (D-158 krok 3): panel ju stiahne ako snímku pohľadu a .bcfzip 2.1 aj 3.0 ju nesie", async () => {
+    const png = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a5e5fb7d0000000049454e44ae426082", "hex");
+    const store = memoryStore([{ title: "Na výkrese", author: "Claude (MCP)", components: [G2] }]);
+    const s = server(store, async () => ({ ok: true, png, revisionChanged: false }));
+    store.docs.push({
+      id: "22222222-2222-4222-8222-000000000002",
+      task_id: store.rows[0].id,
+      document_id: DOC_ID,
+      document_ref: "D.1.1.09",
+      document_name: "Pôdorys 1NP",
+      document_revision: "B",
+      page: 2,
+      region: { x: 10, y: 10, width: 20, height: 20 },
+      markup: null,
+      url: null,
+      description: null,
+      author: "Claude (MCP)",
+      document_sha256: null,
+      created_at: "2026-10-22T00:00:00Z",
+    });
+    const anon = new BcfApiClient({ baseUrl: BASE, fetchFn: s.fetchFn });
+    const result = await fetchProjectAsBCF(anon, PROJECT_ID, { includeSnapshots: true });
+    expect(result.warnings).toEqual([]);
+    const [topic] = [...result.project.topics.values()];
+    expect(topic.viewpoints.map((v) => v.guid)).toEqual(["22222222-2222-4222-8222-000000000002"]);
+    expect(topic.viewpoints[0].snapshot).toBe(`data:image/png;base64,${png.toString("base64")}`);
+    for (const version of ["2.1", "3.0"] as const) {
+      const blob = await writeBCF({ ...result.project, version });
+      const back = await readBCF(new Uint8Array(await blob.arrayBuffer()));
+      const vp = [...back.topics.values()][0].viewpoints[0];
+      expect(vp.snapshot, version).toBe(`data:image/png;base64,${png.toString("base64")}`);
+    }
   });
 });

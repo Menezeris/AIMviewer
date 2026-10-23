@@ -1,5 +1,7 @@
 import { docRegionInput, parseDocRegion } from "../viewer-ops";
 
+import { viewrect } from "./snapshot-plan";
+
 import type { BcfStore, DocumentInfo, TopicDocumentRow, TopicDocumentWrite } from "./store";
 
 /**
@@ -85,6 +87,7 @@ export function documentWrite(
     url: null,
     description: input.description ?? null,
     author,
+    document_sha256: info.sha256 ?? null,
   };
 }
 
@@ -135,20 +138,38 @@ export function documentView(d: TopicDocumentRow) {
     open_drawing: d.document_id
       ? { document_id: d.document_id, ...(d.page ? { page: d.page } : {}), ...(d.region ? { region: d.region } : {}), in_viewer: true }
       : null,
+    // Snímka výrezu s rámikom (D-158 krok 3), relatívna adresa hosta; BCF API ju dáva ako snímku pohľadu.
+    snapshot_url: snapshotPath(d),
   };
 }
 
+const regionParam = (r: NonNullable<TopicDocumentRow["region"]>) => [r.x, r.y, r.width, r.height].map((v) => +v.toFixed(2)).join("_");
+
+/** `/api/drawing/<id>/snapshot?page=N&region=x_y_w_h`; bez dokumentu alebo strany null. */
+export function snapshotPath(d: Pick<TopicDocumentRow, "document_id" | "page" | "region">): string | null {
+  if (!d.document_id || !d.page) return null;
+  const q = new URLSearchParams({ page: String(d.page) });
+  if (d.region) q.set("region", regionParam(d.region));
+  return `/api/drawing/${d.document_id}/snapshot?${q.toString()}`;
+}
+
 /**
- * Odkaz na stranu vo vieweri AIM: `/drawing/<id>?page=N&region=x_y_w_h#page=N`.
- * `region` je náš parameter (návrat pri importe), `#page` je RFC 8118 pre PDF.
+ * Odkaz na stranu vo vieweri AIM: `/drawing/<id>?page=N&region=x_y_w_h#page=N&viewrect=l,t,w,h`.
+ * `region` je náš parameter (návrat pri importe), `#page` a `viewrect` (body strany od ľavého
+ * horného rohu, len keď je známa veľkosť strany) sú RFC 8118 pre PDF.
  */
-export function documentUrl(origin: string, d: Pick<TopicDocumentRow, "document_id" | "page" | "region">): string | null {
+export function documentUrl(
+  origin: string,
+  d: Pick<TopicDocumentRow, "document_id" | "page" | "region"> & { page_size?: [number, number] | null },
+): string | null {
   if (!d.document_id) return null;
   const q = new URLSearchParams();
   if (d.page) q.set("page", String(d.page));
-  if (d.region) q.set("region", [d.region.x, d.region.y, d.region.width, d.region.height].map((v) => +v.toFixed(2)).join("_"));
+  if (d.region) q.set("region", regionParam(d.region));
   const qs = q.toString();
-  return `${origin.replace(/\/+$/, "")}/drawing/${d.document_id}${qs ? `?${qs}` : ""}${d.page ? `#page=${d.page}` : ""}`;
+  const rect = d.page ? viewrect(d.page_size ?? null, d.region) : null;
+  const frag = d.page ? `#page=${d.page}${rect ? `&viewrect=${rect}` : ""}` : "";
+  return `${origin.replace(/\/+$/, "")}/drawing/${d.document_id}${qs ? `?${qs}` : ""}${frag}`;
 }
 
 /** BCF API 2.1 DocumentReference GET DTO. */
@@ -190,7 +211,7 @@ export function parseDocumentReferenceDto(body: unknown, origin: string): Parsed
   }
   const ours = parsed && parsed.origin === new URL(origin).origin ? DRAWING_PATH.exec(parsed.pathname) : null;
   if (!ours || !parsed) return { document_id: null, page: null, region: null, url, description: rawDescription || null };
-  const n = Number(parsed.searchParams.get("page") ?? parsed.hash.replace(/^#page=/, ""));
+  const n = Number(parsed.searchParams.get("page") ?? new URLSearchParams(parsed.hash.replace(/^#/, "")).get("page"));
   const page = Number.isInteger(n) && n >= 1 ? n : null;
   const r = parseDocRegion(parsed.searchParams.get("region") ?? undefined);
   const region = r ? { x: r.x, y: r.y, width: r.w, height: r.h } : null;
