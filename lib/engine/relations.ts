@@ -153,12 +153,20 @@ export async function ifcRelations(input: Record<string, unknown>, deps: EngineD
   });
 
   // PredefinedType len pre kandidátov na zastavenie (stop_at s typom), nie pre celú sieť.
-  const predefinedOf = async (id: number): Promise<string | null> => {
+  // Typovaný výskyt ho podľa IFC nemá ($ alebo NOTDEFINED) a nesie ho typ cez IfcRelDefinesByType (D-165).
+  const predefinedAttr = async (id: number): Promise<string | null> => {
     const res = structured<{ attributes?: Array<{ name?: string; value?: unknown }> }>(
       await session.call("get_entity", { model_id: model.id, express_id: id, include: ["attributes"] }),
     );
     const v = (res.attributes ?? []).find((a) => a.name === "PredefinedType")?.value;
     return typeof v === "string" ? v.replace(/^\.|\.$/g, "").toUpperCase() : null;
+  };
+  const predefinedOf = async (id: number): Promise<string | null> => {
+    const own = await predefinedAttr(id);
+    if (own && own !== "NOTDEFINED") return own;
+    const typeEdge = (await edgesOf(id)).find((e) => e.relationshipType.toUpperCase() === "IFCRELDEFINESBYTYPE" && /type$/i.test(e.entity.type));
+    const fromType = typeEdge ? await predefinedAttr(typeEdge.entity.id) : null;
+    return fromType ?? own;
   };
   const trace = throughPorts && recursive ? await traceNetwork(rootId, edgesOf, guidOf, row, { stopAt, maxSteps, predefinedOf }) : null;
   const rows: Row[] = trace
@@ -215,7 +223,7 @@ export async function ifcRelations(input: Record<string, unknown>, deps: EngineD
             ...(pathJoined ? { path_show_in_3d: pathJoined.show_in_3d } : {}),
             ...(trace.cutOff ? { cut_off: `sieť pokračuje za ${maxSteps} krokmi - zvýš max_steps` } : {}),
             ...(stopAt.length && trace.reached.length === 0 && !trace.cutOff
-              ? { note: "Sieť skončila bez zastavenia: prvky stop_at cez porty nie sú napojené (prerušená sieť alebo chýbajúce porty)." }
+              ? { note: "Prejdená sieť neobsahuje prvok vyhovujúci stop_at (trieda alebo PredefinedType, aj z typu prvku). Ak očakávaš zhodu, skontroluj triedu a PredefinedType cez ifc_get; porty bez napojenia sieť skracujú." }
               : {}),
           }
         : {}),

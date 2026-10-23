@@ -7550,3 +7550,18 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 - *Predvolené testy v kóde:* `VZT-NOSNE` (hard; B = `IfcWall*|IfcSlab*|IfcBeam*|IfcColumn*|IfcFooting*|IfcPile*|IfcMember*|IfcRoof*`, `LoadBearing` sa nefiltruje, takže vnútorné priečky v nich ostávajú; presný filter z dát je na PR 2) a `VZT-ASR` (clearance 50 mm, B = `!IfcSpace`). `IfcSpace`, `IfcOpeningElement`, `IfcVirtualElement` sa neberú, kým ich selektor nepomenuje. Upstream výnimky void/host nie sú zapojené (pri VZT x ASR nie sú relevantné), PR 2.
 - *Nemerané:* ASR x VZT sa nezmeralo (D-135 zakazuje session sťahovať produkčné IFC, na preview chýbal token). Samuel nebude skladať celé modely proti sebe, ale vybrané časti po podlažiach (napr. potrubie x betón na 2NP), preto je rozhodnutie: tool odporúča zúžiť na `a_storey` / `b_storey` a konkrétne triedy a pri prekročení rozpočtu (45 s, `MAX_PAIRS` 3 mil. dvojíc) vráti radu s ponukou podlaží. `ifc_engine_probe` s `clash_asr_vzt: true` ostáva na neskoršie meranie.
 - *Inštrukcie konektora* sa nemenili (strop 15 000 znakov), workflow nesie opis toolu.
+
+### D-165 - ifc_relations: stop_at Trieda.PREDEFINED berie PredefinedType aj z typu prvku (#300)
+
+**Dátum:** 2026-10-23 · **Stav:** implementované · **Issue:** #300 · **Nadväzuje na:** D-110 (`through_ports`, `stop_at`), D-114
+
+**Kontext:** `ifc_relations` s `through_ports`, `recursive` a `stop_at: ["IfcDamper.FIREDAMPER"]` nezastavil na požiarnych klapkách PK.01 v modeli VZT. Ich výskyty majú PredefinedType `$` a FIREDAMPER nesie typ `IfcDamperType` cez `IfcRelDefinesByType` (správne podľa IFC). `predefinedOf` v `lib/engine/relations.ts` čítal len atribút výskytu, výsledok bol `reached = []` a poznámka o "nenapojených prvkoch", hoci sieť bola celá (z toho vznikla mylná BCF téma #13).
+
+**Najbližšie tooly (D-114):** `ifc_relations` (tu sa chyba deje), `ifc_get` (typeProperties už vracia, ale `stop_at` nerieši), `ifc_query` (filter podtypu, neprechádza sieť). Nový tool netreba.
+
+**Rozhodnutie:**
+1. `predefinedOf`: keď je PredefinedType výskytu `$` alebo `NOTDEFINED`, vezme sa PredefinedType typu (`IfcRelDefinesByType`). Dopyt na typ sa robí len pre kandidátov na zastavenie podľa triedy, nie pre celú sieť.
+2. Poznámka pri prázdnom `reached` bez `cut_off` hovorí, že prejdená sieť neobsahuje vyhovujúci prvok (trieda, PredefinedType aj z typu), nie že prvky nie sú napojené.
+3. Test v `relations.test.ts` (fixture rozšírený o typovanú klapku), padá bez opravy. Opis parametra `stop_at` spomína typ.
+
+**Zavrhnuté:** USERDEFINED s `ObjectType` výskytu alebo `ElementType` typu sa nerieši (`stop_at` porovnáva enum PredefinedType); doplniť ho možno, ak ho Samuel potrebuje.
