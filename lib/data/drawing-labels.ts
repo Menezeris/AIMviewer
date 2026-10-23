@@ -65,6 +65,8 @@ export interface DrawingLink extends DrawingLabel {
   targets: LinkTarget[];
   /** Kandidátov bolo viac ako MAX_CANDIDATES. */
   targets_total?: number;
+  /** Typový popisok s viac výskytmi: IFC typ (`asset_type` s presným kódom), ktorý klik otvorí. */
+  type?: LinkTarget;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -126,8 +128,10 @@ export function labelCodes(labels: readonly DrawingLabel[]): { refs: string[]; t
   const refs = new Set<string>();
   const types = new Set<string>();
   for (const l of labels) {
-    if (l.kind === "type") types.add(l.code);
-    else refs.add(l.code);
+    if (l.kind === "type") {
+      types.add(l.code);
+      refs.add(l.code); // samotný IFC typ (asset_type) s presným kódom
+    } else refs.add(l.code);
   }
   return { refs: [...refs].sort(), typePrefixes: [...types].sort() };
 }
@@ -168,10 +172,12 @@ export function resolveLabels(labels: readonly DrawingLabel[], objects: readonly
     } else if (occ.length === 1) {
       out.push({ ...label, status: "unique", via: "type_on_floor", targets: [target(occ[0])] });
     } else {
+      const typeObj = byRef.get(label.code);
       out.push({
         ...label,
         status: "candidates",
         via: "type_on_floor",
+        ...(typeObj && typeObj.objectType === "asset_type" && typeObj.guid ? { type: target(typeObj) } : {}),
         targets: occ.slice(0, MAX_CANDIDATES).map(target),
         ...(occ.length > MAX_CANDIDATES ? { targets_total: occ.length } : {}),
       });
@@ -197,6 +203,8 @@ export interface DocumentLinksWire {
     label: string;
     status: "unique" | "candidates";
     targets: { guid: string; ref: string; name?: string }[];
+    /** Typový popisok s viac výskytmi: klik otvorí tento IFC typ, výskyty sú vedľajšia voľba. */
+    type?: { guid: string; ref: string; name?: string };
   }[];
 }
 
@@ -209,9 +217,12 @@ export function toLinksWire(documentId: string, pages: readonly PageLinks[]): Do
     const links: DocumentLinksWire["links"] = [];
     for (const l of p.links) {
       if (l.status === "none") continue;
-      const targets = l.targets
-        .filter((t) => t.guid)
-        .map((t) => ({ guid: t.guid as string, ref: t.ref, ...(t.name && t.name !== t.ref ? { name: t.name } : {}) }));
+      const wireTarget = (t: LinkTarget) => ({
+        guid: t.guid as string,
+        ref: t.ref,
+        ...(t.name && t.name !== t.ref ? { name: t.name } : {}),
+      });
+      const targets = l.targets.filter((t) => t.guid).map(wireTarget);
       if (targets.length === 0) continue;
       links.push({
         x: frac(l.bbox.x),
@@ -221,6 +232,7 @@ export function toLinksWire(documentId: string, pages: readonly PageLinks[]): Do
         label: l.text,
         status: targets.length === 1 ? "unique" : "candidates",
         targets,
+        ...(targets.length > 1 && l.type?.guid ? { type: wireTarget(l.type) } : {}),
       });
     }
     if (links.length > 0) out.push({ documentId, page: p.page, links });

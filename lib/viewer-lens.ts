@@ -64,6 +64,11 @@ export interface LensWire {
   i?: 1;
   /** X-ray context zo zjednotenia pravidiel: vybrané plné, zvyšok priesvitný (D-105). S `i` sa nekombinuje. */
   x?: 1;
+  /**
+   * Kontext X-ray len pre podlažia (D-140, #187): normalizované štítky (1NP, 2NP); prvky ostatných podlaží viewer
+   * skryje, kým X-ray z chatu trvá. Platí len s `x`.
+   */
+  cs?: string[];
   ac?: { source: AutoColorSource; psetName?: string; propertyName?: string };
   /** Rozsah `ac` (D-119): farby podľa hodnoty, legenda a počty len pre prvky týchto skupín (AND v skupine). */
   s?: LensFilterGroup[];
@@ -82,6 +87,8 @@ export const MAX_LENS_ZONES = 8;
 /** Strop GUIDov zóny, ktoré klient pošle do viewera (rovnaký ako most forku). */
 export const MAX_ZONE_GUIDS = 5000;
 const MAX_RULES = 24;
+/** Najviac podlaží v kontexte X-ray (ako `xrayStoreys` mosta forku). */
+export const MAX_CONTEXT_STOREYS = 8;
 const HEX = /^#[0-9a-f]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -140,6 +147,11 @@ export function decodeLensWire(raw: string): LensWire | null {
   if (parsed.i === 1) out.i = 1;
   if (parsed.x === 1) out.x = 1;
   if (out.i && out.x) return null;
+  if (parsed.cs !== undefined) {
+    const ok = Array.isArray(parsed.cs) && parsed.cs.length > 0 && parsed.cs.length <= MAX_CONTEXT_STOREYS;
+    if (!out.x || !ok || !(parsed.cs as unknown[]).every((v) => typeof v === "string" && v.length > 0 && v.length <= 60)) return null;
+    out.cs = parsed.cs as string[];
+  }
   if (parsed.ac !== undefined) {
     if (!isObj(parsed.ac) || !(AUTO_COLOR_SOURCES as readonly unknown[]).includes(parsed.ac.source)) return null;
     out.ac = parsed.ac as LensWire["ac"];
@@ -242,6 +254,7 @@ export function lensBridgeMessage(
     ...(rules.length ? { rules } : {}),
     ...(wire.i ? { isolate: true } : {}),
     ...(wire.x ? { xray: true } : {}),
+    ...(wire.x && wire.cs ? { xrayStoreys: wire.cs } : {}),
     ...(wire.ac ? { autoColor: wire.ac } : {}),
     ...(wire.ac && wire.s ? { autoColorScope: wire.s.map((g) => ({ combinator: g.combinator, rules: g.rules.map(swap) })) } : {}),
     ...(wire.l ? { legend: wire.l } : {}),

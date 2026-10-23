@@ -59,3 +59,23 @@ describe("mcp_call_log (D-100)", () => {
     warn.mockRestore();
   });
 });
+
+describe("mcp_call_log.client (D-159)", () => {
+  it("pred migráciou stĺpca sa riadok zapíše bez client", async () => {
+    const rows: McpCallLogRow[] = [];
+    const insert = vi.fn(async (r: McpCallLogRow) => {
+      if ("client" in r) return { error: { message: "Could not find the 'client' column of 'mcp_call_log'" } };
+      rows.push(r);
+      return { error: null };
+    });
+    await writeCallLog({ ...row, client: "claude-ai#abc" }, insert);
+    expect(insert).toHaveBeenCalledTimes(2);
+    expect(rows).toEqual([row]);
+  });
+
+  it("so stĺpcom sa zapíše raz aj s client", async () => {
+    const insert = vi.fn(async () => ({ error: null }));
+    await writeCallLog({ ...row, client: "claude-code#x (work)" }, insert);
+    expect(insert).toHaveBeenCalledTimes(1);
+  });
+});

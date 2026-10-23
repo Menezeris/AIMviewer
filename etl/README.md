@@ -76,7 +76,7 @@ python -m etl.pdf_text --from-db             # zápis; --only <object_ref> = jed
 ```
 Beh zapíše aj `document_pages.page_size` (veľkosť strany v bodoch) a `documents.file_sha256`
 (sha256 súboru PDF, kotva revízie pre pripomienky a keš snímky výrezu, D-158 krok 3; po migrácii
-`20261023100000`). Rastre strán sa nerobia: snímku výrezu renderuje host na požiadanie.
+`20261023130000`). Rastre strán sa nerobia: snímku výrezu renderuje host na požiadanie.
 
 ### Dokumenty z IFC (D-104)
 Dokumentáciu nesie model: každý `IfcDocumentInformation` je `document` s `object_ref` =

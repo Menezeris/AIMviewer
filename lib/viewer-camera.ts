@@ -38,6 +38,16 @@ export const CAMERA_RANGES = {
   marginPercent: { min: 0, max: 300 },
 } as const;
 
+/**
+ * Plynulé otáčanie dokola (D-154): `start` / `stop`, rýchlosť v stupňoch za sekundu a smer. `left` = rovnaký smer
+ * ako kladné `orbit_h_deg` (kamera obieha cieľ doľava). Rozsah a názvy zhodné s mostom forku (`aim/autoRotatePlan.ts`).
+ */
+export const AUTO_ROTATE_ACTIONS = ["start", "stop"] as const;
+export type AutoRotateAction = (typeof AUTO_ROTATE_ACTIONS)[number];
+export const AUTO_ROTATE_DIRECTIONS = ["left", "right"] as const;
+export type AutoRotateDirection = (typeof AUTO_ROTATE_DIRECTIONS)[number];
+export const AUTO_ROTATE_SPEED = { min: 0.5, max: 90, default: 10 } as const;
+
 /** Okraj okolo cieľa, keď ho model nezadá (#172: tenká atika nemá byť zarámovaná natesno). */
 export const DEFAULT_MARGIN_PERCENT = 40;
 

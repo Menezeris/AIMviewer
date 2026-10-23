@@ -17,6 +17,8 @@ export interface McpCallLogRow {
   cold: boolean;
   phases: Record<string, number>;
   region: string | null;
+  /** Klient a rozhovor (`claude-ai#sid`, D-159); stĺpec z migrácie 20261023120000. */
+  client?: string | null;
 }
 
 /** `args.action`, ak ju tool má (style_in_3d, set_section...); inak null. */
@@ -46,7 +48,13 @@ const defaultInsert: Insert = async (row) => {
 
 export async function writeCallLog(row: McpCallLogRow, insert: Insert = defaultInsert): Promise<void> {
   try {
-    const { error } = await insert(row);
+    let { error } = await insert(row);
+    // Pred migráciou stĺpca `client` (D-159) sa riadok zapíše bez neho, meranie sa nestratí.
+    if (error && row.client !== undefined && /client/.test(error.message)) {
+      const { client: _c, ...rest } = row;
+      void _c;
+      ({ error } = await insert(rest));
+    }
     if (error) console.warn(`[mcp] call log: ${error.message}`);
   } catch (err) {
     console.warn(`[mcp] call log: ${err instanceof Error ? err.message : String(err)}`);

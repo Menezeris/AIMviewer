@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
+import { currentCaller } from "./caller";
 import {
   LIVE_QUERY_EVENT,
   LIVE_REPLY_EVENT,
@@ -89,11 +90,13 @@ export async function queryLiveViewer(
   guids: string[] = [],
   opts: { timeoutMs?: number; rev?: string; collectMs?: number; open?: (channel: string) => Promise<QueryChannel | null> } = {},
 ): Promise<QueryOutcome> {
+  const sid = currentCaller()?.sid;
   const payload: LiveQueryPayload = {
     id: randomUUID(),
     query,
     ...(guids.length ? { guids } : {}),
     ...(opts.rev ? { rev: opts.rev } : {}),
+    ...(sid ? { sid } : {}),
   };
   // Teplý kanál inštancie (D-101): bez nového websocketu a prihlásenia pri každej otázke.
   if (!opts.open) {

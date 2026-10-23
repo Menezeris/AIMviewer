@@ -73,3 +73,12 @@ describe("úpravy zoznamu v potvrdení (D-149)", () => {
     expect(text({ status: "done", rows: 3 }, {})).not.toContain("nepotvrdzuj");
   });
 });
+
+describe("príkaz odmietnutý cudzím oknom (D-159)", () => {
+  it("rejected foreign = jasne nevykonané, bez stavu", () => {
+    const text = appliedText("set_section", { cmdId: "c", ok: false, issues: ["viewer ovláda iný chat"], rejected: "foreign" });
+    expect(text).toMatch(/NEVYKONAL/);
+    expect(text).toMatch(/Prevziať/);
+    expect(text).not.toMatch(/Stav po príkaze/);
+  });
+});
