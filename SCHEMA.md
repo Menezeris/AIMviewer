@@ -510,7 +510,7 @@ jsonb pole tvarov (zatiaľ NULL), `url` (cudzí odkaz z BCF importu), `descripti
 `(document_id, page)`. Prvky IFC témy ostávajú v `model_tasks.components`. BCF API url =
 `<origin>/drawing/<id>?page=N&region=x_y_w_h#page=N`. Práva anon/authenticated nemá (2.12).
 
-**Ručné odkazy popiskov na výkrese (D-160, migrácia 20261023120000):** `drawing_link_overrides` = ručné
+**Ručné odkazy popiskov na výkrese (D-160, migrácia 20261023130000):** `drawing_link_overrides` = ručné
 priradenie (`assign`) alebo zrušenie (`suppress`) odkazu popisku, má prednosť pred párovaním D-130.
 Kľúč: `document_id` -> `objects` (document; `on delete set null`, snímka `document_ref`), `page`,
 `text` (normalizovaný: bez diakritiky, malé písmená, jedna medzera) a voliteľný `bbox` jsonb
