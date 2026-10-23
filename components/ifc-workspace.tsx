@@ -1,5 +1,6 @@
 "use client";
 
+import { LoadingLogo } from "@/components/loading-logo";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
@@ -27,9 +28,7 @@ const IFCViewer = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-full items-center justify-center rounded-md ring-1 ring-border text-sm text-muted-foreground">
-        Načítavam 3D prehliadač…
-      </div>
+      <LoadingLogo label="Načítavam 3D prehliadač" />
     ),
   }
 );

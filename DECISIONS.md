@@ -7492,3 +7492,14 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 - *Zápis z viewera s tokenom priamo z iframe (ako BCF panel s `BCF_API_TOKEN`):* upstream IDS panely klienta servera nemajú a token by musel byť v prehliadači; host route za env bránou je tá istá ochrana ako pri podkladoch a pohľadoch.
 
 **Riziká:** veľké IDS v `view_state` (strop XML 256 kB, nad ním len `dirty` + sha256 a prenos cez `IDS_SAVE`); motory sa môžu líšiť na psetoch z typu (zhoda 8/8 na ER-0101, D-084; overiť pri prvom IDS s psetmi); knižničné snímky zatiaľ len z prototypu; prienik s D-161 v moste (poradie vyššie).
+
+
+### D-163 - Načítavanie viewera: biele pozadie a animované logo z design-kitu (#290)
+
+**Rozhodnutie (Samuel, 23. 10. 2026):** pri načítavaní AIM Viewera je biele pozadie a v strede animované logo z design-kitu (assetin. -> assetinsight. -> assetinformation. -> assetintelligence.), jedna obrazovka od otvorenia `/ifc` po `MODELS_LOADED`.
+
+- **Kde:** len v hoste, fork sa nemení. `components/loading-logo.tsx` (`LoadingLogo`) používajú tri miesta za sebou, aby nebliklo nič iné: `app/(viewer)/ifc/loading.tsx` (server render), `dynamic` loader v `components/ifc-workspace.tsx` (kým sa stiahne kód iframe wrappera) a prekrytie v `components/ifc-viewer.tsx` nad iframe.
+- **Prekrytie drží do `MODELS_LOADED`** (predtým padalo už na `READY`): po `READY` fork ukazuje vlastný veil a progresívne odkrývanie, čo by bola druhá obrazovka načítavania. Viewer neposiela chybovú správu, preto poistka `LOAD_TIMEOUT_MS` (120 s) prepne na doterajšiu chybovú hlášku; neskorý `MODELS_LOADED` ju prepíše.
+- **Závislosť:** `@assetinspace/design-kit` pripnutý na commit `78d728f` (`github:Menezeris/design-kit#78d728f`). Balík má v `package.json` licenciu `UNLICENSED` (interný brand kit Assetin, bez verejnej licencie); používame ho v internej appke. `css/tokens.css` sa importuje pred `css/graphics.css`; markup loga je z kitu. Skript `js/logo-typewriter.js` nepoužívame: píše s náhodným rozptylom a každá inštancia začína od nuly, čo pri prechode medzi stavmi loadera pôsobilo sekane. Typewriter v `loading-logo.tsx` je riadený časom (`requestAnimationFrame`, text sa počíta z uplynutého času, takže pri zahltenom vlákne len dobehne) a časová os je spoločná pre inštancie, takže pokračuje aj po odmontovaní a namontovaní. Rytmus 60 ms na písmeno, pauza 1300 ms.
+- **Vzhľad a poloha:** `fixed inset-0`, celé logo (asset + in + písané slovo + bodka) je vždy vycentrované a pri písaní sa rozširuje symetricky do oboch strán (Samuel zamietol ukotvenie základu "assetin." s pretŕčaním doprava; výška sa nemení); nad ním malý štítok LOADING (`--ds-text-xs`, verzálky, sivá). Bodka bliká vždy ako kurzor, aj pri `prefers-reduced-motion` (prebitie pravidla kitu na pokyn Samuela); pri ňom sa slová len vymieňajú bez písania.
+- **Zavrhnuté:** loader vo forku (zásah do forku a strop balíka +2 kB entry, bez potreby); držať prekrytie len do `READY` (ukáže sa úvodka forku).

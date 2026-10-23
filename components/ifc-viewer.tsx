@@ -1,5 +1,6 @@
 "use client";
 
+import { LoadingLogo } from "@/components/loading-logo";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { nodeSummaryToAimPanel, type ElementDetail } from "@/lib/aim-panel";
@@ -68,6 +69,8 @@ import { PROD_VIEWER_URL } from "@/lib/viewer-source";
  */
 
 const SOURCE = "aim-bridge" as const;
+/** Po tomto čase bez MODELS_LOADED loader ustúpi chybovej hláške (D-163). */
+const LOAD_TIMEOUT_MS = 120_000;
 
 
 type OutboundMessage =
@@ -263,6 +266,14 @@ export function IFCViewer({
     setPrevModelsKey(modelsKey);
     setStatus("loading");
   }
+
+  // Poistka: ak MODELS_LOADED nepríde (viewer nemá chybovú správu), loader nesmie
+  // visieť donekonečna - ukáž chybovú hlášku; neskorý MODELS_LOADED ju prepíše.
+  useEffect(() => {
+    if (status !== "loading") return;
+    const t = setTimeout(() => setStatus("error"), LOAD_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [status, modelsKey]);
 
   function post(msg: Record<string, unknown>) {
     if (!viewerOrigin) return;
@@ -484,11 +495,10 @@ export function IFCViewer({
       switch (e.data.type) {
         case "READY": {
           readyRef.current = true;
-          // Overlay zhoď už na READY: počas ?models= autoloadu si viewer
-          // úvodku prekrýva sám vlastným veilom (AimBridge vo forku) a po
-          // prvom modeli sa odkrýva progresívne — držať overlay do
-          // MODELS_LOADED by znamenalo čakať naslepo na celú federáciu.
-          setStatus("ready");
+          // Overlay (loader D-163) drží až do MODELS_LOADED: po READY by sa pod
+          // ním ukázala vlastná úvodka forku (veil AimBridge) a progresívne
+          // odkrývanie modelu, teda druhá obrazovka načítavania. Visenie
+          // poistí timeout nižšie.
           // Naplň ViewerApi až po READY — presne ako pôvodný kontrakt, kde
           // apiRef.current bol null pred načítaním scény.
           if (apiRef) apiRef.current = makeApi();
@@ -794,13 +804,8 @@ export function IFCViewer({
       />
 
       {/* Nepriehľadný overlay — kým sa nenačíta federácia, nesmie presvitať
-          ifc-lite úvodná obrazovka s ich logom. */}
-      {status === "loading" && (
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <span className="text-sm text-muted-foreground">Načítavam 3D scénu…</span>
-        </div>
-      )}
+          ifc-lite úvodná obrazovka s ich logom (D-163: biele pozadie + animované logo). */}
+      {status === "loading" && <LoadingLogo label="Načítavam 3D scénu" />}
 
       {status === "error" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/90 p-6 text-center">
