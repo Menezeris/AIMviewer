@@ -33,7 +33,16 @@ async function document(id: string): Promise<SnapshotDocument | null> {
   };
 }
 
-async function fetchPdf(location: string): Promise<Uint8Array> {
+/**
+ * PDF v pamäti inštancie (posledné dva súbory, 10 minút): BCF panel pýta snímky všetkých
+ * pripomienok naraz a každá chýbajúca by inak stiahla celé PDF znova (egress Supabase).
+ * Súbežné požiadavky na ten istý súbor zdieľajú jedno stiahnutie.
+ */
+const PDF_TTL_MS = 10 * 60_000;
+const PDF_KEEP = 2;
+const pdfMemo = new Map<string, { at: number; bytes: Promise<Uint8Array> }>();
+
+async function download(location: string): Promise<Uint8Array> {
   if (!isOwnStorageUrl(location, process.env.SUPABASE_URL)) throw new Error("PDF dokumentu nie je v úložisku AIM.");
   const { MAX_PDF_BYTES } = await import("./snapshot-render");
   const res = await fetch(location, { signal: AbortSignal.timeout(30_000) });
@@ -41,6 +50,19 @@ async function fetchPdf(location: string): Promise<Uint8Array> {
   const len = Number(res.headers.get("content-length") ?? "0");
   if (len > MAX_PDF_BYTES) throw new Error("PDF je príliš veľké na snímku.");
   return new Uint8Array(await res.arrayBuffer());
+}
+
+async function fetchPdf(location: string): Promise<Uint8Array> {
+  const now = Date.now();
+  for (const [k, v] of pdfMemo) if (now - v.at > PDF_TTL_MS) pdfMemo.delete(k);
+  let hit = pdfMemo.get(location);
+  if (!hit) {
+    hit = { at: now, bytes: download(location) };
+    pdfMemo.set(location, hit);
+    hit.bytes.catch(() => pdfMemo.delete(location));
+    while (pdfMemo.size > PDF_KEEP) pdfMemo.delete(pdfMemo.keys().next().value as string);
+  }
+  return hit.bytes;
 }
 
 async function cacheGet(key: string): Promise<Buffer | null> {
