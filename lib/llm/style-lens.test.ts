@@ -80,10 +80,27 @@ describe("xray so storey filtrom (#187)", () => {
     const { result } = await execLensStyle("xray", { ifc_type: "IfcCovering", storey: "1NP", mode: "replace" }, () => {}, OPTS);
     const w = (result.warnings as string[]).join("\n");
     expect(w).toMatch(/X-ray s podlažím 1NP.*celý model/);
-    expect(w).toMatch(/action=hide/);
+    expect(w).toMatch(/context_storey=1NP/);
     spy.mockRestore();
     const plain = await execLensStyle("xray", { ifc_type: "IfcCovering" }, () => {}, OPTS);
     expect(plain.result.warnings).toBeUndefined();
+  });
+
+  it("context_storey: wire nesie cs, varovanie odpadne, iná akcia je chyba", async () => {
+    const spy = vi.spyOn(ScopeResolver.prototype, "pickFloor").mockResolvedValue({ id: "f1", object_ref: "1NP", name: "1.NP_ASR" } as never);
+    const pushed: AskAction[] = [];
+    const { result } = await execLensStyle(
+      "xray",
+      { ifc_type: "IfcCovering", storey: "1NP", context_storey: "1NP" },
+      (a) => pushed.push(a),
+      OPTS,
+    );
+    const wire = JSON.parse(Buffer.from(opsOf(pushed[0]).split(":").pop() ?? "", "base64url").toString()) as { x: number; cs: string[] };
+    expect(wire).toMatchObject({ x: 1, cs: ["1NP"] });
+    expect(result.warnings).toBeUndefined();
+    expect((result.xray as string)).toMatch(/ostatné podlažia sú skryté/);
+    await expect(execLensStyle("isolate", { ifc_type: "IfcCovering", context_storey: "1NP" }, () => {}, OPTS)).rejects.toThrow(/len s action=xray/);
+    spy.mockRestore();
   });
 
   it("zmieni zrušený rez", () => {
