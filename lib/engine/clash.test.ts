@@ -225,6 +225,20 @@ describe("clash tool (D-164)", () => {
     expect(none.content).toMatch(/Strana a.*podlažie 5NP/);
   });
 
+  it("pri prekročení stropu dvojíc ponúkne podlažia a zúženie, pri rozpočte tiež", async () => {
+    const capped = await call({ action: "run", a: "IfcWall", b: "IfcSlab", mode: "clearance", clearance_mm: 500 }, { ...deps, clashLimits: { maxPairs: 1 } });
+    expect(capped.isError).toBe(false);
+    expect(capped.json.truncated.note).toMatch(/Zúž test: podlažie \(a_storey, b_storey\), napr\. 1NP, 2NP/);
+    clearClashRuns();
+    const slow = await call({ action: "run", a: "IfcWall", b: "IfcSlab", mode: "clearance", clearance_mm: 500 }, { ...deps, clashLimits: { budgetMs: 0 } });
+    expect(slow.isError).toBe(true);
+    expect(slow.content).toMatch(/Beh presiahol 0 s\. Zúž test.*1NP, 2NP.*a_storey='2NP'/);
+    clearClashRuns();
+    const scoped = await call({ action: "run", a: "IfcWall", a_storey: "1NP", b: "IfcSlab", mode: "clearance", clearance_mm: 500 }, { ...deps, clashLimits: { budgetMs: 0 } });
+    expect(scoped.content).toMatch(/podlažie už je zadané/);
+    expect(scoped.content).not.toMatch(/1NP, 2NP/);
+  });
+
   it("neimplementované akcie vrátia jasný stub, chyby vstupu nie sú výnimka", async () => {
     for (const action of ["save", "delete", "compare", "review", "open", "from_viewer"]) {
       const r = await call({ action });

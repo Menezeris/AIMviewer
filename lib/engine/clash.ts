@@ -27,9 +27,9 @@ import {
 } from "./clash-tests";
 import { joinToAim } from "./join";
 import { meshModel, toIfc, type MeshElement, type Vec3 } from "./measure";
-import type { EngineModel } from "./session";
+import { openEngineSession, type EngineModel } from "./session";
 import { normalizeStoreyLabel } from "./storey";
-import { InputError, clamp, modelsFor, str, type EngineDeps } from "./tools";
+import { InputError, clamp, modelsFor, str, structured, type EngineDeps } from "./tools";
 
 /**
  * Tool `clash` (D-164, host PR1): kolízie medzi modelmi federácie na serveri. Geometria
@@ -245,9 +245,11 @@ async function execRun(input: Record<string, unknown>, deps: EngineDeps): Promis
   const spec = parseSpec(input);
   const modelIds = specModels(spec, (deps.sources ?? getIfcModels)().map((m) => m.id));
   const { models, revision } = await modelsFor(modelIds, deps);
-  const fingerprint = JSON.stringify([spec, revision, MAX_PAIRS]);
+  const maxPairs = deps.clashLimits?.maxPairs ?? MAX_PAIRS;
+  const budgetMs = deps.clashLimits?.budgetMs ?? RUN_BUDGET_MS;
+  const fingerprint = JSON.stringify([spec, revision, maxPairs]);
   const hit = [...runs.values()].find((r) => r.fingerprint === fingerprint);
-  if (hit) return { ...describeRun(hit), cached: true };
+  if (hit) return { ...describeRun(hit, hit.result.truncated ? await narrowHint(spec, models) : undefined), cached: true };
 
   const t0 = performance.now();
   const elements = new Map<string, { model: EngineModel; meshes: Map<string, MeshElement> }>();
@@ -256,13 +258,14 @@ async function execRun(input: Record<string, unknown>, deps: EngineDeps): Promis
 
   const t1 = performance.now();
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), RUN_BUDGET_MS);
+  if (budgetMs <= 0) ctl.abort();
+  const timer = setTimeout(() => ctl.abort(), budgetMs);
   let detected: Detected;
   try {
-    detected = await detect({ spec, elements, signal: ctl.signal });
+    detected = await detect({ spec, elements, signal: ctl.signal, maxPairs });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
-      throw new InputError(`Beh presiahol ${RUN_BUDGET_MS / 1000} s. Zúž test: podlažie (a_storey, b_storey), užšie triedy v a a b, alebo menší odstup.`);
+      throw new InputError(`Beh presiahol ${budgetMs / 1000} s. ${await narrowHint(spec, models)}`);
     }
     throw err;
   } finally {
@@ -280,8 +283,32 @@ async function execRun(input: Record<string, unknown>, deps: EngineDeps): Promis
     createdAt: new Date().toISOString(),
   };
   runs.set(run.id, run);
+  const truncatedHint = detected.result.truncated ? await narrowHint(spec, models) : undefined;
   while (runs.size > KEPT_RUNS) runs.delete(runs.keys().next().value!);
-  return { ...describeRun(run), cached: false };
+  return { ...describeRun(run, truncatedHint), cached: false };
+}
+
+/** Podlažia modelov (normalizované štítky) pre radu "zúž na podlažie". */
+async function storeyLabels(models: EngineModel[]): Promise<string[]> {
+  const session = await openEngineSession(models);
+  const labels = new Set<string>();
+  for (const m of models) {
+    const res = structured<{ entities?: Array<{ name?: string }> }>(
+      await session.call("query_entities", { model_id: m.id, type: "IfcBuildingStorey", limit: 200, fields: ["name"] }),
+    );
+    for (const e of res.entities ?? []) if (e.name) labels.add(normalizeStoreyLabel(e.name));
+  }
+  return [...labels].sort();
+}
+
+/** Rada pri prekročení rozpočtu alebo stropu dvojíc: podlažia na výber, užšie triedy, menší odstup. */
+async function narrowHint(spec: ClashSpec, models: EngineModel[]): Promise<string> {
+  const storeys = await storeyLabels(models).catch(() => []);
+  const scoped = spec.a.storey || spec.b?.storey;
+  return (
+    `Zúž test: ${scoped ? "konkrétnejšie triedy v a a b (podlažie už je zadané)" : `podlažie (a_storey, b_storey)${storeys.length ? `, napr. ${storeys.join(", ")}` : ""} a konkrétne triedy v a a b`}` +
+    `${spec.mode === "clearance" ? ", alebo menší odstup" : ""}. Príklad: a='IfcDuct*', a_model='VZT', a_storey='2NP', b='IfcWall|IfcSlab', b_model='ASR', b_storey='2NP'.`
+  );
 }
 
 const countBy = <T>(items: Iterable<T>, key: (t: T) => string): Record<string, number> => {
@@ -298,7 +325,7 @@ const top = (rec: Record<string, number>, n: number) =>
 
 const storeyOfClash = (run: ClashRun, c: Clash): string => run.info.get(c.a.key)?.storey ?? run.info.get(c.b.key)?.storey ?? "bez podlažia";
 
-function describeRun(run: ClashRun): Record<string, unknown> {
+function describeRun(run: ClashRun, hint?: string): Record<string, unknown> {
   const { result, spec } = run;
   const clashes = result.clashes;
   const coverage = result.ruleCoverage?.[0];
@@ -314,7 +341,7 @@ function describeRun(run: ClashRun): Record<string, unknown> {
     by_severity: result.summary.bySeverity,
     by_storey: countBy(clashes, (c) => storeyOfClash(run, c)),
     by_type_pair: top(result.summary.byTypePair, 8),
-    ...(result.truncated ? { truncated: { ...result.truncated, note: "Beh bol orezaný stropom dvojíc: súčty sú dolná hranica. Zúž test (podlažie, užšie triedy)." } } : {}),
+    ...(result.truncated ? { truncated: { ...result.truncated, note: `Beh bol orezaný stropom dvojíc: súčty sú dolná hranica. ${hint ?? ""}`.trim() } } : {}),
     ...(coverage && coverage.matchedA === 0 ? { warning: "strana a nenašla žiadny prvok" } : {}),
     next: "results (group_by storey | system | type_pair | element | rule | cluster; group = kľúč alebo poradie na rozbalenie, vráti global_ids pre show_in_3d / style_in_3d), bcf (návrh témy za skupinu).",
   };

@@ -56,6 +56,8 @@ export interface EngineDeps {
   ids?: IdsStore;
   /** GUID prvku -> názov systému z grafu AIM (D-164, `clash group_by=system`). */
   systems?: (guids: string[]) => Promise<Map<string, string>>;
+  /** Stropy behu `clash` (D-164); len testy. */
+  clashLimits?: { maxPairs?: number; budgetMs?: number };
 }
 
 export interface EngineExecution {
