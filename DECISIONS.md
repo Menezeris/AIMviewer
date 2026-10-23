@@ -2180,6 +2180,7 @@ ktorý `postinstall` kopíruje, nikto nefetchuje; drží sa zámerne pre in-app 
 padne rozhodnutie, že nebude, celá os (2) sa má zmazať, nie updatovať.
 
 ### D-072 — Georeferencované PDF podklady (drawing underlay) v 3D viewri
+> **D-161 (2026-10-23):** split (2D panel vedľa voľnej 3D) a Drawing view ako režim vypadávajú; bodka polohy a smer kamery na PDF sa prenesú do #282 (záväzný krok). Zámok kamery ostáva len počas kalibrácie.
 **Status:** rozhodnuté (2026-07-14), MVP v implementácii — supersedovuje kandidátov
 D-038 (split-screen) a D-039 (georeferencing); preberá ich 2-bodový prístup
 a `_georef` úložisko.
@@ -2331,6 +2332,7 @@ v klientskom komponente zduplikovaný oproti `SPATIAL_TYPES` — `lib/data/spati
 `server-only` modul, import hodnoty by zhodil klientský build.
 
 ### D-075 — Projektová dokumentácia v jednom rozhraní (2D/3D prepínač, dokumenty v kartách)
+> **D-161 (2026-10-23):** prepínač 3D | 2D | Split a 2D na celú plochu vypadávajú; dokumenty v kartách ostávajú.
 **Status:** rozhodnuté (2026-07-16) — koncept odsúhlasený, **M1–M3 implementované na vetve**
 `claude/pdf-rendering-document-view-v6nivv` (oba repá; stav → ROADMAP F9). Stavia na D-072
 (kalibrácia + split view, F7).
@@ -5798,6 +5800,7 @@ prvky. Server pri `color_by` zahadzoval filtre (`style-lens.ts`). Upstream má `
 pribudli otázky z issues.
 
 ### D-122 - Uložené pohľady viewera: `saved_view`, zoznam v `get_viewer_state`, obnova v `set_view_mode`
+> **D-161 (2026-10-23):** nositeľom pohľadu vo vieweri je upstream Presentation, `saved_views` je jeho trvalá kópia (to isté `id`); ukladá sa aj z panela.
 **Status:** rozhodnuté (2026-10-20, pôvodne D-117, prečíslované pre kolíziu v registri #60; Samuel cez orchestrátora: pohľady sú spoločné pre stavbu a žijú
 samostatne, nie pri BCF témach; riadok registra `saved_view` čaká na súhlas v #72). Nadväzuje na D-085
 (`view_state`), D-098 (presná póza `SET_CAMERA {viewpoint}`), D-099 (tvar viewpointu), D-114 (najprv
@@ -6335,6 +6338,7 @@ nekreslí; pôdorys v 2D a split ostáva. Má to ísť aj z chatu.
 ---
 
 ### D-132 - Záložky vo vieweri: pohľad je orez, záložka je otvorený pohľad
+> **D-161 (2026-10-23):** záložky druhu `plan` a `view`, menu "+ Pôdorys" a zámok pohľadu vypadávajú; pohľady nesie upstream Presentation (trvalo v `saved_views`). Lišta záložiek ostáva pre 3D a dokumenty.
 **Status:** rozhodnuté (2026-10-21, Samuel cez orchestrátora; číslo pridelené v registri #60). Issue #165,
 fork patch nad `claude/aim-d127-panely` (fork #97). Nadväzuje na D-072 (pôdorys s podkladom, zámok
 kamery), D-075 (karty dokumentov, režim 2D na celú plochu), D-098 (najprv existujúce funkcie), D-114 (najprv
@@ -7052,6 +7056,7 @@ bez overenej hodnoty.
 ---
 
 ### D-157 - Dlaždice vo vieweri: jedno živé 3D, ostatné 3D dlaždice ako snímka, `set_view_mode layout`
+> **D-161 (2026-10-23):** dlaždica ukazuje aj pohľad z Presentation (výber v hlavičke, "Otvoriť v novej dlaždici", `tiles`/`beside` s menom pohľadu); pôdorys ako záložka vypadáva.
 **Status:** rozhodnuté (2026-10-22, plán schválený Samuelom cez orchestrátora; číslo rezervované v registri #60).
 Issue #210, krok 2 (krok 1 = D-136). Nadväzuje na D-132 (záložky, "Vedľa"), D-072 (pôdorys s podkladom),
 D-087 a D-098 (most forku, najprv existujúce), D-114 (najprv napasuj).
@@ -7123,6 +7128,7 @@ session nemá Supabase kľúče); otázka `view-tiles-four` pridaná a `view-3d-
 ---
 
 ### D-158 - Pripomienky na dokumentoch: BCF téma s odkazom na dokument, stranu a oblasť strany
+> **D-161 (2026-10-23):** pre uložené pohľady sa "zápis do DB len z chatu" mení: pohľady sa ukladajú aj z panela Presentation (route za env bránou). Pripomienky sa nemenia.
 
 **Dátum:** 2026-10-22 · **Stav:** krok 1 schválený (orchestrátor 22. 10., Samuel 22. 10. "áno, riešiť" v #199) · **Issue:** #199 · **Nadväzuje na:** D-099 (BCF témy v `model_tasks`), D-104 (dokumenty z IFC), D-114 (rozšírenie namiesto nového toolu), D-117 (`open_drawing region`), D-123, D-130, D-133
 
@@ -7384,6 +7390,39 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 **Poradie nasadenia:** najprv migrácia `20261023130000_drawing_link_overrides.sql` (aditívna, nová tabuľka; bez nej `fetchOverrides` zlyhá a odkazy na výkrese sa nenačítajú), potom host; fork patch pridáva `members` a návrh priradenia (starší fork `members` ignoruje). Re-ETL netreba.
 
 **Overenie:** `lib/data/drawing-zones.test.ts`, `drawing-link-overrides.test.ts` (zóny, kandidáti, prednosť bbox, assign mimo vrstvy, chat assign/clear/reset/from_draft, chybné vstupy nič nezapíšu), `supabase/tests/drawing_link_overrides.sql` (lokálna DB: unikát na živý riadok, kontrola cieľa, snímka po zániku objektu). Na produkčných dátach nebežalo.
+
+---
+
+### D-161 - Bez režimu 2D: pohľady nesie upstream Presentation (basket views), `mode=2d` je len kamera zhora a rez (#188)
+
+**Dátum:** 2026-10-23 · **Stav:** rozhodnuté (Samuel cez orchestrátora 23. 10., "áno"; číslo pridelené v registri #60) · **Issue:** #188 (plán a jeho verzie v komentároch) · **Nadväzuje na a mení:** D-072 (split), D-075 (2D na celú plochu), D-122 (uložené pohľady), D-132 (záložky pôdorysov a pohľadov), D-157 (dlaždice), D-158 (zápis do DB len z chatu) · **Súvisí:** #281, #282, D-133, D-135, D-159
+
+**Kontext:** z 2D vo vieweri sa časom stali tri rôzne plochy: D-072 split (2D panel PDF vedľa voľnej 3D), D-075 2D na celú plochu a od D-132 záložka pôdorysu so zamknutou kamerou. Používateľ nevedel, v ktorej je, a v zamknutom pôdoryse sa model netočil. Ponuka "Prepnúť do 3D" pri pokuse o orbit (Menezeris/ifc-lite#119) v produkcii nenaskočila: podmienka `inLockedPlan` (`aim/planOrbitHint.ts:45`) platila len pre záložku `plan` mimo splitu, Samuel bol pri overení v D-072 splite (#281), chýbala aj pri uloženom zamknutom pohľade a pri `isMobile`, kde lišta s ponukou nie je. Samuel chce 2D ako samostatný režim úplne vypustiť a pohľady (pôdorysy, rezy, vlastné) mať ako uložené pohľady na 3D model v upstream paneli Presentation, ktorý rezy už zvláda.
+
+**Overenie (D-098, fork `main` @ `30b04805`):** `BasketView` (`store/slices/pinboardSlice.ts:55`) nesie kameru s projekciou a `orthoSize` (`store/types.ts:311`), celú sadu rovín rezu (`BasketSectionSnapshot`), košík prvkov (obnoví sa ako izolácia), náhľad a čas prechodu; aktivátor (`store/basket/basketViewActivator.ts`) to všetko obnoví. "=" (`executeBasketSet`) naplní košík výberom, stromom alebo všetkým viditeľným (`getSmartBasketInputFromStore`). Uloženie s prázdnym košíkom vráti `null`. Stav je len v pamäti prehliadača. PDF podklady kreslí `useDrawingUnderlay.ts` v 3D stále (okrem `underlays_3d=false`), pohľadu nepatria. Nové AIM metadáta pohľadu preto netreba.
+
+**Rozhodnutie:**
+1. **Jeden nositeľ pohľadu = upstream Presentation, trvalo v `saved_views`.** Pohľad vo vieweri je `BasketView`, v DB riadok `saved_views` s tým istým `id` (bez migrácie: `viewpoint` jsonb nesie kameru, sadu rovín, `transition_ms`, poradie; košík ako IFC GlobalId v `isolated`, "celý viditeľný model" zapísaný ako `basket_scope: all` namiesto tisícov GUID). Prvky chýbajúce v novej revízii sa vynechajú a povie sa to. Náhľady sa do DB neukladajú (D-135). `pinboardSlice.ts`, aktivátor ani typy upstreamu sa nemenia; AIM sa napája odberom store (`useViewerStore.subscribe`: `basketViews`, `activeBasketViewId`). Pohľad uloží to, čo je práve nastavené (košík, kamera, rezy); prázdny košík = najprv "=" a potom uloženie. "Play all" ostáva upstreamu bez zmeny.
+2. **Ukladanie z panela aj z chatu** (mení D-158 pre pohľady): panel pošle `VIEW_SAVE` / `VIEW_RENAME` / `VIEW_DELETE` hostovi, host zapíše cez route `/api/saved-views` za env bránou (vzor `UNDERLAY_SAVE`, D-072) s origin guard a rate limitom (D-068), bez auth (Samuel súhlasí). Chat `saved_view save` pošle `VIEW_CAPTURE`, viewer uloží tou istou cestou ako tlačidlo a host zapíše. `rename`/`delete` zapíše host a pošle zoznam znova (`VIEWS_LOAD`, aj pri načítaní viewera a po `session-reset`). Kolízia mena = prípona. "Posledný pohľad" (`kind='last'`) ostáva len pre chat.
+3. **Prehliadač = pás Presentation** (filmstrip), žiadny zoznam v ribbone. Chat vyberá podľa mena: `get_viewer_state(saved_views=true)` = ten istý zoznam ako pás, `set_view_mode view=<meno>` = `VIEW_ACTIVATE` (starší fork: obnova cez ops D-122), `section_offset_m` ostáva.
+4. **Bez zámku kamery a bez ponuky orbitu.** `aim/AimPlanOrbitHint.tsx`, `aim/planOrbitHint.ts` (+ test) a kľúče `aimFork.planOrbit.*` sa zmažú, AIM vetvy so zámkom pohľadu sa zjednodušia, z modelu pohľadu vypadne `locked`. #119 je vyriešené zmazaním; zámok pohľadu prípadne neskôr ako návrh upstreamu. Zámok kamery ostáva len počas aktívnej kalibrácie podkladu v paneli Underlays (D-072): blok AIM-FORK v `useMouseControls.ts` a výber bodu v `selectionHandlers.ts` sa podmienia aktívnou kalibráciou a jej koniec (uloženie aj zrušenie) zavolá `exitDrawingView`. Dnes zámok po kalibrácii ostával a uvoľnila ho až záložka 3D.
+5. **`mode=2d` nie je režim:** `set_view_mode mode=2d floor=X` nastaví na bežnom 3D canvase kameru zhora (ortho) a vodorovný rez 1,2 m nad podlahou, bez zámku, záložky a osobitného UI; orbit, posun, výber a nástroje idú hneď. Ak má podlažie uložený pohľad (vodorovný rez v rozsahu výšok podlažia, pri viacerých ten s menom podlažia), otvorí ho; inak neuložený pohľad zhora a chat nič neponúka. Parameter ostáva kvôli kompatibilite ("pohľad zhora na podlažie"), `mode=3d` vráti perspektívu. `mode=split floor=X` = dlaždice `split_h` s 3D a pôdorysom. `get_viewer_state.mode` (aj v `APPLIED` a opise uloženého pohľadu) sa vypúšťa; chat má `camera.projection`, `section` a `view` (aktívny pohľad z Presentation). Starý `viewpoint.mode` host prečíta a ignoruje; parametre `saved_view` `view_type`, `locked`, `underlay_*` sa prijmú a ignorujú s poznámkou.
+6. **Vypadne:** D-072 split (2D panel vedľa 3D, tlačidlo Split view v Underlays, `setMode('split')` v Documents), D-075 2D na celú plochu (`enterPlanView`), mobilný `ViewModeSwitcher`, menu "+ Pôdorys", druhy záložiek `plan` a `view` (D-132) a "Vedľa" pre pôdorys. **Horná lišta záložiek ostáva** pre 3D, dokumenty (PDF) a dlaždice; "Vedľa" pre dokument ostáva. Vygenerované pôdorysy nie sú: pôdorysy sú obyčajné uložené pohľady, ktoré si Samuel pripraví.
+7. **Dlaždice (D-157):** dlaždica ukazuje 3D, dokument alebo pohľad z Presentation. Živá dlaždica pohľad aktivuje, ostatné ukazujú snímku a klik ich urobí živými; úpravy v dlaždici sa držia počas relácie odkladaním stavu z D-132, trvalé sú po uložení. UI: výber v hlavičke dlaždice a "Otvoriť v novej dlaždici" pri pohľade; chat `tiles` a `beside` s menom pohľadu, `view=` do živej dlaždice.
+8. **Poloha na PDF je záväzný krok 3, nie "neskôr":** bodka polohy a smer kamery na PDF pôdoryse, ako fungujú v D-072 splite (značka a klin, klik do plánu presunie kameru, väzba cez `_georef` podlažia), sa zachovajú v #282: PDF dokument v záložke alebo dlaždici vedľa 3D ukáže polohu a smer živej kamery, s vypínačom, čitateľné cez `get_viewer_state`.
+
+**Kroky (fork pred hostom, D-116; bez migrácie):** 1. Fork A: zmazanie ponuky orbitu a zámku pohľadu, zámok len pri kalibrácii, vypnutie bodu 6, prázdny košík, trvalosť a most v lenivom súbore (nie v `bridge-protocol.ts`), `view_state.view`, overenie podkladu pod vodorovným rezom, test v Playwright (po kalibrácii aj po `mode=2d` ťah otáča). 2. Host A: route, most v `components/ifc-viewer.tsx`, `saved_view`, `set_view_mode`, `get_viewer_state`, opisy, `system-prompt.ts`, `MCP-TOOLS.md`, evaly, vitest. 3. #282 poloha na PDF. 4. Fork B + Host B: dlaždice s pohľadmi z Presentation. 5. Neskôr: zvislý PDF podklad pod rezom (D-133 bod 5).
+
+**Balík:** entry do +0,5 kB, eager do +1 kB, zvyšok lenivo; upstream najviac po jednom riadku AIM-FORK v `PresentationPanel.tsx` a `PresentationViewCard.tsx`.
+
+**Zavrhnuté:**
+- *Vlastné AIM záložky pôdorysov a uložených pohľadov (D-132) a zoznam pohľadov v ribbone (prvá verzia plánu):* Samuel chce jeden nositeľ, Presentation, a pôdorysy nie ako záložky v lište.
+- *AIM metadáta vedľa `BasketView` (`viewMetaStore`: druh, zámok, rez podlažia, podklad; verzia 2):* kamera, rezy a košík stačia, podklad sa kreslí sám.
+- *Zámok kamery a ponuka orbitu v pohľadoch:* Samuel, prípadne návrh pre upstream.
+- *Vygenerované pôdorysy podlaží v páse:* Samuel si ich pripraví sám.
+- *Úprava `pinboardSlice` alebo aktivátora:* strop veľkosti modulov a sync s upstreamom; stačí odber store.
+
+**Riziká:** upstream Presentation je čerstvý (#5508, #7545); aktivácia izoluje košík (prepíše izoláciu z chatu) a zapne nástroj Rez; dvaja zapisovatelia (panel a chat) a viac okien, vyhrá posledný zápis; zápis bez auth len za env bránou; po načítaní stránky chýbajú náhľady, kým sa pohľad raz neotvorí; PDF podklad vyššieho podlažia môže v pohľade zhora prekryť rezaný pôdorys (rez podklady neorezáva) - overí Fork A, oprava by bola pravidlo zo scény (pri vodorovnom reze len podklad najbližšieho podlažia pod rezom), nie metadáta pohľadu.
 
 ---
 

@@ -605,6 +605,11 @@ aj `view_type` (3d | plan | section | detail), `locked` (kamera zamknutá kolmo)
 dokumentu). Jediný riadok `kind = 'last'` = "Posledný
 pohľad", prepíše ho každé uloženie a obnova (`uniq_saved_views_last`). Zapisuje MCP konektor
 (`saved_view`, `set_view_mode(saved_view)`). Práva anon/authenticated nemá (2.12).
+Od D-161 (bez migrácie) je riadok trvalá kópia pohľadu z upstream panela Presentation (`BasketView`, to isté `id`):
+`viewpoint` nesie navyše `section_set` (celá sada rovín rezu), `transition_ms`, `order` (poradie v páse) a
+`basket_scope` (`all` = celý viditeľný model, inak košík ako GlobalId v `isolated`); `mode`, `view_type`, `locked` a
+`underlay` z D-122/D-132 sa pri čítaní ignorujú. Zapisuje aj viewer (panel Presentation) cez route
+`/api/saved-views` za env bránou.
 
 ## 4. Konvencia `properties` (D-022)
 
