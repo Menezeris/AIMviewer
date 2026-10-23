@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-22** - **D-136 (dlaždice vo vieweri, #210, krok 1):** `set_view_mode panels.drawing` otvorí pôvodný 2D výkres rezu z modelu (bez podkladu) pod 3D; pôdorys bez podkladu pri 3D = `set_section(floor)` + `panels={drawing: open}`. Viac 3D pohľadov naraz (dlaždice) čaká na Samuela.
 - **2026-10-21** - **D-132 (záložky vo vieweri, #165):** pohľad = orez (kamera zamknutá kolmo + rovina alebo box), záložka = otvorený pohľad na celú plochu (3D, pôdorys podlažia za behu, uložený pohľad, dokument), Vedľa medzi záložkami, `open_drawing target`, `set_view_mode view/tab/beside/close_tab`, `set_section box`, `view_state.tabs`.
 - **2026-10-20** - **D-119 (miestnosti a farby z chatu, #135 #136 #137):** Lens z chatu a `show` zapnú skryté IfcSpace/IfcSpatialZone, fork v 2D vyplní a popíše ofarbené miestnosti, `color_by` rešpektuje filter volania (inak viditeľné prvky) cez `capturedScope`, `style_in_3d action=legend` s `legend_size` zväčší legendu.
 - **2026-10-20** - **D-116 (release train, rozširuje D-103):** feature PR forku len rýchla cesta, plné CI raz na balíku `release/aim-*` (merge na pokyn Samuela), výber viewera nad 3D (`?viewer=pr-N`, náhľad PR forku) na živé testovanie s MCP pred zlúčením, smoke po nasadení, tag balíka (ifc-lite #77).
@@ -6220,6 +6221,12 @@ Na rozhodnutie, ktoré dvere to sú, treba podlažie výkresu a výskyty typu na
    na 1NP (aj `08 DD01` -> DD01.08.0001), 9 typových kódov s viacerými výskytmi (kandidáti), 1 nespárovaný
    (`OV01` nad výškovou kótou `00.00`). Kódy miestností: 46 popiskov, 23 miestností 1NP, všetky jednoznačné.
 
+5. **Doplnenie 2026-10-22 (#167, Samuel po teste):** značka typu s viac výskytmi (modrá, `candidates`) otvorí v paneli
+   vlastností **IFC typ** (`asset_type` s presným `object_ref`, napr. SN05.01 = IfcWallType), nie zoznam výskytov. Wire
+   `DOCUMENT_LINKS` dostal voliteľné `type {guid, ref, name?}` na odkaze so stavom `candidates`; výskyty ostávajú v
+   `targets` ako vedľajšia voľba (výber sa ukáže len keď typ vo vieweri nie je). Zelené popisky (`unique`) sa nemenia.
+   Izolácia výskytov typu v 3D nie je súčasťou požiadavky. Bez nového čísla D (úprava D-130).
+
 **Zavrhnuté:**
 - *Zapnúť a doladiť D-076 vo forku:* fork nepozná podlažie výskytov z DB ani konvenciu `.0001` a výber výskytu
   podľa podlažia by bol druhý výpočet popri AIMvieweri; D-076 ostáva ako všeobecná funkcia originálu.
@@ -6519,6 +6526,54 @@ prompt v rozhovore"): predčítanie motora len v rozhovore, ktorý motor použí
   mená v tooloch viewera) načítajú motor až pri potrebe a nie sú v signáli.
 - *Evaly D-057 nepobežali* (cloud session nemá Supabase kľúče; LLM vrstva, tooly ani prompt sa nemenia).
 
+---
+
+### D-136 - Dlaždicové rozloženie viewera: krok 1 je pôvodný 2D výkres rezu, viac 3D pohľadov je otázka renderera
+**Status:** krok 1 rozhodnutý (2026-10-22, session z konektora, číslo rezervované v registri #60); krok 2
+(dlaždice s viacerými 3D pohľadmi) čaká na Samuela. Issue #210. Nadväzuje na D-072 (pôdorys s podkladom),
+D-087 (most forku), D-098 (najprv existujúce funkcie), D-114 (najprv napasuj), D-127 (panely z chatu),
+D-132 (záložky; bod "Otvorené" o pôdoryse bez podkladu).
+
+**Kontext:** Samuel chcel v rozhovore "vľavo 3D, vpravo pôdorys 1NP" a ako v Revite (Tile Windows) až štyri
+pohľady naraz. `set_view_mode(beside=1NP)` bez kalibrovaného podkladu vráti odmietnutie, dva 3D pohľady
+nejdú a viac než dve dlaždice tiež nie. Príčina je vo vieweri: má jeden 3D canvas (WebGPU, nikdy sa
+neremountuje) a jednu kameru; 3D, pôdorys bez podkladu (model zhora s rezom) a uložený pohľad sa v ňom len
+striedajú. Vedľa 3D dnes môže stáť len niečo, čo nie je 3D: PDF dokument alebo PDF podklad (D-072 split).
+
+**Rozhodnutie (krok 1):**
+1. Originál ifc-lite má panel **Drawing** (`section2d`, upstream #5493): 2D výkres aktuálneho rezu
+   generovaný z modelu (vektor, šrafy, bez podkladu), domov v spodnom páse, dá sa nechať plávať alebo
+   vytiahnuť do okna. Je na čítanie (generovanie beží v `DrawingRuntimeHost`), nie v režime úprav modelu,
+   takže rieši bod "Otvorené" z D-132.
+2. **Bez nového toolu (D-114):** `set_view_mode panels` otvorí `drawing` (open | close | toggle); od D-150 host
+   púšťa ľubovoľné meno panela z registra forku, takže v hoste pribudol len recept v opise toolu. Pôdorys
+   podlažia bez podkladu pri 3D = `set_section(action=set, floor)` + `set_view_mode(panels={drawing: 'open'})`:
+   hore voľné 3D (rezané na tom podlaží), dole pôdorys z modelu. Stav panela (`open`, `where`) vráti výsledok
+   aj `get_viewer_state` ako pri ostatných paneloch.
+3. **Most (fork, len `apps/viewer/src/aim/`):** `PANEL_KEYS` + `drawing`, mapovanie na upstream panel
+   `drawing`, zatvorenie cez `setDrawing2DPanelVisible(false)`, stav zo `drawing2DPanelVisible`. Odmietnutie
+   `VIEW_TABS beside` pôdorysu bez podkladu ukáže túto cestu.
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool na rozloženie (návrh z issue):* rozloženie plochy je zobrazenie, to robí `set_view_mode`;
+  `layout`/`tiles` by dnes nemali čo zobraziť, kým viewer nemá viac 3D pohľadov.
+- *`set_view_mode layout=split_h|split_v|grid4, tiles=[...]` hneď:* parameter bez schopnosti vo vieweri by
+  vracal chyby; pribudne až s krokom 2.
+- *`set_camera` alebo `set_section` s dlaždicou:* majú jeden canvas, dlaždica by bola len predstieraná.
+
+**Krok 2 (otvorené, otázka v #210):** skutočné dlaždice (2 vedľa seba, 2 nad sebou, 2x2) s viacerými 3D
+pohľadmi, každý s vlastnou kamerou, rezom a farbením. Možnosti: (a) viac viewportov v jednom canvase
+(scissor, jedna GPU scéna, stav kamery, rezu a farieb na dlaždicu; veľký zásah do upstream renderera a
+store, vlastný kód forku pri každom sync), (b) dlaždice ako snímky (živá je jedna, ostatné obrázok
+posledného stavu, klik ju urobí živou; malý zásah, záložky D-132 už stav dlaždice ukladajú), (c) návrh
+upstream ifc-lite. Odporúčanie: (b) ako medzikrok, (a) len ak je pre demo nutné. `layout`/`tiles` v
+`set_view_mode` pribudnú až s krokom 2.
+
+**Evaly D-057 nepobežali** (cloud session nemá Supabase kľúče); otázka `view-3d-and-plan-no-underlay` pridaná
+bez overenej hodnoty.
+
+---
+
 ### D-138 - style_in_3d: priorita prekrytých pravidiel a hlasné varovanie pri pravidle bez zásahu
 **Status:** rozhodnuté (2026-10-22, issue #221; číslo D-138 navrhnuté orchestrátorovi, potvrdenie čaká). Nadväzuje na
 D-096 (Lens z chatu), D-125 (`inactive`) a #219 (varovania pri mode=replace).
@@ -6592,6 +6647,30 @@ líši od skutočného podhľadu (PH01.10.0010 na z = 8,05 až 8,063 m), rez ho 
   ukázať, treba kladný offset (nad horným okrajom ho zvýrazní `style_in_3d`) alebo ho po rezaní zobraziť cez xray.
 - **Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `section-below-ceiling-geometry` je v
   `eval/questions.json`. **Testy:** `lib/engine/names.test.ts` (mini model `__fixtures__/mini-ceiling.ts`).
+
+**Doplnok (2026-10-22, #187): X-ray kontext len pre zvolené podlažie, `style_in_3d action=xray context_storey`.** Zvyšok issue #187
+(hlavná chyba: `xray` so `storey` nechal kontext celú budovu, pôdorys 1NP zhora bol nečitateľný). Samuel 22. 10.: plné riešenie vo forku.
+*Najprv to, čo existuje (D-098, D-114):* fork robí X-ray ako zjednotenie pravidiel `APPLY_LENS xray: true` v kanáli `ghostExceptEntities`
+(`aim/aimLens.ts`, D-105): zvyšok modelu je priesvitný, na podlažia nemá žiadny pojem. Host nemôže ostatné podlažia skryť sám v jednom príkaze
+(`hide storey` po podlažiach sú stovky GUIDov nad stropom `LENS_GUID_CAP`; lens pravidlo `hide` v tej istej správe by fork zjednotil do X-ray
+množiny a pri `clear_isolation` by ostalo v lens). Najbližšie tooly: `style_in_3d` (xray, hide, clear_isolation), `set_section`
+(relative_to=ceiling, D-140 hore). Rozšírenie existujúcej správy, nový tool ani nová bridge správa netreba (D-114).
+*Rozhodnutie:* (1) `style_in_3d` dostane parameter `context_storey` (podlažie ako `storey`: 1NP, 2.NP, object_ref, názov), platí len s
+`action=xray`, inak chyba. Host ho preloží na normalizovaný štítok z grafu AIM (`normalizeStoreyLabel`, `1.NP_VZT` = `1NP`) a pošle ho v op `lens`
+ako `cs`, na moste ako `APPLY_LENS xrayStoreys`. (2) Fork (`aim/aimXrayStoreys*.ts`, patch `aim-187-xray-kontext-podlazia`): pri `xrayStoreys`
+skryje kanálom `hiddenEntities` prvky ostatných podlaží všetkých modelov (porovnanie podľa štítku, aby ASR a VZT podlažie toho istého poschodia
+ostali spolu), okrem plných prvkov X-ray; prvky mimo podlaží (terén, budova) ostanú v ghost kontexte. Čo skryl chat, si pamätá a vráti pri zrušení
+X-ray: `clear_isolation` (D-151, `APPLY_LENS unisolate`), `show_all`, `clear` alebo nový X-ray vrátia len tieto prvky, ručné skrytie používateľa ostane.
+`mode=add` kontext rozšíri. (3) Bez `context_storey` ostáva doterajšie správanie; `xray` so `storey` bez neho vráti varovanie, že kontext je celý model,
+s radou zopakovať volanie s `context_storey=<podlažie>` a rezom tesne nad horný okraj stropov (D-140). Odpoveď nesie `xray` text a `context_storey`;
+`LENS_QUERY` vo `isolation` aj `storeys` a `hidden` (počet skrytých). Starší fork pole ignoruje (varovanie ostáva pravdivé, kontext je celý model).
+*Zavrhnuté:* nová akcia `ceiling_plan` (štyri kroky naraz, návrh z komentára k issue): `xray` + `context_storey` + `set_section` + `set_camera` sú existujúce
+tooly a rez z D-140 už ide z geometrie, balík by zakryl, čo sa ktorým krokom stalo; `hide` ostatných podlaží po jednom (obchádzka, desiatky volaní a GUIDov);
+lens pravidlo `hide` s `storey notIn` (neprenáša sa medzi modelmi s iným menom podlažia a `clear_isolation` by ho nezrušil).
+*Dôsledky:* fork PR len v `aim/` (rýchle CI, D-103), poradie zlúčenia fork, potom AIMviewer. Bez migrácie a env. Prompt sa nemení (MCP inštrukcie
+pri strope), pokyn je v opise toolu a vo varovaní. **Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `style-xray-storey-context`
+je v `eval/questions.json` (upravená). **Testy:** vitest (`style-lens`, `viewer-lens`), fork `aimXrayStoreysPlan.test.ts` s mutačnými skúškami. Neoverené živo
+(bez modelu v cloud session, D-135): skrývanie vo viewere stojí na typoch a čistej logike.
 
 ### D-141 - Spodná stavová lišta hostu pod viewerom: výber viewera a Live neprekrývajú panely
 **Status:** rozhodnuté (2026-10-22, issue #185; číslo D-141 navrhnuté orchestrátorovi, potvrdenie čaká). Nadväzuje na D-116
@@ -6762,6 +6841,8 @@ jedného stredu; hĺbka podesty je odhad z plochy (pri tvare L nepresná, čiara
 
 ---
 
+---
+
 ### D-146 - Posun panela vlastností z chatu (`set_view_mode panel_scroll`) a opravená cesta k riadku Qto (#183)
 
 **Dátum:** 2026-10-22 · **Issue:** #183 · **Nadväzuje na:** D-113, D-114, D-127, D-098
@@ -6896,3 +6977,194 @@ nepobežali (bez Supabase kľúčov); otázka `panel-scroll-down` je v `eval/que
 **Poradie nasadenia (produkcia):** 1. migrácia `20261022180000_space_boundary.sql` (pohľad aj bez dát funguje ako doteraz, nič sa nerozbije), 2. re-ETL (workflow `reetl` v Menezeris/OCB, najprv `dry_run`), lebo hrany plní až ETL. Bez re-ETL `boundary` riadky nevzniknú.
 
 **Overenie:** `etl/tests/test_space_boundary.py` (mini IFC: jeden riadok na pár, physical vyhráva, bez emitnutého konca vypadne, manifest), `supabase/tests/space_boundary.sql` (syntetické dáta na lokálnej DB po migráciách: len hranica, contained aj hranica, referenced aj hranica, ukončená hranica, dvere medzi dvoma miestnosťami, odmietnutie hranice na podlažie; pred migráciou zlyhá, po nej prejde), `lib/llm/query-view.test.ts`. Evaly (D-057) v cloud session bez Supabase kľúčov nepobežali; otázka `doors-in-space-101-boundary` je v `eval/questions.json` ako neoverená.
+
+---
+
+### D-158 - Pripomienky na dokumentoch: BCF téma s odkazom na dokument, stranu a oblasť strany
+
+**Dátum:** 2026-10-22 · **Stav:** krok 1 schválený (orchestrátor 22. 10., Samuel 22. 10. "áno, riešiť" v #199) · **Issue:** #199 · **Nadväzuje na:** D-099 (BCF témy v `model_tasks`), D-104 (dokumenty z IFC), D-114 (rozšírenie namiesto nového toolu), D-117 (`open_drawing region`), D-123, D-130, D-133
+
+**Kontext:** #199 chce jednotné pripomienky: téma založená nad dokumentom PDF (strana, oblasť), prepojená s IFC entitami až po IfcProject, v jednom zozname s 3D témami, BCF 2.1/3.0 ako export a import, nie zdroj pravdy. Dnes (overené 22. 10.): nositeľ témy je riadok `model_tasks` (D-099) s `components` (IFC GlobalId) a `viewpoint`; tooly `bcf_topic` a `bcf_topic_list`, BCF API `/api/bcf` (čítanie bez tokenu, zápis s tokenom; témy sa podľa dodatku D-099 zakladajú v chate). Väzbu témy na dokument, stranu ani oblasť nemá nič; výrez strany pozná len `open_drawing region` (D-117). Dokument je `objects` + `documents` (D-104), strany v `document_pages`; hash súboru dokumentu sa neukladá.
+
+**Najbližšie tooly (D-114):** `bcf_topic` (rozširujeme: parameter `document`, `remove_document`), `bcf_topic_list` (filter `document` a `page`, odkazy v detaile), `open_drawing` (ukáže miesto, bez zmeny). Nový tool netreba.
+
+**Rozhodnutie:**
+1. **Nositeľ ostáva `model_tasks`** (D-099 zavrhol druhú tabuľku tém). Pripomienka na dokumente je BCF téma ako každá iná, v tom istom zozname.
+2. **Odkaz na dokument = podriadená tabuľka `model_task_documents`** (migrácia `20261022190000`, SCHEMA §2.14), 1:N k téme, jeden riadok = BCF DocumentReference: `document_id` (objects, `on delete set null`) so snímkou `document_ref`, `document_name`, `document_revision` z času založenia (téma prežije re-ETL a novú revíziu dokumentu sa nepresťahuje potichu), `page`, `region` = výrez v % `{x, y, width, height}` vľavo hore ako `open_drawing region` (null = celá strana), `markup` (tvary, zatiaľ prázdne), `url` (cudzí odkaz z importu), `description`, `author`. Strop 20 odkazov na tému.
+3. **IFC entity ostávajú v `components`** (jediný nositeľ väzby na IFC). "Celý projekt" je GlobalId IfcProject, miestnosť a podlažie ich GlobalId; tabuľka `issue_entity` z návrhu v issue by bola druhý nositeľ tej istej väzby.
+4. **Chat:** `bcf_topic` `create`/`update` s `document = {id_or_ref, page, region, description}` (objects.id, object_ref alebo jednoznačný kód `documents.identification`; odkaz na časť dokumentu D-104 vedie na jeho dokument a stranu z `Location`). Strana sa overí voči extrahovaným stranám, oblasť bez strany len pri jednostranovom dokumente, chybný dokument tému nezaloží. `remove_document` = guid odkazu alebo `all`. `bcf_topic_list` filtruje `document` (+ `page`), riadok zoznamu má počet odkazov a detail témy `documents` s pripravenými argumentmi `open_drawing`.
+5. **Jeden zoznam tém (Samuel 22. 10.):** pripomienka na dokumente je v `bcf_topic_list` aj v BCF paneli viewera spolu s ostatnými témami. Upstream `fetchProjectAsBCF` DocumentReference nesťahuje, preto BCF API pridá do `description` témy blok "Dokumenty (AIM):" s kódom, revíziou, stranou a oblasťou; pri zápise z panela (PUT) sa blok odreže, v DB ostáva opis bez neho.
+6. **BCF API 2.1:** `GET /topics/{guid}/document_references` (bez tokenu), `POST` a `PUT .../{guid}` (s tokenom). `url` = `<origin>/drawing/<id>?page=N&region=x_y_w_h#page=N` (`#page` podľa RFC 8118, `region` je náš parameter pre návrat), `description` = "kód (rev. X), strana N, oblasť ...: text". Vlastná adresa sa pri zápise rozloží späť na dokument, stranu a oblasť (opis bez zopakovanej hlavičky), cudzia ostane ako `url`. `document_guid` (dokumenty projektu BCF) zatiaľ nie.
+
+**Kroky:**
+- **1 (táto vetva):** migrácia, `lib/bcf/documents.ts`, úložisko, `bcf_topic`/`bcf_topic_list`, BCF API, testy. Bez forku.
+- **2 (viewer, fork):** pripomienky ako rámiky s číslom nad stranou PDF (vzor rámikov D-123), klik otvorí tému; ťahom označená oblasť do `view_state`, aby ju `bcf_topic create` s `capture_view` vzal. Či zakladať aj tlačidlom vo vieweri (dnes zápis len v chate, bez tokenu vo vieweri), rozhodne Samuel.
+- **3:** export a import `.bcfzip` 2.1 a 3.0 (`@ifc-lite/bcf`), snímka výrezu so zapáleným rámikom (pymupdf v ETL, server parser PDF nemá, D-123), `viewrect` v bodoch strany.
+- **4:** s kalibráciou D-133 prepočet oblasti na IFC súradnice: návrh prvkov v oblasti a 3D pohľad nad ňou; filter zoznamu podľa nadradenej entity; sha256 súboru dokumentu v ETL ako kotva revízie.
+
+**Zavrhnuté:**
+- *Stĺpec `documents jsonb` na `model_tasks`:* filter "pripomienky na tomto dokumente a strane" by išiel cez GIN nad poľom a BCF API potrebuje stabilný guid každého odkazu na PUT.
+- *Nová tabuľka `issues` podľa návrhu v issue:* druhý nositeľ témy vedľa `model_tasks` (zavrhnuté už v D-099).
+- *Nový tool `document_issue`:* tá istá téma a ten istý zápis ako `bcf_topic` (D-114).
+- *Pravidlo v inštrukciách konektora:* strop dĺžky inštrukcií (15 000 znakov) je takmer plný; postup nesie opis `bcf_topic`.
+
+**Poradie nasadenia (produkcia):** len migrácia `20261022190000_bcf_topic_documents.sql` (aditívna, nová tabuľka). Bez nej zápis s `document` a `document_references` vráti chybu DB, ostatné BCF tooly fungujú ako doteraz. Re-ETL netreba.
+
+**Overenie:** `lib/bcf/documents.test.ts` (argument, oblasť, strany, DocumentReference tam a späť, chat create/update/remove/list s filtrom, strop, BCF API s tokenom aj bez; mutácie filtra a návratu opisu testy chytia), `supabase/tests/bcf_topic_documents.sql` (lokálna DB po všetkých migráciách: filter dokument a strana, kontroly, zánik dokumentu nechá snímku, zmazanie témy zmaže odkazy, práva anon/authenticated). Evaly (D-057) v cloud session bez Supabase kľúčov nepobežali; zmena je len v opise a parametroch `bcf_topic` a `bcf_topic_list`, inventár `MCP-TOOLS.md` obnovený.
+
+---
+
+
+---
+
+### D-150 - Všetky panely UI v `set_view_mode panels`, zoznam odvodený z forku, posun na položku a zoom panelu (#179)
+
+**Dátum:** 2026-10-22 · **Issue:** #179 (overenie "vrátené" z 22. 10. 05:44 UTC) · **Nadväzuje na:** D-127 (panely z chatu),
+D-146 (posun panela vlastností), D-114, D-098, D-091, D-087 · **Mimo rozsahu:** panel Lists (maximalizácia a úpravy zoznamu rieši D-149)
+
+**Kontext:** D-127 pustil do `panels` šesť panelov (lens, properties, underlays, documents, lists, model_tree). Samuel overil
+naživo, že funguje open a close, ale chýba panel BCF topics (v UI Alt+3), v UI sú ďalšie panely, o ktorých chat nevie, a nedá sa
+posunúť obsah otvoreného panela ani ho priblížiť, aby chat ukázal konkrétne miesto.
+
+**Overenie existujúceho (D-098, D-114):** najbližšie tooly sú `set_view_mode` (UI akcia pohľadu, nesie `panels` a `panel_scroll`),
+`get_viewer_state` (čítanie, nesie `view_state.panels`) a `show_in_3d` (výber a `highlight` riadku vlastnosti). Upstream registra
+panelov `WORKSPACE_PANELS` je jediný zdroj panelov rail-u, skratiek Alt+N a hostov (sidebar, plávajúce okno, spodný pás), všetky
+cez `renderPanelBody`. `showWorkspacePanel` a príznaky spodného pásu (`bottom-panels.ts`) otvárajú a zatvárajú ľubovoľný z nich.
+Nič z toho nebolo treba vymýšľať, fork to len sprístupní.
+
+**Rozhodnutie:**
+1. **Zoznam panelov z registra, nie z ručného zoznamu (fork):** `aim/aimPanelList.ts` odvodí mená z `WORKSPACE_PANELS`. Meno na
+   drôte je id panela (`bcf`, `compare`, `validation`, `clash`, `script`, `zones`...), výnimky sú dve historické z D-127
+   (`underlays` = `drawing-underlay`, `model_tree` = `hierarchy`). Skratka Alt+N je podľa poradia v registri (prvých desať), ako
+   v `ActivityBar`. Test `aimPanelList.test.ts` stráži, že každý panel registra má meno, je jedinečné a je vo `view_state`;
+   nový panel v UI sa tak objaví sám a ak by sa zoznam rozišiel s registrom, test padne.
+2. **`SET_PANELS` pre všetky panely:** otvorenie ide cez `showWorkspacePanel` (ako rail), zatvorenie podľa domova: spodný pás
+   vypne svoj príznak, dolná polovica splitu sa uvoľní, panel s príznakom v pravom stĺpci príznak vypne a stĺpec sa vráti na
+   ďalší alebo na vlastnosti, panel bez príznaka vráti stĺpec na vlastnosti (ako krížik). Vlastnosti sa pri `all=close`
+   zatvárajú ako posledné, inak by ich vrátil zatvorený susedný panel. Neznáme meno už nezahodí celú správu: viewer ho nahlási v
+   `APPLIED` so zoznamom platných mien a vykoná ostatné.
+3. **Host:** `panels` prijme ľubovoľné meno v tvare identifikátora (existenciu posudzuje viewer, zoznam má jeden zdroj, fork).
+   Opis toolu uvádza bežné panely a odkazuje na `get_viewer_state` (panels). `view_state.panels` nesie každý panel registra s
+   `open`, `where`, `home` (side, bottom, left) a `shortcut` a výsledok po každom príkaze to isté.
+4. **Posun obsahu ľubovoľného panela (zovšeobecnenie D-146, nie duplikát):** `panel_scroll` ostáva reťazec (up, down, top,
+   bottom, panel vlastností) a pribudol objekt `{panel?, to | item | percent}`: `item` = text položky (hľadá sa v rozbalenom
+   obsahu, bez diakritiky a veľkosti písmen, položku vycentruje rovnaký `revealRow` z D-146), `percent` = poloha 0 až 100. Správa
+   `SCROLL_PANEL` dostala `panel`, `item`, `percent` (práve jedno z `direction`, `item`, `percent`). Obsah panela sa nájde cez značku
+   `data-aim-panel` na obálke v `renderPanelBody` (blok AIM-FORK, `display: contents`, bez vplyvu na rozloženie).
+5. **Zoom panela:** nový parameter `panel_zoom = {panel?, zoom: in | out | reset | 0,5 až 2,5}` -> správa `ZOOM_PANEL`, CSS
+   `zoom` na koreňoch obsahu panela (krok 1,25), zabudne sa so zatvorením panela. Je to zväčšenie na ukázanie miesta, nie nastavenie
+   používateľa.
+6. **Stav posunu:** `view_state.panel_view` {panel, scroll_pct, at_top, at_bottom, zoom, item?} z posledného príkazu na posun alebo
+   zoom (D-146 hlásilo, že viewer koniec panela nevracia; teraz ho vracia, pre posledne posúvaný panel).
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool `set_panel`:* panely sú súčasť pohľadu (D-127, D-114).
+- *`get_viewer_state` na ovládanie:* tool je čítanie, zmena patrí do UI akcie. Zoznam panelov ale vracia on.
+- *Ručný zoznam panelov v hoste (enum):* po pridaní panela do UI by chýbal (presne chyba z overenia). Fork je jediný zdroj.
+- *Posun cez `scrollIntoView` na sekciu podľa mena:* panely nemajú jednotné sekcie, text položky funguje v každom.
+- *Poloha a veľkosť panelov z chatu (`position`, `size`):* zostáva zavrhnuté z D-127.
+
+**Otvorené:** panel Lists sa tu nemení (maximalizácia, Run, filter, export rieši D-149). `item` hľadá len v zobrazenom obsahu
+(zbalená sekcia sa neprehľadáva a viewer to nahlási). CSS `zoom` sa nedalo overiť v živom vieweri (cloud session bez zostavených
+balíkov forku), preto je v PR "Ako vyskúšať". Mutačné dôkazy forku pre revert oracle chýbajú (plytký klon bez `origin/main`).
+
+**Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežali; do `eval/questions.json` pribudli `panel-bcf-open` a
+`panel-scroll-item`. **Testy:** vitest (`view-plan`, `select-panel`), fork `aimPanelList.test.ts`, `aimPanelsPlan.test.ts`,
+`aimPanelScrollPlan.test.ts`.
+
+---
+
+### D-149 - "Excel hlasom" nad panelom Lists: `open_list action=update`, maximalizácia, filter, zoradenie, súčet a stav zoznamu
+
+**Dátum:** 2026-10-22 · **Issue:** #250 (z #179 doplnenia 21. 10. 07:41 a 07:42, #185) · **Fork PR:** Menezeris/ifc-lite (patch na vetve `claude/aim-250-fork-patch`) · **Nadväzuje na:** D-098, D-101, D-111, D-114, D-127, D-148
+
+**Kontext:** Samuel: zoznamy sú podstatné. Claude má jeden otvorený zoznam upravovať po krokoch ("otvor stĺpy, zobraz na celú obrazovku, filtruj 3NP, sumarizuj NetVolume"), nie zakladať nový, a vedieť, čo zoznam práve ukazuje (súčet NetVolume na 3NP sa dal zistiť len obchádzkou cez niekoľko `ifc_query` a výpočet mimo viewera). Čo fork už vie (D-098): zoskupenie a súčty sú v upstream `ListDefinition.grouping` (hlavička tabuľky ich mení cez `handleGroupingFromTable`: `summariseListRows` + `carryListRun`), filter builderu je `definition.groups` (ten istý `FilterGroup` ako `open_list`), zoradenie a rýchle hľadanie sú lokálny stav `ListResultsTable`, maximalizácia lokálny stav `BottomStrip` (tlačidlo Maximize v hlavičke pruhu), export je `exportList`, ktorý v iframe bez kliku používateľa nestiahne súbor (D-111).
+
+**Najbližšie tooly (D-114):** `open_list` (rozšírime), `set_view_mode panels` (D-127, otvára a zatvára panely, tabuľku nemení), `get_viewer_state` (len číta, dostane pole `list`). Nový tool netreba.
+
+**Rozhodnutie:**
+1. `open_list` dostane `action`: `open` (default, dnešné správanie) alebo `update` (upraví práve otvorený zoznam). Pri `update` filtre (`storey`, `ifc_type`, `property`/`value`...) pribudnú ako AND ku každej skupine filtrov zoznamu a tabuľka sa spustí znova cestou D-148 (nové id definície, podľa neho `APPLIED` pozná zúžený výsledok); zoradenie a hľadanie tabuľky sa prenesú na nový výsledok. `columns` pri `update` je zatiaľ chyba.
+2. Pri `open` aj `update`: `maximize` (true/false), `sort_by` + `sort_dir`, `sum` (stĺpce), `group_by` (stĺpce, vonkajšie prvé), `search` (text v riadkoch). Stĺpec sa píše ako v `columns`; viewer ho nájde podľa zdroja a mena (pri psete aj sady), chýbajúci stĺpec je problém v `APPLIED` so zoznamom stĺpcov. Prázdne pole alebo text zruší.
+3. Op `list` nesie `u: 1` (úprava) a `v` (pohľad); bridge správa je `OPEN_LIST` s `view` alebo nová `LIST_UPDATE {groups, view}` v `lens-protocol.ts` forku (nie `bridge-protocol.ts`, ten je na hrane veľkosti). `viewer-ops.ts` sa nemení.
+4. Fork: logika v `aim/aimListControl.ts` a `aim/aimListViewPlan.ts` (čistá, testy), spojka `aim/aimListViewStore.ts`; zoskupenie a súčty idú do `ListDefinition.grouping` tou istou cestou ako hlavička tabuľky. Upstream len dva AIM-FORK háky: `ListResultsTable.tsx` (`useAimListTable`: zoradenie, hľadanie, hlásenie súčtov v jednotke tabuľky) a `BottomStrip.tsx` (`useAimStripMaximize`: ten istý `isMaximized` ako tlačidlo, čaká, kým je Lists aktívny panel pruhu).
+5. Stav zoznamu `list` je v `get_viewer_state` aj v `APPLIED.state.list` po `open_list`: názov, `has_result`, `rows`, `visible_rows`, stĺpce, filtre (krátky opis), zoradenie, hľadanie, `group_by`, `sum_columns`, `sums` (súčty za zobrazené riadky v jednotke tabuľky, tie isté čísla ako päta tabuľky), `maximized`. Platí aj pre zoznam, ktorý zostavil používateľ. `appliedText` súčty povie vetou a nepotvrdí maximalizáciu, zoradenie ani súčet, ktoré sa neprejavili.
+
+**Zavrhnuté rozšírenie:** nový tool `set_list_state` / `update_list` - ďalší tool v konektore na to isté, čo `open_list` už nesie (filtre, stĺpce, D-114). `set_view_mode panels` - otvára panely, obsah a pohľad tabuľky nemení. Súčet cez `aggregate_objects` - počíta nad DB, nie nad tým, čo ukazuje tabuľka (filter, hľadanie, jednotka tabuľky).
+
+**Neskôr (druhý krok #250):** pridať a odobrať stĺpce a triedy entít, odobrať filter, prepnúť model a podlažie (náhrada filtra), export (zvýraznenie tlačidla Export; stiahnutie kliká používateľ), farbenie podľa stĺpca. Maximalizácia funguje pre panel Lists v spodnom pruhu; plávajúci alebo samostatné okno hlási `maximized: false`.
+
+**Poradie nasadenia:** najprv fork, potom AIMviewer. Starší fork `view` a `LIST_UPDATE` ignoruje; `appliedText` vtedy povie, že úpravy nepotvrdzuje.
+
+**Otvorené:** plné CI forku a evaly (D-057) v cloud session nepobežali; otázka je v `eval/questions.json`.
+
+**Doplnok D-149 (2026-10-22, druhý krok #250): obsah zoznamu, prepnutie podlažia a modelu, farby a export.** Rozhranie sa nemení zásadne (D-114: ďalšie parametre `open_list action=update`, žiadny tool), preto doplnok, nie nové číslo.
+1. Pri `update`: `add_columns` / `remove_columns` (stĺpce ako v `columns`; nový ide na koniec, existujúci sa nezdvojí, odobratý zmizne aj zo zoskupenia, súčtov a zoradenia), `add_types` / `remove_types` (IFC triedy: pravidlo "IFC trieda je jedna z" sa v každej skupine rozšíri alebo zúži; zoznam bez neho, neznáma alebo posledná trieda je problém v `APPLIED`, nie tiché zúženie), `remove_filter` (storey, model, property, system, zone, document, global_ids, query, predefined_type alebo `all` = všetky okrem tried; zóna, dokument a prvky sú vo vieweri GlobalId, preto sa odoberajú spolu). `columns` pri `update` ostáva chyba s odkazom na `add_columns`. Edit parametre bez `action=update` sú chyba. Oprava popri tom: stĺpce `material`, `classification` a `model` mali prázdne meno (prázdna hlavička v tabuľke aj v exporte); dostanú meno a popis ako v builderi panela Lists (`Material`, `Classification`, `Model`).
+2. `storey` a `model` pri `update` PREPNÚ podlažie či model: nové pravidlo nahradí doterajšie toho druhu v každej skupine, ostatné filtre ďalej pribudnú cez AND (AND dvoch podlaží z kroku 1 dával prázdny zoznam). Poradie vo vieweri: odobrať filtre, upraviť triedy, pridať filtre; potom stĺpce a nový beh cestou D-148.
+3. `color_by` (stĺpec; prázdny reťazec zruší) volá upstream "Color by" tabuľky (`activateAutoColorFromColumn(columnToAutoColor(col))`), teda tú istú Lens auto-color cestu a slot ako `style_in_3d color_by`; stĺpec sa v tabuľke zvýrazní, legenda je v paneli Lens. Riadky upstream nefarbí a vlastné farbenie riadkov nepridávame (D-098). Stĺpce podlažie, priestor a zóna Lens nevie (upstream by ich ticho preložil na triedu IFC): host ich odmietne, viewer to hlási v `APPLIED`. Zrušenie vypne len "Color by" z tabuľky, Lens "AIM chat" nechá.
+4. `export` (csv | xlsx | pdf): upstream `exportList` vie všetky tri, ale stiahnutie bez kliku v iframe nejde (D-111). Viewer pri tlačidle Export ukáže zvýraznené tlačidlo "Download <formát>" (`aim/AimListExportCue.tsx`); klik používateľa zavolá upstream `handleExport(format)` (tie isté stĺpce, zoskupenie, súčty a jednotky ako tlačidlo Export). Odpoveď toolu aj `appliedText` povedia, že klik je na používateľovi.
+5. Stav `list` (APPLIED aj `get_viewer_state`) má navyše `color_by` (stĺpec, podľa ktorého sú prvky ofarbené) a `export_ready` (ponúknutý formát). Wire: op `list` nesie `e` (len s `u`) a vo `v` `cb`, `x`; `LIST_UPDATE` dostane `edit`, `view` `colorBy` a `export`.
+6. Fork: nový čistý modul `aim/aimListEditPlan.ts` (+ test), lepidlo v `aim/aimListControl.ts`, hák `aim/aimListTable.ts` dostane farby a export; v upstream `ListResultsTable.tsx` sa AIM-FORK blok háku presunie pod `handleExport` a prop `actions` dostane tlačidlo (jednoriadkový AIM-FORK blok). `bridge-protocol.ts` ani `BottomStrip.tsx` sa nemenia.
+
+**Zavrhnuté (krok 2):** automatické stiahnutie z chatu (prehliadač v iframe ho bez kliku zablokuje; zvýraznené tlačidlo je poctivejšie ako tvrdiť, že sa stiahlo). Vlastné farbenie riadkov tabuľky (upstream ho nemá; farby prvkov a legenda stačia). Farbenie podľa podlažia cez Lens (auto-color ho nevie; podlažia ofarbí `style_in_3d` po skupinách).
+
+---
+
+**Otvorené:** časť (2) z #246, samostatné zrušenie len X-ray/izolácie bez rezu a skrytých prvkov (napr. `action=clear_isolation`), tu nie je: vyžaduje bridge správu vo forku (dnes `show_all` zruší aj skrytie), čaká na rozhodnutie Samuela. Evaly (D-057) nepobežali (cloud session bez Supabase kľúčov), otázky sú v `eval/questions.json`.
+
+---
+
+### D-152 - Zmazanie kót od Claude: `ifc_measure clear=true` a `reset_colors` vo vieweri
+
+**Dátum:** 2026-10-22 · **Issue:** #235 · **Nadväzuje na:** D-098, D-114, D-124, D-137
+
+**Kontext:** `ifc_measure show=true` kreslí kóty do nástroja Measure (D-124), ale Claude ich nevedel zmazať: `set_section clear` ani `style_in_3d reset_colors` sa ich netýkali (reset farieb mazal len čiaru trasy, D-137). Používateľ ich musel mazať ručne.
+
+**Overené (D-098):** upstream `clearMeasurements` a `deleteMeasurement` existujú (measurementSlice), fork si id kót od hosta pamätá (`hostMeasurements.ts`) a ďalší `MEASURE_SHOW` bez `keep` ich zmaže, merania používateľa nechá. Chýbala len správa "nahraď ničím": most prázdny zoznam úsekov odmietal. Používateľ má v upstream vieweri chip "Merania" vľavo hore s košom (po zatvorení nástroja Measure) a kôš v paneli Merania; vlastné tlačidlo preto nepridávame.
+
+**Rozhodnutie (parameter existujúceho toolu, D-114, nový tool nie):**
+1. `ifc_measure clear=true` zmaže kóty aj čiaru trasy od Claude (op `measure::` a `route:dc2626:`); nič sa nemeria, merania používateľa ostanú.
+2. `style_in_3d action=reset_colors` maže vo vieweri aj kóty od Claude, rovnako ako od D-137 čiaru trasy (`components/ifc-viewer.tsx`).
+3. Fork (len `apps/viewer/src/aim/view-protocol.ts`): `MEASURE_SHOW` s prázdnym `segments` je platný a zmaže len kóty od hosta. `bridge-protocol.ts` sa nemení.
+
+**Zavrhnuté rozšírenie:** nový tool nie (D-114). `set_section clear` nie, rez a kóty sú dve nezávislé veci. Kôš pre "len moje kóty" pre používateľa nie: chip upstream maže všetky merania, čo používateľ pri "zmaž merania" čaká.
+
+**Poradie nasadenia:** najprv fork (patch `aim-235-clear-measure.patch`), potom tento PR. Starší fork prázdnu správu zahodí (neprejde kontrolou mosta), kóty ostanú a používateľ ich zmaže chipom.
+
+---
+
+### D-154 - Plynulé otáčanie modelu dokola (`set_camera auto_rotate`), zastaví sa pri zásahu používateľa (#247)
+
+**Dátum:** 2026-10-22 · **Issue:** #247 · **Fork PR:** Menezeris/ifc-lite (patch `fork-patch-247/`) · **Nadväzuje na:** D-083, D-087, D-098, D-114
+
+**Kontext:** `set_camera` vie len jednorazový krok `orbit_h_deg`; na pomalé otáčanie pri prezentácii (napr. X-ray so stĺpmi) treba
+opakované volania a pohyb je skokový. Treba nepretržité plynulé otáčanie okolo cieľa, zapnúť a vypnúť z chatu.
+
+**Overenie existujúceho (D-098, D-114):** upstream fork (`c988e100`) auto-rotate vo vieweri nemá. `autoRotate` sa nachádza len v
+hero scéne landing stránky (`components/mcp/hero-scene.ts`, three.js OrbitControls, iná kamera) a `CameraControls` v rendereri
+má `orbit(dx, dy)` bez časovača; `cameraCallbacks` ponúka `getViewpoint` a `applyViewpoint(vp, animate=false)`. Najbližšie tooly:
+`set_camera` (rozširujeme: `orbit_h_deg` je jednorazový relatívny krok, host počíta pózu a nie je nepretržitý), `set_view_mode`
+(zmena režimu, kamery sa netýka), `get_viewer_state` (len stav). Použitá je existujúca cesta kamery, nový renderer ani ovládač sa nepíše.
+
+**Rozhodnutie:**
+1. **Parameter existujúceho toolu, nový tool nie (D-114 bod 3):** `set_camera auto_rotate=start|stop`, `speed_deg_s` (0,5 až 90, default 10 °/s),
+   `direction=left|right` (default `left`, rovnaký smer ako kladné `orbit_h_deg`: kamera obieha cieľ doľava).
+2. **Wire a most:** op `auto_rotate:<start|stop>[~s=<°/s>][~d=<l|r>]:` -> správa mosta `AUTO_ROTATE { action, speedDegS?, direction? }`
+   (vlastný modul `view-protocol.ts` vo forku, `bridge-protocol.ts` je na rozpočte veľkosti). Neplatná rýchlosť vo wire sa zahodí (fork použije default).
+3. **Samostatné volanie:** `auto_rotate` sa nekombinuje s presetom, fit, cieľom ani relatívnymi krokmi, lebo každý iný pohyb kamery
+   otáčanie zastaví; model najprv nastaví pohľad, potom ho roztočí. Chyba s opravou je v `lib/llm/auto-rotate-plan.ts`.
+4. **Fork (`apps/viewer/src/aim/`):** čistá matematika `autoRotatePlan.ts` (otočenie okolo zvislej osi cez `target`, `up` sa otáča s kamerou,
+   krok zrezaný na 100 ms, detekcia cudzieho pohybu) s testom a mutačnými dôkazmi; behová slučka `autoRotate.ts` (lenivý modul, `requestAnimationFrame`
+   cez `cameraCallbacks`). Zastaví ju `stop`, `pointerdown` / koliesko / dotyk na plátne, Esc, odpojenie mosta a každý iný pohyb kamery (ViewCube,
+   ďalší príkaz kamery, ťah): kamera sa porovná s pózou, ktorú slučka zapísala naposledy. Upstream súbory sa nemenia (režim `aim-only`).
+5. **`APPLIED`:** počas otáčania stav nesie `auto_rotate: true` a `APPLIED` nečaká na ustálenie kamery (inak by čakalo celý limit 1 s a hlásilo `camera_moving`).
+
+**Zavrhnuté rozšírenie: `set_view_mode` - prečo nie:** je to kamera, nie režim ani záložka. **Nový tool `rotate_model`:** jeden parameter navyše
+je lacnejší ako tool navyše (D-114). **Opakované `orbit_h_deg` z hosta časovačom:** host nemá bežať slučku (iframe, latencia MCP, skoky),
+plynulosť patrí do snímkovej slučky viewera. **Použiť `controls.autoRotate` z hero scény:** je to iný ovládač (three OrbitControls) na inej stránke.
+
+**Hranice:** `view_state` otáčanie neuvádza (len `APPLIED.state.auto_rotate`); pri zatvorení karty alebo zmene režimu 2D sa slučka zastaví pri prvom kroku bez kamery.
+Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg`); model sa pri `left` zdanlivo otáča doprava. Opis toolu to hovorí, správnosť smeru overí Samuel naživo.
+
+**Poradie nasadenia:** najprv fork (patch), potom AIMviewer. Starší fork správu `AUTO_ROTATE` zahodí: tool vráti ok, ale nič sa nezačne točiť.
+
+**Otvorené:** živé overenie vo viewer iframe a plné CI forku v cloud session nepobežali; evaly (D-057) nepobežali (bez Supabase kľúčov), otázka `camera-auto-rotate` je v `eval/questions.json`.

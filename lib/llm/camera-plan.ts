@@ -18,6 +18,7 @@ import {
 } from "../viewer-camera";
 
 import { DOMAIN_IFC_TYPES, sanitizeIfcType, sanitizeModelName } from "./ifc-selector";
+import { planAutoRotate } from "./auto-rotate-plan";
 import { ViewInputError, type ViewPlan } from "./view-plan";
 
 /**
@@ -67,6 +68,9 @@ function hasItems(raw: unknown): boolean {
 }
 
 export function planCamera(input: Record<string, unknown>, targetGuids: string[]): ViewPlan {
+  // Otáčanie dokola (D-154) je samostatná akcia, nie pohyb o krok.
+  const rotate = planAutoRotate(input);
+  if (rotate) return rotate;
   const presetRaw = String(input.preset ?? "").trim();
   const preset = (presetRaw || "keep") as CameraPreset;
   if (!(CAMERA_PRESETS as readonly string[]).includes(preset)) {
@@ -144,7 +148,7 @@ export function planCamera(input: Record<string, unknown>, targetGuids: string[]
   }
   if (preset === "keep" && !fit && !hasTarget && !relative && !projection) {
     throw new ViewInputError(
-      "Nič na zmenu: zadaj preset, fit, cieľ, zoom_percent, orbit_h_deg/orbit_v_deg, pan_x_percent/pan_y_percent alebo projection.",
+      "Nič na zmenu: zadaj preset, fit, cieľ, zoom_percent, orbit_h_deg/orbit_v_deg, pan_x_percent/pan_y_percent, projection alebo auto_rotate.",
     );
   }
 

@@ -672,6 +672,22 @@
       "notes": "D-148 (issue #248): open_list(ifc_type=IfcColumn, run=true, columns=[Name, storey, Qto_ColumnBaseQuantities.NetVolume]); odpoveď povie, či tabuľka beží (state.list). Len so živým viewerom."
     },
     {
+      "id": "view-list-update-sum",
+      "category": "view",
+      "question": "V otvorenom zozname stĺpov nechaj len 3NP, daj ho na celú obrazovku a sčítaj NetVolume.",
+      "expect": { "tools_called": ["open_list"] },
+      "verified": false,
+      "notes": "D-149 (issue #250): open_list(action=update, storey=3NP, maximize=true, sum=[Qto_ColumnBaseQuantities.NetVolume]); súčet povie zo state.list.sums (v issue #179 vyšlo 3NP = 17.5775 m3), nepočíta ho cez ifc_query. Len so živým viewerom."
+    },
+    {
+      "id": "view-list-update-edit",
+      "category": "view",
+      "question": "Do otvoreného zoznamu stĺpov pridaj aj nosníky a stĺpec FireRating, prepni na 2NP, ofarbi prvky podľa FireRating a priprav export do Excelu.",
+      "expect": { "tools_called": ["open_list"] },
+      "verified": false,
+      "notes": "D-149 krok 2 (issue #250): open_list(action=update, add_types=[IfcBeam], add_columns=[Pset_ColumnCommon.FireRating], storey=2NP, color_by=Pset_ColumnCommon.FireRating, export=xlsx); povie, že podlažie sa prepne (nie AND) a že stiahnutie je na kliku používateľa (export_ready). Len so živým viewerom."
+    },
+    {
       "id": "view-select-panel-ifc",
       "category": "view",
       "question": "Vyber miestnosť 2.01 a ukáž jej IFC výmery, zvýrazni čistú podlahovú plochu.",
@@ -995,6 +1011,14 @@
       "notes": "D-132 (issue #165): set_section(fit=along) cez schodisko, set_camera(preset=section, orthographic), saved_view(save, view_type=section, locked=true), set_view_mode(view=meno) a set_view_mode(mode=2d, floor). Poradie volaní nie je pevné."
     },
     {
+      "id": "view-3d-and-plan-no-underlay",
+      "category": "viewer",
+      "question": "Rozdeľ viewer, 3D a pôdorys 1NP naraz na jednej obrazovke.",
+      "expect": { "tools_called": ["set_section", "set_view_mode"] },
+      "verified": false,
+      "notes": "D-136 (issue #210): pôdorys bez kalibrovaného podkladu = set_section(action=set, floor=1NP) + set_view_mode(panels={drawing: 'open'}); s podkladom ide aj set_view_mode(mode=split, floor=1NP). Overí sa až s viewerom s fork patchom D-136."
+    },
+    {
       "id": "style-overlay-path-on-top",
       "category": "viewer",
       "question": "Vyfarbi prívod VZT červenou, odvod modrou a konkrétnu trasu 19 prvkov ružovou navrch, v jednom volaní.",
@@ -1016,7 +1040,7 @@
       "question": "Ukáž pôdorys stropov na 1NP: stropy plne, zvyšok priesvitný, pohľad zhora.",
       "expect": { "tools_called": ["style_in_3d"] },
       "verified": false,
-      "notes": "Issue #187: xray s storey nechá priesvitný celý model; odpoveď nesie varovanie a model má skryť ostatné podlažia a dať rez. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+      "notes": "Issue #187 (D-140 doplnok): xray s storey bez context_storey nechá priesvitný celý model a vráti varovanie; model má volať xray s context_storey=1NP (ostatné podlažia sa skryjú), potom rez tesne nad horný okraj stropov a set_camera top. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     },
     {
       "id": "style-colorize-space-translucent",
@@ -1081,6 +1105,38 @@
       "expect": { "tools_called": ["ifc_measure"], "answer_matches": ["0[,.]8"] },
       "verified": false,
       "notes": "D-155 (issue #236): ifc_measure(a=DD02.05.04, face_a=+x, face_b=-x, show=true) -> faces.distance_m, jedna kóta. 0,8 = clear_opening z konektora 2026-10-22 (zo zárubne), plochami neoverené; evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "panel-bcf-open",
+      "category": "viewer",
+      "question": "Otvor panel BCF topics a zavri všetky ostatné panely.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-150 (issue #179): set_view_mode(panels={all: 'close', bcf: 'open'}) bez mode; BCF topics je panel bcf (Alt+3). Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "panel-scroll-item",
+      "category": "viewer",
+      "question": "Posuň panel vlastností na výmery a priblíž ho.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-150 (issue #179): set_view_mode(panel_scroll={item: 'Quantities'}, panel_zoom={zoom: 'in'}); stav posunu v panel_view. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "clear-measure-dimensions",
+      "category": "viewer",
+      "question": "Zmaž kóty, ktoré si mi nakreslil vo vieweri.",
+      "expect": { "tools_called": ["ifc_measure"] },
+      "verified": false,
+      "notes": "D-152 (issue #235): ifc_measure(clear=true) zmaže kóty a trasu od Claude, merania používateľa ostanú. Bez overenej hodnoty (vyžaduje živý viewer)."
+    },
+    {
+      "id": "camera-auto-rotate",
+      "category": "viewer",
+      "question": "Potoč s tým modelom pomaličky dokola, nech sa točí stále.",
+      "expect": { "tools_called": ["set_camera"] },
+      "verified": false,
+      "notes": "D-154 (issue #247): set_camera(auto_rotate=start, speed_deg_s=nízka) jedným volaním, nie opakované orbit_h_deg. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     },
     {
       "id": "view-underlays-3d-off",

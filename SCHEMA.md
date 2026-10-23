@@ -500,6 +500,16 @@ rieši). `model` môže byť NULL (téma nad celou federáciou). `status` pribud
 Mapovanie na BCF: `id` = topic guid, `status` = topic_status (lowercase, `in_progress` =
 "In Progress"), `author` = creation_author, `created_at`/`updated_at` = creation/modified_date.
 
+**Odkazy tém na dokumenty (D-158, migrácia 20261022190000):** `model_task_documents` = BCF
+DocumentReference, 0..n na tému (`task_id` -> `model_tasks`, `on delete cascade`). `document_id` ->
+`objects` (document; `on delete set null`), snímka z času založenia `document_ref` (kód alebo
+object_ref), `document_name`, `document_revision`; `page` (od 1, NULL = celý dokument), `region` jsonb
+`{x, y, width, height}` v % strany vľavo hore ako `open_drawing region` (NULL = celá strana), `markup`
+jsonb pole tvarov (zatiaľ NULL), `url` (cudzí odkaz z BCF importu), `description`, `author`,
+`created_at`. Aspoň jedno z `document_id`, `document_ref`, `url`. Indexy `(task_id, created_at)`,
+`(document_id, page)`. Prvky IFC témy ostávajú v `model_tasks.components`. BCF API url =
+`<origin>/drawing/<id>?page=N&region=x_y_w_h#page=N`. Práva anon/authenticated nemá (2.12).
+
 **Zdroj ETL podľa modelu (D-086):** load s `--model ASR` zapisuje hrany so zdrojom
 `etl:ASR` a GUID históriu so zdrojom `IFC import:ASR`; čo beh nevydal, uzavrie
 (`valid_until`). Staré zdroje `etl` / `IFC import` (pred D-086) uzavrie jednorazovo
