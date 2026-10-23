@@ -62,6 +62,8 @@ Naraz beží viac Claude sessions (ručné, automatické z konektora, fork). Ka�
   (komentár v PR/issue, `send_message`, ak ho má) a novú logiku dá do vlastného modulu;
 - **číslo `D-0xx` rezervuje** komentárom v registri, issue #60, až potom ho použije; ak má
   `send_message`, pýta si ho od orchestrátora (nižšie), ten ho do #60 zapíše sám;
+- **živý viewer nie je jej** (D-159): UI tooly konektora (show, style, section, camera, view_mode, open_*)
+  na overenie nevolá; ich príkazy idú na testovací kanál `<LIVE_CHANNEL>-test`, produkčný kanál nikdy, overuje lokálne;
 - **pred PR** zlúči `origin/main` do vetvy; konflikt rieši vetva, ktorá prišla do `main` neskôr;
 - **nikdy nezlučuje** PR (AIMviewer, fork, OCB) ani s trvalým súhlasom z inej session. Keď je PR
   zelený a bez konfliktu, napíše orchestrátorovi (`send_message`: repo#číslo, hlava, čo čaká),

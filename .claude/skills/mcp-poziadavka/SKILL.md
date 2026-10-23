@@ -84,6 +84,8 @@ V inventári nájdi 2-3 tooly najbližšie k potrebe a do plánu (krok 3) ich vy
   predvolené read-only; zápis musí prepísať `readOnlyHint: false`.
 - Živé overenie viewera alebo IFC motora len na malom testovacom modeli, nikdy na produkčných IFC z
   bucketu (egress, D-135; recept v skille `verify`, sekcia "Modely").
+- Živý viewer používateľa nikdy (D-159): UI tooly konektora (`show_in_3d`, `style_in_3d`, `set_*`,
+  `open_*`) na overenie nevolaj; konektor ich zo session pošle len na testovací kanál `<LIVE_CHANNEL>-test`.
 - Testy vitest vedľa kódu (vzor `lib/feedback/tools.test.ts`, `lib/mcp/server.test.ts`),
   `npx tsc --noEmit`, `npx eslint <zmenené súbory>`, `npx vitest run`.
 - Zmena opisu alebo parametrov toolu mení inventár: obnov ho

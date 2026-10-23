@@ -7,7 +7,7 @@ import { resolveTargets } from "@/lib/llm/view-tools";
 import { defaultSavedViewDeps } from "@/lib/views/runtime";
 import { listSavedViews } from "@/lib/views/tools";
 
-import { liveChannel } from "./broadcast";
+import { isTestChannel, liveChannel } from "./broadcast";
 import { MAX_QUERY_GUIDS, type ViewerQuery } from "./protocol";
 import { queryLiveViewer, type QueryOutcome } from "./query";
 import { withSectionOrientation } from "./section-orientation";
@@ -64,10 +64,23 @@ export function viewerQueryOf(input: Record<string, unknown>): ViewerQuery {
   return input.bounds === true || targets ? "bounds" : "view_state";
 }
 
+/** Pracovná session bez viewera na testovacom kanáli (D-159): produkciu na overenie neotvára. */
+export const TEST_CHANNEL_NO_VIEWER =
+  "Pracovná session (Claude Code) je na testovacom kanáli, nie v živom vieweri používateľa (D-159), a na ňom " +
+  "nie je otvorený viewer. Živé overenie rob lokálne (skill verify, testovací model); produkčný viewer neotváraj (D-135).";
+
+/** Okno viewera ovláda iný chat (D-159): čítať smie, príkazy odtiaľto sa nevykonajú. */
+export const FOREIGN_OWNER_NOTE =
+  "Živý viewer ovláda iný chat: stav čítať môžeš, ale príkazy z tohto chatu sa nevykonajú, kým ho používateľ " +
+  "neprevezme (Prevziať pri Live v stavovej lište) alebo kým 15 min nepríde príkaz od chatu, ktorý ho ovláda.";
+
 /** Chybová hláška pre model: čo chýba a ako to používateľ napraví. */
 export function outcomeError(outcome: Exclude<QueryOutcome, { ok: true }>, channel: string | null, site: string): string {
   if (outcome.reason === "not_configured" || !channel) {
     return "Živý viewer nie je nastavený na serveri (LIVE_CHANNEL alebo Supabase), stav viewera sa nedá prečítať.";
+  }
+  if (outcome.reason === "timeout" && isTestChannel(channel)) {
+    return TEST_CHANNEL_NO_VIEWER;
   }
   if (outcome.reason === "timeout") {
     return (
@@ -181,7 +194,8 @@ export async function execViewerQueryTool(
     const lensOutcome = (await lens) ?? null;
     const lensState = lensOfState(lensOutcome, outcome.reply.viewer);
     const viewers = viewersNote(outcome, lensOutcome);
-    const extra = { ...(lensState !== undefined ? { lens: lensState } : {}), ...(viewers ? { viewers } : {}) };
+    const owner = outcome.reply.owner === "other" ? { owner: { controlled_by: "other_chat", note: FOREIGN_OWNER_NOTE } } : {};
+    const extra = { ...(lensState !== undefined ? { lens: lensState } : {}), ...(viewers ? { viewers } : {}), ...owner };
     const out = result && typeof result === "object" ? { ...result, ...extra } : result;
     return { text: JSON.stringify(out), isError: false };
   } catch (err) {

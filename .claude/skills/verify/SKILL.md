@@ -27,6 +27,13 @@ description: Ako overiť zmeny AIM Viewera naživo v tomto repe — build/launch
 - Motor a unit testy: fixtures v `lib/engine/__fixtures__/` (mini budova v pamäti).
 - Hlavičky bucketu (Cache-Control, veľkosť) len `curl -I` alebo `curl -r 0-0 -D -`.
 
+## Živý kanál: nikdy produkčný (D-159)
+- UI tooly konektora session na overenie nevolá; zo session idú len na testovací kanál
+  `<LIVE_CHANNEL>-test`. `components/live-channel.tsx` sa overuje na devtest stránke proti falošnému
+  Realtime serveru: Node `ws` na `/realtime/v1/websocket` (Phoenix vsn 2.0.0: text = pole
+  `[join_ref, ref, topic, event, payload]`, odpoveď `phx_reply` na `phx_join`/`heartbeat`; push klienta
+  je binárny, JSON payload je na konci rámca) a `NEXT_PUBLIC_SUPABASE_URL=http://localhost:<port>`.
+
 ## Recept (PDF prehliadačka / drawing-*)
 1. Testovacie viacstranové PDF sa dá vygenerovať čistým Pythonom (raw PDF syntax,
    `zlib` streamy, base-14 Helvetica — bez závislostí) do `public/devtest-drawing.pdf`;

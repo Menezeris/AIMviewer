@@ -83,6 +83,12 @@ ktorý je otvorený vedľa.
 Ak viewer nie je otvorený alebo kanál nie je nastavený, tool vráti Claude odkaz, ktorým
 sa dá výsledok otvoriť ručne.
 
+**Kto ovláda viewer (D-159):** príkazy z Claude Code sessions idú na testovací kanál
+`<LIVE_CHANNEL>-test` (vo vieweri čip Live -> Testy sessions, alebo `?live=<LIVE_CHANNEL>-test`), nie
+do viewera používateľa. Okno viewera prijíma príkazy len od chatu, ktorý ho ovláda; cudzí odmietne a
+ponúkne Prevziať (po 15 min bez príkazu ho prevezme ďalší chat sám). `LIVE_OWNER_LOCK=0` viazanie na
+chat vypne.
+
 **Pohľad (D-083):** `set_section` (rez nad podlažím alebo zvislý), `set_camera` (top/front/
 .../iso, rámovanie na prvky), `set_view_mode` (3D/2D/Split, podlažie, `reset`) a
 `open_drawing` s `in_viewer=true` (dokument vedľa 3D). Vyžadujú fork viewera s bridge

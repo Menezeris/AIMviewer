@@ -84,3 +84,39 @@ describe("viac okien viewera na kanáli (D-125, #182)", () => {
     expect(lensOfState({ ok: true, reply: { id: "l", ok: true, result: LENS_B, viewer: "b" } }, "a")).toBeUndefined();
   });
 });
+
+describe("get_viewer_state a vlastník okna, testovací kanál (D-159)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("okno ovláda iný chat: stav sa vráti s poznámkou owner", async () => {
+    vi.stubEnv("LIVE_CHANNEL", "demo");
+    const fn = (async () => ({ ok: true, reply: { id: "s", ok: true, result: { mode: "3d" }, owner: "other" } })) as unknown as typeof queryLiveViewer;
+    const out = JSON.parse((await execViewerQueryTool("get_viewer_state", { bounds: true }, "https://x.test", fn)).text);
+    expect(out.owner.controlled_by).toBe("other_chat");
+    expect(out.owner.note).toMatch(/Prevziať/);
+  });
+
+  it("vlastný chat alebo bez vlastníka: bez poznámky", async () => {
+    vi.stubEnv("LIVE_CHANNEL", "demo");
+    const fn = (async () => ({ ok: true, reply: { id: "s", ok: true, result: { mode: "3d" }, owner: "you" } })) as unknown as typeof queryLiveViewer;
+    const out = JSON.parse((await execViewerQueryTool("get_viewer_state", { bounds: true }, "https://x.test", fn)).text);
+    expect(out.owner).toBeUndefined();
+  });
+
+  it("pracovná session bez viewera na testovacom kanáli nedostane odkaz na produkciu", async () => {
+    vi.stubEnv("LIVE_CHANNEL", "demo");
+    const { withCaller } = await import("./caller");
+    const asked: string[] = [];
+    const fn = (async (ch: string) => {
+      asked.push(ch);
+      return { ok: false, reason: "timeout" };
+    }) as unknown as typeof queryLiveViewer;
+    const res = await withCaller({ sid: "s", client: "claude-code", work: true }, () =>
+      execViewerQueryTool("get_viewer_state", { bounds: true }, "https://x.test", fn),
+    );
+    expect(asked).toEqual(["demo-test"]);
+    expect(res.isError).toBe(true);
+    expect(res.text).toMatch(/testovacom kanáli/);
+    expect(res.text).not.toMatch(/x\.test|\?live=/);
+  });
+});
