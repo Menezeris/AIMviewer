@@ -1,6 +1,7 @@
 #!/bin/bash
 # Land AIMviewer PRs in order: merge origin/main into a dirty branch (doc conflicts only), verify, push, wait for Vercel, merge.
-R="$(cd "$(dirname "$0")" && pwd)/resolve_docs.py"
+# Kópia mimo stromu: pri prepnutí na starú vetvu PR by skript v scripts/orchestrator/ nemusel existovať.
+R=$(mktemp --suffix=.py); cp "$(cd "$(dirname "$0")" && pwd)/resolve_docs.py" "$R"
 cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)" || exit 1
 for n in "$@"; do
   for t in 1 2 3 4 5 6 7 8; do X=$(gh api repos/Menezeris/AIMviewer/pulls/$n --jq '"\(.mergeable_state) \(.head.sha) \(.head.ref)"'); S=${X%% *}; [ "$S" = "unknown" ] && { sleep 6; continue; }; break; done
