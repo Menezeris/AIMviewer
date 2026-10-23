@@ -103,6 +103,17 @@ _SPECS: list[RelType] = [
                     "napr. priestor v priestorovej zóne (D-088).",
     ),
     RelType(
+        rel_type="rel_space_boundary",
+        ifc_entity="IfcRelSpaceBoundary",
+        relating_attr="RelatingSpace",        # = priestor = náš to_id
+        relating_end="to",
+        from_object_types=["asset"],          # RelatedBuildingElement (dvere, steny, okná…)
+        to_object_types=["space"],
+        description="Prvok ohraničuje priestor (IfcRelSpaceBoundary, D-156); role = "
+                    "PhysicalOrVirtualBoundary (physical|virtual|notdefined). Prvok nemusí byť "
+                    "v priestore ani naň odkazovať cez rel_referenced_in_spatial_structure.",
+    ),
+    RelType(
         rel_type="rel_defines_by_type",
         ifc_entity="IfcRelDefinesByType",
         relating_attr="RelatingType",          # = type = náš to_id
@@ -197,6 +208,7 @@ EDGE_TYPE_TO_REL_TYPE: dict[str, str] = {
     "responsible_for": "rel_assigns_to_actor",
     "assigns_to_group": "rel_assigns_to_group",
     "referenced": "rel_referenced_in_spatial_structure",
+    "space_boundary": "rel_space_boundary",
     "has_classification": "rel_associates_classification",
     "document_part": "rel_document_information_relationship",
     "document_classification": "rel_external_reference_relationship",

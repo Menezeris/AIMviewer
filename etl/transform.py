@@ -463,6 +463,8 @@ def to_staged(
                 group_refs[ent.id()] = add_object(ent, otype, refs.generic_ref(ent))
         _collect_group_structure(model, staged, emitted, group_refs, _spatial_ref)
 
+    _collect_space_boundaries(model, staged, emitted)
+
     # Členstvo v systéme, zóne a skupine (IfcRelAssignsToGroup): len emitnutí členovia.
     for rel in model.by_type("IfcRelAssignsToGroup"):
         group = attr(rel, "RelatingGroup")
@@ -722,6 +724,36 @@ def _collect_group_structure(
             if from_ref is not None and from_ref != to_ref and (from_ref, to_ref) not in seen:
                 seen.add((from_ref, to_ref))
                 staged.edges.append(Edge("referenced", from_ref, to_ref))
+
+
+_BOUNDARY_ROLE_RANK = {"physical": 0, "virtual": 1, "notdefined": 2}
+
+
+def _collect_space_boundaries(
+    model: ifcopenshell.file, staged: StagedModel, emitted: dict[int, str]
+) -> None:
+    """IfcRelSpaceBoundary (aj 1st/2nd level) → hrana `space_boundary` prvok → priestor (D-156).
+
+    Dvere môžu byť s miestnosťou spojené len hranicou priestoru (a v štruktúre ležať na
+    podlaží). Jedna dvojica (prvok, priestor) má v IFC často viac hraníc (každá plocha, obe
+    úrovne) → jedna hrana; `role` = PhysicalOrVirtualBoundary v malých písmenách, pri
+    viacerých vyhráva physical. Len medzi emitnutými objektmi (bez prvku alebo priestoru
+    v grafe hrana vypadne, žiadne dangling hrany)."""
+    best: dict[tuple[str, str], str] = {}
+    for rel in model.by_type("IfcRelSpaceBoundary"):
+        space, element = attr(rel, "RelatingSpace"), attr(rel, "RelatedBuildingElement")
+        if space is None or element is None:
+            continue
+        space_ref, element_ref = emitted.get(space.id()), emitted.get(element.id())
+        if space_ref is None or element_ref is None or space_ref == element_ref:
+            continue
+        kind = attr(rel, "PhysicalOrVirtualBoundary")
+        role = str(kind).lower() if kind else "notdefined"
+        key = (element_ref, space_ref)
+        if key not in best or _BOUNDARY_ROLE_RANK.get(role, 3) < _BOUNDARY_ROLE_RANK.get(best[key], 3):
+            best[key] = role
+    for (element_ref, space_ref), role in best.items():
+        staged.edges.append(Edge("space_boundary", element_ref, space_ref, role=role))
 
 
 def _drop_unemitted_links(staged: StagedModel, cov: CoverageReport) -> None:

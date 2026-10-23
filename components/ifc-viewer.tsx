@@ -335,10 +335,11 @@ export function IFCViewer({
         } else if (o.op === "list" && listScopeKeys(o.wire).length > 0) {
           post(listBridgeMessage(o.wire, await fetchScopeGuids(listScopeKeys(o.wire))));
         } else post(opToBridgeMessage(o));
-        // Reset farieb vypne aj AIM chat lens a zmaže čiaru trasy, zobraziť všetko zruší izoláciu z chatu (D-096, D-137).
+        // Reset farieb vypne aj AIM chat lens a zmaže čiaru trasy aj kóty od Claude (D-137, D-152), zobraziť všetko zruší izoláciu z chatu (D-096, D-137).
         if (o.op === "reset_colors") {
           post({ type: "APPLY_LENS", mode: "clear" });
           post({ type: "ROUTE_SHOW", points: [] });
+          post({ type: "MEASURE_SHOW", segments: [] });
         }
         if (o.op === "show_all") post({ type: "APPLY_LENS", mode: "unisolate" });
       }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseOps } from "../viewer-ops";
 import { planCamera } from "./camera-plan";
-import { ViewInputError, planPanels, planPanelScroll, planSection, planViewMode } from "./view-plan";
+import { ViewInputError, planPanels, planPanelScroll, planPanelZoom, planSection, planViewMode } from "./view-plan";
 
 const FLOOR = { label: "3NP", guid: "3ig6N2jJz05g7H9Fq$ftkL" };
 const ROOM = "1KphWFyMb8dRV6rhVkyU6y";
@@ -101,7 +101,9 @@ describe("panely (D-127)", () => {
     expect(p.result).toEqual({ panels: { all: "close", properties: "open" } });
     expect(planPanels({})).toBeNull();
     expect(() => planPanels({ panels: { all: "open" } })).toThrow(ViewInputError);
-    expect(() => planPanels({ panels: { legend: "close" } })).toThrow(/neznámy panel/);
+    expect(() => planPanels({ panels: { "bad name!": "close" } })).toThrow(/neplatné meno panela/);
+    // Existenciu panela posudzuje viewer (zoznam je v jeho registri), host pustí ľubovoľné meno.
+    expect(parseOps(planPanels({ panels: { bcf: "open", compare: "toggle" } })!.op)).toEqual([{ op: "panels", panels: { bcf: "open", compare: "toggle" } }]);
     expect(() => planPanels({ panels: { lens: "hide" } })).toThrow(/open, close/);
     expect(() => planPanels({ panels: {} })).toThrow(/aspoň/);
     expect(() => planPanels({ panels: "lens" })).toThrow(ViewInputError);
@@ -121,3 +123,35 @@ describe("posun panela vlastností (D-146)", () => {
     expect(() => planPanelScroll({ panel_scroll: 3 })).toThrow(/up, down, top, bottom/);
   });
 });
+
+describe("posun a zoom obsahu panela (D-150)", () => {
+  it("panel_scroll ako objekt: smer, položka alebo percento, práve jedno", () => {
+    const item = planPanelScroll({ panel_scroll: { panel: "bcf", item: "Dvere D12 / č. 3" } })!;
+    expect(parseOps(item.op)).toEqual([{ op: "panel_scroll", panel: "bcf", item: "Dvere D12 / č. 3" }]);
+    expect(item.result).toEqual({ panel_scroll: { panel: "bcf", item: "Dvere D12 / č. 3" } });
+    expect(parseOps(planPanelScroll({ panel_scroll: { panel: "lists", percent: 50 } })!.op)).toEqual([{ op: "panel_scroll", panel: "lists", percent: 50 }]);
+    expect(parseOps(planPanelScroll({ panel_scroll: { to: "bottom" } })!.op)).toEqual([{ op: "panel_scroll", direction: "bottom" }]);
+    expect(planPanelScroll({ panel_scroll: { percent: 0 } })!.label).toContain("0 %");
+    expect(() => planPanelScroll({ panel_scroll: { item: "x", percent: 5 } })).toThrow(/práve jedno/);
+    expect(() => planPanelScroll({ panel_scroll: {} })).toThrow(/práve jedno/);
+    expect(() => planPanelScroll({ panel_scroll: { percent: 101 } })).toThrow(/0 až 100/);
+    expect(() => planPanelScroll({ panel_scroll: { item: " " } })).toThrow(/text položky/);
+    expect(() => planPanelScroll({ panel_scroll: { item: "x".repeat(81) } })).toThrow(/text položky/);
+    expect(() => planPanelScroll({ panel_scroll: { panel: "a b", to: "up" } })).toThrow(/meno panela/);
+    expect(() => planPanelScroll({ panel_scroll: { to: "left" } })).toThrow(/up, down, top, bottom/);
+  });
+
+  it("panel_zoom: krok, reset alebo číslo v rozsahu, panel voliteľný", () => {
+    const p = planPanelZoom({ panel_zoom: { panel: "bcf", zoom: "in" } })!;
+    expect(parseOps(p.op)).toEqual([{ op: "panel_zoom", panel: "bcf", zoom: "in" }]);
+    expect(p.result).toEqual({ panel_zoom: { panel: "bcf", zoom: "in" } });
+    expect(parseOps(planPanelZoom({ panel_zoom: { zoom: 1.5 } })!.op)).toEqual([{ op: "panel_zoom", zoom: 1.5 }]);
+    expect(parseOps(planPanelZoom({ panel_zoom: { zoom: "reset" } })!.op)).toEqual([{ op: "panel_zoom", zoom: "reset" }]);
+    expect(planPanelZoom({})).toBeNull();
+    expect(() => planPanelZoom({ panel_zoom: { zoom: 3 } })).toThrow(ViewInputError);
+    expect(() => planPanelZoom({ panel_zoom: { zoom: "big" } })).toThrow(ViewInputError);
+    expect(() => planPanelZoom({ panel_zoom: "in" })).toThrow(ViewInputError);
+    expect(() => planPanelZoom({ panel_zoom: { panel: "x y", zoom: "in" } })).toThrow(/meno panela/);
+  });
+});
+
