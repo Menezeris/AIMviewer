@@ -125,7 +125,7 @@ describe("pôdorys 1NP (produkcia, D-130)", () => {
   });
 
   it("súhrn: 42 jednoznačných prvkov, 9 kandidátov, 1 nespárovaný, 46 miestností", () => {
-    expect(linkSummary(links)).toEqual({ elements: { unique: 42, candidates: 9, none: 1 }, spaces: 46 });
+    expect(linkSummary(links)).toEqual({ elements: { unique: 42, candidates: 9, none: 1 }, spaces: 46, zones: { unique: 0, candidates: 0 }, manual: 0 });
     expect(links.find((l) => l.status === "none")?.code).toBe("OV01.00.00");
   });
 

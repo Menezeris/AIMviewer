@@ -7,7 +7,7 @@
  * miestnosti je riadok `1.01`. Párovanie je AIM vrstva (odvodenie), nič nezapisuje.
  */
 
-import type { PageRegion, TextBlock } from "@/lib/llm/document-text";
+import { foldText, type PageRegion, type TextBlock } from "@/lib/llm/document-text";
 
 /** Hlava bubliny: kategória a číslo typu prvku (DD01, SN05, OV01). */
 const HEAD_RE = /^[A-Z]{2}\d{2}$/;
@@ -24,7 +24,7 @@ const TAIL_MAX_DX = 0.6;
 /** Najviac kandidátov na popisok (zvyšok zoznam skráti). */
 export const MAX_CANDIDATES = 12;
 
-export type LabelKind = "element" | "type" | "space";
+export type LabelKind = "element" | "type" | "space" | "zone";
 
 /** Popisok na strane: kód, ako je napísaný, a obal jeho riadkov v % strany. */
 export interface DrawingLabel {
@@ -55,13 +55,15 @@ export interface LinkTarget {
   guid: string | null;
   name: string | null;
   ifc_type: string | null;
+  /** Zóna: GUIDy členských miestností (klik vyberie aspoň ich, keď zóna nemá geometriu). */
+  members?: string[];
 }
 
 export interface DrawingLink extends DrawingLabel {
   /** unique = jeden prvok, candidates = viac výskytov typu na podlaží, none = nič. */
   status: LinkStatus;
   /** Ako sa prvok našiel: presný kód, jediný výskyt typu na podlaží, miestnosť. */
-  via?: "ref" | "type_on_floor" | "space_on_floor";
+  via?: "ref" | "type_on_floor" | "space_on_floor" | "zone_name" | "manual";
   targets: LinkTarget[];
   /** Kandidátov bolo viac ako MAX_CANDIDATES. */
   targets_total?: number;
@@ -186,6 +188,70 @@ export function resolveLabels(labels: readonly DrawingLabel[], objects: readonly
   return out;
 }
 
+const insideRegion = (inner: PageRegion, outer: PageRegion, eps = 0.02) =>
+  inner.x >= outer.x - eps &&
+  inner.y >= outer.y - eps &&
+  inner.x + inner.width <= outer.x + outer.width + eps &&
+  inner.y + inner.height <= outer.y + outer.height + eps;
+
+/** Zóna stavby (IfcZone, IfcSpatialZone) na párovanie podľa mena (D-160). */
+export interface ZoneObject {
+  id: string;
+  ref: string;
+  guid: string | null;
+  name: string | null;
+  ifcType: string | null;
+  members: string[];
+}
+
+/** Normalizovaný zápis na porovnanie textu výkresu s menom: bez diakritiky, veľkosti písmen a medzier navyše. */
+export const normLabel = (s: string) => foldText(s).replace(/\s+/g, " ").trim();
+
+/** Najviac členských miestností v cieli zóny. */
+export const MAX_ZONE_MEMBERS = 40;
+
+/**
+ * Popisky zón: riadok strany, ktorého text sa po normalizácii rovná menu zóny (IfcRoot.Name).
+ * Riadky, ktoré už sú popiskom (kód miestnosti, bublina), preskočí. Viac zón s rovnakým menom =
+ * candidates. Meno rozlomené na dva riadky automatika nezachytí - to je prípad ručného priradenia.
+ */
+export function resolveZoneLabels(
+  blocks: readonly TextBlock[],
+  zones: readonly ZoneObject[],
+  taken: readonly DrawingLabel[] = []
+): DrawingLink[] {
+  const byName = new Map<string, ZoneObject[]>();
+  for (const z of zones) {
+    const key = z.name ? normLabel(z.name) : "";
+    if (key.length < 2) continue;
+    byName.set(key, [...(byName.get(key) ?? []), z]);
+  }
+  const out: DrawingLink[] = [];
+  for (const b of blocks) {
+    const t = b.t.trim();
+    const hits = byName.get(normLabel(t));
+    if (!hits) continue;
+    const bbox = union([b]);
+    if (taken.some((l) => insideRegion(bbox, l.bbox))) continue;
+    const sorted = [...hits].sort((a, c) => a.ref.localeCompare(c.ref));
+    const targets = sorted.slice(0, MAX_CANDIDATES).map((z) => ({
+      ...target({ id: z.id, ref: z.ref, guid: z.guid, name: z.name, ifcType: z.ifcType, objectType: "zone", onFloor: true }),
+      ...(z.members.length > 0 ? { members: z.members.slice(0, MAX_ZONE_MEMBERS) } : {}),
+    }));
+    out.push({
+      text: t,
+      code: normLabel(t),
+      kind: "zone",
+      bbox,
+      status: sorted.length === 1 ? "unique" : "candidates",
+      via: "zone_name",
+      targets,
+      ...(sorted.length > MAX_CANDIDATES ? { targets_total: sorted.length } : {}),
+    });
+  }
+  return out;
+}
+
 export interface PageLinks {
   page: number;
   links: DrawingLink[];
@@ -202,7 +268,9 @@ export interface DocumentLinksWire {
     h: number;
     label: string;
     status: "unique" | "candidates";
-    targets: { guid: string; ref: string; name?: string }[];
+    /** Ručné priradenie (D-160), nie odvodenie z popisku. */
+    manual?: true;
+    targets: { guid: string; ref: string; name?: string; members?: string[] }[];
     /** Typový popisok s viac výskytmi: klik otvorí tento IFC typ, výskyty sú vedľajšia voľba. */
     type?: { guid: string; ref: string; name?: string };
   }[];
@@ -221,6 +289,7 @@ export function toLinksWire(documentId: string, pages: readonly PageLinks[]): Do
         guid: t.guid as string,
         ref: t.ref,
         ...(t.name && t.name !== t.ref ? { name: t.name } : {}),
+        ...(t.members && t.members.length > 0 ? { members: t.members } : {}),
       });
       const targets = l.targets.filter((t) => t.guid).map(wireTarget);
       if (targets.length === 0) continue;
@@ -231,6 +300,7 @@ export function toLinksWire(documentId: string, pages: readonly PageLinks[]): Do
         h: frac(l.bbox.height),
         label: l.text,
         status: targets.length === 1 ? "unique" : "candidates",
+        ...(l.via === "manual" ? { manual: true as const } : {}),
         targets,
         ...(targets.length > 1 && l.type?.guid ? { type: wireTarget(l.type) } : {}),
       });
@@ -243,7 +313,9 @@ export function toLinksWire(documentId: string, pages: readonly PageLinks[]): Do
 /** Súhrn pre výsledok toolu a záznam rozhodnutia. */
 export function linkSummary(links: readonly DrawingLink[]) {
   const count = (kind: LabelKind | null, status: LinkStatus) =>
-    links.filter((l) => (kind === null ? l.kind !== "space" : l.kind === kind) && l.status === status).length;
+    links.filter(
+      (l) => (kind === null ? l.kind !== "space" && l.kind !== "zone" : l.kind === kind) && l.status === status
+    ).length;
   return {
     elements: {
       unique: count(null, "unique"),
@@ -251,5 +323,7 @@ export function linkSummary(links: readonly DrawingLink[]) {
       none: count(null, "none"),
     },
     spaces: count("space", "unique"),
+    zones: { unique: count("zone", "unique"), candidates: count("zone", "candidates") },
+    manual: links.filter((l) => l.via === "manual").length,
   };
 }

@@ -520,6 +520,16 @@ Kroky 3 a 4 (migrácia 20261023140000): `document_sha256` = sha256 súboru dokum
 odkazu (z `documents.file_sha256`); snímka výrezu sa kešuje v buckete `documents` pod
 `snapshots/<sha256>/<strana>-<x_y_w_h|full>.png` (render na požiadanie, nie tabuľka).
 
+**Ručné odkazy popiskov na výkrese (D-160, migrácia 20261023130000):** `drawing_link_overrides` = ručné
+priradenie (`assign`) alebo zrušenie (`suppress`) odkazu popisku, má prednosť pred párovaním D-130.
+Kľúč: `document_id` -> `objects` (document; `on delete set null`, snímka `document_ref`), `page`,
+`text` (normalizovaný: bez diakritiky, malé písmená, jedna medzera) a voliteľný `bbox` jsonb
+`{x, y, width, height}` v % strany (NULL = všetky výskyty textu na strane). `target_id` -> `objects`
+(`on delete set null`, snímky `target_ref`, `target_guid`; `assign` vyžaduje `target_ref`).
+`document_revision` a `document_sha256` (zatiaľ NULL, kotva D-158 krok 4), `author`, `created_at`,
+`valid_until` (zrušenie ručnej opravy ju ukončí, história ostáva). Unikát na živý riadok
+`(document_id, page, text, coalesce(bbox::text, ''))`. Práva anon/authenticated nemá (2.12).
+
 **Zdroj ETL podľa modelu (D-086):** load s `--model ASR` zapisuje hrany so zdrojom
 `etl:ASR` a GUID históriu so zdrojom `IFC import:ASR`; čo beh nevydal, uzavrie
 (`valid_until`). Staré zdroje `etl` / `IFC import` (pred D-086) uzavrie jednorazovo

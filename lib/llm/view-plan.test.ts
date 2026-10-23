@@ -115,6 +115,7 @@ describe("panely (D-127)", () => {
     expect(() => planPanels({ panels: { "bad name!": "close" } })).toThrow(/neplatné meno panela/);
     // Existenciu panela posudzuje viewer (zoznam je v jeho registri), host pustí ľubovoľné meno.
     expect(parseOps(planPanels({ panels: { bcf: "open", compare: "toggle" } })!.op)).toEqual([{ op: "panels", panels: { bcf: "open", compare: "toggle" } }]);
+    expect(planPanels({ panels: { drawing: "open" } })!.result).toEqual({ panels: { drawing: "open" } });
     expect(() => planPanels({ panels: { lens: "hide" } })).toThrow(/open, close/);
     expect(() => planPanels({ panels: {} })).toThrow(/aspoň/);
     expect(() => planPanels({ panels: "lens" })).toThrow(ViewInputError);
