@@ -611,6 +611,26 @@ Od D-161 (bez migrácie) je riadok trvalá kópia pohľadu z upstream panela Pre
 `underlay` z D-122/D-132 sa pri čítaní ignorujú. Zapisuje aj viewer (panel Presentation) cez route
 `/api/saved-views` za env bránou.
 
+### 2.18 Testy a behy kontroly kolízií (D-164, návrh, rezervovaná migrácia 20261023200000_clash.sql)
+
+**Deklarovaná extenzia** (IFC kolízie nenesie; BCF je výmenný formát nálezov, nie úložisko). Návrh pre
+host PR 2, presné DDL určí PR. Kolízie nie sú `objects`.
+- `clash_tests` = test: `code` (unique), `name`, `rules` jsonb (upstream `ClashPreset[]`: `id` pravidla
+  stabilné, `a`/`b` selektory, `filterA`/`filterB`, `mode`, `enabled`; AIM filtre podlažie / systém / prvky),
+  `settings` jsonb (`mode`, `tolerance`, `clearance`), `origin` `chat|viewer`, `author`, `created_at`, `updated_at`.
+- `clash_runs` = beh: `test_id` (FK, null = ad hoc), `rules_snapshot` jsonb (pravidlá v čase behu), `models`
+  jsonb (`{model: {revision, sha256}}`, D-086), `engine` (napr. `ifc-lite-ts@2.4.4`), `trigger` `chat|viewer`,
+  `completeness` jsonb (`truncated`, `stale`), `summary` jsonb (počty po pravidle, závažnosti, stave), `created_at`.
+- `clash_results` = kolízia behu: `run_id` (FK, `on delete cascade`), `clash_key` (= upstream `clashReviewKey`:
+  id pravidla + dve GUID bez ohľadu na poradie), `rule`, `status` `hard|clearance`, `severity`, `distance`,
+  `a_guid`, `a_model`, `a_ifc_type`, `b_guid`, `b_model`, `b_ifc_type`, `storey`, `center` (IFC svet), `group_key`;
+  strop 100 000 riadkov za beh; indexy (`run_id`), (`clash_key`).
+- `clash_reviews` = stav kolízie naprieč behmi testu: (`test_id`, `clash_key`) unique, `status`
+  `open|resolved|accepted`, `comment`, `bcf_topic_id` (FK `model_tasks`, `on delete set null`), `updated_by`, `updated_at`.
+- Pohľady `v_clash_latest` (posledný beh každého testu + review + podlažie a systém z grafu cez GUID) a
+  `v_clash_summary` (po pravidle a skupine), do whitelistu `query_view`. Práva: `anon`/`authenticated` nič,
+  `service_role` všetko.
+
 ## 4. Konvencia `properties` (D-022)
 
 `properties` JSONB obsahuje **property sety**, vnorené podľa názvu. IFC **atribúty**
