@@ -7384,3 +7384,57 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 **Poradie nasadenia:** najprv migrácia `20261023130000_drawing_link_overrides.sql` (aditívna, nová tabuľka; bez nej `fetchOverrides` zlyhá a odkazy na výkrese sa nenačítajú), potom host; fork patch pridáva `members` a návrh priradenia (starší fork `members` ignoruje). Re-ETL netreba.
 
 **Overenie:** `lib/data/drawing-zones.test.ts`, `drawing-link-overrides.test.ts` (zóny, kandidáti, prednosť bbox, assign mimo vrstvy, chat assign/clear/reset/from_draft, chybné vstupy nič nezapíšu), `supabase/tests/drawing_link_overrides.sql` (lokálna DB: unikát na živý riadok, kontrola cieľa, snímka po zániku objektu). Na produkčných dátach nebežalo.
+
+---
+
+### D-162 - IDS z chatu a z viewera: tvorba, úprava, verzie v DB, validácia a upstream IDS modul (#285)
+
+**Dátum:** 2026-10-23 · **Stav:** schválené (Samuel cez orchestrátora 23. 10., odpovede na 5 otázok nižšie), implementácia nezačatá · **Issue:** #285 · **Nadväzuje na:** D-052, D-053, D-081 (behy ifctesteru v `ids_runs`), D-084 a jeho dodatok 18. 10. (`ifc_ids_validate`, zdroj IDS pre server), D-087, D-098, D-114, D-158 (vzor "modul viewera + chat + DB"), D-159, D-161 (#188, pohľady z panela cez route za env bránou)
+
+**Kontext:** Samuel (23. 10.): "aby LLM vedelo ovládať IDS modul z upstreamu, tvoriť nové, ukladať ich do DB". Stav overený 23. 10.:
+- *Fork:* `@ifc-lite/ids` (parser, `writeIdsXml`, `validateIDS`, audit), `@ifc-lite/ids-authoring` (bezhlavý editor: `StudioDocument` so stabilnými id, XML tam a späť, typované vratné operácie `spec.*`, `facet.*`, `requirement.*`, `doc.setInfo`, `bulk.*`, brána voči IFC schéme `checkOps`/`applyOpsGated`, lint, `diffIds`). Viewer má panel `validation` (IDSPanel, `idsSlice`, `loadIdsContent`, beh vo workeri, export správy a BCF; nie je lenivý) a panel `idsStudio` (editor, `idsStudioOpen`, `idsStudioDispatch`, lenivý chunk). Stav Studia je len v pamäti, knižnica definícií validácie v localStorage. AIM časť forku (`apps/viewer/src/aim/`) IDS nepoužíva, most IDS správu nemá.
+- *`@ifc-lite/mcp`* (host má 0.27.0) má od 0.25.0 tooly `ids_read`, `ids_apply_ops` (jediný meniaci, s bránou), `ids_write` (audit pred zápisom), `ids_audit`, `ids_lint`, `ids_schema_*`, popri `ids_validate`.
+- *Host:* `ifc_ids_validate` (IDS z env `IDS_SOURCES`, prázdny register, nič neukladá); `etl.ids_check` ukladá behy ifctesteru do `ids_runs`/`ids_results` (`v_ids_latest`, `v_ids_summary`). Evaly IDS nemajú.
+- *Knižnica `assetin-library`:* MD v `zadanie/` je jediný zdroj pravdy, každá informácia má jedného nositeľa. Generátor IDS (F4) ešte nie je, existuje prototyp `ER-0101_ARCH.ids`.
+
+**Najbližšie tooly (D-114):** `ifc_ids_validate` (rozširujeme), `query_view` (`v_ids_*`, bez zmeny), `bcf_topic` (iný objekt), `set_view_mode panels` (otvorenie panelov `validation`, `idsStudio`).
+
+**Rozhodnutie:**
+1. **Dva pôvody IDS v DB, každá požiadavka má jedného nositeľa** (Samuel, otázka 1: áno).
+   - `origin = library`: snímka IDS z knižnice (repo@commit:cesta, sha256), v AIM **len na čítanie**. Mení sa v MD knižnice a prichádza novou snímkou (import v ETL). Tým sa uzatvára otázka z dodatku D-084, odkiaľ server berie IDS: z DB, nie z `IDS_SOURCES`.
+   - `origin = chat`: pracovné IDS vytvorené v chate alebo vo vieweri; nositeľom je AIM. Úprava knižničného IDS = nové IDS `chat` s väzbou `derived_from` (verzia snímky), snímka sa nikdy neprepíše. Chat aj viewer ho zreteľne označia "nie je z knižnice".
+2. **Žiadny beh dnes nie je záväzný** (Samuel, otázka 2: "nie, teraz žiadna nie je záväzná"). Beh z chatu (`@ifc-lite/ids`) aj beh ifctesteru z ETL sa ukladá ako záznam kontroly. `ids_runs.binding` je príznak do budúcnosti (IDS brána, D-086), predvolene `false`. Mení formulácie D-081 bod 1 a dodatku D-084 ("záväzný zaznamenaný beh") a opis toolov a inštrukcií, ktoré ifctester volajú záväzným.
+3. **Chat: jeden nový tool `ids_document`** (Samuel, otázka 5: áno; riadok v `lib/mcp/tool-registry.json` -> D-162) s `action`:
+   - `list` (kód, názov, pôvod, posledná verzia, posledný beh), `get` (špecifikácie a facety čitateľne, voliteľne XML),
+   - `create` (prázdne alebo z XML, alebo `derived_from` = kópia knižničnej snímky),
+   - `apply_ops` = upstream `ids_apply_ops` 1:1 (rovnaká schéma operácií, brána voči IFC schéme; odmietnutá dávka vráti kódy, cestu a kandidátov a nič neuloží); úspech uloží novú verziu cez `ids_write` (audit pred zápisom),
+   - `versions`, `diff` (`diffIds` medzi verziami), `export` (`.ids` ako odkaz na stiahnutie),
+   - `open` (do panela `validation` alebo `idsStudio` vo vieweri, voliteľne spustí beh),
+   - `from_viewer` (uloží rozpracovaný dokument z `view_state.ids_local`).
+   Server volá tooly balíka cez existujúcu reláciu motora (`lib/engine/session.ts`, whitelist), kód sa načíta lenivo ako motor; nová závislosť netreba. Knižničná snímka odmietne `apply_ops` s radou `create derived_from`.
+4. **`ifc_ids_validate` rozšírený:** `ids` = kód IDS v DB (+ `version`, predvolene posledná), `save=true` uloží beh do `ids_runs`/`ids_results` (`engine = ifc-lite`, `trigger = chat`). `IDS_SOURCES` ostáva len ako záložný zdroj, kým DB nemá žiadne IDS.
+5. **Viewer ukladá priamo aj cez chat** (Samuel, otázka 3: "ukladanie z viewera tiež, tak isto ako BCF fungujú"):
+   - *z panela:* tlačidlo "Uložiť do AIM" v Studiu a v paneli validácie (AIM blok vo forku, lenivý modul `aim/aimIds.ts`) pošle hostovi bridge správu `IDS_SAVE {doc_id?, base_version?, xml, title}`. Host stránka ju zapíše cez route `app/api/ids/...` (`POST` nové, `PUT` nová verzia) s ochranou ako ostatné zápisy z viewera: env brána `IDS_WRITE_ENABLED` (predvolene vypnutá, vtedy 403 "ulož v chate"), origin guard (`isCrossOriginBlocked`) a per-IP rate limit (`lib/api-guard`, vzor D-072/D-068 a route pohľadov D-161). Čítanie (`GET` zoznam, verzia, XML) bez tokenu ako BCF API. Viewer (iná doména) token nemá, preto zápis ide cez hosta, nie priamo z iframe.
+   - *z chatu:* `view_state.ids_local` (Studio: XML cez `writeStudioDocument`, `base` = doc_id + verzia, `dirty`; posledný beh: pass/fail po špecifikáciách, nesplnené GUID so stropom) a `ids_document action=from_viewer`.
+   - *Konflikt:* oba zápisy pošlú `base_version`; ak nie je posledná, zápis odmietne (409) a chat ponúkne `diff`. Knižničnú snímku z viewera prepísať nejde, uloží sa ako `chat` s `derived_from`.
+   - *Načítanie:* host -> viewer `IDS_LOAD {doc_id, version, xml, title, target: validation|studio, run?}`; fork volá `loadIdsContent` (definícia s vlastníkom `aim`, ďalšie načítanie ju nahradí, aby localStorage nedržal starú kópiu) alebo `idsStudioOpen(fromIdsDocument(...))`.
+6. **Výsledok vo vieweri:** beh vo vieweri (IDSPanel ofarbí model) alebo uložený beh -> `style_in_3d` cez `v_ids_latest` (existuje).
+7. **Model v DB (aditívna migrácia, rezervované `20261023180000_ids_documents.sql`, SCHEMA §2.13 návrh):** `ids_documents`, `ids_document_versions` (XML je nositeľ, verzie nemenné), `ids_runs` + `ids_version_id`, `engine`, `binding`, `trigger`; pohľady `v_ids_latest` / `v_ids_summary` dostanú `ids_code`, `ids_version`, `engine`, `binding` (staré stĺpce ostanú, `query_view` whitelist + nové `ids_documents`). Studio JSON sa neukladá (odvodí sa z XML). IDS nie je dokument z IFC (D-104), preto nie je v `objects`.
+8. **Prenos do knižnice odložený** (Samuel, otázka 4) do generátora F4 knižnice; potom návrh MD poznámok (PR do assetin-library), nie kopírovanie XML. Do vtedy `export` `.ids` a ručný prepis.
+
+**Kroky a PR (poradie D-116):**
+- **Host PR 1 (bez forku):** migrácia + SCHEMA, `lib/ids/` (úložisko, verzie, diff), `ids_document` bez `open`/`from_viewer`, `ifc_ids_validate` z DB + `save`, opravy textov o záväznosti (bod 2), register a `MCP-TOOLS.md`, testy (vitest nad mini-IDS, SQL test), evaly D-057 (vytvor IDS, pridaj facet, validuj a ulož, ukáž nesplnené).
+- **ETL:** `etl.ids_check` zapíše `ids_version_id`, `engine = ifctester`, `trigger = etl`; import snímky knižnice (ER-0101_ARCH) ako `library`. Zápis do DB spúšťa orchestrátor.
+- **Fork PR (len `apps/viewer/src/aim/`, rýchle CI, skill `aim-feature`):** `IDS_LOAD`, `IDS_SAVE`, tlačidlo "Uložiť do AIM", `view_state.ids_local`, lenivý `aim/aimIds.ts`; vo vstupnom chunku len smerovanie správ (odhad vstup < +1 kB, eager 0; IDS kód už nesie panel validácie, Studio sa ťahá existujúcim lenivým loaderom). Začne až po zlúčení D-161 Fork A (#188, `claude/d161-fork-a`): obe menia reťaz `onMessage` v `aim/AimBridge.tsx` a skladanie `view_state`.
+- **Host PR 2:** route `app/api/ids`, príjem `IDS_SAVE` v host stránke, `open`, `from_viewer`, súhrn `ids_local` v `get_viewer_state` (`lib/live/viewer-query-tools.ts`, rovnaký súbor ako D-161), panely v `set_view_mode panels`.
+- **Neskôr:** prenos do knižnice (po F4), BCF témy z nesplnených prvkov, IDS brána pri zverejnení revízie (D-086, `binding`).
+
+**Zavrhnuté:**
+- *Upstream IDS tooly 1:1 ako samostatné tooly konektora* (`ids_read`, `ids_apply_ops`, `ids_write`, `ids_audit`, `ids_lint`...): 3 až 8 toolov navyše, model by ich musel reťaziť (D-114); `ids_document` ich volá vnútri.
+- *Rozšíriť `ifc_ids_validate` aj o úpravy:* miešal by kontrolu s editáciou a jeho opis by prerástol.
+- *Vlastný editor facetov v AIM:* upstream Studio a `ids-authoring` ho majú (D-098).
+- *Ukladať IDS z chatu do knižnice priamo (XML do repa):* knižnica nesie MD, nie XML; generátor F4 ešte nie je.
+- *Ukladať Studio JSON ako nositeľa:* je odvodený z XML a menil by sa s verziou balíka.
+- *Zápis z viewera s tokenom priamo z iframe (ako BCF panel s `BCF_API_TOKEN`):* upstream IDS panely klienta servera nemajú a token by musel byť v prehliadači; host route za env bránou je tá istá ochrana ako pri podkladoch a pohľadoch.
+
+**Riziká:** veľké IDS v `view_state` (strop XML 256 kB, nad ním len `dirty` + sha256 a prenos cez `IDS_SAVE`); motory sa môžu líšiť na psetoch z typu (zhoda 8/8 na ER-0101, D-084; overiť pri prvom IDS s psetmi); knižničné snímky zatiaľ len z prototypu; prienik s D-161 v moste (poradie vyššie).

@@ -479,6 +479,21 @@ nie je v DB), `ifc_guid` null = výsledok celej povinnej špecifikácie bez vyho
 Pohľady: `v_ids_latest` (posledný beh každej dvojice IDS × model, s object_ref/menom),
 `v_ids_summary` (po špecifikáciách: elements, passed, failed, example_reason).
 
+**Návrh D-162 (schválený, migrácia `20261023180000_ids_documents.sql` ešte nie je):** IDS ako
+dokumenty s verziami, z chatu aj z viewera. Aditívne:
+- `ids_documents` = jedno IDS: `code` (unique, napr. `ER-0101_ARCH`), `title`, `origin`
+  `library|chat`, `library_source` (repo@commit:cesta, len `library`), `derived_from`
+  (FK na `ids_document_versions`, kópia knižničnej snímky), `status` `draft|active|archived`,
+  `created_by`, `created_at`, `updated_at`. Riadok `library` je len na čítanie (mení ho len import).
+- `ids_document_versions` = nemenná verzia: `document_id` (FK, cascade), `version` int
+  (unique s `document_id`), `xml` text (nositeľ), `sha256`, `ids_version` (`ids:info/version`),
+  `audit` jsonb (súhrn auditu a lintu pri zápise), `author`, `source` `chat|viewer|import`,
+  `note`, `created_at`.
+- `ids_runs` + `ids_version_id` (FK, null pre staré behy), `engine` `ifctester|ifc-lite`,
+  `trigger` `etl|chat|viewer`, `binding` bool default false (dnes nie je záväzný žiadny beh).
+- `v_ids_latest` / `v_ids_summary` + `ids_code`, `ids_version`, `engine`, `binding` (doterajšie
+  stĺpce ostanú); `query_view` whitelist + `ids_documents`. Grant a RLS ako `ids_runs`.
+
 ### 2.14 Revízie IFC modelov a úlohy úprav (D-086, migrácia 20261018120000)
 
 **Deklarovaná extenzia** (IFC verzie súboru nenesie; BCF nesie tému úlohy, nie úložisko).
