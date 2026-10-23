@@ -50,8 +50,9 @@ export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
     <div
       role="status"
       aria-label={label}
-      className="pointer-events-none fixed inset-0 z-40 flex flex-col items-center justify-center gap-6 bg-white"
+      className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-white"
     >
+      <div className="flex flex-col items-start gap-6">
       <span
         aria-hidden="true"
         className="font-semibold uppercase"
@@ -59,7 +60,6 @@ export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
           fontFamily: "var(--font-sans), var(--ds-font-sans)",
           fontSize: "var(--ds-text-3xl)",
           letterSpacing: "0.3em",
-          paddingLeft: "0.3em",
           color: "var(--ds-text-muted)",
         }}
       >
@@ -84,6 +84,7 @@ export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
           <span className="logo-dot" aria-hidden="true"></span>
         </span>
       </span>
+      </div>
     </div>
   );
 }
