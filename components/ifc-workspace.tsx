@@ -15,7 +15,8 @@ import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { CaptureGallery } from "@/components/capture-gallery";
 import { Button } from "@/components/ui/button";
-import { LIVE_SLOT_ID } from "@/components/live-channel";
+import { LIVE_ENV_SLOT_ID, LIVE_SLOT_ID } from "@/components/live-channel";
+import { viewerChoiceLabel } from "@/lib/viewer-source";
 import { ViewerPicker, useViewerChoice } from "@/components/viewer-picker";
 
 // 3D viewer je embed-nutý ifc-lite viewer cez iframe (postMessage bridge),
@@ -116,6 +117,14 @@ export default function IFCWorkspace({
 
   return (
     <div className="flex h-full w-full flex-col">
+      {/* Prostredie mimo produkcie (D-159): náhľad viewera PR a testovací kanál (pruh z LiveChannel). */}
+      <div id={LIVE_ENV_SLOT_ID} className="shrink-0" data-host-envbar>
+        {viewer.choice.kind !== "prod" && (
+          <div className="bg-amber-100 px-3 py-0.5 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            Náhľad viewera {viewerChoiceLabel(viewer.choice)}: nie je to produkčný viewer
+          </div>
+        )}
+      </div>
       {/* Viewer s vlastnou stavovou lištou; overlaye hostu ho neprekrývajú (#185). */}
       <div className="relative min-h-0 flex-1">
       {viewer.viewerUrl ? (

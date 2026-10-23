@@ -123,7 +123,13 @@ export function listViewText(tool: string, state: unknown, args: Record<string, 
   return out.length ? ` ${out.join(" ")}` : "";
 }
 
+/** Okno viewera ovláda iný chat a príkaz odmietlo (D-159). */
+export const FOREIGN_REJECTED_TEXT =
+  "Príkaz sa NEVYKONAL: živý viewer ovláda iný chat (iná session alebo iný rozhovor, D-159). Netvrď, že sa " +
+  "vykonal. Používateľ ho môže prevziať tlačidlom Prevziať vo vieweri (pri Live), potom príkaz zopakuj.";
+
 export function appliedText(tool: string, a: LiveAppliedPayload, elapsedMs?: number, ctx: AppliedContext = {}): string {
+  if (a.rejected === "foreign") return FOREIGN_REJECTED_TEXT;
   const head = a.ok
     ? `Vykonané vo vieweri${elapsedMs !== undefined ? ` (${elapsedMs} ms)` : ""}.`
     : `Vo vieweri sa nevykonalo všetko: ${a.issues.join("; ")}.`;

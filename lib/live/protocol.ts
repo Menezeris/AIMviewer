@@ -8,6 +8,21 @@
  */
 
 export const LIVE_QUERY_EVENT = "query";
+
+/** Testovací kanál pracovných sessions (D-159): `<LIVE_CHANNEL>-test`, nikdy viewer používateľa. */
+export const LIVE_TEST_SUFFIX = "-test";
+
+/** Prostredie živého kanála vo vieweri (D-159): produkcia (chat používateľa) alebo testy sessions. */
+export type LiveKind = "prod" | "test";
+
+/** Kanál pre vybrané prostredie: testy sessions = `<kanál>-test`. */
+export const channelFor = (base: string, kind: LiveKind) => (kind === "test" ? `${base}${LIVE_TEST_SUFFIX}` : base);
+
+/** `?live=` s príponou testovacieho kanála = základný kanál + výber testov; inak platí uložený výber karty. */
+export function splitChannel(name: string, storedKind: string | null): { base: string; kind: LiveKind } {
+  if (name.endsWith(LIVE_TEST_SUFFIX)) return { base: name.slice(0, -LIVE_TEST_SUFFIX.length), kind: "test" };
+  return { base: name, kind: storedKind === "test" ? "test" : "prod" };
+}
 export const LIVE_REPLY_EVENT = "reply";
 
 /** `lens_state` = počty AIM chat lens po `style_in_3d` (D-096). */
@@ -24,15 +39,23 @@ export interface LiveQueryPayload {
   guids?: string[];
   /** Verzia lens pri `lens_state` - viewer počká na jej vyhodnotenie. */
   rev?: string;
+  /** Rozhovor, ktorý sa pýta (D-159): odpoveď povie, či viewer ovláda on. */
+  sid?: string;
 }
+
+/**
+ * Kto ovláda okno viewera z pohľadu pýtajúceho sa rozhovoru (D-159): `you` = tento chat,
+ * `other` = iný chat (príkazy odtiaľto sa nevykonajú), `none` = zatiaľ nikto.
+ */
+export type ViewerOwner = "you" | "other" | "none";
 
 /**
  * `viewer` = náhodná identita okna s `?live=` na jedno načítanie stránky (D-125): na kanál
  * môže odpovedať viac okien (karty, telefón) a ich stav sa líši; starší klient ju nemá.
  */
 export type LiveReplyPayload =
-  | { id: string; ok: true; result: unknown; viewer?: string }
-  | { id: string; ok: false; error: string; viewer?: string };
+  | { id: string; ok: true; result: unknown; viewer?: string; owner?: ViewerOwner }
+  | { id: string; ok: false; error: string; viewer?: string; owner?: ViewerOwner };
 
 const isStr = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 
@@ -45,7 +68,8 @@ export function isLiveQuery(p: unknown): p is LiveQueryPayload {
     (VIEWER_QUERIES as readonly unknown[]).includes(q.query) &&
     (q.guids === undefined ||
       (Array.isArray(q.guids) && q.guids.length <= MAX_QUERY_GUIDS && q.guids.every(isStr))) &&
-    (q.rev === undefined || (isStr(q.rev) && q.rev.length <= MAX_ID))
+    (q.rev === undefined || (isStr(q.rev) && q.rev.length <= MAX_ID)) &&
+    (q.sid === undefined || (isStr(q.sid) && q.sid.length <= MAX_ID))
   );
 }
 
@@ -81,6 +105,8 @@ export interface LiveAppliedPayload {
   /** Čo sa vo vieweri vykonať nedalo (napr. prvok sa nenašiel). */
   issues: string[];
   state?: unknown;
+  /** `foreign` = okno ovláda iný chat a príkaz nevykonalo (D-159). */
+  rejected?: "foreign";
 }
 
 export const isCmdId = (v: unknown): v is string => isStr(v) && v.length <= MAX_ID;
