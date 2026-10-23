@@ -7050,6 +7050,6 @@ balíkov forku), preto je v PR "Ako vyskúšať". Mutačné dôkazy forku pre re
 - *Ukladať ručné priradenia len vo vieweri (localStorage):* nedeli sa medzi používateľmi ani s chatom.
 - *Nový tool `drawing_link`:* ten istý zdroj a tá istá strana ako `open_drawing` (D-114).
 
-**Poradie nasadenia:** najprv migrácia `20261023120000_drawing_link_overrides.sql` (aditívna, nová tabuľka; bez nej `fetchOverrides` zlyhá a odkazy na výkrese sa nenačítajú), potom host; fork patch pridáva `members` a návrh priradenia (starší fork `members` ignoruje). Re-ETL netreba.
+**Poradie nasadenia:** najprv migrácia `20261023130000_drawing_link_overrides.sql` (aditívna, nová tabuľka; bez nej `fetchOverrides` zlyhá a odkazy na výkrese sa nenačítajú), potom host; fork patch pridáva `members` a návrh priradenia (starší fork `members` ignoruje). Re-ETL netreba.
 
 **Overenie:** `lib/data/drawing-zones.test.ts`, `drawing-link-overrides.test.ts` (zóny, kandidáti, prednosť bbox, assign mimo vrstvy, chat assign/clear/reset/from_draft, chybné vstupy nič nezapíšu), `supabase/tests/drawing_link_overrides.sql` (lokálna DB: unikát na živý riadok, kontrola cieľa, snímka po zániku objektu). Na produkčných dátach nebežalo.
