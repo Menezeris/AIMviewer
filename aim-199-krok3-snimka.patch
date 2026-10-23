@@ -1,0 +1,413 @@
+From ad262ba4082785497462a678a4cb7252641551f3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 23 Oct 2026 04:15:47 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?feat(aim):=20sn=C3=ADmka=20v=C3=BDrezu=20PD?=
+ =?UTF-8?q?F=20v=20pripomienke=20a=20v=20t=C3=A9mach=20z=20hosta=20(AIM=20?=
+ =?UTF-8?q?D-158=20krok=203,=20#199)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Lokálna pripomienka si stiahne snímku výrezu s rámikom z hosta
+(/api/drawing/<id>/snapshot) a dostane pohľad s ňou (kamera z 3D pohľadu
+témy, BCF 3.0 ju vyžaduje), takže ju nesie aj export .bcfzip. Témy z hosta
+sa načítajú so snímkami (includeSnapshots), host ich dáva len odkazom na
+stranu dokumentu. #page=N&viewrect=... sa rozloží ako doteraz.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Q2tkQd9295U5DZgxezDE3V
+---
+ apps/viewer/src/aim/aimBcf.ts             |  6 ++-
+ apps/viewer/src/aim/bcf-protocol.test.ts  |  2 +-
+ apps/viewer/src/aim/docIssueModel.test.ts | 47 +++++++++++++++++++++++
+ apps/viewer/src/aim/docIssueModel.ts      | 32 ++++++++++++++-
+ apps/viewer/src/aim/docIssues.ts          | 38 +++++++++++++++++-
+ 5 files changed, 120 insertions(+), 5 deletions(-)
+
+diff --git a/apps/viewer/src/aim/aimBcf.ts b/apps/viewer/src/aim/aimBcf.ts
+index 7cd9f28e..2819506f 100644
+--- a/apps/viewer/src/aim/aimBcf.ts
++++ b/apps/viewer/src/aim/aimBcf.ts
+@@ -75,8 +75,10 @@ export async function loadAimBcfTopics(
+   const mine = ++generation;
+   const api = await deps.loadApi();
+   const client = new api.BcfApiClient({ baseUrl: msg.baseUrl });
+-  // Snapshots are not served by the AIM host yet; skip the per-viewpoint probes.
+-  const result = await api.fetchProjectAsBCF(client, msg.projectId, { includeSnapshots: false });
++  // The host serves a snapshot only for document references (the page region with its frame,
++  // AIM D-158 step 3); viewpoints without one are not probed, so the panel and the .bcfzip
++  // export get the PDF picture of each saved issue.
++  const result = await api.fetchProjectAsBCF(client, msg.projectId, { includeSnapshots: true });
+   if (mine !== generation) return 'stale';
+   if (result.warnings.length > 0) console.warn('[aim-bridge] AIM_BCF_LOAD:', result.warnings);
+   const fetchFn = deps.fetchFn ?? (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
+diff --git a/apps/viewer/src/aim/bcf-protocol.test.ts b/apps/viewer/src/aim/bcf-protocol.test.ts
+index b720fdf0..7c040e04 100644
+--- a/apps/viewer/src/aim/bcf-protocol.test.ts
++++ b/apps/viewer/src/aim/bcf-protocol.test.ts
+@@ -48,7 +48,7 @@ describe('AIM_BCF_LOAD (AIM D-099)', () => {
+       } as never,
+       fetchProjectAsBCF: (async (_client: unknown, projectId: string, options: { includeSnapshots?: boolean }) => {
+         assert.equal(projectId, 'aim');
+-        assert.equal(options.includeSnapshots, false);
++        assert.equal(options.includeSnapshots, true);
+         return { project: pulled, warnings: [] };
+       }) as never,
+     });
+diff --git a/apps/viewer/src/aim/docIssueModel.test.ts b/apps/viewer/src/aim/docIssueModel.test.ts
+index bf60fe0c..2a0b4f84 100644
+--- a/apps/viewer/src/aim/docIssueModel.test.ts
++++ b/apps/viewer/src/aim/docIssueModel.test.ts
+@@ -11,6 +11,8 @@ import {
+   describeLocalTopics,
+   docIssueReference,
+   docIssueUrl,
++  docSnapshotUrl,
++  docSnapshotViewpoint,
+   issuesOnPage,
+   mergeAimProject,
+   newTopicGuid,
+@@ -154,4 +156,49 @@ describe('pripomienka na PDF (AIM D-158)', () => {
+       assert.equal(refs[0].description, 'Pôdorys 1NP, strana 2, oblasť x 50 %, y 0 %, 25 x 50 %', version);
+     }
+   });
++
++  it('snímka výrezu od hosta (krok 3): adresa s oblasťou v %, bez hosta nič', () => {
++    const t = { docId: DOC, page: 2, region: { x: 0.5, y: 0, w: 0.25, h: 0.5 } };
++    assert.equal(docSnapshotUrl(`${HOST}/`, t), `${HOST}/api/drawing/${DOC}/snapshot?page=2&region=50_0_25_50`);
++    assert.equal(docSnapshotUrl(HOST, { ...t, region: null }), `${HOST}/api/drawing/${DOC}/snapshot?page=2`);
++    assert.equal(docSnapshotUrl(null, t), null);
++    // Odkaz hosta s RFC 8118 viewrect za #page sa rozloží rovnako.
++    assert.deepEqual(parseDocIssueUrl(`/drawing/${DOC}#page=3&viewrect=1,2,3,4`), { docId: DOC, page: 3, region: null });
++  });
++
++  it('pohľad so snímkou preberie kameru a rez prvého pohľadu; téma bez kamery ho nedostane', () => {
++    const cam = {
++      cameraViewPoint: { x: 1, y: 2, z: 3 },
++      cameraDirection: { x: 0, y: 1, z: 0 },
++      cameraUpVector: { x: 0, y: 0, z: 1 },
++      fieldOfView: 60,
++      aspectRatio: 1.5,
++    };
++    const plane = { location: { x: 0, y: 0, z: 1.2 }, direction: { x: 0, y: 0, z: -1 } };
++    const withCam = topic('t', { viewpoints: [{ guid: 'vp3d', perspectiveCamera: cam, clippingPlanes: [plane] }] });
++    const png = 'data:image/png;base64,iVBORw0KGgo=';
++    assert.deepEqual(docSnapshotViewpoint(withCam, png, 'vpdoc'), { guid: 'vpdoc', perspectiveCamera: cam, clippingPlanes: [plane], snapshot: png });
++    assert.equal(docSnapshotViewpoint(topic('t'), png, 'vpdoc'), null);
++    assert.equal(docSnapshotViewpoint(topic('t', { viewpoints: [{ guid: 'x' }] }), png, 'vpdoc'), null);
++    assert.equal(docSnapshotViewpoint(withCam, 'nie obrázok', 'vpdoc'), null);
++  });
++
++  it('lokálna pripomienka so snímkou: export 3.0 prejde, snímka je v ňom a bcf_local berie 3D pohľad', async () => {
++    const cam = {
++      cameraViewPoint: { x: 1, y: 2, z: 3 },
++      cameraDirection: { x: 0, y: 1, z: 0 },
++      cameraUpVector: { x: 0, y: 0, z: 1 },
++      fieldOfView: 60,
++      aspectRatio: 1.5,
++    };
++    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
++    const t = topic('t', { topicType: 'Issue', topicStatus: 'Open', creationAuthor: 'samuel', creationDate: '2026-10-23T00:00:00Z', viewpoints: [{ guid: 'vp3d', perspectiveCamera: cam }] });
++    t.viewpoints.push(docSnapshotViewpoint(t, png, 'vpdoc')!);
++    const p = { version: '3.0', projectId: 'aim', topics: new Map([['t', t]]) } as unknown as BCFProject;
++    const back = await readBCF(await writeBCF(p));
++    const vps = [...back.topics.values()][0].viewpoints;
++    assert.deepEqual(vps.map((v) => v.guid), ['vp3d', 'vpdoc']);
++    assert.equal(vps[1].snapshot, png);
++    assert.equal(describeLocalTopics(p, 'aim').topics[0].viewpoint?.guid, 'vp3d');
++  });
+ });
+diff --git a/apps/viewer/src/aim/docIssueModel.ts b/apps/viewer/src/aim/docIssueModel.ts
+index a8c077d4..5fc4a2ac 100644
+--- a/apps/viewer/src/aim/docIssueModel.ts
++++ b/apps/viewer/src/aim/docIssueModel.ts
+@@ -68,7 +68,8 @@ export function parseDocIssueUrl(url: string | undefined): DocIssueTarget | null
+   }
+   const m = /^\/drawing\/([^/]+)\/?$/.exec(u.pathname);
+   if (!m || !UUID.test(m[1])) return null;
+-  const page = Number(u.searchParams.get('page') ?? u.hash.replace(/^#page=/, ''));
++  // `#page=N&viewrect=...` (RFC 8118) od hosta, AIM D-158 krok 3.
++  const page = Number(u.searchParams.get('page') ?? new URLSearchParams(u.hash.replace(/^#/, '')).get('page'));
+   if (!Number.isInteger(page) || page < 1) return null;
+   const parts = (u.searchParams.get('region') ?? '').split('_').map(Number);
+   const ok = parts.length === 4 && parts.every((v) => Number.isFinite(v)) && parts[2] > 0 && parts[3] > 0;
+@@ -78,6 +79,35 @@ export function parseDocIssueUrl(url: string | undefined): DocIssueTarget | null
+   return { docId: m[1].toLowerCase(), page, region };
+ }
+ 
++/**
++ * Snímka výrezu strany s rámikom od hosta (AIM D-158 krok 3): render pdf.js na serveri, ten
++ * istý obrázok, aký BCF API hosta dá uloženej téme. Bez originu hosta null.
++ */
++export function docSnapshotUrl(origin: string | null, t: DocIssueTarget): string | null {
++  if (!origin) return null;
++  const q = new URLSearchParams({ page: String(t.page) });
++  if (t.region) q.set('region', [t.region.x, t.region.y, t.region.w, t.region.h].map(pct).join('_'));
++  return `${origin.replace(/\/+$/, '')}/api/drawing/${t.docId}/snapshot?${q.toString()}`;
++}
++
++/**
++ * Pohľad so snímkou výrezu pre lokálnu pripomienku: export .bcfzip ju nesie ako snímku pohľadu.
++ * BCF 3.0 chce v každom pohľade kameru, preto preberie kameru (a rez) prvého pohľadu témy;
++ * téma bez kamery snímku nedostane (export by inak zlyhal celý). Pridáva sa za existujúce
++ * pohľady, takže `bcf_local` (prvý pohľad) ostáva 3D pohľad témy.
++ */
++export function docSnapshotViewpoint(topic: BCFTopic | undefined, snapshot: string, guid: string): BCFViewpoint | null {
++  const base = topic?.viewpoints.find((v) => v.perspectiveCamera || v.orthogonalCamera);
++  if (!base || !snapshot.startsWith('data:image/')) return null;
++  return {
++    guid,
++    ...(base.perspectiveCamera ? { perspectiveCamera: base.perspectiveCamera } : {}),
++    ...(base.orthogonalCamera ? { orthogonalCamera: base.orthogonalCamera } : {}),
++    ...(base.clippingPlanes?.length ? { clippingPlanes: base.clippingPlanes } : {}),
++    snapshot,
++  };
++}
++
+ /** Čitateľný opis odkazu (BCF Description; v exporte ho uvidia aj iné nástroje). */
+ export function docIssueLabel(docName: string, t: DocIssueTarget): string {
+   const parts = [docName, `strana ${t.page}`];
+diff --git a/apps/viewer/src/aim/docIssues.ts b/apps/viewer/src/aim/docIssues.ts
+index bfd7a541..05aabe33 100644
+--- a/apps/viewer/src/aim/docIssues.ts
++++ b/apps/viewer/src/aim/docIssues.ts
+@@ -18,7 +18,15 @@ import { useViewerStore } from '@/store';
+ import { anchorSelector, TOUR_ANCHORS } from '@/lib/tours/anchors';
+ import { aimBcfContext } from './bcf-protocol.js';
+ import { highlightStyle } from './docRegion.js';
+-import { docIssueReference, issuesOnPage, newTopicGuid, regionFromDrag, type DocIssueTarget } from './docIssueModel.js';
++import {
++  docIssueReference,
++  docSnapshotUrl,
++  docSnapshotViewpoint,
++  issuesOnPage,
++  newTopicGuid,
++  regionFromDrag,
++  type DocIssueTarget,
++} from './docIssueModel.js';
+ 
+ export type DocIssuePhase = 'idle' | 'drawing' | 'form';
+ 
+@@ -92,6 +100,7 @@ export async function openIssueForm(target: DocIssueTarget, docName: string): Pr
+     finish(null);
+     const topic = useViewerStore.getState().bcfProject?.topics.get(guid);
+     useViewerStore.getState().updateTopic(guid, { documentReferences: [...(topic?.documentReferences ?? []), ref] });
++    void attachSnapshot(guid, target);
+     return true;
+   };
+   const unsubscribe = useViewerStore.subscribe((s, prev) => {
+@@ -111,6 +120,33 @@ export async function openIssueForm(target: DocIssueTarget, docName: string): Pr
+   return true;
+ }
+ 
++const blobToDataUrl = (blob: Blob) =>
++  new Promise<string>((resolve, reject) => {
++    const reader = new FileReader();
++    reader.onload = () => resolve(String(reader.result));
++    reader.onerror = () => reject(reader.error);
++    reader.readAsDataURL(blob);
++  });
++
++/**
++ * Snímka výrezu od hosta (AIM D-158 krok 3) do pohľadu lokálnej pripomienky, aby ju mal aj
++ * export .bcfzip pred uložením v chate. Je to pohodlie: chyba alebo starší host = bez snímky.
++ */
++async function attachSnapshot(guid: string, target: DocIssueTarget): Promise<void> {
++  const url = docSnapshotUrl(aimBcfContext()?.origin ?? null, target);
++  if (!url) return;
++  try {
++    const res = await fetch(url);
++    if (!res.ok || !res.headers.get('content-type')?.startsWith('image/')) return;
++    const snapshot = await blobToDataUrl(await res.blob());
++    const topic = useViewerStore.getState().bcfProject?.topics.get(guid);
++    const vp = docSnapshotViewpoint(topic, snapshot, crypto.randomUUID());
++    if (vp) useViewerStore.getState().addViewpoint(guid, vp);
++  } catch (err) {
++    console.warn('[aim] snímka pripomienky', err);
++  }
++}
++
+ /** Klik na rámik: téma v paneli BCF. */
+ export function openIssueTopic(guid: string): void {
+   const store = useViewerStore.getState();
+-- 
+2.43.0
+
+
+From 390827fb7f3472c0e0b48c3ef0bccbb317a775cd Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 23 Oct 2026 04:24:14 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?docs(aim):=20muta=C4=8Dn=C3=A9=20d=C3=B4kaz?=
+ =?UTF-8?q?y=20sn=C3=ADmky=20v=C3=BDrezu=20(AIM=20D-158=20krok=203)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Q2tkQd9295U5DZgxezDE3V
+---
+ .../aim-d158-snapshot/mutations/README.md     | 38 ++++++++++++++++
+ .../mutations/host-snapshots.patch            | 13 ++++++
+ .../mutations/snapshot-needs-camera.patch     | 13 ++++++
+ .../mutations/snapshot-url-region.patch       | 12 +++++
+ .../aim-d158-snapshot/mutations/summary.json  | 44 +++++++++++++++++++
+ 5 files changed, 120 insertions(+)
+ create mode 100644 docs/architecture/evidence/aim-d158-snapshot/mutations/README.md
+ create mode 100644 docs/architecture/evidence/aim-d158-snapshot/mutations/host-snapshots.patch
+ create mode 100644 docs/architecture/evidence/aim-d158-snapshot/mutations/snapshot-needs-camera.patch
+ create mode 100644 docs/architecture/evidence/aim-d158-snapshot/mutations/snapshot-url-region.patch
+ create mode 100644 docs/architecture/evidence/aim-d158-snapshot/mutations/summary.json
+
+diff --git a/docs/architecture/evidence/aim-d158-snapshot/mutations/README.md b/docs/architecture/evidence/aim-d158-snapshot/mutations/README.md
+new file mode 100644
+index 00000000..214f2ba5
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-snapshot/mutations/README.md
+@@ -0,0 +1,38 @@
++<!-- This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this
++     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
++
++# AIM D-158 step 3: PDF region snapshot, surgical mutation evidence
++
++The change adds the PDF region snapshot to issues on documents (AIM D-158 step 3): a local
++issue fetches the region picture with its frame from the AIM host
++(`/api/drawing/<id>/snapshot`) and gets a viewpoint carrying it (camera copied from the
++topic's 3D viewpoint, BCF 3.0 requires one), and host topics are pulled with snapshots
++(`includeSnapshots`). The tests import the new `docSnapshotUrl` / `docSnapshotViewpoint`, so
++reverting `docIssueModel.ts` to the base makes the test fail to load and the CI revert oracle
++reports INCONCLUSIVE. Each main decision was instead checked with a surgical mutation.
++
++Each patch is written mutant->fixed; the oracle reverse-applies it. Every run ended `OBSERVED`
++(exit 0) with restoration verified, against the base of this branch (`3510a1db`, the step 2
++commit; the shallow clone had no `origin/main`). Full records in `summary.json`.
++
++| Patch | Module | Mutation | Test that went red |
++|---|---|---|---|
++| `snapshot-needs-camera.patch` | `docIssueModel.ts` | a snapshot viewpoint is made for a topic without a camera, so a BCF 3.0 export of the whole archive would fail | `docIssueModel.test.ts` |
++| `snapshot-url-region.patch` | `docIssueModel.ts` | the snapshot address drops the region, so the host renders the whole page | `docIssueModel.test.ts` |
++| `host-snapshots.patch` | `aimBcf.ts` | host topics are pulled without snapshots | `bcf-protocol.test.ts` |
++
++`docIssues.ts` (fetch, data URL, `addViewpoint`) is store glue without a unit test; it lives in
++the lazy document-tab chunk like the rest of the step 2 glue.
++
++## Replay
++
++Clean checkout of the branch with dependencies installed; copy the patches outside the tree
++(the oracle refuses a dirty tree), then for example:
++
++```bash
++node scripts/check-test-revert-oracle.mjs --base 3510a1db \
++  --only apps/viewer/src/aim/docIssueModel.ts \
++  --test apps/viewer/src/aim/docIssueModel.test.ts \
++  --mutation /tmp/snapshot-needs-camera.patch --ci --json
++```
+diff --git a/docs/architecture/evidence/aim-d158-snapshot/mutations/host-snapshots.patch b/docs/architecture/evidence/aim-d158-snapshot/mutations/host-snapshots.patch
+new file mode 100644
+index 00000000..41d5080a
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-snapshot/mutations/host-snapshots.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/aimBcf.ts a/apps/viewer/src/aim/aimBcf.ts
++index 8bb886bb..2819506f 100644
++--- b/apps/viewer/src/aim/aimBcf.ts
+++++ a/apps/viewer/src/aim/aimBcf.ts
++@@ -78,7 +78,7 @@ export async function loadAimBcfTopics(
++   // The host serves a snapshot only for document references (the page region with its frame,
++   // AIM D-158 step 3); viewpoints without one are not probed, so the panel and the .bcfzip
++   // export get the PDF picture of each saved issue.
++-  const result = await api.fetchProjectAsBCF(client, msg.projectId, { includeSnapshots: false });
+++  const result = await api.fetchProjectAsBCF(client, msg.projectId, { includeSnapshots: true });
++   if (mine !== generation) return 'stale';
++   if (result.warnings.length > 0) console.warn('[aim-bridge] AIM_BCF_LOAD:', result.warnings);
++   const fetchFn = deps.fetchFn ?? (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
+diff --git a/docs/architecture/evidence/aim-d158-snapshot/mutations/snapshot-needs-camera.patch b/docs/architecture/evidence/aim-d158-snapshot/mutations/snapshot-needs-camera.patch
+new file mode 100644
+index 00000000..71c526ab
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-snapshot/mutations/snapshot-needs-camera.patch
+@@ -0,0 +1,13 @@
++diff --git b/apps/viewer/src/aim/docIssueModel.ts a/apps/viewer/src/aim/docIssueModel.ts
++index 526f0e46..5fc4a2ac 100644
++--- b/apps/viewer/src/aim/docIssueModel.ts
+++++ a/apps/viewer/src/aim/docIssueModel.ts
++@@ -98,7 +98,7 @@ export function docSnapshotUrl(origin: string | null, t: DocIssueTarget): string
++  */
++ export function docSnapshotViewpoint(topic: BCFTopic | undefined, snapshot: string, guid: string): BCFViewpoint | null {
++   const base = topic?.viewpoints.find((v) => v.perspectiveCamera || v.orthogonalCamera);
++-  if (!snapshot.startsWith('data:image/')) return null;
+++  if (!base || !snapshot.startsWith('data:image/')) return null;
++   return {
++     guid,
++     ...(base.perspectiveCamera ? { perspectiveCamera: base.perspectiveCamera } : {}),
+diff --git a/docs/architecture/evidence/aim-d158-snapshot/mutations/snapshot-url-region.patch b/docs/architecture/evidence/aim-d158-snapshot/mutations/snapshot-url-region.patch
+new file mode 100644
+index 00000000..40fc3d59
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-snapshot/mutations/snapshot-url-region.patch
+@@ -0,0 +1,12 @@
++diff --git b/apps/viewer/src/aim/docIssueModel.ts a/apps/viewer/src/aim/docIssueModel.ts
++index 4620a45f..5fc4a2ac 100644
++--- b/apps/viewer/src/aim/docIssueModel.ts
+++++ a/apps/viewer/src/aim/docIssueModel.ts
++@@ -86,6 +86,7 @@ export function parseDocIssueUrl(url: string | undefined): DocIssueTarget | null
++ export function docSnapshotUrl(origin: string | null, t: DocIssueTarget): string | null {
++   if (!origin) return null;
++   const q = new URLSearchParams({ page: String(t.page) });
+++  if (t.region) q.set('region', [t.region.x, t.region.y, t.region.w, t.region.h].map(pct).join('_'));
++   return `${origin.replace(/\/+$/, '')}/api/drawing/${t.docId}/snapshot?${q.toString()}`;
++ }
++ 
+diff --git a/docs/architecture/evidence/aim-d158-snapshot/mutations/summary.json b/docs/architecture/evidence/aim-d158-snapshot/mutations/summary.json
+new file mode 100644
+index 00000000..09ef3603
+--- /dev/null
++++ b/docs/architecture/evidence/aim-d158-snapshot/mutations/summary.json
+@@ -0,0 +1,44 @@
++{
++  "snapshot-needs-camera": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docIssueModel.test.ts; that file has a green, attributable baseline.",
++    "base": "3510a1db354b6b079d4d8eedf47ff5a1408fe7f7",
++    "head": "ad262ba4082785497462a678a4cb7252641551f3",
++    "production": [
++      "apps/viewer/src/aim/docIssueModel.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docIssueModel.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "snapshot-url-region": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/docIssueModel.test.ts; that file has a green, attributable baseline.",
++    "base": "3510a1db354b6b079d4d8eedf47ff5a1408fe7f7",
++    "head": "ad262ba4082785497462a678a4cb7252641551f3",
++    "production": [
++      "apps/viewer/src/aim/docIssueModel.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/docIssueModel.test.ts"
++    ],
++    "restoration": "verified"
++  },
++  "host-snapshots": {
++    "verdict": "OBSERVED",
++    "exitCode": 0,
++    "reason": "reverting production turned an assertion RED in apps/viewer/src/aim/bcf-protocol.test.ts; that file has a green, attributable baseline.",
++    "base": "3510a1db354b6b079d4d8eedf47ff5a1408fe7f7",
++    "head": "ad262ba4082785497462a678a4cb7252641551f3",
++    "production": [
++      "apps/viewer/src/aim/aimBcf.ts"
++    ],
++    "tests": [
++      "apps/viewer/src/aim/bcf-protocol.test.ts"
++    ],
++    "restoration": "verified"
++  }
++}
+-- 
+2.43.0
+
