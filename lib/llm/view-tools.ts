@@ -184,7 +184,9 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "Dokument do záložky = open_drawing(target=tab). PANELY: panels otvorí, zavrie alebo prepne ľubovoľný " +
       "panel UI (napr. lens, properties, bcf = BCF topics Alt+3, lists, model_tree, underlays, documents, compare, " +
       "validation, clash; all=close = čistý pohľad, {all: 'close', properties: 'open'} = všetko okrem vlastností), " +
-      "aj bez mode. Úplný zoznam panelov s klávesovými skratkami, kde sú a či sú otvorené vráti get_viewer_state " +
+      "aj bez mode. drawing = 2D výkres aktuálneho rezu z modelu (bez podkladu, D-136) v spodnom páse pod 3D: " +
+      "pôdorys podlažia pri 3D bez kalibrovaného podkladu = set_section(action=set, floor) + panels={drawing: 'open'} " +
+      "(3D ostane voľné, ale rezané na podlaží; dlaždice s viacerými 3D pohľadmi viewer nemá). Úplný zoznam panelov s klávesovými skratkami, kde sú a či sú otvorené vráti get_viewer_state " +
       "(panels), rovnaký stav aj výsledok po príkaze; neznámy panel viewer nahlási s platnými menami. " +
       "POSUN OBSAHU PANELA: panel_scroll=down|up (o 80 % výšky) | top | bottom na pokyn 'posuň dole', 'hore', " +
       "'na začiatok' (panel vlastností), alebo {panel, to | item | percent}: item = text položky ('Dvere D12', " +

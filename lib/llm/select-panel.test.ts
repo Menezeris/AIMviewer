@@ -96,6 +96,10 @@ describe("panely z chatu (D-127)", () => {
     expect(parseOps("panels:~all=open~lens=hide:")).toEqual([]);
     expect(parseOps("panels:~all=open~bcf=close~bad!=open:").map(opToBridgeMessage)).toEqual([{ type: "SET_PANELS", panels: { bcf: "close" } }]);
   });
+
+  it("2D výkres rezu (D-136): drawing ide na most ako ostatné panely", () => {
+    expect(parseOps(panelsOp({ drawing: "open" })).map(opToBridgeMessage)).toEqual([{ type: "SET_PANELS", panels: { drawing: "open" } }]);
+  });
 });
 
 describe("posun panela vlastností (D-146)", () => {
