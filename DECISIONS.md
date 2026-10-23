@@ -7486,3 +7486,48 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 - *Zápis z viewera s tokenom priamo z iframe (ako BCF panel s `BCF_API_TOKEN`):* upstream IDS panely klienta servera nemajú a token by musel byť v prehliadači; host route za env bránou je tá istá ochrana ako pri podkladoch a pohľadoch.
 
 **Riziká:** veľké IDS v `view_state` (strop XML 256 kB, nad ním len `dirty` + sha256 a prenos cez `IDS_SAVE`); motory sa môžu líšiť na psetoch z typu (zhoda 8/8 na ER-0101, D-084; overiť pri prvom IDS s psetmi); knižničné snímky zatiaľ len z prototypu; prienik s D-161 v moste (poradie vyššie).
+
+---
+
+### D-164 - Clash detection z chatu a z viewera: testy, behy, porovnanie, stav kolízie a BCF nad upstream `@ifc-lite/clash` (#292)
+
+**Dátum:** 2026-10-23 · **Stav:** schválené (Samuel cez orchestrátora 23. 10., "áno" na všetkých 6 odporúčaní), implementácia nezačatá · **Issue:** #292 (plán v komentári) · **Nadväzuje na:** D-086 (`model_tasks`), D-099 (BCF), D-112 (`ifc_measure`, geometria ASR a VZT na serveri), D-114, D-116, D-150 (`set_view_mode panels clash`), D-159, D-161 a D-162 (vzor "upstream modul + tool + DB + most + zápis z panela") · **Mení:** riadok 9 "Koordinátor: kde sa VZT križuje s nosnými prvkami" z programu dema (fáza 4)
+
+**Kontext:** Samuel (23. 10.): "clash detection, aby sa dali nastavovať z MCP, aby sa dali tvoriť, zakladať, porovnávať, zoskupovať... teraz tam na to už je ručne funkcia, len sa napojiť". Stav overený 23. 10. (fork `main` @ `30b04805`, host `main` @ `925e747`):
+- *`@ifc-lite/clash` 2.4.4* (v hoste priama závislosť od D-112): engine nad `ClashElement[]` (kľúč = IFC GlobalId), BVH + presný test trojuholníkov, režimy `hard` / `clearance` (`touch` potlačený), pravidlo `{id, name, a, b, mode}` so selektormi tried, `disciplineMatrixRules`, výnimky, duplicity; `groupClashes` (`cluster` | `rule` | `typePair` | `element` | `storey`), `clashReviewKey` (id pravidla + dve GUID bez ohľadu na poradie, stabilný medzi behmi a revíziami), stav `open` / `resolved` / `accepted` s komentárom, `compareClashRuns` (added / resolved / persistent) a `compareClashRevisions` (navyše `unretested`, keď sa zmenili pravidlá, selektor nič nenašiel alebo chýba model), BCF most `@ifc-lite/clash/bcf` (téma za skupinu, deterministické GUID). Backend TS (WASM opt-in).
+- *Viewer (fork):* panel `clash` (`ClashPanel`, `clashSlice`, `hooks/useClash.ts`) počíta v hlavnom vlákne nad všetkými načítanými modelmi naraz (ASR + VZT). Predvoľby pravidiel (`ClashPreset` so sadami A/B `filterA`/`filterB`), nastavenia, review a výnimky sú v localStorage; uložené reporty `SavedClashReport` v1 (strop 100 000 kolízií) v knižnici obsahu prehliadača; porovnanie s uloženým reportom, export BCF a tabuľky. Vstupy na napojenie: `applyClashFlavorConfig({presets, settings})`, `setClashReview`. AIM vrstva forku clash nepoužíva, most správu nemá.
+- *`@ifc-lite/mcp` 0.27.0:* `clash_check` a `clash_matrix` len nad jedným modelom, bez uloženia, výpis do 50. CLI `ifc-lite clash` tiež bez federácie.
+- *Host:* `clash_check` je vo whiteliste motora (`lib/engine/session.ts`), ako tool konektora nie je. Meranie (D-084 fáza 0): VZT `clash_check` 2,1-2,6 s lokálne (228 kolízií), Vercel studené 10 s (kolízie 4,1 s), RSS ~715 MB; ASR x VZT nezmerané. `ifc_measure` (`lib/engine/measure.ts`) už tesseluje ASR aj VZT s cache (`meshModel`) a volá `createClashEngine`. BCF témy v `model_tasks` (`bcf_topic` pozná `type=Clash`), väzba kolízia <-> téma neexistuje.
+
+**Najbližšie tooly (D-114):** `ifc_measure` (meranie dvojice prvkov, nie test a beh), `bcf_topic` (cieľ pre kolízie, iný objekt), `ids_document` + `ifc_ids_validate` (vzor test, beh, uloženie), `set_view_mode panels clash` (len otvorí panel).
+
+**Rozhodnutie:**
+1. **Chat: jeden nový tool `clash` s `action`** (riadok v `lib/mcp/tool-registry.json` -> D-164, vlastná skupina, kód motora lenivo):
+   - `list` (testy s posledným behom a počtami), `get`, `save` (vytvoriť alebo upraviť test: pravidlá A/B ako selektory tried, voliteľne AIM filtre podlažie / systém / zoznam prvkov, `mode`, `tolerance`, `clearance`), `delete`;
+   - `run` (test alebo ad hoc pravidlo, prípadne matica; vráti súhrn, skupiny a `show_in_3d.global_ids`), `results` (filter stav / závažnosť / pravidlo / review, `group_by` = `storey` | `system` | `type_pair` | `element` | `rule` | `cluster`, súčty vždy za celý beh, riadky stránkované);
+   - `compare` (dva behy, predvolene posledný a predošlý: nové / vyriešené / pretrvávajúce / neoverené cez `compareClashRevisions`), `review` (stav a komentár kolízii alebo celej skupine), `bcf` (téma za skupinu, bod 4);
+   - `open` (panel clash vo vieweri s testom a behom) a `from_viewer` (uloží rozpracovaný test alebo beh z panela) až s mostom (krok 4).
+   - Ukázanie v 3D robí chat existujúcimi `show_in_3d` / `style_in_3d` nad vrátenými `global_ids` (strany A / B), `clash` UI nevolá. Zoskupenie `system` a `element` robí host joinom GUID na graf AIM (`objects`, `rel_*`); `storey` z upstreamu, s menom podlažia z grafu.
+2. **Chat počíta na serveri** (Samuel, otázka 1): tá istá knižnica, TS engine, federovane ASR + VZT nad aktuálnymi revíziami, cache meshov z `measure.ts`. Funguje bez otvoreného viewera a výsledok ide rovno do DB. Panel vo vieweri počíta pri ručnej práci tým istým engine a ukladá na to isté miesto (`trigger = chat | viewer`). Porovnávať sa odporúča beh rovnakého pôvodu (viewer inštancuje geometriu, server nie; kľúč je GUID, súčty sa môžu líšiť).
+3. **Stav kolízie prechádza medzi behmi testu** (Samuel, otázka 2): `clash_reviews` je kľúčovaný (`test_id`, `clash_key` = `clashReviewKey`), nie behom. Kolízia, ktorá v novom behu chýba, je "vyriešená" len ak ju beh naozaj znova overil; inak `unretested`.
+4. **BCF téma za skupinu** (Samuel, otázka 3), na požiadanie za jednu kolíziu: `topic_type = Clash`, `components` = GUID oboch strán, viewpoint zo stredu skupiny, `model_tasks.model` predvolene **VZT** (disciplína, ktorá ustupuje), odkaz `bcf_topic_id` pri kolíziách skupiny.
+5. **Zápis z panela bez prihlásenia za env bránou** (Samuel, otázka 4), vzor D-161 / D-162: tlačidlo "Uložiť do AIM" v paneli clash (AIM blok, lenivý `aim/aimClash.ts`) pošle hostovi `CLASH_SAVE {test: presets + settings, report: SavedClashReport v1}` a pri zmene stavu `CLASH_REVIEW {key, status, comment}`; host zapíše cez route `app/api/clash/...` za `CLASH_WRITE_ENABLED` (predvolene vypnuté, 403 "ulož v chate"), origin guard a per-IP rate limit (D-068, D-072). Opačne `CLASH_LOAD {test, run?, reviews, run_now?}` -> `applyClashFlavorConfig` + `setClashReview`; AIM test má vlastníka `aim` a ďalšie načítanie ho nahradí. Chat vidí panel cez `view_state.clash_local` (aktívny test, súhrn behu, vybraná kolízia, `dirty`). Pri teste vyhrá posledný zápis (ako D-161), review sa píše po kolíziách.
+6. **Model v DB (aditívna migrácia, rezervované `20261023200000_clash.sql`, SCHEMA §2.18 návrh):** `clash_tests`, `clash_runs` (snímka pravidiel, revízie modelov), `clash_results` (`clash_key`), `clash_reviews`, pohľady `v_clash_latest` a `v_clash_summary` do whitelistu `query_view`. Kolízie nie sú `objects`.
+7. **Predvolené testy** (Samuel, otázka 6): "VZT x nosné konštrukcie" (`hard`; A = VZT rozvody a zariadenia, B = `IfcBeam|IfcColumn|IfcSlab|IfcWall` s nosnou funkciou, presný filter určí PR 2 z dát) a "VZT x ASR" (`clearance` 0,05 m). V PR 1 ako pomenované ad hoc pravidlá v kóde, v PR 2 založené ako `clash_tests`.
+
+**Kroky a PR (poradie D-116):**
+1. **Host PR 1, hneď a bez DB** (Samuel, otázka 5; bez forku a migrácie): `clash` s `action=run` a `results` nad behom v pamäti procesu, 2 predvolené testy, `group_by`, `show_in_3d.global_ids`, návrh BCF témy (zakladá existujúci `bcf_topic`), register, `MCP-TOOLS.md`, `system-prompt.ts`, vitest nad mini geometriou, evaly D-057; meranie ASR x VZT na Verceli (studené a teplé, RSS) cez `ifc_engine_probe` (`ENGINE_SPIKE=1`, rozšíriť o pár ASR x VZT).
+2. **Host PR 2:** migrácia + SCHEMA §2.18, `save` / `list` / `get` / `delete`, `run` ukladá, `compare`, `review`, `bcf` s väzbou, evaly porovnania. Migráciu spúšťa orchestrátor.
+3. **Fork PR** (len `apps/viewer/src/aim/`, skill `aim-feature`): `CLASH_LOAD`, `CLASH_SAVE`, `CLASH_REVIEW`, "Uložiť do AIM", `view_state.clash_local`. Až po zlúčení D-161 Fork A (Menezeris/ifc-lite#146) a D-162 fork PR (rovnaká reťaz `onMessage` v `aim/AimBridge.tsx` a skladanie `view_state`).
+4. **Host PR 3:** route `app/api/clash`, príjem správ v host stránke, `open`, `from_viewer`, súhrn `clash_local` v `get_viewer_state` (`lib/live/viewer-query-tools.ts`, za #289 a D-162 host PR 2).
+
+**Balík:** host PR 1 a 2 len server (klient 0 kB); fork vo vstupnom chunku len smerovanie správ (odhad < +0,5 kB), eager 0, zvyšok lenivo; panel a engine už vo forku sú. Strop +2 kB entry / +10 kB eager.
+
+**Zavrhnuté:**
+- *Upstream `clash_check` / `clash_matrix` ako tooly konektora 1:1:* jeden model (ASR x VZT nejde), bez uloženia, 2 tooly navyše (D-114).
+- *Rozšíriť `ifc_measure`:* meria dvojicu prvkov, nie test a beh; opis by prerástol.
+- *Rozšíriť `bcf_topic` o behy kolízií:* iný objekt; `clash action=bcf` volá jeho vnútro.
+- *Chat počíta len vo vieweri cez most:* bez otvoreného viewera nič, celé by čakalo na fork a výsledok by do DB išiel až spätným kanálom.
+- *Vlastný formát reportu:* upstream `SavedClashReport` v1 stačí na prenos z panela.
+
+**Riziká:** pamäť a čas na Verceli (ASR + VZT ~715 MB RSS, studené ~10 s len s VZT, MCP route `maxDuration = 60`); pri prekročení `truncated` a rada zúžiť test. Server a viewer môžu dať iné počty (inštancovanie, výnimky). Falošné "vyriešené" rieši `unretested`. Dvaja zapisovatelia testu, zápis bez auth len za env bránou. Prienik v moste s D-161 a D-162 (poradie vyššie).
