@@ -341,6 +341,26 @@
       "budget_s": 10,
       "expect": { "tools_called": ["style_in_3d"], "viewer_state": "len prvky skladby S1 (strecha)" },
       "notes": "D-104 krok 4: style_in_3d(document, page=3); počty po stranách dá get_object(include=documents) v by_page."
+    },
+    {
+      "id": "I1-ids-vytvor-validuj-uloz",
+      "category": "data",
+      "viewer": false,
+      "question": "Vytvor nové IDS s kódom EVAL-STENY: každá stena (IfcWall) musí mať vlastnosť FireRating v sade Pset_WallCommon. Pridaj ešte požiadavku na atribút Name, skontroluj ním model ASR a ulož beh.",
+      "max_calls": 4,
+      "budget_s": 30,
+      "expect": { "tools_called": ["ids_document", "ifc_ids_validate"], "answer_matches": ["EVAL-STENY", "verzi"] },
+      "notes": "D-162 host PR1: ids_document(create, ops) + ids_document(apply_ops) + ifc_ids_validate(ids, save=true). Až po spustení migrácie 20261023180000; vytvorí testovacie IDS EVAL-STENY a beh v ids_runs (engine ifc-lite, binding false). Odpoveď nesmie nazvať beh záväzným."
+    },
+    {
+      "id": "I2-ids-nesplnene-v-3d",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Ktoré steny nespĺňajú IDS EVAL-STENY? Ukáž ich v 3D červenou.",
+      "max_calls": 2,
+      "budget_s": 12,
+      "expect": { "tools_called": ["query_view", "style_in_3d"], "viewer_state": "nesplnené steny červené (ef4444) podľa v_ids_latest" },
+      "notes": "D-162: nesplnené prvky z v_ids_latest (ids_code = EVAL-STENY) -> style_in_3d colorize; po I1."
     }
   ]
 }

@@ -140,6 +140,7 @@ const QUERY_RELATIONS = new Set([
   "rel_space_boundary",
   "v_space_elements",
   "ids_runs",
+  "ids_documents",
   "v_ids_latest",
   "v_ids_summary",
   "rel_defines_by_type",

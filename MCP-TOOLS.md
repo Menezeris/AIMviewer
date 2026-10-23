@@ -3,7 +3,7 @@
 > Generované z definícií toolov (`lib/mcp/tool-list.ts`), needituj ručne. Obnova:
 > `npx vitest run lib/mcp/tool-registry.test.ts -u`.
 
-Konektor má 29 toolov (s IFC motorom, `ENGINE_ENABLED=1`).
+Konektor má 30 toolov (s IFC motorom, `ENGINE_ENABLED=1`).
 
 **Pravidlo D-114 - najprv napasuj, až potom nový tool:**
 1. Tu nájdi 2-3 najbližšie tooly k tomu, čo treba.
@@ -85,6 +85,13 @@ Zdroj: GitHub issues + session. Definície: lib/feedback/tools.ts. Len MCP.
 - **`feedback`** (D-090, zápis) - Zápis do GitHub issues konektora (D-090). Volaj LEN na výslovný pokyn používateľa ('zapíš to', 'založ pripomienku', 'dopíš do #97'); sám to len ponúkni. action=report: PRIPOMIENKA - chyba toolu (bug), zlé dáta (wrong_data), zlá odpoveď (wrong_answer), návrh (improvement); kind, title, description, start_session len keď to používateľ chce. request_tool: POŽIADAVKA NA NOVÝ TOOL až po vyčerpaní existujúcich tools; opíš potrebu (user_request, why_existing_fail, tried_tools s konkrétnymi tools); ak stačí rozšíriť existujúci tool (parameter, akcia, pole vo výsledku), uveď ho v proposal.extend - rozšírenie má prednosť (D-114); spustí session alebo ide do fronty, rovnaká požiadavka sa pripíše ako ďalší výskyt. comment: komentár do existujúceho issue, aj zatvoreného (issue_number, text, kind eval_round | result | note; verification=overene | vratene zapíše overenie hotového issue; reopen len na výslovný pokyn; GitHub konektor na to netreba). start_session: spustí session pre ďalšie issue z fronty (over_limit len na výslovnú žiadosť).
   Parametre: `action*=report|request_tool|comment|start_session`, `kind=bug|wrong_data|wrong_answer|improvement|eval_round|result|note`, `title`, `description`, `tool`, `example`, `object_refs`, `user_request`, `why_existing_fail`, `tried_tools`, `proposal`, `area=aim_data|viewer|ifc_engine|model_change|requirements_library|other`, `examples`, `issue_number`, `text`, `reopen`, `verification=overene|vratene`, `over_limit`, `start_session`, `narocnost=standard|hard`, `narocnost_dovod`
 
+## IDS dokumenty (1)
+
+Zdroj: DB (ids_documents, verzie s XML) + @ifc-lite/mcp (ids_*). Definície: lib/ids/tool-defs.ts, lib/ids/tools.ts. Len MCP.
+
+- **`ids_document`** (D-162, zápis) - IDS DOKUMENTY v AIM (D-162): požiadavky na model (IDS 1.0), ktoré Claude tvorí, upravuje a ukladá s verziami.
+  Parametre: `action*=list|get|create|apply_ops|versions|diff|export|open|from_viewer`, `ids`, `version`, `include_xml`, `code`, `title`, `xml`, `derived_from`, `derived_from_version`, `ops`, `base_version`, `note`, `from_version`, `to_version`, `author`
+
 ## IFC motor (8)
 
 Zdroj: IFC súbory federácie (@ifc-lite/mcp). Definície: lib/engine/search-all.ts, lib/engine/tool-defs.ts, lib/engine/passthrough-defs.ts, lib/engine/underlay-tool.ts. Len MCP.
@@ -97,8 +104,8 @@ Zdroj: IFC súbory federácie (@ifc-lite/mcp). Definície: lib/engine/search-all
   Parametre: `mode=list|count|values`, `model=ASR|VZT`, `ifc_types`, `where`, `storey`, `group_by=type|storey|material`, `pset`, `name`, `material`, `limit`
 - **`ifc_get`** (D-084, čítanie) - IFC MOTOR: všetky údaje prvkov priamo z IFC súboru - atribúty, psety výskytu, množstvá (Qto), klasifikácie, materiály (vrstvy skladby s hrúbkou a kategóriou, aj z typu), dokumenty a voliteľne psety z typu.
   Parametre: `targets*`, `model=ASR|VZT`, `include_type_properties`
-- **`ifc_ids_validate`** (D-084, čítanie) - IFC MOTOR: skontroluje model TERAZ voči IDS z knižnice požiadaviek (nič neukladá).
-  Parametre: `model*=ASR|VZT`, `ids*`, `spec`, `failures_per_spec`
+- **`ifc_ids_validate`** (D-084, čítanie) - IFC MOTOR: skontroluje model TERAZ voči IDS uloženému v AIM (ids_document, kód a voliteľne version; záložne register IDS_SOURCES).
+  Parametre: `model*=ASR|VZT`, `ids*`, `version`, `save`, `spec`, `failures_per_spec`
 - **`ifc_relations`** (D-097, čítanie) - IFC MOTOR: všetky IFC vzťahy jednej entity priamo zo súboru, aj entity mimo grafu AIM (zóna, systém, port): členovia zón/skupín/systémov (IfcRelAssignsToGroup), kam prvok patrí, podlažie a miestnosť (IfcRelContainedIn/ReferencedInSpatialStructure), agregácia a vnorenie (IfcRelAggregates/IfcRelNests), typ, otvory a výplne (Voids/Fills), hranice priestoru, porty, dokumenty, klasifikácie, materiály. direction: forward = entita je Relating (skupina -> členovia, podlažie -> prvky, celok -> časti, prvok -> porty), inverse = kam entita patrí. recursive rozvinie vnorené zóny/systémy (bez rel_types len cez IfcRelAssignsToGroup). through_ports = prvky napojené cez porty (IfcRelConnectsPorts), jeden krok; s recursive=true prechod celou sieťou cez porty a stop_at (napr. IfcUnitaryEquipment, IfcDamper.FIREDAMPER) = najbližšia jednotka alebo klapka s cestou (reached, path_show_in_3d).
   Parametre: `target*`, `model=ASR|VZT`, `rel_types`, `direction=forward|inverse|both`, `recursive`, `through_ports`, `stop_at`, `max_steps`, `limit`, `cursor`
 - **`ifc_measure`** (D-112, čítanie) - IFC MOTOR: meranie z geometrie (nie z Qto). clear_opening + items (dvere z ifc_query, max 50) = svetlá šírka a výška dverí medzi zárubňami a od prahu po nadpražie z geometrie, nie z psetov (OverallWidth je so zárubňou); s min_width_m / min_height_m aj pass/fail a check.style_pass / style_fail pre style_in_3d.

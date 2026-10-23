@@ -113,14 +113,17 @@ export function engineToolDefinitions(): ToolDefinition[] {
     {
       name: "ifc_ids_validate",
       description:
-        "IFC MOTOR: skontroluje model TERAZ voči IDS z knižnice požiadaviek (nič neukladá). Vráti " +
-        "verdikt každej špecifikácie a nesplnené prvky s dôvodmi a object_ref. Uložený posledný beh " +
-        "(ETL, ifctester) je v DB - v_ids_summary/v_ids_latest cez query_view.",
+        "IFC MOTOR: skontroluje model TERAZ voči IDS uloženému v AIM (ids_document, kód a voliteľne version; záložne " +
+        "register IDS_SOURCES). Vráti verdikt každej špecifikácie a nesplnené prvky s dôvodmi a object_ref. " +
+        "save=true uloží beh ako záznam kontroly (v_ids_summary/v_ids_latest cez query_view, engine=ifc-lite); " +
+        "žiadny beh nie je záväzný.",
       inputSchema: {
         type: "object",
         properties: {
           model,
-          ids: { type: "string", description: "Id IDS z registra (ifc_models ukáže dostupné)" },
+          ids: { type: "string", description: "Kód IDS v AIM (ids_document action=list)" },
+          version: { type: "number", description: "Verzia IDS v AIM (default posledná)" },
+          save: { type: "boolean", description: "Uložiť beh do DB (celý beh, bez spec)" },
           spec: { type: "string", description: "Voliteľne len špecifikácia (identifikátor alebo názov)" },
           failures_per_spec: { type: "number", description: "Max nesplnených prvkov na špecifikáciu (1-100, default 20)" },
         },

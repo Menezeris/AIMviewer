@@ -19,7 +19,7 @@ const STABLE_KEYS: Record<string, string[]> = {
   v_asset_classifications: ["object_id", "classification_ref_id", "level"],
   v_property_dictionary: ["object_type", "ifc_type", "pset", "property"],
   v_space_elements: ["space_id", "element_id", "relation"],
-  v_ids_summary: ["ids_title", "model_label", "spec_identifier"],
+  v_ids_summary: ["ids_title", "model_label", "ids_code", "spec_identifier"],
   v_object_documents: ["object_id", "document_id", "via", "via_id", "page"],
 };
 
