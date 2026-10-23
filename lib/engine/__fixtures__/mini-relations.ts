@@ -5,6 +5,7 @@ import { MINI_BUILDING, guid } from "./mini-building";
  * zónou (IfcRelAssignsToGroup), systém VZT, dva prvky napojené cez porty
  * (IfcRelNests + IfcRelConnectsPorts) a ich umiestnenie na podlaží 1NP. Za klapkou
  * pokračuje sieť (D-110): potrubie 2 -> požiarna klapka (FIREDAMPER) -> VZT jednotka.
+ * Samostatné potrubie 3 vedie do klapky TD1, ktorá nemá PredefinedType a nesie ho jej typ PK.01 (IfcRelDefinesByType).
  */
 const EXTRA = `#100= IFCZONE('${guid("ZN1")}',$,'Najomne priestory',$,$,$);
 #101= IFCZONE('${guid("ZN2")}',$,'NJ 2NP',$,$,$);
@@ -36,6 +37,15 @@ const EXTRA = `#100= IFCZONE('${guid("ZN1")}',$,'Najomne priestory',$,$,$);
 #154= IFCRELCONNECTSPORTS('${guid("CP2")}',$,$,$,#140,#141,$);
 #155= IFCRELCONNECTSPORTS('${guid("CP3")}',$,$,$,#142,#143,$);
 #156= IFCRELCONNECTSPORTS('${guid("CP4")}',$,$,$,#144,#145,$);
+#160= IFCDAMPER('${guid("TD1")}',$,'Typovana klapka',$,$,#40,$,$,$);
+#161= IFCDAMPERTYPE('${guid("TDT")}',$,'PK.01',$,$,$,$,$,$,.FIREDAMPER.);
+#162= IFCRELDEFINESBYTYPE('${guid("RDT")}',$,$,$,(#160),#161);
+#163= IFCDUCTSEGMENT('${guid("DS3")}',$,'Potrubie 3',$,$,#40,$,$,$);
+#164= IFCDISTRIBUTIONPORT('${guid("PT9")}',$,'P9',$,$,#40,$,.SOURCE.,$,$);
+#165= IFCDISTRIBUTIONPORT('${guid("PT10")}',$,'P10',$,$,#40,$,.SINK.,$,$);
+#166= IFCRELNESTS('${guid("NE7")}',$,$,$,#163,(#164));
+#167= IFCRELNESTS('${guid("NE8")}',$,$,$,#160,(#165));
+#168= IFCRELCONNECTSPORTS('${guid("CP5")}',$,$,$,#164,#165,$);
 `;
 
 export const MINI_RELATIONS = MINI_BUILDING.replace(/ENDSEC;\nEND-ISO-10303-21;/, `${EXTRA}ENDSEC;\nEND-ISO-10303-21;`);
