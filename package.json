@@ -11,7 +11,7 @@
     "eval": "tsx scripts/eval-ask.ts"
   },
   "dependencies": {
-    "@assetinspace/design-kit": "github:AssetinSpace/design-kit#main",
+    "@assetinspace/design-kit": "github:Menezeris/design-kit#78d728f",
     "@ifc-lite/clash": "2.4.4",
     "@ifc-lite/geometry": "7.8.1",
     "@ifc-lite/mcp": "0.27.0",
