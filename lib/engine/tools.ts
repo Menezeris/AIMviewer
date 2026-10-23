@@ -54,6 +54,10 @@ export interface EngineDeps {
   revisions?: RevisionSource;
   /** IDS dokumenty z DB (D-162); bez nich `ifc_ids_validate` berie len `IDS_SOURCES`. */
   ids?: IdsStore;
+  /** GUID prvku -> názov systému z grafu AIM (D-164, `clash group_by=system`). */
+  systems?: (guids: string[]) => Promise<Map<string, string>>;
+  /** Stropy behu `clash` (D-164); len testy. */
+  clashLimits?: { maxPairs?: number; budgetMs?: number };
 }
 
 export interface EngineExecution {
@@ -844,6 +848,9 @@ export async function execEngineTool(
         if (dimensions?.length) return { content, isError: false, actions: [(await import("./measure-dimension")).dimensionAction(dimensions)] };
         break;
       }
+      case "clash":
+        content = await (await import("./clash")).ifcClash(input, deps);
+        break;
       default:
         return { content: `Neznámy tool motora: ${name}`, isError: true };
     }

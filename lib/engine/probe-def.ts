@@ -13,6 +13,7 @@ export const PROBE_TOOL: ToolDefinition = {
     properties: {
       runs: { type: "number", description: "Počet opakovaní dotazu (1-10, default 3)" },
       clash: { type: "boolean", description: "Zmerať aj clash_check na VZT (default false)" },
+      clash_asr_vzt: { type: "boolean", description: "Zmerať kolízie ASR x VZT federovane (D-164): tesselácia, oba predvolené testy" },
     },
   },
 };

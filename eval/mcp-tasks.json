@@ -361,6 +361,36 @@
       "budget_s": 12,
       "expect": { "tools_called": ["query_view", "style_in_3d"], "viewer_state": "nesplnené steny červené (ef4444) podľa v_ids_latest" },
       "notes": "D-162: nesplnené prvky z v_ids_latest (ids_code = EVAL-STENY) -> style_in_3d colorize; po I1."
+    },
+    {
+      "id": "K1-kolizie-vzt-nosne",
+      "category": "data",
+      "viewer": false,
+      "question": "Kde sa VZT križuje s nosnými konštrukciami? Zoskup to podľa podlaží.",
+      "max_calls": 3,
+      "budget_s": 60,
+      "expect": {"tools_called": ["clash"], "answer_matches": ["podlaž|NP"]},
+      "notes": "D-164 host PR1: clash(run, test VZT-NOSNE) + clash(results, group_by=storey). Prvé volanie je studené (tesselácia ASR aj VZT), preto budget 60 s. Odpoveď musí uviesť úplný počet (total), nie len vzorku."
+    },
+    {
+      "id": "K2-kolizie-skupina-3d",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Ukáž v 3D prvú skupinu kolízií VZT x ASR (odstup 50 mm), VZT oranžovo a ASR modro.",
+      "max_calls": 4,
+      "budget_s": 60,
+      "expect": {"tools_called": ["clash", "style_in_3d"], "viewer_state": "prvky strany a (VZT) oranžové, strany b (ASR) modré"},
+      "notes": "D-164: clash(run test VZT-ASR) -> clash(results, group=1) -> style_in_3d podľa show_in_3d.a_global_ids / b_global_ids."
+    },
+    {
+      "id": "K3-kolizie-bcf-navrh",
+      "category": "data",
+      "viewer": false,
+      "question": "Pripravím tému BCF pre najväčšiu skupinu kolízií VZT s nosnými konštrukciami - navrhni jej názov, popis a prvky, zatiaľ ju nezakladaj.",
+      "max_calls": 4,
+      "budget_s": 60,
+      "expect": {"tools_called": ["clash"], "answer_matches": ["VZT"]},
+      "notes": "D-164: clash(run) + clash(results) + clash(bcf, group) = len návrh (write: PR2). Tému nesmie založiť (bcf_topic sa nevolá)."
     }
   ]
 }

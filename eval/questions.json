@@ -491,26 +491,10 @@
     {
       "id": "view-floor-2d",
       "category": "view",
-      "question": "Ukáž mi pôdorys 2. NP zhora.",
+      "question": "Prepni viewer na 2D pôdorys 2. NP.",
       "expect": { "tools_called": ["set_view_mode"], "actions_match": ["view:2d:[0-9A-Za-z_$]{22}"] },
       "verified": false,
-      "notes": "D-083, D-161: podlažie cestuje ako GUID podlažia ASR; mode=2d je pohľad zhora (ortho kamera + rez 1,2 m) na bežnom 3D, nie režim a bez zámku. Chat po ňom nič neponúka."
-    },
-    {
-      "id": "view-save-from-viewer",
-      "category": "viewer",
-      "question": "Ulož aktuálny pohľad ako Pôdorys 1NP.",
-      "expect": { "tools_called": ["saved_view"] },
-      "verified": false,
-      "notes": "D-161: saved_view(action=save, name) pošle viewera VIEW_CAPTURE (uloží ako tlačidlo v paneli Presentation), host zapíše riadok cez /api/saved-views; bez env brány VIEWS_WRITE_ENABLED tool povie, že pohľad je len vo viewere. Len MCP so živým viewerom."
-    },
-    {
-      "id": "view-open-saved-by-name",
-      "category": "viewer",
-      "question": "Otvor uložený pohľad Pôdorys 1NP.",
-      "expect": { "tools_called": ["set_view_mode"] },
-      "verified": false,
-      "notes": "D-161: set_view_mode(view='Pôdorys 1NP') = VIEW_ACTIVATE (kamera, rez, košík v Presentation); zoznam mien get_viewer_state(saved_views=true). Starý riadok z D-122 sa obnoví zálohou (rez, kamera, izolácia) na bežnom 3D, bez záložky."
+      "notes": "D-083: podlažie cestuje ako GUID podlažia ASR."
     },
     {
       "id": "view-doc-in-viewer",
@@ -786,10 +770,10 @@
     {
       "id": "spaces-2d-plan-colors",
       "category": "view",
-      "question": "Ukáž mi 1NP zhora v pôdoryse a ofarbi retail 1 modrou a retail 2 oranžovou.",
+      "question": "Ukáž mi 1NP v 2D a ofarbi retail 1 modrou a retail 2 oranžovou.",
       "expect": { "tools_called": ["set_view_mode", "style_in_3d"] },
       "verified": true,
-      "notes": "D-119 (issue #137), D-161: set_view_mode(2d, 1NP) = pohľad zhora s rezom + style_in_3d(colorize, groups zone NJ - Retail 1/2, ifc_type=IfcSpace); fork miestnosti pri vodorovnom reze vyplní a popíše."
+      "notes": "D-119 (issue #137): set_view_mode(2d, 1NP) + style_in_3d(colorize, groups zone NJ - Retail 1/2, ifc_type=IfcSpace); fork miestnosti v 2D vyplní a popíše."
     },
     {
       "id": "doc-object-page",
@@ -837,7 +821,7 @@
       "question": "Rež to ako minule, ale o meter nižšie.",
       "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
-      "notes": "D-122 (issue #72), D-161: set_view_mode(saved_view='Posledný pohľad', section_offset_m=-1) = VIEW_ACTIVATE pôvodného pohľadu z Presentation a rez posunutý o meter; predtým uložený pohľad cez saved_view(action=save). Len MCP so živým viewerom."
+      "notes": "D-122 (issue #72): set_view_mode(saved_view='Posledný pohľad', section_offset_m=-1); predtým uložený pohľad cez saved_view(action=save). Len MCP so živým viewerom."
     },
     {
       "id": "space-isolate-terminals",
@@ -877,7 +861,7 @@
       "question": "Ofarbi miestnosť 1.01 na oranžovo a ukáž ju v pôdoryse 1NP zhora.",
       "expect": { "tools_called": ["style_in_3d", "set_section", "set_camera"] },
       "verified": false,
-      "notes": "D-125 (issue #175), D-161: výplň miestnosti aj v 3D pri reze 1NP + 1,2 m a set_camera top (alebo set_view_mode 2d = pohľad zhora); výplň sa overuje len vizuálne."
+      "notes": "D-125 (issue #175): výplň miestnosti aj v 3D pri reze 1NP + 1,2 m a set_camera top (alebo set_view_mode 2d); výplň sa overuje len vizuálne."
     },
     {
       "id": "air-terminals-in-space-201",
@@ -997,18 +981,18 @@
     {
       "id": "view-tab-floor-plan",
       "category": "viewer",
-      "question": "Ukáž pôdorys 1NP zhora, nech sa v ňom dá točiť.",
-      "expect": { "tools_called": ["set_view_mode"], "actions_match": ["view:2d:[0-9A-Za-z_$]{22}"] },
+      "question": "Otvor pôdorys 1NP v novej záložke a 3D model nechaj vo vlastnej.",
+      "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
-      "notes": "D-161 (nahrádza D-132 záložku pôdorysu): set_view_mode(mode=2d, floor=1NP) = kamera zhora + rez na bežnom 3D, orbit funguje hneď; žiadna záložka, zámok ani ponuka návratu do 3D."
+      "notes": "D-132 (issue #165): set_view_mode(mode=2d, floor=1NP) otvorí pôdorys do záložky, 3D ostane prvou záložkou. Overí sa až s viewerom s fork patchom D-132."
     },
     {
       "id": "view-tab-back-to-3d",
       "category": "viewer",
-      "question": "Vráť kameru do perspektívy, rez a farby nechaj.",
+      "question": "Prepni späť na 3D model bez straty rezu a kamery.",
       "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
-      "notes": "D-161: set_view_mode(mode=3d) = perspektívna kamera bez mazania rezu a farieb. Nie reset=true."
+      "notes": "D-132 (issue #165): set_view_mode(tab=3D); stav 3D záložky vráti fork. Nie reset."
     },
     {
       "id": "view-tab-drawing",
@@ -1021,10 +1005,10 @@
     {
       "id": "view-tab-section-and-plan",
       "category": "viewer",
-      "question": "Nastav zvislý rez cez schodisko a ulož ho ako pohľad Rez schodisko.",
-      "expect": { "tools_called": ["set_section", "saved_view"] },
+      "question": "Vytvor záložku so zvislým rezom cez schodisko a ďalšiu s pôdorysom.",
+      "expect": { "tools_called": ["set_section", "saved_view", "set_view_mode"] },
       "verified": false,
-      "notes": "D-161: set_section(fit=along) cez schodisko, set_camera(preset=section, orthographic), saved_view(save, name) uloží kameru, rez a košík do panela Presentation (VIEW_CAPTURE). Parametre view_type, locked a underlay_* sa ignorujú. Poradie volaní nie je pevné."
+      "notes": "D-132 (issue #165): set_section(fit=along) cez schodisko, set_camera(preset=section, orthographic), saved_view(save, view_type=section, locked=true), set_view_mode(view=meno) a set_view_mode(mode=2d, floor). Poradie volaní nie je pevné."
     },
     {
       "id": "view-3d-and-plan-no-underlay",
@@ -1032,7 +1016,7 @@
       "question": "Rozdeľ viewer, 3D a pôdorys 1NP naraz na jednej obrazovke.",
       "expect": { "tools_called": ["set_section", "set_view_mode"] },
       "verified": false,
-      "notes": "D-136, D-161: pôdorys bez kalibrovaného podkladu = set_section(action=set, floor=1NP) + set_view_mode(panels={drawing: 'open'}); s podkladom aj set_view_mode(mode=split, floor=1NP) (pohľad zhora a dlaždice 3D | výkres PDF; bez výkresu viewer ohlási problém). Overí sa až s forkom D-161."
+      "notes": "D-136 (issue #210): pôdorys bez kalibrovaného podkladu = set_section(action=set, floor=1NP) + set_view_mode(panels={drawing: 'open'}); s podkladom ide aj set_view_mode(mode=split, floor=1NP). Overí sa až s viewerom s fork patchom D-136."
     },
     {
       "id": "style-overlay-path-on-top",
@@ -1184,7 +1168,47 @@
       "question": "Chcem štyri okná naraz: 3D, pôdorys 1NP, pôdorys 2NP a uložený pohľad Rez A-A.",
       "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
-      "notes": "D-157, D-161: set_view_mode(layout=grid4, tiles=['3D', '1NP', '2NP', 'Rez A-A']); meno pohľadu z Presentation v dlaždici prinesie Fork B + Host B, dovtedy ho viewer ohlási. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+      "notes": "D-157 (issue #210): set_view_mode(layout=grid4, tiles=['3D', '1NP', '2NP', 'Rez A-A']); uložený pohľad musí byť najprv otvorený (set_view_mode view=...), inak ho viewer doplní inou záložkou a ohlási. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "clash-vzt-nosne",
+      "category": "data",
+      "question": "Kde sa VZT križuje s nosnými konštrukciami?",
+      "expect": { "tools_called": ["clash"] },
+      "verified": false,
+      "notes": "D-164 host PR1: clash(run, test VZT-NOSNE) -> results (group_by storey); ASR x VZT na serveri. Evaly nepobežali (bez Supabase kľúčov); čísla závisia od aktuálnych revízií."
+    },
+    {
+      "id": "clash-zoskup-podlazie",
+      "category": "data",
+      "question": "Spusti kolízie VZT x ASR s odstupom 50 mm a zoskup ich podľa podlaží.",
+      "expect": { "tools_called": ["clash"] },
+      "verified": false,
+      "notes": "D-164: clash(run, test VZT-ASR) + clash(results, group_by=storey); súčty musia byť úplné (total), nie len vzorka."
+    },
+    {
+      "id": "clash-prva-skupina-3d",
+      "category": "viewer",
+      "question": "Ukáž v 3D prvú skupinu kolízií VZT s nosnými konštrukciami, VZT oranžovo a konštrukcie modro.",
+      "expect": { "tools_called": ["clash", "style_in_3d"] },
+      "verified": false,
+      "notes": "D-164: clash(results, group=1) -> show_in_3d.a_global_ids / b_global_ids -> style_in_3d (colorize, global_ids). Pred tým musí byť beh (run)."
+    },
+    {
+      "id": "view-save-from-viewer",
+      "category": "viewer",
+      "question": "Ulož aktuálny pohľad ako Pôdorys 1NP.",
+      "expect": { "tools_called": ["saved_view"] },
+      "verified": false,
+      "notes": "D-161: saved_view(action=save, name) pošle viewera VIEW_CAPTURE (uloží ako tlačidlo v paneli Presentation), host zapíše riadok cez /api/saved-views; bez env brány VIEWS_WRITE_ENABLED tool povie, že pohľad je len vo viewere. Len MCP so živým viewerom."
+    },
+    {
+      "id": "view-open-saved-by-name",
+      "category": "viewer",
+      "question": "Otvor uložený pohľad Pôdorys 1NP.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-161: set_view_mode(view='Pôdorys 1NP') = VIEW_ACTIVATE (kamera, rez, košík v Presentation); zoznam mien get_viewer_state(saved_views=true). Starý riadok z D-122 sa obnoví zálohou (rez, kamera, izolácia) na bežnom 3D, bez záložky."
     }
   ]
 }
