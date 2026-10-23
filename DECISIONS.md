@@ -7544,3 +7544,9 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 - *Vlastný formát reportu:* upstream `SavedClashReport` v1 stačí na prenos z panela.
 
 **Riziká:** pamäť a čas na Verceli (ASR + VZT ~715 MB RSS, studené ~10 s len s VZT, MCP route `maxDuration = 60`); pri prekročení `truncated` a rada zúžiť test. Server a viewer môžu dať iné počty (inštancovanie, výnimky). Falošné "vyriešené" rieši `unretested`. Dvaja zapisovatelia testu, zápis bez auth len za env bránou. Prienik v moste s D-161 a D-162 (poradie vyššie).
+
+**Dodatok 2026-10-23 - Host PR1 (#295): odchýlky a stav merania:**
+- *Skupina:* `clash` je v skupine "IFC motor" (nie vlastná ako `ids_document`): volanie toolu motora spustí predčítanie modelov, čo clash potrebuje. Kód je v `lib/engine/clash.ts`, `clash-tests.ts`, `clash-systems.ts`.
+- *Predvolené testy v kóde:* `VZT-NOSNE` (hard; B = `IfcWall*|IfcSlab*|IfcBeam*|IfcColumn*|IfcFooting*|IfcPile*|IfcMember*|IfcRoof*`, `LoadBearing` sa nefiltruje, takže vnútorné priečky v nich ostávajú; presný filter z dát je na PR 2) a `VZT-ASR` (clearance 50 mm, B = `!IfcSpace`). `IfcSpace`, `IfcOpeningElement`, `IfcVirtualElement` sa neberú, kým ich selektor nepomenuje. Upstream výnimky void/host nie sú zapojené (pri VZT x ASR nie sú relevantné), PR 2.
+- *Nemerané:* ASR x VZT sa nezmeralo (D-135 zakazuje session sťahovať produkčné IFC, na preview chýbal token). Samuel nebude skladať celé modely proti sebe, ale vybrané časti po podlažiach (napr. potrubie x betón na 2NP), preto je rozhodnutie: tool odporúča zúžiť na `a_storey` / `b_storey` a konkrétne triedy a pri prekročení rozpočtu (45 s, `MAX_PAIRS` 3 mil. dvojíc) vráti radu s ponukou podlaží. `ifc_engine_probe` s `clash_asr_vzt: true` ostáva na neskoršie meranie.
+- *Inštrukcie konektora* sa nemenili (strop 15 000 znakov), workflow nesie opis toolu.

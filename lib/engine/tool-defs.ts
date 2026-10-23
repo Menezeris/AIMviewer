@@ -250,6 +250,7 @@ export function engineToolDefinitions(): ToolDefinition[] {
         "IFC MOTOR: KOLÍZIE modelov federácie (ASR x VZT) počíta server. action=list: predvolené testy (VZT x nosné " +
         "konštrukcie hard, VZT x ASR odstup 50 mm). run: test (kód) alebo ad hoc a, b (selektor tried 'IfcDuct*|IfcPipe*', " +
         "'!IfcSpace'), a_model, b_model, a_storey, b_storey, mode, clearance_mm, tolerance_mm; vráti run_id a súčty. " +
+        "Celé modely proti sebe sú drahé: zužuj na podlažie a konkrétne triedy. " +
         "results: group_by storey | system | type_pair | element | rule | cluster, group (kľúč alebo poradie) rozbalí " +
         "kolízie a vráti show_in_3d (a_global_ids, b_global_ids pre show_in_3d / style_in_3d). bcf: len NÁVRH témy za " +
         "skupinu (potom bcf_topic create). save, delete, compare, review, open, from_viewer príde neskôr.",
