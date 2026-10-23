@@ -86,9 +86,10 @@ export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Poloha sa nesmie meniť medzi troma inštanciami: `fixed inset-0`. Sizer
-  // "assetin." je vycentrovaný ako celok, písané slovo mu pretŕča doprava, takže
-  // nič neskáče a základ loga je vždy presne v strede.
+  // Poloha sa nesmie meniť medzi troma inštanciami: `fixed inset-0`. Celé logo
+  // (aj s písaným slovom a bodkou) je vždy vycentrované a pri písaní sa rozširuje
+  // symetricky do oboch strán; LOADING ostáva nad stredom nezávisle od slova.
+  // Výška sa nemení (jeden riadok, line-height 1 z kitu).
   const font = "var(--font-sans), var(--ds-font-sans)";
   return (
     <div
@@ -112,15 +113,10 @@ export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
         </span>
         <span
           ref={dotWrapRef}
-          className="relative inline-flex [&_.logo-dot]:animate-[logo-dot-blink_1s_step-end_var(--blink-delay,0ms)_infinite]!"
+          className="inline-flex [&_.logo-dot]:animate-[logo-dot-blink_1s_step-end_var(--blink-delay,0ms)_infinite]!"
           style={{ fontFamily: font }}
         >
-          <span className="brand-logo invisible" aria-hidden="true">
-            <span className="a">asset</span>
-            <span className="i">in</span>
-            <span className="logo-dot"></span>
-          </span>
-          <span className="brand-logo absolute left-0 top-0" style={{ fontFamily: "inherit" }} aria-hidden="true">
+          <span className="brand-logo" aria-hidden="true">
             <span className="a">asset</span>
             <span className="i">
               in<span ref={typedRef} data-typed></span>
