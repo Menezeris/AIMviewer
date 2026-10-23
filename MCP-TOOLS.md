@@ -39,7 +39,7 @@ Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/vie
 - **`style_in_3d`** (D-066, čítanie) - UI AKCIA: ofarbí / skryje / znova zobrazí / izoluje prvky v 3D modeli, alebo resetne pohľad.
   Parametre: `action*=colorize|transparent|hide|show|isolate|xray|clear_isolation|show_all|reset_colors|legend`, `opacity`, `mode=add|replace`, `color_by=ifc_type|system|zone|material|model|classification|property|attribute`, `legend_size=compact|large|normal`, `clear_section`, `context_storey`, `color_by_key`, `color`, `ids_or_refs`, `exclude_ids_or_refs`, `exclude_global_ids`, `global_ids`, `ifc_type`, `ifc_types`, `domain=hvac|plumbing|electrical|architecture|structure`, `model`, `predefined_type`, `property`, `value`, `pset`, `query`, `system`, `system_type`, `not_in_system`, `zone`, `storey`, `document`, `page`, `groups`
 - **`open_drawing`** (D-056, čítanie) - UI AKCIA: otvorí výkres/dokument v prehliadačke, voliteľne so zvýrazneným prvkom, stranou, výrezom strany (region = priblíženie na časť strany v karte vo vieweri) a rámikmi okolo textu (highlights).
-  Parametre: `document_id*`, `focus_id`, `page`, `in_viewer`, `target=tab|split`, `region`, `highlights`
+  Parametre: `document_id*`, `focus_id`, `page`, `in_viewer`, `target=tab|split`, `region`, `highlights`, `link`
 - **`open_node`** (D-056, čítanie) - UI AKCIA: otvorí detailnú kartu uzla (asset, typ, miestnosť, podlažie, systém, osoba, organizácia…).
   Parametre: `id_or_ref*`
 - **`search_documents`** (D-063, čítanie) - OBSAH dokumentov a výkresov (textová vrstva PDF strán: popisky a čísla miestností, kóty, hrúbky, legendy, špecifikácie, pečiatky, text technických správ).

@@ -7344,3 +7344,27 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 
 ---
 
+---
+
+### D-160 - Názvy zón vo výkresoch ako odkazy a ručné priradenie a zrušenie odkazu popisku (#268)
+
+**Dátum:** 2026-10-23 · **Stav:** schválené (orchestrátor, plán bodov 1 až 6), implementované · **Issue:** #268 · **Nadväzuje na:** D-123 (riadky textu s polohou), D-130 (popisky ako odkazy, AIM vrstva), D-129, D-114 (rozšírenie namiesto nového toolu), D-117, D-158 (revízia dokumentu, uloženie cez chat) · **Fork:** `aim/docLinks*`, `aim/docLinkEdit.ts`
+
+**Kontext:** Samuel chce, aby boli klikateľné aj názvy zón (požiarne úseky a iné IfcSpatialZone a IfcZone), ako sú dnes čísla miestností a značky typov, a aby sa dal odkaz priradiť a zrušiť ručne, keď sa text a meno nezhodujú. Ručná oprava má platiť aj pre existujúce odkazy. Overené: odkazy vznikajú len na hoste (`drawing-labels.ts`, `drawing-links.ts`), ETL ani fork nepárujú; zóny sú v `objects` ako `zone` a `spatial_zone`, členstvo IfcZone cez `rel_assigns_to_group`.
+
+**Rozhodnutie:**
+1. **Zóny (host, bez forku):** riadok strany, ktorého normalizovaný text (`normLabel`: bez diakritiky, veľkosti písmen a nadbytočných medzier) sa rovná menu zóny (`objects.name` = IfcRoot.Name), je odkaz druhu `zone`; viac zón s rovnakým menom = `candidates`. Riadok, ktorý je už popiskom (bublina, kód miestnosti), zónou nie je. Cieľ nesie GUID zóny a pri IfcZone aj GUIDy členských miestností (`members`, strop 40), aby klik vybral aspoň priestory, keď zóna nemá geometriu. Meno rozlomené na dva riadky automatika nezachytí; rieši to ručné priradenie.
+2. **Nositeľ ručných priradení:** jedna tabuľka `drawing_link_overrides` (SCHEMA §2.14), kľúč dokument + strana + normalizovaný text + voliteľný bbox. `assign` ukazuje na cieľ, `suppress` odkaz zruší, zrušenie ručnej opravy riadok ukončí (`valid_until`). `document_revision` a nullable `document_sha256` sú kotva podľa D-158 (bbox patrí revízii, text-only prežije re-ETL); sha256 sa naplní s D-158 krokom 4.
+3. **Prednosť:** `applyOverrides` (čistá funkcia) beží za automatickým párovaním: `assign` nahradí odkaz (`via: manual`, druh podľa cieľa) alebo vytvorí nový na riadku strany s týmto textom (alebo na bbox, keď text vo vrstve nie je), `suppress` ho odstráni; riadok s bbox vyhráva nad riadkom bez bbox. Platí rovnako pre miestnosti, typy aj zóny, takže existujúce odkazy (bod 4 z issue) nepotrebujú nič navyše. Cieľ, ktorý po re-ETL zanikol, sa preskočí a platí automatika.
+4. **Chat (D-114, žiadny nový tool):** `open_drawing` dostal parameter `link` = `{text, action: assign|clear|reset, target, scope: page|bbox, bbox, from_draft}`. Cieľ je object_ref, GUID alebo meno zóny či miestnosti (musí byť jednoznačné). Text sa overí voči strane (riadky alebo popisky), cieľ voči DB; chybný vstup nič nezapíše. Dokument sa potom otvorí vo vieweri, ktorý načíta upravené odkazy. `search_documents include_links` ostáva čítanie a vracia `via: manual` a zóny.
+5. **Viewer (fork):** lokálne + uloženie cez chat, ako D-158 krok 2: označený text na výkrese a vybraný prvok v 3D dajú návrh (`view_state.link_draft` = `{document_id, page, text, bbox, action, target_guid}`), ktorý uloží `open_drawing link={from_draft:true}`. Viewer nemá token, preto priamy zápis nie je.
+
+**Zavrhnuté:**
+- *Parameter v `search_documents`:* čítací tool by zapisoval.
+- *Stĺpec `manual_links` na `document_pages`:* ETL ho pri re-ETL prepisuje a jeden riadok na stranu by neniesol históriu ani zrušenie.
+- *Ukladať ručné priradenia len vo vieweri (localStorage):* nedeli sa medzi používateľmi ani s chatom.
+- *Nový tool `drawing_link`:* ten istý zdroj a tá istá strana ako `open_drawing` (D-114).
+
+**Poradie nasadenia:** najprv migrácia `20261023130000_drawing_link_overrides.sql` (aditívna, nová tabuľka; bez nej `fetchOverrides` zlyhá a odkazy na výkrese sa nenačítajú), potom host; fork patch pridáva `members` a návrh priradenia (starší fork `members` ignoruje). Re-ETL netreba.
+
+**Overenie:** `lib/data/drawing-zones.test.ts`, `drawing-link-overrides.test.ts` (zóny, kandidáti, prednosť bbox, assign mimo vrstvy, chat assign/clear/reset/from_draft, chybné vstupy nič nezapíšu), `supabase/tests/drawing_link_overrides.sql` (lokálna DB: unikát na živý riadok, kontrola cieľa, snímka po zániku objektu). Na produkčných dátach nebežalo.

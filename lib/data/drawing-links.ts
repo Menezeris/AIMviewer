@@ -3,6 +3,8 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { applyOverrides } from "@/lib/data/drawing-link-overrides";
+import { fetchOverrides, fetchZones } from "@/lib/data/drawing-link-store";
 import { AIM_CACHE } from "@/lib/data/constants";
 import { fetchAllPages } from "@/lib/data/pagination";
 import { parseBlocks } from "@/lib/llm/document-text";
@@ -10,6 +12,7 @@ import {
   labelCodes,
   pairLabels,
   resolveLabels,
+  resolveZoneLabels,
   toLinksWire,
   type DocumentLinksWire,
   type DrawingLabel,
@@ -143,17 +146,20 @@ async function fetchDocumentLinksImpl(documentId: string, page: number | null): 
   if (page !== null) query = query.eq("page", page);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  const pages = ((data ?? []) as { page: number; blocks: unknown }[]).map((p) => ({
-    page: p.page,
-    labels: pairLabels(parseBlocks(p.blocks)),
-  }));
+  const pages = ((data ?? []) as { page: number; blocks: unknown }[]).map((p) => {
+    const blocks = parseBlocks(p.blocks);
+    return { page: p.page, blocks, labels: pairLabels(blocks) };
+  });
+  const zones = await fetchZones();
+  const manual = await fetchOverrides(documentId, page, zones);
   const all = pages.flatMap((p) => p.labels);
-  if (all.length === 0) return pages.map((p) => ({ page: p.page, links: [] }));
 
-  const [floors, objects] = await Promise.all([
-    drawingFloors([documentId]).then((m) => m.get(documentId) ?? new Set<string>()),
-    fetchLabelObjects(all),
-  ]);
+  const [floors, objects] = all.length
+    ? await Promise.all([
+        drawingFloors([documentId]).then((m) => m.get(documentId) ?? new Set<string>()),
+        fetchLabelObjects(all),
+      ])
+    : [new Set<string>(), [] as ObjectRow[]];
   const floorsOf = await floorOf(objects);
   const labelObjects: LabelObject[] = objects.map((o) => ({
     id: o.id,
@@ -164,7 +170,11 @@ async function fetchDocumentLinksImpl(documentId: string, page: number | null): 
     objectType: o.object_type,
     onFloor: [...(floorsOf.get(o.id) ?? [])].some((f) => floors.has(f)),
   }));
-  return pages.map((p) => ({ page: p.page, links: resolveLabels(p.labels, labelObjects) }));
+  return pages.map((p) => {
+    const auto = [...resolveLabels(p.labels, labelObjects), ...resolveZoneLabels(p.blocks, zones, p.labels)];
+    const links = applyOverrides(auto, p.blocks, manual.filter((o) => o.page === p.page));
+    return { page: p.page, links };
+  });
 }
 
 /** Odkazy z popiskov strán dokumentu (všetky strany alebo jedna), ISR tag `aim`. */

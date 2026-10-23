@@ -5,6 +5,8 @@ import { PDF_LINK_SOURCE } from "@/lib/data/constants";
 import { fetchDocumentObjectRows, fetchDocumentTypes, fetchObjectDocuments, typeText } from "@/lib/data/object-documents";
 import { fetchAllPages } from "@/lib/data/pagination";
 import { fetchDocumentLinks } from "@/lib/data/drawing-links";
+import { editDrawingLink } from "@/lib/data/drawing-link-edit";
+import { realLinkEditDeps } from "@/lib/data/drawing-link-deps";
 import { linkSummary } from "@/lib/data/drawing-labels";
 import type { ToolDefinition } from "./provider";
 import { docHighlightsInput, docOp, docRegionInput, selectOp } from "@/lib/viewer-ops";
@@ -839,6 +841,33 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             required: ["x", "y", "width", "height"],
           },
         },
+        link: {
+          type: "object",
+          description:
+            "Ručné priradenie odkazu popisku na strane (D-160), má prednosť pred automatickým párovaním; platí " +
+            "pre čísla miestností, značky typov aj názvy zón. Vyžaduje page. action: assign = text ukazuje na " +
+            "target (object_ref, IFC GUID alebo meno zóny či miestnosti), clear = text nebude odkaz, reset = späť " +
+            "na automatiku. text = popisok na strane (search_documents include_blocks, include_links); scope " +
+            "page (default) = všetky výskyty textu na strane, scope bbox + bbox = len to miesto (%, ako highlights). " +
+            "from_draft=true = vezme návrh z vieweru (označený text na výkrese a vybraný prvok). Dokument sa " +
+            "potom otvorí vo vieweri.",
+          properties: {
+            text: { type: "string", description: "Text popisku na strane" },
+            action: { type: "string", enum: ["assign", "clear", "reset"] },
+            target: { type: "string", description: "assign: object_ref, IFC GUID alebo meno zóny/miestnosti" },
+            scope: { type: "string", enum: ["page", "bbox"] },
+            bbox: {
+              type: "object",
+              properties: {
+                x: { type: "number" },
+                y: { type: "number" },
+                width: { type: "number" },
+                height: { type: "number" },
+              },
+            },
+            from_draft: { type: "boolean", description: "Vziať návrh z vieweru (view_state.link_draft)" },
+          },
+        },
       },
       required: ["document_id"],
     },
@@ -865,8 +894,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "(2) q + document_id = hľadanie len v tom dokumente (napr. 'ukáž vo výkrese popisok 1.05', " +
       "'nájdi v technickej správe požiarnu odolnosť'); (3) document_id bez q = PREČÍTA stranu " +
       "(page, default 1): celý text, s include_blocks aj riadky s polohou na strane (legenda, " +
-      "kóty), s include_links popisky prvkov a miestností spárované s prvkami (bublina '08 DD01' -> " +
-      "DD01.08.0001; AIM odvodenie, vo vieweri sú to klikateľné odkazy). regions = kde na strane text " +
+      "kóty), s include_links popisky prvkov, miestností a zón spárované s prvkami (bublina '08 DD01' -> " +
+      "DD01.08.0001, názov požiarneho úseku -> zóna; AIM odvodenie alebo ručné priradenie via=manual, " +
+      "vo vieweri sú to klikateľné odkazy; ručne ich nastaví open_drawing link). regions = kde na strane text " +
       "je (bbox v %): 'ukáž/zvýrazni vo výkrese' = " +
       "open_drawing(document_id, page, highlights=[regions[].bbox]) - karta sa priblíži a text " +
       "orámuje. Slová sa hľadajú aj v inom tvare (skloňovanie). Výmery a objemy (murivo, plochy) " +
@@ -2793,7 +2823,12 @@ export class AskToolRuntime {
     if (input.target !== undefined && input.target !== "tab" && input.target !== "split") {
       throw new Error("target: tab (záložka na celú plochu) alebo split (vedľa 3D).");
     }
-    if (input.in_viewer === true || region || input.target !== undefined) {
+    // Ručný odkaz popisku (D-160): zápis pred otvorením, aby viewer načítal už upravené odkazy.
+    let linkEdit: Record<string, unknown> | undefined;
+    if (input.link !== undefined) {
+      linkEdit = await editDrawingLink(doc, page, input.link, realLinkEditDeps());
+    }
+    if (input.in_viewer === true || region || input.target !== undefined || linkEdit) {
       // Dokument vo vieweri (D-075 DOCUMENT_OPEN cez op `doc`, D-083), výrez strany D-117, rámiky D-123,
       // záložka na celú plochu alebo vedľa 3D (D-132).
       const layout = input.target === "split" ? "split" : undefined;
@@ -2810,6 +2845,7 @@ export class AskToolRuntime {
         ...(page ? { page } : {}),
         ...(region ? { region: { x: region.x, y: region.y, width: region.w, height: region.h } } : {}),
         ...(highlights.length > 0 ? { highlights: highlights.length } : {}),
+        ...(linkEdit ? { link: linkEdit } : {}),
         ...(focusId
           ? {
               note:
