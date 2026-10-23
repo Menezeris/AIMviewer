@@ -14,7 +14,7 @@ const MAX_REF = 200;
 const ref = (v: unknown, field: string): string | undefined => {
   if (v === undefined) return undefined;
   if (typeof v !== "string" || v.trim() === "" || v.length > MAX_REF) {
-    throw new ViewInputError(`${field}: id, menovka záložky (napr. '3D', 'Pôdorys 1NP', meno pohľadu alebo dokumentu)${field === "close_tab" ? " alebo 'all'" : ""}.`);
+    throw new ViewInputError(`${field}: menovka záložky (napr. '3D' alebo meno dokumentu)${field === "close_tab" ? " alebo 'all'" : ""}.`);
   }
   return v.trim();
 };
@@ -53,7 +53,7 @@ export function planViewTabs(input: Record<string, unknown>): ViewPlan {
     result: {
       ok: true,
       tabs: done,
-      note: "Zoznam záložiek (aktívna, vedľa) vráti viewer v stave po príkaze (tabs). Dvojicu, ktorú plocha bez dlaždíc nevie (pôdorys bez podkladu vedľa 3D, dve 3D, dva dokumenty), dá viewer do dvoch dlaždíc vedľa seba (layout v stave, D-157).",
+      note: "Zoznam záložiek (aktívna, vedľa) vráti viewer v stave po príkaze (tabs). Dvojicu, ktorú plocha bez dlaždíc nevie (dve 3D, dva dokumenty), dá viewer do dvoch dlaždíc vedľa seba (layout v stave, D-157).",
     },
   };
 }
@@ -76,7 +76,7 @@ export function planSectionBox(input: Record<string, unknown>, guids: string[]):
       ok: true,
       box_around: guids.length,
       margin_m: margin,
-      note: "Box okolo obálky prvkov; v stave viewera je section.box (IFC svet). Ako pohľad ho ulož cez saved_view(action=save, view_type=detail, locked=true).",
+      note: "Box okolo obálky prvkov; v stave viewera je section.box (IFC svet). Ako pohľad ho ulož cez saved_view(action=save, name).",
     },
   };
 }

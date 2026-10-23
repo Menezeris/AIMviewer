@@ -13,6 +13,7 @@ import type { DerivationsLayerWire } from "@/lib/derivations";
 import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { opToBridgeMessage, parseOps } from "@/lib/viewer-ops";
+import { isViewWire, viewsLoadMessage, type ViewWire } from "@/lib/viewer-views";
 import {
   MAX_ZONE_GUIDS,
   documentLensWire,
@@ -27,6 +28,7 @@ import { hasRelativeStep, relativeViewpoint, type CameraMove, type ViewerCamera 
 import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
 import { emitApplied, setLiveApplyHandler, takePendingCmdIds, type LiveApply } from "@/lib/live/viewer-apply-bus";
 import { BCF_CHANGED_WINDOW_EVENT, bcfLoadMessage } from "@/lib/live/bcf-event";
+import { VIEWS_CHANGED_WINDOW_EVENT } from "@/lib/live/views-event";
 import { PROD_VIEWER_URL } from "@/lib/viewer-source";
 
 /**
@@ -83,6 +85,10 @@ type OutboundMessage =
   | { source: typeof SOURCE; type: "DOCUMENT_EVENT"; documentId: string; event: "opened" | "closed" }
   // Tlačidlo "Ukázať v 3D" pri otvorenom dokumente (D-104 krok 4) - host odpovie APPLY_LENS.
   | { source: typeof SOURCE; type: "DOCUMENT_SHOW_3D"; documentId: string; page?: number }
+  // Pohľady z panela Presentation (D-161) - host ich zapíše cez /api/saved-views a pošle späť VIEWS_LOAD.
+  | { source: typeof SOURCE; type: "VIEW_SAVE"; view: unknown; capture_id?: string }
+  | { source: typeof SOURCE; type: "VIEW_RENAME"; id: string; name: string }
+  | { source: typeof SOURCE; type: "VIEW_DELETE"; id: string }
   // Odpoveď na QUERY spätného kanála (D-085) - obálky, stav pohľadu.
   | { source: typeof SOURCE; type: "QUERY_RESULT"; id: string; ok: boolean; result?: unknown; error?: string }
   // Potvrdenie príkazov pred ACK_REQUEST (D-101) - stav po vykonaní, čo sa nevykonalo.
@@ -264,6 +270,49 @@ export function IFCViewer({
       { source: SOURCE, ...msg },
       viewerOrigin
     );
+  }
+
+  /** Zápisy pohľadov idú za sebou: odpoveď každého nesie úplný zoznam, starší by prepísal novší (D-161). */
+  const viewsQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const viewsWarnedRef = useRef(false);
+
+  /** Zoznam z DB do Presentation (`VIEWS_LOAD`): po načítaní modelov a po každom zápise. */
+  function sendViews(views: unknown) {
+    if (!loadedRef.current || !Array.isArray(views)) return;
+    const valid = views.filter((v): v is ViewWire => isViewWire(v));
+    if (valid.length !== views.length) console.warn("[ifc-viewer] pohľady: neplatný riadok v zozname z DB, zoznam sa neposiela");
+    else post(viewsLoadMessage(valid));
+  }
+
+  /** Zoznam pohľadov z DB (len čítanie) do Presentation; ide za zápismi, aby nepredbehol ich výsledok. */
+  function loadViews() {
+    viewsQueueRef.current = viewsQueueRef.current
+      .then(async () => {
+        const r = await fetch("/api/saved-views", { cache: "no-store" });
+        if (!r.ok) throw new Error(String(r.status));
+        sendViews(((await r.json()) as { views?: unknown }).views);
+      })
+      .catch((err: unknown) => console.warn("[ifc-viewer] pohľady sa nenačítali", err));
+  }
+
+  /** Zápis pohľadu z panela alebo z chatu (`VIEW_SAVE`, `VIEW_RENAME`, `VIEW_DELETE`); zapnutie je v route (env brána). */
+  function writeViews(method: "POST" | "PATCH" | "DELETE", payload: Record<string, unknown>) {
+    viewsQueueRef.current = viewsQueueRef.current
+      .then(async () => {
+        const r = await fetch("/api/saved-views", {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!r.ok) throw new Error(String(r.status));
+        sendViews(((await r.json()) as { views?: unknown }).views);
+      })
+      .catch((err: unknown) => {
+        // Pohľad žije vo vieweri aj bez zápisu; zamietnutý zápis (vypnutá brána) zaloguj raz.
+        if (viewsWarnedRef.current) return;
+        viewsWarnedRef.current = true;
+        console.error("saved views write failed", err);
+      });
   }
 
   // GUID-nosné príkazy vydané pred MODELS_LOADED (klik na „3D: N prvkov" počas
@@ -480,6 +529,9 @@ export function IFCViewer({
           if (derivations) post({ type: "AIM_DERIVATIONS_LOAD", layer: derivations });
           // BCF témy (D-099): viewer si ich načíta z /api/bcf tohto originu bez tokenu.
           post(bcfLoadMessage(window.location.origin));
+          // Pohľady z DB (D-161) do panela Presentation; odpoveď príde až po ops, ale `VIEW_ACTIVATE` z ops
+          // si pohľad hľadá vo vieweri, preto ju fork zaradí do brány príkazov za ne.
+          loadViews();
           // Ops až po podkladoch, dokumentoch a pinoch (D-083): `view:2d` potrebuje
           // vedieť, či má podlažie kalibrovaný výkres, a `doc` otvorí len dokument,
           // ktorý viewer už dostal v DOCUMENTS_LOAD.
@@ -548,6 +600,21 @@ export function IFCViewer({
           // Prijíma sa naschvál — neznámy typ by inak skončil ako šum v konzole
           // budúceho stricter handlera.
           break;
+        case "VIEW_SAVE": {
+          const { view, capture_id: captureId } = e.data;
+          if (!isViewWire(view)) return;
+          writeViews("POST", { view, ...(typeof captureId === "string" ? { capture_id: captureId } : {}) });
+          break;
+        }
+        case "VIEW_RENAME": {
+          const { id, name } = e.data;
+          if (typeof id === "string" && typeof name === "string") writeViews("PATCH", { id, name });
+          break;
+        }
+        case "VIEW_DELETE": {
+          if (typeof e.data.id === "string") writeViews("DELETE", { id: e.data.id });
+          break;
+        }
         case "UNDERLAY_SAVE": {
           // Kalibrácia z viewera → perzistuj _georef (D-072). Server payload
           // validuje (isValidGeorefV1) a zapína/vypína zápis env bránou.
@@ -668,6 +735,16 @@ export function IFCViewer({
     };
     window.addEventListener(BCF_CHANGED_WINDOW_EVENT, reload);
     return () => window.removeEventListener(BCF_CHANGED_WINDOW_EVENT, reload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Pohľady (D-161) — chat ich premenoval, zmazal alebo prepísal: zoznam z DB znova.
+  useEffect(() => {
+    const reload = () => {
+      if (loadedRef.current) loadViews();
+    };
+    window.addEventListener(VIEWS_CHANGED_WINDOW_EVENT, reload);
+    return () => window.removeEventListener(VIEWS_CHANGED_WINDOW_EVENT, reload);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

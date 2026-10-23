@@ -1,8 +1,11 @@
 /** Spoločné pomôcky testov uložených pohľadov (D-122): úložisko v pamäti a stav viewera. */
 
+import type { ViewWire } from "../viewer-views";
+
 import type { SavedViewRow } from "./plan";
 import type { SavedViewStore } from "./store";
 import type { SavedViewDeps } from "./tools";
+import { saveWire } from "./wire";
 
 export const G1 = "2O2Fr$t4X7Zf8NOew3FLOH";
 export const G2 = "1hOSvn6df7F8_7GcBWlS5a";
@@ -62,6 +65,9 @@ export function memoryViewStore(): SavedViewStore & { rows: SavedViewRow[] } {
     async byName(name) {
       return saved().find((r) => r.name.toLowerCase() === name.toLowerCase()) ?? null;
     },
+    async byId(id) {
+      return saved().find((r) => r.id === id) ?? null;
+    },
     async last() {
       return rows.find((r) => r.kind === "last") ?? null;
     },
@@ -87,12 +93,52 @@ export function memoryViewStore(): SavedViewStore & { rows: SavedViewRow[] } {
   };
 }
 
-export function testDeps(state: unknown = VIEW_STATE): SavedViewDeps & { store: ReturnType<typeof memoryViewStore> } {
-  return {
-    store: memoryViewStore(),
+/** Stav po `VIEW_CAPTURE`: viewer uložil pohľad a host ho zapísal (`written`) pod `view.id`. */
+export const CAPTURED_ID = "5b5a6f0e-2b7b-4a53-8d3e-7a1f6c2d9e01";
+
+export function testDeps(state: unknown = VIEW_STATE) {
+  const store = memoryViewStore();
+  const deps: SavedViewDeps & { store: ReturnType<typeof memoryViewStore>; captured: { name: string; capture_id: string }[]; changed: number; onCapture: (req: { name: string; capture_id: string }) => Promise<void> } = {
+    store,
+    captured: [] as { name: string; capture_id: string }[],
+    changed: 0,
+    // Nový fork: viewer uloží pohľad (`VIEW_SAVE`) a host ho zapíše do DB; `onCapture` nahrádza zápis hosta
+    // (prázdny = zápis z viewera je vypnutý).
+    onCapture: async (req: { name: string; capture_id: string }): Promise<void> => {
+      await saveWire(store, wireView({ name: req.name }), {});
+    },
+    capture: async (req: { name: string; capture_id: string }) => {
+      deps.captured.push(req);
+      await deps.onCapture(req);
+      return { ok: true as const, view: { id: CAPTURED_ID, name: req.name, objects: 120 } as { id: string; name?: string; objects?: number } | null | undefined, issues: [] as string[] };
+    },
+    notifyChanged: async () => {
+      deps.changed += 1;
+    },
+    sleep: async () => undefined,
     viewState: async () => state,
     revisions: async () => ({ ASR: 7, VZT: 3 }),
     storeyLabel: async () => "2NP",
     now: () => new Date("2026-10-20T12:30:00Z"),
+  };
+  return deps;
+}
+
+/** Pohľad z panela Presentation (D-161) tak, ako ho pošle viewer: pôdorys 2NP, rez 1,2 m, celý viditeľný model. */
+export function wireView(over: Partial<ViewWire> = {}): ViewWire {
+  return {
+    id: CAPTURED_ID,
+    name: "Pôdorys 2NP",
+    order: 0,
+    transition_ms: 1000,
+    source: "visible",
+    camera: { position: [10, -5, 30], target: [10, -5, 3], up: [0, 1, 0], fov: 45, projection: "orthographic", ortho_size: 12.5 },
+    section: {
+      planes: [{ name: "Rez 1", axis: "y", position_percent: 40, coordinate: 4.2, flipped: false, enabled: true, show_gizmo: false, show_cap: true, show_outlines: true }],
+      active: 0,
+    },
+    basket: { scope: "all", hidden_guids: [G3] },
+    objects: 120,
+    ...over,
   };
 }

@@ -182,10 +182,16 @@ export function planViewMode(
       result: { ok: true, reset: true },
     };
   }
+  // D-161: 2D nie je režim. `2d` = kamera zhora a rez na bežnom 3D, `split` = to isté a dlaždice 3D | výkres PDF.
+  const note = {
+    "3d": "Perspektívna kamera na bežnom 3D.",
+    "2d": "Pohľad zhora na podlažie na bežnom 3D (ortografická kamera, vodorovný rez 1,2 m nad podlahou alebo uložený pohľad podlažia); bez zámku, orbit a nástroje fungujú.",
+    split: "Pohľad zhora na podlažie a dlaždice 3D | výkres PDF podlažia; ak podlažie nemá výkres, viewer to nahlási v problémoch.",
+  }[mode];
   return {
     ops: [viewModeOp(mode, floor?.guid)],
-    label: `Viewer: ${mode.toUpperCase()}${floor ? ` ${floor.label}` : ""}`,
-    result: { ok: true, mode, ...(floor ? { floor: floor.label } : {}) },
+    label: mode === "3d" ? "Viewer: 3D" : `Viewer: pohľad zhora${mode === "split" ? " + výkres" : ""}${floor ? ` ${floor.label}` : ""}`,
+    result: { ok: true, mode, ...(floor ? { floor: floor.label } : {}), note },
   };
 }
 

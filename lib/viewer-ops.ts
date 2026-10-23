@@ -17,6 +17,7 @@
  * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>[~r=<x>_<y>_<w>_<h>][~h=<x>_<y>_<w>_<h>_...]:<documentId>`
  * (výrez strany v %, D-117; rámiky okolo textu v %, po štyroch číslach, D-123; `~l=s` = vedľa 3D, D-132).
  * Záložky a rezný box (D-132): `tab:<action>:<base64url JSON>`, `section_box:...`, formát v `lib/viewer-tabs.ts`.
+ * Pohľady z Presentation (D-161): `view_activate::<base64url JSON>`, `view_capture::<base64url JSON>`, formát v `lib/viewer-views.ts`.
  * Presná póza kamery z uloženého pohľadu (D-122): `pose:<px,py,pz,tx,ty,tz,ux,uy,uz>[~o=<m>][~proj=o|p]:`
  * (IFC svet, m; `o` = polovica výšky ortografického pohľadu).
  * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
@@ -45,6 +46,7 @@ import {
 import { decodeMeasureWire, type MeasurePoint, type MeasureSegment } from "./viewer-measure";
 import { parseRouteOp } from "./viewer-route";
 import { parseTabsOp, tabsBridgeMessage, type TabsOp } from "./viewer-tabs";
+import { parseViewsOp, viewsBridgeMessage, type ViewsOp } from "./viewer-views";
 
 export interface OpsSelector {
   types?: string[];
@@ -158,6 +160,8 @@ export type ViewerOp =
   | { op: "doc"; documentId: string; page?: number; region?: DocRegion; highlights?: DocRegion[]; layout?: "split" }
   /** Záložky viewera a rezný box (D-132), `lib/viewer-tabs.ts`. */
   | TabsOp
+  /** Pohľad z Presentation (D-161): aktivácia a uloženie aktuálneho stavu, `lib/viewer-views.ts`. */
+  | ViewsOp
   | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire }
   /** Zoznam z chatu do panela Lists (D-111), formát v `lib/viewer-list.ts`. */
   | { op: "list"; wire: ListWire }
@@ -521,6 +525,9 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "tab" || op === "section_box") {
       const t = parseTabsOp(op, arg, joined);
       if (t) out.push(t);
+    } else if (op === "view_activate" || op === "view_capture") {
+      const v = parseViewsOp(op, joined);
+      if (v) out.push(v);
     } else if (op === "panels") {
       const panels = parsePanels(arg);
       if (panels) out.push({ op, panels });
@@ -637,6 +644,9 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     case "tab":
     case "section_box":
       return tabsBridgeMessage(o);
+    case "view_activate":
+    case "view_capture":
+      return viewsBridgeMessage(o);
     case "lens":
       // Zónu (`aim_zone`) a dokument (`aim_document`) doplní klient pred odoslaním; tu ostanú prázdne.
       return lensBridgeMessage(o.mode, o.wire, new Map(), o.rev);

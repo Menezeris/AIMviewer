@@ -1,14 +1,16 @@
 import type { ToolDefinition } from "../llm/provider";
 import { ViewInputError, type ViewPlan } from "../llm/view-plan";
 
-import { LAST_VIEW_NAME, VIEW_TYPES, captureFromState, describeView, isLastName, planRestore, type SavedViewRow, type ViewType } from "./plan";
+import { LAST_VIEW_NAME, captureFromState, describeView, isLastName, planRestore, type SavedViewRow, type SavedViewpoint } from "./plan";
 import type { SavedViewStore } from "./store";
+import { isWireViewpoint, wireOfRow } from "./wire";
 
 /**
- * Uložené pohľady viewera (D-122), len v MCP konektore. Zápis je tool
- * `saved_view` (save | rename | delete); zoznam číta `get_viewer_state(saved_views)`
- * a obnovu robí `set_view_mode(saved_view)`, lebo to sú existujúce tooly na
- * čítanie a pohľad (D-114). Závislosti (DB, živý viewer) sú v `runtime.ts`.
+ * Uložené pohľady viewera (D-122, od D-161 pohľady z panela Presentation), len v MCP konektore. Zápis je tool
+ * `saved_view` (save | rename | delete); zoznam číta `get_viewer_state(saved_views)` a obnovu robí
+ * `set_view_mode(view)`, lebo to sú existujúce tooly na čítanie a pohľad (D-114). `save` pošle viewera
+ * `VIEW_CAPTURE` (uloží ako tlačidlo v paneli, zápis do DB urobí host cez route), rename a delete zapíše
+ * server a viewer dostane zoznam znova. Závislosti (DB, živý viewer) sú v `runtime.ts`.
  */
 
 export const DEFAULT_VIEW_AUTHOR = "Claude (MCP)";
@@ -17,21 +19,20 @@ const MAX_TEXT = 2000;
 
 export const SAVED_VIEW_ACTIONS = ["save", "rename", "delete"] as const;
 
+/** Parametre z D-132, ktoré D-161 nepozná (druh pohľadu, zámok, podklad); prijmú sa a ignorujú s poznámkou. */
+const IGNORED_ARGS = ["view_type", "locked", "underlay_document_id", "underlay_page"] as const;
+
 export const SAVED_VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "saved_view",
     description:
-      "ULOŽÍ POHĽAD viewera pod menom (spoločný pre stavbu, D-122): 'ulož to ako Pôdorys technickej miestnosti 3.14'. " +
-      "action=save vezme z otvoreného viewera kameru a projekciu, rez, režim a podlažie, izolované, skryté a vybrané prvky " +
-      "(farby z style_in_3d sa neukladajú); existujúce meno prepíše len s overwrite=true. rename: name -> new_name. " +
-      "delete: zmaže pohľad. Zoznam a opis pohľadov = get_viewer_state(saved_views=true); obnova = " +
-      "set_view_mode(saved_view=meno, section_offset_m=-1 pre 'rez o meter nižšie'). Uloženie aj obnova sa zapíšu " +
-      "ako 'Posledný pohľad' ('ako minule' = saved_view='Posledný pohľad'). POHĽAD AKO V REVITE (D-132) = orez: " +
-      "view_type (plan | section | detail | 3d), locked=true zamkne kameru (pohľad kolmo, ťahanie posúva), rovinu alebo " +
-      "rezný box (set_section box=true) vezme z viewera; underlay_document_id + underlay_page naviaže PDF podklad " +
-      "(kalibrácia je pri dokumente). Postup 'detail výstuže stĺpa S12': set_section(action=set, box=true, " +
-      "target_ids_or_refs=[S12]), set_camera(preset=front, projection=orthographic, fit=visible), saved_view(save, " +
-      "view_type=detail, locked=true).",
+      "ULOŽÍ POHĽAD do panela Presentation (pás pohľadov, spoločný pre stavbu): 'ulož to ako Pôdorys technickej miestnosti 3.14'. " +
+      "action=save uloží to, čo je vo vieweri práve nastavené (kamera s projekciou, rezy, košík = viditeľné prvky; prázdny " +
+      "košík = všetko viditeľné), ako tlačidlo Uložiť v paneli. Farby z style_in_3d sa neukladajú. Existujúce meno prepíše " +
+      "len s overwrite=true. rename: name -> new_name. delete: zmaže pohľad. Zoznam = get_viewer_state(saved_views=true); " +
+      "otvorenie = set_view_mode(view=meno, section_offset_m=-1 pre 'rez o meter nižšie'; 'ako minule' = view='Posledný pohľad'). " +
+      "Pôdorys alebo rez si najprv nastav (set_section, set_camera preset=top projection=orthographic), potom ulož. " +
+      "Zápis z viewera môže byť vypnutý (env brána); tool to povie.",
     inputSchema: {
       type: "object",
       properties: {
@@ -41,10 +42,6 @@ export const SAVED_VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         description: { type: "string", description: "save: čo pohľad ukazuje (voliteľné)" },
         overwrite: { type: "boolean", description: "save: prepísať pohľad s rovnakým menom" },
         author: { type: "string", description: `Kto ukladá (predvolene '${DEFAULT_VIEW_AUTHOR}')` },
-        view_type: { type: "string", enum: [...VIEW_TYPES], description: "save: druh pohľadu (default plan pri 2D, inak 3d)" },
-        locked: { type: "boolean", description: "save: kamera zamknutá kolmo (pôdorys, rez, detail)" },
-        underlay_document_id: { type: "string", description: "save: objects.id PDF podkladu pohľadu (UUID)" },
-        underlay_page: { type: "number", description: "save: strana podkladu (default 1)" },
       },
       required: ["action", "name"],
     },
@@ -54,10 +51,22 @@ export const SAVED_VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
 
 export const SAVED_VIEW_TOOL_NAMES: ReadonlySet<string> = new Set(SAVED_VIEW_TOOL_DEFINITIONS.map((t) => t.name));
 
+/** Výsledok `VIEW_CAPTURE` vo vieweri: `view` je uložený pohľad, `null` = viewer nič neuložil, `undefined` = starší viewer. */
+export type CaptureOutcome =
+  | { ok: true; view: { id: string; name?: string; objects?: number } | null | undefined; issues: string[] }
+  | { ok: false; reason: string };
+
 export interface SavedViewDeps {
   store: SavedViewStore;
-  /** Surová odpoveď `view_state` z otvoreného viewera; string = prečo sa nedala prečítať. */
+  /** Pošle viewera `VIEW_CAPTURE` a počká na potvrdenie (`APPLIED.state.view`). */
+  capture: (req: { name: string; capture_id: string }) => Promise<CaptureOutcome>;
+  /** Povie otvorenému vieweru, aby načítal pohľady z DB znova (po premenovaní, zmazaní, prepísaní). */
+  notifyChanged: () => Promise<void>;
+  /** Surová odpoveď `view_state` z otvoreného viewera (starší viewer bez `VIEW_CAPTURE`); string = prečo sa nedala prečítať. */
   viewState: () => Promise<unknown>;
+  /** Čakanie na zápis hosta (testy ho skracujú). */
+  sleep?: (ms: number) => Promise<void>;
+  newCaptureId?: () => string;
   revisions: () => Promise<Record<string, number>>;
   /** IFC GUID podlažia -> object_ref/názov v AIM; null = nepoznáme. */
   storeyLabel: (guid: string) => Promise<string | null>;
@@ -86,35 +95,26 @@ async function loadView(deps: Pick<SavedViewDeps, "store">, raw: unknown): Promi
   );
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Zápis hosta z viewera ide cez route po potvrdení `APPLIED`; počká sa naň najviac ~4 s. */
+const WRITE_POLL_MS = 300;
+const WRITE_POLL_TRIES = 14;
 
-/** D-132: druh pohľadu, zámok a väzba na podklad z parametrov uloženia. */
-function viewDefinition(args: Record<string, unknown>, mode: string | null) {
-  if (args.view_type !== undefined && !(VIEW_TYPES as readonly unknown[]).includes(args.view_type)) {
-    throw new ViewInputError(`view_type: ${VIEW_TYPES.join(" | ")}.`);
+async function waitForRow(deps: SavedViewDeps, id: string): Promise<SavedViewRow | null> {
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (let i = 0; i < WRITE_POLL_TRIES; i += 1) {
+    const row = await deps.store.byId(id);
+    if (row) return row;
+    await sleep(WRITE_POLL_MS);
   }
-  const doc = args.underlay_document_id;
-  if (doc !== undefined && (typeof doc !== "string" || !UUID.test(doc))) throw new ViewInputError("underlay_document_id: objects.id dokumentu (UUID).");
-  const page = args.underlay_page ?? 1;
-  if (typeof page !== "number" || !Number.isInteger(page) || page < 1) throw new ViewInputError("underlay_page: celé číslo od 1.");
-  return {
-    view_type: (args.view_type as ViewType | undefined) ?? (mode === "2d" ? "plan" : "3d"),
-    ...(args.locked === true ? { locked: true } : {}),
-    ...(typeof doc === "string" ? { underlay: { document_id: doc, page } } : {}),
-  };
+  return null;
 }
 
-async function save(args: Record<string, unknown>, deps: SavedViewDeps) {
+/** Starší viewer bez `VIEW_CAPTURE`: stav z `view_state` do riadku v tvare D-122 (len kamera, rez, výber, skrytie, izolácia). */
+async function saveLegacy(args: Record<string, unknown>, deps: SavedViewDeps, existing: SavedViewRow | null) {
   const name = nameOf(args.name);
-  if (isLastName(name)) throw new ViewInputError(`'${LAST_VIEW_NAME}' sa zapisuje sám; zvoľ iné meno.`);
-  const existing = await deps.store.byName(name);
-  if (existing && args.overwrite !== true) {
-    throw new ViewInputError(`Pohľad '${existing.name}' už existuje. Prepíš ho s overwrite=true alebo zvoľ iné meno.`);
-  }
   const raw = await deps.viewState();
   if (typeof raw === "string") throw new ViewInputError(`Pohľad sa nedá uložiť: ${raw}.`);
   const { state, notes } = captureFromState(raw);
-  Object.assign(state.viewpoint, viewDefinition(args, state.viewpoint.mode));
   if (state.viewpoint.storey_guid) state.viewpoint.storey_label = await deps.storeyLabel(state.viewpoint.storey_guid).catch(() => null);
   const author = text(args.author, 200) || DEFAULT_VIEW_AUTHOR;
   const write = {
@@ -126,7 +126,59 @@ async function save(args: Record<string, unknown>, deps: SavedViewDeps) {
   };
   const row = existing ? await deps.store.update(existing.id, write) : await deps.store.create(write);
   await deps.store.setLast({ ...state, name: LAST_VIEW_NAME, description: `Uložený ako '${name}'`, model_revisions: write.model_revisions, author });
-  return { saved: describeView(row), overwritten: Boolean(existing), ...(notes.length ? { notes } : {}) };
+  return {
+    saved: describeView(row),
+    overwritten: Boolean(existing),
+    notes: ["viewer je starší (bez uloženia do Presentation): pohľad je len v DB a v paneli sa neukáže", ...notes],
+  };
+}
+
+async function save(args: Record<string, unknown>, deps: SavedViewDeps) {
+  const name = nameOf(args.name);
+  if (isLastName(name)) throw new ViewInputError(`'${LAST_VIEW_NAME}' sa zapisuje sám; zvoľ iné meno.`);
+  const existing = await deps.store.byName(name);
+  if (existing && args.overwrite !== true) {
+    throw new ViewInputError(`Pohľad '${existing.name}' už existuje. Prepíš ho s overwrite=true alebo zvoľ iné meno.`);
+  }
+  const ignored = IGNORED_ARGS.filter((k) => args[k] !== undefined);
+  const notes = ignored.length ? [`${ignored.join(", ")} sa ignoruje (D-161: pohľad nemá druh, zámok ani podklad; ukladá sa kamera, rezy a košík)`] : [];
+  const out = await deps.capture({ name, capture_id: (deps.newCaptureId ?? (() => crypto.randomUUID()))() });
+  if (!out.ok) throw new ViewInputError(`Pohľad sa nedá uložiť: ${out.reason}.`);
+  if (out.view === undefined) {
+    const legacy = await saveLegacy(args, deps, existing);
+    return { ...legacy, notes: [...notes, ...legacy.notes] };
+  }
+  if (out.view === null) {
+    throw new ViewInputError(`Viewer pohľad neuložil${out.issues.length ? `: ${out.issues.join("; ")}` : " (model nemá viditeľné prvky?)"}.`);
+  }
+  const written = await waitForRow(deps, out.view.id);
+  if (!written) {
+    throw new ViewInputError(
+      "Pohľad je uložený len vo viewere (panel Presentation, v pamäti prehliadača): do DB ho host nezapísal. " +
+        "Zápis z viewera je vypnutý (env brána VIEWS_WRITE_ENABLED) alebo zlyhal; po obnovení stránky pohľad zmizne.",
+    );
+  }
+  // Prepísanie: starý pohľad zmizne a nový dostane jeho meno (host pri zápise meno kvôli kolízii doplnil príponou).
+  const replaced = existing && existing.id !== written.id;
+  if (replaced) await deps.store.remove(existing.id);
+  const author = text(args.author, 200) || DEFAULT_VIEW_AUTHOR;
+  const description = text(args.description, MAX_TEXT) || null;
+  const rename = replaced && written.name !== name;
+  const viewpoint = isWireViewpoint(written.viewpoint) && rename ? ({ ...written.viewpoint, name } as unknown as SavedViewpoint) : written.viewpoint;
+  const row = await deps.store.update(written.id, { author, description, ...(rename ? { name, viewpoint } : {}) });
+  await deps.store.setLast({
+    viewpoint: row.viewpoint,
+    selection: [],
+    hidden: [],
+    isolated: null,
+    name: LAST_VIEW_NAME,
+    description: `Uložený ako '${row.name}'`,
+    model_revisions: row.model_revisions,
+    author,
+  });
+  if (replaced) await deps.notifyChanged().catch(() => undefined);
+  if (row.name !== name) notes.push(`meno '${name}' bolo obsadené, pohľad sa uložil ako '${row.name}'`);
+  return { saved: describeView(row), overwritten: Boolean(replaced), ...(notes.length ? { notes } : {}) };
 }
 
 async function rename(args: Record<string, unknown>, deps: SavedViewDeps) {
@@ -137,7 +189,9 @@ async function rename(args: Record<string, unknown>, deps: SavedViewDeps) {
   const clash = await deps.store.byName(next);
   if (clash && clash.id !== row.id) throw new ViewInputError(`Pohľad '${clash.name}' už existuje.`);
   const from = row.name;
-  const updated = await deps.store.update(row.id, { name: next });
+  const viewpoint = isWireViewpoint(row.viewpoint) ? ({ ...row.viewpoint, name: next } as unknown as SavedViewpoint) : row.viewpoint;
+  const updated = await deps.store.update(row.id, { name: next, viewpoint });
+  await deps.notifyChanged().catch(() => undefined);
   return { renamed: { from, to: updated.name } };
 }
 
@@ -145,6 +199,7 @@ async function remove(args: Record<string, unknown>, deps: SavedViewDeps) {
   const row = await loadView(deps, args.name);
   if (row.kind === "last") throw new ViewInputError(`'${LAST_VIEW_NAME}' sa nemaže, prepíše ho ďalšie uloženie alebo obnova.`);
   await deps.store.remove(row.id);
+  await deps.notifyChanged().catch(() => undefined);
   return { deleted: row.name };
 }
 
@@ -166,14 +221,20 @@ export async function execSavedViewTool(
   }
 }
 
-/** `get_viewer_state(saved_views=true)`: zoznam z DB, aj bez otvoreného viewera. */
+/** `get_viewer_state(saved_views=true)`: zoznam z DB, aj bez otvoreného viewera; poradie ako v páse Presentation. */
 export async function listSavedViews(deps: Pick<SavedViewDeps, "store">) {
-  const [views, last] = await Promise.all([deps.store.list(), deps.store.last()]);
+  const [rows, last] = await Promise.all([deps.store.list(), deps.store.last()]);
+  const views = [...rows].sort((a, b) => {
+    const wa = wireOfRow(a);
+    const wb = wireOfRow(b);
+    if (wa && wb) return wa.order - wb.order;
+    return wa ? -1 : wb ? 1 : 0;
+  });
   return {
     saved_views: views.map(describeView),
     count: views.length,
     last: last ? describeView(last) : null,
-    hint: "Obnova: set_view_mode(saved_view=meno, section_offset_m=...). Uloženie: saved_view(action=save, name).",
+    hint: "Otvorenie: set_view_mode(view=meno, section_offset_m=...). Uloženie: saved_view(action=save, name).",
   };
 }
 
