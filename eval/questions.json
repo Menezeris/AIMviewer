@@ -1145,6 +1145,14 @@
       "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
       "notes": "D-133 doplnok (issue #170): set_view_mode(underlays_3d=false) -> stav viewera, view_state.underlays_3d=false; nie calibrate_underlay ani visible v _georef. Evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "view-tiles-four",
+      "category": "viewer",
+      "question": "Chcem štyri okná naraz: 3D, pôdorys 1NP, pôdorys 2NP a uložený pohľad Rez A-A.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-157 (issue #210): set_view_mode(layout=grid4, tiles=['3D', '1NP', '2NP', 'Rez A-A']); uložený pohľad musí byť najprv otvorený (set_view_mode view=...), inak ho viewer doplní inou záložkou a ohlási. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     }
   ]
 }

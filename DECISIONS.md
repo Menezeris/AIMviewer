@@ -4214,6 +4214,7 @@ nočné plné CI na `main`.
 > Kompaktný reverse-chrono log pridaných/zmenených rozhodnutí. Plný kontext = príslušný
 > D-záznam vyššie.
 
+- **2026-10-22** - **D-157 (dlaždice vo vieweri, #210, krok 2):** `set_view_mode layout` (single, split_h, split_v, štyri varianty troch okien s veľkou dlaždicou, three_h, three_v, grid4) a `tiles`; jedna živá 3D dlaždica (jeden WebGPU canvas sa presúva), ostatné 3D dlaždice snímka do kliknutia, dokumenty a pôdorysy bez podkladu v dlaždiciach, `view_state.layout`.
 - **2026-10-22** - **D-136 (dlaždice vo vieweri, #210, krok 1):** `set_view_mode panels.drawing` otvorí pôvodný 2D výkres rezu z modelu (bez podkladu) pod 3D; pôdorys bez podkladu pri 3D = `set_section(floor)` + `panels={drawing: open}`. Viac 3D pohľadov naraz (dlaždice) čaká na Samuela.
 - **2026-10-21** - **D-132 (záložky vo vieweri, #165):** pohľad = orez (kamera zamknutá kolmo + rovina alebo box), záložka = otvorený pohľad na celú plochu (3D, pôdorys podlažia za behu, uložený pohľad, dokument), Vedľa medzi záložkami, `open_drawing target`, `set_view_mode view/tab/beside/close_tab`, `set_section box`, `view_state.tabs`.
 - **2026-10-20** - **D-119 (miestnosti a farby z chatu, #135 #136 #137):** Lens z chatu a `show` zapnú skryté IfcSpace/IfcSpatialZone, fork v 2D vyplní a popíše ofarbené miestnosti, `color_by` rešpektuje filter volania (inak viditeľné prvky) cez `capturedScope`, `style_in_3d action=legend` s `legend_size` zväčší legendu.
@@ -6597,6 +6598,8 @@ bez overenej hodnoty.
 
 ---
 
+---
+
 ### D-138 - style_in_3d: priorita prekrytých pravidiel a hlasné varovanie pri pravidle bez zásahu
 **Status:** rozhodnuté (2026-10-22, issue #221; číslo D-138 navrhnuté orchestrátorovi, potvrdenie čaká). Nadväzuje na
 D-096 (Lens z chatu), D-125 (`inactive`) a #219 (varovania pri mode=replace).
@@ -7003,6 +7006,122 @@ nepobežali (bez Supabase kľúčov); otázka `panel-scroll-down` je v `eval/que
 
 ---
 
+### D-136 - Dlaždicové rozloženie viewera: krok 1 je pôvodný 2D výkres rezu, viac 3D pohľadov je otázka renderera
+**Status:** krok 1 rozhodnutý (2026-10-22, session z konektora, číslo rezervované v registri #60); krok 2
+(dlaždice s viacerými 3D pohľadmi) čaká na Samuela. Issue #210. Nadväzuje na D-072 (pôdorys s podkladom),
+D-087 (most forku), D-098 (najprv existujúce funkcie), D-114 (najprv napasuj), D-127 (panely z chatu),
+D-132 (záložky; bod "Otvorené" o pôdoryse bez podkladu).
+
+**Kontext:** Samuel chcel v rozhovore "vľavo 3D, vpravo pôdorys 1NP" a ako v Revite (Tile Windows) až štyri
+pohľady naraz. `set_view_mode(beside=1NP)` bez kalibrovaného podkladu vráti odmietnutie, dva 3D pohľady
+nejdú a viac než dve dlaždice tiež nie. Príčina je vo vieweri: má jeden 3D canvas (WebGPU, nikdy sa
+neremountuje) a jednu kameru; 3D, pôdorys bez podkladu (model zhora s rezom) a uložený pohľad sa v ňom len
+striedajú. Vedľa 3D dnes môže stáť len niečo, čo nie je 3D: PDF dokument alebo PDF podklad (D-072 split).
+
+**Rozhodnutie (krok 1):**
+1. Originál ifc-lite má panel **Drawing** (`section2d`, upstream #5493): 2D výkres aktuálneho rezu
+   generovaný z modelu (vektor, šrafy, bez podkladu), domov v spodnom páse, dá sa nechať plávať alebo
+   vytiahnuť do okna. Je na čítanie (generovanie beží v `DrawingRuntimeHost`), nie v režime úprav modelu,
+   takže rieši bod "Otvorené" z D-132.
+2. **Bez nového toolu (D-114):** `set_view_mode panels` pozná `drawing` (open | close | toggle). Pôdorys
+   podlažia bez podkladu pri 3D = `set_section(action=set, floor)` + `set_view_mode(panels={drawing: 'open'})`:
+   hore voľné 3D (rezané na tom podlaží), dole pôdorys z modelu. Stav panela (`open`, `where`) vráti výsledok
+   aj `get_viewer_state` ako pri ostatných paneloch.
+3. **Most (fork, len `apps/viewer/src/aim/`):** `PANEL_KEYS` + `drawing`, mapovanie na upstream panel
+   `drawing`, zatvorenie cez `setDrawing2DPanelVisible(false)`, stav zo `drawing2DPanelVisible`. Odmietnutie
+   `VIEW_TABS beside` pôdorysu bez podkladu ukáže túto cestu.
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool na rozloženie (návrh z issue):* rozloženie plochy je zobrazenie, to robí `set_view_mode`;
+  `layout`/`tiles` by dnes nemali čo zobraziť, kým viewer nemá viac 3D pohľadov.
+- *`set_view_mode layout=split_h|split_v|grid4, tiles=[...]` hneď:* parameter bez schopnosti vo vieweri by
+  vracal chyby; pribudne až s krokom 2.
+- *`set_camera` alebo `set_section` s dlaždicou:* majú jeden canvas, dlaždica by bola len predstieraná.
+
+**Krok 2 (otvorené, otázka v #210):** skutočné dlaždice (2 vedľa seba, 2 nad sebou, 2x2) s viacerými 3D
+pohľadmi, každý s vlastnou kamerou, rezom a farbením. Možnosti: (a) viac viewportov v jednom canvase
+(scissor, jedna GPU scéna, stav kamery, rezu a farieb na dlaždicu; veľký zásah do upstream renderera a
+store, vlastný kód forku pri každom sync), (b) dlaždice ako snímky (živá je jedna, ostatné obrázok
+posledného stavu, klik ju urobí živou; malý zásah, záložky D-132 už stav dlaždice ukladajú), (c) návrh
+upstream ifc-lite. Odporúčanie: (b) ako medzikrok, (a) len ak je pre demo nutné. `layout`/`tiles` v
+`set_view_mode` pribudnú až s krokom 2.
+
+**Evaly D-057 nepobežali** (cloud session nemá Supabase kľúče); otázka `view-3d-and-plan-no-underlay` pridaná
+bez overenej hodnoty.
+
+---
+
+### D-157 - Dlaždice vo vieweri: jedno živé 3D, ostatné 3D dlaždice ako snímka, `set_view_mode layout`
+**Status:** rozhodnuté (2026-10-22, plán schválený Samuelom cez orchestrátora; číslo rezervované v registri #60).
+Issue #210, krok 2 (krok 1 = D-136). Nadväzuje na D-132 (záložky, "Vedľa"), D-072 (pôdorys s podkladom),
+D-087 a D-098 (most forku, najprv existujúce), D-114 (najprv napasuj).
+
+**Kontext:** Samuel chce ako v Revite (Tile Windows) až 4 pohľady naraz, aj len dve okná vedľa seba alebo
+pod sebou; pri troch oknách prepínateľne veľké vľavo, hore, dole (a symetricky vpravo), aj 3 vedľa seba alebo
+pod sebou. Zistenie vo forku: renderer (`packages/renderer`, `Renderer`) má na canvas jedno zariadenie
+GPU, jednu kameru, jeden rez a celý reťazec pasov (AO, EDL, prekrytia, picking) nad celým canvasom.
+- *Viac viewportov v jednom canvase* (`setViewport`/`setScissorRect`, kamera, rez a farbenie na dlaždicu)
+  = prepis upstream renderera a store, vlastný kód pri každom sync upstreamu.
+- *Druhý `Renderer`* = druhé zariadenie a druhé nahratie geometrie (pamäť GPU dvakrát pri produkčnom modeli).
+- Záložky D-132 už pri prepnutí ukladajú kameru, rez a zámok každej 3D záložky, takže stačí presúvať jeden
+  canvas a ostatným 3D dlaždiciam ukázať posledný obraz.
+
+**Rozhodnutie:**
+1. **Rozloženia** (`aim/viewTilesPlan.ts`): `single`, `split_h` (2 vedľa seba), `split_v` (2 pod sebou),
+   `three_left` / `three_right` / `three_top` / `three_bottom` (3 okná, dlaždica 0 je veľká na danej strane;
+   "2 hore a 1 veľké dole" = `three_bottom`), `three_h`, `three_v` (3 vedľa seba / pod sebou), `grid4` (2x2).
+   Každá dlaždica ukazuje jednu otvorenú záložku, záložka je najviac v jednej dlaždici, dlaždica môže byť prázdna.
+2. **Jedno živé 3D:** 3D záložka (3D, pôdorys, uložený pohľad) v dlaždici so živým canvasom je živá; jediný
+   WebGPU canvas sa nikdy neremountuje, `useAimCenterPanes` ho len posunie do obdĺžnika živej dlaždice (pod jej
+   hlavičku). Ostatné 3D dlaždice ukazujú snímku (`aim/tileShots.ts`: synchrónna kópia posledného zobrazeného
+   snímku canvasu do 2D canvasu, max 1600 px, pri odchode záložky z canvasu); klik ich urobí živými a
+   doterajšia živá si nechá snímku. 3D dlaždica bez snímky (napr. pôdorys, ktorý ešte nebol v canvase) sa po
+   nastavení rozloženia raz ukáže v canvase a odfotí (`prerender`, most naň počká pred `APPLIED`); zásah
+   používateľa beh preruší.
+3. **Dokument** je v dlaždici vždy živý (vlastný `PdfDocumentView`/`ImageDocumentView`, aj dva rôzne naraz).
+   **Pôdorys bez podkladu** je 3D záložka (model zhora s rezom 1,2 m), takže v dlaždici ide bez kalibrácie.
+4. **Pravidlá:** aktivovaná záložka mimo dlaždíc nahradí prázdnu dlaždicu, potom dlaždicu rovnakého druhu
+   (dokument za dokument, 3D za 3D) mimo živej, potom poslednú mimo živej; zavretá záložka uvoľní dlaždicu pre
+   neukázanú otvorenú. Pri dlaždiciach nie je "Vedľa". "Vedľa" pre dvojicu, ktorú plocha bez dlaždíc nevie
+   (pôdorys bez podkladu vedľa 3D, dve 3D, dva dokumenty), prepne na `split_h`; dvojice D-132 (dokument vedľa
+   3D, pôdorys s podkladom D-072) ostávajú ako boli. `close_tab=all` vráti jedno okno.
+5. **3D tooly** (`show_in_3d`, `style_in_3d`, `set_section`, `set_camera`) pôsobia na živú 3D dlaždicu; keď v
+   rozložení 3D nie je, pôsobia na canvas pod dlaždicami (uvidí sa po prepnutí).
+6. **UI:** v lište záložiek prepínač "Rozloženie" (10 možností), v hlavičke každej dlaždice výber záložky
+   ("(prázdna)" ju vyprázdni), aktívna dlaždica má zvýraznený okraj, 3D dlaždica hovorí "živé 3D" / "snímka".
+7. **Chat (D-114, bez nového toolu):** `set_view_mode layout=<rozloženie>` a `tiles=[...]` (najviac 4, prvá
+   je veľká). Podlažie (`1NP`, aj "Pôdorys 1NP") host preloží na GUID a viewer pôdorys otvorí sám; ostatné sú
+   menovky otvorených záložiek ('3D', pohľad, dokument), 'none' = prázdna; chýbajúce dlaždice doplní viewer
+   (doterajšie, aktívna, ostatné v poradí lišty). Len `tiles` bez `layout` = rozloženie podľa počtu (2 = vedľa
+   seba, 3 = veľká vľavo, 4 = 2x2). `layout` sa nekombinuje s `mode`, `view`, `reset`, `tab`, `beside`,
+   `close_tab` (panely áno). Wire `tab:layout:<base64url>` -> `VIEW_TABS {action: 'layout', layout, tiles}`
+   (`{tab}` | `{plan}` | null), overenie v `aim/tiles-protocol.ts`.
+8. **Stav:** `view_state.layout` = `{kind, tiles: [{index, tab, label, kind, live}], live_tab}` (pri jednom
+   okne `{kind: 'single'}`), popri `view_state.tabs`.
+
+**Výkon:** snímka je kópia v pamäti (bez ďalšieho renderu, pár MB pri 4 dlaždiciach); menšia živá dlaždica =
+menší drawing buffer, render skôr zlacnie; predrenderovanie len pre 3D dlaždice bez snímky (pri pôdoryse
+s animáciou kamery cca 0,5 až 1 s na dlaždicu); vstupný chunk viewera nerastie (mriežka, logika a protokol
+dlaždíc sú lenivé, v entry len pár riadkov stavu a polohy canvasu).
+
+**Zavrhnuté rozšírenie:**
+- *Nový tool `set_layout`:* rozloženie plochy je zobrazenie záložiek, to robí `set_view_mode` (D-114).
+- *Viac viewportov alebo druhý renderer:* pozri Kontext; skutočne živé viac 3D naraz je námet pre upstream
+  ifc-lite, nie pre fork.
+- *Pôdorys v dlaždici ako SVG z generátora `drawing-2d`:* generátor vo vieweri je naviazaný na jeden rez
+  (`sectionPlane`, jeden `drawing2D`); pôdorys ako 3D záložka so snímkou je hneď k dispozícii a rovnaký ako
+  záložka pôdorysu. SVG dlaždica (živý 2D bez prepnutia) je ďalší krok, ak bude treba.
+
+**Neskôr:** synchronizácia výberu medzi dlaždicami (klik v pôdoryse vyberie prvok v 3D je dnes v živej
+dlaždici), vytiahnutie dlaždice na druhý monitor (#210, mimo rozsahu), dlaždice na mobile (lišta záložiek tam
+nie je).
+
+**Overenie:** fork `aim/viewTilesPlan.test.ts` (rozloženia, priradenie, pravidlá, stav), host
+`lib/viewer-tabs.test.ts` (wire, `planLayout`), inventár `MCP-TOOLS.md`. **Evaly D-057 nepobežali** (cloud
+session nemá Supabase kľúče); otázka `view-tiles-four` pridaná a `view-3d-and-plan-no-underlay` (D-136) prepnutá na `layout`, obe bez overenej hodnoty.
+
+---
+
 ### D-158 - Pripomienky na dokumentoch: BCF téma s odkazom na dokument, stranu a oblasť strany
 
 **Dátum:** 2026-10-22 · **Stav:** krok 1 schválený (orchestrátor 22. 10., Samuel 22. 10. "áno, riešiť" v #199) · **Issue:** #199 · **Nadväzuje na:** D-099 (BCF témy v `model_tasks`), D-104 (dokumenty z IFC), D-114 (rozšírenie namiesto nového toolu), D-117 (`open_drawing region`), D-123, D-130, D-133
@@ -7214,3 +7333,6 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 **Riziko a overenie po nasadení:** ak by chat v Claude pri každom volaní robil nový `initialize`, mal by zakaždým iný `sid` a viewer by jeho druhý príkaz odmietol. Overenie: dva príkazy z chatu za sebou a v `mcp_call_log.client` rovnaký `#sid`; ak nie, `LIVE_OWNER_LOCK=0` a redeploy. Rovnako z logu: či sessions Claude Code nesú `(work)`.
 
 **Overené:** vitest, `tsc`, eslint zmenených súborov; lokálne `next dev` proti falošnému Realtime serveru: cudzí príkaz odmietnutý s `rejected: "foreign"`, odpovede s `owner` you/other, Prevziať, prepnutie na `demo-test` s pruhom, výber prežije obnovenie; route konektora vydá `Mcp-Session-Id`, `claude-code` sa pýta na `demo-test` a dostane hlášku bez odkazu, `claude-ai` na `demo`. **Evaly (D-057):** nepobežali (cloud session bez Supabase kľúčov); opisy toolov sa nemenia, mení sa len text odpovede pri testovacom kanáli a cudzom okne.
+
+---
+

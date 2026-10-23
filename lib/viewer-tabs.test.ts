@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { docOp, opToBridgeMessage, parseOps } from "./viewer-ops";
 import { parseTabsOp, sectionBoxAroundOp, sectionBoxOp, tabOp } from "./viewer-tabs";
-import { planSectionBox, planViewTabs } from "./llm/view-tabs";
+import { hasLayoutParams, planLayout, planSectionBox, planViewTabs } from "./llm/view-tabs";
 
 const G = "27hbQtAoP6qvoEYhPARoI7";
 const bridge = (ops: string) => parseOps(ops).map(opToBridgeMessage);
@@ -61,5 +61,42 @@ describe("záložky viewera, op tab a section_box (D-132)", () => {
     expect(planSectionBox({ margin_m: 0 }, [G]).result).toMatchObject({ margin_m: 0 });
     expect(() => planSectionBox({}, [])).toThrow("cieľ");
     expect(() => planSectionBox({ margin_m: 30 }, [G])).toThrow("margin_m");
+  });
+});
+
+describe("dlaždice, op tab:layout (D-157)", () => {
+  const floors: Record<string, string> = { "1NP": G, "2NP": "0abcdefghijklmnopqrstu" };
+  const floorGuid = async (ref: string) => (floors[ref] ? { guid: floors[ref], label: ref } : null);
+
+  it("layout a tiles: podlažie ide ako GUID pôdorysu, ostatné ako menovka, none = prázdna", async () => {
+    const plan = await planLayout({ layout: "three_left", tiles: ["3D", "1NP", "none"] }, floorGuid);
+    expect(bridge(plan.ops.join(";"))).toEqual([
+      { type: "VIEW_TABS", action: "layout", layout: "three_left", tiles: [{ tab: "3D" }, { plan: G }, null] },
+    ]);
+    expect(plan.result).toMatchObject({ ok: true, layout: "three_left", tiles: ["3D", "1NP", null] });
+  });
+
+  it("len tiles: rozloženie podľa počtu; single bez dlaždíc", async () => {
+    const two = await planLayout({ tiles: ["3D", "2NP"] }, floorGuid);
+    expect(bridge(two.ops.join(";"))[0]).toMatchObject({ layout: "split_h", tiles: [{ tab: "3D" }, { plan: "0abcdefghijklmnopqrstu" }] });
+    expect((await planLayout({ tiles: ["3D", "A", "B", "C"] }, floorGuid)).result).toMatchObject({ layout: "grid4" });
+    const single = await planLayout({ layout: "single" }, floorGuid);
+    expect(bridge(single.ops.join(";"))).toEqual([{ type: "VIEW_TABS", action: "layout", layout: "single" }]);
+  });
+
+  it("chybný vstup: neznáme rozloženie, viac dlaždíc ako rozloženie, kombinácia s tab", async () => {
+    await expect(planLayout({ layout: "2x2" }, floorGuid)).rejects.toThrow(/layout/);
+    await expect(planLayout({ layout: "split_v", tiles: ["3D", "1NP", "2NP"] }, floorGuid)).rejects.toThrow(/2 dlaždice/);
+    await expect(planLayout({ tiles: ["a", "b", "c", "d", "e"] }, floorGuid)).rejects.toThrow(/1 až 4/);
+    await expect(planLayout({ layout: "split_h", tab: "3D" }, floorGuid)).rejects.toThrow(/nekombinujú/);
+    expect(hasLayoutParams({ tiles: [] })).toBe(true);
+    expect(hasLayoutParams({ tab: "3D" })).toBe(false);
+  });
+
+  it("wire: neplatné rozloženie alebo dlaždica sa zahodí", () => {
+    expect(parseTabsOp("tab", "layout", "")).toBeNull();
+    expect(bridge(tabOp("layout", { layout: "grid9" as never }))).toEqual([]);
+    expect(bridge(tabOp("layout", { layout: "split_h", tiles: [{ tab: "3D" }, { tab: "1" }, { tab: "2" }] }))).toEqual([]);
+    expect(bridge(tabOp("layout", { layout: "split_h", tiles: [{ x: 1 } as never] }))).toEqual([]);
   });
 });
