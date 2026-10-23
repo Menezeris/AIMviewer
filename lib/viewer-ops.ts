@@ -18,6 +18,7 @@
  * (výrez strany v %, D-117; rámiky okolo textu v %, po štyroch číslach, D-123; `~l=s` = vedľa 3D, D-132).
  * Záložky a rezný box (D-132): `tab:<action>:<base64url JSON>`, `section_box:...`, formát v `lib/viewer-tabs.ts`.
  * Pohľady z Presentation (D-161): `view_activate::<base64url JSON>`, `view_capture::<base64url JSON>`, formát v `lib/viewer-views.ts`.
+ * IDS z AIM do panelov (D-162): `ids_open::<base64url JSON>`, formát v `lib/viewer-ids.ts`; XML doplní klient hosta (async), preto nemá bridge správu tu.
  * Presná póza kamery z uloženého pohľadu (D-122): `pose:<px,py,pz,tx,ty,tz,ux,uy,uz>[~o=<m>][~proj=o|p]:`
  * (IFC svet, m; `o` = polovica výšky ortografického pohľadu).
  * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
@@ -47,6 +48,7 @@ import { decodeMeasureWire, type MeasurePoint, type MeasureSegment } from "./vie
 import { parseRouteOp } from "./viewer-route";
 import { parseTabsOp, tabsBridgeMessage, type TabsOp } from "./viewer-tabs";
 import { parseViewsOp, viewsBridgeMessage, type ViewsOp } from "./viewer-views";
+import { parseIdsOp, type IdsOpenOp } from "./viewer-ids";
 
 export interface OpsSelector {
   types?: string[];
@@ -162,6 +164,7 @@ export type ViewerOp =
   | TabsOp
   /** Pohľad z Presentation (D-161): aktivácia a uloženie aktuálneho stavu, `lib/viewer-views.ts`. */
   | ViewsOp
+  | IdsOpenOp
   | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire }
   /** Zoznam z chatu do panela Lists (D-111), formát v `lib/viewer-list.ts`. */
   | { op: "list"; wire: ListWire }
@@ -528,6 +531,9 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "view_activate" || op === "view_capture") {
       const v = parseViewsOp(op, joined);
       if (v) out.push(v);
+    } else if (op === "ids_open") {
+      const ids = parseIdsOp(joined);
+      if (ids) out.push(ids);
     } else if (op === "panels") {
       const panels = parsePanels(arg);
       if (panels) out.push({ op, panels });
@@ -647,6 +653,9 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     case "view_activate":
     case "view_capture":
       return viewsBridgeMessage(o);
+    case "ids_open":
+      // XML si klient hosta stiahne z /api/ids až pri vykonaní (async), preto správu skladá `applyOps` v ifc-viewer.tsx.
+      throw new Error("ids_open sa vykoná v klientovi hosta (openIds), nie cez opToBridgeMessage");
     case "lens":
       // Zónu (`aim_zone`) a dokument (`aim_document`) doplní klient pred odoslaním; tu ostanú prázdne.
       return lensBridgeMessage(o.mode, o.wire, new Map(), o.rev);

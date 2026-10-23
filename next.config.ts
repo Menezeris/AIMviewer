@@ -36,6 +36,11 @@ const nextConfig: NextConfig = {
       "./node_modules/@ifc-lite/wasm/pkg/*.wasm",
       "./node_modules/@xmldom/xmldom/**/*",
     ],
+    // Uloženie IDS z viewera (D-162) kontroluje XML tým istým motorom (audit pred zápisom).
+    "/api/ids": [
+      "./node_modules/@ifc-lite/wasm/pkg/*.wasm",
+      "./node_modules/@xmldom/xmldom/**/*",
+    ],
     // Kľúč je glob nad cestou route ([id] by bol trieda znakov), preto zástupné znaky.
     "/api/bcf/**/*": PDF_RENDER_FILES,
     "/api/drawing/**/*": PDF_RENDER_FILES,

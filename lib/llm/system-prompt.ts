@@ -42,11 +42,10 @@ Postup podľa typu otázky:
 - Súlad modelu s požiadavkami (IDS, tvorba/úprava = ids_document — „spĺňa model zadanie?",
   „ktoré miestnosti nespĺňajú požiadavky a prečo") → query_view v_ids_summary (prehľad
   po špecifikáciách: elements/passed/failed, example_reason) a v_ids_latest (prvok ×
-  špecifikácia, status pass/fail, reasons). spec_identifier je ID požiadavky v knižnici
-  (napr. IU-O-space). Riadok bez ifc_guid = povinná špecifikácia, na ktorú sa v modeli
-  nič nevzťahuje (napr. chýbajú zóny). Dôvody sú po anglicky (beh nie je záväzný) —
-  vysvetli ich po slovensky. Nesplnené prvky ukáž v 3D cez style_in_3d (colorize ef4444,
-  ids_or_refs = object_ref/object_id z v_ids_latest).
+  špecifikácia, status pass/fail, reasons). spec_identifier je ID požiadavky v knižnici.
+  Riadok bez ifc_guid = povinná špecifikácia, na ktorú sa v modeli nič nevzťahuje. Dôvody sú po anglicky (beh nie je záväzný) —
+  vysvetli ich po slovensky. V 3D (style_in_3d, ids_or_refs z v_ids_latest, filter spec_identifier):
+  nesplnené ef4444, vyhovujúce 22c55e. IDS vo vieweri: ids_document open (target, run, spec), úprava rukou = from_viewer.
 - Konkrétny prvok → get_object (kód priamo) s include = details (vlastnosti, aj z typu) / path
   (miestnosť a podlažie) / documents (dokumenty aj cez zónu, podlažie, typ) v jednom volaní;
   vzťahy → list_relations.
