@@ -13,7 +13,7 @@ import { HATCH_PATTERNS, HATCH_RANGES, SECTION_CAPS, planSectionCap } from "../v
 import { DOMAIN_IFC_TYPES } from "./ifc-selector";
 import { ViewInputError, planPanelScroll, planPanelZoom, planPanels, planPlanPosition, planSection, planUnderlays3d, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
 import { SECTION_SHIFT_RANGE } from "../views/plan";
-import { hasLayoutParams, hasTabParams, planLayout, planViewTabs } from "./view-tabs";
+import { hasLayoutParams, hasTabParams, planLayout, planViewTabs, type PresentationView } from "./view-tabs";
 import { TILE_LAYOUTS } from "../viewer-tabs";
 
 /** `view` je to isté ako `saved_view` (D-132); prázdne = žiadny pohľad. */
@@ -195,15 +195,15 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "a nástroje fungujú hneď (miestnosti ofarbené cez style_in_3d sú v ňom vyplnené a popísané). Na prehliadku budovy " +
       "podlažie po podlaží volaj mode=2d s floor postupne (krok na pokyn používateľa). mode=split + floor = pohľad zhora " +
       "a dlaždice 3D | výkres PDF podlažia. ULOŽENÝ POHĽAD (panel Presentation, D-161): view (alebo saved_view)=meno ho " +
-      "otvorí (kamera, rez, košík ako izolácia; mode netreba); 'ako minule' = view='Posledný pohľad'; section_offset_m " +
+      "otvorí (kamera, rez, košík ako izolácia; mode netreba); 'ako minule' = view='Posledný pohľad'; pri dlaždiciach ide view do živej dlaždice; section_offset_m " +
       "posunie rez po jeho osi ('o meter nižšie' = -1). Zoznam: get_viewer_state(saved_views=true), uloženie: saved_view. " +
       "ZÁLOŽKY (3D a dokumenty): tab=menovka prepne ('späť na 3D' = tab='3D'), beside=menovka dá dokument vedľa aktívnej " +
       "(none zruší; dvojicu, ktorú plocha nevie, dá do dvoch dlaždíc), close_tab=menovka alebo all zavrie. Otvorené záložky (tabs) " +
       "vráti stav po príkaze aj get_viewer_state. DLAŽDICE (D-157, Tile Windows v Revite): layout = single | split_h (2 vedľa " +
       "seba) | split_v (2 pod sebou) | three_left / three_right / three_top / three_bottom (3, veľká dlaždica vľavo / vpravo / " +
       "hore / dole) | three_h (3 vedľa seba) | three_v (3 pod sebou) | grid4 (2x2), tiles = záložka v každej dlaždici " +
-      "(prvá je veľká): podlažie (1NP) otvorí pôdorys aj bez podkladu, '3D', pohľad alebo dokument (najprv open_drawing " +
-      "target=tab), 'none' prázdna; chýbajúce doplní viewer. '3D vľavo, 1NP vpravo' = layout=split_h, tiles=['3D','1NP']. " +
+      "(prvá je veľká): podlažie (1NP) otvorí pôdorys aj bez podkladu, '3D', meno uloženého pohľadu (aj pre tab a beside) alebo " +
+      "dokument (najprv open_drawing target=tab), 'none' prázdna; chýbajúce doplní viewer. '3D vľavo, 1NP vpravo' = layout=split_h, tiles=['3D','1NP']. " +
       "Živé 3D je len jedno, ostatné 3D dlaždice ukazujú snímku do kliknutia; 3D tooly pôsobia na živú. Stav: layout v " +
       "get_viewer_state. Späť na jedno okno = layout=single. " +
       "Dokument do záložky = open_drawing(target=tab). PANELY: panels otvorí, zavrie alebo prepne ľubovoľný " +
@@ -237,7 +237,7 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "array",
           items: { type: "string" },
           maxItems: 4,
-          description: "Záložka v každej dlaždici v poradí (prvá = veľká): podlažie (1NP), '3D', menovka pohľadu alebo dokumentu, 'none' = prázdna",
+          description: "Záložka v každej dlaždici v poradí (prvá = veľká): podlažie (1NP), '3D', meno uloženého pohľadu, menovka dokumentu, 'none' = prázdna",
         },
         panels: {
           type: "object",
@@ -333,6 +333,17 @@ async function resolveFloor(raw: unknown): Promise<SectionFloor | null> {
   return { label: floor.object_ref ?? floor.name ?? want, guid, elevation: floor.elevation };
 }
 
+/** Pohľady z Presentation (D-161) z `saved_views`: meno -> id pre dlaždice, `tab` a `beside`. Bez DB prázdny zoznam. */
+async function presentationViews(): Promise<PresentationView[]> {
+  try {
+    const [{ supabaseSavedViewStore }, { wireOfRow }] = await Promise.all([import("@/lib/views/store"), import("@/lib/views/wire")]);
+    const rows = await supabaseSavedViewStore().list();
+    return rows.filter((r) => r.kind === "saved" && wireOfRow(r)).map((r) => ({ id: r.id, name: r.name }));
+  } catch {
+    return [];
+  }
+}
+
 /** Dlaždica ako podlažie (D-157): GUID a menovka, alebo null (menovka inej záložky). */
 async function floorGuidOf(ref: string): Promise<{ guid: string; label: string } | null> {
   for (const want of new Set([ref, ref.replace(/^p[oô]dorys\s+/i, "")])) {
@@ -401,9 +412,9 @@ export async function execViewTool(
   } else if (name === "set_camera") {
     plan = planCamera(input, await resolveTargets(input));
   } else if (name === "set_view_mode" && hasLayoutParams(input)) {
-    plan = await planLayout(input, floorGuidOf);
+    plan = await planLayout(input, floorGuidOf, await presentationViews());
   } else if (name === "set_view_mode" && hasTabParams(input)) {
-    plan = planViewTabs(input);
+    plan = planViewTabs(input, await presentationViews());
   } else if (name === "set_view_mode" && savedViewName(input)) {
     const [{ restoreSavedView }, { defaultSavedViewDeps }] = await Promise.all([import("@/lib/views/tools"), import("@/lib/views/runtime")]);
     plan = await restoreSavedView({ ...input, saved_view: savedViewName(input) }, defaultSavedViewDeps());

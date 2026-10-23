@@ -1168,7 +1168,15 @@
       "question": "Chcem štyri okná naraz: 3D, pôdorys 1NP, pôdorys 2NP a uložený pohľad Rez A-A.",
       "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
-      "notes": "D-157 (issue #210): set_view_mode(layout=grid4, tiles=['3D', '1NP', '2NP', 'Rez A-A']); uložený pohľad musí byť najprv otvorený (set_view_mode view=...), inak ho viewer doplní inou záložkou a ohlási. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+      "notes": "D-157 (issue #210): set_view_mode(layout=grid4, tiles=['3D', '1NP', '2NP', 'Rez A-A']); od D-161 (krok 4) host preloží meno uloženého pohľadu na jeho id a viewer ho otvorí v dlaždici sám, netreba ho otvárať vopred. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "view-tile-new-basket",
+      "category": "viewer",
+      "question": "Otvor pohľad Rez A-A na novej dlaždici vedľa 3D.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-161 krok 4: set_view_mode(beside='Rez A-A') alebo layout=split_h, tiles=['3D', 'Rez A-A']; host pošle id pohľadu, viewer ho aktivuje v živej dlaždici. Nie saved_view ani view= (to by prepísalo 3D dlaždicu). Evaly nepobežali (bez Supabase kľúčov)."
     },
     {
       "id": "clash-vzt-nosne",

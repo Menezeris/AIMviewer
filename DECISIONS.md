@@ -7437,6 +7437,11 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 - *Mimo rozsahu tohto kroku:* klik do plánu, ktorý presunie kameru, a ťah klina na otáčanie (v D-072 splite ich mal `DrawingPlanPane`). Čítačka dokumentov sa posúva a približuje vlastným spôsobom, takže klik by kolidoval so zoomom a posunom; ak ho Samuel bude chcieť, ide to ako samostatný krok nad tou istou funkciou `planPosition.ts` (inverzia `jumpTo`). Set kamery z chatu ostáva `set_camera`.
 - *Bez migrácie, bez zápisu do DB.*
 
+**Dodatok - krok 4, pohľady v dlaždiciach (Fork B + Host B, 23. 10. 2026):**
+- *Fork:* pohľad z Presentation je v dlaždici záložka druhu `view` (`view:<id>`, žije len v dlaždici, bez dlaždíc zanikne). Živá dlaždica ho aktivuje (kamera, rez, košík), ostatné ukazujú snímku, kým pohľad nebol živý, náhľad z panela. Stav canvasu na dlaždicu (kamera, rez, košík) sa pri prepnutí odkladá počas relácie (`aim/viewTilesScene.ts`). UI: výber pohľadu v hlavičke dlaždice a "Otvoriť v novej dlaždici" na karte v páse Presentation (nová dlaždica, doterajšie ostanú; zo `single` vzniknú dve vedľa seba, z dvoch tri, zo štyroch sa nahradí neživá). Klik na kartu v Presentation pri dlaždiciach urobí z pohľadu živú dlaždicu. Fork PR Menezeris/ifc-lite#152.
+- *Host:* `set_view_mode tiles=[...]`, `tab` a `beside` prijmú meno uloženého pohľadu; host ho preloží na id zo `saved_views` (len riadky s tvarom `ViewWire`), na drôte `{view: id}` v dlaždici a id v `tab` / `beside`. '3D', 'none' a 'all' sa neprekladajú, podlažie (1NP) má prednosť pred menom pohľadu. `view=` pri dlaždiciach ide do živej dlaždice (rozhoduje fork). `beside=<pohľad>` = nová dlaždica so živým pohľadom ("otvor nový basket na novej dlaždici"). Stav: `get_viewer_state.layout.tiles[]` nesie `view_id` a `view`.
+- *Bez migrácie, bez zápisu do DB, bez nového toolu (D-114).*
+
 ---
 
 ### D-162 - IDS z chatu a z viewera: tvorba, úprava, verzie v DB, validácia a upstream IDS modul (#285)
