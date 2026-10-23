@@ -15,6 +15,7 @@ import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { opToBridgeMessage, parseOps } from "@/lib/viewer-ops";
 import { isViewWire, viewsLoadMessage, type ViewWire } from "@/lib/viewer-views";
+import { idsLoadMessage, idsSavedMessage, parseIdsSave, type IdsOpenOp, type IdsSaveResult, type IdsTarget } from "@/lib/viewer-ids";
 import {
   MAX_ZONE_GUIDS,
   documentLensWire,
@@ -92,6 +93,8 @@ type OutboundMessage =
   | { source: typeof SOURCE; type: "VIEW_SAVE"; view: unknown; capture_id?: string }
   | { source: typeof SOURCE; type: "VIEW_RENAME"; id: string; name: string }
   | { source: typeof SOURCE; type: "VIEW_DELETE"; id: string }
+  // IDS z panela IDS Studio / Data validation (D-162) - host ho zapíše cez /api/ids a pošle späť IDS_SAVED.
+  | { source: typeof SOURCE; type: "IDS_SAVE"; target: string; xml: string; code?: string; base_version?: number; title?: string }
   // Odpoveď na QUERY spätného kanála (D-085) - obálky, stav pohľadu.
   | { source: typeof SOURCE; type: "QUERY_RESULT"; id: string; ok: boolean; result?: unknown; error?: string }
   // Potvrdenie príkazov pred ACK_REQUEST (D-101) - stav po vykonaní, čo sa nevykonalo.
@@ -326,6 +329,36 @@ export function IFCViewer({
       });
   }
 
+  /**
+   * IDS z AIM do panela (D-162): `ids_open` z chatu. Klient si XML stiahne z `GET /api/ids` (živý kanál ho nenesie)
+   * a pošle forku `IDS_LOAD`; chyba sa neskryje, `APPLIED` ju ukáže chatu ako problém.
+   */
+  async function openIds(o: IdsOpenOp) {
+    const r = await fetch(`/api/ids?code=${encodeURIComponent(o.code)}${o.version ? `&version=${o.version}` : ""}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(`IDS '${o.code}' sa nenačítalo (HTTP ${r.status})`);
+    const doc = (await r.json()) as { code: string; version: number; title: string; xml: string };
+    post(idsLoadMessage(o, doc));
+  }
+
+  /** Uloženie IDS z panela (`IDS_SAVE`): route je za env bránou; výsledok sa vráti ako `IDS_SAVED` (tlačidlo ho ukáže). */
+  function saveIds(raw: unknown) {
+    const save = parseIdsSave(raw);
+    const target: IdsTarget = save?.target ?? "studio";
+    const reply = (result: IdsSaveResult) => post(idsSavedMessage(target, result));
+    if (!save) return reply({ ok: false, error: "neplatná správa z viewera" });
+    void fetch("/api/ids", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ xml: save.xml, ...(save.code ? { code: save.code } : {}), ...(save.base_version ? { base_version: save.base_version } : {}), ...(save.title ? { title: save.title } : {}) }),
+    })
+      .then(async (r) => {
+        const body = (await r.json().catch(() => ({}))) as { ok?: boolean; code?: string; version?: number; error?: string; latest_version?: number };
+        if (r.ok && body.ok && body.code && body.version) reply({ ok: true, code: body.code, version: body.version });
+        else reply({ ok: false, error: body.error ?? `HTTP ${r.status}`, ...(body.latest_version ? { latest_version: body.latest_version } : {}) });
+      })
+      .catch((err: unknown) => reply({ ok: false, error: err instanceof Error ? err.message : "uloženie zlyhalo" }));
+  }
+
   // GUID-nosné príkazy vydané pred MODELS_LOADED (klik na „3D: N prvkov" počas
   // parsovania, soft-nav focus) by viewer zahodil — resolveGuids pred
   // naparsovaním modelov nič nenájde. Queue-ujú sa a flushnú v handleri
@@ -394,6 +427,8 @@ export function IFCViewer({
           post(lensBridgeMessage(o.mode, o.wire, await fetchScopeGuids(lensScopeKeys(o.wire)), o.rev));
         } else if (o.op === "list" && listScopeKeys(o.wire).length > 0) {
           post(listBridgeMessage(o.wire, await fetchScopeGuids(listScopeKeys(o.wire))));
+        } else if (o.op === "ids_open") {
+          await openIds(o);
         } else post(opToBridgeMessage(o));
         // Reset farieb vypne aj AIM chat lens a zmaže čiaru trasy aj kóty od Claude (D-137, D-152), zobraziť všetko zruší izoláciu z chatu (D-096, D-137).
         if (o.op === "reset_colors") {
@@ -625,6 +660,9 @@ export function IFCViewer({
           if (typeof e.data.id === "string") writeViews("DELETE", { id: e.data.id });
           break;
         }
+        case "IDS_SAVE":
+          saveIds(e.data);
+          break;
         case "UNDERLAY_SAVE": {
           // Kalibrácia z viewera → perzistuj _georef (D-072). Server payload
           // validuje (isValidGeorefV1) a zapína/vypína zápis env bránou.

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { compactLocalTopics } from "@/lib/bcf/viewer-local";
+import { compactIdsLocal } from "@/lib/ids/viewer-local";
 import { lookupGuids } from "@/lib/engine/aim-lookup";
 import type { ToolDefinition } from "@/lib/llm/provider";
 import { ViewInputError } from "@/lib/llm/view-plan";
@@ -28,7 +29,7 @@ export const VIEWER_QUERY_TOOL_DEFINITIONS: ToolDefinition[] = [
       "Čo práve ukazuje OTVORENÝ živý viewer: kamera (pozícia, cieľ v IFC, projekcia), aktívny rez (os, súradnica v IFC, " +
       "poloha v %), aktívny pohľad z Presentation (view: id, name), výber a počty skrytých a izolovaných prvkov. Výber: count, " +
       "truncated, summary (počty podľa IFC triedy, podlažia, rodičovskej zostavy a modelu) a stránka items; na " +
-      "'čo mám vybrané' odpovedaj zo summary. lens = AIM chat lens zo style_in_3d (pravidlá s počtami, izolácia " +
+      "'čo mám vybrané' odpovedaj zo summary. ids_local = IDS otvorené v paneloch IDS Studio a Data validation (kód a verzia v AIM, dirty, výsledky po špecifikáciách). lens = AIM chat lens zo style_in_3d (pravidlá s počtami, izolácia " +
       "alebo X-ray s počtom prvkov). list = zoznam v paneli Lists (open_list): stĺpce, filtre, zoradenie, zoskupenie, " +
       "sums = súčty za zobrazené riadky v jednotke tabuľky, maximized; na 'koľko je spolu' v otvorenom zozname odpovedaj z nich. bounds=true alebo cieľ (target_ids_or_refs, global_ids) = namiesto " +
       "stavu obálky v súradniciach IFC (m, Z hore): celý model a prvky (min, max, size, center, section_axis), " +
@@ -198,7 +199,11 @@ export async function execViewerQueryTool(
     const extra = { ...(lensState !== undefined ? { lens: lensState } : {}), ...(viewers ? { viewers } : {}), ...owner };
     // Lokálne BCF témy viewera (D-158) len ako súhrn; celé ich číta bcf_topic(action=from_viewer).
     const local = state ? compactLocalTopics(result) : undefined;
-    const out = result && typeof result === "object" ? { ...result, bcf_local: local, ...extra } : result;
+    // IDS otvorené v paneloch (D-162): bez XML, to číta ids_document(action=from_viewer).
+    const ids = state ? compactIdsLocal(result) : undefined;
+    const { ids_local: _ids, ...resultRest } = (result && typeof result === "object" ? result : {}) as Record<string, unknown>;
+    void _ids;
+    const out = result && typeof result === "object" ? { ...resultRest, bcf_local: local, ...(ids ? { ids_local: ids } : {}), ...extra } : result;
     return { text: JSON.stringify(out), isError: false };
   } catch (err) {
     if (err instanceof ViewInputError) return { text: err.message, isError: true };

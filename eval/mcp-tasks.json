@@ -363,6 +363,26 @@
       "notes": "D-162: nesplnené prvky z v_ids_latest (ids_code = EVAL-STENY) -> style_in_3d colorize; po I1."
     },
     {
+      "id": "I3-ids-otvor-validacia-spec",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Otvor IDS EVAL-STENY v paneli Data validation a spusti kontrolu len špecifikácie pre steny. Koľko stien nevyhovuje?",
+      "max_calls": 3,
+      "budget_s": 30,
+      "expect": { "tools_called": ["ids_document", "get_viewer_state"], "viewer_state": "panel validation otvorený, ids_local.validation.results s jednou špecifikáciou; steny ofarbené zeleno a červeno panelom" },
+      "notes": "D-162 host PR2: ids_document(open, target=validation, spec, run=true), potom get_viewer_state (ids_local.validation.results.specs[].failed). Počet nevyhovujúcich berie z výsledku panela, nie z odhadu. Po I1."
+    },
+    {
+      "id": "I4-ids-uloz-z-viewera",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Otvor IDS EVAL-STENY v IDS Studiu. Keď ho upravím, ulož moju verziu a povedz, čo sa oproti predošlej zmenilo.",
+      "max_calls": 4,
+      "budget_s": 40,
+      "expect": { "tools_called": ["ids_document"], "answer_matches": ["verzi"] },
+      "notes": "D-162 host PR2: ids_document(open, target=studio), po ručnej úprave ids_document(from_viewer) a ids_document(diff). Vyžaduje živého používateľa, ktorý IDS v Studiu zmení; bez zmeny má odpovedať, že nič nové nie je."
+    },
+    {
       "id": "K1-kolizie-vzt-nosne",
       "category": "data",
       "viewer": false,

@@ -205,12 +205,12 @@ describe("ids_document (D-162)", () => {
     expect(store.docs).toHaveLength(0);
   });
 
-  it("open a from_viewer sú zatiaľ stub s jasnou správou", async () => {
+  it("open a from_viewer bez živého viewera povedia, že nie je nastavený", async () => {
     const { run } = setup();
     for (const action of ["open", "from_viewer"]) {
       const r = await run({ action, ids: "X" });
       expect(r.isError).toBe(true);
-      expect(r.text).toContain("host PR2");
+      expect(r.text).toContain("LIVE_CHANNEL");
     }
   });
 

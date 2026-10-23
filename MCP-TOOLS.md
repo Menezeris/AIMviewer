@@ -90,7 +90,7 @@ Zdroj: GitHub issues + session. Definície: lib/feedback/tools.ts. Len MCP.
 Zdroj: DB (ids_documents, verzie s XML) + @ifc-lite/mcp (ids_*). Definície: lib/ids/tool-defs.ts, lib/ids/tools.ts. Len MCP.
 
 - **`ids_document`** (D-162, zápis) - IDS DOKUMENTY v AIM (D-162): požiadavky na model (IDS 1.0), ktoré Claude tvorí, upravuje a ukladá s verziami.
-  Parametre: `action*=list|get|create|apply_ops|versions|diff|export|open|from_viewer`, `ids`, `version`, `include_xml`, `code`, `title`, `xml`, `derived_from`, `derived_from_version`, `ops`, `base_version`, `note`, `from_version`, `to_version`, `author`
+  Parametre: `action*=list|get|create|apply_ops|versions|diff|export|open|from_viewer`, `ids`, `version`, `include_xml`, `code`, `title`, `xml`, `derived_from`, `derived_from_version`, `ops`, `target=studio|validation`, `spec`, `run`, `base_version`, `note`, `from_version`, `to_version`, `author`
 
 ## IFC motor (9)
 
