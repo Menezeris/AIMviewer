@@ -4,7 +4,8 @@ import { EntityNode } from "@ifc-lite/query";
 import { getIfcModels } from "../data/ifc-models";
 
 import { joinToAim } from "./join";
-import { ifcBox, meshModel, type Box, type MeshElement } from "./measure";
+import { ifcBox, meshModel, type Box, type MeshElement, type Vec3 } from "./measure";
+import { WALK_HEIGHT_M, routeLine } from "./route-line";
 import { openEngineSession, type EngineModel } from "./session";
 import { ENGINE_VERSION, IFC_GUID_RE, InputError, guidIndex, modelsFor, str, type EngineDeps } from "./tools";
 
@@ -56,6 +57,10 @@ export interface NavStair {
   top: string;
   center: Pt;
   length: number;
+  /** Ramená (IfcStairFlight) na kreslenie čiary (D-137); prázdne = celé schodisko. */
+  flights: string[];
+  /** Prvky schodiska s geometriou (schodisko a jeho časti). */
+  parts: string[];
 }
 
 export interface NavData {
@@ -77,6 +82,8 @@ export interface Step {
   segment_m?: number;
   storey?: string | null;
   storey_to?: string | null;
+  /** Schodisko smerom hore (len pre čiaru trasy, D-137; do výstupu nejde). */
+  up?: boolean;
 }
 
 export interface RouteResult {
@@ -209,7 +216,8 @@ export function navDataFromModel(store: IfcDataStore, meshes: Map<string, MeshEl
       max: [0, 1, 2].map((k) => Math.max(...boxes.map((b) => b.max[k]))) as Box["max"],
     };
     // Dĺžka = ramená (priemet dlhšej strany a prevýšenie); bez ramien celé schodisko.
-    const flights = parts.filter((p) => /^IFCSTAIRFLIGHT$/i.test(p.type)).map((p) => meshes.get(p.globalId)).filter((e): e is MeshElement => !!e);
+    const flightIds = parts.filter((p) => /^IFCSTAIRFLIGHT$/i.test(p.type) && meshes.has(p.globalId)).map((p) => p.globalId);
+    const flights = flightIds.map((g) => meshes.get(g)!);
     const runOf = (b: Box) => Math.hypot(Math.max(b.max[0] - b.min[0], b.max[1] - b.min[1]), b.max[2] - b.min[2]);
     const length = flights.length > 0 ? flights.reduce((acc, f) => acc + runOf(ifcBox(f.bounds)), 0) : runOf(box);
     const storey = node.storey()?.name ?? null;
@@ -231,7 +239,8 @@ export function navDataFromModel(store: IfcDataStore, meshes: Map<string, MeshEl
     };
     const bottom = best(storey ?? undefined);
     const top = best(above);
-    if (bottom && top) stairs.push({ globalId: gid, name: node.name || null, bottom, top, center: at, length });
+    const withMesh = [gid, ...parts.map((p) => p.globalId)].filter((g): g is string => !!g && meshes.has(g));
+    if (bottom && top) stairs.push({ globalId: gid, name: node.name || null, bottom, top, center: at, length, flights: flightIds, parts: withMesh });
   }
   // Východ = vonkajšie dvere na najnižšom podlaží, ktoré nejaké má (terén); vonkajšie dvere
   // vyššie (strecha, terasa) nie sú bezpečný cieľ únikovej cesty.
@@ -278,6 +287,7 @@ export function findRoute(nav: NavData, from: Endpoint, to: Endpoint | "exit"): 
       segment_m: st.length,
       storey: nav.spaces.get(dir === "up" ? st.bottom : st.top)?.storey ?? null,
       storey_to: nav.spaces.get(dir === "up" ? st.top : st.bottom)?.storey ?? null,
+      up: dir === "up",
     });
     stairEdges.set(lo, [{ to: hi, cost: st.length, step: step("up") }]);
     stairEdges.set(hi, [{ to: lo, cost: st.length, step: step("down") }]);
@@ -384,7 +394,8 @@ function endpointOf(nav: NavData, gid: string, e: MeshElement | undefined, label
   throw new InputError(`${label} neleží v žiadnej miestnosti (IfcSpace) modelu.`);
 }
 
-export async function ifcRoute(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
+/** `line` = zberač bodov čiary pre živý viewer (show=true, D-137); príkaz poskladá `route-line`. */
+export async function ifcRoute(input: Record<string, unknown>, deps: EngineDeps, line?: Vec3[]): Promise<string> {
   const route = str(input.route) as Route;
   if (!(ROUTES as readonly string[]).includes(route)) throw new InputError("route: shortest | escape.");
   const a = str(input.a);
@@ -422,6 +433,7 @@ export async function ifcRoute(input: Record<string, unknown>, deps: EngineDeps)
 
   const from = endpointOf(nav, guidFor(a)!, meshes.get(guidFor(a)!), a);
   let results: RouteResult[];
+  let to: Endpoint | null = null;
   if (route === "escape") {
     results = exitsByLength(nav, from, 3);
     if (results.length === 0) {
@@ -433,12 +445,13 @@ export async function ifcRoute(input: Record<string, unknown>, deps: EngineDeps)
       );
     }
   } else {
-    const to = endpointOf(nav, guidFor(b)!, meshes.get(guidFor(b)!), b);
+    to = endpointOf(nav, guidFor(b)!, meshes.get(guidFor(b)!), b);
     const r = findRoute(nav, from, to);
     if (!r) throw new InputError(`Medzi ${a} a ${b} nevedie cesta cez dvere a schodiská v grafe modelu ${model.id}.`);
     results = [r];
   }
   const [best, ...others] = results;
+  if (line) line.push(...routeLine(nav, meshes, from, best, to));
 
   const meta = (gid: string) => {
     const s = nav.spaces.get(gid);
@@ -500,6 +513,17 @@ export async function ifcRoute(input: Record<string, unknown>, deps: EngineDeps)
       ...(nav.revolving.length > 0 ? { revolving_doors_not_exits: nav.revolving.map((g) => nav.doors.get(g)?.name ?? g) } : {}),
     },
     show_in_3d,
+    ...(line
+      ? {
+          line: {
+            shown: line.length >= 2,
+            points: line.length,
+            height_m: WALK_HEIGHT_M,
+            color: "červená",
+            note: "Čiara vo vieweri 1,6 m nad podlahou, krytinou a stupňami schodiska, stredom dverí; zmaže ju reset farieb.",
+          },
+        }
+      : {}),
     note:
       "length_m je DOLNÝ ODHAD skutočnej pochôdznej dĺžky: priamky v pôdoryse medzi dverami cez miestnosti " +
       "(štart a cieľ v strede prvku), schodisko = dĺžka ramien; nábytok, tvar miestnosti, šírku priechodu ani " +

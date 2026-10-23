@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { opToBridgeMessage, panelsOp, parseOps, selectOp } from "../viewer-ops";
+import { opToBridgeMessage, panelScrollOp, panelZoomOp, panelsOp, parseOps, selectOp } from "../viewer-ops";
 
 import { lookupProperty, selectPanelInput } from "./select-panel";
 
@@ -68,6 +68,23 @@ describe("select_in_3d s panelom vlastností (D-113)", () => {
   });
 });
 
+describe("viacnásobný výber (#217)", () => {
+  const H = "1abcdefghijklmnopqrstu";
+
+  it("select nesie všetky GUIDy do mosta, prvý ostáva guid", () => {
+    const raw = selectOp([G, H, G]);
+    expect(raw).toBe(`select::${G}.${H}.${G}`);
+    expect(parseOps(raw).map(opToBridgeMessage)).toEqual([{ type: "SELECT", guid: G, guids: [G, H] }]);
+  });
+
+  it("panel ide s viacnásobným výberom a jeden prvok ostáva bez guids", () => {
+    const panel = { section: "quantities" as const };
+    expect(parseOps(selectOp([G, H], panel)).map(opToBridgeMessage)).toEqual([{ type: "SELECT", guid: G, guids: [G, H], panel }]);
+    expect(selectOp([G])).toBe(`select::${G}`);
+    expect(parseOps(selectOp([G])).map(opToBridgeMessage)).toEqual([{ type: "SELECT", guid: G }]);
+  });
+});
+
 describe("panely z chatu (D-127)", () => {
   it("op panels -> SET_PANELS, all len close, neplatné sa zahodí", () => {
     const raw = panelsOp({ all: "close", properties: "open" });
@@ -76,10 +93,44 @@ describe("panely z chatu (D-127)", () => {
     expect(parseOps("panels:~lens=toggle~model_tree=close:").map(opToBridgeMessage)).toEqual([
       { type: "SET_PANELS", panels: { lens: "toggle", model_tree: "close" } },
     ]);
-    expect(parseOps("panels:~all=open~legend=close~lens=hide:")).toEqual([]);
+    expect(parseOps("panels:~all=open~lens=hide:")).toEqual([]);
+    expect(parseOps("panels:~all=open~bcf=close~bad!=open:").map(opToBridgeMessage)).toEqual([{ type: "SET_PANELS", panels: { bcf: "close" } }]);
   });
 
   it("2D výkres rezu (D-136): drawing ide na most ako ostatné panely", () => {
     expect(parseOps(panelsOp({ drawing: "open" })).map(opToBridgeMessage)).toEqual([{ type: "SET_PANELS", panels: { drawing: "open" } }]);
   });
 });
+
+describe("posun panela vlastností (D-146)", () => {
+  it("op panel_scroll -> SCROLL_PANEL, neznámy smer sa zahodí", () => {
+    expect(panelScrollOp("down")).toBe("panel_scroll:down:");
+    expect(parseOps("panel_scroll:top:").map(opToBridgeMessage)).toEqual([{ type: "SCROLL_PANEL", direction: "top" }]);
+    expect(parseOps("panel_scroll:left:")).toEqual([]);
+    expect(parseOps("panel_scroll::")).toEqual([]);
+  });
+});
+
+describe("posun a zoom obsahu panela, op a správa mosta (D-150)", () => {
+  it("panel_scroll s panelom, položkou a percentom -> SCROLL_PANEL; zlý tvar sa zahodí", () => {
+    expect(panelScrollOp({ panel: "bcf", item: "Dvere ~ D12; č=3" })).toBe("panel_scroll:-~p=bcf~i=Dvere%20%7E%20D12%3B%20%C4%8D%3D3:");
+    const ops = parseOps(panelScrollOp({ panel: "bcf", item: "Dvere ~ D12; č=3" }));
+    expect(ops.map(opToBridgeMessage)).toEqual([{ type: "SCROLL_PANEL", panel: "bcf", item: "Dvere ~ D12; č=3" }]);
+    expect(parseOps(panelScrollOp({ panel: "lists", percent: 75 })).map(opToBridgeMessage)).toEqual([{ type: "SCROLL_PANEL", panel: "lists", percent: 75 }]);
+    expect(parseOps("panel_scroll:-~pct=120:")).toEqual([]);
+    expect(parseOps("panel_scroll:-~pct=abc:")).toEqual([]);
+    expect(parseOps("panel_scroll:-:")).toEqual([]);
+    expect(parseOps("panel_scroll:down~pct=5:")).toEqual([]);
+    expect(parseOps("panel_scroll:-~i=%E0%A4%A:")).toEqual([]);
+    expect(parseOps("panel_scroll:down~p=a%20b:")).toEqual([]);
+  });
+
+  it("panel_zoom -> ZOOM_PANEL, číslo len v rozsahu", () => {
+    expect(panelZoomOp("in", "bcf")).toBe("panel_zoom:in~p=bcf:");
+    expect(parseOps("panel_zoom:in~p=bcf:").map(opToBridgeMessage)).toEqual([{ type: "ZOOM_PANEL", zoom: "in", panel: "bcf" }]);
+    expect(parseOps("panel_zoom:1.5:").map(opToBridgeMessage)).toEqual([{ type: "ZOOM_PANEL", zoom: 1.5 }]);
+    expect(parseOps("panel_zoom:9:")).toEqual([]);
+    expect(parseOps("panel_zoom:big:")).toEqual([]);
+  });
+});
+

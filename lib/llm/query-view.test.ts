@@ -121,6 +121,29 @@ describe("query_view stránkovanie (D-126, #181)", () => {
     expect(count.json).toEqual({ count: 21 });
   });
 
+  it("D-156: v_space_elements nesie relation=boundary a rel_space_boundary sa dá čítať aj cez related", async () => {
+    const door = db.tables.objects.find((o) => o.object_ref === "D-0")!.id as string;
+    db.tables.v_space_elements = [
+      { space_ref: "1.01", element_ref: "D-0", element_ifc_type: "IfcDoor", relation: "boundary", role: "physical" },
+      { space_ref: "1.01", element_ref: "D-1", element_ifc_type: "IfcDoor", relation: "contained", role: null },
+    ];
+    db.tables.rel_space_boundary = [{ id: uuid(7000), from_id: door, to_id: SPACE, role: "physical", valid_until: null }];
+    const view = await run({
+      relation: "v_space_elements",
+      filters: [{ column: "space_ref", op: "eq", value: "1.01" }],
+      select: ["element_ref", "relation", "role"],
+    });
+    expect(view.json.rows).toContainEqual({ element_ref: "D-0", relation: "boundary", role: "physical" });
+    const rel = await run({ relation: "rel_space_boundary", select: ["from_id", "role"] });
+    expect(rel.json.rows).toEqual([{ from_id: door, role: "physical" }]);
+    const related = await run({
+      relation: "objects",
+      related: { relation: "rel_space_boundary", node: "2.01" },
+      select: ["object_ref"],
+    });
+    expect(related.json.rows.map((r: { object_ref: string }) => r.object_ref)).toEqual(["D-0"]);
+  });
+
   it("nepodporovaný vstup je chyba, nie ticho ignorovaný", async () => {
     expect((await run({ relation: "objects", offset: -1 })).isError).toBe(true);
     expect((await run({ relation: "objects", order: { column: "a;drop" } })).isError).toBe(true);

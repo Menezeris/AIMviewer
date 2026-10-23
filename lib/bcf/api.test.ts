@@ -11,6 +11,7 @@ const ctx = (over: Partial<BcfApiContext> = {}): BcfApiContext => ({
   user: "samuel",
   authenticated: true,
   writeEnabled: true,
+  origin: "https://aim.example",
   ...over,
 });
 

@@ -1,6 +1,7 @@
 import { getIfcModels, modelKey } from "../data/ifc-models";
 import type { AskAction } from "../llm/actions";
 import type { MeasureSegment } from "../viewer-measure";
+import type { Vec3 } from "./measure";
 
 import { cacheSnapshot, getStore, type EngineModelSource } from "./cache";
 import { idsSources, loadIds } from "./ids-sources";
@@ -740,8 +741,20 @@ export async function execEngineTool(
         content = await ifcRelations(input, deps);
         break;
       case "ifc_measure": {
-        if (input.route !== undefined || input.qto === true) {
-          content = input.route !== undefined ? await (await import("./route")).ifcRoute(input, deps) : await ifcQto(input, deps);
+        if (input.clear === true) {
+          // D-152: kóty a čiara trasy od Claude preč, merania používateľa ostanú.
+          const { clearDimensionsAction } = await import("./measure-dimension");
+          return { content: JSON.stringify({ view: "kóty a trasa od Claude zmazané (merania používateľa ostali)" }), isError: false, actions: [clearDimensionsAction()] };
+        }
+        if (input.route !== undefined) {
+          // show=true: čiara trasy pre viewer (D-137), príkaz poskladá route-line.
+          const line: Vec3[] | undefined = input.show === true ? [] : undefined;
+          content = await (await import("./route")).ifcRoute(input, deps, line);
+          if (line && line.length >= 2) return { content, isError: false, actions: [(await import("./route-line")).routeLineAction(line)] };
+          break;
+        }
+        if (input.qto === true) {
+          content = await ifcQto(input, deps);
           break;
         }
         // show=true: kóty pre viewer (D-124) zbiera meranie, príkaz poskladá measure-dimension.

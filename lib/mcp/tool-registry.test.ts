@@ -9,6 +9,7 @@ vi.mock("server-only", () => ({}));
 import { mcpInstructions } from "../llm/system-prompt";
 
 import { definitionChars, firstSentence, inventoryMarkdown } from "./tool-inventory";
+import { mcpServerInstructions } from "./tool-loading";
 import { mcpToolDefinitions, mcpToolGroups } from "./tool-list";
 import registry from "./tool-registry.json";
 
@@ -62,7 +63,7 @@ describe("register toolov MCP (D-114)", () => {
 
   it("MCP-TOOLS.md zodpovedá definíciám toolov", async () => {
     const chars = definitionChars(tools);
-    const instructions = mcpInstructions("https://example.test", true).length;
+    const instructions = mcpServerInstructions("https://example.test", true, groups).length;
     // Informatívne (D-114): koľko klient načíta pred prvou otázkou; nepadá, len sa vypíše.
     console.info(`MCP: ${tools.length} toolov, definície ${chars} znakov, inštrukcie ${instructions} znakov`);
     await expect(inventoryMarkdown(groups, REGISTRY)).toMatchFileSnapshot("../../MCP-TOOLS.md");

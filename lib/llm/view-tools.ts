@@ -3,7 +3,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { resolveTargetsToGuids } from "@/lib/engine/aim-lookup";
 import { normalizeStoreyLabel } from "@/lib/engine/storey";
-import { CAMERA_PRESETS, PANEL_ACTIONS, VIEWER_PANELS } from "@/lib/viewer-ops";
+import { CAMERA_PRESETS, PANEL_ACTIONS, PANEL_ITEM_MAX, PANEL_SCROLLS, PANEL_ZOOM_RANGE, PANEL_ZOOM_STEPS } from "@/lib/viewer-ops";
 import { CAMERA_AREAS, CAMERA_FITS, CAMERA_RANGES, DEFAULT_MARGIN_PERCENT } from "@/lib/viewer-camera";
 
 import type { AskAction } from "./actions";
@@ -11,7 +11,7 @@ import type { ToolDefinition } from "./provider";
 import { planCamera } from "./camera-plan";
 import { HATCH_PATTERNS, HATCH_RANGES, SECTION_CAPS, planSectionCap } from "../viewer-section-cap";
 import { DOMAIN_IFC_TYPES } from "./ifc-selector";
-import { ViewInputError, planPanels, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
+import { ViewInputError, planPanelScroll, planPanelZoom, planPanels, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
 import { SECTION_SHIFT_RANGE } from "../views/plan";
 import { hasTabParams, planViewTabs } from "./view-tabs";
 
@@ -43,7 +43,7 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "UI AKCIA: rez modelom v 3D. Vodorovný rez nad podlažím = floor + offset_m (výška nad úrovňou " +
       "podlažia v m, default 1,2 = pôdorysný rez; záporná = pod úrovňou). Pod podhľadom podlažia = " +
       "floor + relative_to=ceiling + offset_m (-0.05 = 5 cm pod podhľadom miestností podlažia; server " +
-      "vezme ich FinishCeilingHeight). Rez cez prvok (aj kódom ako SD04.0001) = " +
+      "vezme výšku z geometrie podhľadov, Qto len ako zálohu; zdroj a nezhodu uvedie v ceiling). Rez cez prvok (aj kódom ako SD04.0001) = " +
       "target_ids_or_refs alebo global_ids + fit: along (zvislo pozdĺž dlhšej strany prvku, napr. po " +
       "dĺžke ramena schodiska), across (zvislo naprieč), center (stredom prvku na zadanej orientation). " +
       "Presná poloha = orientation + coordinate_m v súradniciach IFC (vertical_x reže na IFC X, " +
@@ -66,7 +66,7 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         relative_to: {
           type: "string",
           enum: ["floor", "ceiling"],
-          description: "S floor: ceiling = offset_m sa ráta od podhľadu miestností podlažia (Qto FinishCeilingHeight, server ho zistí sám)",
+          description: "S floor: ceiling = offset_m sa ráta od podhľadu miestností podlažia (výška z geometrie IfcCovering CEILING podlažia, záloha Qto FinishCeilingHeight; server ju zistí sám)",
         },
         position_percent: {
           type: "number",
@@ -181,13 +181,18 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "osi ('o meter nižšie' = -1). Zoznam: get_viewer_state(saved_views=true). ZÁLOŽKY: tab=menovka prepne " +
       "('späť na 3D' = tab='3D'), beside=menovka dá záložku vedľa aktívnej (dokument vedľa 3D alebo pohľadu; none " +
       "zruší), close_tab=menovka alebo all zavrie. Otvorené záložky (tabs) vráti stav po príkaze aj get_viewer_state. " +
-      "Dokument do záložky = open_drawing(target=tab). PANELY: panels otvorí, zavrie alebo " +
-      "prepne panely (lens, properties, underlays, documents, lists, model_tree, drawing; all=close = čistý pohľad, " +
-      "napr. {all: 'close', properties: 'open'} = všetko okrem vlastností), aj bez mode; výsledok vráti stav " +
-      "všetkých panelov (open, where left/right/bottom/floating, size). drawing = 2D výkres aktuálneho rezu " +
-      "generovaný z modelu (bez podkladu, D-136) v spodnom páse pod 3D: pôdorys podlažia vedľa 3D bez " +
-      "kalibrovaného podkladu = set_section(action=set, floor) + set_view_mode(panels={drawing: 'open'}); 3D ostane " +
-      "voľné, ale rezané na tom podlaží. Dlaždice s viacerými 3D pohľadmi viewer nemá (jeden 3D canvas).",
+      "Dokument do záložky = open_drawing(target=tab). PANELY: panels otvorí, zavrie alebo prepne ľubovoľný " +
+      "panel UI (napr. lens, properties, bcf = BCF topics Alt+3, lists, model_tree, underlays, documents, compare, " +
+      "validation, clash; all=close = čistý pohľad, {all: 'close', properties: 'open'} = všetko okrem vlastností), " +
+      "aj bez mode. drawing = 2D výkres aktuálneho rezu z modelu (bez podkladu, D-136) v spodnom páse pod 3D: " +
+      "pôdorys podlažia pri 3D bez kalibrovaného podkladu = set_section(action=set, floor) + panels={drawing: 'open'} " +
+      "(3D ostane voľné, ale rezané na podlaží; dlaždice s viacerými 3D pohľadmi viewer nemá). Úplný zoznam panelov s klávesovými skratkami, kde sú a či sú otvorené vráti get_viewer_state " +
+      "(panels), rovnaký stav aj výsledok po príkaze; neznámy panel viewer nahlási s platnými menami. " +
+      "POSUN OBSAHU PANELA: panel_scroll=down|up (o 80 % výšky) | top | bottom na pokyn 'posuň dole', 'hore', " +
+      "'na začiatok' (panel vlastností), alebo {panel, to | item | percent}: item = text položky ('Dvere D12', " +
+      "'NetVolume'; hľadá sa v rozbalenom obsahu), percent = poloha 0 až 100; stav posunu vráti panel_view. " +
+      "ZOOM PANELA: panel_zoom={panel?, zoom: in|out|reset|číslo} ('zväčši panel', 'späť na normál'). Obe aj bez " +
+      "mode; s panels ho najprv otvorí. Výber prvku a riadok vlastnosti ide cez show_in_3d (highlight).",
     inputSchema: {
       type: "object",
       properties: {
@@ -201,10 +206,37 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         close_tab: { type: "string", description: "Zavrieť záložku (menovka) alebo 'all' (ostane 3D)" },
         panels: {
           type: "object",
-          description: "Panely: {panel: open|close|toggle}; all len close",
-          properties: Object.fromEntries(
-            [...VIEWER_PANELS, "all"].map((k) => [k, { type: "string", enum: k === "all" ? ["close"] : [...PANEL_ACTIONS] }]),
-          ),
+          description: "Panely: {panel: open|close|toggle}; panel = lens, properties, bcf, lists, model_tree... (get_viewer_state, panels); all len close",
+          additionalProperties: { type: "string", enum: [...PANEL_ACTIONS] },
+          properties: { all: { type: "string", enum: ["close"] } },
+        },
+        panel_scroll: {
+          description:
+            "Posun obsahu panela: reťazec down/up (o stranu), top/bottom (panel vlastností), alebo objekt " +
+            "{panel?, to: up|down|top|bottom} | {panel?, item: text položky} | {panel?, percent: 0 až 100}",
+          anyOf: [
+            { type: "string", enum: [...PANEL_SCROLLS] },
+            {
+              type: "object",
+              properties: {
+                panel: { type: "string", description: "Meno panela (get_viewer_state, panels); bez neho panel vlastností" },
+                to: { type: "string", enum: [...PANEL_SCROLLS] },
+                item: { type: "string", maxLength: PANEL_ITEM_MAX, description: "Text položky, na ktorú sa panel posunie" },
+                percent: { type: "number", minimum: 0, maximum: 100 },
+              },
+            },
+          ],
+        },
+        panel_zoom: {
+          type: "object",
+          description: `Zoom obsahu panela: zoom = ${PANEL_ZOOM_STEPS.join(" | ")} alebo číslo ${PANEL_ZOOM_RANGE.min} až ${PANEL_ZOOM_RANGE.max}`,
+          properties: {
+            panel: { type: "string", description: "Meno panela (get_viewer_state, panels); bez neho panel vlastností" },
+            zoom: {
+              anyOf: [{ type: "string", enum: [...PANEL_ZOOM_STEPS] }, { type: "number", minimum: PANEL_ZOOM_RANGE.min, maximum: PANEL_ZOOM_RANGE.max }],
+            },
+          },
+          required: ["zoom"],
         },
         section_offset_m: {
           type: "number",
@@ -298,10 +330,15 @@ export async function execViewTool(
       if (!floor) throw new ViewInputError("relative_to=ceiling potrebuje floor (podlažie, ktorého podhľad).");
       const { storeyCeiling } = await import("@/lib/engine/ceiling");
       const ceiling = await storeyCeiling(floor.label);
-      if (!ceiling) throw new ViewInputError(`Miestnosti podlažia ${floor.label} nemajú Qto FinishCeilingHeight - zadaj offset_m priamo.`);
+      if (!ceiling) throw new ViewInputError(`Podlažie ${floor.label} nemá IfcCovering CEILING ani miestnosti s Qto FinishCeilingHeight - zadaj offset_m priamo.`);
       const offset = typeof input.offset_m === "number" && Number.isFinite(input.offset_m) ? input.offset_m : 0;
-      plan = planSection({ ...input, offset_m: Math.round((ceiling.height_m + offset) * 1000) / 1000 }, floor, targets);
-      plan.result = { ...plan.result, ceiling: { ...ceiling, offset_from_ceiling_m: offset } };
+      // D-140: záporný offset = pod podhľadom (od jeho spodku), inak nad ním (od horného okraja).
+      const reference = offset < 0 ? ceiling.bottom_m : ceiling.top_m;
+      plan = planSection({ ...input, offset_m: Math.round((reference + offset) * 1000) / 1000 }, floor, targets);
+      plan.result = {
+        ...plan.result,
+        ceiling: { ...ceiling, reference: offset < 0 ? "bottom" : "top", reference_m: reference, offset_from_ceiling_m: offset },
+      };
     } else {
       plan = planSection(input, floor, targets);
     }
@@ -314,7 +351,7 @@ export async function execViewTool(
     plan = await restoreSavedView({ ...input, saved_view: savedViewName(input) }, defaultSavedViewDeps());
   } else if (name === "set_view_mode") {
     // D-127: samotné panely nepotrebujú režim.
-    const panelsOnly = input.panels !== undefined && input.mode === undefined && input.reset !== true;
+    const panelsOnly = (input.panels !== undefined || input.panel_scroll !== undefined || input.panel_zoom !== undefined) && input.mode === undefined && input.reset !== true;
     plan = panelsOnly ? { ops: [], label: "", result: { ok: true } } : planViewMode(input, input.reset === true ? null : await resolveFloor(input.floor));
   } else {
     throw new Error(`Neznámy tool pohľadu '${name}'.`);
@@ -327,6 +364,15 @@ export async function execViewTool(
       ops: [...plan.ops, panels.op],
       label: plan.label ? `${plan.label}, ${panels.label}` : panels.label,
       result: { ...plan.result, ...panels.result },
+    };
+  }
+  // Posun a zoom obsahu panela (D-146, D-150) idú po paneloch, aby sa najprv otvorili.
+  for (const step of name === "set_view_mode" ? [planPanelScroll(input), planPanelZoom(input)] : []) {
+    if (!step) continue;
+    plan = {
+      ops: [...plan.ops, step.op],
+      label: plan.label ? `${plan.label}, ${step.label}` : step.label,
+      result: { ...plan.result, ...step.result },
     };
   }
   push({
