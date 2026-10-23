@@ -1,5 +1,6 @@
 import "server-only";
 
+import { compactLocalTopics } from "@/lib/bcf/viewer-local";
 import { lookupGuids } from "@/lib/engine/aim-lookup";
 import type { ToolDefinition } from "@/lib/llm/provider";
 import { ViewInputError } from "@/lib/llm/view-plan";
@@ -196,7 +197,9 @@ export async function execViewerQueryTool(
     const viewers = viewersNote(outcome, lensOutcome);
     const owner = outcome.reply.owner === "other" ? { owner: { controlled_by: "other_chat", note: FOREIGN_OWNER_NOTE } } : {};
     const extra = { ...(lensState !== undefined ? { lens: lensState } : {}), ...(viewers ? { viewers } : {}), ...owner };
-    const out = result && typeof result === "object" ? { ...result, ...extra } : result;
+    // Lokálne BCF témy viewera (D-158) len ako súhrn; celé ich číta bcf_topic(action=from_viewer).
+    const local = state ? compactLocalTopics(result) : undefined;
+    const out = result && typeof result === "object" ? { ...result, bcf_local: local, ...extra } : result;
     return { text: JSON.stringify(out), isError: false };
   } catch (err) {
     if (err instanceof ViewInputError) return { text: err.message, isError: true };

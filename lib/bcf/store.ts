@@ -119,7 +119,8 @@ export interface DocumentInfo {
 }
 
 export interface BcfStore {
-  create(row: BcfTopicWrite & { title: string }): Promise<BcfTopicRow>;
+  /** `id` = guid témy z viewera (D-158), inak ho dá DB. */
+  create(row: BcfTopicWrite & { title: string; id?: string }): Promise<BcfTopicRow>;
   /** Téma podľa guid (uuid) alebo čísla; null = neexistuje. */
   get(ref: { id?: string; number?: number }): Promise<BcfTopicRow | null>;
   list(filter: TopicFilter): Promise<{ rows: BcfTopicRow[]; total: number }>;
