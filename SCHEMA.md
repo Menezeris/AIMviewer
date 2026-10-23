@@ -121,7 +121,7 @@ create table documents (        -- IfcDocumentInformation (D-014); .Name žije v
 --   referenced_document_id uuid → objects (IfcDocumentReference.ReferencedDocument;
 --   len pri object_type='document_reference', riadok nesie Location/Identification/
 --   Description odkazu, objects.name = Name, inak Description)
--- + D-158 (migrácia 20261023130000): file_sha256 text (sha256 súboru PDF, 64 hex; kotva
+-- + D-158 (migrácia 20261023140000): file_sha256 text (sha256 súboru PDF, 64 hex; kotva
 --   revízie a kľúč keše snímky výrezu; plní etl/pdf_text.py --from-db). Extenzia AIM, IFC
 --   ekvivalent nemá (IfcDocumentInformation nenesie hash súboru).
 
@@ -428,7 +428,7 @@ alter table document_pages add column blocks jsonb;  -- [{t, x, y, w, h}] v % st
 alter table document_pages add column lines jsonb;   -- {size: [W, H], segs: [[x1, y1, x2, y2, w]]} v bodoch strany, vľavo dole;
                                                      -- čiary od 0,99 pt, len vektorové výkresy, inak null
 
--- D-158 (migrácia 20261023130000): veľkosť zobrazenej strany (s rotáciou) pre RFC 8118 viewrect
+-- D-158 (migrácia 20261023140000): veľkosť zobrazenej strany (s rotáciou) pre RFC 8118 viewrect
 alter table document_pages add column page_size jsonb; -- [šírka, výška] v bodoch PDF
 ```
 
@@ -516,7 +516,7 @@ jsonb pole tvarov (zatiaľ NULL), `url` (cudzí odkaz z BCF importu), `descripti
 `(document_id, page)`. Prvky IFC témy ostávajú v `model_tasks.components`. BCF API url =
 `<origin>/drawing/<id>?page=N&region=x_y_w_h#page=N` (+ `&viewrect=l,t,w,h` v bodoch, keď je známe
 `document_pages.page_size`). Práva anon/authenticated nemá (2.12).
-Kroky 3 a 4 (migrácia 20261023130000): `document_sha256` = sha256 súboru dokumentu v čase založenia
+Kroky 3 a 4 (migrácia 20261023140000): `document_sha256` = sha256 súboru dokumentu v čase založenia
 odkazu (z `documents.file_sha256`); snímka výrezu sa kešuje v buckete `documents` pod
 `snapshots/<sha256>/<strana>-<x_y_w_h|full>.png` (render na požiadanie, nie tabuľka).
 
