@@ -1,11 +1,10 @@
 import { createHash } from "node:crypto";
 
 /**
- * Register IDS, ktoré smie motor overovať (D-084). IDS sa do repa nekopíruje
- * (D-081) - server ho stiahne z URL v env `IDS_SOURCES`, JSON
- * `{"<id>": "<https URL>"}` (napr. publikovaný súbor knižnice na pevnom
- * commite). Bez premennej register je prázdny a `ifc_ids_validate` to povie.
- * Odkiaľ má IDS presne prichádzať, je otvorená otázka D-084.
+ * Záložný register IDS (D-084). Od D-162 je zdrojom IDS pre server DB (`ids_documents`);
+ * `IDS_SOURCES` platí len pre kód, ktorý v DB nie je. IDS sa do repa nekopíruje (D-081) -
+ * server ho stiahne z URL v env `IDS_SOURCES`, JSON `{"<id>": "<https URL>"}`. Bez premennej
+ * je register prázdny.
  */
 
 export interface IdsSource {

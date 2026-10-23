@@ -4,6 +4,7 @@ import { SEARCH_ALL_TOOL } from "../engine/search-all";
 import { CALIBRATE_UNDERLAY_TOOL } from "../engine/underlay-tool-def";
 import { engineToolDefinitions } from "../engine/tool-defs";
 import { FEEDBACK_TOOL_DEFINITIONS } from "../feedback/tools";
+import { IDS_TOOL_DEFINITIONS } from "../ids/tool-defs";
 import { VIEWER_QUERY_TOOL_DEFINITIONS } from "../live/viewer-query-tools";
 import type { ToolDefinition } from "../llm/provider";
 import { withSearchAll } from "../llm/system-prompt";
@@ -76,6 +77,13 @@ export function mcpToolGroups({ engine }: ToolListOptions): ToolGroup[] {
       file: "lib/feedback/tools.ts",
       mcpOnly: true,
       tools: FEEDBACK_TOOL_DEFINITIONS,
+    },
+    {
+      group: "IDS dokumenty",
+      source: "DB (ids_documents, verzie s XML) + @ifc-lite/mcp (ids_*)",
+      file: "lib/ids/tool-defs.ts, lib/ids/tools.ts",
+      mcpOnly: true,
+      tools: IDS_TOOL_DEFINITIONS,
     },
   ];
   if (engine) {

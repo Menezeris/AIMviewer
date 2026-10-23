@@ -5,6 +5,8 @@ import type { Vec3 } from "./measure";
 
 import { cacheSnapshot, getStore, type EngineModelSource } from "./cache";
 import { idsSources, loadIds } from "./ids-sources";
+import { resultRows } from "../ids/runs";
+import type { IdsStore } from "../ids/types";
 import { execPassthroughTool } from "./passthrough";
 import { passthroughName } from "./passthrough-defs";
 import { joinToAim, type GuidLookup } from "./join";
@@ -50,6 +52,8 @@ export interface EngineDeps {
   fetchImpl?: typeof fetch;
   /** Revízie modelov z DB (D-109); bez nej `ifc_models` revíziu nevracia. */
   revisions?: RevisionSource;
+  /** IDS dokumenty z DB (D-162); bez nich `ifc_ids_validate` berie len `IDS_SOURCES`. */
+  ids?: IdsStore;
 }
 
 export interface EngineExecution {
@@ -544,27 +548,72 @@ interface IdsSpec {
   }>;
 }
 
-async function ifcIdsValidate(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
-  const modelId = requireModel(input);
+/** Strop riadkov jedného uloženého behu (zápis ide po dávkach, route má časový limit). */
+const MAX_SAVED_RESULTS = 50_000;
+
+interface ResolvedIds {
+  xml: string;
+  sha256: string;
+  ref: { id: string; sha256: string; origin?: string; version?: number };
+  /** Len IDS z DB: verzia, na ktorú sa viaže uložený beh. */
+  stored?: { versionId: string; code: string; title: string | null; idsVersion: string | null; source: string; version: number };
+}
+
+async function resolveIds(input: Record<string, unknown>, deps: EngineDeps): Promise<ResolvedIds> {
   const idsId = str(input.ids);
+  if (!idsId) throw new InputError("Chýba ids (kód IDS z ids_document action=list).");
+  const version = input.version === undefined ? undefined : clamp(input.version, 1, 1_000_000, 0) || undefined;
+  if (input.version !== undefined && version === undefined) throw new InputError("version: celé číslo od 1.");
+  const doc = deps.ids ? await deps.ids.byCode(idsId) : null;
+  if (doc && deps.ids) {
+    const row = await deps.ids.version(doc.id, version);
+    if (!row) throw new InputError(version === undefined ? `IDS '${idsId}' nemá žiadnu verziu.` : `IDS '${idsId}' nemá verziu ${version}.`);
+    return {
+      xml: row.xml,
+      sha256: row.sha256,
+      ref: { id: doc.code, sha256: row.sha256, origin: doc.origin, version: row.version },
+      stored: {
+        versionId: row.id,
+        code: doc.code,
+        title: doc.title,
+        idsVersion: row.ids_version,
+        source: `ids_document:${doc.code}@v${row.version}`,
+        version: row.version,
+      },
+    };
+  }
   const sources = idsSources(deps.env);
   const src = sources.find((s) => s.id === idsId);
   if (!src) {
+    const codes = deps.ids ? (await deps.ids.listDocuments()).map((d) => d.code) : [];
+    const known = [...codes, ...sources.map((s) => s.id)];
     throw new InputError(
-      sources.length === 0
-        ? "Register IDS je prázdny - kontrola na serveri zatiaľ nie je zapnutá (D-084, IDS_SOURCES). IDS skontroluj v IDS paneli viewera; uložený beh je v v_ids_summary / v_ids_latest."
-        : `IDS '${idsId}' nie je v registri: ${sources.map((s) => s.id).join(", ")}.`,
+      known.length === 0
+        ? `IDS '${idsId}' neexistuje: v AIM nie je žiadne IDS (ids_document action=create) a záložný register IDS_SOURCES je prázdny.`
+        : `IDS '${idsId}' neexistuje. Dostupné: ${known.join(", ")}.`,
     );
   }
-  const perSpec = clamp(input.failures_per_spec, 1, 100, 20);
+  if (version !== undefined) throw new InputError("version platí len pre IDS uložené v AIM (ids_document), nie pre IDS_SOURCES.");
+  const loaded = await loadIds(src, deps.fetchImpl);
+  return { xml: loaded.xml, sha256: loaded.sha256, ref: { id: src.id, sha256: loaded.sha256 } };
+}
+
+async function ifcIdsValidate(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
+  const modelId = requireModel(input);
+  const save = input.save === true;
   const specFilter = str(input.spec).toLowerCase();
-  const ids = await loadIds(src, deps.fetchImpl);
+  const resolved = await resolveIds(input, deps);
+  if (save && !resolved.stored) throw new InputError("save ukladá beh len pre IDS v AIM (ids_document action=create); IDS z IDS_SOURCES sa neukladá.");
+  if (save && !deps.ids) throw new InputError("save nie je dostupné: chýba úložisko IDS.");
+  if (save && specFilter) throw new InputError("save ukladá celý beh; spec nepoužívaj (čiastočný beh by zavádzal v v_ids_latest).");
+  const perSpec = clamp(input.failures_per_spec, 1, 100, 20);
   const { models, revision } = await modelsFor([modelId], deps);
   const session = await openEngineSession(models);
   const res = structured<{ summary: Record<string, unknown>; report: { specificationResults?: IdsSpec[] } }>(
-    await session.call("ids_validate", { model_id: modelId, ids_xml: ids.xml }),
+    await session.call("ids_validate", { model_id: modelId, ids_xml: resolved.xml }),
   );
-  const specs = (res.report.specificationResults ?? []).filter((s) => {
+  const allSpecs = res.report.specificationResults ?? [];
+  const specs = allSpecs.filter((s) => {
     if (!specFilter) return true;
     const sp = s.specification ?? {};
     return [sp.identifier, sp.id, sp.name].some((v) => v && v.toLowerCase() === specFilter);
@@ -593,13 +642,45 @@ async function ifcIdsValidate(input: Record<string, unknown>, deps: EngineDeps):
       ...(joined.items.length > 0 ? { show_in_3d: joined.show_in_3d } : {}),
     });
   }
+
+  let saved: { run_id: string; results: number; results_failed: number } | undefined;
+  if (save && resolved.stored && deps.ids) {
+    const guids = [...new Set(allSpecs.flatMap((s) => (s.entityResults ?? []).map((e) => e.globalId ?? "")).filter(Boolean))];
+    const refs = guids.length > 0 ? await deps.lookup(guids) : new Map();
+    const rows = resultRows(allSpecs, (g) => refs.get(g)?.object_id ?? null);
+    if (rows.length > MAX_SAVED_RESULTS) throw new InputError(`Beh má ${rows.length} výsledkov (strop ${MAX_SAVED_RESULTS}); neuložil sa.`);
+    const failed = rows.filter((r) => r.status === "fail").length;
+    const model = models.find((m) => m.id === modelId);
+    const runId = await deps.ids.saveRun(
+      {
+        ids_title: resolved.stored.title ?? resolved.stored.code,
+        ids_version: resolved.stored.idsVersion,
+        ids_sha256: resolved.sha256,
+        ids_source: resolved.stored.source,
+        ids_version_id: resolved.stored.versionId,
+        model_label: modelId,
+        model_file: model?.name ?? null,
+        specs_total: allSpecs.length,
+        specs_passed: allSpecs.filter((s) => s.status === "pass").length,
+        results_total: rows.length,
+        results_failed: failed,
+        engine: "ifc-lite",
+        trigger: "chat",
+      },
+      rows,
+    );
+    saved = { run_id: runId, results: rows.length, results_failed: failed };
+  }
   return envelope({
     model: modelId,
     revision: revision[modelId],
-    ids: { id: src.id, sha256: ids.sha256 },
+    ids: resolved.ref,
     summary: res.summary,
     specifications: out,
-    note: "Kontrola ad hoc (@ifc-lite/ids), nič sa neuložilo. Záväzný zaznamenaný beh = ETL ifctester (v_ids_summary).",
+    ...(saved ? { saved } : {}),
+    note: saved
+      ? "Beh je uložený ako záznam kontroly (v_ids_summary / v_ids_latest, engine=ifc-lite), nie je záväzný (binding=false)."
+      : "Kontrola ad hoc (@ifc-lite/ids), nič sa neuložilo (save=true uloží beh). Žiadny beh nie je záväzný.",
   });
 }
 

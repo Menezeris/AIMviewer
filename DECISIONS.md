@@ -7428,7 +7428,7 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 
 ### D-162 - IDS z chatu a z viewera: tvorba, úprava, verzie v DB, validácia a upstream IDS modul (#285)
 
-**Dátum:** 2026-10-23 · **Stav:** schválené (Samuel cez orchestrátora 23. 10., odpovede na 5 otázok nižšie), implementácia nezačatá · **Issue:** #285 · **Nadväzuje na:** D-052, D-053, D-081 (behy ifctesteru v `ids_runs`), D-084 a jeho dodatok 18. 10. (`ifc_ids_validate`, zdroj IDS pre server), D-087, D-098, D-114, D-158 (vzor "modul viewera + chat + DB"), D-159, D-161 (#188, pohľady z panela cez route za env bránou)
+**Dátum:** 2026-10-23 · **Stav:** schválené (Samuel cez orchestrátora 23. 10., odpovede na 5 otázok nižšie), host PR1 hotový (PR #285 vetva `claude/d162-host-pr1`, migrácia ešte nespustená), zvyšok nezačatý · **Issue:** #285 · **Nadväzuje na:** D-052, D-053, D-081 (behy ifctesteru v `ids_runs`), D-084 a jeho dodatok 18. 10. (`ifc_ids_validate`, zdroj IDS pre server), D-087, D-098, D-114, D-158 (vzor "modul viewera + chat + DB"), D-159, D-161 (#188, pohľady z panela cez route za env bránou)
 
 **Kontext:** Samuel (23. 10.): "aby LLM vedelo ovládať IDS modul z upstreamu, tvoriť nové, ukladať ich do DB". Stav overený 23. 10.:
 - *Fork:* `@ifc-lite/ids` (parser, `writeIdsXml`, `validateIDS`, audit), `@ifc-lite/ids-authoring` (bezhlavý editor: `StudioDocument` so stabilnými id, XML tam a späť, typované vratné operácie `spec.*`, `facet.*`, `requirement.*`, `doc.setInfo`, `bulk.*`, brána voči IFC schéme `checkOps`/`applyOpsGated`, lint, `diffIds`). Viewer má panel `validation` (IDSPanel, `idsSlice`, `loadIdsContent`, beh vo workeri, export správy a BCF; nie je lenivý) a panel `idsStudio` (editor, `idsStudioOpen`, `idsStudioDispatch`, lenivý chunk). Stav Studia je len v pamäti, knižnica definícií validácie v localStorage. AIM časť forku (`apps/viewer/src/aim/`) IDS nepoužíva, most IDS správu nemá.
@@ -7467,6 +7467,15 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 - **Fork PR (len `apps/viewer/src/aim/`, rýchle CI, skill `aim-feature`):** `IDS_LOAD`, `IDS_SAVE`, tlačidlo "Uložiť do AIM", `view_state.ids_local`, lenivý `aim/aimIds.ts`; vo vstupnom chunku len smerovanie správ (odhad vstup < +1 kB, eager 0; IDS kód už nesie panel validácie, Studio sa ťahá existujúcim lenivým loaderom). Začne až po zlúčení D-161 Fork A (#188, `claude/d161-fork-a`): obe menia reťaz `onMessage` v `aim/AimBridge.tsx` a skladanie `view_state`.
 - **Host PR 2:** route `app/api/ids`, príjem `IDS_SAVE` v host stránke, `open`, `from_viewer`, súhrn `ids_local` v `get_viewer_state` (`lib/live/viewer-query-tools.ts`, rovnaký súbor ako D-161), panely v `set_view_mode panels`.
 - **Neskôr:** prenos do knižnice (po F4), BCF témy z nesplnených prvkov, IDS brána pri zverejnení revízie (D-086, `binding`).
+
+**Host PR 1 - ako sa plán zrealizoval (odchýlky a upresnenia):**
+- *Nositeľ je XML:* každé `apply_ops` = XML z DB -> `ids_read` -> operácie (`ids_apply_ops`) -> `ids_write` (audit) -> nová verzia. Upstream `ids_apply_ops` nesie Studio JSON s id z obsahu; ten sa neukladá, id špecifikácií a facetov dá `get`. Odmietnutá dávka vráti kódy brány, cesty a kandidátov a nič neuloží. Chýbajúce `opId` doplní host; `apply_ops` bez `ops` vráti schému operácií a príklady.
+- *Prázdne IDS:* bez špecifikácie neprejde auditom (`ids_write` ho odmietne), preto `create` chce presne jedno z `xml` (musí prejsť auditom), `derived_from` (len knižničná snímka) alebo `ops` (do prázdneho IDS).
+- *Diff:* vlastný nad čitateľným opisom z `ids_read` (`lib/ids/describe.ts`), bez priamej závislosti na `@ifc-lite/ids-authoring` (tranzitívna). Kľúč špecifikácie = `identifier`, inak názov.
+- *Export:* XML priamo v odpovedi (strop 256 kB); odkaz na stiahnutie až s route `app/api/ids` (PR2). `open` a `from_viewer` sú stub s jasnou správou do PR2.
+- *Skupina toolu:* `ids_document` je vlastná skupina "IDS dokumenty" (nie "IFC motor"), aby jeho volanie nespúšťalo predčítanie modelov (D-135); upstream `ids_*` tooly bežia v relácii motora bez modelov.
+- *`ifc_ids_validate`:* kód sa hľadá najprv v DB, potom v `IDS_SOURCES` (záloha); `version` len pre DB; `save=true` uloží celý beh (pass aj fail, povinná špecifikácia bez prvku = riadok bez `ifc_guid`, ako ETL), nie s filtrom `spec` a nie pre `IDS_SOURCES`. Texty toolov, inštrukcií a poznámka výsledku už nehovoria o záväznom behu.
+- *Pohľady:* `v_ids_latest` kľúčuje dokumentom, staré behy bez `ids_version_id` ostávajú viditeľné podľa `ids_title`; nový stĺpec verzie sa volá `ids_doc_version`, lebo `ids_runs.ids_version` je text z `ids:info`.
 
 **Zavrhnuté:**
 - *Upstream IDS tooly 1:1 ako samostatné tooly konektora* (`ids_read`, `ids_apply_ops`, `ids_write`, `ids_audit`, `ids_lint`...): 3 až 8 toolov navyše, model by ich musel reťaziť (D-114); `ids_document` ich volá vnútri.

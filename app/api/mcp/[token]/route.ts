@@ -25,6 +25,7 @@ import { callAction, engineUseQuery, rejectedCallRow, writeCallLog } from "@/lib
 import { ENGINE_WANT_WINDOW_MS, engineUsedSince, engineWarmDecision, isEngineTool, payloadToolNames, type EngineWarmState } from "@/lib/mcp/engine-warm";
 import { mcpServerInstructions } from "@/lib/mcp/tool-loading";
 import { mcpToolDefinitions, mcpToolGroups } from "@/lib/mcp/tool-list";
+import { IDS_TOOL_NAMES } from "@/lib/ids/tool-defs";
 import { defaultSavedViewDeps } from "@/lib/views/runtime";
 import { SAVED_VIEW_TOOL_NAMES, execSavedViewTool } from "@/lib/views/tools";
 import {
@@ -150,6 +151,12 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
   }
   if (BCF_TOOL_NAMES.has(name)) {
     const res = await timer.phase("exec", () => execBcfTool(name, args, bcfToolDeps()));
+    return { text: [res.text], isError: res.isError };
+  }
+  if (IDS_TOOL_NAMES.has(name)) {
+    // Lenivý import: IDS balík (@ifc-lite/ids) sa načíta len pri volaní toolu (D-162).
+    const { runIdsTool } = await import("@/lib/ids/runtime");
+    const res = await timer.phase("exec", () => runIdsTool(name, args));
     return { text: [res.text], isError: res.isError };
   }
   if (SAVED_VIEW_TOOL_NAMES.has(name)) {
