@@ -11,6 +11,7 @@ import {
   VIEW_MODES,
   PANEL_ACTIONS,
   panelsOp,
+  underlays3dOp,
   panelScrollOp,
   panelZoomOp,
   PANEL_ITEM_MAX,
@@ -153,6 +154,17 @@ export function planSection(
     label: `3D: rez ${orientation} ${position} %`,
     result: { ok: true, section: { orientation, position_percent: position, flipped, ...widgetOut } },
   };
+}
+
+/**
+ * Podklady PDF v 3D (D-133 doplnok): `underlays_3d` = true zobrazí, false skryje v 3D plátne. Je to stav
+ * viewera, nie `visible` kalibrácie (to sa ukladá do DB a skrýva aj 2D). Bez parametra null.
+ */
+export function planUnderlays3d(input: Record<string, unknown>): { op: string; label: string; result: { underlays_3d: boolean } } | null {
+  const raw = input.underlays_3d;
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "boolean") throw new ViewInputError("underlays_3d: true (zobraziť podklady PDF v 3D) alebo false (skryť).");
+  return { op: underlays3dOp(raw), label: `Podklady v 3D: ${raw ? "zapnuté" : "vypnuté"}`, result: { underlays_3d: raw } };
 }
 
 export function planViewMode(

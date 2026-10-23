@@ -24,6 +24,7 @@
  * Posun obsahu panela (D-146, D-150): `panel_scroll:<up|down|top|bottom>:`, alebo `panel_scroll:-~p=<panel>~i=<text>~pct=<n>:`;
  * zoom `panel_zoom:<in|out|reset|n>~p=<panel>:`.
  * Otáčanie kamery dokola (D-154): `auto_rotate:<start|stop>[~s=<°/s>][~d=<l|r>]:`.
+ * Podklady PDF v 3D (D-133 doplnok): `underlays3d:<0|1>:` (stav viewera, do DB sa nezapisuje).
  * Čiara trasy (D-137): `route:<hex>:<x,y,z|...>` (prázdne body = zmazať), formát v `lib/viewer-route.ts`.
  */
 
@@ -171,7 +172,9 @@ export type ViewerOp =
   /** Zoom obsahu panela (D-150). */
   | { op: "panel_zoom"; zoom: PanelZoom; panel?: string }
   /** Plynulé otáčanie kamery okolo cieľa (D-154); rýchlosť a smer len pri `start`. */
-  | { op: "auto_rotate"; action: AutoRotateAction; speedDegS?: number; direction?: AutoRotateDirection };
+  | { op: "auto_rotate"; action: AutoRotateAction; speedDegS?: number; direction?: AutoRotateDirection }
+  /** Zobraziť / skryť podklady PDF v 3D plátne (D-133 doplnok), len stav viewera. */
+  | { op: "underlays3d"; show: boolean };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -405,6 +408,11 @@ function parsePanelZoom(arg: string): { zoom: PanelZoom; panel?: string } | null
   return { zoom, ...(kv.p ? { panel: kv.p } : {}) };
 }
 
+/** Op podkladov v 3D (D-133 doplnok): `underlays3d:0:` skryje, `underlays3d:1:` zobrazí. */
+export function underlays3dOp(show: boolean): string {
+  return `underlays3d:${show ? 1 : 0}:`;
+}
+
 /** Op panelov (D-127): `panels:~lens=close~...:`. */
 export function panelsOp(panels: PanelsRequest): string {
   const kv = Object.entries(panels).map(([k, v]) => `${k}=${v}`);
@@ -534,6 +542,8 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "panel_zoom") {
       const z = parsePanelZoom(arg);
       if (z) out.push({ op, ...z });
+    } else if (op === "underlays3d") {
+      if (arg === "0" || arg === "1") out.push({ op, show: arg === "1" });
     } else if (op === "doc") {
       const documentId = joined;
       if (!UUID.test(documentId)) continue;
@@ -656,6 +666,8 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
         ...(o.speedDegS !== undefined ? { speedDegS: o.speedDegS } : {}),
         ...(o.direction ? { direction: o.direction } : {}),
       };
+    case "underlays3d":
+      return { type: "SET_UNDERLAYS_3D", show: o.show };
   }
 }
 

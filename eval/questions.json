@@ -1137,6 +1137,14 @@
       "expect": { "tools_called": ["set_camera"] },
       "verified": false,
       "notes": "D-154 (issue #247): set_camera(auto_rotate=start, speed_deg_s=nízka) jedným volaním, nie opakované orbit_h_deg. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "view-underlays-3d-off",
+      "category": "view",
+      "question": "Vypni zobrazenie PDF podkladov v 3D, kalibrácia nech ostane.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-133 doplnok (issue #170): set_view_mode(underlays_3d=false) -> stav viewera, view_state.underlays_3d=false; nie calibrate_underlay ani visible v _georef. Evaly nepobežali (bez Supabase kľúčov)."
     }
   ]
 }
