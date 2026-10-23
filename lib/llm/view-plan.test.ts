@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseOps } from "../viewer-ops";
 import { planCamera } from "./camera-plan";
-import { ViewInputError, planPanels, planPanelScroll, planPanelZoom, planSection, planViewMode } from "./view-plan";
+import { ViewInputError, planPanels, planPanelScroll, planPanelZoom, planSection, planUnderlays3d, planViewMode } from "./view-plan";
 
 const FLOOR = { label: "3NP", guid: "3ig6N2jJz05g7H9Fq$ftkL" };
 const ROOM = "1KphWFyMb8dRV6rhVkyU6y";
@@ -95,6 +95,17 @@ describe("set_section: widget rezu (#63)", () => {
 });
 
 describe("panely (D-127)", () => {
+  it("underlays_3d -> op SET_UNDERLAYS_3D, stav viewera, chybný vstup = chyba", () => {
+    const off = planUnderlays3d({ underlays_3d: false })!;
+    expect(off.op).toBe("underlays3d:0:");
+    expect(parseOps(off.op)).toEqual([{ op: "underlays3d", show: false }]);
+    expect(off.result).toEqual({ underlays_3d: false });
+    expect(parseOps(planUnderlays3d({ underlays_3d: true })!.op)).toEqual([{ op: "underlays3d", show: true }]);
+    expect(planUnderlays3d({})).toBeNull();
+    expect(() => planUnderlays3d({ underlays_3d: "hide" })).toThrow(ViewInputError);
+    expect(parseOps("underlays3d:2:")).toEqual([]);
+  });
+
   it("panels -> op SET_PANELS, all len close, chybný vstup = chyba", () => {
     const p = planPanels({ panels: { all: "close", properties: "open" } })!;
     expect(parseOps(p.op)).toEqual([{ op: "panels", panels: { all: "close", properties: "open" } }]);
@@ -104,6 +115,7 @@ describe("panely (D-127)", () => {
     expect(() => planPanels({ panels: { "bad name!": "close" } })).toThrow(/neplatné meno panela/);
     // Existenciu panela posudzuje viewer (zoznam je v jeho registri), host pustí ľubovoľné meno.
     expect(parseOps(planPanels({ panels: { bcf: "open", compare: "toggle" } })!.op)).toEqual([{ op: "panels", panels: { bcf: "open", compare: "toggle" } }]);
+    expect(planPanels({ panels: { drawing: "open" } })!.result).toEqual({ panels: { drawing: "open" } });
     expect(() => planPanels({ panels: { lens: "hide" } })).toThrow(/open, close/);
     expect(() => planPanels({ panels: {} })).toThrow(/aspoň/);
     expect(() => planPanels({ panels: "lens" })).toThrow(ViewInputError);

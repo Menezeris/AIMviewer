@@ -4,13 +4,15 @@
  * `tab:<action>:<base64url JSON>` = `VIEW_TABS` forku. JSON nesie odkaz na záložku
  * (`tab`), otvorenie (`open`: pôdorys podlažia alebo uložený pohľad) a `beside`.
  * Menovky a mená pohľadov môžu mať `:` aj `;`, preto sú v base64url ako Lens (D-096).
+ * `tab:layout:<base64url JSON>` = dlaždice (D-157): `layout` a `tiles` (`{tab}` menovka, `{plan}` GUID
+ * podlažia, null prázdna).
  * `section_box:<m>:<guid.guid...>` = box okolo prvkov s okrajom `m` metrov,
  * `section_box:<minx,miny,minz,maxx,maxy,maxz>:` = presná obálka v IFC svete (obnova D-122).
  */
 
 import { fromBase64Url, toBase64Url } from "./viewer-lens";
 
-export const TAB_ACTIONS = ["open", "activate", "beside", "unbeside", "close"] as const;
+export const TAB_ACTIONS = ["open", "activate", "beside", "unbeside", "close", "layout"] as const;
 export type TabAction = (typeof TAB_ACTIONS)[number];
 
 export interface TabOpen {
@@ -21,10 +23,28 @@ export interface TabOpen {
   locked?: boolean;
 }
 
+/** Rozloženia dlaždíc (D-157), rovnaké ako `TILE_LAYOUTS` forku (`aim/viewTilesPlan.ts`). */
+export const TILE_LAYOUTS = [
+  "single", "split_h", "split_v",
+  "three_left", "three_right", "three_top", "three_bottom", "three_h", "three_v",
+  "grid4",
+] as const;
+export type TileLayout = (typeof TILE_LAYOUTS)[number];
+export const TILE_COUNTS: Record<TileLayout, number> = {
+  single: 1, split_h: 2, split_v: 2,
+  three_left: 3, three_right: 3, three_top: 3, three_bottom: 3, three_h: 3, three_v: 3,
+  grid4: 4,
+};
+
+/** Dlaždica na drôte: otvorená záložka, pôdorys podlažia (GUID) alebo prázdna. */
+export type TileWire = { tab: string } | { plan: string } | null;
+
 export interface TabsWire {
   tab?: string;
   open?: TabOpen;
   beside?: boolean;
+  layout?: TileLayout;
+  tiles?: TileWire[];
 }
 
 export interface Vec3 { x: number; y: number; z: number }
@@ -69,6 +89,20 @@ function decodeWire(action: TabAction, joined: string): TabsWire | null {
     return wire;
   }
   if (action === "unbeside") return {};
+  if (action === "layout") {
+    const layout = r.layout as TileLayout;
+    if (!(TILE_LAYOUTS as readonly string[]).includes(layout)) return null;
+    if (r.tiles === undefined) return { layout };
+    if (!Array.isArray(r.tiles) || r.tiles.length > TILE_COUNTS[layout]) return null;
+    const tiles: TileWire[] = [];
+    for (const t of r.tiles as unknown[]) {
+      if (t === null) tiles.push(null);
+      else if (t && typeof t === "object" && text((t as { tab?: unknown }).tab)) tiles.push({ tab: text((t as { tab: string }).tab)! });
+      else if (t && typeof t === "object" && text((t as { plan?: unknown }).plan)) tiles.push({ plan: text((t as { plan: string }).plan)! });
+      else return null;
+    }
+    return { layout, tiles };
+  }
   const tab = text(r.tab);
   if (!tab) return null;
   return { tab };

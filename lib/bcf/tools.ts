@@ -61,6 +61,7 @@ export const BCF_ACTIONS = {
   update: "bcf_topic_update",
   close: "bcf_topic_close",
   viewpoint: "bcf_viewpoint_create",
+  from_viewer: "bcf_topic_from_viewer",
 } as const;
 
 export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
@@ -99,7 +100,9 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
       "jediný pohľad témy (selection_global_ids, capture_view). PRIPOMIENKA NA DOKUMENTE (D-158): create alebo update s " +
       "document = {id_or_ref, page, region, description} pripojí k téme dokument, stranu a oblasť strany (region v % ako " +
       "open_drawing); prvky, ktorých sa týka (aj IfcSpace, podlažie, IfcProject = celý projekt), daj do target_ids_or_refs. " +
-      "remove_document = guid odkazu alebo 'all'. Vráti guid a číslo témy (#N).",
+      "remove_document = guid odkazu alebo 'all'. from_viewer: uloží témy založené v BCF paneli viewera (aj pripomienky " +
+      "na PDF, get_viewer_state ich ukáže v bcf_local) do AIM s tým istým guid, na pokyn 'ulož moje pripomienky'; guids " +
+      "= len vybrané. Vráti guid a číslo témy (#N).",
     inputSchema: {
       type: "object",
       properties: {
@@ -137,6 +140,7 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
           required: ["id_or_ref"],
         },
         remove_document: { type: "string", description: "update: guid odkazu na dokument (z bcf_topic_list) alebo 'all'" },
+        guids: { type: "array", items: { type: "string" }, description: "from_viewer: len tieto témy z bcf_local (predvolene všetky)" },
       },
       required: ["action"],
     },
@@ -158,6 +162,8 @@ export interface BcfDeps {
   fire: ((text: string) => Promise<RoutineFireResult>) | null;
   /** Pohľad z otvoreného viewera; string = prečo sa nedal zachytiť. */
   captureView: () => Promise<CapturedView | string>;
+  /** Celý `view_state` viewera (lokálne témy, D-158); string = prečo sa nedal prečítať. */
+  viewState?: () => Promise<Record<string, unknown> | string>;
   /** object_ref / objects.id / GlobalId -> GlobalId (vzor view tools). */
   resolve: (input: Record<string, unknown>) => Promise<string[]>;
   now: () => Date;
@@ -546,6 +552,8 @@ const WRITES: Record<string, (args: Record<string, unknown>, deps: BcfDeps) => P
   bcf_topic_update: update,
   bcf_topic_close: close,
   bcf_viewpoint_create: viewpoint,
+  // Lenivo: modul lokálnych tém viewera (D-158) importuje tento.
+  bcf_topic_from_viewer: async (args, deps) => (await import("./viewer-topics")).fromViewer(args, deps),
 };
 
 function bcfAction(raw: unknown): string {

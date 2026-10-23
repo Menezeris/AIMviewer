@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import {
   documentLabel,
   documentReferenceToDto,
@@ -11,6 +9,9 @@ import {
 } from "./documents";
 import type { BcfComment, BcfTopicRow, BcfTopicWrite, TopicDocumentRow, TopicDocumentWrite, TopicStatus } from "./store";
 import { isClaude, maybeStartSession, normalizeStatus, type BcfDeps } from "./tools";
+import { viewpointFromDto } from "./viewpoint";
+
+export { viewpointFromDto };
 
 /**
  * BCF API 2.1 nad `model_tasks` (D-099 fáza B): BCF panel viewera (fork,
@@ -124,23 +125,6 @@ export function viewpointToDto(row: BcfTopicRow): Record<string, unknown> | null
   }
   if (components) dto.components = components;
   return dto;
-}
-
-/** BCF viewpoint DTO z panela -> uložený pohľad a GlobalId výberu. */
-export function viewpointFromDto(dto: Record<string, unknown>): { viewpoint: Record<string, unknown>; selection: string[] } {
-  const comps = (dto.components ?? {}) as { selection?: { ifc_guid?: unknown }[] };
-  const selection = [
-    ...new Set(
-      (comps.selection ?? []).map((c) => c?.ifc_guid).filter((g): g is string => typeof g === "string" && g !== ""),
-    ),
-  ];
-  const rest: Record<string, unknown> = { ...dto };
-  // Snímka zatiaľ nie je (D-099 fáza D); prvky idú do `components` témy.
-  delete rest.snapshot;
-  delete rest.components;
-  delete rest.guid;
-  const guid = typeof dto.guid === "string" && dto.guid ? dto.guid : randomUUID();
-  return { viewpoint: { guid, source: "bcf", bcf: rest }, selection };
 }
 
 /**

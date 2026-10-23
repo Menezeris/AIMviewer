@@ -4,16 +4,17 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { resolveTargetsToGuids } from "@/lib/engine/aim-lookup";
 import { normalizeStoreyLabel } from "@/lib/engine/storey";
 import { CAMERA_PRESETS, PANEL_ACTIONS, PANEL_ITEM_MAX, PANEL_SCROLLS, PANEL_ZOOM_RANGE, PANEL_ZOOM_STEPS } from "@/lib/viewer-ops";
-import { CAMERA_AREAS, CAMERA_FITS, CAMERA_RANGES, DEFAULT_MARGIN_PERCENT } from "@/lib/viewer-camera";
+import { AUTO_ROTATE_ACTIONS, AUTO_ROTATE_DIRECTIONS, AUTO_ROTATE_SPEED, CAMERA_AREAS, CAMERA_FITS, CAMERA_RANGES, DEFAULT_MARGIN_PERCENT } from "@/lib/viewer-camera";
 
 import type { AskAction } from "./actions";
 import type { ToolDefinition } from "./provider";
 import { planCamera } from "./camera-plan";
 import { HATCH_PATTERNS, HATCH_RANGES, SECTION_CAPS, planSectionCap } from "../viewer-section-cap";
 import { DOMAIN_IFC_TYPES } from "./ifc-selector";
-import { ViewInputError, planPanelScroll, planPanelZoom, planPanels, planSection, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
+import { ViewInputError, planPanelScroll, planPanelZoom, planPanels, planSection, planUnderlays3d, planViewMode, type SectionFloor, type ViewPlan } from "./view-plan";
 import { SECTION_SHIFT_RANGE } from "../views/plan";
-import { hasTabParams, planViewTabs } from "./view-tabs";
+import { hasLayoutParams, hasTabParams, planLayout, planViewTabs } from "./view-tabs";
+import { TILE_LAYOUTS } from "../viewer-tabs";
 
 /** `view` je to isté ako `saved_view` (D-132); prázdne = žiadny pohľad. */
 const savedViewName = (input: Record<string, unknown>): string | undefined => {
@@ -134,7 +135,11 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "orthographic = bez perspektívy (pôdorys, fasáda). Príklady: 'oddiaľ o 15 %' = zoom_percent=-15; " +
       "'izolované VZT v iso na celú obrazovku' = preset=iso, fit=visible, projection=perspective; 'rez " +
       "schodiskom kolmo' = set_section cez schodisko, potom preset=section, fit=visible; 'atika vľavo v reze' = " +
-      "set_section + search_objects(PARAPET) + set_camera(preset=section, target_ids_or_refs=atiky, area=left).",
+      "set_section + search_objects(PARAPET) + set_camera(preset=section, target_ids_or_refs=atiky, area=left). " +
+      "OTÁČANIE DOKOLA (prezentácia): auto_rotate=start plynulo a nepretržite otáča kameru okolo cieľa aktuálneho pohľadu, " +
+      "speed_deg_s (default 10 °/s) a direction left|right (left = ako kladné orbit_h_deg: kamera obieha doľava, model sa zdanlivo točí doprava); samostatné volanie, najprv nastav " +
+      "pohľad. Zastaví ho auto_rotate=stop, ťah, koliesko alebo dotyk používateľa a každý iný príkaz kamery. " +
+      "'Točí sa to pomaličky dokola' = auto_rotate=start, speed_deg_s=5; opakované orbit_h_deg netreba.",
     inputSchema: {
       type: "object",
       properties: {
@@ -155,6 +160,20 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         pan_x_percent: { type: "number", description: "Posun pohľadu v % šírky (-100 až 100), + = doprava" },
         pan_y_percent: { type: "number", description: "Posun pohľadu v % výšky (-100 až 100), + = hore" },
         projection: { type: "string", enum: ["perspective", "orthographic"] },
+        auto_rotate: {
+          type: "string",
+          enum: [...AUTO_ROTATE_ACTIONS],
+          description: "start = plynulé otáčanie dokola, stop = zastaviť; samostatné volanie bez presetu, cieľa a krokov",
+        },
+        speed_deg_s: {
+          type: "number",
+          description: `Rýchlosť otáčania v °/s (${AUTO_ROTATE_SPEED.min} až ${AUTO_ROTATE_SPEED.max}, default ${AUTO_ROTATE_SPEED.default}), len s auto_rotate=start`,
+        },
+        direction: {
+          type: "string",
+          enum: [...AUTO_ROTATE_DIRECTIONS],
+          description: "Smer otáčania, default left (kamera obieha cieľ doľava ako kladné orbit_h_deg), len s auto_rotate=start",
+        },
         margin_percent: {
           type: "number",
           description: `Okraj okolo cieľa v % jeho veľkosti (${CAMERA_RANGES.marginPercent.min} až ${CAMERA_RANGES.marginPercent.max}, s cieľom default ${DEFAULT_MARGIN_PERCENT}); tenký prvok = väčší okraj`,
@@ -180,17 +199,26 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "izolácia, skrytie; mode netreba); 'ako minule' = view='Posledný pohľad'; section_offset_m posunie rez po jeho " +
       "osi ('o meter nižšie' = -1). Zoznam: get_viewer_state(saved_views=true). ZÁLOŽKY: tab=menovka prepne " +
       "('späť na 3D' = tab='3D'), beside=menovka dá záložku vedľa aktívnej (dokument vedľa 3D alebo pohľadu; none " +
-      "zruší), close_tab=menovka alebo all zavrie. Otvorené záložky (tabs) vráti stav po príkaze aj get_viewer_state. " +
+      "zruší; dvojicu, ktorú plocha nevie, dá do dvoch dlaždíc), close_tab=menovka alebo all zavrie. Otvorené záložky (tabs) " +
+      "vráti stav po príkaze aj get_viewer_state. DLAŽDICE (D-157, Tile Windows v Revite): layout = single | split_h (2 vedľa " +
+      "seba) | split_v (2 pod sebou) | three_left / three_right / three_top / three_bottom (3, veľká dlaždica vľavo / vpravo / " +
+      "hore / dole) | three_h (3 vedľa seba) | three_v (3 pod sebou) | grid4 (2x2), tiles = záložka v každej dlaždici " +
+      "(prvá je veľká): podlažie (1NP) otvorí pôdorys aj bez podkladu, '3D', pohľad alebo dokument (najprv open_drawing " +
+      "target=tab), 'none' prázdna; chýbajúce doplní viewer. '3D vľavo, 1NP vpravo' = layout=split_h, tiles=['3D','1NP']. " +
+      "Živé 3D je len jedno, ostatné 3D dlaždice ukazujú snímku do kliknutia; 3D tooly pôsobia na živú. Stav: layout v " +
+      "get_viewer_state. Späť na jedno okno = layout=single. " +
       "Dokument do záložky = open_drawing(target=tab). PANELY: panels otvorí, zavrie alebo prepne ľubovoľný " +
       "panel UI (napr. lens, properties, bcf = BCF topics Alt+3, lists, model_tree, underlays, documents, compare, " +
-      "validation, clash; all=close = čistý pohľad, {all: 'close', properties: 'open'} = všetko okrem vlastností), " +
+      "validation, clash, drawing = 2D výkres rezu z modelu pod 3D (D-136); all=close = čistý pohľad, {all: 'close', properties: 'open'} = všetko okrem vlastností), " +
       "aj bez mode. Úplný zoznam panelov s klávesovými skratkami, kde sú a či sú otvorené vráti get_viewer_state " +
       "(panels), rovnaký stav aj výsledok po príkaze; neznámy panel viewer nahlási s platnými menami. " +
       "POSUN OBSAHU PANELA: panel_scroll=down|up (o 80 % výšky) | top | bottom na pokyn 'posuň dole', 'hore', " +
       "'na začiatok' (panel vlastností), alebo {panel, to | item | percent}: item = text položky ('Dvere D12', " +
       "'NetVolume'; hľadá sa v rozbalenom obsahu), percent = poloha 0 až 100; stav posunu vráti panel_view. " +
       "ZOOM PANELA: panel_zoom={panel?, zoom: in|out|reset|číslo} ('zväčši panel', 'späť na normál'). Obe aj bez " +
-      "mode; s panels ho najprv otvorí. Výber prvku a riadok vlastnosti ide cez show_in_3d (highlight).",
+      "mode; s panels ho najprv otvorí. Výber prvku a riadok vlastnosti ide cez show_in_3d (highlight). " +
+      "PODKLADY PDF V 3D: underlays_3d=false skryje kalibrované podklady v 3D (kalibrácia ostane uložená, pôdorys v 2D " +
+      "a split ostáva), true ich zobrazí; je to stav viewera (get_viewer_state.underlays_3d), nie visible kalibrácie.",
     inputSchema: {
       type: "object",
       properties: {
@@ -202,6 +230,17 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         tab: { type: "string", description: "Prepnúť na otvorenú záložku: '3D', menovka pôdorysu, pohľadu alebo dokumentu" },
         beside: { type: "string", description: "Záložka vedľa aktívnej (napr. dokument vedľa 3D); 'none' = aktívna na celú plochu" },
         close_tab: { type: "string", description: "Zavrieť záložku (menovka) alebo 'all' (ostane 3D)" },
+        layout: {
+          type: "string",
+          enum: [...TILE_LAYOUTS],
+          description: "Dlaždice: single, split_h (2 vedľa seba), split_v (2 pod sebou), three_* (3, veľká vľavo/vpravo/hore/dole), three_h/three_v (3 vedľa seba / pod sebou), grid4 (2x2)",
+        },
+        tiles: {
+          type: "array",
+          items: { type: "string" },
+          maxItems: 4,
+          description: "Záložka v každej dlaždici v poradí (prvá = veľká): podlažie (1NP), '3D', menovka pohľadu alebo dokumentu, 'none' = prázdna",
+        },
         panels: {
           type: "object",
           description: "Panely: {panel: open|close|toggle}; panel = lens, properties, bcf, lists, model_tree... (get_viewer_state, panels); all len close",
@@ -235,6 +274,10 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
             },
           },
           required: ["zoom"],
+        },
+        underlays_3d: {
+          type: "boolean",
+          description: "false = skryť PDF podklady v 3D (kalibrácia ostane, pôdorys v 2D ostane), true = zobraziť; stav viewera, nezapisuje sa do DB",
         },
         section_offset_m: {
           type: "number",
@@ -286,6 +329,19 @@ async function resolveFloor(raw: unknown): Promise<SectionFloor | null> {
   const guid = (g?.[0] as { ifc_guid?: string } | undefined)?.ifc_guid;
   if (!guid) throw new ViewInputError(`Podlažie ${floor.object_ref ?? floor.name} nemá IFC GUID - nie je v 3D modeli.`);
   return { label: floor.object_ref ?? floor.name ?? want, guid, elevation: floor.elevation };
+}
+
+/** Dlaždica ako podlažie (D-157): GUID a menovka, alebo null (menovka inej záložky). */
+async function floorGuidOf(ref: string): Promise<{ guid: string; label: string } | null> {
+  for (const want of new Set([ref, ref.replace(/^p[oô]dorys\s+/i, "")])) {
+    try {
+      const floor = await resolveFloor(want);
+      if (floor) return { guid: floor.guid, label: floor.label };
+    } catch (err) {
+      if (!(err instanceof ViewInputError)) throw err;
+    }
+  }
+  return null;
 }
 
 export async function resolveTargets(input: Record<string, unknown>): Promise<string[]> {
@@ -342,6 +398,8 @@ export async function execViewTool(
     }
   } else if (name === "set_camera") {
     plan = planCamera(input, await resolveTargets(input));
+  } else if (name === "set_view_mode" && hasLayoutParams(input)) {
+    plan = await planLayout(input, floorGuidOf);
   } else if (name === "set_view_mode" && hasTabParams(input)) {
     plan = planViewTabs(input);
   } else if (name === "set_view_mode" && savedViewName(input)) {
@@ -349,7 +407,7 @@ export async function execViewTool(
     plan = await restoreSavedView({ ...input, saved_view: savedViewName(input) }, defaultSavedViewDeps());
   } else if (name === "set_view_mode") {
     // D-127: samotné panely nepotrebujú režim.
-    const panelsOnly = (input.panels !== undefined || input.panel_scroll !== undefined || input.panel_zoom !== undefined) && input.mode === undefined && input.reset !== true;
+    const panelsOnly = (input.panels !== undefined || input.panel_scroll !== undefined || input.panel_zoom !== undefined || input.underlays_3d !== undefined) && input.mode === undefined && input.reset !== true;
     plan = panelsOnly ? { ops: [], label: "", result: { ok: true } } : planViewMode(input, input.reset === true ? null : await resolveFloor(input.floor));
   } else {
     throw new Error(`Neznámy tool pohľadu '${name}'.`);
@@ -362,6 +420,15 @@ export async function execViewTool(
       ops: [...plan.ops, panels.op],
       label: plan.label ? `${plan.label}, ${panels.label}` : panels.label,
       result: { ...plan.result, ...panels.result },
+    };
+  }
+  // Podklady PDF v 3D (D-133 doplnok): stav viewera, ide až po režime.
+  const underlays = name === "set_view_mode" ? planUnderlays3d(input) : null;
+  if (underlays) {
+    plan = {
+      ops: [...plan.ops, underlays.op],
+      label: plan.label ? `${plan.label}, ${underlays.label}` : underlays.label,
+      result: { ...plan.result, ...underlays.result },
     };
   }
   // Posun a zoom obsahu panela (D-146, D-150) idú po paneloch, aby sa najprv otvorili.

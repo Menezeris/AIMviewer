@@ -8,9 +8,11 @@ import { SEARCH_ALL_TOOL } from "@/lib/engine/search-all";
 import { ENGINE_TOOL_NAMES } from "@/lib/engine/tool-defs";
 import { CALIBRATE_UNDERLAY_TOOL } from "@/lib/engine/underlay-tool-def";
 import { FEEDBACK_TOOL_NAMES, execFeedbackTool } from "@/lib/feedback/tools";
-import { broadcastLive, liveChannel } from "@/lib/live/broadcast";
+import { broadcastLive, isTestChannel, liveChannel } from "@/lib/live/broadcast";
+import { currentCaller, withCaller } from "@/lib/live/caller";
 import { readBackSection } from "@/lib/live/section-readback";
 import {
+  TEST_CHANNEL_NO_VIEWER,
   VIEWER_QUERY_TOOL_NAMES,
   execViewerQueryTool,
 } from "@/lib/live/viewer-query-tools";
@@ -32,6 +34,7 @@ import {
   type McpServerDeps,
   type McpToolResult,
 } from "@/lib/mcp/server";
+import { callerLabel, mcpCaller } from "@/lib/mcp/session-id";
 import { startTimer, type CallTimer } from "@/lib/mcp/timing";
 
 /**
@@ -130,7 +133,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<Mc
       if (loadMs > 0) timer.add("engine_load", loadMs);
     }
     const { ms, phases } = timer.done();
-    const row = { tool: name, action: callAction(args), ms, ok: !res.isError, cold, phases, region: process.env.VERCEL_REGION ?? null };
+    const row = { tool: name, action: callAction(args), ms, ok: !res.isError, cold, phases, region: process.env.VERCEL_REGION ?? null, client: callerLabel(currentCaller()) };
     after(() => writeCallLog(row));
   }
 }
@@ -192,6 +195,10 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
   return { text, isError: res.isError };
 }
 
+const TEST_CHANNEL_SENT =
+  "Pracovná session (Claude Code): príkaz išiel na testovací kanál sessions, nie do živého viewera používateľa (D-159). " +
+  "Odkaz na produkciu sa nedáva; produkčný viewer na overenie neotváraj (D-135), overuj lokálne (skill verify).";
+
 /** Akcie toolu do živého viewera (D-079) s potvrdením (D-101); vráti riadky pre odpoveď. */
 async function deliverActions(
   name: string,
@@ -216,18 +223,25 @@ async function deliverActions(
     const sent = await timer.phase("broadcast", () =>
       broadcastLive(channel, actions, fetch, cmdId).catch(() => ({ ok: false, status: 0 })),
     );
-    text.push(
-      sent.ok
-        ? `Odoslané do živého viewera. Záložný odkaz:\n${links}`
-        : `Odoslanie do živého viewera zlyhalo (HTTP ${sent.status}). Odkaz na otvorenie:\n${links}`,
-    );
+    // Pracovná session nejde do viewera používateľa a odkaz na produkciu nedostane (D-159, D-135).
+    const test = isTestChannel(channel);
+    if (test) text.push(TEST_CHANNEL_SENT);
+    else {
+      text.push(
+        sent.ok
+          ? `Odoslané do živého viewera. Záložný odkaz:\n${links}`
+          : `Odoslanie do živého viewera zlyhalo (HTTP ${sent.status}). Odkaz na otvorenie:\n${links}`,
+      );
+    }
+    if (test && !sent.ok) text.push(`Odoslanie na testovací kanál zlyhalo (HTTP ${sent.status}).`);
     // Potvrdzuje len viewer (`/ifc`); karta prvku alebo výkres je len navigácia.
     if (sent.ok && waitApplied && actions.some((a) => a.url.startsWith("/ifc"))) {
       const t0 = Date.now();
       const applied = await timer.phase("ack", () => waitApplied(ACK_TIMEOUT_MS));
       // Viac okien viewera za poslednú minútu (D-125): potvrdenie je len z jedného.
       const viewers = applied ? await recentViewerCount(channel, VIEWERS_WINDOW_MS).catch(() => 0) : 0;
-      text.push(applied ? appliedText(name, applied, Date.now() - t0, { args, viewers }) : notAppliedText(ACK_TIMEOUT_MS));
+      const missing = test ? TEST_CHANNEL_NO_VIEWER : notAppliedText(ACK_TIMEOUT_MS);
+      text.push(applied ? appliedText(name, applied, Date.now() - t0, { args, viewers }) : missing);
     } else if (sent.ok) {
       // Bez teplého kanála pôvodné čítanie stavu (D-096 počty Lens, D-092 poloha rezu).
       if (lensRev) text.push(await timer.phase("lens", () => lensCountsText(channel, lensRev)));
@@ -250,6 +264,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     return NextResponse.json(parseErrorResponse(), { status: 400, headers: NO_STORE });
   }
 
+  const { caller, issued } = mcpCaller(req.headers, payload, process.env.MCP_TOKEN?.trim() ?? "");
   const deps: McpServerDeps = {
     serverInfo: { name: "aim-viewer", version: "1.0.0" },
     instructions: mcpServerInstructions(siteUrl(), ENGINE_ENABLED, mcpToolGroups({ engine: ENGINE_ENABLED })),
@@ -260,9 +275,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   // D-100/D-101: modely motora sa načítajú vopred, aby ifc_* volanie nečakalo; D-135: len keď
   // rozhovor motor používa (tool motora teraz alebo v posledných 30 min), DB tools nečakajú.
   if (ENGINE_ENABLED) warmEngine(payload);
-  const response = await handleMcpPayload(payload, deps);
-  if (response === null) return new NextResponse(null, { status: 202, headers: NO_STORE });
-  return NextResponse.json(response, { headers: NO_STORE });
+  const response = await withCaller(caller, () => handleMcpPayload(payload, deps));
+  // D-159: klient hlavičku posiela pri každom ďalšom volaní, server podľa nej pozná rozhovor.
+  const headers = issued ? { ...NO_STORE, "Mcp-Session-Id": issued } : NO_STORE;
+  if (response === null) return new NextResponse(null, { status: 202, headers });
+  return NextResponse.json(response, { headers });
 }
 
 /** Bez SSE streamu zo servera — klient používa len POST (Streamable HTTP). */

@@ -133,6 +133,16 @@ describe("viewer-lens (D-096)", () => {
     expect(parseOps(lensOp("add", { r: [{ n: "x", a: "isolate", g }], i: 1, x: 1 }))).toEqual([]);
   });
 
+  it("X-ray kontext len podlažia (#187): cs ide do mosta ako xrayStoreys, bez x alebo prázdne nie", () => {
+    const g = WIRE.r![0].g;
+    const [o] = parseOps(lensOp("add", { r: [{ n: "SDK", a: "isolate", g }], x: 1, cs: ["1NP"] }, "r5"));
+    expect(opToBridgeMessage(o)).toMatchObject({ xray: true, xrayStoreys: ["1NP"] });
+    expect(parseOps(lensOp("add", { r: [{ n: "x", a: "isolate", g }], i: 1, cs: ["1NP"] }))).toEqual([]);
+    expect(parseOps(lensOp("add", { r: [{ n: "x", a: "isolate", g }], x: 1, cs: [] }))).toEqual([]);
+    const [plain] = parseOps(lensOp("add", { r: [{ n: "SDK", a: "isolate", g }], x: 1 }, "r6"));
+    expect(opToBridgeMessage(plain)).not.toHaveProperty("xrayStoreys");
+  });
+
   it("op bez zóny sa preloží priamo cez opToBridgeMessage", () => {
     const [o] = parseOps(lensOp("add", { ac: { source: "group" } }, "r2"));
     expect(opToBridgeMessage(o)).toEqual({ type: "APPLY_LENS", mode: "add", rev: "r2", autoColor: { source: "group" } });
