@@ -5,6 +5,7 @@ import { supabaseIdsStore } from "../ids/store";
 import { AskToolRuntime } from "../llm/tools";
 
 import { lookupGuids, resolveTargetsToGuids } from "./aim-lookup";
+import { systemsOfGuids } from "./clash-systems";
 import { installArchiveSource } from "./archive-source";
 import { fetchRelatedMembers } from "./related-members";
 import { execSearchAll } from "./search-all";
@@ -15,7 +16,7 @@ installArchiveSource();
 
 /** `ifc_*` tool s reálnym prepojením na DB AIM (D-084); importuje sa lenivo z MCP route. */
 export function runEngineTool(name: string, args: Record<string, unknown>): Promise<EngineExecution> {
-  return execEngineTool(name, args, { lookup: lookupGuids, resolveTargets: resolveTargetsToGuids, revisions: fetchModelRevisions, ids: supabaseIdsStore() });
+  return execEngineTool(name, args, { lookup: lookupGuids, resolveTargets: resolveTargetsToGuids, revisions: fetchModelRevisions, ids: supabaseIdsStore(), systems: systemsOfGuids });
 }
 
 /** Kombinované `search_all` (D-095): IFC súbor + graf AIM, badge pri každom výsledku. */
