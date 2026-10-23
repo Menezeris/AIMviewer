@@ -1,0 +1,504 @@
+From f24be63843eab4bc11029739d01ef07bbf58cec7 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 23 Oct 2026 04:14:21 +0000
+Subject: [PATCH] =?UTF-8?q?feat(aim):=20z=C3=B3ny=20a=20ru=C4=8Dn=C3=A1=20?=
+ =?UTF-8?q?oprava=20odkazov=20popiskov=20na=20v=C3=BDkrese=20(members,=20m?=
+ =?UTF-8?q?anual,=20n=C3=A1vrh=20opravy=20vo=20view=5Fstate)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+AIM D-160: cieľ odkazu nesie členov zóny, ručné priradenie má vlastný popis, Alt+klik a Alt+ťah
+vytvoria návrh opravy (view_state.link_draft), ktorý uloží chat.
+
+Claude-Session: https://claude.ai/code/session_01PPGH3n67oxbWqm3RRo2f9R
+---
+ apps/viewer/src/aim/docLinkDraft.ts           | 89 +++++++++++++++++++
+ apps/viewer/src/aim/docLinkDraftStore.test.ts | 47 ++++++++++
+ apps/viewer/src/aim/docLinkDraftStore.ts      | 66 ++++++++++++++
+ apps/viewer/src/aim/docLinks.test.ts          | 35 ++++++++
+ apps/viewer/src/aim/docLinks.ts               | 78 +++++++++++++---
+ apps/viewer/src/aim/viewQueries.ts            |  3 +
+ 6 files changed, 306 insertions(+), 12 deletions(-)
+ create mode 100644 apps/viewer/src/aim/docLinkDraft.ts
+ create mode 100644 apps/viewer/src/aim/docLinkDraftStore.test.ts
+ create mode 100644 apps/viewer/src/aim/docLinkDraftStore.ts
+
+diff --git a/apps/viewer/src/aim/docLinkDraft.ts b/apps/viewer/src/aim/docLinkDraft.ts
+new file mode 100644
+index 00000000..86181347
+--- /dev/null
++++ b/apps/viewer/src/aim/docLinkDraft.ts
+@@ -0,0 +1,89 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Ručná oprava odkazu popisku na výkrese (AIM D-160), lenivý modul: menu nad odkazom (Alt+klik,
++ * pravé tlačidlo) a označenie textu bez odkazu (Alt+ťah). Vznikne len návrh (`docLinkDraftStore`),
++ * ktorý uloží chat; fork nič nezapisuje do DB (D-091, D-098).
++ */
++
++import { regionFromDrag } from './docIssueModel.js';
++import { buildDraft, setLinkDraft, type LinkDraftAction } from './docLinkDraftStore.js';
++import type { DocLink } from './docLinks.js';
++
++type Ctx = { docId: string; page: number };
++type Frac = { x: number; y: number; w: number; h: number };
++
++const MENU_ATTR = 'data-aim-link-menu';
++const MARK_ATTR = 'data-aim-link-draft';
++const pct = (v: number) => `${+(v * 100).toFixed(3)}%`;
++
++const ACTIONS: { action: LinkDraftAction; label: string }[] = [
++  { action: 'assign', label: 'Priradiť k vybranému prvku v 3D' },
++  { action: 'clear', label: 'Zrušiť odkaz' },
++  { action: 'reset', label: 'Vrátiť automatiku' },
++];
++
++/** Značka návrhu na strane (prerušovaný rámik), kým chat návrh neuloží alebo ho nenahradí iný. */
++function markDraft(pageEl: HTMLElement, r: Frac): void {
++  document.querySelectorAll(`[${MARK_ATTR}]`).forEach((n) => n.remove());
++  const mark = document.createElement('div');
++  mark.setAttribute(MARK_ATTR, '');
++  Object.assign(mark.style, {
++    position: 'absolute', left: pct(r.x), top: pct(r.y), width: pct(r.w), height: pct(r.h),
++    outline: '2px dashed #d97706', background: 'rgba(217, 119, 6, 0.12)', pointerEvents: 'none', zIndex: '11',
++  });
++  pageEl.appendChild(mark);
++}
++
++function openMenu(host: HTMLElement, at: Frac, title: string, ctx: Ctx, text: string | null, actions: LinkDraftAction[]): void {
++  host.querySelectorAll(`:scope > [${MENU_ATTR}]`).forEach((n) => n.remove());
++  const box = document.createElement('div');
++  box.setAttribute(MENU_ATTR, '');
++  Object.assign(box.style, {
++    position: 'absolute', left: pct(at.x), top: pct(at.y + at.h), pointerEvents: 'auto', zIndex: '12',
++    minWidth: '13rem', padding: '4px', fontSize: '11px', lineHeight: '1.35',
++    background: 'var(--background, #fff)', color: 'var(--foreground, #111)', border: '1px solid rgba(0,0,0,0.15)',
++    borderRadius: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
++  });
++  for (const type of ['pointerdown', 'pointerup']) box.addEventListener(type, (e) => e.stopPropagation());
++  const head = document.createElement('div');
++  head.textContent = `AIM · ${title}`;
++  Object.assign(head.style, { padding: '2px 6px', opacity: '0.7', fontWeight: '600' });
++  box.appendChild(head);
++  for (const a of ACTIONS.filter((x) => actions.includes(x.action))) {
++    const item = document.createElement('button');
++    item.type = 'button';
++    item.textContent = a.label;
++    Object.assign(item.style, {
++      display: 'block', width: '100%', textAlign: 'left', padding: '2px 6px', borderRadius: '3px',
++      background: 'transparent', border: '0', cursor: 'pointer', color: 'inherit', font: 'inherit',
++    });
++    item.addEventListener('click', () => {
++      setLinkDraft(buildDraft(ctx, at, a.action, text));
++      const pageEl = host.closest<HTMLElement>('[data-page]') ?? host;
++      markDraft(pageEl, at);
++      box.remove();
++    });
++    box.appendChild(item);
++  }
++  const hint = document.createElement('div');
++  hint.textContent = 'Návrh uložíš v chate ("ulož odkaz z výkresu").';
++  Object.assign(hint.style, { padding: '2px 6px', opacity: '0.6' });
++  box.appendChild(hint);
++  host.appendChild(box);
++}
++
++/** Menu nad existujúcim odkazom (layer = vrstva odkazov strany). */
++export function openLinkMenu(layer: HTMLElement, link: DocLink, ctx: Ctx): void {
++  openMenu(layer, link, link.label, ctx, link.label, ['assign', 'clear', 'reset']);
++}
++
++/** Alt+ťah: oblasť bez odkazu (text určí host z riadkov strany); klik bez ťahu je zahodený. */
++export function draftFromDrag(pageEl: HTMLElement, ctx: Ctx, a: { x: number; y: number }, b: { x: number; y: number }): void {
++  const region = regionFromDrag(pageEl.getBoundingClientRect(), a, b);
++  if (!region) return;
++  markDraft(pageEl, region);
++  openMenu(pageEl, region, 'text bez odkazu', ctx, null, ['assign']);
++}
+diff --git a/apps/viewer/src/aim/docLinkDraftStore.test.ts b/apps/viewer/src/aim/docLinkDraftStore.test.ts
+new file mode 100644
+index 00000000..2ebb8a55
+--- /dev/null
++++ b/apps/viewer/src/aim/docLinkDraftStore.test.ts
+@@ -0,0 +1,47 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++import { describe, it } from 'node:test';
++import assert from 'node:assert/strict';
++import { buildDraft, getLinkDraft, onLinkDraftChange, regionToPct, setLinkDraft } from './docLinkDraftStore.js';
++
++const ctx = { docId: 'doc-1', page: 2 };
++
++describe('buildDraft (AIM D-160)', () => {
++  it('prevedie zlomky strany na percentá a zachová akciu', () => {
++    const d = buildDraft(ctx, { x: 0.1234, y: 0.2, w: 0.05, h: 0.01 }, 'assign', ' PU N1.01 ');
++    assert.deepEqual(d, {
++      document_id: 'doc-1',
++      page: 2,
++      text: 'PU N1.01',
++      bbox: { x: 12.34, y: 20, width: 5, height: 1 },
++      action: 'assign',
++    });
++  });
++
++  it('prázdny text je null (text určí host z riadkov strany)', () => {
++    assert.equal(buildDraft(ctx, { x: 0, y: 0, w: 0.1, h: 0.1 }, 'assign', '  ').text, null);
++    assert.equal(buildDraft(ctx, { x: 0, y: 0, w: 0.1, h: 0.1 }, 'clear', null).text, null);
++  });
++
++  it('regionToPct zaokrúhli na dve desatinné miesta', () => {
++    assert.deepEqual(regionToPct({ x: 0.123456, y: 0, w: 0.5, h: 0.000999 }), { x: 12.35, y: 0, width: 50, height: 0.1 });
++  });
++});
++
++describe('návrh vo store', () => {
++  it('set/get/clear a oznámenie zmeny', () => {
++    let calls = 0;
++    const off = onLinkDraftChange(() => calls++);
++    const d = buildDraft(ctx, { x: 0, y: 0, w: 0.1, h: 0.1 }, 'reset', 'x');
++    setLinkDraft(d);
++    assert.equal(getLinkDraft(), d);
++    setLinkDraft(null);
++    assert.equal(getLinkDraft(), null);
++    off();
++    setLinkDraft(d);
++    assert.equal(calls, 2);
++    setLinkDraft(null);
++  });
++});
+diff --git a/apps/viewer/src/aim/docLinkDraftStore.ts b/apps/viewer/src/aim/docLinkDraftStore.ts
+new file mode 100644
+index 00000000..3675e178
+--- /dev/null
++++ b/apps/viewer/src/aim/docLinkDraftStore.ts
+@@ -0,0 +1,66 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++/**
++ * Návrh ručnej opravy odkazu popisku na výkrese (AIM D-160). Viewer nemá token na zápis, preto
++ * návrh len drží a hlási vo `view_state.link_draft`; uloží ho chat (`open_drawing link={from_draft}`),
++ * ako pripomienky D-158. Cieľ priradenia je prvok vybraný v 3D (host ho číta z `selection`).
++ */
++
++export type LinkDraftAction = 'assign' | 'clear' | 'reset';
++
++/** Oblasť v % strany, počiatok vľavo hore (tvar `open_drawing region`). */
++export interface DraftRegion {
++  x: number;
++  y: number;
++  width: number;
++  height: number;
++}
++
++export interface LinkDraft {
++  document_id: string;
++  page: number;
++  /** Text popisku; null = text pod oblasťou určí host z riadkov strany. */
++  text: string | null;
++  bbox: DraftRegion;
++  action: LinkDraftAction;
++}
++
++let draft: LinkDraft | null = null;
++const listeners = new Set<() => void>();
++
++export const getLinkDraft = (): LinkDraft | null => draft;
++
++export function setLinkDraft(next: LinkDraft | null): void {
++  draft = next;
++  for (const l of listeners) l();
++}
++
++export function onLinkDraftChange(fn: () => void): () => void {
++  listeners.add(fn);
++  return () => listeners.delete(fn);
++}
++
++const pct = (v: number) => +(v * 100).toFixed(2);
++
++/** Oblasť zo zlomkov strany (0-1) na percentá. */
++export function regionToPct(r: { x: number; y: number; w: number; h: number }): DraftRegion {
++  return { x: pct(r.x), y: pct(r.y), width: pct(r.w), height: pct(r.h) };
++}
++
++/** Návrh pre oblasť (zlomky) a akciu; text prázdny = null. */
++export function buildDraft(
++  ctx: { docId: string; page: number },
++  region: { x: number; y: number; w: number; h: number },
++  action: LinkDraftAction,
++  text: string | null,
++): LinkDraft {
++  return {
++    document_id: ctx.docId,
++    page: ctx.page,
++    text: text && text.trim() ? text.trim() : null,
++    bbox: regionToPct(region),
++    action,
++  };
++}
+diff --git a/apps/viewer/src/aim/docLinks.test.ts b/apps/viewer/src/aim/docLinks.test.ts
+index 055b48c1..f66f0462 100644
+--- a/apps/viewer/src/aim/docLinks.test.ts
++++ b/apps/viewer/src/aim/docLinks.test.ts
+@@ -9,11 +9,13 @@ import {
+   handleDocLinksMessage,
+   isDocLinksMessage,
+   linkTitle,
++  MAX_MEMBERS,
+   MAX_TARGETS,
+   normalizeDocLinks,
+   pageKey,
+   useAimDocLinksStore,
+ } from './docLinks.js';
++import { getLinkDraft, setLinkDraft } from './docLinkDraftStore.js';
+ 
+ const door = { guid: '0DoorGuid0000000000001', ref: 'DD01.08.0001' };
+ const link = (over: Record<string, unknown> = {}) => ({
+@@ -149,3 +151,36 @@ describe('acceptsDocLinksEvent (AIM D-130)', () => {
+     assert.equal(acceptsDocLinksEvent({ source: parent, origin: 'https://any.example' }, parent, ''), true);
+   });
+ });
++
++describe('zóny a ručné odkazy (AIM D-160)', () => {
++  const zone = { guid: '0ZoneGuid00000000000001', ref: 'PU.N1.01', name: 'PU N1.01', members: ['0Room1', '0Room2', 7, ''] };
++
++  it('cieľ nesie členov zóny, len textové a neprázdne', () => {
++    const [l] = normalizeDocLinks([{ documentId: 'd', page: 1, links: [link({ targets: [zone] })] }]).get(pageKey('d', 1)) ?? [];
++    assert.deepEqual(l.targets[0].members, ['0Room1', '0Room2']);
++  });
++
++  it('členov je najviac MAX_MEMBERS a cieľ bez nich pole nemá', () => {
++    const many = Array.from({ length: MAX_MEMBERS + 5 }, (_, i) => `r${i}`);
++    const [l] = normalizeDocLinks([{ documentId: 'd', page: 1, links: [link({ targets: [{ ...zone, members: many }, door]})] }]).get(pageKey('d', 1)) ?? [];
++    assert.equal(l.targets[0].members?.length, MAX_MEMBERS);
++    assert.equal('members' in l.targets[1], false);
++  });
++
++  it('manual prejde len ako true a mení popis', () => {
++    const [auto] = normalizeDocLinks([{ documentId: 'd', page: 1, links: [link()] }]).get(pageKey('d', 1)) ?? [];
++    const [hand] = normalizeDocLinks([{ documentId: 'd', page: 1, links: [link({ manual: true })] }]).get(pageKey('d', 1)) ?? [];
++    const [fake] = normalizeDocLinks([{ documentId: 'd', page: 1, links: [link({ manual: 'ano' })] }]).get(pageKey('d', 1)) ?? [];
++    assert.equal(auto.manual, undefined);
++    assert.equal(hand.manual, true);
++    assert.equal(fake.manual, undefined);
++    assert.match(linkTitle(hand), /ručne priradené/);
++    assert.match(linkTitle(auto), /odvodené/);
++  });
++
++  it('nová správa od hosta zruší rozpracovaný návrh opravy', () => {
++    setLinkDraft({ document_id: 'd', page: 1, text: 'PU', bbox: { x: 1, y: 1, width: 1, height: 1 }, action: 'clear' });
++    useAimDocLinksStore.getState().setDocuments([]);
++    assert.equal(getLinkDraft(), null);
++  });
++});
+diff --git a/apps/viewer/src/aim/docLinks.ts b/apps/viewer/src/aim/docLinks.ts
+index eaa67f14..db4f7ec2 100644
+--- a/apps/viewer/src/aim/docLinks.ts
++++ b/apps/viewer/src/aim/docLinks.ts
+@@ -14,11 +14,14 @@
+ import { useEffect, type RefObject } from 'react';
+ import { create } from 'zustand';
+ import { SOURCE } from './bridge-protocol.js';
++import { setLinkDraft } from './docLinkDraftStore.js';
+ 
+ export interface DocLinkTarget {
+   guid: string;
+   ref: string;
+   name?: string;
++  /** Zóna (IfcZone) bez geometrie: GUIDy jej miestností, klik vyberie prvú, ktorá je vo vieweri (AIM D-160). */
++  members?: string[];
+ }
+ 
+ /** Oblasť popisku v zlomkoch strany (0-1, počiatok vľavo hore). */
+@@ -30,6 +33,8 @@ export interface DocLink {
+   label: string;
+   status: 'unique' | 'candidates';
+   targets: DocLinkTarget[];
++  /** Ručné priradenie z chatu (AIM D-160), nie odvodenie z popisku. */
++  manual?: boolean;
+   /** Značka typu s viac výskytmi: klik otvorí tento IFC typ, `targets` sú vedľajšia voľba. */
+   type?: DocLinkTarget;
+ }
+@@ -43,6 +48,7 @@ export interface DocLinksMessage {
+ /** Najviac oblastí na stranu (pôdorys 1NP ich má okolo 100) a kandidátov na oblasť. */
+ export const MAX_LINKS_PER_PAGE = 600;
+ export const MAX_TARGETS = 12;
++export const MAX_MEMBERS = 40;
+ const MAX_TEXT = 80;
+ 
+ export function isDocLinksMessage(data: unknown): data is DocLinksMessage {
+@@ -105,7 +111,11 @@ function normalizeTarget(raw: unknown): DocLinkTarget | null {
+   const ref = text(t.ref);
+   if (!guid || !ref) return null;
+   const name = text(t.name);
+-  return name ? { guid, ref, name } : { guid, ref };
++  const members = (Array.isArray(t.members) ? t.members : [])
++    .map(text)
++    .filter((m): m is string => m !== null)
++    .slice(0, MAX_MEMBERS);
++  return { guid, ref, ...(name ? { name } : {}), ...(members.length > 0 ? { members } : {}) };
+ }
+ 
+ function normalizeLink(raw: unknown): DocLink | null {
+@@ -131,6 +141,7 @@ function normalizeLink(raw: unknown): DocLink | null {
+     label: text(l.label) ?? targets[0].ref,
+     status: targets.length > 1 ? 'candidates' : 'unique',
+     targets,
++    ...(l.manual === true ? { manual: true } : {}),
+     ...(type ? { type } : {}),
+   };
+ }
+@@ -164,7 +175,7 @@ export function linkTitle(link: DocLink): string {
+     : link.status === 'unique'
+       ? `${first.ref}${first.name ? ` ${first.name}` : ''}`
+       : `kandidáti (${link.targets.length}): ${link.targets.map((t) => t.ref).join(', ')}`;
+-  return `${link.label} -> ${to} (AIM: odvodené z popisku)`;
++  return `${link.label} -> ${to} (${link.manual ? 'AIM: ručne priradené' : 'AIM: odvodené z popisku'})`;
+ }
+ 
+ interface DocLinksState {
+@@ -177,11 +188,19 @@ interface DocLinksState {
+ export const useAimDocLinksStore = create<DocLinksState>((set, get) => ({
+   pages: new Map(),
+   nonce: 0,
+-  setDocuments: (documents) => set({ pages: normalizeDocLinks(documents), nonce: get().nonce + 1 }),
++  setDocuments: (documents) => {
++    // Nové odkazy z hosta (aj po uložení opravy v chate): návrh opravy a jeho značka končia (AIM D-160).
++    setLinkDraft(null);
++    if (typeof document !== 'undefined') document.querySelectorAll('[data-aim-link-draft]').forEach((n) => n.remove());
++    set({ pages: normalizeDocLinks(documents), nonce: get().nonce + 1 });
++  },
+ }));
+ 
+-/** Vyber prvok odkazu; false = prvok nie je v načítaných modeloch (alebo výber ešte nie je napojený). */
+-const selectDocLinkTarget = (guid: string): boolean => selectGuid(guid);
++/**
++ * Vyber prvok odkazu; false = prvok nie je v načítaných modeloch (alebo výber ešte nie je napojený).
++ * Zóna bez geometrie vyberie prvú svoju miestnosť, ktorá vo vieweri je (AIM D-160).
++ */
++const selectDocLinkTarget = (t: DocLinkTarget): boolean => selectGuid(t.guid) || (t.members ?? []).some(selectGuid);
+ 
+ const LAYER_ATTR = 'data-aim-links';
+ const PICKER_ATTR = 'data-aim-link-picker';
+@@ -226,7 +245,7 @@ function openPicker(layer: HTMLElement, link: DocLink): void {
+       background: 'transparent', border: '0', cursor: 'pointer', color: 'inherit', font: 'inherit',
+     });
+     item.addEventListener('click', () => {
+-      if (selectDocLinkTarget(t.guid)) box.remove();
++      if (selectDocLinkTarget(t)) box.remove();
+       else flagMissing(item);
+     });
+     box.appendChild(item);
+@@ -234,7 +253,7 @@ function openPicker(layer: HTMLElement, link: DocLink): void {
+   layer.appendChild(box);
+ }
+ 
+-function linkBox(layer: HTMLElement, link: DocLink): HTMLElement {
++function linkBox(layer: HTMLElement, link: DocLink, ctx: { docId: string; page: number }): HTMLElement {
+   const el = document.createElement('div');
+   el.setAttribute('role', 'button');
+   el.tabIndex = 0;
+@@ -248,23 +267,58 @@ function linkBox(layer: HTMLElement, link: DocLink): HTMLElement {
+   stopPointer(el);
+   const activate = () => {
+     // Značka typu: otvor IFC typ; výber výskytov je záloha, keď typ vo vieweri nie je.
+-    if (link.type && selectDocLinkTarget(link.type.guid)) return;
++    if (link.type && selectDocLinkTarget(link.type)) return;
+     if (link.status === 'candidates') openPicker(layer, link);
+-    else if (!selectDocLinkTarget(link.targets[0].guid)) flagMissing(el);
++    else if (!selectDocLinkTarget(link.targets[0])) flagMissing(el);
+   };
+-  el.addEventListener('click', activate);
++  // Alt+klik alebo pravé tlačidlo: ručná oprava odkazu (AIM D-160, lenivý modul docLinkDraft).
++  const edit = () => void import('./docLinkDraft.js').then((m) => m.openLinkMenu(layer, link, ctx));
++  el.addEventListener('click', (e) => (e.altKey ? edit() : activate()));
++  el.addEventListener('contextmenu', (e) => {
++    e.preventDefault();
++    edit();
++  });
+   el.addEventListener('keydown', (e) => {
+     if (e.key !== 'Enter' && e.key !== ' ') return;
+     e.preventDefault();
+-    activate();
++    if (e.altKey) edit();
++    else activate();
+   });
+   return el;
+ }
+ 
++const armed = new WeakSet<HTMLElement>();
++
++/**
++ * Alt+ťah na strane označí text bez odkazu pre ručné priradenie (AIM D-160). Modul návrhu sa
++ * načíta až pri prvom geste; koniec ťahu sa zachytí hneď, aby ho rýchle gesto nestratilo.
++ */
++function armDraft(pageEl: HTMLElement, docId: string, page: number): void {
++  if (armed.has(pageEl)) return;
++  armed.add(pageEl);
++  pageEl.addEventListener(
++    'pointerdown',
++    (e) => {
++      if (!e.altKey || e.button !== 0) return;
++      e.preventDefault();
++      e.stopPropagation();
++      const from = { x: e.clientX, y: e.clientY };
++      const loaded = import('./docLinkDraft.js');
++      window.addEventListener(
++        'pointerup',
++        (u) => void loaded.then((m) => m.draftFromDrag(pageEl, { docId, page }, from, { x: u.clientX, y: u.clientY })),
++        { once: true },
++      );
++    },
++    true,
++  );
++}
++
+ /** Vrstva odkazov nad každou vykreslenou stranou dokumentu; prekreslí sa pri novej správe. */
+ function syncLinkLayers(pageEls: Map<number, HTMLDivElement> | null, docId: string, state: DocLinksState): void {
+   if (!pageEls) return;
+   for (const [page, el] of pageEls) {
++    armDraft(el, docId, page);
+     const layer = el.querySelector<HTMLDivElement>(`:scope > [${LAYER_ATTR}]`);
+     const links = state.pages.get(pageKey(docId, page));
+     if (!links) {
+@@ -277,7 +331,7 @@ function syncLinkLayers(pageEls: Map<number, HTMLDivElement> | null, docId: stri
+     next.setAttribute(LAYER_ATTR, String(state.nonce));
+     // Nad výrezovým plátnom karty (ako odkazy D-076), pod rámikmi by klik nešiel.
+     Object.assign(next.style, { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: '10' });
+-    for (const link of links) next.appendChild(linkBox(next, link));
++    for (const link of links) next.appendChild(linkBox(next, link, { docId, page }));
+     el.appendChild(next);
+   }
+ }
+diff --git a/apps/viewer/src/aim/viewQueries.ts b/apps/viewer/src/aim/viewQueries.ts
+index 4ddffc3c..2df7e460 100644
+--- a/apps/viewer/src/aim/viewQueries.ts
++++ b/apps/viewer/src/aim/viewQueries.ts
+@@ -27,6 +27,7 @@ import { describePanels } from './aimPanelsPlan.js';
+ import { panelViewState } from './aimPanelScroll.js';
+ import { useAimInspectorStore } from './aimInspectorStore.js';
+ import { useAimDocRegionStore } from './docRegion.js';
++import { getLinkDraft } from './docLinkDraftStore.js';
+ import { useAimUnderlays3d } from './aimUnderlays3d.js';
+ import { aimBcfContext } from './bcf-protocol.js';
+ import { useAimViewTabs } from './viewTabsStore.js';
+@@ -229,6 +230,8 @@ export function queryViewState(state: State, g: GuidHelpers) {
+     underlays_3d: !useAimUnderlays3d.getState().hidden,
+     property_focus: useAimInspectorStore.getState().propertyFocus,
+     document: useAimDocRegionStore.getState().visible,
++    // AIM D-160: návrh ručnej opravy odkazu popisku na výkrese; uloží ho chat (open_drawing link from_draft).
++    link_draft: getLinkDraft(),
+     // AIM D-132: záložky (aktívna a tá vedľa).
+     tabs: describeTabs(useAimViewTabs.getState()),
+     // AIM D-149: zoznam v paneli Lists (stĺpce, filtre, zoradenie, zoskupenie, súčty, maximalizácia).
+-- 
+2.43.0
+
