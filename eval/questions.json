@@ -1209,6 +1209,38 @@
       "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
       "notes": "D-161: set_view_mode(view='Pôdorys 1NP') = VIEW_ACTIVATE (kamera, rez, košík v Presentation); zoznam mien get_viewer_state(saved_views=true). Starý riadok z D-122 sa obnoví zálohou (rez, kamera, izolácia) na bežnom 3D, bez záložky."
+    },
+    {
+      "id": "clash-uloz-test",
+      "category": "data",
+      "question": "Ulož test kolízií 'Potrubie x betón 2NP': vzduchovody a potrubie VZT proti stenám a doskám ASR na 2NP, tvrdé kolízie.",
+      "expect": { "tools_called": ["clash"] },
+      "verified": false,
+      "notes": "D-164 PR2: clash(save, test, a, a_model, a_storey, b, b_model, b_storey, mode=hard). Evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "clash-porovnaj-behy",
+      "category": "data",
+      "question": "Porovnaj posledný beh testu VZT-NOSNE s predošlým. Čo sa vyriešilo?",
+      "expect": { "tools_called": ["clash"] },
+      "verified": false,
+      "notes": "D-164 PR2: clash(compare, test). Nepretestované (unretested) sa nesmú vydávať za vyriešené."
+    },
+    {
+      "id": "clash-stav-kolizie",
+      "category": "data",
+      "question": "Označ prvú skupinu kolízií VZT x nosné konštrukcie ako vyriešenú.",
+      "expect": { "tools_called": ["clash"] },
+      "verified": false,
+      "notes": "D-164 PR2: clash(results, group=1) -> clash(review, review_status=resolved, group). Stav sa prenáša do ďalších behov testu."
+    },
+    {
+      "id": "clash-zaloz-bcf",
+      "category": "data",
+      "question": "Založ BCF tému pre najväčšiu skupinu kolízií VZT s nosnými konštrukciami.",
+      "expect": { "tools_called": ["clash"] },
+      "verified": false,
+      "notes": "D-164 PR2: clash(bcf, create=true, group_by, group) založí tému Clash (model VZT); druhé volanie tému nezdvojí."
     }
   ]
 }

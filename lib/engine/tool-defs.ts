@@ -247,37 +247,53 @@ export function engineToolDefinitions(): ToolDefinition[] {
     {
       name: "clash",
       description:
-        "IFC MOTOR: KOLÍZIE modelov federácie (ASR x VZT) počíta server. action=list: predvolené testy (VZT x nosné " +
-        "konštrukcie hard, VZT x ASR odstup 50 mm). run: test (kód) alebo ad hoc a, b (selektor tried 'IfcDuct*|IfcPipe*', " +
-        "'!IfcSpace'), a_model, b_model, a_storey, b_storey, mode, clearance_mm, tolerance_mm; vráti run_id a súčty. " +
-        "Celé modely proti sebe sú drahé: zužuj na podlažie a konkrétne triedy. " +
-        "results: group_by storey | system | type_pair | element | rule | cluster, group (kľúč alebo poradie) rozbalí " +
-        "kolízie a vráti show_in_3d (a_global_ids, b_global_ids pre show_in_3d / style_in_3d). bcf: len NÁVRH témy za " +
-        "skupinu (potom bcf_topic create). save, delete, compare, review, open, from_viewer príde neskôr.",
+        "IFC MOTOR: KOLÍZIE modelov federácie (ASR x VZT) počíta server, testy a behy sa ukladajú. list: predvolené testy (VZT-NOSNE hard, " +
+        "VZT-ASR odstup 50 mm) a vlastné s posledným behom; s test jeho behy. save: vlastný test (test = kód, name, a, b, a_model, " +
+        "b_model, a_storey, b_storey, mode, clearance_mm); delete: confirm=true. run: test alebo ad hoc a, b (selektor tried " +
+        "'IfcDuct*|IfcPipe*', '!IfcSpace'), tolerance_mm; save=true uloží beh (run_id UUID prežije reštart). Celé modely proti sebe " +
+        "sú drahé: zužuj na podlažie a konkrétne triedy. results: group_by storey | system | type_pair | element | rule | cluster, " +
+        "filtre status, severity, review, run_id (aj uložený) alebo test (posledný beh); group rozbalí kolízie a vráti show_in_3d " +
+        "(a_global_ids, b_global_ids pre show_in_3d / style_in_3d). compare: nový beh proti predošlému alebo base_run_id " +
+        "(added, resolved, persistent, unretested = beh ich prvky nemohol overiť; bucket rozbalí). review: review_status " +
+        "open | resolved | accepted + comment pre keys alebo group; platí v ďalších behoch testu. bcf: návrh témy za skupinu, " +
+        "create=true ju založí (typ Clash, model VZT). open, from_viewer príde neskôr.",
       inputSchema: {
         type: "object",
         properties: {
           action: { type: "string", enum: [...CLASH_ACTIONS] },
-          test: { type: "string", description: "run: kód alebo názov testu z action=list" },
-          a: { type: "string", description: "run: selektor IFC tried strany a (ad hoc alebo prepíše test)" },
-          b: { type: "string", description: "run: strana b; bez b sa a testuje samo so sebou" },
-          a_model: { ...model, description: "run: model strany a" },
-          b_model: { ...model, description: "run: model strany b" },
-          a_storey: { type: "string", description: "run: podlažie strany a (1NP, 2.NP)" },
-          b_storey: { type: "string", description: "run: podlažie strany b" },
-          mode: { type: "string", enum: ["hard", "clearance"], description: "run: prienik alebo odstup" },
-          clearance_mm: { type: "number", description: "run: odstup v mm (pri clearance)" },
-          tolerance_mm: { type: "number", description: "run: tolerancia v mm (default 2)" },
-          run_id: { type: "string", description: "results, bcf: beh (default posledný)" },
-          group_by: { type: "string", enum: [...CLASH_GROUPS], description: "results, bcf: zoskupenie (default storey)" },
-          group: { type: "string", description: "results: kľúč alebo poradie skupiny; bcf: skupina témy" },
-          limit: { type: "number", description: "results: skupín (default 10) alebo kolízií v skupine (default 20)" },
-          offset: { type: "number", description: "results: posun strany" },
+          test: { type: "string", description: "run, results, list: kód alebo názov testu; save, delete: kód vlastného testu" },
+          name: { type: "string", description: "save: názov testu" },
+          description: { type: "string", description: "save: popis testu" },
+          a: { type: "string", description: "run, save: selektor IFC tried strany a (ad hoc alebo prepíše test)" },
+          b: { type: "string", description: "run, save: strana b; bez b sa a testuje samo so sebou" },
+          a_model: { ...model, description: "run, save: model strany a" },
+          b_model: { ...model, description: "run, save: model strany b" },
+          a_storey: { type: "string", description: "run, save: podlažie strany a (1NP, 2.NP)" },
+          b_storey: { type: "string", description: "run, save: podlažie strany b" },
+          mode: { type: "string", enum: ["hard", "clearance"], description: "run, save: prienik alebo odstup" },
+          clearance_mm: { type: "number", description: "run, save: odstup v mm (pri clearance)" },
+          tolerance_mm: { type: "number", description: "run, save: tolerancia v mm (default 2)" },
+          save: { type: "boolean", description: "run: uložiť beh a kolízie do DB" },
+          confirm: { type: "boolean", description: "delete: potvrdiť zmazanie testu s behmi a stavmi kolízií" },
+          run_id: { type: "string", description: "results, compare, review, bcf: beh (run-N alebo UUID uloženého; default posledný)" },
+          base_run_id: { type: "string", description: "compare: základný beh (default predošlý uložený beh testu)" },
+          bucket: { type: "string", enum: ["added", "resolved", "persistent", "unretested"], description: "compare: rozbaliť kolízie skupiny výsledku" },
+          group_by: { type: "string", enum: [...CLASH_GROUPS], description: "results, review, bcf: zoskupenie (default storey)" },
+          group: { type: "string", description: "results, review: kľúč alebo poradie skupiny; bcf: skupina témy" },
+          status: { type: "string", enum: ["hard", "clearance"], description: "results: len tento druh kolízie" },
+          severity: { type: "string", enum: ["critical", "major", "minor", "info"], description: "results: len táto závažnosť" },
+          review: { type: "string", enum: ["open", "resolved", "accepted"], description: "results: len kolízie v tomto stave" },
+          review_status: { type: "string", enum: ["open", "resolved", "accepted"], description: "review: nový stav" },
+          comment: { type: "string", description: "review: poznámka ku kolíziám" },
+          keys: { type: "array", items: { type: "string" }, description: "review: kľúče kolízií (key z results)" },
+          limit: { type: "number", description: "results, compare: skupín (default 10) alebo kolízií (default 20)" },
+          offset: { type: "number", description: "results, compare: posun strany" },
           model: { type: "string", description: "bcf: model témy (default VZT)" },
+          create: { type: "boolean", description: "bcf: založiť tému (inak len návrh); len na pokyn používateľa" },
         },
         required: ["action"],
       },
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
   ];
 }
