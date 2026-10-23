@@ -23,13 +23,24 @@
  * Panely (D-127): `panels:~<panel>=<open|close|toggle>~...:` (`all` len `close`).
  * Posun obsahu panela (D-146, D-150): `panel_scroll:<up|down|top|bottom>:`, alebo `panel_scroll:-~p=<panel>~i=<text>~pct=<n>:`;
  * zoom `panel_zoom:<in|out|reset|n>~p=<panel>:`.
+ * Otáčanie kamery dokola (D-154): `auto_rotate:<start|stop>[~s=<°/s>][~d=<l|r>]:`.
  * Čiara trasy (D-137): `route:<hex>:<x,y,z|...>` (prázdne body = zmazať), formát v `lib/viewer-route.ts`.
  */
 
 import { LENS_MODES, decodeLensWire, lensBridgeMessage, type LensMode, type LensWire } from "./viewer-lens";
 import { parseSectionCapArg, sectionCapBridgeMessage, type SectionCapOp } from "./viewer-section-cap";
 import { decodeListWire, listBridgeMessage, type ListWire } from "./viewer-list";
-import { cameraMoveArgs, marginToPadding, parseCameraMove, type BridgeViewpoint, type CameraMove } from "./viewer-camera";
+import {
+  AUTO_ROTATE_ACTIONS,
+  AUTO_ROTATE_SPEED,
+  cameraMoveArgs,
+  marginToPadding,
+  parseCameraMove,
+  type AutoRotateAction,
+  type AutoRotateDirection,
+  type BridgeViewpoint,
+  type CameraMove,
+} from "./viewer-camera";
 import { decodeMeasureWire, type MeasurePoint, type MeasureSegment } from "./viewer-measure";
 import { parseRouteOp } from "./viewer-route";
 import { parseTabsOp, tabsBridgeMessage, type TabsOp } from "./viewer-tabs";
@@ -158,7 +169,9 @@ export type ViewerOp =
   /** Posun obsahu panela (D-146, D-150). */
   | ({ op: "panel_scroll" } & PanelScrollTarget)
   /** Zoom obsahu panela (D-150). */
-  | { op: "panel_zoom"; zoom: PanelZoom; panel?: string };
+  | { op: "panel_zoom"; zoom: PanelZoom; panel?: string }
+  /** Plynulé otáčanie kamery okolo cieľa (D-154); rýchlosť a smer len pri `start`. */
+  | { op: "auto_rotate"; action: AutoRotateAction; speedDegS?: number; direction?: AutoRotateDirection };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -343,6 +356,12 @@ function parsePanels(arg: string): PanelsRequest | null {
   return Object.keys(out).length > 0 ? out : null;
 }
 
+/** Op otáčania dokola (D-154): `auto_rotate:start~s=5~d=r:` alebo `auto_rotate:stop:`. */
+export function autoRotateOp(action: AutoRotateAction, speedDegS?: number, direction?: AutoRotateDirection): string {
+  const kv = action === "start" ? [...(speedDegS !== undefined ? [`s=${speedDegS}`] : []), ...(direction ? [`d=${direction === "left" ? "l" : "r"}`] : [])] : [];
+  return `auto_rotate:${[action, ...kv].join("~")}:`;
+}
+
 /**
  * Op posunu panela (D-146, D-150): `panel_scroll:down:` (panel vlastností), alebo hlava `-` s parametrami
  * `~p=<panel>~i=<text, encodeURIComponent a ~ ako %7E>~pct=<0-100>`; smer, `i` a `pct` sú vzájomne výlučné.
@@ -497,6 +516,18 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "panels") {
       const panels = parsePanels(arg);
       if (panels) out.push({ op, panels });
+    } else if (op === "auto_rotate") {
+      const [action, kv] = parseArg(arg);
+      if (!(AUTO_ROTATE_ACTIONS as readonly string[]).includes(action)) continue;
+      const speed = kv.s !== undefined ? Number(kv.s) : undefined;
+      const speedOk = speed !== undefined && Number.isFinite(speed) && speed >= AUTO_ROTATE_SPEED.min && speed <= AUTO_ROTATE_SPEED.max;
+      const direction = kv.d === "l" ? "left" : kv.d === "r" ? "right" : undefined;
+      out.push({
+        op,
+        action: action as AutoRotateAction,
+        ...(action === "start" && speedOk ? { speedDegS: speed } : {}),
+        ...(action === "start" && direction ? { direction } : {}),
+      });
     } else if (op === "panel_scroll") {
       const target = parsePanelScroll(arg);
       if (target) out.push({ op, ...target });
@@ -618,6 +649,13 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
       };
     case "panel_zoom":
       return { type: "ZOOM_PANEL", zoom: o.zoom, ...(o.panel ? { panel: o.panel } : {}) };
+    case "auto_rotate":
+      return {
+        type: "AUTO_ROTATE",
+        action: o.action,
+        ...(o.speedDegS !== undefined ? { speedDegS: o.speedDegS } : {}),
+        ...(o.direction ? { direction: o.direction } : {}),
+      };
   }
 }
 

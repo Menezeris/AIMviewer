@@ -1129,6 +1129,14 @@
       "expect": { "tools_called": ["ifc_measure"] },
       "verified": false,
       "notes": "D-152 (issue #235): ifc_measure(clear=true) zmaže kóty a trasu od Claude, merania používateľa ostanú. Bez overenej hodnoty (vyžaduje živý viewer)."
+    },
+    {
+      "id": "camera-auto-rotate",
+      "category": "viewer",
+      "question": "Potoč s tým modelom pomaličky dokola, nech sa točí stále.",
+      "expect": { "tools_called": ["set_camera"] },
+      "verified": false,
+      "notes": "D-154 (issue #247): set_camera(auto_rotate=start, speed_deg_s=nízka) jedným volaním, nie opakované orbit_h_deg. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     }
   ]
 }
