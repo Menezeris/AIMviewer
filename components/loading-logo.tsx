@@ -15,8 +15,8 @@ declare global {
 }
 
 const WORDS = ["", "sight", "formation", "telligence"];
-// Rýchlejšie ako predvolené 90 / 1800 ms (spätná väzba k #291).
-const SPEED_MS = 55;
+// Rýchlejšie ako predvolené 90 / 1800 ms (spätná väzba k #291); bodka bliká vždy ako kurzor.
+const SPEED_MS = 40;
 const HOLD_MS = 1100;
 const LONGEST = WORDS.reduce((a, w) => (w.length > a.length ? w : a), "");
 
@@ -65,7 +65,7 @@ export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
       >
         Loading
       </span>
-      <span className="relative inline-flex" style={{ fontFamily: "var(--font-sans), var(--ds-font-sans)" }}>
+      <span className="relative inline-flex [&_.logo-dot]:animate-[logo-dot-blink_1s_step-end_infinite]!" style={{ fontFamily: "var(--font-sans), var(--ds-font-sans)" }}>
         <span className="brand-logo invisible" aria-hidden="true">
           <span className="a">asset</span>
           <span className="i">in{LONGEST}</span>
