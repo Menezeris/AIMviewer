@@ -1121,6 +1121,22 @@
       "expect": { "tools_called": ["ifc_measure"] },
       "verified": false,
       "notes": "D-152 (issue #235): ifc_measure(clear=true) zmaže kóty a trasu od Claude, merania používateľa ostanú. Bez overenej hodnoty (vyžaduje živý viewer)."
+    },
+    {
+      "id": "bcf-locate-region",
+      "category": "bcf",
+      "question": "Ktorých prvkov v modeli sa týka pripomienka #1 na výkrese? Ukáž mi ich.",
+      "expect": { "tools_called": ["bcf_topic"] },
+      "verified": false,
+      "notes": "D-158 krok 4 (#199): bcf_topic(action=locate, guid=#1) bez apply = návrh prvkov z oblasti strany cez kalibráciu D-133, potom show_in_3d(global_ids). Len MCP; evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "bcf-list-entity-floor",
+      "category": "bcf",
+      "question": "Aké pripomienky sú otvorené na 1NP?",
+      "expect": { "tools_called": ["bcf_topic_list"] },
+      "verified": false,
+      "notes": "D-158 krok 4 (#199): bcf_topic_list(entity=1NP, status=open) = témy na podlaží, jeho prvkoch a priestoroch a na pôdoryse podlažia. Len MCP; evaly nepobežali."
     }
   ]
 }
