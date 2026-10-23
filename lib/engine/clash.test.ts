@@ -138,6 +138,13 @@ describe("clash (D-164) - vstup", () => {
 
   it("parametre prepíšu test, chybný vstup je InputError", () => {
     expect(parseSpec({ test: "VZT-ASR", clearance_mm: 100 }).clearance).toBeCloseTo(0.1, 6);
+    // Zúženie na podlažie ponechá triedy a model testu (nenahradí stranu celú).
+    const narrowed = parseSpec({ test: "VZT-NOSNE", a_storey: "2NP", b_storey: "2NP" });
+    expect(narrowed.a).toEqual({ type: "*", model: "VZT", storey: "2NP" });
+    expect(narrowed.b).toEqual({ type: STRUCTURAL_TYPES, model: "ASR", storey: "2NP" });
+    expect(parseSpec({ test: "VZT-NOSNE", b: "IfcSlab" }).b).toEqual({ type: "IfcSlab", model: "ASR" });
+    expect(parseSpec({ a: "IfcWall", a_model: "ASR" }).a).toEqual({ type: "IfcWall", model: "ASR" });
+    expect(parseSpec({ a: "IfcWall", b_storey: "1NP" }).b).toEqual({ type: "*", storey: "1NP" });
     expect(() => parseSpec({})).toThrow(/Zadaj test/);
     expect(() => parseSpec({ test: "nie je" })).toThrow(/Predvolené/);
     expect(() => parseSpec({ a: "IfcWall", mode: "clearance" })).toThrow(/clearance_mm/);
@@ -211,7 +218,7 @@ describe("clash tool (D-164)", () => {
     expect(r.json.proposal).toMatchObject({ type: "Clash", model: "MINI", priority: expect.any(String) });
     expect(r.json.proposal.title).toContain("1NP");
     expect(r.json.proposal.global_ids.sort()).toEqual([guid("SL1"), guid("W1"), guid("W2")].sort());
-    expect(r.json.write).toMatch(/PR2/);
+    expect(r.json.write).toMatch(/Len návrh, nič sa nezapísalo/);
     expect((await call({ action: "bcf", group_by: "storey", group: "1NP", model: "VZT" })).json.proposal.model).toBe("VZT");
     expect((await call({ action: "bcf", group_by: "storey" })).content).toMatch(/Zadaj group/);
     expect((await call({ action: "bcf", group_by: "storey", group: "9NP" })).content).toMatch(/neexistuje/);
@@ -240,16 +247,17 @@ describe("clash tool (D-164)", () => {
   });
 
   it("neimplementované akcie vrátia jasný stub, chyby vstupu nie sú výnimka", async () => {
-    for (const action of ["save", "delete", "compare", "review", "open", "from_viewer"]) {
+    for (const action of ["open", "from_viewer"]) {
       const r = await call({ action });
       expect(r.isError).toBe(false);
       expect(r.json).toMatchObject({ action, available: false });
-      expect(r.json.note).toMatch(/PR2|PR3/);
+      expect(r.json.note).toMatch(/mostom do viewera/);
     }
     expect((await call({ action: "results" })).content).toMatch(/najprv action=run/);
     expect((await call({ action: "run" })).content).toMatch(/Zadaj test/);
     expect((await call({ action: "nic" })).content).toMatch(/action je/);
     expect((await call({ action: "results", run_id: "run-99" })).content).toMatch(/nie je v pamäti/);
+    expect((await call({ action: "results", run_id: "nie-uuid" })).content).toMatch(/nie je beh z pamäte \(run-N\) ani uložený beh/);
     await call({ action: "run", a: "IfcWall", b: "IfcSlab", mode: "clearance", clearance_mm: 500 });
     expect((await call({ action: "results", group_by: "farba" })).content).toMatch(/group_by je/);
   });

@@ -18,6 +18,7 @@ import { getIfcModels } from "../data/ifc-models";
 
 import {
   CLASH_GROUPS,
+  CLASH_STATES,
   CLASH_STUB_ACTIONS,
   DEFAULT_TESTS,
   findTest,
@@ -31,12 +32,15 @@ import { openEngineSession, type EngineModel } from "./session";
 import { normalizeStoreyLabel } from "./storey";
 import { InputError, clamp, modelsFor, str, structured, type EngineDeps } from "./tools";
 
+const saved = () => import("./clash-saved");
+
 /**
  * Tool `clash` (D-164, host PR1): kolízie medzi modelmi federácie na serveri. Geometria
  * ako `ifc_measure` (headless tesselácia, cache na store), detekcia upstream
  * `@ifc-lite/clash` (TS engine) federovane nad ASR aj VZT. Beh sa drží v pamäti procesu
- * podľa revízií modelov, takže `results` s iným `group_by` nepočíta znova. Bez DB:
- * ukladanie testov, porovnanie a review sú v PR2.
+ * podľa revízií modelov, takže `results` s iným `group_by` nepočíta znova. Testy, uložené
+ * behy, porovnanie, stav kolízie a BCF téma (PR2) sú v `clash-saved.ts` (DB), sem sa
+ * dostanú lenivo.
  */
 
 export const CLASH_ENGINE = "@ifc-lite/clash@2.4.4 (ts)";
@@ -55,9 +59,9 @@ const SYSTEM_GUID_CAP = 3000;
 /** Model, ktorý v téme BCF ustupuje (Samuel, D-164). */
 export const BCF_DEFAULT_MODEL = "VZT";
 
-const round = (v: number, digits = 3) => Math.round(v * 10 ** digits) / 10 ** digits;
+export const round = (v: number, digits = 3) => Math.round(v * 10 ** digits) / 10 ** digits;
 
-interface ElInfo {
+export interface ElInfo {
   model: string;
   guid: string;
   ifcType: string;
@@ -87,6 +91,8 @@ export interface ClashRun {
   models: Record<string, unknown>;
   ms: { tessellate: number; detect: number };
   createdAt: string;
+  /** Uložený v DB (`run save=true` alebo obnovený z DB). */
+  saved?: { id: string; testId: string | null };
 }
 
 const runs = new Map<string, ClashRun>();
@@ -98,12 +104,22 @@ export function clearClashRuns(): void {
   runSeq = 0;
 }
 
-function parseSide(input: Record<string, unknown>, prefix: "a" | "b"): ClashSide | undefined {
+/** Strana z `a`, `a_model`, `a_storey` (alebo `b...`); chýbajúce pole nechá nezadané. */
+function parseSide(input: Record<string, unknown>, prefix: "a" | "b"): Partial<ClashSide> | undefined {
   const type = str(input[prefix]);
   const model = str(input[`${prefix}_model`]);
   const storey = str(input[`${prefix}_storey`]);
   if (!type && !model && !storey) return undefined;
-  return { type: type || "*", ...(model ? { model } : {}), ...(storey ? { storey } : {}) };
+  return { ...(type ? { type } : {}), ...(model ? { model } : {}), ...(storey ? { storey } : {}) };
+}
+
+/**
+ * Zadané polia strany prepíšu polia strany testu, ostatné ostanú (test + a_storey zúži test
+ * na podlažie a nechá jeho triedy a model); bez testu je chýbajúca trieda `*`.
+ */
+function mergeSide(given: Partial<ClashSide> | undefined, base: ClashSide | undefined): ClashSide | undefined {
+  if (!given) return base;
+  return { ...base, ...given, type: given.type ?? base?.type ?? "*" };
 }
 
 function mm(raw: unknown, field: string): number | undefined {
@@ -113,17 +129,19 @@ function mm(raw: unknown, field: string): number | undefined {
   return n / 1000;
 }
 
-/** Test podľa mena, alebo ad hoc sady A/B; mode, clearance_mm a tolerance_mm prepíšu test. */
-export function parseSpec(input: Record<string, unknown>): ClashSpec {
+/**
+ * Test podľa mena (predvolený, alebo `custom` = uložený z DB), alebo ad hoc sady A/B; a, b,
+ * mode, clearance_mm a tolerance_mm test prepíšu.
+ */
+export function parseSpec(input: Record<string, unknown>, custom?: ClashTest): ClashSpec {
   const testName = str(input.test);
-  const base: ClashTest | undefined = testName ? findTest(testName) : undefined;
+  const base: ClashTest | undefined = custom ?? (testName ? findTest(testName) : undefined);
   if (testName && !base) {
-    throw new InputError(`Test '${testName}' nie je. Predvolené: ${DEFAULT_TESTS.map((t) => `${t.code} (${t.name})`).join(", ")}; ad hoc zadaj a (a voliteľne b).`);
+    throw new InputError(`Test '${testName}' nie je. Predvolené: ${DEFAULT_TESTS.map((t) => `${t.code} (${t.name})`).join(", ")}; vlastné dá action=list; ad hoc zadaj a (a voliteľne b).`);
   }
-  const a = parseSide(input, "a") ?? base?.a;
+  const a = mergeSide(parseSide(input, "a"), base?.a);
   if (!a) throw new InputError("Zadaj test (action=list) alebo ad hoc sadu a (selektor IFC tried, napr. 'IfcDuct*|IfcPipe*') s voliteľným b, a_model, b_model, a_storey, b_storey.");
-  const adHocB = parseSide(input, "b");
-  const b = adHocB ?? base?.b;
+  const b = mergeSide(parseSide(input, "b"), base?.b);
   const modeRaw = str(input.mode) || base?.mode || "hard";
   if (modeRaw !== "hard" && modeRaw !== "clearance") throw new InputError("mode je hard alebo clearance.");
   const clearance = mm(input.clearance_mm, "clearance_mm") ?? (base?.clearance_mm ?? 0) / 1000;
@@ -242,14 +260,15 @@ const specModels = (spec: ClashSpec, all: string[]): string[] => {
 };
 
 async function execRun(input: Record<string, unknown>, deps: EngineDeps): Promise<Record<string, unknown>> {
-  const spec = parseSpec(input);
+  const testName = str(input.test);
+  const spec = parseSpec(input, testName ? await (await saved()).resolveTest(testName, deps) : undefined);
   const modelIds = specModels(spec, (deps.sources ?? getIfcModels)().map((m) => m.id));
   const { models, revision } = await modelsFor(modelIds, deps);
   const maxPairs = deps.clashLimits?.maxPairs ?? MAX_PAIRS;
   const budgetMs = deps.clashLimits?.budgetMs ?? RUN_BUDGET_MS;
   const fingerprint = JSON.stringify([spec, revision, maxPairs]);
   const hit = [...runs.values()].find((r) => r.fingerprint === fingerprint);
-  if (hit) return { ...describeRun(hit, hit.result.truncated ? await narrowHint(spec, models) : undefined), cached: true };
+  if (hit) return { ...describeRun(hit, hit.result.truncated ? await narrowHint(spec, models) : undefined), cached: true, ...(await maybeSave(hit, input, deps)) };
 
   const t0 = performance.now();
   const elements = new Map<string, { model: EngineModel; meshes: Map<string, MeshElement> }>();
@@ -285,7 +304,14 @@ async function execRun(input: Record<string, unknown>, deps: EngineDeps): Promis
   runs.set(run.id, run);
   const truncatedHint = detected.result.truncated ? await narrowHint(spec, models) : undefined;
   while (runs.size > KEPT_RUNS) runs.delete(runs.keys().next().value!);
-  return { ...describeRun(run, truncatedHint), cached: false };
+  return { ...describeRun(run, truncatedHint), cached: false, ...(await maybeSave(run, input, deps)) };
+}
+
+/** `save=true` uloží beh do DB (testy a stav kolízií sa viažu na test); inak nič. */
+async function maybeSave(run: ClashRun, input: Record<string, unknown>, deps: EngineDeps): Promise<Record<string, unknown>> {
+  if (input.save !== true) return {};
+  const result = await (await saved()).persistRun(run, deps, str(input.author));
+  return { saved: result, saved_run_id: result.run_id };
 }
 
 /** Podlažia modelov (normalizované štítky) pre radu "zúž na podlažie". */
@@ -311,7 +337,7 @@ async function narrowHint(spec: ClashSpec, models: EngineModel[]): Promise<strin
   );
 }
 
-const countBy = <T>(items: Iterable<T>, key: (t: T) => string): Record<string, number> => {
+export const countBy = <T>(items: Iterable<T>, key: (t: T) => string): Record<string, number> => {
   const out: Record<string, number> = {};
   for (const it of items) {
     const k = key(it);
@@ -323,9 +349,9 @@ const countBy = <T>(items: Iterable<T>, key: (t: T) => string): Record<string, n
 const top = (rec: Record<string, number>, n: number) =>
   Object.fromEntries(Object.entries(rec).sort((x, y) => y[1] - x[1]).slice(0, n));
 
-const storeyOfClash = (run: ClashRun, c: Clash): string => run.info.get(c.a.key)?.storey ?? run.info.get(c.b.key)?.storey ?? "bez podlažia";
+export const storeyOfClash = (run: ClashRun, c: Clash): string => run.info.get(c.a.key)?.storey ?? run.info.get(c.b.key)?.storey ?? "bez podlažia";
 
-function describeRun(run: ClashRun, hint?: string): Record<string, unknown> {
+export function describeRun(run: ClashRun, hint?: string): Record<string, unknown> {
   const { result, spec } = run;
   const clashes = result.clashes;
   const coverage = result.ruleCoverage?.[0];
@@ -334,6 +360,7 @@ function describeRun(run: ClashRun, hint?: string): Record<string, unknown> {
     engine: CLASH_ENGINE,
     test: { code: spec.code, name: spec.name, a: spec.a, b: spec.b ?? null, mode: spec.mode, ...(spec.mode === "clearance" ? { clearance_mm: round(spec.clearance * 1000, 1) } : {}), tolerance_mm: round(spec.tolerance * 1000, 1) },
     models: run.models,
+    ...(run.saved ? { saved_run_id: run.saved.id } : {}),
     sets: { a: run.sets.a, b: run.sets.b },
     ms: run.ms,
     total: clashes.length,
@@ -343,11 +370,11 @@ function describeRun(run: ClashRun, hint?: string): Record<string, unknown> {
     by_type_pair: top(result.summary.byTypePair, 8),
     ...(result.truncated ? { truncated: { ...result.truncated, note: `Beh bol orezaný stropom dvojíc: súčty sú dolná hranica. ${hint ?? ""}`.trim() } } : {}),
     ...(coverage && coverage.matchedA === 0 ? { warning: "strana a nenašla žiadny prvok" } : {}),
-    next: "results (group_by storey | system | type_pair | element | rule | cluster; group = kľúč alebo poradie na rozbalenie, vráti global_ids pre show_in_3d / style_in_3d), bcf (návrh témy za skupinu).",
+    next: "results (group_by storey | system | type_pair | element | rule | cluster; group = kľúč alebo poradie na rozbalenie, vráti global_ids pre show_in_3d / style_in_3d), bcf (téma za skupinu), review, compare; save=true uloží beh.",
   };
 }
 
-interface Group {
+export interface Group {
   key: string;
   title: string;
   members: Clash[];
@@ -417,35 +444,48 @@ export function groupRun({ run, systems }: GroupContext, by: ClashGroupBy): Grou
   );
 }
 
-function pickGroup(groups: Group[], ref: string): Group {
+export function pickGroup(groups: Group[], ref: string): Group {
   const asNumber = /^\d+$/.test(ref) ? Number(ref) : NaN;
   const hit = (Number.isInteger(asNumber) && asNumber >= 1 ? groups[asNumber - 1] : undefined) ?? groups.find((g) => g.key === ref);
   if (!hit) throw new InputError(`Skupina '${ref}' neexistuje: zadaj kľúč zo zoznamu alebo jej poradie (1 až ${groups.length}).`);
   return hit;
 }
 
-function findRun(raw: unknown): ClashRun {
-  const id = str(raw);
-  if (id) {
+/**
+ * Beh podľa `run_id` (`run-N` z pamäte, UUID z DB), inak najnovší beh testu `test`
+ * (pamäť alebo DB), inak posledný z pamäte.
+ */
+export async function findRun(input: Record<string, unknown>, deps: EngineDeps): Promise<ClashRun> {
+  const id = str(input.run_id);
+  if (id.startsWith("run-")) {
     const run = runs.get(id);
-    if (!run) throw new InputError(`Beh '${id}' nie je v pamäti (po reštarte alebo po ${KEPT_RUNS} behoch sa zahodí): spusti action=run znova.`);
+    if (!run) throw new InputError(`Beh '${id}' nie je v pamäti (po reštarte alebo po ${KEPT_RUNS} behoch sa zahodí): spusti action=run znova (save=true ho uloží do DB), alebo daj run_id uloženého behu (action=list test=...).`);
     return run;
   }
-  const last = [...runs.values()].pop();
-  if (!last) throw new InputError("Zatiaľ nebeží žiadny beh: najprv action=run.");
+  if (id) return (await saved()).loadSavedRun(id, deps);
+  const testName = str(input.test);
+  if (testName) return (await saved()).latestRunOfTest(testName, deps, lastMemoryRun(testName));
+  const last = lastMemoryRun();
+  if (!last) throw new InputError("Zatiaľ nebeží žiadny beh: najprv action=run, alebo daj run_id uloženého behu / test (uložený beh).");
   return last;
+}
+
+/** Posledný beh v pamäti, voliteľne len daného testu (kód alebo názov). */
+export function lastMemoryRun(testName?: string): ClashRun | undefined {
+  const want = testName?.trim().toLowerCase();
+  return [...runs.values()].filter((r) => !want || r.spec.code?.toLowerCase() === want || r.spec.name.toLowerCase() === want).pop();
 }
 
 const mmOf = (c: Clash) => (c.status === "clearance" ? { gap_mm: round(c.distance * 1000, 1) } : { depth_mm: round(penetrationDepth(c) * 1000, 1) });
 
-type Person = { global_id: string; model: string; ifc_type: string; name: string | null; storey: string | null };
+export type Person = { global_id: string; model: string; ifc_type: string; name: string | null; storey: string | null };
 
 const elementOf = (run: ClashRun, ref: Clash["a"]): Person => {
   const i = run.info.get(ref.key);
   return { global_id: i?.guid ?? ref.key, model: ref.model, ifc_type: ref.tag, name: i?.name ?? ref.name ?? null, storey: i?.storey ?? null };
 };
 
-function clashRow(run: ClashRun, c: Clash) {
+export function clashRow(run: ClashRun, c: Clash) {
   return {
     key: clashReviewKey(c),
     status: c.status,
@@ -458,7 +498,7 @@ function clashRow(run: ClashRun, c: Clash) {
 }
 
 /** Prvky strany A a B zo skupiny pre `style_in_3d` (A a B inou farbou); strop ako show_in_3d. */
-function idsOf(run: ClashRun, members: Clash[]) {
+export function idsOf(run: ClashRun, members: Clash[]) {
   const a = new Set<string>();
   const b = new Set<string>();
   for (const c of members) {
@@ -470,28 +510,52 @@ function idsOf(run: ClashRun, members: Clash[]) {
 }
 
 /** Pripojí k riadkom objekt AIM (object_ref) cez GUID. */
-async function withAim(rows: Person[], deps: EngineDeps) {
+export async function withAim(rows: Person[], deps: EngineDeps) {
   const joined = await joinToAim(rows, deps.lookup);
   return new Map(joined.items.map((i) => [i.global_id, i.object_ref]));
 }
 
+export const SEVERITIES = ["critical", "major", "minor", "info"] as const;
+
+export function oneOf<T extends string>(raw: unknown, allowed: readonly T[], field: string): T | undefined {
+  const v = str(raw);
+  if (!v) return undefined;
+  if (!(allowed as readonly string[]).includes(v)) throw new InputError(`${field} je jedno z ${allowed.join(", ")}.`);
+  return v as T;
+}
+
 async function execResults(input: Record<string, unknown>, deps: EngineDeps): Promise<Record<string, unknown>> {
-  const run = findRun(input.run_id);
+  const run = await findRun(input, deps);
   const by = (str(input.group_by) || "storey") as ClashGroupBy;
   if (!CLASH_GROUPS.includes(by)) throw new InputError(`group_by je jedno z ${CLASH_GROUPS.join(", ")}.`);
-  const systems = by === "system" ? await systemsFor(run, deps) : undefined;
-  const groups = groupRun({ run, systems }, by);
+  const status = oneOf(input.status, ["hard", "clearance"] as const, "status");
+  const severity = oneOf(input.severity, SEVERITIES, "severity");
+  const reviewFilter = oneOf(input.review, CLASH_STATES, "review");
+  const reviews = await (await saved()).reviewMap(run, deps);
+  const reviewOf = (c: Clash) => reviews.get(clashReviewKey(c))?.status ?? "open";
+  const scoped = run.result.clashes.filter((c) => (!status || c.status === status) && (!severity || c.severity === severity));
+  const clashes = reviewFilter ? scoped.filter((c) => reviewOf(c) === reviewFilter) : scoped;
+  const view: ClashRun = clashes.length === run.result.clashes.length ? run : { ...run, result: { ...run.result, clashes } };
+  const row = (c: Clash) => {
+    const r = clashRow(run, c);
+    const rv = reviews.get(r.key);
+    return rv ? { ...r, review: { status: rv.status, ...(rv.comment ? { comment: rv.comment } : {}), ...(rv.bcf_topic_id ? { bcf_topic_id: rv.bcf_topic_id } : {}) } } : r;
+  };
+  const systems = by === "system" ? await systemsFor(view, deps) : undefined;
+  const groups = groupRun({ run: view, systems }, by);
   const groupRef = str(input.group);
 
   const out: Record<string, unknown> = {
-    run_id: run.id,
+    run_id: run.saved?.id ?? run.id,
     test: run.spec.name,
     group_by: by,
-    total: run.result.clashes.length,
+    total: clashes.length,
+    ...(clashes.length !== run.result.clashes.length ? { total_run: run.result.clashes.length, filter: { status, severity, review: reviewFilter } } : {}),
+    ...(reviews.size > 0 || reviewFilter ? { by_review: countBy(scoped, reviewOf) } : {}),
     groups_total: groups.length,
     ...(run.result.truncated ? { truncated: true } : {}),
   };
-  if (by === "cluster" && groups.length > 1 && groups.length === run.result.clashes.length) {
+  if (by === "cluster" && groups.length > 1 && groups.length === clashes.length) {
     out.note = "Zhluky sa nespojili (kolízie sú ďaleko od seba): každá je sama, použi storey alebo type_pair.";
   }
   if (groupRef) {
@@ -501,7 +565,7 @@ async function execResults(input: Record<string, unknown>, deps: EngineDeps): Pr
     const page = [...g.members]
       .sort((x, y) => SEVERITY_RANK[x.severity] - SEVERITY_RANK[y.severity] || (clashRow(run, x).key < clashRow(run, y).key ? -1 : 1))
       .slice(offset, offset + limit);
-    const rows = page.map((c) => clashRow(run, c));
+    const rows = page.map(row);
     const refs = await withAim(rows.flatMap((r) => [r.a, r.b]), deps);
     out.group = {
       index: groups.indexOf(g) + 1,
@@ -510,6 +574,7 @@ async function execResults(input: Record<string, unknown>, deps: EngineDeps): Pr
       count: g.members.length,
       severity: g.severity,
       by_status: countBy(g.members, (c) => c.status),
+      ...(reviews.size > 0 ? { by_review: countBy(g.members, reviewOf) } : {}),
       clashes: rows.map((r) => ({ ...r, a: { ...r.a, object_ref: refs.get(r.a.global_id) ?? null }, b: { ...r.b, object_ref: refs.get(r.b.global_id) ?? null } })),
       next_offset: offset + page.length < g.members.length ? offset + page.length : null,
     };
@@ -520,7 +585,7 @@ async function execResults(input: Record<string, unknown>, deps: EngineDeps): Pr
   const limit = clamp(input.limit, 1, GROUPS_MAX, GROUPS_DEFAULT);
   const offset = clamp(input.offset, 0, groups.length, 0);
   const shown = groups.slice(offset, offset + limit);
-  const samples = shown.map((g) => g.members.slice(0, SAMPLE_PAIRS).map((c) => clashRow(run, c)));
+  const samples = shown.map((g) => g.members.slice(0, SAMPLE_PAIRS).map(row));
   const refs = await withAim(samples.flatMap((rows) => rows.flatMap((r) => [r.a, r.b])), deps);
   out.groups = shown.map((g, i) => ({
     index: offset + i + 1,
@@ -529,6 +594,7 @@ async function execResults(input: Record<string, unknown>, deps: EngineDeps): Pr
     count: g.members.length,
     severity: g.severity,
     by_status: countBy(g.members, (c) => c.status),
+    ...(reviews.size > 0 ? { by_review: countBy(g.members, reviewOf) } : {}),
     sample: samples[i].map((r) => ({ ...r, a: { ...r.a, object_ref: refs.get(r.a.global_id) ?? null }, b: { ...r.b, object_ref: refs.get(r.b.global_id) ?? null } })),
   }));
   out.next_offset = offset + shown.length < groups.length ? offset + shown.length : null;
@@ -536,7 +602,7 @@ async function execResults(input: Record<string, unknown>, deps: EngineDeps): Pr
   return out;
 }
 
-async function systemsFor(run: ClashRun, deps: EngineDeps): Promise<Map<string, string>> {
+export async function systemsFor(run: ClashRun, deps: EngineDeps): Promise<Map<string, string>> {
   if (!deps.systems) throw new InputError("group_by=system potrebuje graf AIM (DB), tu nie je dostupný.");
   const guids = [...new Set([...run.info.values()].map((i) => i.guid))];
   if (guids.length > SYSTEM_GUID_CAP) throw new InputError(`group_by=system: ${guids.length} prvkov v kolíziách je nad ${SYSTEM_GUID_CAP}, zúž test (podlažie) alebo zoskup inak.`);
@@ -544,7 +610,7 @@ async function systemsFor(run: ClashRun, deps: EngineDeps): Promise<Map<string, 
 }
 
 async function execBcf(input: Record<string, unknown>, deps: EngineDeps): Promise<Record<string, unknown>> {
-  const run = findRun(input.run_id);
+  const run = await findRun(input, deps);
   const by = (str(input.group_by) || "storey") as ClashGroupBy;
   if (!CLASH_GROUPS.includes(by)) throw new InputError(`group_by je jedno z ${CLASH_GROUPS.join(", ")}.`);
   const groupRef = str(input.group);
@@ -567,54 +633,65 @@ async function execBcf(input: Record<string, unknown>, deps: EngineDeps): Promis
     `Najhoršie dvojice:\n${lines.join("\n")}\n` +
     `Čo je zle: prvky sa križujú alebo nedodržujú odstup. Ustúpiť má disciplína ${model}.`;
   const global_ids = [...ids.a_global_ids, ...ids.b_global_ids];
-  return {
-    run_id: run.id,
+  const proposal = {
+    title,
+    description,
+    type: "Clash",
+    model,
+    priority: SEVERITY_RANK[g.severity] <= SEVERITY_RANK.major ? "High" : "Normal",
+    labels: ["clash", run.spec.code ?? "adhoc"],
+    global_ids,
+  };
+  const base = {
+    run_id: run.saved?.id ?? run.id,
     group: { key: g.key, title: g.title, count: g.members.length },
-    proposal: {
-      title,
-      description,
-      type: "Clash",
-      model,
-      priority: SEVERITY_RANK[g.severity] <= SEVERITY_RANK.major ? "High" : "Normal",
-      labels: ["clash", run.spec.code ?? "adhoc"],
-      global_ids,
-    },
-    write: "Zápis príde v PR2. Teraz založ tému existujúcim bcf_topic(action=create) s týmito poľami (title, description, type, model, priority, labels, global_ids); používateľ musí o založení povedať.",
+    proposal,
     ...(ids.truncated ? { truncated: true } : {}),
   };
+  if (input.create !== true) {
+    return {
+      ...base,
+      write: "Len návrh, nič sa nezapísalo. Keď používateľ povie 'založ tému', zavolaj bcf s create=true (založí BCF tému Clash s odkazom z kolízií skupiny, model VZT ustupuje).",
+    };
+  }
+  return { ...base, ...(await (await saved()).createBcfTopic({ run, members: g.members, proposal, center: groupCenter(g.members), deps, author: str(input.author) })) };
 }
 
-function execList(): Record<string, unknown> {
-  return {
-    tests: DEFAULT_TESTS.map((t) => ({
-      code: t.code,
-      name: t.name,
-      description: t.description,
-      a: t.a,
-      b: t.b ?? null,
-      mode: t.mode,
-      ...(t.clearance_mm ? { clearance_mm: t.clearance_mm } : {}),
-    })),
-    note: "Predvolené testy sú pevné. Vlastné ad hoc: run s a (selektor IFC tried), b, a_model, b_model, a_storey, b_storey, mode, clearance_mm, tolerance_mm. Ukladanie vlastných testov príde v PR2.",
-    runs_in_memory: [...runs.values()].map((r) => ({ run_id: r.id, test: r.spec.name, total: r.result.clashes.length, created_at: r.createdAt })),
-  };
+/** Stred skupiny v IFC svete (priemer bodov kolízií) a rozpätie jej obálky. */
+function groupCenter(members: Clash[]): { center: Vec3; span: number } {
+  const n = members.length || 1;
+  const sum = members.reduce<Vec3>((s, c) => [s[0] + c.point[0], s[1] + c.point[1], s[2] + c.point[2]], [0, 0, 0]);
+  const mean = toIfc([sum[0] / n, sum[1] / n, sum[2] / n]);
+  const span = members.reduce((m, c) => Math.max(m, c.bounds.max[0] - c.bounds.min[0], c.bounds.max[1] - c.bounds.min[1], c.bounds.max[2] - c.bounds.min[2]), 0);
+  return { center: mean.map((v) => round(v)) as Vec3, span };
 }
 
 export async function ifcClash(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
   const action = str(input.action);
   if (CLASH_STUB_ACTIONS.has(action)) {
-    return JSON.stringify({ action, available: false, note: `clash action=${action} príde v PR2 (úložisko testov, behov a review) alebo PR3 (viewer). Teraz: list, run, results, bcf.` });
+    return JSON.stringify({ action, available: false, note: `clash action=${action} (panel clash vo vieweri) príde s mostom do viewera. Teraz: list, run, results, compare, review, bcf, save, delete.` });
   }
   switch (action) {
     case "list":
-      return JSON.stringify(execList());
+      return JSON.stringify(await (await saved()).execList(input, deps));
     case "run":
       return JSON.stringify(await execRun(input, deps));
     case "results":
       return JSON.stringify(await execResults(input, deps));
     case "bcf":
       return JSON.stringify(await execBcf(input, deps));
+    case "save":
+      return JSON.stringify(await (await saved()).execSave(input, deps));
+    case "delete":
+      return JSON.stringify(await (await saved()).execDelete(input, deps));
+    case "review":
+      return JSON.stringify(await (await saved()).execReview(input, deps));
+    case "compare":
+      return JSON.stringify(await (await saved()).execCompare(input, deps));
     default:
-      throw new InputError("action je list, run, results alebo bcf (ďalšie príde v PR2).");
+      throw new InputError("action je list, run, results, compare, review, bcf, save alebo delete.");
   }
 }
+
+/** Behy v pamäti procesu (pre `list`). */
+export const memoryRuns = (): ClashRun[] => [...runs.values()];

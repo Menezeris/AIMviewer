@@ -89,7 +89,7 @@ export function mcpToolGroups({ engine }: ToolListOptions): ToolGroup[] {
   if (engine) {
     groups.push({
       group: "IFC motor",
-      source: "IFC súbory federácie (@ifc-lite/mcp)",
+      source: "IFC súbory federácie (@ifc-lite/mcp); clash ukladá testy, behy a stav kolízií do DB (clash_*)",
       file: "lib/engine/search-all.ts, lib/engine/tool-defs.ts, lib/engine/passthrough-defs.ts, lib/engine/underlay-tool.ts",
       mcpOnly: true,
       tools: [SEARCH_ALL_TOOL, ...engineToolDefinitions(), CALIBRATE_UNDERLAY_TOOL],
