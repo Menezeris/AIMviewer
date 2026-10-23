@@ -545,7 +545,9 @@ nededia; väzby E4 (`pdf_link (E4)`) vynecháva. `via` je aj `floor` a `space`.
 `ms` (celé volanie na serveri), `ok`, `cold` (prvé volanie inštancie funkcie), `phases` (jsonb, ms
 po fázach `exec`, `broadcast`, `lens`, `readback`, `engine_load`), `region` (`VERCEL_REGION`).
 Argumenty sa neukladajú. Zapisuje `/api/mcp/<token>` po odoslaní odpovede; slúži na p50/p95
-latencie (`eval/MCP-EVAL.md`).
+latencie (`eval/MCP-EVAL.md`). `client` (D-159, migrácia 20261023120000, nullable) = klient a rozhovor:
+`clientInfo.name#<sid>` z `Mcp-Session-Id`, `(work)` = pracovná session na testovacom kanáli, bez
+hlavičky `ua:<User-Agent>`.
 
 ### 2.17 Uložené pohľady viewera (D-122, migrácia 20261020170000)
 
