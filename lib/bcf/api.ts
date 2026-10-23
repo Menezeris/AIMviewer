@@ -9,6 +9,9 @@ import {
 } from "./documents";
 import type { BcfComment, BcfTopicRow, BcfTopicWrite, TopicDocumentRow, TopicDocumentWrite, TopicStatus } from "./store";
 import { isClaude, maybeStartSession, normalizeStatus, type BcfDeps } from "./tools";
+import { overviewViewpoint, pickCalibration, regionFrame, regionViewpoint } from "./region-model";
+import type { SnapshotRequest } from "./snapshot";
+import { snapshotPlan } from "./snapshot-plan";
 import { viewpointFromDto } from "./viewpoint";
 
 export { viewpointFromDto };
@@ -50,6 +53,8 @@ export interface BcfApiRequest {
 export interface BcfApiResponse {
   status: number;
   body: unknown;
+  /** Binárna odpoveď (snímka pohľadu, D-158 krok 3); route ju pošle namiesto JSON. */
+  binary?: { bytes: Buffer; headers: Record<string, string> };
 }
 
 export interface BcfApiContext {
@@ -62,7 +67,14 @@ export interface BcfApiContext {
   writeEnabled: boolean;
   /** Origin stránky (odkazy na dokumenty v DocumentReference, D-158). */
   origin: string;
+  /** Snímka výrezu dokumentu (D-158 krok 3); bez nej pohľady dokumentov snímku neponúknu. */
+  snapshot?: (req: SnapshotRequest) => Promise<SnapshotOutcome>;
 }
+
+/** Výsledok snímky pre BCF API (zhodný so `snapshot-http.ts`, bez závislosti na serveri). */
+export type SnapshotOutcome =
+  | { ok: true; png: Buffer; revisionChanged: boolean }
+  | { ok: false; status: number; message: string; retryAfter?: number };
 
 const ok = (body: unknown, status = 200): BcfApiResponse => ({ status, body });
 const err = (status: number, message: string): BcfApiResponse => ({ status, body: { message } });
@@ -125,6 +137,48 @@ export function viewpointToDto(row: BcfTopicRow): Record<string, unknown> | null
   }
   if (components) dto.components = components;
   return dto;
+}
+
+/**
+ * Pohľad odkazu na stranu dokumentu (D-158 kroky 3 a 4): snímka výrezu s rámikom; BCF panel ju
+ * ukáže pri téme a upstream export ju zapíše do .bcfzip ako snímku pohľadu. BCF 3.0 chce v
+ * každom pohľade kameru: s kalibráciou strany (D-133) je to pohľad nad oblasťou v modeli, bez
+ * nej kamera 3D pohľadu témy, inak náhľad zhora.
+ */
+export function documentViewpointToDto(d: TopicDocumentRow, georef: unknown = null, fallback: Record<string, unknown> | null = null): Record<string, unknown> {
+  const cal = d.page ? pickCalibration(georef, d.page, d.region) : null;
+  const size = d.page_size ?? cal?.page_size ?? null;
+  const plan = size ? snapshotPlan(size, d.region) : null;
+  const aspect = plan ? plan.width / plan.height : undefined;
+  const camera = cal
+    ? regionViewpoint(regionFrame(cal, d.region), { aspect })
+    : fallback?.perspective_camera
+      ? { perspective_camera: fallback.perspective_camera }
+      : fallback?.orthogonal_camera
+        ? { orthogonal_camera: fallback.orthogonal_camera }
+        : overviewViewpoint(aspect);
+  return { guid: d.id, ...camera, snapshot: { snapshot_type: "png" } };
+}
+
+/** Pohľady dokumentov témy s kalibráciou ich strán (jedno čítanie `_georef` na dokument). */
+async function documentViewpoints(deps: BcfDeps, docs: TopicDocumentRow[], current: Record<string, unknown> | null) {
+  const ids = [...new Set(docs.map((d) => d.document_id as string))];
+  const georefs = new Map(await Promise.all(ids.map(async (id) => [id, await deps.store.georef(id)] as const)));
+  return docs.map((d) => documentViewpointToDto(d, georefs.get(d.document_id as string) ?? null, current));
+}
+
+async function documentSnapshotResponse(d: TopicDocumentRow, ctx: BcfApiContext): Promise<BcfApiResponse> {
+  if (!ctx.snapshot || !d.document_id || !d.page) return err(404, "Pohľad nemá snímku.");
+  const out = await ctx.snapshot({ document_id: d.document_id, page: d.page, region: d.region, sha256: d.document_sha256 });
+  if (!out.ok) return err(out.status, out.message);
+  return {
+    status: 200,
+    body: null,
+    binary: {
+      bytes: out.png,
+      headers: { "Content-Type": "image/png", ...(out.revisionChanged ? { "X-AIM-Revision-Changed": "1" } : {}) },
+    },
+  };
 }
 
 /**
@@ -263,6 +317,7 @@ async function referenceWrite(body: unknown, topic: BcfTopicRow, ctx: BcfApiCont
     url: ref.url ?? (typeof b.url === "string" ? b.url.trim() : null),
     description: null,
     author: ctx.user,
+    document_sha256: null,
   };
   return { ...row, description: stripOwnLabel(ref.description, row) };
 }
@@ -385,8 +440,10 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
 
     if (s[5] === "viewpoints") {
       const current = viewpointToDto(topic);
+      // Pripomienka na strane dokumentu = pohľad so snímkou výrezu (D-158 krok 3); guid = guid odkazu.
+      const docViews = ctx.snapshot ? (await deps.store.documents([topic.id])).filter((d) => d.document_id && d.page) : [];
       if (s.length === 6) {
-        if (method === "GET") return ok(current ? [current] : []);
+        if (method === "GET") return ok([...(current ? [current] : []), ...(await documentViewpoints(deps, docViews, current))]);
         if (method === "POST") {
           const dto = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
           const { viewpoint, selection } = viewpointFromDto(dto);
@@ -402,6 +459,15 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
         return err(405, "Metóda nie je povolená.");
       }
       if (method !== "GET") return err(405, "Metóda nie je povolená.");
+      const docView = docViews.find((d) => d.id === s[6].toLowerCase());
+      if (docView) {
+        if (s.length === 7) return ok((await documentViewpoints(deps, [docView], current))[0]);
+        if (s.length === 8 && s[7] === "selection") return ok({ selection: [] });
+        if (s.length === 8 && s[7] === "coloring") return ok({ coloring: [] });
+        if (s.length === 8 && s[7] === "visibility") return ok({ visibility: { default_visibility: true } });
+        if (s.length === 8 && s[7] === "snapshot") return documentSnapshotResponse(docView, ctx);
+        return err(404, "Neznáma cesta BCF API.");
+      }
       if (!current || current.guid !== s[6]) return err(404, `Pohľad ${s[6]} neexistuje.`);
       if (s.length === 7) return ok(current);
       const comps = (current.components ?? {}) as { selection?: unknown[] };

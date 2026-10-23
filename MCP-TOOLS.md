@@ -72,9 +72,9 @@ Zdroj: DB (saved_views) + živý viewer. Definície: lib/views/tools.ts (zoznam 
 Zdroj: DB (model_tasks) + session. Definície: lib/bcf/tools.ts. Len MCP.
 
 - **`bcf_topic_list`** (D-099, čítanie) - BCF témy nad modelmi federácie (D-099; issues a požiadavky konektora dá feedback_status), najnovšie prvé: číslo, guid, názov, stav, typ, priorita, komu, model, počet prvkov a komentárov, odkaz na Claude session.
-  Parametre: `status`, `model`, `assigned_to`, `guid`, `document`, `page`, `limit`
+  Parametre: `status`, `model`, `assigned_to`, `guid`, `document`, `page`, `entity`, `limit`
 - **`bcf_topic`** (D-099, zápis) - Zápis BCF témy nad modelom federácie (D-099). action=create: založí tému (chyba, kolízia, pripomienka, požiadavka na úpravu modelu), keď používateľ povie 'založ BCF / tému / issue'; prvky cez target_ids_or_refs alebo global_ids, s capture_view (predvolene) sa vezme výber, kamera, rez a režim z otvoreného viewera. assigned_to='claude' = tému rieši Claude: spustí sa Claude Code session (úprava IFC v OCB, nová revízia); ľudí priraď menom alebo e-mailom. update: stav, priorita, komu, popis, štítky, termín alebo comment; start_session spustí session pre tému Claudovi. close: uzavrie tému bez úpravy modelu. viewpoint: nastaví jediný pohľad témy (selection_global_ids, capture_view).
-  Parametre: `action*=create|update|close|viewpoint|from_viewer`, `guid`, `title`, `description`, `comment`, `status`, `priority`, `assigned_to`, `type`, `labels`, `model`, `due_date`, `author`, `modified_by`, `target_ids_or_refs`, `global_ids`, `selection_global_ids`, `capture_view`, `start_session`, `document`, `remove_document`, `guids`
+  Parametre: `action*=create|update|close|viewpoint|from_viewer|locate`, `guid`, `title`, `description`, `comment`, `status`, `priority`, `assigned_to`, `type`, `labels`, `model`, `due_date`, `author`, `modified_by`, `target_ids_or_refs`, `global_ids`, `selection_global_ids`, `capture_view`, `start_session`, `document`, `remove_document`, `guids`, `document_guid`, `apply=components|viewpoint|all`, `replace`, `include_parents`
 
 ## Pripomienky a požiadavky (2)
 

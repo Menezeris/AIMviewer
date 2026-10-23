@@ -2,8 +2,10 @@ import { timingSafeEqual } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
+import { clientIpKey } from "@/lib/api-guard";
 import { handleBcfApi } from "@/lib/bcf/api";
 import { defaultBcfDeps } from "@/lib/bcf/runtime";
+import { snapshotFor } from "@/lib/bcf/snapshot-http";
 
 /**
  * BCF API 2.1 (D-099): báza `<site>/api/bcf`. Čítanie je bez tokenu - viewer
@@ -58,8 +60,17 @@ async function handle(req: Request, ctx: { params: Promise<{ path: string[] }> }
       authenticated: bearerMatches(req.headers.get("authorization"), expected),
       writeEnabled: expected !== null,
       origin: new URL(req.url).origin,
+      // Snímka výrezu dokumentu (D-158 krok 3), render na požiadanie s keš v buckete.
+      snapshot: (r) => snapshotFor(r, clientIpKey(req.headers)),
     },
   );
+  if (res.binary) {
+    // Snímka sa pre ten istý odkaz mení len s revíziou dokumentu: hodinu z keše prehliadača.
+    return new Response(new Uint8Array(res.binary.bytes), {
+      status: res.status,
+      headers: { ...CORS, ...res.binary.headers, "Cache-Control": "public, max-age=3600" },
+    });
+  }
   return NextResponse.json(res.body, { status: res.status, headers: CORS });
 }
 

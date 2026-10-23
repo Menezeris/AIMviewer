@@ -1,5 +1,17 @@
 import type { NextConfig } from "next";
 
+/**
+ * Dáta pdf.js, ktoré trasovanie importov nevidí: písma, CMapy a wasm dekodéry číta
+ * `BinaryDataFactory` zo súborov (D-158 krok 3). pdf.js, pracovník a natívny canvas trasovanie
+ * nájde samo. Len dátové priečinky: celé balíky pribalili aj druhý natívny canvas spod react-pdf
+ * a source mapy (funkcia BCF API 183 MB namiesto 131 MB).
+ */
+const PDF_RENDER_FILES = [
+  "node_modules/pdfjs-dist/cmaps/*",
+  "node_modules/pdfjs-dist/standard_fonts/*",
+  "node_modules/pdfjs-dist/wasm/*",
+];
+
 const nextConfig: NextConfig = {
   // Turbopack (default in Next.js 16).
   turbopack: {},
@@ -8,13 +20,27 @@ const nextConfig: NextConfig = {
   // bundler nemá prepisovať. Súbory, ktoré trasovanie nevidí (WASM pre kolízie
   // resolvnutý cez createRequire, xmldom importovaný vypočítaným názvom pre
   // IDS), sa do funkcie MCP konektora pribalia explicitne.
-  serverExternalPackages: ["@ifc-lite/mcp", "@ifc-lite/parser", "@ifc-lite/sdk", "@ifc-lite/clash", "@ifc-lite/geometry", "@ifc-lite/query"],
+  // Snímka výrezu PDF (D-158 krok 3): pdf.js (legacy build) a natívny canvas v Node route.
+  serverExternalPackages: [
+    "@ifc-lite/mcp",
+    "@ifc-lite/parser",
+    "@ifc-lite/sdk",
+    "@ifc-lite/clash",
+    "@ifc-lite/geometry",
+    "@ifc-lite/query",
+    "pdfjs-dist",
+    "@napi-rs/canvas",
+  ],
   outputFileTracingIncludes: {
     "/api/mcp/[token]": [
       "./node_modules/@ifc-lite/wasm/pkg/*.wasm",
       "./node_modules/@xmldom/xmldom/**/*",
     ],
+    // Kľúč je glob nad cestou route ([id] by bol trieda znakov), preto zástupné znaky.
+    "/api/bcf/**/*": PDF_RENDER_FILES,
+    "/api/drawing/**/*": PDF_RENDER_FILES,
   },
+
   // Paralelný dev server (devtest popri bežnom `npm run dev`): Next 16 drží
   // single-instance lock na distDir, override umožní druhú inštanciu.
   distDir: process.env.NEXT_DIST_DIR_OVERRIDE ?? ".next",

@@ -9,12 +9,15 @@ import { selectionGuids, type ViewerSelection } from "../live/selection-summary"
 import { ViewInputError } from "../llm/view-plan";
 
 import { documentView, MAX_TOPIC_DOCUMENTS, resolveDocumentArg, TopicDocumentError } from "./documents";
+import { topicInScope, type EntityScope } from "./entity-scope";
+import type { RegionElement } from "./region-model";
 import {
   TOPIC_STATUSES,
   type BcfStore,
   type BcfTopicRow,
   type BcfTopicWrite,
   type TopicDocumentRow,
+  type TopicFilter,
   type TopicStatus,
 } from "./store";
 
@@ -36,7 +39,7 @@ export const STALE_HOURS = 24;
 const MAX_TITLE = 200;
 const MAX_TEXT = 8000;
 const MAX_LABELS = 20;
-const MAX_COMPONENTS = 2000;
+export const MAX_COMPONENTS = 2000;
 const LIST_DEFAULT = 20;
 const LIST_MAX = 100;
 const DETAIL_COMPONENTS = 200;
@@ -62,6 +65,7 @@ export const BCF_ACTIONS = {
   close: "bcf_topic_close",
   viewpoint: "bcf_viewpoint_create",
   from_viewer: "bcf_topic_from_viewer",
+  locate: "bcf_topic_locate",
 } as const;
 
 export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
@@ -74,7 +78,9 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
       "(kamera, rez, výber) a GlobalId prvkov - prvky ukáž cez show_in_3d(global_ids). S filtrom vráti aj " +
       "by_status (počty tém podľa stavu pri ostatných filtroch): na otázku o stave stačí jedno volanie, " +
       "iné stavy ani bez filtra už nevolaj. document (+ page) = pripomienky na dokumente / strane (D-158); detail " +
-      "témy nesie documents s pripravenými argumentmi open_drawing (strana a oblasť).",
+      "témy nesie documents s pripravenými argumentmi open_drawing (strana a oblasť) a snapshot_url (výrez s rámikom). " +
+      "entity = témy nad podlažím, priestorom, budovou alebo prvkom vrátane všetkého v ňom (prvky, priestory, pôdorys " +
+      "podlažia); entity='projekt' = len témy na celý projekt (IfcProject).",
     inputSchema: {
       type: "object",
       properties: {
@@ -84,6 +90,10 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
         guid: { type: "string", description: "guid témy alebo číslo (#12) - detail jednej témy." },
         document: { type: "string", description: "Len témy s odkazom na dokument: objects.id, object_ref alebo kód dokumentu." },
         page: { type: "number", description: "S document: len odkazy na túto stranu." },
+        entity: {
+          type: "string",
+          description: "Len témy nad entitou a tým, čo je v nej: podlažie (1NP), priestor, budova, object_ref, objects.id, GlobalId; 'projekt' = témy na celý projekt.",
+        },
         limit: { type: "number", description: `Koľko tém (predvolene ${LIST_DEFAULT}, max ${LIST_MAX}).` },
       },
     },
@@ -102,7 +112,9 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
       "open_drawing); prvky, ktorých sa týka (aj IfcSpace, podlažie, IfcProject = celý projekt), daj do target_ids_or_refs. " +
       "remove_document = guid odkazu alebo 'all'. from_viewer: uloží témy založené v BCF paneli viewera (aj pripomienky " +
       "na PDF, get_viewer_state ich ukáže v bcf_local) do AIM s tým istým guid, na pokyn 'ulož moje pripomienky'; guids " +
-      "= len vybrané. Vráti guid a číslo témy (#N).",
+      "= len vybrané. locate (guid, document_guid): oblasť strany z odkazu témy prepočíta cez kalibráciu strany (D-133) " +
+      "na IFC súradnice a navrhne prvky v oblasti, nadradené priestory a podlažie a 3D pohľad nad oblasťou; bez apply " +
+      "len návrh, apply=components|viewpoint|all zapíše (pohľad témy prepíše len replace=true). Vráti guid a číslo témy (#N).",
     inputSchema: {
       type: "object",
       properties: {
@@ -141,6 +153,10 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         remove_document: { type: "string", description: "update: guid odkazu na dokument (z bcf_topic_list) alebo 'all'" },
         guids: { type: "array", items: { type: "string" }, description: "from_viewer: len tieto témy z bcf_local (predvolene všetky)" },
+        document_guid: { type: "string", description: "locate: guid odkazu na dokument (predvolene prvý so stranou)" },
+        apply: { type: "string", enum: ["components", "viewpoint", "all"], description: "locate: zapísať návrh do témy (bez neho len návrh)" },
+        replace: { type: "boolean", description: "locate: nahradiť existujúci pohľad témy" },
+        include_parents: { type: "boolean", description: "locate s apply: pridať do prvkov aj podlažie a priestory v oblasti" },
       },
       required: ["action"],
     },
@@ -170,6 +186,10 @@ export interface BcfDeps {
   maxSessions: number;
   /** Po zápise: oznámenie otvoreným viewerom, že sa témy zmenili (D-099 dodatok). */
   notify?: () => Promise<void>;
+  /** Prvky federácie v IFC svete a výšky podlaží (`locate`, D-158 krok 4). */
+  regionModel?: () => Promise<{ elements: Iterable<RegionElement>; elevations: number[] }>;
+  /** Rozsah entity pre filter `entity` zoznamu tém (D-158 krok 4). */
+  entityScope?: (ref: string) => Promise<EntityScope>;
 }
 
 /** Čistá časť: odpoveď `view_state` -> uložený pohľad (bez zoznamu GUID, ten je v components). */
@@ -246,7 +266,7 @@ export function topicRef(v: unknown): { id?: string; number?: number } {
   throw new BcfInputError(`guid musí byť guid témy alebo jej číslo (#12), nie '${s || "(prázdne)"}'.`);
 }
 
-async function loadTopic(deps: BcfDeps, v: unknown): Promise<BcfTopicRow> {
+export async function loadTopic(deps: BcfDeps, v: unknown): Promise<BcfTopicRow> {
   const ref = topicRef(v);
   const row = await deps.store.get(ref);
   if (!row) throw new BcfInputError(`Téma ${ref.id ?? `#${ref.number}`} neexistuje (bcf_topic_list ukáže, aké sú).`);
@@ -442,6 +462,8 @@ async function list(args: Record<string, unknown>, deps: BcfDeps) {
     assigned_to: text(args.assigned_to, 200) || undefined,
     ...(await documentFilter(args, deps)),
   };
+  const entity = text(args.entity, 200);
+  if (entity) return listInEntity(entity, filter, limit, deps);
   const { rows, total } = await deps.store.list({ ...filter, limit });
   const docs = await deps.store.documents(rows.map((r) => r.id));
   const docCount = new Map<string, number>();
@@ -454,6 +476,32 @@ async function list(args: Record<string, unknown>, deps: BcfDeps) {
     ...(byStatus ? { by_status: byStatus } : {}),
     returned: rows.length,
     topics: rows.map((r) => summary(r, docCount.get(r.id))),
+  };
+}
+
+/** Najviac tém, ktoré filter entity prejde (tabuľka tém je malá; viac = upozornenie). */
+const ENTITY_SCAN = 1000;
+
+/** Filter `entity` (D-158 krok 4): témy s prvkom entity alebo v nej, alebo s dokumentom entity. */
+async function listInEntity(ref: string, filter: Omit<TopicFilter, "limit">, limit: number, deps: BcfDeps) {
+  if (!deps.entityScope) throw new BcfInputError("Filter entity nie je v tomto prostredí k dispozícii.");
+  const scope = await deps.entityScope(ref);
+  const { rows, total } = await deps.store.list({ ...filter, limit: ENTITY_SCAN });
+  const docs = await deps.store.documents(rows.map((r) => r.id));
+  const byTopic = new Map<string, TopicDocumentRow[]>();
+  for (const d of docs) byTopic.set(d.task_id, [...(byTopic.get(d.task_id) ?? []), d]);
+  const hits = rows
+    .map((r) => ({ r, how: topicInScope(r, byTopic.get(r.id) ?? [], scope) }))
+    .filter((h): h is { r: BcfTopicRow; how: NonNullable<typeof h.how> } => h.how !== null);
+  const byStatus: Record<string, number> = {};
+  for (const { r } of hits) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+  return {
+    entity: { ref: scope.label, object_type: scope.object_type, global_id: scope.self, elements: scope.guids.size, documents: scope.documents.size },
+    count: hits.length,
+    by_status: byStatus,
+    returned: Math.min(limit, hits.length),
+    ...(total > rows.length ? { note: `Prejdených ${rows.length} z ${total} tém (najnovšie); zúž filtrom status alebo model.` } : {}),
+    topics: hits.slice(0, limit).map(({ r, how }) => ({ ...summary(r, byTopic.get(r.id)?.length), match: how })),
   };
 }
 
@@ -554,6 +602,8 @@ const WRITES: Record<string, (args: Record<string, unknown>, deps: BcfDeps) => P
   bcf_viewpoint_create: viewpoint,
   // Lenivo: modul lokálnych tém viewera (D-158) importuje tento.
   bcf_topic_from_viewer: async (args, deps) => (await import("./viewer-topics")).fromViewer(args, deps),
+  // Lenivo: návrh prvkov a pohľadu z oblasti strany (D-158 krok 4).
+  bcf_topic_locate: async (args, deps) => (await import("./locate")).locate(args, deps),
 };
 
 function bcfAction(raw: unknown): string {

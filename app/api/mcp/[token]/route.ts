@@ -2,7 +2,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 
 import { NextResponse, after } from "next/server";
 
-import { defaultBcfDeps } from "@/lib/bcf/runtime";
+import { bcfToolDeps } from "@/lib/bcf/runtime-tools";
 import { BCF_TOOL_NAMES, execBcfTool } from "@/lib/bcf/tools";
 import { SEARCH_ALL_TOOL } from "@/lib/engine/search-all";
 import { ENGINE_TOOL_NAMES } from "@/lib/engine/tool-defs";
@@ -146,7 +146,7 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
     }
   }
   if (BCF_TOOL_NAMES.has(name)) {
-    const res = await timer.phase("exec", () => execBcfTool(name, args, defaultBcfDeps()));
+    const res = await timer.phase("exec", () => execBcfTool(name, args, bcfToolDeps()));
     return { text: [res.text], isError: res.isError };
   }
   if (SAVED_VIEW_TOOL_NAMES.has(name)) {
