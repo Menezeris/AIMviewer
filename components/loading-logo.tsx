@@ -15,6 +15,10 @@ declare global {
 }
 
 const WORDS = ["", "sight", "formation", "telligence"];
+// Rýchlejšie ako predvolené 90 / 1800 ms (spätná väzba k #291).
+const SPEED_MS = 55;
+const HOLD_MS = 1100;
+const LONGEST = WORDS.reduce((a, w) => (w.length > a.length ? w : a), "");
 
 /**
  * Jediná obrazovka načítavania AIM Viewera (D-163): biele pozadie a v strede
@@ -30,7 +34,7 @@ export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
     let cancelled = false;
     import("@assetinspace/design-kit/js/logo-typewriter.js").then(() => {
       if (cancelled || !logoRef.current || !window.assetinLogoTypewriter) return;
-      stop = window.assetinLogoTypewriter(logoRef.current, { words: WORDS });
+      stop = window.assetinLogoTypewriter(logoRef.current, { words: WORDS, speed: SPEED_MS, hold: HOLD_MS });
     });
     return () => {
       cancelled = true;
@@ -38,18 +42,47 @@ export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
     };
   }, []);
 
+  // Poloha sa nesmie meniť medzi troma inštanciami (loading.tsx, dynamic loader,
+  // prekrytie): `fixed inset-0` = vždy celé okno, nie rodič s iným paddingom.
+  // Šírku rezervuje neviditeľné najdlhšie slovo a logo je ukotvené vľavo, takže
+  // písanie ho neposúva. Font berie z next/font (`--font-sans`), nie z fallbacku kitu.
   return (
     <div
       role="status"
       aria-label={label}
-      className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-white"
+      className="pointer-events-none fixed inset-0 z-40 flex flex-col items-center justify-center gap-6 bg-white"
     >
-      <span ref={logoRef} className="brand-logo" aria-hidden="true">
-        <span className="a">asset</span>
-        <span className="i">
-          in<span data-typed></span>
+      <span
+        aria-hidden="true"
+        className="font-semibold uppercase"
+        style={{
+          fontFamily: "var(--font-sans), var(--ds-font-sans)",
+          fontSize: "var(--ds-text-3xl)",
+          letterSpacing: "0.3em",
+          paddingLeft: "0.3em",
+          color: "var(--ds-text-muted)",
+        }}
+      >
+        Loading
+      </span>
+      <span className="relative inline-flex" style={{ fontFamily: "var(--font-sans), var(--ds-font-sans)" }}>
+        <span className="brand-logo invisible" aria-hidden="true">
+          <span className="a">asset</span>
+          <span className="i">in{LONGEST}</span>
+          <span className="logo-dot"></span>
         </span>
-        <span className="logo-dot" aria-hidden="true"></span>
+        <span
+          ref={logoRef}
+          className="brand-logo absolute left-0 top-0"
+          style={{ fontFamily: "inherit" }}
+          aria-hidden="true"
+        >
+          <span className="a">asset</span>
+          <span className="i">
+            in<span data-typed></span>
+          </span>
+          <span className="logo-dot" aria-hidden="true"></span>
+        </span>
       </span>
     </div>
   );

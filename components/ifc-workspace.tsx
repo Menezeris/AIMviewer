@@ -28,9 +28,7 @@ const IFCViewer = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="relative h-full w-full">
-        <LoadingLogo label="Načítavam 3D prehliadač" />
-      </div>
+      <LoadingLogo label="Načítavam 3D prehliadač" />
     ),
   }
 );
