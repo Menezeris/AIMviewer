@@ -1169,6 +1169,30 @@
       "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
       "notes": "D-157 (issue #210): set_view_mode(layout=grid4, tiles=['3D', '1NP', '2NP', 'Rez A-A']); uložený pohľad musí byť najprv otvorený (set_view_mode view=...), inak ho viewer doplní inou záložkou a ohlási. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "clash-vzt-nosne",
+      "category": "data",
+      "question": "Kde sa VZT križuje s nosnými konštrukciami?",
+      "expect": { "tools_called": ["clash"] },
+      "verified": false,
+      "notes": "D-164 host PR1: clash(run, test VZT-NOSNE) -> results (group_by storey); ASR x VZT na serveri. Evaly nepobežali (bez Supabase kľúčov); čísla závisia od aktuálnych revízií."
+    },
+    {
+      "id": "clash-zoskup-podlazie",
+      "category": "data",
+      "question": "Spusti kolízie VZT x ASR s odstupom 50 mm a zoskup ich podľa podlaží.",
+      "expect": { "tools_called": ["clash"] },
+      "verified": false,
+      "notes": "D-164: clash(run, test VZT-ASR) + clash(results, group_by=storey); súčty musia byť úplné (total), nie len vzorka."
+    },
+    {
+      "id": "clash-prva-skupina-3d",
+      "category": "viewer",
+      "question": "Ukáž v 3D prvú skupinu kolízií VZT s nosnými konštrukciami, VZT oranžovo a konštrukcie modro.",
+      "expect": { "tools_called": ["clash", "style_in_3d"] },
+      "verified": false,
+      "notes": "D-164: clash(results, group=1) -> show_in_3d.a_global_ids / b_global_ids -> style_in_3d (colorize, global_ids). Pred tým musí byť beh (run)."
     }
   ]
 }

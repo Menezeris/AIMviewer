@@ -69,7 +69,52 @@ export async function runProbe(input: Record<string, unknown>): Promise<string> 
     out.clash = { ms: r.ms, isError: r.value.isError === true, total: (r.value.structuredContent as { summary?: { total?: number } })?.summary?.total };
   }
 
+  if (input.clash_asr_vzt === true) out.clashAsrVzt = await probeClashAsrVzt(models);
+
   out.rssEndMb = rssMb();
   out.cache = cacheSnapshot();
   return JSON.stringify(out);
+}
+
+const peakRssMb = () => Math.round(process.resourceUsage().maxRSS / 1024);
+
+/**
+ * D-164: ASR x VZT federovane na serveri - tesselácia oboch modelov (studená, potom teplá
+ * cache) a detekcia oboch predvolených testov, každá dvakrát. Čas, RSS a špička RSS.
+ */
+async function probeClashAsrVzt(models: EngineModel[]): Promise<Record<string, unknown>> {
+  const [{ detect, parseSpec }, { meshModel }, { DEFAULT_TESTS }] = await Promise.all([
+    import("./clash"),
+    import("./measure"),
+    import("./clash-tests"),
+  ]);
+  const res: Record<string, unknown> = { rssBeforeMb: rssMb() };
+  const tess = await timed(async () => {
+    const elements = new Map<string, { model: EngineModel; meshes: Awaited<ReturnType<typeof meshModel>> }>();
+    for (const m of models) elements.set(m.id, { model: m, meshes: await meshModel(m) });
+    return elements;
+  });
+  const elements = tess.value;
+  res.tessellateColdMs = tess.ms;
+  res.elements = Object.fromEntries([...elements].map(([id, h]) => [id, h.meshes.size]));
+  res.rssAfterTessellateMb = rssMb();
+  res.peakRssAfterTessellateMb = peakRssMb();
+  res.tessellateWarmMs = (await timed(async () => Promise.all(models.map((m) => meshModel(m))))).ms;
+  const tests: Record<string, unknown> = {};
+  for (const t of DEFAULT_TESTS) {
+    const spec = parseSpec({ test: t.code });
+    const runs: unknown[] = [];
+    for (let i = 0; i < 2; i++) {
+      try {
+        const r = await timed(() => detect({ spec, elements }));
+        runs.push({ ms: r.ms, total: r.value.result.clashes.length, sets: r.value.sets, truncated: r.value.result.truncated ?? null, rssMb: rssMb() });
+      } catch (err) {
+        runs.push({ error: err instanceof Error ? err.message : String(err), rssMb: rssMb() });
+      }
+    }
+    tests[t.code] = runs;
+  }
+  res.tests = tests;
+  res.peakRssMb = peakRssMb();
+  return res;
 }

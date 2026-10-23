@@ -1,4 +1,5 @@
 import { getIfcModels } from "../data/ifc-models";
+import { CLASH_ACTIONS, CLASH_GROUPS } from "./clash-tests";
 import type { ToolDefinition } from "../llm/provider";
 
 
@@ -242,6 +243,40 @@ export function engineToolDefinitions(): ToolDefinition[] {
           },
         },
       },
+    },
+    {
+      name: "clash",
+      description:
+        "IFC MOTOR: KOLÍZIE modelov federácie (ASR x VZT) počíta server. action=list: predvolené testy (VZT x nosné " +
+        "konštrukcie hard, VZT x ASR odstup 50 mm). run: test (kód) alebo ad hoc a, b (selektor tried 'IfcDuct*|IfcPipe*', " +
+        "'!IfcSpace'), a_model, b_model, a_storey, b_storey, mode, clearance_mm, tolerance_mm; vráti run_id a súčty. " +
+        "results: group_by storey | system | type_pair | element | rule | cluster, group (kľúč alebo poradie) rozbalí " +
+        "kolízie a vráti show_in_3d (a_global_ids, b_global_ids pre show_in_3d / style_in_3d). bcf: len NÁVRH témy za " +
+        "skupinu (potom bcf_topic create). save, delete, compare, review, open, from_viewer príde neskôr.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: [...CLASH_ACTIONS] },
+          test: { type: "string", description: "run: kód alebo názov testu z action=list" },
+          a: { type: "string", description: "run: selektor IFC tried strany a (ad hoc alebo prepíše test)" },
+          b: { type: "string", description: "run: strana b; bez b sa a testuje samo so sebou" },
+          a_model: { ...model, description: "run: model strany a" },
+          b_model: { ...model, description: "run: model strany b" },
+          a_storey: { type: "string", description: "run: podlažie strany a (1NP, 2.NP)" },
+          b_storey: { type: "string", description: "run: podlažie strany b" },
+          mode: { type: "string", enum: ["hard", "clearance"], description: "run: prienik alebo odstup" },
+          clearance_mm: { type: "number", description: "run: odstup v mm (pri clearance)" },
+          tolerance_mm: { type: "number", description: "run: tolerancia v mm (default 2)" },
+          run_id: { type: "string", description: "results, bcf: beh (default posledný)" },
+          group_by: { type: "string", enum: [...CLASH_GROUPS], description: "results, bcf: zoskupenie (default storey)" },
+          group: { type: "string", description: "results: kľúč alebo poradie skupiny; bcf: skupina témy" },
+          limit: { type: "number", description: "results: skupín (default 10) alebo kolízií v skupine (default 20)" },
+          offset: { type: "number", description: "results: posun strany" },
+          model: { type: "string", description: "bcf: model témy (default VZT)" },
+        },
+        required: ["action"],
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
   ];
 }
