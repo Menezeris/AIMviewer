@@ -19,10 +19,11 @@ const SPATIAL = new Map([
   ["building", "Building"],
   ["site", "Site"],
 ]);
-const SIMPLE = new Map<string, ListColumnWire["s"]>([
-  ["material", "material"],
-  ["classification", "classification"],
-  ["model", "model"],
+/** Meno a popis ako stĺpce builderu panela Lists (inak má stĺpec prázdnu hlavičku aj v exporte). */
+const SIMPLE = new Map<string, [ListColumnWire["s"], string]>([
+  ["material", ["material", "Material"]],
+  ["classification", ["classification", "Classification"]],
+  ["model", ["model", "Model"]],
 ]);
 
 const fold = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -36,7 +37,7 @@ export function parseListColumn(raw: string): ListColumnWire {
   const level = SPATIAL.get(key);
   if (level) return { s: "spatial", k: level, ...(level === "Storey" ? { l: "Podlažie" } : {}) };
   const simple = SIMPLE.get(key);
-  if (simple) return { s: simple, k: "" };
+  if (simple) return { s: simple[0], k: simple[1], l: simple[1] };
   const m = /^([A-Za-z0-9_]+)\.([^.]+)$/.exec(text);
   if (m) return { s: /^Qto_/i.test(m[1]) ? "quantity" : "property", p: m[1], k: m[2] };
   throw new StyleInputError(

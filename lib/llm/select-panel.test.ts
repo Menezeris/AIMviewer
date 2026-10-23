@@ -86,6 +86,13 @@ describe("viacnásobný výber (#217)", () => {
 });
 
 describe("panely z chatu (D-127)", () => {
+  it("op underlays3d -> SET_UNDERLAYS_3D, neplatné sa zahodí (D-133 doplnok)", () => {
+    expect(parseOps("underlays3d:0:;underlays3d:1:;underlays3d:x:").map(opToBridgeMessage)).toEqual([
+      { type: "SET_UNDERLAYS_3D", show: false },
+      { type: "SET_UNDERLAYS_3D", show: true },
+    ]);
+  });
+
   it("op panels -> SET_PANELS, all len close, neplatné sa zahodí", () => {
     const raw = panelsOp({ all: "close", properties: "open" });
     expect(raw).toBe("panels:~all=close~properties=open:");

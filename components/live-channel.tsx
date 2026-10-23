@@ -6,7 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { Radio } from "lucide-react";
 
 import { isSafeViewerUrl, mergeIfcActions, type AskAction } from "@/lib/llm/actions";
-import { LIVE_APPLIED_EVENT, LIVE_QUERY_EVENT, LIVE_REPLY_EVENT, isCmdId, isLiveQuery, newViewerId } from "@/lib/live/protocol";
+import { LIVE_APPLIED_EVENT, LIVE_QUERY_EVENT, LIVE_REPLY_EVENT, channelFor, isCmdId, isLiveQuery, newViewerId, splitChannel, type LiveKind } from "@/lib/live/protocol";
+import { NO_OWNER, decideOwner, ownerFor, takeOver, type OwnerState } from "@/lib/live/owner";
 import { applyLive, deferCmdIds, parseIfcCommandUrl, setAppliedSink } from "@/lib/live/viewer-apply-bus";
 import { BCF_CHANGED_WINDOW_EVENT, LIVE_BCF_EVENT } from "@/lib/live/bcf-event";
 import { LIVE_REVISION_EVENT, parseRevisionNotice, revisionToast } from "@/lib/live/revision";
@@ -29,9 +30,15 @@ import { answerViewerQuery } from "@/lib/live/viewer-query-bus";
  *
  * D-125: odpovede a potvrdenia nesú `viewer` (identita okna), lebo na kanál môže
  * odpovedať viac okien naraz a server ich inak nerozlíši.
+ *
+ * D-159: okno prijíma príkazy len od svojho chatu (`lib/live/owner.ts`); cudzí príkaz odmietne
+ * (`applied` s `rejected: "foreign"`) a ponúkne Prevziať. Čip Live prepína produkčný kanál a
+ * testovací kanál pracovných sessions (`<kanál>-test`); testovací kanál ukáže pruh nad viewerom.
  */
 
 const STORAGE_KEY = "aim-live-channel";
+/** Vybraný kanál v tejto karte (D-159): produkcia alebo testy sessions. */
+const KIND_KEY = "aim-live-kind";
 /** Identita tohto okna na kanáli (D-125): server podľa nej pozná, že odpovedá viac okien. */
 const VIEWER_ID = newViewerId();
 const LIVE_EVENT = "command";
@@ -40,8 +47,26 @@ const BATCH_MS = 50;
 const TOAST_MS = 4000;
 /** Miesto v spodnej stavovej lište /ifc, kam sa indikátor Live vloží (#185); inde je fixed vľavo dole. */
 export const LIVE_SLOT_ID = "aim-live-slot";
+/** Miesto nad viewerom na /ifc pre pruh prostredia mimo produkcie (D-159). */
+export const LIVE_ENV_SLOT_ID = "aim-env-slot";
 
 type Status = "connecting" | "live" | "error";
+
+function readKind(): string | null {
+  try {
+    return sessionStorage.getItem(KIND_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeKind(kind: LiveKind) {
+  try {
+    sessionStorage.setItem(KIND_KEY, kind);
+  } catch {
+    // bez sessionStorage výber platí do obnovenia stránky
+  }
+}
 
 function readChannel(): string | null {
   try {
@@ -61,6 +86,11 @@ export function LiveChannel() {
   const router = useRouter();
   const pathname = usePathname();
   const [channel, setChannel] = useState<string | null>(null);
+  const [live, setLive] = useState<{ base: string; kind: LiveKind } | null>(null);
+  const [menu, setMenu] = useState(false);
+  /** Rozhovor, ktorého príkaz okno odmietlo (D-159): ponuka Prevziať. */
+  const [foreign, setForeign] = useState<string | null>(null);
+  const owner = useRef<OwnerState>(NO_OWNER);
   const [status, setStatus] = useState<Status>("connecting");
   const [toast, setToast] = useState<string | null>(null);
   const queue = useRef<AskAction[]>([]);
@@ -68,8 +98,17 @@ export function LiveChannel() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Kanál z URL alebo karty sa číta až v prehliadači (sessionStorage).
   useEffect(() => {
     const name = readChannel();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (name) setLive(splitChannel(name, readKind()));
+  }, []);
+
+  const liveName = live ? channelFor(live.base, live.kind) : null;
+
+  useEffect(() => {
+    const name = liveName;
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!name || !url || !anonKey) return;
@@ -113,6 +152,22 @@ export function LiveChannel() {
           const actions = (payload as { actions?: unknown })?.actions;
           if (!Array.isArray(actions)) return;
           const cmdId = (payload as { cmdId?: unknown })?.cmdId;
+          const rawSid = (payload as { sid?: unknown })?.sid;
+          const sid = typeof rawSid === "string" && rawSid.length <= 64 ? rawSid : undefined;
+          // D-159: príkaz z iného chatu, než ktorý okno ovláda, sa nevykoná a server sa to dozvie.
+          const decision = decideOwner(owner.current, sid, Date.now());
+          owner.current = decision.state;
+          if (!decision.accept) {
+            if (isCmdId(cmdId)) {
+              void sub.send({
+                type: "broadcast",
+                event: LIVE_APPLIED_EVENT,
+                payload: { cmdId, viewer: VIEWER_ID, ok: false, issues: ["viewer ovláda iný chat"], rejected: "foreign" },
+              });
+            }
+            if (sid) setForeign(sid);
+            return;
+          }
           if (isCmdId(cmdId)) cmdIds.current.push(cmdId);
           for (const a of actions) {
             if (a && (a as AskAction).type === "navigate" && isSafeViewerUrl((a as AskAction).url)) {
@@ -142,7 +197,11 @@ export function LiveChannel() {
         .on("broadcast", { event: LIVE_QUERY_EVENT }, ({ payload }) => {
           if (!isLiveQuery(payload)) return;
           void answerViewerQuery(payload).then((reply) =>
-            sub.send({ type: "broadcast", event: LIVE_REPLY_EVENT, payload: { ...reply, viewer: VIEWER_ID } }),
+            sub.send({
+              type: "broadcast",
+              event: LIVE_REPLY_EVENT,
+              payload: { ...reply, viewer: VIEWER_ID, owner: ownerFor(owner.current, payload.sid, Date.now()) },
+            }),
           );
         })
         .subscribe((s) => {
@@ -169,31 +228,74 @@ export function LiveChannel() {
       if (toastTimer.current) clearTimeout(toastTimer.current);
       cleanup?.();
     };
-  }, [router]);
+  }, [router, liveName]);
+
+  const choose = (kind: LiveKind) => {
+    setMenu(false);
+    if (!live || live.kind === kind) return;
+    storeKind(kind);
+    setStatus("connecting");
+    setForeign(null);
+    setLive({ ...live, kind });
+  };
+
+  const acceptForeign = () => {
+    if (foreign) owner.current = takeOver(foreign, Date.now());
+    setForeign(null);
+    setToast("Viewer odteraz ovláda ten chat; príkaz nech Claude zopakuje.");
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
+  };
 
   // Slot v stavovej lište sa objaví až po vykreslení stránky, preto ho hľadáme po mounte.
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [envSlot, setEnvSlot] = useState<HTMLElement | null>(null);
   useEffect(() => {
     // Hľadanie prvku v DOM po commite stránky (synchronizácia s externým stavom).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSlot(document.getElementById(LIVE_SLOT_ID));
+    setEnvSlot(document.getElementById(LIVE_ENV_SLOT_ID));
   }, [pathname, channel]);
 
-  if (!channel) return null;
+  if (!channel || !live) return null;
 
+  const test = live.kind === "test";
   const dot =
     status === "live" ? "bg-green-500" : status === "error" ? "bg-red-500" : "bg-amber-500";
+  const name = test ? "Live: testy sessions" : "Live";
   const text =
-    status === "live" ? "Live" : status === "error" ? "Live: odpojené" : "Live: pripájam…";
+    status === "live" ? name : status === "error" ? `${name}: odpojené` : `${name}: pripájam…`;
 
   const chip = (
-    <div
-      className="flex items-center gap-2 rounded-full px-3 py-0.5 text-xs text-muted-foreground"
-      title={`Živý kanál: ${channel}`}
-    >
-      <span className={`size-2 rounded-full ${dot}`} />
-      <Radio className="size-3.5" />
-      <span>{text}</span>
+    <div className="relative">
+      <button
+        type="button"
+        className="flex items-center gap-2 rounded-full px-3 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+        title={test ? "Testovací kanál pracovných sessions (D-159)" : "Živý kanál tvojho chatu"}
+        aria-haspopup="menu"
+        aria-expanded={menu}
+        onClick={() => setMenu((m) => !m)}
+      >
+        <span className={`size-2 rounded-full ${dot}`} />
+        <Radio className="size-3.5" />
+        <span>{text}</span>
+      </button>
+      {menu && (
+        <div role="menu" className="absolute bottom-full left-0 z-[9999] mb-1 w-64 rounded-md border border-border bg-background p-1 text-xs shadow-lg">
+          {(["prod", "test"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="menuitemradio"
+              aria-checked={live.kind === k}
+              className={`block w-full rounded px-2 py-1.5 text-left hover:bg-muted ${live.kind === k ? "font-semibold" : ""}`}
+              onClick={() => choose(k)}
+            >
+              {k === "prod" ? "Produkcia (príkazy z tvojho chatu)" : "Testy sessions (príkazy pracovných sessions)"}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -202,11 +304,32 @@ export function LiveChannel() {
       {slot ? (
         createPortal(chip, slot)
       ) : (
-        <div className="pointer-events-none fixed bottom-4 left-4 z-[9998] rounded-full border border-border bg-background/90 shadow">
+        <div className="fixed bottom-4 left-4 z-[9998] rounded-full border border-border bg-background/90 shadow">
           {chip}
         </div>
       )}
-      {toast && (
+      {test && envSlot &&
+        createPortal(
+          <div className="bg-amber-100 px-3 py-0.5 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            Testovací kanál sessions: príkazy pracovných sessions, nie tvojho chatu
+          </div>,
+          envSlot,
+        )}
+      {foreign && (
+        <div
+          className="fixed bottom-12 left-4 z-[9998] flex items-center gap-3 rounded-lg border border-amber-500 bg-background px-3 py-2 text-sm text-foreground shadow-lg"
+          role="alert"
+        >
+          <span>Príkaz z iného chatu neprijatý.</span>
+          <button type="button" className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted" onClick={acceptForeign}>
+            Prevziať
+          </button>
+          <button type="button" className="text-xs text-muted-foreground hover:underline" onClick={() => setForeign(null)}>
+            Zavrieť
+          </button>
+        </div>
+      )}
+      {toast && !foreign && (
         <div
           className="pointer-events-none fixed bottom-12 left-4 z-[9998] rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground shadow-lg"
           aria-live="polite"
