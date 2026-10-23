@@ -5,85 +5,129 @@ import { useEffect, useRef } from "react";
 import "@assetinspace/design-kit/css/tokens.css";
 import "@assetinspace/design-kit/css/graphics.css";
 
-declare global {
-  interface Window {
-    assetinLogoTypewriter?: (
-      root: Element,
-      opts?: { words?: string[]; speed?: number; hold?: number },
-    ) => () => void;
+const WORDS = ["", "sight", "formation", "telligence"];
+const SPEED_MS = 60; // na písmeno
+const HOLD_MS = 1300; // pauza na celom slove
+const DELETE_FACTOR = 0.55; // mazanie je rýchlejšie ako písanie (ako v kite)
+const GAP_MS = 350;
+const BLINK_MS = 1000;
+/** Ak sa dlhšie nič nevykreslilo, loader sa skončil a ďalší začne odznova. */
+const RESTART_AFTER_MS = 1500;
+
+type Segment = { word: string; type: number; hold: number; del: number; total: number };
+const SEGMENTS: Segment[] = WORDS.map((word) => {
+  const type = word.length * SPEED_MS;
+  const hold = word ? HOLD_MS : HOLD_MS - 400;
+  const del = word.length * SPEED_MS * DELETE_FACTOR;
+  return { word, type, hold, del, total: type + hold + del + GAP_MS };
+});
+const CYCLE_MS = SEGMENTS.reduce((a, s) => a + s.total, 0);
+
+/** Text za `elapsed` ms. Čisto z času, nie z počtu tikov: oneskorený snímok
+ *  (zahltené hlavné vlákno) text len dobehne, rytmus je rovnomerný. */
+function typedAt(elapsed: number, reduced: boolean): string {
+  let t = elapsed % CYCLE_MS;
+  for (const s of SEGMENTS) {
+    if (t >= s.total) {
+      t -= s.total;
+      continue;
+    }
+    if (reduced) return s.word;
+    if (t < s.type) return s.word.slice(0, Math.floor(t / SPEED_MS) + 1);
+    t -= s.type;
+    if (t < s.hold) return s.word;
+    t -= s.hold;
+    if (t < s.del) {
+      const left = s.word.length - Math.floor(t / (SPEED_MS * DELETE_FACTOR)) - 1;
+      return s.word.slice(0, Math.max(left, 0));
+    }
+    return "";
   }
+  return "";
 }
 
-const WORDS = ["", "sight", "formation", "telligence"];
-// Rýchlejšie ako predvolené 90 / 1800 ms (spätná väzba k #291); bodka bliká vždy ako kurzor.
-const SPEED_MS = 40;
-const HOLD_MS = 1100;
-const LONGEST = WORDS.reduce((a, w) => (w.length > a.length ? w : a), "");
+// Spoločné pre všetky inštancie: loader sa pri prechode (loading.tsx, dynamic
+// loader, prekrytie nad iframe) odmontuje a znova namontuje, animácia ale
+// pokračuje tam, kde skončila, nezačína od nuly.
+let startedAt: number | null = null;
+let lastTick = 0;
 
 /**
  * Jediná obrazovka načítavania AIM Viewera (D-163): biele pozadie a v strede
- * animované logo z design-kitu (assetin. -> assetinsight. -> ...). Skript sa
- * načíta až tu a pri odmontovaní sa zastaví cez stop(). Pri
- * prefers-reduced-motion skript len vymieňa slová a CSS vypne blikanie bodky.
+ * animované logo z design-kitu (assetin. -> assetinsight. -> ...). Typewriter
+ * je vlastný a riadený časom (skript kitu píše s náhodným rozptylom a od nuly
+ * pri každej inštancii, čo pôsobilo sekane); CSS a štruktúra loga sú z kitu.
+ * Bodka bliká vždy ako kurzor, aj pri prefers-reduced-motion; pri ňom sa slová
+ * len vymieňajú bez písania.
  */
 export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
-  const logoRef = useRef<HTMLSpanElement>(null);
+  const typedRef = useRef<HTMLSpanElement>(null);
+  const dotWrapRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    let stop: (() => void) | undefined;
-    let cancelled = false;
-    import("@assetinspace/design-kit/js/logo-typewriter.js").then(() => {
-      if (cancelled || !logoRef.current || !window.assetinLogoTypewriter) return;
-      stop = window.assetinLogoTypewriter(logoRef.current, { words: WORDS, speed: SPEED_MS, hold: HOLD_MS });
-    });
-    return () => {
-      cancelled = true;
-      stop?.();
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    const now0 = performance.now();
+    if (startedAt === null || now0 - lastTick > RESTART_AFTER_MS) startedAt = now0;
+    const base = startedAt;
+    // Bodka pokračuje vo fáze blikania aj po remounte.
+    if (dotWrapRef.current) dotWrapRef.current.style.setProperty("--blink-delay", `${-((now0 - base) % BLINK_MS)}ms`);
+    let raf = 0;
+    let shown: string | null = null;
+    const frame = (now: number) => {
+      lastTick = now;
+      const text = typedAt(now - base, reduced);
+      if (text !== shown && typedRef.current) {
+        typedRef.current.textContent = text;
+        shown = text;
+      }
+      raf = requestAnimationFrame(frame);
     };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Poloha sa nesmie meniť medzi troma inštanciami (loading.tsx, dynamic loader,
-  // prekrytie): `fixed inset-0` = vždy celé okno, nie rodič s iným paddingom.
-  // Šírku rezervuje neviditeľné najdlhšie slovo a logo je ukotvené vľavo, takže
-  // písanie ho neposúva. Font berie z next/font (`--font-sans`), nie z fallbacku kitu.
+  // Poloha sa nesmie meniť medzi troma inštanciami: `fixed inset-0`. Sizer
+  // "assetin." je vycentrovaný ako celok, písané slovo mu pretŕča doprava, takže
+  // nič neskáče a základ loga je vždy presne v strede.
+  const font = "var(--font-sans), var(--ds-font-sans)";
   return (
     <div
       role="status"
       aria-label={label}
       className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-white"
     >
-      <div className="flex flex-col items-start gap-6">
-      <span
-        aria-hidden="true"
-        className="font-semibold uppercase"
-        style={{
-          fontFamily: "var(--font-sans), var(--ds-font-sans)",
-          fontSize: "var(--ds-text-3xl)",
-          letterSpacing: "0.3em",
-          color: "var(--ds-text-muted)",
-        }}
-      >
-        Loading
-      </span>
-      <span className="relative inline-flex [&_.logo-dot]:animate-[logo-dot-blink_1s_step-end_infinite]!" style={{ fontFamily: "var(--font-sans), var(--ds-font-sans)" }}>
-        <span className="brand-logo invisible" aria-hidden="true">
-          <span className="a">asset</span>
-          <span className="i">in{LONGEST}</span>
-          <span className="logo-dot"></span>
+      <div className="flex flex-col items-center gap-4">
+        <span
+          aria-hidden="true"
+          className="font-semibold uppercase"
+          style={{
+            fontFamily: font,
+            fontSize: "var(--ds-text-xs)",
+            letterSpacing: "0.35em",
+            paddingLeft: "0.35em",
+            color: "var(--ds-text-muted)",
+          }}
+        >
+          Loading
         </span>
         <span
-          ref={logoRef}
-          className="brand-logo absolute left-0 top-0"
-          style={{ fontFamily: "inherit" }}
-          aria-hidden="true"
+          ref={dotWrapRef}
+          className="relative inline-flex [&_.logo-dot]:animate-[logo-dot-blink_1s_step-end_var(--blink-delay,0ms)_infinite]!"
+          style={{ fontFamily: font }}
         >
-          <span className="a">asset</span>
-          <span className="i">
-            in<span data-typed></span>
+          <span className="brand-logo invisible" aria-hidden="true">
+            <span className="a">asset</span>
+            <span className="i">in</span>
+            <span className="logo-dot"></span>
           </span>
-          <span className="logo-dot" aria-hidden="true"></span>
+          <span className="brand-logo absolute left-0 top-0" style={{ fontFamily: "inherit" }} aria-hidden="true">
+            <span className="a">asset</span>
+            <span className="i">
+              in<span ref={typedRef} data-typed></span>
+            </span>
+            <span className="logo-dot" aria-hidden="true"></span>
+          </span>
         </span>
-      </span>
       </div>
     </div>
   );
