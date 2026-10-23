@@ -11,6 +11,7 @@ import {
   VIEW_MODES,
   PANEL_ACTIONS,
   panelsOp,
+  planPositionOp,
   underlays3dOp,
   panelScrollOp,
   panelZoomOp,
@@ -165,6 +166,17 @@ export function planUnderlays3d(input: Record<string, unknown>): { op: string; l
   if (raw === undefined || raw === null) return null;
   if (typeof raw !== "boolean") throw new ViewInputError("underlays_3d: true (zobraziť podklady PDF v 3D) alebo false (skryť).");
   return { op: underlays3dOp(raw), label: `Podklady v 3D: ${raw ? "zapnuté" : "vypnuté"}`, result: { underlays_3d: raw } };
+}
+
+/**
+ * Poloha a smer kamery na kalibrovanom PDF (D-161 bod 8, #282): `plan_position` = true zobrazí bodku a výsek
+ * smeru pohľadu na PDF v záložke alebo dlaždici, false skryje. Stav viewera; čítanie `get_viewer_state.plan_position`.
+ */
+export function planPlanPosition(input: Record<string, unknown>): { op: string; label: string; result: { plan_position: boolean } } | null {
+  const raw = input.plan_position;
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "boolean") throw new ViewInputError("plan_position: true (ukázať polohu a smer kamery na PDF) alebo false (skryť).");
+  return { op: planPositionOp(raw), label: `Poloha na PDF: ${raw ? "zapnutá" : "vypnutá"}`, result: { plan_position: raw } };
 }
 
 export function planViewMode(
