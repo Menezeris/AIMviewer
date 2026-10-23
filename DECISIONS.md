@@ -6626,6 +6626,30 @@ líši od skutočného podhľadu (PH01.10.0010 na z = 8,05 až 8,063 m), rez ho 
 - **Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `section-below-ceiling-geometry` je v
   `eval/questions.json`. **Testy:** `lib/engine/names.test.ts` (mini model `__fixtures__/mini-ceiling.ts`).
 
+**Doplnok (2026-10-22, #187): X-ray kontext len pre zvolené podlažie, `style_in_3d action=xray context_storey`.** Zvyšok issue #187
+(hlavná chyba: `xray` so `storey` nechal kontext celú budovu, pôdorys 1NP zhora bol nečitateľný). Samuel 22. 10.: plné riešenie vo forku.
+*Najprv to, čo existuje (D-098, D-114):* fork robí X-ray ako zjednotenie pravidiel `APPLY_LENS xray: true` v kanáli `ghostExceptEntities`
+(`aim/aimLens.ts`, D-105): zvyšok modelu je priesvitný, na podlažia nemá žiadny pojem. Host nemôže ostatné podlažia skryť sám v jednom príkaze
+(`hide storey` po podlažiach sú stovky GUIDov nad stropom `LENS_GUID_CAP`; lens pravidlo `hide` v tej istej správe by fork zjednotil do X-ray
+množiny a pri `clear_isolation` by ostalo v lens). Najbližšie tooly: `style_in_3d` (xray, hide, clear_isolation), `set_section`
+(relative_to=ceiling, D-140 hore). Rozšírenie existujúcej správy, nový tool ani nová bridge správa netreba (D-114).
+*Rozhodnutie:* (1) `style_in_3d` dostane parameter `context_storey` (podlažie ako `storey`: 1NP, 2.NP, object_ref, názov), platí len s
+`action=xray`, inak chyba. Host ho preloží na normalizovaný štítok z grafu AIM (`normalizeStoreyLabel`, `1.NP_VZT` = `1NP`) a pošle ho v op `lens`
+ako `cs`, na moste ako `APPLY_LENS xrayStoreys`. (2) Fork (`aim/aimXrayStoreys*.ts`, patch `aim-187-xray-kontext-podlazia`): pri `xrayStoreys`
+skryje kanálom `hiddenEntities` prvky ostatných podlaží všetkých modelov (porovnanie podľa štítku, aby ASR a VZT podlažie toho istého poschodia
+ostali spolu), okrem plných prvkov X-ray; prvky mimo podlaží (terén, budova) ostanú v ghost kontexte. Čo skryl chat, si pamätá a vráti pri zrušení
+X-ray: `clear_isolation` (D-151, `APPLY_LENS unisolate`), `show_all`, `clear` alebo nový X-ray vrátia len tieto prvky, ručné skrytie používateľa ostane.
+`mode=add` kontext rozšíri. (3) Bez `context_storey` ostáva doterajšie správanie; `xray` so `storey` bez neho vráti varovanie, že kontext je celý model,
+s radou zopakovať volanie s `context_storey=<podlažie>` a rezom tesne nad horný okraj stropov (D-140). Odpoveď nesie `xray` text a `context_storey`;
+`LENS_QUERY` vo `isolation` aj `storeys` a `hidden` (počet skrytých). Starší fork pole ignoruje (varovanie ostáva pravdivé, kontext je celý model).
+*Zavrhnuté:* nová akcia `ceiling_plan` (štyri kroky naraz, návrh z komentára k issue): `xray` + `context_storey` + `set_section` + `set_camera` sú existujúce
+tooly a rez z D-140 už ide z geometrie, balík by zakryl, čo sa ktorým krokom stalo; `hide` ostatných podlaží po jednom (obchádzka, desiatky volaní a GUIDov);
+lens pravidlo `hide` s `storey notIn` (neprenáša sa medzi modelmi s iným menom podlažia a `clear_isolation` by ho nezrušil).
+*Dôsledky:* fork PR len v `aim/` (rýchle CI, D-103), poradie zlúčenia fork, potom AIMviewer. Bez migrácie a env. Prompt sa nemení (MCP inštrukcie
+pri strope), pokyn je v opise toolu a vo varovaní. **Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `style-xray-storey-context`
+je v `eval/questions.json` (upravená). **Testy:** vitest (`style-lens`, `viewer-lens`), fork `aimXrayStoreysPlan.test.ts` s mutačnými skúškami. Neoverené živo
+(bez modelu v cloud session, D-135): skrývanie vo viewere stojí na typoch a čistej logike.
+
 ### D-141 - Spodná stavová lišta hostu pod viewerom: výber viewera a Live neprekrývajú panely
 **Status:** rozhodnuté (2026-10-22, issue #185; číslo D-141 navrhnuté orchestrátorovi, potvrdenie čaká). Nadväzuje na D-116
 (výber viewera), D-079 (živý kanál), D-091 (AIM funkcia predvolene v hoste), D-127 (panely z chatu, #179), D-111 (`open_list`).

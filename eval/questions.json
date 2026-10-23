@@ -1040,7 +1040,7 @@
       "question": "Ukáž pôdorys stropov na 1NP: stropy plne, zvyšok priesvitný, pohľad zhora.",
       "expect": { "tools_called": ["style_in_3d"] },
       "verified": false,
-      "notes": "Issue #187: xray s storey nechá priesvitný celý model; odpoveď nesie varovanie a model má skryť ostatné podlažia a dať rez. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+      "notes": "Issue #187 (D-140 doplnok): xray s storey bez context_storey nechá priesvitný celý model a vráti varovanie; model má volať xray s context_storey=1NP (ostatné podlažia sa skryjú), potom rez tesne nad horný okraj stropov a set_camera top. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     },
     {
       "id": "style-colorize-space-translucent",
