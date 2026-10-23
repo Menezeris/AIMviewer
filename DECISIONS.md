@@ -5909,6 +5909,29 @@ Existujúce tooly to nepokryjú: chyba je v obsahu odpovedí a vo vykreslení, n
 **Evaly (D-057):** v cloud session bez kľúčov Supabase nepobežia; do `eval/questions.json` pribudnú
 otázky z issues.
 
+**Doplnok (2026-10-22, #175 vrátené): podstava miestnosti v 3D perspektíve.** Samuel 21. 10. rozhodol: ofarbená alebo
+vybraná miestnosť sa v perspektíve nezobrazuje ako objem, stačí vyplnená podstava. Overenie 22. 10.: v pohľade zhora
+výplň sedí, v perspektíve je podstava viditeľná len pri skrytej podlahovej krytine (IfcCovering FLOORING) a miestnosti sú
+bledo azúrové bez farieb z Lens. Rozhranie toolov sa nemení, len fork (patch na vetve `claude/aim-175-fork-patch`).
+- *Príčina farby:* bod 4 dáva IfcSpace z AIM chat lens akciu `transparent` (alfa 0,3). Renderer override s alfou aspoň
+  0,2 presunie do nepriehľadnej pipeline a farbu zmieša ako 30 % Lens a 70 % pôvodnej azúrovej farby miestnosti, takže
+  miestnosti vyzerali rovnako a tvorili nepriehľadnú hmotu (komentár z #76). D-139 rátal so skutočnou priesvitnosťou.
+- *Príčina krytiny:* `AimRoomFillLayer` kreslí len v 2D a v 3D zhora s vodorovným rezom (bod 5); v perspektíve bola
+  "výplňou" len spodná stena objemu, ktorá leží na doske pod krytinou.
+- *Rozhodnutie:* (1) prvky priesvitnej varianty AIM chat lens (IfcSpace, IfcSpatialZone) sa do renderera neposielajú,
+  ostanú natívne priesvitné; súhrn, počty a farby v Lens a pôdoryse sa nemenia. (2) Podstavu ofarbených (aj inou lens) a
+  vybraných miestností kreslí fork v 3D mimo pôdorysu cez existujúce výplne renderera (kanál IfcAnnotation, hĺbkový test,
+  steny pred ňou ju zakryjú), vo farbe Lens s priehľadnosťou ako v pôdoryse, 3 cm nad vrchom krytiny, ktorá prekrýva
+  miestnosť a leží do 0,25 m nad jej spodkom (bez krytiny nad spodkom miestnosti). Nie nad vodorovným rezom, nie pri
+  skrytej miestnosti a nie spolu so SVG pôdorysom (farba by sa zdvojila). Upstream len dva bloky AIM-FORK (`useLens.ts`,
+  `useViewportSymbolicUploads.ts`).
+- *Dôsledok:* zóna (IfcSpatialZone) z AIM chat lens v 3D farbu objemu stratí (predtým len bledá zmes), podstavu nemá.
+- *Zavrhnuté:* krytina polopriehľadná pri ofarbenej miestnosti (mení vzhľad iného prvku, ťažko ohraničiť, ktorej
+  krytiny sa týka); obrys alebo šrafa (podstava stačila); zmena miešania farby v rendereri (upstream, plné CI); SVG výplň v
+  perspektíve (bez hĺbkového testu by prekrývala model, preto ju bod 5 obmedzil na pohľad zhora).
+- *Vedľajšie zistenie z #175* (`show_in_3d` s viacerými `ids_or_refs` vybral len prvý): opravené v #217 (22. 10.), po
+  Samuelovom overení; netýka sa D-151.
+
 ### D-126 - Úplné a stránkované výsledky DB tools, hľadanie cez vzťahy, overenie zatvorených issues
 
 **Status:** rozhodnuté (2026-10-21, číslo pridelil orchestrátor). Issues #181, #174, #171, #176. Nadväzuje na
@@ -6286,6 +6309,28 @@ nemá `_georef` ani jeden výkres. Konektor nevie podklad nastaviť. Prototyp na
 **Zavrhnuté:** len popisky bez doladenia (chyba okolo 1 m); parser PDF na serveri (D-123, dva extraktory);
 kalibrácia viazaná na podlažie (nepokryje rezy a detaily).
 
+**Doplnok 2026-10-22 (#170, Samuel): vypnúť PDF podklady v 3D.** Podklad ostane kalibrovaný a uložený, len sa v 3D
+nekreslí; pôdorys v 2D a split ostáva. Má to ísť aj z chatu.
+- *Overené (D-098):* `visible` v kalibrácii (`_georef`, oko pri výkrese v paneli Underlays) už existuje, ale je to
+  niečo iné: `setUnderlayVisible` ho **ukladá do DB** (`UNDERLAY_SAVE`) a skrýva podklad **aj v 2D paneli pôdorysu**
+  (`DrawingPlanPane`, `storeyHasDrawing` filtrujú na `visible`). 3D plochu kreslí len `useDrawingUnderlay`
+  (externý overlay renderera), 2D pane je samostatné DOM plátno.
+- *Rozhodnutie:* dve oddelené veci. `visible` kalibrácie ostáva, ako je (trvalé, per výkres). Nový **stav viewera
+  "podklady v 3D"**: globálny, per relácia, do DB sa nezapisuje (po obnove stránky sú podklady v 3D zapnuté).
+  Vypnuté = uložené podklady sa v 3D plátne nekreslia; ghost náhľad počas kalibrácie a zamknutý pôdorysný pohľad
+  (`underlayViewLocked`, kamera zhora) ostávajú, lebo to je 2D. Per výkres nerobím (oko to pokrýva, Samuel hovorí
+  o podkladoch všeobecne).
+- *Chat (D-114, nový tool netreba):* parameter `underlays_3d` (boolean) existujúceho `set_view_mode`, op
+  `underlays3d:<0|1>:`, bridge správa `SET_UNDERLAYS_3D {show}` (vo `view-protocol.ts`, nie v `bridge-protocol.ts`).
+  Stav: `view_state.underlays_3d` (`get_viewer_state` aj `APPLIED`). Panel Underlays má prepínač "Show in 3D".
+- *Zavrhnuté rozšírenie:* `calibrate_underlay` (zapisuje kalibráciu do DB, toto je zobrazenie; nový parameter by
+  tool miešal s dvoma druhmi anotácie); `visible` v `_georef` (ukladá sa a skrýva aj 2D); `panels` (otvára okná, nie
+  vrstvy scény); `style_in_3d` (mení prvky modelu, podklad nie je prvok).
+- *Fork:* patch (format-patch) s logikou a store v `apps/viewer/src/aim/`, upstream len v `AIM-FORK` blokoch
+  (`useDrawingUnderlay.ts`, `DrawingUnderlayPanel.tsx`). Poradie: najprv fork, potom host; bez forku host správu
+  pošle a starší fork ju zahodí (podklady ostanú v 3D).
+- Kalibrácie strechy, základov, statiky a hárkov s viac pôdorysmi sa podľa Samuela zatiaľ nerobia.
+
 ---
 
 ### D-132 - Záložky vo vieweri: pohľad je orez, záložka je otvorený pohľad
@@ -6625,6 +6670,30 @@ líši od skutočného podhľadu (PH01.10.0010 na z = 8,05 až 8,063 m), rez ho 
   ukázať, treba kladný offset (nad horným okrajom ho zvýrazní `style_in_3d`) alebo ho po rezaní zobraziť cez xray.
 - **Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `section-below-ceiling-geometry` je v
   `eval/questions.json`. **Testy:** `lib/engine/names.test.ts` (mini model `__fixtures__/mini-ceiling.ts`).
+
+**Doplnok (2026-10-22, #187): X-ray kontext len pre zvolené podlažie, `style_in_3d action=xray context_storey`.** Zvyšok issue #187
+(hlavná chyba: `xray` so `storey` nechal kontext celú budovu, pôdorys 1NP zhora bol nečitateľný). Samuel 22. 10.: plné riešenie vo forku.
+*Najprv to, čo existuje (D-098, D-114):* fork robí X-ray ako zjednotenie pravidiel `APPLY_LENS xray: true` v kanáli `ghostExceptEntities`
+(`aim/aimLens.ts`, D-105): zvyšok modelu je priesvitný, na podlažia nemá žiadny pojem. Host nemôže ostatné podlažia skryť sám v jednom príkaze
+(`hide storey` po podlažiach sú stovky GUIDov nad stropom `LENS_GUID_CAP`; lens pravidlo `hide` v tej istej správe by fork zjednotil do X-ray
+množiny a pri `clear_isolation` by ostalo v lens). Najbližšie tooly: `style_in_3d` (xray, hide, clear_isolation), `set_section`
+(relative_to=ceiling, D-140 hore). Rozšírenie existujúcej správy, nový tool ani nová bridge správa netreba (D-114).
+*Rozhodnutie:* (1) `style_in_3d` dostane parameter `context_storey` (podlažie ako `storey`: 1NP, 2.NP, object_ref, názov), platí len s
+`action=xray`, inak chyba. Host ho preloží na normalizovaný štítok z grafu AIM (`normalizeStoreyLabel`, `1.NP_VZT` = `1NP`) a pošle ho v op `lens`
+ako `cs`, na moste ako `APPLY_LENS xrayStoreys`. (2) Fork (`aim/aimXrayStoreys*.ts`, patch `aim-187-xray-kontext-podlazia`): pri `xrayStoreys`
+skryje kanálom `hiddenEntities` prvky ostatných podlaží všetkých modelov (porovnanie podľa štítku, aby ASR a VZT podlažie toho istého poschodia
+ostali spolu), okrem plných prvkov X-ray; prvky mimo podlaží (terén, budova) ostanú v ghost kontexte. Čo skryl chat, si pamätá a vráti pri zrušení
+X-ray: `clear_isolation` (D-151, `APPLY_LENS unisolate`), `show_all`, `clear` alebo nový X-ray vrátia len tieto prvky, ručné skrytie používateľa ostane.
+`mode=add` kontext rozšíri. (3) Bez `context_storey` ostáva doterajšie správanie; `xray` so `storey` bez neho vráti varovanie, že kontext je celý model,
+s radou zopakovať volanie s `context_storey=<podlažie>` a rezom tesne nad horný okraj stropov (D-140). Odpoveď nesie `xray` text a `context_storey`;
+`LENS_QUERY` vo `isolation` aj `storeys` a `hidden` (počet skrytých). Starší fork pole ignoruje (varovanie ostáva pravdivé, kontext je celý model).
+*Zavrhnuté:* nová akcia `ceiling_plan` (štyri kroky naraz, návrh z komentára k issue): `xray` + `context_storey` + `set_section` + `set_camera` sú existujúce
+tooly a rez z D-140 už ide z geometrie, balík by zakryl, čo sa ktorým krokom stalo; `hide` ostatných podlaží po jednom (obchádzka, desiatky volaní a GUIDov);
+lens pravidlo `hide` s `storey notIn` (neprenáša sa medzi modelmi s iným menom podlažia a `clear_isolation` by ho nezrušil).
+*Dôsledky:* fork PR len v `aim/` (rýchle CI, D-103), poradie zlúčenia fork, potom AIMviewer. Bez migrácie a env. Prompt sa nemení (MCP inštrukcie
+pri strope), pokyn je v opise toolu a vo varovaní. **Evaly (D-057):** v cloud session nepobežali (bez Supabase kľúčov); otázka `style-xray-storey-context`
+je v `eval/questions.json` (upravená). **Testy:** vitest (`style-lens`, `viewer-lens`), fork `aimXrayStoreysPlan.test.ts` s mutačnými skúškami. Neoverené živo
+(bez modelu v cloud session, D-135): skrývanie vo viewere stojí na typoch a čistej logike.
 
 ### D-141 - Spodná stavová lišta hostu pod viewerom: výber viewera a Live neprekrývajú panely
 **Status:** rozhodnuté (2026-10-22, issue #185; číslo D-141 navrhnuté orchestrátorovi, potvrdenie čaká). Nadväzuje na D-116
@@ -7083,6 +7152,45 @@ balíkov forku), preto je v PR "Ako vyskúšať". Mutačné dôkazy forku pre re
 **Zavrhnuté rozšírenie:** nový tool nie (D-114). `set_section clear` nie, rez a kóty sú dve nezávislé veci. Kôš pre "len moje kóty" pre používateľa nie: chip upstream maže všetky merania, čo používateľ pri "zmaž merania" čaká.
 
 **Poradie nasadenia:** najprv fork (patch `aim-235-clear-measure.patch`), potom tento PR. Starší fork prázdnu správu zahodí (neprejde kontrolou mosta), kóty ostanú a používateľ ich zmaže chipom.
+
+---
+
+### D-154 - Plynulé otáčanie modelu dokola (`set_camera auto_rotate`), zastaví sa pri zásahu používateľa (#247)
+
+**Dátum:** 2026-10-22 · **Issue:** #247 · **Fork PR:** Menezeris/ifc-lite (patch `fork-patch-247/`) · **Nadväzuje na:** D-083, D-087, D-098, D-114
+
+**Kontext:** `set_camera` vie len jednorazový krok `orbit_h_deg`; na pomalé otáčanie pri prezentácii (napr. X-ray so stĺpmi) treba
+opakované volania a pohyb je skokový. Treba nepretržité plynulé otáčanie okolo cieľa, zapnúť a vypnúť z chatu.
+
+**Overenie existujúceho (D-098, D-114):** upstream fork (`c988e100`) auto-rotate vo vieweri nemá. `autoRotate` sa nachádza len v
+hero scéne landing stránky (`components/mcp/hero-scene.ts`, three.js OrbitControls, iná kamera) a `CameraControls` v rendereri
+má `orbit(dx, dy)` bez časovača; `cameraCallbacks` ponúka `getViewpoint` a `applyViewpoint(vp, animate=false)`. Najbližšie tooly:
+`set_camera` (rozširujeme: `orbit_h_deg` je jednorazový relatívny krok, host počíta pózu a nie je nepretržitý), `set_view_mode`
+(zmena režimu, kamery sa netýka), `get_viewer_state` (len stav). Použitá je existujúca cesta kamery, nový renderer ani ovládač sa nepíše.
+
+**Rozhodnutie:**
+1. **Parameter existujúceho toolu, nový tool nie (D-114 bod 3):** `set_camera auto_rotate=start|stop`, `speed_deg_s` (0,5 až 90, default 10 °/s),
+   `direction=left|right` (default `left`, rovnaký smer ako kladné `orbit_h_deg`: kamera obieha cieľ doľava).
+2. **Wire a most:** op `auto_rotate:<start|stop>[~s=<°/s>][~d=<l|r>]:` -> správa mosta `AUTO_ROTATE { action, speedDegS?, direction? }`
+   (vlastný modul `view-protocol.ts` vo forku, `bridge-protocol.ts` je na rozpočte veľkosti). Neplatná rýchlosť vo wire sa zahodí (fork použije default).
+3. **Samostatné volanie:** `auto_rotate` sa nekombinuje s presetom, fit, cieľom ani relatívnymi krokmi, lebo každý iný pohyb kamery
+   otáčanie zastaví; model najprv nastaví pohľad, potom ho roztočí. Chyba s opravou je v `lib/llm/auto-rotate-plan.ts`.
+4. **Fork (`apps/viewer/src/aim/`):** čistá matematika `autoRotatePlan.ts` (otočenie okolo zvislej osi cez `target`, `up` sa otáča s kamerou,
+   krok zrezaný na 100 ms, detekcia cudzieho pohybu) s testom a mutačnými dôkazmi; behová slučka `autoRotate.ts` (lenivý modul, `requestAnimationFrame`
+   cez `cameraCallbacks`). Zastaví ju `stop`, `pointerdown` / koliesko / dotyk na plátne, Esc, odpojenie mosta a každý iný pohyb kamery (ViewCube,
+   ďalší príkaz kamery, ťah): kamera sa porovná s pózou, ktorú slučka zapísala naposledy. Upstream súbory sa nemenia (režim `aim-only`).
+5. **`APPLIED`:** počas otáčania stav nesie `auto_rotate: true` a `APPLIED` nečaká na ustálenie kamery (inak by čakalo celý limit 1 s a hlásilo `camera_moving`).
+
+**Zavrhnuté rozšírenie: `set_view_mode` - prečo nie:** je to kamera, nie režim ani záložka. **Nový tool `rotate_model`:** jeden parameter navyše
+je lacnejší ako tool navyše (D-114). **Opakované `orbit_h_deg` z hosta časovačom:** host nemá bežať slučku (iframe, latencia MCP, skoky),
+plynulosť patrí do snímkovej slučky viewera. **Použiť `controls.autoRotate` z hero scény:** je to iný ovládač (three OrbitControls) na inej stránke.
+
+**Hranice:** `view_state` otáčanie neuvádza (len `APPLIED.state.auto_rotate`); pri zatvorení karty alebo zmene režimu 2D sa slučka zastaví pri prvom kroku bez kamery.
+Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg`); model sa pri `left` zdanlivo otáča doprava. Opis toolu to hovorí, správnosť smeru overí Samuel naživo.
+
+**Poradie nasadenia:** najprv fork (patch), potom AIMviewer. Starší fork správu `AUTO_ROTATE` zahodí: tool vráti ok, ale nič sa nezačne točiť.
+
+**Otvorené:** živé overenie vo viewer iframe a plné CI forku v cloud session nepobežali; evaly (D-057) nepobežali (bez Supabase kľúčov), otázka `camera-auto-rotate` je v `eval/questions.json`.
 
 ---
 

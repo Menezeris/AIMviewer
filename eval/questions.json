@@ -1040,7 +1040,7 @@
       "question": "Ukáž pôdorys stropov na 1NP: stropy plne, zvyšok priesvitný, pohľad zhora.",
       "expect": { "tools_called": ["style_in_3d"] },
       "verified": false,
-      "notes": "Issue #187: xray s storey nechá priesvitný celý model; odpoveď nesie varovanie a model má skryť ostatné podlažia a dať rez. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+      "notes": "Issue #187 (D-140 doplnok): xray s storey bez context_storey nechá priesvitný celý model a vráti varovanie; model má volať xray s context_storey=1NP (ostatné podlažia sa skryjú), potom rez tesne nad horný okraj stropov a set_camera top. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
     },
     {
       "id": "style-colorize-space-translucent",
@@ -1129,6 +1129,22 @@
       "expect": { "tools_called": ["ifc_measure"] },
       "verified": false,
       "notes": "D-152 (issue #235): ifc_measure(clear=true) zmaže kóty a trasu od Claude, merania používateľa ostanú. Bez overenej hodnoty (vyžaduje živý viewer)."
+    },
+    {
+      "id": "camera-auto-rotate",
+      "category": "viewer",
+      "question": "Potoč s tým modelom pomaličky dokola, nech sa točí stále.",
+      "expect": { "tools_called": ["set_camera"] },
+      "verified": false,
+      "notes": "D-154 (issue #247): set_camera(auto_rotate=start, speed_deg_s=nízka) jedným volaním, nie opakované orbit_h_deg. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "view-underlays-3d-off",
+      "category": "view",
+      "question": "Vypni zobrazenie PDF podkladov v 3D, kalibrácia nech ostane.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-133 doplnok (issue #170): set_view_mode(underlays_3d=false) -> stav viewera, view_state.underlays_3d=false; nie calibrate_underlay ani visible v _georef. Evaly nepobežali (bez Supabase kľúčov)."
     }
   ]
 }
