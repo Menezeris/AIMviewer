@@ -1,6 +1,7 @@
 import "server-only";
 
 import { fetchModelRevisions } from "../data/model-revisions";
+import { supabaseIdsStore } from "../ids/store";
 import { AskToolRuntime } from "../llm/tools";
 
 import { lookupGuids, resolveTargetsToGuids } from "./aim-lookup";
@@ -14,7 +15,7 @@ installArchiveSource();
 
 /** `ifc_*` tool s reálnym prepojením na DB AIM (D-084); importuje sa lenivo z MCP route. */
 export function runEngineTool(name: string, args: Record<string, unknown>): Promise<EngineExecution> {
-  return execEngineTool(name, args, { lookup: lookupGuids, resolveTargets: resolveTargetsToGuids, revisions: fetchModelRevisions });
+  return execEngineTool(name, args, { lookup: lookupGuids, resolveTargets: resolveTargetsToGuids, revisions: fetchModelRevisions, ids: supabaseIdsStore() });
 }
 
 /** Kombinované `search_all` (D-095): IFC súbor + graf AIM, badge pri každom výsledku. */

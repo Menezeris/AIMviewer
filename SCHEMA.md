@@ -479,20 +479,27 @@ nie je v DB), `ifc_guid` null = výsledok celej povinnej špecifikácie bez vyho
 Pohľady: `v_ids_latest` (posledný beh každej dvojice IDS × model, s object_ref/menom),
 `v_ids_summary` (po špecifikáciách: elements, passed, failed, example_reason).
 
-**Návrh D-162 (schválený, migrácia `20261023180000_ids_documents.sql` ešte nie je):** IDS ako
-dokumenty s verziami, z chatu aj z viewera. Aditívne:
-- `ids_documents` = jedno IDS: `code` (unique, napr. `ER-0101_ARCH`), `title`, `origin`
-  `library|chat`, `library_source` (repo@commit:cesta, len `library`), `derived_from`
-  (FK na `ids_document_versions`, kópia knižničnej snímky), `status` `draft|active|archived`,
-  `created_by`, `created_at`, `updated_at`. Riadok `library` je len na čítanie (mení ho len import).
-- `ids_document_versions` = nemenná verzia: `document_id` (FK, cascade), `version` int
-  (unique s `document_id`), `xml` text (nositeľ), `sha256`, `ids_version` (`ids:info/version`),
-  `audit` jsonb (súhrn auditu a lintu pri zápise), `author`, `source` `chat|viewer|import`,
-  `note`, `created_at`.
-- `ids_runs` + `ids_version_id` (FK, null pre staré behy), `engine` `ifctester|ifc-lite`,
-  `trigger` `etl|chat|viewer`, `binding` bool default false (dnes nie je záväzný žiadny beh).
-- `v_ids_latest` / `v_ids_summary` + `ids_code`, `ids_version`, `engine`, `binding` (doterajšie
-  stĺpce ostanú); `query_view` whitelist + `ids_documents`. Grant a RLS ako `ids_runs`.
+**D-162 (migrácia `20261023180000_ids_documents.sql`, test `supabase/tests/ids_documents.sql`):** IDS ako
+dokumenty s verziami, z chatu aj z viewera. Aditívne, IDS nie je v `objects` (D-104):
+- `ids_documents` = jedno IDS: `code` (unique, `^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$`), `title`, `origin`
+  `library|chat`, `library_source` (repo@commit:cesta; práve vtedy, keď `origin = library`),
+  `derived_from` (FK na `ids_document_versions`, `on delete set null`; len pre `chat`, kópia knižničnej
+  snímky), `status` `draft|active|archived` (default `active`), `created_by`, `created_at`, `updated_at`.
+  Pôvod sa po vzniku nemení (trigger).
+- `ids_document_versions` = nemenná verzia: `document_id` (FK, `on delete cascade`), `version` int >= 1
+  (unique s `document_id`), `xml` text (nositeľ; Studio JSON sa neukladá), `sha256`, `ids_version`
+  (`ids:info/version`), `audit` jsonb (súhrn auditu a lintu pri zápise), `author`, `source`
+  `chat|viewer|import`, `note`, `created_at`. Trigger: UPDATE nejde; do `library` IDS píše len `import`,
+  do `chat` IDS nikdy `import`.
+- `ids_runs` + `ids_version_id` (FK, `on delete set null`, null pre staré behy), `engine`
+  `ifctester|ifc-lite` (staré behy `ifctester`), `trigger` `etl|chat|viewer` (staré `etl`), `binding` bool
+  default false (dnes nie je záväzný žiadny beh, D-086).
+- `v_ids_latest`: posledný beh každej dvojice IDS x model; kľúč IDS je dokument (verzie jedného IDS sa
+  nemiešajú s iným IDS rovnakého názvu), pri behoch bez `ids_version_id` ako doteraz `ids_title`.
+  Nové stĺpce na konci: `ids_code`, `ids_doc_version` (číslo verzie dokumentu; `ids_runs.ids_version`
+  ostáva text z `ids:info`), `engine`, `binding`. `v_ids_summary` má rovnaké stĺpce navyše.
+- `query_view` whitelist + `ids_documents` (verzie s XML nie, XML číta `ids_document`). Práva ako ostatné
+  nové tabuľky: `anon`/`authenticated` nič, `service_role` všetko.
 
 ### 2.14 Revízie IFC modelov a úlohy úprav (D-086, migrácia 20261018120000)
 

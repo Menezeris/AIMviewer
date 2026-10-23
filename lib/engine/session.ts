@@ -44,6 +44,12 @@ export const ENGINE_UPSTREAM_TOOLS = [
   "geometry_volume",
   "model_audit",
   "schema_describe",
+  // IDS dokumenty (D-162): len cez `lib/ids/`, nositeľ je XML; `ids_apply_ops` vracia Studio JSON.
+  "ids_read",
+  "ids_apply_ops",
+  "ids_write",
+  "ids_audit",
+  "ids_lint",
 ] as const;
 export type EngineUpstreamTool = (typeof ENGINE_UPSTREAM_TOOLS)[number];
 
@@ -120,6 +126,11 @@ export async function openEngineSession(models: EngineModel[]): Promise<EngineSe
       return (res as { result: EngineToolResult }).result;
     },
   };
+}
+
+/** Vstupná schéma upstream toolu (D-162: slovník operácií `ids_apply_ops` pre LLM). */
+export function upstreamInputSchema(name: EngineUpstreamTool): Record<string, unknown> {
+  return (tools().get(name)?.inputSchema ?? {}) as Record<string, unknown>;
 }
 
 /** Jedno volanie toolu v novej relácii. */
