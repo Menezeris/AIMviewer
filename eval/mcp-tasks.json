@@ -212,10 +212,10 @@
       "id": "V5-2d-podorys",
       "category": "viewer",
       "viewer": true,
-      "question": "Prepni na 2D pôdorys 2NP.",
+      "question": "Prepni na pôdorys 2NP zhora.",
       "max_calls": 1,
       "budget_s": 5,
-      "expect": { "viewer_state": "mode 2d, podlažie 2NP" },
+      "expect": { "viewer_state": "ortografická kamera zhora (camera.projection), vodorovný rez nad 2NP, bez poľa mode" },
       "covers": ["set_view_mode"]
     },
     {

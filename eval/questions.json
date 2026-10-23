@@ -1193,6 +1193,22 @@
       "expect": { "tools_called": ["clash", "style_in_3d"] },
       "verified": false,
       "notes": "D-164: clash(results, group=1) -> show_in_3d.a_global_ids / b_global_ids -> style_in_3d (colorize, global_ids). Pred tým musí byť beh (run)."
+    },
+    {
+      "id": "view-save-from-viewer",
+      "category": "viewer",
+      "question": "Ulož aktuálny pohľad ako Pôdorys 1NP.",
+      "expect": { "tools_called": ["saved_view"] },
+      "verified": false,
+      "notes": "D-161: saved_view(action=save, name) pošle viewera VIEW_CAPTURE (uloží ako tlačidlo v paneli Presentation), host zapíše riadok cez /api/saved-views; bez env brány VIEWS_WRITE_ENABLED tool povie, že pohľad je len vo viewere. Len MCP so živým viewerom."
+    },
+    {
+      "id": "view-open-saved-by-name",
+      "category": "viewer",
+      "question": "Otvor uložený pohľad Pôdorys 1NP.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-161: set_view_mode(view='Pôdorys 1NP') = VIEW_ACTIVATE (kamera, rez, košík v Presentation); zoznam mien get_viewer_state(saved_views=true). Starý riadok z D-122 sa obnoví zálohou (rez, kamera, izolácia) na bežnom 3D, bez záložky."
     }
   ]
 }

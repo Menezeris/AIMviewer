@@ -189,17 +189,16 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "set_view_mode",
     description:
-      "UI AKCIA: záložky vieweru (D-132, ako v Revite): každý pohľad je záložka na celú plochu. mode=3d = záložka 3D, " +
-      "mode=2d + floor = pôdorys podlažia v záložke, mode=split = pôdorys vedľa 3D (s kalibrovaným podkladom). 2D s " +
-      "kalibrovaným výkresom ukáže PDF pôdorys, inak model zhora s rezom 1,2 m nad podlahou; miestnosti " +
-      "ofarbené cez style_in_3d sú v ňom vyplnené farbou a popísané názvom. Na " +
-      "prehliadku budovy podlažie po podlaží volaj mode=2d s floor postupne (krok na pokyn používateľa). " +
-      "reset=true s mode=3d vráti pôvodný pohľad (bez rezu, farieb, skrytia, výberu a zvýraznenia, izometria). " +
-      "ULOŽENÝ POHĽAD: view (alebo saved_view)=meno ho otvorí do vlastnej záložky (rez alebo box, zamknutá kamera, " +
-      "izolácia, skrytie; mode netreba); 'ako minule' = view='Posledný pohľad'; section_offset_m posunie rez po jeho " +
-      "osi ('o meter nižšie' = -1). Zoznam: get_viewer_state(saved_views=true). ZÁLOŽKY: tab=menovka prepne " +
-      "('späť na 3D' = tab='3D'), beside=menovka dá záložku vedľa aktívnej (dokument vedľa 3D alebo pohľadu; none " +
-      "zruší; dvojicu, ktorú plocha nevie, dá do dvoch dlaždíc), close_tab=menovka alebo all zavrie. Otvorené záložky (tabs) " +
+      "UI AKCIA: kamera a pohľady vieweru. 2D nie je režim. mode=3d = perspektíva (reset=true s ním vráti pôvodný pohľad: " +
+      "bez rezu, farieb, skrytia, výberu a zvýraznenia, izometria). mode=2d + floor = POHĽAD ZHORA na podlažie na bežnom 3D: " +
+      "ortografická kamera zhora a vodorovný rez 1,2 m nad podlahou, alebo uložený pohľad toho podlažia; bez zámku, orbit " +
+      "a nástroje fungujú hneď (miestnosti ofarbené cez style_in_3d sú v ňom vyplnené a popísané). Na prehliadku budovy " +
+      "podlažie po podlaží volaj mode=2d s floor postupne (krok na pokyn používateľa). mode=split + floor = pohľad zhora " +
+      "a dlaždice 3D | výkres PDF podlažia. ULOŽENÝ POHĽAD (panel Presentation, D-161): view (alebo saved_view)=meno ho " +
+      "otvorí (kamera, rez, košík ako izolácia; mode netreba); 'ako minule' = view='Posledný pohľad'; section_offset_m " +
+      "posunie rez po jeho osi ('o meter nižšie' = -1). Zoznam: get_viewer_state(saved_views=true), uloženie: saved_view. " +
+      "ZÁLOŽKY (3D a dokumenty): tab=menovka prepne ('späť na 3D' = tab='3D'), beside=menovka dá dokument vedľa aktívnej " +
+      "(none zruší; dvojicu, ktorú plocha nevie, dá do dvoch dlaždíc), close_tab=menovka alebo all zavrie. Otvorené záložky (tabs) " +
       "vráti stav po príkaze aj get_viewer_state. DLAŽDICE (D-157, Tile Windows v Revite): layout = single | split_h (2 vedľa " +
       "seba) | split_v (2 pod sebou) | three_left / three_right / three_top / three_bottom (3, veľká dlaždica vľavo / vpravo / " +
       "hore / dole) | three_h (3 vedľa seba) | three_v (3 pod sebou) | grid4 (2x2), tiles = záložka v každej dlaždici " +
@@ -217,18 +216,17 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "'NetVolume'; hľadá sa v rozbalenom obsahu), percent = poloha 0 až 100; stav posunu vráti panel_view. " +
       "ZOOM PANELA: panel_zoom={panel?, zoom: in|out|reset|číslo} ('zväčši panel', 'späť na normál'). Obe aj bez " +
       "mode; s panels ho najprv otvorí. Výber prvku a riadok vlastnosti ide cez show_in_3d (highlight). " +
-      "PODKLADY PDF V 3D: underlays_3d=false skryje kalibrované podklady v 3D (kalibrácia ostane uložená, pôdorys v 2D " +
-      "a split ostáva), true ich zobrazí; je to stav viewera (get_viewer_state.underlays_3d), nie visible kalibrácie.",
+      "PODKLADY PDF V 3D: underlays_3d=false skryje kalibrované podklady v 3D (kalibrácia ostane uložená), true ich zobrazí; je to stav viewera (get_viewer_state.underlays_3d), nie visible kalibrácie.",
     inputSchema: {
       type: "object",
       properties: {
         mode: { type: "string", enum: ["3d", "2d", "split"] },
         floor: floorProp,
         reset: { type: "boolean", description: "S mode=3d: zruší rez, farby, skrytie, výber a zvýraznenie a vráti kameru" },
-        saved_view: { type: "string", description: "Meno uloženého pohľadu na obnovu (bez mode); to isté ako view" },
-        view: { type: "string", description: "Meno uloženého pohľadu: otvorí ho do záložky (bez mode)" },
-        tab: { type: "string", description: "Prepnúť na otvorenú záložku: '3D', menovka pôdorysu, pohľadu alebo dokumentu" },
-        beside: { type: "string", description: "Záložka vedľa aktívnej (napr. dokument vedľa 3D); 'none' = aktívna na celú plochu" },
+        saved_view: { type: "string", description: "Meno uloženého pohľadu (bez mode); to isté ako view" },
+        view: { type: "string", description: "Meno uloženého pohľadu z panela Presentation: otvorí ho (bez mode)" },
+        tab: { type: "string", description: "Prepnúť na otvorenú záložku: '3D' alebo menovka dokumentu" },
+        beside: { type: "string", description: "Dokument vedľa aktívnej záložky (napr. vedľa 3D); 'none' = aktívna na celú plochu" },
         close_tab: { type: "string", description: "Zavrieť záložku (menovka) alebo 'all' (ostane 3D)" },
         layout: {
           type: "string",
@@ -277,7 +275,7 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         underlays_3d: {
           type: "boolean",
-          description: "false = skryť PDF podklady v 3D (kalibrácia ostane, pôdorys v 2D ostane), true = zobraziť; stav viewera, nezapisuje sa do DB",
+          description: "false = skryť PDF podklady v 3D (kalibrácia ostane), true = zobraziť; stav viewera, nezapisuje sa do DB",
         },
         section_offset_m: {
           type: "number",

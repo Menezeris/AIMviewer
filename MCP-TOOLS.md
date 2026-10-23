@@ -48,7 +48,7 @@ Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/vie
   Parametre: `action*=set|clear|widget`, `orientation=horizontal|vertical_x|vertical_z`, `floor`, `offset_m`, `relative_to=floor|ceiling`, `position_percent`, `target_ids_or_refs`, `global_ids`, `fit=along|across|center`, `coordinate_m`, `flipped`, `show_widget`, `cap_style=hatch|solid|none`, `cap_color`, `box`, `margin_m`, `hatch_pattern=diagonal|diagonal_reverse|cross|crosshatch|horizontal|vertical|dots|brick|insulation`, `hatch_angle_deg`, `hatch_spacing_px`, `hatch_line_width_px`
 - **`set_camera`** (D-083, čítanie) - UI AKCIA: kamera v 3D. preset = smer pohľadu (top/bottom/front/back/left/right/iso; fit_all = celý model; section = kolmo na aktívny rez, ako tlačidlo Set view; keep = zachovať smer, default). fit = čo zarámovať pri danom smere: visible (viditeľné, aj izolované prvky), selection (výber vo vieweri).
   Parametre: `preset=top|bottom|front|back|left|right|iso|fit_all|keep|section`, `fit=visible|selection`, `target_ids_or_refs`, `global_ids`, `ifc_type`, `ifc_types`, `domain=hvac|plumbing|electrical|architecture|structure`, `model`, `zoom_percent`, `orbit_h_deg`, `orbit_v_deg`, `pan_x_percent`, `pan_y_percent`, `projection=perspective|orthographic`, `auto_rotate=start|stop`, `speed_deg_s`, `direction=left|right`, `margin_percent`, `area=left|right|top|bottom|front|back`
-- **`set_view_mode`** (D-083, čítanie, vždy načítaný) - UI AKCIA: záložky vieweru (D-132, ako v Revite): každý pohľad je záložka na celú plochu. mode=3d = záložka 3D, mode=2d + floor = pôdorys podlažia v záložke, mode=split = pôdorys vedľa 3D (s kalibrovaným podkladom). 2D s kalibrovaným výkresom ukáže PDF pôdorys, inak model zhora s rezom 1,2 m nad podlahou; miestnosti ofarbené cez style_in_3d sú v ňom vyplnené farbou a popísané názvom.
+- **`set_view_mode`** (D-083, čítanie, vždy načítaný) - UI AKCIA: kamera a pohľady vieweru. 2D nie je režim. mode=3d = perspektíva (reset=true s ním vráti pôvodný pohľad: bez rezu, farieb, skrytia, výberu a zvýraznenia, izometria). mode=2d + floor = POHĽAD ZHORA na podlažie na bežnom 3D: ortografická kamera zhora a vodorovný rez 1,2 m nad podlahou, alebo uložený pohľad toho podlažia; bez zámku, orbit a nástroje fungujú hneď (miestnosti ofarbené cez style_in_3d sú v ňom vyplnené a popísané).
   Parametre: `mode=3d|2d|split`, `floor`, `reset`, `saved_view`, `view`, `tab`, `beside`, `close_tab`, `layout=single|split_h|split_v|three_left|three_right|three_top|three_bottom|three_h|three_v|grid4`, `tiles`, `panels`, `panel_scroll`, `panel_zoom`, `underlays_3d`, `section_offset_m`
 - **`open_list`** (D-111, čítanie) - Tabuľka prvkov v paneli Lists vo vieweri (export do CSV/XLSX/PDF): "exportuj dvere na 1NP ako tabuľku", "zoznam tvaroviek s rozmermi do Excelu".
   Parametre: `name`, `columns`, `run`, `action=open|update`, `maximize`, `sort_by`, `sort_dir=asc|desc`, `sum`, `group_by`, `search`, `add_columns`, `remove_columns`, `add_types`, `remove_types`, `remove_filter=storey|model|property|system|system_type|zone|document|global_ids|ids_or_refs|query|...`, `color_by`, `export=csv|xlsx|pdf`, `ifc_type`, `ifc_types`, `domain`, `predefined_type`, `storey`, `system`, `system_type`, `zone`, `document`, `page`, `property`, `pset`, `value`, `query`, `model`, `global_ids`, `ids_or_refs`
@@ -57,15 +57,15 @@ Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/vie
 
 Zdroj: živý viewer (spätný kanál). Definície: lib/live/viewer-query-tools.ts. Len MCP.
 
-- **`get_viewer_state`** (D-085, čítanie, vždy načítaný) - Čo práve ukazuje OTVORENÝ živý viewer: režim (3d/2d/split) a podlažie, aktívny rez (os, súradnica v IFC, poloha v %), kamera (pozícia a cieľ v IFC), výber a počty skrytých a izolovaných prvkov.
+- **`get_viewer_state`** (D-085, čítanie, vždy načítaný) - Čo práve ukazuje OTVORENÝ živý viewer: kamera (pozícia, cieľ v IFC, projekcia), aktívny rez (os, súradnica v IFC, poloha v %), aktívny pohľad z Presentation (view: id, name), výber a počty skrytých a izolovaných prvkov.
   Parametre: `bounds`, `saved_views`, `target_ids_or_refs`, `global_ids`, `items_offset`, `items_limit`
 
 ## Uložené pohľady (1)
 
 Zdroj: DB (saved_views) + živý viewer. Definície: lib/views/tools.ts (zoznam v get_viewer_state, obnova v set_view_mode). Len MCP.
 
-- **`saved_view`** (D-122, zápis) - ULOŽÍ POHĽAD viewera pod menom (spoločný pre stavbu, D-122): 'ulož to ako Pôdorys technickej miestnosti 3.14'. action=save vezme z otvoreného viewera kameru a projekciu, rez, režim a podlažie, izolované, skryté a vybrané prvky (farby z style_in_3d sa neukladajú); existujúce meno prepíše len s overwrite=true. rename: name -> new_name. delete: zmaže pohľad.
-  Parametre: `action*=save|rename|delete`, `name*`, `new_name`, `description`, `overwrite`, `author`, `view_type=3d|plan|section|detail`, `locked`, `underlay_document_id`, `underlay_page`
+- **`saved_view`** (D-122, zápis) - ULOŽÍ POHĽAD do panela Presentation (pás pohľadov, spoločný pre stavbu): 'ulož to ako Pôdorys technickej miestnosti 3.14'. action=save uloží to, čo je vo vieweri práve nastavené (kamera s projekciou, rezy, košík = viditeľné prvky; prázdny košík = všetko viditeľné), ako tlačidlo Uložiť v paneli.
+  Parametre: `action*=save|rename|delete`, `name*`, `new_name`, `description`, `overwrite`, `author`
 
 ## BCF témy nad modelmi (2)
 

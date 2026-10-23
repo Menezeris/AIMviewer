@@ -10,6 +10,7 @@ import { LIVE_APPLIED_EVENT, LIVE_QUERY_EVENT, LIVE_REPLY_EVENT, channelFor, isC
 import { NO_OWNER, decideOwner, ownerFor, takeOver, type OwnerState } from "@/lib/live/owner";
 import { applyLive, deferCmdIds, parseIfcCommandUrl, setAppliedSink } from "@/lib/live/viewer-apply-bus";
 import { BCF_CHANGED_WINDOW_EVENT, LIVE_BCF_EVENT } from "@/lib/live/bcf-event";
+import { LIVE_VIEWS_EVENT, VIEWS_CHANGED_WINDOW_EVENT } from "@/lib/live/views-event";
 import { LIVE_REVISION_EVENT, parseRevisionNotice, revisionToast } from "@/lib/live/revision";
 import { answerViewerQuery } from "@/lib/live/viewer-query-bus";
 
@@ -193,6 +194,10 @@ export function LiveChannel() {
         // Témy BCF sa zmenili (D-099): viewer na stránke si ich načíta znova.
         .on("broadcast", { event: LIVE_BCF_EVENT }, () => {
           window.dispatchEvent(new Event(BCF_CHANGED_WINDOW_EVENT));
+        })
+        // Uložené pohľady sa zmenili v chate (D-161): viewer si zoznam načíta znova.
+        .on("broadcast", { event: LIVE_VIEWS_EVENT }, () => {
+          window.dispatchEvent(new Event(VIEWS_CHANGED_WINDOW_EVENT));
         })
         .on("broadcast", { event: LIVE_QUERY_EVENT }, ({ payload }) => {
           if (!isLiveQuery(payload)) return;

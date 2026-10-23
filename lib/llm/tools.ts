@@ -561,7 +561,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "action=legend (malá karta len s AIM chat lens; legend_size large = veľké okno, normal = panel). Miestnosti " +
       "(IfcSpace) a zóny sú vo vieweri predvolene skryté: farbenie či izolácia ich zapne sama, ručne show/hide s " +
       "ifc_type=IfcSpace; farba miestnosti ostane priesvitná (prvky v nej vidno, NEPRIDÁVAJ transparent pravidlo); " +
-      "v pôdoryse (2D alebo vodorovný rez s pohľadom zhora) sú ofarbené aj vybrané miestnosti vyplnené a popísané. " +
+      "v pohľade zhora s vodorovným rezom sú ofarbené aj vybrané miestnosti vyplnené a popísané. " +
       "Odpoveď vráti stav po príkaze: pravidlo s inactive nič nezafarbilo (POZOR ho vysvetlí: prekryté vs filter nič nenašiel), izolácia s active=false už neplatí, " +
       "changed_outside_commands = čo zmenil používateľ od predošlého príkazu, POZOR = upozornenie (aktívny rez, " +
       "viac systémov vo filtri, viac okien viewera) - povedz ho používateľovi. Farby určuje používateľ; " +
@@ -805,8 +805,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "string",
           enum: ["tab", "split"],
           description:
-            "Vo vieweri (D-132): tab = vlastná záložka na celú plochu (default), split = vedľa 3D alebo " +
-            "pohľadu ('otvor výkres vedľa modelu'). Zadaný target otvára vo vieweri aj bez in_viewer.",
+            "Vo vieweri (D-132): tab = vlastná záložka na celú plochu (default), split = vedľa 3D " +
+            "('otvor výkres vedľa modelu'). Zadaný target otvára vo vieweri aj bez in_viewer.",
         },
         region: {
           type: "object",

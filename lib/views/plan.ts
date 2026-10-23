@@ -13,7 +13,10 @@ import {
   type SectionAxis,
   type ViewMode,
 } from "../viewer-ops";
-import { sectionBoxOp, tabOp, type Box3 } from "../viewer-tabs";
+import { sectionBoxOp, type Box3 } from "../viewer-tabs";
+import { viewActivateOp, type ViewWire } from "../viewer-views";
+
+import { wireOfRow } from "./wire";
 
 /**
  * Čistá logika uložených pohľadov (D-122): odpoveď `view_state` -> záznam,
@@ -31,9 +34,8 @@ const LAST_ALIASES = new Set(["posledny pohlad", "posledny", "last", "posledný 
 
 export const isLastName = (name: string) => LAST_ALIASES.has(name.trim().toLowerCase());
 
-/** Druh pohľadu (D-132): pôdorys, rez, detail (box) alebo 3D. */
-export const VIEW_TYPES = ["3d", "plan", "section", "detail"] as const;
-export type ViewType = (typeof VIEW_TYPES)[number];
+/** Druh pohľadu (D-132), od D-161 už len v starých riadkoch; nové parametre `view_type` sa ignorujú. */
+export type ViewType = "3d" | "plan" | "section" | "detail";
 
 /** Rez, ako ho vracia `view_state` (os hosta: y = výška = IFC Z). */
 export interface SavedSection {
@@ -157,18 +159,54 @@ export function captureFromState(result: unknown): { state: CapturedState; notes
   };
 }
 
-/** Uložený pohľad pre model: čo obsahuje, bez zoznamov GUID. */
+const vec3 = (v: readonly number[]) => ({ x: v[0], y: v[1], z: v[2] });
+
+/** Pohľad z Presentation (D-161) pre model: kamera, rezy a košík bez zoznamov GUID. */
+function describeWire(row: SavedViewRow, wire: ViewWire) {
+  const cam = wire.camera;
+  const basket = wire.basket.scope === "all"
+    ? { scope: "all", hidden: wire.basket.hidden_guids.length }
+    : { scope: "guids", guids: wire.basket.guids.length, ...(wire.basket.truncated ? { truncated: true } : {}) };
+  return {
+    name: row.name,
+    ...(row.kind === "last" ? { last: true } : {}),
+    id: wire.id,
+    order: wire.order,
+    description: row.description,
+    camera: cam ? { projection: cam.projection, position: vec3(cam.position), target: vec3(cam.target) } : null,
+    section: wire.section
+      ? {
+          active: wire.section.active,
+          planes: wire.section.planes.map((p) => ({
+            axis: p.axis,
+            ...(p.coordinate !== undefined ? { coordinate: p.coordinate } : { position_percent: p.position_percent }),
+            enabled: p.enabled,
+            flipped: p.flipped,
+            ...(p.box ? { box: true } : {}),
+          })),
+        }
+      : null,
+    objects: wire.objects,
+    basket,
+    transition_ms: wire.transition_ms,
+    source: wire.source,
+    model_revisions: row.model_revisions,
+    author: row.author,
+    updated_at: row.updated_at,
+    last_used_at: row.last_used_at,
+  };
+}
+
+/** Uložený pohľad pre model: čo obsahuje, bez zoznamov GUID. Bez `mode` (D-161: režim 2D neexistuje). */
 export function describeView(row: SavedViewRow) {
+  const wire = wireOfRow(row);
+  if (wire) return describeWire(row, wire);
   const vp = row.viewpoint;
   const cam = vp.camera;
   return {
     name: row.name,
     ...(row.kind === "last" ? { last: true } : {}),
     description: row.description,
-    mode: vp.mode,
-    view_type: vp.view_type ?? (vp.mode === "2d" ? "plan" : "3d"),
-    ...(vp.locked ? { locked: true } : {}),
-    ...(vp.underlay ? { underlay: vp.underlay } : {}),
     storey: vp.storey_label ?? vp.storey_guid,
     section: vp.section,
     camera: cam ? { projection: cam.projection ?? null, position: cam.position, target: cam.target } : null,
@@ -194,11 +232,58 @@ function cameraPose(cam: ViewerCamera | null): { vp: BridgeViewpoint; projection
   };
 }
 
+/** Posun rezu pohľadu z Presentation po jeho osi (`section_offset_m`); chyba = ViewInputError. */
+function wireSectionShift(row: SavedViewRow, wire: ViewWire, offset: number): { op: string; section: ViewWire["section"] } {
+  const plane = wire.section?.planes[wire.section.active];
+  if (!plane || !wire.section) throw new ViewInputError(`Pohľad '${row.name}' nemá rez, section_offset_m sa nedá použiť; nastav rez cez set_section.`);
+  if (plane.box) throw new ViewInputError(`Pohľad '${row.name}' má rezný box, section_offset_m sa naň nedá použiť.`);
+  if (plane.coordinate === undefined) throw new ViewInputError(`Rez pohľadu '${row.name}' nemá súradnicu, section_offset_m sa nedá použiť; nastav rez cez set_section.`);
+  const coordinate = round3(plane.coordinate + offset);
+  if (Math.abs(coordinate) > SECTION_COORDINATE_LIMIT) throw new ViewInputError("Rez po posune je mimo rozsahu modelu.");
+  const planes = wire.section.planes.map((p, i) => (i === wire.section!.active ? { ...p, coordinate } : p));
+  // Percento patrí pôvodnej súradnici; po posune by klamalo (súradnica pri obnove vyhráva).
+  return {
+    op: sectionOp({ axis: plane.axis, coordinate, flipped: plane.flipped, showGizmo: plane.show_gizmo }),
+    section: { ...wire.section, planes },
+  };
+}
+
 /**
- * Uložený pohľad -> viewer ops obnovy. Poradie: najprv čistý stav (ako
- * `set_view_mode reset`), režim, rez (s posunom `section_offset_m` po osi rezu),
- * izolácia, skrytie, výber jedného prvku a nakoniec presná póza kamery, aby ju
- * režim ani rez neprepísali. Vráti aj stav, ktorý sa zapíše ako "Posledný pohľad".
+ * Pohľad z Presentation (D-161) -> aktivácia vo vieweri (kamera, rez a košík robí upstream aktivátor),
+ * voliteľne s posunom rezu po aktivácii.
+ */
+function planRestoreWire(row: SavedViewRow, wire: ViewWire, offset: number): { plan: ViewPlan; restored: CapturedState } {
+  const ops = [viewActivateOp({ id: wire.id })];
+  let section = wire.section;
+  if (offset) {
+    const shifted = wireSectionShift(row, wire, offset);
+    ops.push(shifted.op);
+    section = shifted.section;
+  }
+  return {
+    plan: {
+      ops,
+      label: `Pohľad: ${row.name}${offset ? ` (rez ${offset > 0 ? "+" : ""}${offset} m)` : ""}`,
+      result: {
+        ok: true,
+        restored: row.name,
+        view: { id: wire.id, name: row.name },
+        section,
+        ...(offset ? { section_offset_m: offset } : {}),
+        objects: wire.objects,
+        note: "Pohľad otvorený v Presentation (kamera, rez, košík ako izolácia); zapísaný ako 'Posledný pohľad'. Stav po príkaze (view, camera, section) vráti viewer.",
+      },
+    },
+    // "Posledný pohľad" nesie pohľad z Presentation ako ho má riadok: `viewpoint.id` je pôvodný pohľad.
+    restored: { viewpoint: { ...wire, section } as unknown as SavedViewpoint, selection: [], hidden: [], isolated: null },
+  };
+}
+
+/**
+ * Uložený pohľad -> viewer ops obnovy. Pohľad z Presentation (D-161) sa aktivuje vo vieweri. Starý riadok (D-122,
+ * D-132, záloha): najprv čistý stav (ako `set_view_mode reset`), rez (s posunom `section_offset_m` po osi rezu),
+ * izolácia, skrytie, výber jedného prvku a nakoniec presná póza kamery, aby ju rez neprepísal; bez záložky a
+ * zámku, na bežnom 3D plátne. Vráti aj stav, ktorý sa zapíše ako "Posledný pohľad".
  */
 export function planRestore(row: SavedViewRow, offsetRaw: unknown): { plan: ViewPlan; restored: CapturedState } {
   let offset = 0;
@@ -208,24 +293,16 @@ export function planRestore(row: SavedViewRow, offsetRaw: unknown): { plan: View
     }
     offset = offsetRaw;
   }
+  const wire = wireOfRow(row);
+  if (wire) return planRestoreWire(row, wire, offset);
   const vp = row.viewpoint;
   const s = vp.section;
   if (offset !== 0 && (!s || (s.coordinate === undefined && !s.box))) {
     throw new ViewInputError(`Pohľad '${row.name}' nemá rez so súradnicou, section_offset_m sa nedá použiť; nastav rez cez set_section.`);
   }
-  const mode: ViewMode = vp.mode ?? "3d";
-  // D-132: pohľad sa otvorí do vlastnej záložky (predošlá si zapamätá stav), potom sa na ňu použije
-  // ten istý zápis ako predtým. Pôdorys (2D) je zamknutý pohľad zhora s rezom nad podlažím, nie režim.
-  const plan2d = mode === "2d" && vp.storey_guid;
-  const locked = vp.locked === true || Boolean(plan2d);
-  const ops = [
-    tabOp("open", { open: { kind: "view", viewId: row.id, label: row.name, ...(locked ? { locked: true } : {}) } }),
-    SECTION_CLEAR_OP,
-    "show_all::",
-    "reset_colors::",
-    "clear_selection::",
-    "clear_focus::",
-  ];
+  // Starý pôdorys (`mode: 2d`) bol pohľad zhora s rezom nad podlažím; teraz je to obyčajná kamera a rez.
+  const plan2d = vp.mode === "2d" && vp.storey_guid;
+  const ops = [SECTION_CLEAR_OP, "show_all::", "reset_colors::", "clear_selection::", "clear_focus::"];
   let section: SavedSection | null = s;
   if (s?.box) {
     if (offset) throw new ViewInputError(`Pohľad '${row.name}' má rezný box, section_offset_m sa naň nedá použiť.`);
@@ -259,17 +336,13 @@ export function planRestore(row: SavedViewRow, offsetRaw: unknown): { plan: View
       result: {
         ok: true,
         restored: row.name,
-        tab: row.name,
-        view_type: vp.view_type ?? (plan2d ? "plan" : "3d"),
-        locked,
-        ...(vp.underlay ? { underlay: vp.underlay } : {}),
         section,
         ...(offset ? { section_offset_m: offset } : {}),
         isolated: row.isolated ? row.isolated.length : null,
         hidden: row.hidden.length,
         camera: Boolean(pose),
         ...(notes.length ? { notes } : {}),
-        note: "Otvorené v záložke viewera; zapísané ako 'Posledný pohľad'. Upravený pohľad ulož cez saved_view(action=save). Späť na 3D = set_view_mode(tab='3D').",
+        note: "Starý uložený pohľad (pred D-161) obnovený na 3D plátne; zapísaný ako 'Posledný pohľad'. Upravený pohľad ulož cez saved_view(action=save), uloží sa do Presentation.",
       },
     },
     restored: { viewpoint: { ...vp, section }, selection: row.selection, hidden: row.hidden, isolated: row.isolated },

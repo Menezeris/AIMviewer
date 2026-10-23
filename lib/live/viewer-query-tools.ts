@@ -25,22 +25,21 @@ export const VIEWER_QUERY_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "get_viewer_state",
     description:
-      "Čo práve ukazuje OTVORENÝ živý viewer: režim (3d/2d/split) a podlažie, aktívny rez (os, súradnica v IFC, " +
-      "poloha v %), kamera (pozícia a cieľ v IFC), výber a počty skrytých a izolovaných prvkov. Výber: count, " +
+      "Čo práve ukazuje OTVORENÝ živý viewer: kamera (pozícia, cieľ v IFC, projekcia), aktívny rez (os, súradnica v IFC, " +
+      "poloha v %), aktívny pohľad z Presentation (view: id, name), výber a počty skrytých a izolovaných prvkov. Výber: count, " +
       "truncated, summary (počty podľa IFC triedy, podlažia, rodičovskej zostavy a modelu) a stránka items; na " +
       "'čo mám vybrané' odpovedaj zo summary. lens = AIM chat lens zo style_in_3d (pravidlá s počtami, izolácia " +
       "alebo X-ray s počtom prvkov). list = zoznam v paneli Lists (open_list): stĺpce, filtre, zoradenie, zoskupenie, " +
       "sums = súčty za zobrazené riadky v jednotke tabuľky, maximized; na 'koľko je spolu' v otvorenom zozname odpovedaj z nich. bounds=true alebo cieľ (target_ids_or_refs, global_ids) = namiesto " +
       "stavu obálky v súradniciach IFC (m, Z hore): celý model a prvky (min, max, size, center, section_axis), " +
       "napr. pred presným rezom set_section(orientation, coordinate_m); zostava bez geometrie sa zráta z častí, " +
-      "missing = prvky bez geometrie. ULOŽENÉ POHĽADY: saved_views=true = zoznam a opis uložených pohľadov stavby " +
-      "(rez, režim, podlažie, kamera, počty prvkov) a 'Posledný pohľad', aj bez otvoreného viewera; obnova cez " +
-      "set_view_mode(saved_view).",
+      "missing = prvky bez geometrie. ULOŽENÉ POHĽADY: saved_views=true = ten istý zoznam ako pás Presentation (meno, id, " +
+      "kamera, rez, počet prvkov košíka) a 'Posledný pohľad', aj bez otvoreného viewera; otvorenie cez set_view_mode(view).",
     inputSchema: {
       type: "object",
       properties: {
         bounds: { type: "boolean", description: "Obálky namiesto stavu (bez cieľa len obálka modelu)" },
-        saved_views: { type: "boolean", description: "Namiesto stavu zoznam uložených pohľadov (D-122)" },
+        saved_views: { type: "boolean", description: "Namiesto stavu zoznam pohľadov z Presentation (D-161)" },
         target_ids_or_refs: {
           type: "array",
           items: { type: "string" },
