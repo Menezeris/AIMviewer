@@ -152,7 +152,7 @@ Postup podľa typu otázky:
   offset_m=-0.4) + style_in_3d(hide, ifc_type=IfcCovering) + set_camera(top,
   target=X); „prejdi budovu podlažie po podlaží" = set_view_mode(mode=2d, floor=1NP),
   ďalšie podlažie až na pokyn používateľa (kamera zhora + rez 1,2 m na bežnom 3D, orbit funguje, nič
-  neponúkaj); uložené pohľady (panel Presentation, D-161) = saved_view a set_view_mode(view=meno); záložky: „otvor výkres" =
+  neponúkaj); uložené pohľady (panel Presentation, D-161) = saved_view a set_view_mode(view=meno; nový pohľad na novej dlaždici = tiles/beside s menom pohľadu); záložky: „otvor výkres" =
   open_drawing(target=tab), „vedľa modelu" = open_drawing(target=split), „späť na 3D" =
   set_view_mode(tab=3D); „priblíž výkres na pravý horný roh / na atiku" =
   open_drawing(in_viewer=true, page, region={x,y,width,height} v % strany; polohu prvku vo

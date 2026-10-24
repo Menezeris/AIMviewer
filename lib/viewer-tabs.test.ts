@@ -76,6 +76,30 @@ describe("dlaždice, op tab:layout (D-157)", () => {
     expect(plan.result).toMatchObject({ ok: true, layout: "three_left", tiles: ["3D", "1NP", null] });
   });
 
+  it("meno pohľadu z Presentation ide ako id pohľadu (D-161), podlažie a 3D majú prednosť", async () => {
+    const views = [{ id: "v-uuid-1", name: "Rez A-A" }, { id: "v-uuid-2", name: "1NP" }, { id: "v-uuid-3", name: "3D" }];
+    const plan = await planLayout({ layout: "split_h", tiles: ["3D", "rez a-a"] }, floorGuid, views);
+    expect(bridge(plan.ops.join(";"))).toEqual([
+      { type: "VIEW_TABS", action: "layout", layout: "split_h", tiles: [{ tab: "3D" }, { view: "v-uuid-1" }] },
+    ]);
+    expect(plan.result).toMatchObject({ tiles: ["3D", "Rez A-A"] });
+    // Pohľad pomenovaný ako podlažie ostáva pôdorysom; neznáme meno ostáva menovkou záložky (dokument).
+    const mixed = await planLayout({ tiles: ["1NP", "TS.pdf"] }, floorGuid, views);
+    expect(bridge(mixed.ops.join(";"))[0]).toMatchObject({ tiles: [{ plan: G }, { tab: "TS.pdf" }] });
+    expect(parseTabsOp("tab", "layout", "")).toBeNull();
+  });
+
+  it("tab a beside s menom pohľadu: viewer dostane id; 'none' a '3D' sa neprekladajú", () => {
+    const views = [{ id: "v-uuid-1", name: "Rez A-A" }, { id: "v-uuid-3", name: "none" }];
+    const plan = planViewTabs({ tab: "3D", beside: "Rez A-A" }, views);
+    expect(plan.ops.flatMap(bridge)).toEqual([
+      { type: "VIEW_TABS", action: "activate", tab: "3D" },
+      { type: "VIEW_TABS", action: "beside", tab: "v-uuid-1" },
+    ]);
+    expect(plan.label).toContain("pohľad Rez A-A");
+    expect(planViewTabs({ beside: "none" }, views).ops.flatMap(bridge)).toEqual([{ type: "VIEW_TABS", action: "unbeside" }]);
+  });
+
   it("len tiles: rozloženie podľa počtu; single bez dlaždíc", async () => {
     const two = await planLayout({ tiles: ["3D", "2NP"] }, floorGuid);
     expect(bridge(two.ops.join(";"))[0]).toMatchObject({ layout: "split_h", tiles: [{ tab: "3D" }, { plan: "0abcdefghijklmnopqrstu" }] });
