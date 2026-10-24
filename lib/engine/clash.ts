@@ -19,7 +19,7 @@ import { getIfcModels } from "../data/ifc-models";
 import {
   CLASH_GROUPS,
   CLASH_STATES,
-  CLASH_STUB_ACTIONS,
+  CLASH_VIEWER_ACTIONS,
   DEFAULT_TESTS,
   findTest,
   type ClashGroupBy,
@@ -668,8 +668,9 @@ function groupCenter(members: Clash[]): { center: Vec3; span: number } {
 
 export async function ifcClash(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
   const action = str(input.action);
-  if (CLASH_STUB_ACTIONS.has(action)) {
-    return JSON.stringify({ action, available: false, note: `clash action=${action} (panel clash vo vieweri) príde s mostom do viewera. Teraz: list, run, results, compare, review, bcf, save, delete.` });
+  if (CLASH_VIEWER_ACTIONS.has(action)) {
+    const viewerTool = await import("../clash/viewer-tool");
+    return JSON.stringify(await (action === "open" ? viewerTool.execOpen(input, deps) : viewerTool.execFromViewer(input, deps)));
   }
   switch (action) {
     case "list":
@@ -689,7 +690,7 @@ export async function ifcClash(input: Record<string, unknown>, deps: EngineDeps)
     case "compare":
       return JSON.stringify(await (await saved()).execCompare(input, deps));
     default:
-      throw new InputError("action je list, run, results, compare, review, bcf, save alebo delete.");
+      throw new InputError("action je list, run, results, compare, review, bcf, save, delete, open alebo from_viewer.");
   }
 }
 

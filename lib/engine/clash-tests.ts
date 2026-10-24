@@ -5,8 +5,8 @@
 
 export const CLASH_ACTIONS = ["list", "run", "results", "bcf", "save", "delete", "compare", "review", "open", "from_viewer"] as const;
 export type ClashAction = (typeof CLASH_ACTIONS)[number];
-/** Akcie, ktoré prídu až s mostom do viewera (fork, host PR3). */
-export const CLASH_STUB_ACTIONS: ReadonlySet<string> = new Set(["open", "from_viewer"]);
+/** Akcie, ktoré idú cez most do viewera (D-164, host PR3): potrebujú živý viewer. */
+export const CLASH_VIEWER_ACTIONS: ReadonlySet<string> = new Set(["open", "from_viewer"]);
 
 /** Kto zapisuje test, stav kolízie a BCF tému, keď to tool nedostane (ako `bcf_topic`). */
 export const CLASH_AUTHOR = "Claude (MCP)";
