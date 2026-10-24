@@ -451,6 +451,26 @@
       "budget_s": 60,
       "expect": {"tools_called": ["clash"], "answer_matches": ["téma|BCF|#"]},
       "notes": "D-164 host PR2: clash(run/results) a clash(bcf, create=true, group_by=storey, group) = reálna téma Clash, model VZT; bcf_topic sa nevolá. Druhé volanie na tú istú skupinu tému nezdvojí. Zakladá až na pokyn používateľa."
+    },
+    {
+      "id": "K8-kolizie-otvor-v-paneli",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Otvor mi test VZT x ASR s posledným behom v paneli kolízií, nech ich vidím.",
+      "max_calls": 3,
+      "budget_s": 30,
+      "expect": {"tools_called": ["clash"], "viewer_state": "panel clash otvorený s testom VZT-ASR a kolíziami posledného uloženého behu (stav open / resolved / accepted)"},
+      "notes": "D-164 host PR3: clash(action=open, test=VZT-ASR, run_id=latest), potom get_viewer_state (clash_local). Beh z pamäte (run-N) sa neprenáša: najprv run save=true. Na tvrdenie o stave panela sa berie get_viewer_state, nie odpoveď toolu."
+    },
+    {
+      "id": "K9-kolizie-uloz-z-viewera",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Upravil som test kolízií v paneli, ulož ho do AIM.",
+      "max_calls": 3,
+      "budget_s": 30,
+      "expect": {"tools_called": ["clash"], "answer_matches": ["uložen|AIM"]},
+      "notes": "D-164 host PR3: clash(action=from_viewer) číta view_state.clash_local (test, zmenené stavy). Beh s kolíziami z panela uloží len tlačidlo Uložiť do AIM; chat to povie a ponúkne run save=true na serveri. Po K8."
     }
   ]
 }

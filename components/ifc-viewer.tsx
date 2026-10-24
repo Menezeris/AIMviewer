@@ -15,6 +15,7 @@ import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { opToBridgeMessage, parseOps } from "@/lib/viewer-ops";
 import { isViewWire, viewsLoadMessage, type ViewWire } from "@/lib/viewer-views";
+import { clashLoadMessage, clashSavedMessage, parseClashSave, type ClashLoadPayload, type ClashOpenOp, type ClashSaveResult } from "@/lib/viewer-clash";
 import { idsLoadMessage, idsSavedMessage, parseIdsSave, type IdsOpenOp, type IdsSaveResult, type IdsTarget } from "@/lib/viewer-ids";
 import {
   MAX_ZONE_GUIDS,
@@ -95,6 +96,8 @@ type OutboundMessage =
   | { source: typeof SOURCE; type: "VIEW_DELETE"; id: string }
   // IDS z panela IDS Studio / Data validation (D-162) - host ho zapíše cez /api/ids a pošle späť IDS_SAVED.
   | { source: typeof SOURCE; type: "IDS_SAVE"; target: string; xml: string; code?: string; base_version?: number; title?: string }
+  // Test, beh a stav kolízií z panela clash (D-164) - host ich zapíše cez /api/clash a pošle späť CLASH_SAVED.
+  | { source: typeof SOURCE; type: "CLASH_SAVE"; test?: unknown; test_code?: string; run?: unknown; reviews?: unknown }
   // Odpoveď na QUERY spätného kanála (D-085) - obálky, stav pohľadu.
   | { source: typeof SOURCE; type: "QUERY_RESULT"; id: string; ok: boolean; result?: unknown; error?: string }
   // Potvrdenie príkazov pred ACK_REQUEST (D-101) - stav po vykonaní, čo sa nevykonalo.
@@ -340,6 +343,31 @@ export function IFCViewer({
     post(idsLoadMessage(o, doc));
   }
 
+  /**
+   * Clash z AIM do panela (D-164): `clash_open` z chatu. Klient si test a beh stiahne z `GET /api/clash` (živý kanál
+   * kolízie nenesie) a pošle forku `CLASH_LOAD`; chyba sa neskryje, `APPLIED` ju ukáže chatu ako problém.
+   */
+  async function openClash(o: ClashOpenOp) {
+    const r = await fetch(`/api/clash?test=${encodeURIComponent(o.test)}${o.run ? `&run=${encodeURIComponent(o.run)}` : ""}`, { cache: "no-store" });
+    const body = (await r.json().catch(() => ({}))) as ClashLoadPayload & { error?: string };
+    if (!r.ok) throw new Error(body.error ?? `Test '${o.test}' sa nenačítal (HTTP ${r.status})`);
+    post(clashLoadMessage(body));
+  }
+
+  /** Uloženie z panela clash (`CLASH_SAVE`): route je za env bránou; výsledok sa vráti ako `CLASH_SAVED` (tlačidlo ho ukáže). */
+  function saveClash(raw: unknown) {
+    const save = parseClashSave(raw);
+    const reply = (result: ClashSaveResult) => post(clashSavedMessage(result));
+    if (!save) return reply({ ok: false, error: "neplatná správa z viewera" });
+    void fetch("/api/clash", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(save) })
+      .then(async (r) => {
+        const body = (await r.json().catch(() => ({}))) as Extract<ClashSaveResult, { ok: true }> & { error?: string };
+        if (r.ok && body.ok) reply(body);
+        else reply({ ok: false, error: body.error ?? `HTTP ${r.status}` });
+      })
+      .catch((err: unknown) => reply({ ok: false, error: err instanceof Error ? err.message : "uloženie zlyhalo" }));
+  }
+
   /** Uloženie IDS z panela (`IDS_SAVE`): route je za env bránou; výsledok sa vráti ako `IDS_SAVED` (tlačidlo ho ukáže). */
   function saveIds(raw: unknown) {
     const save = parseIdsSave(raw);
@@ -429,6 +457,8 @@ export function IFCViewer({
           post(listBridgeMessage(o.wire, await fetchScopeGuids(listScopeKeys(o.wire))));
         } else if (o.op === "ids_open") {
           await openIds(o);
+        } else if (o.op === "clash_open") {
+          await openClash(o);
         } else post(opToBridgeMessage(o));
         // Reset farieb vypne aj AIM chat lens a zmaže čiaru trasy aj kóty od Claude (D-137, D-152), zobraziť všetko zruší izoláciu z chatu (D-096, D-137).
         if (o.op === "reset_colors") {
@@ -662,6 +692,9 @@ export function IFCViewer({
         }
         case "IDS_SAVE":
           saveIds(e.data);
+          break;
+        case "CLASH_SAVE":
+          saveClash(e.data);
           break;
         case "UNDERLAY_SAVE": {
           // Kalibrácia z viewera → perzistuj _georef (D-072). Server payload

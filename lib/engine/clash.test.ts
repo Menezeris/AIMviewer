@@ -246,12 +246,11 @@ describe("clash tool (D-164)", () => {
     expect(scoped.content).not.toMatch(/1NP, 2NP/);
   });
 
-  it("neimplementované akcie vrátia jasný stub, chyby vstupu nie sú výnimka", async () => {
+  it("open a from_viewer bez živého viewera povedia, že viewer nie je nastavený; chyby vstupu nie sú výnimka", async () => {
     for (const action of ["open", "from_viewer"]) {
       const r = await call({ action });
-      expect(r.isError).toBe(false);
-      expect(r.json).toMatchObject({ action, available: false });
-      expect(r.json.note).toMatch(/mostom do viewera/);
+      expect(r.isError).toBe(true);
+      expect(r.content).toMatch(/živý viewer nie je nastavený/);
     }
     expect((await call({ action: "results" })).content).toMatch(/najprv action=run/);
     expect((await call({ action: "run" })).content).toMatch(/Zadaj test/);

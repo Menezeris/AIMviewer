@@ -1,6 +1,7 @@
 import "server-only";
 
 import { compactLocalTopics } from "@/lib/bcf/viewer-local";
+import { compactClashLocal } from "@/lib/clash/viewer-local";
 import { compactIdsLocal } from "@/lib/ids/viewer-local";
 import { lookupGuids } from "@/lib/engine/aim-lookup";
 import type { ToolDefinition } from "@/lib/llm/provider";
@@ -29,7 +30,7 @@ export const VIEWER_QUERY_TOOL_DEFINITIONS: ToolDefinition[] = [
       "Čo práve ukazuje OTVORENÝ živý viewer: kamera (pozícia, cieľ v IFC, projekcia), aktívny rez (os, súradnica v IFC, " +
       "poloha v %), aktívny pohľad z Presentation (view: id, name), výber a počty skrytých a izolovaných prvkov. Výber: count, " +
       "truncated, summary (počty podľa IFC triedy, podlažia, rodičovskej zostavy a modelu) a stránka items; na " +
-      "'čo mám vybrané' odpovedaj zo summary. ids_local = IDS otvorené v paneloch IDS Studio a Data validation (kód a verzia v AIM, dirty, výsledky po špecifikáciách). lens = AIM chat lens zo style_in_3d (pravidlá s počtami, izolácia " +
+      "'čo mám vybrané' odpovedaj zo summary. ids_local = IDS otvorené v paneloch IDS Studio a Data validation (kód a verzia v AIM, dirty, výsledky po špecifikáciách). clash_local = test a beh v paneli clash (kód testu, from_aim, dirty, počty kolízií a stavov, vybraná kolízia). lens = AIM chat lens zo style_in_3d (pravidlá s počtami, izolácia " +
       "alebo X-ray s počtom prvkov). list = zoznam v paneli Lists (open_list): stĺpce, filtre, zoradenie, zoskupenie, " +
       "sums = súčty za zobrazené riadky v jednotke tabuľky, maximized; na 'koľko je spolu' v otvorenom zozname odpovedaj z nich. bounds=true alebo cieľ (target_ids_or_refs, global_ids) = namiesto " +
       "stavu obálky v súradniciach IFC (m, Z hore): celý model a prvky (min, max, size, center, section_axis), " +
@@ -201,9 +202,12 @@ export async function execViewerQueryTool(
     const local = state ? compactLocalTopics(result) : undefined;
     // IDS otvorené v paneloch (D-162): bez XML, to číta ids_document(action=from_viewer).
     const ids = state ? compactIdsLocal(result) : undefined;
-    const { ids_local: _ids, ...resultRest } = (result && typeof result === "object" ? result : {}) as Record<string, unknown>;
+    // Panel clash (D-164): bez zoznamov kolízií a zmien stavu, tie číta clash(action=from_viewer).
+    const clash = state ? compactClashLocal(result) : undefined;
+    const { ids_local: _ids, clash_local: _clash, ...resultRest } = (result && typeof result === "object" ? result : {}) as Record<string, unknown>;
     void _ids;
-    const out = result && typeof result === "object" ? { ...resultRest, bcf_local: local, ...(ids ? { ids_local: ids } : {}), ...extra } : result;
+    void _clash;
+    const out = result && typeof result === "object" ? { ...resultRest, bcf_local: local, ...(ids ? { ids_local: ids } : {}), ...(clash ? { clash_local: clash } : {}), ...extra } : result;
     return { text: JSON.stringify(out), isError: false };
   } catch (err) {
     if (err instanceof ViewInputError) return { text: err.message, isError: true };

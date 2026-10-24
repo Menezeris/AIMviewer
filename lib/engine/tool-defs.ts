@@ -256,12 +256,13 @@ export function engineToolDefinitions(): ToolDefinition[] {
         "(a_global_ids, b_global_ids pre show_in_3d / style_in_3d). compare: nový beh proti predošlému alebo base_run_id " +
         "(added, resolved, persistent, unretested = beh ich prvky nemohol overiť; bucket rozbalí). review: review_status " +
         "open | resolved | accepted + comment pre keys alebo group; platí v ďalších behoch testu. bcf: návrh témy za skupinu, " +
-        "create=true ju založí (typ Clash, model VZT). open, from_viewer príde neskôr.",
+        "create=true ju založí (typ Clash, model VZT). open: panel clash vo vieweri s testom (test) a uloženým behom (run_id UUID " +
+        "alebo latest), používateľ vidí stavy; from_viewer: uloží test a zmenené stavy z panela (beh uloží tlačidlo v paneli).",
       inputSchema: {
         type: "object",
         properties: {
           action: { type: "string", enum: [...CLASH_ACTIONS] },
-          test: { type: "string", description: "run, results, list: kód alebo názov testu; save, delete: kód vlastného testu" },
+          test: { type: "string", description: "run, results, list, open: kód alebo názov testu; save, delete: kód vlastného testu; from_viewer: iný kód = uložiť ako to" },
           name: { type: "string", description: "save: názov testu" },
           description: { type: "string", description: "save: popis testu" },
           a: { type: "string", description: "run, save: selektor IFC tried strany a (ad hoc alebo prepíše test)" },
@@ -275,7 +276,7 @@ export function engineToolDefinitions(): ToolDefinition[] {
           tolerance_mm: { type: "number", description: "run, save: tolerancia v mm (default 2)" },
           save: { type: "boolean", description: "run: uložiť beh a kolízie do DB" },
           confirm: { type: "boolean", description: "delete: potvrdiť zmazanie testu s behmi a stavmi kolízií" },
-          run_id: { type: "string", description: "results, compare, review, bcf: beh (run-N alebo UUID uloženého; default posledný)" },
+          run_id: { type: "string", description: "results, compare, review, bcf: beh (run-N alebo UUID uloženého; default posledný); open: UUID alebo latest" },
           base_run_id: { type: "string", description: "compare: základný beh (default predošlý uložený beh testu)" },
           bucket: { type: "string", enum: ["added", "resolved", "persistent", "unretested"], description: "compare: rozbaliť kolízie skupiny výsledku" },
           group_by: { type: "string", enum: [...CLASH_GROUPS], description: "results, review, bcf: zoskupenie (default storey)" },

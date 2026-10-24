@@ -5,6 +5,7 @@ import type { Vec3 } from "./measure";
 
 import { cacheSnapshot, getStore, type EngineModelSource } from "./cache";
 import type { ClashBcfPort, ClashStore } from "../clash/types";
+import type { ClashViewerDeps } from "../clash/viewer-tool";
 import { idsSources, loadIds } from "./ids-sources";
 import { resultRows } from "../ids/runs";
 import type { IdsStore } from "../ids/types";
@@ -61,6 +62,8 @@ export interface EngineDeps {
   clash?: ClashStore;
   /** BCF vrstva pre `clash bcf create=true` (D-164, D-099). */
   bcf?: ClashBcfPort;
+  /** Živý viewer pre `clash open` a `from_viewer` (D-164); bez neho tieto akcie povedia, že viewer nie je nastavený. */
+  clashViewer?: ClashViewerDeps;
   /** Stropy behu `clash` (D-164); len testy. */
   clashLimits?: { maxPairs?: number; budgetMs?: number };
 }
