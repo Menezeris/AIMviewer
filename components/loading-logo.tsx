@@ -21,6 +21,8 @@ const SEGMENTS: Segment[] = WORDS.map((word) => {
   const del = word.length * SPEED_MS * DELETE_FACTOR;
   return { word, type, hold, del, total: type + hold + del + GAP_MS };
 });
+/** Časová konštanta plnenia pásika: 1 - e^(-t/12 s), po ~30 s okolo 92 %. */
+const FILL_TAU_MS = 12_000;
 const CYCLE_MS = SEGMENTS.reduce((a, s) => a + s.total, 0);
 
 /** Text za `elapsed` ms. Čisto z času, nie z počtu tikov: oneskorený snímok
@@ -63,6 +65,7 @@ let lastTick = 0;
 export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
   const typedRef = useRef<HTMLSpanElement>(null);
   const dotWrapRef = useRef<HTMLSpanElement>(null);
+  const barRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -73,12 +76,21 @@ export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
     if (dotWrapRef.current) dotWrapRef.current.style.setProperty("--blink-delay", `${-((now0 - base) % BLINK_MS)}ms`);
     let raf = 0;
     let shown: string | null = null;
+    let shownFill = -1;
     const frame = (now: number) => {
       lastTick = now;
       const text = typedAt(now - base, reduced);
       if (text !== shown && typedRef.current) {
         typedRef.current.textContent = text;
         shown = text;
+      }
+      // Plnenie z rovnakej časovej osi ako písanie, takže po remounte nezačína od nuly.
+      // Pri reduced-motion po celých sekundách (bez plynulého prechodu).
+      const elapsed = reduced ? Math.floor((now - base) / 1000) * 1000 : now - base;
+      const fill = 1 - Math.exp(-elapsed / FILL_TAU_MS);
+      if (fill !== shownFill && barRef.current) {
+        barRef.current.style.transform = `scaleX(${fill})`;
+        shownFill = fill;
       }
       raf = requestAnimationFrame(frame);
     };
@@ -98,17 +110,18 @@ export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
       className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-white"
     >
       <div className="relative flex flex-col items-center gap-4">
-        {/* Neurčitý pásik: most z viewera pred MODELS_LOADED posiela len READY,
-            priebeh po fázach nie je k dispozícii. Je nad nápisom LOADING mimo toku (logo a nápis ostávajú na mieste). Fixná šírka a výška, jazdec sa
-            hýbe len transformom, takže sa nič neposúva. Pri reduced-motion stojí. */}
+        {/* Pásik načítania: plní sa zľava podľa času (most pred MODELS_LOADED
+            posiela len READY, skutočný priebeh nie je). Je nad nápisom LOADING mimo
+            toku (logo a nápis ostávajú na mieste), fixná šírka a výška. */}
         <span
           aria-hidden="true"
           className="absolute bottom-full left-1/2 mb-3 block h-0.5 w-24 -translate-x-1/2 overflow-hidden rounded-full"
           style={{ background: "var(--ds-border)" }}
         >
           <span
-            className="absolute inset-y-0 left-0 w-2/5 rounded-full motion-safe:animate-[loading-bar_1.4s_ease-in-out_infinite] motion-reduce:left-[30%]"
-            style={{ background: "var(--ds-brand-green)" }}
+            ref={barRef}
+            className="absolute inset-0 origin-left rounded-full"
+            style={{ background: "var(--ds-brand-green)", transform: "scaleX(0)" }}
           />
         </span>
         <span
