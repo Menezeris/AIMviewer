@@ -103,7 +103,7 @@ export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
             hýbe len transformom, takže sa nič neposúva. Pri reduced-motion stojí. */}
         <span
           aria-hidden="true"
-          className="absolute bottom-full left-1/2 mb-3 block h-0.5 w-40 -translate-x-1/2 overflow-hidden rounded-full"
+          className="absolute bottom-full left-1/2 mb-3 block h-0.5 w-24 -translate-x-1/2 overflow-hidden rounded-full"
           style={{ background: "var(--ds-border)" }}
         >
           <span
