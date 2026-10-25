@@ -64,3 +64,8 @@
     @apply font-sans;
   }
 }
+/* Neurčitý pásik loadera (components/loading-logo.tsx, D-163). Jazdec má 40 % šírky dráhy. */
+@keyframes loading-bar {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
