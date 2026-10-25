@@ -97,7 +97,20 @@ export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
       aria-label={label}
       className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-white"
     >
-      <div className="flex flex-col items-center gap-4">
+      <div className="relative flex flex-col items-center gap-4">
+        {/* Neurčitý pásik: most z viewera pred MODELS_LOADED posiela len READY,
+            priebeh po fázach nie je k dispozícii. Je nad nápisom LOADING mimo toku (logo a nápis ostávajú na mieste). Fixná šírka a výška, jazdec sa
+            hýbe len transformom, takže sa nič neposúva. Pri reduced-motion stojí. */}
+        <span
+          aria-hidden="true"
+          className="absolute bottom-full left-1/2 mb-3 block h-0.5 w-40 -translate-x-1/2 overflow-hidden rounded-full"
+          style={{ background: "var(--ds-border)" }}
+        >
+          <span
+            className="absolute inset-y-0 left-0 w-2/5 rounded-full motion-safe:animate-[loading-bar_1.4s_ease-in-out_infinite] motion-reduce:left-[30%]"
+            style={{ background: "var(--ds-brand-green)" }}
+          />
+        </span>
         <span
           aria-hidden="true"
           className="font-semibold uppercase"
@@ -123,19 +136,6 @@ export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
             </span>
             <span className="logo-dot" aria-hidden="true"></span>
           </span>
-        </span>
-        {/* Neurčitý pásik: most z viewera pred MODELS_LOADED posiela len READY,
-            priebeh po fázach nie je k dispozícii. Fixná šírka a výška, jazdec sa
-            hýbe len transformom, takže sa nič neposúva. Pri reduced-motion stojí. */}
-        <span
-          aria-hidden="true"
-          className="relative mt-2 block h-0.5 w-40 overflow-hidden rounded-full"
-          style={{ background: "var(--ds-border)" }}
-        >
-          <span
-            className="absolute inset-y-0 left-0 w-2/5 rounded-full motion-safe:animate-[loading-bar_1.4s_ease-in-out_infinite] motion-reduce:left-[30%]"
-            style={{ background: "var(--ds-brand-green)" }}
-          />
         </span>
       </div>
     </div>
