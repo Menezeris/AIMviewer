@@ -869,7 +869,7 @@ export function IFCViewer({
         ref={iframeRef}
         src={src}
         title="3D model budovy"
-        className="h-full w-full border-0"
+        className={`h-full w-full border-0${status === "loading" ? " pointer-events-none" : ""}`}
         onError={() => setStatus("error")}
         allow="fullscreen"
       />
