@@ -32,7 +32,7 @@ import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
 import { emitApplied, setLiveApplyHandler, takePendingCmdIds, type LiveApply } from "@/lib/live/viewer-apply-bus";
 import { BCF_CHANGED_WINDOW_EVENT, bcfLoadMessage } from "@/lib/live/bcf-event";
 import { VIEWS_CHANGED_WINDOW_EVENT } from "@/lib/live/views-event";
-import { PROD_VIEWER_URL } from "@/lib/viewer-source";
+import { PROD_VIEWER_URL, VIEWER_CHOICE_KEY, urlWithoutViewerChoice } from "@/lib/viewer-source";
 
 /**
  * 3D prehliadač = self-hostovaná IFClite appka (fork AssetinSpace/ifc-lite,
@@ -73,6 +73,21 @@ import { PROD_VIEWER_URL } from "@/lib/viewer-source";
 const SOURCE = "aim-bridge" as const;
 /** Po tomto čase bez MODELS_LOADED loader ustúpi chybovej hláške (D-163). */
 const LOAD_TIMEOUT_MS = 120_000;
+
+/**
+ * "Vyčistiť uložený stav a načítať znova" (D-163): zahodí voľbu viewera (`aim.viewer`
+ * v sessionStorage, aj z `?viewer=`) a načíta stránku znova, teda produkčný viewer.
+ * Úložisko viewera je na jeho origin, to host vyčistiť nevie; chaty a rozloženie
+ * panelov hosta ostávajú.
+ */
+function clearViewerStateAndReload() {
+  try {
+    window.sessionStorage.removeItem(VIEWER_CHOICE_KEY);
+  } catch {
+    /* súkromný režim: nič na čistenie */
+  }
+  window.location.replace(urlWithoutViewerChoice(window.location.href));
+}
 
 
 type OutboundMessage =
@@ -224,7 +239,7 @@ export function IFCViewer({
   viewerUrl = PROD_VIEWER_URL,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [status, setStatus] = useState<"loading" | "error" | "timeout" | "ready">("loading");
   const readyRef = useRef(false);
   /** true až po MODELS_LOADED — skôr viewer nevie resolvnúť GUIDy. */
   const loadedRef = useRef(false);
@@ -277,7 +292,7 @@ export function IFCViewer({
   // visieť donekonečna - ukáž chybovú hlášku; neskorý MODELS_LOADED ju prepíše.
   useEffect(() => {
     if (status !== "loading") return;
-    const t = setTimeout(() => setStatus("error"), LOAD_TIMEOUT_MS);
+    const t = setTimeout(() => setStatus("timeout"), LOAD_TIMEOUT_MS);
     return () => clearTimeout(t);
   }, [status, modelsKey]);
 
@@ -877,6 +892,26 @@ export function IFCViewer({
       {/* Nepriehľadný overlay — kým sa nenačíta federácia, nesmie presvitať
           ifc-lite úvodná obrazovka s ich logom (D-163: biele pozadie + animované logo). */}
       {status === "loading" && <LoadingLogo label="Načítavam 3D scénu" />}
+
+      {status === "timeout" && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/90 p-6 text-center">
+          <span className="text-sm font-semibold text-destructive">
+            3D scéna sa nenačítala do 2 minút
+          </span>
+          <span className="max-w-sm text-xs text-muted-foreground">
+            Prehliadač možno nemá zapnutú grafickú akceleráciu (WebGPU, pozri{" "}
+            <code className="rounded bg-muted px-1">chrome://gpu</code>), alebo štart blokuje
+            uložený stav či rozšírenie prehliadača.
+          </span>
+          <button
+            type="button"
+            onClick={clearViewerStateAndReload}
+            className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
+          >
+            Vyčistiť uložený stav a načítať znova
+          </button>
+        </div>
+      )}
 
       {status === "error" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/90 p-6 text-center">

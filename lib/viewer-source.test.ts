@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { isAllowedViewerUrl, parseViewerParam, viewerChoiceLabel, viewerParamValue } from "./viewer-source";
+import { isAllowedViewerUrl, parseViewerParam, urlWithoutViewerChoice, viewerChoiceLabel, viewerParamValue } from "./viewer-source";
 import { listViewerPreviews, previewForPull } from "./viewer-previews";
 
 const PREVIEW = "https://ifc-lite-viewer-ltdf94wdg-assetinspaces-projects.vercel.app";
@@ -80,5 +80,16 @@ describe("náhľady PR forku z GitHub Deployments (D-116)", () => {
   it("jeden PR podľa čísla, neexistujúci je null", async () => {
     expect((await previewForPull(73, fakeGithub()))?.url).toBe(PREVIEW);
     expect(await previewForPull(999, fakeGithub())).toBeNull();
+  });
+});
+
+describe("vyčistenie uloženého stavu (D-163)", () => {
+  it("zahodí len ?viewer=, ostatné parametre ostanú", () => {
+    expect(urlWithoutViewerChoice("https://ai-mviewer.vercel.app/ifc?live=aim-viewer&viewer=pr-73")).toBe(
+      "https://ai-mviewer.vercel.app/ifc?live=aim-viewer"
+    );
+    expect(urlWithoutViewerChoice("https://ai-mviewer.vercel.app/ifc?live=aim-viewer")).toBe(
+      "https://ai-mviewer.vercel.app/ifc?live=aim-viewer"
+    );
   });
 });
