@@ -29,7 +29,7 @@ import { listBridgeMessage, listScopeKeys } from "@/lib/viewer-list";
 import type { LiveQueryPayload, LiveReplyPayload } from "@/lib/live/protocol";
 import { hasRelativeStep, relativeViewpoint, type CameraMove, type ViewerCamera } from "@/lib/viewer-camera";
 import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
-import { emitApplied, setLiveApplyHandler, takePendingCmdIds, type LiveApply } from "@/lib/live/viewer-apply-bus";
+import { emitApplied, isRestoredCommandUrl, setLiveApplyHandler, takePendingCmdIds, withoutCommandParams, type LiveApply } from "@/lib/live/viewer-apply-bus";
 import { BCF_CHANGED_WINDOW_EVENT, bcfLoadMessage } from "@/lib/live/bcf-event";
 import { VIEWS_CHANGED_WINDOW_EVENT } from "@/lib/live/views-event";
 import { PROD_VIEWER_URL, VIEWER_CHOICE_KEY, urlWithoutViewerChoice } from "@/lib/viewer-source";
@@ -607,7 +607,19 @@ export function IFCViewer({
           loadedRef.current = true;
           logLoadPhase("MODELS_LOADED");
           setStatus("ready");
-          if (focus) post({ type: "FOCUS", guids: focus.split(",") });
+          // Obnova stránky alebo karty s adresou príkazu (živý príkaz ju prepíše, D-101) príkaz
+          // nezopakuje: čerstvý štart je bez rezu a pohľadu, kým ich niekto nežiada (#313).
+          const restored =
+            (!!focus || !!ops) &&
+            isRestoredCommandUrl(
+              performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined,
+              window.location.href
+            );
+          if (restored) {
+            console.info("[aim-viewer] obnovená adresa s príkazom: focus/ops z adresy sa nevykonajú");
+            window.history.replaceState(window.history.state, "", withoutCommandParams(window.location.href));
+          }
+          if (focus && !restored) post({ type: "FOCUS", guids: focus.split(",") });
           // PDF podklady (D-072) — až po naparsovaní modelov, aby viewer vedel
           // resolvnúť storey GUIDy z placementov.
           if (underlays && underlays.length > 0) {
@@ -643,7 +655,7 @@ export function IFCViewer({
           // Ops až po podkladoch, dokumentoch a pinoch (D-083): `view:2d` potrebuje
           // vedieť, či má podlažie kalibrovaný výkres, a `doc` otvorí len dokument,
           // ktorý viewer už dostal v DOCUMENTS_LOAD.
-          if (ops) applyOps(ops);
+          if (ops && !restored) applyOps(ops);
           // Flush príkazov vydaných pred načítaním modelov (viď send()).
           const queued = pendingRef.current;
           pendingRef.current = [];
