@@ -72,3 +72,20 @@ export function parseIfcCommandUrl(url: string): { focus?: string; ops?: string;
   for (const k of u.searchParams.keys()) if (!["focus", "ops", "r"].includes(k)) return null;
   return { focus: pick("focus"), ops: pick("ops"), nonce: pick("r") };
 }
+
+/**
+ * Adresa s príkazom (`?ops`, `?focus`) otvorená znova obnovou stránky alebo krokom v histórii
+ * (aj obnovená karta prehliadača), nie novým odkazom: príkaz už raz prebehol a štart ho nemá
+ * zopakovať, inak sa model načíta napr. prerezaný (#313). `nav` = PerformanceNavigationTiming
+ * dokumentu; platí len pre adresu, ktorou sa dokument načítal, nie pre neskoršiu navigáciu v appke.
+ */
+export function isRestoredCommandUrl(nav: { type: string; name: string } | undefined, href: string): boolean {
+  return !!nav && (nav.type === "reload" || nav.type === "back_forward") && nav.name === href;
+}
+
+/** Adresa bez častí príkazu (`focus`, `ops`, `r`), ostatné parametre (napr. `live`) ostanú. */
+export function withoutCommandParams(href: string): string {
+  const u = new URL(href);
+  for (const k of ["focus", "ops", "r"]) u.searchParams.delete(k);
+  return u.toString();
+}
