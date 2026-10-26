@@ -1,6 +1,7 @@
 "use client";
 
 import { LoadingLogo } from "@/components/loading-logo";
+import { X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { nodeSummaryToAimPanel, type ElementDetail } from "@/lib/aim-panel";
@@ -252,6 +253,8 @@ export function IFCViewer({
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [status, setStatus] = useState<"loading" | "error" | "timeout" | "ready">("loading");
+  /** Zlyhaný zápis kalibrácie podkladu (#317): hláška nad viewerom, kým ju používateľ nezavrie. */
+  const [saveError, setSaveError] = useState<string | null>(null);
   const readyRef = useRef(false);
   /** true až po MODELS_LOADED — skôr viewer nevie resolvnúť GUIDy. */
   const loadedRef = useRef(false);
@@ -751,13 +754,16 @@ export function IFCViewer({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ georef }),
           })
-            .then((r) => {
-              if (!r.ok) throw new Error(String(r.status));
+            .then(async (r) => {
+              if (r.ok) return setSaveError(null);
+              const body = (await r.json().catch(() => null)) as { error?: unknown } | null;
+              throw new Error(`${r.status}${typeof body?.error === "string" ? `: ${body.error}` : ""}`);
             })
             .catch((err: unknown) => {
-              // Best-effort: kalibrácia žije vo viewri aj bez zápisu; zaloguj,
-              // nech je zamietnutý zápis (napr. vypnutá brána) viditeľný.
+              // Kalibrácia žije vo viewri aj bez zápisu, po obnove stránky by sa ale stratila:
+              // používateľ to musí vidieť, nielen konzola (#317).
               console.error("underlay save failed", err);
+              setSaveError(err instanceof Error ? err.message : String(err));
             });
           break;
         }
@@ -953,6 +959,26 @@ export function IFCViewer({
             <code className="rounded bg-muted px-1">{viewerUrl}</code> alebo
             nastavte <code className="rounded bg-muted px-1">NEXT_PUBLIC_IFC_VIEWER_URL</code>.
           </span>
+        </div>
+      )}
+
+      {saveError && (
+        <div
+          role="alert"
+          className="absolute left-1/2 top-3 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-md border border-destructive/40 bg-background px-3 py-2 text-xs shadow-md"
+        >
+          <span>
+            <span className="font-semibold text-destructive">Kalibráciu podkladu sa nepodarilo uložiť.</span>{" "}
+            Po obnove stránky sa stratí. ({saveError})
+          </span>
+          <button
+            type="button"
+            onClick={() => setSaveError(null)}
+            className="shrink-0 rounded px-1 text-muted-foreground hover:bg-muted"
+            aria-label="Zavrieť"
+          >
+            <X className="size-3.5" />
+          </button>
         </div>
       )}
     </div>
