@@ -80,6 +80,18 @@ const LOAD_TIMEOUT_MS = 120_000;
  * Úložisko viewera je na jeho origin, to host vyčistiť nevie; chaty a rozloženie
  * panelov hosta ostávajú.
  */
+/**
+ * Diagnostika štartu (#310): fáza, čas od otvorenia stránky a pamäť JS haldy hosta
+ * (`performance.memory` len v Chromiu), aby screenshot konzoly ukázal, kde štart stojí.
+ */
+function logLoadPhase(phase: string) {
+  const mem = (performance as Performance & { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
+  console.info(
+    `[aim-viewer] ${phase} @ ${(performance.now() / 1000).toFixed(1)} s` +
+      (mem ? `, halda ${Math.round(mem.usedJSHeapSize / 2 ** 20)} / ${Math.round(mem.jsHeapSizeLimit / 2 ** 20)} MB` : "")
+  );
+}
+
 function clearViewerStateAndReload() {
   try {
     window.sessionStorage.removeItem(VIEWER_CHOICE_KEY);
@@ -292,7 +304,11 @@ export function IFCViewer({
   // visieť donekonečna - ukáž chybovú hlášku; neskorý MODELS_LOADED ju prepíše.
   useEffect(() => {
     if (status !== "loading") return;
-    const t = setTimeout(() => setStatus("timeout"), LOAD_TIMEOUT_MS);
+    logLoadPhase("čakám na viewer");
+    const t = setTimeout(() => {
+      logLoadPhase(`MODELS_LOADED neprišlo do ${LOAD_TIMEOUT_MS / 1000} s (READY ${readyRef.current ? "áno" : "nie"})`);
+      setStatus("timeout");
+    }, LOAD_TIMEOUT_MS);
     return () => clearTimeout(t);
   }, [status, modelsKey]);
 
@@ -575,6 +591,7 @@ export function IFCViewer({
       switch (e.data.type) {
         case "READY": {
           readyRef.current = true;
+          logLoadPhase("READY");
           // Overlay (loader D-163) drží až do MODELS_LOADED: po READY by sa pod
           // ním ukázala vlastná úvodka forku (veil AimBridge) a progresívne
           // odkrývanie modelu, teda druhá obrazovka načítavania. Visenie
@@ -588,6 +605,7 @@ export function IFCViewer({
           // Modely sú naparsované — až teraz vie resolveGuids nájsť prvok.
           // Počiatočný deep-link focus/ops (?focus=…&ops=…) aplikuj tu, nie na READY.
           loadedRef.current = true;
+          logLoadPhase("MODELS_LOADED");
           setStatus("ready");
           if (focus) post({ type: "FOCUS", guids: focus.split(",") });
           // PDF podklady (D-072) — až po naparsovaní modelov, aby viewer vedel
