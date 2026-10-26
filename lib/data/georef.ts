@@ -91,7 +91,8 @@ export function isValidCalibration(raw: unknown): raw is GeorefCalibration {
   if (!tuple(g.affine, 6)) return false;
   const a = g.affine as number[];
   if (!(Math.abs(a[0] * a[4] - a[1] * a[3]) > 0)) return false;
-  if (!Array.isArray(g.calibration) || g.calibration.length < 2) return false;
+  // Aspoň 1 bod: jednobodová kalibrácia panela (#317) nesie mierku a natočenie v affine.
+  if (!Array.isArray(g.calibration) || g.calibration.length < 1) return false;
   for (const c of g.calibration as { pdf_pt?: unknown; ifc_m?: unknown }[]) {
     if (!c || typeof c !== "object" || !tuple(c.pdf_pt, 2) || !tuple(c.ifc_m, 2)) return false;
   }
@@ -199,7 +200,7 @@ export function primaryV1(g: GeorefV2): GeorefV1 | null {
     page: pick.page,
     page_size: pick.page_size,
     affine: pick.affine,
-    // v1 server aj panel čakajú presne 2 body.
+    // v1 server aj panel berú 1 alebo 2 body.
     calibration: pick.calibration.slice(0, 2),
     ...(pick.opacity !== undefined ? { opacity: pick.opacity } : {}),
     ...(pick.visible !== undefined ? { visible: pick.visible } : {}),

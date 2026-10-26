@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+vi.mock("server-only", () => ({}));
+
+import { isValidGeorefV1 } from "./drawing";
 import {
+  calibrationFromV1,
   isValidCalibration,
   isValidGeorefV2,
   mergeCalibration,
@@ -90,5 +94,22 @@ describe("_georef v2 (D-133)", () => {
     expect(v1.version).toBe(1);
     expect(v1.affine[2]).toBe(27);
     expect(v1.calibration).toHaveLength(2);
+  });
+});
+
+describe("jednobodová kalibrácia panela (#317)", () => {
+  const one = { ...V1, calibration: [V1.calibration[0]] };
+  it("v1 s 1 bodom prejde validáciou zápisu, 0 a 3 body ani nulový affine nie", () => {
+    expect(isValidGeorefV1(one)).toBe(true);
+    expect(isValidGeorefV1({ ...V1, calibration: [] })).toBe(false);
+    expect(isValidGeorefV1({ ...V1, calibration: [...V1.calibration, V1.calibration[0]] })).toBe(false);
+    expect(isValidGeorefV1({ ...one, affine: [0, 0, 1, 0, 0, 1] })).toBe(false);
+  });
+  it("po zápise sa číta späť ako pôdorys (toGeorefV2 -> primaryV1)", () => {
+    const merged = mergeCalibration(undefined, calibrationFromV1(one, "manual"), true);
+    expect(merged.ok).toBe(true);
+    if (!merged.ok) return;
+    expect(isValidGeorefV2(merged.georef)).toBe(true);
+    expect(primaryV1(toGeorefV2(merged.georef))?.calibration).toEqual([V1.calibration[0]]);
   });
 });

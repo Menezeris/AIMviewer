@@ -172,10 +172,12 @@ export function isValidGeorefV1(raw: unknown): boolean {
   const pageSize = g.page_size as number[];
   if (pageSize[0] <= 0 || pageSize[1] <= 0) return false;
   if (!tuple(g.affine, 6)) return false;
-  // Server je hranica zápisu — prísnejší než viewer: presne 2 kalibračné
-  // body (základ 2-bodovej similarity, D-072), inak placement nie je
-  // re-editovateľný.
-  if (!Array.isArray(g.calibration) || g.calibration.length !== 2) return false;
+  const a = g.affine as number[];
+  if (!(Math.abs(a[0] * a[4] - a[1] * a[3]) > 0)) return false;
+  // Server je hranica zápisu: 2 kalibračné body (2-bodová similarity, D-072) alebo
+  // 1 bod jednobodovej kalibrácie panela (bod + mierka 1:N a natočenie sú v affine);
+  // inak placement nie je re-editovateľný. Jednobodovú server predtým odmietal 400 (#317).
+  if (!Array.isArray(g.calibration) || g.calibration.length < 1 || g.calibration.length > 2) return false;
   for (const c of g.calibration as { pdf_pt?: unknown; ifc_m?: unknown }[]) {
     if (!c || typeof c !== "object" || !tuple(c.pdf_pt, 2) || !tuple(c.ifc_m, 2)) return false;
   }
