@@ -6554,20 +6554,18 @@ prompt v rozhovore"): predčítanie motora len v rozhovore, ktorý motor použí
   mená v tooloch viewera) načítajú motor až pri potrebe a nie sú v signáli.
 - *Evaly D-057 nepobežali* (cloud session nemá Supabase kľúče; LLM vrstva, tooly ani prompt sa nemenia).
 
-**Dodatok 2026-10-28 - `Cache-Control` objektov v Storage sa nenastavil, uploady posielajú `cacheControl` vo formulári:**
-Kontrola `curl -I` (len čítanie): `archive/ASR/v078.ifc.gz` (4,28 MB), `archive/VZT/v009.ifc.gz` (2,59 MB) aj
-`ASR.ifc` majú `cache-control: private, no-cache`, hoci ETL posielal hlavičku `cache-control: max-age=31536000,
-immutable` (archív) a `max-age=60`. Storage hlavičku na surovom tele zrejme neberie, berie `cacheControl` z
-`multipart/form-data` (tak ho posiela supabase-js). Archívna cache z bodu "Rozhodnutie" teda nefungovala a
-prehliadač stiahol archív pri každom otvorení.
-- *Uploady:* `etl/ifc_upload.py` (`put_object`, multipart) používajú `etl.model_publish` (archív
-  31536000 s, `upsert=false`; aktuálny kľúč 60 s), `etl.ifc_upload` (60 s) a `etl.doc_upload` (PDF 3600 s, prepisuje
-  sa pod rovnakým menom). `uploadCaptureObject` (`captures`, kľúč s `randomUUID`) 31536000. BCF snímky už mali
-  31536000 (kľúč nesie sha256 obsahu). Žiadny upload dnes nerobí upsert na verzovanú cestu archívu.
-- *Existujúce objekty:* `scripts/storage-cache-control.ts` nahrá tie isté bajty s `cacheControl`; predvolene
-  dry-run, zápis len s `--apply`, veľkosť a sha256 pred aj po zápise, zastaví sa, ak Storage hodnotu neprevezme.
-- *Otvorené:* aktuálny kľúč `ifc/<MODEL>.ifc` ostáva na 60 s z dôvodu bodu 4 (prepisuje sa každou revíziou);
-  dlhšia hodnota je na Samuelovi. Zápis do bucketov robí až Samuel.
+**Dodatok 2026-10-28 - `Cache-Control` v Storage je v poriadku, `curl -I` klame:**
+Storage na HEAD vracia `cache-control: private, no-cache` pre každý objekt, na GET (aj `Range: bytes=0-0`) posiela
+uloženú hodnotu (`ifc/archive/ASR/v078.ifc.gz` `public, max-age=31536000, immutable`, `ifc/ASR.ifc` `max-age=60`;
+orchestrátor zistil to isté v `storage.objects.metadata.cacheControl` všetkých 86 objektov). Pôvodná hlavička v ETL teda
+fungovala a objekty netreba prepisovať. Prvá verzia PR #326 to vyvodila z HEAD a ponúkala prepisovací skript;
+skript je zrušený. Hlavičky objektov sa overujú `curl -r 0-0 -D - -o /dev/null`, nie `curl -I`.
+- *Zostáva:* uploady (`etl.model_publish`, `etl.ifc_upload`, `etl.doc_upload`, `uploadCaptureObject`) posielajú
+  `cacheControl` vo formulári (`put_object` v `etl/ifc_upload.py`, ako supabase-js): archív 31536000, aktuálny kľúč
+  60, PDF 3600, `captures` 31536000. Formulár nesie len sekundy, takže nový archív nemá `immutable` (v009 ho tiež nemá).
+  Upsert na verzovanú cestu archívu žiadny upload nerobí.
+- *Neoverené:* multipart upload nebol skúšaný proti reálnemu Storage; pri chybe `etl.model_publish` zlyhá hlasno
+  pri archíve ešte pred zápisom revízie do DB.
 
 ---
 
