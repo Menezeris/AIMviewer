@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ids:ids xmlns:ids="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <ids:info>
+    <ids:title>VZT - akceptácia BCF #14, #15, #17</ids:title>
+    <ids:description>Kontrola opráv modelu VZT (scripts/vzt/bcf_opravy.py). Pracovné IDS, nie je z knižnice; beh nie je záväzný.</ids:description>
+    <ids:author>samuel.augustin@assetin.sk</ids:author>
+    <ids:date>2026-10-28</ids:date>
+    <ids:purpose>BCF #14, #15, #17 nad VZT</ids:purpose>
+  </ids:info>
+  <ids:specifications>
+    <ids:specification name="#14 koncové prvky: kód VV a nenulový prietok" ifcVersion="IFC4X3_ADD2" identifier="VZT-14-A" description="Každý IfcAirTerminal má Name VV.xx.xx.xxx a Pset_AirTerminalOccurrence.AirFlowRate väčší ako 0.">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:entity><ids:name><ids:simpleValue>IFCAIRTERMINAL</ids:simpleValue></ids:name></ids:entity>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:attribute>
+          <ids:name><ids:simpleValue>Name</ids:simpleValue></ids:name>
+          <ids:value><xs:restriction base="xs:string"><xs:pattern value="VV\.\d{2}\.\d{2}\.\d{3}"/></xs:restriction></ids:value>
+        </ids:attribute>
+        <ids:property dataType="IFCVOLUMETRICFLOWRATEMEASURE">
+          <ids:propertySet><ids:simpleValue>Pset_AirTerminalOccurrence</ids:simpleValue></ids:propertySet>
+          <ids:baseName><ids:simpleValue>AirFlowRate</ids:simpleValue></ids:baseName>
+          <ids:value><xs:restriction base="xs:double"><xs:minExclusive value="0"/></xs:restriction></ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification name="#14 výfukový nástavec 4NP: určený PredefinedType" ifcVersion="IFC4X3_ADD2" identifier="VZT-14-B" description="Prvok z BCF #14 nemá PredefinedType NOTDEFINED.">
+      <ids:applicability minOccurs="1" maxOccurs="1">
+        <ids:entity><ids:name><ids:simpleValue>IFCAIRTERMINAL</ids:simpleValue></ids:name></ids:entity>
+        <ids:attribute>
+          <ids:name><ids:simpleValue>GlobalId</ids:simpleValue></ids:name>
+          <ids:value><ids:simpleValue>0pqk6UmJD2ARFkiAMMqZvv</ids:simpleValue></ids:value>
+        </ids:attribute>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:attribute>
+          <ids:name><ids:simpleValue>PredefinedType</ids:simpleValue></ids:name>
+          <ids:value><xs:restriction base="xs:string">
+            <xs:enumeration value="DIFFUSER"/><xs:enumeration value="GRILLE"/><xs:enumeration value="LOUVRE"/>
+            <xs:enumeration value="REGISTER"/><xs:enumeration value="USERDEFINED"/>
+          </xs:restriction></ids:value>
+        </ids:attribute>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification name="#15 potrubie a tvarovky: pozinkovaný plech" ifcVersion="IFC4X3_ADD2" identifier="VZT-15-A" description="Tvarovky IfcDuctFitting majú materiál Pozinkovaný oceľový plech (TP-003 str. 4 a 5).">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:entity><ids:name><ids:simpleValue>IFCDUCTFITTING</ids:simpleValue></ids:name></ids:entity>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:material><ids:value><ids:simpleValue>Pozinkovaný oceľový plech</ids:simpleValue></ids:value></ids:material>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification name="#15 rúrové potrubie PO: pozinkovaný plech" ifcVersion="IFC4X3_ADD2" identifier="VZT-15-B" description="Segmenty potrubia PO.xx majú materiál Pozinkovaný oceľový plech (TP-003 str. 4 a 5).">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:entity><ids:name><ids:simpleValue>IFCDUCTSEGMENT</ids:simpleValue></ids:name></ids:entity>
+        <ids:attribute>
+          <ids:name><ids:simpleValue>Name</ids:simpleValue></ids:name>
+          <ids:value><xs:restriction base="xs:string"><xs:pattern value="PO\..*"/></xs:restriction></ids:value>
+        </ids:attribute>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:material><ids:value><ids:simpleValue>Pozinkovaný oceľový plech</ids:simpleValue></ids:value></ids:material>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification name="#15 žiadny materiál &lt;Unnamed&gt;" ifcVersion="IFC4X3_ADD2" identifier="VZT-15-C" description="Distribučné prvky VZT majú pomenovaný materiál (nie &lt;Unnamed&gt;).">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:entity><ids:name><xs:restriction base="xs:string">
+          <xs:enumeration value="IFCDUCTSEGMENT"/><xs:enumeration value="IFCDUCTFITTING"/><xs:enumeration value="IFCAIRTERMINAL"/>
+          <xs:enumeration value="IFCDAMPER"/><xs:enumeration value="IFCUNITARYEQUIPMENT"/>
+        </xs:restriction></ids:name></ids:entity>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:material><ids:value><xs:restriction base="xs:string"><xs:pattern value="[^&lt;].*"/></xs:restriction></ids:value></ids:material>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification name="#17 klapky: kód, PredefinedType a štandardné psety" ifcVersion="IFC4X3_ADD2" identifier="VZT-17-A" description="IfcDamper má Name PK|RK.xx.xx.xxx, PredefinedType na výskyte, Pset_DamperTypeCommon.Reference a Pset_ElementSize.">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:entity><ids:name><ids:simpleValue>IFCDAMPER</ids:simpleValue></ids:name></ids:entity>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:attribute>
+          <ids:name><ids:simpleValue>Name</ids:simpleValue></ids:name>
+          <ids:value><xs:restriction base="xs:string"><xs:pattern value="(PK|RK)\.\d{2}\.\d{2}\.\d{3}"/></xs:restriction></ids:value>
+        </ids:attribute>
+        <ids:attribute>
+          <ids:name><ids:simpleValue>PredefinedType</ids:simpleValue></ids:name>
+          <ids:value><xs:restriction base="xs:string"><xs:enumeration value="FIREDAMPER"/><xs:enumeration value="CONTROLDAMPER"/></xs:restriction></ids:value>
+        </ids:attribute>
+        <ids:property dataType="IFCIDENTIFIER">
+          <ids:propertySet><ids:simpleValue>Pset_DamperTypeCommon</ids:simpleValue></ids:propertySet>
+          <ids:baseName><ids:simpleValue>Reference</ids:simpleValue></ids:baseName>
+          <ids:value><xs:restriction base="xs:string"><xs:pattern value="(PK|RK)\.\d{2}\.\d{2}"/></xs:restriction></ids:value>
+        </ids:property>
+        <ids:property dataType="IFCPOSITIVELENGTHMEASURE">
+          <ids:propertySet><ids:simpleValue>Pset_ElementSize</ids:simpleValue></ids:propertySet>
+          <ids:baseName><ids:simpleValue>NominalWidth</ids:simpleValue></ids:baseName>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification name="#17 požiarne klapky: požiarna odolnosť" ifcVersion="IFC4X3_ADD2" identifier="VZT-17-B" description="FIREDAMPER má Pset_DamperTypeFireDamper.FireResistanceRating.">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:entity>
+          <ids:name><ids:simpleValue>IFCDAMPER</ids:simpleValue></ids:name>
+          <ids:predefinedType><ids:simpleValue>FIREDAMPER</ids:simpleValue></ids:predefinedType>
+        </ids:entity>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property dataType="IFCLABEL">
+          <ids:propertySet><ids:simpleValue>Pset_DamperTypeFireDamper</ids:simpleValue></ids:propertySet>
+          <ids:baseName><ids:simpleValue>FireResistanceRating</ids:simpleValue></ids:baseName>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+  </ids:specifications>
+</ids:ids>

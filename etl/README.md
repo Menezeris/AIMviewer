@@ -183,6 +183,27 @@ python -m etl.model_publish announce --model ASR               # "nová revízia
 - Zoznam zmien (`zmeny.json`): `{"summary": "...", "changes": [{"guid", "ifc_class",
   "op": "add|remove|modify", "what", "before", "after"}]}`.
 
+### Recept v AIMvieweri: VZT podľa BCF #14, #15, #17 (`scripts/vzt/`)
+Väčšina receptov žije v OCB (`recepty/<MODEL>/vNNN-*.py`); tento je v AIMvieweri, aby
+sa dal zopakovať nad ďalšou revíziou bez zmeny kódu. Hodnoty sú v `bcf_opravy.json`
+so stavom: `dolozene` (zdroj v modeli alebo dokumente) a `potvrdene` (Samuel) sa
+aplikujú, `navrh` len s `--vratane-navrhov` (náhľad, nepublikovať), `chyba_hodnota`
+nikdy. Po schválení sa stav v JSON zmení na `potvrdene`, kód sa nemení. GlobalId ostávajú,
+mení sa len Name/Description/PredefinedType, psety a materiály (poistka: 0 pridaných,
+0 odobratých). #13 nemení model (porty klapiek sú napojené, chyba bola v nástroji, #300).
+```bash
+curl -sS -o VZT_v010.ifc.gz "$SUPABASE_URL/storage/v1/object/public/ifc/archive/VZT/v010.ifc.gz"
+gunzip VZT_v010.ifc.gz            # sha256 f2a4491540357d62ee0460a7f527bdd3fe6fa47c7d5749c21840a605f05be67f
+python scripts/vzt/bcf_opravy.py --vstup VZT_v010.ifc --vystup VZT_v011.ifc --zmeny zmeny_v011.json
+python scripts/vzt/kontrola.py --ifc VZT_v011.ifc            # IDS bcf_opravy.ids, porty klapiek, schéma
+python scripts/vzt/ifc_diff.py --pred VZT_v010.ifc --po VZT_v011.ifc --detail 20
+python -m etl.model_publish publish --model VZT --file VZT_v011.ifc --base 10 \
+    --changes zmeny_v011.json --recipe "Menezeris/AIMviewer:scripts/vzt/bcf_opravy.py@<commit>" --dry-run
+```
+Zverejnenie potom rovnakým príkazom bez `--dry-run` a ďalej podľa poradia vyššie
+(`etl.main --model VZT`, `etl.derive run --trigger auto`, `announce`). Ak medzitým vznikne
+nová revízia VZT, `--base` skončí konfliktom (kód 3): recept sa spustí znova nad ňou.
+
 **`--model` v `etl.main`:** hrany a GUID história dostanú zdroj modelu (`etl:ASR`,
 `IFC import:ASR`); čo beh nevydal (zmazaný, presunutý, premenovaný prvok), sa uzavrie.
 Nový rodič pri `rel_aggregates` / `contained` / `defines_by_type` uzavrie starého pred
