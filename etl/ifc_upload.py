@@ -19,6 +19,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -26,6 +27,10 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 BUCKET = "ifc"
 DEFAULT_IFC = _REPO_ROOT / "podklady" / "ASR.ifc"
 OBJECT_KEY = "ASR.ifc"
+# Cache-Control v sekundách (D-135 dodatok). Aktuálny kľúč `ifc/<MODEL>.ifc` sa prepisuje každou revíziou,
+# preto krátka; archív `archive/<MODEL>/vNNN.ifc.gz` sa nikdy neprepíše, preto rok.
+CURRENT_CACHE_SECONDS = 60
+ARCHIVE_CACHE_SECONDS = 31536000
 
 
 # ── Supabase Storage helpers (rovnaký vzor ako doc_upload.py) ─────────────────
@@ -73,6 +78,35 @@ def _request(
         return e.code, e.read()
 
 
+def multipart_body(content: bytes, content_type: str, cache_seconds: int) -> tuple[bytes, str]:
+    """Telo `multipart/form-data` ako ho posiela supabase-js (`cacheControl` + súbor).
+
+    Storage ignoruje hlavičku `cache-control` na surovom tele (objekt dostane `private, no-cache`),
+    `cacheControl` z formulára berie. Vracia (telo, hodnota Content-Type s boundary)."""
+    boundary = f"----aim{uuid.uuid4().hex}"
+    head = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="cacheControl"\r\n\r\n'
+        f"{int(cache_seconds)}\r\n"
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name=""; filename="blob"\r\n'
+        f"Content-Type: {content_type}\r\n\r\n"
+    ).encode()
+    tail = f"\r\n--{boundary}--\r\n".encode()
+    return head + content + tail, f"multipart/form-data; boundary={boundary}"
+
+
+def put_object(base: str, key: str, bucket: str, object_key: str, content: bytes, *,
+               content_type: str, upsert: bool, cache_seconds: int) -> tuple[int, bytes]:
+    """Nahrá objekt s `cacheControl` (sekundy); `upsert=False` nikdy neprepíše existujúci."""
+    body, ctype = multipart_body(content, content_type, cache_seconds)
+    return _request(
+        "POST", f"{base}/storage/v1/object/{bucket}/{urllib.parse.quote(object_key)}", key,
+        data=body, content_type=ctype,
+        extra_headers={"x-upsert": "true" if upsert else "false"},
+    )
+
+
 def ensure_bucket(base: str, key: str) -> None:
     """Vytvorí public bucket `ifc/` (idempotentne)."""
     status, body = _request(
@@ -93,13 +127,9 @@ def ensure_bucket(base: str, key: str) -> None:
 def upload_ifc(base: str, key: str, content: bytes, object_key: str = OBJECT_KEY) -> str:
     """Nahrá IFC súbor (upsert) a vráti verejnú URL."""
     encoded = urllib.parse.quote(object_key)
-    status, body = _request(
-        "POST",
-        f"{base}/storage/v1/object/{BUCKET}/{encoded}",
-        key,
-        data=content,
-        content_type="application/octet-stream",
-        extra_headers={"x-upsert": "true"},
+    status, body = put_object(
+        base, key, BUCKET, object_key, content,
+        content_type="application/octet-stream", upsert=True, cache_seconds=CURRENT_CACHE_SECONDS,
     )
     if status not in (200, 201):
         raise SystemExit(
