@@ -41,7 +41,7 @@ from .doc_scheme import DocumentMeta, parse_container_name
 from .ifc_upload import put_object
 
 BUCKET = "documents"
-# PDF sa pod rovnakým menom (CDE názov) prepíše novou verziou, preto hodina, nie rok (D-135 dodatok).
+# PDF sa pod rovnakým menom (CDE názov) prepíše novou verziou, preto hodina, nie rok.
 CACHE_SECONDS = 3600
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SOURCE_ROOT = _REPO_ROOT / "podklady" / "FINAL"
