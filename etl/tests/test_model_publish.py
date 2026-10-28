@@ -110,6 +110,7 @@ def storage(monkeypatch):
     store: dict[str, bytes] = {}
 
     def put(key, data, *, upsert, content_type, cache_control):
+        assert isinstance(cache_control, int)
         if key in store and not upsert:
             raise RuntimeError(f"{key} už existuje")
         store[key] = data

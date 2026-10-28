@@ -38,8 +38,11 @@ from psycopg.types.json import Json
 from . import ids
 from .config import database_url
 from .doc_scheme import DocumentMeta, parse_container_name
+from .ifc_upload import put_object
 
 BUCKET = "documents"
+# PDF sa pod rovnakým menom (CDE názov) prepíše novou verziou, preto hodina, nie rok (D-135 dodatok).
+CACHE_SECONDS = 3600
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SOURCE_ROOT = _REPO_ROOT / "podklady" / "FINAL"
 _MANIFEST = _REPO_ROOT / "podklady" / "docs.csv"
@@ -150,10 +153,9 @@ def ensure_bucket(base: str, key: str) -> None:
 def upload_file(base: str, key: str, object_key: str, content: bytes) -> str:
     """Nahrá súbor (upsert) a vráti verejnú URL."""
     encoded = urllib.parse.quote(object_key)
-    status, body = _request(
-        "POST", f"{base}/storage/v1/object/{BUCKET}/{encoded}", key,
-        data=content, content_type="application/pdf",
-        extra_headers={"x-upsert": "true"},
+    status, body = put_object(
+        base, key, BUCKET, object_key, content,
+        content_type="application/pdf", upsert=True, cache_seconds=CACHE_SECONDS,
     )
     if status not in (200, 201):
         raise SystemExit(f"Upload {object_key} zlyhal ({status}): {body.decode(errors='replace')}")

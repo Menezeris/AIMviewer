@@ -44,7 +44,9 @@ import psycopg
 
 from . import config
 from .db import close_legacy
-from .ifc_upload import BUCKET, _request, _storage_env
+from .ifc_upload import (
+    ARCHIVE_CACHE_SECONDS, BUCKET, CURRENT_CACHE_SECONDS, _request, _storage_env, put_object,
+)
 
 EXPECTED_SCHEMA = "IFC4X3_ADD2"
 EXIT_GUARD = 2
@@ -53,8 +55,8 @@ EXIT_CONFLICT = 3
 LIVE_REVISION_EVENT = "model_revision"
 # Aktuálny kľúč sa prepisuje každou revíziou, preto krátka cache. Archív sa nikdy neprepíše
 # (upsert=false), preto dlhá: viewer aj IFC motor čítajú práve archív (D-135).
-CURRENT_CACHE_CONTROL = "max-age=60"
-ARCHIVE_CACHE_CONTROL = "max-age=31536000, immutable"
+CURRENT_CACHE_CONTROL = CURRENT_CACHE_SECONDS
+ARCHIVE_CACHE_CONTROL = ARCHIVE_CACHE_SECONDS
 
 
 class Conflict(Exception):
@@ -161,15 +163,12 @@ def current_key(model: str) -> str:
     return f"{model}.ifc"
 
 
-def _put(key: str, data: bytes, *, upsert: bool, content_type: str, cache_control: str) -> None:
+def _put(key: str, data: bytes, *, upsert: bool, content_type: str, cache_control: int) -> None:
+    """`cache_control` = sekundy (`cacheControl` formulára Storage, nie hlavička)."""
     base, secret = _storage_env()
-    status, body = _request(
-        "POST",
-        f"{base}/storage/v1/object/{BUCKET}/{urllib.parse.quote(key)}",
-        secret,
-        data=data,
-        content_type=content_type,
-        extra_headers={"x-upsert": "true" if upsert else "false", "cache-control": cache_control},
+    status, body = put_object(
+        base, secret, BUCKET, key, data,
+        content_type=content_type, upsert=upsert, cache_seconds=cache_control,
     )
     if status not in (200, 201):
         raise RuntimeError(f"upload {key} zlyhal ({status}): {body.decode(errors='replace')}")

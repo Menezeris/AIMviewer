@@ -6554,6 +6554,21 @@ prompt v rozhovore"): predčítanie motora len v rozhovore, ktorý motor použí
   mená v tooloch viewera) načítajú motor až pri potrebe a nie sú v signáli.
 - *Evaly D-057 nepobežali* (cloud session nemá Supabase kľúče; LLM vrstva, tooly ani prompt sa nemenia).
 
+**Dodatok 2026-10-28 - `Cache-Control` objektov v Storage sa nenastavil, uploady posielajú `cacheControl` vo formulári:**
+Kontrola `curl -I` (len čítanie): `archive/ASR/v078.ifc.gz` (4,28 MB), `archive/VZT/v009.ifc.gz` (2,59 MB) aj
+`ASR.ifc` majú `cache-control: private, no-cache`, hoci ETL posielal hlavičku `cache-control: max-age=31536000,
+immutable` (archív) a `max-age=60`. Storage hlavičku na surovom tele zrejme neberie, berie `cacheControl` z
+`multipart/form-data` (tak ho posiela supabase-js). Archívna cache z bodu "Rozhodnutie" teda nefungovala a
+prehliadač stiahol archív pri každom otvorení.
+- *Uploady:* `etl/ifc_upload.py` (`put_object`, multipart) používajú `etl.model_publish` (archív
+  31536000 s, `upsert=false`; aktuálny kľúč 60 s), `etl.ifc_upload` (60 s) a `etl.doc_upload` (PDF 3600 s, prepisuje
+  sa pod rovnakým menom). `uploadCaptureObject` (`captures`, kľúč s `randomUUID`) 31536000. BCF snímky už mali
+  31536000 (kľúč nesie sha256 obsahu). Žiadny upload dnes nerobí upsert na verzovanú cestu archívu.
+- *Existujúce objekty:* `scripts/storage-cache-control.ts` nahrá tie isté bajty s `cacheControl`; predvolene
+  dry-run, zápis len s `--apply`, veľkosť a sha256 pred aj po zápise, zastaví sa, ak Storage hodnotu neprevezme.
+- *Otvorené:* aktuálny kľúč `ifc/<MODEL>.ifc` ostáva na 60 s z dôvodu bodu 4 (prepisuje sa každou revíziou);
+  dlhšia hodnota je na Samuelovi. Zápis do bucketov robí až Samuel.
+
 ---
 
 ### D-136 - Dlaždicové rozloženie viewera: krok 1 je pôvodný 2D výkres rezu, viac 3D pohľadov je otázka renderera
