@@ -6564,8 +6564,8 @@ skript je zrušený. Hlavičky objektov sa overujú `curl -r 0-0 -D - -o /dev/nu
   `cacheControl` vo formulári (`put_object` v `etl/ifc_upload.py`, ako supabase-js): archív 31536000, aktuálny kľúč
   60, PDF 3600, `captures` 31536000. Formulár nesie len sekundy, takže nový archív nemá `immutable` (v009 ho tiež nemá).
   Upsert na verzovanú cestu archívu žiadny upload nerobí.
-- *Neoverené:* multipart upload nebol skúšaný proti reálnemu Storage; pri chybe `etl.model_publish` zlyhá hlasno
-  pri archíve ešte pred zápisom revízie do DB.
+- *Overené (orchestrátor, 28. 10.):* POST s formulárom `cacheControl=31536000` proti reálnemu Storage uložil
+  `cache_control: max-age=31536000` a GET vrátil `public, max-age=31536000`.
 
 ---
 
