@@ -9,12 +9,12 @@
     },
     "14": {
       "global_id": "0pqk6UmJD2ARFkiAMMqZvv",
-      "name": {"value": "VV.07.04.001", "status": "navrh", "zdroj": "konvencia VV.<skupina>.<typ>.<poradie> ako VV.07.01 až VV.07.03"},
-      "type_name": {"value": "VV.07.04", "status": "navrh"},
-      "description": {"value": "Výfukový nástavec šikmý d315, výfuk odvetrania odpadového hospodárstva", "status": "navrh", "zdroj": "TP-003 str. 5 (zariadenie č. 5), systém Odpadné hospodárstvo"},
-      "predefined_type": {"value": "USERDEFINED", "object_type": "EXHAUSTCOWL", "status": "navrh", "alternativa": "GRILLE ako VV.07.03"},
-      "air_flow_rate_m3h": {"value": 600, "status": "navrh", "zdroj": "súčet AirFlowRate VV.07.02.001 a VV.07.02.002 (2 x 300 m3/h) v systéme Odpadné hospodárstvo"},
-      "air_flow_type": {"value": "EXHAUSTAIR", "status": "navrh", "zdroj": "port nástavca SINK, SystemType EXHAUST"}
+      "name": {"value": "VV.07.04.001", "status": "potvrdene", "zdroj": "konvencia VV.<skupina>.<typ>.<poradie> ako VV.07.01 až VV.07.03"},
+      "type_name": {"value": "VV.07.04", "status": "potvrdene"},
+      "description": {"value": "Výfukový nástavec šikmý d315, výfuk odvetrania odpadového hospodárstva", "status": "potvrdene", "zdroj": "TP-003 str. 5 (zariadenie č. 5), systém Odpadné hospodárstvo"},
+      "predefined_type": {"value": "USERDEFINED", "object_type": "EXHAUSTCOWL", "status": "potvrdene", "alternativa": "GRILLE ako VV.07.03"},
+      "air_flow_rate_m3h": {"value": 600, "status": "potvrdene", "zdroj": "súčet AirFlowRate VV.07.02.001 a VV.07.02.002 (2 x 300 m3/h) v systéme Odpadné hospodárstvo"},
+      "air_flow_type": {"value": "EXHAUSTAIR", "status": "potvrdene", "zdroj": "port nástavca SINK, SystemType EXHAUST"}
     },
     "15": {
       "materials": [
@@ -30,7 +30,7 @@
           "name": "Hliníková laminovaná fólia",
           "category": "aluminium",
           "description": "Flexibilné potrubie",
-          "status": "navrh",
+          "status": "potvrdene",
           "zdroj": "TP.01 legenda len 'Flexibilné potrubie', materiál v dokumentoch nie je",
           "types": ["IfcDuctSegmentType:Flex Duct Round*"]
         },
@@ -38,7 +38,7 @@
           "name": "Oceľový plech pozinkovaný, práškovo lakovaný",
           "category": "steel",
           "description": "Koncové prvky VZT (vyústky, ventily, mriežky)",
-          "status": "navrh",
+          "status": "potvrdene",
           "zdroj": "materiál výrobkov Lindab RC14, Airy, AD a mriežok v dokumentoch nie je",
           "types": ["IfcAirTerminalType:*"]
         },
@@ -46,7 +46,7 @@
           "name": "Pozinkovaný oceľový plech",
           "category": "steel",
           "description": "Teleso klapky",
-          "status": "navrh",
+          "status": "potvrdene",
           "zdroj": "materiál klapiek v dokumentoch nie je",
           "types": ["IfcDamperType:*"]
         },
@@ -54,12 +54,12 @@
           "name": "Oceľový plech, lakovaný",
           "category": "steel",
           "description": "Plášť VZT jednotky",
-          "status": "navrh",
+          "status": "potvrdene",
           "zdroj": "materiál plášťa Duplex 4500/6500 v dokumentoch nie je",
           "types": ["IfcUnitaryEquipmentType:*"]
         }
       ],
-      "unnamed": {"action": "remove", "status": "navrh", "poznamka": "kde materiál nie je potvrdený: remove = '<Unnamed>' odstrániť, keep = nechať"},
+      "unnamed": {"action": "remove", "status": "potvrdene", "poznamka": "kde materiál nie je potvrdený: remove = '<Unnamed>' odstrániť, keep = nechať"},
       "izolacia_odpadove_hospodarstvo": {"value": null, "status": "chyba_hodnota", "zdroj": "TP-003 str. 5: 'predpokladá sa tepelné zaizolovanie potrubia', materiál ani hrúbka nie sú"}
     },
     "17": {
@@ -83,10 +83,10 @@
           "element_size_mm": {"NominalWidth": 250.0, "NominalHeight": 250.0, "NominalLength": 300.0}
         }
       },
-      "naming": {"status": "navrh", "zdroj": "konvencia ako VV a JV; RK = regulačná klapka (TP-003 str. 8, TP.03 legenda)", "poradie": "podlažie, systém (prívod pred odvodom), X, Y"},
+      "naming": {"status": "potvrdene", "zdroj": "konvencia ako VV a JV; RK = regulačná klapka (TP-003 str. 8, TP.03 legenda)", "poradie": "podlažie, systém (prívod pred odvodom), X, Y"},
       "element_size": {"status": "dolozene", "zdroj": "rozmery z geometrie modelu (AIM_VZT_ProjektoveHodnoty, v005 a v006)"},
-      "predefined_type_on_occurrence": {"status": "navrh", "poznamka": "ETL berie PredefinedType len z výskytu, PK.01 má dnes v AIM predefined_type null"},
-      "aim_pset_cleanup": {"status": "navrh", "poznamka": "z AIM_VZT_ProjektoveHodnoty odstrániť Funkcia a Ovladanie (Funkcia je v Description, ovládanie v Pset_DamperTypeCommon.Operation)"},
+      "predefined_type_on_occurrence": {"status": "potvrdene", "poznamka": "ETL berie PredefinedType len z výskytu, PK.01 má dnes v AIM predefined_type null"},
+      "aim_pset_cleanup": {"status": "potvrdene", "poznamka": "z AIM_VZT_ProjektoveHodnoty odstrániť Funkcia a Ovladanie (Funkcia je v Description, ovládanie v Pset_DamperTypeCommon.Operation)"},
       "optional_psets": {
         "Pset_DamperTypeFireDamper": {"ActuationType": null, "ClosureRatingEnum": null, "FusibleLinkTemperature": null, "status": "chyba_hodnota"},
         "Pset_DamperTypeControlDamper": {"ControlDamperOperation": null, "status": "chyba_hodnota"}

@@ -7621,3 +7621,20 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 - *`get_viewer_state`:* `clash_local` ide bez zoznamov (`reviews`, `results` ako `*_count`).
 - *Inštrukcie MCP* sa nemenili (strop 15 000 znakov); opis toolu `clash` dostal vetu o `open` a `from_viewer`. Evaly K8 a K9.
 - *Zavrhnuté:* samostatná správa `CLASH_REVIEW` (jedno potvrdenie), kľúče kolízií z viewera (formát kľúča závisí od `ClashElement.key` vo forku, host ho nemá ako overiť), kolízie v `view_state` (veľkosť), beh z pamäte cez `open`.
+
+### D-166 - Označenie a štandardné psety klapiek IfcDamper vo VZT (BCF #17, aj #14 a #15)
+
+**Dátum:** 2026-10-28 · **Stav:** rozhodnuté (Samuel cez orchestrátora 28. 10., variant B; číslo v registri #60) · **PR:** #328 · **Súvisí:** D-086 (revízie), D-021 (typ a výskyt), D-099 (BCF), D-165 (#13, PredefinedType z typu v nástroji)
+
+**Kontext:** BCF #17: klapky mali Name len skratku (`VAV`, `PK.01`), funkciu a ovládanie len vo vlastnom psete `AIM_VZT_ProjektoveHodnoty` a PredefinedType požiarnych klapiek len na type, takže ETL (berie ho z výskytu) ich v AIM nevidí ako FIREDAMPER. Nedalo sa rýchlo nájsť prvok, ktorým sa uzatvára prívod. Spolu s tým #14 (výfukový nástavec 4NP bez kódu a s nulovým prietokom) a #15 (materiál `<Unnamed>`).
+
+**Rozhodnutie (platí pre všetky nové IfcDamper v modeloch):**
+1. **Kód = Name výskytu** v tvare ako VV a JV: `<druh>.<skupina>.<typ>.<poradie>`; `PK` = požiarna klapka, `RK` = regulačná klapka (aj VAV; skratky z TP-003 a TP.03). Typ nesie kód bez poradia (`PK.01.01`, `RK.01.01` DN225, `RK.01.02` DN250). Poradie: podlažie, systém (prívod pred odvodom), poloha X, Y.
+2. **Description výskytu** = druh, rozmer, (požiarna odolnosť a stena požiarneho úseku pri PK), systém, napr. "Požiarna klapka 630x315 EI 120 S v stene SN02.02.0001, Prívod-2NP".
+3. **PredefinedType** (FIREDAMPER, CONTROLDAMPER...) na type aj na výskyte, aby ho videl graf AIM aj nástroje bez dedenia z typu.
+4. **Štandardné psety na type:** `Pset_DamperTypeCommon` (Reference = kód typu, Operation, FaceArea), `Pset_ElementSize` (NominalWidth/Height/Length z modelu), pri PK `Pset_DamperTypeFireDamper.FireResistanceRating`. Hodnoty, ktoré podklady nemajú (ActuationType, ClosureRatingEnum, FusibleLinkTemperature, ControlDamperOperation, výrobca), sa nevypĺňajú. `AIM_VZT_ProjektoveHodnoty` ostáva pre prietok, rozmery a zdroje, bez Funkcia a Ovladanie.
+5. **#14:** výfukový nástavec = `VV.07.04.001` (typ `VV.07.04`), USERDEFINED / EXHAUSTCOWL, AirFlowRate 600 m3/h (súčet dvoch odvodných vyústiek systému Odpadné hospodárstvo), AirFlowType EXHAUSTAIR.
+6. **#15:** materiál na type (výskyty dedia): pozinkovaný oceľový plech pre potrubie PO a tvarovky TA (TP-003 str. 4 a 5) a klapky, hliníková laminovaná fólia pre flexi potrubie, pozinkovaný práškovo lakovaný plech pre koncové prvky, lakovaný oceľový plech pre jednotky; `<Unnamed>` sa odstraňuje. Izolácia potrubia odpadového hospodárstva sa nedáva, kým nie je materiál a hrúbka.
+7. **Recept** `scripts/vzt/bcf_opravy.py` s hodnotami v `bcf_opravy.json` (stav `dolozene` / `potvrdene` / `navrh` / `chyba_hodnota`), kontrola `scripts/vzt/kontrola.py` (IDS `bcf_opravy.ids`, porty klapiek, schéma) a `ifc_diff.py`. Publikácia len cez `etl.model_publish` (postup v `etl/README.md`), až na Samuelov pokyn.
+
+**Zavrhnuté:** prefix `VAV` (nie je druh klapky, ale spôsob regulácie); prietok na výskyte cez `Pset_DamperTypeCommon.NominalAirFlowRate` (typový pset na výskyte, D-021); doplnenie typických hodnôt požiarnych klapiek (SPRING, 72 °C) bez podkladu.
