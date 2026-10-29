@@ -82,3 +82,28 @@ describe("príkaz odmietnutý cudzím oknom (D-159)", () => {
     expect(text).not.toMatch(/Stav po príkaze/);
   });
 });
+
+describe("zoznam: šírky, zvýraznenie a filter viditeľnosti (D-171)", () => {
+  const list = (l: Record<string, unknown>) => applied({ list: { status: "done", rows: 97, visible_rows: 97, sums: [], ...l } });
+  const text = (l: Record<string, unknown>, args: Record<string, unknown>) => appliedText("open_list", list(l), undefined, { args });
+
+  it("#276: riadky > 0 a viditeľné 0 pri zapnutom filtri dá POZOR s návrhom visible_only=false", () => {
+    expect(text({ visible_rows: 0, visible_only: true }, {})).toMatch(/visible_only=false/);
+    expect(text({ visible_rows: 0, visible_only: false }, {})).not.toMatch(/visible_only=false/);
+    expect(text({ visible_rows: 97, visible_only: true }, {})).not.toMatch(/ukazuje 0/);
+  });
+
+  it("#275: šírky z viewera sa povedia, bez nich je to starší viewer", () => {
+    expect(text({ column_widths: [{ column: "Name", px: 300 }] }, { column_widths: "fit" })).toMatch(/Name 300 px/);
+    expect(text({}, { column_widths: "fit" })).toMatch(/nepotvrdil šírky/);
+  });
+
+  it("#274: zvýraznenie potvrdí počty, nezhodu povie a starší viewer nepotvrdí", () => {
+    const h = { rows: { column: "Name", values: ["D1"] }, sum: true };
+    expect(text({ highlight: { rows: 3, cells: 0, columns: [], sum: ["NetVolume"] } }, { highlight: h })).toMatch(/3 riadkov, súčty NetVolume/);
+    expect(text({ highlight: { rows: 0, cells: 0, columns: [], sum: [] } }, { highlight: h })).toMatch(/neprejavilo pre: riadky.*súčty/);
+    expect(text({}, { highlight: h })).toMatch(/nepotvrdil zvýraznenie/);
+    expect(text({ highlight: null }, { highlight: null })).not.toMatch(/zvýrazn/i);
+  });
+});
+

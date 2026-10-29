@@ -87,3 +87,59 @@ describe("úprava zoznamu cez op list (D-149)", () => {
     expect(decodeListWire(enc({ ...UPDATE, v: { cb: { s: "sql", k: "x" } } }))).toBeNull();
   });
 });
+
+describe("zoznam: viditeľnosť, šírky a zvýraznenie (D-171)", () => {
+  const enc = (w: unknown) => listOp(w as ListWire).slice("list::".length);
+  const NAME = { s: "attribute", k: "Name" } as const;
+  const VOL = { s: "quantity", p: "Qto_X", k: "NetVolume" } as const;
+  const UPDATE = (v: unknown) => ({ n: "", g: [], c: [], u: 1, v }) as ListWire;
+
+  it("view nesie visibleOnly, columnWidths a highlight v tvare správy pre fork", () => {
+    const wire = UPDATE({
+      vo: false,
+      cw: [{ c: NAME, w: 120 }, { c: VOL, w: "fit" }],
+      hl: { r: { c: NAME, v: ["D1", 5] }, c: [VOL], x: [{ c: VOL, r: { c: NAME, v: "D1" } }], s: [VOL] },
+    });
+    const [o] = parseOps(listOp(wire));
+    expect(opToBridgeMessage(o)).toEqual({
+      type: "LIST_UPDATE",
+      groups: [],
+      view: {
+        visibleOnly: false,
+        columnWidths: [
+          { column: { source: "attribute", propertyName: "Name" }, width: 120 },
+          { column: { source: "quantity", propertyName: "NetVolume", psetName: "Qto_X" }, width: "fit" },
+        ],
+        highlight: {
+          rows: { column: { source: "attribute", propertyName: "Name" }, values: ["D1", 5] },
+          columns: [{ source: "quantity", propertyName: "NetVolume", psetName: "Qto_X" }],
+          cells: [{ column: { source: "quantity", propertyName: "NetVolume", psetName: "Qto_X" }, row: { column: { source: "attribute", propertyName: "Name" }, value: "D1" } }],
+          sum: [{ source: "quantity", propertyName: "NetVolume", psetName: "Qto_X" }],
+        },
+      },
+    });
+    const [clear] = parseOps(listOp(UPDATE({ hl: null, cw: "auto", vo: true })));
+    expect(opToBridgeMessage(clear)).toMatchObject({ view: { highlight: null, columnWidths: "auto", visibleOnly: true } });
+  });
+
+  it("chybné hodnoty sa zahodia: šírka mimo rozsahu, zlé typy, prázdne alebo prehnané zoznamy", () => {
+    const bad = [
+      { vo: "áno" },
+      { cw: "wide" },
+      { cw: [] },
+      { cw: [{ c: NAME, w: 10 }] },
+      { cw: [{ c: NAME, w: 5000 }] },
+      { cw: [{ c: NAME, w: 100 }, ...Array.from({ length: 40 }, () => ({ c: NAME, w: 100 }))] },
+      { hl: "x" },
+      { hl: { r: { c: NAME, v: [] } } },
+      { hl: { r: { c: NAME, v: Array.from({ length: 201 }, (_, i) => i) } } },
+      { hl: { r: { c: NAME, v: [{}] } } },
+      { hl: { c: Array.from({ length: 9 }, () => NAME) } },
+      { hl: { x: [{ c: NAME, r: { c: NAME, v: null } }] } },
+      { hl: { s: false } },
+    ];
+    for (const v of bad) expect(decodeListWire(enc(UPDATE(v)))).toBeNull();
+    expect(decodeListWire(enc(UPDATE({ cw: [{ c: NAME, w: 56 }, { c: NAME, w: 800 }], hl: { s: true } })))).not.toBeNull();
+  });
+});
+

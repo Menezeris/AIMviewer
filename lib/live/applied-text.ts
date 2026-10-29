@@ -81,9 +81,13 @@ type ListState = {
   sort?: { column?: string; dir?: string } | null;
   color_by?: string;
   export_ready?: string;
+  rows?: number;
+  visible_only?: boolean;
+  column_widths?: Array<{ column?: string; px?: number }>;
+  highlight?: { rows?: number; cells?: number; columns?: string[]; sum?: string[] } | null;
 };
 
-const VIEW_ARGS = ["maximize", "sort_by", "sum", "group_by", "search", "color_by", "export"];
+const VIEW_ARGS = ["maximize", "sort_by", "sum", "group_by", "search", "color_by", "export", "visible_only", "column_widths", "highlight"];
 
 /**
  * Úpravy zoznamu (D-149): súčty povedané vetou, a čo sa z `maximize`/`sort_by`/`sum` nevykonalo;
@@ -113,6 +117,7 @@ export function listViewText(tool: string, state: unknown, args: Record<string, 
     if (l.color_by) out.push(`Prvky v 3D sú ofarbené podľa stĺpca ${l.color_by}, legenda je v paneli Lens.`);
     else if (l.status === "done") out.push("Farby podľa stĺpca sa nepoužili (pozri problémy viewera): ofarbenie nepotvrdzuj.");
   }
+  out.push(...listLayoutNotes(l, args));
   if (typeof args.export === "string") {
     if (l.export_ready) {
       out.push(`Vo vieweri svieti tlačidlo Stiahnuť ${l.export_ready.toUpperCase()}: povedz používateľovi, nech naň klikne (bez kliku prehliadač súbor nestiahne).`);
@@ -121,6 +126,45 @@ export function listViewText(tool: string, state: unknown, args: Record<string, 
     }
   }
   return out.length ? ` ${out.join(" ")}` : "";
+}
+
+/** Šírky, zvýraznenie a filter "len viditeľné" (D-171, #274 až #276): čo viewer potvrdil a čo sa neprejavilo. */
+function listLayoutNotes(l: ListState, args: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  const done = l.status === "done";
+  if (done && typeof l.rows === "number" && l.rows > 0 && l.visible_rows === 0 && l.visible_only !== false) {
+    out.push(
+      `Tabuľka má ${l.rows} riadkov, ale ukazuje 0: filter 'len viditeľné v 3D' skrýva riadky mimo izolácie alebo skrytia v 3D. ` +
+        "Zavolaj open_list action=update visible_only=false (izoláciu v 3D to nezruší).",
+    );
+  }
+  if (args.visible_only !== undefined && l.visible_only === undefined) {
+    out.push("Viewer nepotvrdil filter 'len viditeľné' (staršia verzia viewera?): jeho stav nepotvrdzuj.");
+  }
+  if (args.column_widths !== undefined) {
+    if (l.column_widths === undefined) out.push("Viewer nepotvrdil šírky stĺpcov (staršia verzia viewera?): zmenu šírky nepotvrdzuj.");
+    else if (l.column_widths.length) out.push(`Šírky stĺpcov: ${l.column_widths.map((w) => `${w.column} ${w.px} px`).join(", ")}.`);
+  }
+  const asked = args.highlight;
+  if (asked !== undefined && asked !== null && asked !== "") {
+    const h = l.highlight;
+    if (h === undefined) {
+      out.push("Viewer nepotvrdil zvýraznenie (staršia verzia viewera?): netvrď, že je zvýraznené.");
+    } else if (h && done) {
+      const a = asked as { rows?: unknown; cells?: unknown; columns?: unknown; sum?: unknown };
+      const miss: string[] = [];
+      if (a.rows !== undefined && !h.rows) miss.push("riadky (nijaký riadok sa nezhodoval s hodnotami)");
+      if (a.cells !== undefined && !h.cells) miss.push("bunky");
+      if (a.columns !== undefined && !(h.columns?.length)) miss.push("stĺpce (zoznam ich nemá)");
+      if (a.sum !== undefined && a.sum !== false && !(h.sum?.length)) miss.push("súčty (zoznam nemá sum: nastav ho cez sum)");
+      out.push(
+        miss.length
+          ? `Zvýraznenie sa neprejavilo pre: ${miss.join(", ")}. Nepotvrdzuj ho; skontroluj stĺpce a hodnoty.`
+          : `Zvýraznené: ${[h.rows ? `${h.rows} riadkov` : "", h.cells ? `${h.cells} buniek` : "", h.columns?.length ? `stĺpce ${h.columns.join(", ")}` : "", h.sum?.length ? `súčty ${h.sum.join(", ")}` : ""].filter(Boolean).join(", ")}.`,
+      );
+    }
+  }
+  return out;
 }
 
 /** Okno viewera ovláda iný chat a príkaz odmietlo (D-159). */
