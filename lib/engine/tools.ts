@@ -1,6 +1,6 @@
 import { getIfcModels, modelKey } from "../data/ifc-models";
 import type { AskAction } from "../llm/actions";
-import type { MeasureSegment } from "../viewer-measure";
+import { MAX_MEASURE_SEGMENTS, noteDimensions, resetDimensionTally, type MeasureSegment } from "../viewer-measure";
 import type { Vec3 } from "./measure";
 
 import { cacheSnapshot, getStore, type EngineModelSource } from "./cache";
@@ -817,6 +817,20 @@ async function ifcQto(input: Record<string, unknown>, deps: EngineDeps): Promise
 }
 
 /** Vykoná `ifc_*` tool. Chyby vstupu a motora sa vracajú ako výsledok toolu, nie výnimka. */
+/** Počet kót na plátne do odpovede; nad limit jednej správy odporučí `clear` (neodmieta). */
+function withCanvasTally(content: string, total: number): string {
+  try {
+    const out = JSON.parse(content) as Record<string, unknown>;
+    out.dimensions_on_canvas = total;
+    if (total > MAX_MEASURE_SEGMENTS) {
+      out.hint = `Na plátne je ${total} kót od Claude (viac ako ${MAX_MEASURE_SEGMENTS}). Zvážiť ifc_measure clear=true a nakresliť len potrebné.`;
+    }
+    return JSON.stringify(out);
+  } catch {
+    return content;
+  }
+}
+
 export async function execEngineTool(
   name: string,
   input: Record<string, unknown>,
@@ -848,7 +862,8 @@ export async function execEngineTool(
         if (input.clear === true) {
           // D-152: kóty a čiara trasy od Claude preč, merania používateľa ostanú.
           const { clearDimensionsAction } = await import("./measure-dimension");
-          return { content: JSON.stringify({ view: "kóty a trasa od Claude zmazané (merania používateľa ostali)" }), isError: false, actions: [clearDimensionsAction()] };
+          resetDimensionTally();
+          return { content: JSON.stringify({ view: "kóty od Claude zmazané (aj čiara trasy; merania používateľa ostali)" }), isError: false, actions: [clearDimensionsAction()] };
         }
         if (input.route !== undefined) {
           // show=true: čiara trasy pre viewer (D-137), príkaz poskladá route-line.
@@ -864,7 +879,13 @@ export async function execEngineTool(
         // show=true: kóty pre viewer (D-124) zbiera meranie, príkaz poskladá measure-dimension.
         const dimensions: MeasureSegment[] | undefined = input.show === true ? [] : undefined;
         content = await (await import("./measure")).ifcMeasure(input, deps, dimensions);
-        if (dimensions?.length) return { content, isError: false, actions: [(await import("./measure-dimension")).dimensionAction(dimensions)] };
+        if (dimensions?.length) {
+          // D-170: kóty sa predvolene hromadia (keep), keep=false nahradí predošlé kóty od Claude.
+          const keep = input.keep !== false;
+          const total = noteDimensions(dimensions.length, keep);
+          const action = (await import("./measure-dimension")).dimensionAction(dimensions, keep);
+          return { content: withCanvasTally(content, total), isError: false, actions: [action] };
+        }
         break;
       }
       case "clash":

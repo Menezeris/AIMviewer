@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { parseOps, opToBridgeMessage } from "../viewer-ops";
-import { MAX_MEASURE_SEGMENTS, decodeMeasureWire, encodeMeasureWire } from "../viewer-measure";
+import { MAX_MEASURE_SEGMENTS, decodeMeasureWire, encodeMeasureWire, resetDimensionTally } from "../viewer-measure";
 
 import { guid } from "./__fixtures__/mini-building";
 import { MINI_GEOMETRY_BYTES } from "./__fixtures__/mini-geometry";
@@ -37,7 +37,10 @@ function cube(o: [number, number, number], s = 1, worldOffset?: [number, number,
 }
 
 describe("kóta k ifc_measure (D-124)", () => {
-  afterEach(() => clearEngineCache());
+  afterEach(() => {
+    clearEngineCache();
+    resetDimensionTally();
+  });
 
   it("najbližší bod trojuholníka: vnútro, hrana a vrchol", () => {
     const [a, b, c] = [[0, 0, 0], [2, 0, 0], [0, 2, 0]] as [number, number, number][];
@@ -108,5 +111,30 @@ describe("kóta k ifc_measure (D-124)", () => {
     ]);
     // keep bez úsekov nedáva zmysel a zahodí sa.
     expect(parseOps("measure:keep:")).toEqual([]);
+  });
+
+  it("ifc_measure keep (D-170): kóty sa predvolene pridávajú, keep=false ich nahradí, nad 12 odporúčanie clear", async () => {
+    const bridge = (a?: { url: string }[]) =>
+      parseOps(new URLSearchParams(a![0].url.split("?")[1]).get("ops")!).map(opToBridgeMessage)[0] as { keep?: boolean };
+    const first = await execEngineTool("ifc_measure", { a: guid("W1"), b: guid("W2"), show: true }, deps);
+    expect(bridge(first.actions).keep).toBe(true);
+    expect(JSON.parse(first.content).dimensions_on_canvas).toBe(1);
+
+    const replaced = await execEngineTool("ifc_measure", { a: guid("W1"), b: guid("W2"), show: true, keep: false }, deps);
+    expect(bridge(replaced.actions).keep).toBeUndefined();
+    expect(JSON.parse(replaced.content).dimensions_on_canvas).toBe(1);
+
+    let last = replaced;
+    for (let i = 0; i < 5; i++) last = await execEngineTool("ifc_measure", { a: guid("W1"), show: true }, deps);
+    const out = JSON.parse(last.content);
+    expect(out.dimensions_on_canvas).toBe(16);
+    expect(out.hint).toContain("clear=true");
+    expect(last.actions).toHaveLength(1);
+
+    const cleared = await execEngineTool("ifc_measure", { clear: true }, deps);
+    expect(JSON.parse(cleared.content).view).toContain("kóty od Claude zmazané");
+    const again = await execEngineTool("ifc_measure", { a: guid("W1"), b: guid("W2"), show: true }, deps);
+    expect(JSON.parse(again.content).dimensions_on_canvas).toBe(1);
+    expect(JSON.parse(again.content).hint).toBeUndefined();
   });
 });

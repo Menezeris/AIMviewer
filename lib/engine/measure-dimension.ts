@@ -92,11 +92,11 @@ export function sizeDimensions(e: MeshElement): MeasureSegment[] {
   ];
 }
 
-/** Príkaz pre živý viewer: kóty nahradia predošlé kóty od hosta (vlastné merania používateľa ostanú). */
-export function dimensionAction(segments: readonly MeasureSegment[]): AskAction {
+/** Príkaz pre živý viewer: kóty sa pridajú (`keep`) alebo nahradia predošlé kóty od hosta (vlastné merania ostanú). */
+export function dimensionAction(segments: readonly MeasureSegment[], keep = false): AskAction {
   return {
     type: "navigate",
-    url: `/ifc?ops=${encodeURIComponent(measureOp(segments))}&r=${Date.now().toString(36)}`,
+    url: `/ifc?ops=${encodeURIComponent(measureOp(segments, keep))}&r=${Date.now().toString(36)}`,
     label: segments.length === 1 ? "Kóta" : `Kóty: ${segments.length}`,
   };
 }

@@ -192,8 +192,9 @@ export function engineToolDefinitions(): ToolDefinition[] {
         "k najbližším vonkajším dverám na teréne; dĺžka v m je DOLNÝ ODHAD (priamky v pôdoryse cez miestnosti a " +
         "dvere zo súboru, IfcRelSpaceBoundary), poradie miestností a dverí, zmeny podlaží, show_in_3d; route + show=true " +
         "nakreslí trasu vo vieweri červenou plnou čiarou 1,6 m nad podlahou a stupňami, stredom dverí. Prvé volanie " +
-        "nad modelom ho tesseluje (ASR ~4 s), ďalšie sú rýchle. clear=true zmaže kóty a trasu, ktoré Claude nakreslil " +
-        "(show=true), vlastné merania používateľa nechá; bez ďalších parametrov.",
+        "nad modelom ho tesseluje (ASR ~4 s), ďalšie sú rýchle. kóty sa pridávajú (keep, predvolene pri " +
+        "show=true; keep=false nahradí predošlé), nad 12 kót na plátne odporúčanie clear. clear=true zmaže všetky kóty a trasu, ktoré Claude " +
+        "nakreslil (show=true), vlastné merania používateľa nechá; jednu konkrétnu kótu zmazať nejde; bez ďalších parametrov.",
       inputSchema: {
         type: "object",
         properties: {
@@ -235,13 +236,19 @@ export function engineToolDefinitions(): ToolDefinition[] {
           min_height_m: { type: "number", description: "clear_opening: limit svetlej výšky v m od používateľa -> pass/fail" },
           clear: {
             type: "boolean",
-            description: "true = zmazať kóty a čiaru trasy od Claude vo vieweri (D-152); merania používateľa ostanú, nič sa nemeria",
+            description: "true = zmazať všetky kóty a čiaru trasy od Claude vo vieweri (D-152); merania používateľa ostanú, nič sa nemeria",
           },
           show: {
             type: "boolean",
             description:
-              "true = kóta v živom vieweri (nástroj Measure); predošlé kóty od Claude nahradí, vlastné merania nie. " +
+              "true = kóta v živom vieweri (nástroj Measure); predošlé kóty od Claude ostanú (keep), vlastné merania sa nemenia. " +
               "S route = čiara trasy (červená, 1,6 m nad podlahou), nahradí predošlú; zmaže ju reset farieb",
+          },
+          keep: {
+            type: "boolean",
+            description:
+              "S show=true (bez route): true (predvolené) = kóty sa pridajú k predošlým od Claude, false = nahradia ich. " +
+              "Limit 12 úsekov je na jednu správu; nad 12 kót na plátne odpoveď odporučí clear",
           },
         },
       },
