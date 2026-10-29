@@ -58,7 +58,8 @@ export interface GroupInfo {
   warning?: string;
   /** Priesvitná farba (D-139): hodnota, ktorú žiadal model, alebo predvolená pre priestory. */
   opacity?: number;
-  opacity_default?: string;
+  /** Pravidlo priestoru (D-173): vždy priesvitný, prípadne orezaná opacity alebo rozdelený filter. */
+  space_rule?: string;
   zones?: string[];
   storey?: string;
   document?: string;
@@ -67,6 +68,8 @@ export interface GroupInfo {
 
 /** Predvolená priesvitnosť priestorov a zón pri colorize; viewer ju kreslí fixnou alfou akcie transparent (fork 0,3). */
 const SPACE_DEFAULT_OPACITY = 0.3;
+/** Pravidlo (D-173, #298): priestor sa nikdy nefarbí plnou farbou, strop priesvitnosti, nech model pošle akúkoľvek opacity. */
+export const SPACE_MAX_OPACITY = 0.35;
 
 /** Skupina colorize je len z priestorov / zón: podľa tried filtra, pri konkrétnych prvkoch podľa tried v DB. */
 async function isSpaceLike(scope: ScopeResolver, f: StyleFilter, types: string[], guidCount: number): Promise<boolean> {
@@ -303,19 +306,32 @@ export async function execLensStyle(
     let a: LensWireRule["a"] = action === "transparent" ? "transparent" : g.color ? "colorize" : "isolate";
     if (a === "colorize") {
       // Priehľadnosť (D-139, #222): opacity < 1 = priesvitná varianta; bez opacity ju dostanú priestory a zóny
-      // (podľa tried filtra, pri ids_or_refs podľa tried prvkov v DB), opacity=1 vynúti plnú farbu.
-      const spaceLike = g.opacity === undefined && (await isSpaceLike(scope, g.filter, filter.types, filter.guids?.length ?? 0));
-      if ((g.opacity !== undefined && g.opacity < 1) || spaceLike) {
+      // (podľa tried filtra, pri ids_or_refs podľa tried prvkov v DB). Priestor (D-173, #298) plnú farbu nedostane
+      // nikdy: opacity=1 aj vyššie hodnoty sa orežú na SPACE_MAX_OPACITY, zmiešaný zoznam tried sa rozdelí na dve pravidlá.
+      const spaceLike = await isSpaceLike(scope, g.filter, filter.types, filter.guids?.length ?? 0);
+      const lt = lowerTypes(filter.types);
+      const spaceTypes = filter.types.filter((t) => SPACE_LIKE_TYPES.has(t.toLowerCase()));
+      if (!spaceLike && !filter.guids?.length && spaceTypes.length > 0 && spaceTypes.length < lt.length) {
+        rules.push({ n: `${g.label} (priestory)`, a: "transparent", ...(g.color ? { c: `#${g.color}` } : {}), g: [lensGroup({ ...filter, types: spaceTypes })] });
+        filter.types = filter.types.filter((t) => !SPACE_LIKE_TYPES.has(t.toLowerCase()));
+        info.space_rule = `priestory a zóny z filtra (${spaceTypes.join(", ")}) idú ako samostatné priesvitné pravidlo, plná farba platí len pre ostatné`;
+      }
+      if (spaceLike) {
         a = "transparent";
-        info.opacity = g.opacity ?? SPACE_DEFAULT_OPACITY;
-        if (spaceLike) info.opacity_default = "priestory a zóny sú predvolene priesvitné (opacity=1 = plná farba)";
+        info.opacity = Math.min(g.opacity ?? SPACE_DEFAULT_OPACITY, SPACE_MAX_OPACITY);
+        info.space_rule = g.opacity !== undefined && g.opacity > SPACE_MAX_OPACITY
+          ? `priestor sa nefarbí plnou farbou, opacity ${g.opacity} orezaná na ${SPACE_MAX_OPACITY}`
+          : "priestory a zóny sú vždy len priesvitné (plná farba sa nepoužije)";
+      } else if (g.opacity !== undefined && g.opacity < 1) {
+        a = "transparent";
+        info.opacity = g.opacity;
       } else {
-        const lt = lowerTypes(filter.types);
-        if (lt.length > 0 && lt.every((t) => BULKY_TYPES.has(t))) bulkyOpaque.push(g.label);
+        const rest = lowerTypes(filter.types);
+        if (rest.length > 0 && rest.every((t) => BULKY_TYPES.has(t))) bulkyOpaque.push(g.label);
         else hasOtherColored = true;
       }
     } else if (a === "transparent" && g.opacity !== undefined) {
-      info.opacity = g.opacity;
+      info.opacity = (await isSpaceLike(scope, g.filter, filter.types, filter.guids?.length ?? 0)) ? Math.min(g.opacity, SPACE_MAX_OPACITY) : g.opacity;
     }
     rules.push({ n: g.label, a, ...(g.color ? { c: `#${g.color}` } : {}), g: [lensGroup(filter)] });
     infos.push(info);

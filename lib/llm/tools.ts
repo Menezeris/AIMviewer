@@ -505,7 +505,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "sadu, prescrolluje a zvýrazní riadok do ďalšieho výberu; výsledok povie, či vlastnosť na prvku je (property.in_aim, " +
       "property_focus.found zo živého viewera). Panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
       "select=true výber. Funguje pre prvky s IFC GUID. Prvky, ktorých sa týka dokument alebo strana, " +
-      "ukáž cez style_in_3d(document, page).",
+      "ukáž cez style_in_3d(document, page). Miestnosť (IfcSpace) sa len zvýrazní, plnou farbou sa nikdy nefarbí (D-173).",
     inputSchema: {
       type: "object",
       properties: {
@@ -565,7 +565,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "obmedzia farby, legendu aj počty na tieto prvky, bez filtra pri izolácii len viditeľné. 'Ukáž legendu' = " +
       "action=legend (malá karta len s AIM chat lens; legend_size large = veľké okno, normal = panel). Miestnosti " +
       "(IfcSpace) a zóny sú vo vieweri predvolene skryté: farbenie či izolácia ich zapne sama, ručne show/hide s " +
-      "ifc_type=IfcSpace; farba miestnosti ostane priesvitná (prvky v nej vidno, NEPRIDÁVAJ transparent pravidlo); " +
+      "ifc_type=IfcSpace; PRAVIDLO: priestor (IfcSpace, zóna) sa NIKDY nefarbí plnou farbou, len priesvitne (host vynúti opacity najviac 0.35, aj keď pošleš 1; NEPRIDÁVAJ transparent pravidlo); " +
       "v pohľade zhora s vodorovným rezom sú ofarbené aj vybrané miestnosti vyplnené a popísané. " +
       "Odpoveď vráti stav po príkaze: pravidlo s inactive nič nezafarbilo (POZOR ho vysvetlí: prekryté vs filter nič nenašiel), izolácia s active=false už neplatí, " +
       "changed_outside_commands = čo zmenil používateľ od predošlého príkazu, POZOR = upozornenie (aktívny rez, " +
@@ -597,7 +597,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         opacity: {
           type: "number",
           description:
-            "colorize: 0.05 až 1. Menej ako 1 = priesvitná farba (prvky vnútri a za nimi je vidno), 1 = plná farba. " +
+            "colorize: 0.05 až 1. Menej ako 1 = priesvitná farba (prvky vnútri a za nimi je vidno), 1 = plná farba; IfcSpace a zóny sú vždy priesvitné (najviac 0.35). " +
             "Bez hodnoty sú IfcSpace a zóny priesvitné, ostatné prvky plné. Viewer kreslí jednu úroveň priesvitnosti, " +
             "presná hodnota ešte nemení stupeň. Veľké prvky (steny, dosky) farbi priesvitne, ak majú ostať vidno ďalšie farby",
         },
