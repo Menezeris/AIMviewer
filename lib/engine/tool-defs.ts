@@ -162,7 +162,7 @@ export function engineToolDefinitions(): ToolDefinition[] {
           stop_at: {
             type: "array",
             items: { type: "string" },
-            description: "S through_ports a recursive: zastaviť na triede, voliteľne Trieda.PREDEFINED (IfcDamper.FIREDAMPER)",
+            description: "S through_ports a recursive: zastaviť na triede, voliteľne Trieda.PREDEFINED (IfcDamper.FIREDAMPER); PredefinedType typovaného výskytu sa berie z jeho typu",
           },
           max_steps: { type: "number", description: "S through_ports a recursive: max krokov sieťou (1-200, default 50)" },
           limit: { type: "number", description: "Max vzťahov na stránku (1-200, default 100)" },
