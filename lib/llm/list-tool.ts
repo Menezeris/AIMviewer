@@ -4,9 +4,16 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import {
   LIST_EXPORT_FORMATS,
   listOp,
+  LIST_MAX_HIGHLIGHT_ITEMS,
+  LIST_MAX_WIDTH_COLUMNS,
+  LIST_MAX_COLUMN_WIDTH,
+  LIST_MIN_COLUMN_WIDTH,
+  type ListCellValue,
+  type ListColumnWidth,
   type ListColumnWire,
   type ListEditWire,
   type ListExportFormat,
+  type ListHighlightWire,
   type ListViewWire,
 } from "@/lib/viewer-list";
 
@@ -93,7 +100,12 @@ export const LIST_TOOL_DEFINITIONS: ToolDefinition[] = [
       "ostatné filtre pribudnú cez AND. color_by = farby prvkov v 3D podľa hodnoty stĺpca (Lens, legenda; nie podlažie/priestor). " +
       "export = csv | xlsx | pdf: viewer zvýrazní tlačidlo Stiahnuť, súbor stiahne používateľ klikom (bez kliku prehliadač nedovolí) - povedz mu to. " +
       "Potvrdenie (state.list) a get_viewer_state vrátia stav zoznamu vrátane súčtov (sums) za viditeľné riadky - súčet " +
-      "povedz z neho, nepočítaj ho inými toolmi.",
+      "povedz z neho, nepočítaj ho inými toolmi. " +
+      "Ak je v 3D izolácia, nový zoznam ukáže všetky svoje riadky (filter 'len viditeľné' sa vypne, visible_only ho prepne). Izoláciu nerušiť. " +
+      "highlight zvýrazní v tabuľke riadky (rows: stĺpec + hodnoty), stĺpce, bunky alebo riadok súčtov (sum; zoznam musí mať sum), " +
+      "null ho zruší; column_widths = fit | auto | šírky stĺpcov v px (56 až 800). " +
+      "Stĺpce zo vzťahov IFC súboru: space_referenced (IfcRelReferencedInSpatialStructure), space_boundary (IfcRelSpaceBoundary), " +
+      "aggregate (IfcRelAggregates); 'space' je Container (priestor, v ktorom prvok je v súbore), nie odvodená miestnosť.",
     inputSchema: {
       type: "object",
       properties: {
@@ -126,6 +138,51 @@ export const LIST_TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         color_by: { type: "string", description: "Farby prvkov v 3D podľa hodnoty stĺpca (ako v columns); prázdny reťazec zruší" },
         export: { type: "string", enum: [...LIST_EXPORT_FORMATS], description: "Ponúknuť stiahnutie v tomto formáte (klik používateľa)" },
+        visible_only: {
+          type: "boolean",
+          description: "false = tabuľka ukáže všetky riadky aj pri izolácii v 3D, true = len riadky viditeľné v 3D (default pri novom zozname: vypnuté pri izolácii)",
+        },
+        column_widths: {
+          anyOf: [
+            { type: "string", enum: ["fit", "auto"] },
+            {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  column: { type: "string", description: "Stĺpec ako v columns" },
+                  width: { anyOf: [{ type: "number" }, { type: "string", enum: ["fit", "auto"] }], description: `px ${LIST_MIN_COLUMN_WIDTH} až ${LIST_MAX_COLUMN_WIDTH}, fit = podľa obsahu, auto = predvolená` },
+                },
+                required: ["column", "width"],
+              },
+            },
+          ],
+          description: "Šírky stĺpcov: fit (všetky podľa obsahu), auto (predvolené), alebo pole {column, width} po jednom",
+        },
+        highlight: {
+          type: ["object", "null"],
+          description: "Zvýraznenie v tabuľke; null (alebo prázdny reťazec) ho zruší. Časti sa kombinujú.",
+          properties: {
+            rows: {
+              type: "object",
+              properties: { column: { type: "string" }, values: { type: "array", items: { type: ["string", "number"] } } },
+              description: `Riadky, kde bunka v stĺpci column sa rovná niektorej z values (1 až ${LIST_MAX_HIGHLIGHT_ITEMS})`,
+            },
+            columns: { type: "array", items: { type: "string" }, description: "Stĺpce na zvýraznenie (najviac 8)" },
+            cells: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  column: { type: "string" },
+                  row: { type: "object", properties: { column: { type: "string" }, value: { type: ["string", "number"] } } },
+                },
+              },
+              description: `Bunky: stĺpec column v riadku, kde row.column = row.value (najviac ${LIST_MAX_HIGHLIGHT_ITEMS})`,
+            },
+            sum: { anyOf: [{ type: "boolean" }, { type: "array", items: { type: "string" } }], description: "true = riadok súčtov, alebo len súčty týchto stĺpcov" },
+          },
+        },
         ...filterProps,
       },
     },
@@ -170,11 +227,26 @@ export async function execListTool(
     name: listName,
     filter: info,
     columns: columns.map((c) => (c.p ? `${c.p}.${c.k}` : c.k || c.s)),
+    ...columnNotes(rawColumns),
     run,
     ...(view ? { view: viewSummary(view) } : {}),
     next_step: run
       ? "Panel Lists sa otvára a tabuľka sa spúšťa: či beží, povie potvrdenie viewera (state.list) nižšie. Export (CSV, XLSX, PDF) robí používateľ."
       : "Vo vieweri sa otvoril panel Lists so zoznamom v builderi: používateľ stlačí Run a potom Export (CSV, XLSX, PDF).",
+  };
+}
+
+/** `space` / `miestnost` je Container (priestor zo súboru): povedz to, nech Claude nehlási odvodenú miestnosť (#277). */
+const CONTAINER_WORDS = new Set(["space", "miestnost", "container"]);
+const fold = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+function columnNotes(raw: unknown): Record<string, unknown> {
+  const list = Array.isArray(raw) ? raw : [];
+  if (!list.some((c) => CONTAINER_WORDS.has(fold(String(c))))) return {};
+  return {
+    note:
+      "Stĺpec space / miestnost / container je Container: priestor, v ktorom prvok leží podľa IFC súboru. " +
+      "Priestor, ktorý prvok referencuje alebo ohraničuje, dajú stĺpce space_referenced a space_boundary.",
   };
 }
 
@@ -220,7 +292,81 @@ export function parseListViewInput(input: Record<string, unknown>): ListViewWire
     if (!(LIST_EXPORT_FORMATS as readonly unknown[]).includes(input.export)) throw new StyleInputError("export je csv, xlsx alebo pdf.");
     v.x = input.export as ListExportFormat;
   }
+  if (input.visible_only !== undefined) {
+    if (typeof input.visible_only !== "boolean") throw new StyleInputError("visible_only je true alebo false.");
+    v.vo = input.visible_only;
+  }
+  if (input.column_widths !== undefined) v.cw = parseColumnWidths(input.column_widths);
+  if (input.highlight !== undefined) v.hl = parseHighlight(input.highlight);
   return Object.keys(v).length ? v : undefined;
+}
+
+const isObject = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x);
+
+function requiredColumn(raw: unknown, where: string): ListColumnWire {
+  if (typeof raw !== "string" || !raw.trim()) throw new StyleInputError(`${where}: stĺpec ako v columns (napr. "Name" alebo "Qto_X.NetVolume").`);
+  return parseListColumn(raw);
+}
+
+function parseColumnWidths(raw: unknown): NonNullable<ListViewWire["cw"]> {
+  if (raw === "fit" || raw === "auto") return raw;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > LIST_MAX_WIDTH_COLUMNS) {
+    throw new StyleInputError(`column_widths je fit, auto alebo neprázdne pole {column, width} (najviac ${LIST_MAX_WIDTH_COLUMNS}).`);
+  }
+  return raw.map((item, i) => {
+    if (!isObject(item)) throw new StyleInputError(`column_widths[${i}] je {column, width}.`);
+    const w = item.width;
+    const ok = w === "fit" || w === "auto" || (typeof w === "number" && Number.isFinite(w) && w >= LIST_MIN_COLUMN_WIDTH && w <= LIST_MAX_COLUMN_WIDTH);
+    if (!ok) throw new StyleInputError(`column_widths[${i}].width je ${LIST_MIN_COLUMN_WIDTH} až ${LIST_MAX_COLUMN_WIDTH} (px), fit alebo auto.`);
+    return { c: requiredColumn(item.column, `column_widths[${i}].column`), w: w as ListColumnWidth };
+  });
+}
+
+function cellValue(raw: unknown, where: string): ListCellValue {
+  if ((typeof raw === "string" && raw.length <= 200) || (typeof raw === "number" && Number.isFinite(raw))) return raw;
+  throw new StyleInputError(`${where}: hodnota je text (do 200 znakov) alebo číslo.`);
+}
+
+/** `highlight` -> `ListHighlightWire`; null alebo prázdny reťazec zruší zvýraznenie. */
+function parseHighlight(raw: unknown): ListHighlightWire | null {
+  if (raw === null || raw === "") return null;
+  if (!isObject(raw)) throw new StyleInputError("highlight je objekt {rows, columns, cells, sum}, alebo null na zrušenie.");
+  const known = ["rows", "columns", "cells", "sum"];
+  const unknown = Object.keys(raw).filter((k) => !known.includes(k));
+  if (unknown.length) throw new StyleInputError(`highlight: neznáme pole ${unknown.join(", ")} (rows, columns, cells, sum).`);
+  const h: ListHighlightWire = {};
+  if (raw.rows !== undefined) {
+    const rows = raw.rows;
+    if (!isObject(rows) || !Array.isArray(rows.values) || rows.values.length === 0 || rows.values.length > LIST_MAX_HIGHLIGHT_ITEMS) {
+      throw new StyleInputError(`highlight.rows je {column, values} s 1 až ${LIST_MAX_HIGHLIGHT_ITEMS} hodnotami.`);
+    }
+    h.r = { c: requiredColumn(rows.column, "highlight.rows.column"), v: rows.values.map((x) => cellValue(x, "highlight.rows.values")) };
+  }
+  if (raw.columns !== undefined) {
+    if (!Array.isArray(raw.columns) || raw.columns.length === 0 || raw.columns.length > MAX_VIEW_COLUMNS) {
+      throw new StyleInputError(`highlight.columns je pole 1 až ${MAX_VIEW_COLUMNS} stĺpcov.`);
+    }
+    h.c = raw.columns.map((c) => requiredColumn(c, "highlight.columns"));
+  }
+  if (raw.cells !== undefined) {
+    if (!Array.isArray(raw.cells) || raw.cells.length === 0 || raw.cells.length > LIST_MAX_HIGHLIGHT_ITEMS) {
+      throw new StyleInputError(`highlight.cells je pole 1 až ${LIST_MAX_HIGHLIGHT_ITEMS} buniek {column, row: {column, value}}.`);
+    }
+    h.x = raw.cells.map((cell) => {
+      if (!isObject(cell) || !isObject(cell.row)) throw new StyleInputError("highlight.cells: {column, row: {column, value}}.");
+      return {
+        c: requiredColumn(cell.column, "highlight.cells.column"),
+        r: { c: requiredColumn(cell.row.column, "highlight.cells.row.column"), v: cellValue(cell.row.value, "highlight.cells.row.value") },
+      };
+    });
+  }
+  if (raw.sum !== undefined && raw.sum !== false) {
+    if (raw.sum === true) h.s = true;
+    else if (Array.isArray(raw.sum) && raw.sum.length > 0 && raw.sum.length <= MAX_VIEW_COLUMNS) h.s = raw.sum.map((c) => requiredColumn(c, "highlight.sum"));
+    else throw new StyleInputError(`highlight.sum je true alebo pole 1 až ${MAX_VIEW_COLUMNS} stĺpcov.`);
+  }
+  if (Object.keys(h).length === 0) throw new StyleInputError("highlight je prázdny: zadaj rows, columns, cells alebo sum, alebo null na zrušenie.");
+  return h;
 }
 
 const colName = (c: ListColumnWire) => (c.p ? `${c.p}.${c.k}` : c.k || c.s);
@@ -234,6 +380,20 @@ function viewSummary(v: ListViewWire): Record<string, unknown> {
     ...(v.q !== undefined ? { search: v.q } : {}),
     ...(v.cb !== undefined ? { color_by: v.cb ? colName(v.cb) : null } : {}),
     ...(v.x ? { export: v.x } : {}),
+    ...(v.vo !== undefined ? { visible_only: v.vo } : {}),
+    ...(v.cw !== undefined
+      ? { column_widths: v.cw === "fit" || v.cw === "auto" ? v.cw : v.cw.map((w) => ({ column: colName(w.c), width: w.w })) }
+      : {}),
+    ...(v.hl !== undefined ? { highlight: v.hl ? highlightSummary(v.hl) : null } : {}),
+  };
+}
+
+function highlightSummary(h: ListHighlightWire): Record<string, unknown> {
+  return {
+    ...(h.r ? { rows: { column: colName(h.r.c), values: h.r.v.length } } : {}),
+    ...(h.c ? { columns: h.c.map(colName) } : {}),
+    ...(h.x ? { cells: h.x.length } : {}),
+    ...(h.s !== undefined ? { sum: h.s === true ? true : h.s.map(colName) } : {}),
   };
 }
 
@@ -307,7 +467,7 @@ async function execListUpdate(
   if (!hasFilter && !view && !edit) {
     throw new StyleInputError(
       "action=update potrebuje filter (storey, property/value...), add/remove_columns, add/remove_types, remove_filter " +
-        "alebo maximize, sort_by, sum, group_by, search, color_by, export.",
+        "alebo maximize, sort_by, sum, group_by, search, color_by, export, visible_only, column_widths, highlight.",
     );
   }
   push({
@@ -320,6 +480,7 @@ async function execListUpdate(
     updated: "lists",
     ...(info ? { added_filter: info } : {}),
     ...(edit ? { edit: editSummary(edit) } : {}),
+    ...columnNotes(input.add_columns),
     ...(view ? { view: viewSummary(view) } : {}),
     next_step: [
       hasFilter || edit

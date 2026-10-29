@@ -18,6 +18,25 @@ const SPATIAL = new Map([
   ["miestnost", "Container"],
   ["building", "Building"],
   ["site", "Site"],
+  // Vzťahy z IFC súboru (D-171, #277): bunka nesie názvy druhej strany, viac hodnôt oddelených ", ".
+  ["referenced", "Referenced"],
+  ["space_referenced", "Referenced"],
+  ["rel_referenced_in_spatial_structure", "Referenced"],
+  ["relation.rel_referenced_in_spatial_structure", "Referenced"],
+  ["boundary", "Boundary"],
+  ["space_boundary", "Boundary"],
+  ["rel_space_boundary", "Boundary"],
+  ["relation.rel_space_boundary", "Boundary"],
+  ["aggregate", "Aggregate"],
+  ["rel_aggregates", "Aggregate"],
+  ["relation.rel_aggregates", "Aggregate"],
+]);
+/** Popis stĺpcov zo vzťahov (inak by hlavička bola len "Referenced"). */
+const SPATIAL_LABELS = new Map([
+  ["Storey", "Podlažie"],
+  ["Referenced", "Priestor (referenced)"],
+  ["Boundary", "Hranica priestoru"],
+  ["Aggregate", "Zostava (aggregate)"],
 ]);
 /** Meno a popis ako stĺpce builderu panela Lists (inak má stĺpec prázdnu hlavičku aj v exporte). */
 const SIMPLE = new Map<string, [ListColumnWire["s"], string]>([
@@ -35,13 +54,13 @@ export function parseListColumn(raw: string): ListColumnWire {
   const attr = ATTRIBUTES.get(key);
   if (attr) return { s: "attribute", k: attr };
   const level = SPATIAL.get(key);
-  if (level) return { s: "spatial", k: level, ...(level === "Storey" ? { l: "Podlažie" } : {}) };
+  if (level) return { s: "spatial", k: level, ...(SPATIAL_LABELS.has(level) ? { l: SPATIAL_LABELS.get(level) } : {}) };
   const simple = SIMPLE.get(key);
   if (simple) return { s: simple[0], k: simple[1], l: simple[1] };
   const m = /^([A-Za-z0-9_]+)\.([^.]+)$/.exec(text);
   if (m) return { s: /^Qto_/i.test(m[1]) ? "quantity" : "property", p: m[1], k: m[2] };
   throw new StyleInputError(
     `Stĺpec '${raw}' nepoznám. Použi atribút (Name, GlobalId, Description, ObjectType, Tag, PredefinedType), ` +
-      "storey / space / building, material, classification, model alebo Pset.Vlastnosť / Qto_X.Množstvo.",
+      "storey / space / building, space_referenced / space_boundary / aggregate (vzťahy), material, classification, model alebo Pset.Vlastnosť / Qto_X.Množstvo.",
   );
 }

@@ -99,4 +99,77 @@ describe("open_list úpravy zoznamu (D-149)", () => {
     expect(parseListViewInput({ color_by: "" })).toEqual({ cb: null });
     await expect(execListTool("open_list", { ifc_type: "IfcColumn", add_types: ["IfcBeam"] }, () => {})).rejects.toThrow(/action=update/);
   });
+
+  it("D-171: visible_only, column_widths a highlight sa preložia a overia", async () => {
+    expect(parseListViewInput({ visible_only: false })).toEqual({ vo: false });
+    expect(() => parseListViewInput({ visible_only: "nie" })).toThrow(StyleInputError);
+    expect(parseListViewInput({ column_widths: "fit" })).toEqual({ cw: "fit" });
+    expect(parseListViewInput({ column_widths: [{ column: VOL, width: 300 }, { column: "name", width: "auto" }] })).toEqual({
+      cw: [
+        { c: { s: "quantity", p: "Qto_ColumnBaseQuantities", k: "NetVolume" }, w: 300 },
+        { c: { s: "attribute", k: "Name" }, w: "auto" },
+      ],
+    });
+    for (const bad of [10, 5000, "wide", null]) {
+      expect(() => parseListViewInput({ column_widths: [{ column: "name", width: bad }] })).toThrow(StyleInputError);
+    }
+    expect(() => parseListViewInput({ column_widths: [] })).toThrow(StyleInputError);
+    expect(() => parseListViewInput({ column_widths: Array.from({ length: 41 }, () => ({ column: "name", width: 100 })) })).toThrow(/najviac 40/);
+
+    expect(parseListViewInput({ highlight: null })).toEqual({ hl: null });
+    expect(parseListViewInput({ highlight: "" })).toEqual({ hl: null });
+    expect(
+      parseListViewInput({
+        highlight: {
+          rows: { column: "name", values: ["D1", 2] },
+          columns: [VOL],
+          cells: [{ column: VOL, row: { column: "name", value: "D1" } }],
+          sum: true,
+        },
+      }),
+    ).toEqual({
+      hl: {
+        r: { c: { s: "attribute", k: "Name" }, v: ["D1", 2] },
+        c: [{ s: "quantity", p: "Qto_ColumnBaseQuantities", k: "NetVolume" }],
+        x: [{ c: { s: "quantity", p: "Qto_ColumnBaseQuantities", k: "NetVolume" }, r: { c: { s: "attribute", k: "Name" }, v: "D1" } }],
+        s: true,
+      },
+    });
+    expect(parseListViewInput({ highlight: { sum: [VOL] } })?.hl?.s).toHaveLength(1);
+    expect(() => parseListViewInput({ highlight: {} })).toThrow(/prázdny/);
+    expect(() => parseListViewInput({ highlight: { farba: "red" } })).toThrow(/neznáme pole/);
+    expect(() => parseListViewInput({ highlight: { rows: { column: "name", values: [] } } })).toThrow(StyleInputError);
+    expect(() => parseListViewInput({ highlight: { rows: { column: "name", values: Array.from({ length: 201 }, (_, i) => i) } } })).toThrow(StyleInputError);
+    expect(() => parseListViewInput({ highlight: { columns: Array.from({ length: 9 }, () => "name") } })).toThrow(StyleInputError);
+    expect(() => parseListViewInput({ highlight: { cells: [{ column: "name", row: { column: "name" } }] } })).toThrow(StyleInputError);
+    expect(() => parseListViewInput({ highlight: { sum: "all" } })).toThrow(StyleInputError);
+
+    const actions: AskAction[] = [];
+    const out = await execListTool(
+      "open_list",
+      { action: "update", visible_only: false, column_widths: "fit", highlight: { sum: true } },
+      (a) => actions.push(a),
+    );
+    expect(bridge(actions[0])).toEqual({
+      type: "LIST_UPDATE",
+      groups: [],
+      view: { visibleOnly: false, columnWidths: "fit", highlight: { sum: true } },
+    });
+    expect(out.view).toEqual({ visible_only: false, column_widths: "fit", highlight: { sum: true } });
+
+    actions.length = 0;
+    await execListTool("open_list", { action: "update", highlight: null, column_widths: [{ column: "name", width: 200 }] }, (a) => actions.push(a));
+    expect(bridge(actions[0]).view).toEqual({
+      highlight: null,
+      columnWidths: [{ column: { source: "attribute", propertyName: "Name" }, width: 200 }],
+    });
+  });
+
+  it("D-171: stĺpec 'space' ostáva Container, ale odpoveď povie o vzťahových stĺpcoch", async () => {
+    const out = await execListTool("open_list", { action: "update", add_columns: ["space", "space_referenced"] }, () => {});
+    expect(String(out.note)).toMatch(/space_referenced/);
+    expect(out.edit).toEqual({ add_columns: ["Container", "Referenced"] });
+    const none = await execListTool("open_list", { action: "update", add_columns: ["space_boundary"] }, () => {});
+    expect(none.note).toBeUndefined();
+  });
 });

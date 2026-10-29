@@ -42,6 +42,28 @@ export interface ListColumnWire {
   l?: string;
 }
 
+/** Hodnota bunky, podľa ktorej sa hľadajú riadky na zvýraznenie (D-171). */
+export type ListCellValue = string | number;
+
+/** Šírka stĺpca (D-171): px 56 až 800, `fit` = podľa obsahu, `auto` = predvolená. */
+export type ListColumnWidth = number | "fit" | "auto";
+export const LIST_MIN_COLUMN_WIDTH = 56;
+export const LIST_MAX_COLUMN_WIDTH = 800;
+/** `fit` / `auto` pre všetky stĺpce, alebo po jednom. */
+export type ListColumnWidthsWire = "fit" | "auto" | Array<{ c: ListColumnWire; w: ListColumnWidth }>;
+
+/** Zvýraznenie v tabuľke (D-171, #274): riadky, stĺpce, bunky a riadok súčtov; všetko voliteľné. */
+export interface ListHighlightWire {
+  /** Riadky, ktorých bunka v stĺpci `c` sa rovná niektorej hodnote `v`. */
+  r?: { c: ListColumnWire; v: ListCellValue[] };
+  /** Celé stĺpce. */
+  c?: ListColumnWire[];
+  /** Bunka v stĺpci `c` v riadkoch, kde stĺpec `r.c` sa rovná `r.v`. */
+  x?: Array<{ c: ListColumnWire; r: { c: ListColumnWire; v: ListCellValue } }>;
+  /** Riadok súčtov: `true` všetky, alebo len súčty týchto stĺpcov. */
+  s?: true | ListColumnWire[];
+}
+
 /** Pohľad na tabuľku (D-149); nezadané sa nemení, prázdne pole alebo text zruší. */
 export interface ListViewWire {
   /** Panel Lists na celú plochu viewera (true) alebo späť (false). */
@@ -58,6 +80,12 @@ export interface ListViewWire {
   cb?: ListColumnWire | null;
   /** Formát, ktorý viewer ponúkne zvýrazneným tlačidlom na stiahnutie (klik je na používateľovi). */
   x?: ListExportFormat;
+  /** Filter tabuľky "len viditeľné v 3D" (D-171, #276): false ukáže všetky riadky aj pri izolácii. */
+  vo?: boolean;
+  /** Šírky stĺpcov (D-171, #275). */
+  cw?: ListColumnWidthsWire;
+  /** Zvýraznenie (D-171, #274); null = zrušiť. */
+  hl?: ListHighlightWire | null;
 }
 
 export const LIST_EXPORT_FORMATS = ["csv", "xlsx", "pdf"] as const;
@@ -97,11 +125,39 @@ export interface ListWire {
 const MAX_COLUMNS = 40;
 const MAX_GROUPS = 8;
 const MAX_VIEW_COLUMNS = 8;
+export const LIST_MAX_WIDTH_COLUMNS = 40;
+export const LIST_MAX_HIGHLIGHT_ITEMS = 200;
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 function isColumn(col: unknown): col is ListColumnWire {
   if (!isObj(col) || !(LIST_COLUMN_SOURCES as readonly unknown[]).includes(col.s) || typeof col.k !== "string") return false;
   return !((col.s === "property" || col.s === "quantity") && (typeof col.p !== "string" || !col.p));
+}
+
+const isCellValue = (v: unknown): v is ListCellValue =>
+  (typeof v === "string" && v.length <= 200) || (typeof v === "number" && Number.isFinite(v));
+
+function isWidth(w: unknown): w is ListColumnWidth {
+  return w === "fit" || w === "auto" || (typeof w === "number" && Number.isFinite(w) && w >= LIST_MIN_COLUMN_WIDTH && w <= LIST_MAX_COLUMN_WIDTH);
+}
+
+function isWidths(cw: unknown): cw is ListColumnWidthsWire {
+  if (cw === "fit" || cw === "auto") return true;
+  return Array.isArray(cw) && cw.length > 0 && cw.length <= LIST_MAX_WIDTH_COLUMNS && cw.every((x) => isObj(x) && isColumn(x.c) && isWidth(x.w));
+}
+
+function isHighlight(h: unknown): h is ListHighlightWire {
+  if (!isObj(h)) return false;
+  const { r, c, x, s } = h;
+  if (r !== undefined) {
+    if (!isObj(r) || !isColumn(r.c) || !Array.isArray(r.v) || r.v.length === 0 || r.v.length > LIST_MAX_HIGHLIGHT_ITEMS || !r.v.every(isCellValue)) return false;
+  }
+  if (c !== undefined && (!Array.isArray(c) || c.length > MAX_VIEW_COLUMNS || !c.every(isColumn))) return false;
+  if (x !== undefined) {
+    if (!Array.isArray(x) || x.length > LIST_MAX_HIGHLIGHT_ITEMS) return false;
+    if (!x.every((cell) => isObj(cell) && isColumn(cell.c) && isObj(cell.r) && isColumn(cell.r.c) && isCellValue(cell.r.v))) return false;
+  }
+  return s === undefined || s === true || (Array.isArray(s) && s.length <= MAX_VIEW_COLUMNS && s.every(isColumn));
 }
 
 function isView(v: unknown): v is ListViewWire {
@@ -114,6 +170,9 @@ function isView(v: unknown): v is ListViewWire {
   }
   if (v.cb !== undefined && v.cb !== null && !isColumn(v.cb)) return false;
   if (v.x !== undefined && !(LIST_EXPORT_FORMATS as readonly unknown[]).includes(v.x)) return false;
+  if (v.vo !== undefined && typeof v.vo !== "boolean") return false;
+  if (v.cw !== undefined && !isWidths(v.cw)) return false;
+  if (v.hl !== undefined && v.hl !== null && !isHighlight(v.hl)) return false;
   return v.q === undefined || (typeof v.q === "string" && v.q.length <= 200);
 }
 
@@ -200,6 +259,13 @@ function editMessage(e: ListEditWire): Record<string, unknown> {
   };
 }
 
+const highlightMessage = (h: ListHighlightWire): Record<string, unknown> => ({
+  ...(h.r ? { rows: { column: columnRef(h.r.c), values: h.r.v } } : {}),
+  ...(h.c ? { columns: h.c.map(columnRef) } : {}),
+  ...(h.x ? { cells: h.x.map((x) => ({ column: columnRef(x.c), row: { column: columnRef(x.r.c), value: x.r.v } })) } : {}),
+  ...(h.s !== undefined ? { sum: h.s === true ? true : h.s.map(columnRef) } : {}),
+});
+
 /** `view` správy pre fork (`aim/aimListViewPlan.ts`): stĺpce menom, nie id. */
 function viewMessage(v: ListViewWire): Record<string, unknown> {
   return {
@@ -210,5 +276,8 @@ function viewMessage(v: ListViewWire): Record<string, unknown> {
     ...(v.q !== undefined ? { search: v.q } : {}),
     ...(v.cb !== undefined ? { colorBy: v.cb && columnRef(v.cb) } : {}),
     ...(v.x ? { export: v.x } : {}),
+    ...(v.vo !== undefined ? { visibleOnly: v.vo } : {}),
+    ...(v.cw !== undefined ? { columnWidths: v.cw === "fit" || v.cw === "auto" ? v.cw : v.cw.map((w) => ({ column: columnRef(w.c), width: w.w })) } : {}),
+    ...(v.hl !== undefined ? { highlight: v.hl && highlightMessage(v.hl) } : {}),
   };
 }
