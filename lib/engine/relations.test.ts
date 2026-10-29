@@ -142,3 +142,44 @@ describe("ifc_relations (D-097)", () => {
     );
   });
 });
+
+describe("ifc_relations: priestorové väzby contained a referenced (D-167, #297)", () => {
+  afterEach(() => clearEngineCache());
+
+  /** Odvodené geometriou (D-080): VZT prvok je v IfcSpace z iného modelu, v súbore tá hrana nie je. */
+  const derived = (g: string) =>
+    g === guid("SPC")
+      ? [{ direction: "forward" as const, global_id: guid("DS1"), ifc_type: "IfcDuctSegment", name: "Potrubie 1", role: "inside" }]
+      : g === guid("DS1")
+        ? [{ direction: "inverse" as const, global_id: guid("SPC"), ifc_type: "IfcSpace", name: "2.01", role: "inside" }]
+        : [];
+  const withDerived = async (input: Record<string, unknown>) => {
+    const res = await execEngineTool("ifc_relations", input, { ...deps, spatialLinks: async (g) => derived(g) });
+    return JSON.parse(res.content);
+  };
+
+  it("hrana zo súboru nesie kind (contained | referenced)", async () => {
+    const r = await run({ target: guid("DS2"), direction: "inverse", rel_types: ["IfcRelReferencedInSpatialStructure"] });
+    expect(r.json.items).toMatchObject([{ rel_type: "IfcRelReferencedInSpatialStructure", kind: "referenced", global_id: guid("SPC") }]);
+    const c = await run({ target: guid("DS1"), direction: "inverse", rel_types: ["IfcRelContainedInSpatialStructure"] });
+    expect(c.json.items).toMatchObject([{ kind: "contained", global_id: guid("ST1") }]);
+  });
+
+  it("miestnosť vráti aj odvodené referenced prvky, s kind a derived, bez duplicity so súborom", async () => {
+    const r = await withDerived({ target: guid("SPC"), direction: "forward", rel_types: ["IfcRelReferencedInSpatialStructure"] });
+    expect(r.items.map((i: { global_id: string }) => i.global_id).sort()).toEqual([guid("DS1"), guid("DS2")].sort());
+    expect(r.items.find((i: { global_id: string }) => i.global_id === guid("DS1"))).toMatchObject({ kind: "referenced", derived: true, role: "inside" });
+    expect(r.items.find((i: { global_id: string }) => i.global_id === guid("DS2")).derived).toBeUndefined();
+    const dup = await withDerived({ target: guid("DS2"), direction: "inverse", rel_types: ["IfcRelReferencedInSpatialStructure"] });
+    expect(dup.total).toBe(1);
+  });
+
+  it("prvok vráti miestnosť cez odvodenú väzbu; bez spatialLinks sa nič nepridá; filter rel_types ju vynechá", async () => {
+    const r = await withDerived({ target: guid("DS1"), direction: "inverse", rel_types: ["IfcRelReferencedInSpatialStructure"] });
+    expect(r.items).toMatchObject([{ global_id: guid("SPC"), kind: "referenced", derived: true }]);
+    const plain = await run({ target: guid("DS1"), direction: "inverse", rel_types: ["IfcRelReferencedInSpatialStructure"] });
+    expect(plain.json.total).toBe(0);
+    const other = await withDerived({ target: guid("DS1"), direction: "inverse", rel_types: ["IfcRelContainedInSpatialStructure"] });
+    expect(other.items.every((i: { derived?: boolean }) => !i.derived)).toBe(true);
+  });
+});

@@ -36,6 +36,7 @@ const EXTRA = `#100= IFCZONE('${guid("ZN1")}',$,'Najomne priestory',$,$,$);
 #154= IFCRELCONNECTSPORTS('${guid("CP2")}',$,$,$,#140,#141,$);
 #155= IFCRELCONNECTSPORTS('${guid("CP3")}',$,$,$,#142,#143,$);
 #156= IFCRELCONNECTSPORTS('${guid("CP4")}',$,$,$,#144,#145,$);
+#160= IFCRELREFERENCEDINSPATIALSTRUCTURE('${guid("RF1")}',$,$,$,(#130),#52);
 `;
 
 export const MINI_RELATIONS = MINI_BUILDING.replace(/ENDSEC;\nEND-ISO-10303-21;/, `${EXTRA}ENDSEC;\nEND-ISO-10303-21;`);

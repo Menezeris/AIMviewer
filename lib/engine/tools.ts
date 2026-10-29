@@ -46,6 +46,15 @@ const BULK_PAGE = 1000;
 const NAME_RE = /^[A-Za-z0-9_]+$/;
 export const IFC_GUID_RE = /^[0-9A-Za-z_$]{22}$/;
 
+/** Druhý koniec odvodenej väzby prvok <-> priestor (D-167); `direction` je z pohľadu cieľa ako v `ifc_relations`. */
+export interface SpatialLink {
+  direction: "forward" | "inverse";
+  global_id: string;
+  ifc_type: string;
+  name: string | null;
+  role?: string;
+}
+
 export interface EngineDeps {
   sources?: () => EngineModelSource[];
   lookup: GuidLookup;
@@ -58,6 +67,8 @@ export interface EngineDeps {
   ids?: IdsStore;
   /** GUID prvku -> názov systému z grafu AIM (D-164, `clash group_by=system`). */
   systems?: (guids: string[]) => Promise<Map<string, string>>;
+  /** Odvodené IfcRelReferencedInSpatialStructure z grafu AIM (D-167); bez nich `ifc_relations` vracia len hrany zo súboru. */
+  spatialLinks?: (guid: string) => Promise<SpatialLink[]>;
   /** Testy, behy a stav kolízií z DB (D-164); bez nich `clash save`, `compare`, `review` a `save=true` nejdú. */
   clash?: ClashStore;
   /** BCF vrstva pre `clash bcf create=true` (D-164, D-099). */
