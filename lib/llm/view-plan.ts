@@ -10,6 +10,8 @@ import {
   viewModeOp,
   VIEW_MODES,
   PANEL_ACTIONS,
+  PANEL_SIDES,
+  PANEL_WIDTH_PCT,
   panelsOp,
   planPositionOp,
   underlays3dOp,
@@ -21,6 +23,8 @@ import {
   PANEL_ZOOM_RANGE,
   PANEL_ZOOM_STEPS,
   type PanelAction,
+  type PanelLayoutRequest,
+  type PanelSide,
   type PanelsRequest,
   type PanelScrollTarget,
   type PanelZoom,
@@ -207,25 +211,62 @@ export function planViewMode(
   };
 }
 
+/** `panel_layout` (D-172, #320): {panel, width_pct?, side?}, aspoň jedno z posledných dvoch. */
+function panelLayoutOf(raw: unknown): PanelLayoutRequest {
+  const hint = `panel_layout = {panel, width_pct: ${PANEL_WIDTH_PCT.min} až ${PANEL_WIDTH_PCT.max}, side: ${PANEL_SIDES.join(" | ")}} (aspoň jedno z width_pct a side).`;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ViewInputError(hint);
+  const o = raw as Record<string, unknown>;
+  if (typeof o.panel !== "string" || !PANEL_NAME.test(o.panel)) throw new ViewInputError("panel_layout.panel: meno panela (get_viewer_state, panels).");
+  if (o.width_pct === undefined && o.side === undefined) throw new ViewInputError(hint);
+  const out: PanelLayoutRequest = { panel: o.panel };
+  if (o.width_pct !== undefined) {
+    const w = o.width_pct;
+    if (typeof w !== "number" || !Number.isFinite(w) || w < PANEL_WIDTH_PCT.min || w > PANEL_WIDTH_PCT.max) {
+      throw new ViewInputError(`panel_layout.width_pct: číslo ${PANEL_WIDTH_PCT.min} až ${PANEL_WIDTH_PCT.max} (% šírky okna viewera).`);
+    }
+    out.widthPct = w;
+  }
+  if (o.side !== undefined) {
+    if (typeof o.side !== "string" || !(PANEL_SIDES as readonly string[]).includes(o.side)) throw new ViewInputError(`panel_layout.side: ${PANEL_SIDES.join(", ")}.`);
+    out.side = o.side as PanelSide;
+  }
+  return out;
+}
+
 /**
  * Panely viewera (D-127, D-150): `panels` = {lens: "close", bcf: "open", ...}, `all` len "close". Meno je id panela
  * z registra forku; tvar mena kontroluje host, existenciu viewer (neznáme nahlási v `APPLIED`, zoznam je vo
- * `view_state.panels`). Bez `panels` null; chybný vstup = ViewInputError (model ho opraví).
+ * `view_state.panels`). D-172 (#320): `panel_layout` = {panel, width_pct?, side?} nastaví šírku a stranu panela v tej
+ * istej správe (`panels` je potom voliteľné, aspoň jedno z dvoch). Bez oboch null; chybný vstup = ViewInputError (model ho opraví).
  */
-export function planPanels(input: Record<string, unknown>): { op: string; label: string; result: { panels: PanelsRequest } } | null {
+export function planPanels(input: Record<string, unknown>): { op: string; label: string; result: { panels?: PanelsRequest; panel_layout?: { panel: string; width_pct?: number; side?: PanelSide } } } | null {
   const raw = input.panels;
-  if (raw === undefined || raw === null) return null;
-  if (typeof raw !== "object" || Array.isArray(raw)) throw new ViewInputError("panels = {<panel>|all: open|close|toggle}, mená panelov vráti get_viewer_state (panels).");
+  const rawLayout = input.panel_layout;
+  const hasPanels = raw !== undefined && raw !== null;
+  const hasLayout = rawLayout !== undefined && rawLayout !== null;
+  if (!hasPanels && !hasLayout) return null;
   const out: PanelsRequest = {};
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (!PANEL_NAME.test(k)) throw new ViewInputError(`panels: neplatné meno panela '${k}' (panely a skratky vráti get_viewer_state, napr. lens, properties, bcf, lists, model_tree).`);
-    if (!(PANEL_ACTIONS as readonly unknown[]).includes(v)) throw new ViewInputError(`panels.${k}: open, close alebo toggle.`);
-    if (k === "all" && v !== "close") throw new ViewInputError("panels.all: len close (zatvorí všetky panely, okrem tých, ktoré správa otvára).");
-    out[k] = v as PanelAction;
+  if (hasPanels) {
+    if (typeof raw !== "object" || Array.isArray(raw)) throw new ViewInputError("panels = {<panel>|all: open|close|toggle}, mená panelov vráti get_viewer_state (panels).");
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (!PANEL_NAME.test(k)) throw new ViewInputError(`panels: neplatné meno panela '${k}' (panely a skratky vráti get_viewer_state, napr. lens, properties, bcf, lists, model_tree).`);
+      if (!(PANEL_ACTIONS as readonly unknown[]).includes(v)) throw new ViewInputError(`panels.${k}: open, close alebo toggle.`);
+      if (k === "all" && v !== "close") throw new ViewInputError("panels.all: len close (zatvorí všetky panely, okrem tých, ktoré správa otvára).");
+      out[k] = v as PanelAction;
+    }
+    if (Object.keys(out).length === 0 && !hasLayout) throw new ViewInputError("panels: aspoň jeden panel.");
   }
-  if (Object.keys(out).length === 0) throw new ViewInputError("panels: aspoň jeden panel.");
-  const label = Object.entries(out).map(([k, v]) => `${k} ${v}`).join(", ");
-  return { op: panelsOp(out), label: `Panely: ${label}`, result: { panels: out } };
+  const layout = hasLayout ? panelLayoutOf(rawLayout) : undefined;
+  const parts = [
+    ...Object.entries(out).map(([k, v]) => `${k} ${v}`),
+    ...(layout ? [`${layout.panel}${layout.widthPct !== undefined ? ` šírka ${layout.widthPct} %` : ""}${layout.side ? ` strana ${layout.side}` : ""}`] : []),
+  ];
+  const resultLayout = layout ? { panel: layout.panel, ...(layout.widthPct !== undefined ? { width_pct: layout.widthPct } : {}), ...(layout.side ? { side: layout.side } : {}) } : undefined;
+  return {
+    op: panelsOp(Object.keys(out).length > 0 ? out : undefined, layout),
+    label: `Panely: ${parts.join(", ")}`,
+    result: { ...(Object.keys(out).length > 0 ? { panels: out } : {}), ...(resultLayout ? { panel_layout: resultLayout } : {}) },
+  };
 }
 
 /** Panel_scroll ako reťazec (D-146, panel vlastností) alebo objekt {panel, to | item | percent} (D-150). */

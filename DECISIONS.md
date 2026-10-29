@@ -7782,3 +7782,24 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 **Zavrhnuté:** nový tool na zvýraznenie alebo šírky (D-114); zrušenie izolácie pri `open_list` (zničí pohľad používateľa); vypnutie filtra viditeľnosti natrvalo (iný zoznam by sa správal inak ako tabuľka v builderi); `column_widths` ako single `column_width` z #275 (pole pokryje jeden aj viac stĺpcov).
 
 **Po zlúčení:** najprv zlúčiť fork PR Menezeris/ifc-lite#172 do balíka, potom tento PR (D-116). Evaly (D-057) nepobežali (cloud session bez kľúčov); otázky pribudli do `eval/questions.json` bez overenej hodnoty.
+
+
+### D-172 - `set_view_mode`: pomer dlaždíc (`ratio`, `sizes`) a šírka a strana panela (`panel_layout`) (#299, #320, Refs #298)
+
+**Dátum:** 2026-10-29 · **Issue:** #299, #320 (a zvyšok #298) · **Nadväzuje na:** D-114, D-127, D-157 · **Viewer:** fork PR Menezeris/ifc-lite#174 (špecifikácia v `docs/architecture/evidence/aim-299-320-298-view-layout/README.md` tam)
+
+**Kontext:** `layout` poznal len pevné delenie (polovice, tretiny) a panely sa z chatu dali len otvoriť, zatvoriť, zoomovať a posúvať. "Väčšia pravá dlaždica s výkresom" a "panel vlastností širší, ťahaný doľava" sa hlasom nedali. Fork PR #174 pridáva pomer dlaždíc, ťahateľné čiary a nastavenie šírky a strany panela cez existujúce bridge správy (D-098).
+
+**Najbližšie tooly (D-114):** `set_view_mode` (rozširujeme: `layout`, `panels`), `open_list` (šírky stĺpcov v paneli Lists, iná vec), `calibrate_underlay` (podklady, nesúvisí). Nový tool netreba.
+
+**Rozhodnutie (parametre existujúceho toolu):**
+1. **Pomer dlaždíc (#299):** k `layout` voliteľne `ratio` (0 < r < 1, podiel prvej = veľkej dlaždice; len `split_h`, `split_v`, `three_left/right/top/bottom`) ALEBO `sizes` (2 hodnoty pre tieto, 3 pre `three_h`, `three_v`; `grid4` a `single` pomer nemajú). Naraz len jedno, poradie podľa `tiles`. Wire: pole `ratio` / `sizes` v `tab:layout:<base64url JSON>` (`VIEW_TABS`). Host validuje počet a rozsah rovnako ako viewer (`checkTileSizes` v `lib/viewer-tabs.ts`, rovnaká funkcia pri plánovaní aj pri čítaní wire) a zlý vstup odmietne s jasnou chybou. Minimum 10 % na dlaždicu drží viewer (zdvihne a povie v `APPLIED.issues`); host to len upozorní v `warning`. Čítanie: `get_viewer_state` `layout.sizes`.
+2. **Panely (#320):** `panel_layout` `{panel, width_pct 5 až 90, side left|right|bottom|free}` (aspoň jedno z posledných dvoch); `panels` je potom voliteľné, ale aspoň jedno z `panels` / `panel_layout`. Posiela sa v tej istej správe `SET_PANELS` (`panel_layout`), aby sa neotvorený panel najprv otvoril. Wire: kľúče `+panel`, `+w`, `+s` v existujúcom op `panels` (predpona `+` nie je platné meno panela, takže sa nepomiešajú; samostatný op by rozdelil správu). Správanie podľa `panels.<meno>.where` (pravý stĺpec 14 až 60 % celého stĺpca, plávajúce okno, pripnutie, spodný pás a hierarchia bez zmeny) je v opise toolu podľa špecifikácie viewera. Čítanie: `get_viewer_state` `panels.<meno>` a `panels.right_width_pct`.
+3. **Kompatibilita so starším viewerom:** bez `ratio` / `sizes` / `panel_layout` sa wire nemení ani o bajt (testy). Starší viewer nové polia zahodí alebo ohlási neplatnú správu v `APPLIED.issues`; nič sa nepokazí a opis to hovorí.
+4. **#298 zvyšok:** `RESET_COLORS` po PR #174 ruší farby, FOCUS aj izoláciu (predtým izoláciu nerušil), čo už hovorí opis `style_in_3d` (PR #337). "Zruš farby, nechaj izoláciu" je v moste `CLEAR_FILTER`, ktorý ale tool `style_in_3d` nevie vyslať; do opisu ho preto nedávame (model by volal akciu, ktorá neexistuje). Pamäť preferencií medzi konverzáciami ostáva na Samuela.
+
+**Mimo rozsahu:** výška a pozícia x / y plávajúcich panelov, výška spodného pásu (zatiaľ nikto nepýtal); chyby `panel_zoom` (panel_view.zoom ostane 1.25) a `panel_scroll` ("panel properties nie je otvorený") z #320 sú samostatné chyby viewera.
+
+**Zavrhnuté:** nový tool na rozloženie (D-114); samostatný op `panel_layout` (rozdelil by správu `SET_PANELS`, panel by sa nestihol otvoriť); akcia `style_in_3d` na `CLEAR_FILTER` (nová schopnosť, nežiadaná, bez nej stačí `clear_isolation` a farby cez `colorize`).
+
+**Po zlúčení:** vydať fork balík s PR #174 skôr než AIMviewer (D-116); evaly (D-057) nebežali, cloud session nemá kľúče.

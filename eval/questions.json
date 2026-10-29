@@ -1291,6 +1291,22 @@
       "notes": "#298: len style_in_3d isolate, bez colorize na IfcSpace (farba len na výslovný pokyn). Kontrola ručne v transkripte: žiadny colorize ani reset_colors."
     },
     {
+      "id": "tiles-ratio-right-bigger",
+      "category": "data",
+      "question": "Daj 3D vľavo a výkres 1NP vpravo a zväčši pravú dlaždicu na 70 %.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "#299: set_view_mode layout=split_h, tiles=[3D,1NP], ratio=0.3 (alebo sizes=[0.3,0.7]); podiel prvej dlaždice, nie pravej."
+    },
+    {
+      "id": "panel-wider-left",
+      "category": "data",
+      "question": "Zväčši panel vlastností do šírky 40 % okna.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "#320: set_view_mode panel_layout={panel:properties, width_pct:40}, panels:{properties:open} ak je zatvorený."
+    },
+    {
       "id": "measure-two-widths-keep",
       "category": "data",
       "question": "Ukáž na dverách DD04.07.02 naraz dve kóty šírky: svetlú medzi zárubňami a celkovú so zárubňou.",
