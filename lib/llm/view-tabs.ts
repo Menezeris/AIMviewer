@@ -1,4 +1,4 @@
-import { BOX_MARGIN_RANGE, TILE_COUNTS, TILE_LAYOUTS, sectionBoxAroundOp, tabOp, type TileLayout, type TileWire } from "../viewer-tabs";
+import { BOX_MARGIN_RANGE, MIN_TILE_SHARE, TILE_COUNTS, checkTileSizes, TILE_LAYOUTS, sectionBoxAroundOp, tabOp, type TileLayout, type TileWire } from "../viewer-tabs";
 import { ViewInputError, type ViewPlan } from "./view-plan";
 
 /**
@@ -99,7 +99,7 @@ export function planSectionBox(input: Record<string, unknown>, guids: string[]):
 
 /** Má volanie `set_view_mode` parametre dlaždíc (D-157)? */
 export function hasLayoutParams(input: Record<string, unknown>): boolean {
-  return input.layout !== undefined || input.tiles !== undefined;
+  return input.layout !== undefined || input.tiles !== undefined || input.ratio !== undefined || input.sizes !== undefined;
 }
 
 const EMPTY_TILE = new Set(["none", "-", "prázdna", "prazdna"]);
@@ -127,7 +127,9 @@ export async function planLayout(
   if (raw === undefined) {
     // Len tiles: rozloženie podľa počtu (2 vedľa seba, 3 s veľkou vľavo, 4 = 2x2).
     const auto: Record<number, TileLayout> = { 1: "single", 2: "split_h", 3: "three_left", 4: "grid4" };
-    if (!auto[refs.length]) throw new ViewInputError("tiles: 1 až 4 záložky, alebo zadaj layout.");
+    if (!auto[refs.length]) throw new ViewInputError(
+      input.tiles === undefined ? "ratio a sizes potrebujú layout (aktuálny je v get_viewer_state, layout)." : "tiles: 1 až 4 záložky, alebo zadaj layout.",
+    );
     layout = auto[refs.length];
   } else if (typeof raw === "string" && (TILE_LAYOUTS as readonly string[]).includes(raw)) {
     layout = raw as TileLayout;
@@ -137,6 +139,8 @@ export async function planLayout(
   if (refs.length > TILE_COUNTS[layout]) {
     throw new ViewInputError(`tiles: ${layout} má ${TILE_COUNTS[layout]} ${TILE_COUNTS[layout] === 1 ? "dlaždicu" : "dlaždice"}, zadaných ${refs.length}.`);
   }
+  const sizing = checkTileSizes(layout, input.ratio, input.sizes);
+  if ("error" in sizing) throw new ViewInputError(sizing.error);
   const tiles: TileWire[] = [];
   const shown: (string | null)[] = [];
   for (const r of refs) {
@@ -152,18 +156,25 @@ export async function planLayout(
     tiles.push(floor ? { plan: floor.guid } : view ? { view: view.id } : { tab });
     shown.push(floor ? floor.label : view ? view.name : tab);
   }
-  const wire = { layout, ...(layout !== "single" && tiles.length > 0 ? { tiles } : {}) };
+  const wire = { layout, ...(layout !== "single" && tiles.length > 0 ? { tiles } : {}), ...sizing };
+  const total = sizing.sizes?.reduce((a, b) => a + b, 0);
+  const shares = sizing.ratio !== undefined ? [sizing.ratio, 1 - sizing.ratio] : sizing.sizes?.map((n) => n / total!);
+  const percents = shares?.map((x) => Math.round(x * 1000) / 10);
   return {
     ops: [tabOp("layout", wire)],
-    label: layout === "single" ? "Rozloženie: 1 okno" : `Rozloženie ${layout}${shown.length ? `: ${shown.map((x) => x ?? "prázdna").join(", ")}` : ""}`,
+    label:
+      (layout === "single" ? "Rozloženie: 1 okno" : `Rozloženie ${layout}${shown.length ? `: ${shown.map((x) => x ?? "prázdna").join(", ")}` : ""}`) +
+      (percents ? ` (${percents.join(" / ")} %)` : ""),
     result: {
       ok: true,
       layout,
       tiles: shown,
+      ...(percents ? { sizes_pct: percents, ...(percents.some((x) => x < MIN_TILE_SHARE * 100) ? { warning: `Dlaždica pod ${MIN_TILE_SHARE * 100} % sa zdvihne na ${MIN_TILE_SHARE * 100} % (viewer to nahlási v problémoch).` } : {}) } : {}),
       note:
         "Dlaždice a živú 3D dlaždicu vráti viewer v stave po príkaze (layout, pri pohľade view_id a view). Živé 3D je naraz len jedno " +
         "(jeden 3D canvas): ostatné 3D dlaždice (3D, pohľad) ukazujú snímku, klik ju urobí živou; show_in_3d, style_in_3d, set_section " +
-        "a set_camera pôsobia na živú. Chýbajúce dlaždice doplní viewer otvorenými záložkami.",
+        "a set_camera pôsobia na živú. Chýbajúce dlaždice doplní viewer otvorenými záložkami. " +
+        "Pomer (ratio / sizes) viewer vráti v stave ako layout.sizes (súčet 1); starší viewer ho nepozná a ohlási neplatnú správu.",
     },
   };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseOps } from "../viewer-ops";
+import { opToBridgeMessage, parseOps } from "../viewer-ops";
 import { planCamera } from "./camera-plan";
 import { ViewInputError, planPanels, planPanelScroll, planPanelZoom, planPlanPosition, planSection, planUnderlays3d, planViewMode } from "./view-plan";
 
@@ -130,6 +130,37 @@ describe("panely (D-127)", () => {
     expect(() => planPanels({ panels: { lens: "hide" } })).toThrow(/open, close/);
     expect(() => planPanels({ panels: {} })).toThrow(/aspoň/);
     expect(() => planPanels({ panels: "lens" })).toThrow(ViewInputError);
+  });
+
+  it("panel_layout (D-172, #320): šírka a strana idú v jednej správe SET_PANELS, panels je voliteľné", () => {
+    const both = planPanels({ panels: { properties: "open" }, panel_layout: { panel: "properties", width_pct: 40 } })!;
+    expect(parseOps(both.op)).toEqual([{ op: "panels", panels: { properties: "open" }, panelLayout: { panel: "properties", widthPct: 40 } }]);
+    expect(opToBridgeMessage(parseOps(both.op)[0])).toEqual({
+      type: "SET_PANELS",
+      panels: { properties: "open" },
+      panel_layout: { panel: "properties", width_pct: 40 },
+    });
+    expect(both.result).toEqual({ panels: { properties: "open" }, panel_layout: { panel: "properties", width_pct: 40 } });
+    const sideOnly = planPanels({ panel_layout: { panel: "lens", side: "left" } })!;
+    expect(opToBridgeMessage(parseOps(sideOnly.op)[0])).toEqual({ type: "SET_PANELS", panel_layout: { panel: "lens", side: "left" } });
+    const full = planPanels({ panel_layout: { panel: "bcf", width_pct: 25.5, side: "free" } })!;
+    expect(opToBridgeMessage(parseOps(full.op)[0])).toEqual({ type: "SET_PANELS", panel_layout: { panel: "bcf", width_pct: 25.5, side: "free" } });
+    // Starý tvar správy sa nemení.
+    expect(opToBridgeMessage(parseOps(planPanels({ panels: { lens: "close" } })!.op)[0])).toEqual({ type: "SET_PANELS", panels: { lens: "close" } });
+  });
+
+  it("panel_layout: chybný vstup = chyba, bez šírky aj strany tiež", () => {
+    expect(() => planPanels({ panel_layout: { panel: "properties" } })).toThrow(/aspoň jedno/);
+    expect(() => planPanels({ panel_layout: { width_pct: 40 } })).toThrow(/meno panela/);
+    expect(() => planPanels({ panel_layout: { panel: "bad name!", width_pct: 40 } })).toThrow(/meno panela/);
+    expect(() => planPanels({ panel_layout: { panel: "properties", width_pct: 4 } })).toThrow(/5 až 90/);
+    expect(() => planPanels({ panel_layout: { panel: "properties", width_pct: 91 } })).toThrow(/5 až 90/);
+    expect(() => planPanels({ panel_layout: { panel: "properties", width_pct: "40" } })).toThrow(/5 až 90/);
+    expect(() => planPanels({ panel_layout: { panel: "properties", side: "top" } })).toThrow(/left, right, bottom, free/);
+    expect(() => planPanels({ panel_layout: "properties" })).toThrow(ViewInputError);
+    expect(() => planPanels({ panels: {} })).toThrow(/aspoň/);
+    expect(parseOps("panels:~+panel=properties~+w=95:")).toEqual([]);
+    expect(parseOps("panels:~+w=40:")).toEqual([]);
   });
 });
 

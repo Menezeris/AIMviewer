@@ -117,6 +117,43 @@ describe("dlaždice, op tab:layout (D-157)", () => {
     expect(hasLayoutParams({ tab: "3D" })).toBe(false);
   });
 
+  it("ratio a sizes (D-172, #299): ide na drôt, layout bez nich ostáva nezmenený", async () => {
+    const r = await planLayout({ layout: "split_h", tiles: ["3D", "1NP"], ratio: 0.3 }, floorGuid);
+    expect(bridge(r.ops.join(";"))).toEqual([
+      { type: "VIEW_TABS", action: "layout", layout: "split_h", tiles: [{ tab: "3D" }, { plan: G }], ratio: 0.3 },
+    ]);
+    expect(r.result).toMatchObject({ sizes_pct: [30, 70] });
+    expect(r.label).toContain("30 / 70 %");
+    const three = await planLayout({ layout: "three_h", sizes: [1, 2, 1] }, floorGuid);
+    expect(bridge(three.ops.join(";"))).toEqual([{ type: "VIEW_TABS", action: "layout", layout: "three_h", sizes: [1, 2, 1] }]);
+    expect(three.result).toMatchObject({ sizes_pct: [25, 50, 25] });
+    const big = await planLayout({ layout: "three_right", ratio: 0.7 }, floorGuid);
+    expect(bridge(big.ops.join(";"))[0]).toMatchObject({ layout: "three_right", ratio: 0.7 });
+    // Bez pomeru sa na drôt nič nepridá (starší viewer).
+    expect(bridge((await planLayout({ layout: "split_h" }, floorGuid)).ops.join(";"))).toEqual([{ type: "VIEW_TABS", action: "layout", layout: "split_h" }]);
+    expect((await planLayout({ layout: "split_h", ratio: 0.05 }, floorGuid)).result).toHaveProperty("warning");
+    expect(hasLayoutParams({ ratio: 0.5 })).toBe(true);
+  });
+
+  it("ratio a sizes: zlý počet, rozloženie bez pomeru, ratio mimo rozsahu sa odmietnu", async () => {
+    await expect(planLayout({ layout: "split_h", sizes: [1, 2, 3] }, floorGuid)).rejects.toThrow(/presne 2/);
+    await expect(planLayout({ layout: "three_v", sizes: [1, 1] }, floorGuid)).rejects.toThrow(/presne 3/);
+    await expect(planLayout({ layout: "grid4", ratio: 0.5 }, floorGuid)).rejects.toThrow(/nemá nastaviteľný pomer/);
+    await expect(planLayout({ layout: "single", sizes: [1] }, floorGuid)).rejects.toThrow(/nemá nastaviteľný pomer/);
+    await expect(planLayout({ layout: "three_h", ratio: 0.5 }, floorGuid)).rejects.toThrow(/sizes/);
+    await expect(planLayout({ layout: "split_h", ratio: 1 }, floorGuid)).rejects.toThrow(/ratio/);
+    await expect(planLayout({ layout: "split_h", ratio: 0 }, floorGuid)).rejects.toThrow(/ratio/);
+    await expect(planLayout({ layout: "split_h", ratio: "0.5" }, floorGuid)).rejects.toThrow(/ratio/);
+    await expect(planLayout({ layout: "split_h", sizes: [1, -1] }, floorGuid)).rejects.toThrow(/kladné/);
+    await expect(planLayout({ layout: "split_h", ratio: 0.5, sizes: [1, 1] }, floorGuid)).rejects.toThrow(/nekombinujú/);
+    await expect(planLayout({ ratio: 0.5 }, floorGuid)).rejects.toThrow(/potrebujú layout/);
+    // Rovnaká validácia pri čítaní drôtu: neplatná správa sa zahodí.
+    expect(bridge(tabOp("layout", { layout: "grid4", ratio: 0.5 }))).toEqual([]);
+    expect(bridge(tabOp("layout", { layout: "split_v", sizes: [1, 2, 3] }))).toEqual([]);
+    expect(bridge(tabOp("layout", { layout: "split_v", ratio: 1.5 }))).toEqual([]);
+    expect(bridge(tabOp("layout", { layout: "split_v", ratio: 0.4 }))).toEqual([{ type: "VIEW_TABS", action: "layout", layout: "split_v", ratio: 0.4 }]);
+  });
+
   it("wire: neplatné rozloženie alebo dlaždica sa zahodí", () => {
     expect(parseTabsOp("tab", "layout", "")).toBeNull();
     expect(bridge(tabOp("layout", { layout: "grid9" as never }))).toEqual([]);
