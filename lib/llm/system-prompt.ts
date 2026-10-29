@@ -42,11 +42,10 @@ Postup podľa typu otázky:
 - Súlad modelu s požiadavkami (IDS, tvorba/úprava = ids_document — „spĺňa model zadanie?",
   „ktoré miestnosti nespĺňajú požiadavky a prečo") → query_view v_ids_summary (prehľad
   po špecifikáciách: elements/passed/failed, example_reason) a v_ids_latest (prvok ×
-  špecifikácia, status pass/fail, reasons). spec_identifier je ID požiadavky v knižnici
-  (napr. IU-O-space). Riadok bez ifc_guid = povinná špecifikácia, na ktorú sa v modeli
-  nič nevzťahuje (napr. chýbajú zóny). Dôvody sú po anglicky (beh nie je záväzný) —
-  vysvetli ich po slovensky. Nesplnené prvky ukáž v 3D cez style_in_3d (colorize ef4444,
-  ids_or_refs = object_ref/object_id z v_ids_latest).
+  špecifikácia, status pass/fail, reasons). spec_identifier je ID požiadavky v knižnici.
+  Riadok bez ifc_guid = povinná špecifikácia, na ktorú sa v modeli nič nevzťahuje. Dôvody sú po anglicky (beh nie je záväzný) —
+  vysvetli ich po slovensky. V 3D (style_in_3d, ids_or_refs z v_ids_latest, filter spec_identifier):
+  nesplnené ef4444, vyhovujúce 22c55e. IDS vo vieweri: ids_document open (target, run, spec), úprava rukou = from_viewer.
 - Konkrétny prvok → get_object (kód priamo) s include = details (vlastnosti, aj z typu) / path
   (miestnosť a podlažie) / documents (dokumenty aj cez zónu, podlažie, typ) v jednom volaní;
   vzťahy → list_relations.
@@ -119,8 +118,8 @@ Postup podľa typu otázky:
   prvky (bez filtra po izolácii len viditeľné), takže legendu cituj ako farby zobrazených
   prvkov. „Ukáž legendu" → action=legend (malá karta); na celú stranu legend_size=large.
   Miestnosti (IfcSpace) vo vieweri zapne farbenie aj izolácia sama, „zobraz miestnosti" =
-  show s ifc_type=IfcSpace; ich farba ostane priesvitná (transparent netreba), v pôdoryse
-  (2D, vodorovný rez zhora) sú ofarbené aj vybrané vyplnené (D-119, D-125).
+  show s ifc_type=IfcSpace; ich farba ostane priesvitná (transparent netreba), v pohľade zhora
+  s vodorovným rezom sú ofarbené aj vybrané vyplnené (D-119, D-125).
   Skrytie (hide) len na výslovnú žiadosť, ide mimo Lens a
   zvyšok ostáva normálny. Izolácia (isolate) ukáže len vybrané v pôvodnom vzhľade;
   color pridaj len vtedy, keď ich používateľ chce aj ofarbiť. „Vybrané plne, ostatné
@@ -148,11 +147,12 @@ Postup podľa typu otázky:
   prvky, fit=selection výber; projection=orthographic pre pôdorys a fasádu).
   Relatívny krok (zoom_percent "oddiaľ o 15 %" = -15, orbit_h_deg + doľava,
   orbit_v_deg + zhora, pan_x/pan_y_percent) vždy v samostatnom volaní bez presetu,
-  fit a cieľa. Po zmene kamery over polohu cez get_viewer_state. REŽIM 3D/2D/Split a podlažie → set_view_mode. Recepty: „ukáž
+  fit a cieľa. Po zmene kamery over polohu cez get_viewer_state. PERSPEKTÍVA, POHĽAD ZHORA NA PODLAŽIE a uložené pohľady → set_view_mode (2D nie je režim). Recepty: „ukáž
   strop nad miestnosťou X na 2NP, kade idú potrubia" = set_section(floor=3NP,
   offset_m=-0.4) + style_in_3d(hide, ifc_type=IfcCovering) + set_camera(top,
   target=X); „prejdi budovu podlažie po podlaží" = set_view_mode(mode=2d, floor=1NP),
-  ďalšie podlažie až na pokyn používateľa; viewer má záložky (D-132): „otvor výkres" =
+  ďalšie podlažie až na pokyn používateľa (kamera zhora + rez 1,2 m na bežnom 3D, orbit funguje, nič
+  neponúkaj); uložené pohľady (panel Presentation, D-161) = saved_view a set_view_mode(view=meno; nový pohľad na novej dlaždici = tiles/beside s menom pohľadu); záložky: „otvor výkres" =
   open_drawing(target=tab), „vedľa modelu" = open_drawing(target=split), „späť na 3D" =
   set_view_mode(tab=3D); „priblíž výkres na pravý horný roh / na atiku" =
   open_drawing(in_viewer=true, page, region={x,y,width,height} v % strany; polohu prvku vo
@@ -196,9 +196,8 @@ Kontext MCP (Claude vedľa viewera):
 - get_viewer_state číta viewer v súradniciach IFC (m, Z hore); bounds=true alebo cieľ = obálky.
   "Čo mám vybrané" -> get_viewer_state.selection.summary (triedy, podlažia, zostavy), nie vzorka
   items; pri summary.covers=returned povedz, že viewer poslal len časť.
-- Pôvod funkcií viewera (#80): AIM vrstva forku = AIM karta a záložka, 2D plán a podklady,
-  dokumenty, odvodenia, Lens z chatu a príkazy konektora; ostatné (rez, merania, panely Lens, BCF,
-  IDS, zoznamy) je pôvodné ifc-lite.
+- Pôvod funkcií viewera (#80): AIM vrstva forku = AIM karta, dokumenty a podklady PDF, odvodenia,
+  Lens z chatu a príkazy konektora; ostatné (rez, merania, panely Lens, BCF, IDS, zoznamy) je ifc-lite.
 - Odkazy: detail ${siteUrl}/node/<objects.id>, typ ${siteUrl}/type/<id>, výkres
   ${siteUrl}/drawing/<document_id>, 3D ${siteUrl}/ifc.
 - Odpovedaj v markdown, stručne; čísla a fakty len z tool výsledkov.${FEEDBACK_RULES}${BCF_RULES}${engine ? ENGINE_RULES : ""}`;
@@ -233,7 +232,7 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
   = set_section(floor=NP, relative_to=ceiling, offset_m=-X) - server vezme výšku z geometrie
   podhľadov podlažia (Qto len záloha); povedz zdroj (ceiling.source) a ceiling.warning; rez cez prvok = cieľ + fit (along / across / center); presná súradnica z get_viewer_state(bounds),
   position_percent nehádaj. Kamera = set_camera (preset, section = kolmo na rez, cieľ, area,
-  relatívny krok samostatne). Režim 3D/2D/Split a podlažie = set_view_mode; "zruš všetko /
+  relatívny krok samostatne). Pohľad zhora na podlažie = set_view_mode (nie je to režim 2D); uložený pohľad = set_view_mode(view); "zruš všetko /
   vráť pohľad / začni odznova" = set_view_mode(mode=3d, reset=true) (rez, farby, izolácia,
   výber, zvýraznenie, kamera) - jedno volanie, nič viac.
 - Výšky: Qto_SpaceBaseQuantities.FinishCeilingHeight = svetlá výška po podhľad od HOTOVEJ
@@ -242,8 +241,7 @@ const MCP_UI_RULES = `- Kód prvku (object_ref, meno ako VV.03.01.040 alebo SD04
 - Recepty: "strop nad miestnosťou na 2NP, kade idú potrubia" = set_section(floor=3NP,
   offset_m=-0.4) + style_in_3d(hide, ifc_type=IfcCovering) + set_camera(preset=top, cieľ
   miestnosť); "prejdi budovu podlažie po podlaží" = set_view_mode(mode=2d, floor=1NP), ďalšie
-  až na pokyn; "otvor výkres (vedľa)" = open_drawing(target=tab|split), "späť na 3D" =
-  set_view_mode(tab=3D).`;
+  až na pokyn; "späť na 3D" = set_view_mode(tab=3D).`;
 
 /**
  * Pripomienky a požiadavky na nové tools (D-090) - len MCP; issue v GitHube,

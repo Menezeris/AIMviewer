@@ -1,0 +1,96 @@
+{
+  "_opis": "Hodnoty pre scripts/vzt/bcf_opravy.py (BCF #14, #15, #17 nad VZT). status: dolozene = z modelu alebo dokumentu (zdroj), potvrdene = schválil Samuel, navrh = čaká na schválenie (aplikuje sa len s --vratane-navrhov), chyba_hodnota = v podkladoch nie je, nevypĺňa sa.",
+  "model": "VZT",
+  "base_revision": 10,
+  "bcf": {
+    "13": {
+      "status": "bez_zmeny_modelu",
+      "dovod": "v010: všetky 4 PK.01 majú oba porty napojené cez IfcRelConnectsPorts; chyba bola v nástroji ifc_relations (issue #300, D-165)"
+    },
+    "14": {
+      "global_id": "0pqk6UmJD2ARFkiAMMqZvv",
+      "name": {"value": "VV.07.04.001", "status": "potvrdene", "zdroj": "konvencia VV.<skupina>.<typ>.<poradie> ako VV.07.01 až VV.07.03"},
+      "type_name": {"value": "VV.07.04", "status": "potvrdene"},
+      "description": {"value": "Výfukový nástavec šikmý d315, výfuk odvetrania odpadového hospodárstva", "status": "potvrdene", "zdroj": "TP-003 str. 5 (zariadenie č. 5), systém Odpadné hospodárstvo"},
+      "predefined_type": {"value": "USERDEFINED", "object_type": "EXHAUSTCOWL", "status": "potvrdene", "alternativa": "GRILLE ako VV.07.03"},
+      "air_flow_rate_m3h": {"value": 600, "status": "potvrdene", "zdroj": "súčet AirFlowRate VV.07.02.001 a VV.07.02.002 (2 x 300 m3/h) v systéme Odpadné hospodárstvo"},
+      "air_flow_type": {"value": "EXHAUSTAIR", "status": "potvrdene", "zdroj": "port nástavca SINK, SystemType EXHAUST"}
+    },
+    "15": {
+      "materials": [
+        {
+          "name": "Pozinkovaný oceľový plech",
+          "category": "steel",
+          "description": "Potrubie a tvarovky VZT z pozinkovaného plechu",
+          "status": "dolozene",
+          "zdroj": "TP-003 str. 4 (pozinkované potrubie, zariadenia 1 až 3) a str. 5 (pozinkované plechové potrubie, odpadové hospodárstvo)",
+          "types": ["IfcDuctSegmentType:PO.*", "IfcDuctFittingType:TA.*"]
+        },
+        {
+          "name": "Hliníková laminovaná fólia",
+          "category": "aluminium",
+          "description": "Flexibilné potrubie",
+          "status": "potvrdene",
+          "zdroj": "TP.01 legenda len 'Flexibilné potrubie', materiál v dokumentoch nie je",
+          "types": ["IfcDuctSegmentType:Flex Duct Round*"]
+        },
+        {
+          "name": "Oceľový plech pozinkovaný, práškovo lakovaný",
+          "category": "steel",
+          "description": "Koncové prvky VZT (vyústky, ventily, mriežky)",
+          "status": "potvrdene",
+          "zdroj": "materiál výrobkov Lindab RC14, Airy, AD a mriežok v dokumentoch nie je",
+          "types": ["IfcAirTerminalType:*"]
+        },
+        {
+          "name": "Pozinkovaný oceľový plech",
+          "category": "steel",
+          "description": "Teleso klapky",
+          "status": "potvrdene",
+          "zdroj": "materiál klapiek v dokumentoch nie je",
+          "types": ["IfcDamperType:*"]
+        },
+        {
+          "name": "Oceľový plech, lakovaný",
+          "category": "steel",
+          "description": "Plášť VZT jednotky",
+          "status": "potvrdene",
+          "zdroj": "materiál plášťa Duplex 4500/6500 v dokumentoch nie je",
+          "types": ["IfcUnitaryEquipmentType:*"]
+        }
+      ],
+      "unnamed": {"action": "remove", "status": "potvrdene", "poznamka": "kde materiál nie je potvrdený: remove = '<Unnamed>' odstrániť, keep = nechať"},
+      "izolacia_odpadove_hospodarstvo": {"value": null, "status": "chyba_hodnota", "zdroj": "TP-003 str. 5: 'predpokladá sa tepelné zaizolovanie potrubia', materiál ani hrúbka nie sú"}
+    },
+    "17": {
+      "types": {
+        "PK.01": {
+          "code": "PK.01.01",
+          "popis": "Požiarna klapka 630x315 EI 120 S v stene {stena}, {system}",
+          "predefined_type": "FIREDAMPER",
+          "element_size_mm": {"NominalWidth": 630.0, "NominalHeight": 315.0, "NominalLength": 375.0}
+        },
+        "VAV DN225": {
+          "code": "RK.01.01",
+          "popis": "Regulačná klapka VAV DN225 na prívodnej odbočke, {system}",
+          "predefined_type": "CONTROLDAMPER",
+          "element_size_mm": {"NominalWidth": 225.0, "NominalHeight": 225.0, "NominalLength": 300.0}
+        },
+        "VAV DN250": {
+          "code": "RK.01.02",
+          "popis": "Regulačná klapka VAV DN250 na prívodnej odbočke, {system}",
+          "predefined_type": "CONTROLDAMPER",
+          "element_size_mm": {"NominalWidth": 250.0, "NominalHeight": 250.0, "NominalLength": 300.0}
+        }
+      },
+      "naming": {"status": "potvrdene", "zdroj": "konvencia ako VV a JV; RK = regulačná klapka (TP-003 str. 8, TP.03 legenda)", "poradie": "podlažie, systém (prívod pred odvodom), X, Y"},
+      "element_size": {"status": "dolozene", "zdroj": "rozmery z geometrie modelu (AIM_VZT_ProjektoveHodnoty, v005 a v006)"},
+      "predefined_type_on_occurrence": {"status": "potvrdene", "poznamka": "ETL berie PredefinedType len z výskytu, PK.01 má dnes v AIM predefined_type null"},
+      "aim_pset_cleanup": {"status": "potvrdene", "poznamka": "z AIM_VZT_ProjektoveHodnoty odstrániť Funkcia a Ovladanie (Funkcia je v Description, ovládanie v Pset_DamperTypeCommon.Operation)"},
+      "optional_psets": {
+        "Pset_DamperTypeFireDamper": {"ActuationType": null, "ClosureRatingEnum": null, "FusibleLinkTemperature": null, "status": "chyba_hodnota"},
+        "Pset_DamperTypeControlDamper": {"ControlDamperOperation": null, "status": "chyba_hodnota"}
+      }
+    }
+  }
+}

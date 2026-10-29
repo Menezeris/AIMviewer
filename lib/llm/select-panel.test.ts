@@ -93,6 +93,13 @@ describe("panely z chatu (D-127)", () => {
     ]);
   });
 
+  it("op planpos -> SET_PLAN_POSITION, neplatné sa zahodí (D-161 bod 8, #282)", () => {
+    expect(parseOps("planpos:0:;planpos:1:;planpos:x:").map(opToBridgeMessage)).toEqual([
+      { type: "SET_PLAN_POSITION", show: false },
+      { type: "SET_PLAN_POSITION", show: true },
+    ]);
+  });
+
   it("op panels -> SET_PANELS, all len close, neplatné sa zahodí", () => {
     const raw = panelsOp({ all: "close", properties: "open" });
     expect(raw).toBe("panels:~all=close~properties=open:");

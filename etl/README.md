@@ -74,9 +74,26 @@ Dokumenty z IFC (D-104) v manifeste nie sú; ich PDF ležia v buckete `documents
 python -m etl.pdf_text --from-db --dry-run   # stiahne PDF, report, bez zápisu
 python -m etl.pdf_text --from-db             # zápis; --only <object_ref> = jeden dokument
 ```
+Report pri každom dokumente uvádza aj strany bez textovej vrstvy (`obrázok` = text ako raster/CCITT maska, `krivky`); `search_documents` o nich hlási "Strana nemá text" a bez OCR sa nedajú opraviť (#279, D-149 bod 7).
+
 Beh zapíše aj `document_pages.page_size` (veľkosť strany v bodoch) a `documents.file_sha256`
 (sha256 súboru PDF, kotva revízie pre pripomienky a keš snímky výrezu, D-158 krok 3; po migrácii
 `20261023140000`). Rastre strán sa nerobia: snímku výrezu renderuje host na požiadanie.
+
+Čiary výkresu (`document_pages.lines`, kalibrácia podkladov, D-133) sa ukladajú pri každom behu; tenšie výkresy
+(požiarne pôdorysy) dostanú nižší prah hrúbky (0,5 alebo 0,25 pt, `lines.min_w`). Nové PDF z `etl.doc_upload`
+sa načítajú hneď po uploade (`--no-pdf-text` to vypne); už nahraté dokumenty bez čiar dopočíta
+`python -m etl.pdf_text --from-db` (alebo s `--only <object_ref>`).
+
+Jednorazový beh po nasadení D-133 doplnku (#283), z koreňa repa:
+```bash
+pip install -r etl/requirements.txt           # PyMuPDF a psycopg
+export DATABASE_URL='postgresql://...'        # jediná povinná env (alebo riadok v .env.local), Supabase → Database → URI
+export PYTHONUTF8=1                           # len Windows
+python -m etl.pdf_text --from-db --dry-run --only OCB_SO01_PBR_D-1-3-02_PODORYS-1NP   # kontrola: stĺpec "čiar" > 0
+python -m etl.pdf_text --from-db              # všetky živé PDF (zápis delete+insert per dokument, idempotentné)
+```
+PDF sa sťahujú z `documents.location` (verejné URL v Storage), preto netreba `SUPABASE_SERVICE_ROLE_KEY`.
 
 ### Dokumenty z IFC (D-104)
 Dokumentáciu nesie model: každý `IfcDocumentInformation` je `document` s `object_ref` =
@@ -182,6 +199,27 @@ python -m etl.model_publish announce --model ASR               # "nová revízia
   z archívu; `status` = zoznam revízií.
 - Zoznam zmien (`zmeny.json`): `{"summary": "...", "changes": [{"guid", "ifc_class",
   "op": "add|remove|modify", "what", "before", "after"}]}`.
+
+### Recept v AIMvieweri: VZT podľa BCF #14, #15, #17 (`scripts/vzt/`)
+Väčšina receptov žije v OCB (`recepty/<MODEL>/vNNN-*.py`); tento je v AIMvieweri, aby
+sa dal zopakovať nad ďalšou revíziou bez zmeny kódu. Hodnoty sú v `bcf_opravy.json`
+so stavom: `dolozene` (zdroj v modeli alebo dokumente) a `potvrdene` (Samuel) sa
+aplikujú, `navrh` len s `--vratane-navrhov` (náhľad, nepublikovať), `chyba_hodnota`
+nikdy. Po schválení sa stav v JSON zmení na `potvrdene`, kód sa nemení. GlobalId ostávajú,
+mení sa len Name/Description/PredefinedType, psety a materiály (poistka: 0 pridaných,
+0 odobratých). #13 nemení model (porty klapiek sú napojené, chyba bola v nástroji, #300).
+```bash
+curl -sS -o VZT_v010.ifc.gz "$SUPABASE_URL/storage/v1/object/public/ifc/archive/VZT/v010.ifc.gz"
+gunzip VZT_v010.ifc.gz            # sha256 f2a4491540357d62ee0460a7f527bdd3fe6fa47c7d5749c21840a605f05be67f
+python scripts/vzt/bcf_opravy.py --vstup VZT_v010.ifc --vystup VZT_v011.ifc --zmeny zmeny_v011.json
+python scripts/vzt/kontrola.py --ifc VZT_v011.ifc            # IDS bcf_opravy.ids, porty klapiek, schéma
+python scripts/vzt/ifc_diff.py --pred VZT_v010.ifc --po VZT_v011.ifc --detail 20
+python -m etl.model_publish publish --model VZT --file VZT_v011.ifc --base 10 \
+    --changes zmeny_v011.json --recipe "Menezeris/AIMviewer:scripts/vzt/bcf_opravy.py@<commit>" --dry-run
+```
+Zverejnenie potom rovnakým príkazom bez `--dry-run` a ďalej podľa poradia vyššie
+(`etl.main --model VZT`, `etl.derive run --trigger auto`, `announce`). Ak medzitým vznikne
+nová revízia VZT, `--base` skončí konfliktom (kód 3): recept sa spustí znova nad ňou.
 
 **`--model` v `etl.main`:** hrany a GUID história dostanú zdroj modelu (`etl:ASR`,
 `IFC import:ASR`); čo beh nevydal (zmazaný, presunutý, premenovaný prvok), sa uzavrie.

@@ -971,6 +971,14 @@
       "notes": "D-133 (issue #170): calibrate_underlay(document_id=OCB_SO01_ASR_D-1-1-01_PODORYS-1NP, mode=dry_run); bez výslovného 'ulož' nezapisovať. Prototyp: mierka 1:49,95, medián okolo 10 mm. Len MCP s ENGINE_ENABLED."
     },
     {
+      "id": "calibrate-underlay-strecha-mierka",
+      "category": "viewer",
+      "question": "Skalibruj pôdorys strechy D.1.1.04 pod model a povedz, či sedí mierka.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-133 doplnok (issues #284, #316): calibrate_underlay(document_id=OCB_SO01_ASR_D-1-1-04_PODORYS-STRECHY, floor=4NP, mode=dry_run); výkres je 1:50, odpoveď má pri 1:28,49 varovať (scale_check), nie uložiť. Bez overenej hodnoty (cloud session bez produkcie)."
+    },
+    {
       "id": "calibrate-underlay-rez-a",
       "category": "viewer",
       "question": "Skontroluj, ako presne sedí rez A na model, rovina rezu je X = 47,42 m.",
@@ -1168,7 +1176,15 @@
       "question": "Chcem štyri okná naraz: 3D, pôdorys 1NP, pôdorys 2NP a uložený pohľad Rez A-A.",
       "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
-      "notes": "D-157 (issue #210): set_view_mode(layout=grid4, tiles=['3D', '1NP', '2NP', 'Rez A-A']); uložený pohľad musí byť najprv otvorený (set_view_mode view=...), inak ho viewer doplní inou záložkou a ohlási. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+      "notes": "D-157 (issue #210): set_view_mode(layout=grid4, tiles=['3D', '1NP', '2NP', 'Rez A-A']); od D-161 (krok 4) host preloží meno uloženého pohľadu na jeho id a viewer ho otvorí v dlaždici sám, netreba ho otvárať vopred. Hodnota neoverená, evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "view-tile-new-basket",
+      "category": "viewer",
+      "question": "Otvor pohľad Rez A-A na novej dlaždici vedľa 3D.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-161 krok 4: set_view_mode(beside='Rez A-A') alebo layout=split_h, tiles=['3D', 'Rez A-A']; host pošle id pohľadu, viewer ho aktivuje v živej dlaždici. Nie saved_view ani view= (to by prepísalo 3D dlaždicu). Evaly nepobežali (bez Supabase kľúčov)."
     },
     {
       "id": "clash-vzt-nosne",
@@ -1193,6 +1209,54 @@
       "expect": { "tools_called": ["clash", "style_in_3d"] },
       "verified": false,
       "notes": "D-164: clash(results, group=1) -> show_in_3d.a_global_ids / b_global_ids -> style_in_3d (colorize, global_ids). Pred tým musí byť beh (run)."
+    },
+    {
+      "id": "view-save-from-viewer",
+      "category": "viewer",
+      "question": "Ulož aktuálny pohľad ako Pôdorys 1NP.",
+      "expect": { "tools_called": ["saved_view"] },
+      "verified": false,
+      "notes": "D-161: saved_view(action=save, name) pošle viewera VIEW_CAPTURE (uloží ako tlačidlo v paneli Presentation), host zapíše riadok cez /api/saved-views; bez env brány VIEWS_WRITE_ENABLED tool povie, že pohľad je len vo viewere. Len MCP so živým viewerom."
+    },
+    {
+      "id": "view-open-saved-by-name",
+      "category": "viewer",
+      "question": "Otvor uložený pohľad Pôdorys 1NP.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-161: set_view_mode(view='Pôdorys 1NP') = VIEW_ACTIVATE (kamera, rez, košík v Presentation); zoznam mien get_viewer_state(saved_views=true). Starý riadok z D-122 sa obnoví zálohou (rez, kamera, izolácia) na bežnom 3D, bez záložky."
+    },
+    {
+      "id": "clash-uloz-test",
+      "category": "data",
+      "question": "Ulož test kolízií 'Potrubie x betón 2NP': vzduchovody a potrubie VZT proti stenám a doskám ASR na 2NP, tvrdé kolízie.",
+      "expect": { "tools_called": ["clash"] },
+      "verified": false,
+      "notes": "D-164 PR2: clash(save, test, a, a_model, a_storey, b, b_model, b_storey, mode=hard). Evaly nepobežali (bez Supabase kľúčov)."
+    },
+    {
+      "id": "clash-porovnaj-behy",
+      "category": "data",
+      "question": "Porovnaj posledný beh testu VZT-NOSNE s predošlým. Čo sa vyriešilo?",
+      "expect": { "tools_called": ["clash"] },
+      "verified": false,
+      "notes": "D-164 PR2: clash(compare, test). Nepretestované (unretested) sa nesmú vydávať za vyriešené."
+    },
+    {
+      "id": "clash-stav-kolizie",
+      "category": "data",
+      "question": "Označ prvú skupinu kolízií VZT x nosné konštrukcie ako vyriešenú.",
+      "expect": { "tools_called": ["clash"] },
+      "verified": false,
+      "notes": "D-164 PR2: clash(results, group=1) -> clash(review, review_status=resolved, group). Stav sa prenáša do ďalších behov testu."
+    },
+    {
+      "id": "clash-zaloz-bcf",
+      "category": "data",
+      "question": "Založ BCF tému pre najväčšiu skupinu kolízií VZT s nosnými konštrukciami.",
+      "expect": { "tools_called": ["clash"] },
+      "verified": false,
+      "notes": "D-164 PR2: clash(bcf, create=true, group_by, group) založí tému Clash (model VZT); druhé volanie tému nezdvojí."
     }
   ]
 }

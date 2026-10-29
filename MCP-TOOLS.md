@@ -48,8 +48,8 @@ Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/vie
   Parametre: `action*=set|clear|widget`, `orientation=horizontal|vertical_x|vertical_z`, `floor`, `offset_m`, `relative_to=floor|ceiling`, `position_percent`, `target_ids_or_refs`, `global_ids`, `fit=along|across|center`, `coordinate_m`, `flipped`, `show_widget`, `cap_style=hatch|solid|none`, `cap_color`, `box`, `margin_m`, `hatch_pattern=diagonal|diagonal_reverse|cross|crosshatch|horizontal|vertical|dots|brick|insulation`, `hatch_angle_deg`, `hatch_spacing_px`, `hatch_line_width_px`
 - **`set_camera`** (D-083, čítanie) - UI AKCIA: kamera v 3D. preset = smer pohľadu (top/bottom/front/back/left/right/iso; fit_all = celý model; section = kolmo na aktívny rez, ako tlačidlo Set view; keep = zachovať smer, default). fit = čo zarámovať pri danom smere: visible (viditeľné, aj izolované prvky), selection (výber vo vieweri).
   Parametre: `preset=top|bottom|front|back|left|right|iso|fit_all|keep|section`, `fit=visible|selection`, `target_ids_or_refs`, `global_ids`, `ifc_type`, `ifc_types`, `domain=hvac|plumbing|electrical|architecture|structure`, `model`, `zoom_percent`, `orbit_h_deg`, `orbit_v_deg`, `pan_x_percent`, `pan_y_percent`, `projection=perspective|orthographic`, `auto_rotate=start|stop`, `speed_deg_s`, `direction=left|right`, `margin_percent`, `area=left|right|top|bottom|front|back`
-- **`set_view_mode`** (D-083, čítanie, vždy načítaný) - UI AKCIA: záložky vieweru (D-132, ako v Revite): každý pohľad je záložka na celú plochu. mode=3d = záložka 3D, mode=2d + floor = pôdorys podlažia v záložke, mode=split = pôdorys vedľa 3D (s kalibrovaným podkladom). 2D s kalibrovaným výkresom ukáže PDF pôdorys, inak model zhora s rezom 1,2 m nad podlahou; miestnosti ofarbené cez style_in_3d sú v ňom vyplnené farbou a popísané názvom.
-  Parametre: `mode=3d|2d|split`, `floor`, `reset`, `saved_view`, `view`, `tab`, `beside`, `close_tab`, `layout=single|split_h|split_v|three_left|three_right|three_top|three_bottom|three_h|three_v|grid4`, `tiles`, `panels`, `panel_scroll`, `panel_zoom`, `underlays_3d`, `section_offset_m`
+- **`set_view_mode`** (D-083, čítanie, vždy načítaný) - UI AKCIA: kamera a pohľady vieweru. 2D nie je režim. mode=3d = perspektíva (reset=true s ním vráti pôvodný pohľad: bez rezu, farieb, skrytia, výberu a zvýraznenia, izometria). mode=2d + floor = POHĽAD ZHORA na podlažie na bežnom 3D: ortografická kamera zhora a vodorovný rez 1,2 m nad podlahou, alebo uložený pohľad toho podlažia; bez zámku, orbit a nástroje fungujú hneď (miestnosti ofarbené cez style_in_3d sú v ňom vyplnené a popísané).
+  Parametre: `mode=3d|2d|split`, `floor`, `reset`, `saved_view`, `view`, `tab`, `beside`, `close_tab`, `layout=single|split_h|split_v|three_left|three_right|three_top|three_bottom|three_h|three_v|grid4`, `tiles`, `panels`, `panel_scroll`, `panel_zoom`, `underlays_3d`, `plan_position`, `section_offset_m`
 - **`open_list`** (D-111, čítanie) - Tabuľka prvkov v paneli Lists vo vieweri (export do CSV/XLSX/PDF): "exportuj dvere na 1NP ako tabuľku", "zoznam tvaroviek s rozmermi do Excelu".
   Parametre: `name`, `columns`, `run`, `action=open|update`, `maximize`, `sort_by`, `sort_dir=asc|desc`, `sum`, `group_by`, `search`, `add_columns`, `remove_columns`, `add_types`, `remove_types`, `remove_filter=storey|model|property|system|system_type|zone|document|global_ids|ids_or_refs|query|...`, `color_by`, `export=csv|xlsx|pdf`, `ifc_type`, `ifc_types`, `domain`, `predefined_type`, `storey`, `system`, `system_type`, `zone`, `document`, `page`, `property`, `pset`, `value`, `query`, `model`, `global_ids`, `ids_or_refs`
 
@@ -57,15 +57,15 @@ Zdroj: DB (AIM graf) -> živý viewer. Definície: lib/llm/tools.ts, lib/llm/vie
 
 Zdroj: živý viewer (spätný kanál). Definície: lib/live/viewer-query-tools.ts. Len MCP.
 
-- **`get_viewer_state`** (D-085, čítanie, vždy načítaný) - Čo práve ukazuje OTVORENÝ živý viewer: režim (3d/2d/split) a podlažie, aktívny rez (os, súradnica v IFC, poloha v %), kamera (pozícia a cieľ v IFC), výber a počty skrytých a izolovaných prvkov.
+- **`get_viewer_state`** (D-085, čítanie, vždy načítaný) - Čo práve ukazuje OTVORENÝ živý viewer: kamera (pozícia, cieľ v IFC, projekcia), aktívny rez (os, súradnica v IFC, poloha v %), aktívny pohľad z Presentation (view: id, name), výber a počty skrytých a izolovaných prvkov.
   Parametre: `bounds`, `saved_views`, `target_ids_or_refs`, `global_ids`, `items_offset`, `items_limit`
 
 ## Uložené pohľady (1)
 
 Zdroj: DB (saved_views) + živý viewer. Definície: lib/views/tools.ts (zoznam v get_viewer_state, obnova v set_view_mode). Len MCP.
 
-- **`saved_view`** (D-122, zápis) - ULOŽÍ POHĽAD viewera pod menom (spoločný pre stavbu, D-122): 'ulož to ako Pôdorys technickej miestnosti 3.14'. action=save vezme z otvoreného viewera kameru a projekciu, rez, režim a podlažie, izolované, skryté a vybrané prvky (farby z style_in_3d sa neukladajú); existujúce meno prepíše len s overwrite=true. rename: name -> new_name. delete: zmaže pohľad.
-  Parametre: `action*=save|rename|delete`, `name*`, `new_name`, `description`, `overwrite`, `author`, `view_type=3d|plan|section|detail`, `locked`, `underlay_document_id`, `underlay_page`
+- **`saved_view`** (D-122, zápis) - ULOŽÍ POHĽAD do panela Presentation (pás pohľadov, spoločný pre stavbu): 'ulož to ako Pôdorys technickej miestnosti 3.14'. action=save uloží to, čo je vo vieweri práve nastavené (kamera s projekciou, rezy, košík = viditeľné prvky; prázdny košík = všetko viditeľné), ako tlačidlo Uložiť v paneli.
+  Parametre: `action*=save|rename|delete`, `name*`, `new_name`, `description`, `overwrite`, `author`
 
 ## BCF témy nad modelmi (2)
 
@@ -90,11 +90,11 @@ Zdroj: GitHub issues + session. Definície: lib/feedback/tools.ts. Len MCP.
 Zdroj: DB (ids_documents, verzie s XML) + @ifc-lite/mcp (ids_*). Definície: lib/ids/tool-defs.ts, lib/ids/tools.ts. Len MCP.
 
 - **`ids_document`** (D-162, zápis) - IDS DOKUMENTY v AIM (D-162): požiadavky na model (IDS 1.0), ktoré Claude tvorí, upravuje a ukladá s verziami.
-  Parametre: `action*=list|get|create|apply_ops|versions|diff|export|open|from_viewer`, `ids`, `version`, `include_xml`, `code`, `title`, `xml`, `derived_from`, `derived_from_version`, `ops`, `base_version`, `note`, `from_version`, `to_version`, `author`
+  Parametre: `action*=list|get|create|apply_ops|versions|diff|export|open|from_viewer`, `ids`, `version`, `include_xml`, `code`, `title`, `xml`, `derived_from`, `derived_from_version`, `ops`, `target=studio|validation`, `spec`, `run`, `base_version`, `note`, `from_version`, `to_version`, `author`
 
 ## IFC motor (9)
 
-Zdroj: IFC súbory federácie (@ifc-lite/mcp). Definície: lib/engine/search-all.ts, lib/engine/tool-defs.ts, lib/engine/passthrough-defs.ts, lib/engine/underlay-tool.ts. Len MCP.
+Zdroj: IFC súbory federácie (@ifc-lite/mcp); clash ukladá testy, behy a stav kolízií do DB (clash_*). Definície: lib/engine/search-all.ts, lib/engine/tool-defs.ts, lib/engine/passthrough-defs.ts, lib/engine/underlay-tool.ts. Len MCP.
 
 - **`search_all`** (D-095, čítanie) - Hľadanie podľa textu naraz v OBOCH zdrojoch: IFC súbor (atribúty Name, Description, ObjectType, Tag, LongName, všetky psety a Qto aj z typu, klasifikácie, materiály, zóny, skupiny) a graf AIM v DB (názov, object_ref, importované psety, dokumenty, osoby).
   Parametre: `text*`, `source=all|ifc|aim`, `badges=IFC|AIM|IFC+AIM`, `ifc_types`, `model`, `limit`, `fields=attribute|property|quantity|type_property|classification|material`, `fuzzy`, `offset`, `related`
@@ -110,7 +110,7 @@ Zdroj: IFC súbory federácie (@ifc-lite/mcp). Definície: lib/engine/search-all
   Parametre: `target*`, `model=ASR|VZT`, `rel_types`, `direction=forward|inverse|both`, `recursive`, `through_ports`, `stop_at`, `max_steps`, `limit`, `cursor`
 - **`ifc_measure`** (D-112, čítanie) - IFC MOTOR: meranie z geometrie (nie z Qto). clear_opening + items (dvere z ifc_query, max 50) = svetlá šírka a výška dverí medzi zárubňami a od prahu po nadpražie z geometrie, nie z psetov (OverallWidth je so zárubňou); s min_width_m / min_height_m aj pass/fail a check.style_pass / style_fail pre style_in_3d.
   Parametre: `a`, `b`, `route=shortest|escape`, `items`, `model=ASR|VZT`, `qto`, `clear_opening`, `axis=x|y|z|width|depth|height`, `face_a=+x|-x|+y|-y|+z|-z`, `face_b=+x|-x|+y|-y|+z|-z`, `min_width_m`, `min_height_m`, `clear`, `show`
-- **`clash`** (D-164, čítanie) - IFC MOTOR: KOLÍZIE modelov federácie (ASR x VZT) počíta server. action=list: predvolené testy (VZT x nosné konštrukcie hard, VZT x ASR odstup 50 mm). run: test (kód) alebo ad hoc a, b (selektor tried 'IfcDuct*|IfcPipe*', '!IfcSpace'), a_model, b_model, a_storey, b_storey, mode, clearance_mm, tolerance_mm; vráti run_id a súčty.
-  Parametre: `action*=list|run|results|bcf|save|delete|compare|review|open|from_viewer`, `test`, `a`, `b`, `a_model=ASR|VZT`, `b_model=ASR|VZT`, `a_storey`, `b_storey`, `mode=hard|clearance`, `clearance_mm`, `tolerance_mm`, `run_id`, `group_by=storey|system|type_pair|element|rule|cluster`, `group`, `limit`, `offset`, `model`
+- **`clash`** (D-164, zápis) - IFC MOTOR: KOLÍZIE modelov federácie (ASR x VZT) počíta server, testy a behy sa ukladajú. list: predvolené testy (VZT-NOSNE hard, VZT-ASR odstup 50 mm) a vlastné s posledným behom; s test jeho behy. save: vlastný test (test = kód, name, a, b, a_model, b_model, a_storey, b_storey, mode, clearance_mm); delete: confirm=true. run: test alebo ad hoc a, b (selektor tried 'IfcDuct*|IfcPipe*', '!IfcSpace'), tolerance_mm; save=true uloží beh (run_id UUID prežije reštart).
+  Parametre: `action*=list|run|results|bcf|save|delete|compare|review|open|from_viewer`, `test`, `name`, `description`, `a`, `b`, `a_model=ASR|VZT`, `b_model=ASR|VZT`, `a_storey`, `b_storey`, `mode=hard|clearance`, `clearance_mm`, `tolerance_mm`, `save`, `confirm`, `run_id`, `base_run_id`, `bucket=added|resolved|persistent|unretested`, `group_by=storey|system|type_pair|element|rule|cluster`, `group`, `status=hard|clearance`, `severity=critical|major|minor|info`, `review=open|resolved|accepted`, `review_status=open|resolved|accepted`, `comment`, `keys`, `limit`, `offset`, `model`, `create`
 - **`calibrate_underlay`** (D-133, zápis) - KALIBRÁCIA PODKLADU výkresu (PDF strana) pod IFC model (D-133): mierka, rotácia a posun strany voči modelu, výsledok sa ukladá do kalibrácie dokumentu (panel Underlays vo vieweri).
-  Parametre: `document_id*`, `page`, `mode=dry_run|auto|manual`, `floor`, `section_plane`, `pairs`, `refine`, `max_error_mm`, `force`, `model`
+  Parametre: `document_id*`, `page`, `mode=dry_run|auto|manual`, `floor`, `section_plane`, `pairs`, `scale`, `refine`, `max_error_mm`, `force`, `model`

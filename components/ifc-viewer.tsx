@@ -1,6 +1,7 @@
 "use client";
 
 import { LoadingLogo } from "@/components/loading-logo";
+import { X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { nodeSummaryToAimPanel, type ElementDetail } from "@/lib/aim-panel";
@@ -14,6 +15,9 @@ import type { DerivationsLayerWire } from "@/lib/derivations";
 import type { GuidMap, IfcModel } from "@/lib/data/ifc";
 import type { ViewerApi } from "@/lib/viewer-api";
 import { opToBridgeMessage, parseOps } from "@/lib/viewer-ops";
+import { isViewWire, viewsLoadMessage, type ViewWire } from "@/lib/viewer-views";
+import { clashLoadMessage, clashSavedMessage, parseClashSave, type ClashLoadPayload, type ClashOpenOp, type ClashSaveResult } from "@/lib/viewer-clash";
+import { idsLoadMessage, idsSavedMessage, parseIdsSave, type IdsOpenOp, type IdsSaveResult, type IdsTarget } from "@/lib/viewer-ids";
 import {
   MAX_ZONE_GUIDS,
   documentLensWire,
@@ -26,9 +30,10 @@ import { listBridgeMessage, listScopeKeys } from "@/lib/viewer-list";
 import type { LiveQueryPayload, LiveReplyPayload } from "@/lib/live/protocol";
 import { hasRelativeStep, relativeViewpoint, type CameraMove, type ViewerCamera } from "@/lib/viewer-camera";
 import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
-import { emitApplied, setLiveApplyHandler, takePendingCmdIds, type LiveApply } from "@/lib/live/viewer-apply-bus";
+import { emitApplied, isRestoredCommandUrl, setLiveApplyHandler, takePendingCmdIds, withoutCommandParams, type LiveApply } from "@/lib/live/viewer-apply-bus";
 import { BCF_CHANGED_WINDOW_EVENT, bcfLoadMessage } from "@/lib/live/bcf-event";
-import { PROD_VIEWER_URL } from "@/lib/viewer-source";
+import { VIEWS_CHANGED_WINDOW_EVENT } from "@/lib/live/views-event";
+import { PROD_VIEWER_URL, VIEWER_CHOICE_KEY, urlWithoutViewerChoice } from "@/lib/viewer-source";
 
 /**
  * 3D prehliadač = self-hostovaná IFClite appka (fork AssetinSpace/ifc-lite,
@@ -70,6 +75,33 @@ const SOURCE = "aim-bridge" as const;
 /** Po tomto čase bez MODELS_LOADED loader ustúpi chybovej hláške (D-163). */
 const LOAD_TIMEOUT_MS = 120_000;
 
+/**
+ * "Vyčistiť uložený stav a načítať znova" (D-163): zahodí voľbu viewera (`aim.viewer`
+ * v sessionStorage, aj z `?viewer=`) a načíta stránku znova, teda produkčný viewer.
+ * Úložisko viewera je na jeho origin, to host vyčistiť nevie; chaty a rozloženie
+ * panelov hosta ostávajú.
+ */
+/**
+ * Diagnostika štartu (#310): fáza, čas od otvorenia stránky a pamäť JS haldy hosta
+ * (`performance.memory` len v Chromiu), aby screenshot konzoly ukázal, kde štart stojí.
+ */
+function logLoadPhase(phase: string) {
+  const mem = (performance as Performance & { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
+  console.info(
+    `[aim-viewer] ${phase} @ ${(performance.now() / 1000).toFixed(1)} s` +
+      (mem ? `, halda ${Math.round(mem.usedJSHeapSize / 2 ** 20)} / ${Math.round(mem.jsHeapSizeLimit / 2 ** 20)} MB` : "")
+  );
+}
+
+function clearViewerStateAndReload() {
+  try {
+    window.sessionStorage.removeItem(VIEWER_CHOICE_KEY);
+  } catch {
+    /* súkromný režim: nič na čistenie */
+  }
+  window.location.replace(urlWithoutViewerChoice(window.location.href));
+}
+
 
 type OutboundMessage =
   | { source: typeof SOURCE; type: "READY" }
@@ -86,6 +118,14 @@ type OutboundMessage =
   | { source: typeof SOURCE; type: "DOCUMENT_EVENT"; documentId: string; event: "opened" | "closed" }
   // Tlačidlo "Ukázať v 3D" pri otvorenom dokumente (D-104 krok 4) - host odpovie APPLY_LENS.
   | { source: typeof SOURCE; type: "DOCUMENT_SHOW_3D"; documentId: string; page?: number }
+  // Pohľady z panela Presentation (D-161) - host ich zapíše cez /api/saved-views a pošle späť VIEWS_LOAD.
+  | { source: typeof SOURCE; type: "VIEW_SAVE"; view: unknown; capture_id?: string }
+  | { source: typeof SOURCE; type: "VIEW_RENAME"; id: string; name: string }
+  | { source: typeof SOURCE; type: "VIEW_DELETE"; id: string }
+  // IDS z panela IDS Studio / Data validation (D-162) - host ho zapíše cez /api/ids a pošle späť IDS_SAVED.
+  | { source: typeof SOURCE; type: "IDS_SAVE"; target: string; xml: string; code?: string; base_version?: number; title?: string }
+  // Test, beh a stav kolízií z panela clash (D-164) - host ich zapíše cez /api/clash a pošle späť CLASH_SAVED.
+  | { source: typeof SOURCE; type: "CLASH_SAVE"; test?: unknown; test_code?: string; run?: unknown; reviews?: unknown }
   // Odpoveď na QUERY spätného kanála (D-085) - obálky, stav pohľadu.
   | { source: typeof SOURCE; type: "QUERY_RESULT"; id: string; ok: boolean; result?: unknown; error?: string }
   // Potvrdenie príkazov pred ACK_REQUEST (D-101) - stav po vykonaní, čo sa nevykonalo.
@@ -212,7 +252,9 @@ export function IFCViewer({
   viewerUrl = PROD_VIEWER_URL,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [status, setStatus] = useState<"loading" | "error" | "timeout" | "ready">("loading");
+  /** Zlyhaný zápis kalibrácie podkladu (#317): hláška nad viewerom, kým ju používateľ nezavrie. */
+  const [saveError, setSaveError] = useState<string | null>(null);
   const readyRef = useRef(false);
   /** true až po MODELS_LOADED — skôr viewer nevie resolvnúť GUIDy. */
   const loadedRef = useRef(false);
@@ -265,7 +307,11 @@ export function IFCViewer({
   // visieť donekonečna - ukáž chybovú hlášku; neskorý MODELS_LOADED ju prepíše.
   useEffect(() => {
     if (status !== "loading") return;
-    const t = setTimeout(() => setStatus("error"), LOAD_TIMEOUT_MS);
+    logLoadPhase("čakám na viewer");
+    const t = setTimeout(() => {
+      logLoadPhase(`MODELS_LOADED neprišlo do ${LOAD_TIMEOUT_MS / 1000} s (READY ${readyRef.current ? "áno" : "nie"})`);
+      setStatus("timeout");
+    }, LOAD_TIMEOUT_MS);
     return () => clearTimeout(t);
   }, [status, modelsKey]);
 
@@ -275,6 +321,104 @@ export function IFCViewer({
       { source: SOURCE, ...msg },
       viewerOrigin
     );
+  }
+
+  /** Zápisy pohľadov idú za sebou: odpoveď každého nesie úplný zoznam, starší by prepísal novší (D-161). */
+  const viewsQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const viewsWarnedRef = useRef(false);
+
+  /** Zoznam z DB do Presentation (`VIEWS_LOAD`): po načítaní modelov a po každom zápise. */
+  function sendViews(views: unknown) {
+    if (!loadedRef.current || !Array.isArray(views)) return;
+    const valid = views.filter((v): v is ViewWire => isViewWire(v));
+    if (valid.length !== views.length) console.warn("[ifc-viewer] pohľady: neplatný riadok v zozname z DB, zoznam sa neposiela");
+    else post(viewsLoadMessage(valid));
+  }
+
+  /** Zoznam pohľadov z DB (len čítanie) do Presentation; ide za zápismi, aby nepredbehol ich výsledok. */
+  function loadViews() {
+    viewsQueueRef.current = viewsQueueRef.current
+      .then(async () => {
+        const r = await fetch("/api/saved-views", { cache: "no-store" });
+        if (!r.ok) throw new Error(String(r.status));
+        sendViews(((await r.json()) as { views?: unknown }).views);
+      })
+      .catch((err: unknown) => console.warn("[ifc-viewer] pohľady sa nenačítali", err));
+  }
+
+  /** Zápis pohľadu z panela alebo z chatu (`VIEW_SAVE`, `VIEW_RENAME`, `VIEW_DELETE`); zapnutie je v route (env brána). */
+  function writeViews(method: "POST" | "PATCH" | "DELETE", payload: Record<string, unknown>) {
+    viewsQueueRef.current = viewsQueueRef.current
+      .then(async () => {
+        const r = await fetch("/api/saved-views", {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!r.ok) throw new Error(String(r.status));
+        sendViews(((await r.json()) as { views?: unknown }).views);
+      })
+      .catch((err: unknown) => {
+        // Pohľad žije vo vieweri aj bez zápisu; zamietnutý zápis (vypnutá brána) zaloguj raz.
+        if (viewsWarnedRef.current) return;
+        viewsWarnedRef.current = true;
+        console.error("saved views write failed", err);
+      });
+  }
+
+  /**
+   * IDS z AIM do panela (D-162): `ids_open` z chatu. Klient si XML stiahne z `GET /api/ids` (živý kanál ho nenesie)
+   * a pošle forku `IDS_LOAD`; chyba sa neskryje, `APPLIED` ju ukáže chatu ako problém.
+   */
+  async function openIds(o: IdsOpenOp) {
+    const r = await fetch(`/api/ids?code=${encodeURIComponent(o.code)}${o.version ? `&version=${o.version}` : ""}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(`IDS '${o.code}' sa nenačítalo (HTTP ${r.status})`);
+    const doc = (await r.json()) as { code: string; version: number; title: string; xml: string };
+    post(idsLoadMessage(o, doc));
+  }
+
+  /**
+   * Clash z AIM do panela (D-164): `clash_open` z chatu. Klient si test a beh stiahne z `GET /api/clash` (živý kanál
+   * kolízie nenesie) a pošle forku `CLASH_LOAD`; chyba sa neskryje, `APPLIED` ju ukáže chatu ako problém.
+   */
+  async function openClash(o: ClashOpenOp) {
+    const r = await fetch(`/api/clash?test=${encodeURIComponent(o.test)}${o.run ? `&run=${encodeURIComponent(o.run)}` : ""}`, { cache: "no-store" });
+    const body = (await r.json().catch(() => ({}))) as ClashLoadPayload & { error?: string };
+    if (!r.ok) throw new Error(body.error ?? `Test '${o.test}' sa nenačítal (HTTP ${r.status})`);
+    post(clashLoadMessage(body));
+  }
+
+  /** Uloženie z panela clash (`CLASH_SAVE`): route je za env bránou; výsledok sa vráti ako `CLASH_SAVED` (tlačidlo ho ukáže). */
+  function saveClash(raw: unknown) {
+    const save = parseClashSave(raw);
+    const reply = (result: ClashSaveResult) => post(clashSavedMessage(result));
+    if (!save) return reply({ ok: false, error: "neplatná správa z viewera" });
+    void fetch("/api/clash", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(save) })
+      .then(async (r) => {
+        const body = (await r.json().catch(() => ({}))) as Extract<ClashSaveResult, { ok: true }> & { error?: string };
+        if (r.ok && body.ok) reply(body);
+        else reply({ ok: false, error: body.error ?? `HTTP ${r.status}` });
+      })
+      .catch((err: unknown) => reply({ ok: false, error: err instanceof Error ? err.message : "uloženie zlyhalo" }));
+  }
+
+  /** Uloženie IDS z panela (`IDS_SAVE`): route je za env bránou; výsledok sa vráti ako `IDS_SAVED` (tlačidlo ho ukáže). */
+  function saveIds(raw: unknown) {
+    const save = parseIdsSave(raw);
+    const target: IdsTarget = save?.target ?? "studio";
+    const reply = (result: IdsSaveResult) => post(idsSavedMessage(target, result));
+    if (!save) return reply({ ok: false, error: "neplatná správa z viewera" });
+    void fetch("/api/ids", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ xml: save.xml, ...(save.code ? { code: save.code } : {}), ...(save.base_version ? { base_version: save.base_version } : {}), ...(save.title ? { title: save.title } : {}) }),
+    })
+      .then(async (r) => {
+        const body = (await r.json().catch(() => ({}))) as { ok?: boolean; code?: string; version?: number; error?: string; latest_version?: number };
+        if (r.ok && body.ok && body.code && body.version) reply({ ok: true, code: body.code, version: body.version });
+        else reply({ ok: false, error: body.error ?? `HTTP ${r.status}`, ...(body.latest_version ? { latest_version: body.latest_version } : {}) });
+      })
+      .catch((err: unknown) => reply({ ok: false, error: err instanceof Error ? err.message : "uloženie zlyhalo" }));
   }
 
   // GUID-nosné príkazy vydané pred MODELS_LOADED (klik na „3D: N prvkov" počas
@@ -345,6 +489,10 @@ export function IFCViewer({
           post(lensBridgeMessage(o.mode, o.wire, await fetchScopeGuids(lensScopeKeys(o.wire)), o.rev));
         } else if (o.op === "list" && listScopeKeys(o.wire).length > 0) {
           post(listBridgeMessage(o.wire, await fetchScopeGuids(listScopeKeys(o.wire))));
+        } else if (o.op === "ids_open") {
+          await openIds(o);
+        } else if (o.op === "clash_open") {
+          await openClash(o);
         } else post(opToBridgeMessage(o));
         // Reset farieb vypne aj AIM chat lens a zmaže čiaru trasy aj kóty od Claude (D-137, D-152), zobraziť všetko zruší izoláciu z chatu (D-096, D-137).
         if (o.op === "reset_colors") {
@@ -446,6 +594,7 @@ export function IFCViewer({
       switch (e.data.type) {
         case "READY": {
           readyRef.current = true;
+          logLoadPhase("READY");
           // Overlay (loader D-163) drží až do MODELS_LOADED: po READY by sa pod
           // ním ukázala vlastná úvodka forku (veil AimBridge) a progresívne
           // odkrývanie modelu, teda druhá obrazovka načítavania. Visenie
@@ -459,8 +608,21 @@ export function IFCViewer({
           // Modely sú naparsované — až teraz vie resolveGuids nájsť prvok.
           // Počiatočný deep-link focus/ops (?focus=…&ops=…) aplikuj tu, nie na READY.
           loadedRef.current = true;
+          logLoadPhase("MODELS_LOADED");
           setStatus("ready");
-          if (focus) post({ type: "FOCUS", guids: focus.split(",") });
+          // Obnova stránky alebo karty s adresou príkazu (živý príkaz ju prepíše, D-101) príkaz
+          // nezopakuje: čerstvý štart je bez rezu a pohľadu, kým ich niekto nežiada (#313).
+          const restored =
+            (!!focus || !!ops) &&
+            isRestoredCommandUrl(
+              performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined,
+              window.location.href
+            );
+          if (restored) {
+            console.info("[aim-viewer] obnovená adresa s príkazom: focus/ops z adresy sa nevykonajú");
+            window.history.replaceState(window.history.state, "", withoutCommandParams(window.location.href));
+          }
+          if (focus && !restored) post({ type: "FOCUS", guids: focus.split(",") });
           // PDF podklady (D-072) — až po naparsovaní modelov, aby viewer vedel
           // resolvnúť storey GUIDy z placementov.
           if (underlays && underlays.length > 0) {
@@ -490,10 +652,13 @@ export function IFCViewer({
           if (derivations) post({ type: "AIM_DERIVATIONS_LOAD", layer: derivations });
           // BCF témy (D-099): viewer si ich načíta z /api/bcf tohto originu bez tokenu.
           post(bcfLoadMessage(window.location.origin));
+          // Pohľady z DB (D-161) do panela Presentation; odpoveď príde až po ops, ale `VIEW_ACTIVATE` z ops
+          // si pohľad hľadá vo vieweri, preto ju fork zaradí do brány príkazov za ne.
+          loadViews();
           // Ops až po podkladoch, dokumentoch a pinoch (D-083): `view:2d` potrebuje
           // vedieť, či má podlažie kalibrovaný výkres, a `doc` otvorí len dokument,
           // ktorý viewer už dostal v DOCUMENTS_LOAD.
-          if (ops) applyOps(ops);
+          if (ops && !restored) applyOps(ops);
           // Flush príkazov vydaných pred načítaním modelov (viď send()).
           const queued = pendingRef.current;
           pendingRef.current = [];
@@ -558,6 +723,27 @@ export function IFCViewer({
           // Prijíma sa naschvál — neznámy typ by inak skončil ako šum v konzole
           // budúceho stricter handlera.
           break;
+        case "VIEW_SAVE": {
+          const { view, capture_id: captureId } = e.data;
+          if (!isViewWire(view)) return;
+          writeViews("POST", { view, ...(typeof captureId === "string" ? { capture_id: captureId } : {}) });
+          break;
+        }
+        case "VIEW_RENAME": {
+          const { id, name } = e.data;
+          if (typeof id === "string" && typeof name === "string") writeViews("PATCH", { id, name });
+          break;
+        }
+        case "VIEW_DELETE": {
+          if (typeof e.data.id === "string") writeViews("DELETE", { id: e.data.id });
+          break;
+        }
+        case "IDS_SAVE":
+          saveIds(e.data);
+          break;
+        case "CLASH_SAVE":
+          saveClash(e.data);
+          break;
         case "UNDERLAY_SAVE": {
           // Kalibrácia z viewera → perzistuj _georef (D-072). Server payload
           // validuje (isValidGeorefV1) a zapína/vypína zápis env bránou.
@@ -568,13 +754,16 @@ export function IFCViewer({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ georef }),
           })
-            .then((r) => {
-              if (!r.ok) throw new Error(String(r.status));
+            .then(async (r) => {
+              if (r.ok) return setSaveError(null);
+              const body = (await r.json().catch(() => null)) as { error?: unknown } | null;
+              throw new Error(`${r.status}${typeof body?.error === "string" ? `: ${body.error}` : ""}`);
             })
             .catch((err: unknown) => {
-              // Best-effort: kalibrácia žije vo viewri aj bez zápisu; zaloguj,
-              // nech je zamietnutý zápis (napr. vypnutá brána) viditeľný.
+              // Kalibrácia žije vo viewri aj bez zápisu, po obnove stránky by sa ale stratila:
+              // používateľ to musí vidieť, nielen konzola (#317).
               console.error("underlay save failed", err);
+              setSaveError(err instanceof Error ? err.message : String(err));
             });
           break;
         }
@@ -681,6 +870,16 @@ export function IFCViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Pohľady (D-161) — chat ich premenoval, zmazal alebo prepísal: zoznam z DB znova.
+  useEffect(() => {
+    const reload = () => {
+      if (loadedRef.current) loadViews();
+    };
+    window.addEventListener(VIEWS_CHANGED_WINDOW_EVENT, reload);
+    return () => window.removeEventListener(VIEWS_CHANGED_WINDOW_EVENT, reload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Vrstva AIM (D-089) — re-send po zmene (router.refresh po novej revízii).
   useEffect(() => {
     if (!loadedRef.current || !derivations) return;
@@ -721,7 +920,7 @@ export function IFCViewer({
         ref={iframeRef}
         src={src}
         title="3D model budovy"
-        className="h-full w-full border-0"
+        className={`h-full w-full border-0${status === "loading" ? " pointer-events-none" : ""}`}
         onError={() => setStatus("error")}
         allow="fullscreen"
       />
@@ -729,6 +928,26 @@ export function IFCViewer({
       {/* Nepriehľadný overlay — kým sa nenačíta federácia, nesmie presvitať
           ifc-lite úvodná obrazovka s ich logom (D-163: biele pozadie + animované logo). */}
       {status === "loading" && <LoadingLogo label="Načítavam 3D scénu" />}
+
+      {status === "timeout" && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/90 p-6 text-center">
+          <span className="text-sm font-semibold text-destructive">
+            3D scéna sa nenačítala do 2 minút
+          </span>
+          <span className="max-w-sm text-xs text-muted-foreground">
+            Prehliadač možno nemá zapnutú grafickú akceleráciu (WebGPU, pozri{" "}
+            <code className="rounded bg-muted px-1">chrome://gpu</code>), alebo štart blokuje
+            uložený stav či rozšírenie prehliadača.
+          </span>
+          <button
+            type="button"
+            onClick={clearViewerStateAndReload}
+            className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
+          >
+            Vyčistiť uložený stav a načítať znova
+          </button>
+        </div>
+      )}
 
       {status === "error" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/90 p-6 text-center">
@@ -740,6 +959,26 @@ export function IFCViewer({
             <code className="rounded bg-muted px-1">{viewerUrl}</code> alebo
             nastavte <code className="rounded bg-muted px-1">NEXT_PUBLIC_IFC_VIEWER_URL</code>.
           </span>
+        </div>
+      )}
+
+      {saveError && (
+        <div
+          role="alert"
+          className="absolute left-1/2 top-3 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-md border border-destructive/40 bg-background px-3 py-2 text-xs shadow-md"
+        >
+          <span>
+            <span className="font-semibold text-destructive">Kalibráciu podkladu sa nepodarilo uložiť.</span>{" "}
+            Po obnove stránky sa stratí. ({saveError})
+          </span>
+          <button
+            type="button"
+            onClick={() => setSaveError(null)}
+            className="shrink-0 rounded px-1 text-muted-foreground hover:bg-muted"
+            aria-label="Zavrieť"
+          >
+            <X className="size-3.5" />
+          </button>
         </div>
       )}
     </div>

@@ -4,6 +4,8 @@ import type { MeasureSegment } from "../viewer-measure";
 import type { Vec3 } from "./measure";
 
 import { cacheSnapshot, getStore, type EngineModelSource } from "./cache";
+import type { ClashBcfPort, ClashStore } from "../clash/types";
+import type { ClashViewerDeps } from "../clash/viewer-tool";
 import { idsSources, loadIds } from "./ids-sources";
 import { resultRows } from "../ids/runs";
 import type { IdsStore } from "../ids/types";
@@ -56,6 +58,12 @@ export interface EngineDeps {
   ids?: IdsStore;
   /** GUID prvku -> názov systému z grafu AIM (D-164, `clash group_by=system`). */
   systems?: (guids: string[]) => Promise<Map<string, string>>;
+  /** Testy, behy a stav kolízií z DB (D-164); bez nich `clash save`, `compare`, `review` a `save=true` nejdú. */
+  clash?: ClashStore;
+  /** BCF vrstva pre `clash bcf create=true` (D-164, D-099). */
+  bcf?: ClashBcfPort;
+  /** Živý viewer pre `clash open` a `from_viewer` (D-164); bez neho tieto akcie povedia, že viewer nie je nastavený. */
+  clashViewer?: ClashViewerDeps;
   /** Stropy behu `clash` (D-164); len testy. */
   clashLimits?: { maxPairs?: number; budgetMs?: number };
 }

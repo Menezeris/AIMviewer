@@ -129,19 +129,15 @@ def page_blocks(page_dict: dict, width: float, height: float) -> list[dict]:
 
 # D-133: hrubé čiary (rezané konštrukcie) od tejto hrúbky; tenké sú kóty, šrafy, osi.
 LINE_MIN_WIDTH = 0.99
-# Strana s menej hrubými úsečkami nie je vektorový výkres (správa, tabuľka) -> lines = null.
+# #283/#316: požiarne pôdorysy (PBR) a niektoré exporty kreslia steny tenšie než 0,99 pt, preto sa pri
+# nedostatku hrubých čiar skúšajú postupne nižšie prahy (prvý, ktorý dá aspoň LINE_MIN_COUNT úsečiek).
+LINE_WIDTH_TIERS = (LINE_MIN_WIDTH, 0.5, 0.25)
+# Strana s menej úsečkami nie je vektorový výkres (správa, tabuľka, sken) -> lines = null.
 LINE_MIN_COUNT = 200
 
 
-def page_lines(drawings: list[dict], width: float, height: float) -> Optional[dict]:
-    """Hrubé úsečky strany pre kalibráciu podkladu (D-133).
-
-    Vstup je `page.get_drawings()`; čiary (`l`) a strany obdĺžnikov (`re`) od
-    `LINE_MIN_WIDTH`, krivky sa vynechajú (oblúky dverí). Výstup `{size: [W, H], segs:
-    [[x1, y1, x2, y2, w]]}` v bodoch strany s počiatkom vľavo dole (y hore, ako `_georef`
-    D-072), zaokrúhlené na 0,1 pt; `size` je rámec, v ktorom kalibrácia počíta. Menej ako
-    `LINE_MIN_COUNT` úsečiek = nie výkres, vráti None.
-    """
+def _segments(drawings: list[dict], min_width: float, height: float) -> list[list[float]]:
+    """Úsečky (`l`), strany obdĺžnikov (`re`) a štvoruholníkov (`qu`) od `min_width`."""
     out: list[list[float]] = []
 
     def add(x1: float, y1: float, x2: float, y2: float, w: float) -> None:
@@ -151,7 +147,7 @@ def page_lines(drawings: list[dict], width: float, height: float) -> Optional[di
 
     for d in drawings:
         w = d.get("width") or 0.0
-        if w < LINE_MIN_WIDTH:
+        if w < min_width:
             continue
         for item in d.get("items", []):
             if item[0] == "l":
@@ -162,9 +158,28 @@ def page_lines(drawings: list[dict], width: float, height: float) -> Optional[di
                 add(r.x1, r.y0, r.x1, r.y1, w)
                 add(r.x1, r.y1, r.x0, r.y1, w)
                 add(r.x0, r.y1, r.x0, r.y0, w)
-    if len(out) < LINE_MIN_COUNT:
-        return None
-    return {"size": [round(width, 2), round(height, 2)], "segs": out}
+            elif item[0] == "qu":
+                q = item[1]
+                for a, b in ((q.ul, q.ur), (q.ur, q.lr), (q.lr, q.ll), (q.ll, q.ul)):
+                    add(a.x, a.y, b.x, b.y, w)
+    return out
+
+
+def page_lines(drawings: list[dict], width: float, height: float) -> Optional[dict]:
+    """Hrubé úsečky strany pre kalibráciu podkladu (D-133).
+
+    Vstup je `page.get_drawings()`; čiary (`l`) a strany obdĺžnikov (`re`, `qu`) od
+    `LINE_MIN_WIDTH`, krivky sa vynechajú (oblúky dverí). Ak ich je menej než `LINE_MIN_COUNT`,
+    skúšajú sa nižšie prahy z `LINE_WIDTH_TIERS` (tenšie čiary, #283). Výstup `{size: [W, H],
+    segs: [[x1, y1, x2, y2, w]], min_w}` v bodoch strany s počiatkom vľavo dole (y hore, ako
+    `_georef` D-072), zaokrúhlené na 0,1 pt; `size` je rámec, v ktorom kalibrácia počíta,
+    `min_w` použitý prah hrúbky. Pri žiadnom prahu s dosť úsečkami = nie výkres, vráti None.
+    """
+    for min_w in LINE_WIDTH_TIERS:
+        out = _segments(drawings, min_w, height)
+        if len(out) >= LINE_MIN_COUNT:
+            return {"size": [round(width, 2), round(height, 2)], "segs": out, "min_w": min_w}
+    return None
 
 
 def extract_pages_full(pdf_path: Path) -> list[tuple[int, str, list[dict], Optional[dict]]]:
@@ -178,6 +193,35 @@ def extract_pages_full(pdf_path: Path) -> list[tuple[int, str, list[dict], Optio
                 blocks = page_blocks(page.get_text("dict"), rect.width, rect.height)
                 pages.append((i, text, blocks, page_lines(page.get_drawings(), rect.width, rect.height)))
     return pages
+
+
+# Strana bez textovej vrstvy: čo na nej namiesto textu je (#279, nadväzuje na #238).
+TEXTLESS_IMAGE = "obrázok"  # text je rastrový obrázok (sken, CCITT/JBIG2 maska) -> len OCR
+TEXTLESS_VECTOR = "krivky"  # text prevedený na krivky (veľa vektorových ťahov bez písma)
+TEXTLESS_EMPTY = "prázdna"
+# Strana s toľkými vektorovými prvkami bez textu je pravdepodobne text na krivkách, nie čistý list.
+TEXTLESS_VECTOR_MIN = 50
+
+
+def textless_pages(pdf_path: Path) -> dict[int, str]:
+    """Strany BEZ textovej vrstvy a dôvod: obrázok, krivky alebo prázdna (#279).
+
+    `search_documents` o takých stranách hlási "Strana nemá text"; ETL ich nevie opraviť bez OCR
+    (D-149 bod 7: OCR mimo rozsahu, vyžaduje nové rozhodnutie), ale vie ich pomenovať, aby sa
+    dali odlíšiť od naozaj prázdnych strán a spočítať, koľko by OCR potrebovalo.
+    """
+    out: dict[int, str] = {}
+    with fitz.open(pdf_path) as doc:
+        for i, page in enumerate(doc, start=1):
+            if _WS_RE.sub(" ", page.get_text("text")).strip():
+                continue
+            if page.get_images(full=True):
+                out[i] = TEXTLESS_IMAGE
+            elif len(page.get_drawings()) >= TEXTLESS_VECTOR_MIN:
+                out[i] = TEXTLESS_VECTOR
+            else:
+                out[i] = TEXTLESS_EMPTY
+    return out
 
 
 def page_sizes(pdf_path: Path) -> dict[int, list[float]]:
@@ -253,6 +297,26 @@ def _write_pages(
         cur.execute("update documents set file_sha256 = %s where id = %s", (sha256, doc_id))
 
 
+def index_pdf(cur, doc_id: str, pdf_path: Path) -> int:
+    """Extrakcia jedného PDF a zápis do `document_pages` (text, riadky, čiary, rozmer, sha256).
+
+    Volá ho `etl.doc_upload` hneď po nahratí dokumentu, aby sa čiary výkresu (kalibrácia
+    podkladu, #283/#316) nemuseli dopĺňať ručne cez `--from-db`. Vráti počet strán s textom.
+    """
+    pages = extract_pages_full(pdf_path)
+    _write_pages(cur, doc_id, pages, page_sizes(pdf_path), file_sha256(pdf_path))
+    return len(pages)
+
+
+def _report_textless(ref: str, pdf_path: Path) -> None:
+    """Strany bez textovej vrstvy (obrázok / krivky): kandidáti na OCR, ktorý ETL zatiaľ nerobí (#279)."""
+    for kind in (TEXTLESS_IMAGE, TEXTLESS_VECTOR):
+        nums = [n for n, k in textless_pages(pdf_path).items() if k == kind]
+        if nums:
+            shown = ", ".join(map(str, nums[:15])) + (" ..." if len(nums) > 15 else "")
+            print(f"    bez textovej vrstvy ({kind}): {len(nums)} strán: {shown}")
+
+
 def _report(ref: str, pages: list[Page]) -> None:
     total_chars = sum(len(p[1]) for p in pages)
     lines = sum(len(p[2]) for p in pages)
@@ -285,6 +349,7 @@ def run_from_db(dry_run: bool, only: Optional[str]) -> int:
                     skipped.append(f"{d.object_ref} ({exc})")
                     continue
                 _report(d.object_ref, pages)
+                _report_textless(d.object_ref, pdf_path)
                 if dry_run:
                     continue
                 _write_pages(cur, d.id, pages, sizes, sha)
@@ -337,6 +402,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 continue
             pages = extract_pages_full(pdf_path)
             _report(row.container_name, pages)
+            _report_textless(row.container_name, pdf_path)
             if cur is None:
                 continue
             doc_id = _doc_id(cur, row.container_name)

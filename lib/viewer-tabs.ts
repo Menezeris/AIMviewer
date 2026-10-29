@@ -5,7 +5,7 @@
  * (`tab`), otvorenie (`open`: pôdorys podlažia alebo uložený pohľad) a `beside`.
  * Menovky a mená pohľadov môžu mať `:` aj `;`, preto sú v base64url ako Lens (D-096).
  * `tab:layout:<base64url JSON>` = dlaždice (D-157): `layout` a `tiles` (`{tab}` menovka, `{plan}` GUID
- * podlažia, null prázdna).
+ * podlažia, `{view}` id pohľadu z Presentation, null prázdna).
  * `section_box:<m>:<guid.guid...>` = box okolo prvkov s okrajom `m` metrov,
  * `section_box:<minx,miny,minz,maxx,maxy,maxz>:` = presná obálka v IFC svete (obnova D-122).
  */
@@ -36,8 +36,8 @@ export const TILE_COUNTS: Record<TileLayout, number> = {
   grid4: 4,
 };
 
-/** Dlaždica na drôte: otvorená záložka, pôdorys podlažia (GUID) alebo prázdna. */
-export type TileWire = { tab: string } | { plan: string } | null;
+/** Dlaždica na drôte: otvorená záložka, pôdorys podlažia (GUID), pohľad z Presentation (id, D-161) alebo prázdna. */
+export type TileWire = { tab: string } | { plan: string } | { view: string } | null;
 
 export interface TabsWire {
   tab?: string;
@@ -99,6 +99,7 @@ function decodeWire(action: TabAction, joined: string): TabsWire | null {
       if (t === null) tiles.push(null);
       else if (t && typeof t === "object" && text((t as { tab?: unknown }).tab)) tiles.push({ tab: text((t as { tab: string }).tab)! });
       else if (t && typeof t === "object" && text((t as { plan?: unknown }).plan)) tiles.push({ plan: text((t as { plan: string }).plan)! });
+      else if (t && typeof t === "object" && text((t as { view?: unknown }).view)) tiles.push({ view: text((t as { view: string }).view)! });
       else return null;
     }
     return { layout, tiles };

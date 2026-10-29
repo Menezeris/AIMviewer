@@ -18,8 +18,11 @@ export interface SavedViewStore {
   list(): Promise<SavedViewRow[]>;
   /** Pohľad podľa mena bez ohľadu na veľkosť písmen; null = neexistuje. */
   byName(name: string): Promise<SavedViewRow | null>;
+  /** Uložený pohľad podľa `id` (D-161: `id` riadku = `BasketView.id`); "Posledný pohľad" sa nevracia. */
+  byId(id: string): Promise<SavedViewRow | null>;
   last(): Promise<SavedViewRow | null>;
-  create(row: SavedViewWrite & Pick<SavedViewRow, "name" | "viewpoint">): Promise<SavedViewRow>;
+  /** `id` zadáva viewer (D-161), inak ho vygeneruje DB. */
+  create(row: SavedViewWrite & Pick<SavedViewRow, "name" | "viewpoint"> & { id?: string }): Promise<SavedViewRow>;
   update(id: string, patch: SavedViewWrite): Promise<SavedViewRow>;
   remove(id: string): Promise<void>;
   /** Prepíše jediný riadok "Posledný pohľad" (kind = 'last'). */
@@ -37,7 +40,7 @@ export function supabaseSavedViewStore(): SavedViewStore {
   const now = () => new Date().toISOString();
   return {
     async list() {
-      const { data, error } = await db().from(TABLE).select("*").eq("kind", "saved").order("updated_at", { ascending: false }).limit(200);
+      const { data, error } = await db().from(TABLE).select("*").eq("kind", "saved").order("updated_at", { ascending: false }).limit(500);
       if (error) fail("Čítanie pohľadov zlyhalo", error);
       return (data ?? []) as SavedViewRow[];
     },
@@ -49,6 +52,11 @@ export function supabaseSavedViewStore(): SavedViewStore {
         .eq("kind", "saved")
         .ilike("name", name.replace(/[\\%_]/g, "\\$&"))
         .maybeSingle();
+      if (error) fail("Čítanie pohľadu zlyhalo", error);
+      return (data as SavedViewRow | null) ?? null;
+    },
+    async byId(id) {
+      const { data, error } = await db().from(TABLE).select("*").eq("kind", "saved").eq("id", id).maybeSingle();
       if (error) fail("Čítanie pohľadu zlyhalo", error);
       return (data as SavedViewRow | null) ?? null;
     },

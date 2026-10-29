@@ -17,6 +17,9 @@
  * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>[~r=<x>_<y>_<w>_<h>][~h=<x>_<y>_<w>_<h>_...]:<documentId>`
  * (výrez strany v %, D-117; rámiky okolo textu v %, po štyroch číslach, D-123; `~l=s` = vedľa 3D, D-132).
  * Záložky a rezný box (D-132): `tab:<action>:<base64url JSON>`, `section_box:...`, formát v `lib/viewer-tabs.ts`.
+ * Pohľady z Presentation (D-161): `view_activate::<base64url JSON>`, `view_capture::<base64url JSON>`, formát v `lib/viewer-views.ts`.
+ * Clash z AIM do panela (D-164): `clash_open::<base64url JSON>`, formát v `lib/viewer-clash.ts`; kolízie doplní klient hosta (async).
+ * IDS z AIM do panelov (D-162): `ids_open::<base64url JSON>`, formát v `lib/viewer-ids.ts`; XML doplní klient hosta (async), preto nemá bridge správu tu.
  * Presná póza kamery z uloženého pohľadu (D-122): `pose:<px,py,pz,tx,ty,tz,ux,uy,uz>[~o=<m>][~proj=o|p]:`
  * (IFC svet, m; `o` = polovica výšky ortografického pohľadu).
  * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
@@ -25,6 +28,7 @@
  * zoom `panel_zoom:<in|out|reset|n>~p=<panel>:`.
  * Otáčanie kamery dokola (D-154): `auto_rotate:<start|stop>[~s=<°/s>][~d=<l|r>]:`.
  * Podklady PDF v 3D (D-133 doplnok): `underlays3d:<0|1>:` (stav viewera, do DB sa nezapisuje).
+ * Poloha a smer kamery na PDF (D-161 bod 8, #282): `planpos:<0|1>:` (stav viewera, do DB sa nezapisuje).
  * Čiara trasy (D-137): `route:<hex>:<x,y,z|...>` (prázdne body = zmazať), formát v `lib/viewer-route.ts`.
  */
 
@@ -45,6 +49,9 @@ import {
 import { decodeMeasureWire, type MeasurePoint, type MeasureSegment } from "./viewer-measure";
 import { parseRouteOp } from "./viewer-route";
 import { parseTabsOp, tabsBridgeMessage, type TabsOp } from "./viewer-tabs";
+import { parseViewsOp, viewsBridgeMessage, type ViewsOp } from "./viewer-views";
+import { parseClashOp, type ClashOpenOp } from "./viewer-clash";
+import { parseIdsOp, type IdsOpenOp } from "./viewer-ids";
 
 export interface OpsSelector {
   types?: string[];
@@ -158,6 +165,10 @@ export type ViewerOp =
   | { op: "doc"; documentId: string; page?: number; region?: DocRegion; highlights?: DocRegion[]; layout?: "split" }
   /** Záložky viewera a rezný box (D-132), `lib/viewer-tabs.ts`. */
   | TabsOp
+  /** Pohľad z Presentation (D-161): aktivácia a uloženie aktuálneho stavu, `lib/viewer-views.ts`. */
+  | ViewsOp
+  | IdsOpenOp
+  | ClashOpenOp
   | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire }
   /** Zoznam z chatu do panela Lists (D-111), formát v `lib/viewer-list.ts`. */
   | { op: "list"; wire: ListWire }
@@ -174,7 +185,8 @@ export type ViewerOp =
   /** Plynulé otáčanie kamery okolo cieľa (D-154); rýchlosť a smer len pri `start`. */
   | { op: "auto_rotate"; action: AutoRotateAction; speedDegS?: number; direction?: AutoRotateDirection }
   /** Zobraziť / skryť podklady PDF v 3D plátne (D-133 doplnok), len stav viewera. */
-  | { op: "underlays3d"; show: boolean };
+  | { op: "underlays3d"; show: boolean }
+  | { op: "planpos"; show: boolean };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -413,6 +425,11 @@ export function underlays3dOp(show: boolean): string {
   return `underlays3d:${show ? 1 : 0}:`;
 }
 
+/** Op polohy kamery na PDF (D-161 bod 8, #282): `planpos:0:` skryje bodku a smer, `planpos:1:` zobrazí. */
+export function planPositionOp(show: boolean): string {
+  return `planpos:${show ? 1 : 0}:`;
+}
+
 /** Op panelov (D-127): `panels:~lens=close~...:`. */
 export function panelsOp(panels: PanelsRequest): string {
   const kv = Object.entries(panels).map(([k, v]) => `${k}=${v}`);
@@ -521,6 +538,15 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "tab" || op === "section_box") {
       const t = parseTabsOp(op, arg, joined);
       if (t) out.push(t);
+    } else if (op === "view_activate" || op === "view_capture") {
+      const v = parseViewsOp(op, joined);
+      if (v) out.push(v);
+    } else if (op === "ids_open") {
+      const ids = parseIdsOp(joined);
+      if (ids) out.push(ids);
+    } else if (op === "clash_open") {
+      const clash = parseClashOp(joined);
+      if (clash) out.push(clash);
     } else if (op === "panels") {
       const panels = parsePanels(arg);
       if (panels) out.push({ op, panels });
@@ -542,7 +568,7 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "panel_zoom") {
       const z = parsePanelZoom(arg);
       if (z) out.push({ op, ...z });
-    } else if (op === "underlays3d") {
+    } else if (op === "underlays3d" || op === "planpos") {
       if (arg === "0" || arg === "1") out.push({ op, show: arg === "1" });
     } else if (op === "doc") {
       const documentId = joined;
@@ -637,6 +663,15 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     case "tab":
     case "section_box":
       return tabsBridgeMessage(o);
+    case "view_activate":
+    case "view_capture":
+      return viewsBridgeMessage(o);
+    case "clash_open":
+      // Kolízie si klient hosta stiahne z /api/clash až pri vykonaní (async), preto správu skladá `applyOps` v ifc-viewer.tsx.
+      throw new Error("clash_open sa vykoná v klientovi hosta (openClash), nie cez opToBridgeMessage");
+    case "ids_open":
+      // XML si klient hosta stiahne z /api/ids až pri vykonaní (async), preto správu skladá `applyOps` v ifc-viewer.tsx.
+      throw new Error("ids_open sa vykoná v klientovi hosta (openIds), nie cez opToBridgeMessage");
     case "lens":
       // Zónu (`aim_zone`) a dokument (`aim_document`) doplní klient pred odoslaním; tu ostanú prázdne.
       return lensBridgeMessage(o.mode, o.wire, new Map(), o.rev);
@@ -668,6 +703,8 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
       };
     case "underlays3d":
       return { type: "SET_UNDERLAYS_3D", show: o.show };
+    case "planpos":
+      return { type: "SET_PLAN_POSITION", show: o.show };
   }
 }
 

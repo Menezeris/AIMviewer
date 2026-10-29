@@ -471,7 +471,7 @@ export function capturesPublicUrl(key: string): string {
   return supabase.storage.from(CAPTURES_BUCKET).getPublicUrl(key).data.publicUrl;
 }
 
-/** Nahrá binárny obsah do bucket `captures` (upsert) a vráti verejnú URL. */
+/** Nahrá binárny obsah do bucket `captures` (upsert) a vráti verejnú URL. Kľúče nesú `randomUUID`, obsah sa nemení, preto rok (D-135 dodatok). */
 export async function uploadCaptureObject(
   key: string,
   body: Uint8Array | Buffer,
@@ -486,7 +486,7 @@ export async function uploadCaptureObject(
   const blob = new Blob([body as unknown as BlobPart], { type: contentType });
   const { error } = await supabase.storage
     .from(CAPTURES_BUCKET)
-    .upload(key, blob, { contentType, upsert: true });
+    .upload(key, blob, { contentType, upsert: true, cacheControl: "31536000" });
   if (error) throw new Error(error.message);
   return capturesPublicUrl(key);
 }

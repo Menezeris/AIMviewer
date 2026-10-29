@@ -605,31 +605,48 @@ aj `view_type` (3d | plan | section | detail), `locked` (kamera zamknutá kolmo)
 dokumentu). Jediný riadok `kind = 'last'` = "Posledný
 pohľad", prepíše ho každé uloženie a obnova (`uniq_saved_views_last`). Zapisuje MCP konektor
 (`saved_view`, `set_view_mode(saved_view)`). Práva anon/authenticated nemá (2.12).
-Od D-161 (bez migrácie) je riadok trvalá kópia pohľadu z upstream panela Presentation (`BasketView`, to isté `id`):
-`viewpoint` nesie navyše `section_set` (celá sada rovín rezu), `transition_ms`, `order` (poradie v páse) a
-`basket_scope` (`all` = celý viditeľný model, inak košík ako GlobalId v `isolated`); `mode`, `view_type`, `locked` a
-`underlay` z D-122/D-132 sa pri čítaní ignorujú. Zapisuje aj viewer (panel Presentation) cez route
-`/api/saved-views` za env bránou.
+Od D-161 (bez migrácie) je riadok trvalá kópia pohľadu z upstream panela Presentation (`BasketView`): `id` riadku
+je `BasketView.id` (UUID) a `name` je stĺpec; `viewpoint` nesie celý objekt `ViewWire` z bridge protokolu forku
+(`lib/viewer-views.ts`): `order` (poradie v páse), `transition_ms`, `source` (`selection` | `visible` |
+`hierarchy` | `manual`), `camera` (`position`, `target`, `up` ako polia [x, y, z] v IFC svete, m, Z hore, `fov`,
+`projection`, `ortho_size`), `section` (`planes[]` s `axis`, `coordinate`, `position_percent`, `flipped`, `enabled`,
+`show_gizmo`, `show_cap`, `show_outlines`, `box?` a `active`), `basket` (`{scope: all, hidden_guids[]}` = celý
+viditeľný model bez skrytých, alebo `{scope: guids, guids[], truncated?}`, najviac 5000 GlobalId) a `objects`.
+Stĺpce `selection`, `hidden`, `isolated` ostávajú prázdne. Riadok s `viewpoint.basket` je pohľad z Presentation;
+riadky z D-122/D-132 (kamera ako {x,y,z}, `mode`, `view_type`, `locked`, `underlay`) sa do viewera neposielajú a chat
+ich obnoví zálohou (rez, kamera, izolácia na bežnom 3D). Pri "Posledný pohľad" (`kind = 'last'`) je `viewpoint.id`
+pôvodný pohľad. Zapisuje aj viewer (panel Presentation) cez route `/api/saved-views` za env bránou
+`VIEWS_WRITE_ENABLED` (autor `viewer`, kolízia mena = prípona " 2", " 3"...).
 
-### 2.18 Testy a behy kontroly kolízií (D-164, návrh, rezervovaná migrácia 20261023200000_clash.sql)
+### 2.18 Testy a behy kontroly kolízií (D-164, migrácia `20261023200000_clash.sql`, test `supabase/tests/clash.sql`)
 
-**Deklarovaná extenzia** (IFC kolízie nenesie; BCF je výmenný formát nálezov, nie úložisko). Návrh pre
-host PR 2, presné DDL určí PR. Kolízie nie sú `objects`.
-- `clash_tests` = test: `code` (unique), `name`, `rules` jsonb (upstream `ClashPreset[]`: `id` pravidla
-  stabilné, `a`/`b` selektory, `filterA`/`filterB`, `mode`, `enabled`; AIM filtre podlažie / systém / prvky),
-  `settings` jsonb (`mode`, `tolerance`, `clearance`), `origin` `chat|viewer`, `author`, `created_at`, `updated_at`.
-- `clash_runs` = beh: `test_id` (FK, null = ad hoc), `rules_snapshot` jsonb (pravidlá v čase behu), `models`
-  jsonb (`{model: {revision, sha256}}`, D-086), `engine` (napr. `ifc-lite-ts@2.4.4`), `trigger` `chat|viewer`,
-  `completeness` jsonb (`truncated`, `stale`), `summary` jsonb (počty po pravidle, závažnosti, stave), `created_at`.
-- `clash_results` = kolízia behu: `run_id` (FK, `on delete cascade`), `clash_key` (= upstream `clashReviewKey`:
-  id pravidla + dve GUID bez ohľadu na poradie), `rule`, `status` `hard|clearance`, `severity`, `distance`,
-  `a_guid`, `a_model`, `a_ifc_type`, `b_guid`, `b_model`, `b_ifc_type`, `storey`, `center` (IFC svet), `group_key`;
-  strop 100 000 riadkov za beh; indexy (`run_id`), (`clash_key`).
-- `clash_reviews` = stav kolízie naprieč behmi testu: (`test_id`, `clash_key`) unique, `status`
-  `open|resolved|accepted`, `comment`, `bcf_topic_id` (FK `model_tasks`, `on delete set null`), `updated_by`, `updated_at`.
-- Pohľady `v_clash_latest` (posledný beh každého testu + review + podlažie a systém z grafu cez GUID) a
-  `v_clash_summary` (po pravidle a skupine), do whitelistu `query_view`. Práva: `anon`/`authenticated` nič,
-  `service_role` všetko.
+**Deklarovaná extenzia** (IFC kolízie nenesie; BCF je výmenný formát nálezov, nie úložisko). Kolízie nie sú
+`objects`. Tabuľky zapisuje len host (`service_role`); `anon`/`authenticated` nemajú nič.
+- `clash_tests` = test: `code` (unique, `^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$`; je aj id pravidla v `clash_key`), `name`,
+  `description`, `origin` `default|chat|viewer` (`default` = pevný test z kódu hostu, `VZT-NOSNE`, `VZT-ASR`; host ho
+  pri prvom uložení behu vyrovná s kódom), `rules` jsonb (neprázdne pole; dnes jedno pravidlo
+  `{id, a: {type, model?, storey?}, b?: {...}}`, `type` je selektor tried upstream `@ifc-lite/clash`), `settings` jsonb
+  (`{mode: hard|clearance, clearance_mm?, tolerance_mm?}`), `created_by`, `created_at`, `updated_at`.
+- `clash_runs` = beh: `test_id` (FK `on delete cascade`, null = ad hoc beh), `test_code`, `rules_snapshot` jsonb
+  (`{spec}`: pravidlo a nastavenia v čase behu, aj s prepísaným podlažím), `models` jsonb (`{model: {etag, size, loaded_at}}`
+  revízie, D-086), `engine` (`@ifc-lite/clash@2.4.4 (ts)`), `trigger` `chat|viewer`, `completeness` jsonb (`truncated`: strop
+  dvojíc; `coverage_omitted`), `summary` jsonb (`total`, `by_status`, `by_severity`, `by_storey`, `by_type_pair`, `sets`),
+  `coverage` jsonb (`{a: [model:GUID...], b: [...] | null}`: prvky, ktoré beh overil; bez nich porovnanie nepovie "vyriešené",
+  najviac 30 000 na stranu, inak null), `created_by`, `created_at`; index (`test_id`, `created_at desc`).
+- `clash_results` = kolízia behu (`id` bigint): `run_id` (FK `on delete cascade`), `clash_key` (= upstream `clashReviewKey`:
+  `<pravidlo> <model:GUID> <model:GUID>` bez ohľadu na poradie dvojice), `rule`, `status` `hard|clearance` (`touch` sa
+  neukladá), `severity` `critical|major|minor|info`, `distance` (m, záporné = hĺbka prieniku), `a_guid`/`a_model`/`a_ifc_type`/
+  `a_name` a to isté pre `b_*`, `storey`, `center` jsonb (`[x, y, z]` v IFC svete, m, Z hore), `point` a `bounds` jsonb ako ich dal
+  engine (Y hore; na obnovu behu a zhlukovanie); strop 100 000 riadkov za beh (nad ním host odmietne a poradí zúžiť);
+  indexy (`run_id`), (`clash_key`).
+- `clash_reviews` = stav kolízie naprieč behmi: PK (`test_id` FK `on delete cascade`, `clash_key`), `status`
+  `open|resolved|accepted` (predvolene `open`), `comment`, `bcf_topic_id` (FK `model_tasks`, `on delete set null`),
+  `updated_by`, `updated_at`. Riadok vzniká pri nastavení stavu alebo pripojení BCF témy; kolízia bez riadku je `open`.
+- `v_clash_latest` = kolízie posledného behu každého testu (ad hoc behy tu nie sú) so stavom (`review_status`,
+  `review_comment`, `bcf_topic_id`, `bcf_topic_number`), prvkami z grafu AIM (`a_object_ref`, `b_object_ref` cez aktívny
+  `ifc_guid_history`) a systémom prvku (`a_system`, `b_system`: prvý podľa názvu z `rel_assigns_to_group`, bez duplikácie
+  riadkov). `v_clash_summary` = ten istý beh po pravidle, podlaží a stave (`clashes`, `hard`, `clearance`, `critical`, `major`,
+  `minor`, `info`). Oba aj `clash_tests` sú vo whiteliste `query_view`. Práva: `anon`/`authenticated` nič, `service_role` všetko.
 
 ## 4. Konvencia `properties` (D-022)
 

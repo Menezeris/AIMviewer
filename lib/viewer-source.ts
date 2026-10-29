@@ -23,6 +23,16 @@ export type ViewerChoice =
   | { kind: "pr"; number: number }
   | { kind: "url"; url: string };
 
+/**
+ * Adresa stránky po "Vyčistiť uložený stav a načítať znova" (D-163): bez `?viewer=`,
+ * aby sa voľba náhľadu PR (napr. už zavretého) z odkazu znova neuložila.
+ */
+export function urlWithoutViewerChoice(href: string): string {
+  const u = new URL(href);
+  u.searchParams.delete("viewer");
+  return u.toString();
+}
+
 /** Je to URL, ktorú smieme vložiť ako viewer? */
 export function isAllowedViewerUrl(raw: string, dev = false): boolean {
   let u: URL;

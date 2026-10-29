@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseOps } from "../viewer-ops";
 import { planCamera } from "./camera-plan";
-import { ViewInputError, planPanels, planPanelScroll, planPanelZoom, planSection, planUnderlays3d, planViewMode } from "./view-plan";
+import { ViewInputError, planPanels, planPanelScroll, planPanelZoom, planPlanPosition, planSection, planUnderlays3d, planViewMode } from "./view-plan";
 
 const FLOOR = { label: "3NP", guid: "3ig6N2jJz05g7H9Fq$ftkL" };
 const ROOM = "1KphWFyMb8dRV6rhVkyU6y";
@@ -95,6 +95,17 @@ describe("set_section: widget rezu (#63)", () => {
 });
 
 describe("panely (D-127)", () => {
+  it("plan_position -> op planpos, stav viewera, chybný vstup = chyba (D-161 bod 8, #282)", () => {
+    const on = planPlanPosition({ plan_position: true })!;
+    expect(on.op).toBe("planpos:1:");
+    expect(parseOps(on.op)).toEqual([{ op: "planpos", show: true }]);
+    expect(on.result).toEqual({ plan_position: true });
+    expect(parseOps(planPlanPosition({ plan_position: false })!.op)).toEqual([{ op: "planpos", show: false }]);
+    expect(planPlanPosition({})).toBeNull();
+    expect(() => planPlanPosition({ plan_position: "on" })).toThrow(ViewInputError);
+    expect(parseOps("planpos:2:")).toEqual([]);
+  });
+
   it("underlays_3d -> op SET_UNDERLAYS_3D, stav viewera, chybný vstup = chyba", () => {
     const off = planUnderlays3d({ underlays_3d: false })!;
     expect(off.op).toBe("underlays3d:0:");

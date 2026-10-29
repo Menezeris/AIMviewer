@@ -7,14 +7,28 @@ import { ViewInputError, type ViewPlan } from "./view-plan";
  * uloženého pohľadu (`lib/views/plan.ts`), pôdorys `mode=2d` (fork ho mapuje na
  * záložku). Stav záložiek vráti viewer v `APPLIED` / `view_state.tabs`.
  * Dlaždice (D-157): `layout` + `tiles`, stav v `view_state.layout`.
+ * Pohľady z Presentation (D-161, krok 4): `tiles`, `tab` a `beside` prijmú aj meno pohľadu; host ho
+ * preloží na id zo `saved_views` (viewer dostane id, nie meno, ktoré sa môže zmeniť).
  */
+
+/** Pohľad z Presentation (riadok `saved_views` s tvarom `ViewWire`): id a meno. */
+export interface PresentationView { id: string; name: string }
+
+const EXCLUDED_REFS = new Set(["3d", "none", "all"]);
+
+/** Pohľad podľa mena (bez ohľadu na veľkosť písmen); '3D', 'none' a 'all' sú vyhradené. */
+export function viewByName(views: readonly PresentationView[] | undefined, name: string): PresentationView | undefined {
+  const want = name.trim().toLowerCase();
+  if (!views || EXCLUDED_REFS.has(want)) return undefined;
+  return views.find((v) => v.name.trim().toLowerCase() === want);
+}
 
 const MAX_REF = 200;
 
 const ref = (v: unknown, field: string): string | undefined => {
   if (v === undefined) return undefined;
   if (typeof v !== "string" || v.trim() === "" || v.length > MAX_REF) {
-    throw new ViewInputError(`${field}: id, menovka záložky (napr. '3D', 'Pôdorys 1NP', meno pohľadu alebo dokumentu)${field === "close_tab" ? " alebo 'all'" : ""}.`);
+    throw new ViewInputError(`${field}: menovka záložky (napr. '3D' alebo meno dokumentu)${field === "close_tab" ? " alebo 'all'" : ""}.`);
   }
   return v.trim();
 };
@@ -24,8 +38,8 @@ export function hasTabParams(input: Record<string, unknown>): boolean {
   return input.tab !== undefined || input.beside !== undefined || input.close_tab !== undefined;
 }
 
-/** `tab` prepne, `beside` dá vedľa aktívnej (`none` zruší), `close_tab` zavrie; v tomto poradí. */
-export function planViewTabs(input: Record<string, unknown>): ViewPlan {
+/** `tab` prepne, `beside` dá vedľa aktívnej (`none` zruší), `close_tab` zavrie; v tomto poradí. Meno pohľadu sa preloží na jeho id. */
+export function planViewTabs(input: Record<string, unknown>, views?: readonly PresentationView[]): ViewPlan {
   if (input.mode !== undefined || input.saved_view !== undefined || input.view !== undefined || input.reset !== undefined) {
     throw new ViewInputError("tab, beside a close_tab sa nekombinujú s mode, view ani reset; zavolaj set_view_mode dvakrát.");
   }
@@ -35,13 +49,15 @@ export function planViewTabs(input: Record<string, unknown>): ViewPlan {
   const ops: string[] = [];
   const done: string[] = [];
   if (tab) {
-    ops.push(tabOp("activate", { tab }));
-    done.push(`záložka ${tab}`);
+    const view = viewByName(views, tab);
+    ops.push(tabOp("activate", { tab: view?.id ?? tab }));
+    done.push(view ? `pohľad ${view.name}` : `záložka ${tab}`);
   }
   if (beside) {
     const none = beside.toLowerCase() === "none";
-    ops.push(none ? tabOp("unbeside") : tabOp("beside", { tab: beside }));
-    done.push(none ? "bez Vedľa" : `vedľa ${beside}`);
+    const view = viewByName(views, beside);
+    ops.push(none ? tabOp("unbeside") : tabOp("beside", { tab: view?.id ?? beside }));
+    done.push(none ? "bez Vedľa" : `vedľa ${view ? `pohľad ${view.name}` : beside}`);
   }
   if (close) {
     ops.push(tabOp("close", { tab: close }));
@@ -53,7 +69,7 @@ export function planViewTabs(input: Record<string, unknown>): ViewPlan {
     result: {
       ok: true,
       tabs: done,
-      note: "Zoznam záložiek (aktívna, vedľa) vráti viewer v stave po príkaze (tabs). Dvojicu, ktorú plocha bez dlaždíc nevie (pôdorys bez podkladu vedľa 3D, dve 3D, dva dokumenty), dá viewer do dvoch dlaždíc vedľa seba (layout v stave, D-157).",
+      note: "Zoznam záložiek (aktívna, vedľa) vráti viewer v stave po príkaze (tabs). Dvojicu, ktorú plocha bez dlaždíc nevie (dve 3D, dva dokumenty), dá viewer do dvoch dlaždíc vedľa seba (layout v stave, D-157).",
     },
   };
 }
@@ -76,7 +92,7 @@ export function planSectionBox(input: Record<string, unknown>, guids: string[]):
       ok: true,
       box_around: guids.length,
       margin_m: margin,
-      note: "Box okolo obálky prvkov; v stave viewera je section.box (IFC svet). Ako pohľad ho ulož cez saved_view(action=save, view_type=detail, locked=true).",
+      note: "Box okolo obálky prvkov; v stave viewera je section.box (IFC svet). Ako pohľad ho ulož cez saved_view(action=save, name).",
     },
   };
 }
@@ -91,12 +107,14 @@ const EMPTY_TILE = new Set(["none", "-", "prázdna", "prazdna"]);
 /**
  * `layout` + `tiles` (D-157): rozloženie dlaždíc a záložka v každej. Menovka
  * podlažia (1NP) sa preloží na GUID a viewer pôdorys otvorí sám; ostatné sú
- * menovky otvorených záložiek ('3D', pohľad, dokument); 'none' = prázdna.
+ * menovky otvorených záložiek ('3D', dokument); meno pohľadu z Presentation (D-161) sa preloží na jeho id
+ * (`views`), viewer pohľad otvorí v dlaždici sám; 'none' = prázdna.
  * `floorGuid` vráti GUID podlažia alebo null (nie je to podlažie).
  */
 export async function planLayout(
   input: Record<string, unknown>,
   floorGuid: (ref: string) => Promise<{ guid: string; label: string } | null>,
+  views?: readonly PresentationView[],
 ): Promise<ViewPlan> {
   if (input.mode !== undefined || input.saved_view !== undefined || input.view !== undefined || input.reset !== undefined || hasTabParams(input)) {
     throw new ViewInputError("layout a tiles sa nekombinujú s mode, view, reset, tab, beside ani close_tab; zavolaj set_view_mode dvakrát (najprv otvor záložky, potom layout).");
@@ -129,9 +147,10 @@ export async function planLayout(
     }
     const tab = ref(r, "tiles[]");
     if (!tab) continue;
-    const floor = await floorGuid(tab);
-    tiles.push(floor ? { plan: floor.guid } : { tab });
-    shown.push(floor ? floor.label : tab);
+    const floor = tab.toLowerCase() === "3d" ? null : await floorGuid(tab);
+    const view = floor ? undefined : viewByName(views, tab);
+    tiles.push(floor ? { plan: floor.guid } : view ? { view: view.id } : { tab });
+    shown.push(floor ? floor.label : view ? view.name : tab);
   }
   const wire = { layout, ...(layout !== "single" && tiles.length > 0 ? { tiles } : {}) };
   return {
@@ -142,8 +161,8 @@ export async function planLayout(
       layout,
       tiles: shown,
       note:
-        "Dlaždice a živú 3D dlaždicu vráti viewer v stave po príkaze (layout). Živé 3D je naraz len jedno (jeden 3D canvas): " +
-        "ostatné 3D dlaždice (3D, pôdorys, pohľad) ukazujú snímku, klik ju urobí živou; show_in_3d, style_in_3d, set_section " +
+        "Dlaždice a živú 3D dlaždicu vráti viewer v stave po príkaze (layout, pri pohľade view_id a view). Živé 3D je naraz len jedno " +
+        "(jeden 3D canvas): ostatné 3D dlaždice (3D, pohľad) ukazujú snímku, klik ju urobí živou; show_in_3d, style_in_3d, set_section " +
         "a set_camera pôsobia na živú. Chýbajúce dlaždice doplní viewer otvorenými záložkami.",
     },
   };

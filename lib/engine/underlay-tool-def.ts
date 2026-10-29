@@ -23,7 +23,9 @@ export const CALIBRATE_UNDERLAY_TOOL: ToolDefinition = {
     "miestností alebo výškové kóty ako štart, potom zhoda čiar výkresu s rezom modelu) a uloží, ak medián chyby " +
     "nepresiahne max_error_mm; manual = vlastné dvojice bodov (pairs: bod strany v % ako region, vľavo hore, a bod " +
     "modelu v m), refine ich doladí na čiary. Ručnú kalibráciu (z panela) auto neprepíše bez force. Ukladaj (auto, " +
-    "manual) len na výslovný pokyn používateľa; inak dry_run a výsledok mu ukáž.",
+    "manual) len na výslovný pokyn používateľa; inak dry_run a výsledok mu ukáž. Mierka výsledku sa kontroluje " +
+    "(scale_check): proti scale, mierke z textu strany (MERÍTKO 1 : 50) alebo bežným mierkam; auto pri odchýlke " +
+    "neuloží ani pri nízkom mediáne. Strana bez čiar (raster) ide len cez manual s pairs.",
   inputSchema: {
     type: "object",
     properties: {
@@ -50,6 +52,7 @@ export const CALIBRATE_UNDERLAY_TOOL: ToolDefinition = {
           required: ["page_pct", "model_m"],
         },
       },
+      scale: { type: "number", description: "Mierka výkresu 1:N (napr. 50): pevná v štarte aj doladení, ICP rieši len rotáciu a posun; inak sa vezme z textu strany" },
       refine: { type: "boolean", description: "manual: doladiť dvojice na čiary výkresu (predvolene true)" },
       max_error_mm: { type: "number", description: `Strop mediánu chyby pre uloženie (predvolene ${DEFAULT_MAX_ERROR_MM})` },
       force: { type: "boolean", description: "Prepísať aj ručnú kalibráciu z panela Underlays" },

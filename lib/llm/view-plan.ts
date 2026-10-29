@@ -11,6 +11,7 @@ import {
   VIEW_MODES,
   PANEL_ACTIONS,
   panelsOp,
+  planPositionOp,
   underlays3dOp,
   panelScrollOp,
   panelZoomOp,
@@ -167,6 +168,17 @@ export function planUnderlays3d(input: Record<string, unknown>): { op: string; l
   return { op: underlays3dOp(raw), label: `Podklady v 3D: ${raw ? "zapnuté" : "vypnuté"}`, result: { underlays_3d: raw } };
 }
 
+/**
+ * Poloha a smer kamery na kalibrovanom PDF (D-161 bod 8, #282): `plan_position` = true zobrazí bodku a výsek
+ * smeru pohľadu na PDF v záložke alebo dlaždici, false skryje. Stav viewera; čítanie `get_viewer_state.plan_position`.
+ */
+export function planPlanPosition(input: Record<string, unknown>): { op: string; label: string; result: { plan_position: boolean } } | null {
+  const raw = input.plan_position;
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "boolean") throw new ViewInputError("plan_position: true (ukázať polohu a smer kamery na PDF) alebo false (skryť).");
+  return { op: planPositionOp(raw), label: `Poloha na PDF: ${raw ? "zapnutá" : "vypnutá"}`, result: { plan_position: raw } };
+}
+
 export function planViewMode(
   input: Record<string, unknown>,
   floor: { label: string; guid: string } | null,
@@ -182,10 +194,16 @@ export function planViewMode(
       result: { ok: true, reset: true },
     };
   }
+  // D-161: 2D nie je režim. `2d` = kamera zhora a rez na bežnom 3D, `split` = to isté a dlaždice 3D | výkres PDF.
+  const note = {
+    "3d": "Perspektívna kamera na bežnom 3D.",
+    "2d": "Pohľad zhora na podlažie na bežnom 3D (ortografická kamera, vodorovný rez 1,2 m nad podlahou alebo uložený pohľad podlažia); bez zámku, orbit a nástroje fungujú.",
+    split: "Pohľad zhora na podlažie a dlaždice 3D | výkres PDF podlažia; ak podlažie nemá výkres, viewer to nahlási v problémoch.",
+  }[mode];
   return {
     ops: [viewModeOp(mode, floor?.guid)],
-    label: `Viewer: ${mode.toUpperCase()}${floor ? ` ${floor.label}` : ""}`,
-    result: { ok: true, mode, ...(floor ? { floor: floor.label } : {}) },
+    label: mode === "3d" ? "Viewer: 3D" : `Viewer: pohľad zhora${mode === "split" ? " + výkres" : ""}${floor ? ` ${floor.label}` : ""}`,
+    result: { ok: true, mode, ...(floor ? { floor: floor.label } : {}), note },
   };
 }
 

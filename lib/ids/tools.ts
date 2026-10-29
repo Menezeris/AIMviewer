@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { upstreamInputSchema } from "../engine/session";
+import type { IdsOpenReq } from "../viewer-ids";
 
 import { describeDoc, diffDocs } from "./describe";
 import { DEFAULT_IDS_AUTHOR, IDS_ACTIONS, type IdsAction } from "./tool-defs";
@@ -26,17 +27,29 @@ export interface IdsToolDeps {
   store: IdsStore;
   /** Relácia @ifc-lite/mcp bez modelov; predvolene čerstvá. */
   engine?: () => Promise<IdsEngine>;
+  /** Živý viewer (`open`, `from_viewer`); bez neho tieto akcie povedia, že viewer nie je nastavený. */
+  viewer?: IdsViewerDeps;
+}
+
+/** Výsledok `ids_open` vo vieweri: `APPLIED` z živého kanála. */
+export type IdsOpenOutcome = { ok: true; issues: string[] } | { ok: false; reason: string };
+
+export interface IdsViewerDeps {
+  /** Pošle vieweru op `ids_open` a počká na potvrdenie `APPLIED`. */
+  open: (req: IdsOpenReq) => Promise<IdsOpenOutcome>;
+  /** Surová odpoveď `view_state` z otvoreného viewera; string = prečo sa nedala prečítať. */
+  viewState: () => Promise<unknown>;
 }
 
 export class IdsInputError extends Error {}
 
-const CODE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
+export const CODE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const MAX_XML_OUT = 256_000;
 const LIST_MAX_CODES = 30;
 const MAX_DIAGNOSTICS = 10;
 const MAX_ISSUES = 20;
 
-const text = (v: unknown, max: number): string | undefined => {
+export const text = (v: unknown, max: number): string | undefined => {
   if (typeof v !== "string") return undefined;
   const s = v.trim();
   return s ? s.slice(0, max) : undefined;
@@ -48,10 +61,10 @@ function versionNo(raw: unknown, field: string): number | undefined {
   return raw;
 }
 
-const sha256 = (xml: string) => createHash("sha256").update(xml).digest("hex");
-const originLabel = (d: Pick<IdsDocumentRow, "origin">) => (d.origin === "library" ? "z knižnice (len na čítanie)" : "pracovné, nie je z knižnice");
+export const sha256 = (xml: string) => createHash("sha256").update(xml).digest("hex");
+export const originLabel = (d: Pick<IdsDocumentRow, "origin">) => (d.origin === "library" ? "z knižnice (len na čítanie)" : "pracovné, nie je z knižnice");
 
-async function loadDoc(deps: IdsToolDeps, raw: unknown): Promise<IdsDocumentRow> {
+export async function loadDoc(deps: IdsToolDeps, raw: unknown): Promise<IdsDocumentRow> {
   const code = text(raw, 80);
   if (!code) throw new IdsInputError("Chýba ids (kód IDS, action=list ich ukáže).");
   const doc = await deps.store.byCode(code);
@@ -62,24 +75,24 @@ async function loadDoc(deps: IdsToolDeps, raw: unknown): Promise<IdsDocumentRow>
   );
 }
 
-async function loadVersion(deps: IdsToolDeps, doc: IdsDocumentRow, version: number | undefined): Promise<IdsVersionRow> {
+export async function loadVersion(deps: IdsToolDeps, doc: IdsDocumentRow, version: number | undefined): Promise<IdsVersionRow> {
   const row = await deps.store.version(doc.id, version);
   if (row) return row;
   throw new IdsInputError(version === undefined ? `IDS '${doc.code}' nemá žiadnu verziu.` : `IDS '${doc.code}' nemá verziu ${version}.`);
 }
 
-interface Engine {
+export interface Engine {
   engine: IdsEngine;
 }
 
 /** XML -> Studio dokument (`ids_read`) s názvom a verziou z `ids:info`. */
-async function readXml(e: Engine, xml: string) {
+export async function readXml(e: Engine, xml: string) {
   const out = await callIds(e.engine, "ids_read", { ids_xml: xml });
   const described = describeDoc(out.doc);
   return { doc: out.doc, described };
 }
 
-function counts(v: unknown): Record<string, number> | null {
+export function counts(v: unknown): Record<string, number> | null {
   return v && typeof v === "object" ? (v as Record<string, number>) : null;
 }
 
@@ -230,13 +243,8 @@ async function create(args: Record<string, unknown>, deps: IdsToolDeps, e: Engin
     titleOverride ??= src.title;
   } else if (args.xml !== undefined) {
     if (typeof args.xml !== "string" || !args.xml.trim()) throw new IdsInputError("xml: neprázdny reťazec s IDS XML.");
-    const report = await callIds(e.engine, "ids_audit", { ids_xml: args.xml });
-    const c = counts(report.counts);
-    if ((c?.error ?? 0) > 0) {
-      throw new IdsEngineError("ids_audit", `IDS neprešlo auditom (${c?.error} chýb); nič sa neuložilo.`, "AUDIT_FAILED", { issues: report.issues }, null);
-    }
     xml = args.xml;
-    audit = { status: report.status ?? null, counts: c };
+    audit = await auditXml(e, args.xml);
   } else {
     const applied = await applyToDoc(e, { title: titleOverride ?? code }, args.ops);
     const written = await writeDoc(e, applied.doc, applied.lint);
@@ -355,13 +363,209 @@ async function exportIds(args: Record<string, unknown>, deps: IdsToolDeps) {
     filename: `${doc.code}-v${row.version}.ids`,
     sha256: row.sha256,
     xml: row.xml,
-    note: "XML priamo v odpovedi; odkaz na stiahnutie pribudne s route app/api/ids (D-162 host PR2).",
+    download: `/api/ids?code=${encodeURIComponent(doc.code)}&version=${row.version}&format=ids`,
+    note: "XML priamo v odpovedi; používateľovi dáš odkaz na stiahnutie (relatívny, na doméne AIM).",
   };
 }
 
-const PENDING_PR2 =
-  "zatiaľ nie je dostupná: otvorenie IDS vo vieweri a uloženie z viewera prídu s D-162 host PR2 (po D-161 Fork A). " +
-  "Teraz: get, export a kontrola modelu cez ifc_ids_validate(ids=kód).";
+/** `ids_audit`: XML s chybami auditu sa neuloží. */
+async function auditXml(e: Engine, xml: string): Promise<Record<string, unknown>> {
+  const report = await callIds(e.engine, "ids_audit", { ids_xml: xml });
+  const c = counts(report.counts);
+  if ((c?.error ?? 0) > 0) {
+    throw new IdsEngineError("ids_audit", `IDS neprešlo auditom (${c?.error} chýb); nič sa neuložilo.`, "AUDIT_FAILED", { issues: report.issues }, null);
+  }
+  return { status: report.status ?? null, counts: c };
+}
+
+const VIEWER_AUTHOR = "Viewer (AIM)";
+
+/** Kód z názvu IDS: písmená a čísla bez diakritiky, spojené pomlčkou, veľkými. */
+function slugCode(title: string): string {
+  const stem = title.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").toUpperCase().slice(0, 60);
+  return stem || "IDS";
+}
+
+async function freeCode(deps: IdsToolDeps, wanted: string): Promise<string> {
+  for (let i = 1; i < 100; i += 1) {
+    const code = i === 1 ? wanted : `${wanted}-${i}`;
+    if (!(await deps.store.byCode(code))) return code;
+  }
+  throw new IdsInputError(`Nepodarilo sa nájsť voľný kód pre '${wanted}'.`);
+}
+
+export interface ViewerSaveInput {
+  xml: string;
+  /** Kód IDS, z ktorého viewer vychádzal; bez neho vznikne nové IDS. */
+  code?: string;
+  /** Verzia, z ktorej úprava vychádzala; povinná pri zápise do existujúceho pracovného IDS. */
+  base_version?: number;
+  title?: string;
+  note?: string;
+  author?: string;
+}
+
+export interface ViewerSaveOutcome {
+  code: string;
+  version: number;
+  title: string;
+  /** Vzniklo nové IDS (bez kódu, kód zmazaný, alebo kópia knižničnej snímky). */
+  created: boolean;
+  previous_version?: number;
+  derived_from?: string;
+}
+
+/**
+ * Zápis IDS z viewera (D-162, `IDS_SAVE`; aj `from_viewer`): audit pred zápisom, nová nemenná verzia
+ * `source='viewer'` nad `base_version` (inak `IdsConflictError`). Knižničnú snímku neprepíše: uloží sa ako nové
+ * pracovné IDS s väzbou `derived_from`. Bez kódu vznikne nové pracovné IDS s kódom z názvu.
+ */
+export async function saveFromViewer(deps: IdsToolDeps, input: ViewerSaveInput): Promise<ViewerSaveOutcome> {
+  if (typeof input.xml !== "string" || !input.xml.trim()) throw new IdsInputError("xml: neprázdny reťazec s IDS XML.");
+  const e: Engine = { engine: deps.engine ? await deps.engine() : await defaultIdsEngine() };
+  const audit = await auditXml(e, input.xml);
+  const { described } = await readXml(e, input.xml);
+  const title = (described.title || text(input.title, 200) || input.code || "IDS").slice(0, 200);
+  const author = text(input.author, 200) ?? VIEWER_AUTHOR;
+  const write = {
+    xml: input.xml,
+    sha256: sha256(input.xml),
+    title,
+    ids_version: described.version,
+    audit,
+    author,
+    source: "viewer" as const,
+    note: text(input.note, 2000) ?? null,
+  };
+  const existing = input.code ? await deps.store.byCode(input.code) : null;
+  if (existing?.origin === "chat") {
+    if (input.base_version === undefined) {
+      throw new IdsInputError(`base_version chýba: IDS '${existing.code}' už existuje, zápis musí povedať, z ktorej verzie vychádza.`);
+    }
+    const latest = await loadVersion(deps, existing, undefined);
+    const row = await deps.store.addVersion(existing.id, write, input.base_version);
+    return { code: existing.code, version: row.version, title, created: false, previous_version: latest.version };
+  }
+  let derivedFrom: string | null = null;
+  let wanted: string;
+  if (existing) {
+    derivedFrom = (await loadVersion(deps, existing, undefined)).id;
+    wanted = `${existing.code}-PRACOVNE`.slice(0, 80);
+  } else {
+    wanted = input.code && CODE_RE.test(input.code) ? input.code : slugCode(title);
+  }
+  const code = await freeCode(deps, wanted);
+  const doc = await deps.store.createDocument({ code, title, origin: "chat", derived_from: derivedFrom, created_by: author });
+  try {
+    const row = await deps.store.addVersion(doc.id, write, null);
+    return { code, version: row.version, title, created: true, ...(existing ? { derived_from: existing.code } : {}) };
+  } catch (err) {
+    await deps.store.deleteDocument(doc.id).catch(() => undefined);
+    throw err;
+  }
+}
+
+/** Čo sa v AIM zmenilo od verzie, z ktorej viewer vychádzal (do odpovede 409 a do správy o konflikte). */
+export async function conflictDiff(deps: IdsToolDeps, code: string, base: number | null, latest: number) {
+  if (base === null || base === latest) return null;
+  const doc = await deps.store.byCode(code);
+  if (!doc) return null;
+  const [a, b] = await Promise.all([deps.store.version(doc.id, base), deps.store.version(doc.id, latest)]);
+  if (!a || !b) return null;
+  const e: Engine = { engine: deps.engine ? await deps.engine() : await defaultIdsEngine() };
+  const [da, db] = await Promise.all([readXml(e, a.xml), readXml(e, b.xml)]);
+  return { from_version: base, to_version: latest, ...diffDocs(da.described, db.described) };
+}
+
+const OPEN_NOTE_RUN =
+  "Beh je spustený vo vieweri (len panel validácie). Počty po špecifikáciách: get_viewer_state, pole ids_local.validation.results; " +
+  "panel farbí vyhovujúce zelenou a nesplnené červenou sám. Uložený záznam kontroly (v_ids_latest) vzniká až ifc_ids_validate(save=true).";
+
+function requireViewer(deps: IdsToolDeps, action: string): IdsViewerDeps {
+  if (!deps.viewer) throw new IdsInputError(`action=${action}: živý viewer nie je nastavený (LIVE_CHANNEL).`);
+  return deps.viewer;
+}
+
+/** `open`: IDS z DB do panela IDS Studio alebo Data validation vo vieweri (voliteľne beh, voliteľne len jedna špecifikácia). */
+async function openInViewer(args: Record<string, unknown>, deps: IdsToolDeps, e: Engine) {
+  const viewer = requireViewer(deps, "open");
+  const doc = await loadDoc(deps, args.ids);
+  const row = await loadVersion(deps, doc, versionNo(args.version, "version"));
+  const spec = text(args.spec, 200);
+  const run = args.run === true;
+  const target = args.target ?? (run || spec ? "validation" : "studio");
+  if (target !== "studio" && target !== "validation") throw new IdsInputError("target: studio | validation.");
+  if (run && target !== "validation") throw new IdsInputError("run=true patrí do panela validácie (target=validation); Studio kontrolu nespúšťa.");
+  if (spec) {
+    const { described } = await readXml(e, row.xml);
+    const key = spec.toLowerCase();
+    const found = described.specifications.some((s) => s.identifier?.toLowerCase() === key || s.name.toLowerCase() === key);
+    if (!found) {
+      const known = described.specifications.map((s) => s.identifier ?? s.name).slice(0, 20).join(", ");
+      throw new IdsInputError(`IDS '${doc.code}' nemá špecifikáciu '${spec}'. Sú tu: ${known || "(žiadna)"}.`);
+    }
+  }
+  const outcome = await viewer.open({ code: doc.code, target, version: row.version, ...(spec ? { spec } : {}), ...(run ? { run: true } : {}) });
+  if (!outcome.ok) throw new IdsInputError(`Viewer IDS neotvoril: ${outcome.reason}`);
+  return {
+    opened: true,
+    code: doc.code,
+    version: row.version,
+    target,
+    label: originLabel(doc),
+    ...(spec ? { spec } : {}),
+    ...(run ? { run: true, note: OPEN_NOTE_RUN } : {}),
+    ...(outcome.issues.length ? { issues: outcome.issues } : {}),
+  };
+}
+
+/** `from_viewer`: uloží IDS, ktoré má používateľ vo vieweri otvorené (Studio alebo panel validácie), ako novú verziu. */
+async function fromViewer(args: Record<string, unknown>, deps: IdsToolDeps) {
+  const viewer = requireViewer(deps, "from_viewer");
+  const state = await viewer.viewState();
+  if (typeof state === "string") throw new IdsInputError(`Stav viewera sa nedal prečítať: ${state}`);
+  const local = (state as { ids_local?: Record<string, Record<string, unknown> | undefined> } | null)?.ids_local;
+  const target = args.target ?? (local?.studio ? "studio" : "validation");
+  if (target !== "studio" && target !== "validation") throw new IdsInputError("target: studio | validation.");
+  const part = local?.[target];
+  if (!part) {
+    throw new IdsInputError(
+      `Vo vieweri nie je otvorené IDS v paneli ${target === "studio" ? "IDS Studio" : "validácie"}` +
+        (local === undefined ? " (viewer ids_local nehlási; starší fork?). " : ". ") + "Otvor ho: ids_document(action=open).",
+    );
+  }
+  const viewerCode = typeof part.code === "string" ? part.code : undefined;
+  const viewerVersion = typeof part.version === "number" ? part.version : undefined;
+  const code = text(args.ids, 80) ?? viewerCode;
+  if (part.from_aim === true && part.dirty === false && code === viewerCode && args.ids === undefined) {
+    return { saved: false, code, version: viewerVersion, note: "IDS vo vieweri je rovnaké ako uložená verzia, nič nové sa neuložilo." };
+  }
+  if (typeof part.xml !== "string") {
+    throw new IdsInputError(
+      part.xml_truncated === true
+        ? "IDS vo vieweri je nad stropom pre prenos cez stav viewera; používateľ ho uloží tlačidlom Uložiť do AIM v paneli."
+        : "Viewer neposlal XML (starší fork?); použi tlačidlo Uložiť do AIM v paneli.",
+    );
+  }
+  const base = versionNo(args.base_version, "base_version") ?? (code === viewerCode ? viewerVersion : undefined);
+  const saved = await saveFromViewer(deps, {
+    xml: part.xml,
+    ...(code ? { code } : {}),
+    ...(base !== undefined ? { base_version: base } : {}),
+    ...(typeof part.title === "string" ? { title: part.title } : {}),
+    note: text(args.note, 2000),
+    author: text(args.author, 200),
+  }).catch(async (err: unknown) => {
+    if (!(err instanceof IdsConflictError) || !code) throw err;
+    const diff = await conflictDiff(deps, code, err.base, err.latest).catch(() => null);
+    throw new IdsInputError(diff ? `${err.message} Zmeny v AIM: ${JSON.stringify(diff)}` : err.message);
+  });
+  return {
+    saved: true,
+    ...saved,
+    note: "Nová verzia je v AIM. Viewer o nej ešte nevie: otvor ju znova (open), kým používateľ upravuje ďalej, aby mal základ pre ďalšie uloženie.",
+  };
+}
 
 export interface IdsToolResult {
   text: string;
@@ -400,8 +604,11 @@ export async function execIdsTool(name: string, args: Record<string, unknown>, d
         out = await exportIds(args, deps);
         break;
       case "open":
+        out = await openInViewer(args, deps, e);
+        break;
       case "from_viewer":
-        throw new IdsInputError(`action=${action} ${PENDING_PR2}`);
+        out = await fromViewer(args, deps);
+        break;
     }
     return { text: JSON.stringify(out), isError: false };
   } catch (err) {
@@ -421,7 +628,12 @@ export async function execIdsTool(name: string, args: Record<string, unknown>, d
         isError: true,
       };
     }
-    if (err instanceof IdsInputError || err instanceof IdsConflictError) return { text: err.message, isError: true };
+    if (err instanceof IdsConflictError) {
+      const code = typeof args.ids === "string" ? args.ids : null;
+      const diff = code ? await conflictDiff(deps, code, err.base, err.latest).catch(() => null) : null;
+      return { text: diff ? `${err.message} Zmeny v AIM: ${JSON.stringify(diff)}` : err.message, isError: true };
+    }
+    if (err instanceof IdsInputError) return { text: err.message, isError: true };
     return { text: `Chyba toolu: ${err instanceof Error ? err.message : String(err)}`, isError: true };
   }
 }

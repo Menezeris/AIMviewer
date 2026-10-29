@@ -6337,6 +6337,23 @@ nekreslí; pôdorys v 2D a split ostáva. Má to ísť aj z chatu.
 
 ---
 
+**Doplnok 2026-10-29 (#283, #284, #316): čiary tenších výkresov a kontrola mierky.** Bez nového rozhodnutia, v
+rámci bodov 2 a 3 vyššie; prípady z produkcie (požiarne pôdorysy PBR D.1.3.02 až 05 bez `lines`, strecha D.1.1.04
+v mierke 1:28,49 pri výkrese 1:50 s mediánom 83 mm).
+- *Čiary (ETL):* `page_lines` skúša prahy hrúbky `0,99 / 0,5 / 0,25 pt` a berie prvý s aspoň 200 úsečkami (PBR
+  kreslí steny tenšie než 0,99 pt), pridáva strany štvoruholníkov (`qu`) a ukladá použitý prah v `lines.min_w`
+  (aditívne pole v jsonb, bez migrácie). `etl.doc_upload` volá `index_pdf` hneď po nahratí PDF (vypnutie
+  `--no-pdf-text`), takže čiary nevznikajú ručným `etl.pdf_text`; existujúce dokumenty treba raz dopočítať
+  `python -m etl.pdf_text --from-db`.
+- *Strana bez čiar:* chyba rozlišuje ETL, ktoré nebežalo (chýba `page_size`), od rastra (ETL prešlo, čiar je málo).
+  `mode=manual` s `pairs` ide aj bez čiar (rozmer z `page_size`, `refine` sa vypne).
+- *Mierka:* nízky medián nestačí, ICP vie zachytiť nesprávne čiary v zlej mierke. `scale` (1:N, nový voliteľný
+  parameter existujúceho toolu, D-114 bod 2) alebo mierka z textu strany (`MERÍTKO 1 : 50`) zafixuje mierku v štarte
+  aj ICP (rotácia a posun sa hľadajú ďalej; pri pevnej mierke stačia 2 popisky miestností). Bez nich sa výsledok
+  porovná s bežnými mierkami; odchýlka nad 5 % dá `warnings`, `scale_check` a `mode=auto` ho neuloží.
+- *Nerobí sa (zostáva v #284 a #316):* `delete` kalibrácie, `manual` s `model_m` cez `object_ref`, výber správneho
+  výkresu podlažia v `set_view_mode` (host/viewer), kalibrácia rezov nad skutočnými PDF.
+
 ### D-132 - Záložky vo vieweri: pohľad je orez, záložka je otvorený pohľad
 > **D-161 (2026-10-23):** záložky druhu `plan` a `view`, menu "+ Pôdorys" a zámok pohľadu vypadávajú; pohľady nesie upstream Presentation (trvalo v `saved_views`). Lišta záložiek ostáva pre 3D a dokumenty.
 **Status:** rozhodnuté (2026-10-21, Samuel cez orchestrátora; číslo pridelené v registri #60). Issue #165,
@@ -6553,6 +6570,19 @@ prompt v rozhovore"): predčítanie motora len v rozhovore, ktorý motor použí
   DB tools s motorom ako záložnou cestou (`get_object` kód len v IFC, `set_section relative_to=ceiling`,
   mená v tooloch viewera) načítajú motor až pri potrebe a nie sú v signáli.
 - *Evaly D-057 nepobežali* (cloud session nemá Supabase kľúče; LLM vrstva, tooly ani prompt sa nemenia).
+
+**Dodatok 2026-10-28 - `Cache-Control` v Storage je v poriadku, `curl -I` klame:**
+Storage na HEAD vracia `cache-control: private, no-cache` pre každý objekt, na GET (aj `Range: bytes=0-0`) posiela
+uloženú hodnotu (`ifc/archive/ASR/v078.ifc.gz` `public, max-age=31536000, immutable`, `ifc/ASR.ifc` `max-age=60`;
+orchestrátor zistil to isté v `storage.objects.metadata.cacheControl` všetkých 86 objektov). Pôvodná hlavička v ETL teda
+fungovala a objekty netreba prepisovať. Prvá verzia PR #326 to vyvodila z HEAD a ponúkala prepisovací skript;
+skript je zrušený. Hlavičky objektov sa overujú `curl -r 0-0 -D - -o /dev/null`, nie `curl -I`.
+- *Zostáva:* uploady (`etl.model_publish`, `etl.ifc_upload`, `etl.doc_upload`, `uploadCaptureObject`) posielajú
+  `cacheControl` vo formulári (`put_object` v `etl/ifc_upload.py`, ako supabase-js): archív 31536000, aktuálny kľúč
+  60, PDF 3600, `captures` 31536000. Formulár nesie len sekundy, takže nový archív nemá `immutable` (v009 ho tiež nemá).
+  Upsert na verzovanú cestu archívu žiadny upload nerobí.
+- *Overené (orchestrátor, 28. 10.):* POST s formulárom `cacheControl=31536000` proti reálnemu Storage uložil
+  `cache_control: max-age=31536000` a GET vrátil `public, max-age=31536000`.
 
 ---
 
@@ -7424,6 +7454,24 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 
 **Riziká:** upstream Presentation je čerstvý (#5508, #7545); aktivácia izoluje košík (prepíše izoláciu z chatu) a zapne nástroj Rez; dvaja zapisovatelia (panel a chat) a viac okien, vyhrá posledný zápis; zápis bez auth len za env bránou; po načítaní stránky chýbajú náhľady, kým sa pohľad raz neotvorí; PDF podklad vyššieho podlažia môže v pohľade zhora prekryť rezaný pôdorys (rez podklady neorezáva) - overí Fork A, oprava by bola pravidlo zo scény (pri vodorovnom reze len podklad najbližšieho podlažia pod rezom), nie metadáta pohľadu.
 
+**Dodatok - Host A (implementácia kroku 2, 23. 10. 2026):**
+- *Tvar riadku:* `saved_views.viewpoint` nesie celý `ViewWire` z protokolu Fork A (`lib/viewer-views.ts`), `id` riadku = `BasketView.id`, `name` je stĺpec; `selection`, `hidden`, `isolated` ostávajú prázdne (košík je v `basket`). Riadok s `viewpoint.basket` je pohľad z Presentation, ostatné (D-122, D-132) sa do viewera neposielajú a chat ich obnoví zálohou `planRestore` na bežnom 3D, bez záložky a zámku. Opis v `SCHEMA.md` 2.17.
+- *Zápis z viewera:* route `/api/saved-views` (GET bez brány, POST/PATCH/DELETE za `VIEWS_WRITE_ENABLED`, predvolene vypnutou, + origin guard + per-IP rate limit, vzor D-072). Zápisy z viewera robí host stránka za sebou (fronta) a odpoveď každého nesie úplný zoznam, ktorý sa pošle ako `VIEWS_LOAD` (starší zoznam by inak prepísal novší). Kolízia mena (aj s "Posledný pohľad") dostane príponu " 2", " 3"; autor `viewer`.
+- *Chat:* `saved_view save` pošle `VIEW_CAPTURE {name, capture_id}` na živý kanál, počká na `APPLIED.state.view` a potom ~4 s číta DB, kým host zapíše riadok z `VIEW_SAVE`; ak sa nezapíše, povie, že pohľad je len vo viewere (brána vypnutá). `overwrite=true` zmaže starý riadok a novému vráti meno. `rename`/`delete`/overwrite zapíše server a pošle udalosť `saved_views` (vzor BCF, D-099), po ktorej host načíta zoznam znova. Stav bez kľúča `view` (starší fork) padá na uloženie cez `view_state` ako v D-122. Parametre `view_type`, `locked`, `underlay_*` sa prijmú a ignorujú s poznámkou, zo schémy toolu vypadli (D-114, strop inštrukcií).
+- *Otvorenie:* `set_view_mode view=meno` = op `view_activate` (`VIEW_ACTIVATE`), `section_offset_m` pridá po aktivácii rez posunutý po osi aktívnej roviny (bez súradnice alebo s boxom je chyba). `mode=2d`/`split` sú naďalej op `view:<mode>:<guid>` (fork ho rieši sám), mení sa text výsledku. `get_viewer_state`: `mode` preč, `view` z viewera, `saved_views=true` v poradí pásu.
+
+**Dodatok - krok 3, poloha na PDF (#282, 23. 10. 2026):**
+- *Čo to je:* samostatná funkcia, nie split. PDF výkres kalibrovaný na podlažie (`_georef`, D-072) ukáže v záložke aj v dlaždici vedľa 3D bodku polohy živej kamery a výsek smeru pohľadu. Značku kreslí čítačka PDF dokumentov vo forku (`aim/AimPlanMarker.tsx`, jeden riadok AIM-FORK v `PdfPage`), logika bodky je prevzatá z `DrawingPlanPane` (nemontuje sa) do čistej funkcie `aim/planPosition.ts` s testom. Značka je na strane, ktorú výkres kalibruje, a len ak je kamera v rámci strany (s malým presahom).
+- *Vypínač:* tlačidlo "Position" v hlavičke dokumentu (záložka) a v hlavičke dlaždice, viditeľné len pri dokumente s kalibrovaným výkresom. Predvolene zapnuté, stav viewera, nič sa neukladá (vzor `underlays_3d`, D-133). Chat: `set_view_mode plan_position=true|false` (op `planpos:<0|1>:`, správa `SET_PLAN_POSITION`). Nie je to nový tool ani nové rozhodnutie (D-114).
+- *Čítanie:* `get_viewer_state.plan_position` = `{enabled, shown, markers: [{document_id, page, x_pct, y_pct, heading_deg}]}`; `markers` nesie každú značku, ktorá sa práve kreslí (záložka a dlaždice, aj dva rôzne PDF naraz), zoradené podľa dokumentu a strany; poloha je v % strany PDF od ľavého horného rohu, smer v stupňoch po smere hodín od "hore" na strane (0 = sever výkresu).
+- *Mimo rozsahu tohto kroku:* klik do plánu, ktorý presunie kameru, a ťah klina na otáčanie (v D-072 splite ich mal `DrawingPlanPane`). Čítačka dokumentov sa posúva a približuje vlastným spôsobom, takže klik by kolidoval so zoomom a posunom; ak ho Samuel bude chcieť, ide to ako samostatný krok nad tou istou funkciou `planPosition.ts` (inverzia `jumpTo`). Set kamery z chatu ostáva `set_camera`.
+- *Bez migrácie, bez zápisu do DB.*
+
+**Dodatok - krok 4, pohľady v dlaždiciach (Fork B + Host B, 23. 10. 2026):**
+- *Fork:* pohľad z Presentation je v dlaždici záložka druhu `view` (`view:<id>`, žije len v dlaždici, bez dlaždíc zanikne). Živá dlaždica ho aktivuje (kamera, rez, košík), ostatné ukazujú snímku, kým pohľad nebol živý, náhľad z panela. Stav canvasu na dlaždicu (kamera, rez, košík) sa pri prepnutí odkladá počas relácie (`aim/viewTilesScene.ts`). UI: výber pohľadu v hlavičke dlaždice a "Otvoriť v novej dlaždici" na karte v páse Presentation (nová dlaždica, doterajšie ostanú; zo `single` vzniknú dve vedľa seba, z dvoch tri, zo štyroch sa nahradí neživá). Klik na kartu v Presentation pri dlaždiciach urobí z pohľadu živú dlaždicu. Fork PR Menezeris/ifc-lite#152.
+- *Host:* `set_view_mode tiles=[...]`, `tab` a `beside` prijmú meno uloženého pohľadu; host ho preloží na id zo `saved_views` (len riadky s tvarom `ViewWire`), na drôte `{view: id}` v dlaždici a id v `tab` / `beside`. '3D', 'none' a 'all' sa neprekladajú, podlažie (1NP) má prednosť pred menom pohľadu. `view=` pri dlaždiciach ide do živej dlaždice (rozhoduje fork). `beside=<pohľad>` = nová dlaždica so živým pohľadom ("otvor nový basket na novej dlaždici"). Stav: `get_viewer_state.layout.tiles[]` nesie `view_id` a `view`.
+- *Bez migrácie, bez zápisu do DB, bez nového toolu (D-114).*
+
 ---
 
 ### D-162 - IDS z chatu a z viewera: tvorba, úprava, verzie v DB, validácia a upstream IDS modul (#285)
@@ -7488,6 +7536,18 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 **Riziká:** veľké IDS v `view_state` (strop XML 256 kB, nad ním len `dirty` + sha256 a prenos cez `IDS_SAVE`); motory sa môžu líšiť na psetoch z typu (zhoda 8/8 na ER-0101, D-084; overiť pri prvom IDS s psetmi); knižničné snímky zatiaľ len z prototypu; prienik s D-161 v moste (poradie vyššie).
 
 
+**Dodatok - fork PR a host PR2 (implementácia, 23. 10. 2026):**
+- *Protokol (lenivý, vzor D-161 `views-protocol.ts`):* host -> viewer `IDS_LOAD {code, version, xml, target: studio|validation, title?, spec?, run?}` a `IDS_SAVED {target, ok, code?, version?, error?, latest_version?}`; viewer -> host `IDS_SAVE {target, xml, code?, base_version?, title?}`. Dve správy navyše oproti plánu: `IDS_SAVED` (bez neho tlačidlo "Uložiť do AIM" nevie, či uloženie prešlo, napr. pri vypnutej `IDS_WRITE_ENABLED` alebo konflikte) a `target` v `IDS_SAVE` (potvrdenie patrí tlačidlu, z ktorého prišlo). Vo vstupnom balíku fork drží len smerovanie dvoch typov správ a kanál na hosta (`aim/idsHost.ts`), všetko ostatné je lenivé (`aimIds.ts`, `aimIdsStore.ts`, `AimIdsBar.tsx`).
+- *`target`:* `studio` = upstream IDS Studio (`idsStudioOpen`), `validation` = Data validation -> IDS validation (`loadIdsContent`; jedna položka knižnice definícií patrí AIM a pri ďalšom otvorení sa nahradí, takže localStorage nezbiera kópie). Obe naraz sa neposielajú, chat ich otvorí postupne.
+- *Beh a `spec`:* `run` v paneli validácie spustí upstream `runValidation` po načítaní dokumentu a modeli s dátami (jeden zásah v `useIDS.ts` v bloku AIM-FORK: druhý parameter `onlySpecificationId`, dokument sa zúži na jednu špecifikáciu; hľadá sa podľa identifikátora, názvu, potom id). Ofarbenie vyhovujúcich zelenou a nesplnených červenou robí panel sám (`autoApplyColors`), fork nič nemaľuje ani neizoluje, preto nový zápis do `presentation-channel-allowlist` netreba.
+- *`view_state.ids_local`:* `{studio?, validation?}`, každé `{title, specs, code?, version?, from_aim, dirty, bytes, xml?}`; `dirty` je XML proti základu z načítania alebo posledného uloženia, IDS mimo AIM je vždy `dirty` a `from_aim: false`. Validácia navyše `results` (súhrn a po špecifikáciách: identifier, status, applicable/passed/failed). XML je len v odpovedi na `QUERY` (do 256 kB, inak `xml_truncated`), `APPLIED` ho nenesie. `get_viewer_state` XML vyhodí a povie `xml_available` (číta ho `from_viewer`).
+- *Host `open`:* op `ids_open::<base64url JSON>` (`lib/viewer-ids.ts`); klient hosta si XML stiahne z `GET /api/ids?code=` a pošle forku `IDS_LOAD` (živý kanál XML nenesie). `target` predvolene `studio`, s `run` alebo `spec` `validation`; `run` mimo validácie a neznáma `spec` sú chyby. `APPLIED` príde po načítaní, nie po dobehnutí behu: výsledky po špecifikáciách čítaj z `get_viewer_state`.
+- *Host `from_viewer`:* číta `ids_local` z `view_state`, ukladá `source='viewer'` nad `base_version` = verzia, z ktorej viewer vychádzal; neupravené IDS z AIM sa neukladá znova. Knižničná snímka sa neprepíše: uloží sa ako pracovné IDS `<kód>-PRACOVNE` s `derived_from`; IDS bez kódu dostane kód z názvu (`MIESTNOSTI-NA-PRENAJOM`, pri kolízii `-2`). Audit pred zápisom platí aj tu.
+- *Route `app/api/ids`:* `GET` bez brány (zoznam, `?code=&version=` s XML, `&format=ids` ako súbor), `POST` za `IDS_WRITE_ENABLED` (predvolene vypnutá, 403 "ulož v chate") + origin guard + per-IP rate limit (`IDS_RATE_LIMIT_MAX` 60 / 10 min, len prod), bez auth (vedomý limit ako D-161). Konflikt `base_version` = 409 s `latest_version` a `diff` zmien v AIM (z verzie, z ktorej viewer vychádzal, na poslednú). Zápis z viewera robí host stránka cez `fetch` a odpoveď vráti ako `IDS_SAVED`.
+- *Opis toolov a inštrukcie:* `ids_document` dostal `target`, `spec`, `run`; `export` vracia relatívny odkaz na stiahnutie. Inštrukcie MCP (strop 15 000 znakov) nesú jednu vetu o `open`/`from_viewer` a o zelenej/červenej pri špecifikácii; ušetrené z príkladov v odseku o IDS.
+- *Zavrhnuté:* XML v `ids_open` na živom kanáli (limit správy, zbytočný prenos), zapisovať z viewera priamo do DB (token v prehliadači), novú akciu `ids_document` na výsledky po špecifikáciách (`v_ids_latest` s `spec_identifier` ich už má; z viewera ich dá `ids_local`).
+- *Riziká:* dvaja zapisovatelia (panel a chat) vyhrá ten, kto uloží prvý, druhý dostane 409 s `diff`; po uložení z chatu viewer o novej verzii nevie, kým ho chat neotvorí znova (`open`); beh na vybranom modeli federácie je beh na aktívnom modeli panela (výber modelu je v paneli).
+
 ### D-163 - Načítavanie viewera: biele pozadie a animované logo z design-kitu (#290)
 
 **Rozhodnutie (Samuel, 23. 10. 2026):** pri načítavaní AIM Viewera je biele pozadie a v strede animované logo z design-kitu (assetin. -> assetinsight. -> assetinformation. -> assetintelligence.), jedna obrazovka od otvorenia `/ifc` po `MODELS_LOADED`.
@@ -7504,7 +7564,7 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 
 ### D-164 - Clash detection z chatu a z viewera: testy, behy, porovnanie, stav kolízie a BCF nad upstream `@ifc-lite/clash` (#292)
 
-**Dátum:** 2026-10-23 · **Stav:** schválené (Samuel cez orchestrátora 23. 10., "áno" na všetkých 6 odporúčaní), implementácia nezačatá · **Issue:** #292 (plán v komentári) · **Nadväzuje na:** D-086 (`model_tasks`), D-099 (BCF), D-112 (`ifc_measure`, geometria ASR a VZT na serveri), D-114, D-116, D-150 (`set_view_mode panels clash`), D-159, D-161 a D-162 (vzor "upstream modul + tool + DB + most + zápis z panela") · **Mení:** riadok 9 "Koordinátor: kde sa VZT križuje s nosnými prvkami" z programu dema (fáza 4)
+**Dátum:** 2026-10-23 · **Stav:** schválené (Samuel cez orchestrátora 23. 10., "áno" na všetkých 6 odporúčaní), host PR1 v produkcii (#295, #296), host PR2 v PR (migrácia ešte nespustená), host PR3 v PR (route, `open`, `from_viewer`), fork nezačatý · **Issue:** #292 (plán v komentári) · **Nadväzuje na:** D-086 (`model_tasks`), D-099 (BCF), D-112 (`ifc_measure`, geometria ASR a VZT na serveri), D-114, D-116, D-150 (`set_view_mode panels clash`), D-159, D-161 a D-162 (vzor "upstream modul + tool + DB + most + zápis z panela") · **Mení:** riadok 9 "Koordinátor: kde sa VZT križuje s nosnými prvkami" z programu dema (fáza 4)
 
 **Kontext:** Samuel (23. 10.): "clash detection, aby sa dali nastavovať z MCP, aby sa dali tvoriť, zakladať, porovnávať, zoskupovať... teraz tam na to už je ručne funkcia, len sa napojiť". Stav overený 23. 10. (fork `main` @ `30b04805`, host `main` @ `925e747`):
 - *`@ifc-lite/clash` 2.4.4* (v hoste priama závislosť od D-112): engine nad `ClashElement[]` (kľúč = IFC GlobalId), BVH + presný test trojuholníkov, režimy `hard` / `clearance` (`touch` potlačený), pravidlo `{id, name, a, b, mode}` so selektormi tried, `disciplineMatrixRules`, výnimky, duplicity; `groupClashes` (`cluster` | `rule` | `typePair` | `element` | `storey`), `clashReviewKey` (id pravidla + dve GUID bez ohľadu na poradie, stabilný medzi behmi a revíziami), stav `open` / `resolved` / `accepted` s komentárom, `compareClashRuns` (added / resolved / persistent) a `compareClashRevisions` (navyše `unretested`, keď sa zmenili pravidlá, selektor nič nenašiel alebo chýba model), BCF most `@ifc-lite/clash/bcf` (téma za skupinu, deterministické GUID). Backend TS (WASM opt-in).
@@ -7550,6 +7610,51 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 - *Predvolené testy v kóde:* `VZT-NOSNE` (hard; B = `IfcWall*|IfcSlab*|IfcBeam*|IfcColumn*|IfcFooting*|IfcPile*|IfcMember*|IfcRoof*`, `LoadBearing` sa nefiltruje, takže vnútorné priečky v nich ostávajú; presný filter z dát je na PR 2) a `VZT-ASR` (clearance 50 mm, B = `!IfcSpace`). `IfcSpace`, `IfcOpeningElement`, `IfcVirtualElement` sa neberú, kým ich selektor nepomenuje. Upstream výnimky void/host nie sú zapojené (pri VZT x ASR nie sú relevantné), PR 2.
 - *Nemerané:* ASR x VZT sa nezmeralo (D-135 zakazuje session sťahovať produkčné IFC, na preview chýbal token). Samuel nebude skladať celé modely proti sebe, ale vybrané časti po podlažiach (napr. potrubie x betón na 2NP), preto je rozhodnutie: tool odporúča zúžiť na `a_storey` / `b_storey` a konkrétne triedy a pri prekročení rozpočtu (45 s, `MAX_PAIRS` 3 mil. dvojíc) vráti radu s ponukou podlaží. `ifc_engine_probe` s `clash_asr_vzt: true` ostáva na neskoršie meranie.
 - *Inštrukcie konektora* sa nemenili (strop 15 000 znakov), workflow nesie opis toolu.
+
+**Dodatok 2026-10-23 - Host PR2: odchýlky a upresnenia:**
+- *Migrácia `20261023200000_clash.sql`* (ešte nespustená, spúšťa orchestrátor; SQL test `supabase/tests/clash.sql`, SCHEMA §2.18 podľa skutočného DDL). Oproti návrhu: `clash_tests.origin` má aj `default` (pevný test z kódu hostu; riadok sa pri prvom uložení behu vyrovná s kódom, aby mal `test_id` pre stav kolízií); `clash_results` nemá `group_key` (zoskupenie sa počíta pri čítaní) a nesie `point`/`bounds` v súradniciach enginu, aby sa uložený beh dal zložiť späť a zoskupiť aj podľa `cluster`; `clash_runs` nesie `coverage` (prvky, ktoré beh overil), bez ktorého by porovnanie nevedelo oddeliť "vyriešené" od "nepretestované".
+- *Stav kolízie:* `clash_reviews` kľúčuje (`test_id`, `clash_key`); `clash_key` je upstream `clashReviewKey` a obsahuje `model:GUID` oboch prvkov, takže prežije beh, revíziu modelu aj zúženie testu na podlažie. Zúžený beh predvoleného alebo vlastného testu (`test` + `a_storey`/`b_storey`) je beh toho istého testu, rozsah je v `rules_snapshot`.
+- *Opravené z PR1:* `test` + `a_storey` (alebo `a_model`, `a`, `b...`) už nenahradí celú stranu testu, prepíše len zadané polia (predtým sa stratila trieda a model testu a strana sa rozšírila na všetky modely).
+- *`run save=true`* uloží beh a kolízie (strop 100 000, nad ním rada zúžiť); druhé uloženie rovnakého behu ho nezdvojí. `results`/`compare`/`review`/`bcf` berú `run_id` z pamäte (`run-N`) aj UUID uloženého behu, `test` bez `run_id` najnovší beh testu (pamäť alebo DB, podľa času), takže po reštarte inštancie funguje bez nového výpočtu.
+- *`compare`* = `compareClashRevisions`: nový beh proti predošlému uloženému behu toho istého testu (alebo `base_run_id`); `resolved` len ak beh prvky znova overil, inak `unretested`. Navyše host: beh orezaný stropom dvojíc nič nevyhlási za vyriešené; varovania pri inom režime/odstupe/tolerancii, inom rozsahu a pri behu bez zoznamu overených prvkov; `persistent_marked_resolved` (stav "vyriešená", ale kolízia pretrváva).
+- *`review`* nastaví `open|resolved|accepted` + poznámku kolíziám (`keys` z `results` alebo `group`); bez `comment` sa poznámka nemení. Ad hoc beh nemá test, stav mu nejde.
+- *`bcf`:* bez `create=true` ostáva návrh (PR1), s ním sa založí téma `Clash` priamo cez `BcfStore.create` (rovnaká vrstva ako `bcf_topic create`, D-099/D-158; `capture_view` nepoužíva živý viewer, D-159), model predvolene VZT, pohľad zo stredu skupiny, komponenty = prvky oboch strán; kolízie skupiny dostanú `clash_reviews.bcf_topic_id` (stav sa nemení). Skupina, ktorá už tému má, novú nedostane (vráti jej číslo).
+- *`delete`* testu zmaže aj jeho behy, kolízie a stav kolízií (BCF témy ostanú); bez `confirm=true` len ukáže počty. Predvolený test sa nemaže ani neprepisuje.
+- *Pohľady a `query_view`:* `v_clash_latest` (graf AIM cez GUID: `object_ref`, systém), `v_clash_summary`, `clash_tests`; `results` navyše filtruje `status`, `severity`, `review` a ukazuje `by_review`.
+- *Tool:* anotácia `clash` je teraz zápisová (`readOnlyHint=false`, `destructiveHint=true`); `open` a `from_viewer` ostávajú stub do fork kroku. Inštrukcie MCP (14 980 z 15 000 znakov) sa nemenili, workflow nesie opis toolu.
+- *Overiť po spustení migrácie:* upsert stavu bez `comment` poznámku nezmaže (PostgREST aktualizuje len zadané stĺpce; lokálne nemerateľné bez PostgREST).
+
+**Dodatok 2026-10-24 - Host PR3 (most do viewera): odchýlky a protokol:**
+- *Rozsah:* host strana mosta je hotová bez migrácie (tabuľky z PR2). Fork časť (`CLASH_LOAD`, `CLASH_SAVE`, `view_state.clash_local`) čaká na prístup k forku (add_repo zamietnutý auto režimom); protokol je pevne daný v `lib/viewer-clash.ts` a fork ho zrkadlí v `aim/clash-protocol.ts`.
+- *Protokol (lenivý, vzor D-162):* host -> viewer `CLASH_LOAD {test, run?, results?, results_total?, results_truncated?}` a `CLASH_SAVED {ok, test_code?, run_id?, results?, reviews?, notes?, error?}`; viewer -> host `CLASH_SAVE {test?, test_code?, run?, reviews?}`. Oproti plánu v D-164 bod 5: jedna správa `CLASH_SAVE` nesie test, beh aj zmenené stavy (namiesto samostatnej `CLASH_REVIEW`), takže tlačidlo "Uložiť do AIM" dostane jedno potvrdenie `CLASH_SAVED`.
+- *Tvar testu na drôte* je tvar testu v AIM (`a`/`b` = `{type, model?, storey?}`, `mode`, `clearance_mm`, `tolerance_mm`), nie `ClashPreset`: premenu na `filterA`/`filterB` a späť robí fork, host nepozná jeho typy.
+- *Kolízie na drôte:* `{kind: hard|clearance, severity, distance, a: {model, guid, type?, name?}, b, storey?, center?}`. **Kľúč kolízie (`clash_key`) skladá vždy host** (`clashReviewKey` z kódu testu a dvojice `model:GUID`), viewer kľúče neposiela; stavy idú ako `{a, b, status, comment?}`. Bez `comment` sa poznámka nemení.
+- *`CLASH_LOAD` nesie kolízie so stavom z AIM* (`review`, `comment`, `key`), najzávažnejšie prvé, do 3 000 riadkov (`results_truncated` + `results_total`). Viewer ich má na zvýraznenie; zvýraznenie 3D robí fork cez Presentation (záznam do `presentation-channel-allowlist`).
+- *`CLASH_SAVE` nad 10 000 kolízií* je neplatné (telo požiadavky na Verceli ~4,5 MB); viewer zúži test. Beh z panela sa ukladá s `trigger='viewer'`, `engine='ifc-lite-viewer'`, **bez zoznamu overených prvkov** (`coverage` null), preto ho `compare` nikdy nevyhlási za "vyriešený", len za "nepretestovaný". Stredy kolízií idú v IFC, bez `bounds`.
+- *Test z panela:* kód z `test.code` alebo `test_code`, bez nich z názvu (pri kolízii `-2`...). Posledný zápis vyhráva, pôvod (`origin`) sa zachová; predvolený test (`VZT-NOSNE`, `VZT-ASR`) sa neprepíše (správa `notes`), beh a stavy naň ale ukladať ide.
+- *Route `app/api/clash`:* `GET` bez brány (zoznam; `?test=` test; `&run=latest|UUID` aj beh s kolíziami a stavom), `POST` za `CLASH_WRITE_ENABLED` (predvolene vypnutá, 403 "ulož v chate") + origin guard + per-IP rate limit (`CLASH_RATE_LIMIT_MAX` 60 / 10 min, len prod), bez auth (vedomý limit ako D-161, D-162). Zápis z viewera robí host stránka cez `fetch` a odpoveď vráti ako `CLASH_SAVED`.
+- *`clash action=open`:* `test` (+ `run_id` UUID alebo `latest`) -> op `clash_open::<base64url JSON>` (`lib/viewer-clash.ts`); klient hosta si test a beh stiahne z `GET /api/clash` a pošle forku `CLASH_LOAD`. Beh z pamäte (`run-N`) sa neprenáša (chyba s radou `run save=true`). `test` a `run` sa overia na serveri pred otvorením.
+- *`clash action=from_viewer`:* číta `view_state.clash_local` (`test`, `from_aim`, `dirty`, `reviews`), ukladá test a zmenené stavy (`trigger` pri behu netreba), neupravený test z AIM bez zmenených stavov neukladá; `test=<kód>` uloží ako iný test. Beh s kolíziami z panela uloží len tlačidlo (kolízie sa do `view_state` nenosia).
+- *`get_viewer_state`:* `clash_local` ide bez zoznamov (`reviews`, `results` ako `*_count`).
+- *Inštrukcie MCP* sa nemenili (strop 15 000 znakov); opis toolu `clash` dostal vetu o `open` a `from_viewer`. Evaly K8 a K9.
+- *Zavrhnuté:* samostatná správa `CLASH_REVIEW` (jedno potvrdenie), kľúče kolízií z viewera (formát kľúča závisí od `ClashElement.key` vo forku, host ho nemá ako overiť), kolízie v `view_state` (veľkosť), beh z pamäte cez `open`.
+
+### D-166 - Označenie a štandardné psety klapiek IfcDamper vo VZT (BCF #17, aj #14 a #15)
+
+**Dátum:** 2026-10-28 · **Stav:** rozhodnuté (Samuel cez orchestrátora 28. 10., variant B; číslo v registri #60) · **PR:** #328 · **Súvisí:** D-086 (revízie), D-021 (typ a výskyt), D-099 (BCF), D-165 (#13, PredefinedType z typu v nástroji)
+
+**Kontext:** BCF #17: klapky mali Name len skratku (`VAV`, `PK.01`), funkciu a ovládanie len vo vlastnom psete `AIM_VZT_ProjektoveHodnoty` a PredefinedType požiarnych klapiek len na type, takže ETL (berie ho z výskytu) ich v AIM nevidí ako FIREDAMPER. Nedalo sa rýchlo nájsť prvok, ktorým sa uzatvára prívod. Spolu s tým #14 (výfukový nástavec 4NP bez kódu a s nulovým prietokom) a #15 (materiál `<Unnamed>`).
+
+**Rozhodnutie (platí pre všetky nové IfcDamper v modeloch):**
+1. **Kód = Name výskytu** v tvare ako VV a JV: `<druh>.<skupina>.<typ>.<poradie>`; `PK` = požiarna klapka, `RK` = regulačná klapka (aj VAV; skratky z TP-003 a TP.03). Typ nesie kód bez poradia (`PK.01.01`, `RK.01.01` DN225, `RK.01.02` DN250). Poradie: podlažie, systém (prívod pred odvodom), poloha X, Y.
+2. **Description výskytu** = druh, rozmer, (požiarna odolnosť a stena požiarneho úseku pri PK), systém, napr. "Požiarna klapka 630x315 EI 120 S v stene SN02.02.0001, Prívod-2NP".
+3. **PredefinedType** (FIREDAMPER, CONTROLDAMPER...) na type aj na výskyte, aby ho videl graf AIM aj nástroje bez dedenia z typu.
+4. **Štandardné psety na type:** `Pset_DamperTypeCommon` (Reference = kód typu, Operation, FaceArea), `Pset_ElementSize` (NominalWidth/Height/Length z modelu), pri PK `Pset_DamperTypeFireDamper.FireResistanceRating`. Hodnoty, ktoré podklady nemajú (ActuationType, ClosureRatingEnum, FusibleLinkTemperature, ControlDamperOperation, výrobca), sa nevypĺňajú. `AIM_VZT_ProjektoveHodnoty` ostáva pre prietok, rozmery a zdroje, bez Funkcia a Ovladanie.
+5. **#14:** výfukový nástavec = `VV.07.04.001` (typ `VV.07.04`), USERDEFINED / EXHAUSTCOWL, AirFlowRate 600 m3/h (súčet dvoch odvodných vyústiek systému Odpadné hospodárstvo), AirFlowType EXHAUSTAIR.
+6. **#15:** materiál na type (výskyty dedia): pozinkovaný oceľový plech pre potrubie PO a tvarovky TA (TP-003 str. 4 a 5) a klapky, hliníková laminovaná fólia pre flexi potrubie, pozinkovaný práškovo lakovaný plech pre koncové prvky, lakovaný oceľový plech pre jednotky; `<Unnamed>` sa odstraňuje. Izolácia potrubia odpadového hospodárstva sa nedáva, kým nie je materiál a hrúbka.
+7. **Recept** `scripts/vzt/bcf_opravy.py` s hodnotami v `bcf_opravy.json` (stav `dolozene` / `potvrdene` / `navrh` / `chyba_hodnota`), kontrola `scripts/vzt/kontrola.py` (IDS `bcf_opravy.ids`, porty klapiek, schéma) a `ifc_diff.py`. Publikácia len cez `etl.model_publish` (postup v `etl/README.md`), až na Samuelov pokyn.
+
+**Zavrhnuté:** prefix `VAV` (nie je druh klapky, ale spôsob regulácie); prietok na výskyte cez `Pset_DamperTypeCommon.NominalAirFlowRate` (typový pset na výskyte, D-021); doplnenie typických hodnôt požiarnych klapiek (SPRING, 72 °C) bez podkladu.
 
 ### D-165 - ifc_relations: stop_at Trieda.PREDEFINED berie PredefinedType aj z typu prvku (#300)
 

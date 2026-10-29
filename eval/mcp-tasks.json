@@ -212,10 +212,10 @@
       "id": "V5-2d-podorys",
       "category": "viewer",
       "viewer": true,
-      "question": "Prepni na 2D pôdorys 2NP.",
+      "question": "Prepni na pôdorys 2NP zhora.",
       "max_calls": 1,
       "budget_s": 5,
-      "expect": { "viewer_state": "mode 2d, podlažie 2NP" },
+      "expect": { "viewer_state": "ortografická kamera zhora (camera.projection), vodorovný rez nad 2NP, bez poľa mode" },
       "covers": ["set_view_mode"]
     },
     {
@@ -363,6 +363,26 @@
       "notes": "D-162: nesplnené prvky z v_ids_latest (ids_code = EVAL-STENY) -> style_in_3d colorize; po I1."
     },
     {
+      "id": "I3-ids-otvor-validacia-spec",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Otvor IDS EVAL-STENY v paneli Data validation a spusti kontrolu len špecifikácie pre steny. Koľko stien nevyhovuje?",
+      "max_calls": 3,
+      "budget_s": 30,
+      "expect": { "tools_called": ["ids_document", "get_viewer_state"], "viewer_state": "panel validation otvorený, ids_local.validation.results s jednou špecifikáciou; steny ofarbené zeleno a červeno panelom" },
+      "notes": "D-162 host PR2: ids_document(open, target=validation, spec, run=true), potom get_viewer_state (ids_local.validation.results.specs[].failed). Počet nevyhovujúcich berie z výsledku panela, nie z odhadu. Po I1."
+    },
+    {
+      "id": "I4-ids-uloz-z-viewera",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Otvor IDS EVAL-STENY v IDS Studiu. Keď ho upravím, ulož moju verziu a povedz, čo sa oproti predošlej zmenilo.",
+      "max_calls": 4,
+      "budget_s": 40,
+      "expect": { "tools_called": ["ids_document"], "answer_matches": ["verzi"] },
+      "notes": "D-162 host PR2: ids_document(open, target=studio), po ručnej úprave ids_document(from_viewer) a ids_document(diff). Vyžaduje živého používateľa, ktorý IDS v Studiu zmení; bez zmeny má odpovedať, že nič nové nie je."
+    },
+    {
       "id": "K1-kolizie-vzt-nosne",
       "category": "data",
       "viewer": false,
@@ -390,7 +410,67 @@
       "max_calls": 4,
       "budget_s": 60,
       "expect": {"tools_called": ["clash"], "answer_matches": ["VZT"]},
-      "notes": "D-164: clash(run) + clash(results) + clash(bcf, group) = len návrh (write: PR2). Tému nesmie založiť (bcf_topic sa nevolá)."
+      "notes": "D-164: clash(run) + clash(results) + clash(bcf, group) bez create=true = len návrh. Tému nesmie založiť (bcf_topic ani create=true sa nevolá)."
+    },
+    {
+      "id": "K4-kolizie-uloz-test-podlazie",
+      "category": "data",
+      "viewer": false,
+      "question": "Ulož si test 'Potrubie x betón 2NP': potrubie a vzduchovody z VZT proti stenám a doskám z ASR na 2NP, tvrdé kolízie. Spusti ho a ulož beh.",
+      "max_calls": 4,
+      "budget_s": 60,
+      "expect": {"tools_called": ["clash"], "answer_matches": ["2NP|2\\.NP"]},
+      "notes": "D-164 host PR2: clash(save, test, a='IfcDuct*|IfcPipe*', a_model=VZT, a_storey=2NP, b='IfcWall*|IfcSlab*', b_model=ASR, b_storey=2NP, mode=hard) -> clash(run, test, save=true). Odpoveď uvedie uložený beh (run_id) a súčty."
+    },
+    {
+      "id": "K5-kolizie-porovnaj-behy",
+      "category": "data",
+      "viewer": false,
+      "question": "Porovnaj posledný uložený beh testu VZT-NOSNE s predošlým: čo je nové, čo sa vyriešilo a čo ostalo.",
+      "max_calls": 3,
+      "budget_s": 40,
+      "expect": {"tools_called": ["clash"], "answer_matches": ["nov|vyrieš|pretrv"]},
+      "notes": "D-164 host PR2: clash(compare, test) alebo run_id uloženého behu. Odpoveď rozlišuje vyriešené od nepretestovaných (unretested) a nepovie 'vyriešené' bez toho, aby beh prvky znova overil."
+    },
+    {
+      "id": "K6-kolizie-stav-prijata",
+      "category": "data",
+      "viewer": false,
+      "question": "Prvú skupinu kolízií VZT s nosnými konštrukciami označ ako prijatú s poznámkou 'prechod je zámerný'.",
+      "max_calls": 4,
+      "budget_s": 40,
+      "expect": {"tools_called": ["clash"], "answer_matches": ["prijat|accepted"]},
+      "notes": "D-164 host PR2: clash(results, group_by, group) a clash(review, review_status=accepted, comment, group). Stav platí aj v ďalších behoch testu."
+    },
+    {
+      "id": "K7-kolizie-bcf-zaloz",
+      "category": "data",
+      "viewer": false,
+      "question": "Založ BCF tému pre najväčšiu skupinu kolízií VZT x nosné konštrukcie podľa podlaží.",
+      "max_calls": 4,
+      "budget_s": 60,
+      "expect": {"tools_called": ["clash"], "answer_matches": ["téma|BCF|#"]},
+      "notes": "D-164 host PR2: clash(run/results) a clash(bcf, create=true, group_by=storey, group) = reálna téma Clash, model VZT; bcf_topic sa nevolá. Druhé volanie na tú istú skupinu tému nezdvojí. Zakladá až na pokyn používateľa."
+    },
+    {
+      "id": "K8-kolizie-otvor-v-paneli",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Otvor mi test VZT x ASR s posledným behom v paneli kolízií, nech ich vidím.",
+      "max_calls": 3,
+      "budget_s": 30,
+      "expect": {"tools_called": ["clash"], "viewer_state": "panel clash otvorený s testom VZT-ASR a kolíziami posledného uloženého behu (stav open / resolved / accepted)"},
+      "notes": "D-164 host PR3: clash(action=open, test=VZT-ASR, run_id=latest), potom get_viewer_state (clash_local). Beh z pamäte (run-N) sa neprenáša: najprv run save=true. Na tvrdenie o stave panela sa berie get_viewer_state, nie odpoveď toolu."
+    },
+    {
+      "id": "K9-kolizie-uloz-z-viewera",
+      "category": "viewer",
+      "viewer": true,
+      "question": "Upravil som test kolízií v paneli, ulož ho do AIM.",
+      "max_calls": 3,
+      "budget_s": 30,
+      "expect": {"tools_called": ["clash"], "answer_matches": ["uložen|AIM"]},
+      "notes": "D-164 host PR3: clash(action=from_viewer) číta view_state.clash_local (test, zmenené stavy). Beh s kolíziami z panela uloží len tlačidlo Uložiť do AIM; chat to povie a ponúkne run save=true na serveri. Po K8."
     }
   ]
 }

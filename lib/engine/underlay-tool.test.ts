@@ -204,3 +204,87 @@ describe("calibrate_underlay", () => {
     expect(writes).toHaveLength(1);
   });
 });
+
+describe("calibrate_underlay: mierka a strany bez čiar (#284, #283)", () => {
+  /** Rovnaký výkres v mierke 1:28,5 (body strany väčšie, % popiskov rovnaké): nie bežná mierka. */
+  const K = 1.75;
+  const scaled = () => {
+    const b = building();
+    const page = async () => ({
+      blocks: b.blocks,
+      lines: { size: [PAGE[0] * K, PAGE[1] * K] as P2, segs: b.lines.map((l) => [l[0] * K, l[1] * K, l[2] * K, l[3] * K, l[4]] as PageLine) },
+    });
+    return page;
+  };
+  const scaleText = (t: string): PageBlock => ({ t, x: 80, y: 95, w: 10, h: 1 });
+
+  it("nebežná mierka: dry_run varuje, auto neuloží aj pri nízkom mediáne", async () => {
+    const { d, writes } = deps({ page: scaled() });
+    const dry = await run({ document_id: "D1" }, d);
+    expect(dry.isError, dry.text).toBe(false);
+    expect(dry.out.error_mm.median).toBeLessThan(5);
+    expect(dry.out.scale_check).toMatchObject({ ok: false, source: "standard", expected: 25 });
+    expect(dry.out.warnings[0]).toMatch(/mierka 1:28/i);
+    const auto = await run({ document_id: "D1", mode: "auto" }, d);
+    expect(auto.out.written).toBe(false);
+    expect(auto.out.note).toMatch(/mierka 1:28/i);
+    expect(writes).toHaveLength(0);
+  });
+
+  it("scale zafixuje mierku, výsledok sa uloží", async () => {
+    const { d, writes } = deps({ page: scaled() });
+    const r = await run({ document_id: "D1", mode: "auto", scale: 28.5 }, d);
+    expect(r.isError, r.text).toBe(false);
+    expect(r.out.scale_check).toMatchObject({ ok: true, source: "param", locked: true });
+    expect(r.out.scale).toBe("1:28.5");
+    expect(r.out.written).toBe(true);
+    expect(writes).toHaveLength(1);
+  });
+
+  it("mierka z textu strany (MERÍTKO 1 : 50) sa použije ako pevná", async () => {
+    const b = building();
+    const { d } = deps({ page: async () => ({ blocks: [...b.blocks, scaleText("MERÍTKO 1 : 50")], lines: { size: PAGE, segs: b.lines } }) });
+    const r = await run({ document_id: "D1" }, d);
+    expect(r.isError, r.text).toBe(false);
+    expect(r.out.scale_check).toMatchObject({ source: "text", expected: 50, locked: true, text_scale: "1:50" });
+    expect(r.out.scale).toBe("1:50");
+    expect(r.out.error_mm.median).toBeLessThan(25);
+  });
+
+  it("zlá zadaná mierka sa neuloží", async () => {
+    const { d, writes } = deps();
+    const r = await run({ document_id: "D1", mode: "auto", scale: 100 }, d);
+    expect(r.out?.written ?? false).toBe(false);
+    expect(writes).toHaveLength(0);
+  });
+
+  it("scale mimo rozsahu je chyba vstupu", async () => {
+    const { d } = deps();
+    expect((await run({ document_id: "D1", scale: 1 }, d)).text).toMatch(/scale je číslo/);
+    expect((await run({ document_id: "D1", scale: "50" }, d)).text).toMatch(/scale je číslo/);
+  });
+
+  it("strana bez čiar: ETL nebežalo vs. raster, manual s dvojicami ide aj bez čiar", async () => {
+    const b = building();
+    const none = (pageSize?: P2) => deps({ page: async () => ({ blocks: b.blocks, lines: null, pageSize }) });
+    expect((await run({ document_id: "D1" }, none().d)).text).toMatch(/ETL ich ešte nenačítalo/);
+    const raster = await run({ document_id: "D1" }, none(PAGE).d);
+    expect(raster.isError).toBe(true);
+    expect(raster.text).toMatch(/raster/);
+    expect(raster.text).toMatch(/mode=manual/);
+
+    const pct = (m: P2) => {
+      const p = applyAffine(INV, m);
+      return [(p[0] / PAGE[0]) * 100, (1 - p[1] / PAGE[1]) * 100];
+    };
+    const pairs = [{ page_pct: pct([30, 0]), model_m: [30, 0] }, { page_pct: pct([54, 15]), model_m: [54, 15] }];
+    const ok = await run({ document_id: "D1", mode: "manual", pairs }, none(PAGE).d);
+    expect(ok.isError, ok.text).toBe(false);
+    expect(ok.out.calibration.source).toBe("manual");
+    expect(ok.out.calibration.affine[2]).toBeCloseTo(T[2], 6);
+    expect(ok.out.warnings[0]).toMatch(/nedoladili/);
+    // Manual bez rozmeru strany sa nedá prepočítať.
+    expect((await run({ document_id: "D1", mode: "manual", pairs }, none().d)).text).toMatch(/ETL ich ešte nenačítalo/);
+  });
+});
+

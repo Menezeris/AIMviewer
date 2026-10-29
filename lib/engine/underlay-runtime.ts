@@ -49,13 +49,17 @@ async function document(ref: string): Promise<UnderlayDocument | null> {
 async function page(documentId: string, pageNo: number): Promise<UnderlayPage | null> {
   const { data, error } = await getSupabaseAdmin()
     .from("document_pages")
-    .select("blocks, lines")
+    .select("blocks, lines, page_size")
     .eq("document_id", documentId)
     .eq("page", pageNo)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  return { blocks: (data.blocks as UnderlayPage["blocks"]) ?? [], lines: (data.lines as UnderlayPage["lines"]) ?? null };
+  return {
+    blocks: (data.blocks as UnderlayPage["blocks"]) ?? [],
+    lines: (data.lines as UnderlayPage["lines"]) ?? null,
+    pageSize: (data.page_size as UnderlayPage["pageSize"]) ?? null,
+  };
 }
 
 interface TreeNode {
