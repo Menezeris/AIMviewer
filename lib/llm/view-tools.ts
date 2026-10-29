@@ -3,7 +3,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { resolveTargetsToGuids } from "@/lib/engine/aim-lookup";
 import { normalizeStoreyLabel } from "@/lib/engine/storey";
-import { CAMERA_PRESETS, PANEL_ACTIONS, PANEL_ITEM_MAX, PANEL_SCROLLS, PANEL_ZOOM_RANGE, PANEL_ZOOM_STEPS } from "@/lib/viewer-ops";
+import { CAMERA_PRESETS, PANEL_ACTIONS, PANEL_SIDES, PANEL_WIDTH_PCT, PANEL_ITEM_MAX, PANEL_SCROLLS, PANEL_ZOOM_RANGE, PANEL_ZOOM_STEPS } from "@/lib/viewer-ops";
 import { AUTO_ROTATE_ACTIONS, AUTO_ROTATE_DIRECTIONS, AUTO_ROTATE_SPEED, CAMERA_AREAS, CAMERA_FITS, CAMERA_RANGES, DEFAULT_MARGIN_PERCENT } from "@/lib/viewer-camera";
 
 import type { AskAction } from "./actions";
@@ -206,10 +206,13 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "dokument (najprv open_drawing target=tab), 'none' prázdna; chýbajúce doplní viewer. '3D vľavo, 1NP vpravo' = layout=split_h, tiles=['3D','1NP']. " +
       "Živé 3D je len jedno, ostatné 3D dlaždice ukazujú snímku do kliknutia; 3D tooly pôsobia na živú. Stav: layout v " +
       "get_viewer_state. Späť na jedno okno = layout=single. " +
+      "POMER DLAŽDÍC (D-172): k layout voliteľne ratio (podiel prvej = veľkej dlaždice, napr. 'väčšia pravá' = split_h, tiles=['3D', výkres], ratio=0.3) alebo sizes (váhy); čítanie get_viewer_state, layout.sizes. " +
       "Dokument do záložky = open_drawing(target=tab). PANELY: panels otvorí, zavrie alebo prepne ľubovoľný " +
       "panel UI (napr. lens, properties, bcf = BCF topics Alt+3, lists, model_tree, underlays, documents, compare, " +
       "validation, clash, drawing = 2D výkres rezu z modelu pod 3D (D-136); all=close = čistý pohľad, {all: 'close', properties: 'open'} = všetko okrem vlastností), " +
-      "aj bez mode. Úplný zoznam panelov s klávesovými skratkami, kde sú a či sú otvorené vráti get_viewer_state " +
+      "aj bez mode. ŠÍRKA A STRANA PANELA (D-172): panel_layout={panel, width_pct, side}, 'panel vlastností širší' = panel_layout={panel:'properties', width_pct:40}; " +
+      "správanie podľa panels.<meno>.where a čítanie v opise parametra; panels je potom voliteľné. " +
+      "Úplný zoznam panelov s klávesovými skratkami, kde sú a či sú otvorené vráti get_viewer_state " +
       "(panels), rovnaký stav aj výsledok po príkaze; neznámy panel viewer nahlási s platnými menami. " +
       "POSUN OBSAHU PANELA: panel_scroll=down|up (o 80 % výšky) | top | bottom na pokyn 'posuň dole', 'hore', " +
       "'na začiatok' (panel vlastností), alebo {panel, to | item | percent}: item = text položky ('Dvere D12', " +
@@ -238,6 +241,37 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
           items: { type: "string" },
           maxItems: 4,
           description: "Záložka v každej dlaždici v poradí (prvá = veľká): podlažie (1NP), '3D', meno uloženého pohľadu, menovka dokumentu, 'none' = prázdna",
+        },
+        ratio: {
+          type: "number",
+          exclusiveMinimum: 0,
+          exclusiveMaximum: 1,
+          description:
+            "S layout: podiel PRVEJ (veľkej) dlaždice, 0 až 1 exkluzívne, napr. 0.7; len rozloženia s 2 podielmi (split_h, split_v, three_left / right / top / bottom); " +
+            "min. 10 % na dlaždicu; nekombinuje sa so sizes. Pomer ostane do zmeny layout; layout bez ratio / sizes vráti polovice a tretiny. Starší viewer ho ohlási ako neplatnú správu.",
+        },
+        sizes: {
+          type: "array",
+          items: { type: "number", exclusiveMinimum: 0 },
+          minItems: 2,
+          maxItems: 3,
+          description: "S layout: váhy dlaždíc v poradí tiles (viewer ich normalizuje): 2 pre split_h / split_v / three_left / right / top / bottom, 3 pre three_h / three_v; nie grid4 a single",
+        },
+        panel_layout: {
+          type: "object",
+          description:
+            `Šírka a strana panela: {panel, width_pct (${PANEL_WIDTH_PCT.min} až ${PANEL_WIDTH_PCT.max}), side (${PANEL_SIDES.join(" | ")})}, aspoň jedno z width_pct a side; ` +
+            "aspoň jedno z panels / panel_layout; neotvorený panel pošli aj v panels s open (otvorí sa pred nastavením). " +
+            "Správanie podľa panels.<meno>.where: right (pravý stĺpec) = width_pct je šírka CELÉHO stĺpca 14 až 60 % (mimo rozsahu sa zúži, platí pre oba panely splitu, stĺpec rastie doľava), " +
+            "side=right nič nemení, side=left / bottom / free panel vytrhne do plávajúceho okna pripnutého k okraju (free = voľne) a width_pct je potom šírka okna; " +
+            "floating = width_pct je šírka okna (najmenej 240 px, najviac 90 % okna), side ho znova pripne; bottom, left (hierarchia) a window šírku ani stranu nemenia (viewer to povie v problémoch). " +
+            "Výška a pozícia x / y sa nenastavujú. Čítanie: get_viewer_state, panels.<meno> (where, snap, size) a panels.right_width_pct.",
+          properties: {
+            panel: { type: "string", description: "Meno panela (get_viewer_state, panels)" },
+            width_pct: { type: "number", minimum: PANEL_WIDTH_PCT.min, maximum: PANEL_WIDTH_PCT.max, description: "Šírka v % šírky okna viewera" },
+            side: { type: "string", enum: [...PANEL_SIDES], description: "Kam panel pripnúť" },
+          },
+          required: ["panel"],
         },
         panels: {
           type: "object",
@@ -420,7 +454,7 @@ export async function execViewTool(
     plan = await restoreSavedView({ ...input, saved_view: savedViewName(input) }, defaultSavedViewDeps());
   } else if (name === "set_view_mode") {
     // D-127: samotné panely nepotrebujú režim.
-    const panelsOnly = (input.panels !== undefined || input.panel_scroll !== undefined || input.panel_zoom !== undefined || input.underlays_3d !== undefined || input.plan_position !== undefined) && input.mode === undefined && input.reset !== true;
+    const panelsOnly = (input.panels !== undefined || input.panel_layout !== undefined || input.panel_scroll !== undefined || input.panel_zoom !== undefined || input.underlays_3d !== undefined || input.plan_position !== undefined) && input.mode === undefined && input.reset !== true;
     plan = panelsOnly ? { ops: [], label: "", result: { ok: true } } : planViewMode(input, input.reset === true ? null : await resolveFloor(input.floor));
   } else {
     throw new Error(`Neznámy tool pohľadu '${name}'.`);
