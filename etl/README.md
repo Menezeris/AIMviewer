@@ -74,6 +74,8 @@ Dokumenty z IFC (D-104) v manifeste nie sú; ich PDF ležia v buckete `documents
 python -m etl.pdf_text --from-db --dry-run   # stiahne PDF, report, bez zápisu
 python -m etl.pdf_text --from-db             # zápis; --only <object_ref> = jeden dokument
 ```
+Report pri každom dokumente uvádza aj strany bez textovej vrstvy (`obrázok` = text ako raster/CCITT maska, `krivky`); `search_documents` o nich hlási "Strana nemá text" a bez OCR sa nedajú opraviť (#279, D-149 bod 7).
+
 Beh zapíše aj `document_pages.page_size` (veľkosť strany v bodoch) a `documents.file_sha256`
 (sha256 súboru PDF, kotva revízie pre pripomienky a keš snímky výrezu, D-158 krok 3; po migrácii
 `20261023140000`). Rastre strán sa nerobia: snímku výrezu renderuje host na požiadanie.
