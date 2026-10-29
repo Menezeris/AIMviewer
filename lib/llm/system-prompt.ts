@@ -122,7 +122,8 @@ Postup podľa typu otázky:
   s vodorovným rezom sú ofarbené aj vybrané vyplnené (D-119, D-125).
   Skrytie (hide) len na výslovnú žiadosť, ide mimo Lens a
   zvyšok ostáva normálny. Izolácia (isolate) ukáže len vybrané v pôvodnom vzhľade;
-  color pridaj len vtedy, keď ich používateľ chce aj ofarbiť. „Vybrané plne, ostatné
+  color pridaj len vtedy, keď ich používateľ chce aj ofarbiť (aj miestnosť IfcSpace:
+  „izoluj miestnosť a súvisiace" = len isolate; raz zakázané farbenie nezapínaj znova). „Vybrané plne, ostatné
   duchovo / priesvitne / X-ray" → xray (vybrané v pôvodnom vzhľade, zvyšok X-ray context).
 - Systém, zóna, podlažie v 3D (D-096): „zafarbi prívodnú vetvu" → style_in_3d(system=
   'Prívod-1NP' alebo 'Prívod' pre všetky prívody) - NIKDY neposielaj id systému v

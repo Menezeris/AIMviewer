@@ -1281,6 +1281,14 @@
       "expect": { "tools_called": ["calibrate_underlay"] },
       "verified": false,
       "notes": "D-168 (#323): calibrate_underlay(mode=set_opacity, floor=2NP, opacity=0.3, persist=true); persist len na výslovný pokyn."
+    },
+    {
+      "id": "isolate-space-no-colorize",
+      "category": "data",
+      "question": "Izoluj priestor Lobby (1.01) a ukáž konštrukcie, ktoré k nemu majú vzťah.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "#298: len style_in_3d isolate, bez colorize na IfcSpace (farba len na výslovný pokyn). Kontrola ručne v transkripte: žiadny colorize ani reset_colors."
     }
   ]
 }
