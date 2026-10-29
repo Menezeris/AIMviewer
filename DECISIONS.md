@@ -7739,3 +7739,25 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 - *OCR všetkých strán alebo zlúčenie s textovou vrstvou:* textová vrstva je presná, OCR by ju zhoršilo a pri 553 stranách by beh trval desiatky minút.
 - *Nový stĺpec `document_pages.source` / `ocr_confidence`:* zmena schémy (migráciu schvaľuje Samuel) pre údaj, ktorý sa dá odvodiť z riadkov; ak bude treba filtrovať v SQL, dá sa pridať neskôr bez zmeny ETL kontraktu.
 - *Nový tool `read_document` s OCR za behu:* ten istý zdroj a anotácia ako `search_documents` (D-123 zavrhnuté rozšírenie), OCR na serveri by potreboval Tesseract vo Verceli.
+
+---
+
+### D-170 - `ifc_measure`: kóty sa hromadia (`keep`), `clear` ich maže, host počíta kóty na plátne (#278)
+
+**Dátum:** 2026-10-29 · **Issue:** #278 · **Nadväzuje na:** D-114, D-124, D-152
+
+**Kontext:** každé `ifc_measure show=true` nahradilo predošlé kóty od Claude, takže sa nedali ukázať dve kóty naraz (svetlá a celková šírka dverí). Viewer to už vie: `MEASURE_SHOW { segments, keep? }` (bez `keep` nahradí kóty od hosta, `keep:true` pridá, prázdne `segments` zmaže len kóty od hosta, merania používateľa ostanú, D-152). Host `keep` nikdy neposielal.
+
+**Najbližšie tooly (D-114):** `ifc_measure` (rozširujeme, kreslí kóty), `style_in_3d action=reset_colors` (maže aj kóty, ale s farbami a izoláciou), `set_section` (rez, kóty sa netýka). Nový tool netreba.
+
+**Rozhodnutie (parameter existujúceho toolu):**
+1. `ifc_measure keep` (boolean, s `show=true`, bez `route`): predvolene `true`, kóty sa pridávajú; `keep=false` nahradí predošlé kóty od Claude (staré správanie). Wire `measure:keep:...` (D-124) už existuje.
+2. `ifc_measure clear=true` ostáva (D-152): zmaže všetky kóty a čiaru trasy od Claude, merania používateľa nie; odpoveď "kóty od Claude zmazané".
+3. Limit 12 úsekov platí na jednu správu (most forku). Host drží súčet kót od Claude na plátne (`noteDimensions` v `lib/viewer-measure.ts`, pamäť inštancie, jeden živý kanál; `clear` a `reset_colors` ho vynulujú) a vráti ho v `dimensions_on_canvas`. Ak je súčet nad 12, odpoveď nesie `hint` s odporúčaním `clear`; nič neodmieta. Je to odhad: viewer nevie hostovi povedať, že používateľ kótu zmazal ručne.
+4. Zmazanie jednej konkrétnej kóty nejde bez zmeny vieweru (fork si pamätá id kót od hosta, ale správa na zmazanie jednej neexistuje). Zapísané v opise toolu.
+
+**Mimo rozsahu:** pole `measurements` s viacerými dvojicami plôch v jednom volaní a meranie jednotlivých telies dverí (poznámka v #278); dvere sú v IFC jedno teleso. Dve kóty šírky sa dajú dvoma volaniami (`face_a/face_b` a `axis=width`), teraz sa už nezmažú.
+
+**Zavrhnuté:** nový tool na kóty (D-114); odmietnutie správy nad 12 kót (Claude má dostať odporúčanie, nie chybu).
+
+**Po zlúčení:** fork netreba meniť (správa `keep` je v moste od D-124).

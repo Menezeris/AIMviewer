@@ -9,6 +9,7 @@ import { editDrawingLink } from "@/lib/data/drawing-link-edit";
 import { realLinkEditDeps } from "@/lib/data/drawing-link-deps";
 import { linkSummary } from "@/lib/data/drawing-labels";
 import type { ToolDefinition } from "./provider";
+import { resetDimensionTally } from "@/lib/viewer-measure";
 import { docHighlightsInput, docOp, docRegionInput, selectOp } from "@/lib/viewer-ops";
 import {
   PAGE_BLOCKS_CAP,
@@ -2544,6 +2545,7 @@ export class AskToolRuntime {
 
     // Globálne resety nepotrebujú prvky.
     if (action === "show_all" || action === "reset_colors" || action === "clear_isolation") {
+      if (action === "reset_colors") resetDimensionTally();
       this.actions.push({
         type: "navigate",
         url: `/ifc?ops=${encodeURIComponent(`${action}::`)}&r=${nonce()}`,

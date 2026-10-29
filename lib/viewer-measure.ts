@@ -46,3 +46,19 @@ export function decodeMeasureWire(raw: string): MeasureSegment[] | null {
 export function measureOp(segments: readonly MeasureSegment[], keep = false): string {
   return `measure:${keep ? "keep" : ""}:${encodeMeasureWire(segments)}`;
 }
+
+/**
+ * Počet kót od hosta na plátne viewera (D-170, #278). Host nemá spätný kanál z vieweru, počíta sám:
+ * `keep` pripočíta, nahradenie a zmazanie prepíše. Stav je v pamäti inštancie (jeden živý kanál),
+ * preto je to odhad pre odporúčanie `clear`, nie záruka; reset farieb ho vynuluje.
+ */
+let onCanvas = 0;
+
+export function noteDimensions(added: number, keep: boolean): number {
+  onCanvas = (keep ? onCanvas : 0) + added;
+  return onCanvas;
+}
+
+export function resetDimensionTally(): void {
+  onCanvas = 0;
+}
