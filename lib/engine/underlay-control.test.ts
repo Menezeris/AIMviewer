@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { toGeorefV2, type GeorefCalibration } from "../data/georef";
+import { historyOf, mergeCalibration, toGeorefV2, type GeorefCalibration } from "../data/georef";
 import { underlaysSetOp } from "../viewer-underlays";
 
 import { execUnderlayControl, type CalibratedDocument, type ControlDeps, type ViewerSnapshot, type ViewerUnderlay } from "./underlay-control";
@@ -52,6 +52,8 @@ function deps(over: Partial<ControlDeps> = {}, viewer?: Partial<ViewerSnapshot>,
     },
     viewer: async () => ({ connected: true, underlays: [], underlays_3d: true, ...viewer }),
     writeEnabled: true,
+    write: async (_id, apply) => apply(docs.find((d) => d.id === _id)?.georef),
+    now: () => new Date("2026-10-29T14:00:00.000Z"),
     ...over,
   };
 }
@@ -198,7 +200,64 @@ describe("calibrate_underlay mode=show_in_3d | hide | set_opacity (D-168)", () =
     expect(toGeorefV2(DOCS[0].georef).calibrations).toHaveLength(1);
   });
 
-  it("neznámy mode je chyba", async () => {
+  it("neznámy mode je chyba (remove sa nerobí)", async () => {
     expect((await run({ mode: "remove", document_id: ASR1 })).isError).toBe(true);
+  });
+});
+
+describe("calibrate_underlay mode=history | restore (D-168)", () => {
+  const meta = (n: number) => ({ by: "mcp" as const, reason: `calibrate_underlay mode=auto ${n}`, at: `2026-10-2${n}T10:00:00.000Z` });
+  /** 1NP ASR prepísaná dvakrát: v histórii dve staršie polohy. */
+  function overwritten(): CalibratedDocument[] {
+    const moved = (tx: number) => cal({ affine: [0.0176, 0, tx, 0, 0.0176, -12.1], source: "manual" });
+    const r1 = mergeCalibration({ version: 2, calibrations: [moved(25.5)] }, moved(26), true, meta(1));
+    const r2 = mergeCalibration(r1.ok ? r1.georef : null, cal({ affine: [0.0176, 0, 27, 0, 0.0176, -12.1] }), true, meta(2));
+    return [doc(ASR1, "OCB_ASR_1NP", []), ...DOCS.slice(1)].map((d, i) => (i === 0 ? { ...d, georef: r2.ok ? r2.georef : null } : d));
+  }
+
+  it("history vráti zoznam s indexom, súhrnom polohy a kto a prečo prepísal", async () => {
+    const r = await run({ mode: "history", floor: "1NP" }, deps({}, undefined, overwritten()));
+    expect(r.json.target).toMatchObject({ document_id: ASR1, page: 1, floor: "1NP" });
+    expect(r.json.current).toMatchObject({ offset_m: [27, -12.1], source: "auto" });
+    expect(r.json.count).toBe(2);
+    expect(r.json.history.map((h: { index: number; offset_m: number[]; replaced_by: string }) => [h.index, h.offset_m[0], h.replaced_by])).toEqual([[0, 26, "mcp"], [1, 25.5, "mcp"]]);
+    expect(r.json.history[0].reason).toMatch(/mode=auto 2/);
+    expect(r.json.history[0]).not.toHaveProperty("calibration");
+  });
+
+  it("history bez prepisov je prázdna; neznámy dokument a nejednoznačná strana sú chyby", async () => {
+    expect((await run({ mode: "history", document_id: ASR1 })).json).toMatchObject({ count: 0, history: [] });
+    expect((await run({ mode: "history", document_id: "NIE" })).isError).toBe(true);
+    expect((await run({ mode: "history", document_id: ASR1, page: 2 })).text).toMatch(/Kalibrovaná je strana 1/);
+  });
+
+  it("restore zapíše obnovenú kalibráciu, aktuálnu dá do histórie a žiada o načítanie podkladov nanovo", async () => {
+    const docs = overwritten();
+    let written: unknown;
+    const d = deps(
+      { write: async (id, apply) => { const r = apply(docs.find((x) => x.id === id)?.georef); if (r.ok) written = r.georef; return r; } },
+      undefined,
+      docs,
+    );
+    const r = await run({ mode: "restore", document_id: ASR1, page: 1, index: 1 }, d);
+    expect(r.reload).toBe(true);
+    expect(r.command).toBeUndefined();
+    expect(r.json.restored.offset_m[0]).toBe(25.5);
+    expect(r.json.replaced.offset_m[0]).toBe(27);
+    const g = toGeorefV2(written);
+    expect(g.calibrations[0].affine[2]).toBe(25.5);
+    // obnovený záznam z histórie odišiel, aktuálna (27) v nej pribudla, 26 ostala
+    expect(historyOf(written).map((h) => h.calibration.affine[2])).toEqual([27, 26]);
+    expect(historyOf(written)[0].reason).toBe("restore index 1");
+  });
+
+  it("restore: chýbajúci alebo zlý index, vypnutý zápis, prázdna história", async () => {
+    const docs = overwritten();
+    expect((await run({ mode: "restore", document_id: ASR1 }, deps({}, undefined, docs))).text).toMatch(/index/);
+    expect((await run({ mode: "restore", document_id: ASR1, index: -1 }, deps({}, undefined, docs))).isError).toBe(true);
+    expect((await run({ mode: "restore", document_id: ASR1, index: 1.5 }, deps({}, undefined, docs))).isError).toBe(true);
+    expect((await run({ mode: "restore", document_id: ASR1, index: 5 }, deps({}, undefined, docs))).text).toMatch(/nemá v histórii záznam s indexom 5/);
+    expect((await run({ mode: "restore", document_id: ASR1, index: 0 }, deps({ writeEnabled: false }, undefined, docs))).text).toMatch(/UNDERLAY_WRITE_ENABLED/);
+    expect((await run({ mode: "restore", document_id: ASR1, index: 0 })).text).toMatch(/nemá v histórii/);
   });
 });

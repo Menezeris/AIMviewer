@@ -34,6 +34,13 @@ export interface UnderlaysSetOp extends UnderlaysSetRequest {
   op: "underlays_set";
 }
 
+/** Op `underlays_load::`: host stiahne aktuálne podklady z `GET /api/underlay` a pošle viewerovi `UNDERLAYS_LOAD` (po obnove kalibrácie). */
+export interface UnderlaysLoadOp {
+  op: "underlays_load";
+}
+
+export const UNDERLAYS_LOAD_OP = "underlays_load::";
+
 /** Stav jedného podkladu v pohľade (`ViewWire.underlays.items`). */
 export interface ViewUnderlayItemWire {
   document_id: string;

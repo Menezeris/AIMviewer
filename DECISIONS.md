@@ -7673,7 +7673,7 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 
 ### D-168 - Podklady PDF z chatu: ovládanie v `calibrate_underlay` a stav podkladov v uloženom pohľade (#323, #325)
 
-**Dátum:** 2026-10-29 · **Stav:** implementované v hoste (viewer časť: fork Menezeris/ifc-lite#169, ešte nezlúčená) · **Issues:** #323, #325 · **Súvisí:** D-133 (kalibrácia podkladov), D-072 (zápis `_georef`), D-114 (najprv napasuj), D-161 (pohľady z Presentation), D-087 (viewer vo forku)
+**Dátum:** 2026-10-29 · **Stav:** implementované v hoste (PR #333 zlúčený; história kalibrácií v nadväzujúcom PR; viewer časť: fork Menezeris/ifc-lite#169) · **Issues:** #323, #325 · **Súvisí:** D-133 (kalibrácia podkladov), D-072 (zápis `_georef`), D-114 (najprv napasuj), D-161 (pohľady z Presentation), D-087 (viewer vo forku)
 
 **Kontext:** Podklad 1NP ASR bol kalibrovaný a globálne zapnutý (`set_view_mode(underlays_3d)`), ale v 3D sa nezobrazil, lebo tlačidlo Show in 3D pri riadku panela Underlays sa z konektora ovládať nedalo. `visible` a `opacity` sa dali zapísať len ako vedľajší efekt `calibrate_underlay` mode=auto/manual, ktorý prepočíta a prepíše polohu (pri hľadaní príčiny tak prišla o ručnú kalibráciu z 22. 10.). Uložený pohľad (#325) nepamätal, ktoré podklady sú viditeľné, takže po otvorení izolovaného 2NP svietili aj podklady 1NP a 3NP.
 
@@ -7688,6 +7688,11 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 6. **Kompatibilita:** host ostáva funkčný so starším viewerom (neznáme polia viewer ignoruje; rozšírený `SET_UNDERLAYS_3D` bez forku #169 zmení najviac globálne `show`). Tool to hlási podľa chýbajúceho `underlays` v stave. Plná funkcia až s forkom #169 v produkcii (poradie zlúčenia: fork, potom AIMviewer).
 7. `persist` je zápis: tool ho použije na pokyn používateľa; zápis stojí na `UNDERLAY_WRITE_ENABLED` (D-072), bez neho tool upozorní, že sa nič neuloží.
 
-**Nerobí sa (čaká na rozhodnutie Samuela):** `remove` (zmazanie kalibrácie), `history` a `restore` (história kalibrácií by potrebovala vlastné úložisko, dnes `_georef` drží len aktuálnu).
+**Dodatok 2026-10-29 (Samuel, "4 - ok", komentár v #323): história kalibrácií bez migrácie.**
+8. **`_georef.history`** v `objects.properties` (jsonb, bez migrácie): najviac 10 záznamov `{page, calibration (celý záznam calibrations[] pred prepisom), replaced_at, replaced_by: 'mcp'|'panel', reason}`, najnovší prvý. Plní ju `mergeCalibration` (`lib/data/georef.ts`) pri každom prepise miesta v `calibrations[]` s **inou polohou alebo kalibráciou** (`samePlacement`: affine, body, rovina, výrez, podlažie): `calibrate_underlay` auto/manual (`by: mcp`, reason `calibrate_underlay mode=...`) a `PATCH /api/underlay` (`by: panel`, `UNDERLAY_SAVE` s inou polohou). Prepis len `visible`/`opacity` (aj cez `persist`) a prvý zápis do histórie nejdú. Viewer históriu nedostane (`fetchUnderlayDrawings` posiela len `calibrations`).
+9. **`calibrate_underlay` mode `history`** (`document_id` alebo `floor`, `page`): zoznam strany s `index` (0 = najnovší), súhrnom (poloha, natočenie, mierka, kvalita) a `replaced_by`/`reason`. **`restore`** (`document_id` alebo `floor`, `page`, `index`): vráti záznam do `calibrations` (prepíše aj ručnú: je to výslovná voľba), **aktuálnu kalibráciu uloží do histórie** a odstráni z nej obnovený záznam, takže obnova sa dá vrátiť. Vyžaduje `UNDERLAY_WRITE_ENABLED`. Po zápise server pošle op `underlays_load::`: klient hosta stiahne podklady z nového `GET /api/underlay` (rovnaké dáta ako pri štarte) a pošle viewerovi `UNDERLAYS_LOAD`. Viewer ich nahradí rovnako ako pri štarte (správanie forku, nad rámec hosta).
+10. Zmenené je len `jsonb` obsah, **žiadna migrácia**; `SCHEMA.md` opisuje tvar `_georef.history`.
+
+**Nerobí sa (čaká na rozhodnutie Samuela):** `remove` (zmazanie kalibrácie).
 
 **Zavrhnuté rozšírenie:** nový tool `underlays` (návrh v #323) - `calibrate_underlay` už nesie `_georef` a identifikáciu dokumentu, nový tool by zdvojil `document_id`, `floor`, `page` a predĺžil načítanie konektora (D-114). `set_view_mode` - nesie len globálny vypínač podkladov v 3D, opis teraz odkazuje na nové módy.

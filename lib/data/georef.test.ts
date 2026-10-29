@@ -7,8 +7,10 @@ import {
   calibrationFromV1,
   isValidCalibration,
   isValidGeorefV2,
+  historyOf,
   mergeCalibration,
   primaryV1,
+  restoreCalibration,
   sameSlot,
   toGeorefV2,
   visibilityOnlyUpdate,
@@ -145,5 +147,72 @@ describe("visibilityOnlyUpdate (D-168): uloženie visible a opacity z viewera", 
     const upd = visibilityOnlyUpdate({ version: 2, calibrations: [manual] }, { ...V1, visible: false })!;
     const merged = mergeCalibration({ version: 2, calibrations: [manual] }, upd, true);
     expect(merged.ok && merged.georef.calibrations).toEqual([{ ...manual, visible: false, opacity: 0.6 }]);
+  });
+});
+
+describe("história kalibrácií (D-168)", () => {
+  const at = (n: number) => `2026-10-29T1${n}:00:00.000Z`;
+  const meta = (n: number, by: "mcp" | "panel" = "mcp") => ({ by, reason: `r${n}`, at: at(n) });
+
+  it("prepis polohy zapíše predošlú kalibráciu (celú) do history, najnovšiu prvú", () => {
+    const a = plan("manual", 25.5);
+    const b = plan("auto", 26);
+    const c = plan("auto", 27);
+    const r1 = mergeCalibration({ version: 2, calibrations: [a] }, b, true, meta(1));
+    expect(r1.ok && r1.history_added).toBe(true);
+    const r2 = mergeCalibration(r1.ok ? r1.georef : null, c, true, meta(2, "panel"));
+    const hist = r2.ok ? r2.georef.history! : [];
+    expect(hist.map((h) => [h.calibration.affine[2], h.replaced_by, h.reason, h.page])).toEqual([
+      [26, "panel", "r2", 1],
+      [25.5, "mcp", "r1", 1],
+    ]);
+    expect(hist[1].calibration).toEqual(a);
+    expect(r2.ok && r2.georef.calibrations).toEqual([c]);
+  });
+
+  it("zmena len visible/opacity/quality a prvý zápis do histórie nejdú; bez meta tiež nie", () => {
+    const a = plan("manual");
+    const same = mergeCalibration({ version: 2, calibrations: [a] }, { ...a, visible: false, opacity: 0.1, calibrated_at: "x" }, true, meta(1));
+    expect(same.ok && same.history_added).toBe(false);
+    expect(same.ok && same.georef.history).toBeUndefined();
+    const first = mergeCalibration(undefined, a, true, meta(1));
+    expect(first.ok && first.history_added).toBe(false);
+    const noMeta = mergeCalibration({ version: 2, calibrations: [a] }, plan("auto", 30), true);
+    expect(noMeta.ok && noMeta.georef.history).toBeUndefined();
+  });
+
+  it("história je ohraničená na 10 a prežije toGeorefV2 aj v1 prepis; neplatné záznamy vypadnú", () => {
+    let stored: unknown = { version: 2, calibrations: [plan("auto", 1)] };
+    for (let i = 2; i <= 15; i++) {
+      const r = mergeCalibration(stored, plan("auto", i), true, meta(1));
+      stored = r.ok ? r.georef : stored;
+    }
+    expect(historyOf(stored)).toHaveLength(10);
+    expect(historyOf(stored)[0].calibration.affine[2]).toBe(14);
+    expect(toGeorefV2(stored).history).toHaveLength(10);
+    const broken = { ...(stored as object), history: [{ page: 1 }, ...(stored as { history: unknown[] }).history] };
+    expect(historyOf(broken)).toHaveLength(10);
+    expect(historyOf({ version: 2, calibrations: [], history: "x" })).toEqual([]);
+  });
+
+  it("restore vráti záznam, aktuálnu uloží do histórie a odstráni obnovený (obnova sa dá vrátiť)", () => {
+    const a = plan("manual", 25.5);
+    const b = plan("auto", 26);
+    const r1 = mergeCalibration({ version: 2, calibrations: [a] }, b, true, meta(1));
+    const stored = r1.ok ? r1.georef : null;
+    const back = restoreCalibration(stored, 1, 0, meta(2));
+    expect(back.ok && back.georef.calibrations).toEqual([a]);
+    expect(back.ok && back.georef.history!.map((h) => h.calibration.affine[2])).toEqual([26]);
+    expect(back.ok && back.replaced).toEqual(b);
+    const undo = restoreCalibration(back.ok ? back.georef : null, 1, 0, meta(3));
+    expect(undo.ok && undo.georef.calibrations).toEqual([b]);
+  });
+
+  it("restore: index mimo histórie alebo iná strana = no_history", () => {
+    const r1 = mergeCalibration({ version: 2, calibrations: [plan("manual")] }, plan("auto", 26), true, meta(1));
+    const stored = r1.ok ? r1.georef : null;
+    expect(restoreCalibration(stored, 1, 1, meta(2))).toEqual({ ok: false, reason: "no_history" });
+    expect(restoreCalibration(stored, 2, 0, meta(2))).toEqual({ ok: false, reason: "no_history" });
+    expect(restoreCalibration(undefined, 1, 0, meta(2))).toEqual({ ok: false, reason: "no_history" });
   });
 });

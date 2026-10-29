@@ -102,7 +102,9 @@ export async function PATCH(
   const current = (obj.properties as Record<string, unknown> | null) ?? {};
   // D-168: v1 s nezmenenou polohou (SET_UNDERLAYS_3D s persist) zmení len visible a opacity, source ostane (auto ostane auto).
   const visibilityOnly = v1 ? visibilityOnlyUpdate(current._georef, v1) : null;
-  const merged = mergeCalibration(current._georef, visibilityOnly ?? next, true);
+  // História (D-168): prepis polohy z panela zachová predošlú kalibráciu; samotné visible/opacity nie.
+  const meta = { by: "panel" as const, reason: v1 ? "úprava v paneli Underlays" : "kalibrácia cez PATCH /api/underlay", at: new Date().toISOString() };
+  const merged = mergeCalibration(current._georef, visibilityOnly ?? next, true, meta);
   if (!merged.ok) return NextResponse.json({ error: "merge failed" }, { status: 409 });
   const properties = { ...current, _georef: merged.georef };
   const { error: uErr } = await supabase

@@ -47,9 +47,27 @@ export interface GeorefCalibration {
   calibrated_at?: string | null;
 }
 
+/** Najviac toľko predošlých kalibrácií drží `_georef.history` (D-168). */
+export const MAX_GEOREF_HISTORY = 10;
+
+/** Kto prepísal kalibráciu: `mcp` = calibrate_underlay, `panel` = ručná úprava v paneli Underlays. */
+export type GeorefHistoryBy = "mcp" | "panel";
+
+/** Predošlá kalibrácia strany pred prepisom polohy alebo kalibrácie (D-168); najnovšia prvá. */
+export interface GeorefHistoryEntry {
+  page: number;
+  /** Celý záznam `calibrations[]` pred prepisom. */
+  calibration: GeorefCalibration;
+  replaced_at: string;
+  replaced_by: GeorefHistoryBy;
+  reason: string;
+}
+
 export interface GeorefV2 {
   version: 2;
   calibrations: GeorefCalibration[];
+  /** Ohraničená história prepisov (D-168); chýba, kým sa nič neprepísalo. Do viewera sa neposiela. */
+  history?: GeorefHistoryEntry[];
 }
 
 /** v1 (D-072) - tvar, ktorý číta dnešný fork (`parsePlacement`). */
@@ -133,9 +151,35 @@ export function calibrationFromV1(v1: GeorefV1, source: "manual" | "auto" = "man
   };
 }
 
-/** Uložený `_georef` (v1 alebo v2, aj neplatný) -> v2; neplatné položky vypadnú. */
+const MAX_REASON = 200;
+
+function isHistoryEntry(raw: unknown): raw is GeorefHistoryEntry {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const h = raw as Record<string, unknown>;
+  return (
+    isValidCalibration(h.calibration) &&
+    num(h.page) && h.page === (h.calibration as GeorefCalibration).page &&
+    typeof h.replaced_at === "string" &&
+    (h.replaced_by === "mcp" || h.replaced_by === "panel") &&
+    typeof h.reason === "string" && h.reason.length <= MAX_REASON
+  );
+}
+
+/** História z uloženého `_georef`: neplatné záznamy vypadnú, najviac `MAX_GEOREF_HISTORY`. */
+export function historyOf(stored: unknown): GeorefHistoryEntry[] {
+  const raw = stored && typeof stored === "object" ? (stored as { history?: unknown }).history : undefined;
+  return Array.isArray(raw) ? raw.filter(isHistoryEntry).slice(0, MAX_GEOREF_HISTORY) : [];
+}
+
+/** Uložený `_georef` (v1 alebo v2, aj neplatný) -> v2; neplatné položky vypadnú, história ostane. */
 export function toGeorefV2(raw: unknown): GeorefV2 {
-  if (isValidGeorefV2(raw)) return raw;
+  const base = calibrationsOf(raw);
+  const history = historyOf(raw);
+  return history.length > 0 ? { ...base, history } : base;
+}
+
+function calibrationsOf(raw: unknown): GeorefV2 {
+  if (isValidGeorefV2(raw)) return { version: 2, calibrations: raw.calibrations };
   if (raw && typeof raw === "object" && (raw as { version?: unknown }).version === 1) {
     const g = raw as GeorefV1;
     const c = calibrationFromV1(g);
@@ -165,14 +209,48 @@ export function sameSlot(a: GeorefCalibration, b: GeorefCalibration): boolean {
 }
 
 export type MergeResult =
-  | { ok: true; georef: GeorefV2; replaced: GeorefCalibration | null }
+  | { ok: true; georef: GeorefV2; replaced: GeorefCalibration | null; /** Predošlá kalibrácia išla do `history`. */ history_added: boolean }
   | { ok: false; reason: "manual_exists"; existing: GeorefCalibration };
+
+const sameNumbers = (a: readonly number[], b: readonly number[]) => a.length === b.length && a.every((x, i) => Math.abs(x - b[i]) < 1e-9);
+
+/** Kto a prečo prepisuje kalibráciu; s ním sa predošlá kalibrácia zapíše do `history` (D-168). */
+export interface HistoryMeta {
+  by: GeorefHistoryBy;
+  reason: string;
+  at: string;
+}
+
+/**
+ * Rovnaká poloha a kalibrácia (mierka, natočenie, posun, body, rovina, výrez)? Zmena len `visible`, `opacity`,
+ * `quality`, `discipline` alebo `calibrated_at` nie je prepis polohy a do histórie nejde (D-168).
+ */
+export function samePlacement(a: GeorefCalibration, b: GeorefCalibration): boolean {
+  const planeSame = !a.plane || !b.plane ? !a.plane && !b.plane : sameNumbers([...a.plane.origin, ...a.plane.u, ...a.plane.v], [...b.plane.origin, ...b.plane.u, ...b.plane.v]);
+  return (
+    a.page === b.page &&
+    sameNumbers(a.affine, b.affine) &&
+    sameNumbers(a.page_size, b.page_size) &&
+    a.calibration.length === b.calibration.length &&
+    a.calibration.every((c, i) => sameNumbers(c.pdf_pt, b.calibration[i].pdf_pt) && sameNumbers(c.ifc_m, b.calibration[i].ifc_m)) &&
+    planeSame &&
+    (a.storey_guid ?? null) === (b.storey_guid ?? null) &&
+    JSON.stringify(a.region ?? null) === JSON.stringify(b.region ?? null)
+  );
+}
+
+/** Pridá záznam na začiatok histórie (najnovší prvý), najviac `MAX_GEOREF_HISTORY`. */
+function pushHistory(history: GeorefHistoryEntry[], previous: GeorefCalibration, meta: HistoryMeta): GeorefHistoryEntry[] {
+  const entry: GeorefHistoryEntry = { page: previous.page, calibration: previous, replaced_at: meta.at, replaced_by: meta.by, reason: meta.reason.slice(0, MAX_REASON) };
+  return [entry, ...history].slice(0, MAX_GEOREF_HISTORY);
+}
 
 /**
  * Zapíše kalibráciu do `_georef` (v1 alebo v2 na vstupe): nahradí položku na tom istom
  * mieste. Automatická neprepíše ručnú bez `force` (ručné dorovnanie je posledné slovo).
+ * S `meta` sa prepísaná kalibrácia s inou polohou zapíše do `history` (D-168).
  */
-export function mergeCalibration(stored: unknown, next: GeorefCalibration, force = false): MergeResult {
+export function mergeCalibration(stored: unknown, next: GeorefCalibration, force = false, meta?: HistoryMeta): MergeResult {
   const cur = toGeorefV2(stored);
   const i = cur.calibrations.findIndex((c) => sameSlot(c, next));
   const existing = i >= 0 ? cur.calibrations[i] : null;
@@ -182,10 +260,36 @@ export function mergeCalibration(stored: unknown, next: GeorefCalibration, force
   const calibrations = [...cur.calibrations];
   if (i >= 0) calibrations[i] = next;
   else calibrations.push(next);
-  return { ok: true, georef: { version: 2, calibrations }, replaced: existing };
+  const record = !!existing && !!meta && !samePlacement(existing, next);
+  const history = record ? pushHistory(cur.history ?? [], existing, meta) : (cur.history ?? []);
+  return { ok: true, georef: { version: 2, calibrations, ...(history.length > 0 ? { history } : {}) }, replaced: existing, history_added: record };
 }
 
-const sameNumbers = (a: readonly number[], b: readonly number[]) => a.length === b.length && a.every((x, i) => Math.abs(x - b[i]) < 1e-9);
+export type RestoreResult =
+  | { ok: true; georef: GeorefV2; restored: GeorefCalibration; replaced: GeorefCalibration | null }
+  | { ok: false; reason: "no_history" };
+
+/**
+ * Vráti záznam histórie `index` (0 = najnovší z histórie strany `page`) do `calibrations`. Aktuálna kalibrácia toho
+ * miesta ide do histórie (obnova sa dá vrátiť), obnovený záznam z nej odíde. Ručnú kalibráciu prepíše: je to výslovná
+ * voľba, nie výpočet.
+ */
+export function restoreCalibration(stored: unknown, page: number, index: number, meta: HistoryMeta): RestoreResult {
+  const cur = toGeorefV2(stored);
+  const all = cur.history ?? [];
+  const onPage = all.map((h, at) => ({ h, at })).filter(({ h }) => h.page === page);
+  const pick = onPage[index];
+  if (!pick) return { ok: false, reason: "no_history" };
+  const restored = pick.h.calibration;
+  const i = cur.calibrations.findIndex((c) => sameSlot(c, restored));
+  const replaced = i >= 0 ? cur.calibrations[i] : null;
+  const calibrations = [...cur.calibrations];
+  if (i >= 0) calibrations[i] = restored;
+  else calibrations.push(restored);
+  const rest = all.filter((_, at) => at !== pick.at);
+  const history = replaced ? pushHistory(rest, replaced, meta) : rest;
+  return { ok: true, georef: { version: 2, calibrations, ...(history.length > 0 ? { history } : {}) }, restored, replaced };
+}
 
 /**
  * Uloženie viditeľnosti a priehľadnosti z viewera (D-168, `SET_UNDERLAYS_3D` s `persist`): viewer pošle v1 s nezmeneným

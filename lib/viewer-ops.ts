@@ -28,7 +28,8 @@
  * zoom `panel_zoom:<in|out|reset|n>~p=<panel>:`.
  * Otáčanie kamery dokola (D-154): `auto_rotate:<start|stop>[~s=<°/s>][~d=<l|r>]:`.
  * Podklady PDF v 3D (D-133 doplnok): `underlays3d:<0|1>:` (stav viewera, do DB sa nezapisuje).
- * Jednotlivé podklady, priehľadnosť a uloženie (D-168): `underlays_set::<base64url JSON>`, formát v `lib/viewer-underlays.ts`.
+ * Jednotlivé podklady, priehľadnosť a uloženie (D-168): `underlays_set::<base64url JSON>`, formát v `lib/viewer-underlays.ts`;
+ * `underlays_load::` načíta podklady z DB nanovo (po `calibrate_underlay mode=restore`).
  * Poloha a smer kamery na PDF (D-161 bod 8, #282): `planpos:<0|1>:` (stav viewera, do DB sa nezapisuje).
  * Čiara trasy (D-137): `route:<hex>:<x,y,z|...>` (prázdne body = zmazať), formát v `lib/viewer-route.ts`.
  */
@@ -50,7 +51,7 @@ import {
 import { decodeMeasureWire, type MeasurePoint, type MeasureSegment } from "./viewer-measure";
 import { parseRouteOp } from "./viewer-route";
 import { parseTabsOp, tabsBridgeMessage, type TabsOp } from "./viewer-tabs";
-import { parseUnderlaysSetOp, underlaysSetBridgeMessage, type UnderlaysSetOp } from "./viewer-underlays";
+import { parseUnderlaysSetOp, underlaysSetBridgeMessage, type UnderlaysLoadOp, type UnderlaysSetOp } from "./viewer-underlays";
 import { parseViewsOp, viewsBridgeMessage, type ViewsOp } from "./viewer-views";
 import { parseClashOp, type ClashOpenOp } from "./viewer-clash";
 import { parseIdsOp, type IdsOpenOp } from "./viewer-ids";
@@ -190,6 +191,8 @@ export type ViewerOp =
   | { op: "underlays3d"; show: boolean }
   /** Jednotlivé podklady v 3D: viditeľnosť, priehľadnosť, uloženie (D-168). */
   | UnderlaysSetOp
+  /** Podklady z DB nanovo do viewera (po obnove kalibrácie), vykoná klient hosta. */
+  | UnderlaysLoadOp
   | { op: "planpos"; show: boolean };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
@@ -545,6 +548,8 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "view_activate" || op === "view_capture") {
       const v = parseViewsOp(op, joined);
       if (v) out.push(v);
+    } else if (op === "underlays_load") {
+      out.push({ op });
     } else if (op === "underlays_set") {
       const u = parseUnderlaysSetOp(joined);
       if (u) out.push(u);
@@ -673,6 +678,9 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     case "view_activate":
     case "view_capture":
       return viewsBridgeMessage(o);
+    case "underlays_load":
+      // Podklady si klient hosta stiahne z /api/underlay až pri vykonaní (async), preto správu skladá `applyOps` v ifc-viewer.tsx.
+      throw new Error("underlays_load sa vykoná v klientovi hosta (reloadUnderlays), nie cez opToBridgeMessage");
     case "clash_open":
       // Kolízie si klient hosta stiahne z /api/clash až pri vykonaní (async), preto správu skladá `applyOps` v ifc-viewer.tsx.
       throw new Error("clash_open sa vykoná v klientovi hosta (openClash), nie cez opToBridgeMessage");

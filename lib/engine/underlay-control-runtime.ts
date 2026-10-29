@@ -1,5 +1,8 @@
 import "server-only";
 
+import { revalidateTag } from "next/cache";
+
+import type { RestoreResult } from "../data/georef";
 import { isTestChannel, liveChannel } from "../live/broadcast";
 import { queryLiveViewer } from "../live/query";
 import { getSupabaseAdmin } from "../supabase/server";
@@ -73,6 +76,20 @@ async function viewer(): Promise<ViewerSnapshot> {
   };
 }
 
+/** Zápis `_georef` ako `calibrate_underlay`: zlúčenie nad najnovšími properties tesne pred zápisom. */
+async function write(documentId: string, apply: (stored: unknown) => RestoreResult): Promise<RestoreResult> {
+  const db = getSupabaseAdmin();
+  const { data, error } = await db.from("objects").select("properties").eq("id", documentId).maybeSingle();
+  if (error) throw new Error(error.message);
+  const current = (data?.properties as Record<string, unknown> | null) ?? {};
+  const result = apply(current._georef);
+  if (!result.ok) return result;
+  const { error: uErr } = await db.from("objects").update({ properties: { ...current, _georef: result.georef } }).eq("id", documentId);
+  if (uErr) throw new Error(uErr.message);
+  revalidateTag("aim", { expire: 0 });
+  return result;
+}
+
 export function defaultControlDeps(): ControlDeps {
-  return { documents, floorNames, floor, viewer, writeEnabled: process.env.UNDERLAY_WRITE_ENABLED === "true" };
+  return { documents, floorNames, floor, viewer, write, now: () => new Date(), writeEnabled: process.env.UNDERLAY_WRITE_ENABLED === "true" };
 }

@@ -37,7 +37,7 @@ import {
   type McpToolResult,
 } from "@/lib/mcp/server";
 import { callerLabel, mcpCaller } from "@/lib/mcp/session-id";
-import { underlaysSetOp } from "@/lib/viewer-underlays";
+import { UNDERLAYS_LOAD_OP, underlaysSetOp } from "@/lib/viewer-underlays";
 import { startTimer, type CallTimer } from "@/lib/mcp/timing";
 
 /**
@@ -179,7 +179,11 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
     const { defaultControlDeps } = await import("@/lib/engine/underlay-control-runtime");
     const res = await timer.phase("exec", () => execUnderlayControl(args, defaultControlDeps()));
     const text = [res.text];
-    if (res.command) {
+    if (res.reload) {
+      // Obnova kalibrácie (D-168): viewer načíta podklady z DB nanovo.
+      const action: AskAction = { type: "navigate", url: `/ifc?ops=${encodeURIComponent(UNDERLAYS_LOAD_OP)}&r=${Date.now().toString(36)}`, label: res.label ?? "Podklady nanovo" };
+      text.push(...(await deliverActions(name, args, [action], timer)));
+    } else if (res.command) {
       const action: AskAction = {
         type: "navigate",
         url: `/ifc?ops=${encodeURIComponent(underlaysSetOp(res.command))}&r=${Date.now().toString(36)}`,
