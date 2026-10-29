@@ -148,6 +148,8 @@ export type ViewerOp =
   | { op: "colorize_sel"; selector: OpsSelector; color: string }
   | { op: "hide_sel" | "show_sel" | "isolate_sel"; selector: OpsSelector }
   | { op: "select"; guid: string; /** Všetky GUIDy výberu, keď je ich viac (#217); `guid` je prvý. */ guids?: string[]; panel?: SelectPanel }
+  /** Výber všetkých práve viditeľných prvkov (#315): bridge `SELECT {visible: true}`; starší viewer správu zahodí. */
+  | { op: "select_visible" }
   | { op: "show_all" }
   /** Zruší len izoláciu a X-ray z chatu (bridge `APPLY_LENS unisolate`), rez, skryté prvky a farby ostanú (D-151). */
   | { op: "clear_isolation" }
@@ -494,7 +496,7 @@ export function parseOps(raw: string): ViewerOp[] {
       const panel = parsePanel(arg);
       const all = [...new Set(guids)];
       out.push({ op, guid: all[0], ...(all.length > 1 ? { guids: all } : {}), ...(panel ? { panel } : {}) });
-    } else if (op === "show_all" || op === "clear_isolation" || op === "reset_colors" || op === "section_clear" || op === "clear_focus" || op === "clear_selection") {
+    } else if (op === "select_visible" || op === "show_all" || op === "clear_isolation" || op === "reset_colors" || op === "section_clear" || op === "clear_focus" || op === "clear_selection") {
       out.push({ op });
     } else if (op === "section_gizmo" && (arg === "0" || arg === "1")) {
       out.push({ op, showGizmo: arg === "1" });
@@ -654,6 +656,8 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
       return { type: "ISOLATE", selector: o.selector };
     case "select":
       return { type: "SELECT", guid: o.guid, ...(o.guids ? { guids: o.guids } : {}), ...(o.panel ? { panel: o.panel } : {}) };
+    case "select_visible":
+      return { type: "SELECT", visible: true };
     case "show_all":
       return { type: "SHOW_ALL" };
     case "clear_isolation":

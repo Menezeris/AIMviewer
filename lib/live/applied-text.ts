@@ -13,6 +13,19 @@ import { visibleArea, type ViewerCamera } from "../viewer-camera";
 
 export const ACK_TIMEOUT_MS = 3000;
 
+/**
+ * Zvýraznenie vlastnosti (`show_in_3d` select + highlight, #168): viewer počká na načítanie vlastností prvku
+ * (veľký model) až 10 s a potvrdí až potom, takže bežných 3 s by stav `property_focus` nikdy nezachytilo.
+ * Starší viewer potvrdí hneď, čakanie sa ho netýka.
+ */
+export const PROPERTY_FOCUS_ACK_TIMEOUT_MS = 12_000;
+
+/** Koľko čakať na potvrdenie príkazu `tool` s argumentmi `args`. */
+export function ackTimeoutMs(tool: string, args: Record<string, unknown> = {}): number {
+  const focus = typeof args.highlight === "string" && args.highlight.trim() !== "";
+  return tool === "show_in_3d" && args.select === true && focus ? PROPERTY_FOCUS_ACK_TIMEOUT_MS : ACK_TIMEOUT_MS;
+}
+
 /** Po `set_camera` k stavu pridá viditeľnú oblasť z koncovej kamery (D-128). */
 function withVisibleArea(tool: string, state: unknown): unknown {
   if (tool !== "set_camera" || !state || typeof state !== "object") return state;
