@@ -124,6 +124,18 @@ describe("calibrate_underlay", () => {
     expect(forced.out.written).toBe(true);
   });
 
+  it("prepis polohy force-om uloží predošlú ručnú kalibráciu do histórie (D-168)", async () => {
+    const first = await run({ document_id: "D1", mode: "auto" }, deps().d);
+    expect(first.out.history_saved).toBeUndefined();
+    const manual = { ...first.out.calibration, source: "manual", affine: first.out.calibration.affine.map((v: number, i: number) => (i === 2 ? v + 1 : v)) };
+    const blocked = deps({}, { version: 2, calibrations: [manual] });
+    const forced = await run({ document_id: "D1", mode: "auto", force: true }, blocked.d);
+    expect(forced.out.history_saved).toBe(true);
+    expect(blocked.writes[0]).toMatchObject({
+      history: [{ page: 1, replaced_by: "mcp", reason: "calibrate_underlay mode=auto", replaced_at: "2026-10-21T12:00:00.000Z", calibration: { source: "manual" } }],
+    });
+  });
+
   it("brána zápisu a strop chyby", async () => {
     const off = deps({ writeEnabled: false });
     expect((await run({ document_id: "D1", mode: "auto" }, off.d)).out.note).toMatch(/UNDERLAY_WRITE_ENABLED/);

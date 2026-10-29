@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { opToBridgeMessage, parseOps } from "./viewer-ops";
-import { MAX_UNDERLAY_ITEMS, checkUnderlaysSet, isViewUnderlays, parseUnderlaysSetOp, underlaysSetOp } from "./viewer-underlays";
+import { UNDERLAYS_LOAD_OP, MAX_UNDERLAY_ITEMS, checkUnderlaysSet, isViewUnderlays, parseUnderlaysSetOp, underlaysSetOp } from "./viewer-underlays";
 
 const DOC = "5b5a6f0e-2b7b-4a53-8d3e-7a1f6c2d9e01";
 
@@ -43,6 +43,11 @@ describe("underlays_set (D-168): žiadosť o zmenu podkladov", () => {
     const items = (n: number) => Array.from({ length: n }, (_, i) => ({ document_id: `d${i}`, visible: true }));
     expect(checkUnderlaysSet({ underlays: items(MAX_UNDERLAY_ITEMS) })).toMatchObject({ ok: true });
     expect(checkUnderlaysSet({ underlays: items(MAX_UNDERLAY_ITEMS + 1) })).toMatchObject({ ok: false });
+  });
+
+  it("underlays_load (D-168) sa parsuje, ale bridge správu skladá až klient hosta", () => {
+    expect(parseOps(UNDERLAYS_LOAD_OP)).toEqual([{ op: "underlays_load" }]);
+    expect(() => opToBridgeMessage({ op: "underlays_load" })).toThrow(/klientovi hosta/);
   });
 
   it("neplatné ops z URL sa zahodia", () => {

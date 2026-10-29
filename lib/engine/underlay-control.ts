@@ -1,4 +1,4 @@
-import { toGeorefV2, type GeorefCalibration } from "../data/georef";
+import { historyOf, restoreCalibration, toGeorefV2, type GeorefCalibration, type RestoreResult } from "../data/georef";
 import type { UnderlaysSetRequest } from "../viewer-underlays";
 
 /**
@@ -8,7 +8,7 @@ import type { UnderlaysSetRequest } from "../viewer-underlays";
  * živý viewer) v `underlay-control-runtime.ts`, aby sa dala testovať bez nich.
  */
 
-export const UNDERLAY_CONTROL_MODES = ["list", "show_in_3d", "hide", "set_opacity"] as const;
+export const UNDERLAY_CONTROL_MODES = ["list", "show_in_3d", "hide", "set_opacity", "history", "restore"] as const;
 export type ControlMode = (typeof UNDERLAY_CONTROL_MODES)[number];
 
 export const isControlMode = (m: unknown): m is ControlMode => (UNDERLAY_CONTROL_MODES as readonly unknown[]).includes(m);
@@ -59,8 +59,11 @@ export interface ControlDeps {
   /** Podlažie z `floor` (meno, kód, UUID alebo IFC GUID); null = nenájdené. */
   floor: (ref: string) => Promise<ResolvedFloor | null>;
   viewer: () => Promise<ViewerSnapshot>;
-  /** `UNDERLAY_WRITE_ENABLED`: bez neho sa `persist` neuloží. */
+  /** `UNDERLAY_WRITE_ENABLED`: bez neho sa `persist` ani `restore` neuloží. */
   writeEnabled: boolean;
+  /** Zápis `restore`: `apply` zlúči do aktuálneho `_georef` (prečítaného tesne pred zápisom). */
+  write: (documentId: string, apply: (stored: unknown) => RestoreResult) => Promise<RestoreResult>;
+  now: () => Date;
 }
 
 export interface ControlResult {
@@ -70,6 +73,8 @@ export interface ControlResult {
   command?: UnderlaysSetRequest;
   /** Popis príkazu pre odkaz a log. */
   label?: string;
+  /** Viewer má načítať podklady z DB nanovo (`restore`, op `underlays_load`). */
+  reload?: boolean;
 }
 
 export class UnderlayControlError extends Error {}
@@ -171,6 +176,8 @@ export async function execUnderlayControl(args: Record<string, unknown>, deps: C
 async function run(args: Record<string, unknown>, deps: ControlDeps): Promise<ControlResult> {
   const mode = args.mode;
   if (!isControlMode(mode)) throw new UnderlayControlError(`mode ovládania podkladov je ${UNDERLAY_CONTROL_MODES.join(" | ")}.`);
+  if (mode === "history") return { text: JSON.stringify(await history(args, deps)), isError: false };
+  if (mode === "restore") return restore(args, deps);
   const viewer = await deps.viewer();
   if (mode === "list") return { text: JSON.stringify(await list(deps, viewer)), isError: false };
 
@@ -214,6 +221,68 @@ async function run(args: Record<string, unknown>, deps: ControlDeps): Promise<Co
     isError: false,
     command,
     label: `Podklad ${label(t.doc)}: ${what}`,
+  };
+}
+
+const NO_VIEWER: ViewerSnapshot = { connected: false, underlays: null, underlays_3d: null };
+
+/** Čitateľný súhrn kalibrácie (bez bodov): poloha, mierka, natočenie, kvalita. */
+function summary(c: GeorefCalibration) {
+  const [a, , tx, cc, , ty] = c.affine;
+  return {
+    page: c.page,
+    source: c.source,
+    calibrated_at: c.calibrated_at ?? null,
+    offset_m: [Math.round(tx * 1000) / 1000, Math.round(ty * 1000) / 1000],
+    rotation_deg: Math.round(Math.atan2(cc, a) * 18000 / Math.PI) / 100,
+    scale_m_per_pt: Math.round(Math.hypot(a, cc) * 1e6) / 1e6,
+    median_mm: c.quality?.median_mm ?? null,
+    p90_mm: c.quality?.p90_mm ?? null,
+    visible: c.visible ?? true,
+    opacity: c.opacity ?? DEFAULT_OPACITY,
+  };
+}
+
+function indexOf(args: Record<string, unknown>): number {
+  const i = args.index;
+  if (typeof i !== "number" || !Number.isInteger(i) || i < 0) throw new UnderlayControlError("restore potrebuje index: celé číslo od 0 (0 = najnovší záznam z mode=history).");
+  return i;
+}
+
+/** História prepisov kalibrácie strany (`_georef.history`, najnovšia prvá): index sa dá dať do `restore`. */
+async function history(args: Record<string, unknown>, deps: ControlDeps) {
+  const t = await resolveTarget(args, deps, NO_VIEWER);
+  const entries = historyOf(t.doc.georef).filter((h) => h.page === t.cal.page);
+  return {
+    target: { document_id: t.doc.id, object_ref: t.doc.object_ref, name: t.doc.name, page: t.cal.page, floor: t.floor },
+    current: summary(t.cal),
+    count: entries.length,
+    history: entries.map((h, index) => ({ index, replaced_at: h.replaced_at, replaced_by: h.replaced_by, reason: h.reason, ...summary(h.calibration) })),
+    note: entries.length === 0 ? "Zatiaľ sa nič neprepísalo (história drží najviac 10 prepisov polohy alebo kalibrácie, nie zmeny visible a opacity)." : "Obnova: mode=restore s týmto document_id, page a index.",
+  };
+}
+
+/** Vráti záznam histórie do kalibrácie; aktuálna kalibrácia ide do histórie. Nič sa nepočíta. */
+async function restore(args: Record<string, unknown>, deps: ControlDeps): Promise<ControlResult> {
+  const index = indexOf(args);
+  const t = await resolveTarget(args, deps, NO_VIEWER);
+  if (!deps.writeEnabled) throw new UnderlayControlError("Zápis kalibrácie je vypnutý (UNDERLAY_WRITE_ENABLED), obnova sa neuloží.");
+  const result = await deps.write(t.doc.id, (stored) =>
+    restoreCalibration(stored, t.cal.page, index, { by: "mcp", reason: `restore index ${index}`, at: deps.now().toISOString() }),
+  );
+  if (!result.ok) throw new UnderlayControlError(`Strana ${t.cal.page} nemá v histórii záznam s indexom ${index}. Zoznam: mode=history.`);
+  return {
+    text: JSON.stringify({
+      mode: "restore",
+      target: { document_id: t.doc.id, object_ref: t.doc.object_ref, name: t.doc.name, page: t.cal.page, floor: t.floor },
+      restored: summary(result.restored),
+      replaced: result.replaced ? summary(result.replaced) : null,
+      history_count: historyOf(result.georef).filter((h) => h.page === t.cal.page).length,
+      note: "Obnovená kalibrácia je uložená; predošlá aktuálna išla do histórie (obnova sa dá vrátiť). Viewer dostane podklady nanovo (UNDERLAYS_LOAD).",
+    }),
+    isError: false,
+    reload: true,
+    label: `Podklad ${label(t.doc)}: obnova kalibrácie`,
   };
 }
 

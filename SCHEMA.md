@@ -663,7 +663,7 @@ sem NEPATRIA (sú stĺpce).
 Psety nikdy nezačínajú `_`. Aktuálne používané (deklarované extenzie, D-046):
 `_contact`, `_org` (capture-don't-structure — §7), `_drawing_links` (klikateľné
 regióny výkresov, D-042, zapisuje `etl/pdf_link.py`), `_georef` (georeferencia
-PDF podkladu na podlažie, D-072, zapisuje `PATCH /api/underlay`), `_capture`
+PDF podkladu na podlažie, D-072, zapisuje `PATCH /api/underlay`; v2 `{version, calibrations[], history?[]}`, `history` = najviac 10 predošlých kalibrácií `{page, calibration, replaced_at, replaced_by: mcp|panel, reason}` pred prepisom polohy, najnovšia prvá, D-168), `_capture`
 (ukotvenie reality-capture bodu — `plan`{documentId,page,u,v} + `world`{x,y,z} +
 `yaw`, versioned; D-073, zapisuje `POST /api/captures`, len na `object_type='capture'`),
 `_model` (model federácie, ktorý dokument vydal; ETL ukončí dokumenty modelu, ktoré už

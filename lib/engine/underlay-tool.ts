@@ -329,7 +329,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     out.note = `Neuložené: medián chyby ${median ?? "?"} mm je nad stropom ${p.maxErrorMm} mm. Skontroluj podlažie alebo rovinu rezu, alebo použi mode=manual.`;
     return out;
   }
-  const merged = await deps.write(doc.id, (stored) => mergeCalibration(stored, entry, p.force));
+  const merged = await deps.write(doc.id, (stored) => mergeCalibration(stored, entry, p.force, { by: "mcp", reason: `calibrate_underlay mode=${p.mode}`, at: deps.now().toISOString() }));
   if (!merged.ok) {
     out.written = false;
     out.note = `Neuložené: strana ${p.page} má ručnú kalibráciu z panela Underlays (${merged.existing.calibrated_at ?? "bez dátumu"}); prepíše ju len force=true na výslovný pokyn.`;
@@ -337,6 +337,8 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   }
   out.written = true;
   out.replaced = merged.replaced ? { source: merged.replaced.source, calibrated_at: merged.replaced.calibrated_at ?? null } : null;
+  // D-168: prepísaná kalibrácia s inou polohou ostáva v histórii (calibrate_underlay mode=history | restore).
+  if (merged.history_added) out.history_saved = true;
   out.calibrations_in_document = toGeorefV2(merged.georef).calibrations.length;
   out.note = "Uložené do kalibrácie dokumentu; viewer podklad načíta pri ďalšom otvorení (obnov stránku). Rez sa zobrazí, keď viewer začne čítať zvislé podklady (D-132).";
   return out;

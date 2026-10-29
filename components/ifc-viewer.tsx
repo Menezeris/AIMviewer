@@ -389,6 +389,17 @@ export function IFCViewer({
     post(clashLoadMessage(body));
   }
 
+  /**
+   * Podklady nanovo (D-168): `underlays_load` po `calibrate_underlay mode=restore`. Klient si ich stiahne z
+   * `GET /api/underlay` a pošle forku `UNDERLAYS_LOAD`, rovnako ako pri štarte.
+   */
+  async function reloadUnderlays() {
+    const r = await fetch("/api/underlay", { cache: "no-store" });
+    if (!r.ok) throw new Error(`Podklady sa nenačítali (HTTP ${r.status})`);
+    const body = (await r.json()) as { drawings?: UnderlayDrawingWire[] };
+    post({ type: "UNDERLAYS_LOAD", drawings: body.drawings ?? [] });
+  }
+
   /** Uloženie z panela clash (`CLASH_SAVE`): route je za env bránou; výsledok sa vráti ako `CLASH_SAVED` (tlačidlo ho ukáže). */
   function saveClash(raw: unknown) {
     const save = parseClashSave(raw);
@@ -494,6 +505,8 @@ export function IFCViewer({
           await openIds(o);
         } else if (o.op === "clash_open") {
           await openClash(o);
+        } else if (o.op === "underlays_load") {
+          await reloadUnderlays();
         } else post(opToBridgeMessage(o));
         // Reset farieb vypne aj AIM chat lens a zmaže čiaru trasy aj kóty od Claude (D-137, D-152), zobraziť všetko zruší izoláciu z chatu (D-096, D-137).
         if (o.op === "reset_colors") {

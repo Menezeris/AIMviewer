@@ -9,7 +9,7 @@ export const CALIBRATE_UNDERLAY_MODES = ["dry_run", "auto", "manual"] as const;
 export type Mode = (typeof CALIBRATE_UNDERLAY_MODES)[number];
 
 /** Režimy ovládania podkladov (D-168): menia len viditeľnosť a priehľadnosť, nie polohu; logika v `underlay-control.ts`. */
-export const UNDERLAY_CONTROL_MODE_NAMES = ["list", "show_in_3d", "hide", "set_opacity"] as const;
+export const UNDERLAY_CONTROL_MODE_NAMES = ["list", "show_in_3d", "hide", "set_opacity", "history", "restore"] as const;
 
 /** Pôdorysný rez nad podlahou (m), ako 2D pohľad viewera. */
 export const PLAN_CUT_M = 1.2;
@@ -29,18 +29,21 @@ export const CALIBRATE_UNDERLAY_TOOL: ToolDefinition = {
     "manual) len na výslovný pokyn používateľa; inak dry_run a výsledok mu ukáž. Mierka výsledku sa kontroluje " +
     "(scale_check): proti scale, mierke z textu strany (MERÍTKO 1 : 50) alebo bežným mierkam; auto pri odchýlke " +
     "neuloží ani pri nízkom mediáne. Strana bez čiar (raster) ide len cez manual s pairs. " +
-    "OVLÁDANIE PODKLADOV (D-168, polohu nemenia a nič nepočítajú): mode=list = zoznam kalibrovaných podkladov bez document_id " +
+    "OVLÁDANIE PODKLADOV (D-168, nič sa nepočíta; list, show_in_3d, hide a set_opacity polohu nemenia): mode=list = zoznam kalibrovaných podkladov bez document_id " +
     "(document_id, object_ref, name, page, floor, visible a opacity vo vieweri, saved_visible a saved_opacity z DB, source auto|manual, " +
     "calibrated_at, underlays_3d; bez otvoreného viewera len z DB). mode=show_in_3d zapne podklad v 3D (document_id alebo floor; " +
     "only=true vypne ostatné kalibrované podklady, pre 'len 2NP'), mode=hide ho vypne, mode=set_opacity nastaví opacity 0 až 1. " +
     "Zmena je stav viewera; persist=true ju uloží do kalibrácie (visible a opacity, poloha a source ostanú) na pokyn používateľa. " +
-    "Globálny vypínač podkladov v 3D je set_view_mode(underlays_3d). Uložený pohľad (saved_view) nesie aj stav podkladov. " +
+    "HISTÓRIA KALIBRÁCIÍ: každý prepis polohy alebo kalibrácie strany (mode=auto, manual, úprava v paneli) uloží predošlú kalibráciu do " +
+    "_georef.history (posledných 10, zmena len visible a opacity sa nezapisuje); mode=history (document_id alebo floor, page) vráti zoznam s index " +
+    "(0 = najnovší), mode=restore (document_id alebo floor, page, index) vráti záznam do kalibrácie, aktuálnu uloží do histórie (obnova sa dá vrátiť) " +
+    "a pošle viewerovi podklady nanovo; ukladaj ho len na výslovný pokyn. Globálny vypínač podkladov v 3D je set_view_mode(underlays_3d). Uložený pohľad (saved_view) nesie aj stav podkladov. " +
     "Vyžaduje nový viewer: starší jednotlivé podklady nezmení (tool to povie).",
   inputSchema: {
     type: "object",
     properties: {
       document_id: { type: "string", description: "Dokument výkresu: UUID alebo object_ref (napr. OCB_SO01_ASR_D-1-1-01_PODORYS-1NP); povinné okrem mode=list (show_in_3d, hide, set_opacity: alternatíva k floor)" },
-      page: { type: "number", description: "Strana PDF (od 1, predvolene 1); pri ovládaní podkladov len kontrola: viewer pozná na dokumente jednu kalibrovanú stranu" },
+      page: { type: "number", description: "Strana PDF (od 1, predvolene 1); pri ovládaní podkladov len kontrola: viewer pozná na dokumente jednu kalibrovanú stranu; history a restore: strana, ktorej história sa berie" },
       mode: { type: "string", enum: [...CALIBRATE_UNDERLAY_MODES, ...UNDERLAY_CONTROL_MODE_NAMES] },
       floor: { type: "string", description: "Pôdorys: podlažie (meno alebo IFC GUID, napr. 1NP); show_in_3d, hide, set_opacity: podklad podlažia (podľa storey_guid kalibrácie) namiesto document_id" },
       section_plane: {
@@ -69,6 +72,7 @@ export const CALIBRATE_UNDERLAY_TOOL: ToolDefinition = {
       model: { type: "string", description: "Model federácie s konštrukciami (predvolene prvý, ASR)" },
       opacity: { type: "number", minimum: 0, maximum: 1, description: "set_opacity: priehľadnosť podkladu 0 až 1 (povinné)" },
       only: { type: "boolean", description: "show_in_3d: ostatné kalibrované podklady v 3D vypne (predvolene false)" },
+      index: { type: "number", minimum: 0, description: "restore: index záznamu z mode=history (0 = najnovší)" },
       persist: { type: "boolean", description: "show_in_3d, hide, set_opacity: uložiť visible a opacity do kalibrácie (predvolene false = len stav viewera)" },
     },
     required: [],

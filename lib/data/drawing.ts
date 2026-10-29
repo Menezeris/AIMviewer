@@ -244,7 +244,8 @@ async function fetchUnderlayDrawingsImpl(): Promise<UnderlayDrawingWire[]> {
       name: (obj.name as string | null) ?? id,
       pdfUrl: location,
       ...(v1 ? { georef: v1 } : {}),
-      ...(v2 && v2.calibrations.length > 0 ? { georefV2: v2 } : {}),
+      // História prepisov (D-168) zostáva na serveri, viewer ju nepotrebuje.
+      ...(v2 && v2.calibrations.length > 0 ? { georefV2: { version: 2 as const, calibrations: v2.calibrations } } : {}),
     });
   }
   return out;
