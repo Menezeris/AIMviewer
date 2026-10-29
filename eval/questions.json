@@ -1313,6 +1313,38 @@
       "expect": { "tools_called": ["ifc_measure"] },
       "verified": false,
       "notes": "D-170 (#278): dve volania ifc_measure show=true (face_a=+x/face_b=-x a axis=width), kóty sa hromadia (keep predvolene true), druhé prvú nezmaže."
+    },
+    {
+      "id": "list-highlight-sum",
+      "category": "data",
+      "question": "V otvorenom zozname zvýrazni súčet objemu.",
+      "expect": { "tools_called": ["open_list"] },
+      "verified": false,
+      "notes": "D-171 (#274): open_list action=update highlight={sum:true}; zoznam musí mať sum. Len so živým viewerom."
+    },
+    {
+      "id": "list-column-width-fit",
+      "category": "data",
+      "question": "Zmeň šírku stĺpcov v zozname tak, aby bol všetok text čitateľný.",
+      "expect": { "tools_called": ["open_list"] },
+      "verified": false,
+      "notes": "D-171 (#275): open_list action=update column_widths=fit. Len so živým viewerom."
+    },
+    {
+      "id": "list-doors-under-isolation",
+      "category": "data",
+      "question": "Mám v 3D izolované stĺpy; otvor zoznam dverí s výsledkom hneď.",
+      "expect": { "tools_called": ["open_list"] },
+      "verified": false,
+      "notes": "D-171 (#276): open_list ifc_type=IfcDoor run=true bez clear_isolation; zoznam ukáže všetky riadky (visible_only sa pri izolácii vypne)."
+    },
+    {
+      "id": "list-column-space-referenced",
+      "category": "data",
+      "question": "Pridaj do zoznamu dverí stĺpec s miestnosťou, ktorá dvere referencuje, a stĺpec s hranicou priestoru.",
+      "expect": { "tools_called": ["open_list"] },
+      "verified": false,
+      "notes": "D-171 (#277): add_columns=[space_referenced, space_boundary]; hodnoty z IFC súboru, odvodené väzby z DB sú ďalší krok."
     }
   ]
 }

@@ -7762,6 +7762,27 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 
 **Po zlúčení:** fork netreba meniť (správa `keep` je v moste od D-124).
 
+### D-171 - `open_list`: zvýraznenie, šírky stĺpcov, filter viditeľnosti a stĺpce zo vzťahov (#274, #275, #276, #277)
+
+**Dátum:** 2026-10-29 · **Issues:** #274, #275, #276, #277 · **Nadväzuje na:** D-111, D-114, D-148, D-149 · **Fork:** Menezeris/ifc-lite#172
+
+**Kontext:** štyri požiadavky z konektora na panel Lists: nedá sa zvýrazniť súčet, riadok, stĺpec ani bunka (#274), nedá sa meniť šírka stĺpca (#275), pri izolácii v 3D ukazuje nový zoznam 0 viditeľných riadkov (#276) a vzťahy z IFC (referenced, space boundary) sa nedajú pridať ako stĺpec, `space` potichu mapuje na Container (#277).
+
+**Najbližšie tooly (D-114):** `open_list` (rozširujeme, má `action=update`, `sum`, `sort_by`, `group_by`), `get_viewer_state` (číta `list`, len nesie nové polia), `style_in_3d` (izolácia, ktorá #276 spúšťa; zrušenie izolácie by zničilo pohľad používateľa). Nový tool netreba.
+
+**Rozhodnutie (parametre existujúceho toolu, žiadna nová správa mostu):**
+1. `visible_only` (boolean) -> `view.visibleOnly`. Pri novom zozname pod izoláciou viewer filter "len viditeľné" vypne sám (rozhodnutie vo forku, izolácia ostáva); `visible_only` ho prepne výslovne, platí aj pri `update`. Opis toolu to hovorí vetou. Odpoveď nesie POZOR, ak `rows > 0`, `visible_rows = 0` a filter je zapnutý (starší viewer): návrh `update visible_only=false`.
+2. `column_widths`: `"fit"` | `"auto"` | `[{column, width}]` (56 až 800 px, `fit`, `auto`; max 40) -> `view.columnWidths`. Stĺpce sa píšu slovom ako pri `sort_by`/`sum` (nie ako objekt `column_ref`: host ich preloží na `{source, propertyName, psetName}`). Stav `state.list.column_widths` `[{column, px}]`; chýbajúci stav = starší viewer, zmenu nepotvrdzovať.
+3. `highlight` -> `view.highlight`; `null` alebo `""` zruší. Časti `rows {column, values 1..200}`, `columns` (max 8), `cells` (max 200, `{column, row:{column, value}}`), `sum` (`true` alebo stĺpce). `sum` bez súčtov v zozname host nezakazuje (súčty môžu byť z predošlého volania), nezhodu povie `state.list.highlight` (`{rows, cells, columns, sum}` = čo sa v tabuľke našlo) a odpoveď to prevedie na "zvýraznenie sa neprejavilo".
+4. Stĺpce zo vzťahov (#277) sú nové úrovne zdroja `spatial`: `Referenced` (IfcRelReferencedInSpatialStructure), `Boundary` (IfcRelSpaceBoundary), `Aggregate` (IfcRelAggregates). Slová v `columns`/`add_columns`: `space_referenced`, `space_boundary`, `aggregate` a aj `relation.rel_referenced_in_spatial_structure`, `relation.rel_space_boundary`, `relation.rel_aggregates`. Bunka nesie názvy druhej strany oddelené ", ". Hodnoty sú z IFC súboru načítaného modelu, nie z DB. `space` ostáva Container; odpoveď pri ňom pridá `note`, že referencovanú alebo ohraničujúcu miestnosť dajú nové stĺpce (bod 4 z #277). Len stĺpce: filter a builder ich neponúkajú (rozhodnutie forku), zoradenie, zoskupenie a export fungujú ako pri iných stĺpcoch.
+5. Wire (`lib/viewer-list.ts`): `v.vo`, `v.cw`, `v.hl` s validáciou limitov v `decodeListWire`, preklad na camelCase `view` v `listBridgeMessage`. Starší viewer pole `view` ignoruje (aditívne), preto stav bez nových polí hlási odpoveď ako "nepotvrdené".
+
+**Mimo rozsahu / ďalší krok:** odvodené väzby z DB (D-167 `v_space_elements` referenced/contained/boundary z geometrie) ako stĺpec `source: "host"` s `values { GlobalId: text }` (limit 20 000 hodnôt, 200 znakov) a provider hookom `getHostValue` vo forku; pozri návrh v `docs/architecture/evidence/aim-lists-274-277/README.md` vo forku. Ďalšie vzťahy (`ConnectsElements`, `VoidsElement` / `FillsElement`, `AssignsToGroup`...) sú jeden riadok vo forku, keď ich chat bude potrebovať. Filter a builder pre stĺpce zo vzťahov.
+
+**Zavrhnuté:** nový tool na zvýraznenie alebo šírky (D-114); zrušenie izolácie pri `open_list` (zničí pohľad používateľa); vypnutie filtra viditeľnosti natrvalo (iný zoznam by sa správal inak ako tabuľka v builderi); `column_widths` ako single `column_width` z #275 (pole pokryje jeden aj viac stĺpcov).
+
+**Po zlúčení:** najprv zlúčiť fork PR Menezeris/ifc-lite#172 do balíka, potom tento PR (D-116). Evaly (D-057) nepobežali (cloud session bez kľúčov); otázky pribudli do `eval/questions.json` bez overenej hodnoty.
+
 
 ### D-172 - `set_view_mode`: pomer dlaždíc (`ratio`, `sizes`) a šírka a strana panela (`panel_layout`) (#299, #320, Refs #298)
 
