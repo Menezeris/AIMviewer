@@ -139,7 +139,9 @@ export function engineToolDefinitions(): ToolDefinition[] {
         "miestnosť (IfcRelContainedIn/ReferencedInSpatialStructure), agregácia a vnorenie (IfcRelAggregates/" +
         "IfcRelNests), typ, otvory a výplne (Voids/Fills), hranice priestoru, porty, dokumenty, klasifikácie, " +
         "materiály. direction: forward = entita je Relating (skupina -> členovia, podlažie -> prvky, celok -> " +
-        "časti, prvok -> porty), inverse = kam entita patrí. recursive rozvinie vnorené zóny/systémy (bez rel_types len cez IfcRelAssignsToGroup). " +
+        "časti, prvok -> porty), inverse = kam entita patrí. Priestorové väzby nesú kind (contained = patrí do " +
+        "priestoru, referenced = je aj v ňom); referenced odvodené geometriou naprieč modelmi (výustka VZT -> " +
+        "miestnosť z ASR) má derived=true a role. recursive rozvinie vnorené zóny/systémy (bez rel_types len cez IfcRelAssignsToGroup). " +
         "through_ports = prvky napojené cez porty (IfcRelConnectsPorts), jeden krok; s recursive=true prechod " +
         "celou sieťou cez porty a stop_at (napr. IfcUnitaryEquipment, IfcDamper.FIREDAMPER) = najbližšia jednotka " +
         "alebo klapka s cestou (reached, path_show_in_3d). Úplný zoznam bez stropu: " +

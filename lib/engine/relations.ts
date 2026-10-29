@@ -52,6 +52,11 @@ interface Row {
   via?: string;
   via_port?: string;
   port?: string;
+  /** Priestorová väzba (D-167): contained = prvok patrí do priestoru, referenced = je v ňom aj (neexkluzívne). */
+  kind?: "contained" | "referenced";
+  /** Väzba je odvodená geometriou v grafe AIM (D-080), v IFC súbore nie je. */
+  derived?: true;
+  role?: string;
   global_id: string;
   ifc_type: string;
   name: string | null;
@@ -74,6 +79,12 @@ function parseRelTypes(raw: unknown): Map<string, string> {
   }
   return out;
 }
+
+const SPATIAL_KIND: Record<string, "contained" | "referenced"> = {
+  relcontainedinspatialstructure: "contained",
+  relreferencedinspatialstructure: "referenced",
+};
+const REFERENCED_TYPE = "IfcRelReferencedInSpatialStructure";
 
 const isPort = (type: string) => /port$/i.test(type);
 
@@ -146,6 +157,7 @@ export async function ifcRelations(input: Record<string, unknown>, deps: EngineD
   const row = (e: UpstreamEdge, extra: Partial<Row> = {}): Row => ({
     rel_type: e.relationshipType,
     direction: e.direction,
+    ...(SPATIAL_KIND[relKey(e.relationshipType)] ? { kind: SPATIAL_KIND[relKey(e.relationshipType)] } : {}),
     ...extra,
     global_id: guidOf(e.entity.id),
     ifc_type: e.entity.type,
@@ -174,6 +186,23 @@ export async function ifcRelations(input: Record<string, unknown>, deps: EngineD
     : throughPorts
       ? await portConnections(rootId, edgesOf, guidOf, row)
       : await walk(rootId, edgesOf, guidOf, row, { relTypes, direction, recursive });
+  // Odvodené priestorové väzby (D-167) sú len v grafe AIM; dopĺňajú sa k hranám zo súboru bez duplicity.
+  if (!trace && !throughPorts && !recursive && deps.spatialLinks && (relTypes.size === 0 || relTypes.has(relKey(REFERENCED_TYPE)))) {
+    const seen = new Set(rows.filter((r) => r.kind === "referenced").map((r) => `${r.direction}|${r.global_id}`));
+    for (const l of await deps.spatialLinks(guid)) {
+      if ((direction !== "both" && l.direction !== direction) || seen.has(`${l.direction}|${l.global_id}`) || rows.length >= MAX_ROWS) continue;
+      rows.push({
+        rel_type: REFERENCED_TYPE,
+        direction: l.direction,
+        kind: "referenced",
+        derived: true,
+        ...(l.role ? { role: l.role } : {}),
+        global_id: l.global_id,
+        ifc_type: l.ifc_type,
+        name: l.name,
+      });
+    }
+  }
   const incomplete = rows.length >= MAX_ROWS;
   const pathJoined = trace?.reached[0] ? await joinToAim(trace.reached[0].path.map((g) => ({ global_id: g })), deps.lookup) : null;
 

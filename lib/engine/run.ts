@@ -11,6 +11,7 @@ import { AskToolRuntime } from "../llm/tools";
 
 import { lookupGuids, resolveTargetsToGuids } from "./aim-lookup";
 import { systemsOfGuids } from "./clash-systems";
+import { spatialLinksOfGuid } from "./spatial-links";
 import { installArchiveSource } from "./archive-source";
 import { fetchRelatedMembers } from "./related-members";
 import { execSearchAll } from "./search-all";
@@ -32,7 +33,7 @@ function clashBcfPort(): ClashBcfPort {
 
 /** `ifc_*` tool s reálnym prepojením na DB AIM (D-084); importuje sa lenivo z MCP route. */
 export function runEngineTool(name: string, args: Record<string, unknown>): Promise<EngineExecution> {
-  return execEngineTool(name, args, { lookup: lookupGuids, resolveTargets: resolveTargetsToGuids, revisions: fetchModelRevisions, ids: supabaseIdsStore(), systems: systemsOfGuids, clash: supabaseClashStore(), bcf: clashBcfPort(), clashViewer });
+  return execEngineTool(name, args, { lookup: lookupGuids, resolveTargets: resolveTargetsToGuids, revisions: fetchModelRevisions, ids: supabaseIdsStore(), systems: systemsOfGuids, spatialLinks: spatialLinksOfGuid, clash: supabaseClashStore(), bcf: clashBcfPort(), clashViewer });
 }
 
 /** Kombinované `search_all` (D-095): IFC súbor + graf AIM, badge pri každom výsledku. */
