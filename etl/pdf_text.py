@@ -195,6 +195,35 @@ def extract_pages_full(pdf_path: Path) -> list[tuple[int, str, list[dict], Optio
     return pages
 
 
+# Strana bez textovej vrstvy: čo na nej namiesto textu je (#279, nadväzuje na #238).
+TEXTLESS_IMAGE = "obrázok"  # text je rastrový obrázok (sken, CCITT/JBIG2 maska) -> len OCR
+TEXTLESS_VECTOR = "krivky"  # text prevedený na krivky (veľa vektorových ťahov bez písma)
+TEXTLESS_EMPTY = "prázdna"
+# Strana s toľkými vektorovými prvkami bez textu je pravdepodobne text na krivkách, nie čistý list.
+TEXTLESS_VECTOR_MIN = 50
+
+
+def textless_pages(pdf_path: Path) -> dict[int, str]:
+    """Strany BEZ textovej vrstvy a dôvod: obrázok, krivky alebo prázdna (#279).
+
+    `search_documents` o takých stranách hlási "Strana nemá text"; ETL ich nevie opraviť bez OCR
+    (D-149 bod 7: OCR mimo rozsahu, vyžaduje nové rozhodnutie), ale vie ich pomenovať, aby sa
+    dali odlíšiť od naozaj prázdnych strán a spočítať, koľko by OCR potrebovalo.
+    """
+    out: dict[int, str] = {}
+    with fitz.open(pdf_path) as doc:
+        for i, page in enumerate(doc, start=1):
+            if _WS_RE.sub(" ", page.get_text("text")).strip():
+                continue
+            if page.get_images(full=True):
+                out[i] = TEXTLESS_IMAGE
+            elif len(page.get_drawings()) >= TEXTLESS_VECTOR_MIN:
+                out[i] = TEXTLESS_VECTOR
+            else:
+                out[i] = TEXTLESS_EMPTY
+    return out
+
+
 def page_sizes(pdf_path: Path) -> dict[int, list[float]]:
     """D-158: [šírka, výška] každej strany v bodoch (zobrazená strana, s rotáciou)."""
     with fitz.open(pdf_path) as doc:
@@ -279,6 +308,15 @@ def index_pdf(cur, doc_id: str, pdf_path: Path) -> int:
     return len(pages)
 
 
+def _report_textless(ref: str, pdf_path: Path) -> None:
+    """Strany bez textovej vrstvy (obrázok / krivky): kandidáti na OCR, ktorý ETL zatiaľ nerobí (#279)."""
+    for kind in (TEXTLESS_IMAGE, TEXTLESS_VECTOR):
+        nums = [n for n, k in textless_pages(pdf_path).items() if k == kind]
+        if nums:
+            shown = ", ".join(map(str, nums[:15])) + (" ..." if len(nums) > 15 else "")
+            print(f"    bez textovej vrstvy ({kind}): {len(nums)} strán: {shown}")
+
+
 def _report(ref: str, pages: list[Page]) -> None:
     total_chars = sum(len(p[1]) for p in pages)
     lines = sum(len(p[2]) for p in pages)
@@ -311,6 +349,7 @@ def run_from_db(dry_run: bool, only: Optional[str]) -> int:
                     skipped.append(f"{d.object_ref} ({exc})")
                     continue
                 _report(d.object_ref, pages)
+                _report_textless(d.object_ref, pdf_path)
                 if dry_run:
                     continue
                 _write_pages(cur, d.id, pages, sizes, sha)
@@ -363,6 +402,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 continue
             pages = extract_pages_full(pdf_path)
             _report(row.container_name, pages)
+            _report_textless(row.container_name, pdf_path)
             if cur is None:
                 continue
             doc_id = _doc_id(cur, row.container_name)
