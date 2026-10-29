@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { DOC, state } = vi.hoisted(() => ({
   DOC: "91776a5e-3c9f-49ad-8ba9-f7a5927a47ff",
-  state: { rpcArgs: [] as Record<string, unknown>[], hasText: true },
+  state: { rpcArgs: [] as Record<string, unknown>[], hasText: true, ocr: false },
 }));
 
 // Moduly sú server-only (D-026); DB vráti dokument, jeho stranu a zhodu RPC.
@@ -26,8 +26,19 @@ vi.mock("@/lib/supabase/server", () => {
       { t: "250", x: 50, y: 50, w: 1, h: 1 },
     ],
   };
+  // D-169: titulka bez textovej vrstvy prečítaná OCR (riadky so src a conf, alias src z prvého riadku).
+  const ocrPage = {
+    document_id: DOC,
+    page: 1,
+    text: "VYSOKÉ UČENÍ TECHNICKÉ V BRNĚ Fakulta stavební",
+    src: "ocr",
+    blocks: [
+      { t: "VYSOKÉ UČENÍ TECHNICKÉ V BRNĚ", x: 12, y: 14, w: 60, h: 2.5, src: "ocr", conf: 0.95 },
+      { t: "Fakulta stavební", x: 12, y: 18, w: 30, h: 2, src: "ocr", conf: 0.8 },
+    ],
+  };
   const table = (name: string) => {
-    const rows = () => (name === "objects" ? [docRow] : state.hasText ? [page] : []);
+    const rows = () => (name === "objects" ? [docRow] : !state.hasText ? [] : state.ocr ? [ocrPage] : [page]);
     const q = {
       select: () => q,
       eq: () => q,
@@ -68,6 +79,7 @@ describe("search_documents: čítanie strany a výrezy (D-123)", () => {
   beforeEach(() => {
     state.rpcArgs = [];
     state.hasText = true;
+    state.ocr = false;
   });
 
   it("q + document_id hľadá len v dokumente a vráti výrez pre open_drawing region", async () => {
@@ -94,6 +106,26 @@ describe("search_documents: čítanie strany a výrezy (D-123)", () => {
     expect(res.blocks).toHaveLength(3);
     const plain = JSON.parse((await rt.exec("search_documents", { document_id: DOC })).content);
     expect(plain.blocks).toBeUndefined();
+    // Textová vrstva: žiadny príznak OCR, výsledok sa nemení.
+    expect(res.source).toBeUndefined();
+    expect(res.ocr_pages).toBeUndefined();
+    expect(res.blocks[0].src).toBeUndefined();
+  });
+
+  it("strana z OCR (D-169) nesie source, istotu a upozornenie pri čítaní aj pri hľadaní", async () => {
+    state.ocr = true;
+    const rt = new AskToolRuntime();
+    const read = JSON.parse((await rt.exec("search_documents", { document_id: DOC })).content);
+    expect(read).toMatchObject({ source: "ocr", ocr_confidence: 0.9, ocr_pages: [1] });
+    expect(read.ocr_note).toContain("OCR");
+    expect(read.blocks).toBeUndefined();
+
+    const withBlocks = JSON.parse((await rt.exec("search_documents", { document_id: DOC, include_blocks: true })).content);
+    expect(withBlocks.blocks[0]).toEqual({ t: "VYSOKÉ UČENÍ TECHNICKÉ V BRNĚ", x: 12, y: 14, w: 60, h: 2.5, src: "ocr", conf: 0.95 });
+
+    const [hit] = JSON.parse((await rt.exec("search_documents", { q: "Brně", document_id: DOC })).content);
+    expect(hit).toMatchObject({ source: "ocr", ocr_confidence: 0.9 });
+    expect(hit.regions[0]).toMatchObject({ text: "VYSOKÉ UČENÍ TECHNICKÉ V BRNĚ", source: "ocr", confidence: 0.95 });
   });
 
   it("dokument bez extrahovaného textu povie, ako ho načítať; bez q aj document_id je chyba", async () => {

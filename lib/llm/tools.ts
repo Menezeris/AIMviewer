@@ -16,6 +16,7 @@ import {
   compactBlocks,
   highlightsRegion,
   matchBlocks,
+  pageSource,
   parseBlocks,
   type TextBlock,
 } from "./document-text";
@@ -892,8 +893,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "search_documents",
     description:
-      "OBSAH dokumentov a výkresov (textová vrstva PDF strán: popisky a čísla miestností, kóty, " +
-      "hrúbky, legendy, špecifikácie, pečiatky, text technických správ). Tri spôsoby: " +
+      "OBSAH dokumentov a výkresov (textová vrstva PDF strán, strana bez nej z OCR so source='ocr': " +
+      "popisky a čísla miestností, kóty, hrúbky, legendy, špecifikácie, pečiatky, text technických správ). " +
+      "Tri spôsoby: " +
       "(1) q = fulltext vo všetkých dokumentoch -> dokument, strana, snippet, deep_link a regions; " +
       "(2) q + document_id = hľadanie len v tom dokumente (napr. 'ukáž vo výkrese popisok 1.05', " +
       "'nájdi v technickej správe požiarnu odolnosť'); (3) document_id bez q = PREČÍTA stranu " +
@@ -905,7 +907,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "open_drawing(document_id, page, highlights=[regions[].bbox]) - karta sa priblíži a text " +
       "orámuje. Slová sa hľadajú aj v inom tvare (skloňovanie). Výmery a objemy (murivo, plochy) " +
       "počítaj z kót výkresu LEN na výslovnú žiadosť 'z výkresu' a ako hrubý odhad; inak vždy z " +
-      "modelu (ifc_measure, Qto). Metadáta dokumentov (názov, typ, revízia) hľadá query_view.",
+      "modelu (ifc_measure, Qto). Strana bez textovej vrstvy (sken, text ako obrázok alebo krivky) je " +
+      "prečítaná OCR: výsledok má source='ocr' a ocr_confidence (0 až 1), regions a riadky confidence; " +
+      "taký text je menej spoľahlivý, povedz to a čísla over vo výkrese. Metadáta dokumentov (názov, typ, " +
+      "revízia) hľadá query_view.",
     inputSchema: {
       type: "object",
       properties: {
@@ -926,7 +931,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         include_blocks: {
           type: "boolean",
           description:
-            "Čítanie: aj riadky textu s polohou {t, x, y, w, h} v % strany (počiatok vľavo hore)",
+            "Čítanie: aj riadky textu s polohou {t, x, y, w, h} v % strany (počiatok vľavo hore); " +
+            "riadok z OCR má src='ocr' a conf (0 až 1)",
         },
         include_links: {
           type: "boolean",
@@ -941,6 +947,22 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   ...VIEW_TOOL_DEFINITIONS,
   ...LIST_TOOL_DEFINITIONS,
 ];
+
+/**
+ * D-169: strana prečítaná OCR (nemala textovú vrstvu) - zdroj, istota a upozornenie pre model.
+ * Pri textovej vrstve nič, aby sa bežný výsledok nemenil.
+ */
+function ocrInfo(blocks: TextBlock[]) {
+  const src = pageSource(blocks);
+  if (src.source !== "ocr") return {};
+  return {
+    source: "ocr" as const,
+    ocr_confidence: src.confidence,
+    ocr_note:
+      "Text strany je z OCR (strana nemá textovú vrstvu): môže mať chyby v písmenách a číslach; " +
+      "pri dôležitej hodnote to povedz a over vo výkrese.",
+  };
+}
 
 export interface ToolExecution {
   content: string;
@@ -1976,45 +1998,70 @@ export class AskToolRuntime {
     }
 
     return rows.map((r) => {
-      const matches = matchBlocks(blocksByPage.get(`${r.document_id}:${r.page}`) ?? [], q);
+      const blocks = blocksByPage.get(`${r.document_id}:${r.page}`) ?? [];
+      const matches = matchBlocks(blocks, q);
       return {
         ...r,
+        ...ocrInfo(blocks),
         deep_link: `/drawing/${r.document_id}?page=${r.page}`,
         ...(matches.length > 0 ? { regions: matches } : {}),
       };
     });
   }
 
-  /** Čítanie strany dokumentu (D-123): text, voliteľne riadky s polohou a odkazy z popiskov (D-130). */
+  /**
+   * Čítanie strany dokumentu (D-123): text, voliteľne riadky s polohou a odkazy z popiskov (D-130).
+   * Strany z OCR (D-169) pozná podľa `src` prvého riadku; riadky číta len pre čítanú stranu.
+   */
   private async readDocumentPage(doc: ObjectRow, page: number, includeBlocks: boolean, includeLinks = false) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("document_pages")
-      .select(includeBlocks ? "page, text, blocks" : "page, text")
+      .select("page, text, src:blocks->0->>src")
       .eq("document_id", doc.id)
       .order("page");
     if (error) throw new Error(error.message);
-    const all = (data ?? []) as unknown as { page: number; text: string; blocks?: unknown }[];
+    const all = (data ?? []) as unknown as { page: number; text: string; src?: string | null }[];
     const document = { document_id: doc.id, document_ref: doc.object_ref, document_name: doc.name };
     if (all.length === 0) {
       return {
         ...document,
         hint:
           "Dokument nemá extrahovaný text (document_pages). Načíta ho ETL " +
-          "`python -m etl.pdf_text --from-db`; sken bez textovej vrstvy by potreboval OCR.",
+          "`python -m etl.pdf_text --from-db` (strany bez textovej vrstvy prečíta OCR, D-169).",
       };
     }
     const pagesWithText = all.map((p) => p.page);
+    const ocrPages = all.filter((p) => p.src === "ocr").map((p) => p.page);
+    const pagesInfo = { pages_with_text: pagesWithText, ...(ocrPages.length > 0 ? { ocr_pages: ocrPages } : {}) };
     const hit = all.find((p) => p.page === page);
     if (!hit) {
-      return { ...document, page, text: null, pages_with_text: pagesWithText, hint: "Strana nemá text." };
+      return {
+        ...document,
+        page,
+        text: null,
+        ...pagesInfo,
+        hint:
+          "Strana nemá text: nemá textovú vrstvu a OCR z nej nič neprečítalo alebo ešte nebežalo " +
+          "(`python -m etl.pdf_text --from-db --only <ref>`, D-169).",
+      };
     }
-    const blocks = includeBlocks ? parseBlocks(hit.blocks) : [];
+    let blocks: TextBlock[] = [];
+    if (includeBlocks || hit.src === "ocr") {
+      const { data: rows, error: bErr } = await supabase
+        .from("document_pages")
+        .select("blocks")
+        .eq("document_id", doc.id)
+        .eq("page", page);
+      if (bErr) throw new Error(bErr.message);
+      blocks = parseBlocks(((rows ?? []) as { blocks?: unknown }[])[0]?.blocks);
+    }
     const links = includeLinks ? ((await fetchDocumentLinks(doc.id, page))[0]?.links ?? []) : null;
     return {
       ...document,
       page,
-      pages_with_text: pagesWithText,
+      ...pagesInfo,
+      ...ocrInfo(blocks),
       text: hit.text.slice(0, PAGE_TEXT_CAP),
       ...(hit.text.length > PAGE_TEXT_CAP ? { text_truncated: true, text_length: hit.text.length } : {}),
       ...(includeBlocks

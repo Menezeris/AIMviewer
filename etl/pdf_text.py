@@ -6,10 +6,15 @@ vedel vyhľadávať v OBSAHU dokumentov (RPC `search_documents`, migrácia
 `20260715120000`). Rovnaký vstupný kontrakt ako E4: `source_path` = cesta k PDF
 pod `podklady/FINAL`, `container_name` = `object_ref` dokumentu v DB (E3).
 
-PyMuPDF (`fitz`) — už je ETL závislosť (D-041), žiadna nová. Extrakcia je
-`page.get_text("text")` + normalizácia bielych znakov; OCR je zámerne mimo
-scope (D-063) — vektorové výkresy majú riedky text (legendy, pečiatky) a to je
-očakávané. Prázdne strany sa nevkladajú.
+PyMuPDF (`fitz`) — už je ETL závislosť (D-041). Extrakcia je
+`page.get_text("text")` + normalizácia bielych znakov; vektorové výkresy majú
+riedky text (legendy, pečiatky) a to je očakávané. Prázdne strany sa nevkladajú.
+
+D-169 (mení D-123 bod 7): strana BEZ textovej vrstvy, ktorú diagnostika (#279)
+označí ako `obrázok` alebo `krivky`, sa prečíta OCR (`etl/ocr.py`, Tesseract
+ces+slk+eng). Riadky z OCR majú v `blocks` navyše `src: "ocr"` a `conf`; strany
+s textovou vrstvou do OCR nejdú nikdy. Predvolene zapnuté, `--no-ocr` ho vypne,
+`--dry-run` len spočíta strany, ktoré by do OCR išli.
 
 Idempotentné: per dokument `DELETE` + `INSERT` v jednej transakcii — opakovaný
 beh = rovnaký stav. Dokument, ktorý nie je v DB (chýba E3 upload), sa preskočí
@@ -32,8 +37,8 @@ D-158 (kroky 3 a 4): každá strana dostane `page_size` = [šírka, výška] v b
 výrezu). Rastre strán sa nerobia, snímka sa renderuje v hoste na požiadanie.
 
 Spustenie (z koreňa repa):
-    python -m etl.pdf_text [--dry-run] [--manifest podklady/docs.csv]
-    python -m etl.pdf_text --from-db [--dry-run] [--only <object_ref>]
+    python -m etl.pdf_text [--dry-run] [--no-ocr] [--manifest podklady/docs.csv]
+    python -m etl.pdf_text --from-db [--dry-run] [--no-ocr] [--only <object_ref>]
 """
 
 from __future__ import annotations
@@ -54,6 +59,7 @@ import fitz  # PyMuPDF
 import psycopg
 
 from .config import database_url
+from .ocr import ocr_page, ocr_unavailable
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SOURCE_ROOT = _REPO_ROOT / "podklady" / "FINAL"
@@ -182,46 +188,66 @@ def page_lines(drawings: list[dict], width: float, height: float) -> Optional[di
     return None
 
 
-def extract_pages_full(pdf_path: Path) -> list[tuple[int, str, list[dict], Optional[dict]]]:
-    """(strana, text, riadky s polohou, hrubé čiary alebo None) pre neprázdne strany."""
-    pages: list[tuple[int, str, list[dict], Optional[dict]]] = []
-    with fitz.open(pdf_path) as doc:
-        for i, page in enumerate(doc, start=1):
-            text = _WS_RE.sub(" ", page.get_text("text")).strip()
-            if text:
-                rect = page.rect
-                blocks = page_blocks(page.get_text("dict"), rect.width, rect.height)
-                pages.append((i, text, blocks, page_lines(page.get_drawings(), rect.width, rect.height)))
-    return pages
-
-
 # Strana bez textovej vrstvy: čo na nej namiesto textu je (#279, nadväzuje na #238).
 TEXTLESS_IMAGE = "obrázok"  # text je rastrový obrázok (sken, CCITT/JBIG2 maska) -> len OCR
 TEXTLESS_VECTOR = "krivky"  # text prevedený na krivky (veľa vektorových ťahov bez písma)
 TEXTLESS_EMPTY = "prázdna"
 # Strana s toľkými vektorovými prvkami bez textu je pravdepodobne text na krivkách, nie čistý list.
 TEXTLESS_VECTOR_MIN = 50
+# D-169: tieto strany sa rasterizujú a čítajú OCR; prázdna strana nie.
+OCR_KINDS = (TEXTLESS_IMAGE, TEXTLESS_VECTOR)
+
+
+def _page_text(page: fitz.Page) -> str:
+    return _WS_RE.sub(" ", page.get_text("text")).strip()
+
+
+def _textless_kind(page: fitz.Page) -> str:
+    """Strana bez textu: obrázok, krivky alebo prázdna (#279)."""
+    if page.get_images(full=True):
+        return TEXTLESS_IMAGE
+    if len(page.get_drawings()) >= TEXTLESS_VECTOR_MIN:
+        return TEXTLESS_VECTOR
+    return TEXTLESS_EMPTY
+
+
+def extract_pages_full(pdf_path: Path, ocr: bool = False) -> list[tuple[int, str, list[dict], Optional[dict]]]:
+    """(strana, text, riadky s polohou, hrubé čiary alebo None) pre neprázdne strany.
+
+    `ocr=True` (D-169): stranu bez textovej vrstvy typu obrázok alebo krivky prečíta OCR; jej
+    riadky majú `src: "ocr"` a `conf`. Strana s textovou vrstvou do OCR nejde. Keď OCR nie je
+    nainštalované alebo strana zlyhá, ostane bez textu ako pred D-169.
+    """
+    use_ocr = ocr and ocr_unavailable() is None
+    pages: list[tuple[int, str, list[dict], Optional[dict]]] = []
+    with fitz.open(pdf_path) as doc:
+        for i, page in enumerate(doc, start=1):
+            rect = page.rect
+            text = _page_text(page)
+            if text:
+                blocks = page_blocks(page.get_text("dict"), rect.width, rect.height)
+                pages.append((i, text, blocks, page_lines(page.get_drawings(), rect.width, rect.height)))
+                continue
+            if not use_ocr or _textless_kind(page) not in OCR_KINDS:
+                continue
+            try:
+                res = ocr_page(page)
+            except Exception as exc:  # noqa: BLE001 - jedna zlá strana nezhodí dokument
+                print(f"    ! OCR strany {i} zlyhalo ({exc})")
+                continue
+            if res is not None:
+                pages.append((i, res.text, res.blocks, page_lines(page.get_drawings(), rect.width, rect.height)))
+    return pages
 
 
 def textless_pages(pdf_path: Path) -> dict[int, str]:
     """Strany BEZ textovej vrstvy a dôvod: obrázok, krivky alebo prázdna (#279).
 
-    `search_documents` o takých stranách hlási "Strana nemá text"; ETL ich nevie opraviť bez OCR
-    (D-149 bod 7: OCR mimo rozsahu, vyžaduje nové rozhodnutie), ale vie ich pomenovať, aby sa
-    dali odlíšiť od naozaj prázdnych strán a spočítať, koľko by OCR potrebovalo.
+    `search_documents` o takých stranách bez OCR hlási "Strana nemá text"; obrázok a krivky
+    číta OCR (D-169, `extract_pages_full(ocr=True)`), prázdna strana ostáva bez textu.
     """
-    out: dict[int, str] = {}
     with fitz.open(pdf_path) as doc:
-        for i, page in enumerate(doc, start=1):
-            if _WS_RE.sub(" ", page.get_text("text")).strip():
-                continue
-            if page.get_images(full=True):
-                out[i] = TEXTLESS_IMAGE
-            elif len(page.get_drawings()) >= TEXTLESS_VECTOR_MIN:
-                out[i] = TEXTLESS_VECTOR
-            else:
-                out[i] = TEXTLESS_EMPTY
-    return out
+        return {i: _textless_kind(page) for i, page in enumerate(doc, start=1) if not _page_text(page)}
 
 
 def page_sizes(pdf_path: Path) -> dict[int, list[float]]:
@@ -297,40 +323,70 @@ def _write_pages(
         cur.execute("update documents set file_sha256 = %s where id = %s", (sha256, doc_id))
 
 
-def index_pdf(cur, doc_id: str, pdf_path: Path) -> int:
+def index_pdf(cur, doc_id: str, pdf_path: Path, ocr: bool = True) -> int:
     """Extrakcia jedného PDF a zápis do `document_pages` (text, riadky, čiary, rozmer, sha256).
 
     Volá ho `etl.doc_upload` hneď po nahratí dokumentu, aby sa čiary výkresu (kalibrácia
-    podkladu, #283/#316) nemuseli dopĺňať ručne cez `--from-db`. Vráti počet strán s textom.
+    podkladu, #283/#316) nemuseli dopĺňať ručne cez `--from-db`. Strany bez textovej vrstvy
+    číta OCR (D-169), ak nie je `ocr=False`. Vráti počet strán s textom.
     """
-    pages = extract_pages_full(pdf_path)
+    pages = extract_pages_full(pdf_path, ocr=ocr)
     _write_pages(cur, doc_id, pages, page_sizes(pdf_path), file_sha256(pdf_path))
     return len(pages)
 
 
-def _report_textless(ref: str, pdf_path: Path) -> None:
-    """Strany bez textovej vrstvy (obrázok / krivky): kandidáti na OCR, ktorý ETL zatiaľ nerobí (#279)."""
-    for kind in (TEXTLESS_IMAGE, TEXTLESS_VECTOR):
-        nums = [n for n, k in textless_pages(pdf_path).items() if k == kind]
+def is_ocr_page(page: Page) -> bool:
+    """Strana prečítaná OCR (D-169): jej riadky nesú `src: "ocr"`."""
+    return bool(page[2]) and page[2][0].get("src") == "ocr"
+
+
+def _report_textless(pdf_path: Path, pages: list[Page], dry_run: bool) -> int:
+    """Strany bez textovej vrstvy (obrázok / krivky) a čo s nimi OCR (D-169, #279).
+
+    Vráti počet strán, ktoré idú (pri `dry_run` by išli) do OCR.
+    """
+    ocr_done = {p[0] for p in pages if is_ocr_page(p)}
+    textless = textless_pages(pdf_path)
+    for kind in OCR_KINDS:
+        nums = [n for n, k in textless.items() if k == kind]
         if nums:
             shown = ", ".join(map(str, nums[:15])) + (" ..." if len(nums) > 15 else "")
-            print(f"    bez textovej vrstvy ({kind}): {len(nums)} strán: {shown}")
+            done = "" if dry_run else f", OCR prečítalo {len([n for n in nums if n in ocr_done])}"
+            print(f"    bez textovej vrstvy ({kind}): {len(nums)} strán: {shown}{done}")
+    return sum(1 for k in textless.values() if k in OCR_KINDS)
+
+
+def _ocr_banner(ocr: bool, dry_run: bool) -> None:
+    """Na začiatku behu: či OCR beží a prečo nie (D-169)."""
+    if not ocr:
+        print("OCR vypnuté (--no-ocr): strany bez textovej vrstvy ostanú bez textu.")
+    elif dry_run:
+        print("--dry-run: OCR sa nespúšťa, len sa spočítajú strany, ktoré by doňho išli.")
+    elif (reason := ocr_unavailable()) is not None:
+        print(f"! OCR nedostupné: {reason}. Strany bez textovej vrstvy ostanú bez textu (D-169).")
+
+
+def _ocr_summary(candidates: int, ocr: bool, dry_run: bool) -> None:
+    if candidates and (dry_run or not ocr or ocr_unavailable() is not None):
+        print(f"Do OCR by išlo: {candidates} strán (obrázok / krivky).")
 
 
 def _report(ref: str, pages: list[Page]) -> None:
     total_chars = sum(len(p[1]) for p in pages)
     lines = sum(len(p[2]) for p in pages)
     segs = sum(len((p[3] or {}).get("segs", [])) for p in pages)
+    ocr = sum(1 for p in pages if is_ocr_page(p))
     print(
         f"  {ref:46s} strán s textom {len(pages):3d}  znakov {total_chars:7d}  riadkov {lines:5d}"
-        f"  čiar {segs:6d}"
+        f"  čiar {segs:6d}" + (f"  z OCR {ocr:3d}" if ocr else "")
     )
 
 
-def run_from_db(dry_run: bool, only: Optional[str]) -> int:
+def run_from_db(dry_run: bool, only: Optional[str], ocr: bool = True) -> int:
     """D-123: text všetkých živých PDF dokumentov zo storage (nie z manifestu)."""
     conn = psycopg.connect(database_url())
-    written_docs = written_pages = 0
+    written_docs = written_pages = ocr_candidates = 0
+    _ocr_banner(ocr, dry_run)
     skipped: list[str] = []
     try:
         cur = conn.cursor()
@@ -342,14 +398,14 @@ def run_from_db(dry_run: bool, only: Optional[str]) -> int:
                 try:
                     with urllib.request.urlopen(d.location, timeout=60) as resp:
                         pdf_path.write_bytes(resp.read())
-                    pages = extract_pages_full(pdf_path)
+                    pages = extract_pages_full(pdf_path, ocr=ocr and not dry_run)
                     sizes = page_sizes(pdf_path)
                     sha = file_sha256(pdf_path)
                 except Exception as exc:  # noqa: BLE001 - jeden zlý súbor nezhodí beh
                     skipped.append(f"{d.object_ref} ({exc})")
                     continue
                 _report(d.object_ref, pages)
-                _report_textless(d.object_ref, pdf_path)
+                ocr_candidates += _report_textless(pdf_path, pages, dry_run)
                 if dry_run:
                     continue
                 _write_pages(cur, d.id, pages, sizes, sha)
@@ -363,6 +419,7 @@ def run_from_db(dry_run: bool, only: Optional[str]) -> int:
         print("Preskočené:")
         for s in skipped:
             print(f"  - {s}")
+    _ocr_summary(ocr_candidates, ocr, dry_run)
     if not dry_run:
         print(f"Zapísané: {written_docs} dokumentov / {written_pages} strán.")
     return 0
@@ -379,10 +436,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="D-123: živé dokumenty z DB, PDF zo storage (location), nie z manifestu",
     )
     ap.add_argument("--only", help="s --from-db: len dokument s týmto object_ref")
+    ap.add_argument(
+        "--no-ocr",
+        action="store_true",
+        help="D-169: strany bez textovej vrstvy (obrázok, krivky) nečítať OCR",
+    )
     args = ap.parse_args(argv)
+    ocr = not args.no_ocr
 
     if args.from_db:
-        return run_from_db(args.dry_run, args.only)
+        return run_from_db(args.dry_run, args.only, ocr)
 
     rows = _load_pdf_rows(args.manifest)
     print(f"PDF v manifeste: {len(rows)}")
@@ -392,7 +455,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     conn = None if args.dry_run else psycopg.connect(database_url())
     written_docs = 0
     written_pages = 0
+    ocr_candidates = 0
     skipped: list[str] = []
+    _ocr_banner(ocr, args.dry_run)
     try:
         cur = conn.cursor() if conn else None
         for row in rows:
@@ -400,9 +465,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             if not pdf_path.exists():
                 skipped.append(f"{row.container_name} (PDF chýba: {row.source_path})")
                 continue
-            pages = extract_pages_full(pdf_path)
+            pages = extract_pages_full(pdf_path, ocr=ocr and not args.dry_run)
             _report(row.container_name, pages)
-            _report_textless(row.container_name, pdf_path)
+            ocr_candidates += _report_textless(pdf_path, pages, args.dry_run)
             if cur is None:
                 continue
             doc_id = _doc_id(cur, row.container_name)
@@ -422,6 +487,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("Preskočené:")
         for s in skipped:
             print(f"  - {s}")
+    _ocr_summary(ocr_candidates, ocr, args.dry_run)
     if not args.dry_run:
         print(f"Zapísané: {written_docs} dokumentov / {written_pages} strán.")
     return 0
