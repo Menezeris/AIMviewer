@@ -129,19 +129,15 @@ def page_blocks(page_dict: dict, width: float, height: float) -> list[dict]:
 
 # D-133: hrubé čiary (rezané konštrukcie) od tejto hrúbky; tenké sú kóty, šrafy, osi.
 LINE_MIN_WIDTH = 0.99
-# Strana s menej hrubými úsečkami nie je vektorový výkres (správa, tabuľka) -> lines = null.
+# #283/#316: požiarne pôdorysy (PBR) a niektoré exporty kreslia steny tenšie než 0,99 pt, preto sa pri
+# nedostatku hrubých čiar skúšajú postupne nižšie prahy (prvý, ktorý dá aspoň LINE_MIN_COUNT úsečiek).
+LINE_WIDTH_TIERS = (LINE_MIN_WIDTH, 0.5, 0.25)
+# Strana s menej úsečkami nie je vektorový výkres (správa, tabuľka, sken) -> lines = null.
 LINE_MIN_COUNT = 200
 
 
-def page_lines(drawings: list[dict], width: float, height: float) -> Optional[dict]:
-    """Hrubé úsečky strany pre kalibráciu podkladu (D-133).
-
-    Vstup je `page.get_drawings()`; čiary (`l`) a strany obdĺžnikov (`re`) od
-    `LINE_MIN_WIDTH`, krivky sa vynechajú (oblúky dverí). Výstup `{size: [W, H], segs:
-    [[x1, y1, x2, y2, w]]}` v bodoch strany s počiatkom vľavo dole (y hore, ako `_georef`
-    D-072), zaokrúhlené na 0,1 pt; `size` je rámec, v ktorom kalibrácia počíta. Menej ako
-    `LINE_MIN_COUNT` úsečiek = nie výkres, vráti None.
-    """
+def _segments(drawings: list[dict], min_width: float, height: float) -> list[list[float]]:
+    """Úsečky (`l`), strany obdĺžnikov (`re`) a štvoruholníkov (`qu`) od `min_width`."""
     out: list[list[float]] = []
 
     def add(x1: float, y1: float, x2: float, y2: float, w: float) -> None:
@@ -151,7 +147,7 @@ def page_lines(drawings: list[dict], width: float, height: float) -> Optional[di
 
     for d in drawings:
         w = d.get("width") or 0.0
-        if w < LINE_MIN_WIDTH:
+        if w < min_width:
             continue
         for item in d.get("items", []):
             if item[0] == "l":
@@ -162,9 +158,28 @@ def page_lines(drawings: list[dict], width: float, height: float) -> Optional[di
                 add(r.x1, r.y0, r.x1, r.y1, w)
                 add(r.x1, r.y1, r.x0, r.y1, w)
                 add(r.x0, r.y1, r.x0, r.y0, w)
-    if len(out) < LINE_MIN_COUNT:
-        return None
-    return {"size": [round(width, 2), round(height, 2)], "segs": out}
+            elif item[0] == "qu":
+                q = item[1]
+                for a, b in ((q.ul, q.ur), (q.ur, q.lr), (q.lr, q.ll), (q.ll, q.ul)):
+                    add(a.x, a.y, b.x, b.y, w)
+    return out
+
+
+def page_lines(drawings: list[dict], width: float, height: float) -> Optional[dict]:
+    """Hrubé úsečky strany pre kalibráciu podkladu (D-133).
+
+    Vstup je `page.get_drawings()`; čiary (`l`) a strany obdĺžnikov (`re`, `qu`) od
+    `LINE_MIN_WIDTH`, krivky sa vynechajú (oblúky dverí). Ak ich je menej než `LINE_MIN_COUNT`,
+    skúšajú sa nižšie prahy z `LINE_WIDTH_TIERS` (tenšie čiary, #283). Výstup `{size: [W, H],
+    segs: [[x1, y1, x2, y2, w]], min_w}` v bodoch strany s počiatkom vľavo dole (y hore, ako
+    `_georef` D-072), zaokrúhlené na 0,1 pt; `size` je rámec, v ktorom kalibrácia počíta,
+    `min_w` použitý prah hrúbky. Pri žiadnom prahu s dosť úsečkami = nie výkres, vráti None.
+    """
+    for min_w in LINE_WIDTH_TIERS:
+        out = _segments(drawings, min_w, height)
+        if len(out) >= LINE_MIN_COUNT:
+            return {"size": [round(width, 2), round(height, 2)], "segs": out, "min_w": min_w}
+    return None
 
 
 def extract_pages_full(pdf_path: Path) -> list[tuple[int, str, list[dict], Optional[dict]]]:
@@ -251,6 +266,17 @@ def _write_pages(
         )
     if sha256:
         cur.execute("update documents set file_sha256 = %s where id = %s", (sha256, doc_id))
+
+
+def index_pdf(cur, doc_id: str, pdf_path: Path) -> int:
+    """Extrakcia jedného PDF a zápis do `document_pages` (text, riadky, čiary, rozmer, sha256).
+
+    Volá ho `etl.doc_upload` hneď po nahratí dokumentu, aby sa čiary výkresu (kalibrácia
+    podkladu, #283/#316) nemuseli dopĺňať ručne cez `--from-db`. Vráti počet strán s textom.
+    """
+    pages = extract_pages_full(pdf_path)
+    _write_pages(cur, doc_id, pages, page_sizes(pdf_path), file_sha256(pdf_path))
+    return len(pages)
 
 
 def _report(ref: str, pages: list[Page]) -> None:

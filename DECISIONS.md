@@ -6337,6 +6337,23 @@ nekreslí; pôdorys v 2D a split ostáva. Má to ísť aj z chatu.
 
 ---
 
+**Doplnok 2026-10-29 (#283, #284, #316): čiary tenších výkresov a kontrola mierky.** Bez nového rozhodnutia, v
+rámci bodov 2 a 3 vyššie; prípady z produkcie (požiarne pôdorysy PBR D.1.3.02 až 05 bez `lines`, strecha D.1.1.04
+v mierke 1:28,49 pri výkrese 1:50 s mediánom 83 mm).
+- *Čiary (ETL):* `page_lines` skúša prahy hrúbky `0,99 / 0,5 / 0,25 pt` a berie prvý s aspoň 200 úsečkami (PBR
+  kreslí steny tenšie než 0,99 pt), pridáva strany štvoruholníkov (`qu`) a ukladá použitý prah v `lines.min_w`
+  (aditívne pole v jsonb, bez migrácie). `etl.doc_upload` volá `index_pdf` hneď po nahratí PDF (vypnutie
+  `--no-pdf-text`), takže čiary nevznikajú ručným `etl.pdf_text`; existujúce dokumenty treba raz dopočítať
+  `python -m etl.pdf_text --from-db`.
+- *Strana bez čiar:* chyba rozlišuje ETL, ktoré nebežalo (chýba `page_size`), od rastra (ETL prešlo, čiar je málo).
+  `mode=manual` s `pairs` ide aj bez čiar (rozmer z `page_size`, `refine` sa vypne).
+- *Mierka:* nízky medián nestačí, ICP vie zachytiť nesprávne čiary v zlej mierke. `scale` (1:N, nový voliteľný
+  parameter existujúceho toolu, D-114 bod 2) alebo mierka z textu strany (`MERÍTKO 1 : 50`) zafixuje mierku v štarte
+  aj ICP (rotácia a posun sa hľadajú ďalej; pri pevnej mierke stačia 2 popisky miestností). Bez nich sa výsledok
+  porovná s bežnými mierkami; odchýlka nad 5 % dá `warnings`, `scale_check` a `mode=auto` ho neuloží.
+- *Nerobí sa (zostáva v #284 a #316):* `delete` kalibrácie, `manual` s `model_m` cez `object_ref`, výber správneho
+  výkresu podlažia v `set_view_mode` (host/viewer), kalibrácia rezov nad skutočnými PDF.
+
 ### D-132 - Záložky vo vieweri: pohľad je orez, záložka je otvorený pohľad
 > **D-161 (2026-10-23):** záložky druhu `plan` a `view`, menu "+ Pôdorys" a zámok pohľadu vypadávajú; pohľady nesie upstream Presentation (trvalo v `saved_views`). Lišta záložiek ostáva pre 3D a dokumenty.
 **Status:** rozhodnuté (2026-10-21, Samuel cez orchestrátora; číslo pridelené v registri #60). Issue #165,

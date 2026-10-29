@@ -78,6 +78,11 @@ Beh zapíše aj `document_pages.page_size` (veľkosť strany v bodoch) a `docume
 (sha256 súboru PDF, kotva revízie pre pripomienky a keš snímky výrezu, D-158 krok 3; po migrácii
 `20261023140000`). Rastre strán sa nerobia: snímku výrezu renderuje host na požiadanie.
 
+Čiary výkresu (`document_pages.lines`, kalibrácia podkladov, D-133) sa ukladajú pri každom behu; tenšie výkresy
+(požiarne pôdorysy) dostanú nižší prah hrúbky (0,5 alebo 0,25 pt, `lines.min_w`). Nové PDF z `etl.doc_upload`
+sa načítajú hneď po uploade (`--no-pdf-text` to vypne); už nahraté dokumenty bez čiar dopočíta
+`python -m etl.pdf_text --from-db` (alebo s `--only <object_ref>`).
+
 ### Dokumenty z IFC (D-104)
 Dokumentáciu nesie model: každý `IfcDocumentInformation` je `document` s `object_ref` =
 `Identification` (aj priečinkové časti bez súboru), strom z
