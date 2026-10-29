@@ -113,6 +113,19 @@ export const PANEL_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
 export const PANEL_ACTIONS = ["open", "close", "toggle"] as const;
 export type PanelAction = (typeof PANEL_ACTIONS)[number];
 export type PanelsRequest = Record<string, PanelAction>;
+/**
+ * Šírka a strana panela (D-172, #320): `width_pct` 5 až 90 % okna viewera, `side` kam panel pripnúť (`left`, `right`,
+ * `bottom`, `free`); aspoň jedno z nich. Správanie podľa toho, kde panel je, rieši viewer (pravý stĺpec 14 až 60 %,
+ * plávajúce okno, pripnutie), hostu stačí tvar.
+ */
+export const PANEL_WIDTH_PCT = { min: 5, max: 90 } as const;
+export const PANEL_SIDES = ["left", "right", "bottom", "free"] as const;
+export type PanelSide = (typeof PANEL_SIDES)[number];
+export interface PanelLayoutRequest {
+  panel: string;
+  widthPct?: number;
+  side?: PanelSide;
+}
 /** Posun obsahu panela (D-146, D-150): o stranu hore / dole, na začiatok, na koniec; mená zhodné s mostom forku. */
 export const PANEL_SCROLLS = ["up", "down", "top", "bottom"] as const;
 export type PanelScroll = (typeof PANEL_SCROLLS)[number];
@@ -180,7 +193,7 @@ export type ViewerOp =
   /** Čiara trasy v IFC svete (D-137), formát v `lib/viewer-route.ts`; prázdne body = zmazať. */
   | { op: "route"; color: string; points: MeasurePoint[] }
   /** Otvorenie / zatvorenie panelov (D-127). */
-  | { op: "panels"; panels: PanelsRequest }
+  | { op: "panels"; panels?: PanelsRequest; panelLayout?: PanelLayoutRequest }
   /** Posun obsahu panela (D-146, D-150). */
   | ({ op: "panel_scroll" } & PanelScrollTarget)
   /** Zoom obsahu panela (D-150). */
@@ -367,15 +380,28 @@ function parsePose(arg: string): { viewpoint: BridgeViewpoint; projection?: Proj
   };
 }
 
-/** `~lens=close~bcf=open` -> panely; `all` len s `close`, nič platné = null. */
-function parsePanels(arg: string): PanelsRequest | null {
+/**
+ * `~lens=close~bcf=open` -> panely; `all` len s `close`. Šírka a strana panela (D-172) idú v tej istej správe
+ * v kľúčoch s predponou `+` (nie sú platné meno panela): `~+panel=properties~+w=40~+s=left`, aby sa panel
+ * najprv otvoril a potom nastavil. Nič platné = null.
+ */
+function parsePanels(arg: string): { panels?: PanelsRequest; panelLayout?: PanelLayoutRequest } | null {
   const [, kv] = parseArg(arg);
-  const out: PanelsRequest = {};
+  const panels: PanelsRequest = {};
   for (const [k, v] of Object.entries(kv)) {
     if (!(PANEL_ACTIONS as readonly string[]).includes(v) || !PANEL_NAME.test(k)) continue;
-    if (k !== "all" || v === "close") out[k] = v as PanelAction;
+    if (k !== "all" || v === "close") panels[k] = v as PanelAction;
   }
-  return Object.keys(out).length > 0 ? out : null;
+  let panelLayout: PanelLayoutRequest | undefined;
+  if (kv["+panel"] !== undefined && PANEL_NAME.test(kv["+panel"])) {
+    const widthPct = kv["+w"] !== undefined ? finite(kv["+w"], PANEL_WIDTH_PCT.min, PANEL_WIDTH_PCT.max) : undefined;
+    const side = (PANEL_SIDES as readonly string[]).includes(kv["+s"]) ? (kv["+s"] as PanelSide) : undefined;
+    if (widthPct !== undefined || side !== undefined) {
+      panelLayout = { panel: kv["+panel"], ...(widthPct !== undefined ? { widthPct } : {}), ...(side ? { side } : {}) };
+    }
+  }
+  if (Object.keys(panels).length === 0 && !panelLayout) return null;
+  return { ...(Object.keys(panels).length > 0 ? { panels } : {}), ...(panelLayout ? { panelLayout } : {}) };
 }
 
 /** Op otáčania dokola (D-154): `auto_rotate:start~s=5~d=r:` alebo `auto_rotate:stop:`. */
@@ -437,9 +463,14 @@ export function planPositionOp(show: boolean): string {
   return `planpos:${show ? 1 : 0}:`;
 }
 
-/** Op panelov (D-127): `panels:~lens=close~...:`. */
-export function panelsOp(panels: PanelsRequest): string {
-  const kv = Object.entries(panels).map(([k, v]) => `${k}=${v}`);
+/** Op panelov (D-127): `panels:~lens=close~...:`; s `layout` (D-172) aj `~+panel=<meno>~+w=<%>~+s=<strana>`. */
+export function panelsOp(panels: PanelsRequest | undefined, layout?: PanelLayoutRequest): string {
+  const kv = [
+    ...Object.entries(panels ?? {}).map(([k, v]) => `${k}=${v}`),
+    ...(layout
+      ? [`+panel=${layout.panel}`, ...(layout.widthPct !== undefined ? [`+w=${layout.widthPct}`] : []), ...(layout.side ? [`+s=${layout.side}`] : [])]
+      : []),
+  ];
   return `panels:~${kv.join("~")}:`;
 }
 
@@ -560,8 +591,8 @@ export function parseOps(raw: string): ViewerOp[] {
       const clash = parseClashOp(joined);
       if (clash) out.push(clash);
     } else if (op === "panels") {
-      const panels = parsePanels(arg);
-      if (panels) out.push({ op, panels });
+      const parsed = parsePanels(arg);
+      if (parsed) out.push({ op, ...parsed });
     } else if (op === "auto_rotate") {
       const [action, kv] = parseArg(arg);
       if (!(AUTO_ROTATE_ACTIONS as readonly string[]).includes(action)) continue;
@@ -698,7 +729,19 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     case "route":
       return { type: "ROUTE_SHOW", points: o.points, color: o.color };
     case "panels":
-      return { type: "SET_PANELS", panels: o.panels };
+      return {
+        type: "SET_PANELS",
+        ...(o.panels ? { panels: o.panels } : {}),
+        ...(o.panelLayout
+          ? {
+              panel_layout: {
+                panel: o.panelLayout.panel,
+                ...(o.panelLayout.widthPct !== undefined ? { width_pct: o.panelLayout.widthPct } : {}),
+                ...(o.panelLayout.side ? { side: o.panelLayout.side } : {}),
+              },
+            }
+          : {}),
+      };
     case "panel_scroll":
       return {
         type: "SCROLL_PANEL",

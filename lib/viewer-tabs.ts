@@ -5,7 +5,7 @@
  * (`tab`), otvorenie (`open`: pôdorys podlažia alebo uložený pohľad) a `beside`.
  * Menovky a mená pohľadov môžu mať `:` aj `;`, preto sú v base64url ako Lens (D-096).
  * `tab:layout:<base64url JSON>` = dlaždice (D-157): `layout` a `tiles` (`{tab}` menovka, `{plan}` GUID
- * podlažia, `{view}` id pohľadu z Presentation, null prázdna).
+ * podlažia, `{view}` id pohľadu z Presentation, null prázdna); voliteľne `ratio` alebo `sizes` (pomer dlaždíc, D-172).
  * `section_box:<m>:<guid.guid...>` = box okolo prvkov s okrajom `m` metrov,
  * `section_box:<minx,miny,minz,maxx,maxy,maxz>:` = presná obálka v IFC svete (obnova D-122).
  */
@@ -36,6 +36,36 @@ export const TILE_COUNTS: Record<TileLayout, number> = {
   grid4: 4,
 };
 
+/**
+ * Počet podielov `sizes` podľa rozloženia (D-172, fork `viewTilesPlan.ts`): dvojica pri delení na dve a pri
+ * rozloženiach s veľkou dlaždicou (prvá hodnota = veľká), trojica pri `three_h` / `three_v`. `single` a
+ * `grid4` pomer nemajú.
+ */
+export const SIZE_COUNTS: Partial<Record<TileLayout, number>> = {
+  split_h: 2, split_v: 2, three_left: 2, three_right: 2, three_top: 2, three_bottom: 2, three_h: 3, three_v: 3,
+};
+/** Pod touto hranicou podielu viewer dlaždicu zdvihne a povie to v `APPLIED.issues` (host ju nemení). */
+export const MIN_TILE_SHARE = 0.1;
+
+/**
+ * Pomer dlaždíc (D-172): `ratio` (0 < r < 1, podiel prvej dlaždice, len rozloženia s 2 podielmi) alebo `sizes`
+ * (váhy, počet podľa `SIZE_COUNTS`); naraz len jedno. Vráti chybu po slovensky alebo normalizovaný zápis.
+ */
+export function checkTileSizes(layout: TileLayout, ratio: unknown, sizes: unknown): { error: string } | { ratio?: number; sizes?: number[] } {
+  if (ratio === undefined && sizes === undefined) return {};
+  if (ratio !== undefined && sizes !== undefined) return { error: "ratio a sizes sa nekombinujú, zadaj jedno." };
+  const count = SIZE_COUNTS[layout];
+  if (count === undefined) return { error: `${layout} nemá nastaviteľný pomer dlaždíc (ratio ani sizes).` };
+  if (ratio !== undefined) {
+    if (count !== 2) return { error: `ratio platí len pre rozloženia s 2 podielmi; ${layout} má ${count}, použi sizes (${count} hodnoty).` };
+    if (typeof ratio !== "number" || !Number.isFinite(ratio) || ratio <= 0 || ratio >= 1) return { error: "ratio: číslo väčšie ako 0 a menšie ako 1 (podiel prvej dlaždice, napr. 0.7)." };
+    return { ratio };
+  }
+  if (!Array.isArray(sizes) || sizes.length !== count) return { error: `sizes: pre ${layout} presne ${count} kladné čísla (poradie podľa tiles).` };
+  if (!sizes.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0)) return { error: "sizes: kladné konečné čísla." };
+  return { sizes: sizes as number[] };
+}
+
 /** Dlaždica na drôte: otvorená záložka, pôdorys podlažia (GUID), pohľad z Presentation (id, D-161) alebo prázdna. */
 export type TileWire = { tab: string } | { plan: string } | { view: string } | null;
 
@@ -45,6 +75,9 @@ export interface TabsWire {
   beside?: boolean;
   layout?: TileLayout;
   tiles?: TileWire[];
+  /** Pomer dlaždíc (D-172): len jedno z `ratio` / `sizes`; chýba = polovice a tretiny. */
+  ratio?: number;
+  sizes?: number[];
 }
 
 export interface Vec3 { x: number; y: number; z: number }
@@ -92,7 +125,9 @@ function decodeWire(action: TabAction, joined: string): TabsWire | null {
   if (action === "layout") {
     const layout = r.layout as TileLayout;
     if (!(TILE_LAYOUTS as readonly string[]).includes(layout)) return null;
-    if (r.tiles === undefined) return { layout };
+    const sizing = checkTileSizes(layout, r.ratio, r.sizes);
+    if ("error" in sizing) return null;
+    if (r.tiles === undefined) return { layout, ...sizing };
     if (!Array.isArray(r.tiles) || r.tiles.length > TILE_COUNTS[layout]) return null;
     const tiles: TileWire[] = [];
     for (const t of r.tiles as unknown[]) {
@@ -102,7 +137,7 @@ function decodeWire(action: TabAction, joined: string): TabsWire | null {
       else if (t && typeof t === "object" && text((t as { view?: unknown }).view)) tiles.push({ view: text((t as { view: string }).view)! });
       else return null;
     }
-    return { layout, tiles };
+    return { layout, tiles, ...sizing };
   }
   const tab = text(r.tab);
   if (!tab) return null;
