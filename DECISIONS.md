@@ -7655,3 +7655,18 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 7. **Recept** `scripts/vzt/bcf_opravy.py` s hodnotami v `bcf_opravy.json` (stav `dolozene` / `potvrdene` / `navrh` / `chyba_hodnota`), kontrola `scripts/vzt/kontrola.py` (IDS `bcf_opravy.ids`, porty klapiek, schéma) a `ifc_diff.py`. Publikácia len cez `etl.model_publish` (postup v `etl/README.md`), až na Samuelov pokyn.
 
 **Zavrhnuté:** prefix `VAV` (nie je druh klapky, ale spôsob regulácie); prietok na výskyte cez `Pset_DamperTypeCommon.NominalAirFlowRate` (typový pset na výskyte, D-021); doplnenie typických hodnôt požiarnych klapiek (SPRING, 72 °C) bez podkladu.
+
+### D-165 - ifc_relations: stop_at Trieda.PREDEFINED berie PredefinedType aj z typu prvku (#300)
+
+**Dátum:** 2026-10-23 · **Stav:** implementované · **Issue:** #300 · **Nadväzuje na:** D-110 (`through_ports`, `stop_at`), D-114
+
+**Kontext:** `ifc_relations` s `through_ports`, `recursive` a `stop_at: ["IfcDamper.FIREDAMPER"]` nezastavil na požiarnych klapkách PK.01 v modeli VZT. Ich výskyty majú PredefinedType `$` a FIREDAMPER nesie typ `IfcDamperType` cez `IfcRelDefinesByType` (správne podľa IFC). `predefinedOf` v `lib/engine/relations.ts` čítal len atribút výskytu, výsledok bol `reached = []` a poznámka o "nenapojených prvkoch", hoci sieť bola celá (z toho vznikla mylná BCF téma #13).
+
+**Najbližšie tooly (D-114):** `ifc_relations` (tu sa chyba deje), `ifc_get` (typeProperties už vracia, ale `stop_at` nerieši), `ifc_query` (filter podtypu, neprechádza sieť). Nový tool netreba.
+
+**Rozhodnutie:**
+1. `predefinedOf`: keď je PredefinedType výskytu `$` alebo `NOTDEFINED`, vezme sa PredefinedType typu (`IfcRelDefinesByType`). Dopyt na typ sa robí len pre kandidátov na zastavenie podľa triedy, nie pre celú sieť.
+2. Poznámka pri prázdnom `reached` bez `cut_off` hovorí, že prejdená sieť neobsahuje vyhovujúci prvok (trieda, PredefinedType aj z typu), nie že prvky nie sú napojené.
+3. Test v `relations.test.ts` (fixture rozšírený o typovanú klapku), padá bez opravy. Opis parametra `stop_at` spomína typ.
+
+**Zavrhnuté:** USERDEFINED s `ObjectType` výskytu alebo `ElementType` typu sa nerieši (`stop_at` porovnáva enum PredefinedType); doplniť ho možno, ak ho Samuel potrebuje.

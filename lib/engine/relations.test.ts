@@ -109,6 +109,16 @@ describe("ifc_relations (D-097)", () => {
     expect(any.json.reached.map((r: { global_id: string }) => r.global_id)).toEqual([guid("DMP")]);
   });
 
+  it("stop_at: PredefinedType typovaného výskytu ($) sa berie z jeho typu (#300)", async () => {
+    const typed = await run({ target: guid("DS3"), through_ports: true, recursive: true, stop_at: ["IfcDamper.FIREDAMPER"] });
+    expect(typed.json.reached.map((r: { global_id: string; predefined_type: string }) => [r.global_id, r.predefined_type])).toEqual([[guid("TD1"), "FIREDAMPER"]]);
+    // Sieť je celá, len taký prvok v nej nie je: poznámka nehovorí o nenapojených prvkoch.
+    const none = await run({ target: guid("DS3"), through_ports: true, recursive: true, stop_at: ["IfcDamper.BALANCINGDAMPER"] });
+    expect(none.json.reached).toEqual([]);
+    expect(none.json.note).toContain("neobsahuje prvok vyhovujúci stop_at");
+    expect(none.json.note).not.toContain("nie sú napojené");
+  });
+
   it("prechod sieťou: max_steps oreže, bez stop_at celá sieť s hĺbkou a via", async () => {
     const short = await run({ target: guid("DS1"), through_ports: true, recursive: true, stop_at: ["IfcUnitaryEquipment"], max_steps: 2 });
     expect(short.json.reached).toEqual([]);
