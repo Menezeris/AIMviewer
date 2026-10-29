@@ -46,6 +46,7 @@ const EXTRA = `#100= IFCZONE('${guid("ZN1")}',$,'Najomne priestory',$,$,$);
 #166= IFCRELNESTS('${guid("NE7")}',$,$,$,#163,(#164));
 #167= IFCRELNESTS('${guid("NE8")}',$,$,$,#160,(#165));
 #168= IFCRELCONNECTSPORTS('${guid("CP5")}',$,$,$,#164,#165,$);
+#169= IFCRELREFERENCEDINSPATIALSTRUCTURE('${guid("RF1")}',$,$,$,(#130),#52);
 `;
 
 export const MINI_RELATIONS = MINI_BUILDING.replace(/ENDSEC;\nEND-ISO-10303-21;/, `${EXTRA}ENDSEC;\nEND-ISO-10303-21;`);

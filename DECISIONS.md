@@ -7691,3 +7691,23 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 **Nerobí sa (čaká na rozhodnutie Samuela):** `remove` (zmazanie kalibrácie), `history` a `restore` (história kalibrácií by potrebovala vlastné úložisko, dnes `_georef` drží len aktuálnu).
 
 **Zavrhnuté rozšírenie:** nový tool `underlays` (návrh v #323) - `calibrate_underlay` už nesie `_georef` a identifikáciu dokumentu, nový tool by zdvojil `document_id`, `floor`, `page` a predĺžil načítanie konektora (D-114). `set_view_mode` - nesie len globálny vypínač podkladov v 3D, opis teraz odkazuje na nové módy.
+
+### D-167 - ifc_relations vracia aj odvodené IfcRelReferencedInSpatialStructure z grafu AIM, s `kind` (#297)
+
+**Dátum:** 2026-10-29 · **Stav:** rozhodnuté (Samuel cez orchestrátora 29. 10.), implementované · **Issue:** #297 · **PR:** #331 · **Nadväzuje na:** D-080 (odvodzovače, `rel_referenced_in_spatial_structure`), D-097 (`ifc_relations`), D-114
+
+**Kontext:** `ifc_relations` pre výustku VZT (VV.03.02.004) nevrátil vzťah k IfcSpace 2.01, hoci ho panel vlastností ukazuje, a miestnosť 2.01 vrátila len prvky z ASR. Príčina nie je v čítaní súboru: upstream `relationships` IfcRelReferencedInSpatialStructure z IFC vracia (overené testom na fixture). Lenže väzba prvok VZT -> priestor z ASR v súbore VZT nie je, vzniká geometriou naprieč modelmi v `python -m etl.derive` (D-080) a žije len v DB; panel ju číta odtiaľ (`fetchDerivedRelations`).
+
+**Najbližšie tooly (D-114):** `ifc_relations` (tu vzťah chýba), `list_relations` (graf AIM má `rel_referenced_in_spatial_structure`, ale bez GlobalId druhej strany a bez ostatných IFC vzťahov), `ifc_query` (vzťahy neprechádza). Nový tool netreba.
+
+**Rozhodnutie:**
+1. `ifc_relations` k hranám zo súboru pridá odvodené `rel_referenced_in_spatial_structure` z grafu AIM (prvok -> priestor aj priestor -> prvky), cez novú závislosť `EngineDeps.spatialLinks` a vlastný modul `lib/engine/spatial-links.ts`. Duplicitu so súborovou hranou ruší kľúč smer + GlobalId.
+2. Platí pre `ifc_relations` bez `recursive` a `through_ports`, keď `rel_types` chýba alebo obsahuje `IfcRelReferencedInSpatialStructure`; smer `direction` sa dodržiava.
+3. Riadky priestorových väzieb nesú `kind`: `contained` (IfcRelContainedInSpatialStructure, patrí do priestoru) alebo `referenced` (je aj v ňom, neexkluzívne). Odvodená hrana má navyše `derived: true` a `role` (inside | partial). `rel_type` ostáva presná trieda IfcRel*.
+4. Test v `relations.test.ts` (fixture rozšírený o natívnu referenced hranu, odvodené hrany cez stub `spatialLinks`), padá bez opravy.
+
+**Výnimka z D-097:** `ifc_relations` je dnes prvý tool motora, ktorý k súboru pridáva hrany z DB. Dôvod: panel vlastností a tool nesmú rozchádzať, a to isté odvodenie je jediným zdrojom väzby naprieč modelmi. Hrana z DB je vždy označená `derived`, takže pôvod je zrejmý. Bez `spatialLinks` (testy, motor bez DB) tool ostáva čisto súborový.
+
+**Mimo rozsahu (zapísané v #297):** `style_in_3d zone=2.01` hľadá len IfcZone/IfcGroup, nie IfcSpace; filter priestoru (`space`) v `style_in_3d` / `show_in_3d` je samostatná požiadavka. Tool `get_object include=path` ukazuje miestnosť aj odvodene a `query_view relation=v_space_elements` dáva dopyt "všetky výustky v 2.01" už dnes.
+
+**Zavrhnuté:** nový tool alebo parameter `include_derived` (odvodené sú predvolene, `kind` a `derived` ich rozlíšia); rekurzia cez priestorové väzby (rozvinula by celý model).
