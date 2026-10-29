@@ -689,8 +689,10 @@ export async function ifcClash(input: Record<string, unknown>, deps: EngineDeps)
       return JSON.stringify(await (await saved()).execReview(input, deps));
     case "compare":
       return JSON.stringify(await (await saved()).execCompare(input, deps));
+    case "matrix":
+      return JSON.stringify(await (await import("../clash/matrix")).execMatrix(input, deps));
     default:
-      throw new InputError("action je list, run, results, compare, review, bcf, save, delete, open alebo from_viewer.");
+      throw new InputError("action je list, run, results, compare, review, bcf, save, delete, matrix, open alebo from_viewer.");
   }
 }
 

@@ -7850,3 +7850,23 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 **Zavrhnuté:** hodnoty v URL op (tisíce GUIDov, strop ~400 ako pri Lens); filter podľa `globalId` z DB namiesto stĺpca (nedá hodnotu, len zúži riadky); nový tool `list_relations_column` (D-114); zlievanie so stĺpcom `space_referenced` (zdroj by sa stratil, Samuel chce odvodené označiť).
 
 **Stav:** host časť hotová a otestovaná, end-to-end čaká na viewer, preto `Refs #277`, nie `Closes`. Evaly (D-057) nepobežali (cloud session bez kľúčov); otázka `list-derived-space-column` v `eval/questions.json` bez overenej hodnoty.
+
+### D-177 - `clash action=matrix`: matica modelov (disciplín) federácie (Closes #302)
+
+**Dátum:** 2026-10-29 · **Issue:** #302 · **Nadväzuje na:** D-114, D-164 · **Fork:** Menezeris/ifc-lite#180 (`get_viewer_state.clash_local.matrix`)
+
+**Kontext:** Claude nevie odpovedať na "koľko kolízií je medzi ASR a VZT a koľko je otvorených": `results` zoskupuje podľa podlažia, systému, dvojice tried alebo prvku a riadky sú orezané. Prehľad disciplína x disciplína chýba.
+
+**Najbližšie tooly (D-114):** `clash` (rozširujeme: nová hodnota `action`), `aggregate_objects` (počíta nad grafom AIM, kolízie v ňom nie sú), `get_viewer_state` (nesie `clash_local`, no ako stav viewera, nie ako akcia nad uloženým behom).
+
+**Rozhodnutie:**
+1. **`clash action=matrix`**, bez nového toolu a bez riadku v `tool-registry.json`. Výstup: `{ source, total?, run_id?, matrix, note }`, `matrix = { models, cells: [{ a, b, total, by_status: { hard, clearance }, by_review: { open, resolved, accepted } }], filter? }`; bunky len neprázdne, neusporiadaná dvojica `a <= b`, zoradené, súčet `total` = počet kolízií behu.
+2. **Bez `run_id` (`source: "local"`):** beh otvorený vo vieweri, `clash_local.matrix` z `get_viewer_state` sa vráti bez zmeny. Bez otvoreného behu hláška "najprv spusti test (clash open run)". Starší viewer s behom, ale bez `matrix`, hlási "Viewer ešte nemá maticu", nie prázdnu maticu.
+3. **S `run_id` (UUID uloženého behu, `source: "saved"`):** rovnaký tvar z uložených výsledkov: dvojica `result.a.model` a `result.b.model` bez ohľadu na poradie, `by_status` z druhu kolízie, `by_review` zo stavu kolízie testu (chýbajúci = `open`). Beh z pamäte (`run-N`) sa odmietne, najprv sa uloží (`run save=true`), ako pri `open`.
+4. **Logika v `lib/clash/matrix.ts`**, v `clash.ts` len registrácia a opis toolu.
+
+**Zavrhnuté rozšírenie:** nový tool `clash_matrix` (D-114: ide ako hodnota `action`); `aggregate_objects` (kolízie v grafe AIM nie sú); počítať z `results` (riadky sú orezané, stav sa rozpadá po skupinách).
+
+**Zavrhnuté:** `filter_cell` (otvorenie bunky vo viewer paneli; nerobí sa, Samuel); definícia disciplín selektormi a beh celej matice jedným volaním, filter LoadBearing v selektore strany (mimo tejto požiadavky, ostávajú v #302).
+
+**Po zlúčení:** fork PR Menezeris/ifc-lite#180 ide do release balíka pred AIMviewerom (D-116); starší viewer dostane hlášku "viewer ešte nemá maticu". Evaly (D-057) nepobežali (cloud session bez kľúčov); otázka `clash-matrix` pridaná bez overenej hodnoty.

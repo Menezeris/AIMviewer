@@ -3,7 +3,7 @@
  * importovať definícia toolu aj testy.
  */
 
-export const CLASH_ACTIONS = ["list", "run", "results", "bcf", "save", "delete", "compare", "review", "open", "from_viewer"] as const;
+export const CLASH_ACTIONS = ["list", "run", "results", "bcf", "save", "delete", "compare", "review", "open", "from_viewer", "matrix"] as const;
 export type ClashAction = (typeof CLASH_ACTIONS)[number];
 /** Akcie, ktoré idú cez most do viewera (D-164, host PR3): potrebujú živý viewer. */
 export const CLASH_VIEWER_ACTIONS: ReadonlySet<string> = new Set(["open", "from_viewer"]);

@@ -266,7 +266,10 @@ export function engineToolDefinitions(): ToolDefinition[] {
         "(added, resolved, persistent, unretested = beh ich prvky nemohol overiť; bucket rozbalí). review: review_status " +
         "open | resolved | accepted + comment pre keys alebo group; platí v ďalších behoch testu. bcf: návrh témy za skupinu, " +
         "create=true ju založí (typ Clash, model VZT). open: panel clash vo vieweri s testom (test) a uloženým behom (run_id UUID " +
-        "alebo latest), používateľ vidí stavy; from_viewer: uloží test a zmenené stavy z panela (beh uloží tlačidlo v paneli).",
+        "alebo latest), používateľ vidí stavy; from_viewer: uloží test a zmenené stavy z panela (beh uloží tlačidlo v paneli). " +
+        "matrix: prehľad kolízií ako matica modelov (disciplín) federácie, napr. ASR x VZT. Bunky nesú počty podľa druhu a stavu. " +
+        "Na otázky 'koľko kolízií je medzi ASR a VZT a koľko je otvorených' použi matrix, nepočítaj z riadkov výsledkov (sú orezané). " +
+        "Bez run_id berie beh otvorený vo vieweri (source local), s run_id uložený beh z DB (source saved).",
       inputSchema: {
         type: "object",
         properties: {
@@ -285,7 +288,7 @@ export function engineToolDefinitions(): ToolDefinition[] {
           tolerance_mm: { type: "number", description: "run, save: tolerancia v mm (default 2)" },
           save: { type: "boolean", description: "run: uložiť beh a kolízie do DB" },
           confirm: { type: "boolean", description: "delete: potvrdiť zmazanie testu s behmi a stavmi kolízií" },
-          run_id: { type: "string", description: "results, compare, review, bcf: beh (run-N alebo UUID uloženého; default posledný); open: UUID alebo latest" },
+          run_id: { type: "string", description: "results, compare, review, bcf: beh (run-N alebo UUID uloženého; default posledný); open: UUID alebo latest; matrix: UUID uloženého behu (bez neho beh vo vieweri)" },
           base_run_id: { type: "string", description: "compare: základný beh (default predošlý uložený beh testu)" },
           bucket: { type: "string", enum: ["added", "resolved", "persistent", "unretested"], description: "compare: rozbaliť kolízie skupiny výsledku" },
           group_by: { type: "string", enum: [...CLASH_GROUPS], description: "results, review, bcf: zoskupenie (default storey)" },
