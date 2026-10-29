@@ -575,7 +575,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "izolácia len v rámci jedného modelu = hide + model + výnimky, isolate by skryl aj ostatné modely). " +
       "Samostatné vypnutie X-ray alebo izolácie = clear_isolation (nezruší rez, skryté prvky ani farby; show_all zruší všetko). " +
       "Efekty sa hromadia, kým ich nezruší show_all/reset_colors (reset_colors vypne aj " +
-      "lens, čiaru trasy a kóty od Claude). Viac operácií = viac callov (pokojne v jednom kole).",
+      "lens, teda aj izoláciu a X-ray, čiaru trasy a kóty od Claude; na zrušenie samej izolácie clear_isolation). " +
+      "FARBA LEN NA VÝSLOVNÝ POKYN: pri 'izoluj / ukáž miestnosť a súvisiace prvky' pošli len isolate (aj miestnosť IfcSpace), " +
+      "bez colorize / transparent; ofarbuj, až keď používateľ farbu povie. Raz zakázané farbenie (napr. miestnosti pri izolácii) " +
+      "v tej istej konverzácii nezapínaj znova bez nového pokynu. Viac operácií = viac callov (pokojne v jednom kole).",
     inputSchema: {
       type: "object",
       properties: {
