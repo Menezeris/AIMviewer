@@ -4,16 +4,22 @@
  * `document_pages.blocks` = riadky textu strany s bbox v % strany (počiatok vľavo
  * hore), zapisuje ich `etl/pdf_text.py`. Odtiaľto tool vracia výrezy, ktoré sa
  * dajú dať priamo do `open_drawing region` (D-117) a tým ukázať miesto vo výkrese.
+ * D-169: riadky strany bez textovej vrstvy číta OCR; nesú `src: "ocr"` a `conf` (0 až 1).
  */
 
-/** Riadok textu strany: t = text, x/y/w/h = bbox v % strany. */
+/** Riadok textu strany: t = text, x/y/w/h = bbox v % strany; src/conf len pri OCR (D-169). */
 export interface TextBlock {
   t: string;
   x: number;
   y: number;
   w: number;
   h: number;
+  src?: "ocr";
+  conf?: number;
 }
+
+/** Zdroj textu strany (D-169): textová vrstva PDF alebo OCR s istotou 0 až 1. */
+export type PageSource = { source: "text" } | { source: "ocr"; confidence: number };
 
 /** Výrez strany v % v tvare parametra `open_drawing region` (D-117). */
 export interface PageRegion {
@@ -29,6 +35,9 @@ export interface BlockMatch {
   bbox: PageRegion;
   /** Výrez okolo riadku pre open_drawing region (najmenej MIN_REGION % na os). */
   region: PageRegion;
+  /** D-169: riadok z OCR a jeho istota; pri textovej vrstve chýba. */
+  source?: "ocr";
+  confidence?: number;
 }
 
 /** Najmenší výrez na os v %: menší by kartu priblížil tak, že stratí kontext. */
@@ -68,6 +77,19 @@ export function parseBlocks(raw: unknown): TextBlock[] {
       typeof (b as TextBlock).t === "string" &&
       ["x", "y", "w", "h"].every((k) => Number.isFinite((b as unknown as Record<string, number>)[k]))
   );
+}
+
+/**
+ * Zdroj textu strany z jej riadkov (D-169). Stĺpec na to v DB nie je: ETL číta OCR len stranu
+ * bez textovej vrstvy, takže strana je celá z OCR alebo celá z PDF a stačí jej riadky.
+ * Istota strany = priemer `conf` riadkov vážený dĺžkou textu (ako `page_conf` v `etl/ocr.py`).
+ */
+export function pageSource(blocks: TextBlock[]): PageSource {
+  const ocr = blocks.filter((b) => b.src === "ocr");
+  if (ocr.length === 0) return { source: "text" };
+  const total = ocr.reduce((n, b) => n + b.t.length, 0);
+  const sum = ocr.reduce((n, b) => n + (Number.isFinite(b.conf) ? (b.conf as number) : 0) * b.t.length, 0);
+  return { source: "ocr", confidence: total > 0 ? Math.round((sum / total) * 100) / 100 : 0 };
 }
 
 /** Výrez okolo bboxu: najmenej `min` % na os, so stredom v bboxe, orezaný do strany. */
@@ -120,10 +142,22 @@ export function matchBlocks(blocks: TextBlock[], q: string, max = 5): BlockMatch
       text: b.t,
       bbox: { x: r1(b.x), y: r1(b.y), width: r1(b.w), height: r1(b.h) },
       region: regionAround(b),
+      ...ocrFields(b),
     }));
+}
+
+function ocrFields(b: TextBlock): { source?: "ocr"; confidence?: number } {
+  return b.src === "ocr" ? { source: "ocr", ...(Number.isFinite(b.conf) ? { confidence: b.conf } : {}) } : {};
 }
 
 /** Riadky do výsledku čítania strany: kompaktne, zaokrúhlené na 0,1 %. */
 export function compactBlocks(blocks: TextBlock[], cap = PAGE_BLOCKS_CAP) {
-  return blocks.slice(0, cap).map((b) => ({ t: b.t, x: r1(b.x), y: r1(b.y), w: r1(b.w), h: r1(b.h) }));
+  return blocks.slice(0, cap).map((b) => ({
+    t: b.t,
+    x: r1(b.x),
+    y: r1(b.y),
+    w: r1(b.w),
+    h: r1(b.h),
+    ...(b.src === "ocr" ? { src: "ocr" as const, ...(Number.isFinite(b.conf) ? { conf: b.conf } : {}) } : {}),
+  }));
 }

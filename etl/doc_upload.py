@@ -234,8 +234,8 @@ def _write_document(cur, row: ManifestRow, location: str, storage_type: str) -> 
     )
 
 
-def _index_pdf(cur, row: ManifestRow, pdf_path: Path) -> None:
-    """Text, riadky a čiary výkresu do `document_pages` (D-063, D-133); chyba PDF upload nezhodí."""
+def _index_pdf(cur, row: ManifestRow, pdf_path: Path, ocr: bool = True) -> None:
+    """Text, riadky a čiary výkresu do `document_pages` (D-063, D-133, OCR D-169); chyba PDF upload nezhodí."""
     from .pdf_text import _doc_id, index_pdf
 
     try:
@@ -243,7 +243,7 @@ def _index_pdf(cur, row: ManifestRow, pdf_path: Path) -> None:
         if doc_id is None:
             return
         cur.execute("savepoint pdf_text")
-        pages = index_pdf(cur, doc_id, pdf_path)
+        pages = index_pdf(cur, doc_id, pdf_path, ocr=ocr)
         cur.execute("release savepoint pdf_text")
         print(f"      text a čiary: {pages} strán")
     except Exception as exc:  # noqa: BLE001 - jeden zlý PDF súbor nezhodí upload
@@ -265,6 +265,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                     help="iba parsovanie + validácia (žiadny upload ani zápis).")
     ap.add_argument("--no-pdf-text", action="store_true",
                     help="nenačítať text a čiary PDF do document_pages (inak ich načíta hneď po uploade, #283).")
+    ap.add_argument("--no-ocr", action="store_true",
+                    help="D-169: strany PDF bez textovej vrstvy (obrázok, krivky) nečítať OCR.")
     args = ap.parse_args(argv)
 
     rows = read_manifest()
@@ -300,7 +302,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 uploaded += 1
                 print(f"  ✓ {r.container_name} → {r.target_ref}  ({len(content)//1024} kB)")
                 if not args.no_pdf_text and r.source_path.lower().endswith(".pdf"):
-                    _index_pdf(cur, r, _SOURCE_ROOT / r.source_path)
+                    _index_pdf(cur, r, _SOURCE_ROOT / r.source_path, ocr=not args.no_ocr)
         conn.commit()
 
     print(f"\nHotovo: {uploaded} dokumentov nahraných + zapísaných do grafu.")

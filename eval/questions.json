@@ -390,6 +390,14 @@
       "notes": "D-123 (#149): po `python -m etl.pdf_text --from-db` na prod. Lokálne overené: 'Sklenená priečka, bezrámová, požiarna odolnosť EI30' v OCB_SO01_ASR_D-1-1-01_PODORYS-1NP, strana 1 (tvar 'požiarnej odolnosti' cez prefix)."
     },
     {
+      "id": "doc-ocr-title",
+      "category": "documents_content",
+      "question": "Čo je napísané na titulnej strane výpisu skladieb D.1.1.09?",
+      "expect": { "tools_called": ["search_documents"], "answer_matches": ["VYSOK[ÉE] U[ČC]EN[ÍI] TECHNICK[ÉE]|Vysoké učení technické"] },
+      "verified": false,
+      "notes": "D-169 (#279): strana 1 nemá textovú vrstvu (obrázky s CCITT maskou), text je z OCR. Po `python -m etl.pdf_text --from-db --only OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB` na prod. Odpoveď má spomenúť, že text je z OCR (source='ocr')."
+    },
+    {
       "id": "doc-read-legend",
       "category": "documents_content",
       "question": "Prečítaj legendu materiálov z výkresu D.1.1.01 Pôdorys 1NP.",

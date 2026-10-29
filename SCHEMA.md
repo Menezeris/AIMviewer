@@ -406,7 +406,8 @@ identifikátory `format('%I')`, literály `format('%L')` — presné DDL v migr�
 ### 2.11a Obsah dokumentov (D-063, migrácia 20260715120000)
 
 Extrahovaný text PDF strán (`etl/pdf_text.py`, PyMuPDF) — fulltext nad obsahom
-dokumentov. OCR mimo scope; vektorové výkresy majú riedky text (očakávané).
+dokumentov. Vektorové výkresy majú riedky text (očakávané). Strana bez textovej vrstvy
+(obrázok, krivky) sa číta OCR (D-169): jej riadky v `blocks` majú navyše `src: "ocr"` a `conf` (0 až 1).
 
 ```sql
 create table document_pages (
@@ -423,6 +424,7 @@ create index idx_document_pages_tsv on document_pages
 
 -- D-123 (migrácia 20261020160000): riadky textu strany s polohou
 alter table document_pages add column blocks jsonb;  -- [{t, x, y, w, h}] v % strany, vľavo hore
+                                                     -- D-169: riadok z OCR navyše src = 'ocr', conf 0..1 (bez migrácie)
 
 -- D-133 (migrácia 20261021120000): hrubé čiary výkresu pre kalibráciu podkladu
 alter table document_pages add column lines jsonb;   -- {size: [W, H], segs: [[x1, y1, x2, y2, w]]} v bodoch strany, vľavo dole;
