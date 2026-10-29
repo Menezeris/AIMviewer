@@ -188,6 +188,8 @@ function describeWire(row: SavedViewRow, wire: ViewWire) {
       : null,
     objects: wire.objects,
     basket,
+    // D-168: stav podkladov PDF v 3D; chýba v pohľadoch zo starého viewera (obnova stav podkladov nemení).
+    ...(wire.underlays ? { underlays: { show: wire.underlays.show, items: wire.underlays.items.length, visible: wire.underlays.items.filter((i) => i.visible).length } } : {}),
     transition_ms: wire.transition_ms,
     source: wire.source,
     model_revisions: row.model_revisions,

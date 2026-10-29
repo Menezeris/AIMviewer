@@ -36,6 +36,15 @@ describe("ViewWire", () => {
     expect(isViewWire({ ...wireView(), section: { planes: [], active: 0 } })).toBe(false);
   });
 
+  it("underlays (D-168) je voliteľné: pohľad zo starého viewera ho nemá, neplatné pole zahodí pohľad", () => {
+    const items = [{ document_id: "5b5a6f0e-2b7b-4a53-8d3e-7a1f6c2d9e01", visible: true, opacity: 0.6 }];
+    expect(isViewWire(wireView({ underlays: { show: true, items } }))).toBe(true);
+    expect(isViewWire(wireView({ underlays: { show: false, items: [] } }))).toBe(true);
+    expect(isViewWire({ ...wireView(), underlays: { show: true } })).toBe(false);
+    expect(isViewWire({ ...wireView(), underlays: { show: true, items: [{ ...items[0], opacity: 1.5 }] } })).toBe(false);
+    expect(isViewWire({ ...wireView(), underlays: { show: true, items: Array.from({ length: 201 }, () => items[0]) } })).toBe(false);
+  });
+
   it("VIEWS_LOAD nesie zdroj mosta a najviac 500 pohľadov", () => {
     const many = Array.from({ length: 600 }, (_, i) => wireView({ order: i }));
     const msg = viewsLoadMessage(many);

@@ -7671,6 +7671,27 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 
 **Zavrhnuté:** USERDEFINED s `ObjectType` výskytu alebo `ElementType` typu sa nerieši (`stop_at` porovnáva enum PredefinedType); doplniť ho možno, ak ho Samuel potrebuje.
 
+### D-168 - Podklady PDF z chatu: ovládanie v `calibrate_underlay` a stav podkladov v uloženom pohľade (#323, #325)
+
+**Dátum:** 2026-10-29 · **Stav:** implementované v hoste (viewer časť: fork Menezeris/ifc-lite#169, ešte nezlúčená) · **Issues:** #323, #325 · **Súvisí:** D-133 (kalibrácia podkladov), D-072 (zápis `_georef`), D-114 (najprv napasuj), D-161 (pohľady z Presentation), D-087 (viewer vo forku)
+
+**Kontext:** Podklad 1NP ASR bol kalibrovaný a globálne zapnutý (`set_view_mode(underlays_3d)`), ale v 3D sa nezobrazil, lebo tlačidlo Show in 3D pri riadku panela Underlays sa z konektora ovládať nedalo. `visible` a `opacity` sa dali zapísať len ako vedľajší efekt `calibrate_underlay` mode=auto/manual, ktorý prepočíta a prepíše polohu (pri hľadaní príčiny tak prišla o ručnú kalibráciu z 22. 10.). Uložený pohľad (#325) nepamätal, ktoré podklady sú viditeľné, takže po otvorení izolovaného 2NP svietili aj podklady 1NP a 3NP.
+
+**Najbližšie tooly (D-114):** `calibrate_underlay` (kalibrácia, tu už žije `_georef`), `set_view_mode` (`underlays_3d` je len globálny vypínač), `get_viewer_state` (stav viewera), `saved_view` (pohľady). Nový tool netreba, bez nového riadku v `tool-registry.json`.
+
+**Rozhodnutie:**
+1. **`calibrate_underlay` dostane `mode`: `list | show_in_3d | hide | set_opacity`** (k `dry_run | auto | manual`). Vstupy: `document_id` alebo `floor` (floor sa cez `storey_guid` kalibrácie preloží na dokument; viac podkladov na podlaží = chyba so zoznamom), `page` (len kontrola: viewer pozná na `document_id` jednu kalibrovanú stranu, nesedí = chyba), `only` (len `show_in_3d`, vypne ostatné kalibrované v 3D), `opacity` 0 až 1 (povinné pri `set_opacity`), `persist`. Tieto módy **nikdy nemenia polohu (affine) ani nespúšťajú výpočet**.
+2. **Bridge `SET_UNDERLAYS_3D`** (rozšírená vo forku #169): `{show?, underlays?: [{document_id, visible?, opacity?}] (max 200), only?, persist?}`. Bez `persist` je to len stav viewera. S `persist` viewer pošle existujúci `UNDERLAY_SAVE` (v1, nezmenené affine a calibration, zmenené `visible` a `opacity`) a host ho uloží ako dnes. Neznámy `document_id` = `APPLIED.ok=false` s `issues`, text ide modelu. Op `underlays_set::<base64url JSON>` (`lib/viewer-underlays.ts`).
+3. **`persist` zachová `source`** (`PATCH /api/underlay`): v1 s nezmenenou polohou (affine, strana, podlažie) sa zlúči do existujúcej kalibrácie len v `visible` a `opacity` (`visibilityOnlyUpdate` v `lib/data/georef.ts`); auto ostane auto, `quality` a `calibrated_at` ostanú. Predtým by uloženie z viewera označilo auto kalibráciu ako `manual`. Zmenená poloha ide dnešnou cestou (ručná kalibrácia z panela).
+4. **`list`** (bez `document_id`) zlúči `get_viewer_state.underlays` (nové pole viewera) s DB (`_georef.calibrations`: page, source, calibrated_at) a vráti `[{document_id, object_ref, name, page, floor, visible, opacity, saved_visible, saved_opacity, source, calibrated_at, underlays_3d}]`. Bez viewera len z DB (`visible` = `saved_visible`, `underlays_3d` null), pole `viewer` povie prečo. Chýbajúce pole `underlays` v stave = starší viewer.
+5. **Uložený pohľad (#325):** `ViewWire.underlays?: {show, items: [{document_id, visible, opacity}]}` (max 200). Viewer ho pri `VIEW_SAVE` zachytí a pri aktivácii obnoví, pohľad bez neho stav podkladov nemení. Host ukladá `ViewWire` celý do `saved_views.viewpoint` (jsonb), **migrácia netreba**; `isViewWire` pole validuje (show boolean, items <= 200, document_id string, visible boolean, opacity 0..1) a `VIEWS_LOAD` ho vracia. `saved_view` (opis) a `get_viewer_state(saved_views)` (počet a viditeľné) ho spomínajú.
+6. **Kompatibilita:** host ostáva funkčný so starším viewerom (neznáme polia viewer ignoruje; rozšírený `SET_UNDERLAYS_3D` bez forku #169 zmení najviac globálne `show`). Tool to hlási podľa chýbajúceho `underlays` v stave. Plná funkcia až s forkom #169 v produkcii (poradie zlúčenia: fork, potom AIMviewer).
+7. `persist` je zápis: tool ho použije na pokyn používateľa; zápis stojí na `UNDERLAY_WRITE_ENABLED` (D-072), bez neho tool upozorní, že sa nič neuloží.
+
+**Nerobí sa (čaká na rozhodnutie Samuela):** `remove` (zmazanie kalibrácie), `history` a `restore` (história kalibrácií by potrebovala vlastné úložisko, dnes `_georef` drží len aktuálnu).
+
+**Zavrhnuté rozšírenie:** nový tool `underlays` (návrh v #323) - `calibrate_underlay` už nesie `_georef` a identifikáciu dokumentu, nový tool by zdvojil `document_id`, `floor`, `page` a predĺžil načítanie konektora (D-114). `set_view_mode` - nesie len globálny vypínač podkladov v 3D, opis teraz odkazuje na nové módy.
+
 ### D-167 - ifc_relations vracia aj odvodené IfcRelReferencedInSpatialStructure z grafu AIM, s `kind` (#297)
 
 **Dátum:** 2026-10-29 · **Stav:** rozhodnuté (Samuel cez orchestrátora 29. 10.), implementované · **Issue:** #297 · **PR:** #331 · **Nadväzuje na:** D-080 (odvodzovače, `rel_referenced_in_spatial_structure`), D-097 (`ifc_relations`), D-114

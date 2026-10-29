@@ -185,6 +185,29 @@ export function mergeCalibration(stored: unknown, next: GeorefCalibration, force
   return { ok: true, georef: { version: 2, calibrations }, replaced: existing };
 }
 
+const sameNumbers = (a: readonly number[], b: readonly number[]) => a.length === b.length && a.every((x, i) => Math.abs(x - b[i]) < 1e-9);
+
+/**
+ * Uloženie viditeľnosti a priehľadnosti z viewera (D-168, `SET_UNDERLAYS_3D` s `persist`): viewer pošle v1 s nezmeneným
+ * `affine` a `calibration`. Ak sedí na existujúcu kalibráciu tej istej strany a podlažia, zmenia sa len `visible` a
+ * `opacity`; `source`, `quality`, `calibrated_at` a ostatné polia ostanú (auto ostane auto). Null = poloha sa líši alebo
+ * kalibrácia neexistuje, ide bežná cesta (ručná kalibrácia z panela).
+ */
+export function visibilityOnlyUpdate(stored: unknown, v1: GeorefV1): GeorefCalibration | null {
+  const probe = calibrationFromV1(v1);
+  const existing = toGeorefV2(stored).calibrations.find((c) => sameSlot(c, probe));
+  if (!existing) return null;
+  if (!sameNumbers(existing.affine, v1.affine) || !sameNumbers(existing.page_size, v1.page_size)) return null;
+  // v1 nesie najviac 2 body (primaryV1 ich skracuje), auto kalibrácia ich môže mať viac: porovná sa začiatok.
+  if (existing.calibration.length < v1.calibration.length) return null;
+  if (!v1.calibration.every((c, i) => sameNumbers(c.pdf_pt, existing.calibration[i].pdf_pt) && sameNumbers(c.ifc_m, existing.calibration[i].ifc_m))) return null;
+  return {
+    ...existing,
+    ...(v1.opacity !== undefined ? { opacity: v1.opacity } : {}),
+    ...(v1.visible !== undefined ? { visible: v1.visible } : {}),
+  };
+}
+
 /**
  * Pre dnešný fork (`parsePlacement` číta len v1): prvá kalibrácia bez roviny ako v1.
  * Ručná má prednosť pred automatickou na tej istej strane. Null, keď pôdorysná nie je.

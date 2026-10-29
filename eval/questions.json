@@ -1257,6 +1257,22 @@
       "expect": { "tools_called": ["clash"] },
       "verified": false,
       "notes": "D-164 PR2: clash(bcf, create=true, group_by, group) založí tému Clash (model VZT); druhé volanie tému nezdvojí."
+    },
+    {
+      "id": "podklady-zapni-1np",
+      "category": "data",
+      "question": "Zapni v 3D podklad 1NP ASR a ostatné podklady vypni.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-168 (#323): calibrate_underlay(mode=show_in_3d, floor=1NP, only=true); poloha sa nemení, bez persist ide len o stav viewera."
+    },
+    {
+      "id": "podklady-priehladnost",
+      "category": "data",
+      "question": "Nastav priehľadnosť podkladu 2NP na 30 % a ulož to.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-168 (#323): calibrate_underlay(mode=set_opacity, floor=2NP, opacity=0.3, persist=true); persist len na výslovný pokyn."
     }
   ]
 }

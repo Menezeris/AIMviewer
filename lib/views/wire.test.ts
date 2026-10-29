@@ -17,6 +17,17 @@ describe("zápis pohľadov z viewera (D-161)", () => {
     expect(wireOfRow((await store.byId(CAPTURED_ID))!)?.objects).toBe(5);
   });
 
+  it("underlays (D-168, #325) sa uloží do viewpoint a vráti vo VIEWS_LOAD; pohľad bez neho ostane bez neho", async () => {
+    const store = memoryViewStore();
+    const underlays = { show: true, items: [{ document_id: "5b5a6f0e-2b7b-4a53-8d3e-7a1f6c2d9e01", visible: true, opacity: 0.4 }] };
+    await saveWire(store, wireView({ name: "S podkladom", underlays }), {});
+    await saveWire(store, wireView({ id: ID2, name: "Bez podkladu", order: 1 }), {});
+    const [a, b] = await listWires(store);
+    expect(a.underlays).toEqual(underlays);
+    expect(b).not.toHaveProperty("underlays");
+    expect(wireOfRow((await store.byId(CAPTURED_ID))!)?.underlays).toEqual(underlays);
+  });
+
   it("kolízia mena (aj veľkosť písmen a 'Posledný pohľad') dostane príponu a vráti nové meno", async () => {
     const store = memoryViewStore();
     await saveWire(store, wireView({ name: "Basket 1" }), {});

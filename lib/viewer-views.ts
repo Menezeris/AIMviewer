@@ -11,6 +11,7 @@
  */
 
 import { fromBase64Url, toBase64Url } from "./viewer-lens";
+import { isViewUnderlays, type ViewUnderlaysWire } from "./viewer-underlays";
 
 export const VIEWS_SOURCE = "aim-bridge" as const;
 export const MAX_VIEWS = 500;
@@ -69,6 +70,11 @@ export interface ViewWire {
   basket: ViewBasketWire;
   /** Počet prvkov košíka pri uložení (informatívne). */
   objects: number;
+  /**
+   * Stav podkladov PDF v 3D (D-168, #325): viewer ho pri uložení zachytí a pri aktivácii obnoví. Chýba v pohľadoch
+   * uložených starým viewerom; pohľad bez neho stav podkladov nemení.
+   */
+  underlays?: ViewUnderlaysWire;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -120,7 +126,7 @@ export function isViewWire(v: unknown): v is ViewWire {
     isText(v.id) && isText(v.name) && Number.isInteger(v.order) && (v.transition_ms === null || isNum(v.transition_ms)) &&
     (v.source === "selection" || v.source === "visible" || v.source === "hierarchy" || v.source === "manual") &&
     (v.camera === null || isCamera(v.camera)) && (v.section === null || isSection(v.section)) &&
-    isBasket(v.basket) && isNum(v.objects)
+    isBasket(v.basket) && isNum(v.objects) && optional(v.underlays, isViewUnderlays)
   );
 }
 

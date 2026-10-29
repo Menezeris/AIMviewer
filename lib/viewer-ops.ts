@@ -28,6 +28,7 @@
  * zoom `panel_zoom:<in|out|reset|n>~p=<panel>:`.
  * Otáčanie kamery dokola (D-154): `auto_rotate:<start|stop>[~s=<°/s>][~d=<l|r>]:`.
  * Podklady PDF v 3D (D-133 doplnok): `underlays3d:<0|1>:` (stav viewera, do DB sa nezapisuje).
+ * Jednotlivé podklady, priehľadnosť a uloženie (D-168): `underlays_set::<base64url JSON>`, formát v `lib/viewer-underlays.ts`.
  * Poloha a smer kamery na PDF (D-161 bod 8, #282): `planpos:<0|1>:` (stav viewera, do DB sa nezapisuje).
  * Čiara trasy (D-137): `route:<hex>:<x,y,z|...>` (prázdne body = zmazať), formát v `lib/viewer-route.ts`.
  */
@@ -49,6 +50,7 @@ import {
 import { decodeMeasureWire, type MeasurePoint, type MeasureSegment } from "./viewer-measure";
 import { parseRouteOp } from "./viewer-route";
 import { parseTabsOp, tabsBridgeMessage, type TabsOp } from "./viewer-tabs";
+import { parseUnderlaysSetOp, underlaysSetBridgeMessage, type UnderlaysSetOp } from "./viewer-underlays";
 import { parseViewsOp, viewsBridgeMessage, type ViewsOp } from "./viewer-views";
 import { parseClashOp, type ClashOpenOp } from "./viewer-clash";
 import { parseIdsOp, type IdsOpenOp } from "./viewer-ids";
@@ -186,6 +188,8 @@ export type ViewerOp =
   | { op: "auto_rotate"; action: AutoRotateAction; speedDegS?: number; direction?: AutoRotateDirection }
   /** Zobraziť / skryť podklady PDF v 3D plátne (D-133 doplnok), len stav viewera. */
   | { op: "underlays3d"; show: boolean }
+  /** Jednotlivé podklady v 3D: viditeľnosť, priehľadnosť, uloženie (D-168). */
+  | UnderlaysSetOp
   | { op: "planpos"; show: boolean };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
@@ -541,6 +545,9 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if (op === "view_activate" || op === "view_capture") {
       const v = parseViewsOp(op, joined);
       if (v) out.push(v);
+    } else if (op === "underlays_set") {
+      const u = parseUnderlaysSetOp(joined);
+      if (u) out.push(u);
     } else if (op === "ids_open") {
       const ids = parseIdsOp(joined);
       if (ids) out.push(ids);
@@ -703,6 +710,8 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
       };
     case "underlays3d":
       return { type: "SET_UNDERLAYS_3D", show: o.show };
+    case "underlays_set":
+      return underlaysSetBridgeMessage(o);
     case "planpos":
       return { type: "SET_PLAN_POSITION", show: o.show };
   }
