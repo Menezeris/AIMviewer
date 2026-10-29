@@ -234,6 +234,23 @@ def _write_document(cur, row: ManifestRow, location: str, storage_type: str) -> 
     )
 
 
+def _index_pdf(cur, row: ManifestRow, pdf_path: Path) -> None:
+    """Text, riadky a čiary výkresu do `document_pages` (D-063, D-133); chyba PDF upload nezhodí."""
+    from .pdf_text import _doc_id, index_pdf
+
+    try:
+        doc_id = _doc_id(cur, row.container_name)
+        if doc_id is None:
+            return
+        cur.execute("savepoint pdf_text")
+        pages = index_pdf(cur, doc_id, pdf_path)
+        cur.execute("release savepoint pdf_text")
+        print(f"      text a čiary: {pages} strán")
+    except Exception as exc:  # noqa: BLE001 - jeden zlý PDF súbor nezhodí upload
+        cur.execute("rollback to savepoint pdf_text")
+        print(f"      ! text a čiary PDF sa nenačítali ({exc}); doplň: python -m etl.pdf_text --from-db --only {row.container_name}")
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 
@@ -246,6 +263,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="Upload dokumentov z manifestu (E3, D-036).")
     ap.add_argument("--dry-run", action="store_true",
                     help="iba parsovanie + validácia (žiadny upload ani zápis).")
+    ap.add_argument("--no-pdf-text", action="store_true",
+                    help="nenačítať text a čiary PDF do document_pages (inak ich načíta hneď po uploade, #283).")
     args = ap.parse_args(argv)
 
     rows = read_manifest()
@@ -280,6 +299,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                 _write_document(cur, r, location, storage_type="supabase")
                 uploaded += 1
                 print(f"  ✓ {r.container_name} → {r.target_ref}  ({len(content)//1024} kB)")
+                if not args.no_pdf_text and r.source_path.lower().endswith(".pdf"):
+                    _index_pdf(cur, r, _SOURCE_ROOT / r.source_path)
         conn.commit()
 
     print(f"\nHotovo: {uploaded} dokumentov nahraných + zapísaných do grafu.")

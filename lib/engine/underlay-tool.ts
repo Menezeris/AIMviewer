@@ -4,6 +4,8 @@ import type { MeshElement } from "./measure";
 import {
   CalibrationError,
   applyAffine,
+  checkScale,
+  pageScaleFromText,
   calibratePairs,
   calibratePlan,
   calibrateSection,
@@ -41,6 +43,8 @@ export interface UnderlayDocument {
 export interface UnderlayPage {
   blocks: PageBlock[];
   lines: { size: P2; segs: PageLine[] } | null;
+  /** Rozmer strany v bodoch (`document_pages.page_size`, D-158); null = ETL pred D-158. */
+  pageSize?: P2 | null;
 }
 
 export interface UnderlayModel {
@@ -76,6 +80,8 @@ interface Parsed {
   maxErrorMm: number;
   force: boolean;
   model?: string;
+  /** Mierka výkresu 1:N zadaná používateľom (pevná v štarte aj ICP). */
+  scale: number | null;
 }
 
 function parse(a: Record<string, unknown>): Parsed {
@@ -107,7 +113,11 @@ function parse(a: Record<string, unknown>): Parsed {
   if (mode === "manual" && pairs.length < 2) throw new UnderlayInputError("mode=manual potrebuje aspoň 2 dvojice v pairs.");
   const maxErrorMm = num(a.max_error_mm) && a.max_error_mm > 0 ? a.max_error_mm : DEFAULT_MAX_ERROR_MM;
   const model = typeof a.model === "string" && a.model.trim() ? a.model.trim() : undefined;
-  return { documentId, page, mode, floor, section, pairs, refine: a.refine !== false, maxErrorMm, force: a.force === true, model };
+  if (a.scale !== undefined && !(num(a.scale) && a.scale >= 2 && a.scale <= 5000)) {
+    throw new UnderlayInputError("scale je číslo N z mierky výkresu 1:N (napr. 50).");
+  }
+  const scale = a.scale === undefined ? null : (a.scale as number);
+  return { documentId, page, mode, floor, section, pairs, refine: a.refine !== false, maxErrorMm, force: a.force === true, model, scale };
 }
 
 /**
@@ -175,13 +185,27 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   if (!doc) throw new UnderlayInputError(`Dokument ${p.documentId} neexistuje (UUID alebo object_ref).`);
   const pg = await deps.page(doc.id, p.page);
   if (!pg) throw new UnderlayInputError(`Dokument ${doc.object_ref ?? doc.id} nemá stranu ${p.page} s textom (document_pages; ETL etl.pdf_text --from-db).`);
-  // Čiary nesú aj rozmer strany (body), bez neho sa nedajú prepočítať ani ručné body v %.
-  if (!pg.lines) {
+  // Rozmer strany (body) treba na prepočet ručných bodov v %: z čiar, inak z `page_size` (D-158).
+  const pageSize = pg.lines?.size ?? pg.pageSize ?? null;
+  const ref = doc.object_ref ?? doc.id;
+  // Bez čiar sa dá len mode=manual bez doladenia (refine=false): dvojice bodov dajú podobnosť sami.
+  const noLinesManual = !pg.lines && p.mode === "manual" && pageSize !== null;
+  if (!pg.lines && !noLinesManual) {
+    // `page_size` plní rovnaký beh ETL ako čiary: ak je, ETL strana prešla a čiar je málo (raster, sken).
     throw new UnderlayInputError(
-      `Strana ${p.page} nemá čiary výkresu (document_pages.lines): nie je to vektorový výkres, alebo ich ETL ešte nenačítalo (python -m etl.pdf_text --from-db --only ${doc.object_ref ?? doc.id}).`,
+      pg.pageSize
+        ? `Strana ${p.page} nemá čiary výkresu (document_pages.lines): ETL ju spracovalo, ale má menej než 200 úsečiek ani pri tenkých čiarach (0,25 pt), teda je to pravdepodobne raster (sken) alebo výkres bez vektorových čiar. Auto kalibrácia nejde; použi mode=manual s dvojicami pairs (refine sa vypne).`
+        : `Strana ${p.page} nemá čiary výkresu (document_pages.lines): ETL ich ešte nenačítalo (python -m etl.pdf_text --from-db --only ${ref}) alebo nejde o vektorový výkres.`,
     );
   }
-  const pageSize: P2 = pg.lines.size;
+  if (!pageSize) {
+    throw new UnderlayInputError(`Strana ${p.page} nemá rozmer (document_pages.page_size); python -m etl.pdf_text --from-db --only ${ref}.`);
+  }
+  const refine = p.refine && !!pg.lines;
+  const warnings: string[] = [];
+  if (noLinesManual && p.refine) warnings.push("Strana nemá čiary výkresu, dvojice sa nedoladili (refine=false).");
+  const textScale = pageScaleFromText(pg.blocks);
+  const wantScale = p.scale ?? textScale;
 
   // Rovina: rez zo section_plane, inak pôdorys podlažia (z argumentu alebo z väzby dokumentu).
   let floor = p.floor;
@@ -196,7 +220,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     }
   }
   const model = await deps.model({ model: p.model, floor });
-  const segs = pg.lines.segs;
+  const segs = pg.lines?.segs ?? [];
   const pairs = p.pairs.map((x) => ({
     pdf_pt: [(x.page_pct[0] / 100) * pageSize[0], (1 - x.page_pct[1] / 100) * pageSize[1]] as P2,
     plane_m: x.model_m,
@@ -214,9 +238,9 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     if (p.mode === "manual") {
       // Smer pohľadu z dvojíc: pri 3 a viac tá podobnosť (priama alebo zrkadlová), ktorá sedí lepšie.
       const mirror = pairs.length >= 3 && residual(pairs, true) < residual(pairs, false);
-      res = calibratePairs(pairs, p.refine ? { lines: segs, cut, mirror } : undefined, mirror);
+      res = calibratePairs(pairs, refine ? { lines: segs, cut, mirror } : undefined, mirror, p.scale ?? undefined);
     } else {
-      res = calibrateSection({ pageSize, blocks: pg.blocks, lines: segs, cut });
+      res = calibrateSection({ pageSize, blocks: pg.blocks, lines: segs, cut, scale: wantScale ?? undefined });
     }
   } else {
     const { z, spaces } = storeyFloor(model);
@@ -226,8 +250,16 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     const cut = modelCut(model.elements, plane, "plan");
     res =
       p.mode === "manual"
-        ? calibratePairs(pairs, p.refine ? { lines: segs, cut, mirror: false } : undefined)
-        : calibratePlan({ pageSize, blocks: pg.blocks, lines: segs, spaces, cut });
+        ? calibratePairs(pairs, refine ? { lines: segs, cut, mirror: false } : undefined, false, p.scale ?? undefined)
+        : calibratePlan({ pageSize, blocks: pg.blocks, lines: segs, spaces, cut, scale: wantScale ?? undefined });
+  }
+
+  // Kontrola mierky (#284): nízky medián chyby nestačí, ICP vie zachytiť nesprávne čiary v zlej mierke.
+  // Pri manual je mierka z dvojíc bodov používateľa, tá sa len ohlási.
+  const scaleCheck = checkScale(res.scale_ratio, p.scale, p.mode === "manual" ? null : textScale);
+  if (!scaleCheck.ok) {
+    const what = { param: "zadanej mierky", text: "mierky z textu strany", standard: "najbližšej bežnej mierky", none: "" }[scaleCheck.source];
+    warnings.push(`Mierka 1:${res.scale_ratio} sa líši o ${((scaleCheck.deviation ?? 0) * 100).toFixed(1)} % od ${what} 1:${scaleCheck.expected}; kalibrácia je pravdepodobne krivá.`);
   }
 
   const fixed = p.section ? unmirror(res, plane) : { affine: res.affine, plane, calibration: res.calibration };
@@ -259,11 +291,13 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     ...(p.section ? { section_plane: { axis: p.section.axis, coordinate_m: p.section.coordinate } } : { floor: model.storey?.name, storey_z_m: r3(storeyZ!), spaces: spaceCount }),
     model: model.id,
     scale: `1:${res.scale_ratio}`,
+    scale_check: { ...scaleCheck, text_scale: textScale === null ? null : `1:${textScale}`, locked: wantScale !== null && p.mode !== "manual" },
+    ...(warnings.length ? { warnings } : {}),
     rotation_deg: res.rotation_deg,
     offset_m: [r3(fixed.affine[2]), r3(fixed.affine[5])],
     start: res.start,
     icp_pairs: res.icp_pairs,
-    error_mm: { median: entry.quality!.median_mm, p90: entry.quality!.p90_mm, cross_validation_max: entry.quality!.cv_max_mm },
+    error_mm: { median: entry.quality!.median_mm, p90: entry.quality!.p90_mm, cross_validation_max: entry.quality!.cv_max_mm, coverage: res.quality.coverage },
     calibration: entry,
     existing: toGeorefV2(doc.georef).calibrations.map((c) => ({
       page: c.page,
@@ -285,6 +319,11 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     return out;
   }
   const median = entry.quality!.median_mm;
+  if (p.mode === "auto" && !scaleCheck.ok) {
+    out.written = false;
+    out.note = `Neuložené: mierka 1:${res.scale_ratio} nesedí s ${scaleCheck.source === "param" ? "zadanou" : scaleCheck.source === "text" ? "mierkou z textu strany" : "bežnými mierkami výkresu"} (1:${scaleCheck.expected}), aj keď medián chyby je ${median ?? "?"} mm. Zadaj scale (napr. scale=50), skontroluj podlažie, alebo použi mode=manual.`;
+    return out;
+  }
   if (p.mode === "auto" && (median === null || median > p.maxErrorMm)) {
     out.written = false;
     out.note = `Neuložené: medián chyby ${median ?? "?"} mm je nad stropom ${p.maxErrorMm} mm. Skontroluj podlažie alebo rovinu rezu, alebo použi mode=manual.`;

@@ -4,6 +4,9 @@ import {
   CalibrationError,
   applyAffine,
   calibratePairs,
+  checkScale,
+  pageScaleFromText,
+  ransacLabels,
   calibratePlan,
   calibrateSection,
   decompose,
@@ -227,3 +230,46 @@ describe("calibratePairs", () => {
     expect(() => calibratePairs(pairs.slice(0, 1))).toThrow(CalibrationError);
   });
 });
+
+describe("mierka výkresu (#284)", () => {
+  const blk = (t: string): PageBlock => ({ t, x: 1, y: 1, w: 5, h: 1 });
+
+  it("pageScaleFromText: slovo a hodnota v jednom riadku, v dvoch, detaily, nič", () => {
+    expect(pageScaleFromText([blk("MERÍTKO 1 : 50"), blk("4.01")])).toBe(50);
+    expect(pageScaleFromText([blk("Mierka: 1:100")])).toBe(100);
+    expect(pageScaleFromText([blk("SCALE"), blk("1 : 200")])).toBe(200);
+    expect(pageScaleFromText([blk("MERÍTKO 1 : 50"), blk("Mierka 1:5")])).toBeNull();
+    expect(pageScaleFromText([blk("1 : 50")])).toBeNull();
+    expect(pageScaleFromText([blk("Čas 11:30"), blk("4.01")])).toBeNull();
+  });
+
+  it("checkScale: parameter, text, najbližšia bežná mierka", () => {
+    expect(checkScale(49.9, null, null)).toMatchObject({ source: "standard", expected: 50, ok: true });
+    expect(checkScale(28.49, null, null)).toMatchObject({ source: "standard", ok: false });
+    expect(checkScale(28.49, null, 50)).toMatchObject({ source: "text", expected: 50, ok: false });
+    expect(checkScale(28.49, 28.5, 50)).toMatchObject({ source: "param", expected: 28.5, ok: true });
+  });
+
+  it("fitSimilarity s pevnou mierkou drží mierku a nájde rotáciu a posun", () => {
+    const T = trueAffine(SCALE, 12, [25, -11]);
+    const P: P2[] = [[100, 200], [900, 250], [400, 1200]];
+    const m = fitSimilarity(P, P.map((p) => applyAffine(T, p)), false, SCALE)!;
+    m.forEach((v, i) => expect(v).toBeCloseTo(T[i], 9));
+    const wrong = fitSimilarity(P, P.map((p) => applyAffine(T, p)), false, SCALE * 1.5)!;
+    expect(decompose(wrong).scale).toBeCloseTo(SCALE * 1.5, 9);
+  });
+
+  it("ransacLabels: pri pevnej mierke stačia 2 popisky, bez nej treba 3", () => {
+    const T = trueAffine(SCALE, 5, [30, -4]);
+    const page: P2[] = [[200, 300], [1500, 900]];
+    const cands = page.map((p, i) => ({ name: `4.0${i + 1}`, page: p, model: applyAffine(T, p) }));
+    expect(ransacLabels(cands)).toBeNull();
+    const r = ransacLabels(cands, 1.5, 50, SCALE)!;
+    expect(r.inliers).toHaveLength(2);
+    expect(decompose(r.affine).scale).toBeCloseTo(SCALE, 9);
+    // Dva popisky v nesúlade s mierkou (vzdialenosť inak než 50 m) nie sú inlieri.
+    const off = [cands[0], { ...cands[1], model: [cands[1].model[0] + 20, cands[1].model[1]] as P2 }];
+    expect(ransacLabels(off, 1.5, 50, SCALE)).toBeNull();
+  });
+});
+

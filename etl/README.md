@@ -78,6 +78,21 @@ Beh zapíše aj `document_pages.page_size` (veľkosť strany v bodoch) a `docume
 (sha256 súboru PDF, kotva revízie pre pripomienky a keš snímky výrezu, D-158 krok 3; po migrácii
 `20261023140000`). Rastre strán sa nerobia: snímku výrezu renderuje host na požiadanie.
 
+Čiary výkresu (`document_pages.lines`, kalibrácia podkladov, D-133) sa ukladajú pri každom behu; tenšie výkresy
+(požiarne pôdorysy) dostanú nižší prah hrúbky (0,5 alebo 0,25 pt, `lines.min_w`). Nové PDF z `etl.doc_upload`
+sa načítajú hneď po uploade (`--no-pdf-text` to vypne); už nahraté dokumenty bez čiar dopočíta
+`python -m etl.pdf_text --from-db` (alebo s `--only <object_ref>`).
+
+Jednorazový beh po nasadení D-133 doplnku (#283), z koreňa repa:
+```bash
+pip install -r etl/requirements.txt           # PyMuPDF a psycopg
+export DATABASE_URL='postgresql://...'        # jediná povinná env (alebo riadok v .env.local), Supabase → Database → URI
+export PYTHONUTF8=1                           # len Windows
+python -m etl.pdf_text --from-db --dry-run --only OCB_SO01_PBR_D-1-3-02_PODORYS-1NP   # kontrola: stĺpec "čiar" > 0
+python -m etl.pdf_text --from-db              # všetky živé PDF (zápis delete+insert per dokument, idempotentné)
+```
+PDF sa sťahujú z `documents.location` (verejné URL v Storage), preto netreba `SUPABASE_SERVICE_ROLE_KEY`.
+
 ### Dokumenty z IFC (D-104)
 Dokumentáciu nesie model: každý `IfcDocumentInformation` je `document` s `object_ref` =
 `Identification` (aj priečinkové časti bez súboru), strom z

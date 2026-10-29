@@ -211,7 +211,11 @@ class PairSums {
   pp = 0;
   pq = 0;
   pxq = 0;
-  constructor(private readonly mirror: boolean) {}
+  constructor(
+    private readonly mirror: boolean,
+    /** Pevná mierka (m na pt): rotácia a posun sa hľadajú, mierka ostáva (#284). */
+    private readonly fixedScale?: number,
+  ) {}
   add(px: number, py: number, qx: number, qy: number): void {
     if (this.mirror) px = -px;
     this.n++;
@@ -233,8 +237,15 @@ class PairSums {
     const mqy = this.qy / n;
     const N = this.pp - n * (mpx * mpx + mpy * mpy);
     if (N <= 1e-12) return null;
-    const a = (this.pq - n * (mpx * mqx + mpy * mqy)) / N;
-    const b = (this.pxq - n * (mpx * mqy - mpy * mqx)) / N;
+    let a = (this.pq - n * (mpx * mqx + mpy * mqy)) / N;
+    let b = (this.pxq - n * (mpx * mqy - mpy * mqx)) / N;
+    if (this.fixedScale) {
+      // Smer (uhol) z najmenších štvorcov ostáva, dĺžka s·R sa nastaví na pevnú mierku.
+      const len = Math.hypot(a, b);
+      if (len < 1e-18) return null;
+      a = (a / len) * this.fixedScale;
+      b = (b / len) * this.fixedScale;
+    }
     const f = this.mirror ? -1 : 1;
     // s·R = [[a, -b], [b, a]]; s·R·F = [[f·a, -b], [f·b, a]].
     const m: Affine = [f * a, -b, 0, f * b, a, 0];
@@ -245,8 +256,8 @@ class PairSums {
 }
 
 /** Podobnosť najmenších štvorcov z dvojíc (bez zrkadla, alebo so zrkadlom osi u). */
-export function fitSimilarity(P: P2[], Q: P2[], mirror = false): Affine | null {
-  const s = new PairSums(mirror);
+export function fitSimilarity(P: P2[], Q: P2[], mirror = false, fixedScale?: number): Affine | null {
+  const s = new PairSums(mirror, fixedScale);
   P.forEach((p, i) => s.add(p[0], p[1], Q[i][0], Q[i][1]));
   return s.solve();
 }
@@ -261,13 +272,13 @@ export interface LabelCandidate {
  * Hrubý štart z popiskov: RANSAC cez dvojice rôznych mien, inliery bližšie ako `tol` m
  * a každé meno najviac raz (legenda na strane má tie isté čísla). Vráti fit z inlierov.
  */
-export function ransacLabels(cands: LabelCandidate[], tol = 1.5, minPagePt = 50): { affine: Affine; inliers: LabelCandidate[] } | null {
+export function ransacLabels(cands: LabelCandidate[], tol = 1.5, minPagePt = 50, fixedScale?: number): { affine: Affine; inliers: LabelCandidate[] } | null {
   let best: { n: number; sum: number; idx: number[] } | null = null;
   for (let i = 0; i < cands.length; i++) {
     for (let j = i + 1; j < cands.length; j++) {
       if (cands[i].name === cands[j].name) continue;
       if (Math.hypot(cands[i].page[0] - cands[j].page[0], cands[i].page[1] - cands[j].page[1]) < minPagePt) continue;
-      const m = fitSimilarity([cands[i].page, cands[j].page], [cands[i].model, cands[j].model]);
+      const m = fitSimilarity([cands[i].page, cands[j].page], [cands[i].model, cands[j].model], false, fixedScale);
       if (!m) continue;
       const idx: number[] = [];
       const names = new Set<string>();
@@ -286,11 +297,14 @@ export function ransacLabels(cands: LabelCandidate[], tol = 1.5, minPagePt = 50)
       if (!best || idx.length > best.n || (idx.length === best.n && sum < best.sum)) best = { n: idx.length, sum, idx };
     }
   }
-  if (!best || best.n < 3) return null;
+  // Pri známej mierke stačia dva popisky (tretí by dával len kontrolu), inak treba aspoň 3.
+  if (!best || best.n < (fixedScale ? 2 : 3)) return null;
   const inliers = best.idx.map((k) => cands[k]);
   const affine = fitSimilarity(
     inliers.map((c) => c.page),
     inliers.map((c) => c.model),
+    false,
+    fixedScale,
   );
   return affine ? { affine, inliers } : null;
 }
@@ -302,6 +316,8 @@ export interface IcpOptions {
   /** Len body PDF, ktorých obraz (u, v) prejde filtrom (krížová validácia). */
   keep?: (u: number, v: number) => boolean;
   thresholds?: number[];
+  /** Pevná mierka (m na pt), ICP ju nemení. */
+  fixedScale?: number;
 }
 
 /** Obálka bodov s okrajom; body PDF mimo nej (legenda, pečiatka) sa do ICP neberú. */
@@ -349,7 +365,7 @@ export function icp(pdf: Float64Array, ifc: Float64Array, start: Affine, opts: I
     const dst = decimate(ifc, si);
     const grid = new PointGrid(dst, thr);
     for (let it = 0; it < ICP_ITERATIONS; it++) {
-      const sums = new PairSums(opts.mirror ?? false);
+      const sums = new PairSums(opts.mirror ?? false, opts.fixedScale);
       for (let i = 0; i < src.length; i += 2) {
         const x = m[0] * src[i] + m[1] * src[i + 1] + m[2];
         const y = m[3] * src[i] + m[4] * src[i + 1] + m[5];
@@ -404,7 +420,7 @@ export function quality(pdf: Float64Array, ifc: Float64Array, m: Affine): Qualit
  * Krížová validácia: fit len na polovici (podľa u, potom podľa v), najväčší rozdiel
  * polohy voči plnému fitu na bodoch rezu druhej polovice (mm).
  */
-export function crossValidate(pdf: Float64Array, ifc: Float64Array, full: Affine, mirror: boolean): number {
+export function crossValidate(pdf: Float64Array, ifc: Float64Array, full: Affine, mirror: boolean, fixedScale?: number): number {
   const inv = invertAffine(full);
   let worst = 0;
   for (const axis of [0, 1]) {
@@ -414,7 +430,7 @@ export function crossValidate(pdf: Float64Array, ifc: Float64Array, full: Affine
     const mid = quantile(vals, 0.5);
     for (const side of [-1, 1]) {
       const inFit = (u: number, v: number) => side * ((axis === 0 ? u : v) - mid) < 0;
-      const half = icp(pdf, ifc, full, { mirror, keep: inFit, thresholds: CV_THRESHOLDS }).affine;
+      const half = icp(pdf, ifc, full, { mirror, keep: inFit, thresholds: CV_THRESHOLDS, fixedScale }).affine;
       for (let i = 0; i < ifc.length; i += 2) {
         if (inFit(ifc[i], ifc[i + 1])) continue;
         const p = applyAffine(inv, [ifc[i], ifc[i + 1]]);
@@ -450,12 +466,63 @@ export interface CalibrationResult {
   scale_ratio: number;
   rotation_deg: number;
   mirrored: boolean;
-  start: { method: "room_labels" | "levels_axes" | "levels_scan" | "pairs"; points: number; median_mm: number | null };
+  start: { method: "room_labels" | "levels_axes" | "levels_scan" | "pairs"; points: number; median_mm: number | null; labels_found?: number };
   icp_pairs: number;
   quality: Quality;
   cross_validation_max_mm: number;
   /** Dva vzdialené body (strana -> rovina) pre ručnú úpravu v paneli Underlays. */
   calibration: { pdf_pt: P2; plane_m: P2 }[];
+}
+
+// ─── Mierka výkresu (#284) ───────────────────────────────────────────────────
+
+/** Bežné mierky výkresov 1:N; iná mierka z kalibrácie je podozrivá (zlé čiary v ICP). */
+export const STANDARD_SCALES = [10, 20, 25, 50, 75, 100, 125, 150, 200, 250, 500];
+/** Najväčšia relatívna odchýlka mierky od očakávanej (z parametra, textu, bežných mierok). */
+export const SCALE_TOLERANCE = 0.05;
+
+const SCALE_WORD = /m[eé]r[ií]tko|mierka|scale/i;
+const SCALE_VALUE = /(?:^|[^\d:])1\s*:\s*(\d{1,4})(?!\d)/;
+
+/**
+ * Mierka výkresu z textu strany ("MERÍTKO 1 : 50", "Mierka: 1:100", slovo a hodnota v dvoch
+ * riadkoch). Viac rôznych mierok (detaily) alebo žiadna = null.
+ */
+export function pageScaleFromText(blocks: PageBlock[]): number | null {
+  const found = new Set<number>();
+  const hasWord = blocks.some((b) => SCALE_WORD.test(b.t));
+  for (const b of blocks) {
+    const m = SCALE_VALUE.exec(b.t);
+    if (!m) continue;
+    const n = Number(m[1]);
+    if (!(n >= 2)) continue;
+    // Hodnota v tom istom riadku ako slovo, alebo samostatný riadok "1 : 50", ak slovo je na strane.
+    if (SCALE_WORD.test(b.t) || (hasWord && /^\s*1\s*:\s*\d{1,4}\s*$/.test(b.t))) found.add(n);
+  }
+  return found.size === 1 ? [...found][0] : null;
+}
+
+export interface ScaleCheck {
+  /** Mierka výsledku 1:N. */
+  ratio: number;
+  /** Očakávaná mierka 1:N a odkiaľ je. */
+  expected: number | null;
+  source: "param" | "text" | "standard" | "none";
+  /** Relatívna odchýlka od očakávanej (0,03 = 3 %). */
+  deviation: number | null;
+  ok: boolean;
+}
+
+/** Porovná mierku výsledku s očakávanou (parameter, text strany), inak s najbližšou bežnou. */
+export function checkScale(ratio: number, param: number | null, text: number | null): ScaleCheck {
+  let expected = param ?? text;
+  let source: ScaleCheck["source"] = param !== null ? "param" : text !== null ? "text" : "none";
+  if (expected === null) {
+    expected = STANDARD_SCALES.reduce((a, b) => (Math.abs(Math.log(b / ratio)) < Math.abs(Math.log(a / ratio)) ? b : a));
+    source = "standard";
+  }
+  const deviation = Math.abs(ratio - expected) / expected;
+  return { ratio, expected, source, deviation: +deviation.toFixed(4), ok: deviation <= SCALE_TOLERANCE };
 }
 
 function linesToPoints(lines: PageLine[]): Float64Array {
@@ -469,8 +536,9 @@ function finish(
   mirror: boolean,
   startInfo: CalibrationResult["start"],
   anchors: P2[],
+  fixedScale?: number,
 ): CalibrationResult {
-  const { affine, pairs } = icp(pdf, ifc, start, { mirror });
+  const { affine, pairs } = icp(pdf, ifc, start, { mirror, fixedScale });
   const { scale, rotationDeg, mirrored } = decompose(affine);
   const xs = anchors.map((p) => p[0]);
   const left = anchors[xs.indexOf(Math.min(...xs))];
@@ -484,7 +552,7 @@ function finish(
     start: startInfo,
     icp_pairs: pairs,
     quality: quality(pdf, ifc, affine),
-    cross_validation_max_mm: crossValidate(pdf, ifc, affine, mirror),
+    cross_validation_max_mm: crossValidate(pdf, ifc, affine, mirror, fixedScale),
     calibration: [left, right].map((p) => ({ pdf_pt: p, plane_m: applyAffine(affine, p) })),
   };
 }
@@ -507,6 +575,8 @@ export interface PlanInput {
   spaces: { name: string; centroid: P2 }[];
   /** Rez modelu vo výške pôdorysného rezu, (u, v) = IFC (X, Y). */
   cut: Seg[];
+  /** Pevná mierka výkresu 1:N (parameter alebo text strany): štart aj ICP ju držia. */
+  scale?: number;
 }
 
 /** Pôdorys: popisky miestností -> RANSAC, potom ICP na rez stien. */
@@ -517,10 +587,12 @@ export function calibratePlan(input: PlanInput): CalibrationResult {
     const model = byName.get(b.t.trim());
     if (model) cands.push({ name: b.t.trim(), page: blockCenter(b, input.pageSize), model });
   }
-  const start = ransacLabels(cands);
+  const fixed = input.scale ? input.scale * PT_M : undefined;
+  const found = new Set(cands.map((c) => c.name)).size;
+  const start = ransacLabels(cands, 1.5, 50, fixed);
   if (!start) {
     throw new CalibrationError(
-      `Na strane je ${new Set(cands.map((c) => c.name)).size} popiskov miestností zhodných s IfcSpace Name; treba aspoň 3 konzistentné (alebo mode=manual s dvojicami bodov).`,
+      `Na strane je ${found} popiskov miestností zhodných s IfcSpace Name; treba aspoň ${fixed ? 2 : 3} konzistentné${fixed ? "" : " (alebo zadaj scale, vtedy stačia 2)"} (alebo mode=manual s dvojicami bodov).`,
     );
   }
   const pdf = linesToPoints(input.lines);
@@ -531,8 +603,9 @@ export function calibratePlan(input: PlanInput): CalibrationResult {
     ifc,
     start.affine,
     false,
-    { method: "room_labels", points: P.length, median_mm: medianResidualMm(start.affine, P, start.inliers.map((c) => c.model)) },
+    { method: "room_labels", points: P.length, median_mm: medianResidualMm(start.affine, P, start.inliers.map((c) => c.model)), labels_found: found },
     P,
+    fixed,
   );
 }
 
@@ -544,6 +617,8 @@ export interface SectionInput {
   axes?: Record<string, number>;
   /** Rez modelu rovinou pohľadu, (u, v) = (po reze, výška Z). */
   cut: Seg[];
+  /** Pevná mierka výkresu 1:N (parameter alebo text strany); kóty potom určia len výšku. */
+  scale?: number;
 }
 
 /** Rez: výškové kóty -> mierka a výška, osi (alebo sken) -> posun a smer pohľadu, potom ICP. */
@@ -559,6 +634,12 @@ export function calibrateSection(input: SectionInput): CalibrationResult {
   let [s, z0] = lineFit(levels);
   const close = levels.filter(([y, v]) => Math.abs(v - (s * y + z0)) < 0.3);
   if (close.length >= 3) [s, z0] = lineFit(close);
+  const fixed = input.scale ? input.scale * PT_M : undefined;
+  if (fixed) {
+    s = fixed;
+    const used = close.length >= 3 ? close : levels;
+    z0 = used.reduce((a, [y, v]) => a + (v - s * y), 0) / used.length;
+  }
   if (!(s > 0)) throw new CalibrationError("Výškové kóty nedávajú kladnú mierku (strana otočená?).");
 
   const pdf = linesToPoints(input.lines);
@@ -578,7 +659,7 @@ export function calibrateSection(input: SectionInput): CalibrationResult {
     }
     const start: Affine = [best!.sign * s, 0, best!.t, 0, s, z0];
     const anchors = axes.map(([x]): P2 => [x, anchorY]);
-    return finish(pdf, ifc, start, best!.sign < 0, { method: "levels_axes", points: levels.length + axes.length, median_mm: Math.round(best!.res * 1000) }, anchors);
+    return finish(pdf, ifc, start, best!.sign < 0, { method: "levels_axes", points: levels.length + axes.length, median_mm: Math.round(best!.res * 1000) }, anchors, fixed);
   }
   // Bez osí: vodorovný posun a smer pohľadu skenovaním (najviac bodov PDF pri reze IFC).
   const scan = scanOffset(pdf, ifc, s, z0);
@@ -588,7 +669,7 @@ export function calibrateSection(input: SectionInput): CalibrationResult {
   for (let i = 0; i < pdf.length; i += 2) xs.push(pdf[i]);
   xs.sort((a, b) => a - b);
   const anchors: P2[] = [[quantile(xs, 0.1), anchorY], [quantile(xs, 0.9), anchorY]];
-  return finish(pdf, ifc, start, scan.sign < 0, { method: "levels_scan", points: levels.length, median_mm: null }, anchors);
+  return finish(pdf, ifc, start, scan.sign < 0, { method: "levels_scan", points: levels.length, median_mm: null }, anchors, fixed);
 }
 
 /**
@@ -626,14 +707,16 @@ export function calibratePairs(
   pairs: { pdf_pt: P2; plane_m: P2 }[],
   refine?: { lines: PageLine[]; cut: Seg[]; mirror: boolean },
   mirror = refine?.mirror ?? false,
+  ratio?: number,
 ): CalibrationResult {
   if (pairs.length < 2) throw new CalibrationError("mode=manual potrebuje aspoň 2 dvojice bodov.");
   const P = pairs.map((p) => p.pdf_pt);
   const Q = pairs.map((p) => p.plane_m);
-  const start = fitSimilarity(P, Q, mirror);
+  const fixed = ratio ? ratio * PT_M : undefined;
+  const start = fitSimilarity(P, Q, mirror, fixed);
   if (!start) throw new CalibrationError("Dvojice bodov sú zhodné, podobnosť sa nedá určiť.");
   const info = { method: "pairs" as const, points: P.length, median_mm: pairs.length > 2 ? medianResidualMm(start, P, Q) : null };
-  if (refine) return finish(linesToPoints(refine.lines), samplePoints(refine.cut, IFC_STEP_M), start, mirror, info, P);
+  if (refine) return finish(linesToPoints(refine.lines), samplePoints(refine.cut, IFC_STEP_M), start, mirror, info, P, fixed);
   const { scale, rotationDeg, mirrored } = decompose(start);
   return {
     affine: start,

@@ -971,6 +971,14 @@
       "notes": "D-133 (issue #170): calibrate_underlay(document_id=OCB_SO01_ASR_D-1-1-01_PODORYS-1NP, mode=dry_run); bez výslovného 'ulož' nezapisovať. Prototyp: mierka 1:49,95, medián okolo 10 mm. Len MCP s ENGINE_ENABLED."
     },
     {
+      "id": "calibrate-underlay-strecha-mierka",
+      "category": "viewer",
+      "question": "Skalibruj pôdorys strechy D.1.1.04 pod model a povedz, či sedí mierka.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-133 doplnok (issues #284, #316): calibrate_underlay(document_id=OCB_SO01_ASR_D-1-1-04_PODORYS-STRECHY, floor=4NP, mode=dry_run); výkres je 1:50, odpoveď má pri 1:28,49 varovať (scale_check), nie uložiť. Bez overenej hodnoty (cloud session bez produkcie)."
+    },
+    {
       "id": "calibrate-underlay-rez-a",
       "category": "viewer",
       "question": "Skontroluj, ako presne sedí rez A na model, rovina rezu je X = 47,42 m.",
