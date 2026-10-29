@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { opToBridgeMessage, parseOps } from "./viewer-ops";
-import { decodeListWire, listBridgeMessage, listOp, listScopeKeys, type ListWire } from "./viewer-list";
+import { decodeListWire, listBridgeMessage, listHostKeys, listOp, listScopeKeys, type ListWire } from "./viewer-list";
 
 const Z1 = "11111111-1111-4111-8111-111111111111";
 const WIRE: ListWire = {
@@ -143,3 +143,30 @@ describe("zoznam: viditeľnosť, šírky a zvýraznenie (D-171)", () => {
   });
 });
 
+describe("host stĺpce zoznamu (D-174, #277)", () => {
+  const enc = (w: unknown) => Buffer.from(JSON.stringify(w)).toString("base64url");
+  const HOST_COL = { s: "host" as const, k: "derived_referenced", l: "Priestor (odvodený z DB)" };
+  const wire: ListWire = { ...WIRE, g: [{ combinator: "AND", rules: [{ kind: "ifcType", op: "in", values: ["IfcAirTerminal"] }] }], c: [{ s: "attribute", k: "Name" }, HOST_COL] };
+
+  it("host stĺpec sa dekóduje, neznámy kľúč nie; kľúče vie klient vopred", () => {
+    expect(decodeListWire(enc(wire))).not.toBeNull();
+    expect(decodeListWire(enc({ ...wire, c: [{ s: "host", k: "iné" }] }))).toBeNull();
+    expect(listHostKeys(wire)).toEqual(["derived_referenced"]);
+    expect(listHostKeys({ ...wire, c: [], u: 1, e: { ac: [HOST_COL, { s: "host", k: "derived_boundary" }] } })).toEqual(["derived_referenced", "derived_boundary"]);
+    expect(listHostKeys(WIRE)).toEqual([]);
+  });
+
+  it("OPEN_LIST nesie hodnoty podľa GlobalId; bez stiahnutých hodnôt prázdnu mapu", () => {
+    const values = { "2O2Fr$t4X7Zf8NOew3FLOH": "3.02" };
+    const msg = listBridgeMessage(wire, new Map(), new Map([["derived_referenced", values]])) as { columns: unknown[] };
+    expect(msg.columns[1]).toEqual({ source: "host", propertyName: "derived_referenced", label: "Priestor (odvodený z DB)", values });
+    expect((listBridgeMessage(wire, new Map()) as { columns: Array<{ values?: unknown }> }).columns[1].values).toEqual({});
+    expect(msg.columns[0]).toEqual({ source: "attribute", propertyName: "Name" });
+  });
+
+  it("LIST_UPDATE pridá host stĺpec s hodnotami v edit.addColumns", () => {
+    const upd: ListWire = { n: "", g: [], c: [], u: 1, e: { ac: [HOST_COL] } };
+    const msg = listBridgeMessage(upd, new Map(), new Map([["derived_referenced", { G: "1.01" }]])) as { edit: { addColumns: unknown[] } };
+    expect(msg.edit.addColumns).toEqual([{ source: "host", propertyName: "derived_referenced", label: "Priestor (odvodený z DB)", values: { G: "1.01" } }]);
+  });
+});
