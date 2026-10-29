@@ -32,6 +32,7 @@ import { hasRelativeStep, relativeViewpoint, type CameraMove, type ViewerCamera 
 import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
 import { emitApplied, isRestoredCommandUrl, setLiveApplyHandler, takePendingCmdIds, withoutCommandParams, type LiveApply } from "@/lib/live/viewer-apply-bus";
 import { BCF_CHANGED_WINDOW_EVENT, bcfLoadMessage } from "@/lib/live/bcf-event";
+import { OPEN_OVERLAY_SELECTOR, shouldClearFocusOnEscape } from "@/lib/viewer-escape";
 import { VIEWS_CHANGED_WINDOW_EVENT } from "@/lib/live/views-event";
 import { PROD_VIEWER_URL, VIEWER_CHOICE_KEY, urlWithoutViewerChoice } from "@/lib/viewer-source";
 
@@ -867,6 +868,18 @@ export function IFCViewer({
     };
     window.addEventListener(BCF_CHANGED_WINDOW_EVENT, reload);
     return () => window.removeEventListener(BCF_CHANGED_WINDOW_EVENT, reload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Esc v hoste (#94) — po show_in_3d je fokus v chate, Esc sa do iframe nedostane.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!loadedRef.current) return;
+      if (!shouldClearFocusOnEscape(e, document.querySelector(OPEN_OVERLAY_SELECTOR) !== null)) return;
+      post({ type: "CLEAR_FOCUS" });
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
