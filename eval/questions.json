@@ -1289,6 +1289,14 @@
       "expect": { "tools_called": ["style_in_3d"] },
       "verified": false,
       "notes": "#298: len style_in_3d isolate, bez colorize na IfcSpace (farba len na výslovný pokyn). Kontrola ručne v transkripte: žiadny colorize ani reset_colors."
+    },
+    {
+      "id": "measure-two-widths-keep",
+      "category": "data",
+      "question": "Ukáž na dverách DD04.07.02 naraz dve kóty šírky: svetlú medzi zárubňami a celkovú so zárubňou.",
+      "expect": { "tools_called": ["ifc_measure"] },
+      "verified": false,
+      "notes": "D-170 (#278): dve volania ifc_measure show=true (face_a=+x/face_b=-x a axis=width), kóty sa hromadia (keep predvolene true), druhé prvú nezmaže."
     }
   ]
 }
