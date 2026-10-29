@@ -7,7 +7,7 @@ import {
   isCrossOriginBlocked,
 } from "@/lib/api-guard";
 import { isValidGeorefV1 } from "@/lib/data/drawing";
-import { calibrationFromV1, isValidCalibration, mergeCalibration, type GeorefCalibration, type GeorefV1 } from "@/lib/data/georef";
+import { calibrationFromV1, isValidCalibration, mergeCalibration, visibilityOnlyUpdate, type GeorefCalibration, type GeorefV1 } from "@/lib/data/georef";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 /**
@@ -79,8 +79,11 @@ export async function PATCH(
   }
   const b = body as { georef?: unknown; calibration?: unknown } | null;
   let next: GeorefCalibration;
-  if (isValidGeorefV1(b?.georef)) next = calibrationFromV1(b!.georef as GeorefV1, "manual");
-  else if (isValidCalibration(b?.calibration)) next = b!.calibration as GeorefCalibration;
+  let v1: GeorefV1 | null = null;
+  if (isValidGeorefV1(b?.georef)) {
+    v1 = b!.georef as GeorefV1;
+    next = calibrationFromV1(v1, "manual");
+  } else if (isValidCalibration(b?.calibration)) next = b!.calibration as GeorefCalibration;
   else return NextResponse.json({ error: "invalid _georef payload" }, { status: 400 });
 
   const supabase = getSupabaseAdmin();
@@ -97,7 +100,9 @@ export async function PATCH(
   }
 
   const current = (obj.properties as Record<string, unknown> | null) ?? {};
-  const merged = mergeCalibration(current._georef, next, true);
+  // D-168: v1 s nezmenenou polohou (SET_UNDERLAYS_3D s persist) zmení len visible a opacity, source ostane (auto ostane auto).
+  const visibilityOnly = v1 ? visibilityOnlyUpdate(current._georef, v1) : null;
+  const merged = mergeCalibration(current._georef, visibilityOnly ?? next, true);
   if (!merged.ok) return NextResponse.json({ error: "merge failed" }, { status: 409 });
   const properties = { ...current, _georef: merged.georef };
   const { error: uErr } = await supabase

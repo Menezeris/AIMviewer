@@ -6,6 +6,7 @@ import { bcfToolDeps } from "@/lib/bcf/runtime-tools";
 import { BCF_TOOL_NAMES, execBcfTool } from "@/lib/bcf/tools";
 import { SEARCH_ALL_TOOL } from "@/lib/engine/search-all";
 import { ENGINE_TOOL_NAMES } from "@/lib/engine/tool-defs";
+import { isControlMode } from "@/lib/engine/underlay-control";
 import { CALIBRATE_UNDERLAY_TOOL } from "@/lib/engine/underlay-tool-def";
 import { FEEDBACK_TOOL_NAMES, execFeedbackTool } from "@/lib/feedback/tools";
 import { broadcastLive, isTestChannel, liveChannel } from "@/lib/live/broadcast";
@@ -36,6 +37,7 @@ import {
   type McpToolResult,
 } from "@/lib/mcp/server";
 import { callerLabel, mcpCaller } from "@/lib/mcp/session-id";
+import { underlaysSetOp } from "@/lib/viewer-underlays";
 import { startTimer, type CallTimer } from "@/lib/mcp/timing";
 
 /**
@@ -170,6 +172,22 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
   if (VIEWER_QUERY_TOOL_NAMES.has(name)) {
     const res = await timer.phase("exec", () => execViewerQueryTool(name, args, siteUrl()));
     return { text: [res.text], isError: res.isError };
+  }
+  if (ENGINE_ENABLED && name === CALIBRATE_UNDERLAY_TOOL.name && isControlMode(args.mode)) {
+    // Ovládanie podkladov (D-168): list z DB a viewera, ostatné módy menia len stav viewera (nič sa nepočíta).
+    const { execUnderlayControl } = await import("@/lib/engine/underlay-control");
+    const { defaultControlDeps } = await import("@/lib/engine/underlay-control-runtime");
+    const res = await timer.phase("exec", () => execUnderlayControl(args, defaultControlDeps()));
+    const text = [res.text];
+    if (res.command) {
+      const action: AskAction = {
+        type: "navigate",
+        url: `/ifc?ops=${encodeURIComponent(underlaysSetOp(res.command))}&r=${Date.now().toString(36)}`,
+        label: res.label ?? "Podklady v 3D",
+      };
+      text.push(...(await deliverActions(name, args, [action], timer)));
+    }
+    return { text, isError: res.isError };
   }
   if (ENGINE_ENABLED && name === CALIBRATE_UNDERLAY_TOOL.name) {
     // Kalibrácia podkladu (D-133): IFC motor + zápis _georef; lenivo ako ostatné tools motora.

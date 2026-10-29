@@ -28,7 +28,9 @@ export const SAVED_VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
     description:
       "ULOŽÍ POHĽAD do panela Presentation (pás pohľadov, spoločný pre stavbu): 'ulož to ako Pôdorys technickej miestnosti 3.14'. " +
       "action=save uloží to, čo je vo vieweri práve nastavené (kamera s projekciou, rezy, košík = viditeľné prvky; prázdny " +
-      "košík = všetko viditeľné), ako tlačidlo Uložiť v paneli. Farby z style_in_3d sa neukladajú. Existujúce meno prepíše " +
+      "košík = všetko viditeľné, podklady PDF v 3D = zapnuté/vypnuté, ktoré podklady sú viditeľné a ich priehľadnosť), ako tlačidlo Uložiť v paneli; " +
+      "otvorenie pohľadu tento stav podkladov obnoví (pohľad uložený starším viewerom podklady nemení; nastav ich cez calibrate_underlay " +
+      "mode=show_in_3d|hide|set_opacity a ulož znova). Farby z style_in_3d sa neukladajú. Existujúce meno prepíše " +
       "len s overwrite=true. rename: name -> new_name. delete: zmaže pohľad. Zoznam = get_viewer_state(saved_views=true); " +
       "otvorenie = set_view_mode(view=meno, section_offset_m=-1 pre 'rez o meter nižšie'; 'ako minule' = view='Posledný pohľad'). " +
       "Pôdorys alebo rez si najprv nastav (set_section, set_camera preset=top projection=orthographic), potom ulož. " +
@@ -141,7 +143,7 @@ async function save(args: Record<string, unknown>, deps: SavedViewDeps) {
     throw new ViewInputError(`Pohľad '${existing.name}' už existuje. Prepíš ho s overwrite=true alebo zvoľ iné meno.`);
   }
   const ignored = IGNORED_ARGS.filter((k) => args[k] !== undefined);
-  const notes = ignored.length ? [`${ignored.join(", ")} sa ignoruje (D-161: pohľad nemá druh, zámok ani podklad; ukladá sa kamera, rezy a košík)`] : [];
+  const notes = ignored.length ? [`${ignored.join(", ")} sa ignoruje (D-161: pohľad nemá druh ani zámok; podklady sa neviažu parametrami, ukladá sa ich stav z viewera: kamera, rezy, košík a podklady v 3D)`] : [];
   const out = await deps.capture({ name, capture_id: (deps.newCaptureId ?? (() => crypto.randomUUID()))() });
   if (!out.ok) throw new ViewInputError(`Pohľad sa nedá uložiť: ${out.reason}.`);
   if (out.view === undefined) {
