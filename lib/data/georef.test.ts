@@ -11,6 +11,7 @@ import {
   primaryV1,
   sameSlot,
   toGeorefV2,
+  visibilityOnlyUpdate,
   type GeorefCalibration,
   type GeorefV1,
 } from "./georef";
@@ -111,5 +112,38 @@ describe("jednobodová kalibrácia panela (#317)", () => {
     if (!merged.ok) return;
     expect(isValidGeorefV2(merged.georef)).toBe(true);
     expect(primaryV1(toGeorefV2(merged.georef))?.calibration).toEqual([V1.calibration[0]]);
+  });
+});
+
+describe("visibilityOnlyUpdate (D-168): uloženie visible a opacity z viewera", () => {
+  const auto = (): GeorefCalibration => ({
+    ...plan("auto"),
+    quality: { method: "rooms+icp", median_mm: 12, p90_mm: 30, cv_max_mm: 20, start_points: 8 },
+    calibrated_at: "2026-10-22T10:00:00.000Z",
+    // auto kalibrácia má viac bodov než v1
+    calibration: [...V1.calibration, { pdf_pt: [900, 900], ifc_m: [41, 3] }],
+  });
+
+  it("nezmenená poloha: zmení sa len visible a opacity, source a quality ostanú", () => {
+    const stored = { version: 2, calibrations: [auto()] };
+    const upd = visibilityOnlyUpdate(stored, { ...V1, visible: false, opacity: 0.3 });
+    expect(upd).toMatchObject({ source: "auto", visible: false, opacity: 0.3, calibrated_at: "2026-10-22T10:00:00.000Z", quality: { method: "rooms+icp" } });
+    expect(upd!.affine).toEqual(auto().affine);
+    expect(upd!.calibration).toHaveLength(3);
+  });
+
+  it("zmenená poloha, iná strana alebo žiadna kalibrácia = null (ide bežná cesta)", () => {
+    const stored = { version: 2, calibrations: [auto()] };
+    expect(visibilityOnlyUpdate(stored, { ...V1, affine: [0.0176, 0, 26, 0, 0.0176, -12.1] })).toBeNull();
+    expect(visibilityOnlyUpdate(stored, { ...V1, page: 2 })).toBeNull();
+    expect(visibilityOnlyUpdate(stored, { ...V1, calibration: [{ pdf_pt: [1, 1], ifc_m: [2, 2] }] })).toBeNull();
+    expect(visibilityOnlyUpdate(undefined, V1)).toBeNull();
+  });
+
+  it("mergeCalibration s výsledkom nahradí tú istú položku a zachová source manual aj auto", () => {
+    const manual = { ...plan("manual"), visible: true };
+    const upd = visibilityOnlyUpdate({ version: 2, calibrations: [manual] }, { ...V1, visible: false })!;
+    const merged = mergeCalibration({ version: 2, calibrations: [manual] }, upd, true);
+    expect(merged.ok && merged.georef.calibrations).toEqual([{ ...manual, visible: false, opacity: 0.6 }]);
   });
 });
