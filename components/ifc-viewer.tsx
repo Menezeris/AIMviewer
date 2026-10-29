@@ -26,7 +26,7 @@ import {
   lensScopeKeys,
   scopeQuery,
 } from "@/lib/viewer-lens";
-import { listBridgeMessage, listScopeKeys } from "@/lib/viewer-list";
+import { listBridgeMessage, listHostKeys, listScopeKeys, type ListHostKey, type ListHostValues } from "@/lib/viewer-list";
 import type { LiveQueryPayload, LiveReplyPayload } from "@/lib/live/protocol";
 import { hasRelativeStep, relativeViewpoint, type CameraMove, type ViewerCamera } from "@/lib/viewer-camera";
 import { setViewerQueryHandler } from "@/lib/live/viewer-query-bus";
@@ -166,6 +166,24 @@ async function fetchScopeGuids(keys: string[]): Promise<Map<string, string[]>> {
         out.set(id, guids.slice(0, MAX_ZONE_GUIDS));
       } catch (err) {
         console.warn("[aim] zóna alebo dokument pre lens sa nenačítali", id, err);
+      }
+    }),
+  );
+  return out;
+}
+
+/** Hodnoty host stĺpcov zoznamu z `/api/list-host-values` (D-174); chyba = prázdny stĺpec. */
+async function fetchHostValues(keys: ListHostKey[]): Promise<Map<string, ListHostValues>> {
+  const out = new Map<string, ListHostValues>();
+  await Promise.all(
+    keys.map(async (key) => {
+      try {
+        const r = await fetch(`/api/list-host-values?key=${encodeURIComponent(key)}`);
+        if (!r.ok) throw new Error(String(r.status));
+        const body = (await r.json()) as { values?: unknown };
+        if (body.values && typeof body.values === "object") out.set(key, body.values as ListHostValues);
+      } catch (err) {
+        console.warn("[aim] hodnoty stĺpca zoznamu sa nenačítali", key, err);
       }
     }),
   );
@@ -499,8 +517,9 @@ export function IFCViewer({
         else if (o.op === "lens" && lensScopeKeys(o.wire).length > 0) {
           // Zóna alebo dokument z grafu AIM (D-096, D-104): GUIDy prvkov si klient stiahne sám.
           post(lensBridgeMessage(o.mode, o.wire, await fetchScopeGuids(lensScopeKeys(o.wire)), o.rev));
-        } else if (o.op === "list" && listScopeKeys(o.wire).length > 0) {
-          post(listBridgeMessage(o.wire, await fetchScopeGuids(listScopeKeys(o.wire))));
+        } else if (o.op === "list" && (listScopeKeys(o.wire).length > 0 || listHostKeys(o.wire).length > 0)) {
+          // Zóna alebo dokument (D-096) a hodnoty host stĺpcov z DB (D-174): klient si ich stiahne sám.
+          post(listBridgeMessage(o.wire, await fetchScopeGuids(listScopeKeys(o.wire)), await fetchHostValues(listHostKeys(o.wire))));
         } else if (o.op === "ids_open") {
           await openIds(o);
         } else if (o.op === "clash_open") {

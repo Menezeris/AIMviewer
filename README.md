@@ -74,6 +74,7 @@ ktorý je otvorený vedľa.
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = anon/publishable kľúč (Supabase → Project
      Settings → API). Po zmene `NEXT_PUBLIC_*` treba redeploy.
    - `NEXT_PUBLIC_ASK_PANEL` = `1` zobrazí panel AI chatu vo vieweri (predvolene skrytý, D-100).
+   - `AIM_VIEWER_HOST_COLUMNS` = `1` zapne v `open_list` odvodené stĺpce z DB (`space_derived`, D-174); zapni až keď viewer podporuje stĺpec `source: "host"`, inak ich tool vynechá.
 3. **Claude:** Settings → Connectors → *Add custom connector* → URL
    `https://ai-mviewer.vercel.app/api/mcp/<MCP_TOKEN>` (bez OAuth). V konverzácii
    konektor zapni.

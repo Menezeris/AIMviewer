@@ -28,8 +28,21 @@ export const LIST_COLUMN_SOURCES = [
   "classification",
   "spatial",
   "model",
+  "host",
 ] as const;
 export type ListColumnSource = (typeof LIST_COLUMN_SOURCES)[number];
+
+/**
+ * Stĺpce `source: "host"` (D-174, #277): hodnoty podľa GlobalId počíta host z DB (odvodené väzby `v_space_elements`,
+ * D-167), nie viewer zo súboru IFC. Kľúč `k` je symbolický, hodnoty si klient stiahne z `/api/list-host-values`.
+ */
+export const LIST_HOST_KEYS = ["derived_referenced", "derived_boundary"] as const;
+export type ListHostKey = (typeof LIST_HOST_KEYS)[number];
+/** Strop hodnôt jedného host stĺpca a dĺžka hodnoty (rovnako ako v návrhu forku). */
+export const LIST_HOST_MAX_VALUES = 20000;
+export const LIST_HOST_MAX_VALUE_LENGTH = 200;
+/** GlobalId -> text bunky jedného host stĺpca. */
+export type ListHostValues = Record<string, string>;
 
 /** Stĺpec zoznamu (`ColumnDefinition` z `@ifc-lite/lists` bez id). */
 export interface ListColumnWire {
@@ -131,6 +144,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 
 
 function isColumn(col: unknown): col is ListColumnWire {
   if (!isObj(col) || !(LIST_COLUMN_SOURCES as readonly unknown[]).includes(col.s) || typeof col.k !== "string") return false;
+  if (col.s === "host" && !(LIST_HOST_KEYS as readonly unknown[]).includes(col.k)) return false;
   return !((col.s === "property" || col.s === "quantity") && (typeof col.p !== "string" || !col.p));
 }
 
@@ -227,12 +241,30 @@ export function listScopeKeys(wire: ListWire): string[] {
   return lensScopeKeys(asLens(wire));
 }
 
-/** Bridge správa `OPEN_LIST` alebo `LIST_UPDATE` (D-149); zóny a dokumenty nahradí GUIDmi z `scopeGuids`. */
-export function listBridgeMessage(wire: ListWire, scopeGuids: ReadonlyMap<string, readonly string[]>): Record<string, unknown> {
+/** Kľúče host stĺpcov, ktorých hodnoty musí klient stiahnuť pred odoslaním (stĺpce nového zoznamu aj `edit.ac`). */
+export function listHostKeys(wire: ListWire): ListHostKey[] {
+  const cols = [...wire.c, ...(wire.e?.ac ?? [])];
+  return [...new Set(cols.filter((c) => c.s === "host").map((c) => c.k as ListHostKey))];
+}
+
+/**
+ * Bridge správa `OPEN_LIST` alebo `LIST_UPDATE` (D-149); zóny a dokumenty nahradí GUIDmi z `scopeGuids`,
+ * host stĺpce dostanú `values` z `hostValues` (kľúč stĺpca -> GlobalId -> text, D-174).
+ */
+export function listBridgeMessage(
+  wire: ListWire,
+  scopeGuids: ReadonlyMap<string, readonly string[]>,
+  hostValues: ReadonlyMap<string, ListHostValues> = new Map(),
+): Record<string, unknown> {
+  const columnDef = (c: ListColumnWire) => ({
+    ...columnRef(c),
+    ...(c.l ? { label: c.l } : {}),
+    ...(c.s === "host" ? { values: hostValues.get(c.k) ?? {} } : {}),
+  });
   const lens = lensBridgeMessage("add", asLens(wire), scopeGuids) as { rules?: Array<{ groups: unknown[] }> };
   const view = wire.v ? { view: viewMessage(wire.v) } : {};
   if (wire.u) {
-    const edit = wire.e ? { edit: editMessage(wire.e) } : {};
+    const edit = wire.e ? { edit: editMessage(wire.e, columnDef) } : {};
     return { type: "LIST_UPDATE", groups: wire.g.length ? lens.rules?.[0]?.groups ?? [] : [], ...view, ...edit };
   }
   return {
@@ -246,10 +278,8 @@ export function listBridgeMessage(wire: ListWire, scopeGuids: ReadonlyMap<string
 }
 
 const columnRef = (c: ListColumnWire) => ({ source: c.s, propertyName: c.k, ...(c.p ? { psetName: c.p } : {}) });
-const columnDef = (c: ListColumnWire) => ({ ...columnRef(c), ...(c.l ? { label: c.l } : {}) });
-
 /** `edit` správy `LIST_UPDATE` pre fork (`aim/aimListEditPlan.ts`). */
-function editMessage(e: ListEditWire): Record<string, unknown> {
+function editMessage(e: ListEditWire, columnDef: (c: ListColumnWire) => Record<string, unknown>): Record<string, unknown> {
   return {
     ...(e.ac ? { addColumns: e.ac.map(columnDef) } : {}),
     ...(e.rc ? { removeColumns: e.rc.map(columnRef) } : {}),

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => ({}) }));
@@ -171,5 +171,48 @@ describe("open_list úpravy zoznamu (D-149)", () => {
     expect(out.edit).toEqual({ add_columns: ["Container", "Referenced"] });
     const none = await execListTool("open_list", { action: "update", add_columns: ["space_boundary"] }, () => {});
     expect(none.note).toBeUndefined();
+  });
+});
+
+describe("open_list host stĺpce (D-174, #277)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const FILTER = { ifc_type: "IfcAirTerminal" };
+
+  it("bez podpory viewera host stĺpec vypadne, zoznam sa otvorí a odpoveď to povie", async () => {
+    const pushed: AskAction[] = [];
+    const out = await execListTool("open_list", { ...FILTER, columns: ["Name", "space_derived"] }, (a) => pushed.push(a));
+    expect(out.columns).toEqual(["Name"]);
+    expect(out.derived_columns).toBeUndefined();
+    expect(out.derived_columns_dropped).toMatchObject({ columns: ["Priestor (odvodený z DB)"] });
+    expect((bridge(pushed[0]) as { columns: unknown[] }).columns).toEqual([{ source: "attribute", propertyName: "Name" }]);
+  });
+
+  it("len host stĺpec bez podpory: zoznam dostane predvolené stĺpce, nie prázdne", async () => {
+    const out = await execListTool("open_list", { ...FILTER, columns: ["space_derived"] }, () => {});
+    expect(out.columns).toEqual(["Name", "GlobalId", "ObjectType", "Storey"]);
+  });
+
+  it("s AIM_VIEWER_HOST_COLUMNS=1 ide host stĺpec do správy a odpoveď ho označí ako odvodený", async () => {
+    vi.stubEnv("AIM_VIEWER_HOST_COLUMNS", "1");
+    const pushed: AskAction[] = [];
+    const out = await execListTool("open_list", { ...FILTER, columns: ["Name", "space_derived", "space_boundary_derived"] }, (a) => pushed.push(a));
+    expect(out.derived_columns).toMatchObject({ columns: ["Priestor (odvodený z DB)", "Hranica priestoru (odvodená z DB)"] });
+    expect(String((out.derived_columns as { note: string }).note)).toMatch(/ODVODENÉ/);
+    expect(out.derived_columns_dropped).toBeUndefined();
+    expect((bridge(pushed[0]) as { columns: Array<{ source: string }> }).columns.map((c) => c.source)).toEqual(["attribute", "host", "host"]);
+  });
+
+  it("update: add_columns s host stĺpcom bez podpory vypadne; zoradenie podľa neho je chyba, s podporou prejde", async () => {
+    const none = await execListTool("open_list", { action: "update", add_columns: ["Tag", "space_derived"] }, () => {});
+    expect(none.edit).toEqual({ add_columns: ["Tag"] });
+    expect(none.derived_columns_dropped).toBeDefined();
+    await expect(execListTool("open_list", { action: "update", search: "x", add_columns: ["space_derived"] }, () => {})).resolves.toMatchObject({ ok: true });
+    await expect(execListTool("open_list", { action: "update", sort_by: "space_derived" }, () => {})).rejects.toThrow(/viewer zatiaľ nevie/);
+    await expect(execListTool("open_list", { action: "update", highlight: { columns: ["space_derived"] } }, () => {})).rejects.toThrow(StyleInputError);
+    vi.stubEnv("AIM_VIEWER_HOST_COLUMNS", "1");
+    const pushed: AskAction[] = [];
+    await execListTool("open_list", { action: "update", sort_by: "space_derived", add_columns: ["space_derived"] }, (a) => pushed.push(a));
+    expect(bridge(pushed[0])).toMatchObject({ type: "LIST_UPDATE", view: { sort: { column: { source: "host", propertyName: "derived_referenced" } } } });
+    await expect(execListTool("open_list", { action: "update", color_by: "space_derived" }, () => {})).rejects.toThrow(/farbiť nevie/);
   });
 });

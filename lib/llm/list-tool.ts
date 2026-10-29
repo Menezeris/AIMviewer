@@ -20,6 +20,7 @@ import {
 import type { AskAction } from "./actions";
 import { DOMAIN_IFC_TYPES, sanitizeIfcType } from "./ifc-selector";
 import { parseListColumn } from "./list-columns";
+import { assertHostColumnUsable, hostColumnNotes, splitHostColumns } from "./list-host";
 import { lensGroup } from "./lens-plan";
 import type { ToolDefinition } from "./provider";
 import { LENS_GUID_CAP, resolveFilter, type GroupInfo } from "./style-lens";
@@ -105,7 +106,9 @@ export const LIST_TOOL_DEFINITIONS: ToolDefinition[] = [
       "highlight zvýrazní v tabuľke riadky (rows: stĺpec + hodnoty), stĺpce, bunky alebo riadok súčtov (sum; zoznam musí mať sum), " +
       "null ho zruší; column_widths = fit | auto | šírky stĺpcov v px (56 až 800). " +
       "Stĺpce zo vzťahov IFC súboru: space_referenced (IfcRelReferencedInSpatialStructure), space_boundary (IfcRelSpaceBoundary), " +
-      "aggregate (IfcRelAggregates); 'space' je Container (priestor, v ktorom prvok je v súbore), nie odvodená miestnosť.",
+      "aggregate (IfcRelAggregates); 'space' je Container (priestor, v ktorom prvok je v súbore), nie odvodená miestnosť. " +
+      "ODVODENÉ väzby z DB (z geometrie, D-167): space_derived (miestnosť, ktorú prvok referencuje, napr. výustka VZT) a space_boundary_derived; " +
+      "bunky sú odvodené, nie zo súboru - tak to povedz. Ak viewer stĺpec nevie, odpoveď to povie (derived_columns_dropped).",
     inputSchema: {
       type: "object",
       properties: {
@@ -204,7 +207,9 @@ export async function execListTool(
   if (input.action !== undefined && input.action !== "open") throw new StyleInputError("action je open alebo update.");
   const rawColumns = Array.isArray(input.columns) ? input.columns.map((c) => String(c)).filter((c) => c.trim()) : [];
   if (rawColumns.length > MAX_COLUMNS) throw new StyleInputError(`Najviac ${MAX_COLUMNS} stĺpcov.`);
-  const columns = (rawColumns.length ? rawColumns : DEFAULT_COLUMNS).map(parseListColumn);
+  const asked = (rawColumns.length ? rawColumns : DEFAULT_COLUMNS).map(parseListColumn);
+  const { columns: sentColumns, dropped } = splitHostColumns(asked);
+  const columns = sentColumns.length > 0 ? sentColumns : DEFAULT_COLUMNS.map(parseListColumn);
   const [group] = parseStyleGroups({ ...input, groups: undefined }, "isolate");
   const info: GroupInfo = { label: group.label };
   const filter = await resolveFilter(new ScopeResolver(getSupabaseAdmin()), group.filter, { domainTypes: DOMAIN_IFC_TYPES }, info, {
@@ -228,6 +233,7 @@ export async function execListTool(
     filter: info,
     columns: columns.map((c) => (c.p ? `${c.p}.${c.k}` : c.k || c.s)),
     ...columnNotes(rawColumns),
+    ...hostColumnNotes(columns, dropped),
     run,
     ...(view ? { view: viewSummary(view) } : {}),
     next_step: run
@@ -259,7 +265,7 @@ function columnList(raw: unknown, key: string): ListColumnWire[] | undefined {
   if (raw === undefined) return undefined;
   if (!Array.isArray(raw)) throw new StyleInputError(`${key} je pole stĺpcov (napr. ["Qto_ColumnBaseQuantities.NetVolume"]).`);
   if (raw.length > MAX_VIEW_COLUMNS) throw new StyleInputError(`${key}: najviac ${MAX_VIEW_COLUMNS} stĺpcov.`);
-  return raw.map((c) => parseListColumn(String(c)));
+  return raw.map((c) => assertHostColumnUsable(parseListColumn(String(c)), key));
 }
 
 /** `maximize`, `sort_by`, `sum`, `group_by`, `search` -> `ListViewWire`; nič z toho = undefined. */
@@ -274,7 +280,7 @@ export function parseListViewInput(input: Record<string, unknown>): ListViewWire
   }
   if (input.sort_by !== undefined) {
     const col = String(input.sort_by).trim();
-    v.o = col ? { c: parseListColumn(col), d: input.sort_dir === "desc" ? "desc" : "asc" } : null;
+    v.o = col ? { c: assertHostColumnUsable(parseListColumn(col), "sort_by"), d: input.sort_dir === "desc" ? "desc" : "asc" } : null;
   }
   const sum = columnList(input.sum, "sum");
   if (sum) v.sum = sum;
@@ -284,7 +290,7 @@ export function parseListViewInput(input: Record<string, unknown>): ListViewWire
   if (input.color_by !== undefined) {
     const col = String(input.color_by).trim();
     v.cb = col ? parseListColumn(col) : null;
-    if (v.cb?.s === "spatial") {
+    if (v.cb?.s === "spatial" || v.cb?.s === "host") {
       throw new StyleInputError(`Podľa stĺpca '${col}' Lens farbiť nevie (podlažie, priestor); vyber vlastnosť, atribút, materiál alebo model.`);
     }
   }
@@ -305,7 +311,7 @@ const isObject = (x: unknown): x is Record<string, unknown> => !!x && typeof x =
 
 function requiredColumn(raw: unknown, where: string): ListColumnWire {
   if (typeof raw !== "string" || !raw.trim()) throw new StyleInputError(`${where}: stĺpec ako v columns (napr. "Name" alebo "Qto_X.NetVolume").`);
-  return parseListColumn(raw);
+  return assertHostColumnUsable(parseListColumn(raw), where);
 }
 
 function parseColumnWidths(raw: unknown): NonNullable<ListViewWire["cw"]> {
@@ -431,6 +437,17 @@ export function parseListEditInput(input: Record<string, unknown>): ListEditWire
   return Object.keys(e).length ? e : undefined;
 }
 
+/** Bez podpory viewera host stĺpce z `add_columns` a `remove_columns` vypadnú (nie je čo pridať ani odobrať). */
+function dropHostEdit(e: ListEditWire, addColumns: ListColumnWire[]): ListEditWire | undefined {
+  const out: ListEditWire = { ...e };
+  delete out.ac;
+  delete out.rc;
+  if (addColumns.length > 0) out.ac = addColumns;
+  const removed = e.rc ? splitHostColumns(e.rc).columns : [];
+  if (removed.length > 0) out.rc = removed;
+  return Object.keys(out).length ? out : undefined;
+}
+
 function editSummary(e: ListEditWire): Record<string, unknown> {
   return {
     ...(e.ac ? { add_columns: e.ac.map(colName) } : {}),
@@ -450,7 +467,9 @@ async function execListUpdate(
   if (input.columns !== undefined) {
     throw new StyleInputError("Pri update stĺpce meň cez add_columns / remove_columns, columns platí len pre nový zoznam.");
   }
-  const edit = parseListEditInput(input);
+  const rawEdit = parseListEditInput(input);
+  const hostAdd = rawEdit?.ac ? splitHostColumns(rawEdit.ac) : { columns: [], dropped: [] };
+  const edit = rawEdit ? dropHostEdit(rawEdit, hostAdd.columns) : undefined;
   const hasFilter = FILTER_KEYS.some((k) => input[k] !== undefined);
   let groups: ReturnType<typeof lensGroup>[] = [];
   let info: GroupInfo | undefined;
@@ -481,6 +500,7 @@ async function execListUpdate(
     ...(info ? { added_filter: info } : {}),
     ...(edit ? { edit: editSummary(edit) } : {}),
     ...columnNotes(input.add_columns),
+    ...hostColumnNotes(hostAdd.columns, hostAdd.dropped),
     ...(view ? { view: viewSummary(view) } : {}),
     next_step: [
       hasFilter || edit

@@ -1,4 +1,4 @@
-import type { ListColumnWire } from "../viewer-list";
+import type { ListColumnWire, ListHostKey } from "../viewer-list";
 
 import { StyleInputError } from "./style-plan";
 
@@ -38,6 +38,18 @@ const SPATIAL_LABELS = new Map([
   ["Boundary", "Hranica priestoru"],
   ["Aggregate", "Zostava (aggregate)"],
 ]);
+/**
+ * Odvodené väzby z DB (D-174, #277; `v_space_elements` z geometrie, D-167): hodnoty počíta host podľa GlobalId.
+ * Slová sú zámerne iné než `space_referenced` / `space_boundary` (tie čítajú IFC súbor), aby sa zdroj nepomiešal.
+ */
+const HOST = new Map<string, [ListHostKey, string]>([
+  ["derived_referenced", ["derived_referenced", "Priestor (odvodený z DB)"]],
+  ["space_derived", ["derived_referenced", "Priestor (odvodený z DB)"]],
+  ["space_referenced_db", ["derived_referenced", "Priestor (odvodený z DB)"]],
+  ["derived_boundary", ["derived_boundary", "Hranica priestoru (odvodená z DB)"]],
+  ["space_boundary_derived", ["derived_boundary", "Hranica priestoru (odvodená z DB)"]],
+  ["space_boundary_db", ["derived_boundary", "Hranica priestoru (odvodená z DB)"]],
+]);
 /** Meno a popis ako stĺpce builderu panela Lists (inak má stĺpec prázdnu hlavičku aj v exporte). */
 const SIMPLE = new Map<string, [ListColumnWire["s"], string]>([
   ["material", ["material", "Material"]],
@@ -53,6 +65,8 @@ export function parseListColumn(raw: string): ListColumnWire {
   const key = fold(text);
   const attr = ATTRIBUTES.get(key);
   if (attr) return { s: "attribute", k: attr };
+  const host = HOST.get(key);
+  if (host) return { s: "host", k: host[0], l: host[1] };
   const level = SPATIAL.get(key);
   if (level) return { s: "spatial", k: level, ...(SPATIAL_LABELS.has(level) ? { l: SPATIAL_LABELS.get(level) } : {}) };
   const simple = SIMPLE.get(key);
@@ -61,6 +75,6 @@ export function parseListColumn(raw: string): ListColumnWire {
   if (m) return { s: /^Qto_/i.test(m[1]) ? "quantity" : "property", p: m[1], k: m[2] };
   throw new StyleInputError(
     `Stĺpec '${raw}' nepoznám. Použi atribút (Name, GlobalId, Description, ObjectType, Tag, PredefinedType), ` +
-      "storey / space / building, space_referenced / space_boundary / aggregate (vzťahy), material, classification, model alebo Pset.Vlastnosť / Qto_X.Množstvo.",
+      "storey / space / building, space_referenced / space_boundary / aggregate (vzťahy zo súboru), space_derived / space_boundary_derived (odvodené z DB), material, classification, model alebo Pset.Vlastnosť / Qto_X.Množstvo.",
   );
 }

@@ -1347,6 +1347,12 @@
       "notes": "D-171 (#277): add_columns=[space_referenced, space_boundary]; hodnoty z IFC súboru, odvodené väzby z DB sú ďalší krok."
     },
     {
+      "id": "list-derived-space-column",
+      "category": "data",
+      "question": "Urob zoznam výustiek na 2NP a pridaj k nim miestnosť, v ktorej podľa geometrie ležia (nie podľa súboru IFC).",
+      "expect": { "tools_called": ["open_list"] },
+      "verified": false,
+      "notes": "D-174 (#277): columns obsahuje space_derived (host stĺpec, odvodené z DB); bez AIM_VIEWER_HOST_COLUMNS odpoveď nesie derived_columns_dropped a Claude to povie a ponúkne query_view v_space_elements.",
       "id": "space-never-opaque",
       "category": "viewer",
       "question": "Zafarbi miestnosti na 1NP plnou červenou, nech je to úplne nepriehľadné.",

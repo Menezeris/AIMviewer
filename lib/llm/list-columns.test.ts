@@ -20,6 +20,13 @@ describe("open_list: stĺpce (D-111)", () => {
     expect(parseListColumn("space")).toEqual({ s: "spatial", k: "Container" });
   });
 
+  it("D-174: odvodené väzby z DB sú host stĺpce, odlíšené od stĺpcov zo súboru", () => {
+    expect(parseListColumn("space_derived")).toEqual({ s: "host", k: "derived_referenced", l: "Priestor (odvodený z DB)" });
+    expect(parseListColumn("space_referenced_db")).toEqual(parseListColumn("derived_referenced"));
+    expect(parseListColumn("space_boundary_derived")).toEqual({ s: "host", k: "derived_boundary", l: "Hranica priestoru (odvodená z DB)" });
+    expect(parseListColumn("space_referenced").s).toBe("spatial");
+  });
+
   it("neznámy stĺpec vráti chybu s nápovedou", () => {
     expect(() => parseListColumn("cena")).toThrow(/nepoznám/);
   });

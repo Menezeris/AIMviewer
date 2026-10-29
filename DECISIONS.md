@@ -7823,3 +7823,30 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 **Zavrhnuté:** trvalá pamäť preferencií (Samuel); zákaz farby na priestor (priesvitná farba pomáha, napr. IDS výsledky po miestnostiach); nový parameter alebo tool.
 
 **Po zlúčení:** nič pre fork nie je povinné. Evaly (D-057) nepobežali (cloud session bez kľúčov); otázka `space-never-opaque` pridaná bez overenej hodnoty.
+
+### D-174 - `open_list`: odvodené väzby z DB ako stĺpec `source: "host"` (Refs #277)
+
+**Dátum:** 2026-10-29 · **Issue:** #277 · **Nadväzuje na:** D-111, D-114, D-167, D-171 · **Fork:** Menezeris/ifc-lite#172 (návrh `docs/architecture/evidence/aim-lists-274-277/README.md`)
+
+**Kontext:** D-171 dal stĺpce zo vzťahov IFC súboru (`space_referenced`, `space_boundary`, `aggregate`). Odvodené väzby (výustka VZT v miestnosti, `v_space_elements` z geometrie, D-167) v súbore nie sú, takže ich viewer nepozná. Samuel (29. 10.): stĺpce zoznamu majú ukazovať aj odvodené väzby z databázy, označené ako odvodené.
+
+**Najbližšie tooly (D-114):** `open_list` (rozširujeme: nové slová v `columns`, `add_columns`), `query_view` (`v_space_elements`, dá odpoveď bez zoznamu, ostáva pre text), `get_viewer_state` (číta `list`). Nový tool ani parameter netreba.
+
+**Rozhodnutie (host časť):**
+1. **Slová stĺpcov:** `space_derived` (= `derived_referenced`: miestnosť, ktorú prvok referencuje podľa geometrie, relation `referenced`) a `space_boundary_derived` (= `derived_boundary`, relation `boundary`). Zámerne iné než `space_referenced` / `space_boundary` (tie čítajú súbor IFC), aby sa zdroj nepomiešal. Hlavička nesie "(odvodený z DB)". `contained` je v súbore ako Container, preto samostatný stĺpec nie je.
+2. **Wire:** `ListColumnWire.s = "host"`, `k` je symbolický kľúč (nie hodnoty, URL by nezniesla tisíce GUIDov). Klient viewera (`components/ifc-viewer.tsx`) hodnoty stiahne z `GET /api/list-host-values?key=...` (rovnaký vzor ako `/api/style-scope`, cache 60 s) a pošle ich forku v stĺpci správy: `{ source: "host", propertyName, label, values: { GlobalId: text } }` v `OPEN_LIST.columns` aj `LIST_UPDATE.edit.addColumns`. Limity ako v návrhu forku: 20 000 hodnôt, 200 znakov.
+3. **Hodnoty** (`lib/data/list-host-values.ts`): `v_space_elements` podľa `relation`, len aktívne objekty (`valid_until`, D-088), GlobalId z `objects.ifc_guid`; viac priestorov jedného prvku oddelených ", ", odvodená referencia s `role = partial` má "(čiastočne)". Odpoveď toolu (`derived_columns`) hovorí, že stĺpce sú odvodené z DB, nie zo súboru.
+4. **Kompatibilita (viewer zatiaľ stĺpec `host` nemá):** starší viewer s neznámym zdrojom stĺpca odmietne celú správu `OPEN_LIST`. Preto je podpora za príznakom `AIM_VIEWER_HOST_COLUMNS=1` (predvolene vypnutý). Bez neho host stĺpce z volania vypadnú, zoznam sa otvorí so zvyškom (alebo s predvolenými stĺpcami) a odpoveď nesie `derived_columns_dropped` s radou `query_view v_space_elements`. Zoradenie, súčet, zoskupenie, zvýraznenie a šírku podľa host stĺpca bez príznaku tool odmietne s jasnou chybou; `color_by` podľa neho nikdy (Lens farbí podľa vlastnosti).
+
+**Špecifikácia pre fork (jeden PR, nadväzuje na #172; `apps/viewer/src/aim/`):**
+- `aimListPlan.ts`: `SOURCES` doplniť o `host`; stĺpec `host` vyžaduje `propertyName` (text) a `values` (objekt GlobalId -> text, najviac 20 000 kľúčov, hodnota najviac 200 znakov, inak neplatná správa); `psetName` nemá.
+- `packages/lists`: `ColumnDefinition.source` rozšíriť o `'host'`; hodnotu bunky dá provider hook `getHostValue(entityId, key)`, ktorý nájde GlobalId prvku (v danom modeli) a vráti text z mapy stĺpca alebo `undefined` (prázdna bunka). Stĺpec je textový: zoraditeľný, zoskupiteľný, hľadateľný, exportovateľný (CSV/XLSX/PDF) a použiteľný v `sum`/`groupBy`/`sort`/`highlight`/`columnWidths` rovnako ako ostatné (`column_ref` = `{source: "host", propertyName}`). Do builderu a filtra sa nevypisuje (ako `Referenced`).
+- `LIST_UPDATE edit.addColumns` a `removeColumns` rovnako; `values` pri znovu pridanom stĺpci prepíšu staré.
+- `view_state.list.columns` a `APPLIED.list` pre host stĺpec nesú `{ name, source: "host", matched }`, kde `matched` = počet riadkov zoznamu, ktorým sa našla hodnota (host tak overí, že GlobalId sedia); 0 pri neprázdnych `values` je `issues` ("hodnoty stĺpca sa nezhodujú so žiadnym riadkom").
+- Hlavička stĺpca je `label` zo správy (host v nej uvádza "odvodený z DB"); viewer nič nedopisuje.
+- Dôkazy podľa skillu `aim-feature` (mutácie: neznámy zdroj `host` zahodený, `values` ignorované, `matched` nehlásené).
+- Po zlúčení a vydaní balíka nastaviť v AIMvieweri `AIM_VIEWER_HOST_COLUMNS=1`.
+
+**Zavrhnuté:** hodnoty v URL op (tisíce GUIDov, strop ~400 ako pri Lens); filter podľa `globalId` z DB namiesto stĺpca (nedá hodnotu, len zúži riadky); nový tool `list_relations_column` (D-114); zlievanie so stĺpcom `space_referenced` (zdroj by sa stratil, Samuel chce odvodené označiť).
+
+**Stav:** host časť hotová a otestovaná, end-to-end čaká na viewer, preto `Refs #277`, nie `Closes`. Evaly (D-057) nepobežali (cloud session bez kľúčov); otázka `list-derived-space-column` v `eval/questions.json` bez overenej hodnoty.
