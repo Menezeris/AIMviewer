@@ -118,7 +118,8 @@ Postup podľa typu otázky:
   prvky (bez filtra po izolácii len viditeľné), takže legendu cituj ako farby zobrazených
   prvkov. „Ukáž legendu" → action=legend (malá karta); na celú stranu legend_size=large.
   Miestnosti (IfcSpace) vo vieweri zapne farbenie aj izolácia sama, „zobraz miestnosti" =
-  show s ifc_type=IfcSpace; ich farba ostane priesvitná (transparent netreba), v pohľade zhora
+  show s ifc_type=IfcSpace; ich farba ostane priesvitná (transparent netreba); PRAVIDLO (D-173): priestor sa nikdy
+  nefarbí plnou farbou, len priesvitne (opacity najviac 0.35, host to vynúti aj pri opacity=1), v pohľade zhora
   s vodorovným rezom sú ofarbené aj vybrané vyplnené (D-119, D-125).
   Skrytie (hide) len na výslovnú žiadosť, ide mimo Lens a
   zvyšok ostáva normálny. Izolácia (isolate) ukáže len vybrané v pôvodnom vzhľade;

@@ -111,13 +111,32 @@ describe("xray so storey filtrom (#187)", () => {
 describe("priehľadnosť colorize (D-139, #222)", () => {
   const rulesOf = (a: AskAction) => (JSON.parse(Buffer.from(opsOf(a).split(":").pop() ?? "", "base64url").toString()) as { r: { n: string; a: string }[] }).r;
 
-  it("colorize IfcSpace je predvolene priesvitný, opacity=1 vynúti plnú farbu", async () => {
+  it("colorize IfcSpace je vždy priesvitný, aj s opacity=1 (D-173, #298)", async () => {
     const pushed: AskAction[] = [];
     const { result } = await execLensStyle("colorize", { ifc_type: "IfcSpace", color: "22c55e" }, (a) => pushed.push(a), OPTS);
     expect(rulesOf(pushed[0])[0].a).toBe("transparent");
     expect((result.groups as GroupInfo[])[0].opacity).toBe(0.3);
-    await execLensStyle("colorize", { ifc_type: "IfcSpace", color: "22c55e", opacity: 1 }, (a) => pushed.push(a), OPTS);
-    expect(rulesOf(pushed[1])[0].a).toBe("colorize");
+    const full = await execLensStyle("colorize", { ifc_type: "IfcSpace", color: "22c55e", opacity: 1 }, (a) => pushed.push(a), OPTS);
+    expect(rulesOf(pushed[1])[0].a).toBe("transparent");
+    const info = (full.result.groups as GroupInfo[])[0];
+    expect(info.opacity).toBe(0.35);
+    expect(info.space_rule).toMatch(/orezaná/);
+    await execLensStyle("colorize", { ifc_type: "IfcSpace", color: "22c55e", opacity: 0.2 }, (a) => pushed.push(a), OPTS);
+    expect(rulesOf(pushed[2])[0].a).toBe("transparent");
+  });
+
+  it("action=transparent na IfcSpace s opacity nad stropom ohlási orezanú hodnotu", async () => {
+    const { result } = await execLensStyle("transparent", { ifc_type: "IfcSpace", color: "22c55e", opacity: 0.9 }, () => {}, OPTS);
+    expect((result.groups as GroupInfo[])[0].opacity).toBe(0.35);
+  });
+
+  it("zmiešaný zoznam tried: IfcSpace ide ako samostatné priesvitné pravidlo, ostatné plnou farbou", async () => {
+    const pushed: AskAction[] = [];
+    const { result } = await execLensStyle("colorize", { ifc_types: ["IfcSpace", "IfcDoor"], color: "ef4444", opacity: 1 }, (a) => pushed.push(a), OPTS);
+    const rules = rulesOf(pushed[0]);
+    expect(rules).toHaveLength(2);
+    expect(rules.map((r) => r.a).sort()).toEqual(["colorize", "transparent"]);
+    expect((result.groups as GroupInfo[])[0].space_rule).toMatch(/samostatné priesvitné/);
   });
 
   it("opacity < 1 spraví priesvitnou aj iný prvok, opacity mimo rozsahu je chyba", async () => {

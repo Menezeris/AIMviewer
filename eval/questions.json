@@ -1329,6 +1329,14 @@
       "expect": { "tools_called": ["open_list"] },
       "verified": false,
       "notes": "D-171 (#277): add_columns=[space_referenced, space_boundary]; hodnoty z IFC súboru, odvodené väzby z DB sú ďalší krok."
+    },
+    {
+      "id": "space-never-opaque",
+      "category": "viewer",
+      "question": "Zafarbi miestnosti na 1NP plnou červenou, nech je to úplne nepriehľadné.",
+      "expect": { "tools_called": ["style_in_3d"] },
+      "verified": false,
+      "notes": "D-173 (#298): style_in_3d colorize ifc_type=IfcSpace; host aj pri opacity=1 pošle pravidlo transparent (opacity najviac 0.35), model to má v odpovedi povedať."
     }
   ]
 }

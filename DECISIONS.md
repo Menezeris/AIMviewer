@@ -7782,3 +7782,24 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 **Zavrhnuté:** nový tool na zvýraznenie alebo šírky (D-114); zrušenie izolácie pri `open_list` (zničí pohľad používateľa); vypnutie filtra viditeľnosti natrvalo (iný zoznam by sa správal inak ako tabuľka v builderi); `column_widths` ako single `column_width` z #275 (pole pokryje jeden aj viac stĺpcov).
 
 **Po zlúčení:** najprv zlúčiť fork PR Menezeris/ifc-lite#172 do balíka, potom tento PR (D-116). Evaly (D-057) nepobežali (cloud session bez kľúčov); otázky pribudli do `eval/questions.json` bez overenej hodnoty.
+
+### D-173 - IfcSpace sa nikdy nefarbí plnou farbou, len priesvitne (#298)
+
+**Dátum:** 2026-10-29 · **Issue:** #298 · **Nadväzuje na:** D-096, D-114, D-139, D-172
+
+**Kontext:** model pri "izoluj miestnosť a súvisiace prvky" ofarboval miestnosť plnou farbou, ktorá zakryje prvky v nej. #337 opravil postup (izolácia bez farby) a D-139 dáva priestorom predvolene priesvitnú farbu, ale `opacity=1` ešte vynútilo plnú. Samuel (29. 10.): pamäť preferencií medzi konverzáciami sa nerobí; platí pevné pravidlo, priestor sa nikdy neofarbuje plnou farbou, ak vôbec, tak len priesvitne.
+
+**Najbližšie tooly (D-114):** `style_in_3d` (rozširujeme opis a host), `show_in_3d` (len zvýrazňuje, dostane vetu v opise). Nový tool ani parameter netreba.
+
+**Rozhodnutie:**
+1. **Pravidlo, nie preferencia:** veta v opise `style_in_3d`, `show_in_3d`, v opise parametra `opacity` a v system prompte.
+2. **Host vynúti** (`lib/llm/style-lens.ts`): skupina `colorize` nad priestormi a zónami (`IfcSpace`, `IfcSpatialZone`, `IfcZone`; podľa tried filtra, pri `ids_or_refs` podľa tried v DB) ide vždy ako pravidlo `transparent`. `opacity` sa orežú na `SPACE_MAX_OPACITY` = 0,35 (`opacity=1` plnú farbu už nevynúti); odpoveď nesie `groups[].opacity` a `space_rule`. `action=transparent` s `opacity` nad stropom hlási orezanú hodnotu.
+3. **Zmiešaný zoznam tried** (`ifc_types: [IfcSpace, IfcDoor]`) sa rozdelí na dve pravidlá: priestory priesvitne ("... (priestory)"), ostatné ako žiadal model.
+4. Wire pravidla Lens nenesie alfu, `transparent` kreslí viewer fixnou alfou (fork 0,3), čo je pod stropom.
+
+**Čo host nevie vynútiť (špecifikácia pre fork):** farba na priestory, ktoré host nevidí v zozname tried: `colorize` bez `ifc_type` (len `storey`, `system`, `domain`, `property`), `color_by` (vrátane `ifc_type`), `ids_or_refs` zmiešané z priestorov a iných tried. Tam rozhoduje viewer. Špecifikácia: v Lens vyhodnotení pravidla `a: "colorize"` (a `color_by`) sa pre prvok triedy `IfcSpace` / `IfcSpatialZone` / `IfcZone` použije rovnaká cesta ako pre `a: "transparent"` (alfa 0,3, bez zápisu do depth buffera, vyplnenie v pôdoryse ostáva); ostatné triedy tej istej skupiny plne. Počty a legenda sa nemenia. Viewer nič nehlási navyše. Bez tejto zmeny platí pravidlo pre všetky volania s triedou vo filtri (väčšina), pre ostatné ho drží len opis.
+
+**Zavrhnuté:** trvalá pamäť preferencií (Samuel); zákaz farby na priestor (priesvitná farba pomáha, napr. IDS výsledky po miestnostiach); nový parameter alebo tool.
+
+**Po zlúčení:** nič pre fork nie je povinné. Evaly (D-057) nepobežali (cloud session bez kľúčov); otázka `space-never-opaque` pridaná bez overenej hodnoty.
+
