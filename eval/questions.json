@@ -1359,6 +1359,22 @@
       "expect": { "tools_called": ["style_in_3d"] },
       "verified": false,
       "notes": "D-173 (#298): style_in_3d colorize ifc_type=IfcSpace; host aj pri opacity=1 pošle pravidlo transparent (opacity najviac 0.35), model to má v odpovedi povedať."
+    },
+    {
+      "id": "split-floor-asr-not-pbr",
+      "category": "viewer",
+      "question": "Otvor 4NP v split: 3D a výkres podlažia.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-176 (#316): výkres podlažia je ASR pôdorys (strecha D.1.1.04), PBR len keď iný nie je; výsledok nesie drawing a alternatives, PBR na výslovnú žiadosť discipline=PBR."
+    },
+    {
+      "id": "underlay-remove-restore",
+      "category": "viewer",
+      "question": "Zmaž kalibráciu podkladu strechy D.1.1.04 a vráť ju, ak sa mi to nepáči.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-176 (#284): mode=remove len na výslovný pokyn (ručná s force), potom mode=restore index=0."
     }
   ]
 }

@@ -1,6 +1,8 @@
 import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { fetchProjectDocuments } from "@/lib/data/documents";
+import { pickFloorDrawing } from "@/lib/data/document-meta";
 import { resolveTargetsToGuids } from "@/lib/engine/aim-lookup";
 import { normalizeStoreyLabel } from "@/lib/engine/storey";
 import { CAMERA_PRESETS, PANEL_ACTIONS, PANEL_SIDES, PANEL_WIDTH_PCT, PANEL_ITEM_MAX, PANEL_SCROLLS, PANEL_ZOOM_RANGE, PANEL_ZOOM_STEPS } from "@/lib/viewer-ops";
@@ -224,6 +226,7 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       type: "object",
       properties: {
         mode: { type: "string", enum: ["3d", "2d", "split"] },
+        discipline: { type: "string", description: "mode=split + floor: disciplína výkresu podlažia (ASR, PBR, STA...); bez nej ASR pôdorys podlažia, PBR (požiarne riešenie) len keď iný nie je (D-176)" },
         floor: floorProp,
         reset: { type: "boolean", description: "S mode=3d: zruší rez, farby, skrytie, výber a zvýraznenie a vráti kameru" },
         saved_view: { type: "string", description: "Meno uloženého pohľadu (bez mode); to isté ako view" },
@@ -331,6 +334,26 @@ function sectionCapPlan(input: Record<string, unknown>) {
   const cap = planSectionCap(input);
   if (cap && "error" in cap) throw new ViewInputError(cap.error);
   return cap;
+}
+
+/** Výkres podlažia pre mode=split (D-176): ASR pôdorys, PBR len keď iný nie je, alebo disciplína na výslovnú žiadosť. */
+async function resolveSplitDrawing(storeyGuid: string, rawDiscipline: unknown) {
+  if (rawDiscipline !== undefined && (typeof rawDiscipline !== "string" || !/^[A-Za-z]{2,5}$/.test(rawDiscipline.trim()))) {
+    throw new ViewInputError("discipline je kód disciplíny z kódu dokumentu (ASR, PBR, STA...).");
+  }
+  const docs = await fetchProjectDocuments();
+  const candidates = docs
+    .filter((d) => d.kind === "drawing" && (d.storeyGuids ?? (d.storeyGuid ? [d.storeyGuid] : [])).length > 0)
+    .map((d) => ({ documentId: d.documentId, ref: d.name, discipline: d.discipline ?? null, floorGuids: d.storeyGuids ?? [d.storeyGuid!] }));
+  const pick = pickFloorDrawing(candidates, storeyGuid, rawDiscipline as string | undefined);
+  if (!pick.ok) {
+    if (pick.reason === "no_discipline") {
+      throw new ViewInputError(`Podlažie nemá výkres disciplíny ${String(rawDiscipline).toUpperCase()}. Dostupné disciplíny: ${pick.available.join(", ") || "žiadne"}.`);
+    }
+    return null;
+  }
+  const short = (c: { ref: string | null; discipline: string | null }) => ({ name: c.ref ?? "", discipline: c.discipline });
+  return { documentId: pick.drawing.documentId, ...short(pick.drawing), chosen_by: pick.chosen_by, alternatives: pick.alternatives.map(short) };
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -455,7 +478,8 @@ export async function execViewTool(
   } else if (name === "set_view_mode") {
     // D-127: samotné panely nepotrebujú režim.
     const panelsOnly = (input.panels !== undefined || input.panel_layout !== undefined || input.panel_scroll !== undefined || input.panel_zoom !== undefined || input.underlays_3d !== undefined || input.plan_position !== undefined) && input.mode === undefined && input.reset !== true;
-    plan = panelsOnly ? { ops: [], label: "", result: { ok: true } } : planViewMode(input, input.reset === true ? null : await resolveFloor(input.floor));
+    const floor = panelsOnly || input.reset === true ? null : await resolveFloor(input.floor);
+    plan = panelsOnly ? { ops: [], label: "", result: { ok: true } } : planViewMode(input, floor, input.mode === "split" && floor ? await resolveSplitDrawing(floor.guid, input.discipline) : null);
   } else {
     throw new Error(`Neznámy tool pohľadu '${name}'.`);
   }

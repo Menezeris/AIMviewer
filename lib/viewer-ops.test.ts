@@ -85,6 +85,13 @@ describe("viewer ops - pohľad (D-083)", () => {
     expect(parseOps("doc:1:nie-uuid")).toEqual([]);
   });
 
+  it("split s výkresom vybraným hostom (D-176): documentId ide na drôt, neplatné sa zahodí", () => {
+    expect(bridge(viewModeOp("split", G2, DOC))).toEqual([{ type: "SET_VIEW_MODE", mode: "split", storeyGuid: G2, documentId: DOC }]);
+    expect(viewModeOp("split", G2, "nie-uuid")).toBe(`view:split:${G2}`);
+    expect(bridge(`view:split~d=nie-uuid:${G2}`)).toEqual([{ type: "SET_VIEW_MODE", mode: "split", storeyGuid: G2 }]);
+    expect(bridge(viewModeOp("2d", G2))).toEqual([{ type: "SET_VIEW_MODE", mode: "2d", storeyGuid: G2 }]);
+  });
+
   it("dokument s výrezom strany (D-117): percentá na drôte, zlomky v bridge správe", () => {
     const op = docOp(DOC, 2, { x: 50, y: 0, w: 50, h: 25 });
     expect(op).toBe(`doc:2~r=50_0_50_25:${DOC}`);

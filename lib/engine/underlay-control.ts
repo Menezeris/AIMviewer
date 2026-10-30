@@ -1,4 +1,4 @@
-import { historyOf, restoreCalibration, toGeorefV2, type GeorefCalibration, type RestoreResult } from "../data/georef";
+import { historyOf, removeCalibration, restoreCalibration, toGeorefV2, type GeorefCalibration, type RemoveResult, type RestoreResult } from "../data/georef";
 import type { UnderlaysSetRequest } from "../viewer-underlays";
 
 /**
@@ -8,7 +8,7 @@ import type { UnderlaysSetRequest } from "../viewer-underlays";
  * živý viewer) v `underlay-control-runtime.ts`, aby sa dala testovať bez nich.
  */
 
-export const UNDERLAY_CONTROL_MODES = ["list", "show_in_3d", "hide", "set_opacity", "history", "restore"] as const;
+export const UNDERLAY_CONTROL_MODES = ["list", "show_in_3d", "hide", "set_opacity", "history", "restore", "remove"] as const;
 export type ControlMode = (typeof UNDERLAY_CONTROL_MODES)[number];
 
 export const isControlMode = (m: unknown): m is ControlMode => (UNDERLAY_CONTROL_MODES as readonly unknown[]).includes(m);
@@ -61,8 +61,8 @@ export interface ControlDeps {
   viewer: () => Promise<ViewerSnapshot>;
   /** `UNDERLAY_WRITE_ENABLED`: bez neho sa `persist` ani `restore` neuloží. */
   writeEnabled: boolean;
-  /** Zápis `restore`: `apply` zlúči do aktuálneho `_georef` (prečítaného tesne pred zápisom). */
-  write: (documentId: string, apply: (stored: unknown) => RestoreResult) => Promise<RestoreResult>;
+  /** Zápis `restore` a `remove`: `apply` zlúči do aktuálneho `_georef` (prečítaného tesne pred zápisom). */
+  write: (documentId: string, apply: (stored: unknown) => RestoreResult | RemoveResult) => Promise<RestoreResult | RemoveResult>;
   now: () => Date;
 }
 
@@ -86,12 +86,22 @@ const DEFAULT_OPACITY = 0.6;
 interface Entry {
   doc: CalibratedDocument;
   cal: GeorefCalibration;
+  /** Kalibrácia strany už nie je živá, je len v histórii (po mode=remove). */
+  removed?: boolean;
 }
 
 const label = (d: CalibratedDocument) => d.object_ref ?? d.name ?? d.id;
 
-function entriesOf(docs: CalibratedDocument[]): Entry[] {
-  return docs.flatMap((doc) => toGeorefV2(doc.georef).calibrations.map((cal) => ({ doc, cal })));
+function entriesOf(docs: CalibratedDocument[], withHistory = false): Entry[] {
+  return docs.flatMap((doc) => {
+    const live = toGeorefV2(doc.georef).calibrations.map((cal) => ({ doc, cal }));
+    if (!withHistory) return live;
+    // Zmazaná kalibrácia (mode=remove) ostala len v histórii: strana bez živej kalibrácie sa dá ešte obnoviť (D-176).
+    const pages = new Set(live.map((e) => e.cal.page));
+    const gone = new Map<number, Entry>();
+    for (const h of historyOf(doc.georef)) if (!pages.has(h.page) && !gone.has(h.page)) gone.set(h.page, { doc, cal: h.calibration, removed: true });
+    return [...live, ...gone.values()];
+  });
 }
 
 function pageOf(args: Record<string, unknown>): number | undefined {
@@ -107,16 +117,18 @@ interface Target {
   doc: CalibratedDocument;
   cal: GeorefCalibration;
   floor: string | null;
+  /** cal je len záznam z histórie (živá kalibrácia strany bola zmazaná). */
+  removed: boolean;
 }
 
 /** Podklad z `document_id` alebo `floor` (+ `page`); nejednoznačnosť a chýbajúca kalibrácia sú chyby s radou. */
-async function resolveTarget(args: Record<string, unknown>, deps: ControlDeps, viewer: ViewerSnapshot): Promise<Target> {
+async function resolveTarget(args: Record<string, unknown>, deps: ControlDeps, viewer: ViewerSnapshot, withHistory = false): Promise<Target> {
   const documentId = textOf(args.document_id);
   const floorRef = textOf(args.floor);
   if (!documentId && !floorRef) throw new UnderlayControlError("Zadaj document_id (UUID alebo object_ref výkresu) alebo floor.");
   if (documentId && floorRef) throw new UnderlayControlError("Zadaj buď document_id, alebo floor, nie oboje.");
   const page = pageOf(args);
-  const entries = entriesOf(await deps.documents());
+  const entries = entriesOf(await deps.documents(), withHistory);
   let candidates: Entry[];
   if (documentId) {
     candidates = entries.filter((e) => (UUID_RE.test(documentId) ? e.doc.id.toLowerCase() === documentId.toLowerCase() : e.doc.object_ref === documentId));
@@ -154,7 +166,7 @@ async function resolveTarget(args: Record<string, unknown>, deps: ControlDeps, v
   }
   const names = hit.cal.storey_guid ? await deps.floorNames([hit.cal.storey_guid]) : new Map<string, string>();
   const floor = hit.cal.storey_guid ? (names.get(hit.cal.storey_guid) ?? null) : null;
-  return { doc: hit.doc, cal: hit.cal, floor };
+  return { doc: hit.doc, cal: hit.cal, floor, removed: hit.removed === true };
 }
 
 function optionalBool(args: Record<string, unknown>, key: string): boolean | undefined {
@@ -178,6 +190,7 @@ async function run(args: Record<string, unknown>, deps: ControlDeps): Promise<Co
   if (!isControlMode(mode)) throw new UnderlayControlError(`mode ovládania podkladov je ${UNDERLAY_CONTROL_MODES.join(" | ")}.`);
   if (mode === "history") return { text: JSON.stringify(await history(args, deps)), isError: false };
   if (mode === "restore") return restore(args, deps);
+  if (mode === "remove") return remove(args, deps);
   const viewer = await deps.viewer();
   if (mode === "list") return { text: JSON.stringify(await list(deps, viewer)), isError: false };
 
@@ -251,11 +264,12 @@ function indexOf(args: Record<string, unknown>): number {
 
 /** História prepisov kalibrácie strany (`_georef.history`, najnovšia prvá): index sa dá dať do `restore`. */
 async function history(args: Record<string, unknown>, deps: ControlDeps) {
-  const t = await resolveTarget(args, deps, NO_VIEWER);
+  const t = await resolveTarget(args, deps, NO_VIEWER, true);
   const entries = historyOf(t.doc.georef).filter((h) => h.page === t.cal.page);
   return {
     target: { document_id: t.doc.id, object_ref: t.doc.object_ref, name: t.doc.name, page: t.cal.page, floor: t.floor },
-    current: summary(t.cal),
+    current: t.removed ? null : summary(t.cal),
+    ...(t.removed ? { removed: true } : {}),
     count: entries.length,
     history: entries.map((h, index) => ({ index, replaced_at: h.replaced_at, replaced_by: h.replaced_by, reason: h.reason, ...summary(h.calibration) })),
     note: entries.length === 0 ? "Zatiaľ sa nič neprepísalo (história drží najviac 10 prepisov polohy alebo kalibrácie, nie zmeny visible a opacity)." : "Obnova: mode=restore s týmto document_id, page a index.",
@@ -265,12 +279,12 @@ async function history(args: Record<string, unknown>, deps: ControlDeps) {
 /** Vráti záznam histórie do kalibrácie; aktuálna kalibrácia ide do histórie. Nič sa nepočíta. */
 async function restore(args: Record<string, unknown>, deps: ControlDeps): Promise<ControlResult> {
   const index = indexOf(args);
-  const t = await resolveTarget(args, deps, NO_VIEWER);
+  const t = await resolveTarget(args, deps, NO_VIEWER, true);
   if (!deps.writeEnabled) throw new UnderlayControlError("Zápis kalibrácie je vypnutý (UNDERLAY_WRITE_ENABLED), obnova sa neuloží.");
   const result = await deps.write(t.doc.id, (stored) =>
     restoreCalibration(stored, t.cal.page, index, { by: "mcp", reason: `restore index ${index}`, at: deps.now().toISOString() }),
   );
-  if (!result.ok) throw new UnderlayControlError(`Strana ${t.cal.page} nemá v histórii záznam s indexom ${index}. Zoznam: mode=history.`);
+  if (!result.ok || !("restored" in result)) throw new UnderlayControlError(`Strana ${t.cal.page} nemá v histórii záznam s indexom ${index}. Zoznam: mode=history.`);
   return {
     text: JSON.stringify({
       mode: "restore",
@@ -283,6 +297,39 @@ async function restore(args: Record<string, unknown>, deps: ControlDeps): Promis
     isError: false,
     reload: true,
     label: `Podklad ${label(t.doc)}: obnova kalibrácie`,
+  };
+}
+
+/**
+ * Zmaže kalibráciu podkladu (D-176, #284): len na výslovný pokyn používateľa. Ručná kalibrácia z panela len s `force`.
+ * Zmazaná kalibrácia ide do `_georef.history`, takže `restore` ju vráti; viewer dostane podklady nanovo.
+ */
+async function remove(args: Record<string, unknown>, deps: ControlDeps): Promise<ControlResult> {
+  const t = await resolveTarget(args, deps, NO_VIEWER);
+  if (!deps.writeEnabled) throw new UnderlayControlError("Zápis kalibrácie je vypnutý (UNDERLAY_WRITE_ENABLED), zmazanie sa neuloží.");
+  const force = optionalBool(args, "force") === true;
+  const result = await deps.write(t.doc.id, (stored) =>
+    removeCalibration(stored, t.cal, force, { by: "mcp", reason: "remove", at: deps.now().toISOString() }),
+  );
+  if (!result.ok) {
+    if (result.reason === "manual_exists") {
+      throw new UnderlayControlError(`Strana ${t.cal.page} má ručnú kalibráciu z panela Underlays (${result.existing.calibrated_at ?? "bez dátumu"}); zmaže ju len force=true na výslovný pokyn. Zmazanie sa dá vrátiť cez mode=restore.`);
+    }
+    throw new UnderlayControlError(`Kalibrácia strany ${t.cal.page} už v dokumente nie je (zmazal ju iný zásah). Zoznam: mode=list.`);
+  }
+  if (!("removed" in result)) throw new UnderlayControlError("Zmazanie vrátilo neočakávaný výsledok.");
+  return {
+    text: JSON.stringify({
+      mode: "remove",
+      target: { document_id: t.doc.id, object_ref: t.doc.object_ref, name: t.doc.name, page: t.cal.page, floor: t.floor },
+      removed: summary(result.removed),
+      remaining_calibrations: toGeorefV2(result.georef).calibrations.length,
+      history_count: historyOf(result.georef).filter((h) => h.page === t.cal.page).length,
+      note: "Kalibrácia je zmazaná a uložená v histórii (najnovší záznam, index 0): vráti ju mode=restore s týmto document_id, page a index=0. Viewer dostane podklady nanovo (UNDERLAYS_LOAD).",
+    }),
+    isError: false,
+    reload: true,
+    label: `Podklad ${label(t.doc)}: kalibrácia zmazaná`,
   };
 }
 

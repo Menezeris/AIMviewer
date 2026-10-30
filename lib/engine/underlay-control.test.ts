@@ -200,8 +200,8 @@ describe("calibrate_underlay mode=show_in_3d | hide | set_opacity (D-168)", () =
     expect(toGeorefV2(DOCS[0].georef).calibrations).toHaveLength(1);
   });
 
-  it("neznámy mode je chyba (remove sa nerobí)", async () => {
-    expect((await run({ mode: "remove", document_id: ASR1 })).isError).toBe(true);
+  it("neznámy mode je chyba (delete sa nerobí)", async () => {
+    expect((await run({ mode: "delete", document_id: ASR1 })).isError).toBe(true);
   });
 });
 
@@ -249,6 +249,43 @@ describe("calibrate_underlay mode=history | restore (D-168)", () => {
     // obnovený záznam z histórie odišiel, aktuálna (27) v nej pribudla, 26 ostala
     expect(historyOf(written).map((h) => h.calibration.affine[2])).toEqual([27, 26]);
     expect(historyOf(written)[0].reason).toBe("restore index 1");
+  });
+
+  it("remove zmaže kalibráciu, uloží ju do histórie a restore ju vráti (D-176)", async () => {
+    const docs = [doc(ASR1, "OCB_ASR_1NP", [cal(), cal({ page: 2, storey_guid: G2 })]), ...DOCS.slice(1)];
+    let stored: unknown = docs[0].georef;
+    const d = deps({ write: async (_id, apply) => { const r = apply(stored); if (r.ok) stored = r.georef; return r; } }, undefined, docs);
+    const r = await run({ mode: "remove", document_id: ASR1, page: 1 }, d);
+    expect(r.isError, r.text).toBe(false);
+    expect(r.reload).toBe(true);
+    expect(r.json.removed).toMatchObject({ page: 1, source: "auto" });
+    expect(r.json.remaining_calibrations).toBe(1);
+    expect(toGeorefV2(stored).calibrations.map((c) => c.page)).toEqual([2]);
+    expect(historyOf(stored)).toHaveLength(1);
+    expect(historyOf(stored)[0]).toMatchObject({ page: 1, replaced_by: "mcp", reason: "remove" });
+    // vrátenie: restore index 0 dá kalibráciu späť
+    docs[0] = { ...docs[0], georef: stored };
+    const hist = await run({ mode: "history", document_id: ASR1, page: 1 }, deps({}, undefined, docs));
+    expect(hist.json).toMatchObject({ removed: true, current: null, count: 1 });
+    const back = await run({ mode: "restore", document_id: ASR1, page: 1, index: 0 }, deps({ write: async (_id, apply) => { const x = apply(stored); if (x.ok) stored = x.georef; return x; } }, undefined, docs));
+    expect(back.isError, back.text).toBe(false);
+    expect(toGeorefV2(stored).calibrations.map((c) => c.page).sort()).toEqual([1, 2]);
+    expect(historyOf(stored)).toHaveLength(0);
+  });
+
+  it("remove: ručná kalibrácia len s force, vypnutý zápis, neznámy podklad", async () => {
+    const manual = [doc(ASR1, "OCB_ASR_1NP", [cal({ source: "manual" })])];
+    const blocked = await run({ mode: "remove", document_id: ASR1 }, deps({}, undefined, manual));
+    expect(blocked.isError).toBe(true);
+    expect(blocked.text).toMatch(/force=true/);
+    let stored: unknown = manual[0].georef;
+    const forced = await run({ mode: "remove", document_id: ASR1, force: true }, deps({ write: async (_id, apply) => { const r = apply(stored); if (r.ok) stored = r.georef; return r; } }, undefined, manual));
+    expect(forced.isError, forced.text).toBe(false);
+    expect(toGeorefV2(stored).calibrations).toEqual([]);
+    expect(historyOf(stored)[0].calibration.source).toBe("manual");
+    expect((await run({ mode: "remove", document_id: ASR1 }, deps({ writeEnabled: false }))).text).toMatch(/UNDERLAY_WRITE_ENABLED/);
+    expect((await run({ mode: "remove", document_id: "NIE" })).isError).toBe(true);
+    expect((await run({ mode: "remove" })).text).toMatch(/document_id/);
   });
 
   it("restore: chýbajúci alebo zlý index, vypnutý zápis, prázdna história", async () => {
