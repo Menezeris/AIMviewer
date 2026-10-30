@@ -5,7 +5,7 @@ import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { AIM_CACHE } from "@/lib/data/constants";
 import { documentFolder, referencePage } from "@/lib/data/document-tree";
-import { documentMeta, floorDrawing, type DocumentHolder } from "@/lib/data/document-meta";
+import { disciplineOf, documentMeta, floorDrawing, type DocumentHolder } from "@/lib/data/document-meta";
 import { fetchDocumentClassifications, fetchNodes, typeText } from "@/lib/data/object-documents";
 
 /**
@@ -27,6 +27,10 @@ export interface DocumentWire {
   url: string;
   mime?: string;
   storeyGuid?: string;
+  /** Všetky podlažia, ktoré výkres nesie (strecha: 4NP aj 5NP); `storeyGuid` je len pri jedinom (D-176). */
+  storeyGuids?: string[];
+  /** Disciplína z kódu dokumentu (ASR, PBR...), len pri výkrese podlažia (D-176). */
+  discipline?: string;
   folder?: string[];
   meta?: Record<string, string>;
 }
@@ -51,7 +55,7 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
   const [objsRes, docsRes, partsRes] = await Promise.all([
     supabase
       .from("objects")
-      .select("id, name")
+      .select("id, name, object_ref")
       .eq("object_type", "document")
       .is("valid_until", null),
     supabase
@@ -75,6 +79,8 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
     (objsRes.data ?? []).map((o) => [o.id as string, (o.name as string | null) ?? (o.id as string)])
   );
 
+  const refOf = new Map((objsRes.data ?? []).map((o) => [o.id as string, (o.object_ref as string | null) ?? null]));
+
   // Nositelia (D-104 krok 3): kto dokument nesie (podlažie, miestnosť, zóna...) a druh
   // (typ informácie ISO 19650) a druh média (D-131). Z nich je `meta` na zoskupenie a
   // pôdorys podlažia.
@@ -96,6 +102,8 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
     const holders = holdersByDoc.get(id) ?? [];
     const { type, mediaKind } = classes.get(id) ?? {};
     const plan = floorDrawing(holders, type?.code);
+    const floorGuids = plan.drawing ? [...new Set(holders.filter((h) => h.objectType === "floor" && h.ifcGuid).map((h) => h.ifcGuid as string))] : [];
+    const discipline = plan.drawing ? disciplineOf(refOf.get(id) ?? name) : null;
     const kind: DocumentWire["kind"] = plan.drawing ? "drawing" : mime.startsWith("image/") ? "image" : "document";
 
     // Folder: strom dokumentácie z IFC (D-104), koreň PD sa vynecháva.
@@ -118,6 +126,8 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
       url: location,
       mime,
       ...(plan.storeyGuid ? { storeyGuid: plan.storeyGuid } : {}),
+      ...(floorGuids.length > 1 ? { storeyGuids: floorGuids } : {}),
+      ...(discipline ? { discipline } : {}),
       ...(tree.length > 0 ? { folder: tree } : {}),
       ...(Object.keys(meta).length > 0 ? { meta } : {}),
     });

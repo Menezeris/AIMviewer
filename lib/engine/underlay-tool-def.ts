@@ -9,7 +9,7 @@ export const CALIBRATE_UNDERLAY_MODES = ["dry_run", "auto", "manual"] as const;
 export type Mode = (typeof CALIBRATE_UNDERLAY_MODES)[number];
 
 /** Režimy ovládania podkladov (D-168): menia len viditeľnosť a priehľadnosť, nie polohu; logika v `underlay-control.ts`. */
-export const UNDERLAY_CONTROL_MODE_NAMES = ["list", "show_in_3d", "hide", "set_opacity", "history", "restore"] as const;
+export const UNDERLAY_CONTROL_MODE_NAMES = ["list", "show_in_3d", "hide", "set_opacity", "history", "restore", "remove"] as const;
 
 /** Pôdorysný rez nad podlahou (m), ako 2D pohľad viewera. */
 export const PLAN_CUT_M = 1.2;
@@ -37,7 +37,7 @@ export const CALIBRATE_UNDERLAY_TOOL: ToolDefinition = {
     "HISTÓRIA KALIBRÁCIÍ: každý prepis polohy alebo kalibrácie strany (mode=auto, manual, úprava v paneli) uloží predošlú kalibráciu do " +
     "_georef.history (posledných 10, zmena len visible a opacity sa nezapisuje); mode=history (document_id alebo floor, page) vráti zoznam s index " +
     "(0 = najnovší), mode=restore (document_id alebo floor, page, index) vráti záznam do kalibrácie, aktuálnu uloží do histórie (obnova sa dá vrátiť) " +
-    "a pošle viewerovi podklady nanovo; ukladaj ho len na výslovný pokyn. Globálny vypínač podkladov v 3D je set_view_mode(underlays_3d). Uložený pohľad (saved_view) nesie aj stav podkladov. " +
+    "a pošle viewerovi podklady nanovo; ukladaj ho len na výslovný pokyn. mode=remove (document_id alebo floor, page) ZMAŽE kalibráciu strany (len na výslovný pokyn; ručnú z panela len s force=true); zmazaná ide na začiatok _georef.history, takže ju vráti mode=restore index=0. Globálny vypínač podkladov v 3D je set_view_mode(underlays_3d). Uložený pohľad (saved_view) nesie aj stav podkladov. " +
     "Vyžaduje nový viewer: starší jednotlivé podklady nezmení (tool to povie).",
   inputSchema: {
     type: "object",
@@ -55,20 +55,21 @@ export const CALIBRATE_UNDERLAY_TOOL: ToolDefinition = {
       pairs: {
         type: "array",
         maxItems: 20,
-        description: "manual: dvojice {page_pct: [x, y] v % strany vľavo hore, model_m: [u, v]}; pôdorys u, v = IFC X, Y; rez u = súradnica po reze, v = Z",
+        description: "manual: dvojice {page_pct: [x, y] v % strany vľavo hore, model_m: [u, v]} ALEBO {page_pct, object_ref} (kód miestnosti, steny či prvku; berie sa jeho ťažisko, prvok musí mať geometriu); pôdorys u, v = IFC X, Y; rez u = súradnica po reze, v = Z",
         items: {
           type: "object",
           properties: {
             page_pct: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2 },
             model_m: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2 },
+            object_ref: { type: "string", description: "namiesto model_m: object_ref alebo kód prvku (napr. miestnosť 4.01, stena); jeho ťažisko v rovine" },
           },
-          required: ["page_pct", "model_m"],
+          required: ["page_pct"],
         },
       },
       scale: { type: "number", description: "Mierka výkresu 1:N (napr. 50): pevná v štarte aj doladení, ICP rieši len rotáciu a posun; inak sa vezme z textu strany" },
       refine: { type: "boolean", description: "manual: doladiť dvojice na čiary výkresu (predvolene true)" },
       max_error_mm: { type: "number", description: `Strop mediánu chyby pre uloženie (predvolene ${DEFAULT_MAX_ERROR_MM})` },
-      force: { type: "boolean", description: "Prepísať aj ručnú kalibráciu z panela Underlays" },
+      force: { type: "boolean", description: "Prepísať (auto, manual) alebo zmazať (remove) aj ručnú kalibráciu z panela Underlays" },
       model: { type: "string", description: "Model federácie s konštrukciami (predvolene prvý, ASR)" },
       opacity: { type: "number", minimum: 0, maximum: 1, description: "set_opacity: priehľadnosť podkladu 0 až 1 (povinné)" },
       only: { type: "boolean", description: "show_in_3d: ostatné kalibrované podklady v 3D vypne (predvolene false)" },

@@ -60,6 +60,8 @@ export interface UnderlayDeps {
   model: (opts: { model?: string; floor?: string }) => Promise<UnderlayModel>;
   /** Zápis: `apply` zlúči kalibráciu do aktuálneho `_georef` (prečítaného tesne pred zápisom). */
   write: (documentId: string, apply: (stored: unknown) => MergeResult) => Promise<MergeResult>;
+  /** `object_ref` (miestnosť, stena, prvok) -> IFC GUID pre `pairs[].object_ref` (D-176); bez neho sa object_ref odmietne. */
+  refGuids?: (refs: string[]) => Promise<Map<string, string>>;
   writeEnabled: boolean;
   now: () => Date;
 }
@@ -75,7 +77,8 @@ interface Parsed {
   mode: Mode;
   floor?: string;
   section?: { axis: "x" | "y"; coordinate: number };
-  pairs: { page_pct: P2; model_m: P2 }[];
+  /** Dvojica: bod modelu je `model_m`, alebo `object_ref` prvku (ťažisko prvku v rovine, D-176). */
+  pairs: { page_pct: P2; model_m?: P2; object_ref?: string }[];
   refine: boolean;
   maxErrorMm: number;
   force: boolean;
@@ -104,10 +107,13 @@ function parse(a: Record<string, unknown>): Parsed {
   const pairs: Parsed["pairs"] = [];
   if (a.pairs !== undefined) {
     if (!Array.isArray(a.pairs) || a.pairs.length > 20) throw new UnderlayInputError("pairs je pole najviac 20 dvojíc.");
-    for (const p of a.pairs as { page_pct?: unknown; model_m?: unknown }[]) {
+    for (const p of a.pairs as { page_pct?: unknown; model_m?: unknown; object_ref?: unknown }[]) {
       const ok = (t: unknown): t is P2 => Array.isArray(t) && t.length === 2 && t.every(num);
-      if (!ok(p?.page_pct) || !ok(p?.model_m)) throw new UnderlayInputError("Dvojica je {page_pct: [x, y], model_m: [u, v]}.");
-      pairs.push({ page_pct: p.page_pct, model_m: p.model_m });
+      const objectRef = typeof p?.object_ref === "string" && p.object_ref.trim() ? p.object_ref.trim() : undefined;
+      if (!ok(p?.page_pct) || (p.model_m === undefined) === (objectRef === undefined) || (p.model_m !== undefined && !ok(p.model_m))) {
+        throw new UnderlayInputError("Dvojica je {page_pct: [x, y], model_m: [u, v]} alebo {page_pct: [x, y], object_ref: kód miestnosti, steny či prvku} (práve jedno z model_m a object_ref).");
+      }
+      pairs.push(objectRef ? { page_pct: p.page_pct, object_ref: objectRef } : { page_pct: p.page_pct, model_m: p.model_m as P2 });
     }
   }
   if (mode === "manual" && pairs.length < 2) throw new UnderlayInputError("mode=manual potrebuje aspoň 2 dvojice v pairs.");
@@ -156,6 +162,66 @@ function residual(pairs: { pdf_pt: P2; plane_m: P2 }[], mirror: boolean): number
     const q = applyAffine(m, x.pdf_pt);
     return acc + Math.hypot(q[0] - x.plane_m[0], q[1] - x.plane_m[1]);
   }, 0);
+}
+
+/**
+ * Body modelu pre dvojice s `object_ref` (D-176): ťažisko prvku v IFC (pôdorys: plošné ťažisko pôdorysu, napr. IfcSpace;
+ * ináč priemer vrcholov), kým je rovina známa až po výbere podlažia. Prvok bez geometrie alebo mimo modelu je chyba
+ * s radou (model_m alebo iný prvok), nie ticho vynechaná dvojica.
+ */
+async function pairRefPoints(pairs: Parsed["pairs"], model: UnderlayModel, deps: UnderlayDeps): Promise<Map<string, MeshElement>> {
+  const refs = [...new Set(pairs.flatMap((x) => (x.object_ref ? [x.object_ref] : [])))];
+  const out = new Map<string, MeshElement>();
+  if (refs.length === 0) return out;
+  if (!deps.refGuids) throw new UnderlayInputError("object_ref v pairs tu nie je dostupný, zadaj model_m.");
+  const guids = await deps.refGuids(refs);
+  const byGuid = new Map(model.elements.map((e) => [e.globalId, e]));
+  for (const ref of refs) {
+    const guid = guids.get(ref);
+    if (!guid) throw new UnderlayInputError(`object_ref ${ref} nie je v AIM (kód miestnosti, steny či prvku); zadaj model_m alebo správny kód.`);
+    const el = byGuid.get(guid);
+    if (!el) throw new UnderlayInputError(`object_ref ${ref} (${guid}) nie je v modeli ${model.id} alebo nemá geometriu (napr. IfcSpace bez geometrie); zadaj model_m alebo prvok s geometriou.`);
+    if (ifcPositions(el).length === 0) throw new UnderlayInputError(`object_ref ${ref} nemá geometriu; zadaj model_m.`);
+    out.set(ref, el);
+  }
+  return out;
+}
+
+/** Ťažisko prvku v IFC: v pôdoryse plošné ťažisko pôdorysu (ako popisky miestností), ináč priemer vrcholov. */
+function elementCentroid(el: MeshElement, plan: boolean): [number, number, number] {
+  const pos = ifcPositions(el);
+  const n = pos.length / 3;
+  let z = 0;
+  for (let i = 2; i < pos.length; i += 3) z += pos[i];
+  if (plan) {
+    const c = footprintCentroid(pos, el.indices);
+    if (c) return [c[0], c[1], z / n];
+  }
+  let x = 0;
+  let y = 0;
+  for (let i = 0; i + 2 < pos.length; i += 3) {
+    x += pos[i];
+    y += pos[i + 1];
+  }
+  return [x / n, y / n, z / n];
+}
+
+/** Dvojice s bodom strany v bodoch PDF a bodom modelu v rovine (u, v); object_ref sa premieta ťažiskom do roviny. */
+function pairsInPlane(
+  pairs: Parsed["pairs"],
+  refPoints: Map<string, MeshElement>,
+  plane: Plane,
+  pageSize: P2,
+): { pdf_pt: P2; plane_m: P2 }[] {
+  return pairs.map((x) => {
+    let planeM = x.model_m;
+    if (!planeM) {
+      const c = elementCentroid(refPoints.get(x.object_ref!)!, plane.v[2] === 0);
+      const d: [number, number, number] = [c[0] - plane.origin[0], c[1] - plane.origin[1], c[2] - plane.origin[2]];
+      planeM = [d[0] * plane.u[0] + d[1] * plane.u[1] + d[2] * plane.u[2], d[0] * plane.v[0] + d[1] * plane.v[1] + d[2] * plane.v[2]] as P2;
+    }
+    return { pdf_pt: [(x.page_pct[0] / 100) * pageSize[0], (1 - x.page_pct[1] / 100) * pageSize[1]] as P2, plane_m: planeM };
+  });
 }
 
 /** Pohľad z druhej strany: zrkadlo osi u sa prenesie do roviny (u -> -u), affine ostane priamy. */
@@ -221,10 +287,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   }
   const model = await deps.model({ model: p.model, floor });
   const segs = pg.lines?.segs ?? [];
-  const pairs = p.pairs.map((x) => ({
-    pdf_pt: [(x.page_pct[0] / 100) * pageSize[0], (1 - x.page_pct[1] / 100) * pageSize[1]] as P2,
-    plane_m: x.model_m,
-  }));
+  const refPoints = await pairRefPoints(p.pairs, model, deps);
 
   let res: CalibrationResult;
   let plane: Plane;
@@ -236,6 +299,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     const cut = modelCut(model.elements, plane, "section");
     if (cut.length === 0) throw new UnderlayInputError(`Rovina ${p.section.axis.toUpperCase()} = ${c} m nepretína model ${model.id}.`);
     if (p.mode === "manual") {
+      const pairs = pairsInPlane(p.pairs, refPoints, plane, pageSize);
       // Smer pohľadu z dvojíc: pri 3 a viac tá podobnosť (priama alebo zrkadlová), ktorá sedí lepšie.
       const mirror = pairs.length >= 3 && residual(pairs, true) < residual(pairs, false);
       res = calibratePairs(pairs, refine ? { lines: segs, cut, mirror } : undefined, mirror, p.scale ?? undefined);
@@ -248,6 +312,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     spaceCount = spaces.length;
     plane = planPlane(z + PLAN_CUT_M);
     const cut = modelCut(model.elements, plane, "plan");
+    const pairs = p.mode === "manual" ? pairsInPlane(p.pairs, refPoints, plane, pageSize) : [];
     res =
       p.mode === "manual"
         ? calibratePairs(pairs, refine ? { lines: segs, cut, mirror: false } : undefined, false, p.scale ?? undefined)

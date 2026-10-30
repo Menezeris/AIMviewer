@@ -9,6 +9,7 @@ import { getSupabaseAdmin } from "../supabase/server";
 import { installArchiveSource } from "./archive-source";
 import { meshModel } from "./measure";
 import { openEngineSession } from "./session";
+import { resolveTargetsToGuids } from "./aim-lookup";
 import { IFC_GUID_RE, modelsFor, storeyGuid, structured, type EngineDeps } from "./tools";
 import type { UnderlayDeps, UnderlayDocument, UnderlayModel, UnderlayPage } from "./underlay-tool";
 
@@ -119,6 +120,7 @@ export function defaultUnderlayDeps(): UnderlayDeps {
     document,
     page,
     model,
+    refGuids: (refs) => resolveTargetsToGuids(refs),
     write,
     writeEnabled: process.env.UNDERLAY_WRITE_ENABLED === "true",
     now: () => new Date(),

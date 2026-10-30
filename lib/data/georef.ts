@@ -291,6 +291,27 @@ export function restoreCalibration(stored: unknown, page: number, index: number,
   return { ok: true, georef: { version: 2, calibrations, ...(history.length > 0 ? { history } : {}) }, restored, replaced };
 }
 
+export type RemoveResult =
+  | { ok: true; georef: GeorefV2; removed: GeorefCalibration }
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "manual_exists"; existing: GeorefCalibration };
+
+/**
+ * Zmaže kalibráciu na mieste `target` (D-176, #284). Ručná kalibrácia z panela sa zmaže len s `force`. Zmazaná
+ * kalibrácia ide na začiatok `history` (najnovší prvý), takže `restoreCalibration` ju vráti; história drží najviac
+ * `MAX_GEOREF_HISTORY` záznamov, najstarší vypadne. Ostatné kalibrácie dokumentu ostávajú.
+ */
+export function removeCalibration(stored: unknown, target: GeorefCalibration, force: boolean, meta: HistoryMeta): RemoveResult {
+  const cur = toGeorefV2(stored);
+  const i = cur.calibrations.findIndex((c) => sameSlot(c, target));
+  if (i < 0) return { ok: false, reason: "not_found" };
+  const removed = cur.calibrations[i];
+  if (removed.source === "manual" && !force) return { ok: false, reason: "manual_exists", existing: removed };
+  const calibrations = cur.calibrations.filter((_, at) => at !== i);
+  const history = pushHistory(cur.history ?? [], removed, meta);
+  return { ok: true, georef: { version: 2, calibrations, history }, removed };
+}
+
 /**
  * Uloženie viditeľnosti a priehľadnosti z viewera (D-168, `SET_UNDERLAYS_3D` s `persist`): viewer pošle v1 s nezmeneným
  * `affine` a `calibration`. Ak sedí na existujúcu kalibráciu tej istej strany a podlažia, zmenia sa len `visible` a

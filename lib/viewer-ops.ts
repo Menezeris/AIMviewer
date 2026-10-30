@@ -176,7 +176,8 @@ export type ViewerOp =
   | ({ op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[]; selector?: OpsSelector } & CameraMove)
   /** Presná póza (D-122): fork ju prenesie do kamery ako `SET_CAMERA {viewpoint}` (D-098). */
   | { op: "pose"; viewpoint: BridgeViewpoint; projection?: Projection }
-  | { op: "view"; mode: ViewMode; storeyGuid?: string }
+  /** documentId = výkres podlažia, ktorý vybral host (D-176); bez neho vyberá viewer sám. */
+  | { op: "view"; mode: ViewMode; storeyGuid?: string; documentId?: string }
   /** layout split = karta vedľa 3D, inak záložka na celú plochu (D-132). */
   | { op: "doc"; documentId: string; page?: number; region?: DocRegion; highlights?: DocRegion[]; layout?: "split" }
   /** Záložky viewera a rezný box (D-132), `lib/viewer-tabs.ts`. */
@@ -209,6 +210,8 @@ export type ViewerOp =
   | { op: "planpos"; show: boolean };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
+/** UUID dokumentu v `view:...~d=`. */
+const DOC_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function parseSelector(raw: string): OpsSelector | null {
@@ -554,8 +557,10 @@ export function parseOps(raw: string): ViewerOp[] {
       const pose = parsePose(arg);
       if (pose) out.push({ op, ...pose });
     } else if (op === "view") {
-      if (!(VIEW_MODES as readonly string[]).includes(arg)) continue;
-      out.push({ op, mode: arg as ViewMode, ...(guids[0] ? { storeyGuid: guids[0] } : {}) });
+      const [mode, kv] = parseArg(arg);
+      if (!(VIEW_MODES as readonly string[]).includes(mode)) continue;
+      const documentId = kv.d && DOC_ID.test(kv.d) ? kv.d : undefined;
+      out.push({ op, mode: mode as ViewMode, ...(guids[0] ? { storeyGuid: guids[0] } : {}), ...(documentId ? { documentId } : {}) });
     } else if (op === "lens") {
       const [mode, kv] = parseArg(arg);
       if (!(LENS_MODES as readonly string[]).includes(mode)) continue;
@@ -691,7 +696,7 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     case "pose":
       return { type: "SET_CAMERA", preset: "keep", viewpoint: o.viewpoint, ...(o.projection ? { projection: o.projection } : {}) };
     case "view":
-      return { type: "SET_VIEW_MODE", mode: o.mode, ...(o.storeyGuid ? { storeyGuid: o.storeyGuid } : {}) };
+      return { type: "SET_VIEW_MODE", mode: o.mode, ...(o.storeyGuid ? { storeyGuid: o.storeyGuid } : {}), ...(o.documentId ? { documentId: o.documentId } : {}) };
     case "doc":
       return {
         type: "DOCUMENT_OPEN",
@@ -829,8 +834,8 @@ export function poseOp(vp: BridgeViewpoint, projection?: Projection): string {
   return `pose:${[nums.join(","), ...kv].join("~")}:`;
 }
 
-export function viewModeOp(mode: ViewMode, storeyGuid?: string): string {
-  return `view:${mode}:${storeyGuid ?? ""}`;
+export function viewModeOp(mode: ViewMode, storeyGuid?: string, documentId?: string): string {
+  return `view:${mode}${documentId && DOC_ID.test(documentId) ? `~d=${documentId}` : ""}:${storeyGuid ?? ""}`;
 }
 
 export function docOp(documentId: string, page?: number, region?: DocRegion, highlights?: DocRegion[], layout?: "split"): string {

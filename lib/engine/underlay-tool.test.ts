@@ -160,6 +160,33 @@ describe("calibrate_underlay", () => {
     expect(r.out.calibration.affine[2]).toBeCloseTo(T[2], 6);
   });
 
+  it("manual s object_ref miestnosti: bod modelu je ťažisko prvku (D-176)", async () => {
+    const pct = (m: P2) => {
+      const p = applyAffine(INV, m);
+      return [(p[0] / PAGE[0]) * 100, (1 - p[1] / PAGE[1]) * 100];
+    };
+    // 1.01 má ťažisko (33, 2,5), 1.12 (51, 12,5)
+    const { d } = deps({ refGuids: async (refs) => new Map(refs.flatMap((r) => (r === "1.01" ? [[r, "SP1.01"]] : r === "1.12" ? [[r, "SP1.12"]] : r === "BEZ.GEO" ? [[r, "NIE-V-MODELI"]] : []))) });
+    const r = await run(
+      { document_id: "D1", mode: "manual", refine: false, pairs: [{ page_pct: pct([33, 2.5]), object_ref: "1.01" }, { page_pct: pct([51, 12.5]), object_ref: "1.12" }] },
+      d,
+    );
+    expect(r.isError, r.text).toBe(false);
+    expect(r.out.calibration.source).toBe("manual");
+    expect(r.out.calibration.affine[2]).toBeCloseTo(T[2], 3);
+    expect(r.out.calibration.calibration[0].ifc_m).toEqual([33, 2.5]);
+    // zmes model_m a object_ref v jednej dvojici, neznámy kód, prvok mimo modelu
+    const both = await run({ document_id: "D1", mode: "manual", pairs: [{ page_pct: [1, 1], model_m: [1, 1], object_ref: "1.01" }, { page_pct: [2, 2], model_m: [2, 2] }] }, d);
+    expect(both.text).toMatch(/práve jedno/);
+    const unknown = await run({ document_id: "D1", mode: "manual", refine: false, pairs: [{ page_pct: [1, 1], object_ref: "9.99" }, { page_pct: [2, 2], model_m: [2, 2] }] }, d);
+    expect(unknown.text).toMatch(/9\.99 nie je v AIM/);
+    const missing = await run({ document_id: "D1", mode: "manual", refine: false, pairs: [{ page_pct: [1, 1], object_ref: "BEZ.GEO" }, { page_pct: [2, 2], model_m: [2, 2] }] }, d);
+    expect(missing.text).toMatch(/nie je v modeli ASR/);
+    // bez refGuids v deps sa object_ref odmietne, model_m ide ďalej
+    const noResolver = await run({ document_id: "D1", mode: "manual", pairs: [{ page_pct: [1, 1], object_ref: "1.01" }, { page_pct: [2, 2], model_m: [2, 2] }] }, deps().d);
+    expect(noResolver.text).toMatch(/object_ref v pairs/);
+  });
+
   it("chyby vstupu", async () => {
     const { d } = deps();
     expect((await run({}, d)).text).toMatch(/document_id/);
