@@ -252,7 +252,9 @@ function pushHistory(history: GeorefHistoryEntry[], previous: GeorefCalibration,
  */
 export function mergeCalibration(stored: unknown, next: GeorefCalibration, force = false, meta?: HistoryMeta): MergeResult {
   const cur = toGeorefV2(stored);
-  const i = cur.calibrations.findIndex((c) => sameSlot(c, next));
+  let i = cur.calibrations.findIndex((c) => sameSlot(c, next));
+  // Rez bez výrezu má na strane jednu kalibráciu: iná rovina (opravená značka rezu) nahradí starú, tá ide do histórie.
+  if (i < 0 && next.plane && !next.region) i = cur.calibrations.findIndex((c) => c.page === next.page && !!c.plane && !c.region);
   const existing = i >= 0 ? cur.calibrations[i] : null;
   if (existing && existing.source === "manual" && next.source === "auto" && !force) {
     return { ok: false, reason: "manual_exists", existing };

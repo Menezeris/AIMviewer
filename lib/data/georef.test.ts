@@ -91,6 +91,25 @@ describe("_georef v2 (D-133)", () => {
     expect(manualOverAuto.ok && manualOverAuto.replaced?.source).toBe("auto");
   });
 
+  it("rez: iná rovina na tej istej strane nahradí starú auto kalibráciu a tá ide do histórie (D-179)", () => {
+    const meta = { at: "2026-10-30T16:00:00Z", by: "mcp" as const, reason: "calibrate_underlay mode=auto" };
+    const old = { ...section(4.688), source: "auto" as const };
+    const r = mergeCalibration({ version: 2, calibrations: [old] }, section(4.721), false, meta);
+    expect(r.ok && r.georef.calibrations).toHaveLength(1);
+    expect(r.ok && r.georef.calibrations[0].plane?.origin[0]).toBe(section(4.721).plane!.origin[0]);
+    expect(r.ok && r.replaced).toEqual(old);
+    expect(r.ok && r.history_added).toBe(true);
+    expect(r.ok && r.georef.history).toHaveLength(1);
+    // ručná kalibrácia inej roviny na strane sa bez force neprepíše, s force áno
+    const manual = { ...section(4.688), source: "manual" as const };
+    expect(mergeCalibration({ version: 2, calibrations: [manual] }, section(4.721), false, meta).ok).toBe(false);
+    const forced = mergeCalibration({ version: 2, calibrations: [manual] }, section(4.721), true, meta);
+    expect(forced.ok && forced.georef.calibrations).toHaveLength(1);
+    // pôdorys a rez na tej istej strane sa nezamieňajú
+    const mixed = mergeCalibration({ version: 2, calibrations: [plan("auto")] }, section(4.721), false, meta);
+    expect(mixed.ok && mixed.georef.calibrations).toHaveLength(2);
+  });
+
   it("primaryV1 pre dnešný fork: pôdorysná, ručná má prednosť, rezy nie", () => {
     expect(primaryV1({ version: 2, calibrations: [section(47.42)] })).toBeNull();
     const v1 = primaryV1({ version: 2, calibrations: [section(47.42), plan("auto", 26), { ...plan("manual", 27), page: 2 }] })!;
