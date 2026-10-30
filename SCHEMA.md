@@ -650,21 +650,45 @@ pôvodný pohľad. Zapisuje aj viewer (panel Presentation) cez route `/api/saved
   riadkov). `v_clash_summary` = ten istý beh po pravidle, podlaží a stave (`clashes`, `hard`, `clearance`, `critical`, `major`,
   `minor`, `info`). Oba aj `clash_tests` sú vo whiteliste `query_view`. Práva: `anon`/`authenticated` nič, `service_role` všetko.
 
-### 2.19 Kontajnery, revízie a úplná kópia revízie (D-183, plánované: K1, K2)
+### 2.19 Kontajnery, revízie a úplná kópia revízie (D-183; K1 implementované, K2 plánované)
 
 **Zdroj pravdy (D-183):** obsah modelu platí z kontajnera revízie (súbor v archíve, sha256); DB nesie (1) záznam
-kontajnera a revízie, (2) úplnú kópiu informácií každej revízie bez geometrie a (3) AIM vrstvu. Presné DDL doplní
-migrácia kroku, ktorý ho zavádza; tu je zámer, aby nové tabuľky nevznikali mimo neho.
-- **Kontajner a revízia (K1):** `information_containers` = kontajner naprieč revíziami podľa `IfcDocumentInformation`
-  (`identification`, `name`, `description`, `purpose`, `intended_use`, `scope`, `confidentiality`, `electronic_format`,
-  `document_owner` -> `ifc_actor`; typ IFC / PDF / DWG; väzba na model federácie alebo dokument AIM). `container_revisions` =
-  jedna revízia (`revision`, rodič, `creation_time`, `last_revision_time`, `editors` -> `ifc_actor`, `location`, `sha256`,
-  `size_bytes`, `file_header` jsonb, recept / úloha / commit) + pojmy `IfcOwnerHistory`, ktoré `IfcDocumentInformation`
-  nemá (`owning_application`, `last_modifying_application` -> `ifc_application`, `change_action`, `state`); `status`
-  (`IfcDocumentStatusEnum`, zatiaľ DRAFT = WIP) a stav ISO 19650 ako `IfcApproval` pripravené prázdne. Revízie len hlavnej
-  rady, nemenné, zmazať len poslednú. `model_revisions` (2.14) ostáva, revízia modelu sa na ňu viaže.
-- **Podpis vstupu (K1):** `{model: revision}` na behoch IDS a clash a na položkách `_georef` (+ sha256 dokumentu);
-  `v_ids_latest`, `v_clash_latest` dostanú `based_on` a `stale`.
+kontajnera a revízie, (2) úplnú kópiu informácií každej revízie bez geometrie a (3) AIM vrstvu.
+- **Kontajner a revízia (K1, migrácia `20261030120000_information_containers.sql`, test `supabase/tests/information_containers.sql`):**
+  - `ifc_application` (`IfcApplication`: `application_developer`, `version`, `application_full_name`,
+    `application_identifier`; unikát identifikátor + verzia) a `ifc_actor` (`IfcPersonAndOrganization`: `person_name`,
+    `organization_name`, voliteľne `person_id` / `organization_id` -> `objects`, `roles`; unikát meno + organizácia;
+    `ifc_actor_for(meno, org)` ho nájde alebo založí).
+  - `information_containers` = kontajner naprieč revíziami podľa `IfcDocumentInformation`: `identification` (unique; model =
+    `ASR`, dokument = jeho `Identification`, pri zhode `object_ref`), `name`, `description`, `purpose`, `intended_use`, `scope`,
+    `confidentiality`, `electronic_format`, `document_owner_id` -> `ifc_actor` (= OwningUser), `container_type`
+    `IFC|PDF|DWG|OTHER`, `model` (unique, práve pri IFC), `document_id` (unique -> `objects`, `on delete set null`; len
+    `object_type = 'document'`, nie časť dokumentu).
+  - `container_revisions` = jedna `Revision`: `revision` (text, dnes číslo), `revision_no` (poradie v hlavnej rade; model =
+    vNNN, dokument 1, 2...), `parent_revision_no`, `model_revision_id` (unique -> `model_revisions`, `on delete cascade`),
+    `sha256` (64 hex, nekomprimovaný obsah), `size_bytes`, `location` (archív / bucket), `electronic_format`, `creation_time`
+    (prvá revízia kontajnera), `last_revision_time` (táto revízia), `editors_id` -> `ifc_actor` (= LastModifyingUser),
+    `owning_application_id`, `last_modifying_application_id` -> `ifc_application`, `change_action`
+    (`ADDED|MODIFIED|DELETED|NOCHANGE|NOTDEFINED`; ADDED prvá, MODIFIED ďalšia), `state` (`IfcStateEnum`), `status`
+    (`IfcDocumentStatusEnum`, predvolene DRAFT = WIP), `approval` jsonb (`IfcApproval`, ISO 19650; zatiaľ NULL), `file_header`
+    jsonb (hlavička STEP, plní K2), `recipe_ref`, `task_id`, `commit_sha` (z `recipe_ref` za `@`); unikát
+    (`container_id`, `revision_no`).
+  - Plnenie triggerom, host ani ETL sa nemenia: `insert` do `model_revisions` (`etl.model_publish`) založí revíziu kontajnera
+    modelu v tej istej transakcii; nový `documents.file_sha256` založí revíziu kontajnera dokumentu (rovnaký obsah nič).
+  - Stráže: nová revízia musí byť vyššia ako posledná a nadväzovať na ňu (`parent_revision_no` = posledná; len hlavná rada);
+    `sha256`, veľkosť a poradie revízie sa nemenia (aj v `model_revisions`); zmazať sa dá len posledná revízia kontajnera
+    (aj cez `on delete cascade` z `model_revisions`).
+  - `v_container_revisions` = revízie s pojmami IFC (`owning_user`, `last_modifying_user`, `owning_application`,
+    `last_modifying_application`, `change_action`, `status`, `is_latest`...).
+  - Spätne doplnené: všetky `model_revisions` a dokumenty so `file_sha256` (kontajner aj pre dokument bez sha256).
+- **Podpis vstupu (K1):** `ids_runs.model_revisions` a `clash_runs.model_revisions` jsonb `{model: revízia}` (predvolene
+  `{}` = neznáma). Motor nesie revíziu archívu, z ktorého model načítal (`engineRevision`, `revision` v `models`); IDS beh ju
+  zapíše, clash beh bez nej doplní trigger z `models` (`engine_model_revisions`: `revision` z motora, inak jednoznačná zhoda
+  `size` s `model_revisions.size_bytes`; tak sa spätne doplnili aj staré behy). Položka `_georef` (v2 `calibrations[]` aj v1)
+  dostane `model_revisions` a `document_sha256` triggerom pri zápise: tá istá kalibrácia (strana, `affine`, `region`) prenesie
+  starú pečiatku, nová dostane aktuálne revízie; spätne revízie platné v čase `calibrated_at` (`model_revisions_at(t)`).
+  `v_ids_latest`, `v_ids_summary`, `v_clash_latest`, `v_clash_summary` majú na konci `based_on` (podpis, NULL = neznámy) a
+  `stale` (`revisions_stale`: true = iný ako aktuálne revízie, NULL = neznámy). Práva: `anon`/`authenticated` nič.
 - **Úplná kópia revízie (K2):** tabuľky s kľúčom `(model, revision)` v každom riadku: objekty `IfcRoot` s atribútmi
   (podľa GlobalId), dvojice `IfcRel*` (kľúč `(trieda, nositeľ, druhá strana)`), psety a Qto (kľúč `(prvok, meno psetu)`),
   `content_hash` na riadok; beh importu so stavom `done` a počtami na kontrolu úplnosti. Bez geometrie. Porovnanie dvoch
