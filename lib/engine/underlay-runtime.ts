@@ -11,7 +11,7 @@ import { meshModel } from "./measure";
 import { openEngineSession } from "./session";
 import { resolveTargetsToGuids } from "./aim-lookup";
 import { IFC_GUID_RE, modelsFor, storeyGuid, structured, type EngineDeps } from "./tools";
-import type { Affine, P2 } from "./underlay-calibrate";
+import { cropToRegion, type Affine, type P2, type PageRegion } from "./underlay-calibrate";
 import type { PlanSheet } from "./underlay-section-mark";
 import type { UnderlayDeps, UnderlayDocument, UnderlayModel, UnderlayPage } from "./underlay-tool";
 
@@ -117,11 +117,11 @@ async function planSheets(): Promise<PlanSheet[]> {
     .is("valid_until", null)
     .not("properties->_georef", "is", null);
   if (error) throw new Error(error.message);
-  const wanted: { id: string; ref: string; page: number; affine: Affine; pageSize: P2 }[] = [];
+  const wanted: { id: string; ref: string; page: number; affine: Affine; pageSize: P2; region: PageRegion | null }[] = [];
   for (const d of data ?? []) {
     for (const c of toGeorefV2((d.properties as Record<string, unknown> | null)?._georef).calibrations) {
       // Affine je z bodov strany v rozmere `page_size` kalibrácie (D-133), ten istý rámec ako čiary ETL.
-      if (!c.plane) wanted.push({ id: d.id as string, ref: (d.object_ref as string | null) ?? (d.id as string), page: c.page, affine: c.affine, pageSize: c.page_size });
+      if (!c.plane) wanted.push({ id: d.id as string, ref: (d.object_ref as string | null) ?? (d.id as string), page: c.page, affine: c.affine, pageSize: c.page_size, region: c.region ?? null });
     }
   }
   if (wanted.length === 0) return [];
@@ -135,7 +135,10 @@ async function planSheets(): Promise<PlanSheet[]> {
     const pg = (pages ?? []).find((x) => x.document_id === w.id && x.page === w.page);
     if (!pg) continue;
     const lines = pg.lines as UnderlayPage["lines"] | null;
-    out.push({ ref: w.ref, page: w.page, affine: w.affine, pageSize: w.pageSize, blocks: (pg.blocks as UnderlayPage["blocks"]) ?? [], lines: lines?.segs });
+    const blocks = (pg.blocks as UnderlayPage["blocks"]) ?? [];
+    // Hárok s viac pôdorysmi (D-180): text a čiary len z výrezu kalibrácie, inak by osi a značky iného pôdorysu išli cez zlý affine.
+    const crop = w.region ? cropToRegion(blocks, lines?.segs ?? [], w.region, w.pageSize) : null;
+    out.push({ ref: w.ref, page: w.page, affine: w.affine, pageSize: w.pageSize, blocks: crop?.blocks ?? blocks, lines: crop ? crop.lines : lines?.segs, region: w.region });
   }
   return out;
 }

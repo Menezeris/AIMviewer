@@ -473,4 +473,39 @@ describe("calibrate_underlay bez popiskov, bez IfcSpace, výrez (D-180)", () => 
     expect((await run({ document_id: "D1", region: [90, 0, 10, 10] }, d)).text).toMatch(/obsahuje len \d+ čiar/);
     expect((await run({ document_id: "D1", region: [0, 0, 120, 10] }, d)).text).toMatch(/region je výrez/);
   });
+  it("osi (D-184): poloha osí voči iným kalibrovaným pôdorysom; posun o pole osí je nevierohodný a auto ho neuloží", async () => {
+    const b = building();
+    // Osi A až E (roviny X = 30 až 54) a 1 až 4 (Y = 0 až 15): bubliny nad a pod budovou, vľavo a vpravo.
+    const pct = (p: P2): PageBlock => ({ t: "", x: (p[0] / PAGE[0]) * 100 - 0.2, y: (1 - p[1] / PAGE[1]) * 100 - 0.3, w: 0.4, h: 0.6 });
+    const yTop = applyAffine(INV, [42, 18])[1];
+    const yBot = applyAffine(INV, [42, -3])[1];
+    const xL = applyAffine(INV, [27, 7.5])[0];
+    const xR = applyAffine(INV, [57, 7.5])[0];
+    const axes: PageBlock[] = [];
+    ["A", "B", "C", "D", "E"].forEach((t, i) => {
+      const x = applyAffine(INV, [30 + i * 6, 7.5])[0];
+      axes.push({ ...pct([x, yTop]), t }, { ...pct([x, yBot]), t });
+    });
+    ["1", "2", "3", "4"].forEach((t, i) => {
+      const y = applyAffine(INV, [42, i * 5])[1];
+      axes.push({ ...pct([xL, y]), t }, { ...pct([xR, y]), t });
+    });
+    const page = async () => ({ blocks: [...b.blocks, ...axes], lines: { size: PAGE, segs: b.lines } });
+    const sheet = (affine: Affine) => ({ ref: "REF", page: 1, affine, pageSize: PAGE as [number, number], blocks: axes });
+    const ok = await run({ document_id: "D1" }, deps({ page, planSheets: async () => [sheet(T)] }).d);
+    expect(ok.isError, ok.text).toBe(false);
+    expect(ok.out.axes_check).toMatchObject({ matched: 9, ok: true, ref_sheets: 1, ref_axes: 9 });
+    expect(ok.out.axes_check.median_mm).toBeLessThan(20);
+    expect(ok.out.plausible).toBe(true);
+
+    // Referenčný výkres má osi o pole (6 m) inde: výsledok z popiskov s nimi nesedí.
+    const bay: Affine = [T[0], T[1], T[2] + 6, T[3], T[4], T[5]];
+    const { d, writes } = deps({ page, planSheets: async () => [sheet(bay)] });
+    const bad = await run({ document_id: "D1", mode: "auto" }, d);
+    expect(bad.out.axes_check.ok).toBe(false);
+    expect(bad.out.plausible).toBe(false);
+    expect(bad.out.warnings.join(" ")).toMatch(/Osi výkresu/);
+    expect(bad.out.written).toBe(false);
+    expect(writes).toHaveLength(0);
+  });
 });

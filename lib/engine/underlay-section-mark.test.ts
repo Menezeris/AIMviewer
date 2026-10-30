@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PageBlock } from "./underlay-calibrate";
-import { planLabelLines, sectionFromPlans, sectionMarkFromName, type PlanSheet } from "./underlay-section-mark";
+import { pageAxisLines, planLabelLines, refAxesFromSheets, sectionFromPlans, sectionMarkFromName, type PlanSheet } from "./underlay-section-mark";
 
 /** Popisok strany: text, x %, y % (vľavo hore), rozmer ako ETL (D-123). */
 const b = (t: string, x: number, y: number): PageBlock => ({ t, x, y, w: 0.15, h: 0.65 });
@@ -148,5 +148,20 @@ describe("sectionMarkFromName", () => {
     expect(sectionMarkFromName(null, "D.1.1.06 Rez B - Pozdĺžny rez schodiskom")).toBe("B");
     expect(sectionMarkFromName("REZ C-C")).toBe("C");
     expect(sectionMarkFromName("PODORYS-1NP")).toBeNull();
+  });
+});
+
+describe("osi z kalibrovaných pôdorysov (D-184)", () => {
+  it("refAxesFromSheets: pôdorysy ASR 1NP až 3NP dajú osi A až F (roviny X) a 1 až 4 (roviny Y), zhoda do 2 cm", () => {
+    const refs = refAxesFromSheets(SHEETS.slice(0, 3));
+    expect(refs.map((r) => `${r.dir}${r.text}`).sort()).toEqual(["xA", "xB", "xC", "xD", "xE", "xF", "y1", "y2", "y3", "y4"]);
+    const A = refs.find((r) => r.text === "A")!;
+    expect(A).toMatchObject({ dir: "x", sheets: 3 });
+    expect(Math.abs(A.at - 62.87)).toBeLessThan(0.02);
+  });
+
+  it("pageAxisLines: rady osí v bodoch strany, značky rezov a kódy nie", () => {
+    const lines = pageAxisLines(PAGE, SHEETS[0].blocks);
+    expect(lines.map((l) => l.text).sort()).toEqual(["1", "2", "3", "4", "A", "B", "C", "D", "E", "F"]);
   });
 });

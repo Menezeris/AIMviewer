@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AXES_TOLERANCE_MM,
   CalibrationError,
   applyAffine,
+  axisStart,
+  checkAxes,
+  icp,
+  mergeRefAxes,
+  samplePoints,
+  type AxisLine,
+  type RefAxis,
   calibratePairs,
   checkScale,
   pageScaleFromText,
@@ -370,3 +378,103 @@ describe("mierka výkresu (#284)", () => {
   });
 });
 
+
+describe("osi (gridy) a referencie z iných výkresov (D-184)", () => {
+  /** Osi A až D (roviny X = 30, 36, 42, 48) a 1 až 3 (roviny Y = 0, 8, 16) v IFC. */
+  const REFS: RefAxis[] = [
+    ...["A", "B", "C", "D"].map((text, i) => ({ text, dir: "x" as const, at: 30 + i * 6, sheets: 3 })),
+    ...["1", "2", "3"].map((text, i) => ({ text, dir: "y" as const, at: i * 8, sheets: 3 })),
+  ];
+  /** Osi na strane podľa pravej kalibrácie T (dvojice bodov mimo budovy). */
+  function pageAxes(T: Affine): AxisLine[] {
+    const inv = invertAffine(T);
+    return REFS.map((r) =>
+      r.dir === "x"
+        ? { text: r.text, a: applyAffine(inv, [r.at, -4]), b: applyAffine(inv, [r.at, 28]) }
+        : { text: r.text, a: applyAffine(inv, [26, r.at]), b: applyAffine(inv, [70, r.at]) },
+    );
+  }
+
+  it("mergeRefAxes: medián cez výkresy, popisok s iným gridom (rozptyl) preč", () => {
+    const m = mergeRefAxes([
+      [{ text: "A", dir: "x", at: 30.01 }, { text: "1", dir: "y", at: 0 }],
+      [{ text: "A", dir: "x", at: 29.99 }, { text: "1", dir: "y", at: 5 }],
+      [{ text: "A", dir: "x", at: 30.02 }],
+    ]);
+    expect(m).toEqual([{ text: "A", dir: "x", at: 30.01, sheets: 3 }]);
+  });
+
+  for (const deg of [0, 90, 180]) {
+    it(`axisStart nájde natočenie ${deg}° a posun z osí pri pevnej mierke`, () => {
+      const T = trueAffine(SCALE, deg, [25.5, -12.1]);
+      const st = axisStart(pageAxes(T), REFS, SCALE);
+      expect(st?.rotation).toBe(deg);
+      expect(st?.matched).toBe(7);
+      const a = applyAffine(st!.affine, [900, 700]);
+      const b = applyAffine(T, [900, 700]);
+      expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeLessThan(1e-6);
+    });
+  }
+
+  it("axisStart bez osí v oboch smeroch nevráti nič", () => {
+    const T = trueAffine(SCALE, 0, [25.5, -12.1]);
+    expect(axisStart(pageAxes(T).filter((l) => /[A-D]/.test(l.text)), REFS, SCALE)).toBeNull();
+  });
+
+  it("checkAxes: posun o pole osí (6 m) je podozrivý, presná kalibrácia nie", () => {
+    const T = trueAffine(SCALE, 0, [25.5, -12.1]);
+    const lines = pageAxes(T);
+    const good = checkAxes(T, lines, REFS);
+    expect(good).toMatchObject({ matched: 7, median_mm: 0, ok: true });
+    const shifted: Affine = [T[0], T[1], T[2] + 6, T[3], T[4], T[5]];
+    const bad = checkAxes(shifted, lines, REFS);
+    expect(bad.ok).toBe(false);
+    expect(bad.median_mm).toBeGreaterThan(AXES_TOLERANCE_MM);
+  });
+
+  it("calibratePlan bez popiskov: osi iných výkresov sú štart a kontrola", () => {
+    const T = trueAffine(SCALE, 0, [25.5, -12.1]);
+    const inv = invertAffine(T);
+    const cut = irregularCut();
+    const lines = cut.map((x) => toPage(inv, x));
+    const res = calibratePlan({ pageSize: PAGE, blocks: [], lines, spaces: [], cut, scale: SCALE / PT_M, axes: { page: pageAxes(T), ref: REFS } });
+    expect(res.start.compared).toContain("plan_axes");
+    expect(checkAxes(res.affine, pageAxes(T), REFS).median_mm).toBeLessThan(5);
+    expect(res.quality.median_mm).toBeLessThan(5);
+  });
+
+  it("štart z popiskov s nízkym pokrytím (SF.01: 5 popiskov, -109°) prehrá so skenom", () => {
+    const T = trueAffine(SCALE, 0, [25.5, -12.1]);
+    const inv = invertAffine(T);
+    const cut = irregularCut();
+    const lines = cut.map((x) => toPage(inv, x));
+    // Popisky sú konzistentné, ale s inou polohou (iný pôdorys hárku): RANSAC z nich dá natočenie o 70°.
+    const W = trueAffine(SCALE, 70, [80, 40]);
+    const names = ["1.01", "1.02", "1.03", "1.04", "1.05"];
+    const model: P2[] = [[33, 4], [45, 6], [60, 9], [36, 20], [44, 18]];
+    const spaces = names.map((name, i) => ({ name, centroid: model[i] }));
+    const blocks = names.map((n, i) => block(n, applyAffine(invertAffine(W), model[i])));
+    const res = calibratePlan({ pageSize: PAGE, blocks, lines, spaces, cut, scale: SCALE / PT_M });
+    expect(res.start.compared).toEqual(expect.arrayContaining(["plan_scan", "room_labels"]));
+    expect(res.start.method).toBe("plan_scan");
+    expect(checkRotation(res.rotation_deg, "plan").deviation_deg).toBeLessThan(0.01);
+  });
+
+  it("ICP s pevným natočením hľadá len posun; pôdorys so sklzom nad 0,5° sa uzamkne na násobok 90°", () => {
+    const cut = irregularCut();
+    const T = trueAffine(SCALE, 0, [25.5, -12.1]);
+    const pdf = samplePoints(cut.map((x) => toPage(invertAffine(T), x)), 1);
+    const ifc = samplePoints(cut, 0.02);
+    const start: Affine = [T[0], T[1], T[2] + 0.3, T[3], T[4], T[5] - 0.2];
+    const { affine } = icp(pdf, ifc, start, { fixedScale: SCALE, fixedRotation: 0 });
+    expect(affine[1]).toBe(-0);
+    expect(Math.abs(affine[2] - T[2]) + Math.abs(affine[5] - T[5])).toBeLessThan(0.005);
+
+    // Výkres na strane natočený o 1,2° (napr. sklz na čiarach rozvodov): výsledok má 0° a hlási voľné natočenie.
+    const R = trueAffine(SCALE, 1.2, [25.5, -12.1]);
+    const lines = cut.map((x) => toPage(invertAffine(R), x));
+    const res = calibratePlan({ pageSize: PAGE, blocks: [], lines, spaces: [], cut, scale: SCALE / PT_M });
+    expect(res.rotation_deg).toBeCloseTo(0, 6);
+    expect(res.rotation_locked_from_deg).toBeCloseTo(1.2, 1);
+  });
+});
