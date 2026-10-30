@@ -39,7 +39,7 @@ export const CALIBRATE_UNDERLAY_TOOL: ToolDefinition = {
     "HISTÓRIA KALIBRÁCIÍ: každý prepis polohy alebo kalibrácie strany (mode=auto, manual, úprava v paneli) uloží predošlú kalibráciu do " +
     "_georef.history (posledných 10, zmena len visible a opacity sa nezapisuje); mode=history (document_id alebo floor, page) vráti zoznam s index " +
     "(0 = najnovší), mode=restore (document_id alebo floor, page, index) vráti záznam do kalibrácie, aktuálnu uloží do histórie (obnova sa dá vrátiť) " +
-    "a pošle viewerovi podklady nanovo; ukladaj ho len na výslovný pokyn. mode=remove (document_id alebo floor, page) ZMAŽE kalibráciu strany (len na výslovný pokyn; ručnú z panela len s force=true); zmazaná ide na začiatok _georef.history, takže ju vráti mode=restore index=0. Globálny vypínač podkladov v 3D je set_view_mode(underlays_3d). Uložený pohľad (saved_view) nesie aj stav podkladov. " +
+    "a pošle viewerovi podklady nanovo; ukladaj ho len na výslovný pokyn. mode=remove (document_id alebo floor, page; na reze s viac rovinami section_plane {axis, coordinate_m} = najbližšia rovina) ZMAŽE kalibráciu strany (len na výslovný pokyn; ručnú z panela len s force=true); zmazaná ide na začiatok _georef.history, takže ju vráti mode=restore index=0. Globálny vypínač podkladov v 3D je set_view_mode(underlays_3d). Uložený pohľad (saved_view) nesie aj stav podkladov. " +
     "Vyžaduje nový viewer: starší jednotlivé podklady nezmení (tool to povie).",
   inputSchema: {
     type: "object",

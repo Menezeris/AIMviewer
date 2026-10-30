@@ -208,6 +208,21 @@ export function sameSlot(a: GeorefCalibration, b: GeorefCalibration): boolean {
   return cos > Math.cos((0.1 * Math.PI) / 180) && Math.abs(d) < 0.01;
 }
 
+/**
+ * Vzdialenosť roviny kalibrácie od zvislej roviny `axis` = `coordinate` (x: X = c, y: Y = c) v metroch; `null`, keď
+ * orientácia nesedí (normála roviny sa od osi líši o viac ako 1°) alebo kalibrácia nie je rez.
+ */
+export function planeAxisDistance(plane: GeorefPlane | null | undefined, axis: "x" | "y", coordinate: number): number | null {
+  if (!plane) return null;
+  const { u, v, origin } = plane;
+  const n: Tuple3 = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  const len = Math.hypot(n[0], n[1], n[2]);
+  if (len === 0) return null;
+  const k = axis === "x" ? 0 : 1;
+  if (Math.abs(n[k]) / len < Math.cos(Math.PI / 180)) return null;
+  return Math.abs(origin[k] - coordinate);
+}
+
 export type MergeResult =
   | { ok: true; georef: GeorefV2; replaced: GeorefCalibration | null; /** Predošlá kalibrácia išla do `history`. */ history_added: boolean }
   | { ok: false; reason: "manual_exists"; existing: GeorefCalibration };
