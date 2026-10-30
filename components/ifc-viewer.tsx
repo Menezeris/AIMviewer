@@ -1,6 +1,18 @@
 "use client";
 
 import { LoadingLogo } from "@/components/loading-logo";
+import { LoadProgressBar } from "@/components/load-progress-bar";
+import {
+  INITIAL_LOAD_STATE,
+  allSettled,
+  applyFirstGeometry,
+  applyLoadProgress,
+  hasLoadProgress,
+  loadSegments,
+  parseFirstGeometry,
+  parseLoadProgress,
+  type LoadState,
+} from "@/lib/viewer-load";
 import { X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -62,7 +74,9 @@ import { PROD_VIEWER_URL, VIEWER_CHOICE_KEY, urlWithoutViewerChoice } from "@/li
  *                   AIM_DERIVATIONS_LOAD{layer} (D-089; vrstva AIM nad modelmi,
  *                   typy v lib/derivations.ts) · AIM_BCF_LOAD{baseUrl,projectId}
  *                   (D-099; BCF témy z /api/bcf bez tokenu, aj po zmene z chatu)
- *   viewer → host:  READY · MODELS_LOADED · ENTITY_SELECTED{guid} ·
+ *   viewer → host:  READY · MODELS_LOADED · LOAD_PROGRESS{model,phase,percent,index,total} ·
+ *                   FIRST_GEOMETRY{model,index,total} (D-178; oboje už pred READY) ·
+ *                   ENTITY_SELECTED{guid} ·
  *                   ENTITY_DESELECTED · AIM_NAVIGATE{href} ·
  *                   DOCUMENT_SHOW_3D{documentId,page} (D-104 krok 4; host odpovie APPLY_LENS)
  *
@@ -107,6 +121,9 @@ function clearViewerStateAndReload() {
 type OutboundMessage =
   | { source: typeof SOURCE; type: "READY" }
   | { source: typeof SOURCE; type: "MODELS_LOADED"; count: number }
+  // Priebeh autoloadu po modeloch a prvá geometria na scéne (D-178); telo overujú parseLoadProgress a parseFirstGeometry.
+  | { source: typeof SOURCE; type: "LOAD_PROGRESS" }
+  | { source: typeof SOURCE; type: "FIRST_GEOMETRY" }
   | { source: typeof SOURCE; type: "ENTITY_SELECTED"; guid: string }
   | { source: typeof SOURCE; type: "ENTITY_DESELECTED" }
   // Klik na link v AIM karte vo viewri — navigáciu robí táto (parent) appka.
@@ -272,6 +289,12 @@ export function IFCViewer({
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [status, setStatus] = useState<"loading" | "error" | "timeout" | "ready">("loading");
+  /** Priebeh načítavania po modeloch (D-178); prázdny, kým viewer (starší) žiadny neposlal. */
+  const [load, setLoad] = useState<LoadState>(INITIAL_LOAD_STATE);
+  // Prekrytie loadera drží do prvej geometrie; bez LOAD_PROGRESS/FIRST_GEOMETRY (starší viewer) do MODELS_LOADED.
+  const overlay = status === "loading" && !load.firstGeometry;
+  const segments = useMemo(() => loadSegments(load), [load]);
+  const showStrip = status === "loading" && load.firstGeometry && !allSettled(load);
   /** Zlyhaný zápis kalibrácie podkladu (#317): hláška nad viewerom, kým ju používateľ nezavrie. */
   const [saveError, setSaveError] = useState<string | null>(null);
   const readyRef = useRef(false);
@@ -320,19 +343,22 @@ export function IFCViewer({
   if (modelsKey !== prevModelsKey) {
     setPrevModelsKey(modelsKey);
     setStatus("loading");
+    setLoad(INITIAL_LOAD_STATE);
   }
 
   // Poistka: ak MODELS_LOADED nepríde (viewer nemá chybovú správu), loader nesmie
   // visieť donekonečna - ukáž chybovú hlášku; neskorý MODELS_LOADED ju prepíše.
   useEffect(() => {
-    if (status !== "loading") return;
+    // Po prvej geometrii je model vidieť a dokresľuje sa; chybová hláška by ho zakryla.
+    if (status !== "loading" || load.firstGeometry) return;
     logLoadPhase("čakám na viewer");
     const t = setTimeout(() => {
       logLoadPhase(`MODELS_LOADED neprišlo do ${LOAD_TIMEOUT_MS / 1000} s (READY ${readyRef.current ? "áno" : "nie"})`);
       setStatus("timeout");
     }, LOAD_TIMEOUT_MS);
     return () => clearTimeout(t);
-  }, [status, modelsKey]);
+    // `load` v závislostiach: každá správa o priebehu odmeria 120 s odznova (nečinnosť, nie celkový čas).
+  }, [status, modelsKey, load]);
 
   function post(msg: Record<string, unknown>) {
     if (!viewerOrigin) return;
@@ -635,6 +661,19 @@ export function IFCViewer({
           // Naplň ViewerApi až po READY — presne ako pôvodný kontrakt, kde
           // apiRef.current bol null pred načítaním scény.
           if (apiRef) apiRef.current = makeApi();
+          break;
+        }
+        case "LOAD_PROGRESS": {
+          const msg = parseLoadProgress(e.data);
+          if (msg) setLoad((s) => applyLoadProgress(s, msg));
+          break;
+        }
+        case "FIRST_GEOMETRY": {
+          const msg = parseFirstGeometry(e.data);
+          if (msg) {
+            logLoadPhase(`FIRST_GEOMETRY ${msg.model}`);
+            setLoad((s) => applyFirstGeometry(s, msg));
+          }
           break;
         }
         case "MODELS_LOADED": {
@@ -965,14 +1004,17 @@ export function IFCViewer({
         ref={iframeRef}
         src={src}
         title="3D model budovy"
-        className={`h-full w-full border-0${status === "loading" ? " pointer-events-none" : ""}`}
+        className={`h-full w-full border-0${overlay ? " pointer-events-none" : ""}`}
         onError={() => setStatus("error")}
         allow="fullscreen"
       />
 
       {/* Nepriehľadný overlay — kým sa nenačíta federácia, nesmie presvitať
           ifc-lite úvodná obrazovka s ich logom (D-163: biele pozadie + animované logo). */}
-      {status === "loading" && <LoadingLogo label="Načítavam 3D scénu" />}
+      {overlay && <LoadingLogo label="Načítavam 3D scénu" segments={hasLoadProgress(load) ? segments : undefined} />}
+
+      {/* Po prvej geometrii (D-178) model dokresľuje sám viewer; hore ostáva len tenký pásik po modeloch. */}
+      {showStrip && <LoadProgressBar segments={segments} variant="strip" />}
 
       {status === "timeout" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/90 p-6 text-center">
