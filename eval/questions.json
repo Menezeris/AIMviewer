@@ -1383,6 +1383,22 @@
       "expect": { "tools_called": ["calibrate_underlay"] },
       "verified": false,
       "notes": "D-179 (#284): mode=dry_run bez section_plane (alebo from_plan=true), rovina zo značky A na pôdorysoch (X = 47,42), mierka 1:50, výsledok s from_plan a view_direction; nič neukladať."
+    },
+    {
+      "id": "underlay-plan-without-labels",
+      "category": "viewer",
+      "question": "Skús kalibrovať pôdorys základov D.1.2.01 pod model, len náhľad.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-180 (#170): mode=dry_run, štart plan_scan (bez čísel miestností, mierka 1:50 z textu), výsledok s rotation_check a plausible; nič neukladať."
+    },
+    {
+      "id": "underlay-sheet-region",
+      "category": "viewer",
+      "question": "Na hárku SF.02 Zónovanie nakalibruj náhľad pôdorysu 1NP.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-180 (#170): výrez pôdorysu 1NP z polohy nadpisu (search_documents), calibrate_underlay floor=1NP, region=[x, y, w, h], dry_run."
     }
   ]
 }

@@ -414,3 +414,63 @@ describe("calibrate_underlay: mierka a strany bez čiar (#284, #283)", () => {
   });
 });
 
+
+describe("calibrate_underlay bez popiskov, bez IfcSpace, výrez (D-180)", () => {
+  const RATIO = S / (0.0254 / 72);
+  const noSpaces = (): UnderlayModel => {
+    const b = building();
+    // Podlažie bez IfcSpace (5NP): výška z parsera, priestory v modeli nie sú.
+    return { id: "ASR", elements: b.els.filter((e) => e.ifcType !== "IfcSpace"), storey: { guid: "2VefEmfcj8sx0WLKr$GNnn", name: "5NP", z: 0, spaceGuids: [] } };
+  };
+
+  it("pôdorys bez popiskov a bez IfcSpace: štart skenovaním pri zadanej mierke", async () => {
+    const b = building();
+    const { d } = deps({ page: async () => ({ blocks: [], lines: { size: PAGE, segs: b.lines } }), model: async () => noSpaces() });
+    const r = await run({ document_id: "D1", scale: RATIO }, d);
+    expect(r.isError, r.text).toBe(false);
+    expect(r.out.spaces).toBe(0);
+    expect(r.out.start.method).toBe("plan_scan");
+    expect(r.out.plausible).toBe(true);
+    expect(r.out.rotation_check).toMatchObject({ ok: true, expected_deg: 0 });
+    for (const p of [[0, 0], PAGE] as P2[]) {
+      const q = applyAffine(r.out.calibration.affine as Affine, p);
+      const t = applyAffine(T, p);
+      expect(Math.hypot(q[0] - t[0], q[1] - t[1])).toBeLessThan(0.01);
+    }
+  });
+
+  it("bez popiskov a bez mierky: chyba s radou, podlažie bez IfcSpace a bez výšky je chyba", async () => {
+    const b = building();
+    const { d } = deps({ page: async () => ({ blocks: [], lines: { size: PAGE, segs: b.lines } }), model: async () => noSpaces() });
+    expect((await run({ document_id: "D1" }, d)).text).toMatch(/MERÍTKO 1 : N/);
+    const noZ = deps({ model: async () => ({ ...noSpaces(), storey: { guid: "g", name: "5NP", z: null, spaceGuids: [] } }) });
+    expect((await run({ document_id: "D1" }, noZ.d)).text).toMatch(/výšku z parsera ani priestory/);
+  });
+
+  it("region: kalibruje len výkres vo výreze, mierka z textu výrezu, uloží sa s kalibráciou", async () => {
+    const b = building();
+    // Hárok s dvoma pôdorysmi: vpravo ten istý pôdorys posunutý o 1450 pt (iné podlažie), výrez je ľavá polovica.
+    const other = b.lines.map((l) => [l[0] + 1450, l[1], l[2] + 1450, l[3], l[4]] as PageLine);
+    const shifted = b.lines.map((l) => [l[0] - 200, l[1], l[2] - 200, l[3], l[4]] as PageLine);
+    const page = async () => ({
+      blocks: [{ t: "1 : 50", x: 20, y: 95, w: 6, h: 1 }, { t: "1 : 100", x: 70, y: 95, w: 6, h: 1 }, { t: "MERÍTKO", x: 90, y: 97, w: 6, h: 1 }],
+      lines: { size: PAGE, segs: [...shifted, ...other] },
+    });
+    const { d, writes } = deps({ page, model: async () => noSpaces() });
+    const r = await run({ document_id: "D1", mode: "auto", region: [0, 0, 50, 100] }, d);
+    expect(r.isError, r.text).toBe(false);
+    expect(r.out.scale_check).toMatchObject({ source: "text", expected: 50 });
+    expect(r.out.region).toEqual([0, 0, 50, 100]);
+    // Ľavý pôdorys je pravý posunutý o -200 pt: affine strany je T s posunom o 200 pt.
+    const q = applyAffine(r.out.calibration.affine as Affine, [800, 800]);
+    const t = applyAffine(T, [1000, 800]);
+    expect(Math.hypot(q[0] - t[0], q[1] - t[1])).toBeLessThan(0.02);
+    expect(r.out.written).toBe(true);
+    expect(writes[0]).toMatchObject({ calibrations: [{ region: [0, 0, 50, 100] }] });
+    // Objekt {x, y, width, height} je ten istý výrez; prázdny výrez a zlý tvar sú chyba vstupu.
+    const o = await run({ document_id: "D1", region: { x: 0, y: 0, width: 50, height: 100 } }, d);
+    expect(o.out.region).toEqual([0, 0, 50, 100]);
+    expect((await run({ document_id: "D1", region: [90, 0, 10, 10] }, d)).text).toMatch(/obsahuje len \d+ čiar/);
+    expect((await run({ document_id: "D1", region: [0, 0, 120, 10] }, d)).text).toMatch(/region je výrez/);
+  });
+});

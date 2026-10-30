@@ -4,7 +4,9 @@ import type { MeshElement } from "./measure";
 import {
   CalibrationError,
   applyAffine,
+  checkRotation,
   checkScale,
+  cropToRegion,
   pageScaleFromText,
   calibratePairs,
   calibratePlan,
@@ -16,6 +18,7 @@ import {
   type P2,
   type PageBlock,
   type PageLine,
+  type PageRegion,
   type Plane,
 } from "./underlay-calibrate";
 import { ifcPositions, modelCut, planPlane, sectionPlane } from "./underlay-model";
@@ -92,6 +95,21 @@ interface Parsed {
   model?: string;
   /** Mierka výkresu 1:N zadaná používateľom (pevná v štarte aj ICP). */
   scale: number | null;
+  /** Výrez strany v % (x, y, w, h; vľavo hore) pri hárku s viac výkresmi (D-180). */
+  region: PageRegion | null;
+}
+
+/** `region` ako [x, y, w, h] alebo {x, y, width, height} v % strany (vľavo hore, ako open_drawing). */
+function parseRegion(v: unknown): PageRegion | null {
+  if (v === undefined || v === null) return null;
+  const o = v as { x?: unknown; y?: unknown; width?: unknown; height?: unknown };
+  const r = Array.isArray(v) ? v : [o.x, o.y, o.width, o.height];
+  const bad = () => new UnderlayInputError("region je výrez strany v % (vľavo hore): [x, y, w, h] alebo {x, y, width, height}, 0 až 100, w a h aspoň 5.");
+  if (r.length !== 4 || !r.every(num)) throw bad();
+  const [x, y, w, h] = r as number[];
+  if (x < 0 || y < 0 || w < 5 || h < 5 || x + w > 100.01 || y + h > 100.01) throw bad();
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  return [r2(x), r2(y), r2(w), r2(h)];
 }
 
 function parse(a: Record<string, unknown>): Parsed {
@@ -135,13 +153,15 @@ function parse(a: Record<string, unknown>): Parsed {
     throw new UnderlayInputError("scale je číslo N z mierky výkresu 1:N (napr. 50).");
   }
   const scale = a.scale === undefined ? null : (a.scale as number);
-  return { documentId, page, mode, floor, section, fromPlan, pairs, refine: a.refine !== false, maxErrorMm, force: a.force === true, model, scale };
+  const region = parseRegion(a.region);
+  return { documentId, page, mode, floor, section, fromPlan, pairs, refine: a.refine !== false, maxErrorMm, force: a.force === true, model, scale, region };
 }
 
 /**
  * Výška podlažia: z parsera (`storeyElevations`, tú istú berie viewer), inak medián spodkov
  * priestorov. Minimum nestačí: šachta siaha pod podlahu (1NP ASR -1,2 m) a spodok priestoru
- * je nosná doska, nie podlaha (2NP ASR 4,85 m pri výške 5,0 m).
+ * je nosná doska, nie podlaha (2NP ASR 4,85 m pri výške 5,0 m). Podlažie bez IfcSpace (5NP)
+ * ide s výškou z parsera, popisky miestností potom nie sú (štart skenovaním, D-180).
  */
 function storeyFloor(model: UnderlayModel): { z: number; spaces: { name: string; centroid: P2 }[] } {
   const ids = new Set(model.storey?.spaceGuids ?? []);
@@ -156,10 +176,11 @@ function storeyFloor(model: UnderlayModel): { z: number; spaces: { name: string;
     const c = footprintCentroid(pos, e.indices);
     if (c && e.name) spaces.push({ name: e.name, centroid: c });
   }
-  if (bottoms.length === 0) throw new UnderlayInputError(`Podlažie ${model.storey?.name ?? ""} nemá v modeli ${model.id} priestory (IfcSpace) s geometriou, výška sa nedá určiť.`);
-  bottoms.sort((a, b) => a - b);
   const z = model.storey?.z;
-  return { z: typeof z === "number" && Number.isFinite(z) ? z : bottoms[Math.floor(bottoms.length / 2)], spaces };
+  if (typeof z === "number" && Number.isFinite(z)) return { z, spaces };
+  if (bottoms.length === 0) throw new UnderlayInputError(`Podlažie ${model.storey?.name ?? ""} nemá v modeli ${model.id} výšku z parsera ani priestory (IfcSpace) s geometriou, výška sa nedá určiť.`);
+  bottoms.sort((a, b) => a - b);
+  return { z: bottoms[Math.floor(bottoms.length / 2)], spaces };
 }
 
 /** Súčet odchýlok dvojíc od podobnosti (priamej alebo zrkadlovej). */
@@ -311,7 +332,13 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   const refine = p.refine && !!pg.lines;
   const warnings: string[] = [];
   if (noLinesManual && p.refine) warnings.push("Strana nemá čiary výkresu, dvojice sa nedoladili (refine=false).");
-  const textScale = pageScaleFromText(pg.blocks);
+  // Výrez (D-180): text a čiary len z neho; mierka prednostne z textu výrezu (hárok s výkresmi v rôznych mierkach).
+  const cropped = p.region ? cropToRegion(pg.blocks, pg.lines?.segs ?? [], p.region, pageSize) : null;
+  if (cropped && pg.lines && cropped.lines.length < 20) {
+    throw new UnderlayInputError(`Výrez ${p.region!.join(", ")} (%, vľavo hore) obsahuje len ${cropped.lines.length} čiar výkresu; skontroluj region (x, y, šírka, výška v % strany).`);
+  }
+  const blocks = cropped?.blocks ?? pg.blocks;
+  const textScale = (cropped ? pageScaleFromText(cropped.blocks) : null) ?? pageScaleFromText(pg.blocks);
   const wantScale = p.scale ?? textScale;
 
   // Rovina: rez zo section_plane (súradnica alebo značka na pôdoryse), dokument rezu bez podlažia (REZ-A)
@@ -333,7 +360,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     }
   }
   const model = await deps.model({ model: p.model, floor });
-  const segs = pg.lines?.segs ?? [];
+  const segs = cropped?.lines ?? pg.lines?.segs ?? [];
   const refPoints = await pairRefPoints(p.pairs, model, deps);
 
   let res: CalibrationResult;
@@ -354,7 +381,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
       // D-179: kóty spárované s výškami podlaží, osi a iné rezy z pôdorysu ako poloha po reze.
       res = calibrateSection({
         pageSize,
-        blocks: pg.blocks,
+        blocks,
         lines: segs,
         cut,
         scale: wantScale ?? undefined,
@@ -372,7 +399,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     res =
       p.mode === "manual"
         ? calibratePairs(pairs, refine ? { lines: segs, cut, mirror: false } : undefined, false, p.scale ?? undefined)
-        : calibratePlan({ pageSize, blocks: pg.blocks, lines: segs, spaces, cut, scale: wantScale ?? undefined });
+        : calibratePlan({ pageSize, blocks, lines: segs, spaces, cut, scale: wantScale ?? undefined });
   }
 
   // Kontrola mierky (#284): nízky medián chyby nestačí, ICP vie zachytiť nesprávne čiary v zlej mierke.
@@ -382,6 +409,12 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     const what = { param: "zadanej mierky", text: "mierky z textu strany", standard: "najbližšej bežnej mierky", none: "" }[scaleCheck.source];
     warnings.push(`Mierka 1:${res.scale_ratio} sa líši o ${((scaleCheck.deviation ?? 0) * 100).toFixed(1)} % od ${what} 1:${scaleCheck.expected}; kalibrácia je pravdepodobne krivá.`);
   }
+  // Kontrola natočenia (D-180): pôdorys rovnobežne s osami modelu (aj otočený o 90°), rez bez natočenia.
+  const rotationCheck = checkRotation(res.rotation_deg, isSection ? "section" : "plan");
+  if (!rotationCheck.ok) {
+    warnings.push(`Natočenie ${res.rotation_deg}° sa líši o ${rotationCheck.deviation_deg}° od ${rotationCheck.expected_deg}°; kalibrácia je pravdepodobne krivá.`);
+  }
+  const plausible = scaleCheck.ok && rotationCheck.ok;
 
   const fixed = isSection ? unmirror(res, plane) : { affine: res.affine, plane, calibration: res.calibration };
   const entry: GeorefCalibration = {
@@ -391,6 +424,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
       ? { plane: { origin: fixed.plane.origin, u: fixed.plane.u, v: fixed.plane.v } as GeorefPlane }
       : { plane: null, storey_guid: model.storey!.guid, storey_z: r3(storeyZ!) }),
     affine: fixed.affine,
+    ...(p.region ? { region: p.region } : {}),
     calibration: fixed.calibration.map((c) => ({ pdf_pt: [r3(c.pdf_pt[0]), r3(c.pdf_pt[1])], ifc_m: [r3(c.plane_m[0]), r3(c.plane_m[1])] })),
     source: p.mode === "manual" ? "manual" : "auto",
     quality: {
@@ -429,7 +463,11 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
       : { floor: model.storey?.name, storey_z_m: r3(storeyZ!), spaces: spaceCount }),
     model: model.id,
     scale: `1:${res.scale_ratio}`,
+    ...(p.region ? { region: p.region } : {}),
     scale_check: { ...scaleCheck, text_scale: textScale === null ? null : `1:${textScale}`, locked: wantScale !== null && p.mode !== "manual" },
+    rotation_check: rotationCheck,
+    // Výsledok je zlý (mierka alebo natočenie mimo), auto ho neuloží; pri manual len hlásenie.
+    plausible,
     ...(warnings.length ? { warnings } : {}),
     rotation_deg: res.rotation_deg,
     offset_m: [r3(fixed.affine[2]), r3(fixed.affine[5])],
@@ -440,6 +478,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     existing: toGeorefV2(doc.georef).calibrations.map((c) => ({
       page: c.page,
       kind: c.plane ? "section" : "plan",
+      ...(c.region ? { region: c.region } : {}),
       source: c.source,
       median_mm: c.quality?.median_mm ?? null,
       calibrated_at: c.calibrated_at ?? null,
@@ -460,6 +499,11 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   if (p.mode === "auto" && !scaleCheck.ok) {
     out.written = false;
     out.note = `Neuložené: mierka 1:${res.scale_ratio} nesedí s ${scaleCheck.source === "param" ? "zadanou" : scaleCheck.source === "text" ? "mierkou z textu strany" : "bežnými mierkami výkresu"} (1:${scaleCheck.expected}), aj keď medián chyby je ${median ?? "?"} mm. Zadaj scale (napr. scale=50), skontroluj podlažie, alebo použi mode=manual.`;
+    return out;
+  }
+  if (p.mode === "auto" && !rotationCheck.ok) {
+    out.written = false;
+    out.note = `Neuložené: natočenie ${res.rotation_deg}° je o ${rotationCheck.deviation_deg}° mimo ${rotationCheck.expected_deg}° (výkres je rovnobežný s osami modelu), aj keď medián chyby je ${median ?? "?"} mm. Skontroluj podlažie, region, alebo použi mode=manual.`;
     return out;
   }
   if (p.mode === "auto" && (median === null || median > p.maxErrorMm)) {
