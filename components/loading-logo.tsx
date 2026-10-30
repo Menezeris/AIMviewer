@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react";
 // Poradie je dané: tokeny pred grafikou (D-163).
 import "@assetinspace/design-kit/css/tokens.css";
 import "@assetinspace/design-kit/css/graphics.css";
+import { LoadProgressBar } from "@/components/load-progress-bar";
+import type { LoadSegment } from "@/lib/viewer-load";
 
 const WORDS = ["", "sight", "formation", "telligence"];
 const SPEED_MS = 60; // na písmeno
@@ -60,7 +62,7 @@ let lastTick = 0;
  * Bodka bliká vždy ako kurzor, aj pri prefers-reduced-motion; pri ňom sa slová
  * len vymieňajú bez písania.
  */
-export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
+export function LoadingLogo({ label = "Načítavam", segments }: { label?: string; segments?: LoadSegment[] }) {
   const typedRef = useRef<HTMLSpanElement>(null);
   const dotWrapRef = useRef<HTMLSpanElement>(null);
 
@@ -98,19 +100,26 @@ export function LoadingLogo({ label = "Načítavam" }: { label?: string }) {
       className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-white"
     >
       <div className="relative flex flex-col items-center gap-4">
-        {/* Neurčitý pásik: most z viewera pred MODELS_LOADED posiela len READY,
-            priebeh po fázach nie je k dispozícii. Je nad nápisom LOADING mimo toku (logo a nápis ostávajú na mieste). Fixná šírka a výška, jazdec sa
-            hýbe len transformom, takže sa nič neposúva. Pri reduced-motion stojí. */}
-        <span
-          aria-hidden="true"
-          className="absolute bottom-full left-1/2 mb-3 block h-0.5 w-24 -translate-x-1/2 overflow-hidden rounded-full"
-          style={{ background: "var(--ds-border)" }}
-        >
-          <span
-            className="absolute inset-y-0 left-0 w-2/5 rounded-full motion-safe:animate-[loading-bar_1.4s_ease-in-out_infinite] motion-reduce:left-[30%]"
-            style={{ background: "var(--ds-brand-green)" }}
-          />
-        </span>
+        {/* Pásik nad nápisom LOADING je mimo toku (logo a nápis ostávajú na mieste).
+            Keď viewer posiela priebeh (D-178), je to pásik po modeloch; inak (starší viewer,
+            alebo kým žiadna správa neprišla) neurčitý: fixná šírka a výška, jazdec sa hýbe
+            len transformom, takže sa nič neposúva. Pri reduced-motion stojí. */}
+        <div className="absolute bottom-full left-1/2 mb-3 -translate-x-1/2">
+          {segments && segments.length > 0 ? (
+            <LoadProgressBar segments={segments} variant="overlay" />
+          ) : (
+            <span
+              aria-hidden="true"
+              className="relative block h-0.5 w-24 overflow-hidden rounded-full"
+              style={{ background: "var(--ds-border)" }}
+            >
+              <span
+                className="absolute inset-y-0 left-0 w-2/5 rounded-full motion-safe:animate-[loading-bar_1.4s_ease-in-out_infinite] motion-reduce:left-[30%]"
+                style={{ background: "var(--ds-brand-green)" }}
+              />
+            </span>
+          )}
+        </div>
         <span
           aria-hidden="true"
           className="font-semibold uppercase"
