@@ -9,7 +9,10 @@ import {
   ransacLabels,
   calibratePlan,
   calibrateSection,
+  checkRotation,
+  cropToRegion,
   levelOffset,
+  PT_M,
   decompose,
   fitSimilarity,
   footprintCentroid,
@@ -177,6 +180,85 @@ describe("calibratePlan", () => {
   });
 });
 
+/** Nepravidelná budova (L, vnútorné steny) bez symetrie, aby sken posunu mal jednoznačný vrchol. */
+function irregularCut(): Seg[] {
+  const cut: Seg[] = [
+    [30, 0, 66, 0], [66, 0, 66, 12], [66, 12, 48, 12], [48, 12, 48, 24], [48, 24, 30, 24], [30, 24, 30, 0],
+    [36, 0, 36, 8], [42, 4, 42, 12], [30, 8, 42, 8], [54, 0, 54, 12], [60, 6, 66, 6], [30, 16, 48, 16], [39, 16, 39, 24],
+  ];
+  return cut;
+}
+
+describe("calibratePlan bez popiskov (D-180)", () => {
+  for (const deg of [0, 90]) {
+    it(`mierka z textu + sken posunu, pôdorys otočený na strane o ${deg}°, pečiatka a šum`, () => {
+      const T = trueAffine(SCALE, deg + 0.3, deg === 0 ? [25.5, -12.1] : [62, -20]);
+      const inv = invertAffine(T);
+      const cut = irregularCut();
+      const r = rng(11);
+      const lines: PageLine[] = cut.map((x) => toPage(inv, x));
+      // Pečiatka v rohu strany (rám a riadky) a krátke čiary nábytku.
+      lines.push([2500, 50, 2950, 50, 1.4], [2950, 50, 2950, 400, 1.4], [2950, 400, 2500, 400, 1.4], [2500, 400, 2500, 50, 1.4]);
+      for (let k = 0; k < 8; k++) lines.push([2500, 90 + k * 40, 2950, 90 + k * 40, 1.0]);
+      for (let k = 0; k < 40; k++) {
+        const x = 300 + r() * 1800;
+        const y = 300 + r() * 1100;
+        lines.push([x, y, x + 15 + r() * 20, y + r() * 15, 1.0]);
+      }
+      const res = calibratePlan({ pageSize: PAGE, blocks: [], lines, spaces: [], cut, scale: SCALE / PT_M });
+      expect(res.start.method).toBe("plan_scan");
+      expect(res.start.scan?.rotation_deg).toBe(deg);
+      expect(checkRotation(res.rotation_deg, "plan").ok).toBe(true);
+      for (const p of [[600, 300], [1800, 1200]] as P2[]) {
+        const a = applyAffine(res.affine, p);
+        const b = applyAffine(T, p);
+        expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeLessThan(0.01);
+      }
+      expect(res.quality.median_mm).toBeLessThan(5);
+    });
+  }
+
+  it("bez popiskov a bez mierky je chyba s radou (scale alebo text MERÍTKO)", () => {
+    expect(() => calibratePlan({ pageSize: PAGE, blocks: [], lines: [[0, 0, 100, 0, 1.4]], spaces: [], cut: irregularCut() })).toThrow(/scale/);
+  });
+
+  it("slabý štart z 2 popiskov s pevnou mierkou porovná aj sken a vyberie lepšie pokrytie", () => {
+    const T = trueAffine(SCALE, 0.2, [25.5, -12.1]);
+    const inv = invertAffine(T);
+    const cut = irregularCut();
+    const lines = cut.map((x) => toPage(inv, x));
+    // Dva popisky s chybou 1 m (štart z nich je krivý), sken ho prekoná.
+    const spaces = [
+      { name: "1.01", centroid: [33, 4] as P2 },
+      { name: "1.02", centroid: [60, 9] as P2 },
+    ];
+    const blocks = [block("1.01", applyAffine(inv, [34, 4.5])), block("1.02", applyAffine(inv, [59.2, 9.6]))];
+    const res = calibratePlan({ pageSize: PAGE, blocks, lines, spaces, cut, scale: SCALE / PT_M });
+    expect(res.start.labels_found).toBe(2);
+    const a = applyAffine(res.affine, [1000, 800]);
+    const b = applyAffine(T, [1000, 800]);
+    expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeLessThan(0.01);
+  });
+});
+
+describe("kontrola rozumnosti a výrez (D-180)", () => {
+  it("checkRotation: pôdorys k násobku 90°, rez k 0°", () => {
+    expect(checkRotation(0.5, "plan")).toMatchObject({ expected_deg: 0, ok: true });
+    expect(checkRotation(-23.6, "plan")).toMatchObject({ expected_deg: 0, ok: false });
+    expect(checkRotation(89.2, "plan")).toMatchObject({ expected_deg: 90, ok: true });
+    expect(checkRotation(-179, "plan")).toMatchObject({ deviation_deg: 1, ok: true });
+    expect(checkRotation(89.2, "section")).toMatchObject({ expected_deg: 0, ok: false });
+  });
+
+  it("cropToRegion: riadky so stredom a úsečky s oboma koncami vo výreze", () => {
+    const blocks = [block("A", [300, 1500]), block("B", [2500, 300])];
+    // Výrez ľavá horná štvrtina strany: x 0..1500 pt, y (vľavo dole) 850..1700 pt.
+    const r = cropToRegion(blocks, [[100, 1000, 200, 1100, 1], [100, 1000, 2000, 1100, 1]], [0, 0, 50, 50], PAGE);
+    expect(r.blocks.map((b) => b.t)).toEqual(["A"]);
+    expect(r.lines).toHaveLength(1);
+  });
+});
+
 describe("calibrateSection", () => {
   it("kóty + osi + ICP, pohľad zo zadnej strany (zrkadlo)", () => {
     // Rez: u = poloha po reze (-8 až 13 m), v = výška Z; dosky 0 / 5 / 9,2 / 13,4, steny na osiach.
@@ -246,7 +328,11 @@ describe("mierka výkresu (#284)", () => {
     expect(pageScaleFromText([blk("Mierka: 1:100")])).toBe(100);
     expect(pageScaleFromText([blk("SCALE"), blk("1 : 200")])).toBe(200);
     expect(pageScaleFromText([blk("MERÍTKO 1 : 50"), blk("Mierka 1:5")])).toBeNull();
-    expect(pageScaleFromText([blk("1 : 50")])).toBeNull();
+    // Bez slova (pečiatka PBR, D-180): samostatná bežná mierka áno, nebežná alebo dve rôzne nie.
+    expect(pageScaleFromText([blk("1 : 50")])).toBe(50);
+    expect(pageScaleFromText([blk("1:100"), blk("4.01")])).toBe(100);
+    expect(pageScaleFromText([blk("1 : 7")])).toBeNull();
+    expect(pageScaleFromText([blk("1:100"), blk("1:200")])).toBeNull();
     expect(pageScaleFromText([blk("Čas 11:30"), blk("4.01")])).toBeNull();
   });
 
@@ -255,6 +341,10 @@ describe("mierka výkresu (#284)", () => {
     expect(checkScale(28.49, null, null)).toMatchObject({ source: "standard", ok: false });
     expect(checkScale(28.49, null, 50)).toMatchObject({ source: "text", expected: 50, ok: false });
     expect(checkScale(28.49, 28.5, 50)).toMatchObject({ source: "param", expected: 28.5, ok: true });
+    // D-180: od mierky z textu alebo zadania najviac 2 %, od bežnej 5 %.
+    expect(checkScale(51.5, null, 50)).toMatchObject({ source: "text", ok: false });
+    expect(checkScale(50.9, null, 50)).toMatchObject({ source: "text", ok: true });
+    expect(checkScale(51.5, null, null)).toMatchObject({ source: "standard", ok: true });
   });
 
   it("fitSimilarity s pevnou mierkou drží mierku a nájde rotáciu a posun", () => {

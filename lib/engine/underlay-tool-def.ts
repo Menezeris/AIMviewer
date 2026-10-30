@@ -26,11 +26,13 @@ export const CALIBRATE_UNDERLAY_TOOL: ToolDefinition = {
     "rezu bez podlažia (REZ-A) ide zo značky sám, písmeno z mena. Rez: výškové kóty sa spárujú s výškami podlaží modelu, osi a " +
     "iné rezy z pôdorysu dajú polohu po reze (from_plan, view_direction vo výsledku). mode=dry_run (predvolené) len vypočíta a ukáže kvalitu, nič neuloží; auto vypočíta (popisky " +
     "miestností alebo výškové kóty ako štart, potom zhoda čiar výkresu s rezom modelu) a uloží, ak medián chyby " +
-    "nepresiahne max_error_mm; manual = vlastné dvojice bodov (pairs: bod strany v % ako region, vľavo hore, a bod " +
+    "nepresiahne max_error_mm; pôdorys bez čísel miestností (strecha, základy, strop, PBR) pri známej mierke (text strany alebo scale) " +
+    "štartuje skenovaním posunu a natočenia po 90°; podlažie bez IfcSpace ide s výškou z modelu; hárok s viac pôdorysmi = region " +
+    "(výrez strany s jedným pôdorysom, uloží sa s kalibráciou); manual = vlastné dvojice bodov (pairs: bod strany v % ako region, vľavo hore, a bod " +
     "modelu v m), refine ich doladí na čiary. Ručnú kalibráciu (z panela) auto neprepíše bez force. Ukladaj (auto, " +
     "manual) len na výslovný pokyn používateľa; inak dry_run a výsledok mu ukáž. Mierka výsledku sa kontroluje " +
-    "(scale_check): proti scale, mierke z textu strany (MERÍTKO 1 : 50) alebo bežným mierkam; auto pri odchýlke " +
-    "neuloží ani pri nízkom mediáne. Strana bez čiar (raster) ide len cez manual s pairs. " +
+    "(scale_check): proti scale alebo mierke z textu strany (MERÍTKO 1 : 50) do 2 %, inak bežným mierkam do 5 %; natočenie " +
+    "(rotation_check) do 2° od násobku 90° (rez od 0°); plausible=false = výsledok je zlý a auto ho neuloží ani pri nízkom mediáne. Strana bez čiar (raster) ide len cez manual s pairs. " +
     "OVLÁDANIE PODKLADOV (D-168, nič sa nepočíta; list, show_in_3d, hide a set_opacity polohu nemenia): mode=list = zoznam kalibrovaných podkladov bez document_id " +
     "(document_id, object_ref, name, page, floor, visible a opacity vo vieweri, saved_visible a saved_opacity z DB, source auto|manual, " +
     "calibrated_at, underlays_3d; bez otvoreného viewera len z DB). mode=show_in_3d zapne podklad v 3D (document_id alebo floor; " +
@@ -73,6 +75,13 @@ export const CALIBRATE_UNDERLAY_TOOL: ToolDefinition = {
           },
           required: ["page_pct"],
         },
+      },
+      region: {
+        type: "array",
+        items: { type: "number" },
+        minItems: 4,
+        maxItems: 4,
+        description: "Výrez strany [x, y, šírka, výška] v % (vľavo hore, ako open_drawing region): hárok s viac pôdorysmi, kalibruje sa len výkres vo výreze; uloží sa s kalibráciou",
       },
       scale: { type: "number", description: "Mierka výkresu 1:N (napr. 50): pevná v štarte aj doladení, ICP rieši len rotáciu a posun; inak sa vezme z textu strany" },
       refine: { type: "boolean", description: "manual: doladiť dvojice na čiary výkresu (predvolene true)" },
