@@ -5,6 +5,7 @@ import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { AIM_CACHE } from "@/lib/data/constants";
 import { documentFolder, referencePage } from "@/lib/data/document-tree";
+import { georefV2Wire, type GeorefV2 } from "@/lib/data/georef";
 import { disciplineOf, documentMeta, floorDrawing, type DocumentHolder } from "@/lib/data/document-meta";
 import { fetchDocumentClassifications, fetchNodes, typeText } from "@/lib/data/object-documents";
 
@@ -32,6 +33,8 @@ export interface DocumentWire {
   /** Disciplína z kódu dokumentu (ASR, PBR...), len pri výkrese podlažia (D-176). */
   discipline?: string;
   folder?: string[];
+  /** Kalibrácie podkladu (D-179), rovnaké ako v `UNDERLAYS_LOAD`: pôdorysy aj rezy (`plane`). Chýba, kým dokument nie je kalibrovaný. */
+  georefV2?: GeorefV2;
   meta?: Record<string, string>;
 }
 
@@ -55,7 +58,7 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
   const [objsRes, docsRes, partsRes] = await Promise.all([
     supabase
       .from("objects")
-      .select("id, name, object_ref")
+      .select("id, name, object_ref, georef:properties->_georef")
       .eq("object_type", "document")
       .is("valid_until", null),
     supabase
@@ -79,6 +82,7 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
     (objsRes.data ?? []).map((o) => [o.id as string, (o.name as string | null) ?? (o.id as string)])
   );
 
+  const georefOf = new Map((objsRes.data ?? []).map((o) => [o.id as string, georefV2Wire((o as { georef?: unknown }).georef)]));
   const refOf = new Map((objsRes.data ?? []).map((o) => [o.id as string, (o.object_ref as string | null) ?? null]));
 
   // Nositelia (D-104 krok 3): kto dokument nesie (podlažie, miestnosť, zóna...) a druh
@@ -129,6 +133,7 @@ async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
       ...(floorGuids.length > 1 ? { storeyGuids: floorGuids } : {}),
       ...(discipline ? { discipline } : {}),
       ...(tree.length > 0 ? { folder: tree } : {}),
+      ...(georefOf.get(id) ? { georefV2: georefOf.get(id)! } : {}),
       ...(Object.keys(meta).length > 0 ? { meta } : {}),
     });
   }

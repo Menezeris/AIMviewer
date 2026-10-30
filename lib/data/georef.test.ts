@@ -5,6 +5,8 @@ vi.mock("server-only", () => ({}));
 import { isValidGeorefV1 } from "./drawing";
 import {
   calibrationFromV1,
+  editCalibration,
+  georefV2Wire,
   isValidCalibration,
   isValidGeorefV2,
   historyOf,
@@ -233,5 +235,59 @@ describe("história kalibrácií (D-168)", () => {
     expect(restoreCalibration(stored, 1, 1, meta(2))).toEqual({ ok: false, reason: "no_history" });
     expect(restoreCalibration(stored, 2, 0, meta(2))).toEqual({ ok: false, reason: "no_history" });
     expect(restoreCalibration(undefined, 1, 0, meta(2))).toEqual({ ok: false, reason: "no_history" });
+  });
+});
+
+describe("zvislý podklad: georefV2Wire a editCalibration (D-179)", () => {
+  const meta = { by: "panel" as const, reason: "úprava v paneli Underlays (rez)", at: "2026-10-30T18:00:00.000Z" };
+  const stored = (c: GeorefCalibration) => ({ version: 2, calibrations: [{ ...c, mark: "A", quality: { method: "levels_axes+icp", median_mm: 5, p90_mm: 9, cv_max_mm: 11, start_points: 65 } }], history: [] });
+
+  it("georefV2Wire nesie kalibrácie bez histórie, bez kalibrácie null", () => {
+    const g = georefV2Wire({ ...stored(section(47.427)), history: [] });
+    expect(g?.calibrations).toHaveLength(1);
+    expect(g).not.toHaveProperty("history");
+    expect(georefV2Wire(undefined)).toBeNull();
+    expect(georefV2Wire({ version: 2, calibrations: [] })).toBeNull();
+  });
+
+  it("zmena len visible/opacity: source, calibrated_at a neznáme polia ostanú, história sa nepíše", () => {
+    const base = { ...section(47.427, "auto"), calibrated_at: "2026-10-30T15:56:30.450Z" };
+    const r = editCalibration(stored(base), { ...base, visible: false, opacity: 0.3, source: "manual" }, 0, meta);
+    if (!r.ok) throw new Error("not ok");
+    const c = r.georef.calibrations[0] as GeorefCalibration & { mark?: string };
+    expect(c).toMatchObject({ source: "auto", visible: false, opacity: 0.3, mark: "A", calibrated_at: "2026-10-30T15:56:30.450Z" });
+    expect(c.quality?.median_mm).toBe(5);
+    expect(r.history_added).toBe(false);
+    expect(r.georef.history).toBeUndefined();
+  });
+
+  it("zmena polohy: source manual, história drží pôvodnú, mark a quality ostanú", () => {
+    const base = section(47.427, "auto");
+    const r = editCalibration(stored(base), { ...base, affine: [0.0176, 0, -13.5, 0, 0.0176, -18.3], source: "manual", calibrated_at: "2026-10-30T18:05:00.000Z" }, 0, meta);
+    if (!r.ok) throw new Error("not ok");
+    const c = r.georef.calibrations[0] as GeorefCalibration & { mark?: string };
+    expect(c.source).toBe("manual");
+    expect(c.affine[2]).toBe(-13.5);
+    expect(c.calibrated_at).toBe("2026-10-30T18:05:00.000Z");
+    expect(c.mark).toBe("A");
+    expect(r.history_added).toBe(true);
+    expect(r.georef.history?.[0]).toMatchObject({ page: 1, replaced_by: "panel" });
+    expect(r.georef.history?.[0].calibration.source).toBe("auto");
+  });
+
+  it("posunutá rovina sa nájde podľa indexu (strana a rez sedia), inak 404 a nič nepridá", () => {
+    const base = section(47.427, "auto");
+    const moved = { ...base, plane: { origin: [47.5, 0, 0] as [number, number, number], u: [0, 1, 0] as [number, number, number], v: [0, 0, 1] as [number, number, number] } };
+    const r = editCalibration(stored(base), moved, 0, meta);
+    if (!r.ok) throw new Error("not ok");
+    expect(r.georef.calibrations).toHaveLength(1);
+    expect(r.georef.calibrations[0].plane?.origin[0]).toBe(47.5);
+    expect(r.history_added).toBe(true);
+    expect(editCalibration(stored(base), moved, undefined, meta)).toEqual({ ok: false, reason: "not_found" });
+    expect(editCalibration(stored(base), { ...moved, page: 2 }, 0, meta)).toEqual({ ok: false, reason: "not_found" });
+  });
+
+  it("v2 položka rezu prejde validáciou aj bez calibrated_at a s version", () => {
+    expect(isValidCalibration({ ...section(47.4), version: 2 })).toBe(true);
   });
 });
