@@ -650,6 +650,26 @@ pôvodný pohľad. Zapisuje aj viewer (panel Presentation) cez route `/api/saved
   riadkov). `v_clash_summary` = ten istý beh po pravidle, podlaží a stave (`clashes`, `hard`, `clearance`, `critical`, `major`,
   `minor`, `info`). Oba aj `clash_tests` sú vo whiteliste `query_view`. Práva: `anon`/`authenticated` nič, `service_role` všetko.
 
+### 2.19 Kontajnery, revízie a úplná kópia revízie (D-183, plánované: K1, K2)
+
+**Zdroj pravdy (D-183):** obsah modelu platí z kontajnera revízie (súbor v archíve, sha256); DB nesie (1) záznam
+kontajnera a revízie, (2) úplnú kópiu informácií každej revízie bez geometrie a (3) AIM vrstvu. Presné DDL doplní
+migrácia kroku, ktorý ho zavádza; tu je zámer, aby nové tabuľky nevznikali mimo neho.
+- **Kontajner a revízia (K1):** `information_containers` = kontajner naprieč revíziami podľa `IfcDocumentInformation`
+  (`identification`, `name`, `description`, `purpose`, `intended_use`, `scope`, `confidentiality`, `electronic_format`,
+  `document_owner` -> `ifc_actor`; typ IFC / PDF / DWG; väzba na model federácie alebo dokument AIM). `container_revisions` =
+  jedna revízia (`revision`, rodič, `creation_time`, `last_revision_time`, `editors` -> `ifc_actor`, `location`, `sha256`,
+  `size_bytes`, `file_header` jsonb, recept / úloha / commit) + pojmy `IfcOwnerHistory`, ktoré `IfcDocumentInformation`
+  nemá (`owning_application`, `last_modifying_application` -> `ifc_application`, `change_action`, `state`); `status`
+  (`IfcDocumentStatusEnum`, zatiaľ DRAFT = WIP) a stav ISO 19650 ako `IfcApproval` pripravené prázdne. Revízie len hlavnej
+  rady, nemenné, zmazať len poslednú. `model_revisions` (2.14) ostáva, revízia modelu sa na ňu viaže.
+- **Podpis vstupu (K1):** `{model: revision}` na behoch IDS a clash a na položkách `_georef` (+ sha256 dokumentu);
+  `v_ids_latest`, `v_clash_latest` dostanú `based_on` a `stale`.
+- **Úplná kópia revízie (K2):** tabuľky s kľúčom `(model, revision)` v každom riadku: objekty `IfcRoot` s atribútmi
+  (podľa GlobalId), dvojice `IfcRel*` (kľúč `(trieda, nositeľ, druhá strana)`), psety a Qto (kľúč `(prvok, meno psetu)`),
+  `content_hash` na riadok; beh importu so stavom `done` a počtami na kontrolu úplnosti. Bez geometrie. Porovnanie dvoch
+  revízií je funkcia na požiadanie (ADDED / MODIFIED / DELETED / NOCHANGE + aspekty), nič neukladá.
+
 ## 4. Konvencia `properties` (D-022)
 
 `properties` JSONB obsahuje **property sety**, vnorené podľa názvu. IFC **atribúty**
@@ -699,6 +719,8 @@ CamelCase by vyžadoval úvodzovky a škodil LLM text-to-SQL). IFC väzba cez
 | `classification_systems` / `_references` | IfcClassification / IfcClassificationReference |
 | `documents` (prípona) | IfcDocumentInformation (atribútovo 1:1, viď nižšie) |
 | `object_type='document_reference'` (prípona `documents`) | IfcDocumentReference: časť dokumentu, napr. strana (D-104) |
+| `information_containers` / `container_revisions` | IfcDocumentInformation (kontajner / jedna `Revision`) + z IfcOwnerHistory `OwningApplication`, `LastModifyingApplication`, `ChangeAction`, `State`; stav ISO 19650 = IfcApproval (D-183, §2.19) |
+| `ifc_actor` / `ifc_application` | IfcPersonAndOrganization / IfcApplication (D-183) |
 | `object_type='capture'` (prípona `captures`) | ~IfcAnnotation (reality-capture bod); ukotvenie v `_capture`, D-073 |
 | `object_type='capture_media'` (prípona `capture_media`) | ~IfcDocumentInformation (snímka/verzia), D-073 |
 | `aim_rel_capture_located` | **aim_** (IFC nemá koncept; ~IfcRelContainedInSpatialStructure) → ICDD linkset, D-073 |
