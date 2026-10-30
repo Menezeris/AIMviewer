@@ -85,6 +85,8 @@ export interface IdsRunWrite {
   results_failed: number;
   engine: "ifc-lite";
   trigger: "chat";
+  /** Podpis vstupu (D-183): {model: revízia archívu}, nad ktorou beh naozaj bežal; {} = neznáma. */
+  model_revisions: Record<string, number>;
 }
 
 export interface IdsResultWrite {
