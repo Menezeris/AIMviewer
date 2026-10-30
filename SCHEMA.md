@@ -650,7 +650,7 @@ pôvodný pohľad. Zapisuje aj viewer (panel Presentation) cez route `/api/saved
   riadkov). `v_clash_summary` = ten istý beh po pravidle, podlaží a stave (`clashes`, `hard`, `clearance`, `critical`, `major`,
   `minor`, `info`). Oba aj `clash_tests` sú vo whiteliste `query_view`. Práva: `anon`/`authenticated` nič, `service_role` všetko.
 
-### 2.19 Kontajnery, revízie a úplná kópia revízie (D-183; K1 implementované, K2 plánované)
+### 2.19 Kontajnery, revízie a úplná kópia revízie (D-183; K1 a K2 implementované)
 
 **Zdroj pravdy (D-183):** obsah modelu platí z kontajnera revízie (súbor v archíve, sha256); DB nesie (1) záznam
 kontajnera a revízie, (2) úplnú kópiu informácií každej revízie bez geometrie a (3) AIM vrstvu.
@@ -689,10 +689,30 @@ kontajnera a revízie, (2) úplnú kópiu informácií každej revízie bez geom
   starú pečiatku, nová dostane aktuálne revízie; spätne revízie platné v čase `calibrated_at` (`model_revisions_at(t)`).
   `v_ids_latest`, `v_ids_summary`, `v_clash_latest`, `v_clash_summary` majú na konci `based_on` (podpis, NULL = neznámy) a
   `stale` (`revisions_stale`: true = iný ako aktuálne revízie, NULL = neznámy). Práva: `anon`/`authenticated` nič.
-- **Úplná kópia revízie (K2):** tabuľky s kľúčom `(model, revision)` v každom riadku: objekty `IfcRoot` s atribútmi
-  (podľa GlobalId), dvojice `IfcRel*` (kľúč `(trieda, nositeľ, druhá strana)`), psety a Qto (kľúč `(prvok, meno psetu)`),
-  `content_hash` na riadok; beh importu so stavom `done` a počtami na kontrolu úplnosti. Bez geometrie. Porovnanie dvoch
-  revízií je funkcia na požiadanie (ADDED / MODIFIED / DELETED / NOCHANGE + aspekty), nič neukladá.
+- **Úplná kópia revízie (K2, migrácia `20261030130000_ifc_revision_copy.sql`, test `supabase/tests/ifc_revision_copy.sql`):**
+  zapisuje len `python -m etl.revision_copy` (etl/README), plné kópie bez geometrie, graf AIM sa nemení.
+  - `ifc_rev_imports` (PK `model`, `revision`; FK na `model_revisions`, `on delete cascade`) = beh kópie: `sha256`
+    (overený archív), `status` `done|failed`, `hash_version`, `schema_identifier`, `counts` (`file` a `db`: objekty po
+    triedach, dvojice vzťahov po triedach, pripojenia psetov po triedach, `ifc_root` a `ifc_root_accounted`), `warnings`,
+    `error`, `engine`, `started_at`, `finished_at`.
+  - `ifc_rev_objects` (PK `model`, `revision`, `global_id`) = každý IfcRoot okrem vzťahov a sád: `ifc_class`, `attributes`
+    jsonb (atribúty schémy; IfcRoot hodnota = `{"ref": GlobalId}`, ostatné entity vnorene s `_class`, bez geometrie,
+    polohy a OwnerHistory), `file_owner_history` jsonb (ChangeAction, OwningUser, OwningApplication... len informačne),
+    `content_hash`. Index (`model`, `revision`, `ifc_class`).
+  - `ifc_rev_relationships` (PK `model`, `revision`, `rel_class`, `relating`, `related`) = dvojica z IfcRel* (bez
+    IfcRelDefinesByProperties): `relating` = nositeľ (Relating*), `related` = druhá strana (Related*), GlobalId alebo
+    prirodzený kľúč `Trieda:Identification|Name` (inak `Trieda:#hash`), `relating_class`, `related_class`, `attributes`
+    jsonb (zoradené varianty ostatných atribútov), `multiplicity`, `rel_global_ids` (len informačne), `content_hash`.
+    Indexy (`model`, `revision`, `related`) a (`model`, `revision`, `relating`, `rel_class`).
+  - `ifc_rev_property_sets` (PK `model`, `revision`, `global_id`, `pset_name`) = sada na výskyte alebo type: `pset_class`
+    (IfcPropertySet, IfcElementQuantity, preddefinovaná), `properties` jsonb `{meno: hodnota}` (čísla na 12 platných
+    číslic; jednotka pri hodnote ako `{value, unit}`), `pset_global_ids` (len informačne), `content_hash`.
+  - `ifc_rev_resolve(model, revision)` (NULL = aktuálna; len `done`, inak chyba s príkazom), `ifc_rev_storey_elements(model,
+    revision, podlažie, systém?)` (IfcRelContainedInSpatialStructure podľa mena alebo GlobalId podlažia, voliteľne člen
+    systému `ilike`), `ifc_rev_compare(model, from, to)` = `global_id`, `ifc_class`, `change_action`
+    (ADDED|DELETED|MODIFIED, NOCHANGE len s poznámkou `changed via type`), `aspects` jsonb (`attributes`, `psets`
+    `Pset.Vlastnosť`, `relations` `+|-|~Trieda:nositeľ` pripísané strane Related). Poloha nie je v DB (`etl.revision_compare
+    --placement`). Funkcie volá len `service_role`; tabuľky `anon`/`authenticated` nič.
 
 ## 4. Konvencia `properties` (D-022)
 
