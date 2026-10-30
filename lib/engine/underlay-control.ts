@@ -1,4 +1,4 @@
-import { historyOf, removeCalibration, restoreCalibration, toGeorefV2, type GeorefCalibration, type RemoveResult, type RestoreResult } from "../data/georef";
+import { historyOf, planeAxisDistance, removeCalibration, restoreCalibration, toGeorefV2, type GeorefCalibration, type RemoveResult, type RestoreResult } from "../data/georef";
 import type { UnderlaysSetRequest } from "../viewer-underlays";
 
 /**
@@ -121,8 +121,54 @@ interface Target {
   removed: boolean;
 }
 
+/**
+ * `mode=remove` na reze (D-179): strana môže niesť viac kalibrácií roviny. So `section_plane {axis, coordinate_m}` sa
+ * berie kalibrácia najbližšej roviny rovnakej orientácie; bez neho viac kalibrácií na jednej strane je chyba so
+ * zoznamom, nie ticho prvá.
+ */
+function pickByPlane(candidates: Entry[], sectionPlane: unknown): Entry[] {
+  const s = sectionPlane as { axis?: unknown; coordinate_m?: unknown } | undefined;
+  const given = s !== undefined && s !== null;
+  if (given && ((s.axis !== "x" && s.axis !== "y") || typeof s.coordinate_m !== "number" || !Number.isFinite(s.coordinate_m))) {
+    throw new UnderlayControlError("section_plane pri mode=remove je {axis: 'x' | 'y', coordinate_m: číslo v m}.");
+  }
+  const byPage = new Map<string, Entry[]>();
+  for (const e of candidates) byPage.set(`${e.doc.id}#${e.cal.page}`, [...(byPage.get(`${e.doc.id}#${e.cal.page}`) ?? []), e]);
+  const out: Entry[] = [];
+  for (const group of byPage.values()) {
+    const planes = group.filter((e) => e.cal.plane);
+    if (given) {
+      const { axis, coordinate_m: c } = s as { axis: "x" | "y"; coordinate_m: number };
+      const scored = planes
+        .map((e) => ({ e, d: planeAxisDistance(e.cal.plane, axis, c) }))
+        .filter((x): x is { e: Entry; d: number } => x.d !== null)
+        .sort((a, b) => a.d - b.d);
+      if (scored.length === 0) {
+        throw new UnderlayControlError(`Strana ${group[0].cal.page} dokumentu ${label(group[0].doc)} nemá kalibráciu roviny ${axis} (orientácia ${axis === "x" ? "X = c" : "Y = c"}). ${describePlanes(planes)}`);
+      }
+      out.push(scored[0].e);
+    } else if (planes.length > 1) {
+      throw new UnderlayControlError(`Strana ${group[0].cal.page} dokumentu ${label(group[0].doc)} má ${planes.length} kalibrácie rezu: ${describePlanes(planes)} Zadaj section_plane {axis, coordinate_m} (zmaže sa najbližšia rovina).`);
+    } else out.push(...group);
+  }
+  return out;
+}
+
+function describePlanes(planes: Entry[]): string {
+  if (planes.length === 0) return "";
+  return planes
+    .map((e) => {
+      const p = e.cal.plane!;
+      const n: [number, number, number] = [p.u[1] * p.v[2] - p.u[2] * p.v[1], p.u[2] * p.v[0] - p.u[0] * p.v[2], p.u[0] * p.v[1] - p.u[1] * p.v[0]];
+      const axis = Math.abs(n[0]) >= Math.abs(n[1]) ? "x" : "y";
+      const k = axis === "x" ? 0 : 1;
+      return `${axis} = ${(Math.round(p.origin[k] * 1000) / 1000).toString()} m (${e.cal.source}${e.cal.calibrated_at ? `, ${e.cal.calibrated_at.slice(0, 10)}` : ""})`;
+    })
+    .join("; ") + ".";
+}
+
 /** Podklad z `document_id` alebo `floor` (+ `page`); nejednoznačnosť a chýbajúca kalibrácia sú chyby s radou. */
-async function resolveTarget(args: Record<string, unknown>, deps: ControlDeps, viewer: ViewerSnapshot, withHistory = false): Promise<Target> {
+async function resolveTarget(args: Record<string, unknown>, deps: ControlDeps, viewer: ViewerSnapshot, withHistory = false, bySection = false): Promise<Target> {
   const documentId = textOf(args.document_id);
   const floorRef = textOf(args.floor);
   if (!documentId && !floorRef) throw new UnderlayControlError("Zadaj document_id (UUID alebo object_ref výkresu) alebo floor.");
@@ -151,6 +197,7 @@ async function resolveTarget(args: Record<string, unknown>, deps: ControlDeps, v
     }
     candidates = onPage;
   }
+  if (bySection) candidates = pickByPlane(candidates, args.section_plane);
   const distinct = new Map(candidates.map((e) => [`${e.doc.id}#${e.cal.page}`, e]));
   if (distinct.size > 1) {
     const options = [...distinct.values()]
@@ -305,7 +352,7 @@ async function restore(args: Record<string, unknown>, deps: ControlDeps): Promis
  * Zmazaná kalibrácia ide do `_georef.history`, takže `restore` ju vráti; viewer dostane podklady nanovo.
  */
 async function remove(args: Record<string, unknown>, deps: ControlDeps): Promise<ControlResult> {
-  const t = await resolveTarget(args, deps, NO_VIEWER);
+  const t = await resolveTarget(args, deps, NO_VIEWER, false, true);
   if (!deps.writeEnabled) throw new UnderlayControlError("Zápis kalibrácie je vypnutý (UNDERLAY_WRITE_ENABLED), zmazanie sa neuloží.");
   const force = optionalBool(args, "force") === true;
   const result = await deps.write(t.doc.id, (stored) =>
