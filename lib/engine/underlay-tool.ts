@@ -2,8 +2,10 @@ import { mergeCalibration, toGeorefV2, type GeorefCalibration, type GeorefPlane,
 
 import type { MeshElement } from "./measure";
 import {
+  AXES_TOLERANCE_MM,
   CalibrationError,
   applyAffine,
+  checkAxes,
   checkRotation,
   checkScale,
   cropToRegion,
@@ -14,15 +16,18 @@ import {
   fitSimilarity,
   footprintCentroid,
   type Affine,
+  type AxesCheck,
+  type AxisLine,
   type CalibrationResult,
   type P2,
   type PageBlock,
   type PageLine,
   type PageRegion,
   type Plane,
+  type RefAxis,
 } from "./underlay-calibrate";
 import { ifcPositions, modelCut, planPlane, sectionPlane } from "./underlay-model";
-import { sectionFromPlans, sectionMarkFromName, type PlanSheet, type SectionFromPlans } from "./underlay-section-mark";
+import { pageAxisLines, refAxesFromSheets, sectionFromPlans, sectionMarkFromName, type PlanSheet, type SectionFromPlans } from "./underlay-section-mark";
 import { CALIBRATE_UNDERLAY_MODES, DEFAULT_MAX_ERROR_MM, PLAN_CUT_M, type Mode } from "./underlay-tool-def";
 
 /**
@@ -295,6 +300,21 @@ async function planSection(markArg: string | null, doc: UnderlayDocument, deps: 
   return res;
 }
 
+/**
+ * Osi (gridy) pôdorysu: rady osí tejto strany (výrezu) a ich poloha v IFC z ostatných kalibrovaných pôdorysov
+ * (aj iných podlaží a disciplín, grid je spoločný). Bez kalibrovaných pôdorysov alebo osí null.
+ */
+async function planAxes(doc: UnderlayDocument, page: number, region: PageRegion | null, pageSize: P2, blocks: PageBlock[], lines: PageLine[], deps: UnderlayDeps): Promise<{ page: AxisLine[]; ref: RefAxis[]; sheets: number } | null> {
+  if (!deps.planSheets) return null;
+  const pageLines = pageAxisLines(pageSize, blocks, lines);
+  if (pageLines.length === 0) return null;
+  const ref = doc.object_ref ?? doc.id;
+  const same = (sh: PlanSheet) => sh.ref === ref && sh.page === page && JSON.stringify(sh.region ?? null) === JSON.stringify(region);
+  const others = (await deps.planSheets()).filter((sh) => !same(sh));
+  const refs = refAxesFromSheets(others);
+  return refs.length ? { page: pageLines, ref: refs, sheets: others.length } : null;
+}
+
 /** Zvislá rovina osi: axis x = rovina X = c (rez ide po Y), axis y = rovina Y = c. */
 const axisPlane = (axis: "x" | "y", c: number): Plane => (axis === "x" ? sectionPlane([c, 0], [0, 1]) : sectionPlane([0, c], [1, 0]));
 
@@ -367,6 +387,8 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   let plane: Plane;
   let storeyZ: number | null = null;
   let spaceCount: number | null = null;
+  let axes: Awaited<ReturnType<typeof planAxes>> = null;
+  let axesCheck: AxesCheck | null = null;
   if (isSection) {
     plane = section ? axisPlane(section.axis, section.coordinate) : sectionPlane(marked!.at, marked!.dir);
     const what = section ? `${section.axis.toUpperCase()} = ${section.coordinate} m` : `rezu ${marked!.mark} (bod ${marked!.at.join(", ")}, smer ${marked!.dir.join(", ")})`;
@@ -396,10 +418,12 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     plane = planPlane(z + PLAN_CUT_M);
     const cut = modelCut(model.elements, plane, "plan");
     const pairs = p.mode === "manual" ? pairsInPlane(p.pairs, refPoints, plane, pageSize) : [];
+    axes = await planAxes(doc, p.page, p.region, pageSize, blocks, segs, deps);
     res =
       p.mode === "manual"
         ? calibratePairs(pairs, refine ? { lines: segs, cut, mirror: false } : undefined, false, p.scale ?? undefined)
-        : calibratePlan({ pageSize, blocks, lines: segs, spaces, cut, scale: wantScale ?? undefined });
+        : calibratePlan({ pageSize, blocks, lines: segs, spaces, cut, scale: wantScale ?? undefined, axes: axes ?? undefined });
+    axesCheck = axes ? checkAxes(res.affine, axes.page, axes.ref) : null;
   }
 
   // Kontrola mierky (#284): nízky medián chyby nestačí, ICP vie zachytiť nesprávne čiary v zlej mierke.
@@ -414,7 +438,11 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   if (!rotationCheck.ok) {
     warnings.push(`Natočenie ${res.rotation_deg}° sa líši o ${rotationCheck.deviation_deg}° od ${rotationCheck.expected_deg}°; kalibrácia je pravdepodobne krivá.`);
   }
-  const plausible = scaleCheck.ok && rotationCheck.ok;
+  // Kontrola osí: osi výkresu na tom istom mieste ako na ostatných kalibrovaných pôdorysoch (posun o pole osí, zlý štart).
+  if (axesCheck && !axesCheck.ok) {
+    warnings.push(`Osi výkresu sú v mediáne ${axesCheck.median_mm} mm od polohy tých istých osí na iných kalibrovaných výkresoch (strop ${AXES_TOLERANCE_MM} mm); kalibrácia je pravdepodobne posunutá.`);
+  }
+  const plausible = scaleCheck.ok && rotationCheck.ok && (axesCheck?.ok ?? true);
 
   const fixed = isSection ? unmirror(res, plane) : { affine: res.affine, plane, calibration: res.calibration };
   const entry: GeorefCalibration = {
@@ -466,6 +494,8 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     ...(p.region ? { region: p.region } : {}),
     scale_check: { ...scaleCheck, text_scale: textScale === null ? null : `1:${textScale}`, locked: wantScale !== null && p.mode !== "manual" },
     rotation_check: rotationCheck,
+    ...(res.rotation_locked_from_deg !== undefined ? { rotation_locked_from_deg: res.rotation_locked_from_deg } : {}),
+    ...(axesCheck ? { axes_check: { ...axesCheck, tolerance_mm: AXES_TOLERANCE_MM, ref_axes: axes!.ref.length, ref_sheets: axes!.sheets } } : {}),
     // Výsledok je zlý (mierka alebo natočenie mimo), auto ho neuloží; pri manual len hlásenie.
     plausible,
     ...(warnings.length ? { warnings } : {}),
@@ -504,6 +534,11 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   if (p.mode === "auto" && !rotationCheck.ok) {
     out.written = false;
     out.note = `Neuložené: natočenie ${res.rotation_deg}° je o ${rotationCheck.deviation_deg}° mimo ${rotationCheck.expected_deg}° (výkres je rovnobežný s osami modelu), aj keď medián chyby je ${median ?? "?"} mm. Skontroluj podlažie, region, alebo použi mode=manual.`;
+    return out;
+  }
+  if (p.mode === "auto" && axesCheck && !axesCheck.ok) {
+    out.written = false;
+    out.note = `Neuložené: osi výkresu nesedia s osami iných kalibrovaných výkresov (medián ${axesCheck.median_mm} mm), aj keď medián chyby je ${median ?? "?"} mm. Skontroluj podlažie, region, alebo použi mode=manual.`;
     return out;
   }
   if (p.mode === "auto" && (median === null || median > p.maxErrorMm)) {

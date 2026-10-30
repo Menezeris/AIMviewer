@@ -8022,3 +8022,23 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 6. **Poradie:** 1 (malé, OCB), potom 2 po jednom pohľade s evalom (najprv `rel_contained_in_spatial_structure`, ktorá opraví #220), potom 3 a 4.
 
 **Otvorené (mimo tohto rozhodnutia):** kedy kalibrácia výkresu prestáva platiť pri novej revízii (Samuel: nové PDF alebo iné súradnice rovnakých GUID alebo veľa nových GUID, "treba premyslieť"); kódy ISO 19650 (pripravené, neriešiť); kde história ASR začína (v archíve v0 a v72 až v79); mapovanie podlaží ASR - VZT ako údaj (R6 v #220).
+
+### D-184 - `calibrate_underlay`: osi (gridy) z iných výkresov ako štart a kontrola, sken pri nízkom pokrytí, uzamknutie natočenia (#170)
+
+**Dátum:** 2026-10-30 · **Issue:** #170 (tabuľky dry_run 30. 10.), #316 · **Nadväzuje na:** D-133, D-179, D-180, D-114 · **Smer:** Samuel 30. 10. (cez orchestrátora): "spust to na všetkych vykresoch nech sleduju proste jasne aj mierky a konštrukcie a gridy aj z inych vykresov kde sa už chytili dobre"
+
+**Kontext:** po D-180 ostali zlé výsledky, ktoré mierka a natočenie nezachytia alebo ktoré vznikajú pred nimi: SF.01 (5 popiskov, štart z popiskov s -109°, pokrytie rezu 0,03; pri 5 a viac popiskoch sa sken neskúšal), TP.01 (výkres TZB, ICP skĺzne na čiarach rozvodov o 1 až 2,3°). Výkresy toho istého objektu majú spoločný grid osí (A až F, 1 až 4), ktorý je na ručných pôdorysoch ASR aj na PBR, STA, S.01 a TP.01; v IFC `IfcGrid` nie je. Prototyp nad DB (30. 10.): polohy osí z kalibrovaných pôdorysov (ručné ASR 1NP až 3NP, auto PBR, STA, S.01) sa zhodujú do 10 až 50 mm a štart len z osí pri pevnej mierke dal posun do 3 až 15 mm od výsledku ICP (PBR 1NP, PBR 3NP, strop D.1.2.02, S.01 2NP).
+
+**Najbližšie tooly (D-114):** `calibrate_underlay` (rozširujeme výpočet a pole `axes_check` vo výsledku), `search_documents` (popisky osí sú v `document_pages.blocks`, tool ich vie čítať, ale kalibráciu nerobí). Nový tool netreba.
+
+**Rozhodnutie:**
+1. **Osi z iných výkresov (referencie):** rady osí pôdorysu (dvojice rovnakých popiskov v rade aspoň 3, `planLabelLines` z D-179) zo všetkých kalibrovaných pôdorysov (`_georef` v2 bez `plane`, aj iné podlažia a disciplíny, grid je spoločný) cez ich `affine` do IFC; poloha osi = medián cez výkresy, popisok s rozptylom nad 0,3 m sa zahodí (`mergeRefAxes`). Výkres s výrezom (`region`) dáva len osi z výrezu (aj pre rovinu rezu zo značky). Vynechá sa len tá istá strana a výrez kalibrovaného dokumentu, iné výrezy toho istého hárku sú referencie.
+2. **Štart z osí (`start.method = plan_axes`):** pri pevnej mierke pre natočenie 0, 90, 180 a 270° posun z rozdielov polôh osí (os A je na modeli rovina X, smer teda vyberie aj natočenie); treba os v oboch smeroch a spolu aspoň 3 do 0,5 m od mediánu. Súťaží so skenom a s popiskami.
+3. **Kontrola osí (`axes_check`):** po kalibrácii odchýlka každej osi strany od referencie; medián nad 150 mm (pri aspoň 2 osiach) = `plausible: false`, `warnings` a `auto` neuloží. Posun o pole osí (6,5 m) alebo zlý štart sa tak zachytí aj pri nízkom mediáne chyby čiar. Výsledok: `matched`, `median_mm`, `max_mm`, `axes[]`, `ref_axes`, `ref_sheets`.
+4. **Výber štartu:** pri pevnej mierke vyhráva štart z popiskov hneď, len keď je popiskov aspoň 4, pokrytie rezu po ICP aspoň 0,3 a osi sedia; inak súťažia všetky štarty (osi, sken, popisky) a vyhrá: osi sedia, potom pokrytie, potom medián. Vo výsledku `start.compared`.
+5. **Uzamknutie natočenia:** pôdorys pri pevnej mierke, ktorého natočenie po ICP je viac ako 0,5° od násobku 90°, sa dopočíta s pevným natočením (ICP hľadá len posun); vo výsledku `rotation_locked_from_deg` (voľné natočenie). Dobré kalibrácie majú do 0,03°, takže hranica ich nemení.
+6. Bez migrácie, bez nového parametra.
+
+**Zavrhnuté:** porovnávať `affine` priamo medzi výkresmi toho istého podlažia (iný rám strany a pečiatka, posun na strane je iný, porovnateľné sú až polohy v modeli, teda osi); `IfcGrid` (v ASR nie je); osi ako tvrdá podmienka aj bez referencií (prvý kalibrovaný výkres by nemal s čím porovnať); uzamknúť natočenie vždy (malé skutočné natočenie PDF exportu by sa stratilo).
+
+**Overenie:** vitest (`underlay-calibrate.test.ts`: `mergeRefAxes`, `axisStart` pri 0, 90 a 180°, `checkAxes` s posunom o pole, štart z osí bez popiskov, SF.01 s nízkym pokrytím, ICP s pevným natočením a uzamknutie pri 1,2°; `underlay-section-mark.test.ts`: osi z ručných pôdorysov ASR; `underlay-tool.test.ts`: `axes_check` a odmietnutie zápisu pri posune osí o pole), tsc, eslint. Dry_run živým toolom po nasadení v #170.
