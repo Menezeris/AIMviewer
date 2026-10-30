@@ -2,7 +2,7 @@ import "server-only";
 
 import { revalidateTag } from "next/cache";
 
-import type { MergeResult } from "../data/georef";
+import { toGeorefV2, type MergeResult } from "../data/georef";
 import { getIfcModels } from "../data/ifc-models";
 import { getSupabaseAdmin } from "../supabase/server";
 
@@ -11,6 +11,8 @@ import { meshModel } from "./measure";
 import { openEngineSession } from "./session";
 import { resolveTargetsToGuids } from "./aim-lookup";
 import { IFC_GUID_RE, modelsFor, storeyGuid, structured, type EngineDeps } from "./tools";
+import type { Affine, P2 } from "./underlay-calibrate";
+import type { PlanSheet } from "./underlay-section-mark";
 import type { UnderlayDeps, UnderlayDocument, UnderlayModel, UnderlayPage } from "./underlay-tool";
 
 // D-135: modely motora z nemenného archívu revízie (cca 5-krát menej egressu).
@@ -88,7 +90,9 @@ async function model(opts: { model?: string; floor?: string }): Promise<Underlay
   const { models } = await modelsFor([id], {} as EngineDeps);
   const m = models[0];
   const elements = [...(await meshModel(m)).values()];
-  if (!opts.floor) return { id: m.id, elements };
+  const elevations = (m.store as { spatialHierarchy?: { storeyElevations?: Map<number, number> } }).spatialHierarchy?.storeyElevations;
+  // Rez (D-179): výšky podlaží na spárovanie výškových kót; mená netreba, kľúč je expressId.
+  if (!opts.floor) return { id: m.id, elements, storeys: [...(elevations ?? new Map<number, number>())].map(([id, z]) => ({ name: `#${id}`, z })) };
   const session = await openEngineSession([m]);
   const guid = IFC_GUID_RE.test(opts.floor) ? opts.floor : await storeyGuid(session, m.id, opts.floor);
   const tree = structured<{ tree?: TreeNode }>(await session.call("spatial_hierarchy", {})).tree;
@@ -96,9 +100,44 @@ async function model(opts: { model?: string; floor?: string }): Promise<Underlay
   if (!node) throw new Error(`Podlažie ${opts.floor} nie je v modeli ${m.id}.`);
   const spaceGuids = (node.children ?? []).filter((c) => c.type === "IfcSpace" && c.globalId).map((c) => c.globalId!);
   // Výška podlažia z parsera (m), rovnaký zdroj ako `storeyElevations` vo vieweri.
-  const elevations = (m.store as { spatialHierarchy?: { storeyElevations?: Map<number, number> } }).spatialHierarchy?.storeyElevations;
   const z = node.expressId !== undefined ? (elevations?.get(node.expressId) ?? null) : null;
   return { id: m.id, elements, storey: { guid, name: node.name ?? opts.floor, z, spaceGuids } };
+}
+
+/**
+ * Kalibrované pôdorysy pre rovinu rezu zo značky (D-179): kalibrácie strán s `plane: null` (pôdorys) a
+ * affine, k nim text a čiary strany. Len čítanie; filter na `_georef` robí DB, kalibrácie sa čítajú v2.
+ */
+async function planSheets(): Promise<PlanSheet[]> {
+  const db = getSupabaseAdmin();
+  const { data, error } = await db
+    .from("objects")
+    .select("id, object_ref, properties")
+    .eq("object_type", "document")
+    .is("valid_until", null)
+    .not("properties->_georef", "is", null);
+  if (error) throw new Error(error.message);
+  const wanted: { id: string; ref: string; page: number; affine: Affine; pageSize: P2 }[] = [];
+  for (const d of data ?? []) {
+    for (const c of toGeorefV2((d.properties as Record<string, unknown> | null)?._georef).calibrations) {
+      // Affine je z bodov strany v rozmere `page_size` kalibrácie (D-133), ten istý rámec ako čiary ETL.
+      if (!c.plane) wanted.push({ id: d.id as string, ref: (d.object_ref as string | null) ?? (d.id as string), page: c.page, affine: c.affine, pageSize: c.page_size });
+    }
+  }
+  if (wanted.length === 0) return [];
+  const { data: pages, error: pErr } = await db
+    .from("document_pages")
+    .select("document_id, page, blocks, lines")
+    .in("document_id", [...new Set(wanted.map((w) => w.id))]);
+  if (pErr) throw new Error(pErr.message);
+  const out: PlanSheet[] = [];
+  for (const w of wanted) {
+    const pg = (pages ?? []).find((x) => x.document_id === w.id && x.page === w.page);
+    if (!pg) continue;
+    const lines = pg.lines as UnderlayPage["lines"] | null;
+    out.push({ ref: w.ref, page: w.page, affine: w.affine, pageSize: w.pageSize, blocks: (pg.blocks as UnderlayPage["blocks"]) ?? [], lines: lines?.segs });
+  }
+  return out;
 }
 
 async function write(documentId: string, apply: (stored: unknown) => MergeResult): Promise<MergeResult> {
@@ -121,6 +160,7 @@ export function defaultUnderlayDeps(): UnderlayDeps {
     page,
     model,
     refGuids: (refs) => resolveTargetsToGuids(refs),
+    planSheets,
     write,
     writeEnabled: process.env.UNDERLAY_WRITE_ENABLED === "true",
     now: () => new Date(),

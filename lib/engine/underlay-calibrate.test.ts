@@ -9,6 +9,7 @@ import {
   ransacLabels,
   calibratePlan,
   calibrateSection,
+  levelOffset,
   decompose,
   fitSimilarity,
   footprintCentroid,
@@ -210,6 +211,12 @@ describe("calibrateSection", () => {
       }
       expect(res.quality.median_mm).toBeLessThan(5);
     }
+  });
+
+  it("posun kót na výšky podlaží (D-179): najviac zhôd, inak 0", () => {
+    expect(levelOffset([0, 5, 9.2, 13.4, 4.85, -0.16], [0, 5, 9.2, 13.4])).toEqual({ offset: 0, matched: 4 });
+    expect(levelOffset([0, 3, 3.25, -0.25], [100, 103])).toEqual({ offset: 100, matched: 2 });
+    expect(levelOffset([0.5, 1.7], [0, 3])).toEqual({ offset: 0, matched: 0 });
   });
 
   it("málo kót vráti CalibrationError", () => {

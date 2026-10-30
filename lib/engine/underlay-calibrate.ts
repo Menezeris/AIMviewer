@@ -466,7 +466,16 @@ export interface CalibrationResult {
   scale_ratio: number;
   rotation_deg: number;
   mirrored: boolean;
-  start: { method: "room_labels" | "levels_axes" | "levels_scan" | "pairs"; points: number; median_mm: number | null; labels_found?: number };
+  start: {
+    method: "room_labels" | "levels_axes" | "levels_scan" | "pairs";
+    points: number;
+    median_mm: number | null;
+    labels_found?: number;
+    /** Rez (D-179): kóty spárované s výškami podlaží modelu a posun ±0,000 voči IFC Z (m). */
+    levels?: { found: number; storeys_matched: number; offset_m: number };
+    /** Rez: popisky osí na reze spárované s polohou po reze. */
+    axes_matched?: number;
+  };
   icp_pairs: number;
   quality: Quality;
   cross_validation_max_mm: number;
@@ -619,6 +628,32 @@ export interface SectionInput {
   cut: Seg[];
   /** Pevná mierka výkresu 1:N (parameter alebo text strany); kóty potom určia len výšku. */
   scale?: number;
+  /** Výšky podlaží modelu (IfcBuildingStorey.Elevation v IFC Z, m): kóty sa s nimi spárujú (D-179). */
+  storeys?: number[];
+}
+
+/** Zhoda kóty s výškou podlažia (m): kóty sú na mm, výška z parsera tiež. */
+const STOREY_TOL_M = 0.005;
+
+/**
+ * Posun kót voči IFC Z (D-179): ±0,000 nemusí byť IFC Z = 0. Kandidáti sú rozdiely výška podlažia -
+ * kóta, vyhrá posun, pri ktorom najviac podlaží má kótu (aspoň 2), pri zhode menší posun. Bez
+ * spárovania 0 (kóty sú priamo v IFC Z, ako doteraz).
+ */
+export function levelOffset(values: number[], storeys: number[]): { offset: number; matched: number } {
+  const uniq = [...new Set(values.map((v) => Math.round(v * 1000)))].map((v) => v / 1000);
+  let best = { offset: 0, matched: 0 };
+  const score = (d: number) => storeys.filter((e) => uniq.some((v) => Math.abs(v + d - e) < STOREY_TOL_M)).length;
+  const zero = score(0);
+  if (zero > 0) best = { offset: 0, matched: zero };
+  for (const e of storeys) {
+    for (const v of uniq) {
+      const d = Math.round((e - v) * 1000) / 1000;
+      const n = score(d);
+      if (n > best.matched || (n === best.matched && n > 0 && Math.abs(d) < Math.abs(best.offset))) best = { offset: d, matched: n };
+    }
+  }
+  return best.matched >= 2 ? best : { offset: 0, matched: zero };
 }
 
 /** Rez: výškové kóty -> mierka a výška, osi (alebo sken) -> posun a smer pohľadu, potom ICP. */
@@ -631,6 +666,12 @@ export function calibrateSection(input: SectionInput): CalibrationResult {
     if (v !== null) levels.push([(1 - (b.y + b.h) / 100) * H, v]);
   }
   if (levels.length < 3) throw new CalibrationError(`Na strane sú ${levels.length} výškové kóty; treba aspoň 3 (alebo mode=manual).`);
+  const lv = levelOffset(
+    levels.map(([, v]) => v),
+    input.storeys ?? [],
+  );
+  if (lv.offset !== 0) for (const l of levels) l[1] += lv.offset;
+  const levelsInfo = { found: levels.length, storeys_matched: lv.matched, offset_m: lv.offset };
   let [s, z0] = lineFit(levels);
   const close = levels.filter(([y, v]) => Math.abs(v - (s * y + z0)) < 0.3);
   if (close.length >= 3) [s, z0] = lineFit(close);
@@ -659,7 +700,15 @@ export function calibrateSection(input: SectionInput): CalibrationResult {
     }
     const start: Affine = [best!.sign * s, 0, best!.t, 0, s, z0];
     const anchors = axes.map(([x]): P2 => [x, anchorY]);
-    return finish(pdf, ifc, start, best!.sign < 0, { method: "levels_axes", points: levels.length + axes.length, median_mm: Math.round(best!.res * 1000) }, anchors, fixed);
+    return finish(
+      pdf,
+      ifc,
+      start,
+      best!.sign < 0,
+      { method: "levels_axes", points: levels.length + axes.length, median_mm: Math.round(best!.res * 1000), levels: levelsInfo, axes_matched: axes.length },
+      anchors,
+      fixed,
+    );
   }
   // Bez osí: vodorovný posun a smer pohľadu skenovaním (najviac bodov PDF pri reze IFC).
   const scan = scanOffset(pdf, ifc, s, z0);
@@ -669,7 +718,7 @@ export function calibrateSection(input: SectionInput): CalibrationResult {
   for (let i = 0; i < pdf.length; i += 2) xs.push(pdf[i]);
   xs.sort((a, b) => a - b);
   const anchors: P2[] = [[quantile(xs, 0.1), anchorY], [quantile(xs, 0.9), anchorY]];
-  return finish(pdf, ifc, start, scan.sign < 0, { method: "levels_scan", points: levels.length, median_mm: null }, anchors, fixed);
+  return finish(pdf, ifc, start, scan.sign < 0, { method: "levels_scan", points: levels.length, median_mm: null, levels: levelsInfo }, anchors, fixed);
 }
 
 /**

@@ -244,6 +244,93 @@ describe("calibrate_underlay", () => {
   });
 });
 
+describe("calibrate_underlay: rez zo značky na pôdoryse (D-179, #284)", () => {
+  /** Rez X = 42,9 m (ako test vyššie), výkres zrkadlovo, kóty ±0,000 = IFC Z 100 m (posun kót). */
+  function sectionCase(zOff = 0) {
+    const b = building();
+    const els = [...b.els, box("IfcSlab", [29, 55, -1, 16, -0.25, 0], null, "S0"), box("IfcSlab", [29, 55, -1, 16, 3, 3.25], null, "S1")].map((e) => {
+      if (!zOff) return e;
+      const pos = Float32Array.from(e.positions);
+      for (let i = 1; i < pos.length; i += 3) pos[i] += zOff;
+      return { ...e, positions: pos };
+    });
+    const cut = modelCut(els, sectionPlane([42.9, 0], [0, 1]), "section");
+    const Ts: Affine = [-S, 0, 14, 0, S, -10 + zOff];
+    const inv = invertAffine(Ts);
+    const lines: PageLine[] = cut.map((c) => {
+      const p = applyAffine(inv, [c[0], c[1]]);
+      const q = applyAffine(inv, [c[2], c[3]]);
+      return [p[0], p[1], q[0], q[1], 1.4];
+    });
+    const pct = (p: P2) => ({ x: (p[0] / PAGE[0]) * 100, y: (1 - p[1] / PAGE[1]) * 100 });
+    const blocks: PageBlock[] = [];
+    for (const [z, t] of [[0, "±0,000"], [3, "+3,000"], [3.25, "+3,250"], [-0.25, "-0,250"]] as const) {
+      const { x, y } = pct(applyAffine(inv, [-2, z + zOff + 0.1]));
+      blocks.push({ t, x, y: y - 0.7, w: 0.7, h: 0.7 });
+    }
+    // Pôdorys: značka A (X = 42,9) a osi 1 až 3 (Y = 0, 5, 10) v rade, osi A až C (X = 30, 36, 42) v rade.
+    const planBlocks: PageBlock[] = [];
+    const label = (t: string, ifc: P2) => {
+      const { x, y } = pct(applyAffine(INV, ifc));
+      planBlocks.push({ t, x: x - 0.08, y: y - 0.33, w: 0.16, h: 0.65 });
+    };
+    label("A", [42.9, -4]);
+    label("A", [42.9, 19]);
+    ["1", "2", "3"].forEach((t, i) => (label(t, [27, i * 5]), label(t, [57, i * 5])));
+    ["A", "B", "C"].forEach((t, i) => (label(t, [30 + i * 6, -2]), label(t, [30 + i * 6, 17])));
+    // Popisky osí 1 až 3 na reze (nad rezom), poloha po reze u = Y.
+    ["1", "2", "3"].forEach((t, i) => {
+      const { x, y } = pct(applyAffine(inv, [i * 5, 5 + zOff]));
+      blocks.push({ t, x: x - 0.08, y: y - 0.33, w: 0.16, h: 0.65 });
+    });
+    const sheet = { ref: "X_Y_ASR_PODORYS-1NP", page: 1, affine: T, pageSize: PAGE, blocks: planBlocks };
+    return { els, lines, blocks, sheet, Ts };
+  }
+
+  const sectionDeps = (c: ReturnType<typeof sectionCase>, storeys: number[], over: Partial<UnderlayDeps> = {}) =>
+    deps({
+      document: async (ref) => (ref === "R" ? { id: "r", object_ref: "X_Y_ASR_REZ-A", name: "Rez A", georef: undefined, floors: [] } : null),
+      page: async () => ({ blocks: c.blocks, lines: { size: PAGE, segs: c.lines } }),
+      model: async () => ({ id: "ASR", elements: c.els, storeys: storeys.map((z, i) => ({ name: `#${i}`, z })) }),
+      planSheets: async () => [c.sheet],
+      ...over,
+    }).d;
+
+  it("dokument rezu bez podlažia: rovina zo značky A, osi z pôdorysu, kóty na podlažia", async () => {
+    const c = sectionCase();
+    const r = await run({ document_id: "R" }, sectionDeps(c, [0, 3]));
+    expect(r.isError, r.text).toBe(false);
+    expect(r.out.kind).toBe("section");
+    expect(r.out.section_plane.axis).toBe("x");
+    expect(r.out.section_plane.coordinate_m).toBeCloseTo(42.9, 2);
+    expect(r.out.from_plan).toMatchObject({ mark: "A", plans: [{ ref: "X_Y_ASR_PODORYS-1NP", used: true }] });
+    expect(Object.keys(r.out.from_plan.axes).sort()).toEqual(["1", "2", "3"]);
+    expect(r.out.start).toMatchObject({ method: "levels_axes", axes_matched: 3, levels: { storeys_matched: 2, offset_m: 0 } });
+    // Zrkadlový výkres: u = -Y, kamera hľadí v smere +X.
+    expect(r.out.calibration.plane.u).toEqual([0, -1, 0]);
+    expect(r.out.view_direction).toEqual([1, 0]);
+    expect(r.out.error_mm.median).toBeLessThan(5);
+    expect(r.out.written).toBe(false);
+  });
+
+  it("±0,000 nie je IFC Z = 0: kóty sa posunú na výšky podlaží", async () => {
+    const c = sectionCase(100);
+    const r = await run({ document_id: "R", section_plane: { from_plan: true } }, sectionDeps(c, [100, 103]));
+    expect(r.isError, r.text).toBe(false);
+    expect(r.out.start.levels).toMatchObject({ storeys_matched: 2, offset_m: 100 });
+    const q = applyAffine(r.out.calibration.affine as Affine, [1000, 800]);
+    const t = applyAffine(c.Ts, [1000, 800]);
+    expect(Math.hypot(q[0] + t[0], q[1] - t[1])).toBeLessThan(0.005);
+  });
+
+  it("značka, ktorú nemá žiadny pôdorys, a chýbajúce pôdorysy sú jasná chyba", async () => {
+    const c = sectionCase();
+    expect((await run({ document_id: "R", section_plane: { mark: "Q" } }, sectionDeps(c, [0, 3]))).text).toMatch(/Značku rezu Q/);
+    expect((await run({ document_id: "R" }, sectionDeps(c, [0, 3], { planSheets: undefined }))).text).toMatch(/axis, coordinate_m/);
+    expect((await run({ document_id: "R", section_plane: { axis: "z" } }, sectionDeps(c, [0, 3]))).text).toMatch(/from_plan/);
+  });
+});
+
 describe("calibrate_underlay: mierka a strany bez čiar (#284, #283)", () => {
   /** Rovnaký výkres v mierke 1:28,5 (body strany väčšie, % popiskov rovnaké): nie bežná mierka. */
   const K = 1.75;

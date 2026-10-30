@@ -1375,6 +1375,14 @@
       "expect": { "tools_called": ["calibrate_underlay"] },
       "verified": false,
       "notes": "D-176 (#284): mode=remove len na výslovný pokyn (ručná s force), potom mode=restore index=0."
+    },
+    {
+      "id": "section-underlay-from-plan",
+      "category": "viewer",
+      "question": "Skús kalibrovať rez A (D.1.1.05) pod model, zatiaľ len náhľad.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-179 (#284): mode=dry_run bez section_plane (alebo from_plan=true), rovina zo značky A na pôdorysoch (X = 47,42), mierka 1:50, výsledok s from_plan a view_direction; nič neukladať."
     }
   ]
 }

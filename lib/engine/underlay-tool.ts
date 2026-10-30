@@ -19,6 +19,7 @@ import {
   type Plane,
 } from "./underlay-calibrate";
 import { ifcPositions, modelCut, planPlane, sectionPlane } from "./underlay-model";
+import { sectionFromPlans, sectionMarkFromName, type PlanSheet, type SectionFromPlans } from "./underlay-section-mark";
 import { CALIBRATE_UNDERLAY_MODES, DEFAULT_MAX_ERROR_MM, PLAN_CUT_M, type Mode } from "./underlay-tool-def";
 
 /**
@@ -52,6 +53,8 @@ export interface UnderlayModel {
   elements: MeshElement[];
   /** Pôdorys: podlažie, jeho výška (m, z parsera, ako viewer) a IfcSpace (GUID). */
   storey?: { guid: string; name: string; z?: number | null; spaceGuids: string[] };
+  /** Rez: výšky všetkých podlaží (IfcBuildingStorey.Elevation z parsera, IFC Z v m) na spárovanie kót (D-179). */
+  storeys?: { name: string; z: number }[];
 }
 
 export interface UnderlayDeps {
@@ -62,6 +65,8 @@ export interface UnderlayDeps {
   write: (documentId: string, apply: (stored: unknown) => MergeResult) => Promise<MergeResult>;
   /** `object_ref` (miestnosť, stena, prvok) -> IFC GUID pre `pairs[].object_ref` (D-176); bez neho sa object_ref odmietne. */
   refGuids?: (refs: string[]) => Promise<Map<string, string>>;
+  /** Kalibrované pôdorysy (strana s affine, plane null) s textom a čiarami, pre rovinu rezu zo značky (D-179). */
+  planSheets?: () => Promise<PlanSheet[]>;
   writeEnabled: boolean;
   now: () => Date;
 }
@@ -77,6 +82,8 @@ interface Parsed {
   mode: Mode;
   floor?: string;
   section?: { axis: "x" | "y"; coordinate: number };
+  /** Rez zo značky na kalibrovanom pôdoryse (D-179): písmeno (null = z mena dokumentu). */
+  fromPlan?: { mark: string | null };
   /** Dvojica: bod modelu je `model_m`, alebo `object_ref` prvku (ťažisko prvku v rovine, D-176). */
   pairs: { page_pct: P2; model_m?: P2; object_ref?: string }[];
   refine: boolean;
@@ -95,15 +102,20 @@ function parse(a: Record<string, unknown>): Parsed {
   const mode = (a.mode ?? "dry_run") as Mode;
   if (!CALIBRATE_UNDERLAY_MODES.includes(mode)) throw new UnderlayInputError(`mode je ${CALIBRATE_UNDERLAY_MODES.join(" | ")}.`);
   let section: Parsed["section"];
+  let fromPlan: Parsed["fromPlan"];
   if (a.section_plane !== undefined) {
-    const s = a.section_plane as { axis?: unknown; coordinate_m?: unknown };
-    if ((s?.axis !== "x" && s?.axis !== "y") || !num(s.coordinate_m)) {
-      throw new UnderlayInputError("section_plane je {axis: 'x' | 'y', coordinate_m: číslo v m}.");
+    const s = a.section_plane as { axis?: unknown; coordinate_m?: unknown; from_plan?: unknown; mark?: unknown };
+    const mark = typeof s?.mark === "string" && s.mark.trim() ? s.mark.trim().toUpperCase() : null;
+    if (s?.axis === undefined && s?.coordinate_m === undefined && (s?.from_plan === true || mark)) {
+      fromPlan = { mark };
+    } else if ((s?.axis !== "x" && s?.axis !== "y") || !num(s.coordinate_m)) {
+      throw new UnderlayInputError("section_plane je {axis: 'x' | 'y', coordinate_m: číslo v m} alebo {from_plan: true, mark?: 'A'} (rovina zo značky rezu na kalibrovanom pôdoryse).");
+    } else {
+      section = { axis: s.axis, coordinate: s.coordinate_m };
     }
-    section = { axis: s.axis, coordinate: s.coordinate_m };
   }
   const floor = typeof a.floor === "string" && a.floor.trim() ? a.floor.trim() : undefined;
-  if (section && floor) throw new UnderlayInputError("Zadaj buď floor (pôdorys), alebo section_plane (rez).");
+  if ((section || fromPlan) && floor) throw new UnderlayInputError("Zadaj buď floor (pôdorys), alebo section_plane (rez).");
   const pairs: Parsed["pairs"] = [];
   if (a.pairs !== undefined) {
     if (!Array.isArray(a.pairs) || a.pairs.length > 20) throw new UnderlayInputError("pairs je pole najviac 20 dvojíc.");
@@ -123,7 +135,7 @@ function parse(a: Record<string, unknown>): Parsed {
     throw new UnderlayInputError("scale je číslo N z mierky výkresu 1:N (napr. 50).");
   }
   const scale = a.scale === undefined ? null : (a.scale as number);
-  return { documentId, page, mode, floor, section, pairs, refine: a.refine !== false, maxErrorMm, force: a.force === true, model, scale };
+  return { documentId, page, mode, floor, section, fromPlan, pairs, refine: a.refine !== false, maxErrorMm, force: a.force === true, model, scale };
 }
 
 /**
@@ -236,6 +248,35 @@ function unmirror(res: CalibrationResult, plane: Plane): { affine: Affine; plane
   };
 }
 
+/** Séria výkresov `OCB_SO01_ASR` z object_ref (stavba, objekt, disciplína): pôdorysy rovnakej série majú prednosť. */
+function seriesOf(ref: string | null): string | null {
+  const parts = ref?.split("_") ?? [];
+  return parts.length >= 3 ? parts.slice(0, 3).join("_") : null;
+}
+
+/**
+ * Rovina rezu zo značky na kalibrovaných pôdorysoch (D-179): písmeno z argumentu alebo z mena dokumentu
+ * (REZ-A), pôdorysy tej istej série (ASR) prednostne, inak všetky kalibrované.
+ */
+async function planSection(markArg: string | null, doc: UnderlayDocument, deps: UnderlayDeps): Promise<SectionFromPlans> {
+  const mark = markArg ?? sectionMarkFromName(doc.object_ref, doc.name);
+  if (!mark) throw new UnderlayInputError("Písmeno rezu sa z mena dokumentu nedá zistiť; zadaj section_plane {from_plan: true, mark: 'A'} alebo {axis, coordinate_m}.");
+  if (!deps.planSheets) throw new UnderlayInputError("Rovina zo značky rezu tu nie je dostupná; zadaj section_plane {axis, coordinate_m}.");
+  const all = (await deps.planSheets()).filter((x) => x.ref !== (doc.object_ref ?? doc.id));
+  const series = seriesOf(doc.object_ref);
+  const same = series ? all.filter((x) => seriesOf(x.ref) === series) : [];
+  const res = (same.length ? sectionFromPlans(mark, same) : null) ?? sectionFromPlans(mark, all);
+  if (!res) {
+    throw new UnderlayInputError(
+      `Značku rezu ${mark} (rovnaké písmeno na oboch koncoch reznej čiary, mimo radu osí) nemá žiadny kalibrovaný pôdorys (kalibrovaných pôdorysov: ${all.length}). Kalibruj pôdorys alebo zadaj section_plane {axis, coordinate_m}.`,
+    );
+  }
+  return res;
+}
+
+/** Zvislá rovina osi: axis x = rovina X = c (rez ide po Y), axis y = rovina Y = c. */
+const axisPlane = (axis: "x" | "y", c: number): Plane => (axis === "x" ? sectionPlane([c, 0], [0, 1]) : sectionPlane([0, c], [1, 0]));
+
 export async function execCalibrateUnderlay(args: Record<string, unknown>, deps: UnderlayDeps): Promise<{ text: string; isError: boolean }> {
   try {
     return { text: JSON.stringify(await calibrate(parse(args), deps)), isError: false };
@@ -273,9 +314,15 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   const textScale = pageScaleFromText(pg.blocks);
   const wantScale = p.scale ?? textScale;
 
-  // Rovina: rez zo section_plane, inak pôdorys podlažia (z argumentu alebo z väzby dokumentu).
+  // Rovina: rez zo section_plane (súradnica alebo značka na pôdoryse), dokument rezu bez podlažia (REZ-A)
+  // zo značky na pôdoryse (D-179), inak pôdorys podlažia (z argumentu alebo z väzby dokumentu).
+  let fromPlan = p.fromPlan;
+  if (!p.section && !fromPlan && !p.floor && doc.floors.length === 0 && sectionMarkFromName(doc.object_ref, doc.name)) fromPlan = { mark: null };
+  const marked = fromPlan ? await planSection(fromPlan.mark, doc, deps) : null;
+  const section = p.section ?? (marked?.axis ? { axis: marked.axis.axis, coordinate: marked.axis.coordinate_m } : undefined);
+  const isSection = !!section || !!marked;
   let floor = p.floor;
-  if (!p.section && !floor) {
+  if (!isSection && !floor) {
     if (doc.floors.length === 1) floor = doc.floors[0].guid;
     else {
       throw new UnderlayInputError(
@@ -293,18 +340,27 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   let plane: Plane;
   let storeyZ: number | null = null;
   let spaceCount: number | null = null;
-  if (p.section) {
-    const c = p.section.coordinate;
-    plane = p.section.axis === "x" ? sectionPlane([c, 0], [0, 1]) : sectionPlane([0, c], [1, 0]);
+  if (isSection) {
+    plane = section ? axisPlane(section.axis, section.coordinate) : sectionPlane(marked!.at, marked!.dir);
+    const what = section ? `${section.axis.toUpperCase()} = ${section.coordinate} m` : `rezu ${marked!.mark} (bod ${marked!.at.join(", ")}, smer ${marked!.dir.join(", ")})`;
     const cut = modelCut(model.elements, plane, "section");
-    if (cut.length === 0) throw new UnderlayInputError(`Rovina ${p.section.axis.toUpperCase()} = ${c} m nepretína model ${model.id}.`);
+    if (cut.length === 0) throw new UnderlayInputError(`Rovina ${what} nepretína model ${model.id}.`);
     if (p.mode === "manual") {
       const pairs = pairsInPlane(p.pairs, refPoints, plane, pageSize);
       // Smer pohľadu z dvojíc: pri 3 a viac tá podobnosť (priama alebo zrkadlová), ktorá sedí lepšie.
       const mirror = pairs.length >= 3 && residual(pairs, true) < residual(pairs, false);
       res = calibratePairs(pairs, refine ? { lines: segs, cut, mirror } : undefined, mirror, p.scale ?? undefined);
     } else {
-      res = calibrateSection({ pageSize, blocks: pg.blocks, lines: segs, cut, scale: wantScale ?? undefined });
+      // D-179: kóty spárované s výškami podlaží, osi a iné rezy z pôdorysu ako poloha po reze.
+      res = calibrateSection({
+        pageSize,
+        blocks: pg.blocks,
+        lines: segs,
+        cut,
+        scale: wantScale ?? undefined,
+        axes: marked && Object.keys(marked.axes).length >= 2 ? marked.axes : undefined,
+        storeys: model.storeys?.map((x) => x.z),
+      });
     }
   } else {
     const { z, spaces } = storeyFloor(model);
@@ -327,11 +383,11 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     warnings.push(`Mierka 1:${res.scale_ratio} sa líši o ${((scaleCheck.deviation ?? 0) * 100).toFixed(1)} % od ${what} 1:${scaleCheck.expected}; kalibrácia je pravdepodobne krivá.`);
   }
 
-  const fixed = p.section ? unmirror(res, plane) : { affine: res.affine, plane, calibration: res.calibration };
+  const fixed = isSection ? unmirror(res, plane) : { affine: res.affine, plane, calibration: res.calibration };
   const entry: GeorefCalibration = {
     page: p.page,
     page_size: [r3(pageSize[0]), r3(pageSize[1])],
-    ...(p.section
+    ...(isSection
       ? { plane: { origin: fixed.plane.origin, u: fixed.plane.u, v: fixed.plane.v } as GeorefPlane }
       : { plane: null, storey_guid: model.storey!.guid, storey_z: r3(storeyZ!) }),
     affine: fixed.affine,
@@ -352,8 +408,25 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
 
   const out: Record<string, unknown> = {
     document: { id: doc.id, object_ref: doc.object_ref, name: doc.name, page: p.page },
-    kind: p.section ? "section" : "plan",
-    ...(p.section ? { section_plane: { axis: p.section.axis, coordinate_m: p.section.coordinate } } : { floor: model.storey?.name, storey_z_m: r3(storeyZ!), spaces: spaceCount }),
+    kind: isSection ? "section" : "plan",
+    ...(isSection
+      ? {
+          section_plane: section ? { axis: section.axis, coordinate_m: section.coordinate } : { origin: [marked!.at[0], marked!.at[1]], dir: marked!.dir },
+          // Smer pohľadu (pôdorys X, Y): kamera hľadí proti normále u × v (D-133), teda v × u.
+          view_direction: [r3(-fixed.plane.u[1]) || 0, r3(fixed.plane.u[0]) || 0],
+          ...(marked
+            ? {
+                from_plan: {
+                  mark: marked.mark,
+                  plans: marked.plans,
+                  spread_mm: marked.spread_mm,
+                  axes: marked.axes,
+                  note: "Rovina zo značky rezu na kalibrovaných pôdorysoch (koncové body cez affine strany); smer pohľadu určila zhoda s rezom modelu (šípky značky nie sú v čiarach strany).",
+                },
+              }
+            : {}),
+        }
+      : { floor: model.storey?.name, storey_z_m: r3(storeyZ!), spaces: spaceCount }),
     model: model.id,
     scale: `1:${res.scale_ratio}`,
     scale_check: { ...scaleCheck, text_scale: textScale === null ? null : `1:${textScale}`, locked: wantScale !== null && p.mode !== "manual" },
