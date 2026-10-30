@@ -22,7 +22,9 @@ export const CALIBRATE_UNDERLAY_TOOL: ToolDefinition = {
     "KALIBRÁCIA PODKLADU výkresu (PDF strana) pod IFC model (D-133): mierka, rotácia a posun strany voči modelu, " +
     "výsledok sa ukladá do kalibrácie dokumentu (panel Underlays vo vieweri). Pôdorys: floor (inak podlažie, na " +
     "ktoré je dokument naviazaný); rez: section_plane {axis: x|y, coordinate_m} = zvislá rovina X alebo Y v IFC " +
-    "metroch. mode=dry_run (predvolené) len vypočíta a ukáže kvalitu, nič neuloží; auto vypočíta (popisky " +
+    "metroch, alebo {from_plan: true, mark?} = rovina zo značky rezu (A ... A) na kalibrovaných pôdorysoch, aj šikmá; dokument " +
+    "rezu bez podlažia (REZ-A) ide zo značky sám, písmeno z mena. Rez: výškové kóty sa spárujú s výškami podlaží modelu, osi a " +
+    "iné rezy z pôdorysu dajú polohu po reze (from_plan, view_direction vo výsledku). mode=dry_run (predvolené) len vypočíta a ukáže kvalitu, nič neuloží; auto vypočíta (popisky " +
     "miestností alebo výškové kóty ako štart, potom zhoda čiar výkresu s rezom modelu) a uloží, ak medián chyby " +
     "nepresiahne max_error_mm; manual = vlastné dvojice bodov (pairs: bod strany v % ako region, vľavo hore, a bod " +
     "modelu v m), refine ich doladí na čiary. Ručnú kalibráciu (z panela) auto neprepíše bez force. Ukladaj (auto, " +
@@ -48,9 +50,15 @@ export const CALIBRATE_UNDERLAY_TOOL: ToolDefinition = {
       floor: { type: "string", description: "Pôdorys: podlažie (meno alebo IFC GUID, napr. 1NP); show_in_3d, hide, set_opacity: podklad podlažia (podľa storey_guid kalibrácie) namiesto document_id" },
       section_plane: {
         type: "object",
-        description: "Rez: zvislá rovina rezu, axis x = rovina X = coordinate_m (rez ide po Y), axis y = rovina Y = coordinate_m",
-        properties: { axis: { type: "string", enum: ["x", "y"] }, coordinate_m: { type: "number" } },
-        required: ["axis", "coordinate_m"],
+        description:
+          "Rez: zvislá rovina rezu, axis x = rovina X = coordinate_m (rez ide po Y), axis y = rovina Y = coordinate_m; " +
+          "alebo from_plan=true (mark = písmeno rezu, inak z mena dokumentu) = rovina zo značky rezu na kalibrovanom pôdoryse",
+        properties: {
+          axis: { type: "string", enum: ["x", "y"] },
+          coordinate_m: { type: "number" },
+          from_plan: { type: "boolean", description: "Rovina zo značky rezu na kalibrovaných pôdorysoch (bez axis a coordinate_m)" },
+          mark: { type: "string", description: "from_plan: písmeno rezu (A, B'); predvolene z mena dokumentu (REZ-A)" },
+        },
       },
       pairs: {
         type: "array",
