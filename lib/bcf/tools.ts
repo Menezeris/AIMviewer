@@ -16,6 +16,7 @@ import {
   type BcfStore,
   type BcfTopicRow,
   type BcfTopicWrite,
+  type DocumentInfo,
   type TopicDocumentRow,
   type TopicFilter,
   type TopicStatus,
@@ -80,7 +81,9 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
       "iné stavy ani bez filtra už nevolaj. document (+ page) = pripomienky na dokumente / strane (D-158); detail " +
       "témy nesie documents s pripravenými argumentmi open_drawing (strana a oblasť) a snapshot_url (výrez s rámikom). " +
       "entity = témy nad podlažím, priestorom, budovou alebo prvkom vrátane všetkého v ňom (prvky, priestory, pôdorys " +
-      "podlažia); entity='projekt' = len témy na celý projekt (IfcProject).",
+      "podlažia); entity='projekt' = len témy na celý projekt (IfcProject). context = druh kontextu témy (D-158): " +
+      "3d (má 3D pohľad), pdf (má odkaz na dokument), both, none (ani jedno); každý riadok nesie pole context. " +
+      "Detail témy označí odkaz na dokument, ktorého revízia sa od založenia zmenila (revision_changed).",
     inputSchema: {
       type: "object",
       properties: {
@@ -94,6 +97,7 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
           type: "string",
           description: "Len témy nad entitou a tým, čo je v nej: podlažie (1NP), priestor, budova, object_ref, objects.id, GlobalId; 'projekt' = témy na celý projekt.",
         },
+        context: { type: "string", enum: ["3d", "pdf", "both", "none"], description: "Len témy s týmto kontextom: 3d = má 3D pohľad, pdf = má odkaz na dokument, both = oboje, none = ani jedno." },
         limit: { type: "number", description: `Koľko tém (predvolene ${LIST_DEFAULT}, max ${LIST_MAX}).` },
       },
     },
@@ -377,6 +381,27 @@ export function summary(t: BcfTopicRow, docs?: number) {
   };
 }
 
+export type TopicContext = "3d" | "pdf" | "both" | "none";
+const CONTEXTS: readonly TopicContext[] = ["3d", "pdf", "both", "none"];
+
+/** Druh kontextu témy (D-158): 3D pohľad (`viewpoint`), odkaz na dokument, oboje, ani jedno. */
+export function topicContext(t: Pick<BcfTopicRow, "viewpoint">, docs: number): TopicContext {
+  const has3d = t.viewpoint != null;
+  if (has3d && docs > 0) return "both";
+  return has3d ? "3d" : docs > 0 ? "pdf" : "none";
+}
+
+function contextFilter(v: unknown): TopicContext | undefined {
+  if (v === undefined || v === "") return undefined;
+  const c = String(v).toLowerCase() as TopicContext;
+  if (!CONTEXTS.includes(c)) throw new BcfInputError(`context: ${CONTEXTS.join(" | ")}`);
+  return c;
+}
+
+/** Zhoda kontextu témy s filtrom: 3d a pdf berú aj `both`. */
+const contextMatches = (c: TopicContext, want: TopicContext) =>
+  want === c || (want === "3d" && c === "both") || (want === "pdf" && c === "both");
+
 /** Detail témy pre model: komentáre, pohľad, odkazy na dokumenty a orezaný zoznam GlobalId. */
 export function detail(t: BcfTopicRow, docs: TopicDocumentRow[] = []) {
   return {
@@ -452,7 +477,17 @@ async function create(args: Record<string, unknown>, deps: BcfDeps) {
 async function list(args: Record<string, unknown>, deps: BcfDeps) {
   if (args.guid !== undefined && args.guid !== "") {
     const t = await loadTopic(deps, args.guid);
-    return { topic: detail(t, await deps.store.documents([t.id])) };
+    const docs = await deps.store.documents([t.id]);
+    const out = detail(t, docs);
+    // Nová revízia dokumentu tému potichu nepresúva (D-158): povedz, ktoré odkazy ukazujú na staršiu.
+    const current = new Map<string, DocumentInfo | null>();
+    for (const d of docs) if (d.document_id && !current.has(d.document_id)) current.set(d.document_id, await deps.store.findDocument(d.document_id));
+    out.documents = out.documents.map((v, i) => {
+      const now = docs[i].document_id ? current.get(docs[i].document_id!) : null;
+      const changed = Boolean(now && ((docs[i].document_revision ?? null) !== (now.revision ?? null) || (docs[i].document_sha256 && now.sha256 && docs[i].document_sha256 !== now.sha256)));
+      return changed ? { ...v, revision_changed: true, revision_current: now!.revision } : v;
+    });
+    return { topic: out };
   }
   const n = Number(args.limit);
   const limit = Number.isFinite(n) && n > 0 ? Math.min(LIST_MAX, Math.trunc(n)) : LIST_DEFAULT;
@@ -463,7 +498,9 @@ async function list(args: Record<string, unknown>, deps: BcfDeps) {
     ...(await documentFilter(args, deps)),
   };
   const entity = text(args.entity, 200);
-  if (entity) return listInEntity(entity, filter, limit, deps);
+  const context = contextFilter(args.context);
+  if (entity) return listInEntity(entity, filter, limit, deps, context);
+  if (context) return listInContext(context, filter, limit, deps);
   const { rows, total } = await deps.store.list({ ...filter, limit });
   const docs = await deps.store.documents(rows.map((r) => r.id));
   const docCount = new Map<string, number>();
@@ -475,7 +512,28 @@ async function list(args: Record<string, unknown>, deps: BcfDeps) {
     count: total,
     ...(byStatus ? { by_status: byStatus } : {}),
     returned: rows.length,
-    topics: rows.map((r) => summary(r, docCount.get(r.id))),
+    topics: rows.map((r) => ({ ...summary(r, docCount.get(r.id)), context: topicContext(r, docCount.get(r.id) ?? 0) })),
+  };
+}
+
+/** Filter `context` bez entity: témy sa prejdú ako pri entite (kontext je odvodený z pohľadu a odkazov). */
+async function listInContext(want: TopicContext, filter: Omit<TopicFilter, "limit">, limit: number, deps: BcfDeps) {
+  const { rows, total } = await deps.store.list({ ...filter, limit: ENTITY_SCAN });
+  const docs = await deps.store.documents(rows.map((r) => r.id));
+  const docCount = new Map<string, number>();
+  for (const d of docs) docCount.set(d.task_id, (docCount.get(d.task_id) ?? 0) + 1);
+  const hits = rows
+    .map((r) => ({ r, c: topicContext(r, docCount.get(r.id) ?? 0) }))
+    .filter((h) => contextMatches(h.c, want));
+  const byStatus: Record<string, number> = {};
+  for (const { r } of hits) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+  return {
+    context: want,
+    count: hits.length,
+    by_status: byStatus,
+    returned: Math.min(limit, hits.length),
+    ...(total > rows.length ? { note: `Prejdených ${rows.length} z ${total} tém (najnovšie); zúž filtrom status alebo model.` } : {}),
+    topics: hits.slice(0, limit).map(({ r, c }) => ({ ...summary(r, docCount.get(r.id)), context: c })),
   };
 }
 
@@ -483,7 +541,7 @@ async function list(args: Record<string, unknown>, deps: BcfDeps) {
 const ENTITY_SCAN = 1000;
 
 /** Filter `entity` (D-158 krok 4): témy s prvkom entity alebo v nej, alebo s dokumentom entity. */
-async function listInEntity(ref: string, filter: Omit<TopicFilter, "limit">, limit: number, deps: BcfDeps) {
+async function listInEntity(ref: string, filter: Omit<TopicFilter, "limit">, limit: number, deps: BcfDeps, context?: TopicContext) {
   if (!deps.entityScope) throw new BcfInputError("Filter entity nie je v tomto prostredí k dispozícii.");
   const scope = await deps.entityScope(ref);
   const { rows, total } = await deps.store.list({ ...filter, limit: ENTITY_SCAN });
@@ -492,7 +550,8 @@ async function listInEntity(ref: string, filter: Omit<TopicFilter, "limit">, lim
   for (const d of docs) byTopic.set(d.task_id, [...(byTopic.get(d.task_id) ?? []), d]);
   const hits = rows
     .map((r) => ({ r, how: topicInScope(r, byTopic.get(r.id) ?? [], scope) }))
-    .filter((h): h is { r: BcfTopicRow; how: NonNullable<typeof h.how> } => h.how !== null);
+    .filter((h): h is { r: BcfTopicRow; how: NonNullable<typeof h.how> } => h.how !== null)
+    .filter((h) => !context || contextMatches(topicContext(h.r, byTopic.get(h.r.id)?.length ?? 0), context));
   const byStatus: Record<string, number> = {};
   for (const { r } of hits) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
   return {
@@ -501,7 +560,7 @@ async function listInEntity(ref: string, filter: Omit<TopicFilter, "limit">, lim
     by_status: byStatus,
     returned: Math.min(limit, hits.length),
     ...(total > rows.length ? { note: `Prejdených ${rows.length} z ${total} tém (najnovšie); zúž filtrom status alebo model.` } : {}),
-    topics: hits.slice(0, limit).map(({ r, how }) => ({ ...summary(r, byTopic.get(r.id)?.length), match: how })),
+    topics: hits.slice(0, limit).map(({ r, how }) => ({ ...summary(r, byTopic.get(r.id)?.length), context: topicContext(r, byTopic.get(r.id)?.length ?? 0), match: how })),
   };
 }
 
