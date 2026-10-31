@@ -767,6 +767,14 @@ kontajnera a revízie, (2) úplnú kópiu informácií každej revízie bez geom
   výskytov), `ifc_guid_node` s aliasom, `rel_defines_by_type` bez mosta. ETL grafu prestal zapisovať hrany šiestich typov
   z kópie (`etl/manifest.py` `FROM_REVISION_COPY`); ich ukončenie je samostatná migrácia `20261031190000` (spustená 31. 10., Samuel: ukončiť;
   na Samuelovo slovo).
+- **K3 krok 4 (migrácia `20261031210000_ifc_storey_map.sql`):** pohľad `ifc_storey_map` (R6) = každé `IfcBuildingStorey` z kópie
+  aktuálnej `done` revízie každého modelu (`ifc_rev_current`) -> podlažie AIM. Stĺpce: `model`, `revision`, `global_id`, `name`,
+  `elevation` (z kópie), `to_id`, `floor_ref`, `floor_name` (podlažie AIM alebo null), `match_rule` (`guid` = vlastný uzol cez
+  `ifc_guid_node`, `name_number` = jediné podlažie AIM s rovnakým číslom z mena `ifc_np_key`; null = nespárované), `reason`
+  (pri nespárovaní: `no_number_in_name` | `no_floor_for_number` | `ambiguous_floors`), `floor_elevation`
+  (`Pset_BuildingStoreyCommon.ElevationOfFFLRelative` podlažia AIM) a `elevation_check` (`match` | `mismatch` | `unknown`, tolerancia 1;
+  len kontrola, párovanie nemení). `rel_contained_in_spatial_structure` berie podlažie bez vlastného uzla z neho (namiesto CTE
+  `floor_by_np`). Len `service_role`.
 
 ## 4. Konvencia `properties` (D-022)
 
