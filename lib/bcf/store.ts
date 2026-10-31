@@ -57,6 +57,7 @@ export type BcfTopicWrite = Partial<
     | "assigned_to"
     | "due_date"
     | "labels"
+    | "stage"
     | "components"
     | "viewpoint"
     | "author"
