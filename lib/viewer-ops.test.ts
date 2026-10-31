@@ -32,6 +32,11 @@ describe("viewer ops - existujúce operácie (D-066, D-082)", () => {
     ]);
   });
 
+  it("select_visible vyberie všetky viditeľné prvky (#315)", () => {
+    expect(parseOps("select_visible::")).toEqual([{ op: "select_visible" }]);
+    expect(bridge("select_visible::")).toEqual([{ type: "SELECT", visible: true }]);
+  });
+
   it("clear_focus zruší len zvýraznenie (D-101, #94)", () => {
     expect(bridge("clear_focus::")).toEqual([{ type: "CLEAR_FOCUS" }]);
     expect(bridge("clear_selection::")).toEqual([{ type: "CLEAR_SELECTION" }]);

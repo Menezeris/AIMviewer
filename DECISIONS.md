@@ -7851,6 +7851,47 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 
 **Stav:** host časť hotová a otestovaná, end-to-end čaká na viewer, preto `Refs #277`, nie `Closes`. Evaly (D-057) nepobežali (cloud session bez kľúčov); otázka `list-derived-space-column` v `eval/questions.json` bez overenej hodnoty.
 
+### D-175 - Zvýraznenie vlastnosti počká na panel (#168), pohľad a výber berú viditeľné prvky z izolácie (#315)
+
+**Dátum:** 2026-10-29 · **Issue:** #168, #315 · **Nadväzuje na:** D-113, D-114, D-127, D-161 · **Fork:** PR z vetvy `aim/fix-168-315-focus-capture` (Menezeris/ifc-lite)
+
+**Kontext:** (#168, vrátené po D-127) vo veľkom modeli viewer hľadal riadok skôr, než loader dodal vlastnosti prvku, a panel sa neposunul. (#315) `saved_view(save)` po izolácii cez Lens uložil košík s 1 prvkom a `show_in_3d select` vie najviac 200 prvkov, takže izolovaných 5790 prvkov sa nedalo ani vybrať.
+
+**Najbližšie tooly (D-114):** `show_in_3d` (rozširujeme: `visible`), `saved_view` (bez zmeny parametrov, mení sa len čo viewer zachytí), `style_in_3d` (izolácia vzniká tu). Nový tool netreba.
+
+**Rozhodnutie (host časť):**
+1. `show_in_3d(select=true, visible=true)` pošle op `select_visible::` -> bridge `SELECT {visible: true}` (všetky práve viditeľné prvky, bez limitu 200, bez ids a filtrov). Súhrn výberu hlási stav viewera po príkaze.
+2. Zvýraznenie vlastnosti (`select` + `highlight`) čaká na potvrdenie 12 s (`PROPERTY_FOCUS_ACK_TIMEOUT_MS`), lebo viewer čaká na načítanie vlastností až 10 s a potvrdí až potom; ostatné príkazy ostávajú na 3 s (`ackTimeoutMs`).
+3. `saved_view(save)`: opis toolu povie, že košík je to, čo je vidieť, aj po izolácii. Zachytenie robí fork (`VIEW_CAPTURE`), host pošle správu bez zmeny.
+
+**Kompatibilita so starším viewerom:** `SELECT` bez `guid` starší viewer zahodí (nepotvrdí), tool povie "Viewer príkaz nepotvrdil" a netvrdí, že sa vykonal; po nasadení balíka funguje bez ďalšej zmeny. Dlhšie čakanie pri `highlight` sa starého viewera netýka (potvrdzuje hneď). Starší viewer uloží pohľad s košíkom z výberu ako doteraz (opis to hovorí).
+
+**Špecifikácia pre fork:** je v tele fork PR (`aimPanelView.ts` čaká na loader najviac 10 s, `viewCaptureBasket.ts`, `bridge-protocol.ts` SELECT `visible`), dôkazy v `docs/architecture/evidence/`.
+
+**Zavrhnuté:** nový tool "vyber viditeľné" a "pridaj do košíka" (D-114: stačí `visible` na existujúcom `show_in_3d`); zvýšenie limitu 200 pre zoznam GUID (URL by nezniesla tisíce GUID, `visible` ich nepotrebuje); príznak v env pre `visible` (zlyhanie na starom viewere je viditeľné a neškodné).
+
+**Stav:** host časť hotová a otestovaná; end-to-end čaká na zlúčenie a vydanie fork PR. Evaly (D-057) nepobežali (cloud session bez kľúčov).
+
+### D-177 - `clash action=matrix`: matica modelov (disciplín) federácie (Closes #302)
+
+**Dátum:** 2026-10-29 · **Issue:** #302 · **Nadväzuje na:** D-114, D-164 · **Fork:** Menezeris/ifc-lite#180 (`get_viewer_state.clash_local.matrix`)
+
+**Kontext:** Claude nevie odpovedať na "koľko kolízií je medzi ASR a VZT a koľko je otvorených": `results` zoskupuje podľa podlažia, systému, dvojice tried alebo prvku a riadky sú orezané. Prehľad disciplína x disciplína chýba.
+
+**Najbližšie tooly (D-114):** `clash` (rozširujeme: nová hodnota `action`), `aggregate_objects` (počíta nad grafom AIM, kolízie v ňom nie sú), `get_viewer_state` (nesie `clash_local`, no ako stav viewera, nie ako akcia nad uloženým behom).
+
+**Rozhodnutie:**
+1. **`clash action=matrix`**, bez nového toolu a bez riadku v `tool-registry.json`. Výstup: `{ source, total?, run_id?, matrix, note }`, `matrix = { models, cells: [{ a, b, total, by_status: { hard, clearance }, by_review: { open, resolved, accepted } }], filter? }`; bunky len neprázdne, neusporiadaná dvojica `a <= b`, zoradené, súčet `total` = počet kolízií behu.
+2. **Bez `run_id` (`source: "local"`):** beh otvorený vo vieweri, `clash_local.matrix` z `get_viewer_state` sa vráti bez zmeny. Bez otvoreného behu hláška "najprv spusti test (clash open run)". Starší viewer s behom, ale bez `matrix`, hlási "Viewer ešte nemá maticu", nie prázdnu maticu.
+3. **S `run_id` (UUID uloženého behu, `source: "saved"`):** rovnaký tvar z uložených výsledkov: dvojica `result.a.model` a `result.b.model` bez ohľadu na poradie, `by_status` z druhu kolízie, `by_review` zo stavu kolízie testu (chýbajúci = `open`). Beh z pamäte (`run-N`) sa odmietne, najprv sa uloží (`run save=true`), ako pri `open`.
+4. **Logika v `lib/clash/matrix.ts`**, v `clash.ts` len registrácia a opis toolu.
+
+**Zavrhnuté rozšírenie:** nový tool `clash_matrix` (D-114: ide ako hodnota `action`); `aggregate_objects` (kolízie v grafe AIM nie sú); počítať z `results` (riadky sú orezané, stav sa rozpadá po skupinách).
+
+**Zavrhnuté:** `filter_cell` (otvorenie bunky vo viewer paneli; nerobí sa, Samuel); definícia disciplín selektormi a beh celej matice jedným volaním, filter LoadBearing v selektore strany (mimo tejto požiadavky, ostávajú v #302).
+
+**Po zlúčení:** fork PR Menezeris/ifc-lite#180 ide do release balíka pred AIMviewerom (D-116); starší viewer dostane hlášku "viewer ešte nemá maticu". Evaly (D-057) nepobežali (cloud session bez kľúčov); otázka `clash-matrix` pridaná bez overenej hodnoty.
+
 ### D-176 - `calibrate_underlay`: `remove`, `object_ref` v `manual`, výkres podlažia v `set_view_mode(split)` (#284, #316)
 
 **Dátum:** 2026-10-29 · **Issue:** #284 (d, e), #316 (bod 3) · **Nadväzuje na:** D-133, D-158, D-168, D-114

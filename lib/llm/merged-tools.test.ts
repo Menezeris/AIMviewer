@@ -42,6 +42,13 @@ describe("zlúčené tooly AIM (D-115)", () => {
     expect(rt.finalActions()[0].url).toContain("clear_selection");
   });
 
+  it("show_in_3d select=true visible=true vyberie všetky viditeľné prvky bez DB (#315)", async () => {
+    const rt = new AskToolRuntime();
+    const res = await rt.exec("show_in_3d", { select: true, visible: true });
+    expect(JSON.parse(res.content)).toMatchObject({ ok: true, selected: "visible" });
+    expect(rt.finalActions()[0].url).toContain("select_visible");
+  });
+
   it("staré mená zlúčených toolov sa už nevykonajú (aliasy D-115 zrušené)", async () => {
     const rt = new AskToolRuntime();
     for (const name of OLD_NAMES) {

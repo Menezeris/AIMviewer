@@ -1372,6 +1372,22 @@
       "notes": "D-173 (#298): style_in_3d colorize ifc_type=IfcSpace; host aj pri opacity=1 pošle pravidlo transparent (opacity najviac 0.35), model to má v odpovedi povedať."
     },
     {
+      "id": "clash-matrix",
+      "category": "viewer",
+      "question": "Koľko kolízií je medzi ASR a VZT a koľko z nich je otvorených?",
+      "expect": { "tools_called": ["clash"] },
+      "verified": false,
+      "notes": "D-177 (#302): clash action=matrix, nie počítanie z riadkov results."
+    },
+    {
+      "id": "select-all-visible",
+      "category": "viewer",
+      "question": "Izoluj VZT a nosné prvky a potom vyber všetky viditeľné prvky.",
+      "expect": { "tools_called": ["style_in_3d", "show_in_3d"] },
+      "verified": false,
+      "notes": "D-175 (#315): show_in_3d select=true visible=true (bez zoznamu GUID, bez limitu 200)."
+    },
+    {
       "id": "split-floor-asr-not-pbr",
       "category": "viewer",
       "question": "Otvor 4NP v split: 3D a výkres podlažia.",
