@@ -373,3 +373,49 @@ export function primaryV1(g: GeorefV2): GeorefV1 | null {
     calibrated_at: pick.calibrated_at ?? null,
   };
 }
+
+/**
+ * `georefV2` pre viewer (UNDERLAYS_LOAD aj DOCUMENTS_LOAD, D-179): všetky platné kalibrácie dokumentu, bez histórie
+ * (D-168). Null, keď dokument kalibráciu nemá.
+ */
+export function georefV2Wire(stored: unknown): GeorefV2 | null {
+  if (stored === undefined || stored === null) return null;
+  const v2 = toGeorefV2(stored);
+  return v2.calibrations.length > 0 ? { version: 2, calibrations: v2.calibrations } : null;
+}
+
+/** Polia kalibrácie, ktoré smie viewer pri uložení položky v2 zmeniť; `mark`, `quality` a iné neznáme ostanú. */
+const EDITABLE_FIELDS = ["page_size", "plane", "affine", "calibration", "region", "storey_guid", "storey_z", "discipline", "opacity", "visible"] as const;
+
+export type EditResult =
+  | { ok: true; georef: GeorefV2; calibration: GeorefCalibration; history_added: boolean }
+  | { ok: false; reason: "not_found" };
+
+/**
+ * Uloženie položky v2 z viewera (D-179, `UNDERLAY_SAVE` rezu): nájde kalibráciu strany podľa strany a roviny
+ * (`sameSlot`), inak podľa `index`, ak sedí strana a obe sú rezy (viewer zmenil rovinu). Neznáme polia (`mark`,
+ * `quality`) ostanú. Zmena polohy (`samePlacement`) zapíše `source: manual`, `calibrated_at` a predošlú kalibráciu do
+ * histórie (D-168); zmena len `visible`/`opacity` nechá `source` aj `calibrated_at` pôvodné.
+ */
+export function editCalibration(stored: unknown, incoming: GeorefCalibration, index: number | undefined, meta: HistoryMeta): EditResult {
+  const cur = toGeorefV2(stored);
+  let i = cur.calibrations.findIndex((c) => sameSlot(c, incoming));
+  if (i < 0 && index !== undefined && Number.isInteger(index)) {
+    const byIndex = cur.calibrations[index];
+    if (byIndex && byIndex.page === incoming.page && !!byIndex.plane && !!incoming.plane) i = index;
+  }
+  if (i < 0) return { ok: false, reason: "not_found" };
+  const existing = cur.calibrations[i];
+  const patch: Record<string, unknown> = {};
+  for (const k of EDITABLE_FIELDS) if (incoming[k] !== undefined) patch[k] = incoming[k];
+  const moved = !samePlacement(existing, { ...existing, ...patch } as GeorefCalibration);
+  const next = {
+    ...existing,
+    ...patch,
+    ...(moved ? { source: "manual" as const, calibrated_at: incoming.calibrated_at ?? meta.at } : {}),
+  } as GeorefCalibration;
+  const calibrations = [...cur.calibrations];
+  calibrations[i] = next;
+  const history = moved ? pushHistory(cur.history ?? [], existing, meta) : (cur.history ?? []);
+  return { ok: true, georef: { version: 2, calibrations, ...(history.length > 0 ? { history } : {}) }, calibration: next, history_added: moved };
+}

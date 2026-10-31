@@ -4,7 +4,7 @@ import { unstable_cache } from "next/cache";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { AIM_CACHE } from "@/lib/data/constants";
-import { primaryV1, toGeorefV2, type GeorefV2 } from "@/lib/data/georef";
+import { georefV2Wire, primaryV1, toGeorefV2, type GeorefV2 } from "@/lib/data/georef";
 
 /**
  * Data-access vrstva pre in-app prehliadačku výkresov (D-042 fáza C). Číta zdrojové
@@ -203,18 +203,31 @@ async function fetchUnderlayDrawingsImpl(): Promise<UnderlayDrawingWire[]> {
     .is("valid_until", null);
   if (fErr) throw new Error(fErr.message);
   const floorIds = (floors ?? []).map((f) => f.id as string);
-  if (floorIds.length === 0) return [];
 
-  const { data: rels, error: rErr } = await supabase
-    .from("rel_associates_document")
-    .select("to_id")
-    .in("from_id", floorIds)
-    .is("valid_until", null)
-    .not("to_id", "is", null);
+  const { data: rels, error: rErr } = floorIds.length
+    ? await supabase
+        .from("rel_associates_document")
+        .select("to_id")
+        .in("from_id", floorIds)
+        .is("valid_until", null)
+        .not("to_id", "is", null)
+    : { data: [] as { to_id: string }[], error: null };
   if (rErr) throw new Error(rErr.message);
 
+  // 1b) dokumenty s kalibráciou bez podlažia (rezy REZ-A, REZ-B, D-179): nesú `_georef`, ale nie väzbu na podlažie.
+  const { data: calibrated, error: cErr } = await supabase
+    .from("objects")
+    .select("id")
+    .eq("object_type", "document")
+    .is("valid_until", null)
+    .not("properties->_georef", "is", null);
+  if (cErr) throw new Error(cErr.message);
+
   const docIds = [
-    ...new Set(((rels ?? []) as { to_id: string }[]).map((r) => r.to_id)),
+    ...new Set([
+      ...((rels ?? []) as { to_id: string }[]).map((r) => r.to_id),
+      ...((calibrated ?? []) as { id: string }[]).map((r) => r.id),
+    ]),
   ];
   if (docIds.length === 0) return [];
 
@@ -230,6 +243,7 @@ async function fetchUnderlayDrawingsImpl(): Promise<UnderlayDrawingWire[]> {
   if (objsRes.error) throw new Error(objsRes.error.message);
   if (docsRes.error) throw new Error(docsRes.error.message);
 
+  const floorDocIds = new Set(((rels ?? []) as { to_id: string }[]).map((r) => r.to_id));
   const objById = new Map((objsRes.data ?? []).map((o) => [o.id as string, o]));
   const out: UnderlayDrawingWire[] = [];
   for (const doc of docsRes.data ?? []) {
@@ -240,13 +254,16 @@ async function fetchUnderlayDrawingsImpl(): Promise<UnderlayDrawingWire[]> {
     const raw = (obj.properties as Record<string, unknown> | null)?.["_georef"];
     const v2 = raw !== undefined ? toGeorefV2(raw) : null;
     const v1 = v2 ? primaryV1(v2) : null;
+    const wireV2 = georefV2Wire(raw);
+    // Dokument bez kalibrácie a bez väzby na podlažie (len `_georef` bez platných položiek) viewer nepotrebuje.
+    if (!wireV2 && !floorDocIds.has(id)) continue;
     out.push({
       documentId: id,
       name: (obj.name as string | null) ?? id,
       pdfUrl: location,
       ...(v1 ? { georef: v1 } : {}),
       // História prepisov (D-168) zostáva na serveri, viewer ju nepotrebuje.
-      ...(v2 && v2.calibrations.length > 0 ? { georefV2: { version: 2 as const, calibrations: v2.calibrations } } : {}),
+      ...(wireV2 ? { georefV2: wireV2 } : {}),
     });
   }
   return out;

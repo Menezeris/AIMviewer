@@ -129,7 +129,7 @@ type OutboundMessage =
   // Klik na link v AIM karte vo viewri — navigáciu robí táto (parent) appka.
   | { source: typeof SOURCE; type: "AIM_NAVIGATE"; href: string }
   // Kalibrácia PDF podkladu uložená vo viewri (D-072) — host ju perzistuje.
-  | { source: typeof SOURCE; type: "UNDERLAY_SAVE"; documentId: string; georef: unknown }
+  | { source: typeof SOURCE; type: "UNDERLAY_SAVE"; documentId: string; georef: unknown; calibrationIndex?: unknown }
   // Klik na Reality Capture pin v 3D (D-073) — host otvorí galériu/panorámu.
   | { source: typeof SOURCE; type: "CAPTURE_PIN_CLICK"; captureId: string }
   // Karta dokumentu otvorená/zavretá vo viewri (D-075) — recents/analytics.
@@ -819,12 +819,12 @@ export function IFCViewer({
         case "UNDERLAY_SAVE": {
           // Kalibrácia z viewera → perzistuj _georef (D-072). Server payload
           // validuje (isValidGeorefV1) a zapína/vypína zápis env bránou.
-          const { documentId, georef } = e.data;
+          const { documentId, georef, calibrationIndex } = e.data;
           if (typeof documentId !== "string" || documentId.length === 0) return;
           void fetch(`/api/underlay/${encodeURIComponent(documentId)}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ georef }),
+            body: JSON.stringify({ georef, ...(typeof calibrationIndex === "number" ? { calibrationIndex } : {}) }),
           })
             .then(async (r) => {
               if (r.ok) return setSaveError(null);

@@ -7,7 +7,7 @@ import {
   isCrossOriginBlocked,
 } from "@/lib/api-guard";
 import { isValidGeorefV1 } from "@/lib/data/drawing";
-import { calibrationFromV1, isValidCalibration, mergeCalibration, visibilityOnlyUpdate, type GeorefCalibration, type GeorefV1 } from "@/lib/data/georef";
+import { calibrationFromV1, editCalibration, isValidCalibration, mergeCalibration, visibilityOnlyUpdate, type GeorefCalibration, type GeorefV1 } from "@/lib/data/georef";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 /**
@@ -77,10 +77,20 @@ export async function PATCH(
   } catch {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
-  const b = body as { georef?: unknown; calibration?: unknown } | null;
+  const b = body as { georef?: unknown; calibration?: unknown; calibrationIndex?: unknown } | null;
   let next: GeorefCalibration;
   let v1: GeorefV1 | null = null;
-  if (isValidGeorefV1(b?.georef)) {
+  // D-179: položka v2 (rez, zvislý podklad) z viewera; upravuje existujúcu kalibráciu, nikdy nepridáva novú.
+  const g2 = b?.georef as { version?: unknown } | undefined;
+  const isV2Edit = !!g2 && typeof g2 === "object" && g2.version === 2;
+  if (isV2Edit) {
+    if (!isValidCalibration(b!.georef)) return NextResponse.json({ error: "invalid _georef payload" }, { status: 400 });
+    const idx = b!.calibrationIndex;
+    if (idx !== undefined && (typeof idx !== "number" || !Number.isInteger(idx) || idx < 0 || idx > 49)) {
+      return NextResponse.json({ error: "invalid calibrationIndex" }, { status: 400 });
+    }
+    next = b!.georef as GeorefCalibration;
+  } else if (isValidGeorefV1(b?.georef)) {
     v1 = b!.georef as GeorefV1;
     next = calibrationFromV1(v1, "manual");
   } else if (isValidCalibration(b?.calibration)) next = b!.calibration as GeorefCalibration;
@@ -100,6 +110,14 @@ export async function PATCH(
   }
 
   const current = (obj.properties as Record<string, unknown> | null) ?? {};
+  if (isV2Edit) {
+    const edit = editCalibration(current._georef, next, b!.calibrationIndex as number | undefined, { by: "panel", reason: "úprava v paneli Underlays (rez)", at: new Date().toISOString() });
+    if (!edit.ok) return NextResponse.json({ error: "calibration not found" }, { status: 404 });
+    const { error: eErr } = await supabase.from("objects").update({ properties: { ...current, _georef: edit.georef } }).eq("id", documentId);
+    if (eErr) return NextResponse.json({ error: eErr.message }, { status: 500 });
+    revalidateTag("aim", { expire: 0 });
+    return NextResponse.json({ ok: true });
+  }
   // D-168: v1 s nezmenenou polohou (SET_UNDERLAYS_3D s persist) zmení len visible a opacity, source ostane (auto ostane auto).
   const visibilityOnly = v1 ? visibilityOnlyUpdate(current._georef, v1) : null;
   // História (D-168): prepis polohy z panela zachová predošlú kalibráciu; samotné visible/opacity nie.
