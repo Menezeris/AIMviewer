@@ -129,6 +129,39 @@ describe("clash (D-164) - jadro", () => {
   });
 });
 
+describe("clash (D-164 dodatok, #292) - filter LoadBearing", () => {
+  const duct = cube("VZT", "D1", "IfcDuctSegment", [0, 0, 0], 4, 1);
+  const wallTrue = cube("ASR", "WT", "IfcWall", [1, 1, 1], 1, 2);
+  const wallFalse = cube("ASR", "WF", "IfcWall", [1.5, 1.5, 1.5], 1, 3);
+  const wallNone = cube("ASR", "WN", "IfcWall", [2, 2, 2], 1, 4);
+  const lb = new Map<string, boolean | null>([[wallTrue.globalId, true], [wallFalse.globalId, false]]);
+  const loadBearing = (e: MeshElement) => lb.get(e.globalId) ?? null;
+  const run = (b_load_bearing?: string) =>
+    detect({ spec: parseSpec({ a: "IfcDuct*", b: "IfcWall", ...(b_load_bearing ? { b_load_bearing } : {}) }), elements: sets(duct, wallTrue, wallFalse, wallNone), loadBearing });
+
+  it("bez filtra ostanú všetky steny, true/false/unknown ich rozdelia", async () => {
+    expect((await run()).sets.b).toBe(3);
+    expect((await run("true")).sets.b).toBe(1);
+    expect((await run("false")).sets.b).toBe(1);
+    expect((await run("unknown")).sets.b).toBe(1);
+    const only = await run("true");
+    expect(only.result.clashes).toHaveLength(1);
+    expect(only.info.get(only.result.clashes[0].b.key)?.guid).toBe(wallTrue.globalId);
+  });
+
+  it("VZT-NOSNE berie len nosné triedy s LoadBearing true", async () => {
+    const spec = parseSpec({ test: "VZT-NOSNE" });
+    expect(spec.b?.load_bearing).toBe("true");
+    const member = cube("ASR", "M1", "IfcMember", [1.2, 1.2, 1.2], 1, 5);
+    const d = await detect({ spec, elements: sets(duct, wallTrue, wallFalse, wallNone, member), loadBearing });
+    expect(d.sets.b).toBe(1);
+  });
+
+  it("strana bez prvkov po filtri nosnosti povie, aký filter bol", async () => {
+    await expect(run("unknown").then(() => detect({ spec: parseSpec({ a: "IfcDuct*", b: "IfcWall", b_load_bearing: "true" }), elements: sets(duct, wallFalse), loadBearing }))).rejects.toThrow(/LoadBearing true/);
+  });
+});
+
 describe("clash (D-164) - vstup", () => {
   it("predvolené testy: VZT x nosné hard, VZT x ASR odstup 50 mm", () => {
     expect(DEFAULT_TESTS.map((t) => t.name)).toEqual(["VZT x nosné konštrukcie", "VZT x ASR"]);
@@ -141,8 +174,11 @@ describe("clash (D-164) - vstup", () => {
     // Zúženie na podlažie ponechá triedy a model testu (nenahradí stranu celú).
     const narrowed = parseSpec({ test: "VZT-NOSNE", a_storey: "2NP", b_storey: "2NP" });
     expect(narrowed.a).toEqual({ type: "*", model: "VZT", storey: "2NP" });
-    expect(narrowed.b).toEqual({ type: STRUCTURAL_TYPES, model: "ASR", storey: "2NP" });
-    expect(parseSpec({ test: "VZT-NOSNE", b: "IfcSlab" }).b).toEqual({ type: "IfcSlab", model: "ASR" });
+    expect(narrowed.b).toEqual({ type: STRUCTURAL_TYPES, model: "ASR", storey: "2NP", load_bearing: "true" });
+    // Zúženie triedy ponechá filter nosnosti testu, b_load_bearing ho prepíše.
+    expect(parseSpec({ test: "VZT-NOSNE", b: "IfcSlab" }).b).toEqual({ type: "IfcSlab", model: "ASR", load_bearing: "true" });
+    expect(parseSpec({ test: "VZT-NOSNE", b_load_bearing: "unknown" }).b).toMatchObject({ load_bearing: "unknown" });
+    expect(() => parseSpec({ a: "IfcWall", b_load_bearing: "možno" })).toThrow(/b_load_bearing/);
     expect(parseSpec({ a: "IfcWall", a_model: "ASR" }).a).toEqual({ type: "IfcWall", model: "ASR" });
     expect(parseSpec({ a: "IfcWall", b_storey: "1NP" }).b).toEqual({ type: "*", storey: "1NP" });
     expect(() => parseSpec({})).toThrow(/Zadaj test/);

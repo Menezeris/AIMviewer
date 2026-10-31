@@ -34,6 +34,7 @@ export interface ClashSideWire {
   type: string;
   model?: string;
   storey?: string;
+  load_bearing?: "true" | "false" | "unknown";
 }
 
 export interface ClashTestWire {
@@ -124,7 +125,8 @@ function side(v: unknown): ClashSideWire | null {
   if (!isObj(v) || !isText(v.type)) return null;
   if (v.model !== undefined && !isText(v.model)) return null;
   if (v.storey !== undefined && !isText(v.storey)) return null;
-  return { type: v.type.trim(), ...(v.model ? { model: (v.model as string).trim() } : {}), ...(v.storey ? { storey: (v.storey as string).trim() } : {}) };
+  const lb = v.load_bearing === "true" || v.load_bearing === "false" || v.load_bearing === "unknown" ? v.load_bearing : undefined;
+  return { type: v.type.trim(), ...(v.model ? { model: (v.model as string).trim() } : {}), ...(v.storey ? { storey: (v.storey as string).trim() } : {}), ...(lb ? { load_bearing: lb } : {}) };
 }
 
 export function parseClashTest(v: unknown): ClashTestWire | null {
