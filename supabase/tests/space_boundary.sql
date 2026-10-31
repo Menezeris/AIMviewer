@@ -17,12 +17,21 @@ insert into spaces (id, long_name) values
   ('00000000-0000-4000-8000-000000000001', 'Lobby'),
   ('00000000-0000-4000-8000-000000000002', 'Chodba');
 
-insert into relationships (rel_type, from_id, to_id, role, valid_until, source) values
+-- Umiestnenie zo súboru je od D-183 K3 z kópie revízie (rel_contained_in_spatial_structure nad ifc_rev_relationships).
+insert into ifc_guid_history (object_id, ifc_guid) values
+  ('00000000-0000-4000-8000-000000000001', 'G-T1.01'), ('00000000-0000-4000-8000-000000000003', 'G-T1NP'),
+  ('00000000-0000-4000-8000-0000000000a1', 'G-a1'), ('00000000-0000-4000-8000-0000000000a2', 'G-a2');
+insert into model_revisions (model, revision, parent_revision, is_current, sha256, size_bytes, archive_path)
+  values ('TSB', 1, null, true, repeat('c', 64), 1, 'x');
+insert into ifc_rev_imports (model, revision, sha256, status, hash_version) values ('TSB', 1, repeat('c', 64), 'done', 1);
+insert into ifc_rev_relationships (model, revision, rel_class, relating, related, relating_class, related_class, content_hash) values
   -- DD01.08 z issue #245: na podlaží, s miestnosťou ho spája len hranica
-  ('rel_contained_in_spatial_structure', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-000000000003', null, null, 'etl'),
-  ('rel_space_boundary', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-000000000001', 'physical', null, 'etl'),
+  ('TSB', 1, 'IfcRelContainedInSpatialStructure', 'G-T1NP', 'G-a1', 'IfcBuildingStorey', 'IfcDoor', 'h1'),
   -- v miestnosti aj hranica: ostáva jeden riadok 'contained'
-  ('rel_contained_in_spatial_structure', '00000000-0000-4000-8000-0000000000a2', '00000000-0000-4000-8000-000000000001', null, null, 'etl'),
+  ('TSB', 1, 'IfcRelContainedInSpatialStructure', 'G-T1.01', 'G-a2', 'IfcSpace', 'IfcDoor', 'h2');
+
+insert into relationships (rel_type, from_id, to_id, role, valid_until, source) values
+  ('rel_space_boundary', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-000000000001', 'physical', null, 'etl'),
   ('rel_space_boundary', '00000000-0000-4000-8000-0000000000a2', '00000000-0000-4000-8000-000000000001', 'physical', null, 'etl'),
   -- odvodená referencia aj hranica: jeden riadok 'referenced'
   ('rel_referenced_in_spatial_structure', '00000000-0000-4000-8000-0000000000a3', '00000000-0000-4000-8000-000000000001', 'inside', null, 'derive:spatial_reference'),

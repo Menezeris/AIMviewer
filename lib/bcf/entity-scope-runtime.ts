@@ -94,7 +94,10 @@ export async function entityScope(raw: string): Promise<EntityScope> {
   }
   const ids = new Set(containers);
   for (const rel of ["rel_contained_in_spatial_structure", "rel_referenced_in_spatial_structure"]) {
-    for (const r of await fetchIn<{ from_id: string }>(rel, "id, from_id", "to_id", [...containers])) ids.add(r.from_id);
+    // Prvok bez uzla AIM (D-183 K3) má from_id null.
+    for (const r of await fetchIn<{ from_id: string | null }>(rel, "id, from_id", "to_id", [...containers])) {
+      if (r.from_id) ids.add(r.from_id);
+    }
   }
   const guids = new Set<string>();
   for (const o of await fetchIn<{ ifc_guid: string | null }>("objects", "id, ifc_guid", "id", [...ids])) {

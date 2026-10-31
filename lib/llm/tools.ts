@@ -1244,8 +1244,8 @@ export class AskToolRuntime {
         .in("from_id", elementIds.slice(i, i + IN_CHUNK))
         .is("valid_until", null);
       if (error) throw new Error(error.message);
-      for (const r of (data ?? []) as { from_id: string; to_id: string }[]) {
-        parentByElement.set(r.from_id, r.to_id);
+      for (const r of (data ?? []) as { from_id: string; to_id: string | null }[]) {
+        if (r.to_id) parentByElement.set(r.from_id, r.to_id); // kontajner bez uzla AIM (D-183 K3)
       }
     }
 
@@ -1843,10 +1843,18 @@ export class AskToolRuntime {
     const { data, error } = await q;
     if (error) throw new Error(error.message);
 
-    const rows = (data ?? []) as { from_id: string; to_id: string; role?: string | null }[];
+    const rows = (data ?? []) as {
+      from_id: string | null;
+      to_id: string | null;
+      role?: string | null;
+      global_id?: string | null;
+      container_global_id?: string | null;
+    }[];
     // Klasifikačné to_id mieri do classification_references, nie objects.
     const isClassification = relType === "rel_associates_classification";
-    const objIds = rows.flatMap((r) => (isClassification ? [r.from_id] : [r.from_id, r.to_id]));
+    const objIds = rows
+      .flatMap((r) => (isClassification ? [r.from_id] : [r.from_id, r.to_id]))
+      .filter((id): id is string => Boolean(id));
     const metas = await this.loadObjects(objIds);
     const metaById = new Map(metas.map((m) => [m.id, m]));
 
@@ -1855,7 +1863,7 @@ export class AskToolRuntime {
       const { data: refs, error: refErr } = await supabase
         .from("classification_references")
         .select("id, identification, name")
-        .in("id", rows.map((r) => r.to_id));
+        .in("id", rows.flatMap((r) => (r.to_id ? [r.to_id] : [])));
       if (refErr) throw new Error(refErr.message);
       classRefById = new Map(
         (refs ?? []).map((r) => [
@@ -1865,11 +1873,14 @@ export class AskToolRuntime {
       );
     }
 
+    // Strana bez uzla AIM (rel_contained_in_spatial_structure z kópie revízie, D-183 K3) = GlobalId zo súboru.
+    const end = (id: string | null, globalId: string | null | undefined) =>
+      id ? metaById.get(id) ?? { id } : { id: null, global_id: globalId ?? null, in_aim: false };
     return rows.map((r) => ({
-      from: metaById.get(r.from_id) ?? { id: r.from_id },
+      from: end(r.from_id, r.global_id),
       to: isClassification
-        ? classRefById.get(r.to_id) ?? { id: r.to_id }
-        : metaById.get(r.to_id) ?? { id: r.to_id },
+        ? classRefById.get(r.to_id ?? "") ?? { id: r.to_id }
+        : end(r.to_id, r.container_global_id),
       ...(r.role !== undefined ? { role: r.role } : {}),
     }));
   }

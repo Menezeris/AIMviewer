@@ -202,7 +202,7 @@ export class ScopeResolver {
     const containers = [...ids];
     for (const rel of ["rel_contained_in_spatial_structure", "rel_referenced_in_spatial_structure"]) {
       const rows = await this.fetchIn<{ from_id: string }>(rel, "id, from_id", "to_id", containers);
-      for (const r of rows) ids.add(r.from_id);
+      for (const r of rows) if (r.from_id) ids.add(r.from_id); // prvok bez uzla AIM (D-183 K3)
     }
     return ids;
   }
@@ -275,7 +275,7 @@ export class ScopeResolver {
       "to_id",
       [floor.id, ...spaces],
     );
-    for (const r of contained) ids.add(r.from_id);
+    for (const r of contained) if (r.from_id) ids.add(r.from_id); // prvok bez uzla AIM (D-183 K3)
     return { ids, label: floor.object_ref ?? floor.name ?? want };
   }
 

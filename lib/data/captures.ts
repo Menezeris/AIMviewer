@@ -321,7 +321,7 @@ async function fetchCaptureSummaryForObjectImpl(objectId: string): Promise<Captu
       .limit(1)
       .maybeSingle();
     if (pErr) throw new Error(pErr.message);
-    if (!parent) return empty;
+    if (!parent?.to_id) return empty; // kontajner bez uzla AIM (D-183 K3)
     const { data: sp, error: sErr } = await supabase
       .from("objects")
       .select("id, object_type, name")

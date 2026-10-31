@@ -102,6 +102,16 @@
       "notes": "IfcDuctSegment v súbore VZT (AIM ich nemusí mať všetky)."
     },
     {
+      "id": "C3b-vzt-privod-2np",
+      "category": "data",
+      "viewer": false,
+      "question": "Koľko prvkov prívodu VZT je na 2NP a aké to sú?",
+      "max_calls": 3,
+      "budget_s": 15,
+      "expect": { "answer_matches": ["\\b212\\b"] },
+      "notes": "D-183 akceptačný test, K3 krok 2 (#220): 212 = 103 IfcDuctSegment, 70 IfcDuctFitting, 27 IfcAirTerminal, 11 IfcDamper, 1 IfcUnitaryEquipment (VZT v11), rovnako motor aj DB (rel_contained_in_spatial_structure z kópie revízie + systémy Prívod*). Pred K3 DB dávala menej (potrubie a tvarovky bez podlažia)."
+    },
+    {
       "id": "C4-revizia-asr",
       "category": "data",
       "viewer": false,

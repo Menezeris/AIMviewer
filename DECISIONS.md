@@ -8021,6 +8021,34 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 5. **Tooly (K4):** každý DB tool vráti `revision` kópie, varuje pri rozdiele voči aktuálnej revízii a pri ignorovanom alebo prázdnom filtri; opisy toolov sa menia, preto evaly (D-057) proti baseline pred zlúčením.
 6. **Poradie:** 1 (malé, OCB), potom 2 po jednom pohľade s evalom (najprv `rel_contained_in_spatial_structure`, ktorá opraví #220), potom 3 a 4.
 
+**K3 schválené** (Samuel 30. 10.: "Áno, schvaľujem K3", v poradí z návrhu). Krok 1 (OCB kopíruje každú novú revíziu, spätne kópie ASR 9 a VZT 11 revízií) je na produkcii.
+
+**K3 krok 2 - `rel_contained_in_spatial_structure` z kópie revízie (migrácia `20261031120000_rel_contained_from_revision_copy.sql`, SCHEMA §2.19):**
+- Pohľad číta `IfcRelContainedInSpatialStructure` z `ifc_rev_relationships` pre každý model z aktuálnej revízie s hotovou kópiou; kým kópia aktuálnej revízie nie je `done`, najnovšiu nižšiu hotovú (stĺpec `revision` povie ktorú, varovanie je K4). Prvé stĺpce rovnaké (`id`, `from_id`, `to_id`, `valid_from`, `valid_until`, `source`), takže `query_view`, whitelist, `list_relations`, `v_space_elements`, `v_zone_elements` a `v_object_documents` sa nemenia; pribudli `model`, `revision`, `global_id`, `container_global_id`, `via_global_id`. `id` je stabilné z (model, revízia, kontajner, prvok), `valid_until` vždy null, `source` = `ifc:VZT v11`.
+- **GlobalId -> uzol AIM** cez aktívny `ifc_guid_history` a živý `objects`. Prvok bez uzla má `from_id` null a `global_id` (`list_relations` ho vráti ako `{id: null, global_id, in_aim: false}`), čitatelia v `lib/` takú stranu preskočia.
+- **Podlažie disciplinárneho modelu** (VZT nemá vlastné uzly podlaží, D-049) sa mapuje na `floor` AIM podľa čísla v mene (`ifc_np_key`: `2NP`, `2.NP`, `2. NP`, `2NP_VZT`), rovnako ako ETL federácie; bez čísla ostane `to_id` null a `container_global_id`. Fallback na eleváciu ETL nepreberá (dnes ho nič nepotrebuje); R6 (mapovanie podlaží ako údaj) ostáva krokom 4.
+- **Časť zostavy dedí kontajner celku** o úroveň vyššie, len keď má uzol `asset` a sama v podlaží nie je (`via_global_id` = celok). Dôvod: ETL bral podlažie cez `get_container` (aj cez celok) a motor tiež ("podlažie aj cez celok, napr. schodisko"); bez toho by 9 zábradlí ASR v schodiskách (ZV01.*) stratilo podlažie. Časti bez uzla (1 915 prútov a panelov závesovej steny, ramená schodiska) sa nededia, zóny vnorené v zóne tiež nie (sú v `rel_aggregates`).
+- **Strom** (`lib/data/spatial.ts`) potrubie a tvarovky pod podlažím ďalej neukazuje (`lib/data/group-only.ts`, zoznam z `etl/scheme.py`); breadcrumb ich podlažie ukáže. Výnimka D-049 tak ostáva len v strome (bod 2 návrhu K3).
+- Hrany tohto `rel_type` v `relationships` ostávajú (ETL ich zatiaľ píše, prestane v kroku 3), pohľad ich nečíta. Rollback: `create or replace view` s pôvodným telom nad `relationships` a novými stĺpcami ako `null` (text v hlavičke migrácie, overený lokálne).
+- **Porovnanie starý / nový pohľad na produkčných dátach 31. 10.** (SELECT telom pohľadu, nič nezapísané; ASR v79, VZT v11):
+
+  | Model | Podlažie | Starý | Nový | Rozdiel |
+  |---|---|---:|---:|---|
+  | ASR | 1NP | 253 | 253 | 0 |
+  | ASR | 2NP | 167 | 167 | 0 |
+  | ASR | 3NP | 167 | 167 | 0 |
+  | ASR | 4NP | 149 | 149 | 0 |
+  | ASR | 5NP | 30 | 30 | 0 |
+  | VZT | 1NP | 3 | 43 | +40 |
+  | VZT | 2NP | 80 | 510 | +430 |
+  | VZT | 3NP | 80 | 510 | +430 |
+  | VZT | 4NP | 3 | 12 | +9 |
+  | **Spolu** | | **932** | **1 841** | **+909** |
+
+  ASR: rovnaké dvojice (prvok, podlažie) jedna k jednej (737 prvkov a 29 priestorových zón; 9 zábradlí cez `via_global_id`). VZT: starý pohľad je podmnožinou nového, navyše len 526 IfcDuctSegment a 383 IfcDuctFitting (výnimka D-049), všetky s uzlom AIM, žiadna strana bez uzla. Prívod VZT na 2NP aj 3NP cez pohľad a `rel_assigns_to_group` = 212, rovnako ako `ifc_rev_storey_elements` a motor. Telo pohľadu nad celou DB 38 ms.
+- **Kde sa mení výsledok (zámerne, #220):** potrubie a tvarovky VZT majú podlažie v `search_objects mode=locate`, `get_object` (`floor`, `path`), filtri podlažia v `style_in_3d`, `open_list` a BCF rozsahu entity, výbere vo vieweri (`selection-context`), väzbách výkresov podlažia (`drawing-links`) a v `v_object_documents` (dedia pôdorysy podlažia, odhad +1 900 riadkov: 909 prvkov x 2 dokumenty 2NP/3NP, 4 pri 1NP). `v_space_elements`, `v_zone_elements`, `aggregate_objects` a ASR sa nemenia (VZT je v podlaží, nie v miestnosti; miestnosti z geometrie ostávajú `rel_referenced_in_spatial_structure`).
+- **Overenie:** SQL test `supabase/tests/rel_contained_from_revision_copy.sql` (mapovanie GUID, podlažie podľa mena, strana bez uzla, zaniknutý uzol, časť zostavy, zóna sa nededí, záložná revízia, stará hrana sa nečíta, `v_space_elements`), `space_boundary.sql` upravený na kópiu, všetky SQL testy a všetky migrácie na čistom Postgres 16; vitest (`group-only.test.ts`), tsc, eslint. Evaly `loc-vzt-ducts-2np` (`eval/questions.json`, 249 potrubí na 2NP) a `C3b-vzt-privod-2np` (`eval/mcp-tasks.json`, 212) pridané, nespustené: beh čaká na `ANTHROPIC_API_KEY` (OCB PR #21) a na nasadenie migrácie.
+
 **Otvorené (mimo tohto rozhodnutia):** kedy kalibrácia výkresu prestáva platiť pri novej revízii (Samuel: nové PDF alebo iné súradnice rovnakých GUID alebo veľa nových GUID, "treba premyslieť"); kódy ISO 19650 (pripravené, neriešiť); kde história ASR začína (v archíve v0 a v72 až v79); mapovanie podlaží ASR - VZT ako údaj (R6 v #220).
 
 ### D-184 - `calibrate_underlay`: osi (gridy) z iných výkresov ako štart a kontrola, sken pri nízkom pokrytí, uzamknutie natočenia (#170)
