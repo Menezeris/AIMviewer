@@ -372,3 +372,55 @@ describe("clash bcf create (D-164 PR2)", () => {
     expect(r.json).toMatchObject({ created: true, linked_clashes: 0, warning: expect.stringMatching(/DB padla/) });
   });
 });
+
+describe("clash podpis vstupu: based_on a stale (D-183 bod 11, #292)", () => {
+  /** Aktuálna revízia MINI je 12 (ako `model_revisions.is_current`). */
+  const current = (rev: number): EngineDeps["revisions"] => async (models) =>
+    models.map((model) => ({ model, revision: rev, parent_revision: null, is_current: true, sha256: "x", size_bytes: 1, recipe_ref: null, summary: null, author: null, guard: null, created_at: "2026-10-31T00:00:00Z" }));
+
+  it("uložený beh nad staršou revíziou je stale v list, results aj compare; bez podpisu sa stav nehlási", async () => {
+    await call(SAVE_MOJ);
+    const first = (await call({ action: "run", test: "MOJ", save: true })).json;
+    const second = (await call({ action: "run", test: "MOJ", save: true, tolerance_mm: 3 })).json;
+    // mini geometria nie je z archívu (bez revízie): pečiatku dá trigger K1, tu ju nastavíme ručne
+    expect(store.runRows.map((r) => r.model_revisions)).toEqual([undefined, undefined]);
+    store.runRows[0].model_revisions = { MINI: 11 };
+    store.runRows[1].model_revisions = { MINI: 12 };
+    clearClashRuns(); // čítanie z DB
+    const d = { ...deps, revisions: current(12) };
+
+    const list = await call({ action: "list", test: "MOJ" }, d);
+    expect(list.json.runs.map((r: { based_on: unknown; stale: unknown }) => [r.based_on, r.stale])).toEqual([
+      [{ MINI: 12 }, false],
+      [{ MINI: 11 }, true],
+    ]);
+    expect(list.json.runs[1].stale_note).toMatch(/MINI v011 -> v012/);
+    expect((await call({ action: "list" }, d)).json.tests[2].last_run).toMatchObject({ based_on: { MINI: 12 }, stale: false });
+
+    const old = await call({ action: "results", run_id: first.saved_run_id }, d);
+    expect(old.json).toMatchObject({ based_on: { MINI: 11 }, stale: true });
+    const fresh = await call({ action: "results", run_id: second.saved_run_id }, d);
+    expect(fresh.json).toMatchObject({ based_on: { MINI: 12 }, stale: false });
+    expect(fresh.json.stale_note).toBeUndefined();
+
+    const cmp = await call({ action: "compare", run_id: second.saved_run_id }, d);
+    expect(cmp.json.revisions_changed).toBe("MINI v011 -> v012");
+    expect(cmp.json.run).toMatchObject({ based_on: { MINI: 12 }, stale: false });
+    expect(cmp.json.base.based_on).toEqual({ MINI: 11 });
+    // keď medzitým vyšla v013, nový beh je zastaraný a compare to povie nahlas
+    const later = await call({ action: "compare", run_id: second.saved_run_id }, { ...deps, revisions: current(13) });
+    expect(later.json.run.stale).toBe(true);
+    expect(later.json.warnings.join(" ")).toMatch(/nie je nad aktuálnymi revíziami.*MINI v012 -> v013/);
+
+    // bez zdroja revízií: podpis áno, stale nie (neznáme != zastarané)
+    const noSource = await call({ action: "results", run_id: first.saved_run_id });
+    expect(noSource.json.based_on).toEqual({ MINI: 11 });
+    expect("stale" in noSource.json).toBe(false);
+  });
+
+  it("run save=true bez revízie z motora podpis nezapíše (doplní ho trigger K1 z models)", async () => {
+    await call(SAVE_MOJ);
+    await call({ action: "run", test: "MOJ", save: true });
+    expect("model_revisions" in store.runRows[0]).toBe(false);
+  });
+});

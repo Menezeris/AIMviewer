@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import type { BcfTopicRow } from "./store";
-import { G1, G2, VIEW_STATE, deps, memoryStore } from "./testing";
+import { DOC_ID, G1, G2, VIEW_STATE, deps, memoryStore } from "./testing";
 import {
   BCF_TOOL_DEFINITIONS,
   BCF_TOOL_NAMES,
@@ -179,6 +179,38 @@ describe("bcf_topic action=update / close / viewpoint, bcf_topic_list", () => {
     expect((await run("bcf_topic_list", {}, deps({ store }))).json).not.toHaveProperty("by_status");
     const one = await run("bcf_topic_list", { guid: "#1" }, deps({ store }));
     expect(one.json.topic).toMatchObject({ number: 1, global_ids: [G1], global_ids_truncated: false, comment_list: [] });
+  });
+
+  it("context filtruje témy podľa 3D pohľadu a odkazu na dokument, riadok nesie context (D-158)", async () => {
+    const { store, rows } = memoryStore([
+      { title: "len 3D", viewpoint: { source: "viewer" } },
+      { title: "len PDF" },
+      { title: "oboje", viewpoint: { source: "viewer" } },
+      { title: "nič" },
+    ]);
+    const base = { document_id: DOC_ID, document_ref: "D.1.1.09", document_name: null, document_revision: "B", page: 1, region: null, markup: null, url: null, description: null, author: null, document_sha256: null };
+    await store.addDocument({ ...base, task_id: rows[1].id });
+    await store.addDocument({ ...base, task_id: rows[2].id });
+    const ctx = async (c?: string) => (await run("bcf_topic_list", c ? { context: c } : {}, deps({ store }))).json;
+    expect((await ctx("3d")).topics.map((t: { title: string }) => t.title).sort()).toEqual(["len 3D", "oboje"]);
+    expect((await ctx("pdf")).topics.map((t: { title: string }) => t.title).sort()).toEqual(["len PDF", "oboje"]);
+    expect((await ctx("both")).topics.map((t: { title: string }) => t.title)).toEqual(["oboje"]);
+    expect((await ctx("none")).topics.map((t: { title: string }) => t.title)).toEqual(["nič"]);
+    expect((await ctx("none")).by_status).toEqual({ open: 1 });
+    const all = (await ctx()).topics as { title: string; context: string }[];
+    expect(Object.fromEntries(all.map((t) => [t.title, t.context]))).toEqual({ "len 3D": "3d", "len PDF": "pdf", oboje: "both", "nič": "none" });
+    const bad = await run("bcf_topic_list", { context: "x" }, deps({ store }));
+    expect(bad.isError).toBe(true);
+  });
+
+  it("detail označí odkaz na dokument, ktorého revízia sa zmenila od založenia (D-158)", async () => {
+    const { store, rows } = memoryStore([{ title: "t" }]);
+    const base = { task_id: rows[0].id, document_id: DOC_ID, document_ref: "D.1.1.09", document_name: null, page: 1, region: null, markup: null, url: null, description: null, author: null, document_sha256: null };
+    await store.addDocument({ ...base, document_revision: "A" });
+    await store.addDocument({ ...base, document_revision: "B" });
+    const d = (await run("bcf_topic_list", { guid: "#1" }, deps({ store }))).json.topic.documents;
+    expect(d[0]).toMatchObject({ revision: "A", revision_changed: true, revision_current: "B" });
+    expect(d[1]).not.toHaveProperty("revision_changed");
   });
 
   it("viewpoint nahradí prvky a pohľad; bez prvkov aj pohľadu je to chyba", async () => {
