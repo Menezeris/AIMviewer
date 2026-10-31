@@ -7639,6 +7639,11 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 - *Inštrukcie MCP* sa nemenili (strop 15 000 znakov); opis toolu `clash` dostal vetu o `open` a `from_viewer`. Evaly K8 a K9.
 - *Zavrhnuté:* samostatná správa `CLASH_REVIEW` (jedno potvrdenie), kľúče kolízií z viewera (formát kľúča závisí od `ClashElement.key` vo forku, host ho nemá ako overiť), kolízie v `view_state` (veľkosť), beh z pamäte cez `open`.
 
+**Dodatok 2026-10-31 - podpis vstupu behu v toole (D-183 bod 11, #292):**
+- *Prečo:* od K1 nesie `clash_runs.model_revisions` revízie behu a `v_clash_*` majú `based_on`/`stale`, tool `clash` ich ale nevracal: chat nevedel povedať, že uložený beh platí pre staršiu revíziu.
+- *Čo:* `list` (behy a posledný beh testu), `results` a `compare` vracajú `based_on` a `stale` (+ `stale_note` s posunom revízií). Podpis berie `model_revisions` z DB, inak revíziu motora z `models`; aktuálny stav z `model_revisions.is_current` (`EngineDeps.revisions`). Neznámy podpis alebo nedostupný zdroj = bez `stale`, nikdy `true` bez dôkazu (ako `revisions_stale`). `compare` pridá `revisions_changed` (posun medzi základom a novým behom, to je účel porovnania, nie chyba) a varovanie, len keď je zastaraný nový beh. `run save=true` zapíše `model_revisions` výslovne, keď ho motor pozná, inak ho doplní trigger `clash_runs_stamp`. Logika v `lib/clash/revisions.ts`.
+- *Nie tu:* uloženie behu z viewera serverom a overenie revízie pri ňom (D-183 K7), `matrix` so `source: saved` (bez zmeny).
+
 ### D-166 - Označenie a štandardné psety klapiek IfcDamper vo VZT (BCF #17, aj #14 a #15)
 
 **Dátum:** 2026-10-28 · **Stav:** rozhodnuté (Samuel cez orchestrátora 28. 10., variant B; číslo v registri #60) · **PR:** #328 · **Súvisí:** D-086 (revízie), D-021 (typ a výskyt), D-099 (BCF), D-165 (#13, PredefinedType z typu v nástroji)

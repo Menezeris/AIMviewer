@@ -68,6 +68,8 @@ export interface ClashRunRow {
   completeness: Record<string, unknown>;
   summary: Record<string, unknown>;
   coverage: ClashCoverage | null;
+  /** Podpis vstupu `{model: revízia}` (D-183 K1); chýba pred migráciou K1, `{}` = neznámy. */
+  model_revisions?: Record<string, number> | null;
   created_by: string | null;
   created_at: string;
 }
@@ -82,6 +84,8 @@ export interface ClashRunWrite {
   completeness: Record<string, unknown>;
   summary: Record<string, unknown>;
   coverage: ClashCoverage | null;
+  /** Podpis vstupu (D-183 bod 11); bez neho ho doplní trigger `clash_runs_stamp` z `models`. */
+  model_revisions?: Record<string, number>;
   created_by: string | null;
 }
 

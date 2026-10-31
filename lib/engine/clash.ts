@@ -26,11 +26,13 @@ import {
   type ClashSide,
   type ClashTest,
 } from "./clash-tests";
+import { currentRevisions, revisionFields, stampOf, type RevisionStamp } from "../clash/revisions";
+
 import { joinToAim } from "./join";
 import { meshModel, toIfc, type MeshElement, type Vec3 } from "./measure";
 import { openEngineSession, type EngineModel } from "./session";
 import { normalizeStoreyLabel } from "./storey";
-import { InputError, clamp, modelsFor, str, structured, type EngineDeps } from "./tools";
+import { InputError, clamp, modelsFor, revisionStamp, str, structured, type EngineDeps } from "./tools";
 
 const saved = () => import("./clash-saved");
 
@@ -89,6 +91,8 @@ export interface ClashRun {
   info: Map<string, ElInfo>;
   sets: { a: number; b: number | null };
   models: Record<string, unknown>;
+  /** Podpis vstupu `{model: revízia}` (D-183 bod 11); null = revízia neznáma (napr. model mimo archívu). */
+  basedOn: RevisionStamp | null;
   ms: { tessellate: number; detect: number };
   createdAt: string;
   /** Uložený v DB (`run save=true` alebo obnovený z DB). */
@@ -298,6 +302,7 @@ async function execRun(input: Record<string, unknown>, deps: EngineDeps): Promis
     info: detected.info,
     sets: detected.sets,
     models: Object.fromEntries(models.map((m) => [m.id, revision[m.id]])),
+    basedOn: stampOf(revisionStamp(revision, models.map((m) => m.id))),
     ms: { tessellate: Math.round(tessellate), detect: Math.round(performance.now() - t1) },
     createdAt: new Date().toISOString(),
   };
@@ -360,6 +365,7 @@ export function describeRun(run: ClashRun, hint?: string): Record<string, unknow
     engine: CLASH_ENGINE,
     test: { code: spec.code, name: spec.name, a: spec.a, b: spec.b ?? null, mode: spec.mode, ...(spec.mode === "clearance" ? { clearance_mm: round(spec.clearance * 1000, 1) } : {}), tolerance_mm: round(spec.tolerance * 1000, 1) },
     models: run.models,
+    ...(run.basedOn ? { based_on: run.basedOn } : {}),
     ...(run.saved ? { saved_run_id: run.saved.id } : {}),
     sets: { a: run.sets.a, b: run.sets.b },
     ms: run.ms,
@@ -548,6 +554,7 @@ async function execResults(input: Record<string, unknown>, deps: EngineDeps): Pr
   const out: Record<string, unknown> = {
     run_id: run.saved?.id ?? run.id,
     test: run.spec.name,
+    ...(await runRevision(run, deps)),
     group_by: by,
     total: clashes.length,
     ...(clashes.length !== run.result.clashes.length ? { total_run: run.result.clashes.length, filter: { status, severity, review: reviewFilter } } : {}),
@@ -600,6 +607,12 @@ async function execResults(input: Record<string, unknown>, deps: EngineDeps): Pr
   out.next_offset = offset + shown.length < groups.length ? offset + shown.length : null;
   out.note = "Súčty sú úplné (total, count), vzorka má 3 kolízie. group = kľúč alebo poradie skupiny rozbalí kolízie a vráti show_in_3d (global_ids strany a a b).";
   return out;
+}
+
+/** `based_on` a `stale` behu voči aktuálnym revíziám (D-183 bod 11); bez podpisu nič. */
+export async function runRevision(run: ClashRun, deps: EngineDeps): Promise<Record<string, unknown>> {
+  if (!run.basedOn) return {};
+  return revisionFields(run.basedOn, await currentRevisions(Object.keys(run.basedOn), deps.revisions));
 }
 
 export async function systemsFor(run: ClashRun, deps: EngineDeps): Promise<Map<string, string>> {
