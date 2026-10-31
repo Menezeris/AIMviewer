@@ -13,7 +13,7 @@ import sys
 from typing import Optional, Sequence
 
 from . import config, extract, transform
-from .db import fetch_existing_floors, load_model
+from .db import load_model
 from .model import StagedModel
 
 
@@ -36,7 +36,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     parser.add_argument(
         "--federate", action="store_true",
         help="disciplinárny model (VZT) napojiť na existujúcu štruktúru — bez emitu "
-             "spatial koreňov, prvky na existujúce podlažia (D-049). Nekombinovať s --reset.",
+             "spatial koreňov (D-049); podlažia mapuje pohľad ifc_storey_map. Nekombinovať s --reset.",
     )
     parser.add_argument(
         "--model", metavar="MENO",
@@ -52,14 +52,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     model = extract.open_model(args.file)
     print(f"IFC schéma: {extract.schema_version(model)}")
 
-    # Federate (D-049): dotiahni existujúce podlažia z DB pre mapovanie VZT storeyov.
-    # Pri dry-rune bez DB → None (ref sa odvodí z np_key, zhoduje sa s floor konvenciou).
-    existing_floors = None
-    if args.federate and not args.dry_run:
-        existing_floors = fetch_existing_floors(config.database_url())
-        print(f"Federate → {len(existing_floors)} existujúcich podlaží z DB.")
-
-    staged = transform.to_staged(model, federate=args.federate, existing_floors=existing_floors)
+    staged = transform.to_staged(model, federate=args.federate)
     print(f"Staged: {staged.summary()}")
     _print_unlinked(staged)
 

@@ -279,40 +279,17 @@ def to_staged(
     model: ifcopenshell.file,
     coding: CodingScheme = scheme_mod.SNIM,
     federate: bool = False,
-    existing_floors: Optional[list[tuple[str, Optional[float], Optional[str]]]] = None,
 ) -> StagedModel:
     """IFC → staged model. `federate=True` (D-049) = disciplinárny model (VZT) sa napojí
     na už naloženú priestorovú štruktúru: **neemitujú** sa jeho site/building/storey/space
-    ani ich `rel_aggregates`; prvky sa zavesia na **existujúce** floor uzly cez normalizovaný
-    názov podlažia (`1NP_VZT` → `1NP`), fallback najbližšia elevácia. `existing_floors` =
-    `[(object_ref, elevation, name), …]` z DB (dodá `main.py` pri federate loade); pri
-    dry-rune je None a ref sa odvodí priamo z `np_key` (zhoduje sa s konvenciou floor refov).
+    ani ich `rel_aggregates`; prvky nedostanú hranu na podlažie (podlažie VZT na podlažie AIM mapuje
+    pohľad `ifc_storey_map` z kópie revízie, D-183 K3 krok 4).
     """
     staged = StagedModel()
     refs = _RefAllocator(coding)
     systems_seen: dict[str, ClassificationSystem] = {}
     refs_seen: set[tuple[str, str]] = set()
     ref_names: dict[tuple[str, str], Optional[str]] = {}
-
-    # Federačné mapovanie podlaží (D-049): np-kľúč / elevácia → existujúci floor object_ref.
-    floor_by_np: dict[str, str] = {}
-    floor_by_elev: list[tuple[float, str]] = []
-    for ref, elev, name in existing_floors or []:
-        key = _np_key(name) or _np_key(ref)
-        if key:
-            floor_by_np.setdefault(key, ref)
-        if elev is not None:
-            floor_by_elev.append((elev, ref))
-
-    def external_floor_ref(storey: Any) -> Optional[str]:
-        """Object_ref existujúceho podlažia pre VZT storey (federate). np_key, inak elevácia."""
-        key = _np_key(attr(storey, "Name"))
-        if key:
-            return floor_by_np.get(key, key)  # np_key = konvencia floor refu
-        if floor_by_elev:
-            e = _to_float(attr(storey, "Elevation")) or 0.0
-            return min(floor_by_elev, key=lambda t: abs(t[0] - e))[1]
-        return None
 
     emitted: dict[int, str] = {}                 # entity.id() → object_ref všetkých emitnutých
 
@@ -368,14 +345,13 @@ def to_staged(
     def _spatial_ref(host: Any) -> Optional[str]:
         """Object_ref priestorového rodiča — podlažie premapuj na reálne (D-035).
 
-        Federate (D-049): spatial korene VZT sa neemitujú → storey sa mapuje na
-        **existujúci** floor ref (`external_floor_ref`); ostatné kontajnery (site/building/
-        space VZT) → None (MEP prvky visia na podlaží, VZT nemá priestory)."""
+        Federate (D-049): spatial korene VZT sa neemitujú → None (podlažie VZT mapuje pohľad
+        `ifc_storey_map`, D-183 K3 krok 4)."""
         if host is None:
             return None
         if host.is_a("IfcBuildingStorey"):
             if federate:
-                return external_floor_ref(host)
+                return None   # podlažie disciplinárneho modelu mapuje pohľad ifc_storey_map (D-183 K3 krok 4)
             target = storey_to_floor.get(host.id(), host)
             return spatial_refs.get(target.id())
         return spatial_refs.get(host.id())
