@@ -97,6 +97,28 @@
       "notes": "Overené: 3 jednotky, rodičia = podlažia 1NP, 2NP, 3NP (MEP contained priamo na podlaží, D-049)."
     },
     {
+      "id": "loc-vzt-ducts-2np",
+      "category": "location",
+      "question": "Koľko segmentov potrubia VZT je na 2NP?",
+      "expect": {
+        "answer_matches": ["\\b249\\b"],
+        "tools_called": ["search_objects"]
+      },
+      "verified": false,
+      "notes": "D-183 K3 krok 2 (#220): rel_contained_in_spatial_structure z kópie VZT v11, potrubie má podlažie zo súboru (predtým 0, výnimka D-049 group-only). Overené SQL nad kópiou: 249 IfcDuctSegment v 2NP (search_objects mode=locate ifc_type=IfcDuctSegment). verified=true až po behu evalu po nasadení migrácie."
+    },
+    {
+      "id": "rel-stair-parts",
+      "category": "relations",
+      "question": "Z akých častí sa skladá schodisko SC01.0001?",
+      "expect": {
+        "answer_matches": ["ZV01\\.01\\.0001", "ZV01\\.02\\.0001", "ZV01\\.02\\.0002"],
+        "tools_called": ["list_relations"]
+      },
+      "verified": false,
+      "notes": "D-183 K3 krok 2b (#220): rel_aggregates z kópie ASR v79 nesie aj zostavy zo súboru (IfcStair -> IfcRailing), predtým graf len štruktúru. 3 zábradlia s uzlom AIM; ramená a podesty (IfcStairFlight, IfcSlab) uzol nemajú, list_relations ich vráti ako global_id s in_aim:false. verified=true až po behu evalu po nasadení migrácie."
+    },
+    {
       "id": "loc-fans",
       "category": "location",
       "question": "Kde sa nachádzajú ventilátory a koľko ich je?",
@@ -1359,6 +1381,22 @@
       "expect": { "tools_called": ["style_in_3d"] },
       "verified": false,
       "notes": "D-173 (#298): style_in_3d colorize ifc_type=IfcSpace; host aj pri opacity=1 pošle pravidlo transparent (opacity najviac 0.35), model to má v odpovedi povedať."
+    },
+    {
+      "id": "clash-matrix",
+      "category": "viewer",
+      "question": "Koľko kolízií je medzi ASR a VZT a koľko z nich je otvorených?",
+      "expect": { "tools_called": ["clash"] },
+      "verified": false,
+      "notes": "D-177 (#302): clash action=matrix, nie počítanie z riadkov results."
+    },
+    {
+      "id": "select-all-visible",
+      "category": "viewer",
+      "question": "Izoluj VZT a nosné prvky a potom vyber všetky viditeľné prvky.",
+      "expect": { "tools_called": ["style_in_3d", "show_in_3d"] },
+      "verified": false,
+      "notes": "D-175 (#315): show_in_3d select=true visible=true (bez zoznamu GUID, bez limitu 200)."
     },
     {
       "id": "split-floor-asr-not-pbr",

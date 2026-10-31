@@ -321,7 +321,7 @@ async function fetchCaptureSummaryForObjectImpl(objectId: string): Promise<Captu
       .limit(1)
       .maybeSingle();
     if (pErr) throw new Error(pErr.message);
-    if (!parent) return empty;
+    if (!parent?.to_id) return empty; // kontajner bez uzla AIM (D-183 K3)
     const { data: sp, error: sErr } = await supabase
       .from("objects")
       .select("id, object_type, name")
@@ -365,6 +365,7 @@ export async function fetchPlanDocumentForSpace(spaceId: string): Promise<string
     .select("to_id")
     .eq("from_id", spaceId)
     .is("valid_until", null)
+    .not("to_id", "is", null)
     .maybeSingle();
   if (pErr) throw new Error(pErr.message);
   const floorId = parent?.to_id as string | undefined;

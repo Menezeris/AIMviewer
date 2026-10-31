@@ -37,7 +37,8 @@ async function drawingFloors(documentIds: readonly string[]): Promise<Map<string
     .from("rel_associates_document")
     .select("from_id, to_id")
     .in("to_id", documentIds)
-    .is("valid_until", null);
+    .is("valid_until", null)
+    .not("from_id", "is", null);
   if (error) throw new Error(error.message);
   const pairs = (rels ?? []) as { from_id: string; to_id: string }[];
   if (pairs.length === 0) return out;
@@ -115,7 +116,8 @@ async function floorOf(objects: readonly ObjectRow[]): Promise<Map<string, Set<s
       )
     : [];
   // Rodič miestnosti (aj miestností, v ktorých sú prvky) = podlažie.
-  const spaces = [...new Set([...spaceIds, ...contained.map((c) => c.to_id)])];
+  // Kontajner bez uzla AIM (podlažie modelu bez náprotivku, D-183 K3) nemá to_id.
+  const spaces = [...new Set([...spaceIds, ...contained.flatMap((c) => (c.to_id ? [c.to_id] : []))])];
   const aggregates = spaces.length
     ? await fetchAllPages<{ from_id: string; to_id: string }>((from, to) =>
         supabase
@@ -123,12 +125,14 @@ async function floorOf(objects: readonly ObjectRow[]): Promise<Map<string, Set<s
           .select("from_id, to_id")
           .in("from_id", spaces)
           .is("valid_until", null)
+          .not("to_id", "is", null)
           .order("from_id")
           .range(from, to)
       )
     : [];
   const parent = new Map(aggregates.map((a) => [a.from_id, a.to_id]));
   for (const c of contained) {
+    if (!c.to_id) continue;
     add(c.from_id, c.to_id);
     const up = parent.get(c.to_id);
     if (up) add(c.from_id, up);

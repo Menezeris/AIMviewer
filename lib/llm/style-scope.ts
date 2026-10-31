@@ -115,9 +115,10 @@ export class ScopeResolver {
     const members = new Set<string>();
     let frontier = rootIds;
     for (let depth = 0; depth < CLOSURE_DEPTH && frontier.length > 0; depth++) {
-      const rows = await this.fetchIn<{ from_id: string }>("rel_assigns_to_group", "id, from_id", "to_id", frontier);
+      const rows = await this.fetchIn<{ from_id: string | null }>("rel_assigns_to_group", "id, from_id", "to_id", frontier);
       const next: string[] = [];
       for (const r of rows) {
+        if (!r.from_id) continue; // člen bez uzla AIM (D-183 K3)
         members.add(r.from_id);
         if (!seen.has(r.from_id)) {
           seen.add(r.from_id);
@@ -202,7 +203,7 @@ export class ScopeResolver {
     const containers = [...ids];
     for (const rel of ["rel_contained_in_spatial_structure", "rel_referenced_in_spatial_structure"]) {
       const rows = await this.fetchIn<{ from_id: string }>(rel, "id, from_id", "to_id", containers);
-      for (const r of rows) ids.add(r.from_id);
+      for (const r of rows) if (r.from_id) ids.add(r.from_id); // prvok bez uzla AIM (D-183 K3)
     }
     return ids;
   }
@@ -265,8 +266,9 @@ export class ScopeResolver {
 
   async storeyMembers(want: string): Promise<{ ids: Set<string>; label: string }> {
     const floor = await this.pickFloor(want);
-    const spaces = (await this.fetchIn<{ from_id: string }>("rel_aggregates", "id, from_id", "to_id", [floor.id])).map(
-      (r) => r.from_id,
+    // Časť bez uzla AIM (D-183 K3) má from_id null.
+    const spaces = (await this.fetchIn<{ from_id: string | null }>("rel_aggregates", "id, from_id", "to_id", [floor.id])).flatMap(
+      (r) => (r.from_id ? [r.from_id] : []),
     );
     const ids = new Set(spaces);
     const contained = await this.fetchIn<{ from_id: string }>(
@@ -275,7 +277,7 @@ export class ScopeResolver {
       "to_id",
       [floor.id, ...spaces],
     );
-    for (const r of contained) ids.add(r.from_id);
+    for (const r of contained) if (r.from_id) ids.add(r.from_id); // prvok bez uzla AIM (D-183 K3)
     return { ids, label: floor.object_ref ?? floor.name ?? want };
   }
 

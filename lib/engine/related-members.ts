@@ -50,6 +50,9 @@ async function edges(view: string, matchCol: "from_id" | "to_id", ids: string[])
       .select("from_id, to_id")
       .in(matchCol, ids)
       .is("valid_until", null)
+      // Strana bez uzla AIM (D-183 K3, napr. port VZT v systéme) nie je člen.
+      .not("from_id", "is", null)
+      .not("to_id", "is", null)
       .order("id")
       .range(from, to),
   );

@@ -1,4 +1,4 @@
-import { applyAffine, blockCenter, type Affine, type P2, type PageBlock, type PageLine } from "./underlay-calibrate";
+import { applyAffine, axisInModel, blockCenter, mergeRefAxes, type Affine, type AxisLine, type P2, type PageBlock, type PageLine, type RefAxis } from "./underlay-calibrate";
 
 /**
  * Rovina rezu zo značky rezu na kalibrovanom pôdoryse (D-179, #284): rezná čiara má na oboch koncoch
@@ -8,7 +8,7 @@ import { applyAffine, blockCenter, type Affine, type P2, type PageBlock, type Pa
  * výkrese rezu). Čistá logika bez DB a motora.
  */
 
-/** Kalibrovaný pôdorys: strana s affine do IFC (X, Y), text a čiary strany. */
+/** Kalibrovaný pôdorys: strana s affine do IFC (X, Y), text a čiary strany (pri výreze len z neho). */
 export interface PlanSheet {
   ref: string;
   page: number;
@@ -16,6 +16,28 @@ export interface PlanSheet {
   pageSize: [number, number];
   blocks: PageBlock[];
   lines?: PageLine[];
+  /** Výrez strany kalibrácie (hárok s viac pôdorysmi); blocks a lines sú už orezané. */
+  region?: [number, number, number, number] | null;
+}
+
+const IDENTITY: Affine = [1, 0, 0, 0, 1, 0];
+
+/** Rady osí strany v bodoch strany (pred kalibráciou): dvojice popiskov v rade aspoň 3 osí. */
+export function pageAxisLines(pageSize: [number, number], blocks: PageBlock[], lines?: PageLine[]): AxisLine[] {
+  return planLabelLines({ ref: "", page: 0, affine: IDENTITY, pageSize, blocks, lines })
+    .filter((l) => l.kind === "axis")
+    .map(({ text, a, b }) => ({ text, a, b }));
+}
+
+/** Polohy osí v IFC z kalibrovaných pôdorysov (medián cez výkresy); grid je spoločný pre všetky podlažia. */
+export function refAxesFromSheets(sheets: PlanSheet[]): RefAxis[] {
+  return mergeRefAxes(
+    sheets.map((sh) =>
+      planLabelLines(sh)
+        .filter((l) => l.kind === "axis")
+        .map((l) => ({ text: l.text, ...axisInModel(IDENTITY, l) })),
+    ),
+  );
 }
 
 /** Čiara medzi dvojicou rovnakých popiskov na pôdoryse, v IFC (X, Y). */

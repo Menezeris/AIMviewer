@@ -35,6 +35,10 @@ function builder(table: string) {
       filters.push((r) => (r[col] ?? null) === v);
       return b;
     },
+    not(col: string, _op: "is", v: unknown) {
+      filters.push((r) => (r[col] ?? null) !== v);
+      return b;
+    },
     order(col: string) {
       // Prvé zoradenie rozhoduje; ďalšie (rozstrel pri stránkovaní) mock nepotrebuje.
       order ??= col;

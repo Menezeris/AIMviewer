@@ -10,13 +10,20 @@ vi.mock("../supabase/server", () => ({
       select: () => {
         let rows = [...(db.tables[name] ?? [])];
         let range: [number, number] | null = null;
+        let error: { message: string } | null = null;
         const q = {
-          in: (c: string, vs: unknown[]) => ((rows = rows.filter((r) => vs.includes(r[c]))), q),
+          // PostgREST: null v zozname uuid = chyba 22P02 (invalid input syntax for type uuid)
+          in: (c: string, vs: unknown[]) => (
+            vs.includes(null) && (error = { message: `invalid input syntax for type uuid: "null" (${c})` }),
+            (rows = rows.filter((r) => vs.includes(r[c]))),
+            q
+          ),
           is: (c: string, v: unknown) => ((rows = rows.filter((r) => (r[c] ?? null) === v)), q),
+          not: (c: string, _op: "is", v: unknown) => ((rows = rows.filter((r) => (r[c] ?? null) !== v)), q),
           order: () => q,
           range: (a: number, b: number) => ((range = [a, b]), q),
           then: (res: (v: unknown) => unknown) =>
-            res({ data: range ? rows.slice(range[0], range[1] + 1) : rows, error: null }),
+            res(error ? { data: null, error } : { data: range ? rows.slice(range[0], range[1] + 1) : rows, error: null }),
         };
         return q;
       },
@@ -37,7 +44,7 @@ const obj = (id: string, object_type: string, extra: Record<string, unknown> = {
 });
 
 describe("fetchRelatedMembers (search_all related)", () => {
-  it("zóna -> priestory cez rel_assigns_to_group, aktér -> objekty, systém a zaniknutý člen nie", async () => {
+  it("zóna -> priestory cez rel_assigns_to_group, aktér -> objekty, systém, zaniknutý člen a člen bez uzla nie", async () => {
     db.tables = {
       objects: [
         obj("Z", "zone"),
@@ -53,6 +60,8 @@ describe("fetchRelatedMembers (search_all related)", () => {
         { id: "e2", from_id: "S2", to_id: "Z", valid_until: null },
         { id: "e3", from_id: "S3", to_id: "Z", valid_until: null },
         { id: "e4", from_id: "A1", to_id: "SYS", valid_until: null },
+        // člen zo súboru bez uzla AIM (port VZT, D-183 K3): from_id null, členom nie je
+        { id: "e6", from_id: null, to_id: "Z", global_id: "PORT-1", valid_until: null },
       ],
       rel_assigns_to_actor: [{ id: "e5", from_id: "ORG", to_id: "A1", valid_until: null }],
     };

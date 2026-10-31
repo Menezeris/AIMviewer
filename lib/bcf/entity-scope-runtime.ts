@@ -88,20 +88,26 @@ export async function entityScope(raw: string): Promise<EntityScope> {
   const containers = new Set([node.id]);
   let frontier = [node.id];
   for (let depth = 0; depth < MAX_DEPTH && frontier.length; depth++) {
-    const kids = await fetchIn<{ from_id: string }>("rel_aggregates", "id, from_id", "to_id", frontier);
-    frontier = kids.map((k) => k.from_id).filter((id) => !containers.has(id));
+    const kids = await fetchIn<{ from_id: string | null }>("rel_aggregates", "id, from_id", "to_id", frontier);
+    // Časť bez uzla AIM (D-183 K3) má from_id null.
+    frontier = kids.flatMap((k) => (k.from_id && !containers.has(k.from_id) ? [k.from_id] : []));
     for (const id of frontier) containers.add(id);
   }
   const ids = new Set(containers);
   for (const rel of ["rel_contained_in_spatial_structure", "rel_referenced_in_spatial_structure"]) {
-    for (const r of await fetchIn<{ from_id: string }>(rel, "id, from_id", "to_id", [...containers])) ids.add(r.from_id);
+    // Prvok bez uzla AIM (D-183 K3) má from_id null.
+    for (const r of await fetchIn<{ from_id: string | null }>(rel, "id, from_id", "to_id", [...containers])) {
+      if (r.from_id) ids.add(r.from_id);
+    }
   }
   const guids = new Set<string>();
   for (const o of await fetchIn<{ ifc_guid: string | null }>("objects", "id, ifc_guid", "id", [...ids])) {
     if (o.ifc_guid) guids.add(o.ifc_guid);
   }
   const documents = new Set(
-    (await fetchIn<{ to_id: string }>("rel_associates_document", "id, to_id", "from_id", [...containers])).map((r) => r.to_id),
+    (await fetchIn<{ to_id: string | null }>("rel_associates_document", "id, to_id", "from_id", [...containers])).flatMap((r) =>
+      r.to_id ? [r.to_id] : [],
+    ),
   );
   return { label, object_type: node.object_type, self, guids, documents };
 }

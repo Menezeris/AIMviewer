@@ -205,7 +205,12 @@ async function fetchUnderlayDrawingsImpl(): Promise<UnderlayDrawingWire[]> {
   const floorIds = (floors ?? []).map((f) => f.id as string);
 
   const { data: rels, error: rErr } = floorIds.length
-    ? await supabase.from("rel_associates_document").select("to_id").in("from_id", floorIds).is("valid_until", null)
+    ? await supabase
+        .from("rel_associates_document")
+        .select("to_id")
+        .in("from_id", floorIds)
+        .is("valid_until", null)
+        .not("to_id", "is", null)
     : { data: [] as { to_id: string }[], error: null };
   if (rErr) throw new Error(rErr.message);
 

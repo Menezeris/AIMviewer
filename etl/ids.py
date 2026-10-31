@@ -33,3 +33,8 @@ def system_id(name: str) -> str:
 def guid_history_id(object_ref: str, ifc_guid: str) -> str:
     """Deterministické id záznamu histórie GUID."""
     return stable_uuid("guidhist", object_ref, ifc_guid)
+
+
+def guid_alias_id(object_ref: str, ifc_guid: str) -> str:
+    """Deterministické id aliasu GUID (zlúčený IFC typ -> `asset_type`, D-033, D-183 K3)."""
+    return stable_uuid("guidalias", object_ref, ifc_guid)

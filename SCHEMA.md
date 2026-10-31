@@ -196,6 +196,21 @@ create table ifc_guid_history (
   created_at  timestamptz not null default now()
 );
 create unique index uniq_active_guid on ifc_guid_history (object_id) where valid_until is null;
+
+-- D-183 K3 krok 3 (migrácia 20261031180000): ďalší GlobalId toho istého uzla, NIE jeho história. GUID IFC typu,
+-- ktorý ETL zlúčil do asset_type s rovnakým typovým kódom (D-033, reason = type_code). Zapisuje ETL grafu
+-- (zdroj IFC import:<model>, re-ETL uzavrie nevydané); čítanie cez pohľad ifc_guid_node (§2.19).
+create table ifc_guid_aliases (
+  id          uuid primary key default gen_random_uuid(),
+  object_id   uuid not null references objects(id) on delete cascade,
+  ifc_guid    text not null,
+  reason      text not null default 'type_code',
+  valid_from  timestamptz not null default now(),
+  valid_until timestamptz,          -- NULL = aktívny
+  source      text,
+  created_at  timestamptz not null default now()
+);
+create unique index uniq_active_guid_alias on ifc_guid_aliases (ifc_guid) where valid_until is null;
 ```
 
 ### 2.5 Hrany — generický meta-model `relationships` (D-051, implementované vo F1)
@@ -269,9 +284,17 @@ create index on relationships (rel_type, from_id);
 create view rel_aggregates as
   select id, from_id, to_id, valid_from, valid_until, source
   from relationships where rel_type = 'rel_aggregates';
--- … analogicky rel_contained_in_spatial_structure / rel_defines_by_type /
+-- … analogicky rel_defines_by_type /
 --   rel_associates_classification / rel_assigns_to_group (bez role) a
 --   rel_associates_document / rel_assigns_to_actor / rel_member_of (s role).
+-- rel_contained_in_spatial_structure od D-183 K3 (migrácia 20261031120000) číta kópiu revízie, nie
+--   `relationships` (rovnaké prvé stĺpce + model, revision, global_id, container_global_id, via_global_id; §2.19).
+-- rel_aggregates / rel_defines_by_type / rel_assigns_to_group / rel_associates_document / rel_associates_classification
+--   od D-183 K3 krok 2b (migrácia 20261031150000) tiež z kópie revízie + hrany AIM vrstvy (zdroj nie etl*) z `relationships`
+--   (rovnaké prvé stĺpce + model, revision, global_id a parent_global_id | type_global_id | group_global_id |
+--   document_key | classification_key; §2.19). rel_assigns_to_actor, rel_member_of a ostatné ostávajú nad `relationships`.
+-- Od D-183 K3 krok 3 ETL grafu hrany týchto šiestich typov do `relationships` nezapisuje (staré `etl*` ostávajú
+--   aktívne a nečítané, kým ich neukončí `supabase/migrations/20261031190000_end_etl_ifc_edges.sql`).
 ```
 
 ### 2.6 Indexy + integrita hrán
@@ -298,7 +321,7 @@ create trigger trg_relationships_validate before insert or update on relationshi
 ### 2.7 Pohľady (Viewer / LLM)
 
 **Dodatok D-080 (migrácia 20261016130000):** `v_space_elements` = obsah priestoru —
-`rel_contained_in_spatial_structure` do `space` (relation `contained`, natívne zo súboru)
+`rel_contained_in_spatial_structure` do `space` (relation `contained`, natívne zo súboru; od D-183 K3 z kópie revízie)
 ∪ `rel_referenced_in_spatial_structure` do `space` (relation `referenced`, odvodené
 geometriou, `role` inside|partial). Stĺpce: space_id/ref/name/long_name, element_id/ref/name,
 element_ifc_type, element_predefined_type, relation, role, source. Len aktívne hrany.
@@ -650,6 +673,101 @@ pôvodný pohľad. Zapisuje aj viewer (panel Presentation) cez route `/api/saved
   riadkov). `v_clash_summary` = ten istý beh po pravidle, podlaží a stave (`clashes`, `hard`, `clearance`, `critical`, `major`,
   `minor`, `info`). Oba aj `clash_tests` sú vo whiteliste `query_view`. Práva: `anon`/`authenticated` nič, `service_role` všetko.
 
+### 2.19 Kontajnery, revízie a úplná kópia revízie (D-183; K1 a K2 implementované)
+
+**Zdroj pravdy (D-183):** obsah modelu platí z kontajnera revízie (súbor v archíve, sha256); DB nesie (1) záznam
+kontajnera a revízie, (2) úplnú kópiu informácií každej revízie bez geometrie a (3) AIM vrstvu.
+- **Kontajner a revízia (K1, migrácia `20261030120000_information_containers.sql`, test `supabase/tests/information_containers.sql`):**
+  - `ifc_application` (`IfcApplication`: `application_developer`, `version`, `application_full_name`,
+    `application_identifier`; unikát identifikátor + verzia) a `ifc_actor` (`IfcPersonAndOrganization`: `person_name`,
+    `organization_name`, voliteľne `person_id` / `organization_id` -> `objects`, `roles`; unikát meno + organizácia;
+    `ifc_actor_for(meno, org)` ho nájde alebo založí).
+  - `information_containers` = kontajner naprieč revíziami podľa `IfcDocumentInformation`: `identification` (unique; model =
+    `ASR`, dokument = jeho `Identification`, pri zhode `object_ref`), `name`, `description`, `purpose`, `intended_use`, `scope`,
+    `confidentiality`, `electronic_format`, `document_owner_id` -> `ifc_actor` (= OwningUser), `container_type`
+    `IFC|PDF|DWG|OTHER`, `model` (unique, práve pri IFC), `document_id` (unique -> `objects`, `on delete set null`; len
+    `object_type = 'document'`, nie časť dokumentu).
+  - `container_revisions` = jedna `Revision`: `revision` (text, dnes číslo), `revision_no` (poradie v hlavnej rade; model =
+    vNNN, dokument 1, 2...), `parent_revision_no`, `model_revision_id` (unique -> `model_revisions`, `on delete cascade`),
+    `sha256` (64 hex, nekomprimovaný obsah), `size_bytes`, `location` (archív / bucket), `electronic_format`, `creation_time`
+    (prvá revízia kontajnera), `last_revision_time` (táto revízia), `editors_id` -> `ifc_actor` (= LastModifyingUser),
+    `owning_application_id`, `last_modifying_application_id` -> `ifc_application`, `change_action`
+    (`ADDED|MODIFIED|DELETED|NOCHANGE|NOTDEFINED`; ADDED prvá, MODIFIED ďalšia), `state` (`IfcStateEnum`), `status`
+    (`IfcDocumentStatusEnum`, predvolene DRAFT = WIP), `approval` jsonb (`IfcApproval`, ISO 19650; zatiaľ NULL), `file_header`
+    jsonb (hlavička STEP, plní K2), `recipe_ref`, `task_id`, `commit_sha` (z `recipe_ref` za `@`); unikát
+    (`container_id`, `revision_no`).
+  - Plnenie triggerom, host ani ETL sa nemenia: `insert` do `model_revisions` (`etl.model_publish`) založí revíziu kontajnera
+    modelu v tej istej transakcii; nový `documents.file_sha256` založí revíziu kontajnera dokumentu (rovnaký obsah nič).
+  - Stráže: nová revízia musí byť vyššia ako posledná a nadväzovať na ňu (`parent_revision_no` = posledná; len hlavná rada);
+    `sha256`, veľkosť a poradie revízie sa nemenia (aj v `model_revisions`); zmazať sa dá len posledná revízia kontajnera
+    (aj cez `on delete cascade` z `model_revisions`).
+  - `v_container_revisions` = revízie s pojmami IFC (`owning_user`, `last_modifying_user`, `owning_application`,
+    `last_modifying_application`, `change_action`, `status`, `is_latest`...).
+  - Spätne doplnené: všetky `model_revisions` a dokumenty so `file_sha256` (kontajner aj pre dokument bez sha256).
+- **Podpis vstupu (K1):** `ids_runs.model_revisions` a `clash_runs.model_revisions` jsonb `{model: revízia}` (predvolene
+  `{}` = neznáma). Motor nesie revíziu archívu, z ktorého model načítal (`engineRevision`, `revision` v `models`); IDS beh ju
+  zapíše, clash beh bez nej doplní trigger z `models` (`engine_model_revisions`: `revision` z motora, inak jednoznačná zhoda
+  `size` s `model_revisions.size_bytes`; tak sa spätne doplnili aj staré behy). Položka `_georef` (v2 `calibrations[]` aj v1)
+  dostane `model_revisions` a `document_sha256` triggerom pri zápise: tá istá kalibrácia (strana, `affine`, `region`) prenesie
+  starú pečiatku, nová dostane aktuálne revízie; spätne revízie platné v čase `calibrated_at` (`model_revisions_at(t)`).
+  `v_ids_latest`, `v_ids_summary`, `v_clash_latest`, `v_clash_summary` majú na konci `based_on` (podpis, NULL = neznámy) a
+  `stale` (`revisions_stale`: true = iný ako aktuálne revízie, NULL = neznámy). Práva: `anon`/`authenticated` nič.
+- **Úplná kópia revízie (K2, migrácia `20261030130000_ifc_revision_copy.sql`, test `supabase/tests/ifc_revision_copy.sql`):**
+  zapisuje len `python -m etl.revision_copy` (etl/README), plné kópie bez geometrie, graf AIM sa nemení.
+  - `ifc_rev_imports` (PK `model`, `revision`; FK na `model_revisions`, `on delete cascade`) = beh kópie: `sha256`
+    (overený archív), `status` `done|failed`, `hash_version`, `schema_identifier`, `counts` (`file` a `db`: objekty po
+    triedach, dvojice vzťahov po triedach, pripojenia psetov po triedach, `ifc_root` a `ifc_root_accounted`), `warnings`,
+    `error`, `engine`, `started_at`, `finished_at`.
+  - `ifc_rev_objects` (PK `model`, `revision`, `global_id`) = každý IfcRoot okrem vzťahov a sád: `ifc_class`, `attributes`
+    jsonb (atribúty schémy; IfcRoot hodnota = `{"ref": GlobalId}`, ostatné entity vnorene s `_class`, bez geometrie,
+    polohy a OwnerHistory), `file_owner_history` jsonb (ChangeAction, OwningUser, OwningApplication... len informačne),
+    `content_hash`. Index (`model`, `revision`, `ifc_class`).
+  - `ifc_rev_relationships` (PK `model`, `revision`, `rel_class`, `relating`, `related`) = dvojica z IfcRel* (bez
+    IfcRelDefinesByProperties): `relating` = nositeľ (Relating*), `related` = druhá strana (Related*), GlobalId alebo
+    prirodzený kľúč `Trieda:Identification|Name` (inak `Trieda:#hash`), `relating_class`, `related_class`, `attributes`
+    jsonb (zoradené varianty ostatných atribútov), `multiplicity`, `rel_global_ids` (len informačne), `content_hash`.
+    Indexy (`model`, `revision`, `related`) a (`model`, `revision`, `relating`, `rel_class`).
+  - `ifc_rev_property_sets` (PK `model`, `revision`, `global_id`, `pset_name`) = sada na výskyte alebo type: `pset_class`
+    (IfcPropertySet, IfcElementQuantity, preddefinovaná), `properties` jsonb `{meno: hodnota}` (čísla na 12 platných
+    číslic; jednotka pri hodnote ako `{value, unit}`), `pset_global_ids` (len informačne), `content_hash`.
+  - `ifc_rev_resolve(model, revision)` (NULL = aktuálna; len `done`, inak chyba s príkazom), `ifc_rev_storey_elements(model,
+    revision, podlažie, systém?)` (IfcRelContainedInSpatialStructure podľa mena alebo GlobalId podlažia, voliteľne člen
+    systému `ilike`), `ifc_rev_compare(model, from, to)` = `global_id`, `ifc_class`, `change_action`
+    (ADDED|DELETED|MODIFIED, NOCHANGE len s poznámkou `changed via type`), `aspects` jsonb (`attributes`, `psets`
+    `Pset.Vlastnosť`, `relations` `+|-|~Trieda:nositeľ` pripísané strane Related). Poloha nie je v DB (`etl.revision_compare
+    --placement`). Funkcie volá len `service_role`; tabuľky `anon`/`authenticated` nič.
+- **K3 krok 2 (migrácia `20261031120000_rel_contained_from_revision_copy.sql`):** pohľad
+  `rel_contained_in_spatial_structure` = `IfcRelContainedInSpatialStructure` z `ifc_rev_relationships` pre každý model
+  z aktuálnej revízie s `done` kópiou (inak najnovšej nižšej `done`). Stĺpce: `id` (`md5(model|revision|relating|related)::uuid`),
+  `from_id` (prvok, uzol AIM cez aktívny `ifc_guid_history` a živý `objects`), `to_id` (kontajner; podlažie modelu bez
+  vlastného uzla, napr. VZT, cez `ifc_np_key(Name)` = číslo podlažia na `floor` AIM), `valid_from` (`ifc_rev_imports.finished_at`),
+  `valid_until` (vždy null), `source` (`ifc:VZT v11`), `model`, `revision`, `global_id` (prvok zo súboru), `container_global_id`,
+  `via_global_id` (celok, od ktorého časť zostavy s uzlom `asset` dedí kontajner o úroveň vyššie, napr. zábradlie v
+  schodisku). Strana bez uzla AIM má `from_id`/`to_id` null. Hrany tohto `rel_type` v `relationships` pohľad nečíta.
+  Funkcia `ifc_np_key(text)` (immutable, `2NP`, `2.NP`, `2. NP`, `1NP_VZT` -> `2NP`/`1NP`), index
+  `idx_ifc_guid_history_active_guid` (`ifc_guid` pri `valid_until is null`).
+- **K3 krok 2b (migrácia `20261031150000_rel_views_from_revision_copy.sql`):** pohľady `rel_aggregates`
+  (IfcRelAggregates), `rel_defines_by_type` (IfcRelDefinesByType), `rel_assigns_to_group` (IfcRelAssignsToGroup),
+  `rel_associates_document` (IfcRelAssociatesDocument, `role` = `document`), `rel_associates_classification`
+  (IfcRelAssociatesClassification) = dvojice triedy z `ifc_rev_relationships` revízie z `ifc_rev_current` ∪ riadky
+  `relationships` toho istého `rel_type`, kde `rel_is_aim_layer(source)` (zdroj nie je `etl` ani `etl:*`, napr. `pdf_link (E4)`,
+  `doc_upload (D-036)`; s pôvodnými stĺpcami, nové null). Riadok zo súboru: `id` (`md5(model|revision|rel_class|relating|related)::uuid`),
+  `from_id` = Related, `to_id` = Relating (uzly AIM cez `ifc_guid_node`; null bez uzla), `valid_from` (`finished_at`), `valid_until`
+  null, `source` (`ifc:ASR v79`), `model`, `revision`, `global_id` (Related) a kľúč Relating zo súboru: `parent_global_id`,
+  `type_global_id`, `group_global_id`, `document_key` (`IfcDocumentInformation:<Identification>` / `IfcDocumentReference:<Identification>`),
+  `classification_key` (`IfcClassificationReference:<Identification>`, `IfcClassification:<Name>`). Mapovanie Relating bez GUID:
+  dokument cez jedinú zhodu `documents.identification` pri uzle `document`/`document_reference` triedy kľúča, klasifikácia cez jedinú
+  zhodu `classification_references.identification`; typ bez vlastného uzla (zlúčený ETL, D-033) od kroku 3 cez alias GUID
+  (`ifc_guid_aliases` v `ifc_guid_node`; pôvodný most podľa `object_ref` výskytu zrušený). Podlažie VZT sa v `rel_aggregates`
+  nemapuje. Pomocné pohľady `ifc_rev_current` (model, revision, finished_at: aktuálna `done`, inak najnovšia nižšia `done`) a
+  `ifc_guid_node` (ifc_guid, object_id, object_type, object_ref, `alias_reason`: aktívny `ifc_guid_history`, inak aktívny
+  `ifc_guid_aliases` s `alias_reason` = `type_code`), funkcia `rel_is_aim_layer(text)` (immutable); len `service_role`.
+- **K3 krok 3 (migrácia `20261031180000_ifc_guid_aliases.sql`):** tabuľka `ifc_guid_aliases` (§2.4) so spätným doplnením
+  z mosta nad kópiou aktuálnej revízie (len jednoznačné GUID typu; produkcia 31. 10.: 8 GUID ASR -> 7 `asset_type`, 35
+  výskytov), `ifc_guid_node` s aliasom, `rel_defines_by_type` bez mosta. ETL grafu prestal zapisovať hrany šiestich typov
+  z kópie (`etl/manifest.py` `FROM_REVISION_COPY`); ich ukončenie je samostatná migrácia `20261031190000` (spustená 31. 10., Samuel: ukončiť;
+  na Samuelovo slovo).
+
 ## 4. Konvencia `properties` (D-022)
 
 `properties` JSONB obsahuje **property sety**, vnorené podľa názvu. IFC **atribúty**
@@ -699,6 +817,8 @@ CamelCase by vyžadoval úvodzovky a škodil LLM text-to-SQL). IFC väzba cez
 | `classification_systems` / `_references` | IfcClassification / IfcClassificationReference |
 | `documents` (prípona) | IfcDocumentInformation (atribútovo 1:1, viď nižšie) |
 | `object_type='document_reference'` (prípona `documents`) | IfcDocumentReference: časť dokumentu, napr. strana (D-104) |
+| `information_containers` / `container_revisions` | IfcDocumentInformation (kontajner / jedna `Revision`) + z IfcOwnerHistory `OwningApplication`, `LastModifyingApplication`, `ChangeAction`, `State`; stav ISO 19650 = IfcApproval (D-183, §2.19) |
+| `ifc_actor` / `ifc_application` | IfcPersonAndOrganization / IfcApplication (D-183) |
 | `object_type='capture'` (prípona `captures`) | ~IfcAnnotation (reality-capture bod); ukotvenie v `_capture`, D-073 |
 | `object_type='capture_media'` (prípona `capture_media`) | ~IfcDocumentInformation (snímka/verzia), D-073 |
 | `aim_rel_capture_located` | **aim_** (IFC nemá koncept; ~IfcRelContainedInSpatialStructure) → ICDD linkset, D-073 |

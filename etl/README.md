@@ -17,7 +17,7 @@ Python pipeline, ktorá načíta IFC model a naplní Supabase schému (`objects`
 | `manifest.py` | manifest vzťahov (D-051) — `rel_type` spec overený proti IFC schéme; `EDGE_TYPE_TO_REL_TYPE` routing; SQL pre `relationship_types` |
 | `transform.py` | IFC → staged model (mapovanie podľa SCHEMA/§4) |
 | `model.py` | medziľahlé dataclassy (staged riadky) + `CoverageReport` |
-| `db.py` | idempotentný upsert do Postgresu v poradí FK; hrany → generická `relationships` (D-051) |
+| `db.py` | idempotentný upsert do Postgresu v poradí FK; hrany → generická `relationships` (D-051), okrem IFC vzťahov z kópie revízie (D-183 K3) |
 | `ids.py` | deterministické UUID pre tabuľky bez prirodzeného unique |
 | `config.py` | načítanie `DATABASE_URL` |
 | `main.py` | CLI (`--file`, `--dry-run`, `--model`) |
@@ -232,12 +232,44 @@ Zverejnenie potom rovnakým príkazom bez `--dry-run` a ďalej podľa poradia vy
 (`etl.main --model VZT`, `etl.derive run --trigger auto`, `announce`). Ak medzitým vznikne
 nová revízia VZT, `--base` skončí konfliktom (kód 3): recept sa spustí znova nad ňou.
 
-**`--model` v `etl.main`:** hrany a GUID história dostanú zdroj modelu (`etl:ASR`,
+**IFC vzťahy z kópie revízie (D-183 K3 krok 3):** `rel_aggregates`, `rel_contained_in_spatial_structure`,
+`rel_defines_by_type`, `rel_assigns_to_group`, `rel_associates_document` a `rel_associates_classification` ETL grafu do
+`relationships` nezapisuje ani neuzatvára (`manifest.FROM_REVISION_COPY`, `db.writes_edge`); ich pohľady čítajú
+`ifc_rev_relationships` (`etl.revision_copy`). Transformácia ich ďalej skladá (dry-run, testy), zapisuje sa len hrana
+AIM vrstvy týchto typov (zdroj nie je `etl*`). Uzly, GUID história, klasifikačné referencie a ostatné typy hrán ostávajú.
+Zlúčené IFC typy s rovnakým typovým kódom (D-033) zapíše ako alias GUID (`ifc_guid_aliases`, zdroj `IFC import:<model>`).
+Staré hrany ETL týchto typov ukončí samostatný krok `supabase/migrations/20261031190000_end_etl_ifc_edges.sql`.
+
+**`--model` v `etl.main`:** hrany, GUID história a aliasy dostanú zdroj modelu (`etl:ASR`,
 `IFC import:ASR`); čo beh nevydal (zmazaný, presunutý, premenovaný prvok), sa uzavrie.
 Nový rodič pri `rel_aggregates` / `contained` / `defines_by_type` uzavrie starého pred
 insertom. **Prvý prechod** z dát bez mena modelu: načítať ASR aj VZT s `--model`, potom raz
 `python -m etl.model_publish close-legacy`. Väzby dokumentov/aktorov na entity, ktoré ETL
 neemituje (IfcZone, IfcSpatialZone, IfcGroup, IfcProject), sa vynechajú a vypíšu.
+
+## Úplná kópia revízie - `etl.revision_copy` a `etl.revision_compare` (D-183 K2)
+
+Kontajner revízie je pravda (D-183); DB nesie jeho úplnú kópiu bez geometrie vedľa grafu AIM (`objects`,
+`relationships` sa nemenia). Generické pravidlo, nič sa nevyberá: každý IfcRoot okrem vzťahov a sád
+(`ifc_rev_objects`), každá dvojica Relating x Related z každého IfcRel* okrem IfcRelDefinesByProperties
+(`ifc_rev_relationships`, kľúč trieda, nositeľ, druhá strana) a každý pset, Qto a preddefinovaná sada na výskyte
+aj type (`ifc_rev_property_sets`, kľúč nositeľ, meno psetu). Každý riadok nesie `(model, revision)` a `content_hash`.
+
+```bash
+python -m etl.revision_copy --model VZT                  # aktuálna revízia z archívu (Storage, overí sha256)
+python -m etl.revision_copy --model ASR --revision 79    # konkrétna revízia; hotová s rovnakým sha256 = already_done
+python -m etl.revision_copy --model VZT --archive-file v011.ifc.gz --dry-run   # len extrakcia a počty, bez DB
+python -m etl.revision_compare --model VZT --from 10 --to 11 [--placement]     # porovnanie na požiadanie, nič nezapíše
+```
+
+- Duplicitné GlobalId alebo nesúlad sha256 = revízia sa neindexuje. Zápis je jedna transakcia: kópia, kontrola úplnosti
+  (počty po triedach zo súboru = DB, každý IfcRoot započítaný), `ifc_rev_imports.status = 'done'`, doplnenie hlavičky
+  a `IfcApplication` do `container_revisions`. Chyba = nič sa nezapíše, riadok `failed` s dôvodom.
+- Akceptačný test: `select count(*) from ifc_rev_storey_elements('VZT', null, '2NP', 'Prívod%')` = 212 (aj 3NP).
+- Poloha nie je v DB: `--placement` číta oba archívy (relatívne k podlažiu, port k hostiteľovi, tolerancia 1 mm a
+  0,001 rad, georeferencia a spoločný posun raz).
+- Merané 30. 10. lokálne: VZT v11 1,8 s, ASR v79 2,5 s (extrakcia + zápis), obe revízie spolu 20 MB s indexmi;
+  porovnanie dvoch revízií VZT v DB 0,1 s, s polohou zo súborov ~9 s.
 
 ## Idempotencia (D-031)
 - `objects` upsert cez `object_ref` (UNIQUE) → `id` ostáva DB-generované (D-010).

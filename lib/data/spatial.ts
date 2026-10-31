@@ -6,6 +6,7 @@ import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { AIM_CACHE } from "@/lib/data/constants";
 import { fetchAllPages } from "@/lib/data/pagination";
+import { isGroupOnly, treeEdges } from "@/lib/data/group-only";
 
 /**
  * Data-access vrstva pre priestorovú hierarchiu (S1).
@@ -113,6 +114,9 @@ function loadSpatialEdges(
       .from(view)
       .select("from_id, to_id")
       .is("valid_until", null)
+      // Strana bez uzla AIM (D-183 K3) do stromu nepatrí.
+      .not("from_id", "is", null)
+      .not("to_id", "is", null)
       .order("id", { ascending: true })
       .range(from, to)
   );
@@ -183,17 +187,9 @@ const loadGraphData = unstable_cache(async (): Promise<GraphData> => {
     });
   }
 
-  // Uzol je buď agregovaný (štruktúra) alebo obsiahnutý (prvok) — nikdy oboje,
-  // takže zliatie oboch tabuliek nekoliduje.
-  const relRows = [...aggEdges, ...containedEdges];
-  const edges: [string, string][] = [];
-  for (const r of relRows) {
-    const from = r.from_id as string;
-    const to = r.to_id as string;
-    // Ignoruj hrany mimo priestorového grafu (napr. ak by to_id nebol v byId).
-    if (!byId.has(from) || !byId.has(to)) continue;
-    edges.push([from, to]);
-  }
+  // Uzol je buď agregovaný (štruktúra) alebo obsiahnutý (prvok); časť zostavy zo súboru (D-183 K3)
+  // má rodiča len z umiestnenia (treeEdges).
+  const edges = treeEdges(aggEdges, containedEdges, byId);
 
   return { objects: [...byId.values()], edges };
 }, ["spatial-graph"], AIM_CACHE);
@@ -210,6 +206,9 @@ const loadGraph = cache(async (): Promise<Graph> => {
   const parentOf = new Map<string, string>();
   for (const [from, to] of edges) {
     parentOf.set(from, to);
+    // Potrubie a tvarovky (D-049) majú od D-183 K3 podlažie, v strome pod ním ale nie sú
+    // (zaplavili by ho); breadcrumb ich podlažie ukáže.
+    if (isGroupOnly(byId.get(from)!)) continue;
     const list = childrenOf.get(to);
     if (list) list.push(from);
     else childrenOf.set(to, [from]);
@@ -247,9 +246,8 @@ export const fetchSpatialTree = cache(async (): Promise<SpatialNode[]> => {
   const graph = await loadGraph();
   const roots: ObjectRow[] = [];
   for (const row of graph.byId.values()) {
-    // Koreň = priestorová štruktúra bez rodiča (site). `asset` bez rodiča je
-    // group-only MEP prvok (potrubie/tvarovky, D-049) — do stromu nepatrí
-    // (dostupný cez systém / priamy odkaz), inak by zaplavil sidebar.
+    // Koreň = priestorová štruktúra bez rodiča (site). `asset` bez rodiča (prvok bez
+    // podlažia v súbore) do stromu nepatrí (dostupný cez systém / priamy odkaz).
     if (!graph.parentOf.has(row.id) && row.object_type !== "asset") roots.push(row);
   }
   return roots.sort(compareNodes).map((r) => buildSubtree(r.id, graph));

@@ -329,12 +329,14 @@ async function fetchAssetTypeImpl(id: string): Promise<AssetTypeDetail | null> {
       .from("rel_associates_classification")
       .select("to_id")
       .eq("from_id", id)
-      .is("valid_until", null),
+      .is("valid_until", null)
+      .not("to_id", "is", null),
     supabase
       .from("rel_defines_by_type")
       .select("from_id")
       .eq("to_id", id)
-      .is("valid_until", null),
+      .is("valid_until", null)
+      .not("from_id", "is", null), // výskyt bez uzla AIM (D-183 K3)
   ]);
   if (rowsRes.error) throw new Error(rowsRes.error.message);
   const t = (rowsRes.data?.[0] ?? null) as {
