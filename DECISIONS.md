@@ -7851,6 +7851,27 @@ Smer `left` / `right` je podľa pohybu kamery, nie modelu (zhodne s `orbit_h_deg
 
 **Stav:** host časť hotová a otestovaná, end-to-end čaká na viewer, preto `Refs #277`, nie `Closes`. Evaly (D-057) nepobežali (cloud session bez kľúčov); otázka `list-derived-space-column` v `eval/questions.json` bez overenej hodnoty.
 
+### D-175 - Zvýraznenie vlastnosti počká na panel (#168), pohľad a výber berú viditeľné prvky z izolácie (#315)
+
+**Dátum:** 2026-10-29 · **Issue:** #168, #315 · **Nadväzuje na:** D-113, D-114, D-127, D-161 · **Fork:** PR z vetvy `aim/fix-168-315-focus-capture` (Menezeris/ifc-lite)
+
+**Kontext:** (#168, vrátené po D-127) vo veľkom modeli viewer hľadal riadok skôr, než loader dodal vlastnosti prvku, a panel sa neposunul. (#315) `saved_view(save)` po izolácii cez Lens uložil košík s 1 prvkom a `show_in_3d select` vie najviac 200 prvkov, takže izolovaných 5790 prvkov sa nedalo ani vybrať.
+
+**Najbližšie tooly (D-114):** `show_in_3d` (rozširujeme: `visible`), `saved_view` (bez zmeny parametrov, mení sa len čo viewer zachytí), `style_in_3d` (izolácia vzniká tu). Nový tool netreba.
+
+**Rozhodnutie (host časť):**
+1. `show_in_3d(select=true, visible=true)` pošle op `select_visible::` -> bridge `SELECT {visible: true}` (všetky práve viditeľné prvky, bez limitu 200, bez ids a filtrov). Súhrn výberu hlási stav viewera po príkaze.
+2. Zvýraznenie vlastnosti (`select` + `highlight`) čaká na potvrdenie 12 s (`PROPERTY_FOCUS_ACK_TIMEOUT_MS`), lebo viewer čaká na načítanie vlastností až 10 s a potvrdí až potom; ostatné príkazy ostávajú na 3 s (`ackTimeoutMs`).
+3. `saved_view(save)`: opis toolu povie, že košík je to, čo je vidieť, aj po izolácii. Zachytenie robí fork (`VIEW_CAPTURE`), host pošle správu bez zmeny.
+
+**Kompatibilita so starším viewerom:** `SELECT` bez `guid` starší viewer zahodí (nepotvrdí), tool povie "Viewer príkaz nepotvrdil" a netvrdí, že sa vykonal; po nasadení balíka funguje bez ďalšej zmeny. Dlhšie čakanie pri `highlight` sa starého viewera netýka (potvrdzuje hneď). Starší viewer uloží pohľad s košíkom z výberu ako doteraz (opis to hovorí).
+
+**Špecifikácia pre fork:** je v tele fork PR (`aimPanelView.ts` čaká na loader najviac 10 s, `viewCaptureBasket.ts`, `bridge-protocol.ts` SELECT `visible`), dôkazy v `docs/architecture/evidence/`.
+
+**Zavrhnuté:** nový tool "vyber viditeľné" a "pridaj do košíka" (D-114: stačí `visible` na existujúcom `show_in_3d`); zvýšenie limitu 200 pre zoznam GUID (URL by nezniesla tisíce GUID, `visible` ich nepotrebuje); príznak v env pre `visible` (zlyhanie na starom viewere je viditeľné a neškodné).
+
+**Stav:** host časť hotová a otestovaná; end-to-end čaká na zlúčenie a vydanie fork PR. Evaly (D-057) nepobežali (cloud session bez kľúčov).
+
 ### D-177 - `clash action=matrix`: matica modelov (disciplín) federácie (Closes #302)
 
 **Dátum:** 2026-10-29 · **Issue:** #302 · **Nadväzuje na:** D-114, D-164 · **Fork:** Menezeris/ifc-lite#180 (`get_viewer_state.clash_local.matrix`)

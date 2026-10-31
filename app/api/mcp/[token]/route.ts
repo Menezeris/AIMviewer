@@ -18,7 +18,7 @@ import {
   execViewerQueryTool,
 } from "@/lib/live/viewer-query-tools";
 import { lensCountsText } from "@/lib/live/lens-counts";
-import { ACK_TIMEOUT_MS, appliedText, notAppliedText } from "@/lib/live/applied-text";
+import { ackTimeoutMs, appliedText, notAppliedText } from "@/lib/live/applied-text";
 import { expectApplied, recentViewerCount } from "@/lib/live/warm-channel";
 import type { AskAction } from "@/lib/llm/actions";
 import { AskToolRuntime } from "@/lib/llm/tools";
@@ -266,10 +266,11 @@ async function deliverActions(
     // Potvrdzuje len viewer (`/ifc`); karta prvku alebo výkres je len navigácia.
     if (sent.ok && waitApplied && actions.some((a) => a.url.startsWith("/ifc"))) {
       const t0 = Date.now();
-      const applied = await timer.phase("ack", () => waitApplied(ACK_TIMEOUT_MS));
+      const ackMs = ackTimeoutMs(name, args);
+      const applied = await timer.phase("ack", () => waitApplied(ackMs));
       // Viac okien viewera za poslednú minútu (D-125): potvrdenie je len z jedného.
       const viewers = applied ? await recentViewerCount(channel, VIEWERS_WINDOW_MS).catch(() => 0) : 0;
-      const missing = test ? TEST_CHANNEL_NO_VIEWER : notAppliedText(ACK_TIMEOUT_MS);
+      const missing = test ? TEST_CHANNEL_NO_VIEWER : notAppliedText(ackMs);
       text.push(applied ? appliedText(name, applied, Date.now() - t0, { args, viewers }) : missing);
     } else if (sent.ok) {
       // Bez teplého kanála pôvodné čítanie stavu (D-096 počty Lens, D-092 poloha rezu).
