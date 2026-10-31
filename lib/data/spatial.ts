@@ -6,6 +6,7 @@ import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { AIM_CACHE } from "@/lib/data/constants";
 import { fetchAllPages } from "@/lib/data/pagination";
+import { isGroupOnly } from "@/lib/data/group-only";
 
 /**
  * Data-access vrstva pre priestorovú hierarchiu (S1).
@@ -210,6 +211,9 @@ const loadGraph = cache(async (): Promise<Graph> => {
   const parentOf = new Map<string, string>();
   for (const [from, to] of edges) {
     parentOf.set(from, to);
+    // Potrubie a tvarovky (D-049) majú od D-183 K3 podlažie, v strome pod ním ale nie sú
+    // (zaplavili by ho); breadcrumb ich podlažie ukáže.
+    if (isGroupOnly(byId.get(from)!)) continue;
     const list = childrenOf.get(to);
     if (list) list.push(from);
     else childrenOf.set(to, [from]);
@@ -247,9 +251,8 @@ export const fetchSpatialTree = cache(async (): Promise<SpatialNode[]> => {
   const graph = await loadGraph();
   const roots: ObjectRow[] = [];
   for (const row of graph.byId.values()) {
-    // Koreň = priestorová štruktúra bez rodiča (site). `asset` bez rodiča je
-    // group-only MEP prvok (potrubie/tvarovky, D-049) — do stromu nepatrí
-    // (dostupný cez systém / priamy odkaz), inak by zaplavil sidebar.
+    // Koreň = priestorová štruktúra bez rodiča (site). `asset` bez rodiča (prvok bez
+    // podlažia v súbore) do stromu nepatrí (dostupný cez systém / priamy odkaz).
     if (!graph.parentOf.has(row.id) && row.object_type !== "asset") roots.push(row);
   }
   return roots.sort(compareNodes).map((r) => buildSubtree(r.id, graph));

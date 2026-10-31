@@ -57,7 +57,7 @@ export async function lookupSelectionContext(guids: string[]): Promise<Selection
       supabase.from(view).select("from_id, to_id").in("from_id", part).is("valid_until", null),
     );
     const m = new Map<string, string>();
-    for (const r of rows) m.set(r.from_id, r.to_id);
+    for (const r of rows) if (r.to_id) m.set(r.from_id, r.to_id); // kontajner bez uzla AIM (D-183 K3)
     return m;
   };
 

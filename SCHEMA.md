@@ -269,9 +269,11 @@ create index on relationships (rel_type, from_id);
 create view rel_aggregates as
   select id, from_id, to_id, valid_from, valid_until, source
   from relationships where rel_type = 'rel_aggregates';
--- … analogicky rel_contained_in_spatial_structure / rel_defines_by_type /
+-- … analogicky rel_defines_by_type /
 --   rel_associates_classification / rel_assigns_to_group (bez role) a
 --   rel_associates_document / rel_assigns_to_actor / rel_member_of (s role).
+-- rel_contained_in_spatial_structure od D-183 K3 (migrácia 20261031120000) číta kópiu revízie, nie
+--   `relationships` (rovnaké prvé stĺpce + model, revision, global_id, container_global_id, via_global_id; §2.19).
 ```
 
 ### 2.6 Indexy + integrita hrán
@@ -298,7 +300,7 @@ create trigger trg_relationships_validate before insert or update on relationshi
 ### 2.7 Pohľady (Viewer / LLM)
 
 **Dodatok D-080 (migrácia 20261016130000):** `v_space_elements` = obsah priestoru —
-`rel_contained_in_spatial_structure` do `space` (relation `contained`, natívne zo súboru)
+`rel_contained_in_spatial_structure` do `space` (relation `contained`, natívne zo súboru; od D-183 K3 z kópie revízie)
 ∪ `rel_referenced_in_spatial_structure` do `space` (relation `referenced`, odvodené
 geometriou, `role` inside|partial). Stĺpce: space_id/ref/name/long_name, element_id/ref/name,
 element_ifc_type, element_predefined_type, relation, role, source. Len aktívne hrany.
@@ -713,6 +715,16 @@ kontajnera a revízie, (2) úplnú kópiu informácií každej revízie bez geom
     (ADDED|DELETED|MODIFIED, NOCHANGE len s poznámkou `changed via type`), `aspects` jsonb (`attributes`, `psets`
     `Pset.Vlastnosť`, `relations` `+|-|~Trieda:nositeľ` pripísané strane Related). Poloha nie je v DB (`etl.revision_compare
     --placement`). Funkcie volá len `service_role`; tabuľky `anon`/`authenticated` nič.
+- **K3 krok 2 (migrácia `20261031120000_rel_contained_from_revision_copy.sql`):** pohľad
+  `rel_contained_in_spatial_structure` = `IfcRelContainedInSpatialStructure` z `ifc_rev_relationships` pre každý model
+  z aktuálnej revízie s `done` kópiou (inak najnovšej nižšej `done`). Stĺpce: `id` (`md5(model|revision|relating|related)::uuid`),
+  `from_id` (prvok, uzol AIM cez aktívny `ifc_guid_history` a živý `objects`), `to_id` (kontajner; podlažie modelu bez
+  vlastného uzla, napr. VZT, cez `ifc_np_key(Name)` = číslo podlažia na `floor` AIM), `valid_from` (`ifc_rev_imports.finished_at`),
+  `valid_until` (vždy null), `source` (`ifc:VZT v11`), `model`, `revision`, `global_id` (prvok zo súboru), `container_global_id`,
+  `via_global_id` (celok, od ktorého časť zostavy s uzlom `asset` dedí kontajner o úroveň vyššie, napr. zábradlie v
+  schodisku). Strana bez uzla AIM má `from_id`/`to_id` null. Hrany tohto `rel_type` v `relationships` pohľad nečíta.
+  Funkcia `ifc_np_key(text)` (immutable, `2NP`, `2.NP`, `2. NP`, `1NP_VZT` -> `2NP`/`1NP`), index
+  `idx_ifc_guid_history_active_guid` (`ifc_guid` pri `valid_until is null`).
 
 ## 4. Konvencia `properties` (D-022)
 

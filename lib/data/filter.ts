@@ -63,7 +63,7 @@ export async function fetchSpaceSiblings(
     .eq("from_id", objectId)
     .is("valid_until", null)
     .limit(1);
-  if (parentErr || !parentRows?.length) return { spaceId: null, siblingObjectIds: [] };
+  if (parentErr || !parentRows?.[0]?.to_id) return { spaceId: null, siblingObjectIds: [] };
 
   const spaceId = parentRows[0].to_id as string;
 
@@ -85,6 +85,7 @@ export async function fetchSpaceSiblings(
     .is("valid_until", null);
   if (siblingErr) throw new Error(siblingErr.message);
 
-  const siblingObjectIds = (siblingRows ?? []).map((r) => r.from_id as string);
+  // Prvok bez uzla AIM (D-183 K3) má from_id null.
+  const siblingObjectIds = (siblingRows ?? []).flatMap((r) => (r.from_id ? [r.from_id as string] : []));
   return { spaceId, siblingObjectIds };
 }
