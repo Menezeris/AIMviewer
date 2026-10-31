@@ -87,8 +87,11 @@ export function hoistFilterColumns<T extends object>(
     rows: rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !keys.includes(k))) as Partial<T>),
   };
 }
-/** Koľko prvkov naraz zvládne lokalizácia (search_objects mode=locate). */
-const LOCATE_CAP = 500;
+/** Koľko prvkov naraz zvládne lokalizácia (search_objects mode=locate). Po D-183 K3 majú podlažie aj prvky VZT
+ *  (526 IfcDuctSegment), pri strope 500 vychádzal rozpad po podlažiach z náhodnej vzorky (2NP 239 namiesto 249). */
+const LOCATE_CAP = 3000;
+/** Strana načítania prvkov pre locate (PostgREST max_rows = 1000). */
+const LOCATE_PAGE = 1000;
 /** Veľkosť dávky pre `.in()` filtre (limit dĺžky URL v PostgREST). */
 const IN_CHUNK = 100;
 /** Max prvkov jednej style_in_3d operácie — GUIDy cestujú v URL (D-066). */
@@ -482,7 +485,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "IfcRelSpaceBoundary, role physical|virtual), rel_defines_by_type (occurrence→typ), " +
       "rel_associates_document (uzol→dokument), rel_associates_classification, " +
       "rel_assigns_to_actor (zodpovednosti, aktor→uzol), rel_assigns_to_group (člen→systém), " +
-      "rel_member_of (osoba→organizácia). Smer je subjekt(from)→objekt(to); zadaj from_id alebo to_id.",
+      "rel_member_of (osoba→organizácia). Smer je subjekt(from)→objekt(to); zadaj from_id alebo to_id. " +
+      "Vráti total, in_aim (obe strany majú uzol AIM) a only_in_file (strana len zo súboru, napr. porty VZT " +
+      "v systéme): 'koľko prvkov patrí do systému' = in_aim, nie počet riadkov.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1215,21 +1220,26 @@ export class AskToolRuntime {
       total = elements.length;
     } else {
       const filters = { object_type: "asset", ...input };
-      const [listRes, countRes] = await Promise.all([
-        this.applyObjectFilters(
-          supabase
-            .from("objects")
-            .select("id, object_type, object_ref, name, ifc_type, predefined_type"),
-          filters
-        ).limit(LOCATE_CAP),
-        this.applyObjectFilters(
-          supabase.from("objects").select("id", { count: "exact", head: true }),
-          filters
-        ),
-      ]);
-      if (listRes.error) throw new Error(listRes.error.message);
+      const countRes = await this.applyObjectFilters(
+        supabase.from("objects").select("id", { count: "exact", head: true }),
+        filters
+      );
       if (countRes.error) throw new Error(countRes.error.message);
-      elements = (listRes.data ?? []) as ObjectRow[];
+      // Stránky so stabilným poradím: rozpad po podlažiach počíta všetky prvky do LOCATE_CAP, nie náhodnú vzorku.
+      const want = Math.min(countRes.count ?? LOCATE_CAP, LOCATE_CAP);
+      elements = [];
+      for (let from = 0; from < want; from += LOCATE_PAGE) {
+        const page = await this.applyObjectFilters(
+          supabase.from("objects").select("id, object_type, object_ref, name, ifc_type, predefined_type"),
+          filters
+        )
+          .order("id", { ascending: true })
+          .range(from, Math.min(from + LOCATE_PAGE, want) - 1);
+        if (page.error) throw new Error(page.error.message);
+        const rows = (page.data ?? []) as ObjectRow[];
+        elements.push(...rows);
+        if (rows.length < Math.min(LOCATE_PAGE, want - from)) break;
+      }
       total = countRes.count ?? elements.length;
     }
     if (elements.length === 0) {
@@ -1407,6 +1417,7 @@ export class AskToolRuntime {
 
     let rows: Record<string, unknown>[];
     let total: number;
+    let relSplitInfo: Record<string, unknown> = {};
     if (related) {
       const ids = await this.relatedIds(related);
       if (ids.length > RELATED_CAP) {
@@ -1439,11 +1450,27 @@ export class AskToolRuntime {
         for (const t of terms) q = q.order(t.column, { ascending: t.ascending });
         q = q.range(offset, offset + limit - 1);
       }
-      const { data, count, error } = await q;
+      // Pohľady IFC vzťahov z kópie revízie majú aj riadky so stranou bez uzla AIM (D-183 K3): počet členov
+      // systému alebo výskytov typu je in_aim, nie total.
+      const relSplit = REL_VIEWS.has(relation)
+        ? this.relCounts(relation, {}, applyFilters, false).catch(() => null)
+        : Promise.resolve(null);
+      const [{ data, count, error }, split] = await Promise.all([q, relSplit]);
       if (error) throw new Error(error.message);
-      if (countOnly) return { count: count ?? 0 };
+      const splitInfo =
+        split && split.only_in_file > 0
+          ? {
+              in_aim: split.in_aim,
+              only_in_file: split.only_in_file,
+              hint_in_aim:
+                `${split.only_in_file} z ${split.total} riadkov je len zo súboru (from_id alebo to_id null, napr. porty VZT); ` +
+                `prvkov AIM je ${split.in_aim}.`,
+            }
+          : {};
+      if (countOnly) return { count: count ?? 0, ...splitInfo };
       rows = (data ?? []) as Record<string, unknown>[];
       total = count ?? offset + rows.length;
+      relSplitInfo = splitInfo;
     }
 
     // Uzly do zdrojov (trust loop) — podľa tvaru riadku (objects/v_* views).
@@ -1460,6 +1487,7 @@ export class AskToolRuntime {
     const page = pageInfo(total, offset, rows.length);
     return {
       ...page,
+      ...relSplitInfo,
       ...(page.truncated ? { hint: `Výsledok je orezaný: ďalšia strana offset=${page.next_offset}.` } : {}),
       rows,
     };
@@ -1852,7 +1880,7 @@ export class AskToolRuntime {
       .limit(limit);
     if (fromId) q = q.eq("from_id", fromId);
     if (toId) q = q.eq("to_id", toId);
-    const { data, error } = await q;
+    const [{ data, error }, counts] = await Promise.all([q, this.relCounts(relType, { from_id: fromId, to_id: toId })]);
     if (error) throw new Error(error.message);
 
     const rows = (data ?? []) as {
@@ -1895,7 +1923,7 @@ export class AskToolRuntime {
       id ? metaById.get(id) ?? { id } : { id: null, global_id: globalId ?? null, in_aim: false };
     const relatingKey = (r: (typeof rows)[number]) =>
       r.container_global_id ?? r.parent_global_id ?? r.type_global_id ?? r.group_global_id ?? r.document_key ?? null;
-    return rows.map((r) => ({
+    const out = rows.map((r) => ({
       from: end(r.from_id, r.global_id),
       to: isClassification
         ? r.to_id
@@ -1904,6 +1932,47 @@ export class AskToolRuntime {
         : end(r.to_id, relatingKey(r)),
       ...(r.role !== undefined ? { role: r.role } : {}),
     }));
+    return {
+      ...counts,
+      truncated: counts.total > out.length,
+      ...(counts.only_in_file > 0
+        ? {
+            hint:
+              `${counts.in_aim} riadkov má na oboch stranách uzol AIM, ${counts.only_in_file} je len zo súboru ` +
+              "(in_aim: false, napr. IfcDistributionPort v systéme VZT). Počet prvkov AIM = in_aim.",
+          }
+        : {}),
+      rows: out,
+    };
+  }
+
+  /**
+   * Počty riadkov pohľadu IFC vzťahu pre filter (D-183 K3): total = všetky dvojice zo súboru aj AIM vrstvy,
+   * in_aim = obe strany majú uzol AIM, only_in_file = strana bez uzla (porty VZT v systéme, typ bez uzla...).
+   * Bez nich model rátal členov systému z riadkov a porty ich nafúkli (rel-system-members 44 -> 130).
+   */
+  private async relCounts(
+    relation: string,
+    eqs: Record<string, string>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    applyFilters: (q: any) => any = (q) => q,
+    activeOnly = true
+  ): Promise<{ total: number; in_aim: number; only_in_file: number }> {
+    const supabase = getSupabaseAdmin();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const base = (): any => {
+      let q = supabase.from(relation).select("id", { count: "exact", head: true });
+      if (activeOnly) q = q.is("valid_until", null);
+      q = applyFilters(q);
+      for (const [c, v] of Object.entries(eqs)) if (v) q = q.eq(c, v);
+      return q;
+    };
+    const [all, aim] = await Promise.all([base(), base().not("from_id", "is", null).not("to_id", "is", null)]);
+    if (all.error) throw new Error(all.error.message);
+    if (aim.error) throw new Error(aim.error.message);
+    const total = all.count ?? 0;
+    const inAim = aim.count ?? 0;
+    return { total, in_aim: inAim, only_in_file: Math.max(0, total - inAim) };
   }
 
   private async getSpatialPath(input: Record<string, unknown>) {

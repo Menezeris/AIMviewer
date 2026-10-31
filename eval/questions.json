@@ -1,5 +1,5 @@
 {
-  "note": "Zlatá eval sada pre /api/ask (D-057). Otázky sú overené proti prod datasetu (Polyfunkčný objekt, verifikačný SQL beh 2026-07-11 cez Supabase SQL editor — fakty: 97 dverí, 3 VZT jednotky, 139 vyústok, 0 ventilátorov, 0 ventilov, 89 miestností, 5 podlaží (1NP–5NP), 13 dokumentov, klasifikačný systém Uniformat, budova 'Polyfunkčný objekt'). Polia expect.* vyhodnocuje scripts/eval-ask.ts (answer, sources, trace). verified=false = hodnota ešte neoverená (runner preskakuje; --include-unverified). Regexy case-insensitive. Po ETL reloade dát treba hodnoty preveriť znova (notes nesú verifikačný dopyt).",
+  "note": "Zlatá eval sada pre /api/ask (D-057). Otázky sú overené proti prod datasetu (Polyfunkčný objekt, verifikačný SQL beh 2026-07-11 cez Supabase SQL editor — fakty: 97 dverí, 3 VZT jednotky, 139 vyústok, 0 ventilátorov, 0 ventilov, 89 miestností, 5 podlaží (1NP–5NP), 13 dokumentov, klasifikačný systém Uniformat, budova 'Polyfunkčný objekt'). Polia expect.* vyhodnocuje scripts/eval-ask.ts (answer, sources, trace). verified=false = hodnota ešte neoverená (runner preskakuje; --include-unverified). Regexy case-insensitive. Po ETL reloade dát treba hodnoty preveriť znova (notes nesú verifikačný dopyt). Prevérka 2026-10-31 (po reloade 2026-10-18/19 a D-183 K3): 97 dverí, 139 vyústok, 0 ventilov, 83 miestností, 54 dokumentov, budova SO01, pozemok Parcela 966/1. mcp_only=true = otázka pre tooly MCP konektora (search_all, clash, calibrate_underlay, ifc_*, bcf_*, saved_view, feedback*), ktoré /api/ask nemá; runner ju preskočí, test scripts/eval-score.test.ts to stráži.",
   "questions": [
     {
       "id": "smoke-notool",
@@ -41,9 +41,9 @@
       "id": "counts-spaces",
       "category": "counts",
       "question": "Koľko miestností je v budove?",
-      "expect": { "answer_matches": ["\\b89\\b"] },
+      "expect": { "answer_matches": ["\\b83\\b"] },
       "verified": true,
-      "notes": "Overené: object_type=space = 89."
+      "notes": "Eval 2026-10-31 (OCB evals.yml beh 41218591605), SQL nad prod 2026-10-31: 83 aktívnych space (objects.valid_until is null); 89 platilo pred reloadom ASR 2026-10-18 (50 miestností zaniklo, nové prišli). Pôvodne: object_type=space = 89."
     },
     {
       "id": "counts-floors",
@@ -65,9 +65,9 @@
       "id": "counts-documents",
       "category": "counts",
       "question": "Koľko dokumentov evidujeme?",
-      "expect": { "answer_matches": ["\\b13\\b"] },
+      "expect": { "answer_matches": ["\\b54\\b"] },
       "verified": true,
-      "notes": "Overené: object_type=document = 13."
+      "notes": "Eval 2026-10-31 (OCB evals.yml beh 41218591605), SQL nad prod 2026-10-31: 54 aktívnych document (reload dokumentov 2026-10-19, 65 starých zaniklo). Pôvodne 13."
     },
     {
       "id": "counts-lifts",
@@ -75,7 +75,7 @@
       "question": "Koľko výťahov je v budove?",
       "expect": { "answer_matches": ["\\b2\\b"] },
       "verified": true,
-      "notes": "Overené: 2 prvky (ifc_type ilike %transport% alebo názov s 'výťah'). Ak model poctivo popíše 2 výťahové prvky, prejde."
+      "notes": "Overené: 2 prvky (ifc_type ilike %transport% alebo názov s 'výťah'). Ak model poctivo popíše 2 výťahové prvky, prejde. Eval 2026-10-31 (OCB evals.yml beh 41218591605), SQL nad prod 2026-10-31: nezmenené: 2 = IfcZone \"Výťahová šachta 1/2\" (search_objects query=výťah count 2), IfcTransportElement v AIM 0. Neprešlo, lebo model hľadal len IfcTransportElement (0); očakávanie ostáva, nie je to K3."
     },
     {
       "id": "loc-ref-floor",
@@ -104,8 +104,8 @@
         "answer_matches": ["\\b249\\b"],
         "tools_called": ["search_objects"]
       },
-      "verified": false,
-      "notes": "D-183 K3 krok 2 (#220): rel_contained_in_spatial_structure z kópie VZT v11, potrubie má podlažie zo súboru (predtým 0, výnimka D-049 group-only). Overené SQL nad kópiou: 249 IfcDuctSegment v 2NP (search_objects mode=locate ifc_type=IfcDuctSegment). verified=true až po behu evalu po nasadení migrácie."
+      "verified": true,
+      "notes": "Eval 2026-10-31 (OCB evals.yml beh 41218591605), SQL nad prod 2026-10-31: 249 IfcDuctSegment na 2NP (rel_contained_in_spatial_structure z kópie VZT v11). Beh dal 239: search_objects mode=locate bral len 500 z 526 prvkov bez poradia; opravené stránkovaním (LOCATE_CAP 3000, lib/llm/locate-cap.test.ts)."
     },
     {
       "id": "rel-stair-parts",
@@ -145,19 +145,19 @@
       "category": "location",
       "question": "Ukáž celé priestorové zaradenie prvku DD01.06.03 — od areálu po miestnosť.",
       "expect": {
-        "answer_matches": ["Polyfunkčn", "1NP"],
+        "answer_matches": ["SO01|Polyfunkčn", "1NP"],
         "sources_any_ref": ["DD01.06.03"]
       },
       "verified": true,
-      "notes": "Overené: asset → floor 1NP → building 'Polyfunkčný objekt' → site 'Default'."
+      "notes": "Eval 2026-10-31 (OCB evals.yml beh 41218591605), SQL nad prod 2026-10-31: DD01.06.03 -> podlažie 1NP -> budova SO01 -> pozemok \"Parcela 966/1\" (rel_contained z kópie ASR v79, rel_aggregates). Budova \"Polyfunkčný objekt\" a site \"Default\" zanikli reloadom 2026-10-18."
     },
     {
       "id": "ps-std-isexternal",
       "category": "psets_standard",
       "question": "Koľko dverí je exteriérových (IsExternal)?",
-      "expect": { "answer_matches": ["\\b17\\b"] },
+      "expect": { "answer_matches": ["\\b12\\b"] },
       "verified": true,
-      "notes": "Overené: v_asset_effective, IfcDoor s Pset_DoorCommon.IsExternal=true = 17."
+      "notes": "Eval 2026-10-31 (OCB evals.yml beh 41218591605), SQL nad prod 2026-10-31: 12 IfcDoor s Pset_DoorCommon.IsExternal=true (objects aj v_asset_effective). Pôvodne 17 pred reloadom ASR 2026-10-18."
     },
     {
       "id": "ps-std-isexternal-one",
@@ -233,13 +233,13 @@
     {
       "id": "pc-keyword",
       "category": "psets_custom",
-      "question": "Ktoré prvky majú vo vlastnostiach hodnotu Exteriér_Retail?",
+      "question": "Ktoré prvky majú vo vlastnostiach hodnotu N1.03?",
       "expect": {
-        "answer_matches": ["DD01"],
+        "answer_matches": ["DD01\\.06\\.0[1-3]"],
         "answer_not_matches": ["nenaš|neexist|žiadn"]
       },
       "verified": true,
-      "notes": "FAIL-BY-DESIGN pred D-059: 'Exteriér_Retail' žije v Pset_DoorCommon.Reference exteriérových dverí DD01.*."
+      "notes": "Eval 2026-10-31 (OCB evals.yml beh 41218591605), SQL nad prod 2026-10-31: hodnota Exteriér_Retail po reloade ASR 2026-10-18 v dátach nie je (Pset_DoorCommon.Reference zmizol). Nová custom hodnota: AIM_FireSafety.FireCompartments = \"N1.03\" presne na DD01.06.01, DD01.06.02, DD01.06.03 (a \"N1.03 | N1.10\" na DD01.07.05/06). Cesta: search_everything (fulltext psetov)."
     },
     {
       "id": "fuzzy-diacritics",
@@ -294,9 +294,9 @@
       "id": "rel-system-members",
       "category": "relations",
       "question": "Koľko prvkov patrí do systému Nasávanie?",
-      "expect": { "answer_matches": ["\\b41\\b"] },
+      "expect": { "answer_matches": ["\\b44\\b"] },
       "verified": true,
-      "notes": "Overené: rel_assigns_to_group → systém 'Nasávanie' = 41 členov. Ďalšie: Odvod-3NP 275, Odvod-2NP 275, Prívod-2NP 190, Výfuk 29."
+      "notes": "Eval 2026-10-31 (OCB evals.yml beh 41218591605), SQL nad prod 2026-10-31: 44 prvkov AIM v systéme Nasávanie (staré hrany ETL do 31. 10. aj kópia VZT v11). Pohľad rel_assigns_to_group z kópie (D-183 K3) má 130 riadkov: 44 s uzlom AIM + 86 IfcDistributionPort len zo súboru (from_id null); list_relations a query_view odteraz vracajú in_aim a only_in_file. Pôvodne 41 (pred reloadom 2026-10-18)."
     },
     {
       "id": "rel-actor",
@@ -311,19 +311,19 @@
       "category": "relations",
       "question": "Koľko výskytov má typ PO.02.02?",
       "expect": {
-        "answer_matches": ["\\b299\\b"],
+        "answer_matches": ["\\b322\\b"],
         "sources_any_ref": ["PO.02.02"]
       },
       "verified": true,
-      "notes": "Overené: rel_defines_by_type → typ PO.02.02 = 299 výskytov (najpočetnejší typ)."
+      "notes": "Eval 2026-10-31 (OCB evals.yml beh 41218591605), SQL nad prod 2026-10-31: 322 výskytov PO.02.02 v rel_defines_by_type z kópie VZT v11, rovnako ako ukončené hrany ETL (322), teda nie regresia K3. Pôvodne 299 pred reloadom 2026-10-18."
     },
     {
       "id": "rel-doc-assoc",
       "category": "relations",
       "question": "Ktoré dokumenty sú priradené k prvku DD01.06.03?",
-      "expect": { "answer_matches": ["Pudorys 1NP"] },
+      "expect": { "answer_matches": ["D\\.1\\.1\\.01|Pôdorys 1NP"] },
       "verified": true,
-      "notes": "Overené: rel_associates_document → 'Pudorys 1NP'."
+      "notes": "Eval 2026-10-31 (OCB evals.yml beh 41218591605), SQL nad prod 2026-10-31: hrana pdf_link na starý dokument \"Pudorys 1NP\" je ukončená 2026-10-19 (reload dokumentov). Dnes v_object_documents: D.1.1.01 Pôdorys 1NP (cez podlažie aj miestnosť, z kópie ASR v79), ďalej D.1.2.01, D.1.2.02, D.1.3.02 PBR, SF.02, PENB cez požiarny úsek. get_object include=documents."
     },
     {
       "id": "doc-drawings-of",
@@ -345,17 +345,17 @@
       "id": "agg-sum",
       "category": "aggregation",
       "question": "Aký je celkový prietok vzduchu (AirFlowRate) všetkých vyústok?",
-      "expect": { "answer_matches": ["11[.,]4"] },
+      "expect": { "answer_matches": ["11[.,]59|11[.,]6"] },
       "verified": true,
-      "notes": "Overené: sum Pset_AirTerminalOccurrence.AirFlowRate cez 139 vyústok = 11,43 (m³/s). Vyžaduje aggregate_objects (D-060)."
+      "notes": "Eval 2026-10-31 (OCB evals.yml beh 41218591605), SQL nad prod 2026-10-31: sum Pset_AirTerminalOccurrence.AirFlowRate cez 139 vyústok = 11,594 (m³/s). Pôvodne 11,43 pred reloadom VZT. Vyžaduje aggregate_objects (D-060)."
     },
     {
       "id": "agg-avg",
       "category": "aggregation",
       "question": "Aká je priemerná šírka dverí v budove?",
-      "expect": { "answer_matches": ["1[ ]?000|\\b1\\s?m\\b"] },
+      "expect": { "answer_matches": ["1[\\s\\u00a0]?15[67]|1[.,]1[56]\\d*\\s?m\\b"] },
       "verified": true,
-      "notes": "Overené: avg Qto_DoorBaseQuantities.Width cez 97 dverí = 1000 mm presne."
+      "notes": "Eval 2026-10-31 (OCB evals.yml beh 41218591605), SQL nad prod 2026-10-31: avg Qto_DoorBaseQuantities.Width cez 97 dverí = 1156,6 mm (AIM_Door.LeafWidth priemer 834,8). Pôvodne 1000 mm presne pred reloadom ASR 2026-10-18."
     },
     {
       "id": "agg-groupby",
@@ -596,6 +596,7 @@
     {
       "id": "relations-zone-members",
       "category": "relations",
+      "mcp_only": true,
       "question": "Ktoré miestnosti patria do zóny Technické priestory?",
       "expect": {
         "tools_called": [
@@ -608,6 +609,7 @@
     {
       "id": "relations-system-members",
       "category": "relations",
+      "mcp_only": true,
       "question": "Kto patrí do systému Odvod-2NP? Koľko prvkov to je?",
       "expect": {
         "tools_called": [
@@ -620,6 +622,7 @@
     {
       "id": "relations-port-connections",
       "category": "relations",
+      "mcp_only": true,
       "question": "Ktoré prvky sú cez porty napojené na vyústku VV.02.01.006?",
       "expect": {
         "tools_called": [
@@ -632,6 +635,7 @@
     {
       "id": "view-selection-summary",
       "category": "view",
+      "mcp_only": true,
       "question": "Čo mám označené vo vieweri?",
       "expect": { "tools_called": ["get_viewer_state"] },
       "verified": false,
@@ -672,6 +676,7 @@
     {
       "id": "bcf-topic-selection",
       "category": "bcf",
+      "mcp_only": true,
       "question": "Vyber tento prvok a vytvor BCF tému: potrubie koliduje s nosníkom, priraď projektantovi VZT, priorita vysoká.",
       "expect": { "tools_called": ["bcf_topic"] },
       "verified": false,
@@ -728,6 +733,7 @@
     {
       "id": "materials-insulation-layers",
       "category": "ifc_engine",
+      "mcp_only": true,
       "question": "Ukáž všetky vrstvy izolácie v modeli ASR.",
       "expect": { "tools_called": ["ifc_query"] },
       "verified": false,
@@ -736,6 +742,7 @@
     {
       "id": "materials-assembly-layers",
       "category": "ifc_engine",
+      "mcp_only": true,
       "question": "Aké vrstvy má skladba FS01.10?",
       "expect": { "tools_called": ["ifc_get"] },
       "verified": false,
@@ -744,6 +751,7 @@
     {
       "id": "model-revision-current",
       "category": "ifc_engine",
+      "mcp_only": true,
       "question": "Je toto najnovšia verzia VZT? Kedy a čím sa naposledy zmenila ASR?",
       "expect": { "tools_called": ["ifc_models"] },
       "verified": false,
@@ -752,6 +760,7 @@
     {
       "id": "model-crs",
       "category": "ifc_engine",
+      "mcp_only": true,
       "question": "Aký súradnicový systém používa model ASR?",
       "expect": { "tools_called": ["ifc_models"] },
       "verified": false,
@@ -760,6 +769,7 @@
     {
       "id": "network-ahu-for-room",
       "category": "relations",
+      "mcp_only": true,
       "question": "Ktorá vzduchotechnická jednotka zásobuje miestnosť 3.02 a ktorá požiarna klapka ju uzatvára?",
       "expect": { "tools_called": ["ifc_relations"] },
       "verified": false,
@@ -768,6 +778,7 @@
     {
       "id": "ifc-measure-distance",
       "category": "location",
+      "mcp_only": true,
       "question": "Aká je vzdialenosť medzi stenou SN07.04.0005 a potrubím PO.02?",
       "expect": { "tools_called": ["ifc_measure"], "answer_matches": ["1[,.]43"] },
       "verified": false,
@@ -824,6 +835,7 @@
     {
       "id": "quick-check-door-width",
       "category": "count",
+      "mcp_only": true,
       "question": "Koľko dverí v ASR má OverallWidth menej ako 900 mm? Ofarbi ich na červeno.",
       "expect": { "tools_called": ["ifc_query", "style_in_3d"] },
       "verified": false,
@@ -832,6 +844,7 @@
     {
       "id": "quick-check-room-width",
       "category": "location",
+      "mcp_only": true,
       "question": "Aká široká je miestnosť 1.10?",
       "expect": { "tools_called": ["ifc_measure"], "answer_matches": ["3[,.]2"] },
       "verified": false,
@@ -840,6 +853,7 @@
     {
       "id": "door-clear-width-geometry",
       "category": "count",
+      "mcp_only": true,
       "question": "Skontroluj všetky dvere na 1NP na svetlú šírku aspoň 800 mm a nevyhovujúce ofarbi na červeno.",
       "expect": { "tools_called": ["ifc_query", "ifc_measure", "style_in_3d"], "answer_matches": ["\\b12\\b"] },
       "verified": false,
@@ -913,13 +927,14 @@
       "id": "air-terminals-count-paged",
       "category": "count",
       "question": "Koľko je v budove vyústiek? Vypíš ich všetky.",
-      "expect": { "tools_called": ["query_view"], "answer_matches": ["\\b139\\b"] },
+      "expect": { "answer_matches": ["\\b139\\b"] },
       "verified": true,
-      "notes": "D-126 (issue #181): query_view(objects, ifc_type=IfcAirTerminal) vráti total=139, truncated=true, next_offset=100; druhá strana offset=100 dá zvyšných 39. 139 z konektora 2026-10-21 (aggregate_objects s filters). Eval 2026-10-21: 139 overené; agent šiel cez search_objects (10 volaní), 100 riadkov sa nezmestilo do výsledku a next_offset preskakoval riadky - opravené fitPage."
+      "notes": "D-126 (issue #181): query_view(objects, ifc_type=IfcAirTerminal) vráti total=139, truncated=true, next_offset=100; druhá strana offset=100 dá zvyšných 39. 139 z konektora 2026-10-21 (aggregate_objects s filters). Eval 2026-10-21: 139 overené; agent šiel cez search_objects (10 volaní), 100 riadkov sa nezmestilo do výsledku a next_offset preskakoval riadky - opravené fitPage. Eval 2026-10-31 (OCB evals.yml beh 41218591605), SQL nad prod 2026-10-31: 139 nezmenené; tools_called query_view zrušené: model smie počet dať search_objects count a zoznam stránkovať search_objects aj query_view (stránkovanie testuje mcp-tasks.json N2)."
     },
     {
       "id": "rentable-spaces",
       "category": "search",
+      "mcp_only": true,
       "question": "Ukáž mi prenajímateľné priestory.",
       "expect": { "tools_called": ["search_all", "show_in_3d"] },
       "verified": false,
@@ -928,6 +943,7 @@
     {
       "id": "lobby-space",
       "category": "search",
+      "mcp_only": true,
       "question": "Zvýrazni mi lobby.",
       "expect": { "tools_called": ["search_all", "show_in_3d"], "answer_matches": ["1\\.01"] },
       "verified": true,
@@ -936,13 +952,11 @@
     {
       "id": "closed-unverified-issues",
       "category": "feedback",
+      "mcp_only": true,
       "question": "Ktoré issues sme už dokončili, ale ešte nie sú skontrolované?",
       "expect": { "tools_called": ["feedback_status"] },
       "verified": false,
       "notes": "D-126 (issue #171): feedback_status(state=closed, verified=false). Len MCP s FEEDBACK_GITHUB_TOKEN. Eval 2026-10-21: agent vzal 'issues' ako BCF témy (bcf_topic_list status=resolved); otázka je dvojznačná."
-    },
-    {
-      "notes": "D-126 (issue #171): feedback_status(state=closed, verified=false). Len MCP s FEEDBACK_GITHUB_TOKEN."
     },
     {
       "id": "select-highlight-fire-compartment",
@@ -995,6 +1009,7 @@
     {
       "id": "calibrate-underlay-1np",
       "category": "viewer",
+      "mcp_only": true,
       "question": "Skalibruj podklad D.1.1.01 Pôdorys 1NP pod model a ukáž mi odchýlku.",
       "expect": { "tools_called": ["calibrate_underlay"] },
       "verified": false,
@@ -1003,6 +1018,7 @@
     {
       "id": "calibrate-underlay-strecha-mierka",
       "category": "viewer",
+      "mcp_only": true,
       "question": "Skalibruj pôdorys strechy D.1.1.04 pod model a povedz, či sedí mierka.",
       "expect": { "tools_called": ["calibrate_underlay"] },
       "verified": false,
@@ -1011,6 +1027,7 @@
     {
       "id": "calibrate-underlay-rez-a",
       "category": "viewer",
+      "mcp_only": true,
       "question": "Skontroluj, ako presne sedí rez A na model, rovina rezu je X = 47,42 m.",
       "expect": { "tools_called": ["calibrate_underlay"] },
       "verified": false,
@@ -1043,6 +1060,7 @@
     {
       "id": "view-tab-section-and-plan",
       "category": "viewer",
+      "mcp_only": true,
       "question": "Vytvor záložku so zvislým rezom cez schodisko a ďalšiu s pôdorysom.",
       "expect": { "tools_called": ["set_section", "saved_view", "set_view_mode"] },
       "verified": false,
@@ -1052,9 +1070,9 @@
       "id": "view-3d-and-plan-no-underlay",
       "category": "viewer",
       "question": "Rozdeľ viewer, 3D a pôdorys 1NP naraz na jednej obrazovke.",
-      "expect": { "tools_called": ["set_section", "set_view_mode"] },
+      "expect": { "tools_called": ["set_view_mode"] },
       "verified": false,
-      "notes": "D-136 (issue #210): pôdorys bez kalibrovaného podkladu = set_section(action=set, floor=1NP) + set_view_mode(panels={drawing: 'open'}); s podkladom ide aj set_view_mode(mode=split, floor=1NP). Overí sa až s viewerom s fork patchom D-136."
+      "notes": "Eval 2026-10-31 (OCB evals.yml beh 41218591605), SQL nad prod 2026-10-31: 1NP má v prod kalibrovaný podklad (D.1.1.01 Pôdorys 1NP má _georef, 15 podkladov), preto je správna cesta set_view_mode(mode=split, floor=1NP) bez set_section; id ostáva kvôli histórii. Bez podkladu by šlo set_section(floor=1NP) + panels drawing (D-136, issue #210)."
     },
     {
       "id": "style-overlay-path-on-top",
@@ -1091,6 +1109,7 @@
     {
       "id": "feedback-triage-standard",
       "category": "feedback",
+      "mcp_only": true,
       "question": "Zapíš pripomienku: opis toolu get_object má preklep v slove 'vlastnosti'. Hneď spusti session.",
       "expect": { "tools_called": ["feedback"] },
       "verified": false,
@@ -1107,6 +1126,7 @@
     {
       "id": "escape-route-line",
       "category": "viewer",
+      "mcp_only": true,
       "question": "Ukáž mi únikovú cestu z miestnosti 4.01 vo vieweri ako čiaru.",
       "expect": { "tools_called": ["ifc_measure"] },
       "verified": false,
@@ -1139,6 +1159,7 @@
     {
       "id": "measure-door-lining-faces",
       "category": "location",
+      "mcp_only": true,
       "question": "Zmeraj šírku dverí DD02.05.04 medzi vnútornými lícami zárubne a ukáž len túto jednu kótu.",
       "expect": { "tools_called": ["ifc_measure"], "answer_matches": ["0[,.]8"] },
       "verified": false,
@@ -1163,6 +1184,7 @@
     {
       "id": "clear-measure-dimensions",
       "category": "viewer",
+      "mcp_only": true,
       "question": "Zmaž kóty, ktoré si mi nakreslil vo vieweri.",
       "expect": { "tools_called": ["ifc_measure"] },
       "verified": false,
@@ -1171,6 +1193,7 @@
     {
       "id": "bcf-locate-region",
       "category": "bcf",
+      "mcp_only": true,
       "question": "Ktorých prvkov v modeli sa týka pripomienka #1 na výkrese? Ukáž mi ich.",
       "expect": { "tools_called": ["bcf_topic"] },
       "verified": false,
@@ -1179,6 +1202,7 @@
     {
       "id": "bcf-list-entity-floor",
       "category": "bcf",
+      "mcp_only": true,
       "question": "Aké pripomienky sú otvorené na 1NP?",
       "expect": { "tools_called": ["bcf_topic_list"] },
       "verified": false,
@@ -1219,6 +1243,7 @@
     {
       "id": "clash-vzt-nosne",
       "category": "data",
+      "mcp_only": true,
       "question": "Kde sa VZT križuje s nosnými konštrukciami?",
       "expect": { "tools_called": ["clash"] },
       "verified": false,
@@ -1227,6 +1252,7 @@
     {
       "id": "clash-zoskup-podlazie",
       "category": "data",
+      "mcp_only": true,
       "question": "Spusti kolízie VZT x ASR s odstupom 50 mm a zoskup ich podľa podlaží.",
       "expect": { "tools_called": ["clash"] },
       "verified": false,
@@ -1235,6 +1261,7 @@
     {
       "id": "clash-prva-skupina-3d",
       "category": "viewer",
+      "mcp_only": true,
       "question": "Ukáž v 3D prvú skupinu kolízií VZT s nosnými konštrukciami, VZT oranžovo a konštrukcie modro.",
       "expect": { "tools_called": ["clash", "style_in_3d"] },
       "verified": false,
@@ -1243,6 +1270,7 @@
     {
       "id": "view-save-from-viewer",
       "category": "viewer",
+      "mcp_only": true,
       "question": "Ulož aktuálny pohľad ako Pôdorys 1NP.",
       "expect": { "tools_called": ["saved_view"] },
       "verified": false,
@@ -1259,6 +1287,7 @@
     {
       "id": "clash-uloz-test",
       "category": "data",
+      "mcp_only": true,
       "question": "Ulož test kolízií 'Potrubie x betón 2NP': vzduchovody a potrubie VZT proti stenám a doskám ASR na 2NP, tvrdé kolízie.",
       "expect": { "tools_called": ["clash"] },
       "verified": false,
@@ -1267,6 +1296,7 @@
     {
       "id": "clash-porovnaj-behy",
       "category": "data",
+      "mcp_only": true,
       "question": "Porovnaj posledný beh testu VZT-NOSNE s predošlým. Čo sa vyriešilo?",
       "expect": { "tools_called": ["clash"] },
       "verified": false,
@@ -1275,6 +1305,7 @@
     {
       "id": "clash-stav-kolizie",
       "category": "data",
+      "mcp_only": true,
       "question": "Označ prvú skupinu kolízií VZT x nosné konštrukcie ako vyriešenú.",
       "expect": { "tools_called": ["clash"] },
       "verified": false,
@@ -1283,6 +1314,7 @@
     {
       "id": "clash-zaloz-bcf",
       "category": "data",
+      "mcp_only": true,
       "question": "Založ BCF tému pre najväčšiu skupinu kolízií VZT s nosnými konštrukciami.",
       "expect": { "tools_called": ["clash"] },
       "verified": false,
@@ -1291,6 +1323,7 @@
     {
       "id": "podklady-zapni-1np",
       "category": "data",
+      "mcp_only": true,
       "question": "Zapni v 3D podklad 1NP ASR a ostatné podklady vypni.",
       "expect": { "tools_called": ["calibrate_underlay"] },
       "verified": false,
@@ -1299,6 +1332,7 @@
     {
       "id": "podklady-priehladnost",
       "category": "data",
+      "mcp_only": true,
       "question": "Nastav priehľadnosť podkladu 2NP na 30 % a ulož to.",
       "expect": { "tools_called": ["calibrate_underlay"] },
       "verified": false,
@@ -1331,6 +1365,7 @@
     {
       "id": "measure-two-widths-keep",
       "category": "data",
+      "mcp_only": true,
       "question": "Ukáž na dverách DD04.07.02 naraz dve kóty šírky: svetlú medzi zárubňami a celkovú so zárubňou.",
       "expect": { "tools_called": ["ifc_measure"] },
       "verified": false,
@@ -1385,6 +1420,7 @@
     {
       "id": "clash-matrix",
       "category": "viewer",
+      "mcp_only": true,
       "question": "Koľko kolízií je medzi ASR a VZT a koľko z nich je otvorených?",
       "expect": { "tools_called": ["clash"] },
       "verified": false,
@@ -1409,6 +1445,7 @@
     {
       "id": "underlay-remove-restore",
       "category": "viewer",
+      "mcp_only": true,
       "question": "Zmaž kalibráciu podkladu strechy D.1.1.04 a vráť ju, ak sa mi to nepáči.",
       "expect": { "tools_called": ["calibrate_underlay"] },
       "verified": false,
@@ -1417,6 +1454,7 @@
     {
       "id": "section-underlay-from-plan",
       "category": "viewer",
+      "mcp_only": true,
       "question": "Skús kalibrovať rez A (D.1.1.05) pod model, zatiaľ len náhľad.",
       "expect": { "tools_called": ["calibrate_underlay"] },
       "verified": false,
@@ -1425,6 +1463,7 @@
     {
       "id": "underlay-plan-without-labels",
       "category": "viewer",
+      "mcp_only": true,
       "question": "Skús kalibrovať pôdorys základov D.1.2.01 pod model, len náhľad.",
       "expect": { "tools_called": ["calibrate_underlay"] },
       "verified": false,
@@ -1433,6 +1472,7 @@
     {
       "id": "underlay-sheet-region",
       "category": "viewer",
+      "mcp_only": true,
       "question": "Na hárku SF.02 Zónovanie nakalibruj náhľad pôdorysu 1NP.",
       "expect": { "tools_called": ["calibrate_underlay"] },
       "verified": false,
