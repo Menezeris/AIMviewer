@@ -1,4 +1,5 @@
 import { documentWrite, parseDocumentReferenceDto } from "./documents";
+import type { Markup } from "./markup";
 import type { BcfTopicRow, TopicDocumentWrite, TopicStatus } from "./store";
 import { BcfInputError, DEFAULT_AUTHOR, isClaude, normalizeStatus, summary, type BcfDeps } from "./tools";
 import { viewpointFromDto } from "./viewpoint";
@@ -24,7 +25,7 @@ function statusOf(v: string | null): TopicStatus {
 }
 
 /** Odkaz z viewera -> riadok; adresa `/drawing/<id>` sa overí voči dokumentom AIM, inak ostane ako url. */
-async function documentRow(deps: BcfDeps, topicId: string, ref: { url: string; description: string | null }, author: string) {
+async function documentRow(deps: BcfDeps, topicId: string, ref: { url: string; description: string | null; markup: Markup[] }, author: string) {
   let origin = "https://aim.invalid";
   try {
     origin = new URL(ref.url, origin).origin;
@@ -35,7 +36,7 @@ async function documentRow(deps: BcfDeps, topicId: string, ref: { url: string; d
   const info = parsed.document_id ? await deps.store.findDocument(parsed.document_id) : null;
   if (info) {
     // Opis z viewera je len hlavička (názov, strana, oblasť); kód a revíziu doplní AIM.
-    return documentWrite(info, { page: parsed.page ?? undefined, region: parsed.region ?? undefined }, topicId, author);
+    return documentWrite(info, { page: parsed.page ?? undefined, region: parsed.region ?? undefined, markup: ref.markup }, topicId, author);
   }
   const row: TopicDocumentWrite = {
     task_id: topicId,

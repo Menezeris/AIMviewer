@@ -9,6 +9,7 @@ import {
 } from "./documents";
 import type { BcfComment, BcfTopicRow, BcfTopicWrite, TopicDocumentRow, TopicDocumentWrite, TopicStatus } from "./store";
 import { isClaude, maybeStartSession, normalizeStatus, type BcfDeps } from "./tools";
+import { parseMarkup } from "./markup";
 import { overviewViewpoint, pickCalibration, regionFrame, regionViewpoint } from "./region-model";
 import type { SnapshotRequest } from "./snapshot";
 import { snapshotPlan } from "./snapshot-plan";
@@ -169,7 +170,9 @@ async function documentViewpoints(deps: BcfDeps, docs: TopicDocumentRow[], curre
 
 async function documentSnapshotResponse(d: TopicDocumentRow, ctx: BcfApiContext): Promise<BcfApiResponse> {
   if (!ctx.snapshot || !d.document_id || !d.page) return err(404, "Pohľad nemá snímku.");
-  const out = await ctx.snapshot({ document_id: d.document_id, page: d.page, region: d.region, sha256: d.document_sha256 });
+  // Uložené značky zo stĺpca (D-158 krok 7); bez nich požiadavka ostáva ako doteraz.
+  const markup = parseMarkup(d.markup);
+  const out = await ctx.snapshot({ document_id: d.document_id, page: d.page, region: d.region, sha256: d.document_sha256, ...(markup.length ? { markup } : {}) });
   if (!out.ok) return err(out.status, out.message);
   return {
     status: 200,

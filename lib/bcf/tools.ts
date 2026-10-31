@@ -121,7 +121,8 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
       "document = {id_or_ref, page, region, description} pripojí k téme dokument, stranu a oblasť strany (region v % ako " +
       "open_drawing); prvky, ktorých sa týka (aj IfcSpace, podlažie, IfcProject = celý projekt), daj do target_ids_or_refs. " +
       "remove_document = guid odkazu alebo 'all'. from_viewer: uloží témy založené v BCF paneli viewera (aj pripomienky " +
-      "na PDF, get_viewer_state ich ukáže v bcf_local) do AIM s tým istým guid, na pokyn 'ulož moje pripomienky'; guids " +
+      "na PDF, get_viewer_state ich ukáže v bcf_local) do AIM s tým istým guid, na pokyn 'ulož moje pripomienky', aj s ich " +
+      "značkami na strane (markup: obláčik, šípka, text, pin; detail odkazu ich nesie v markup a markup_count); guids " +
       "= len vybrané. locate (guid, document_guid): oblasť strany z odkazu témy prepočíta cez kalibráciu strany (D-133) " +
       "na IFC súradnice a navrhne prvky v oblasti, nadradené priestory a podlažie a 3D pohľad nad oblasťou; bez apply " +
       "len návrh, apply=components|viewpoint|all zapíše (pohľad témy prepíše len replace=true). review_document = guid odkazu " +

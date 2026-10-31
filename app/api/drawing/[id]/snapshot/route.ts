@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { clientIpKey } from "@/lib/api-guard";
+import { MarkupParamError, parseMarkupParam } from "@/lib/bcf/markup";
 import { pngHeaders, snapshotFor } from "@/lib/bcf/snapshot-http";
 import { parseDocRegion } from "@/lib/viewer-ops";
 
 /**
  * Snímka výrezu strany dokumentu (D-158 krok 3): `GET /api/drawing/<id>/snapshot?page=N&region=x_y_w_h`
- * (oblasť v % vľavo hore ako odkaz témy; bez nej celá strana). PNG s rámikom, dlhšia strana
+ * (oblasť v % vľavo hore ako odkaz témy; bez nej celá strana), voliteľne `markup=<JSON pole značiek,
+ * URL-enkódované, do 8 kB>` (D-158 krok 7: obláčik, šípka, text, pin; neuložená pripomienka). PNG s rámikom, dlhšia strana
  * do 1500 px, keš v buckete `documents`. Len čítanie, bez tokenu ako PDF samo; volá ju fork pre
  * neuloženú pripomienku (snímka do lokálneho exportu .bcfzip). CORS otvorený ako BCF API.
  */
@@ -27,8 +29,15 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const raw = q.get("region") ?? undefined;
   const r = parseDocRegion(raw);
   if (raw && !r) return NextResponse.json({ message: "region: x_y_w_h v % strany." }, { status: 400, headers: CORS });
+  let markup;
+  try {
+    markup = parseMarkupParam(q.get("markup"));
+  } catch (e) {
+    if (e instanceof MarkupParamError) return NextResponse.json({ message: e.message }, { status: 400, headers: CORS });
+    throw e;
+  }
   const out = await snapshotFor(
-    { document_id: id, page, region: r ? { x: r.x, y: r.y, width: r.w, height: r.h } : null },
+    { document_id: id, page, region: r ? { x: r.x, y: r.y, width: r.w, height: r.h } : null, markup },
     clientIpKey(req.headers),
   );
   if (!out.ok) {

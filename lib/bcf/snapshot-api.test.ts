@@ -65,6 +65,26 @@ describe("BCF API: snímka výrezu ako pohľad témy (D-158 krok 3)", () => {
     expect(asked).toEqual([{ document_id: DOC_ID, page: 2, region: { x: 10, y: 20, width: 30, height: 40 }, sha256: SHA }]);
   });
 
+  it("uložené značky idú do renderu a GET document_references ich vráti (D-158 krok 7)", async () => {
+    const asked: SnapshotRequest[] = [];
+    const s = setup(async (r) => {
+      asked.push(r);
+      return { ok: true, png: Buffer.from("PNG"), revisionChanged: false };
+    });
+    const cloud = { type: "cloud", points: [{ x: 10, y: 20 }, { x: 40, y: 60 }] };
+    const marked = await s.store.addDocument({ ...s.base, page: 2, region: { x: 8, y: 18, width: 34, height: 44 }, markup: [cloud] as never, document_sha256: SHA });
+    await call(s.ctx, "GET", `${P}/topics/${s.topic.id}/viewpoints/${marked.id}/snapshot`);
+    expect(asked[0].markup).toEqual([cloud]);
+    const refs = (await call(s.ctx, "GET", `${P}/topics/${s.topic.id}/document_references`)).body as Record<string, unknown>[];
+    expect(refs[0].markup).toEqual([cloud]);
+    // Odkaz bez značiek: odpoveď aj požiadavka ako predtým.
+    const plain = await s.store.addDocument({ ...s.base, page: 1, region: null, document_sha256: SHA });
+    await call(s.ctx, "GET", `${P}/topics/${s.topic.id}/viewpoints/${plain.id}/snapshot`);
+    expect("markup" in asked[1]).toBe(false);
+    const again = (await call(s.ctx, "GET", `${P}/topics/${s.topic.id}/document_references`)).body as Record<string, unknown>[];
+    expect(again.filter((r) => "markup" in r)).toHaveLength(1);
+  });
+
   it("3D pohľad témy ostáva prvý; chyba renderu sa vráti so stavom; bez renderu pohľady dokumentov nie sú", async () => {
     const s = setup(async () => ({ ok: false, status: 502, message: "PDF sa nedalo stiahnuť" }));
     s.topic.viewpoint = { guid: "vp-3d", source: "selection" };

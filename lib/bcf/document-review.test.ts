@@ -101,3 +101,13 @@ describe("bcf_topic_list / bcf_topic: pripomienka po novej revízii", () => {
     expect((await run("bcf_topic", { action: "update", guid: "#1", review_document: "x" }, deps({ store }))).isError).toBe(true);
   });
 });
+
+describe("značky po novej revízii (D-158 krok 7, bod 4)", () => {
+  const cloud = { type: "cloud", points: [{ x: 10, y: 10 }, { x: 30, y: 30 }] };
+  it("odkaz so značkami ostáva nezmenený, príznaky ako bez nich", () => {
+    const plain = reviewState(link({ anchor_pages: 2 }), "open", now({ pages: 3 }));
+    const withMarkup = reviewState(link({ anchor_pages: 2, markup: [cloud] as never }), "open", now({ pages: 3 }));
+    expect(withMarkup).toEqual(plain);
+    expect(withMarkup).toMatchObject({ needs_review: true, position_uncertain: true });
+  });
+});

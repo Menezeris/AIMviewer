@@ -1,3 +1,4 @@
+import type { Markup } from "./markup";
 import "server-only";
 
 import { getSupabaseAdmin } from "../supabase/server";
@@ -96,7 +97,8 @@ export interface TopicDocumentRow {
   page: number | null;
   /** Výrez strany v % ({x, y, width, height}, vľavo hore) ako `open_drawing region`; null = celá strana. */
   region: { x: number; y: number; width: number; height: number } | null;
-  markup: unknown[] | null;
+  /** Značky na strane (D-158 krok 7): `{type, points[], text?}` v % strany, null = bez značiek. */
+  markup: Markup[] | null;
   url: string | null;
   description: string | null;
   author: string | null;

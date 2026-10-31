@@ -1,5 +1,6 @@
 import { docRegionInput, parseDocRegion } from "../viewer-ops";
 
+import { parseMarkup, type Markup } from "./markup";
 import { viewrect } from "./snapshot-plan";
 
 import type { BcfStore, DocumentInfo, TopicDocumentRow, TopicDocumentWrite } from "./store";
@@ -61,7 +62,7 @@ export function regionArg(raw: unknown): TopicDocumentRow["region"] {
 /** Riadok odkazu z dokumentu v AIM; strana sa overí voči extrahovaným stranám, ak sú. */
 export function documentWrite(
   info: DocumentInfo,
-  input: { page?: number; region?: unknown; description?: string },
+  input: { page?: number; region?: unknown; description?: string; markup?: unknown },
   taskId: string,
   author: string | null,
 ): TopicDocumentWrite {
@@ -75,6 +76,8 @@ export function documentWrite(
   if (page !== null && info.pages !== null && page > info.pages) {
     throw new TopicDocumentError(`Dokument ${label(info)} má ${info.pages} strán, strana ${page} nie je.`);
   }
+  // Značky patria na konkrétnu stranu; bez strany sa zahodia (rovnako neplatné tvary, nie celá téma).
+  const markup = page !== null ? parseMarkup(input.markup) : [];
   return {
     task_id: taskId,
     document_id: info.id,
@@ -83,7 +86,7 @@ export function documentWrite(
     document_revision: info.revision,
     page,
     region,
-    markup: null,
+    markup: markup.length ? markup : null,
     url: null,
     description: input.description ?? null,
     author,
@@ -132,6 +135,7 @@ export function documentView(d: TopicDocumentRow) {
     revision: d.document_revision,
     page: d.page,
     region: d.region,
+    ...markupView(d.markup),
     description: d.description,
     label: documentLabel(d),
     ...(d.url ? { url: d.url } : {}),
@@ -141,6 +145,12 @@ export function documentView(d: TopicDocumentRow) {
     // Snímka výrezu s rámikom (D-158 krok 3), relatívna adresa hosta; BCF API ju dáva ako snímku pohľadu.
     snapshot_url: snapshotPath(d),
   };
+}
+
+/** Značky odkazu v detaile témy: tvary a počet (bez značiek polia nie sú). */
+function markupView(markup: Markup[] | null): { markup?: Markup[]; markup_count?: number } {
+  const m = parseMarkup(markup);
+  return m.length ? { markup: m, markup_count: m.length } : {};
 }
 
 const regionParam = (r: NonNullable<TopicDocumentRow["region"]>) => [r.x, r.y, r.width, r.height].map((v) => +v.toFixed(2)).join("_");
@@ -175,10 +185,13 @@ export function documentUrl(
 /** BCF API 2.1 DocumentReference GET DTO. */
 export function documentReferenceToDto(d: TopicDocumentRow, origin: string): Record<string, unknown> {
   const head = documentLabel(d);
+  const markup = parseMarkup(d.markup);
   return {
     guid: d.id,
     url: d.url ?? documentUrl(origin, d),
     description: d.description ? `${head}: ${d.description}` : head,
+    // Rozšírenie AIM (D-158 krok 7): tvary značiek; klient, ktorý ho nepozná, ho ignoruje.
+    ...(markup.length ? { markup } : {}),
   };
 }
 
