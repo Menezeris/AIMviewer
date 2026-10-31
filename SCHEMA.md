@@ -294,7 +294,7 @@ create view rel_aggregates as
 --   (rovnaké prvé stĺpce + model, revision, global_id a parent_global_id | type_global_id | group_global_id |
 --   document_key | classification_key; §2.19). rel_assigns_to_actor, rel_member_of a ostatné ostávajú nad `relationships`.
 -- Od D-183 K3 krok 3 ETL grafu hrany týchto šiestich typov do `relationships` nezapisuje (staré `etl*` ostávajú
---   aktívne a nečítané, kým ich neukončí `supabase/pending/20261031190000_end_etl_ifc_edges.sql`).
+--   aktívne a nečítané, kým ich neukončí `supabase/migrations/20261031190000_end_etl_ifc_edges.sql`).
 ```
 
 ### 2.6 Indexy + integrita hrán
@@ -765,7 +765,7 @@ kontajnera a revízie, (2) úplnú kópiu informácií každej revízie bez geom
 - **K3 krok 3 (migrácia `20261031180000_ifc_guid_aliases.sql`):** tabuľka `ifc_guid_aliases` (§2.4) so spätným doplnením
   z mosta nad kópiou aktuálnej revízie (len jednoznačné GUID typu; produkcia 31. 10.: 8 GUID ASR -> 7 `asset_type`, 35
   výskytov), `ifc_guid_node` s aliasom, `rel_defines_by_type` bez mosta. ETL grafu prestal zapisovať hrany šiestich typov
-  z kópie (`etl/manifest.py` `FROM_REVISION_COPY`); ich ukončenie je samostatný krok v `supabase/pending/` (nie migrácia,
+  z kópie (`etl/manifest.py` `FROM_REVISION_COPY`); ich ukončenie je samostatná migrácia `20261031190000` (spustená 31. 10., Samuel: ukončiť;
   na Samuelovo slovo).
 
 ## 4. Konvencia `properties` (D-022)

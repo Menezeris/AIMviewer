@@ -238,7 +238,7 @@ nová revízia VZT, `--base` skončí konfliktom (kód 3): recept sa spustí zno
 `ifc_rev_relationships` (`etl.revision_copy`). Transformácia ich ďalej skladá (dry-run, testy), zapisuje sa len hrana
 AIM vrstvy týchto typov (zdroj nie je `etl*`). Uzly, GUID história, klasifikačné referencie a ostatné typy hrán ostávajú.
 Zlúčené IFC typy s rovnakým typovým kódom (D-033) zapíše ako alias GUID (`ifc_guid_aliases`, zdroj `IFC import:<model>`).
-Staré hrany ETL týchto typov ukončí samostatný krok `supabase/pending/20261031190000_end_etl_ifc_edges.sql`.
+Staré hrany ETL týchto typov ukončí samostatný krok `supabase/migrations/20261031190000_end_etl_ifc_edges.sql`.
 
 **`--model` v `etl.main`:** hrany, GUID história a aliasy dostanú zdroj modelu (`etl:ASR`,
 `IFC import:ASR`); čo beh nevydal (zmazaný, presunutý, premenovaný prvok), sa uzavrie.
