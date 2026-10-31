@@ -32,9 +32,12 @@ const rows = (over: Partial<PlanRows> = {}): PlanRows => ({
     ["S-V1", "VZT"],
   ]),
   docLinks: [
-    { from_id: "o-wall", to_id: "r3", source: "ifc:ASR v79", global_id: "WALL" },
+    { from_id: "o-wall", to_id: "r3", source: "ifc:ASR v79", global_id: "WALL", model: "ASR", document_key: "IfcDocumentReference:page=3" },
+    { from_id: "o-space", to_id: "r3", source: "ifc:ASR v79", global_id: "SPACE", model: "ASR", document_key: "IfcDocumentReference:page=3" },
+    { from_id: "o-wall", to_id: "d1", source: "ifc:ASR v79", global_id: "WALL", model: "ASR", document_key: "IfcDocumentInformation:D.1.1.09" },
+    { from_id: "o-wall", to_id: "r3", source: "doc_upload (D-036)", global_id: null },
     { from_id: "o-duct", to_id: "d1", source: "pdf_link (E4)", global_id: null },
-    { from_id: "o-wall", to_id: "d2", source: "ifc:ASR v79", global_id: "WALL" },
+    { from_id: "o-wall", to_id: "d2", source: "ifc:ASR v79", global_id: "WALL", model: "ASR", document_key: "IfcDocumentInformation:X" },
     { from_id: "o-orphan", to_id: "d1", source: "pdf_link (E4)", global_id: null },
   ],
   spatialLinks: [{ from_id: "o-duct", to_id: "o-space", role: "inside", source: "derive:spatial_reference" }],
@@ -53,14 +56,38 @@ describe("buildPlan (D-181)", () => {
     expect(p.payloads.map((x) => x.filename)).toEqual(["ASR_v079.ifc", "VZT_v011.ifc", "D-1-1-09.pdf"]);
     expect(p.payloads[0]).toMatchObject({ url: "https://x.supabase.co/storage/v1/object/public/ifc/archive/ASR/v079.ifc.gz", gzip: true, status: "DRAFT", versionID: "79" });
     expect(p.versionID).toBe("2026-10-31_ASR-v079_VZT-v011_D1");
-    expect(p.skipped).toMatchObject({ document_without_file: 1, document_link_document_without_file: 1, document_link_element_not_in_ifc: 1 });
+    expect(p.skipped).toMatchObject({ document_without_file: 1, ifc_document_without_file: 1, document_link_in_ifc_file: 4, document_link_element_not_in_ifc: 1 });
   });
 
-  it("väzby: strana z časti dokumentu, model prvku z kópie revízie, odvodenie s pravidlom a revíziami, podlažia", () => {
+  it("väzby: zo súboru IFC len identita dokumentu, AIM vrstva so stranou, IFC vzťahom, pravidlom a revíziami, podlažia", () => {
     const p = buildPlan(rows(), { createdAt: "2026-10-31T10:00:00Z" });
     expect(p.links).toEqual([
-      { kind: "IsElaboratedBy", from: { payload: "model:ASR", guid: "WALL", objectRef: "ST.01" }, to: { payload: "document:d1", page: 3 }, source: "ifc:ASR v79" },
-      { kind: "IsElaboratedBy", from: { payload: "model:VZT", guid: "DUCT", objectRef: "VZT.01" }, to: { payload: "document:d1", page: null }, source: "pdf_link (E4)" },
+      {
+        kind: "DocumentIsIdenticalTo",
+        from: { payload: "model:ASR", ident: { field: "IfcDocumentReference.Identification", value: "page=3" } },
+        to: { payload: "document:d1", page: 3 },
+        source: "ifc:ASR v79",
+      },
+      {
+        kind: "DocumentIsIdenticalTo",
+        from: { payload: "model:ASR", ident: { field: "IfcDocumentInformation.Identification", value: "D.1.1.09" } },
+        to: { payload: "document:d1", page: null },
+        source: "ifc:ASR v79",
+      },
+      {
+        kind: "IsElaboratedBy",
+        from: { payload: "model:ASR", guid: "WALL", objectRef: "ST.01" },
+        to: { payload: "document:d1", page: 3 },
+        source: "doc_upload (D-036)",
+        ifcRelationship: "IfcRelAssociatesDocument",
+      },
+      {
+        kind: "IsElaboratedBy",
+        from: { payload: "model:VZT", guid: "DUCT", objectRef: "VZT.01" },
+        to: { payload: "document:d1", page: null },
+        source: "pdf_link (E4)",
+        ifcRelationship: "IfcRelAssociatesDocument",
+      },
       {
         kind: "IsReferencedInSpatialStructure",
         from: { payload: "model:VZT", guid: "DUCT", objectRef: "VZT.01" },
@@ -69,12 +96,14 @@ describe("buildPlan (D-181)", () => {
         role: "inside",
         rule: "element_in_space",
         basedOn: "ASR=79;VZT=11",
+        ifcRelationship: "IfcRelReferencedInSpatialStructure",
       },
       {
         kind: "IsIdenticalTo",
         from: { payload: "model:VZT", guid: "S-V1", label: "1NP_VZT" },
         to: { payload: "model:ASR", guid: "S-A1", label: "1NP" },
         source: "ifc_storey_map:name_number",
+        basedOn: "ASR=79;VZT=11",
       },
     ]);
     expect(p.warnings).toEqual([]);

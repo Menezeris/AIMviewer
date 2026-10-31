@@ -10,7 +10,7 @@ import { compareStates, stateFromContainer, stateFromPlan } from "./roundtrip";
 import { parseRdfXml } from "./rdf";
 import { parseXml } from "./xml";
 import { sha256 } from "./sha256";
-import { validateIcdd } from "./validate";
+import { decodeStepString, validateIcdd } from "./validate";
 
 const ONTO_DIR = join(__dirname, "../../public/icdd/ontology");
 const ontologies = Object.fromEntries(ISO_ONTOLOGY_FILES.map((f) => [f, readFileSync(join(ONTO_DIR, f), "utf8")]));
@@ -39,6 +39,8 @@ const ASR = ifc([
   `#1=IFCWALL('${G.wall}',$,'Stena',$,$,$,$,$,$);`,
   `#2=IFCSPACE('${G.space}',$,'1.01',$,$,$,$,$,$,$,$);`,
   `#3=IFCBUILDINGSTOREY('${G.storeyA}',$,'1NP',$,$,$,$,$,.ELEMENT.,0.);`,
+  "#4=IFCDOCUMENTINFORMATION('D.1.1.09','V\\X2\\00FD\\X0\\pis skladieb',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);",
+  "#5=IFCDOCUMENTREFERENCE('D-1-1-09.pdf#page=3','page=3','S1',$,#4);",
 ]);
 const VZT = ifc([
   `#1=IFCDUCTSEGMENT('${G.duct}',$,'Potrubie',$,$,$,$,$,$);`,
@@ -54,7 +56,7 @@ function plan(): IcddPlan {
     description: "Test",
     publisher: { name: "Assetin" },
     aimNamespace: DEFAULT_AIM_NAMESPACE,
-    layers: ["documents-elements", "derived-spatial", "federation"],
+    layers: ["documents-elements", "documents-identity", "derived-spatial", "federation"],
     skipped: {},
     warnings: [],
     payloads: [
@@ -63,10 +65,12 @@ function plan(): IcddPlan {
       { id: "document:D.1.1.09", kind: "document", filename: "D-1-1-09.pdf", name: "D.1.1.09 Výpis skladieb", filetype: "pdf", format: "application/pdf", versionID: "1", sha256: sha256(PDF), url: "x", gzip: false, identification: "D.1.1.09", objectRef: "D-1-1-09" },
     ],
     links: [
-      { kind: "IsElaboratedBy", from: { payload: "model:ASR", guid: G.wall, objectRef: "ST.01" }, to: { payload: "document:D.1.1.09", page: 3 }, source: "ifc:ASR v79" },
+      { kind: "IsElaboratedBy", from: { payload: "model:ASR", guid: G.wall, objectRef: "ST.01" }, to: { payload: "document:D.1.1.09", page: 3 }, source: "doc_upload (D-036)", ifcRelationship: "IfcRelAssociatesDocument" },
       { kind: "IsElaboratedBy", from: { payload: "model:VZT", guid: G.duct }, to: { payload: "document:D.1.1.09" }, source: "pdf_link (E4)" },
-      { kind: "IsReferencedInSpatialStructure", from: { payload: "model:VZT", guid: G.duct }, to: { payload: "model:ASR", guid: G.space }, source: "derive:spatial_reference", role: "inside", rule: "element_in_space", basedOn: "ASR=79;VZT=11" },
-      { kind: "IsIdenticalTo", from: { payload: "model:VZT", guid: G.storeyV }, to: { payload: "model:ASR", guid: G.storeyA }, source: "ifc_storey_map:name_number" },
+      { kind: "IsReferencedInSpatialStructure", from: { payload: "model:VZT", guid: G.duct }, to: { payload: "model:ASR", guid: G.space }, source: "derive:spatial_reference", role: "inside", rule: "element_in_space", basedOn: "ASR=79;VZT=11", ifcRelationship: "IfcRelReferencedInSpatialStructure" },
+      { kind: "IsIdenticalTo", from: { payload: "model:VZT", guid: G.storeyV }, to: { payload: "model:ASR", guid: G.storeyA }, source: "ifc_storey_map:name_number", basedOn: "ASR=79;VZT=11" },
+      { kind: "DocumentIsIdenticalTo", from: { payload: "model:ASR", ident: { field: "IfcDocumentInformation.Identification", value: "D.1.1.09" } }, to: { payload: "document:D.1.1.09" }, source: "ifc:ASR v79" },
+      { kind: "DocumentIsIdenticalTo", from: { payload: "model:ASR", ident: { field: "IfcDocumentReference.Identification", value: "page=3" } }, to: { payload: "document:D.1.1.09", page: 3 }, source: "ifc:ASR v79" },
     ],
   };
 }
@@ -92,7 +96,7 @@ describe("ICDD export (D-181)", () => {
     const report = validateIcdd(build());
     expect(report.issues.filter((i) => i.level === "error")).toEqual([]);
     expect(report.ok).toBe(true);
-    expect(report.stats).toMatchObject({ documents: 3, linksets: 3, links: 4 });
+    expect(report.stats).toMatchObject({ documents: 3, linksets: 4, links: 6 });
   });
 
   it("má štruktúru Part 1: index, ontológie, payloady a linksety", () => {
@@ -107,6 +111,7 @@ describe("ICDD export (D-181)", () => {
       "Payload documents/VZT_v011.ifc",
       "Payload triples/derived-spatial.rdf",
       "Payload triples/documents-elements.rdf",
+      "Payload triples/documents-identity.rdf",
       "Payload triples/federation.rdf",
       "index.rdf",
     ]);
@@ -218,7 +223,7 @@ describe("ICDD roundtrip (export -> import -> rovnaký stav)", () => {
     const fromZip = stateFromContainer(report.contents!, DEFAULT_AIM_NAMESPACE);
     const diff = compareStates(fromZip, stateFromPlan(plan()));
     expect(diff.same).toBe(true);
-    expect(diff.counts).toEqual({ containerLinks: 4, aimLinks: 4, payloads: 3 });
+    expect(diff.counts).toEqual({ containerLinks: 6, aimLinks: 6, payloads: 3 });
     expect(fromZip.versionID).toBe("2026-10-31_ASR-v079_VZT-v011_D1");
   });
 
@@ -254,13 +259,42 @@ describe("sha256", () => {
   });
 });
 
-describe("ICDD súbory navyše: IFCX overlay a xlsx výpis (D-181 bod 9)", () => {
-  const withExtras = (): IcddPlan => ({ ...plan(), extras: ["ifcx", "xlsx"] });
+describe("ICDD identita dokumentov a pôvod väzieb (D-181 bod 3)", () => {
+  it("identita IfcDocumentInformation / IfcDocumentReference <-> PDF ako els:IsIdenticalTo s Identification", () => {
+    const ls = buildLinksets(plan())["documents-identity"];
+    expect(ls).toContain("ExtendedLinkset#IsIdenticalTo");
+    expect(ls).toContain("<ls:identifierField>IfcDocumentInformation.Identification</ls:identifierField>");
+    expect(ls).toContain("<ls:identifier>page=3</ls:identifier>");
+  });
 
-  it("pribalí aim-layer.ifcx a aim-layer.xlsx, kontrola aj roundtrip prejdú", () => {
+  it("Identification, ktorá v pribalenom IFC nie je, kontrolu zhodí", () => {
+    const z = mutate(build(), (f) => {
+      const ls = strFromU8(f["Payload triples/documents-identity.rdf"]).replace("<ls:identifier>D.1.1.09</ls:identifier>", "<ls:identifier>D.9.9.99</ls:identifier>");
+      f["Payload triples/documents-identity.rdf"] = strToU8(ls);
+    });
+    expect(codes(z)).toContain("link_ifc_document");
+  });
+
+  it("väzba nesie IFC vzťah, aim.rdf odkazuje na jeho definíciu v IFC 4.3", () => {
+    expect(buildLinksets(plan())["derived-spatial"]).toContain("<aim:ifcRelationship>IfcRelReferencedInSpatialStructure</aim:ifcRelationship>");
+    const onto = strFromU8(unzipSync(build())["Ontology resources/aim.rdf"]);
+    expect(onto).toContain("IFC4_3/HTML/lexical/IfcRelAssociatesDocument.htm");
+    expect(onto).toContain("IFC4_3/HTML/lexical/IfcRelReferencedInSpatialStructure.htm");
+  });
+
+  it("STEP reťazce sa dekódujú (\\X2\\, '')", () => {
+    expect(decodeStepString("V\\X2\\00FD\\X0\\pis O''Neil")).toBe("Výpis O'Neil");
+  });
+});
+
+describe("ICDD xlsx výpis (D-181 bod 9)", () => {
+  const withExtras = (): IcddPlan => ({ ...plan(), extras: ["xlsx"] });
+
+  it("pribalí aim-layer.xlsx, kontrola aj roundtrip prejdú, IFCX nie je", () => {
     const zip = build(withExtras());
     const files = unzipSync(zip);
-    expect(Object.keys(files)).toEqual(expect.arrayContaining(["Payload documents/aim-layer.ifcx", "Payload documents/aim-layer.xlsx"]));
+    expect(Object.keys(files)).toContain("Payload documents/aim-layer.xlsx");
+    expect(Object.keys(files).some((f) => f.endsWith(".ifcx"))).toBe(false);
     const report = validateIcdd(zip);
     expect(report.issues.filter((i) => i.level === "error")).toEqual([]);
     const diff = compareStates(stateFromContainer(report.contents!, DEFAULT_AIM_NAMESPACE), stateFromPlan(withExtras()));
@@ -268,38 +302,13 @@ describe("ICDD súbory navyše: IFCX overlay a xlsx výpis (D-181 bod 9)", () =>
     expect(sha256(build(withExtras()))).toBe(sha256(zip));
   });
 
-  it("IFCX: uzol na GlobalId, väzby pod aim:: a cesty sú GlobalId pribalených IFC", () => {
-    const x = JSON.parse(strFromU8(unzipSync(build(withExtras()))["Payload documents/aim-layer.ifcx"]));
-    expect(x.header.ifcxVersion).toBe("ifcx_alpha");
-    const duct = x.data.find((n: { path: string }) => n.path === G.duct);
-    expect(duct.attributes["aim::modelFile"]).toBe("VZT_v011.ifc");
-    expect(duct.attributes["aim::referencedInSpatialStructure"]).toEqual([
-      { path: G.space, file: "ASR_v079.ifc", source: "derive:spatial_reference", role: "inside", rule: "element_in_space", basedOn: "ASR=79;VZT=11" },
-    ]);
-    expect(duct.attributes["aim::documents"]).toEqual([{ file: "D-1-1-09.pdf", source: "pdf_link (E4)" }]);
-  });
-
-  it("IFCX, ktorý nesúhlasí s linksetmi, kontrolu zhodí", () => {
-    const z = mutate(build(withExtras()), (f) => {
-      const x = JSON.parse(strFromU8(f["Payload documents/aim-layer.ifcx"]));
-      x.data[0].attributes = {};
-      x.data.push({ path: "0000000000000000000000", attributes: {} });
-      const data = strToU8(JSON.stringify(x));
-      const idx = strFromU8(f["index.rdf"]).replace(sha256(f["Payload documents/aim-layer.ifcx"]), sha256(data));
-      f["Payload documents/aim-layer.ifcx"] = data;
-      f["index.rdf"] = strToU8(idx);
-    });
-    expect(codes(z)).toEqual(expect.arrayContaining(["ifcx_links", "ifcx_path"]));
-  });
-
   it("xlsx: platný SpreadsheetML, hárok súborov a hárok na vrstvu s riadkami väzieb", () => {
     const x = unzipSync(unzipSync(build(withExtras()))["Payload documents/aim-layer.xlsx"]);
-    expect(Object.keys(x)).toEqual(expect.arrayContaining(["[Content_Types].xml", "xl/workbook.xml", "xl/worksheets/sheet4.xml"]));
     const wb = parseXml(strFromU8(x["xl/workbook.xml"]));
     const names = (wb.children.find((c) => typeof c !== "string" && c.name === "sheets") as { children: { attrs: Record<string, string> }[] }).children.map((c) => c.attrs.name);
-    expect(names).toEqual(["files", "documents-elements", "derived-spatial", "federation"]);
+    expect(names).toEqual(["files", "documents-elements", "documents-identity", "derived-spatial", "federation"]);
     const rows = (n: number) => (strFromU8(x[`xl/worksheets/sheet${n}.xml`]).match(/<row /g) ?? []).length;
-    expect([rows(1), rows(2), rows(3), rows(4)]).toEqual([4, 3, 2, 2]);
-    expect(strFromU8(x["xl/worksheets/sheet3.xml"])).toContain(G.space);
+    expect([rows(1), rows(2), rows(3), rows(4), rows(5)]).toEqual([4, 3, 3, 2, 2]);
+    expect(strFromU8(x["xl/worksheets/sheet3.xml"])).toContain("IfcDocumentReference.Identification=page=3");
   });
 });

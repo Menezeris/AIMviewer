@@ -874,10 +874,10 @@ ekvivalentu — ak existuje, prevziať názov aj enum doslovne.
   odkazy tém na dokumenty a ich revíziu (`model_task_documents`, `documents.file_sha256`,
   `document_pages.page_size`, D-158; BCF DocumentReference, IFC hash súboru ani veľkosť strany nenesie).
 Pri exporte ich IFC nenesie → ICDD linksety (D-015), do budúcna IFCX layer komponenty.
-Export ICDD (D-181): väzby AIM idú do linksetov ako `els:IsElaboratedBy` (dokument a strana k prvku), `els:IsIdenticalTo`
-(podlažia naprieč modelmi) a deklarovaná extenzia `aim:IsReferencedInSpatialStructure` (podtrieda `ls:DirectedBinaryLink`,
+Export ICDD (D-181): do linksetov ide len AIM vrstva (vzťah v IFC súbore ostáva v ňom): `els:IsElaboratedBy` (dokument a strana
+k prvku z `pdf_link` / `doc_upload`), `els:IsIdenticalTo` (podlažia naprieč modelmi; dokument IFC podľa `Identification` <-> PDF) a deklarovaná extenzia `aim:IsReferencedInSpatialStructure` (podtrieda `ls:DirectedBinaryLink`,
 odvodené prvok -> IfcSpace / IfcSpatialZone) s metadátami hrany `aim:source`, `aim:role`, `aim:derivationRule`,
-`aim:basedOnRevision`; namespace `aim:` je placeholder z `ICDD_AIM_NAMESPACE` (predvolene `urn:x-aim:icdd#`).
+`aim:basedOnRevision`, `aim:ifcRelationship` (IFC vzťah, ktorého sémantiku väzba nesie); namespace `aim:` je placeholder z `ICDD_AIM_NAMESPACE` (predvolene `urn:x-aim:icdd#`).
 
 ---
 

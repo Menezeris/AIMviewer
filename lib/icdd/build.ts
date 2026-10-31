@@ -20,6 +20,8 @@ import {
   ISO,
   ISO_ONTOLOGY_FILES,
   LAYER_OF,
+  IFC_DOCS_URL,
+  IFC_RELATIONSHIP,
   LS,
   type IcddLink,
   type IcddPayload,
@@ -28,7 +30,6 @@ import {
   type LinkEnd,
 } from "./model";
 import { iri, lit, OWL, RDF_TYPE, RDFS, writeRdfXml, XSD, type Term, type Triple } from "./rdf";
-import { buildIfcx, IFCX_FILE } from "./ifcx";
 import { sha256 } from "./sha256";
 import { buildAimXlsx, XLSX_FILE } from "./xlsx";
 
@@ -45,6 +46,7 @@ export const AIM_PROPS = [
   "approval",
   "revisionNo",
   "generatedFrom",
+  "ifcRelationship",
 ] as const;
 
 export const aimTerm = (plan: Pick<IcddPlan, "aimNamespace">, local: string) => `${plan.aimNamespace}${local}`;
@@ -118,9 +120,15 @@ export function buildIndex(plan: IcddPlan): string {
   return writeRdfXml(t, PREFIXES(plan));
 }
 
-/** Kľúč konca linku nezávislý od IRI: súbor + GlobalId / strana. */
-export function endKey(e: { file: string; guid?: string | null; page?: number | null }): string {
-  return `${e.file}|${e.guid ?? ""}|${e.page ?? ""}`;
+/** Kľúč konca linku nezávislý od IRI: súbor + GlobalId (alebo `Trieda.Identification=hodnota`) / strana. */
+export function endKey(e: {
+  file: string;
+  guid?: string | null;
+  ident?: { field: string; value: string } | null;
+  page?: number | null;
+}): string {
+  const id = e.guid ?? (e.ident ? `${e.ident.field}=${e.ident.value}` : "");
+  return `${e.file}|${id}|${e.page ?? ""}`;
 }
 
 /** Jeden linkset na vrstvu: `ls:Link` podtriedy s `ls:LinkElement` a identifikátormi (GlobalId, strana PDF). */
@@ -139,7 +147,7 @@ export function buildLinksets(plan: IcddPlan): Record<Layer, string> {
     const element = (end: LinkEnd): string => {
       const p = payloads.get(end.payload);
       if (!p) throw new Error(`ICDD: link ukazuje na neznámy payload ${end.payload}`);
-      const key = endKey({ file: p.filename, guid: end.guid, page: end.page });
+      const key = endKey({ file: p.filename, guid: end.guid, ident: end.ident, page: end.page });
       const e = `${lsBase}#E-${sha256(key).slice(0, 20)}`;
       add(e, RDF_TYPE, iri(`${LS}LinkElement`));
       add(e, `${LS}hasDocument`, iri(docIri(plan, p)));
@@ -151,6 +159,13 @@ export function buildLinksets(plan: IcddPlan): Record<Layer, string> {
         add(id, RDF_TYPE, iri(`${LS}StringBasedIdentifier`));
         add(id, `${LS}identifier`, lit(end.guid));
         add(id, `${LS}identifierField`, lit("GlobalId"));
+      } else if (end.ident) {
+        // IfcDocumentInformation / IfcDocumentReference nie sú IfcRoot (bez GlobalId): identita cez Identification
+        const id = `${lsBase}#I-${sha256(`ident|${end.ident.field}|${end.ident.value}`).slice(0, 20)}`;
+        add(e, `${LS}hasIdentifier`, iri(id));
+        add(id, RDF_TYPE, iri(`${LS}StringBasedIdentifier`));
+        add(id, `${LS}identifier`, lit(end.ident.value));
+        add(id, `${LS}identifierField`, lit(end.ident.field));
       } else if (end.page) {
         const uri = `${p.filename}#page=${end.page}`;
         const id = `${lsBase}#I-${sha256(`uri|${uri}`).slice(0, 20)}`;
@@ -164,7 +179,7 @@ export function buildLinksets(plan: IcddPlan): Record<Layer, string> {
     const from = element(link.from);
     const to = element(link.to);
     const l = `${lsBase}#L-${sha256(linkKey(plan, link)).slice(0, 24)}`;
-    if (link.kind === "IsIdenticalTo") {
+    if (link.kind === "IsIdenticalTo" || link.kind === "DocumentIsIdenticalTo") {
       add(l, RDF_TYPE, iri(`${ELS}IsIdenticalTo`));
       add(l, `${LS}hasLinkElement`, iri(from));
       add(l, `${LS}hasLinkElement`, iri(to));
@@ -177,6 +192,7 @@ export function buildLinksets(plan: IcddPlan): Record<Layer, string> {
     if (link.role) add(l, aimTerm(plan, "role"), lit(link.role));
     if (link.rule) add(l, aimTerm(plan, "derivationRule"), lit(link.rule));
     if (link.basedOn) add(l, aimTerm(plan, "basedOnRevision"), lit(link.basedOn));
+    if (link.ifcRelationship) add(l, aimTerm(plan, "ifcRelationship"), lit(link.ifcRelationship));
   }
 
   const out = {} as Record<Layer, string>;
@@ -193,10 +209,10 @@ export function buildLinksets(plan: IcddPlan): Record<Layer, string> {
 /** Kanonický kľúč väzby (bez IRI), rovnaký pri exporte aj po importe: základ roundtripu. */
 export function linkKey(plan: Pick<IcddPlan, "payloads">, link: IcddLink): string {
   const file = (id: string) => plan.payloads.find((p) => p.id === id)?.filename ?? `?${id}`;
-  let a = endKey({ file: file(link.from.payload), guid: link.from.guid, page: link.from.page });
-  let b = endKey({ file: file(link.to.payload), guid: link.to.guid, page: link.to.page });
-  if (link.kind === "IsIdenticalTo" && b < a) [a, b] = [b, a];
-  return [link.kind, a, b, link.source ?? "", link.role ?? "", link.rule ?? "", link.basedOn ?? ""].join(" ");
+  let a = endKey({ file: file(link.from.payload), guid: link.from.guid, ident: link.from.ident, page: link.from.page });
+  let b = endKey({ file: file(link.to.payload), guid: link.to.guid, ident: link.to.ident, page: link.to.page });
+  if ((link.kind === "IsIdenticalTo" || link.kind === "DocumentIsIdenticalTo") && b < a) [a, b] = [b, a];
+  return [link.kind, a, b, link.source ?? "", link.role ?? "", link.rule ?? "", link.basedOn ?? "", link.ifcRelationship ?? ""].join(" ");
 }
 
 /** Vlastná ontológia AIM: len to, čo ISO 21597-2 nemá (D-181, plán #350 časť 2.4). */
@@ -217,10 +233,22 @@ export function buildAimOntology(plan: Pick<IcddPlan, "aimNamespace">): string {
     `${RDFS}comment`,
     lit("Element (from) is referenced in a spatial element (to), e.g. IfcSpace or IfcSpatialZone; named after IfcRelReferencedInSpatialStructure."),
   );
+  add(cls, `${RDFS}seeAlso`, iri(`${IFC_DOCS_URL}IfcRelReferencedInSpatialStructure.htm`));
   for (const p of AIM_PROPS) {
     add(`${ns}${p}`, RDF_TYPE, iri(`${OWL}DatatypeProperty`));
     add(`${ns}${p}`, `${RDFS}range`, iri(p === "revisionNo" ? `${XSD}integer` : `${XSD}string`));
   }
+  // Na akej IFC sémantike väzby stoja (D-181 bod 3): IFC vzťah na linku + odkaz na jeho definíciu v IFC 4.3.
+  const rel = `${ns}ifcRelationship`;
+  add(rel, `${RDFS}comment`, lit("Name of the IFC relationship (IFC 4.3 schema) whose semantics the link carries, e.g. IfcRelAssociatesDocument for els:IsElaboratedBy element -> document, IfcRelReferencedInSpatialStructure for aim:IsReferencedInSpatialStructure. Links in the AIM layer exist only where the relationship crosses files or is derived; relationships inside an IFC file stay in that file."));
+  for (const name of [...new Set(Object.values(IFC_RELATIONSHIP))].sort()) add(rel, `${RDFS}seeAlso`, iri(`${IFC_DOCS_URL}${name}.htm`));
+  add(`${ns}source`, `${RDFS}comment`, lit("Origin of the link in AIM (e.g. pdf_link (E4), doc_upload (D-036), derive:spatial_reference, ifc_storey_map:name_number, ifc:ASR v79 for document identity)."));
+  add(`${ns}basedOnRevision`, `${RDFS}comment`, lit("Container revisions the link was created from, e.g. ASR=79;VZT=11."));
+  add(
+    onto,
+    `${RDFS}comment`,
+    lit("Document identity (els:IsIdenticalTo, layer documents-identity) links IfcDocumentInformation / IfcDocumentReference in an IFC payload (ls:identifierField <Class>.Identification) to the document file in the container; element -> document links from IfcRelAssociatesDocument inside IFC files are not duplicated."),
+  );
   return writeRdfXml(t, { aim: ns, ls: LS, owl: OWL, rdfs: RDFS, xsd: XSD });
 }
 
@@ -236,7 +264,7 @@ export interface AssembleInput {
 }
 
 /** Zloží `.icdd` (ZIP). Overí sha256 každého payloadu voči plánu; nesúlad = chyba, nič sa nezloží. */
-/** Súbory navyše z väzieb plánu (IFCX, xlsx) ako payloady s vypočítaným sha256. */
+/** Súbory navyše z väzieb plánu (xlsx výpis) ako payloady s vypočítaným sha256. */
 export function generatedPayloads(plan: IcddPlan): { payload: IcddPayload; data: Uint8Array }[] {
   const out: { payload: IcddPayload; data: Uint8Array }[] = [];
   const gen = (filename: string, format: string, name: string, data: Uint8Array) =>
@@ -257,7 +285,6 @@ export function generatedPayloads(plan: IcddPlan): { payload: IcddPayload; data:
         description: "Generované pri exporte z väzieb linksetov (Payload triples); normatívne sú linksety.",
       },
     });
-  if (plan.extras?.includes("ifcx")) gen(IFCX_FILE, "application/json", "AIM vrstva (IFCX overlay)", new TextEncoder().encode(buildIfcx(plan)));
   if (plan.extras?.includes("xlsx"))
     gen(XLSX_FILE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "AIM vrstva (tabuľka)", buildAimXlsx(plan));
   return out;

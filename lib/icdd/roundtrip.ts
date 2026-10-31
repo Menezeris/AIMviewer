@@ -6,7 +6,7 @@
  */
 
 import { endKey, linkKey } from "./build";
-import { CT, ELS, LS, type IcddPlan, type LinkKind } from "./model";
+import { CT, ELS, LAYER_OF, LS, type IcddPlan, type LinkKind } from "./model";
 import { type Graph, type Term } from "./rdf";
 import type { IcddContents } from "./validate";
 
@@ -60,14 +60,20 @@ export function stateFromContainer(c: IcddContents, aimNamespace: string): Canon
     const file = d?.filename ?? "?";
     const id = g.value(e, `${LS}hasIdentifier`);
     let guid: string | null = null;
+    let ident: { field: string; value: string } | null = null;
     let page: number | null = null;
     if (id) {
-      if (g.types(id).includes(`${LS}StringBasedIdentifier`)) guid = g.str(id, `${LS}identifier`) ?? null;
+      if (g.types(id).includes(`${LS}StringBasedIdentifier`)) {
+        const value = g.str(id, `${LS}identifier`) ?? "";
+        const field = g.str(id, `${LS}identifierField`) ?? "GlobalId";
+        if (field === "GlobalId") guid = value || null;
+        else ident = { field, value };
+      }
       const u = g.str(id, `${LS}uri`);
       const m = u ? /#page=(\d+)$/.exec(decodeURI(u)) : null;
       if (m) page = Number(m[1]);
     }
-    return endKey({ file, guid, page });
+    return endKey({ file, guid, ident, page });
   };
   const str = (s: Term, local: string) => g.str(s, `${aimNamespace}${local}`) ?? "";
 
@@ -77,18 +83,29 @@ export function stateFromContainer(c: IcddContents, aimNamespace: string): Canon
     const subjects = new Map<string, Term>();
     for (const t of triples) if (t.s.t === "iri") subjects.set(t.s.v, t.s);
     for (const s of subjects.values()) {
-      const kind = g.types(s).map((t) => kinds[t]).find(Boolean);
+      let kind = g.types(s).map((t) => kinds[t]).find(Boolean);
       if (!kind) continue;
+      // identita dokumentov a podlaží je tá istá trieda els:IsIdenticalTo, líši sa vrstvou (LAYER_OF)
+      if (kind === "IsIdenticalTo" && layer === LAYER_OF.DocumentIsIdenticalTo) kind = "DocumentIsIdenticalTo";
       let a: string;
       let b: string;
-      if (kind === "IsIdenticalTo") {
+      if (kind === "IsIdenticalTo" || kind === "DocumentIsIdenticalTo") {
         const els = g.values(s, `${LS}hasLinkElement`).map(end).sort();
         [a, b] = [els[0] ?? "", els[1] ?? ""];
       } else {
         a = end(g.value(s, `${LS}hasFromLinkElement`)!);
         b = end(g.value(s, `${LS}hasToLinkElement`)!);
       }
-      const key = [kind, a, b, str(s, "source"), str(s, "role"), str(s, "derivationRule"), str(s, "basedOnRevision")].join(" ");
+      const key = [
+        kind,
+        a,
+        b,
+        str(s, "source"),
+        str(s, "role"),
+        str(s, "derivationRule"),
+        str(s, "basedOnRevision"),
+        str(s, "ifcRelationship"),
+      ].join(" ");
       links.set(key, { key, kind, layer });
     }
   }

@@ -19,7 +19,6 @@ import {
 } from "./model";
 import { checkAgainstOntology, loadOntology, type OntologyIssue } from "./ontology";
 import { Graph, iri, parseRdfXml, RDF_TYPE, type Term, type Triple } from "./rdf";
-import { readIfcx } from "./ifcx";
 import { sha256 } from "./sha256";
 
 export interface ValidationIssue {
@@ -115,6 +114,30 @@ export function ifcGlobalIds(text: string): Set<string> {
   return out;
 }
 
+/** Dekóduje STEP reťazec (ISO 10303-21: '' , \\X2\\...\\X0\\, \\X\\HH, \\S\\c). */
+export function decodeStepString(s: string): string {
+  return s
+    .replace(/''/g, "'")
+    .replace(/\\X2\\([0-9A-Fa-f]+)\\X0\\/g, (_, hex: string) =>
+      String.fromCharCode(...(hex.match(/.{4}/g) ?? []).map((h) => parseInt(h, 16))),
+    )
+    .replace(/\\X\\([0-9A-Fa-f]{2})/g, (_, h: string) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\S\\(.)/g, (_, c: string) => String.fromCharCode(c.charCodeAt(0) + 128))
+    .replace(/\\\\/g, "\\");
+}
+
+const STR = "'((?:[^']|'')*)'";
+const DOC_INFO_RE = new RegExp(`=\\s*IFCDOCUMENTINFORMATION\\s*\\(\\s*${STR}`, "g");
+const DOC_REF_RE = new RegExp(`=\\s*IFCDOCUMENTREFERENCE\\s*\\(\\s*(?:\\$|${STR})\\s*,\\s*${STR}`, "g");
+
+/** `Trieda.Identification=hodnota` všetkých IfcDocumentInformation a IfcDocumentReference v STEP súbore. */
+export function ifcDocumentIdentifications(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of text.matchAll(DOC_INFO_RE)) out.add(`IfcDocumentInformation.Identification=${decodeStepString(m[1])}`);
+  for (const m of text.matchAll(DOC_REF_RE)) out.add(`IfcDocumentReference.Identification=${decodeStepString(m[2])}`);
+  return out;
+}
+
 export function validateIcdd(zip: Uint8Array): ValidationReport {
   const issues: ValidationIssue[] = [];
   const c = readIcdd(zip, issues);
@@ -201,6 +224,17 @@ export function validateIcdd(zip: Uint8Array): ValidationReport {
     }
     return s;
   };
+  const docIdCache = new Map<string, Set<string>>();
+  const docIdsOf = (filename: string): Set<string> | null => {
+    const path = `${DIR_DOCUMENTS}${filename}`;
+    if (!c.files[path]) return null;
+    let s = docIdCache.get(path);
+    if (!s) {
+      s = ifcDocumentIdentifications(dec.decode(c.files[path]));
+      docIdCache.set(path, s);
+    }
+    return s;
+  };
   let links = 0;
   const elements = c.data.allSubjects().filter((s) => c.data.types(s).includes(`${LS}LinkElement`));
   for (const s of c.data.allSubjects()) {
@@ -225,6 +259,9 @@ export function validateIcdd(zip: Uint8Array): ValidationReport {
         if (set && !set.has(v)) {
           if (missingGuid++ < 50) err("link_guid", label(e), `GlobalId ${v} nie je v ${d.filename}`);
         }
+      } else if (v && field && /^IfcDocument(Information|Reference)\.Identification$/.test(field) && d.filename) {
+        const set = docIdsOf(d.filename);
+        if (set && !set.has(`${field}=${v}`)) err("link_ifc_document", label(e), `${field} '${v}' nie je v ${d.filename}`);
       }
     } else if (types.includes(`${LS}URIBasedIdentifier`)) {
       const u = c.data.str(id, `${LS}uri`);
@@ -235,22 +272,6 @@ export function validateIcdd(zip: Uint8Array): ValidationReport {
   }
   if (missingGuid > 50) err("link_guid", "", `a ďalších ${missingGuid - 50} GlobalId mimo IFC`);
 
-  // 5. súbory navyše generované z linksetov (IFCX) musia s nimi súhlasiť
-  for (const d of c.documents.values()) {
-    if (!d.generated || d.filetype !== "ifcx" || !d.filename) continue;
-    const path = `${DIR_DOCUMENTS}${d.filename}`;
-    if (!c.files[path]) continue;
-    try {
-      const x = readIfcx(dec.decode(c.files[path]));
-      if (x.links !== links) err("ifcx_links", path, `IFCX má ${x.links} väzieb, linksety ${links}`);
-      const ifcGuids = new Set<string>();
-      for (const doc of c.documents.values()) if (doc.filetype === "ifc" && doc.filename) for (const g of guidsOf(doc.filename) ?? []) ifcGuids.add(g);
-      const bad = x.paths.filter((p) => !ifcGuids.has(p));
-      if (bad.length) err("ifcx_path", path, `${bad.length} ciest IFCX nie je GlobalId v pribalených IFC (napr. ${bad[0]})`);
-    } catch (e) {
-      err("ifcx_parse", path, String(e instanceof Error ? e.message : e));
-    }
-  }
   if (!c.container) err("index", INDEX_FILE, "bez ct:ContainerDescription");
   else if (!c.index.values(c.container, RDF_TYPE).length) err("index", INDEX_FILE, "kontajner bez typu");
 

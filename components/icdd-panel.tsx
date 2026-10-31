@@ -15,7 +15,7 @@ export function IcddPanel() {
   const [error, setError] = useState<string | null>(null);
   const [exported, setExported] = useState<ExportResult | null>(null);
   const [checked, setChecked] = useState<CheckResult | null>(null);
-  const [extras, setExtras] = useState<Record<Extra, boolean>>({ ifcx: true, xlsx: true });
+  const [extras, setExtras] = useState<Record<Extra, boolean>>({ xlsx: true });
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -53,12 +53,12 @@ export function IcddPanel() {
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <p className="text-muted-foreground">
-            Kontajner s aktuálnymi revíziami modelov IFC, dokumentmi PDF a väzbami AIM (dokument a strana k prvku, odvodené
-            väzby prvok - miestnosť a zóna, podlažia naprieč modelmi). Zloží sa v prehliadači a uloží do PC.
+            Kontajner s aktuálnymi revíziami modelov IFC, dokumentmi PDF a vrstvou AIM (dokument a strana k prvku z AIM,
+            odvodené väzby prvok - miestnosť a zóna, podlažia naprieč modelmi, identita dokumentov IFC a PDF). Väzby, ktoré sú
+            v súbore IFC, ostávajú v ňom. Zloží sa v prehliadači a uloží do PC.
           </p>
           <div className="flex flex-wrap gap-4">
             {([
-              ["ifcx", "AIM vrstva ako IFCX (IFC5, pre iné nástroje)"],
               ["xlsx", "Tabuľka väzieb (xlsx)"],
             ] as [Extra, string][]).map(([k, label]) => (
               <label key={k} className="flex items-center gap-2">

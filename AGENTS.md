@@ -235,8 +235,8 @@ Každá úroveň je riadok v `objects` (líši sa `object_type`). Spatial väzby
 
 ## RDF / ICDD
 RDF nie je interná databáza, len export formát. Kontajner ICDD (ISO 21597) skladá prehliadač podľa plánu z hosta
-(`GET /api/icdd`, `lib/icdd/`, stránka `/icdd`); payload = kontajnery revízií so sha256, linkset = len AIM vrstva a väzba
-dokument-prvok (D-181).
+(`GET /api/icdd`, `lib/icdd/`, stránka `/icdd`); payload = kontajnery revízií so sha256, linkset = len AIM vrstva s pôvodom a IFC vzťahom, väzby z IFC súboru
+ostávajú v ňom (D-181).
 
 ## 3D Viewer — IFClite (D-044)
 Geometria = **ephemerálna v prehliadači** (IFClite WASM, klient-side, IFC súbor neopustí tab).

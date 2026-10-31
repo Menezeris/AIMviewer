@@ -29,21 +29,38 @@ export const INDEX_FILE = "index.rdf";
 export const CONFORMANCE = "ICDD-Part1-Container";
 
 /** Vrstvy linksetu. MVP: prvé tri; ďalšie sú pripravené ako voľba do budúcnosti (Samuel, otázka 2). */
-export const LAYERS = ["documents-elements", "derived-spatial", "federation"] as const;
+export const LAYERS = ["documents-elements", "documents-identity", "derived-spatial", "federation"] as const;
 export const FUTURE_LAYERS = ["georef", "bcf", "ids"] as const;
 export type Layer = (typeof LAYERS)[number];
 
-/** Voliteľné súbory navyše, generované z väzieb plánu (D-181 bod 9): IFCX overlay a xlsx výpis. */
-export const EXTRAS = ["ifcx", "xlsx"] as const;
+/** Voliteľné súbory navyše, generované z väzieb plánu (D-181 bod 9): xlsx výpis linksetov (IFCX vynechané, Samuel 31. 10.). */
+export const EXTRAS = ["xlsx"] as const;
 export type Extra = (typeof EXTRAS)[number];
 
-export type LinkKind = "IsElaboratedBy" | "IsReferencedInSpatialStructure" | "IsIdenticalTo";
+/**
+ * `IsIdenticalTo` = podlažie modelu bez uzla <-> podlažie, ktoré uzol vlastní (federation);
+ * `DocumentIsIdenticalTo` = dokument v IFC (IfcDocumentInformation / IfcDocumentReference) <-> súbor PDF v kontajneri
+ * (documents-identity); obe sa zapisujú ako `els:IsIdenticalTo`, líšia sa vrstvou.
+ */
+export type LinkKind = "IsElaboratedBy" | "IsReferencedInSpatialStructure" | "IsIdenticalTo" | "DocumentIsIdenticalTo";
 
 export const LAYER_OF: Record<LinkKind, Layer> = {
   IsElaboratedBy: "documents-elements",
   IsReferencedInSpatialStructure: "derived-spatial",
   IsIdenticalTo: "federation",
+  DocumentIsIdenticalTo: "documents-identity",
 };
+
+/**
+ * IFC vzťah, na ktorého sémantike väzba stojí (D-181, Samuel 31. 10.: "treba zachovať, že je jasné, na základe čoho
+ * ten linkset funguje"). Zapisuje sa na link ako `aim:ifcRelationship` a do `aim.rdf` ako `rdfs:seeAlso`.
+ */
+export const IFC_RELATIONSHIP: Partial<Record<LinkKind, string>> = {
+  IsElaboratedBy: "IfcRelAssociatesDocument",
+  IsReferencedInSpatialStructure: "IfcRelReferencedInSpatialStructure",
+};
+
+export const IFC_DOCS_URL = "https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/";
 
 /** Súbor v `Payload documents/` (ct:InternalDocument + ct:SecuredDocument). */
 export interface IcddPayload {
@@ -80,6 +97,8 @@ export interface LinkEnd {
   /** `IcddPayload.id`. */
   payload: string;
   guid?: string | null;
+  /** Identifikátor bez GlobalId: `<Trieda>.Identification=<hodnota>` (IfcDocumentInformation, IfcDocumentReference). */
+  ident?: { field: string; value: string } | null;
   page?: number | null;
   objectRef?: string | null;
   label?: string | null;
@@ -96,6 +115,8 @@ export interface IcddLink {
   rule?: string | null;
   /** Revízie, nad ktorými väzba vznikla, kanonicky `ASR=79;VZT=11` (D-183 bod 4). */
   basedOn?: string | null;
+  /** IFC vzťah, ktorého sémantiku väzba nesie (`IFC_RELATIONSHIP`). */
+  ifcRelationship?: string | null;
 }
 
 export interface IcddPlan {

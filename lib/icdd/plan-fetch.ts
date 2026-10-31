@@ -62,9 +62,9 @@ export async function fetchIcddPlan(opts: { layers?: Layer[]; extras?: Extra[]; 
     };
   });
 
-  const docLinks: DocLinkRow[] = layers.includes("documents-elements")
+  const docLinks: DocLinkRow[] = layers.includes("documents-elements") || layers.includes("documents-identity")
     ? await fetchAllPages((from, to) =>
-        sb.from("rel_associates_document").select("id, from_id, to_id, source, global_id").order("id").range(from, to),
+        sb.from("rel_associates_document").select("id, from_id, to_id, source, global_id, model, document_key").order("id").range(from, to),
       )
     : [];
   const spatialLinks: SpatialLinkRow[] = layers.includes("derived-spatial")

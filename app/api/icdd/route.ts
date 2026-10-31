@@ -7,7 +7,7 @@ import { fetchIcddPlan } from "@/lib/icdd/plan-fetch";
 /**
  * Plán kontajnera ICDD (D-181, #350): JSON s indexom (payloady s verejnou URL a sha256) a väzbami AIM.
  * Len čítanie. Kontajner zloží prehliadač (`lib/icdd/client.ts`) a uloží ho do PC; ten istý plán slúži
- * pri importe späť na porovnanie s DB (roundtrip). `?layers=documents-elements,derived-spatial` zúži vrstvy, `?extras=ifcx,xlsx` (predvolene oba, prázdne = žiadny) vyberie súbory navyše.
+ * pri importe späť na porovnanie s DB (roundtrip). `?layers=documents-elements,derived-spatial` zúži vrstvy, `?extras=xlsx` (predvolene xlsx, prázdne = žiadny) vyberie súbory navyše.
  */
 
 const limiter = createRateLimiter({

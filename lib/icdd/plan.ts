@@ -46,6 +46,9 @@ export interface DocLinkRow {
   to_id: string | null;
   source: string | null;
   global_id: string | null;
+  /** Pri väzbe zo súboru IFC: model a kľúč dokumentu v IFC (`IfcDocumentInformation:<Identification>`). */
+  model?: string | null;
+  document_key?: string | null;
 }
 export interface SpatialLinkRow {
   from_id: string;
@@ -206,19 +209,58 @@ export function buildPlan(rows: PlanRows, opts: PlanOptions): IcddPlan {
   };
 
   const links: IcddLink[] = [];
+  // Väzba zo súboru IFC (`source ifc:*`) ostáva len v pribalenom IFC (D-181 bod 3, Samuel 31. 10.: "ide mi len o to,
+  // aby sme neduplikovali zdroj pravdy"); do linksetu ide identita dokumentu IFC <-> PDF (documents-identity).
+  const resolveDoc = (toId: string) => {
+    let target = docPayload.get(toId);
+    let page: number | null = null;
+    const ref = refs.get(toId);
+    if (!target && ref?.referenced_document_id) {
+      target = docPayload.get(ref.referenced_document_id);
+      page = pageOf(ref);
+    }
+    return { target, page };
+  };
+  const isIfc = (r: DocLinkRow) => !!r.source && r.source.startsWith("ifc:");
+  if (layers.includes("documents-identity")) {
+    const seen = new Set<string>();
+    for (const r of rows.docLinks) {
+      if (!isIfc(r) || !r.to_id || !r.document_key || !r.model) continue;
+      const k = `${r.model}|${r.document_key}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      if (current[r.model] === undefined) continue;
+      const cut = r.document_key.indexOf(":");
+      const cls = r.document_key.slice(0, cut);
+      const value = r.document_key.slice(cut + 1);
+      const { target, page } = resolveDoc(r.to_id);
+      if (cut < 0 || !value || !/^IfcDocument(Information|Reference)$/.test(cls)) {
+        skip("ifc_document_key_unknown");
+        continue;
+      }
+      if (!target) {
+        skip("ifc_document_without_file");
+        continue;
+      }
+      links.push({
+        kind: "DocumentIsIdenticalTo",
+        from: { payload: `model:${r.model}`, ident: { field: `${cls}.Identification`, value } },
+        to: { payload: target.id, page },
+        source: `ifc:${r.model} v${current[r.model]}`,
+      });
+    }
+  }
   if (layers.includes("documents-elements")) {
     for (const r of rows.docLinks) {
+      if (isIfc(r)) {
+        skip("document_link_in_ifc_file");
+        continue;
+      }
       if (!r.to_id) {
         skip("document_link_without_document");
         continue;
       }
-      let target = docPayload.get(r.to_id);
-      let page: number | null = null;
-      const ref = refs.get(r.to_id);
-      if (!target && ref?.referenced_document_id) {
-        target = docPayload.get(ref.referenced_document_id);
-        page = pageOf(ref);
-      }
+      const { target, page } = resolveDoc(r.to_id);
       if (!target) {
         skip("document_link_document_without_file");
         continue;
@@ -228,7 +270,7 @@ export function buildPlan(rows: PlanRows, opts: PlanOptions): IcddPlan {
         skip("document_link_element_not_in_ifc");
         continue;
       }
-      links.push({ kind: "IsElaboratedBy", from, to: { payload: target.id, page }, source: r.source });
+      links.push({ kind: "IsElaboratedBy", from, to: { payload: target.id, page }, source: r.source, ifcRelationship: "IfcRelAssociatesDocument" });
     }
   }
 
@@ -246,7 +288,16 @@ export function buildPlan(rows: PlanRows, opts: PlanOptions): IcddPlan {
       const rule = r.source ? ruleBySource.get(r.source) : undefined;
       const basedOn = basedOnKey(rule?.models);
       if (rule && basedOn && basedOn !== currentKey) stale.add(`${rule.id} (${basedOn})`);
-      links.push({ kind: "IsReferencedInSpatialStructure", from, to, source: r.source, role: r.role, rule: rule?.id ?? null, basedOn });
+      links.push({
+        kind: "IsReferencedInSpatialStructure",
+        from,
+        to,
+        source: r.source,
+        role: r.role,
+        rule: rule?.id ?? null,
+        basedOn,
+        ifcRelationship: "IfcRelReferencedInSpatialStructure",
+      });
     }
     for (const s of stale) warnings.push(`odvodenie ${s} bežalo nad inými revíziami, než sú aktuálne (${currentKey}); väzby sú zastarané`);
   }
@@ -270,6 +321,7 @@ export function buildPlan(rows: PlanRows, opts: PlanOptions): IcddPlan {
           from: { payload: `model:${s.model}`, guid: s.global_id, label: s.name },
           to: { payload: `model:${anchor.model}`, guid: anchor.global_id, label: anchor.name },
           source: `ifc_storey_map:${s.match_rule ?? ""}`,
+          basedOn: basedOnKey(current),
         });
       }
     }

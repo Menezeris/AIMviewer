@@ -71,7 +71,7 @@ export function writeXlsx(sheets: { name: string; rows: Cell[][] }[]): Uint8Arra
   return zipSync(sorted);
 }
 
-const HEADER = ["from_file", "from_global_id", "from_object_ref", "to_file", "to_global_id", "to_page", "source", "role", "rule", "based_on"];
+const HEADER = ["from_file", "from_global_id", "from_object_ref", "to_file", "to_global_id", "to_page", "source", "role", "rule", "based_on", "ifc_relationship"];
 
 /** Výpis AIM vrstvy z plánu: hárok `files` + hárok na každú vrstvu linksetu. */
 export function buildAimXlsx(plan: IcddPlan): Uint8Array {
@@ -80,7 +80,7 @@ export function buildAimXlsx(plan: IcddPlan): Uint8Array {
   for (const l of plan.links) {
     byLayer.get(LAYER_OF[l.kind])?.push([
       file.get(l.from.payload),
-      l.from.guid,
+      l.from.guid ?? (l.from.ident ? `${l.from.ident.field}=${l.from.ident.value}` : null),
       l.from.objectRef,
       file.get(l.to.payload),
       l.to.guid,
@@ -89,6 +89,7 @@ export function buildAimXlsx(plan: IcddPlan): Uint8Array {
       l.role,
       l.rule,
       l.basedOn,
+      l.ifcRelationship,
     ]);
   }
   const k = (r: Cell[]) => r.map((c) => String(c ?? "")).join("\u0000");
