@@ -780,6 +780,17 @@ kontajnera a revízie, (2) úplnú kópiu informácií každej revízie bez geom
   len kontrola, párovanie nemení). `rel_contained_in_spatial_structure` berie podlažie bez vlastného uzla z neho (namiesto CTE
   `floor_by_np`). Len `service_role`.
 
+### 2.20 Import ICDD (D-181, migrácia `20261101140000_icdd_imports.sql`, PRIPRAVENÉ, nespustené; test `supabase/tests/icdd_imports.sql`)
+
+Export ICDD nemá vlastnú tabuľku: plán sa zostaví pri každom exporte z `model_revisions`, `v_container_revisions`, `documents`,
+`rel_associates_document`, `rel_referenced_in_spatial_structure` (`source derive:*`), `ifc_rev_objects` (GlobalId -> model),
+`ifc_storey_map` a `derivation_runs` (`lib/icdd/plan-fetch.ts`). Pre ďalší krok importu:
+- `icdd_imports` = beh importu kontajnera: `version_id` (`ct:versionID`), `container_sha256` (64 hex, celý `.icdd`), `file_name`,
+  `status` `checked|applied|failed` (`applied` práve s `applied_at`), `same_as_aim` (roundtrip bez rozdielu), `payloads`
+  `{filename: sha256}`, `counts`, `diff` (`RoundtripDiff`), `issues` (pole chýb kontroly ISO 21597), `model_revisions` `{model: revízia}`
+  AIM pri importe, `imported_by`, `created_at`. Index (`version_id`, `created_at desc`). Bez FK. Práva: `anon`/`authenticated` nič.
+- Väzby zapísané z cudzieho kontajnera pôjdu do `relationships` so `source = 'icdd:<version_id>'` (AIM vrstva podľa `rel_is_aim_layer`).
+
 ## 4. Konvencia `properties` (D-022)
 
 `properties` JSONB obsahuje **property sety**, vnorené podľa názvu. IFC **atribúty**
@@ -863,6 +874,10 @@ ekvivalentu — ak existuje, prevziať názov aj enum doslovne.
   odkazy tém na dokumenty a ich revíziu (`model_task_documents`, `documents.file_sha256`,
   `document_pages.page_size`, D-158; BCF DocumentReference, IFC hash súboru ani veľkosť strany nenesie).
 Pri exporte ich IFC nenesie → ICDD linksety (D-015), do budúcna IFCX layer komponenty.
+Export ICDD (D-181): do linksetov ide len AIM vrstva (vzťah v IFC súbore ostáva v ňom): `els:IsElaboratedBy` (dokument a strana
+k prvku z `pdf_link` / `doc_upload`), `els:IsIdenticalTo` (podlažia naprieč modelmi; dokument IFC podľa `Identification` <-> PDF) a deklarovaná extenzia `aim:IsReferencedInSpatialStructure` (podtrieda `ls:DirectedBinaryLink`,
+odvodené prvok -> IfcSpace / IfcSpatialZone) s metadátami hrany `aim:source`, `aim:role`, `aim:derivationRule`,
+`aim:basedOnRevision`, `aim:ifcRelationship` (IFC vzťah, ktorého sémantiku väzba nesie); namespace `aim:` je placeholder z `ICDD_AIM_NAMESPACE` (predvolene `urn:x-aim:icdd#`).
 
 ---
 

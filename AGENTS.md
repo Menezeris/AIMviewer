@@ -88,7 +88,7 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
 - **Next.js** (App Router) + TypeScript + Tailwind + shadcn/ui — frontend
 - **Vercel** — hosting (vlastná doména cez Websupport)
 - **Python + ifcopenshell** — IFC parser / ETL pipeline (`etl/`)
-- **rdflib** — RDF/ICDD export
+- **ICDD export** - `lib/icdd/` (TypeScript, skladá prehliadač, D-181)
 - **IFClite (WASM) + Three.js** — klient-side 3D render (geometria nikdy nie je v DB)
 
 ## Kľúčové dokumenty — vždy čítaj pred prácou
@@ -234,8 +234,9 @@ Každá úroveň je riadok v `objects` (líši sa `object_type`). Spatial väzby
   `revalidateTag("aim")`.
 
 ## RDF / ICDD
-RDF nie je interná databáza — len export formát.
-Export generuje Python skript z Postgres dát do ICDD kontajnera (ISO 21597).
+RDF nie je interná databáza, len export formát. Kontajner ICDD (ISO 21597) skladá prehliadač podľa plánu z hosta
+(`GET /api/icdd`, `lib/icdd/`, stránka `/icdd`); payload = kontajnery revízií so sha256, linkset = len AIM vrstva s pôvodom a IFC vzťahom, väzby z IFC súboru
+ostávajú v ňom (D-181).
 
 ## 3D Viewer — IFClite (D-044)
 Geometria = **ephemerálna v prehliadači** (IFClite WASM, klient-side, IFC súbor neopustí tab).
