@@ -73,7 +73,7 @@ def test_project_zones_and_groups_are_emitted() -> None:
 
 
 def test_federate_does_not_emit_project_or_zones() -> None:
-    st = transform.to_staged(_model(), federate=True, existing_floors=[("1NP", 0.0, "1NP")])
+    st = transform.to_staged(_model(), federate=True)
     assert not {"project", "zone", "spatial_zone", "group"} & {o.object_type for o in st.objects}
     # dokumenty na neemitovaných entitách sa vynechajú a zrátajú
     assert st.coverage.unlinked == {"IfcProject": 1, "IfcGroup": 1, "IfcSpatialZone": 1, "IfcZone": 1}

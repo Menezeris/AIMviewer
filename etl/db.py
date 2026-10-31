@@ -37,21 +37,6 @@ def writes_edge(edge_type: str, source: Optional[str]) -> bool:
     return not (source == LEGACY_EDGE_SOURCE or (source or "").startswith(LEGACY_EDGE_SOURCE + ":"))
 
 
-def fetch_existing_floors(url: str) -> list[tuple[str, object, object]]:
-    """Existujúce floor uzly `(object_ref, elevation, name)` — vstup pre federačné
-    mapovanie podlaží (D-049). Volá `main.py` pred VZT federate loadom."""
-    with psycopg.connect(url) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "select o.object_ref, f.elevation, o.name from objects o "
-                "join floors f on f.id = o.id where o.object_type = 'floor'"
-            )
-            return [
-                (r[0], float(r[1]) if r[1] is not None else None, r[2])
-                for r in cur.fetchall()
-            ]
-
-
 def reset_data(cur) -> None:
     """Vyprázdni AIM dátové tabuľky (napr. pred nahradením seedu reálnymi dátami, E2).
 
