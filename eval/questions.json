@@ -1431,6 +1431,7 @@
       "category": "viewer",
       "question": "Platia ešte posledné výsledky kolízií VZT x nosné konštrukcie pre aktuálny model?",
       "expect": { "tools_called": ["clash"] },
+      "mcp_only": true,
       "verified": false,
       "notes": "D-183 bod 11 (#292): clash(list, test=VZT-NOSNE) alebo results -> based_on a stale; pri stale=true povedať, nad ktorou revíziou beh bežal, a ponúknuť nový run save=true. Evaly nepobežali (bez Supabase kľúčov)."
     },
