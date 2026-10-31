@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { clashReviewKey, compareClashRevisions, type Clash, type ClashResult } from "@ifc-lite/clash";
 
 import type { ClashCoverage, ClashResultRow, ClashReviewRow, ClashRunRow, ClashStore, ClashTestRow, ClashTestWrite, ReviewStatus } from "../clash/types";
+import { currentRevisions, describeDrift, revisionFields, staleOf, stampOf, type RevisionStamp } from "../clash/revisions";
 import { getIfcModels } from "../data/ifc-models";
 
 import {
@@ -18,6 +19,7 @@ import {
   parseSpec,
   pickGroup,
   round,
+  runRevision,
   storeyOfClash,
   systemsFor,
   withAim,
@@ -142,15 +144,22 @@ const entryOf = (t: ClashTest, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-const lastRunOf = (r: ClashRunRow) => ({
+const lastRunOf = (r: ClashRunRow, current: RevisionStamp | null) => ({
   run_id: r.id,
   created_at: r.created_at,
   trigger: r.trigger,
   total: r.summary.total ?? null,
   by_status: r.summary.by_status ?? null,
   models: r.models,
+  ...revisionFields(stampOf(r.models, r.model_revisions), current),
   ...(r.completeness.truncated ? { truncated: true } : {}),
 });
+
+/** Aktuálne revízie modelov, ktoré behy nesú v podpise (jedno čítanie pre celý zoznam). */
+async function currentFor(rows: ClashRunRow[], deps: EngineDeps): Promise<RevisionStamp | null> {
+  const models = new Set(rows.flatMap((r) => Object.keys(stampOf(r.models, r.model_revisions) ?? {})));
+  return currentRevisions([...models].sort(), deps.revisions);
+}
 
 export async function execList(input: Record<string, unknown>, deps: EngineDeps): Promise<Record<string, unknown>> {
   const ref = str(input.test);
@@ -166,17 +175,19 @@ export async function execList(input: Record<string, unknown>, deps: EngineDeps)
     if (!hit) throw new InputError(`Test '${ref}' nie je (action=list ukáže všetky).`);
     const runs = deps.clash && hit.row ? await deps.clash.runs(hit.row.id, RUNS_LISTED) : [];
     const reviews = deps.clash && hit.row ? countBy(await deps.clash.reviews(hit.row.id), (r) => r.status) : {};
+    const current = await currentFor(runs, deps);
     return {
       test: entryOf(hit.test, { origin: hit.row?.origin ?? "default" }),
-      runs: runs.map(lastRunOf),
+      runs: runs.map((r) => lastRunOf(r, current)),
       reviews,
       note: "run_id uloženého behu daj do results, compare alebo review; po reštarte inštancie sa obnoví z DB.",
     };
   }
   const ids = entries.flatMap((e) => (e.row ? [e.row.id] : []));
   const last = deps.clash && ids.length ? await deps.clash.lastRuns(ids) : new Map<string, ClashRunRow>();
+  const current = await currentFor([...last.values()], deps);
   return {
-    tests: entries.map((e) => entryOf(e.test, { origin: e.row?.origin ?? "default", last_run: e.row && last.get(e.row.id) ? lastRunOf(last.get(e.row.id)!) : null })),
+    tests: entries.map((e) => entryOf(e.test, { origin: e.row?.origin ?? "default", last_run: e.row && last.get(e.row.id) ? lastRunOf(last.get(e.row.id)!, current) : null })),
     note: "Predvolené testy sú pevné. Vlastný test uloží save (test = kód, name, a, b, a_model, b_model, a_storey, b_storey, mode, clearance_mm). Spusti run s test; save=true uloží beh. list s test ukáže jeho behy.",
     runs_in_memory: memory,
     ...(deps.clash ? {} : { warning: "DB tu nie je dostupná: len predvolené testy a behy v pamäti." }),
@@ -282,6 +293,7 @@ export async function persistRun(run: ClashRun, deps: EngineDeps, author?: strin
       test_code: run.spec.code,
       rules_snapshot: { spec: run.spec },
       models: run.models,
+      ...(run.basedOn ? { model_revisions: run.basedOn } : {}),
       engine: CLASH_ENGINE,
       trigger: "chat",
       completeness: { ...(run.result.truncated ? { truncated: run.result.truncated } : {}), ...(coverage ? {} : { coverage_omitted: true }) },
@@ -363,6 +375,7 @@ export function runFromRows(row: ClashRunRow, results: ClashResultRow[]): ClashR
     info,
     sets,
     models: row.models,
+    basedOn: stampOf(row.models, row.model_revisions),
     ms: { tessellate: 0, detect: 0 },
     createdAt: row.created_at,
     saved: { id: row.id, testId: row.test_id },
@@ -436,7 +449,7 @@ export async function execReview(input: Record<string, unknown>, deps: EngineDep
 
 // --- porovnanie ----------------------------------------------------------------------------
 
-const refOf = (r: ClashRun) => ({ run_id: r.saved?.id ?? r.id, created_at: r.createdAt, total: r.result.clashes.length });
+const refOf = (r: ClashRun) => ({ run_id: r.saved?.id ?? r.id, created_at: r.createdAt, total: r.result.clashes.length, ...(r.basedOn ? { based_on: r.basedOn } : {}) });
 
 async function previousRun(run: ClashRun, deps: EngineDeps): Promise<ClashRun> {
   const store = need(deps);
@@ -490,10 +503,16 @@ export async function execCompare(input: Record<string, unknown>, deps: EngineDe
     return !same([x?.etag, x?.size], [y?.etag, y?.size]);
   });
 
+  // Podpis vstupu (D-183 bod 11): porovnanie naprieč revíziami je účel, zastaraný nový beh nie.
+  const revision = await runRevision(run, deps);
+  if (revision.stale === true) warnings.push(`Nový beh nie je nad aktuálnymi revíziami: ${String(revision.stale_note)}`);
+  const revisionsChanged = base.basedOn && run.basedOn && staleOf(base.basedOn, run.basedOn) ? describeDrift(base.basedOn, run.basedOn) : null;
+
   const out: Record<string, unknown> = {
     test: run.spec.name,
-    run: refOf(run),
+    run: { ...refOf(run), ...("stale" in revision ? { stale: revision.stale } : {}) },
     base: refOf(base),
+    ...(revisionsChanged ? { revisions_changed: revisionsChanged } : {}),
     summary: { added: buckets.added.length, persistent: buckets.persistent.length, resolved: buckets.resolved.length, unretested: buckets.unretested.length },
     by_storey: { added: countBy(buckets.added, (c) => storeyOfClash(run, c)), resolved: countBy(buckets.resolved, (c) => storeyOfClash(base, c)) },
     models_changed: changed,

@@ -269,7 +269,9 @@ export function engineToolDefinitions(): ToolDefinition[] {
         "alebo latest), používateľ vidí stavy; from_viewer: uloží test a zmenené stavy z panela (beh uloží tlačidlo v paneli). " +
         "matrix: prehľad kolízií ako matica modelov (disciplín) federácie, napr. ASR x VZT. Bunky nesú počty podľa druhu a stavu. " +
         "Na otázky 'koľko kolízií je medzi ASR a VZT a koľko je otvorených' použi matrix, nepočítaj z riadkov výsledkov (sú orezané). " +
-        "Bez run_id berie beh otvorený vo vieweri (source local), s run_id uložený beh z DB (source saved).",
+        "Bez run_id berie beh otvorený vo vieweri (source local), s run_id uložený beh z DB (source saved). " +
+        "Beh nesie based_on (revízie modelov, nad ktorými bežal) a stale: stale=true = výsledok platí pre staršiu revíziu, " +
+        "povedz to a ponúkni nový run.",
       inputSchema: {
         type: "object",
         properties: {
