@@ -5,7 +5,7 @@
  * a kvôli čitateľnosti bez parsovania IFC aj väzba dokument-prvok zo súboru (s pôvodom `ifc:ASR v79`).
  */
 
-import { DEFAULT_AIM_NAMESPACE, LAYERS, type IcddLink, type IcddPayload, type IcddPlan, type Layer } from "./model";
+import { DEFAULT_AIM_NAMESPACE, EXTRAS, LAYERS, type Extra, type IcddLink, type IcddPayload, type IcddPlan, type Layer } from "./model";
 
 export interface ModelRevisionRow {
   model: string;
@@ -88,6 +88,7 @@ export interface PlanOptions {
   publisher?: string;
   aimNamespace?: string;
   layers?: Layer[];
+  extras?: Extra[];
 }
 
 export const basedOnKey = (models: Record<string, number> | null | undefined): string | null =>
@@ -175,7 +176,7 @@ export function buildPlan(rows: PlanRows, opts: PlanOptions): IcddPlan {
       kind: "document",
       filename,
       name: d.name ?? ident,
-      filetype: /\.pdf$/i.test(filename) ? "pdf" : ((filename.split(".").pop() ?? "bin").toLowerCase() as "pdf"),
+      filetype: (filename.split(".").pop() ?? "bin").toLowerCase(),
       format: d.electronic_format ?? "application/pdf",
       versionID: d.revision ?? cr?.revision ?? "1",
       sha256: d.file_sha256,
@@ -291,6 +292,7 @@ export function buildPlan(rows: PlanRows, opts: PlanOptions): IcddPlan {
     payloads,
     links,
     layers,
+    extras: opts.extras ?? [...EXTRAS],
     skipped,
     warnings,
   };

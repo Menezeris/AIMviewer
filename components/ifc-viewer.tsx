@@ -145,7 +145,7 @@ type OutboundMessage =
   // Test, beh a stav kolízií z panela clash (D-164) - host ich zapíše cez /api/clash a pošle späť CLASH_SAVED.
   | { source: typeof SOURCE; type: "CLASH_SAVE"; test?: unknown; test_code?: string; run?: unknown; reviews?: unknown }
   // Export a kontrola ICDD z AIM ribbonu (D-181) - host zloží kontajner, stiahne ho a odpovie ICDD_STATUS.
-  | { source: typeof SOURCE; type: "ICDD_EXPORT"; id: string }
+  | { source: typeof SOURCE; type: "ICDD_EXPORT"; id: string; extras?: string[] }
   | { source: typeof SOURCE; type: "ICDD_CHECK"; id: string; name?: string; bytes: ArrayBuffer }
   // Odpoveď na QUERY spätného kanála (D-085) - obálky, stav pohľadu.
   | { source: typeof SOURCE; type: "QUERY_RESULT"; id: string; ok: boolean; result?: unknown; error?: string }
@@ -472,7 +472,7 @@ export function IFCViewer({
       const req = parseIcddRequest(raw);
       if (!req) return;
       await runIcddRequest(req, (status) => post({ ...status }), {
-        exportIcdd: (progress) => client.exportIcdd(progress),
+        exportIcdd: (progress, extras) => client.exportIcdd(progress, fetch, extras),
         checkIcdd: (bytes, progress) => client.checkIcdd(bytes, progress),
         download: client.downloadBytes,
       });

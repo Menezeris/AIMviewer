@@ -3,14 +3,14 @@ import "server-only";
 import { fetchAllPages } from "@/lib/data/pagination";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
-import { LAYERS, type IcddPlan, type Layer } from "./model";
+import { LAYERS, type Extra, type IcddPlan, type Layer } from "./model";
 import { buildPlan, type DerivationRuleRow, type DocLinkRow, type PlanRows, type SpatialLinkRow } from "./plan";
 
 /**
  * Načíta stav AIM pre export ICDD (D-181): len čítanie cez service_role (D-026). Payloady sa tu nesťahujú;
  * plán nesie ich verejné URL a sha256, kontajner skladá prehliadač (Vercel nevráti ~85 MB odpoveď).
  */
-export async function fetchIcddPlan(opts: { layers?: Layer[]; createdAt?: string } = {}): Promise<IcddPlan> {
+export async function fetchIcddPlan(opts: { layers?: Layer[]; extras?: Extra[]; createdAt?: string } = {}): Promise<IcddPlan> {
   const sb = getSupabaseAdmin();
   const must = <T>(label: string, r: { data: T | null; error: { message: string } | null }): T => {
     if (r.error) throw new Error(`${label}: ${r.error.message}`);
@@ -128,6 +128,7 @@ export async function fetchIcddPlan(opts: { layers?: Layer[]; createdAt?: string
       publisher: process.env.ICDD_PUBLISHER || undefined,
       aimNamespace: process.env.ICDD_AIM_NAMESPACE || undefined,
       layers,
+      extras: opts.extras,
     },
   );
 }

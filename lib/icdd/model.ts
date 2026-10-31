@@ -33,6 +33,10 @@ export const LAYERS = ["documents-elements", "derived-spatial", "federation"] as
 export const FUTURE_LAYERS = ["georef", "bcf", "ids"] as const;
 export type Layer = (typeof LAYERS)[number];
 
+/** Voliteľné súbory navyše, generované z väzieb plánu (D-181 bod 9): IFCX overlay a xlsx výpis. */
+export const EXTRAS = ["ifcx", "xlsx"] as const;
+export type Extra = (typeof EXTRAS)[number];
+
 export type LinkKind = "IsElaboratedBy" | "IsReferencedInSpatialStructure" | "IsIdenticalTo";
 
 export const LAYER_OF: Record<LinkKind, Layer> = {
@@ -45,11 +49,12 @@ export const LAYER_OF: Record<LinkKind, Layer> = {
 export interface IcddPayload {
   /** Stabilný kľúč v pláne: `model:ASR`, `document:<identification>`. */
   id: string;
-  kind: "model" | "document";
+  /** `generated` = súbor vytvorený pri exporte z väzieb (IFCX, xlsx), nie kontajner revízie. */
+  kind: "model" | "document" | "generated";
   /** Meno v `Payload documents/` (ploché, unikátne). */
   filename: string;
   name: string;
-  filetype: "ifc" | "pdf";
+  filetype: string;
   format: string;
   /** Revízia kontajnera (D-183): model `79`, dokument `revision` alebo poradie revízie. */
   versionID: string;
@@ -104,6 +109,8 @@ export interface IcddPlan {
   payloads: IcddPayload[];
   links: IcddLink[];
   layers: Layer[];
+  /** Súbory navyše; chýba = žiadne. */
+  extras?: Extra[];
   /** Čo sa do kontajnera nedostalo a prečo (počty), napr. dokument bez súboru. */
   skipped: Record<string, number>;
   warnings: string[];

@@ -19,6 +19,7 @@ import {
 } from "./model";
 import { checkAgainstOntology, loadOntology, type OntologyIssue } from "./ontology";
 import { Graph, iri, parseRdfXml, RDF_TYPE, type Term, type Triple } from "./rdf";
+import { readIfcx } from "./ifcx";
 import { sha256 } from "./sha256";
 
 export interface ValidationIssue {
@@ -37,7 +38,7 @@ export interface IcddContents {
   data: Graph;
   container: Term | null;
   /** Dokumenty v indexe podľa IRI. */
-  documents: Map<string, { iri: string; filename?: string; filetype?: string; checksum?: string; internal: boolean }>;
+  documents: Map<string, { iri: string; filename?: string; filetype?: string; checksum?: string; internal: boolean; generated: boolean }>;
 }
 
 export interface ValidationReport {
@@ -85,6 +86,9 @@ export function readIcdd(zip: Uint8Array, issues: ValidationIssue[] = []): IcddC
     issues.push({ level: "error", code: "index", where: INDEX_FILE, message: `index má ${containers.length} ct:ContainerDescription (má 1)` });
 
   const documents: IcddContents["documents"] = new Map();
+  const generated = new Set(
+    indexTriples.filter((t) => t.s.t === "iri" && /[#/]generatedFrom$/.test(t.p)).map((t) => (t.s as { v: string }).v),
+  );
   if (container) {
     for (const d of index.values(container, `${CT}containsDocument`)) {
       if (d.t !== "iri") continue;
@@ -95,6 +99,7 @@ export function readIcdd(zip: Uint8Array, issues: ValidationIssue[] = []): IcddC
         filetype: index.str(d, `${CT}filetype`),
         checksum: index.str(d, `${CT}checksum`),
         internal: types.includes(`${CT}InternalDocument`),
+        generated: generated.has(d.v),
       });
     }
   }
@@ -229,6 +234,23 @@ export function validateIcdd(zip: Uint8Array): ValidationReport {
     }
   }
   if (missingGuid > 50) err("link_guid", "", `a ďalších ${missingGuid - 50} GlobalId mimo IFC`);
+
+  // 5. súbory navyše generované z linksetov (IFCX) musia s nimi súhlasiť
+  for (const d of c.documents.values()) {
+    if (!d.generated || d.filetype !== "ifcx" || !d.filename) continue;
+    const path = `${DIR_DOCUMENTS}${d.filename}`;
+    if (!c.files[path]) continue;
+    try {
+      const x = readIfcx(dec.decode(c.files[path]));
+      if (x.links !== links) err("ifcx_links", path, `IFCX má ${x.links} väzieb, linksety ${links}`);
+      const ifcGuids = new Set<string>();
+      for (const doc of c.documents.values()) if (doc.filetype === "ifc" && doc.filename) for (const g of guidsOf(doc.filename) ?? []) ifcGuids.add(g);
+      const bad = x.paths.filter((p) => !ifcGuids.has(p));
+      if (bad.length) err("ifcx_path", path, `${bad.length} ciest IFCX nie je GlobalId v pribalených IFC (napr. ${bad[0]})`);
+    } catch (e) {
+      err("ifcx_parse", path, String(e instanceof Error ? e.message : e));
+    }
+  }
   if (!c.container) err("index", INDEX_FILE, "bez ct:ContainerDescription");
   else if (!c.index.values(c.container, RDF_TYPE).length) err("index", INDEX_FILE, "kontajner bez typu");
 

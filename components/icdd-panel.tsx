@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { checkIcdd, downloadBytes, exportIcdd, type CheckResult, type ExportResult } from "@/lib/icdd/client";
+import { EXTRAS, type Extra } from "@/lib/icdd/model";
 import type { ValidationReport } from "@/lib/icdd/validate";
 
 /** Export ICDD do PC a kontrola kontajnera späť voči AIM (D-181, #350). */
@@ -14,6 +15,7 @@ export function IcddPanel() {
   const [error, setError] = useState<string | null>(null);
   const [exported, setExported] = useState<ExportResult | null>(null);
   const [checked, setChecked] = useState<CheckResult | null>(null);
+  const [extras, setExtras] = useState<Record<Extra, boolean>>({ ifcx: true, xlsx: true });
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -31,7 +33,7 @@ export function IcddPanel() {
   const onExport = () =>
     run(async () => {
       setChecked(null);
-      const r = await exportIcdd(setProgress);
+      const r = await exportIcdd(setProgress, fetch, EXTRAS.filter((x) => extras[x]));
       setExported(r);
       if (r.report.ok) downloadBytes(r.bytes, r.filename);
     });
@@ -54,6 +56,17 @@ export function IcddPanel() {
             Kontajner s aktuálnymi revíziami modelov IFC, dokumentmi PDF a väzbami AIM (dokument a strana k prvku, odvodené
             väzby prvok - miestnosť a zóna, podlažia naprieč modelmi). Zloží sa v prehliadači a uloží do PC.
           </p>
+          <div className="flex flex-wrap gap-4">
+            {([
+              ["ifcx", "AIM vrstva ako IFCX (IFC5, pre iné nástroje)"],
+              ["xlsx", "Tabuľka väzieb (xlsx)"],
+            ] as [Extra, string][]).map(([k, label]) => (
+              <label key={k} className="flex items-center gap-2">
+                <input type="checkbox" checked={extras[k]} disabled={busy} onChange={(e) => setExtras({ ...extras, [k]: e.target.checked })} />
+                {label}
+              </label>
+            ))}
+          </div>
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={onExport} disabled={busy}>
               Exportovať .icdd

@@ -82,3 +82,9 @@ describe("ICDD most (D-181)", () => {
     expect(sent[1]).toEqual({ type: "ICDD_STATUS", id: "c2", op: "check", phase: "error", message: "plán ICDD: HTTP 500" });
   });
 });
+
+describe("ICDD most - súbory navyše", () => {
+  it("ICDD_EXPORT nesie len známe extras", () => {
+    expect(parseIcddRequest({ type: "ICDD_EXPORT", id: "a", extras: ["xlsx", "zip", 3] })).toEqual({ op: "export", id: "a", extras: ["xlsx"] });
+  });
+});

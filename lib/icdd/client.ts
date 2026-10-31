@@ -7,14 +7,14 @@
 import { gunzipSync } from "fflate";
 
 import { assembleIcdd } from "./build";
-import { containerFileName, ISO_ONTOLOGY_FILES, type IcddPlan } from "./model";
+import { containerFileName, ISO_ONTOLOGY_FILES, type Extra, type IcddPlan } from "./model";
 import { compareStates, detectAimNamespace, stateFromContainer, stateFromPlan, type RoundtripDiff } from "./roundtrip";
 import { validateIcdd, type ValidationReport } from "./validate";
 
 export type Progress = (msg: string) => void;
 
-async function getPlan(fetchFn: typeof fetch): Promise<IcddPlan> {
-  const r = await fetchFn("/api/icdd", { cache: "no-store" });
+async function getPlan(fetchFn: typeof fetch, extras?: Extra[]): Promise<IcddPlan> {
+  const r = await fetchFn(extras ? `/api/icdd?extras=${extras.join(",")}` : "/api/icdd", { cache: "no-store" });
   const body = await r.json();
   if (!r.ok) throw new Error(body?.error ?? `plán ICDD: HTTP ${r.status}`);
   return body as IcddPlan;
@@ -49,9 +49,13 @@ export interface ExportResult {
 }
 
 /** Zloží kontajner a pred odovzdaním ho skontroluje tou istou kontrolou ako import. */
-export async function exportIcdd(progress: Progress = () => {}, fetchFn: typeof fetch = fetch): Promise<ExportResult> {
+export async function exportIcdd(
+  progress: Progress = () => {},
+  fetchFn: typeof fetch = fetch,
+  extras?: Extra[],
+): Promise<ExportResult> {
   progress("načítavam plán z AIM");
-  const plan = await getPlan(fetchFn);
+  const plan = await getPlan(fetchFn, extras);
   const ontologies = await loadOntologies(fetchFn);
   const payloads = new Map<string, Uint8Array>();
   let i = 0;

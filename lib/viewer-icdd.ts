@@ -6,10 +6,11 @@
  */
 
 import type { CheckResult, ExportResult } from "@/lib/icdd/client";
+import { EXTRAS, type Extra } from "@/lib/icdd/model";
 
 export type IcddOp = "export" | "check";
 
-export type IcddRequest = { op: "export"; id: string } | { op: "check"; id: string; name: string; bytes: Uint8Array };
+export type IcddRequest = { op: "export"; id: string; extras?: Extra[] } | { op: "check"; id: string; name: string; bytes: Uint8Array };
 
 export interface IcddStatus {
   type: "ICDD_STATUS";
@@ -28,7 +29,10 @@ export function parseIcddRequest(data: unknown): IcddRequest | null {
   const d = data as Record<string, unknown>;
   const id = typeof d.id === "string" && d.id.length > 0 && d.id.length <= 100 ? d.id : null;
   if (!id) return null;
-  if (d.type === "ICDD_EXPORT") return { op: "export", id };
+  if (d.type === "ICDD_EXPORT") {
+    if (!Array.isArray(d.extras)) return { op: "export", id };
+    return { op: "export", id, extras: d.extras.filter((x): x is Extra => (EXTRAS as readonly unknown[]).includes(x)) };
+  }
   if (d.type === "ICDD_CHECK") {
     const raw = d.bytes;
     const bytes = raw instanceof ArrayBuffer ? new Uint8Array(raw) : raw instanceof Uint8Array ? raw : null;
@@ -72,7 +76,7 @@ export function checkSummary(r: CheckResult): Record<string, unknown> {
 }
 
 export interface IcddDeps {
-  exportIcdd: (progress: (m: string) => void) => Promise<ExportResult>;
+  exportIcdd: (progress: (m: string) => void, extras?: Extra[]) => Promise<ExportResult>;
   checkIcdd: (bytes: Uint8Array, progress: (m: string) => void) => Promise<CheckResult>;
   download: (bytes: Uint8Array, filename: string) => void;
 }
@@ -84,7 +88,7 @@ export async function runIcddRequest(req: IcddRequest, post: (s: IcddStatus) => 
   const progress = (m: string) => send("running", m);
   try {
     if (req.op === "export") {
-      const r = await deps.exportIcdd(progress);
+      const r = await deps.exportIcdd(progress, req.extras);
       if (r.report.ok) deps.download(r.bytes, r.filename);
       send("done", r.report.ok ? `stiahnuté ${r.filename}` : "kontajner neprešiel kontrolou ISO 21597, nestiahol sa", exportSummary(r));
     } else {

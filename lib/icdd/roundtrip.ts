@@ -51,7 +51,8 @@ export function stateFromContainer(c: IcddContents, aimNamespace: string): Canon
   const g: Graph = c.data;
   const kinds = KIND_BY_TYPE(aimNamespace);
   const payloads = new Map<string, string>();
-  for (const d of c.documents.values()) if (d.filename) payloads.set(d.filename, d.checksum ?? "");
+  // súbory generované z väzieb (IFCX, xlsx) nie sú stav AIM; ich obsah kryjú väzby linksetov
+  for (const d of c.documents.values()) if (d.filename && !d.generated) payloads.set(d.filename, d.checksum ?? "");
 
   const end = (e: Term) => {
     const doc = g.value(e, `${LS}hasDocument`);

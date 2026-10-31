@@ -8,6 +8,7 @@ import { assembleIcdd, buildIndex, buildLinksets } from "./build";
 import { DEFAULT_AIM_NAMESPACE, ISO_ONTOLOGY_FILES, type IcddPlan } from "./model";
 import { compareStates, stateFromContainer, stateFromPlan } from "./roundtrip";
 import { parseRdfXml } from "./rdf";
+import { parseXml } from "./xml";
 import { sha256 } from "./sha256";
 import { validateIcdd } from "./validate";
 
@@ -146,8 +147,9 @@ describe("ICDD export (D-181)", () => {
   });
 });
 
+const codes = (zip: Uint8Array) => validateIcdd(zip).issues.filter((i) => i.level === "error").map((i) => i.code);
+
 describe("ICDD kontrola - mutácie ju musia zhodiť", () => {
-  const codes = (zip: Uint8Array) => validateIcdd(zip).issues.filter((i) => i.level === "error").map((i) => i.code);
 
   it("zmenený obsah payloadu = chyba checksum", () => {
     expect(codes(mutate(build(), (f) => void (f["Payload documents/D-1-1-09.pdf"] = strToU8("%PDF-iné"))))).toContain("checksum");
@@ -249,5 +251,55 @@ describe("sha256", () => {
       const b = new Uint8Array(n).map((_, i) => (i * 31 + 7) & 255);
       expect(sha256(b)).toBe(createHash("sha256").update(b).digest("hex"));
     }
+  });
+});
+
+describe("ICDD súbory navyše: IFCX overlay a xlsx výpis (D-181 bod 9)", () => {
+  const withExtras = (): IcddPlan => ({ ...plan(), extras: ["ifcx", "xlsx"] });
+
+  it("pribalí aim-layer.ifcx a aim-layer.xlsx, kontrola aj roundtrip prejdú", () => {
+    const zip = build(withExtras());
+    const files = unzipSync(zip);
+    expect(Object.keys(files)).toEqual(expect.arrayContaining(["Payload documents/aim-layer.ifcx", "Payload documents/aim-layer.xlsx"]));
+    const report = validateIcdd(zip);
+    expect(report.issues.filter((i) => i.level === "error")).toEqual([]);
+    const diff = compareStates(stateFromContainer(report.contents!, DEFAULT_AIM_NAMESPACE), stateFromPlan(withExtras()));
+    expect(diff.same).toBe(true);
+    expect(sha256(build(withExtras()))).toBe(sha256(zip));
+  });
+
+  it("IFCX: uzol na GlobalId, väzby pod aim:: a cesty sú GlobalId pribalených IFC", () => {
+    const x = JSON.parse(strFromU8(unzipSync(build(withExtras()))["Payload documents/aim-layer.ifcx"]));
+    expect(x.header.ifcxVersion).toBe("ifcx_alpha");
+    const duct = x.data.find((n: { path: string }) => n.path === G.duct);
+    expect(duct.attributes["aim::modelFile"]).toBe("VZT_v011.ifc");
+    expect(duct.attributes["aim::referencedInSpatialStructure"]).toEqual([
+      { path: G.space, file: "ASR_v079.ifc", source: "derive:spatial_reference", role: "inside", rule: "element_in_space", basedOn: "ASR=79;VZT=11" },
+    ]);
+    expect(duct.attributes["aim::documents"]).toEqual([{ file: "D-1-1-09.pdf", source: "pdf_link (E4)" }]);
+  });
+
+  it("IFCX, ktorý nesúhlasí s linksetmi, kontrolu zhodí", () => {
+    const z = mutate(build(withExtras()), (f) => {
+      const x = JSON.parse(strFromU8(f["Payload documents/aim-layer.ifcx"]));
+      x.data[0].attributes = {};
+      x.data.push({ path: "0000000000000000000000", attributes: {} });
+      const data = strToU8(JSON.stringify(x));
+      const idx = strFromU8(f["index.rdf"]).replace(sha256(f["Payload documents/aim-layer.ifcx"]), sha256(data));
+      f["Payload documents/aim-layer.ifcx"] = data;
+      f["index.rdf"] = strToU8(idx);
+    });
+    expect(codes(z)).toEqual(expect.arrayContaining(["ifcx_links", "ifcx_path"]));
+  });
+
+  it("xlsx: platný SpreadsheetML, hárok súborov a hárok na vrstvu s riadkami väzieb", () => {
+    const x = unzipSync(unzipSync(build(withExtras()))["Payload documents/aim-layer.xlsx"]);
+    expect(Object.keys(x)).toEqual(expect.arrayContaining(["[Content_Types].xml", "xl/workbook.xml", "xl/worksheets/sheet4.xml"]));
+    const wb = parseXml(strFromU8(x["xl/workbook.xml"]));
+    const names = (wb.children.find((c) => typeof c !== "string" && c.name === "sheets") as { children: { attrs: Record<string, string> }[] }).children.map((c) => c.attrs.name);
+    expect(names).toEqual(["files", "documents-elements", "derived-spatial", "federation"]);
+    const rows = (n: number) => (strFromU8(x[`xl/worksheets/sheet${n}.xml`]).match(/<row /g) ?? []).length;
+    expect([rows(1), rows(2), rows(3), rows(4)]).toEqual([4, 3, 2, 2]);
+    expect(strFromU8(x["xl/worksheets/sheet3.xml"])).toContain(G.space);
   });
 });
