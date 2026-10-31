@@ -1,4 +1,4 @@
--- D-183 K3 krok 3, SAMOSTATNÝ KROK NA SAMUELOVO SLOVO: ukončenie starých hrán ETL grafu, ktoré pohľady už čítajú
+-- D-183 K3 krok 3 (Samuel 31. 10.: "ukončiť"): ukončenie starých hrán ETL grafu, ktoré pohľady už čítajú
 -- z kópie revízie. Súbor je zámerne v `supabase/pending/`, nie v `supabase/migrations/`: nasadenie ho nespustí.
 -- Keď Samuel povie áno, presuň ho (git mv) do `supabase/migrations/` s aktuálnym časom v mene a nasaď.
 --
