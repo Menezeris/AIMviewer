@@ -286,7 +286,7 @@ export function buildPlan(rows: PlanRows, opts: PlanOptions): IcddPlan {
       .join(", ")}, ${docCount} dokumentov k ${date}; vrstvy ${layers.join(", ")}`,
     createdAt: opts.createdAt,
     description: "AIM: informačný model stavby (modely IFC, dokumenty PDF a väzby AIM), export ICDD podľa ISO 21597.",
-    publisher: { name: opts.publisher ?? "Assetin" },
+    publisher: { name: opts.publisher ?? "AIM" },
     aimNamespace: opts.aimNamespace ?? DEFAULT_AIM_NAMESPACE,
     payloads,
     links,

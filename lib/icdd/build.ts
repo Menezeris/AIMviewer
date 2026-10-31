@@ -81,7 +81,7 @@ export function buildIndex(plan: IcddPlan): string {
   if (plan.description) add(c, `${CT}description`, lit(plan.description));
   const pub = `${base}#publisher`;
   add(c, `${CT}publishedBy`, iri(pub));
-  add(pub, RDF_TYPE, iri(`${CT}Organisation`));
+  add(pub, RDF_TYPE, iri(`${CT}Party`)); // najmenej zaväzujúce: bez Organisation/Person (D-181 bod 4, otvorené)
   add(pub, `${CT}name`, lit(plan.publisher.name));
 
   for (const p of plan.payloads) {

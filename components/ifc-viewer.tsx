@@ -144,6 +144,9 @@ type OutboundMessage =
   | { source: typeof SOURCE; type: "IDS_SAVE"; target: string; xml: string; code?: string; base_version?: number; title?: string }
   // Test, beh a stav kolízií z panela clash (D-164) - host ich zapíše cez /api/clash a pošle späť CLASH_SAVED.
   | { source: typeof SOURCE; type: "CLASH_SAVE"; test?: unknown; test_code?: string; run?: unknown; reviews?: unknown }
+  // Export a kontrola ICDD z AIM ribbonu (D-181) - host zloží kontajner, stiahne ho a odpovie ICDD_STATUS.
+  | { source: typeof SOURCE; type: "ICDD_EXPORT"; id: string }
+  | { source: typeof SOURCE; type: "ICDD_CHECK"; id: string; name?: string; bytes: ArrayBuffer }
   // Odpoveď na QUERY spätného kanála (D-085) - obálky, stav pohľadu.
   | { source: typeof SOURCE; type: "QUERY_RESULT"; id: string; ok: boolean; result?: unknown; error?: string }
   // Potvrdenie príkazov pred ACK_REQUEST (D-101) - stav po vykonaní, čo sa nevykonalo.
@@ -459,6 +462,23 @@ export function IFCViewer({
   }
 
   /** Uloženie IDS z panela (`IDS_SAVE`): route je za env bránou; výsledok sa vráti ako `IDS_SAVED` (tlačidlo ho ukáže). */
+  /** ICDD z ribbonu (D-181): knižnica sa načíta až pri prvom použití, práca beží v okne hosta. */
+  function runIcdd(raw: unknown) {
+    void (async () => {
+      const [{ parseIcddRequest, runIcddRequest }, client] = await Promise.all([
+        import("@/lib/viewer-icdd"),
+        import("@/lib/icdd/client"),
+      ]);
+      const req = parseIcddRequest(raw);
+      if (!req) return;
+      await runIcddRequest(req, (status) => post({ ...status }), {
+        exportIcdd: (progress) => client.exportIcdd(progress),
+        checkIcdd: (bytes, progress) => client.checkIcdd(bytes, progress),
+        download: client.downloadBytes,
+      });
+    })();
+  }
+
   function saveIds(raw: unknown) {
     const save = parseIdsSave(raw);
     const target: IdsTarget = save?.target ?? "studio";
@@ -815,6 +835,10 @@ export function IFCViewer({
           break;
         case "CLASH_SAVE":
           saveClash(e.data);
+          break;
+        case "ICDD_EXPORT":
+        case "ICDD_CHECK":
+          runIcdd(e.data);
           break;
         case "UNDERLAY_SAVE": {
           // Kalibrácia z viewera → perzistuj _georef (D-072). Server payload
