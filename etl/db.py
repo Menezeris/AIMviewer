@@ -13,7 +13,7 @@ import psycopg
 from psycopg.types.json import Json
 
 from . import documents, ids
-from .manifest import _SPECS, EDGE_TYPE_TO_REL_TYPE
+from .manifest import _SPECS, EDGE_TYPE_TO_REL_TYPE, FROM_REVISION_COPY
 from .model import StagedModel
 
 # D-051: hrany už nemajú per-vzťah tabuľku — všetky idú do generickej `relationships`
@@ -23,6 +23,18 @@ from .model import StagedModel
 
 # rel_type s parciálnym unique indexom "1 aktívny rodič na from_id" (manifest).
 UNIQUE_ACTIVE_FROM = frozenset(s.rel_type for s in _SPECS if s.unique_active_from)
+
+# D-183 K3 krok 3: typy hrán, ktoré pohľady čítajú z kópie revízie; ETL ich nezapisuje ani neuzatvára.
+COPY_REL_TYPES = sorted(FROM_REVISION_COPY)
+
+
+def writes_edge(edge_type: str, source: Optional[str]) -> bool:
+    """Zapisuje ETL grafu túto hranu do `relationships`? Nie, ak je to IFC vzťah zo súboru (zdroj `etl`,
+    `etl:<model>`), ktorý pohľad číta z kópie revízie. Hrana AIM vrstvy (iný zdroj) sa zapíše vždy,
+    rovnako ako ju pohľady čítajú (`rel_is_aim_layer`)."""
+    if EDGE_TYPE_TO_REL_TYPE[edge_type] not in FROM_REVISION_COPY:
+        return True
+    return not (source == LEGACY_EDGE_SOURCE or (source or "").startswith(LEGACY_EDGE_SOURCE + ":"))
 
 
 def fetch_existing_floors(url: str) -> list[tuple[str, object, object]]:
@@ -87,6 +99,7 @@ def load_model(
             obj_ids = _load_objects(cur, model)
             _load_appendices(cur, model, obj_ids)
             _load_guid_history(cur, model, obj_ids)
+            _load_guid_aliases(cur, model, obj_ids)
             _load_edges(cur, model, obj_ids)
             _load_class_links(cur, model, obj_ids, ref_ids)
             if scope:
@@ -119,14 +132,20 @@ def scope_sources(model: StagedModel, scope: str) -> None:
     for g in model.guid_history:
         if g.source == LEGACY_GUID_SOURCE:
             g.source = guid_source(scope)
+    for a in model.guid_aliases:
+        if a.source == LEGACY_GUID_SOURCE:
+            a.source = guid_source(scope)
 
 
 def emitted_ids(model: StagedModel) -> tuple[list[str], list[str]]:
-    """Id hrán (vrátane klasifikačných) a aktívnych GUID záznamov, ktoré tento beh zapísal."""
-    edges = [ids.edge_id(e.from_ref, e.to_ref, e.edge_type) for e in model.edges]
+    """Id hrán (vrátane klasifikačných) a aktívnych GUID záznamov, ktoré tento beh zapísal.
+    Hrany typov z kópie revízie (D-183 K3) ETL nezapisuje, preto tu nie sú."""
+    edges = [ids.edge_id(e.from_ref, e.to_ref, e.edge_type) for e in model.edges
+             if writes_edge(e.edge_type, e.source)]
     edges += [
         ids.edge_id(c.from_ref, f"{c.system_name}:{c.identification}", c.edge_type)
         for c in model.class_links
+        if writes_edge(c.edge_type, c.source)
     ]
     guids = [
         ids.guid_history_id(g.object_ref, g.ifc_guid)
@@ -147,17 +166,27 @@ _RETIRE_OBJECTS = (
 
 
 def close_stale(cur, model: StagedModel, scope: str) -> dict[str, int]:
-    """Uzavrie aktívne hrany, GUID záznamy a objekty modelu `scope`, ktoré tento beh nevydal."""
+    """Uzavrie aktívne hrany, GUID záznamy a objekty modelu `scope`, ktoré tento beh nevydal.
+
+    Hrany typov z kópie revízie (D-183 K3 krok 3) sa nechajú, ako sú: ETL ich už nevydáva a ich
+    ukončenie je samostatný krok na Samuelovo slovo (`supabase/pending/`), nie vedľajší účinok re-ETL."""
     edges, guids = emitted_ids(model)
     closed_edges = cur.execute(
         "update relationships set valid_until = now() "
-        "where source = %s and valid_until is null and not (id = any(%s)) returning id",
-        (edge_source(scope), edges),
+        "where source = %s and valid_until is null and not (rel_type = any(%s)) "
+        "and not (id = any(%s)) returning id",
+        (edge_source(scope), COPY_REL_TYPES, edges),
     ).fetchall()
     closed_guids = cur.execute(
         "update ifc_guid_history set valid_until = now() "
         "where source = %s and valid_until is null and not (id = any(%s)) returning id",
         (guid_source(scope), guids),
+    ).fetchall()
+    aliases = [ids.guid_alias_id(a.object_ref, a.ifc_guid) for a in model.guid_aliases]
+    closed_guids += cur.execute(
+        "update ifc_guid_aliases set valid_until = now() "
+        "where source = %s and valid_until is null and not (id = any(%s)) returning id",
+        (guid_source(scope), aliases),
     ).fetchall()
     retired = cur.execute(_RETIRE_OBJECTS, (guid_source(scope),)).fetchall()
     # Dokumenty nemajú GUID: model ich značí `_model`, čo už nevydal, zaniká (D-104).
@@ -375,6 +404,29 @@ def _load_guid_history(cur, model: StagedModel, obj_ids: dict[str, str]) -> None
         )
 
 
+def _load_guid_aliases(cur, model: StagedModel, obj_ids: dict[str, str]) -> None:
+    """GUID zlúčených IFC typov -> `asset_type` (D-033 ako údaj, D-183 K3 krok 3). Aktívny alias GUID
+    je najviac jeden (`uniq_active_guid_alias`): iný aktívny alias toho GUID (napr. spätné doplnenie
+    migráciou, typ prešiel pod iný kód) sa najprv uzavrie."""
+    for a in model.guid_aliases:
+        aid = ids.guid_alias_id(a.object_ref, a.ifc_guid)
+        cur.execute(
+            "update ifc_guid_aliases set valid_until = now() "
+            "where ifc_guid = %s and valid_until is null and id <> %s",
+            (a.ifc_guid, aid),
+        )
+        cur.execute(
+            """
+            insert into ifc_guid_aliases (id, object_id, ifc_guid, reason, valid_until, source)
+            values (%s, %s, %s, %s, null, %s)
+            on conflict (id) do update set
+              object_id = excluded.object_id, reason = excluded.reason,
+              valid_until = null, source = excluded.source
+            """,
+            (aid, obj_ids[a.object_ref], a.ifc_guid, a.reason, a.source),
+        )
+
+
 def _resolve_cross_file_refs(cur, model: StagedModel, obj_ids: dict[str, str]) -> None:
     """Doplní `obj_ids` o endpointy hrán, ktoré už existujú v DB (nie v tomto behu).
 
@@ -384,6 +436,7 @@ def _resolve_cross_file_refs(cur, model: StagedModel, obj_ids: dict[str, str]) -
     missing = {
         ref
         for e in model.edges
+        if writes_edge(e.edge_type, e.source)
         for ref in (e.from_ref, e.to_ref)
         if ref not in obj_ids
     }
@@ -405,6 +458,8 @@ def _resolve_cross_file_refs(cur, model: StagedModel, obj_ids: dict[str, str]) -
 def _load_edges(cur, model: StagedModel, obj_ids: dict[str, str]) -> None:
     _resolve_cross_file_refs(cur, model, obj_ids)
     for e in model.edges:
+        if not writes_edge(e.edge_type, e.source):
+            continue  # IFC vzťah zo súboru, pohľad ho číta z kópie revízie (D-183 K3 krok 3)
         rel_type = EDGE_TYPE_TO_REL_TYPE[e.edge_type]
         # `edge_id` (deterministické UUIDv5 z edge_type, D-031) sa NEmení → re-run
         # idempotentný cez `ON CONFLICT (id)`. `role` je nullable pre všetky typy.
@@ -440,6 +495,8 @@ def _load_class_links(
     # (`to_is_classification` v manifeste); trigger to zohľadní. Typ dokumentu (D-104) ide
     # tou istou cestou s iným `rel_type`.
     for c in model.class_links:
+        if not writes_edge(c.edge_type, c.source):
+            continue  # IfcRelAssociatesClassification zo súboru: pohľad z kópie revízie (D-183 K3 krok 3)
         rel_type = EDGE_TYPE_TO_REL_TYPE[c.edge_type]
         ref_id = ref_ids[(c.system_name, c.identification)]
         cid = ids.edge_id(c.from_ref, f"{c.system_name}:{c.identification}", c.edge_type)

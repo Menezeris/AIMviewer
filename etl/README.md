@@ -17,7 +17,7 @@ Python pipeline, ktorá načíta IFC model a naplní Supabase schému (`objects`
 | `manifest.py` | manifest vzťahov (D-051) — `rel_type` spec overený proti IFC schéme; `EDGE_TYPE_TO_REL_TYPE` routing; SQL pre `relationship_types` |
 | `transform.py` | IFC → staged model (mapovanie podľa SCHEMA/§4) |
 | `model.py` | medziľahlé dataclassy (staged riadky) + `CoverageReport` |
-| `db.py` | idempotentný upsert do Postgresu v poradí FK; hrany → generická `relationships` (D-051) |
+| `db.py` | idempotentný upsert do Postgresu v poradí FK; hrany → generická `relationships` (D-051), okrem IFC vzťahov z kópie revízie (D-183 K3) |
 | `ids.py` | deterministické UUID pre tabuľky bez prirodzeného unique |
 | `config.py` | načítanie `DATABASE_URL` |
 | `main.py` | CLI (`--file`, `--dry-run`, `--model`) |
@@ -232,7 +232,15 @@ Zverejnenie potom rovnakým príkazom bez `--dry-run` a ďalej podľa poradia vy
 (`etl.main --model VZT`, `etl.derive run --trigger auto`, `announce`). Ak medzitým vznikne
 nová revízia VZT, `--base` skončí konfliktom (kód 3): recept sa spustí znova nad ňou.
 
-**`--model` v `etl.main`:** hrany a GUID história dostanú zdroj modelu (`etl:ASR`,
+**IFC vzťahy z kópie revízie (D-183 K3 krok 3):** `rel_aggregates`, `rel_contained_in_spatial_structure`,
+`rel_defines_by_type`, `rel_assigns_to_group`, `rel_associates_document` a `rel_associates_classification` ETL grafu do
+`relationships` nezapisuje ani neuzatvára (`manifest.FROM_REVISION_COPY`, `db.writes_edge`); ich pohľady čítajú
+`ifc_rev_relationships` (`etl.revision_copy`). Transformácia ich ďalej skladá (dry-run, testy), zapisuje sa len hrana
+AIM vrstvy týchto typov (zdroj nie je `etl*`). Uzly, GUID história, klasifikačné referencie a ostatné typy hrán ostávajú.
+Zlúčené IFC typy s rovnakým typovým kódom (D-033) zapíše ako alias GUID (`ifc_guid_aliases`, zdroj `IFC import:<model>`).
+Staré hrany ETL týchto typov ukončí samostatný krok `supabase/pending/20261031190000_end_etl_ifc_edges.sql`.
+
+**`--model` v `etl.main`:** hrany, GUID história a aliasy dostanú zdroj modelu (`etl:ASR`,
 `IFC import:ASR`); čo beh nevydal (zmazaný, presunutý, premenovaný prvok), sa uzavrie.
 Nový rodič pri `rel_aggregates` / `contained` / `defines_by_type` uzavrie starého pred
 insertom. **Prvý prechod** z dát bez mena modelu: načítať ASR aj VZT s `--model`, potom raz

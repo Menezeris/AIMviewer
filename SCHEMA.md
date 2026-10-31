@@ -196,6 +196,21 @@ create table ifc_guid_history (
   created_at  timestamptz not null default now()
 );
 create unique index uniq_active_guid on ifc_guid_history (object_id) where valid_until is null;
+
+-- D-183 K3 krok 3 (migrácia 20261031180000): ďalší GlobalId toho istého uzla, NIE jeho história. GUID IFC typu,
+-- ktorý ETL zlúčil do asset_type s rovnakým typovým kódom (D-033, reason = type_code). Zapisuje ETL grafu
+-- (zdroj IFC import:<model>, re-ETL uzavrie nevydané); čítanie cez pohľad ifc_guid_node (§2.19).
+create table ifc_guid_aliases (
+  id          uuid primary key default gen_random_uuid(),
+  object_id   uuid not null references objects(id) on delete cascade,
+  ifc_guid    text not null,
+  reason      text not null default 'type_code',
+  valid_from  timestamptz not null default now(),
+  valid_until timestamptz,          -- NULL = aktívny
+  source      text,
+  created_at  timestamptz not null default now()
+);
+create unique index uniq_active_guid_alias on ifc_guid_aliases (ifc_guid) where valid_until is null;
 ```
 
 ### 2.5 Hrany — generický meta-model `relationships` (D-051, implementované vo F1)
@@ -278,6 +293,8 @@ create view rel_aggregates as
 --   od D-183 K3 krok 2b (migrácia 20261031150000) tiež z kópie revízie + hrany AIM vrstvy (zdroj nie etl*) z `relationships`
 --   (rovnaké prvé stĺpce + model, revision, global_id a parent_global_id | type_global_id | group_global_id |
 --   document_key | classification_key; §2.19). rel_assigns_to_actor, rel_member_of a ostatné ostávajú nad `relationships`.
+-- Od D-183 K3 krok 3 ETL grafu hrany týchto šiestich typov do `relationships` nezapisuje (staré `etl*` ostávajú
+--   aktívne a nečítané, kým ich neukončí `supabase/pending/20261031190000_end_etl_ifc_edges.sql`).
 ```
 
 ### 2.6 Indexy + integrita hrán
@@ -740,10 +757,16 @@ kontajnera a revízie, (2) úplnú kópiu informácií každej revízie bez geom
   `type_global_id`, `group_global_id`, `document_key` (`IfcDocumentInformation:<Identification>` / `IfcDocumentReference:<Identification>`),
   `classification_key` (`IfcClassificationReference:<Identification>`, `IfcClassification:<Name>`). Mapovanie Relating bez GUID:
   dokument cez jedinú zhodu `documents.identification` pri uzle `document`/`document_reference` triedy kľúča, klasifikácia cez jedinú
-  zhodu `classification_references.identification`; typ bez vlastného uzla (zlúčený ETL, D-033) cez `asset_type` s `object_ref` =
-  `object_ref` výskytu bez posledného segmentu. Podlažie VZT sa v `rel_aggregates` nemapuje. Pomocné pohľady `ifc_rev_current`
-  (model, revision, finished_at: aktuálna `done`, inak najnovšia nižšia `done`) a `ifc_guid_node` (ifc_guid, object_id, object_type,
-  object_ref), funkcia `rel_is_aim_layer(text)` (immutable); len `service_role`.
+  zhodu `classification_references.identification`; typ bez vlastného uzla (zlúčený ETL, D-033) od kroku 3 cez alias GUID
+  (`ifc_guid_aliases` v `ifc_guid_node`; pôvodný most podľa `object_ref` výskytu zrušený). Podlažie VZT sa v `rel_aggregates`
+  nemapuje. Pomocné pohľady `ifc_rev_current` (model, revision, finished_at: aktuálna `done`, inak najnovšia nižšia `done`) a
+  `ifc_guid_node` (ifc_guid, object_id, object_type, object_ref, `alias_reason`: aktívny `ifc_guid_history`, inak aktívny
+  `ifc_guid_aliases` s `alias_reason` = `type_code`), funkcia `rel_is_aim_layer(text)` (immutable); len `service_role`.
+- **K3 krok 3 (migrácia `20261031180000_ifc_guid_aliases.sql`):** tabuľka `ifc_guid_aliases` (§2.4) so spätným doplnením
+  z mosta nad kópiou aktuálnej revízie (len jednoznačné GUID typu; produkcia 31. 10.: 8 GUID ASR -> 7 `asset_type`, 35
+  výskytov), `ifc_guid_node` s aliasom, `rel_defines_by_type` bez mosta. ETL grafu prestal zapisovať hrany šiestich typov
+  z kópie (`etl/manifest.py` `FROM_REVISION_COPY`); ich ukončenie je samostatný krok v `supabase/pending/` (nie migrácia,
+  na Samuelovo slovo).
 
 ## 4. Konvencia `properties` (D-022)
 

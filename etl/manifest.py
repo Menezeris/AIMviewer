@@ -214,6 +214,20 @@ EDGE_TYPE_TO_REL_TYPE: dict[str, str] = {
     "document_classification": "rel_external_reference_relationship",
 }
 
+# D-183 K3 krok 3: IFC vzťahy, ktorých kanonické pohľady čítajú kópiu revízie (`ifc_rev_relationships`,
+# migrácie 20261031120000 a 20261031150000). ETL grafu ich do `relationships` už nezapisuje ani neuzatvára;
+# staré hrany ETL týchto typov pohľady nečítajú (`rel_is_aim_layer`) a ukončí ich samostatný krok
+# (`supabase/pending/`, na Samuelovo slovo). Ostatné typy (referenced, space_boundary, aktori, strom a
+# klasifikácia dokumentov) ETL píše ďalej, kým ich pohľady neprejdú na kópiu.
+FROM_REVISION_COPY: frozenset[str] = frozenset({
+    "rel_aggregates",
+    "rel_contained_in_spatial_structure",
+    "rel_defines_by_type",
+    "rel_assigns_to_group",
+    "rel_associates_document",
+    "rel_associates_classification",
+})
+
 
 def _ifc_family(decl) -> Optional[str]:
     """Rodina vzťahu = supertyp tesne pod `IfcRelationship` (napr. IfcRelDecomposes)."""

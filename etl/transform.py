@@ -31,6 +31,7 @@ from .model import (
     CoverageReport,
     DocumentExt,
     Edge,
+    GuidAlias,
     GuidHistory,
     ObjectRow,
     PersonExt,
@@ -430,6 +431,13 @@ def to_staged(
             if existing is not None:                       # zlúč do už emitnutého kódu
                 type_refs[tid] = existing
                 refs._by_id[tid] = existing
+                # Zlúčenie ako údaj (D-183 K3 krok 3): GUID zlúčeného typu -> ten istý asset_type,
+                # aby ho `rel_defines_by_type` z kópie revízie našiel bez odhadu podľa object_ref.
+                alias_guid = attr(t, "GlobalId")
+                if alias_guid:
+                    staged.guid_aliases.append(
+                        GuidAlias(object_ref=existing, ifc_guid=alias_guid, source="IFC import")
+                    )
                 continue
             ref = refs.reserve_type_code(t, code)
             code_to_type_ref[code] = ref
