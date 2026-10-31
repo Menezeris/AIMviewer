@@ -39,6 +39,9 @@ insert into ifc_guid_history (object_id, ifc_guid) values
   ('00000000-0000-4000-8000-0000000000a5', 'V-T1'), ('00000000-0000-4000-8000-0000000000a6', 'A-DEAD'),
   ('00000000-0000-4000-8000-0000000000c1', 'A-DT1'), ('00000000-0000-4000-8000-0000000000c2', 'V-SYS'),
   ('00000000-0000-4000-8000-0000000000c3', 'A-ZN');
+-- Zlúčený typ A-DT2 (D-033) je od D-183 K3 kroku 3 údaj: alias GUID na ten istý asset_type (predtým most podľa object_ref).
+insert into ifc_guid_aliases (object_id, ifc_guid, reason, source) values
+  ('00000000-0000-4000-8000-0000000000c1', 'A-DT2', 'type_code', 'IFC import:TAS');
 
 -- Hrany grafu: ETL (pohľady ich nečítajú) a AIM vrstva (E4 výkres -> prvok, ostáva).
 insert into relationships (rel_type, from_id, to_id, role, source) values
@@ -91,12 +94,12 @@ begin
     raise exception 'rel_aggregates: %', got;
   end if;
 
-  -- 2) rel_defines_by_type: zlúčený typ cez typový kód výskytu, zaniknutý výskyt from_id null
+  -- 2) rel_defines_by_type: zlúčený typ cez alias GUID (ifc_guid_aliases), zaniknutý výskyt from_id null
   select string_agg(coalesce(f.object_ref, '-') || '>' || coalesce(t.object_ref, '-') || ':' || d.type_global_id, ',' order by d.global_id)
     into got
   from rel_defines_by_type d left join objects f on f.id = d.from_id left join objects t on t.id = d.to_id
   where d.model = 'TAS';
-  if got is distinct from 'TD01.01.01>TD01.01:A-DT1,TD01.01.02>TD01.01:A-DT2,->-:A-DT2' then
+  if got is distinct from 'TD01.01.01>TD01.01:A-DT1,TD01.01.02>TD01.01:A-DT2,->TD01.01:A-DT2' then
     raise exception 'rel_defines_by_type: %', got;
   end if;
 

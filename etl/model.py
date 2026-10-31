@@ -117,6 +117,18 @@ class GuidHistory:
 
 
 @dataclass
+class GuidAlias:
+    """Ďalší GlobalId toho istého uzla AIM, nie jeho história (D-183 K3 krok 3): IFC typ zlúčený do
+    `asset_type` s rovnakým typovým kódom (D-033). Tabuľka `ifc_guid_aliases`, nie `ifc_guid_history`
+    (tam je na uzle najviac jeden aktívny GUID, `uniq_active_guid`, D-010)."""
+
+    object_ref: str
+    ifc_guid: str
+    reason: str = "type_code"
+    source: Optional[str] = None
+
+
+@dataclass
 class CoverageReport:
     """Pokrytie `object_ref` kódovacou schémou (D-033) — výstup `--dry-run`.
 
@@ -149,6 +161,7 @@ class StagedModel:
     systems: list[ClassificationSystem] = field(default_factory=list)
     refs: list[ClassificationRef] = field(default_factory=list)
     guid_history: list[GuidHistory] = field(default_factory=list)
+    guid_aliases: list[GuidAlias] = field(default_factory=list)
     coverage: Optional["CoverageReport"] = None
     # object_ref → IFC trieda entít, na ktoré ukazujú väzby dokumentov/aktorov (diagnostika)
     link_classes: dict[str, str] = field(default_factory=dict)
@@ -157,5 +170,6 @@ class StagedModel:
         return (
             f"objects={len(self.objects)} edges={len(self.edges)} "
             f"class_links={len(self.class_links)} systems={len(self.systems)} "
-            f"refs={len(self.refs)} guid_history={len(self.guid_history)}"
+            f"refs={len(self.refs)} guid_history={len(self.guid_history)} "
+            f"guid_aliases={len(self.guid_aliases)}"
         )
