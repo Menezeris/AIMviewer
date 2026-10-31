@@ -31,6 +31,8 @@ export interface CachedStore {
   url: string;
   etag: string | null;
   size: number;
+  /** Revízia archívu, z ktorého sa model načítal (D-183, podpis vstupu); null = pôvodná URL. */
+  revision: number | null;
   store: IfcDataStore;
   loadedAt: number;
   loadMs: number;
@@ -74,12 +76,18 @@ async function head(url: string, fetchImpl: typeof fetch): Promise<{ etag: strin
 /** Strop rozbaleného modelu: poškodený alebo podvrhnutý archív nezahltí pamäť funkcie. */
 const MAX_UNPACKED_BYTES = 512 * 1024 * 1024;
 
+/** Číslo revízie z URL archívu (`archive/<MODEL>/vNNN.ifc.gz`); null = iný tvar. */
+export function archiveRevision(url: string): number | null {
+  const m = /\/v(\d+)\.ifc\.gz$/i.exec(url.split(/[?#]/)[0]);
+  return m ? Number(m[1]) : null;
+}
+
 /** Bajty z archívu revízie (gzip) s ETagom pôvodnej URL; null = archív nepoužiť. */
 async function fromArchive(
   src: EngineModelSource,
   fetchImpl: typeof fetch,
   archive: ArchiveResolver,
-): Promise<{ bytes: Uint8Array; etag: string | null } | null> {
+): Promise<{ bytes: Uint8Array; etag: string | null; revision: number | null } | null> {
   try {
     // HEAD pred revíziou z DB: publikácia zapíše DB skôr než aktuálny kľúč, takže starý ETag
     // s novou revíziou znamená najviac jedno načítanie navyše, nikdy nový ETag so starou revíziou.
@@ -89,7 +97,7 @@ async function fromArchive(
     const res = await fetchImpl(url, { cache: "no-store" });
     if (!res.ok) return null;
     const bytes = gunzipSync(new Uint8Array(await res.arrayBuffer()), { maxOutputLength: MAX_UNPACKED_BYTES });
-    return { bytes, etag: h.etag };
+    return { bytes, etag: h.etag, revision: archiveRevision(url) };
   } catch {
     return null;
   }
@@ -101,9 +109,9 @@ async function load(src: EngineModelSource, fetchImpl: typeof fetch, now: () => 
   if (!got) {
     const res = await fetchImpl(src.url, { cache: "no-store" });
     if (!res.ok) throw new Error(`Model ${src.id} sa nepodarilo stiahnuť (${res.status})`);
-    got = { bytes: new Uint8Array(await res.arrayBuffer()), etag: res.headers.get("etag") };
+    got = { bytes: new Uint8Array(await res.arrayBuffer()), etag: res.headers.get("etag"), revision: null };
   }
-  const { bytes, etag } = got;
+  const { bytes, etag, revision } = got;
   const store = await parseIfcBytes(bytes, `${src.id}.ifc`);
   const t = now();
   return {
@@ -111,6 +119,7 @@ async function load(src: EngineModelSource, fetchImpl: typeof fetch, now: () => 
     url: src.url,
     etag,
     size: bytes.byteLength,
+    revision,
     store,
     loadedAt: t,
     loadMs: t - started,
@@ -148,6 +157,16 @@ export async function getStore(src: EngineModelSource, deps: Deps = {}): Promise
   return { entry: await p, cold: true };
 }
 
+/** Údaj o načítanom modeli vo výsledkoch motora: ETag, veľkosť, čas a revízia archívu, keď je známa (D-183). */
+export function engineRevision(entry: CachedStore): { etag: string | null; size: number; loaded_at: string; revision?: number } {
+  return {
+    etag: entry.etag,
+    size: entry.size,
+    loaded_at: new Date(entry.loadedAt).toISOString(),
+    ...(entry.revision !== null ? { revision: entry.revision } : {}),
+  };
+}
+
 /** Stav cache pre diagnostiku (ifc_models / ifc_engine_probe). */
 export function cacheSnapshot(): Array<Omit<CachedStore, "store">> {
   return [...entries.values()].map((e) => ({
@@ -155,6 +174,7 @@ export function cacheSnapshot(): Array<Omit<CachedStore, "store">> {
     url: e.url,
     etag: e.etag,
     size: e.size,
+    revision: e.revision,
     loadedAt: e.loadedAt,
     loadMs: e.loadMs,
     checkedAt: e.checkedAt,

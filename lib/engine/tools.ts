@@ -3,7 +3,7 @@ import type { AskAction } from "../llm/actions";
 import { MAX_MEASURE_SEGMENTS, noteDimensions, resetDimensionTally, type MeasureSegment } from "../viewer-measure";
 import type { Vec3 } from "./measure";
 
-import { cacheSnapshot, getStore, type EngineModelSource } from "./cache";
+import { cacheSnapshot, engineRevision, getStore, type EngineModelSource } from "./cache";
 import type { ClashBcfPort, ClashStore } from "../clash/types";
 import type { ClashViewerDeps } from "../clash/viewer-tool";
 import { idsSources, loadIds } from "./ids-sources";
@@ -238,9 +238,19 @@ export async function modelsFor(ids: string[], deps: EngineDeps): Promise<{ mode
     if (!src) throw new InputError(`Model ${id} nie je vo federácii (${all.map((m) => m.id).join(", ")}).`);
     const { entry } = await getStore(src, { fetchImpl: deps.fetchImpl });
     models.push({ id: src.id, name: `${src.id}.ifc`, store: entry.store });
-    revision[src.id] = { etag: entry.etag, size: entry.size, loaded_at: new Date(entry.loadedAt).toISOString() };
+    revision[src.id] = engineRevision(entry);
   }
   return { models, revision };
+}
+
+/** Podpis vstupu (D-183) z `modelsFor().revision`: modely so známou revíziou archívu. */
+export function revisionStamp(revision: Record<string, unknown>, ids: string[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const id of ids) {
+    const r = (revision[id] as { revision?: unknown } | undefined)?.revision;
+    if (typeof r === "number") out[id] = r;
+  }
+  return out;
 }
 
 function requireModel(input: Record<string, unknown>): string {
@@ -689,6 +699,7 @@ async function ifcIdsValidate(input: Record<string, unknown>, deps: EngineDeps):
         results_failed: failed,
         engine: "ifc-lite",
         trigger: "chat",
+        model_revisions: revisionStamp(revision, [modelId]),
       },
       rows,
     );

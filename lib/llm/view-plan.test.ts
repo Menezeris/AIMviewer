@@ -40,6 +40,12 @@ describe("tools pohľadu (D-083 fáza 1)", () => {
 
   it("režim 2D na podlaží a reset pohľadu", () => {
     expect(parseOps(planViewMode({ mode: "2d" }, FLOOR).ops[0])).toEqual([{ op: "view", mode: "2d", storeyGuid: FLOOR.guid }]);
+    // split nesie výkres vybraný hostom (D-176), 2d ho nepotrebuje
+    const drawing = { documentId: "11111111-1111-4111-8111-111111111111", name: "OCB_SO01_ASR_D-1-1-01_PODORYS-1NP", discipline: "ASR", chosen_by: "preference" as const, alternatives: [{ name: "OCB_SO01_PBR_D-1-3-02_PODORYS-1NP", discipline: "PBR" }] };
+    const split = planViewMode({ mode: "split" }, FLOOR, drawing);
+    expect(parseOps(split.ops[0])).toEqual([{ op: "view", mode: "split", storeyGuid: FLOOR.guid, documentId: drawing.documentId }]);
+    expect(split.result).toMatchObject({ drawing: { discipline: "ASR", chosen_by: "preference", alternatives: [{ discipline: "PBR" }] } });
+    expect(parseOps(planViewMode({ mode: "2d" }, FLOOR, drawing).ops[0])).toEqual([{ op: "view", mode: "2d", storeyGuid: FLOOR.guid }]);
     const reset = planViewMode({ mode: "3d", reset: true }, null);
     expect(parseOps(reset.ops.join(";")).map((o) => o.op)).toEqual(["section_clear", "view", "show_all", "reset_colors", "clear_selection", "clear_focus", "camera"]);
     expect(() => planViewMode({ mode: "2d", reset: true }, null)).toThrow(/reset/);

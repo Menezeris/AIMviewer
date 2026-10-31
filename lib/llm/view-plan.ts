@@ -186,6 +186,8 @@ export function planPlanPosition(input: Record<string, unknown>): { op: string; 
 export function planViewMode(
   input: Record<string, unknown>,
   floor: { label: string; guid: string } | null,
+  /** Výkres podlažia vybraný hostom pre mode=split (D-176); bez neho vyberá viewer. */
+  drawing?: { documentId: string; name: string; discipline: string | null; chosen_by: "discipline" | "preference"; alternatives: { name: string; discipline: string | null }[] } | null,
 ): ViewPlan {
   const mode = String(input.mode ?? "").trim() as ViewMode;
   if (!(VIEW_MODES as readonly string[]).includes(mode)) throw new ViewInputError("mode musí byť 3d, 2d alebo split.");
@@ -205,9 +207,17 @@ export function planViewMode(
     split: "Pohľad zhora na podlažie a dlaždice 3D | výkres PDF podlažia; ak podlažie nemá výkres, viewer to nahlási v problémoch.",
   }[mode];
   return {
-    ops: [viewModeOp(mode, floor?.guid)],
+    ops: [viewModeOp(mode, floor?.guid, mode === "split" ? drawing?.documentId : undefined)],
     label: mode === "3d" ? "Viewer: 3D" : `Viewer: pohľad zhora${mode === "split" ? " + výkres" : ""}${floor ? ` ${floor.label}` : ""}`,
-    result: { ok: true, mode, ...(floor ? { floor: floor.label } : {}), note },
+    result: {
+      ok: true,
+      mode,
+      ...(floor ? { floor: floor.label } : {}),
+      ...(mode === "split" && drawing
+        ? { drawing: { name: drawing.name, discipline: drawing.discipline, chosen_by: drawing.chosen_by, alternatives: drawing.alternatives } }
+        : {}),
+      note,
+    },
   };
 }
 

@@ -1367,6 +1367,46 @@
       "expect": { "tools_called": ["clash"] },
       "verified": false,
       "notes": "D-177 (#302): clash action=matrix, nie počítanie z riadkov results."
+    },
+    {
+      "id": "split-floor-asr-not-pbr",
+      "category": "viewer",
+      "question": "Otvor 4NP v split: 3D a výkres podlažia.",
+      "expect": { "tools_called": ["set_view_mode"] },
+      "verified": false,
+      "notes": "D-176 (#316): výkres podlažia je ASR pôdorys (strecha D.1.1.04), PBR len keď iný nie je; výsledok nesie drawing a alternatives, PBR na výslovnú žiadosť discipline=PBR."
+    },
+    {
+      "id": "underlay-remove-restore",
+      "category": "viewer",
+      "question": "Zmaž kalibráciu podkladu strechy D.1.1.04 a vráť ju, ak sa mi to nepáči.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-176 (#284): mode=remove len na výslovný pokyn (ručná s force), potom mode=restore index=0."
+    },
+    {
+      "id": "section-underlay-from-plan",
+      "category": "viewer",
+      "question": "Skús kalibrovať rez A (D.1.1.05) pod model, zatiaľ len náhľad.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-179 (#284): mode=dry_run bez section_plane (alebo from_plan=true), rovina zo značky A na pôdorysoch (X = 47,42), mierka 1:50, výsledok s from_plan a view_direction; nič neukladať."
+    },
+    {
+      "id": "underlay-plan-without-labels",
+      "category": "viewer",
+      "question": "Skús kalibrovať pôdorys základov D.1.2.01 pod model, len náhľad.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-180 (#170): mode=dry_run, štart plan_scan (bez čísel miestností, mierka 1:50 z textu), výsledok s rotation_check a plausible; nič neukladať."
+    },
+    {
+      "id": "underlay-sheet-region",
+      "category": "viewer",
+      "question": "Na hárku SF.02 Zónovanie nakalibruj náhľad pôdorysu 1NP.",
+      "expect": { "tools_called": ["calibrate_underlay"] },
+      "verified": false,
+      "notes": "D-180 (#170): výrez pôdorysu 1NP z polohy nadpisu (search_documents), calibrate_underlay floor=1NP, region=[x, y, w, h], dry_run."
     }
   ]
 }

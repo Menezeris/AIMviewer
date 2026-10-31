@@ -92,3 +92,59 @@ export function floorDrawing(
   const guids = [...new Set(floors.map((f) => f.ifcGuid).filter(Boolean) as string[])];
   return guids.length === 1 ? { drawing: true, storeyGuid: guids[0] } : { drawing: true };
 }
+
+/**
+ * Disciplína výkresu z kódu dokumentu (`OCB_SO01_ASR_D-1-1-01_...` -> `ASR`); null, keď kód nemá tvar
+ * `<projekt>_<objekt>_<disciplína>_...`. Veľkosť písmen sa nerozlišuje, výsledok je veľkými.
+ */
+export function disciplineOf(ref: string | null | undefined): string | null {
+  const m = /^[A-Za-z0-9]+_[A-Za-z0-9]+_([A-Za-z]{2,5})_/.exec(ref ?? "");
+  return m ? m[1].toUpperCase() : null;
+}
+
+/** Kandidát na výkres podlažia: dokument, ktorý nesie podlažie (jedno alebo viac). */
+export interface FloorDrawingCandidate {
+  documentId: string;
+  ref: string | null;
+  discipline: string | null;
+  floorGuids: readonly string[];
+}
+
+/** Disciplína, ktorá nie je hlavným výkresom podlažia: požiarne riešenie ide až po ostatných (D-176). */
+const FALLBACK_DISCIPLINE = "PBR";
+const PRIMARY_DISCIPLINE = "ASR";
+
+/** Menšie číslo = lepší výkres podlažia: ASR, ostatné, PBR; v rámci disciplíny výkres jedného podlažia pred spoločným (strecha). */
+function floorDrawingRank(c: FloorDrawingCandidate): number {
+  const d = c.discipline;
+  const tier = d === PRIMARY_DISCIPLINE ? 0 : d === FALLBACK_DISCIPLINE ? 2 : 1;
+  return tier * 2 + (c.floorGuids.length === 1 ? 0 : 1);
+}
+
+export type FloorDrawingPick =
+  | { ok: true; drawing: FloorDrawingCandidate; chosen_by: "discipline" | "preference"; alternatives: FloorDrawingCandidate[] }
+  | { ok: false; reason: "no_drawing" | "no_discipline"; available: string[] };
+
+/**
+ * Výkres podlažia pre `set_view_mode(floor, split)` (D-176, #316): predvolene ASR pôdorys podlažia, potom iné
+ * disciplíny, PBR (požiarne riešenie) len keď iný nie je. Výslovná `discipline` vyberie výkres tej disciplíny
+ * (bez nej `no_discipline` s dostupnými). Pri zhode poradia rozhoduje kód dokumentu, aby bol výber stabilný.
+ */
+export function pickFloorDrawing(
+  candidates: readonly FloorDrawingCandidate[],
+  storeyGuid: string,
+  discipline?: string | null,
+): FloorDrawingPick {
+  const onFloor = candidates.filter((c) => c.floorGuids.includes(storeyGuid));
+  if (onFloor.length === 0) return { ok: false, reason: "no_drawing", available: [] };
+  const sorted = [...onFloor].sort((a, b) => floorDrawingRank(a) - floorDrawingRank(b) || (a.ref ?? a.documentId).localeCompare(b.ref ?? b.documentId));
+  const want = discipline?.trim().toUpperCase();
+  if (want) {
+    const hit = sorted.filter((c) => c.discipline === want);
+    if (hit.length === 0) {
+      return { ok: false, reason: "no_discipline", available: [...new Set(sorted.map((c) => c.discipline).filter((d): d is string => !!d))] };
+    }
+    return { ok: true, drawing: hit[0], chosen_by: "discipline", alternatives: sorted.filter((c) => c !== hit[0]) };
+  }
+  return { ok: true, drawing: sorted[0], chosen_by: "preference", alternatives: sorted.slice(1) };
+}
