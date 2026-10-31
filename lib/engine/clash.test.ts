@@ -4,7 +4,7 @@ import { guid } from "./__fixtures__/mini-building";
 import { MINI_GEOMETRY_BYTES } from "./__fixtures__/mini-geometry";
 import { clearEngineCache } from "./cache";
 import { clearClashRuns, detect, groupRun, parseSpec, type ClashRun } from "./clash";
-import { DEFAULT_TESTS, STRUCTURAL_TYPES } from "./clash-tests";
+import { DEFAULT_TESTS, NON_SOLID_EXCLUDES, STRUCTURAL_TYPES } from "./clash-tests";
 import type { AimRef } from "./join";
 import type { MeshElement } from "./measure";
 import type { EngineModel } from "./session";
@@ -93,6 +93,36 @@ describe("clash (D-164) - jadro", () => {
     expect(named.result.clashes).toHaveLength(1);
   });
 
+  it("VZT-ASR: odstup 50 mm berie dvere, okná a krytiny, nie priestor, zónu, otvor, virtuálny prvok ani port", async () => {
+    const duct = cube("VZT", "D1", "IfcDuctSegment", [0, 0, 0], 1, 1);
+    const port = cube("VZT", "P1", "IfcDistributionPort", [0, 0, 0], 1, 9);
+    const solids = [
+      cube("ASR", "WL", "IfcWall", [1.04, 0, 0], 1, 2),
+      cube("ASR", "DR", "IfcDoor", [-1.04, 0, 0], 1, 3),
+      cube("ASR", "CV", "IfcCovering", [0, 1.04, 0], 1, 4),
+      cube("ASR", "WN", "IfcWindow", [0, -1.04, 0], 1, 5),
+    ];
+    const ghosts = [
+      cube("ASR", "SP", "IfcSpace", [0, 0, 0], 3, 6),
+      cube("ASR", "SZ", "IfcSpatialZone", [0, 0, 0], 3, 7),
+      cube("ASR", "OP", "IfcOpeningElement", [0, 0, 0], 3, 8),
+      cube("ASR", "VE", "IfcVirtualElement", [0, 0, 0], 3, 10),
+      cube("ASR", "PT", "IfcDistributionPort", [0, 0, 0], 1, 11),
+    ];
+    const { result, sets: n } = await detect({ spec: parseSpec({ test: "VZT-ASR" }), elements: sets(duct, port, ...solids, ...ghosts) });
+    expect(n).toEqual({ a: 1, b: 4 });
+    expect(result.clashes).toHaveLength(4);
+    expect(new Set(result.clashes.map((c) => c.status))).toEqual(new Set(["clearance"]));
+    // Port VZT (rovnaká poloha ako potrubie) nie je prvok strany a.
+    expect(result.clashes.every((c) => c.a.key === `VZT:${guid("D1")}`)).toBe(true);
+  });
+
+  it("VZT-ASR: prvok mimo odstupu 50 mm nie je kolízia", async () => {
+    const duct = cube("VZT", "D1", "IfcDuctSegment", [0, 0, 0]);
+    const wall = cube("ASR", "W1", "IfcWall", [1.06, 0, 0], 1, 2);
+    expect((await detect({ spec: parseSpec({ test: "VZT-ASR" }), elements: sets(duct, wall) })).result.clashes).toHaveLength(0);
+  });
+
   it("prázdna strana je chyba s opisom filtra, nie prázdny výsledok", async () => {
     const duct = cube("VZT", "D1", "IfcDuctSegment", [0, 0, 0]);
     await expect(detect({ spec: parseSpec({ a: "IfcDuct*", b: "IfcWall", b_model: "ASR" }), elements: sets(duct) })).rejects.toThrow(/Strana b.*IfcWall.*model ASR/);
@@ -166,7 +196,15 @@ describe("clash (D-164) - vstup", () => {
   it("predvolené testy: VZT x nosné hard, VZT x ASR odstup 50 mm", () => {
     expect(DEFAULT_TESTS.map((t) => t.name)).toEqual(["VZT x nosné konštrukcie", "VZT x ASR"]);
     expect(parseSpec({ test: "VZT x nosné konštrukcie" })).toMatchObject({ mode: "hard", code: "VZT-NOSNE", a: { model: "VZT" }, b: { model: "ASR", type: STRUCTURAL_TYPES } });
-    expect(parseSpec({ test: "vzt-asr" })).toMatchObject({ mode: "clearance", clearance: 0.05, b: { type: "!IfcSpace" } });
+    expect(parseSpec({ test: "vzt-asr" })).toMatchObject({ mode: "clearance", clearance: 0.05, a: { model: "VZT" }, b: { model: "ASR" } });
+    // Vylúčenia sú pomenované v selektore na oboch stranách (čistý zoznam vylúčení = AND).
+    const asr = parseSpec({ test: "VZT-ASR" });
+    for (const cls of NON_SOLID_EXCLUDES) {
+      expect(asr.a.type).toContain(`!${cls}`);
+      expect(asr.b?.type).toContain(`!${cls}`);
+    }
+    // Zúženie na podlažie ponechá vylúčenia.
+    expect(parseSpec({ test: "VZT-ASR", b_storey: "2NP" }).b).toMatchObject({ type: asr.b?.type, storey: "2NP" });
   });
 
   it("parametre prepíšu test, chybný vstup je InputError", () => {

@@ -43,6 +43,14 @@ export interface ClashTest {
 /** Triedy, ktoré môžu byť nosné; či nosné sú, rozhoduje `load_bearing` strany b (D-164 dodatok 2026-10-31). */
 export const STRUCTURAL_TYPES = "IfcWall*|IfcSlab*|IfcBeam*|IfcColumn*|IfcFooting*|IfcPile*|IfcMember*|IfcRoof*";
 
+/**
+ * Triedy bez telesa, ktoré `VZT-ASR` nikdy nepovažuje za prekážku (D-164 dodatok 2026-10-31, #292):
+ * priestory a priestorové zóny (vzduch), otvory a virtuálne prvky (prázdno, prestup rieši host stena),
+ * porty rozvodov (spojovacie body). Selektor zložený zo samých vylúčení je AND (upstream `matchesSelector`).
+ */
+export const NON_SOLID_EXCLUDES = ["IfcSpace", "IfcSpatialZone", "IfcOpeningElement", "IfcVirtualElement", "IfcDistributionPort"] as const;
+const exclude = (...extra: string[]) => [...NON_SOLID_EXCLUDES, ...extra].map((c) => `!${c}`).join("|");
+
 export const DEFAULT_TESTS: ClashTest[] = [
   {
     code: "VZT-NOSNE",
@@ -55,9 +63,9 @@ export const DEFAULT_TESTS: ClashTest[] = [
   {
     code: "VZT-ASR",
     name: "VZT x ASR",
-    description: "VZT voči celému ASR (bez IfcSpace) s odstupom 50 mm.",
-    a: { type: "*", model: "VZT" },
-    b: { type: "!IfcSpace", model: "ASR" },
+    description: "VZT voči telesám ASR s odstupom 50 mm; bez IfcSpace, IfcSpatialZone, IfcOpeningElement, IfcVirtualElement a IfcDistributionPort (na oboch stranách). Dvere, okná, krytiny a ostatné prvky ASR sa berú.",
+    a: { type: exclude(), model: "VZT" },
+    b: { type: exclude(), model: "ASR" },
     mode: "clearance",
     clearance_mm: 50,
   },

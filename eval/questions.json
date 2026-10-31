@@ -1445,6 +1445,15 @@
       "notes": "D-164 dodatok 2026-10-31 (#292): clash(run, test=VZT-NOSNE) berie b so sadou LoadBearing=true (výskyt, inak typ); nenosné steny sa nerátajú. Dry run bez save. Na revízii ASR 79 + VZT 11 očakávaných 46 kolízií (45 stena, 1 doska). Evaly pozastavené, nepobežali."
     },
     {
+      "id": "clash-vzt-asr-odstup",
+      "category": "viewer",
+      "question": "Koľko prvkov ASR je bližšie ako 50 mm k VZT (okrem priestorov a otvorov)? Spusti to bez uloženia.",
+      "expect": { "tools_called": ["clash"] },
+      "mcp_only": true,
+      "verified": false,
+      "notes": "D-164 dodatok 2026-10-31 (#292): clash(run, test=VZT-ASR) bez save: clearance 50 mm, strany bez IfcSpace, IfcSpatialZone, IfcOpeningElement, IfcVirtualElement, IfcDistributionPort. Odpoveď má uviesť úplný total a že ide o odstup, nie o prienik. Počet sa pri tvorbe nemeral (D-135, geometria nie je v DB). Evaly pozastavené, nepobežali."
+    },
+    {
       "id": "select-all-visible",
       "category": "viewer",
       "question": "Izoluj VZT a nosné prvky a potom vyber všetky viditeľné prvky.",
