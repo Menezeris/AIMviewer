@@ -68,6 +68,7 @@ export const BCF_ACTIONS = {
   viewpoint: "bcf_viewpoint_create",
   from_viewer: "bcf_topic_from_viewer",
   locate: "bcf_topic_locate",
+  import: "bcf_topic_import",
 } as const;
 
 export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
@@ -127,6 +128,10 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
       "na IFC súradnice a navrhne prvky v oblasti, nadradené priestory a podlažie a 3D pohľad nad oblasťou; bez apply " +
       "len návrh, apply=components|viewpoint|all zapíše (pohľad témy prepíše len replace=true). review_document = guid odkazu " +
       "alebo 'all' (update): potvrdí kontrolu po novej revízii dokumentu a zruší príznak needs_review (kto a kedy sa zapíše). " +
+      "import: uloží témy z .bcfzip (BCF 2.1 aj 3.0, aj s odkazmi na PDF z nášho exportu) do AIM; url (https, verejné úložisko " +
+      "projektu) alebo data_base64; idempotentne podľa guid témy (opakovaný import nič nezdvojí, zmenené polia sa aktualizujú, " +
+      "komentáre a odkazy sa len pridávajú); téma v DB novšia než súbor = konflikt, len sa ohlási (conflict=overwrite ju prepíše); " +
+      "dry_run=true len ukáže, čo by sa stalo; guids = len vybrané témy. " +
       "Vráti guid a číslo témy (#N).",
     inputSchema: {
       type: "object",
@@ -166,7 +171,11 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         remove_document: { type: "string", description: "update: guid odkazu na dokument (z bcf_topic_list) alebo 'all'" },
         review_document: { type: "string", description: "update: guid odkazu na dokument alebo 'all' - potvrdí kontrolu po novej revízii dokumentu (zruší needs_review); modified_by je kto" },
-        guids: { type: "array", items: { type: "string" }, description: "from_viewer: len tieto témy z bcf_local (predvolene všetky)" },
+        guids: { type: "array", items: { type: "string" }, description: "from_viewer: len tieto témy z bcf_local (predvolene všetky); import: len tieto témy zo súboru" },
+        url: { type: "string", description: "import: https adresa .bcfzip vo verejnom úložisku projektu (alebo z BCF_IMPORT_HOSTS)" },
+        data_base64: { type: "string", description: "import: .bcfzip v base64 (malé súbory; väčšie cez url)" },
+        dry_run: { type: "boolean", description: "import: nič nezapísať, len ukázať, čo by sa vytvorilo, zmenilo alebo skonfliktovalo" },
+        conflict: { type: "string", enum: ["keep", "overwrite"], description: "import: téma v DB novšia než súbor - keep (predvolené, len ohlási) alebo overwrite (prepíše súborom)" },
         document_guid: { type: "string", description: "locate: guid odkazu na dokument (predvolene prvý so stranou)" },
         apply: { type: "string", enum: ["components", "viewpoint", "all"], description: "locate: zapísať návrh do témy (bez neho len návrh)" },
         replace: { type: "boolean", description: "locate: nahradiť existujúci pohľad témy" },
@@ -745,6 +754,8 @@ const WRITES: Record<string, (args: Record<string, unknown>, deps: BcfDeps) => P
   bcf_topic_from_viewer: async (args, deps) => (await import("./viewer-topics")).fromViewer(args, deps),
   // Lenivo: návrh prvkov a pohľadu z oblasti strany (D-158 krok 4).
   bcf_topic_locate: async (args, deps) => (await import("./locate")).locate(args, deps),
+  // Lenivo: import .bcfzip do DB (D-158 krok 8); parser BCF sa nenačíta pri iných akciách.
+  bcf_topic_import: async (args, deps) => (await import("./import-tool")).importFromArgs(args, deps),
 };
 
 function bcfAction(raw: unknown): string {
