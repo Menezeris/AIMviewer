@@ -105,6 +105,14 @@ export interface TopicDocumentRow {
   created_at: string;
   /** Veľkosť strany v bodoch (`document_pages.page_size`), dopočítaná pri čítaní; nie stĺpec. */
   page_size?: [number, number] | null;
+  /** Kotva polohy v čase založenia (D-158 krok 6): počet strán a veľkosť strany pôvodnej revízie; null = nebolo známe. */
+  anchor_pages?: number | null;
+  anchor_page_size?: [number, number] | null;
+  /** Potvrdenie kontroly po novej revízii (D-158 krok 6): revízia, kto a kedy zrušil príznak "skontrolovať". */
+  reviewed_revision?: string | null;
+  reviewed_sha256?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
 }
 
 export type TopicDocumentWrite = Omit<TopicDocumentRow, "id" | "created_at" | "page_size"> & { id?: string };
@@ -167,6 +175,13 @@ function fail(what: string, error: { message: string } | null): never {
 
 export function supabaseBcfStore(): BcfStore {
   const db = () => getSupabaseAdmin();
+  const pageAnchor = async (documentId: string, page: number | null) => {
+    const { data, error } = await db().from("document_pages").select("page, page_size").eq("document_id", documentId).order("page", { ascending: false });
+    if (error) fail("Čítanie strán dokumentu zlyhalo", error);
+    const rows = (data ?? []) as { page: number; page_size: [number, number] | null }[];
+    if (rows.length === 0) return {};
+    return { anchor_pages: rows[0].page, anchor_page_size: (page ? rows.find((r) => r.page === page)?.page_size : null) ?? null };
+  };
   const store: BcfStore = {
     async create(row) {
       const { data, error } = await db().from(TABLE).insert(row).select("*").single();
@@ -265,7 +280,9 @@ export function supabaseBcfStore(): BcfStore {
       return rows.map((r) => ({ ...r, page_size: size.get(`${r.document_id}:${r.page}`) ?? null }));
     },
     async addDocument(row) {
-      const { data, error } = await db().from(DOCS).insert(row).select("*").single();
+      // Kotva polohy (D-158 krok 6): počet strán a veľkosť strany revízie, nad ktorou odkaz vzniká.
+      const anchor = row.document_id && row.anchor_pages === undefined ? await pageAnchor(row.document_id, row.page) : {};
+      const { data, error } = await db().from(DOCS).insert({ ...anchor, ...row }).select("*").single();
       if (error || !data) fail("Zápis odkazu na dokument zlyhal", error);
       return data as TopicDocumentRow;
     },

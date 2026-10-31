@@ -566,6 +566,10 @@ jsonb pole tvarov (zatiaľ NULL), `url` (cudzí odkaz z BCF importu), `descripti
 Kroky 3 a 4 (migrácia 20261023140000): `document_sha256` = sha256 súboru dokumentu v čase založenia
 odkazu (z `documents.file_sha256`); snímka výrezu sa kešuje v buckete `documents` pod
 `snapshots/<sha256>/<strana>-<x_y_w_h|full>.png` (render na požiadanie, nie tabuľka).
+Krok 6 (migrácia 20261101120000, nespustená): `anchor_pages`, `anchor_page_size` = počet strán a veľkosť
+strany revízie, nad ktorou odkaz vznikol (poloha neistá, keď sa zmenili), `reviewed_revision`,
+`reviewed_sha256`, `reviewed_by`, `reviewed_at` = potvrdenie kontroly po novej revízii dokumentu. Príznak
+"skontrolovať po revízii" sa neukladá, odvodí sa pri čítaní (D-158 krok 6).
 
 **Ručné odkazy popiskov na výkrese (D-160, migrácia 20261023130000):** `drawing_link_overrides` = ručné
 priradenie (`assign`) alebo zrušenie (`suppress`) odkazu popisku, má prednosť pred párovaním D-130.
