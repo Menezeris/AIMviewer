@@ -9,6 +9,7 @@ import { selectionGuids, type ViewerSelection } from "../live/selection-summary"
 import { ViewInputError } from "../llm/view-plan";
 
 import { documentView, MAX_TOPIC_DOCUMENTS, resolveDocumentArg, TopicDocumentError } from "./documents";
+import { reviewState, type ReviewState } from "./document-review";
 import { topicInScope, type EntityScope } from "./entity-scope";
 import type { RegionElement } from "./region-model";
 import {
@@ -83,7 +84,11 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
       "entity = témy nad podlažím, priestorom, budovou alebo prvkom vrátane všetkého v ňom (prvky, priestory, pôdorys " +
       "podlažia); entity='projekt' = len témy na celý projekt (IfcProject). context = druh kontextu témy (D-158): " +
       "3d (má 3D pohľad), pdf (má odkaz na dokument), both, none (ani jedno); každý riadok nesie pole context. " +
-      "Detail témy označí odkaz na dokument, ktorého revízia sa od založenia zmenila (revision_changed).",
+      "Pripomienka na dokumente sa pri novej revízii dokumentu prenáša sama (D-158 krok 6): detail témy označí odkaz, " +
+      "ktorého revízia sa od založenia zmenila (revision_changed, revision_current, original = pôvodná revízia, strana a oblasť), " +
+      "otvorená téma dostane needs_review (skontrolovať po revízii) a position_uncertain, keď sa zmenil počet alebo veľkosť strán; " +
+      "uzavretá (closed, resolved) príznak nemá. Riadok zoznamu nesie needs_review (počet odkazov na kontrolu). " +
+      "needs_review=true = len témy s odkazom na kontrolu po revízii.",
     inputSchema: {
       type: "object",
       properties: {
@@ -98,6 +103,7 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
           description: "Len témy nad entitou a tým, čo je v nej: podlažie (1NP), priestor, budova, object_ref, objects.id, GlobalId; 'projekt' = témy na celý projekt.",
         },
         context: { type: "string", enum: ["3d", "pdf", "both", "none"], description: "Len témy s týmto kontextom: 3d = má 3D pohľad, pdf = má odkaz na dokument, both = oboje, none = ani jedno." },
+        needs_review: { type: "boolean", description: "true = len otvorené témy s odkazom na dokument, ktorý dostal novú revíziu a nikto ešte nepotvrdil kontrolu (D-158 krok 6)." },
         limit: { type: "number", description: `Koľko tém (predvolene ${LIST_DEFAULT}, max ${LIST_MAX}).` },
       },
     },
@@ -118,7 +124,9 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
       "na PDF, get_viewer_state ich ukáže v bcf_local) do AIM s tým istým guid, na pokyn 'ulož moje pripomienky'; guids " +
       "= len vybrané. locate (guid, document_guid): oblasť strany z odkazu témy prepočíta cez kalibráciu strany (D-133) " +
       "na IFC súradnice a navrhne prvky v oblasti, nadradené priestory a podlažie a 3D pohľad nad oblasťou; bez apply " +
-      "len návrh, apply=components|viewpoint|all zapíše (pohľad témy prepíše len replace=true). Vráti guid a číslo témy (#N).",
+      "len návrh, apply=components|viewpoint|all zapíše (pohľad témy prepíše len replace=true). review_document = guid odkazu " +
+      "alebo 'all' (update): potvrdí kontrolu po novej revízii dokumentu a zruší príznak needs_review (kto a kedy sa zapíše). " +
+      "Vráti guid a číslo témy (#N).",
     inputSchema: {
       type: "object",
       properties: {
@@ -156,6 +164,7 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
           required: ["id_or_ref"],
         },
         remove_document: { type: "string", description: "update: guid odkazu na dokument (z bcf_topic_list) alebo 'all'" },
+        review_document: { type: "string", description: "update: guid odkazu na dokument alebo 'all' - potvrdí kontrolu po novej revízii dokumentu (zruší needs_review); modified_by je kto" },
         guids: { type: "array", items: { type: "string" }, description: "from_viewer: len tieto témy z bcf_local (predvolene všetky)" },
         document_guid: { type: "string", description: "locate: guid odkazu na dokument (predvolene prvý so stranou)" },
         apply: { type: "string", enum: ["components", "viewpoint", "all"], description: "locate: zapísať návrh do témy (bez neho len návrh)" },
@@ -434,6 +443,46 @@ async function attachDocument(
   return deps.store.addDocument({ ...prepared, task_id: topicId });
 }
 
+/** Stav kontroly po novej revízii každého odkazu témy (aktuálna revízia dokumentu sa číta raz na dokument). */
+async function reviewStates(
+  deps: BcfDeps,
+  t: Pick<BcfTopicRow, "status">,
+  docs: TopicDocumentRow[],
+  cache: Map<string, DocumentInfo | null> = new Map(),
+): Promise<ReviewState[]> {
+  for (const d of docs) if (d.document_id && !cache.has(d.document_id)) cache.set(d.document_id, await deps.store.findDocument(d.document_id));
+  return docs.map((d) => reviewState(d, t.status, d.document_id ? (cache.get(d.document_id) ?? null) : null));
+}
+
+/** Odkaz v detaile s príznakmi kontroly; zmenený odkaz nesie aj pôvodné miesto (kotva v histórii). */
+function annotate(view: ReturnType<typeof documentView>, link: TopicDocumentRow, st: ReviewState) {
+  if (!st.revision_changed) return view;
+  return {
+    ...view,
+    revision_changed: true,
+    revision_current: st.revision_current,
+    original: { revision: link.document_revision, sha256: link.document_sha256, page: link.page, region: link.region },
+    needs_review: st.needs_review,
+    ...(st.position_uncertain ? { position_uncertain: true, position_reason: st.position_reason } : {}),
+    ...(link.reviewed_at ? { reviewed: { revision: link.reviewed_revision, by: link.reviewed_by, at: link.reviewed_at } } : {}),
+  };
+}
+
+/** Počet odkazov na kontrolu po novej revízii pri každej téme (len témy, ktoré ho majú > 0). */
+async function reviewCounts(deps: BcfDeps, rows: BcfTopicRow[], docs: TopicDocumentRow[]): Promise<Map<string, number>> {
+  const byTopic = new Map<string, TopicDocumentRow[]>();
+  for (const d of docs) byTopic.set(d.task_id, [...(byTopic.get(d.task_id) ?? []), d]);
+  const cache = new Map<string, DocumentInfo | null>();
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    const links = byTopic.get(r.id) ?? [];
+    if (links.length === 0) continue;
+    const n = (await reviewStates(deps, r, links, cache)).filter((x) => x.needs_review).length;
+    if (n > 0) out.set(r.id, n);
+  }
+  return out;
+}
+
 const json = (v: unknown) => JSON.stringify(v, null, 1);
 
 async function create(args: Record<string, unknown>, deps: BcfDeps) {
@@ -479,14 +528,9 @@ async function list(args: Record<string, unknown>, deps: BcfDeps) {
     const t = await loadTopic(deps, args.guid);
     const docs = await deps.store.documents([t.id]);
     const out = detail(t, docs);
-    // Nová revízia dokumentu tému potichu nepresúva (D-158): povedz, ktoré odkazy ukazujú na staršiu.
-    const current = new Map<string, DocumentInfo | null>();
-    for (const d of docs) if (d.document_id && !current.has(d.document_id)) current.set(d.document_id, await deps.store.findDocument(d.document_id));
-    out.documents = out.documents.map((v, i) => {
-      const now = docs[i].document_id ? current.get(docs[i].document_id!) : null;
-      const changed = Boolean(now && ((docs[i].document_revision ?? null) !== (now.revision ?? null) || (docs[i].document_sha256 && now.sha256 && docs[i].document_sha256 !== now.sha256)));
-      return changed ? { ...v, revision_changed: true, revision_current: now!.revision } : v;
-    });
+    // Odkaz sa na novú revíziu prenáša sám (D-158 krok 6); pôvodná revízia, strana a oblasť ostávajú.
+    const states = await reviewStates(deps, t, docs);
+    out.documents = out.documents.map((v, i) => annotate(v, docs[i], states[i]));
     return { topic: out };
   }
   const n = Number(args.limit);
@@ -499,8 +543,9 @@ async function list(args: Record<string, unknown>, deps: BcfDeps) {
   };
   const entity = text(args.entity, 200);
   const context = contextFilter(args.context);
-  if (entity) return listInEntity(entity, filter, limit, deps, context);
-  if (context) return listInContext(context, filter, limit, deps);
+  const onlyReview = args.needs_review === true;
+  if (entity) return listInEntity(entity, filter, limit, deps, context, onlyReview);
+  if (context || onlyReview) return listInContext(context, filter, limit, deps, onlyReview);
   const { rows, total } = await deps.store.list({ ...filter, limit });
   const docs = await deps.store.documents(rows.map((r) => r.id));
   const docCount = new Map<string, number>();
@@ -508,32 +553,36 @@ async function list(args: Record<string, unknown>, deps: BcfDeps) {
   // Počty podľa stavu, inak agent skúša stav po stave a potom bez filtra (#97, C12: 3 volania).
   const filtered = Boolean(filter.status || filter.model || filter.assigned_to || filter.document_id);
   const byStatus = filtered ? await countByStatus(deps, filter) : undefined;
+  const review = await reviewCounts(deps, rows, docs);
   return {
     count: total,
     ...(byStatus ? { by_status: byStatus } : {}),
     returned: rows.length,
-    topics: rows.map((r) => ({ ...summary(r, docCount.get(r.id)), context: topicContext(r, docCount.get(r.id) ?? 0) })),
+    topics: rows.map((r) => ({ ...summary(r, docCount.get(r.id)), context: topicContext(r, docCount.get(r.id) ?? 0), ...(review.has(r.id) ? { needs_review: review.get(r.id) } : {}) })),
   };
 }
 
-/** Filter `context` bez entity: témy sa prejdú ako pri entite (kontext je odvodený z pohľadu a odkazov). */
-async function listInContext(want: TopicContext, filter: Omit<TopicFilter, "limit">, limit: number, deps: BcfDeps) {
+/** Filter `context` a `needs_review` bez entity: témy sa prejdú ako pri entite (obe vlastnosti sú odvodené). */
+async function listInContext(want: TopicContext | undefined, filter: Omit<TopicFilter, "limit">, limit: number, deps: BcfDeps, onlyReview = false) {
   const { rows, total } = await deps.store.list({ ...filter, limit: ENTITY_SCAN });
   const docs = await deps.store.documents(rows.map((r) => r.id));
   const docCount = new Map<string, number>();
   for (const d of docs) docCount.set(d.task_id, (docCount.get(d.task_id) ?? 0) + 1);
+  const review = await reviewCounts(deps, rows, docs);
   const hits = rows
     .map((r) => ({ r, c: topicContext(r, docCount.get(r.id) ?? 0) }))
-    .filter((h) => contextMatches(h.c, want));
+    .filter((h) => !want || contextMatches(h.c, want))
+    .filter((h) => !onlyReview || review.has(h.r.id));
   const byStatus: Record<string, number> = {};
   for (const { r } of hits) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
   return {
-    context: want,
+    ...(want ? { context: want } : {}),
+    ...(onlyReview ? { needs_review: true } : {}),
     count: hits.length,
     by_status: byStatus,
     returned: Math.min(limit, hits.length),
     ...(total > rows.length ? { note: `Prejdených ${rows.length} z ${total} tém (najnovšie); zúž filtrom status alebo model.` } : {}),
-    topics: hits.slice(0, limit).map(({ r, c }) => ({ ...summary(r, docCount.get(r.id)), context: c })),
+    topics: hits.slice(0, limit).map(({ r, c }) => ({ ...summary(r, docCount.get(r.id)), context: c, ...(review.has(r.id) ? { needs_review: review.get(r.id) } : {}) })),
   };
 }
 
@@ -541,17 +590,19 @@ async function listInContext(want: TopicContext, filter: Omit<TopicFilter, "limi
 const ENTITY_SCAN = 1000;
 
 /** Filter `entity` (D-158 krok 4): témy s prvkom entity alebo v nej, alebo s dokumentom entity. */
-async function listInEntity(ref: string, filter: Omit<TopicFilter, "limit">, limit: number, deps: BcfDeps, context?: TopicContext) {
+async function listInEntity(ref: string, filter: Omit<TopicFilter, "limit">, limit: number, deps: BcfDeps, context?: TopicContext, onlyReview = false) {
   if (!deps.entityScope) throw new BcfInputError("Filter entity nie je v tomto prostredí k dispozícii.");
   const scope = await deps.entityScope(ref);
   const { rows, total } = await deps.store.list({ ...filter, limit: ENTITY_SCAN });
   const docs = await deps.store.documents(rows.map((r) => r.id));
   const byTopic = new Map<string, TopicDocumentRow[]>();
   for (const d of docs) byTopic.set(d.task_id, [...(byTopic.get(d.task_id) ?? []), d]);
+  const review = await reviewCounts(deps, rows, docs);
   const hits = rows
     .map((r) => ({ r, how: topicInScope(r, byTopic.get(r.id) ?? [], scope) }))
     .filter((h): h is { r: BcfTopicRow; how: NonNullable<typeof h.how> } => h.how !== null)
-    .filter((h) => !context || contextMatches(topicContext(h.r, byTopic.get(h.r.id)?.length ?? 0), context));
+    .filter((h) => !context || contextMatches(topicContext(h.r, byTopic.get(h.r.id)?.length ?? 0), context))
+    .filter((h) => !onlyReview || review.has(h.r.id));
   const byStatus: Record<string, number> = {};
   for (const { r } of hits) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
   return {
@@ -560,7 +611,7 @@ async function listInEntity(ref: string, filter: Omit<TopicFilter, "limit">, lim
     by_status: byStatus,
     returned: Math.min(limit, hits.length),
     ...(total > rows.length ? { note: `Prejdených ${rows.length} z ${total} tém (najnovšie); zúž filtrom status alebo model.` } : {}),
-    topics: hits.slice(0, limit).map(({ r, how }) => ({ ...summary(r, byTopic.get(r.id)?.length), context: topicContext(r, byTopic.get(r.id)?.length ?? 0), match: how })),
+    topics: hits.slice(0, limit).map(({ r, how }) => ({ ...summary(r, byTopic.get(r.id)?.length), context: topicContext(r, byTopic.get(r.id)?.length ?? 0), match: how, ...(review.has(r.id) ? { needs_review: review.get(r.id) } : {}) })),
   };
 }
 
@@ -602,9 +653,11 @@ async function update(args: Record<string, unknown>, deps: BcfDeps) {
   const remove = text(args.remove_document, 60);
   const removed = remove ? await removeDocuments(deps, topic.id, remove) : 0;
   const attached = doc ? await attachDocument(deps, topic.id, doc) : null;
+  const reviewRef = text(args.review_document, 60);
+  const reviewed = reviewRef ? await reviewDocuments(deps, topic, reviewRef, by) : 0;
 
   // Zmena odkazov na dokumenty je zmena témy (modified_by, updated_at).
-  let row = Object.keys(patch).length > 1 || attached || removed ? await deps.store.update(topic.id, patch) : topic;
+  let row = Object.keys(patch).length > 1 || attached || removed || reviewed ? await deps.store.update(topic.id, patch) : topic;
   const comment = text(args.comment, MAX_TEXT);
   if (comment) await deps.store.addComment(topic.id, by, comment);
   const assignedNow = patch.assigned_to !== undefined && isClaude(patch.assigned_to) && !wasClaude;
@@ -619,6 +672,7 @@ async function update(args: Record<string, unknown>, deps: BcfDeps) {
     comment_added: Boolean(comment),
     ...(attached ? { document: documentView(attached) } : {}),
     ...(remove ? { documents_removed: removed } : {}),
+    ...(reviewRef ? { documents_reviewed: reviewed } : {}),
     ...(s ? { session: s.session, queued: s.queued, session_note: s.note } : {}),
   };
 }
@@ -628,6 +682,33 @@ async function removeDocuments(deps: BcfDeps, topicId: string, ref: string): Pro
   if (!all && !UUID_RE.test(ref)) throw new BcfInputError("remove_document: guid odkazu na dokument (bcf_topic_list s guid témy) alebo 'all'.");
   const n = await deps.store.removeDocuments(topicId, all ? null : ref.toLowerCase());
   if (!all && n === 0) throw new BcfInputError(`Odkaz ${ref} pri téme nie je.`);
+  return n;
+}
+
+/**
+ * Potvrdenie kontroly po novej revízii dokumentu (D-158 krok 6): zapíše revíziu, kto a kedy. Príznak sa tým
+ * zruší len pre túto revíziu; ďalšia revízia dokumentu ho vráti. 'all' = všetky odkazy, ktoré kontrolu čakajú.
+ */
+async function reviewDocuments(deps: BcfDeps, topic: BcfTopicRow, ref: string, by: string): Promise<number> {
+  const all = ref.toLowerCase() === "all";
+  if (!all && !UUID_RE.test(ref)) throw new BcfInputError("review_document: guid odkazu na dokument (bcf_topic_list s guid témy) alebo 'all'.");
+  const docs = await deps.store.documents([topic.id]);
+  const picked = all ? docs : docs.filter((d) => d.id === ref.toLowerCase());
+  if (!all && picked.length === 0) throw new BcfInputError(`Odkaz ${ref} pri téme nie je.`);
+  const states = await reviewStates(deps, topic, picked);
+  let n = 0;
+  for (let i = 0; i < picked.length; i++) {
+    if (!states[i].needs_review) continue;
+    const now = picked[i].document_id ? await deps.store.findDocument(picked[i].document_id!) : null;
+    await deps.store.updateDocument(topic.id, picked[i].id, {
+      reviewed_revision: now?.revision ?? null,
+      reviewed_sha256: now?.sha256 ?? null,
+      reviewed_by: by,
+      reviewed_at: deps.now().toISOString(),
+    });
+    n++;
+  }
+  if (!all && n === 0) throw new BcfInputError(`Odkaz ${ref} nečaká na kontrolu (revízia dokumentu sa nezmenila, kontrola je potvrdená alebo je téma vybavená).`);
   return n;
 }
 
