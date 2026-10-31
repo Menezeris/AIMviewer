@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { appliedText, appliedWarnings } from "./applied-text";
+import { ACK_TIMEOUT_MS, PROPERTY_FOCUS_ACK_TIMEOUT_MS, ackTimeoutMs, appliedText, appliedWarnings } from "./applied-text";
 import type { LiveAppliedPayload } from "./protocol";
 
 const SECTION = { axis: "y", crosses: "IFC Z (výška)", coordinate: 1.2 };
@@ -107,3 +107,15 @@ describe("zoznam: šírky, zvýraznenie a filter viditeľnosti (D-171)", () => {
   });
 });
 
+
+describe("čakanie na potvrdenie príkazu (#168)", () => {
+  it("zvýraznenie vlastnosti čaká na načítanie panela, ostatné príkazy bežných 3 s", () => {
+    expect(ackTimeoutMs("show_in_3d", { select: true, highlight: "Pset_DoorCommon.FireRating" })).toBe(PROPERTY_FOCUS_ACK_TIMEOUT_MS);
+    expect(PROPERTY_FOCUS_ACK_TIMEOUT_MS).toBeGreaterThan(10_000);
+    expect(ackTimeoutMs("show_in_3d", { select: true })).toBe(ACK_TIMEOUT_MS);
+    expect(ackTimeoutMs("show_in_3d", { select: true, highlight: "  " })).toBe(ACK_TIMEOUT_MS);
+    expect(ackTimeoutMs("show_in_3d", { highlight: "A.B" })).toBe(ACK_TIMEOUT_MS);
+    expect(ackTimeoutMs("style_in_3d", { select: true, highlight: "A.B" })).toBe(ACK_TIMEOUT_MS);
+    expect(ackTimeoutMs("show_in_3d")).toBe(ACK_TIMEOUT_MS);
+  });
+});

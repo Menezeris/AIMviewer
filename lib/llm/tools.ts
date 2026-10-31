@@ -503,7 +503,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       "netreba hľadať vopred). select=true = VYBERIE prvok (viac prvkov v ids_or_refs alebo filtrom ifc_type / predefined_type / query = viacnásobný výber, 'vyber všetky IfcDamper' = jedno volanie, najviac 200, odpoveď vráti všetky) ako klik myšou a otvorí jeho IFC panel vlastností ('vyber / označ " +
       "X', 'ukáž jeho vlastnosti'): panel_section properties | quantities, highlight 'Pset.Vlastnosť' (aj Qto výmera) rozbalí " +
       "sadu, prescrolluje a zvýrazní riadok do ďalšieho výberu; výsledok povie, či vlastnosť na prvku je (property.in_aim, " +
-      "property_focus.found zo živého viewera). Panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. clear=true zruší zvýraznenie, so " +
+      "property_focus.found zo živého viewera). Panel hodnoty ukáže sám, ifc_get len keď sa pýta na hodnotu. visible=true so select=true vyberie VŠETKY " +
+      "práve viditeľné prvky (po izolácii, bez limitu 200). clear=true zruší zvýraznenie, so " +
       "select=true výber. Funguje pre prvky s IFC GUID. Prvky, ktorých sa týka dokument alebo strana, " +
       "ukáž cez style_in_3d(document, page). Miestnosť (IfcSpace) sa len zvýrazní, plnou farbou sa nikdy nefarbí (D-173).",
     inputSchema: {
@@ -531,6 +532,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         query: { type: "string", description: "Filter namiesto ids: fulltext (názov/ref/typ)" },
         object_type: { type: "string", description: "Filter namiesto ids: objects.object_type" },
         select: { type: "boolean", description: "Vybrať prvok ako klik (id_or_ref, ids_or_refs, global_ids ALEBO filter ifc_type / predefined_type / query / object_type = celá trieda jedným volaním, najviac 200) a otvoriť panel vlastností prvého" },
+        visible: { type: "boolean", description: "select: vybrať všetky práve viditeľné prvky (po izolácii, bez limitu 200); bez ids a filtrov" },
         panel_section: { type: "string", enum: ["properties", "quantities"], description: "select: sekcia IFC panelu" },
         highlight: { type: "string", description: "select: zvýrazniť vlastnosť, napr. 'Pset_WallCommon.FireRating' alebo 'Qto_DoorBaseQuantities.Width'" },
       },
@@ -2382,6 +2384,11 @@ export class AskToolRuntime {
       // D-102: výber sa dá zrušiť ako klik do prázdna.
       this.actions.push({ type: "navigate", url: `/ifc?ops=clear_selection::&r=${Date.now().toString(36)}`, label: "Zrušiť výber" });
       return { ok: true, cleared: "výber" };
+    }
+    if (input.visible === true) {
+      // #315: všetky práve viditeľné prvky (izolácia, Lens, skrytie), bez limitu na počet; zoznam prvkov host nezná.
+      this.actions.push({ type: "navigate", url: `/ifc?ops=select_visible::&r=${Date.now().toString(36)}`, label: "3D: výber viditeľných prvkov" });
+      return { ok: true, opened: "3d", selected: "visible", note: "Vybraté sú všetky práve viditeľné prvky; počet a súhrn je v stave viewera po príkaze (selection). Starší viewer príkaz nepotvrdí." };
     }
     const refs = [
       ...new Set(
