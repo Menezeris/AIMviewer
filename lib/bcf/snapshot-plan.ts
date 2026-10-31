@@ -81,13 +81,17 @@ export function snapshotPlan(pageSize: [number, number], region: PctRect | null)
 
 const SHA_RE = /^[0-9a-f]{64}$/;
 
-/** Kľúč keše v buckete `documents`: `snapshots/<sha256>/<strana>-<x_y_w_h|full>.png`. */
-export function snapshotKey(sha256: string, page: number, region: PctRect | null): string {
+/**
+ * Kľúč keše v buckete `documents`: `snapshots/<sha256>/<strana>-<x_y_w_h|full>.png`; so značkami
+ * (D-158 krok 7) `<strana>-<oblasť>-m<hash značiek>.png`, bez nich nezmenený.
+ */
+export function snapshotKey(sha256: string, page: number, region: PctRect | null, markupHash: string | null = null): string {
   if (!SHA_RE.test(sha256)) throw new Error("sha256 dokumentu nemá tvar 64 hex znakov.");
   if (!Number.isInteger(page) || page < 1) throw new Error("strana musí byť celé číslo od 1.");
   const r = region ? clampRect(region) : null;
   const tag = r ? [r.x, r.y, r.width, r.height].map((v) => (+v.toFixed(2)).toString()).join("_") : "full";
-  return `snapshots/${sha256}/${page}-${tag}.png`;
+  if (markupHash !== null && !/^[0-9a-f]{16}$/.test(markupHash)) throw new Error("hash značiek nemá tvar 16 hex znakov.");
+  return `snapshots/${sha256}/${page}-${tag}${markupHash ? `-m${markupHash}` : ""}.png`;
 }
 
 /**

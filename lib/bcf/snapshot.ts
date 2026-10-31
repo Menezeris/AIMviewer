@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { markupHash, type Markup } from "./markup";
 import { snapshotKey, type PctRect } from "./snapshot-plan";
 
 /**
@@ -23,7 +24,7 @@ export interface SnapshotSource {
   fetchPdf(location: string): Promise<Uint8Array>;
   cacheGet(key: string): Promise<Buffer | null>;
   cachePut(key: string, png: Buffer): Promise<void>;
-  render(pdf: Uint8Array, page: number, region: PctRect | null): Promise<{ png: Buffer }>;
+  render(pdf: Uint8Array, page: number, region: PctRect | null, markup?: Markup[]): Promise<{ png: Buffer }>;
 }
 
 export interface SnapshotRequest {
@@ -32,6 +33,8 @@ export interface SnapshotRequest {
   region: PctRect | null;
   /** Revízia z odkazu témy (`document_sha256`); bez nej aktuálny súbor. */
   sha256?: string | null;
+  /** Značky nad stranou (D-158 krok 7): uložené zo stĺpca alebo neuložené z parametra; bez nich snímka ako doteraz. */
+  markup?: Markup[] | null;
 }
 
 export interface SnapshotResult {
@@ -72,16 +75,18 @@ export async function documentSnapshot(src: SnapshotSource, req: SnapshotRequest
   const doc = await src.document(req.document_id);
   if (!doc) throw new SnapshotError(`Dokument ${req.document_id} v AIM nie je.`, 404);
   if (!doc.location) throw new SnapshotError("Dokument nemá PDF súbor.", 404);
+  const mh = markupHash(req.markup);
+  const marks = mh && req.markup ? req.markup : undefined;
   const wanted = [req.sha256, doc.sha256].filter((s): s is string => typeof s === "string" && SHA_RE.test(s));
   for (const sha of [...new Set(wanted)]) {
-    const key = snapshotKey(sha, req.page, req.region);
+    const key = snapshotKey(sha, req.page, req.region, mh);
     const hit = await src.cacheGet(key).catch(() => null);
     if (hit) return { png: hit, key, cached: true, sha256: sha, revision_changed: Boolean(req.sha256 && sha !== req.sha256) };
   }
   const pdf = await src.fetchPdf(doc.location);
   const sha = sha256Hex(pdf);
-  const key = snapshotKey(sha, req.page, req.region);
-  const { png } = await src.render(pdf, req.page, req.region);
+  const key = snapshotKey(sha, req.page, req.region, mh);
+  const { png } = await src.render(pdf, req.page, req.region, marks);
   // Keš je pohodlie: zlyhaný zápis nemá zhodiť snímku, ktorá je hotová.
   await src.cachePut(key, png).catch(() => undefined);
   return { png, key, cached: false, sha256: sha, revision_changed: Boolean(req.sha256 && req.sha256 !== sha) };

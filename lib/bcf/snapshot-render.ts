@@ -2,7 +2,21 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import { FRAME_COLOR, FRAME_FILL, snapshotPlan, type PctRect } from "./snapshot-plan";
+import {
+  arrowHead,
+  cloudArcs,
+  LINE_WIDTH,
+  MARKUP_COLOR,
+  PIN_DOT,
+  PIN_OUTLINE,
+  PIN_RADIUS,
+  PIN_TEXT_SIZE,
+  pinGeometry,
+  TEXT_SIZE,
+  toUnits,
+  type Markup,
+} from "./markup";
+import { FRAME_COLOR, FRAME_FILL, snapshotPlan, type PctRect, type SnapshotPlan } from "./snapshot-plan";
 
 /**
  * Render výrezu strany PDF na serveri (D-158 krok 3): pdf.js (legacy build, tá istá verzia
@@ -61,7 +75,12 @@ export interface RenderedSnapshot {
 }
 
 /** Vyrenderuje stranu `page` (od 1) a oblasť `region` (% vľavo hore, null = celá strana). */
-export async function renderPdfRegion(pdf: Uint8Array, page: number, region: PctRect | null): Promise<RenderedSnapshot> {
+export async function renderPdfRegion(
+  pdf: Uint8Array,
+  page: number,
+  region: PctRect | null,
+  markup: Markup[] = [],
+): Promise<RenderedSnapshot> {
   if (pdf.byteLength > MAX_PDF_BYTES) throw new SnapshotRenderError(`PDF má viac ako ${MAX_PDF_BYTES / 1024 / 1024} MB.`);
   const { getDocument } = await loadPdfJs();
   const { createCanvas } = await import("@napi-rs/canvas");
@@ -102,9 +121,127 @@ export async function renderPdfRegion(pdf: Uint8Array, page: number, region: Pct
       ctx.lineWidth = w;
       ctx.strokeRect(f.x, f.y, f.width, f.height);
     }
+    if (markup.length) await ensureMarkupFont();
+    if (markup.length) drawMarkup(ctx as unknown as MarkupContext, markup, pageSize, plan);
     p.cleanup();
     return { png: canvas.toBuffer("image/png"), pageSize, pages: doc.numPages };
   } finally {
     await task.destroy();
   }
+}
+
+/** Podmnožina 2D kontextu, ktorú značky potrebujú (canvas `@napi-rs/canvas` ju spĺňa). */
+export interface MarkupContext {
+  save(): void;
+  restore(): void;
+  setTransform(a: number, b: number, c: number, d: number, e: number, f: number): void;
+  beginPath(): void;
+  closePath(): void;
+  moveTo(x: number, y: number): void;
+  lineTo(x: number, y: number): void;
+  arc(x: number, y: number, r: number, a0: number, a1: number, anticlockwise?: boolean): void;
+  fill(): void;
+  stroke(): void;
+  fillText(text: string, x: number, y: number): void;
+  strokeText(text: string, x: number, y: number): void;
+  fillStyle: unknown;
+  strokeStyle: unknown;
+  lineWidth: number;
+  lineJoin: string;
+  lineCap: string;
+  font: string;
+  textBaseline: string;
+}
+
+const FONT_FAMILY = "AimMarkup, Liberation Sans, Arial, Helvetica, sans-serif";
+let fontReady = false;
+
+/** Tučné písmo značiek: Liberation Sans z pdfjs-dist (v kontajneri nemusí byť žiadne systémové písmo). */
+async function ensureMarkupFont(): Promise<void> {
+  if (fontReady) return;
+  fontReady = true;
+  try {
+    const { GlobalFonts } = await import("@napi-rs/canvas");
+    GlobalFonts.registerFromPath(path.join(pdfjsDir(), "standard_fonts", "LiberationSans-Bold.ttf"), "AimMarkup");
+  } catch {
+    // bez písma ostanú tvary, text spadne na systémové písmo
+  }
+}
+
+/**
+ * Značky nad vyrenderovanou stranou (D-158 krok 7), tvary ako `docMarkupSvg.ts` vo forku: červená
+ * #dc2626, jednotky kreslenia = šírka strany 1000. Súradnice bitmapy sa dostanú z jednotiek
+ * cez mierku plánu a posun výrezu.
+ */
+export function drawMarkup(ctx: MarkupContext, markup: Markup[], pageSize: [number, number], plan: SnapshotPlan): void {
+  const k = (plan.scale * pageSize[0]) / 1000;
+  const [pw, ph] = pageSize;
+  const ox = (plan.crop.x / 100) * pw * plan.scale;
+  const oy = (plan.crop.y / 100) * ph * plan.scale;
+  ctx.save();
+  // Jednotky -> px bitmapy.
+  ctx.setTransform(k, 0, 0, k, -ox, -oy);
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  for (const m of markup) {
+    const pts = m.points.map((p) => toUnits(p, pageSize));
+    ctx.strokeStyle = MARKUP_COLOR;
+    ctx.fillStyle = MARKUP_COLOR;
+    ctx.lineWidth = LINE_WIDTH;
+    if (m.type === "cloud") {
+      const arcs = cloudArcs(pts[0].x, pts[0].y, pts[1].x, pts[1].y);
+      ctx.beginPath();
+      for (const a of arcs) {
+        ctx.moveTo(a.cx + a.r * Math.cos(a.a0), a.cy + a.r * Math.sin(a.a0));
+        ctx.arc(a.cx, a.cy, a.r, a.a0, a.a1, false);
+      }
+      ctx.stroke();
+    } else if (m.type === "arrow") {
+      const head = arrowHead(pts[0], pts[1]);
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      // Čiara končí v základni hrotu, aby nevyčnievala za jeho špičku.
+      const base = head ? { x: (head[1].x + head[2].x) / 2, y: (head[1].y + head[2].y) / 2 } : pts[1];
+      ctx.lineTo(base.x, base.y);
+      ctx.stroke();
+      if (head) {
+        ctx.beginPath();
+        ctx.moveTo(head[0].x, head[0].y);
+        ctx.lineTo(head[1].x, head[1].y);
+        ctx.lineTo(head[2].x, head[2].y);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else if (m.type === "text") {
+      haloText(ctx, m.text ?? "", pts[0].x, pts[0].y, TEXT_SIZE, "alphabetic");
+    } else {
+      const g = pinGeometry(pts[0]);
+      ctx.beginPath();
+      ctx.moveTo(g.tip.x, g.tip.y);
+      ctx.lineTo(g.from.x, g.from.y);
+      ctx.arc(g.centre.x, g.centre.y, PIN_RADIUS, g.a0, g.a1, true);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = PIN_OUTLINE;
+      ctx.stroke();
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(g.centre.x, g.centre.y, PIN_DOT, 0, 2 * Math.PI);
+      ctx.fill();
+      if (m.text) haloText(ctx, m.text, g.centre.x + PIN_RADIUS, g.centre.y - PIN_RADIUS, PIN_TEXT_SIZE, "alphabetic");
+    }
+  }
+  ctx.restore();
+}
+
+/** Tučný červený text s bielym halo (hrúbka 1/5 veľkosti písma). */
+function haloText(ctx: MarkupContext, text: string, x: number, y: number, size: number, baseline: string): void {
+  ctx.font = `bold ${size}px ${FONT_FAMILY}`;
+  ctx.textBaseline = baseline;
+  ctx.lineWidth = size / 5;
+  ctx.strokeStyle = "#ffffff";
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = MARKUP_COLOR;
+  ctx.fillText(text, x, y);
 }

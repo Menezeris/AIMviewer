@@ -558,7 +558,7 @@ DocumentReference, 0..n na tému (`task_id` -> `model_tasks`, `on delete cascade
 `objects` (document; `on delete set null`), snímka z času založenia `document_ref` (kód alebo
 object_ref), `document_name`, `document_revision`; `page` (od 1, NULL = celý dokument), `region` jsonb
 `{x, y, width, height}` v % strany vľavo hore ako `open_drawing region` (NULL = celá strana), `markup`
-jsonb pole tvarov (zatiaľ NULL), `url` (cudzí odkaz z BCF importu), `description`, `author`,
+jsonb pole tvarov `{type: cloud|arrow|text|pin, points[{x, y}], text?}` v % strany vľavo hore, najviac 20, text do 200 znakov (D-158 krok 7; NULL = bez značiek, bez novej migrácie), `url` (cudzí odkaz z BCF importu), `description`, `author`,
 `created_at`. Aspoň jedno z `document_id`, `document_ref`, `url`. Indexy `(task_id, created_at)`,
 `(document_id, page)`. Prvky IFC témy ostávajú v `model_tasks.components`. BCF API url =
 `<origin>/drawing/<id>?page=N&region=x_y_w_h#page=N` (+ `&viewrect=l,t,w,h` v bodoch, keď je známe

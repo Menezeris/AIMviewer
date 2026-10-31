@@ -87,6 +87,6 @@ export function defaultSnapshotSource(): SnapshotSource {
     cacheGet,
     cachePut,
     // Lenivo: pdf.js a canvas sa načítajú až pri prvom renderi (nie pri každej BCF požiadavke).
-    render: async (pdf, page, region) => (await import("./snapshot-render")).renderPdfRegion(pdf, page, region),
+    render: async (pdf, page, region, markup) => (await import("./snapshot-render")).renderPdfRegion(pdf, page, region, markup),
   };
 }

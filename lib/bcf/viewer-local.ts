@@ -1,4 +1,5 @@
 import { MAX_TOPIC_DOCUMENTS } from "./documents";
+import { parseMarkup, type Markup } from "./markup";
 
 /**
  * Lokálne BCF témy viewera v `view_state.bcf_local` (D-158): overenie
@@ -23,7 +24,7 @@ export interface LocalTopic {
   creation_author: string | null;
   comments: { author: string | null; comment: string }[];
   viewpoint: Record<string, unknown> | null;
-  document_references: { url: string; description: string | null }[];
+  document_references: { url: string; description: string | null; markup: Markup[] }[];
 }
 
 const str = (v: unknown, max: number): string | null => {
@@ -68,7 +69,7 @@ export function localTopicsFromState(state: unknown): { count: number; topics: L
       document_references: refs
         .slice(0, MAX_TOPIC_DOCUMENTS)
         .map((d) => (d && typeof d === "object" ? (d as Record<string, unknown>) : {}))
-        .map((d) => ({ url: str(d.url, 2000) ?? "", description: str(d.description, 2000) }))
+        .map((d) => ({ url: str(d.url, 2000) ?? "", description: str(d.description, 2000), markup: parseMarkup(d.markup) }))
         .filter((d) => d.url),
     });
   }

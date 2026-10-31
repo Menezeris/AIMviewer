@@ -68,6 +68,28 @@ describe("lokálne témy viewera (D-158)", () => {
     expect(notify).toHaveBeenCalledTimes(1);
   });
 
+  it("from_viewer uloží značky odkazu; neplatné zahodí, na cudzom odkaze ich nenesie (D-158 krok 7)", async () => {
+    const cloud = { type: "cloud", points: [{ x: 50, y: 0 }, { x: 75, y: 50 }] };
+    const topic = {
+      ...pdfTopic,
+      document_references: [
+        { url: OWN, description: "x", markup: [cloud, { type: "text", points: [{ x: 60, y: 10 }] }, { type: "arrow", points: [{ x: 1, y: 2 }] }] },
+        { url: "https://cde.example/D-11.pdf#page=4", description: "Revizto", markup: [cloud] },
+        { url: `https://aim.example/drawing/${DOC_ID}?page=1`, description: "bez značiek" },
+      ],
+    };
+    const { store, docs } = memoryStore();
+    const r = await run({}, deps({ store, viewState: async () => local([topic]) }));
+    expect(r.isError).toBe(false);
+    expect(docs[0].markup).toEqual([cloud]);
+    expect(docs[1].markup).toBeNull();
+    expect(docs[2].markup).toBeNull();
+    // Starší fork `markup` neposiela: správanie ako doteraz.
+    const old = memoryStore();
+    await run({}, deps({ store: old.store, viewState: async () => local([{ ...pdfTopic, guid: GUID_B }]) }));
+    expect(old.docs[0].markup).toBeNull();
+  });
+
   it("opakované uloženie nič nezdvojí; guids vyberie, neplatné a cudzie guid vynechá", async () => {
     const { store, rows } = memoryStore();
     const state = local([pdfTopic, { guid: GUID_B, title: "Druhá" }, { guid: "nie-uuid", title: "Z iného nástroja" }, { title: "bez guid" }, "x" as never]);
