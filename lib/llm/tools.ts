@@ -1270,7 +1270,8 @@ export class AskToolRuntime {
         .from("rel_aggregates")
         .select("from_id, to_id")
         .in("from_id", spaceIds.slice(i, i + IN_CHUNK))
-        .is("valid_until", null);
+        .is("valid_until", null)
+        .not("to_id", "is", null);
       if (error) throw new Error(error.message);
       for (const r of (data ?? []) as { from_id: string; to_id: string }[]) {
         floorBySpace.set(r.from_id, r.to_id);
@@ -1740,7 +1741,7 @@ export class AskToolRuntime {
     for (let depth = 0; depth < 3; depth++) {
       const [contained, aggregated] = await Promise.all(
         ["rel_contained_in_spatial_structure", "rel_aggregates"].map((view) =>
-          supabase.from(view).select("to_id").eq("from_id", current).is("valid_until", null).limit(1),
+          supabase.from(view).select("to_id").eq("from_id", current).is("valid_until", null).not("to_id", "is", null).limit(1),
         ),
       );
       const parent = (contained.data?.[0]?.to_id ?? aggregated.data?.[0]?.to_id) as string | undefined;
@@ -1839,7 +1840,16 @@ export class AskToolRuntime {
     if (fromId && !isUuid(fromId)) throw new Error("from_id musí byť UUID.");
     if (toId && !isUuid(toId)) throw new Error("to_id musí byť UUID.");
 
-    let q = supabase.from(relType).select("*").is("valid_until", null).limit(limit);
+    // Strany s uzlom AIM najprv: riadky zo súboru bez uzla (napr. porty VZT v systéme, D-183 K3) by inak
+    // pod limitom vytlačili členov z grafu.
+    let q = supabase
+      .from(relType)
+      .select("*")
+      .is("valid_until", null)
+      .order("from_id", { ascending: true, nullsFirst: false })
+      .order("to_id", { ascending: true, nullsFirst: false })
+      .order("id", { ascending: true })
+      .limit(limit);
     if (fromId) q = q.eq("from_id", fromId);
     if (toId) q = q.eq("to_id", toId);
     const { data, error } = await q;
@@ -1851,6 +1861,11 @@ export class AskToolRuntime {
       role?: string | null;
       global_id?: string | null;
       container_global_id?: string | null;
+      parent_global_id?: string | null;
+      type_global_id?: string | null;
+      group_global_id?: string | null;
+      document_key?: string | null;
+      classification_key?: string | null;
     }[];
     // Klasifikačné to_id mieri do classification_references, nie objects.
     const isClassification = relType === "rel_associates_classification";
@@ -1875,14 +1890,18 @@ export class AskToolRuntime {
       );
     }
 
-    // Strana bez uzla AIM (rel_contained_in_spatial_structure z kópie revízie, D-183 K3) = GlobalId zo súboru.
+    // Strana bez uzla AIM (pohľady IFC vzťahov z kópie revízie, D-183 K3) = GlobalId alebo kľúč zo súboru.
     const end = (id: string | null, globalId: string | null | undefined) =>
       id ? metaById.get(id) ?? { id } : { id: null, global_id: globalId ?? null, in_aim: false };
+    const relatingKey = (r: (typeof rows)[number]) =>
+      r.container_global_id ?? r.parent_global_id ?? r.type_global_id ?? r.group_global_id ?? r.document_key ?? null;
     return rows.map((r) => ({
       from: end(r.from_id, r.global_id),
       to: isClassification
-        ? classRefById.get(r.to_id ?? "") ?? { id: r.to_id }
-        : end(r.to_id, r.container_global_id),
+        ? r.to_id
+          ? classRefById.get(r.to_id) ?? { id: r.to_id }
+          : { id: null, key: r.classification_key ?? null, in_aim: false }
+        : end(r.to_id, relatingKey(r)),
       ...(r.role !== undefined ? { role: r.role } : {}),
     }));
   }
@@ -1903,6 +1922,7 @@ export class AskToolRuntime {
           .select("to_id")
           .eq("from_id", current)
           .is("valid_until", null)
+          .not("to_id", "is", null) // kontajner bez uzla AIM (D-183 K3)
           .limit(1);
         if (error) throw new Error(error.message);
         if (data?.length) {

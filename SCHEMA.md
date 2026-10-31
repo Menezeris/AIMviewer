@@ -274,6 +274,10 @@ create view rel_aggregates as
 --   rel_associates_document / rel_assigns_to_actor / rel_member_of (s role).
 -- rel_contained_in_spatial_structure od D-183 K3 (migrácia 20261031120000) číta kópiu revízie, nie
 --   `relationships` (rovnaké prvé stĺpce + model, revision, global_id, container_global_id, via_global_id; §2.19).
+-- rel_aggregates / rel_defines_by_type / rel_assigns_to_group / rel_associates_document / rel_associates_classification
+--   od D-183 K3 krok 2b (migrácia 20261031150000) tiež z kópie revízie + hrany AIM vrstvy (zdroj nie etl*) z `relationships`
+--   (rovnaké prvé stĺpce + model, revision, global_id a parent_global_id | type_global_id | group_global_id |
+--   document_key | classification_key; §2.19). rel_assigns_to_actor, rel_member_of a ostatné ostávajú nad `relationships`.
 ```
 
 ### 2.6 Indexy + integrita hrán
@@ -725,6 +729,21 @@ kontajnera a revízie, (2) úplnú kópiu informácií každej revízie bez geom
   schodisku). Strana bez uzla AIM má `from_id`/`to_id` null. Hrany tohto `rel_type` v `relationships` pohľad nečíta.
   Funkcia `ifc_np_key(text)` (immutable, `2NP`, `2.NP`, `2. NP`, `1NP_VZT` -> `2NP`/`1NP`), index
   `idx_ifc_guid_history_active_guid` (`ifc_guid` pri `valid_until is null`).
+- **K3 krok 2b (migrácia `20261031150000_rel_views_from_revision_copy.sql`):** pohľady `rel_aggregates`
+  (IfcRelAggregates), `rel_defines_by_type` (IfcRelDefinesByType), `rel_assigns_to_group` (IfcRelAssignsToGroup),
+  `rel_associates_document` (IfcRelAssociatesDocument, `role` = `document`), `rel_associates_classification`
+  (IfcRelAssociatesClassification) = dvojice triedy z `ifc_rev_relationships` revízie z `ifc_rev_current` ∪ riadky
+  `relationships` toho istého `rel_type`, kde `rel_is_aim_layer(source)` (zdroj nie je `etl` ani `etl:*`, napr. `pdf_link (E4)`,
+  `doc_upload (D-036)`; s pôvodnými stĺpcami, nové null). Riadok zo súboru: `id` (`md5(model|revision|rel_class|relating|related)::uuid`),
+  `from_id` = Related, `to_id` = Relating (uzly AIM cez `ifc_guid_node`; null bez uzla), `valid_from` (`finished_at`), `valid_until`
+  null, `source` (`ifc:ASR v79`), `model`, `revision`, `global_id` (Related) a kľúč Relating zo súboru: `parent_global_id`,
+  `type_global_id`, `group_global_id`, `document_key` (`IfcDocumentInformation:<Identification>` / `IfcDocumentReference:<Identification>`),
+  `classification_key` (`IfcClassificationReference:<Identification>`, `IfcClassification:<Name>`). Mapovanie Relating bez GUID:
+  dokument cez jedinú zhodu `documents.identification` pri uzle `document`/`document_reference` triedy kľúča, klasifikácia cez jedinú
+  zhodu `classification_references.identification`; typ bez vlastného uzla (zlúčený ETL, D-033) cez `asset_type` s `object_ref` =
+  `object_ref` výskytu bez posledného segmentu. Podlažie VZT sa v `rel_aggregates` nemapuje. Pomocné pohľady `ifc_rev_current`
+  (model, revision, finished_at: aktuálna `done`, inak najnovšia nižšia `done`) a `ifc_guid_node` (ifc_guid, object_id, object_type,
+  object_ref), funkcia `rel_is_aim_layer(text)` (immutable); len `service_role`.
 
 ## 4. Konvencia `properties` (D-022)
 

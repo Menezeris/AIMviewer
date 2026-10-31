@@ -45,6 +45,7 @@ export async function fetchZones(): Promise<ZoneObject[]> {
         .select("from_id, to_id")
         .in("to_id", zoneIds)
         .is("valid_until", null)
+        .not("from_id", "is", null)
         .order("from_id")
         .range(from, to)
     );

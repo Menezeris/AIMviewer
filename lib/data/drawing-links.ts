@@ -37,7 +37,8 @@ async function drawingFloors(documentIds: readonly string[]): Promise<Map<string
     .from("rel_associates_document")
     .select("from_id, to_id")
     .in("to_id", documentIds)
-    .is("valid_until", null);
+    .is("valid_until", null)
+    .not("from_id", "is", null);
   if (error) throw new Error(error.message);
   const pairs = (rels ?? []) as { from_id: string; to_id: string }[];
   if (pairs.length === 0) return out;
@@ -124,6 +125,7 @@ async function floorOf(objects: readonly ObjectRow[]): Promise<Map<string, Set<s
           .select("from_id, to_id")
           .in("from_id", spaces)
           .is("valid_until", null)
+          .not("to_id", "is", null)
           .order("from_id")
           .range(from, to)
       )

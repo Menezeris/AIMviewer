@@ -112,6 +112,16 @@
       "notes": "D-183 akceptačný test, K3 krok 2 (#220): 212 = 103 IfcDuctSegment, 70 IfcDuctFitting, 27 IfcAirTerminal, 11 IfcDamper, 1 IfcUnitaryEquipment (VZT v11), rovnako motor aj DB (rel_contained_in_spatial_structure z kópie revízie + systémy Prívod*). Pred K3 DB dávala menej (potrubie a tvarovky bez podlažia)."
     },
     {
+      "id": "C3c-dvere-typ-zlucenie",
+      "category": "data",
+      "viewer": false,
+      "question": "Koľko dverí je typu DD01.06?",
+      "max_calls": 3,
+      "budget_s": 15,
+      "expect": { "answer_matches": ["\\b9\\b"] },
+      "notes": "D-183 K3 krok 2b (#220): rel_defines_by_type z kópie ASR v79. Typ DD01.06 sú v súbore dva IfcDoorType (ETL ich zlúčil podľa typového kódu); pohľad mapuje typ bez vlastného uzla podľa typového kódu výskytu, preto ostáva 9 (6 cez GlobalId typu, 3 cez zlúčený typ). Bez toho by vyšlo 6."
+    },
+    {
       "id": "C4-revizia-asr",
       "category": "data",
       "viewer": false,

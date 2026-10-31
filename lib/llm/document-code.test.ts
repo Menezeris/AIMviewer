@@ -37,6 +37,7 @@ vi.mock("@/lib/supabase/server", () => {
       select: () => q,
       eq: (col: string, v: unknown) => (filters.push((r) => r[col] === v), q),
       is: (col: string, v: unknown) => (filters.push((r) => r[col] === v), q),
+      not: (col: string, _op: "is", v: unknown) => (filters.push((r) => (r[col] ?? null) !== v), q),
       ilike: (col: string, pattern: string) => {
         const re = new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*")}$`, "i");
         filters.push((r) => re.test(String(r[col] ?? "")));

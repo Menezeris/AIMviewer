@@ -365,6 +365,7 @@ export async function fetchPlanDocumentForSpace(spaceId: string): Promise<string
     .select("to_id")
     .eq("from_id", spaceId)
     .is("valid_until", null)
+    .not("to_id", "is", null)
     .maybeSingle();
   if (pErr) throw new Error(pErr.message);
   const floorId = parent?.to_id as string | undefined;

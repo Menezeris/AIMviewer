@@ -23,7 +23,7 @@ export async function systemsOfGuids(guids: string[]): Promise<Map<string, strin
     const chunk = ids.slice(i, i + IN_CHUNK);
     edges.push(
       ...(await fetchAllPages<{ from_id: string; to_id: string }>((from, to) =>
-        supabase.from("rel_assigns_to_group").select("from_id, to_id").in("from_id", chunk).is("valid_until", null).order("id").range(from, to),
+        supabase.from("rel_assigns_to_group").select("from_id, to_id").in("from_id", chunk).is("valid_until", null).not("to_id", "is", null).order("id").range(from, to),
       )),
     );
   }
