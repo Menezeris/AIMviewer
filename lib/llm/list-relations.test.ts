@@ -9,19 +9,25 @@ vi.mock("server-only", () => ({}));
 type Row = Record<string, unknown>;
 const tables: Record<string, Row[]> = {};
 
-/** PostgREST builder: eq / in / is / order (nullsFirst) / limit. */
+/** PostgREST builder: select (count/head) / eq / in / is / not is null / order (nullsFirst) / limit. */
 function builder(table: string) {
   const filters: ((r: Row) => boolean)[] = [];
   const orders: { col: string; nullsFirst: boolean }[] = [];
   let limit = Infinity;
+  let head = false;
   const b = {
-    select: () => b,
+    select: (_c?: string, o?: { head?: boolean }) => ((head = !!o?.head), b),
     eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), b),
     in: (c: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[c])), b),
     is: (c: string, v: unknown) => (filters.push((r) => (r[c] ?? null) === v), b),
+    not: (c: string) => (filters.push((r) => (r[c] ?? null) !== null), b),
     order: (col: string, o?: { nullsFirst?: boolean }) => (orders.push({ col, nullsFirst: !!o?.nullsFirst }), b),
     limit: (n: number) => ((limit = n), b),
-    then(resolve: (v: { data: Row[]; error: null }) => unknown) {
+    then(resolve: (v: { data: Row[] | null; count?: number; error: null }) => unknown) {
+      if (head) {
+        const n = (tables[table] ?? []).filter((r) => filters.every((f) => f(r))).length;
+        return Promise.resolve(resolve({ data: null, count: n, error: null }));
+      }
       let rows = (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
       rows = [...rows].sort((a, z) => {
         for (const { col, nullsFirst } of orders) {
@@ -79,6 +85,28 @@ describe("list_relations nad kópiou revízie (D-183 K3)", () => {
     expect(rows.map((r) => r.from.object_ref ?? r.from.global_id)).toEqual(["VV.1", "PORT-1"]);
     expect(rows[1].from).toEqual({ id: null, global_id: "PORT-1", in_aim: false });
     expect(rows[1].to.object_ref).toBe("SYS.1");
+  });
+
+  it("počty: in_aim = členovia s uzlom AIM, porty zo súboru zvlášť (rel-system-members)", async () => {
+    const out = await run({ rel_type: "rel_assigns_to_group", to_id: SYS });
+    expect(out.total).toBe(2);
+    expect(out.in_aim).toBe(1);
+    expect(out.only_in_file).toBe(1);
+    expect(out.truncated).toBe(false);
+    expect(out.hint).toMatch(/in_aim/);
+  });
+
+  it("limit pod počtom: truncated a total ostávajú presné", async () => {
+    tables.rel_assigns_to_group.push(
+      ...Array.from({ length: 5 }, (_, i) => ({
+        id: `p${i}`, from_id: null, to_id: SYS, global_id: `PORT-${i + 2}`, group_global_id: "G-SYS", valid_until: null,
+      }))
+    );
+    const out = await run({ rel_type: "rel_assigns_to_group", to_id: SYS, limit: 3 });
+    expect(out.rows).toHaveLength(3);
+    expect(out.total).toBe(7);
+    expect(out.in_aim).toBe(1);
+    expect(out.truncated).toBe(true);
   });
 
   it("klasifikácia bez referencie v AIM vráti kľúč zo súboru", async () => {

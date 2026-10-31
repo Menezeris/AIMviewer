@@ -24,47 +24,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-interface Expect {
-  answer_matches?: string[];
-  answer_not_matches?: string[];
-  sources_any_ref?: string[];
-  source_types?: string[];
-  no_facts?: boolean;
-  /** Regexy, ktoré musí splniť URL niektorej UI akcie (dekódovaná), napr. ops pohľadu (D-083). */
-  actions_match?: string[];
-  /** Tools, ktoré musí model zavolať (podľa trace). */
-  tools_called?: string[];
-}
-
-interface Question {
-  id: string;
-  category: string;
-  question: string;
-  expect: Expect;
-  verified: boolean;
-  mock_only?: boolean;
-  notes?: string;
-}
-
-interface AskSource {
-  objectRef: string | null;
-  objectType: string;
-}
-
-interface AskResponse {
-  answer?: string;
-  sources?: AskSource[];
-  trace?: { name: string; ok: boolean }[];
-  actions?: { url: string }[];
-  provider?: string;
-  error?: string;
-}
-
-/** „Nenašiel som" vzory pre no_facts asercie (negatívne otázky). */
-const NOT_FOUND_RE =
-  /nenaš|nenach|neexist|nie je|niesú|nie sú|žiadn|nemá|not found|no such/i;
-/** Viacciferné číslo v odpovedi na negatívnu otázku = podozrenie z konfabulácie. */
-const MULTI_DIGIT_RE = /\b\d{2,}\b/;
+import { score, validateQuestions, type AskResponse, type Question } from "./eval-score";
 
 interface Args {
   baseUrl: string;
@@ -102,56 +62,6 @@ function parseArgs(argv: string[]): Args {
     }
   }
   return args;
-}
-
-/** Vyhodnotí asercie jednej odpovede; vráti zoznam zlyhaní (prázdny = pass). */
-function score(expect: Expect, res: AskResponse): string[] {
-  const failures: string[] = [];
-  const answer = res.answer ?? "";
-  const sources = res.sources ?? [];
-
-  for (const pattern of expect.answer_matches ?? []) {
-    if (!new RegExp(pattern, "i").test(answer)) {
-      failures.push(`answer nematchuje /${pattern}/i`);
-    }
-  }
-  for (const pattern of expect.answer_not_matches ?? []) {
-    if (new RegExp(pattern, "i").test(answer)) {
-      failures.push(`answer matchuje zakázané /${pattern}/i`);
-    }
-  }
-  if (expect.sources_any_ref && expect.sources_any_ref.length > 0) {
-    const refs = new Set(sources.map((s) => s.objectRef).filter(Boolean));
-    if (!expect.sources_any_ref.some((r) => refs.has(r))) {
-      failures.push(`sources neobsahujú žiadny z refov [${expect.sources_any_ref.join(", ")}]`);
-    }
-  }
-  for (const t of expect.source_types ?? []) {
-    if (!sources.some((s) => s.objectType === t)) {
-      failures.push(`sources neobsahujú object_type '${t}'`);
-    }
-  }
-  const urls = (res.actions ?? []).map((a) => decodeURIComponent(a.url));
-  for (const pattern of expect.actions_match ?? []) {
-    if (!urls.some((u) => new RegExp(pattern).test(u))) {
-      failures.push(`žiadna UI akcia nematchuje /${pattern}/ (akcie: ${urls.join(" | ") || "-"})`);
-    }
-  }
-  const called = new Set((res.trace ?? []).map((t) => t.name));
-  for (const tool of expect.tools_called ?? []) {
-    if (!called.has(tool)) failures.push(`model nezavolal ${tool}`);
-  }
-  if (expect.no_facts) {
-    if (!NOT_FOUND_RE.test(answer)) failures.push("no_facts: chýba formulácia typu 'nenašiel som'");
-    if (MULTI_DIGIT_RE.test(answer)) failures.push("no_facts: odpoveď obsahuje viacciferné číslo");
-    // „Nenašiel som" platí len z fungujúcej DB — beh, kde zlyhali všetky tools,
-    // nedokazuje nič (anti-konfabulačný fallback by inak zeleno prešiel výpadkom).
-    const trace = res.trace ?? [];
-    if (trace.length > 0 && trace.every((t) => !t.ok)) {
-      failures.push("no_facts: všetky tool cally zlyhali — beh nevypovedá o dátach");
-    }
-  }
-  return failures;
 }
 
 async function askOnce(
@@ -196,9 +106,14 @@ interface QuestionResult {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const root = process.cwd();
-  const { questions } = JSON.parse(
-    readFileSync(join(root, args.questions), "utf8")
-  ) as { questions: Question[] };
+  const parsed = JSON.parse(readFileSync(join(root, args.questions), "utf8")) as { questions: unknown[] };
+  // Neplatný záznam (bez id alebo otázky) by poslal prázdnu históriu a /api/ask vráti 400
+  // "posledná správa musí byť od používateľa"; runner ho ohlási a preskočí.
+  const invalid = validateQuestions(parsed.questions);
+  if (invalid.length > 0) {
+    console.warn(`Neplatné záznamy v ${args.questions} (preskočené):\n  ${invalid.join("\n  ")}`);
+  }
+  const questions = parsed.questions.filter((q) => validateQuestions([q]).length === 0) as Question[];
 
   const matchesFilter = (q: Question) =>
     !args.filter || q.category === args.filter || q.id.includes(args.filter);
@@ -207,12 +122,15 @@ async function main() {
     if (!matchesFilter(q)) return false;
     // smoke/mock_only len pri explicitnom filtri — reálny model by na ne odpovedal nezmyslom
     if (q.mock_only && !args.filter) return false;
+    // Tooly MCP konektora (search_all, clash, calibrate_underlay...) /api/ask nemá; meria ich eval/mcp-tasks.json.
+    if (q.mcp_only) return false;
     if (!q.verified && !args.includeUnverified) return false;
     return true;
   });
   const skippedUnverified = questions.filter(
-    (q) => matchesFilter(q) && !q.mock_only && !q.verified && !args.includeUnverified
+    (q) => matchesFilter(q) && !q.mock_only && !q.mcp_only && !q.verified && !args.includeUnverified
   ).length;
+  const skippedMcp = questions.filter((q) => matchesFilter(q) && q.mcp_only).length;
 
   if (selected.length === 0) {
     console.log(
@@ -224,7 +142,8 @@ async function main() {
 
   console.log(
     `Eval: ${selected.length} otázok × ${args.runs} beh(ov) proti ${args.baseUrl}` +
-      (skippedUnverified ? ` (preskočených neoverených: ${skippedUnverified})` : "")
+      (skippedUnverified ? ` (preskočených neoverených: ${skippedUnverified})` : "") +
+      (skippedMcp ? ` (preskočených len pre MCP: ${skippedMcp})` : "")
   );
 
   let provider = "unknown";
@@ -236,7 +155,7 @@ async function main() {
       try {
         const { res, ms } = await askOnce(args.baseUrl, q.question, args.timeoutMs);
         if (res.provider) provider = res.provider;
-        const failures = res.error ? [`chyba API: ${res.error}`] : score(q.expect, res);
+        const failures = res.error ? [`chyba API: ${res.error}`] : score(q.expect, res, q.question);
         runs.push({
           pass: failures.length === 0,
           failures,
