@@ -13,6 +13,7 @@ export interface ClashSideDef {
   type: string;
   model?: string;
   storey?: string;
+  load_bearing?: "true" | "false" | "unknown";
 }
 
 export interface ClashRuleDef {

@@ -1436,6 +1436,15 @@
       "notes": "D-183 bod 11 (#292): clash(list, test=VZT-NOSNE) alebo results -> based_on a stale; pri stale=true povedať, nad ktorou revíziou beh bežal, a ponúknuť nový run save=true. Evaly nepobežali (bez Supabase kľúčov)."
     },
     {
+      "id": "clash-nosne-load-bearing",
+      "category": "viewer",
+      "question": "Koľko kolízií je medzi VZT a skutočne nosnými prvkami ASR (LoadBearing true)?",
+      "expect": { "tools_called": ["clash"] },
+      "mcp_only": true,
+      "verified": false,
+      "notes": "D-164 dodatok 2026-10-31 (#292): clash(run, test=VZT-NOSNE) berie b so sadou LoadBearing=true (výskyt, inak typ); nenosné steny sa nerátajú. Dry run bez save. Na revízii ASR 79 + VZT 11 očakávaných 46 kolízií (45 stena, 1 doska). Evaly pozastavené, nepobežali."
+    },
+    {
       "id": "select-all-visible",
       "category": "viewer",
       "question": "Izoluj VZT a nosné prvky a potom vyber všetky viditeľné prvky.",

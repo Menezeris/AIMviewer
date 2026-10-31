@@ -29,6 +29,7 @@ import {
 import { currentRevisions, revisionFields, stampOf, type RevisionStamp } from "../clash/revisions";
 
 import { joinToAim } from "./join";
+import { loadBearingOf, matchesLoadBearing, parseLoadBearingFilter } from "./load-bearing";
 import { meshModel, toIfc, type MeshElement, type Vec3 } from "./measure";
 import { openEngineSession, type EngineModel } from "./session";
 import { normalizeStoreyLabel } from "./storey";
@@ -113,8 +114,11 @@ function parseSide(input: Record<string, unknown>, prefix: "a" | "b"): Partial<C
   const type = str(input[prefix]);
   const model = str(input[`${prefix}_model`]);
   const storey = str(input[`${prefix}_storey`]);
-  if (!type && !model && !storey) return undefined;
-  return { ...(type ? { type } : {}), ...(model ? { model } : {}), ...(storey ? { storey } : {}) };
+  const lbRaw = input[`${prefix}_load_bearing`];
+  const lb = parseLoadBearingFilter(lbRaw);
+  if (lbRaw !== undefined && lbRaw !== null && lbRaw !== "" && !lb) throw new InputError(`${prefix}_load_bearing: true, false alebo unknown.`);
+  if (!type && !model && !storey && !lb) return undefined;
+  return { ...(type ? { type } : {}), ...(model ? { model } : {}), ...(storey ? { storey } : {}), ...(lb ? { load_bearing: lb } : {}) };
 }
 
 /**
@@ -164,13 +168,14 @@ export function parseSpec(input: Record<string, unknown>, custom?: ClashTest): C
 
 const mentions = (side: ClashSide | undefined, cls: string) => !!side && side.type.toLowerCase().includes(cls.toLowerCase());
 
-function matches(e: MeshElement, side: ClashSide, storeyOf: (e: MeshElement) => string | null): boolean {
+function matches(e: MeshElement, side: ClashSide, storeyOf: (e: MeshElement) => string | null, loadBearingValue: (e: MeshElement) => boolean | null): boolean {
   if (side.model && e.model !== side.model) return false;
   if (!matchesSelector(e.ifcType, side.type) || (NON_PHYSICAL.includes(e.ifcType) && !mentions(side, e.ifcType))) return false;
   if (side.storey) {
     const s = storeyOf(e);
     if (!s || s !== normalizeStoreyLabel(side.storey)) return false;
   }
+  if (side.load_bearing && !matchesLoadBearing(loadBearingValue(e), side.load_bearing)) return false;
   return true;
 }
 
@@ -196,6 +201,8 @@ export interface DetectInput {
   elements: Map<string, { model: EngineModel; meshes: Map<string, MeshElement> }>;
   signal?: AbortSignal;
   maxPairs?: number;
+  /** Nosnosť prvku (výskyt, inak typ); predvolene z IFC store modelu. Len pre testy. */
+  loadBearing?: (e: MeshElement) => boolean | null;
 }
 
 export interface Detected {
@@ -205,7 +212,7 @@ export interface Detected {
 }
 
 /** Čisté jadro: výber sád A/B, pravidlo s explicitnými členmi a beh upstream enginu. */
-export async function detect({ spec, elements, signal, maxPairs = MAX_PAIRS }: DetectInput): Promise<Detected> {
+export async function detect({ spec, elements, signal, maxPairs = MAX_PAIRS, loadBearing }: DetectInput): Promise<Detected> {
   const storeys = new Map<string, string | null>();
   const storeyOf = (e: MeshElement): string | null => {
     const k = keyOf(e);
@@ -221,9 +228,16 @@ export async function detect({ spec, elements, signal, maxPairs = MAX_PAIRS }: D
     storeys.set(k, label);
     return label;
   };
+  const lbCache = new Map<string, boolean | null>();
+  const loadBearingValue = (e: MeshElement): boolean | null => {
+    if (loadBearing) return loadBearing(e);
+    const k = keyOf(e);
+    if (!lbCache.has(k)) lbCache.set(k, elements.get(e.model) ? loadBearingOf(elements.get(e.model)!.model.store, e.expressId).value : null);
+    return lbCache.get(k)!;
+  };
   const all = [...elements.values()].flatMap((h) => [...h.meshes.values()]);
-  const setA = all.filter((e) => matches(e, spec.a, storeyOf));
-  const setB = spec.b ? all.filter((e) => matches(e, spec.b!, storeyOf)) : null;
+  const setA = all.filter((e) => matches(e, spec.a, storeyOf, loadBearingValue));
+  const setB = spec.b ? all.filter((e) => matches(e, spec.b!, storeyOf, loadBearingValue)) : null;
   if (setA.length === 0) throw new InputError(`Strana a (${describeSide(spec.a)}) nemá žiadny prvok s geometriou.`);
   if (setB && setB.length === 0) throw new InputError(`Strana b (${describeSide(spec.b!)}) nemá žiadny prvok s geometriou.`);
 
@@ -256,7 +270,7 @@ export async function detect({ spec, elements, signal, maxPairs = MAX_PAIRS }: D
   return { result, info, sets: { a: setA.length, b: setB ? setB.length : null } };
 }
 
-const describeSide = (s: ClashSide) => [s.type, s.model && `model ${s.model}`, s.storey && `podlažie ${s.storey}`].filter(Boolean).join(", ");
+const describeSide = (s: ClashSide) => [s.type, s.model && `model ${s.model}`, s.storey && `podlažie ${s.storey}`, s.load_bearing && `LoadBearing ${s.load_bearing}`].filter(Boolean).join(", ");
 
 const specModels = (spec: ClashSpec, all: string[]): string[] => {
   const sides = [spec.a, spec.b].filter((s): s is ClashSide => !!s);

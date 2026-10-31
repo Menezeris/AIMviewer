@@ -24,6 +24,8 @@ export interface ClashSide {
   model?: string;
   /** Podlažie podľa štítku AIM (1NP, 2.NP...), v každom modeli normalizované. */
   storey?: string;
+  /** Filter nosnosti (`Pset_*Common.LoadBearing` z výskytu, inak z typu): true | false | unknown (bez hodnoty). */
+  load_bearing?: "true" | "false" | "unknown";
 }
 
 export interface ClashTest {
@@ -38,16 +40,16 @@ export interface ClashTest {
   tolerance_mm?: number;
 }
 
-/** Nosné triedy ASR: LoadBearing sa nefiltruje (vnútorné priečky v nich ostávajú). */
+/** Triedy, ktoré môžu byť nosné; či nosné sú, rozhoduje `load_bearing` strany b (D-164 dodatok 2026-10-31). */
 export const STRUCTURAL_TYPES = "IfcWall*|IfcSlab*|IfcBeam*|IfcColumn*|IfcFooting*|IfcPile*|IfcMember*|IfcRoof*";
 
 export const DEFAULT_TESTS: ClashTest[] = [
   {
     code: "VZT-NOSNE",
     name: "VZT x nosné konštrukcie",
-    description: `Prienik prvkov VZT s nosnými triedami ASR (${STRUCTURAL_TYPES}); LoadBearing sa nefiltruje.`,
+    description: `Prienik prvkov VZT s prvkami ASR tried ${STRUCTURAL_TYPES}, ktoré majú LoadBearing = true (z výskytu, inak z typu).`,
     a: { type: "*", model: "VZT" },
-    b: { type: STRUCTURAL_TYPES, model: "ASR" },
+    b: { type: STRUCTURAL_TYPES, model: "ASR", load_bearing: "true" },
     mode: "hard",
   },
   {

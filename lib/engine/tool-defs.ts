@@ -285,6 +285,8 @@ export function engineToolDefinitions(): ToolDefinition[] {
           b_model: { ...model, description: "run, save: model strany b" },
           a_storey: { type: "string", description: "run, save: podlažie strany a (1NP, 2.NP)" },
           b_storey: { type: "string", description: "run, save: podlažie strany b" },
+          a_load_bearing: { type: "string", enum: ["true", "false", "unknown"], description: "run, save: nosnosť strany a (LoadBearing z výskytu, inak z typu; unknown = bez hodnoty)" },
+          b_load_bearing: { type: "string", enum: ["true", "false", "unknown"], description: "run, save: nosnosť strany b (VZT-NOSNE má true)" },
           mode: { type: "string", enum: ["hard", "clearance"], description: "run, save: prienik alebo odstup" },
           clearance_mm: { type: "number", description: "run, save: odstup v mm (pri clearance)" },
           tolerance_mm: { type: "number", description: "run, save: tolerancia v mm (default 2)" },
