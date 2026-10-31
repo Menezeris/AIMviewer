@@ -31,7 +31,7 @@ async function document(ref: string): Promise<UnderlayDocument | null> {
   const { data, error } = await (UUID_RE.test(ref) ? q.eq("id", ref) : q.eq("object_ref", ref)).maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  const { data: rels, error: rErr } = await db.from("rel_associates_document").select("from_id").eq("to_id", data.id).is("valid_until", null);
+  const { data: rels, error: rErr } = await db.from("rel_associates_document").select("from_id").eq("to_id", data.id).not("from_id", "is", null).is("valid_until", null);
   if (rErr) throw new Error(rErr.message);
   const fromIds = (rels ?? []).map((r) => r.from_id as string);
   let floors: UnderlayDocument["floors"] = [];

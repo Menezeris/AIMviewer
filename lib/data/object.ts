@@ -157,6 +157,7 @@ async function fetchNodeSummaryImpl(id: string): Promise<NodeSummary | null> {
           .select("to_id")
           .eq("from_id", id)
           .is("valid_until", null)
+          .not("to_id", "is", null)
           .limit(1)
           .then(({ data: d, error: e }) => {
             if (e) throw new Error(e.message);
@@ -168,6 +169,7 @@ async function fetchNodeSummaryImpl(id: string): Promise<NodeSummary | null> {
       .select("id", { count: "exact", head: true })
       .eq("from_id", id)
       .is("valid_until", null)
+      .not("to_id", "is", null)
       .then(({ count, error: e }) => {
         if (e) throw new Error(e.message);
         return count ?? 0;
@@ -177,6 +179,7 @@ async function fetchNodeSummaryImpl(id: string): Promise<NodeSummary | null> {
       .select("to_id, role, source")
       .eq("from_id", id)
       .is("valid_until", null)
+      .not("to_id", "is", null)
       .then(({ data: d, error: e }) => {
         if (e) throw new Error(e.message);
         return (d ?? []) as { to_id: string; role: string | null; source: string | null }[];
@@ -187,6 +190,7 @@ async function fetchNodeSummaryImpl(id: string): Promise<NodeSummary | null> {
           .select("id", { count: "exact", head: true })
           .eq("to_id", id)
           .is("valid_until", null)
+          .not("from_id", "is", null) // výskyty s uzlom AIM (D-183 K3)
           .then(({ count, error: e }) => {
             if (e) throw new Error(e.message);
             return count ?? 0;
@@ -472,7 +476,8 @@ async function fetchDocumentImpl(id: string): Promise<DocumentDetail | null> {
       .from("rel_associates_document")
       .select("from_id, role")
       .eq("to_id", id)
-      .is("valid_until", null),
+      .is("valid_until", null)
+      .not("from_id", "is", null), // nositeľ bez uzla AIM (D-183 K3)
   ]);
 
   if (objRes.error) throw new Error(objRes.error.message);
@@ -563,7 +568,8 @@ async function fetchSystemImpl(id: string): Promise<SystemDetail | null> {
       .in("object_type", GROUP_LIKE_TYPES as unknown as string[])
       .limit(1),
     ...MEMBER_RELATIONS.map((rel) =>
-      supabase.from(rel).select("from_id").eq("to_id", id).is("valid_until", null)
+      // Člen bez uzla AIM (D-183 K3, napr. port VZT) má from_id null.
+      supabase.from(rel).select("from_id").eq("to_id", id).is("valid_until", null).not("from_id", "is", null)
     ),
   ]);
 

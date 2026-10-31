@@ -209,7 +209,8 @@ async function fetchUnderlayDrawingsImpl(): Promise<UnderlayDrawingWire[]> {
     .from("rel_associates_document")
     .select("to_id")
     .in("from_id", floorIds)
-    .is("valid_until", null);
+    .is("valid_until", null)
+    .not("to_id", "is", null);
   if (rErr) throw new Error(rErr.message);
 
   const docIds = [

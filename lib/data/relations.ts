@@ -128,7 +128,8 @@ export async function fetchDocuments(objectId: string): Promise<DocumentRef[]> {
     .from("rel_associates_document")
     .select("to_id, role, source")
     .eq("from_id", objectId)
-    .is("valid_until", null);
+    .is("valid_until", null)
+    .not("to_id", "is", null); // dokument bez uzla AIM (D-183 K3)
   if (error) throw new Error(error.message);
 
   // E4 výkres-väzby (prvok zobrazený vo výkrese) idú do vlastnej sekcie, nie sem.
@@ -438,7 +439,8 @@ export async function fetchSystemMembership(
     .from("rel_assigns_to_group")
     .select("to_id")
     .eq("from_id", objectId)
-    .is("valid_until", null);
+    .is("valid_until", null)
+    .not("to_id", "is", null);
   if (error) throw new Error(error.message);
 
   const systemIds = [...new Set((rels ?? []).map((r) => r.to_id as string))];

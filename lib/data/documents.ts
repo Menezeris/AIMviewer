@@ -146,7 +146,8 @@ async function fetchHolders(documentIds: readonly string[]): Promise<Map<string,
     .from("rel_associates_document")
     .select("from_id, to_id")
     .in("to_id", documentIds)
-    .is("valid_until", null);
+    .is("valid_until", null)
+    .not("from_id", "is", null); // nositeľ bez uzla AIM (D-183 K3)
   if (error) throw new Error(error.message);
   const pairs = (rels ?? []) as { from_id: string; to_id: string }[];
   const nodes = await fetchNodes(pairs.map((r) => r.from_id));
