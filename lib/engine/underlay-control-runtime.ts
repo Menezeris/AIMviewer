@@ -2,7 +2,7 @@ import "server-only";
 
 import { revalidateTag } from "next/cache";
 
-import type { RestoreResult } from "../data/georef";
+import type { RemoveResult, RestoreResult } from "../data/georef";
 import { isTestChannel, liveChannel } from "../live/broadcast";
 import { queryLiveViewer } from "../live/query";
 import { getSupabaseAdmin } from "../supabase/server";
@@ -77,7 +77,7 @@ async function viewer(): Promise<ViewerSnapshot> {
 }
 
 /** Zápis `_georef` ako `calibrate_underlay`: zlúčenie nad najnovšími properties tesne pred zápisom. */
-async function write(documentId: string, apply: (stored: unknown) => RestoreResult): Promise<RestoreResult> {
+async function write(documentId: string, apply: (stored: unknown) => RestoreResult | RemoveResult): Promise<RestoreResult | RemoveResult> {
   const db = getSupabaseAdmin();
   const { data, error } = await db.from("objects").select("properties").eq("id", documentId).maybeSingle();
   if (error) throw new Error(error.message);

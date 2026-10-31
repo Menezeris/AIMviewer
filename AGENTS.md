@@ -99,6 +99,15 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
 
 ## Databázové konvencie
 
+### Zdroj pravdy (D-183)
+- **Pravda je kontajner revízie** (IFC, PDF, DWG v archíve, sha256). Prijatý kontajner sa nikdy nemení; súbor mení
+  len recept OCB pri revízii, ktorú sme výslovne vyžiadali (BCF téma). Údaje modelu sa nemenia zápisom do DB.
+- **DB = úplná kópia informácií každej revízie bez geometrie** (generické pravidlo, `(model, revision)` a
+  `content_hash` v každom riadku), ručne sa nemení; pri geometrii sa ide do súboru. Zmeny len porovnaním na požiadanie.
+- **AIM vrstva** = len to, čo v kontajneroch nie je (D-129); každý uložený výsledok nesie revízie, nad ktorými vznikol
+  (`{model: revision}`), iný podpis než aktuálny = `stale`, nikdy sa neprepisuje.
+- Pojmy kontajnera a revízie podľa `IfcDocumentInformation` a `IfcOwnerHistory`, po anglicky (SCHEMA §2.19).
+
 ### Uzly — centrálna tabuľka `objects` (D-018)
 - Všetky uzly sú riadky v `objects`, rozlíšené `object_type`:
   site, building, floor, space, asset, asset_type, document, person, organization,

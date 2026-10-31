@@ -87,6 +87,8 @@ describe("ifc_ids_validate nad IDS v DB (D-162)", () => {
       ids_title: "Podlažia z chatu",
       ids_version: "0.1",
       ids_source: "ids_document:CHAT-PODLAZIA@v1",
+      // model bez archívu revízie: podpis vstupu neznámy (D-183), DB ho ukáže ako stale NULL
+      model_revisions: {},
     });
     expect(store.runs[0].results_total).toBe(store.results.length);
     expect(store.runs[0].results_failed).toBe(store.results.filter((x) => x.status === "fail").length);

@@ -1,7 +1,26 @@
 {
   "permissions": {
     "allow": [
-      "mcp__claude-code-remote__send_message"
+      "mcp__claude-code-remote__send_message",
+      "mcp__claude-code-remote__send_later",
+      "mcp__claude-code-remote__subscribe_pr_activity",
+      "mcp__claude-code-remote__unsubscribe_pr_activity",
+      "mcp__claude-code-remote__list_sessions",
+      "mcp__claude-code-remote__get_session",
+      "mcp__aim-viewer__*",
+      "mcp__github__*",
+      "mcp__GithubMCP__*",
+      "mcp__Supabase__execute_sql",
+      "mcp__Supabase__list_tables",
+      "mcp__Supabase__list_migrations",
+      "Bash(npx vitest:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npm ci:*)",
+      "Bash(npm run eval:*)",
+      "Bash(git:*)",
+      "Bash(curl -s https://api.vercel.com/*)",
+      "Bash(curl -s \"https://api.vercel.com/*)"
     ]
   }
 }

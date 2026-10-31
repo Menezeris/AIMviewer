@@ -11,9 +11,10 @@ import {
 } from "@ifc-lite/mcp";
 
 import { MINI_BUILDING_BYTES, guid } from "./__fixtures__/mini-building";
-import { clearEngineCache, getStore, setArchiveResolver } from "./cache";
+import { archiveRevision, clearEngineCache, engineRevision, getStore, setArchiveResolver } from "./cache";
 import { modelFromStore, parseIfcBytes } from "./loader";
 import { ENGINE_UPSTREAM_TOOLS, callEngineTool } from "./session";
+import { revisionStamp } from "./tools";
 
 const SRC = { id: "MINI", label: "Mini", url: "https://example.test/mini.ifc" };
 
@@ -101,6 +102,9 @@ describe("IFC motor - archív revízie (D-135)", () => {
     expect(res.entry.etag).toBe('"cur"');
     expect(res.entry.size).toBe(MINI_BUILDING_BYTES.byteLength);
     expect(res.entry.store.entities.getExpressIdByGlobalId(guid("WALA"))).toBeGreaterThan(0);
+    // D-183: revízia archívu ide do podpisu vstupu výsledkov
+    expect(res.entry.revision).toBe(7);
+    expect(engineRevision(res.entry)).toMatchObject({ etag: '"cur"', revision: 7 });
   });
 
   it("ETag číta pred revíziou z DB (publikácia medzi nimi nenechá nový ETag pri starej revízii)", async () => {
@@ -117,8 +121,16 @@ describe("IFC motor - archív revízie (D-135)", () => {
   it("zaregistrovaný resolver platí bez deps; bez revízie ide pôvodná URL", async () => {
     setArchiveResolver(async () => null);
     const s = storage();
-    await getStore(SRC, { fetchImpl: s.impl });
+    const res = await getStore(SRC, { fetchImpl: s.impl });
     expect(s.calls).toEqual([`HEAD ${SRC.url}`, `GET ${SRC.url}`]);
+    expect(res.entry.revision).toBeNull();
+    expect(engineRevision(res.entry)).not.toHaveProperty("revision");
+  });
+
+  it("číslo revízie z URL archívu (D-183)", () => {
+    expect(archiveRevision(ARCHIVE)).toBe(7);
+    expect(archiveRevision("https://x.test/ifc/archive/ASR/v079.ifc.gz?t=1")).toBe(79);
+    expect(archiveRevision("https://x.test/ifc/ASR.ifc?rev=79")).toBeNull();
   });
 
   it("chybný archív alebo resolver = pôvodná URL", async () => {
@@ -176,5 +188,14 @@ describe("IFC motor - volanie toolov (D-084)", () => {
     for (const name of ENGINE_UPSTREAM_TOOLS) {
       expect(["read", "validate"]).toContain(all.get(name)?.scope);
     }
+  });
+});
+
+describe("podpis vstupu z revízie motora (D-183)", () => {
+  it("revisionStamp berie len modely so známou revíziou archívu", () => {
+    const revision = { ASR: { etag: "a", size: 1, loaded_at: "t", revision: 79 }, VZT: { etag: "b", size: 2, loaded_at: "t" } };
+    expect(revisionStamp(revision, ["ASR", "VZT"])).toEqual({ ASR: 79 });
+    expect(revisionStamp(revision, ["VZT"])).toEqual({});
+    expect(revisionStamp({}, ["ASR"])).toEqual({});
   });
 });

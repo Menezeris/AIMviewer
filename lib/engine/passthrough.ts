@@ -1,6 +1,6 @@
 import { getIfcModels } from "../data/ifc-models";
 
-import { getStore } from "./cache";
+import { engineRevision, getStore } from "./cache";
 import type { GuidLookup } from "./join";
 import { PASSTHROUGH_TOOLS, passthroughName, type PassthroughTool } from "./passthrough-defs";
 import { openEngineSession, type EngineModel, type EngineUpstreamTool } from "./session";
@@ -62,7 +62,7 @@ export async function execPassthroughTool(
     if (!src) return { content: "Zadaj model_id modelu federácie (napr. ASR alebo VZT).", isError: true };
     const { entry } = await getStore(src, { fetchImpl: deps.fetchImpl });
     models.push({ id: src.id, name: `${src.id}.ifc`, store: entry.store });
-    revision = { etag: entry.etag, size: entry.size, loaded_at: new Date(entry.loadedAt).toISOString() };
+    revision = engineRevision(entry);
   }
   const session = await openEngineSession(models);
   const res = await session.call(tool.upstream as EngineUpstreamTool, args);

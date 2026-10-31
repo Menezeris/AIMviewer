@@ -200,8 +200,8 @@ describe("calibrate_underlay mode=show_in_3d | hide | set_opacity (D-168)", () =
     expect(toGeorefV2(DOCS[0].georef).calibrations).toHaveLength(1);
   });
 
-  it("neznámy mode je chyba (remove sa nerobí)", async () => {
-    expect((await run({ mode: "remove", document_id: ASR1 })).isError).toBe(true);
+  it("neznámy mode je chyba (delete sa nerobí)", async () => {
+    expect((await run({ mode: "delete", document_id: ASR1 })).isError).toBe(true);
   });
 });
 
@@ -249,6 +249,79 @@ describe("calibrate_underlay mode=history | restore (D-168)", () => {
     // obnovený záznam z histórie odišiel, aktuálna (27) v nej pribudla, 26 ostala
     expect(historyOf(written).map((h) => h.calibration.affine[2])).toEqual([27, 26]);
     expect(historyOf(written)[0].reason).toBe("restore index 1");
+  });
+
+  it("remove zmaže kalibráciu, uloží ju do histórie a restore ju vráti (D-176)", async () => {
+    const docs = [doc(ASR1, "OCB_ASR_1NP", [cal(), cal({ page: 2, storey_guid: G2 })]), ...DOCS.slice(1)];
+    let stored: unknown = docs[0].georef;
+    const d = deps({ write: async (_id, apply) => { const r = apply(stored); if (r.ok) stored = r.georef; return r; } }, undefined, docs);
+    const r = await run({ mode: "remove", document_id: ASR1, page: 1 }, d);
+    expect(r.isError, r.text).toBe(false);
+    expect(r.reload).toBe(true);
+    expect(r.json.removed).toMatchObject({ page: 1, source: "auto" });
+    expect(r.json.remaining_calibrations).toBe(1);
+    expect(toGeorefV2(stored).calibrations.map((c) => c.page)).toEqual([2]);
+    expect(historyOf(stored)).toHaveLength(1);
+    expect(historyOf(stored)[0]).toMatchObject({ page: 1, replaced_by: "mcp", reason: "remove" });
+    // vrátenie: restore index 0 dá kalibráciu späť
+    docs[0] = { ...docs[0], georef: stored };
+    const hist = await run({ mode: "history", document_id: ASR1, page: 1 }, deps({}, undefined, docs));
+    expect(hist.json).toMatchObject({ removed: true, current: null, count: 1 });
+    const back = await run({ mode: "restore", document_id: ASR1, page: 1, index: 0 }, deps({ write: async (_id, apply) => { const x = apply(stored); if (x.ok) stored = x.georef; return x; } }, undefined, docs));
+    expect(back.isError, back.text).toBe(false);
+    expect(toGeorefV2(stored).calibrations.map((c) => c.page).sort()).toEqual([1, 2]);
+    expect(historyOf(stored)).toHaveLength(0);
+  });
+
+  it("remove na reze: section_plane vyberie najbližšiu rovinu, bez neho viac rovín je chyba so zoznamom (D-179)", async () => {
+    const rez = (y: number, over: Partial<GeorefCalibration> = {}) =>
+      cal({ storey_guid: null, storey_z: null, plane: { origin: [0, y, 0], u: [1, 0, 0], v: [0, 0, 1] }, ...over });
+    const stale = rez(4.688, { calibrated_at: "2026-10-22T10:00:00.000Z" });
+    const nova = rez(4.721, { calibrated_at: "2026-10-30T10:00:00.000Z" });
+    const rezX = rez(0, { plane: { origin: [47.42, 0, 0], u: [0, 1, 0], v: [0, 0, 1] } });
+    const docs = [doc(ASR1, "OCB_REZ_B", [stale, nova, rezX])];
+    const run1 = async (args: Record<string, unknown>) => {
+      let stored: unknown = docs[0].georef;
+      const r = await run({ mode: "remove", document_id: ASR1, ...args }, deps({ write: async (_id, apply) => { const x = apply(stored); if (x.ok) stored = x.georef; return x; } }, undefined, docs));
+      return { r, stored };
+    };
+    // bez section_plane: chyba so zoznamom, nič sa nezmaže
+    const amb = await run1({});
+    expect(amb.r.isError).toBe(true);
+    expect(amb.r.text).toMatch(/3 kalibrácie rezu/);
+    expect(amb.r.text).toMatch(/y = 4\.688/);
+    expect(amb.r.text).toMatch(/y = 4\.721/);
+    expect(amb.r.text).toMatch(/x = 47\.42/);
+    expect(toGeorefV2(amb.stored).calibrations).toHaveLength(3);
+    // najbližšia rovina rovnakej orientácie: Y = 4,72 zmaže novú (4,721), nie prvú (4,688)
+    const near = await run1({ section_plane: { axis: "y", coordinate_m: 4.72 } });
+    expect(near.r.isError, near.r.text).toBe(false);
+    expect(toGeorefV2(near.stored).calibrations.map((c) => c.plane!.origin[1])).toEqual([4.688, 0]);
+    expect(historyOf(near.stored)[0].calibration.calibrated_at).toBe("2026-10-30T10:00:00.000Z");
+    // orientácia X sa nemieša s Y: X = 47,4 zmaže rovinu X
+    const x = await run1({ section_plane: { axis: "x", coordinate_m: 47.4 } });
+    expect(x.r.isError, x.r.text).toBe(false);
+    expect(toGeorefV2(x.stored).calibrations.map((c) => c.plane!.origin[1])).toEqual([4.688, 4.721]);
+    // zlý tvar section_plane
+    expect((await run1({ section_plane: { from_plan: true } })).r.text).toMatch(/axis/);
+    // jedna rovina na strane: section_plane netreba
+    const one = [doc(ASR1, "OCB_REZ_B", [nova])];
+    expect((await run({ mode: "remove", document_id: ASR1 }, deps({}, undefined, one))).isError).toBe(false);
+  });
+
+  it("remove: ručná kalibrácia len s force, vypnutý zápis, neznámy podklad", async () => {
+    const manual = [doc(ASR1, "OCB_ASR_1NP", [cal({ source: "manual" })])];
+    const blocked = await run({ mode: "remove", document_id: ASR1 }, deps({}, undefined, manual));
+    expect(blocked.isError).toBe(true);
+    expect(blocked.text).toMatch(/force=true/);
+    let stored: unknown = manual[0].georef;
+    const forced = await run({ mode: "remove", document_id: ASR1, force: true }, deps({ write: async (_id, apply) => { const r = apply(stored); if (r.ok) stored = r.georef; return r; } }, undefined, manual));
+    expect(forced.isError, forced.text).toBe(false);
+    expect(toGeorefV2(stored).calibrations).toEqual([]);
+    expect(historyOf(stored)[0].calibration.source).toBe("manual");
+    expect((await run({ mode: "remove", document_id: ASR1 }, deps({ writeEnabled: false }))).text).toMatch(/UNDERLAY_WRITE_ENABLED/);
+    expect((await run({ mode: "remove", document_id: "NIE" })).isError).toBe(true);
+    expect((await run({ mode: "remove" })).text).toMatch(/document_id/);
   });
 
   it("restore: chýbajúci alebo zlý index, vypnutý zápis, prázdna história", async () => {
