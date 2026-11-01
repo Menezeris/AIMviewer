@@ -4,7 +4,16 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { checkIcdd, downloadBytes, exportIcdd, type CheckResult, type ExportResult } from "@/lib/icdd/client";
+import {
+  applyImport,
+  checkIcdd,
+  downloadBytes,
+  exportIcdd,
+  previewImport,
+  type CheckResult,
+  type ExportResult,
+  type ImportResponse,
+} from "@/lib/icdd/client";
 import { EXTRAS, type Extra } from "@/lib/icdd/model";
 import type { ValidationReport } from "@/lib/icdd/validate";
 
@@ -15,6 +24,7 @@ export function IcddPanel() {
   const [error, setError] = useState<string | null>(null);
   const [exported, setExported] = useState<ExportResult | null>(null);
   const [checked, setChecked] = useState<CheckResult | null>(null);
+  const [imported, setImported] = useState<ImportResponse | null>(null);
   const [extras, setExtras] = useState<Record<Extra, boolean>>({ xlsx: true });
 
   const run = async (fn: () => Promise<void>) => {
@@ -30,9 +40,26 @@ export function IcddPanel() {
     }
   };
 
+  const onPreview = () =>
+    run(async () => {
+      if (!checked?.request) return;
+      setProgress("počítam náhľad importu");
+      setImported(await previewImport(checked.request));
+    });
+
+  const onApply = () =>
+    run(async () => {
+      if (!checked?.request || !imported?.importId) return;
+      const p = imported.preview;
+      if (!window.confirm(`Zapísať do AIM ${p.counts.add} nových a uzavrieť ${p.counts.close} zmenených väzieb prvok-dokument?`)) return;
+      setProgress("zapisujem import");
+      setImported(await applyImport(checked.request, imported.importId, p.aimStateSha256));
+    });
+
   const onExport = () =>
     run(async () => {
       setChecked(null);
+      setImported(null);
       const r = await exportIcdd(setProgress, fetch, EXTRAS.filter((x) => extras[x]));
       setExported(r);
       if (r.report.ok) {
@@ -44,8 +71,9 @@ export function IcddPanel() {
   const onCheck = (file: File) =>
     run(async () => {
       setExported(null);
+      setImported(null);
       const bytes = new Uint8Array(await file.arrayBuffer());
-      setChecked(await checkIcdd(bytes, setProgress));
+      setChecked(await checkIcdd(bytes, setProgress, fetch, file.name));
     });
 
   return (
@@ -145,10 +173,109 @@ export function IcddPanel() {
                 )}
               </div>
             )}
+            {checked.request && (
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <Button variant="outline" onClick={onPreview} disabled={busy}>
+                  Náhľad importu do AIM
+                </Button>
+                <span className="text-muted-foreground">
+                  zapisujú sa len väzby prvok - dokument; ostatné vrstvy sú len na export a ich zmena je nález
+                </span>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
+
+      {imported && <ImportCard result={imported} busy={busy} onApply={onApply} />}
     </div>
+  );
+}
+
+const FINDING_LABEL: Record<string, string> = {
+  validation_failed: "kontrola ISO 21597 neprešla",
+  unknown_payload: "súbor mimo indexu",
+  unknown_model_revision: "IFC neznámej revízie",
+  stale_revision: "IFC staršej revízie",
+  unknown_document: "dokument, ktorý AIM nemá",
+  ambiguous_document: "dokument nejednoznačný",
+  invalid_end_type: "nepovolený koniec väzby",
+  unknown_global_id: "GlobalId mimo aktuálnej revízie",
+  element_not_in_aim: "prvok bez uzla AIM",
+  page_without_reference: "strana bez časti dokumentu v AIM",
+  based_on_other_revision: "väzba nad inou revíziou",
+  relationship_closed: "väzba v AIM už ukončená",
+  duplicate_relationship_id: "duplicitné id väzby",
+  duplicate_in_container: "duplicitná väzba v kontajneri",
+  already_in_ifc: "väzba už je v súbore IFC",
+  unknown_relationship_id: "id väzby AIM nepozná",
+  missing_in_container: "väzba AIM v kontajneri chýba (neuzatvára sa)",
+  no_importable_linkset: "kontajner nemá importovateľný linkset",
+  export_only_changed: "zmena vo vrstve len na export",
+  layer_absent: "vrstva v kontajneri nie je",
+  unsupported_class: "nepodporovaná trieda väzby",
+  exchange_mark_mismatch: "značka aim:exchange iná ako politika AIM",
+  exchange_mark_restricts: "linkset označený export-only",
+};
+
+function ImportCard({ result, busy, onApply }: { result: ImportResponse; busy: boolean; onApply: () => void }) {
+  const p = result.preview;
+  const applied = !!result.record;
+  const byCode = Object.entries(p.counts.findings).sort(([a], [b]) => (a < b ? -1 : 1));
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{applied ? "Import zapísaný" : "Náhľad importu"} {p.versionID ?? ""}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        <p>
+          {p.counts.links} väzieb v kontajneri, importovateľných {p.counts.importable}: bez zmeny {p.counts.unchanged}, pridať {p.counts.add},
+          uzavrieť (zmenené) {p.counts.close}
+        </p>
+        {applied && (
+          <p className="text-green-700">
+            Zapísané {result.record!.written_ids.length} väzieb, uzavreté {result.record!.closed_ids.length} ({result.record!.applied_at}).
+          </p>
+        )}
+        {byCode.length > 0 && (
+          <ul className="list-disc pl-5">
+            {byCode.map(([code, n]) => (
+              <li key={code}>
+                {FINDING_LABEL[code] ?? code}: {n}
+              </li>
+            ))}
+          </ul>
+        )}
+        {p.findings.length > 0 && (
+          <details>
+            <summary className="cursor-pointer">Nálezy ({p.findings.length})</summary>
+            <ul className="max-h-60 list-disc overflow-auto pl-5 font-mono text-xs">
+              {p.findings.slice(0, 200).map((f, k) => (
+                <li key={k}>
+                  {f.code}: {f.detail} {f.key && <span className="text-muted-foreground">[{f.key}]</span>}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        {p.changes.length > 0 && (
+          <details>
+            <summary className="cursor-pointer">Zmeny ({p.changes.length})</summary>
+            <ul className="max-h-60 list-disc overflow-auto pl-5 font-mono text-xs">
+              {p.changes.map((c, k) => (
+                <li key={k}>{c.op === "add" ? `pridať ${c.from_id} -> ${c.to_id}${c.replaces ? ` (nahrádza ${c.replaces})` : ""}` : `uzavrieť ${c.id}`}</li>
+              ))}
+            </ul>
+          </details>
+        )}
+        {!applied && !result.writeEnabled && <p className="text-muted-foreground">Zápis importu je vypnutý (ICDD_IMPORT_ENABLED); náhľad sa neuložil.</p>}
+        {!applied && result.writeEnabled && result.importId && (
+          <Button onClick={onApply} disabled={busy || !p.applicable}>
+            {p.applicable ? `Zapísať ${p.changes.length} zmien do AIM` : "Nie je čo zapísať"}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

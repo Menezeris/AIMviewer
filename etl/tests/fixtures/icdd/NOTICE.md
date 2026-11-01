@@ -2,6 +2,8 @@
 
 - `aim-small.icdd` - zložený exportným kódom AIM (`lib/icdd/audit-fixture.test.ts`), obnova:
   `ICDD_FIXTURE_UPDATE=1 npx vitest run lib/icdd/audit-fixture.test.ts`.
+- `aim-small.links.json` - väzby a značky linksetov z `aim-small.icdd`, ako ich číta import v TypeScripte
+  (`importRequestFromContents`); pytest ich porovná s čítaním cez rdflib (`read_links`). Obnova tým istým príkazom.
 - `11_Garage_Binary.icdd` - bez zmeny z repozitára
   [philhag/icdd-shacl-validation](https://github.com/philhag/icdd-shacl-validation) (`datasets/1/icdd/`, commit b15113f),
   licencia [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Autori: P. Hagedorn, P. Pauwels, M. König,

@@ -58,6 +58,8 @@ BUILTIN_PREDICATES = {
     f"{OWL}imports",
 }
 BUILTIN_CLASSES = {f"{OWL}Ontology"}
+EXCHANGE_VALUES = ("export-only", "import")
+DEFAULT_AIM_NS = "urn:x-aim:icdd#"
 
 # Podtriedy IfcDistributionElement (IFC4 ADD2 TC1 + IFC4X3) a IfcFurnishingElement = triedy prvkov, pre ktoré AIM
 # odvodzuje väzbu na priestor (derivation_rules: IfcDistributionElement, IfcFurnishingElement). Porty
@@ -532,6 +534,12 @@ def audit(path: str, list_limit: int = 50) -> Report:
         links = [s for s, ts in types.items() if ts & link_classes]
         elements = {s for s, ts in types.items() if f"{ISO_LS}LinkElement" in ts}
         st = {"links": len(links), "link_elements": len(elements), "by_type": {}}
+        # značka výmeny AIM (D-181 dodatok "import"): len informačná, import rozhoduje podľa politiky v kóde
+        mark = next((str(o) for p_, o in idx.predicate_objects(ls_file[fn]) if str(p_).endswith("#exchange")), None)
+        if mark is not None:
+            st["exchange"] = mark
+            if mark not in EXCHANGE_VALUES:
+                rep.warn("exchange_mark", f"neznáma hodnota aim:exchange '{mark}' (export-only | import)", where)
         st["by_type"] = dict(
             sorted(collections.Counter(_local(link_type(types[l])) for l in links).items())
         )
@@ -722,6 +730,103 @@ def audit(path: str, list_limit: int = 50) -> Report:
         rep.stats["coverage"] = cov
     rep.collapse()
     return rep
+
+
+def read_links(path: str) -> dict:
+    """Väzby kontajnera v tvare, v akom ich číta import AIM (`importRequestFromContents` v `lib/icdd/import.ts`).
+
+    Nezávislé čítanie cez rdflib; pytest ho porovná s výstupom TypeScriptu (`fixtures/icdd/aim-small.links.json`),
+    takže export -> import roundtrip je overený dvoma implementáciami. Väzby sú zoradené podľa kanonického kľúča.
+    """
+    import rdflib
+    from rdflib import URIRef
+    from rdflib.namespace import RDF as R
+
+    zf = zipfile.ZipFile(path)
+    names = {i.filename for i in zf.infolist() if not i.is_dir()}
+    index_name = INDEX_NAME if INDEX_NAME in names else next(n for n in names if "/" not in n and n.lower() == INDEX_NAME)
+    idx = rdflib.Graph().parse(data=zf.read(index_name), format="xml")
+    ct = lambda local: URIRef(f"{ISO_CT}{local}")  # noqa: E731
+    ls_ = lambda local: URIRef(f"{ISO_LS}{local}")  # noqa: E731
+    aim_ns = DEFAULT_AIM_NS
+    for f in sorted(n for n in names if n.startswith(DIR_ONTOLOGY)):
+        g = rdflib.Graph().parse(data=zf.read(f), format="xml")
+        for s_ in g.subjects(R.type, None):
+            if str(s_).endswith("IsReferencedInSpatialStructure"):
+                aim_ns = str(s_)[: -len("IsReferencedInSpatialStructure")]
+    aim = lambda local: URIRef(f"{aim_ns}{local}")  # noqa: E731
+
+    doc_file = {d: str(idx.value(d, ct("filename"))) for d in idx.subjects(R.type, ct("InternalDocument"))}
+    linksets = []
+    for l_ in idx.subjects(R.type, ct("Linkset")):
+        mark = idx.value(l_, aim("exchange"))
+        linksets.append({"layer": re.sub(r"\.rdf$", "", str(idx.value(l_, ct("filename")))), "exchange": str(mark) if mark is not None else None})
+    linksets.sort(key=lambda x: x["layer"])
+
+    kinds = {
+        f"{ISO_ELS}IsElaboratedBy": "IsElaboratedBy",
+        f"{ISO_ELS}IsIdenticalTo": "IsIdenticalTo",
+        f"{aim_ns}IsReferencedInSpatialStructure": "IsReferencedInSpatialStructure",
+    }
+
+    def end(g, e) -> dict:
+        if e is None:
+            return {"file": "?", "guid": None, "ident": None, "page": None}
+        d = g.value(e, ls_("hasDocument"))
+        out = {"file": doc_file.get(d, "?"), "guid": None, "ident": None, "page": None}
+        i = g.value(e, ls_("hasIdentifier"))
+        if i is not None:
+            if (i, R.type, ls_("StringBasedIdentifier")) in g:
+                value = str(g.value(i, ls_("identifier")) or "")
+                field = str(g.value(i, ls_("identifierField")) or "GlobalId")
+                if field == "GlobalId":
+                    out["guid"] = value or None
+                else:
+                    out["ident"] = {"field": field, "value": value}
+            u = g.value(i, ls_("uri"))
+            m = re.search(r"#page=(\d+)$", str(u)) if u is not None else None
+            if m:
+                out["page"] = int(m.group(1))
+        return out
+
+    def end_key(e: dict) -> str:
+        ident = e["guid"] or (f"{e['ident']['field']}={e['ident']['value']}" if e["ident"] else "")
+        return f"{e['file']}|{ident}|{e['page'] if e['page'] is not None else ''}"
+
+    def opt(g, s_, local):
+        v = g.value(s_, aim(local))
+        return str(v) if v is not None else None
+
+    links = []
+    for n in sorted(n for n in names if n.startswith(DIR_TRIPLES)):
+        layer = re.sub(r"\.rdf$", "", n[len(DIR_TRIPLES):])
+        g = rdflib.Graph().parse(data=zf.read(n), format="xml")
+        for s_ in set(g.subjects(R.type, None)):
+            ts = {str(o) for o in g.objects(s_, R.type)}
+            kind = next((kinds[t] for t in sorted(ts) if t in kinds), None)
+            if kind is None:
+                continue
+            if kind == "IsIdenticalTo" and layer == "documents-identity":
+                kind = "DocumentIsIdenticalTo"
+            if kind in ("IsIdenticalTo", "DocumentIsIdenticalTo"):
+                ends = sorted((end(g, e) for e in g.objects(s_, ls_("hasLinkElement"))), key=end_key)
+                a, b = (ends + [end(g, None)] * 2)[:2]
+            else:
+                a, b = end(g, g.value(s_, ls_("hasFromLinkElement"))), end(g, g.value(s_, ls_("hasToLinkElement")))
+            links.append({
+                "layer": layer, "kind": kind, "from": a, "to": b,
+                "relationshipId": opt(g, s_, "relationshipId"), "source": opt(g, s_, "source"),
+                "role": opt(g, s_, "role"), "rule": opt(g, s_, "derivationRule"),
+                "basedOn": opt(g, s_, "basedOnRevision"), "ifcRelationship": opt(g, s_, "ifcRelationship"),
+            })
+
+    def key(l_: dict) -> str:
+        return " ".join([l_["kind"], end_key(l_["from"]), end_key(l_["to"])] + [
+            l_[k] or "" for k in ("source", "role", "rule", "basedOn", "ifcRelationship", "relationshipId")
+        ])
+
+    links.sort(key=key)
+    return {"linksets": linksets, "links": links}
 
 
 def _guid_of(g, element) -> Optional[str]:
