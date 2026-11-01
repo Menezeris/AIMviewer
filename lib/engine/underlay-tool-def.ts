@@ -32,8 +32,9 @@ export const CALIBRATE_UNDERLAY_TOOL: ToolDefinition = {
     "modelu v m), refine ich doladí na čiary. Ručnú kalibráciu (z panela) auto neprepíše bez force. Ukladaj (auto, " +
     "manual) len na výslovný pokyn používateľa; inak dry_run a výsledok mu ukáž. Mierka výsledku sa kontroluje " +
     "(scale_check): proti scale alebo mierke z textu strany (MERÍTKO 1 : 50) do 2 %, inak bežným mierkam do 5 %; natočenie " +
-    "(rotation_check) do 2° od násobku 90° (rez od 0°); pôdorys sa kontroluje aj osami (axes_check): popisky osí (A až F, 1 až 4) " +
-    "musia byť tam, kde sú tie isté osi na ostatných kalibrovaných pôdorysoch (medián do 150 mm), osi sú aj štart; " +
+    "(rotation_check) do 2° od násobku 90° (rez od 0°), pri pôdoryse natočenom na hárku od natočenia siete osí strany; pôdorys sa kontroluje aj osami (axes_check): popisky osí (A až F, 1 až 4) " +
+    "musia byť tam, kde sú tie isté osi na ostatných kalibrovaných pôdorysoch (medián do 150 mm), osi sú aj štart (aj rady bublín osí v ľubovoľnom natočení, page_axes=bubbles); " +
+    "icp_rejected = čiary výkresu nesedia s konštrukciami v polohe z osí (raster, výsek s rozvodmi), výsledok je štart z osí a auto ho neuloží (ručne, napr. manual s dvojicami z calibration); " +
     "plausible=false = výsledok je zlý a auto ho neuloží ani pri nízkom mediáne. Strana bez čiar (raster) ide len cez manual s pairs. " +
     "OVLÁDANIE PODKLADOV (D-168, nič sa nepočíta; list, show_in_3d, hide a set_opacity polohu nemenia): mode=list = zoznam kalibrovaných podkladov bez document_id " +
     "(document_id, object_ref, name, page, floor, visible a opacity vo vieweri, saved_visible a saved_opacity z DB, source auto|manual, " +

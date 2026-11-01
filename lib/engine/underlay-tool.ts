@@ -9,6 +9,8 @@ import {
   checkRotation,
   checkScale,
   cropToRegion,
+  PT_M,
+  ROTATION_TOLERANCE_DEG,
   pageScaleFromText,
   calibratePairs,
   calibratePlan,
@@ -26,6 +28,7 @@ import {
   type Plane,
   type RefAxis,
 } from "./underlay-calibrate";
+import { bubbleAxes } from "./underlay-axis-bubbles";
 import { ifcPositions, modelCut, planPlane, sectionPlane } from "./underlay-model";
 import { pageAxisLines, refAxesFromSheets, sectionFromPlans, sectionMarkFromName, type PlanSheet, type SectionFromPlans } from "./underlay-section-mark";
 import { CALIBRATE_UNDERLAY_MODES, DEFAULT_MAX_ERROR_MM, PLAN_CUT_M, type Mode } from "./underlay-tool-def";
@@ -300,19 +303,44 @@ async function planSection(markArg: string | null, doc: UnderlayDocument, deps: 
   return res;
 }
 
+/** Osi pôdorysu pre výpočet a výsledok: odkiaľ sú osi strany (dvojice popiskov, rady bublín) a natočenie siete. */
+interface PlanAxes {
+  page: AxisLine[];
+  ref: RefAxis[];
+  sheets: number;
+  source: "pairs" | "bubbles";
+  /** Rady bublín (D-184 dodatok): natočenie siete na strane a rady popiskov. */
+  grid?: { deg: number; rows: string[] };
+  /** Natočenie siete pre výpočet, len keď je sieť mimo smeru strany o viac ako ROTATION_TOLERANCE_DEG. */
+  gridDeg?: number;
+}
+
 /**
  * Osi (gridy) pôdorysu: rady osí tejto strany (výrezu) a ich poloha v IFC z ostatných kalibrovaných pôdorysov
- * (aj iných podlaží a disciplín, grid je spoločný). Bez kalibrovaných pôdorysov alebo osí null.
+ * (aj iných podlaží a disciplín, grid je spoločný). Bez dvojíc popiskov v smere strany pri známej mierke rady bublín
+ * (D-184 dodatok: natočený pôdorys SF.01, výseky TP.01 s osou len na jednom konci). Bez osí alebo referencií null.
  */
-async function planAxes(doc: UnderlayDocument, page: number, region: PageRegion | null, pageSize: P2, blocks: PageBlock[], lines: PageLine[], deps: UnderlayDeps): Promise<{ page: AxisLine[]; ref: RefAxis[]; sheets: number } | null> {
+async function planAxes(doc: UnderlayDocument, page: number, region: PageRegion | null, pageSize: P2, blocks: PageBlock[], lines: PageLine[], scale: number | null, deps: UnderlayDeps): Promise<PlanAxes | null> {
   if (!deps.planSheets) return null;
   const pageLines = pageAxisLines(pageSize, blocks, lines);
-  if (pageLines.length === 0) return null;
+  if (pageLines.length === 0 && !scale) return null;
   const ref = doc.object_ref ?? doc.id;
   const same = (sh: PlanSheet) => sh.ref === ref && sh.page === page && JSON.stringify(sh.region ?? null) === JSON.stringify(region);
   const others = (await deps.planSheets()).filter((sh) => !same(sh));
   const refs = refAxesFromSheets(others);
-  return refs.length ? { page: pageLines, ref: refs, sheets: others.length } : null;
+  if (!refs.length) return null;
+  if (pageLines.length) return { page: pageLines, ref: refs, sheets: others.length, source: "pairs" };
+  const bub = bubbleAxes(pageSize, blocks, refs, scale! * PT_M);
+  if (!bub) return null;
+  const skew = Math.abs((((bub.gridDeg % 90) + 135) % 90) - 45);
+  return {
+    page: bub.lines,
+    ref: refs,
+    sheets: others.length,
+    source: "bubbles",
+    grid: { deg: bub.gridDeg, rows: bub.rows },
+    ...(skew > ROTATION_TOLERANCE_DEG ? { gridDeg: bub.gridDeg } : {}),
+  };
 }
 
 /** Zvislá rovina osi: axis x = rovina X = c (rez ide po Y), axis y = rovina Y = c. */
@@ -418,11 +446,11 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     plane = planPlane(z + PLAN_CUT_M);
     const cut = modelCut(model.elements, plane, "plan");
     const pairs = p.mode === "manual" ? pairsInPlane(p.pairs, refPoints, plane, pageSize) : [];
-    axes = await planAxes(doc, p.page, p.region, pageSize, blocks, segs, deps);
+    axes = await planAxes(doc, p.page, p.region, pageSize, blocks, segs, wantScale, deps);
     res =
       p.mode === "manual"
         ? calibratePairs(pairs, refine ? { lines: segs, cut, mirror: false } : undefined, false, p.scale ?? undefined)
-        : calibratePlan({ pageSize, blocks, lines: segs, spaces, cut, scale: wantScale ?? undefined, axes: axes ?? undefined });
+        : calibratePlan({ pageSize, blocks, lines: segs, spaces, cut, scale: wantScale ?? undefined, axes: axes ? { page: axes.page, ref: axes.ref, gridDeg: axes.gridDeg } : undefined });
     axesCheck = axes ? checkAxes(res.affine, axes.page, axes.ref) : null;
   }
 
@@ -434,7 +462,8 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     warnings.push(`Mierka 1:${res.scale_ratio} sa líši o ${((scaleCheck.deviation ?? 0) * 100).toFixed(1)} % od ${what} 1:${scaleCheck.expected}; kalibrácia je pravdepodobne krivá.`);
   }
   // Kontrola natočenia (D-180): pôdorys rovnobežne s osami modelu (aj otočený o 90°), rez bez natočenia.
-  const rotationCheck = checkRotation(res.rotation_deg, isSection ? "section" : "plan");
+  // Natočená sieť osí na strane (D-184 dodatok): očakávané natočenie je z osí strany, nie násobok 90°; tolerancia ostáva.
+  const rotationCheck = checkRotation(res.rotation_deg, isSection ? "section" : "plan", axes?.gridDeg);
   if (!rotationCheck.ok) {
     warnings.push(`Natočenie ${res.rotation_deg}° sa líši o ${rotationCheck.deviation_deg}° od ${rotationCheck.expected_deg}°; kalibrácia je pravdepodobne krivá.`);
   }
@@ -495,7 +524,10 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     scale_check: { ...scaleCheck, text_scale: textScale === null ? null : `1:${textScale}`, locked: wantScale !== null && p.mode !== "manual" },
     rotation_check: rotationCheck,
     ...(res.rotation_locked_from_deg !== undefined ? { rotation_locked_from_deg: res.rotation_locked_from_deg } : {}),
-    ...(axesCheck ? { axes_check: { ...axesCheck, tolerance_mm: AXES_TOLERANCE_MM, ref_axes: axes!.ref.length, ref_sheets: axes!.sheets } } : {}),
+    ...(axesCheck
+      ? { axes_check: { ...axesCheck, tolerance_mm: AXES_TOLERANCE_MM, ref_axes: axes!.ref.length, ref_sheets: axes!.sheets, page_axes: axes!.source, ...(axes!.grid ? { grid_deg: axes!.grid.deg, rows: axes!.grid.rows } : {}) } }
+      : {}),
+    ...(res.icp_rejected ? { icp_rejected: res.icp_rejected } : {}),
     // Výsledok je zlý (mierka alebo natočenie mimo), auto ho neuloží; pri manual len hlásenie.
     plausible,
     ...(warnings.length ? { warnings } : {}),
@@ -539,6 +571,11 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   if (p.mode === "auto" && axesCheck && !axesCheck.ok) {
     out.written = false;
     out.note = `Neuložené: osi výkresu nesedia s osami iných kalibrovaných výkresov (medián ${axesCheck.median_mm} mm), aj keď medián chyby je ${median ?? "?"} mm. Skontroluj podlažie, region, alebo použi mode=manual.`;
+    return out;
+  }
+  if (p.mode === "auto" && res.icp_rejected) {
+    out.written = false;
+    out.note = `Neuložené: čiary výkresu nesedia s konštrukciami modelu v polohe z osí (doladenie by osi posunulo o ${res.icp_rejected.axes_median_mm ?? "?"} mm), výsledok je len štart z osí. Skontroluj ho vo vieweri a ulož ručne (panel Underlays alebo mode=manual s dvojicami z calibration).`;
     return out;
   }
   if (p.mode === "auto" && (median === null || median > p.maxErrorMm)) {
