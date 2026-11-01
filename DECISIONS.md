@@ -3975,7 +3975,7 @@ výšku, orezávanie, widget aj percentá počíta fork (D-083: "jedna pravda o 
    federovanej obálke. Fork nebol v session pripojený, preto sa robí ako samostatná zmena forku
    a po nej doplnenie parametrov toolu v hostovi.
 
-**Otvorené (Samuel):** pripojenie forku; či do opravy forku posielať namiesto `storeyGuid +
+**Otvorené (Samuel), pôvodné otázky:** pripojenie forku; či do opravy forku posielať namiesto `storeyGuid +
 offset` absolútnu výšku `coordinate_m` z DB (obchádzka, mení princíp D-083); voči čomu má byť
 predvolené percento rezu.
 
@@ -8330,3 +8330,89 @@ Stav prod DB pri návrhu (len SELECT): `relationships` nemá stĺpec revízie an
 **Zavrhnuté:** *značka ako rozhodnutie* (cudzí nástroj ju prepíše); *uzatváranie chýbajúcich väzieb* (Samuel: len nález); *prepis riadku `relationships` pri zmene* (D-183: AIM vrstva sa neprepisuje); *upload kontajnera na server* (limit funkcie, egress); *token pre UI* (Samuel: brána ako `/api/clash`).
 
 **Overenie dodatku:** vitest `lib/icdd/import.test.ts` 9 (export -> import 0 zmien a väzby podľa `aim:relationshipId`; cudzí nástroj pridá väzbu aj vo vlastnom linksete; zmena = close + add; konflikty a neznáme konce bez zápisu: iná revízia, stará a neznáma revízia IFC, prvok bez uzla, neznámy GlobalId, neznámy dokument, strana bez časti, zlý typ konca, ukončená väzba, väzba v IFC; chýbajúca väzba len nález; exportné vrstvy a značky; zlá kontrola ISO; idempotentný opakovaný import; odtlačok stavu), mutácie (bez kontroly revízie, bez `already_in_ifc`, bez uzavretia pri zmene, bez obmedzenia značkou) test zhodia; `lib/icdd` spolu 41. pytest `etl/tests/test_icdd_audit.py` 32: `read_links` (rdflib) prečíta z `aim-small.icdd` tie isté väzby, id, revízie a značky ako import v TypeScripte (`aim-small.links.json`, import roundtrip naprieč implementáciami; mutácia v JSON test zhodí), značka v štatistike auditu a varovanie `exchange_mark` pri neznámej hodnote, cudzí kontajner bez značiek. SQL `supabase/tests/icdd_imports.sql` na lokálnom Postgres 16 so všetkými migráciami (stĺpcové kontroly, práva anon, brána stavu AIM, neznáma operácia, väzbu zo súboru `etl:*` neuzavrie, duplicitná väzba, close + add a `written_ids` / `closed_ids`, druhý zápis odmietnutý, väzba viditeľná v `rel_associates_document`); mutácia bez `rel_is_aim_layer` test zhodí. UI `/icdd` overené v Playwright na dočasnej stránke s podvrhnutými odpoveďami API (kontrola, náhľad, zápis). tsc, eslint. **Neoverené:** zápis na produkcii (migrácia nespustená), import kontajnera z cudzieho nástroja s väzbami prvok-dokument (žiadny nemáme).
+
+### D-185 - Overovač výmer voči geometrii: pôvod hodnoty, recepty a fajočka pri Qto (#382)
+
+**Status:** NÁVRH s čiastočne rozhodnutými pravidlami (2026-11-01, výskumná session; číslo pridelil orchestrátor). Smer od
+Samuela (zadanie "overovač výmer voči geometrii"); rozhodnuté: výklad D-183 bod 6, NetVolume, tolerancie, pravidlo
+konštantnosti, BCF z nálezov (nižšie); zapojenie do toolu a nasadenie zatiaľ NIE (Samuel 1. 11.). Nadväzuje na D-044 (geometria v prehliadači), D-089
+(register odvodení), D-112, D-124, D-140, D-155 (meranie z meshu, kóty, výška podhľadu, plochy), D-129 (IFC alebo AIM
+vrstva), D-142 (`include=quantities`), D-183 (zdroj pravdy, podpis vstupu, bod 6). Podklady:
+`docs/research/vlastnosti-povod-a-overenie.md` (prvá analýza) a `docs/research/overovac-vymer-spike.md` (spike na ASR v79).
+
+**Kontext:** Samuel chce pri každej veličine z IFC fajočku, či sedí s geometriou, a po rozkliknutí výpočet s dosadenými
+číslami, kóty a vstupné prvky vo vieweri. IFC4 ani IFC4.3 nevedia naviazať veličinu na geometriu; `MethodOfMeasurement`
+a `Formula` sú voľný text (len na čítanie). Revit ráta časť Qto z parametrov (FinishCeilingHeight nemá kalkulátor), takže
+zhoda s exportovaným telesom dokazuje len konzistenciu exportu.
+
+**Rozhodnutie (návrh):**
+1. **Do IFC sa nezasahuje.** Overovač len číta; výsledky žijú v AIM vrstve na `(model, revision)` (D-183 bod 11), nesúlad
+   sa autorovi vracia cez BCF tému. Do Qto, `MethodOfMeasurement`, `Formula` ani vlastnej sady v súbore sa nepíše.
+2. **Recept ako dáta** (vzor D-089 a mapa ifc5d): `id`, `version`, `applies_to`, `target` (`Qto_SpaceBaseQuantities.Height`),
+   `spec_ref` (súbor a commit schémy), pomenované vstupy s resolverom (vlastné teleso, doska pod / nad, krytina CEILING /
+   FLOORING, plocha a obvod profilu, prizmatický prienik), výraz, tolerancia (dĺžky 5 mm, plochy a objemy 0,5 %, objem
+   aj absolútne), šablóna vysvetlenia. Každý resolver vracia hodnotu aj kotvu (GUID, výška plochy, body) na kótu.
+3. **Stavy:** zelená (v tolerancii), žltá (sedí iná známa metóda, napr. NetVolume len s plnými vrstvami krytín),
+   červená (nesedí), sivá (bez receptu, nekonštantná výška, neuzavreté teleso bez extrúzie, `unsupported`).
+   Kontrola exportnej konzistencie (`Qto_BodyGeometryValidation` voči telesu) sa zobrazuje oddelene.
+4. **Výpočet v TS motore nad ifc-lite:** vlastné teleso z `extractExtrusionDefinitions` (`@ifc-lite/geometry` 7.8.1, bez
+   tesselácie), inak mesh motora; ten istý kód headless aj v prehliadači. Uložený výsledok počíta server nad archívom
+   revízie, beh vo vieweri je náhľad (D-183 bod 11).
+5. **UI a BCF:** fajočka pri hodnote v paneli vlastností (AIM záložka), detail so vzorcom, hodnotou zo súboru, rozdielom,
+   `MethodOfMeasurement`/`Formula` zo súboru a odkazom na definíciu; kóty cez `MEASURE_SHOW` (D-124), vodorovné plochy
+   cez výplne renderera. Z červenej jedným klikom BCF téma (jedna na recept a podlažie); žltá sa automaticky neposiela.
+6. **Prvý balík: IfcSpace** (Height, FinishFloorHeight, ElevationWithFlooring, FinishCeilingHeight, Gross/NetFloorArea,
+   GrossPerimeter, GrossVolume, NetVolume, krížové kontroly, odvodený objem nad podhľadom).
+
+**Spike (ASR v79, 83 IfcSpace, len čítanie):** Height = vlastné teleso 83/83; ElevationWithFlooring = spodok + FFH všade s
+FFH; každá FinishCeilingHeight (41) má podhľad vo výške; GrossVolume = GFA x Height 82/83; NetVolume = GV - GFA x (FFH +
+12,5 mm pri podhľade) do 5 dm3 pri 51/83 (Revit odčíta krytiny vnútri telesa, presný recept = prizmatický prienik).
+Nálezy: totožné dosky SD02.03.0002 a SD02.03.0003, technické miestnosti bez FFH, 16 neuzavretých meshov miestností a doska SD02.03.0004.
+
+**Zavrhnuté:**
+- *Zápis výsledkov alebo metódy do IFC* (D-183 bod 2 a 3).
+- *Prevzatie ifc5d / Bonsai kalkulátorov:* GPL/LGPL Python, Bonsai hľadá krytiny cez agregáciu (v ASR nie sú agregované)
+  a NetVolume odčíta celé objemy; prevziať len formát mapy.
+- *Rozšírenie prahu `vs_qto` v `ifc_measure` (5 %):* nepozná význam veličiny ani jednotky; recepty ho nahradia.
+- *CSG jadro ifc-lite v JS API teraz:* telesá miestností sú extrúzie, prizmatický prienik stačí.
+
+**Vlastné teleso nie je len extrúzia (Samuel: "prečo len extrúzia?"):** extrúzia je prvý **analytický** prípad, kde sa
+hodnota počíta presne zo zdrojových parametrov bez tesselácie (plocha profilu x hĺbka, obvod slučky). Ďalšie analytické
+tvary sa pridajú postupne ako resolvery s rovnakým výstupom (hodnota + kotva): `IfcSweptDiskSolid` (potrubie, objem
+pi x r2 x L, plášť 2 x pi x r x L), `IfcRevolvedAreaSolid` (Pappova veta: plocha profilu x dráha ťažiska),
+`IfcExtrudedAreaSolidTapered`, `IfcBooleanClippingResult` s polpriestormi (zrezané steny). Pre zvyšok (Brep, CSG s
+otvormi, mapované reprezentácie) je cesta cez **uzavretý mesh** motora: objem divergenciou (znamienkové štvorsteny),
+plocha súčtom trojuholníkov, s toleranciou tesselácie. Sivá je len vtedy, keď mesh nie je uzavretý a analytický zdroj
+chýba alebo je `unsupported`.
+
+**Výklad D-183 bod 6 (Samuel 1. 11., cez orchestrátora):** výsledky overenia (vypočítaná hodnota, rozdiel, stav, kotvy na
+kóty) smú ísť do `verification_results` k revízii modelu. Nie sú to geometria ani odtlačok tvaru v zmysle bodu 6, ale
+výsledok behu s podpisom vstupu (bod 11); pri novej revízii sú `stale`, nikdy sa neprepisujú.
+
+**Záväzné pravidlá (Samuel 1. 11., cez orchestrátora) žijú v jednom súbore `lib/verify/quantity-methods.ts`** (register
+metód výmer, `REGISTRY_VERSION`); kód ich číta odtiaľ, dokumenty len odkazujú. Každý výsledok overenia nesie pri hodnote
+recept s verziou, metódu (čo sa meria), doslovnú definíciu zo schémy so `spec_ref` (repo, commit, súbor), použitú toleranciu,
+vzorec s dosadenými číslami a kotvy, aby to videl používateľ vo vieweri.
+- **(c) NetVolume** podľa schémy ("excluding the volume of construction elements inside the space"): GrossVolume mínus
+  prizmatické prieniky krytín s telesom miestnosti; žltá, keď sedí len Revit metóda "krytiny po celej ploche miestnosti".
+- **(d) Tolerancie:** dĺžka +- 5 mm, plocha +- 0,5 %, objem +- 0,5 % alebo +- 0,05 m3. **NetVolume (Samuel 1. 11.):**
+  tolerancia viazaná na odčítaný objem, najviac **1 % z GrossVolume - NetVolume** zo súboru (`NET_VOLUME_TOLERANCE`,
+  plus 0,0005 m3 len na zaokrúhlenie hodnôt v súbore). Dôvod: 0,5 % z objemu miestnosti pri tenkých krytinách nerozlíši
+  metódu podľa schémy od Revit metódy (fixture: 333,5 vs. 333,3 m3); s 1 % z odčítaného objemu (14,3 m3 -> +- 0,14 m3)
+  ich rozlíši. Výsledok NetVolume nesie použitú toleranciu aj s číslom.
+- **(b) Viac výšok podhľadu = pravidlo konštantnosti, nie medián.** Text schémy (buildingSMART/IFC4.3.x-development
+  `d71e140`, `reference_schemas/psd/Qto_SpaceBaseQuantities.xml` aj `psd_IFC4_ADD2_TC1`, zhodne): FinishCeilingHeight
+  "To be provided only if the space has a suspended ceiling with constant height"; rovnako Height ("constant height") a
+  FinishFloorHeight ("constant flooring height"). Rozdelenie miestnosti schéma umožňuje (`IfcSpace.md`: "A space can also be
+  decomposed in parts, where each part defines a partial space", `CompositionType` PARTIAL cez `IfcRelAggregates`), ale
+  nevyžaduje. Preto: viac výšok podhľadu (každý podhľad s prekryvom aspoň 10 % pôdorysu, výšky rozdielne nad 5 mm) a hodnota
+  v súbore = **červený nález** "vlastnosť nie je jednoznačná, miestnosť má N výšok" (BCF pre OCB: hodnotu odstrániť alebo
+  miestnosť rozdeliť na čiastkové priestory); bez hodnoty = zelená ("správne neuvedená"). To isté pre podlahovinu (FFH).
+  Návrh D-140 s váženým mediánom ostáva len pre rez pod podhľadom podlažia, nie pre overenie vlastnosti.
+
+**BCF z nálezov spiku (Samuel: áno, založené 1. 11.: #19, #20, #21, typ Issue, stav open, bez priradenia):** tri témy nad ASR v79 ako bežné nálezy modelu pre OCB, components = GlobalId:
+duplicitné dosky SD02.03.0002 a SD02.03.0003; chýbajúca `FinishFloorHeight` v 1.05, 1.07, 2.14, 3.14, 4.01; neuzavreté
+telesá (16 IfcSpace: 1.04, 1.05, 1.08, 1.10, 1.12, 1.13, 1.14, 2.01, 2.02, 2.08, 2.11, 2.19, 3.02, 3.08, 3.11, 3.18, a doska SD02.03.0004).
+**Spike v motore:** `lib/engine/space-verify.ts` (+ test, fixture `mini-space-verify.ts`), nezapojený do toolov.
+**Ďalej:** zapojiť do toolu a spustiť na ASR v79 (lokálne nie, D-135), mesh ako náhrada, potom dátový model
+(`verification_rules`, `verification_runs`, `verification_results`), migrácia, UI, BCF z červených stavov.
