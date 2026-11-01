@@ -8386,6 +8386,10 @@ a FinishCeilingHeight sedia s telesom a krytinami, NetVolume vzniká odčítaní
 - *Tolerancia NetVolume 0,5 % z objemu miestnosti:* pri tenkých krytinách nerozlíši metódu podľa schémy od Revit metódy.
 - *Prevzatie ifc5d / Bonsai kalkulátorov:* GPL/LGPL Python; Bonsai hľadá krytiny cez agregáciu, ktorú ASR nemá.
 
+**Doplnok (2026-11-01, Samuel cez orchestrátora po zlúčení #383):** migrácia `verification_results` je aplikovaná na produkciu
+(presun z `supabase/pending` v #384). `ifc_measure` ostáva "čítanie"; `save=true` len na výslovný pokyn používateľa, čo opis
+toolu aj parametra `save` hovorí doslova. Bod (a) nižšie je tým rozhodnutý.
+
 **Otvorené (Samuel):** (a) `ifc_measure` ostáva v inventári "čítanie" (`readOnlyHint`), hoci `save=true` pridá riadok behu do
 DB (len pridáva, nič neprepisuje); označenie "zápis" by v claude.ai pýtalo súhlas pri každom meraní. (b) Systémový prompt sa
 nemení (MCP inštrukcie sú na hranici 15 000 znakov, test); pravidlo nesie opis toolu, ako D-142. (c) UI fajočky v paneli
