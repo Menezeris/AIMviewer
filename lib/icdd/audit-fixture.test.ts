@@ -63,12 +63,12 @@ const PDF = strToU8("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n");
 export function fixturePlan(): IcddPlan {
   return {
     versionID: "2026-11-01_ASR-v079_VZT-v011_D1",
-    versionDescription: "ASR v79, VZT v11, 1 dokumentov k 2026-11-01; vrstvy documents-elements, documents-identity, derived-spatial, federation",
+    versionDescription: "ASR v79, VZT v11, 1 dokumentov k 2026-11-01; vrstvy documents-identity, derived-spatial, federation",
     createdAt: "2026-11-01T12:00:00Z",
     description: "Testovací kontajner pre audit",
     publisher: { name: "AIM" },
     aimNamespace: DEFAULT_AIM_NAMESPACE,
-    layers: ["documents-elements", "documents-identity", "derived-spatial", "federation"],
+    layers: ["documents-identity", "derived-spatial", "federation"],
     extras: ["xlsx"],
     skipped: {},
     warnings: [],

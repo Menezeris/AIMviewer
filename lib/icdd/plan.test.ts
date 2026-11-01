@@ -125,6 +125,18 @@ describe("buildPlan (D-181)", () => {
     expect(p.links.map((l) => l.kind)).toEqual(["IsIdenticalTo"]);
   });
 
+  it("vrstva bez väzieb sa nevydá (ani v indexe, ani vo versionDescription) a plán to povie", () => {
+    // produkcia 1. 11.: všetky väzby AIM prvok-dokument sú ukončené, documents-elements by bol prázdny
+    const p = buildPlan(rows({ docLinks: rows().docLinks.filter((l) => l.source?.startsWith("ifc:")) }), { createdAt: "2026-10-31T10:00:00Z" });
+    expect(p.layers).toEqual(["documents-identity", "derived-spatial", "federation"]);
+    expect(p.versionDescription).not.toMatch(/documents-elements/);
+    expect(p.skipped.empty_layer).toBe(1);
+    expect(p.warnings.join("\n")).toMatch(/vrstva documents-elements nemá žiadnu väzbu/);
+    const all = buildPlan(rows(), { createdAt: "2026-10-31T10:00:00Z" });
+    expect(all.layers).toContain("documents-elements");
+    expect(all.skipped.empty_layer).toBeUndefined();
+  });
+
   it("basedOnKey je kanonický", () => {
     expect(basedOnKey({ VZT: 11, ASR: 79 })).toBe("ASR=79;VZT=11");
     expect(basedOnKey({})).toBeNull();
