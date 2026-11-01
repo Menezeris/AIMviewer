@@ -8,7 +8,7 @@ import {
   TopicDocumentError,
 } from "./documents";
 import type { BcfComment, BcfTopicRow, BcfTopicWrite, TopicDocumentRow, TopicDocumentWrite, TopicStatus } from "./store";
-import { isClaude, maybeStartSession, normalizeStatus, type BcfDeps } from "./tools";
+import { isClaude, maybeStartSession, normalizeStatus, reviewStates, type BcfDeps } from "./tools";
 import { parseMarkup } from "./markup";
 import { overviewViewpoint, pickCalibration, regionFrame, regionViewpoint } from "./region-model";
 import type { SnapshotRequest } from "./snapshot";
@@ -417,7 +417,12 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
 
     if (s[5] === "document_references") {
       if (s.length === 6) {
-        if (method === "GET") return ok((await deps.store.documents([topic.id])).map((d) => documentReferenceToDto(d, ctx.origin)));
+        if (method === "GET") {
+          // revision_changed len keď platí (rovnaký výpočet ako bcf_topic_list); starší fork ho ignoruje.
+          const links = await deps.store.documents([topic.id]);
+          const states = await reviewStates(deps, topic, links);
+          return ok(links.map((d, i) => ({ ...documentReferenceToDto(d, ctx.origin), ...(states[i].revision_changed ? { revision_changed: true } : {}) })));
+        }
         if (method === "POST") {
           const existing = await deps.store.documents([topic.id]);
           if (existing.length >= MAX_TOPIC_DOCUMENTS) return err(400, `Téma má už ${existing.length} odkazov na dokumenty (strop ${MAX_TOPIC_DOCUMENTS}).`);
