@@ -9,11 +9,13 @@ import type { BCFDocumentReference, BCFProject, BCFTopic, BCFViewpoint } from "@
 
 /**
  * Import `.bcfzip` (BCF 2.1 a 3.0) do DB (D-158 krok 8, #199 bod 4): témy sa zapíšu do `model_tasks`,
- * odkazy na dokumenty do `model_task_documents`, komentáre cez `addComment`, jediný pohľad témy
+ * odkazy na dokumenty do `model_task_documents`, komentáre cez `addComment` (s pôvodným dátumom), jediný pohľad témy
  * (D-099) a prvky do `components`. Idempotentné podľa guid témy: opakovaný import tej istej témy
  * nič nezdvojí a zapíše len zmenené polia. Rozhoduje čas zmeny: súbor novší než téma v DB ju
  * aktualizuje, inak ide o konflikt, ktorý sa len ohlási (nič sa nezapíše; `overwrite` ho prepíše).
  * Komentáre a nové odkazy sa len pridávajú, nikdy nemažú. Čistá logika nad `BcfStore`, bez servera.
+ * Pôvodné dátumy a autori z BCF sa zachovajú: `created_at`/`updated_at` témy (creation/modified date),
+ * dátum komentára (a guid; cez `model_task_import_comment`; kým migrácia nie je nasadená, komentár dostane čas zápisu).
  */
 
 /** Strop počtu tém z jedného súboru (zvyšok sa neimportuje, ohlási sa). */
@@ -125,6 +127,13 @@ const dateOnly = (v: string | undefined): string | null => {
   return s && /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null;
 };
 
+/** ISO čas z BCF dátumu; budúci čas (zlé hodiny zdroja) sa orezá na teraz, neplatný = null. */
+const isoMs = (v: string | undefined, now: number): number | null => {
+  const t = Date.parse(v ?? "");
+  return Number.isNaN(t) ? null : Math.min(t, now);
+};
+const iso = (ms: number) => new Date(ms).toISOString();
+
 const norm = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
 const sameSet = (a: string[], b: string[]) => a.length === b.length && new Set(a).size === new Set([...a, ...b]).size;
 
@@ -134,15 +143,25 @@ interface IncomingRef {
   foreign: boolean;
 }
 
+interface IncomingComment {
+  author: string | null;
+  comment: string;
+  /** Pôvodný dátum komentára (ISO, nie v budúcnosti); undefined = súbor ho nemá. */
+  date?: string;
+  /** Pôvodný guid komentára z BCF (len ak je UUID, inak ho dá DB). */
+  guid?: string;
+}
+
 interface Incoming {
   id: string;
   fields: Required<Pick<BcfTopicWrite, "title" | "description" | "topic_type" | "status" | "priority" | "assigned_to" | "due_date" | "labels">> & { stage: string | null };
   author: string | null;
   modifiedBy: string | null;
   modifiedAt: number | null;
+  createdAt: number | null;
   viewpoint: Record<string, unknown> | null;
   components: string[];
-  comments: { author: string | null; comment: string }[];
+  comments: IncomingComment[];
   refs: IncomingRef[];
   warnings: string[];
 }
@@ -279,6 +298,8 @@ async function incomingFrom(
   }
   if ((topic.documentReferences ?? []).length > MAX_TOPIC_DOCUMENTS) warnings.push(`Odkazov na dokumenty je viac než ${MAX_TOPIC_DOCUMENTS}, zvyšok sa vynechal.`);
   const date = Date.parse(topic.modifiedDate ?? topic.creationDate ?? "");
+  const created = Date.parse(topic.creationDate ?? "");
+  const now = Date.now();
   return {
     id,
     fields: {
@@ -295,10 +316,15 @@ async function incomingFrom(
     author: clean(topic.creationAuthor, 200),
     modifiedBy: clean(topic.modifiedAuthor, 200),
     modifiedAt: Number.isNaN(date) ? null : date,
+    createdAt: Number.isNaN(created) ? null : created,
     viewpoint,
     components: [...selection].slice(0, MAX_COMPONENTS),
     comments: (topic.comments ?? [])
-      .map((c) => ({ author: clean(c.author, 200), comment: clean(c.comment, 8000) ?? "" }))
+      .map((c) => {
+        const t = isoMs(c.date, now);
+        const guid = c.guid && UUID_RE.test(c.guid) ? c.guid.toLowerCase() : null;
+        return { author: clean(c.author, 200), comment: clean(c.comment, 8000) ?? "", ...(t !== null ? { date: iso(t) } : {}), ...(guid ? { guid } : {}) };
+      })
       .filter((c) => c.comment),
     refs,
     warnings,
@@ -369,6 +395,10 @@ async function importTopic(topic: BCFTopic, deps: BcfDeps, opts: Required<Pick<I
     let number: number | undefined;
     if (!dry) {
       const author = inc.author ?? opts.author;
+      // Pôvodné dátumy témy: vznik = creation_date (bez neho dátum zmeny), zmena = modified_date (nie skôr než vznik).
+      const now = Date.now();
+      const createdMs = inc.createdAt !== null ? Math.min(inc.createdAt, now) : inc.modifiedAt !== null ? Math.min(inc.modifiedAt, now) : null;
+      const updatedMs = createdMs === null ? null : Math.max(createdMs, inc.modifiedAt !== null ? Math.min(inc.modifiedAt, now) : createdMs);
       const row = await deps.store.create({
         id,
         ...inc.fields,
@@ -377,10 +407,13 @@ async function importTopic(topic: BCFTopic, deps: BcfDeps, opts: Required<Pick<I
         modified_by: inc.modifiedBy ?? author,
         components: inc.components,
         viewpoint: inc.viewpoint,
+        ...(createdMs !== null && updatedMs !== null ? { created_at: iso(createdMs), updated_at: iso(updatedMs) } : {}),
       });
       number = row.number;
       for (const r of inc.refs) await deps.store.addDocument({ ...r.row, ...(r.id ? { id: r.id } : {}), task_id: row.id });
-      for (const c of comments) await deps.store.addComment(row.id, c.author ?? author, c.comment);
+      for (const c of comments) await deps.store.addComment(row.id, c.author ?? author, c.comment, c.date, c.guid);
+      // Komentár bez novej funkcie v DB posunie updated_at a modified_by na čas zápisu: vráť ich na hodnoty zo súboru.
+      if (comments.length && updatedMs !== null) await deps.store.update(row.id, { updated_at: iso(updatedMs), modified_by: inc.modifiedBy ?? author });
     }
     return {
       guid: id,
@@ -435,11 +468,18 @@ async function importTopic(topic: BCFTopic, deps: BcfDeps, opts: Required<Pick<I
       else if (d.field === "viewpoint") patch.viewpoint = inc.viewpoint;
       else (patch as Record<string, unknown>)[d.field] = (inc.fields as Record<string, unknown>)[d.field];
     }
-    if (Object.keys(patch).length || toPatch.length) patch.modified_by = inc.modifiedBy ?? opts.author;
-    if (Object.keys(patch).length) await deps.store.update(id, patch);
     for (const { e, patch: p } of toPatch) await deps.store.updateDocument(id, e.id, p);
     for (const r of adding) await deps.store.addDocument({ ...r.row, ...(r.id ? { id: r.id } : {}), task_id: id });
-    for (const c of newComments) await deps.store.addComment(id, c.author ?? opts.author, c.comment);
+    for (const c of newComments) await deps.store.addComment(id, c.author ?? opts.author, c.comment, c.date, c.guid);
+    // Jedna úprava témy nakoniec. updated_at: novší dátum zmeny zo súboru; inak zmena polí = teraz (zapísali sme ju),
+    // len komentáre a odkazy ho nechajú, ako bol (komentár bez novej funkcie v DB by ho posunul na čas zápisu).
+    if (Object.keys(patch).length || toPatch.length || newComments.length) {
+      patch.modified_by = inc.modifiedBy ?? opts.author;
+      const stamp = inc.modifiedAt !== null ? Math.min(inc.modifiedAt, Date.now()) : null;
+      if (stamp !== null && stamp > Date.parse(existing.updated_at)) patch.updated_at = iso(stamp);
+      else if (diffs.length === 0) patch.updated_at = existing.updated_at;
+      await deps.store.update(id, patch);
+    }
   }
   return {
     ...base,
@@ -456,13 +496,16 @@ function pickKeys(e: TopicDocumentRow, patch: Partial<TopicDocumentWrite>) {
   return Object.fromEntries(Object.keys(patch).map((k) => [k, (e as unknown as Record<string, unknown>)[k]]));
 }
 
-function dedupeComments(incoming: { author: string | null; comment: string }[], existing: { author: string | null; comment: string }[]) {
+/** Nový je komentár, ktorého guid ani dvojica autor + text v téme ešte nie je (guid je presnejší, text drží aj pred migráciou). */
+function dedupeComments(incoming: IncomingComment[], existing: { guid?: string; author: string | null; comment: string }[]) {
   const seen = new Set(existing.map((c) => commentKey(c.author, c.comment)));
-  const out: { author: string | null; comment: string }[] = [];
+  const guids = new Set(existing.map((c) => c.guid?.toLowerCase()).filter((g): g is string => !!g));
+  const out: IncomingComment[] = [];
   for (const c of incoming) {
     const k = commentKey(c.author, c.comment);
-    if (seen.has(k)) continue;
+    if (seen.has(k) || (c.guid && guids.has(c.guid))) continue;
     seen.add(k);
+    if (c.guid) guids.add(c.guid);
     out.push(c);
   }
   return out;

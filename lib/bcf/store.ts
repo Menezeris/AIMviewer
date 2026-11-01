@@ -63,6 +63,9 @@ export type BcfTopicWrite = Partial<
     | "author"
     | "modified_by"
     | "session_url"
+    /** Len import `.bcfzip`: pôvodné dátumy z BCF (creation_date, modified_date); stĺpce existujú od začiatku. */
+    | "created_at"
+    | "updated_at"
   >
 >;
 
@@ -142,8 +145,13 @@ export interface BcfStore {
   get(ref: { id?: string; number?: number }): Promise<BcfTopicRow | null>;
   list(filter: TopicFilter): Promise<{ rows: BcfTopicRow[]; total: number }>;
   update(id: string, patch: BcfTopicWrite): Promise<BcfTopicRow>;
-  /** Atomické pripojenie komentára (`model_task_add_comment`); null = téma neexistuje. */
-  addComment(id: string, author: string, comment: string): Promise<BcfComment | null>;
+  /**
+   * Atomické pripojenie komentára (`model_task_add_comment`); null = téma neexistuje. S `date` alebo `guid` (import
+   * `.bcfzip`) sa zachová pôvodný dátum a guid komentára, komentár s týmto guid v téme sa nepridá znova a
+   * `updated_at`/`modified_by` témy sa nemení (`model_task_import_comment`); kým migrácia z `supabase/pending`
+   * nie je nasadená, padne to na dnešné správanie (čas zápisu, nový guid).
+   */
+  addComment(id: string, author: string, comment: string, date?: string, guid?: string): Promise<BcfComment | null>;
   /** Témy so session, ktoré ešte bežia (stav `in_progress`, pohyb po `since`). */
   runningSessions(since: Date): Promise<BcfTopicRow[]>;
   vocabulary(): Promise<TopicVocabulary>;
@@ -171,6 +179,16 @@ export function pageFromLocation(location: string | null | undefined): number | 
 }
 
 const TABLE = "model_tasks";
+
+/** RPC v DB nie je (migrácia ešte nespustená): PostgREST `PGRST202`, Postgres `42883`. */
+export function isMissingFunction(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === "PGRST202" || error.code === "42883" || /could not find the function|does not exist/i.test(error.message ?? "");
+}
+
+/** Po zlyhaní kvôli chýbajúcej funkcii sa ďalších 5 minút nepokúšame (import 500 tém by inak zdvojil volania). */
+const IMPORT_RPC_RETRY_MS = 5 * 60 * 1000;
+let importRpcMissingAt = 0;
 
 function fail(what: string, error: { message: string } | null): never {
   throw new Error(`${what}: ${error?.message ?? "neznáma chyba"}`);
@@ -225,14 +243,26 @@ export function supabaseBcfStore(): BcfStore {
     async update(id, patch) {
       const { data, error } = await db()
         .from(TABLE)
-        .update({ ...patch, updated_at: new Date().toISOString() })
+        .update({ updated_at: new Date().toISOString(), ...patch })
         .eq("id", id)
         .select("*")
         .single();
       if (error || !data) fail("Úprava témy zlyhala", error);
       return data as BcfTopicRow;
     },
-    async addComment(id, author, comment) {
+    async addComment(id, author, comment, date, guid) {
+      if ((date || guid) && Date.now() - importRpcMissingAt > IMPORT_RPC_RETRY_MS) {
+        const { data, error } = await db().rpc("model_task_import_comment", {
+          p_task: id,
+          p_author: author,
+          p_comment: comment,
+          p_date: date ?? null,
+          p_guid: guid ?? null,
+        });
+        if (!error) return (data as BcfComment | null) ?? null;
+        if (!isMissingFunction(error)) fail("Zápis komentára zlyhal", error);
+        importRpcMissingAt = Date.now();
+      }
       const { data, error } = await db().rpc("model_task_add_comment", {
         p_task: id,
         p_author: author,
