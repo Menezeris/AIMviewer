@@ -5,6 +5,7 @@ import {
   SELECTION,
   SPACE_METHODS,
   TOLERANCES,
+  netVolumeTolerance,
   withinTolerance,
   type QuantityKind,
   type QuantityMethod,
@@ -484,16 +485,19 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
     .map((x) => ({ ...x, dz: Math.max(0, Math.min(x.r.z1, own.z1) - Math.max(x.r.z0, own.z0)) }))
     .filter((x) => x.dz > 0);
   const nv = gv - parts.reduce((sum, x) => sum + x.overlap * x.dz, 0);
-  let nvStatus = judge(s.qto.NetVolume, nv, "volume");
-  let note: string | undefined;
-  if (nvStatus === "red" && s.qto.NetVolume != null) {
+  const nvFile = s.qto.NetVolume;
+  const nvTol = nvFile != null && s.qto.GrossVolume != null ? netVolumeTolerance(s.qto.GrossVolume, nvFile) : null;
+  const within = (v: number) => nvFile != null && nvTol != null && Math.abs(v - nvFile) <= nvTol.abs_m3;
+  let nvStatus: Status = nvFile == null || !nvTol ? "grey" : within(nv) ? "green" : "red";
+  let note: string | undefined = nvFile != null && !nvTol ? "chýba GrossVolume zo súboru, tolerancia NetVolume sa nedá určiť" : undefined;
+  if (nvStatus === "red") {
     const full = gv - parts.reduce((sum, x) => sum + A * x.dz, 0);
-    if (withinTolerance(s.qto.NetVolume, full, "volume")) {
+    if (within(full)) {
       nvStatus = "yellow";
       note = `sedí len metóda "krytiny po celej ploche miestnosti" (${r4(full)} m3), nie prienik podľa schémy`;
     }
   }
-  out.push({ ...base("net_volume"), status: nvStatus, file: s.qto.NetVolume, computed: r4(nv),
+  out.push({ ...base("net_volume"), ...(nvTol ? { tolerance: nvTol.text } : {}), status: nvStatus, file: nvFile, computed: r4(nv),
     formula: `${r4(gv)} - ${parts.map((x) => `${r4(x.overlap)} x ${r4(x.dz)} (${x.e.name})`).join(" - ") || "0"} = ${r4(nv)} m3`, note,
     anchors: [self, ...parts.map((x) => ({ global_id: x.e.globalId, role: "krytina vnútri telesa" }))] });
 

@@ -8335,7 +8335,7 @@ Stav prod DB pri návrhu (len SELECT): `relationships` nemá stĺpec revízie an
 
 **Status:** NÁVRH s čiastočne rozhodnutými pravidlami (2026-11-01, výskumná session; číslo pridelil orchestrátor). Smer od
 Samuela (zadanie "overovač výmer voči geometrii"); rozhodnuté: výklad D-183 bod 6, NetVolume, tolerancie, pravidlo
-konštantnosti, BCF z nálezov (nižšie); implementácia mimo spiku čaká na Samuelovo slovo. Nadväzuje na D-044 (geometria v prehliadači), D-089
+konštantnosti, BCF z nálezov (nižšie); zapojenie do toolu a nasadenie zatiaľ NIE (Samuel 1. 11.). Nadväzuje na D-044 (geometria v prehliadači), D-089
 (register odvodení), D-112, D-124, D-140, D-155 (meranie z meshu, kóty, výška podhľadu, plochy), D-129 (IFC alebo AIM
 vrstva), D-142 (`include=quantities`), D-183 (zdroj pravdy, podpis vstupu, bod 6). Podklady:
 `docs/research/vlastnosti-povod-a-overenie.md` (prvá analýza) a `docs/research/overovac-vymer-spike.md` (spike na ASR v79).
@@ -8395,9 +8395,11 @@ recept s verziou, metódu (čo sa meria), doslovnú definíciu zo schémy so `sp
 vzorec s dosadenými číslami a kotvy, aby to videl používateľ vo vieweri.
 - **(c) NetVolume** podľa schémy ("excluding the volume of construction elements inside the space"): GrossVolume mínus
   prizmatické prieniky krytín s telesom miestnosti; žltá, keď sedí len Revit metóda "krytiny po celej ploche miestnosti".
-- **(d) Tolerancie:** dĺžka +- 5 mm, plocha +- 0,5 %, objem +- 0,5 % alebo +- 0,05 m3. Spike ukázal, že 0,5 % z objemu
-  miestnosti pri tenkých krytinách nerozlíši metódy NetVolume (fixture: 0,2 m3); návrh viazať toleranciu NetVolume na
-  odčítaný objem čaká na Samuela.
+- **(d) Tolerancie:** dĺžka +- 5 mm, plocha +- 0,5 %, objem +- 0,5 % alebo +- 0,05 m3. **NetVolume (Samuel 1. 11.):**
+  tolerancia viazaná na odčítaný objem, najviac **1 % z GrossVolume - NetVolume** zo súboru (`NET_VOLUME_TOLERANCE`,
+  plus 0,0005 m3 len na zaokrúhlenie hodnôt v súbore). Dôvod: 0,5 % z objemu miestnosti pri tenkých krytinách nerozlíši
+  metódu podľa schémy od Revit metódy (fixture: 333,5 vs. 333,3 m3); s 1 % z odčítaného objemu (14,3 m3 -> +- 0,14 m3)
+  ich rozlíši. Výsledok NetVolume nesie použitú toleranciu aj s číslom.
 - **(b) Viac výšok podhľadu = pravidlo konštantnosti, nie medián.** Text schémy (buildingSMART/IFC4.3.x-development
   `d71e140`, `reference_schemas/psd/Qto_SpaceBaseQuantities.xml` aj `psd_IFC4_ADD2_TC1`, zhodne): FinishCeilingHeight
   "To be provided only if the space has a suspended ceiling with constant height"; rovnako Height ("constant height") a

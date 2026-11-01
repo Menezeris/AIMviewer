@@ -82,8 +82,18 @@ describe("recepty IfcSpace (D-185 spike)", () => {
       expect(r.definition.length).toBeGreaterThan(10);
       expect(r.spec_ref).toMatch(/^buildingSMART\/IFC4\.3\.x-development@d71e140:/);
       expect(r.tolerance).toMatch(/mm|%/);
+      if (r.target.endsWith("NetVolume")) expect(r.tolerance).toMatch(/1 % z GrossVolume - NetVolume/);
     }
     expect(status(res, "FinishCeilingHeight")!.definition).toMatch(/constant height/);
+  });
+
+  it("NetVolume: tolerancia 1 % z GV - NV rozlíši Revit metódu aj pri tenkých krytinách", () => {
+    // Schéma: 347,6 - 88 x 0,15 - 72 x 0,0125 = 333,5; "po celej ploche": 347,6 - 88 x 0,1625 = 333,3 (rozdiel 0,2 m3).
+    const revit = status(verifySpace(space({ ...good, NetVolume: 333.3 }), ctx), "NetVolume")!;
+    expect(revit.status).toBe("yellow");
+    expect(revit.tolerance).toBe("objem NetVolume +- 1 % z GrossVolume - NetVolume (14,3 m3) = +- 0,1435 m3");
+    expect(status(verifySpace(space(good), ctx), "NetVolume")!.status).toBe("green");
+    expect(status(verifySpace(space({ ...good, NetVolume: 333.5 + 0.15 }), ctx), "NetVolume")!.status).toBe("red");
   });
 
   it("NetVolume Revit metódou (krytiny po celej ploche) je žltá, inak červená", () => {

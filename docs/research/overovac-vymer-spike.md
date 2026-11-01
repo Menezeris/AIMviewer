@@ -193,11 +193,10 @@ Kotvy pre kóty: plochy z = 4,850 (vrch SD02.03.0001), 5,000 (vrch PD03.30.01), 
   kotvami; červená FCH, sivý nekonštantný podhľad; žltý a červený NetVolume; sivá bez telesa; integrácia so skutočným
   WASM `extractExtrusionDefinitions` na fixture `__fixtures__/mini-space-verify.ts` (mm, z 4,85 až 8,80, 88 m2).
   Mutácie (bez znamienok dier, podhľad od spodku telesa namiesto podlahy) testy zhodia. tsc a eslint bez nálezov.
-- **Zistenie k toleranciám:** pri 0,5 % z objemu miestnosti (333 m3 = 1,67 m3) sa metóda "krytiny po celej ploche" a
-  prienik podľa schémy líšia pri tenkých krytinách menej ako tolerancia (fixture: 0,2 m3), takže obe vyjdú zelené.
-  Ak má NetVolume rozlíšiť metódu, tolerancia sa má viazať na odčítaný objem (napr. 2 % z GV - NV) alebo byť absolútna.
-  Doplniť k otázke (d) v D-185.
+- **Tolerancia NetVolume (rozhodnuté 1. 11.):** 0,5 % z objemu miestnosti nerozlíšilo metódu podľa schémy od Revit metódy
+  pri tenkých krytinách (fixture: 333,5 vs. 333,3 m3, obe zelené). Samuel: tolerancia viazaná na odčítaný objem, najviac
+  1 % z GV - NV (`NET_VOLUME_TOLERANCE` v registri); fixture: +- 0,1435 m3, Revit metóda je žltá. Testy: 10.
 - **Čo spike nespravil:** beh na ASR v79. Motor číta archív revízie len na serveri a lokálne sa produkčný súbor
   nesťahuje (D-135); spustenie vyžaduje zapojenie do toolu (napr. `ifc_measure quantity=...` alebo samostatný beh
-  overenia) a nasadenie, čo je ďalší krok, nie výskum. Očakávanie podľa kap. 3: 2.01 Height, FFH, FCH zelená,
+  overenia) a nasadenie; Samuel 1. 11.: zatiaľ nie. Očakávanie podľa kap. 3: 2.01 Height, FFH, FCH zelená,
   NetVolume zelená alebo žltá podľa prekryvu PD03.30.01 a PH01.10.0010.

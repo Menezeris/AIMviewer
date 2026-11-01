@@ -45,6 +45,21 @@ export function withinTolerance(file: number, computed: number, kind: QuantityKi
   return (t.abs != null && d <= t.abs) || (t.rel != null && d <= t.rel * Math.abs(file));
 }
 
+/**
+ * NetVolume (Samuel 1. 11. 2026): tolerancia viazaná na odčítaný objem, najviac 1 % z GrossVolume - NetVolume
+ * zo súboru. Pri 0,5 % z objemu miestnosti by sa pri tenkých krytinách nerozlíšila metóda podľa schémy od Revit
+ * metódy "krytiny po celej ploche" (spike: rozdiel 0,2 m3 pri 333 m3). `epsilon_m3` pokrýva len zaokrúhlenie
+ * hodnôt v súbore (4 desatinné miesta), nie metódu.
+ */
+export const NET_VOLUME_TOLERANCE = { rel_of_cut: 0.01, epsilon_m3: 0.0005 } as const;
+
+export function netVolumeTolerance(grossVolumeFile: number, netVolumeFile: number): { abs_m3: number; text: string } {
+  const cut = Math.abs(grossVolumeFile - netVolumeFile);
+  const abs = NET_VOLUME_TOLERANCE.rel_of_cut * cut + NET_VOLUME_TOLERANCE.epsilon_m3;
+  const fmt = (x: number) => (Math.round(x * 10000) / 10000).toString().replace(".", ",");
+  return { abs_m3: abs, text: `objem NetVolume +- 1 % z GrossVolume - NetVolume (${fmt(cut)} m3) = +- ${fmt(abs)} m3` };
+}
+
 // ── pravidlá výberu prvkov ───────────────────────────────────────────────────
 
 export const SELECTION = {
@@ -139,7 +154,7 @@ export const SPACE_METHODS = {
   },
   net_volume: {
     id: "space.netvolume.coverings@1", target: `${Q}.NetVolume`, kind: "volume",
-    method: "GrossVolume - prieniky krytín (FLOORING, CEILING) s telesom miestnosti, prizmaticky (podľa schémy); žltá, keď sedí len metóda 'krytiny po celej ploche miestnosti' (Revit)",
+    method: "GrossVolume - prieniky krytín (FLOORING, CEILING) s telesom miestnosti, prizmaticky (podľa schémy); žltá, keď sedí len metóda 'krytiny po celej ploche miestnosti' (Revit); tolerancia NET_VOLUME_TOLERANCE",
     definition: "Net volume enclosed by the space, excluding the volume of construction elements inside the space.",
     spec_ref: spec("NetVolume"),
   },
