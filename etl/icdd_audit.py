@@ -7,7 +7,7 @@ Spustenie z koreňa repa (len čítanie, bez DB a bez siete)::
 Vypíše stručné zhrnutie a skončí kódom 0 (bez chýb, varovania sú dovolené), 1 (chyba) alebo 2 (súbor sa nedá
 prečítať). Kontroly (zadanie Samuela 1. 11. 2026):
 
-* rozloženie ZIP: tri priečinky, hlavička s presným menom (`Index.rdf`), ontológie v `Ontology resources/`;
+* rozloženie ZIP: tri priečinky, hlavička `index.rdf` (iný zápis = varovanie), ontológie v `Ontology resources/`;
 * index <-> `Payload documents/` obojsmerne, SHA-256 každého `ct:SecuredDocument`;
 * každý súbor v `Payload triples/` je v indexe ako `ct:Linkset` a naopak; varovanie pri prázdnom linksete;
 * každý `ls:LinkElement` má `ls:hasDocument` na dokument z indexu; identifikátory majú pole a hodnotu;
@@ -33,7 +33,10 @@ import zipfile
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
-INDEX_NAME = "Index.rdf"
+# Hlavička: ICDDToolkitCore (IIB.ICDD, RUB) ju hľadá presne ako "index.rdf" (ZipArchive.GetEntry, File.Exists) a tak ju
+# aj zapisuje; openbim-icdd ju hľadá bez ohľadu na veľkosť písmen a uvádza, že referenčné kontajnery ISO majú
+# "index.rdf". Iný zápis (napr. "Index.rdf") je preto varovanie, nie chyba.
+INDEX_NAME = "index.rdf"
 DIR_ONTOLOGY = "Ontology resources/"
 DIR_DOCUMENTS = "Payload documents/"
 DIR_TRIPLES = "Payload triples/"
@@ -312,7 +315,7 @@ def _local(t: str) -> str:
 # --------------------------------------------------------------------------------------------- audit
 
 
-def audit(path: str, list_limit: int = 50, legacy_index: bool = False) -> Report:
+def audit(path: str, list_limit: int = 50) -> Report:
     import rdflib
     from rdflib import URIRef
     from rdflib.namespace import RDF as R
@@ -355,8 +358,9 @@ def audit(path: str, list_limit: int = 50, legacy_index: bool = False) -> Report
         alt = [n for n in names if "/" not in n and n.lower() == INDEX_NAME.lower()]
         if alt:
             index_name = alt[0]
-            (rep.warn if legacy_index else rep.error)(
-                "index_name", f"hlavička sa volá '{alt[0]}', ISO 21597-1 predpisuje '{INDEX_NAME}'"
+            rep.warn(
+                "index_name",
+                f"hlavička sa volá '{alt[0]}'; ICDDToolkitCore (RUB) číta len '{INDEX_NAME}', openbim-icdd oba zápisy",
             )
         else:
             rep.error("layout", f"chýba hlavička '{INDEX_NAME}' v koreni kontajnera")
@@ -530,15 +534,17 @@ def audit(path: str, list_limit: int = 50, legacy_index: bool = False) -> Report
         ls_stats[fn] = st
         if not links:
             rep.warn("linkset_empty", f"linkset neobsahuje žiadnu väzbu ({len(g)} trojíc)", where)
-        # Čítač bez inferencie RDFS (napr. openbim-icdd 0.2) nájde väzbu len podľa rdf:type priamo v ls:
-        # (Link, BinaryLink, DirectedLink, DirectedBinaryLink, Directed1toNLink); typ len z els: alebo aim: nevidí.
+        # Čítače bez inferencie RDFS hľadajú väzbu podľa presného rdf:type: ICDDToolkitCore (RUB) typy ls: a els:
+        # (Part 2), openbim-icdd 0.2 len ls:. Väzbu typovanú len vlastnou triedou (aim:) nenájde ani jeden.
         no_base = collections.Counter(
-            _local(link_type(types[l])) for l in links if not any(t.startswith(ISO_LS) for t in types[l])
+            _local(link_type(types[l]))
+            for l in links
+            if not any(t.startswith(ISO_LS) or t.startswith(ISO_ELS) for t in types[l])
         )
         for t, c in sorted(no_base.items()):
             rep.warn(
                 "link_base_type",
-                f"{c} väzieb {t} nemá aj typ ls: (Link, BinaryLink, Directed...); čítač bez inferencie RDFS ich nenájde",
+                f"{c} väzieb {t} nemá typ ls: ani els:; čítač bez inferencie RDFS (ICDDToolkitCore, openbim-icdd) ich nenájde",
                 where,
             )
         st["without_ls_type"] = sum(no_base.values())
@@ -755,14 +761,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("container", help="súbor .icdd")
     p.add_argument("--json", help="zapísať report aj ako JSON")
     p.add_argument("--list-limit", type=int, default=50, help="koľko položiek vypísať v zoznamoch (default 50)")
-    p.add_argument(
-        "--legacy-index",
-        action="store_true",
-        help="hlavička 'index.rdf' (staršie exporty AIM) je len varovanie, nie chyba",
-    )
     a = p.parse_args(argv)
     try:
-        rep = audit(a.container, a.list_limit, a.legacy_index)
+        rep = audit(a.container, a.list_limit)
     except FileNotFoundError as exc:
         print(f"ICDD audit: {exc}", file=sys.stderr)
         return 2

@@ -43,8 +43,8 @@ def _write(tmp_path: Path, files: dict[str, bytes]) -> str:
     return str(out)
 
 
-def _codes(path: str, legacy: bool = True) -> tuple[set[str], set[str]]:
-    rep = audit(path, legacy_index=legacy)
+def _codes(path: str) -> tuple[set[str], set[str]]:
+    rep = audit(path)
     return {i.code for i in rep.errors}, {i.code for i in rep.warnings}
 
 
@@ -62,7 +62,7 @@ def _rehash(files: dict[str, bytes], payload: str) -> None:
 
 
 def test_clean_export_passes_and_reports_known_gaps() -> None:
-    rep = audit(str(FIXTURE), legacy_index=True)
+    rep = audit(str(FIXTURE))
     assert [i for i in rep.errors] == []
     assert rep.stats["documents"] == {"total": 4, "by_type": {"ifc": 2, "pdf": 1, "xlsx": 1}, "sha256_checked": 4}
     ls = rep.stats["linksets"]
@@ -75,22 +75,28 @@ def test_clean_export_passes_and_reports_known_gaps() -> None:
     assert any(COWL in x and "VV.07.04.001" in x for x in rep.lists["without_space:VZT_v011.ifc"])
 
 
-def test_lowercase_index_is_error_unless_legacy() -> None:
-    files = _files()
-    errors, _ = _codes(str(FIXTURE), legacy=False)
-    if "index.rdf" in files:
-        assert "index_name" in errors
-    else:
-        assert "index_name" not in errors
+def test_index_name_variants(tmp_path: Path) -> None:
+    """index.rdf (zapisuje AIM aj ICDDToolkitCore) je bez nálezu, Index.rdf varovanie, chýbajúca hlavička chyba."""
+    f = _files()
+    idx = _index_name(f)
+    assert idx == "index.rdf"
+    errors, warnings = _codes(str(FIXTURE))
+    assert "index_name" not in errors | warnings
+    f["Index.rdf"] = f.pop(idx)
+    errors, warnings = _codes(_write(tmp_path, f))
+    assert "index_name" in warnings and not errors
+    del f["Index.rdf"]
+    errors, _ = _codes(_write(tmp_path, f))
+    assert "layout" in errors
 
 
 def test_cli_exit_codes(tmp_path: Path, capsys) -> None:
-    assert main([str(FIXTURE), "--legacy-index", "--json", str(tmp_path / "r.json")]) == 0
+    assert main([str(FIXTURE), "--json", str(tmp_path / "r.json")]) == 0
     assert "Výsledok: OK" in capsys.readouterr().out
     assert (tmp_path / "r.json").exists()
     files = _files()
     files["Payload documents/D-1-1-09.pdf"] += b"x"
-    assert main([_write(tmp_path, files), "--legacy-index"]) == 1
+    assert main([_write(tmp_path, files)]) == 1
     assert main([str(tmp_path / "missing.icdd")]) in (1, 2)
 
 
@@ -188,7 +194,7 @@ def test_native_space_containment_counts_as_covered(tmp_path: Path) -> None:
     )
     f[vzt] = text.encode()
     _rehash(f, "VZT_v011.ifc")
-    rep = audit(_write(tmp_path, f), legacy_index=True)
+    rep = audit(_write(tmp_path, f))
     assert not rep.errors, rep.errors
     assert rep.stats["coverage"]["VZT_v011.ifc"]["without_space"] == 0
 
@@ -220,7 +226,7 @@ def test_foreign_container_from_icdd_shacl_validation() -> None:
     assert rep.stats["globalid_checked"] == {"model.ifc": 9}  # všetkých 9 GlobalId je v pribalenom IFC
     errors = {i.code for i in rep.errors}
     warnings = {i.code for i in rep.warnings}
-    assert {"index_name", "linkset_unregistered", "undeclared_term", "literal"} <= errors
+    assert {"linkset_unregistered", "undeclared_term", "literal"} <= errors
     assert "guid_missing" not in errors and "checksum" not in errors and "duplicate_link" not in errors
     assert "layout_case" in warnings
     msgs = " ".join(i.message for i in rep.errors)
@@ -235,17 +241,16 @@ def test_most_specific_link_type_is_reported(tmp_path: Path) -> None:
         '<rdf:type rdf:resource="https://standards.iso.org/iso/21597/-1/ed-1/en/Linkset#DirectedBinaryLink"/>'
         '<rdf:type rdf:resource="urn:x-aim:icdd#IsReferencedInSpatialStructure"/>', count=-1,
     )
-    rep = audit(_write(tmp_path, f), legacy_index=True)
+    rep = audit(_write(tmp_path, f))
     st = rep.stats["linksets"]["derived-spatial.rdf"]
     assert st["by_type"] == {"IsReferencedInSpatialStructure": 3} and st["without_ls_type"] == 0
 
 
 def test_links_without_explicit_ls_type_are_reported() -> None:
-    rep = audit(str(FIXTURE), legacy_index=True)
+    rep = audit(str(FIXTURE))
     w = [i for i in rep.warnings if i.code == "link_base_type"]
-    # export AIM dnes typuje väzby len els:/aim: (pozri report auditu); RUB typuje priamo ls:BinaryLink
-    if all(st["without_ls_type"] == 0 for st in rep.stats["linksets"].values()):
-        assert not w
-    else:
-        assert {i.where for i in w} >= {"Payload triples/derived-spatial.rdf"}
+    # els: väzby číta ICDDToolkitCore priamo; aim:IsReferencedInSpatialStructure bez ls: typu nenájde nik
+    assert {i.where for i in w} <= {"Payload triples/derived-spatial.rdf"}
+    if rep.stats["linksets"]["derived-spatial.rdf"]["without_ls_type"]:
+        assert w
     assert not [i for i in audit(str(RUB)).warnings if i.code == "link_base_type"]
