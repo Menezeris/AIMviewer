@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 
-import { assembleIcdd, buildIndex, buildLinksets } from "./build";
+import { assembleIcdd, buildIndex, buildLinksets, sideFiles } from "./build";
 import { DEFAULT_AIM_NAMESPACE, ISO_ONTOLOGY_FILES, type IcddPlan } from "./model";
 import { compareStates, stateFromContainer, stateFromPlan } from "./roundtrip";
 import { parseRdfXml } from "./rdf";
@@ -115,6 +115,34 @@ describe("ICDD export (D-181)", () => {
       "Payload triples/federation.rdf",
       "index.rdf",
     ]);
+  });
+
+  it("prečíta aj hlavičku Index.rdf (iný zápis) s varovaním", () => {
+    const zip = mutate(build(), (f) => {
+      f["Index.rdf"] = f["index.rdf"];
+      delete f["index.rdf"];
+    });
+    const r = validateIcdd(zip);
+    expect(r.ok).toBe(true);
+    expect(r.issues.filter((i) => i.level === "warning").map((i) => i.code)).toContain("index_name");
+  });
+
+  it("väzba aim: má aj typ ls:DirectedBinaryLink, väzby els: len svoj typ (čítače bez inferencie RDFS)", () => {
+    const ls = buildLinksets(plan());
+    const LSNS = "https://standards.iso.org/iso/21597/-1/ed-1/en/Linkset#";
+    const ELSNS = "https://standards.iso.org/iso/21597/-2/ed-1/en/ExtendedLinkset#";
+    const typesOf = (rdf: string) => {
+      const g = parseRdfXml(rdf);
+      const links = new Set(g.filter((t) => t.p.endsWith("#hasToLinkElement") || t.p.endsWith("#hasLinkElement")).map((t) => (t.s as { v: string }).v));
+      return [...links].map((s) => g.filter((t) => (t.s as { v: string }).v === s && t.p.endsWith("#type")).map((t) => (t.o as { v: string }).v).sort());
+    };
+    expect(typesOf(ls["derived-spatial"])).toEqual([[`${LSNS}DirectedBinaryLink`, `${DEFAULT_AIM_NAMESPACE}IsReferencedInSpatialStructure`]]);
+    expect(typesOf(ls.federation)).toEqual([[`${ELSNS}IsIdenticalTo`]]);
+    for (const t of typesOf(ls["documents-elements"])) expect(t).toEqual([`${ELSNS}IsElaboratedBy`]);
+    // kontrola voči ontológiám ISO aj roundtrip s tým prejdú
+    const report = validateIcdd(build());
+    expect(report.ok).toBe(true);
+    expect(compareStates(stateFromContainer(report.contents!, DEFAULT_AIM_NAMESPACE), stateFromPlan(plan())).same).toBe(true);
   });
 
   it("je deterministický: rovnaký plán = rovnaké bajty, poradie väzieb nehrá rolu", () => {
@@ -290,10 +318,13 @@ describe("ICDD identita dokumentov a pôvod väzieb (D-181 bod 3)", () => {
 describe("ICDD xlsx výpis (D-181 bod 9)", () => {
   const withExtras = (): IcddPlan => ({ ...plan(), extras: ["xlsx"] });
 
-  it("pribalí aim-layer.xlsx, kontrola aj roundtrip prejdú, IFCX nie je", () => {
+  it("xlsx nejde do kontajnera, ale vedľa neho; kontrola aj roundtrip prejdú, IFCX nie je", () => {
     const zip = build(withExtras());
     const files = unzipSync(zip);
-    expect(Object.keys(files)).toContain("Payload documents/aim-layer.xlsx");
+    expect(Object.keys(files).some((f) => f.endsWith(".xlsx"))).toBe(false);
+    expect(sha256(zip)).toBe(sha256(build(plan())));
+    expect(sideFiles(withExtras()).map((f) => f.filename)).toEqual(["AIM_2026-10-31_ASR-v079_VZT-v011_D1_aim-layer.xlsx"]);
+    expect(sideFiles(plan())).toEqual([]);
     expect(Object.keys(files).some((f) => f.endsWith(".ifcx"))).toBe(false);
     const report = validateIcdd(zip);
     expect(report.issues.filter((i) => i.level === "error")).toEqual([]);
@@ -303,7 +334,7 @@ describe("ICDD xlsx výpis (D-181 bod 9)", () => {
   });
 
   it("xlsx: platný SpreadsheetML, hárok súborov a hárok na vrstvu s riadkami väzieb", () => {
-    const x = unzipSync(unzipSync(build(withExtras()))["Payload documents/aim-layer.xlsx"]);
+    const x = unzipSync(sideFiles(withExtras())[0].bytes);
     const wb = parseXml(strFromU8(x["xl/workbook.xml"]));
     const names = (wb.children.find((c) => typeof c !== "string" && c.name === "sheets") as { children: { attrs: Record<string, string> }[] }).children.map((c) => c.attrs.name);
     expect(names).toEqual(["files", "documents-elements", "documents-identity", "derived-spatial", "federation"]);

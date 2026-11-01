@@ -1,6 +1,7 @@
 /**
  * Výpis AIM vrstvy ako tabuľka xlsx (D-181, Samuel 31. 10.: "napríklad keby je tam nejaký súbor xlsx"):
- * voliteľný payload `aim-layer.xlsx`, hárok na vrstvu linksetu + hárok súborov. Vlastný malý zapisovač
+ * voliteľný súbor `<kontajner>_aim-layer.xlsx` vedľa `.icdd` (do kontajnera nejde, audit ICDD 1. 11.), hárok na vrstvu
+ * linksetu + hárok súborov. Vlastný malý zapisovač
  * SpreadsheetML (OOXML, ISO/IEC 29500) cez fflate: bez ďalšej závislosti, deterministický (pevný čas v ZIP).
  */
 

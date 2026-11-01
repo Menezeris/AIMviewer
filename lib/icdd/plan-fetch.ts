@@ -64,7 +64,13 @@ export async function fetchIcddPlan(opts: { layers?: Layer[]; extras?: Extra[]; 
 
   const docLinks: DocLinkRow[] = layers.includes("documents-elements") || layers.includes("documents-identity")
     ? await fetchAllPages((from, to) =>
-        sb.from("rel_associates_document").select("id, from_id, to_id, source, global_id, model, document_key").order("id").range(from, to),
+        // Len platné väzby: ukončená AIM vrstva (valid_until, napr. väzby na zaniknutú sadu dokumentov) do exportu nepatrí.
+        sb
+          .from("rel_associates_document")
+          .select("id, from_id, to_id, source, global_id, model, document_key")
+          .is("valid_until", null)
+          .order("id")
+          .range(from, to),
       )
     : [];
   const spatialLinks: SpatialLinkRow[] = layers.includes("derived-spatial")

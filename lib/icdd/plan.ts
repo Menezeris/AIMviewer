@@ -5,7 +5,7 @@
  * a kvôli čitateľnosti bez parsovania IFC aj väzba dokument-prvok zo súboru (s pôvodom `ifc:ASR v79`).
  */
 
-import { DEFAULT_AIM_NAMESPACE, EXTRAS, LAYERS, type Extra, type IcddLink, type IcddPayload, type IcddPlan, type Layer } from "./model";
+import { DEFAULT_AIM_NAMESPACE, EXTRAS, LAYER_OF, LAYERS, type Extra, type IcddLink, type IcddPayload, type IcddPlan, type Layer } from "./model";
 
 export interface ModelRevisionRow {
   model: string;
@@ -327,6 +327,14 @@ export function buildPlan(rows: PlanRows, opts: PlanOptions): IcddPlan {
     }
   }
 
+  // Vrstva bez väzieb sa nevydá (Samuel 1. 11., audit ICDD): prázdny linkset v indexe by tvrdil väzby, ktoré nie sú.
+  const emitted = layers.filter((l) => links.some((k) => LAYER_OF[k.kind] === l));
+  for (const l of layers) {
+    if (emitted.includes(l)) continue;
+    skip("empty_layer");
+    warnings.push(`vrstva ${l} nemá žiadnu väzbu, linkset sa nevydá`);
+  }
+
   const date = opts.createdAt.slice(0, 10);
   const modelSig = Object.entries(current)
     .map(([m, r]) => `${m}-v${pad3(r)}`)
@@ -336,14 +344,14 @@ export function buildPlan(rows: PlanRows, opts: PlanOptions): IcddPlan {
     versionID: `${date}_${modelSig}_D${docCount}`,
     versionDescription: `${Object.entries(current)
       .map(([m, r]) => `${m} v${r}`)
-      .join(", ")}, ${docCount} dokumentov k ${date}; vrstvy ${layers.join(", ")}`,
+      .join(", ")}, ${docCount} dokumentov k ${date}; vrstvy ${emitted.join(", ") || "žiadne"}`,
     createdAt: opts.createdAt,
     description: "AIM: informačný model stavby (modely IFC, dokumenty PDF a väzby AIM), export ICDD podľa ISO 21597.",
     publisher: { name: opts.publisher ?? "AIM" },
     aimNamespace: opts.aimNamespace ?? DEFAULT_AIM_NAMESPACE,
     payloads,
     links,
-    layers,
+    layers: emitted,
     extras: opts.extras ?? [...EXTRAS],
     skipped,
     warnings,

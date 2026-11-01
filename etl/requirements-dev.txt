@@ -1,3 +1,5 @@
 # Dev/test závislosti ETL (unit testy: python -m pytest etl/tests -q)
 -r requirements.txt
 pytest>=8.0
+# D-181 - audit kontajnera ICDD (etl/icdd_audit.py): RDF/XML cez rdflib (BSD-3-Clause), len vývoj a CI
+rdflib>=7.0

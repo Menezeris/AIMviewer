@@ -35,7 +35,10 @@ export function IcddPanel() {
       setChecked(null);
       const r = await exportIcdd(setProgress, fetch, EXTRAS.filter((x) => extras[x]));
       setExported(r);
-      if (r.report.ok) downloadBytes(r.bytes, r.filename);
+      if (r.report.ok) {
+        downloadBytes(r.bytes, r.filename);
+        for (const f of r.sideFiles) downloadBytes(f.bytes, f.filename, f.mime);
+      }
     });
 
   const onCheck = (file: File) =>
@@ -59,7 +62,7 @@ export function IcddPanel() {
           </p>
           <div className="flex flex-wrap gap-4">
             {([
-              ["xlsx", "Tabuľka väzieb (xlsx)"],
+              ["xlsx", "Tabuľka väzieb (xlsx, samostatný súbor vedľa .icdd)"],
             ] as [Extra, string][]).map(([k, label]) => (
               <label key={k} className="flex items-center gap-2">
                 <input type="checkbox" checked={extras[k]} disabled={busy} onChange={(e) => setExtras({ ...extras, [k]: e.target.checked })} />

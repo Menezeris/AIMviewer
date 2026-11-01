@@ -11,6 +11,7 @@ import {
   AIM_ONTOLOGY_FILE,
   CONFORMANCE,
   containerBase,
+  containerFileName,
   CT,
   DIR_DOCUMENTS,
   DIR_ONTOLOGY,
@@ -23,6 +24,7 @@ import {
   IFC_DOCS_URL,
   IFC_RELATIONSHIP,
   LS,
+  LS_BASE_TYPE,
   type IcddLink,
   type IcddPayload,
   type IcddPlan,
@@ -179,6 +181,10 @@ export function buildLinksets(plan: IcddPlan): Record<Layer, string> {
     const from = element(link.from);
     const to = element(link.to);
     const l = `${lsBase}#L-${sha256(linkKey(plan, link)).slice(0, 24)}`;
+    // Vlastná trieda aim: dostane aj nadtriedu ls: (dôsledok rdfs:subClassOf z aim.rdf), aby väzbu našiel aj čítač
+    // bez inferencie RDFS a bez ontológie aim: (LS_BASE_TYPE).
+    const lsType = LS_BASE_TYPE[link.kind];
+    if (lsType) add(l, RDF_TYPE, iri(`${LS}${lsType}`));
     if (link.kind === "IsIdenticalTo" || link.kind === "DocumentIsIdenticalTo") {
       add(l, RDF_TYPE, iri(`${ELS}IsIdenticalTo`));
       add(l, `${LS}hasLinkElement`, iri(from));
@@ -263,38 +269,23 @@ export interface AssembleInput {
   ontologies: Record<string, string>;
 }
 
-/** Zloží `.icdd` (ZIP). Overí sha256 každého payloadu voči plánu; nesúlad = chyba, nič sa nezloží. */
-/** Súbory navyše z väzieb plánu (xlsx výpis) ako payloady s vypočítaným sha256. */
-export function generatedPayloads(plan: IcddPlan): { payload: IcddPayload; data: Uint8Array }[] {
-  const out: { payload: IcddPayload; data: Uint8Array }[] = [];
-  const gen = (filename: string, format: string, name: string, data: Uint8Array) =>
-    out.push({
-      data,
-      payload: {
-        id: `generated:${filename}`,
-        kind: "generated",
-        filename,
-        name,
-        filetype: filename.split(".").pop()!,
-        format,
-        versionID: plan.versionID,
-        sha256: sha256(data),
-        url: "",
-        gzip: false,
-        identification: filename,
-        description: "Generované pri exporte z väzieb linksetov (Payload triples); normatívne sú linksety.",
-      },
-    });
+/**
+ * Súbory navyše z väzieb plánu (voľba `extras`): xlsx výpis linksetov. Do kontajnera nejdú (Samuel 1. 11., audit ICDD:
+ * výpis by zdvojoval pravdu linksetov a mohol by zostarnúť), stiahnu sa vedľa `.icdd`.
+ */
+export function sideFiles(plan: IcddPlan): { filename: string; mime: string; bytes: Uint8Array }[] {
+  const out: { filename: string; mime: string; bytes: Uint8Array }[] = [];
   if (plan.extras?.includes("xlsx"))
-    gen(XLSX_FILE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "AIM vrstva (tabuľka)", buildAimXlsx(plan));
+    out.push({
+      filename: `${containerFileName(plan.versionID).replace(/\.icdd$/, "")}_${XLSX_FILE}`,
+      mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      bytes: buildAimXlsx(plan),
+    });
   return out;
 }
 
-export function assembleIcdd({ plan: base, payloads: given, ontologies }: AssembleInput): Uint8Array {
-  const gen = generatedPayloads(base);
-  const plan: IcddPlan = { ...base, payloads: [...base.payloads, ...gen.map((g) => g.payload)] };
-  const payloads = new Map(given);
-  for (const g of gen) payloads.set(g.payload.id, g.data);
+/** Zloží `.icdd` (ZIP). Overí sha256 každého payloadu voči plánu; nesúlad = chyba, nič sa nezloží. */
+export function assembleIcdd({ plan, payloads, ontologies }: AssembleInput): Uint8Array {
   const enc = new TextEncoder();
   const files: Zippable = {};
   const put = (path: string, data: Uint8Array, level: 0 | 6 = 6) => {
