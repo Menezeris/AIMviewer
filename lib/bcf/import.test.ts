@@ -177,6 +177,33 @@ describe("import .bcfzip do DB (D-158 krok 8)", () => {
     }
   });
 
+  it("guid komentára z BCF sa zachová a druhý import toho istého .bcfzip komentáre nezdvojí", async () => {
+    const G_A = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
+    const G_B = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
+    const a = seeded();
+    a.rows[0].comments = [
+      { guid: G_A, author: "Claude (MCP)", date: "2026-09-02T09:30:00Z", comment: "Založené z chatu" },
+      { guid: G_B, author: "projektant", date: "2026-09-15T14:45:10Z", comment: "Posunuté nosník" },
+    ];
+    const zip = await exportProject(a, "2.1");
+    const b = memoryStore();
+    const bd = deps({ store: b.store });
+    await importBcfArchive(zip, bd);
+    expect(b.rows[0].comments.map((c) => c.guid)).toEqual([G_A, G_B]);
+    const again = await importBcfArchive(zip, bd);
+    expect([again.created, again.updated, again.unchanged]).toEqual([0, 0, 3]);
+    expect(b.rows[0].comments.map((c) => c.guid)).toEqual([G_A, G_B]);
+    // Komentár s rovnakým guid, ale zmeneným textom (úprava v zdroji) sa nepridá ako nový.
+    a.rows[0].comments = [{ ...a.rows[0].comments[0], comment: "Založené z chatu (upravené)" }, a.rows[0].comments[1]];
+    a.rows[0].updated_at = "2099-01-01T00:00:00.000Z";
+    await importBcfArchive(await exportProject(a, "2.1"), bd);
+    expect(b.rows[0].comments).toHaveLength(2);
+    // Store s rovnakým guid vráti existujúci komentár, nepridá ho (správanie funkcie v DB).
+    const dup = await b.store.addComment(b.rows[0].id, "x", "iný text", undefined, G_A);
+    expect(dup?.guid).toBe(G_A);
+    expect(b.rows[0].comments).toHaveLength(2);
+  });
+
   it("aktualizácia: updated_at a dátum nového komentára zo súboru, nie čas importu; budúci dátum sa orezá", async () => {
     const a = seeded();
     const b = memoryStore();

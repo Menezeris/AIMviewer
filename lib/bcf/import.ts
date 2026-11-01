@@ -15,7 +15,7 @@ import type { BCFDocumentReference, BCFProject, BCFTopic, BCFViewpoint } from "@
  * aktualizuje, inak ide o konflikt, ktorý sa len ohlási (nič sa nezapíše; `overwrite` ho prepíše).
  * Komentáre a nové odkazy sa len pridávajú, nikdy nemažú. Čistá logika nad `BcfStore`, bez servera.
  * Pôvodné dátumy a autori z BCF sa zachovajú: `created_at`/`updated_at` témy (creation/modified date),
- * dátum komentára (cez `model_task_import_comment`; kým migrácia nie je nasadená, komentár dostane čas zápisu).
+ * dátum komentára (a guid; cez `model_task_import_comment`; kým migrácia nie je nasadená, komentár dostane čas zápisu).
  */
 
 /** Strop počtu tém z jedného súboru (zvyšok sa neimportuje, ohlási sa). */
@@ -148,6 +148,8 @@ interface IncomingComment {
   comment: string;
   /** Pôvodný dátum komentára (ISO, nie v budúcnosti); undefined = súbor ho nemá. */
   date?: string;
+  /** Pôvodný guid komentára z BCF (len ak je UUID, inak ho dá DB). */
+  guid?: string;
 }
 
 interface Incoming {
@@ -320,7 +322,8 @@ async function incomingFrom(
     comments: (topic.comments ?? [])
       .map((c) => {
         const t = isoMs(c.date, now);
-        return { author: clean(c.author, 200), comment: clean(c.comment, 8000) ?? "", ...(t !== null ? { date: iso(t) } : {}) };
+        const guid = c.guid && UUID_RE.test(c.guid) ? c.guid.toLowerCase() : null;
+        return { author: clean(c.author, 200), comment: clean(c.comment, 8000) ?? "", ...(t !== null ? { date: iso(t) } : {}), ...(guid ? { guid } : {}) };
       })
       .filter((c) => c.comment),
     refs,
@@ -408,7 +411,7 @@ async function importTopic(topic: BCFTopic, deps: BcfDeps, opts: Required<Pick<I
       });
       number = row.number;
       for (const r of inc.refs) await deps.store.addDocument({ ...r.row, ...(r.id ? { id: r.id } : {}), task_id: row.id });
-      for (const c of comments) await deps.store.addComment(row.id, c.author ?? author, c.comment, c.date);
+      for (const c of comments) await deps.store.addComment(row.id, c.author ?? author, c.comment, c.date, c.guid);
       // Komentár bez novej funkcie v DB posunie updated_at a modified_by na čas zápisu: vráť ich na hodnoty zo súboru.
       if (comments.length && updatedMs !== null) await deps.store.update(row.id, { updated_at: iso(updatedMs), modified_by: inc.modifiedBy ?? author });
     }
@@ -467,7 +470,7 @@ async function importTopic(topic: BCFTopic, deps: BcfDeps, opts: Required<Pick<I
     }
     for (const { e, patch: p } of toPatch) await deps.store.updateDocument(id, e.id, p);
     for (const r of adding) await deps.store.addDocument({ ...r.row, ...(r.id ? { id: r.id } : {}), task_id: id });
-    for (const c of newComments) await deps.store.addComment(id, c.author ?? opts.author, c.comment, c.date);
+    for (const c of newComments) await deps.store.addComment(id, c.author ?? opts.author, c.comment, c.date, c.guid);
     // Jedna úprava témy nakoniec. updated_at: novší dátum zmeny zo súboru; inak zmena polí = teraz (zapísali sme ju),
     // len komentáre a odkazy ho nechajú, ako bol (komentár bez novej funkcie v DB by ho posunul na čas zápisu).
     if (Object.keys(patch).length || toPatch.length || newComments.length) {
@@ -493,13 +496,16 @@ function pickKeys(e: TopicDocumentRow, patch: Partial<TopicDocumentWrite>) {
   return Object.fromEntries(Object.keys(patch).map((k) => [k, (e as unknown as Record<string, unknown>)[k]]));
 }
 
-function dedupeComments(incoming: IncomingComment[], existing: { author: string | null; comment: string }[]) {
+/** Nový je komentár, ktorého guid ani dvojica autor + text v téme ešte nie je (guid je presnejší, text drží aj pred migráciou). */
+function dedupeComments(incoming: IncomingComment[], existing: { guid?: string; author: string | null; comment: string }[]) {
   const seen = new Set(existing.map((c) => commentKey(c.author, c.comment)));
+  const guids = new Set(existing.map((c) => c.guid?.toLowerCase()).filter((g): g is string => !!g));
   const out: IncomingComment[] = [];
   for (const c of incoming) {
     const k = commentKey(c.author, c.comment);
-    if (seen.has(k)) continue;
+    if (seen.has(k) || (c.guid && guids.has(c.guid))) continue;
     seen.add(k);
+    if (c.guid) guids.add(c.guid);
     out.push(c);
   }
   return out;

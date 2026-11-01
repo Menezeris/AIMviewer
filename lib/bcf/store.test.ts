@@ -29,6 +29,13 @@ describe("addComment s pôvodným dátumom (import .bcfzip)", () => {
     expect(c?.date).toBe("2026-01-02T03:04:05.000Z");
   });
 
+  it("posiela pôvodný guid komentára (p_guid) a bez neho null", async () => {
+    const store = supabaseBcfStore();
+    await store.addComment("t1", "a@b.sk", "text", "2026-01-02T03:04:05.000Z", "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa");
+    await store.addComment("t1", "a@b.sk", "text", "2026-01-02T03:04:05.000Z");
+    expect(calls.map((x) => x.args.p_guid)).toEqual(["aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa", null]);
+  });
+
   it("bez dátumu volá pôvodnú model_task_add_comment", async () => {
     await supabaseBcfStore().addComment("t1", "a@b.sk", "text");
     expect(calls.map((x) => x.fn)).toEqual(["model_task_add_comment"]);

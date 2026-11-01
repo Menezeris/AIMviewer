@@ -146,11 +146,12 @@ export interface BcfStore {
   list(filter: TopicFilter): Promise<{ rows: BcfTopicRow[]; total: number }>;
   update(id: string, patch: BcfTopicWrite): Promise<BcfTopicRow>;
   /**
-   * Atomické pripojenie komentára (`model_task_add_comment`); null = téma neexistuje. S `date` (import `.bcfzip`) sa
-   * zachová pôvodný dátum komentára a `updated_at`/`modified_by` témy sa nemení (`model_task_import_comment`);
-   * kým migrácia z `supabase/pending` nie je nasadená, padne to na dnešné správanie (čas zápisu).
+   * Atomické pripojenie komentára (`model_task_add_comment`); null = téma neexistuje. S `date` alebo `guid` (import
+   * `.bcfzip`) sa zachová pôvodný dátum a guid komentára, komentár s týmto guid v téme sa nepridá znova a
+   * `updated_at`/`modified_by` témy sa nemení (`model_task_import_comment`); kým migrácia z `supabase/pending`
+   * nie je nasadená, padne to na dnešné správanie (čas zápisu, nový guid).
    */
-  addComment(id: string, author: string, comment: string, date?: string): Promise<BcfComment | null>;
+  addComment(id: string, author: string, comment: string, date?: string, guid?: string): Promise<BcfComment | null>;
   /** Témy so session, ktoré ešte bežia (stav `in_progress`, pohyb po `since`). */
   runningSessions(since: Date): Promise<BcfTopicRow[]>;
   vocabulary(): Promise<TopicVocabulary>;
@@ -249,13 +250,14 @@ export function supabaseBcfStore(): BcfStore {
       if (error || !data) fail("Úprava témy zlyhala", error);
       return data as BcfTopicRow;
     },
-    async addComment(id, author, comment, date) {
-      if (date && Date.now() - importRpcMissingAt > IMPORT_RPC_RETRY_MS) {
+    async addComment(id, author, comment, date, guid) {
+      if ((date || guid) && Date.now() - importRpcMissingAt > IMPORT_RPC_RETRY_MS) {
         const { data, error } = await db().rpc("model_task_import_comment", {
           p_task: id,
           p_author: author,
           p_comment: comment,
-          p_date: date,
+          p_date: date ?? null,
+          p_guid: guid ?? null,
         });
         if (!error) return (data as BcfComment | null) ?? null;
         if (!isMissingFunction(error)) fail("Zápis komentára zlyhal", error);
