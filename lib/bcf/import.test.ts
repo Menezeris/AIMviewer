@@ -60,10 +60,11 @@ function seeded(): Mem {
         camera: { position: { x: 5, y: 5, z: 5 }, target: { x: 0, y: 0, z: 0 }, aspect: 1.5 },
         section: { axis: "y", coordinate: 3.1 },
       },
+      created_at: "2026-09-30T10:00:00.000Z",
       updated_at: T_OLD,
     },
-    { title: "Na výkrese", description: "Chýba popis", status: "in_progress", components: [], author: "samuel@assetin.sk", modified_by: "samuel@assetin.sk", updated_at: T_OLD },
-    { title: "Uzavretá", status: "closed", author: "samuel@assetin.sk", modified_by: "samuel@assetin.sk", updated_at: T_OLD },
+    { title: "Na výkrese", description: "Chýba popis", status: "in_progress", components: [], author: "samuel@assetin.sk", modified_by: "samuel@assetin.sk", created_at: "2026-09-30T10:00:00.000Z", updated_at: T_OLD },
+    { title: "Uzavretá", status: "closed", author: "samuel@assetin.sk", modified_by: "samuel@assetin.sk", created_at: "2026-09-30T10:00:00.000Z", updated_at: T_OLD },
   ]);
   m.docs.push({
     id: "22222222-2222-4222-8222-000000000001",
@@ -155,6 +156,57 @@ describe("import .bcfzip do DB (D-158 krok 8)", () => {
     const same = await importBcfArchive(await exportProject(a, "2.1"), bd);
     expect(same.unchanged).toBe(3);
     expect(b.rows[0].comments).toHaveLength(2);
+  });
+
+  it("zachová pôvodné dátumy a autorov: téma (vznik, zmena) aj komentáre", async () => {
+    const a = seeded();
+    a.rows[0].created_at = "2026-09-01T08:00:00.000Z";
+    a.rows[0].comments = [
+      { guid: "c1", author: "Claude (MCP)", date: "2026-09-02T09:30:00Z", comment: "Založené z chatu" },
+      { guid: "c2", author: "projektant", date: "2026-09-15T14:45:10Z", comment: "Posunuté nosník" },
+    ];
+    for (const version of ["2.1", "3.0"] as const) {
+      const b = memoryStore();
+      await importBcfArchive(await exportProject(a, version), deps({ store: b.store }), { author: "importer" });
+      expect(b.rows[0]).toMatchObject({ author: "samuel@assetin.sk", modified_by: "samuel@assetin.sk", created_at: "2026-09-01T08:00:00.000Z", updated_at: T_OLD });
+      expect(b.rows[0].comments.map((c) => [c.author, c.date, c.comment])).toEqual([
+        ["Claude (MCP)", "2026-09-02T09:30:00.000Z", "Založené z chatu"],
+        ["projektant", "2026-09-15T14:45:10.000Z", "Posunuté nosník"],
+      ]);
+      expect(b.rows[1]).toMatchObject({ created_at: a.rows[1].created_at, updated_at: T_OLD });
+    }
+  });
+
+  it("aktualizácia: updated_at a dátum nového komentára zo súboru, nie čas importu; budúci dátum sa orezá", async () => {
+    const a = seeded();
+    const b = memoryStore();
+    const bd = deps({ store: b.store });
+    await importBcfArchive(await exportProject(a, "2.1"), bd);
+    a.rows[0].status = "resolved";
+    a.rows[0].comments = [...a.rows[0].comments, { guid: "c2", author: "projektant", date: "2026-10-30T08:00:00Z", comment: "Posunuté nosník" }];
+    a.rows[0].updated_at = "2026-10-30T09:00:00.000Z";
+    await importBcfArchive(await exportProject(a, "2.1"), bd);
+    expect(b.rows[0].updated_at).toBe("2026-10-30T09:00:00.000Z");
+    expect(b.rows[0].comments[1]).toMatchObject({ author: "projektant", date: "2026-10-30T08:00:00.000Z" });
+    // Súbor so zlými hodinami (dátum zmeny v budúcnosti) sa orezá na čas importu.
+    a.rows[0].status = "closed";
+    a.rows[0].updated_at = "2099-01-01T00:00:00.000Z";
+    const before = Date.now();
+    await importBcfArchive(await exportProject(a, "2.1"), bd);
+    const stamped = Date.parse(b.rows[0].updated_at);
+    expect(stamped).toBeGreaterThanOrEqual(before);
+    expect(stamped).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("len nový komentár: updated_at ostane, komentár nesie pôvodný dátum", async () => {
+    const a = seeded();
+    const b = memoryStore();
+    const bd = deps({ store: b.store });
+    await importBcfArchive(await exportProject(a, "2.1"), bd);
+    a.rows[2].comments = [{ guid: "c9", author: "revizor", date: "2026-10-05T07:00:00Z", comment: "Súhlasím" }];
+    await importBcfArchive(await exportProject(a, "2.1"), bd);
+    expect(b.rows[2].comments.map((c) => [c.author, c.date])).toEqual([["revizor", "2026-10-05T07:00:00.000Z"]]);
+    expect(b.rows[2].updated_at).toBe(T_OLD);
   });
 
   it("téma v DB novšia než súbor a líši sa = konflikt, nič sa nezapíše; overwrite ju prepíše", async () => {

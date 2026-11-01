@@ -98,10 +98,10 @@ export function memoryStore(seed: Partial<BcfTopicRow>[] = []) {
       Object.assign(r, patch);
       return { ...r };
     },
-    async addComment(id, author, comment) {
+    async addComment(id, author, comment, date) {
       const r = rows.find((x) => x.id === id);
       if (!r) return null;
-      const c = { guid: `c${r.comments.length + 1}`, author, date: NOW.toISOString(), comment };
+      const c = { guid: `c${r.comments.length + 1}`, author, date: date ?? NOW.toISOString(), comment };
       r.comments = [...r.comments, c];
       return c;
     },
