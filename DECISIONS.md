@@ -8390,6 +8390,28 @@ a FinishCeilingHeight sedia s telesom a krytinami, NetVolume vzniká odčítaní
 (presun z `supabase/pending` v #384). `ifc_measure` ostáva "čítanie"; `save=true` len na výslovný pokyn používateľa, čo opis
 toolu aj parametra `save` hovorí doslova. Bod (a) nižšie je tým rozhodnutý.
 
+**Doplnok (2026-11-01): opravy po prvom behu na ASR v79 (Samuel cez orchestrátora: "áno, oprav overovač a nový beh").**
+Prvý beh (83 IfcSpace, run `1b032890...` a `f511be53...`): green 324, yellow 0, red 34, grey 248. Žiadna červená nebola istá chyba
+modelu, väčšina pochádzala z overovača:
+- **B3** NetVolume odčítal každú IfcCovering vrátane izolácie (ST01 INSULATION 0,204 m pod strechou 4NP, FS01, FS03). Teraz len
+  `NET_VOLUME_COVERINGS` (FLOORING, CEILING) z registra; Revit izoláciu tiež neodčíta.
+- **B1** pri dvoch telesách miestnosti (1.01 Lobby) s jedným odmietnutým sa počítalo z časti (18,75 namiesto 149,23 m2). Prvok
+  s aspoň jedným odmietnutým telesom sa z extrúzie nepočíta vôbec a ide na náhradu cez mesh.
+- **B2** referencia, ktorá nemá teleso (profil podlahovín 1NP aj podhľadov 3NP ifc-lite odmietol), dávala "nenájdená" a z toho
+  červenú FFH, FCH o +0,30 m a NetVolume. Teraz: chýbajúca podlahovina = FFH sivá; FCH sa meria od podlahy, bez nej od spodku
+  miestnosti len keď súbor podlahovinu neuvádza (inak sivá); keď v pôdoryse miestnosti leží prvok triedy bez telesa (obálka sa
+  prekrýva alebo nie je známa), výsledok je "nedá sa overiť" s menami prvkov. Podhľad mimo pôdorysu miestnosti ostáva nálezom.
+- **B4** prienik pod `min_overlap_m2` (1e-4 m2) je dotyk hranou, nie prekryv (vo vzorci boli členy "0 x 0,15").
+- **Náhrada cez uzavretý mesh** (`BODY_FALLBACK`): prvok bez použiteľnej extrúzie (iná reprezentácia, odmietnutý profil, šikmá
+  extrúzia, časť telies) dostane teleso z meshu motora: pôdorys = priemet plôch s normálou nadol, objem divergenciou, obvod = hrany
+  pôdorysu bez suseda, z z vrcholov. Metóda a vzorec to uvádzajú. Sivá len pri neuzavretom meshi (podľa spiku 16 miestností ASR).
+- Sivé teleso vracia všetkých 8 receptov (predtým 6). Recepty s inou logikou majú novú verziu (`space.height.slabs@2`,
+  `space.ffh.covering@2`, `space.fch.covering@3`, `space.netvolume.coverings@2`), `REGISTRY_VERSION = 2`.
+- Eval otázka `space-quantities-verify` je `mcp_only` (`ifc_measure` je len v MCP; test `scripts/eval-score.test.ts`).
+- Nové BCF témy sa z behu nezakladajú; kandidát (29 profilov odmietnutých ifc-lite) až po overení iným jadrom.
+**Testy:** `space-verify.test.ts` 19 (každý bod B1 až B4 a mesh so samostatnou mutáciou: 9 mutácií, každú test zhodí),
+`space-verify-run.test.ts` 5 (miestnosť IfcFacetedBrep cez mesh motora; mutácia vypnutej náhrady test zhodí).
+
 **Otvorené (Samuel):** (a) `ifc_measure` ostáva v inventári "čítanie" (`readOnlyHint`), hoci `save=true` pridá riadok behu do
 DB (len pridáva, nič neprepisuje); označenie "zápis" by v claude.ai pýtalo súhlas pri každom meraní. (b) Systémový prompt sa
 nemení (MCP inštrukcie sú na hranici 15 000 znakov, test); pravidlo nesie opis toolu, ako D-142. (c) UI fajočky v paneli

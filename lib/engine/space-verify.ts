@@ -1,6 +1,7 @@
 import { GeometryProcessor } from "@ifc-lite/geometry";
 
 import {
+  NET_VOLUME_COVERINGS,
   NON_CONSTANT_RULE,
   SELECTION,
   SPACE_METHODS,
@@ -24,8 +25,9 @@ import {
  * číslami a kotvy na kóty. Pravidlá (tolerancie, výber, konštantnosť) sú v registri
  * `lib/verify/quantity-methods.ts`, nie tu.
  *
- * Zatiaľ nie: šikmé extrúzie, CSG operandy (`source_modified` = hranol je horný odhad), ďalšie analytické
- * tvary (IfcSweptDiskSolid, IfcRevolvedAreaSolid...) a uzavretý mesh ako náhrada; vtedy je stav sivý s dôvodom.
+ * Prvok bez použiteľnej extrúzie (iná reprezentácia, profil odmietnutý ifc-lite, šikmá extrúzia alebo len
+ * časť telies) dostane teleso z uzavretého meshu motora (`bodyFromMeshTriangles`); sivý je len pri neuzavretom
+ * meshi. Zatiaľ nie: ďalšie analytické tvary (IfcSweptDiskSolid, IfcRevolvedAreaSolid...).
  */
 
 export type Pt = [number, number];
@@ -39,11 +41,18 @@ export interface Prism {
   z0: number;
   z1: number;
 }
+export type Vec3 = [number, number, number];
 export interface Body {
   expressId: number;
   prisms: Prism[];
   /** Dôvod, prečo prvok nemá (celé) analytické teleso. */
   unsupported?: string;
+  /** Odkiaľ je teleso: analytická extrúzia, alebo náhrada z uzavretého meshu motora. */
+  source?: "extrusion" | "mesh";
+  /** Pri meshi: prstence prizmy sú trojuholníky pôdorysu, preto objem, obvod a ťažisko nesie mesh. */
+  mesh?: { volume: number; perimeter: number; centroid: Pt };
+  /** Obálka v IFC svete (aj pri neuzavretom meshi): rozhodne, či prvok bez telesa môže byť referenciou miestnosti. */
+  bbox?: { min: Vec3; max: Vec3 };
 }
 
 // ── 2D geometria ─────────────────────────────────────────────────────────────
@@ -262,10 +271,12 @@ export function bodiesFromExtrusions(defs: ExtrusionDefinitionsLike, ids: readon
     const inst = defs.instances[id] ?? [];
     const body: Body = { expressId: id, prisms: [] };
     if (!inst.length) body.unsupported = "bez extrúzie (Brep, CSG alebo iná reprezentácia)";
+    /** Dôvod odmietnutia časti telies: prvok sa potom nepočíta z časti (D-185 oprava B1). */
+    let rejected: string | null = null;
     for (const i of inst) {
       const src = byKey.get(JSON.stringify(i.source))?.source;
       if (i.status.type !== "complete" || !src || src.status.type !== "complete" || !src.profile || !i.world_from_source) {
-        body.unsupported = i.status.reason ?? src?.status.reason ?? "nekompletný zdroj extrúzie";
+        rejected = i.status.reason ?? src?.status.reason ?? "nekompletný zdroj extrúzie";
         continue;
       }
       if (i.source_modified) body.unsupported = "teleso je operand CSG (source_modified), hranol je len horný odhad";
@@ -276,7 +287,7 @@ export function bodiesFromExtrusions(defs: ExtrusionDefinitionsLike, ids: readon
       const d = axis.map((x) => x * depth);
       const horiz = Math.hypot(d[0], d[1]);
       if (horiz > 1e-6 * Math.max(1, Math.abs(d[2]))) {
-        body.unsupported = "šikmá alebo vodorovná extrúzia (mimo spiku)";
+        rejected = "šikmá alebo vodorovná extrúzia";
         continue;
       }
       const rings: Ring[] = [];
@@ -289,6 +300,11 @@ export function bodiesFromExtrusions(defs: ExtrusionDefinitionsLike, ids: readon
       const z0 = Math.min(zBase, zBase + d[2]);
       body.prisms.push({ rings, z0, z1: z0 + Math.abs(d[2]) });
     }
+    if (rejected) {
+      body.unsupported = inst.length > 1 ? `${rejected} (aspoň jedno z ${inst.length} telies; z časti sa nepočíta)` : rejected;
+      body.prisms = [];
+    }
+    if (body.prisms.length) body.source = "extrusion";
     out.set(id, body);
   }
   return out;
@@ -313,6 +329,65 @@ export async function extractExtrusions(bytes: Uint8Array, ids: readonly number[
 
 export async function extractBodies(bytes: Uint8Array, ids: readonly number[]): Promise<Map<number, Body>> {
   return (await extractExtrusions(bytes, ids)).bodies;
+}
+
+// ── náhrada telesa z meshu ───────────────────────────────────────────────────
+
+/**
+ * Teleso z trojuholníkov meshu v IFC svete (9 čísel na trojuholník): pôdorys = priemet plôch s normálou nadol
+ * (každý trojuholník je prstenec), obvod = hrany pôdorysu bez suseda (zaokrúhlené na mm), ťažisko vážené plochou,
+ * z0 / z1 z vrcholov. `closed` a `volume` dodá motor (`meshMetrics`); neuzavretý mesh nedá teleso, len obálku.
+ */
+export function bodyFromMeshTriangles(expressId: number, tris: ArrayLike<number>, closed: boolean, volume: number): Body {
+  const min: Vec3 = [Infinity, Infinity, Infinity];
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < tris.length; i++) {
+    const k = i % 3;
+    if (tris[i] < min[k]) min[k] = tris[i];
+    if (tris[i] > max[k]) max[k] = tris[i];
+  }
+  const bbox = tris.length ? { min, max } : undefined;
+  if (!closed) return { expressId, prisms: [], unsupported: "mesh nie je uzavretý, objem ani pôdorys sa z neho nedajú overiť", ...(bbox ? { bbox } : {}) };
+  const rings: Ring[] = [];
+  const edges = new Map<string, { n: number; len: number }>();
+  const key = (x: number, y: number) => `${Math.round(x * 1000)},${Math.round(y * 1000)}`;
+  let area = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let t = 0; t + 8 < tris.length; t += 9) {
+    const a: Pt = [tris[t], tris[t + 1]];
+    const b: Pt = [tris[t + 3], tris[t + 4]];
+    const c: Pt = [tris[t + 6], tris[t + 7]];
+    const ux = tris[t + 3] - tris[t], uy = tris[t + 4] - tris[t + 1], uz = tris[t + 5] - tris[t + 2];
+    const vx = tris[t + 6] - tris[t], vy = tris[t + 7] - tris[t + 1], vz = tris[t + 8] - tris[t + 2];
+    const nz = ux * vy - uy * vx;
+    const len = Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, nz);
+    if (len === 0 || nz / len > -1e-6) continue; // len plochy s normálou nadol
+    const ar = Math.abs(signedArea([a, b, c]));
+    if (ar < 1e-12) continue;
+    rings.push({ pts: [a, b, c], sign: 1 });
+    area += ar;
+    cx += ((a[0] + b[0] + c[0]) / 3) * ar;
+    cy += ((a[1] + b[1] + c[1]) / 3) * ar;
+    for (const [p, q] of [[a, b], [b, c], [c, a]] as Array<[Pt, Pt]>) {
+      const kp = key(p[0], p[1]);
+      const kq = key(q[0], q[1]);
+      const k = kp < kq ? `${kp}|${kq}` : `${kq}|${kp}`;
+      const e = edges.get(k);
+      if (e) e.n++;
+      else edges.set(k, { n: 1, len: Math.hypot(q[0] - p[0], q[1] - p[1]) });
+    }
+  }
+  if (!rings.length) return { expressId, prisms: [], unsupported: "mesh bez plôch s normálou nadol", ...(bbox ? { bbox } : {}) };
+  let perimeter = 0;
+  for (const e of edges.values()) if (e.n === 1) perimeter += e.len;
+  return {
+    expressId,
+    prisms: [{ rings, z0: min[2], z1: max[2] }],
+    source: "mesh",
+    mesh: { volume, perimeter, centroid: [cx / area, cy / area] },
+    bbox: { min, max },
+  };
 }
 
 // ── recepty IfcSpace (pravidlá: lib/verify/quantity-methods.ts) ───────────────
@@ -362,27 +437,65 @@ export interface SpaceInput extends Element {
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
 const r4 = (x: number) => Math.round(x * 10000) / 10000;
 
-function region(b: Body): { rings: Ring[]; z0: number; z1: number } | null {
-  if (!b.prisms.length) return null;
-  // Spike: viac telies prvku = zjednotenie ako súčet (predpoklad: sa neprekrývajú).
-  return { rings: b.prisms.flatMap((p) => p.rings), z0: Math.min(...b.prisms.map((p) => p.z0)), z1: Math.max(...b.prisms.map((p) => p.z1)) };
+interface Region {
+  rings: Ring[];
+  z0: number;
+  z1: number;
+  /** Pôdorysná obálka (x0, y0, x1, y1) na rýchle vyradenie. */
+  plan: [number, number, number, number];
 }
+
+function region(b: Body): Region | null {
+  if (!b.prisms.length) return null;
+  // Viac telies prvku = zjednotenie ako súčet (predpoklad: sa neprekrývajú).
+  const rings = b.prisms.flatMap((p) => p.rings);
+  const plan: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const r of rings) for (const [x, y] of r.pts) {
+    if (x < plan[0]) plan[0] = x;
+    if (y < plan[1]) plan[1] = y;
+    if (x > plan[2]) plan[2] = x;
+    if (y > plan[3]) plan[3] = y;
+  }
+  return { rings, z0: Math.min(...b.prisms.map((p) => p.z0)), z1: Math.max(...b.prisms.map((p) => p.z1)), plan };
+}
+
+const planDisjoint = (a: Region["plan"], b: Region["plan"]) => a[2] <= b[0] || b[2] <= a[0] || a[3] <= b[1] || b[3] <= a[1];
 
 function judge(file: number | undefined, computed: number, kind: QuantityKind): Status {
   if (file == null) return "grey";
   return withinTolerance(file, computed, kind) ? "green" : "red";
 }
 
-/** Prvky, ktorých pôdorys pokrýva aspoň `minShare` pôdorysu miestnosti, s plochou prekryvu. */
-function overlapping(space: Ring[], others: Element[], minShare: number) {
-  const a = regionArea(space);
+/** Prvky, ktorých pôdorys pokrýva aspoň `minShare` pôdorysu miestnosti; prienik pod `min_overlap_m2` je len dotyk (B4). */
+function overlapping(space: Region, others: Element[], minShare: number) {
+  const a = regionArea(space.rings);
+  const floor = Math.max(minShare * a, SELECTION.min_overlap_m2);
   return others
     .map((e) => {
       const r = region(e.body);
-      return r ? { e, r, overlap: regionIntersectionArea(space, r.rings) } : null;
+      if (!r || planDisjoint(space.plan, r.plan)) return null;
+      return { e, r, overlap: regionIntersectionArea(space.rings, r.rings) };
     })
-    .filter((x): x is NonNullable<typeof x> => !!x && x.overlap > minShare * a);
+    .filter((x): x is NonNullable<typeof x> => !!x && x.overlap > floor);
 }
+
+/**
+ * Prvky danej triedy bez telesa (ani extrúzia, ani uzavretý mesh), ktoré môžu byť v pôdoryse miestnosti a vo výške
+ * [lo, hi]: obálka sa prekrýva, alebo obálku nepoznáme. Keď referencia chýba a taký prvok existuje, výsledok
+ * "nedá sa overiť" (sivá), nie nález (D-185 oprava B2).
+ */
+function unresolved(space: Region, others: Element[], lo: number, hi: number): Element[] {
+  return others.filter((e) => {
+    if (e.body.prisms.length) return false;
+    const b = e.body.bbox;
+    if (!b) return true;
+    return !planDisjoint(space.plan, [b.min[0], b.min[1], b.max[0], b.max[1]]) && b.max[2] >= lo && b.min[2] <= hi;
+  });
+}
+
+const names = (els: Element[]) => els.slice(0, 5).map((e) => e.name).join(", ") + (els.length > 5 ? ` a ďalšie (${els.length})` : "");
+const cannot = (what: string, els: Element[]) =>
+  `nedá sa overiť: ${what} v pôdoryse miestnosti nemá teleso (${els.length}: ${names(els)}; ${els[0].body.unsupported ?? "bez telesa"})`;
 
 /** Rôzne výšky (zhlukované po tolerancii dĺžky) zoradené vzostupne. */
 function distinct(values: number[]): number[] {
@@ -396,16 +509,19 @@ export interface Context {
   coverings: Element[];
 }
 
-function base(key: SpaceMethodKey) {
+function base(key: SpaceMethodKey, body?: Body) {
   const m: QuantityMethod = SPACE_METHODS[key];
-  return { target: m.target, recipe: m.id, method: m.method, definition: m.definition, spec_ref: m.spec_ref, tolerance: TOLERANCES[m.kind].text };
+  const meshNote = body?.source === "mesh" ? " (teleso miestnosti: uzavretý mesh motora, náhrada za extrúziu)" : "";
+  return { target: m.target, recipe: m.id, method: m.method + meshNote, definition: m.definition, spec_ref: m.spec_ref, tolerance: TOLERANCES[m.kind].text };
 }
 
+const ALL_KEYS = ["height_own", "height_slabs", "gross_floor_area", "gross_perimeter", "gross_volume", "ffh", "fch", "net_volume"] as const;
+
 /** Výsledok pri viacerých výškach (pravidlo konštantnosti zo schémy). */
-function nonConstant(key: SpaceMethodKey, file: number | undefined, heights: number[], ref: number, anchors: Anchor[]): RecipeResult {
+function nonConstant(key: SpaceMethodKey, file: number | undefined, heights: number[], ref: number, anchors: Anchor[], body: Body): RecipeResult {
   const values = heights.map((h) => r4(h - ref));
   return {
-    ...base(key),
+    ...base(key, body),
     status: file == null ? "green" : "red",
     file,
     distinct_heights: values,
@@ -420,80 +536,94 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
   const out: RecipeResult[] = [];
   const own = region(s.body);
   if (!own) {
-    for (const k of ["height_own", "gross_floor_area", "gross_volume", "net_volume", "ffh", "fch"] as const) {
+    for (const k of ALL_KEYS) {
       const b = base(k);
-      out.push({ ...b, status: "grey", file: s.qto[b.target.split(".")[1]], note: s.body.unsupported, anchors: [] });
+      out.push({ ...b, status: "grey", file: s.qto[b.target.split(".")[1]], note: s.body.unsupported ?? "miestnosť nemá teleso", anchors: [] });
     }
     return out;
   }
+  const body = s.body;
+  const isMesh = body.source === "mesh" && !!body.mesh;
   const A = regionArea(own.rings);
-  const P = regionPerimeter(own.rings);
+  const P = isMesh ? body.mesh!.perimeter : regionPerimeter(own.rings);
   const H = own.z1 - own.z0;
-  const gv = s.body.prisms.reduce((sum, p) => sum + regionArea(p.rings) * (p.z1 - p.z0), 0);
+  const gv = isMesh ? body.mesh!.volume : body.prisms.reduce((sum, p) => sum + regionArea(p.rings) * (p.z1 - p.z0), 0);
   const self: Anchor = { global_id: s.globalId, role: "teleso miestnosti" };
-  const modified = s.body.unsupported ? `; ${s.body.unsupported}` : "";
+  const modified = body.unsupported ? `; ${body.unsupported}` : "";
+  const c = SELECTION.contact_m;
 
-  out.push({ ...base("height_own"), status: judge(s.qto.Height, H, "length"), file: s.qto.Height, computed: r4(H),
+  out.push({ ...base("height_own", body), status: judge(s.qto.Height, H, "length"), file: s.qto.Height, computed: r4(H),
     formula: `${r3(own.z1)} - ${r3(own.z0)} = ${r4(H)} m`, anchors: [{ ...self, z_m: own.z0 }, { ...self, z_m: own.z1 }], dimension: { z0: own.z0, z1: own.z1 } });
-  out.push({ ...base("gross_floor_area"), status: judge(s.qto.GrossFloorArea, A, "area"), file: s.qto.GrossFloorArea, computed: r4(A),
-    formula: `plocha profilu = ${r4(A)} m2`, anchors: [self] });
-  out.push({ ...base("gross_perimeter"), status: judge(s.qto.GrossPerimeter, P, "length"), file: s.qto.GrossPerimeter, computed: r4(P),
-    formula: `obvod vonkajšej slučky = ${r4(P)} m`, anchors: [self] });
-  out.push({ ...base("gross_volume"), status: judge(s.qto.GrossVolume, gv, "volume"), file: s.qto.GrossVolume, computed: r4(gv),
-    formula: `${r4(A)} x ${r4(H)} = ${r4(gv)} m3${modified}`, anchors: [self] });
+  out.push({ ...base("gross_floor_area", body), status: judge(s.qto.GrossFloorArea, A, "area"), file: s.qto.GrossFloorArea, computed: r4(A),
+    formula: isMesh ? `priemet plôch meshu s normálou nadol = ${r4(A)} m2` : `plocha profilu = ${r4(A)} m2`, anchors: [self] });
+  out.push({ ...base("gross_perimeter", body), status: judge(s.qto.GrossPerimeter, P, "length"), file: s.qto.GrossPerimeter, computed: r4(P),
+    formula: isMesh ? `obvod pôdorysu meshu = ${r4(P)} m` : `obvod vonkajšej slučky = ${r4(P)} m`, anchors: [self] });
+  out.push({ ...base("gross_volume", body), status: judge(s.qto.GrossVolume, gv, "volume"), file: s.qto.GrossVolume, computed: r4(gv),
+    formula: isMesh ? `objem uzavretého meshu = ${r4(gv)} m3` : `${r4(A)} x ${r4(H)} = ${r4(gv)} m3${modified}`, anchors: [self] });
 
   // Dosky pod a nad.
-  const c = SELECTION.contact_m;
-  const slabs = overlapping(own.rings, ctx.slabs, SELECTION.slab_min_overlap);
+  const slabs = overlapping(own, ctx.slabs, SELECTION.slab_min_overlap);
   const below = slabs.filter((x) => Math.abs(x.r.z1 - own.z0) <= c).sort((a, b) => b.overlap - a.overlap)[0];
   const above = slabs.filter((x) => Math.abs(x.r.z0 - own.z1) <= c).sort((a, b) => b.overlap - a.overlap)[0];
   if (below && above) {
     const hs = above.r.z0 - below.r.z1;
-    out.push({ ...base("height_slabs"), status: judge(s.qto.Height, hs, "length"), file: s.qto.Height, computed: r4(hs),
+    out.push({ ...base("height_slabs", body), status: judge(s.qto.Height, hs, "length"), file: s.qto.Height, computed: r4(hs),
       formula: `spodok(${above.e.name}) - vrch(${below.e.name}) = ${r3(above.r.z0)} - ${r3(below.r.z1)} = ${r4(hs)} m`,
       anchors: [{ global_id: below.e.globalId, role: "doska pod", z_m: below.r.z1 }, { global_id: above.e.globalId, role: "doska nad", z_m: above.r.z0 }],
       dimension: { z0: below.r.z1, z1: above.r.z0 } });
   } else {
-    out.push({ ...base("height_slabs"), status: "grey", file: s.qto.Height,
-      note: `${below ? "" : "doska pod nenájdená; "}${above ? "" : "doska nad nenájdená"}`.trim(), anchors: [] });
+    const missing = unresolved(own, ctx.slabs, own.z0 - 1, own.z1 + 1);
+    out.push({ ...base("height_slabs", body), status: "grey", file: s.qto.Height,
+      note: missing.length ? cannot("doska", missing) : `${below ? "" : "doska pod nenájdená; "}${above ? "" : "doska nad nenájdená"}`.trim(), anchors: [] });
   }
 
-  // Podlahovina.
-  const floors = overlapping(own.rings, ctx.coverings.filter((x) => x.predefinedType === "FLOORING"), SELECTION.flooring_min_overlap)
-    .filter((x) => x.r.z0 >= own.z0 - c && x.r.z1 <= own.z1);
+  // Podlahovina; bez nájdenej podlahoviny je FFH sivá (B2).
+  const floorings = ctx.coverings.filter((x) => x.predefinedType === "FLOORING");
+  const floors = overlapping(own, floorings, SELECTION.flooring_min_overlap).filter((x) => x.r.z0 >= own.z0 - c && x.r.z1 <= own.z1);
   const floorTops = distinct(floors.map((x) => x.r.z1));
   const floorAnchors = floors.map((x) => ({ global_id: x.e.globalId, role: "podlahovina", z_m: x.r.z1 }));
   const floorTop = floorTops.length === 1 ? floorTops[0] : null;
-  if (floorTops.length > 1) out.push(nonConstant("ffh", s.qto.FinishFloorHeight, floorTops, own.z0, [{ ...self, z_m: own.z0 }, ...floorAnchors]));
+  const floorMissing = unresolved(own, floorings, own.z0 - c, own.z1);
+  if (floorTops.length > 1) out.push(nonConstant("ffh", s.qto.FinishFloorHeight, floorTops, own.z0, [{ ...self, z_m: own.z0 }, ...floorAnchors], body));
   else if (floorTop != null) {
     const ffh = floorTop - own.z0;
-    out.push({ ...base("ffh"), status: judge(s.qto.FinishFloorHeight, ffh, "length"), file: s.qto.FinishFloorHeight, computed: r4(ffh),
+    out.push({ ...base("ffh", body), status: judge(s.qto.FinishFloorHeight, ffh, "length"), file: s.qto.FinishFloorHeight, computed: r4(ffh),
       formula: `vrch(podlahovina) - spodok(miestnosť) = ${r3(floorTop)} - ${r3(own.z0)} = ${r4(ffh)} m`, anchors: [{ ...self, z_m: own.z0 }, ...floorAnchors],
       dimension: { z0: own.z0, z1: floorTop } });
   } else {
-    out.push({ ...base("ffh"), status: s.qto.FinishFloorHeight == null ? "grey" : "red", file: s.qto.FinishFloorHeight,
-      note: "podlahovina v pôdoryse miestnosti nenájdená", anchors: [] });
+    out.push({ ...base("ffh", body), status: "grey", file: s.qto.FinishFloorHeight,
+      note: floorMissing.length ? cannot("podlahovina", floorMissing) : "podlahovina v pôdoryse miestnosti nenájdená", anchors: [] });
   }
 
-  // Podhľad: každý podhľad s prekryvom aspoň SELECTION.ceiling_min_overlap je jedna výška; viac výšok = pravidlo konštantnosti.
-  const ceilings = overlapping(own.rings, ctx.coverings.filter((x) => x.predefinedType === "CEILING"), SELECTION.ceiling_min_overlap)
-    .filter((x) => x.r.z0 > own.z0 && x.r.z1 <= own.z1 + c);
-  const ref = floorTop ?? own.z0;
+  // Podhľad: každý podhľad s prekryvom aspoň ceiling_min_overlap je jedna výška; viac výšok = pravidlo konštantnosti.
+  const ceilingEls = ctx.coverings.filter((x) => x.predefinedType === "CEILING");
+  const ceilings = overlapping(own, ceilingEls, SELECTION.ceiling_min_overlap).filter((x) => x.r.z0 > own.z0 && x.r.z1 <= own.z1 + c);
+  const ceilingMissing = unresolved(own, ceilingEls, own.z0, own.z1 + c);
+  // Vzťažná podlaha: nájdená podlahovina; bez nej len keď súbor podlahovinu neuvádza (FFH 0 alebo chýba).
+  const noFloorInFile = !(s.qto.FinishFloorHeight > 0);
+  const ref = floorTop ?? (noFloorInFile && !floorMissing.length ? own.z0 : null);
   const ceilingAnchors = ceilings.map((x) => ({ global_id: x.e.globalId, role: "podhľad", z_m: x.r.z0 }));
   const bottoms = distinct(ceilings.map((x) => x.r.z0));
-  if (bottoms.length > 1) out.push(nonConstant("fch", s.qto.FinishCeilingHeight, bottoms, ref, [{ ...self, z_m: ref }, ...ceilingAnchors]));
+  if (bottoms.length && ref == null) {
+    out.push({ ...base("fch", body), status: "grey", file: s.qto.FinishCeilingHeight,
+      note: floorMissing.length ? cannot("podlahovina (vzťažná úroveň podhľadu)", floorMissing) : "podlahovina nenájdená, výška podhľadu sa nedá merať od podlahy", anchors: ceilingAnchors });
+  } else if (bottoms.length > 1) out.push(nonConstant("fch", s.qto.FinishCeilingHeight, bottoms, ref!, [{ ...self, z_m: ref! }, ...ceilingAnchors], body));
   else if (bottoms.length === 1) {
-    const fch = bottoms[0] - ref;
-    out.push({ ...base("fch"), status: judge(s.qto.FinishCeilingHeight, fch, "length"), file: s.qto.FinishCeilingHeight, computed: r4(fch),
-      formula: `spodok(podhľad) - vrch(podlahy) = ${r3(bottoms[0])} - ${r3(ref)} = ${r4(fch)} m`, anchors: [{ ...self, z_m: ref }, ...ceilingAnchors],
-      dimension: { z0: ref, z1: bottoms[0] } });
+    const fch = bottoms[0] - ref!;
+    out.push({ ...base("fch", body), status: judge(s.qto.FinishCeilingHeight, fch, "length"), file: s.qto.FinishCeilingHeight, computed: r4(fch),
+      formula: `spodok(podhľad) - vrch(podlahy) = ${r3(bottoms[0])} - ${r3(ref!)} = ${r4(fch)} m`, anchors: [{ ...self, z_m: ref! }, ...ceilingAnchors],
+      dimension: { z0: ref!, z1: bottoms[0] } });
+  } else if (ceilingMissing.length) {
+    out.push({ ...base("fch", body), status: "grey", file: s.qto.FinishCeilingHeight, note: cannot("podhľad", ceilingMissing), anchors: [] });
   } else {
-    out.push({ ...base("fch"), status: s.qto.FinishCeilingHeight == null ? "green" : "red", file: s.qto.FinishCeilingHeight,
+    out.push({ ...base("fch", body), status: s.qto.FinishCeilingHeight == null ? "green" : "red", file: s.qto.FinishCeilingHeight,
       note: s.qto.FinishCeilingHeight == null ? "bez podhľadu, hodnota správne neuvedená" : "podhľad nad miestnosťou nenájdený", anchors: [] });
   }
 
-  // NetVolume = GrossVolume - prieniky krytín s telesom miestnosti, prizmaticky.
-  const parts = overlapping(own.rings, ctx.coverings, 0)
+  // NetVolume = GrossVolume - prieniky podlahovín a podhľadov (NET_VOLUME_COVERINGS, B3) s telesom miestnosti, prizmaticky.
+  const subtracted = ctx.coverings.filter((x) => NET_VOLUME_COVERINGS.includes(x.predefinedType ?? ""));
+  const nvMissing = unresolved(own, subtracted, own.z0 - c, own.z1 + c);
+  const parts = overlapping(own, subtracted, 0)
     .map((x) => ({ ...x, dz: Math.max(0, Math.min(x.r.z1, own.z1) - Math.max(x.r.z0, own.z0)) }))
     .filter((x) => x.dz > 0);
   const nv = gv - parts.reduce((sum, x) => sum + x.overlap * x.dz, 0);
@@ -509,7 +639,11 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
       note = `sedí len metóda "krytiny po celej ploche miestnosti" (${r4(full)} m3), nie prienik podľa schémy`;
     }
   }
-  out.push({ ...base("net_volume"), ...(nvTol ? { tolerance: nvTol.text } : {}), status: nvStatus, file: nvFile, computed: r4(nv),
+  if (nvStatus !== "green" && nvMissing.length) {
+    nvStatus = "grey";
+    note = cannot("krytina (podlahovina alebo podhľad)", nvMissing);
+  }
+  out.push({ ...base("net_volume", body), ...(nvTol ? { tolerance: nvTol.text } : {}), status: nvStatus, file: nvFile, computed: r4(nv),
     formula: `${r4(gv)} - ${parts.map((x) => `${r4(x.overlap)} x ${r4(x.dz)} (${x.e.name})`).join(" - ") || "0"} = ${r4(nv)} m3`, note,
     anchors: [self, ...parts.map((x) => ({ global_id: x.e.globalId, role: "krytina vnútri telesa" }))] });
 
@@ -518,6 +652,7 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
 
 /** Ťažisko pôdorysu miestnosti = miesto, kde sa kreslia zvislé kóty. */
 export function dimensionPoint(s: SpaceInput): Pt | null {
+  if (s.body.mesh) return s.body.mesh.centroid;
   const r = region(s.body);
   return r ? centroid(r.rings) : null;
 }

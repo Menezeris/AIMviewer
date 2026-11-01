@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { MINI_SPACE_IDS as ID, MINI_SPACE_VERIFY_BYTES } from "./__fixtures__/mini-space-verify";
 import {
+  bodiesFromExtrusions,
+  bodyFromMeshTriangles,
+  dimensionPoint,
   extractBodies,
   regionArea,
   regionIntersectionArea,
@@ -13,6 +16,7 @@ import {
   type Pt,
   type Ring,
   type SpaceInput,
+  type ExtrusionDefinitionsLike,
 } from "./space-verify";
 
 const rect = (x0: number, y0: number, x1: number, y1: number): Pt[] => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
@@ -126,5 +130,121 @@ describe("extractExtrusionDefinitions na mini modeli v mm (D-185)", () => {
       },
     );
     expect(res.filter((r) => r.status !== "green").map((r) => `${r.target} ${r.status} ${r.formula ?? r.note}`)).toEqual([]);
+  });
+});
+
+// ── opravy po prvom behu na ASR v79 (D-185, B1 až B4 a náhrada cez mesh) ─────
+
+/** Kváder ako trojuholníky v IFC svete (9 čísel na trojuholník), normály von. */
+function boxTris(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): number[] {
+  const v = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]];
+  // Štvoruholníky proti smeru hodín pri pohľade zvonku.
+  const quads = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]];
+  return quads.flatMap(([a, b, c, d]) => [a, b, c, a, c, d].flatMap((i) => v[i]));
+}
+
+describe("opravy overovača po prvom behu (D-185)", () => {
+  const space = (qto: Record<string, number>, b = body([ring(L)], 4.85, 8.8)): SpaceInput => ({ ...el("2.01", b), qto });
+  const slabs = [el("SD-pod", body([ring(rect(0, 0, 12, 8))], 4.6, 4.85)), el("SD-nad", body([ring(rect(0, 0, 12, 8))], 8.8, 9.05))];
+  const floor = el("PD", body([ring(L)], 4.85, 5.0), "FLOORING");
+  const ceiling = el("PH", body([ring(rect(0, 0, 12, 6))], 8.05, 8.0625), "CEILING");
+  const good = { Height: 3.95, FinishFloorHeight: 0.15, FinishCeilingHeight: 3.05, GrossPerimeter: 40, GrossFloorArea: 88, GrossVolume: 347.6, NetVolume: 333.5 };
+  const noBody = (name: string, pt: string, bbox?: Body["bbox"]): Element => el(name, { expressId: 99, prisms: [], unsupported: "profile boundaries touch", ...(bbox ? { bbox } : {}) }, pt);
+
+  it("B3: NetVolume odčíta len podlahovinu a podhľad, nie izoláciu vnútri telesa", () => {
+    const insulation = el("ST01", body([ring(rect(0, 0, 12, 8))], 8.596, 8.8), "INSULATION");
+    const r = status(verifySpace(space(good), { slabs, coverings: [floor, ceiling, insulation] }), "NetVolume")!;
+    expect(r.status).toBe("green");
+    expect(r.formula).not.toMatch(/ST01/);
+  });
+
+  it("B1: prvok, z ktorého časť extrúzie ifc-lite odmietol, sa nepočíta z časti", () => {
+    const key = (n: number) => ({ solid_id: n });
+    const okSource = {
+      key: key(1),
+      source: {
+        profile: { loops: [{ kind: "outer" as const, segments: rect(0, 0, 2, 2).map((p, i, a) => ({ type: "line", start: [...p, 0], end: [...a[(i + 1) % a.length], 0] })) }], profile_position: null },
+        position_matrix: null, axis_unit_vector: [0, 0, 1], Depth: 3, status: { type: "complete" },
+      },
+    };
+    const bad = { key: key(2), source: { profile: null, position_matrix: null, axis_unit_vector: null, Depth: null, status: { type: "unsupported", reason: "profile boundaries touch" } } };
+    const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    const defs: ExtrusionDefinitionsLike = {
+      sources: [okSource, bad],
+      instances: {
+        5: [
+          { source: key(1), product_id: 5, source_modified: false, world_from_source: I, status: { type: "complete" } },
+          { source: key(2), product_id: 5, source_modified: false, world_from_source: I, status: { type: "unsupported", reason: "profile boundaries touch" } },
+        ],
+        6: [{ source: key(1), product_id: 6, source_modified: false, world_from_source: I, status: { type: "complete" } }],
+      },
+    };
+    const bodies = bodiesFromExtrusions(defs, [5, 6]);
+    expect(bodies.get(5)!.prisms).toHaveLength(0);
+    expect(bodies.get(5)!.unsupported).toMatch(/aspoň jedno z 2 telies; z časti sa nepočíta/);
+    expect(bodies.get(6)!.prisms).toHaveLength(1);
+    expect(bodies.get(6)!.source).toBe("extrusion");
+  });
+
+  it("B2: podlahovina bez telesa v pôdoryse = FFH a FCH sivé (nedá sa overiť), NetVolume sivé", () => {
+    const floorNoBody = noBody("PD-touch", "FLOORING", { min: [0, 0, 4.85], max: [12, 8, 5.0] });
+    const res = verifySpace(space(good), { slabs, coverings: [floorNoBody, ceiling] });
+    const ffh = status(res, "FinishFloorHeight")!;
+    expect(ffh.status).toBe("grey");
+    expect(ffh.note).toMatch(/nedá sa overiť: podlahovina .*PD-touch/);
+    expect(status(res, "FinishCeilingHeight")!.status).toBe("grey");
+    expect(status(res, "NetVolume")!.status).toBe("grey");
+  });
+
+  it("B2: FFH bez nájdenej podlahoviny je sivé aj bez kandidáta; FCH od spodku miestnosti len keď súbor podlahu neuvádza", () => {
+    expect(status(verifySpace(space(good), { slabs, coverings: [ceiling] }), "FinishFloorHeight")!.status).toBe("grey");
+    expect(status(verifySpace(space(good), { slabs, coverings: [ceiling] }), "FinishCeilingHeight")!.status).toBe("grey");
+    const noFloor = { ...good, FinishCeilingHeight: 3.2 } as Record<string, number>;
+    delete noFloor.FinishFloorHeight;
+    expect(status(verifySpace(space(noFloor), { slabs, coverings: [ceiling] }), "FinishCeilingHeight")!.status).toBe("green");
+  });
+
+  it("B2: podhľad bez telesa nad miestnosťou = sivé; mimo pôdorysu miestnosti ostáva nález", () => {
+    const near = noBody("PH-touch", "CEILING", { min: [0, 0, 8.05], max: [12, 6, 8.0625] });
+    const far = noBody("PH-far", "CEILING", { min: [40, 40, 8.05], max: [50, 50, 8.0625] });
+    expect(status(verifySpace(space(good), { slabs, coverings: [floor, near] }), "FinishCeilingHeight")!.status).toBe("grey");
+    const r = status(verifySpace(space(good), { slabs, coverings: [floor, far] }), "FinishCeilingHeight")!;
+    expect(r.status).toBe("red");
+    expect(r.note).toBe("podhľad nad miestnosťou nenájdený");
+  });
+
+  it("B4: krytina, ktorá sa miestnosti len dotýka hranou, sa neodčíta", () => {
+    const touching = el("PD-sused", body([ring(rect(12 - 1e-7, 0, 16, 8))], 4.85, 5.0), "FLOORING"); // prekryv 8e-7 m2 = dotyk
+    const r = status(verifySpace(space(good), { slabs, coverings: [floor, ceiling, touching] }), "NetVolume")!;
+    expect(r.formula).not.toMatch(/PD-sused/);
+    expect(r.status).toBe("green");
+  });
+
+  it("bez telesa sú sivé všetky recepty (8), s dôvodom", () => {
+    const res = verifySpace({ ...el("X", { expressId: 9, prisms: [], unsupported: "mesh nie je uzavretý" }), qto: good }, { slabs, coverings: [] });
+    expect(res).toHaveLength(8);
+    expect(res.every((r) => r.status === "grey" && r.note === "mesh nie je uzavretý")).toBe(true);
+  });
+
+  it("náhrada cez mesh: uzavretý kváder dá plochu, obvod, objem, výšku a ťažisko; recepty zelené", () => {
+    const b = bodyFromMeshTriangles(7, boxTris(0, 0, 4.85, 8, 11, 8.8), true, 8 * 11 * 3.95);
+    expect(b.source).toBe("mesh");
+    expect(regionArea(b.prisms[0].rings)).toBeCloseTo(88, 9);
+    expect(b.mesh!.perimeter).toBeCloseTo(38, 9);
+    expect(b.mesh!.centroid[0]).toBeCloseTo(4, 9);
+    expect(b.prisms[0].z0).toBeCloseTo(4.85, 9);
+    const sp = space({ ...good, GrossPerimeter: 38, NetVolume: 347.6 - 88 * 0.15 - 72 * 0.0125 }, b);
+    const res = verifySpace(sp, { slabs, coverings: [el("PD", body([ring(rect(0, 0, 8, 11))], 4.85, 5.0), "FLOORING"), el("PH", body([ring(rect(0, 0, 8, 9))], 8.05, 8.0625), "CEILING")] });
+    expect(res.filter((r) => r.status !== "green").map((r) => `${r.target} ${r.status} ${r.note ?? r.formula}`)).toEqual([]);
+    expect(status(res, "GrossVolume")!.formula).toMatch(/objem uzavretého meshu/);
+    expect(status(res, "Height", "space.height.own")!.method).toMatch(/uzavretý mesh/);
+    expect(dimensionPoint(sp)).toEqual(b.mesh!.centroid);
+  });
+
+  it("náhrada cez mesh: neuzavretý mesh nedá teleso, len obálku", () => {
+    const b = bodyFromMeshTriangles(7, boxTris(0, 0, 0, 1, 1, 1).slice(0, 9 * 10), false, 0);
+    expect(b.prisms).toHaveLength(0);
+    expect(b.unsupported).toMatch(/nie je uzavretý/);
+    expect(b.bbox!.max).toEqual([1, 1, 1]);
   });
 });

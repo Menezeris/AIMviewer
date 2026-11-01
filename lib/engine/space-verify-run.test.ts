@@ -39,13 +39,13 @@ describe("ifc_measure verify=true (D-185)", () => {
     const sp = r.json.spaces[0];
     expect(sp.object_ref).toBe("2.01");
     expect(r.json.counts).toEqual({ green: 8, yellow: 0, red: 0, grey: 0 });
-    const h = sp.results.find((x: { recipe: string }) => x.recipe === "space.height.slabs@1");
+    const h = sp.results.find((x: { recipe: string }) => x.recipe === "space.height.slabs@2");
     expect(h.formula).toBe("spodok(SD-nad) - vrch(SD-pod) = 8.8 - 4.85 = 3.95 m");
     expect(h.file).toBe(3.95); // 3950 mm zo súboru prevedené na m
     expect(h.tolerance).toBe("dĺžka +- 5 mm");
     expect(h.definition).toMatch(/constant height/);
     expect(h.dimension).toBeUndefined();
-    expect(r.json.registry_version).toBe(1);
+    expect(r.json.registry_version).toBe(2);
     expect(r.json.saved).toBeUndefined();
   });
 
@@ -71,7 +71,7 @@ describe("ifc_measure verify=true (D-185)", () => {
     try {
       const ok = await run({ verify: true, a: "2.01", save: true, author: "test" }, archived);
       expect(ok.json.saved).toEqual({ ok: true, run_id: "run-1", model_revisions: { MINI: 7 } });
-      expect(saved[0].run).toMatchObject({ scope: "IfcSpace", registry_version: 1, model_revisions: { MINI: 7 }, counts: { green: 8 }, author: "test" });
+      expect(saved[0].run).toMatchObject({ scope: "IfcSpace", registry_version: 2, model_revisions: { MINI: 7 }, counts: { green: 8 }, author: "test" });
       expect(saved[0].rows).toHaveLength(8);
       expect(saved[0].rows.every((x) => x.revision === 7 && x.global_id === SPACE && x.method.length > 0)).toBe(true);
     } finally {
@@ -95,6 +95,21 @@ describe("ifc_measure verify=true (D-185)", () => {
     } finally {
       setArchiveResolver(null);
     }
+  });
+
+  it("miestnosť bez extrúzie (IfcFacetedBrep) overí cez uzavretý mesh motora (D-185 oprava)", async () => {
+    const r = await run({ verify: true, a: "0minispace202brep00001" });
+    expect(r.isError).toBe(false);
+    const res = r.json.spaces[0].results as Array<{ recipe: string; status: string; computed?: number; method: string; formula?: string; note?: string }>;
+    const by = (id: string) => res.find((x) => x.recipe.startsWith(id))!;
+    expect(by("space.height.own").status).toBe("green");
+    expect(by("space.height.own").method).toMatch(/uzavretý mesh/);
+    expect(by("space.area.profile").computed).toBeCloseTo(16, 3);
+    expect(by("space.perimeter.profile").computed).toBeCloseTo(16, 3);
+    expect(by("space.volume.prism").status).toBe("green");
+    expect(by("space.volume.prism").formula).toMatch(/objem uzavretého meshu/);
+    expect(by("space.netvolume.coverings").status).toBe("green");
+    expect(by("space.ffh.covering").status).toBe("grey");
   });
 
   it("odmietne prvok, ktorý nie je IfcSpace, a kombináciu s b", async () => {

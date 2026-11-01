@@ -8,7 +8,7 @@
  * reference_schemas/psd/Qto_SpaceBaseQuantities.xml a psd_IFC4_ADD2_TC1 (text v oboch rovnaký).
  */
 
-export const REGISTRY_VERSION = 1;
+export const REGISTRY_VERSION = 2;
 
 export const SPEC_REF = {
   repo: "buildingSMART/IFC4.3.x-development",
@@ -71,7 +71,22 @@ export const SELECTION = {
   ceiling_min_overlap: 0.1,
   /** Dotyk plôch (doska - teleso miestnosti) v m. */
   contact_m: 0.005,
+  /** Prienik pôdorysov menší než toto (m2) sa nepočíta: dotyk hranou, nie prekryv (D-185 oprava). */
+  min_overlap_m2: 1e-4,
 } as const;
+
+/**
+ * Krytiny, ktoré NetVolume odčíta (D-185 oprava B3): len podlahovina a podhľad. Izolácia (INSULATION), strešné
+ * vrstvy (ROOFING) a obklady vnútri telesa miestnosti sa neodčítajú; Revit ich v NetVolume tiež neodčíta.
+ */
+export const NET_VOLUME_COVERINGS: readonly string[] = ["FLOORING", "CEILING"];
+
+/**
+ * Náhrada telesa (D-185 oprava): keď extrúzia chýba alebo ju ifc-lite odmietne, teleso je uzavretý mesh motora:
+ * pôdorys = priemet plôch s normálou nadol, objem divergenciou, obvod = hrany pôdorysu bez suseda. Sivá len
+ * keď mesh nie je uzavretý. Prvok, z ktorého časť extrúzie chýba, sa nepočíta z časti (celý ide na mesh).
+ */
+export const BODY_FALLBACK = { mesh_requires_closed: true } as const;
 
 // ── pravidlo konštantnosti (Samuel 1. 11. 2026: podľa textu schémy) ─────────
 
@@ -117,19 +132,19 @@ export const SPACE_METHODS = {
     spec_ref: spec("Height"), constant_only: true,
   },
   height_slabs: {
-    id: "space.height.slabs@1", target: `${Q}.Height`, kind: "length",
+    id: "space.height.slabs@2", target: `${Q}.Height`, kind: "length",
     method: "spodok dosky nad - vrch dosky pod v pôdoryse miestnosti",
     definition: "Total height ... (measured from top of slab below to bottom of slab above). To be provided only if the space has a constant height.",
     spec_ref: spec("Height"), constant_only: true,
   },
   ffh: {
-    id: "space.ffh.covering@1", target: `${Q}.FinishFloorHeight`, kind: "length",
+    id: "space.ffh.covering@2", target: `${Q}.FinishFloorHeight`, kind: "length",
     method: "vrch podlahoviny (IfcCovering FLOORING) - spodok telesa miestnosti",
     definition: "Height of the flooring (from base slab without flooring to the flooring height). To be provided only if the space has a constant flooring height.",
     spec_ref: spec("FinishFloorHeight"), constant_only: true,
   },
   fch: {
-    id: "space.fch.covering@2", target: `${Q}.FinishCeilingHeight`, kind: "length",
+    id: "space.fch.covering@3", target: `${Q}.FinishCeilingHeight`, kind: "length",
     method: "spodok podhľadu (IfcCovering CEILING) - vrch podlahoviny; pri viacerých výškach podhľadu nález (pravidlo konštantnosti)",
     definition: "Height of the suspended ceiling (from top of flooring to the bottom of the suspended ceiling). To be provided only if the space has a suspended ceiling with constant height.",
     spec_ref: spec("FinishCeilingHeight"), constant_only: true,
@@ -153,8 +168,8 @@ export const SPACE_METHODS = {
     spec_ref: spec("GrossVolume"),
   },
   net_volume: {
-    id: "space.netvolume.coverings@1", target: `${Q}.NetVolume`, kind: "volume",
-    method: "GrossVolume - prieniky krytín (FLOORING, CEILING) s telesom miestnosti, prizmaticky (podľa schémy); žltá, keď sedí len metóda 'krytiny po celej ploche miestnosti' (Revit); tolerancia NET_VOLUME_TOLERANCE",
+    id: "space.netvolume.coverings@2", target: `${Q}.NetVolume`, kind: "volume",
+    method: "GrossVolume - prieniky krytín (FLOORING, CEILING) s telesom miestnosti, prizmaticky (podľa schémy); len NET_VOLUME_COVERINGS; žltá, keď sedí len metóda 'krytiny po celej ploche miestnosti' (Revit); tolerancia NET_VOLUME_TOLERANCE; sivá, keď krytina v pôdoryse nemá teleso",
     definition: "Net volume enclosed by the space, excluding the volume of construction elements inside the space.",
     spec_ref: spec("NetVolume"),
   },
