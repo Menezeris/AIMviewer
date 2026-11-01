@@ -45,7 +45,7 @@ describe("ifc_measure verify=true (D-185)", () => {
     expect(h.tolerance).toBe("dĺžka +- 5 mm");
     expect(h.definition).toMatch(/constant height/);
     expect(h.dimension).toBeUndefined();
-    expect(r.json.registry_version).toBe(2);
+    expect(r.json.registry_version).toBe(3);
     expect(r.json.saved).toBeUndefined();
   });
 
@@ -71,7 +71,7 @@ describe("ifc_measure verify=true (D-185)", () => {
     try {
       const ok = await run({ verify: true, a: "2.01", save: true, author: "test" }, archived);
       expect(ok.json.saved).toEqual({ ok: true, run_id: "run-1", model_revisions: { MINI: 7 } });
-      expect(saved[0].run).toMatchObject({ scope: "IfcSpace", registry_version: 2, model_revisions: { MINI: 7 }, counts: { green: 8 }, author: "test" });
+      expect(saved[0].run).toMatchObject({ scope: "IfcSpace", registry_version: 3, model_revisions: { MINI: 7 }, counts: { green: 8 }, author: "test" });
       expect(saved[0].rows).toHaveLength(8);
       expect(saved[0].rows.every((x) => x.revision === 7 && x.global_id === SPACE && x.method.length > 0)).toBe(true);
     } finally {

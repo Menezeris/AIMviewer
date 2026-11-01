@@ -8,7 +8,7 @@
  * reference_schemas/psd/Qto_SpaceBaseQuantities.xml a psd_IFC4_ADD2_TC1 (text v oboch rovnaký).
  */
 
-export const REGISTRY_VERSION = 2;
+export const REGISTRY_VERSION = 3;
 
 export const SPEC_REF = {
   repo: "buildingSMART/IFC4.3.x-development",
@@ -20,7 +20,7 @@ export const SPEC_REF = {
 
 // ── tolerancie (Samuel 1. 11. 2026: schválené) ───────────────────────────────
 
-export type QuantityKind = "length" | "area" | "volume";
+export type QuantityKind = "length" | "perimeter" | "area" | "volume";
 
 export interface ToleranceRule {
   kind: QuantityKind;
@@ -35,6 +35,11 @@ export interface ToleranceRule {
 /** Hodnota je v tolerancii, keď spĺňa aspoň jednu z hraníc (abs alebo rel). */
 export const TOLERANCES: Record<QuantityKind, ToleranceRule> = {
   length: { kind: "length", abs: 0.005, rel: null, text: "dĺžka +- 5 mm" },
+  /**
+   * Obvod (Samuel 1. 11. 2026, po druhom behu): súčet mnohých hrán, pri meshi zaokrúhlených na mm, preto relatívne
+   * 0,05 %, najmenej 5 mm (druhý beh: odchýlky 6 až 23 mm pri obvode 63 až 93 m = 0,01 až 0,04 %).
+   */
+  perimeter: { kind: "perimeter", abs: 0.005, rel: 0.0005, text: "obvod +- 0,05 %, najmenej +- 5 mm" },
   area: { kind: "area", abs: null, rel: 0.005, text: "plocha +- 0,5 %" },
   volume: { kind: "volume", abs: 0.05, rel: 0.005, text: "objem +- 0,5 % alebo +- 0,05 m3" },
 };
@@ -86,7 +91,19 @@ export const NET_VOLUME_COVERINGS: readonly string[] = ["FLOORING", "CEILING"];
  * pôdorys = priemet plôch s normálou nadol, objem divergenciou, obvod = hrany pôdorysu bez suseda. Sivá len
  * keď mesh nie je uzavretý. Prvok, z ktorého časť extrúzie chýba, sa nepočíta z časti (celý ide na mesh).
  */
-export const BODY_FALLBACK = { mesh_requires_closed: true } as const;
+export const BODY_FALLBACK = { mesh_requires_closed: true, open_mesh: "plan_and_height_only" } as const;
+
+/**
+ * Neuzavretý mesh (D-185 doplnok 2, Samuel 1. 11. 2026): prvok, ktorého profil ifc-lite odmietne a mesh nie je
+ * uzavretý (druhý beh: 15 miestností a ich dosky, BCF #21), dá aspoň pôdorys z plôch s normálou nadol a výškový
+ * rozsah z vrcholov. Ako referencia (doska, podlahovina, podhľad) sa použije normálne. Pri miestnosti: výška, plocha
+ * a obvod sú zelené pri zhode, pri nesúlade SIVÉ (pôdorys môže byť neúplný, nález by nebol spoľahlivý);
+ * GrossVolume a NetVolume sivé (objem neuzavretého meshu nie je definovaný).
+ */
+export const OPEN_MESH_RULE = {
+  id: "open-mesh@1",
+  text: "neuzavretý mesh: výška, pôdorys a obvod len potvrdia zhodu (nesúlad = sivá), objem sa neoveruje",
+} as const;
 
 // ── pravidlo konštantnosti (Samuel 1. 11. 2026: podľa textu schémy) ─────────
 
@@ -102,6 +119,15 @@ export const BODY_FALLBACK = { mesh_requires_closed: true } as const;
 export const NON_CONSTANT_RULE = {
   id: "non-constant@1",
   text: "Výška nie je v pôdoryse miestnosti konštantná; schéma hovorí 'to be provided only if constant'. Hodnotu z modelu odstrániť, alebo miestnosť rozdeliť na čiastkové priestory (IfcSpace PARTIAL).",
+} as const;
+
+/**
+ * FinishFloorHeight chýba v súbore, hoci podlahovina v pôdoryse má jednu výšku (Samuel 1. 11. 2026): schéma hodnotu
+ * pri konštantnej výške žiada ("to be provided only if ... constant"), preto žltá, nie sivá ani červená.
+ */
+export const FFH_ABSENT_RULE = {
+  id: "ffh-absent@1",
+  text: "súbor FinishFloorHeight neuvádza, hoci podlahovina má v pôdoryse miestnosti jednu výšku; schéma ju pri konštantnej výške žiada",
 } as const;
 
 // ── metódy veličín IfcSpace ──────────────────────────────────────────────────
@@ -138,8 +164,8 @@ export const SPACE_METHODS = {
     spec_ref: spec("Height"), constant_only: true,
   },
   ffh: {
-    id: "space.ffh.covering@2", target: `${Q}.FinishFloorHeight`, kind: "length",
-    method: "vrch podlahoviny (IfcCovering FLOORING) - spodok telesa miestnosti",
+    id: "space.ffh.covering@3", target: `${Q}.FinishFloorHeight`, kind: "length",
+    method: "vrch podlahoviny (IfcCovering FLOORING) - spodok telesa miestnosti; hodnota chýba pri konštantnej podlahovine = žltá (FFH_ABSENT_RULE)",
     definition: "Height of the flooring (from base slab without flooring to the flooring height). To be provided only if the space has a constant flooring height.",
     spec_ref: spec("FinishFloorHeight"), constant_only: true,
   },
@@ -156,7 +182,7 @@ export const SPACE_METHODS = {
     spec_ref: spec("GrossFloorArea"),
   },
   gross_perimeter: {
-    id: "space.perimeter.profile@1", target: `${Q}.GrossPerimeter`, kind: "length",
+    id: "space.perimeter.profile@2", target: `${Q}.GrossPerimeter`, kind: "perimeter",
     method: "obvod vonkajších slučiek profilu",
     definition: "Gross perimeter at the floor level of this space. It all sides of the space, including those parts of the perimeter that are created by virtual boundaries and openings (like doors).",
     spec_ref: spec("GrossPerimeter"),
@@ -168,8 +194,8 @@ export const SPACE_METHODS = {
     spec_ref: spec("GrossVolume"),
   },
   net_volume: {
-    id: "space.netvolume.coverings@2", target: `${Q}.NetVolume`, kind: "volume",
-    method: "GrossVolume - prieniky krytín (FLOORING, CEILING) s telesom miestnosti, prizmaticky (podľa schémy); len NET_VOLUME_COVERINGS; žltá, keď sedí len metóda 'krytiny po celej ploche miestnosti' (Revit); tolerancia NET_VOLUME_TOLERANCE; sivá, keď krytina v pôdoryse nemá teleso",
+    id: "space.netvolume.coverings@3", target: `${Q}.NetVolume`, kind: "volume",
+    method: "GrossVolume - objem krytín (FLOORING, CEILING) vnútri telesa miestnosti: súčet cez dvojice telies prienik pôdorysov x prekryv výšok (extrúzie presne, uzavretý mesh krytiny prenásobený plnosťou meshu); len NET_VOLUME_COVERINGS; žltá, keď sedí len metóda 'krytiny po celej ploche miestnosti' (Revit); tolerancia NET_VOLUME_TOLERANCE; sivá, keď krytina v pôdoryse nemá teleso",
     definition: "Net volume enclosed by the space, excluding the volume of construction elements inside the space.",
     spec_ref: spec("NetVolume"),
   },
