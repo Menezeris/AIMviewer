@@ -454,7 +454,7 @@ async function attachDocument(
 }
 
 /** Stav kontroly po novej revízii každého odkazu témy (aktuálna revízia dokumentu sa číta raz na dokument). */
-async function reviewStates(
+export async function reviewStates(
   deps: BcfDeps,
   t: Pick<BcfTopicRow, "status">,
   docs: TopicDocumentRow[],

@@ -242,4 +242,15 @@ describe("BCF API document_references", () => {
     expect((await call(ctx(d), "POST", base, { document_guid: "abc" })).status).toBe(400);
     expect((await call(ctx(d), "DELETE", base)).status).toBe(405);
   });
+
+  it("GET dopĺňa revision_changed len keď sa revízia dokumentu zmenila", async () => {
+    const { store, rows } = memoryStore([{ title: "t" }]);
+    const d = deps({ store });
+    const link = { task_id: rows[0].id, document_id: DOC_ID, document_ref: "D.1.1.09", document_name: null, page: 1, region: null, markup: null, url: null, description: null, author: null, document_sha256: null };
+    await store.addDocument({ ...link, document_revision: "A" });
+    await store.addDocument({ ...link, document_revision: "B" });
+    const list = (await call(ctx(d), "GET", `${P}/topics/${rows[0].id}/document_references`)).body as Record<string, unknown>[];
+    expect(list[0].revision_changed).toBe(true);
+    expect("revision_changed" in list[1]).toBe(false);
+  });
 });
