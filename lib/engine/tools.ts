@@ -5,6 +5,7 @@ import type { Vec3 } from "./measure";
 
 import { cacheSnapshot, engineRevision, getStore, type EngineModelSource } from "./cache";
 import type { ClashBcfPort, ClashStore } from "../clash/types";
+import type { VerificationStore } from "../verify/types";
 import type { ClashViewerDeps } from "../clash/viewer-tool";
 import { idsSources, loadIds } from "./ids-sources";
 import { resultRows } from "../ids/runs";
@@ -77,6 +78,8 @@ export interface EngineDeps {
   clashViewer?: ClashViewerDeps;
   /** Stropy behu `clash` (D-164); len testy. */
   clashLimits?: { maxPairs?: number; budgetMs?: number };
+  /** Uloženie behu overenia výmer (D-185, `ifc_measure verify=true save=true`); bez neho sa beh neukladá. */
+  verification?: VerificationStore;
 }
 
 export interface EngineExecution {
@@ -881,6 +884,18 @@ export async function execEngineTool(
           const line: Vec3[] | undefined = input.show === true ? [] : undefined;
           content = await (await import("./route")).ifcRoute(input, deps, line);
           if (line && line.length >= 2) return { content, isError: false, actions: [(await import("./route-line")).routeLineAction(line)] };
+          break;
+        }
+        if (input.verify === true) {
+          // D-185: overenie výmer IfcSpace voči geometrii; show=true = zvislé kóty v ťažisku miestnosti.
+          const dims: MeasureSegment[] | undefined = input.show === true ? [] : undefined;
+          content = await (await import("./space-verify-run")).ifcVerifySpaces(input, deps, dims);
+          if (dims?.length) {
+            const keep = input.keep !== false;
+            const total = noteDimensions(dims.length, keep);
+            const action = (await import("./measure-dimension")).dimensionAction(dims, keep);
+            return { content: withCanvasTally(content, total), isError: false, actions: [action] };
+          }
           break;
         }
         if (input.qto === true) {

@@ -8330,3 +8330,69 @@ Stav prod DB pri návrhu (len SELECT): `relationships` nemá stĺpec revízie an
 **Zavrhnuté:** *značka ako rozhodnutie* (cudzí nástroj ju prepíše); *uzatváranie chýbajúcich väzieb* (Samuel: len nález); *prepis riadku `relationships` pri zmene* (D-183: AIM vrstva sa neprepisuje); *upload kontajnera na server* (limit funkcie, egress); *token pre UI* (Samuel: brána ako `/api/clash`).
 
 **Overenie dodatku:** vitest `lib/icdd/import.test.ts` 9 (export -> import 0 zmien a väzby podľa `aim:relationshipId`; cudzí nástroj pridá väzbu aj vo vlastnom linksete; zmena = close + add; konflikty a neznáme konce bez zápisu: iná revízia, stará a neznáma revízia IFC, prvok bez uzla, neznámy GlobalId, neznámy dokument, strana bez časti, zlý typ konca, ukončená väzba, väzba v IFC; chýbajúca väzba len nález; exportné vrstvy a značky; zlá kontrola ISO; idempotentný opakovaný import; odtlačok stavu), mutácie (bez kontroly revízie, bez `already_in_ifc`, bez uzavretia pri zmene, bez obmedzenia značkou) test zhodia; `lib/icdd` spolu 41. pytest `etl/tests/test_icdd_audit.py` 32: `read_links` (rdflib) prečíta z `aim-small.icdd` tie isté väzby, id, revízie a značky ako import v TypeScripte (`aim-small.links.json`, import roundtrip naprieč implementáciami; mutácia v JSON test zhodí), značka v štatistike auditu a varovanie `exchange_mark` pri neznámej hodnote, cudzí kontajner bez značiek. SQL `supabase/tests/icdd_imports.sql` na lokálnom Postgres 16 so všetkými migráciami (stĺpcové kontroly, práva anon, brána stavu AIM, neznáma operácia, väzbu zo súboru `etl:*` neuzavrie, duplicitná väzba, close + add a `written_ids` / `closed_ids`, druhý zápis odmietnutý, väzba viditeľná v `rel_associates_document`); mutácia bez `rel_is_aim_layer` test zhodí. UI `/icdd` overené v Playwright na dočasnej stránke s podvrhnutými odpoveďami API (kontrola, náhľad, zápis). tsc, eslint. **Neoverené:** zápis na produkcii (migrácia nespustená), import kontajnera z cudzieho nástroja s väzbami prvok-dokument (žiadny nemáme).
+
+### D-185 - Overovač výmer voči geometrii: `ifc_measure verify=true` pre miestnosti, register metód, uložené behy k revízii
+
+**Status:** rozhodnuté (2026-11-01, Samuel cez orchestrátora; číslo pridelil orchestrátor). Rozsah: **len miestnosti (IfcSpace)**;
+debnenie, objem nad podhľadom a ďalšie triedy neskôr. Nadväzuje na D-112, D-124, D-140, D-155 (meranie z geometrie, kóty),
+D-129 (IFC alebo AIM vrstva), D-142 (`include=quantities`), D-183 (zdroj pravdy, podpis vstupu), D-114 (najprv napasuj).
+Výskum a spike: draft PR #382 (`docs/research/vlastnosti-povod-a-overenie.md`, `docs/research/overovac-vymer-spike.md`).
+
+**Kontext:** Samuel chce pri veličine z IFC vidieť, či sedí s geometriou, a výpočet s dosadenými číslami, toleranciou a
+kótami, aby sa hodnotám dalo veriť. IFC4 ani IFC4.3 nevedia naviazať veličinu na geometriu; `MethodOfMeasurement` a
+`Formula` sú voľný text. Revit ráta časť Qto z parametrov (napr. FinishCeilingHeight nemá kalkulátor), takže zhoda
+s exportovaným telesom dokazuje len konzistenciu exportu. Spike na ASR v79 (83 IfcSpace): Height, ElevationWithFlooring
+a FinishCeilingHeight sedia s telesom a krytinami, NetVolume vzniká odčítaním krytín vnútri telesa; nálezy BCF #19 až #21.
+
+**Rozhodnutie:**
+1. **Do IFC sa nezasahuje.** Overovač len číta súbor (archív revízie, D-135); nesúlad ide autorovi cez BCF (`bcf_topic`).
+2. **Pravidlá sú v jednom súbore** `lib/verify/quantity-methods.ts` (register metód výmer, `REGISTRY_VERSION`): recepty s
+   verziou, metóda, doslovná definícia zo schémy so `spec_ref` (buildingSMART/IFC4.3.x-development `d71e140`, PSD pre IFC4.3
+   aj IFC4 ADD2 TC1), tolerancie, výber prvkov a pravidlo konštantnosti. Kód ich číta odtiaľ, dokumenty len odkazujú.
+   Samuelove rozhodnutia v registri: tolerancie dĺžka 5 mm, plocha 0,5 %, objem 0,5 % alebo 0,05 m3; **NetVolume podľa
+   schémy** (GrossVolume mínus prizmatické prieniky krytín s telesom), žltá pri zhode len s Revit metódou "krytiny po celej
+   ploche", tolerancia **najviac 1 % z GrossVolume - NetVolume** zo súboru; **pravidlo konštantnosti** (schéma: Height,
+   FinishFloorHeight a FinishCeilingHeight "to be provided only if ... constant"): viac výšok podhľadu alebo podlahy v
+   pôdoryse miestnosti + hodnota v súbore = červený nález "vlastnosť nie je jednoznačná, miestnosť má N výšok" (BCF: hodnotu
+   odstrániť alebo miestnosť rozdeliť na `IfcSpace` PARTIAL), bez hodnoty zelená; žiadny medián.
+3. **Výpočet v motore** (`lib/engine/space-verify.ts`, `space-verify-run.ts`): telesá z `extractExtrusionDefinitions`
+   (`@ifc-lite/geometry` 7.8.1, presné parametre IfcExtrudedAreaSolid bez tesselácie, IFC svet v m), presný 2D prienik
+   pôdorysov (ear clipping, Sutherland-Hodgman, diery inklúziou-exklúziou), dosky a krytiny podľa prekryvu v pôdoryse a
+   dotyku vo výške. Extrúzia je prvý analytický prípad; ďalšie tvary (IfcSweptDiskSolid, IfcRevolvedAreaSolid, zúžené
+   extrúzie, IfcBooleanClippingResult) a uzavretý mesh ako náhrada pribudnú postupne. Dovtedy je prvok bez extrúzie,
+   so šikmou extrúziou alebo neúplným zdrojom sivý s dôvodom. Qto dĺžky sa prevádzajú dĺžkovou jednotkou súboru.
+4. **Tool (D-114, bez nového toolu):** `ifc_measure verify=true` s `a` alebo `items` (IfcSpace, max 50). Výstup pri každej
+   veličine Qto_SpaceBaseQuantities: hodnota zo súboru, hodnota z geometrie, stav green/yellow/red/grey, metóda, definícia,
+   tolerancia, vzorec s dosadenými číslami, kotvy (GUID, rola, výška) a pri viacerých výškach `distinct_heights`;
+   `file_formulas` = `Formula` zo súboru, ak je. `show=true` nakreslí zvislé kóty výšky, podlahy a podhľadu v ťažisku
+   miestnosti cez `MEASURE_SHOW` (D-124, najviac 12 na správu). `save=true` uloží beh (bod 5). Log volaní: `verify` /
+   `verify:save`.
+5. **Ukladanie** (výklad D-183 bod 6, Samuel 1. 11.): vypočítaná hodnota, rozdiel, stav a kotvy nie sú geometria ani
+   odtlačok tvaru, ale výsledok behu. `verification_runs` (podpis vstupu `model_revisions`, verzia registra a motora,
+   počty) a `verification_results`; `v_verification_latest` = posledný výsledok receptu na prvku s `based_on` a `stale`
+   (`revisions_stale`). Beh bez známej revízie modelu (motor nečítal archív) sa neukladá. Migrácia
+   `supabase/pending/20261101200000_verification_results.sql` je **pripravená, nespustená**; kým nie je aplikovaná,
+   `save=true` vráti `saved.ok=false` a výpočet platí.
+
+**Zavrhnuté rozšírenie:**
+- *`get_object include=quantities` s overením:* `get_object` je tool grafu AIM a výmery len preberá z motora; overenie
+  potrebuje geometriu, kóty (`show`) a stropy motora, ktoré má `ifc_measure`.
+- *Nový tool `verify_quantities`:* tie isté telesá a kóty ako `ifc_measure`; rozlišovací parameter stačí (D-114).
+
+**Zavrhnuté:**
+- *Zápis výsledkov, metódy alebo opráv do IFC* (D-183 bod 2 a 3); oprava ide receptom OCB cez BCF.
+- *Vážený medián pri viacerých výškach podhľadu:* schéma vlastnosť pri nekonštantnej výške nepripúšťa; medián ostáva len
+  pre rez pod podhľadom podlažia (D-140).
+- *Tolerancia NetVolume 0,5 % z objemu miestnosti:* pri tenkých krytinách nerozlíši metódu podľa schémy od Revit metódy.
+- *Prevzatie ifc5d / Bonsai kalkulátorov:* GPL/LGPL Python; Bonsai hľadá krytiny cez agregáciu, ktorú ASR nemá.
+
+**Otvorené (Samuel):** (a) `ifc_measure` ostáva v inventári "čítanie" (`readOnlyHint`), hoci `save=true` pridá riadok behu do
+DB (len pridáva, nič neprepisuje); označenie "zápis" by v claude.ai pýtalo súhlas pri každom meraní. (b) Systémový prompt sa
+nemení (MCP inštrukcie sú na hranici 15 000 znakov, test); pravidlo nesie opis toolu, ako D-142. (c) UI fajočky v paneli
+vlastností a detail vo vieweri (fork) sú ďalší krok.
+
+**Dôsledky:** bez zmeny forku. Migrácia v `supabase/pending` (aplikuje orchestrátor so Samuelovým slovom). Prvý beh na ASR v79
+po nasadení cez tool. **Evaly (D-057):** v cloud session nepobežali. **Testy:** `lib/engine/space-verify.test.ts` (2D
+geometria, recepty, stavy, konštantnosť, tolerancie z registra, WASM extrúzie na fixture v mm),
+`lib/engine/space-verify-run.test.ts` (tool cez `execEngineTool`: výstup, kóty, uloženie s podpisom revízie z archívu, beh
+bez revízie a chyba tabuľky bez straty výpočtu, odmietnutie inej triedy), SQL `supabase/tests/verification_results.sql`.
