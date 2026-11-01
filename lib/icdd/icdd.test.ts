@@ -117,6 +117,16 @@ describe("ICDD export (D-181)", () => {
     ]);
   });
 
+  it("prečíta aj hlavičku Index.rdf (iný zápis) s varovaním", () => {
+    const zip = mutate(build(), (f) => {
+      f["Index.rdf"] = f["index.rdf"];
+      delete f["index.rdf"];
+    });
+    const r = validateIcdd(zip);
+    expect(r.ok).toBe(true);
+    expect(r.issues.filter((i) => i.level === "warning").map((i) => i.code)).toContain("index_name");
+  });
+
   it("je deterministický: rovnaký plán = rovnaké bajty, poradie väzieb nehrá rolu", () => {
     const a = build();
     const p = plan();

@@ -66,9 +66,17 @@ export function readIcdd(zip: Uint8Array, issues: ValidationIssue[] = []): IcddC
       return null;
     }
   };
+  // Hlavička bez ohľadu na veľkosť písmen (napr. "Index.rdf"); iný zápis než INDEX_FILE je varovanie, lebo
+  // ICDDToolkitCore (RUB) číta len "index.rdf". Obsah sa ďalej číta pod INDEX_FILE.
   if (!files[INDEX_FILE]) {
-    issues.push({ level: "error", code: "layout", where: INDEX_FILE, message: "chýba index.rdf v koreni kontajnera" });
-    return null;
+    const alt = Object.keys(files).filter((p) => !p.includes("/") && p.toLowerCase() === INDEX_FILE.toLowerCase());
+    if (alt.length !== 1) {
+      issues.push({ level: "error", code: "layout", where: INDEX_FILE, message: `chýba ${INDEX_FILE} v koreni kontajnera` });
+      return null;
+    }
+    issues.push({ level: "warning", code: "index_name", where: alt[0], message: `hlavička sa volá ${alt[0]}; ICDDToolkitCore (RUB) číta len ${INDEX_FILE}` });
+    files[INDEX_FILE] = files[alt[0]];
+    delete files[alt[0]];
   }
   const indexTriples = parse(INDEX_FILE) ?? [];
   const index = new Graph(indexTriples);

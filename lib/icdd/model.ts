@@ -24,6 +24,10 @@ export const AIM_ONTOLOGY_FILE = "aim.rdf";
 export const DIR_ONTOLOGY = "Ontology resources/";
 export const DIR_DOCUMENTS = "Payload documents/";
 export const DIR_TRIPLES = "Payload triples/";
+/**
+ * Hlavička kontajnera. ICDDToolkitCore (RUB) ju číta len ako "index.rdf" (presná zhoda), openbim-icdd bez ohľadu na
+ * veľkosť písmen (audit ICDD 1. 11.); čítanie (`readIcdd`) prijme aj iný zápis s varovaním.
+ */
 export const INDEX_FILE = "index.rdf";
 
 export const CONFORMANCE = "ICDD-Part1-Container";
