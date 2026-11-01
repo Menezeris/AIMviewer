@@ -42,6 +42,8 @@ export interface ObjectRow {
   object_ref: string | null;
 }
 export interface DocLinkRow {
+  /** `relationships.id` (AIM vrstva) alebo id riadku pohľadu (väzba zo súboru IFC). */
+  id?: string | null;
   from_id: string | null;
   to_id: string | null;
   source: string | null;
@@ -51,6 +53,7 @@ export interface DocLinkRow {
   document_key?: string | null;
 }
 export interface SpatialLinkRow {
+  id?: string | null;
   from_id: string;
   to_id: string;
   role: string | null;
@@ -270,7 +273,17 @@ export function buildPlan(rows: PlanRows, opts: PlanOptions): IcddPlan {
         skip("document_link_element_not_in_ifc");
         continue;
       }
-      links.push({ kind: "IsElaboratedBy", from, to: { payload: target.id, page }, source: r.source, ifcRelationship: "IfcRelAssociatesDocument" });
+      const model = from.payload.slice("model:".length);
+      links.push({
+        kind: "IsElaboratedBy",
+        relationshipId: r.id ?? null,
+        from,
+        to: { payload: target.id, page },
+        source: r.source,
+        // revízia modelu prvku, nad ktorou väzba platí; import pri inej revízii hlási konflikt (D-181 dodatok "import")
+        basedOn: `${model}=${current[model]}`,
+        ifcRelationship: "IfcRelAssociatesDocument",
+      });
     }
   }
 
@@ -290,6 +303,7 @@ export function buildPlan(rows: PlanRows, opts: PlanOptions): IcddPlan {
       if (rule && basedOn && basedOn !== currentKey) stale.add(`${rule.id} (${basedOn})`);
       links.push({
         kind: "IsReferencedInSpatialStructure",
+        relationshipId: r.id ?? null,
         from,
         to,
         source: r.source,

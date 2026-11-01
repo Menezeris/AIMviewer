@@ -21,6 +21,7 @@ from etl import icdd_audit  # noqa: E402
 from etl.icdd_audit import audit, decode_step_string, main  # noqa: E402
 
 FIXTURE = Path(__file__).parent / "fixtures" / "icdd" / "aim-small.icdd"
+FIXTURE_LINKS = Path(__file__).parent / "fixtures" / "icdd" / "aim-small.links.json"
 COWL = "0pqk6UmJD2ARFkiAMMqZvv"
 
 
@@ -69,7 +70,7 @@ def test_clean_export_passes_and_reports_known_gaps() -> None:
     assert ls["derived-spatial.rdf"]["links"] == 3
     assert ls["derived-spatial.rdf"]["to_class"] == {"IFCSPACE": 2, "IFCSPATIALZONE": 1}
     assert ls["documents-identity.rdf"]["by_type"] == {"IsIdenticalTo": 2}
-    assert rep.stats["globalid_checked"] == {"ASR_v079.ifc": 3, "VZT_v011.ifc": 3}
+    assert rep.stats["globalid_checked"] == {"ASR_v079.ifc": 3, "VZT_v011.ifc": 5}
     # port (IfcDistributionPort) sa nepočíta, výfukový nástavec bez priestoru áno
     assert rep.stats["coverage"]["VZT_v011.ifc"] == {"products": 3, "linked": 2, "without_space": 1, "without_structure": 0}
     assert any(COWL in x and "VV.07.04.001" in x and "podlažie 1NP_VZT" in x for x in rep.lists["without_space:VZT_v011.ifc"])
@@ -266,3 +267,41 @@ def test_element_without_any_spatial_structure_is_error(tmp_path: Path) -> None:
     assert "coverage_no_structure" in {i.code for i in rep.errors}
     assert rep.stats["coverage"]["VZT_v011.ifc"]["without_structure"] == 1
     assert any("BEZ priestorovej" in x for x in rep.lists["without_space:VZT_v011.ifc"])
+
+
+def test_import_roundtrip_matches_typescript_reader() -> None:
+    """Export -> import naprieč implementáciami (D-181 dodatok "import"): rdflib prečíta z kontajnera tie isté väzby
+    (id väzby, revízia, konce, značky linksetov) ako import v TypeScripte (`aim-small.links.json`)."""
+    import json
+
+    from etl.icdd_audit import read_links
+
+    got = read_links(str(FIXTURE))
+    want = json.loads(FIXTURE_LINKS.read_text(encoding="utf-8"))
+    assert got == want
+    elaborated = [l for l in got["links"] if l["kind"] == "IsElaboratedBy"]
+    assert {l["relationshipId"] for l in elaborated} == {
+        "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"}
+    assert all(l["basedOn"] == "VZT=11" for l in elaborated)
+    assert {l["layer"]: l["exchange"] for l in got["linksets"]} == {
+        "derived-spatial": "export-only", "documents-elements": "import",
+        "documents-identity": "export-only", "federation": "export-only"}
+
+
+def test_exchange_mark_in_stats_and_unknown_value_warns(tmp_path: Path) -> None:
+    rep = audit(str(FIXTURE))
+    assert rep.stats["linksets"]["documents-elements.rdf"]["exchange"] == "import"
+    assert rep.stats["linksets"]["derived-spatial.rdf"]["exchange"] == "export-only"
+    files = _files()
+    _replace(files, "index.rdf", ">import<", ">read-write<")
+    rep = audit(_write(tmp_path, files))
+    assert any(i.code == "exchange_mark" for i in rep.warnings)
+    assert not rep.errors
+
+
+def test_read_links_on_foreign_container() -> None:
+    from etl.icdd_audit import read_links
+
+    garage = Path(__file__).parent / "fixtures" / "icdd" / "11_Garage_Binary.icdd"
+    got = read_links(str(garage))
+    assert got["linksets"] and all(l["exchange"] is None for l in got["linksets"])  # cudzí nástroj značku nemá

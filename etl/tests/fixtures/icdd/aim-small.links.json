@@ -1,0 +1,204 @@
+{
+  "linksets": [
+    {
+      "layer": "derived-spatial",
+      "exchange": "export-only"
+    },
+    {
+      "layer": "documents-elements",
+      "exchange": "import"
+    },
+    {
+      "layer": "documents-identity",
+      "exchange": "export-only"
+    },
+    {
+      "layer": "federation",
+      "exchange": "export-only"
+    }
+  ],
+  "links": [
+    {
+      "layer": "documents-identity",
+      "kind": "DocumentIsIdenticalTo",
+      "from": {
+        "file": "ASR_v079.ifc",
+        "guid": null,
+        "ident": {
+          "field": "IfcDocumentInformation.Identification",
+          "value": "D.1.1.09"
+        },
+        "page": null
+      },
+      "to": {
+        "file": "D-1-1-09.pdf",
+        "guid": null,
+        "ident": null,
+        "page": null
+      },
+      "relationshipId": null,
+      "source": "ifc:ASR v79",
+      "role": null,
+      "rule": null,
+      "basedOn": null,
+      "ifcRelationship": null
+    },
+    {
+      "layer": "documents-identity",
+      "kind": "DocumentIsIdenticalTo",
+      "from": {
+        "file": "ASR_v079.ifc",
+        "guid": null,
+        "ident": {
+          "field": "IfcDocumentReference.Identification",
+          "value": "page=3"
+        },
+        "page": null
+      },
+      "to": {
+        "file": "D-1-1-09.pdf",
+        "guid": null,
+        "ident": null,
+        "page": 3
+      },
+      "relationshipId": null,
+      "source": "ifc:ASR v79",
+      "role": null,
+      "rule": null,
+      "basedOn": null,
+      "ifcRelationship": null
+    },
+    {
+      "layer": "documents-elements",
+      "kind": "IsElaboratedBy",
+      "from": {
+        "file": "VZT_v011.ifc",
+        "guid": "1hOSvn6df7F8_7GcBWlRGQ",
+        "ident": null,
+        "page": null
+      },
+      "to": {
+        "file": "D-1-1-09.pdf",
+        "guid": null,
+        "ident": null,
+        "page": null
+      },
+      "relationshipId": "22222222-2222-4222-8222-222222222222",
+      "source": "doc_upload (D-036)",
+      "role": null,
+      "rule": null,
+      "basedOn": "VZT=11",
+      "ifcRelationship": "IfcRelAssociatesDocument"
+    },
+    {
+      "layer": "documents-elements",
+      "kind": "IsElaboratedBy",
+      "from": {
+        "file": "VZT_v011.ifc",
+        "guid": "2Fz7wd1Nf3UPDBRfDCbx4c",
+        "ident": null,
+        "page": null
+      },
+      "to": {
+        "file": "D-1-1-09.pdf",
+        "guid": null,
+        "ident": null,
+        "page": 3
+      },
+      "relationshipId": "11111111-1111-4111-8111-111111111111",
+      "source": "pdf_link (E4)",
+      "role": null,
+      "rule": null,
+      "basedOn": "VZT=11",
+      "ifcRelationship": "IfcRelAssociatesDocument"
+    },
+    {
+      "layer": "federation",
+      "kind": "IsIdenticalTo",
+      "from": {
+        "file": "ASR_v079.ifc",
+        "guid": "2VefEmfcj8sx0WLKr$GNnn",
+        "ident": null,
+        "page": null
+      },
+      "to": {
+        "file": "VZT_v011.ifc",
+        "guid": "0JLkyEBbbEZg_9L47b5QYb",
+        "ident": null,
+        "page": null
+      },
+      "relationshipId": null,
+      "source": "ifc_storey_map:name_number",
+      "role": null,
+      "rule": null,
+      "basedOn": "ASR=79;VZT=11",
+      "ifcRelationship": null
+    },
+    {
+      "layer": "derived-spatial",
+      "kind": "IsReferencedInSpatialStructure",
+      "from": {
+        "file": "VZT_v011.ifc",
+        "guid": "1hOSvn6df7F8_7GcBWlRGQ",
+        "ident": null,
+        "page": null
+      },
+      "to": {
+        "file": "ASR_v079.ifc",
+        "guid": "0BTBFw6f90Nfh9rP1dlXrb",
+        "ident": null,
+        "page": null
+      },
+      "relationshipId": null,
+      "source": "derive:spatial_reference",
+      "role": "partial",
+      "rule": "element_in_space",
+      "basedOn": "ASR=79;VZT=11",
+      "ifcRelationship": "IfcRelReferencedInSpatialStructure"
+    },
+    {
+      "layer": "derived-spatial",
+      "kind": "IsReferencedInSpatialStructure",
+      "from": {
+        "file": "VZT_v011.ifc",
+        "guid": "2Fz7wd1Nf3UPDBRfDCbx4c",
+        "ident": null,
+        "page": null
+      },
+      "to": {
+        "file": "ASR_v079.ifc",
+        "guid": "0BTBFw6f90Nfh9rP1dlXrb",
+        "ident": null,
+        "page": null
+      },
+      "relationshipId": null,
+      "source": "derive:spatial_reference",
+      "role": "inside",
+      "rule": "element_in_space",
+      "basedOn": "ASR=79;VZT=11",
+      "ifcRelationship": "IfcRelReferencedInSpatialStructure"
+    },
+    {
+      "layer": "derived-spatial",
+      "kind": "IsReferencedInSpatialStructure",
+      "from": {
+        "file": "VZT_v011.ifc",
+        "guid": "2Fz7wd1Nf3UPDBRfDCbx4c",
+        "ident": null,
+        "page": null
+      },
+      "to": {
+        "file": "ASR_v079.ifc",
+        "guid": "3Zu5Bv0LOHrPC10066FoQQ",
+        "ident": null,
+        "page": null
+      },
+      "relationshipId": null,
+      "source": "derive:element_in_spatial_zone",
+      "role": "inside",
+      "rule": "element_in_spatial_zone",
+      "basedOn": "ASR=79;VZT=11",
+      "ifcRelationship": "IfcRelReferencedInSpatialStructure"
+    }
+  ]
+}

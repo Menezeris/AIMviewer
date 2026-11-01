@@ -8,7 +8,9 @@ import { gunzipSync } from "fflate";
 
 import { assembleIcdd, sideFiles } from "./build";
 import { containerFileName, ISO_ONTOLOGY_FILES, type Extra, type IcddPlan } from "./model";
+import { importRequestFromContents, type ImportPreview, type ImportRequest } from "./import";
 import { compareStates, detectAimNamespace, stateFromContainer, stateFromPlan, type RoundtripDiff } from "./roundtrip";
+import { sha256 } from "./sha256";
 import { validateIcdd, type ValidationReport } from "./validate";
 
 export type Progress = (msg: string) => void;
@@ -77,17 +79,51 @@ export interface CheckResult {
   report: ValidationReport;
   diff: RoundtripDiff | null;
   versionID: string | null;
+  /** Požiadavka na import (bez obsahu payloadov), ak sa kontajner dal prečítať. */
+  request: ImportRequest | null;
 }
 
 /** Import späť: kontrola kontajnera a porovnanie s aktuálnym stavom AIM (bez zápisu do DB). */
-export async function checkIcdd(bytes: Uint8Array, progress: Progress = () => {}, fetchFn: typeof fetch = fetch): Promise<CheckResult> {
+export async function checkIcdd(
+  bytes: Uint8Array,
+  progress: Progress = () => {},
+  fetchFn: typeof fetch = fetch,
+  fileName: string | null = null,
+): Promise<CheckResult> {
   progress("kontrolujem kontajner");
   const report = validateIcdd(bytes);
-  if (!report.contents) return { report, diff: null, versionID: null };
+  if (!report.contents) return { report, diff: null, versionID: null, request: null };
   progress("porovnávam so stavom AIM");
   const plan = await getPlan(fetchFn);
-  const container = stateFromContainer(report.contents, detectAimNamespace(report.contents, plan.aimNamespace));
-  return { report, diff: compareStates(container, stateFromPlan(plan)), versionID: container.versionID };
+  const ns = detectAimNamespace(report.contents, plan.aimNamespace);
+  const container = stateFromContainer(report.contents, ns);
+  const request = importRequestFromContents(report.contents, report, sha256(bytes), fileName, ns, container.versionID);
+  return { report, diff: compareStates(container, stateFromPlan(plan)), versionID: container.versionID, request };
+}
+
+export interface ImportResponse {
+  preview: ImportPreview;
+  /** id uloženého náhľadu v `icdd_imports`; null = zápis je vypnutý (ICDD_IMPORT_ENABLED). */
+  importId: string | null;
+  writeEnabled: boolean;
+  record?: { id: string; written_ids: string[]; closed_ids: string[]; applied_at: string };
+}
+
+async function postImport(fetchFn: typeof fetch, body: unknown): Promise<ImportResponse> {
+  const r = await fetchFn("/api/icdd/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const out = await r.json();
+  if (!r.ok) throw new Error(out?.error ?? `import ICDD: HTTP ${r.status}`);
+  return out as ImportResponse;
+}
+
+/** Náhľad importu (dry-run): čo sa zapíše, čo je bez zmeny a nálezy. Pri zapnutej bráne sa náhľad uloží. */
+export function previewImport(request: ImportRequest, fetchFn: typeof fetch = fetch): Promise<ImportResponse> {
+  return postImport(fetchFn, { action: "preview", request });
+}
+
+/** Zápis importu za bránou; pri zmene stavu AIM od náhľadu server vráti 409. */
+export function applyImport(request: ImportRequest, importId: string, aimStateSha256: string, fetchFn: typeof fetch = fetch): Promise<ImportResponse> {
+  return postImport(fetchFn, { action: "apply", request, importId, aimStateSha256 });
 }
 
 export function downloadBytes(bytes: Uint8Array, filename: string, mime = "application/zip") {

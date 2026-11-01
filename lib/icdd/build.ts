@@ -17,6 +17,7 @@ import {
   DIR_ONTOLOGY,
   DIR_TRIPLES,
   ELS,
+  EXCHANGE,
   INDEX_FILE,
   ISO,
   ISO_ONTOLOGY_FILES,
@@ -49,6 +50,8 @@ export const AIM_PROPS = [
   "revisionNo",
   "generatedFrom",
   "ifcRelationship",
+  "relationshipId",
+  "exchange",
 ] as const;
 
 export const aimTerm = (plan: Pick<IcddPlan, "aimNamespace">, local: string) => `${plan.aimNamespace}${local}`;
@@ -118,6 +121,8 @@ export function buildIndex(plan: IcddPlan): string {
     add(c, `${CT}containsLinkset`, iri(l));
     add(l, RDF_TYPE, iri(`${CT}Linkset`));
     add(l, `${CT}filename`, lit(`${layer}.rdf`));
+    // len informácia pre iné nástroje; import rozhoduje podľa EXCHANGE v kóde (D-181 dodatok "import")
+    add(l, aimTerm(plan, "exchange"), lit(EXCHANGE[layer]));
   }
   return writeRdfXml(t, PREFIXES(plan));
 }
@@ -194,6 +199,7 @@ export function buildLinksets(plan: IcddPlan): Record<Layer, string> {
       add(l, `${LS}hasFromLinkElement`, iri(from));
       add(l, `${LS}hasToLinkElement`, iri(to));
     }
+    if (link.relationshipId) add(l, aimTerm(plan, "relationshipId"), lit(link.relationshipId));
     if (link.source) add(l, aimTerm(plan, "source"), lit(link.source));
     if (link.role) add(l, aimTerm(plan, "role"), lit(link.role));
     if (link.rule) add(l, aimTerm(plan, "derivationRule"), lit(link.rule));
@@ -218,7 +224,7 @@ export function linkKey(plan: Pick<IcddPlan, "payloads">, link: IcddLink): strin
   let a = endKey({ file: file(link.from.payload), guid: link.from.guid, ident: link.from.ident, page: link.from.page });
   let b = endKey({ file: file(link.to.payload), guid: link.to.guid, ident: link.to.ident, page: link.to.page });
   if ((link.kind === "IsIdenticalTo" || link.kind === "DocumentIsIdenticalTo") && b < a) [a, b] = [b, a];
-  return [link.kind, a, b, link.source ?? "", link.role ?? "", link.rule ?? "", link.basedOn ?? "", link.ifcRelationship ?? ""].join(" ");
+  return [link.kind, a, b, link.source ?? "", link.role ?? "", link.rule ?? "", link.basedOn ?? "", link.ifcRelationship ?? "", link.relationshipId ?? ""].join(" ");
 }
 
 /** Vlastná ontológia AIM: len to, čo ISO 21597-2 nemá (D-181, plán #350 časť 2.4). */
@@ -249,6 +255,12 @@ export function buildAimOntology(plan: Pick<IcddPlan, "aimNamespace">): string {
   add(rel, `${RDFS}comment`, lit("Name of the IFC relationship (IFC 4.3 schema) whose semantics the link carries, e.g. IfcRelAssociatesDocument for els:IsElaboratedBy element -> document, IfcRelReferencedInSpatialStructure for aim:IsReferencedInSpatialStructure. Links in the AIM layer exist only where the relationship crosses files or is derived; relationships inside an IFC file stay in that file."));
   for (const name of [...new Set(Object.values(IFC_RELATIONSHIP))].sort()) add(rel, `${RDFS}seeAlso`, iri(`${IFC_DOCS_URL}${name}.htm`));
   add(`${ns}source`, `${RDFS}comment`, lit("Origin of the link in AIM (e.g. pdf_link (E4), doc_upload (D-036), derive:spatial_reference, ifc_storey_map:name_number, ifc:ASR v79 for document identity)."));
+  add(`${ns}relationshipId`, `${RDFS}comment`, lit("Identifier of the link in AIM (relationships.id, UUID). A tool that changes a link keeps it; a new link has none. Import pairs links by this id first, then by content."));
+  add(
+    `${ns}exchange`,
+    `${RDFS}comment`,
+    lit("On ct:Linkset in the index: export-only = links are created in AIM and other tools should not change them (a change is reported on import, never written); import = other tools may add or change links (element -> document). Informative: AIM decides by its own policy; the mark can only restrict import."),
+  );
   add(`${ns}basedOnRevision`, `${RDFS}comment`, lit("Container revisions the link was created from, e.g. ASR=79;VZT=11."));
   add(
     onto,

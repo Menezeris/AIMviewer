@@ -8,6 +8,8 @@ on:
     paths:
       - "lib/icdd/**"
       - "lib/viewer-icdd*"
+      - "app/api/icdd/**"
+      - "components/icdd-panel.tsx"
       - "etl/icdd_audit.py"
       - "etl/tests/test_icdd_audit.py"
       - "etl/tests/fixtures/icdd/**"
