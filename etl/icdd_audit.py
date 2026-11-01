@@ -384,6 +384,24 @@ def audit(path: str, list_limit: int = 50, legacy_index: bool = False) -> Report
         if term not in declared:
             rep.error("ontology", f"v '{DIR_ONTOLOGY}' chýba ontológia ISO 21597-1 ({label})")
     link_classes = _closure(sub_class, [f"{ISO_LS}Link"])
+    parents: dict[str, set[str]] = collections.defaultdict(set)
+    for sub_, sup_ in sub_class:
+        parents[sub_].add(sup_)
+
+    def ancestors(t: str) -> set[str]:
+        out, todo = set(), [t]
+        while todo:
+            for p_ in parents.get(todo.pop(), ()):
+                if p_ not in out:
+                    out.add(p_)
+                    todo.append(p_)
+        return out
+
+    def link_type(ts: set[str]) -> str:
+        """Najšpecifickejší typ väzby (els:IsIdenticalTo pred ls:BinaryLink, ak má väzba oba)."""
+        cand = sorted(ts & link_classes)
+        return next((t for t in cand if all(u == t or u in ancestors(t) for u in cand)), cand[0])
+
     has_le = _closure(sub_prop, [f"{ISO_LS}hasLinkElement"])
     rep.stats["ontologies"] = [f[len(DIR_ONTOLOGY) :] for f in onto_files]
 
@@ -507,7 +525,7 @@ def audit(path: str, list_limit: int = 50, legacy_index: bool = False) -> Report
         elements = {s for s, ts in types.items() if f"{ISO_LS}LinkElement" in ts}
         st = {"links": len(links), "link_elements": len(elements), "by_type": {}}
         st["by_type"] = dict(
-            sorted(collections.Counter(_local(sorted(types[l] & link_classes)[0]) for l in links).items())
+            sorted(collections.Counter(_local(link_type(types[l])) for l in links).items())
         )
         ls_stats[fn] = st
         if not links:
@@ -515,7 +533,7 @@ def audit(path: str, list_limit: int = 50, legacy_index: bool = False) -> Report
         # Čítač bez inferencie RDFS (napr. openbim-icdd 0.2) nájde väzbu len podľa rdf:type priamo v ls:
         # (Link, BinaryLink, DirectedLink, DirectedBinaryLink, Directed1toNLink); typ len z els: alebo aim: nevidí.
         no_base = collections.Counter(
-            _local(sorted(types[l] & link_classes)[0]) for l in links if not any(t.startswith(ISO_LS) for t in types[l])
+            _local(link_type(types[l])) for l in links if not any(t.startswith(ISO_LS) for t in types[l])
         )
         for t, c in sorted(no_base.items()):
             rep.warn(
@@ -599,7 +617,7 @@ def audit(path: str, list_limit: int = 50, legacy_index: bool = False) -> Report
         used: set = set()
         seen: dict = {}
         for l in sorted(links, key=str):
-            ltype = sorted(types[l] & link_classes)[0]
+            ltype = link_type(types[l])
             frm = list(g.objects(l, URIRef(f"{ISO_LS}hasFromLinkElement")))
             to = list(g.objects(l, URIRef(f"{ISO_LS}hasToLinkElement")))
             allel = [o for p in has_le for o in g.objects(l, URIRef(p))]

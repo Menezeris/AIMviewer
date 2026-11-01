@@ -227,6 +227,19 @@ def test_foreign_container_from_icdd_shacl_validation() -> None:
     assert "Container#versionId" in msgs and "Container#isModified" in msgs and "xsd:dateTime" in msgs
 
 
+def test_most_specific_link_type_is_reported(tmp_path: Path) -> None:
+    f = _files()
+    ds = "Payload triples/derived-spatial.rdf"
+    _replace(
+        f, ds, '<rdf:type rdf:resource="urn:x-aim:icdd#IsReferencedInSpatialStructure"/>',
+        '<rdf:type rdf:resource="https://standards.iso.org/iso/21597/-1/ed-1/en/Linkset#DirectedBinaryLink"/>'
+        '<rdf:type rdf:resource="urn:x-aim:icdd#IsReferencedInSpatialStructure"/>', count=-1,
+    )
+    rep = audit(_write(tmp_path, f), legacy_index=True)
+    st = rep.stats["linksets"]["derived-spatial.rdf"]
+    assert st["by_type"] == {"IsReferencedInSpatialStructure": 3} and st["without_ls_type"] == 0
+
+
 def test_links_without_explicit_ls_type_are_reported() -> None:
     rep = audit(str(FIXTURE), legacy_index=True)
     w = [i for i in rep.warnings if i.code == "link_base_type"]
