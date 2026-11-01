@@ -487,8 +487,13 @@ export interface CalibrationResult {
     /** Pôdorys: štart nevybraný hneď z popiskov (slabé popisky, nízke pokrytie, osi), ktoré štarty súťažili. */
     compared?: string[];
   };
-  /** Pôdorys: ICP s voľným natočením skĺzlo o viac ako 0,5° od násobku 90°, výsledok má natočenie pevné (voľné bolo toto). */
+  /** Pôdorys: ICP s voľným natočením skĺzlo o viac ako 0,5° od násobku 90° (pri natočenej sieti osí od jej natočenia), výsledok má natočenie pevné (voľné bolo toto). */
   rotation_locked_from_deg?: number;
+  /**
+   * Pôdorys (D-184 dodatok): ICP posunulo osi výkresu mimo polohy z iných výkresov, hoci štart z osí sedel; výsledok je
+   * štart z osí bez doladenia (čiary výkresu nie sú konštrukcie: raster SF.01, výsek s rozvodmi TP.01 4NP).
+   */
+  icp_rejected?: { reason: "axes"; axes_median_mm: number | null };
   icp_pairs: number;
   quality: Quality;
   cross_validation_max_mm: number;
@@ -593,16 +598,68 @@ export interface RotationCheck {
  * Kontrola natočenia (D-180): výkresy budovy sú kreslené rovnobežne s osami modelu, pôdorys môže byť na strane
  * otočený o 90°, rez nie. Väčšia odchýlka = ICP chytilo zlé čiary (strecha 4NP: -23,6°).
  */
-export function checkRotation(rotationDeg: number, kind: "plan" | "section"): RotationCheck {
-  const expected = kind === "plan" ? Math.round(rotationDeg / 90) * 90 : 0;
+export function checkRotation(rotationDeg: number, kind: "plan" | "section", gridDeg?: number): RotationCheck {
+  // Pôdorys s natočenou sieťou osí na strane (D-184 dodatok): očakávané natočenie z osí strany (`gridRotations`).
+  const expected = kind === "plan" ? (gridDeg !== undefined ? nearestRotation(rotationDeg, gridRotations(gridDeg)).to : Math.round(rotationDeg / 90) * 90) : 0;
   let d = Math.abs(rotationDeg - expected) % 360;
   if (d > 180) d = 360 - d;
   // `|| 0`: bez -0 vo výsledku.
-  return { rotation_deg: rotationDeg, expected_deg: ((((expected + 180) % 360) + 360) % 360) - 180 || 0, deviation_deg: +d.toFixed(3), ok: d <= ROTATION_TOLERANCE_DEG };
+  return { rotation_deg: rotationDeg, expected_deg: +(((((expected + 180) % 360) + 360) % 360) - 180).toFixed(3) || 0, deviation_deg: +d.toFixed(3), ok: d <= ROTATION_TOLERANCE_DEG };
 }
 
 function linesToPoints(lines: PageLine[]): Float64Array {
   return samplePoints(lines, PDF_STEP_PT);
+}
+
+/** Uzamknutie natočenia pôdorysu: `rotations` = povolené natočenia (násobky 90°, pri natočenej sieti osí `gridRotations`). */
+interface PlanLock {
+  rotations: number[];
+  /** Osi strany a referencie: ICP, ktoré osi rozbije, sa nevezme (štart z osí ostane). */
+  axes?: { page: AxisLine[]; ref: RefAxis[] };
+}
+
+/** Uhol `deg` najbližší k povoleným natočeniam a jeho odchýlka (stupne, 0 až 180). */
+function nearestRotation(deg: number, rotations: number[]): { to: number; dev: number } {
+  let best = { to: rotations[0], dev: Infinity };
+  for (const r of rotations) {
+    let d = Math.abs(deg - r) % 360;
+    if (d > 180) d = 360 - d;
+    if (d < best.dev) best = { to: r, dev: d };
+  }
+  return best;
+}
+
+/**
+ * ICP pôdorysu pri pevnej mierke s uzamknutím natočenia a kontrolou osí (D-184 a dodatok): natočenie ďalej ako
+ * 0,5° od povoleného = sklz na čiarach, ktoré v modeli nie sú (rozvody TZB, šrafy), posun sa doladí pri pevnom
+ * natočení; keď štart osi spĺňa a doladenie ich rozbije, ostáva štart (čiary výkresu nie sú konštrukcie).
+ */
+function refinePlan(pdf: Float64Array, ifc: Float64Array, start: Affine, fixedScale: number | undefined, lock: PlanLock | undefined) {
+  let { affine, pairs } = icp(pdf, ifc, start, { fixedScale });
+  let lockedFrom: number | undefined;
+  let fixedRotation: number | undefined;
+  if (lock && fixedScale) {
+    const rot = decompose(affine).rotationDeg;
+    const near = nearestRotation(rot, lock.rotations);
+    if (near.dev > ROTATION_LOCK_DEG) {
+      lockedFrom = +rot.toFixed(4);
+      fixedRotation = (near.to * Math.PI) / 180;
+      ({ affine, pairs } = icp(pdf, ifc, start, { fixedScale, fixedRotation }));
+    }
+  }
+  let rejected: CalibrationResult["icp_rejected"];
+  const before = lock?.axes ? checkAxes(start, lock.axes.page, lock.axes.ref) : null;
+  if (lock?.axes && before!.ok && before!.matched >= 2) {
+    const after = checkAxes(affine, lock.axes.page, lock.axes.ref);
+    if (!after.ok) {
+      rejected = { reason: "axes", axes_median_mm: after.median_mm };
+      affine = start;
+      pairs = 0;
+      lockedFrom = undefined;
+      fixedRotation = (decompose(start).rotationDeg * Math.PI) / 180;
+    }
+  }
+  return { affine, pairs, lockedFrom, fixedRotation, rejected };
 }
 
 function finish(
@@ -613,20 +670,16 @@ function finish(
   startInfo: CalibrationResult["start"],
   anchors: P2[],
   fixedScale?: number,
-  lockRotation = false,
+  lock?: PlanLock,
 ): CalibrationResult {
-  let { affine, pairs } = icp(pdf, ifc, start, { mirror, fixedScale });
-  let { scale, rotationDeg, mirrored } = decompose(affine);
-  // Pôdorys pri pevnej mierke (D-180 doplnok): výkres je rovnobežný s osami modelu, natočenie mimo násobku 90°
-  // je sklz ICP na čiarach, ktoré v modeli nie sú (rozvody TZB, šrafy); posun sa doladí pri pevnom natočení.
+  let affine: Affine;
+  let pairs: number;
   let lockedFrom: number | undefined;
-  const quarter = Math.round(rotationDeg / 90) * 90;
-  if (lockRotation && fixedScale && Math.abs(rotationDeg - quarter) > ROTATION_LOCK_DEG) {
-    lockedFrom = +rotationDeg.toFixed(4);
-    ({ affine, pairs } = icp(pdf, ifc, start, { mirror, fixedScale, fixedRotation: (quarter * Math.PI) / 180 }));
-    ({ scale, rotationDeg, mirrored } = decompose(affine));
-  }
-  const fixedRotation = lockedFrom !== undefined ? (quarter * Math.PI) / 180 : undefined;
+  let fixedRotation: number | undefined;
+  let rejected: CalibrationResult["icp_rejected"];
+  if (lock) ({ affine, pairs, lockedFrom, fixedRotation, rejected } = refinePlan(pdf, ifc, start, fixedScale, lock));
+  else ({ affine, pairs } = icp(pdf, ifc, start, { mirror, fixedScale }));
+  const { scale, rotationDeg, mirrored } = decompose(affine);
   const xs = anchors.map((p) => p[0]);
   const left = anchors[xs.indexOf(Math.min(...xs))];
   const right = anchors[xs.indexOf(Math.max(...xs))];
@@ -639,9 +692,11 @@ function finish(
     start: startInfo,
     icp_pairs: pairs,
     quality: quality(pdf, ifc, affine),
-    cross_validation_max_mm: crossValidate(pdf, ifc, affine, mirror, fixedScale, fixedRotation),
+    // Bez doladenia (ICP zamietnuté) sa krížová validácia nedá urobiť: polovice by ICP znova odtiahlo.
+    cross_validation_max_mm: rejected ? NaN : crossValidate(pdf, ifc, affine, mirror, fixedScale, fixedRotation),
     calibration: [left, right].map((p) => ({ pdf_pt: p, plane_m: applyAffine(affine, p) })),
     ...(lockedFrom !== undefined ? { rotation_locked_from_deg: lockedFrom } : {}),
+    ...(rejected ? { icp_rejected: rejected } : {}),
   };
 }
 
@@ -665,8 +720,11 @@ export interface PlanInput {
   cut: Seg[];
   /** Pevná mierka výkresu 1:N (parameter alebo text strany): štart aj ICP ju držia. */
   scale?: number;
-  /** Osi (gridy): rady osí tejto strany v bodoch strany a polohy osí z iných kalibrovaných výkresov (IFC). */
-  axes?: { page: AxisLine[]; ref: RefAxis[] };
+  /**
+   * Osi (gridy): rady osí tejto strany v bodoch strany a polohy osí z iných kalibrovaných výkresov (IFC). `gridDeg` =
+   * natočenie siete osí na strane z radov bublín (D-184 dodatok), keď sieť nie je v smere strany (SF.01: 19°).
+   */
+  axes?: { page: AxisLine[]; ref: RefAxis[]; gridDeg?: number };
 }
 
 /** Pri pevnej mierke a menej popiskoch ako toľko sa porovná aj štart skenovaním (strecha 4NP: 3 popisky, zlý štart). */
@@ -735,10 +793,10 @@ function axisDiffs(m: Affine, lines: AxisLine[], refs: RefAxis[]): { text: strin
  * spárovaných s polohou rovnakých osí na iných kalibrovaných výkresoch. Natočenie vyberie zhoda smeru (os A je
  * na modeli rovina X) a počet osí do 0,5 m od mediánu; treba aspoň jednu os v každom smere a spolu 3.
  */
-export function axisStart(lines: AxisLine[], refs: RefAxis[], s: number): { affine: Affine; rotation: number; matched: number } | null {
+export function axisStart(lines: AxisLine[], refs: RefAxis[], s: number, rotationsDeg: number[] = [0, 90, 180, -90]): { affine: Affine; rotation: number; matched: number } | null {
   let best: { affine: Affine; rotation: number; matched: number; spread: number } | null = null;
-  for (let k = 0; k < 4; k++) {
-    const base = quarterTurn(s, k);
+  for (const rot of rotationsDeg) {
+    const base = rotationAffine(s, rot);
     const diffs = axisDiffs(base, lines, refs);
     const xs = diffs.filter((x) => x.dir === "x").map((x) => x.d);
     const ys = diffs.filter((x) => x.dir === "y").map((x) => x.d);
@@ -751,10 +809,10 @@ export function axisStart(lines: AxisLine[], refs: RefAxis[], s: number): { affi
     const ty = median(iy);
     const spread = [...ix.map((v) => Math.abs(v - tx)), ...iy.map((v) => Math.abs(v - ty))].reduce((acc, v) => acc + v, 0);
     if (best && (matched < best.matched || (matched === best.matched && spread >= best.spread))) continue;
-    const m = quarterTurn(s, k);
+    const m = rotationAffine(s, rot);
     m[2] = tx;
     m[5] = ty;
-    best = { affine: m, rotation: [0, 90, 180, -90][k], matched, spread };
+    best = { affine: m, rotation: rot, matched, spread };
   }
   return best && { affine: best.affine, rotation: best.rotation, matched: best.matched };
 }
@@ -815,7 +873,8 @@ export function calibratePlan(input: PlanInput): CalibrationResult {
         labels_found: found,
       }
     : null;
-  const lock = !!fixed;
+  const rotations = input.axes?.gridDeg !== undefined ? gridRotations(input.axes.gridDeg) : [0, 90, 180, -90];
+  const lock: PlanLock | undefined = fixed ? { rotations, axes: input.axes } : undefined;
   if (start && (!fixed || start.inliers.length >= WEAK_LABELS)) {
     const res = finish(pdf, ifc, start.affine, false, labelsInfo!, start.inliers.map((c) => c.page), fixed, lock);
     const axesOk = !input.axes || checkAxes(res.affine, input.axes.page, input.axes.ref).ok;
@@ -830,7 +889,7 @@ export function calibratePlan(input: PlanInput): CalibrationResult {
   const scans = scanPlanStarts(pdf, ifc, fixed);
   const options: { affine: Affine; info: CalibrationResult["start"]; anchors: P2[] }[] = [];
   const anchors = spreadAnchors(pdf);
-  const fromAxes = input.axes ? axisStart(input.axes.page, input.axes.ref, fixed) : null;
+  const fromAxes = input.axes ? axisStart(input.axes.page, input.axes.ref, fixed, rotations) : null;
   if (fromAxes) {
     options.push({ affine: fromAxes.affine, info: { method: "plan_axes", points: 0, median_mm: null, labels_found: found, axes_matched: fromAxes.matched }, anchors });
   }
@@ -845,15 +904,18 @@ export function calibratePlan(input: PlanInput): CalibrationResult {
   if (options.length === 0) throw new CalibrationError("Pôdorys bez popiskov: sken posunu nenašiel polohu, kde by sa čiary strany prekrývali s rezom modelu.");
   const compared = [...new Set(options.map((o) => o.info.method))];
   // Víťaz po ICP: osi sedia s inými výkresmi, potom najväčšie pokrytie rezu modelu čiarami strany, pri zhode menší medián.
-  let best: { o: (typeof options)[number]; ok: boolean; cov: number; med: number } | null = null;
+  // Osi: 2 = sedia (aspoň 2 spárované), 1 = nič sa nespárovalo (kontrola nemá čo povedať), 0 = nesedia; overené osi
+  // predbehnú neoverené (sken natočený mimo siete osí nespáruje žiadnu os a inak by vyhral pokrytím, SF.01 1NP).
+  let best: { o: (typeof options)[number]; ok: number; cov: number; med: number } | null = null;
   for (const o of options) {
-    const { affine } = icp(pdf, ifc, o.affine, { fixedScale: fixed });
+    const { affine } = refinePlan(pdf, ifc, o.affine, fixed, lock);
     const q = quality(pdf, ifc, affine);
     const med = Number.isFinite(q.median_mm) ? q.median_mm : Infinity;
-    const ok = !input.axes || checkAxes(affine, input.axes.page, input.axes.ref).ok;
+    const ax = input.axes ? checkAxes(affine, input.axes.page, input.axes.ref) : null;
+    const ok = !ax ? 2 : !ax.ok ? 0 : ax.matched >= 2 ? 2 : 1;
     const better =
       !best ||
-      (ok && !best.ok) ||
+      ok > best.ok ||
       (ok === best.ok && (q.coverage > best.cov + 0.01 || (Math.abs(q.coverage - best.cov) <= 0.01 && med < best.med)));
     if (better) best = { o, ok, cov: q.coverage, med };
   }
@@ -929,6 +991,24 @@ function hitShare(a: ReturnType<typeof cellCounts>, b: ReturnType<typeof occupan
     if (i >= 0 && j >= 0 && i < b.ni && j < b.nj && b.occ[i * b.nj + j]) hit += a.w[k];
   }
   return hit / a.total;
+}
+
+/** Natočenie o `deg` stupňov: podobnosť s mierkou `s` bez posunu (násobky 90° presne, bez zaokrúhlenia sin a cos). */
+export function rotationAffine(s: number, deg: number): Affine {
+  const q = deg / 90;
+  if (Number.isInteger(q)) return quarterTurn(s, ((q % 4) + 4) % 4);
+  const r = (deg * Math.PI) / 180;
+  return [s * Math.cos(r), -s * Math.sin(r), 0, s * Math.sin(r), s * Math.cos(r), 0];
+}
+
+/**
+ * Natočenia kalibrácie, pri ktorých sieť osí strany natočená o `gridDeg` (smer radu bublín písmen, D-184 dodatok)
+ * leží rovnobežne s osami modelu: rad písmen ide po X modelu (dva smery) alebo pri obrátenom poradí po -X.
+ * Pri sieti v smere strany sú to 0, 90, 180 a 270°.
+ */
+export function gridRotations(gridDeg: number): number[] {
+  const norm = (d: number) => +((((d % 360) + 540) % 360) - 180).toFixed(3) || 0;
+  return [0, 90, 180, 270].map((k) => norm(k - gridDeg));
 }
 
 /** Natočenie o k·90°: podobnosť s mierkou `s` bez posunu. */
