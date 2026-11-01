@@ -8412,6 +8412,26 @@ modelu, väčšina pochádzala z overovača:
 **Testy:** `space-verify.test.ts` 19 (každý bod B1 až B4 a mesh so samostatnou mutáciou: 9 mutácií, každú test zhodí),
 `space-verify-run.test.ts` 5 (miestnosť IfcFacetedBrep cez mesh motora; mutácia vypnutej náhrady test zhodí).
 
+**Doplnok 2 (2026-11-01): úpravy po druhom behu na ASR v79 (Samuel cez orchestrátora: "áno, úpravy a až d").**
+Druhý beh (registry 2, run `9ab0c9d2...` a `15e28713...`): green 465, yellow 0, red 10, grey 189. Sivé: 120 = 15 miestností x 8
+s odmietnutým profilom a NEUZAVRETÝM meshom (tie isté prvky ako BCF #21), 42 výška zo súborových dosiek (29 dosiek bez telesa,
+13 bez dosky pod alebo nad), 27 FFH. Červené: 4 NetVolume (1.07, 2.14, 4.01 systematicky; 3.14 bez podlahoviny, BCF kandidát),
+6 obvod (4 cez mesh o 6 až 23 mm, 2.20 a 4.03 o 2,70 m; tie si Samuel pozrie vo vieweri). Úpravy (`REGISTRY_VERSION = 3`):
+- **(a) neuzavretý mesh** (`OPEN_MESH_RULE`, source `mesh_open`): náhrada cez mesh už bola aj pri odmietnutom profile; zostávajúce
+  sivé mali neuzavretý mesh. Teraz z neho pôdorys (plochy s normálou nadol) a výškový rozsah: ako referencia (doska, podlahovina,
+  podhľad) normálne; pri miestnosti výška, plocha a obvod zelené pri zhode, pri nesúlade **sivé** (pôdorys môže byť neúplný),
+  GrossVolume a NetVolume sivé. Žiadna nová červená z neuzavretého meshu miestnosti.
+- **(b) NetVolume `space.netvolume.coverings@3`** (`cutVolume`): objem krytiny vnútri telesa miestnosti ako súčet cez dvojice
+  telies (prienik pôdorysov x prekryv výšok), nie prienik celkových obálok x celkový výškový rozsah; krytina z uzavretého meshu
+  prenásobená plnosťou (objem meshu / pôdorys x výška). Pri 2.14 má podlahovina PD02.52.01 vlastný objem 2,8213 m3
+  (Qto_BodyGeometryValidation), čo presne zodpovedá GV - NV zo súboru, kým @2 odčítal 20,085 x 0,15 = 3,013 m3. Či @3 dá na
+  ASR zelenú, ukáže tretí beh (telo podlahoviny tu nevidno, produkčné IFC sa nesťahuje, D-135).
+- **(c) tolerancia obvodu** `TOLERANCES.perimeter`: 0,05 %, najmenej 5 mm (`space.perimeter.profile@2`).
+- **(d) FinishFloorHeight chýba pri konštantnej podlahovine = žltá** (`FFH_ABSENT_RULE`, `space.ffh.covering@3`): schéma ju pri
+  konštantnej výške žiada. Bez nájdenej podlahoviny ostáva sivá.
+- BCF pre 3.14 (NetVolume zhodné s 2.14, bez podlahoviny) Samuel schválil; založenie čaká na potvrdenie priamo v session.
+**Testy:** `space-verify.test.ts` 26 (doplnok 2: 7 testov, 10 mutácií, každú test zhodí), `space-verify-run.test.ts` 5.
+
 **Otvorené (Samuel):** (a) `ifc_measure` ostáva v inventári "čítanie" (`readOnlyHint`), hoci `save=true` pridá riadok behu do
 DB (len pridáva, nič neprepisuje); označenie "zápis" by v claude.ai pýtalo súhlas pri každom meraní. (b) Systémový prompt sa
 nemení (MCP inštrukcie sú na hranici 15 000 znakov, test); pravidlo nesie opis toolu, ako D-142. (c) UI fajočky v paneli

@@ -241,10 +241,114 @@ describe("opravy overovača po prvom behu (D-185)", () => {
     expect(dimensionPoint(sp)).toEqual(b.mesh!.centroid);
   });
 
-  it("náhrada cez mesh: neuzavretý mesh nedá teleso, len obálku", () => {
+  it("náhrada cez mesh: neuzavretý mesh dá pôdorys a výškový rozsah, objem nie (mesh_open)", () => {
     const b = bodyFromMeshTriangles(7, boxTris(0, 0, 0, 1, 1, 1).slice(0, 9 * 10), false, 0);
-    expect(b.prisms).toHaveLength(0);
+    expect(b.source).toBe("mesh_open");
+    expect(regionArea(b.prisms[0].rings)).toBeCloseTo(1, 9);
+    expect(b.mesh!.volume).toBeNaN();
     expect(b.unsupported).toMatch(/nie je uzavretý/);
     expect(b.bbox!.max).toEqual([1, 1, 1]);
+    // Bez plôch nadol (len vrchná plocha) ostáva len obálka.
+    const top = bodyFromMeshTriangles(8, boxTris(0, 0, 0, 1, 1, 1).slice(9 * 2, 9 * 4), false, 0);
+    expect(top.prisms).toHaveLength(0);
+    expect(top.bbox).toBeDefined();
+  });
+});
+
+// ── doplnok 2 po druhom behu na ASR v79 (Samuel: body a až d) ────────────────
+
+describe("doplnok 2 po druhom behu (D-185)", () => {
+  const slabs = [el("SD-pod", body([ring(rect(0, 0, 12, 8))], 4.6, 4.85)), el("SD-nad", body([ring(rect(0, 0, 12, 8))], 8.8, 9.05))];
+  const floor = el("PD", body([ring(L)], 4.85, 5.0), "FLOORING");
+  const ceiling = el("PH", body([ring(rect(0, 0, 12, 6))], 8.05, 8.0625), "CEILING");
+  const good = { Height: 3.95, FinishFloorHeight: 0.15, FinishCeilingHeight: 3.05, GrossPerimeter: 40, GrossFloorArea: 88, GrossVolume: 347.6, NetVolume: 333.5 };
+  const extr = (b: Body): Body => ({ ...b, source: "extrusion" });
+  const space = (qto: Record<string, number>, b: Body = extr(body([ring(L)], 4.85, 8.8))): SpaceInput => ({ ...el("2.01", b), qto });
+  /** Kváder 8 x 11 ako NEUZAVRETÝ mesh (bez jednej bočnej steny). */
+  const openBox = () => bodyFromMeshTriangles(7, boxTris(0, 0, 4.85, 8, 11, 8.8).slice(0, 9 * 10), false, 0);
+  const boxGood = { ...good, GrossPerimeter: 38, GrossVolume: 347.6, NetVolume: 347.6 - 88 * 0.15 };
+  const boxFloor = el("PD", extr(body([ring(rect(0, 0, 8, 11))], 4.85, 5.0)), "FLOORING");
+
+  it("a) neuzavretý mesh miestnosti: výška, plocha a obvod zelené pri zhode, pri nesúlade sivé; objemy sivé", () => {
+    const sp = space(boxGood, openBox());
+    const res = verifySpace(sp, { slabs, coverings: [boxFloor] });
+    expect(status(res, "Height", "space.height.own")!.status).toBe("green");
+    expect(status(res, "GrossFloorArea")!.status).toBe("green");
+    expect(status(res, "GrossPerimeter")!.status).toBe("green");
+    expect(status(res, "Height", "space.height.slabs")!.status).toBe("green");
+    expect(status(res, "FinishFloorHeight")!.status).toBe("green");
+    expect(status(res, "GrossVolume")!.status).toBe("grey");
+    expect(status(res, "NetVolume")!.status).toBe("grey");
+    expect(status(res, "GrossFloorArea")!.method).toMatch(/NEUZAVRETÝ mesh/);
+    const bad = verifySpace(space({ ...boxGood, GrossFloorArea: 70, Height: 3.5 }, openBox()), { slabs, coverings: [boxFloor] });
+    expect(status(bad, "GrossFloorArea")!.status).toBe("grey");
+    expect(status(bad, "GrossFloorArea")!.note).toMatch(/nedá sa overiť: .*nie je uzavretý/);
+    expect(status(bad, "Height", "space.height.own")!.status).toBe("grey");
+    // výška zo súborových dosiek nezávisí od pôdorysu meshu: nález ostáva červený
+    expect(status(bad, "Height", "space.height.slabs")!.status).toBe("red");
+  });
+
+  it("a) neuzavretý mesh dosky je platná referencia (doska pod / nad)", () => {
+    const slabOpen = el("SD-nad-open", bodyFromMeshTriangles(9, boxTris(0, 0, 8.8, 12, 8, 9.05).slice(0, 9 * 10), false, 0));
+    const res = verifySpace(space(good), { slabs: [slabs[0], slabOpen], coverings: [floor, ceiling] });
+    const h = status(res, "Height", "space.height.slabs")!;
+    expect(h.status).toBe("green");
+    expect(h.formula).toMatch(/SD-nad-open/);
+  });
+
+  it("c) obvod: relatívna tolerancia 0,05 %, najmenej 5 mm", () => {
+    const sq = (side: number) => extr(body([ring(rect(0, 0, side, side))], 4.85, 8.8));
+    const per = (side: number, file: number) => status(verifySpace(space({ GrossPerimeter: file }, sq(side)), { slabs, coverings: [] }), "GrossPerimeter")!;
+    // obvod 63 m: +23 mm (0,037 %) zelené, +40 mm (0,063 %) červené
+    expect(per(15.75, 63 - 0.023).status).toBe("green");
+    expect(per(15.75, 63 - 0.04).status).toBe("red");
+    // obvod 10 m: 0,05 % = 5 mm, odchýlka 4 mm zelená, 6 mm červená
+    expect(per(2.5, 10 - 0.004).status).toBe("green");
+    expect(per(2.5, 10 - 0.006).status).toBe("red");
+    expect(per(2.5, 10).tolerance).toBe("obvod +- 0,05 %, najmenej +- 5 mm");
+    expect(per(2.5, 10).recipe).toBe("space.perimeter.profile@2");
+  });
+
+  it("d) FinishFloorHeight chýba pri konštantnej podlahovine = žltá; bez podlahoviny ostáva sivá", () => {
+    const noFfh: Record<string, number> = { ...good };
+    delete noFfh.FinishFloorHeight;
+    const r = status(verifySpace(space(noFfh), { slabs, coverings: [floor, ceiling] }), "FinishFloorHeight")!;
+    expect(r.status).toBe("yellow");
+    expect(r.computed).toBeCloseTo(0.15, 9);
+    expect(r.note).toMatch(/neuvádza, hoci podlahovina má .* jednu výšku/);
+    expect(r.recipe).toBe("space.ffh.covering@3");
+    expect(status(verifySpace(space(noFfh), { slabs, coverings: [ceiling] }), "FinishFloorHeight")!.status).toBe("grey");
+  });
+
+  it("b) NetVolume @3: objem krytiny z viacerých telies sa ráta po telesách, nie z celkového výškového rozsahu", () => {
+    // Podlahovina z dvoch vrstiev s medzerou: 4.85..4.90 a 4.95..5.00 -> 88 x 0,10 = 8,8 m3 (rozsah 0,15 by dal 13,2).
+    const layered = el("PD-2v", { expressId: 3, source: "extrusion", prisms: [{ rings: [ring(L)], z0: 4.85, z1: 4.9 }, { rings: [ring(L)], z0: 4.95, z1: 5.0 }] }, "FLOORING");
+    const nv = 347.6 - 88 * 0.1 - 72 * 0.0125;
+    const r = status(verifySpace(space({ ...good, NetVolume: nv }), { slabs, coverings: [layered, ceiling] }), "NetVolume")!;
+    expect(r.recipe).toBe("space.netvolume.coverings@3");
+    expect(r.computed).toBeCloseTo(nv, 4);
+    expect(r.status).toBe("green");
+    expect(r.formula).toMatch(/PD-2v, prienik 2 telies/);
+  });
+
+  it("b) NetVolume @3: miestnosť z dvoch telies, krytina zasahuje pod obe", () => {
+    const two: Body = { expressId: 4, source: "extrusion", prisms: [{ rings: [ring(rect(0, 0, 12, 6))], z0: 4.85, z1: 8.8 }, { rings: [ring(rect(4, 6, 12, 8))], z0: 4.85, z1: 8.8 }] };
+    // prienik s telesom 1: 6 x 6 = 36 m2, s telesom 2: 6 x 2 = 12 m2 -> 48 x 0,15 = 7,2 m3
+    const f = el("PD-a", extr(body([ring(rect(6, 0, 12, 8))], 4.85, 5.0)), "FLOORING");
+    const nv = 88 * 3.95 - 48 * 0.15;
+    const r = status(verifySpace(space({ ...good, NetVolume: nv, GrossVolume: 88 * 3.95 }, two), { slabs, coverings: [f] }), "NetVolume")!;
+    expect(r.computed).toBeCloseTo(nv, 4);
+    expect(r.status).toBe("green");
+  });
+
+  it("b) NetVolume @3: krytina z uzavretého meshu sa prenásobí plnosťou meshu", () => {
+    // Mesh obálky 12 x 6 x 0,15 (10,8 m3), ale skutočný objem meshu 9,72 m3 (plnosť 0,9).
+    const tris = boxTris(0, 0, 4.85, 12, 6, 5.0);
+    const meshFloor = el("PD-mesh", bodyFromMeshTriangles(5, tris, true, 9.72), "FLOORING");
+    const nv = 347.6 - 9.72;
+    const r = status(verifySpace(space({ ...good, NetVolume: nv }), { slabs, coverings: [meshFloor] }), "NetVolume")!;
+    expect(r.computed).toBeCloseTo(nv, 4);
+    expect(r.formula).toMatch(/uzavretý mesh, plnosť 0.9/);
+    expect(r.status).toBe("green");
   });
 });

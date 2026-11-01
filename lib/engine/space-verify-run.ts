@@ -92,7 +92,8 @@ export function modelData(m: EngineModel): Promise<ModelData> {
           continue;
         }
         const fallback = meshBody(id, e);
-        bodies.set(id, { ...fallback, unsupported: fallback.prisms.length ? prev.unsupported : `${prev.unsupported ?? "bez extrúzie"}; ${fallback.unsupported}` });
+        // Pri neuzavretom meshi nesie dôvod oboje: prečo nie extrúzia a že mesh nie je uzavretý (OPEN_MESH_RULE).
+        bodies.set(id, { ...fallback, unsupported: fallback.unsupported ? `${prev.unsupported ?? "bez extrúzie"}; ${fallback.unsupported}` : prev.unsupported });
       }
     }
     const of = (id: number) => bodies.get(id)!;
@@ -264,7 +265,7 @@ export async function ifcVerifySpaces(input: Record<string, unknown>, deps: Engi
   out.show_in_3d = joined.show_in_3d;
   if (dimensions) out.view = dimensions.length > 0 ? `kóty vo vieweri: ${dimensions.length} (výška, podlaha, podhľad v ťažisku miestnosti)` : "nič na kótovanie";
   out.note =
-    "status: green = v tolerancii, yellow = sedí iná známa metóda (NetVolume Revit), red = nesedí alebo vlastnosť nie je " +
+    "status: green = v tolerancii, yellow = sedí iná známa metóda (NetVolume Revit) alebo chýba hodnota, ktorú schéma žiada (FinishFloorHeight pri konštantnej podlahovine), red = nesedí alebo vlastnosť nie je " +
     "jednoznačná (viac výšok), grey = nedá sa overiť (dôvod v note). Hodnoty v m, m2, m3. Pravidlá a tolerancie: register " +
     "metód (registry_version). Červené nálezy patria autorovi cez BCF (bcf_topic), do IFC sa nič nezapisuje.";
   return JSON.stringify(out);

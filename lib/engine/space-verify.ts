@@ -1,6 +1,7 @@
 import { GeometryProcessor } from "@ifc-lite/geometry";
 
 import {
+  FFH_ABSENT_RULE,
   NET_VOLUME_COVERINGS,
   NON_CONSTANT_RULE,
   SELECTION,
@@ -48,8 +49,8 @@ export interface Body {
   /** Dôvod, prečo prvok nemá (celé) analytické teleso. */
   unsupported?: string;
   /** Odkiaľ je teleso: analytická extrúzia, alebo náhrada z uzavretého meshu motora. */
-  source?: "extrusion" | "mesh";
-  /** Pri meshi: prstence prizmy sú trojuholníky pôdorysu, preto objem, obvod a ťažisko nesie mesh. */
+  source?: "extrusion" | "mesh" | "mesh_open";
+  /** Pri meshi: prstence prizmy sú trojuholníky pôdorysu, preto objem (NaN pri neuzavretom), obvod a ťažisko nesie mesh. */
   mesh?: { volume: number; perimeter: number; centroid: Pt };
   /** Obálka v IFC svete (aj pri neuzavretom meshi): rozhodne, či prvok bez telesa môže byť referenciou miestnosti. */
   bbox?: { min: Vec3; max: Vec3 };
@@ -336,7 +337,8 @@ export async function extractBodies(bytes: Uint8Array, ids: readonly number[]): 
 /**
  * Teleso z trojuholníkov meshu v IFC svete (9 čísel na trojuholník): pôdorys = priemet plôch s normálou nadol
  * (každý trojuholník je prstenec), obvod = hrany pôdorysu bez suseda (zaokrúhlené na mm), ťažisko vážené plochou,
- * z0 / z1 z vrcholov. `closed` a `volume` dodá motor (`meshMetrics`); neuzavretý mesh nedá teleso, len obálku.
+ * z0 / z1 z vrcholov. `closed` a `volume` dodá motor (`meshMetrics`). Neuzavretý mesh (source `mesh_open`) dá pôdorys,
+ * výškový rozsah a obvod, objem nie (NaN); bez plôch nadol len obálku.
  */
 export function bodyFromMeshTriangles(expressId: number, tris: ArrayLike<number>, closed: boolean, volume: number): Body {
   const min: Vec3 = [Infinity, Infinity, Infinity];
@@ -347,7 +349,7 @@ export function bodyFromMeshTriangles(expressId: number, tris: ArrayLike<number>
     if (tris[i] > max[k]) max[k] = tris[i];
   }
   const bbox = tris.length ? { min, max } : undefined;
-  if (!closed) return { expressId, prisms: [], unsupported: "mesh nie je uzavretý, objem ani pôdorys sa z neho nedajú overiť", ...(bbox ? { bbox } : {}) };
+  const openNote = "mesh nie je uzavretý, objem ani pôdorys sa z neho nedajú overiť";
   const rings: Ring[] = [];
   const edges = new Map<string, { n: number; len: number }>();
   const key = (x: number, y: number) => `${Math.round(x * 1000)},${Math.round(y * 1000)}`;
@@ -378,14 +380,16 @@ export function bodyFromMeshTriangles(expressId: number, tris: ArrayLike<number>
       else edges.set(k, { n: 1, len: Math.hypot(q[0] - p[0], q[1] - p[1]) });
     }
   }
-  if (!rings.length) return { expressId, prisms: [], unsupported: "mesh bez plôch s normálou nadol", ...(bbox ? { bbox } : {}) };
+  if (!rings.length) return { expressId, prisms: [], unsupported: closed ? "mesh bez plôch s normálou nadol" : openNote, ...(bbox ? { bbox } : {}) };
   let perimeter = 0;
   for (const e of edges.values()) if (e.n === 1) perimeter += e.len;
   return {
     expressId,
     prisms: [{ rings, z0: min[2], z1: max[2] }],
-    source: "mesh",
-    mesh: { volume, perimeter, centroid: [cx / area, cy / area] },
+    // Neuzavretý mesh (D-185 doplnok 2, BODY_FALLBACK.open_mesh): pôdorys a výškový rozsah áno, objem nie.
+    source: closed ? "mesh" : "mesh_open",
+    mesh: { volume: closed ? volume : NaN, perimeter, centroid: [cx / area, cy / area] },
+    ...(closed ? {} : { unsupported: "mesh nie je uzavretý: z neho len výška, pôdorys a obvod (nesúlad = sivá), objem sa neoveruje" }),
     bbox: { min, max },
   };
 }
@@ -504,6 +508,39 @@ function distinct(values: number[]): number[] {
   return out;
 }
 
+/**
+ * Objem krytiny vnútri telesa miestnosti (NetVolume @3): súčet cez dvojice telies miestnosti a krytiny
+ * prienik pôdorysov x prekryv výškových rozsahov. Pre extrúzie presne (zvislé hranoly). Krytina z uzavretého meshu:
+ * prizmatický odhad prenásobený plnosťou meshu (objem meshu / (pôdorys x výška)), aby šikmé alebo stupňovité teleso
+ * neodčítalo viac než má; neuzavretý mesh len prizmaticky.
+ */
+export function cutVolume(space: Body, cov: Body): { volume: number; area: number; dz: number; exact: boolean; how: string } {
+  let volume = 0;
+  let area = 0;
+  let dz = 0;
+  let pairs = 0;
+  for (const sp of space.prisms) for (const cp of cov.prisms) {
+    const h = Math.min(sp.z1, cp.z1) - Math.max(sp.z0, cp.z0);
+    if (h <= 0) continue;
+    const a = regionIntersectionArea(sp.rings, cp.rings);
+    if (a <= SELECTION.min_overlap_m2) continue;
+    volume += a * h;
+    area += a;
+    dz = h;
+    pairs++;
+  }
+  let how = `prienik ${pairs} telies`;
+  if (cov.source === "mesh" && cov.mesh && cov.prisms.length) {
+    const p = cov.prisms[0];
+    const prismatic = regionArea(p.rings) * (p.z1 - p.z0);
+    const fill = prismatic > 0 ? Math.min(1, Math.max(0, cov.mesh.volume / prismatic)) : 1;
+    volume *= fill;
+    how = `uzavretý mesh, plnosť ${r4(fill)}`;
+  } else if (cov.source === "mesh_open") how = "neuzavretý mesh, prizmaticky";
+  const exact = pairs === 1 && cov.source === "extrusion" && (space.source === "extrusion" || space.source === "mesh");
+  return { volume, area, dz, exact, how };
+}
+
 export interface Context {
   slabs: Element[];
   coverings: Element[];
@@ -511,7 +548,8 @@ export interface Context {
 
 function base(key: SpaceMethodKey, body?: Body) {
   const m: QuantityMethod = SPACE_METHODS[key];
-  const meshNote = body?.source === "mesh" ? " (teleso miestnosti: uzavretý mesh motora, náhrada za extrúziu)" : "";
+  const meshNote = body?.source === "mesh" ? " (teleso miestnosti: uzavretý mesh motora, náhrada za extrúziu)"
+    : body?.source === "mesh_open" ? " (teleso miestnosti: NEUZAVRETÝ mesh motora, len výška, pôdorys a obvod; nesúlad = sivá)" : "";
   return { target: m.target, recipe: m.id, method: m.method + meshNote, definition: m.definition, spec_ref: m.spec_ref, tolerance: TOLERANCES[m.kind].text };
 }
 
@@ -543,22 +581,29 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
     return out;
   }
   const body = s.body;
-  const isMesh = body.source === "mesh" && !!body.mesh;
+  const isMesh = (body.source === "mesh" || body.source === "mesh_open") && !!body.mesh;
+  /** Neuzavretý mesh: nesúlad nemusí byť chybou výmery (pôdorys môže byť neúplný), preto sivá, nie červená. */
+  const open = body.source === "mesh_open";
+  const openJudge = (file: number | undefined, v: number, kind: QuantityKind): { status: Status; note?: string } => {
+    const st = judge(file, v, kind);
+    return open && st === "red" ? { status: "grey", note: `nedá sa overiť: ${body.unsupported}` } : { status: st };
+  };
   const A = regionArea(own.rings);
   const P = isMesh ? body.mesh!.perimeter : regionPerimeter(own.rings);
   const H = own.z1 - own.z0;
-  const gv = isMesh ? body.mesh!.volume : body.prisms.reduce((sum, p) => sum + regionArea(p.rings) * (p.z1 - p.z0), 0);
+  const gv = open ? NaN : isMesh ? body.mesh!.volume : body.prisms.reduce((sum, p) => sum + regionArea(p.rings) * (p.z1 - p.z0), 0);
   const self: Anchor = { global_id: s.globalId, role: "teleso miestnosti" };
   const modified = body.unsupported ? `; ${body.unsupported}` : "";
   const c = SELECTION.contact_m;
 
-  out.push({ ...base("height_own", body), status: judge(s.qto.Height, H, "length"), file: s.qto.Height, computed: r4(H),
+  out.push({ ...base("height_own", body), ...openJudge(s.qto.Height, H, "length"), file: s.qto.Height, computed: r4(H),
     formula: `${r3(own.z1)} - ${r3(own.z0)} = ${r4(H)} m`, anchors: [{ ...self, z_m: own.z0 }, { ...self, z_m: own.z1 }], dimension: { z0: own.z0, z1: own.z1 } });
-  out.push({ ...base("gross_floor_area", body), status: judge(s.qto.GrossFloorArea, A, "area"), file: s.qto.GrossFloorArea, computed: r4(A),
+  out.push({ ...base("gross_floor_area", body), ...openJudge(s.qto.GrossFloorArea, A, "area"), file: s.qto.GrossFloorArea, computed: r4(A),
     formula: isMesh ? `priemet plôch meshu s normálou nadol = ${r4(A)} m2` : `plocha profilu = ${r4(A)} m2`, anchors: [self] });
-  out.push({ ...base("gross_perimeter", body), status: judge(s.qto.GrossPerimeter, P, "length"), file: s.qto.GrossPerimeter, computed: r4(P),
+  out.push({ ...base("gross_perimeter", body), ...openJudge(s.qto.GrossPerimeter, P, "perimeter"), file: s.qto.GrossPerimeter, computed: r4(P),
     formula: isMesh ? `obvod pôdorysu meshu = ${r4(P)} m` : `obvod vonkajšej slučky = ${r4(P)} m`, anchors: [self] });
-  out.push({ ...base("gross_volume", body), status: judge(s.qto.GrossVolume, gv, "volume"), file: s.qto.GrossVolume, computed: r4(gv),
+  if (open) out.push({ ...base("gross_volume", body), status: "grey", file: s.qto.GrossVolume, note: `nedá sa overiť: ${body.unsupported}`, anchors: [self] });
+  else out.push({ ...base("gross_volume", body), status: judge(s.qto.GrossVolume, gv, "volume"), file: s.qto.GrossVolume, computed: r4(gv),
     formula: isMesh ? `objem uzavretého meshu = ${r4(gv)} m3` : `${r4(A)} x ${r4(H)} = ${r4(gv)} m3${modified}`, anchors: [self] });
 
   // Dosky pod a nad.
@@ -587,7 +632,10 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
   if (floorTops.length > 1) out.push(nonConstant("ffh", s.qto.FinishFloorHeight, floorTops, own.z0, [{ ...self, z_m: own.z0 }, ...floorAnchors], body));
   else if (floorTop != null) {
     const ffh = floorTop - own.z0;
-    out.push({ ...base("ffh", body), status: judge(s.qto.FinishFloorHeight, ffh, "length"), file: s.qto.FinishFloorHeight, computed: r4(ffh),
+    // Konštantná podlahovina a súbor hodnotu neuvádza: schéma ju pri konštantnej výške žiada -> žltá (D-185 doplnok 2).
+    const absent = s.qto.FinishFloorHeight == null;
+    out.push({ ...base("ffh", body), status: absent ? "yellow" : judge(s.qto.FinishFloorHeight, ffh, "length"), file: s.qto.FinishFloorHeight, computed: r4(ffh),
+      ...(absent ? { note: FFH_ABSENT_RULE.text } : {}),
       formula: `vrch(podlahovina) - spodok(miestnosť) = ${r3(floorTop)} - ${r3(own.z0)} = ${r4(ffh)} m`, anchors: [{ ...self, z_m: own.z0 }, ...floorAnchors],
       dimension: { z0: own.z0, z1: floorTop } });
   } else {
@@ -620,13 +668,13 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
       note: s.qto.FinishCeilingHeight == null ? "bez podhľadu, hodnota správne neuvedená" : "podhľad nad miestnosťou nenájdený", anchors: [] });
   }
 
-  // NetVolume = GrossVolume - prieniky podlahovín a podhľadov (NET_VOLUME_COVERINGS, B3) s telesom miestnosti, prizmaticky.
+  // NetVolume = GrossVolume - objem prienikov podlahovín a podhľadov (NET_VOLUME_COVERINGS, B3) s telesom miestnosti (@3).
   const subtracted = ctx.coverings.filter((x) => NET_VOLUME_COVERINGS.includes(x.predefinedType ?? ""));
   const nvMissing = unresolved(own, subtracted, own.z0 - c, own.z1 + c);
   const parts = overlapping(own, subtracted, 0)
-    .map((x) => ({ ...x, dz: Math.max(0, Math.min(x.r.z1, own.z1) - Math.max(x.r.z0, own.z0)) }))
-    .filter((x) => x.dz > 0);
-  const nv = gv - parts.reduce((sum, x) => sum + x.overlap * x.dz, 0);
+    .map((x) => ({ ...x, cut: cutVolume(body, x.e.body), dz: Math.max(0, Math.min(x.r.z1, own.z1) - Math.max(x.r.z0, own.z0)) }))
+    .filter((x) => x.cut.volume > 0);
+  const nv = gv - parts.reduce((sum, x) => sum + x.cut.volume, 0);
   const nvFile = s.qto.NetVolume;
   const nvTol = nvFile != null && s.qto.GrossVolume != null ? netVolumeTolerance(s.qto.GrossVolume, nvFile) : null;
   const within = (v: number) => nvFile != null && nvTol != null && Math.abs(v - nvFile) <= nvTol.abs_m3;
@@ -643,8 +691,14 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
     nvStatus = "grey";
     note = cannot("krytina (podlahovina alebo podhľad)", nvMissing);
   }
+  if (open) {
+    out.push({ ...base("net_volume", body), status: "grey", file: nvFile, note: `nedá sa overiť: ${body.unsupported}`, anchors: [self] });
+    return out;
+  }
+  const term = (x: (typeof parts)[number]) =>
+    x.cut.exact ? `${r4(x.cut.area)} x ${r4(x.cut.dz)} (${x.e.name})` : `${r4(x.cut.volume)} (${x.e.name}, ${x.cut.how})`;
   out.push({ ...base("net_volume", body), ...(nvTol ? { tolerance: nvTol.text } : {}), status: nvStatus, file: nvFile, computed: r4(nv),
-    formula: `${r4(gv)} - ${parts.map((x) => `${r4(x.overlap)} x ${r4(x.dz)} (${x.e.name})`).join(" - ") || "0"} = ${r4(nv)} m3`, note,
+    formula: `${r4(gv)} - ${parts.map(term).join(" - ") || "0"} = ${r4(nv)} m3`, note,
     anchors: [self, ...parts.map((x) => ({ global_id: x.e.globalId, role: "krytina vnútri telesa" }))] });
 
   return out;
