@@ -29,7 +29,7 @@ export async function fetchIcddPlan(opts: { layers?: Layer[]; extras?: Extra[]; 
     fetchAllPages((from, to) =>
       sb
         .from("documents")
-        .select("id, identification, description, location, revision, electronic_format, file_sha256, referenced_document_id, objects!inner(object_type, object_ref, name, valid_until)")
+        .select("id, identification, description, location, revision, electronic_format, file_sha256, referenced_document_id, objects!documents_id_fkey!inner(object_type, object_ref, name, valid_until)")
         .is("objects.valid_until", null)
         .order("id")
         .range(from, to),
