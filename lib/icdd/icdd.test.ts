@@ -127,6 +127,24 @@ describe("ICDD export (D-181)", () => {
     expect(r.issues.filter((i) => i.level === "warning").map((i) => i.code)).toContain("index_name");
   });
 
+  it("väzba aim: má aj typ ls:DirectedBinaryLink, väzby els: len svoj typ (čítače bez inferencie RDFS)", () => {
+    const ls = buildLinksets(plan());
+    const LSNS = "https://standards.iso.org/iso/21597/-1/ed-1/en/Linkset#";
+    const ELSNS = "https://standards.iso.org/iso/21597/-2/ed-1/en/ExtendedLinkset#";
+    const typesOf = (rdf: string) => {
+      const g = parseRdfXml(rdf);
+      const links = new Set(g.filter((t) => t.p.endsWith("#hasToLinkElement") || t.p.endsWith("#hasLinkElement")).map((t) => (t.s as { v: string }).v));
+      return [...links].map((s) => g.filter((t) => (t.s as { v: string }).v === s && t.p.endsWith("#type")).map((t) => (t.o as { v: string }).v).sort());
+    };
+    expect(typesOf(ls["derived-spatial"])).toEqual([[`${LSNS}DirectedBinaryLink`, `${DEFAULT_AIM_NAMESPACE}IsReferencedInSpatialStructure`]]);
+    expect(typesOf(ls.federation)).toEqual([[`${ELSNS}IsIdenticalTo`]]);
+    for (const t of typesOf(ls["documents-elements"])) expect(t).toEqual([`${ELSNS}IsElaboratedBy`]);
+    // kontrola voči ontológiám ISO aj roundtrip s tým prejdú
+    const report = validateIcdd(build());
+    expect(report.ok).toBe(true);
+    expect(compareStates(stateFromContainer(report.contents!, DEFAULT_AIM_NAMESPACE), stateFromPlan(plan())).same).toBe(true);
+  });
+
   it("je deterministický: rovnaký plán = rovnaké bajty, poradie väzieb nehrá rolu", () => {
     const a = build();
     const p = plan();

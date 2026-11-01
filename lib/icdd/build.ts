@@ -24,6 +24,7 @@ import {
   IFC_DOCS_URL,
   IFC_RELATIONSHIP,
   LS,
+  LS_BASE_TYPE,
   type IcddLink,
   type IcddPayload,
   type IcddPlan,
@@ -180,6 +181,10 @@ export function buildLinksets(plan: IcddPlan): Record<Layer, string> {
     const from = element(link.from);
     const to = element(link.to);
     const l = `${lsBase}#L-${sha256(linkKey(plan, link)).slice(0, 24)}`;
+    // Vlastná trieda aim: dostane aj nadtriedu ls: (dôsledok rdfs:subClassOf z aim.rdf), aby väzbu našiel aj čítač
+    // bez inferencie RDFS a bez ontológie aim: (LS_BASE_TYPE).
+    const lsType = LS_BASE_TYPE[link.kind];
+    if (lsType) add(l, RDF_TYPE, iri(`${LS}${lsType}`));
     if (link.kind === "IsIdenticalTo" || link.kind === "DocumentIsIdenticalTo") {
       add(l, RDF_TYPE, iri(`${ELS}IsIdenticalTo`));
       add(l, `${LS}hasLinkElement`, iri(from));

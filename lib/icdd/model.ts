@@ -48,6 +48,15 @@ export type Extra = (typeof EXTRAS)[number];
  */
 export type LinkKind = "IsElaboratedBy" | "IsReferencedInSpatialStructure" | "IsIdenticalTo" | "DocumentIsIdenticalTo";
 
+/**
+ * Nadtrieda v ls: (ISO 21597-1), ktorá sa zapisuje na link popri vlastnej triede aim: (Samuel 1. 11., audit ICDD).
+ * Čítače bez inferencie RDFS hľadajú väzby podľa presného typu: ICDDToolkitCore (RUB) ls: a els:, openbim-icdd len
+ * ls:. Väzby els: (Part 2) ju nedostávajú, lebo ICDDToolkitCore by väzbu s typom ls: aj els: načítal dvakrát.
+ */
+export const LS_BASE_TYPE: Partial<Record<LinkKind, "DirectedBinaryLink">> = {
+  IsReferencedInSpatialStructure: "DirectedBinaryLink",
+};
+
 export const LAYER_OF: Record<LinkKind, Layer> = {
   IsElaboratedBy: "documents-elements",
   IsReferencedInSpatialStructure: "derived-spatial",
