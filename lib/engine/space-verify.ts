@@ -1,5 +1,16 @@
 import { GeometryProcessor } from "@ifc-lite/geometry";
 
+import {
+  NON_CONSTANT_RULE,
+  SELECTION,
+  SPACE_METHODS,
+  TOLERANCES,
+  withinTolerance,
+  type QuantityKind,
+  type QuantityMethod,
+  type SpaceMethodKey,
+} from "../verify/quantity-methods";
+
 /**
  * SPIKE (D-185, NÁVRH): overovač výmer IfcSpace voči geometrii. Nie je zapojený do toolov.
  *
@@ -7,7 +18,9 @@ import { GeometryProcessor } from "@ifc-lite/geometry";
  * parametre extrúzie bez tesselácie) ako zvislé hranoly: pôdorys (prstence s dierami) v IFC
  * svete (m) a rozsah z0..z1. Recepty porovnajú Qto_SpaceBaseQuantities zo súboru s hodnotou
  * z hranolov miestnosti, dosiek a krytín, ktoré sa s miestnosťou prekrývajú v pôdoryse
- * (presný 2D prienik), a vrátia stav, vzorec s dosadenými číslami a kotvy na kóty.
+ * (presný 2D prienik), a vrátia stav, metódu, definíciu, toleranciu, vzorec s dosadenými
+ * číslami a kotvy na kóty. Pravidlá (tolerancie, výber, konštantnosť) sú v registri
+ * `lib/verify/quantity-methods.ts`, nie tu.
  *
  * Mimo spiku: šikmé extrúzie, CSG operandy (`source_modified`), ostatné analytické tvary
  * (IfcSweptDiskSolid, IfcRevolvedAreaSolid...) a mesh ako náhrada (sivá zatiaľ aj tam).
@@ -294,17 +307,9 @@ export async function extractBodies(bytes: Uint8Array, ids: readonly number[]): 
   }
 }
 
-// ── recepty IfcSpace ─────────────────────────────────────────────────────────
+// ── recepty IfcSpace (pravidlá: lib/verify/quantity-methods.ts) ───────────────
 
 export type Status = "green" | "yellow" | "red" | "grey";
-
-export interface Tolerance {
-  length_m: number;
-  rel: number;
-  volume_abs_m3: number;
-}
-/** Predbežné predvoľby D-185 (čaká na Samuela). */
-export const DEFAULT_TOLERANCE: Tolerance = { length_m: 0.005, rel: 0.005, volume_abs_m3: 0.05 };
 
 export interface Anchor {
   global_id: string;
@@ -313,13 +318,22 @@ export interface Anchor {
 }
 export interface RecipeResult {
   target: string;
+  /** Recept s verziou z registra metód. */
   recipe: string;
   status: Status;
+  /** Čo sa z geometrie meria a doslovná definícia zo schémy (register metód). */
+  method: string;
+  definition: string;
+  spec_ref: string;
+  /** Použitá tolerancia (text z registra). */
+  tolerance: string;
   file?: number;
   computed?: number;
   /** Vzorec s dosadenými číslami (m, m2, m3). */
   formula?: string;
   note?: string;
+  /** Pravidlo konštantnosti: počet rôznych výšok v pôdoryse miestnosti (len pri porušení). */
+  distinct_heights?: number[];
   anchors: Anchor[];
 }
 
@@ -344,12 +358,9 @@ function region(b: Body): { rings: Ring[]; z0: number; z1: number } | null {
   return { rings: b.prisms.flatMap((p) => p.rings), z0: Math.min(...b.prisms.map((p) => p.z0)), z1: Math.max(...b.prisms.map((p) => p.z1)) };
 }
 
-function judge(file: number | undefined, computed: number, kind: "length" | "area" | "volume", tol: Tolerance): Status {
+function judge(file: number | undefined, computed: number, kind: QuantityKind): Status {
   if (file == null) return "grey";
-  const d = Math.abs(computed - file);
-  if (kind === "length") return d <= tol.length_m ? "green" : "red";
-  if (kind === "volume" && d <= tol.volume_abs_m3) return "green";
-  return d <= tol.rel * Math.max(Math.abs(file), 1e-9) ? "green" : "red";
+  return withinTolerance(file, computed, kind) ? "green" : "red";
 }
 
 /** Prvky, ktorých pôdorys pokrýva aspoň `minShare` pôdorysu miestnosti, s plochou prekryvu. */
@@ -363,104 +374,126 @@ function overlapping(space: Ring[], others: Element[], minShare: number) {
     .filter((x): x is NonNullable<typeof x> => !!x && x.overlap > minShare * a);
 }
 
-function weightedMedian(items: Array<{ value: number; weight: number }>): number {
-  const v = [...items].sort((x, y) => x.value - y.value);
-  const total = v.reduce((s, x) => s + x.weight, 0);
-  let acc = 0;
-  for (const x of v) if ((acc += x.weight) >= total / 2) return x.value;
-  return v[v.length - 1].value;
+/** Rôzne výšky (zhlukované po tolerancii dĺžky) zoradené vzostupne. */
+function distinct(values: number[]): number[] {
+  const out: number[] = [];
+  for (const v of [...values].sort((a, b) => a - b)) if (!out.length || v - out[out.length - 1] > TOLERANCES.length.abs!) out.push(v);
+  return out;
 }
 
 export interface Context {
   slabs: Element[];
   coverings: Element[];
-  tolerance?: Tolerance;
+}
+
+function base(key: SpaceMethodKey) {
+  const m: QuantityMethod = SPACE_METHODS[key];
+  return { target: m.target, recipe: m.id, method: m.method, definition: m.definition, spec_ref: m.spec_ref, tolerance: TOLERANCES[m.kind].text };
+}
+
+/** Výsledok pri viacerých výškach (pravidlo konštantnosti zo schémy). */
+function nonConstant(key: SpaceMethodKey, file: number | undefined, heights: number[], ref: number, anchors: Anchor[]): RecipeResult {
+  const values = heights.map((h) => r4(h - ref));
+  return {
+    ...base(key),
+    status: file == null ? "green" : "red",
+    file,
+    distinct_heights: values,
+    note: file == null
+      ? `správne neuvedená: v pôdoryse miestnosti je ${values.length} výšok (${values.join(", ")} m)`
+      : `vlastnosť nie je jednoznačná, miestnosť má ${values.length} výšok (${values.join(", ")} m). ${NON_CONSTANT_RULE.text}`,
+    anchors,
+  };
 }
 
 export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
-  const tol = ctx.tolerance ?? DEFAULT_TOLERANCE;
   const out: RecipeResult[] = [];
   const own = region(s.body);
   if (!own) {
-    for (const t of ["Height", "GrossFloorArea", "GrossVolume", "NetVolume", "FinishFloorHeight", "FinishCeilingHeight"])
-      out.push({ target: `Qto_SpaceBaseQuantities.${t}`, recipe: "-", status: "grey", file: s.qto[t], note: s.body.unsupported, anchors: [] });
+    for (const k of ["height_own", "gross_floor_area", "gross_volume", "net_volume", "ffh", "fch"] as const) {
+      const b = base(k);
+      out.push({ ...b, status: "grey", file: s.qto[b.target.split(".")[1]], note: s.body.unsupported, anchors: [] });
+    }
     return out;
   }
   const A = regionArea(own.rings);
   const P = regionPerimeter(own.rings);
   const H = own.z1 - own.z0;
-  const gv = own.rings.length ? s.body.prisms.reduce((sum, p) => sum + regionArea(p.rings) * (p.z1 - p.z0), 0) : 0;
+  const gv = s.body.prisms.reduce((sum, p) => sum + regionArea(p.rings) * (p.z1 - p.z0), 0);
   const self: Anchor = { global_id: s.globalId, role: "teleso miestnosti" };
   const modified = s.body.unsupported ? `; ${s.body.unsupported}` : "";
 
-  out.push({ target: "Qto_SpaceBaseQuantities.Height", recipe: "space.height.own@1", status: judge(s.qto.Height, H, "length", tol), file: s.qto.Height, computed: r4(H),
+  out.push({ ...base("height_own"), status: judge(s.qto.Height, H, "length"), file: s.qto.Height, computed: r4(H),
     formula: `${r3(own.z1)} - ${r3(own.z0)} = ${r4(H)} m`, anchors: [{ ...self, z_m: own.z0 }, { ...self, z_m: own.z1 }] });
-  out.push({ target: "Qto_SpaceBaseQuantities.GrossFloorArea", recipe: "space.area.profile@1", status: judge(s.qto.GrossFloorArea, A, "area", tol), file: s.qto.GrossFloorArea, computed: r4(A),
+  out.push({ ...base("gross_floor_area"), status: judge(s.qto.GrossFloorArea, A, "area"), file: s.qto.GrossFloorArea, computed: r4(A),
     formula: `plocha profilu = ${r4(A)} m2`, anchors: [self] });
-  out.push({ target: "Qto_SpaceBaseQuantities.GrossPerimeter", recipe: "space.perimeter.profile@1", status: judge(s.qto.GrossPerimeter, P, "length", tol), file: s.qto.GrossPerimeter, computed: r4(P),
+  out.push({ ...base("gross_perimeter"), status: judge(s.qto.GrossPerimeter, P, "length"), file: s.qto.GrossPerimeter, computed: r4(P),
     formula: `obvod vonkajšej slučky = ${r4(P)} m`, anchors: [self] });
-  out.push({ target: "Qto_SpaceBaseQuantities.GrossVolume", recipe: "space.volume.prism@1", status: judge(s.qto.GrossVolume, gv, "volume", tol), file: s.qto.GrossVolume, computed: r4(gv),
+  out.push({ ...base("gross_volume"), status: judge(s.qto.GrossVolume, gv, "volume"), file: s.qto.GrossVolume, computed: r4(gv),
     formula: `${r4(A)} x ${r4(H)} = ${r4(gv)} m3${modified}`, anchors: [self] });
 
-  // Dosky pod a nad: prekryv aspoň 50 % pôdorysu, vrch / spodok do tolerancie od telesa miestnosti.
-  const slabs = overlapping(own.rings, ctx.slabs, 0.5);
-  const below = slabs.filter((x) => Math.abs(x.r.z1 - own.z0) <= tol.length_m).sort((a, b) => b.overlap - a.overlap)[0];
-  const above = slabs.filter((x) => Math.abs(x.r.z0 - own.z1) <= tol.length_m).sort((a, b) => b.overlap - a.overlap)[0];
+  // Dosky pod a nad.
+  const c = SELECTION.contact_m;
+  const slabs = overlapping(own.rings, ctx.slabs, SELECTION.slab_min_overlap);
+  const below = slabs.filter((x) => Math.abs(x.r.z1 - own.z0) <= c).sort((a, b) => b.overlap - a.overlap)[0];
+  const above = slabs.filter((x) => Math.abs(x.r.z0 - own.z1) <= c).sort((a, b) => b.overlap - a.overlap)[0];
   if (below && above) {
     const hs = above.r.z0 - below.r.z1;
-    out.push({ target: "Qto_SpaceBaseQuantities.Height", recipe: "space.height.slabs@1", status: judge(s.qto.Height, hs, "length", tol), file: s.qto.Height, computed: r4(hs),
+    out.push({ ...base("height_slabs"), status: judge(s.qto.Height, hs, "length"), file: s.qto.Height, computed: r4(hs),
       formula: `spodok(${above.e.name}) - vrch(${below.e.name}) = ${r3(above.r.z0)} - ${r3(below.r.z1)} = ${r4(hs)} m`,
       anchors: [{ global_id: below.e.globalId, role: "doska pod", z_m: below.r.z1 }, { global_id: above.e.globalId, role: "doska nad", z_m: above.r.z0 }] });
   } else {
-    out.push({ target: "Qto_SpaceBaseQuantities.Height", recipe: "space.height.slabs@1", status: "grey", file: s.qto.Height,
+    out.push({ ...base("height_slabs"), status: "grey", file: s.qto.Height,
       note: `${below ? "" : "doska pod nenájdená; "}${above ? "" : "doska nad nenájdená"}`.trim(), anchors: [] });
   }
 
-  // Podlahovina: FLOORING s vrchom v telese miestnosti, prekryv aspoň 50 %.
-  const floors = overlapping(own.rings, ctx.coverings.filter((c) => c.predefinedType === "FLOORING"), 0.5).filter((x) => x.r.z0 >= own.z0 - tol.length_m && x.r.z1 <= own.z1);
-  const floorTop = floors.length ? weightedMedian(floors.map((x) => ({ value: x.r.z1, weight: x.overlap }))) : null;
-  if (floorTop != null) {
+  // Podlahovina.
+  const floors = overlapping(own.rings, ctx.coverings.filter((x) => x.predefinedType === "FLOORING"), SELECTION.flooring_min_overlap)
+    .filter((x) => x.r.z0 >= own.z0 - c && x.r.z1 <= own.z1);
+  const floorTops = distinct(floors.map((x) => x.r.z1));
+  const floorAnchors = floors.map((x) => ({ global_id: x.e.globalId, role: "podlahovina", z_m: x.r.z1 }));
+  const floorTop = floorTops.length === 1 ? floorTops[0] : null;
+  if (floorTops.length > 1) out.push(nonConstant("ffh", s.qto.FinishFloorHeight, floorTops, own.z0, [{ ...self, z_m: own.z0 }, ...floorAnchors]));
+  else if (floorTop != null) {
     const ffh = floorTop - own.z0;
-    out.push({ target: "Qto_SpaceBaseQuantities.FinishFloorHeight", recipe: "space.ffh.covering@1", status: judge(s.qto.FinishFloorHeight, ffh, "length", tol), file: s.qto.FinishFloorHeight, computed: r4(ffh),
-      formula: `vrch(FLOORING) - spodok(miestnosť) = ${r3(floorTop)} - ${r3(own.z0)} = ${r4(ffh)} m`,
-      anchors: [{ ...self, z_m: own.z0 }, ...floors.map((x) => ({ global_id: x.e.globalId, role: "podlahovina", z_m: x.r.z1 }))] });
+    out.push({ ...base("ffh"), status: judge(s.qto.FinishFloorHeight, ffh, "length"), file: s.qto.FinishFloorHeight, computed: r4(ffh),
+      formula: `vrch(podlahovina) - spodok(miestnosť) = ${r3(floorTop)} - ${r3(own.z0)} = ${r4(ffh)} m`, anchors: [{ ...self, z_m: own.z0 }, ...floorAnchors] });
   } else {
-    out.push({ target: "Qto_SpaceBaseQuantities.FinishFloorHeight", recipe: "space.ffh.covering@1", status: s.qto.FinishFloorHeight == null ? "grey" : "red", file: s.qto.FinishFloorHeight,
+    out.push({ ...base("ffh"), status: s.qto.FinishFloorHeight == null ? "grey" : "red", file: s.qto.FinishFloorHeight,
       note: "podlahovina v pôdoryse miestnosti nenájdená", anchors: [] });
   }
 
-  // Podhľad: CEILING v telese miestnosti s prekryvom aspoň 10 %; vážený medián spodkov; nekonštantný = sivá.
-  const ceilings = overlapping(own.rings, ctx.coverings.filter((c) => c.predefinedType === "CEILING"), 0.1).filter((x) => x.r.z0 > own.z0 && x.r.z1 <= own.z1 + tol.length_m);
+  // Podhľad: každý podhľad s prekryvom aspoň SELECTION.ceiling_min_overlap je jedna výška; viac výšok = pravidlo konštantnosti.
+  const ceilings = overlapping(own.rings, ctx.coverings.filter((x) => x.predefinedType === "CEILING"), SELECTION.ceiling_min_overlap)
+    .filter((x) => x.r.z0 > own.z0 && x.r.z1 <= own.z1 + c);
   const ref = floorTop ?? own.z0;
-  if (ceilings.length) {
-    const bottoms = ceilings.map((x) => ({ value: x.r.z0, weight: x.overlap }));
-    const med = weightedMedian(bottoms);
-    const spread = Math.max(...bottoms.map((b) => b.value)) - Math.min(...bottoms.map((b) => b.value));
-    const fch = med - ref;
-    const nonConst = spread > tol.length_m;
-    out.push({ target: "Qto_SpaceBaseQuantities.FinishCeilingHeight", recipe: "space.fch.covering@1", status: nonConst ? "grey" : judge(s.qto.FinishCeilingHeight, fch, "length", tol), file: s.qto.FinishCeilingHeight, computed: r4(fch),
-      formula: `spodok(CEILING) - vrch(podlahy) = ${r3(med)} - ${r3(ref)} = ${r4(fch)} m`, note: nonConst ? `nekonštantná výška podhľadu (rozptyl ${r3(spread)} m)` : undefined,
-      anchors: [{ ...self, z_m: ref }, ...ceilings.map((x) => ({ global_id: x.e.globalId, role: "podhľad", z_m: x.r.z0 }))] });
+  const ceilingAnchors = ceilings.map((x) => ({ global_id: x.e.globalId, role: "podhľad", z_m: x.r.z0 }));
+  const bottoms = distinct(ceilings.map((x) => x.r.z0));
+  if (bottoms.length > 1) out.push(nonConstant("fch", s.qto.FinishCeilingHeight, bottoms, ref, [{ ...self, z_m: ref }, ...ceilingAnchors]));
+  else if (bottoms.length === 1) {
+    const fch = bottoms[0] - ref;
+    out.push({ ...base("fch"), status: judge(s.qto.FinishCeilingHeight, fch, "length"), file: s.qto.FinishCeilingHeight, computed: r4(fch),
+      formula: `spodok(podhľad) - vrch(podlahy) = ${r3(bottoms[0])} - ${r3(ref)} = ${r4(fch)} m`, anchors: [{ ...self, z_m: ref }, ...ceilingAnchors] });
   } else {
-    out.push({ target: "Qto_SpaceBaseQuantities.FinishCeilingHeight", recipe: "space.fch.covering@1", status: s.qto.FinishCeilingHeight == null ? "grey" : "red", file: s.qto.FinishCeilingHeight,
-      note: "podhľad nad miestnosťou nenájdený", anchors: [] });
+    out.push({ ...base("fch"), status: s.qto.FinishCeilingHeight == null ? "green" : "red", file: s.qto.FinishCeilingHeight,
+      note: s.qto.FinishCeilingHeight == null ? "bez podhľadu, hodnota správne neuvedená" : "podhľad nad miestnosťou nenájdený", anchors: [] });
   }
 
-  // NetVolume = GrossVolume - prieniky krytín (FLOORING, CEILING) s telesom miestnosti, prizmaticky.
-  const parts = overlapping(own.rings, ctx.coverings, 0).map((x) => ({ ...x, dz: Math.max(0, Math.min(x.r.z1, own.z1) - Math.max(x.r.z0, own.z0)) })).filter((x) => x.dz > 0);
-  const cut = parts.reduce((sum, x) => sum + x.overlap * x.dz, 0);
-  const nv = gv - cut;
-  let nvStatus = judge(s.qto.NetVolume, nv, "volume", tol);
+  // NetVolume = GrossVolume - prieniky krytín s telesom miestnosti, prizmaticky.
+  const parts = overlapping(own.rings, ctx.coverings, 0)
+    .map((x) => ({ ...x, dz: Math.max(0, Math.min(x.r.z1, own.z1) - Math.max(x.r.z0, own.z0)) }))
+    .filter((x) => x.dz > 0);
+  const nv = gv - parts.reduce((sum, x) => sum + x.overlap * x.dz, 0);
+  let nvStatus = judge(s.qto.NetVolume, nv, "volume");
   let note: string | undefined;
   if (nvStatus === "red" && s.qto.NetVolume != null) {
-    // Revit metóda "krytiny po celej ploche miestnosti" (spike ASR v79: 51/83 presne) = žltá.
     const full = gv - parts.reduce((sum, x) => sum + A * x.dz, 0);
-    if (judge(s.qto.NetVolume, full, "volume", tol) === "green") {
+    if (withinTolerance(s.qto.NetVolume, full, "volume")) {
       nvStatus = "yellow";
-      note = `sedí metóda "krytiny po celej ploche" (${r4(full)} m3), nie prienik podľa schémy`;
+      note = `sedí len metóda "krytiny po celej ploche miestnosti" (${r4(full)} m3), nie prienik podľa schémy`;
     }
   }
-  out.push({ target: "Qto_SpaceBaseQuantities.NetVolume", recipe: "space.netvolume.coverings@1", status: nvStatus, file: s.qto.NetVolume, computed: r4(nv),
+  out.push({ ...base("net_volume"), status: nvStatus, file: s.qto.NetVolume, computed: r4(nv),
     formula: `${r4(gv)} - ${parts.map((x) => `${r4(x.overlap)} x ${r4(x.dz)} (${x.e.name})`).join(" - ") || "0"} = ${r4(nv)} m3`, note,
     anchors: [self, ...parts.map((x) => ({ global_id: x.e.globalId, role: "krytina vnútri telesa" }))] });
 

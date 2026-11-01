@@ -59,12 +59,31 @@ describe("recepty IfcSpace (D-185 spike)", () => {
     expect(status(res, "NetVolume")!.computed).toBeCloseTo(333.5, 4);
   });
 
-  it("chybná výška podhľadu je červená, nekonštantný podhľad sivý", () => {
+  it("chybná výška podhľadu je červená", () => {
     expect(status(verifySpace(space({ ...good, FinishCeilingHeight: 3.0 }), ctx), "FinishCeilingHeight")!.status).toBe("red");
+  });
+
+  it("viac výšok podhľadu: hodnota v súbore = červený nález, bez hodnoty = zelená (schéma: len pri konštantnej výške)", () => {
     const two = { ...ctx, coverings: [...ctx.coverings, el("PH2", body([ring(rect(4, 6, 12, 8))], 7.6, 7.6125), "CEILING")] };
     const r = status(verifySpace(space(good), two), "FinishCeilingHeight")!;
-    expect(r.status).toBe("grey");
-    expect(r.note).toMatch(/nekonštantná/);
+    expect(r.status).toBe("red");
+    expect(r.distinct_heights).toEqual([2.6, 3.05]);
+    expect(r.note).toMatch(/nie je jednoznačná, miestnosť má 2 výšok/);
+    expect(r.note).toMatch(/PARTIAL/);
+    const withoutFch: Record<string, number> = { ...good };
+    delete withoutFch.FinishCeilingHeight;
+    expect(status(verifySpace(space(withoutFch), two), "FinishCeilingHeight")!.status).toBe("green");
+  });
+
+  it("každý výsledok nesie metódu, definíciu zo schémy a použitú toleranciu z registra", () => {
+    const res = verifySpace(space(good), ctx);
+    for (const r of res) {
+      expect(r.method.length).toBeGreaterThan(10);
+      expect(r.definition.length).toBeGreaterThan(10);
+      expect(r.spec_ref).toMatch(/^buildingSMART\/IFC4\.3\.x-development@d71e140:/);
+      expect(r.tolerance).toMatch(/mm|%/);
+    }
+    expect(status(res, "FinishCeilingHeight")!.definition).toMatch(/constant height/);
   });
 
   it("NetVolume Revit metódou (krytiny po celej ploche) je žltá, inak červená", () => {

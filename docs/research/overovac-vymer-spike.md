@@ -139,10 +139,11 @@ Kotvy pre kóty: plochy z = 4,850 (vrch SD02.03.0001), 5,000 (vrch PD03.30.01), 
    objem divergenciou, plocha súčtom trojuholníkov, s toleranciou tesselácie. Recept dostane
    `body_source: analytic:<trieda> | mesh` a pri meshi `closed`; **sivá je len pri neuzavretom meshi bez analytického
    zdroja**.
-2. **Výber podhľadu (otvorená otázka 1):** použiť ten istý princíp ako D-140 (`lib/engine/ceiling.ts`), ale na
-   miestnosť: krytiny CEILING, ktorých pôdorys sa prekrýva s pôdorysom miestnosti, vážený medián spodkov podľa plochy
-   prekryvu. Ak sa výšky prekrývajúcich podhľadov líšia o viac ako toleranciu a menšia z nich má aspoň 10 % plochy, stav
-   je sivá "nekonštantná" (schéma: "to be provided only if constant").
+2. **Výber podhľadu (rozhodnuté 1. 11. podľa textu schémy):** viac výšok podhľadu v pôdoryse miestnosti nie je medián, ale
+   nález. Schéma (IFC4 ADD2 TC1 aj IFC4.3, `Qto_SpaceBaseQuantities.xml`): FinishCeilingHeight "to be provided only if the
+   space has a suspended ceiling with constant height". Hodnota v súbore pri N výškach = červená, BCF pre OCB (odstrániť
+   hodnotu alebo rozdeliť miestnosť na `IfcSpace` PARTIAL); bez hodnoty = zelená. Pravidlo je v `lib/verify/quantity-methods.ts`
+   (`NON_CONSTANT_RULE`).
 3. **NetVolume (otvorená otázka 2):** hodnotiť podľa definície schémy (teleso mínus prieniky konštrukcií vnútri),
    prizmaticky; zelená do tolerancie, žltá, keď sa hodnota zhoduje s modelom "len plné vrstvy" (kap. 3.3), červená
    inak. CSG jadro ifc-lite netreba, kým sú telesá extrúzie (otvorená otázka 3).
@@ -185,10 +186,10 @@ Kotvy pre kóty: plochy z = 4,850 (vrch SD02.03.0001), 5,000 (vrch PD03.30.01), 
   recept (`space.height.own@1`, `space.height.slabs@1`, `space.ffh.covering@1`, `space.fch.covering@1`,
   `space.area.profile@1`, `space.perimeter.profile@1`, `space.volume.prism@1`, `space.netvolume.coverings@1`), stav
   (green / yellow / red / grey), hodnotu zo súboru a vypočítanú, vzorec s dosadenými číslami a kotvy (GUID, rola, z).
-  Výber prvkov: dosky s prekryvom aspoň 50 % pôdorysu a dotykom do 5 mm; podlahovina aspoň 50 %; podhľad aspoň 10 %,
-  vážený medián spodkov, rozptyl nad 5 mm = sivá "nekonštantná"; NetVolume podľa schémy (prieniky krytín prizmaticky),
+  Výber prvkov a tolerancie berie z registra `lib/verify/quantity-methods.ts` (dosky aspoň 50 % pôdorysu a dotyk do 5 mm,
+  podlahovina aspoň 50 %, podhľad aspoň 10 %; viac výšok = pravidlo konštantnosti, červený nález pri hodnote v súbore); NetVolume podľa schémy (prieniky krytín prizmaticky),
   žltá pri zhode s metódou "krytiny po celej ploche". Tolerancie = predbežné predvoľby D-185.
-- **Testy `lib/engine/space-verify.test.ts` (7, prechádzajú):** prienik L-tvaru, diery, obvod; zelené recepty so vzorcom a
+- **Testy `lib/engine/space-verify.test.ts` (9, prechádzajú; pridané: pravidlo konštantnosti, metóda/definícia/tolerancia pri každom výsledku):** prienik L-tvaru, diery, obvod; zelené recepty so vzorcom a
   kotvami; červená FCH, sivý nekonštantný podhľad; žltý a červený NetVolume; sivá bez telesa; integrácia so skutočným
   WASM `extractExtrusionDefinitions` na fixture `__fixtures__/mini-space-verify.ts` (mm, z 4,85 až 8,80, 88 m2).
   Mutácie (bez znamienok dier, podhľad od spodku telesa namiesto podlahy) testy zhodia. tsc a eslint bez nálezov.

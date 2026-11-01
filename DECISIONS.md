@@ -3975,7 +3975,7 @@ výšku, orezávanie, widget aj percentá počíta fork (D-083: "jedna pravda o 
    federovanej obálke. Fork nebol v session pripojený, preto sa robí ako samostatná zmena forku
    a po nej doplnenie parametrov toolu v hostovi.
 
-**Otvorené (Samuel):** pripojenie forku; či do opravy forku posielať namiesto `storeyGuid +
+**Otvorené (Samuel), pôvodné otázky:** pripojenie forku; či do opravy forku posielať namiesto `storeyGuid +
 offset` absolútnu výšku `coordinate_m` z DB (obchádzka, mení princíp D-083); voči čomu má byť
 predvolené percento rezu.
 
@@ -8333,8 +8333,9 @@ Stav prod DB pri návrhu (len SELECT): `relationships` nemá stĺpec revízie an
 
 ### D-185 - Overovač výmer voči geometrii: pôvod hodnoty, recepty a fajočka pri Qto (#382)
 
-**Status:** NÁVRH (2026-11-01, výskumná session; číslo pridelil orchestrátor). Smer od Samuela (zadanie "overovač výmer
-voči geometrii"), body 2 a 3 nižšie čakajú na jeho odpovede. Nadväzuje na D-044 (geometria v prehliadači), D-089
+**Status:** NÁVRH s čiastočne rozhodnutými pravidlami (2026-11-01, výskumná session; číslo pridelil orchestrátor). Smer od
+Samuela (zadanie "overovač výmer voči geometrii"); rozhodnuté: výklad D-183 bod 6, NetVolume, tolerancie, pravidlo
+konštantnosti, BCF z nálezov (nižšie); implementácia mimo spiku čaká na Samuelovo slovo. Nadväzuje na D-044 (geometria v prehliadači), D-089
 (register odvodení), D-112, D-124, D-140, D-155 (meranie z meshu, kóty, výška podhľadu, plochy), D-129 (IFC alebo AIM
 vrstva), D-142 (`include=quantities`), D-183 (zdroj pravdy, podpis vstupu, bod 6). Podklady:
 `docs/research/vlastnosti-povod-a-overenie.md` (prvá analýza) a `docs/research/overovac-vymer-spike.md` (spike na ASR v79).
@@ -8388,11 +8389,24 @@ chýba alebo je `unsupported`.
 kóty) smú ísť do `verification_results` k revízii modelu. Nie sú to geometria ani odtlačok tvaru v zmysle bodu 6, ale
 výsledok behu s podpisom vstupu (bod 11); pri novej revízii sú `stale`, nikdy sa neprepisujú.
 
-**Predbežné predvoľby (čaká na Samuela):** (b) podhľad pri viacerých výškach = vážený medián spodkov podľa plochy prekryvu
-s miestnosťou (ako D-140); ak sa výšky líšia nad toleranciu a menšia má aspoň 10 % plochy, sivá "nekonštantná";
-(c) NetVolume podľa schémy (teleso mínus prieniky konštrukcií vnútri, prizmaticky), žltá pri zhode s Revit metódou
-"krytiny po celej ploche"; (d) tolerancie dĺžky 5 mm, plochy a objemy 0,5 %, objem aj absolútne 0,05 m3. Spike v `lib/engine` ukázal, že 0,5 % z objemu miestnosti nerozlíši metódy NetVolume pri tenkých krytinách;
-návrh: toleranciu NetVolume viazať na odčítaný objem (napr. 2 % z GV - NV).
+**Záväzné pravidlá (Samuel 1. 11., cez orchestrátora) žijú v jednom súbore `lib/verify/quantity-methods.ts`** (register
+metód výmer, `REGISTRY_VERSION`); kód ich číta odtiaľ, dokumenty len odkazujú. Každý výsledok overenia nesie pri hodnote
+recept s verziou, metódu (čo sa meria), doslovnú definíciu zo schémy so `spec_ref` (repo, commit, súbor), použitú toleranciu,
+vzorec s dosadenými číslami a kotvy, aby to videl používateľ vo vieweri.
+- **(c) NetVolume** podľa schémy ("excluding the volume of construction elements inside the space"): GrossVolume mínus
+  prizmatické prieniky krytín s telesom miestnosti; žltá, keď sedí len Revit metóda "krytiny po celej ploche miestnosti".
+- **(d) Tolerancie:** dĺžka +- 5 mm, plocha +- 0,5 %, objem +- 0,5 % alebo +- 0,05 m3. Spike ukázal, že 0,5 % z objemu
+  miestnosti pri tenkých krytinách nerozlíši metódy NetVolume (fixture: 0,2 m3); návrh viazať toleranciu NetVolume na
+  odčítaný objem čaká na Samuela.
+- **(b) Viac výšok podhľadu = pravidlo konštantnosti, nie medián.** Text schémy (buildingSMART/IFC4.3.x-development
+  `d71e140`, `reference_schemas/psd/Qto_SpaceBaseQuantities.xml` aj `psd_IFC4_ADD2_TC1`, zhodne): FinishCeilingHeight
+  "To be provided only if the space has a suspended ceiling with constant height"; rovnako Height ("constant height") a
+  FinishFloorHeight ("constant flooring height"). Rozdelenie miestnosti schéma umožňuje (`IfcSpace.md`: "A space can also be
+  decomposed in parts, where each part defines a partial space", `CompositionType` PARTIAL cez `IfcRelAggregates`), ale
+  nevyžaduje. Preto: viac výšok podhľadu (každý podhľad s prekryvom aspoň 10 % pôdorysu, výšky rozdielne nad 5 mm) a hodnota
+  v súbore = **červený nález** "vlastnosť nie je jednoznačná, miestnosť má N výšok" (BCF pre OCB: hodnotu odstrániť alebo
+  miestnosť rozdeliť na čiastkové priestory); bez hodnoty = zelená ("správne neuvedená"). To isté pre podlahovinu (FFH).
+  Návrh D-140 s váženým mediánom ostáva len pre rez pod podhľadom podlažia, nie pre overenie vlastnosti.
 
 **BCF z nálezov spiku (Samuel: áno, založené 1. 11.: #19, #20, #21, typ Issue, stav open, bez priradenia):** tri témy nad ASR v79 ako bežné nálezy modelu pre OCB, components = GlobalId:
 duplicitné dosky SD02.03.0002 a SD02.03.0003; chýbajúca `FinishFloorHeight` v 1.05, 1.07, 2.14, 3.14, 4.01; neuzavreté
