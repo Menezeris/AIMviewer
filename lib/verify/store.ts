@@ -6,7 +6,7 @@ import type { VerificationStore } from "./types";
 
 /**
  * Uloženie behu overenia výmer (D-185) do `verification_runs` / `verification_results` (service_role).
- * Migrácia je v `supabase/pending/20261101200000_verification_results.sql`; kým nie je aplikovaná, zápis zlyhá
+ * Migrácia je v `supabase/migrations/20261101200000_verification_results.sql`; kým nie je aplikovaná, zápis zlyhá
  * a `ifc_measure verify=true save=true` vráti výsledok s `saved.ok=false` (výpočet ostáva platný).
  */
 

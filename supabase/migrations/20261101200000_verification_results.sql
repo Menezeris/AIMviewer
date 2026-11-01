@@ -1,5 +1,5 @@
 -- D-185 (overovač výmer voči geometrii): uložené behy overenia výmer IfcSpace k revízii modelu.
--- PRIPRAVENÉ, NESPUSTENÉ: aplikuje orchestrátor so Samuelovým slovom (presun do supabase/migrations).
+-- APLIKOVANÉ na produkciu 1. 11. (Samuel "áno", orchestrátor).
 -- Beh zapisuje host (`ifc_measure verify=true save=true`, lib/verify/store.ts, service_role). Výsledok nesie podpis vstupu
 -- `model_revisions` {model: revízia} (D-183 bod 11); pri novej revízii modelu je `stale` (nikdy sa neprepisuje ani nemaže).
 -- Výklad D-183 bod 6 (Samuel 1. 11.): vypočítaná hodnota, rozdiel, stav a kotvy na kóty nie sú geometria ani odtlačok tvaru,

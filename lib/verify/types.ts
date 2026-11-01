@@ -1,4 +1,4 @@
-/** Riadky behu overenia výmer (D-185); DDL v `supabase/pending/20261101200000_verification_results.sql`. */
+/** Riadky behu overenia výmer (D-185); DDL v `supabase/migrations/20261101200000_verification_results.sql`. */
 
 export interface VerificationRunWrite {
   scope: string;

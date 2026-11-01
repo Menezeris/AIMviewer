@@ -8371,7 +8371,7 @@ a FinishCeilingHeight sedia s telesom a krytinami, NetVolume vzniká odčítaní
    odtlačok tvaru, ale výsledok behu. `verification_runs` (podpis vstupu `model_revisions`, verzia registra a motora,
    počty) a `verification_results`; `v_verification_latest` = posledný výsledok receptu na prvku s `based_on` a `stale`
    (`revisions_stale`). Beh bez známej revízie modelu (motor nečítal archív) sa neukladá. Migrácia
-   `supabase/pending/20261101200000_verification_results.sql` je **pripravená, nespustená**; kým nie je aplikovaná,
+   `supabase/migrations/20261101200000_verification_results.sql` je **pripravená, nespustená**; kým nie je aplikovaná,
    `save=true` vráti `saved.ok=false` a výpočet platí.
 
 **Zavrhnuté rozšírenie:**
