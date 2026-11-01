@@ -198,7 +198,7 @@ export function engineToolDefinitions(): ToolDefinition[] {
         "OVERENIE VÝMER (D-185, zatiaľ len miestnosti IfcSpace): verify=true + a alebo items = pri každej veličine " +
         "Qto_SpaceBaseQuantities hodnota zo súboru a z geometrie, stav green/yellow/red/grey, metóda, definícia zo schémy, " +
         "tolerancia, vzorec s dosadenými číslami a kotvy ('sedí výška miestnosti 2.01?', 'over výmery miestností'); " +
-        "show=true nakreslí zvislé kóty výšky, podlahy a podhľadu, save=true uloží beh k revízii modelu.",
+        "show=true nakreslí zvislé kóty výšky, podlahy a podhľadu; save=true LEN na výslovný pokyn používateľa ('ulož overenie') uloží beh k revízii modelu, inak sa len počíta.",
       inputSchema: {
         type: "object",
         properties: {
@@ -260,7 +260,10 @@ export function engineToolDefinitions(): ToolDefinition[] {
               "Overenie výmer miestností (IfcSpace, a alebo items, max 50) voči geometrii podľa registra metód (D-185); " +
               "nekombinuje sa s b, qto, clear_opening, axis, face_a ani route",
           },
-          save: { type: "boolean", description: "S verify=true: uložiť beh overenia k revízii modelu (verification_runs); bez neho sa len počíta" },
+          save: {
+            type: "boolean",
+            description: "S verify=true: uložiť beh overenia k revízii modelu (verification_runs) LEN na výslovný pokyn používateľa; bez neho sa len počíta",
+          },
           author: { type: "string", description: "S verify=true a save=true: kto beh spustil" },
         },
       },
