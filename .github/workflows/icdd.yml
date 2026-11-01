@@ -1,0 +1,59 @@
+# Export ICDD (D-181): audit kontajnera v Pythone a testy exportu v TypeScripte.
+# Testovací kontajner etl/tests/fixtures/icdd/aim-small.icdd skladá exportný kód; vitest stráži, že zodpovedá builderu,
+# pytest nad ním spustí audit (etl/icdd_audit.py) a mutácie. Bez DB, bez tajomstiev, bez produkčných dát.
+name: icdd
+
+on:
+  pull_request:
+    paths:
+      - "lib/icdd/**"
+      - "lib/viewer-icdd*"
+      - "etl/icdd_audit.py"
+      - "etl/tests/test_icdd_audit.py"
+      - "etl/tests/fixtures/icdd/**"
+      - "public/icdd/**"
+      - ".github/workflows/icdd.yml"
+  push:
+    branches: [main]
+    paths:
+      - "lib/icdd/**"
+      - "etl/icdd_audit.py"
+      - "etl/tests/fixtures/icdd/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-ts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: vitest (export, kontrola, roundtrip, testovací kontajner)
+        run: npx vitest run lib/icdd lib/viewer-icdd.test.ts
+
+  audit-py:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Len závislosti auditu (celé etl/requirements-dev.txt ťahá ifcopenshell, PyMuPDF, Tesseract).
+      - run: pip install "rdflib>=7.0" "pytest>=8.0"
+      - name: pytest audit
+        run: python -m pytest etl/tests/test_icdd_audit.py -q
+      - name: audit testovacieho kontajnera (CLI, exit != 0 pri chybe)
+        run: python -m etl.icdd_audit etl/tests/fixtures/icdd/aim-small.icdd --json icdd-audit.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: icdd-audit
+          path: icdd-audit.json
