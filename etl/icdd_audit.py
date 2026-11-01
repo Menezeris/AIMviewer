@@ -512,6 +512,18 @@ def audit(path: str, list_limit: int = 50, legacy_index: bool = False) -> Report
         ls_stats[fn] = st
         if not links:
             rep.warn("linkset_empty", f"linkset neobsahuje žiadnu väzbu ({len(g)} trojíc)", where)
+        # Čítač bez inferencie RDFS (napr. openbim-icdd 0.2) nájde väzbu len podľa rdf:type priamo v ls:
+        # (Link, BinaryLink, DirectedLink, DirectedBinaryLink, Directed1toNLink); typ len z els: alebo aim: nevidí.
+        no_base = collections.Counter(
+            _local(sorted(types[l] & link_classes)[0]) for l in links if not any(t.startswith(ISO_LS) for t in types[l])
+        )
+        for t, c in sorted(no_base.items()):
+            rep.warn(
+                "link_base_type",
+                f"{c} väzieb {t} nemá aj typ ls: (Link, BinaryLink, Directed...); čítač bez inferencie RDFS ich nenájde",
+                where,
+            )
+        st["without_ls_type"] = sum(no_base.values())
 
         # LinkElement -> dokument + identifikátor
         el_key: dict = {}

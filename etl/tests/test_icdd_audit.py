@@ -225,3 +225,14 @@ def test_foreign_container_from_icdd_shacl_validation() -> None:
     assert "layout_case" in warnings
     msgs = " ".join(i.message for i in rep.errors)
     assert "Container#versionId" in msgs and "Container#isModified" in msgs and "xsd:dateTime" in msgs
+
+
+def test_links_without_explicit_ls_type_are_reported() -> None:
+    rep = audit(str(FIXTURE), legacy_index=True)
+    w = [i for i in rep.warnings if i.code == "link_base_type"]
+    # export AIM dnes typuje väzby len els:/aim: (pozri report auditu); RUB typuje priamo ls:BinaryLink
+    if all(st["without_ls_type"] == 0 for st in rep.stats["linksets"].values()):
+        assert not w
+    else:
+        assert {i.where for i in w} >= {"Payload triples/derived-spatial.rdf"}
+    assert not [i for i in audit(str(RUB)).warnings if i.code == "link_base_type"]
