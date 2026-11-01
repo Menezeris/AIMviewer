@@ -797,6 +797,20 @@ Export ICDD nemá vlastnú tabuľku: plán sa zostaví pri každom exporte z `mo
   `source = 'icdd:<version_id>'`, `role = 'document'`; import musí byť `checked` s rovnakým `aim_state_sha256`, duplicitná živá väzba
   a neznáma operácia = výnimka.
 
+### 2.21 Overenie výmer (D-185, migrácia `20261101200000_verification_results.sql`, PRIPRAVENÉ, nespustené; test `supabase/tests/verification_results.sql`)
+
+Zapisuje len host (`ifc_measure verify=true save=true`, `lib/verify/store.ts`, service_role); pravidlá a texty metód sú v registri
+`lib/verify/quantity-methods.ts`, nie v DB. Do IFC sa nič nezapisuje.
+- `verification_runs` = beh overenia: `id`, `created_at`, `scope` (`IfcSpace`), `registry_version`, `engine`, `model_revisions`
+  jsonb `{model: revízia}` (podpis vstupu, D-183 bod 11; objekt), `counts` jsonb `{green, yellow, red, grey}`, `author`. Index
+  (`created_at desc`).
+- `verification_results` = výsledok receptu na prvku: `run_id` (FK, `on delete cascade`), `model`, `revision`, `global_id`,
+  `element_name`, `target` (`Qto_SpaceBaseQuantities.Height`), `recipe` (s verziou), `status` `green|yellow|red|grey`, `file_value`,
+  `computed_value` (m, m2, m3), `method`, `definition`, `spec_ref`, `tolerance`, `formula`, `note`, `distinct_heights` jsonb (pole),
+  `anchors` jsonb (pole `{global_id, role, z_m?}`). Indexy (`run_id`), (`model`, `global_id`, `recipe`).
+- `v_verification_latest` = posledný výsledok receptu na prvku s `checked_at`, `registry_version`, `engine`, `based_on` (podpis,
+  NULL = neznámy) a `stale` (`revisions_stale`). Práva: `anon`/`authenticated` nič.
+
 ## 4. Konvencia `properties` (D-022)
 
 `properties` JSONB obsahuje **property sety**, vnorené podľa názvu. IFC **atribúty**

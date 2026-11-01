@@ -1504,6 +1504,14 @@
       "expect": { "tools_called": ["calibrate_underlay"] },
       "verified": false,
       "notes": "D-180 (#170): výrez pôdorysu 1NP z polohy nadpisu (search_documents), calibrate_underlay floor=1NP, region=[x, y, w, h], dry_run."
+    },
+    {
+      "id": "space-quantities-verify",
+      "category": "details",
+      "question": "Sedia výmery miestnosti 2.01 s geometriou? Chcem vidieť výšku, podlahu a podhľad.",
+      "expect": { "tools_called": ["ifc_measure"] },
+      "verified": false,
+      "notes": "D-185: ifc_measure(verify=true, a=2.01) vráti pri každej veličine Qto_SpaceBaseQuantities stav, vzorec s dosadenými číslami a toleranciu; očakávané zelené Height, FinishFloorHeight, FinishCeilingHeight a GrossVolume (spike ASR v79). Neoverené (vyžaduje nasadený motor a prod model)."
     }
   ]
 }
