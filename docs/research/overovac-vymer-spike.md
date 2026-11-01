@@ -42,7 +42,7 @@ výskumu, tu neoverované; **[hypotéza]**; **[nenájdené]**.
    - dve totožné dosky SD02.03.0002 a SD02.03.0003 (8,80 až 9,05 m, pôdorys 660,065 m2, objem 165,016 m3);
    - technické miestnosti 1.05, 1.07, 2.14, 3.14, 4.01 bez `FinishFloorHeight`, hoci `ElevationWithFlooring` (-11,9 a
      -16,7 mm, 4988,1, 9188,1, 13388,1) a `NetVolume` ukazujú podlahu hrubú okolo 288 mm;
-   - 13 miestností a doska SD02.03.0004 majú neuzavretý mesh (objem z meshu nejde, extrúzia áno).
+   - 16 miestností (1.04, 1.05, 1.08, 1.10, 1.12, 1.13, 1.14, 2.01, 2.02, 2.08, 2.11, 2.19, 3.02, 3.08, 3.11, 3.18) a doska SD02.03.0004 majú neuzavretý mesh (objem z meshu nejde, extrúzia áno).
 6. **Akceptačné kritériá spiku pre 2.01:** Height, FinishFloorHeight a FinishCeilingHeight sedia na mm, GrossVolume na
    0,003 %. NetVolume má zvyšok -0,853 m3 (0,1 %), ktorý vysvetľuje len prienik krytín v pôdoryse. Kotvy (GUID a výšky
    plôch) sú v tabuľke 3.4. Úplný spike s `extractExtrusionDefinitions` priamo na ASR v79 tu nebežal, lebo by vyžadoval
@@ -61,7 +61,7 @@ výskumu, tu neoverované; **[hypotéza]**; **[nenájdené]**.
 | Revit: `FinishCeilingHeight` nemá kalkulátor, je z parametra | zo zadania | ASR: všetky hodnoty FCH zodpovedajú výškam podhľadov, takže parameter je tu vyplnený dôsledne; overovač ich má merať, nie predpokladať |
 | Revit: `GrossVolume` = najväčšia slučka x dĺžka extrúzie | **čiastočne vyvrátené** | platí pri 82/83; 2.20 Schodiskový priestor má GV 74,169 = mesh, ale GFA x H = 77,854 (-4,97 %), teleso teda nie je jednoduchá extrúzia plochy GFA |
 | 2.01: Height 3950, FFH 150, FCH 3050, EWF 5000, GV 912,27 sedia | **overené** | kap. 3.4 |
-| 2.01 mesh nie je uzavretý | **overené** | aj ďalších 12 miestností |
+| 2.01 mesh nie je uzavretý | **overené** | aj ďalších 15 miestností |
 | NetVolume = GFA x (H - FFH) mínus 1 až 2 m3 | **spresnené** | kap. 1 bod 4 a kap. 3.3 |
 | Miestnosť nemá vzťah k podlahám a podhľadom | zo zadania | prevzaté; priradenie musí byť geometrické |
 
@@ -91,7 +91,7 @@ výskumu, tu neoverované; **[hypotéza]**; **[nenájdené]**.
 | `NetFloorArea` | sivá pri 13 miestnostiach (WC, chodby) | NFA menšia ako pôdorys telesa (1.16: 2,893 vs. 3,057); odpočet nie je dierou v telese, metóda neznáma |
 | `GrossVolume` = GFA x Height | 82/83 do 0,01 % | 2.20 -4,97 % (teleso nie je prizma) |
 | `GrossVolume` = `Qto_BodyGeometryValidation.GrossVolume` | 83/83 rovnaké | kontrola exportnej konzistencie, nie receptu |
-| `GrossVolume` = objem meshu | 70/83 (13 neuzavretých) | |
+| `GrossVolume` = objem meshu | 67/83 (16 neuzavretých) | |
 | Krížová kontrola `Height >= FFH + FCH` | 41/41 | medzistropie (H - FFH - FCH) 750 až 2000 mm |
 
 ### 3.3 NetVolume
@@ -131,9 +131,14 @@ Kotvy pre kóty: plochy z = 4,850 (vrch SD02.03.0001), 5,000 (vrch PD03.30.01), 
 
 ## 4. Pripomienky k architektúre zo zadania
 
-1. **Dve cesty k vlastnému telesu:** `extractExtrusionDefinitions` (presne, rýchlo) a mesh motora (Brep, CSG, profil s
-   medzerou). Recept dostane `body_source: extrusion | mesh` a pri meshi aj `closed`; neuzavretý mesh = objem len z
-   extrúzie, inak sivá.
+1. **Prečo nie len extrúzia:** extrúzia je prvý *analytický* prípad: hodnota je presná zo zdrojových parametrov, bez
+   tesselácie. Ďalšie analytické tvary sa pridajú ako resolvery s rovnakým výstupom (hodnota + kotva):
+   `IfcSweptDiskSolid` (potrubie: objem pi x r2 x L, plášť 2 x pi x r x L; ifc-lite má aj `SweptDiskDescriptions`),
+   `IfcRevolvedAreaSolid` (Pappova veta), `IfcExtrudedAreaSolidTapered`, `IfcBooleanClippingResult` s polpriestormi
+   (zrezané steny). Pre zvyšok (Brep, CSG s otvormi, mapované reprezentácie) ide výpočet cez **uzavretý mesh** motora:
+   objem divergenciou, plocha súčtom trojuholníkov, s toleranciou tesselácie. Recept dostane
+   `body_source: analytic:<trieda> | mesh` a pri meshi `closed`; **sivá je len pri neuzavretom meshi bez analytického
+   zdroja**.
 2. **Výber podhľadu (otvorená otázka 1):** použiť ten istý princíp ako D-140 (`lib/engine/ceiling.ts`), ale na
    miestnosť: krytiny CEILING, ktorých pôdorys sa prekrýva s pôdorysom miestnosti, vážený medián spodkov podľa plochy
    prekryvu. Ak sa výšky prekrývajúcich podhľadov líšia o viac ako toleranciu a menšia z nich má aspoň 10 % plochy, stav

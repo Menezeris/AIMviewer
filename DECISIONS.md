@@ -8366,7 +8366,7 @@ zhoda s exportovaným telesom dokazuje len konzistenciu exportu.
 **Spike (ASR v79, 83 IfcSpace, len čítanie):** Height = vlastné teleso 83/83; ElevationWithFlooring = spodok + FFH všade s
 FFH; každá FinishCeilingHeight (41) má podhľad vo výške; GrossVolume = GFA x Height 82/83; NetVolume = GV - GFA x (FFH +
 12,5 mm pri podhľade) do 5 dm3 pri 51/83 (Revit odčíta krytiny vnútri telesa, presný recept = prizmatický prienik).
-Nálezy: totožné dosky SD02.03.0002 a SD02.03.0003, technické miestnosti bez FFH, 13 neuzavretých meshov miestností.
+Nálezy: totožné dosky SD02.03.0002 a SD02.03.0003, technické miestnosti bez FFH, 16 neuzavretých meshov miestností a doska SD02.03.0004.
 
 **Zavrhnuté:**
 - *Zápis výsledkov alebo metódy do IFC* (D-183 bod 2 a 3).
@@ -8375,7 +8375,26 @@ Nálezy: totožné dosky SD02.03.0002 a SD02.03.0003, technické miestnosti bez 
 - *Rozšírenie prahu `vs_qto` v `ifc_measure` (5 %):* nepozná význam veličiny ani jednotky; recepty ho nahradia.
 - *CSG jadro ifc-lite v JS API teraz:* telesá miestností sú extrúzie, prizmatický prienik stačí.
 
-**Otvorené (Samuel):** (a) či vypočítaná hodnota a výšky kotiev vo `verification_results` nie sú zakázaný odtlačok
-podľa D-183 bod 6; (b) výber podhľadu pri viacerých výškach (návrh: vážený medián prekryvu ako D-140, inak sivá);
-(c) NetVolume podľa schémy so žltou pre Revit metódu; (d) tolerancie; (e) BCF témy z nálezov spiku (navrhnuté, nezaložené).
-**Ďalej:** spike v motore s extrúziami a pôdorysným prienikom na ASR v79, potom dátový model, migrácia, UI, BCF.
+**Vlastné teleso nie je len extrúzia (Samuel: "prečo len extrúzia?"):** extrúzia je prvý **analytický** prípad, kde sa
+hodnota počíta presne zo zdrojových parametrov bez tesselácie (plocha profilu x hĺbka, obvod slučky). Ďalšie analytické
+tvary sa pridajú postupne ako resolvery s rovnakým výstupom (hodnota + kotva): `IfcSweptDiskSolid` (potrubie, objem
+pi x r2 x L, plášť 2 x pi x r x L), `IfcRevolvedAreaSolid` (Pappova veta: plocha profilu x dráha ťažiska),
+`IfcExtrudedAreaSolidTapered`, `IfcBooleanClippingResult` s polpriestormi (zrezané steny). Pre zvyšok (Brep, CSG s
+otvormi, mapované reprezentácie) je cesta cez **uzavretý mesh** motora: objem divergenciou (znamienkové štvorsteny),
+plocha súčtom trojuholníkov, s toleranciou tesselácie. Sivá je len vtedy, keď mesh nie je uzavretý a analytický zdroj
+chýba alebo je `unsupported`.
+
+**Výklad D-183 bod 6 (Samuel 1. 11., cez orchestrátora):** výsledky overenia (vypočítaná hodnota, rozdiel, stav, kotvy na
+kóty) smú ísť do `verification_results` k revízii modelu. Nie sú to geometria ani odtlačok tvaru v zmysle bodu 6, ale
+výsledok behu s podpisom vstupu (bod 11); pri novej revízii sú `stale`, nikdy sa neprepisujú.
+
+**Predbežné predvoľby (čaká na Samuela):** (b) podhľad pri viacerých výškach = vážený medián spodkov podľa plochy prekryvu
+s miestnosťou (ako D-140); ak sa výšky líšia nad toleranciu a menšia má aspoň 10 % plochy, sivá "nekonštantná";
+(c) NetVolume podľa schémy (teleso mínus prieniky konštrukcií vnútri, prizmaticky), žltá pri zhode s Revit metódou
+"krytiny po celej ploche"; (d) tolerancie dĺžky 5 mm, plochy a objemy 0,5 %, objem aj absolútne 0,05 m3.
+
+**BCF z nálezov spiku (Samuel: áno):** tri témy nad ASR v79 ako bežné nálezy modelu pre OCB, components = GlobalId:
+duplicitné dosky SD02.03.0002 a SD02.03.0003; chýbajúca `FinishFloorHeight` v 1.05, 1.07, 2.14, 3.14, 4.01; neuzavreté
+telesá (16 IfcSpace: 1.04, 1.05, 1.08, 1.10, 1.12, 1.13, 1.14, 2.01, 2.02, 2.08, 2.11, 2.19, 3.02, 3.08, 3.11, 3.18, a doska SD02.03.0004).
+**Ďalej:** spike v `lib/engine` s extrúziami (a mesh ako náhradou) a pôdorysným prienikom na ASR v79, potom dátový model
+(`verification_rules`, `verification_runs`, `verification_results`), migrácia, UI, BCF z červených stavov.
