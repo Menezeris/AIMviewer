@@ -5,6 +5,8 @@
  * miestnosti 150 mm (4,85 až 5,00); podhľad 12 x 6 m, 12,5 mm so spodkom na 8,05.
  * Qto miestnosti: Height 3950, FinishFloorHeight 150, FinishCeilingHeight 3050, GrossPerimeter
  * 40000, GrossFloorArea 88, GrossVolume 347,6, NetVolume 333,5 (= 347,6 - 88 x 0,15 - 72 x 0,0125).
+ * Miestnosť 2.02 (D-185 oprava, náhrada cez mesh): IfcFacetedBrep kváder 4 x 4 x 3,95 m vedľa (x 12 až 16), bez
+ * extrúzie, Qto Height 3950, GrossPerimeter 16000, GrossFloorArea 16, GrossVolume a NetVolume 63,2.
  */
 export const MINI_SPACE_VERIFY = `ISO-10303-21;
 HEADER;FILE_DESCRIPTION(('ViewDefinition [ReferenceView]'),'2;1');
@@ -84,6 +86,45 @@ DATA;
 #92=IFCRELAGGREGATES('0minirelagg00000000300',$,$,$,#13,(#17));
 #93=IFCRELAGGREGATES('0minirelagg00000000400',$,$,$,#17,(#32));
 #94=IFCRELCONTAINEDINSPATIALSTRUCTURE('0minirelcont0000000100',$,$,$,(#58,#65,#73,#88),#17);
+#200=IFCCARTESIANPOINT((12000.,0.,0.));
+#201=IFCCARTESIANPOINT((16000.,0.,0.));
+#202=IFCCARTESIANPOINT((16000.,4000.,0.));
+#203=IFCCARTESIANPOINT((12000.,4000.,0.));
+#204=IFCCARTESIANPOINT((12000.,0.,3950.));
+#205=IFCCARTESIANPOINT((16000.,0.,3950.));
+#206=IFCCARTESIANPOINT((16000.,4000.,3950.));
+#207=IFCCARTESIANPOINT((12000.,4000.,3950.));
+#208=IFCPOLYLOOP((#200,#203,#202,#201));
+#209=IFCFACEOUTERBOUND(#208,.T.);
+#210=IFCFACE((#209));
+#211=IFCPOLYLOOP((#204,#205,#206,#207));
+#212=IFCFACEOUTERBOUND(#211,.T.);
+#213=IFCFACE((#212));
+#214=IFCPOLYLOOP((#200,#201,#205,#204));
+#215=IFCFACEOUTERBOUND(#214,.T.);
+#216=IFCFACE((#215));
+#217=IFCPOLYLOOP((#201,#202,#206,#205));
+#218=IFCFACEOUTERBOUND(#217,.T.);
+#219=IFCFACE((#218));
+#220=IFCPOLYLOOP((#202,#203,#207,#206));
+#221=IFCFACEOUTERBOUND(#220,.T.);
+#222=IFCFACE((#221));
+#223=IFCPOLYLOOP((#203,#200,#204,#207));
+#224=IFCFACEOUTERBOUND(#223,.T.);
+#225=IFCFACE((#224));
+#226=IFCCLOSEDSHELL((#210,#213,#216,#219,#222,#225));
+#227=IFCFACETEDBREP(#226);
+#228=IFCSHAPEREPRESENTATION(#8,'Body','Brep',(#227));
+#229=IFCPRODUCTDEFINITIONSHAPE($,$,(#228));
+#230=IFCSPACE('0minispace202brep00001',$,'2.02','Brep',$,#31,#229,'Sklad',.ELEMENT.,.SPACE.,$);
+#231=IFCQUANTITYLENGTH('Height',$,$,3950.,$);
+#232=IFCQUANTITYLENGTH('GrossPerimeter',$,$,16000.,$);
+#233=IFCQUANTITYAREA('GrossFloorArea',$,$,16.,$);
+#234=IFCQUANTITYVOLUME('GrossVolume',$,$,63.2,$);
+#235=IFCQUANTITYVOLUME('NetVolume',$,$,63.2,$);
+#236=IFCELEMENTQUANTITY('0miniqto0space20200001',$,'Qto_SpaceBaseQuantities',$,'BaseQuantities',(#231,#232,#233,#234,#235));
+#237=IFCRELDEFINESBYPROPERTIES('0minireldef20200000001',$,$,$,(#230),#236);
+#238=IFCRELAGGREGATES('0minirelagg20200000001',$,$,$,#17,(#230));
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -91,4 +132,4 @@ END-ISO-10303-21;
 export const MINI_SPACE_VERIFY_BYTES = new TextEncoder().encode(MINI_SPACE_VERIFY);
 
 /** Express ID prvkov fixture. */
-export const MINI_SPACE_IDS = { space: 32, slabBelow: 58, slabAbove: 65, floor: 73, ceiling: 88 } as const;
+export const MINI_SPACE_IDS = { space: 32, slabBelow: 58, slabAbove: 65, floor: 73, ceiling: 88, brepSpace: 230 } as const;

@@ -1508,6 +1508,7 @@
     {
       "id": "space-quantities-verify",
       "category": "details",
+      "mcp_only": true,
       "question": "Sedia výmery miestnosti 2.01 s geometriou? Chcem vidieť výšku, podlahu a podhľad.",
       "expect": { "tools_called": ["ifc_measure"] },
       "verified": false,

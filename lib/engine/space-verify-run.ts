@@ -8,8 +8,10 @@ import { REGISTRY_VERSION } from "../verify/quantity-methods";
 import type { VerificationResultWrite } from "../verify/types";
 
 import { joinToAim } from "./join";
+import { meshMetrics, meshModel, type MeshElement } from "./measure";
+import { toWorld } from "./measure-dimension";
 import { openEngineSession, type EngineModel } from "./session";
-import { dimensionPoint, extractExtrusions, verifySpace, type Body, type Element, type RecipeResult, type SpaceInput, type Status } from "./space-verify";
+import { bodyFromMeshTriangles, dimensionPoint, extractExtrusions, verifySpace, type Body, type Element, type RecipeResult, type SpaceInput, type Status } from "./space-verify";
 import { ENGINE_VERSION, IFC_GUID_RE, InputError, guidIndex, modelsFor, revisionStamp, str, type EngineDeps } from "./tools";
 
 /**
@@ -50,6 +52,20 @@ function element(store: IfcDataStore, id: number, body: Body): Element {
   };
 }
 
+/** Teleso z meshu motora (náhrada za extrúziu): trojuholníky v IFC svete, uzavretosť a objem z `meshMetrics`. */
+export function meshBody(expressId: number, e: MeshElement): Body {
+  const { closed, volume } = meshMetrics(e.positions, e.indices);
+  const tris = new Float64Array(e.indices.length * 3);
+  for (let t = 0; t < e.indices.length; t++) {
+    const i = e.indices[t] * 3;
+    const w = toWorld(e, [e.positions[i], e.positions[i + 1], e.positions[i + 2]]);
+    tris[t * 3] = w[0];
+    tris[t * 3 + 1] = w[1];
+    tris[t * 3 + 2] = w[2];
+  }
+  return bodyFromMeshTriangles(expressId, tris, closed, volume);
+}
+
 /** Extrúzie miestností, dosiek a krytín modelu raz na store (ako tesselácia v measure.ts). */
 export function modelData(m: EngineModel): Promise<ModelData> {
   const hit = cache.get(m.store);
@@ -61,7 +77,25 @@ export function modelData(m: EngineModel): Promise<ModelData> {
     const slabIds = ids(store, SLAB_TYPES);
     const covIds = ids(store, COVERING_TYPES);
     const { bodies, lengthUnitScale } = await store.source.withMaterializedAsync((bytes) => extractExtrusions(bytes, [...spaces, ...slabIds, ...covIds]));
-    const of = (id: number) => bodies.get(id) ?? { expressId: id, prisms: [], unsupported: "bez extrúzie" };
+    const all = [...spaces, ...slabIds, ...covIds];
+    for (const id of all) if (!bodies.has(id)) bodies.set(id, { expressId: id, prisms: [], unsupported: "bez extrúzie" });
+    // Náhrada telesa (D-185 oprava): prvky bez použiteľnej extrúzie dostanú teleso z uzavretého meshu motora.
+    const needMesh = all.filter((id) => !bodies.get(id)!.prisms.length);
+    if (needMesh.length) {
+      const meshes = await meshModel(m);
+      for (const id of needMesh) {
+        const gid = store.entities.getGlobalId(id);
+        const e = gid ? meshes.get(gid) : undefined;
+        const prev = bodies.get(id)!;
+        if (!e) {
+          bodies.set(id, { ...prev, unsupported: `${prev.unsupported ?? "bez extrúzie"}; bez meshu` });
+          continue;
+        }
+        const fallback = meshBody(id, e);
+        bodies.set(id, { ...fallback, unsupported: fallback.prisms.length ? prev.unsupported : `${prev.unsupported ?? "bez extrúzie"}; ${fallback.unsupported}` });
+      }
+    }
+    const of = (id: number) => bodies.get(id)!;
     return {
       scale: lengthUnitScale,
       bodies,
@@ -168,7 +202,7 @@ export async function ifcVerifySpaces(input: Record<string, unknown>, deps: Engi
     const { m, id } = where.get(guidFor(t)!)!;
     const data = await modelData(m);
     const { qto, formulas } = spaceQuantities(m.store, id, data.scale);
-    const space: SpaceInput = { ...element(m.store, id, data.bodies.get(id) ?? { expressId: id, prisms: [], unsupported: "bez extrúzie (Brep alebo iná reprezentácia)" }), qto };
+    const space: SpaceInput = { ...element(m.store, id, data.bodies.get(id) ?? { expressId: id, prisms: [], unsupported: "bez telesa" }), qto };
     const results = verifySpace(space, { slabs: data.slabs, coverings: data.coverings });
     all.push(...results);
     if (dimensions) for (const s of spaceDimensions(space, results)) if (dimensions.length < MAX_MEASURE_SEGMENTS) dimensions.push(s);
@@ -206,7 +240,7 @@ export async function ifcVerifySpaces(input: Record<string, unknown>, deps: Engi
 
   const out: Record<string, unknown> = {
     engine: ENGINE_VERSION,
-    source: "extrúzie IfcExtrudedAreaSolid (@ifc-lite/geometry extractExtrusionDefinitions, bez tesselácie), IFC svet v m",
+    source: "extrúzie IfcExtrudedAreaSolid (@ifc-lite/geometry extractExtrusionDefinitions, bez tesselácie); bez použiteľnej extrúzie uzavretý mesh motora (method to uvádza); IFC svet v m",
     registry_version: REGISTRY_VERSION,
     revision: Object.fromEntries(used.map((m) => [m.id, revision[m.id]])),
     counts: counts(all),
