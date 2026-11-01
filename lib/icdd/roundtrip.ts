@@ -47,14 +47,50 @@ export function detectAimNamespace(c: IcddContents, fallback: string): string {
   return fallback;
 }
 
-export function stateFromContainer(c: IcddContents, aimNamespace: string): CanonicalState {
+/** Koniec väzby prečítaný z kontajnera: súbor v `Payload documents/` + GlobalId / Identification / strana. */
+export interface ContainerEnd {
+  file: string;
+  guid: string | null;
+  ident: { field: string; value: string } | null;
+  page: number | null;
+}
+
+/** Väzba prečítaná z linksetu kontajnera (vstup roundtripu aj importu). */
+export interface ContainerLink {
+  /** Meno súboru linksetu bez `.rdf` (vrstva). */
+  layer: string;
+  kind: LinkKind;
+  from: ContainerEnd;
+  to: ContainerEnd;
+  relationshipId: string | null;
+  source: string | null;
+  role: string | null;
+  rule: string | null;
+  basedOn: string | null;
+  ifcRelationship: string | null;
+}
+
+/** Linkset z indexu: meno súboru a značka `aim:exchange` (null = bez značky, napr. cudzí nástroj). */
+export interface ContainerLinkset {
+  layer: string;
+  exchange: string | null;
+}
+
+export function readContainerLinksets(c: IcddContents, aimNamespace: string): ContainerLinkset[] {
+  const out: ContainerLinkset[] = [];
+  for (const t of c.index.triples) {
+    if (t.p !== `${CT}filename` || t.o.t !== "lit") continue;
+    if (!c.index.types(t.s).includes(`${CT}Linkset`)) continue;
+    out.push({ layer: t.o.v.replace(/\.rdf$/, ""), exchange: c.index.str(t.s, `${aimNamespace}exchange`) ?? null });
+  }
+  return out.sort((a, b) => (a.layer < b.layer ? -1 : a.layer > b.layer ? 1 : 0));
+}
+
+export function readContainerLinks(c: IcddContents, aimNamespace: string): ContainerLink[] {
   const g: Graph = c.data;
   const kinds = KIND_BY_TYPE(aimNamespace);
-  const payloads = new Map<string, string>();
-  // súbory generované z väzieb (IFCX, xlsx) nie sú stav AIM; ich obsah kryjú väzby linksetov
-  for (const d of c.documents.values()) if (d.filename && !d.generated) payloads.set(d.filename, d.checksum ?? "");
-
-  const end = (e: Term) => {
+  const end = (e: Term | undefined | null): ContainerEnd => {
+    if (!e) return { file: "?", guid: null, ident: null, page: null };
     const doc = g.value(e, `${LS}hasDocument`);
     const d = doc && doc.t === "iri" ? c.documents.get(doc.v) : undefined;
     const file = d?.filename ?? "?";
@@ -73,11 +109,11 @@ export function stateFromContainer(c: IcddContents, aimNamespace: string): Canon
       const m = u ? /#page=(\d+)$/.exec(decodeURI(u)) : null;
       if (m) page = Number(m[1]);
     }
-    return endKey({ file, guid, ident, page });
+    return { file, guid, ident, page };
   };
-  const str = (s: Term, local: string) => g.str(s, `${aimNamespace}${local}`) ?? "";
+  const opt = (s: Term, local: string) => g.str(s, `${aimNamespace}${local}`) ?? null;
 
-  const links = new Map<string, CanonicalLink>();
+  const links: ContainerLink[] = [];
   for (const [layerFile, triples] of Object.entries(c.linksets)) {
     const layer = layerFile.replace(/\.rdf$/, "");
     const subjects = new Map<string, Term>();
@@ -87,27 +123,57 @@ export function stateFromContainer(c: IcddContents, aimNamespace: string): Canon
       if (!kind) continue;
       // identita dokumentov a podlaží je tá istá trieda els:IsIdenticalTo, líši sa vrstvou (LAYER_OF)
       if (kind === "IsIdenticalTo" && layer === LAYER_OF.DocumentIsIdenticalTo) kind = "DocumentIsIdenticalTo";
-      let a: string;
-      let b: string;
+      let a: ContainerEnd;
+      let b: ContainerEnd;
       if (kind === "IsIdenticalTo" || kind === "DocumentIsIdenticalTo") {
-        const els = g.values(s, `${LS}hasLinkElement`).map(end).sort();
-        [a, b] = [els[0] ?? "", els[1] ?? ""];
+        const els = g.values(s, `${LS}hasLinkElement`).map(end);
+        els.sort((x, y) => (endKey(x) < endKey(y) ? -1 : endKey(x) > endKey(y) ? 1 : 0));
+        a = els[0] ?? end(null);
+        b = els[1] ?? end(null);
       } else {
-        a = end(g.value(s, `${LS}hasFromLinkElement`)!);
-        b = end(g.value(s, `${LS}hasToLinkElement`)!);
+        a = end(g.value(s, `${LS}hasFromLinkElement`));
+        b = end(g.value(s, `${LS}hasToLinkElement`));
       }
-      const key = [
+      links.push({
+        layer,
         kind,
-        a,
-        b,
-        str(s, "source"),
-        str(s, "role"),
-        str(s, "derivationRule"),
-        str(s, "basedOnRevision"),
-        str(s, "ifcRelationship"),
-      ].join(" ");
-      links.set(key, { key, kind, layer });
+        from: a,
+        to: b,
+        relationshipId: opt(s, "relationshipId"),
+        source: opt(s, "source"),
+        role: opt(s, "role"),
+        rule: opt(s, "derivationRule"),
+        basedOn: opt(s, "basedOnRevision"),
+        ifcRelationship: opt(s, "ifcRelationship"),
+      });
     }
+  }
+  return links;
+}
+
+/** Kanonický kľúč väzby z kontajnera; rovnaký tvar ako `linkKey` pri exporte. */
+export function containerLinkKey(l: Omit<ContainerLink, "layer">): string {
+  return [
+    l.kind,
+    endKey(l.from),
+    endKey(l.to),
+    l.source ?? "",
+    l.role ?? "",
+    l.rule ?? "",
+    l.basedOn ?? "",
+    l.ifcRelationship ?? "",
+    l.relationshipId ?? "",
+  ].join(" ");
+}
+
+export function stateFromContainer(c: IcddContents, aimNamespace: string): CanonicalState {
+  const payloads = new Map<string, string>();
+  // súbory generované z väzieb (IFCX, xlsx) nie sú stav AIM; ich obsah kryjú väzby linksetov
+  for (const d of c.documents.values()) if (d.filename && !d.generated) payloads.set(d.filename, d.checksum ?? "");
+  const links = new Map<string, CanonicalLink>();
+  for (const l of readContainerLinks(c, aimNamespace)) {
+    const key = containerLinkKey(l);
+    links.set(key, { key, kind: l.kind, layer: l.layer });
   }
   const versionID = c.container ? (c.index.str(c.container, `${CT}versionID`) ?? null) : null;
   return { versionID, payloads, links };
@@ -117,7 +183,7 @@ export function stateFromPlan(plan: IcddPlan): CanonicalState {
   const links = new Map<string, CanonicalLink>();
   for (const l of plan.links) {
     const key = linkKey(plan, l);
-    links.set(key, { key, kind: l.kind, layer: "" });
+    links.set(key, { key, kind: l.kind, layer: LAYER_OF[l.kind] });
   }
   return { versionID: plan.versionID, payloads: new Map(plan.payloads.map((p) => [p.filename, p.sha256])), links };
 }

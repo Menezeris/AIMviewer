@@ -73,6 +73,22 @@ export const IFC_RELATIONSHIP: Partial<Record<LinkKind, string>> = {
   IsReferencedInSpatialStructure: "IfcRelReferencedInSpatialStructure",
 };
 
+/**
+ * Výmena linksetu s inými nástrojmi (D-181 dodatok "import", Samuel 1. 11.). Rozhoduje táto tabuľka v kóde, nie značka
+ * v kontajneri (cudzí nástroj ju vie prepísať): `export-only` = údaje vznikajú v AIM a iný nástroj ich nemení
+ * (zmena sa pri importe ukáže ako nález), `import` = väzby smie pridať alebo zmeniť iný nástroj. Do indexu sa
+ * zapisuje ako `aim:exchange` na `ct:Linkset`, len informačne.
+ */
+export type Exchange = "export-only" | "import";
+export const EXCHANGE: Record<Layer, Exchange> = {
+  "documents-elements": "import",
+  "documents-identity": "export-only",
+  "derived-spatial": "export-only",
+  federation: "export-only",
+};
+/** Triedy väzieb, ktoré import zapisuje (prvok -> dokument alebo strana, `rel_associates_document` AIM vrstva). */
+export const IMPORTABLE_KINDS: readonly LinkKind[] = ["IsElaboratedBy"];
+
 export const IFC_DOCS_URL = "https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/";
 
 /** Súbor v `Payload documents/` (ct:InternalDocument + ct:SecuredDocument). */
@@ -119,6 +135,8 @@ export interface LinkEnd {
 
 export interface IcddLink {
   kind: LinkKind;
+  /** `relationships.id` väzby v AIM (`aim:relationshipId`); vypočítané väzby (identita, podlažia) ho nemajú. */
+  relationshipId?: string | null;
   from: LinkEnd;
   to: LinkEnd;
   /** Pôvod väzby v AIM (`relationships.source`, napr. `pdf_link (E4)`, `derive:spatial_reference`, `ifc:ASR v79`). */

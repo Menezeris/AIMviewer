@@ -784,12 +784,18 @@ kontajnera a revízie, (2) úplnú kópiu informácií každej revízie bez geom
 
 Export ICDD nemá vlastnú tabuľku: plán sa zostaví pri každom exporte z `model_revisions`, `v_container_revisions`, `documents`,
 `rel_associates_document`, `rel_referenced_in_spatial_structure` (`source derive:*`), `ifc_rev_objects` (GlobalId -> model),
-`ifc_storey_map` a `derivation_runs` (`lib/icdd/plan-fetch.ts`). Pre ďalší krok importu:
+`ifc_storey_map` a `derivation_runs` (`lib/icdd/plan-fetch.ts`). Import (D-181 dodatok "import"):
 - `icdd_imports` = beh importu kontajnera: `version_id` (`ct:versionID`), `container_sha256` (64 hex, celý `.icdd`), `file_name`,
-  `status` `checked|applied|failed` (`applied` práve s `applied_at`), `same_as_aim` (roundtrip bez rozdielu), `payloads`
-  `{filename: sha256}`, `counts`, `diff` (`RoundtripDiff`), `issues` (pole chýb kontroly ISO 21597), `model_revisions` `{model: revízia}`
-  AIM pri importe, `imported_by`, `created_at`. Index (`version_id`, `created_at desc`). Bez FK. Práva: `anon`/`authenticated` nič.
-- Väzby zapísané z cudzieho kontajnera pôjdu do `relationships` so `source = 'icdd:<version_id>'` (AIM vrstva podľa `rel_is_aim_layer`).
+  `status` `checked|applied|rejected|failed` (`applied` práve s `applied_at`), `same_as_aim` (vrstvy len na export bez rozdielu),
+  `payloads` `{filename: sha256}`, `counts` (väzby, zmeny, nálezy po kódoch), `diff` (`RoundtripDiff` vrstiev len na export),
+  `issues` (chyby kontroly ISO 21597), `findings` (nálezy importu `{code, level, key, detail}`), `changes` (náhľad zápisu
+  `{op: add|close, ...}`), `model_revisions` `{model: revízia}` AIM pri importe, `aim_state_sha256` (64 hex, stav AIM pri náhľade),
+  `written_ids` / `closed_ids` (`relationships.id`), `message`, `imported_by`, `created_at`, `applied_at`. Indexy (`version_id`,
+  `created_at desc`) a (`container_sha256`, `created_at desc`). Bez FK. Práva: `anon`/`authenticated` nič.
+- `icdd_apply_import(p_import uuid, p_aim_state text, p_changes jsonb) returns icdd_imports` (security definer, len service_role):
+  v jednej transakcii uzavrie (`valid_until`) živé väzby AIM vrstvy `rel_associates_document` (`rel_is_aim_layer`) a vloží nové so
+  `source = 'icdd:<version_id>'`, `role = 'document'`; import musí byť `checked` s rovnakým `aim_state_sha256`, duplicitná živá väzba
+  a neznáma operácia = výnimka.
 
 ## 4. Konvencia `properties` (D-022)
 
@@ -877,7 +883,8 @@ Pri exporte ich IFC nenesie → ICDD linksety (D-015), do budúcna IFCX layer ko
 Export ICDD (D-181): do linksetov ide len AIM vrstva (vzťah v IFC súbore ostáva v ňom): `els:IsElaboratedBy` (dokument a strana
 k prvku z `pdf_link` / `doc_upload`), `els:IsIdenticalTo` (podlažia naprieč modelmi; dokument IFC podľa `Identification` <-> PDF) a deklarovaná extenzia `aim:IsReferencedInSpatialStructure` (podtrieda `ls:DirectedBinaryLink`,
 odvodené prvok -> IfcSpace / IfcSpatialZone) s metadátami hrany `aim:source`, `aim:role`, `aim:derivationRule`,
-`aim:basedOnRevision`, `aim:ifcRelationship` (IFC vzťah, ktorého sémantiku väzba nesie); namespace `aim:` je placeholder z `ICDD_AIM_NAMESPACE` (predvolene `urn:x-aim:icdd#`).
+`aim:basedOnRevision`, `aim:ifcRelationship` (IFC vzťah, ktorého sémantiku väzba nesie), `aim:relationshipId` (`relationships.id`),
+na `ct:Linkset` informačná značka `aim:exchange` (`export-only` | `import`, D-181 dodatok "import"); namespace `aim:` je placeholder z `ICDD_AIM_NAMESPACE` (predvolene `urn:x-aim:icdd#`).
 
 ---
 
