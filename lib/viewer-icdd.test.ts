@@ -17,6 +17,7 @@ const exportResult = (ok: boolean): ExportResult =>
     filename: "AIM_x.icdd",
     bytes: new Uint8Array(5),
     report: report(ok),
+    sideFiles: [{ filename: "AIM_x_aim-layer.xlsx", mime: "application/xlsx", bytes: new Uint8Array(1) }],
   }) as unknown as ExportResult;
 
 describe("ICDD most (D-181)", () => {
@@ -42,9 +43,9 @@ describe("ICDD most (D-181)", () => {
       },
       download: (_b, f) => downloads.push(f),
     });
-    expect(downloads).toEqual(["AIM_x.icdd"]);
+    expect(downloads).toEqual(["AIM_x.icdd", "AIM_x_aim-layer.xlsx"]);
     expect(sent.map((s) => s.phase)).toEqual(["running", "done"]);
-    expect(sent[1]).toMatchObject({ id: "e1", op: "export", result: { filename: "AIM_x.icdd", payloads: 1, links: 2, ok: true, size_bytes: 5 } });
+    expect(sent[1]).toMatchObject({ id: "e1", op: "export", result: { filename: "AIM_x.icdd", payloads: 1, links: 2, ok: true, size_bytes: 5, side_files: ["AIM_x_aim-layer.xlsx"] } });
   });
 
   it("export s chybou kontroly sa nestiahne", async () => {

@@ -64,7 +64,7 @@ def _rehash(files: dict[str, bytes], payload: str) -> None:
 def test_clean_export_passes_and_reports_known_gaps() -> None:
     rep = audit(str(FIXTURE))
     assert [i for i in rep.errors] == []
-    assert rep.stats["documents"] == {"total": 4, "by_type": {"ifc": 2, "pdf": 1, "xlsx": 1}, "sha256_checked": 4}
+    assert rep.stats["documents"] == {"total": 3, "by_type": {"ifc": 2, "pdf": 1}, "sha256_checked": 3}
     ls = rep.stats["linksets"]
     assert ls["derived-spatial.rdf"]["links"] == 3
     assert ls["derived-spatial.rdf"]["to_class"] == {"IFCSPACE": 2, "IFCSPATIALZONE": 1}

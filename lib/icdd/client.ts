@@ -6,7 +6,7 @@
 
 import { gunzipSync } from "fflate";
 
-import { assembleIcdd } from "./build";
+import { assembleIcdd, sideFiles } from "./build";
 import { containerFileName, ISO_ONTOLOGY_FILES, type Extra, type IcddPlan } from "./model";
 import { compareStates, detectAimNamespace, stateFromContainer, stateFromPlan, type RoundtripDiff } from "./roundtrip";
 import { validateIcdd, type ValidationReport } from "./validate";
@@ -46,6 +46,8 @@ export interface ExportResult {
   filename: string;
   bytes: Uint8Array;
   report: ValidationReport;
+  /** Súbory navyše mimo `.icdd` (xlsx výpis), stiahnu sa vedľa kontajnera. */
+  sideFiles: { filename: string; mime: string; bytes: Uint8Array }[];
 }
 
 /** Zloží kontajner a pred odovzdaním ho skontroluje tou istou kontrolou ako import. */
@@ -68,7 +70,7 @@ export async function exportIcdd(
   const bytes = assembleIcdd({ plan, payloads, ontologies });
   progress("kontrolujem kontajner");
   const report = validateIcdd(bytes);
-  return { plan, filename: containerFileName(plan.versionID), bytes, report };
+  return { plan, filename: containerFileName(plan.versionID), bytes, report, sideFiles: sideFiles(plan) };
 }
 
 export interface CheckResult {
@@ -88,8 +90,8 @@ export async function checkIcdd(bytes: Uint8Array, progress: Progress = () => {}
   return { report, diff: compareStates(container, stateFromPlan(plan)), versionID: container.versionID };
 }
 
-export function downloadBytes(bytes: Uint8Array, filename: string) {
-  const blob = new Blob([bytes as BlobPart], { type: "application/zip" });
+export function downloadBytes(bytes: Uint8Array, filename: string, mime = "application/zip") {
+  const blob = new Blob([bytes as BlobPart], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

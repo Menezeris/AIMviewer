@@ -54,6 +54,7 @@ export function exportSummary(r: ExportResult): Record<string, unknown> {
     payloads: r.plan.payloads.length,
     links: r.plan.links.length,
     size_bytes: r.bytes.length,
+    side_files: (r.sideFiles ?? []).map((f) => f.filename),
     ok: r.report.ok,
     errors: errorsOf(r.report),
     warnings: r.plan.warnings,
@@ -78,7 +79,7 @@ export function checkSummary(r: CheckResult): Record<string, unknown> {
 export interface IcddDeps {
   exportIcdd: (progress: (m: string) => void, extras?: Extra[]) => Promise<ExportResult>;
   checkIcdd: (bytes: Uint8Array, progress: (m: string) => void) => Promise<CheckResult>;
-  download: (bytes: Uint8Array, filename: string) => void;
+  download: (bytes: Uint8Array, filename: string, mime?: string) => void;
 }
 
 /** Vykoná požiadavku a priebežne posiela `ICDD_STATUS`. Kontajner s chybou kontroly sa nestiahne. */
@@ -89,7 +90,11 @@ export async function runIcddRequest(req: IcddRequest, post: (s: IcddStatus) => 
   try {
     if (req.op === "export") {
       const r = await deps.exportIcdd(progress, req.extras);
-      if (r.report.ok) deps.download(r.bytes, r.filename);
+      if (r.report.ok) {
+        deps.download(r.bytes, r.filename);
+        // xlsx výpis je mimo kontajnera (audit ICDD 1. 11.), stiahne sa vedľa neho
+        for (const f of r.sideFiles ?? []) deps.download(f.bytes, f.filename, f.mime);
+      }
       send("done", r.report.ok ? `stiahnuté ${r.filename}` : "kontajner neprešiel kontrolou ISO 21597, nestiahol sa", exportSummary(r));
     } else {
       const r = await deps.checkIcdd(req.bytes, progress);

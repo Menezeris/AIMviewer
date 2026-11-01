@@ -69,7 +69,6 @@ export function fixturePlan(): IcddPlan {
     publisher: { name: "AIM" },
     aimNamespace: DEFAULT_AIM_NAMESPACE,
     layers: ["documents-identity", "derived-spatial", "federation"],
-    extras: ["xlsx"],
     skipped: {},
     warnings: [],
     payloads: [
