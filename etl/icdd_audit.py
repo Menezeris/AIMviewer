@@ -103,6 +103,18 @@ class Report:
     def warn(self, code: str, message: str, where: str = "") -> None:
         self.issues.append(Issue("warning", code, message, where))
 
+    def collapse(self) -> None:
+        """Rovnaké hlásenia (úroveň, kód, miesto, text) zlúči do jedného s počtom."""
+        count = collections.Counter((i.level, i.code, i.message, i.where) for i in self.issues)
+        out, seen = [], set()
+        for i in self.issues:
+            k = (i.level, i.code, i.message, i.where)
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(Issue(i.level, i.code, i.message + (f" ({count[k]}x)" if count[k] > 1 else ""), i.where))
+        self.issues = out
+
     @property
     def errors(self) -> list[Issue]:
         return [i for i in self.issues if i.level == "error"]
@@ -312,9 +324,27 @@ def audit(path: str, list_limit: int = 50, legacy_index: bool = False) -> Report
     except (OSError, zipfile.BadZipFile) as exc:
         rep.error("zip", f"súbor nie je ZIP: {exc}")
         return rep
-    names = [i.filename for i in zf.infolist() if not i.is_dir()]
+    # Priečinky sa porovnávajú bez ohľadu na veľkosť písmen (referenčné kontajnery RUB majú "Payload Documents/",
+    # openbim-icdd číta bez ohľadu na veľkosť); iný zápis než v ISO 21597-1 je varovanie.
+    actual: dict[str, str] = {}
+    case_diff: set[str] = set()
+    for info in zf.infolist():
+        if info.is_dir():
+            continue
+        n = info.filename
+        head, sep, rest = n.partition("/")
+        for d in (DIR_ONTOLOGY, DIR_DOCUMENTS, DIR_TRIPLES):
+            if sep and head + "/" != d and (head + "/").lower() == d.lower():
+                case_diff.add(f"'{head}/' namiesto '{d}'")
+                n = d + rest
+        actual[n] = info.filename
+    for c in sorted(case_diff):
+        rep.warn("layout_case", f"priečinok {c} (ISO 21597-1)")
+    names = list(actual)
     nameset = set(names)
-    read = zf.read
+
+    def read(n: str) -> bytes:
+        return zf.read(actual[n])
 
     # --- rozloženie
     for d in (DIR_ONTOLOGY, DIR_DOCUMENTS, DIR_TRIPLES):
@@ -436,6 +466,13 @@ def audit(path: str, list_limit: int = 50, legacy_index: bool = False) -> Report
             rep.error("undeclared_term", f"predikát mimo pribalených ontológií: {t} ({c}x)", where)
         for t, c in sorted(bad_c.items()):
             rep.error("undeclared_term", f"trieda mimo pribalených ontológií: {t} ({c}x)", where)
+        # typovaný literál, ktorého zápis nezodpovedá dátovému typu (napr. xsd:dateTime "03.06.2022 09:22:38")
+        ill: dict[str, list[str]] = collections.defaultdict(list)
+        for o in g.objects():
+            if isinstance(o, rdflib.Literal) and getattr(o, "ill_typed", False):
+                ill[str(o.datatype)].append(str(o))
+        for dt, vals in sorted(ill.items()):
+            rep.error("literal", f"{len(vals)} literálov nie je platný xsd:{_local(dt)}, napr. '{sorted(vals)[0]}'", where)
 
     check_terms(idx, index_name)
 
@@ -508,7 +545,9 @@ def audit(path: str, list_limit: int = 50, legacy_index: bool = False) -> Report
                             continue
                         rep.warn("identifier", f"identifikátor {fld_s} v ne-IFC dokumente {dfn} sa nedá overiť", where)
                         continue
-                    if fld_s == "GlobalId":
+                    if fld_s.lower() == "globalid":
+                        if fld_s != "GlobalId":
+                            rep.warn("identifier", f"ls:identifierField '{fld_s}' namiesto IFC atribútu 'GlobalId'", where)
                         guid_checked[dfn] += 1
                         if val_s not in ifc.guid_class:
                             guid_missing[dfn].append(val_s)
@@ -626,6 +665,7 @@ def audit(path: str, list_limit: int = 50, legacy_index: bool = False) -> Report
                     for g in missing[:list_limit]
                 ]
         rep.stats["coverage"] = cov
+    rep.collapse()
     return rep
 
 
@@ -633,7 +673,7 @@ def _guid_of(g, element) -> Optional[str]:
     from rdflib import URIRef
 
     for i in g.objects(element, URIRef(f"{ISO_LS}hasIdentifier")):
-        if str(g.value(i, URIRef(f"{ISO_LS}identifierField")) or "") == "GlobalId":
+        if str(g.value(i, URIRef(f"{ISO_LS}identifierField")) or "").lower() == "globalid":
             v = g.value(i, URIRef(f"{ISO_LS}identifier"))
             return str(v) if v is not None else None
     return None
@@ -675,6 +715,9 @@ def format_report(rep: Report) -> str:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    import logging
+
+    logging.getLogger("rdflib").setLevel(logging.CRITICAL)  # neplatné literály hlási audit sám (kód 'literal')
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")

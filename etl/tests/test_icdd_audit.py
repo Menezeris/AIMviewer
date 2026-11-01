@@ -208,3 +208,20 @@ def test_step_index_reads_documents_and_names() -> None:
     assert ifc.doc_information == {"D.1.1.09"}
     assert ifc.doc_reference == {"page=3"}
     assert ifc.guid_name["0BTBFw6f90Nfh9rP1dlXrb"] == "1.01"
+
+
+RUB = Path(__file__).parent / "fixtures" / "icdd" / "11_Garage_Binary.icdd"
+
+
+def test_foreign_container_from_icdd_shacl_validation() -> None:
+    """Kontajner z ICDD Platform RUB (icdd-shacl-validation, CC BY 4.0): audit ho prečíta a nájde známe odchýlky."""
+    rep = audit(str(RUB))
+    assert rep.stats["linksets"]["linkset-20220603-114745.rdf"]["by_type"] == {"BinaryLink": 9}
+    assert rep.stats["globalid_checked"] == {"model.ifc": 9}  # všetkých 9 GlobalId je v pribalenom IFC
+    errors = {i.code for i in rep.errors}
+    warnings = {i.code for i in rep.warnings}
+    assert {"index_name", "linkset_unregistered", "undeclared_term", "literal"} <= errors
+    assert "guid_missing" not in errors and "checksum" not in errors and "duplicate_link" not in errors
+    assert "layout_case" in warnings
+    msgs = " ".join(i.message for i in rep.errors)
+    assert "Container#versionId" in msgs and "Container#isModified" in msgs and "xsd:dateTime" in msgs
