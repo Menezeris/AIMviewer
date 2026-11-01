@@ -1,5 +1,5 @@
 -- D-181 (ICDD, #350), dodatok "import" (1. 11.): záznam importu kontajnera ICDD a zápis väzieb prvok -> dokument.
--- PRIPRAVENÉ, na produkciu len na Samuelovo slovo (spúšťa orchestrátor).
+-- APLIKOVANÉ na produkciu 1. 11. (Samuel "spusti ty", orchestrátor).
 -- Náhľad (dry-run) počíta host (`lib/icdd/import.ts`) a uloží riadok `checked` s nálezmi a zmenami. Zápis (`applied`) robí
 -- RPC `icdd_apply_import` v jednej transakcii: vloží nové väzby AIM vrstvy `rel_associates_document` so
 -- `source = 'icdd:<version_id>'` a uzavrie (`valid_until`) väzby, ktoré cudzí nástroj zmenil (AIM vrstva sa neprepisuje,
