@@ -1,5 +1,5 @@
 -- D-158 krok 8, dodatok (#372 follow-up): import .bcfzip zachová pôvodný dátum a GUID komentára a je idempotentný.
--- PRIPRAVENÉ, na produkciu len na Samuelovo slovo (nie v supabase/migrations, nespúšťať z session).
+-- APLIKOVANÉ na produkciu orchestrátorom (1. 11. 2026), súbor presunutý z supabase/pending.
 -- Aditívne: nová funkcia, žiadny nový stĺpec ani zmena existujúcej `model_task_add_comment`.
 -- Dátumy tém netreba migráciu: `model_tasks.created_at`/`updated_at` sa zapisujú priamo pri vložení.
 -- Kód funguje aj pred touto migráciou (komentár dostane čas zápisu a nový guid; duplicity brzdí zhoda autor + text).
