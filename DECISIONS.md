@@ -8391,10 +8391,12 @@ výsledok behu s podpisom vstupu (bod 11); pri novej revízii sú `stale`, nikdy
 **Predbežné predvoľby (čaká na Samuela):** (b) podhľad pri viacerých výškach = vážený medián spodkov podľa plochy prekryvu
 s miestnosťou (ako D-140); ak sa výšky líšia nad toleranciu a menšia má aspoň 10 % plochy, sivá "nekonštantná";
 (c) NetVolume podľa schémy (teleso mínus prieniky konštrukcií vnútri, prizmaticky), žltá pri zhode s Revit metódou
-"krytiny po celej ploche"; (d) tolerancie dĺžky 5 mm, plochy a objemy 0,5 %, objem aj absolútne 0,05 m3.
+"krytiny po celej ploche"; (d) tolerancie dĺžky 5 mm, plochy a objemy 0,5 %, objem aj absolútne 0,05 m3. Spike v `lib/engine` ukázal, že 0,5 % z objemu miestnosti nerozlíši metódy NetVolume pri tenkých krytinách;
+návrh: toleranciu NetVolume viazať na odčítaný objem (napr. 2 % z GV - NV).
 
 **BCF z nálezov spiku (Samuel: áno, založené 1. 11.: #19, #20, #21, typ Issue, stav open, bez priradenia):** tri témy nad ASR v79 ako bežné nálezy modelu pre OCB, components = GlobalId:
 duplicitné dosky SD02.03.0002 a SD02.03.0003; chýbajúca `FinishFloorHeight` v 1.05, 1.07, 2.14, 3.14, 4.01; neuzavreté
 telesá (16 IfcSpace: 1.04, 1.05, 1.08, 1.10, 1.12, 1.13, 1.14, 2.01, 2.02, 2.08, 2.11, 2.19, 3.02, 3.08, 3.11, 3.18, a doska SD02.03.0004).
-**Ďalej:** spike v `lib/engine` s extrúziami (a mesh ako náhradou) a pôdorysným prienikom na ASR v79, potom dátový model
+**Spike v motore:** `lib/engine/space-verify.ts` (+ test, fixture `mini-space-verify.ts`), nezapojený do toolov.
+**Ďalej:** zapojiť do toolu a spustiť na ASR v79 (lokálne nie, D-135), mesh ako náhrada, potom dátový model
 (`verification_rules`, `verification_runs`, `verification_results`), migrácia, UI, BCF z červených stavov.

@@ -175,3 +175,28 @@ Kotvy pre kóty: plochy z = 4,850 (vrch SD02.03.0001), 5,000 (vrch PD03.30.01), 
 - `prototyp/data/mini-space-extrusion.ifc`: ručne zostavený IFC4 (mm), miestnosť 2.01 zjednodušene v tvare L s Qto.
 - Verejné testovacie modely (z forku Menezeris/ifc-lite, nie v repe): `apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc`
   (Brep miestnosti, 0 extrúzií), `apps/viewer/public/samples/building-architecture.ifc` (profil s medzerou, unsupported).
+
+## 7. Spike v `lib/engine` (D-185, nezapojený do toolov)
+
+- **`lib/engine/space-verify.ts`:** `extractBodies(bytes, ids)` = `extractExtrusionDefinitions` -> zvislé hranoly v IFC
+  svete (m, jednotky súboru prevedie `world_from_source`), oblúky vzorkované, šikmé extrúzie a CSG operandy označené
+  `unsupported`. Presná 2D geometria bez knižnice: ear clipping, Sutherland-Hodgman orez konvexným trojuholníkom,
+  prienik pôdorysov s dierami inklúziou-exklúziou. `verifySpace(space, {slabs, coverings})` vráti pre každú veličinu
+  recept (`space.height.own@1`, `space.height.slabs@1`, `space.ffh.covering@1`, `space.fch.covering@1`,
+  `space.area.profile@1`, `space.perimeter.profile@1`, `space.volume.prism@1`, `space.netvolume.coverings@1`), stav
+  (green / yellow / red / grey), hodnotu zo súboru a vypočítanú, vzorec s dosadenými číslami a kotvy (GUID, rola, z).
+  Výber prvkov: dosky s prekryvom aspoň 50 % pôdorysu a dotykom do 5 mm; podlahovina aspoň 50 %; podhľad aspoň 10 %,
+  vážený medián spodkov, rozptyl nad 5 mm = sivá "nekonštantná"; NetVolume podľa schémy (prieniky krytín prizmaticky),
+  žltá pri zhode s metódou "krytiny po celej ploche". Tolerancie = predbežné predvoľby D-185.
+- **Testy `lib/engine/space-verify.test.ts` (7, prechádzajú):** prienik L-tvaru, diery, obvod; zelené recepty so vzorcom a
+  kotvami; červená FCH, sivý nekonštantný podhľad; žltý a červený NetVolume; sivá bez telesa; integrácia so skutočným
+  WASM `extractExtrusionDefinitions` na fixture `__fixtures__/mini-space-verify.ts` (mm, z 4,85 až 8,80, 88 m2).
+  Mutácie (bez znamienok dier, podhľad od spodku telesa namiesto podlahy) testy zhodia. tsc a eslint bez nálezov.
+- **Zistenie k toleranciám:** pri 0,5 % z objemu miestnosti (333 m3 = 1,67 m3) sa metóda "krytiny po celej ploche" a
+  prienik podľa schémy líšia pri tenkých krytinách menej ako tolerancia (fixture: 0,2 m3), takže obe vyjdú zelené.
+  Ak má NetVolume rozlíšiť metódu, tolerancia sa má viazať na odčítaný objem (napr. 2 % z GV - NV) alebo byť absolútna.
+  Doplniť k otázke (d) v D-185.
+- **Čo spike nespravil:** beh na ASR v79. Motor číta archív revízie len na serveri a lokálne sa produkčný súbor
+  nesťahuje (D-135); spustenie vyžaduje zapojenie do toolu (napr. `ifc_measure quantity=...` alebo samostatný beh
+  overenia) a nasadenie, čo je ďalší krok, nie výskum. Očakávanie podľa kap. 3: 2.01 Height, FFH, FCH zelená,
+  NetVolume zelená alebo žltá podľa prekryvu PD03.30.01 a PH01.10.0010.
