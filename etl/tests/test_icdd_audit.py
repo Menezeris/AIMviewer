@@ -71,8 +71,8 @@ def test_clean_export_passes_and_reports_known_gaps() -> None:
     assert ls["documents-identity.rdf"]["by_type"] == {"IsIdenticalTo": 2}
     assert rep.stats["globalid_checked"] == {"ASR_v079.ifc": 3, "VZT_v011.ifc": 3}
     # port (IfcDistributionPort) sa nepočíta, výfukový nástavec bez priestoru áno
-    assert rep.stats["coverage"]["VZT_v011.ifc"] == {"products": 3, "linked": 2, "without_space": 1}
-    assert any(COWL in x and "VV.07.04.001" in x for x in rep.lists["without_space:VZT_v011.ifc"])
+    assert rep.stats["coverage"]["VZT_v011.ifc"] == {"products": 3, "linked": 2, "without_space": 1, "without_structure": 0}
+    assert any(COWL in x and "VV.07.04.001" in x and "podlažie 1NP_VZT" in x for x in rep.lists["without_space:VZT_v011.ifc"])
 
 
 def test_index_name_variants(tmp_path: Path) -> None:
@@ -254,3 +254,15 @@ def test_links_without_explicit_ls_type_are_reported() -> None:
     if rep.stats["linksets"]["derived-spatial.rdf"]["without_ls_type"]:
         assert w
     assert not [i for i in audit(str(RUB)).warnings if i.code == "link_base_type"]
+
+
+def test_element_without_any_spatial_structure_is_error(tmp_path: Path) -> None:
+    """Prvok bez priestoru/zóny, ale na podlaží = varovanie; bez akejkoľvek priestorovej príslušnosti = chyba."""
+    f = _files()
+    vzt = "Payload documents/VZT_v011.ifc"
+    _replace(f, vzt, "(#1,#2,#3),#4)", "(#1,#2),#4)")
+    _rehash(f, "VZT_v011.ifc")
+    rep = audit(_write(tmp_path, f))
+    assert "coverage_no_structure" in {i.code for i in rep.errors}
+    assert rep.stats["coverage"]["VZT_v011.ifc"]["without_structure"] == 1
+    assert any("BEZ priestorovej" in x for x in rep.lists["without_space:VZT_v011.ifc"])

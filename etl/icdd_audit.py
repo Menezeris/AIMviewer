@@ -13,7 +13,7 @@ prečítať). Kontroly (zadanie Samuela 1. 11. 2026):
 * každý `ls:LinkElement` má `ls:hasDocument` na dokument z indexu; identifikátory majú pole a hodnotu;
 * GlobalId (a `IfcDocument*.Identification`) z linksetov existuje v príslušnom IFC;
 * žiadne duplicitné väzby (typ, od, do), žiadne osirelé ani visiace `ls:LinkElement`;
-* pokrytie: MEP produkty IFC (bez portov), ktoré nemajú väzbu na priestor alebo zónu;
+* pokrytie: MEP produkty IFC (bez portov) bez väzby na priestor alebo zónu (varovanie, pri prvku bez podlažia chyba);
 * žiadne predikáty ani triedy mimo pribalených ontológií (ISO 21597 a aim).
 
 Nie je to normatívna validácia ISO 21597 (oficiálne SHACL tvary z ISO 21597-2 prílohy B nie sú verejné); kardinality
@@ -229,6 +229,8 @@ class IfcIndex:
     doc_reference: set[str] = field(default_factory=set)
     in_space_natively: set[str] = field(default_factory=set)
     storey_of: dict[str, str] = field(default_factory=dict)  # GlobalId prvku -> meno podlažia (IfcRelContainedIn...)
+    # GlobalId prvku -> "Trieda Meno" priestorovej štruktúry, v ktorej je prvok v IFC (obsiahnutý alebo referencovaný)
+    structure_of: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def parse(cls, data: bytes) -> "IfcIndex":
@@ -273,6 +275,8 @@ class IfcIndex:
                     continue
                 if struct_cls in SPATIAL_TARGETS:
                     idx.in_space_natively.add(eg)
+                if struct_guid and eg not in idx.structure_of:
+                    idx.structure_of[eg] = f"{struct_cls} {storey_name.get(args[5], '') or struct_guid}"
                 if ent == b"IFCRELCONTAINEDINSPATIALSTRUCTURE" and struct_cls == "IFCBUILDINGSTOREY":
                     idx.storey_of[eg] = storey_name.get(args[5], "") or (struct_guid or "")
         return idx
@@ -689,7 +693,15 @@ def audit(path: str, list_limit: int = 50) -> Report:
             linked = linked_to_space.get(fn, set())
             native = ifc.in_space_natively
             missing = sorted(g for g in products if g not in linked and g not in native)
-            cov[fn] = {"products": len(products), "linked": len(products) - len(missing), "without_space": len(missing)}
+            # Samuel 1. 11.: bez priestoru/zóny, ale s podlažím (alebo inou priestorovou štruktúrou v IFC) = varovanie;
+            # bez akejkoľvek priestorovej príslušnosti = chyba.
+            floating = [g for g in missing if g not in ifc.structure_of]
+            cov[fn] = {
+                "products": len(products),
+                "linked": len(products) - len(missing),
+                "without_space": len(missing),
+                "without_structure": len(floating),
+            }
             if missing:
                 rep.warn(
                     "coverage",
@@ -697,9 +709,16 @@ def audit(path: str, list_limit: int = 50) -> Report:
                     fn,
                 )
                 rep.lists[f"without_space:{fn}"] = [
-                    f"{g} {_ifc_name(products[g])} {ifc.guid_name.get(g, '')}".rstrip() + (f" (podlažie {ifc.storey_of[g]})" if ifc.storey_of.get(g) else "")
+                    f"{g} {_ifc_name(products[g])} {ifc.guid_name.get(g, '')}".rstrip()
+                    + (f" (podlažie {ifc.storey_of[g]})" if ifc.storey_of.get(g) else f" ({ifc.structure_of[g]})" if g in ifc.structure_of else " (BEZ priestorovej príslušnosti)")
                     for g in missing[:list_limit]
                 ]
+            if floating:
+                rep.error(
+                    "coverage_no_structure",
+                    f"{len(floating)} MEP produktov nemá priestor, zónu ani podlažie (IfcRelContainedInSpatialStructure)",
+                    fn,
+                )
         rep.stats["coverage"] = cov
     rep.collapse()
     return rep
