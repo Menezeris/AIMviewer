@@ -147,6 +147,8 @@ type OutboundMessage =
   // Export a kontrola ICDD z AIM ribbonu (D-181) - host zloží kontajner, stiahne ho a odpovie ICDD_STATUS.
   | { source: typeof SOURCE; type: "ICDD_EXPORT"; id: string; extras?: string[] }
   | { source: typeof SOURCE; type: "ICDD_CHECK"; id: string; name?: string; bytes: ArrayBuffer }
+  // Import .bcfzip z BCF panela (D-158 krok 8) - host ho zapíše cez /api/bcf/viewer-import a pošle späť BCF_IMPORTED.
+  | { source: typeof SOURCE; type: "BCF_IMPORT"; id: string; name?: string; bytes: ArrayBuffer; dry_run?: boolean }
   // Odpoveď na QUERY spätného kanála (D-085) - obálky, stav pohľadu.
   | { source: typeof SOURCE; type: "QUERY_RESULT"; id: string; ok: boolean; result?: unknown; error?: string }
   // Potvrdenie príkazov pred ACK_REQUEST (D-101) - stav po vykonaní, čo sa nevykonalo.
@@ -476,6 +478,25 @@ export function IFCViewer({
         checkIcdd: (bytes, progress) => client.checkIcdd(bytes, progress),
         download: client.downloadBytes,
       });
+    })();
+  }
+
+  /** Import .bcfzip z BCF panela (`BCF_IMPORT`): route je za env bránou; výsledok sa vráti ako `BCF_IMPORTED`. */
+  function importBcf(raw: unknown) {
+    void (async () => {
+      const { parseBcfImport, bcfImportedMessage, BCF_VIEWER_IMPORT_MAX_BYTES } = await import("@/lib/viewer-bcf-import");
+      const req = parseBcfImport(raw);
+      if (!req) return;
+      const reply = (result: Parameters<typeof bcfImportedMessage>[1]) => post(bcfImportedMessage(req.id, result));
+      if (req.bytes.byteLength > BCF_VIEWER_IMPORT_MAX_BYTES) return reply({ ok: false, error: "Súbor je príliš veľký, importuj ho v chate (bcf_topic action=import)." });
+      try {
+        const r = await fetch(`/api/bcf/viewer-import${req.dry_run ? "?dry_run=1" : ""}`, { method: "POST", headers: { "Content-Type": "application/zip" }, body: req.bytes });
+        const body = (await r.json().catch(() => ({}))) as { ok?: boolean; summary?: unknown; error?: string };
+        if (r.ok && body.ok && body.summary) reply({ ok: true, summary: body.summary as Extract<Parameters<typeof bcfImportedMessage>[1], { ok: true }>["summary"] });
+        else reply({ ok: false, error: body.error ?? `HTTP ${r.status}` });
+      } catch (err) {
+        reply({ ok: false, error: err instanceof Error ? err.message : "import zlyhal" });
+      }
     })();
   }
 
@@ -839,6 +860,9 @@ export function IFCViewer({
         case "ICDD_EXPORT":
         case "ICDD_CHECK":
           runIcdd(e.data);
+          break;
+        case "BCF_IMPORT":
+          importBcf(e.data);
           break;
         case "UNDERLAY_SAVE": {
           // Kalibrácia z viewera → perzistuj _georef (D-072). Server payload
