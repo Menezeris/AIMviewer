@@ -3,7 +3,7 @@
 **Druh:** výskum a spike (nie produkčný kód) · **Dátum:** 2026-11-01 · **Vetva:** `claude/research-property-provenance`
 (draft PR #382) · **Nadväzuje na:** [`vlastnosti-povod-a-overenie.md`](vlastnosti-povod-a-overenie.md) (prvá analýza),
 Samuelovo zadanie "overovač výmer voči geometrii" z 1. 11. 2026 (hĺbkový výskum: schéma IFC4.3, revit-ifc, ifc-lite,
-IfcOpenShell/Bonsai, ifc-gherkin-rules) · **D-číslo:** vyžiadané od orchestrátora, zatiaľ nepridelené.
+IfcOpenShell/Bonsai, ifc-gherkin-rules) · **D-číslo:** D-185 (pridelil orchestrátor; záznam v `DECISIONS.md`, NÁVRH).
 
 Zdroje dát: DB `acwoupricatirhlfkhvk` (len SELECT nad kópiou revízie `ifc_rev_*`, ASR v79) a motor cez existujúci
 `ifc_measure` nad archívom revízie (D-135). Produkčný IFC sa nesťahoval, nič sa nezapisovalo. API extrúzií sa skúšalo
