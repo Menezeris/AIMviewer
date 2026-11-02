@@ -1,0 +1,25 @@
+import { NextResponse } from "next/server";
+
+import { GUID_RE, jsonFail, NO_STORE, verifyGuard } from "@/lib/verify/route-guard";
+import { latestVerification } from "@/lib/verify/service";
+
+/**
+ * Posledné uložené overenie výmer prvku pre viewer (D-185 UI, `VERIFY_REQUEST latest`): `GET ?global_id=` ->
+ * `{data: VerifyElementWire | null}` z `v_verification_latest` (na veličinu a rodinu receptu najvyšší register, hlavný
+ * recept prvý, veličiny bez hodnoty v súbore vynechané, `stale` a `current_revision` z modelu). Len čítanie.
+ */
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 30;
+
+export async function GET(req: Request) {
+  const denied = verifyGuard(req);
+  if (denied) return denied;
+  const guid = new URL(req.url).searchParams.get("global_id") ?? "";
+  if (!GUID_RE.test(guid)) return jsonFail("global_id musí byť IFC GlobalId", 400);
+  try {
+    return NextResponse.json({ data: await latestVerification(guid) }, { headers: NO_STORE });
+  } catch (err) {
+    return jsonFail(err instanceof Error ? err.message : "načítanie overenia zlyhalo", 500);
+  }
+}

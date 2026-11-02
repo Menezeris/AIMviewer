@@ -403,6 +403,15 @@ export interface Anchor {
   role: string;
   z_m?: number;
 }
+/** Pomenovaný vstup vzorca ("bunka", D-185 UI): hodnota a prvok, z ktorého pochádza (m, m2, m3). */
+export interface Cell {
+  key: string;
+  label: string;
+  value: number;
+  unit: "m" | "m2" | "m3";
+  global_id?: string;
+}
+
 export interface RecipeResult {
   target: string;
   /** Recept s verziou z registra metód. */
@@ -416,6 +425,12 @@ export interface RecipeResult {
   tolerance: string;
   file?: number;
   computed?: number;
+  /** Ako sa počíta, 1 až 2 vety pre človeka (register metód). */
+  explanation: string;
+  /** Výraz nad kľúčmi buniek (`A - B`, `A x B`); chýba pri sivej a pri viacerých výškach. */
+  expression?: string;
+  /** Bunky vzorca (pomenované vstupy so zdrojovým prvkom); pri sivej prázdne. */
+  cells?: Cell[];
   /** Vzorec s dosadenými číslami (m, m2, m3). */
   formula?: string;
   note?: string;
@@ -550,16 +565,27 @@ function base(key: SpaceMethodKey, body?: Body) {
   const m: QuantityMethod = SPACE_METHODS[key];
   const meshNote = body?.source === "mesh" ? " (teleso miestnosti: uzavretý mesh motora, náhrada za extrúziu)"
     : body?.source === "mesh_open" ? " (teleso miestnosti: NEUZAVRETÝ mesh motora, len výška, pôdorys a obvod; nesúlad = sivá)" : "";
-  return { target: m.target, recipe: m.id, method: m.method + meshNote, definition: m.definition, spec_ref: m.spec_ref, tolerance: TOLERANCES[m.kind].text };
+  return { target: m.target, recipe: m.id, method: m.method + meshNote, explanation: m.explanation, definition: m.definition, spec_ref: m.spec_ref, tolerance: TOLERANCES[m.kind].text };
 }
+
+/** Kľúč bunky podľa poradia: A, B, ... Z, potom X27, X28... */
+const cellKey = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : `X${i + 1}`);
+/** Bunky v poradí kľúčov A, B, ... (hodnota zaokrúhlená na 4 desatinné miesta ako vzorec). */
+function cells(...items: Array<Omit<Cell, "key">>): Cell[] {
+  return items.map((c, i) => ({ key: cellKey(i), ...c, value: r4(c.value) }));
+}
+/** Výraz `A - B - C` nad n bunkami. */
+const minus = (n: number) => Array.from({ length: n }, (_, i) => cellKey(i)).join(" - ");
 
 const ALL_KEYS = ["height_own", "height_slabs", "gross_floor_area", "gross_perimeter", "gross_volume", "ffh", "fch", "net_volume"] as const;
 
 /** Výsledok pri viacerých výškach (pravidlo konštantnosti zo schémy). */
 function nonConstant(key: SpaceMethodKey, file: number | undefined, heights: number[], ref: number, anchors: Anchor[], body: Body): RecipeResult {
   const values = heights.map((h) => r4(h - ref));
+  const what = key === "ffh" ? "výška podlahoviny" : "výška podhľadu";
   return {
     ...base(key, body),
+    cells: cells(...values.map((v, i) => ({ label: `${what} ${i + 1} v pôdoryse miestnosti`, value: v, unit: "m" as const }))),
     status: file == null ? "green" : "red",
     file,
     distinct_heights: values,
@@ -596,14 +622,23 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
   const modified = body.unsupported ? `; ${body.unsupported}` : "";
   const c = SELECTION.contact_m;
 
+  const sp = s.globalId;
   out.push({ ...base("height_own", body), ...openJudge(s.qto.Height, H, "length"), file: s.qto.Height, computed: r4(H),
+    expression: "A - B", cells: cells({ label: "vrch telesa miestnosti", value: own.z1, unit: "m", global_id: sp }, { label: "spodok telesa miestnosti", value: own.z0, unit: "m", global_id: sp }),
     formula: `${r3(own.z1)} - ${r3(own.z0)} = ${r4(H)} m`, anchors: [{ ...self, z_m: own.z0 }, { ...self, z_m: own.z1 }], dimension: { z0: own.z0, z1: own.z1 } });
   out.push({ ...base("gross_floor_area", body), ...openJudge(s.qto.GrossFloorArea, A, "area"), file: s.qto.GrossFloorArea, computed: r4(A),
+    expression: "A", cells: cells({ label: isMesh ? "plocha pôdorysu meshu miestnosti (plochy s normálou nadol)" : "plocha profilu telesa miestnosti", value: A, unit: "m2", global_id: sp }),
     formula: isMesh ? `priemet plôch meshu s normálou nadol = ${r4(A)} m2` : `plocha profilu = ${r4(A)} m2`, anchors: [self] });
   out.push({ ...base("gross_perimeter", body), ...openJudge(s.qto.GrossPerimeter, P, "perimeter"), file: s.qto.GrossPerimeter, computed: r4(P),
+    expression: "A", cells: cells({ label: isMesh ? "obvod pôdorysu meshu miestnosti" : "obvod vonkajšej slučky profilu miestnosti", value: P, unit: "m", global_id: sp }),
     formula: isMesh ? `obvod pôdorysu meshu = ${r4(P)} m` : `obvod vonkajšej slučky = ${r4(P)} m`, anchors: [self] });
   if (open) out.push({ ...base("gross_volume", body), status: "grey", file: s.qto.GrossVolume, note: `nedá sa overiť: ${body.unsupported}`, anchors: [self] });
   else out.push({ ...base("gross_volume", body), status: judge(s.qto.GrossVolume, gv, "volume"), file: s.qto.GrossVolume, computed: r4(gv),
+    ...(isMesh
+      ? { expression: "A", cells: cells({ label: "objem uzavretého meshu miestnosti", value: gv, unit: "m3", global_id: sp }) }
+      : body.prisms.length === 1
+        ? { expression: "A x B", cells: cells({ label: "plocha profilu miestnosti", value: A, unit: "m2", global_id: sp }, { label: "výška extrúzie miestnosti", value: H, unit: "m", global_id: sp }) }
+        : { expression: "A", cells: cells({ label: `objem telesa miestnosti (${body.prisms.length} hranoly, súčet plocha x výška)`, value: gv, unit: "m3", global_id: sp }) }),
     formula: isMesh ? `objem uzavretého meshu = ${r4(gv)} m3` : `${r4(A)} x ${r4(H)} = ${r4(gv)} m3${modified}`, anchors: [self] });
 
   // Dosky pod a nad.
@@ -613,6 +648,8 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
   if (below && above) {
     const hs = above.r.z0 - below.r.z1;
     out.push({ ...base("height_slabs", body), status: judge(s.qto.Height, hs, "length"), file: s.qto.Height, computed: r4(hs),
+      expression: "A - B",
+      cells: cells({ label: "spodok dosky nad", value: above.r.z0, unit: "m", global_id: above.e.globalId }, { label: "vrch dosky pod", value: below.r.z1, unit: "m", global_id: below.e.globalId }),
       formula: `spodok(${above.e.name}) - vrch(${below.e.name}) = ${r3(above.r.z0)} - ${r3(below.r.z1)} = ${r4(hs)} m`,
       anchors: [{ global_id: below.e.globalId, role: "doska pod", z_m: below.r.z1 }, { global_id: above.e.globalId, role: "doska nad", z_m: above.r.z0 }],
       dimension: { z0: below.r.z1, z1: above.r.z0 } });
@@ -634,8 +671,11 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
     const ffh = floorTop - own.z0;
     // Konštantná podlahovina a súbor hodnotu neuvádza: schéma ju pri konštantnej výške žiada -> žltá (D-185 doplnok 2).
     const absent = s.qto.FinishFloorHeight == null;
+    const topFloor = floors.filter((x) => Math.abs(x.r.z1 - floorTop) <= TOLERANCES.length.abs!).sort((a, b) => b.overlap - a.overlap)[0];
     out.push({ ...base("ffh", body), status: absent ? "yellow" : judge(s.qto.FinishFloorHeight, ffh, "length"), file: s.qto.FinishFloorHeight, computed: r4(ffh),
       ...(absent ? { note: FFH_ABSENT_RULE.text } : {}),
+      expression: "A - B",
+      cells: cells({ label: "vrch podlahoviny", value: floorTop, unit: "m", global_id: topFloor?.e.globalId }, { label: "spodok telesa miestnosti", value: own.z0, unit: "m", global_id: sp }),
       formula: `vrch(podlahovina) - spodok(miestnosť) = ${r3(floorTop)} - ${r3(own.z0)} = ${r4(ffh)} m`, anchors: [{ ...self, z_m: own.z0 }, ...floorAnchors],
       dimension: { z0: own.z0, z1: floorTop } });
   } else {
@@ -658,7 +698,16 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
   } else if (bottoms.length > 1) out.push(nonConstant("fch", s.qto.FinishCeilingHeight, bottoms, ref!, [{ ...self, z_m: ref! }, ...ceilingAnchors], body));
   else if (bottoms.length === 1) {
     const fch = bottoms[0] - ref!;
+    const ceiling = ceilings.filter((x) => Math.abs(x.r.z0 - bottoms[0]) <= TOLERANCES.length.abs!).sort((a, b) => b.overlap - a.overlap)[0];
+    const floorEl = floorTop != null ? floors.filter((x) => Math.abs(x.r.z1 - floorTop) <= TOLERANCES.length.abs!).sort((a, b) => b.overlap - a.overlap)[0] : undefined;
     out.push({ ...base("fch", body), status: judge(s.qto.FinishCeilingHeight, fch, "length"), file: s.qto.FinishCeilingHeight, computed: r4(fch),
+      expression: "A - B",
+      cells: cells(
+        { label: "spodok podhľadu", value: bottoms[0], unit: "m", global_id: ceiling?.e.globalId },
+        floorTop != null
+          ? { label: "vrch podlahoviny", value: ref!, unit: "m", global_id: floorEl?.e.globalId }
+          : { label: "spodok telesa miestnosti (súbor podlahovinu neuvádza)", value: ref!, unit: "m", global_id: sp },
+      ),
       formula: `spodok(podhľad) - vrch(podlahy) = ${r3(bottoms[0])} - ${r3(ref!)} = ${r4(fch)} m`, anchors: [{ ...self, z_m: ref! }, ...ceilingAnchors],
       dimension: { z0: ref!, z1: bottoms[0] } });
   } else if (ceilingMissing.length) {
@@ -697,7 +746,16 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
   }
   const term = (x: (typeof parts)[number]) =>
     x.cut.exact ? `${r4(x.cut.area)} x ${r4(x.cut.dz)} (${x.e.name})` : `${r4(x.cut.volume)} (${x.e.name}, ${x.cut.how})`;
+  const covWhat = (x: (typeof parts)[number]) => (x.e.predefinedType === "CEILING" ? "podhľadu" : "podlahoviny");
   out.push({ ...base("net_volume", body), ...(nvTol ? { tolerance: nvTol.text } : {}), status: nvStatus, file: nvFile, computed: r4(nv),
+    expression: minus(parts.length + 1),
+    cells: cells(
+      { label: "GrossVolume miestnosti (z geometrie)", value: gv, unit: "m3", global_id: sp },
+      ...parts.map((x) => ({
+        label: x.cut.exact ? `objem ${covWhat(x)} vnútri telesa (${r4(x.cut.area)} m2 x ${r4(x.cut.dz)} m)` : `objem ${covWhat(x)} vnútri telesa (${x.cut.how})`,
+        value: x.cut.volume, unit: "m3" as const, global_id: x.e.globalId,
+      })),
+    ),
     formula: `${r4(gv)} - ${parts.map(term).join(" - ") || "0"} = ${r4(nv)} m3`, note,
     anchors: [self, ...parts.map((x) => ({ global_id: x.e.globalId, role: "krytina vnútri telesa" }))] });
 
