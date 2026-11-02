@@ -122,7 +122,7 @@ export interface Vysledok {
 const novyVysledok = (): Vysledok => ({ ok: true, zapisane: [], odmietnute: [], vytvorene: [], premenovane: [], konflikt: false, diagnostiky: [] });
 const hotovo = (v: Vysledok): Vysledok => ({ ...v, ok: v.odmietnute.length === 0 });
 
-const diag = (nid: string, pointer: string, sprava: string, subor: string, kod = "W1"): Diagnostika => ({
+export const diag = (nid: string, pointer: string, sprava: string, subor: string, kod = "W1"): Diagnostika => ({
   note_id: nid,
   json_pointer: pointer,
   uroven: "E",
@@ -394,7 +394,7 @@ export interface NovaPoznamka {
 }
 
 /** `_kandidat`: hodnoty, cesta a dokument poznámky zo šablóny typu. */
-function kandidat(p: NovaPoznamka) {
+export function kandidat(p: NovaPoznamka) {
   const h: Record<string, unknown> = { ...PREDVOLBY_NOVEJ, ...(p.data ?? {}), id: p.id, typ: p.typ, nazov: p.nazov };
   if (p.typ === "ACT") {
     const segs = p.id.slice("ACT-".length).split("/");

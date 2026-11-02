@@ -105,6 +105,8 @@ export function KniznicaPrehliadac({ initial }: { initial?: { kniznica?: string;
     return [...out.entries()];
   }, [rows, filter]);
 
+  const kniznice = useMemo(() => [...new Set((rows ?? []).map((r) => r.kniznica))].sort(), [rows]);
+
   const bloky = detail ? [...(detail.bloky.frontmatter ? [{ ...detail.bloky.frontmatter, druh: "Frontmatter" }] : []), ...detail.bloky.telo] : [];
 
   return (
@@ -112,7 +114,16 @@ export function KniznicaPrehliadac({ initial }: { initial?: { kniznica?: string;
       <Card className="min-h-0">
         <CardHeader>
           <CardTitle>Knižnica požiadaviek</CardTitle>
-          <p className="text-xs text-muted-foreground">Hlava knižnice v DB (len na čítanie). Úpravy zatiaľ v assetin.</p>
+          <p className="text-xs text-muted-foreground">Hlava knižnice v DB. Celý editor (registre, reťazec, inšpektor, diagnostiky) je samostatná stránka.</p>
+          {kniznice.length > 0 && (
+            <p className="mt-1 flex flex-wrap gap-2 text-xs" data-testid="kniznica-editor-odkazy">
+              {kniznice.map((k) => (
+                <a key={k} href={`/kniznica/editor/${encodeURIComponent(k)}`} className="text-primary underline underline-offset-2" data-testid="kniznica-editor-odkaz">
+                  Otvoriť editor {k}
+                </a>
+              ))}
+            </p>
+          )}
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}

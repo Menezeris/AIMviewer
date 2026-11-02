@@ -44,6 +44,8 @@ const nextConfig: NextConfig = {
     // Kľúč je glob nad cestou route ([id] by bol trieda znakov), preto zástupné znaky.
     "/api/bcf/**/*": PDF_RENDER_FILES,
     "/api/drawing/**/*": PDF_RENDER_FILES,
+    // Editor knižnice (D-186): vendorovaná šablóna `app.html` a design kit sa čítajú zo súborov pri požiadavke.
+    "/kniznica/editor/**/*": ["./library/editor/**/*"],
   },
 
   // Paralelný dev server (devtest popri bežnom `npm run dev`): Next 16 drží

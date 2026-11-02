@@ -1,0 +1,173 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   assetin design kit — vrstva 0: design tokeny
+   Zdroj pravdy pre brand naprieč appkami (ArchiveApp, AIMviewer, …).
+   Extrahované z ArchiveApp (frontend/src/styles.css) — D-070 v AIMviewer/DECISIONS.md.
+
+   Použitie: importuj tento súbor PRED adaptérom (archive.css / shadcn.css).
+   Dark mode: trieda `.dark` alebo atribút `[data-theme="dark"]` na <html>.
+   Strojová verzia tokenov: /tokens.json
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Brand ─────────────────────────────────────────────────────────────── */
+  --ds-brand-green:        #1a7431;
+  --ds-brand-green-hover:  #156028;
+  --ds-brand-green-soft:   #f0fdf4; /* jemné pozadie (selected, success bg) */
+  --ds-brand-navy:         #121a2b;
+  --ds-brand-ink:          #1a1a1a;
+  /* Brand gradient (zelená hover → zelená) — pre bannery, bloby, akcenty (graphics.css) */
+  --ds-brand-green-grad: linear-gradient(90deg, var(--ds-brand-green-hover) 0%, var(--ds-brand-green) 100%);
+  --ds-slash-angle: 68deg; /* sklon diagonálneho rezu, ladí s italic "in" (voliteľné) */
+
+  /* ── Neutrálna škála (gray) ────────────────────────────────────────────── */
+  --ds-gray-50:  #f9fafb;
+  --ds-gray-100: #f3f4f6;
+  --ds-gray-200: #e5e7eb;
+  --ds-gray-300: #d1d5db;
+  --ds-gray-400: #9ca3af;
+  --ds-gray-500: #6b7280;
+  --ds-gray-600: #4b5563;
+  --ds-gray-700: #374151;
+  --ds-gray-800: #1f2937;
+  --ds-gray-900: #111827;
+  --ds-white:    #ffffff;
+
+  /* ── Semantické stavy ──────────────────────────────────────────────────── */
+  --ds-success:        #15803d;
+  --ds-success-strong: #166534;
+  --ds-success-bg:     #f0fdf4;
+  --ds-success-border: #86efac;
+
+  --ds-danger:        #dc2626;
+  --ds-danger-hover:  #b91c1c;
+  --ds-danger-bg:     #fef2f2;
+  --ds-danger-border: #fecaca;
+
+  --ds-warning:        #92400e;
+  --ds-warning-bg:     #fef3c7;
+  --ds-warning-bg-soft:#fffbeb;
+
+  --ds-info:        #2563eb;
+  --ds-info-strong: #1d4ed8;
+  --ds-info-bg:     #eff6ff;
+  --ds-info-border: #dbeafe;
+
+  /* ── Semantické aliasy povrchov a textu (menia sa v dark mode) ─────────── */
+  --ds-surface:        var(--ds-white);     /* karty, modaly, inputy */
+  --ds-surface-muted:  #f4f4f4;             /* pozadie stránky */
+  --ds-surface-hover:  var(--ds-gray-100);  /* hover riadkov/tlačidiel */
+  --ds-surface-raised: var(--ds-gray-50);   /* hover kariet, sekcie */
+  --ds-border:         var(--ds-gray-200);
+  --ds-border-strong:  var(--ds-gray-300);
+  --ds-text:           var(--ds-gray-800);
+  --ds-text-strong:    var(--ds-gray-900);
+  --ds-text-muted:     var(--ds-gray-500);
+  --ds-text-faint:     var(--ds-gray-400);
+  --ds-text-on-brand:  var(--ds-white);
+  --ds-primary:        var(--ds-brand-green);
+  --ds-primary-hover:  var(--ds-brand-green-hover);
+
+  /* ── Typografia ────────────────────────────────────────────────────────── */
+  --ds-font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ds-font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --ds-text-xs:   11px;
+  --ds-text-sm:   13px;
+  --ds-text-md:   14px;
+  --ds-text-base: 16px;   /* base = 16px → iOS pri focuse nezoomuje */
+  --ds-text-lg:   18px;
+  --ds-text-xl:   22px;
+  --ds-text-2xl:  26px;
+  --ds-text-3xl:  32px;   /* brand štatistiky / hero číslice (graphics.css) */
+  --ds-weight-normal:   400;
+  --ds-weight-medium:   500;
+  --ds-weight-semibold: 600;
+  --ds-weight-bold:     700;
+  --ds-leading-tight:   1.2;
+  --ds-leading-normal:  1.5;
+
+  /* ── Radius ────────────────────────────────────────────────────────────── */
+  --ds-radius-sm:   4px;   /* badge */
+  --ds-radius-md:   6px;   /* tlačidlá, inputy */
+  --ds-radius-lg:   8px;   /* karty */
+  --ds-radius-xl:   12px;  /* modaly desktop */
+  --ds-radius-2xl:  16px;  /* bottom-sheet mobile */
+  --ds-radius-full: 9999px;
+
+  /* ── Spacing (4px grid) ────────────────────────────────────────────────── */
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 20px;
+  --ds-space-6: 24px;
+  --ds-space-8: 32px;
+  --ds-space-12: 48px;
+
+  /* ── Dotykové targety (mobile-first pravidlá ArchiveAppu) ──────────────── */
+  --ds-touch-button: 44px; /* min-height tlačidiel */
+  --ds-touch-input:  48px; /* min-height inputov */
+  --ds-touch-fab:    56px;
+
+  /* ── Tiene ─────────────────────────────────────────────────────────────── */
+  --ds-shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.08);
+  --ds-shadow-md:  0 2px 8px rgba(0, 0, 0, 0.12);
+  --ds-shadow-fab: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --ds-overlay:    rgba(0, 0, 0, 0.45);
+
+  /* ── Z-index škála ─────────────────────────────────────────────────────── */
+  --ds-z-nav:     50;
+  --ds-z-fab:     100;
+  --ds-z-modal:   150;
+  --ds-z-toast:   200;
+
+  /* ── Layout ────────────────────────────────────────────────────────────── */
+  --ds-container-max: 1280px;
+
+  color-scheme: light;
+}
+
+/* ═══ Dark mode ═══════════════════════════════════════════════════════════
+   Povrchy na báze brand navy; brand zelená zosvetlená kvôli kontrastu.     */
+.dark,
+[data-theme="dark"] {
+  --ds-brand-green:       #2f9e4f;
+  --ds-brand-green-hover: #3db35f;
+  --ds-brand-green-soft:  #12291a;
+
+  --ds-surface:        #182338; /* navy, o stupeň svetlejšie než pozadie */
+  --ds-surface-muted:  #0d1420; /* pozadie stránky */
+  --ds-surface-hover:  #1f2c44;
+  --ds-surface-raised: #1c2840;
+  --ds-border:         rgba(255, 255, 255, 0.10);
+  --ds-border-strong:  rgba(255, 255, 255, 0.18);
+  --ds-text:           var(--ds-gray-200);
+  --ds-text-strong:    var(--ds-gray-50);
+  --ds-text-muted:     var(--ds-gray-400);
+  --ds-text-faint:     var(--ds-gray-500);
+  --ds-text-on-brand:  var(--ds-white);
+  --ds-primary:        var(--ds-brand-green);
+  --ds-primary-hover:  var(--ds-brand-green-hover);
+
+  --ds-success:        #4ade80;
+  --ds-success-strong: #86efac;
+  --ds-success-bg:     #12291a;
+  --ds-success-border: #166534;
+
+  --ds-danger:        #f87171;
+  --ds-danger-hover:  #ef4444;
+  --ds-danger-bg:     #2a1414;
+  --ds-danger-border: #7f1d1d;
+
+  --ds-warning:        #fbbf24;
+  --ds-warning-bg:     #2a2008;
+  --ds-warning-bg-soft:#231b08;
+
+  --ds-info:        #60a5fa;
+  --ds-info-strong: #93c5fd;
+  --ds-info-bg:     #14203a;
+  --ds-info-border: #1e3a8a;
+
+  --ds-overlay: rgba(0, 0, 0, 0.6);
+
+  color-scheme: dark;
+}
