@@ -526,7 +526,7 @@ dokumenty s verziami, z chatu aj z viewera. Aditívne, IDS nie je v `objects` (D
 - `query_view` whitelist + `ids_documents` (verzie s XML nie, XML číta `ids_document`). Práva ako ostatné
   nové tabuľky: `anon`/`authenticated` nič, `service_role` všetko.
 
-**D-182 (migrácia `supabase/pending/20261102120000_ids_library_assign.sql`, NESPUSTENÁ; test
+**D-182 (migrácia `supabase/migrations/20261102120000_ids_library_assign.sql`, NESPUSTENÁ; test
 `supabase/tests/ids_library_assign.sql`):** knižnica požiadaviek v AIM vedomým priradením. Aditívne:
 - `ids_document_versions` + `library_repo`, `library_path`, `library_commit`, `library_code` (kód súboru v čase
   priradenia). Check `ids_document_versions_library_ref_check`: pri `source = 'import'` sú repo, cesta a commit

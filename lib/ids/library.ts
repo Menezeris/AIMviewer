@@ -14,10 +14,10 @@ import type { IdsDocumentRow, IdsStore, IdsVersionMeta } from "./types";
 
 export class LibraryInputError extends Error {}
 
-/** Migrácia D-182 (`supabase/pending/20261102120000_ids_library_assign.sql`) ešte nie je aplikovaná. */
+/** Migrácia D-182 (`supabase/migrations/20261102120000_ids_library_assign.sql`) ešte nie je aplikovaná. */
 export class LibrarySchemaMissingError extends Error {
   constructor(what: string) {
-    super(`${what}: v DB chýba migrácia D-182 (supabase/pending/20261102120000_ids_library_assign.sql), čaká na nasadenie.`);
+    super(`${what}: v DB chýba migrácia D-182 (supabase/migrations/20261102120000_ids_library_assign.sql), čaká na nasadenie.`);
   }
 }
 
