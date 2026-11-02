@@ -8435,6 +8435,32 @@ s odmietnutým profilom a NEUZAVRETÝM meshom (tie isté prvky ako BCF #21), 42 
 - BCF pre 3.14 (NetVolume zhodné s 2.14, bez podlahoviny) Samuel schválil; založenie čaká na potvrdenie priamo v session.
 **Testy:** `space-verify.test.ts` 26 (doplnok 2: 7 testov, 10 mutácií, každú test zhodí), `space-verify-run.test.ts` 5.
 
+**Doplnok 3 (2026-11-02): UI v paneli vlastností, hostiteľská časť (orchestrátor; viewer Menezeris/ifc-lite#227, záväzná špecifikácia
+`docs/architecture/evidence/aim-d185-verify-ui/navrh.md` časti 2 až 4 a `apps/viewer/src/aim/verify-protocol.ts`).** Samuel 2. 11.: Height
+podľa dosiek (vlastné teleso len kontrola), veličina, ktorá v súbore nie je, sa nezobrazuje, overenie na požiadanie (zobrazenie výmer alebo
+ribbon AIM > Overovanie), bunky pri všetkých veličinách.
+- **Most** ako D-182: viewer -> host `VERIFY_REQUEST {id, action: latest | run | run_all, payload}`, host -> viewer `VERIFY_RESULT {id, ok,
+  data?, error?}` (`lib/viewer-verify.ts`, `components/ifc-viewer.tsx`); `run_all` z jednej karty len jeden naraz.
+- **Routes** (`lib/verify/service.ts`, tvar `lib/verify/wire.ts`): `GET /api/verify/latest?global_id` z `v_verification_latest` (na veličinu a
+  rodinu receptu najvyšší `registry_version`, hlavný recept prvý podľa registra `check`, stav veličiny = hlavný recept, veličiny s `file_value`
+  null vynechané, `current_revision` z `model_revisions`, `stale` z pohľadu alebo staršej revízie, `spec.url` z `spec_ref`, `ref` buniek =
+  `object_ref` výskytu); `POST /api/verify/run {global_id}` = výpočet ako `ifc_measure verify=true` pre jeden prvok (`verifySpacesByGuid`);
+  `POST /api/verify/run_all {check: 'space_quantities'}` = všetky IfcSpace modelov federácie jedným behom, súbežný beh v inštancii = 409
+  "overenie už beží". Výpočet beží vždy, **uloženie k revízii je za `VERIFY_WRITE_ENABLED`** (predvolene vypnuté ako ostatné zápisy z viewera;
+  zapnutím sa každé prvé zobrazenie miestnosti uloží). Origin guard a rate limit (`lib/verify/route-guard.ts`).
+- **Bunky a vysvetlenie** v motore (`RecipeResult.explanation`, `expression`, `cells` so zdrojovým GUID) pre všetkých 8 receptov registra v3
+  podľa tabuľky návrhu; vysvetlenie je pole registra (`QuantityMethod.explanation`), Height `space.height.own` má `check: true`.
+  `file_meta` = `MethodOfMeasurement` sady a `Formula` veličiny zo súboru. Ukladá sa do `verification_results.inputs` / `explanation`
+  (migrácia `20261102230000_verification_inputs.sql`, aplikovaná na produkciu 2. 11., Samuel "áno" cez orchestrátora); DB bez nej (lokálna) dostane beh bez buniek a viewer ukáže vzorec textom.
+- **`help_href` = `/overenie`**: nová malá stránka hosta, ktorá číta register (stavy, recepty s vysvetlením, metódou, toleranciou,
+  definíciou a odkazom na bSI, pravidlá) a odkazuje na tento záznam.
+- **Limity Vercel:** `latest` 30 s, `run` 180 s, `run_all` 300 s (Hobby s fluid compute; Pro až 800 s). Prvý beh na ASR v79 zvládol 83 miestností
+  v dvoch volaniach MCP s limitom 60 s, preto `run_all` jedného modelu vojde. Ak by nevošiel (väčší model), dávkovanie: viewer alebo host
+  rozdelí IfcSpace modelu po 50 cez `run` a súhrn zloží sám (nová akcia netreba), alebo `run_all` s `offset` a jedným behom na dávku.
+**Testy:** `lib/verify/wire.test.ts` 7, `lib/viewer-verify.test.ts` 4, `space-verify.test.ts` +5 (bunky dajú vypočítanú hodnotu),
+`space-verify-run.test.ts` +1 a uloženie buniek a `MethodOfMeasurement`; 8 mutácií, každú test zhodí; SQL `verification_inputs.sql` na
+lokálnom Postgres 16; zhoda tvaru s `parseVerifyElement` / `parseRunAll` viewera na mini modeli (bez straty polí).
+
 **Otvorené (Samuel):** (a) `ifc_measure` ostáva v inventári "čítanie" (`readOnlyHint`), hoci `save=true` pridá riadok behu do
 DB (len pridáva, nič neprepisuje); označenie "zápis" by v claude.ai pýtalo súhlas pri každom meraní. (b) Systémový prompt sa
 nemení (MCP inštrukcie sú na hranici 15 000 znakov, test); pravidlo nesie opis toolu, ako D-142. (c) UI fajočky v paneli

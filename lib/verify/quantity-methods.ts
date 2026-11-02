@@ -145,6 +145,10 @@ export interface QuantityMethod {
   spec_ref: string;
   /** Platí pravidlo konštantnosti. */
   constant_only?: boolean;
+  /** Ako sa počíta, 1 až 2 vety po slovensky pre človeka (detail veličiny vo vieweri, D-185 UI). */
+  explanation: string;
+  /** Kontrolný výpočet: neurčuje stav veličiny, vo vieweri je pod hlavným receptom (Height: vlastné teleso). */
+  check?: true;
 }
 
 const Q = "Qto_SpaceBaseQuantities";
@@ -156,49 +160,96 @@ export const SPACE_METHODS = {
     method: "vrch - spodok vlastného telesa miestnosti (Body)",
     definition: "Total height (from base slab without flooring to ceiling without suspended ceiling) for this space (measured from top of slab below to bottom of slab above). To be provided only if the space has a constant height.",
     spec_ref: spec("Height"), constant_only: true,
+    explanation: "Kontrolný výpočet: výška vlastného telesa miestnosti v modeli, od jeho spodku po vrch. Stav veličiny neurčuje, len ukáže, či teleso miestnosti sedí s doskami.",
+    check: true,
   },
   height_slabs: {
     id: "space.height.slabs@2", target: `${Q}.Height`, kind: "length",
     method: "spodok dosky nad - vrch dosky pod v pôdoryse miestnosti",
     definition: "Total height ... (measured from top of slab below to bottom of slab above). To be provided only if the space has a constant height.",
     spec_ref: spec("Height"), constant_only: true,
+    explanation: "Výška miestnosti je vzdialenosť od vrchu dosky pod miestnosťou po spodok dosky nad ňou, meraná v jej pôdoryse (definícia schémy).",
   },
   ffh: {
     id: "space.ffh.covering@3", target: `${Q}.FinishFloorHeight`, kind: "length",
     method: "vrch podlahoviny (IfcCovering FLOORING) - spodok telesa miestnosti; hodnota chýba pri konštantnej podlahovine = žltá (FFH_ABSENT_RULE)",
     definition: "Height of the flooring (from base slab without flooring to the flooring height). To be provided only if the space has a constant flooring height.",
     spec_ref: spec("FinishFloorHeight"), constant_only: true,
+    explanation: "Výška podlahy je vzdialenosť od spodku miestnosti (vrch nosnej dosky) po vrch podlahoviny v jej pôdoryse. Uvádza sa len vtedy, keď má podlahovina jednu výšku.",
   },
   fch: {
     id: "space.fch.covering@3", target: `${Q}.FinishCeilingHeight`, kind: "length",
     method: "spodok podhľadu (IfcCovering CEILING) - vrch podlahoviny; pri viacerých výškach podhľadu nález (pravidlo konštantnosti)",
     definition: "Height of the suspended ceiling (from top of flooring to the bottom of the suspended ceiling). To be provided only if the space has a suspended ceiling with constant height.",
     spec_ref: spec("FinishCeilingHeight"), constant_only: true,
+    explanation: "Výška podhľadu je vzdialenosť od vrchu podlahoviny po spodok podhľadu nad miestnosťou. Uvádza sa len vtedy, keď má podhľad v pôdoryse miestnosti jednu výšku.",
   },
   gross_floor_area: {
     id: "space.area.profile@1", target: `${Q}.GrossFloorArea`, kind: "area",
     method: "plocha profilu telesa (vonkajšie slučky mínus diery)",
     definition: "Sum of all floor areas covered by the space. It includes the area covered by elementsinside the space (columns, inner walls, etc.) and excludes the area covered by wall claddings.",
     spec_ref: spec("GrossFloorArea"),
+    explanation: "Hrubá plocha podlahy je plocha pôdorysu telesa miestnosti vrátane plochy stĺpov a priečok vnútri; diery v profile sa odčítajú.",
   },
   gross_perimeter: {
     id: "space.perimeter.profile@2", target: `${Q}.GrossPerimeter`, kind: "perimeter",
     method: "obvod vonkajších slučiek profilu",
     definition: "Gross perimeter at the floor level of this space. It all sides of the space, including those parts of the perimeter that are created by virtual boundaries and openings (like doors).",
     spec_ref: spec("GrossPerimeter"),
+    explanation: "Hrubý obvod je dĺžka vonkajšej hranice pôdorysu telesa miestnosti vrátane úsekov pri dverách a virtuálnych hraníc.",
   },
   gross_volume: {
     id: "space.volume.prism@1", target: `${Q}.GrossVolume`, kind: "volume",
     method: "plocha profilu x výška extrúzie (hranol)",
     definition: "Gross volume enclosed by the space, including the volume of construction elements inside the space.",
     spec_ref: spec("GrossVolume"),
+    explanation: "Hrubý objem je plocha pôdorysu telesa miestnosti krát výška jeho extrúzie (hranol); pri telese z meshu je to objem uzavretého meshu.",
   },
   net_volume: {
     id: "space.netvolume.coverings@3", target: `${Q}.NetVolume`, kind: "volume",
     method: "GrossVolume - objem krytín (FLOORING, CEILING) vnútri telesa miestnosti: súčet cez dvojice telies prienik pôdorysov x prekryv výšok (extrúzie presne, uzavretý mesh krytiny prenásobený plnosťou meshu); len NET_VOLUME_COVERINGS; žltá, keď sedí len metóda 'krytiny po celej ploche miestnosti' (Revit); tolerancia NET_VOLUME_TOLERANCE; sivá, keď krytina v pôdoryse nemá teleso",
     definition: "Net volume enclosed by the space, excluding the volume of construction elements inside the space.",
     spec_ref: spec("NetVolume"),
+    explanation: "Čistý objem je hrubý objem miestnosti mínus objem podlahovín a podhľadov vnútri jej telesa (prienik pôdorysov krát prekryv výšok).",
   },
 } as const satisfies Record<string, QuantityMethod>;
 
 export type SpaceMethodKey = keyof typeof SPACE_METHODS;
+
+// ── zobrazenie vo vieweri (D-185 UI): poradie, hlavný recept, jednotky ─────────
+
+/** Rodina receptu bez verzie: `space.height.slabs@2` -> `space.height.slabs`. */
+export const recipeFamily = (recipe: string) => recipe.split("@")[0];
+
+/** Metóda registra podľa receptu (aj staršej verzie tej istej rodiny); null = recept mimo registra. */
+export function methodOfRecipe(recipe: string): QuantityMethod | null {
+  const fam = recipeFamily(recipe);
+  return Object.values(SPACE_METHODS).find((m) => recipeFamily(m.id) === fam) ?? null;
+}
+
+/**
+ * Poradie receptov veličiny: hlavný prvý (určuje stav), kontrolné (`check`) za ním. Height: `space.height.slabs` hlavný,
+ * `space.height.own` kontrolný (Samuel 2. 11. 2026). Recepty mimo registra idú na koniec.
+ */
+export function recipeRank(recipe: string): number {
+  const all = Object.values(SPACE_METHODS) as QuantityMethod[];
+  const i = all.findIndex((m) => recipeFamily(m.id) === recipeFamily(recipe));
+  if (i < 0) return 1000;
+  return (all[i].check ? 100 : 0) + i;
+}
+
+/** Poradie veličín Qto_SpaceBaseQuantities v detaile (ako v registri). */
+export function targetRank(target: string): number {
+  const order = [...new Set((Object.values(SPACE_METHODS) as QuantityMethod[]).map((m) => m.target))];
+  const i = order.indexOf(target);
+  return i < 0 ? 1000 : i;
+}
+
+export const UNIT_OF_KIND: Record<QuantityKind, "m" | "m2" | "m3"> = { length: "m", perimeter: "m", area: "m2", volume: "m3" };
+
+/** Číselná tolerancia v jednotke veličiny pre hodnotu zo súboru (väčšia z hraníc abs a rel, ako `withinTolerance`). */
+export function toleranceAbs(kind: QuantityKind, file: number): number | null {
+  const t = TOLERANCES[kind];
+  const parts = [t.abs, t.rel != null ? t.rel * Math.abs(file) : null].filter((x): x is number => x != null);
+  return parts.length ? Math.round(Math.max(...parts) * 1e6) / 1e6 : null;
+}

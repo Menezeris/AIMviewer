@@ -148,6 +148,8 @@ type OutboundMessage =
   | { source: typeof SOURCE; type: "ICDD_EXPORT"; id: string; extras?: string[] }
   // Knižnica požiadaviek (D-182) - karta a uloženie výsledku kontroly; host volá /api/ids/* a odpovie REQLIB_RESULT.
   | { source: typeof SOURCE; type: "REQLIB_REQUEST"; id: string; action: string; payload?: Record<string, unknown> }
+  // Overenie výmer (D-185 UI) - fajočky v paneli vlastností a ribbon Overovanie; host volá /api/verify/* a odpovie VERIFY_RESULT.
+  | { source: typeof SOURCE; type: "VERIFY_REQUEST"; id: string; action: string; payload?: Record<string, unknown> }
   | { source: typeof SOURCE; type: "ICDD_CHECK"; id: string; name?: string; bytes: ArrayBuffer }
   // Import .bcfzip z BCF panela (D-158 krok 8) - host ho zapíše cez /api/bcf/viewer-import a pošle späť BCF_IMPORTED.
   | { source: typeof SOURCE; type: "BCF_IMPORT"; id: string; name?: string; bytes: ArrayBuffer; dry_run?: boolean }
@@ -471,6 +473,15 @@ export function IFCViewer({
     void import("@/lib/viewer-reqlib").then(async ({ parseReqlibRequest, runReqlibRequest }) => {
       const req = parseReqlibRequest(raw);
       if (req) await runReqlibRequest(req, { fetch, models, post });
+    });
+  }
+
+  /** Overenie výmer (D-185 UI): modul sa načíta pri prvej žiadosti; `run_all` z jednej karty len jeden naraz. */
+  const verifyRunAllRef = useRef({ busy: false });
+  function runVerify(raw: unknown) {
+    void import("@/lib/viewer-verify").then(async ({ parseVerifyRequest, runVerifyRequest }) => {
+      const req = parseVerifyRequest(raw);
+      if (req) await runVerifyRequest(req, { fetch, post, runAll: verifyRunAllRef.current });
     });
   }
 
@@ -873,6 +884,9 @@ export function IFCViewer({
           break;
         case "REQLIB_REQUEST":
           runReqlib(e.data);
+          break;
+        case "VERIFY_REQUEST":
+          runVerify(e.data);
           break;
         case "BCF_IMPORT":
           importBcf(e.data);
