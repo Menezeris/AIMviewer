@@ -2,6 +2,8 @@ import "server-only";
 
 import { getSupabaseAdmin } from "../supabase/server";
 
+import { isMissingSchema, SCHEMA_HINT } from "./schema";
+
 import {
   IdsConflictError,
   type IdsDocumentRow,
@@ -19,7 +21,9 @@ import {
 
 const DOCS = "ids_documents";
 const VERSIONS = "ids_document_versions";
-const META = "id, document_id, version, sha256, ids_version, audit, author, source, note, created_at";
+const BASE_META = "id, document_id, version, sha256, ids_version, audit, author, source, note, created_at";
+/** Pôvod v knižnici (D-182); stĺpce pribudnú migráciou `20261102120000_ids_library_assign.sql`. */
+const LIBRARY_META = "library_repo, library_path, library_commit, library_code";
 const IN_CHUNK = 100;
 const RESULT_CHUNK = 500;
 /** Strop počtu dokumentov v `list` (jedno IDS je jeden riadok, nie model). */
@@ -30,6 +34,18 @@ function fail(what: string, error: { message: string } | null): never {
 }
 
 const isUniqueViolation = (error: { code?: string } | null) => error?.code === "23505";
+
+/** Stĺpce metadát verzie: s pôvodom v knižnici, kým DB nepovie, že ich nemá (pred migráciou D-182). */
+let withLibrary = true;
+const meta = () => (withLibrary ? `${BASE_META}, ${LIBRARY_META}` : BASE_META);
+async function selectMeta<T>(run: (cols: string) => PromiseLike<{ data: T | null; error: { code?: string; message: string } | null }>) {
+  let res = await run(meta());
+  if (res.error && withLibrary && isMissingSchema(res.error)) {
+    withLibrary = false;
+    res = await run(meta());
+  }
+  return res;
+}
 
 export function supabaseIdsStore(): IdsStore {
   const db = () => getSupabaseAdmin();
@@ -59,13 +75,11 @@ export function supabaseIdsStore(): IdsStore {
     async latestVersions(documentIds) {
       const out = new Map<string, IdsVersionMeta>();
       for (let i = 0; i < documentIds.length; i += IN_CHUNK) {
-        const { data, error } = await db()
-          .from(VERSIONS)
-          .select(META)
-          .in("document_id", documentIds.slice(i, i + IN_CHUNK))
-          .order("version", { ascending: false });
+        const { data, error } = await selectMeta((cols) =>
+          db().from(VERSIONS).select(cols).in("document_id", documentIds.slice(i, i + IN_CHUNK)).order("version", { ascending: false }),
+        );
         if (error) fail("Čítanie verzií IDS zlyhalo", error);
-        for (const v of (data ?? []) as IdsVersionMeta[]) if (!out.has(v.document_id)) out.set(v.document_id, v);
+        for (const v of (data ?? []) as unknown as IdsVersionMeta[]) if (!out.has(v.document_id)) out.set(v.document_id, v);
       }
       return out;
     },
@@ -90,9 +104,9 @@ export function supabaseIdsStore(): IdsStore {
       return out;
     },
     async versions(documentId) {
-      const { data, error } = await db().from(VERSIONS).select(META).eq("document_id", documentId).order("version", { ascending: false });
+      const { data, error } = await selectMeta((cols) => db().from(VERSIONS).select(cols).eq("document_id", documentId).order("version", { ascending: false }));
       if (error) fail("Čítanie verzií IDS zlyhalo", error);
-      return (data ?? []) as IdsVersionMeta[];
+      return (data ?? []) as unknown as IdsVersionMeta[];
     },
     async version(documentId, version) {
       let q = db().from(VERSIONS).select("*").eq("document_id", documentId);
@@ -122,6 +136,7 @@ export function supabaseIdsStore(): IdsStore {
       const { data, error } = await db().from(VERSIONS).insert({ ...row, document_id: documentId, version: latest + 1 }).select("*").single();
       // Súbežný zápis dostal rovnaké číslo: unikátny kľúč (document_id, version) ho odmietol.
       if (isUniqueViolation(error)) throw new IdsConflictError(await latestOf(documentId), baseVersion);
+      if (isMissingSchema(error)) fail(`Uloženie verzie IDS zlyhalo (${SCHEMA_HINT})`, error);
       if (error || !data) fail("Uloženie verzie IDS zlyhalo", error);
       const { error: upd } = await db().from(DOCS).update({ title, updated_at: new Date().toISOString() }).eq("id", documentId);
       if (upd) fail("Úprava IDS zlyhala", upd);
@@ -129,6 +144,7 @@ export function supabaseIdsStore(): IdsStore {
     },
     async saveRun(run: IdsRunWrite, results: IdsResultWrite[]) {
       const { data, error } = await db().from("ids_runs").insert({ ...run, binding: false }).select("id").single();
+      if (isMissingSchema(error)) fail(`Uloženie behu IDS zlyhalo (${SCHEMA_HINT})`, error);
       if (error || !data) fail("Uloženie behu IDS zlyhalo", error);
       const runId = (data as { id: string }).id;
       for (let i = 0; i < results.length; i += RESULT_CHUNK) {

@@ -146,6 +146,8 @@ type OutboundMessage =
   | { source: typeof SOURCE; type: "CLASH_SAVE"; test?: unknown; test_code?: string; run?: unknown; reviews?: unknown }
   // Export a kontrola ICDD z AIM ribbonu (D-181) - host zloží kontajner, stiahne ho a odpovie ICDD_STATUS.
   | { source: typeof SOURCE; type: "ICDD_EXPORT"; id: string; extras?: string[] }
+  // Knižnica požiadaviek (D-182) - karta a uloženie výsledku kontroly; host volá /api/ids/* a odpovie REQLIB_RESULT.
+  | { source: typeof SOURCE; type: "REQLIB_REQUEST"; id: string; action: string; payload?: Record<string, unknown> }
   | { source: typeof SOURCE; type: "ICDD_CHECK"; id: string; name?: string; bytes: ArrayBuffer }
   // Import .bcfzip z BCF panela (D-158 krok 8) - host ho zapíše cez /api/bcf/viewer-import a pošle späť BCF_IMPORTED.
   | { source: typeof SOURCE; type: "BCF_IMPORT"; id: string; name?: string; bytes: ArrayBuffer; dry_run?: boolean }
@@ -464,6 +466,14 @@ export function IFCViewer({
   }
 
   /** Uloženie IDS z panela (`IDS_SAVE`): route je za env bránou; výsledok sa vráti ako `IDS_SAVED` (tlačidlo ho ukáže). */
+  /** Knižnica požiadaviek (D-182): modul sa načíta pri prvej žiadosti karty; revíziu modelu pozná host z `models`. */
+  function runReqlib(raw: unknown) {
+    void import("@/lib/viewer-reqlib").then(async ({ parseReqlibRequest, runReqlibRequest }) => {
+      const req = parseReqlibRequest(raw);
+      if (req) await runReqlibRequest(req, { fetch, models, post });
+    });
+  }
+
   /** ICDD z ribbonu (D-181): knižnica sa načíta až pri prvom použití, práca beží v okne hosta. */
   function runIcdd(raw: unknown) {
     void (async () => {
@@ -860,6 +870,9 @@ export function IFCViewer({
         case "ICDD_EXPORT":
         case "ICDD_CHECK":
           runIcdd(e.data);
+          break;
+        case "REQLIB_REQUEST":
+          runReqlib(e.data);
           break;
         case "BCF_IMPORT":
           importBcf(e.data);

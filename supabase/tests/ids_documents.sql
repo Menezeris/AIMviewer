@@ -7,8 +7,10 @@ insert into ids_documents (id, code, title, origin, library_source) values
   ('00000000-0000-4000-8000-0000000000a1', 'LIB-1', 'Knižnica 1', 'library', 'assetin-library@abc:zadanie/x.md'),
   ('00000000-0000-4000-8000-0000000000a2', 'CHAT-1', 'Chat 1', 'chat', null);
 
+-- Verzia z knižnice nesie pôvod (repo, cesta, commit; D-182, supabase/pending/20261102120000_ids_library_assign.sql).
+insert into ids_document_versions (id, document_id, version, xml, sha256, source, library_repo, library_path, library_commit) values
+  ('00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000a1', 1, '<ids/>', 'h1', 'import', 'o/lib', 'ids/LIB-1.ids', 'c1');
 insert into ids_document_versions (id, document_id, version, xml, sha256, source) values
-  ('00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000a1', 1, '<ids/>', 'h1', 'import'),
   ('00000000-0000-4000-8000-0000000000b2', '00000000-0000-4000-8000-0000000000a2', 1, '<ids/>', 'h2', 'chat'),
   ('00000000-0000-4000-8000-0000000000b3', '00000000-0000-4000-8000-0000000000a2', 2, '<ids/>', 'h3', 'viewer');
 
@@ -37,12 +39,12 @@ begin
   exception when raise_exception then
     if sqlerrm not like 'knižničná snímka%' then raise; end if;
   end;
-  insert into ids_document_versions (document_id, version, xml, sha256, source)
-  values ('00000000-0000-4000-8000-0000000000a1', 2, '<ids/>', 'x', 'import');
+  insert into ids_document_versions (document_id, version, xml, sha256, source, library_repo, library_path, library_commit)
+  values ('00000000-0000-4000-8000-0000000000a1', 2, '<ids/>', 'x', 'import', 'o/lib', 'ids/LIB-1.ids', 'c2');
   -- import do chat IDS nejde
   begin
-    insert into ids_document_versions (document_id, version, xml, sha256, source)
-    values ('00000000-0000-4000-8000-0000000000a2', 3, '<ids/>', 'x', 'import');
+    insert into ids_document_versions (document_id, version, xml, sha256, source, library_repo, library_path, library_commit)
+    values ('00000000-0000-4000-8000-0000000000a2', 3, '<ids/>', 'x', 'import', 'o/lib', 'ids/x.ids', 'c3');
     raise exception 'import do chat IDS prešiel';
   exception when raise_exception then
     if sqlerrm not like 'import patrí%' then raise; end if;

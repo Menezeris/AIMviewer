@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { clientIpKey, createRateLimiter, isCrossOriginBlocked } from "@/lib/api-guard";
 import { IdsEngineError } from "@/lib/ids/engine";
+import { idsWriteGuard, jsonFail, NO_STORE, readJson } from "@/lib/ids/route-guard";
 import { supabaseIdsStore } from "@/lib/ids/store";
 import { conflictDiff, IdsInputError, saveFromViewer, type IdsToolDeps } from "@/lib/ids/tools";
 import { IdsConflictError } from "@/lib/ids/types";
@@ -25,37 +25,9 @@ export const dynamic = "force-dynamic";
 /** Audit a čítanie XML idú cez motor `@ifc-lite/mcp` (relácia bez modelov). */
 export const maxDuration = 60;
 
-const WRITE_ENABLED = process.env.IDS_WRITE_ENABLED === "true";
-
-const RATE_LIMIT_MAX = Number(process.env.IDS_RATE_LIMIT_MAX ?? (process.env.NODE_ENV === "production" ? 60 : 0));
-const RATE_LIMIT_WINDOW_MS = Number(process.env.IDS_RATE_LIMIT_WINDOW_MS ?? 10 * 60_000);
-const limiter = createRateLimiter({ windowMs: RATE_LIMIT_WINDOW_MS, max: RATE_LIMIT_MAX });
-
 const MAX_BODY_CHARS = MAX_IDS_XML + 10_000;
-const NO_STORE = { "Cache-Control": "no-store" };
 
-type Fail = NextResponse;
-
-function guard(req: Request): Fail | null {
-  if (!WRITE_ENABLED) {
-    return NextResponse.json({ error: "ukladanie IDS z viewera je vypnuté (IDS_WRITE_ENABLED), ulož ho v chate" }, { status: 403 });
-  }
-  if (isCrossOriginBlocked(req.headers.get("origin"), req.headers.get("host"))) {
-    return NextResponse.json({ error: "cross-origin request denied" }, { status: 403 });
-  }
-  if (RATE_LIMIT_MAX > 0) {
-    const rate = limiter.check(clientIpKey(req.headers));
-    if (!rate.allowed) {
-      return NextResponse.json(
-        { error: "Priveľa požiadaviek, skús to o chvíľu." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } },
-      );
-    }
-  }
-  return null;
-}
-
-const fail = (error: string, status: number, extra: Record<string, unknown> = {}) => NextResponse.json({ error, ...extra }, { status, headers: NO_STORE });
+const fail = jsonFail;
 
 export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
@@ -87,7 +59,15 @@ export async function GET(req: Request) {
       });
     }
     return NextResponse.json(
-      { code: doc.code, title: doc.title, origin: doc.origin, version: row.version, sha256: row.sha256, xml: row.xml },
+      {
+        code: doc.code,
+        title: doc.title,
+        origin: doc.origin,
+        version: row.version,
+        sha256: row.sha256,
+        ...(row.library_commit ? { library_commit: row.library_commit } : {}),
+        xml: row.xml,
+      },
       { headers: NO_STORE },
     );
   } catch (err) {
@@ -96,17 +76,11 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const denied = guard(req);
+  const denied = idsWriteGuard(req);
   if (denied) return denied;
-  const raw = await req.text();
-  if (raw.length > MAX_BODY_CHARS) return fail("payload too large", 413);
-  let body: unknown;
-  try {
-    body = JSON.parse(raw);
-  } catch {
-    return fail("invalid JSON", 400);
-  }
-  const save = parseIdsSave(body);
+  const read = await readJson(req, MAX_BODY_CHARS);
+  if (!read.ok) return read.res;
+  const save = parseIdsSave(read.body);
   if (!save) return fail("invalid IDS payload", 400);
   const deps: IdsToolDeps = { store: supabaseIdsStore() };
   try {

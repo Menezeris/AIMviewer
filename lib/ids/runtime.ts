@@ -8,6 +8,7 @@ import { queryLiveViewer } from "@/lib/live/query";
 import { expectApplied } from "@/lib/live/warm-channel";
 import { idsOpenOp, type IdsOpenReq } from "@/lib/viewer-ids";
 
+import { supabaseIdsLibraryStore } from "./library-store";
 import { supabaseIdsStore } from "./store";
 import { execIdsTool, type IdsOpenOutcome, type IdsToolResult, type IdsViewerDeps } from "./tools";
 
@@ -51,5 +52,5 @@ const viewer: IdsViewerDeps = { open: liveOpen, viewState: liveViewState };
 
 /** Produkčné závislosti toolu `ids_document` (D-162): DB a živý viewer; import je lenivý z MCP route. */
 export function runIdsTool(name: string, args: Record<string, unknown>): Promise<IdsToolResult> {
-  return execIdsTool(name, args, { store: supabaseIdsStore(), viewer });
+  return execIdsTool(name, args, { store: supabaseIdsStore(), viewer, lib: supabaseIdsLibraryStore() });
 }

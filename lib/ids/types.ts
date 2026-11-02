@@ -31,6 +31,11 @@ export interface IdsVersionRow {
   source: IdsVersionSource;
   note: string | null;
   created_at: string;
+  /** Pôvod verzie z knižnice (D-182): repo, cesta, commit a kód súboru v čase priradenia; null mimo `import`. */
+  library_repo?: string | null;
+  library_path?: string | null;
+  library_commit?: string | null;
+  library_code?: string | null;
 }
 
 export type IdsVersionMeta = Omit<IdsVersionRow, "xml">;
@@ -53,6 +58,11 @@ export interface IdsVersionWrite {
   author: string | null;
   source: IdsVersionSource;
   note: string | null;
+  /** Pôvod v knižnici (D-182), len pri `source = import`. */
+  library_repo?: string;
+  library_path?: string;
+  library_commit?: string;
+  library_code?: string;
 }
 
 /** Posledný uložený beh nad verziou IDS (do `list`). */
@@ -84,7 +94,11 @@ export interface IdsRunWrite {
   results_total: number;
   results_failed: number;
   engine: "ifc-lite";
-  trigger: "chat";
+  trigger: "chat" | "viewer";
+  /** Verzia nástroja (D-182), pri behu z viewera verzia `@ifc-lite/ids` vo forku. */
+  engine_version?: string | null;
+  /** Kto beh uložil (meno z dialógu viewera). */
+  created_by?: string | null;
   /** Podpis vstupu (D-183): {model: revízia archívu}, nad ktorou beh naozaj bežal; {} = neznáma. */
   model_revisions: Record<string, number>;
 }

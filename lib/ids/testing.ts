@@ -1,5 +1,6 @@
 /** Pomôcky testov IDS dokumentov (D-162): úložisko v pamäti so správaním DB (jedinečný kód, nové číslo verzie). */
 
+import type { IdsLibraryStore, ModelRun } from "./library";
 import {
   IdsConflictError,
   type IdsDocumentRow,
@@ -107,6 +108,95 @@ export function memoryIdsStore(): MemoryIdsStore {
       runs.push({ ...run, id });
       for (const r of res) results.push({ ...r, run_id: id });
       return id;
+    },
+  };
+}
+
+/** Úložisko knižnice (D-182) v pamäti nad `MemoryIdsStore`: modely, väzby, revízie, behy po modeloch. */
+export interface MemoryLibraryOptions {
+  containers?: Array<{ id: string; model: string; identification?: string; name?: string | null }>;
+  /** Všetky revízie modelov {model: [revízie]}, aktuálna je posledná. */
+  revisions?: Record<string, number[]>;
+  /** Simulácia DB pred migráciou D-182: väzby nie sú. */
+  schemaMissing?: boolean;
+}
+
+export interface MemoryLibraryStore extends IdsLibraryStore {
+  bindings: Array<{ document_id: string; information_container_id: string; library_container: string | null; created_by: string; valid_from: string; valid_until: string | null; ended_by: string | null }>;
+  revisions: Record<string, number[]>;
+}
+
+export function memoryIdsLibraryStore(store: MemoryIdsStore, opts: MemoryLibraryOptions = {}): MemoryLibraryStore {
+  const containers = (opts.containers ?? [
+    { id: "c-asr", model: "ASR" },
+    { id: "c-vzt", model: "VZT" },
+  ]).map((c) => ({ identification: c.model, name: null, ...c }));
+  const revisions = opts.revisions ?? { ASR: [78, 79], VZT: [11] };
+  const bindings: MemoryLibraryStore["bindings"] = [];
+  const modelOf = (id: string) => containers.find((c) => c.id === id)?.model ?? "?";
+  return {
+    bindings,
+    revisions,
+    async updateDocument(id, patch) {
+      const doc = store.docs.find((d) => d.id === id);
+      if (!doc) throw new Error("dokument neexistuje");
+      if (patch.code && store.docs.some((d) => d.code === patch.code && d.id !== id)) throw new Error("duplicate key value violates unique constraint (code)");
+      Object.assign(doc, patch);
+    },
+    async containers() {
+      return containers;
+    },
+    async models(documentIds) {
+      if (opts.schemaMissing) return null;
+      return bindings
+        .filter((b) => documentIds.includes(b.document_id) && b.valid_until === null)
+        .map((b) => ({ document_id: b.document_id, information_container_id: b.information_container_id, model: modelOf(b.information_container_id), library_container: b.library_container, created_by: b.created_by, valid_from: b.valid_from }));
+    },
+    async bindModel(row) {
+      if (opts.schemaMissing) throw new Error("relation ids_document_models does not exist");
+      if (bindings.some((b) => b.document_id === row.document_id && b.information_container_id === row.information_container_id && b.valid_until === null)) return;
+      bindings.push({ ...row, valid_from: "2026-11-02T12:00:00Z", valid_until: null, ended_by: null });
+    },
+    async endModel(documentId, containerId, endedBy) {
+      const b = bindings.find((x) => x.document_id === documentId && x.information_container_id === containerId && x.valid_until === null);
+      if (!b) return false;
+      b.valid_until = "2026-11-02T13:00:00Z";
+      b.ended_by = endedBy;
+      return true;
+    },
+    async currentRevisions() {
+      return Object.fromEntries(Object.entries(revisions).map(([m, list]) => [m, list[list.length - 1]]));
+    },
+    async revisionExists(model, revision) {
+      return (revisions[model] ?? []).includes(revision);
+    },
+    async lastRunsByModel(documentIds) {
+      const out: ModelRun[] = [];
+      const seen = new Set<string>();
+      for (const run of [...store.runs].reverse()) {
+        const v = store.rows.find((r) => r.id === run.ids_version_id);
+        if (!v || !documentIds.includes(v.document_id)) continue;
+        const key = `${v.document_id}|${run.model_label}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({
+          id: run.id,
+          document_id: v.document_id,
+          version: v.version,
+          model_label: run.model_label,
+          checked_at: "2026-11-02T12:00:00Z",
+          specs_total: run.specs_total,
+          specs_passed: run.specs_passed,
+          results_total: run.results_total,
+          results_failed: run.results_failed,
+          engine: run.engine,
+          engine_version: run.engine_version ?? null,
+          trigger: run.trigger,
+          created_by: run.created_by ?? null,
+          model_revisions: run.model_revisions,
+        });
+      }
+      return out;
     },
   };
 }
