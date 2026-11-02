@@ -1,0 +1,141 @@
+{
+ "_opis": "V\u00fdpis YAML; ocakavane = Python writer.dump_yaml(_do_ruamel(x)) (ruamel.yaml 0.19.1, assetin-library f7c103c); k\u013e\u00fa\u010d seq: = kore\u0148ov\u00fd CommentedSeq (\u00farove\u0148 1b). Poradie k\u013e\u00fa\u010dov vstupu je v\u00fdznamn\u00e9.",
+ "pripady": {
+  "map": {
+   "vstup": {
+    "a": 1,
+    "b": "text",
+    "c": null,
+    "d": true,
+    "e": 1.5,
+    "f": "[[X-1]]",
+    "g": [],
+    "h": {}
+   },
+   "ocakavane": "a: 1\nb: text\nc:\nd: true\ne: 1.5\nf: \"[[X-1]]\"\ng: []\nh: {}\n"
+  },
+  "nested": {
+   "vstup": {
+    "forma": {
+     "format": "IFC",
+     "verzia": "IFC4"
+    },
+    "zoznam": [
+     "a",
+     "b"
+    ],
+    "riadky": [
+     {
+      "iu": "[[IU-O-space]]",
+      "polozka": "Name",
+      "rozsah": [
+       "geometria",
+       "alfanumerika"
+      ]
+     },
+     {
+      "ifc": {
+       "pset": "P",
+       "nazov": "N"
+      },
+      "povinnost": "optional"
+     }
+    ]
+   },
+   "ocakavane": "forma:\n  format: IFC\n  verzia: IFC4\nzoznam: [a, b]\nriadky:\n  - iu: \"[[IU-O-space]]\"\n    polozka: Name\n    rozsah: [geometria, alfanumerika]\n  - ifc:\n      pset: P\n      nazov: N\n    povinnost: optional\n"
+  },
+  "quote": {
+   "vstup": {
+    "q1": "yes",
+    "q2": "true",
+    "q3": "null",
+    "q4": "123",
+    "q5": "1.5",
+    "q6": "a: b",
+    "q7": "a #b",
+    "q8": "-x",
+    "q9": "",
+    "q10": " lead",
+    "q11": "2027-03-31",
+    "q12": "\u00e9 \u0161 \u013e",
+    "q13": "it's",
+    "q14": "[a]",
+    "q15": "#tag",
+    "q16": "x\ny",
+    "q17": "@x",
+    "q18": "ok-text_1.2/3 (a)",
+    "q19": "~",
+    "q20": "a\"b",
+    "q21": "1e3",
+    "q22": "0o17",
+    "q23": "*a",
+    "q24": "a, b",
+    "q25": "&a",
+    "q26": "!t",
+    "q27": "|",
+    "q28": "%x",
+    "q29": "`x",
+    "q30": "?x",
+    "q31": "a:b",
+    "q32": "tail "
+   },
+   "ocakavane": "q1: yes\nq2: 'true'\nq3: 'null'\nq4: '123'\nq5: '1.5'\nq6: 'a: b'\nq7: 'a #b'\nq8: -x\nq9: ''\nq10: ' lead'\nq11: '2027-03-31'\nq12: \u00e9 \u0161 \u013e\nq13: it's\nq14: '[a]'\nq15: '#tag'\nq16: \"x\\ny\"\nq17: '@x'\nq18: ok-text_1.2/3 (a)\nq19: '~'\nq20: a\"b\nq21: '1e3'\nq22: '0o17'\nq23: '*a'\nq24: a, b\nq25: '&a'\nq26: '!t'\nq27: '|'\nq28: '%x'\nq29: '`x'\nq30: ?x\nq31: a:b\nq32: 'tail '\n"
+  },
+  "seq:rows": {
+   "vstup": [
+    {
+     "ifc": {
+      "pset": "Pset_SpaceCommon",
+      "nazov": "IsExternal"
+     },
+     "datovy_typ": "IFCBOOLEAN",
+     "povinnost": "optional"
+    }
+   ],
+   "ocakavane": "  - ifc:\n      pset: Pset_SpaceCommon\n      nazov: IsExternal\n    datovy_typ: IFCBOOLEAN\n    povinnost: optional\n"
+  },
+  "seq:scalars": {
+   "vstup": [
+    "a",
+    "[[B]]"
+   ],
+   "ocakavane": "  - a\n  - \"[[B]]\"\n"
+  },
+  "nested_seq": {
+   "vstup": {
+    "a": [
+     [
+      1,
+      2
+     ],
+     {
+      "x": [
+       1
+      ]
+     }
+    ],
+    "b": [
+     {
+      "c": []
+     }
+    ]
+   },
+   "ocakavane": "a:\n  - [1, 2]\n  - x: [1]\nb:\n  - c: []\n"
+  },
+  "ulohy": {
+   "vstup": {
+    "ulohy": [
+     {
+      "id": "T1",
+      "nazov": "zameranie",
+      "vstupy": [
+       "[[IU-C-x]]"
+      ],
+      "aktor": "[[ACT-a]]"
+     }
+    ]
+   },
+   "ocakavane": "ulohy:\n  - id: T1\n    nazov: zameranie\n    vstupy: [\"[[IU-C-x]]\"]\n    aktor: \"[[ACT-a]]\"\n"
+  }
+ }
+}
