@@ -1,12 +1,11 @@
-import { defaultIdsEngine, type IdsEngine } from "./engine";
-import { codeOfPath, type LibraryChange, type LibrarySource } from "./library-source";
+import type { IdsEngine } from "./engine";
 import { resultRows, type ReportSpec } from "./runs";
-import { auditXml, CODE_RE, readXml, sha256, text, type Engine } from "./tools";
+import { text } from "./tools";
 import type { IdsDocumentRow, IdsStore, IdsVersionMeta } from "./types";
 
 /**
- * Knižnica požiadaviek v AIM (D-182, #351): katalóg hotových IDS v knižnici, vedomé priradenie k projektu
- * (nemenná kópia s pôvodom), ručná väzba IDS na model federácie a uloženie behu kontroly z viewera s pečiatkou
+ * Knižnica požiadaviek v AIM (D-182, #351; doplnok V30): katalóg IDS, ktoré do AIM zapísalo vydanie knižnice v DB
+ * (schéma `library`, nemenné verzie `source = import`), priradenie k projektu = ručná väzba IDS na model federácie a uloženie behu kontroly z viewera s pečiatkou
  * revízie modelu, verzie IDS a verzie nástroja. Kontrola beží raz, vo vieweri; server ju neopakuje.
  *
  * Zápis IDS ide cez `IdsStore` (D-162), väzby, revízie a behy po modeloch cez `IdsLibraryStore`.
@@ -78,8 +77,6 @@ export interface LibraryDeps {
   engine?: () => Promise<IdsEngine>;
 }
 
-const engineOf = async (deps: LibraryDeps): Promise<Engine> => ({ engine: deps.engine ? await deps.engine() : await defaultIdsEngine() });
-
 /** Kto priradil / uložil: meno z dialógu viewera (Samuel 2. 11.: meno v dialógu stačí). */
 export function authorOf(raw: unknown): string {
   const name = text(raw, 120);
@@ -88,106 +85,133 @@ export function authorOf(raw: unknown): string {
 }
 
 // ------------------------------------------------------------------------------------------------
-// Katalóg knižnice
+// Katalóg knižnice (z DB, D-182 doplnok V30)
 // ------------------------------------------------------------------------------------------------
 
-export type LibraryItemState = "not_assigned" | "assigned" | "differs" | "collision" | "invalid";
+/**
+ * Pôvod verzie z vydania knižnice v DB: `library_repo = db:library/<kód knižnice>`,
+ * `library_commit = <vydanie>@<manifest sha256>` (nie git SHA). Zapisuje ho vydanie knižnice (schéma `library`,
+ * `library.vydanie_ids`), AIM ho len číta.
+ */
+export const DB_LIBRARY_PREFIX = "db:library/";
+
+export interface LibraryRelease {
+  /** Kód knižnice (`library.kniznica.kod`), napr. `assetin`. */
+  library: string | null;
+  /** Kód vydania, napr. `2026.11.1`. */
+  release: string | null;
+  manifest_sha256: string | null;
+}
+
+export function parseLibraryOrigin(repo: string | null | undefined, commit: string | null | undefined): LibraryRelease {
+  const library = repo?.startsWith(DB_LIBRARY_PREFIX) ? repo.slice(DB_LIBRARY_PREFIX.length) || null : null;
+  const at = commit ? commit.lastIndexOf("@") : -1;
+  const release = commit ? (at > 0 ? commit.slice(0, at) : commit) : null;
+  const manifest = at > 0 && commit ? commit.slice(at + 1) : null;
+  return { library, release, manifest_sha256: manifest && /^[0-9a-f]{64}$/.test(manifest) ? manifest : null };
+}
+
+export type LibraryItemState = "not_assigned" | "assigned";
 
 export interface LibraryItem {
+  /** Cesta poznámky ER v knižnici (`library_path`); kľúč riadku karty. */
   path: string;
   code: string;
-  sha256: string | null;
+  sha256: string;
+  /** Veľkosť XML nie je v meta verzie; karta ju neukazuje. */
   size: number;
-  last_change: LibraryChange | null;
+  /** Vydanie, ktoré verziu zapísalo (tvar `last_change` ostáva kvôli karte vo forku). */
+  last_change: { sha: string; date: string | null; author: string | null; message: string | null } | null;
   title: string | null;
   ids_version: string | null;
   specs: Array<{ identifier: string | null; name: string }>;
+  /** `assigned` = IDS má aspoň jednu aktívnu väzbu na model projektu (`ids_document_models`). */
   state: LibraryItemState;
-  /** IDS v AIM, ku ktorému súbor patrí (rovnaká cesta v knižnici, inak rovnaký kód). */
-  aim?: { code: string; version: number | null; origin: string };
-  error?: string;
+  aim: { code: string; version: number | null; origin: string };
+  release: LibraryRelease;
+  models: string[];
+  /** Súhrn diagnostík vydania pre toto IDS (z `audit`), napr. {E: 0, W: 14, I: 26}. */
+  diagnostics: Record<string, number> | null;
 }
 
 export interface LibraryCatalog {
   repo: string;
   ref: string;
   dir: string;
+  /** Pôvod poslednej verzie (`<vydanie>@<manifest sha256>`), nie git SHA. */
   commit: string;
   commit_date: string | null;
   truncated: boolean;
   items: LibraryItem[];
-  /** Prázdny priečinok: karta povie, že knižnica zatiaľ nemá hotové IDS. */
   note?: string;
 }
 
-/** Opis IDS podľa sha256 obsahu (obsah sa pod rovnakým sha nemení). */
-const described = new Map<string, { title: string; version: string | null; specs: LibraryItem["specs"] }>();
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
-interface AimIndex {
-  byPath: Map<string, { doc: IdsDocumentRow; latest: IdsVersionMeta | undefined }>;
-  byCode: Map<string, { doc: IdsDocumentRow; latest: IdsVersionMeta | undefined }>;
+/** Špecifikácie z auditu vydania: `"IU-O-space (IU-O, IfcSpace)"` -> identifikátor pred zátvorkou. */
+function specsOfAudit(audit: Record<string, unknown> | null): LibraryItem["specs"] {
+  const list = isObj(audit) && Array.isArray(audit.specifikacie) ? audit.specifikacie : [];
+  return list
+    .filter((s): s is string => typeof s === "string")
+    .map((s) => {
+      const m = /^(\S+) \((.*)\)$/.exec(s);
+      return { identifier: m ? m[1] : null, name: s };
+    });
 }
 
-async function aimIndex(store: IdsStore): Promise<AimIndex> {
-  const docs = await store.listDocuments();
-  const latest = await store.latestVersions(docs.map((d) => d.id));
-  const byPath = new Map<string, { doc: IdsDocumentRow; latest: IdsVersionMeta | undefined }>();
-  const byCode = new Map<string, { doc: IdsDocumentRow; latest: IdsVersionMeta | undefined }>();
-  for (const doc of docs) {
-    const entry = { doc, latest: latest.get(doc.id) };
-    byCode.set(doc.code, entry);
-    const path = entry.latest?.library_path;
-    if (doc.origin === "library" && path && !byPath.has(path)) byPath.set(path, entry);
-  }
-  return { byPath, byCode };
+function diagnosticsOfAudit(audit: Record<string, unknown> | null): Record<string, number> | null {
+  const d = isObj(audit) && isObj(audit.diagnostiky) ? audit.diagnostiky : null;
+  if (!d) return null;
+  return Object.fromEntries(Object.entries(d).filter((e): e is [string, number] => typeof e[1] === "number"));
 }
 
-function stateOf(code: string, path: string, hash: string, index: AimIndex): Pick<LibraryItem, "state" | "aim"> {
-  const hit = index.byPath.get(path) ?? index.byCode.get(code);
-  if (!hit) return { state: "not_assigned" };
-  const aim = { code: hit.doc.code, version: hit.latest?.version ?? null, origin: hit.doc.origin };
-  if (hit.doc.origin !== "library") return { state: "collision", aim };
-  return { state: hit.latest?.sha256 === hash ? "assigned" : "differs", aim };
+/** Knižničné IDS v AIM (`origin = library`, `status = active`) s poslednou verziou z vydania knižnice v DB. */
+async function libraryDocuments(deps: LibraryDeps) {
+  const docs = (await deps.store.listDocuments()).filter((d) => d.origin === "library" && d.status === "active");
+  const latest = await deps.store.latestVersions(docs.map((d) => d.id));
+  return docs
+    .map((doc) => ({ doc, latest: latest.get(doc.id) }))
+    .filter((x): x is { doc: IdsDocumentRow; latest: IdsVersionMeta } => !!x.latest && x.latest.source === "import" && !!x.latest.library_repo?.startsWith(DB_LIBRARY_PREFIX));
 }
 
-/** Hotové IDS v knižnici na aktuálnom commite `ref` so stavom voči AIM. */
-export async function libraryCatalog(src: LibrarySource, deps: LibraryDeps): Promise<LibraryCatalog> {
-  const head = await src.head();
-  const { files, truncated } = await src.files(head.sha);
-  const index = await aimIndex(deps.store);
-  let e: Engine | null = null;
-  const items: LibraryItem[] = [];
-  for (const f of files) {
-    const code = codeOfPath(f.path);
-    const base = { path: f.path, code, size: f.size, specs: [] as LibraryItem["specs"], title: null, ids_version: null };
-    try {
-      const [xml, change] = await Promise.all([src.blob(f.blob), src.lastChange(f.path, head.sha).catch(() => null)]);
-      const hash = sha256(xml);
-      if (!CODE_RE.test(code)) {
-        items.push({ ...base, sha256: hash, last_change: change, state: "invalid", error: "Meno súboru nie je platný kód IDS (písmená, čísla a . _ -)." });
-        continue;
-      }
-      let d = described.get(hash);
-      if (!d) {
-        e ??= await engineOf(deps);
-        const r = await readXml(e, xml);
-        d = { title: r.described.title, version: r.described.version, specs: r.described.specifications.map((s) => ({ identifier: s.identifier, name: s.name })) };
-        described.set(hash, d);
-      }
-      items.push({ ...base, sha256: hash, last_change: change, title: d.title || null, ids_version: d.version, specs: d.specs, ...stateOf(code, f.path, hash, index) });
-    } catch (err) {
-      items.push({ ...base, sha256: null, last_change: null, state: "invalid", error: err instanceof Error ? err.message.slice(0, 500) : "súbor sa nedal prečítať" });
-    }
-  }
+/**
+ * Katalóg "V knižnici": IDS, ktoré vydanie knižnice zapísalo do AIM (nemenné verzie, `source = import`).
+ * Repo knižnice ani GitHub sa nečítajú. Priradenie k projektu = väzba na model (`ids_document_models`).
+ */
+export async function libraryCatalog(deps: LibraryDeps): Promise<LibraryCatalog> {
+  const rows = await libraryDocuments(deps);
+  const bindings = (await deps.lib.models(rows.map((r) => r.doc.id))) ?? [];
+  const items: LibraryItem[] = rows
+    .map(({ doc, latest }) => {
+      const models = bindings.filter((b) => b.document_id === doc.id).map((b) => b.model);
+      return {
+        path: latest.library_path ?? doc.code,
+        code: doc.code,
+        sha256: latest.sha256,
+        size: 0,
+        last_change: latest.library_commit ? { sha: latest.library_commit, date: latest.created_at, author: latest.author, message: latest.note } : null,
+        title: doc.title || null,
+        ids_version: latest.ids_version,
+        specs: specsOfAudit(latest.audit),
+        state: (models.length > 0 ? "assigned" : "not_assigned") as LibraryItemState,
+        aim: { code: doc.code, version: latest.version, origin: doc.origin },
+        release: parseLibraryOrigin(latest.library_repo, latest.library_commit),
+        models,
+        diagnostics: diagnosticsOfAudit(latest.audit),
+      };
+    })
+    .sort((a, b) => a.code.localeCompare(b.code));
+  const newest = rows.map((r) => r.latest).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  const rel = parseLibraryOrigin(newest?.library_repo, newest?.library_commit);
   return {
-    repo: src.repo,
-    ref: src.ref,
-    dir: src.dir,
-    commit: head.sha,
-    commit_date: head.date,
-    truncated,
+    repo: newest?.library_repo ?? `${DB_LIBRARY_PREFIX}?`,
+    ref: rel.release ?? "",
+    dir: "zadanie",
+    commit: newest?.library_commit ?? "",
+    commit_date: newest?.created_at ?? null,
+    truncated: false,
     items,
-    ...(items.length === 0 ? { note: `V knižnici zatiaľ nie sú hotové IDS (priečinok ${src.dir}/ na vetve ${src.ref} je prázdny alebo chýba).` } : {}),
+    ...(items.length === 0 ? { note: "V AIM zatiaľ nie je žiadne IDS z vydania knižnice (ids_documents origin = library, status = active)." } : {}),
   };
 }
 
@@ -312,111 +336,43 @@ export async function projectCatalog(deps: LibraryDeps): Promise<ProjectCatalog>
 }
 
 // ------------------------------------------------------------------------------------------------
-// Priradenie k projektu
+// Priradenie k projektu (= väzba na model)
 // ------------------------------------------------------------------------------------------------
 
 export interface AssignInput {
+  /** `path` alebo kód z katalógu. */
   path: string;
-  /** Commit, na ktorom používateľ súbor videl (z katalógu). */
+  /** Pôvod verzie, ktorú karta ukázala (`<vydanie>@<manifest sha256>`). */
   commit: string;
-  /** Sha256 obsahu, ktorý používateľ videl; iný obsah = obnov katalóg. */
+  /** Sha256 verzie, ktorú karta ukázala; iná posledná verzia = obnov katalóg. */
   sha256: string;
   author: string;
-  /** Premenovaný kód v knižnici: pokračovať históriou tohto knižničného IDS v AIM. */
-  continue_code?: string;
-  /** Kód súboru nie je v AIM a iné knižničné IDS áno: výslovne nové IDS. */
-  as_new?: boolean;
+  /** Model federácie; bez neho karta povie, kde sa väzba robí. */
+  model?: string;
 }
 
-export type AssignOutcome =
-  | { status: "created"; code: string; version: number }
-  | { status: "new_version"; code: string; version: number; previous_version: number; renamed_from?: string }
-  | { status: "unchanged"; code: string; version: number }
-  | { status: "choice_required"; code: string; candidates: string[]; message: string };
+export type AssignOutcome = { status: "created" | "unchanged"; code: string; version: number; model: string };
 
-export async function assignFromLibrary(src: LibrarySource, deps: LibraryDeps, input: AssignInput): Promise<AssignOutcome> {
+/**
+ * "Priradiť k projektu": IDS je v AIM od vydania knižnice, priradenie je väzba IDS na model federácie
+ * (`ids_document_models`, ručne, D-182 bod 5). Overí, že karta ukázala poslednú verziu.
+ */
+export async function assignFromLibrary(deps: LibraryDeps, input: AssignInput): Promise<AssignOutcome> {
   const author = authorOf(input.author);
-  const head = { sha: input.commit };
-  const { files } = await src.files(head.sha);
-  const file = files.find((f) => f.path === input.path);
-  if (!file) throw new LibraryInputError(`Súbor '${input.path}' nie je medzi hotovými IDS knižnice na commite ${input.commit.slice(0, 7)}.`);
-  const xml = await src.blob(file.blob);
-  const hash = sha256(xml);
-  if (hash !== input.sha256) throw new LibraryInputError("Obsah súboru sa nezhoduje s tým, čo karta ukázala; obnov knižnicu a priraď znova.");
-  const fileCode = codeOfPath(file.path);
-  if (!CODE_RE.test(fileCode)) throw new LibraryInputError(`Meno súboru '${fileCode}' nie je platný kód IDS (písmená, čísla a . _ -).`);
-
-  const index = await aimIndex(deps.store);
-  let target: { doc: IdsDocumentRow; latest: IdsVersionMeta | undefined } | undefined;
-  if (input.continue_code) {
-    target = index.byCode.get(input.continue_code);
-    if (!target) throw new LibraryInputError(`IDS '${input.continue_code}' v AIM neexistuje.`);
-    if (target.doc.origin !== "library") throw new LibraryInputError(`IDS '${input.continue_code}' je pracovné, nie z knižnice; históriu knižničného IDS nesie len knižničné IDS.`);
-  } else if (!input.as_new) {
-    target = index.byPath.get(file.path) ?? index.byCode.get(fileCode);
-    if (target && target.doc.origin !== "library") {
-      throw new LibraryInputError(`Kód '${fileCode}' už v AIM má pracovné IDS (nie z knižnice). Premenuj súbor v knižnici alebo pracovné IDS.`);
-    }
-    if (!target) {
-      const candidates = [...index.byCode.values()].filter((x) => x.doc.origin === "library" && x.doc.status !== "archived").map((x) => x.doc.code);
-      if (candidates.length > 0) {
-        return {
-          status: "choice_required",
-          code: fileCode,
-          candidates,
-          message: `IDS '${fileCode}' v AIM ešte nie je. Je to nové IDS, alebo nová verzia premenovaného IDS (história pokračuje)?`,
-        };
-      }
-    }
-  } else if (index.byCode.has(fileCode)) {
-    throw new LibraryInputError(`Kód '${fileCode}' už v AIM existuje; nové IDS s rovnakým kódom nejde.`);
+  const rows = await libraryDocuments(deps);
+  const hit = rows.find((r) => r.latest.library_path === input.path) ?? rows.find((r) => r.doc.code === input.path);
+  if (!hit) throw new LibraryInputError(`'${input.path}' nie je medzi IDS z vydania knižnice v AIM; obnov knižnicu.`);
+  if (hit.latest.sha256 !== input.sha256 || (hit.latest.library_commit ?? "") !== input.commit) {
+    throw new LibraryInputError(`IDS ${hit.doc.code} má v AIM inú poslednú verziu (v${hit.latest.version}), než karta ukázala; obnov knižnicu.`);
   }
-
-  const e = await engineOf(deps);
-  const audit = await auditXml(e, xml);
-  const { described: d } = await readXml(e, xml);
-  const title = (d.title || fileCode).slice(0, 200);
-  const librarySource = `${src.repo}@${input.commit}:${file.path}`;
-  const write = {
-    xml,
-    sha256: hash,
-    title,
-    ids_version: d.version,
-    audit,
-    author,
-    source: "import" as const,
-    note: `Priradené z knižnice ${src.repo}@${input.commit.slice(0, 7)}:${file.path}`,
-    library_repo: src.repo,
-    library_path: file.path,
-    library_commit: input.commit,
-    library_code: fileCode,
-  };
-
-  if (target) {
-    const latest = target.latest;
-    if (latest && latest.sha256 === hash) return { status: "unchanged", code: target.doc.code, version: latest.version };
-    const previousCode = target.doc.code;
-    const renamed = previousCode !== fileCode;
-    if (renamed && index.byCode.has(fileCode)) throw new LibraryInputError(`Kód '${fileCode}' už v AIM patrí inému IDS; premenovanie nejde.`);
-    const row = await deps.store.addVersion(target.doc.id, write, null);
-    await deps.lib.updateDocument(target.doc.id, { library_source: librarySource, ...(renamed ? { code: fileCode } : {}) });
-    return {
-      status: "new_version",
-      code: fileCode,
-      version: row.version,
-      previous_version: latest?.version ?? 0,
-      ...(renamed ? { renamed_from: previousCode } : {}),
-    };
+  const model = text(input.model, 80);
+  if (!model) {
+    throw new LibraryInputError(
+      `IDS ${hit.doc.code} v${hit.latest.version} je v AIM z vydania knižnice. K projektu ho priradíš väzbou na model: v časti "V projekte" zaškrtni model pri ${hit.doc.code}.`,
+    );
   }
-
-  const doc = await deps.store.createDocument({ code: fileCode, title, origin: "library", library_source: librarySource, created_by: author });
-  try {
-    const row = await deps.store.addVersion(doc.id, write, null);
-    return { status: "created", code: fileCode, version: row.version };
-  } catch (err) {
-    await deps.store.deleteDocument(doc.id).catch(() => undefined);
-    throw err;
-  }
+  const out = await setModelBinding(deps, { code: hit.doc.code, model, bound: true, author });
+  return { status: out.changed ? "created" : "unchanged", code: hit.doc.code, version: hit.latest.version, model: out.model };
 }
 
 // ------------------------------------------------------------------------------------------------

@@ -5,21 +5,14 @@ import {
   libraryCatalog,
   LibraryInputError,
   LibrarySchemaMissingError,
+  parseLibraryOrigin,
   parseRunSpecs,
   projectCatalog,
   saveViewerRun,
   setModelBinding,
   type LibraryDeps,
 } from "./library";
-import {
-  githubLibrarySource,
-  isLibraryIdsPath,
-  libraryConfig,
-  LibraryNotConfiguredError,
-  type LibraryFile,
-  type LibrarySource,
-} from "./library-source";
-import { memoryIdsLibraryStore, memoryIdsStore } from "./testing";
+import { memoryIdsLibraryStore, memoryIdsStore, type MemoryIdsStore } from "./testing";
 import { execIdsTool, sha256 } from "./tools";
 
 const ids = (title: string, extra = "") => `<?xml version="1.0" encoding="UTF-8"?>
@@ -38,39 +31,32 @@ const SPACE_SPEC = `
       <requirements><attribute cardinality="required"><name><simpleValue>LongName</simpleValue></name></attribute></requirements>
     </specification>`;
 
-const C1 = "1".repeat(40);
-const C2 = "2".repeat(40);
+const M1 = "f".repeat(64);
+const M2 = "e".repeat(64);
+const ER_PATH = "zadanie/ER/ER-0101 Priestorový model a protokol zamerania – odovzdanie.md";
 
-/** Repo knižnice v pamäti: commit -> {cesta: obsah}. */
-function memorySource(commits: Record<string, Record<string, string>>, headSha: string): LibrarySource & { setHead(sha: string): void } {
-  let head = headSha;
-  const blobOf = (commit: string, path: string) => `${commit}:${path}`;
-  return {
-    repo: "Menezeris/assetin-library",
-    ref: "main",
-    dir: "ids",
-    setHead(sha) {
-      head = sha;
+/** Čo zapíše vydanie knižnice v DB (Python `assetin`, schéma `library`): knižničné IDS a nemenná verzia `import`. */
+async function publish(store: MemoryIdsStore, code: string, xml: string, release: string, manifest: string) {
+  let doc = await store.byCode(code);
+  doc ??= await store.createDocument({ code, title: code, origin: "library", library_source: "db:library/assetin" });
+  return store.addVersion(
+    doc.id,
+    {
+      xml,
+      sha256: sha256(xml),
+      title: `${code} titul`,
+      ids_version: "1.0",
+      audit: { vydanie: release, kniznica: "assetin", diagnostiky: { E: 0, W: 14, I: 26 }, specifikacie: ["IU-O-storey (IU-O, IfcBuildingStorey)", "STD-CL-01 (STD, vždy)"] },
+      author: "Samuel Augustin",
+      source: "import",
+      note: `vydanie ${release} knižnice assetin`,
+      library_repo: "db:library/assetin",
+      library_path: ER_PATH,
+      library_commit: `${release}@${manifest}`,
+      library_code: code,
     },
-    async head() {
-      return { sha: head, date: "2026-11-02T09:00:00Z" };
-    },
-    async files(commit) {
-      const tree = commits[commit] ?? {};
-      const files: LibraryFile[] = Object.keys(tree)
-        .filter((p) => isLibraryIdsPath(p, "ids"))
-        .sort()
-        .map((p) => ({ path: p, blob: blobOf(commit, p), size: tree[p].length }));
-      return { files, truncated: false };
-    },
-    async lastChange(_path, commit) {
-      return { sha: commit, date: "2026-11-02T09:00:00Z", author: "Samuel", message: "IDS" };
-    },
-    async blob(blob) {
-      const [commit, ...rest] = blob.split(":");
-      return commits[commit][rest.join(":")];
-    },
-  };
+    null,
+  );
 }
 
 function setup(opts: Parameters<typeof memoryIdsLibraryStore>[1] = {}) {
@@ -80,163 +66,72 @@ function setup(opts: Parameters<typeof memoryIdsLibraryStore>[1] = {}) {
   return { store, lib, deps };
 }
 
-describe("zdroj knižnice (D-182)", () => {
-  it("hotové IDS len z priečinka ids/, bez DSS, bsi a testovacích fixtures", () => {
-    expect(isLibraryIdsPath("ids/ER-0101_ARCH.ids", "ids")).toBe(true);
-    expect(isLibraryIdsPath("ids/projekt/ER-0102_TZB.IDS", "ids")).toBe(true);
-    expect(isLibraryIdsPath("ids/dss/Configurations.ids", "ids")).toBe(false);
-    expect(isLibraryIdsPath("ids/Configurations.ids", "ids")).toBe(false);
-    expect(isLibraryIdsPath("ids/bsi/testcase.ids", "ids")).toBe(false);
-    expect(isLibraryIdsPath("tests/fixtures/ids/ER-0101_ARCH.ids", "ids")).toBe(false);
-    expect(isLibraryIdsPath("ids/readme.md", "ids")).toBe(false);
-    expect(isLibraryIdsPath("idsx/a.ids", "ids")).toBe(false);
+describe("katalóg knižnice z DB (D-182 doplnok V30)", () => {
+  it("pôvod vydania: db:library/<kód> a <vydanie>@<manifest sha256>", () => {
+    expect(parseLibraryOrigin("db:library/assetin", `2026.11.1@${M1}`)).toEqual({ library: "assetin", release: "2026.11.1", manifest_sha256: M1 });
+    expect(parseLibraryOrigin("Menezeris/assetin-library", "1".repeat(40))).toEqual({ library: null, release: "1".repeat(40), manifest_sha256: null });
+    expect(parseLibraryOrigin(null, null)).toEqual({ library: null, release: null, manifest_sha256: null });
   });
 
-  it("konfigurácia: predvolené repo, vetva a priečinok; zlý priečinok odmietne", () => {
-    expect(libraryConfig({})).toEqual({ token: null, repo: "Menezeris/assetin-library", ref: "main", dir: "ids" });
-    expect(libraryConfig({ LIBRARY_GITHUB_TOKEN: " t ", LIBRARY_IDS_DIR: "/vydanie/ids/" })).toMatchObject({ token: "t", dir: "vydanie/ids" });
-    expect(() => libraryConfig({ LIBRARY_IDS_DIR: "../x" })).toThrow();
-    expect(() => libraryConfig({ LIBRARY_REPO: "zle" })).toThrow();
-    expect(() => githubLibrarySource(libraryConfig({}))).toThrow(LibraryNotConfiguredError);
-  });
-
-  it("GitHub: token v hlavičke, strom filtrovaný, blob z base64", async () => {
-    const calls: Array<{ url: string; auth: string | null }> = [];
-    const xml = ids("A");
-    const fake = async (url: string, init?: RequestInit) => {
-      calls.push({ url, auth: new Headers(init?.headers).get("authorization") });
-      const json = (v: unknown) => new Response(JSON.stringify(v), { status: 200 });
-      if (url.endsWith("/commits/main")) return json({ sha: C1, commit: { committer: { date: "2026-11-02T09:00:00Z" } } });
-      if (url.includes("/git/trees/")) {
-        return json({
-          tree: [
-            { path: "ids", type: "tree", sha: "t" },
-            { path: "ids/A.ids", type: "blob", sha: "b1", size: xml.length },
-            { path: "ids/dss/Configurations.ids", type: "blob", sha: "b2", size: 1 },
-            { path: "ids/bsi/x.ids", type: "blob", sha: "b3", size: 1 },
-            { path: "tests/fixtures/ids/ER-0101_ARCH.ids", type: "blob", sha: "b4", size: 1 },
-          ],
-        });
-      }
-      if (url.includes("/git/blobs/b1")) return json({ content: Buffer.from(xml).toString("base64"), encoding: "base64", size: xml.length });
-      return new Response("{}", { status: 404 });
-    };
-    const src = githubLibrarySource(libraryConfig({ LIBRARY_GITHUB_TOKEN: "secret" }), fake);
-    const head = await src.head();
-    expect(head.sha).toBe(C1);
-    const { files } = await src.files(head.sha);
-    expect(files.map((f) => f.path)).toEqual(["ids/A.ids"]);
-    expect(await src.blob("b1")).toBe(xml);
-    expect(await src.blob("b1")).toBe(xml);
-    expect(calls.every((c) => c.auth === "Bearer secret")).toBe(true);
-    expect(calls.filter((c) => c.url.includes("/git/blobs/")).length).toBe(1);
-  });
-});
-
-describe("katalóg a priradenie k projektu (D-182)", () => {
-  it("prázdny priečinok: karta to povie, testovací súbor z tests/fixtures sa neponúka", async () => {
-    const { deps } = setup();
-    const src = memorySource({ [C1]: { "tests/fixtures/ids/ER-0101_ARCH.ids": ids("prototyp") } }, C1);
-    const cat = await libraryCatalog(src, deps);
+  it("prázdna DB: karta to povie; chat IDS, archivované a staré git priradenia sa v knižnici neukážu", async () => {
+    const { store, deps } = setup();
+    expect((await libraryCatalog(deps)).note).toContain("origin = library");
+    await store.createDocument({ code: "CHAT", title: "c", origin: "chat" });
+    const git = await store.createDocument({ code: "GIT", title: "g", origin: "library" });
+    await store.addVersion(git.id, { xml: ids("g"), sha256: "g", title: "g", ids_version: null, audit: null, author: "S", source: "import", note: null, library_repo: "Menezeris/assetin-library", library_path: "ids/GIT.ids", library_commit: "1".repeat(40) }, null);
+    await publish(store, "ARCH-OLD", ids("x"), "2026.10.1", M1);
+    store.docs.find((d) => d.code === "ARCH-OLD")!.status = "archived";
+    const cat = await libraryCatalog(deps);
     expect(cat.items).toEqual([]);
-    expect(cat.note).toContain("ids/");
   });
 
-  it("priradenie uloží nemennú kópiu s pôvodom; rovnaký obsah nič; nová verzia v knižnici projekt nemení, kým sa nepriradí", async () => {
+  it("IDS z vydania: posledná verzia, pôvod, špecifikácie a diagnostiky z auditu; väzba na model = v projekte", async () => {
     const { store, deps } = setup();
-    const src = memorySource({ [C1]: { "ids/ER-0101_ARCH.ids": ids("ER-0101") }, [C2]: { "ids/ER-0101_ARCH.ids": ids("ER-0101", SPACE_SPEC) } }, C1);
-
-    const cat = await libraryCatalog(src, deps);
-    expect(cat.items).toHaveLength(1);
-    const item = cat.items[0];
-    expect(item).toMatchObject({ code: "ER-0101_ARCH", state: "not_assigned", title: "ER-0101", specs: [{ identifier: "IU-O-storey", name: "Podlažie" }] });
-
-    await expect(assignFromLibrary(src, deps, { path: item.path, commit: C1, sha256: item.sha256!, author: " " })).rejects.toBeInstanceOf(LibraryInputError);
-    await expect(assignFromLibrary(src, deps, { path: item.path, commit: C1, sha256: "x", author: "Samuel" })).rejects.toThrow(/nezhoduje/);
-
-    const a = await assignFromLibrary(src, deps, { path: item.path, commit: C1, sha256: item.sha256!, author: "Samuel" });
-    expect(a).toEqual({ status: "created", code: "ER-0101_ARCH", version: 1 });
-    expect(store.docs[0]).toMatchObject({ code: "ER-0101_ARCH", origin: "library", library_source: `Menezeris/assetin-library@${C1}:ids/ER-0101_ARCH.ids`, created_by: "Samuel" });
-    expect(store.rows[0]).toMatchObject({
-      version: 1,
-      source: "import",
-      author: "Samuel",
-      sha256: item.sha256,
-      library_repo: "Menezeris/assetin-library",
-      library_path: "ids/ER-0101_ARCH.ids",
-      library_commit: C1,
-      library_code: "ER-0101_ARCH",
+    await publish(store, "ER-0101.ARCH", ids("ER-0101"), "2026.11.1", M1);
+    const cat = await libraryCatalog(deps);
+    expect(cat).toMatchObject({ repo: "db:library/assetin", ref: "2026.11.1", commit: `2026.11.1@${M1}`, truncated: false });
+    expect(cat.items[0]).toMatchObject({
+      path: ER_PATH,
+      code: "ER-0101.ARCH",
+      sha256: sha256(ids("ER-0101")),
+      state: "not_assigned",
+      aim: { code: "ER-0101.ARCH", version: 1, origin: "library" },
+      release: { library: "assetin", release: "2026.11.1", manifest_sha256: M1 },
+      specs: [{ identifier: "IU-O-storey", name: "IU-O-storey (IU-O, IfcBuildingStorey)" }, { identifier: "STD-CL-01", name: "STD-CL-01 (STD, vždy)" }],
+      diagnostics: { E: 0, W: 14, I: 26 },
+      last_change: { sha: `2026.11.1@${M1}`, author: "Samuel Augustin" },
+      models: [],
     });
-    expect(store.rows[0].xml).toBe(ids("ER-0101"));
 
-    expect(await assignFromLibrary(src, deps, { path: item.path, commit: C1, sha256: item.sha256!, author: "Samuel" })).toEqual({ status: "unchanged", code: "ER-0101_ARCH", version: 1 });
-    expect((await libraryCatalog(src, deps)).items[0]).toMatchObject({ state: "assigned", aim: { code: "ER-0101_ARCH", version: 1 } });
+    await setModelBinding(deps, { code: "ER-0101.ARCH", model: "ASR", bound: true, author: "Samuel" });
+    expect((await libraryCatalog(deps)).items[0]).toMatchObject({ state: "assigned", models: ["ASR"] });
 
-    src.setHead(C2);
-    const cat2 = await libraryCatalog(src, deps);
-    expect(cat2.items[0]).toMatchObject({ state: "differs", aim: { version: 1 } });
+    // nové vydanie -> nová verzia toho istého IDS, väzba ostáva
+    await publish(store, "ER-0101.ARCH", ids("ER-0101", SPACE_SPEC), "2026.11.2", M2);
+    expect((await libraryCatalog(deps)).items[0]).toMatchObject({ aim: { version: 2 }, release: { release: "2026.11.2" }, state: "assigned" });
+  });
+
+  it("Priradiť k projektu = väzba na model; iná posledná verzia a bez modelu povedia, čo robiť", async () => {
+    const { store, deps, lib } = setup();
+    await publish(store, "ER-0101.ARCH", ids("ER-0101"), "2026.11.1", M1);
+    const item = (await libraryCatalog(deps)).items[0];
+    const base = { path: item.path, commit: item.last_change!.sha, sha256: item.sha256, author: "Samuel" };
+    await expect(assignFromLibrary(deps, { ...base, author: " " })).rejects.toBeInstanceOf(LibraryInputError);
+    await expect(assignFromLibrary(deps, { ...base, sha256: "x" })).rejects.toThrow(/inú poslednú verziu/);
+    await expect(assignFromLibrary(deps, base)).rejects.toThrow(/zaškrtni model/);
+    await expect(assignFromLibrary(deps, { ...base, path: "NIE" })).rejects.toThrow(/nie je medzi IDS/);
+    expect(await assignFromLibrary(deps, { ...base, model: "ASR" })).toEqual({ status: "created", code: "ER-0101.ARCH", version: 1, model: "ASR" });
+    expect(await assignFromLibrary(deps, { ...base, path: "ER-0101.ARCH", model: "ASR" })).toMatchObject({ status: "unchanged" });
+    expect(lib.bindings).toHaveLength(1);
     expect(store.rows).toHaveLength(1);
-
-    const b = await assignFromLibrary(src, deps, { path: item.path, commit: C2, sha256: cat2.items[0].sha256!, author: "Jana" });
-    expect(b).toMatchObject({ status: "new_version", code: "ER-0101_ARCH", version: 2, previous_version: 1 });
-    expect(store.rows.map((r) => [r.version, r.library_commit, r.author])).toEqual([
-      [1, C1, "Samuel"],
-      [2, C2, "Jana"],
-    ]);
-  });
-
-  it("premenovaný kód v knižnici: najprv voľba, potom história pokračuje pod novým kódom; alebo výslovne nové IDS", async () => {
-    const { store, deps } = setup();
-    const src = memorySource({ [C1]: { "ids/ER-0101_ARCH.ids": ids("ER-0101") }, [C2]: { "ids/ER-0101_ASR.ids": ids("ER-0101", SPACE_SPEC) } }, C1);
-    const first = (await libraryCatalog(src, deps)).items[0];
-    await assignFromLibrary(src, deps, { path: first.path, commit: C1, sha256: first.sha256!, author: "Samuel" });
-
-    src.setHead(C2);
-    const renamed = (await libraryCatalog(src, deps)).items[0];
-    expect(renamed).toMatchObject({ code: "ER-0101_ASR", state: "not_assigned" });
-    const choice = await assignFromLibrary(src, deps, { path: renamed.path, commit: C2, sha256: renamed.sha256!, author: "Samuel" });
-    expect(choice).toMatchObject({ status: "choice_required", code: "ER-0101_ASR", candidates: ["ER-0101_ARCH"] });
-    expect(store.rows).toHaveLength(1);
-
-    const cont = await assignFromLibrary(src, deps, { path: renamed.path, commit: C2, sha256: renamed.sha256!, author: "Samuel", continue_code: "ER-0101_ARCH" });
-    expect(cont).toMatchObject({ status: "new_version", code: "ER-0101_ASR", version: 2, renamed_from: "ER-0101_ARCH" });
-    expect(store.docs).toHaveLength(1);
-    expect(store.docs[0].code).toBe("ER-0101_ASR");
-    expect(store.rows.map((r) => r.library_code)).toEqual(["ER-0101_ARCH", "ER-0101_ASR"]);
-    expect((await libraryCatalog(src, deps)).items[0]).toMatchObject({ state: "assigned", aim: { code: "ER-0101_ASR", version: 2 } });
-  });
-
-  it("výslovne nové IDS pri premenovaní; pracovné IDS s rovnakým kódom je kolízia", async () => {
-    const { store, deps } = setup();
-    const src = memorySource({ [C1]: { "ids/A.ids": ids("A"), "ids/B.ids": ids("B") } }, C1);
-    const [a, b] = (await libraryCatalog(src, deps)).items;
-    await assignFromLibrary(src, deps, { path: a.path, commit: C1, sha256: a.sha256!, author: "S" });
-    expect(await assignFromLibrary(src, deps, { path: b.path, commit: C1, sha256: b.sha256!, author: "S", as_new: true })).toMatchObject({ status: "created", code: "B" });
-
-    const chat = await store.createDocument({ code: "C", title: "C", origin: "chat" });
-    await store.addVersion(chat.id, { xml: ids("C"), sha256: "h", title: "C", ids_version: null, audit: null, author: "x", source: "chat", note: null }, null);
-    const src2 = memorySource({ [C2]: { "ids/C.ids": ids("C") } }, C2);
-    const c = (await libraryCatalog(src2, deps)).items[0];
-    expect(c.state).toBe("collision");
-    await expect(assignFromLibrary(src2, deps, { path: c.path, commit: C2, sha256: c.sha256!, author: "S" })).rejects.toThrow(/pracovné IDS/);
-  });
-
-  it("súbor s menom, ktoré nie je kód, je v katalógu neplatný a nedá sa priradiť", async () => {
-    const { deps } = setup();
-    const src = memorySource({ [C1]: { "ids/zlý názov.ids": ids("X") } }, C1);
-    const item = (await libraryCatalog(src, deps)).items[0];
-    expect(item.state).toBe("invalid");
-    await expect(assignFromLibrary(src, deps, { path: item.path, commit: C1, sha256: item.sha256!, author: "S" })).rejects.toBeInstanceOf(LibraryInputError);
   });
 });
 
 describe("väzba IDS na model a výsledok z viewera (D-182)", () => {
   async function assigned() {
     const s = setup();
-    const src = memorySource({ [C1]: { "ids/ER-0101_ARCH.ids": ids("ER-0101") } }, C1);
-    const item = (await libraryCatalog(src, s.deps)).items[0];
-    await assignFromLibrary(src, s.deps, { path: item.path, commit: C1, sha256: item.sha256!, author: "Samuel" });
-    return { ...s, src, sha: item.sha256! };
+    const row = await publish(s.store, "ER-0101_ARCH", ids("ER-0101"), "2026.11.1", M1);
+    return { ...s, sha: row.sha256 };
   }
 
   it("ručná väzba: zaškrtnutie, opakovanie nič nemení, zrušenie ukončí; neznámy model a chýbajúca migrácia", async () => {
@@ -273,7 +168,7 @@ describe("väzba IDS na model a výsledok z viewera (D-182)", () => {
   ])!;
 
   it("výsledok sa uloží s pečiatkou revízie, verzie IDS a nástroja; iné IDS ako v AIM ani neznáma revízia sa neuložia", async () => {
-    const { deps, store, src, sha } = await assigned();
+    const { deps, store, sha } = await assigned();
     const run = { code: "ER-0101_ARCH", version: 1, ids_sha256: sha, model: "ASR", revision: 79, engine_version: "@ifc-lite/ids 1.4.0", author: "Samuel", specs };
     const lookup = async (g: string[]) => new Map(g.filter((x) => x === "G1").map((x) => [x, { object_id: "obj-1" }]));
     const rdeps = { ...deps, lookup };
@@ -307,11 +202,8 @@ describe("väzba IDS na model a výsledok z viewera (D-182)", () => {
     const old = await saveViewerRun(rdeps, { ...run, revision: 78 });
     expect(old).toMatchObject({ stale: true, warning: expect.stringContaining("v78") });
 
-    // nová verzia IDS v AIM -> výsledok nad v1 je ids_stale
-    src.setHead(C2);
-    const src2 = memorySource({ [C2]: { "ids/ER-0101_ARCH.ids": ids("ER-0101", SPACE_SPEC) } }, C2);
-    const item = (await libraryCatalog(src2, deps)).items[0];
-    await assignFromLibrary(src2, deps, { path: item.path, commit: C2, sha256: item.sha256!, author: "Samuel" });
+    // nové vydanie knižnice -> výsledok nad v1 je ids_stale
+    await publish(store, "ER-0101_ARCH", ids("ER-0101", SPACE_SPEC), "2026.11.2", M2);
     const project = await projectCatalog(deps);
     expect(project.items[0].runs).toEqual([expect.objectContaining({ model: "ASR", version: 1, stale: true, ids_stale: true, engine_version: "@ifc-lite/ids 1.4.0", based_on: { ASR: 78 } })]);
     expect(project.current_revisions).toEqual({ ASR: 79, VZT: 11 });
@@ -329,9 +221,9 @@ describe("väzba IDS na model a výsledok z viewera (D-182)", () => {
     const { deps, store, lib } = await assigned();
     await setModelBinding(deps, { code: "ER-0101_ARCH", model: "ASR", bound: true, author: "Samuel" });
     const list = JSON.parse((await execIdsTool("ids_document", { action: "list" }, { store, lib })).text);
-    expect(list.items[0]).toMatchObject({ code: "ER-0101_ARCH", origin: "library", library_commit: C1, models: ["ASR"] });
+    expect(list.items[0]).toMatchObject({ code: "ER-0101_ARCH", origin: "library", library_commit: `2026.11.1@${M1}`, models: ["ASR"] });
     const got = JSON.parse((await execIdsTool("ids_document", { action: "get", ids: "ER-0101_ARCH" }, { store, lib })).text);
-    expect(got.library).toEqual({ repo: "Menezeris/assetin-library", path: "ids/ER-0101_ARCH.ids", commit: C1, code: "ER-0101_ARCH" });
+    expect(got.library).toEqual({ repo: "db:library/assetin", path: ER_PATH, commit: `2026.11.1@${M1}`, code: "ER-0101_ARCH" });
   });
 
   it("pracovná kópia ukáže, že knižničné IDS má novšiu verziu", async () => {
@@ -340,7 +232,7 @@ describe("väzba IDS na model a výsledok z viewera (D-182)", () => {
     const v1 = store.rows[0];
     const copy = await store.createDocument({ code: "ER-0101_ARCH-PRACOVNE", title: "kópia", origin: "chat", derived_from: v1.id });
     await store.addVersion(copy.id, { xml: ids("kópia"), sha256: sha256(ids("kópia")), title: "kópia", ids_version: null, audit: null, author: "x", source: "viewer", note: null }, null);
-    await store.addVersion(lib.id, { xml: ids("v2"), sha256: "h2", title: "v2", ids_version: null, audit: null, author: "S", source: "import", note: null, library_repo: "r", library_path: "ids/ER-0101_ARCH.ids", library_commit: C2 }, null);
+    await store.addVersion(lib.id, { xml: ids("v2"), sha256: "h2", title: "v2", ids_version: null, audit: null, author: "S", source: "import", note: null, library_repo: "db:library/assetin", library_path: ER_PATH, library_commit: `2026.11.2@${M2}` }, null);
     const project = await projectCatalog(deps);
     expect(project.items.find((i) => i.code === "ER-0101_ARCH-PRACOVNE")!.derived_from).toEqual({ code: "ER-0101_ARCH", version: 1, newer_exists: true });
   });

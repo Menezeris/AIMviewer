@@ -530,7 +530,9 @@ dokumenty s verziami, z chatu aj z viewera. Aditívne, IDS nie je v `objects` (D
 `supabase/tests/ids_library_assign.sql`):** knižnica požiadaviek v AIM vedomým priradením. Aditívne:
 - `ids_document_versions` + `library_repo`, `library_path`, `library_commit`, `library_code` (kód súboru v čase
   priradenia). Check `ids_document_versions_library_ref_check`: pri `source = 'import'` sú repo, cesta a commit
-  povinné (`not valid`, staré riadky sa nekontrolujú). `author` = kto priradil, `created_at` = kedy.
+  povinné (`not valid`, staré riadky sa nekontrolujú). `author` = kto priradil, `created_at` = kedy. Od vydaní
+  knižnice v DB (D-182 doplnok V30) ich zapisuje vydanie: `library_repo = db:library/<kód knižnice>`,
+  `library_commit = <vydanie>@<manifest sha256>` (nie git SHA), `library_path` = cesta poznámky ER.
 - `ids_document_models` = ručná väzba IDS na model federácie: `document_id` (FK, cascade),
   `information_container_id` (FK `information_containers`, len `container_type = 'IFC'`, trigger), `library_container`
   (voliteľný text, napr. `IU-C-arch-model`), `created_by`, `valid_from`, `valid_until`, `ended_by` (povinné pri
