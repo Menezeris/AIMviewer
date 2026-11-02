@@ -549,6 +549,11 @@ anon / authenticated do nej prístup nemajú. Host číta cez RPC v `public` (mi
 `supabase/migrations/20261102200000_library_hlava_read.sql`, APLIKOVANÁ 2. 11.; test `supabase/tests/library_hlava_read.sql`):
 `library_hlava_zoznam(p_kniznica text default null)` (bez textu, + `dlzka`) a `library_hlava_subor(p_kniznica, p_cesta)`
 (s textom); `stable`, `security invoker`, `search_path = ''`, EXECUTE len `service_role`.
+Zápis z editora (D-186 krok 3; migrácia `supabase/pending/20261102210000_library_zapis.sql`, NESPUSTENÁ; test
+`supabase/tests/library_zapis.sql`): `library_texty(p_kniznica)` (hlava s textom pre loader pri uložení) a
+`library_zapis(p_kniznica, p_autor, p_sprava, p_zdroj, p_schema_verzia, p_zapisy, p_projekcie, p_engine)` =
+`library.zapis_revizie` (všetko alebo nič, `ocakavana` sha256, konflikt AS409 s cestami v `detail`) a v tej istej
+transakcii upsert `library.projekcia` zapísaných súborov (projekciu počíta TS engine); EXECUTE len `service_role`.
 
 ### 2.14 Revízie IFC modelov a úlohy úprav (D-086, migrácia 20261018120000)
 

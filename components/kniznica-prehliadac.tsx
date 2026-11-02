@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { KniznicaEditor } from "@/components/kniznica-editor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
@@ -32,9 +33,12 @@ interface Detail {
   sha256_sedi: boolean;
   round_trip: boolean;
   bloky: { frontmatter: (Blok & { data: unknown; chyba: boolean }) | null; telo: Blok[] };
+  zapis?: boolean;
   poznamka: {
     id: string | null;
     typ: string | null;
+    data: Record<string, unknown>;
+    verzia: string;
     model: unknown;
     zdroje: Record<string, string>;
     pod_zaznamy: Array<{ id: string; druh: string }>;
@@ -69,6 +73,8 @@ export function KniznicaPrehliadac({ initial }: { initial?: { kniznica?: string;
   const [detailError, setDetailError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [raw, setRaw] = useState(false);
+  const [obnova, setObnova] = useState(0);
+  const [oznam, setOznam] = useState<string | null>(null);
 
   useEffect(() => {
     const q = initial?.kniznica ? `?kniznica=${encodeURIComponent(initial.kniznica)}` : "";
@@ -86,7 +92,7 @@ export function KniznicaPrehliadac({ initial }: { initial?: { kniznica?: string;
     return () => {
       live = false;
     };
-  }, [sel]);
+  }, [sel, obnova]);
 
   const groups = useMemo(() => {
     const f = filter.trim().toLowerCase();
@@ -129,6 +135,7 @@ export function KniznicaPrehliadac({ initial }: { initial?: { kniznica?: string;
                       <button
                         type="button"
                         onClick={() => {
+                          setOznam(null);
                           setDetail(null);
                           setDetailError(null);
                           setSel({ kniznica: r.kniznica, cesta: r.cesta });
@@ -167,6 +174,24 @@ export function KniznicaPrehliadac({ initial }: { initial?: { kniznica?: string;
         <CardContent className="text-sm">
           {detailError && <p className="text-destructive">{detailError}</p>}
           {sel && !detail && !detailError && <p className="text-muted-foreground">Načítavam...</p>}
+          {oznam && (
+            <output className="mb-2 block text-xs text-emerald-700 dark:text-emerald-400" data-testid="kniznica-oznam">
+              {oznam}
+            </output>
+          )}
+          {detail?.zapis && detail.poznamka?.model != null && sel && (
+            <KniznicaEditor
+              key={`${detail.subor.cesta}@${detail.poznamka.verzia}`}
+              kniznica={sel.kniznica}
+              poznamka={detail.poznamka}
+              telo={detail.bloky.telo}
+              onUlozene={(nova, text) => {
+                setOznam(text);
+                if (nova) setSel({ kniznica: sel.kniznica, cesta: nova });
+                else setObnova((x) => x + 1);
+              }}
+            />
+          )}
           {detail?.poznamka && (
             <div className="mb-3 space-y-1 text-xs" data-testid="kniznica-loader">
               <p>

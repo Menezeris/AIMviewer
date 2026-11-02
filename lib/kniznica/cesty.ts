@@ -114,7 +114,6 @@ export const PRIECINOK_PRE_TYP: Record<string, string> = Object.fromEntries(Obje
 /** Časť `nazov`, ktorá smie byť v mene súboru: zakázané znaky = medzera, medzery zlúčené, bez bodky na konci. */
 export function nazovDoSuboru(nazov: string | null | undefined): string {
   if (!nazov) return "";
-  // eslint-disable-next-line no-control-regex
   let t = nazov.replace(/[\\/:*?"<>|\x00-\x1f]+/g, " ");
   t = t.replace(/\s+/g, " ").trim().replace(/\.+$/, "").trim();
   return t;
