@@ -9,12 +9,13 @@ import { dokumentEditora, type InfoRevizie } from "./app-json";
 import { nacitajKniznicuGraf } from "./graf";
 import { kontrola } from "./kontrola";
 import { validuj } from "./validator";
-import { uloz, vytvor, type Sklad, type Zmena } from "./zapis";
+import { vydaj as vydajKniznicu, type KontrolaXsd, type SkladVydania, type Uloziste } from "./vydanie";
+import { ChybaSkladu, Konflikt, uloz, vytvor, type Sklad, type Zmena } from "./zapis";
 
 export interface Brana {
   /** `LIBRARY_WRITE_ENABLED` */
   zapis: boolean;
-  /** vydanie (krok 6 portu) zatiaľ nie je */
+  /** `LIBRARY_RELEASE_ENABLED` (rola vydavateľa) */
   vydanie: boolean;
 }
 
@@ -34,6 +35,7 @@ export async function dokument(sklad: Sklad, info: InfoRevizie = {}) {
 
 export function stav(kniznica: string, b: Brana) {
   return { api: true, koren: `db:${kniznica}`, zapis: b.zapis, nova: b.zapis, kontrola: true, vydanie: b.vydanie, autor_povinny: true };
+  // `vydanie` stránka ukáže len s povinným autorom (databázový sklad), ako `assetin/server`
 }
 
 function zmeny(v: unknown): Zmena[] {
@@ -78,7 +80,23 @@ export async function nova(novySklad: () => Sklad, b: Brana, vstup: JS, info: ()
   return { status: 200, telo: { ...v, dokument: await dokument(novySklad(), await info()) } };
 }
 
-/** `POST vydaj`: vydanie IDS je krok 6 portu; do vtedy vypnuté. */
-export function vydaj(): Odpoved {
-  return chyba(403, "vydávanie v AIM je krok 6 portu knižnice (D-186), zatiaľ vypnuté");
+/**
+ * `POST vydaj`: validácia (0 chýb), snímka, IDS do katalógu AIM, export MD (port `api_vydaj`). Za bránou
+ * `LIBRARY_RELEASE_ENABLED` (rola vydavateľa); kód vydania volí vydavateľ, podpisuje meno z editora.
+ */
+export async function vydaj(sklad: () => SkladVydania, b: Brana, vstup: JS, o: { xsd?: KontrolaXsd | null; uloziste?: Uloziste | null } = {}): Promise<Odpoved> {
+  if (!b.vydanie) return chyba(403, "vydávanie v AIM je vypnuté (LIBRARY_RELEASE_ENABLED)");
+  const autor = typeof vstup.autor === "string" ? vstup.autor.trim().slice(0, 120) : "";
+  if (!autor) return chyba(400, "zadaj meno autora - podpisuje vydanie");
+  const kod = typeof vstup.kod === "string" ? vstup.kod.trim() : "";
+  if (!/^[A-Za-z0-9._-]{1,40}$/.test(kod)) return chyba(400, "kód vydania: písmená, číslice, bodka, pomlčka (napr. 2026.11.2)");
+  const sprava = typeof vstup.sprava === "string" ? vstup.sprava.slice(0, 500) : "";
+  try {
+    const v = await vydajKniznicu(sklad(), kod, autor, sprava, { xsd: o.xsd ?? null, uloziste: o.uloziste ?? null });
+    return { status: v.ok ? 200 : 422, telo: { ...v } };
+  } catch (e) {
+    if (e instanceof Konflikt) return { status: 409, telo: { ok: false, sprava: e.message, konflikt: true } };
+    if (e instanceof ChybaSkladu) return { status: 400, telo: { ok: false, sprava: e.message } };
+    throw e;
+  }
 }

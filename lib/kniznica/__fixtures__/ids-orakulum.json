@@ -1,0 +1,791 @@
+{
+ "vzor": [
+  {
+   "er": "ER-0101",
+   "poskytovatel": "ACT-poverena/ARCH",
+   "datum": null,
+   "xml": "<?xml version='1.0' encoding='utf-8'?>\n<ids:ids xmlns:ids=\"http://standards.buildingsmart.org/IDS\" xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd\">\n  <ids:info>\n    <ids:title>Priestorový model a protokol zamerania – odovzdanie</ids:title>\n    <ids:copyright>Assetin (CC-BY-4.0)</ids:copyright>\n    <ids:version>0.1</ids:version>\n    <ids:description>Poskytovateľ: Pracovná skupina architektúra (ACT-poverena/ARCH); príjemca: ACT-poverujuca</ids:description>\n    <ids:purpose>Priestorová pasportizácia</ids:purpose>\n    <ids:milestone>Odovzdanie priestorového modelu a protokolu zamerania</ids:milestone>\n  </ids:info>\n  <ids:specifications>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Priestor (miestnosť)\" identifier=\"IU-O-space\" description=\"Miestnosť je nositeľom plôch, z ktorých sa odvodzuje nájomná a prevádzková evidencia (GOAL-A-01; UC-0101 T2, T3).\" instructions=\"Každá miestnosť vrátane technických a komunikačných ako samostatný IfcSpace; obrys po líci omietky podľa DEF; jeden IfcSpace = jedna miestnosť, bez zlučovania.\">\n      <ids:applicability minOccurs=\"1\" maxOccurs=\"unbounded\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCSPACE</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n      </ids:applicability>\n      <ids:requirements>\n        <ids:classification cardinality=\"required\">\n          <ids:system>\n            <ids:simpleValue>CCI</ids:simpleValue>\n          </ids:system>\n        </ids:classification>\n        <ids:attribute cardinality=\"required\" instructions=\"kód miestnosti podlažie.poradie, napr. 02.015; zhodný s číslom na dverách a v protokole zamerania\">\n          <ids:name>\n            <ids:simpleValue>Name</ids:simpleValue>\n          </ids:name>\n          <ids:value>\n            <xs:restriction base=\"xs:string\">\n              <xs:pattern value=\"[0-9]{2}\\.[0-9]{3}\" />\n            </xs:restriction>\n          </ids:value>\n        </ids:attribute>\n        <ids:attribute cardinality=\"required\" instructions=\"názov miestnosti podľa užívania (Kancelária, Zasadačka, WC muži …)\">\n          <ids:name>\n            <ids:simpleValue>LongName</ids:simpleValue>\n          </ids:name>\n        </ids:attribute>\n        <ids:attribute cardinality=\"required\">\n          <ids:name>\n            <ids:simpleValue>PredefinedType</ids:simpleValue>\n          </ids:name>\n          <ids:value>\n            <xs:restriction base=\"xs:string\">\n              <xs:enumeration value=\"INTERNAL\" />\n              <xs:enumeration value=\"EXTERNAL\" />\n              <xs:enumeration value=\"PARKING\" />\n            </xs:restriction>\n          </ids:value>\n        </ids:attribute>\n        <ids:property dataType=\"IFCAREAMEASURE\" uri=\"https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossFloorArea\" cardinality=\"required\" instructions=\"vypočítať z obrysu IfcSpace podľa DEF-plocha-hruba\">\n          <ids:propertySet>\n            <ids:simpleValue>Qto_SpaceBaseQuantities</ids:simpleValue>\n          </ids:propertySet>\n          <ids:baseName>\n            <ids:simpleValue>GrossFloorArea</ids:simpleValue>\n          </ids:baseName>\n        </ids:property>\n        <ids:property dataType=\"IFCAREAMEASURE\" uri=\"https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/NetFloorArea\" cardinality=\"required\" instructions=\"vypočítať z obrysu IfcSpace podľa DEF-plocha-cista (bez stĺpov a vstavaných konštrukcií vnútri priestoru)\">\n          <ids:propertySet>\n            <ids:simpleValue>Qto_SpaceBaseQuantities</ids:simpleValue>\n          </ids:propertySet>\n          <ids:baseName>\n            <ids:simpleValue>NetFloorArea</ids:simpleValue>\n          </ids:baseName>\n        </ids:property>\n        <ids:property dataType=\"IFCLENGTHMEASURE\" uri=\"https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/Height\" cardinality=\"required\" instructions=\"svetlá výška od čistej podlahy po podhľad/strop\">\n          <ids:propertySet>\n            <ids:simpleValue>Qto_SpaceBaseQuantities</ids:simpleValue>\n          </ids:propertySet>\n          <ids:baseName>\n            <ids:simpleValue>Height</ids:simpleValue>\n          </ids:baseName>\n        </ids:property>\n        <ids:property dataType=\"IFCBOOLEAN\" uri=\"https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/IsExternal\" cardinality=\"optional\">\n          <ids:propertySet>\n            <ids:simpleValue>Pset_SpaceCommon</ids:simpleValue>\n          </ids:propertySet>\n          <ids:baseName>\n            <ids:simpleValue>IsExternal</ids:simpleValue>\n          </ids:baseName>\n        </ids:property>\n      </ids:requirements>\n    </ids:specification>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Podlažie\" identifier=\"IU-O-storey\" description=\"Podlažie je kontajner priestorov a nosič výškovej úrovne; bez neho nie je členenie priestor → podlažie overiteľné (UC-0101 T2; STD-CL-01).\" instructions=\"Jedno IfcBuildingStorey na každé podlažie vrátane podzemných a technických; Elevation voči ±0,000 objektu podľa STD-FED-01; medzipodlažia neriešiť ako samostatné podlažie, ale ako priestor s výškovým odsadením.\">\n      <ids:applicability minOccurs=\"1\" maxOccurs=\"unbounded\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCBUILDINGSTOREY</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n      </ids:applicability>\n      <ids:requirements>\n        <ids:attribute cardinality=\"required\" instructions=\"1.NP, 2.NP … 1.PP; zhodné s označením v protokole zamerania a v evakuačných plánoch\">\n          <ids:name>\n            <ids:simpleValue>Name</ids:simpleValue>\n          </ids:name>\n          <ids:value>\n            <xs:restriction base=\"xs:string\">\n              <xs:pattern value=\"[0-9]{1,2}\\.(NP|PP)\" />\n            </xs:restriction>\n          </ids:value>\n        </ids:attribute>\n        <ids:attribute cardinality=\"optional\" instructions=\"prevádzkový názov (Prízemie, Suterén, Strojovňa)\">\n          <ids:name>\n            <ids:simpleValue>LongName</ids:simpleValue>\n          </ids:name>\n        </ids:attribute>\n        <ids:attribute cardinality=\"required\" instructions=\"výška čistej podlahy voči ±0,000 v metroch; pri pasportizácii je tento model masterom zoznamu podlaží (STD-FED-02 naň odkazuje, ostatné DiMS sa overujú voči nemu)\">\n          <ids:name>\n            <ids:simpleValue>Elevation</ids:simpleValue>\n          </ids:name>\n        </ids:attribute>\n        <ids:property dataType=\"IFCLOGICAL\" uri=\"https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/AboveGround\" cardinality=\"optional\" instructions=\"TRUE pre NP, FALSE pre PP\">\n          <ids:propertySet>\n            <ids:simpleValue>Pset_BuildingStoreyCommon</ids:simpleValue>\n          </ids:propertySet>\n          <ids:baseName>\n            <ids:simpleValue>AboveGround</ids:simpleValue>\n          </ids:baseName>\n        </ids:property>\n        <ids:property dataType=\"IFCAREAMEASURE\" uri=\"https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossFloorArea\" cardinality=\"optional\">\n          <ids:propertySet>\n            <ids:simpleValue>Qto_BuildingStoreyBaseQuantities</ids:simpleValue>\n          </ids:propertySet>\n          <ids:baseName>\n            <ids:simpleValue>GrossFloorArea</ids:simpleValue>\n          </ids:baseName>\n        </ids:property>\n      </ids:requirements>\n    </ids:specification>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Zóna (nájomná jednotka / spoločný priestor)\" identifier=\"IU-O-zone\" description=\"Zóna zoskupuje miestnosti do nájomných jednotiek a spoločných priestorov — jednotka, na ktorú sa viaže zmluva a rozúčtovanie (GOAL-A-01; UC-0101 T4; vstup UC-0201).\" instructions=\"Každý IfcSpace s PredefinedType INTERNAL patrí práve do jednej zóny typu NajomnaJednotka alebo SpolocnyPriestor (STD-CL-04); zóna môže prechádzať podlažiami; členstvo cez IfcRelAssignsToGroup. Prenajímateľná plocha jednotky NIE JE súčasťou tohto UC — odvodí ju UC-0201 ako vlastnú vlastnosť ([[PROP-RentableArea]]).\">\n      <ids:applicability minOccurs=\"1\" maxOccurs=\"unbounded\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCZONE</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n        <ids:attribute>\n          <ids:name>\n            <ids:simpleValue>ObjectType</ids:simpleValue>\n          </ids:name>\n        </ids:attribute>\n      </ids:applicability>\n      <ids:requirements>\n        <ids:attribute cardinality=\"required\" instructions=\"NJ-001 …; stabilné počas života budovy; väzba jednotka ↔ nájomca/zmluva žije mimo modelu, model nesie iba kľúč\">\n          <ids:name>\n            <ids:simpleValue>Name</ids:simpleValue>\n          </ids:name>\n          <ids:value>\n            <xs:restriction base=\"xs:string\">\n              <xs:pattern value=\"(NJ|SP|TP)-[0-9]{3}\" />\n            </xs:restriction>\n          </ids:value>\n        </ids:attribute>\n        <ids:attribute cardinality=\"required\" instructions=\"stály popisný názov (Jednotka 2. NP východ, Vstupná hala); NIE názov nájomcu – nájomca má nositeľa v registri nájmov (UC-0201), do modelu sa neopisuje\">\n          <ids:name>\n            <ids:simpleValue>LongName</ids:simpleValue>\n          </ids:name>\n        </ids:attribute>\n      </ids:requirements>\n    </ids:specification>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Priestor patrí do podlažia\" identifier=\"STD-CL-01\" description=\"Každý IfcSpace je agregovaný priamo v IfcBuildingStorey — nie v IfcBuilding ani v inom IfcSpace. Priestory prechádzajúce podlažiami (schodisko, átrium) sa delia po podlažiach.\" instructions=\"v autorskom nástroji priradiť každú miestnosť k podlažiu; neexportovať priestory mimo podlažia\">\n      <ids:applicability minOccurs=\"0\" maxOccurs=\"unbounded\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCSPACE</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n      </ids:applicability>\n      <ids:requirements>\n        <ids:partOf cardinality=\"required\" relation=\"IFCRELAGGREGATES\">\n          <ids:entity>\n            <ids:name>\n              <ids:simpleValue>IFCBUILDINGSTOREY</ids:simpleValue>\n            </ids:name>\n          </ids:entity>\n        </ids:partOf>\n      </ids:requirements>\n    </ids:specification>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Hierarchia site – budova – podlažie\" identifier=\"STD-CL-03\" description=\"V každom DiMS je práve jeden IfcSite a jeden IfcBuilding na stavebný objekt; každé IfcBuildingStorey je agregované v IfcBuilding. Rovnaké GUID IfcSite/IfcBuilding/IfcBuildingStorey naprieč DiMS rieši STD-FED-03 (federácia).\" instructions=\"nevytvárať pomocné budovy ani podlažia pre pracovné účely v odovzdávanom súbore\">\n      <ids:applicability minOccurs=\"0\" maxOccurs=\"unbounded\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCBUILDINGSTOREY</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n      </ids:applicability>\n      <ids:requirements>\n        <ids:partOf cardinality=\"required\" relation=\"IFCRELAGGREGATES\">\n          <ids:entity>\n            <ids:name>\n              <ids:simpleValue>IFCBUILDING</ids:simpleValue>\n            </ids:name>\n          </ids:entity>\n        </ids:partOf>\n      </ids:requirements>\n    </ids:specification>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Vnútorný priestor je členom zóny\" identifier=\"STD-CL-04\" description=\"Každý vnútorný priestor je členom aspoň jednej zóny typu NajomnaJednotka alebo SpolocnyPriestor; technické priestory zóny TechnickyPriestor. Priestor nesmie byť členom dvoch priestorových zón súčasne.\" instructions=\"zóny vytvárať ako IfcZone s ObjectType podľa STD-klasifikacia; priestor priradiť k zóne v autorskom nástroji\">\n      <ids:applicability minOccurs=\"0\" maxOccurs=\"unbounded\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCSPACE</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n        <ids:attribute>\n          <ids:name>\n            <ids:simpleValue>PredefinedType</ids:simpleValue>\n          </ids:name>\n          <ids:value>\n            <ids:simpleValue>INTERNAL</ids:simpleValue>\n          </ids:value>\n        </ids:attribute>\n      </ids:applicability>\n      <ids:requirements>\n        <ids:partOf cardinality=\"required\" relation=\"IFCRELASSIGNSTOGROUP\">\n          <ids:entity>\n            <ids:name>\n              <ids:simpleValue>IFCZONE</ids:simpleValue>\n            </ids:name>\n          </ids:entity>\n        </ids:partOf>\n      </ids:requirements>\n    </ids:specification>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Zákaz IfcBuildingElementProxy\" identifier=\"STD-CL-05\" description=\"IfcBuildingElementProxy je zakázaný vo všetkých DiMS; každý prvok má konkrétnu IFC entitu. Ďalšie zákazy per DiMS (napr. IfcDistributionElement v ARCH) sú v [[STD-federacia]].\" instructions=\"pred exportom mapovať kategórie na konkrétne IFC entity\">\n      <ids:applicability minOccurs=\"0\" maxOccurs=\"0\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCBUILDINGELEMENTPROXY</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n      </ids:applicability>\n    </ids:specification>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Zóna má typ (ObjectType zo slovníka)\" identifier=\"STD-CL-06\" description=\"Každá IfcZone nesie ObjectType zo slovníka typov zón (STD-klasifikacia). IU-O, ktoré filtrujú zóny podľa ObjectType (IU-O-zone, zóny TZB), sa spoliehajú na toto pravidlo.\" instructions=\"ObjectType nastaviť pri založení zóny; nové typy pridávať do slovníka, nie ad hoc\">\n      <ids:applicability minOccurs=\"0\" maxOccurs=\"unbounded\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCZONE</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n      </ids:applicability>\n      <ids:requirements>\n        <ids:attribute cardinality=\"required\">\n          <ids:name>\n            <ids:simpleValue>ObjectType</ids:simpleValue>\n          </ids:name>\n        </ids:attribute>\n      </ids:requirements>\n    </ids:specification>\n  </ids:specifications>\n</ids:ids>\n",
+   "specs": [
+    "IU-O-space (IU-O, IfcSpace)",
+    "IU-O-storey (IU-O, IfcBuildingStorey)",
+    "IU-O-zone (IU-O, IfcZone)",
+    "STD-CL-01 (STD, vždy)",
+    "STD-CL-03 (STD, vždy)",
+    "STD-CL-04 (STD, zapnuté v ER-0101)",
+    "STD-CL-05 (STD, vždy (bez ohľadu na entity poskytovateľa))",
+    "STD-CL-06 (STD, vždy)"
+   ],
+   "objekty": [
+    "IU-O-space",
+    "IU-O-storey",
+    "IU-O-zone"
+   ],
+   "skipped": [
+    "IU-C-arch-model: kontajner — IDS neopisuje kontajnery",
+    "IU-C-protokol-zamerania: kontajner — IDS neopisuje kontajnery",
+    "IU-O-space.dokumentacia[0] (IU-C-protokol-zamerania): overenie manual — mimo IDS",
+    "IU-O-space.geometria: overenie manual/clash-detection — mimo IDS",
+    "IU-O-storey.geometria: overenie manual/clash-detection — mimo IDS",
+    "IU-O-zone.geometria: overenie manual/clash-detection — mimo IDS",
+    "STD-CL-01.postup: »IDS overuje z pohľadu dieťaťa; podlažie bez priestorov = man…« — manuálna časť, mimo IDS",
+    "STD-CL-03.postup: »počet inštancií IfcSite a IfcBuilding = 1 – v IDS 1.0 nevyja…« — manuálna časť, mimo IDS",
+    "STD-CL-04.postup: »IDS overí členstvo v nejakej IfcZone; typ zóny (ObjectType) …« — manuálna časť, mimo IDS"
+   ],
+   "missing": [
+    [
+     "ACT-poverena/ARCH.email",
+     "author",
+     "IDS info/author vyžaduje e-mail (XSD pattern); ACT nemá e-mail → author vynechaný, poskytovateľ je v description"
+    ],
+    [
+     "IU-O-space.objekt.uri",
+     "uri",
+     "entity facet v IDS 1.0 nemá @uri — bSDD URI entity sa stráca"
+    ],
+    [
+     "IU-O-space.klasifikacia[0].pravidlo",
+     "slovnik",
+     "`STD-klasifikacia#CCI-priestory` — poznámka neexistuje; vzor kódu CCI nedostupný"
+    ],
+    [
+     "IU-O-space.alfanumerika[Name].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[Name].rola",
+     "bez-nasledku",
+     "`rola: identifikacia` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[Name]",
+     "vzor",
+     "regex `^[0-9]{2}\\.[0-9]{3}$` má kotvy ^…$; XSD pattern ich nepozná (odstránené → `[0-9]{2}\\.[0-9]{3}`)"
+    ],
+    [
+     "IU-O-space.alfanumerika[LongName].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[LongName].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[PredefinedType].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[PredefinedType].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[PredefinedType]",
+     "sporne",
+     "PredefinedType ako požiadavka (výčet) popri prázdnom `objekt.predefined_type` — IDS má predefinedType aj v entity facete; dve miesta pre tú istú vec"
+    ],
+    [
+     "IU-O-space.alfanumerika[GrossFloorArea].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[GrossFloorArea].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[GrossFloorArea].povaha",
+     "bez-nasledku",
+     "`povaha: informacny` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[GrossFloorArea].tolerancia",
+     "bez-nasledku",
+     "`tolerancia: 0.5 %` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[GrossFloorArea].dolozene_v",
+     "bez-nasledku",
+     "`dolozene_v: [[IU-C-protokol-zamerania]]` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[GrossFloorArea].definicia_ref",
+     "bez-nasledku",
+     "`definicia_ref: [[DEF-plocha-hruba]]` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[NetFloorArea].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[NetFloorArea].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[NetFloorArea].povaha",
+     "bez-nasledku",
+     "`povaha: informacny` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[NetFloorArea].tolerancia",
+     "bez-nasledku",
+     "`tolerancia: 0.5 %` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[NetFloorArea].dolozene_v",
+     "bez-nasledku",
+     "`dolozene_v: [[IU-C-protokol-zamerania]]` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[NetFloorArea].definicia_ref",
+     "bez-nasledku",
+     "`definicia_ref: [[DEF-plocha-cista]]` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[Height].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[Height].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[Height].povaha",
+     "bez-nasledku",
+     "`povaha: technicky` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[IsExternal].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[IsExternal].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.objekt.uri",
+     "uri",
+     "entity facet v IDS 1.0 nemá @uri — bSDD URI entity sa stráca"
+    ],
+    [
+     "IU-O-storey.alfanumerika[Name].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[Name].rola",
+     "bez-nasledku",
+     "`rola: identifikacia` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[Name]",
+     "vzor",
+     "regex `^[0-9]{1,2}\\.(NP|PP)$` má kotvy ^…$; XSD pattern ich nepozná (odstránené → `[0-9]{1,2}\\.(NP|PP)`)"
+    ],
+    [
+     "IU-O-storey.alfanumerika[LongName].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[LongName].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[Elevation].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[Elevation].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[Elevation].povaha",
+     "bez-nasledku",
+     "`povaha: technicky` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[AboveGround].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[AboveGround].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[GrossFloorArea].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[GrossFloorArea].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[GrossFloorArea].povaha",
+     "bez-nasledku",
+     "`povaha: informacny` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[GrossFloorArea].definicia_ref",
+     "bez-nasledku",
+     "`definicia_ref: [[DEF-plocha-hruba]]` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-zone.objekt.uri",
+     "uri",
+     "entity facet v IDS 1.0 nemá @uri — bSDD URI entity sa stráca"
+    ],
+    [
+     "IU-O-zone.filter[0].hodnoty_ref",
+     "hodnoty_ref",
+     "slovník `STD-klasifikacia#typy-zon-priestorove` — poznámka STD-klasifikacia v knižnici neexistuje"
+    ],
+    [
+     "IU-O-zone.filter[0]",
+     "degradovane",
+     "bez slovníka je facet len »atribút existuje« (žiadne value) — filter nezužuje applicability"
+    ],
+    [
+     "IU-O-zone.alfanumerika[Name].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-zone.alfanumerika[Name].rola",
+     "bez-nasledku",
+     "`rola: identifikacia` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-zone.alfanumerika[Name]",
+     "vzor",
+     "regex `^(NJ|SP|TP)-[0-9]{3}$` má kotvy ^…$; XSD pattern ich nepozná (odstránené → `(NJ|SP|TP)-[0-9]{3}`)"
+    ],
+    [
+     "IU-O-zone.alfanumerika[LongName].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-zone.alfanumerika[LongName].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "STD-CL-01.poskytovatel",
+     "poskytovatel",
+     "STD pravidlo nemá poskytovateľa; zaradené do IDS poskytovateľa lebo: vždy"
+    ],
+    [
+     "STD-CL-01.zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "STD-CL-02.applicability.entity",
+     "abstraktna-entita",
+     "['IFCELEMENT'] je abstraktná — IDS 1.0 nepozná dedičnosť, generátor musí rozvinúť podtypy z IFC 4.3 schémy (SCHEMA V5); prototyp bez IfcOpenShell → pravidlo VYNECHANÉ"
+    ],
+    [
+     "STD-CL-03.poskytovatel",
+     "poskytovatel",
+     "STD pravidlo nemá poskytovateľa; zaradené do IDS poskytovateľa lebo: vždy"
+    ],
+    [
+     "STD-CL-03.zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "STD-CL-04.poskytovatel",
+     "poskytovatel",
+     "STD pravidlo nemá poskytovateľa; zaradené do IDS poskytovateľa lebo: zapnuté v ER-0101"
+    ],
+    [
+     "STD-CL-04.zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "STD-CL-05.poskytovatel",
+     "poskytovatel",
+     "STD pravidlo nemá poskytovateľa; zaradené do IDS poskytovateľa lebo: vždy (bez ohľadu na entity poskytovateľa)"
+    ],
+    [
+     "STD-CL-05.zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "STD-CL-06.poskytovatel",
+     "poskytovatel",
+     "STD pravidlo nemá poskytovateľa; zaradené do IDS poskytovateľa lebo: vždy"
+    ],
+    [
+     "STD-CL-06.zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "STD-CL-06.requirements[0].hodnoty_ref",
+     "hodnoty_ref",
+     "slovník `STD-klasifikacia#typy-zon` — poznámka STD-klasifikacia v knižnici neexistuje"
+    ],
+    [
+     "STD-CL-06.requirements[0]",
+     "degradovane",
+     "bez slovníka je facet len »atribút existuje« (žiadne value) — požiadavka neoveruje hodnotu"
+    ]
+   ],
+   "applicability": {
+    "entity": 8,
+    "attribute": 2
+   },
+   "requirements": {
+    "classification": 1,
+    "attribute": 9,
+    "property": 6,
+    "partOf": 3
+   }
+  },
+  {
+   "er": "ER-0101",
+   "poskytovatel": "ACT-poverena/ARCH",
+   "datum": "2026-11-02",
+   "xml": "<?xml version='1.0' encoding='utf-8'?>\n<ids:ids xmlns:ids=\"http://standards.buildingsmart.org/IDS\" xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd\">\n  <ids:info>\n    <ids:title>Priestorový model a protokol zamerania – odovzdanie</ids:title>\n    <ids:copyright>Assetin (CC-BY-4.0)</ids:copyright>\n    <ids:version>0.1</ids:version>\n    <ids:description>Poskytovateľ: Pracovná skupina architektúra (ACT-poverena/ARCH); príjemca: ACT-poverujuca</ids:description>\n    <ids:date>2026-11-02</ids:date>\n    <ids:purpose>Priestorová pasportizácia</ids:purpose>\n    <ids:milestone>Odovzdanie priestorového modelu a protokolu zamerania</ids:milestone>\n  </ids:info>\n  <ids:specifications>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Priestor (miestnosť)\" identifier=\"IU-O-space\" description=\"Miestnosť je nositeľom plôch, z ktorých sa odvodzuje nájomná a prevádzková evidencia (GOAL-A-01; UC-0101 T2, T3).\" instructions=\"Každá miestnosť vrátane technických a komunikačných ako samostatný IfcSpace; obrys po líci omietky podľa DEF; jeden IfcSpace = jedna miestnosť, bez zlučovania.\">\n      <ids:applicability minOccurs=\"1\" maxOccurs=\"unbounded\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCSPACE</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n      </ids:applicability>\n      <ids:requirements>\n        <ids:classification cardinality=\"required\">\n          <ids:system>\n            <ids:simpleValue>CCI</ids:simpleValue>\n          </ids:system>\n        </ids:classification>\n        <ids:attribute cardinality=\"required\" instructions=\"kód miestnosti podlažie.poradie, napr. 02.015; zhodný s číslom na dverách a v protokole zamerania\">\n          <ids:name>\n            <ids:simpleValue>Name</ids:simpleValue>\n          </ids:name>\n          <ids:value>\n            <xs:restriction base=\"xs:string\">\n              <xs:pattern value=\"[0-9]{2}\\.[0-9]{3}\" />\n            </xs:restriction>\n          </ids:value>\n        </ids:attribute>\n        <ids:attribute cardinality=\"required\" instructions=\"názov miestnosti podľa užívania (Kancelária, Zasadačka, WC muži …)\">\n          <ids:name>\n            <ids:simpleValue>LongName</ids:simpleValue>\n          </ids:name>\n        </ids:attribute>\n        <ids:attribute cardinality=\"required\">\n          <ids:name>\n            <ids:simpleValue>PredefinedType</ids:simpleValue>\n          </ids:name>\n          <ids:value>\n            <xs:restriction base=\"xs:string\">\n              <xs:enumeration value=\"INTERNAL\" />\n              <xs:enumeration value=\"EXTERNAL\" />\n              <xs:enumeration value=\"PARKING\" />\n            </xs:restriction>\n          </ids:value>\n        </ids:attribute>\n        <ids:property dataType=\"IFCAREAMEASURE\" uri=\"https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossFloorArea\" cardinality=\"required\" instructions=\"vypočítať z obrysu IfcSpace podľa DEF-plocha-hruba\">\n          <ids:propertySet>\n            <ids:simpleValue>Qto_SpaceBaseQuantities</ids:simpleValue>\n          </ids:propertySet>\n          <ids:baseName>\n            <ids:simpleValue>GrossFloorArea</ids:simpleValue>\n          </ids:baseName>\n        </ids:property>\n        <ids:property dataType=\"IFCAREAMEASURE\" uri=\"https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/NetFloorArea\" cardinality=\"required\" instructions=\"vypočítať z obrysu IfcSpace podľa DEF-plocha-cista (bez stĺpov a vstavaných konštrukcií vnútri priestoru)\">\n          <ids:propertySet>\n            <ids:simpleValue>Qto_SpaceBaseQuantities</ids:simpleValue>\n          </ids:propertySet>\n          <ids:baseName>\n            <ids:simpleValue>NetFloorArea</ids:simpleValue>\n          </ids:baseName>\n        </ids:property>\n        <ids:property dataType=\"IFCLENGTHMEASURE\" uri=\"https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/Height\" cardinality=\"required\" instructions=\"svetlá výška od čistej podlahy po podhľad/strop\">\n          <ids:propertySet>\n            <ids:simpleValue>Qto_SpaceBaseQuantities</ids:simpleValue>\n          </ids:propertySet>\n          <ids:baseName>\n            <ids:simpleValue>Height</ids:simpleValue>\n          </ids:baseName>\n        </ids:property>\n        <ids:property dataType=\"IFCBOOLEAN\" uri=\"https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/IsExternal\" cardinality=\"optional\">\n          <ids:propertySet>\n            <ids:simpleValue>Pset_SpaceCommon</ids:simpleValue>\n          </ids:propertySet>\n          <ids:baseName>\n            <ids:simpleValue>IsExternal</ids:simpleValue>\n          </ids:baseName>\n        </ids:property>\n      </ids:requirements>\n    </ids:specification>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Podlažie\" identifier=\"IU-O-storey\" description=\"Podlažie je kontajner priestorov a nosič výškovej úrovne; bez neho nie je členenie priestor → podlažie overiteľné (UC-0101 T2; STD-CL-01).\" instructions=\"Jedno IfcBuildingStorey na každé podlažie vrátane podzemných a technických; Elevation voči ±0,000 objektu podľa STD-FED-01; medzipodlažia neriešiť ako samostatné podlažie, ale ako priestor s výškovým odsadením.\">\n      <ids:applicability minOccurs=\"1\" maxOccurs=\"unbounded\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCBUILDINGSTOREY</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n      </ids:applicability>\n      <ids:requirements>\n        <ids:attribute cardinality=\"required\" instructions=\"1.NP, 2.NP … 1.PP; zhodné s označením v protokole zamerania a v evakuačných plánoch\">\n          <ids:name>\n            <ids:simpleValue>Name</ids:simpleValue>\n          </ids:name>\n          <ids:value>\n            <xs:restriction base=\"xs:string\">\n              <xs:pattern value=\"[0-9]{1,2}\\.(NP|PP)\" />\n            </xs:restriction>\n          </ids:value>\n        </ids:attribute>\n        <ids:attribute cardinality=\"optional\" instructions=\"prevádzkový názov (Prízemie, Suterén, Strojovňa)\">\n          <ids:name>\n            <ids:simpleValue>LongName</ids:simpleValue>\n          </ids:name>\n        </ids:attribute>\n        <ids:attribute cardinality=\"required\" instructions=\"výška čistej podlahy voči ±0,000 v metroch; pri pasportizácii je tento model masterom zoznamu podlaží (STD-FED-02 naň odkazuje, ostatné DiMS sa overujú voči nemu)\">\n          <ids:name>\n            <ids:simpleValue>Elevation</ids:simpleValue>\n          </ids:name>\n        </ids:attribute>\n        <ids:property dataType=\"IFCLOGICAL\" uri=\"https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/AboveGround\" cardinality=\"optional\" instructions=\"TRUE pre NP, FALSE pre PP\">\n          <ids:propertySet>\n            <ids:simpleValue>Pset_BuildingStoreyCommon</ids:simpleValue>\n          </ids:propertySet>\n          <ids:baseName>\n            <ids:simpleValue>AboveGround</ids:simpleValue>\n          </ids:baseName>\n        </ids:property>\n        <ids:property dataType=\"IFCAREAMEASURE\" uri=\"https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossFloorArea\" cardinality=\"optional\">\n          <ids:propertySet>\n            <ids:simpleValue>Qto_BuildingStoreyBaseQuantities</ids:simpleValue>\n          </ids:propertySet>\n          <ids:baseName>\n            <ids:simpleValue>GrossFloorArea</ids:simpleValue>\n          </ids:baseName>\n        </ids:property>\n      </ids:requirements>\n    </ids:specification>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Zóna (nájomná jednotka / spoločný priestor)\" identifier=\"IU-O-zone\" description=\"Zóna zoskupuje miestnosti do nájomných jednotiek a spoločných priestorov — jednotka, na ktorú sa viaže zmluva a rozúčtovanie (GOAL-A-01; UC-0101 T4; vstup UC-0201).\" instructions=\"Každý IfcSpace s PredefinedType INTERNAL patrí práve do jednej zóny typu NajomnaJednotka alebo SpolocnyPriestor (STD-CL-04); zóna môže prechádzať podlažiami; členstvo cez IfcRelAssignsToGroup. Prenajímateľná plocha jednotky NIE JE súčasťou tohto UC — odvodí ju UC-0201 ako vlastnú vlastnosť ([[PROP-RentableArea]]).\">\n      <ids:applicability minOccurs=\"1\" maxOccurs=\"unbounded\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCZONE</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n        <ids:attribute>\n          <ids:name>\n            <ids:simpleValue>ObjectType</ids:simpleValue>\n          </ids:name>\n        </ids:attribute>\n      </ids:applicability>\n      <ids:requirements>\n        <ids:attribute cardinality=\"required\" instructions=\"NJ-001 …; stabilné počas života budovy; väzba jednotka ↔ nájomca/zmluva žije mimo modelu, model nesie iba kľúč\">\n          <ids:name>\n            <ids:simpleValue>Name</ids:simpleValue>\n          </ids:name>\n          <ids:value>\n            <xs:restriction base=\"xs:string\">\n              <xs:pattern value=\"(NJ|SP|TP)-[0-9]{3}\" />\n            </xs:restriction>\n          </ids:value>\n        </ids:attribute>\n        <ids:attribute cardinality=\"required\" instructions=\"stály popisný názov (Jednotka 2. NP východ, Vstupná hala); NIE názov nájomcu – nájomca má nositeľa v registri nájmov (UC-0201), do modelu sa neopisuje\">\n          <ids:name>\n            <ids:simpleValue>LongName</ids:simpleValue>\n          </ids:name>\n        </ids:attribute>\n      </ids:requirements>\n    </ids:specification>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Priestor patrí do podlažia\" identifier=\"STD-CL-01\" description=\"Každý IfcSpace je agregovaný priamo v IfcBuildingStorey — nie v IfcBuilding ani v inom IfcSpace. Priestory prechádzajúce podlažiami (schodisko, átrium) sa delia po podlažiach.\" instructions=\"v autorskom nástroji priradiť každú miestnosť k podlažiu; neexportovať priestory mimo podlažia\">\n      <ids:applicability minOccurs=\"0\" maxOccurs=\"unbounded\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCSPACE</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n      </ids:applicability>\n      <ids:requirements>\n        <ids:partOf cardinality=\"required\" relation=\"IFCRELAGGREGATES\">\n          <ids:entity>\n            <ids:name>\n              <ids:simpleValue>IFCBUILDINGSTOREY</ids:simpleValue>\n            </ids:name>\n          </ids:entity>\n        </ids:partOf>\n      </ids:requirements>\n    </ids:specification>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Hierarchia site – budova – podlažie\" identifier=\"STD-CL-03\" description=\"V každom DiMS je práve jeden IfcSite a jeden IfcBuilding na stavebný objekt; každé IfcBuildingStorey je agregované v IfcBuilding. Rovnaké GUID IfcSite/IfcBuilding/IfcBuildingStorey naprieč DiMS rieši STD-FED-03 (federácia).\" instructions=\"nevytvárať pomocné budovy ani podlažia pre pracovné účely v odovzdávanom súbore\">\n      <ids:applicability minOccurs=\"0\" maxOccurs=\"unbounded\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCBUILDINGSTOREY</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n      </ids:applicability>\n      <ids:requirements>\n        <ids:partOf cardinality=\"required\" relation=\"IFCRELAGGREGATES\">\n          <ids:entity>\n            <ids:name>\n              <ids:simpleValue>IFCBUILDING</ids:simpleValue>\n            </ids:name>\n          </ids:entity>\n        </ids:partOf>\n      </ids:requirements>\n    </ids:specification>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Vnútorný priestor je členom zóny\" identifier=\"STD-CL-04\" description=\"Každý vnútorný priestor je členom aspoň jednej zóny typu NajomnaJednotka alebo SpolocnyPriestor; technické priestory zóny TechnickyPriestor. Priestor nesmie byť členom dvoch priestorových zón súčasne.\" instructions=\"zóny vytvárať ako IfcZone s ObjectType podľa STD-klasifikacia; priestor priradiť k zóne v autorskom nástroji\">\n      <ids:applicability minOccurs=\"0\" maxOccurs=\"unbounded\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCSPACE</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n        <ids:attribute>\n          <ids:name>\n            <ids:simpleValue>PredefinedType</ids:simpleValue>\n          </ids:name>\n          <ids:value>\n            <ids:simpleValue>INTERNAL</ids:simpleValue>\n          </ids:value>\n        </ids:attribute>\n      </ids:applicability>\n      <ids:requirements>\n        <ids:partOf cardinality=\"required\" relation=\"IFCRELASSIGNSTOGROUP\">\n          <ids:entity>\n            <ids:name>\n              <ids:simpleValue>IFCZONE</ids:simpleValue>\n            </ids:name>\n          </ids:entity>\n        </ids:partOf>\n      </ids:requirements>\n    </ids:specification>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Zákaz IfcBuildingElementProxy\" identifier=\"STD-CL-05\" description=\"IfcBuildingElementProxy je zakázaný vo všetkých DiMS; každý prvok má konkrétnu IFC entitu. Ďalšie zákazy per DiMS (napr. IfcDistributionElement v ARCH) sú v [[STD-federacia]].\" instructions=\"pred exportom mapovať kategórie na konkrétne IFC entity\">\n      <ids:applicability minOccurs=\"0\" maxOccurs=\"0\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCBUILDINGELEMENTPROXY</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n      </ids:applicability>\n    </ids:specification>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Zóna má typ (ObjectType zo slovníka)\" identifier=\"STD-CL-06\" description=\"Každá IfcZone nesie ObjectType zo slovníka typov zón (STD-klasifikacia). IU-O, ktoré filtrujú zóny podľa ObjectType (IU-O-zone, zóny TZB), sa spoliehajú na toto pravidlo.\" instructions=\"ObjectType nastaviť pri založení zóny; nové typy pridávať do slovníka, nie ad hoc\">\n      <ids:applicability minOccurs=\"0\" maxOccurs=\"unbounded\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCZONE</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n      </ids:applicability>\n      <ids:requirements>\n        <ids:attribute cardinality=\"required\">\n          <ids:name>\n            <ids:simpleValue>ObjectType</ids:simpleValue>\n          </ids:name>\n        </ids:attribute>\n      </ids:requirements>\n    </ids:specification>\n  </ids:specifications>\n</ids:ids>\n",
+   "specs": [
+    "IU-O-space (IU-O, IfcSpace)",
+    "IU-O-storey (IU-O, IfcBuildingStorey)",
+    "IU-O-zone (IU-O, IfcZone)",
+    "STD-CL-01 (STD, vždy)",
+    "STD-CL-03 (STD, vždy)",
+    "STD-CL-04 (STD, zapnuté v ER-0101)",
+    "STD-CL-05 (STD, vždy (bez ohľadu na entity poskytovateľa))",
+    "STD-CL-06 (STD, vždy)"
+   ],
+   "objekty": [
+    "IU-O-space",
+    "IU-O-storey",
+    "IU-O-zone"
+   ],
+   "skipped": [
+    "IU-C-arch-model: kontajner — IDS neopisuje kontajnery",
+    "IU-C-protokol-zamerania: kontajner — IDS neopisuje kontajnery",
+    "IU-O-space.dokumentacia[0] (IU-C-protokol-zamerania): overenie manual — mimo IDS",
+    "IU-O-space.geometria: overenie manual/clash-detection — mimo IDS",
+    "IU-O-storey.geometria: overenie manual/clash-detection — mimo IDS",
+    "IU-O-zone.geometria: overenie manual/clash-detection — mimo IDS",
+    "STD-CL-01.postup: »IDS overuje z pohľadu dieťaťa; podlažie bez priestorov = man…« — manuálna časť, mimo IDS",
+    "STD-CL-03.postup: »počet inštancií IfcSite a IfcBuilding = 1 – v IDS 1.0 nevyja…« — manuálna časť, mimo IDS",
+    "STD-CL-04.postup: »IDS overí členstvo v nejakej IfcZone; typ zóny (ObjectType) …« — manuálna časť, mimo IDS"
+   ],
+   "missing": [
+    [
+     "ACT-poverena/ARCH.email",
+     "author",
+     "IDS info/author vyžaduje e-mail (XSD pattern); ACT nemá e-mail → author vynechaný, poskytovateľ je v description"
+    ],
+    [
+     "IU-O-space.objekt.uri",
+     "uri",
+     "entity facet v IDS 1.0 nemá @uri — bSDD URI entity sa stráca"
+    ],
+    [
+     "IU-O-space.klasifikacia[0].pravidlo",
+     "slovnik",
+     "`STD-klasifikacia#CCI-priestory` — poznámka neexistuje; vzor kódu CCI nedostupný"
+    ],
+    [
+     "IU-O-space.alfanumerika[Name].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[Name].rola",
+     "bez-nasledku",
+     "`rola: identifikacia` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[Name]",
+     "vzor",
+     "regex `^[0-9]{2}\\.[0-9]{3}$` má kotvy ^…$; XSD pattern ich nepozná (odstránené → `[0-9]{2}\\.[0-9]{3}`)"
+    ],
+    [
+     "IU-O-space.alfanumerika[LongName].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[LongName].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[PredefinedType].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[PredefinedType].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[PredefinedType]",
+     "sporne",
+     "PredefinedType ako požiadavka (výčet) popri prázdnom `objekt.predefined_type` — IDS má predefinedType aj v entity facete; dve miesta pre tú istú vec"
+    ],
+    [
+     "IU-O-space.alfanumerika[GrossFloorArea].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[GrossFloorArea].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[GrossFloorArea].povaha",
+     "bez-nasledku",
+     "`povaha: informacny` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[GrossFloorArea].tolerancia",
+     "bez-nasledku",
+     "`tolerancia: 0.5 %` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[GrossFloorArea].dolozene_v",
+     "bez-nasledku",
+     "`dolozene_v: [[IU-C-protokol-zamerania]]` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[GrossFloorArea].definicia_ref",
+     "bez-nasledku",
+     "`definicia_ref: [[DEF-plocha-hruba]]` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[NetFloorArea].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[NetFloorArea].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[NetFloorArea].povaha",
+     "bez-nasledku",
+     "`povaha: informacny` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[NetFloorArea].tolerancia",
+     "bez-nasledku",
+     "`tolerancia: 0.5 %` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[NetFloorArea].dolozene_v",
+     "bez-nasledku",
+     "`dolozene_v: [[IU-C-protokol-zamerania]]` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[NetFloorArea].definicia_ref",
+     "bez-nasledku",
+     "`definicia_ref: [[DEF-plocha-cista]]` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[Height].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[Height].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[Height].povaha",
+     "bez-nasledku",
+     "`povaha: technicky` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[IsExternal].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-space.alfanumerika[IsExternal].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.objekt.uri",
+     "uri",
+     "entity facet v IDS 1.0 nemá @uri — bSDD URI entity sa stráca"
+    ],
+    [
+     "IU-O-storey.alfanumerika[Name].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[Name].rola",
+     "bez-nasledku",
+     "`rola: identifikacia` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[Name]",
+     "vzor",
+     "regex `^[0-9]{1,2}\\.(NP|PP)$` má kotvy ^…$; XSD pattern ich nepozná (odstránené → `[0-9]{1,2}\\.(NP|PP)`)"
+    ],
+    [
+     "IU-O-storey.alfanumerika[LongName].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[LongName].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[Elevation].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[Elevation].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[Elevation].povaha",
+     "bez-nasledku",
+     "`povaha: technicky` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[AboveGround].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[AboveGround].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[GrossFloorArea].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[GrossFloorArea].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[GrossFloorArea].povaha",
+     "bez-nasledku",
+     "`povaha: informacny` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-storey.alfanumerika[GrossFloorArea].definicia_ref",
+     "bez-nasledku",
+     "`definicia_ref: [[DEF-plocha-hruba]]` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-zone.objekt.uri",
+     "uri",
+     "entity facet v IDS 1.0 nemá @uri — bSDD URI entity sa stráca"
+    ],
+    [
+     "IU-O-zone.filter[0].hodnoty_ref",
+     "hodnoty_ref",
+     "slovník `STD-klasifikacia#typy-zon-priestorove` — poznámka STD-klasifikacia v knižnici neexistuje"
+    ],
+    [
+     "IU-O-zone.filter[0]",
+     "degradovane",
+     "bez slovníka je facet len »atribút existuje« (žiadne value) — filter nezužuje applicability"
+    ],
+    [
+     "IU-O-zone.alfanumerika[Name].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-zone.alfanumerika[Name].rola",
+     "bez-nasledku",
+     "`rola: identifikacia` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-zone.alfanumerika[Name]",
+     "vzor",
+     "regex `^(NJ|SP|TP)-[0-9]{3}$` má kotvy ^…$; XSD pattern ich nepozná (odstránené → `(NJ|SP|TP)-[0-9]{3}`)"
+    ],
+    [
+     "IU-O-zone.alfanumerika[LongName].zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "IU-O-zone.alfanumerika[LongName].rola",
+     "bez-nasledku",
+     "`rola: obsah` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "STD-CL-01.poskytovatel",
+     "poskytovatel",
+     "STD pravidlo nemá poskytovateľa; zaradené do IDS poskytovateľa lebo: vždy"
+    ],
+    [
+     "STD-CL-01.zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "STD-CL-02.applicability.entity",
+     "abstraktna-entita",
+     "['IFCELEMENT'] je abstraktná — IDS 1.0 nepozná dedičnosť, generátor musí rozvinúť podtypy z IFC 4.3 schémy (SCHEMA V5); prototyp bez IfcOpenShell → pravidlo VYNECHANÉ"
+    ],
+    [
+     "STD-CL-03.poskytovatel",
+     "poskytovatel",
+     "STD pravidlo nemá poskytovateľa; zaradené do IDS poskytovateľa lebo: vždy"
+    ],
+    [
+     "STD-CL-03.zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "STD-CL-04.poskytovatel",
+     "poskytovatel",
+     "STD pravidlo nemá poskytovateľa; zaradené do IDS poskytovateľa lebo: zapnuté v ER-0101"
+    ],
+    [
+     "STD-CL-04.zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "STD-CL-05.poskytovatel",
+     "poskytovatel",
+     "STD pravidlo nemá poskytovateľa; zaradené do IDS poskytovateľa lebo: vždy (bez ohľadu na entity poskytovateľa)"
+    ],
+    [
+     "STD-CL-05.zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "STD-CL-06.poskytovatel",
+     "poskytovatel",
+     "STD pravidlo nemá poskytovateľa; zaradené do IDS poskytovateľa lebo: vždy"
+    ],
+    [
+     "STD-CL-06.zavaznost",
+     "bez-nasledku",
+     "`zavaznost: musi` — IDS 1.0 nemá protistranu"
+    ],
+    [
+     "STD-CL-06.requirements[0].hodnoty_ref",
+     "hodnoty_ref",
+     "slovník `STD-klasifikacia#typy-zon` — poznámka STD-klasifikacia v knižnici neexistuje"
+    ],
+    [
+     "STD-CL-06.requirements[0]",
+     "degradovane",
+     "bez slovníka je facet len »atribút existuje« (žiadne value) — požiadavka neoveruje hodnotu"
+    ]
+   ],
+   "applicability": {
+    "entity": 8,
+    "attribute": 2
+   },
+   "requirements": {
+    "classification": 1,
+    "attribute": 9,
+    "property": 6,
+    "partOf": 3
+   }
+  }
+ ],
+ "kniznica": [],
+ "chybne": [
+  {
+   "er": "ER-9001",
+   "poskytovatel": "ACT-poverena/ARCH",
+   "datum": null,
+   "xml": "<?xml version='1.0' encoding='utf-8'?>\n<ids:ids xmlns:ids=\"http://standards.buildingsmart.org/IDS\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd\">\n  <ids:info>\n    <ids:title>Chybna vymena</ids:title>\n    <ids:copyright>Test (CC-BY-4.0)</ids:copyright>\n    <ids:version>0.1</ids:version>\n    <ids:description>Poskytovateľ: ARCH (ACT-poverena/ARCH); príjemca: ACT-poverujuca</ids:description>\n    <ids:purpose>Chybny use case</ids:purpose>\n    <ids:milestone>Spustac vymeny</ids:milestone>\n  </ids:info>\n  <ids:specifications>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Zakazany objekt\" identifier=\"IU-O-9002\">\n      <ids:applicability minOccurs=\"0\" maxOccurs=\"0\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCBUILDINGELEMENTPROXY</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n      </ids:applicability>\n    </ids:specification>\n  </ids:specifications>\n</ids:ids>\n",
+   "specs": [
+    "IU-O-9002 (IU-O, IfcBuildingElementProxy)"
+   ],
+   "objekty": [
+    "IU-O-9002"
+   ],
+   "skipped": [
+    "IU-C-9001: kontajner — IDS neopisuje kontajnery",
+    "IU-O-9002.alfanumerika[Description]: overenie manual — mimo IDS",
+    "IU-O-9002.geometria: overenie manual/clash-detection — mimo IDS"
+   ],
+   "missing": [
+    [
+     "ACT-poverena/ARCH.email",
+     "author",
+     "IDS info/author vyžaduje e-mail (XSD pattern); ACT nemá e-mail → author vynechaný, poskytovateľ je v description"
+    ]
+   ],
+   "applicability": {
+    "entity": 1
+   },
+   "requirements": {}
+  },
+  {
+   "er": "ER-9001",
+   "poskytovatel": "ACT-poverena/ARCH",
+   "datum": "2026-11-02",
+   "xml": "<?xml version='1.0' encoding='utf-8'?>\n<ids:ids xmlns:ids=\"http://standards.buildingsmart.org/IDS\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd\">\n  <ids:info>\n    <ids:title>Chybna vymena</ids:title>\n    <ids:copyright>Test (CC-BY-4.0)</ids:copyright>\n    <ids:version>0.1</ids:version>\n    <ids:description>Poskytovateľ: ARCH (ACT-poverena/ARCH); príjemca: ACT-poverujuca</ids:description>\n    <ids:date>2026-11-02</ids:date>\n    <ids:purpose>Chybny use case</ids:purpose>\n    <ids:milestone>Spustac vymeny</ids:milestone>\n  </ids:info>\n  <ids:specifications>\n    <ids:specification ifcVersion=\"IFC4X3_ADD2\" name=\"Zakazany objekt\" identifier=\"IU-O-9002\">\n      <ids:applicability minOccurs=\"0\" maxOccurs=\"0\">\n        <ids:entity>\n          <ids:name>\n            <ids:simpleValue>IFCBUILDINGELEMENTPROXY</ids:simpleValue>\n          </ids:name>\n        </ids:entity>\n      </ids:applicability>\n    </ids:specification>\n  </ids:specifications>\n</ids:ids>\n",
+   "specs": [
+    "IU-O-9002 (IU-O, IfcBuildingElementProxy)"
+   ],
+   "objekty": [
+    "IU-O-9002"
+   ],
+   "skipped": [
+    "IU-C-9001: kontajner — IDS neopisuje kontajnery",
+    "IU-O-9002.alfanumerika[Description]: overenie manual — mimo IDS",
+    "IU-O-9002.geometria: overenie manual/clash-detection — mimo IDS"
+   ],
+   "missing": [
+    [
+     "ACT-poverena/ARCH.email",
+     "author",
+     "IDS info/author vyžaduje e-mail (XSD pattern); ACT nemá e-mail → author vynechaný, poskytovateľ je v description"
+    ]
+   ],
+   "applicability": {
+    "entity": 1
+   },
+   "requirements": {}
+  }
+ ]
+}

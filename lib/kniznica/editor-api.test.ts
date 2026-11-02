@@ -81,5 +81,8 @@ describe("API editora nad skladom (port assetin/server)", () => {
     expect((r.telo.dokument as Awaited<ReturnType<typeof dokument>>).registre.UC).toContain(vstup.id);
   });
 
-  it("vydaj je do kroku 6 vypnuté", () => expect(vydaj().status).toBe(403));
+  it("vydaj: brána vypnutá = 403", async () => {
+    const r = await vydaj(() => { throw new Error("nemá sa volať"); }, { zapis: true, vydanie: false }, { kod: "2026.11.2", autor: "Test" });
+    expect(r.status).toBe(403);
+  });
 });
