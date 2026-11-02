@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { MINI_SPACE_VERIFY_BYTES } from "./__fixtures__/mini-space-verify";
 import { clearEngineCache, setArchiveResolver } from "./cache";
 import type { AimRef } from "./join";
+import { verifySpacesByGuid } from "./space-verify-run";
 import { execEngineTool, type EngineDeps } from "./tools";
 import type { VerificationResultWrite, VerificationRunWrite, VerificationStore } from "../verify/types";
 
@@ -74,6 +75,12 @@ describe("ifc_measure verify=true (D-185)", () => {
       expect(saved[0].run).toMatchObject({ scope: "IfcSpace", registry_version: 3, model_revisions: { MINI: 7 }, counts: { green: 8 }, author: "test" });
       expect(saved[0].rows).toHaveLength(8);
       expect(saved[0].rows.every((x) => x.revision === 7 && x.global_id === SPACE && x.method.length > 0)).toBe(true);
+      // D-185 UI: riadok nesie vysvetlenie a bunky vzorca so zdrojovým prvkom (stĺpce z migrácie verification_inputs).
+      const hs = saved[0].rows.find((x) => x.recipe === "space.height.slabs@2")!;
+      expect(hs.explanation).toMatch(/od vrchu dosky pod/);
+      expect(hs.inputs?.expression).toBe("A - B");
+      expect(hs.inputs?.cells.map((c) => [c.key, c.value, c.global_id])).toEqual([["A", 8.8, "0minislab0above0000010"], ["B", 4.85, SLAB]]);
+      expect(hs.inputs?.file_meta).toEqual({ method_of_measurement: "BaseQuantities" });
     } finally {
       setArchiveResolver(null);
       clearEngineCache();
@@ -118,5 +125,15 @@ describe("ifc_measure verify=true (D-185)", () => {
     expect(notSpace.content).toMatch(/len miestnosti \(IfcSpace\)/);
     const withB = await run({ verify: true, a: SPACE, b: SLAB });
     expect(withB.isError).toBe(true);
+  });
+
+  it("host (D-185 UI): verifySpacesByGuid overí prvok podľa GUID alebo všetky IfcSpace modelu, iný prvok odmietne", async () => {
+    const one = await verifySpacesByGuid([SPACE], deps());
+    expect(one.verified.map((v) => v.space.globalId)).toEqual([SPACE]);
+    expect(one.used).toEqual(["MINI"]);
+    const all = await verifySpacesByGuid(null, deps());
+    expect(all.verified.map((v) => v.space.globalId).sort()).toEqual(["0minispace202brep00001", SPACE].sort());
+    await expect(verifySpacesByGuid([SLAB], deps())).rejects.toThrow(/len pre miestnosti/);
+    await expect(verifySpacesByGuid(["0missing00000000000000"], deps())).rejects.toThrow(/nie je v modeloch/);
   });
 });

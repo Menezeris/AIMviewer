@@ -28,8 +28,28 @@ export interface VerificationResultWrite {
   note: string | null;
   distinct_heights: number[] | null;
   anchors: Array<{ global_id: string; role: string; z_m?: number }>;
+  /** Ako sa recept počíta (register metód, D-185 UI); stĺpec z migrácie `verification_inputs`. */
+  explanation?: string | null;
+  /** Bunky vzorca a údaje zo súboru: `{expression?, cells, file_meta?}`; stĺpec z migrácie `verification_inputs`. */
+  inputs?: VerificationInputs | null;
+}
+
+export interface VerificationCell {
+  key: string;
+  label: string;
+  value: number;
+  unit: string;
+  global_id?: string;
+}
+
+export interface VerificationInputs {
+  expression?: string;
+  cells: VerificationCell[];
+  /** `IfcElementQuantity.MethodOfMeasurement` a `IfcPhysicalQuantity.Formula` zo súboru. */
+  file_meta?: { method_of_measurement?: string; formula?: string };
 }
 
 export interface VerificationStore {
-  saveRun(run: VerificationRunWrite, results: VerificationResultWrite[]): Promise<{ id: string }>;
+  /** `without_inputs` = DB ešte nemá stĺpce `inputs` / `explanation` (migrácia `verification_inputs` chýba), uložilo sa bez nich. */
+  saveRun(run: VerificationRunWrite, results: VerificationResultWrite[]): Promise<{ id: string; without_inputs?: boolean }>;
 }

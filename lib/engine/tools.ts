@@ -89,7 +89,9 @@ export interface EngineExecution {
   actions?: AskAction[];
 }
 
-export class InputError extends Error {}
+export class InputError extends Error {
+  override name = "InputError";
+}
 
 export function clamp(raw: unknown, min: number, max: number, dflt: number): number {
   const n = typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : dflt;
