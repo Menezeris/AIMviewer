@@ -59,7 +59,15 @@ export async function GET(req: Request) {
       });
     }
     return NextResponse.json(
-      { code: doc.code, title: doc.title, origin: doc.origin, version: row.version, sha256: row.sha256, xml: row.xml },
+      {
+        code: doc.code,
+        title: doc.title,
+        origin: doc.origin,
+        version: row.version,
+        sha256: row.sha256,
+        ...(row.library_commit ? { library_commit: row.library_commit } : {}),
+        xml: row.xml,
+      },
       { headers: NO_STORE },
     );
   } catch (err) {
