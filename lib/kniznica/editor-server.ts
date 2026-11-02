@@ -22,7 +22,7 @@ const MAX = Number(process.env.LIBRARY_RATE_LIMIT_MAX ?? (process.env.NODE_ENV =
 const limiter = createRateLimiter({ windowMs: 60_000, max: MAX });
 
 export const kodKniznice = (k: string) => (KOD_RE.test(k) ? k : null);
-export const brana = (): Brana => ({ zapis: zapisPovoleny(), vydanie: false });
+export const brana = (): Brana => ({ zapis: zapisPovoleny(), vydanie: process.env.LIBRARY_RELEASE_ENABLED === "true" });
 export const sklad = (kniznica: string) => supabaseSklad(kniznica);
 
 /** `sklad_db.info()`: rel -> {rev, autor, vytvorena, zdroj} hlavy. */
