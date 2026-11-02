@@ -352,3 +352,69 @@ describe("doplnok 2 po druhom behu (D-185)", () => {
     expect(r.status).toBe("green");
   });
 });
+
+describe("bunky a vysvetlenie receptov (D-185 UI)", () => {
+  const space = (qto: Record<string, number>): SpaceInput => ({ ...el("2.01", body([ring(L)], 4.85, 8.8)), qto });
+  const ctx = {
+    slabs: [el("SD-pod", body([ring(rect(0, 0, 12, 8))], 4.6, 4.85)), el("SD-nad", body([ring(rect(0, 0, 12, 8))], 8.8, 9.05))],
+    coverings: [el("PD", body([ring(L)], 4.85, 5.0), "FLOORING"), el("PH", body([ring(rect(0, 0, 12, 6))], 8.05, 8.0625), "CEILING")],
+  };
+  const good = { Height: 3.95, FinishFloorHeight: 0.15, FinishCeilingHeight: 3.05, GrossPerimeter: 40, GrossFloorArea: 88, GrossVolume: 347.6, NetVolume: 333.5 };
+  /** Výraz nad bunkami (A - B - C, A x B, A) dosadený = vypočítaná hodnota. */
+  const evalCells = (expr: string, cells: Array<{ key: string; value: number }>) => {
+    const v = (k: string) => cells.find((c) => c.key === k)!.value;
+    const terms = expr.split(" - ");
+    const prod = (t: string) => t.split(" x ").reduce((p, k) => p * v(k.trim()), 1);
+    return terms.slice(1).reduce((acc, t) => acc - prod(t), prod(terms[0]));
+  };
+
+  it("každý recept so stavom z geometrie má vysvetlenie, výraz a bunky, ktoré dajú vypočítanú hodnotu", () => {
+    const res = verifySpace(space(good), ctx);
+    expect(res).toHaveLength(8);
+    for (const r of res) {
+      expect(r.explanation.length, r.recipe).toBeGreaterThan(20);
+      expect(r.expression, r.recipe).toBeTruthy();
+      expect(evalCells(r.expression!, r.cells!), r.recipe).toBeCloseTo(r.computed!, 3);
+    }
+  });
+
+  it("Height zo súborových dosiek: A spodok dosky nad, B vrch dosky pod, so zdrojovým prvkom", () => {
+    const h = status(verifySpace(space(good), ctx), "Height", "space.height.slabs")!;
+    expect(h.explanation).toMatch(/od vrchu dosky pod miestnosťou po spodok dosky nad/);
+    expect(h.expression).toBe("A - B");
+    expect(h.cells).toEqual([
+      { key: "A", label: "spodok dosky nad", value: 8.8, unit: "m", global_id: "SD-nad" },
+      { key: "B", label: "vrch dosky pod", value: 4.85, unit: "m", global_id: "SD-pod" },
+    ]);
+  });
+
+  it("FFH, FCH a NetVolume nesú zdrojovú krytinu v bunke", () => {
+    const res = verifySpace(space(good), ctx);
+    expect(status(res, "FinishFloorHeight")!.cells!.map((c) => c.global_id)).toEqual(["PD", "2.01"]);
+    expect(status(res, "FinishCeilingHeight")!.cells!.map((c) => c.global_id)).toEqual(["PH", "PD"]);
+    const nv = status(res, "NetVolume")!;
+    expect(nv.expression).toBe("A - B - C");
+    expect(nv.cells!.map((c) => [c.global_id, c.unit])).toEqual([["2.01", "m3"], ["PD", "m3"], ["PH", "m3"]]);
+    expect(nv.cells![1].label).toMatch(/^objem podlahoviny vnútri telesa/);
+    expect(nv.cells![2].label).toMatch(/^objem podhľadu vnútri telesa/);
+    const gv = status(res, "GrossVolume")!;
+    expect([gv.expression, gv.cells!.map((c) => c.unit)]).toEqual(["A x B", ["m2", "m"]]);
+  });
+
+  it("sivý recept nemá bunky ani výraz, len vysvetlenie a dôvod", () => {
+    const res = verifySpace({ ...el("X", { expressId: 9, prisms: [], unsupported: "bez extrúzie" }), qto: good }, ctx);
+    for (const r of res) {
+      expect(r.status).toBe("grey");
+      expect(r.cells ?? []).toEqual([]);
+      expect(r.expression).toBeUndefined();
+      expect(r.explanation).toBeTruthy();
+    }
+  });
+
+  it("viac výšok podhľadu: bunky sú jednotlivé výšky, bez výrazu", () => {
+    const two = { ...ctx, coverings: [...ctx.coverings, el("PH2", body([ring(rect(4, 6, 12, 8))], 7.6, 7.6125), "CEILING")] };
+    const r = status(verifySpace(space(good), two), "FinishCeilingHeight")!;
+    expect(r.expression).toBeUndefined();
+    expect(r.cells!.map((c) => c.value)).toEqual([2.6, 3.05]);
+  });
+});

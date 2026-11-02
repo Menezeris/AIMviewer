@@ -110,12 +110,37 @@ export function modelData(m: EngineModel): Promise<ModelData> {
   return p;
 }
 
-/** Qto_SpaceBaseQuantities miestnosti v m / m2 / m3 a vzorce zo súboru (IfcQuantity*.Formula, len informačne). */
-export function spaceQuantities(store: IfcDataStore, id: number, scale: number): { qto: Record<string, number>; formulas: Record<string, string> } {
+const qsetMethods = new WeakMap<IfcDataStore, Map<string, string>>();
+
+/** `IfcElementQuantity.MethodOfMeasurement` podľa GlobalId sady (stĺpcový store ho v `quantities()` nenesie). */
+function methodOfMeasurement(store: IfcDataStore, qsetGlobalId: string | undefined): string | undefined {
+  if (!qsetGlobalId) return undefined;
+  let map = qsetMethods.get(store);
+  if (!map) {
+    map = new Map();
+    for (const id of store.entityIndex.byType.get("IFCELEMENTQUANTITY") ?? []) {
+      // GlobalId sady nie je v stĺpcovom store (getGlobalId vráti ""), EntityNode ho dočíta zo zdroja.
+      const node = new EntityNode(store, id);
+      const v = node.allAttributes().find((a) => a.name === "MethodOfMeasurement")?.value;
+      const gid = node.globalId;
+      if (gid && typeof v === "string" && v.trim()) map.set(gid, v.trim());
+    }
+    qsetMethods.set(store, map);
+  }
+  return map.get(qsetGlobalId);
+}
+
+/**
+ * Qto_SpaceBaseQuantities miestnosti v m / m2 / m3, vzorce zo súboru (IfcQuantity*.Formula) a MethodOfMeasurement sady
+ * (len informačne, detail veličiny vo vieweri).
+ */
+export function spaceQuantities(store: IfcDataStore, id: number, scale: number): { qto: Record<string, number>; formulas: Record<string, string>; method_of_measurement?: string } {
   const qto: Record<string, number> = {};
   const formulas: Record<string, string> = {};
+  let method: string | undefined;
   for (const set of new EntityNode(store, id).quantities()) {
     if (set.name !== "Qto_SpaceBaseQuantities") continue;
+    method ??= methodOfMeasurement(store, set.globalId);
     for (const q of set.quantities) {
       if (!Number.isFinite(q.value)) continue;
       // QuantityType: 0 dĺžka (jednotky súboru), 1 plocha, 2 objem (m2, m3 v našich súboroch).
@@ -123,7 +148,7 @@ export function spaceQuantities(store: IfcDataStore, id: number, scale: number):
       if (q.formula) formulas[q.name] = q.formula;
     }
   }
-  return { qto, formulas };
+  return { qto, formulas, ...(method ? { method_of_measurement: method } : {}) };
 }
 
 function counts(results: RecipeResult[]): Record<Status, number> {
@@ -143,6 +168,118 @@ export function spaceDimensions(space: SpaceInput, results: RecipeResult[]): Mea
     a: { x: c[0] + i * DIMENSION_STEP_M, y: c[1], z: r.dimension!.z0 },
     b: { x: c[0] + i * DIMENSION_STEP_M, y: c[1], z: r.dimension!.z1 },
   }));
+}
+
+/** Overená miestnosť: vstup, výsledky receptov a údaje zo súboru (vzorce, MethodOfMeasurement). */
+export interface VerifiedSpace {
+  model: EngineModel;
+  space: SpaceInput;
+  results: RecipeResult[];
+  formulas: Record<string, string>;
+  method_of_measurement?: string;
+}
+
+/** Riadky `verification_results` jednej miestnosti (aj bunky, vysvetlenie a údaje zo súboru v `inputs`). */
+export function resultRows(v: VerifiedSpace, revision: number | null): VerificationResultWrite[] {
+  return v.results.map((r) => {
+    const q = r.target.split(".")[1];
+    const fileMeta = {
+      ...(v.method_of_measurement ? { method_of_measurement: v.method_of_measurement } : {}),
+      ...(v.formulas[q] ? { formula: v.formulas[q] } : {}),
+    };
+    return {
+      model: v.model.id,
+      revision,
+      global_id: v.space.globalId,
+      element_name: v.space.name,
+      target: r.target,
+      recipe: r.recipe,
+      status: r.status,
+      file_value: r.file ?? null,
+      computed_value: r.computed ?? null,
+      method: r.method,
+      definition: r.definition,
+      spec_ref: r.spec_ref,
+      tolerance: r.tolerance,
+      formula: r.formula ?? null,
+      note: r.note ?? null,
+      distinct_heights: r.distinct_heights ?? null,
+      anchors: r.anchors,
+      explanation: r.explanation,
+      inputs: { ...(r.expression ? { expression: r.expression } : {}), cells: r.cells ?? [], ...(Object.keys(fileMeta).length ? { file_meta: fileMeta } : {}) },
+    };
+  });
+}
+
+/** Overí miestnosti podľa polohy v modeli (bez stropu počtu; strop drží volajúci). */
+export async function verifyLocated(located: Array<{ m: EngineModel; id: number }>): Promise<VerifiedSpace[]> {
+  const out: VerifiedSpace[] = [];
+  for (const { m, id } of located) {
+    const data = await modelData(m);
+    const { qto, formulas, method_of_measurement } = spaceQuantities(m.store, id, data.scale);
+    const space: SpaceInput = { ...element(m.store, id, data.bodies.get(id) ?? { expressId: id, prisms: [], unsupported: "bez telesa" }), qto };
+    const results = verifySpace(space, { slabs: data.slabs, coverings: data.coverings });
+    out.push({ model: m, space, results, formulas, ...(method_of_measurement ? { method_of_measurement } : {}) });
+  }
+  return out;
+}
+
+/**
+ * Uloženie behu k revízii (D-183 bod 11): beh bez známej revízie každého použitého modelu sa neukladá.
+ * Vráti objekt `saved` pre výstup toolu aj host routes.
+ */
+export async function saveVerification(
+  deps: Pick<EngineDeps, "verification">,
+  rows: VerificationResultWrite[],
+  stamp: Record<string, number>,
+  usedModels: string[],
+  allCounts: Record<Status, number>,
+  author: string | null,
+): Promise<Record<string, unknown>> {
+  if (!deps.verification) return { ok: false, error: "úložisko overenia nie je nastavené" };
+  if (usedModels.some((m) => typeof stamp[m] !== "number")) return { ok: false, error: "revízia modelu nie je známa (podpis vstupu D-183), beh sa neukladá" };
+  try {
+    const { id, without_inputs } = await deps.verification.saveRun(
+      { scope: "IfcSpace", registry_version: REGISTRY_VERSION, engine: ENGINE_VERSION, model_revisions: stamp, counts: allCounts, author },
+      rows,
+    );
+    return { ok: true, run_id: id, model_revisions: stamp, ...(without_inputs ? { note: "bunky vzorca sa neuložili (migrácia verification_inputs nie je aplikovaná)" } : {}) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err), note: "výpočet platí, beh sa neuložil (migrácia verification_results nemusí byť aplikovaná)" };
+  }
+}
+
+export { counts as statusCounts };
+
+/**
+ * Host (D-185 UI, `/api/verify/*`): overí miestnosti podľa IFC GlobalId v modeloch federácie, alebo všetky IfcSpace
+ * všetkých modelov (`guids` = null, "run_all"). Bez stropu MAX_SPACES (ten drží len tool); vráti aj podpis revízie.
+ */
+export async function verifySpacesByGuid(guids: string[] | null, deps: EngineDeps): Promise<{ verified: VerifiedSpace[]; stamp: Record<string, number>; used: string[] }> {
+  const modelIds = (deps.sources ?? getIfcModels)().map((m) => m.id);
+  const { models, revision } = await modelsFor(modelIds, deps);
+  const located: Array<{ m: EngineModel; id: number }> = [];
+  if (guids === null) {
+    for (const m of models) for (const id of ids(m.store, ["IFCSPACE"])) located.push({ m, id });
+  } else {
+    const session = await openEngineSession(models);
+    const where = new Map<string, { m: EngineModel; id: number }>();
+    for (const m of models) {
+      const idx = await guidIndex(session, m);
+      for (const g of guids) {
+        const id = idx.get(g);
+        if (!where.has(g) && id !== undefined) where.set(g, { m, id });
+      }
+    }
+    const notIn = guids.filter((g) => !where.has(g));
+    if (notIn.length) throw new InputError(`Prvok ${notIn.join(", ")} nie je v modeloch federácie (${modelIds.join(", ")}).`);
+    const notSpace = guids.filter((g) => (where.get(g)!.m.store.entities.getTypeName(where.get(g)!.id) || "").toUpperCase() !== "IFCSPACE");
+    if (notSpace.length) throw new InputError(`Overenie výmer je zatiaľ len pre miestnosti (IfcSpace): ${notSpace.join(", ")} nie je IfcSpace.`);
+    located.push(...guids.map((g) => where.get(g)!));
+  }
+  const used = [...new Set(located.map((l) => l.m.id))];
+  const verified = await verifyLocated(located);
+  return { verified, stamp: revisionStamp(revision, used), used };
 }
 
 export async function ifcVerifySpaces(input: Record<string, unknown>, deps: EngineDeps, dimensions?: MeasureSegment[]): Promise<string> {
@@ -199,44 +336,24 @@ export async function ifcVerifySpaces(input: Record<string, unknown>, deps: Engi
   const rows: VerificationResultWrite[] = [];
   const spaces = [];
   const all: RecipeResult[] = [];
-  for (const t of targets) {
-    const { m, id } = where.get(guidFor(t)!)!;
-    const data = await modelData(m);
-    const { qto, formulas } = spaceQuantities(m.store, id, data.scale);
-    const space: SpaceInput = { ...element(m.store, id, data.bodies.get(id) ?? { expressId: id, prisms: [], unsupported: "bez telesa" }), qto };
-    const results = verifySpace(space, { slabs: data.slabs, coverings: data.coverings });
+  const verified = await verifyLocated(targets.map((t) => where.get(guidFor(t)!)!));
+  for (const [i, t] of targets.entries()) {
+    const v = verified[i];
+    const { space, results, formulas } = v;
     all.push(...results);
     if (dimensions) for (const s of spaceDimensions(space, results)) if (dimensions.length < MAX_MEASURE_SEGMENTS) dimensions.push(s);
     spaces.push({
       ...ident.get(t),
       counts: counts(results),
       ...(Object.keys(formulas).length ? { file_formulas: formulas } : {}),
-      results: results.map(({ dimension, ...r }) => {
+      results: results.map(({ dimension, explanation, cells, ...r }) => {
         void dimension;
+        void explanation;
+        void cells;
         return r;
       }),
     });
-    for (const r of results) {
-      rows.push({
-        model: m.id,
-        revision: stamp[m.id] ?? null,
-        global_id: space.globalId,
-        element_name: space.name,
-        target: r.target,
-        recipe: r.recipe,
-        status: r.status,
-        file_value: r.file ?? null,
-        computed_value: r.computed ?? null,
-        method: r.method,
-        definition: r.definition,
-        spec_ref: r.spec_ref,
-        tolerance: r.tolerance,
-        formula: r.formula ?? null,
-        note: r.note ?? null,
-        distinct_heights: r.distinct_heights ?? null,
-        anchors: r.anchors,
-      });
-    }
+    rows.push(...resultRows(v, stamp[v.model.id] ?? null));
   }
 
   const out: Record<string, unknown> = {
@@ -247,21 +364,7 @@ export async function ifcVerifySpaces(input: Record<string, unknown>, deps: Engi
     counts: counts(all),
     spaces,
   };
-  if (input.save === true) {
-    if (!deps.verification) out.saved = { ok: false, error: "úložisko overenia nie je nastavené" };
-    else if (Object.keys(stamp).length !== used.length) out.saved = { ok: false, error: "revízia modelu nie je známa (podpis vstupu D-183), beh sa neukladá" };
-    else {
-      try {
-        const { id } = await deps.verification.saveRun(
-          { scope: "IfcSpace", registry_version: REGISTRY_VERSION, engine: ENGINE_VERSION, model_revisions: stamp, counts: counts(all), author: str(input.author) || null },
-          rows,
-        );
-        out.saved = { ok: true, run_id: id, model_revisions: stamp };
-      } catch (err) {
-        out.saved = { ok: false, error: err instanceof Error ? err.message : String(err), note: "výpočet platí, beh sa neuložil (migrácia verification_results nemusí byť aplikovaná)" };
-      }
-    }
-  }
+  if (input.save === true) out.saved = await saveVerification(deps, rows, stamp, used.map((m) => m.id), counts(all), str(input.author) || null);
   out.show_in_3d = joined.show_in_3d;
   if (dimensions) out.view = dimensions.length > 0 ? `kóty vo vieweri: ${dimensions.length} (výška, podlaha, podhľad v ťažisku miestnosti)` : "nič na kótovanie";
   out.note =

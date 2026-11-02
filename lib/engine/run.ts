@@ -16,7 +16,7 @@ import { spatialLinksOfGuid } from "./spatial-links";
 import { installArchiveSource } from "./archive-source";
 import { fetchRelatedMembers } from "./related-members";
 import { execSearchAll } from "./search-all";
-import { execEngineTool, ifcSearchResult, type EngineExecution } from "./tools";
+import { execEngineTool, ifcSearchResult, type EngineDeps, type EngineExecution } from "./tools";
 
 // D-135: modely motora z nemenného archívu revízie (cca 5-krát menej egressu).
 installArchiveSource();
@@ -32,9 +32,14 @@ function clashBcfPort(): ClashBcfPort {
   };
 }
 
+/** Závislosti motora s reálnym prepojením na DB AIM (D-084); aj pre host routes overenia výmer (D-185 UI). */
+export function engineDeps(): EngineDeps {
+  return { lookup: lookupGuids, resolveTargets: resolveTargetsToGuids, revisions: fetchModelRevisions, ids: supabaseIdsStore(), systems: systemsOfGuids, spatialLinks: spatialLinksOfGuid, clash: supabaseClashStore(), bcf: clashBcfPort(), clashViewer, verification: supabaseVerificationStore() };
+}
+
 /** `ifc_*` tool s reálnym prepojením na DB AIM (D-084); importuje sa lenivo z MCP route. */
 export function runEngineTool(name: string, args: Record<string, unknown>): Promise<EngineExecution> {
-  return execEngineTool(name, args, { lookup: lookupGuids, resolveTargets: resolveTargetsToGuids, revisions: fetchModelRevisions, ids: supabaseIdsStore(), systems: systemsOfGuids, spatialLinks: spatialLinksOfGuid, clash: supabaseClashStore(), bcf: clashBcfPort(), clashViewer, verification: supabaseVerificationStore() });
+  return execEngineTool(name, args, engineDeps());
 }
 
 /** Kombinované `search_all` (D-095): IFC súbor + graf AIM, badge pri každom výsledku. */
