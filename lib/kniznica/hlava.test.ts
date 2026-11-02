@@ -48,6 +48,9 @@ describe("prehliadač knižnice nad library.hlava (krok 1 portu)", () => {
     expect(d).toMatchObject({ sha256_sedi: true, round_trip: true });
     expect(d.bloky.frontmatter?.data).toMatchObject({ id: "ER-0101" });
     expect(d.bloky.telo.some((b) => b.druh === "Nadpis")).toBe(true);
+    expect(d.poznamka).toMatchObject({ id: "ER-0101", typ: "ER", diagnostiky: [], zdroje: { uc: "inline", prepisy: "blok" } });
+    expect(d.poznamka?.model).toMatchObject({ id: "ER-0101", jazyk: "sk" });
+    expect((await detail(memoryHlava(), "assetin", "KNIZNICA.md"))!.poznamka).toBeNull();
     expect(await detail(memoryHlava(), "assetin", "nie.md")).toBeNull();
     await expect(detail(memoryHlava(), "assetin", "../x.md")).rejects.toBeInstanceOf(HlavaVstupChyba);
   });

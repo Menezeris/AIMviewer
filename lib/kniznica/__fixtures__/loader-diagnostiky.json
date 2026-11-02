@@ -1,0 +1,165 @@
+{
+ "_opis": "Diagnostiky loadera mimo korpusu; ocakavane = Python assetin/engine/loader.py nacitaj_subor (assetin-library f7c103c, pydantic 2, ruamel.yaml 0.19.1), k\u013e\u00fa\u010d (note_id, json_pointer, uroven, kod, subor, riadok), zoraden\u00e9. N\u00e1vrh: presun\u00fa\u0165 do korpusu.",
+ "pripady": {
+  "act": {
+   "cesta": "zadanie/registre/ACT/poverena/geodet.md",
+   "ocakavane": [
+    [
+     "ACT-poverena/geodet",
+     "/id",
+     "E",
+     "A9",
+     "zadanie/registre/ACT/poverena/geodet.md",
+     null
+    ],
+    [
+     "ACT-poverena/geodet",
+     "/strana",
+     "E",
+     "A9",
+     "zadanie/registre/ACT/poverena/geodet.md",
+     null
+    ],
+    [
+     "ACT-poverena/geodet",
+     "/uroven",
+     "E",
+     "A9",
+     "zadanie/registre/ACT/poverena/geodet.md",
+     null
+    ]
+   ],
+   "text": "---\nid: ACT-poverena/geodet\naliases: [ACT-poverena/geodet]\ntyp: ACT\nnazov: G\nnazov_en: G\nstav: WD\nverzia: 0.1\nuroven: tim\nstrana: poverujuca\n---\n"
+  },
+  "bez_fm": {
+   "cesta": "zadanie/EV/EV-D-0001 Test.md",
+   "ocakavane": [
+    [
+     "EV-D-0001",
+     "",
+     "E",
+     "A1",
+     "zadanie/EV/EV-D-0001 Test.md",
+     null
+    ]
+   ],
+   "text": "# A\n"
+  },
+  "chyba_povinne": {
+   "cesta": "zadanie/EV/EV-D-0001 Test.md",
+   "ocakavane": [
+    [
+     "EV-D-0001",
+     "/nazov_en",
+     "E",
+     "LOAD",
+     "zadanie/EV/EV-D-0001 Test.md",
+     null
+    ]
+   ],
+   "text": "---\nid: EV-D-0001\naliases: [EV-D-0001]\ntyp: EV\nnazov: T\nstav: WD\nverzia: 0.1\ntyp_udalosti: delivery\n---\n"
+  },
+  "enum": {
+   "cesta": "zadanie/EV/EV-D-0001 Test.md",
+   "ocakavane": [
+    [
+     "EV-D-0001",
+     "/typ_udalosti",
+     "E",
+     "A7",
+     "zadanie/EV/EV-D-0001 Test.md",
+     9
+    ]
+   ],
+   "text": "---\nid: EV-D-0001\naliases: [EV-D-0001]\ntyp: EV\nnazov: T\nnazov_en: T\nstav: WD\nverzia: 0.1\ntyp_udalosti: in\u00e9\n---\n"
+  },
+  "inline": {
+   "cesta": "zadanie/EV/EV-D-0001 Test.md",
+   "ocakavane": [
+    [
+     "EV-D-0001",
+     "",
+     "W",
+     "BLOK",
+     "zadanie/EV/EV-D-0001 Test.md",
+     15
+    ],
+    [
+     "EV-D-0001",
+     "/nazov",
+     "E",
+     "A6",
+     "zadanie/EV/EV-D-0001 Test.md",
+     13
+    ],
+    [
+     "EV-D-0001",
+     "/nieco",
+     "E",
+     "A5",
+     "zadanie/EV/EV-D-0001 Test.md",
+     12
+    ]
+   ],
+   "text": "---\nid: EV-D-0001\naliases: [EV-D-0001]\ntyp: EV\nnazov: T\nnazov_en: T\nstav: WD\nverzia: 0.1\ntyp_udalosti: delivery\n---\n## Popis\nnieco:: x\nnazov:: y\n```yaml\na: 1\nb: 2\n```\n"
+  },
+  "navyse": {
+   "cesta": "zadanie/EV/EV-D-0001 Test.md",
+   "ocakavane": [
+    [
+     "EV-D-0001",
+     "/aliases",
+     "W",
+     "A3",
+     "zadanie/EV/EV-D-0001 Test.md",
+     null
+    ],
+    [
+     "EV-D-0001",
+     "/navyse",
+     "E",
+     "A5",
+     "zadanie/EV/EV-D-0001 Test.md",
+     9
+    ]
+   ],
+   "text": "---\nid: EV-D-0001\ntyp: EV\nnazov: T\nnazov_en: T\nstav: WD\nverzia: 0.1\ntyp_udalosti: delivery\nnavyse: 1\n---\n"
+  },
+  "nezname_typ": {
+   "cesta": "zadanie/XYZ/X-1.md",
+   "ocakavane": [
+    [
+     "X-1",
+     "/typ",
+     "E",
+     "A5",
+     "zadanie/XYZ/X-1.md",
+     null
+    ],
+    [
+     null,
+     "",
+     "E",
+     "A3",
+     "zadanie/XYZ/X-1.md",
+     null
+    ]
+   ],
+   "text": "---\nid: X-1\ntyp: XYZ\n---\n"
+  },
+  "zly_yaml": {
+   "cesta": "zadanie/EV/EV-D-0001 Test.md",
+   "ocakavane": [
+    [
+     "EV-D-0001",
+     "",
+     "E",
+     "A1",
+     "zadanie/EV/EV-D-0001 Test.md",
+     2
+    ]
+   ],
+   "text": "---\nid: [\n---\n"
+  }
+ }
+}
