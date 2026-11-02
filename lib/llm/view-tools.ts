@@ -56,7 +56,7 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "(hatch = šrafa, solid = plná výplň, none = bez plochy, ostanú obrysy) a cap_color; šrafa = hatch_pattern " +
       "(predvolene diagonal 45°), hatch_angle_deg, hatch_spacing_px, hatch_line_width_px; aktívny rez bez zmeny " +
       "polohy = action=widget + cap_style ('vypni šrafu' = action=widget, cap_style=none alebo solid). Rezný box okolo " +
-      "prvkov (detail, napr. 'výstuž stĺpa S12') = box=true + cieľ (+ margin_m, default 0,5 m). Príklad 'ukáž strop " +
+      "prvkov (detail, napr. 'výstuž stĺpa S12') = box=true + cieľ (bez margin_m rozumný box automaticky, pri miestnosti od dosky po dosku so stenami; margin_m = pevný okraj). Príklad 'ukáž strop " +
       "nad miestnosťou na 2NP, kade idú potrubia': set_section(floor=3NP, offset_m=-0.4) + " +
       "style_in_3d(hide, ifc_type=IfcCovering) + set_camera(preset=top, target=miestnosť).",
     inputSchema: {
@@ -99,7 +99,7 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         cap_color: { type: "string", description: "Farba výplne reznej plochy #rrggbb (bez cap_style = solid)" },
         box: { type: "boolean", description: "S action=set a cieľom: rezný box okolo obálky prvkov namiesto roviny (D-132)" },
-        margin_m: { type: "number", description: "S box: okraj boxu na každú stranu v m (0 až 20, default 0,5)" },
+        margin_m: { type: "number", description: "S box: pevný okraj boxu na každú stranu v m (0 až 20); bez neho automaticky podľa veľkosti prvku" },
         hatch_pattern: {
           type: "string",
           enum: [...HATCH_PATTERNS],

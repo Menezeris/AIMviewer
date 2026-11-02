@@ -77,7 +77,8 @@ export function planViewTabs(input: Record<string, unknown>, views?: readonly Pr
 /** `set_section box=true`: box okolo prvkov s okrajom (D-132). */
 export function planSectionBox(input: Record<string, unknown>, guids: string[]): ViewPlan {
   if (guids.length === 0) throw new ViewInputError("box=true potrebuje cieľ: target_ids_or_refs alebo global_ids.");
-  let margin = 0.5;
+  // Bez margin_m rozhodne viewer sám (auto: okraj podľa veľkosti, miestnosť od dosky po dosku so stenami).
+  let margin: number | undefined;
   if (input.margin_m !== undefined) {
     const m = input.margin_m;
     if (typeof m !== "number" || !Number.isFinite(m) || m < BOX_MARGIN_RANGE.min || m > BOX_MARGIN_RANGE.max) {
@@ -91,8 +92,8 @@ export function planSectionBox(input: Record<string, unknown>, guids: string[]):
     result: {
       ok: true,
       box_around: guids.length,
-      margin_m: margin,
-      note: "Box okolo obálky prvkov; v stave viewera je section.box (IFC svet). Ako pohľad ho ulož cez saved_view(action=save, name).",
+      margin_m: margin ?? "auto",
+      note: "Box okolo obálky prvkov (bez margin_m automaticky: okraj 20 % najdlhšej strany, 0,3 až 2 m; miestnosť od podlahovej po stropnú dosku so stenami); v stave viewera je section.box (IFC svet). Ako pohľad ho ulož cez saved_view(action=save, name).",
     },
   };
 }
