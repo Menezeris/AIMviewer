@@ -1,5 +1,5 @@
 -- Port knižnice požiadaviek do TS, krok 3 (assetin-library V30, Q70; AIM D-186): zápis z editora v AIM.
--- NESPUSTENÉ (pending): aplikuje orchestrátor po schválení. Zápis v AIM je navyše za env bránou
+-- APLIKOVANÉ na produkciu 2. 11. 2026 (orchestrátor, verzia s p_projekcie ako objektom). Zápis v AIM je navyše za env bránou
 -- LIBRARY_WRITE_ENABLED (predvolene vypnutá, zapína sa na Samuelovo slovo).
 --
 -- Schéma `library` nie je v PostgREST vystavená; host (service_role) volá dve RPC v `public`:

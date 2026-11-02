@@ -19,7 +19,7 @@ export const ZDROJE = ["migracia_md", "editor", "nova", "migracia_schemy"];
 /** Chýbajúca RPC (migrácia nie je v DB). */
 export class ZapisMigraciaChyba extends Error {
   constructor() {
-    super("Zápis do knižnice: v DB chýba migrácia supabase/pending/20261102210000_library_zapis.sql (RPC library_texty, library_zapis), čaká na nasadenie.");
+    super("Zápis do knižnice: v DB chýba migrácia supabase/migrations/20261102210000_library_zapis.sql (RPC library_texty, library_zapis).");
   }
 }
 
