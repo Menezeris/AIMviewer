@@ -62,16 +62,26 @@ const WIKILINK_PATTERN = "^\\[\\[[^\\[\\]]+\\]\\]$";
 
 interface Pole {
   zdroj: string;
+  sekcia: string;
+  odvodene: boolean;
+  povinne: boolean;
+  /** `default` zo schémy; undefined = bez predvolenej hodnoty. */
+  predvolene: unknown;
   /** Typ obsahuje WikiLink alebo tag `#aktivum` / `#proces`: inline hodnota sa delí na tokeny. */
   odkaz: boolean;
   zoznam: boolean;
 }
 
-interface Model {
+export interface Model {
   typ: string;
   schema: z.ZodType;
+  /** Polia v poradí pydantic (`model_fields`). */
   polia: Map<string, Pole>;
   pod_zaznamy: string[];
+  /** Sekcie tela v poradí šablóny (`SEKCIE`). */
+  sekcie: string[];
+  /** JSON Schema modelu (poradie `properties` = poradie polí pydantic). */
+  js: Record<string, unknown>;
 }
 
 function obsahuje(n: unknown, pred: (o: Record<string, unknown>) => boolean): boolean {
@@ -97,13 +107,26 @@ export function modelPreTyp(typ: string): Model | null {
   let m = modely.get(typ);
   if (!m) {
     const schema = SCHEMY[typ as (typeof TYPY_POZNAMOK)[number]];
-    const js = jsonSchema(schema) as { properties: Record<string, Record<string, unknown>>; "x-assetin": { pod_zaznamy: string[] } };
+    const js = jsonSchema(schema) as {
+      properties: Record<string, Record<string, unknown>>;
+      required?: string[];
+      "x-assetin": { pod_zaznamy: string[]; sekcie: string[] };
+    };
+    const req = new Set(js.required ?? []);
     const polia = new Map<string, Pole>();
     for (const [k, v] of Object.entries(js.properties)) {
-      const x = (v["x-assetin"] ?? {}) as { zdroj?: string };
-      polia.set(k, { zdroj: x.zdroj ?? "frontmatter", odkaz: obsahuje(v, jeOdkaz), zoznam: jeZoznam(v) });
+      const x = (v["x-assetin"] ?? {}) as { zdroj?: string; sekcia?: string; odvodene?: boolean };
+      polia.set(k, {
+        zdroj: x.zdroj ?? "frontmatter",
+        sekcia: x.sekcia ?? "",
+        odvodene: x.odvodene === true,
+        povinne: req.has(k),
+        predvolene: "default" in v ? v.default : undefined,
+        odkaz: obsahuje(v, jeOdkaz),
+        zoznam: jeZoznam(v),
+      });
     }
-    m = { typ, schema, polia, pod_zaznamy: js["x-assetin"].pod_zaznamy };
+    m = { typ, schema, polia, pod_zaznamy: js["x-assetin"].pod_zaznamy, sekcie: js["x-assetin"].sekcie, js };
     modely.set(typ, m);
   }
   return m;

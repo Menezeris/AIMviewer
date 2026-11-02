@@ -16,6 +16,8 @@ import { join } from "node:path";
 type J = Record<string, unknown>;
 
 const DIR = join(process.cwd(), "library", "korpus", "schema");
+/** Poradie polí pydantic (`model_fields`) per trieda; JSON Schema korpusu má zoradené kľúče. Jednorazový výpis z Pythonu. */
+const PORADIE = JSON.parse(readFileSync(join(process.cwd(), "scripts", "kniznica", "poradie-poli.json"), "utf8")) as Record<string, string[]>;
 const OUT = join(process.cwd(), "lib", "kniznica", "schema", "modely.ts");
 const WIKILINK_PATTERN = "^\\[\\[[^\\[\\]]+\\]\\]$";
 const META_KEYS = ["title", "description", "x-assetin"] as const;
@@ -89,6 +91,7 @@ function base(n: J): string {
 }
 
 function objekt(n: J): string {
+  const trieda = typeof n.title === "string" ? PORADIE[n.title] : undefined;
   if (n.properties === undefined && n.additionalProperties !== undefined && n.additionalProperties !== false) {
     // dict[str, X] / dict[str, Any]
     return n.additionalProperties === true ? "slovnik(z.unknown())" : `slovnik(${expr(n.additionalProperties as J)})`;
@@ -96,7 +99,8 @@ function objekt(n: J): string {
   const props = (n.properties ?? {}) as Record<string, J>;
   const req = new Set((n.required as string[] | undefined) ?? []);
   // pydantic drží poradie polí len v `required` (korpus má zoradené kľúče): povinné najprv v tom poradí
-  const keys = [...((n.required as string[] | undefined) ?? []), ...Object.keys(props).filter((k) => !req.has(k))];
+  let keys = [...((n.required as string[] | undefined) ?? []), ...Object.keys(props).filter((k) => !req.has(k))];
+  if (trieda && trieda.length === keys.length && keys.every((k) => trieda.includes(k))) keys = [...trieda];
   const rows = keys.map((k) => [k, props[k]] as const).map(([k, v]) => {
     let e = expr(v);
     if (!req.has(k) && !("default" in v)) e += ".optional()";

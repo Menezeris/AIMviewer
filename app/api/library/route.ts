@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { detail, HlavaMigraciaChyba, HlavaVstupChyba, prehlad } from "@/lib/kniznica/hlava";
 import { supabaseHlavaStore } from "@/lib/kniznica/hlava-store";
+import { zapisPovoleny } from "@/lib/kniznica/brana";
 
 /**
  * Read-only prehliadač knižnice požiadaviek (port do TS, krok 1, assetin-library V30; AIM D-186).
@@ -27,9 +28,9 @@ export async function GET(req: Request) {
       if (!kniznica) return fail("cesta potrebuje aj kniznica", 400);
       const d = await detail(store, kniznica, cesta);
       if (!d) return fail(`Súbor '${cesta}' v knižnici ${kniznica} nie je.`, 404);
-      return NextResponse.json(d, { headers: NO_STORE });
+      return NextResponse.json({ ...d, zapis: zapisPovoleny() }, { headers: NO_STORE });
     }
-    return NextResponse.json(await prehlad(store, kniznica), { headers: NO_STORE });
+    return NextResponse.json({ ...(await prehlad(store, kniznica)), zapis: zapisPovoleny() }, { headers: NO_STORE });
   } catch (err) {
     if (err instanceof HlavaVstupChyba) return fail(err.message, 400);
     if (err instanceof HlavaMigraciaChyba) return fail(err.message, 503);
