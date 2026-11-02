@@ -530,7 +530,9 @@ dokumenty s verziami, z chatu aj z viewera. Aditívne, IDS nie je v `objects` (D
 `supabase/tests/ids_library_assign.sql`):** knižnica požiadaviek v AIM vedomým priradením. Aditívne:
 - `ids_document_versions` + `library_repo`, `library_path`, `library_commit`, `library_code` (kód súboru v čase
   priradenia). Check `ids_document_versions_library_ref_check`: pri `source = 'import'` sú repo, cesta a commit
-  povinné (`not valid`, staré riadky sa nekontrolujú). `author` = kto priradil, `created_at` = kedy.
+  povinné (`not valid`, staré riadky sa nekontrolujú). `author` = kto priradil, `created_at` = kedy. Od vydaní
+  knižnice v DB (D-182 doplnok V30) ich zapisuje vydanie: `library_repo = db:library/<kód knižnice>`,
+  `library_commit = <vydanie>@<manifest sha256>` (nie git SHA), `library_path` = cesta poznámky ER.
 - `ids_document_models` = ručná väzba IDS na model federácie: `document_id` (FK, cascade),
   `information_container_id` (FK `information_containers`, len `container_type = 'IFC'`, trigger), `library_container`
   (voliteľný text, napr. `IU-C-arch-model`), `created_by`, `valid_from`, `valid_until`, `ended_by` (povinné pri
@@ -544,7 +546,7 @@ dokumenty s verziami, z chatu aj z viewera. Aditívne, IDS nie je v `objects` (D
 `assetin-library/docs/SCHEMA.md`):** `library.hlava` = posledná revízia každého súboru knižnice (`kniznica`, `cesta`,
 `note_id`, `typ`, `rev`, `text`, `sha256` hex, `autor`, `vytvorena`, `zdroj`). Schéma nie je v PostgREST vystavená,
 anon / authenticated do nej prístup nemajú. Host číta cez RPC v `public` (migrácia
-`supabase/pending/20261102200000_library_hlava_read.sql`, NESPUSTENÁ; test `supabase/tests/library_hlava_read.sql`):
+`supabase/migrations/20261102200000_library_hlava_read.sql`, APLIKOVANÁ 2. 11.; test `supabase/tests/library_hlava_read.sql`):
 `library_hlava_zoznam(p_kniznica text default null)` (bez textu, + `dlzka`) a `library_hlava_subor(p_kniznica, p_cesta)`
 (s textom); `stable`, `security invoker`, `search_path = ''`, EXECUTE len `service_role`.
 

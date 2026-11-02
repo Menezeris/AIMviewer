@@ -5,7 +5,7 @@ import { blokyJson, parsuj, serializuj } from "./bloky";
 /**
  * Read-only prehliadač knižnice požiadaviek (port do TS, krok 1, assetin-library V30): hlava knižnice
  * (`library.hlava` = posledná revízia každého súboru) cez RPC v `public` len pre `service_role`
- * (`supabase/pending/20261102200000_library_hlava_read.sql`). Do kroku 3 (writer) knižnica v AIM nič nezapisuje.
+ * (`supabase/migrations/20261102200000_library_hlava_read.sql`, aplikovaná 2. 11.). Do kroku 3 (writer) knižnica v AIM nič nezapisuje.
  */
 
 export interface HlavaRiadok {
@@ -33,7 +33,7 @@ export interface HlavaStore {
 
 export class HlavaMigraciaChyba extends Error {
   constructor() {
-    super("Prehliadač knižnice: v DB chýba migrácia supabase/pending/20261102200000_library_hlava_read.sql (RPC library_hlava_*), čaká na nasadenie.");
+    super("Prehliadač knižnice: v DB chýba migrácia supabase/migrations/20261102200000_library_hlava_read.sql (RPC library_hlava_*), čaká na nasadenie.");
   }
 }
 

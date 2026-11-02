@@ -1,5 +1,5 @@
 -- Port knižnice požiadaviek do TS, krok 1 (assetin-library V30, Q70; AIM D-186): read-only prehliadač knižnice.
--- NESPUSTENÉ (pending): aplikuje orchestrátor po schválení.
+-- APLIKOVANÉ na produkciu 2. 11. (Samuel "áno", orchestrátor).
 --
 -- Schéma `library` nie je vystavená v PostgREST (db_schema = public, graphql_public) a rolám anon / authenticated
 -- do nej prístup nepatrí. Host (service_role, serverová API route) preto číta hlavu knižnice cez dve RPC v `public`:

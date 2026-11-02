@@ -28,12 +28,14 @@ async function load(env: Record<string, string>) {
 describe("/api/ids/library, /models, /runs (D-182)", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("GET bez tokenu: knižnica nie je pripojená, projekt áno", async () => {
+  it("GET: katalóg z DB bez tokenu a bez GitHubu, projekt", async () => {
     const { library } = await load({});
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
     const res = await library.GET();
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.library).toMatchObject({ configured: false, error: expect.stringContaining("LIBRARY_GITHUB_TOKEN") });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(json.library).toMatchObject({ configured: true, items: [], note: expect.stringContaining("origin = library") });
     expect(json.project).toMatchObject({ items: [], containers: [{ model: "ASR" }, { model: "VZT" }], current_revisions: { ASR: 79, VZT: 11 } });
   });
 
@@ -48,11 +50,12 @@ describe("/api/ids/library, /models, /runs (D-182)", () => {
     expect(lib.bindings).toHaveLength(0);
   });
 
-  it("priradenie bez tokenu je 503, chýbajúce polia 400; väzba na neznáme IDS 400; beh bez polí 400", async () => {
+  it("priradenie neznámeho IDS 400, chýbajúce polia 400; väzba na neznáme IDS 400; beh bez polí 400", async () => {
     const { library, models, runs } = await load({ IDS_WRITE_ENABLED: "true" });
     expect((await library.POST(post("https://aim.test/api/ids/library", { path: "ids/A.ids" }))).status).toBe(400);
-    const noToken = await library.POST(post("https://aim.test/api/ids/library", { path: "ids/A.ids", commit: "1".repeat(40), sha256: "x", author: "S" }));
-    expect(noToken.status).toBe(503);
+    const unknown = await library.POST(post("https://aim.test/api/ids/library", { path: "ids/A.ids", commit: "2026.11.1@x", sha256: "x", author: "S" }));
+    expect(unknown.status).toBe(400);
+    expect((await unknown.json()).error).toContain("nie je medzi IDS");
     const m = await models.POST(post("https://aim.test/api/ids/models", { code: "NIE", model: "ASR", bound: true, author: "S" }));
     expect(m.status).toBe(400);
     expect((await m.json()).error).toContain("neexistuje");

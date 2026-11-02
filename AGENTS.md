@@ -90,6 +90,7 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
 - **Python + ifcopenshell** — IFC parser / ETL pipeline (`etl/`)
 - **ICDD export** - `lib/icdd/` (TypeScript, skladá prehliadač, D-181)
 - **IFClite (WASM) + Three.js** — klient-side 3D render (geometria nikdy nie je v DB)
+- **Licencie závislostí:** len MIT, Apache-2.0, BSD, ISC, MPL-2.0, LGPL (dynamicky linkované); žiadne AGPL ani GPL; licenciu novej závislosti uveď v PR (D-186, ISC Samuel 2. 11.)
 
 ## Kľúčové dokumenty — vždy čítaj pred prácou
 - `DECISIONS.md` — všetky architektonické rozhodnutia s kontextom (D-0xx)
