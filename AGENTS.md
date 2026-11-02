@@ -226,7 +226,9 @@ Každá úroveň je riadok v `objects` (líši sa `object_type`). Spatial väzby
 
 ## Dátový prístup (D-026)
 - Čítanie **výhradne server-side** cez Supabase `service_role` (Server Components /
-  route handlers). DB ostáva nevystavená, **RLS sa nezapína** (línia D-025).
+  route handlers). DB ostáva nevystavená. **RLS je zapnuté na všetkých tabuľkách `public` bez politík** ako obrana do hĺbky
+  (2. 11., migrácia `20261102180000`; server ide cez `service_role` s BYPASSRLS). Nová tabuľka v migrácii aj
+  `alter table ... enable row level security`.
 - Anon kľúč smie do prehliadača **len** kvôli Realtime živému kanálu (D-079) a **len** keď
   rolám `anon`/`authenticated` nepatria v `public` žiadne práva (migrácia `20261016120000`);
   nová tabuľka/RPC im práva nedáva. Dáta sa cez anon kľúč nikdy nečítajú.
