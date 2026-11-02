@@ -1,0 +1,3428 @@
+<title>Knižnica požiadaviek</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>/*__DESIGN_KIT__*/</style>
+
+<style>
+/* ═══ Appka nad design-kitom ═══════════════════════════════════════════════
+   Mená premenných sú z §5 zadania UI; ich hodnoty sú výhradne --ds-* tokeny
+   kitu, takže v appke nie je ani jedna natvrdo napísaná farba — okrem troch
+   farieb pásiem, ktoré zadanie výslovne pripúšťa. */
+
+/*__ALIASY__*/
+
+:root {
+  --nav-sirka: 200px;
+  --inspektor-sirka: 184px;
+  --inspektor-zbaleny: 30px;
+}
+
+/* ── Základ ─────────────────────────────────────────────────────────────── */
+body { background: var(--surface-1); color: var(--text-secondary); font-size: 13px; }
+h1, h2, h3 { margin: 0; font-weight: 500; }
+p { margin: 0; }
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+.app button { font-family: inherit; font-weight: 400; }
+.mono { font-family: var(--font-mono); }
+.muted { color: var(--text-muted); }
+
+.ikona { width: 14px; height: 14px; flex: none; stroke-width: 1.75; }
+.ikona-12 { width: 12px; height: 12px; }
+
+/* ── Topbar ─────────────────────────────────────────────────────────────── */
+.topbar {
+  display: flex; align-items: center; gap: 16px; padding: 8px 14px;
+  background: var(--surface-2); border-bottom: 0.5px solid var(--border);
+  position: sticky; top: 0; z-index: var(--ds-z-nav);
+}
+.znacka { display: flex; align-items: center; gap: 8px; flex: none; }
+.znacka img { width: 22px; height: 22px; display: block; }
+.znacka .nazov { color: var(--text-primary); font-size: 13px; font-weight: 500; }
+.znacka img.inverzna { display: none; }
+[data-theme="dark"] .znacka img.inverzna { display: block; }
+[data-theme="dark"] .znacka img.svetla { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .znacka img.inverzna { display: block; }
+  :root:not([data-theme="light"]) .znacka img.svetla { display: none; }
+}
+.topbar-stat { display: flex; gap: 14px; margin-left: auto; align-items: center; flex-wrap: wrap; }
+.stat { font-size: 11px; color: var(--text-muted); display: flex; gap: 5px; align-items: baseline; }
+.stat b { font-family: var(--font-mono); font-weight: 500; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.stat.varovanie b { color: var(--text-warning); }
+.stat.zle b { color: var(--text-danger); }
+.app button.tichy {
+  min-height: 24px; padding: 2px 8px; font-size: 11px; border-radius: var(--radius);
+  border: 0.5px solid var(--border); background: var(--surface-2); color: var(--text-muted);
+}
+.app button.tichy:hover { color: var(--text-primary); border-color: var(--border-strong); background: var(--surface-3); }
+.app button.ulozit {
+  min-height: 24px; padding: 2px 10px; font-size: 11px; border-radius: var(--radius);
+  border: 0.5px solid var(--text-accent); background: var(--text-accent); color: var(--ds-text-on-brand);
+}
+.app button.ulozit:disabled { opacity: .4; }
+/* [V29] meno autora: podpisuje revíziu v databáze (Q61), pamätá si ho prehliadač */
+.app input.autor {
+  min-height: 24px; width: 140px; padding: 2px 8px; font-size: 11px; border-radius: var(--radius);
+  border: 0.5px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+}
+.app input.autor.chyba { border-color: var(--ds-danger-border, var(--text-accent)); }
+/* [V29, Q64 d] próza sa píše v editore: blok po bloku, nič okolo sa nemení */
+.proza textarea {
+  display: block; width: 100%; max-width: 78ch; min-height: 3em; margin: 2px 0 8px; padding: 6px 8px;
+  font: inherit; font-size: 12px; line-height: 1.5; color: var(--text-primary); resize: vertical;
+  border: 0.5px solid var(--border); border-radius: var(--radius); background: var(--surface-1);
+}
+.proza textarea.zmenene { border-color: var(--text-accent); }
+.pruh-vysledok {
+  padding: 6px 10px; margin-bottom: 8px; font-size: 11px; border-radius: var(--radius);
+  border: 0.5px solid var(--border); background: var(--surface-2); color: var(--text-secondary);
+}
+.pruh-vysledok.zle { border-color: var(--text-danger); color: var(--text-danger); }
+/* náhľad bez servera nemá kam zapisovať — nech to nie je drobným písmom (DECISIONS U15) */
+.pruh-nahlad {
+  display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap;
+  padding: 7px 14px; font-size: 12px; color: var(--text-secondary);
+  background: var(--bg-accent); border-bottom: 0.5px solid var(--border);
+}
+.pruh-nahlad[hidden] { display: none; }   /* `display: flex` by inak prebilo `hidden` */
+.pruh-nahlad b { font-weight: 500; color: var(--text-accent); }
+.pruh-nahlad code { font-family: var(--font-mono); font-size: 11px; }
+
+/* ── Tri stĺpce ─────────────────────────────────────────────────────────── */
+.telo {
+  display: grid; grid-template-columns: var(--nav-sirka) minmax(0, 1fr) var(--inspektor-sirka);
+  flex: 1; align-items: start;
+}
+/* zbalený inšpektor je len úzka lišta s ikonou na rozbalenie (kolo 3 §5) */
+.telo.insp-zbaleny { grid-template-columns: var(--nav-sirka) minmax(0, 1fr) var(--inspektor-zbaleny); }
+@media (max-width: 1080px) { .telo, .telo.insp-zbaleny { grid-template-columns: var(--nav-sirka) minmax(0, 1fr); } }
+@media (max-width: 720px) { .telo, .telo.insp-zbaleny { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── Ľavý panel: plochý zoznam registrov ────────────────────────────────── */
+.nav {
+  padding: 10px 6px 20px; position: sticky; top: 39px; max-height: calc(100vh - 39px); overflow: auto;
+  border-right: 0.5px solid var(--border); background: var(--surface-1);
+}
+@media (max-width: 720px) { .nav { position: static; max-height: none; border-right: 0; border-bottom: 0.5px solid var(--border); } }
+.nav-hlavicka { padding: 0 8px 10px; }
+.nav-hlavicka .titul { font-size: 11px; color: var(--text-muted); letter-spacing: .06em; }
+.nav-hlavicka .zdroj { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 2px; }
+/* popisok sa nesmie orezať — radšej zalomí na dva riadky (§7) */
+.app .nav button {
+  width: 100%; min-height: 26px; padding: 3px 8px; border: 0; background: transparent;
+  border-radius: var(--radius); display: flex; align-items: flex-start; gap: 7px;
+  font-size: 12px; color: var(--text-secondary); text-align: left; line-height: 1.35;
+}
+.nav button .ikona { margin-top: 1px; }
+.app .nav button:hover { background: var(--surface-3); }
+.app .nav button[aria-current="true"] { background: var(--bg-accent); color: var(--text-accent); }
+.nav button .stitok { min-width: 0; overflow-wrap: anywhere; }
+.nav button .pocet { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.nav button[aria-current="true"] .pocet { color: var(--text-accent); }
+.nav button .pocet.varovanie { color: var(--text-warning); }
+.nav button .skratka { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+.nav-ciara { height: 0; border-top: 0.5px solid var(--border); margin: 10px 8px; }
+
+/* ── Stredný stĺpec ─────────────────────────────────────────────────────── */
+.obsah { padding: 14px 16px 28px; min-width: 0; }
+.cesta { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 10px; }
+.app .cesta button { min-height: 18px; padding: 0; border: 0; background: none; color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
+.app .cesta button:hover { color: var(--text-accent); text-decoration: underline; background: none; }
+
+.hlavicka { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin-bottom: 12px; }
+.hlavicka h1 { font-size: 16px; color: var(--text-primary); font-weight: 500; }
+.hlavicka .technicky { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.hlavicka .vpravo { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+/* stránka poznámky: nadpis, pod ním ID a cesta k súboru (kolo 3 §2) */
+.hlavicka-poznamky { display: block; margin-bottom: 6px; }
+.hlavicka-poznamky .podtitul { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* záložky stránky poznámky: jeden záznam, viac pohľadov, každý s URL (kolo 3 §1) */
+.zalozky-poznamky { display: flex; gap: 2px; border-bottom: 0.5px solid var(--border); margin-bottom: 12px; }
+.app button.zalozka-p {
+  min-height: 28px; padding: 4px 10px; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  background: none; font-size: 12px; color: var(--text-muted); margin-bottom: -0.5px;
+}
+.app button.zalozka-p:hover { color: var(--text-primary); background: none; }
+.app button.zalozka-p[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--text-accent); }
+
+/* pásma: jednostranný okraj sa nezaobľuje; medzera 14 px, aby štyri otázky neboli jeden zoznam (kolo 4 §3.1) */
+.pasma { display: grid; gap: 14px; }
+.pasmo {
+  border-left: 3px solid var(--farba, var(--border-strong));
+  border-top: 0.5px solid var(--border); border-right: 0.5px solid var(--border); border-bottom: 0.5px solid var(--border);
+  border-radius: 0; background: var(--surface-2); padding: 8px 12px;
+  /* položka gridu sa bez `min-width: 0` nezmestí pod vlastný obsah: jeden nezalomiteľný riadok
+     inak roztiahne celé pásmo pod inšpektor */
+  min-width: 0;
+}
+.pasmo > h2 { font-size: 16px; font-weight: 500; color: var(--text-primary); }
+.pasmo > .technicky { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.pasmo > .telo-pasma { margin-top: 8px; }
+.pasmo.prazdne > .telo-pasma { font-size: 11px; color: var(--text-muted); }
+
+/* pásmo 4 nie je karta — je to šev na konci */
+.sev {
+  border-top: 0.5px dashed var(--border-strong); margin-top: 10px; padding-top: 8px;
+  display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline;
+}
+.sev .otazka { font-size: 13px; color: var(--text-muted); }
+.sev .doplnok { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+
+/* pruh „kde to sedí" — jeden riadok, 12 px, segmenty sú odkazy (kolo 3 §2.3) */
+.pruh { display: flex; flex-wrap: wrap; gap: 2px 5px; align-items: center; margin: 0 0 10px; font-size: 12px; color: var(--text-muted); }
+.pruh .oddel { color: var(--text-faint); }
+.pruh .tu { font-family: var(--font-mono); color: var(--text-accent); }
+.app .pruh button.seg {
+  min-height: 18px; padding: 0 3px; border: 0.5px solid transparent; border-radius: var(--radius);
+  background: none; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary);
+}
+.app .pruh button.seg:hover { color: var(--text-accent); background: none; }
+/* visiaci segment: kurzívou, s prerušovaným okrajom — poznámka zatiaľ neexistuje */
+.app .pruh button.seg.visiaci { font-style: italic; color: var(--text-muted); border-color: var(--border-strong); border-style: dashed; }
+.app .pruh button.pruh-retazec { margin-left: 2px; color: var(--text-muted); }
+.app .pruh button.pruh-retazec:hover { color: var(--text-accent); }
+.app button.pruh-viac { min-height: 18px; padding: 0 4px; border: 0; background: none; font-size: 11px; color: var(--text-muted); }
+.app button.pruh-viac:hover { color: var(--text-accent); text-decoration: underline; background: none; }
+
+/* [PLAN §4b bod 9] citát z účelu užitia, keď cieľ chýba — próza je odpoveď, len ju treba ukázať */
+blockquote.citat-preco { margin: 6px 0 0; padding: 8px 10px; border-left: 2px solid var(--farba, var(--border)); background: var(--surface-2); border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0; }
+blockquote.citat-preco .text { font-size: 12px; color: var(--text-primary); white-space: pre-wrap; }
+blockquote.citat-preco .zdroj { margin-top: 6px; font-size: 11px; color: var(--text-muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+/* kroky kaskády v pásme „Prečo?": čipy ostávajú (kolo 3 §4.3) */
+.kroky { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.kroky .sipka-kroku { color: var(--text-faint); font-size: 11px; }
+.rola { font-size: 10px; color: var(--text-muted); text-transform: lowercase; }
+
+/* zvislý strom pásiem 2 a 3: riadok na plnú šírku (kolo 3 §4).
+   Postupnosť (udalosť → účel → úlohy) nesie zvislá čiara s odsadením 18 px, nie samotný text —
+   vecná príslušnosť (kontajner → objekt) je vnorenie a čas je míľnik v riadku výmeny (kolo 4 §3.4). */
+.strom, .jednotky { display: block; }
+.vetva { border-left: 0.5px solid var(--border-strong); padding-left: 18px; }
+
+/* [U19] výmena je PREDEL v línii: moment odovzdania medzi úlohami, ktoré informáciu vyrábajú,
+   a tými, ktoré ju používajú (PAS 6.1.3). Preto je to najsilnejší prvok línie — dvojitá čiara
+   cez celú šírku — a nie karta vo vlastnom pásme. */
+.app button.predel {
+  display: flex; gap: 8px; align-items: baseline; width: 100%; text-align: left;
+  border: 0; border-top: 0.5px solid var(--border-strong); border-bottom: 0.5px solid var(--border-strong);
+  border-radius: 0; background: var(--surface-1); padding: 6px 8px; margin: 8px 0 0;
+  font-size: 13px; color: var(--text-secondary); min-height: 30px;
+}
+.app button.predel:hover { background: var(--surface-3); color: var(--text-primary); }
+.app button.predel.tu { background: var(--bg-accent); color: var(--text-accent); }
+.app button.p-id {
+  min-height: 18px; padding: 0 2px; border: 0; border-radius: var(--radius); background: none;
+  font-family: var(--font-mono); font-size: 13px; color: inherit;
+}
+.app button.p-id:hover { color: var(--text-accent); background: none; text-decoration: underline; }
+.predel .oddel { color: var(--text-faint); }
+.predel .p-prijemca { color: var(--text-muted); }
+.predel .p-pocet { margin-left: auto; font-size: 11px; color: var(--text-muted); }
+.predel .p-sipka { font-size: 11px; color: var(--text-muted); }
+/* rozbalenie pod predelom: odpoveď na „Čo a ako podrobne?" tam, kde vzniká — farba pásma ostáva,
+   aby kaskáda štyroch otázok bola vidieť aj bez samostatnej karty */
+.rozbalenie { border-left: 3px solid var(--farba, var(--border-strong)); padding: 6px 0 10px 12px; margin: 0 0 4px; }
+.rozbalenie > h3 { font-size: 16px; font-weight: 500; color: var(--text-primary); }
+.rozbalenie > .technicky { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin: 1px 0 6px; }
+.rozbalenie .objekty { border-left: 0.5px solid var(--border); margin-left: 8px; padding-left: 10px; }
+/* iný účel užitia, ktorý si výmenu berie ako vstup — odkaz, nie ďalšia úloha (U19 §4) */
+.pouziva-aj { margin-top: 4px; font-size: 11px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; }
+.app button.pouziva-aj-id { min-height: 18px; padding: 0 3px; border: 0; background: none; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+.app button.pouziva-aj-id:hover { color: var(--text-accent); background: none; }
+.riadok-kroku {
+  display: flex; gap: 10px; align-items: baseline; min-width: 0;
+  border-top: 0.5px solid var(--border); padding: 5px 0; font-size: 12px;
+}
+.strom > .riadok-kroku:first-child, .jednotky > .riadok-kroku:first-child { border-top: 0; }
+.app button.rk-id {
+  flex: none; width: 172px; min-height: 18px; padding: 0; border: 0; background: none; text-align: left;
+  font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.app button.rk-id:hover { color: var(--text-accent); background: none; }
+.riadok-kroku .rk-nazov { flex: 1; min-width: 0; color: var(--text-secondary); }
+.riadok-kroku .rk-pozn { flex: none; font-size: 11px; color: var(--text-muted); text-align: right; max-width: 40%; }
+.riadok-kroku.tu, .riadok-kroku.jednotka-ohnisko { background: var(--bg-accent); }
+.riadok-kroku.tu .rk-id, .riadok-kroku.jednotka-ohnisko .rk-id { color: var(--text-accent); }
+.riadok-kroku.visiaci .rk-nazov { font-style: italic; color: var(--text-muted); }
+.app .riadok-kroku.visiaci button.rk-id { font-style: italic; color: var(--text-muted); border: 0.5px dashed var(--border-strong); border-radius: var(--radius); padding: 0 3px; width: auto; max-width: 172px; }
+.jednotky .riadok-kroku.jednotka { cursor: pointer; }
+.jednotky .riadok-kroku.jednotka:hover { background: var(--surface-3); }
+.jednotky .riadok-kroku.jednotka-ohnisko:hover { background: var(--bg-accent); cursor: default; }
+.jednotka-telo { padding: 4px 0 8px 16px; }
+.prepis-povodna { color: var(--text-muted); }
+.prepis-nova { margin-left: 4px; color: var(--text-primary); }
+
+/* telo poznámky: próza len na čítanie pod poľami (kolo 3 §2) */
+.proza { margin-top: 16px; border-top: 0.5px solid var(--border); padding-top: 10px; }
+.proza > h3 { font-size: 12px; color: var(--text-primary); font-weight: 500; }
+.proza > h3 .zdroj, .podtitul .revizia { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); font-weight: 400; margin-left: 6px; }
+.proza h4 { font-size: 12px; font-weight: 500; color: var(--text-secondary); margin: 10px 0 2px; }
+.proza p { font-size: 12px; line-height: 1.5; color: var(--text-secondary); white-space: pre-wrap; max-width: 78ch; }
+
+/* čipy: jedna poznámka žije na jednom mieste, inde je len čip (V21) */
+.cipy { display: flex; flex-wrap: wrap; gap: 4px; }
+.app button.cip {
+  min-height: 22px; display: inline-flex; align-items: baseline; gap: 6px; padding: 2px 7px;
+  border: 0.5px solid var(--border); border-radius: var(--radius); background: var(--surface-1);
+  font-size: 11px; color: var(--text-secondary);
+}
+.app button.cip:hover { border-color: var(--text-accent); color: var(--text-accent); }
+.app button.cip[aria-current="true"] { background: var(--bg-accent); border-color: var(--text-accent); color: var(--text-accent); }
+.app button.cip.visiaci { border-style: dashed; color: var(--text-warning); font-style: italic; }
+.cip .cip-chyba { font-style: normal; font-size: 10px; color: var(--text-warning); }
+/* hraničný typ sedí na šve dvoch pásiem, preto je v oboch — nie je to duplicita */
+.app button.cip.hranicne { border-left-width: 2px; border-left-style: double; }
+.cip .cip-id { font-family: var(--font-mono); }
+.cip .cip-nazov { color: var(--text-muted); max-width: 24ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app button.cip:hover .cip-nazov { color: inherit; }
+.cip .cip-vazba { font-family: var(--font-mono); font-size: 10px; color: var(--text-faint); }
+
+/* ── Tabuľky (register aj položky) ──────────────────────────────────────── */
+.tabulka-obal { overflow-x: auto; border: 0.5px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+table.mriezka { border-collapse: collapse; width: 100%; font-size: 12px; }
+table.mriezka thead th {
+  text-align: left; font-size: 11px; font-weight: 400; color: var(--text-muted);
+  padding: 6px 10px; border-bottom: 0.5px solid var(--border); white-space: nowrap;
+  position: sticky; top: 0; background: var(--surface-2); z-index: 1;
+}
+table.mriezka td { padding: 4px 10px; border-top: 0.5px solid var(--border); vertical-align: top; }
+table.mriezka tbody tr:first-child td { border-top: 0; }
+table.mriezka tbody tr:hover td { background: var(--surface-3); }
+table.mriezka tr.vybrany td { background: var(--bg-accent); }
+table.mriezka td.mono, table.mriezka th.mono { font-family: var(--font-mono); font-size: 11px; }
+table.mriezka th.lepiaci, table.mriezka td.lepiaci {
+  position: sticky; left: 0; z-index: 2; background: var(--surface-2);
+  box-shadow: 1px 0 0 var(--border);
+}
+table.mriezka thead th.lepiaci { z-index: 3; }
+table.mriezka tbody tr:hover td.lepiaci { background: var(--surface-3); }
+table.mriezka tr.vybrany td.lepiaci { background: var(--bg-accent); }
+table.mriezka td.prazdna { color: var(--text-faint); }
+/* [U13] zoskupenie pod-záznamov: poznámka je obal, nie riadok — preto pruh, nie ďalší záznam */
+table.mriezka tr.skupinovy td { background: var(--surface-2); border-top: 0.5px solid var(--border-strong, var(--border)); padding-top: 7px; padding-bottom: 5px; }
+table.mriezka tr.skupinovy .muted { margin-left: 8px; }
+table.mriezka tr.skupinovy:hover td { background: var(--surface-2); }
+.riadok-klik { cursor: pointer; }
+
+/* pásmo 3: tabuľka položiek s pevnými šírkami zo zadania */
+table.polozky { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 12px; }
+table.polozky th {
+  font-size: 11px; font-weight: 400; color: var(--text-muted); text-align: left; padding: 0 0 6px;
+}
+table.polozky td { padding: 6px 0; border-top: 0.5px solid var(--border); vertical-align: top; }
+table.polozky col.c-polozka { width: 38%; }
+table.polozky col.c-povinnost { width: 22%; }
+table.polozky col.c-odkial { width: 40%; }
+table.polozky tr.prepisana td { background: var(--bg-accent); }
+table.polozky .kluc-polozky { font-family: var(--font-mono); color: var(--text-primary); }
+table.polozky .ifc { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); display: block; }
+.pill {
+  display: inline-block; background: var(--surface-3); border-radius: var(--radius);
+  padding: 1px 5px; font-size: 11px; color: var(--text-secondary);
+}
+.app button.pill { border: 0; min-height: 18px; }
+.app button.pill:hover { color: var(--text-accent); }
+.odkial { font-size: 11px; color: var(--text-muted); }
+.app button.odkial-odkaz { min-height: 18px; padding: 0; border: 0; background: none; font-size: 11px; color: var(--text-muted); text-align: left; }
+.app button.odkial-odkaz:hover { color: var(--text-accent); text-decoration: underline; background: none; }
+
+/* ── Pravý panel: inšpektor ─────────────────────────────────────────────── */
+.inspektor {
+  background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px;
+  padding: 10px; margin: 14px 12px 14px 0; position: sticky; top: 53px;
+  max-height: calc(100vh - 70px); overflow: auto;
+}
+.inspektor.zbaleny { background: transparent; border: 0; padding: 0; margin: 14px 6px 0 0; }
+.insp-hlava { display: flex; justify-content: flex-end; }
+.inspektor:not(.zbaleny) .insp-hlava { margin: -4px -4px 2px 0; }
+.app button.insp-prepinac { width: 22px; min-height: 22px; color: var(--text-muted); }
+.app button.insp-prepinac:hover { color: var(--text-accent); }
+@media (max-width: 1080px) { .inspektor { position: static; max-height: none; margin: 0 16px 24px; } }
+@media (max-width: 720px) { .inspektor { margin: 0 12px 20px; } }
+.insp-blok + .insp-blok { border-top: 0.5px solid var(--border); margin-top: 10px; padding-top: 10px; }
+.insp-blok > h3 {
+  font-size: 11px; font-weight: 400; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px;
+}
+.insp-blok .nazov-polozky { font-size: 12px; color: var(--text-primary); font-family: var(--font-mono); }
+.insp-blok .veta { font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.45; }
+.insp-blok .veta b { font-weight: 500; color: var(--text-primary); }
+.insp-blok .veta s { color: var(--text-faint); }
+.insp-riadok + .insp-riadok { margin-top: 7px; }
+.app .insp-blok button.odkaz-insp {
+  min-height: 18px; padding: 0; border: 0; background: none; text-align: left;
+  font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary);
+}
+.app .insp-blok button.odkaz-insp:hover { color: var(--text-accent); text-decoration: underline; background: none; }
+.insp-blok .dovod { font-size: 11px; color: var(--text-muted); }
+.insp-blok .dopad { font-size: 11px; color: var(--text-warning); line-height: 1.45; }
+.insp-blok .prazdno { font-size: 11px; color: var(--text-faint); }
+
+/* ── Polia detailu (generické z popisu schémy) ──────────────────────────── */
+/* [Q44 kolo 4] Sekcia je karta, krátke polia stoja dve vedľa seba, meno poľa je ľudské:
+   technický kľúč a návod sú druhoradé — nesmú kričať v každom riadku. */
+.skupina { max-width: 1500px; border: 0.5px solid var(--border); border-radius: var(--radius); background: var(--surface-1); overflow: hidden; }
+.skupina + .skupina { margin-top: 14px; }
+.skupina > h3 {
+  display: flex; align-items: baseline; gap: 8px; margin: 0;
+  padding: 6px 12px; background: var(--surface-2); border-bottom: 0.5px solid var(--border);
+  font-size: 12px; color: var(--text-primary); font-weight: 500;
+}
+.skupina > h3 .zdroj { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); font-weight: 400; margin-left: auto; }
+.skupina > .polia { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; padding: 2px 12px 8px; }
+@media (max-width: 1180px) { .skupina > .polia { grid-template-columns: minmax(0, 1fr); } }
+
+.pole { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 10px; padding: 4px 0; border-top: 0.5px solid var(--border); align-items: baseline; min-width: 0; }
+.pole.siroke { grid-column: 1 / -1; }
+@media (max-width: 640px) { .pole { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+.pole > .menovka { min-width: 0; }
+/* ľudský názov je prvý a nesie riadok; technický kľúč je pod ním, drobný a bledý */
+.pole .titulok { font-size: 12px; color: var(--text-secondary); display: block; line-height: 1.35; }
+.pole .kluc { font-family: var(--font-mono); font-size: 10px; color: var(--text-faint); display: block; line-height: 1.3; }
+.pole .povinne { color: var(--text-danger); }
+.pole .napoveda { display: none; }                    /* návod patrí pod hodnotu, a len keď treba */
+.pole > .hodnota { min-width: 0; }
+/* návod sa ukáže len pri prázdnom poli alebo pri poli s nálezom; inak je v `title` */
+.pole .pod-hodnotou { font-size: 11px; color: var(--text-faint); margin-top: 1px; line-height: 1.4; }
+.app button.zbalene {
+  width: 100%; text-align: left; min-height: 24px; padding: 3px 8px; margin-top: 6px;
+  border: 0.5px dashed var(--border-strong); border-radius: var(--radius);
+  background: transparent; color: var(--text-muted); font-size: 11px;
+}
+.app button.zbalene:hover { color: var(--text-accent); border-color: var(--text-accent); }
+
+.app .bunka {
+  min-height: 22px; width: 100%; text-align: left; padding: 2px 6px;
+  border: 0.5px solid transparent; border-radius: var(--radius); background: transparent;
+  font-size: 12px; color: var(--text-secondary);
+}
+.app .bunka:hover { background: var(--surface-3); border-color: var(--border); }
+.app .bunka.prazdna { color: var(--text-faint); }
+.app .bunka.mono { font-family: var(--font-mono); font-size: 11px; }
+.app .bunka.zmenena { border-color: var(--text-accent); background: var(--bg-accent); }
+.app .bunka.chybna { border-color: var(--text-danger); }
+.app .bunka.readonly { color: var(--text-muted); cursor: default; }
+.app .bunka.readonly:hover { border-color: transparent; background: transparent; }
+.app input.vstup, .app select.vstup, .app textarea.vstup {
+  width: 100%; min-height: 24px; padding: 2px 6px;
+  border: 0.5px solid var(--text-accent); border-radius: var(--radius);
+  background: var(--surface-2); color: var(--text-secondary); font-family: inherit; font-size: 12px;
+}
+.app textarea.vstup { min-height: 62px; resize: vertical; line-height: 1.45; }
+.app .vstup.mono { font-family: var(--font-mono); font-size: 11px; }
+.app .vstup:focus-visible { outline: 1px solid var(--text-accent); outline-offset: 1px; }
+
+.diag { display: block; font-size: 11px; margin-top: 2px; font-family: var(--font-mono); line-height: 1.4; }
+.diag.E { color: var(--text-danger); }
+.diag.W { color: var(--text-warning); }
+.diag.I { color: var(--text-muted); }
+.znaky { display: inline-flex; gap: 3px; flex-wrap: wrap; }
+.znak {
+  display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-family: var(--font-mono);
+  border: 0.5px solid var(--border); border-radius: var(--radius); padding: 0 4px; color: var(--text-muted);
+}
+.znak.E { color: var(--text-danger); border-color: var(--text-danger); }
+.znak.W { color: var(--text-warning); }
+
+/* vnorené zoznamy: zoznam objektov je editovateľná vnorená tabuľka (kolo 3 §2), únie ostávajú zoznamom */
+.vnorene { border: 0.5px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.vnorene .tabulka-vnorena { overflow-x: auto; }
+table.vnorena { border-collapse: collapse; width: 100%; font-size: 12px; }
+table.vnorena th { text-align: left; font-size: 11px; font-weight: 400; color: var(--text-muted); padding: 3px 6px; border-bottom: 0.5px solid var(--border); white-space: nowrap; }
+table.vnorena td { padding: 2px 4px; border-top: 0.5px solid var(--border); vertical-align: top; min-width: 90px; }
+table.vnorena tbody tr:first-child td { border-top: 0; }
+table.vnorena td.uzka { min-width: 0; width: 20px; white-space: nowrap; }
+table.vnorena td.zhrnutie-bunka { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); min-width: 140px; }
+table.vnorena td.detail-bunka { padding: 4px 8px 8px 28px; background: var(--surface-1); }
+table.vnorena td.detail-bunka .pole { grid-template-columns: 150px minmax(0, 1fr); }
+.vnorene > .lista { background: var(--surface-3); padding: 3px 8px; display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--text-muted); }
+.vnorene .zaznam { border-top: 0.5px solid var(--border); }
+.vnorene .zaznam:first-child { border-top: 0; }
+.vnorene .zaznam > .hlava { display: flex; gap: 6px; align-items: center; padding: 4px 8px; cursor: pointer; }
+.vnorene .zaznam > .hlava:hover { background: var(--surface-3); }
+.vnorene .zaznam > .hlava .idx { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); width: 20px; flex: none; }
+.vnorene .zaznam > .hlava .zhrnutie { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vnorene .zaznam > .hlava .odznaky { margin-left: auto; display: flex; gap: 4px; align-items: center; flex: none; }
+.vnorene .zaznam > .detail { padding: 4px 8px 8px 28px; background: var(--surface-1); }
+.sipka { width: 12px; flex: none; color: var(--text-faint); }
+.sipka.otvorena { transform: rotate(90deg); }
+
+.app button.mini {
+  min-height: 20px; padding: 1px 6px; font-size: 11px; border-radius: var(--radius);
+  border: 0.5px solid var(--border); background: var(--surface-2); color: var(--text-muted);
+}
+.app button.mini:hover { border-color: var(--text-accent); color: var(--text-accent); }
+.app button.ikonka { min-height: 20px; width: 20px; padding: 0; border: 0; background: none; color: var(--text-faint); display: inline-flex; align-items: center; justify-content: center; }
+.app button.ikonka:hover { color: var(--text-accent); background: none; }
+.odkazy { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+
+/* ── Panel hromadnej zmeny ──────────────────────────────────────────────── */
+.hromadne {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 6px 10px; margin-bottom: 8px; font-size: 11px; color: var(--text-secondary);
+  background: var(--bg-accent); border: 0.5px solid var(--text-accent); border-radius: var(--radius);
+}
+.hromadne select.vstup { width: auto; min-width: 120px; }
+.zalozky { display: flex; gap: 4px; margin-bottom: 10px; }
+.app button.zalozka {
+  min-height: 24px; padding: 2px 10px; font-size: 12px; border-radius: var(--radius);
+  border: 0.5px solid var(--border); background: var(--surface-2); color: var(--text-muted);
+}
+.app button.zalozka[aria-selected="true"] { background: var(--bg-accent); border-color: var(--text-accent); color: var(--text-accent); }
+
+/* ── Modaly (výber odkazu, hľadanie) ────────────────────────────────────── */
+.prekryv { position: fixed; inset: 0; background: var(--ds-overlay); display: flex; align-items: flex-start; justify-content: center; padding: 8vh 16px 16px; z-index: var(--ds-z-modal); }
+.dialog { background: var(--surface-2); border: 0.5px solid var(--border-strong); border-radius: 12px; width: min(720px, 100%); max-height: 76vh; display: flex; flex-direction: column; overflow: hidden; }
+.dialog > header { padding: 10px 12px; border-bottom: 0.5px solid var(--border); }
+.dialog > header h2 { font-size: 13px; color: var(--text-primary); }
+.dialog > header p { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.dialog .panely { display: grid; grid-template-columns: 1fr 1fr; min-height: 0; flex: 1; }
+@media (max-width: 620px) { .dialog .panely { grid-template-columns: 1fr; } }
+.dialog .panel { border-right: 0.5px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+.dialog .panel:last-child { border-right: 0; }
+.dialog .panel h3 { font-size: 11px; font-weight: 400; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); padding: 6px 10px; border-bottom: 0.5px solid var(--border); }
+.dialog .zoznam { overflow: auto; padding: 4px; }
+.dialog .hladanie { padding: 8px 10px; border-bottom: 0.5px solid var(--border); }
+.app .dialog .volba {
+  width: 100%; min-height: 26px; display: flex; gap: 8px; align-items: baseline; padding: 3px 8px;
+  border: 0; background: transparent; border-radius: var(--radius);
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); text-align: left;
+}
+.app .dialog .volba:hover { background: var(--surface-3); }
+.app .dialog .volba[aria-selected="true"] { background: var(--bg-accent); color: var(--text-accent); }
+.dialog .volba .meta { margin-left: auto; font-family: var(--ds-font-sans); font-size: 11px; color: var(--text-muted); }
+.dialog .formular { padding: 6px 12px 10px; overflow: auto; }
+.dialog .formular .pole { grid-template-columns: 150px minmax(0, 1fr); }
+.dialog .formular .hlasenia { margin-top: 8px; }
+.dialog > footer { padding: 8px 12px; border-top: 0.5px solid var(--border); display: flex; gap: 8px; align-items: center; }
+.dialog > footer .nahlad { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-right: auto; }
+.app .dialog button.hlavne { min-height: 26px; padding: 2px 10px; font-size: 12px; border-radius: var(--radius); background: var(--text-accent); border: 0.5px solid var(--text-accent); color: var(--ds-text-on-brand); }
+.app .dialog button.hlavne:disabled { opacity: .45; }
+
+.prazdno { padding: 20px 12px; text-align: center; color: var(--text-muted); font-size: 12px; }
+.insp-blok .prazdno, .inspektor .prazdno { padding: 0; text-align: left; font-size: 11px; line-height: 1.45; }
+.poznamka-pod { font-size: 11px; color: var(--text-muted); margin-top: 10px; line-height: 1.5; max-width: 78ch; }
+</style>
+
+/*__IKONY__*/
+
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="znacka">
+      <img class="svetla" src="__ZNACKA_PNG__" alt="" width="22" height="22">
+      <img class="inverzna" src="__ZNACKA_INV_PNG__" alt="" width="22" height="22">
+      <div class="nazov">Knižnica požiadaviek</div>
+    </div>
+    <div class="topbar-stat" id="statistiky"></div>
+    <input type="text" class="autor" id="autor" placeholder="tvoje meno" title="meno autora - podpisuje každú zmenu" hidden>
+    <button type="button" class="ulozit" id="ulozit" hidden>Uložiť do MD</button>
+    <button type="button" class="tichy" id="vydat" hidden title="0 chýb → snímka knižnice → IDS do katalógu AIM → zip exportu">Vydať</button>
+    <button type="button" class="tichy" id="tema">Téma</button>
+  </header>
+
+  <div class="pruh-nahlad" id="pruh-nahlad" hidden></div>
+
+  <div class="telo">
+    <nav class="nav" id="nav" aria-label="Registre knižnice"></nav>
+    <main class="obsah" id="obsah"></main>
+    <aside class="inspektor" id="inspektor" aria-label="Inšpektor"></aside>
+  </div>
+</div>
+
+<script type="application/json" id="data">/*__DATA__*/</script>
+<script>
+(function () {
+  "use strict";
+  let DATA = JSON.parse(document.getElementById("data").textContent);
+  let TYPY = DATA.typy;
+  let PASMA = DATA.pasma;
+  let POZNAMKY = {};
+  let UZLY = {};
+  let DIAG_PODLA = {};
+  let DIAGNOSTIKY = [];   // platný zoznam: z dokumentu, alebo prepočítaný nad pracovnou kópiou
+  // pracovná kópia: editor mení ju, pôvodné dáta ostávajú na porovnanie
+  let PRACOVNE = {};
+  const ZMENY = [];
+
+  /** Prepočíta odvodené indexy. Po uložení sem príde dokument znova načítaný zo súborov. */
+  function naplnData(d) {
+    DATA = d;
+    TYPY = DATA.typy;
+    PASMA = DATA.pasma;
+    POZNAMKY = {};
+    UZLY = {};
+    DIAG_PODLA = {};
+    PRACOVNE = {};
+    DATA.poznamky.forEach(p => {
+      POZNAMKY[p.id] = p;
+      PRACOVNE[p.id] = JSON.parse(JSON.stringify(p.data));
+      // pod-záznamy majú vlastnú vetvu pracovnej kópie pod `__pod` — pointer `/__pod/<id>/<pole>`
+      // je ten istý, ktorý pozná `zapis.uloz_poznamku`, takže sa dajú editovať aj v registri (U13)
+      if (p.pod_zaznamy && p.pod_zaznamy.length) {
+        PRACOVNE[p.id].__pod = {};
+        p.pod_zaznamy.forEach(pz => { PRACOVNE[p.id].__pod[pz.id] = JSON.parse(JSON.stringify(pz.data)); });
+      }
+    });
+    DATA.uzly.forEach(u => { UZLY[u.id] = u; });
+    naplnDiagnostiky(DATA.diagnostiky);
+  }
+
+  /** Index diagnostík podľa poznámky. Zoznam je buď z dokumentu (súbory), alebo z `/api/kontrola`
+      (pracovná kópia so zmenami, ktoré ešte nie sú uložené). */
+  function naplnDiagnostiky(zoznam) {
+    DIAGNOSTIKY = zoznam || [];
+    DIAG_PODLA = {};
+    DIAGNOSTIKY.forEach(x => {
+      if (!x.note_id) return;
+      (DIAG_PODLA[x.note_id] = DIAG_PODLA[x.note_id] || []).push(x);
+    });
+  }
+  naplnData(DATA);
+  const OTVORENE = new Set();
+  const VYBRANE = new Set();   // hromadná zmena v registri
+
+  const STAV = {
+    pohlad: "register", typ: PASMA.poradie[0], poznamka: null, pod: null,
+    er: null, polozka: null, zalozka: "poznamky", zalozkaVolena: false, uroven: "warning",
+    zalozkaPoznamky: "poznamka",  // stránka poznámky: Poznámka | Reťazec — predvolená je vždy Poznámka (kolo 3 §1)
+    retazec: 0,          // ktorá kaskáda, keď poznámka sedí na viacerých
+    vymenyRozbalene: null,  // [U19] ktoré predely sú rozbalené; null = predvoľba podľa ohniska
+    stlpceNavyse: {},    // typ → true: ukáž aj polia mimo predvolenej zostavy
+    vsetkyPolia: false,  // detail: rozbaliť aj prázdne voliteľné polia
+    vysledok: null       // hlásenie po uložení do MD
+  };
+  //: keď stránka beží pod `assetin edit`, môže zapisovať; ako súbor je to náhľad
+  const API = { zivy: false, koren: null, nova: false, kontrola: false, zapis: false, autorPovinny: false, vydanie: false };
+  /** Meno autora: podpisuje revíziu v databáze (V29, Q61); bez prihlásenia si ho pamätá prehliadač. */
+  const AUTOR = { meno: "" };
+  try { AUTOR.meno = localStorage.getItem("assetin-autor") || ""; } catch (e) { /* súkromné okno */ }
+  /** Kam sa ukladá: databáza (`db:<kód>`) alebo súbory MD v priečinku. */
+  const ulozDoKam = () => (API.koren && String(API.koren).indexOf("db:") === 0 ? "do knižnice" : "do MD");
+  // prepočet diagnostík nad pracovnou kópiou: „čerstvé" = to, čo by validátor povedal po uložení
+  const PREPOCET = { bezi: false, cakajuci: null, cerstve: false, chyba: null };
+  // ID nesie cesta súboru a typ priečinok — editor ich nemení (QUESTIONS #10)
+  const NEMENITELNE = new Set(["id", "typ"]);
+  const SKRYTE_V_REGISTRI = new Set(["typ", "guid", "jazyk", "autor", "licencia", "aliases", "id"]);
+  const SKALARNE = new Set(["text", "dlhy-text", "enum", "enum-alebo-text", "cislo", "boolean", "datum"]);
+  const PRIEREZOVE = new Set(Object.keys(TYPY).filter(t => TYPY[t].prierezove));
+
+  // ─────────────────────────────────────────────────────────────── pomôcky
+  const h = (tag, trieda, text) => {
+    const e = document.createElement(tag);
+    if (trieda) e.className = trieda;
+    if (text != null) e.textContent = text;
+    return e;
+  };
+  /** Ikona z vendorovaného Tabler sprite (outline, dekoratívna). */
+  function ikona(meno, trieda) {
+    const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    s.setAttribute("class", "ikona" + (trieda ? " " + trieda : ""));
+    s.setAttribute("aria-hidden", "true");
+    s.setAttribute("fill", "none");
+    s.setAttribute("stroke", "currentColor");
+    s.setAttribute("stroke-linecap", "round");
+    s.setAttribute("stroke-linejoin", "round");
+    const u = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    u.setAttribute("href", "#" + meno);
+    s.appendChild(u);
+    return s;
+  }
+  /** 1 poznámka · 2 poznámky · 5 poznámok — tvar podľa počtu, nie „poznámok" vždy. */
+  function mnozne(n, jedna, malo, vela) {
+    if (n === 1) return n + " " + jedna;
+    return n + " " + (n >= 2 && n <= 4 ? malo : vela);   // 0 aj 5+ majú genitív množného čísla
+  }
+  const skrat = (t, max) => { t = String(t == null ? "" : t); return t.length > max ? t.slice(0, max - 1) + "…" : t; };
+  const klucCesty = k => (/^\d+$/.test(k) ? Number(k) : k);
+  const prazdne = v => v == null || v === "" || (Array.isArray(v) && v.length === 0);
+
+  function citaj(obj, pointer) {
+    if (!pointer) return obj;
+    return pointer.replace(/^\//, "").split("/").reduce((o, k) => (o == null ? undefined : o[klucCesty(k)]), obj);
+  }
+  function zapis(obj, pointer, hodnota) {
+    const casti = pointer.replace(/^\//, "").split("/");
+    const posledny = casti.pop();
+    let cur = obj;
+    casti.forEach((k, i) => {
+      const kk = klucCesty(k);
+      if (cur[kk] == null) cur[kk] = /^\d+$/.test(casti[i + 1] != null ? casti[i + 1] : posledny) ? [] : {};
+      cur = cur[kk];
+    });
+    cur[klucCesty(posledny)] = hodnota;
+  }
+  function textHodnoty(v) {
+    if (v == null || v === "") return "";
+    if (Array.isArray(v)) return v.map(textHodnoty).join(", ");
+    if (typeof v === "object") return Object.keys(v).map(k => k + ": " + textHodnoty(v[k])).join(" · ");
+    if (typeof v === "boolean") return v ? "áno" : "nie";
+    return String(v);
+  }
+  const idZOdkazu = v => {
+    const m = String(v == null ? "" : v).match(/^\[\[([^\[\]#|]+)(?:#([^\[\]|]+))?/);
+    return m ? m[1] : null;
+  };
+  function idyPola(id, pole) {
+    const v = citaj(PRACOVNE[id], "/" + pole);
+    const zoznam = Array.isArray(v) ? v : (v == null ? [] : [v]);
+    return zoznam.map(idZOdkazu).filter(Boolean);
+  }
+  const popisokTypu = t => (TYPY[t] && TYPY[t].popisok) || t;
+  const ikonaTypu = t => (TYPY[t] && TYPY[t].ikona) || "ti-file";
+  const poznamkyTypu = typ => (DATA.registre[typ] || []);
+  const jeVKniznici = id => !!POZNAMKY[id];
+
+  /** Kľúč položky IU-O — musí sedieť s Polozka.kluc v schéme, inak neplatia prepisy ER. */
+  function klucPolozky(pol) {
+    if (!pol) return "";
+    if (pol.prop) return idZOdkazu(pol.prop) || String(pol.prop);
+    const i = pol.ifc || {};
+    if (i.atribut) return i.atribut;
+    if (i.material) return "material:" + i.material;
+    return i.nazov || "";
+  }
+  function ifcPopis(pol) {
+    const i = (pol && pol.ifc) || null;
+    if (!i) return pol && pol.prop ? "vlastná vlastnosť" : "";
+    if (i.atribut) return "atribút " + i.atribut;
+    if (i.material) return "materiál " + i.material;
+    return (i.pset || "") + " · " + (i.nazov || "");
+  }
+
+  // ─────────────────────────────────────────────────────────── diagnostiky
+  /** Presne na tomto poli. Vnorené sa hlásia na svojom riadku, nie znova na rodičovi —
+      inak jeden nález vyzerá ako päť (QUESTIONS §7). */
+  /** Bez prepočtu (náhľad bez servera) hovorí diagnostika o súbore, nie o tom, čo je na obrazovke —
+      na poli s neuloženou zmenou ju preto zamlčíme, kým sa neuloží (PLAN §4b bod 5). */
+  const zastaralaDiag = (id, pointer) => !PREPOCET.cerstve && !!zmenaPre(id, pointer);
+  const diagPre = (id, pointer) => zastaralaDiag(id, pointer)
+    ? [] : (DIAG_PODLA[id] || []).filter(d => d.json_pointer === pointer);
+  const diagPodStrom = (id, pointer) => zastaralaDiag(id, pointer) ? [] : (DIAG_PODLA[id] || []).filter(d =>
+    pointer && (d.json_pointer === pointer || d.json_pointer.indexOf(pointer + "/") === 0));
+  const najhorsia = zoznam => zoznam.some(d => d.uroven === "E") ? "E" : (zoznam.some(d => d.uroven === "W") ? "W" : (zoznam[0] ? "I" : null));
+
+  // ───────────────────────────────────────────────────────────────── zmeny
+  function zmenaPre(id, pointer) { return ZMENY.find(z => z.id === id && z.pointer === pointer); }
+  function nastav(id, pointer, hodnota, popis) {
+    const povodne = citaj(POZNAMKY[id].data, pointer);
+    zapis(PRACOVNE[id], pointer, hodnota);
+    const i = ZMENY.findIndex(z => z.id === id && z.pointer === pointer);
+    const rovnake = JSON.stringify(povodne === undefined ? null : povodne) === JSON.stringify(hodnota === undefined ? null : hodnota);
+    if (rovnake) { if (i >= 0) ZMENY.splice(i, 1); }
+    else {
+      const z = { id, pointer, titulok: popis ? popis.titulok : pointer, predtym: povodne, teraz: hodnota };
+      if (i >= 0) ZMENY[i] = z; else ZMENY.push(z);
+    }
+    naplanujPrepocet();
+    vykresli();
+  }
+
+  /** [V29, Q64 d] Zmena jedného bloku prózy: pointer `/__proza/<index bloku v tele>`. Próza nie je
+      pole schémy, preto nejde cez `nastav` (to číta a píše `data`); server overí, že text ostal prózou. */
+  function nastavProzu(id, blok, text) {
+    const pointer = "/__proza/" + blok.i;
+    const i = ZMENY.findIndex(z => z.id === id && z.pointer === pointer);
+    if (text.trim() === blok.text) { if (i >= 0) ZMENY.splice(i, 1); }
+    else {
+      const z = { id, pointer, titulok: "próza", predtym: blok.text, teraz: text };
+      if (i >= 0) ZMENY[i] = z; else ZMENY.push(z);
+    }
+    naplanujPrepocet();
+  }
+  function prozaBlok(id, blok) {
+    const t = document.createElement("textarea");
+    const zmena = zmenaPre(id, "/__proza/" + blok.i);
+    t.value = zmena ? zmena.teraz : blok.text;
+    t.rows = Math.min(16, Math.max(2, t.value.split("\n").length + 1));
+    t.classList.toggle("zmenene", !!zmena);
+    t.setAttribute("aria-label", "próza poznámky");
+    // bez prekreslenia pri každom písmene: kurzor ostane, počítadlo zmien sa obnoví pri opustení
+    t.addEventListener("input", () => { nastavProzu(id, blok, t.value); t.classList.toggle("zmenene", !!zmenaPre(id, "/__proza/" + blok.i)); });
+    t.addEventListener("change", () => vykresli());
+    return t;
+  }
+
+  /** Diagnostiky platia pre súbory; kým je zmena neuložená, prepočítame ich nad pracovnou kópiou.
+      Bez servera (náhľad) sa prepočítať nedajú — vtedy sa aspoň nehlásia na zmenenom poli, aby
+      stránka netvrdila o hodnote, ktorú už nemá (PLAN §4b bod 5). */
+  function naplanujPrepocet() {
+    PREPOCET.cerstve = false;
+    if (!API.zivy || !API.kontrola) return;
+    if (PREPOCET.cakajuci) clearTimeout(PREPOCET.cakajuci);
+    PREPOCET.cakajuci = setTimeout(prepocitajDiagnostiky, 350);
+  }
+
+  function prepocitajDiagnostiky() {
+    PREPOCET.cakajuci = null;
+    if (!API.zivy || !API.kontrola) return;
+    if (!ZMENY.length) {                       // späť na pôvodné hodnoty = platí, čo hovoria súbory
+      naplnDiagnostiky(DATA.diagnostiky);
+      PREPOCET.cerstve = false; PREPOCET.chyba = null;
+      vykresli();
+      return;
+    }
+    PREPOCET.bezi = true;
+    const telo = { zmeny: ZMENY.map(z => ({ id: z.id, pointer: z.pointer, hodnota: z.teraz })) };
+    fetch("api/kontrola", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(telo)
+    })
+      .then(r => r.json())
+      .then(v => {
+        PREPOCET.bezi = false;
+        PREPOCET.chyba = v.ok ? null : ("zmenu sa nedá zapísať: " + (v.odmietnute || []).join(", "));
+        naplnDiagnostiky(v.diagnostiky || []);
+        PREPOCET.cerstve = true;
+        vykresli();
+      })
+      .catch(e => { PREPOCET.bezi = false; PREPOCET.chyba = "prepočet zlyhal: " + e; vykresli(); });
+  }
+  function chybaPola(popis, hodnota) {
+    if (prazdne(hodnota)) return popis.povinne ? "pole je povinné" : null;
+    const o = popis.obmedzenia || {};
+    if (popis.druh === "enum" && popis.hodnoty.indexOf(hodnota) < 0) return "hodnota nie je v enume §14";
+    if (popis.druh === "cislo" && isNaN(Number(hodnota))) return "očakávané číslo";
+    if (o.vzor) { try { if (!new RegExp(o.vzor).test(String(hodnota))) return "nesedí so vzorom " + o.vzor; } catch (e) { /* vzor rieši schéma */ } }
+    if (popis.druh === "odkaz" || popis.druh === "zoznam-odkazov") {
+      const zoznam = Array.isArray(hodnota) ? hodnota : [hodnota];
+      for (const v of zoznam) {
+        if (typeof v !== "string" || v.charAt(0) === "#") continue;
+        if (!/^\[\[[^\[\]]+\]\]$/.test(v)) return "odkaz musí mať tvar [[ID]]";
+      }
+    }
+    return null;
+  }
+
+  // ───────────────────────────────────────────────────────────────── téma
+  (function tema() {
+    const btn = document.getElementById("tema");
+    const poradie = ["system", "light", "dark"];
+    let volba = "system";
+    try { volba = localStorage.getItem("assetin-tema") || "system"; } catch (e) { volba = "system"; }
+    const uloz = () => {
+      if (volba === "system") document.documentElement.removeAttribute("data-theme");
+      else document.documentElement.setAttribute("data-theme", volba);
+      document.documentElement.classList.toggle("dark", volba === "dark");
+      btn.textContent = volba === "system" ? "téma: systém" : (volba === "light" ? "téma: svetlá" : "téma: tmavá");
+      try { localStorage.setItem("assetin-tema", volba); } catch (e) { /* súkromné okno */ }
+    };
+    btn.addEventListener("click", () => { volba = poradie[(poradie.indexOf(volba) + 1) % 3]; uloz(); });
+    uloz();
+  })();
+
+  // ────────────────────────────────────────────────────── uloženie do MD (§1)
+  /** Zistí, či stránku servíruje `assetin edit` — vtedy má kam zapisovať. */
+  function zistiApi() {
+    return fetch("api/stav", { headers: { accept: "application/json" } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (d && d.api) {
+          API.zivy = true; API.koren = d.koren; API.nova = !!d.nova; API.kontrola = !!d.kontrola;
+          API.zapis = d.zapis !== false; API.autorPovinny = !!d.autor_povinny; API.vydanie = !!d.vydanie && API.autorPovinny;
+          vykresli();
+        }
+      })
+      .catch(() => { /* otvorené ako súbor — náhľad bez zápisu */ });
+  }
+
+  function ulozDoMD() {
+    if (!API.zivy || !API.zapis || !ZMENY.length) return;
+    if (API.autorPovinny && !AUTOR.meno.trim()) {
+      STAV.vysledok = { stav: "zle", text: "neuložené: zadaj vpravo hore svoje meno - podpisuje zmenu v knižnici" };
+      vykresli();
+      return;
+    }
+    // [V29] verzia, ktorú stránka ukazovala: ak poznámku medzitým zmenil niekto iný, server vráti 409
+    const verzie = {};
+    ZMENY.forEach(z => { if (POZNAMKY[z.id] && POZNAMKY[z.id].verzia) verzie[z.id] = POZNAMKY[z.id].verzia; });
+    const telo = { zmeny: ZMENY.map(z => ({ id: z.id, pointer: z.pointer, hodnota: z.teraz })), autor: AUTOR.meno.trim(), verzie };
+    STAV.vysledok = { stav: "beží", text: "zapisujem " + ulozDoKam() + "…" };
+    vykresli();
+    fetch("api/save", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(telo)
+    })
+      .then(r => r.json().then(v => Object.assign(v, { _status: r.status })))
+      .then(v => {
+        if (v.dokument) naplnData(v.dokument);   // pravda je sklad, nie pracovná kópia
+        if (v._status === 409) {
+          STAV.vysledok = {
+            stav: "zle",
+            text: "neuložené: poznámku medzitým zmenil niekto iný (" + v.odmietnute.join(", ") +
+              "). Stránka ukazuje jej novú podobu; tvoje zmeny ostali v zozname - skontroluj ich a ulož znova.",
+            diagnostiky: v.diagnostiky || []
+          };
+          vykresli();
+          return;
+        }
+        if (v.detail) {
+          STAV.vysledok = { stav: "zle", text: "neuložené: " + v.detail };
+          vykresli();
+          return;
+        }
+        if (v.ok) {
+          ZMENY.length = 0;
+          let text = "zapísané do " + v.zapisane.join(", ");
+          if (v.premenovane && v.premenovane.length) {
+            text += " · premenované: " + v.premenovane.map(x => x[0] + " → " + x[1]).join(", ");
+          }
+          STAV.vysledok = { stav: "ok", text };
+        } else {
+          STAV.vysledok = {
+            stav: "zle",
+            text: "neuložené: " + v.odmietnute.join(", "),
+            diagnostiky: v.diagnostiky || []
+          };
+        }
+        vykresli();
+      })
+      .catch(e => {
+        STAV.vysledok = { stav: "zle", text: "server neodpovedal: " + e };
+        vykresli();
+      });
+  }
+
+  // ─────────────────────────────────────────────────────────────── topbar
+  function statistiky() {
+    const k = DATA.kniznica;
+    const pocty = { E: 0, W: 0, I: 0 };
+    DIAGNOSTIKY.forEach(d => { pocty[d.uroven] += 1; });
+    const box = document.getElementById("statistiky");
+    box.innerHTML = "";
+    // kým beží prepočet nad pracovnou kópiou, čísla ešte patria súborom — povedz to nahlas
+    const stavDiag = !ZMENY.length ? "" : (PREPOCET.bezi ? " (prepočítavam…)"
+      : (PREPOCET.cerstve ? " (s neuloženými zmenami)" : " (podľa súborov)"));
+    [["poznámky", k.poznamky, ""], ["odkazy", k.odkazy, ""],
+     ["chyby" + stavDiag, pocty.E, pocty.E ? "zle" : ""],
+     ["varovania" + stavDiag, pocty.W, pocty.W ? "varovanie" : ""],
+     ["zmeny", ZMENY.length, ZMENY.length ? "varovanie" : ""], ["schéma", "v" + k.schema_verzia, ""]
+    ].forEach(p => {
+      const d = h("div", "stat " + p[2]);
+      d.appendChild(h("b", null, String(p[1])));
+      d.appendChild(h("span", null, p[0]));
+      box.appendChild(d);
+    });
+
+    const pruh = document.getElementById("pruh-nahlad");
+    pruh.hidden = API.zivy;
+    if (!API.zivy && !pruh.childNodes.length) {
+      pruh.appendChild(h("b", null, "Náhľad — zmeny sa neukladajú."));
+      pruh.appendChild(h("span", null, "Je to jeden súbor bez servera; na zápis do MD spusti"));
+      pruh.appendChild(h("code", null, "assetin edit ."));
+      pruh.appendChild(h("span", null, "a otvor http://127.0.0.1:8765."));
+    }
+
+    const tlacidlo = document.getElementById("ulozit");
+    tlacidlo.hidden = !API.zivy || !API.zapis;
+    tlacidlo.disabled = !ZMENY.length;
+    tlacidlo.textContent = "Uložiť " + ulozDoKam() + (ZMENY.length ? " (" + ZMENY.length + ")" : "");
+    const vydat = document.getElementById("vydat");
+    vydat.hidden = !API.zivy || !API.vydanie;
+    vydat.disabled = ZMENY.length > 0;   // vydáva sa uložený stav, nie pracovná kópia
+    const autor = document.getElementById("autor");
+    autor.hidden = !API.zivy || !(API.zapis || API.vydanie) || !API.autorPovinny;
+    if (document.activeElement !== autor) autor.value = AUTOR.meno;
+    autor.classList.toggle("chyba", API.autorPovinny && !AUTOR.meno.trim() && ZMENY.length > 0);
+  }
+
+  // ───────────────────────────────────── ľavý panel: plochý zoznam registrov
+  function navigacia() {
+    const nav = document.getElementById("nav");
+    nav.innerHTML = "";
+    const hl = h("div", "nav-hlavicka");
+    hl.appendChild(h("div", "titul", "KNIŽNICA"));
+    hl.appendChild(h("div", "zdroj", "zadanie/ · " + mnozne(DATA.poznamky.length, "poznámka", "poznámky", "poznámok")));
+    nav.appendChild(hl);
+
+    const polozka = (o) => {
+      const b = h("button", null);
+      b.type = "button";
+      if (o.aktivne) b.setAttribute("aria-current", "true");
+      b.appendChild(ikona(o.ikona));
+      b.appendChild(h("span", "stitok", o.stitok));
+      if (o.pocet != null) b.appendChild(h("span", "pocet" + (o.varovanie ? " varovanie" : ""), String(o.pocet)));
+      if (o.skratka) b.appendChild(h("span", "skratka", o.skratka));
+      if (o.titulok) b.title = o.titulok;
+      b.addEventListener("click", o.akcia);
+      nav.appendChild(b);
+      return b;
+    };
+
+    // poradie, skupiny, popisky aj ikony sú zo schémy (pasma.py) — tu nie je zoznam typov;
+    // oddeľovač stojí tam, kde sa mení rámec normy (kolo 3 §3), bez nadpisov skupín
+    let prva = true;
+    (PASMA.skupiny || [PASMA.poradie]).forEach(skupina => {
+      const viditelne = skupina.filter(typ => poznamkyTypu(typ).length || (TYPY[typ] || {}).poradie_ui < 10);
+      if (!viditelne.length) return;
+      if (!prva) nav.appendChild(h("div", "nav-ciara"));
+      prva = false;
+      viditelne.forEach(typ => {
+        const ids = poznamkyTypu(typ);
+        polozka({
+          ikona: ikonaTypu(typ), stitok: popisokTypu(typ), pocet: ids.length,
+          titulok: typ + " — " + ((TYPY[typ] || {}).popisok_export || ""),
+          aktivne: STAV.pohlad === "register" && STAV.typ === typ,
+          akcia: () => { STAV.zalozka = "poznamky"; STAV.zalozkaVolena = false; VYBRANE.clear(); naviguj({ pohlad: "register", typ }); }
+        });
+      });
+    });
+
+    nav.appendChild(h("div", "nav-ciara"));
+    const varovania = DIAGNOSTIKY.filter(d => d.uroven === "W").length;
+    polozka({
+      ikona: "ti-stethoscope", stitok: "Diagnostika", pocet: varovania, varovanie: varovania > 0,
+      aktivne: STAV.pohlad === "diagnostika",
+      akcia: () => naviguj({ pohlad: "diagnostika" })
+    });
+    polozka({ ikona: "ti-search", stitok: "Hľadať", skratka: "⌘K", akcia: otvorHladanie });
+    if (ZMENY.length) {
+      polozka({
+        ikona: "ti-alert-triangle", stitok: "Zmeny", pocet: ZMENY.length, varovanie: true,
+        aktivne: STAV.pohlad === "zmeny", akcia: () => naviguj({ pohlad: "zmeny" })
+      });
+    }
+  }
+
+  // ───────────────────────────── adresy: každá obrazovka má URL, späť ide prehliadačom (kolo 3 §1)
+  const enc = encodeURIComponent;
+  const dec = x => { try { return decodeURIComponent(x); } catch (e) { return x; } };
+  /** `#/registre/UC` · `#/IU-O-space` · `#/IU-O-space/retazec?r=1` · `#/STD-clenenie/pod/STD-CL-04` */
+  function adresa(stav) {
+    if (stav.pohlad === "register") return "#/registre/" + enc(stav.typ);
+    if (stav.pohlad === "diagnostika") return "#/diagnostika";
+    if (stav.pohlad === "zmeny") return "#/zmeny";
+    if (stav.pohlad === "podzaznam") return "#/" + enc(stav.poznamka) + "/pod/" + enc(stav.pod);
+    let a = "#/" + enc(stav.poznamka) + (stav.zalozkaPoznamky === "retazec" ? "/retazec" : "");
+    const dotaz = [];
+    if (stav.retazec) dotaz.push("r=" + stav.retazec);
+    // `v` = ktoré výmeny sú rozbalené; chýbajúci parameter znamená predvoľbu podľa ohniska,
+    // prázdny (`?v=`) znamená „žiadna" — inak by sa poslaný odkaz otvoril inak než u odosielateľa
+    if (Array.isArray(stav.vymenyRozbalene)) dotaz.push("v=" + stav.vymenyRozbalene.map(enc).join(","));
+    if (dotaz.length) a += "?" + dotaz.join("&");
+    return a;
+  }
+  function citajAdresu(hash) {
+    const casti = String(hash || "").replace(/^#\/?/, "").split("?");
+    const seg = casti[0].split("/").filter(Boolean).map(dec);
+    const dotaz = {};
+    (casti[1] || "").split("&").forEach(x => { const kv = x.split("="); if (kv[0]) dotaz[kv[0]] = dec(kv[1] || ""); });
+    const prvyTyp = PASMA.poradie[0];
+    if (!seg.length) return { pohlad: "register", typ: prvyTyp };
+    if (seg[0] === "registre") return { pohlad: "register", typ: TYPY[seg[1]] ? seg[1] : prvyTyp };
+    if (seg[0] === "diagnostika") return { pohlad: "diagnostika" };
+    if (seg[0] === "zmeny") return { pohlad: "zmeny" };
+    if (POZNAMKY[seg[0]]) {
+      if (seg[1] === "pod" && seg[2]) return { pohlad: "podzaznam", poznamka: seg[0], pod: seg[2] };
+      return {
+        pohlad: "poznamka", poznamka: seg[0],
+        zalozkaPoznamky: seg[1] === "retazec" ? "retazec" : "poznamka",
+        retazec: Number(dotaz.r) || 0,
+        vymenyRozbalene: "v" in dotaz ? (dotaz.v ? dotaz.v.split(",") : []) : null
+      };
+    }
+    // pod-záznam podľa vlastného ID (napr. odkaz z inšpektora)
+    if (UZLY[seg[0]] && UZLY[seg[0]].rodic) return { pohlad: "podzaznam", poznamka: UZLY[seg[0]].rodic, pod: seg[0] };
+    return { pohlad: "register", typ: prvyTyp };
+  }
+  /** Adresa → STAV → prekreslenie. Volá sa pri štarte a pri každej zmene hashu (aj tlačidlom späť). */
+  function pouzitAdresu() {
+    const a = citajAdresu(location.hash);
+    const inaPoznamka = a.poznamka && a.poznamka !== STAV.poznamka;
+    STAV.pohlad = a.pohlad;
+    if (a.typ) STAV.typ = a.typ;
+    if (a.poznamka) {
+      STAV.poznamka = a.poznamka;
+      STAV.typ = POZNAMKY[a.poznamka].typ;
+      STAV.pod = a.pod || null;
+      STAV.zalozkaPoznamky = a.zalozkaPoznamky || "poznamka";
+      STAV.retazec = a.retazec || 0;
+      STAV.vymenyRozbalene = a.vymenyRozbalene !== undefined ? a.vymenyRozbalene : null;
+      if (inaPoznamka) { STAV.polozka = null; STAV.er = vymenyPre(a.poznamka)[0] || null; }
+    }
+    vykresli();
+    // prázdny hash pri štarte dostane kanonickú adresu bez nového záznamu v histórii
+    if (!location.hash) { try { history.replaceState(null, "", adresa(STAV)); } catch (e) { /* file:// bez histórie */ } }
+    if (inaPoznamka) window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  /** Zmení stav a zapíše ho do adresy; prekreslenie príde cez hashchange. */
+  function naviguj(zmena) {
+    Object.assign(STAV, zmena);
+    const a = adresa(STAV);
+    if (location.hash === a) vykresli(); else location.hash = a;
+  }
+
+  // ─────────────────────────────────────────────────────────── navigovanie
+  function otvorPoznamku(id, polozka) {
+    if (!POZNAMKY[id]) return;
+    STAV.polozka = polozka || null;
+    STAV.er = vymenyPre(id)[0] || null;
+    naviguj({ pohlad: "poznamka", poznamka: id, typ: POZNAMKY[id].typ, pod: null, zalozkaPoznamky: "poznamka", retazec: 0, vymenyRozbalene: null });
+  }
+  /** Záložka Reťazec inej jednotky: ohnisko sa presunie a s ním aj URL (kolo 3 §4.2). */
+  function otvorRetazec(id) {
+    if (!POZNAMKY[id]) return;
+    STAV.polozka = null;
+    naviguj({ pohlad: "poznamka", poznamka: id, typ: POZNAMKY[id].typ, pod: null, zalozkaPoznamky: "retazec", retazec: 0, vymenyRozbalene: null });
+  }
+  /** Poznámka alebo pod-záznam — podľa toho, čo za ID stojí. */
+  function otvorCokolvek(id) {
+    if (POZNAMKY[id]) otvorPoznamku(id);
+    else if (UZLY[id] && UZLY[id].rodic) otvorPod(UZLY[id].rodic, id);
+  }
+  function otvorPod(poznamka, podId) {
+    naviguj({ pohlad: "podzaznam", poznamka, pod: podId });
+  }
+  /** Výmeny, ktoré poznámku nesú — kontext, v ktorom platia prepisy ER. */
+  function vymenyPre(id) {
+    return poznamkyTypu("ER").filter(er => idyPola(er, "obsahuje").indexOf(id) >= 0);
+  }
+  function cesta(casti) {
+    const d = h("div", "cesta");
+    casti.forEach((c, i) => {
+      if (i) d.appendChild(h("span", null, "›"));
+      if (c.akcia) {
+        const b = h("button", null);
+        b.type = "button";
+        b.textContent = c.text;
+        b.addEventListener("click", c.akcia);
+        d.appendChild(b);
+      } else d.appendChild(h("span", null, c.text));
+    });
+    return d;
+  }
+
+  /** Čip: jedna poznámka žije na jednom mieste, všade inde je len odkaz naň (V21). */
+  function cip(id, vazba, aktivny, moznosti) {
+    const o = moznosti || {};
+    const p = POZNAMKY[id];
+    const uzol = UZLY[id];
+    // pod-záznam (GEO profil, STD pravidlo) žije v UZLY, nie v POZNAMKY — nie je to visiaci odkaz
+    const pod = !p && uzol && uzol.rodic ? uzol : null;
+    const typ = (uzol || p || {}).typ;
+    const hranicne = ((TYPY[typ] || {}).hranicne || []).length > 0;
+    const b = h("button", "cip" + (p || pod ? "" : " visiaci") + (hranicne ? " hranicne" : ""));
+    b.type = "button";
+    if (aktivny) b.setAttribute("aria-current", "true");
+    b.appendChild(h("span", "cip-id", o.stitok || (id + (o.kotva ? "#" + o.kotva : ""))));
+    if (!o.kompakt) {
+      if (o.nazov) b.appendChild(h("span", "cip-nazov", o.nazov));
+      else if (p) b.appendChild(h("span", "cip-nazov", p.nazov));
+      else if (pod) b.appendChild(h("span", "cip-nazov", pod.nazov || ""));
+      else b.appendChild(h("span", "cip-chyba", "poznámka zatiaľ neexistuje"));
+    } else if (!p && !pod) {
+      b.appendChild(h("span", "cip-chyba", "nenapísaná"));
+    }
+    if (vazba) b.appendChild(h("span", "cip-vazba", vazba));
+    b.title = (p
+      ? p.typ + " · " + p.nazov + "\n" + p.subor + (vazba ? "\nväzba: " + vazba : "")
+      : pod
+        ? pod.typ + " · " + (pod.nazov || id) + "\n" + pod.subor + " · pod-záznam poznámky " + pod.rodic
+        : id + " — poznámka zatiaľ neexistuje (varovanie B1)")
+      + (hranicne ? "\nhraničný typ — patrí do dvoch pásiem" : "");
+    b.addEventListener("click", () => {
+      if (p) otvorPoznamku(id);
+      else if (UZLY[id] && UZLY[id].rodic) otvorPod(UZLY[id].rodic, id);
+    });
+    return b;
+  }
+
+  // ══════════════════════════════════════════════ bunky (generické zo schémy)
+  function menovka(popis) {
+    const m = h("div", "menovka");
+    const titulok = h("span", "titulok", popis.titulok + (popis.povinne ? " *" : ""));
+    if (popis.povinne) titulok.classList.add("povinne");
+    m.appendChild(titulok);
+    m.appendChild(h("span", "kluc", popis.kluc));       // technický kľúč je druhoradý, nie nadpis
+    if (popis.popis) m.title = popis.kluc + " — " + popis.popis;
+    return m;
+  }
+  function znackaDiag(zoznam) {
+    const box = document.createDocumentFragment();
+    zoznam.forEach(d => box.appendChild(h("span", "diag " + d.uroven, d.uroven + " " + d.kod + " · " + d.sprava)));
+    return box;
+  }
+  /** Nálezy sa počítajú po úrovniach: 2 varovania a 11 informácií nie je „13 varovaní". */
+  function odznakDiag(zoznam) {
+    if (!zoznam.length) return null;
+    const box = h("span", "znaky");
+    ["E", "W", "I"].forEach(u => {
+      const n = zoznam.filter(d => d.uroven === u).length;
+      if (n) box.appendChild(h("span", "znak " + u, u + " " + n));
+    });
+    return box;
+  }
+
+  function bunkaSkalara(ctx, popis, pointer, kompakt) {
+    const hodnota = citaj(PRACOVNE[ctx.id], pointer);
+    const zmena = zmenaPre(ctx.id, pointer);
+    const diagy = diagPre(ctx.id, pointer);
+    const chyba = chybaPola(popis, hodnota);
+    const obal = h("div", null);
+    const b = h("button", "bunka" + (NEMENITELNE.has(popis.kluc) ? " mono" : ""));
+    b.type = "button";
+    if (popis.odvodene || NEMENITELNE.has(popis.kluc)) { b.classList.add("readonly"); b.disabled = true; }
+    if (zmena) b.classList.add("zmenena");
+    if (chyba || najhorsia(diagy) === "E") b.classList.add("chybna");
+    const text = textHodnoty(hodnota);
+    b.textContent = kompakt ? skrat(text, 42) || "—" : (text || "—");
+    if (!text) b.classList.add("prazdna");
+    if (kompakt && text) b.title = text;
+    b.addEventListener("click", () => zapniEditor(obal, b, ctx, popis, pointer));
+    obal.appendChild(b);
+    if (chyba) obal.appendChild(h("span", "diag E", "E · " + chyba));
+    if (!kompakt) obal.appendChild(znackaDiag(diagy));
+    else if (diagy.length) { const o = odznakDiag(diagy); if (o) obal.appendChild(o); }
+    if (zmena && !kompakt) obal.appendChild(h("span", "diag I", "zmenené · pôvodne " + (textHodnoty(zmena.predtym) || "prázdne")));
+    return obal;
+  }
+
+  function zapniEditor(obal, tlacidlo, ctx, popis, pointer) {
+    const hodnota = citaj(PRACOVNE[ctx.id], pointer);
+    let vstup;
+    if (popis.druh === "enum" || popis.druh === "enum-alebo-text" || popis.druh === "boolean") {
+      vstup = h("select", "vstup");
+      const moznosti = popis.druh === "boolean" ? [["", "—"], ["true", "áno"], ["false", "nie"]]
+        : [["", "—"]].concat((popis.hodnoty || []).map(v => [String(v), String(v)]));
+      moznosti.forEach(m => {
+        const o = h("option", null, m[1]);
+        o.value = m[0];
+        vstup.appendChild(o);
+      });
+      vstup.value = hodnota == null ? "" : String(hodnota);
+    } else if (popis.druh === "dlhy-text") {
+      vstup = h("textarea", "vstup");
+      vstup.value = hodnota == null ? "" : String(hodnota);
+    } else {
+      vstup = h("input", "vstup" + (popis.kluc === "vzor" ? " mono" : ""));
+      vstup.type = popis.druh === "cislo" ? "number" : (popis.druh === "datum" ? "date" : "text");
+      if (popis.druh === "cislo") vstup.step = "any";
+      vstup.value = hodnota == null ? "" : String(hodnota);
+    }
+    const zavriBezZmeny = () => { if (vstup.parentNode === obal) obal.replaceChild(tlacidlo, vstup); };
+    let hotovo = false;
+    const commit = () => {
+      if (hotovo) return;
+      hotovo = true;
+      let v = vstup.value;
+      if (v === "") v = null;
+      else if (popis.druh === "boolean") v = v === "true";
+      else if (popis.druh === "cislo") v = Number(v);
+      const povodne = citaj(PRACOVNE[ctx.id], pointer);
+      // bez zmeny sa nič neprekresľuje — prekreslenie by zožralo klik, ktorým používateľ odchádza
+      if (JSON.stringify(v === undefined ? null : v) === JSON.stringify(povodne === undefined ? null : povodne)) {
+        zavriBezZmeny();
+        return;
+      }
+      nastav(ctx.id, pointer, v, popis);
+    };
+    vstup.addEventListener("blur", commit);
+    if (vstup.tagName === "SELECT") vstup.addEventListener("change", commit);
+    vstup.addEventListener("keydown", e => {
+      if (e.key === "Enter" && popis.druh !== "dlhy-text") { e.preventDefault(); vstup.blur(); }
+      if (e.key === "Escape") { e.preventDefault(); hotovo = true; zavriBezZmeny(); }
+    });
+    obal.replaceChild(vstup, tlacidlo);
+    vstup.focus();
+    if (vstup.select) vstup.select();
+  }
+
+  function bunkaZoznamuTextov(ctx, popis, pointer) {
+    const hodnoty = citaj(PRACOVNE[ctx.id], pointer) || [];
+    const obal = h("div", "odkazy");
+    hodnoty.forEach((v, i) => {
+      const c = h("button", "cip");
+      c.type = "button";
+      c.appendChild(h("span", null, String(v)));
+      c.title = "Odstrániť";
+      c.addEventListener("click", () => {
+        const nove = hodnoty.slice();
+        nove.splice(i, 1);
+        nastav(ctx.id, pointer, nove, popis);
+      });
+      obal.appendChild(c);
+    });
+    if (popis.odvodene) return obal;
+    const pridaj = h("button", "mini");
+    pridaj.type = "button";
+    pridaj.textContent = "+ pridať";
+    pridaj.addEventListener("click", () => {
+      if (popis.polozka && popis.polozka.druh === "enum") {
+        const sel = h("select", "vstup");
+        [""].concat(popis.polozka.hodnoty).forEach(v => {
+          const o = h("option", null, v || "—");
+          o.value = v;
+          sel.appendChild(o);
+        });
+        sel.addEventListener("change", () => { if (sel.value) nastav(ctx.id, pointer, hodnoty.concat([sel.value]), popis); });
+        obal.replaceChild(sel, pridaj);
+        sel.focus();
+        return;
+      }
+      const vstup = h("input", "vstup");
+      vstup.addEventListener("blur", () => { if (vstup.value) nastav(ctx.id, pointer, hodnoty.concat([vstup.value]), popis); else vykresli(); });
+      vstup.addEventListener("keydown", e => { if (e.key === "Enter") vstup.blur(); if (e.key === "Escape") vykresli(); });
+      obal.replaceChild(vstup, pridaj);
+      vstup.focus();
+    });
+    obal.appendChild(pridaj);
+    return obal;
+  }
+
+  function bunkaOdkazov(ctx, popis, pointer, jedenOdkaz, kompakt) {
+    const surove = citaj(PRACOVNE[ctx.id], pointer);
+    const hodnoty = jedenOdkaz ? (surove == null ? [] : [surove]) : (surove || []);
+    const obal = h("div", null);
+    const riadok = h("div", "odkazy");
+    hodnoty.forEach((v, i) => {
+      const text = String(v);
+      const m = text.match(/^\[\[([^\[\]#|]+)(?:#([^\[\]|]+))?(?:\|[^\[\]]*)?\]\]$/);
+      const ciel = m ? m[1] : null;
+      const c = h("button", "cip" + (ciel && !jeVKniznici(ciel) && !(UZLY[ciel] && !UZLY[ciel].visiaci) ? " visiaci" : ""));
+      c.type = "button";
+      c.appendChild(h("span", "cip-id", (ciel || text) + (m && m[2] ? "#" + m[2] : "")));
+      if (ciel && POZNAMKY[ciel] && !kompakt) c.appendChild(h("span", "cip-nazov", POZNAMKY[ciel].nazov));
+      c.title = POZNAMKY[ciel] ? "Otvoriť " + ciel : (ciel ? ciel + " zatiaľ neexistuje" : text);
+      c.addEventListener("click", () => {
+        if (POZNAMKY[ciel]) otvorPoznamku(ciel);
+        else if (UZLY[ciel] && UZLY[ciel].rodic) otvorPod(UZLY[ciel].rodic, ciel);
+        else otvorVyber(ctx, popis, pointer, jedenOdkaz, i);
+      });
+      riadok.appendChild(c);
+      if (!popis.odvodene) {
+        const uprav = h("button", "ikonka");
+        uprav.type = "button";
+        uprav.title = "Zmeniť cieľ";
+        uprav.appendChild(ikona("ti-search", "ikona-12"));
+        uprav.addEventListener("click", () => otvorVyber(ctx, popis, pointer, jedenOdkaz, i));
+        riadok.appendChild(uprav);
+        const zmaz = h("button", "ikonka");
+        zmaz.type = "button";
+        zmaz.textContent = "×";
+        zmaz.title = "Odstrániť odkaz";
+        zmaz.addEventListener("click", () => {
+          if (jedenOdkaz) nastav(ctx.id, pointer, null, popis);
+          else { const nove = hodnoty.slice(); nove.splice(i, 1); nastav(ctx.id, pointer, nove, popis); }
+        });
+        riadok.appendChild(zmaz);
+      }
+    });
+    if (!popis.odvodene && (!jedenOdkaz || !hodnoty.length)) {
+      // v hustej tabuľke by „+ vybrať cieľ" v každom prázdnom riadku prekryl dáta — stačí pomlčka
+      const pridaj = h("button", kompakt && !hodnoty.length ? "bunka prazdna" : "mini");
+      pridaj.type = "button";
+      pridaj.textContent = kompakt && !hodnoty.length ? "—" : (hodnoty.length ? "+ odkaz" : "+ vybrať cieľ");
+      pridaj.title = "Vybrať cieľ odkazu";
+      pridaj.addEventListener("click", () => otvorVyber(ctx, popis, pointer, jedenOdkaz, hodnoty.length));
+      riadok.appendChild(pridaj);
+    }
+    if (!hodnoty.length && popis.odvodene) riadok.appendChild(h("span", "muted", "—"));
+    obal.appendChild(riadok);
+    if (!kompakt) obal.appendChild(znackaDiag(diagPre(ctx.id, pointer)));
+    return obal;
+  }
+
+  function bunkaObjektu(ctx, popis, pointer) {
+    const obal = h("div", "vnorene");
+    const detail = h("div", "zaznam");
+    const telo = h("div", "detail");
+    popis.polia.forEach(p => telo.appendChild(poleRiadok(ctx, p, pointer + "/" + p.kluc)));
+    detail.appendChild(telo);
+    obal.appendChild(detail);
+    return obal;
+  }
+
+  /** Zhrnutie záznamu vo vnorenej tabuľke — [Q44] len z polí, ktoré **nemajú vlastný stĺpec**,
+      inak stĺpec „položka" opakuje to, čo stojí hneď vedľa neho. */
+  function zhrnutiePolozky(popis, hodnota, stlpce) {
+    if (hodnota == null) return "—";
+    const uzVidno = new Set((stlpce || []).map(sx => sx.kluc));
+    const kandidati = ["id", "kluc", "nazov", "atribut", "stlpec", "metrika", "system", "dok", "iu", "facet", "ev", "typ"];
+    const casti = [];
+    kandidati.forEach(k => {
+      if (uzVidno.has(k)) return;
+      if (hodnota[k] != null && typeof hodnota[k] !== "object") casti.push(String(hodnota[k]));
+    });
+    if (!uzVidno.has("ifc") && hodnota.ifc && typeof hodnota.ifc === "object") {
+      const i = hodnota.ifc;
+      casti.unshift(i.atribut || (i.pset ? i.pset + " · " + i.nazov : ("material: " + i.material)));
+    }
+    if (!casti.length) {
+      const prvy = Object.keys(hodnota).find(k => !uzVidno.has(k));
+      if (prvy) casti.push(prvy + ": " + textHodnoty(hodnota[prvy]));
+    }
+    return casti.length ? skrat(casti.join(" · "), 72) : "";
+  }
+  /** Kostra zvoleného variantu únie: diskriminátor, inak jeho povinné kľúče prázdne — bez nich by
+      `variantPolozky` nemala podľa čoho variant spoznať a spadla by späť na prvý (REVIEW §1.2). */
+  function kostraVariantu(varianta) {
+    const data = {};
+    if (varianta.diskriminator) data[varianta.diskriminator.kluc] = varianta.diskriminator.hodnota;
+    else (varianta.povinne_kluce || []).forEach(k => { data[k] = ""; });
+    return data;
+  }
+
+  function variantPolozky(popis, hodnota) {
+    if (!popis.varianty) return null;
+    for (const v of popis.varianty) {
+      if (v.diskriminator && hodnota && hodnota[v.diskriminator.kluc] === v.diskriminator.hodnota) return v;
+    }
+    for (const v of popis.varianty) {
+      if (hodnota && v.povinne_kluce.length && v.povinne_kluce.every(k => hodnota[k] != null)) return v;
+    }
+    return popis.varianty[0];
+  }
+
+  /** Detail jedného záznamu zoznamu: prepínač variantu (únie) + všetky polia. */
+  function detailZaznamu(ctx, popis, hodnota, cestaPolozky) {
+    const detail = h("div", "detail");
+    const varianta = popis.varianty ? variantPolozky(popis, hodnota) : null;
+    if (varianta && popis.varianty.length > 1) {
+      const prepinac = h("div", "pole");
+      const m = h("div", "menovka");
+      m.appendChild(h("span", "kluc", "variant"));
+      m.appendChild(h("span", "titulok", "Druh položky"));
+      prepinac.appendChild(m);
+      const hod = h("div", null);
+      const sel = h("select", "vstup");
+      popis.varianty.forEach(v => {
+        const o2 = h("option", null, v.diskriminator ? v.diskriminator.hodnota : v.nazov);
+        o2.value = v.nazov;
+        if (v.nazov === varianta.nazov) o2.selected = true;
+        sel.appendChild(o2);
+      });
+      sel.addEventListener("change", () => {
+        const novy = popis.varianty.find(v => v.nazov === sel.value);
+        nastav(ctx.id, cestaPolozky, kostraVariantu(novy), popis);
+      });
+      hod.appendChild(sel);
+      prepinac.appendChild(hod);
+      detail.appendChild(prepinac);
+    }
+    const polia = varianta ? varianta.polia : popis.polia;
+    polia.forEach(p => {
+      if (varianta && varianta.diskriminator && p.kluc === varianta.diskriminator.kluc) return;
+      detail.appendChild(poleRiadok(ctx, p, cestaPolozky + "/" + p.kluc));
+    });
+    return detail;
+  }
+
+  function listaZoznamu(ctx, popis, pointer, hodnoty) {
+    const lista = h("div", "lista");
+    lista.appendChild(h("span", null, mnozne(hodnoty.length, "položka", "položky", "položiek")));
+    if (!popis.odvodene) {
+      const pridaj = h("button", "mini");
+      pridaj.type = "button";
+      pridaj.textContent = "+ riadok";
+      pridaj.style.marginLeft = "auto";
+      pridaj.addEventListener("click", () => {
+        const novy = {};
+        const varianta = popis.varianty ? popis.varianty[0] : null;
+        if (varianta && varianta.diskriminator) novy[varianta.diskriminator.kluc] = varianta.diskriminator.hodnota;
+        OTVORENE.add(ctx.id + pointer + "/" + hodnoty.length);
+        nastav(ctx.id, pointer, hodnoty.concat([novy]), popis);
+      });
+      lista.appendChild(pridaj);
+    }
+    return lista;
+  }
+  function tlacidloZmazat(ctx, popis, pointer, hodnoty, i) {
+    const zmaz = h("button", "ikonka");
+    zmaz.type = "button";
+    zmaz.textContent = "×";
+    zmaz.title = "Odstrániť riadok";
+    zmaz.addEventListener("click", e => {
+      e.stopPropagation();
+      const nove = hodnoty.slice();
+      nove.splice(i, 1);
+      nastav(ctx.id, pointer, nove, popis);
+    });
+    return zmaz;
+  }
+  function prepniOtvorenie(kluc) {
+    if (OTVORENE.has(kluc)) OTVORENE.delete(kluc); else OTVORENE.add(kluc);
+    vykresli();
+  }
+
+  /** Zoznam objektov = editovateľná vnorená tabuľka: stĺpce sú skalárne polia položky zo schémy,
+      riadok sa dá rozbaliť na celý záznam (vnorené únie, napr. `ifc`). Únie bez spoločných stĺpcov
+      ostávajú zoznamom so zhrnutím. Nič z toho nie je napísané pre konkrétny typ (zásada 3). */
+  function bunkaZoznamuObjektov(ctx, popis, pointer) {
+    const hodnoty = citaj(PRACOVNE[ctx.id], pointer) || [];
+    const stlpce = popis.druh === "zoznam-objektov" ? (popis.polia || []).filter(stlpcovatelne) : [];
+    const obal = h("div", "vnorene");
+    obal.appendChild(listaZoznamu(ctx, popis, pointer, hodnoty));
+    if (!hodnoty.length) return obal;
+    if (!stlpce.length) {
+      hodnoty.forEach((hodnota, i) => obal.appendChild(zaznamZoznamu(ctx, popis, pointer, hodnoty, hodnota, i)));
+      return obal;
+    }
+
+    // stĺpec zhrnutia vznikne, len keď z neho po odrátaní stĺpcov niečo zostane
+    const maZhrnutie = (popis.polia || []).some(f => !stlpcovatelne(f))
+      && hodnoty.some(hodnota => zhrnutiePolozky(popis, hodnota, stlpce));
+    const tabObal = h("div", "tabulka-vnorena");
+    const t = h("table", "vnorena");
+    const thead = document.createElement("thead");
+    const hr = document.createElement("tr");
+    hr.appendChild(h("th", null, ""));
+    if (maZhrnutie) hr.appendChild(h("th", null, "položka"));
+    stlpce.forEach(sx => hr.appendChild(h("th", null, sx.titulok)));
+    hr.appendChild(h("th", null, ""));
+    thead.appendChild(hr);
+    t.appendChild(thead);
+    const tb = document.createElement("tbody");
+    hodnoty.forEach((hodnota, i) => {
+      const cestaPolozky = pointer + "/" + i;
+      const kluc = ctx.id + cestaPolozky;
+      const otvorene = OTVORENE.has(kluc);
+      const tr = h("tr", otvorene ? "otvoreny" : null);
+      const tdS = h("td", "uzka");
+      const sipka = h("button", "ikonka");
+      sipka.type = "button";
+      sipka.setAttribute("aria-expanded", String(otvorene));
+      sipka.setAttribute("aria-label", otvorene ? "Zbaliť záznam" : "Rozbaliť záznam");
+      sipka.appendChild(ikona("ti-chevron-right", otvorene ? "sipka otvorena" : "sipka"));
+      sipka.addEventListener("click", () => prepniOtvorenie(kluc));
+      tdS.appendChild(sipka);
+      tr.appendChild(tdS);
+      if (maZhrnutie) {
+        const tdZ = h("td", "zhrnutie-bunka riadok-klik", zhrnutiePolozky(popis, hodnota, stlpce) || "—");
+        tdZ.addEventListener("click", () => prepniOtvorenie(kluc));
+        tr.appendChild(tdZ);
+      }
+      stlpce.forEach(sx => {
+        const td = document.createElement("td");
+        td.appendChild(hodnotaPola(ctx, sx, cestaPolozky + "/" + sx.kluc, true));
+        tr.appendChild(td);
+      });
+      const tdO = h("td", "uzka");
+      const odznaky = h("div", "odznaky");
+      const vnutorne = diagPodStrom(ctx.id, cestaPolozky).filter(d => !stlpce.some(sx => d.json_pointer === cestaPolozky + "/" + sx.kluc));
+      const o = odznakDiag(vnutorne);
+      if (o) odznaky.appendChild(o);
+      if (ZMENY.some(z => z.id === ctx.id && z.pointer.indexOf(cestaPolozky) === 0)) odznaky.appendChild(h("span", "znak", "zmenené"));
+      if (!popis.odvodene) odznaky.appendChild(tlacidloZmazat(ctx, popis, pointer, hodnoty, i));
+      tdO.appendChild(odznaky);
+      tr.appendChild(tdO);
+      tb.appendChild(tr);
+      if (otvorene) {
+        const tr2 = h("tr", "detail-riadok");
+        const td = h("td", "detail-bunka");
+        td.colSpan = stlpce.length + 2 + (maZhrnutie ? 1 : 0);
+        td.appendChild(detailZaznamu(ctx, popis, hodnota, cestaPolozky));
+        tr2.appendChild(td);
+        tb.appendChild(tr2);
+      }
+    });
+    t.appendChild(tb);
+    tabObal.appendChild(t);
+    obal.appendChild(tabObal);
+    return obal;
+  }
+
+  /** Jeden záznam zoznamu ako rozbaľovací riadok (únie bez spoločných stĺpcov). */
+  function zaznamZoznamu(ctx, popis, pointer, hodnoty, hodnota, i) {
+    const cestaPolozky = pointer + "/" + i;
+    const kluc = ctx.id + cestaPolozky;
+    const otvorene = OTVORENE.has(kluc);
+    const zaznam = h("div", "zaznam");
+    const hlava = h("div", "hlava");
+    hlava.appendChild(ikona("ti-chevron-right", otvorene ? "sipka otvorena" : "sipka"));
+    hlava.appendChild(h("span", "idx", "[" + i + "]"));
+    hlava.appendChild(h("span", "zhrnutie", zhrnutiePolozky(popis, hodnota)));
+    const odznaky = h("div", "odznaky");
+    const o = odznakDiag(diagPodStrom(ctx.id, cestaPolozky));
+    if (o) odznaky.appendChild(o);
+    if (ZMENY.some(z => z.id === ctx.id && z.pointer.indexOf(cestaPolozky) === 0)) odznaky.appendChild(h("span", "znak", "zmenené"));
+    if (!popis.odvodene) odznaky.appendChild(tlacidloZmazat(ctx, popis, pointer, hodnoty, i));
+    hlava.appendChild(odznaky);
+    hlava.addEventListener("click", () => prepniOtvorenie(kluc));
+    zaznam.appendChild(hlava);
+    if (otvorene) zaznam.appendChild(detailZaznamu(ctx, popis, hodnota, cestaPolozky));
+    return zaznam;
+  }
+
+  function bunkaMapy(ctx, popis, pointer) {
+    const hodnota = citaj(PRACOVNE[ctx.id], pointer) || {};
+    const obal = h("div", "vnorene");
+    Object.keys(hodnota).forEach(k => {
+      const zaznam = h("div", "zaznam");
+      const hlava = h("div", "hlava");
+      hlava.appendChild(h("span", "zhrnutie", k + " → " + textHodnoty(hodnota[k])));
+      zaznam.appendChild(hlava);
+      const detail = h("div", "detail");
+      (popis.polia || []).forEach(p => detail.appendChild(poleRiadok(ctx, p, pointer + "/" + k + "/" + p.kluc)));
+      zaznam.appendChild(detail);
+      obal.appendChild(zaznam);
+    });
+    if (!Object.keys(hodnota).length) obal.appendChild(h("div", "lista", "prázdne"));
+    return obal;
+  }
+
+  function hodnotaPola(ctx, popis, pointer, kompakt) {
+    const d = popis.druh;
+    if (d === "odkaz") return bunkaOdkazov(ctx, popis, pointer, true, kompakt);
+    if (d === "zoznam-odkazov") return bunkaOdkazov(ctx, popis, pointer, false, kompakt);
+    if (d === "zoznam-textov") return bunkaZoznamuTextov(ctx, popis, pointer);
+    if (d === "objekt") return bunkaObjektu(ctx, popis, pointer);
+    if (d === "zoznam-objektov" || d === "zoznam-unii") return bunkaZoznamuObjektov(ctx, popis, pointer);
+    if (d === "unia-objektov") {
+      const varianta = variantPolozky(popis, citaj(PRACOVNE[ctx.id], pointer));
+      const box = h("div", "vnorene");
+      if (popis.varianty && popis.varianty.length > 1 && !popis.odvodene) {
+        const lista = h("div", "lista");
+        lista.appendChild(h("span", null, "druh"));
+        const sel = h("select", "vstup");
+        sel.style.maxWidth = "200px";
+        popis.varianty.forEach(v => {
+          const o = h("option", null, v.diskriminator ? v.diskriminator.hodnota : v.povinne_kluce.join(" + "));
+          o.value = v.nazov;
+          if (varianta && v.nazov === varianta.nazov) o.selected = true;
+          sel.appendChild(o);
+        });
+        sel.addEventListener("change", () => {
+          const novy = popis.varianty.find(v => v.nazov === sel.value);
+          nastav(ctx.id, pointer, kostraVariantu(novy), popis);
+        });
+        lista.appendChild(sel);
+        box.appendChild(lista);
+      }
+      const detail = h("div", "detail");
+      (varianta ? varianta.polia : []).forEach(f => detail.appendChild(poleRiadok(ctx, f, pointer + "/" + f.kluc)));
+      box.appendChild(detail);
+      return box;
+    }
+    if (d === "mapa-objektov" || d === "mapa") return bunkaMapy(ctx, popis, pointer);
+    return bunkaSkalara(ctx, popis, pointer, kompakt);
+  }
+
+  //: druhy, ktoré potrebujú celú šírku riadka (vnorená tabuľka, vnorený objekt, dlhý text, zoznamy)
+  const SIROKE = new Set(["zoznam-objektov", "zoznam-unii", "unia-objektov", "objekt", "dlhy-text"]);
+  //: zoznam odkazov ide cez celý riadok, len keď je v ňom viac než pár čipov
+  const VELA_ODKAZOV = 3;
+  function poleRiadok(ctx, popis, pointer) {
+    const hodnota = citaj(PRACOVNE[ctx.id], pointer);
+    const siroke = SIROKE.has(popis.druh)
+      || ((popis.druh === "zoznam-odkazov" || popis.druh === "zoznam-textov")
+          && Array.isArray(hodnota) && hodnota.length > VELA_ODKAZOV);
+    const riadok = h("div", "pole" + (siroke ? " siroke" : ""));
+    riadok.appendChild(menovka(popis));
+    const hod = h("div", "hodnota");
+    hod.appendChild(hodnotaPola(ctx, popis, pointer, false));
+    // [Q44] návod stojí pod hodnotou len tam, kde autor ešte nevie, čo vyplniť: prázdne pole
+    // alebo pole s nálezom. Pri vyplnenom poli je celý text v `title` menovky.
+    if (popis.popis && (prazdne(hodnota) || diagPodStrom(ctx.id, pointer).length)) {
+      hod.appendChild(h("div", "pod-hodnotou", popis.popis));
+    }
+    riadok.appendChild(hod);
+    return riadok;
+  }
+
+  // ────────────────────────────────────── výber wikilinku s kotvou (dialóg)
+  function otvorVyber(ctx, popis, pointer, jedenOdkaz, index) {
+    const povolene = popis.cielove_typy || [];
+    const politikaKotvy = popis.kotva || "ziadna";
+    const surove = citaj(PRACOVNE[ctx.id], pointer);
+    const teraz = jedenOdkaz ? surove : (surove || [])[index];
+    const m = teraz ? String(teraz).match(/^\[\[([^\[\]#|]+)(?:#([^\[\]|]+))?/) : null;
+    let ciel = m ? m[1] : null;
+    let kotva = m && m[2] ? m[2] : null;
+
+    const kandidati = Object.keys(UZLY).map(id => UZLY[id])
+      .filter(u => !povolene.length || povolene.indexOf(u.typ) >= 0)
+      .sort((a, b) => (a.visiaci - b.visiaci) || a.id.localeCompare(b.id, "sk"));
+
+    const prekryv = h("div", "prekryv");
+    const dialog = h("div", "dialog");
+    const hlava = document.createElement("header");
+    hlava.appendChild(h("h2", null, "Cieľ poľa " + popis.kluc));
+    hlava.appendChild(h("p", null,
+      (povolene.length ? "povolené typy: " + povolene.join(", ") : "bez obmedzenia typu") +
+      " · kotva: " + politikaKotvy + " — obidvoje pochádza zo schémy, nie z tohto dialógu"));
+    dialog.appendChild(hlava);
+
+    const panely = h("div", "panely");
+    const lavy = h("div", "panel");
+    lavy.appendChild(h("h3", null, "Poznámka"));
+    const hladanie = h("div", "hladanie");
+    const vstup = h("input", "vstup");
+    vstup.type = "search";
+    vstup.placeholder = "hľadať podľa ID alebo názvu…";
+    hladanie.appendChild(vstup);
+    lavy.appendChild(hladanie);
+    const zoznamCielov = h("div", "zoznam");
+    lavy.appendChild(zoznamCielov);
+
+    const pravy = h("div", "panel");
+    pravy.appendChild(h("h3", null, "Kotva" + (politikaKotvy === "povinna" ? " (povinná)" : politikaKotvy === "volitelna" ? " (voliteľná)" : " — pole ju nepoužíva")));
+    const zoznamKotiev = h("div", "zoznam");
+    pravy.appendChild(zoznamKotiev);
+    panely.appendChild(lavy);
+    panely.appendChild(pravy);
+    dialog.appendChild(panely);
+
+    const noha = document.createElement("footer");
+    const nahlad = h("span", "nahlad");
+    noha.appendChild(nahlad);
+    const zrus = h("button", "mini");
+    zrus.type = "button";
+    zrus.textContent = "zrušiť";
+    const potvrd = h("button", "hlavne");
+    potvrd.type = "button";
+    potvrd.textContent = "vložiť odkaz";
+    noha.appendChild(zrus);
+    noha.appendChild(potvrd);
+    dialog.appendChild(noha);
+    prekryv.appendChild(dialog);
+    document.getElementById("app").appendChild(prekryv);
+
+    const zavri = () => { prekryv.parentNode.removeChild(prekryv); document.removeEventListener("keydown", naKlaves); };
+    const naKlaves = e => { if (e.key === "Escape") zavri(); };
+    document.addEventListener("keydown", naKlaves);
+    zrus.addEventListener("click", zavri);
+    prekryv.addEventListener("click", e => { if (e.target === prekryv) zavri(); });
+
+    const odkazText = () => (ciel ? "[[" + ciel + (kotva ? "#" + kotva : "") + "]]" : "");
+    function prekresli() {
+      const filter = vstup.value.trim().toLowerCase();
+      zoznamCielov.innerHTML = "";
+      kandidati.filter(u => !filter || u.id.toLowerCase().indexOf(filter) >= 0 || String(u.nazov).toLowerCase().indexOf(filter) >= 0)
+        .forEach(u => {
+          const b = h("button", "volba");
+          b.type = "button";
+          if (u.id === ciel) b.setAttribute("aria-selected", "true");
+          b.appendChild(h("span", null, u.id));
+          b.appendChild(h("span", "meta", u.visiaci ? "nenapísaná" : (u.typ + " · " + skrat(u.nazov, 26))));
+          b.addEventListener("click", () => { ciel = u.id; kotva = null; prekresli(); });
+          zoznamCielov.appendChild(b);
+        });
+      if (!zoznamCielov.childNodes.length) zoznamCielov.appendChild(h("div", "prazdno", "nič nesedí"));
+
+      zoznamKotiev.innerHTML = "";
+      if (politikaKotvy === "ziadna") {
+        zoznamKotiev.appendChild(h("div", "prazdno", "pole `" + popis.kluc + "` mieri na celú poznámku"));
+      } else {
+        const kotvy = (ciel && DATA.kotvy[ciel]) || {};
+        const kluce = Object.keys(kotvy).filter(k => kotvy[k] !== "nadpis" || k === k.toLowerCase());
+        if (politikaKotvy === "volitelna") {
+          const b = h("button", "volba");
+          b.type = "button";
+          if (!kotva) b.setAttribute("aria-selected", "true");
+          b.appendChild(h("span", null, "(bez kotvy)"));
+          b.addEventListener("click", () => { kotva = null; prekresli(); });
+          zoznamKotiev.appendChild(b);
+        }
+        Object.keys(kotvy).sort().forEach(k => {
+          if (kotvy[k] === "nadpis" && kluce.indexOf(k) < 0) return;
+          const b = h("button", "volba");
+          b.type = "button";
+          if (k === kotva) b.setAttribute("aria-selected", "true");
+          b.appendChild(h("span", null, "#" + k));
+          b.appendChild(h("span", "meta", kotvy[k] === "uloha" ? "úloha" : kotvy[k] === "pod" ? "pod-záznam" : "nadpis"));
+          b.addEventListener("click", () => { kotva = k; prekresli(); });
+          zoznamKotiev.appendChild(b);
+        });
+        if (!Object.keys(kotvy).length) {
+          zoznamKotiev.appendChild(h("div", "prazdno", ciel ? "cieľ nemá kotvy — napíš ju ručne nižšie" : "najprv vyber poznámku"));
+          const rucne = h("div", "hladanie");
+          const rv = h("input", "vstup mono");
+          rv.placeholder = "napr. CCI-priestory";
+          rv.value = kotva || "";
+          rv.addEventListener("input", () => { kotva = rv.value || null; nahlad.textContent = odkazText(); });
+          rucne.appendChild(rv);
+          zoznamKotiev.appendChild(rucne);
+        }
+      }
+      nahlad.textContent = odkazText();
+      potvrd.disabled = !ciel || (politikaKotvy === "povinna" && !kotva);
+    }
+    vstup.addEventListener("input", prekresli);
+    potvrd.addEventListener("click", () => {
+      const text = odkazText();
+      if (jedenOdkaz) nastav(ctx.id, pointer, text, popis);
+      else {
+        const zoznam = (citaj(PRACOVNE[ctx.id], pointer) || []).slice();
+        zoznam[index] = text;
+        nastav(ctx.id, pointer, zoznam, popis);
+      }
+      zavri();
+    });
+    prekresli();
+    vstup.focus();
+  }
+
+  // ══════════════════════════════════════════ pohľad: register (tabuľka typu)
+  /** Pole podľa bodkovej cesty („objekt.ifc_entita") — stĺpec smie siahnuť do vnoreného objektu. */
+  function poleCestou(popisTypu, cesta) {
+    const casti = String(cesta).split(".");
+    let zoznam = (popisTypu && popisTypu.polia) || [];
+    let najdene = null;
+    let pointer = "";
+    for (const c of casti) {
+      najdene = zoznam.find(f => f.kluc === c);
+      if (!najdene) return null;
+      pointer += "/" + najdene.kluc;
+      zoznam = najdene.polia || [];
+    }
+    return Object.assign({}, najdene, { pointer, cesta: String(cesta) });
+  }
+
+  const stlpcovatelne = f =>
+    SKALARNE.has(f.druh) || f.druh === "odkaz" || f.druh === "zoznam-odkazov" || f.druh === "zoznam-textov";
+
+  /** Predvolená zostava stĺpcov je na definícii typu v schéme (STLPCE), nie v tomto kóde. */
+  function stlpceRegistra(popisTypu, typ) {
+    const predvolene = (popisTypu.stlpce || [])
+      .map(c => poleCestou(popisTypu, c))
+      .filter(f => f && stlpcovatelne(f));
+    if (!STAV.stlpceNavyse[typ]) return predvolene;
+    const uz = new Set(predvolene.map(f => f.cesta));
+    const zvysok = (popisTypu.polia || [])
+      .filter(f => !SKRYTE_V_REGISTRI.has(f.kluc) && stlpcovatelne(f) && !uz.has(f.kluc))
+      .map(f => Object.assign({}, f, { pointer: "/" + f.kluc, cesta: f.kluc }));
+    return predvolene.concat(zvysok);
+  }
+
+  function prepinacStlpcov(typ, popisTypu, kolko) {
+    const b = h("button", "mini");
+    b.type = "button";
+    const vsetky = !!STAV.stlpceNavyse[typ];
+    const skryte = (popisTypu.polia || []).filter(f => !SKRYTE_V_REGISTRI.has(f.kluc) && stlpcovatelne(f)).length - kolko;
+    b.textContent = vsetky ? "len predvolené stĺpce" : "+ " + mnozne(Math.max(skryte, 0), "ďalší stĺpec", "ďalšie stĺpce", "ďalších stĺpcov");
+    b.addEventListener("click", () => { STAV.stlpceNavyse[typ] = !vsetky; vykresli(); });
+    return b;
+  }
+
+  function panelHromadnej(ids, stlpce) {  // eslint-disable-line no-unused-vars
+    const upravitelne = stlpce.filter(s => (s.druh === "enum" || s.druh === "boolean") && !s.odvodene);
+    if (!VYBRANE.size || !upravitelne.length) return null;
+    const box = h("div", "hromadne");
+    box.appendChild(h("span", null, mnozne(VYBRANE.size, "vybraná poznámka", "vybrané poznámky", "vybraných poznámok")));
+    box.appendChild(h("span", "muted", "· nastaviť"));
+    const pole = h("select", "vstup");
+    upravitelne.forEach(s => {
+      const o = h("option", null, s.titulok);
+      o.value = s.kluc;
+      pole.appendChild(o);
+    });
+    box.appendChild(pole);
+    box.appendChild(h("span", "muted", "na"));
+    const hodnota = h("select", "vstup");
+    const naplnHodnoty = () => {
+      const s = upravitelne.find(x => x.kluc === pole.value);
+      hodnota.innerHTML = "";
+      const moznosti = s.druh === "boolean" ? ["true", "false"] : (s.hodnoty || []).map(String);
+      [""].concat(moznosti).forEach(v => {
+        const o = h("option", null, v || "—");
+        o.value = v;
+        hodnota.appendChild(o);
+      });
+    };
+    naplnHodnoty();
+    pole.addEventListener("change", naplnHodnoty);
+    box.appendChild(hodnota);
+    const pouzi = h("button", "mini");
+    pouzi.type = "button";
+    pouzi.textContent = "použiť";
+    pouzi.addEventListener("click", () => {
+      const s = upravitelne.find(x => x.kluc === pole.value);
+      let v = hodnota.value;
+      if (v === "") v = null;
+      else if (s.druh === "boolean") v = v === "true";
+      // jedno prekreslenie na konci: nastav() ho volá samo, preto zapisujeme priamo a zmeny zbierame
+      Array.from(VYBRANE).forEach(id => {
+        const pointer = s.pointer || ("/" + s.kluc);
+        const povodne = citaj(POZNAMKY[id].data, pointer);
+        zapis(PRACOVNE[id], pointer, v);
+        const i = ZMENY.findIndex(z => z.id === id && z.pointer === pointer);
+        const rovnake = JSON.stringify(povodne === undefined ? null : povodne) === JSON.stringify(v);
+        if (rovnake) { if (i >= 0) ZMENY.splice(i, 1); }
+        else {
+          const z = { id, pointer, titulok: s.titulok, predtym: povodne, teraz: v };
+          if (i >= 0) ZMENY[i] = z; else ZMENY.push(z);
+        }
+      });
+      vykresli();
+    });
+    box.appendChild(pouzi);
+    const zrus = h("button", "mini");
+    zrus.type = "button";
+    zrus.textContent = "zrušiť výber";
+    zrus.addEventListener("click", () => { VYBRANE.clear(); vykresli(); });
+    box.appendChild(zrus);
+    return box;
+  }
+
+  function tabulkaRegistra(plocha, typ) {
+    const popisTypu = TYPY[typ];
+    const ids = poznamkyTypu(typ);
+    const stlpce = stlpceRegistra(popisTypu, typ);
+
+    const panel = panelHromadnej(ids, stlpce);
+    if (panel) plocha.appendChild(panel);
+
+    const obal = h("div", "tabulka-obal");
+    const t = h("table", "mriezka");
+    const thead = document.createElement("thead");
+    const hr = document.createElement("tr");
+    const thVyber = h("th", null);
+    const vsetky = h("input", null);
+    vsetky.type = "checkbox";
+    vsetky.checked = ids.length > 0 && ids.every(id => VYBRANE.has(id));
+    vsetky.title = "Vybrať všetky";
+    vsetky.addEventListener("change", () => {
+      if (vsetky.checked) ids.forEach(id => VYBRANE.add(id)); else VYBRANE.clear();
+      vykresli();
+    });
+    thVyber.appendChild(vsetky);
+    thVyber.className = "lepiaci";
+    hr.appendChild(thVyber);
+    hr.appendChild(h("th", "mono lepiaci", "id"));
+    stlpce.forEach(s => hr.appendChild(h("th", null, s.titulok)));
+    hr.appendChild(h("th", null, "nálezy"));
+    thead.appendChild(hr);
+    t.appendChild(thead);
+
+    const tb = document.createElement("tbody");
+    ids.forEach(id => {
+      const tr = h("tr", VYBRANE.has(id) ? "vybrany" : null);
+      const tdVyber = h("td", "lepiaci");
+      const ch = h("input", null);
+      ch.type = "checkbox";
+      ch.checked = VYBRANE.has(id);
+      ch.addEventListener("change", () => { if (ch.checked) VYBRANE.add(id); else VYBRANE.delete(id); vykresli(); });
+      tdVyber.appendChild(ch);
+      tr.appendChild(tdVyber);
+
+      // klik na riadok (bunku ID) otvorí stránku poznámky; klik na inú bunku edituje (kolo 3 §1)
+      const tdId = h("td", "mono lepiaci riadok-klik");
+      const odkaz = h("button", "cip");
+      odkaz.type = "button";
+      odkaz.appendChild(h("span", "cip-id", id));
+      odkaz.title = "Otvoriť " + id;
+      odkaz.addEventListener("click", e => { e.stopPropagation(); otvorPoznamku(id); });
+      tdId.appendChild(odkaz);
+      tdId.addEventListener("click", () => otvorPoznamku(id));
+      tr.appendChild(tdId);
+
+      const ctx = { id };
+      stlpce.forEach(s => {
+        const td = document.createElement("td");
+        td.appendChild(hodnotaPola(ctx, s, s.pointer, true));
+        tr.appendChild(td);
+      });
+      const diagy = DIAG_PODLA[id] || [];
+      const td = document.createElement("td");
+      const o = odznakDiag(diagy);
+      if (o) td.appendChild(o); else td.appendChild(h("span", "muted", "—"));
+      tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    obal.appendChild(t);
+    if (!ids.length) obal.appendChild(h("div", "prazdno", "V knižnici zatiaľ nie je ani jedna poznámka tohto typu."));
+    plocha.appendChild(obal);
+  }
+
+  /** Ploché položky celého registra — tam, kde má hromadná zmena `povinnost` zmysel. */
+  /** [U13] Tabuľka pod-záznamov: riadok = pravidlo (profil, slovník), zoskupenie = poznámka, ktorá
+      ho nesie. Stĺpce sú zo schémy druhu (`STLPCE` na `PravidloSTD`…), bunky sa editujú cez ten istý
+      pointer `/__pod/<id>/<pole>`, ktorý pozná writer. */
+  function tabulkaPodZaznamov(plocha, typ, druh) {
+    const popisDruhu = TYPY["pod-" + druh] || { polia: [], stlpce: [] };
+    const stlpce = stlpceRegistra(popisDruhu, "pod-" + druh);
+    const riadky = podZaznamyTypu(typ, druh);
+
+    const obal = h("div", "tabulka-obal");
+    const tab = h("table", "mriezka");
+    const thead = document.createElement("thead");
+    const hr = document.createElement("tr");
+    hr.appendChild(h("th", "mono lepiaci", "id"));
+    stlpce.forEach(s => hr.appendChild(h("th", null, s.titulok)));
+    hr.appendChild(h("th", null, "nálezy"));
+    thead.appendChild(hr);
+    tab.appendChild(thead);
+
+    const tb = document.createElement("tbody");
+    let posledna = null;
+    riadky.forEach(r => {
+      if (r.poznamka !== posledna) {
+        posledna = r.poznamka;
+        const tr = h("tr", "skupinovy");
+        const td = h("td", null);
+        td.colSpan = stlpce.length + 2;
+        const b = h("button", "cip");
+        b.type = "button";
+        b.appendChild(h("span", "cip-id", r.poznamka));
+        b.title = "Otvoriť poznámku " + r.poznamka;
+        b.addEventListener("click", () => otvorPoznamku(r.poznamka));
+        td.appendChild(b);
+        td.appendChild(h("span", "muted", (POZNAMKY[r.poznamka].nazov || "") + " · " +
+          mnozne(podZaznamyTypu(typ, druh).filter(x => x.poznamka === r.poznamka).length, "záznam", "záznamy", "záznamov")));
+        tr.appendChild(td);
+        tb.appendChild(tr);
+      }
+      const tr = document.createElement("tr");
+      const tdId = h("td", "mono lepiaci riadok-klik");
+      const odkaz = h("button", "cip");
+      odkaz.type = "button";
+      odkaz.appendChild(h("span", "cip-id", r.pz.id));
+      odkaz.title = "Otvoriť " + r.pz.id;
+      odkaz.addEventListener("click", e => { e.stopPropagation(); otvorPod(r.poznamka, r.pz.id); });
+      tdId.appendChild(odkaz);
+      tdId.addEventListener("click", () => otvorPod(r.poznamka, r.pz.id));
+      tr.appendChild(tdId);
+
+      const ctx = { id: r.poznamka, pod: r.pz.id };
+      stlpce.forEach(s => {
+        const td = document.createElement("td");
+        td.appendChild(hodnotaPola(ctx, s, "/__pod/" + r.pz.id + "/" + s.kluc, true));
+        tr.appendChild(td);
+      });
+      const diagy = (DIAG_PODLA[r.poznamka] || []).filter(d => (d.json_pointer || "").indexOf("#" + r.pz.id) === 0);
+      const td = document.createElement("td");
+      const o = odznakDiag(diagy);
+      if (o) td.appendChild(o); else td.appendChild(h("span", "muted", "—"));
+      tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+    tab.appendChild(tb);
+    obal.appendChild(tab);
+    if (!riadky.length) obal.appendChild(h("div", "prazdno", "Ani jedna poznámka tohto typu zatiaľ taký záznam nenesie."));
+    plocha.appendChild(obal);
+  }
+
+  function tabulkaPoloziek(plocha, typ, polePolozek) {
+    const ids = poznamkyTypu(typ);
+    const riadky = [];
+    ids.forEach(id => {
+      (citaj(PRACOVNE[id], "/" + polePolozek.kluc) || []).forEach((pol, i) => {
+        riadky.push({ id, i, pol, pointer: "/" + polePolozek.kluc + "/" + i });
+      });
+    });
+
+    const stlpce = (polePolozek.polia || []).filter(p =>
+      (SKALARNE.has(p.druh) || p.druh === "odkaz") && !p.odvodene &&
+      ["povinnost", "zavaznost", "overenie", "rola", "vzor", "povaha", "pravidlo", "definicia_ref", "hodnoty_ref"].indexOf(p.kluc) >= 0
+    );
+
+    if (VYBRANE.size) {
+      const box = h("div", "hromadne");
+      box.appendChild(h("span", null, mnozne(VYBRANE.size, "vybraná položka", "vybrané položky", "vybraných položiek") + " · nastaviť"));
+      const pole = h("select", "vstup");
+      stlpce.filter(s => s.druh === "enum").forEach(s => {
+        const o = h("option", null, s.titulok);
+        o.value = s.kluc;
+        pole.appendChild(o);
+      });
+      box.appendChild(pole);
+      box.appendChild(h("span", "muted", "na"));
+      const hodnota = h("select", "vstup");
+      const napln = () => {
+        const s = stlpce.find(x => x.kluc === pole.value);
+        hodnota.innerHTML = "";
+        [""].concat((s.hodnoty || []).map(String)).forEach(v => {
+          const o = h("option", null, v || "—");
+          o.value = v;
+          hodnota.appendChild(o);
+        });
+      };
+      napln();
+      pole.addEventListener("change", napln);
+      box.appendChild(hodnota);
+      const pouzi = h("button", "mini");
+      pouzi.type = "button";
+      pouzi.textContent = "použiť";
+      pouzi.addEventListener("click", () => {
+        const s = stlpce.find(x => x.kluc === pole.value);
+        const v = hodnota.value === "" ? null : hodnota.value;
+        Array.from(VYBRANE).forEach(kluc => {
+          const [id, pointer] = kluc.split("|");
+          const cielovy = pointer + "/" + s.kluc;
+          const povodne = citaj(POZNAMKY[id].data, cielovy);
+          zapis(PRACOVNE[id], cielovy, v);
+          const i = ZMENY.findIndex(z => z.id === id && z.pointer === cielovy);
+          if (JSON.stringify(povodne === undefined ? null : povodne) === JSON.stringify(v)) { if (i >= 0) ZMENY.splice(i, 1); }
+          else {
+            const z = { id, pointer: cielovy, titulok: s.titulok, predtym: povodne, teraz: v };
+            if (i >= 0) ZMENY[i] = z; else ZMENY.push(z);
+          }
+        });
+        vykresli();
+      });
+      box.appendChild(pouzi);
+      const zrusB = h("button", "mini");
+      zrusB.type = "button";
+      zrusB.textContent = "zrušiť výber";
+      zrusB.addEventListener("click", () => { VYBRANE.clear(); vykresli(); });
+      box.appendChild(zrusB);
+      plocha.appendChild(box);
+    }
+
+    const obal = h("div", "tabulka-obal");
+    const t = h("table", "mriezka");
+    const thead = document.createElement("thead");
+    const hr = document.createElement("tr");
+    hr.appendChild(h("th", null, ""));
+    hr.appendChild(h("th", null, "poznámka"));
+    hr.appendChild(h("th", null, "položka"));
+    stlpce.forEach(s => hr.appendChild(h("th", null, s.titulok)));
+    hr.appendChild(h("th", null, "odkiaľ"));
+    thead.appendChild(hr);
+    t.appendChild(thead);
+    const tb = document.createElement("tbody");
+    riadky.forEach(r => {
+      const klucVyberu = r.id + "|" + r.pointer;
+      const tr = h("tr", VYBRANE.has(klucVyberu) ? "vybrany" : null);
+      const tdV = document.createElement("td");
+      const ch = h("input", null);
+      ch.type = "checkbox";
+      ch.checked = VYBRANE.has(klucVyberu);
+      ch.addEventListener("change", () => { if (ch.checked) VYBRANE.add(klucVyberu); else VYBRANE.delete(klucVyberu); vykresli(); });
+      tdV.appendChild(ch);
+      tr.appendChild(tdV);
+
+      const tdP = h("td", "mono");
+      const b = h("button", "cip");
+      b.type = "button";
+      b.appendChild(h("span", "cip-id", r.id));
+      b.addEventListener("click", () => otvorPoznamku(r.id, klucPolozky(r.pol)));
+      tdP.appendChild(b);
+      tr.appendChild(tdP);
+
+      const tdK = h("td", "mono");
+      tdK.appendChild(h("span", null, klucPolozky(r.pol)));
+      tdK.appendChild(h("span", "ifc", ifcPopis(r.pol)));
+      tr.appendChild(tdK);
+
+      const ctx = { id: r.id };
+      stlpce.forEach(s => {
+        const td = document.createElement("td");
+        td.appendChild(hodnotaPola(ctx, s, r.pointer + "/" + s.kluc, true));
+        tr.appendChild(td);
+      });
+      const povod = povodPolozky(r.id, klucPolozky(r.pol), vymenyPre(r.id)[0] || null);
+      tr.appendChild(bunkaOdkial(povod));
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    obal.appendChild(t);
+    if (!riadky.length) obal.appendChild(h("div", "prazdno", "Žiadne položky."));
+    plocha.appendChild(obal);
+  }
+
+  /** [U13] Pod-záznamy typu (pravidlá, profily, slovníky) ako ploché riadky so zoskupením podľa
+      poznámky, ktorá ich nesie. Register počíta ich, nie súbory — pravidlo je to, s čím autor
+      pracuje, poznámka je obal. */
+  function podZaznamyTypu(typ, druh) {
+    const out = [];
+    poznamkyTypu(typ).forEach(id => {
+      (POZNAMKY[id].pod_zaznamy || []).forEach(pz => {
+        if (!druh || pz.druh === druh) out.push({ poznamka: id, pz });
+      });
+    });
+    return out;
+  }
+  const druhyRegistra = typ => ((TYPY[typ] || {}).pod_zaznamy || []).filter(d => podZaznamyTypu(typ, d).length);
+  const zalozkaPod = z => (typeof z === "string" && z.indexOf("pod:") === 0 ? z.slice(4) : null);
+
+  function pohladRegistra(plocha) {
+    const typ = STAV.typ;
+    const popisTypu = TYPY[typ] || { polia: [], sekcie: [] };
+    const polePolozek = (popisTypu.polia || []).find(p => p.polozky);
+    const druhy = druhyRegistra(typ);
+    // register s pod-záznamami sa otvára na nich (U13); „Poznámky" ostávajú ako ďalšia záložka
+    if (druhy.length && STAV.zalozka === "poznamky" && !STAV.zalozkaVolena) STAV.zalozka = "pod:" + druhy[0];
+    // záložka z iného registra sem nepatrí (STD → UC)
+    if (zalozkaPod(STAV.zalozka) && druhy.indexOf(zalozkaPod(STAV.zalozka)) < 0) STAV.zalozka = "poznamky";
+    const druh = zalozkaPod(STAV.zalozka);
+    const pocet = druh
+      ? mnozne(podZaznamyTypu(typ, druh).length, "záznam", "záznamy", "záznamov") + " · " + popisokTypu("pod-" + druh) +
+        " · v " + mnozne(new Set(podZaznamyTypu(typ, druh).map(r => r.poznamka)).size, "poznámke", "poznámkach", "poznámkach")
+      : mnozne(poznamkyTypu(typ).length, "poznámka", "poznámky", "poznámok");
+
+    plocha.appendChild(cesta([{ text: "zadanie/" }, { text: typ }]));
+    const hlavicka = h("div", "hlavicka");
+    hlavicka.appendChild(h("h1", null, popisokTypu(typ)));
+    hlavicka.appendChild(h("span", "technicky", typ + " · " + pocet + " · v zmluve „" + (popisTypu.popisok_export || popisokTypu(typ)) + "“"));
+    if (API.zivy && API.nova) {
+      // len pod serverom: ako súbor stránka nič nevytvára
+      const vpravo = h("div", "vpravo");
+      const nova = h("button", "mini");
+      nova.type = "button";
+      nova.textContent = "+ nová poznámka";
+      nova.addEventListener("click", () => otvorNovuPoznamku(typ));
+      vpravo.appendChild(nova);
+      hlavicka.appendChild(vpravo);
+    }
+    plocha.appendChild(hlavicka);
+
+    const volby = druhy.map(d => ["pod:" + d, popisokTypu("pod-" + d)]).concat([["poznamky", "Poznámky"]]);
+    if (polePolozek) volby.push(["polozky", polePolozek.titulok]);
+    if (volby.length > 1) {
+      const zalozky = h("div", "zalozky");
+      volby.forEach(z => {
+        const b = h("button", "zalozka");
+        b.type = "button";
+        b.textContent = z[1];
+        b.setAttribute("aria-selected", String(STAV.zalozka === z[0]));
+        b.addEventListener("click", () => { STAV.zalozka = z[0]; STAV.zalozkaVolena = true; VYBRANE.clear(); vykresli(); });
+        zalozky.appendChild(b);
+      });
+      plocha.appendChild(zalozky);
+    }
+
+    if (druh) tabulkaPodZaznamov(plocha, typ, druh);
+    else if (polePolozek && STAV.zalozka === "polozky") tabulkaPoloziek(plocha, typ, polePolozek);
+    else tabulkaRegistra(plocha, typ);
+
+    plocha.appendChild(h("p", "poznamka-pod",
+      "Stĺpce, editory buniek aj cieľové typy odkazov sú odvodené zo schémy (" + (popisTypu.polia || []).length +
+      " polí typu) — v stránke nie je napísaný ani jeden formulár. " +
+      (API.zivy ? "Uložiť " + ulozDoKam() + " zapíše zmeny naraz; poznámka, ktorá by sa nedala natypovať, sa neuloží."
+                : "Toto je náhľad bez servera: zmeny sa nikam neukladajú.")));
+  }
+
+  // ══════════════════════════════════ pohľad: poznámka (formulár) a reťazec (kaskáda)
+
+  /** Hodnota poľa, ktoré schéma označila ako technický identifikátor typu (IU-O: IFC entita). */
+  function technickyUdaj(id, popisTypu) {
+    const polia = (popisTypu && popisTypu.polia) || [];
+    for (const f of polia) {
+      if (f.technicky) return textHodnoty(citaj(PRACOVNE[id], "/" + f.kluc));
+      if (f.druh === "objekt") {
+        for (const g of (f.polia || [])) {
+          if (g.technicky) return textHodnoty(citaj(PRACOVNE[id], "/" + f.kluc + "/" + g.kluc));
+        }
+      }
+    }
+    return null;
+  }
+
+  function povodPolozky(id, kluc, erId) {
+    const zdroj = erId && DATA.inspektor_er[erId + "|" + id]
+      ? DATA.inspektor_er[erId + "|" + id]
+      : (POZNAMKY[id] || {}).inspektor;
+    if (!zdroj) return null;
+    return (zdroj.polozky || []).find(p => p.polozka === kluc) || null;
+  }
+
+  function bunkaOdkial(povod) {
+    const td = document.createElement("td");
+    if (!povod) { td.appendChild(h("span", "odkial", "—")); return td; }
+    const s = povod.suhrn;
+    if (s.zdroj) {
+      const b = h("button", s.druh === "prepis" ? "pill" : "odkial-odkaz");
+      b.type = "button";
+      b.textContent = s.druh + " " + s.zdroj + (s.kotva ? "#" + s.kotva : "");
+      b.title = s.popis;
+      b.addEventListener("click", () => {
+        if (POZNAMKY[s.zdroj]) otvorPoznamku(s.zdroj);
+        else if (UZLY[s.zdroj] && UZLY[s.zdroj].rodic) otvorPod(UZLY[s.zdroj].rodic, s.zdroj);
+      });
+      td.appendChild(b);
+    } else {
+      td.appendChild(h("span", "odkial", s.popis));
+    }
+    return td;
+  }
+
+  /** Tabuľka Položka · Povinnosť · Odkiaľ — celý zmysel pásma „Čo a ako podrobne?". */
+  function tabulkaPoloziekPasma(id, polePolozek, erId) {
+    const hodnoty = citaj(PRACOVNE[id], "/" + polePolozek.kluc) || [];
+    if (!hodnoty.length) return h("div", "prazdno", "Jednotka nemá ani jednu položku.");
+    const t = h("table", "polozky");
+    const cg = document.createElement("colgroup");
+    ["c-polozka", "c-povinnost", "c-odkial"].forEach(c => {
+      const col = document.createElement("col");
+      col.className = c;
+      cg.appendChild(col);
+    });
+    t.appendChild(cg);
+    const thead = document.createElement("thead");
+    const hr = document.createElement("tr");
+    ["Položka", "Povinnosť", "Odkiaľ"].forEach(x => hr.appendChild(h("th", null, x)));
+    thead.appendChild(hr);
+    t.appendChild(thead);
+    const tb = document.createElement("tbody");
+    const ctx = { id };
+    const popisPovinnost = (polePolozek.polia || []).find(p => p.kluc === "povinnost");
+    hodnoty.forEach((pol, i) => {
+      const kluc = klucPolozky(pol);
+      const povod = povodPolozky(id, kluc, erId);
+      const tr = h("tr", povod && povod.suhrn.druh === "prepis" ? "prepisana" : null);
+      if (STAV.polozka === kluc && STAV.poznamka === id) tr.classList.add("vybrany");
+      const tdK = h("td", "riadok-klik");
+      tdK.appendChild(h("span", "kluc-polozky", kluc));
+      tdK.appendChild(h("span", "ifc", ifcPopis(pol)));
+      tdK.addEventListener("click", () => {
+        STAV.polozka = STAV.polozka === kluc ? null : kluc;
+        vykresli();
+      });
+      tr.appendChild(tdK);
+      const tdP = document.createElement("td");
+      const prepis = povod && povod.povod && popisPovinnost && povod.povod[popisPovinnost.kluc];
+      if (prepis && prepis.druh === "prepis") {
+        // prepísaná hodnota platí v kontexte výmeny a edituje sa v ER, nie tu: pôvodná preškrtnutá, nová vedľa
+        if (prepis.povodna_hodnota != null) tdP.appendChild(h("s", "prepis-povodna", String(prepis.povodna_hodnota)));
+        tdP.appendChild(h("span", "prepis-nova", String(povod.hodnota[popisPovinnost.kluc])));
+      } else if (popisPovinnost) {
+        tdP.appendChild(hodnotaPola(ctx, popisPovinnost, "/" + polePolozek.kluc + "/" + i + "/" + popisPovinnost.kluc, true));
+      }
+      tr.appendChild(tdP);
+      tr.appendChild(bunkaOdkial(povod));
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    return t;
+  }
+
+  /** Polia poznámky zoskupené podľa nositeľa a sekcie — generické zo schémy. */
+  function skupinyPoli(id, ciel) {
+    const p = POZNAMKY[id];
+    if (!p) return;
+    const popisTypu = TYPY[p.typ];
+    const ctx = { id };
+    const polia = (popisTypu ? popisTypu.polia : []);
+    const vyplnene = f => !prazdne(citaj(PRACOVNE[id], "/" + f.kluc));
+    const frontmatter = polia.filter(f => f.zdroj === "frontmatter" && !f.odvodene);
+    const odvodene = polia.filter(f => f.odvodene);
+    const telo = polia.filter(f => f.zdroj !== "frontmatter" && !f.odvodene);
+
+    // prázdne voliteľné polia sa zbalia — inak stránka nemá koniec (§6). Pole, na ktoré padá
+    // diagnostika, sa neskrýva nikdy: čerstvá ER inak vyzerá hotovo, hoci bez `uc::`,
+    // `spustacia_udalost::` a `obsahuje::` je neplatná (REVIEW §1.5).
+    let skrytych = 0;
+    const zobraz = zoznam => zoznam.filter(f => {
+      if (STAV.vsetkyPolia || f.povinne || vyplnene(f)) return true;
+      if (diagPodStrom(id, "/" + f.kluc).length) return true;
+      skrytych += 1;
+      return false;
+    });
+
+    const skupina = (nadpis, zdroj, zoznam) => {
+      const viditelne = zobraz(zoznam);
+      if (!viditelne.length) return;
+      const sk = h("div", "skupina");
+      const hl = h("h3", null, nadpis);
+      hl.appendChild(h("span", "zdroj", mnozne(viditelne.length, "pole", "polia", "polí")));
+      if (zdroj) hl.title = zdroj;                 // nositeľ poľa je technika, nie nadpis
+      sk.appendChild(hl);
+      const polia = h("div", "polia");
+      viditelne.forEach(f => polia.appendChild(poleRiadok(ctx, f, "/" + f.kluc)));
+      sk.appendChild(polia);
+      ciel.appendChild(sk);
+    };
+    skupina("Hlavička", "frontmatter", frontmatter);
+    (popisTypu ? popisTypu.sekcie : []).forEach(sekcia => {
+      const vSekcii = telo.filter(f => f.sekcia === sekcia);
+      if (vSekcii.length) {
+        const zdroje = vSekcii.map(f => f.zdroj).filter((v, i, a) => a.indexOf(v) === i).join(" + ");
+        skupina(sekcia, "sekcia tela `## " + sekcia + "` · " + zdroje, vSekcii);
+      }
+    });
+    const bezSekcie = telo.filter(f => !f.sekcia || !((popisTypu && popisTypu.sekcie) || []).includes(f.sekcia));
+    skupina("Ostatné polia tela", "inline", bezSekcie);
+    skupina("Odvodené", "needituje sa — počíta ich engine (x-assetin.odvodene)", odvodene);
+
+    if (skrytych || STAV.vsetkyPolia) {
+      const b = h("button", "zbalene");
+      b.type = "button";
+      b.textContent = STAV.vsetkyPolia
+        ? "skryť nevyplnené polia"
+        : "zobraziť " + mnozne(skrytych, "ďalšie nevyplnené pole", "ďalšie nevyplnené polia", "ďalších nevyplnených polí");
+      b.addEventListener("click", () => { STAV.vsetkyPolia = !STAV.vsetkyPolia; vykresli(); });
+      ciel.appendChild(b);
+    }
+  }
+
+  // ── pruh „kde to sedí" ────────────────────────────────────────────────────
+  function retazcePre(id) { return (POZNAMKY[id] || {}).retazce || []; }
+  function aktualnyRetazec(id) {
+    const zoznam = retazcePre(id);
+    if (!zoznam.length) return null;
+    return zoznam[Math.min(STAV.retazec, zoznam.length - 1)];
+  }
+
+  /** Pruh „kde to sedí": `GOAL-A-01 › UC-0101 › T3 › ER-0101 › táto poznámka` — jeden riadok,
+      segmenty sú odkazy, visiaci segment kurzívou s prerušovaným okrajom, na konci ikona
+      otvorí záložku Reťazec; viac ciest ⇒ prvá a „+1 ďalšia" ako prepínač (kolo 3 §2.3). */
+  function pruhKdeToSedi(id, pod) {
+    const p = POZNAMKY[id] || {};
+    const pz = pod ? (p.pod_zaznamy || []).find(x => x.id === pod) : null;
+    const cesty = (pz ? pz.cesty : p.cesty) || [];
+    const pruh = h("div", "pruh");
+    if (!cesty.length) {
+      pruh.appendChild(h("span", "muted", (pod ? "tento záznam" : "táto poznámka") +
+        " zatiaľ nesedí na žiadnom účele užitia"));
+      return pruh;
+    }
+    const i = Math.min(STAV.retazec, cesty.length - 1);
+    cesty[i].forEach((k, j) => {
+      if (j) pruh.appendChild(h("span", "oddel", "›"));
+      pruh.appendChild(segmentPruhu(k));
+    });
+    if (cesty[i].length) pruh.appendChild(h("span", "oddel", "›"));
+    pruh.appendChild(h("span", "tu", pod ? "tento záznam" : "táto poznámka"));
+    const route = h("button", "ikonka pruh-retazec");
+    route.type = "button";
+    route.setAttribute("aria-label", pod ? "Otvoriť reťazec poznámky, ktorá záznam nesie" : "Otvoriť záložku Reťazec");
+    route.appendChild(ikona("ti-route"));
+    route.addEventListener("click", () => pod
+      ? naviguj({ pohlad: "poznamka", poznamka: id, zalozkaPoznamky: "retazec" })
+      : naviguj({ zalozkaPoznamky: "retazec" }));
+    pruh.appendChild(route);
+    if (cesty.length > 1) {
+      const viac = h("button", "pruh-viac");
+      viac.type = "button";
+      viac.textContent = "+" + mnozne(cesty.length - 1, "ďalšia", "ďalšie", "ďalších") + " · " + (i + 1) + "/" + cesty.length;
+      viac.title = "Poznámka sedí na viacerých kaskádach — prepnúť na ďalšiu";
+      viac.addEventListener("click", () => naviguj({ retazec: (i + 1) % cesty.length }));
+      pruh.appendChild(viac);
+    }
+    return pruh;
+  }
+  function segmentPruhu(k) {
+    const p = POZNAMKY[k.id];
+    const b = h("button", "seg" + (k.visiaci ? " visiaci" : ""));
+    b.type = "button";
+    // úloha sa píše ako T2, nie ako UC-0101#T2 — je to krok účelu užitia, nie iná poznámka
+    b.textContent = k.rola === "uloha" ? k.kotva : k.id;
+    b.title = k.visiaci
+      ? k.id + " — poznámka zatiaľ neexistuje"
+      : (k.rola === "uloha" ? k.id + " · úloha " + k.kotva + ": " + k.nazov : (p ? p.typ + " · " + p.nazov : k.id));
+    b.addEventListener("click", () => otvorCokolvek(k.id));
+    return b;
+  }
+
+  // ── pohľad poznámky: formulár, žiadne pásma ──────────────────────────────
+  /** Stránka poznámky (kolo 3 §2): drobčeky · nadpis · ID + súbor · pruh · záložky · obsah. */
+  function pohladPoznamky(plocha) {
+    const id = STAV.poznamka;
+    const p = POZNAMKY[id];
+    const popisTypu = TYPY[p.typ] || { polia: [], sekcie: [] };
+
+    plocha.appendChild(cesta([
+      { text: "zadanie/" },
+      { text: p.typ, akcia: () => { VYBRANE.clear(); naviguj({ pohlad: "register", typ: p.typ }); } },
+      { text: id }
+    ]));
+    const hlavicka = h("div", "hlavicka hlavicka-poznamky");
+    hlavicka.appendChild(h("h1", null, p.nazov));
+    const podtitul = h("div", "podtitul", [id, technickyUdaj(id, popisTypu), p.subor].filter(Boolean).join(" · "));
+    if (p.revizia && p.revizia.autor) {
+      // [V29, Q64 c] kto a kedy naposledy zmenil - viac história v UI nemá
+      const kedy = p.revizia.vytvorena ? new Date(p.revizia.vytvorena).toLocaleString("sk-SK") : "";
+      podtitul.appendChild(h("span", "revizia", " · upravil " + p.revizia.autor + (kedy ? ", " + kedy : "") + " · rev. " + p.revizia.rev));
+    }
+    hlavicka.appendChild(podtitul);
+    plocha.appendChild(hlavicka);
+    plocha.appendChild(pruhKdeToSedi(id));
+
+    const zalozky = h("div", "zalozky-poznamky");
+    zalozky.setAttribute("role", "tablist");
+    [["poznamka", "Poznámka"], ["retazec", "Reťazec"]].forEach(z => {
+      const b = h("button", "zalozka-p");
+      b.type = "button";
+      b.setAttribute("role", "tab");
+      b.textContent = z[1];
+      b.setAttribute("aria-selected", String(STAV.zalozkaPoznamky === z[0]));
+      b.addEventListener("click", () => naviguj({ zalozkaPoznamky: z[0] }));
+      zalozky.appendChild(b);
+    });
+    plocha.appendChild(zalozky);
+
+    if (STAV.zalozkaPoznamky === "retazec") zalozkaRetazec(plocha, id);
+    else zalozkaPoznamka(plocha, id, p);
+  }
+
+  /** Záložka Poznámka: generický formulár zo schémy, pod-záznamy, próza tela len na čítanie. */
+  function zalozkaPoznamka(plocha, id, p) {
+    const detail = h("div", null);
+    skupinyPoli(id, detail);
+    plocha.appendChild(detail);
+
+    if (p.pod_zaznamy.length) {
+      const obal = h("div", "tabulka-obal");
+      obal.style.marginTop = "12px";
+      const tab = h("table", "mriezka");
+      const thead = document.createElement("thead");
+      const hr = document.createElement("tr");
+      ["id", "druh", "názov", "riadok"].forEach(x => hr.appendChild(h("th", null, x)));
+      thead.appendChild(hr);
+      tab.appendChild(thead);
+      const tb = document.createElement("tbody");
+      p.pod_zaznamy.forEach(pz => {
+        const tr = h("tr", "riadok-klik");
+        tr.appendChild(h("td", "mono", pz.id));
+        tr.appendChild(h("td", null, pz.druh));
+        tr.appendChild(h("td", null, pz.nazov));
+        tr.appendChild(h("td", "mono", String(pz.riadok)));
+        tr.addEventListener("click", () => otvorPod(id, pz.id));
+        tb.appendChild(tr);
+      });
+      tab.appendChild(tb);
+      obal.appendChild(tab);
+      plocha.appendChild(obal);
+    }
+
+    if (p.telo && p.telo.length) {
+      const box = h("div", "proza");
+      const hl = h("h3", null, "Telo poznámky");
+      const pise = API.zivy && API.zapis;
+      hl.appendChild(h("span", "zdroj", pise
+        ? "próza · píše sa tu, odsek po odseku; nadpisy, polia a komentáre okolo ostávajú"
+        : "próza · len na čítanie v náhľade"));
+      box.appendChild(hl);
+      p.telo.forEach(sekcia => {
+        if (sekcia.nadpis) box.appendChild(h("h4", null, sekcia.nadpis));
+        if (!pise || !sekcia.bloky) { box.appendChild(h("p", null, sekcia.proza)); return; }
+        sekcia.bloky.forEach(b => box.appendChild(prozaBlok(id, b)));
+      });
+      plocha.appendChild(box);
+    }
+  }
+
+  // ── pohľad reťazca: štyri pásma ako kaskáda ──────────────────────────────
+  function krokCip(krok, tu) {
+    const c = cip(krok.id, null, krok.id === tu && !krok.kotva, {
+      kotva: krok.kotva,
+      // úloha je krok účelu užitia, nie iná poznámka: pod jej číslom stojí jej vlastný popis
+      stitok: krok.rola === "uloha" ? krok.kotva : null,
+      nazov: krok.rola === "uloha" ? krok.nazov : null
+    });
+    if (krok.hranicne && krok.hranicne.length) {
+      c.classList.add("hranicne");
+      c.title += "\nhraničné: " + krok.hranicne.join(" + ") + " — kreslí sa raz, v spodnom pásme";
+    }
+    return c;
+  }
+
+  /** Prvý odsek sekcie, ktorú typ vyhlásil za odpoveď na „Prečo?" (`SEKCIA_PRECO` v schéme). */
+  function precoZUcelu(r) {
+    const uc = POZNAMKY[r.id];
+    const sekcia = uc && ((TYPY[uc.typ] || {}).sekcia_preco);
+    if (!uc || !sekcia) return null;
+    const s = (uc.telo || []).find(x => x.nadpis === sekcia);
+    if (!s) return null;
+    const odsek = s.proza.split(/\n\s*\n/)[0].trim();
+    return odsek ? { nadpis: sekcia, text: odsek } : null;
+  }
+
+  function citatUcelu(r, citat) {
+    const box = h("blockquote", "citat-preco");
+    box.appendChild(h("div", "text", citat.text));
+    const pod = h("div", "zdroj");
+    // menuj chýbajúci cieľ: „cieľ zatiaľ nie je" nepovie, ktorú poznámku treba napísať (kolo 4 §4)
+    const visiace = (r.ciele || []).filter(c => c.visiaci).map(c => c.id);
+    pod.appendChild(h("span", null, (visiace.length
+      ? (visiace.length === 1 ? "cieľ " + visiace[0] + " v knižnici zatiaľ nie je" : "ciele " + visiace.join(", ") + " v knižnici zatiaľ nie sú")
+      : "cieľ v knižnici zatiaľ nie je") + " — toto je "));
+    const b = h("button", "mini");
+    b.type = "button";
+    b.textContent = r.id + " · " + citat.nadpis;
+    b.addEventListener("click", () => naviguj({ pohlad: "poznamka", poznamka: r.id, zalozkaPoznamky: "poznamka" }));
+    pod.appendChild(b);
+    box.appendChild(pod);
+    return box;
+  }
+
+  /** Záložka Reťazec: štyri pásma, každé kreslí svoju časť stromu účelu užitia (V23).
+      Stránka nič neodsadzuje podľa roly — strom má tvar, aký prišiel: spusta nad ucel,
+      ulohy a vymeny ako deti účelu, jednotky a kontajnery ako deti výmeny. */
+  function zalozkaRetazec(plocha, id) {
+    const zoznam = retazcePre(id);
+    const r = aktualnyRetazec(id);
+
+    if (!r) {
+      plocha.appendChild(h("div", "prazdno", "Táto poznámka zatiaľ nesedí na žiadnom účele užitia — nevedie k nej žiadna cesta."));
+      return;
+    }
+    const hlavicka = h("div", "hlavicka");
+    hlavicka.appendChild(h("span", "technicky", "účel užitia " + r.id));
+    if (zoznam.length > 1) {
+      const vpravo = h("div", "vpravo");
+      const sel = h("select", "vstup");
+      sel.style.width = "auto";
+      zoznam.forEach((x, i) => {
+        const o = h("option", null, x.id);
+        o.value = String(i);
+        if (i === Math.min(STAV.retazec, zoznam.length - 1)) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.addEventListener("change", () => naviguj({ retazec: Number(sel.value) }));
+      vpravo.appendChild(sel);
+      hlavicka.appendChild(vpravo);
+    }
+    plocha.appendChild(hlavicka);
+    if (r.prierezovy) {
+      plocha.appendChild(h("p", "poznamka-pod",
+        "Poznámka je prierezová — na strome nemá vlastný uzol. Nižšie je strom účelu užitia, na ktorý dopadá; zvýraznený je uzol, ktorý na ňu odkazuje."));
+    }
+
+    const pozicie = r.pozicie || [];
+
+    // [U19] pásmo „Čo a ako podrobne?" už nie je samostatná karta — je to rozbalenie pod predelom
+    // výmeny, lebo výmena je moment v procese a nesmie byť na obrazovke dvakrát (jedna vec = jedno
+    // miesto). Stránka to nevie podľa typu: pásmo jednotiek menuje engine v `r.pasma.jednotky`.
+    const ramecJednotiek = PASMA.ramce.find(x => x.kluc === r.pasma.jednotky) || null;
+    const pasma = h("div", "pasma");
+    PASMA.ramce.forEach(ramec => {
+      if (ramec.sev || ramec.kluc === r.pasma.jednotky) return;
+      const box = h("div", "pasmo");
+      box.style.setProperty("--farba", "var(" + ramec.farba + ")");
+      box.appendChild(h("h2", null, ramec.otazka));
+      const casti = [ramec.norma];
+      const telo = h("div", "telo-pasma");
+      let prazdne = true;
+
+      if (ramec.kluc === r.pasma.ciele) {
+        if (ramec.upresnenie) casti.push(ramec.upresnenie);
+        if (r.ciele.length) {
+          const rad = h("div", "kroky");
+          r.ciele.forEach((k, i) => {
+            if (i) rad.appendChild(h("span", "sipka-kroku", "›"));
+            rad.appendChild(krokCip(k, id));
+          });
+          telo.appendChild(rad);
+          prazdne = false;
+        }
+        // [PLAN §4b bod 9] cieľ chýba alebo je visiaci — „Prečo?" nesmie ostať prázdne: účel užitia
+        // odpoveď nesie vo svojej próze, len ju treba ukázať (schéma hovorí, ktorá sekcia to je)
+        const citat = precoZUcelu(r);
+        if (citat && (!r.ciele.length || r.ciele.every(k => k.visiaci))) {
+          telo.appendChild(citatUcelu(r, citat));
+          prazdne = false;
+        }
+      }
+      if (ramec.kluc === r.pasma.strom) {
+        if (ramec.upresnenie) casti.push(ramec.upresnenie);
+        telo.appendChild(stromKrokov(r, pozicie, id, ramecJednotiek));
+        prazdne = false;
+      }
+
+      box.appendChild(h("div", "technicky", casti.filter(Boolean).join(" · ")));
+      if (prazdne) {
+        box.classList.add("prazdne");
+        telo.textContent = "v tomto strome zatiaľ nič";
+      }
+      box.appendChild(telo);
+      pasma.appendChild(box);
+    });
+    plocha.appendChild(pasma);
+
+    const sevRamec = PASMA.ramce.find(x => x.sev);
+    if (sevRamec) {
+      const sev = h("div", "sev");
+      sev.appendChild(h("span", "otazka", sevRamec.otazka));
+      sev.appendChild(h("span", "doplnok", sevRamec.poznamka));
+      plocha.appendChild(sev);
+    }
+  }
+
+  /** Riadok stromu: ID (mono, pevná šírka) · názov (celý) · poznámka vpravo (11 px muted).
+      Úroveň je miesto v strome, ktoré určí volajúci — nie rola uzla. */
+  function riadokStromu(k, uroven, moznosti) {
+    const o = moznosti || {};
+    const p = POZNAMKY[k.id];
+    const row = h("div", "riadok-kroku" + (o.trieda ? " " + o.trieda : "") + (k.visiaci ? " visiaci" : ""));
+    row.style.paddingLeft = (16 * (uroven || 0)) + "px";
+    const idB = h("button", "rk-id");
+    idB.type = "button";
+    idB.textContent = k.kotva ? k.kotva : k.id;
+    idB.title = k.visiaci ? k.id + " — poznámka zatiaľ neexistuje (varovanie B1)"
+      : (k.kotva ? k.id + " · úloha " + k.kotva + (o.titulok ? " · " + o.titulok : "")
+        : (p ? p.typ + " · " + p.subor : k.id));
+    idB.addEventListener("click", e => { e.stopPropagation(); if (o.klik) o.klik(); else otvorCokolvek(k.id); });
+    row.appendChild(idB);
+    row.appendChild(h("span", "rk-nazov", k.visiaci ? "poznámka zatiaľ neexistuje" : (k.nazov || (p ? p.nazov : ""))));
+    const vpravo = o.vpravo != null ? o.vpravo : k.popis;
+    if (vpravo) row.appendChild(h("span", "rk-pozn", vpravo));
+    if (o.klik) row.addEventListener("click", o.klik);
+    return row;
+  }
+
+  /** „Kto a kedy?": spúšťacia udalosť nad účelom a pod ním **línia** — úlohy a medzi nimi predely
+      výmen (U19). Výmena je moment odovzdania (PAS 6.1.3): nad ňou úlohy, ktoré informáciu vyrábajú,
+      pod ňou tie, ktoré ju používajú. Poradie určuje engine (`r.linia`), stránka ho nepočíta. */
+  function stromKrokov(r, pozicie, id, ramecJednotiek) {
+    const tu = kde => pozicie.some(p => p.kde === kde);
+    const box = h("div", "strom");
+    let kam = box;
+    if (r.spusta) {
+      box.appendChild(riadokStromu(r.spusta, 0, { trieda: tu("spusta") ? "tu" : "", vpravo: "spúšťa" }));
+      kam = h("div", "vetva");
+      box.appendChild(kam);
+    }
+    kam.appendChild(riadokStromu(r.ucel, 0, { trieda: tu("ucel") ? "tu" : "", vpravo: "účel užitia" }));
+    const vetva = h("div", "vetva");
+    (r.linia || []).forEach(usek => {
+      if (usek.druh === "ulohy") {
+        usek.ulohy.forEach(u => vetva.appendChild(riadokStromu(u, 0, { titulok: u.typ_popisok })));
+      } else {
+        vetva.appendChild(predelVymeny(usek.vymena, r, id, pozicie, ramecJednotiek));
+      }
+    });
+    const pouzivaju = {};
+    r.vymeny.forEach(v => (v.pouzivaju || []).forEach(u => { pouzivaju[u.id] = u; }));
+    if (Object.keys(pouzivaju).length) vetva.appendChild(riadokPouzivaju(Object.values(pouzivaju)));
+    if (vetva.childNodes.length) kam.appendChild(vetva);
+    return box;
+  }
+
+  /** Predel = riadok výmeny: míľnik · ID výmeny · príjemca · počet kontajnerov · šípka.
+      Klik na ID otvorí stránku (tretia úroveň hĺbky, U20), klik na riadok rozbalí obsah. */
+  function predelVymeny(v, r, id, pozicie, ramecJednotiek) {
+    const obal = h("div", "predel-obal");
+    const ohnisko = pozicie.some(p => p.vymena === v.er.id);
+    const rozbalene = jeRozbalena(v, pozicie);
+    const riadok = h("button", "predel" + (ohnisko ? " tu" : ""));
+    riadok.type = "button";
+    riadok.setAttribute("aria-expanded", String(rozbalene));
+    if (v.dodanie) riadok.appendChild(cipId(v.dodanie.id, "míľnik " + (v.dodanie.nazov || "")));
+    riadok.appendChild(h("span", "oddel", "·"));
+    riadok.appendChild(cipId(v.er.id, "výmena " + (v.er.nazov || "")));
+    if (v.prijemca) riadok.appendChild(h("span", "p-prijemca", "→ " + v.prijemca));
+    riadok.appendChild(h("span", "p-pocet", mnozne(v.kontajnery.length, "kontajner", "kontajnery", "kontajnerov")));
+    riadok.appendChild(h("span", "p-sipka", rozbalene ? "▾" : "▸"));
+    riadok.addEventListener("click", () => prepniVymenu(v, r, pozicie));
+    obal.appendChild(riadok);
+    if (rozbalene) obal.appendChild(rozbalenieVymeny(v, id, pozicie, ramecJednotiek));
+    return obal;
+  }
+
+  /** ID v predele: samostatné tlačidlo, aby klik na ID otvoril stránku a nezbalil predel. */
+  function cipId(nid, popis) {
+    const b = h("button", "p-id");
+    b.type = "button";
+    b.textContent = nid;
+    b.title = popis;
+    b.addEventListener("click", e => { e.stopPropagation(); otvorCokolvek(nid); });
+    return b;
+  }
+
+  /** Rozbalenie pod predelom = odpoveď na „Čo a ako podrobne?" tam, kde vzniká: kontajnery,
+      pod nimi objekty s rozsahom aspektov (V27), a jednotka v ohnisku rozbalená do tabuľky. */
+  function rozbalenieVymeny(v, tu, pozicie, ramec) {
+    const box = h("div", "rozbalenie");
+    if (ramec) {
+      box.style.setProperty("--farba", "var(" + ramec.farba + ")");
+      box.appendChild(h("h3", null, ramec.otazka));
+      const jednotiek = {};
+      v.kontajnery.forEach(kont => { jednotiek[kont.id] = 1; kont.objekty.forEach(o => { jednotiek[o.id] = 1; }); });
+      v.jednotky.forEach(o => { jednotiek[o.id] = 1; });
+      box.appendChild(h("div", "technicky", [ramec.norma, ramec.upresnenie,
+        mnozne(Object.keys(jednotiek).length, "jednotka", "jednotky", "jednotiek")].filter(Boolean).join(" · ")));
+    }
+    // rozbalený je objekt v ohnisku iba raz — v prvom kontajneri, ktorý ho nesie (U12, V21)
+    const prvyKontajner = (v.kontajnery.find(kont => kont.objekty.some(o => o.id === tu)) || {}).id || null;
+    v.kontajnery.forEach(kont => {
+      box.appendChild(riadokKontajnera(kont, v, tu));
+      const objekty = h("div", "objekty");
+      kont.objekty.forEach(o => riadokObjektu(objekty, o, v, tu, kont.id, pozicie, prvyKontajner));
+      if (kont.objekty.length) box.appendChild(objekty);
+      else box.appendChild(h("div", "prazdno", "Kontajner zatiaľ nepriraďuje ani jeden objekt."));
+    });
+    // objekt, ktorý nenesie žiadny kontajner tejto výmeny — nález (C13), nie chyba stránky
+    v.jednotky.forEach(o => riadokObjektu(box, o, v, tu, null, pozicie, prvyKontajner));
+    if (!v.kontajnery.length && !v.jednotky.length) {
+      box.appendChild(h("div", "prazdno", "Výmena zatiaľ nenesie ani jednu jednotku."));
+    }
+    return box;
+  }
+
+  /** Predvoľba: ohnisko sedí na tejto výmene (jednotka, kontajner, míľnik) → rozbalené; ohnisko na
+      účele alebo udalosti → zbalené, tam chce čitateľ vidieť proces, nie špecifikáciu. Adresa
+      (`?v=`) má prednosť, aby sa odkaz otvoril u adresáta rovnako. */
+  function jeRozbalena(v, pozicie) {
+    if (Array.isArray(STAV.vymenyRozbalene)) return STAV.vymenyRozbalene.indexOf(v.er.id) >= 0;
+    return pozicie.some(p => p.vymena === v.er.id);
+  }
+
+  function prepniVymenu(v, r, pozicie) {
+    const teraz = r.vymeny.filter(x => jeRozbalena(x, pozicie)).map(x => x.er.id);
+    const i = teraz.indexOf(v.er.id);
+    if (i >= 0) teraz.splice(i, 1); else teraz.push(v.er.id);
+    naviguj({ vymenyRozbalene: teraz });
+  }
+
+  /** „používa aj UC-0201 …" — iný účel užitia, ktorý si výmenu berie ako vstup (U19 §4).
+      Je to odkaz, nie ďalšia úloha: tie úlohy patria tomu druhému účelu. */
+  function riadokPouzivaju(ucely) {
+    const box = h("div", "pouziva-aj");
+    box.appendChild(h("span", null, "používa aj"));
+    ucely.forEach(u => {
+      const b = h("button", "pouziva-aj-id");
+      b.type = "button";
+      b.textContent = u.id;
+      b.title = u.nazov || u.id;
+      b.addEventListener("click", () => otvorRetazec(u.id));
+      box.appendChild(b);
+    });
+    return box;
+  }
+
+  /** Riadok kontajnera: vpravo formát (technické pole typu) a poskytovateľ z enginu. */
+  function riadokKontajnera(kont, v, tu) {
+    const popisTypu = TYPY[kont.typ] || { polia: [] };
+    const vpravo = [POZNAMKY[kont.id] ? technickyUdaj(kont.id, popisTypu) : null, kont.popis]
+      .filter(Boolean).join(" · ");
+    return riadokStromu(kont, 0, {
+      trieda: "jednotka" + (kont.id === tu ? " jednotka-ohnisko" : ""),
+      vpravo,
+      klik: () => { if (kont.id !== tu && POZNAMKY[kont.id]) otvorRetazec(kont.id); }
+    });
+  }
+
+  /** Riadok objektu pod kontajnerom: vpravo profil geometrie · počet položiek · rozsah aspektov.
+      Rozbalený je iba objekt v ohnisku, a to v tom kontajneri, cez ktorý je otvorený (V21, U12). */
+  function riadokObjektu(box, o, v, tu, kontajner, pozicie, prvyKontajner) {
+    const p = POZNAMKY[o.id];
+    const popisTypu = TYPY[o.typ] || { polia: [] };
+    const polePolozek = (popisTypu.polia || []).find(f => f.polozky);
+    const tuCez = pozicie.some(x => x.kde === "jednotka" && x.vymena === v.er.id && x.kontajner === kontajner);
+    const ohnisko = o.id === tu && tuCez && kontajner === prvyKontajner;
+    const casti = [];
+    if (p) {
+      const profil = idZOdkazu(citaj(PRACOVNE[o.id], "/geometria/profil"));
+      if (profil) casti.push(profil);
+      if (polePolozek) casti.push(mnozne((citaj(PRACOVNE[o.id], "/" + polePolozek.kluc) || []).length, "položka", "položky", "položiek"));
+    }
+    if (o.rozsah && o.rozsah.length) casti.push(o.rozsah.join("+"));
+    else if (!kontajner) casti.push("bez kontajnera");
+    box.appendChild(riadokStromu(o, 0, {
+      trieda: "jednotka" + (ohnisko ? " jednotka-ohnisko" : ""),
+      vpravo: casti.join(" · "),
+      klik: () => { if (!ohnisko && p) otvorRetazec(o.id); }
+    }));
+    if (ohnisko && p && polePolozek) {
+      const telo = h("div", "jednotka-telo");
+      telo.appendChild(tabulkaPoloziekPasma(o.id, polePolozek, v.er.id));
+      box.appendChild(telo);
+    }
+  }
+
+
+
+
+  function pohladPodZaznamu(plocha) {
+    const rodic = POZNAMKY[STAV.poznamka];
+    const pz = rodic && rodic.pod_zaznamy.find(x => x.id === STAV.pod);
+    if (!pz) return naviguj({ pohlad: "poznamka" });
+    plocha.appendChild(cesta([
+      { text: "zadanie/" },
+      { text: rodic.typ, akcia: () => naviguj({ pohlad: "register", typ: rodic.typ }) },
+      { text: rodic.id, akcia: () => otvorPoznamku(rodic.id) },
+      { text: pz.id }
+    ]));
+    const hlavicka = h("div", "hlavicka");
+    hlavicka.appendChild(h("h1", null, pz.nazov));
+    hlavicka.appendChild(h("span", "technicky", pz.druh + " · nadpis „" + pz.nadpis + "“ · riadok " + pz.riadok +
+      (pz.ma_ids_blok ? " · nesie núdzový ```ids blok" : "")));
+    plocha.appendChild(hlavicka);
+    plocha.appendChild(pruhKdeToSedi(rodic.id, pz.id));
+
+    const popisTypu = TYPY["pod-" + pz.druh];
+    const ctxPod = { id: rodic.id, pod: pz.id };
+    if (!PRACOVNE[rodic.id].__pod) PRACOVNE[rodic.id].__pod = {};
+    if (!PRACOVNE[rodic.id].__pod[pz.id]) PRACOVNE[rodic.id].__pod[pz.id] = JSON.parse(JSON.stringify(pz.data));
+    const box = h("div", "skupina");
+    const hl = h("h3", null, popisokTypu("pod-" + pz.druh));
+    hl.appendChild(h("span", "zdroj", mnozne((popisTypu ? popisTypu.polia : []).length, "pole", "polia", "polí")));
+    box.appendChild(hl);
+    const polia = h("div", "polia");
+    (popisTypu ? popisTypu.polia : []).forEach(f => {
+      polia.appendChild(poleRiadok(ctxPod, f, "/__pod/" + pz.id + "/" + f.kluc));
+    });
+    box.appendChild(polia);
+    plocha.appendChild(box);
+  }
+
+  // ─────────────────────────────────────────────────────────── diagnostika
+  function pohladDiagnostiky(plocha) {
+    plocha.appendChild(cesta([{ text: "nástroje" }, { text: "diagnostika" }]));
+    const hlavicka = h("div", "hlavicka");
+    hlavicka.appendChild(h("h1", null, "Diagnostika"));
+    hlavicka.appendChild(h("span", "technicky", "to isté, čo vypíše `assetin validate`"));
+    const vpravo = h("div", "vpravo");
+    [["error", "len chyby"], ["warning", "chyby a varovania"], ["info", "všetko"]].forEach(m => {
+      const b = h("button", "zalozka");
+      b.type = "button";
+      b.textContent = m[1];
+      b.setAttribute("aria-selected", String(STAV.uroven === m[0]));
+      b.addEventListener("click", () => { STAV.uroven = m[0]; vykresli(); });
+      vpravo.appendChild(b);
+    });
+    hlavicka.appendChild(vpravo);
+    plocha.appendChild(hlavicka);
+
+    const limit = { error: 0, warning: 1, info: 2 }[STAV.uroven];
+    const poradie = { E: 0, W: 1, I: 2 };
+    const zoznam = DIAGNOSTIKY.filter(d => poradie[d.uroven] <= limit);
+    const obal = h("div", "tabulka-obal");
+    const t = h("table", "mriezka");
+    const thead = document.createElement("thead");
+    const hr = document.createElement("tr");
+    ["úr.", "kód", "poznámka", "pole", "správa", "súbor : riadok"].forEach(x => hr.appendChild(h("th", null, x)));
+    thead.appendChild(hr);
+    t.appendChild(thead);
+    const tb = document.createElement("tbody");
+    zoznam.forEach(d => {
+      const tr = h("tr", d.note_id ? "riadok-klik" : null);
+      const td0 = document.createElement("td");
+      td0.appendChild(h("span", "znak " + d.uroven, d.uroven));
+      tr.appendChild(td0);
+      tr.appendChild(h("td", "mono", d.kod));
+      tr.appendChild(h("td", "mono", d.note_id || "—"));
+      tr.appendChild(h("td", "mono", d.json_pointer || "—"));
+      tr.appendChild(h("td", null, d.sprava));
+      tr.appendChild(h("td", "mono", (d.subor || "") + (d.riadok ? " : " + d.riadok : "")));
+      if (d.note_id) tr.addEventListener("click", () => otvorPoznamku(d.note_id));
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    obal.appendChild(t);
+    if (!zoznam.length) obal.appendChild(h("div", "prazdno", "Na tejto úrovni nič."));
+    plocha.appendChild(obal);
+    plocha.appendChild(h("p", "poznamka-pod",
+      "Visiace odkazy sú varovania, nie chyby — vzor zámerne odkazuje na poznámky, ktoré ešte nie sú napísané."));
+  }
+
+  function pohladZmien(plocha) {
+    plocha.appendChild(cesta([{ text: "nástroje" }, { text: "zmeny" }]));
+    const hlavicka = h("div", "hlavicka");
+    hlavicka.appendChild(h("h1", null, "Zmeny"));
+    hlavicka.appendChild(h("span", "technicky", "čo by writer zapísal do Markdownu"));
+    const vpravo = h("div", "vpravo");
+    if (ZMENY.length) {
+      const zahod = h("button", "mini");
+      zahod.type = "button";
+      zahod.textContent = "zahodiť zmeny";
+      zahod.addEventListener("click", () => {
+        ZMENY.length = 0;
+        DATA.poznamky.forEach(p => { PRACOVNE[p.id] = JSON.parse(JSON.stringify(p.data)); });
+        vykresli();
+      });
+      vpravo.appendChild(zahod);
+    }
+    hlavicka.appendChild(vpravo);
+    plocha.appendChild(hlavicka);
+
+    const obal = h("div", "tabulka-obal");
+    if (!ZMENY.length) obal.appendChild(h("div", "prazdno", "Zatiaľ nič. Otvor poznámku, klikni na bunku a zmeň hodnotu."));
+    else {
+      const t = h("table", "mriezka");
+      const thead = document.createElement("thead");
+      const hr = document.createElement("tr");
+      ["poznámka", "pole", "pôvodne", "nová hodnota"].forEach(x => hr.appendChild(h("th", null, x)));
+      thead.appendChild(hr);
+      t.appendChild(thead);
+      const tb = document.createElement("tbody");
+      ZMENY.forEach(z => {
+        const tr = h("tr", "riadok-klik");
+        tr.appendChild(h("td", "mono", z.id));
+        tr.appendChild(h("td", "mono", z.pointer));
+        tr.appendChild(h("td", null, textHodnoty(z.predtym) || "—"));
+        tr.appendChild(h("td", null, textHodnoty(z.teraz) || "—"));
+        tr.addEventListener("click", () => otvorPoznamku(z.id));
+        tb.appendChild(tr);
+      });
+      t.appendChild(tb);
+      obal.appendChild(t);
+    }
+    plocha.appendChild(obal);
+    plocha.appendChild(h("p", "poznamka-pod",
+      "Stránka nič neukladá. Jediný zdroj pravdy sú súbory v zadanie/ (CLAUDE.md, zásada 1); zápis pôjde cez writer, " +
+      "ktorý mení iba dotknutý riadok a nechá prózu, poradie sekcií aj komentáre tak, ako sú (DATA-MODEL §4)."));
+  }
+
+  // ─────────────────────────────────────────── nová poznámka zo šablóny (F3)
+  /** Povinné polia hlavičky typu ako plochý zoznam (vnorený objekt → jeho povinné polia);
+      nič z toho nie je napísané pre konkrétny typ — je to schéma. */
+  /** Prvý segment JSON pointra — pole poznámky, na ktoré diagnostika padá. */
+  const topKluc = pointer => {
+    const seg = String(pointer || "").replace(/^\//, "").split("/")[0];
+    return seg && seg.charAt(0) !== "#" ? seg : "";
+  };
+
+  function poliaNovej(polia, predpona) {
+    const out = [];
+    (polia || []).forEach(f => {
+      if (f.zdroj !== "frontmatter" || !f.povinne || f.odvodene) return;
+      if (!predpona && NEMENITELNE.has(f.kluc)) return;
+      if (!predpona && f.kluc === "nazov") return;
+      if (f.druh === "objekt") { poliaNovej(f.polia, (predpona || "") + f.kluc + "/").forEach(x => out.push(x)); return; }
+      out.push(Object.assign({}, f, { cesta: (predpona || "") + f.kluc }));
+    });
+    return out;
+  }
+
+  /** Vstup pre jedno pole dialógu podľa druhu zo schémy; vráti {prvok, hodnota()}. */
+  function vstupNovej(f, predvolba) {
+    const enumove = f.druh === "enum" ? f.hodnoty : (f.druh === "zoznam-textov" && f.polozka && f.polozka.druh === "enum" ? f.polozka.hodnoty : null);
+    if (enumove) {
+      const sel = h("select", "vstup");
+      [""].concat(enumove.map(String)).forEach(v => { const o = h("option", null, v || "—"); o.value = v; sel.appendChild(o); });
+      if (predvolba != null) sel.value = String(Array.isArray(predvolba) ? predvolba[0] : predvolba);
+      return { prvok: sel, hodnota: () => (sel.value === "" ? null : (f.druh === "zoznam-textov" ? [sel.value] : sel.value)) };
+    }
+    const vstup = h("input", "vstup" + (f.druh === "odkaz" || f.druh === "zoznam-odkazov" ? " mono" : ""));
+    vstup.type = f.druh === "cislo" ? "number" : (f.druh === "datum" ? "date" : "text");
+    if (predvolba != null) vstup.value = Array.isArray(predvolba) ? predvolba.join(", ") : String(predvolba);
+    if (f.druh === "odkaz") vstup.placeholder = "[[ID]]";
+    if (f.druh.indexOf("zoznam") === 0) vstup.placeholder = "hodnoty oddelené čiarkou";
+    return {
+      prvok: vstup,
+      hodnota: () => {
+        const v = vstup.value.trim();
+        if (!v) return null;
+        if (f.druh.indexOf("zoznam") === 0) return v.split(",").map(x => x.trim()).filter(Boolean);
+        if (f.druh === "cislo") return Number(v);
+        return v;
+      }
+    };
+  }
+
+  function otvorNovuPoznamku(predvolenyTyp) {
+    const prekryv = h("div", "prekryv");
+    const dialog = h("div", "dialog");
+    const hlava = document.createElement("header");
+    hlava.appendChild(h("h2", null, "Nová poznámka zo šablóny"));
+    hlava.appendChild(h("p", null, "ID nesie cesta súboru a neskôr sa nemení; polia sú povinné polia hlavičky typu zo schémy"));
+    dialog.appendChild(hlava);
+    const formular = h("div", "formular");
+    dialog.appendChild(formular);
+    const noha = document.createElement("footer");
+    const hlasenie = h("span", "nahlad");
+    noha.appendChild(hlasenie);
+    const zrus = h("button", "mini");
+    zrus.type = "button";
+    zrus.textContent = "zrušiť";
+    const potvrd = h("button", "hlavne");
+    potvrd.type = "button";
+    potvrd.textContent = "založiť";
+    noha.appendChild(zrus);
+    noha.appendChild(potvrd);
+    dialog.appendChild(noha);
+    prekryv.appendChild(dialog);
+    document.getElementById("app").appendChild(prekryv);
+
+    const zavri = () => { prekryv.parentNode.removeChild(prekryv); document.removeEventListener("keydown", naKlaves); };
+    const naKlaves = e => { if (e.key === "Escape") zavri(); };
+    document.addEventListener("keydown", naKlaves);
+    zrus.addEventListener("click", zavri);
+    prekryv.addEventListener("click", e => { if (e.target === prekryv) zavri(); });
+
+    let typ = TYPY[predvolenyTyp] ? predvolenyTyp : PASMA.poradie[0];
+    let vstupy = [];
+    // [PLAN §4b bod 4, Q43] polia, ktoré si vypýtal validátor nad kandidátom — register pravidiel je
+    // jediný nositeľ toho, čo je povinné navyše; schéma o tom druhú kópiu nedrží
+    let ziadane = [];
+    let nalezy = [];
+    let cakajuciDotaz = null;
+    let idV = null, nazovV = null;
+    /** Čo má autor v dialógu napísané — prekreslenie (pribudlo pole) mu to nesmie zmazať. */
+    function stavDialogu() {
+      const s = { id: idV ? idV.value : null, nazov: nazovV ? nazovV.value : null, data: {} };
+      vstupy.forEach(x => { const v = x.v.hodnota(); if (v != null) s.data[x.f.cesta] = v; });
+      return s;
+    }
+    const riadok = (kluc, titulok, prvok, popis) => {
+      const r = h("div", "pole");
+      const m = h("div", "menovka");
+      m.appendChild(h("span", "kluc", kluc));
+      m.appendChild(h("span", "titulok", titulok));
+      r.appendChild(m);
+      const hod = h("div", null);
+      hod.appendChild(prvok);
+      if (popis) hod.appendChild(h("div", "pod-hodnotou", popis));
+      r.appendChild(hod);
+      return r;
+    };
+    function prekresli(stav) {
+      formular.innerHTML = "";
+      vstupy = [];
+      const drzane = (stav && stav.data) || {};
+      const selTyp = h("select", "vstup");
+      PASMA.poradie.forEach(t => { const o = h("option", null, popisokTypu(t) + " · " + t); o.value = t; if (t === typ) o.selected = true; selTyp.appendChild(o); });
+      selTyp.addEventListener("change", () => { typ = selTyp.value; prekresli(); });
+      formular.appendChild(riadok("typ", "Typ", selTyp, "priečinok podľa typu (PathScheme)"));
+      idV = h("input", "vstup mono");
+      idV.value = (stav && stav.id != null) ? stav.id : ((DATA.navrhy_id && DATA.navrhy_id[typ]) || "");
+      idV.placeholder = typ + "-…";
+      formular.appendChild(riadok("id", "ID", idV, DATA.navrhy_id && DATA.navrhy_id[typ] ? "návrh: ďalšie voľné číslo; prepíš, ak treba" : "slug za prefixom typu, napr. " + typ + "-nieco"));
+      nazovV = h("input", "vstup");
+      if (stav && stav.nazov != null) nazovV.value = stav.nazov;
+      formular.appendChild(riadok("nazov", "Názov", nazovV, "ide aj do názvu súboru: ID Názov.md"));
+      const predvolby = DATA.predvolby_novej || {};
+      const povinne = poliaNovej((TYPY[typ] || {}).polia);
+      const uz = new Set(povinne.map(f => f.cesta));
+      const navyse = ziadane
+        .filter(kluc => !uz.has(kluc))
+        .map(kluc => ((TYPY[typ] || {}).polia || []).find(f => f.kluc === kluc && !f.odvodene))
+        .filter(Boolean)
+        .map(f => Object.assign({}, f, { cesta: f.kluc, ziadane: true }));
+      povinne.concat(navyse).forEach(f => {
+        const v = vstupNovej(f, drzane[f.cesta] !== undefined ? drzane[f.cesta] : predvolby[f.cesta]);
+        vstupy.push({ f, v });
+        const dovod = f.ziadane
+          ? (nalezy.filter(d => topKluc(d.json_pointer) === f.cesta).map(d => d.kod + " · " + d.sprava).join(" · ") || f.popis)
+          : f.popis;
+        formular.appendChild(riadok(f.cesta + (f.ziadane ? " ⚑" : ""), f.titulok, v.prvok, dovod));
+      });
+      vstupy.forEach(x => x.v.prvok.addEventListener("input", naplanujKontrolu));
+      vstupy.forEach(x => x.v.prvok.addEventListener("change", naplanujKontrolu));
+      idV.addEventListener("input", naplanujKontrolu);
+      nazovV.addEventListener("input", naplanujKontrolu);
+      if (nalezy.length) {
+        const box = h("div", "hlasenia");
+        nalezy.forEach(d => box.appendChild(h("div", "diag " + d.uroven,
+          d.kod + " " + (d.json_pointer || "") + " · " + d.sprava)));
+        formular.appendChild(box);
+      }
+
+      function naplanujKontrolu() {
+        if (!API.kontrola) return;
+        if (cakajuciDotaz) clearTimeout(cakajuciDotaz);
+        cakajuciDotaz = setTimeout(skontrolujKandidata, 350);
+      }
+      /** Spýta sa validátora, čo by povedal o poznámke, ktorá ešte neexistuje — nič sa nezapisuje. */
+      function skontrolujKandidata() {
+        cakajuciDotaz = null;
+        const id = idV.value.trim();
+        // kým povinné polia hlavičky nie sú vyplnené, kandidát sa nenatypuje a pravidlá naň nedobehnú —
+        // vtedy sa netreba pýtať, formulár ich pýta sám
+        if (!id || !nazovV.value.trim()) return;
+        if (vstupy.some(x => x.f.povinne && !x.f.ziadane && prazdne(x.v.hodnota()))) return;
+        fetch("api/kontrola", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ zmeny: [], nova: { typ, id, nazov: nazovV.value.trim(), data: zbierData() } })
+        })
+          .then(r => r.json())
+          .then(v => {
+            nalezy = (v.diagnostiky || []).filter(d => d.note_id === id && d.uroven !== "I");
+            const nove = nalezy.map(d => topKluc(d.json_pointer)).filter(Boolean);
+            const pribudlo = nove.filter((x, i) => nove.indexOf(x) === i && ziadane.indexOf(x) < 0);
+            nove.forEach(x => { if (ziadane.indexOf(x) < 0) ziadane.push(x); });
+            const aktivny = document.activeElement;
+            const kluc = aktivny === idV ? "__id" : (aktivny === nazovV ? "__nazov"
+              : (vstupy.find(x => x.v.prvok === aktivny) || {}).f);
+            prekresli(stavDialogu());
+            if (kluc === "__id") idV.focus();
+            else if (kluc === "__nazov") nazovV.focus();
+            else if (kluc) {
+              const x = vstupy.find(y => y.f.cesta === kluc.cesta);
+              if (x) x.v.prvok.focus();
+            }
+            if (pribudlo.length) hlasenie.textContent = "validátor žiada aj: " + pribudlo.join(", ");
+          })
+          .catch(() => { /* bez servera dialóg neexistuje */ });
+      }
+      function zbierData() {
+        const data = {};
+        vstupy.forEach(x => {
+          const hodnota = x.v.hodnota();
+          if (hodnota == null) return;
+          zapis(data, "/" + x.f.cesta, hodnota);
+        });
+        return data;
+      }
+      potvrd.onclick = () => {
+        const data = zbierData();
+        hlasenie.textContent = "zakladám…";
+        fetch("api/nova", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ typ, id: idV.value.trim(), nazov: nazovV.value.trim(), data, autor: AUTOR.meno.trim() })
+        })
+          .then(r => r.json())
+          .then(v => {
+            if (v.dokument) naplnData(v.dokument);
+            if (v.ok) {
+              zavri();
+              STAV.vysledok = { stav: "ok", text: "založené: " + v.vytvorene.join(", ") };
+              otvorPoznamku(idV.value.trim());
+            } else {
+              hlasenie.textContent = "";
+              const zoznam = h("div", "hlasenia");
+              if (v.detail) zoznam.appendChild(h("div", "diag E", String(v.detail)));
+              (v.diagnostiky || []).forEach(d => zoznam.appendChild(h("div", "diag " + d.uroven, d.kod + " " + (d.json_pointer || "") + " · " + d.sprava)));
+              formular.appendChild(zoznam);
+              vykresli();
+            }
+          })
+          .catch(e => { hlasenie.textContent = "server neodpovedal: " + e; });
+      };
+    }
+    prekresli();
+  }
+
+  // ────────────────────────────────────────────────────────── hľadanie ⌘K
+  function otvorHladanie() {
+    const prekryv = h("div", "prekryv");
+    const dialog = h("div", "dialog");
+    const hlava = document.createElement("header");
+    hlava.appendChild(h("h2", null, "Hľadať v knižnici"));
+    hlava.appendChild(h("p", null, "ID, názov alebo typ poznámky; Enter otvorí prvý výsledok"));
+    dialog.appendChild(hlava);
+    const hladanie = h("div", "hladanie");
+    const vstup = h("input", "vstup");
+    vstup.type = "search";
+    vstup.placeholder = "napr. space, plocha, ER…";
+    hladanie.appendChild(vstup);
+    dialog.appendChild(hladanie);
+    const zoznam = h("div", "zoznam");
+    zoznam.style.maxHeight = "48vh";
+    dialog.appendChild(zoznam);
+    prekryv.appendChild(dialog);
+    document.getElementById("app").appendChild(prekryv);
+
+    const zavri = () => { prekryv.parentNode.removeChild(prekryv); document.removeEventListener("keydown", naKlaves); };
+    const naKlaves = e => { if (e.key === "Escape") zavri(); };
+    document.addEventListener("keydown", naKlaves);
+    prekryv.addEventListener("click", e => { if (e.target === prekryv) zavri(); });
+
+    let prve = null;
+    function prekresli() {
+      const f = vstup.value.trim().toLowerCase();
+      zoznam.innerHTML = "";
+      prve = null;
+      DATA.poznamky
+        .filter(p => !f || p.id.toLowerCase().indexOf(f) >= 0 || String(p.nazov).toLowerCase().indexOf(f) >= 0 ||
+                     String(p.typ).toLowerCase().indexOf(f) >= 0)
+        .slice(0, 40)
+        .forEach(p => {
+          const b = h("button", "volba");
+          b.type = "button";
+          b.appendChild(h("span", null, p.id));
+          b.appendChild(h("span", "meta", popisokTypu(p.typ) + " · " + skrat(p.nazov, 34)));
+          b.addEventListener("click", () => { zavri(); otvorPoznamku(p.id); });
+          if (!prve) prve = p.id;
+          zoznam.appendChild(b);
+        });
+      if (!zoznam.childNodes.length) zoznam.appendChild(h("div", "prazdno", "nič nesedí"));
+    }
+    vstup.addEventListener("input", prekresli);
+    vstup.addEventListener("keydown", e => { if (e.key === "Enter" && prve) { zavri(); otvorPoznamku(prve); } });
+    prekresli();
+    vstup.focus();
+  }
+  document.addEventListener("keydown", e => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      otvorHladanie();
+    }
+  });
+
+  // ══════════════════════════════════════════════════════ pravý panel: inšpektor
+  function blok(nadpis) {
+    const b = h("div", "insp-blok");
+    b.appendChild(h("h3", null, nadpis));
+    return b;
+  }
+  function riadokOdkazu(box, id, dovod, akcia) {
+    const riadok = h("div", "insp-riadok");
+    const b = h("button", "odkaz-insp");
+    b.type = "button";
+    b.textContent = id;
+    b.title = dovod || id;
+    b.addEventListener("click", akcia);
+    riadok.appendChild(b);
+    if (dovod) riadok.appendChild(h("div", "dovod", dovod));
+    box.appendChild(riadok);
+  }
+
+  /** Prvý blok: pôvod hodnoty. Pre typy bez položiek ukáže to, čo pre ne dáva zmysel — obsah
+      prichádza z engine (`prazdny_stav`), stránka nepozná typy (kolo 3 §5, zásada 3). */
+  function blokPovodu(id, data) {
+    const p = POZNAMKY[id];
+    const polozky = data.polozky || [];
+    const vybrana = STAV.polozka ? polozky.find(x => x.polozka === STAV.polozka) : null;
+
+    if (vybrana) {
+      const b = blok("PÔVOD HODNOTY");
+      b.appendChild(h("div", "nazov-polozky", vybrana.polozka));
+      const s = vybrana.suhrn;
+      const veta = h("div", "veta");
+      if (s.druh === "prepis" && s.povodna_hodnota != null) {
+        veta.appendChild(h("s", null, String(s.povodna_hodnota) + " v knižnici"));
+        veta.appendChild(document.createTextNode(" → "));
+        veta.appendChild(h("b", null, String(vybrana.hodnota.povinnost != null ? vybrana.hodnota.povinnost : "")));
+        veta.appendChild(document.createTextNode(" pre túto výmenu"));
+      } else {
+        veta.textContent = s.popis;
+      }
+      b.appendChild(veta);
+      const ostatne = Object.keys(vybrana.povod).filter(k => vybrana.povod[k].druh !== "vlastne" && vybrana.povod[k] !== s);
+      if (ostatne.length && STAV.viacPovodov) {
+        ostatne.forEach(k => b.appendChild(h("div", "veta", k + ": " + vybrana.povod[k].popis)));
+      }
+      if (ostatne.length) {
+        const viac = h("button", "zbalene");
+        viac.type = "button";
+        viac.textContent = STAV.viacPovodov ? "menej" : mnozne(ostatne.length, "ďalší pôvod", "ďalšie pôvody", "ďalších pôvodov");
+        viac.addEventListener("click", () => { STAV.viacPovodov = !STAV.viacPovodov; vykresli(); });
+        b.appendChild(viac);
+      }
+      return b;
+    }
+
+    if (polozky.length) {
+      const b = blok("PÔVOD HODNOTY");
+      b.appendChild(h("div", "prazdno", "Klikni na položku v tabuľke — panel povie, či je vlastná, prepísaná výmenou, alebo prišla z pravidla, definície či slovníka."));
+      return b;
+    }
+
+    const stav = data.prazdny_stav;
+    if (stav) {
+      const b = blok(stav.nadpis);
+      if (!stav.riadky.length) b.appendChild(h("div", "prazdno", stav.prazdno || "Zatiaľ nič."));
+      stav.riadky.forEach(rr => riadokOdkazu(b, rr.id, rr.dovod, () => otvorCokolvek(rr.id)));
+      return b;
+    }
+    if (data.geometria) {
+      const b = blok("PÔVOD HODNOTY");
+      b.appendChild(h("div", "nazov-polozky", "geometria"));
+      b.appendChild(h("div", "veta", data.geometria.popis));
+      return b;
+    }
+    const b = blok("ČO TÁTO POZNÁMKA NESIE");
+    b.appendChild(h("div", "prazdno", "Typ " + (p ? p.typ : "?") + " nemá položky — pôvod hodnoty sa počíta na objektoch a kontajneroch."));
+    return b;
+  }
+
+  // stav zbalenia si panel pamätá per druh obrazovky: pri tabuľke registra predvolene zbalený,
+  // pri poznámke rozbalený (kolo 3 §5)
+  const INSPEKTOR = { register: false, poznamka: true };
+  try { Object.assign(INSPEKTOR, JSON.parse(localStorage.getItem("assetin-inspektor") || "{}")); } catch (e) { /* súkromné okno */ }
+  function nastavInspektor(druh, otvoreny) {
+    INSPEKTOR[druh] = otvoreny;
+    try { localStorage.setItem("assetin-inspektor", JSON.stringify(INSPEKTOR)); } catch (e) { /* súkromné okno */ }
+  }
+
+  function inspektorPanel() {
+    const box = document.getElementById("inspektor");
+    box.innerHTML = "";
+    const id = (STAV.pohlad === "poznamka" || STAV.pohlad === "podzaznam") ? STAV.poznamka : null;
+    const druh = id && POZNAMKY[id] ? "poznamka" : "register";
+    const otvoreny = !!INSPEKTOR[druh];
+    box.classList.toggle("zbaleny", !otvoreny);
+    document.querySelector(".telo").classList.toggle("insp-zbaleny", !otvoreny);
+
+    // prepínač bez `title`: natívny tooltip by prekrýval panel (kolo 3 §5)
+    const hlava = h("div", "insp-hlava");
+    const prep = h("button", "ikonka insp-prepinac");
+    prep.type = "button";
+    prep.setAttribute("aria-expanded", String(otvoreny));
+    prep.setAttribute("aria-label", otvoreny ? "Zbaliť inšpektor" : "Rozbaliť inšpektor");
+    prep.appendChild(ikona(otvoreny ? "ti-layout-sidebar-right-collapse" : "ti-layout-sidebar-right-expand"));
+    prep.addEventListener("click", () => { nastavInspektor(druh, !otvoreny); vykresli(); });
+    hlava.appendChild(prep);
+    box.appendChild(hlava);
+    if (!otvoreny) return;
+
+    if (!id || !POZNAMKY[id]) {
+      const b = blok("INŠPEKTOR");
+      b.appendChild(h("div", "prazdno", "Otvor poznámku. Panel povie, odkiaľ je hodnota, ktoré pravidlá na ňu dopadajú a čoho sa zmena dotkne."));
+      box.appendChild(b);
+      return;
+    }
+    const r = aktualnyRetazec(id);
+    const poz = r && (r.pozicie || []).find(p => p.vymena);
+    const erId = poz ? poz.vymena : (vymenyPre(id)[0] || null);
+    const data = (erId && DATA.inspektor_er[erId + "|" + id]) || POZNAMKY[id].inspektor || {};
+
+    box.appendChild(blokPovodu(id, data));
+
+    const b2 = blok("PRAVIDLÁ, KTORÉ NA TO DOPADAJÚ");
+    const pravidla = data.pravidla || [];
+    if (!pravidla.length) b2.appendChild(h("div", "prazdno", "Žiadne — pravidlo s rozsahom pre tento typ zatiaľ neexistuje."));
+    pravidla.forEach(x => riadokOdkazu(b2, x.pravidlo, x.dovod, () => otvorPod(x.poznamka, x.pravidlo)));
+    box.appendChild(b2);
+
+    const spat = data.odkazuje_sem || [];
+    const podlaId = {};
+    spat.forEach(o => { (podlaId[o.id] = podlaId[o.id] || []).push(o.pole); });
+    const kluce = Object.keys(podlaId);
+    const b3 = blok("ODKAZUJE SEM · " + kluce.length);
+    if (!kluce.length) b3.appendChild(h("div", "prazdno", "Nikto."));
+    kluce.forEach(x => riadokOdkazu(b3, x, podlaId[x].join(", "), () => otvorPoznamku(x)));
+    box.appendChild(b3);
+
+    const b4 = blok("AK ZMENÍM");
+    const dopad = data.dopad || {};
+    b4.appendChild(h("div", "dopad", dopad.veta || "—"));
+    // engine vracia mená, nielen počet — bez nich sa „dotkne sa 1 výmeny cez 4 poznámky" nedá overiť
+    const dotknuteVymeny = dopad.vymeny || [];
+    (dopad.poznamky || [])
+      .slice()
+      .sort((a, b) => (dotknuteVymeny.indexOf(b) >= 0) - (dotknuteVymeny.indexOf(a) >= 0))
+      .forEach(x => riadokOdkazu(b4, x, dotknuteVymeny.indexOf(x) >= 0 ? "výmena" : "", () => otvorPoznamku(x)));
+    box.appendChild(b4);
+  }
+
+  // ────────────────────────────────────────────────────────── vykresľovanie
+  function vykresli() {
+    statistiky();
+    navigacia();
+    const plocha = document.getElementById("obsah");
+    plocha.innerHTML = "";
+    if (STAV.vysledok) {
+      const pruh = h("div", "pruh-vysledok" + (STAV.vysledok.stav === "zle" ? " zle" : ""));
+      pruh.appendChild(h("span", null, STAV.vysledok.text));
+      (STAV.vysledok.diagnostiky || []).forEach(d =>
+        pruh.appendChild(h("div", "diag " + d.uroven, d.kod + " · " + d.sprava)));
+      plocha.appendChild(pruh);
+    }
+    if (STAV.pohlad === "register") pohladRegistra(plocha);
+    else if (STAV.pohlad === "poznamka") pohladPoznamky(plocha);
+    else if (STAV.pohlad === "podzaznam") pohladPodZaznamu(plocha);
+    else if (STAV.pohlad === "diagnostika") pohladDiagnostiky(plocha);
+    else if (STAV.pohlad === "zmeny") pohladZmien(plocha);
+    inspektorPanel();
+  }
+
+  document.getElementById("ulozit").addEventListener("click", ulozDoMD);
+  /** [V29, Q60] Vydanie: kód zvolí vydavateľ; server overí 0 chýb, zmrazí revízie a zapíše IDS do AIM. */
+  document.getElementById("vydat").addEventListener("click", () => {
+    if (!AUTOR.meno.trim()) {
+      STAV.vysledok = { stav: "zle", text: "nevydané: zadaj vpravo hore svoje meno - podpisuje vydanie" };
+      vykresli();
+      return;
+    }
+    const dnes = new Date();
+    const navrh = dnes.getFullYear() + "." + (dnes.getMonth() + 1) + "." + dnes.getDate();
+    const kod = window.prompt("Kód vydania (zmrazí aktuálny stav knižnice a zapíše IDS do katalógu AIM):", navrh);
+    if (!kod || !kod.trim()) return;
+    STAV.vysledok = { stav: "beží", text: "vydávam " + kod.trim() + "…" };
+    vykresli();
+    fetch("api/vydaj", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kod: kod.trim(), autor: AUTOR.meno.trim() })
+    })
+      .then(r => r.json())
+      .then(v => {
+        const chyby = (v.chyby || []).map(d => Object.assign({}, d));
+        STAV.vysledok = {
+          stav: v.ok ? "ok" : "zle",
+          text: (v.ok ? "" : "nevydané: ") + (v.sprava || v.detail || "") +
+            ((v.ids || []).length ? " · " + v.ids.map(i => i.code + " " + i.zmena).join(", ") : ""),
+          diagnostiky: chyby
+        };
+        vykresli();
+      })
+      .catch(e => { STAV.vysledok = { stav: "zle", text: "server neodpovedal: " + e }; vykresli(); });
+  });
+  document.getElementById("autor").addEventListener("input", e => {
+    AUTOR.meno = e.target.value;
+    try { localStorage.setItem("assetin-autor", AUTOR.meno.trim()); } catch (err) { /* súkromné okno */ }
+    e.target.classList.toggle("chyba", API.autorPovinny && !AUTOR.meno.trim() && ZMENY.length > 0);
+  });
+  window.addEventListener("hashchange", pouzitAdresu);
+  pouzitAdresu();
+  zistiApi();
+})();
+</script>

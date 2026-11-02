@@ -1,0 +1,345 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   assetin design kit — vrstva 1a: plain-CSS adaptér (ArchiveApp štýl)
+   Generické primitívy postavené VÝHRADNE na tokenoch z tokens.css.
+   Importuj: tokens.css → archive.css. Appkovo špecifické triedy
+   (data-table, box-folder, …) ostávajú v appke.
+
+   Obsahuje aj aliasy legacy premenných (--color-*) → migrácia ArchiveAppu
+   bez zmeny markupu aj existujúcich app-špecifických štýlov.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Legacy aliasy (pôvodné názvy ArchiveAppu) ─────────────────────────── */
+:root,
+.dark,
+[data-theme="dark"] {
+  --color-brand-green:       var(--ds-brand-green);
+  --color-brand-green-hover: var(--ds-brand-green-hover);
+  --color-brand-dark:        var(--ds-brand-navy);
+  --color-brand-ink:         var(--ds-brand-ink);
+  --color-surface:           var(--ds-surface);
+  --color-surface-muted:     var(--ds-surface-muted);
+  --color-border:            var(--ds-border);
+  --color-text:              var(--ds-text);
+  --color-text-muted:        var(--ds-text-muted);
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────── */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-size: var(--ds-text-base);
+  font-family: var(--ds-font-sans);
+  color: var(--ds-text);
+  background: var(--ds-surface-muted);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+h1, h2, h3 {
+  margin: 0 0 var(--ds-space-3);
+  font-weight: var(--ds-weight-semibold);
+  line-height: var(--ds-leading-tight);
+  color: var(--ds-text-strong);
+}
+h1 { font-size: var(--ds-text-xl); }
+h2 { font-size: var(--ds-text-lg); }
+h3 { font-size: var(--ds-text-base); }
+
+@media (min-width: 768px) {
+  h1 { font-size: var(--ds-text-2xl); }
+  h2 { font-size: 20px; }
+}
+
+p { margin: 0 0 var(--ds-space-3); }
+
+a { color: var(--ds-primary); text-decoration: none; }
+a:hover { text-decoration: underline; color: var(--ds-primary-hover); }
+
+/* ── Formulárové prvky (mobile-first: 48px inputy, 16px font) ──────────── */
+
+input, select, textarea, button {
+  font-size: var(--ds-text-base);
+  font-family: inherit;
+}
+
+input:not([type="radio"]):not([type="checkbox"]), select, textarea {
+  min-height: var(--ds-touch-input);
+  width: 100%;
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface);
+  color: inherit;
+}
+
+input[type="radio"],
+input[type="checkbox"] {
+  width: auto;
+  min-height: unset;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--ds-primary);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+input:not([type="radio"]):not([type="checkbox"]):focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--ds-primary);
+  outline-offset: -1px;
+}
+
+.form { display: flex; flex-direction: column; gap: var(--ds-space-3); }
+
+.form-label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  font-size: var(--ds-text-md);
+  color: var(--ds-text);
+  font-weight: var(--ds-weight-medium);
+}
+
+/* ── Tlačidlá (min 44px dotykový target) ────────────────────────────────── */
+
+button, .btn {
+  min-height: var(--ds-touch-button);
+  padding: 0 var(--ds-space-4);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface);
+  color: var(--ds-text-strong);
+  cursor: pointer;
+  font-weight: var(--ds-weight-medium);
+}
+button:disabled, .btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+button:not(:disabled):hover, .btn:not(:disabled):hover {
+  background: var(--ds-surface-hover);
+}
+
+.btn-primary {
+  background: var(--ds-primary);
+  color: var(--ds-text-on-brand);
+  border-color: var(--ds-primary);
+}
+.btn-primary:not(:disabled):hover {
+  background: var(--ds-primary-hover);
+  border-color: var(--ds-primary-hover);
+}
+
+.btn-danger {
+  background: var(--ds-danger);
+  color: var(--ds-white);
+  border-color: var(--ds-danger);
+}
+.btn-danger:not(:disabled):hover {
+  background: var(--ds-danger-hover);
+  border-color: var(--ds-danger-hover);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  min-height: unset;
+  padding: 0;
+  color: var(--ds-primary);
+  font-weight: var(--ds-weight-medium);
+  cursor: pointer;
+}
+.btn-link:not(:disabled):hover {
+  background: none;
+  color: var(--ds-primary-hover);
+  text-decoration: underline;
+}
+
+.btn-small {
+  min-height: var(--ds-touch-button);
+  padding: 0 10px;
+  font-size: var(--ds-text-md);
+}
+
+.btn-block { width: 100%; }
+
+/* ── FAB ────────────────────────────────────────────────────────────────── */
+
+.fab {
+  position: fixed;
+  bottom: calc(var(--ds-space-6) + env(safe-area-inset-bottom, 0px));
+  right: max(var(--ds-space-6), env(safe-area-inset-right, 24px));
+  width: var(--ds-touch-fab);
+  height: var(--ds-touch-fab);
+  min-height: var(--ds-touch-fab);
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-primary);
+  color: var(--ds-text-on-brand);
+  font-size: 28px;
+  border: none;
+  cursor: pointer;
+  box-shadow: var(--ds-shadow-fab);
+  z-index: var(--ds-z-fab);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.fab:not(:disabled):hover { background: var(--ds-primary-hover); }
+
+/* ── Modal / bottom-sheet ──────────────────────────────────────────────── */
+
+/* `.create-modal-*` = legacy názvy ArchiveAppu, zámerne rovnaký štýl */
+.modal-overlay,
+.create-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--ds-overlay);
+  z-index: var(--ds-z-modal);
+  display: flex;
+  align-items: flex-end;
+  justify-content: stretch;
+}
+
+.modal-box,
+.create-modal-box {
+  background: var(--ds-surface);
+  border-radius: var(--ds-radius-2xl) var(--ds-radius-2xl) 0 0;
+  padding: var(--ds-space-5) var(--ds-space-4) var(--ds-space-8);
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+@media (min-width: 640px) {
+  .modal-overlay,
+  .create-modal-overlay {
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-box,
+  .create-modal-box {
+    max-width: 480px;
+    width: 100%;
+    border-radius: var(--ds-radius-xl);
+    padding: var(--ds-space-6);
+    max-height: 85vh;
+  }
+  .modal-box--wide,
+  .create-modal-box--wide {
+    max-width: min(720px, calc(100vw - 48px));
+  }
+}
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+
+.container {
+  max-width: var(--ds-container-max);
+  margin: 0 auto;
+  padding: var(--ds-space-4);
+}
+@media (min-width: 1024px) {
+  .container { padding: var(--ds-space-6) var(--ds-space-8); }
+}
+@media (min-width: 1440px) {
+  .container { padding: 28px var(--ds-space-12); }
+}
+
+.stack { display: flex; flex-direction: column; gap: var(--ds-space-3); }
+.row   { display: flex; gap: var(--ds-space-2); align-items: center; flex-wrap: wrap; }
+
+.scrollable-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--ds-border);
+  margin: var(--ds-space-4) 0;
+}
+
+/* ── Karty ──────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  padding: var(--ds-space-4);
+  margin-bottom: var(--ds-space-4);
+}
+
+.card-link {
+  display: block;
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  padding: var(--ds-space-3) 14px;
+  margin-bottom: var(--ds-space-2);
+  color: inherit;
+  text-decoration: none;
+  transition: background 120ms, border-color 120ms;
+}
+.card-link:hover {
+  background: var(--ds-surface-raised);
+  border-color: var(--ds-border-strong);
+  text-decoration: none;
+}
+
+/* ── Badge ──────────────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-block;
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-bold);
+  padding: 3px var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.badge-success { background: var(--ds-success-bg); color: var(--ds-success-strong); }
+.badge-danger  { background: var(--ds-danger-bg);  color: var(--ds-danger); }
+.badge-warning { background: var(--ds-warning-bg); color: var(--ds-warning); }
+.badge-info    { background: var(--ds-info-bg);    color: var(--ds-info-strong); }
+.badge-neutral { background: var(--ds-surface-hover); color: var(--ds-text-muted); }
+
+/* ── Breadcrumb ─────────────────────────────────────────────────────────── */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ds-space-1);
+  font-size: var(--ds-text-md);
+  color: var(--ds-text-muted);
+}
+.breadcrumb-sep { color: var(--ds-text-faint); }
+
+/* ── Stavové texty a hlášky ─────────────────────────────────────────────── */
+
+.muted   { color: var(--ds-text-muted); font-size: var(--ds-text-sm); }
+.error   { color: var(--ds-danger-hover); font-size: var(--ds-text-md); }
+.success { color: var(--ds-success); font-size: var(--ds-text-md); }
+.warning { color: var(--ds-warning); font-size: var(--ds-text-md); }
+
+.success-msg {
+  margin: 0;
+  padding: 10px var(--ds-space-3);
+  font-size: var(--ds-text-md);
+  color: var(--ds-success-strong);
+  background: var(--ds-success-bg);
+  border: 1px solid var(--ds-success-border);
+  border-radius: var(--ds-radius-lg);
+}

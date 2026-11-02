@@ -1,0 +1,26 @@
+/* Alias vrstva nad design-kitom — mená premenných sú z §5 zadania UI (PROMPT-ui.md), hodnoty
+   sú výhradne --ds-* tokeny kitu; jediné literálne farby sú tri farby pásiem, ktoré zadanie
+   výslovne pripúšťa. Vkladá sa do každej stránky (editor aj graf) — definovaná raz. */
+:root {
+  --surface-1: var(--ds-surface-muted);   /* podklad appky */
+  --surface-2: var(--ds-surface);         /* karty, pásma, inšpektor */
+  --surface-3: var(--ds-surface-raised);  /* hover riadku, pill */
+  --text-primary: var(--ds-text-strong);
+  --text-secondary: var(--ds-text);
+  --text-muted: var(--ds-text-muted);
+  --text-faint: var(--ds-text-faint);
+  --border: var(--ds-border);
+  --border-strong: var(--ds-border-strong);
+  --bg-accent: var(--ds-brand-green-soft);
+  --text-accent: var(--ds-primary);
+  --text-warning: var(--ds-warning);
+  --text-danger: var(--ds-danger);
+  --radius: var(--ds-radius-md);
+  --font-mono: "IBM Plex Mono", var(--ds-font-mono);
+
+  /* Jediné literálne farby v appke (§5): ľavý okraj troch pásiem. Sú to 400-úrovne,
+     čitateľné na svetlom aj takmer čiernom podklade, a nesú ich okraje, nie text. */
+  --pasmo-preco: #7F77DD;
+  --pasmo-kto:   #1D9E75;
+  --pasmo-co:    #D85A30;
+}
