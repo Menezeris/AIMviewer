@@ -834,6 +834,10 @@ Zapisuje len host (`ifc_measure verify=true save=true`, `lib/verify/store.ts`, s
   `anchors` jsonb (pole `{global_id, role, z_m?}`). Indexy (`run_id`), (`model`, `global_id`, `recipe`).
 - `v_verification_latest` = posledný výsledok receptu na prvku s `checked_at`, `registry_version`, `engine`, `based_on` (podpis,
   NULL = neznámy) a `stale` (`revisions_stale`). Práva: `anon`/`authenticated` nič.
+- **Pending (D-185 UI, `supabase/pending/20261102230000_verification_inputs.sql`, nespustené; test `supabase/tests/verification_inputs.sql`):**
+  `verification_results.inputs` jsonb (objekt `{expression?, cells: [{key, label, value, unit, global_id?}], file_meta?: {method_of_measurement?,
+  formula?}}`) a `explanation` text (ako sa recept počíta, z registra); `v_verification_latest` ich má na konci. Staré riadky NULL (viewer
+  ukáže vzorec textom); kým migrácia nie je v DB, host uloží beh bez nich (`lib/verify/store.ts`).
 
 ## 4. Konvencia `properties` (D-022)
 
