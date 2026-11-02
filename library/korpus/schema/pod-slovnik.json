@@ -1,0 +1,142 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "additionalProperties": false,
+ "description": "Dictionary in STD-klasifikacia (§0.10): ``hodnoty`` or ``vzor``, optionally ``odvodene_z``.",
+ "properties": {
+  "hodnoty": {
+   "anyOf": [
+    {
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "integer"
+       },
+       {
+        "type": "number"
+       },
+       {
+        "type": "boolean"
+       }
+      ]
+     },
+     "type": "array"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Hodnoty",
+   "x-assetin": {
+    "trieda_obmedzenia": "hodnota",
+    "zdroj": "frontmatter"
+   }
+  },
+  "id": {
+   "description": "== prvý token nadpisu (A11)",
+   "title": "ID",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "odvodene_z": {
+   "anyOf": [
+    {
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "type": "string",
+     "x-assetin": {
+      "widget": "wikilink"
+     }
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Odvodené z",
+   "x-assetin": {
+    "cielove_typy": [
+     "STD"
+    ],
+    "kotva": "povinna",
+    "widget": "wikilink",
+    "zdroj": "frontmatter"
+   }
+  },
+  "poznamka": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Poznámka (rodič)",
+   "x-assetin": {
+    "odvodene": true,
+    "zdroj": "frontmatter"
+   }
+  },
+  "system": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Systém",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "uri": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "URI",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "vzor": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Vzor (regex)",
+   "x-assetin": {
+    "trieda_obmedzenia": "hodnota",
+    "zdroj": "frontmatter"
+   }
+  }
+ },
+ "required": [
+  "id"
+ ],
+ "title": "Slovnik",
+ "type": "object",
+ "x-assetin": {
+  "pod_zaznam": "slovnik",
+  "schema_verzia": "1.5"
+ }
+}

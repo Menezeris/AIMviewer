@@ -1,0 +1,511 @@
+{
+ "$defs": {
+  "Uloha": {
+   "additionalProperties": false,
+   "description": "[V17] task in ``## Business context`` (YAML block ``ulohy:``); anchor ``#T2`` → ``ulohy[].id``.",
+   "properties": {
+    "aktor": {
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "title": "Aktér",
+     "type": "string",
+     "x-assetin": {
+      "cielove_typy": [
+       "ACT"
+      ],
+      "export": "29481-3 businessContextMap",
+      "kotva": "ziadna",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "id": {
+     "pattern": "^[A-Z][A-Za-z]*\\d+$",
+     "title": "ID úlohy",
+     "type": "string",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "nazov": {
+     "title": "Názov",
+     "type": "string",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "typ": {
+     "description": "delivery | utilization (PAS 6.2.1)",
+     "enum": [
+      "delivery",
+      "utilization"
+     ],
+     "title": "Typ",
+     "type": "string",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "vystup": {
+     "default": [],
+     "items": {
+      "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+      "type": "string",
+      "x-assetin": {
+       "widget": "wikilink"
+      }
+     },
+     "title": "Výstup",
+     "type": "array",
+     "x-assetin": {
+      "cielove_typy": [
+       "IU-O",
+       "IU-C"
+      ],
+      "kotva": "ziadna",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "id",
+    "nazov",
+    "typ",
+    "aktor"
+   ],
+   "title": "Uloha",
+   "type": "object"
+  }
+ },
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "additionalProperties": false,
+ "properties": {
+  "aktor": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Aktéri",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "ACT"
+    ],
+    "export": "actor",
+    "kotva": "ziadna",
+    "sekcia": "Aktéri",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "aliases": {
+   "default": [],
+   "description": "[V18] udržiava writer: vždy obsahuje `id` (Obsidian návrhár, Dataview)",
+   "items": {
+    "type": "string"
+   },
+   "title": "Aliasy",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "autor": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Autor",
+   "x-assetin": {
+    "export": "authoring/author",
+    "zdroj": "frontmatter"
+   }
+  },
+  "construction_entity": {
+   "default": [],
+   "items": {
+    "type": "string"
+   },
+   "title": "Construction entity",
+   "type": "array",
+   "x-assetin": {
+    "export": "constructionEntity",
+    "zdroj": "frontmatter"
+   }
+  },
+  "faza_iso22263": {
+   "description": "[V1] prípustnosť scenára",
+   "items": {
+    "enum": [
+     "inception",
+     "brief",
+     "design",
+     "production",
+     "maintenance",
+     "demolition"
+    ],
+    "type": "string"
+   },
+   "minItems": 1,
+   "title": "Fáza ISO 22263",
+   "type": "array",
+   "x-assetin": {
+    "export": "standardProjectPhase",
+    "zdroj": "frontmatter"
+   }
+  },
+  "faza_lokalna": {
+   "default": [],
+   "items": {
+    "type": "string"
+   },
+   "title": "Fáza (lokálna)",
+   "type": "array",
+   "x-assetin": {
+    "export": "localProjectPhase",
+    "zdroj": "frontmatter"
+   }
+  },
+  "guid": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "generuje nástroj",
+   "title": "GUID",
+   "x-assetin": {
+    "export": "specId/guid ; dt:GUID",
+    "zdroj": "frontmatter"
+   }
+  },
+  "id": {
+   "description": "prefix + číslo alebo cesta; nesie ho cesta súboru (§0.4), vo frontmatter kópia",
+   "title": "ID",
+   "type": "string",
+   "x-assetin": {
+    "export": "29481-3 specId/localCode ; 7817-3 name",
+    "zdroj": "frontmatter"
+   }
+  },
+  "jazyk": {
+   "default": "sk",
+   "description": "ISO 639-1",
+   "title": "Jazyk",
+   "type": "string",
+   "x-assetin": {
+    "export": "uc/language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "kratky_nazov_en": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Krátky názov (EN)",
+   "x-assetin": {
+    "export": "specId/shortTitle",
+    "zdroj": "frontmatter"
+   }
+  },
+  "licencia": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Licencia",
+   "x-assetin": {
+    "export": "authoring/copyright",
+    "zdroj": "frontmatter"
+   }
+  },
+  "nadradeny_uc": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Nadradený UC",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "UC"
+    ],
+    "export": "subUc / subIdm",
+    "kotva": "ziadna",
+    "sekcia": "Hierarchia",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "nazov": {
+   "title": "Názov",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov_en": {
+   "minLength": 1,
+   "title": "Názov (EN)",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/shortTitle ; 7817-3 Purpose/Language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "norma": {
+   "default": [],
+   "items": {
+    "type": "string"
+   },
+   "title": "Norma",
+   "type": "array",
+   "x-assetin": {
+    "export": "reference{basisStandard, fullCitation}",
+    "sekcia": "Rámcové podmienky",
+    "zdroj": "inline"
+   }
+  },
+  "podporuje_ciel": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Podporuje cieľ",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "GOAL"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Prínosy",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "pouzitie": {
+   "default": [],
+   "description": "sloveso + podstatné meno (29481-1 tab. 1)",
+   "items": {
+    "type": "string"
+   },
+   "title": "Použitie",
+   "type": "array",
+   "x-assetin": {
+    "export": "use",
+    "zdroj": "frontmatter"
+   }
+  },
+  "pravidlo": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Business rules",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "DEF"
+    ],
+    "export": "businessRule",
+    "kotva": "ziadna",
+    "sekcia": "Business rules",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "region": {
+   "default": [],
+   "description": "ISO 3166-1 alpha-3",
+   "items": {
+    "type": "string"
+   },
+   "title": "Región",
+   "type": "array",
+   "x-assetin": {
+    "export": "uc/region",
+    "zdroj": "frontmatter"
+   }
+  },
+  "spustacia_udalost": {
+   "default": [],
+   "description": "iba impact",
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Spúšťacia udalosť",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "EV"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Spúšťacia udalosť",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "stav": {
+   "enum": [
+    "NP",
+    "WD",
+    "PUB",
+    "WDRL"
+   ],
+   "title": "Stav",
+   "type": "string",
+   "x-assetin": {
+    "export": "documentStatus",
+    "zdroj": "frontmatter"
+   }
+  },
+  "typ": {
+   "enum": [
+    "GOAL",
+    "UC",
+    "ER",
+    "IU-O",
+    "IU-C",
+    "STD",
+    "GEO",
+    "PROP",
+    "DEF",
+    "EV",
+    "ACT",
+    "PROT",
+    "PROJ"
+   ],
+   "title": "Typ",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "typ_ulohy": {
+   "description": "[V6] sumár taskov poskytovateľov",
+   "enum": [
+    "delivery",
+    "utilization",
+    "oboje"
+   ],
+   "title": "Typ úlohy",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "ulohy": {
+   "default": [],
+   "description": "[V17]",
+   "items": {
+    "$ref": "#/$defs/Uloha"
+   },
+   "title": "Úlohy",
+   "type": "array",
+   "x-assetin": {
+    "export": "businessContextMap",
+    "sekcia": "Business context",
+    "zdroj": "blok"
+   }
+  },
+  "verzia": {
+   "title": "Verzia",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/version",
+    "zdroj": "frontmatter"
+   }
+  },
+  "zrelost": {
+   "anyOf": [
+    {
+     "enum": [
+      "Outlook",
+      "Example",
+      "Proven"
+     ],
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "UCM",
+   "title": "Zrelosť",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  }
+ },
+ "required": [
+  "id",
+  "typ",
+  "nazov",
+  "nazov_en",
+  "stav",
+  "verzia",
+  "typ_ulohy",
+  "faza_iso22263"
+ ],
+ "title": "UC",
+ "type": "object",
+ "x-assetin": {
+  "pod_zaznamy": [],
+  "schema_verzia": "1.5",
+  "sekcie": [
+   "Zhrnutie",
+   "Cieľ a rozsah",
+   "Vymedzenie (čo use case nie je)",
+   "Rámcové podmienky",
+   "Prínosy",
+   "Spúšťacia udalosť",
+   "Aktéri",
+   "Hierarchia",
+   "Business context",
+   "Business rules",
+   "Fázy → ER"
+  ],
+  "typ": "UC"
+ }
+}

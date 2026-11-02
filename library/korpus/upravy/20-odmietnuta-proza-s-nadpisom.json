@@ -1,0 +1,36 @@
+{
+ "nazov": "odmietnuta-proza-s-nadpisom",
+ "strom": "vzor",
+ "texty_po": {},
+ "vstup": {
+  "zmeny": [
+   {
+    "hodnota": "## Nová sekcia",
+    "id": "ER-0101",
+    "pointer": "/__proza/2"
+   }
+  ]
+ },
+ "vysledok": {
+  "diagnostiky": [
+   {
+    "json_pointer": "/__proza/2",
+    "kod": "W1",
+    "note_id": "ER-0101",
+    "riadok": null,
+    "sprava": "próza nesmie obsahovať nadpis (#), pole `kluc::`, blok ``` , HTML komentár ani ---; polia sa menia vo formulári",
+    "subor": "zadanie/ER/ER-0101 Priestorový model a protokol zamerania – odovzdanie.md",
+    "uroven": "E"
+   }
+  ],
+  "konflikt": false,
+  "odmietnute": [
+   "ER-0101"
+  ],
+  "ok": false,
+  "premenovane": [],
+  "vytvorene": [],
+  "zapisane": []
+ },
+ "zmazane": []
+}

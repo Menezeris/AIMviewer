@@ -542,6 +542,14 @@ dokumenty s verziami, z chatu aj z viewera. Aditívne, IDS nie je v `objects` (D
 - `v_ids_latest`, `v_ids_summary` + na konci `ids_stale` (IDS má v AIM novšiu verziu než beh; null pre behy bez
   verzie IDS) a `engine_version`. Práva: `ids_document_models` len `service_role`.
 
+**Knižnica požiadaviek v DB, len čítanie (D-186; schéma `library` vlastní assetin-library, pravda do presunu v
+`assetin-library/docs/SCHEMA.md`):** `library.hlava` = posledná revízia každého súboru knižnice (`kniznica`, `cesta`,
+`note_id`, `typ`, `rev`, `text`, `sha256` hex, `autor`, `vytvorena`, `zdroj`). Schéma nie je v PostgREST vystavená,
+anon / authenticated do nej prístup nemajú. Host číta cez RPC v `public` (migrácia
+`supabase/migrations/20261102200000_library_hlava_read.sql`, APLIKOVANÁ 2. 11.; test `supabase/tests/library_hlava_read.sql`):
+`library_hlava_zoznam(p_kniznica text default null)` (bez textu, + `dlzka`) a `library_hlava_subor(p_kniznica, p_cesta)`
+(s textom); `stable`, `security invoker`, `search_path = ''`, EXECUTE len `service_role`.
+
 ### 2.14 Revízie IFC modelov a úlohy úprav (D-086, migrácia 20261018120000)
 
 **Deklarovaná extenzia** (IFC verzie súboru nenesie; BCF nesie tému úlohy, nie úložisko).

@@ -1,0 +1,35 @@
+{
+ "nazov": "premenovanie-nazov",
+ "strom": "vzor",
+ "texty_po": {
+  "zadanie/registre/DEF/DEF-plocha-cista Čistá podlahová plocha.md": "---\nid: DEF-plocha-cista\naliases: [DEF-plocha-cista]\nguid:\ntyp: DEF\nnazov: \"Čistá podlahová plocha\"\nnazov_en: Net room area\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Assetin\nlicencia: CC-BY-4.0\ndefinicia: Hrubá plocha miestnosti ([[DEF-plocha-hruba]]) znížená o plochu stĺpov, vstavaných konštrukcií, šácht a iných pevných prvkov vnútri miestnosti s pôdorysom väčším ako 0,1 m². Zodpovedá IFC Qto_SpaceBaseQuantities.NetFloorArea.\nreferencny_dokument: IFC 4.3 Qto_SpaceBaseQuantities ; IPMS All Buildings 2023 (mapovanie overiť)\nhranica_merania: vnútorný líc omietky / obkladu; odpočet po líci prvkov v miestnosti\njednotka: m2\nzaokruhlenie: 0.01\ntolerancia: ±0.5 %\nmetoda_merania: odvodenie z hrubej plochy odpočtom zameraných prvkov; v modeli z obrysu IfcSpace mínus prvky s IfcRelContainedInSpatialStructure na IfcSpace\nzodpovedny_za_meranie: \"[[ACT-poverena/geodet]]\"\n---\n\n## Poznámka\nOdvodená z [[DEF-plocha-hruba]] (`odvodene_z`). Používa: [[IU-O-space]].\n"
+ },
+ "vstup": {
+  "zmeny": [
+   {
+    "hodnota": "Čistá podlahová plocha",
+    "id": "DEF-plocha-cista",
+    "pointer": "/nazov"
+   }
+  ]
+ },
+ "vysledok": {
+  "diagnostiky": [],
+  "konflikt": false,
+  "odmietnute": [],
+  "ok": true,
+  "premenovane": [
+   [
+    "zadanie/registre/DEF/DEF-plocha-cista Čistá plocha miestnosti.md",
+    "zadanie/registre/DEF/DEF-plocha-cista Čistá podlahová plocha.md"
+   ]
+  ],
+  "vytvorene": [],
+  "zapisane": [
+   "zadanie/registre/DEF/DEF-plocha-cista Čistá podlahová plocha.md"
+  ]
+ },
+ "zmazane": [
+  "zadanie/registre/DEF/DEF-plocha-cista Čistá plocha miestnosti.md"
+ ]
+}

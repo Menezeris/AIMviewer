@@ -1,0 +1,33 @@
+{
+ "nazov": "nova-uc",
+ "strom": "vzor",
+ "texty_po": {
+  "zadanie/UC/UC-0201 Využitie priestorov nájom spoločné.md": "---\nid: UC-0201\nguid:\ntyp: UC\nnazov: 'Využitie priestorov: nájom / spoločné?'\nnazov_en: Space utilization\nstav: WD\nverzia: '0.1'\njazyk: sk\nautor:\nlicencia:\naliases: [UC-0201]\nkratky_nazov_en:\ntyp_ulohy: utilization\nregion: []\nfaza_iso22263: [maintenance]\nfaza_lokalna: []\nconstruction_entity: []\nzrelost:\npouzitie: []\n---\n\n## Zhrnutie\n\n## Cieľ a rozsah\n\n## Vymedzenie (čo use case nie je)\n\n## Rámcové podmienky\n\n## Prínosy\n\n## Spúšťacia udalosť\n\n## Aktéri\n\n## Hierarchia\n\n## Business context\n\n## Business rules\n\n## Fázy → ER\n"
+ },
+ "vstup": {
+  "nova": {
+   "data": {
+    "faza_iso22263": [
+     "maintenance"
+    ],
+    "nazov_en": "Space utilization",
+    "typ_ulohy": "utilization"
+   },
+   "id": "UC-0201",
+   "nazov": "Využitie priestorov: nájom / spoločné?",
+   "typ": "UC"
+  }
+ },
+ "vysledok": {
+  "diagnostiky": [],
+  "konflikt": false,
+  "odmietnute": [],
+  "ok": true,
+  "premenovane": [],
+  "vytvorene": [
+   "zadanie/UC/UC-0201 Využitie priestorov nájom spoločné.md"
+  ],
+  "zapisane": []
+ },
+ "zmazane": []
+}

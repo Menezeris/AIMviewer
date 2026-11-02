@@ -1,0 +1,267 @@
+{
+ "_opis": "Okrajov\u00e9 vstupy blokov\u00e9ho parsera; ocakavane = Python assetin/engine/dokument.py (ruamel.yaml 0.19.1) na commite assetin-library f7c103c, cez rovnak\u00fd tvar ako korpus.bloky(). Navrh: presun\u00fa\u0165 do korpusu (assetin korpus export).",
+ "pripady": {
+  "bom": {
+   "ocakavane": {
+    "frontmatter": null,
+    "telo": [
+     {
+      "druh": "Proza",
+      "raw": "\ufeff---\nid: X\n---\n",
+      "riadok": 0
+     }
+    ]
+   },
+   "vstup": "\ufeff---\nid: X\n---\n"
+  },
+  "crlf": {
+   "ocakavane": {
+    "frontmatter": {
+     "chyba": false,
+     "data": {
+      "id": "X"
+     },
+     "raw": "---\r\nid: X\r\n---\r\n",
+     "riadok": 0,
+     "yaml_text": "id: X\r\n"
+    },
+    "telo": [
+     {
+      "druh": "Nadpis",
+      "raw": "# Nadpis  \r\n",
+      "riadok": 3,
+      "text": "Nadpis",
+      "uroven": 1
+     },
+     {
+      "druh": "InlinePole",
+      "kluc": "kluc",
+      "raw": "kluc:: hodnota \r\n",
+      "raw_hodnota": "hodnota",
+      "riadok": 4,
+      "v_polozke": false
+     },
+     {
+      "druh": "Proza",
+      "raw": "\r\n",
+      "riadok": 5
+     },
+     {
+      "chyba": false,
+      "data": {
+       "a": 1
+      },
+      "druh": "YamlBlok",
+      "jazyk": "yaml",
+      "raw": "```yaml\r\na: 1\r\n```\r\n",
+      "raw_close": "```\r\n",
+      "raw_open": "```yaml\r\n",
+      "riadok": 6,
+      "yaml_text": "a: 1\r\n"
+     }
+    ]
+   },
+   "vstup": "---\r\nid: X\r\n---\r\n# Nadpis  \r\nkluc:: hodnota \r\n\r\n```yaml\r\na: 1\r\n```\r\n"
+  },
+  "fence_unicode": {
+   "ocakavane": {
+    "frontmatter": null,
+    "telo": [
+     {
+      "druh": "SurovyBlok",
+      "jazyk": "yaml-\u010d",
+      "raw": "```yaml-\u010d\nx\n```\n",
+      "riadok": 0
+     },
+     {
+      "druh": "SurovyBlok",
+      "jazyk": "ids",
+      "raw": "```ids \t\n<a/>\n",
+      "riadok": 3
+     }
+    ]
+   },
+   "vstup": "```yaml-\u010d\nx\n```\n```ids \t\n<a/>\n"
+  },
+  "html_ws": {
+   "ocakavane": {
+    "frontmatter": null,
+    "telo": [
+     {
+      "druh": "HtmlKomentar",
+      "raw": "\u00a0 <!-- a\nb --> c\n",
+      "riadok": 0
+     },
+     {
+      "druh": "HtmlKomentar",
+      "raw": "\u3000<!--x-->\n",
+      "riadok": 2
+     }
+    ]
+   },
+   "vstup": "\u00a0 <!-- a\nb --> c\n\u3000<!--x-->\n"
+  },
+  "inline": {
+   "ocakavane": {
+    "frontmatter": null,
+    "telo": [
+     {
+      "druh": "InlinePole",
+      "kluc": "kl.uc",
+      "raw": "- kl.uc:: v  \n",
+      "raw_hodnota": "v",
+      "riadok": 0,
+      "v_polozke": true
+     },
+     {
+      "druh": "Proza",
+      "raw": "  kluc:: x\nKluc:: y\n",
+      "riadok": 1
+     },
+     {
+      "druh": "InlinePole",
+      "kluc": "k",
+      "raw": "k::\n",
+      "raw_hodnota": "",
+      "riadok": 3,
+      "v_polozke": false
+     }
+    ]
+   },
+   "vstup": "- kl.uc:: v  \n  kluc:: x\nKluc:: y\nk::\n"
+  },
+  "nadpis": {
+   "ocakavane": {
+    "frontmatter": null,
+    "telo": [
+     {
+      "druh": "Proza",
+      "raw": "####### nie\n",
+      "riadok": 0
+     },
+     {
+      "druh": "Nadpis",
+      "raw": "# a  \t\n",
+      "riadok": 1,
+      "text": "a",
+      "uroven": 1
+     },
+     {
+      "druh": "Proza",
+      "raw": "#bez\n",
+      "riadok": 2
+     },
+     {
+      "druh": "Nadpis",
+      "raw": "###### \u0161es\u0165 #\n",
+      "riadok": 3,
+      "text": "\u0161es\u0165 #",
+      "uroven": 6
+     }
+    ]
+   },
+   "vstup": "####### nie\n# a  \t\n#bez\n###### \u0161es\u0165 #\n"
+  },
+  "unicode": {
+   "ocakavane": {
+    "frontmatter": null,
+    "telo": [
+     {
+      "druh": "Nadpis",
+      "raw": "# A\u2028",
+      "riadok": 0,
+      "text": "A",
+      "uroven": 1
+     },
+     {
+      "druh": "Proza",
+      "raw": "b\u0085c\fd\u000be\u001c",
+      "riadok": 1
+     },
+     {
+      "druh": "InlinePole",
+      "kluc": "x.y",
+      "raw": "- x.y:: 1\u2028",
+      "raw_hodnota": "1",
+      "riadok": 5,
+      "v_polozke": true
+     }
+    ]
+   },
+   "vstup": "# A\u2028b\u0085c\fd\u000be\u001c- x.y:: 1\u2028"
+  },
+  "yaml_err": {
+   "ocakavane": {
+    "frontmatter": {
+     "chyba": true,
+     "data": null,
+     "raw": "---\nid: [\n---\n",
+     "riadok": 0,
+     "yaml_text": "id: [\n"
+    },
+    "telo": [
+     {
+      "chyba": true,
+      "data": null,
+      "druh": "YamlBlok",
+      "jazyk": "yaml",
+      "raw": "```yaml\na: 1\na: 2\n```\n",
+      "raw_close": "```\n",
+      "raw_open": "```yaml\n",
+      "riadok": 3,
+      "yaml_text": "a: 1\na: 2\n"
+     },
+     {
+      "chyba": true,
+      "data": null,
+      "druh": "YamlBlok",
+      "jazyk": "yaml",
+      "raw": "```yaml\n- x\n```\n",
+      "raw_close": "```\n",
+      "raw_open": "```yaml\n",
+      "riadok": 7,
+      "yaml_text": "- x\n"
+     },
+     {
+      "chyba": false,
+      "data": {},
+      "druh": "YamlBlok",
+      "jazyk": "yaml",
+      "raw": "```yaml\n```\n",
+      "raw_close": "```\n",
+      "raw_open": "```yaml\n",
+      "riadok": 10,
+      "yaml_text": ""
+     }
+    ]
+   },
+   "vstup": "---\nid: [\n---\n```yaml\na: 1\na: 2\n```\n```yaml\n- x\n```\n```yaml\n```\n"
+  },
+  "yaml_types": {
+   "ocakavane": {
+    "frontmatter": {
+     "chyba": false,
+     "data": {
+      "b": "yes",
+      "d": "2026-11-02",
+      "e": 1000.0,
+      "f": 1.5,
+      "k": {
+       "1": "a"
+      },
+      "l": 17,
+      "n": null,
+      "o": 15,
+      "s": "x",
+      "t": "2026-11-02 10:20:30"
+     },
+     "raw": "---\nd: 2026-11-02\nt: 2026-11-02 10:20:30\nb: yes\nn: ~\nf: 1.50\no: 0o17\nl: 017\ne: 1e3\nk: {1: a}\ns: 'x'\n---\n",
+     "riadok": 0,
+     "yaml_text": "d: 2026-11-02\nt: 2026-11-02 10:20:30\nb: yes\nn: ~\nf: 1.50\no: 0o17\nl: 017\ne: 1e3\nk: {1: a}\ns: 'x'\n"
+    },
+    "telo": []
+   },
+   "vstup": "---\nd: 2026-11-02\nt: 2026-11-02 10:20:30\nb: yes\nn: ~\nf: 1.50\no: 0o17\nl: 017\ne: 1e3\nk: {1: a}\ns: 'x'\n---\n"
+  }
+ }
+}

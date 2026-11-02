@@ -1,0 +1,35 @@
+{
+ "nazov": "dve-poznamky-naraz",
+ "strom": "vzor",
+ "texty_po": {
+  "zadanie/IU-O/IU-O-storey Podlažie.md": "---\nid: IU-O-storey\naliases: [IU-O-storey]\nguid:\ntyp: IU-O\nnazov: Podlažie\nnazov_en: Building storey\nstav: PUB\nverzia: 0.1\njazyk: sk\nautor: Assetin\nlicencia: CC-BY-4.0\nobjekt:\n  ifc_entita: IfcBuildingStorey\n  predefined_type:\n  uri: https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcBuildingStorey\nklasifikacia: []\nfilter: []\npritomnost_v_modeli: required\nuroven: vyskyt\nzdovodnenie: \"Podlažie je kontajner priestorov a nosič výškovej úrovne; bez neho nie je členenie priestor → podlažie overiteľné (UC-0101 T2; STD-CL-01).\"\npokyn: \"Jedno IfcBuildingStorey na každé podlažie vrátane podzemných a technických; Elevation voči ±0,000 objektu podľa STD-FED-01; medzipodlažia neriešiť ako samostatné podlažie, ale ako priestor s výškovým odsadením.\"\nzavaznost_predvolena: musi\n\ngeometria:\n  profil: \"[[GEO-G0]]\"                 # G0 = bez geometrie; profil v STD-geo-profily zatiaľ neexistuje\n  ShapeAssembly: NotRequired\n  ShapeRepresentation: NotRequired\n  ShapeInfluence:\n    InsideGeometry: NotRequired\n    Connections: NotRequired\n    Openings: NotRequired\n    OperatingAndClearanceZones: NotRequired\n    Features: NotRequired\n  Dimensionality: NotRequired\n  Appearance: NotRequired\n  ParametricBehaviour: NotRequested\n  Location: {PositioningType: Relative, ReferenceObject: IfcBuilding}\n  placeholder: false\n  poznamka: {zahrna: [], nezahrna: [], text: \"podlažie nemá vlastný tvar; výšková úroveň sa nesie atribútom Elevation a umiestnením (ObjectPlacement)\"}\n  pokyn: \"ObjectPlacement na úrovni čistej podlahy podlažia\"\n  postup: \"porovnať Elevation a ObjectPlacement s výškami v protokole zamerania\"\n  presnost: \"±1 cm (Elevation)\"\n\nalfanumerika:\n  - ifc: {atribut: Name}\n    rola: identifikacia\n    vzor: \"^[0-9]{1,2}\\\\.(NP|PP)$\"\n    pravidlo: \"[[STD-NAME-02]]\"\n    povinnost: required\n    pokyn: \"1.NP, 2.NP … 1.PP; zhodné s označením v protokole zamerania a v evakuačných plánoch\"\n  - ifc: {atribut: LongName}\n    rola: obsah\n    povinnost: optional\n    pokyn: \"prevádzkový názov (Prízemie, Suterén, Strojovňa)\"\n  - ifc: {atribut: Elevation}\n    rola: obsah\n    povinnost: required\n    povaha: technicky\n    pokyn: \"výška čistej podlahy voči ±0,000 v metroch; pri pasportizácii je tento model masterom zoznamu podlaží (STD-FED-02 naň odkazuje, ostatné DiMS sa overujú voči nemu)\"\n  - ifc: {pset: Pset_BuildingStoreyCommon, nazov: AboveGround, uri: https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/AboveGround}\n    datovy_typ: IFCLOGICAL\n    rola: obsah\n    povinnost: optional\n    pokyn: \"TRUE pre NP, FALSE pre PP\"\n  - ifc: {pset: Qto_BuildingStoreyBaseQuantities, nazov: GrossFloorArea, uri: https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossFloorArea}\n    datovy_typ: IFCAREAMEASURE\n    rola: obsah\n    definicia_ref: \"[[DEF-plocha-hruba]]\"\n    povinnost: optional\n    povaha: informacny\n\ndokumentacia: []\n---\n\n## Členenie (iba výnimky voči STD-clenenie)\n<!-- bez výnimky: dedí STD-CL-03 (podlažie v budove) -->\n\n## Roly\nposkytovatel:: [[ACT-poverena/ARCH]]\noveruje:: [[ACT-poverujuca/koordinator-BIM]]\n\n## Trasovateľnosť\npre_task:: [[UC-0101#T2]]\n\n## Väzby\n",
+  "zadanie/IU-O/IU-O-zone Zóna.md": "---\nid: IU-O-zone\naliases: [IU-O-zone]\nguid:\ntyp: IU-O\nnazov: Zóna (nájomná jednotka / spoločný priestor)\nnazov_en: Zone (rental unit / common area)\nstav: PUB\nverzia: 0.1\njazyk: sk\nautor: Assetin\nlicencia: CC-BY-4.0\nobjekt:\n  ifc_entita: IfcZone\n  predefined_type:\n  uri: https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcZone\nklasifikacia: []\nfilter:                                # applicability: len priestorové zóny, nie systémové zóny z TZB (UC-0102)\n  - facet: attribute\n    nazov: ObjectType\n    hodnoty_ref: \"[[STD-klasifikacia#typy-zon-priestorove]]\"\npritomnost_v_modeli: required\nuroven: vyskyt\nzdovodnenie: \"Zóna zoskupuje miestnosti do nájomných jednotiek a spoločných priestorov — jednotka, na ktorú sa viaže zmluva a rozúčtovanie (GOAL-A-01; UC-0101 T4; vstup UC-0201).\"\npokyn: \"Každý IfcSpace s PredefinedType INTERNAL patrí práve do jednej zóny typu NajomnaJednotka alebo SpolocnyPriestor (STD-CL-04); zóna môže prechádzať podlažiami; členstvo cez IfcRelAssignsToGroup. Prenajímateľná plocha jednotky NIE JE súčasťou tohto UC — odvodí ju UC-0201 ako vlastnú vlastnosť ([[PROP-RentableArea]]).\"\nzavaznost_predvolena: musi\n\ngeometria:\n  profil: \"[[GEO-G0]]\"                 # IfcZone je IfcGroup – bez tvaru\n  ShapeAssembly: NotRequired\n  ShapeRepresentation: NotRequired\n  ShapeInfluence:\n    InsideGeometry: NotRequired\n    Connections: NotRequired\n    Openings: NotRequired\n    OperatingAndClearanceZones: NotRequired\n    Features: NotRequired\n  Dimensionality: NotRequired\n  Appearance: NotRequired\n  ParametricBehaviour: NotRequested\n  Location: {PositioningType: NotDefined}\n  placeholder: false\n  poznamka: {zahrna: [], nezahrna: [], text: \"rozsah zóny je daný členstvom priestorov, nie geometriou\"}\n  pokyn: \"\"\n  postup: \"zoznam členov zóny porovnať s tabuľkou nájomných jednotiek v protokole zamerania\"\n\nalfanumerika:\n  - ifc: {atribut: Name}\n    rola: identifikacia\n    vzor: \"^(NJ|SP|TP)-[0-9]{3}$\"\n    pravidlo: \"[[STD-NAME-04]]\"\n    povinnost: required\n    pokyn: \"NJ-001 …; stabilné počas života budovy; väzba jednotka ↔ nájomca/zmluva žije mimo modelu, model nesie iba kľúč\"\n  - ifc: {atribut: LongName}\n    rola: obsah\n    povinnost: optional                # ER-0101 prepisuje na required\n    pokyn: \"stály popisný názov (Jednotka 2. NP východ, Vstupná hala); NIE názov nájomcu – nájomca má nositeľa v registri nájmov (UC-0201), do modelu sa neopisuje\"\n  # ObjectType (typ zóny) nie je položkou tejto IU – vyžaduje ho nefiltrované pravidlo STD-CL-06 pre každú IfcZone\n\ndokumentacia: []\n---\n\n## Členenie (iba výnimky voči STD-clenenie)\n<!-- bez výnimky; STD-CL-04 sa overuje z pohľadu dieťaťa (IfcSpace); STD-CL-06 (typ zóny) platí vždy -->\n\n## Roly\nposkytovatel:: [[ACT-poverena/ARCH]]\noveruje:: [[ACT-poverujuca/koordinator-BIM]]\n\n## Trasovateľnosť\npre_task:: [[UC-0101#T4]]\n\n## Väzby\n"
+ },
+ "vstup": {
+  "zmeny": [
+   {
+    "hodnota": "PUB",
+    "id": "IU-O-zone",
+    "pointer": "/stav"
+   },
+   {
+    "hodnota": "PUB",
+    "id": "IU-O-storey",
+    "pointer": "/stav"
+   }
+  ]
+ },
+ "vysledok": {
+  "diagnostiky": [],
+  "konflikt": false,
+  "odmietnute": [],
+  "ok": true,
+  "premenovane": [],
+  "vytvorene": [],
+  "zapisane": [
+   "zadanie/IU-O/IU-O-zone Zóna.md",
+   "zadanie/IU-O/IU-O-storey Podlažie.md"
+  ]
+ },
+ "zmazane": []
+}

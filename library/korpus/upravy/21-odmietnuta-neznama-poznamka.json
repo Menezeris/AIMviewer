@@ -1,0 +1,36 @@
+{
+ "nazov": "odmietnuta-neznama-poznamka",
+ "strom": "vzor",
+ "texty_po": {},
+ "vstup": {
+  "zmeny": [
+   {
+    "hodnota": "PUB",
+    "id": "UC-9999",
+    "pointer": "/stav"
+   }
+  ]
+ },
+ "vysledok": {
+  "diagnostiky": [
+   {
+    "json_pointer": "",
+    "kod": "W1",
+    "note_id": "UC-9999",
+    "riadok": null,
+    "sprava": "poznámka s týmto ID v knižnici nie je",
+    "subor": "",
+    "uroven": "E"
+   }
+  ],
+  "konflikt": false,
+  "odmietnute": [
+   "UC-9999"
+  ],
+  "ok": false,
+  "premenovane": [],
+  "vytvorene": [],
+  "zapisane": []
+ },
+ "zmazane": []
+}

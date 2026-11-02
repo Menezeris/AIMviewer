@@ -1,0 +1,1254 @@
+{
+ "$defs": {
+  "Applicability": {
+   "additionalProperties": false,
+   "properties": {
+    "entity": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "[V5] môže byť abstraktná – generátor rozvinie",
+     "title": "Entita",
+     "x-assetin": {
+      "export": "IDS applicability/entity",
+      "zdroj": "frontmatter"
+     }
+    },
+    "filter": {
+     "default": [],
+     "items": {
+      "discriminator": {
+       "mapping": {
+        "attribute": "#/$defs/FacetAttribute",
+        "classification": "#/$defs/FacetClassification",
+        "entity": "#/$defs/FacetEntity",
+        "material": "#/$defs/FacetMaterial",
+        "partOf": "#/$defs/FacetPartOf",
+        "property": "#/$defs/FacetProperty"
+       },
+       "propertyName": "facet"
+      },
+      "oneOf": [
+       {
+        "$ref": "#/$defs/FacetEntity"
+       },
+       {
+        "$ref": "#/$defs/FacetAttribute"
+       },
+       {
+        "$ref": "#/$defs/FacetClassification"
+       },
+       {
+        "$ref": "#/$defs/FacetProperty"
+       },
+       {
+        "$ref": "#/$defs/FacetMaterial"
+       },
+       {
+        "$ref": "#/$defs/FacetPartOf"
+       }
+      ]
+     },
+     "title": "Filter",
+     "type": "array",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "predefined_type": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "PredefinedType",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Applicability",
+   "type": "object"
+  },
+  "FacetAttribute": {
+   "additionalProperties": false,
+   "properties": {
+    "cardinality": {
+     "anyOf": [
+      {
+       "enum": [
+        "required",
+        "optional",
+        "prohibited"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kardinalita",
+     "x-assetin": {
+      "export": "IDS cardinality",
+      "trieda_obmedzenia": "pritomnost",
+      "zdroj": "frontmatter"
+     }
+    },
+    "facet": {
+     "const": "attribute",
+     "title": "Facet",
+     "type": "string"
+    },
+    "hodnota": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "integer"
+      },
+      {
+       "type": "number"
+      },
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Hodnota",
+     "x-assetin": {
+      "export": "IDS simpleValue",
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty": {
+     "anyOf": [
+      {
+       "items": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "integer"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "boolean"
+         }
+        ]
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Výčet",
+     "x-assetin": {
+      "export": "IDS xs:enumeration",
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty_ref": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Slovník",
+     "x-assetin": {
+      "cielove_typy": [
+       "STD"
+      ],
+      "export": "IDS xs:enumeration (rozvinuté)",
+      "kotva": "povinna",
+      "trieda_obmedzenia": "hodnota",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "nazov": {
+     "title": "Atribút",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS attribute/name",
+      "widget": "text",
+      "zdroj": "frontmatter"
+     }
+    },
+    "rozsah": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Rozsah_hodnot"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Rozsah",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "vzor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Vzor (regex)",
+     "x-assetin": {
+      "export": "IDS xs:pattern",
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "facet",
+    "nazov"
+   ],
+   "title": "FacetAttribute",
+   "type": "object"
+  },
+  "FacetClassification": {
+   "additionalProperties": false,
+   "properties": {
+    "cardinality": {
+     "anyOf": [
+      {
+       "enum": [
+        "required",
+        "optional",
+        "prohibited"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kardinalita",
+     "x-assetin": {
+      "trieda_obmedzenia": "pritomnost",
+      "zdroj": "frontmatter"
+     }
+    },
+    "facet": {
+     "const": "classification",
+     "title": "Facet",
+     "type": "string"
+    },
+    "hodnota": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Hodnota",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty": {
+     "anyOf": [
+      {
+       "items": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "integer"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "boolean"
+         }
+        ]
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Výčet",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty_ref": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Slovník",
+     "x-assetin": {
+      "cielove_typy": [
+       "STD"
+      ],
+      "kotva": "povinna",
+      "trieda_obmedzenia": "hodnota",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "system": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Systém",
+     "x-assetin": {
+      "export": "IDS classification/system",
+      "zdroj": "frontmatter"
+     }
+    },
+    "uri": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "URI",
+     "x-assetin": {
+      "export": "IDS @uri",
+      "zdroj": "frontmatter"
+     }
+    },
+    "vzor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Vzor (regex)",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "facet"
+   ],
+   "title": "FacetClassification",
+   "type": "object"
+  },
+  "FacetEntity": {
+   "additionalProperties": false,
+   "properties": {
+    "facet": {
+     "const": "entity",
+     "title": "Facet",
+     "type": "string"
+    },
+    "nazov": {
+     "title": "IFC entita",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS entity/name",
+      "widget": "text",
+      "zdroj": "frontmatter"
+     }
+    },
+    "predefined_type": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "PredefinedType",
+     "x-assetin": {
+      "export": "IDS entity/predefinedType",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "facet",
+    "nazov"
+   ],
+   "title": "FacetEntity",
+   "type": "object"
+  },
+  "FacetMaterial": {
+   "additionalProperties": false,
+   "properties": {
+    "cardinality": {
+     "anyOf": [
+      {
+       "enum": [
+        "required",
+        "optional",
+        "prohibited"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kardinalita",
+     "x-assetin": {
+      "trieda_obmedzenia": "pritomnost",
+      "zdroj": "frontmatter"
+     }
+    },
+    "facet": {
+     "const": "material",
+     "title": "Facet",
+     "type": "string"
+    },
+    "hodnota": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Materiál",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty": {
+     "anyOf": [
+      {
+       "items": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "integer"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "boolean"
+         }
+        ]
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Výčet",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty_ref": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Slovník",
+     "x-assetin": {
+      "cielove_typy": [
+       "STD"
+      ],
+      "kotva": "povinna",
+      "trieda_obmedzenia": "hodnota",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "uri": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "URI",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "facet"
+   ],
+   "title": "FacetMaterial",
+   "type": "object"
+  },
+  "FacetPartOf": {
+   "additionalProperties": false,
+   "properties": {
+    "cardinality": {
+     "anyOf": [
+      {
+       "enum": [
+        "required",
+        "optional",
+        "prohibited"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kardinalita",
+     "x-assetin": {
+      "trieda_obmedzenia": "pritomnost",
+      "zdroj": "frontmatter"
+     }
+    },
+    "entity": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      }
+     ],
+     "title": "Rodičovská entita",
+     "x-assetin": {
+      "export": "IDS partOf/entity",
+      "zdroj": "frontmatter"
+     }
+    },
+    "facet": {
+     "const": "partOf",
+     "title": "Facet",
+     "type": "string"
+    },
+    "predefined_type": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "PredefinedType rodiča",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "relation": {
+     "enum": [
+      "IFCRELAGGREGATES",
+      "IFCRELASSIGNSTOGROUP",
+      "IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      "IFCRELNESTS",
+      "IFCRELVOIDSELEMENT",
+      "IFCRELFILLSELEMENT"
+     ],
+     "title": "Vzťah",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS partOf/@relation",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "facet",
+    "relation",
+    "entity"
+   ],
+   "title": "FacetPartOf",
+   "type": "object"
+  },
+  "FacetProperty": {
+   "additionalProperties": false,
+   "properties": {
+    "cardinality": {
+     "anyOf": [
+      {
+       "enum": [
+        "required",
+        "optional",
+        "prohibited"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kardinalita",
+     "x-assetin": {
+      "trieda_obmedzenia": "pritomnost",
+      "zdroj": "frontmatter"
+     }
+    },
+    "datovy_typ": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "dataType",
+     "x-assetin": {
+      "export": "IDS @dataType",
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "facet": {
+     "const": "property",
+     "title": "Facet",
+     "type": "string"
+    },
+    "hodnota": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "integer"
+      },
+      {
+       "type": "number"
+      },
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Hodnota",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty": {
+     "anyOf": [
+      {
+       "items": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "integer"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "boolean"
+         }
+        ]
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Výčet",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty_ref": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Slovník",
+     "x-assetin": {
+      "cielove_typy": [
+       "STD"
+      ],
+      "kotva": "povinna",
+      "trieda_obmedzenia": "hodnota",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "nazov": {
+     "title": "Vlastnosť",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS baseName",
+      "widget": "text",
+      "zdroj": "frontmatter"
+     }
+    },
+    "pset": {
+     "title": "Property set",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS propertySet",
+      "zdroj": "frontmatter"
+     }
+    },
+    "rozsah": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Rozsah_hodnot"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Rozsah",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "uri": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "URI",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "vzor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Vzor (regex)",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "facet",
+    "pset",
+    "nazov"
+   ],
+   "title": "FacetProperty",
+   "type": "object"
+  },
+  "Rozsah_hodnot": {
+   "additionalProperties": false,
+   "description": "Numeric range → IDS bounds (shape not fixed in SCHEMA v1.3 either; kept minimal).\n\n[V26] The whole record is a value constraint (PAS 6.3.3 b); the class is declared on every field\nthat *holds* a ``rozsah``, not here, so a field descriptor carries it without being unpacked.",
+   "properties": {
+    "max": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Maximum",
+     "x-assetin": {
+      "export": "IDS maxInclusive",
+      "zdroj": "frontmatter"
+     }
+    },
+    "max_exkluzivne": {
+     "default": false,
+     "title": "Max. exkluzívne",
+     "type": "boolean",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "min": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Minimum",
+     "x-assetin": {
+      "export": "IDS minInclusive",
+      "zdroj": "frontmatter"
+     }
+    },
+    "min_exkluzivne": {
+     "default": false,
+     "title": "Min. exkluzívne",
+     "type": "boolean",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Rozsah_hodnot",
+   "type": "object"
+  }
+ },
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "additionalProperties": false,
+ "properties": {
+  "applicability": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/Applicability"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Applicability",
+   "x-assetin": {
+    "export": "IDS applicability",
+    "zdroj": "frontmatter"
+   }
+  },
+  "hodnoty": {
+   "anyOf": [
+    {
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "integer"
+       },
+       {
+        "type": "number"
+       },
+       {
+        "type": "boolean"
+       }
+      ]
+     },
+     "type": "array"
+    },
+    {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "[V11] vylučuje sa so `zdroj_hodnot`",
+   "title": "Hodnoty",
+   "x-assetin": {
+    "trieda_obmedzenia": "hodnota",
+    "zdroj": "frontmatter"
+   }
+  },
+  "id": {
+   "description": "== prvý token nadpisu (A11)",
+   "title": "ID",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov": {
+   "title": "Názov",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "overenie": {
+   "anyOf": [
+    {
+     "enum": [
+      "IDS",
+      "manual",
+      "clash-detection"
+     ],
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "§14b",
+   "title": "Overenie",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "plati": {
+   "description": "vzdy | na_vyziadanie (ER zapína cez `zapnute::`)",
+   "enum": [
+    "vzdy",
+    "na_vyziadanie"
+   ],
+   "title": "Platí",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "pokyn": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Pokyn",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "postup": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Postup (fallback)",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "poznamka": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Poznámka (rodič)",
+   "x-assetin": {
+    "odvodene": true,
+    "zdroj": "frontmatter"
+   }
+  },
+  "pritomnost_v_modeli": {
+   "anyOf": [
+    {
+     "enum": [
+      "required",
+      "optional",
+      "prohibited"
+     ],
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Prítomnosť v modeli",
+   "x-assetin": {
+    "export": "IDS minOccurs/maxOccurs",
+    "trieda_obmedzenia": "pritomnost",
+    "zdroj": "frontmatter"
+   }
+  },
+  "requirements": {
+   "default": [],
+   "items": {
+    "discriminator": {
+     "mapping": {
+      "attribute": "#/$defs/FacetAttribute",
+      "classification": "#/$defs/FacetClassification",
+      "entity": "#/$defs/FacetEntity",
+      "material": "#/$defs/FacetMaterial",
+      "partOf": "#/$defs/FacetPartOf",
+      "property": "#/$defs/FacetProperty"
+     },
+     "propertyName": "facet"
+    },
+    "oneOf": [
+     {
+      "$ref": "#/$defs/FacetEntity"
+     },
+     {
+      "$ref": "#/$defs/FacetAttribute"
+     },
+     {
+      "$ref": "#/$defs/FacetClassification"
+     },
+     {
+      "$ref": "#/$defs/FacetProperty"
+     },
+     {
+      "$ref": "#/$defs/FacetMaterial"
+     },
+     {
+      "$ref": "#/$defs/FacetPartOf"
+     }
+    ]
+   },
+   "title": "Requirements",
+   "type": "array",
+   "x-assetin": {
+    "export": "IDS requirements",
+    "zdroj": "frontmatter"
+   }
+  },
+  "rozsah": {
+   "description": "objekt | kontajner | federacia (federacia = LEN relačné cross-file)",
+   "enum": [
+    "objekt",
+    "kontajner",
+    "federacia"
+   ],
+   "title": "Rozsah",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "text": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Text",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "ucel_federacie": {
+   "default": false,
+   "title": "Účel federácie",
+   "type": "boolean",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "vynimka": {
+   "default": false,
+   "description": "núdzový ```ids blok len s vynimka: true (F7)",
+   "title": "Výnimka",
+   "type": "boolean",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "zavaznost": {
+   "anyOf": [
+    {
+     "enum": [
+      "zmluvne",
+      "musi",
+      "ma",
+      "informativne"
+     ],
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Záväznosť",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "zdroj_hodnot": {
+   "anyOf": [
+    {
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "type": "string",
+     "x-assetin": {
+      "widget": "wikilink"
+     }
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "[V11] master DiMS",
+   "title": "Zdroj hodnôt",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-C"
+    ],
+    "kotva": "ziadna",
+    "widget": "wikilink",
+    "zdroj": "frontmatter"
+   }
+  },
+  "zdroj_normy": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Zdroj (norma)",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  }
+ },
+ "required": [
+  "id",
+  "nazov",
+  "rozsah",
+  "plati"
+ ],
+ "title": "PravidloSTD",
+ "type": "object",
+ "x-assetin": {
+  "pod_zaznam": "pravidlo",
+  "schema_verzia": "1.5"
+ }
+}

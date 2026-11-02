@@ -1,0 +1,442 @@
+{
+ "projekty/budova-x/GOAL-P-01 Plochy do zmlúv.md": {
+  "data": {
+   "aktivum": "Budova X",
+   "aliases": [
+    "GOAL-P-01"
+   ],
+   "guid": null,
+   "id": "GOAL-P-01",
+   "jazyk": "sk",
+   "nazov": "Plochy do zmlúv",
+   "nazov_en": "Areas into contracts",
+   "prispieva_k": [
+    "[[GOAL-O-01]]"
+   ],
+   "stav": "WD",
+   "termin": "2027-06-30",
+   "typ": "GOAL",
+   "uroven": "projekt",
+   "verzia": 0.1,
+   "zdroj_ir": "PIR"
+  },
+  "diagnostiky": [],
+  "id": "GOAL-P-01",
+  "model": {
+   "aktivum": "Budova X",
+   "aliases": [
+    "GOAL-P-01"
+   ],
+   "autor": null,
+   "guid": null,
+   "id": "GOAL-P-01",
+   "jazyk": "sk",
+   "kpi": [],
+   "licencia": null,
+   "nazov": "Plochy do zmlúv",
+   "nazov_en": "Areas into contracts",
+   "prispieva_k": [
+    "[[GOAL-O-01]]"
+   ],
+   "stav": "WD",
+   "termin": "2027-06-30",
+   "typ": "GOAL",
+   "uroven": "projekt",
+   "verzia": "0.1",
+   "zdroj_ir": "PIR",
+   "zdroj_oir": []
+  },
+  "pod_zaznamy": [],
+  "typ": "GOAL",
+  "verzia": "c3b813b030a1351630fde9b79632c8aa8553e8cb48c9021ce0ab451b6ee7aa66",
+  "zdroje": {
+   "aktivum": "frontmatter",
+   "aliases": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "prispieva_k": "inline",
+   "stav": "frontmatter",
+   "termin": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter",
+   "zdroj_ir": "frontmatter"
+  }
+ },
+ "projekty/budova-x/PROJ-budova-x Pasportizácia budovy X.md": {
+  "data": {
+   "aktivum": "[[aktiva/Budova-X]]",
+   "aliases": [
+    "PROJ-budova-x"
+   ],
+   "autor": "Assetin",
+   "ciele": [
+    "[[GOAL-P-01]]"
+   ],
+   "er": [
+    "[[ER-0101]]"
+   ],
+   "guid": null,
+   "id": "PROJ-budova-x",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Pasportizácia budovy X",
+   "nazov_en": "Building X spatial survey",
+   "poverenie": "ARCH",
+   "projekt": "Administratívna budova X",
+   "spustacia_udalost": "[[EV-I-0007]]",
+   "stav": "WD",
+   "strany": {
+    "[[ACT-poverena/ARCH]]": {
+     "organizacia": "Ateliér X s.r.o.",
+     "zmluvne_oznacenie": "Zhotoviteľ"
+    },
+    "[[ACT-poverujuca]]": {
+     "organizacia": "Správa budov a.s.",
+     "zmluvne_oznacenie": "Objednávateľ"
+    }
+   },
+   "typ": "PROJ",
+   "udalosti": [
+    {
+     "datum": "2027-03-31",
+     "ev": "[[EV-D-0012]]"
+    }
+   ],
+   "verzia": 0.1,
+   "vystupy": [
+    {
+     "hash": null,
+     "subor": "vystupy/ids/ER-0101_ARCH.ids",
+     "typ": "IDS"
+    }
+   ]
+  },
+  "diagnostiky": [],
+  "id": "PROJ-budova-x",
+  "model": {
+   "aktivum": "[[aktiva/Budova-X]]",
+   "aliases": [
+    "PROJ-budova-x"
+   ],
+   "autor": "Assetin",
+   "ciele": [
+    "[[GOAL-P-01]]"
+   ],
+   "er": [
+    "[[ER-0101]]"
+   ],
+   "guid": null,
+   "id": "PROJ-budova-x",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Pasportizácia budovy X",
+   "nazov_en": "Building X spatial survey",
+   "poverenie": "ARCH",
+   "projekt": "Administratívna budova X",
+   "spustacia_udalost": "[[EV-I-0007]]",
+   "stav": "WD",
+   "std_projekt": null,
+   "strany": {
+    "[[ACT-poverena/ARCH]]": {
+     "organizacia": "Ateliér X s.r.o.",
+     "zmluvne_oznacenie": "Zhotoviteľ"
+    },
+    "[[ACT-poverujuca]]": {
+     "organizacia": "Správa budov a.s.",
+     "zmluvne_oznacenie": "Objednávateľ"
+    }
+   },
+   "typ": "PROJ",
+   "udalosti": [
+    {
+     "datum": "2027-03-31",
+     "ev": "[[EV-D-0012]]"
+    }
+   ],
+   "verzia": "0.1",
+   "vystupy": [
+    {
+     "hash": null,
+     "subor": "vystupy/ids/ER-0101_ARCH.ids",
+     "typ": "IDS"
+    }
+   ]
+  },
+  "pod_zaznamy": [],
+  "typ": "PROJ",
+  "verzia": "fc4228ba0603ddeb624dda7c2d0813e03a4e8db1853da6f38da9f54d1a3547c1",
+  "zdroje": {
+   "aktivum": "frontmatter",
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "ciele": "frontmatter",
+   "er": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "poverenie": "frontmatter",
+   "projekt": "frontmatter",
+   "spustacia_udalost": "frontmatter",
+   "stav": "frontmatter",
+   "strany": "frontmatter",
+   "typ": "frontmatter",
+   "udalosti": "frontmatter",
+   "verzia": "frontmatter",
+   "vystupy": "frontmatter"
+  }
+ },
+ "zadanie/GOAL/GOAL-O-01 Overená evidencia plôch.md": {
+  "data": {
+   "aliases": [
+    "GOAL-O-01"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "GOAL-O-01",
+   "jazyk": "sk",
+   "kpi": [
+    {
+     "ciel": "< 1 %",
+     "metrika": "rozdiel zmluvnej a zameranej plochy nájomných jednotiek"
+    }
+   ],
+   "licencia": "CC-BY-4.0",
+   "nazov": "Overená evidencia plôch",
+   "nazov_en": "Verified area records",
+   "stav": "WD",
+   "typ": "GOAL",
+   "uroven": "organizacia",
+   "verzia": 0.1,
+   "zdroj_ir": "OIR"
+  },
+  "diagnostiky": [],
+  "id": "GOAL-O-01",
+  "model": {
+   "aktivum": null,
+   "aliases": [
+    "GOAL-O-01"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "GOAL-O-01",
+   "jazyk": "sk",
+   "kpi": [
+    {
+     "ciel": "< 1 %",
+     "metrika": "rozdiel zmluvnej a zameranej plochy nájomných jednotiek"
+    }
+   ],
+   "licencia": "CC-BY-4.0",
+   "nazov": "Overená evidencia plôch",
+   "nazov_en": "Verified area records",
+   "prispieva_k": [],
+   "stav": "WD",
+   "termin": null,
+   "typ": "GOAL",
+   "uroven": "organizacia",
+   "verzia": "0.1",
+   "zdroj_ir": "OIR",
+   "zdroj_oir": []
+  },
+  "pod_zaznamy": [],
+  "typ": "GOAL",
+  "verzia": "0b31bbdd80899cea1058b23bfb6c00df66016d0444ce794475a8dd9a8b0d2991",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "kpi": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter",
+   "zdroj_ir": "frontmatter"
+  }
+ },
+ "zadanie/PROT/PROT-01 BIM protokol.md": {
+  "data": {
+   "aliases": [
+    "PROT-01"
+   ],
+   "autor": "Assetin",
+   "funkcie": [
+    "[[ACT-poverujuca/koordinator-BIM]]"
+   ],
+   "guid": null,
+   "id": "PROT-01",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "BIM protokol",
+   "nazov_en": "BIM protocol",
+   "odkazuje_na": [
+    "[[PROJ-budova-x]]",
+    "[[STD]]"
+   ],
+   "prednost_dokumentov": [
+    "PROT",
+    "EIR",
+    "STD",
+    "BEP"
+   ],
+   "stav": "WD",
+   "typ": "PROT",
+   "verzia": 0.1,
+   "zavaznost": "zmluvne"
+  },
+  "diagnostiky": [],
+  "id": "PROT-01",
+  "model": {
+   "aliases": [
+    "PROT-01"
+   ],
+   "autor": "Assetin",
+   "funkcie": [
+    "[[ACT-poverujuca/koordinator-BIM]]"
+   ],
+   "guid": null,
+   "id": "PROT-01",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "BIM protokol",
+   "nazov_en": "BIM protocol",
+   "odkazuje_na": [
+    "[[PROJ-budova-x]]",
+    "[[STD]]"
+   ],
+   "prednost_dokumentov": [
+    "PROT",
+    "EIR",
+    "STD",
+    "BEP"
+   ],
+   "stav": "WD",
+   "typ": "PROT",
+   "verzia": "0.1",
+   "zavaznost": "zmluvne"
+  },
+  "pod_zaznamy": [],
+  "typ": "PROT",
+  "verzia": "00f575f57698fb70c0414e7eb9194cbd1bdbeeff09b157cd12d55cf02117787a",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "funkcie": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "odkazuje_na": "frontmatter",
+   "prednost_dokumentov": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "verzia": "frontmatter",
+   "zavaznost": "frontmatter"
+  }
+ },
+ "zadanie/registre/PROP/PROP-RentableArea Prenajímateľná plocha.md": {
+  "data": {
+   "aliases": [
+    "PROP-RentableArea"
+   ],
+   "aplikovatelne_na": [
+    "IfcZone"
+   ],
+   "autor": "Assetin",
+   "datovy_typ": "number",
+   "definicia": "Súčet čistých plôch miestností zóny upravený zmluvným koeficientom.",
+   "guid": null,
+   "hodnoty": [],
+   "id": "PROP-RentableArea",
+   "ifc": {
+    "nazov": "RentableArea",
+    "pset": "Pset_Assetin_Zone"
+   },
+   "jazyk": "sk",
+   "jednotka": "https://qudt.org/vocab/unit/M2",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Prenajímateľná plocha",
+   "nazov_en": "Rentable area",
+   "odvodene_z": "[[DEF-plocha-cista]]",
+   "stav": "WD",
+   "template_type": "PSET_OCCURRENCEDRIVEN",
+   "typ": "PROP",
+   "velicina": "https://qudt.org/vocab/quantitykind/Area",
+   "verzia": 0.1,
+   "zdroj_importu": "vlastny"
+  },
+  "diagnostiky": [],
+  "id": "PROP-RentableArea",
+  "model": {
+   "aliases": [
+    "PROP-RentableArea"
+   ],
+   "aplikovatelne_na": [
+    "IfcZone"
+   ],
+   "autor": "Assetin",
+   "datovy_typ": "number",
+   "definicia": "Súčet čistých plôch miestností zóny upravený zmluvným koeficientom.",
+   "definicia_ref": null,
+   "guid": null,
+   "hodnoty": [],
+   "id": "PROP-RentableArea",
+   "ifc": {
+    "nazov": "RentableArea",
+    "pset": "Pset_Assetin_Zone"
+   },
+   "jazyk": "sk",
+   "jednotka": "https://qudt.org/vocab/unit/M2",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Prenajímateľná plocha",
+   "nazov_en": "Rentable area",
+   "odvodene_z": "[[DEF-plocha-cista]]",
+   "stav": "WD",
+   "template_type": "PSET_OCCURRENCEDRIVEN",
+   "typ": "PROP",
+   "uri": null,
+   "velicina": "https://qudt.org/vocab/quantitykind/Area",
+   "verzia": "0.1",
+   "zdroj_importu": "vlastny"
+  },
+  "pod_zaznamy": [],
+  "typ": "PROP",
+  "verzia": "fd7bb7ebc7255bf0f78465867302eac12ebb5f67d657e02dc975adbd6ed2511e",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "aplikovatelne_na": "frontmatter",
+   "autor": "frontmatter",
+   "datovy_typ": "frontmatter",
+   "definicia": "frontmatter",
+   "guid": "frontmatter",
+   "hodnoty": "frontmatter",
+   "id": "frontmatter",
+   "ifc": "frontmatter",
+   "jazyk": "frontmatter",
+   "jednotka": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "odvodene_z": "frontmatter",
+   "stav": "frontmatter",
+   "template_type": "frontmatter",
+   "typ": "frontmatter",
+   "velicina": "frontmatter",
+   "verzia": "frontmatter",
+   "zdroj_importu": "frontmatter"
+  }
+ }
+}

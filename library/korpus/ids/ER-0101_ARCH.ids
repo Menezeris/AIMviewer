@@ -1,0 +1,253 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ids:ids xmlns:ids="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <ids:info>
+    <ids:title>Priestorový model a protokol zamerania – odovzdanie</ids:title>
+    <ids:copyright>Assetin (CC-BY-4.0)</ids:copyright>
+    <ids:version>0.1</ids:version>
+    <ids:description>Poskytovateľ: Pracovná skupina architektúra (ACT-poverena/ARCH); príjemca: ACT-poverujuca</ids:description>
+    <ids:purpose>Priestorová pasportizácia</ids:purpose>
+    <ids:milestone>Odovzdanie priestorového modelu a protokolu zamerania</ids:milestone>
+  </ids:info>
+  <ids:specifications>
+    <ids:specification ifcVersion="IFC4X3_ADD2" name="Priestor (miestnosť)" identifier="IU-O-space" description="Miestnosť je nositeľom plôch, z ktorých sa odvodzuje nájomná a prevádzková evidencia (GOAL-A-01; UC-0101 T2, T3)." instructions="Každá miestnosť vrátane technických a komunikačných ako samostatný IfcSpace; obrys po líci omietky podľa DEF; jeden IfcSpace = jedna miestnosť, bez zlučovania.">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:entity>
+          <ids:name>
+            <ids:simpleValue>IFCSPACE</ids:simpleValue>
+          </ids:name>
+        </ids:entity>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:classification cardinality="required">
+          <ids:system>
+            <ids:simpleValue>CCI</ids:simpleValue>
+          </ids:system>
+        </ids:classification>
+        <ids:attribute cardinality="required" instructions="kód miestnosti podlažie.poradie, napr. 02.015; zhodný s číslom na dverách a v protokole zamerania">
+          <ids:name>
+            <ids:simpleValue>Name</ids:simpleValue>
+          </ids:name>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="[0-9]{2}\.[0-9]{3}" />
+            </xs:restriction>
+          </ids:value>
+        </ids:attribute>
+        <ids:attribute cardinality="required" instructions="názov miestnosti podľa užívania (Kancelária, Zasadačka, WC muži …)">
+          <ids:name>
+            <ids:simpleValue>LongName</ids:simpleValue>
+          </ids:name>
+        </ids:attribute>
+        <ids:attribute cardinality="required">
+          <ids:name>
+            <ids:simpleValue>PredefinedType</ids:simpleValue>
+          </ids:name>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="INTERNAL" />
+              <xs:enumeration value="EXTERNAL" />
+              <xs:enumeration value="PARKING" />
+            </xs:restriction>
+          </ids:value>
+        </ids:attribute>
+        <ids:property dataType="IFCAREAMEASURE" uri="https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossFloorArea" cardinality="required" instructions="vypočítať z obrysu IfcSpace podľa DEF-plocha-hruba">
+          <ids:propertySet>
+            <ids:simpleValue>Qto_SpaceBaseQuantities</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>GrossFloorArea</ids:simpleValue>
+          </ids:baseName>
+        </ids:property>
+        <ids:property dataType="IFCAREAMEASURE" uri="https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/NetFloorArea" cardinality="required" instructions="vypočítať z obrysu IfcSpace podľa DEF-plocha-cista (bez stĺpov a vstavaných konštrukcií vnútri priestoru)">
+          <ids:propertySet>
+            <ids:simpleValue>Qto_SpaceBaseQuantities</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>NetFloorArea</ids:simpleValue>
+          </ids:baseName>
+        </ids:property>
+        <ids:property dataType="IFCLENGTHMEASURE" uri="https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/Height" cardinality="required" instructions="svetlá výška od čistej podlahy po podhľad/strop">
+          <ids:propertySet>
+            <ids:simpleValue>Qto_SpaceBaseQuantities</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Height</ids:simpleValue>
+          </ids:baseName>
+        </ids:property>
+        <ids:property dataType="IFCBOOLEAN" uri="https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/IsExternal" cardinality="optional">
+          <ids:propertySet>
+            <ids:simpleValue>Pset_SpaceCommon</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>IsExternal</ids:simpleValue>
+          </ids:baseName>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC4X3_ADD2" name="Podlažie" identifier="IU-O-storey" description="Podlažie je kontajner priestorov a nosič výškovej úrovne; bez neho nie je členenie priestor → podlažie overiteľné (UC-0101 T2; STD-CL-01)." instructions="Jedno IfcBuildingStorey na každé podlažie vrátane podzemných a technických; Elevation voči ±0,000 objektu podľa STD-FED-01; medzipodlažia neriešiť ako samostatné podlažie, ale ako priestor s výškovým odsadením.">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:entity>
+          <ids:name>
+            <ids:simpleValue>IFCBUILDINGSTOREY</ids:simpleValue>
+          </ids:name>
+        </ids:entity>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:attribute cardinality="required" instructions="1.NP, 2.NP … 1.PP; zhodné s označením v protokole zamerania a v evakuačných plánoch">
+          <ids:name>
+            <ids:simpleValue>Name</ids:simpleValue>
+          </ids:name>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="[0-9]{1,2}\.(NP|PP)" />
+            </xs:restriction>
+          </ids:value>
+        </ids:attribute>
+        <ids:attribute cardinality="optional" instructions="prevádzkový názov (Prízemie, Suterén, Strojovňa)">
+          <ids:name>
+            <ids:simpleValue>LongName</ids:simpleValue>
+          </ids:name>
+        </ids:attribute>
+        <ids:attribute cardinality="required" instructions="výška čistej podlahy voči ±0,000 v metroch; pri pasportizácii je tento model masterom zoznamu podlaží (STD-FED-02 naň odkazuje, ostatné DiMS sa overujú voči nemu)">
+          <ids:name>
+            <ids:simpleValue>Elevation</ids:simpleValue>
+          </ids:name>
+        </ids:attribute>
+        <ids:property dataType="IFCLOGICAL" uri="https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/AboveGround" cardinality="optional" instructions="TRUE pre NP, FALSE pre PP">
+          <ids:propertySet>
+            <ids:simpleValue>Pset_BuildingStoreyCommon</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>AboveGround</ids:simpleValue>
+          </ids:baseName>
+        </ids:property>
+        <ids:property dataType="IFCAREAMEASURE" uri="https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossFloorArea" cardinality="optional">
+          <ids:propertySet>
+            <ids:simpleValue>Qto_BuildingStoreyBaseQuantities</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>GrossFloorArea</ids:simpleValue>
+          </ids:baseName>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC4X3_ADD2" name="Zóna (nájomná jednotka / spoločný priestor)" identifier="IU-O-zone" description="Zóna zoskupuje miestnosti do nájomných jednotiek a spoločných priestorov — jednotka, na ktorú sa viaže zmluva a rozúčtovanie (GOAL-A-01; UC-0101 T4; vstup UC-0201)." instructions="Každý IfcSpace s PredefinedType INTERNAL patrí práve do jednej zóny typu NajomnaJednotka alebo SpolocnyPriestor (STD-CL-04); zóna môže prechádzať podlažiami; členstvo cez IfcRelAssignsToGroup. Prenajímateľná plocha jednotky NIE JE súčasťou tohto UC — odvodí ju UC-0201 ako vlastnú vlastnosť ([[PROP-RentableArea]]).">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:entity>
+          <ids:name>
+            <ids:simpleValue>IFCZONE</ids:simpleValue>
+          </ids:name>
+        </ids:entity>
+        <ids:attribute>
+          <ids:name>
+            <ids:simpleValue>ObjectType</ids:simpleValue>
+          </ids:name>
+        </ids:attribute>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:attribute cardinality="required" instructions="NJ-001 …; stabilné počas života budovy; väzba jednotka ↔ nájomca/zmluva žije mimo modelu, model nesie iba kľúč">
+          <ids:name>
+            <ids:simpleValue>Name</ids:simpleValue>
+          </ids:name>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="(NJ|SP|TP)-[0-9]{3}" />
+            </xs:restriction>
+          </ids:value>
+        </ids:attribute>
+        <ids:attribute cardinality="required" instructions="stály popisný názov (Jednotka 2. NP východ, Vstupná hala); NIE názov nájomcu – nájomca má nositeľa v registri nájmov (UC-0201), do modelu sa neopisuje">
+          <ids:name>
+            <ids:simpleValue>LongName</ids:simpleValue>
+          </ids:name>
+        </ids:attribute>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC4X3_ADD2" name="Priestor patrí do podlažia" identifier="STD-CL-01" description="Každý IfcSpace je agregovaný priamo v IfcBuildingStorey — nie v IfcBuilding ani v inom IfcSpace. Priestory prechádzajúce podlažiami (schodisko, átrium) sa delia po podlažiach." instructions="v autorskom nástroji priradiť každú miestnosť k podlažiu; neexportovať priestory mimo podlažia">
+      <ids:applicability minOccurs="0" maxOccurs="unbounded">
+        <ids:entity>
+          <ids:name>
+            <ids:simpleValue>IFCSPACE</ids:simpleValue>
+          </ids:name>
+        </ids:entity>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:partOf cardinality="required" relation="IFCRELAGGREGATES">
+          <ids:entity>
+            <ids:name>
+              <ids:simpleValue>IFCBUILDINGSTOREY</ids:simpleValue>
+            </ids:name>
+          </ids:entity>
+        </ids:partOf>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC4X3_ADD2" name="Hierarchia site – budova – podlažie" identifier="STD-CL-03" description="V každom DiMS je práve jeden IfcSite a jeden IfcBuilding na stavebný objekt; každé IfcBuildingStorey je agregované v IfcBuilding. Rovnaké GUID IfcSite/IfcBuilding/IfcBuildingStorey naprieč DiMS rieši STD-FED-03 (federácia)." instructions="nevytvárať pomocné budovy ani podlažia pre pracovné účely v odovzdávanom súbore">
+      <ids:applicability minOccurs="0" maxOccurs="unbounded">
+        <ids:entity>
+          <ids:name>
+            <ids:simpleValue>IFCBUILDINGSTOREY</ids:simpleValue>
+          </ids:name>
+        </ids:entity>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:partOf cardinality="required" relation="IFCRELAGGREGATES">
+          <ids:entity>
+            <ids:name>
+              <ids:simpleValue>IFCBUILDING</ids:simpleValue>
+            </ids:name>
+          </ids:entity>
+        </ids:partOf>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC4X3_ADD2" name="Vnútorný priestor je členom zóny" identifier="STD-CL-04" description="Každý vnútorný priestor je členom aspoň jednej zóny typu NajomnaJednotka alebo SpolocnyPriestor; technické priestory zóny TechnickyPriestor. Priestor nesmie byť členom dvoch priestorových zón súčasne." instructions="zóny vytvárať ako IfcZone s ObjectType podľa STD-klasifikacia; priestor priradiť k zóne v autorskom nástroji">
+      <ids:applicability minOccurs="0" maxOccurs="unbounded">
+        <ids:entity>
+          <ids:name>
+            <ids:simpleValue>IFCSPACE</ids:simpleValue>
+          </ids:name>
+        </ids:entity>
+        <ids:attribute>
+          <ids:name>
+            <ids:simpleValue>PredefinedType</ids:simpleValue>
+          </ids:name>
+          <ids:value>
+            <ids:simpleValue>INTERNAL</ids:simpleValue>
+          </ids:value>
+        </ids:attribute>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:partOf cardinality="required" relation="IFCRELASSIGNSTOGROUP">
+          <ids:entity>
+            <ids:name>
+              <ids:simpleValue>IFCZONE</ids:simpleValue>
+            </ids:name>
+          </ids:entity>
+        </ids:partOf>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC4X3_ADD2" name="Zákaz IfcBuildingElementProxy" identifier="STD-CL-05" description="IfcBuildingElementProxy je zakázaný vo všetkých DiMS; každý prvok má konkrétnu IFC entitu. Ďalšie zákazy per DiMS (napr. IfcDistributionElement v ARCH) sú v [[STD-federacia]]." instructions="pred exportom mapovať kategórie na konkrétne IFC entity">
+      <ids:applicability minOccurs="0" maxOccurs="0">
+        <ids:entity>
+          <ids:name>
+            <ids:simpleValue>IFCBUILDINGELEMENTPROXY</ids:simpleValue>
+          </ids:name>
+        </ids:entity>
+      </ids:applicability>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC4X3_ADD2" name="Zóna má typ (ObjectType zo slovníka)" identifier="STD-CL-06" description="Každá IfcZone nesie ObjectType zo slovníka typov zón (STD-klasifikacia). IU-O, ktoré filtrujú zóny podľa ObjectType (IU-O-zone, zóny TZB), sa spoliehajú na toto pravidlo." instructions="ObjectType nastaviť pri založení zóny; nové typy pridávať do slovníka, nie ad hoc">
+      <ids:applicability minOccurs="0" maxOccurs="unbounded">
+        <ids:entity>
+          <ids:name>
+            <ids:simpleValue>IFCZONE</ids:simpleValue>
+          </ids:name>
+        </ids:entity>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:attribute cardinality="required">
+          <ids:name>
+            <ids:simpleValue>ObjectType</ids:simpleValue>
+          </ids:name>
+        </ids:attribute>
+      </ids:requirements>
+    </ids:specification>
+  </ids:specifications>
+</ids:ids>

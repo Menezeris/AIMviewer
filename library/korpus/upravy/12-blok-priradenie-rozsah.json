@@ -1,0 +1,31 @@
+{
+ "nazov": "blok-priradenie-rozsah",
+ "strom": "vzor",
+ "texty_po": {
+  "zadanie/IU-C/IU-C-arch-model Architektonický priestorový model.md": "---\nid: IU-C-arch-model\naliases: [IU-C-arch-model]\nguid:\ntyp: IU-C\nnazov: Architektonický priestorový model\nnazov_en: Architectural spatial model\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Assetin\nlicencia: CC-BY-4.0\ndruh: model\ndatovy_typ_29481: IFC File\nforma:\n  format: IFC\n  verzia_schemy: IFC4X3_ADD2\n  nativny_format: RVT\n  max_velkost_mb: 300\nidentifikacia:\n  pravidlo: \"[[STD-NAME-CONT]]\"\n  vzor: \"^[A-Z0-9]{2,6}-ARCH-ZZ-XX-M3-A-[0-9]{4}$\"\nmetadata_cde:\n  status: S4                           # odovzdanie na schválenie; po autorizácii A1 (STD-cde)\n  revizia_vzor: \"^P[0-9]{2}$\"\n  klasifikacia_bezpecnosti: interna\ntidp:\n  odhad_pracnosti_h:\npokyn: \"názov podľa STD-NAME-CONT; export IFC4X3_ADD2 s Qto_SpaceBaseQuantities a IfcRelAssignsToGroup; jeden súbor na stavebný objekt; IfcProject.Name = kód aktíva; georeferencovanie dedí STD-FED-01\"\noverenie: manual\npostup: \"názov podľa vzoru; hlavička FILE_SCHEMA = IFC4X3_ADD2; veľkosť ≤ 300 MB; IfcMapConversion vs. STD-FED-01; status S4 a revízia podľa vzoru v CDE; ids-checker bez chýb pred nahraním\"\nautomatizovatelne: true\nzavaznost: musi\n---\n\n## Ukotvenie (povinné, ≥1)\nviaze_sa_na:: #aktivum\n<!-- literál vedome: kontajner pokrýva celý stavebný objekt; ukotvenie na jednotlivý IU-O by bolo zavádzajúce -->\n\n## Obsah (M:N)\n```yaml\nobsahuje:\n  - iu: \"[[IU-O-space]]\"\n    rozsah: [geometria, alfanumerika]\n  - iu: \"[[IU-O-storey]]\"\n  - iu: \"[[IU-O-zone]]\"\n```\n\n## Roly\nposkytovatel:: [[ACT-poverena/ARCH]]\noveruje:: [[ACT-poverujuca/koordinator-BIM]]\n\n## TIDP väzby\npredchodca::\n<!-- zameranie geodeta (T1) je vstup modelu, nie kontajner – geodet odovzdáva až protokol nad hotovým modelom -->\nnadvaznost:: [[IU-C-protokol-zamerania]], [[IU-C-vzt-model]]\n\n## Väzby\nnadradene_pri_rozpore:: [[IU-C-protokol-zamerania]]\n<!-- smer: cieľ odkazu má pri rozpore prednosť (potvrdené zameranie > model); model je databáza, protokol je jeho potvrdený export -->\n"
+ },
+ "vstup": {
+  "zmeny": [
+   {
+    "hodnota": [
+     "geometria",
+     "alfanumerika"
+    ],
+    "id": "IU-C-arch-model",
+    "pointer": "/obsahuje/0/rozsah"
+   }
+  ]
+ },
+ "vysledok": {
+  "diagnostiky": [],
+  "konflikt": false,
+  "odmietnute": [],
+  "ok": true,
+  "premenovane": [],
+  "vytvorene": [],
+  "zapisane": [
+   "zadanie/IU-C/IU-C-arch-model Architektonický priestorový model.md"
+  ]
+ },
+ "zmazane": []
+}

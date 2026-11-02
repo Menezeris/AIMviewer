@@ -1,0 +1,703 @@
+{
+ "$defs": {
+  "Forma": {
+   "additionalProperties": false,
+   "properties": {
+    "format": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Formát",
+     "x-assetin": {
+      "export": "7817-3 Document/Format ; IDS @ifcVersion",
+      "technicky": true,
+      "zdroj": "frontmatter"
+     }
+    },
+    "max_velkost_mb": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Max. veľkosť (MB)",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "nativny_format": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Natívny formát",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "verzia_schemy": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Verzia schémy",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Forma",
+   "type": "object"
+  },
+  "Prepis": {
+   "additionalProperties": false,
+   "description": "Delta ER > IU (§16.9): only ``povinnost | hodnoty | rozsah | profil | zavaznost``.",
+   "properties": {
+    "geometria.profil": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Profil geometrie",
+     "x-assetin": {
+      "cielove_typy": [
+       "GEO"
+      ],
+      "kotva": "ziadna",
+      "widget": "wikilink",
+      "zdroj": "blok"
+     }
+    },
+    "hodnoty": {
+     "anyOf": [
+      {
+       "items": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "integer"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "boolean"
+         }
+        ]
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Hodnoty",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty_ref": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Slovník",
+     "x-assetin": {
+      "cielove_typy": [
+       "STD"
+      ],
+      "kotva": "povinna",
+      "trieda_obmedzenia": "hodnota",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "iu": {
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "title": "IU",
+     "type": "string",
+     "x-assetin": {
+      "cielove_typy": [
+       "IU-O",
+       "IU-C"
+      ],
+      "kotva": "ziadna",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "polozka": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "kľúč položky: `atribut` alebo `nazov`; pri nejednoznačnosti `Pset.nazov`",
+     "title": "Položka",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "povinnost": {
+     "anyOf": [
+      {
+       "enum": [
+        "required",
+        "optional",
+        "prohibited"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Povinnosť",
+     "x-assetin": {
+      "trieda_obmedzenia": "pritomnost",
+      "zdroj": "frontmatter"
+     }
+    },
+    "rozsah": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Rozsah_hodnot"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Rozsah",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "zavaznost": {
+     "anyOf": [
+      {
+       "enum": [
+        "zmluvne",
+        "musi",
+        "ma",
+        "informativne"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Záväznosť",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "iu"
+   ],
+   "title": "Prepis",
+   "type": "object"
+  },
+  "Rozsah_hodnot": {
+   "additionalProperties": false,
+   "description": "Numeric range → IDS bounds (shape not fixed in SCHEMA v1.3 either; kept minimal).\n\n[V26] The whole record is a value constraint (PAS 6.3.3 b); the class is declared on every field\nthat *holds* a ``rozsah``, not here, so a field descriptor carries it without being unpacked.",
+   "properties": {
+    "max": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Maximum",
+     "x-assetin": {
+      "export": "IDS maxInclusive",
+      "zdroj": "frontmatter"
+     }
+    },
+    "max_exkluzivne": {
+     "default": false,
+     "title": "Max. exkluzívne",
+     "type": "boolean",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "min": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Minimum",
+     "x-assetin": {
+      "export": "IDS minInclusive",
+      "zdroj": "frontmatter"
+     }
+    },
+    "min_exkluzivne": {
+     "default": false,
+     "title": "Min. exkluzívne",
+     "type": "boolean",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Rozsah_hodnot",
+   "type": "object"
+  }
+ },
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "additionalProperties": false,
+ "properties": {
+  "aliases": {
+   "default": [],
+   "description": "[V18] udržiava writer: vždy obsahuje `id` (Obsidian návrhár, Dataview)",
+   "items": {
+    "type": "string"
+   },
+   "title": "Aliasy",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "autor": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Autor",
+   "x-assetin": {
+    "export": "authoring/author",
+    "zdroj": "frontmatter"
+   }
+  },
+  "forma": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/Forma"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Forma",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "guid": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "generuje nástroj",
+   "title": "GUID",
+   "x-assetin": {
+    "export": "specId/guid ; dt:GUID",
+    "zdroj": "frontmatter"
+   }
+  },
+  "id": {
+   "description": "prefix + číslo alebo cesta; nesie ho cesta súboru (§0.4), vo frontmatter kópia",
+   "title": "ID",
+   "type": "string",
+   "x-assetin": {
+    "export": "29481-3 specId/localCode ; 7817-3 name",
+    "zdroj": "frontmatter"
+   }
+  },
+  "jazyk": {
+   "default": "sk",
+   "description": "ISO 639-1",
+   "title": "Jazyk",
+   "type": "string",
+   "x-assetin": {
+    "export": "uc/language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "licencia": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Licencia",
+   "x-assetin": {
+    "export": "authoring/copyright",
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov": {
+   "title": "Názov",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov_en": {
+   "minLength": 1,
+   "title": "Názov (EN)",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/shortTitle ; 7817-3 Purpose/Language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "obsahuje": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Obsahuje",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-O",
+     "IU-C"
+    ],
+    "export": "informationUnit / subInformationUnit",
+    "kotva": "ziadna",
+    "sekcia": "Informačné jednotky",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "poskytovatel_predvoleny": {
+   "anyOf": [
+    {
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "type": "string",
+     "x-assetin": {
+      "widget": "wikilink"
+     }
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "len pre IU bez vlastného poskytovateľa",
+   "title": "Predvolený poskytovateľ",
+   "x-assetin": {
+    "cielove_typy": [
+     "ACT"
+    ],
+    "kotva": "ziadna",
+    "widget": "wikilink",
+    "zdroj": "frontmatter"
+   }
+  },
+  "precondition": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Precondition",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "ER"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Popis",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "prepisy": {
+   "default": [],
+   "items": {
+    "$ref": "#/$defs/Prepis"
+   },
+   "title": "Prepisy",
+   "type": "array",
+   "x-assetin": {
+    "sekcia": "Prepisy pre túto výmenu",
+    "zdroj": "blok"
+   }
+  },
+  "prijemca": {
+   "anyOf": [
+    {
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "type": "string",
+     "x-assetin": {
+      "widget": "wikilink"
+     }
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "jeden na výmenu; IU dedí",
+   "title": "Príjemca",
+   "x-assetin": {
+    "cielove_typy": [
+     "ACT"
+    ],
+    "kotva": "ziadna",
+    "widget": "wikilink",
+    "zdroj": "frontmatter"
+   }
+  },
+  "referencne_info": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Referenčné informácie",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-C"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Popis",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "spustacia_udalost": {
+   "default": [],
+   "description": "delivery, ≥1",
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Spúšťacia udalosť",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "EV"
+    ],
+    "export": "7817-3 InformationDeliveryMilestone ; IDS info/milestone",
+    "kotva": "ziadna",
+    "sekcia": "Popis",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "standard": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Štandard",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "STD"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Popis",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "stav": {
+   "enum": [
+    "NP",
+    "WD",
+    "PUB",
+    "WDRL"
+   ],
+   "title": "Stav",
+   "type": "string",
+   "x-assetin": {
+    "export": "documentStatus",
+    "zdroj": "frontmatter"
+   }
+  },
+  "typ": {
+   "enum": [
+    "GOAL",
+    "UC",
+    "ER",
+    "IU-O",
+    "IU-C",
+    "STD",
+    "GEO",
+    "PROP",
+    "DEF",
+    "EV",
+    "ACT",
+    "PROT",
+    "PROJ"
+   ],
+   "title": "Typ",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "uc": {
+   "default": [],
+   "description": "práve jeden (kontroluje C3)",
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "UC",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "UC"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Popis",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "verzia": {
+   "title": "Verzia",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/version",
+    "zdroj": "frontmatter"
+   }
+  },
+  "zapnute": {
+   "default": [],
+   "description": "plati: na_vyziadanie",
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Zapnuté pravidlá",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "STD"
+    ],
+    "kotva": "volitelna",
+    "sekcia": "Popis",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  }
+ },
+ "required": [
+  "id",
+  "typ",
+  "nazov",
+  "nazov_en",
+  "stav",
+  "verzia"
+ ],
+ "title": "ER",
+ "type": "object",
+ "x-assetin": {
+  "pod_zaznamy": [],
+  "schema_verzia": "1.5",
+  "sekcie": [
+   "Popis",
+   "Informačné jednotky",
+   "Prepisy pre túto výmenu"
+  ],
+  "typ": "ER"
+ }
+}

@@ -1,0 +1,28 @@
+{
+ "nazov": "proza",
+ "strom": "vzor",
+ "texty_po": {
+  "zadanie/ER/ER-0101 Priestorový model a protokol zamerania – odovzdanie.md": "---\nid: ER-0101\naliases: [ER-0101]\nguid:\ntyp: ER\nnazov: Priestorový model a protokol zamerania – odovzdanie\nnazov_en: Spatial model and survey report – handover\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Assetin\nlicencia: CC-BY-4.0\nforma:\n  format: IFC\n  verzia_schemy: IFC4X3_ADD2\nposkytovatel_predvoleny: \"[[ACT-poverena/ARCH]]\"\nprijemca: \"[[ACT-poverujuca]]\"\n---\n\n## Popis\nNový popis výmeny.\nDruhý riadok.\nuc:: [[UC-0101]]\nspustacia_udalost:: [[EV-D-0012]]\nreferencne_info:: [[IU-C-podklady-PD]]\nstandard:: [[STD]]\nzapnute:: [[STD-CL-04]]\n\n## Informačné jednotky\nobsahuje:: [[IU-C-arch-model]], [[IU-C-protokol-zamerania]]\n\n## Prepisy pre túto výmenu\n<!-- delta voči IU (prednosť ER > IU); len hodnoty, nie definície -->\n```yaml\nprepisy:\n  - iu: \"[[IU-O-space]]\"\n    polozka: GrossFloorArea\n    povinnost: required\n  - iu: \"[[IU-O-space]]\"\n    polozka: Height\n    povinnost: required\n  - iu: \"[[IU-O-zone]]\"\n    polozka: LongName\n    povinnost: required\n```\n"
+ },
+ "vstup": {
+  "zmeny": [
+   {
+    "hodnota": "Nový popis výmeny.\nDruhý riadok.",
+    "id": "ER-0101",
+    "pointer": "/__proza/2"
+   }
+  ]
+ },
+ "vysledok": {
+  "diagnostiky": [],
+  "konflikt": false,
+  "odmietnute": [],
+  "ok": true,
+  "premenovane": [],
+  "vytvorene": [],
+  "zapisane": [
+   "zadanie/ER/ER-0101 Priestorový model a protokol zamerania – odovzdanie.md"
+  ]
+ },
+ "zmazane": []
+}
