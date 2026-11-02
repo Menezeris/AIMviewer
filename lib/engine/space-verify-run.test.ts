@@ -75,7 +75,7 @@ describe("ifc_measure verify=true (D-185)", () => {
       expect(saved[0].run).toMatchObject({ scope: "IfcSpace", registry_version: 3, model_revisions: { MINI: 7 }, counts: { green: 8 }, author: "test" });
       expect(saved[0].rows).toHaveLength(8);
       expect(saved[0].rows.every((x) => x.revision === 7 && x.global_id === SPACE && x.method.length > 0)).toBe(true);
-      // D-185 UI: riadok nesie vysvetlenie a bunky vzorca so zdrojovým prvkom (stĺpce z pending migrácie verification_inputs).
+      // D-185 UI: riadok nesie vysvetlenie a bunky vzorca so zdrojovým prvkom (stĺpce z migrácie verification_inputs).
       const hs = saved[0].rows.find((x) => x.recipe === "space.height.slabs@2")!;
       expect(hs.explanation).toMatch(/od vrchu dosky pod/);
       expect(hs.inputs?.expression).toBe("A - B");

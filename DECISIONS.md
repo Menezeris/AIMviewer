@@ -8451,7 +8451,7 @@ ribbon AIM > Overovanie), bunky pri všetkých veličinách.
 - **Bunky a vysvetlenie** v motore (`RecipeResult.explanation`, `expression`, `cells` so zdrojovým GUID) pre všetkých 8 receptov registra v3
   podľa tabuľky návrhu; vysvetlenie je pole registra (`QuantityMethod.explanation`), Height `space.height.own` má `check: true`.
   `file_meta` = `MethodOfMeasurement` sady a `Formula` veličiny zo súboru. Ukladá sa do `verification_results.inputs` / `explanation`
-  (pending migrácia `20261102230000_verification_inputs.sql`); bez nej host uloží beh bez buniek a viewer ukáže vzorec textom.
+  (migrácia `20261102230000_verification_inputs.sql`, aplikovaná na produkciu 2. 11., Samuel "áno" cez orchestrátora); DB bez nej (lokálna) dostane beh bez buniek a viewer ukáže vzorec textom.
 - **`help_href` = `/overenie`**: nová malá stránka hosta, ktorá číta register (stavy, recepty s vysvetlením, metódou, toleranciou,
   definíciou a odkazom na bSI, pravidlá) a odkazuje na tento záznam.
 - **Limity Vercel:** `latest` 30 s, `run` 180 s, `run_all` 300 s (Hobby s fluid compute; Pro až 800 s). Prvý beh na ASR v79 zvládol 83 miestností

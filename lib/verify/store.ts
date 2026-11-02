@@ -35,7 +35,7 @@ export function supabaseVerificationStore(): VerificationStore {
           return { ...rest, run_id: id };
         });
         const { error: e } = await db.from("verification_results").insert(chunk);
-        // Kým pending migrácia `verification_inputs` nie je v DB, beh sa uloží bez buniek (viewer ukáže vzorec textom).
+        // DB bez migrácie `verification_inputs` (napr. lokálna): beh sa uloží bez buniek (viewer ukáže vzorec textom).
         if (e && !withoutInputs && isMissingInputsColumn(e)) {
           withoutInputs = true;
           i -= WRITE_CHUNK;

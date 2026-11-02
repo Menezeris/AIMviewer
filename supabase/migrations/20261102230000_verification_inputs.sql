@@ -1,5 +1,5 @@
 -- D-185 UI (fajočky overenia výmer v paneli vlastností): bunky vzorca a vysvetlenie receptu pri výsledku overenia.
--- PRIPRAVENÉ, NESPUSTENÉ (supabase/pending): aplikuje orchestrátor so Samuelovým slovom, potom presun do migrations.
+-- APLIKOVANÉ na produkciu 2. 11. (Samuel "áno", orchestrátor).
 -- Aditívne: dva nové stĺpce vo verification_results, v_verification_latest dostane tie isté stĺpce na konci
 -- (create or replace view smie stĺpce len pridať na koniec). Staré riadky ostanú s NULL; viewer vtedy ukáže vzorec textom.
 -- Kým migrácia nie je v DB, host (lib/verify/store.ts) uloží beh bez týchto stĺpcov a nič sa nestratí z výpočtu.

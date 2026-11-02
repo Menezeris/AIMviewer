@@ -1,6 +1,5 @@
--- D-185 UI: stĺpce inputs a explanation (pripravená migrácia supabase/pending/20261102230000_verification_inputs.sql).
--- Spustenie na lokálnej DB s aplikovanými migráciami a pripravenou migráciou (nikdy produkcia):
---   psql -v ON_ERROR_STOP=1 -f supabase/pending/20261102230000_verification_inputs.sql
+-- D-185 UI: stĺpce inputs a explanation (migrácia supabase/migrations/20261102230000_verification_inputs.sql, aplikovaná 2. 11.).
+-- Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/verification_inputs.sql
 -- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
 begin;

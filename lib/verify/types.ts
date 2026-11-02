@@ -28,9 +28,9 @@ export interface VerificationResultWrite {
   note: string | null;
   distinct_heights: number[] | null;
   anchors: Array<{ global_id: string; role: string; z_m?: number }>;
-  /** Ako sa recept počíta (register metód, D-185 UI); stĺpec z pending migrácie `verification_inputs`. */
+  /** Ako sa recept počíta (register metód, D-185 UI); stĺpec z migrácie `verification_inputs`. */
   explanation?: string | null;
-  /** Bunky vzorca a údaje zo súboru: `{expression?, cells, file_meta?}`; stĺpec z pending migrácie `verification_inputs`. */
+  /** Bunky vzorca a údaje zo súboru: `{expression?, cells, file_meta?}`; stĺpec z migrácie `verification_inputs`. */
   inputs?: VerificationInputs | null;
 }
 
@@ -50,6 +50,6 @@ export interface VerificationInputs {
 }
 
 export interface VerificationStore {
-  /** `without_inputs` = DB ešte nemá stĺpce `inputs` / `explanation` (pending migrácia), uložilo sa bez nich. */
+  /** `without_inputs` = DB ešte nemá stĺpce `inputs` / `explanation` (migrácia `verification_inputs` chýba), uložilo sa bez nich. */
   saveRun(run: VerificationRunWrite, results: VerificationResultWrite[]): Promise<{ id: string; without_inputs?: boolean }>;
 }
