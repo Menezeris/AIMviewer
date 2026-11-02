@@ -17,6 +17,12 @@ export interface Odkaz {
   alias: string | null;
 }
 
+/** Odkaz s metadátami poľa (`x-assetin` nositeľa: cieľové typy, politika kotvy), ako `_wikilinky` v Pythone. */
+export interface OdkazMeta extends Odkaz {
+  raw: string;
+  meta: Record<string, unknown>;
+}
+
 export interface Projekcia {
   frontmatter: Record<string, unknown> | null;
   data: Record<string, unknown> | null;
@@ -45,13 +51,13 @@ function vetvy(n: JS, defs: Record<string, JS>): JS[] {
 }
 
 /** `_walk` / `_wikilinky`: odkazy z typovaného modelu v poradí polí, ukazovateľ s aliasom poľa. */
-function walk(v: unknown, ptr: string, n: JS, defs: Record<string, JS>, meta: JS, out: Odkaz[]) {
+function walk(v: unknown, ptr: string, n: JS, defs: Record<string, JS>, meta: JS, out: OdkazMeta[]) {
   if (v === null || v === undefined) return;
   const b = vetvy(n, defs);
   if (typeof v === "string") {
     if (b.some((x) => x.pattern === WIKILINK_PATTERN)) {
       const w = parseWikilink(v);
-      if (w) out.push({ pointer: ptr, ...w });
+      if (w) out.push({ pointer: ptr, ...w, raw: v.trim(), meta });
     }
     return;
   }
@@ -72,26 +78,30 @@ function walk(v: unknown, ptr: string, n: JS, defs: Record<string, JS>, meta: JS
     for (const [k, x] of Object.entries(o)) {
       if (meta.widget === "wikilink-map" && k.startsWith("[[")) {
         const w = parseWikilink(k);
-        if (w) out.push({ pointer: `${ptr}/${k}`, ...w });
+        if (w) out.push({ pointer: `${ptr}/${k}`, ...w, raw: k.trim(), meta: { cielove_typy: ["ACT"], kotva: "ziadna" } });
       }
       walk(x, `${ptr}/${k}`, hodnota, defs, meta, out);
     }
   }
 }
 
-function pole(o: Record<string, unknown>, prefix: string, model: JS, defs: Record<string, JS>, out: Odkaz[]) {
+function pole(o: Record<string, unknown>, prefix: string, model: JS, defs: Record<string, JS>, out: OdkazMeta[]) {
   for (const [k, n] of Object.entries(model.properties as Record<string, JS>)) {
     const v = k in o ? o[k] : o[k.replace(/\./g, "_")];
     walk(v, `${prefix}/${k}`, n, defs, (n["x-assetin"] ?? {}) as JS, out);
   }
 }
 
-export function odkazyModelu(typ: string, model: Record<string, unknown>): Odkaz[] {
-  const m = modelPreTyp(typ);
-  if (!m) return [];
-  const out: Odkaz[] = [];
-  pole(model, "", m.js, (m.js.$defs ?? {}) as Record<string, JS>, out);
+/** `_wikilinky(model)` nad JSON Schema modelu (typ poznámky alebo pod-záznam). */
+export function odkazySchemy(js: JS, model: Record<string, unknown>): OdkazMeta[] {
+  const out: OdkazMeta[] = [];
+  pole(model, "", js, (js.$defs ?? {}) as Record<string, JS>, out);
   return out;
+}
+
+export function odkazyModelu(typ: string, model: Record<string, unknown>): OdkazMeta[] {
+  const m = modelPreTyp(typ);
+  return m ? odkazySchemy(m.js, model) : [];
 }
 
 /** `projekcia(rel, text)`. */
@@ -102,7 +112,7 @@ export function projekcia(rel: string, text: string): Projekcia {
   return {
     frontmatter: fm && !fm.chyba && fm.data ? fm.data : null,
     data: n.model,
-    odkazy: n.model ? odkazyModelu(String(n.model.typ), n.model) : [],
+    odkazy: n.model ? odkazyModelu(String(n.model.typ), n.model).map(({ pointer, ciel, kotva, alias }) => ({ pointer, ciel, kotva, alias })) : [],
     diagnostiky: n.diagnostiky,
   };
 }
