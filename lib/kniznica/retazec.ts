@@ -11,7 +11,7 @@ import { parseWikilink } from "./projekcia";
 import { POPISKY_TYPU_ULOHY, TRIEDY_TYPOV } from "./schema/triedy";
 
 type M = Record<string, unknown>;
-const ASPEKTY = ["geometria", "alfanumerika", "dokumentacia"];
+export const ASPEKTY = ["geometria", "alfanumerika", "dokumentacia"];
 
 const PASMO_ROLY: Record<string, string> = {
   ciel: "19650-1", ucel: "29481", udalost: "29481", uloha: "29481", vymena: "29481", dodanie: "29481", jednotka: "7817", kontajner: "7817",

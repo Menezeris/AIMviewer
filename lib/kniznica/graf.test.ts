@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { nacitajKniznicuGraf, slug } from "./graf";
 import { grafJson } from "./graf-json";
 import type { Diagnostika } from "./loader";
+import { validuj } from "./validator";
 
 const KORPUS = join(process.cwd(), "library", "korpus", "stromy");
 const json = (rel: string) => JSON.parse(readFileSync(join(KORPUS, rel), "utf8"));
@@ -17,7 +18,7 @@ describe("korpus zhody: graf knižnice a graf_json (krok 4a portu, D-186)", () =
     describe(`strom ${strom}`, () => {
       const k = nacitajKniznicuGraf(json(`${strom}/subory.json`));
       const editor = json(`${strom}/editor.json`);
-      const g = JSON.parse(JSON.stringify(grafJson(k, editor.diagnostiky)));
+      const g = JSON.parse(JSON.stringify(grafJson(k, validuj(k))));
 
       for (const cast of ["kniznica", "kaskada", "rodiny", "hrany"]) it(cast, () => expect(g[cast]).toEqual(editor[cast]));
       it("uzly", () => {

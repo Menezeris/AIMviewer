@@ -1,0 +1,107 @@
+{
+ "vzor": [
+  {
+   "note_id": "IU-C-arch-model",
+   "json_pointer": "/identifikacia/pravidlo",
+   "uroven": "E",
+   "kod": "H2",
+   "sprava": "[[STD-NAME-CONT]] sa nerozlíši, a generátor ho pre cieľ potrebuje (pole `identifikacia`)",
+   "subor": "zadanie/IU-C/IU-C-arch-model Architektonický priestorový model.md",
+   "riadok": null
+  },
+  {
+   "note_id": "IU-C-protokol-zamerania",
+   "json_pointer": "/identifikacia/pravidlo",
+   "uroven": "E",
+   "kod": "H2",
+   "sprava": "[[STD-NAME-CONT]] sa nerozlíši, a generátor ho pre cieľ potrebuje (pole `identifikacia`)",
+   "subor": "zadanie/IU-C/IU-C-protokol-zamerania Protokol zamerania priestorov.md",
+   "riadok": null
+  },
+  {
+   "note_id": "IU-O-space",
+   "json_pointer": "/klasifikacia/0/pravidlo",
+   "uroven": "E",
+   "kod": "H2",
+   "sprava": "[[STD-klasifikacia#CCI-priestory]] sa nerozlíši, a generátor ho pre cieľ potrebuje (pole `klasifikacia`)",
+   "subor": "zadanie/IU-O/IU-O-space Priestor.md",
+   "riadok": null
+  },
+  {
+   "note_id": "IU-O-space",
+   "json_pointer": "/alfanumerika/0/pravidlo",
+   "uroven": "E",
+   "kod": "H2",
+   "sprava": "[[STD-NAME-03]] sa nerozlíši, a generátor ho pre cieľ potrebuje (pole `alfanumerika`)",
+   "subor": "zadanie/IU-O/IU-O-space Priestor.md",
+   "riadok": null
+  },
+  {
+   "note_id": "IU-O-storey",
+   "json_pointer": "/alfanumerika/0/pravidlo",
+   "uroven": "E",
+   "kod": "H2",
+   "sprava": "[[STD-NAME-02]] sa nerozlíši, a generátor ho pre cieľ potrebuje (pole `alfanumerika`)",
+   "subor": "zadanie/IU-O/IU-O-storey Podlažie.md",
+   "riadok": null
+  },
+  {
+   "note_id": "IU-O-zone",
+   "json_pointer": "/filter/0/hodnoty_ref",
+   "uroven": "E",
+   "kod": "H2",
+   "sprava": "[[STD-klasifikacia#typy-zon-priestorove]] sa nerozlíši, a generátor ho pre cieľ potrebuje (pole `filter`)",
+   "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+   "riadok": null
+  },
+  {
+   "note_id": "IU-O-zone",
+   "json_pointer": "/alfanumerika/0/pravidlo",
+   "uroven": "E",
+   "kod": "H2",
+   "sprava": "[[STD-NAME-04]] sa nerozlíši, a generátor ho pre cieľ potrebuje (pole `alfanumerika`)",
+   "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+   "riadok": null
+  },
+  {
+   "note_id": "STD-clenenie",
+   "json_pointer": "#STD-CL-06/requirements/0/hodnoty_ref",
+   "uroven": "E",
+   "kod": "H2",
+   "sprava": "[[STD-klasifikacia#typy-zon]] sa nerozlíši, a generátor ho pre cieľ potrebuje (pole `#STD-CL-06`)",
+   "subor": "zadanie/STD/STD-clenenie.md",
+   "riadok": 132
+  }
+ ],
+ "kniznica": [],
+ "chybne": [
+  {
+   "note_id": "IU-O-9001",
+   "json_pointer": "/alfanumerika/4/hodnoty_ref",
+   "uroven": "E",
+   "kod": "H2",
+   "sprava": "[[STD-neexistuje#slovnik]] sa nerozlíši, a generátor ho pre cieľ potrebuje (pole `alfanumerika`)",
+   "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+   "riadok": null
+  }
+ ],
+ "regexy": {
+  "[a-z": "unterminated character set at position 0",
+  "(ab": "missing ), unterminated subpattern at position 0",
+  "ab)": "unbalanced parenthesis at position 2",
+  "*a": "nothing to repeat at position 0",
+  "a(?P<x>b)(?P=x)": null,
+  "^[0-9]{2}\\.[0-9]{3}$": null,
+  "a|*b": "nothing to repeat at position 2",
+  "(?:x": "missing ), unterminated subpattern at position 0",
+  "[]a]": null,
+  "[^]a]": null,
+  "x{2,1}": "min repeat greater than max repeat at position 2",
+  "\\": "bad escape (end of pattern) at position 0",
+  "a++": null,
+  "(?<=a)b": null,
+  "[a-\\d]": "bad character range a-\\d at position 1",
+  "(?i)ab": null,
+  "ab(?i)": "global flags not at the start of the expression at position 2"
+ }
+}
