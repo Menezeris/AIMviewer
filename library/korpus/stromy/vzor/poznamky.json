@@ -1,0 +1,2898 @@
+{
+ "zadanie/ER/ER-0101 Priestorový model a protokol zamerania – odovzdanie.md": {
+  "data": {
+   "aliases": [
+    "ER-0101"
+   ],
+   "autor": "Assetin",
+   "forma": {
+    "format": "IFC",
+    "verzia_schemy": "IFC4X3_ADD2"
+   },
+   "guid": null,
+   "id": "ER-0101",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Priestorový model a protokol zamerania – odovzdanie",
+   "nazov_en": "Spatial model and survey report – handover",
+   "obsahuje": [
+    "[[IU-C-arch-model]]",
+    "[[IU-C-protokol-zamerania]]"
+   ],
+   "poskytovatel_predvoleny": "[[ACT-poverena/ARCH]]",
+   "prepisy": [
+    {
+     "iu": "[[IU-O-space]]",
+     "polozka": "GrossFloorArea",
+     "povinnost": "required"
+    },
+    {
+     "iu": "[[IU-O-space]]",
+     "polozka": "Height",
+     "povinnost": "required"
+    },
+    {
+     "iu": "[[IU-O-zone]]",
+     "polozka": "LongName",
+     "povinnost": "required"
+    }
+   ],
+   "prijemca": "[[ACT-poverujuca]]",
+   "referencne_info": [
+    "[[IU-C-podklady-PD]]"
+   ],
+   "spustacia_udalost": [
+    "[[EV-D-0012]]"
+   ],
+   "standard": [
+    "[[STD]]"
+   ],
+   "stav": "WD",
+   "typ": "ER",
+   "uc": [
+    "[[UC-0101]]"
+   ],
+   "verzia": 0.1,
+   "zapnute": [
+    "[[STD-CL-04]]"
+   ]
+  },
+  "diagnostiky": [],
+  "id": "ER-0101",
+  "model": {
+   "aliases": [
+    "ER-0101"
+   ],
+   "autor": "Assetin",
+   "forma": {
+    "format": "IFC",
+    "max_velkost_mb": null,
+    "nativny_format": null,
+    "verzia_schemy": "IFC4X3_ADD2"
+   },
+   "guid": null,
+   "id": "ER-0101",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Priestorový model a protokol zamerania – odovzdanie",
+   "nazov_en": "Spatial model and survey report – handover",
+   "obsahuje": [
+    "[[IU-C-arch-model]]",
+    "[[IU-C-protokol-zamerania]]"
+   ],
+   "poskytovatel_predvoleny": "[[ACT-poverena/ARCH]]",
+   "precondition": [],
+   "prepisy": [
+    {
+     "geometria_profil": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "iu": "[[IU-O-space]]",
+     "polozka": "GrossFloorArea",
+     "povinnost": "required",
+     "rozsah": null,
+     "zavaznost": null
+    },
+    {
+     "geometria_profil": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "iu": "[[IU-O-space]]",
+     "polozka": "Height",
+     "povinnost": "required",
+     "rozsah": null,
+     "zavaznost": null
+    },
+    {
+     "geometria_profil": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "iu": "[[IU-O-zone]]",
+     "polozka": "LongName",
+     "povinnost": "required",
+     "rozsah": null,
+     "zavaznost": null
+    }
+   ],
+   "prijemca": "[[ACT-poverujuca]]",
+   "referencne_info": [
+    "[[IU-C-podklady-PD]]"
+   ],
+   "spustacia_udalost": [
+    "[[EV-D-0012]]"
+   ],
+   "standard": [
+    "[[STD]]"
+   ],
+   "stav": "WD",
+   "typ": "ER",
+   "uc": [
+    "[[UC-0101]]"
+   ],
+   "verzia": "0.1",
+   "zapnute": [
+    "[[STD-CL-04]]"
+   ]
+  },
+  "pod_zaznamy": [],
+  "typ": "ER",
+  "verzia": "3015675b1dcf41e286a4c81937512af67d78032492ecec77b2fe018fcc70910a",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "forma": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "obsahuje": "inline",
+   "poskytovatel_predvoleny": "frontmatter",
+   "prepisy": "blok",
+   "prijemca": "frontmatter",
+   "referencne_info": "inline",
+   "spustacia_udalost": "inline",
+   "standard": "inline",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "uc": "inline",
+   "verzia": "frontmatter",
+   "zapnute": "inline"
+  }
+ },
+ "zadanie/IU-C/IU-C-arch-model Architektonický priestorový model.md": {
+  "data": {
+   "aliases": [
+    "IU-C-arch-model"
+   ],
+   "automatizovatelne": true,
+   "autor": "Assetin",
+   "datovy_typ_29481": "IFC File",
+   "druh": "model",
+   "forma": {
+    "format": "IFC",
+    "max_velkost_mb": 300,
+    "nativny_format": "RVT",
+    "verzia_schemy": "IFC4X3_ADD2"
+   },
+   "guid": null,
+   "id": "IU-C-arch-model",
+   "identifikacia": {
+    "pravidlo": "[[STD-NAME-CONT]]",
+    "vzor": "^[A-Z0-9]{2,6}-ARCH-ZZ-XX-M3-A-[0-9]{4}$"
+   },
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "metadata_cde": {
+    "klasifikacia_bezpecnosti": "interna",
+    "revizia_vzor": "^P[0-9]{2}$",
+    "status": "S4"
+   },
+   "nadradene_pri_rozpore": [
+    "[[IU-C-protokol-zamerania]]"
+   ],
+   "nadvaznost": [
+    "[[IU-C-protokol-zamerania]]",
+    "[[IU-C-vzt-model]]"
+   ],
+   "nazov": "Architektonický priestorový model",
+   "nazov_en": "Architectural spatial model",
+   "obsahuje": [
+    {
+     "iu": "[[IU-O-space]]"
+    },
+    {
+     "iu": "[[IU-O-storey]]"
+    },
+    {
+     "iu": "[[IU-O-zone]]"
+    }
+   ],
+   "overenie": "manual",
+   "overuje": [
+    "[[ACT-poverujuca/koordinator-BIM]]"
+   ],
+   "pokyn": "názov podľa STD-NAME-CONT; export IFC4X3_ADD2 s Qto_SpaceBaseQuantities a IfcRelAssignsToGroup; jeden súbor na stavebný objekt; IfcProject.Name = kód aktíva; georeferencovanie dedí STD-FED-01",
+   "poskytovatel": [
+    "[[ACT-poverena/ARCH]]"
+   ],
+   "postup": "názov podľa vzoru; hlavička FILE_SCHEMA = IFC4X3_ADD2; veľkosť ≤ 300 MB; IfcMapConversion vs. STD-FED-01; status S4 a revízia podľa vzoru v CDE; ids-checker bez chýb pred nahraním",
+   "predchodca": [],
+   "stav": "WD",
+   "tidp": {
+    "odhad_pracnosti_h": null
+   },
+   "typ": "IU-C",
+   "verzia": 0.1,
+   "viaze_sa_na": [
+    "#aktivum"
+   ],
+   "zavaznost": "musi"
+  },
+  "diagnostiky": [],
+  "id": "IU-C-arch-model",
+  "model": {
+   "aliases": [
+    "IU-C-arch-model"
+   ],
+   "automatizovatelne": true,
+   "autor": "Assetin",
+   "dataset": null,
+   "datovy_typ_29481": "IFC File",
+   "dokladuje": [],
+   "dokument": null,
+   "dolozene_v": [],
+   "doplnuje": [],
+   "druh": "model",
+   "forma": {
+    "format": "IFC",
+    "max_velkost_mb": 300.0,
+    "nativny_format": "RVT",
+    "verzia_schemy": "IFC4X3_ADD2"
+   },
+   "georeferencovanie_prepis": null,
+   "guid": null,
+   "id": "IU-C-arch-model",
+   "identifikacia": {
+    "pravidlo": "[[STD-NAME-CONT]]",
+    "vzor": "^[A-Z0-9]{2,6}-ARCH-ZZ-XX-M3-A-[0-9]{4}$"
+   },
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "metadata_cde": {
+    "klasifikacia_bezpecnosti": "interna",
+    "revizia_vzor": "^P[0-9]{2}$",
+    "status": "S4"
+   },
+   "mvd": null,
+   "nadradene_pri_rozpore": [
+    "[[IU-C-protokol-zamerania]]"
+   ],
+   "nadvaznost": [
+    "[[IU-C-protokol-zamerania]]",
+    "[[IU-C-vzt-model]]"
+   ],
+   "nazov": "Architektonický priestorový model",
+   "nazov_en": "Architectural spatial model",
+   "obsahuje": [
+    {
+     "iu": "[[IU-O-space]]",
+     "rozsah": []
+    },
+    {
+     "iu": "[[IU-O-storey]]",
+     "rozsah": []
+    },
+    {
+     "iu": "[[IU-O-zone]]",
+     "rozsah": []
+    }
+   ],
+   "odvodene_z": [],
+   "overenie": "manual",
+   "overuje": [
+    "[[ACT-poverujuca/koordinator-BIM]]"
+   ],
+   "pokyn": "názov podľa STD-NAME-CONT; export IFC4X3_ADD2 s Qto_SpaceBaseQuantities a IfcRelAssignsToGroup; jeden súbor na stavebný objekt; IfcProject.Name = kód aktíva; georeferencovanie dedí STD-FED-01",
+   "poskytovatel": [
+    "[[ACT-poverena/ARCH]]"
+   ],
+   "postup": "názov podľa vzoru; hlavička FILE_SCHEMA = IFC4X3_ADD2; veľkosť ≤ 300 MB; IfcMapConversion vs. STD-FED-01; status S4 a revízia podľa vzoru v CDE; ids-checker bez chýb pred nahraním",
+   "predchodca": [],
+   "stav": "WD",
+   "tidp": {
+    "odhad_pracnosti_h": null
+   },
+   "typ": "IU-C",
+   "typ_poziadavky": "C",
+   "verzia": "0.1",
+   "viaze_sa_na": [
+    "#aktivum"
+   ],
+   "zavaznost": "musi"
+  },
+  "pod_zaznamy": [],
+  "typ": "IU-C",
+  "verzia": "33bee0d8588aca6d4afb6d0ee33aeedff10937e20ec6291d264135218fb0513f",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "automatizovatelne": "frontmatter",
+   "autor": "frontmatter",
+   "datovy_typ_29481": "frontmatter",
+   "druh": "frontmatter",
+   "forma": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "identifikacia": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "metadata_cde": "frontmatter",
+   "nadradene_pri_rozpore": "inline",
+   "nadvaznost": "inline",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "obsahuje": "blok",
+   "overenie": "frontmatter",
+   "overuje": "inline",
+   "pokyn": "frontmatter",
+   "poskytovatel": "inline",
+   "postup": "frontmatter",
+   "predchodca": "inline",
+   "stav": "frontmatter",
+   "tidp": "frontmatter",
+   "typ": "frontmatter",
+   "verzia": "frontmatter",
+   "viaze_sa_na": "inline",
+   "zavaznost": "frontmatter"
+  }
+ },
+ "zadanie/IU-C/IU-C-protokol-zamerania Protokol zamerania priestorov.md": {
+  "data": {
+   "aliases": [
+    "IU-C-protokol-zamerania"
+   ],
+   "automatizovatelne": false,
+   "autor": "Assetin",
+   "datovy_typ_29481": "PDF Document",
+   "dokladuje": [
+    "[[IU-O-space]]"
+   ],
+   "dokument": {
+    "content": "identifikácia odovzdanej revízie modelu; metóda a presnosť merania; tabuľka miestností a zón exportovaná z modelu (kód · názov · podlažie · hrubá plocha · čistá plocha · výška · zóna); odchýlky zamerania voči modelu a voči existujúcej dokumentácii; potvrdenie geodeta",
+    "form": "Digital",
+    "struktura": [
+     "Identifikácia objektu a revízie modelu",
+     "Metóda a prístroje",
+     "Tabuľka miestností a zón (export z DiMS)",
+     "Odchýlky zamerania voči modelu a voči podkladom",
+     "Potvrdenie zodpovedného geodeta"
+    ],
+    "type": "Survey Report"
+   },
+   "druh": "dokument",
+   "forma": {
+    "format": "PDF/A-2",
+    "max_velkost_mb": 50
+   },
+   "guid": null,
+   "id": "IU-C-protokol-zamerania",
+   "identifikacia": {
+    "pravidlo": "[[STD-NAME-CONT]]",
+    "vzor": "^[A-Z0-9]{2,6}-GEO-ZZ-XX-RP-S-[0-9]{4}$"
+   },
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "metadata_cde": {
+    "klasifikacia_bezpecnosti": "interna",
+    "revizia_vzor": "^P[0-9]{2}$",
+    "status": "S4"
+   },
+   "nazov": "Protokol zamerania priestorov",
+   "nazov_en": "Spatial survey report",
+   "obsahuje": [
+    {
+     "iu": "[[IU-O-space]]",
+     "rozsah": [
+      "dokumentacia"
+     ]
+    }
+   ],
+   "overenie": "manual",
+   "overuje": [
+    "[[ACT-poverujuca/spravca-informacii]]"
+   ],
+   "pokyn": "tabuľky sa neprepisujú ručne – sú exportom z [[IU-C-arch-model]] odovzdávanej revízie (STD-formaty určuje formát exportu); geodet ich potvrdzuje voči svojmu zameraniu a v kapitole Odchýlky uvedie každú miestnosť mimo tolerancie DEF; plochy podľa DEF-plocha-hruba a DEF-plocha-cista",
+   "poskytovatel": [
+    "[[ACT-poverena/geodet]]"
+   ],
+   "postup": "úplnosť kapitol podľa struktura; revízia modelu v protokole = odovzdaná revízia; potvrdenie zodpovedného geodeta; kapitola Odchýlky prázdna alebo každá odchýlka vyriešená v modeli; názov a metadáta v CDE podľa vzoru",
+   "predchodca": [
+    "[[IU-C-arch-model]]"
+   ],
+   "stav": "WD",
+   "tidp": {
+    "odhad_pracnosti_h": null
+   },
+   "typ": "IU-C",
+   "verzia": 0.1,
+   "viaze_sa_na": [
+    "[[IU-O-space]]",
+    "[[IU-O-storey]]"
+   ],
+   "zavaznost": "musi"
+  },
+  "diagnostiky": [],
+  "id": "IU-C-protokol-zamerania",
+  "model": {
+   "aliases": [
+    "IU-C-protokol-zamerania"
+   ],
+   "automatizovatelne": false,
+   "autor": "Assetin",
+   "dataset": null,
+   "datovy_typ_29481": "PDF Document",
+   "dokladuje": [
+    "[[IU-O-space]]"
+   ],
+   "dokument": {
+    "content": "identifikácia odovzdanej revízie modelu; metóda a presnosť merania; tabuľka miestností a zón exportovaná z modelu (kód · názov · podlažie · hrubá plocha · čistá plocha · výška · zóna); odchýlky zamerania voči modelu a voči existujúcej dokumentácii; potvrdenie geodeta",
+    "form": "Digital",
+    "struktura": [
+     "Identifikácia objektu a revízie modelu",
+     "Metóda a prístroje",
+     "Tabuľka miestností a zón (export z DiMS)",
+     "Odchýlky zamerania voči modelu a voči podkladom",
+     "Potvrdenie zodpovedného geodeta"
+    ],
+    "type": "Survey Report"
+   },
+   "dolozene_v": [],
+   "doplnuje": [],
+   "druh": "dokument",
+   "forma": {
+    "format": "PDF/A-2",
+    "max_velkost_mb": 50.0,
+    "nativny_format": null,
+    "verzia_schemy": null
+   },
+   "georeferencovanie_prepis": null,
+   "guid": null,
+   "id": "IU-C-protokol-zamerania",
+   "identifikacia": {
+    "pravidlo": "[[STD-NAME-CONT]]",
+    "vzor": "^[A-Z0-9]{2,6}-GEO-ZZ-XX-RP-S-[0-9]{4}$"
+   },
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "metadata_cde": {
+    "klasifikacia_bezpecnosti": "interna",
+    "revizia_vzor": "^P[0-9]{2}$",
+    "status": "S4"
+   },
+   "mvd": null,
+   "nadradene_pri_rozpore": [],
+   "nadvaznost": [],
+   "nazov": "Protokol zamerania priestorov",
+   "nazov_en": "Spatial survey report",
+   "obsahuje": [
+    {
+     "iu": "[[IU-O-space]]",
+     "rozsah": [
+      "dokumentacia"
+     ]
+    }
+   ],
+   "odvodene_z": [],
+   "overenie": "manual",
+   "overuje": [
+    "[[ACT-poverujuca/spravca-informacii]]"
+   ],
+   "pokyn": "tabuľky sa neprepisujú ručne – sú exportom z [[IU-C-arch-model]] odovzdávanej revízie (STD-formaty určuje formát exportu); geodet ich potvrdzuje voči svojmu zameraniu a v kapitole Odchýlky uvedie každú miestnosť mimo tolerancie DEF; plochy podľa DEF-plocha-hruba a DEF-plocha-cista",
+   "poskytovatel": [
+    "[[ACT-poverena/geodet]]"
+   ],
+   "postup": "úplnosť kapitol podľa struktura; revízia modelu v protokole = odovzdaná revízia; potvrdenie zodpovedného geodeta; kapitola Odchýlky prázdna alebo každá odchýlka vyriešená v modeli; názov a metadáta v CDE podľa vzoru",
+   "predchodca": [
+    "[[IU-C-arch-model]]"
+   ],
+   "stav": "WD",
+   "tidp": {
+    "odhad_pracnosti_h": null
+   },
+   "typ": "IU-C",
+   "typ_poziadavky": "E",
+   "verzia": "0.1",
+   "viaze_sa_na": [
+    "[[IU-O-space]]",
+    "[[IU-O-storey]]"
+   ],
+   "zavaznost": "musi"
+  },
+  "pod_zaznamy": [],
+  "typ": "IU-C",
+  "verzia": "05123d188791836b5e404fae236b3529e9c670ad630ab672be51a13f229c985d",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "automatizovatelne": "frontmatter",
+   "autor": "frontmatter",
+   "datovy_typ_29481": "frontmatter",
+   "dokladuje": "inline",
+   "dokument": "frontmatter",
+   "druh": "frontmatter",
+   "forma": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "identifikacia": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "metadata_cde": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "obsahuje": "blok",
+   "overenie": "frontmatter",
+   "overuje": "inline",
+   "pokyn": "frontmatter",
+   "poskytovatel": "inline",
+   "postup": "frontmatter",
+   "predchodca": "inline",
+   "stav": "frontmatter",
+   "tidp": "frontmatter",
+   "typ": "frontmatter",
+   "verzia": "frontmatter",
+   "viaze_sa_na": "inline",
+   "zavaznost": "frontmatter"
+  }
+ },
+ "zadanie/IU-O/IU-O-space Priestor.md": {
+  "data": {
+   "alfanumerika": [
+    {
+     "ifc": {
+      "atribut": "Name"
+     },
+     "pokyn": "kód miestnosti podlažie.poradie, napr. 02.015; zhodný s číslom na dverách a v protokole zamerania",
+     "povinnost": "required",
+     "pravidlo": "[[STD-NAME-03]]",
+     "rola": "identifikacia",
+     "vzor": "^[0-9]{2}\\.[0-9]{3}$"
+    },
+    {
+     "ifc": {
+      "atribut": "LongName"
+     },
+     "pokyn": "názov miestnosti podľa užívania (Kancelária, Zasadačka, WC muži …)",
+     "povinnost": "required",
+     "rola": "obsah"
+    },
+    {
+     "hodnoty": [
+      "INTERNAL",
+      "EXTERNAL",
+      "PARKING"
+     ],
+     "ifc": {
+      "atribut": "PredefinedType"
+     },
+     "povinnost": "required",
+     "rola": "obsah"
+    },
+    {
+     "datovy_typ": "IFCAREAMEASURE",
+     "definicia_ref": "[[DEF-plocha-hruba]]",
+     "dolozene_v": "[[IU-C-protokol-zamerania]]",
+     "ifc": {
+      "nazov": "GrossFloorArea",
+      "pset": "Qto_SpaceBaseQuantities",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossFloorArea"
+     },
+     "pokyn": "vypočítať z obrysu IfcSpace podľa DEF-plocha-hruba",
+     "povaha": "informacny",
+     "povinnost": "optional",
+     "rola": "obsah",
+     "tolerancia": "0.5 %"
+    },
+    {
+     "datovy_typ": "IFCAREAMEASURE",
+     "definicia_ref": "[[DEF-plocha-cista]]",
+     "dolozene_v": "[[IU-C-protokol-zamerania]]",
+     "ifc": {
+      "nazov": "NetFloorArea",
+      "pset": "Qto_SpaceBaseQuantities",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/NetFloorArea"
+     },
+     "pokyn": "vypočítať z obrysu IfcSpace podľa DEF-plocha-cista (bez stĺpov a vstavaných konštrukcií vnútri priestoru)",
+     "povaha": "informacny",
+     "povinnost": "required",
+     "rola": "obsah",
+     "tolerancia": "0.5 %"
+    },
+    {
+     "datovy_typ": "IFCLENGTHMEASURE",
+     "ifc": {
+      "nazov": "Height",
+      "pset": "Qto_SpaceBaseQuantities",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/Height"
+     },
+     "pokyn": "svetlá výška od čistej podlahy po podhľad/strop",
+     "povaha": "technicky",
+     "povinnost": "optional",
+     "rola": "obsah"
+    },
+    {
+     "datovy_typ": "IFCBOOLEAN",
+     "ifc": {
+      "nazov": "IsExternal",
+      "pset": "Pset_SpaceCommon",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/IsExternal"
+     },
+     "povinnost": "optional",
+     "rola": "obsah"
+    }
+   ],
+   "aliases": [
+    "IU-O-space"
+   ],
+   "autor": "Assetin",
+   "dokumentacia": [
+    {
+     "automatizovatelne": false,
+     "dok": "[[IU-C-protokol-zamerania]]",
+     "dokladuje": [
+      "NetFloorArea",
+      "GrossFloorArea"
+     ],
+     "pokyn": "viazať na IfcSpace cez IfcRelAssociatesDocument; jeden protokol na celý objekt, väzba na každý IfcSpace; tabuľka miestností v protokole je export z tohto modelu (rovnaká revízia), geodet ju potvrdzuje",
+     "postup": "revízia modelu uvedená v protokole = odovzdaná revízia; potvrdenie geodeta; miestnosti v kapitole Odchýlky skontrolovať jednotlivo; náhodná kontrola 5 % miestností na mieste voči NetFloorArea/GrossFloorArea v tolerancii DEF",
+     "povinnost": "required"
+    }
+   ],
+   "filter": [],
+   "geometria": {
+    "Appearance": "NoAppearanceInformation",
+    "Dimensionality": "3D",
+    "Location": {
+     "PositioningType": "Relative",
+     "ReferenceObject": "IfcBuildingStorey"
+    },
+    "ParametricBehaviour": "NotRequested",
+    "ShapeAssembly": "SingleObjectSingularShape",
+    "ShapeInfluence": {
+     "Connections": "NotRequired",
+     "Features": "NotRequired",
+     "InsideGeometry": "NotRequired",
+     "Openings": "NotRequired",
+     "OperatingAndClearanceZones": "NotRequired",
+     "ThresholdDimension": {
+      "hodnota": 0.1,
+      "jednotka": "m"
+     }
+    },
+    "ShapeRepresentation": "OuterShellAsSingularShape",
+    "placeholder": false,
+    "pokyn": "obrys po líci omietky, spodná hranica na úrovni čistej podlahy, výška po podhľad (ak je), inak po strop",
+    "postup": "porovnať obrys a plochu s protokolom zamerania per miestnosť; odchýlka plochy nad toleranciu DEF = neprijaté",
+    "poznamka": {
+     "nezahrna": [
+      "zariaďovacie predmety",
+      "nábytok",
+      "výklenky a niky pod 0.1 m"
+     ],
+     "text": "",
+     "zahrna": [
+      "obrys po líci omietky",
+      "výška od čistej podlahy po podhľad alebo strop"
+     ]
+    },
+    "presnost": "±2 cm",
+    "profil": "[[GEO-G2]]"
+   },
+   "guid": null,
+   "id": "IU-O-space",
+   "jazyk": "sk",
+   "klasifikacia": [
+    {
+     "povinnost": "required",
+     "pravidlo": "[[STD-klasifikacia#CCI-priestory]]",
+     "system": "CCI"
+    }
+   ],
+   "licencia": "CC-BY-4.0",
+   "nazov": "Priestor (miestnosť)",
+   "nazov_en": "Space (room)",
+   "objekt": {
+    "ifc_entita": "IfcSpace",
+    "predefined_type": null,
+    "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcSpace"
+   },
+   "overuje": [
+    "[[ACT-poverujuca/koordinator-BIM]]"
+   ],
+   "pokyn": "Každá miestnosť vrátane technických a komunikačných ako samostatný IfcSpace; obrys po líci omietky podľa DEF; jeden IfcSpace = jedna miestnosť, bez zlučovania.",
+   "poskytovatel": [
+    "[[ACT-poverena/ARCH]]"
+   ],
+   "pre_task": [
+    "[[UC-0101#T2]]",
+    "[[UC-0101#T3]]"
+   ],
+   "pritomnost_v_modeli": "required",
+   "stav": "WD",
+   "typ": "IU-O",
+   "uroven": "vyskyt",
+   "verzia": 0.1,
+   "zavaznost_predvolena": "musi",
+   "zdovodnenie": "Miestnosť je nositeľom plôch, z ktorých sa odvodzuje nájomná a prevádzková evidencia (GOAL-A-01; UC-0101 T2, T3)."
+  },
+  "diagnostiky": [],
+  "id": "IU-O-space",
+  "model": {
+   "alfanumerika": [
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "atribut": "Name"
+     },
+     "overenie": null,
+     "pokyn": "kód miestnosti podlažie.poradie, napr. 02.015; zhodný s číslom na dverách a v protokole zamerania",
+     "postup": null,
+     "povaha": null,
+     "povinnost": "required",
+     "pravidlo": "[[STD-NAME-03]]",
+     "prop": null,
+     "rola": "identifikacia",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": "^[0-9]{2}\\.[0-9]{3}$",
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "atribut": "LongName"
+     },
+     "overenie": null,
+     "pokyn": "názov miestnosti podľa užívania (Kancelária, Zasadačka, WC muži …)",
+     "postup": null,
+     "povaha": null,
+     "povinnost": "required",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": [
+      "INTERNAL",
+      "EXTERNAL",
+      "PARKING"
+     ],
+     "hodnoty_ref": null,
+     "ifc": {
+      "atribut": "PredefinedType"
+     },
+     "overenie": null,
+     "pokyn": null,
+     "postup": null,
+     "povaha": null,
+     "povinnost": "required",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": "IFCAREAMEASURE",
+     "definicia_ref": "[[DEF-plocha-hruba]]",
+     "dolozene_v": "[[IU-C-protokol-zamerania]]",
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "nazov": "GrossFloorArea",
+      "pset": "Qto_SpaceBaseQuantities",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossFloorArea",
+      "vynimka": false
+     },
+     "overenie": null,
+     "pokyn": "vypočítať z obrysu IfcSpace podľa DEF-plocha-hruba",
+     "postup": null,
+     "povaha": "informacny",
+     "povinnost": "optional",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": "0.5 %",
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": "IFCAREAMEASURE",
+     "definicia_ref": "[[DEF-plocha-cista]]",
+     "dolozene_v": "[[IU-C-protokol-zamerania]]",
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "nazov": "NetFloorArea",
+      "pset": "Qto_SpaceBaseQuantities",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/NetFloorArea",
+      "vynimka": false
+     },
+     "overenie": null,
+     "pokyn": "vypočítať z obrysu IfcSpace podľa DEF-plocha-cista (bez stĺpov a vstavaných konštrukcií vnútri priestoru)",
+     "postup": null,
+     "povaha": "informacny",
+     "povinnost": "required",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": "0.5 %",
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": "IFCLENGTHMEASURE",
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "nazov": "Height",
+      "pset": "Qto_SpaceBaseQuantities",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/Height",
+      "vynimka": false
+     },
+     "overenie": null,
+     "pokyn": "svetlá výška od čistej podlahy po podhľad/strop",
+     "postup": null,
+     "povaha": "technicky",
+     "povinnost": "optional",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": "IFCBOOLEAN",
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "nazov": "IsExternal",
+      "pset": "Pset_SpaceCommon",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/IsExternal",
+      "vynimka": false
+     },
+     "overenie": null,
+     "pokyn": null,
+     "postup": null,
+     "povaha": null,
+     "povinnost": "optional",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    }
+   ],
+   "aliases": [
+    "IU-O-space"
+   ],
+   "autor": "Assetin",
+   "clenenie": [],
+   "dokladuje": [],
+   "dokumentacia": [
+    {
+     "automatizovatelne": false,
+     "dok": "[[IU-C-protokol-zamerania]]",
+     "dokladuje": [
+      "NetFloorArea",
+      "GrossFloorArea"
+     ],
+     "overenie": null,
+     "pokyn": "viazať na IfcSpace cez IfcRelAssociatesDocument; jeden protokol na celý objekt, väzba na každý IfcSpace; tabuľka miestností v protokole je export z tohto modelu (rovnaká revízia), geodet ju potvrdzuje",
+     "postup": "revízia modelu uvedená v protokole = odovzdaná revízia; potvrdenie geodeta; miestnosti v kapitole Odchýlky skontrolovať jednotlivo; náhodná kontrola 5 % miestností na mieste voči NetFloorArea/GrossFloorArea v tolerancii DEF",
+     "povinnost": "required",
+     "zavaznost": null
+    }
+   ],
+   "dolozene_v": [],
+   "doplnuje": [],
+   "filter": [],
+   "geometria": {
+    "Appearance": "NoAppearanceInformation",
+    "Dimensionality": "3D",
+    "Location": {
+     "PositioningType": "Relative",
+     "ReferenceObject": "IfcBuildingStorey",
+     "crs": null
+    },
+    "ParametricBehaviour": "NotRequested",
+    "ShapeAssembly": "SingleObjectSingularShape",
+    "ShapeInfluence": {
+     "Connections": "NotRequired",
+     "Features": "NotRequired",
+     "InsideGeometry": "NotRequired",
+     "Openings": "NotRequired",
+     "OperatingAndClearanceZones": "NotRequired",
+     "ThresholdDimension": {
+      "hodnota": 0.1,
+      "jednotka": "m"
+     }
+    },
+    "ShapeRepresentation": "OuterShellAsSingularShape",
+    "overenie": null,
+    "placeholder": false,
+    "pokyn": "obrys po líci omietky, spodná hranica na úrovni čistej podlahy, výška po podhľad (ak je), inak po strop",
+    "postup": "porovnať obrys a plochu s protokolom zamerania per miestnosť; odchýlka plochy nad toleranciu DEF = neprijaté",
+    "poznamka": {
+     "nezahrna": [
+      "zariaďovacie predmety",
+      "nábytok",
+      "výklenky a niky pod 0.1 m"
+     ],
+     "text": "",
+     "zahrna": [
+      "obrys po líci omietky",
+      "výška od čistej podlahy po podhľad alebo strop"
+     ]
+    },
+    "presnost": "±2 cm",
+    "profil": "[[GEO-G2]]",
+    "zavaznost": null
+   },
+   "guid": null,
+   "id": "IU-O-space",
+   "jazyk": "sk",
+   "klasifikacia": [
+    {
+     "povinnost": "required",
+     "pravidlo": "[[STD-klasifikacia#CCI-priestory]]",
+     "system": "CCI",
+     "uri": null
+    }
+   ],
+   "licencia": "CC-BY-4.0",
+   "nadradene_pri_rozpore": [],
+   "nazov": "Priestor (miestnosť)",
+   "nazov_en": "Space (room)",
+   "objekt": {
+    "ifc_entita": "IfcSpace",
+    "predefined_type": null,
+    "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcSpace"
+   },
+   "odvodene_z": [],
+   "overuje": [
+    "[[ACT-poverujuca/koordinator-BIM]]"
+   ],
+   "pokyn": "Každá miestnosť vrátane technických a komunikačných ako samostatný IfcSpace; obrys po líci omietky podľa DEF; jeden IfcSpace = jedna miestnosť, bez zlučovania.",
+   "poskytovatel": [
+    "[[ACT-poverena/ARCH]]"
+   ],
+   "pre_task": [
+    "[[UC-0101#T2]]",
+    "[[UC-0101#T3]]"
+   ],
+   "pritomnost_v_modeli": "required",
+   "stav": "WD",
+   "typ": "IU-O",
+   "typ_poziadavky": [
+    "D1",
+    "D2",
+    "D3"
+   ],
+   "uroven": "vyskyt",
+   "verzia": "0.1",
+   "zavaznost_predvolena": "musi",
+   "zdovodnenie": "Miestnosť je nositeľom plôch, z ktorých sa odvodzuje nájomná a prevádzková evidencia (GOAL-A-01; UC-0101 T2, T3)."
+  },
+  "pod_zaznamy": [],
+  "typ": "IU-O",
+  "verzia": "1eeac2bedb85151cb9f93ee8f702e31a719683229288fd3de129f8c8f08af192",
+  "zdroje": {
+   "alfanumerika": "frontmatter",
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "dokumentacia": "frontmatter",
+   "filter": "frontmatter",
+   "geometria": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "klasifikacia": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "objekt": "frontmatter",
+   "overuje": "inline",
+   "pokyn": "frontmatter",
+   "poskytovatel": "inline",
+   "pre_task": "inline",
+   "pritomnost_v_modeli": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter",
+   "zavaznost_predvolena": "frontmatter",
+   "zdovodnenie": "frontmatter"
+  }
+ },
+ "zadanie/IU-O/IU-O-storey Podlažie.md": {
+  "data": {
+   "alfanumerika": [
+    {
+     "ifc": {
+      "atribut": "Name"
+     },
+     "pokyn": "1.NP, 2.NP … 1.PP; zhodné s označením v protokole zamerania a v evakuačných plánoch",
+     "povinnost": "required",
+     "pravidlo": "[[STD-NAME-02]]",
+     "rola": "identifikacia",
+     "vzor": "^[0-9]{1,2}\\.(NP|PP)$"
+    },
+    {
+     "ifc": {
+      "atribut": "LongName"
+     },
+     "pokyn": "prevádzkový názov (Prízemie, Suterén, Strojovňa)",
+     "povinnost": "optional",
+     "rola": "obsah"
+    },
+    {
+     "ifc": {
+      "atribut": "Elevation"
+     },
+     "pokyn": "výška čistej podlahy voči ±0,000 v metroch; pri pasportizácii je tento model masterom zoznamu podlaží (STD-FED-02 naň odkazuje, ostatné DiMS sa overujú voči nemu)",
+     "povaha": "technicky",
+     "povinnost": "required",
+     "rola": "obsah"
+    },
+    {
+     "datovy_typ": "IFCLOGICAL",
+     "ifc": {
+      "nazov": "AboveGround",
+      "pset": "Pset_BuildingStoreyCommon",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/AboveGround"
+     },
+     "pokyn": "TRUE pre NP, FALSE pre PP",
+     "povinnost": "optional",
+     "rola": "obsah"
+    },
+    {
+     "datovy_typ": "IFCAREAMEASURE",
+     "definicia_ref": "[[DEF-plocha-hruba]]",
+     "ifc": {
+      "nazov": "GrossFloorArea",
+      "pset": "Qto_BuildingStoreyBaseQuantities",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossFloorArea"
+     },
+     "povaha": "informacny",
+     "povinnost": "optional",
+     "rola": "obsah"
+    }
+   ],
+   "aliases": [
+    "IU-O-storey"
+   ],
+   "autor": "Assetin",
+   "dokumentacia": [],
+   "filter": [],
+   "geometria": {
+    "Appearance": "NotRequired",
+    "Dimensionality": "NotRequired",
+    "Location": {
+     "PositioningType": "Relative",
+     "ReferenceObject": "IfcBuilding"
+    },
+    "ParametricBehaviour": "NotRequested",
+    "ShapeAssembly": "NotRequired",
+    "ShapeInfluence": {
+     "Connections": "NotRequired",
+     "Features": "NotRequired",
+     "InsideGeometry": "NotRequired",
+     "Openings": "NotRequired",
+     "OperatingAndClearanceZones": "NotRequired"
+    },
+    "ShapeRepresentation": "NotRequired",
+    "placeholder": false,
+    "pokyn": "ObjectPlacement na úrovni čistej podlahy podlažia",
+    "postup": "porovnať Elevation a ObjectPlacement s výškami v protokole zamerania",
+    "poznamka": {
+     "nezahrna": [],
+     "text": "podlažie nemá vlastný tvar; výšková úroveň sa nesie atribútom Elevation a umiestnením (ObjectPlacement)",
+     "zahrna": []
+    },
+    "presnost": "±1 cm (Elevation)",
+    "profil": "[[GEO-G0]]"
+   },
+   "guid": null,
+   "id": "IU-O-storey",
+   "jazyk": "sk",
+   "klasifikacia": [],
+   "licencia": "CC-BY-4.0",
+   "nazov": "Podlažie",
+   "nazov_en": "Building storey",
+   "objekt": {
+    "ifc_entita": "IfcBuildingStorey",
+    "predefined_type": null,
+    "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcBuildingStorey"
+   },
+   "overuje": [
+    "[[ACT-poverujuca/koordinator-BIM]]"
+   ],
+   "pokyn": "Jedno IfcBuildingStorey na každé podlažie vrátane podzemných a technických; Elevation voči ±0,000 objektu podľa STD-FED-01; medzipodlažia neriešiť ako samostatné podlažie, ale ako priestor s výškovým odsadením.",
+   "poskytovatel": [
+    "[[ACT-poverena/ARCH]]"
+   ],
+   "pre_task": [
+    "[[UC-0101#T2]]"
+   ],
+   "pritomnost_v_modeli": "required",
+   "stav": "WD",
+   "typ": "IU-O",
+   "uroven": "vyskyt",
+   "verzia": 0.1,
+   "zavaznost_predvolena": "musi",
+   "zdovodnenie": "Podlažie je kontajner priestorov a nosič výškovej úrovne; bez neho nie je členenie priestor → podlažie overiteľné (UC-0101 T2; STD-CL-01)."
+  },
+  "diagnostiky": [],
+  "id": "IU-O-storey",
+  "model": {
+   "alfanumerika": [
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "atribut": "Name"
+     },
+     "overenie": null,
+     "pokyn": "1.NP, 2.NP … 1.PP; zhodné s označením v protokole zamerania a v evakuačných plánoch",
+     "postup": null,
+     "povaha": null,
+     "povinnost": "required",
+     "pravidlo": "[[STD-NAME-02]]",
+     "prop": null,
+     "rola": "identifikacia",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": "^[0-9]{1,2}\\.(NP|PP)$",
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "atribut": "LongName"
+     },
+     "overenie": null,
+     "pokyn": "prevádzkový názov (Prízemie, Suterén, Strojovňa)",
+     "postup": null,
+     "povaha": null,
+     "povinnost": "optional",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "atribut": "Elevation"
+     },
+     "overenie": null,
+     "pokyn": "výška čistej podlahy voči ±0,000 v metroch; pri pasportizácii je tento model masterom zoznamu podlaží (STD-FED-02 naň odkazuje, ostatné DiMS sa overujú voči nemu)",
+     "postup": null,
+     "povaha": "technicky",
+     "povinnost": "required",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": "IFCLOGICAL",
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "nazov": "AboveGround",
+      "pset": "Pset_BuildingStoreyCommon",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/AboveGround",
+      "vynimka": false
+     },
+     "overenie": null,
+     "pokyn": "TRUE pre NP, FALSE pre PP",
+     "postup": null,
+     "povaha": null,
+     "povinnost": "optional",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": "IFCAREAMEASURE",
+     "definicia_ref": "[[DEF-plocha-hruba]]",
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "nazov": "GrossFloorArea",
+      "pset": "Qto_BuildingStoreyBaseQuantities",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossFloorArea",
+      "vynimka": false
+     },
+     "overenie": null,
+     "pokyn": null,
+     "postup": null,
+     "povaha": "informacny",
+     "povinnost": "optional",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    }
+   ],
+   "aliases": [
+    "IU-O-storey"
+   ],
+   "autor": "Assetin",
+   "clenenie": [],
+   "dokladuje": [],
+   "dokumentacia": [],
+   "dolozene_v": [],
+   "doplnuje": [],
+   "filter": [],
+   "geometria": {
+    "Appearance": "NotRequired",
+    "Dimensionality": "NotRequired",
+    "Location": {
+     "PositioningType": "Relative",
+     "ReferenceObject": "IfcBuilding",
+     "crs": null
+    },
+    "ParametricBehaviour": "NotRequested",
+    "ShapeAssembly": "NotRequired",
+    "ShapeInfluence": {
+     "Connections": "NotRequired",
+     "Features": "NotRequired",
+     "InsideGeometry": "NotRequired",
+     "Openings": "NotRequired",
+     "OperatingAndClearanceZones": "NotRequired",
+     "ThresholdDimension": null
+    },
+    "ShapeRepresentation": "NotRequired",
+    "overenie": null,
+    "placeholder": false,
+    "pokyn": "ObjectPlacement na úrovni čistej podlahy podlažia",
+    "postup": "porovnať Elevation a ObjectPlacement s výškami v protokole zamerania",
+    "poznamka": {
+     "nezahrna": [],
+     "text": "podlažie nemá vlastný tvar; výšková úroveň sa nesie atribútom Elevation a umiestnením (ObjectPlacement)",
+     "zahrna": []
+    },
+    "presnost": "±1 cm (Elevation)",
+    "profil": "[[GEO-G0]]",
+    "zavaznost": null
+   },
+   "guid": null,
+   "id": "IU-O-storey",
+   "jazyk": "sk",
+   "klasifikacia": [],
+   "licencia": "CC-BY-4.0",
+   "nadradene_pri_rozpore": [],
+   "nazov": "Podlažie",
+   "nazov_en": "Building storey",
+   "objekt": {
+    "ifc_entita": "IfcBuildingStorey",
+    "predefined_type": null,
+    "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcBuildingStorey"
+   },
+   "odvodene_z": [],
+   "overuje": [
+    "[[ACT-poverujuca/koordinator-BIM]]"
+   ],
+   "pokyn": "Jedno IfcBuildingStorey na každé podlažie vrátane podzemných a technických; Elevation voči ±0,000 objektu podľa STD-FED-01; medzipodlažia neriešiť ako samostatné podlažie, ale ako priestor s výškovým odsadením.",
+   "poskytovatel": [
+    "[[ACT-poverena/ARCH]]"
+   ],
+   "pre_task": [
+    "[[UC-0101#T2]]"
+   ],
+   "pritomnost_v_modeli": "required",
+   "stav": "WD",
+   "typ": "IU-O",
+   "typ_poziadavky": [
+    "D1",
+    "D2"
+   ],
+   "uroven": "vyskyt",
+   "verzia": "0.1",
+   "zavaznost_predvolena": "musi",
+   "zdovodnenie": "Podlažie je kontajner priestorov a nosič výškovej úrovne; bez neho nie je členenie priestor → podlažie overiteľné (UC-0101 T2; STD-CL-01)."
+  },
+  "pod_zaznamy": [],
+  "typ": "IU-O",
+  "verzia": "dff0f7285305ce0158450f088e3ea627269cd5bda39ddf9c726b6f28f55902dc",
+  "zdroje": {
+   "alfanumerika": "frontmatter",
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "dokumentacia": "frontmatter",
+   "filter": "frontmatter",
+   "geometria": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "klasifikacia": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "objekt": "frontmatter",
+   "overuje": "inline",
+   "pokyn": "frontmatter",
+   "poskytovatel": "inline",
+   "pre_task": "inline",
+   "pritomnost_v_modeli": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter",
+   "zavaznost_predvolena": "frontmatter",
+   "zdovodnenie": "frontmatter"
+  }
+ },
+ "zadanie/IU-O/IU-O-zone Zóna.md": {
+  "data": {
+   "alfanumerika": [
+    {
+     "ifc": {
+      "atribut": "Name"
+     },
+     "pokyn": "NJ-001 …; stabilné počas života budovy; väzba jednotka ↔ nájomca/zmluva žije mimo modelu, model nesie iba kľúč",
+     "povinnost": "required",
+     "pravidlo": "[[STD-NAME-04]]",
+     "rola": "identifikacia",
+     "vzor": "^(NJ|SP|TP)-[0-9]{3}$"
+    },
+    {
+     "ifc": {
+      "atribut": "LongName"
+     },
+     "pokyn": "stály popisný názov (Jednotka 2. NP východ, Vstupná hala); NIE názov nájomcu – nájomca má nositeľa v registri nájmov (UC-0201), do modelu sa neopisuje",
+     "povinnost": "optional",
+     "rola": "obsah"
+    }
+   ],
+   "aliases": [
+    "IU-O-zone"
+   ],
+   "autor": "Assetin",
+   "dokumentacia": [],
+   "filter": [
+    {
+     "facet": "attribute",
+     "hodnoty_ref": "[[STD-klasifikacia#typy-zon-priestorove]]",
+     "nazov": "ObjectType"
+    }
+   ],
+   "geometria": {
+    "Appearance": "NotRequired",
+    "Dimensionality": "NotRequired",
+    "Location": {
+     "PositioningType": "NotDefined"
+    },
+    "ParametricBehaviour": "NotRequested",
+    "ShapeAssembly": "NotRequired",
+    "ShapeInfluence": {
+     "Connections": "NotRequired",
+     "Features": "NotRequired",
+     "InsideGeometry": "NotRequired",
+     "Openings": "NotRequired",
+     "OperatingAndClearanceZones": "NotRequired"
+    },
+    "ShapeRepresentation": "NotRequired",
+    "placeholder": false,
+    "pokyn": "",
+    "postup": "zoznam členov zóny porovnať s tabuľkou nájomných jednotiek v protokole zamerania",
+    "poznamka": {
+     "nezahrna": [],
+     "text": "rozsah zóny je daný členstvom priestorov, nie geometriou",
+     "zahrna": []
+    },
+    "profil": "[[GEO-G0]]"
+   },
+   "guid": null,
+   "id": "IU-O-zone",
+   "jazyk": "sk",
+   "klasifikacia": [],
+   "licencia": "CC-BY-4.0",
+   "nazov": "Zóna (nájomná jednotka / spoločný priestor)",
+   "nazov_en": "Zone (rental unit / common area)",
+   "objekt": {
+    "ifc_entita": "IfcZone",
+    "predefined_type": null,
+    "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcZone"
+   },
+   "overuje": [
+    "[[ACT-poverujuca/koordinator-BIM]]"
+   ],
+   "pokyn": "Každý IfcSpace s PredefinedType INTERNAL patrí práve do jednej zóny typu NajomnaJednotka alebo SpolocnyPriestor (STD-CL-04); zóna môže prechádzať podlažiami; členstvo cez IfcRelAssignsToGroup. Prenajímateľná plocha jednotky NIE JE súčasťou tohto UC — odvodí ju UC-0201 ako vlastnú vlastnosť ([[PROP-RentableArea]]).",
+   "poskytovatel": [
+    "[[ACT-poverena/ARCH]]"
+   ],
+   "pre_task": [
+    "[[UC-0101#T4]]"
+   ],
+   "pritomnost_v_modeli": "required",
+   "stav": "WD",
+   "typ": "IU-O",
+   "uroven": "vyskyt",
+   "verzia": 0.1,
+   "zavaznost_predvolena": "musi",
+   "zdovodnenie": "Zóna zoskupuje miestnosti do nájomných jednotiek a spoločných priestorov — jednotka, na ktorú sa viaže zmluva a rozúčtovanie (GOAL-A-01; UC-0101 T4; vstup UC-0201)."
+  },
+  "diagnostiky": [],
+  "id": "IU-O-zone",
+  "model": {
+   "alfanumerika": [
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "atribut": "Name"
+     },
+     "overenie": null,
+     "pokyn": "NJ-001 …; stabilné počas života budovy; väzba jednotka ↔ nájomca/zmluva žije mimo modelu, model nesie iba kľúč",
+     "postup": null,
+     "povaha": null,
+     "povinnost": "required",
+     "pravidlo": "[[STD-NAME-04]]",
+     "prop": null,
+     "rola": "identifikacia",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": "^(NJ|SP|TP)-[0-9]{3}$",
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "atribut": "LongName"
+     },
+     "overenie": null,
+     "pokyn": "stály popisný názov (Jednotka 2. NP východ, Vstupná hala); NIE názov nájomcu – nájomca má nositeľa v registri nájmov (UC-0201), do modelu sa neopisuje",
+     "postup": null,
+     "povaha": null,
+     "povinnost": "optional",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    }
+   ],
+   "aliases": [
+    "IU-O-zone"
+   ],
+   "autor": "Assetin",
+   "clenenie": [],
+   "dokladuje": [],
+   "dokumentacia": [],
+   "dolozene_v": [],
+   "doplnuje": [],
+   "filter": [
+    {
+     "cardinality": null,
+     "facet": "attribute",
+     "hodnota": null,
+     "hodnoty": null,
+     "hodnoty_ref": "[[STD-klasifikacia#typy-zon-priestorove]]",
+     "nazov": "ObjectType",
+     "rozsah": null,
+     "vzor": null
+    }
+   ],
+   "geometria": {
+    "Appearance": "NotRequired",
+    "Dimensionality": "NotRequired",
+    "Location": {
+     "PositioningType": "NotDefined",
+     "ReferenceObject": null,
+     "crs": null
+    },
+    "ParametricBehaviour": "NotRequested",
+    "ShapeAssembly": "NotRequired",
+    "ShapeInfluence": {
+     "Connections": "NotRequired",
+     "Features": "NotRequired",
+     "InsideGeometry": "NotRequired",
+     "Openings": "NotRequired",
+     "OperatingAndClearanceZones": "NotRequired",
+     "ThresholdDimension": null
+    },
+    "ShapeRepresentation": "NotRequired",
+    "overenie": null,
+    "placeholder": false,
+    "pokyn": "",
+    "postup": "zoznam členov zóny porovnať s tabuľkou nájomných jednotiek v protokole zamerania",
+    "poznamka": {
+     "nezahrna": [],
+     "text": "rozsah zóny je daný členstvom priestorov, nie geometriou",
+     "zahrna": []
+    },
+    "presnost": null,
+    "profil": "[[GEO-G0]]",
+    "zavaznost": null
+   },
+   "guid": null,
+   "id": "IU-O-zone",
+   "jazyk": "sk",
+   "klasifikacia": [],
+   "licencia": "CC-BY-4.0",
+   "nadradene_pri_rozpore": [],
+   "nazov": "Zóna (nájomná jednotka / spoločný priestor)",
+   "nazov_en": "Zone (rental unit / common area)",
+   "objekt": {
+    "ifc_entita": "IfcZone",
+    "predefined_type": null,
+    "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcZone"
+   },
+   "odvodene_z": [],
+   "overuje": [
+    "[[ACT-poverujuca/koordinator-BIM]]"
+   ],
+   "pokyn": "Každý IfcSpace s PredefinedType INTERNAL patrí práve do jednej zóny typu NajomnaJednotka alebo SpolocnyPriestor (STD-CL-04); zóna môže prechádzať podlažiami; členstvo cez IfcRelAssignsToGroup. Prenajímateľná plocha jednotky NIE JE súčasťou tohto UC — odvodí ju UC-0201 ako vlastnú vlastnosť ([[PROP-RentableArea]]).",
+   "poskytovatel": [
+    "[[ACT-poverena/ARCH]]"
+   ],
+   "pre_task": [
+    "[[UC-0101#T4]]"
+   ],
+   "pritomnost_v_modeli": "required",
+   "stav": "WD",
+   "typ": "IU-O",
+   "typ_poziadavky": [
+    "D1",
+    "D2"
+   ],
+   "uroven": "vyskyt",
+   "verzia": "0.1",
+   "zavaznost_predvolena": "musi",
+   "zdovodnenie": "Zóna zoskupuje miestnosti do nájomných jednotiek a spoločných priestorov — jednotka, na ktorú sa viaže zmluva a rozúčtovanie (GOAL-A-01; UC-0101 T4; vstup UC-0201)."
+  },
+  "pod_zaznamy": [],
+  "typ": "IU-O",
+  "verzia": "6ec5430385b93a989c7be8b87ea15603e623e3dde25e87f907953ff3253f3b13",
+  "zdroje": {
+   "alfanumerika": "frontmatter",
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "dokumentacia": "frontmatter",
+   "filter": "frontmatter",
+   "geometria": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "klasifikacia": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "objekt": "frontmatter",
+   "overuje": "inline",
+   "pokyn": "frontmatter",
+   "poskytovatel": "inline",
+   "pre_task": "inline",
+   "pritomnost_v_modeli": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter",
+   "zavaznost_predvolena": "frontmatter",
+   "zdovodnenie": "frontmatter"
+  }
+ },
+ "zadanie/STD/STD-clenenie.md": {
+  "data": {
+   "aliases": [
+    "STD-clenenie"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "STD-clenenie",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Členenie modelu (priestorová štruktúra)",
+   "nazov_en": "Model breakdown structure",
+   "stav": "WD",
+   "typ": "STD",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "STD-clenenie",
+  "model": {
+   "aliases": [
+    "STD-clenenie"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "STD-clenenie",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Členenie modelu (priestorová štruktúra)",
+   "nazov_en": "Model breakdown structure",
+   "prepisuje": [],
+   "stav": "WD",
+   "typ": "STD",
+   "verzia": "0.1"
+  },
+  "pod_zaznamy": [
+   {
+    "data": {
+     "applicability": {
+      "entity": "IFCSPACE"
+     },
+     "id": "STD-CL-01",
+     "nazov": "Priestor patrí do podlažia",
+     "overenie": "IDS",
+     "plati": "vzdy",
+     "pokyn": "v autorskom nástroji priradiť každú miestnosť k podlažiu; neexportovať priestory mimo podlažia",
+     "postup": "IDS overuje z pohľadu dieťaťa; podlažie bez priestorov = manuálne upozornenie",
+     "requirements": [
+      {
+       "cardinality": "required",
+       "entity": "IFCBUILDINGSTOREY",
+       "facet": "partOf",
+       "relation": "IFCRELAGGREGATES"
+      }
+     ],
+     "rozsah": "objekt",
+     "text": "Každý IfcSpace je agregovaný priamo v IfcBuildingStorey — nie v IfcBuilding ani v inom IfcSpace. Priestory prechádzajúce podlažiami (schodisko, átrium) sa delia po podlažiach.",
+     "ucel_federacie": false,
+     "zavaznost": "musi",
+     "zdroj_normy": "IFC 4.3 spatial decomposition (IfcRelAggregates) ; ISO 19650-2 5.1.4"
+    },
+    "druh": "pravidlo",
+    "id": "STD-CL-01"
+   },
+   {
+    "data": {
+     "applicability": {
+      "entity": "IFCELEMENT"
+     },
+     "id": "STD-CL-02",
+     "nazov": "Prvok je obsiahnutý v podlaží alebo priestore",
+     "overenie": "IDS",
+     "plati": "vzdy",
+     "pokyn": "nepoužívať obsiahnutie v IfcBuilding pre vnútorné prvky",
+     "postup": "„práve jeden\" IDS neoverí; duplicitné obsiahnutie skontrolovať manuálne alebo checkerom",
+     "requirements": [
+      {
+       "cardinality": "required",
+       "entity": [
+        "IFCBUILDINGSTOREY",
+        "IFCSPACE"
+       ],
+       "facet": "partOf",
+       "relation": "IFCRELCONTAINEDINSPATIALSTRUCTURE"
+      }
+     ],
+     "rozsah": "objekt",
+     "text": "Každý prvok je obsiahnutý v práve jednom podlaží alebo priestore. Prvky patriace k viac podlažiam (fasáda, šachta) sa priradia k podlažiu, v ktorom začínajú. Obsiahnutie v IfcSite/IfcBuilding je prípustné len pre vonkajšie prvky ([[STD-federacia]]).",
+     "ucel_federacie": false,
+     "zavaznost": "musi",
+     "zdroj_normy": "IFC 4.3 IfcRelContainedInSpatialStructure ; ISO 19650-2 5.1.4"
+    },
+    "druh": "pravidlo",
+    "id": "STD-CL-02"
+   },
+   {
+    "data": {
+     "applicability": {
+      "entity": "IFCBUILDINGSTOREY"
+     },
+     "id": "STD-CL-03",
+     "nazov": "Hierarchia site – budova – podlažie",
+     "overenie": "IDS",
+     "plati": "vzdy",
+     "pokyn": "nevytvárať pomocné budovy ani podlažia pre pracovné účely v odovzdávanom súbore",
+     "postup": "počet inštancií IfcSite a IfcBuilding = 1 – v IDS 1.0 nevyjadriteľné, kontrola manuálne",
+     "requirements": [
+      {
+       "cardinality": "required",
+       "entity": "IFCBUILDING",
+       "facet": "partOf",
+       "relation": "IFCRELAGGREGATES"
+      }
+     ],
+     "rozsah": "objekt",
+     "text": "V každom DiMS je práve jeden IfcSite a jeden IfcBuilding na stavebný objekt; každé IfcBuildingStorey je agregované v IfcBuilding. Rovnaké GUID IfcSite/IfcBuilding/IfcBuildingStorey naprieč DiMS rieši STD-FED-03 (federácia).",
+     "ucel_federacie": true,
+     "zavaznost": "musi",
+     "zdroj_normy": "IFC 4.3 spatial decomposition ; ISO 19650-2 5.1.4"
+    },
+    "druh": "pravidlo",
+    "id": "STD-CL-03"
+   },
+   {
+    "data": {
+     "applicability": {
+      "entity": "IFCSPACE",
+      "filter": [
+       {
+        "facet": "attribute",
+        "hodnota": "INTERNAL",
+        "nazov": "PredefinedType"
+       }
+      ]
+     },
+     "id": "STD-CL-04",
+     "nazov": "Vnútorný priestor je členom zóny",
+     "overenie": "IDS",
+     "plati": "na_vyziadanie",
+     "pokyn": "zóny vytvárať ako IfcZone s ObjectType podľa STD-klasifikacia; priestor priradiť k zóne v autorskom nástroji",
+     "postup": "IDS overí členstvo v nejakej IfcZone; typ zóny (ObjectType) ani „práve jedna\" IDS neoverí – kontrola manuálne alebo checkerom nad zoznamom zón",
+     "requirements": [
+      {
+       "cardinality": "required",
+       "entity": "IFCZONE",
+       "facet": "partOf",
+       "relation": "IFCRELASSIGNSTOGROUP"
+      }
+     ],
+     "rozsah": "objekt",
+     "text": "Každý vnútorný priestor je členom aspoň jednej zóny typu NajomnaJednotka alebo SpolocnyPriestor; technické priestory zóny TechnickyPriestor. Priestor nesmie byť členom dvoch priestorových zón súčasne.",
+     "ucel_federacie": false,
+     "zavaznost": "musi",
+     "zdroj_normy": "IFC 4.3 IfcZone / IfcRelAssignsToGroup"
+    },
+    "druh": "pravidlo",
+    "id": "STD-CL-04"
+   },
+   {
+    "data": {
+     "applicability": {
+      "entity": "IFCBUILDINGELEMENTPROXY"
+     },
+     "id": "STD-CL-05",
+     "nazov": "Zákaz IfcBuildingElementProxy",
+     "overenie": "IDS",
+     "plati": "vzdy",
+     "pokyn": "pred exportom mapovať kategórie na konkrétne IFC entity",
+     "postup": "",
+     "pritomnost_v_modeli": "prohibited",
+     "requirements": [],
+     "rozsah": "objekt",
+     "text": "IfcBuildingElementProxy je zakázaný vo všetkých DiMS; každý prvok má konkrétnu IFC entitu. Ďalšie zákazy per DiMS (napr. IfcDistributionElement v ARCH) sú v [[STD-federacia]].",
+     "ucel_federacie": false,
+     "zavaznost": "musi",
+     "zdroj_normy": "IFC 4.3 ; ISO 19650-2 5.1.4"
+    },
+    "druh": "pravidlo",
+    "id": "STD-CL-05"
+   },
+   {
+    "data": {
+     "applicability": {
+      "entity": "IFCZONE"
+     },
+     "id": "STD-CL-06",
+     "nazov": "Zóna má typ (ObjectType zo slovníka)",
+     "overenie": "IDS",
+     "plati": "vzdy",
+     "pokyn": "ObjectType nastaviť pri založení zóny; nové typy pridávať do slovníka, nie ad hoc",
+     "postup": "",
+     "requirements": [
+      {
+       "cardinality": "required",
+       "facet": "attribute",
+       "hodnoty_ref": "[[STD-klasifikacia#typy-zon]]",
+       "nazov": "ObjectType"
+      }
+     ],
+     "rozsah": "objekt",
+     "text": "Každá IfcZone nesie ObjectType zo slovníka typov zón (STD-klasifikacia). IU-O, ktoré filtrujú zóny podľa ObjectType (IU-O-zone, zóny TZB), sa spoliehajú na toto pravidlo.",
+     "ucel_federacie": true,
+     "zavaznost": "musi",
+     "zdroj_normy": "IFC 4.3 IfcZone.ObjectType ; ISO 19650-2 5.1.4"
+    },
+    "druh": "pravidlo",
+    "id": "STD-CL-06"
+   }
+  ],
+  "typ": "STD",
+  "verzia": "04b8ef5d342e99e4ff63a461fbdd5d22c5812a0724c65df506ae058da397426a",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/STD/STD-geo-profily.md": {
+  "data": {
+   "aliases": [
+    "STD-geo-profily"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "STD-geo-profily",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Geometrické profily (presety 7817-3)",
+   "nazov_en": "Geometry profiles",
+   "stav": "WD",
+   "typ": "STD",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "STD-geo-profily",
+  "model": {
+   "aliases": [
+    "STD-geo-profily"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "STD-geo-profily",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Geometrické profily (presety 7817-3)",
+   "nazov_en": "Geometry profiles",
+   "prepisuje": [],
+   "stav": "WD",
+   "typ": "STD",
+   "verzia": "0.1"
+  },
+  "pod_zaznamy": [
+   {
+    "data": {
+     "aspekty": {
+      "Appearance": "NotRequired",
+      "Dimensionality": "NotRequired",
+      "Location": {
+       "PositioningType": "NotDefined"
+      },
+      "ParametricBehaviour": "NotRequested",
+      "ShapeAssembly": "NotRequired",
+      "ShapeInfluence": {
+       "Connections": "NotRequired",
+       "Features": "NotRequired",
+       "InsideGeometry": "NotRequired",
+       "Openings": "NotRequired",
+       "OperatingAndClearanceZones": "NotRequired"
+      },
+      "ShapeRepresentation": "NotRequired"
+     },
+     "dictionary": null,
+     "id": "GEO-G0",
+     "nazov": "G0 – bez geometrie",
+     "vhodne_pre": "Objekty bez vlastného tvaru – IfcBuildingStorey, IfcZone, IfcSystem, IfcGroup; poloha sa nesie umiestnením/atribútom, nie tvarom"
+    },
+    "druh": "profil",
+    "id": "GEO-G0"
+   },
+   {
+    "data": {
+     "aspekty": {
+      "Appearance": "SingularMaterial",
+      "Dimensionality": "3D",
+      "Location": {
+       "PositioningType": "Absolute"
+      },
+      "ParametricBehaviour": "NotRequested",
+      "ShapeAssembly": "SingleObjectSingularShape",
+      "ShapeInfluence": {
+       "Connections": "NotRequired",
+       "Features": "NotRequired",
+       "InsideGeometry": "NotRequired",
+       "Openings": "OpeningsAsPartOfShape",
+       "OperatingAndClearanceZones": "NotRequired"
+      },
+      "ShapeRepresentation": "OuterShellAsSingularShape"
+     },
+     "dictionary": null,
+     "id": "GEO-G2",
+     "nazov": "G2 – koordinačná geometria",
+     "vhodne_pre": "Priestorová koordinácia a výkaz výmer na úrovni DSP; obrysové priestory (IfcSpace) s prepisom Openings/Appearance/Location"
+    },
+    "druh": "profil",
+    "id": "GEO-G2"
+   }
+  ],
+  "typ": "STD",
+  "verzia": "a458e23578b44d2245e7c5fc7d849a86248848aa4ec1fd523da95c449d6df816",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/UC/UC-0101 Priestorová pasportizácia.md": {
+  "data": {
+   "aktor": [
+    "[[ACT-poverujuca]]",
+    "[[ACT-poverujuca/koordinator-BIM]]",
+    "[[ACT-poverujuca/spravca-informacii]]",
+    "[[ACT-poverena/ARCH]]",
+    "[[ACT-poverena/geodet]]"
+   ],
+   "aliases": [
+    "UC-0101"
+   ],
+   "autor": "Assetin",
+   "construction_entity": [
+    "administratívna budova"
+   ],
+   "faza_iso22263": [
+    "maintenance"
+   ],
+   "faza_lokalna": [
+    "prevádzka"
+   ],
+   "guid": null,
+   "id": "UC-0101",
+   "jazyk": "sk",
+   "kratky_nazov_en": "SpatialSurvey",
+   "licencia": "CC-BY-4.0",
+   "nadradeny_uc": [
+    "[[UC-0100]]"
+   ],
+   "nazov": "Priestorová pasportizácia",
+   "nazov_en": "Spatial survey",
+   "norma": [
+    "STN EN ISO 19650-1, -2 — správa informácií, EIR/LOIN",
+    "ISO 7817-1 — úroveň informačných potrieb (LOIN)",
+    "ISO 16739-1 (IFC 4.3 ADD2) — IfcSpace, IfcBuildingStorey, IfcZone, Qto_SpaceBaseQuantities",
+    "STN EN 15221-6 / ČSN EN 15221-6 — meranie plôch a priestorov vo FM",
+    "IPMS All Buildings (2023) — referenčný rámec pre [[DEF-plocha-hruba]] a [[DEF-plocha-cista]]",
+    "vyhláška 131/2024 Sb. (CZ) o dokumentaci staveb — štruktúra dokumentových kontajnerov (SK ekvivalent doplniť)"
+   ],
+   "podporuje_ciel": [
+    "[[GOAL-A-01]]"
+   ],
+   "pouzitie": [
+    "ZamerajPriestory",
+    "VytvorPriestory",
+    "KlasifikujPriestory",
+    "VypocitajPlochy",
+    "ZostavZony"
+   ],
+   "pravidlo": [
+    "[[DEF-plocha-hruba]]",
+    "[[DEF-plocha-cista]]"
+   ],
+   "region": [
+    "SVK",
+    "CZE"
+   ],
+   "spustacia_udalost": [
+    "[[EV-I-0007]]"
+   ],
+   "stav": "WD",
+   "typ": "UC",
+   "typ_ulohy": "delivery",
+   "ulohy": [
+    {
+     "aktor": "[[ACT-poverena/geodet]]",
+     "id": "T1",
+     "nazov": "zameranie priestorov na mieste – vstup modelovania",
+     "typ": "delivery"
+    },
+    {
+     "aktor": "[[ACT-poverena/ARCH]]",
+     "id": "T2",
+     "nazov": "vytvorenie IfcBuildingStorey a IfcSpace, identifikácia a klasifikácia",
+     "typ": "delivery",
+     "vystup": [
+      "[[IU-O-storey]]",
+      "[[IU-O-space]]"
+     ]
+    },
+    {
+     "aktor": "[[ACT-poverena/ARCH]]",
+     "id": "T3",
+     "nazov": "výpočet plôch podľa DEF a zápis do Qto_SpaceBaseQuantities",
+     "typ": "delivery",
+     "vystup": [
+      "[[IU-O-space]]"
+     ]
+    },
+    {
+     "aktor": "[[ACT-poverena/ARCH]]",
+     "id": "T4",
+     "nazov": "zostavenie zón — nájomné jednotky a spoločné priestory",
+     "typ": "delivery",
+     "vystup": [
+      "[[IU-O-zone]]"
+     ]
+    },
+    {
+     "aktor": "[[ACT-poverena/ARCH]]",
+     "id": "T5",
+     "nazov": "export modelu a tabuľky miestností z DiMS, odovzdanie do CDE",
+     "typ": "delivery",
+     "vystup": [
+      "[[IU-C-arch-model]]"
+     ]
+    },
+    {
+     "aktor": "[[ACT-poverena/geodet]]",
+     "id": "T6",
+     "nazov": "potvrdenie exportovanej tabuľky voči zameraniu, odchýlky, protokol",
+     "typ": "delivery",
+     "vystup": [
+      "[[IU-C-protokol-zamerania]]"
+     ]
+    },
+    {
+     "aktor": "[[ACT-poverujuca/koordinator-BIM]]",
+     "id": "D1",
+     "nazov": "kontrola modelu voči IDS, protokolu (odchýlky) a náhodná kontrola na mieste",
+     "typ": "utilization"
+    },
+    {
+     "aktor": "[[ACT-poverujuca/spravca-informacii]]",
+     "id": "D2",
+     "nazov": "autorizácia a prevzatie do AIM",
+     "typ": "utilization"
+    }
+   ],
+   "verzia": 0.1,
+   "zrelost": "Example"
+  },
+  "diagnostiky": [],
+  "id": "UC-0101",
+  "model": {
+   "aktor": [
+    "[[ACT-poverujuca]]",
+    "[[ACT-poverujuca/koordinator-BIM]]",
+    "[[ACT-poverujuca/spravca-informacii]]",
+    "[[ACT-poverena/ARCH]]",
+    "[[ACT-poverena/geodet]]"
+   ],
+   "aliases": [
+    "UC-0101"
+   ],
+   "autor": "Assetin",
+   "construction_entity": [
+    "administratívna budova"
+   ],
+   "faza_iso22263": [
+    "maintenance"
+   ],
+   "faza_lokalna": [
+    "prevádzka"
+   ],
+   "guid": null,
+   "id": "UC-0101",
+   "jazyk": "sk",
+   "kratky_nazov_en": "SpatialSurvey",
+   "licencia": "CC-BY-4.0",
+   "nadradeny_uc": [
+    "[[UC-0100]]"
+   ],
+   "nazov": "Priestorová pasportizácia",
+   "nazov_en": "Spatial survey",
+   "norma": [
+    "STN EN ISO 19650-1, -2 — správa informácií, EIR/LOIN",
+    "ISO 7817-1 — úroveň informačných potrieb (LOIN)",
+    "ISO 16739-1 (IFC 4.3 ADD2) — IfcSpace, IfcBuildingStorey, IfcZone, Qto_SpaceBaseQuantities",
+    "STN EN 15221-6 / ČSN EN 15221-6 — meranie plôch a priestorov vo FM",
+    "IPMS All Buildings (2023) — referenčný rámec pre [[DEF-plocha-hruba]] a [[DEF-plocha-cista]]",
+    "vyhláška 131/2024 Sb. (CZ) o dokumentaci staveb — štruktúra dokumentových kontajnerov (SK ekvivalent doplniť)"
+   ],
+   "podporuje_ciel": [
+    "[[GOAL-A-01]]"
+   ],
+   "pouzitie": [
+    "ZamerajPriestory",
+    "VytvorPriestory",
+    "KlasifikujPriestory",
+    "VypocitajPlochy",
+    "ZostavZony"
+   ],
+   "pravidlo": [
+    "[[DEF-plocha-hruba]]",
+    "[[DEF-plocha-cista]]"
+   ],
+   "region": [
+    "SVK",
+    "CZE"
+   ],
+   "spustacia_udalost": [
+    "[[EV-I-0007]]"
+   ],
+   "stav": "WD",
+   "typ": "UC",
+   "typ_ulohy": "delivery",
+   "ulohy": [
+    {
+     "aktor": "[[ACT-poverena/geodet]]",
+     "id": "T1",
+     "nazov": "zameranie priestorov na mieste – vstup modelovania",
+     "typ": "delivery",
+     "vystup": []
+    },
+    {
+     "aktor": "[[ACT-poverena/ARCH]]",
+     "id": "T2",
+     "nazov": "vytvorenie IfcBuildingStorey a IfcSpace, identifikácia a klasifikácia",
+     "typ": "delivery",
+     "vystup": [
+      "[[IU-O-storey]]",
+      "[[IU-O-space]]"
+     ]
+    },
+    {
+     "aktor": "[[ACT-poverena/ARCH]]",
+     "id": "T3",
+     "nazov": "výpočet plôch podľa DEF a zápis do Qto_SpaceBaseQuantities",
+     "typ": "delivery",
+     "vystup": [
+      "[[IU-O-space]]"
+     ]
+    },
+    {
+     "aktor": "[[ACT-poverena/ARCH]]",
+     "id": "T4",
+     "nazov": "zostavenie zón — nájomné jednotky a spoločné priestory",
+     "typ": "delivery",
+     "vystup": [
+      "[[IU-O-zone]]"
+     ]
+    },
+    {
+     "aktor": "[[ACT-poverena/ARCH]]",
+     "id": "T5",
+     "nazov": "export modelu a tabuľky miestností z DiMS, odovzdanie do CDE",
+     "typ": "delivery",
+     "vystup": [
+      "[[IU-C-arch-model]]"
+     ]
+    },
+    {
+     "aktor": "[[ACT-poverena/geodet]]",
+     "id": "T6",
+     "nazov": "potvrdenie exportovanej tabuľky voči zameraniu, odchýlky, protokol",
+     "typ": "delivery",
+     "vystup": [
+      "[[IU-C-protokol-zamerania]]"
+     ]
+    },
+    {
+     "aktor": "[[ACT-poverujuca/koordinator-BIM]]",
+     "id": "D1",
+     "nazov": "kontrola modelu voči IDS, protokolu (odchýlky) a náhodná kontrola na mieste",
+     "typ": "utilization",
+     "vystup": []
+    },
+    {
+     "aktor": "[[ACT-poverujuca/spravca-informacii]]",
+     "id": "D2",
+     "nazov": "autorizácia a prevzatie do AIM",
+     "typ": "utilization",
+     "vystup": []
+    }
+   ],
+   "verzia": "0.1",
+   "zrelost": "Example"
+  },
+  "pod_zaznamy": [],
+  "typ": "UC",
+  "verzia": "261bab820e14f54c77c3dfeb01bef6296c5cb082bacb539cc8861b8a36d223bc",
+  "zdroje": {
+   "aktor": "inline",
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "construction_entity": "frontmatter",
+   "faza_iso22263": "frontmatter",
+   "faza_lokalna": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "kratky_nazov_en": "frontmatter",
+   "licencia": "frontmatter",
+   "nadradeny_uc": "inline",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "norma": "inline",
+   "podporuje_ciel": "inline",
+   "pouzitie": "frontmatter",
+   "pravidlo": "inline",
+   "region": "frontmatter",
+   "spustacia_udalost": "inline",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "typ_ulohy": "frontmatter",
+   "ulohy": "blok",
+   "verzia": "frontmatter",
+   "zrelost": "frontmatter"
+  }
+ },
+ "zadanie/registre/ACT/poverena/ARCH/ARCH.md": {
+  "data": {
+   "aliases": [
+    "ACT-poverena/ARCH"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "ACT-poverena/ARCH",
+   "jazyk": "sk",
+   "klasifikacia_19650": "pracovná skupina (task team) – architektonický model (ISO 19650-2 5.1.2)",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Pracovná skupina architektúra",
+   "nazov_en": "Architecture task team",
+   "stav": "WD",
+   "strana": "poverena",
+   "typ": "ACT",
+   "uroven": "tim",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "ACT-poverena/ARCH",
+  "model": {
+   "aliases": [
+    "ACT-poverena/ARCH"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "ACT-poverena/ARCH",
+   "jazyk": "sk",
+   "klasifikacia_19650": "pracovná skupina (task team) – architektonický model (ISO 19650-2 5.1.2)",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Pracovná skupina architektúra",
+   "nazov_en": "Architecture task team",
+   "osoby": [],
+   "stav": "WD",
+   "strana": "poverena",
+   "typ": "ACT",
+   "uroven": "tim",
+   "verzia": "0.1",
+   "zmluvne_oznacenie": null
+  },
+  "pod_zaznamy": [],
+  "typ": "ACT",
+  "verzia": "3545deb3fc5a694fc14d0911fc6a2ceddfd4b9108b9f5964e5824967fcb9dfe8",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "klasifikacia_19650": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "strana": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/registre/ACT/poverena/geodet/geodet.md": {
+  "data": {
+   "aliases": [
+    "ACT-poverena/geodet"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "ACT-poverena/geodet",
+   "jazyk": "sk",
+   "klasifikacia_19650": "pracovná skupina (task team) – zameranie skutočného stavu (ISO 19650-2 5.1.2)",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Pracovná skupina geodézia",
+   "nazov_en": "Surveying task team",
+   "stav": "WD",
+   "strana": "poverena",
+   "typ": "ACT",
+   "uroven": "tim",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "ACT-poverena/geodet",
+  "model": {
+   "aliases": [
+    "ACT-poverena/geodet"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "ACT-poverena/geodet",
+   "jazyk": "sk",
+   "klasifikacia_19650": "pracovná skupina (task team) – zameranie skutočného stavu (ISO 19650-2 5.1.2)",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Pracovná skupina geodézia",
+   "nazov_en": "Surveying task team",
+   "osoby": [],
+   "stav": "WD",
+   "strana": "poverena",
+   "typ": "ACT",
+   "uroven": "tim",
+   "verzia": "0.1",
+   "zmluvne_oznacenie": null
+  },
+  "pod_zaznamy": [],
+  "typ": "ACT",
+  "verzia": "e465db3f41cc53da421537238d1effa1e8ef0cc22a80356bb8c3019924224654",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "klasifikacia_19650": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "strana": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/registre/ACT/poverujuca/koordinator-BIM.md": {
+  "data": {
+   "aliases": [
+    "ACT-poverujuca/koordinator-BIM"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "ACT-poverujuca/koordinator-BIM",
+   "jazyk": "sk",
+   "klasifikacia_19650": "funkcia managementu informácií – koordinácia a overovanie modelov (ISO 19650-2 5.1.1)",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Koordinátor BIM (poverujúca strana)",
+   "nazov_en": "BIM coordinator (appointing party)",
+   "stav": "WD",
+   "strana": "poverujuca",
+   "typ": "ACT",
+   "uroven": "funkcia",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "ACT-poverujuca/koordinator-BIM",
+  "model": {
+   "aliases": [
+    "ACT-poverujuca/koordinator-BIM"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "ACT-poverujuca/koordinator-BIM",
+   "jazyk": "sk",
+   "klasifikacia_19650": "funkcia managementu informácií – koordinácia a overovanie modelov (ISO 19650-2 5.1.1)",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Koordinátor BIM (poverujúca strana)",
+   "nazov_en": "BIM coordinator (appointing party)",
+   "osoby": [],
+   "stav": "WD",
+   "strana": "poverujuca",
+   "typ": "ACT",
+   "uroven": "funkcia",
+   "verzia": "0.1",
+   "zmluvne_oznacenie": null
+  },
+  "pod_zaznamy": [],
+  "typ": "ACT",
+  "verzia": "ded7998b699ae2b535842041cd9839ca8d2c11e22b9d054e6c8123c68400d5ed",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "klasifikacia_19650": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "strana": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/registre/ACT/poverujuca/poverujuca.md": {
+  "data": {
+   "aliases": [
+    "ACT-poverujuca"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "ACT-poverujuca",
+   "jazyk": "sk",
+   "klasifikacia_19650": "poverujúca strana (ISO 19650-1 3.2.4)",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Poverujúca strana",
+   "nazov_en": "Appointing party",
+   "stav": "WD",
+   "strana": "poverujuca",
+   "typ": "ACT",
+   "uroven": "strana",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "ACT-poverujuca",
+  "model": {
+   "aliases": [
+    "ACT-poverujuca"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "ACT-poverujuca",
+   "jazyk": "sk",
+   "klasifikacia_19650": "poverujúca strana (ISO 19650-1 3.2.4)",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Poverujúca strana",
+   "nazov_en": "Appointing party",
+   "osoby": [],
+   "stav": "WD",
+   "strana": "poverujuca",
+   "typ": "ACT",
+   "uroven": "strana",
+   "verzia": "0.1",
+   "zmluvne_oznacenie": null
+  },
+  "pod_zaznamy": [],
+  "typ": "ACT",
+  "verzia": "15646398b49677addcb43a9a887afb1069e3063a13187d91738d9a905196774f",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "klasifikacia_19650": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "strana": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/registre/ACT/poverujuca/spravca-informacii.md": {
+  "data": {
+   "aliases": [
+    "ACT-poverujuca/spravca-informacii"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "ACT-poverujuca/spravca-informacii",
+   "jazyk": "sk",
+   "klasifikacia_19650": "funkcia managementu informácií – správa AIM, autorizácia (ISO 19650-3)",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Správca informácií o aktíve",
+   "nazov_en": "Asset information manager",
+   "stav": "WD",
+   "strana": "poverujuca",
+   "typ": "ACT",
+   "uroven": "funkcia",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "ACT-poverujuca/spravca-informacii",
+  "model": {
+   "aliases": [
+    "ACT-poverujuca/spravca-informacii"
+   ],
+   "autor": "Assetin",
+   "guid": null,
+   "id": "ACT-poverujuca/spravca-informacii",
+   "jazyk": "sk",
+   "klasifikacia_19650": "funkcia managementu informácií – správa AIM, autorizácia (ISO 19650-3)",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Správca informácií o aktíve",
+   "nazov_en": "Asset information manager",
+   "osoby": [],
+   "stav": "WD",
+   "strana": "poverujuca",
+   "typ": "ACT",
+   "uroven": "funkcia",
+   "verzia": "0.1",
+   "zmluvne_oznacenie": null
+  },
+  "pod_zaznamy": [],
+  "typ": "ACT",
+  "verzia": "965e2eaebb2857f214c49f1f25520921e5fec9b0582adf54fec5f56617b4b9a7",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "klasifikacia_19650": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "strana": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/registre/DEF/DEF-plocha-cista Čistá plocha miestnosti.md": {
+  "data": {
+   "aliases": [
+    "DEF-plocha-cista"
+   ],
+   "autor": "Assetin",
+   "definicia": "Hrubá plocha miestnosti ([[DEF-plocha-hruba]]) znížená o plochu stĺpov, vstavaných konštrukcií, šácht a iných pevných prvkov vnútri miestnosti s pôdorysom väčším ako 0,1 m². Zodpovedá IFC Qto_SpaceBaseQuantities.NetFloorArea.",
+   "guid": null,
+   "hranica_merania": "vnútorný líc omietky / obkladu; odpočet po líci prvkov v miestnosti",
+   "id": "DEF-plocha-cista",
+   "jazyk": "sk",
+   "jednotka": "m2",
+   "licencia": "CC-BY-4.0",
+   "metoda_merania": "odvodenie z hrubej plochy odpočtom zameraných prvkov; v modeli z obrysu IfcSpace mínus prvky s IfcRelContainedInSpatialStructure na IfcSpace",
+   "nazov": "Čistá plocha miestnosti",
+   "nazov_en": "Net room area",
+   "referencny_dokument": "IFC 4.3 Qto_SpaceBaseQuantities ; IPMS All Buildings 2023 (mapovanie overiť)",
+   "stav": "WD",
+   "tolerancia": "±0.5 %",
+   "typ": "DEF",
+   "verzia": 0.1,
+   "zaokruhlenie": 0.01,
+   "zodpovedny_za_meranie": "[[ACT-poverena/geodet]]"
+  },
+  "diagnostiky": [],
+  "id": "DEF-plocha-cista",
+  "model": {
+   "aliases": [
+    "DEF-plocha-cista"
+   ],
+   "autor": "Assetin",
+   "definicia": "Hrubá plocha miestnosti ([[DEF-plocha-hruba]]) znížená o plochu stĺpov, vstavaných konštrukcií, šácht a iných pevných prvkov vnútri miestnosti s pôdorysom väčším ako 0,1 m². Zodpovedá IFC Qto_SpaceBaseQuantities.NetFloorArea.",
+   "guid": null,
+   "hranica_merania": "vnútorný líc omietky / obkladu; odpočet po líci prvkov v miestnosti",
+   "id": "DEF-plocha-cista",
+   "jazyk": "sk",
+   "jednotka": "m2",
+   "licencia": "CC-BY-4.0",
+   "metoda_merania": "odvodenie z hrubej plochy odpočtom zameraných prvkov; v modeli z obrysu IfcSpace mínus prvky s IfcRelContainedInSpatialStructure na IfcSpace",
+   "nazov": "Čistá plocha miestnosti",
+   "nazov_en": "Net room area",
+   "odvodene_z": [],
+   "referencny_dokument": "IFC 4.3 Qto_SpaceBaseQuantities ; IPMS All Buildings 2023 (mapovanie overiť)",
+   "stav": "WD",
+   "tolerancia": "±0.5 %",
+   "typ": "DEF",
+   "verzia": "0.1",
+   "zaokruhlenie": 0.01,
+   "zodpovedny_za_meranie": "[[ACT-poverena/geodet]]"
+  },
+  "pod_zaznamy": [],
+  "typ": "DEF",
+  "verzia": "26cc568806e2af260d38e915e7307970c4b4327735c9424abd6b3b1651743988",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "definicia": "frontmatter",
+   "guid": "frontmatter",
+   "hranica_merania": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "jednotka": "frontmatter",
+   "licencia": "frontmatter",
+   "metoda_merania": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "referencny_dokument": "frontmatter",
+   "stav": "frontmatter",
+   "tolerancia": "frontmatter",
+   "typ": "frontmatter",
+   "verzia": "frontmatter",
+   "zaokruhlenie": "frontmatter",
+   "zodpovedny_za_meranie": "frontmatter"
+  }
+ },
+ "zadanie/registre/DEF/DEF-plocha-hruba Hrubá plocha miestnosti.md": {
+  "data": {
+   "aliases": [
+    "DEF-plocha-hruba"
+   ],
+   "autor": "Assetin",
+   "definicia": "Pôdorysná plocha miestnosti ohraničená vnútorným lícom dokončených povrchov obvodových a deliacich konštrukcií vo výške 1,0 m nad čistou podlahou, vrátane plochy zabranej stĺpmi, vstavanými konštrukciami a šachtami vnútri miestnosti a vrátane ník hlbších ako 0,1 m. Zodpovedá IFC Qto_SpaceBaseQuantities.GrossFloorArea.",
+   "guid": null,
+   "hranica_merania": "vnútorný líc omietky / obkladu (dokončený povrch)",
+   "id": "DEF-plocha-hruba",
+   "jazyk": "sk",
+   "jednotka": "m2",
+   "licencia": "CC-BY-4.0",
+   "metoda_merania": "laserové zameranie na mieste vo výške 1,0 m; v modeli výpočet z uzavretého obrysu IfcSpace",
+   "nazov": "Hrubá plocha miestnosti",
+   "nazov_en": "Gross room area",
+   "referencny_dokument": "STN EN 15221-6 (net room area – mapovanie overiť) ; IFC 4.3 Qto_SpaceBaseQuantities",
+   "stav": "WD",
+   "tolerancia": "±0.5 %",
+   "typ": "DEF",
+   "verzia": 0.1,
+   "zaokruhlenie": 0.01,
+   "zodpovedny_za_meranie": "[[ACT-poverena/geodet]]"
+  },
+  "diagnostiky": [],
+  "id": "DEF-plocha-hruba",
+  "model": {
+   "aliases": [
+    "DEF-plocha-hruba"
+   ],
+   "autor": "Assetin",
+   "definicia": "Pôdorysná plocha miestnosti ohraničená vnútorným lícom dokončených povrchov obvodových a deliacich konštrukcií vo výške 1,0 m nad čistou podlahou, vrátane plochy zabranej stĺpmi, vstavanými konštrukciami a šachtami vnútri miestnosti a vrátane ník hlbších ako 0,1 m. Zodpovedá IFC Qto_SpaceBaseQuantities.GrossFloorArea.",
+   "guid": null,
+   "hranica_merania": "vnútorný líc omietky / obkladu (dokončený povrch)",
+   "id": "DEF-plocha-hruba",
+   "jazyk": "sk",
+   "jednotka": "m2",
+   "licencia": "CC-BY-4.0",
+   "metoda_merania": "laserové zameranie na mieste vo výške 1,0 m; v modeli výpočet z uzavretého obrysu IfcSpace",
+   "nazov": "Hrubá plocha miestnosti",
+   "nazov_en": "Gross room area",
+   "odvodene_z": [],
+   "referencny_dokument": "STN EN 15221-6 (net room area – mapovanie overiť) ; IFC 4.3 Qto_SpaceBaseQuantities",
+   "stav": "WD",
+   "tolerancia": "±0.5 %",
+   "typ": "DEF",
+   "verzia": "0.1",
+   "zaokruhlenie": 0.01,
+   "zodpovedny_za_meranie": "[[ACT-poverena/geodet]]"
+  },
+  "pod_zaznamy": [],
+  "typ": "DEF",
+  "verzia": "369d0fa50673b2a6c648d73abb8fb9219b8a7b1fa48f267d0b7193d819cc4518",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "definicia": "frontmatter",
+   "guid": "frontmatter",
+   "hranica_merania": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "jednotka": "frontmatter",
+   "licencia": "frontmatter",
+   "metoda_merania": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "referencny_dokument": "frontmatter",
+   "stav": "frontmatter",
+   "tolerancia": "frontmatter",
+   "typ": "frontmatter",
+   "verzia": "frontmatter",
+   "zaokruhlenie": "frontmatter",
+   "zodpovedny_za_meranie": "frontmatter"
+  }
+ },
+ "zadanie/registre/EV/EV-D-0012 Odovzdanie priestorového modelu a protokolu zamerania.md": {
+  "data": {
+   "aliases": [
+    "EV-D-0012"
+   ],
+   "autor": "Assetin",
+   "faza_iso22263": [
+    "maintenance"
+   ],
+   "faza_lokalna": [
+    "prevádzka"
+   ],
+   "guid": null,
+   "id": "EV-D-0012",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Odovzdanie priestorového modelu a protokolu zamerania",
+   "nazov_en": "Handover of spatial model and survey report",
+   "planovana": true,
+   "relativny_termin": null,
+   "stav": "WD",
+   "typ": "EV",
+   "typ_udalosti": "delivery",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "EV-D-0012",
+  "model": {
+   "aliases": [
+    "EV-D-0012"
+   ],
+   "autor": "Assetin",
+   "datum": null,
+   "faza_iso22263": [
+    "maintenance"
+   ],
+   "faza_lokalna": [
+    "prevádzka"
+   ],
+   "guid": null,
+   "id": "EV-D-0012",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Odovzdanie priestorového modelu a protokolu zamerania",
+   "nazov_en": "Handover of spatial model and survey report",
+   "objekt": null,
+   "planovana": true,
+   "relativny_termin": null,
+   "stav": "WD",
+   "typ": "EV",
+   "typ_udalosti": "delivery",
+   "verzia": "0.1",
+   "vyvolava": []
+  },
+  "pod_zaznamy": [],
+  "typ": "EV",
+  "verzia": "689edc95b24372061cd79fc2a3fff9f2ae6fc76d438e21f099c8ff079a4e5688",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "faza_iso22263": "frontmatter",
+   "faza_lokalna": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "planovana": "frontmatter",
+   "relativny_termin": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "typ_udalosti": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/registre/EV/EV-I-0007 Prevzatie budovy do správy bez overenej priestorovej evidencie.md": {
+  "data": {
+   "aliases": [
+    "EV-I-0007"
+   ],
+   "autor": "Assetin",
+   "faza_iso22263": [
+    "maintenance"
+   ],
+   "faza_lokalna": [
+    "prevádzka"
+   ],
+   "guid": null,
+   "id": "EV-I-0007",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Prevzatie budovy do správy bez overenej priestorovej evidencie",
+   "nazov_en": "Building taken into management without verified spatial records",
+   "objekt": "#aktivum",
+   "planovana": false,
+   "relativny_termin": null,
+   "stav": "WD",
+   "typ": "EV",
+   "typ_udalosti": "impact",
+   "verzia": 0.1,
+   "vyvolava": [
+    "[[EV-D-0012]]"
+   ]
+  },
+  "diagnostiky": [],
+  "id": "EV-I-0007",
+  "model": {
+   "aliases": [
+    "EV-I-0007"
+   ],
+   "autor": "Assetin",
+   "datum": null,
+   "faza_iso22263": [
+    "maintenance"
+   ],
+   "faza_lokalna": [
+    "prevádzka"
+   ],
+   "guid": null,
+   "id": "EV-I-0007",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Prevzatie budovy do správy bez overenej priestorovej evidencie",
+   "nazov_en": "Building taken into management without verified spatial records",
+   "objekt": "#aktivum",
+   "planovana": false,
+   "relativny_termin": null,
+   "stav": "WD",
+   "typ": "EV",
+   "typ_udalosti": "impact",
+   "verzia": "0.1",
+   "vyvolava": [
+    "[[EV-D-0012]]"
+   ]
+  },
+  "pod_zaznamy": [],
+  "typ": "EV",
+  "verzia": "8e520f0bd0d834afbbcaa19717d082e5b95f380895810c7ee56bbecb78248c61",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "faza_iso22263": "frontmatter",
+   "faza_lokalna": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "objekt": "frontmatter",
+   "planovana": "frontmatter",
+   "relativny_termin": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "typ_udalosti": "frontmatter",
+   "verzia": "frontmatter",
+   "vyvolava": "inline"
+  }
+ }
+}

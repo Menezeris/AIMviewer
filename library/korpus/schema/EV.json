@@ -1,0 +1,309 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "additionalProperties": false,
+ "properties": {
+  "aliases": {
+   "default": [],
+   "description": "[V18] udržiava writer: vždy obsahuje `id` (Obsidian návrhár, Dataview)",
+   "items": {
+    "type": "string"
+   },
+   "title": "Aliasy",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "autor": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Autor",
+   "x-assetin": {
+    "export": "authoring/author",
+    "zdroj": "frontmatter"
+   }
+  },
+  "datum": {
+   "anyOf": [
+    {
+     "format": "date",
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "IBA v projekte",
+   "title": "Dátum",
+   "x-assetin": {
+    "export": "7817-3 InformationDeliveryMilestone/@Date",
+    "zdroj": "frontmatter"
+   }
+  },
+  "faza_iso22263": {
+   "default": [],
+   "description": "[V1] impact = stav aktíva, delivery = fáza výmeny",
+   "items": {
+    "enum": [
+     "inception",
+     "brief",
+     "design",
+     "production",
+     "maintenance",
+     "demolition"
+    ],
+    "type": "string"
+   },
+   "title": "Fáza ISO 22263",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "faza_lokalna": {
+   "default": [],
+   "items": {
+    "type": "string"
+   },
+   "title": "Fáza (lokálna)",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "guid": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "generuje nástroj",
+   "title": "GUID",
+   "x-assetin": {
+    "export": "specId/guid ; dt:GUID",
+    "zdroj": "frontmatter"
+   }
+  },
+  "id": {
+   "description": "prefix + číslo alebo cesta; nesie ho cesta súboru (§0.4), vo frontmatter kópia",
+   "title": "ID",
+   "type": "string",
+   "x-assetin": {
+    "export": "29481-3 specId/localCode ; 7817-3 name",
+    "zdroj": "frontmatter"
+   }
+  },
+  "jazyk": {
+   "default": "sk",
+   "description": "ISO 639-1",
+   "title": "Jazyk",
+   "type": "string",
+   "x-assetin": {
+    "export": "uc/language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "licencia": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Licencia",
+   "x-assetin": {
+    "export": "authoring/copyright",
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov": {
+   "title": "Názov",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov_en": {
+   "minLength": 1,
+   "title": "Názov (EN)",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/shortTitle ; 7817-3 Purpose/Language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "objekt": {
+   "anyOf": [
+    {
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "type": "string",
+     "x-assetin": {
+      "widget": "wikilink"
+     }
+    },
+    {
+     "enum": [
+      "#aktivum",
+      "#proces"
+     ],
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "iba impact (IU-O alebo #aktivum)",
+   "title": "Objekt",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-O"
+    ],
+    "kotva": "ziadna",
+    "widget": "wikilink",
+    "zdroj": "frontmatter"
+   }
+  },
+  "planovana": {
+   "anyOf": [
+    {
+     "type": "boolean"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Plánovaná",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "relativny_termin": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Relatívny termín",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "stav": {
+   "enum": [
+    "NP",
+    "WD",
+    "PUB",
+    "WDRL"
+   ],
+   "title": "Stav",
+   "type": "string",
+   "x-assetin": {
+    "export": "documentStatus",
+    "zdroj": "frontmatter"
+   }
+  },
+  "typ": {
+   "enum": [
+    "GOAL",
+    "UC",
+    "ER",
+    "IU-O",
+    "IU-C",
+    "STD",
+    "GEO",
+    "PROP",
+    "DEF",
+    "EV",
+    "ACT",
+    "PROT",
+    "PROJ"
+   ],
+   "title": "Typ",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "typ_udalosti": {
+   "enum": [
+    "delivery",
+    "impact"
+   ],
+   "title": "Typ udalosti",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "verzia": {
+   "title": "Verzia",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/version",
+    "zdroj": "frontmatter"
+   }
+  },
+  "vyvolava": {
+   "default": [],
+   "description": "iba impact",
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Vyvoláva",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "EV"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Popis",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  }
+ },
+ "required": [
+  "id",
+  "typ",
+  "nazov",
+  "nazov_en",
+  "stav",
+  "verzia",
+  "typ_udalosti"
+ ],
+ "title": "EV",
+ "type": "object",
+ "x-assetin": {
+  "pod_zaznamy": [],
+  "schema_verzia": "1.5",
+  "sekcie": [
+   "Popis"
+  ],
+  "typ": "EV"
+ }
+}

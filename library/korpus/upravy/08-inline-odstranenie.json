@@ -1,0 +1,28 @@
+{
+ "nazov": "inline-odstranenie",
+ "strom": "vzor",
+ "texty_po": {
+  "zadanie/ER/ER-0101 Priestorový model a protokol zamerania – odovzdanie.md": "---\nid: ER-0101\naliases: [ER-0101]\nguid:\ntyp: ER\nnazov: Priestorový model a protokol zamerania – odovzdanie\nnazov_en: Spatial model and survey report – handover\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Assetin\nlicencia: CC-BY-4.0\nforma:\n  format: IFC\n  verzia_schemy: IFC4X3_ADD2\nposkytovatel_predvoleny: \"[[ACT-poverena/ARCH]]\"\nprijemca: \"[[ACT-poverujuca]]\"\n---\n\n## Popis\nVýmena pri odovzdaní výsledkov priestorovej pasportizácie: architektonický priestorový model (IfcSpace / IfcBuildingStorey / IfcZone) ako jediný nositeľ miestností a plôch a protokol zamerania, ktorý je geodetom potvrdeným exportom z modelu; na ich základe poverujúca strana overí plochy a prevezme evidenciu do AIM. Jedna udalosť, jeden príjemca, dvaja poskytovatelia (ARCH, geodet) → v exporte dve 7817-3 Specification; IDS súbor iba jeden (ARCH); protokol sa overuje manuálne.\nuc:: [[UC-0101]]\nspustacia_udalost:: [[EV-D-0012]]\nstandard:: [[STD]]\nzapnute:: [[STD-CL-04]]\n\n## Informačné jednotky\nobsahuje:: [[IU-C-arch-model]], [[IU-C-protokol-zamerania]]\n\n## Prepisy pre túto výmenu\n<!-- delta voči IU (prednosť ER > IU); len hodnoty, nie definície -->\n```yaml\nprepisy:\n  - iu: \"[[IU-O-space]]\"\n    polozka: GrossFloorArea\n    povinnost: required\n  - iu: \"[[IU-O-space]]\"\n    polozka: Height\n    povinnost: required\n  - iu: \"[[IU-O-zone]]\"\n    polozka: LongName\n    povinnost: required\n```\n"
+ },
+ "vstup": {
+  "zmeny": [
+   {
+    "hodnota": null,
+    "id": "ER-0101",
+    "pointer": "/referencne_info"
+   }
+  ]
+ },
+ "vysledok": {
+  "diagnostiky": [],
+  "konflikt": false,
+  "odmietnute": [],
+  "ok": true,
+  "premenovane": [],
+  "vytvorene": [],
+  "zapisane": [
+   "zadanie/ER/ER-0101 Priestorový model a protokol zamerania – odovzdanie.md"
+  ]
+ },
+ "zmazane": []
+}

@@ -1,0 +1,312 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "additionalProperties": false,
+ "properties": {
+  "aliases": {
+   "default": [],
+   "description": "[V18] udržiava writer: vždy obsahuje `id` (Obsidian návrhár, Dataview)",
+   "items": {
+    "type": "string"
+   },
+   "title": "Aliasy",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "autor": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Autor",
+   "x-assetin": {
+    "export": "authoring/author",
+    "zdroj": "frontmatter"
+   }
+  },
+  "definicia": {
+   "title": "Definícia",
+   "type": "string",
+   "x-assetin": {
+    "export": "7817-3 Property.Definition ; 29481-3 businessRule/proposition",
+    "zdroj": "frontmatter"
+   }
+  },
+  "guid": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "generuje nástroj",
+   "title": "GUID",
+   "x-assetin": {
+    "export": "specId/guid ; dt:GUID",
+    "zdroj": "frontmatter"
+   }
+  },
+  "hranica_merania": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Hranica merania",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "id": {
+   "description": "prefix + číslo alebo cesta; nesie ho cesta súboru (§0.4), vo frontmatter kópia",
+   "title": "ID",
+   "type": "string",
+   "x-assetin": {
+    "export": "29481-3 specId/localCode ; 7817-3 name",
+    "zdroj": "frontmatter"
+   }
+  },
+  "jazyk": {
+   "default": "sk",
+   "description": "ISO 639-1",
+   "title": "Jazyk",
+   "type": "string",
+   "x-assetin": {
+    "export": "uc/language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "jednotka": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Jednotka",
+   "x-assetin": {
+    "trieda_obmedzenia": "hodnota",
+    "zdroj": "frontmatter"
+   }
+  },
+  "licencia": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Licencia",
+   "x-assetin": {
+    "export": "authoring/copyright",
+    "zdroj": "frontmatter"
+   }
+  },
+  "metoda_merania": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Metóda merania",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov": {
+   "title": "Názov",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov_en": {
+   "minLength": 1,
+   "title": "Názov (EN)",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/shortTitle ; 7817-3 Purpose/Language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "odvodene_z": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Odvodené z",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "DEF"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Poznámka",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "referencny_dokument": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Referenčný dokument",
+   "x-assetin": {
+    "export": "ReferenceDocumentRef",
+    "zdroj": "frontmatter"
+   }
+  },
+  "stav": {
+   "enum": [
+    "NP",
+    "WD",
+    "PUB",
+    "WDRL"
+   ],
+   "title": "Stav",
+   "type": "string",
+   "x-assetin": {
+    "export": "documentStatus",
+    "zdroj": "frontmatter"
+   }
+  },
+  "tolerancia": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Tolerancia",
+   "x-assetin": {
+    "trieda_obmedzenia": "hodnota",
+    "zdroj": "frontmatter"
+   }
+  },
+  "typ": {
+   "enum": [
+    "GOAL",
+    "UC",
+    "ER",
+    "IU-O",
+    "IU-C",
+    "STD",
+    "GEO",
+    "PROP",
+    "DEF",
+    "EV",
+    "ACT",
+    "PROT",
+    "PROJ"
+   ],
+   "title": "Typ",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "verzia": {
+   "title": "Verzia",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/version",
+    "zdroj": "frontmatter"
+   }
+  },
+  "zaokruhlenie": {
+   "anyOf": [
+    {
+     "type": "number"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Zaokrúhlenie",
+   "x-assetin": {
+    "trieda_obmedzenia": "hodnota",
+    "zdroj": "frontmatter"
+   }
+  },
+  "zodpovedny_za_meranie": {
+   "anyOf": [
+    {
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "type": "string",
+     "x-assetin": {
+      "widget": "wikilink"
+     }
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Zodpovedný za meranie",
+   "x-assetin": {
+    "cielove_typy": [
+     "ACT"
+    ],
+    "kotva": "ziadna",
+    "widget": "wikilink",
+    "zdroj": "frontmatter"
+   }
+  }
+ },
+ "required": [
+  "id",
+  "typ",
+  "nazov",
+  "nazov_en",
+  "stav",
+  "verzia",
+  "definicia"
+ ],
+ "title": "DEF",
+ "type": "object",
+ "x-assetin": {
+  "pod_zaznamy": [],
+  "schema_verzia": "1.5",
+  "sekcie": [
+   "Poznámka"
+  ],
+  "typ": "DEF"
+ }
+}

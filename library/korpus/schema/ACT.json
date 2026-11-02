@@ -1,0 +1,307 @@
+{
+ "$defs": {
+  "Osoba": {
+   "additionalProperties": false,
+   "properties": {
+    "email": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "E-mail",
+     "x-assetin": {
+      "export": "EMail",
+      "zdroj": "frontmatter"
+     }
+    },
+    "meno": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Meno",
+     "x-assetin": {
+      "export": "7817-3 @firstName",
+      "zdroj": "frontmatter"
+     }
+    },
+    "organizacia": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Organizácia",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "priezvisko": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Priezvisko",
+     "x-assetin": {
+      "export": "@lastName",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Osoba",
+   "type": "object"
+  }
+ },
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "additionalProperties": false,
+ "properties": {
+  "aliases": {
+   "default": [],
+   "description": "[V18] udržiava writer: vždy obsahuje `id` (Obsidian návrhár, Dataview)",
+   "items": {
+    "type": "string"
+   },
+   "title": "Aliasy",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "autor": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Autor",
+   "x-assetin": {
+    "export": "authoring/author",
+    "zdroj": "frontmatter"
+   }
+  },
+  "guid": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "generuje nástroj",
+   "title": "GUID",
+   "x-assetin": {
+    "export": "specId/guid ; dt:GUID",
+    "zdroj": "frontmatter"
+   }
+  },
+  "id": {
+   "description": "prefix + číslo alebo cesta; nesie ho cesta súboru (§0.4), vo frontmatter kópia",
+   "title": "ID",
+   "type": "string",
+   "x-assetin": {
+    "export": "29481-3 specId/localCode ; 7817-3 name",
+    "zdroj": "frontmatter"
+   }
+  },
+  "jazyk": {
+   "default": "sk",
+   "description": "ISO 639-1",
+   "title": "Jazyk",
+   "type": "string",
+   "x-assetin": {
+    "export": "uc/language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "klasifikacia_19650": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Klasifikácia 19650",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "licencia": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Licencia",
+   "x-assetin": {
+    "export": "authoring/copyright",
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov": {
+   "title": "Názov",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov_en": {
+   "minLength": 1,
+   "title": "Názov (EN)",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/shortTitle ; 7817-3 Purpose/Language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "osoby": {
+   "default": [],
+   "description": "IBA projekt",
+   "items": {
+    "$ref": "#/$defs/Osoba"
+   },
+   "title": "Osoby",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "stav": {
+   "enum": [
+    "NP",
+    "WD",
+    "PUB",
+    "WDRL"
+   ],
+   "title": "Stav",
+   "type": "string",
+   "x-assetin": {
+    "export": "documentStatus",
+    "zdroj": "frontmatter"
+   }
+  },
+  "strana": {
+   "enum": [
+    "poverujuca",
+    "veduca-poverena",
+    "poverena"
+   ],
+   "title": "Strana",
+   "type": "string",
+   "x-assetin": {
+    "export": "29481-3 classification ; 7817-3 @affiliation",
+    "zdroj": "frontmatter"
+   }
+  },
+  "typ": {
+   "enum": [
+    "GOAL",
+    "UC",
+    "ER",
+    "IU-O",
+    "IU-C",
+    "STD",
+    "GEO",
+    "PROP",
+    "DEF",
+    "EV",
+    "ACT",
+    "PROT",
+    "PROJ"
+   ],
+   "title": "Typ",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "uroven": {
+   "description": "strana | tim | funkcia; odvodí sa z cesty a kontroluje (A9)",
+   "enum": [
+    "strana",
+    "tim",
+    "funkcia"
+   ],
+   "title": "Úroveň",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "verzia": {
+   "title": "Verzia",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/version",
+    "zdroj": "frontmatter"
+   }
+  },
+  "zmluvne_oznacenie": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "IBA projekt",
+   "title": "Zmluvné označenie",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  }
+ },
+ "required": [
+  "id",
+  "typ",
+  "nazov",
+  "nazov_en",
+  "stav",
+  "verzia",
+  "uroven",
+  "strana"
+ ],
+ "title": "ACT",
+ "type": "object",
+ "x-assetin": {
+  "pod_zaznamy": [],
+  "schema_verzia": "1.5",
+  "sekcie": [
+   "Popis"
+  ],
+  "typ": "ACT"
+ }
+}

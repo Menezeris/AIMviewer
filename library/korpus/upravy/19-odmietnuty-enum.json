@@ -1,0 +1,36 @@
+{
+ "nazov": "odmietnuty-enum",
+ "strom": "vzor",
+ "texty_po": {},
+ "vstup": {
+  "zmeny": [
+   {
+    "hodnota": "XYZ",
+    "id": "IU-O-space",
+    "pointer": "/stav"
+   }
+  ]
+ },
+ "vysledok": {
+  "diagnostiky": [
+   {
+    "json_pointer": "/stav",
+    "kod": "A7",
+    "note_id": "IU-O-space",
+    "riadok": 8,
+    "sprava": "Input should be 'NP', 'WD', 'PUB' or 'WDRL'",
+    "subor": "zadanie/IU-O/IU-O-space Priestor.md",
+    "uroven": "E"
+   }
+  ],
+  "konflikt": false,
+  "odmietnute": [
+   "IU-O-space"
+  ],
+  "ok": false,
+  "premenovane": [],
+  "vytvorene": [],
+  "zapisane": []
+ },
+ "zmazane": []
+}

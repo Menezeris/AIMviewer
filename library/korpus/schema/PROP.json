@@ -1,0 +1,427 @@
+{
+ "$defs": {
+  "IfcPset": {
+   "additionalProperties": false,
+   "properties": {
+    "nazov": {
+     "title": "Vlastnosť",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS baseName",
+      "widget": "text",
+      "zdroj": "frontmatter"
+     }
+    },
+    "pset": {
+     "title": "Property set",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS propertySet",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "pset",
+    "nazov"
+   ],
+   "title": "IfcPset",
+   "type": "object"
+  }
+ },
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "additionalProperties": false,
+ "properties": {
+  "aliases": {
+   "default": [],
+   "description": "[V18] udržiava writer: vždy obsahuje `id` (Obsidian návrhár, Dataview)",
+   "items": {
+    "type": "string"
+   },
+   "title": "Aliasy",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "aplikovatelne_na": {
+   "default": [],
+   "description": "ako IfcPropertySetTemplate.ApplicableEntity",
+   "items": {
+    "type": "string"
+   },
+   "title": "Aplikovateľné na",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "autor": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Autor",
+   "x-assetin": {
+    "export": "authoring/author",
+    "zdroj": "frontmatter"
+   }
+  },
+  "datovy_typ": {
+   "anyOf": [
+    {
+     "enum": [
+      "string",
+      "number",
+      "integer",
+      "boolean",
+      "date",
+      "enum",
+      "uri"
+     ],
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Dátový typ",
+   "x-assetin": {
+    "export": "DataType (23387)",
+    "trieda_obmedzenia": "hodnota",
+    "zdroj": "frontmatter"
+   }
+  },
+  "definicia": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Definícia",
+   "x-assetin": {
+    "export": "Definition",
+    "zdroj": "frontmatter"
+   }
+  },
+  "definicia_ref": {
+   "anyOf": [
+    {
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "type": "string",
+     "x-assetin": {
+      "widget": "wikilink"
+     }
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Definícia (ref)",
+   "x-assetin": {
+    "cielove_typy": [
+     "DEF"
+    ],
+    "export": "ReferenceDocumentRef",
+    "kotva": "ziadna",
+    "widget": "wikilink",
+    "zdroj": "frontmatter"
+   }
+  },
+  "guid": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "generuje nástroj",
+   "title": "GUID",
+   "x-assetin": {
+    "export": "specId/guid ; dt:GUID",
+    "zdroj": "frontmatter"
+   }
+  },
+  "hodnoty": {
+   "anyOf": [
+    {
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "integer"
+       },
+       {
+        "type": "number"
+       },
+       {
+        "type": "boolean"
+       }
+      ]
+     },
+     "type": "array"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Hodnoty",
+   "x-assetin": {
+    "export": "PossibleValues ; IDS enum",
+    "trieda_obmedzenia": "hodnota",
+    "zdroj": "frontmatter"
+   }
+  },
+  "id": {
+   "description": "prefix + číslo alebo cesta; nesie ho cesta súboru (§0.4), vo frontmatter kópia",
+   "title": "ID",
+   "type": "string",
+   "x-assetin": {
+    "export": "29481-3 specId/localCode ; 7817-3 name",
+    "zdroj": "frontmatter"
+   }
+  },
+  "ifc": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/IfcPset"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "IFC",
+   "x-assetin": {
+    "export": "IDS propertySet/baseName",
+    "zdroj": "frontmatter"
+   }
+  },
+  "jazyk": {
+   "default": "sk",
+   "description": "ISO 639-1",
+   "title": "Jazyk",
+   "type": "string",
+   "x-assetin": {
+    "export": "uc/language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "jednotka": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Jednotka",
+   "x-assetin": {
+    "export": "UnitRef",
+    "trieda_obmedzenia": "hodnota",
+    "zdroj": "frontmatter"
+   }
+  },
+  "licencia": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Licencia",
+   "x-assetin": {
+    "export": "authoring/copyright",
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov": {
+   "title": "Názov",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov_en": {
+   "minLength": 1,
+   "title": "Názov (EN)",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/shortTitle ; 7817-3 Purpose/Language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "odvodene_z": {
+   "anyOf": [
+    {
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "type": "string",
+     "x-assetin": {
+      "widget": "wikilink"
+     }
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "[V2] zmluvná/odvodená hodnota odkazuje na meranú",
+   "title": "Odvodené z",
+   "x-assetin": {
+    "cielove_typy": [
+     "DEF"
+    ],
+    "kotva": "ziadna",
+    "widget": "wikilink",
+    "zdroj": "frontmatter"
+   }
+  },
+  "stav": {
+   "enum": [
+    "NP",
+    "WD",
+    "PUB",
+    "WDRL"
+   ],
+   "title": "Stav",
+   "type": "string",
+   "x-assetin": {
+    "export": "documentStatus",
+    "zdroj": "frontmatter"
+   }
+  },
+  "template_type": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Template type",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "typ": {
+   "enum": [
+    "GOAL",
+    "UC",
+    "ER",
+    "IU-O",
+    "IU-C",
+    "STD",
+    "GEO",
+    "PROP",
+    "DEF",
+    "EV",
+    "ACT",
+    "PROT",
+    "PROJ"
+   ],
+   "title": "Typ",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "uri": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "URI",
+   "x-assetin": {
+    "export": "dt:about",
+    "zdroj": "frontmatter"
+   }
+  },
+  "velicina": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Veličina",
+   "x-assetin": {
+    "export": "QuantityKindRef",
+    "trieda_obmedzenia": "hodnota",
+    "zdroj": "frontmatter"
+   }
+  },
+  "verzia": {
+   "title": "Verzia",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/version",
+    "zdroj": "frontmatter"
+   }
+  },
+  "zdroj_importu": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Zdroj importu",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  }
+ },
+ "required": [
+  "id",
+  "typ",
+  "nazov",
+  "nazov_en",
+  "stav",
+  "verzia"
+ ],
+ "title": "PROP",
+ "type": "object",
+ "x-assetin": {
+  "pod_zaznamy": [],
+  "schema_verzia": "1.5",
+  "sekcie": [
+   "Popis"
+  ],
+  "typ": "PROP"
+ }
+}

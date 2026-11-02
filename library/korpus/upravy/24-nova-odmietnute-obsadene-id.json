@@ -1,0 +1,37 @@
+{
+ "nazov": "nova-odmietnute-obsadene-id",
+ "strom": "vzor",
+ "texty_po": {},
+ "vstup": {
+  "nova": {
+   "data": {
+    "nazov_en": "x"
+   },
+   "id": "UC-0101",
+   "nazov": "x",
+   "typ": "UC"
+  }
+ },
+ "vysledok": {
+  "diagnostiky": [
+   {
+    "json_pointer": "/id",
+    "kod": "W1",
+    "note_id": "UC-0101",
+    "riadok": null,
+    "sprava": "ID 'UC-0101' už v knižnici je",
+    "subor": "",
+    "uroven": "E"
+   }
+  ],
+  "konflikt": false,
+  "odmietnute": [
+   "UC-0101"
+  ],
+  "ok": false,
+  "premenovane": [],
+  "vytvorene": [],
+  "zapisane": []
+ },
+ "zmazane": []
+}

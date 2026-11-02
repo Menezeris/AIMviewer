@@ -1,0 +1,442 @@
+{
+ "$defs": {
+  "StranaProj": {
+   "additionalProperties": false,
+   "properties": {
+    "organizacia": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Organizácia",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "zmluvne_oznacenie": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Zmluvné označenie",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "StranaProj",
+   "type": "object"
+  },
+  "UdalostProj": {
+   "additionalProperties": false,
+   "properties": {
+    "datum": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Dátum",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "ev": {
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "title": "Udalosť",
+     "type": "string",
+     "x-assetin": {
+      "cielove_typy": [
+       "EV"
+      ],
+      "kotva": "ziadna",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "ev"
+   ],
+   "title": "UdalostProj",
+   "type": "object"
+  },
+  "Vystup": {
+   "additionalProperties": false,
+   "properties": {
+    "hash": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Hash",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "subor": {
+     "title": "Súbor",
+     "type": "string",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "typ": {
+     "title": "Typ",
+     "type": "string",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "typ",
+    "subor"
+   ],
+   "title": "Vystup",
+   "type": "object"
+  }
+ },
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "additionalProperties": false,
+ "properties": {
+  "aktivum": {
+   "anyOf": [
+    {
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "type": "string",
+     "x-assetin": {
+      "widget": "wikilink"
+     }
+    },
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Aktívum",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "aliases": {
+   "default": [],
+   "description": "[V18] udržiava writer: vždy obsahuje `id` (Obsidian návrhár, Dataview)",
+   "items": {
+    "type": "string"
+   },
+   "title": "Aliasy",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "autor": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Autor",
+   "x-assetin": {
+    "export": "authoring/author",
+    "zdroj": "frontmatter"
+   }
+  },
+  "ciele": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Ciele",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "GOAL"
+    ],
+    "kotva": "ziadna",
+    "widget": "wikilink",
+    "zdroj": "frontmatter"
+   }
+  },
+  "er": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "ER",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "ER"
+    ],
+    "kotva": "ziadna",
+    "widget": "wikilink",
+    "zdroj": "frontmatter"
+   }
+  },
+  "guid": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "generuje nástroj",
+   "title": "GUID",
+   "x-assetin": {
+    "export": "specId/guid ; dt:GUID",
+    "zdroj": "frontmatter"
+   }
+  },
+  "id": {
+   "description": "prefix + číslo alebo cesta; nesie ho cesta súboru (§0.4), vo frontmatter kópia",
+   "title": "ID",
+   "type": "string",
+   "x-assetin": {
+    "export": "29481-3 specId/localCode ; 7817-3 name",
+    "zdroj": "frontmatter"
+   }
+  },
+  "jazyk": {
+   "default": "sk",
+   "description": "ISO 639-1",
+   "title": "Jazyk",
+   "type": "string",
+   "x-assetin": {
+    "export": "uc/language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "licencia": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Licencia",
+   "x-assetin": {
+    "export": "authoring/copyright",
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov": {
+   "title": "Názov",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov_en": {
+   "minLength": 1,
+   "title": "Názov (EN)",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/shortTitle ; 7817-3 Purpose/Language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "poverenie": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Poverenie",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "projekt": {
+   "title": "Projekt",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "spustacia_udalost": {
+   "description": "impact event – POVINNÉ (PAS 6.1.3)",
+   "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+   "title": "Spúšťacia udalosť",
+   "type": "string",
+   "x-assetin": {
+    "cielove_typy": [
+     "EV"
+    ],
+    "kotva": "ziadna",
+    "widget": "wikilink",
+    "zdroj": "frontmatter"
+   }
+  },
+  "stav": {
+   "enum": [
+    "NP",
+    "WD",
+    "PUB",
+    "WDRL"
+   ],
+   "title": "Stav",
+   "type": "string",
+   "x-assetin": {
+    "export": "documentStatus",
+    "zdroj": "frontmatter"
+   }
+  },
+  "std_projekt": {
+   "anyOf": [
+    {
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "type": "string",
+     "x-assetin": {
+      "widget": "wikilink"
+     }
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "STD projekt",
+   "x-assetin": {
+    "cielove_typy": [
+     "STD"
+    ],
+    "kotva": "ziadna",
+    "widget": "wikilink",
+    "zdroj": "frontmatter"
+   }
+  },
+  "strany": {
+   "additionalProperties": {
+    "$ref": "#/$defs/StranaProj"
+   },
+   "default": {},
+   "description": "kľúč = \"[[ACT-…]]\"",
+   "title": "Strany",
+   "type": "object",
+   "x-assetin": {
+    "widget": "wikilink-map",
+    "zdroj": "frontmatter"
+   }
+  },
+  "typ": {
+   "enum": [
+    "GOAL",
+    "UC",
+    "ER",
+    "IU-O",
+    "IU-C",
+    "STD",
+    "GEO",
+    "PROP",
+    "DEF",
+    "EV",
+    "ACT",
+    "PROT",
+    "PROJ"
+   ],
+   "title": "Typ",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "udalosti": {
+   "default": [],
+   "items": {
+    "$ref": "#/$defs/UdalostProj"
+   },
+   "title": "Udalosti",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "verzia": {
+   "title": "Verzia",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/version",
+    "zdroj": "frontmatter"
+   }
+  },
+  "vystupy": {
+   "default": [],
+   "description": "generované, s hash",
+   "items": {
+    "$ref": "#/$defs/Vystup"
+   },
+   "title": "Výstupy",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  }
+ },
+ "required": [
+  "id",
+  "typ",
+  "nazov",
+  "nazov_en",
+  "stav",
+  "verzia",
+  "projekt",
+  "spustacia_udalost"
+ ],
+ "title": "PROJ",
+ "type": "object",
+ "x-assetin": {
+  "pod_zaznamy": [],
+  "schema_verzia": "1.5",
+  "sekcie": [
+   "Popis"
+  ],
+  "typ": "PROJ"
+ }
+}

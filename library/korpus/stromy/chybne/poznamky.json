@@ -1,0 +1,2431 @@
+{
+ "aktiva/budova-x/UC-9003 Use case v aktivach.md": {
+  "data": {
+   "aliases": [
+    "UC-9003"
+   ],
+   "autor": "Test",
+   "faza_iso22263": [
+    "maintenance"
+   ],
+   "guid": null,
+   "id": "UC-9003",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Use case v aktivach",
+   "nazov_en": "Use case v aktivach",
+   "stav": "WD",
+   "typ": "UC",
+   "typ_ulohy": "delivery",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "UC-9003",
+  "model": {
+   "aktor": [],
+   "aliases": [
+    "UC-9003"
+   ],
+   "autor": "Test",
+   "construction_entity": [],
+   "faza_iso22263": [
+    "maintenance"
+   ],
+   "faza_lokalna": [],
+   "guid": null,
+   "id": "UC-9003",
+   "jazyk": "sk",
+   "kratky_nazov_en": null,
+   "licencia": "CC-BY-4.0",
+   "nadradeny_uc": [],
+   "nazov": "Use case v aktivach",
+   "nazov_en": "Use case v aktivach",
+   "norma": [],
+   "podporuje_ciel": [],
+   "pouzitie": [],
+   "pravidlo": [],
+   "region": [],
+   "spustacia_udalost": [],
+   "stav": "WD",
+   "typ": "UC",
+   "typ_ulohy": "delivery",
+   "ulohy": [],
+   "verzia": "0.1",
+   "zrelost": null
+  },
+  "pod_zaznamy": [],
+  "typ": "UC",
+  "verzia": "ee6bee1ca7d888380c32adab38545f70066560f54005d034cdad41612e09a4db",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "faza_iso22263": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "typ_ulohy": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "projekty/zakazka-x/PROJ-9001 Chybny projekt.md": {
+  "data": {
+   "aliases": [
+    "PROJ-9001"
+   ],
+   "autor": "Test",
+   "er": [
+    "[[ER-9001]]"
+   ],
+   "guid": null,
+   "id": "PROJ-9001",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Chybny projekt",
+   "nazov_en": "Broken project",
+   "projekt": "Budova X",
+   "spustacia_udalost": "[[EV-D-9004]]",
+   "stav": "WD",
+   "typ": "PROJ",
+   "udalosti": [
+    {
+     "datum": "2027-03-31",
+     "ev": "[[EV-D-9003]]"
+    }
+   ],
+   "verzia": 0.1,
+   "vystupy": [
+    {
+     "subor": "vystupy/ids/ER-9001.ids",
+     "typ": "IDS"
+    }
+   ]
+  },
+  "diagnostiky": [],
+  "id": "PROJ-9001",
+  "model": {
+   "aktivum": null,
+   "aliases": [
+    "PROJ-9001"
+   ],
+   "autor": "Test",
+   "ciele": [],
+   "er": [
+    "[[ER-9001]]"
+   ],
+   "guid": null,
+   "id": "PROJ-9001",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Chybny projekt",
+   "nazov_en": "Broken project",
+   "poverenie": null,
+   "projekt": "Budova X",
+   "spustacia_udalost": "[[EV-D-9004]]",
+   "stav": "WD",
+   "std_projekt": null,
+   "strany": {},
+   "typ": "PROJ",
+   "udalosti": [
+    {
+     "datum": "2027-03-31",
+     "ev": "[[EV-D-9003]]"
+    }
+   ],
+   "verzia": "0.1",
+   "vystupy": [
+    {
+     "hash": null,
+     "subor": "vystupy/ids/ER-9001.ids",
+     "typ": "IDS"
+    }
+   ]
+  },
+  "pod_zaznamy": [],
+  "typ": "PROJ",
+  "verzia": "43aa9463f908491851c0731ecb0f63af7cd10b84790ccd2ee0585e65ab80f44e",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "er": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "projekt": "frontmatter",
+   "spustacia_udalost": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "udalosti": "frontmatter",
+   "verzia": "frontmatter",
+   "vystupy": "frontmatter"
+  }
+ },
+ "zadanie/ER/ER-9001 Chybna vymena.md": {
+  "data": {
+   "aliases": [
+    "ER-9001"
+   ],
+   "autor": "Test",
+   "forma": {
+    "format": "IFC",
+    "verzia_schemy": "IFC4X3_ADD2"
+   },
+   "guid": null,
+   "id": "ER-9001",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Chybna vymena",
+   "nazov_en": "Chybna vymena",
+   "obsahuje": [
+    "[[IU-O-9002]]",
+    "[[IU-C-9001]]"
+   ],
+   "prepisy": [
+    {
+     "iu": "[[IU-O-9001]]",
+     "polozka": "Name",
+     "povinnost": "required"
+    },
+    {
+     "iu": "[[IU-O-9002]]",
+     "polozka": "Neexistujuca",
+     "povinnost": "required"
+    }
+   ],
+   "prijemca": "[[ACT-poverujuca]]",
+   "spustacia_udalost": [
+    "[[EV-D-9004]]"
+   ],
+   "stav": "WD",
+   "typ": "ER",
+   "uc": [
+    "[[UC-9001]]",
+    "[[UC-9002]]"
+   ],
+   "verzia": 0.1,
+   "zapnute": [
+    "[[STD-CL-9001]]"
+   ]
+  },
+  "diagnostiky": [],
+  "id": "ER-9001",
+  "model": {
+   "aliases": [
+    "ER-9001"
+   ],
+   "autor": "Test",
+   "forma": {
+    "format": "IFC",
+    "max_velkost_mb": null,
+    "nativny_format": null,
+    "verzia_schemy": "IFC4X3_ADD2"
+   },
+   "guid": null,
+   "id": "ER-9001",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Chybna vymena",
+   "nazov_en": "Chybna vymena",
+   "obsahuje": [
+    "[[IU-O-9002]]",
+    "[[IU-C-9001]]"
+   ],
+   "poskytovatel_predvoleny": null,
+   "precondition": [],
+   "prepisy": [
+    {
+     "geometria_profil": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "iu": "[[IU-O-9001]]",
+     "polozka": "Name",
+     "povinnost": "required",
+     "rozsah": null,
+     "zavaznost": null
+    },
+    {
+     "geometria_profil": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "iu": "[[IU-O-9002]]",
+     "polozka": "Neexistujuca",
+     "povinnost": "required",
+     "rozsah": null,
+     "zavaznost": null
+    }
+   ],
+   "prijemca": "[[ACT-poverujuca]]",
+   "referencne_info": [],
+   "spustacia_udalost": [
+    "[[EV-D-9004]]"
+   ],
+   "standard": [],
+   "stav": "WD",
+   "typ": "ER",
+   "uc": [
+    "[[UC-9001]]",
+    "[[UC-9002]]"
+   ],
+   "verzia": "0.1",
+   "zapnute": [
+    "[[STD-CL-9001]]"
+   ]
+  },
+  "pod_zaznamy": [],
+  "typ": "ER",
+  "verzia": "60217ea29e6ef9781adf1226e73ad1514cf66f73746651214bd52c41999d0f46",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "forma": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "obsahuje": "inline",
+   "prepisy": "blok",
+   "prijemca": "frontmatter",
+   "spustacia_udalost": "inline",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "uc": "inline",
+   "verzia": "frontmatter",
+   "zapnute": "inline"
+  }
+ },
+ "zadanie/ER/ER-9002 Vymena bez jednotiek.md": {
+  "data": {
+   "aliases": [
+    "ER-9002"
+   ],
+   "autor": "Test",
+   "forma": {
+    "format": "IFC",
+    "verzia_schemy": "IFC4X3_ADD2"
+   },
+   "guid": null,
+   "id": "ER-9002",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Vymena bez jednotiek",
+   "nazov_en": "Exchange without information units",
+   "poskytovatel_predvoleny": "[[ACT-poverena/ARCH]]",
+   "prijemca": "[[ACT-poverujuca]]",
+   "spustacia_udalost": [
+    "[[EV-D-9004]]"
+   ],
+   "stav": "WD",
+   "typ": "ER",
+   "uc": [
+    "[[UC-9001]]"
+   ],
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "ER-9002",
+  "model": {
+   "aliases": [
+    "ER-9002"
+   ],
+   "autor": "Test",
+   "forma": {
+    "format": "IFC",
+    "max_velkost_mb": null,
+    "nativny_format": null,
+    "verzia_schemy": "IFC4X3_ADD2"
+   },
+   "guid": null,
+   "id": "ER-9002",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Vymena bez jednotiek",
+   "nazov_en": "Exchange without information units",
+   "obsahuje": [],
+   "poskytovatel_predvoleny": "[[ACT-poverena/ARCH]]",
+   "precondition": [],
+   "prepisy": [],
+   "prijemca": "[[ACT-poverujuca]]",
+   "referencne_info": [],
+   "spustacia_udalost": [
+    "[[EV-D-9004]]"
+   ],
+   "standard": [],
+   "stav": "WD",
+   "typ": "ER",
+   "uc": [
+    "[[UC-9001]]"
+   ],
+   "verzia": "0.1",
+   "zapnute": []
+  },
+  "pod_zaznamy": [],
+  "typ": "ER",
+  "verzia": "f67983b39adaf3b6bc61f2f94a2abf667dacef54962256d62cf0957ea6c3aa22",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "forma": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "poskytovatel_predvoleny": "frontmatter",
+   "prijemca": "frontmatter",
+   "spustacia_udalost": "inline",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "uc": "inline",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/GOAL/GOAL-9001 Organizacny ciel s terminom.md": {
+  "data": {
+   "aktivum": "Budova X",
+   "aliases": [
+    "GOAL-9001"
+   ],
+   "autor": "Test",
+   "guid": null,
+   "id": "GOAL-9001",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Organizacny ciel s terminom",
+   "nazov_en": "Organizacny ciel s terminom",
+   "prispieva_k": [
+    "[[GOAL-9002]]"
+   ],
+   "stav": "WD",
+   "termin": "2027-06-30",
+   "typ": "GOAL",
+   "uroven": "organizacia",
+   "verzia": 0.1,
+   "zdroj_ir": "OIR"
+  },
+  "diagnostiky": [],
+  "id": "GOAL-9001",
+  "model": {
+   "aktivum": "Budova X",
+   "aliases": [
+    "GOAL-9001"
+   ],
+   "autor": "Test",
+   "guid": null,
+   "id": "GOAL-9001",
+   "jazyk": "sk",
+   "kpi": [],
+   "licencia": "CC-BY-4.0",
+   "nazov": "Organizacny ciel s terminom",
+   "nazov_en": "Organizacny ciel s terminom",
+   "prispieva_k": [
+    "[[GOAL-9002]]"
+   ],
+   "stav": "WD",
+   "termin": "2027-06-30",
+   "typ": "GOAL",
+   "uroven": "organizacia",
+   "verzia": "0.1",
+   "zdroj_ir": "OIR",
+   "zdroj_oir": []
+  },
+  "pod_zaznamy": [],
+  "typ": "GOAL",
+  "verzia": "7702ea6eda3512ff4be9e1c88be6cc031cdf46b9b8847eee8cca59fd23b57696",
+  "zdroje": {
+   "aktivum": "frontmatter",
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "prispieva_k": "inline",
+   "stav": "frontmatter",
+   "termin": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter",
+   "zdroj_ir": "frontmatter"
+  }
+ },
+ "zadanie/GOAL/GOAL-9002 Druhy organizacny ciel.md": {
+  "data": {
+   "aliases": [
+    "GOAL-9002"
+   ],
+   "autor": "Test",
+   "guid": null,
+   "id": "GOAL-9002",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Druhy organizacny ciel",
+   "nazov_en": "Druhy organizacny ciel",
+   "prispieva_k": [
+    "[[GOAL-9001]]"
+   ],
+   "stav": "WD",
+   "typ": "GOAL",
+   "uroven": "organizacia",
+   "verzia": 0.1,
+   "zdroj_ir": "OIR"
+  },
+  "diagnostiky": [],
+  "id": "GOAL-9002",
+  "model": {
+   "aktivum": null,
+   "aliases": [
+    "GOAL-9002"
+   ],
+   "autor": "Test",
+   "guid": null,
+   "id": "GOAL-9002",
+   "jazyk": "sk",
+   "kpi": [],
+   "licencia": "CC-BY-4.0",
+   "nazov": "Druhy organizacny ciel",
+   "nazov_en": "Druhy organizacny ciel",
+   "prispieva_k": [
+    "[[GOAL-9001]]"
+   ],
+   "stav": "WD",
+   "termin": null,
+   "typ": "GOAL",
+   "uroven": "organizacia",
+   "verzia": "0.1",
+   "zdroj_ir": "OIR",
+   "zdroj_oir": []
+  },
+  "pod_zaznamy": [],
+  "typ": "GOAL",
+  "verzia": "c052fc40ce2498e9cf5b56f0481fde71ac62836a154def8ad2f78674d5cde3b6",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "prispieva_k": "inline",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter",
+   "zdroj_ir": "frontmatter"
+  }
+ },
+ "zadanie/GOAL/GOAL-9003 Ciel bez ucelu uzitia.md": {
+  "data": {
+   "aliases": [
+    "GOAL-9003"
+   ],
+   "autor": "Test",
+   "guid": null,
+   "id": "GOAL-9003",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Ciel bez ucelu uzitia",
+   "nazov_en": "Goal with no use case",
+   "stav": "WD",
+   "typ": "GOAL",
+   "uroven": "organizacia",
+   "verzia": 0.1,
+   "zdroj_ir": "OIR"
+  },
+  "diagnostiky": [],
+  "id": "GOAL-9003",
+  "model": {
+   "aktivum": null,
+   "aliases": [
+    "GOAL-9003"
+   ],
+   "autor": "Test",
+   "guid": null,
+   "id": "GOAL-9003",
+   "jazyk": "sk",
+   "kpi": [],
+   "licencia": "CC-BY-4.0",
+   "nazov": "Ciel bez ucelu uzitia",
+   "nazov_en": "Goal with no use case",
+   "prispieva_k": [],
+   "stav": "WD",
+   "termin": null,
+   "typ": "GOAL",
+   "uroven": "organizacia",
+   "verzia": "0.1",
+   "zdroj_ir": "OIR",
+   "zdroj_oir": []
+  },
+  "pod_zaznamy": [],
+  "typ": "GOAL",
+  "verzia": "34eaf7c332a0d21ab310d3048a15196167223cd18175c8ec75fcaac5aacf2e1b",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter",
+   "zdroj_ir": "frontmatter"
+  }
+ },
+ "zadanie/IU-C/IU-C-9001 Chybny kontajner.md": {
+  "data": {
+   "aliases": [
+    "IU-C-9001"
+   ],
+   "automatizovatelne": true,
+   "autor": "Test",
+   "dokladuje": [
+    "[[IU-O-9001]]"
+   ],
+   "druh": "model",
+   "guid": null,
+   "id": "IU-C-9001",
+   "identifikacia": {
+    "vzor": "^[A-Z"
+   },
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "metadata_cde": {
+    "revizia_vzor": "P[0-9",
+    "status": "S9"
+   },
+   "nadvaznost": [
+    "[[IU-C-9002]]"
+   ],
+   "nazov": "Chybny kontajner",
+   "nazov_en": "Chybny kontajner",
+   "overenie": "manual",
+   "overuje": [
+    "[[ACT-poverena/ARCH]]"
+   ],
+   "poskytovatel": [
+    "[[ACT-poverujuca]]"
+   ],
+   "stav": "WD",
+   "typ": "IU-C",
+   "verzia": 0.1,
+   "zavaznost": "musi"
+  },
+  "diagnostiky": [],
+  "id": "IU-C-9001",
+  "model": {
+   "aliases": [
+    "IU-C-9001"
+   ],
+   "automatizovatelne": true,
+   "autor": "Test",
+   "dataset": null,
+   "datovy_typ_29481": null,
+   "dokladuje": [
+    "[[IU-O-9001]]"
+   ],
+   "dokument": null,
+   "dolozene_v": [],
+   "doplnuje": [],
+   "druh": "model",
+   "forma": null,
+   "georeferencovanie_prepis": null,
+   "guid": null,
+   "id": "IU-C-9001",
+   "identifikacia": {
+    "pravidlo": null,
+    "vzor": "^[A-Z"
+   },
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "metadata_cde": {
+    "klasifikacia_bezpecnosti": null,
+    "revizia_vzor": "P[0-9",
+    "status": "S9"
+   },
+   "mvd": null,
+   "nadradene_pri_rozpore": [],
+   "nadvaznost": [
+    "[[IU-C-9002]]"
+   ],
+   "nazov": "Chybny kontajner",
+   "nazov_en": "Chybny kontajner",
+   "obsahuje": [],
+   "odvodene_z": [],
+   "overenie": "manual",
+   "overuje": [
+    "[[ACT-poverena/ARCH]]"
+   ],
+   "pokyn": null,
+   "poskytovatel": [
+    "[[ACT-poverujuca]]"
+   ],
+   "postup": null,
+   "predchodca": [],
+   "stav": "WD",
+   "tidp": null,
+   "typ": "IU-C",
+   "typ_poziadavky": "C",
+   "verzia": "0.1",
+   "viaze_sa_na": [],
+   "zavaznost": "musi"
+  },
+  "pod_zaznamy": [],
+  "typ": "IU-C",
+  "verzia": "bf15c9eccae09fe70ee55389b6aace14b752b16321d1f39100c121c529256d46",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "automatizovatelne": "frontmatter",
+   "autor": "frontmatter",
+   "dokladuje": "inline",
+   "druh": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "identifikacia": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "metadata_cde": "frontmatter",
+   "nadvaznost": "inline",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "overenie": "frontmatter",
+   "overuje": "inline",
+   "poskytovatel": "inline",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "verzia": "frontmatter",
+   "zavaznost": "frontmatter"
+  }
+ },
+ "zadanie/IU-C/IU-C-9002 Dataset duplikat.md": {
+  "data": {
+   "aliases": [
+    "IU-C-9002"
+   ],
+   "autor": "Test",
+   "dataset": {
+    "kluc": "Name",
+    "struktura": [
+     {
+      "stlpec": "Name",
+      "typ": "string"
+     },
+     {
+      "jednotka": "m2",
+      "stlpec": "NetFloorArea",
+      "typ": "number"
+     }
+    ]
+   },
+   "druh": "dataset",
+   "guid": null,
+   "id": "IU-C-9002",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "mvd": {
+    "basis": "IFC4X3_ADD2",
+    "name": "Reference View"
+   },
+   "nadvaznost": [
+    "[[IU-C-9001]]"
+   ],
+   "nazov": "Dataset duplikat",
+   "nazov_en": "Dataset duplikat",
+   "obsahuje": [
+    {
+     "iu": "[[IU-O-9001]]"
+    },
+    {
+     "iu": "[[IU-O-9002]]",
+     "rozsah": [
+      "dokumentacia"
+     ]
+    }
+   ],
+   "overenie": "manual",
+   "poskytovatel": [
+    "[[ACT-poverena/ARCH]]"
+   ],
+   "postup": "porovnať s modelom",
+   "stav": "WD",
+   "typ": "IU-C",
+   "verzia": 0.1,
+   "viaze_sa_na": [
+    "#proces"
+   ],
+   "zavaznost": "musi"
+  },
+  "diagnostiky": [],
+  "id": "IU-C-9002",
+  "model": {
+   "aliases": [
+    "IU-C-9002"
+   ],
+   "automatizovatelne": null,
+   "autor": "Test",
+   "dataset": {
+    "jeden_riadok": null,
+    "kluc": "Name",
+    "struktura": [
+     {
+      "jednotka": null,
+      "stlpec": "Name",
+      "typ": "string",
+      "vzor": null
+     },
+     {
+      "jednotka": "m2",
+      "stlpec": "NetFloorArea",
+      "typ": "number",
+      "vzor": null
+     }
+    ]
+   },
+   "datovy_typ_29481": null,
+   "dokladuje": [],
+   "dokument": null,
+   "dolozene_v": [],
+   "doplnuje": [],
+   "druh": "dataset",
+   "forma": null,
+   "georeferencovanie_prepis": null,
+   "guid": null,
+   "id": "IU-C-9002",
+   "identifikacia": null,
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "metadata_cde": null,
+   "mvd": {
+    "basis": "IFC4X3_ADD2",
+    "name": "Reference View"
+   },
+   "nadradene_pri_rozpore": [],
+   "nadvaznost": [
+    "[[IU-C-9001]]"
+   ],
+   "nazov": "Dataset duplikat",
+   "nazov_en": "Dataset duplikat",
+   "obsahuje": [
+    {
+     "iu": "[[IU-O-9001]]",
+     "rozsah": []
+    },
+    {
+     "iu": "[[IU-O-9002]]",
+     "rozsah": [
+      "dokumentacia"
+     ]
+    }
+   ],
+   "odvodene_z": [],
+   "overenie": "manual",
+   "overuje": [],
+   "pokyn": null,
+   "poskytovatel": [
+    "[[ACT-poverena/ARCH]]"
+   ],
+   "postup": "porovnať s modelom",
+   "predchodca": [],
+   "stav": "WD",
+   "tidp": null,
+   "typ": "IU-C",
+   "typ_poziadavky": "C",
+   "verzia": "0.1",
+   "viaze_sa_na": [
+    "#proces"
+   ],
+   "zavaznost": "musi"
+  },
+  "pod_zaznamy": [],
+  "typ": "IU-C",
+  "verzia": "2838df3a008e43ace83d8e9c714d8ec4cf9e0398d10d1b2f6da57717c8ba7e9f",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "dataset": "frontmatter",
+   "druh": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "mvd": "frontmatter",
+   "nadvaznost": "inline",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "obsahuje": "blok",
+   "overenie": "frontmatter",
+   "poskytovatel": "inline",
+   "postup": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "verzia": "frontmatter",
+   "viaze_sa_na": "inline",
+   "zavaznost": "frontmatter"
+  }
+ },
+ "zadanie/IU-O/IU-O-9001 Chybny objekt.md": {
+  "data": {
+   "alfanumerika": [
+    {
+     "ifc": {
+      "atribut": "Name"
+     },
+     "povinnost": "required",
+     "rola": "identifikacia"
+    },
+    {
+     "ifc": {
+      "atribut": "Name"
+     },
+     "povinnost": "optional",
+     "rola": "identifikacia"
+    },
+    {
+     "ifc": {
+      "nazov": "NetFloorArea",
+      "pset": "Qto_SpaceBaseQuantities",
+      "uri": "https://example.org/NetFloorArea"
+     },
+     "povinnost": "required",
+     "rola": "obsah",
+     "tolerancia": "0.5 %"
+    },
+    {
+     "hodnoty": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E"
+     ],
+     "ifc": {
+      "atribut": "PredefinedType"
+     },
+     "povinnost": "required",
+     "rola": "obsah"
+    },
+    {
+     "hodnoty_ref": "[[STD-neexistuje#slovnik]]",
+     "ifc": {
+      "atribut": "ObjectType"
+     },
+     "povinnost": "required",
+     "rola": "obsah"
+    },
+    {
+     "ifc": {
+      "atribut": "Description"
+     },
+     "pokyn": "meno nájomcu",
+     "rola": "obsah"
+    },
+    {
+     "hodnoty_ref": "[[STD-CL-9001]]",
+     "ifc": {
+      "atribut": "LongName"
+     },
+     "povinnost": "required",
+     "rola": "obsah"
+    },
+    {
+     "datovy_typ": "IFCLENGTHMEASURE",
+     "ifc": {
+      "atribut": "Elevation"
+     },
+     "povinnost": "optional",
+     "rola": "obsah"
+    },
+    {
+     "datovy_typ": "ifcAreaMeasure",
+     "ifc": {
+      "nazov": "GrossPlannedArea",
+      "pset": "Pset_SpaceCommon",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossPlannedArea"
+     },
+     "povinnost": "optional",
+     "rola": "obsah"
+    },
+    {
+     "ifc": {
+      "nazov": "Height",
+      "pset": "Qto_SpaceBaseQuantities",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/Height"
+     },
+     "povinnost": "optional",
+     "rola": "obsah",
+     "rozsah": {
+      "min": 2.0
+     }
+    }
+   ],
+   "aliases": [
+    "IU-O-9001"
+   ],
+   "autor": "Test",
+   "clenenie": [
+    "[[STD-CL-9001]]"
+   ],
+   "dokumentacia": [
+    {
+     "automatizovatelne": false,
+     "dok": "[[IU-C-9001]]",
+     "dokladuje": [
+      "Neexistujuca"
+     ],
+     "povinnost": "required"
+    }
+   ],
+   "doplnuje": [
+    "[[typy-zon-lokalne]]"
+   ],
+   "filter": [
+    {
+     "cardinality": "required",
+     "facet": "attribute",
+     "nazov": "Description",
+     "vzor": ".*KANCEL.*"
+    }
+   ],
+   "geometria": {
+    "Dimensionality": "3D",
+    "ShapeAssembly": "NotRequired",
+    "profil": "[[GEO-G9001]]"
+   },
+   "guid": null,
+   "id": "IU-O-9001",
+   "jazyk": "sk",
+   "klasifikacia": [
+    {
+     "povinnost": "required",
+     "system": "CCI · CCI-priestory"
+    },
+    {
+     "system": "Uniclass"
+    }
+   ],
+   "licencia": "CC-BY-4.0",
+   "nazov": "Chybny objekt",
+   "nazov_en": "Chybny objekt",
+   "objekt": {
+    "ifc_entita": "IfcSpace",
+    "uri": "https://example.org/IfcSpace"
+   },
+   "overuje": [
+    "[[ACT-poverujuca]]"
+   ],
+   "pokyn": "Kód · názov · plocha",
+   "pre_task": [
+    "[[UC-9001#Zhrnutie]]"
+   ],
+   "pritomnost_v_modeli": "required",
+   "stav": "WD",
+   "typ": "IU-O",
+   "uroven": "vyskyt",
+   "verzia": 0.1,
+   "zavaznost_predvolena": "musi",
+   "zdovodnenie": "Nájomca a zmluva sa evidujú tu."
+  },
+  "diagnostiky": [],
+  "id": "IU-O-9001",
+  "model": {
+   "alfanumerika": [
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "atribut": "Name"
+     },
+     "overenie": null,
+     "pokyn": null,
+     "postup": null,
+     "povaha": null,
+     "povinnost": "required",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "identifikacia",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "atribut": "Name"
+     },
+     "overenie": null,
+     "pokyn": null,
+     "postup": null,
+     "povaha": null,
+     "povinnost": "optional",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "identifikacia",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "nazov": "NetFloorArea",
+      "pset": "Qto_SpaceBaseQuantities",
+      "uri": "https://example.org/NetFloorArea",
+      "vynimka": false
+     },
+     "overenie": null,
+     "pokyn": null,
+     "postup": null,
+     "povaha": null,
+     "povinnost": "required",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": "0.5 %",
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E"
+     ],
+     "hodnoty_ref": null,
+     "ifc": {
+      "atribut": "PredefinedType"
+     },
+     "overenie": null,
+     "pokyn": null,
+     "postup": null,
+     "povaha": null,
+     "povinnost": "required",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": "[[STD-neexistuje#slovnik]]",
+     "ifc": {
+      "atribut": "ObjectType"
+     },
+     "overenie": null,
+     "pokyn": null,
+     "postup": null,
+     "povaha": null,
+     "povinnost": "required",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "atribut": "Description"
+     },
+     "overenie": null,
+     "pokyn": "meno nájomcu",
+     "postup": null,
+     "povaha": null,
+     "povinnost": null,
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": "[[STD-CL-9001]]",
+     "ifc": {
+      "atribut": "LongName"
+     },
+     "overenie": null,
+     "pokyn": null,
+     "postup": null,
+     "povaha": null,
+     "povinnost": "required",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": "IFCLENGTHMEASURE",
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "atribut": "Elevation"
+     },
+     "overenie": null,
+     "pokyn": null,
+     "postup": null,
+     "povaha": null,
+     "povinnost": "optional",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": "ifcAreaMeasure",
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "nazov": "GrossPlannedArea",
+      "pset": "Pset_SpaceCommon",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossPlannedArea",
+      "vynimka": false
+     },
+     "overenie": null,
+     "pokyn": null,
+     "postup": null,
+     "povaha": null,
+     "povinnost": "optional",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    },
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "nazov": "Height",
+      "pset": "Qto_SpaceBaseQuantities",
+      "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/Height",
+      "vynimka": false
+     },
+     "overenie": null,
+     "pokyn": null,
+     "postup": null,
+     "povaha": null,
+     "povinnost": "optional",
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": {
+      "max": null,
+      "max_exkluzivne": false,
+      "min": 2.0,
+      "min_exkluzivne": false
+     },
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": null
+    }
+   ],
+   "aliases": [
+    "IU-O-9001"
+   ],
+   "autor": "Test",
+   "clenenie": [
+    "[[STD-CL-9001]]"
+   ],
+   "dokladuje": [],
+   "dokumentacia": [
+    {
+     "automatizovatelne": false,
+     "dok": "[[IU-C-9001]]",
+     "dokladuje": [
+      "Neexistujuca"
+     ],
+     "overenie": null,
+     "pokyn": null,
+     "postup": null,
+     "povinnost": "required",
+     "zavaznost": null
+    }
+   ],
+   "dolozene_v": [],
+   "doplnuje": [
+    "[[typy-zon-lokalne]]"
+   ],
+   "filter": [
+    {
+     "cardinality": "required",
+     "facet": "attribute",
+     "hodnota": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "nazov": "Description",
+     "rozsah": null,
+     "vzor": ".*KANCEL.*"
+    }
+   ],
+   "geometria": {
+    "Appearance": null,
+    "Dimensionality": "3D",
+    "Location": null,
+    "ParametricBehaviour": null,
+    "ShapeAssembly": "NotRequired",
+    "ShapeInfluence": null,
+    "ShapeRepresentation": null,
+    "overenie": null,
+    "placeholder": null,
+    "pokyn": null,
+    "postup": null,
+    "poznamka": null,
+    "presnost": null,
+    "profil": "[[GEO-G9001]]",
+    "zavaznost": null
+   },
+   "guid": null,
+   "id": "IU-O-9001",
+   "jazyk": "sk",
+   "klasifikacia": [
+    {
+     "povinnost": "required",
+     "pravidlo": null,
+     "system": "CCI · CCI-priestory",
+     "uri": null
+    },
+    {
+     "povinnost": null,
+     "pravidlo": null,
+     "system": "Uniclass",
+     "uri": null
+    }
+   ],
+   "licencia": "CC-BY-4.0",
+   "nadradene_pri_rozpore": [],
+   "nazov": "Chybny objekt",
+   "nazov_en": "Chybny objekt",
+   "objekt": {
+    "ifc_entita": "IfcSpace",
+    "predefined_type": null,
+    "uri": "https://example.org/IfcSpace"
+   },
+   "odvodene_z": [],
+   "overuje": [
+    "[[ACT-poverujuca]]"
+   ],
+   "pokyn": "Kód · názov · plocha",
+   "poskytovatel": [],
+   "pre_task": [
+    "[[UC-9001#Zhrnutie]]"
+   ],
+   "pritomnost_v_modeli": "required",
+   "stav": "WD",
+   "typ": "IU-O",
+   "typ_poziadavky": [
+    "D1",
+    "D2",
+    "D3"
+   ],
+   "uroven": "vyskyt",
+   "verzia": "0.1",
+   "zavaznost_predvolena": "musi",
+   "zdovodnenie": "Nájomca a zmluva sa evidujú tu."
+  },
+  "pod_zaznamy": [],
+  "typ": "IU-O",
+  "verzia": "cdb8bbd76532cfe9ecc6d07c36715a85cefcf42f521906cd073266c8172469c4",
+  "zdroje": {
+   "alfanumerika": "frontmatter",
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "clenenie": "inline",
+   "dokumentacia": "frontmatter",
+   "doplnuje": "inline",
+   "filter": "frontmatter",
+   "geometria": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "klasifikacia": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "objekt": "frontmatter",
+   "overuje": "inline",
+   "pokyn": "frontmatter",
+   "pre_task": "inline",
+   "pritomnost_v_modeli": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter",
+   "zavaznost_predvolena": "frontmatter",
+   "zdovodnenie": "frontmatter"
+  }
+ },
+ "zadanie/IU-O/IU-O-9002 Zakazany objekt.md": {
+  "data": {
+   "alfanumerika": [
+    {
+     "ifc": {
+      "atribut": "Description"
+     },
+     "overenie": "manual",
+     "rola": "obsah",
+     "zavaznost": "musi"
+    }
+   ],
+   "aliases": [
+    "IU-O-9002"
+   ],
+   "autor": "Test",
+   "dokumentacia": [],
+   "filter": [],
+   "geometria": {
+    "profil": "[[GEO-G9001]]"
+   },
+   "guid": null,
+   "id": "IU-O-9002",
+   "jazyk": "sk",
+   "klasifikacia": [],
+   "licencia": "CC-BY-4.0",
+   "nazov": "Zakazany objekt",
+   "nazov_en": "Zakazany objekt",
+   "objekt": {
+    "ifc_entita": "IfcBuildingElementProxy"
+   },
+   "poskytovatel": [
+    "[[ACT-poverena/ARCH]]"
+   ],
+   "pritomnost_v_modeli": "prohibited",
+   "stav": "WD",
+   "typ": "IU-O",
+   "uroven": "vyskyt",
+   "verzia": 0.1,
+   "zavaznost_predvolena": "musi"
+  },
+  "diagnostiky": [],
+  "id": "IU-O-9002",
+  "model": {
+   "alfanumerika": [
+    {
+     "datovy_typ": null,
+     "definicia_ref": null,
+     "dolozene_v": null,
+     "hodnoty": null,
+     "hodnoty_ref": null,
+     "ifc": {
+      "atribut": "Description"
+     },
+     "overenie": "manual",
+     "pokyn": null,
+     "postup": null,
+     "povaha": null,
+     "povinnost": null,
+     "pravidlo": null,
+     "prop": null,
+     "rola": "obsah",
+     "rozsah": null,
+     "tolerancia": null,
+     "vzor": null,
+     "zavaznost": "musi"
+    }
+   ],
+   "aliases": [
+    "IU-O-9002"
+   ],
+   "autor": "Test",
+   "clenenie": [],
+   "dokladuje": [],
+   "dokumentacia": [],
+   "dolozene_v": [],
+   "doplnuje": [],
+   "filter": [],
+   "geometria": {
+    "Appearance": null,
+    "Dimensionality": null,
+    "Location": null,
+    "ParametricBehaviour": null,
+    "ShapeAssembly": null,
+    "ShapeInfluence": null,
+    "ShapeRepresentation": null,
+    "overenie": null,
+    "placeholder": null,
+    "pokyn": null,
+    "postup": null,
+    "poznamka": null,
+    "presnost": null,
+    "profil": "[[GEO-G9001]]",
+    "zavaznost": null
+   },
+   "guid": null,
+   "id": "IU-O-9002",
+   "jazyk": "sk",
+   "klasifikacia": [],
+   "licencia": "CC-BY-4.0",
+   "nadradene_pri_rozpore": [],
+   "nazov": "Zakazany objekt",
+   "nazov_en": "Zakazany objekt",
+   "objekt": {
+    "ifc_entita": "IfcBuildingElementProxy",
+    "predefined_type": null,
+    "uri": null
+   },
+   "odvodene_z": [],
+   "overuje": [],
+   "pokyn": null,
+   "poskytovatel": [
+    "[[ACT-poverena/ARCH]]"
+   ],
+   "pre_task": [],
+   "pritomnost_v_modeli": "prohibited",
+   "stav": "WD",
+   "typ": "IU-O",
+   "typ_poziadavky": [
+    "D1",
+    "D2"
+   ],
+   "uroven": "vyskyt",
+   "verzia": "0.1",
+   "zavaznost_predvolena": "musi",
+   "zdovodnenie": null
+  },
+  "pod_zaznamy": [],
+  "typ": "IU-O",
+  "verzia": "2c6edfc49720343c4e9f0d3b07bce647c7b00f312a06cf0d8a7029712d16f77d",
+  "zdroje": {
+   "alfanumerika": "frontmatter",
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "dokumentacia": "frontmatter",
+   "filter": "frontmatter",
+   "geometria": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "klasifikacia": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "objekt": "frontmatter",
+   "poskytovatel": "inline",
+   "pritomnost_v_modeli": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter",
+   "zavaznost_predvolena": "frontmatter"
+  }
+ },
+ "zadanie/STD/STD-chybne.md": {
+  "data": {
+   "aliases": [
+    "STD-chybne"
+   ],
+   "autor": "Test",
+   "guid": null,
+   "id": "STD-chybne",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Chybne pravidla",
+   "nazov_en": "Chybne pravidla",
+   "stav": "WD",
+   "typ": "STD",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "STD-chybne",
+  "model": {
+   "aliases": [
+    "STD-chybne"
+   ],
+   "autor": "Test",
+   "guid": null,
+   "id": "STD-chybne",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Chybne pravidla",
+   "nazov_en": "Chybne pravidla",
+   "prepisuje": [],
+   "stav": "WD",
+   "typ": "STD",
+   "verzia": "0.1"
+  },
+  "pod_zaznamy": [
+   {
+    "data": {
+     "applicability": {
+      "entity": "IFCSPACE"
+     },
+     "id": "STD-CL-9001",
+     "nazov": "Vzdy platne pravidlo",
+     "overenie": "clash-detection",
+     "plati": "vzdy",
+     "requirements": [
+      {
+       "facet": "entity",
+       "nazov": "IFCSPACE"
+      }
+     ],
+     "rozsah": "objekt",
+     "ucel_federacie": false,
+     "zavaznost": "musi"
+    },
+    "druh": "pravidlo",
+    "id": "STD-CL-9001"
+   },
+   {
+    "data": {
+     "applicability": {
+      "entity": "IFCBUILDINGELEMENTPROXY"
+     },
+     "hodnoty": [
+      "1.NP",
+      "2.NP",
+      "3.NP",
+      "4.NP",
+      "5.NP"
+     ],
+     "id": "STD-FED-9002",
+     "nazov": "Federacia s hodnotami",
+     "overenie": "manual",
+     "plati": "vzdy",
+     "postup": "ručne",
+     "requirements": [],
+     "rozsah": "kontajner",
+     "ucel_federacie": true,
+     "zavaznost": "musi"
+    },
+    "druh": "pravidlo",
+    "id": "STD-FED-9002"
+   },
+   {
+    "data": {
+     "hodnoty": {
+      "crs": "EPSG:5514"
+     },
+     "id": "STD-FED-9005",
+     "nazov": "Federacia s fixnymi hodnotami",
+     "overenie": "manual",
+     "plati": "vzdy",
+     "postup": "ručne",
+     "requirements": [],
+     "rozsah": "federacia",
+     "ucel_federacie": false,
+     "zavaznost": "musi"
+    },
+    "druh": "pravidlo",
+    "id": "STD-FED-9005"
+   },
+   {
+    "data": {
+     "applicability": {
+      "entity": "IFCBUILDINGELEMENTPROXY"
+     },
+     "id": "STD-CL-9003",
+     "nazov": "Zakaz s poziadavkami",
+     "overenie": "manual",
+     "plati": "na_vyziadanie",
+     "pritomnost_v_modeli": "prohibited",
+     "requirements": [
+      {
+       "cardinality": "required",
+       "facet": "attribute",
+       "nazov": "Name"
+      }
+     ],
+     "rozsah": "objekt",
+     "zavaznost": "musi"
+    },
+    "druh": "pravidlo",
+    "id": "STD-CL-9003"
+   },
+   {
+    "data": {
+     "id": "STD-CL-9004",
+     "nazov": "Manual bez postupu",
+     "overenie": "manual",
+     "plati": "vzdy",
+     "requirements": [],
+     "rozsah": "kontajner",
+     "zavaznost": "musi",
+     "zdroj_hodnot": "[[IU-C-9002]]"
+    },
+    "druh": "pravidlo",
+    "id": "STD-CL-9004"
+   },
+   {
+    "data": {
+     "aspekty": {
+      "Dimensionality": "3D",
+      "ShapeAssembly": "NotRequired"
+     },
+     "id": "GEO-G9001",
+     "nazov": "Neuplny profil",
+     "vhodne_pre": "test"
+    },
+    "druh": "profil",
+    "id": "GEO-G9001"
+   },
+   {
+    "data": {
+     "hodnoty": [
+      "A",
+      "B"
+     ],
+     "id": "typy-zon-lokalne"
+    },
+    "druh": "slovnik",
+    "id": "typy-zon-lokalne"
+   }
+  ],
+  "typ": "STD",
+  "verzia": "0fbbf0e764aabdb2068d5f84bb9dbc426c42d2b8dc0589874839d12ffe870862",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/UC/UC-9001 Chybny use case.md": {
+  "data": {
+   "aktor": [
+    "[[ACT-poverujuca]]"
+   ],
+   "aliases": [
+    "UC-9001"
+   ],
+   "autor": "Test",
+   "faza_iso22263": [
+    "design"
+   ],
+   "faza_lokalna": [
+    "neznáma"
+   ],
+   "guid": null,
+   "id": "UC-9001",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Chybny use case",
+   "nazov_en": "Chybny use case",
+   "pouzitie": [
+    "zameraj"
+   ],
+   "region": [
+    "SK"
+   ],
+   "spustacia_udalost": [
+    "[[EV-D-9004]]"
+   ],
+   "stav": "WD",
+   "typ": "UC",
+   "typ_ulohy": "utilization",
+   "ulohy": [
+    {
+     "aktor": "[[ACT-poverena/ARCH]]",
+     "id": "T1",
+     "nazov": "prvá úloha",
+     "typ": "delivery"
+    },
+    {
+     "aktor": "[[ACT-poverujuca]]",
+     "id": "T1",
+     "nazov": "duplicitné id",
+     "typ": "delivery"
+    }
+   ],
+   "verzia": 0.1,
+   "zrelost": "Example"
+  },
+  "diagnostiky": [],
+  "id": "UC-9001",
+  "model": {
+   "aktor": [
+    "[[ACT-poverujuca]]"
+   ],
+   "aliases": [
+    "UC-9001"
+   ],
+   "autor": "Test",
+   "construction_entity": [],
+   "faza_iso22263": [
+    "design"
+   ],
+   "faza_lokalna": [
+    "neznáma"
+   ],
+   "guid": null,
+   "id": "UC-9001",
+   "jazyk": "sk",
+   "kratky_nazov_en": null,
+   "licencia": "CC-BY-4.0",
+   "nadradeny_uc": [],
+   "nazov": "Chybny use case",
+   "nazov_en": "Chybny use case",
+   "norma": [],
+   "podporuje_ciel": [],
+   "pouzitie": [
+    "zameraj"
+   ],
+   "pravidlo": [],
+   "region": [
+    "SK"
+   ],
+   "spustacia_udalost": [
+    "[[EV-D-9004]]"
+   ],
+   "stav": "WD",
+   "typ": "UC",
+   "typ_ulohy": "utilization",
+   "ulohy": [
+    {
+     "aktor": "[[ACT-poverena/ARCH]]",
+     "id": "T1",
+     "nazov": "prvá úloha",
+     "typ": "delivery",
+     "vystup": []
+    },
+    {
+     "aktor": "[[ACT-poverujuca]]",
+     "id": "T1",
+     "nazov": "duplicitné id",
+     "typ": "delivery",
+     "vystup": []
+    }
+   ],
+   "verzia": "0.1",
+   "zrelost": "Example"
+  },
+  "pod_zaznamy": [],
+  "typ": "UC",
+  "verzia": "cd50a02de499811285870d47f0ce696980cb17363d542acfdd1eb91440526d8d",
+  "zdroje": {
+   "aktor": "inline",
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "faza_iso22263": "frontmatter",
+   "faza_lokalna": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "pouzitie": "frontmatter",
+   "region": "frontmatter",
+   "spustacia_udalost": "inline",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "typ_ulohy": "frontmatter",
+   "ulohy": "blok",
+   "verzia": "frontmatter",
+   "zrelost": "frontmatter"
+  }
+ },
+ "zadanie/UC/UC-9002 Druhy use case.md": {
+  "data": {
+   "aliases": [
+    "UC-9002"
+   ],
+   "autor": "Test",
+   "faza_iso22263": [
+    "design"
+   ],
+   "guid": null,
+   "id": "UC-9002",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Druhy use case",
+   "nazov_en": "Druhy use case",
+   "stav": "WD",
+   "typ": "UC",
+   "typ_ulohy": "delivery",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "UC-9002",
+  "model": {
+   "aktor": [],
+   "aliases": [
+    "UC-9002"
+   ],
+   "autor": "Test",
+   "construction_entity": [],
+   "faza_iso22263": [
+    "design"
+   ],
+   "faza_lokalna": [],
+   "guid": null,
+   "id": "UC-9002",
+   "jazyk": "sk",
+   "kratky_nazov_en": null,
+   "licencia": "CC-BY-4.0",
+   "nadradeny_uc": [],
+   "nazov": "Druhy use case",
+   "nazov_en": "Druhy use case",
+   "norma": [],
+   "podporuje_ciel": [],
+   "pouzitie": [],
+   "pravidlo": [],
+   "region": [],
+   "spustacia_udalost": [],
+   "stav": "WD",
+   "typ": "UC",
+   "typ_ulohy": "delivery",
+   "ulohy": [],
+   "verzia": "0.1",
+   "zrelost": null
+  },
+  "pod_zaznamy": [],
+  "typ": "UC",
+  "verzia": "709702fae65035e59e869ddc333447cc8482973116a65c7f8c7b73556e602096",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "faza_iso22263": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "typ_ulohy": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/registre/ACT/poverena/ARCH/ARCH.md": {
+  "data": {
+   "aliases": [
+    "ACT-poverena/ARCH"
+   ],
+   "autor": "Test",
+   "guid": null,
+   "id": "ACT-poverena/ARCH",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "ARCH",
+   "nazov_en": "ARCH",
+   "stav": "WD",
+   "strana": "poverena",
+   "typ": "ACT",
+   "uroven": "tim",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "ACT-poverena/ARCH",
+  "model": {
+   "aliases": [
+    "ACT-poverena/ARCH"
+   ],
+   "autor": "Test",
+   "guid": null,
+   "id": "ACT-poverena/ARCH",
+   "jazyk": "sk",
+   "klasifikacia_19650": null,
+   "licencia": "CC-BY-4.0",
+   "nazov": "ARCH",
+   "nazov_en": "ARCH",
+   "osoby": [],
+   "stav": "WD",
+   "strana": "poverena",
+   "typ": "ACT",
+   "uroven": "tim",
+   "verzia": "0.1",
+   "zmluvne_oznacenie": null
+  },
+  "pod_zaznamy": [],
+  "typ": "ACT",
+  "verzia": "014f30813d1b11fa00aa453c5d343fb1206f3ec97ff802016f111a7dcafbba41",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "strana": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/registre/ACT/poverujuca/poverujuca.md": {
+  "data": {
+   "aliases": [
+    "ACT-poverujuca"
+   ],
+   "autor": "Test",
+   "guid": null,
+   "id": "ACT-poverujuca",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Poverujuca",
+   "nazov_en": "Poverujuca",
+   "stav": "WD",
+   "strana": "poverujuca",
+   "typ": "ACT",
+   "uroven": "strana",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "ACT-poverujuca",
+  "model": {
+   "aliases": [
+    "ACT-poverujuca"
+   ],
+   "autor": "Test",
+   "guid": null,
+   "id": "ACT-poverujuca",
+   "jazyk": "sk",
+   "klasifikacia_19650": null,
+   "licencia": "CC-BY-4.0",
+   "nazov": "Poverujuca",
+   "nazov_en": "Poverujuca",
+   "osoby": [],
+   "stav": "WD",
+   "strana": "poverujuca",
+   "typ": "ACT",
+   "uroven": "strana",
+   "verzia": "0.1",
+   "zmluvne_oznacenie": null
+  },
+  "pod_zaznamy": [],
+  "typ": "ACT",
+  "verzia": "a4785596a2d7968b7968174c128c2d34ae606f7e4b3b11e73e7a0451a4ef4457",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "strana": "frontmatter",
+   "typ": "frontmatter",
+   "uroven": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/registre/DEF/DEF-9001 Neuplna definicia.md": {
+  "data": {
+   "aliases": [
+    "DEF-9001"
+   ],
+   "autor": "Test",
+   "definicia": "Plocha bez meracieho pravidla.",
+   "guid": null,
+   "id": "DEF-9001",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Neuplna definicia",
+   "nazov_en": "Neuplna definicia",
+   "stav": "WD",
+   "typ": "DEF",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "DEF-9001",
+  "model": {
+   "aliases": [
+    "DEF-9001"
+   ],
+   "autor": "Test",
+   "definicia": "Plocha bez meracieho pravidla.",
+   "guid": null,
+   "hranica_merania": null,
+   "id": "DEF-9001",
+   "jazyk": "sk",
+   "jednotka": null,
+   "licencia": "CC-BY-4.0",
+   "metoda_merania": null,
+   "nazov": "Neuplna definicia",
+   "nazov_en": "Neuplna definicia",
+   "odvodene_z": [],
+   "referencny_dokument": null,
+   "stav": "WD",
+   "tolerancia": null,
+   "typ": "DEF",
+   "verzia": "0.1",
+   "zaokruhlenie": null,
+   "zodpovedny_za_meranie": null
+  },
+  "pod_zaznamy": [],
+  "typ": "DEF",
+  "verzia": "2f9c87d7d5968f844df7160622f9cc843ae38c6e137714f8a068ba8aa9fde4d1",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "definicia": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/registre/EV/EV-D-9003 Neplanovany delivery.md": {
+  "data": {
+   "aliases": [
+    "EV-D-9003"
+   ],
+   "autor": "Test",
+   "faza_iso22263": [
+    "production"
+   ],
+   "guid": null,
+   "id": "EV-D-9003",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Neplanovany delivery",
+   "nazov_en": "Neplanovany delivery",
+   "planovana": false,
+   "relativny_termin": null,
+   "stav": "WD",
+   "typ": "EV",
+   "typ_udalosti": "delivery",
+   "verzia": 0.1,
+   "vyvolava": [
+    "[[EV-D-9004]]"
+   ]
+  },
+  "diagnostiky": [],
+  "id": "EV-D-9003",
+  "model": {
+   "aliases": [
+    "EV-D-9003"
+   ],
+   "autor": "Test",
+   "datum": null,
+   "faza_iso22263": [
+    "production"
+   ],
+   "faza_lokalna": [],
+   "guid": null,
+   "id": "EV-D-9003",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Neplanovany delivery",
+   "nazov_en": "Neplanovany delivery",
+   "objekt": null,
+   "planovana": false,
+   "relativny_termin": null,
+   "stav": "WD",
+   "typ": "EV",
+   "typ_udalosti": "delivery",
+   "verzia": "0.1",
+   "vyvolava": [
+    "[[EV-D-9004]]"
+   ]
+  },
+  "pod_zaznamy": [],
+  "typ": "EV",
+  "verzia": "67183a98a6a00c468b9c81c9cbdf72b9a00207cfc765455fd462231560f0a8f4",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "faza_iso22263": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "planovana": "frontmatter",
+   "relativny_termin": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "typ_udalosti": "frontmatter",
+   "verzia": "frontmatter",
+   "vyvolava": "inline"
+  }
+ },
+ "zadanie/registre/EV/EV-D-9004 Spustac vymeny.md": {
+  "data": {
+   "aliases": [
+    "EV-D-9004"
+   ],
+   "autor": "Test",
+   "faza_iso22263": [
+    "maintenance"
+   ],
+   "guid": null,
+   "id": "EV-D-9004",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Spustac vymeny",
+   "nazov_en": "Spustac vymeny",
+   "planovana": true,
+   "stav": "WD",
+   "typ": "EV",
+   "typ_udalosti": "delivery",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "EV-D-9004",
+  "model": {
+   "aliases": [
+    "EV-D-9004"
+   ],
+   "autor": "Test",
+   "datum": null,
+   "faza_iso22263": [
+    "maintenance"
+   ],
+   "faza_lokalna": [],
+   "guid": null,
+   "id": "EV-D-9004",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Spustac vymeny",
+   "nazov_en": "Spustac vymeny",
+   "objekt": null,
+   "planovana": true,
+   "relativny_termin": null,
+   "stav": "WD",
+   "typ": "EV",
+   "typ_udalosti": "delivery",
+   "verzia": "0.1",
+   "vyvolava": []
+  },
+  "pod_zaznamy": [],
+  "typ": "EV",
+  "verzia": "3d64e7c389c2d191ddc7815159d2df6439aa48daa0202d64336f6c15f07e708b",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "faza_iso22263": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "planovana": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "typ_udalosti": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ },
+ "zadanie/registre/EV/EV-I-9001 Impact bez objektu.md": {
+  "data": {
+   "aliases": [
+    "EV-I-9001"
+   ],
+   "autor": "Test",
+   "datum": "2027-01-01",
+   "faza_iso22263": [
+    "design"
+   ],
+   "id": "EV-I-9001",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Impact bez objektu",
+   "nazov_en": "Impact without object",
+   "planovana": false,
+   "stav": "PUB",
+   "typ": "EV",
+   "typ_udalosti": "impact",
+   "verzia": 0.1,
+   "vyvolava": [
+    "[[EV-I-9002]]"
+   ]
+  },
+  "diagnostiky": [],
+  "id": "EV-I-9001",
+  "model": {
+   "aliases": [
+    "EV-I-9001"
+   ],
+   "autor": "Test",
+   "datum": "2027-01-01",
+   "faza_iso22263": [
+    "design"
+   ],
+   "faza_lokalna": [],
+   "guid": null,
+   "id": "EV-I-9001",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Impact bez objektu",
+   "nazov_en": "Impact without object",
+   "objekt": null,
+   "planovana": false,
+   "relativny_termin": null,
+   "stav": "PUB",
+   "typ": "EV",
+   "typ_udalosti": "impact",
+   "verzia": "0.1",
+   "vyvolava": [
+    "[[EV-I-9002]]"
+   ]
+  },
+  "pod_zaznamy": [],
+  "typ": "EV",
+  "verzia": "ff7fae2f8f18e32d7d94c9d8e09db3bb359f95c9b41f80bfddc78a43932b5179",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "datum": "frontmatter",
+   "faza_iso22263": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "planovana": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "typ_udalosti": "frontmatter",
+   "verzia": "frontmatter",
+   "vyvolava": "inline"
+  }
+ },
+ "zadanie/registre/EV/EV-I-9002 Druhy impact.md": {
+  "data": {
+   "aliases": [
+    "EV-I-9002"
+   ],
+   "autor": "Test",
+   "faza_iso22263": [
+    "design"
+   ],
+   "guid": null,
+   "id": "EV-I-9002",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Druhy impact",
+   "nazov_en": "Druhy impact",
+   "objekt": "#aktivum",
+   "planovana": false,
+   "stav": "WD",
+   "typ": "EV",
+   "typ_udalosti": "impact",
+   "verzia": 0.1
+  },
+  "diagnostiky": [],
+  "id": "EV-I-9002",
+  "model": {
+   "aliases": [
+    "EV-I-9002"
+   ],
+   "autor": "Test",
+   "datum": null,
+   "faza_iso22263": [
+    "design"
+   ],
+   "faza_lokalna": [],
+   "guid": null,
+   "id": "EV-I-9002",
+   "jazyk": "sk",
+   "licencia": "CC-BY-4.0",
+   "nazov": "Druhy impact",
+   "nazov_en": "Druhy impact",
+   "objekt": "#aktivum",
+   "planovana": false,
+   "relativny_termin": null,
+   "stav": "WD",
+   "typ": "EV",
+   "typ_udalosti": "impact",
+   "verzia": "0.1",
+   "vyvolava": []
+  },
+  "pod_zaznamy": [],
+  "typ": "EV",
+  "verzia": "530e0240165be4e68fb27b0b4fb12d120e6fcbb5b52f1e00832009af283614f2",
+  "zdroje": {
+   "aliases": "frontmatter",
+   "autor": "frontmatter",
+   "faza_iso22263": "frontmatter",
+   "guid": "frontmatter",
+   "id": "frontmatter",
+   "jazyk": "frontmatter",
+   "licencia": "frontmatter",
+   "nazov": "frontmatter",
+   "nazov_en": "frontmatter",
+   "objekt": "frontmatter",
+   "planovana": "frontmatter",
+   "stav": "frontmatter",
+   "typ": "frontmatter",
+   "typ_udalosti": "frontmatter",
+   "verzia": "frontmatter"
+  }
+ }
+}

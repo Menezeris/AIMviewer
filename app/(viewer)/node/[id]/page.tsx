@@ -683,6 +683,16 @@ async function SystemView({ id }: { id: string }) {
               }
             />
             <Field label="Počet prvkov" value={system.memberCount || null} />
+            {system.objectType === "project" && (
+              <Field
+                label="Knižnica požiadaviek"
+                value={
+                  <Link href="/kniznica" className="hover:underline" data-testid="project-kniznica-link">
+                    Prehliadač knižnice (len na čítanie)
+                  </Link>
+                }
+              />
+            )}
           </dl>
         </CardContent>
       </Card>

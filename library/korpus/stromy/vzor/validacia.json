@@ -1,0 +1,362 @@
+[
+ {
+  "json_pointer": "#STD-CL-06/requirements/0/hodnoty_ref",
+  "kod": "B1",
+  "note_id": "STD-clenenie",
+  "riadok": 132,
+  "sprava": "visiaci odkaz [[STD-klasifikacia#typy-zon]]",
+  "subor": "zadanie/STD/STD-clenenie.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/alfanumerika/0/pokyn",
+  "kod": "D19",
+  "note_id": "IU-O-zone",
+  "riadok": 53,
+  "sprava": "pokyn položky `Name` spomína nájomc, zmluv — over nositeľa (§0.9)",
+  "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/alfanumerika/0/pravidlo",
+  "kod": "B1",
+  "note_id": "IU-O-space",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[STD-NAME-03]]",
+  "subor": "zadanie/IU-O/IU-O-space Priestor.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/alfanumerika/0/pravidlo",
+  "kod": "B1",
+  "note_id": "IU-O-storey",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[STD-NAME-02]]",
+  "subor": "zadanie/IU-O/IU-O-storey Podlažie.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/alfanumerika/0/pravidlo",
+  "kod": "B1",
+  "note_id": "IU-O-zone",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[STD-NAME-04]]",
+  "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/alfanumerika/1/pokyn",
+  "kod": "D19",
+  "note_id": "IU-O-zone",
+  "riadok": 57,
+  "sprava": "pokyn položky `LongName` spomína nájomc — over nositeľa (§0.9)",
+  "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/alfanumerika/5",
+  "kod": "D12",
+  "note_id": "IU-O-space",
+  "riadok": 82,
+  "sprava": "veličina `Height` nemá `definicia_ref` na DEF — bez meracieho pravidla je hodnota nedokázateľná",
+  "subor": "zadanie/IU-O/IU-O-space Priestor.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/filter/0/hodnoty_ref",
+  "kod": "B1",
+  "note_id": "IU-O-zone",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[STD-klasifikacia#typy-zon-priestorove]]",
+  "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/geometria",
+  "kod": "D15",
+  "note_id": "IU-O-space",
+  "riadok": 28,
+  "sprava": "2 z 3 IU-O prepisuje aspekty profilu — zváž prekrojenie profilov (§6a)",
+  "subor": "zadanie/IU-O/IU-O-space Priestor.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/Appearance",
+  "kod": "D15",
+  "note_id": "IU-O-storey",
+  "riadok": 36,
+  "sprava": "aspekt `Appearance` je rovnaký ako v [[GEO-G0]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-storey Podlažie.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/Appearance",
+  "kod": "D15",
+  "note_id": "IU-O-zone",
+  "riadok": 39,
+  "sprava": "aspekt `Appearance` je rovnaký ako v [[GEO-G0]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/Dimensionality",
+  "kod": "D15",
+  "note_id": "IU-O-space",
+  "riadok": 39,
+  "sprava": "aspekt `Dimensionality` je rovnaký ako v [[GEO-G2]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-space Priestor.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/Dimensionality",
+  "kod": "D15",
+  "note_id": "IU-O-storey",
+  "riadok": 35,
+  "sprava": "aspekt `Dimensionality` je rovnaký ako v [[GEO-G0]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-storey Podlažie.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/Dimensionality",
+  "kod": "D15",
+  "note_id": "IU-O-zone",
+  "riadok": 38,
+  "sprava": "aspekt `Dimensionality` je rovnaký ako v [[GEO-G0]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/Location",
+  "kod": "D15",
+  "note_id": "IU-O-zone",
+  "riadok": 41,
+  "sprava": "aspekt `Location` je rovnaký ako v [[GEO-G0]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/ParametricBehaviour",
+  "kod": "D15",
+  "note_id": "IU-O-space",
+  "riadok": 41,
+  "sprava": "aspekt `ParametricBehaviour` je rovnaký ako v [[GEO-G2]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-space Priestor.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/ParametricBehaviour",
+  "kod": "D15",
+  "note_id": "IU-O-storey",
+  "riadok": 37,
+  "sprava": "aspekt `ParametricBehaviour` je rovnaký ako v [[GEO-G0]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-storey Podlažie.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/ParametricBehaviour",
+  "kod": "D15",
+  "note_id": "IU-O-zone",
+  "riadok": 40,
+  "sprava": "aspekt `ParametricBehaviour` je rovnaký ako v [[GEO-G0]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/ShapeAssembly",
+  "kod": "D15",
+  "note_id": "IU-O-space",
+  "riadok": 30,
+  "sprava": "aspekt `ShapeAssembly` je rovnaký ako v [[GEO-G2]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-space Priestor.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/ShapeAssembly",
+  "kod": "D15",
+  "note_id": "IU-O-storey",
+  "riadok": 27,
+  "sprava": "aspekt `ShapeAssembly` je rovnaký ako v [[GEO-G0]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-storey Podlažie.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/ShapeAssembly",
+  "kod": "D15",
+  "note_id": "IU-O-zone",
+  "riadok": 30,
+  "sprava": "aspekt `ShapeAssembly` je rovnaký ako v [[GEO-G0]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/ShapeInfluence",
+  "kod": "D15",
+  "note_id": "IU-O-storey",
+  "riadok": 29,
+  "sprava": "aspekt `ShapeInfluence` je rovnaký ako v [[GEO-G0]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-storey Podlažie.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/ShapeInfluence",
+  "kod": "D15",
+  "note_id": "IU-O-zone",
+  "riadok": 32,
+  "sprava": "aspekt `ShapeInfluence` je rovnaký ako v [[GEO-G0]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/ShapeRepresentation",
+  "kod": "D15",
+  "note_id": "IU-O-space",
+  "riadok": 31,
+  "sprava": "aspekt `ShapeRepresentation` je rovnaký ako v [[GEO-G2]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-space Priestor.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/ShapeRepresentation",
+  "kod": "D15",
+  "note_id": "IU-O-storey",
+  "riadok": 28,
+  "sprava": "aspekt `ShapeRepresentation` je rovnaký ako v [[GEO-G0]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-storey Podlažie.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/ShapeRepresentation",
+  "kod": "D15",
+  "note_id": "IU-O-zone",
+  "riadok": 31,
+  "sprava": "aspekt `ShapeRepresentation` je rovnaký ako v [[GEO-G0]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/identifikacia/pravidlo",
+  "kod": "B1",
+  "note_id": "IU-C-arch-model",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[STD-NAME-CONT]]",
+  "subor": "zadanie/IU-C/IU-C-arch-model Architektonický priestorový model.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/identifikacia/pravidlo",
+  "kod": "B1",
+  "note_id": "IU-C-protokol-zamerania",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[STD-NAME-CONT]]",
+  "subor": "zadanie/IU-C/IU-C-protokol-zamerania Protokol zamerania priestorov.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/klasifikacia/0/pravidlo",
+  "kod": "B1",
+  "note_id": "IU-O-space",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[STD-klasifikacia#CCI-priestory]]",
+  "subor": "zadanie/IU-O/IU-O-space Priestor.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/nadradeny_uc/0",
+  "kod": "B1",
+  "note_id": "UC-0101",
+  "riadok": 59,
+  "sprava": "visiaci odkaz [[UC-0100]]",
+  "subor": "zadanie/UC/UC-0101 Priestorová pasportizácia.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/nadvaznost/1",
+  "kod": "B1",
+  "note_id": "IU-C-arch-model",
+  "riadok": 55,
+  "sprava": "visiaci odkaz [[IU-C-vzt-model]]",
+  "subor": "zadanie/IU-C/IU-C-arch-model Architektonický priestorový model.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/nazov",
+  "kod": "A14",
+  "note_id": "IU-O-space",
+  "riadok": 6,
+  "sprava": "názov súboru „Priestor“ sa líši od `nazov` — editor premenuje pri zmene názvu",
+  "subor": "zadanie/IU-O/IU-O-space Priestor.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/nazov",
+  "kod": "A14",
+  "note_id": "IU-O-zone",
+  "riadok": 6,
+  "sprava": "názov súboru „Zóna“ sa líši od `nazov` — editor premenuje pri zmene názvu",
+  "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/nazov",
+  "kod": "A14",
+  "note_id": "STD-clenenie",
+  "riadok": 6,
+  "sprava": "názov súboru „—“ sa líši od `nazov` — editor premenuje pri zmene názvu",
+  "subor": "zadanie/STD/STD-clenenie.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/nazov",
+  "kod": "A14",
+  "note_id": "STD-geo-profily",
+  "riadok": 6,
+  "sprava": "názov súboru „—“ sa líši od `nazov` — editor premenuje pri zmene názvu",
+  "subor": "zadanie/STD/STD-geo-profily.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/podporuje_ciel/0",
+  "kod": "B1",
+  "note_id": "UC-0101",
+  "riadok": 50,
+  "sprava": "visiaci odkaz [[GOAL-A-01]]",
+  "subor": "zadanie/UC/UC-0101 Priestorová pasportizácia.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/pokyn",
+  "kod": "D19",
+  "note_id": "IU-O-zone",
+  "riadok": 25,
+  "sprava": "`pokyn` spomína prenajímateľ — over, či nositeľom nie je CDE/AIM/CAFM, nie model (§0.9)",
+  "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/referencne_info/0",
+  "kod": "B1",
+  "note_id": "ER-0101",
+  "riadok": 24,
+  "sprava": "visiaci odkaz [[IU-C-podklady-PD]]",
+  "subor": "zadanie/ER/ER-0101 Priestorový model a protokol zamerania – odovzdanie.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/standard/0",
+  "kod": "B1",
+  "note_id": "ER-0101",
+  "riadok": 25,
+  "sprava": "visiaci odkaz [[STD]]",
+  "subor": "zadanie/ER/ER-0101 Priestorový model a protokol zamerania – odovzdanie.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/zdovodnenie",
+  "kod": "D19",
+  "note_id": "IU-O-zone",
+  "riadok": 24,
+  "sprava": "`zdovodnenie` spomína zmluv — over, či nositeľom nie je CDE/AIM/CAFM, nie model (§0.9)",
+  "subor": "zadanie/IU-O/IU-O-zone Zóna.md",
+  "uroven": "I"
+ }
+]

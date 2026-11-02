@@ -1,0 +1,2716 @@
+{
+ "$defs": {
+  "Dokumentacia": {
+   "additionalProperties": false,
+   "properties": {
+    "automatizovatelne": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Automatizovateľné",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "dok": {
+     "description": "vždy odkaz na IU-C (A5)",
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "title": "Dokument",
+     "type": "string",
+     "x-assetin": {
+      "cielove_typy": [
+       "IU-C"
+      ],
+      "export": "7817-3 Documentation/Document ; IfcRelAssociatesDocument",
+      "kotva": "ziadna",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "dokladuje": {
+     "default": [],
+     "description": "[V4] kľúče položiek IU-O",
+     "items": {
+      "type": "string"
+     },
+     "title": "Dokladuje položky",
+     "type": "array",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "overenie": {
+     "anyOf": [
+      {
+       "const": "manual",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "§14b: manual",
+     "title": "Overenie",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "pokyn": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Pokyn",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "postup": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Postup overenia",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "povinnost": {
+     "anyOf": [
+      {
+       "enum": [
+        "required",
+        "optional",
+        "prohibited"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Povinnosť",
+     "x-assetin": {
+      "trieda_obmedzenia": "pritomnost",
+      "zdroj": "frontmatter"
+     }
+    },
+    "zavaznost": {
+     "anyOf": [
+      {
+       "enum": [
+        "zmluvne",
+        "musi",
+        "ma",
+        "informativne"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Záväznosť",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "dok"
+   ],
+   "title": "Dokumentacia",
+   "type": "object"
+  },
+  "FacetAttribute": {
+   "additionalProperties": false,
+   "properties": {
+    "cardinality": {
+     "anyOf": [
+      {
+       "enum": [
+        "required",
+        "optional",
+        "prohibited"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kardinalita",
+     "x-assetin": {
+      "export": "IDS cardinality",
+      "trieda_obmedzenia": "pritomnost",
+      "zdroj": "frontmatter"
+     }
+    },
+    "facet": {
+     "const": "attribute",
+     "title": "Facet",
+     "type": "string"
+    },
+    "hodnota": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "integer"
+      },
+      {
+       "type": "number"
+      },
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Hodnota",
+     "x-assetin": {
+      "export": "IDS simpleValue",
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty": {
+     "anyOf": [
+      {
+       "items": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "integer"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "boolean"
+         }
+        ]
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Výčet",
+     "x-assetin": {
+      "export": "IDS xs:enumeration",
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty_ref": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Slovník",
+     "x-assetin": {
+      "cielove_typy": [
+       "STD"
+      ],
+      "export": "IDS xs:enumeration (rozvinuté)",
+      "kotva": "povinna",
+      "trieda_obmedzenia": "hodnota",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "nazov": {
+     "title": "Atribút",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS attribute/name",
+      "widget": "text",
+      "zdroj": "frontmatter"
+     }
+    },
+    "rozsah": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Rozsah_hodnot"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Rozsah",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "vzor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Vzor (regex)",
+     "x-assetin": {
+      "export": "IDS xs:pattern",
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "facet",
+    "nazov"
+   ],
+   "title": "FacetAttribute",
+   "type": "object"
+  },
+  "FacetClassification": {
+   "additionalProperties": false,
+   "properties": {
+    "cardinality": {
+     "anyOf": [
+      {
+       "enum": [
+        "required",
+        "optional",
+        "prohibited"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kardinalita",
+     "x-assetin": {
+      "trieda_obmedzenia": "pritomnost",
+      "zdroj": "frontmatter"
+     }
+    },
+    "facet": {
+     "const": "classification",
+     "title": "Facet",
+     "type": "string"
+    },
+    "hodnota": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Hodnota",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty": {
+     "anyOf": [
+      {
+       "items": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "integer"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "boolean"
+         }
+        ]
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Výčet",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty_ref": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Slovník",
+     "x-assetin": {
+      "cielove_typy": [
+       "STD"
+      ],
+      "kotva": "povinna",
+      "trieda_obmedzenia": "hodnota",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "system": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Systém",
+     "x-assetin": {
+      "export": "IDS classification/system",
+      "zdroj": "frontmatter"
+     }
+    },
+    "uri": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "URI",
+     "x-assetin": {
+      "export": "IDS @uri",
+      "zdroj": "frontmatter"
+     }
+    },
+    "vzor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Vzor (regex)",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "facet"
+   ],
+   "title": "FacetClassification",
+   "type": "object"
+  },
+  "FacetEntity": {
+   "additionalProperties": false,
+   "properties": {
+    "facet": {
+     "const": "entity",
+     "title": "Facet",
+     "type": "string"
+    },
+    "nazov": {
+     "title": "IFC entita",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS entity/name",
+      "widget": "text",
+      "zdroj": "frontmatter"
+     }
+    },
+    "predefined_type": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "PredefinedType",
+     "x-assetin": {
+      "export": "IDS entity/predefinedType",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "facet",
+    "nazov"
+   ],
+   "title": "FacetEntity",
+   "type": "object"
+  },
+  "FacetMaterial": {
+   "additionalProperties": false,
+   "properties": {
+    "cardinality": {
+     "anyOf": [
+      {
+       "enum": [
+        "required",
+        "optional",
+        "prohibited"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kardinalita",
+     "x-assetin": {
+      "trieda_obmedzenia": "pritomnost",
+      "zdroj": "frontmatter"
+     }
+    },
+    "facet": {
+     "const": "material",
+     "title": "Facet",
+     "type": "string"
+    },
+    "hodnota": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Materiál",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty": {
+     "anyOf": [
+      {
+       "items": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "integer"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "boolean"
+         }
+        ]
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Výčet",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty_ref": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Slovník",
+     "x-assetin": {
+      "cielove_typy": [
+       "STD"
+      ],
+      "kotva": "povinna",
+      "trieda_obmedzenia": "hodnota",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "uri": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "URI",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "facet"
+   ],
+   "title": "FacetMaterial",
+   "type": "object"
+  },
+  "FacetPartOf": {
+   "additionalProperties": false,
+   "properties": {
+    "cardinality": {
+     "anyOf": [
+      {
+       "enum": [
+        "required",
+        "optional",
+        "prohibited"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kardinalita",
+     "x-assetin": {
+      "trieda_obmedzenia": "pritomnost",
+      "zdroj": "frontmatter"
+     }
+    },
+    "entity": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      }
+     ],
+     "title": "Rodičovská entita",
+     "x-assetin": {
+      "export": "IDS partOf/entity",
+      "zdroj": "frontmatter"
+     }
+    },
+    "facet": {
+     "const": "partOf",
+     "title": "Facet",
+     "type": "string"
+    },
+    "predefined_type": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "PredefinedType rodiča",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "relation": {
+     "enum": [
+      "IFCRELAGGREGATES",
+      "IFCRELASSIGNSTOGROUP",
+      "IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      "IFCRELNESTS",
+      "IFCRELVOIDSELEMENT",
+      "IFCRELFILLSELEMENT"
+     ],
+     "title": "Vzťah",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS partOf/@relation",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "facet",
+    "relation",
+    "entity"
+   ],
+   "title": "FacetPartOf",
+   "type": "object"
+  },
+  "FacetProperty": {
+   "additionalProperties": false,
+   "properties": {
+    "cardinality": {
+     "anyOf": [
+      {
+       "enum": [
+        "required",
+        "optional",
+        "prohibited"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kardinalita",
+     "x-assetin": {
+      "trieda_obmedzenia": "pritomnost",
+      "zdroj": "frontmatter"
+     }
+    },
+    "datovy_typ": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "dataType",
+     "x-assetin": {
+      "export": "IDS @dataType",
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "facet": {
+     "const": "property",
+     "title": "Facet",
+     "type": "string"
+    },
+    "hodnota": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "integer"
+      },
+      {
+       "type": "number"
+      },
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Hodnota",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty": {
+     "anyOf": [
+      {
+       "items": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "integer"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "boolean"
+         }
+        ]
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Výčet",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty_ref": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Slovník",
+     "x-assetin": {
+      "cielove_typy": [
+       "STD"
+      ],
+      "kotva": "povinna",
+      "trieda_obmedzenia": "hodnota",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "nazov": {
+     "title": "Vlastnosť",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS baseName",
+      "widget": "text",
+      "zdroj": "frontmatter"
+     }
+    },
+    "pset": {
+     "title": "Property set",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS propertySet",
+      "zdroj": "frontmatter"
+     }
+    },
+    "rozsah": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Rozsah_hodnot"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Rozsah",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "uri": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "URI",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "vzor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Vzor (regex)",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "facet",
+    "pset",
+    "nazov"
+   ],
+   "title": "FacetProperty",
+   "type": "object"
+  },
+  "GeoPoznamka": {
+   "additionalProperties": false,
+   "properties": {
+    "nezahrna": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "Nezahŕňa",
+     "type": "array",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "text": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Text",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "zahrna": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "Zahŕňa",
+     "type": "array",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "GeoPoznamka",
+   "type": "object"
+  },
+  "Geometria": {
+   "additionalProperties": false,
+   "properties": {
+    "Appearance": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "NoAppearanceInformation",
+        "SymbolicByMapping",
+        "SingularMaterial",
+        "MultipleMaterials",
+        "ConceptualAppearance",
+        "RealisticAppearance"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Appearance",
+     "x-assetin": {
+      "export": "7817-3 Appearance",
+      "zdroj": "frontmatter"
+     }
+    },
+    "Dimensionality": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "0D",
+        "1D",
+        "2D",
+        "3D"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Dimensionality",
+     "x-assetin": {
+      "export": "7817-3 Dimensionality",
+      "zdroj": "frontmatter"
+     }
+    },
+    "Location": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/LocationModel"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-assetin": {
+      "export": "7817-3 Location",
+      "zdroj": "frontmatter"
+     }
+    },
+    "ParametricBehaviour": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequested",
+        "Requested"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Parametricbehaviour",
+     "x-assetin": {
+      "export": "7817-3 ParametricBehaviour",
+      "zdroj": "frontmatter"
+     }
+    },
+    "ShapeAssembly": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "SingleObjectSingularShape",
+        "SingleObjectMultipleShapes",
+        "MultipleObjects"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Shapeassembly",
+     "x-assetin": {
+      "export": "7817-3 ShapeAssembly",
+      "zdroj": "frontmatter"
+     }
+    },
+    "ShapeInfluence": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ShapeInfluenceModel"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-assetin": {
+      "export": "7817-3 ShapeInfluence",
+      "zdroj": "frontmatter"
+     }
+    },
+    "ShapeRepresentation": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "SingleBoundingPrimitive",
+        "OuterShellAsSingularShape",
+        "OuterShellAsSeparateShapes"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Shaperepresentation",
+     "x-assetin": {
+      "export": "7817-3 ShapeRepresentation",
+      "zdroj": "frontmatter"
+     }
+    },
+    "overenie": {
+     "anyOf": [
+      {
+       "enum": [
+        "manual",
+        "clash-detection"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "§14b: manual (predvoľba) | clash-detection",
+     "title": "Overenie",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "placeholder": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Placeholder",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "pokyn": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Pokyn",
+     "x-assetin": {
+      "export": "IDS instructions",
+      "zdroj": "frontmatter"
+     }
+    },
+    "postup": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Postup overenia",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "poznamka": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/GeoPoznamka"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Poznámka",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "presnost": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "metadáta kvality (7817-1 6.1 pozn. 3)",
+     "title": "Presnosť",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "profil": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "preset; explicitný aspekt poráža profil",
+     "title": "Profil",
+     "x-assetin": {
+      "cielove_typy": [
+       "GEO"
+      ],
+      "kotva": "ziadna",
+      "technicky": true,
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "zavaznost": {
+     "anyOf": [
+      {
+       "enum": [
+        "zmluvne",
+        "musi",
+        "ma",
+        "informativne"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Záväznosť",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Geometria",
+   "type": "object"
+  },
+  "IfcAtribut": {
+   "additionalProperties": false,
+   "properties": {
+    "atribut": {
+     "title": "IFC atribút",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS attribute facet",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "atribut"
+   ],
+   "title": "IfcAtribut",
+   "type": "object"
+  },
+  "IfcMaterial": {
+   "additionalProperties": false,
+   "properties": {
+    "material": {
+     "title": "Materiál",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS material facet",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "material"
+   ],
+   "title": "IfcMaterial",
+   "type": "object"
+  },
+  "IfcVlastnost": {
+   "additionalProperties": false,
+   "properties": {
+    "nazov": {
+     "title": "Vlastnosť",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS baseName",
+      "widget": "text",
+      "zdroj": "frontmatter"
+     }
+    },
+    "pset": {
+     "title": "Property set",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS propertySet",
+      "zdroj": "frontmatter"
+     }
+    },
+    "uri": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "bSDD URI",
+     "x-assetin": {
+      "export": "dt:about",
+      "zdroj": "frontmatter"
+     }
+    },
+    "vynimka": {
+     "default": false,
+     "description": "pset/vlastnosť mimo IFC šablóny (§16.7)",
+     "title": "Výnimka",
+     "type": "boolean",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "pset",
+    "nazov"
+   ],
+   "title": "IfcVlastnost",
+   "type": "object"
+  },
+  "Klasifikacia": {
+   "additionalProperties": false,
+   "properties": {
+    "povinnost": {
+     "anyOf": [
+      {
+       "enum": [
+        "required",
+        "optional",
+        "prohibited"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "[V25] s povinnosťou → IDS requirements (cardinality); bez nej zužuje applicability",
+     "title": "Povinnosť",
+     "x-assetin": {
+      "trieda_obmedzenia": "pritomnost",
+      "zdroj": "frontmatter"
+     }
+    },
+    "pravidlo": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "[V14] tabuľka a vzor kódu žijú v STD",
+     "title": "Pravidlo (slovník)",
+     "x-assetin": {
+      "cielove_typy": [
+       "STD"
+      ],
+      "kotva": "povinna",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "system": {
+     "title": "Systém",
+     "type": "string",
+     "x-assetin": {
+      "export": "IDS classification facet ; 7817-3 DictionaryRef",
+      "zdroj": "frontmatter"
+     }
+    },
+    "uri": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "URI",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "system"
+   ],
+   "title": "Klasifikacia",
+   "type": "object"
+  },
+  "LocationModel": {
+   "additionalProperties": false,
+   "properties": {
+    "PositioningType": {
+     "anyOf": [
+      {
+       "enum": [
+        "Absolute",
+        "Relative",
+        "NotDefined"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Positioningtype",
+     "x-assetin": {
+      "export": "7817-3 Location",
+      "zdroj": "frontmatter"
+     }
+    },
+    "ReferenceObject": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Referenceobject",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "crs": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "ProjectedCRS",
+        "EngineeringCRS",
+        "GeographicCRS"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "CRS typ",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "LocationModel",
+   "type": "object"
+  },
+  "Objekt": {
+   "additionalProperties": false,
+   "properties": {
+    "ifc_entita": {
+     "title": "IFC entita",
+     "type": "string",
+     "x-assetin": {
+      "export": "7817-3 ObjectType ; IDS applicability/entity",
+      "technicky": true,
+      "zdroj": "frontmatter"
+     }
+    },
+    "predefined_type": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "PredefinedType",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "uri": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "bSDD URI",
+     "x-assetin": {
+      "export": "@dt:about",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "ifc_entita"
+   ],
+   "title": "Objekt",
+   "type": "object"
+  },
+  "Polozka": {
+   "additionalProperties": false,
+   "description": "Alphanumeric requirement item → 7817-3 Property ; IDS requirements facet.",
+   "properties": {
+    "datovy_typ": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "[V24] IFC jednoduchý typ VEĽKÝMI (IFCAREAMEASURE…); len pri `ifc.pset` a `prop`",
+     "title": "Dátový typ",
+     "x-assetin": {
+      "export": "IDS @dataType",
+      "trieda_obmedzenia": "hodnota",
+      "widget": "text",
+      "zdroj": "frontmatter"
+     }
+    },
+    "definicia_ref": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "[V2] meraná hodnota",
+     "title": "Definícia",
+     "x-assetin": {
+      "cielove_typy": [
+       "DEF"
+      ],
+      "export": "Property.Definition + ReferenceDocumentRef",
+      "kotva": "ziadna",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "dolozene_v": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "[V4] kontajner, ktorý položku dokladuje",
+     "title": "Doložené v",
+     "x-assetin": {
+      "cielove_typy": [
+       "IU-C"
+      ],
+      "kotva": "ziadna",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty": {
+     "anyOf": [
+      {
+       "items": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "integer"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "boolean"
+         }
+        ]
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Hodnoty",
+     "x-assetin": {
+      "export": "7817-3 PossibleValues ; IDS xs:enumeration",
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "hodnoty_ref": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "[V14] vylučuje sa s `hodnoty`",
+     "title": "Slovník",
+     "x-assetin": {
+      "cielove_typy": [
+       "STD"
+      ],
+      "kotva": "povinna",
+      "trieda_obmedzenia": "hodnota",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "ifc": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "$ref": "#/$defs/IfcAtribut"
+        },
+        {
+         "$ref": "#/$defs/IfcVlastnost"
+        },
+        {
+         "$ref": "#/$defs/IfcMaterial"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "IFC",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "overenie": {
+     "anyOf": [
+      {
+       "enum": [
+        "IDS",
+        "manual"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "§14b: IDS (predvoľba) | manual",
+     "title": "Overenie",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "pokyn": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Pokyn",
+     "x-assetin": {
+      "export": "IDS instructions",
+      "zdroj": "frontmatter"
+     }
+    },
+    "postup": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Postup overenia",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "povaha": {
+     "anyOf": [
+      {
+       "enum": [
+        "informacny",
+        "technicky"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Povaha",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "povinnost": {
+     "anyOf": [
+      {
+       "enum": [
+        "required",
+        "optional",
+        "prohibited"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Povinnosť",
+     "x-assetin": {
+      "export": "IDS cardinality",
+      "trieda_obmedzenia": "pritomnost",
+      "zdroj": "frontmatter"
+     }
+    },
+    "pravidlo": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "zdroj konvencie (nie kópia)",
+     "title": "Pravidlo",
+     "x-assetin": {
+      "cielove_typy": [
+       "STD"
+      ],
+      "kotva": "volitelna",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "prop": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "iba mimo IFC (§7)",
+     "title": "Vlastná vlastnosť",
+     "x-assetin": {
+      "cielove_typy": [
+       "PROP"
+      ],
+      "kotva": "ziadna",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "rola": {
+     "anyOf": [
+      {
+       "enum": [
+        "identifikacia",
+        "obsah"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "identifikacia | obsah (predvoľba obsah)",
+     "title": "Rola",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "rozsah": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Rozsah_hodnot"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Rozsah",
+     "x-assetin": {
+      "export": "IDS bounds",
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "tolerancia": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "metadáta; zhodu s realitou overuje dokumentačná položka (§0.6)",
+     "title": "Tolerancia",
+     "x-assetin": {
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "vzor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Vzor (regex)",
+     "x-assetin": {
+      "export": "IDS xs:pattern",
+      "trieda_obmedzenia": "hodnota",
+      "zdroj": "frontmatter"
+     }
+    },
+    "zavaznost": {
+     "anyOf": [
+      {
+       "enum": [
+        "zmluvne",
+        "musi",
+        "ma",
+        "informativne"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Záväznosť",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Polozka",
+   "type": "object"
+  },
+  "Rozsah_hodnot": {
+   "additionalProperties": false,
+   "description": "Numeric range → IDS bounds (shape not fixed in SCHEMA v1.3 either; kept minimal).\n\n[V26] The whole record is a value constraint (PAS 6.3.3 b); the class is declared on every field\nthat *holds* a ``rozsah``, not here, so a field descriptor carries it without being unpacked.",
+   "properties": {
+    "max": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Maximum",
+     "x-assetin": {
+      "export": "IDS maxInclusive",
+      "zdroj": "frontmatter"
+     }
+    },
+    "max_exkluzivne": {
+     "default": false,
+     "title": "Max. exkluzívne",
+     "type": "boolean",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "min": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Minimum",
+     "x-assetin": {
+      "export": "IDS minInclusive",
+      "zdroj": "frontmatter"
+     }
+    },
+    "min_exkluzivne": {
+     "default": false,
+     "title": "Min. exkluzívne",
+     "type": "boolean",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Rozsah_hodnot",
+   "type": "object"
+  },
+  "ShapeInfluenceModel": {
+   "additionalProperties": false,
+   "properties": {
+    "Connections": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "NoConnections",
+        "ConnectionsAsPartOfShape",
+        "SeparateShapes"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Connections",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "Features": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "NoFeatures",
+        "FeaturesAsPartOfShape",
+        "SeparateShapes"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Features",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "InsideGeometry": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "NoInsideGeometry",
+        "InsideGeometryAsPartOfShape",
+        "SeparateShapes"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Insidegeometry",
+     "x-assetin": {
+      "export": "7817-3 ShapeInfluence",
+      "zdroj": "frontmatter"
+     }
+    },
+    "Openings": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "NoOpenings",
+        "OpeningsAsPartOfShape",
+        "SeparateShapes"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Openings",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "OperatingAndClearanceZones": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "NoOperatingAndClearanceZones",
+        "OperatingAndClearanceZonesAsPartOfShape",
+        "SeparateShapes"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Operatingandclearancezones",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "ThresholdDimension": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ThresholdDimensionModel"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "ShapeInfluenceModel",
+   "type": "object"
+  },
+  "ThresholdDimensionModel": {
+   "additionalProperties": false,
+   "properties": {
+    "hodnota": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Hodnota",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "jednotka": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Jednotka",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "ThresholdDimensionModel",
+   "type": "object"
+  }
+ },
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "additionalProperties": false,
+ "properties": {
+  "alfanumerika": {
+   "default": [],
+   "items": {
+    "$ref": "#/$defs/Polozka"
+   },
+   "title": "Alfanumerika",
+   "type": "array",
+   "x-assetin": {
+    "export": "7817-3 AlphanumericalInformation ; IDS requirements",
+    "polozky": true,
+    "zdroj": "frontmatter"
+   }
+  },
+  "aliases": {
+   "default": [],
+   "description": "[V18] udržiava writer: vždy obsahuje `id` (Obsidian návrhár, Dataview)",
+   "items": {
+    "type": "string"
+   },
+   "title": "Aliasy",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "autor": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Autor",
+   "x-assetin": {
+    "export": "authoring/author",
+    "zdroj": "frontmatter"
+   }
+  },
+  "clenenie": {
+   "default": [],
+   "description": "dedí; tu len prepis/výnimka (IDS partOf)",
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Členenie",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "STD"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Členenie (iba výnimky voči STD-clenenie)",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "dokladuje": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Dokladuje",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-O",
+     "IU-C"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Väzby",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "dokumentacia": {
+   "default": [],
+   "items": {
+    "$ref": "#/$defs/Dokumentacia"
+   },
+   "title": "Dokumentácia",
+   "type": "array",
+   "x-assetin": {
+    "export": "7817-3 Documentation",
+    "zdroj": "frontmatter"
+   }
+  },
+  "dolozene_v": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Doložené v",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-C"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Väzby",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "doplnuje": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Dopĺňa",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-O",
+     "IU-C"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Väzby",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "filter": {
+   "default": [],
+   "description": "[V9] iba zužuje applicability",
+   "items": {
+    "discriminator": {
+     "mapping": {
+      "attribute": "#/$defs/FacetAttribute",
+      "classification": "#/$defs/FacetClassification",
+      "entity": "#/$defs/FacetEntity",
+      "material": "#/$defs/FacetMaterial",
+      "partOf": "#/$defs/FacetPartOf",
+      "property": "#/$defs/FacetProperty"
+     },
+     "propertyName": "facet"
+    },
+    "oneOf": [
+     {
+      "$ref": "#/$defs/FacetEntity"
+     },
+     {
+      "$ref": "#/$defs/FacetAttribute"
+     },
+     {
+      "$ref": "#/$defs/FacetClassification"
+     },
+     {
+      "$ref": "#/$defs/FacetProperty"
+     },
+     {
+      "$ref": "#/$defs/FacetMaterial"
+     },
+     {
+      "$ref": "#/$defs/FacetPartOf"
+     }
+    ]
+   },
+   "title": "Filter",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "geometria": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/Geometria"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Geometria",
+   "x-assetin": {
+    "export": "7817-3 GeometricalInformation",
+    "zdroj": "frontmatter"
+   }
+  },
+  "guid": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "generuje nástroj",
+   "title": "GUID",
+   "x-assetin": {
+    "export": "specId/guid ; dt:GUID",
+    "zdroj": "frontmatter"
+   }
+  },
+  "id": {
+   "description": "prefix + číslo alebo cesta; nesie ho cesta súboru (§0.4), vo frontmatter kópia",
+   "title": "ID",
+   "type": "string",
+   "x-assetin": {
+    "export": "29481-3 specId/localCode ; 7817-3 name",
+    "zdroj": "frontmatter"
+   }
+  },
+  "jazyk": {
+   "default": "sk",
+   "description": "ISO 639-1",
+   "title": "Jazyk",
+   "type": "string",
+   "x-assetin": {
+    "export": "uc/language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "klasifikacia": {
+   "default": [],
+   "items": {
+    "$ref": "#/$defs/Klasifikacia"
+   },
+   "title": "Klasifikácia",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "licencia": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Licencia",
+   "x-assetin": {
+    "export": "authoring/copyright",
+    "zdroj": "frontmatter"
+   }
+  },
+  "nadradene_pri_rozpore": {
+   "default": [],
+   "description": "cieľ má prednosť (§0.3)",
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Nadradené pri rozpore",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-O",
+     "IU-C"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Väzby",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "nazov": {
+   "title": "Názov",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov_en": {
+   "minLength": 1,
+   "title": "Názov (EN)",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/shortTitle ; 7817-3 Purpose/Language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "objekt": {
+   "$ref": "#/$defs/Objekt",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "odvodene_z": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Odvodené z",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-O",
+     "IU-C",
+     "DEF"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Väzby",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "overuje": {
+   "default": [],
+   "description": "reviewer (19650-4)",
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Overuje",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "ACT"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Roly",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "pokyn": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Pokyn",
+   "x-assetin": {
+    "export": "IDS instructions",
+    "zdroj": "frontmatter"
+   }
+  },
+  "poskytovatel": {
+   "default": [],
+   "description": "autoritatívny; delí Specification/IDS",
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Poskytovateľ",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "ACT"
+    ],
+    "export": "7817-3 ProvidingActor",
+    "kotva": "ziadna",
+    "sekcia": "Roly",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "pre_task": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Pre úlohu",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "UC"
+    ],
+    "kotva": "povinna",
+    "sekcia": "Trasovateľnosť",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "pritomnost_v_modeli": {
+   "enum": [
+    "required",
+    "optional",
+    "prohibited"
+   ],
+   "title": "Prítomnosť v modeli",
+   "type": "string",
+   "x-assetin": {
+    "export": "IDS minOccurs/maxOccurs",
+    "trieda_obmedzenia": "pritomnost",
+    "zdroj": "frontmatter"
+   }
+  },
+  "stav": {
+   "enum": [
+    "NP",
+    "WD",
+    "PUB",
+    "WDRL"
+   ],
+   "title": "Stav",
+   "type": "string",
+   "x-assetin": {
+    "export": "documentStatus",
+    "zdroj": "frontmatter"
+   }
+  },
+  "typ": {
+   "enum": [
+    "GOAL",
+    "UC",
+    "ER",
+    "IU-O",
+    "IU-C",
+    "STD",
+    "GEO",
+    "PROP",
+    "DEF",
+    "EV",
+    "ACT",
+    "PROT",
+    "PROJ"
+   ],
+   "title": "Typ",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "typ_poziadavky": {
+   "default": [],
+   "description": "odvodené: geometria = D2, alfanumerika = D1, dokumentacia = D3",
+   "items": {
+    "type": "string"
+   },
+   "title": "Typ požiadavky",
+   "type": "array",
+   "x-assetin": {
+    "odvodene": true,
+    "zdroj": "frontmatter"
+   }
+  },
+  "uroven": {
+   "description": "typ | vyskyt",
+   "enum": [
+    "typ",
+    "vyskyt"
+   ],
+   "title": "Úroveň",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "verzia": {
+   "title": "Verzia",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/version",
+    "zdroj": "frontmatter"
+   }
+  },
+  "zavaznost_predvolena": {
+   "anyOf": [
+    {
+     "enum": [
+      "zmluvne",
+      "musi",
+      "ma",
+      "informativne"
+     ],
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "predvoľba pre položky",
+   "title": "Predvolená záväznosť",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "zdovodnenie": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Zdôvodnenie",
+   "x-assetin": {
+    "export": "IDS description",
+    "zdroj": "frontmatter"
+   }
+  }
+ },
+ "required": [
+  "id",
+  "typ",
+  "nazov",
+  "nazov_en",
+  "stav",
+  "verzia",
+  "objekt",
+  "pritomnost_v_modeli",
+  "uroven"
+ ],
+ "title": "IU_O",
+ "type": "object",
+ "x-assetin": {
+  "pod_zaznamy": [],
+  "schema_verzia": "1.5",
+  "sekcie": [
+   "Členenie (iba výnimky voči STD-clenenie)",
+   "Roly",
+   "Trasovateľnosť",
+   "Väzby"
+  ],
+  "typ": "IU-O"
+ }
+}

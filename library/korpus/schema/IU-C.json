@@ -1,0 +1,1226 @@
+{
+ "$defs": {
+  "Dataset": {
+   "additionalProperties": false,
+   "properties": {
+    "jeden_riadok": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Jeden riadok =",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "kluc": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kľúč",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "struktura": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/StlpecDatasetu"
+     },
+     "title": "Štruktúra",
+     "type": "array",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Dataset",
+   "type": "object"
+  },
+  "Dokument": {
+   "additionalProperties": false,
+   "properties": {
+    "content": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Obsah",
+     "x-assetin": {
+      "export": "@content",
+      "zdroj": "frontmatter"
+     }
+    },
+    "form": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Forma",
+     "x-assetin": {
+      "export": "@form",
+      "zdroj": "frontmatter"
+     }
+    },
+    "struktura": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "Štruktúra (kapitoly)",
+     "type": "array",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "type": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Typ",
+     "x-assetin": {
+      "export": "7817-3 Document @type",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Dokument",
+   "type": "object"
+  },
+  "Forma": {
+   "additionalProperties": false,
+   "properties": {
+    "format": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Formát",
+     "x-assetin": {
+      "export": "7817-3 Document/Format ; IDS @ifcVersion",
+      "technicky": true,
+      "zdroj": "frontmatter"
+     }
+    },
+    "max_velkost_mb": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Max. veľkosť (MB)",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "nativny_format": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Natívny formát",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "verzia_schemy": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Verzia schémy",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Forma",
+   "type": "object"
+  },
+  "Georeferencovanie": {
+   "additionalProperties": false,
+   "properties": {
+    "model_cs": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ModelCS"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Model CS",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Georeferencovanie",
+   "type": "object"
+  },
+  "Identifikacia": {
+   "additionalProperties": false,
+   "properties": {
+    "pravidlo": {
+     "anyOf": [
+      {
+       "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+       "type": "string",
+       "x-assetin": {
+        "widget": "wikilink"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "konvencia ID kontajnera",
+     "title": "Pravidlo",
+     "x-assetin": {
+      "cielove_typy": [
+       "STD"
+      ],
+      "kotva": "volitelna",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "vzor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Vzor (regex)",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Identifikacia",
+   "type": "object"
+  },
+  "MetadataCDE": {
+   "additionalProperties": false,
+   "properties": {
+    "klasifikacia_bezpecnosti": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Klasifikácia bezpečnosti",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "revizia_vzor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Vzor revízie (regex)",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "status": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "enum z STD-cde",
+     "title": "Status",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "MetadataCDE",
+   "type": "object"
+  },
+  "ModelCS": {
+   "additionalProperties": false,
+   "properties": {
+    "FirstCoordinate": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Firstcoordinate",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "Height": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Height",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "SecondCoordinate": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Secondcoordinate",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "XAxisAbscissa": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Xaxisabscissa",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "XAxisOrdinate": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Xaxisordinate",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "ModelCS",
+   "type": "object"
+  },
+  "Mvd": {
+   "additionalProperties": false,
+   "description": "[V26] Model view definition of the container → 29481-3 ``correspondingMvd``.\n\nA container says which view of the schema it is delivered in (IFC4X3_ADD2 / Reference View);\nwithout it the IDS generator has to guess which entities and property sets may appear at all.\nField names are the normative ones, like ``Dokument.type/form/content``.",
+   "properties": {
+    "basis": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "schéma, nad ktorou MVD stojí",
+     "title": "Základ",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "name": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "napr. Reference View",
+     "title": "Názov",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Mvd",
+   "type": "object"
+  },
+  "Priradenie": {
+   "additionalProperties": false,
+   "description": "[V27] Assignment container → object type, optionally narrowed to LOIN aspects.\n\nThe same room is in the IFC model (geometry + alphanumerics) and in the survey report (only the\ndocumentation aspect). Without ``rozsah`` the report would look as if it had to satisfy the whole\nLOIN of the room; with it, the generator takes from a container only what is in scope\n(LOIN-05 §11.5 a; PAS 6.3.2.1 b — the LOIN frame structures the unit, it does not replace it).\n\nEmpty ``rozsah`` means every aspect the IU-O defines at all, not „nothing\".",
+   "properties": {
+    "iu": {
+     "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+     "title": "Objekt",
+     "type": "string",
+     "x-assetin": {
+      "cielove_typy": [
+       "IU-O"
+      ],
+      "export": "subInformationUnit",
+      "kotva": "ziadna",
+      "widget": "wikilink",
+      "zdroj": "frontmatter"
+     }
+    },
+    "rozsah": {
+     "default": [],
+     "description": "[V27] prázdne = všetky aspekty, ktoré daná IU-O definuje (7817-1 tri zložky LOIN)",
+     "items": {
+      "enum": [
+       "geometria",
+       "alfanumerika",
+       "dokumentacia"
+      ],
+      "type": "string"
+     },
+     "title": "Rozsah aspektov",
+     "type": "array",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "required": [
+    "iu"
+   ],
+   "title": "Priradenie",
+   "type": "object"
+  },
+  "StlpecDatasetu": {
+   "additionalProperties": false,
+   "properties": {
+    "jednotka": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Jednotka",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "stlpec": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Stĺpec",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "typ": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Typ",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "vzor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Vzor",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "StlpecDatasetu",
+   "type": "object"
+  },
+  "TIDP": {
+   "additionalProperties": false,
+   "properties": {
+    "odhad_pracnosti_h": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Odhad prácnosti (h)",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "TIDP",
+   "type": "object"
+  }
+ },
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "additionalProperties": false,
+ "properties": {
+  "aliases": {
+   "default": [],
+   "description": "[V18] udržiava writer: vždy obsahuje `id` (Obsidian návrhár, Dataview)",
+   "items": {
+    "type": "string"
+   },
+   "title": "Aliasy",
+   "type": "array",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "automatizovatelne": {
+   "anyOf": [
+    {
+     "type": "boolean"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Automatizovateľné",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "autor": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Autor",
+   "x-assetin": {
+    "export": "authoring/author",
+    "zdroj": "frontmatter"
+   }
+  },
+  "dataset": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/Dataset"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "iba druh: dataset",
+   "title": "Dataset",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "datovy_typ_29481": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Dátový typ 29481",
+   "x-assetin": {
+    "export": "informationUnit/dataType",
+    "zdroj": "frontmatter"
+   }
+  },
+  "dokladuje": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Dokladuje",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-O",
+     "IU-C"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Väzby",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "dokument": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/Dokument"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "iba druh: dokument",
+   "title": "Dokument",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "dolozene_v": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Doložené v",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-C"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Väzby",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "doplnuje": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Dopĺňa",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-O",
+     "IU-C"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Väzby",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "druh": {
+   "description": "model | dokument | dataset (dataset len bez nositeľa v modeli, V10)",
+   "enum": [
+    "model",
+    "dokument",
+    "dataset"
+   ],
+   "title": "Druh",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "forma": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/Forma"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Forma",
+   "x-assetin": {
+    "export": "7817-3 Document/Format",
+    "zdroj": "frontmatter"
+   }
+  },
+  "georeferencovanie_prepis": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/Georeferencovanie"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "iba ak sa líši od STD-FED-01",
+   "title": "Georeferencovanie (prepis)",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "guid": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "generuje nástroj",
+   "title": "GUID",
+   "x-assetin": {
+    "export": "specId/guid ; dt:GUID",
+    "zdroj": "frontmatter"
+   }
+  },
+  "id": {
+   "description": "prefix + číslo alebo cesta; nesie ho cesta súboru (§0.4), vo frontmatter kópia",
+   "title": "ID",
+   "type": "string",
+   "x-assetin": {
+    "export": "29481-3 specId/localCode ; 7817-3 name",
+    "zdroj": "frontmatter"
+   }
+  },
+  "identifikacia": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/Identifikacia"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Identifikácia",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "jazyk": {
+   "default": "sk",
+   "description": "ISO 639-1",
+   "title": "Jazyk",
+   "type": "string",
+   "x-assetin": {
+    "export": "uc/language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "licencia": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Licencia",
+   "x-assetin": {
+    "export": "authoring/copyright",
+    "zdroj": "frontmatter"
+   }
+  },
+  "metadata_cde": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/MetadataCDE"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Metadáta CDE",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "mvd": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/Mvd"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "[V26] pohľad na schému, v ktorom sa kontajner odovzdáva (len `druh: model`)",
+   "title": "MVD",
+   "x-assetin": {
+    "export": "informationUnit/correspondingMvd",
+    "zdroj": "frontmatter"
+   }
+  },
+  "nadradene_pri_rozpore": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Nadradené pri rozpore",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-O",
+     "IU-C"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Väzby",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "nadvaznost": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Nadväznosť",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-C"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "TIDP väzby",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "nazov": {
+   "title": "Názov",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov_en": {
+   "minLength": 1,
+   "title": "Názov (EN)",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/shortTitle ; 7817-3 Purpose/Language",
+    "zdroj": "frontmatter"
+   }
+  },
+  "obsahuje": {
+   "default": [],
+   "description": "[V27] priradenie objektov kontajneru; `rozsah` zužuje na aspekty LOIN",
+   "items": {
+    "$ref": "#/$defs/Priradenie"
+   },
+   "title": "Obsahuje",
+   "type": "array",
+   "x-assetin": {
+    "export": "subInformationUnit",
+    "sekcia": "Obsah (M:N)",
+    "zdroj": "blok"
+   }
+  },
+  "odvodene_z": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Odvodené z",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-O",
+     "IU-C"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Väzby",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "overenie": {
+   "anyOf": [
+    {
+     "const": "manual",
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "§14b: manual",
+   "title": "Overenie",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "overuje": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Overuje",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "ACT"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Roly",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "pokyn": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Pokyn",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "poskytovatel": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Poskytovateľ",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "ACT"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "Roly",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "postup": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Postup overenia",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "predchodca": {
+   "default": [],
+   "items": {
+    "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+    "type": "string",
+    "x-assetin": {
+     "widget": "wikilink"
+    }
+   },
+   "title": "Predchodca",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-C"
+    ],
+    "kotva": "ziadna",
+    "sekcia": "TIDP väzby",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "stav": {
+   "enum": [
+    "NP",
+    "WD",
+    "PUB",
+    "WDRL"
+   ],
+   "title": "Stav",
+   "type": "string",
+   "x-assetin": {
+    "export": "documentStatus",
+    "zdroj": "frontmatter"
+   }
+  },
+  "tidp": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/TIDP"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "TIDP",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "typ": {
+   "enum": [
+    "GOAL",
+    "UC",
+    "ER",
+    "IU-O",
+    "IU-C",
+    "STD",
+    "GEO",
+    "PROP",
+    "DEF",
+    "EV",
+    "ACT",
+    "PROT",
+    "PROJ"
+   ],
+   "title": "Typ",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "typ_poziadavky": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "description": "odvodené: C (model/dataset) | E (dokument)",
+   "title": "Typ požiadavky",
+   "x-assetin": {
+    "odvodene": true,
+    "zdroj": "frontmatter"
+   }
+  },
+  "verzia": {
+   "title": "Verzia",
+   "type": "string",
+   "x-assetin": {
+    "export": "specId/version",
+    "zdroj": "frontmatter"
+   }
+  },
+  "viaze_sa_na": {
+   "default": [],
+   "description": "alebo literál #aktivum / #proces (vedome)",
+   "items": {
+    "anyOf": [
+     {
+      "pattern": "^\\[\\[[^\\[\\]]+\\]\\]$",
+      "type": "string",
+      "x-assetin": {
+       "widget": "wikilink"
+      }
+     },
+     {
+      "enum": [
+       "#aktivum",
+       "#proces"
+      ],
+      "type": "string"
+     }
+    ]
+   },
+   "title": "Viaže sa na",
+   "type": "array",
+   "x-assetin": {
+    "cielove_typy": [
+     "IU-O",
+     "IU-C",
+     "STD"
+    ],
+    "kotva": "volitelna",
+    "sekcia": "Ukotvenie (povinné, ≥1)",
+    "widget": "wikilink",
+    "zdroj": "inline"
+   }
+  },
+  "zavaznost": {
+   "anyOf": [
+    {
+     "enum": [
+      "zmluvne",
+      "musi",
+      "ma",
+      "informativne"
+     ],
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Záväznosť",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  }
+ },
+ "required": [
+  "id",
+  "typ",
+  "nazov",
+  "nazov_en",
+  "stav",
+  "verzia",
+  "druh"
+ ],
+ "title": "IU_C",
+ "type": "object",
+ "x-assetin": {
+  "pod_zaznamy": [],
+  "schema_verzia": "1.5",
+  "sekcie": [
+   "Ukotvenie (povinné, ≥1)",
+   "Obsah (M:N)",
+   "Roly",
+   "TIDP väzby",
+   "Väzby"
+  ],
+  "typ": "IU-C"
+ }
+}

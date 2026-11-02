@@ -1,0 +1,467 @@
+{
+ "$defs": {
+  "Aspekty": {
+   "additionalProperties": false,
+   "description": "Geometry aspects shared by GEO profile and IU-O geometria (enums §14, 7817-3 literal names).",
+   "properties": {
+    "Appearance": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "NoAppearanceInformation",
+        "SymbolicByMapping",
+        "SingularMaterial",
+        "MultipleMaterials",
+        "ConceptualAppearance",
+        "RealisticAppearance"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Appearance",
+     "x-assetin": {
+      "export": "7817-3 Appearance",
+      "zdroj": "frontmatter"
+     }
+    },
+    "Dimensionality": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "0D",
+        "1D",
+        "2D",
+        "3D"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Dimensionality",
+     "x-assetin": {
+      "export": "7817-3 Dimensionality",
+      "zdroj": "frontmatter"
+     }
+    },
+    "Location": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/LocationModel"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-assetin": {
+      "export": "7817-3 Location",
+      "zdroj": "frontmatter"
+     }
+    },
+    "ParametricBehaviour": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequested",
+        "Requested"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Parametricbehaviour",
+     "x-assetin": {
+      "export": "7817-3 ParametricBehaviour",
+      "zdroj": "frontmatter"
+     }
+    },
+    "ShapeAssembly": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "SingleObjectSingularShape",
+        "SingleObjectMultipleShapes",
+        "MultipleObjects"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Shapeassembly",
+     "x-assetin": {
+      "export": "7817-3 ShapeAssembly",
+      "zdroj": "frontmatter"
+     }
+    },
+    "ShapeInfluence": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ShapeInfluenceModel"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-assetin": {
+      "export": "7817-3 ShapeInfluence",
+      "zdroj": "frontmatter"
+     }
+    },
+    "ShapeRepresentation": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "SingleBoundingPrimitive",
+        "OuterShellAsSingularShape",
+        "OuterShellAsSeparateShapes"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Shaperepresentation",
+     "x-assetin": {
+      "export": "7817-3 ShapeRepresentation",
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "Aspekty",
+   "type": "object"
+  },
+  "LocationModel": {
+   "additionalProperties": false,
+   "properties": {
+    "PositioningType": {
+     "anyOf": [
+      {
+       "enum": [
+        "Absolute",
+        "Relative",
+        "NotDefined"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Positioningtype",
+     "x-assetin": {
+      "export": "7817-3 Location",
+      "zdroj": "frontmatter"
+     }
+    },
+    "ReferenceObject": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Referenceobject",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "crs": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "ProjectedCRS",
+        "EngineeringCRS",
+        "GeographicCRS"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "CRS typ",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "LocationModel",
+   "type": "object"
+  },
+  "ShapeInfluenceModel": {
+   "additionalProperties": false,
+   "properties": {
+    "Connections": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "NoConnections",
+        "ConnectionsAsPartOfShape",
+        "SeparateShapes"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Connections",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "Features": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "NoFeatures",
+        "FeaturesAsPartOfShape",
+        "SeparateShapes"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Features",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "InsideGeometry": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "NoInsideGeometry",
+        "InsideGeometryAsPartOfShape",
+        "SeparateShapes"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Insidegeometry",
+     "x-assetin": {
+      "export": "7817-3 ShapeInfluence",
+      "zdroj": "frontmatter"
+     }
+    },
+    "Openings": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "NoOpenings",
+        "OpeningsAsPartOfShape",
+        "SeparateShapes"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Openings",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "OperatingAndClearanceZones": {
+     "anyOf": [
+      {
+       "enum": [
+        "NotRequired",
+        "NoOperatingAndClearanceZones",
+        "OperatingAndClearanceZonesAsPartOfShape",
+        "SeparateShapes"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Operatingandclearancezones",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "ThresholdDimension": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ThresholdDimensionModel"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "ShapeInfluenceModel",
+   "type": "object"
+  },
+  "ThresholdDimensionModel": {
+   "additionalProperties": false,
+   "properties": {
+    "hodnota": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Hodnota",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    },
+    "jednotka": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Jednotka",
+     "x-assetin": {
+      "zdroj": "frontmatter"
+     }
+    }
+   },
+   "title": "ThresholdDimensionModel",
+   "type": "object"
+  }
+ },
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "additionalProperties": false,
+ "description": "§6a GEO — geometrický profil (v STD-geo-profily).",
+ "properties": {
+  "aspekty": {
+   "$ref": "#/$defs/Aspekty",
+   "x-assetin": {
+    "export": "7817-3 GeometricalInformation",
+    "zdroj": "frontmatter"
+   }
+  },
+  "dictionary": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Dictionary",
+   "x-assetin": {
+    "export": "7817-3 Detail/Dictionary",
+    "zdroj": "frontmatter"
+   }
+  },
+  "id": {
+   "description": "== prvý token nadpisu (A11)",
+   "title": "ID",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "nazov": {
+   "title": "Názov",
+   "type": "string",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  },
+  "poznamka": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Poznámka (rodič)",
+   "x-assetin": {
+    "odvodene": true,
+    "zdroj": "frontmatter"
+   }
+  },
+  "vhodne_pre": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Vhodné pre",
+   "x-assetin": {
+    "zdroj": "frontmatter"
+   }
+  }
+ },
+ "required": [
+  "id",
+  "nazov",
+  "aspekty"
+ ],
+ "title": "ProfilGEO",
+ "type": "object",
+ "x-assetin": {
+  "pod_zaznam": "profil",
+  "schema_verzia": "1.5"
+ }
+}

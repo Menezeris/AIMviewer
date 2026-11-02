@@ -1,0 +1,36 @@
+{
+ "nazov": "odmietnute-id",
+ "strom": "vzor",
+ "texty_po": {},
+ "vstup": {
+  "zmeny": [
+   {
+    "hodnota": "IU-O-room",
+    "id": "IU-O-space",
+    "pointer": "/id"
+   }
+  ]
+ },
+ "vysledok": {
+  "diagnostiky": [
+   {
+    "json_pointer": "/id",
+    "kod": "W1",
+    "note_id": "IU-O-space",
+    "riadok": null,
+    "sprava": "`id` nesie cesta súboru (§0.4)",
+    "subor": "zadanie/IU-O/IU-O-space Priestor.md",
+    "uroven": "E"
+   }
+  ],
+  "konflikt": false,
+  "odmietnute": [
+   "IU-O-space"
+  ],
+  "ok": false,
+  "premenovane": [],
+  "vytvorene": [],
+  "zapisane": []
+ },
+ "zmazane": []
+}

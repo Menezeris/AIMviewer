@@ -1,0 +1,119 @@
+[
+ {
+  "json_pointer": "/aktivum",
+  "kod": "B1",
+  "note_id": "PROJ-budova-x",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[aktiva/Budova-X]]",
+  "subor": "projekty/budova-x/PROJ-budova-x Pasportizácia budovy X.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/er/0",
+  "kod": "B1",
+  "note_id": "PROJ-budova-x",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[ER-0101]]",
+  "subor": "projekty/budova-x/PROJ-budova-x Pasportizácia budovy X.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/funkcie/0",
+  "kod": "B1",
+  "note_id": "PROT-01",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[ACT-poverujuca/koordinator-BIM]]",
+  "subor": "zadanie/PROT/PROT-01 BIM protokol.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/id",
+  "kod": "A2",
+  "note_id": "GOAL-P-01",
+  "riadok": 2,
+  "sprava": "chýba odporúčané pole `autor` (29481-3 authoring)",
+  "subor": "projekty/budova-x/GOAL-P-01 Plochy do zmlúv.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/id",
+  "kod": "A2",
+  "note_id": "GOAL-P-01",
+  "riadok": 2,
+  "sprava": "chýba odporúčané pole `licencia` (29481-3 authoring)",
+  "subor": "projekty/budova-x/GOAL-P-01 Plochy do zmlúv.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/id",
+  "kod": "F14",
+  "note_id": "GOAL-P-01",
+  "riadok": 2,
+  "sprava": "na tento cieľ neukazuje žiadny účel užitia (`podporuje_ciel`) ani nižší cieľ (`prispieva_k`) — v knižnici je to prípustné, len naň zatiaľ nič nenadväzuje",
+  "subor": "projekty/budova-x/GOAL-P-01 Plochy do zmlúv.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/odkazuje_na/1",
+  "kod": "B1",
+  "note_id": "PROT-01",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[STD]]",
+  "subor": "zadanie/PROT/PROT-01 BIM protokol.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/odvodene_z",
+  "kod": "B1",
+  "note_id": "PROP-RentableArea",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[DEF-plocha-cista]]",
+  "subor": "zadanie/registre/PROP/PROP-RentableArea Prenajímateľná plocha.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/spustacia_udalost",
+  "kod": "B1",
+  "note_id": "PROJ-budova-x",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[EV-I-0007]]",
+  "subor": "projekty/budova-x/PROJ-budova-x Pasportizácia budovy X.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/strany/[[ACT-poverena/ARCH]]",
+  "kod": "B1",
+  "note_id": "PROJ-budova-x",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[ACT-poverena/ARCH]]",
+  "subor": "projekty/budova-x/PROJ-budova-x Pasportizácia budovy X.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/strany/[[ACT-poverujuca]]",
+  "kod": "B1",
+  "note_id": "PROJ-budova-x",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[ACT-poverujuca]]",
+  "subor": "projekty/budova-x/PROJ-budova-x Pasportizácia budovy X.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/udalosti/0/ev",
+  "kod": "B1",
+  "note_id": "PROJ-budova-x",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[EV-D-0012]]",
+  "subor": "projekty/budova-x/PROJ-budova-x Pasportizácia budovy X.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/vystupy/0",
+  "kod": "F12",
+  "note_id": "PROJ-budova-x",
+  "riadok": 25,
+  "sprava": "výstup vystupy/ids/ER-0101_ARCH.ids bez hashu — doplní ho generátor",
+  "subor": "projekty/budova-x/PROJ-budova-x Pasportizácia budovy X.md",
+  "uroven": "I"
+ }
+]

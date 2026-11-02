@@ -1,0 +1,29 @@
+{
+ "nazov": "nova-act-funkcia",
+ "strom": "vzor",
+ "texty_po": {
+  "zadanie/registre/ACT/poverujuca/pravnik.md": "---\nid: ACT-poverujuca/pravnik\nguid:\ntyp: ACT\nnazov: Právnik\nnazov_en: Lawyer\nstav: WD\nverzia: '0.1'\njazyk: sk\nautor:\nlicencia:\naliases: [ACT-poverujuca/pravnik]\nuroven: funkcia\nstrana: poverujuca\nklasifikacia_19650:\nzmluvne_oznacenie:\nosoby: []\n---\n\n## Popis\n"
+ },
+ "vstup": {
+  "nova": {
+   "data": {
+    "nazov_en": "Lawyer"
+   },
+   "id": "ACT-poverujuca/pravnik",
+   "nazov": "Právnik",
+   "typ": "ACT"
+  }
+ },
+ "vysledok": {
+  "diagnostiky": [],
+  "konflikt": false,
+  "odmietnute": [],
+  "ok": true,
+  "premenovane": [],
+  "vytvorene": [
+   "zadanie/registre/ACT/poverujuca/pravnik.md"
+  ],
+  "zapisane": []
+ },
+ "zmazane": []
+}

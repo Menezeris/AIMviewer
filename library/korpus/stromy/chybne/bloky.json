@@ -1,0 +1,1898 @@
+{
+ "KNIZNICA.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "schema_verzia": "1.5",
+    "vrstvy": [
+     "zadanie"
+    ]
+   },
+   "raw": "---\nschema_verzia: \"1.5\"\nvrstvy: [zadanie]\n---\n",
+   "riadok": 0,
+   "yaml_text": "schema_verzia: \"1.5\"\nvrstvy: [zadanie]\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 4
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "# Knižnica informačných požiadaviek\n",
+    "riadok": 5,
+    "text": "Knižnica informačných požiadaviek",
+    "uroven": 1
+   },
+   {
+    "druh": "Proza",
+    "raw": "\nVerzia schémy platí pre všetky vrstvy balíka (`zadanie/`, neskôr `aktiva/`, `projekty/`) — PLAN R6.\nBumpuje ju výhradne `assetin migrate`; záväzný popis polí je `docs/SCHEMA-v1.md`, strojová podoba `docs/schema/*.json`.\n",
+    "riadok": 6
+   }
+  ]
+ },
+ "aktiva/budova-x/UC-9003 Use case v aktivach.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "UC-9003"
+    ],
+    "autor": "Test",
+    "faza_iso22263": [
+     "maintenance"
+    ],
+    "guid": null,
+    "id": "UC-9003",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Use case v aktivach",
+    "nazov_en": "Use case v aktivach",
+    "stav": "WD",
+    "typ": "UC",
+    "typ_ulohy": "delivery",
+    "verzia": 0.1
+   },
+   "raw": "---\nid: UC-9003\naliases: [UC-9003]\nguid:\ntyp: UC\nnazov: Use case v aktivach\nnazov_en: Use case v aktivach\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ntyp_ulohy: delivery\nfaza_iso22263: [maintenance]\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: UC-9003\naliases: [UC-9003]\nguid:\ntyp: UC\nnazov: Use case v aktivach\nnazov_en: Use case v aktivach\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ntyp_ulohy: delivery\nfaza_iso22263: [maintenance]\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 15
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Zhrnutie\n",
+    "riadok": 16,
+    "text": "Zhrnutie",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "G2: vo vrstve aktiva/ nemá typ UC čo robiť.\n",
+    "riadok": 17
+   }
+  ]
+ },
+ "projekty/zakazka-x/PROJ-9001 Chybny projekt.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "PROJ-9001"
+    ],
+    "autor": "Test",
+    "er": [
+     "[[ER-9001]]"
+    ],
+    "guid": null,
+    "id": "PROJ-9001",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Chybny projekt",
+    "nazov_en": "Broken project",
+    "projekt": "Budova X",
+    "spustacia_udalost": "[[EV-D-9004]]",
+    "stav": "WD",
+    "typ": "PROJ",
+    "udalosti": [
+     {
+      "datum": "2027-03-31",
+      "ev": "[[EV-D-9003]]"
+     }
+    ],
+    "verzia": 0.1,
+    "vystupy": [
+     {
+      "subor": "vystupy/ids/ER-9001.ids",
+      "typ": "IDS"
+     }
+    ]
+   },
+   "raw": "---\nid: PROJ-9001\naliases: [PROJ-9001]\nguid:\ntyp: PROJ\nnazov: Chybny projekt\nnazov_en: Broken project\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nprojekt: Budova X\nspustacia_udalost: \"[[EV-D-9004]]\"\ner: [\"[[ER-9001]]\"]\nudalosti:\n  - {ev: \"[[EV-D-9003]]\", datum: 2027-03-31}\nvystupy:\n  - {typ: IDS, subor: vystupy/ids/ER-9001.ids}\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: PROJ-9001\naliases: [PROJ-9001]\nguid:\ntyp: PROJ\nnazov: Chybny projekt\nnazov_en: Broken project\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nprojekt: Budova X\nspustacia_udalost: \"[[EV-D-9004]]\"\ner: [\"[[ER-9001]]\"]\nudalosti:\n  - {ev: \"[[EV-D-9003]]\", datum: 2027-03-31}\nvystupy:\n  - {typ: IDS, subor: vystupy/ids/ER-9001.ids}\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 20
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Popis\n",
+    "riadok": 21,
+    "text": "Popis",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "F12: spúšťač je delivery, dátum patrí udalosti, ktorú vybraný ER nespúšťa, výstup bez hashu.\n",
+    "riadok": 22
+   }
+  ]
+ },
+ "zadanie/ER/ER-9001 Chybna vymena.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "ER-9001"
+    ],
+    "autor": "Test",
+    "forma": {
+     "format": "IFC",
+     "verzia_schemy": "IFC4X3_ADD2"
+    },
+    "guid": null,
+    "id": "ER-9001",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Chybna vymena",
+    "nazov_en": "Chybna vymena",
+    "prijemca": "[[ACT-poverujuca]]",
+    "stav": "WD",
+    "typ": "ER",
+    "verzia": 0.1
+   },
+   "raw": "---\nid: ER-9001\naliases: [ER-9001]\nguid:\ntyp: ER\nnazov: Chybna vymena\nnazov_en: Chybna vymena\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nforma:\n  format: IFC\n  verzia_schemy: IFC4X3_ADD2\nprijemca: \"[[ACT-poverujuca]]\"\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: ER-9001\naliases: [ER-9001]\nguid:\ntyp: ER\nnazov: Chybna vymena\nnazov_en: Chybna vymena\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nforma:\n  format: IFC\n  verzia_schemy: IFC4X3_ADD2\nprijemca: \"[[ACT-poverujuca]]\"\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 17
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Popis\n",
+    "riadok": 18,
+    "text": "Popis",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "C3 dva `uc` a IU bez poskytovateľa · C7 zapnutie pravidla `plati: vzdy`.\n",
+    "riadok": 19
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "uc",
+    "raw": "uc:: [[UC-9001]], [[UC-9002]]\n",
+    "raw_hodnota": "[[UC-9001]], [[UC-9002]]",
+    "riadok": 20,
+    "v_polozke": false
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "spustacia_udalost",
+    "raw": "spustacia_udalost:: [[EV-D-9004]]\n",
+    "raw_hodnota": "[[EV-D-9004]]",
+    "riadok": 21,
+    "v_polozke": false
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "zapnute",
+    "raw": "zapnute:: [[STD-CL-9001]]\n",
+    "raw_hodnota": "[[STD-CL-9001]]",
+    "riadok": 22,
+    "v_polozke": false
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 23
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Informačné jednotky\n",
+    "riadok": 24,
+    "text": "Informačné jednotky",
+    "uroven": 2
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "obsahuje",
+    "raw": "obsahuje:: [[IU-O-9002]], [[IU-C-9001]]\n",
+    "raw_hodnota": "[[IU-O-9002]], [[IU-C-9001]]",
+    "riadok": 25,
+    "v_polozke": false
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 26
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Prepisy pre túto výmenu\n",
+    "riadok": 27,
+    "text": "Prepisy pre túto výmenu",
+    "uroven": 2
+   },
+   {
+    "chyba": false,
+    "data": {
+     "prepisy": [
+      {
+       "iu": "[[IU-O-9001]]",
+       "polozka": "Name",
+       "povinnost": "required"
+      },
+      {
+       "iu": "[[IU-O-9002]]",
+       "polozka": "Neexistujuca",
+       "povinnost": "required"
+      }
+     ]
+    },
+    "druh": "YamlBlok",
+    "jazyk": "yaml",
+    "raw": "```yaml\nprepisy:\n  - iu: \"[[IU-O-9001]]\"\n    polozka: Name\n    povinnost: required\n  - iu: \"[[IU-O-9002]]\"\n    polozka: Neexistujuca\n    povinnost: required\n```\n",
+    "raw_close": "```\n",
+    "raw_open": "```yaml\n",
+    "riadok": 28,
+    "yaml_text": "prepisy:\n  - iu: \"[[IU-O-9001]]\"\n    polozka: Name\n    povinnost: required\n  - iu: \"[[IU-O-9002]]\"\n    polozka: Neexistujuca\n    povinnost: required\n"
+   }
+  ]
+ },
+ "zadanie/ER/ER-9002 Vymena bez jednotiek.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "ER-9002"
+    ],
+    "autor": "Test",
+    "forma": {
+     "format": "IFC",
+     "verzia_schemy": "IFC4X3_ADD2"
+    },
+    "guid": null,
+    "id": "ER-9002",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Vymena bez jednotiek",
+    "nazov_en": "Exchange without information units",
+    "poskytovatel_predvoleny": "[[ACT-poverena/ARCH]]",
+    "prijemca": "[[ACT-poverujuca]]",
+    "stav": "WD",
+    "typ": "ER",
+    "verzia": 0.1
+   },
+   "raw": "---\nid: ER-9002\naliases: [ER-9002]\nguid:\ntyp: ER\nnazov: Vymena bez jednotiek\nnazov_en: Exchange without information units\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nforma:\n  format: IFC\n  verzia_schemy: IFC4X3_ADD2\nposkytovatel_predvoleny: \"[[ACT-poverena/ARCH]]\"\nprijemca: \"[[ACT-poverujuca]]\"\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: ER-9002\naliases: [ER-9002]\nguid:\ntyp: ER\nnazov: Vymena bez jednotiek\nnazov_en: Exchange without information units\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nforma:\n  format: IFC\n  verzia_schemy: IFC4X3_ADD2\nposkytovatel_predvoleny: \"[[ACT-poverena/ARCH]]\"\nprijemca: \"[[ACT-poverujuca]]\"\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 18
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Popis\n",
+    "riadok": 19,
+    "text": "Popis",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "C12 výmena bez `obsahuje::` — inak je poznámka v poriadku.\n",
+    "riadok": 20
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "uc",
+    "raw": "uc:: [[UC-9001]]\n",
+    "raw_hodnota": "[[UC-9001]]",
+    "riadok": 21,
+    "v_polozke": false
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "spustacia_udalost",
+    "raw": "spustacia_udalost:: [[EV-D-9004]]\n",
+    "raw_hodnota": "[[EV-D-9004]]",
+    "riadok": 22,
+    "v_polozke": false
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 23
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Informačné jednotky\n",
+    "riadok": 24,
+    "text": "Informačné jednotky",
+    "uroven": 2
+   }
+  ]
+ },
+ "zadanie/GOAL/GOAL-9001 Organizacny ciel s terminom.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aktivum": "Budova X",
+    "aliases": [
+     "GOAL-9001"
+    ],
+    "autor": "Test",
+    "guid": null,
+    "id": "GOAL-9001",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Organizacny ciel s terminom",
+    "nazov_en": "Organizacny ciel s terminom",
+    "stav": "WD",
+    "termin": "2027-06-30",
+    "typ": "GOAL",
+    "uroven": "organizacia",
+    "verzia": 0.1,
+    "zdroj_ir": "OIR"
+   },
+   "raw": "---\nid: GOAL-9001\naliases: [GOAL-9001]\nguid:\ntyp: GOAL\nnazov: Organizacny ciel s terminom\nnazov_en: Organizacny ciel s terminom\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nuroven: organizacia\nzdroj_ir: OIR\naktivum: Budova X\ntermin: 2027-06-30\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: GOAL-9001\naliases: [GOAL-9001]\nguid:\ntyp: GOAL\nnazov: Organizacny ciel s terminom\nnazov_en: Organizacny ciel s terminom\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nuroven: organizacia\nzdroj_ir: OIR\naktivum: Budova X\ntermin: 2027-06-30\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 17
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Popis\n",
+    "riadok": 18,
+    "text": "Popis",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "F13: `aktivum` aj `termin` na organizačnej úrovni; `prispieva_k` na rovnakú úroveň (a cyklus).\n",
+    "riadok": 19
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "prispieva_k",
+    "raw": "prispieva_k:: [[GOAL-9002]]\n",
+    "raw_hodnota": "[[GOAL-9002]]",
+    "riadok": 20,
+    "v_polozke": false
+   }
+  ]
+ },
+ "zadanie/GOAL/GOAL-9002 Druhy organizacny ciel.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "GOAL-9002"
+    ],
+    "autor": "Test",
+    "guid": null,
+    "id": "GOAL-9002",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Druhy organizacny ciel",
+    "nazov_en": "Druhy organizacny ciel",
+    "stav": "WD",
+    "typ": "GOAL",
+    "uroven": "organizacia",
+    "verzia": 0.1,
+    "zdroj_ir": "OIR"
+   },
+   "raw": "---\nid: GOAL-9002\naliases: [GOAL-9002]\nguid:\ntyp: GOAL\nnazov: Druhy organizacny ciel\nnazov_en: Druhy organizacny ciel\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nuroven: organizacia\nzdroj_ir: OIR\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: GOAL-9002\naliases: [GOAL-9002]\nguid:\ntyp: GOAL\nnazov: Druhy organizacny ciel\nnazov_en: Druhy organizacny ciel\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nuroven: organizacia\nzdroj_ir: OIR\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 15
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Popis\n",
+    "riadok": 16,
+    "text": "Popis",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "B5: uzatvára cyklus späť na GOAL-9001.\n",
+    "riadok": 17
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "prispieva_k",
+    "raw": "prispieva_k:: [[GOAL-9001]]\n",
+    "raw_hodnota": "[[GOAL-9001]]",
+    "riadok": 18,
+    "v_polozke": false
+   }
+  ]
+ },
+ "zadanie/GOAL/GOAL-9003 Ciel bez ucelu uzitia.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "GOAL-9003"
+    ],
+    "autor": "Test",
+    "guid": null,
+    "id": "GOAL-9003",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Ciel bez ucelu uzitia",
+    "nazov_en": "Goal with no use case",
+    "stav": "WD",
+    "typ": "GOAL",
+    "uroven": "organizacia",
+    "verzia": 0.1,
+    "zdroj_ir": "OIR"
+   },
+   "raw": "---\nid: GOAL-9003\naliases: [GOAL-9003]\nguid:\ntyp: GOAL\nnazov: Ciel bez ucelu uzitia\nnazov_en: Goal with no use case\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nuroven: organizacia\nzdroj_ir: OIR\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: GOAL-9003\naliases: [GOAL-9003]\nguid:\ntyp: GOAL\nnazov: Ciel bez ucelu uzitia\nnazov_en: Goal with no use case\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nuroven: organizacia\nzdroj_ir: OIR\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 15
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Popis\n",
+    "riadok": 16,
+    "text": "Popis",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "F14: na tento cieľ neukazuje žiadny `podporuje_ciel` ani `prispieva_k` — varovanie, nie chyba (V19).\n",
+    "riadok": 17
+   }
+  ]
+ },
+ "zadanie/IU-C/IU-C-9001 Chybny kontajner.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "IU-C-9001"
+    ],
+    "automatizovatelne": true,
+    "autor": "Test",
+    "druh": "model",
+    "guid": null,
+    "id": "IU-C-9001",
+    "identifikacia": {
+     "vzor": "^[A-Z"
+    },
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "metadata_cde": {
+     "revizia_vzor": "P[0-9",
+     "status": "S9"
+    },
+    "nazov": "Chybny kontajner",
+    "nazov_en": "Chybny kontajner",
+    "overenie": "manual",
+    "stav": "WD",
+    "typ": "IU-C",
+    "verzia": 0.1,
+    "zavaznost": "musi"
+   },
+   "raw": "---\nid: IU-C-9001\naliases: [IU-C-9001]\nguid:\ntyp: IU-C\nnazov: Chybny kontajner\nnazov_en: Chybny kontajner\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ndruh: model\nidentifikacia:\n  vzor: \"^[A-Z\"\nmetadata_cde:\n  status: S9\n  revizia_vzor: \"P[0-9\"\noverenie: manual\nautomatizovatelne: true\nzavaznost: musi\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: IU-C-9001\naliases: [IU-C-9001]\nguid:\ntyp: IU-C\nnazov: Chybny kontajner\nnazov_en: Chybny kontajner\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ndruh: model\nidentifikacia:\n  vzor: \"^[A-Z\"\nmetadata_cde:\n  status: S9\n  revizia_vzor: \"P[0-9\"\noverenie: manual\nautomatizovatelne: true\nzavaznost: musi\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 22
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Ukotvenie (povinné, ≥1)\n",
+    "riadok": 23,
+    "text": "Ukotvenie (povinné, ≥1)",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 24
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Obsah (M:N)\n",
+    "riadok": 25,
+    "text": "Obsah (M:N)",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 26
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Roly\n",
+    "riadok": 27,
+    "text": "Roly",
+    "uroven": 2
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "poskytovatel",
+    "raw": "poskytovatel:: [[ACT-poverujuca]]\n",
+    "raw_hodnota": "[[ACT-poverujuca]]",
+    "riadok": 28,
+    "v_polozke": false
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "overuje",
+    "raw": "overuje:: [[ACT-poverena/ARCH]]\n",
+    "raw_hodnota": "[[ACT-poverena/ARCH]]",
+    "riadok": 29,
+    "v_polozke": false
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 30
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## TIDP väzby\n",
+    "riadok": 31,
+    "text": "TIDP väzby",
+    "uroven": 2
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "nadvaznost",
+    "raw": "nadvaznost:: [[IU-C-9002]]\n",
+    "raw_hodnota": "[[IU-C-9002]]",
+    "riadok": 32,
+    "v_polozke": false
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 33
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Väzby\n",
+    "riadok": 34,
+    "text": "Väzby",
+    "uroven": 2
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "dokladuje",
+    "raw": "dokladuje:: [[IU-O-9001]]\n",
+    "raw_hodnota": "[[IU-O-9001]]",
+    "riadok": 35,
+    "v_polozke": false
+   }
+  ]
+ },
+ "zadanie/IU-C/IU-C-9002 Dataset duplikat.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "IU-C-9002"
+    ],
+    "autor": "Test",
+    "dataset": {
+     "kluc": "Name",
+     "struktura": [
+      {
+       "stlpec": "Name",
+       "typ": "string"
+      },
+      {
+       "jednotka": "m2",
+       "stlpec": "NetFloorArea",
+       "typ": "number"
+      }
+     ]
+    },
+    "druh": "dataset",
+    "guid": null,
+    "id": "IU-C-9002",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "mvd": {
+     "basis": "IFC4X3_ADD2",
+     "name": "Reference View"
+    },
+    "nazov": "Dataset duplikat",
+    "nazov_en": "Dataset duplikat",
+    "overenie": "manual",
+    "postup": "porovnať s modelom",
+    "stav": "WD",
+    "typ": "IU-C",
+    "verzia": 0.1,
+    "zavaznost": "musi"
+   },
+   "raw": "---\nid: IU-C-9002\naliases: [IU-C-9002]\nguid:\ntyp: IU-C\nnazov: Dataset duplikat\nnazov_en: Dataset duplikat\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ndruh: dataset\nmvd:                                   # E9: pohľad na schému má model, nie dataset\n  basis: IFC4X3_ADD2\n  name: Reference View\ndataset:\n  kluc: Name\n  struktura:\n    - {stlpec: Name, typ: string}\n    - {stlpec: NetFloorArea, typ: number, jednotka: m2}\noverenie: manual\npostup: \"porovnať s modelom\"\nzavaznost: musi\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: IU-C-9002\naliases: [IU-C-9002]\nguid:\ntyp: IU-C\nnazov: Dataset duplikat\nnazov_en: Dataset duplikat\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ndruh: dataset\nmvd:                                   # E9: pohľad na schému má model, nie dataset\n  basis: IFC4X3_ADD2\n  name: Reference View\ndataset:\n  kluc: Name\n  struktura:\n    - {stlpec: Name, typ: string}\n    - {stlpec: NetFloorArea, typ: number, jednotka: m2}\noverenie: manual\npostup: \"porovnať s modelom\"\nzavaznost: musi\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 25
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Ukotvenie (povinné, ≥1)\n",
+    "riadok": 26,
+    "text": "Ukotvenie (povinné, ≥1)",
+    "uroven": 2
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "viaze_sa_na",
+    "raw": "viaze_sa_na:: #proces\n",
+    "raw_hodnota": "#proces",
+    "riadok": 27,
+    "v_polozke": false
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 28
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Obsah (M:N)\n",
+    "riadok": 29,
+    "text": "Obsah (M:N)",
+    "uroven": 2
+   },
+   {
+    "druh": "HtmlKomentar",
+    "raw": "<!-- E8: IU-O-9002 nedefinuje `dokumentacia`, priradenie by nenieslo nič -->\n",
+    "riadok": 30
+   },
+   {
+    "chyba": false,
+    "data": {
+     "obsahuje": [
+      {
+       "iu": "[[IU-O-9001]]"
+      },
+      {
+       "iu": "[[IU-O-9002]]",
+       "rozsah": [
+        "dokumentacia"
+       ]
+      }
+     ]
+    },
+    "druh": "YamlBlok",
+    "jazyk": "yaml",
+    "raw": "```yaml\nobsahuje:\n  - iu: \"[[IU-O-9001]]\"\n  - iu: \"[[IU-O-9002]]\"\n    rozsah: [dokumentacia]\n```\n",
+    "raw_close": "```\n",
+    "raw_open": "```yaml\n",
+    "riadok": 31,
+    "yaml_text": "obsahuje:\n  - iu: \"[[IU-O-9001]]\"\n  - iu: \"[[IU-O-9002]]\"\n    rozsah: [dokumentacia]\n"
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 37
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Roly\n",
+    "riadok": 38,
+    "text": "Roly",
+    "uroven": 2
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "poskytovatel",
+    "raw": "poskytovatel:: [[ACT-poverena/ARCH]]\n",
+    "raw_hodnota": "[[ACT-poverena/ARCH]]",
+    "riadok": 39,
+    "v_polozke": false
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 40
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## TIDP väzby\n",
+    "riadok": 41,
+    "text": "TIDP väzby",
+    "uroven": 2
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "nadvaznost",
+    "raw": "nadvaznost:: [[IU-C-9001]]\n",
+    "raw_hodnota": "[[IU-C-9001]]",
+    "riadok": 42,
+    "v_polozke": false
+   }
+  ]
+ },
+ "zadanie/IU-O/IU-O-9001 Chybny objekt.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "alfanumerika": [
+     {
+      "ifc": {
+       "atribut": "Name"
+      },
+      "povinnost": "required",
+      "rola": "identifikacia"
+     },
+     {
+      "ifc": {
+       "atribut": "Name"
+      },
+      "povinnost": "optional",
+      "rola": "identifikacia"
+     },
+     {
+      "ifc": {
+       "nazov": "NetFloorArea",
+       "pset": "Qto_SpaceBaseQuantities",
+       "uri": "https://example.org/NetFloorArea"
+      },
+      "povinnost": "required",
+      "rola": "obsah",
+      "tolerancia": "0.5 %"
+     },
+     {
+      "hodnoty": [
+       "A",
+       "B",
+       "C",
+       "D",
+       "E"
+      ],
+      "ifc": {
+       "atribut": "PredefinedType"
+      },
+      "povinnost": "required",
+      "rola": "obsah"
+     },
+     {
+      "hodnoty_ref": "[[STD-neexistuje#slovnik]]",
+      "ifc": {
+       "atribut": "ObjectType"
+      },
+      "povinnost": "required",
+      "rola": "obsah"
+     },
+     {
+      "ifc": {
+       "atribut": "Description"
+      },
+      "pokyn": "meno nájomcu",
+      "rola": "obsah"
+     },
+     {
+      "hodnoty_ref": "[[STD-CL-9001]]",
+      "ifc": {
+       "atribut": "LongName"
+      },
+      "povinnost": "required",
+      "rola": "obsah"
+     },
+     {
+      "datovy_typ": "IFCLENGTHMEASURE",
+      "ifc": {
+       "atribut": "Elevation"
+      },
+      "povinnost": "optional",
+      "rola": "obsah"
+     },
+     {
+      "datovy_typ": "ifcAreaMeasure",
+      "ifc": {
+       "nazov": "GrossPlannedArea",
+       "pset": "Pset_SpaceCommon",
+       "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossPlannedArea"
+      },
+      "povinnost": "optional",
+      "rola": "obsah"
+     },
+     {
+      "ifc": {
+       "nazov": "Height",
+       "pset": "Qto_SpaceBaseQuantities",
+       "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/Height"
+      },
+      "povinnost": "optional",
+      "rola": "obsah",
+      "rozsah": {
+       "min": 2.0
+      }
+     }
+    ],
+    "aliases": [
+     "IU-O-9001"
+    ],
+    "autor": "Test",
+    "dokumentacia": [
+     {
+      "automatizovatelne": false,
+      "dok": "[[IU-C-9001]]",
+      "dokladuje": [
+       "Neexistujuca"
+      ],
+      "povinnost": "required"
+     }
+    ],
+    "filter": [
+     {
+      "cardinality": "required",
+      "facet": "attribute",
+      "nazov": "Description",
+      "vzor": ".*KANCEL.*"
+     }
+    ],
+    "geometria": {
+     "Dimensionality": "3D",
+     "ShapeAssembly": "NotRequired",
+     "profil": "[[GEO-G9001]]"
+    },
+    "guid": null,
+    "id": "IU-O-9001",
+    "jazyk": "sk",
+    "klasifikacia": [
+     {
+      "povinnost": "required",
+      "system": "CCI · CCI-priestory"
+     },
+     {
+      "system": "Uniclass"
+     }
+    ],
+    "licencia": "CC-BY-4.0",
+    "nazov": "Chybny objekt",
+    "nazov_en": "Chybny objekt",
+    "objekt": {
+     "ifc_entita": "IfcSpace",
+     "uri": "https://example.org/IfcSpace"
+    },
+    "pokyn": "Kód · názov · plocha",
+    "pritomnost_v_modeli": "required",
+    "stav": "WD",
+    "typ": "IU-O",
+    "uroven": "vyskyt",
+    "verzia": 0.1,
+    "zavaznost_predvolena": "musi",
+    "zdovodnenie": "Nájomca a zmluva sa evidujú tu."
+   },
+   "raw": "---\nid: IU-O-9001\naliases: [IU-O-9001]\nguid:\ntyp: IU-O\nnazov: Chybny objekt\nnazov_en: Chybny objekt\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nobjekt:\n  ifc_entita: IfcSpace\n  uri: https://example.org/IfcSpace\nklasifikacia:\n  - system: CCI · CCI-priestory\n    povinnost: required\n  - system: Uniclass\nfilter:\n  - facet: attribute\n    nazov: Description\n    vzor: \".*KANCEL.*\"\n    cardinality: required\npritomnost_v_modeli: required\nuroven: vyskyt\nzdovodnenie: \"Nájomca a zmluva sa evidujú tu.\"\npokyn: \"Kód · názov · plocha\"\nzavaznost_predvolena: musi\n\ngeometria:\n  profil: \"[[GEO-G9001]]\"\n  ShapeAssembly: NotRequired\n  Dimensionality: 3D\n\nalfanumerika:\n  - ifc: {atribut: Name}\n    rola: identifikacia\n    povinnost: required\n  - ifc: {atribut: Name}\n    rola: identifikacia\n    povinnost: optional\n  - ifc: {pset: Qto_SpaceBaseQuantities, nazov: NetFloorArea, uri: https://example.org/NetFloorArea}\n    rola: obsah\n    povinnost: required\n    tolerancia: \"0.5 %\"\n  - ifc: {atribut: PredefinedType}\n    rola: obsah\n    hodnoty: [A, B, C, D, E]\n    povinnost: required\n  - ifc: {atribut: ObjectType}\n    rola: obsah\n    hodnoty_ref: \"[[STD-neexistuje#slovnik]]\"\n    povinnost: required\n  - ifc: {atribut: Description}\n    rola: obsah\n    pokyn: \"meno nájomcu\"\n  - ifc: {atribut: LongName}\n    rola: obsah\n    hodnoty_ref: \"[[STD-CL-9001]]\"\n    povinnost: required\n  - ifc: {atribut: Elevation}\n    datovy_typ: IFCLENGTHMEASURE\n    rola: obsah\n    povinnost: optional\n  - ifc: {pset: Pset_SpaceCommon, nazov: GrossPlannedArea, uri: https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossPlannedArea}\n    datovy_typ: ifcAreaMeasure\n    rola: obsah\n    povinnost: optional\n  - ifc: {pset: Qto_SpaceBaseQuantities, nazov: Height, uri: https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/Height}\n    rola: obsah\n    rozsah: {min: 2.0}\n    povinnost: optional\n\ndokumentacia:\n  - dok: \"[[IU-C-9001]]\"\n    povinnost: required\n    automatizovatelne: false\n    dokladuje: [Neexistujuca]\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: IU-O-9001\naliases: [IU-O-9001]\nguid:\ntyp: IU-O\nnazov: Chybny objekt\nnazov_en: Chybny objekt\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nobjekt:\n  ifc_entita: IfcSpace\n  uri: https://example.org/IfcSpace\nklasifikacia:\n  - system: CCI · CCI-priestory\n    povinnost: required\n  - system: Uniclass\nfilter:\n  - facet: attribute\n    nazov: Description\n    vzor: \".*KANCEL.*\"\n    cardinality: required\npritomnost_v_modeli: required\nuroven: vyskyt\nzdovodnenie: \"Nájomca a zmluva sa evidujú tu.\"\npokyn: \"Kód · názov · plocha\"\nzavaznost_predvolena: musi\n\ngeometria:\n  profil: \"[[GEO-G9001]]\"\n  ShapeAssembly: NotRequired\n  Dimensionality: 3D\n\nalfanumerika:\n  - ifc: {atribut: Name}\n    rola: identifikacia\n    povinnost: required\n  - ifc: {atribut: Name}\n    rola: identifikacia\n    povinnost: optional\n  - ifc: {pset: Qto_SpaceBaseQuantities, nazov: NetFloorArea, uri: https://example.org/NetFloorArea}\n    rola: obsah\n    povinnost: required\n    tolerancia: \"0.5 %\"\n  - ifc: {atribut: PredefinedType}\n    rola: obsah\n    hodnoty: [A, B, C, D, E]\n    povinnost: required\n  - ifc: {atribut: ObjectType}\n    rola: obsah\n    hodnoty_ref: \"[[STD-neexistuje#slovnik]]\"\n    povinnost: required\n  - ifc: {atribut: Description}\n    rola: obsah\n    pokyn: \"meno nájomcu\"\n  - ifc: {atribut: LongName}\n    rola: obsah\n    hodnoty_ref: \"[[STD-CL-9001]]\"\n    povinnost: required\n  - ifc: {atribut: Elevation}\n    datovy_typ: IFCLENGTHMEASURE\n    rola: obsah\n    povinnost: optional\n  - ifc: {pset: Pset_SpaceCommon, nazov: GrossPlannedArea, uri: https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/GrossPlannedArea}\n    datovy_typ: ifcAreaMeasure\n    rola: obsah\n    povinnost: optional\n  - ifc: {pset: Qto_SpaceBaseQuantities, nazov: Height, uri: https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/prop/Height}\n    rola: obsah\n    rozsah: {min: 2.0}\n    povinnost: optional\n\ndokumentacia:\n  - dok: \"[[IU-C-9001]]\"\n    povinnost: required\n    automatizovatelne: false\n    dokladuje: [Neexistujuca]\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 80
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Členenie (iba výnimky voči STD-clenenie)\n",
+    "riadok": 81,
+    "text": "Členenie (iba výnimky voči STD-clenenie)",
+    "uroven": 2
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "clenenie",
+    "raw": "clenenie:: [[STD-CL-9001]]\n",
+    "raw_hodnota": "[[STD-CL-9001]]",
+    "riadok": 82,
+    "v_polozke": false
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 83
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Roly\n",
+    "riadok": 84,
+    "text": "Roly",
+    "uroven": 2
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "overuje",
+    "raw": "overuje:: [[ACT-poverujuca]]\n",
+    "raw_hodnota": "[[ACT-poverujuca]]",
+    "riadok": 85,
+    "v_polozke": false
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 86
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Trasovateľnosť\n",
+    "riadok": 87,
+    "text": "Trasovateľnosť",
+    "uroven": 2
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "pre_task",
+    "raw": "pre_task:: [[UC-9001#Zhrnutie]]\n",
+    "raw_hodnota": "[[UC-9001#Zhrnutie]]",
+    "riadok": 88,
+    "v_polozke": false
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 89
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Väzby\n",
+    "riadok": 90,
+    "text": "Väzby",
+    "uroven": 2
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "doplnuje",
+    "raw": "doplnuje:: [[typy-zon-lokalne]]\n",
+    "raw_hodnota": "[[typy-zon-lokalne]]",
+    "riadok": 91,
+    "v_polozke": false
+   }
+  ]
+ },
+ "zadanie/IU-O/IU-O-9002 Zakazany objekt.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "alfanumerika": [
+     {
+      "ifc": {
+       "atribut": "Description"
+      },
+      "overenie": "manual",
+      "rola": "obsah",
+      "zavaznost": "musi"
+     }
+    ],
+    "aliases": [
+     "IU-O-9002"
+    ],
+    "autor": "Test",
+    "dokumentacia": [],
+    "filter": [],
+    "geometria": {
+     "profil": "[[GEO-G9001]]"
+    },
+    "guid": null,
+    "id": "IU-O-9002",
+    "jazyk": "sk",
+    "klasifikacia": [],
+    "licencia": "CC-BY-4.0",
+    "nazov": "Zakazany objekt",
+    "nazov_en": "Zakazany objekt",
+    "objekt": {
+     "ifc_entita": "IfcBuildingElementProxy"
+    },
+    "pritomnost_v_modeli": "prohibited",
+    "stav": "WD",
+    "typ": "IU-O",
+    "uroven": "vyskyt",
+    "verzia": 0.1,
+    "zavaznost_predvolena": "musi"
+   },
+   "raw": "---\nid: IU-O-9002\naliases: [IU-O-9002]\nguid:\ntyp: IU-O\nnazov: Zakazany objekt\nnazov_en: Zakazany objekt\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nobjekt:\n  ifc_entita: IfcBuildingElementProxy\nklasifikacia: []\nfilter: []\npritomnost_v_modeli: prohibited\nuroven: vyskyt\nzavaznost_predvolena: musi\ngeometria:\n  profil: \"[[GEO-G9001]]\"\nalfanumerika:\n  - ifc: {atribut: Description}\n    rola: obsah\n    overenie: manual\n    zavaznost: musi\ndokumentacia: []\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: IU-O-9002\naliases: [IU-O-9002]\nguid:\ntyp: IU-O\nnazov: Zakazany objekt\nnazov_en: Zakazany objekt\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nobjekt:\n  ifc_entita: IfcBuildingElementProxy\nklasifikacia: []\nfilter: []\npritomnost_v_modeli: prohibited\nuroven: vyskyt\nzavaznost_predvolena: musi\ngeometria:\n  profil: \"[[GEO-G9001]]\"\nalfanumerika:\n  - ifc: {atribut: Description}\n    rola: obsah\n    overenie: manual\n    zavaznost: musi\ndokumentacia: []\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 28
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Roly\n",
+    "riadok": 29,
+    "text": "Roly",
+    "uroven": 2
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "poskytovatel",
+    "raw": "poskytovatel:: [[ACT-poverena/ARCH]]\n",
+    "raw_hodnota": "[[ACT-poverena/ARCH]]",
+    "riadok": 30,
+    "v_polozke": false
+   }
+  ]
+ },
+ "zadanie/STD/STD-chybne.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "STD-chybne"
+    ],
+    "autor": "Test",
+    "guid": null,
+    "id": "STD-chybne",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Chybne pravidla",
+    "nazov_en": "Chybne pravidla",
+    "stav": "WD",
+    "typ": "STD",
+    "verzia": 0.1
+   },
+   "raw": "---\nid: STD-chybne\naliases: [STD-chybne]\nguid:\ntyp: STD\nnazov: Chybne pravidla\nnazov_en: Chybne pravidla\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: STD-chybne\naliases: [STD-chybne]\nguid:\ntyp: STD\nnazov: Chybne pravidla\nnazov_en: Chybne pravidla\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 13
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "# STD-chybne\n",
+    "riadok": 14,
+    "text": "STD-chybne",
+    "uroven": 1
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 15
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## STD-CL-9001 Vzdy platne pravidlo\n",
+    "riadok": 16,
+    "text": "STD-CL-9001 Vzdy platne pravidlo",
+    "uroven": 2
+   },
+   {
+    "chyba": false,
+    "data": {
+     "applicability": {
+      "entity": "IFCSPACE"
+     },
+     "id": "STD-CL-9001",
+     "nazov": "Vzdy platne pravidlo",
+     "overenie": "clash-detection",
+     "plati": "vzdy",
+     "requirements": [
+      {
+       "facet": "entity",
+       "nazov": "IFCSPACE"
+      }
+     ],
+     "rozsah": "objekt",
+     "ucel_federacie": false,
+     "zavaznost": "musi"
+    },
+    "druh": "YamlBlok",
+    "jazyk": "yaml",
+    "raw": "```yaml\nid: STD-CL-9001\nnazov: Vzdy platne pravidlo\nrozsah: objekt\nplati: vzdy\nucel_federacie: false\noverenie: clash-detection\nzavaznost: musi\napplicability:\n  entity: IFCSPACE\nrequirements:\n  - facet: entity\n    nazov: IFCSPACE\n```\n",
+    "raw_close": "```\n",
+    "raw_open": "```yaml\n",
+    "riadok": 17,
+    "yaml_text": "id: STD-CL-9001\nnazov: Vzdy platne pravidlo\nrozsah: objekt\nplati: vzdy\nucel_federacie: false\noverenie: clash-detection\nzavaznost: musi\napplicability:\n  entity: IFCSPACE\nrequirements:\n  - facet: entity\n    nazov: IFCSPACE\n"
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 31
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## STD-FED-9002 Federacia s hodnotami\n",
+    "riadok": 32,
+    "text": "STD-FED-9002 Federacia s hodnotami",
+    "uroven": 2
+   },
+   {
+    "chyba": false,
+    "data": {
+     "applicability": {
+      "entity": "IFCBUILDINGELEMENTPROXY"
+     },
+     "hodnoty": [
+      "1.NP",
+      "2.NP",
+      "3.NP",
+      "4.NP",
+      "5.NP"
+     ],
+     "id": "STD-FED-9002",
+     "nazov": "Federacia s hodnotami",
+     "overenie": "manual",
+     "plati": "vzdy",
+     "postup": "ručne",
+     "requirements": [],
+     "rozsah": "kontajner",
+     "ucel_federacie": true,
+     "zavaznost": "musi"
+    },
+    "druh": "YamlBlok",
+    "jazyk": "yaml",
+    "raw": "```yaml\nid: STD-FED-9002\nnazov: Federacia s hodnotami\nrozsah: kontajner\nplati: vzdy\nucel_federacie: true\noverenie: manual\nzavaznost: musi\nhodnoty: [1.NP, 2.NP, 3.NP, 4.NP, 5.NP]\napplicability:\n  entity: IFCBUILDINGELEMENTPROXY\nrequirements: []\npostup: \"ručne\"\n```\n",
+    "raw_close": "```\n",
+    "raw_open": "```yaml\n",
+    "riadok": 33,
+    "yaml_text": "id: STD-FED-9002\nnazov: Federacia s hodnotami\nrozsah: kontajner\nplati: vzdy\nucel_federacie: true\noverenie: manual\nzavaznost: musi\nhodnoty: [1.NP, 2.NP, 3.NP, 4.NP, 5.NP]\napplicability:\n  entity: IFCBUILDINGELEMENTPROXY\nrequirements: []\npostup: \"ručne\"\n"
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 47
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## STD-FED-9005 Federacia s fixnymi hodnotami\n",
+    "riadok": 48,
+    "text": "STD-FED-9005 Federacia s fixnymi hodnotami",
+    "uroven": 2
+   },
+   {
+    "chyba": false,
+    "data": {
+     "hodnoty": {
+      "crs": "EPSG:5514"
+     },
+     "id": "STD-FED-9005",
+     "nazov": "Federacia s fixnymi hodnotami",
+     "overenie": "manual",
+     "plati": "vzdy",
+     "postup": "ručne",
+     "requirements": [],
+     "rozsah": "federacia",
+     "ucel_federacie": false,
+     "zavaznost": "musi"
+    },
+    "druh": "YamlBlok",
+    "jazyk": "yaml",
+    "raw": "```yaml\nid: STD-FED-9005\nnazov: Federacia s fixnymi hodnotami\nrozsah: federacia\nplati: vzdy\nucel_federacie: false\noverenie: manual\nzavaznost: musi\nhodnoty: {crs: \"EPSG:5514\"}\nrequirements: []\npostup: \"ručne\"\n```\n",
+    "raw_close": "```\n",
+    "raw_open": "```yaml\n",
+    "riadok": 49,
+    "yaml_text": "id: STD-FED-9005\nnazov: Federacia s fixnymi hodnotami\nrozsah: federacia\nplati: vzdy\nucel_federacie: false\noverenie: manual\nzavaznost: musi\nhodnoty: {crs: \"EPSG:5514\"}\nrequirements: []\npostup: \"ručne\"\n"
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 61
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## STD-CL-9003 Zakaz s poziadavkami\n",
+    "riadok": 62,
+    "text": "STD-CL-9003 Zakaz s poziadavkami",
+    "uroven": 2
+   },
+   {
+    "chyba": false,
+    "data": {
+     "applicability": {
+      "entity": "IFCBUILDINGELEMENTPROXY"
+     },
+     "id": "STD-CL-9003",
+     "nazov": "Zakaz s poziadavkami",
+     "overenie": "manual",
+     "plati": "na_vyziadanie",
+     "pritomnost_v_modeli": "prohibited",
+     "requirements": [
+      {
+       "cardinality": "required",
+       "facet": "attribute",
+       "nazov": "Name"
+      }
+     ],
+     "rozsah": "objekt",
+     "zavaznost": "musi"
+    },
+    "druh": "YamlBlok",
+    "jazyk": "yaml",
+    "raw": "```yaml\nid: STD-CL-9003\nnazov: Zakaz s poziadavkami\nrozsah: objekt\nplati: na_vyziadanie\noverenie: manual\nzavaznost: musi\napplicability:\n  entity: IFCBUILDINGELEMENTPROXY\npritomnost_v_modeli: prohibited\nrequirements:\n  - facet: attribute\n    nazov: Name\n    cardinality: required\n```\n",
+    "raw_close": "```\n",
+    "raw_open": "```yaml\n",
+    "riadok": 63,
+    "yaml_text": "id: STD-CL-9003\nnazov: Zakaz s poziadavkami\nrozsah: objekt\nplati: na_vyziadanie\noverenie: manual\nzavaznost: musi\napplicability:\n  entity: IFCBUILDINGELEMENTPROXY\npritomnost_v_modeli: prohibited\nrequirements:\n  - facet: attribute\n    nazov: Name\n    cardinality: required\n"
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 78
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## STD-CL-9004 Manual bez postupu a nudzovy blok\n",
+    "riadok": 79,
+    "text": "STD-CL-9004 Manual bez postupu a nudzovy blok",
+    "uroven": 2
+   },
+   {
+    "chyba": false,
+    "data": {
+     "id": "STD-CL-9004",
+     "nazov": "Manual bez postupu",
+     "overenie": "manual",
+     "plati": "vzdy",
+     "requirements": [],
+     "rozsah": "kontajner",
+     "zavaznost": "musi",
+     "zdroj_hodnot": "[[IU-C-9002]]"
+    },
+    "druh": "YamlBlok",
+    "jazyk": "yaml",
+    "raw": "```yaml\nid: STD-CL-9004\nnazov: Manual bez postupu\nrozsah: kontajner\nplati: vzdy\noverenie: manual\nzavaznost: musi\nzdroj_hodnot: \"[[IU-C-9002]]\"\nrequirements: []\n```\n",
+    "raw_close": "```\n",
+    "raw_open": "```yaml\n",
+    "riadok": 80,
+    "yaml_text": "id: STD-CL-9004\nnazov: Manual bez postupu\nrozsah: kontajner\nplati: vzdy\noverenie: manual\nzavaznost: musi\nzdroj_hodnot: \"[[IU-C-9002]]\"\nrequirements: []\n"
+   },
+   {
+    "druh": "SurovyBlok",
+    "jazyk": "ids",
+    "raw": "```ids\n<ids:requirements/>\n```\n",
+    "riadok": 90
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 93
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## GEO-G9001 Neuplny profil\n",
+    "riadok": 94,
+    "text": "GEO-G9001 Neuplny profil",
+    "uroven": 2
+   },
+   {
+    "chyba": false,
+    "data": {
+     "aspekty": {
+      "Dimensionality": "3D",
+      "ShapeAssembly": "NotRequired"
+     },
+     "id": "GEO-G9001",
+     "nazov": "Neuplny profil",
+     "vhodne_pre": "test"
+    },
+    "druh": "YamlBlok",
+    "jazyk": "yaml",
+    "raw": "```yaml\nid: GEO-G9001\nnazov: Neuplny profil\naspekty: {ShapeAssembly: NotRequired, Dimensionality: 3D}\nvhodne_pre: test\n```\n",
+    "raw_close": "```\n",
+    "raw_open": "```yaml\n",
+    "riadok": 95,
+    "yaml_text": "id: GEO-G9001\nnazov: Neuplny profil\naspekty: {ShapeAssembly: NotRequired, Dimensionality: 3D}\nvhodne_pre: test\n"
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 101
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## typy-zon-lokalne Lokalny slovnik\n",
+    "riadok": 102,
+    "text": "typy-zon-lokalne Lokalny slovnik",
+    "uroven": 2
+   },
+   {
+    "chyba": false,
+    "data": {
+     "hodnoty": [
+      "A",
+      "B"
+     ],
+     "id": "typy-zon-lokalne"
+    },
+    "druh": "YamlBlok",
+    "jazyk": "yaml",
+    "raw": "```yaml\nid: typy-zon-lokalne\nhodnoty: [A, B]\n```\n",
+    "raw_close": "```\n",
+    "raw_open": "```yaml\n",
+    "riadok": 103,
+    "yaml_text": "id: typy-zon-lokalne\nhodnoty: [A, B]\n"
+   }
+  ]
+ },
+ "zadanie/UC/UC-9001 Chybny use case.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "UC-9001"
+    ],
+    "autor": "Test",
+    "faza_iso22263": [
+     "design"
+    ],
+    "faza_lokalna": [
+     "neznáma"
+    ],
+    "guid": null,
+    "id": "UC-9001",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Chybny use case",
+    "nazov_en": "Chybny use case",
+    "pouzitie": [
+     "zameraj"
+    ],
+    "region": [
+     "SK"
+    ],
+    "stav": "WD",
+    "typ": "UC",
+    "typ_ulohy": "utilization",
+    "verzia": 0.1,
+    "zrelost": "Example"
+   },
+   "raw": "---\nid: UC-9001\naliases: [UC-9001]\nguid:\ntyp: UC\nnazov: Chybny use case\nnazov_en: Chybny use case\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ntyp_ulohy: utilization\nregion: [SK]\nfaza_iso22263: [design]\nfaza_lokalna: [neznáma]\nzrelost: Example\npouzitie:\n  - zameraj\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: UC-9001\naliases: [UC-9001]\nguid:\ntyp: UC\nnazov: Chybny use case\nnazov_en: Chybny use case\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ntyp_ulohy: utilization\nregion: [SK]\nfaza_iso22263: [design]\nfaza_lokalna: [neznáma]\nzrelost: Example\npouzitie:\n  - zameraj\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 20
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Zhrnutie\n",
+    "riadok": 21,
+    "text": "Zhrnutie",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "A12 `zameraj` nie je sloveso+podstatné meno · C11 región SK · C5 typ_ulohy.\n\n",
+    "riadok": 22
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Spúšťacia udalosť\n",
+    "riadok": 24,
+    "text": "Spúšťacia udalosť",
+    "uroven": 2
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "spustacia_udalost",
+    "raw": "spustacia_udalost:: [[EV-D-9004]]\n",
+    "raw_hodnota": "[[EV-D-9004]]",
+    "riadok": 25,
+    "v_polozke": false
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 26
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Aktéri\n",
+    "riadok": 27,
+    "text": "Aktéri",
+    "uroven": 2
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "aktor",
+    "raw": "aktor:: [[ACT-poverujuca]]\n",
+    "raw_hodnota": "[[ACT-poverujuca]]",
+    "riadok": 28,
+    "v_polozke": false
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 29
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Business context\n",
+    "riadok": 30,
+    "text": "Business context",
+    "uroven": 2
+   },
+   {
+    "chyba": false,
+    "data": {
+     "ulohy": [
+      {
+       "aktor": "[[ACT-poverena/ARCH]]",
+       "id": "T1",
+       "nazov": "prvá úloha",
+       "typ": "delivery"
+      },
+      {
+       "aktor": "[[ACT-poverujuca]]",
+       "id": "T1",
+       "nazov": "duplicitné id",
+       "typ": "delivery"
+      }
+     ]
+    },
+    "druh": "YamlBlok",
+    "jazyk": "yaml",
+    "raw": "```yaml\nulohy:\n  - id: T1\n    nazov: prvá úloha\n    typ: delivery\n    aktor: \"[[ACT-poverena/ARCH]]\"\n  - id: T1\n    nazov: duplicitné id\n    typ: delivery\n    aktor: \"[[ACT-poverujuca]]\"\n```\n",
+    "raw_close": "```\n",
+    "raw_open": "```yaml\n",
+    "riadok": 31,
+    "yaml_text": "ulohy:\n  - id: T1\n    nazov: prvá úloha\n    typ: delivery\n    aktor: \"[[ACT-poverena/ARCH]]\"\n  - id: T1\n    nazov: duplicitné id\n    typ: delivery\n    aktor: \"[[ACT-poverujuca]]\"\n"
+   },
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 42
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Fázy → ER\n",
+    "riadok": 43,
+    "text": "Fázy → ER",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "- design → [[ER-9002]]\n",
+    "riadok": 44
+   }
+  ]
+ },
+ "zadanie/UC/UC-9002 Druhy use case.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "UC-9002"
+    ],
+    "autor": "Test",
+    "faza_iso22263": [
+     "design"
+    ],
+    "guid": null,
+    "id": "UC-9002",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Druhy use case",
+    "nazov_en": "Druhy use case",
+    "stav": "WD",
+    "typ": "UC",
+    "typ_ulohy": "delivery",
+    "verzia": 0.1
+   },
+   "raw": "---\nid: UC-9002\naliases: [UC-9002]\nguid:\ntyp: UC\nnazov: Druhy use case\nnazov_en: Druhy use case\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ntyp_ulohy: delivery\nfaza_iso22263: [design]\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: UC-9002\naliases: [UC-9002]\nguid:\ntyp: UC\nnazov: Druhy use case\nnazov_en: Druhy use case\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ntyp_ulohy: delivery\nfaza_iso22263: [design]\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 15
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Zhrnutie\n",
+    "riadok": 16,
+    "text": "Zhrnutie",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "C10: tento UC nemá vlastný ER (ER-9001 ho uvádza ako druhý `uc`, čo je samo o sebe chyba C3).\n",
+    "riadok": 17
+   }
+  ]
+ },
+ "zadanie/registre/ACT/poverena/ARCH/ARCH.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "ACT-poverena/ARCH"
+    ],
+    "autor": "Test",
+    "guid": null,
+    "id": "ACT-poverena/ARCH",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "ARCH",
+    "nazov_en": "ARCH",
+    "stav": "WD",
+    "strana": "poverena",
+    "typ": "ACT",
+    "uroven": "tim",
+    "verzia": 0.1
+   },
+   "raw": "---\nid: ACT-poverena/ARCH\naliases: [ACT-poverena/ARCH]\nguid:\ntyp: ACT\nnazov: ARCH\nnazov_en: ARCH\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nuroven: tim\nstrana: poverena\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: ACT-poverena/ARCH\naliases: [ACT-poverena/ARCH]\nguid:\ntyp: ACT\nnazov: ARCH\nnazov_en: ARCH\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nuroven: tim\nstrana: poverena\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 15
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Popis\n",
+    "riadok": 16,
+    "text": "Popis",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "Tím.\n",
+    "riadok": 17
+   }
+  ]
+ },
+ "zadanie/registre/ACT/poverujuca/poverujuca.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "ACT-poverujuca"
+    ],
+    "autor": "Test",
+    "guid": null,
+    "id": "ACT-poverujuca",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Poverujuca",
+    "nazov_en": "Poverujuca",
+    "stav": "WD",
+    "strana": "poverujuca",
+    "typ": "ACT",
+    "uroven": "strana",
+    "verzia": 0.1
+   },
+   "raw": "---\nid: ACT-poverujuca\naliases: [ACT-poverujuca]\nguid:\ntyp: ACT\nnazov: Poverujuca\nnazov_en: Poverujuca\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nuroven: strana\nstrana: poverujuca\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: ACT-poverujuca\naliases: [ACT-poverujuca]\nguid:\ntyp: ACT\nnazov: Poverujuca\nnazov_en: Poverujuca\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\nuroven: strana\nstrana: poverujuca\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 15
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Popis\n",
+    "riadok": 16,
+    "text": "Popis",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "Strana.\n",
+    "riadok": 17
+   }
+  ]
+ },
+ "zadanie/registre/DEF/DEF-9001 Neuplna definicia.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "DEF-9001"
+    ],
+    "autor": "Test",
+    "definicia": "Plocha bez meracieho pravidla.",
+    "guid": null,
+    "id": "DEF-9001",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Neuplna definicia",
+    "nazov_en": "Neuplna definicia",
+    "stav": "WD",
+    "typ": "DEF",
+    "verzia": 0.1
+   },
+   "raw": "---\nid: DEF-9001\naliases: [DEF-9001]\nguid:\ntyp: DEF\nnazov: Neuplna definicia\nnazov_en: Neuplna definicia\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ndefinicia: Plocha bez meracieho pravidla.\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: DEF-9001\naliases: [DEF-9001]\nguid:\ntyp: DEF\nnazov: Neuplna definicia\nnazov_en: Neuplna definicia\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ndefinicia: Plocha bez meracieho pravidla.\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 14
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Poznámka\n",
+    "riadok": 15,
+    "text": "Poznámka",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "F9: chýba jednotka, zaokrúhlenie, tolerancia, hranica merania, metóda, zodpovedný.\n",
+    "riadok": 16
+   }
+  ]
+ },
+ "zadanie/registre/EV/EV-D-9003 Neplanovany delivery.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "EV-D-9003"
+    ],
+    "autor": "Test",
+    "faza_iso22263": [
+     "production"
+    ],
+    "guid": null,
+    "id": "EV-D-9003",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Neplanovany delivery",
+    "nazov_en": "Neplanovany delivery",
+    "planovana": false,
+    "relativny_termin": null,
+    "stav": "WD",
+    "typ": "EV",
+    "typ_udalosti": "delivery",
+    "verzia": 0.1
+   },
+   "raw": "---\nid: EV-D-9003\naliases: [EV-D-9003]\nguid:\ntyp: EV\nnazov: Neplanovany delivery\nnazov_en: Neplanovany delivery\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ntyp_udalosti: delivery\nplanovana: false\nrelativny_termin:\nfaza_iso22263: [production]\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: EV-D-9003\naliases: [EV-D-9003]\nguid:\ntyp: EV\nnazov: Neplanovany delivery\nnazov_en: Neplanovany delivery\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ntyp_udalosti: delivery\nplanovana: false\nrelativny_termin:\nfaza_iso22263: [production]\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 17
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Popis\n",
+    "riadok": 18,
+    "text": "Popis",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "C8: neplánovaný delivery bez `relativny_termin`. C10: nikto ho nepoužíva.\n",
+    "riadok": 19
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "vyvolava",
+    "raw": "vyvolava:: [[EV-D-9004]]\n",
+    "raw_hodnota": "[[EV-D-9004]]",
+    "riadok": 20,
+    "v_polozke": false
+   }
+  ]
+ },
+ "zadanie/registre/EV/EV-D-9004 Spustac vymeny.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "EV-D-9004"
+    ],
+    "autor": "Test",
+    "faza_iso22263": [
+     "maintenance"
+    ],
+    "guid": null,
+    "id": "EV-D-9004",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Spustac vymeny",
+    "nazov_en": "Spustac vymeny",
+    "planovana": true,
+    "stav": "WD",
+    "typ": "EV",
+    "typ_udalosti": "delivery",
+    "verzia": 0.1
+   },
+   "raw": "---\nid: EV-D-9004\naliases: [EV-D-9004]\nguid:\ntyp: EV\nnazov: Spustac vymeny\nnazov_en: Spustac vymeny\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ntyp_udalosti: delivery\nplanovana: true\nfaza_iso22263: [maintenance]\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: EV-D-9004\naliases: [EV-D-9004]\nguid:\ntyp: EV\nnazov: Spustac vymeny\nnazov_en: Spustac vymeny\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ntyp_udalosti: delivery\nplanovana: true\nfaza_iso22263: [maintenance]\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 16
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Popis\n",
+    "riadok": 17,
+    "text": "Popis",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "C1: fáza maintenance je mimo fáz UC-9001 (design).\n",
+    "riadok": 18
+   }
+  ]
+ },
+ "zadanie/registre/EV/EV-I-9001 Impact bez objektu.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "EV-I-9001"
+    ],
+    "autor": "Test",
+    "datum": "2027-01-01",
+    "faza_iso22263": [
+     "design"
+    ],
+    "id": "EV-I-9001",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Impact bez objektu",
+    "nazov_en": "Impact without object",
+    "planovana": false,
+    "stav": "PUB",
+    "typ": "EV",
+    "typ_udalosti": "impact",
+    "verzia": 0.1
+   },
+   "raw": "---\nid: EV-I-9001\naliases: [EV-I-9001]\ntyp: EV\nnazov: Impact bez objektu\nnazov_en: Impact without object\nstav: PUB\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ntyp_udalosti: impact\nplanovana: false\nfaza_iso22263: [design]\ndatum: 2027-01-01\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: EV-I-9001\naliases: [EV-I-9001]\ntyp: EV\nnazov: Impact bez objektu\nnazov_en: Impact without object\nstav: PUB\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ntyp_udalosti: impact\nplanovana: false\nfaza_iso22263: [design]\ndatum: 2027-01-01\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 16
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Popis\n",
+    "riadok": 17,
+    "text": "Popis",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "A2 chýba guid · A13 stav PUB bez guid · A8 datum mimo projekty/ · C8 impact bez objektu.\n",
+    "riadok": 18
+   },
+   {
+    "druh": "InlinePole",
+    "kluc": "vyvolava",
+    "raw": "vyvolava:: [[EV-I-9002]]\n",
+    "raw_hodnota": "[[EV-I-9002]]",
+    "riadok": 19,
+    "v_polozke": false
+   }
+  ]
+ },
+ "zadanie/registre/EV/EV-I-9002 Druhy impact.md": {
+  "frontmatter": {
+   "chyba": false,
+   "data": {
+    "aliases": [
+     "EV-I-9002"
+    ],
+    "autor": "Test",
+    "faza_iso22263": [
+     "design"
+    ],
+    "guid": null,
+    "id": "EV-I-9002",
+    "jazyk": "sk",
+    "licencia": "CC-BY-4.0",
+    "nazov": "Druhy impact",
+    "nazov_en": "Druhy impact",
+    "objekt": "#aktivum",
+    "planovana": false,
+    "stav": "WD",
+    "typ": "EV",
+    "typ_udalosti": "impact",
+    "verzia": 0.1
+   },
+   "raw": "---\nid: EV-I-9002\naliases: [EV-I-9002]\nguid:\ntyp: EV\nnazov: Druhy impact\nnazov_en: Druhy impact\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ntyp_udalosti: impact\nplanovana: false\nobjekt: \"#aktivum\"\nfaza_iso22263: [design]\n---\n",
+   "riadok": 0,
+   "yaml_text": "id: EV-I-9002\naliases: [EV-I-9002]\nguid:\ntyp: EV\nnazov: Druhy impact\nnazov_en: Druhy impact\nstav: WD\nverzia: 0.1\njazyk: sk\nautor: Test\nlicencia: CC-BY-4.0\ntyp_udalosti: impact\nplanovana: false\nobjekt: \"#aktivum\"\nfaza_iso22263: [design]\n"
+  },
+  "telo": [
+   {
+    "druh": "Proza",
+    "raw": "\n",
+    "riadok": 17
+   },
+   {
+    "druh": "Nadpis",
+    "raw": "## Popis\n",
+    "riadok": 18,
+    "text": "Popis",
+    "uroven": 2
+   },
+   {
+    "druh": "Proza",
+    "raw": "C8: cieľ `vyvolava` musí byť delivery, toto je impact.\n",
+    "riadok": 19
+   }
+  ]
+ }
+}

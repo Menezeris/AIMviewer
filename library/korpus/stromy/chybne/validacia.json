@@ -1,0 +1,956 @@
+[
+ {
+  "json_pointer": "#GEO-G9001/aspekty",
+  "kod": "F8",
+  "note_id": "STD-chybne",
+  "riadok": 99,
+  "sprava": "profil neurčuje aspekty ShapeRepresentation, ShapeInfluence, Appearance, ParametricBehaviour, Location — IU-O by ich musela dopĺňať ručne",
+  "subor": "zadanie/STD/STD-chybne.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "#GEO-G9001/id",
+  "kod": "F8",
+  "note_id": "STD-chybne",
+  "riadok": 97,
+  "sprava": "ID profilu 'GEO-G9001' nemá tvar GEO-G0…GEO-G3",
+  "subor": "zadanie/STD/STD-chybne.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "#STD-CL-9001/overenie",
+  "kod": "F4",
+  "note_id": "STD-chybne",
+  "riadok": 24,
+  "sprava": "`overenie: clash-detection` nie je pri `rozsah: objekt` prípustné (§14b: IDS, manual)",
+  "subor": "zadanie/STD/STD-chybne.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "#STD-CL-9001/postup",
+  "kod": "F6",
+  "note_id": "STD-chybne",
+  "riadok": 19,
+  "sprava": "`overenie: clash-detection` bez `postup` — akceptácia nemá čo vypísať",
+  "subor": "zadanie/STD/STD-chybne.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "#STD-CL-9003/postup",
+  "kod": "F6",
+  "note_id": "STD-chybne",
+  "riadok": 65,
+  "sprava": "`overenie: manual` bez `postup` — akceptácia nemá čo vypísať",
+  "subor": "zadanie/STD/STD-chybne.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "#STD-CL-9003/requirements",
+  "kod": "F5",
+  "note_id": "STD-chybne",
+  "riadok": 74,
+  "sprava": "zakázaná entita nemôže mať `requirements` — zákaz je celý obsah pravidla",
+  "subor": "zadanie/STD/STD-chybne.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "#STD-CL-9004/id",
+  "kod": "F7",
+  "note_id": "STD-chybne",
+  "riadok": 82,
+  "sprava": "surový ```ids blok je prípustný len s `vynimka: true`",
+  "subor": "zadanie/STD/STD-chybne.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "#STD-CL-9004/postup",
+  "kod": "F6",
+  "note_id": "STD-chybne",
+  "riadok": 82,
+  "sprava": "`overenie: manual` bez `postup` — akceptácia nemá čo vypísať",
+  "subor": "zadanie/STD/STD-chybne.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "#STD-CL-9004/zdroj_hodnot",
+  "kod": "F2",
+  "note_id": "STD-chybne",
+  "riadok": 88,
+  "sprava": "`zdroj_hodnot: [[IU-C-9002]]` musí byť IU-C `druh: model`, je dataset",
+  "subor": "zadanie/STD/STD-chybne.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "#STD-FED-9002/hodnoty",
+  "kod": "G1",
+  "note_id": "STD-chybne",
+  "riadok": 42,
+  "sprava": "pravidlo drží ručný zoznam hodnôt, hoci IU-O-9002 je nositeľom IFCBUILDINGELEMENTPROXY v modeli — použi `zdroj_hodnot` na master DiMS (V11)",
+  "subor": "zadanie/STD/STD-chybne.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "#STD-FED-9002/hodnoty",
+  "kod": "G3",
+  "note_id": "STD-chybne",
+  "riadok": 42,
+  "sprava": "pravidlo drží 5 hodnôt inline — zváž slovník (§0.10)",
+  "subor": "zadanie/STD/STD-chybne.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "#STD-FED-9005/rozsah",
+  "kod": "F1",
+  "note_id": "STD-chybne",
+  "riadok": 53,
+  "sprava": "pravidlo s fixnými `hodnoty` sa overuje v jednom súbore — patrí mu `rozsah: kontajner`",
+  "subor": "zadanie/STD/STD-chybne.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/aktivum",
+  "kod": "A8",
+  "note_id": "GOAL-9001",
+  "riadok": 15,
+  "sprava": "`aktivum` je dosadenie — cieľ v knižnici neukazuje na konkrétne aktívum (V19)",
+  "subor": "zadanie/GOAL/GOAL-9001 Organizacny ciel s terminom.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/aktivum",
+  "kod": "F13",
+  "note_id": "GOAL-9001",
+  "riadok": 15,
+  "sprava": "`aktivum` patrí len k úrovni aktivum alebo projekt",
+  "subor": "zadanie/GOAL/GOAL-9001 Organizacny ciel s terminom.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/alfanumerika",
+  "kod": "D13",
+  "note_id": "IU-O-9001",
+  "riadok": 36,
+  "sprava": "IU-O má mať práve jednu položku s `rola: identifikacia`, nájdených 2",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/alfanumerika",
+  "kod": "D13",
+  "note_id": "IU-O-9002",
+  "riadok": 22,
+  "sprava": "IU-O má mať práve jednu položku s `rola: identifikacia`, nájdených 0",
+  "subor": "zadanie/IU-O/IU-O-9002 Zakazany objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/alfanumerika",
+  "kod": "D16",
+  "note_id": "IU-O-9002",
+  "riadok": 22,
+  "sprava": "`pritomnost_v_modeli: prohibited` a zároveň alfanumerické požiadavky",
+  "subor": "zadanie/IU-O/IU-O-9002 Zakazany objekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/alfanumerika/0",
+  "kod": "D2",
+  "note_id": "IU-O-9002",
+  "riadok": 23,
+  "sprava": "položka `Description` so `zavaznost: musi` nemá žiadne obmedzenie (povinnost, vzor, hodnoty, rozsah) — doplň ho alebo daj `zavaznost: informativne`",
+  "subor": "zadanie/IU-O/IU-O-9002 Zakazany objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/alfanumerika/1",
+  "kod": "D13",
+  "note_id": "IU-O-9001",
+  "riadok": 40,
+  "sprava": "kľúč položky 'Name' je v IU-O duplicitný — prepisy ER by boli nejednoznačné",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/alfanumerika/2",
+  "kod": "D12",
+  "note_id": "IU-O-9001",
+  "riadok": 43,
+  "sprava": "veličina `NetFloorArea` nemá `definicia_ref` na DEF — bez meracieho pravidla je hodnota nedokázateľná",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/alfanumerika/2/ifc/uri",
+  "kod": "D5",
+  "note_id": "IU-O-9001",
+  "riadok": 43,
+  "sprava": "`ifc.uri` nemá tvar bSDD vlastnosti (…/ifc/4.3/prop/…): https://example.org/NetFloorArea",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/alfanumerika/2/tolerancia",
+  "kod": "D11",
+  "note_id": "IU-O-9001",
+  "riadok": 46,
+  "sprava": "položka `NetFloorArea` má `tolerancia`, ale žiadne `dolozene_v` — zhodu s realitou overuje dokumentačná položka (§0.6)",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/alfanumerika/3/hodnoty",
+  "kod": "G3",
+  "note_id": "IU-O-9001",
+  "riadok": 49,
+  "sprava": "položka `PredefinedType` má 5 hodnôt inline — zváž slovník v STD-klasifikacia a `hodnoty_ref` (§0.10)",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/alfanumerika/4/hodnoty_ref",
+  "kod": "B1",
+  "note_id": "IU-O-9001",
+  "riadok": null,
+  "sprava": "visiaci odkaz [[STD-neexistuje#slovnik]]",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/alfanumerika/5",
+  "kod": "D2",
+  "note_id": "IU-O-9001",
+  "riadok": 55,
+  "sprava": "položka `Description` so `zavaznost: musi` nemá žiadne obmedzenie (povinnost, vzor, hodnoty, rozsah) — doplň ho alebo daj `zavaznost: informativne`",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/alfanumerika/5/pokyn",
+  "kod": "D19",
+  "note_id": "IU-O-9001",
+  "riadok": 57,
+  "sprava": "pokyn položky `Description` spomína nájomc — over nositeľa (§0.9)",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/alfanumerika/6/hodnoty_ref",
+  "kod": "B2",
+  "note_id": "IU-O-9001",
+  "riadok": null,
+  "sprava": "[[STD-CL-9001]]: pole vyžaduje kotvu",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/alfanumerika/6/hodnoty_ref",
+  "kod": "D6",
+  "note_id": "IU-O-9001",
+  "riadok": null,
+  "sprava": "`hodnoty_ref: [[STD-CL-9001]]` musí mieriť na slovník v STD-klasifikacia — cieľ je pravidlo",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/alfanumerika/7/datovy_typ",
+  "kod": "D20",
+  "note_id": "IU-O-9001",
+  "riadok": 63,
+  "sprava": "položka `Elevation` je atribút/materiál — IDS attribute a material facet `dataType` nemajú, pole patrí len k `ifc.pset` a `prop`",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/alfanumerika/8/datovy_typ",
+  "kod": "D20",
+  "note_id": "IU-O-9001",
+  "riadok": 67,
+  "sprava": "`datovy_typ: ifcAreaMeasure` nie je IFC jednoduchý typ VEĽKÝMI (IFCAREAMEASURE…) — IDS `@dataType` iný tvar neprijme",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/alfanumerika/9",
+  "kod": "D12",
+  "note_id": "IU-O-9001",
+  "riadok": 70,
+  "sprava": "veličina `Height` nemá `definicia_ref` na DEF — bez meracieho pravidla je hodnota nedokázateľná",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/alfanumerika/9",
+  "kod": "D20",
+  "note_id": "IU-O-9001",
+  "riadok": 70,
+  "sprava": "položka `Height` má `rozsah`, ale nemá `datovy_typ` — IDS bez `@dataType` číselné medze neoverí (V24)",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/dataset/struktura/0/stlpec",
+  "kod": "E2",
+  "note_id": "IU-C-9002",
+  "riadok": 20,
+  "sprava": "stĺpec `Name` má nositeľa v IU-O-9001 — tabuľka je generovaný pohľad, nie dataset (V10)",
+  "subor": "zadanie/IU-C/IU-C-9002 Dataset duplikat.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/dataset/struktura/1/stlpec",
+  "kod": "E2",
+  "note_id": "IU-C-9002",
+  "riadok": 21,
+  "sprava": "stĺpec `NetFloorArea` má nositeľa v IU-O-9001 — tabuľka je generovaný pohľad, nie dataset (V10)",
+  "subor": "zadanie/IU-C/IU-C-9002 Dataset duplikat.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/datum",
+  "kod": "A8",
+  "note_id": "EV-I-9001",
+  "riadok": 15,
+  "sprava": "`datum` je dosadenie — udalosť v knižnici je bez dátumu (V19)",
+  "subor": "zadanie/registre/EV/EV-I-9001 Impact bez objektu.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/definicia",
+  "kod": "F9",
+  "note_id": "DEF-9001",
+  "riadok": 13,
+  "sprava": "DEF neuvádza jednotka, zaokruhlenie, tolerancia, hranica_merania, metoda_merania, zodpovedny_za_meranie — hodnota nie je reprodukovateľne meraná",
+  "subor": "zadanie/registre/DEF/DEF-9001 Neuplna definicia.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/dokladuje/0",
+  "kod": "B6",
+  "note_id": "IU-C-9001",
+  "riadok": 36,
+  "sprava": "`dokladuje:: [[IU-O-9001]]`, ale žiadna položka v IU-O-9001 nemá `dolozene_v: \"[[IU-C-9001]]\"`",
+  "subor": "zadanie/IU-C/IU-C-9001 Chybny kontajner.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/dokumentacia/0/dok",
+  "kod": "B6",
+  "note_id": "IU-O-9001",
+  "riadok": 76,
+  "sprava": "`dokumentacia[].dok = [[IU-C-9001]]`, ale IU-C-9001 sa neviaže späť na IU-O-9001 (`viaze_sa_na`)",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/dokumentacia/0/dok",
+  "kod": "E10",
+  "note_id": "IU-O-9001",
+  "riadok": 76,
+  "sprava": "[[IU-C-9001]] objekt nepriraďuje — doplň `obsahuje: [{iu: \"[[IU-O-9001]]\", rozsah: [dokumentacia]}]` v IU-C-9001 (V27)",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/dokumentacia/0/dokladuje/0",
+  "kod": "D10",
+  "note_id": "IU-O-9001",
+  "riadok": 79,
+  "sprava": "`dokladuje` menuje 'Neexistujuca', čo nie je položka tejto IU-O",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/dokumentacia/0/postup",
+  "kod": "D10",
+  "note_id": "IU-O-9001",
+  "riadok": 76,
+  "sprava": "neautomatizovateľná kontrola potrebuje `postup`",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/doplnuje/0",
+  "kod": "B1",
+  "note_id": "IU-O-9001",
+  "riadok": 92,
+  "sprava": "visiaci odkaz [[typy-zon-lokalne]]",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/doplnuje/0",
+  "kod": "B7",
+  "note_id": "IU-O-9001",
+  "riadok": 92,
+  "sprava": "[[typy-zon-lokalne]] je pod-záznam bez globálne unikátneho ID — odkazuj s kotvou: [[STD-chybne#typy-zon-lokalne]]",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/filter/0",
+  "kod": "D8",
+  "note_id": "IU-O-9001",
+  "riadok": 21,
+  "sprava": "filter podľa `Description` predpokladá, že atribút existuje na každej IFCSPACE — chýba nefiltrované STD pravidlo `plati: vzdy` (vzor: STD-CL-06)",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/filter/0/cardinality",
+  "kod": "D7",
+  "note_id": "IU-O-9001",
+  "riadok": 24,
+  "sprava": "položka filtra nesmie mať `cardinality` — filter nič nevynucuje (V9)",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/forma",
+  "kod": "E3",
+  "note_id": "IU-C-9001",
+  "riadok": null,
+  "sprava": "model potrebuje `forma.format`",
+  "subor": "zadanie/IU-C/IU-C-9001 Chybny kontajner.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/geometria",
+  "kod": "D16",
+  "note_id": "IU-O-9002",
+  "riadok": 20,
+  "sprava": "`pritomnost_v_modeli: prohibited` a zároveň požiadavka na geometriu",
+  "subor": "zadanie/IU-O/IU-O-9002 Zakazany objekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/geometria/Dimensionality",
+  "kod": "D15",
+  "note_id": "IU-O-9001",
+  "riadok": 34,
+  "sprava": "aspekt `Dimensionality` je rovnaký ako v [[GEO-G9001]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/geometria/ShapeAssembly",
+  "kod": "D15",
+  "note_id": "IU-O-9001",
+  "riadok": 33,
+  "sprava": "aspekt `ShapeAssembly` je rovnaký ako v [[GEO-G9001]] — stačí profil",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/guid",
+  "kod": "A13",
+  "note_id": "EV-I-9001",
+  "riadok": null,
+  "sprava": "stav PUB bez `guid` — doplní ho nástroj pred publikovaním",
+  "subor": "zadanie/registre/EV/EV-I-9001 Impact bez objektu.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/id",
+  "kod": "A2",
+  "note_id": "EV-I-9001",
+  "riadok": 2,
+  "sprava": "chýba pole hlavičky `guid` (§0.5)",
+  "subor": "zadanie/registre/EV/EV-I-9001 Impact bez objektu.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/id",
+  "kod": "B5",
+  "note_id": "GOAL-9001",
+  "riadok": 2,
+  "sprava": "cyklus vo väzbe `prispieva_k`: GOAL-9001 → GOAL-9002 → GOAL-9001",
+  "subor": "zadanie/GOAL/GOAL-9001 Organizacny ciel s terminom.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/id",
+  "kod": "B5",
+  "note_id": "IU-C-9001",
+  "riadok": 2,
+  "sprava": "cyklus vo väzbe `poradie kontajnerov`: IU-C-9001 → IU-C-9002 → IU-C-9001",
+  "subor": "zadanie/IU-C/IU-C-9001 Chybny kontajner.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/id",
+  "kod": "C10",
+  "note_id": "EV-I-9001",
+  "riadok": 2,
+  "sprava": "udalosť nikto nepoužíva (žiadny UC, ER ani PROJ)",
+  "subor": "zadanie/registre/EV/EV-I-9001 Impact bez objektu.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/id",
+  "kod": "C10",
+  "note_id": "IU-C-9002",
+  "riadok": 2,
+  "sprava": "jednotku neobsahuje žiadny ER — nedostane sa do výmeny",
+  "subor": "zadanie/IU-C/IU-C-9002 Dataset duplikat.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/id",
+  "kod": "C10",
+  "note_id": "IU-O-9001",
+  "riadok": 2,
+  "sprava": "jednotku neobsahuje žiadny ER — nedostane sa do výmeny",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/id",
+  "kod": "C10",
+  "note_id": "UC-9003",
+  "riadok": 2,
+  "sprava": "UC nemá žiadny ER — scenár nič nevymieňa",
+  "subor": "aktiva/budova-x/UC-9003 Use case v aktivach.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/id",
+  "kod": "C9",
+  "note_id": "UC-9001",
+  "riadok": 2,
+  "sprava": "generovaná sekcia „Fázy → ER“ neuvádza ER-9001",
+  "subor": "zadanie/UC/UC-9001 Chybny use case.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/id",
+  "kod": "F14",
+  "note_id": "GOAL-9003",
+  "riadok": 2,
+  "sprava": "na tento cieľ neukazuje žiadny účel užitia (`podporuje_ciel`) ani nižší cieľ (`prispieva_k`) — v knižnici je to prípustné, len naň zatiaľ nič nenadväzuje",
+  "subor": "zadanie/GOAL/GOAL-9003 Ciel bez ucelu uzitia.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/identifikacia/vzor",
+  "kod": "E5",
+  "note_id": "IU-C-9001",
+  "riadok": 15,
+  "sprava": "`identifikacia.vzor` nie je platný regex: unterminated character set at position 1",
+  "subor": "zadanie/IU-C/IU-C-9001 Chybny kontajner.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/klasifikacia/0",
+  "kod": "D14",
+  "note_id": "IU-O-9001",
+  "riadok": 17,
+  "sprava": "klasifikácia CCI · CCI-priestory bez `pravidlo` — tabuľka kódov žije v STD-klasifikacia",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/klasifikacia/0/system",
+  "kod": "A1",
+  "note_id": "IU-O-9001",
+  "riadok": 17,
+  "sprava": "`·` v štruktúrovanej hodnote 'CCI · CCI-priestory' — rozpíš na YAML zoznam",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/klasifikacia/1",
+  "kod": "D14",
+  "note_id": "IU-O-9001",
+  "riadok": 19,
+  "sprava": "klasifikácia Uniclass bez `pravidlo` — tabuľka kódov žije v STD-klasifikacia",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/klasifikacia/1",
+  "kod": "D21",
+  "note_id": "IU-O-9001",
+  "riadok": 19,
+  "sprava": "klasifikácia `Uniclass` bez `povinnost` ostáva v IDS applicability, takže objekt bez kódu do kontroly nespadne; ak má kód byť povinný, daj `povinnost: required` (V25)",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/metadata_cde/revizia_vzor",
+  "kod": "E5",
+  "note_id": "IU-C-9001",
+  "riadok": 18,
+  "sprava": "`metadata_cde.revizia_vzor` nie je platný regex: unterminated character set at position 1",
+  "subor": "zadanie/IU-C/IU-C-9001 Chybny kontajner.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/mvd",
+  "kod": "E9",
+  "note_id": "IU-C-9002",
+  "riadok": 14,
+  "sprava": "`mvd` na kontajneri druhu dataset — pohľad na schému má model, nie dokument ani dataset",
+  "subor": "zadanie/IU-C/IU-C-9002 Dataset duplikat.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/nazov",
+  "kod": "A14",
+  "note_id": "STD-chybne",
+  "riadok": 6,
+  "sprava": "názov súboru „—“ sa líši od `nazov` — editor premenuje pri zmene názvu",
+  "subor": "zadanie/STD/STD-chybne.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/objekt",
+  "kod": "C8",
+  "note_id": "EV-I-9001",
+  "riadok": null,
+  "sprava": "impact udalosť potrebuje `objekt` (IU-O alebo #aktivum)",
+  "subor": "zadanie/registre/EV/EV-I-9001 Impact bez objektu.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/objekt/uri",
+  "kod": "D5",
+  "note_id": "IU-O-9001",
+  "riadok": 15,
+  "sprava": "`objekt.uri` nemá tvar bSDD triedy (…/ifc/4.3/class/…): https://example.org/IfcSpace",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/obsahuje",
+  "kod": "C12",
+  "note_id": "ER-9002",
+  "riadok": null,
+  "sprava": "ER bez `obsahuje::` — výmena bez informačných jednotiek nič neprenáša",
+  "subor": "zadanie/ER/ER-9002 Vymena bez jednotiek.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/obsahuje",
+  "kod": "E3",
+  "note_id": "IU-C-9001",
+  "riadok": null,
+  "sprava": "model bez priradenia (`obsahuje:`) — kontajner bez objektov nič neprenáša",
+  "subor": "zadanie/IU-C/IU-C-9001 Chybny kontajner.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/obsahuje",
+  "kod": "H1",
+  "note_id": "ER-9001",
+  "riadok": 26,
+  "sprava": "pre poskytovateľa ACT-poverena/ARCH nemá žiadna položka `overenie: IDS` ani zapnuté IDS pravidlo — IDS súbor by bol prázdny",
+  "subor": "zadanie/ER/ER-9001 Chybna vymena.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/obsahuje/0",
+  "kod": "C13",
+  "note_id": "ER-9001",
+  "riadok": 26,
+  "sprava": "[[IU-O-9002]] nenesie žiadny kontajner tejto výmeny — doplň priradenie do IU-C (`obsahuje: [{iu: …}]`) alebo kontajner do `obsahuje::`",
+  "subor": "zadanie/ER/ER-9001 Chybna vymena.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/obsahuje/1/rozsah",
+  "kod": "E8",
+  "note_id": "IU-C-9002",
+  "riadok": 33,
+  "sprava": "IU-O-9002 nedefinuje aspekt `dokumentacia` (má: geometria, alfanumerika)",
+  "subor": "zadanie/IU-C/IU-C-9002 Dataset duplikat.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/overuje/0",
+  "kod": "E7",
+  "note_id": "IU-C-9001",
+  "riadok": 30,
+  "sprava": "`overuje:: [[ACT-poverena/ARCH]]` nie je poverujúca strana (19650-4 preberá príjemca)",
+  "subor": "zadanie/IU-C/IU-C-9001 Chybny kontajner.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/poskytovatel/0",
+  "kod": "E7",
+  "note_id": "IU-C-9001",
+  "riadok": 29,
+  "sprava": "`poskytovatel:: [[ACT-poverujuca]]` je celá strana — TIDP sa zostavuje per tím alebo funkciu",
+  "subor": "zadanie/IU-C/IU-C-9001 Chybny kontajner.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/postup",
+  "kod": "E4",
+  "note_id": "IU-C-9001",
+  "riadok": null,
+  "sprava": "`automatizovatelne: true` bez `postup` — doplň, ktorý nástroj kontrolu robí",
+  "subor": "zadanie/IU-C/IU-C-9001 Chybny kontajner.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/postup",
+  "kod": "E4",
+  "note_id": "IU-C-9001",
+  "riadok": null,
+  "sprava": "`overenie: manual` bez `postup` — akceptačný checklist nemá čo vypísať",
+  "subor": "zadanie/IU-C/IU-C-9001 Chybny kontajner.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/pouzitie/0",
+  "kod": "A12",
+  "note_id": "UC-9001",
+  "riadok": 19,
+  "sprava": "`zameraj` nevyzerá ako sloveso + podstatné meno (napr. ZamerajPriestory)",
+  "subor": "zadanie/UC/UC-9001 Chybny use case.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/pre_task/0",
+  "kod": "C6",
+  "note_id": "IU-O-9001",
+  "riadok": 89,
+  "sprava": "[[UC-9001#Zhrnutie]] nemieri na úlohu, ale na nadpis",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/prepisy/0/iu",
+  "kod": "C4",
+  "note_id": "ER-9001",
+  "riadok": 30,
+  "sprava": "prepis mieri na [[IU-O-9001]], ktoré táto výmena nenesie — nie je ani v `obsahuje::`, ani ho nepriraďuje žiadny jej kontajner",
+  "subor": "zadanie/ER/ER-9001 Chybna vymena.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/prepisy/1/polozka",
+  "kod": "C4",
+  "note_id": "ER-9001",
+  "riadok": 30,
+  "sprava": "položka 'Neexistujuca' v IU-O-9002 neexistuje (kľúče: Description)",
+  "subor": "zadanie/ER/ER-9001 Chybna vymena.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/prispieva_k/0",
+  "kod": "F13",
+  "note_id": "GOAL-9001",
+  "riadok": 21,
+  "sprava": "`prispieva_k:: [[GOAL-9002]]` mieri na úroveň organizacia; nižšia úroveň prispieva k vyššej, nie naopak",
+  "subor": "zadanie/GOAL/GOAL-9001 Organizacny ciel s terminom.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/prispieva_k/0",
+  "kod": "F13",
+  "note_id": "GOAL-9002",
+  "riadok": 19,
+  "sprava": "`prispieva_k:: [[GOAL-9001]]` mieri na úroveň organizacia; nižšia úroveň prispieva k vyššej, nie naopak",
+  "subor": "zadanie/GOAL/GOAL-9002 Druhy organizacny ciel.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/region/0",
+  "kod": "C11",
+  "note_id": "UC-9001",
+  "riadok": 14,
+  "sprava": "`region` 'SK' nemá tvar ISO 3166-1 alpha-3 (SVK, CZE)",
+  "subor": "zadanie/UC/UC-9001 Chybny use case.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/relativny_termin",
+  "kod": "C8",
+  "note_id": "EV-D-9003",
+  "riadok": 15,
+  "sprava": "neplánovaná delivery udalosť potrebuje `relativny_termin`",
+  "subor": "zadanie/registre/EV/EV-D-9003 Neplanovany delivery.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/spustacia_udalost",
+  "kod": "F12",
+  "note_id": "PROJ-9001",
+  "riadok": 14,
+  "sprava": "`spustacia_udalost: [[EV-D-9004]]` musí byť impact (PAS 6.1.3)",
+  "subor": "projekty/zakazka-x/PROJ-9001 Chybny projekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/spustacia_udalost/0",
+  "kod": "C1",
+  "note_id": "ER-9001",
+  "riadok": 22,
+  "sprava": "[[EV-D-9004]] má fázu ['maintenance'] mimo fáz UC-9001 (['design'])",
+  "subor": "zadanie/ER/ER-9001 Chybna vymena.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/spustacia_udalost/0",
+  "kod": "C1",
+  "note_id": "ER-9002",
+  "riadok": 23,
+  "sprava": "[[EV-D-9004]] má fázu ['maintenance'] mimo fáz UC-9001 (['design'])",
+  "subor": "zadanie/ER/ER-9002 Vymena bez jednotiek.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/spustacia_udalost/0",
+  "kod": "C2",
+  "note_id": "PROJ-9001",
+  "riadok": 14,
+  "sprava": "[[EV-D-9004]] je delivery; PROJ spúšťa len impact udalosť",
+  "subor": "projekty/zakazka-x/PROJ-9001 Chybny projekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/spustacia_udalost/0",
+  "kod": "C2",
+  "note_id": "UC-9001",
+  "riadok": 26,
+  "sprava": "[[EV-D-9004]] je delivery; UC spúšťa len impact udalosť",
+  "subor": "zadanie/UC/UC-9001 Chybny use case.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/termin",
+  "kod": "A8",
+  "note_id": "GOAL-9001",
+  "riadok": 16,
+  "sprava": "`termin` je dosadenie — cieľ v knižnici je bez termínu (V19)",
+  "subor": "zadanie/GOAL/GOAL-9001 Organizacny ciel s terminom.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/termin",
+  "kod": "F13",
+  "note_id": "GOAL-9001",
+  "riadok": 16,
+  "sprava": "`termin` patrí len k projektovému cieľu",
+  "subor": "zadanie/GOAL/GOAL-9001 Organizacny ciel s terminom.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/typ",
+  "kod": "G2",
+  "note_id": "UC-9003",
+  "riadok": 5,
+  "sprava": "vo vrstve aktiva/ je typ UC; patrí sem len GOAL (uroven: aktivum), prepisy STD a ukazovatele cde/aim — register kontajnerov aj história udalostí sú generované pohľady (V12)",
+  "subor": "aktiva/budova-x/UC-9003 Use case v aktivach.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/typ_ulohy",
+  "kod": "C5",
+  "note_id": "UC-9001",
+  "riadok": 13,
+  "sprava": "`typ_ulohy: utilization`, ale úlohy poskytovateľov dávajú delivery (preberacie úlohy príjemcu sa nepočítajú)",
+  "subor": "zadanie/UC/UC-9001 Chybny use case.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/uc",
+  "kod": "C3",
+  "note_id": "ER-9001",
+  "riadok": 21,
+  "sprava": "ER má práve jeden `uc::`, nájdených 2",
+  "subor": "zadanie/ER/ER-9001 Chybna vymena.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/udalosti/0/ev",
+  "kod": "F12",
+  "note_id": "PROJ-9001",
+  "riadok": 17,
+  "sprava": "dátum pre [[EV-D-9003]], ktorú žiadny vybraný ER nespúšťa (dostupné: EV-D-9004)",
+  "subor": "projekty/zakazka-x/PROJ-9001 Chybny projekt.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/ulohy/0/aktor",
+  "kod": "C6",
+  "note_id": "UC-9001",
+  "riadok": 33,
+  "sprava": "aktér úlohy T1 ([[ACT-poverena/ARCH]]) nie je v `aktor::`",
+  "subor": "zadanie/UC/UC-9001 Chybny use case.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/ulohy/1/id",
+  "kod": "C6",
+  "note_id": "UC-9001",
+  "riadok": 33,
+  "sprava": "`ulohy[].id` T1 je v UC duplicitné",
+  "subor": "zadanie/UC/UC-9001 Chybny use case.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/viaze_sa_na",
+  "kod": "E1",
+  "note_id": "IU-C-9001",
+  "riadok": null,
+  "sprava": "`viaze_sa_na::` je povinné (≥ 1) — bez ukotvenia kontajner nikam nepatrí",
+  "subor": "zadanie/IU-C/IU-C-9001 Chybny kontajner.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/viaze_sa_na/0",
+  "kod": "B4",
+  "note_id": "IU-C-9002",
+  "riadok": 28,
+  "sprava": "ukotvenie literálom #proces bez vysvetlenia — doplň HTML komentár, prečo nie je IU-O",
+  "subor": "zadanie/IU-C/IU-C-9002 Dataset duplikat.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/vystupy/0",
+  "kod": "F12",
+  "note_id": "PROJ-9001",
+  "riadok": 19,
+  "sprava": "výstup vystupy/ids/ER-9001.ids bez hashu — doplní ho generátor",
+  "subor": "projekty/zakazka-x/PROJ-9001 Chybny projekt.md",
+  "uroven": "I"
+ },
+ {
+  "json_pointer": "/vyvolava",
+  "kod": "C8",
+  "note_id": "EV-D-9003",
+  "riadok": 21,
+  "sprava": "`vyvolava::` patrí len na impact udalosť (PAS tab. 2)",
+  "subor": "zadanie/registre/EV/EV-D-9003 Neplanovany delivery.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/vyvolava/0",
+  "kod": "C8",
+  "note_id": "EV-I-9001",
+  "riadok": 20,
+  "sprava": "`vyvolava:: [[EV-I-9002]]` musí mieriť na delivery udalosť",
+  "subor": "zadanie/registre/EV/EV-I-9001 Impact bez objektu.md",
+  "uroven": "E"
+ },
+ {
+  "json_pointer": "/zapnute/0",
+  "kod": "C7",
+  "note_id": "ER-9001",
+  "riadok": 23,
+  "sprava": "[[STD-CL-9001]] má `plati: vzdy` — zapínanie je zbytočné, platí automaticky",
+  "subor": "zadanie/ER/ER-9001 Chybna vymena.md",
+  "uroven": "W"
+ },
+ {
+  "json_pointer": "/zdovodnenie",
+  "kod": "D19",
+  "note_id": "IU-O-9001",
+  "riadok": 27,
+  "sprava": "`zdovodnenie` spomína nájomc, zmluv — over, či nositeľom nie je CDE/AIM/CAFM, nie model (§0.9)",
+  "subor": "zadanie/IU-O/IU-O-9001 Chybny objekt.md",
+  "uroven": "I"
+ }
+]
