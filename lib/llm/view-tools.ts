@@ -221,7 +221,7 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
       "'NetVolume'; hľadá sa v rozbalenom obsahu), percent = poloha 0 až 100; stav posunu vráti panel_view. " +
       "ZOOM PANELA: panel_zoom={panel?, zoom: in|out|reset|číslo} ('zväčši panel', 'späť na normál'). Obe aj bez " +
       "mode; s panels ho najprv otvorí. Výber prvku a riadok vlastnosti ide cez show_in_3d (highlight). " +
-      "PODKLADY PDF V 3D: underlays_3d=false skryje kalibrované podklady v 3D (kalibrácia ostane uložená), true ich zobrazí; je to stav viewera (get_viewer_state.underlays_3d), nie visible kalibrácie. JEDNOTLIVÉ PODKLADY (zapnúť podklad podlažia, len jeden, priehľadnosť, uložiť): calibrate_underlay mode=list|show_in_3d|hide|set_opacity (stav v get_viewer_state.underlays). POLOHA NA PDF: plan_position=true ukáže na kalibrovanom PDF (záložka, dlaždica) bodku polohy a výsek smeru pohľadu živej kamery, false skryje; čítanie get_viewer_state.plan_position.",
+      "PODKLADY PDF V 3D: pri štarte sú všetky vypnuté. underlays_3d je len hlavný vypínač: false skryje zapnuté podklady v 3D (kalibrácia ostane uložená), true sám nič nezapne; podklad sa zapína jednotlivo cez calibrate_underlay mode=show_in_3d (alebo oko v paneli Underlays). Je to stav viewera (get_viewer_state.underlays_3d), nie visible kalibrácie. JEDNOTLIVÉ PODKLADY (zapnúť podklad podlažia, len jeden, priehľadnosť, uložiť): calibrate_underlay mode=list|show_in_3d|hide|set_opacity (stav v get_viewer_state.underlays). POLOHA NA PDF: plan_position=true ukáže na kalibrovanom PDF (záložka, dlaždica) bodku polohy a výsek smeru pohľadu živej kamery, false skryje; čítanie get_viewer_state.plan_position.",
     inputSchema: {
       type: "object",
       properties: {
@@ -312,7 +312,7 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         underlays_3d: {
           type: "boolean",
-          description: "false = skryť PDF podklady v 3D (kalibrácia ostane), true = zobraziť; stav viewera, nezapisuje sa do DB; jednotlivé podklady a priehľadnosť: calibrate_underlay mode=show_in_3d|hide|set_opacity",
+          description: "false = skryť PDF podklady v 3D (kalibrácia ostane), true = povoliť (sám nič nezapne, podklad zapne calibrate_underlay mode=show_in_3d); stav viewera, nezapisuje sa do DB; jednotlivé podklady a priehľadnosť: calibrate_underlay mode=show_in_3d|hide|set_opacity",
         },
         plan_position: {
           type: "boolean",
