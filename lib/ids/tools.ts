@@ -4,6 +4,7 @@ import { upstreamInputSchema } from "../engine/session";
 import type { IdsOpenReq } from "../viewer-ids";
 
 import { describeDoc, diffDocs } from "./describe";
+import type { IdsLibraryStore } from "./library";
 import { DEFAULT_IDS_AUTHOR, IDS_ACTIONS, type IdsAction } from "./tool-defs";
 import { callIds, defaultIdsEngine, IdsEngineError, type IdsEngine } from "./engine";
 import {
@@ -29,6 +30,8 @@ export interface IdsToolDeps {
   engine?: () => Promise<IdsEngine>;
   /** Živý viewer (`open`, `from_viewer`); bez neho tieto akcie povedia, že viewer nie je nastavený. */
   viewer?: IdsViewerDeps;
+  /** Väzby IDS na modely (D-182); bez neho `list` väzby neukáže. */
+  lib?: Pick<IdsLibraryStore, "models">;
 }
 
 /** Výsledok `ids_open` vo vieweri: `APPLIED` z živého kanála. */
@@ -157,6 +160,7 @@ const metaView = (v: IdsVersionMeta) => ({
   sha256: v.sha256,
   ids_version: v.ids_version,
   audit: v.audit,
+  ...(v.library_path ? { library: { repo: v.library_repo, path: v.library_path, commit: v.library_commit, code: v.library_code } } : {}),
 });
 
 function runView(r: IdsRunSummary) {
@@ -175,7 +179,11 @@ function runView(r: IdsRunSummary) {
 async function list(deps: IdsToolDeps) {
   const docs = await deps.store.listDocuments();
   const ids = docs.map((d) => d.id);
-  const [latest, runs] = await Promise.all([deps.store.latestVersions(ids), deps.store.lastRuns(ids)]);
+  const [latest, runs, models] = await Promise.all([
+    deps.store.latestVersions(ids),
+    deps.store.lastRuns(ids),
+    deps.lib ? deps.lib.models(ids).catch(() => null) : Promise.resolve(null),
+  ]);
   return {
     count: docs.length,
     items: docs.map((d) => {
@@ -189,6 +197,8 @@ async function list(deps: IdsToolDeps) {
         status: d.status,
         version: v?.version ?? null,
         updated_at: d.updated_at,
+        ...(v?.library_commit ? { library_commit: v.library_commit } : {}),
+        ...(models ? { models: models.filter((m) => m.document_id === d.id).map((m) => m.model) } : {}),
         last_run: r ? runView(r) : null,
       };
     }),
@@ -369,7 +379,7 @@ async function exportIds(args: Record<string, unknown>, deps: IdsToolDeps) {
 }
 
 /** `ids_audit`: XML s chybami auditu sa neuloží. */
-async function auditXml(e: Engine, xml: string): Promise<Record<string, unknown>> {
+export async function auditXml(e: Engine, xml: string): Promise<Record<string, unknown>> {
   const report = await callIds(e.engine, "ids_audit", { ids_xml: xml });
   const c = counts(report.counts);
   if ((c?.error ?? 0) > 0) {

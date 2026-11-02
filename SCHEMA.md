@@ -526,6 +526,20 @@ dokumenty s verziami, z chatu aj z viewera. Aditívne, IDS nie je v `objects` (D
 - `query_view` whitelist + `ids_documents` (verzie s XML nie, XML číta `ids_document`). Práva ako ostatné
   nové tabuľky: `anon`/`authenticated` nič, `service_role` všetko.
 
+**D-182 (migrácia `supabase/pending/20261102120000_ids_library_assign.sql`, NESPUSTENÁ; test
+`supabase/tests/ids_library_assign.sql`):** knižnica požiadaviek v AIM vedomým priradením. Aditívne:
+- `ids_document_versions` + `library_repo`, `library_path`, `library_commit`, `library_code` (kód súboru v čase
+  priradenia). Check `ids_document_versions_library_ref_check`: pri `source = 'import'` sú repo, cesta a commit
+  povinné (`not valid`, staré riadky sa nekontrolujú). `author` = kto priradil, `created_at` = kedy.
+- `ids_document_models` = ručná väzba IDS na model federácie: `document_id` (FK, cascade),
+  `information_container_id` (FK `information_containers`, len `container_type = 'IFC'`, trigger), `library_container`
+  (voliteľný text, napr. `IU-C-arch-model`), `created_by`, `valid_from`, `valid_until`, `ended_by` (povinné pri
+  ukončení). Jedinečná aktívna dvojica (čiastočný index); väzba sa dá len ukončiť, ukončená sa nemení, nič sa nemaže.
+- `ids_runs` + `engine_version` (verzia nástroja, pri behu z viewera `@ifc-lite/ids` vo forku), `created_by`.
+  Beh z viewera: `trigger = 'viewer'`, `engine = 'ifc-lite'`, `model_revisions` = revízia načítaná vo vieweri.
+- `v_ids_latest`, `v_ids_summary` + na konci `ids_stale` (IDS má v AIM novšiu verziu než beh; null pre behy bez
+  verzie IDS) a `engine_version`. Práva: `ids_document_models` len `service_role`.
+
 ### 2.14 Revízie IFC modelov a úlohy úprav (D-086, migrácia 20261018120000)
 
 **Deklarovaná extenzia** (IFC verzie súboru nenesie; BCF nesie tému úlohy, nie úložisko).
