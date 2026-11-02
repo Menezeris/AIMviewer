@@ -190,6 +190,9 @@ teraz by znamenalo hádať politiky/tvary bez konzumenta.
 **Dôsledok:** Detail odchýlok je v SCHEMA.md §8. Ďalšie zmeny schémy = nové migrácie,
 táto sa nikdy needituje ani nemaže.
 
+
+**Dodatok 2. 11. (Samuel):** RLS je zapnuté na všetkých tabuľkách `public` bez politík (migrácia `20261102180000_enable_rls_public.sql`) ako obrana do hĺbky. `anon`/`authenticated` granty nemajú už od `20261016120000`; host, ETL a motor idú cez `service_role`/`postgres` s BYPASSRLS, správanie sa nemení. Politiky prídu až s auth.
+
 ### D-026 — AIM Viewer: stack a dátový prístup
 **Rozhodnutie:** Viewer je **Next.js (App Router) + TypeScript + Tailwind + shadcn/ui**
 na **Verceli** (D-006). Dáta sa čítajú **server-side** (Server Components / route
