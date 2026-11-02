@@ -1,6 +1,6 @@
 /**
  * PathScheme knižnice (port `assetin/schema/cesty.py`, D-186 krok 2b): jediné miesto, kde sa rozhoduje
- * ID <-> cesta súboru. Zatiaľ len `rozober` (loader); `cesta_pre` príde s writerom (krok 3).
+ * ID <-> cesta súboru: `rozober` (loader) a `cestaPre` (writer, nová poznámka, premenovanie).
  */
 
 export const VRSTVY = ["zadanie", "aktiva", "projekty"] as const;
@@ -107,3 +107,47 @@ export function rozober(rel: string): Umiestnenie {
   if (typ === "STD" && stem === "STD") return um(vrstva, "STD", "STD", null, balik);
   return um(vrstva, typ, token, nazov, balik);
 }
+
+/** Typ -> pevný priečinok v `zadanie/`. */
+export const PRIECINOK_PRE_TYP: Record<string, string> = Object.fromEntries(Object.entries(PRIECINKY).map(([k, v]) => [v, k]));
+
+/** Časť `nazov`, ktorá smie byť v mene súboru: zakázané znaky = medzera, medzery zlúčené, bez bodky na konci. */
+export function nazovDoSuboru(nazov: string | null | undefined): string {
+  if (!nazov) return "";
+  // eslint-disable-next-line no-control-regex
+  let t = nazov.replace(/[\\/:*?"<>|\x00-\x1f]+/g, " ");
+  t = t.replace(/\s+/g, " ").trim().replace(/\.+$/, "").trim();
+  return t;
+}
+
+export const nazovSuboru = (id: string, nazov: string | null | undefined) => {
+  const c = nazovDoSuboru(nazov);
+  return c ? `${id} ${c}` : id;
+};
+
+/** Meno súboru nesie `nazov` (ACT a index `STD.md` nie). */
+export const premenovatelna = (typ: string, id: string) => typ !== "ACT" && !(typ === "STD" && id === "STD");
+
+/** Opak `rozober`: kam patrí poznámka s týmto ID. */
+export function cestaPre(typ: string, id: string, nazov: string | null, vrstva = "zadanie", balik: string | null = null, uroven: string | null = null): string {
+  if (!(VRSTVY as readonly string[]).includes(vrstva)) throw new ChybaCesty(`neznáma vrstva '${vrstva}'`);
+  const koren = vrstva === "zadanie" ? vrstva : `${vrstva}/${balik ?? ""}`;
+  if (typ === "ACT") {
+    if (!id.startsWith("ACT-")) throw new ChybaCesty(`ACT id musí začínať 'ACT-': ${id}`);
+    const segs = id.slice(4).split("/");
+    const u = uroven ?? (segs.length === 1 ? "strana" : "funkcia");
+    const base = `${koren}/registre/ACT`;
+    if (u === "strana" || u === "tim") return `${base}/${segs.join("/")}/${segs[segs.length - 1]}.md`;
+    return `${base}/${[...segs.slice(0, -1), `${segs[segs.length - 1]}.md`].join("/")}`;
+  }
+  if (typ === "STD" && id === "STD") return `${koren}/STD/STD.md`;
+  const subor = `${nazovSuboru(id, nazov)}.md`;
+  if (vrstva === "zadanie") {
+    const pr = PRIECINOK_PRE_TYP[typ];
+    if (!pr) throw new ChybaCesty(`'${typ}'`);
+    return `${koren}/${pr}/${subor}`;
+  }
+  return `${koren}/${subor}`;
+}
+
+export const typZPrefixuId = (id: string) => typZPrefixu(id);
