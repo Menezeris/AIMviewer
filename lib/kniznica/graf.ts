@@ -174,9 +174,15 @@ export class Kniznica {
     if (idx) return idx;
     idx = new Map();
     const pridaj = (k: string, v: unknown) => idx!.set(k, [...(idx!.get(k) ?? []), v]);
-    if (meno === "typ") for (const n of this.vsetky) pridaj(typPoznamky(n) ?? "", n);
-    else if (meno === "ciel") for (const o of this.odkazy) if (o.ciel !== null) pridaj(o.ciel, o);
-    else for (const o of this.odkazy) pridaj(o.zdroj, o);
+    if (meno === "typ") {
+      for (const n of this.vsetky) pridaj(typPoznamky(n) ?? "", n);
+    } else if (meno === "ciel") {
+      for (const o of this.odkazy) {
+        if (o.ciel !== null) pridaj(o.ciel, o);
+      }
+    } else {
+      for (const o of this.odkazy) pridaj(o.zdroj, o);
+    }
     this.memo.set(meno, idx);
     return idx;
   }
