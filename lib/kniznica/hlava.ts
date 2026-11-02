@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { blokyJson, parsuj, serializuj } from "./bloky";
+import { nacitajSubor, poznamkaJson } from "./loader";
 
 /**
  * Read-only prehliadač knižnice požiadaviek (port do TS, krok 1, assetin-library V30): hlava knižnice
@@ -68,6 +69,8 @@ export interface DetailSuboru {
   /** Spojenie `raw` blokov = text (bajtovo). */
   round_trip: boolean;
   bloky: ReturnType<typeof blokyJson>;
+  /** Loader (krok 2b): zlúčené dáta, pôvod polí, typovaný model alebo null, pod-záznamy, diagnostiky. */
+  poznamka: ReturnType<typeof poznamkaJson> | null;
 }
 
 export async function detail(store: HlavaStore, kniznica: string, cesta: string): Promise<DetailSuboru | null> {
@@ -77,5 +80,6 @@ export async function detail(store: HlavaStore, kniznica: string, cesta: string)
   if (s === "chyba_migracie") throw new HlavaMigraciaChyba();
   if (!s) return null;
   const hash = createHash("sha256").update(s.text, "utf8").digest("hex");
-  return { subor: s, sha256_sedi: hash === s.sha256, round_trip: serializuj(parsuj(s.text)) === s.text, bloky: blokyJson(s.text) };
+  const poznamka = cesta === "KNIZNICA.md" ? null : poznamkaJson(nacitajSubor(cesta, s.text));
+  return { subor: s, sha256_sedi: hash === s.sha256, round_trip: serializuj(parsuj(s.text)) === s.text, bloky: blokyJson(s.text), poznamka };
 }

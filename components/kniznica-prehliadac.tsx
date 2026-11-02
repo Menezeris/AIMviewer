@@ -32,6 +32,14 @@ interface Detail {
   sha256_sedi: boolean;
   round_trip: boolean;
   bloky: { frontmatter: (Blok & { data: unknown; chyba: boolean }) | null; telo: Blok[] };
+  poznamka: {
+    id: string | null;
+    typ: string | null;
+    model: unknown;
+    zdroje: Record<string, string>;
+    pod_zaznamy: Array<{ id: string; druh: string }>;
+    diagnostiky: Array<{ json_pointer: string; uroven: string; kod: string; sprava: string; riadok: number | null }>;
+  } | null;
 }
 
 const FARBA: Record<string, string> = {
@@ -159,6 +167,34 @@ export function KniznicaPrehliadac({ initial }: { initial?: { kniznica?: string;
         <CardContent className="text-sm">
           {detailError && <p className="text-destructive">{detailError}</p>}
           {sel && !detail && !detailError && <p className="text-muted-foreground">Načítavam...</p>}
+          {detail?.poznamka && (
+            <div className="mb-3 space-y-1 text-xs" data-testid="kniznica-loader">
+              <p>
+                Model {detail.poznamka.typ ?? "?"}: {detail.poznamka.model ? "natypovaný" : "nenatypovaný"} · polia z frontmatter{" "}
+                {Object.values(detail.poznamka.zdroje).filter((z) => z === "frontmatter").length}, inline{" "}
+                {Object.values(detail.poznamka.zdroje).filter((z) => z === "inline").length}, blok{" "}
+                {Object.values(detail.poznamka.zdroje).filter((z) => z === "blok").length}
+                {detail.poznamka.pod_zaznamy.length > 0 && ` · pod-záznamy: ${detail.poznamka.pod_zaznamy.map((p) => p.id).join(", ")}`}
+              </p>
+              {detail.poznamka.diagnostiky.length === 0 ? (
+                <p className="text-muted-foreground">Loader: bez diagnostík.</p>
+              ) : (
+                <ul className="space-y-0.5">
+                  {detail.poznamka.diagnostiky.map((d, i) => (
+                    <li key={i} className={d.uroven === "E" ? "text-destructive" : "text-amber-700 dark:text-amber-400"}>
+                      {d.uroven} {d.kod} {d.json_pointer} {d.riadok ? `(riadok ${d.riadok})` : ""}: {d.sprava}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {detail.poznamka.model != null && (
+                <details>
+                  <summary className="cursor-pointer text-muted-foreground">Typovaný model (JSON)</summary>
+                  <pre className="overflow-auto whitespace-pre-wrap rounded border p-2">{JSON.stringify(detail.poznamka.model, null, 2)}</pre>
+                </details>
+              )}
+            </div>
+          )}
           {detail && raw && <pre className="overflow-auto whitespace-pre-wrap rounded border p-2 text-xs">{detail.subor.text}</pre>}
           {detail && !raw && (
             <ol className="space-y-1">
