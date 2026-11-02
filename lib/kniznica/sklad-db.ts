@@ -66,7 +66,8 @@ export function supabaseSklad(kniznica: string): Sklad {
           typ,
         };
       });
-      const projekcie = zapisy.map((z) => projekcia(z.nova_cesta ?? z.cesta!, z.text));
+      // {cieľová cesta: projekcia}: RPC páruje podľa cesty z výstupu zapis_revizie, nie podľa poradia
+      const projekcie = Object.fromEntries(zapisy.map((z) => [z.nova_cesta ?? z.cesta!, projekcia(z.nova_cesta ?? z.cesta!, z.text)]));
       const { error } = await getSupabaseAdmin().rpc("library_zapis", {
         p_kniznica: kniznica,
         p_autor: podpis.autor.trim(),

@@ -41,17 +41,23 @@ declare
   v_out jsonb;
   v_z   jsonb;
   v_p   jsonb;
-  v_i   integer := 0;
 begin
   if coalesce(trim(p_autor), '') = '' then
     raise exception 'zápis do knižnice potrebuje autora (meno v editore)' using errcode = '22023';
   end if;
-  if jsonb_typeof(p_projekcie) <> 'array' or jsonb_array_length(p_projekcie) <> jsonb_array_length(p_zapisy) then
-    raise exception 'p_projekcie: jedna projekcia na každý zápis' using errcode = '22023';
+  -- projekcie sú objekt {cieľová cesta: projekcia}: párujú sa podľa cesty, nie podľa poradia výstupu
+  if jsonb_typeof(p_projekcie) <> 'object' then
+    raise exception 'p_projekcie: objekt {cesta: projekcia}' using errcode = '22023';
+  end if;
+  if exists (
+    select 1 from jsonb_array_elements(p_zapisy) z
+    where not (p_projekcie ? coalesce(z ->> 'nova_cesta', z ->> 'cesta'))
+  ) then
+    raise exception 'p_projekcie: chýba projekcia pre zapisovaný súbor' using errcode = '22023';
   end if;
   v_out := library.zapis_revizie(p_kniznica, trim(p_autor), p_sprava, p_zdroj, p_schema_verzia, p_zapisy);
   for v_z in select * from jsonb_array_elements(v_out) loop
-    v_p := p_projekcie -> v_i;
+    v_p := p_projekcie -> (v_z ->> 'cesta');
     insert into library.projekcia (subor_id, rev, frontmatter, data, odkazy, diagnostiky, engine)
       select s.id, (v_z ->> 'rev')::integer, v_p -> 'frontmatter', v_p -> 'data',
              coalesce(v_p -> 'odkazy', '[]'::jsonb), coalesce(v_p -> 'diagnostiky', '[]'::jsonb), p_engine
@@ -61,7 +67,6 @@ begin
       rev = excluded.rev, frontmatter = excluded.frontmatter, data = excluded.data,
       odkazy = excluded.odkazy, diagnostiky = excluded.diagnostiky, engine = excluded.engine,
       vypocitana = now();
-    v_i := v_i + 1;
   end loop;
   return v_out;
 end
