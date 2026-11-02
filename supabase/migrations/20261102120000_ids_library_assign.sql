@@ -1,5 +1,5 @@
 -- D-182 (#351): knižnica požiadaviek v AIM vedomým priradením k projektu.
--- PRIPRAVENÉ, NESPUSTENÉ (supabase/pending). Aplikuje orchestrátor so Samuelovým slovom, potom presun do migrations/.
+-- APLIKOVANÉ na produkciu 2. 11. (Samuel "migrácia áno", orchestrátor).
 -- Aditívne, bez zmeny existujúcich riadkov. Závisí od 20261023180000_ids_documents.sql a
 -- 20261030120000_information_containers.sql (`revisions_stale`, `information_containers`).
 --

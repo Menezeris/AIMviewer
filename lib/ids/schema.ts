@@ -1,6 +1,6 @@
-/** Migrácia D-182 (`supabase/pending/20261102120000_ids_library_assign.sql`) ešte nemusí byť v DB: kód hosta to zvládne. */
+/** Migrácia D-182 (`supabase/migrations/20261102120000_ids_library_assign.sql`) ešte nemusí byť v DB: kód hosta to zvládne. */
 
-export const SCHEMA_HINT = "v DB chýba migrácia D-182 supabase/pending/20261102120000_ids_library_assign.sql, čaká na nasadenie";
+export const SCHEMA_HINT = "v DB chýba migrácia D-182 supabase/migrations/20261102120000_ids_library_assign.sql, čaká na nasadenie";
 
 /** Chýbajúci stĺpec alebo tabuľka (Postgres / PostgREST). */
 export const isMissingSchema = (error: { code?: string; message?: string } | null) =>
