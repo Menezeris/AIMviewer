@@ -7,13 +7,13 @@ import { ChybaSkladu, Konflikt } from "./zapis";
 
 /**
  * Vydanie knižnice v DB (D-186 krok 6): texty hlavy cez `public.library_texty`, snímka + katalóg IDS v jednej
- * transakcii cez `public.library_vydaj` (pending migrácia `20261102230500_library_vydaj.sql`), cesta exportu cez
+ * transakcii cez `public.library_vydaj` (migrácia `20261102230500_library_vydaj.sql`), cesta exportu cez
  * `public.library_vydanie_export`, zip do súkromného bucketu Storage. Len `service_role` na serveri (D-026).
  */
 
 export class VydanieMigraciaChyba extends Error {
   constructor() {
-    super("Vydanie knižnice: v DB chýba migrácia supabase/pending/20261102230500_library_vydaj.sql (RPC library_vydaj), čaká na nasadenie.");
+    super("Vydanie knižnice: v DB chýba migrácia supabase/migrations/20261102230500_library_vydaj.sql (RPC library_vydaj).");
   }
 }
 

@@ -1,5 +1,5 @@
 -- Port knižnice požiadaviek do TS, krok 6 (assetin-library V30, Q70; AIM D-186): vydanie knižnice z editora v AIM.
--- NESPUSTENÉ (pending): aplikuje orchestrátor po schválení. Vydanie v AIM je navyše za env bránou
+-- APLIKOVANÉ na produkciu 2. 11. 2026 (orchestrátor; definície funkcií overené md5 voči tomuto súboru). Vydanie v AIM je navyše za env bránou
 -- LIBRARY_RELEASE_ENABLED (predvolene vypnutá, zapína sa na Samuelovo slovo; rola vydavateľa).
 --
 -- Schéma `library` nie je v PostgREST vystavená; host (service_role) volá dve RPC v `public`:
