@@ -7,6 +7,11 @@
  * 40000, GrossFloorArea 88, GrossVolume 347,6, NetVolume 333,5 (= 347,6 - 88 x 0,15 - 72 x 0,0125).
  * Miestnosť 2.02 (D-185 oprava, náhrada cez mesh): IfcFacetedBrep kváder 4 x 4 x 3,95 m vedľa (x 12 až 16), bez
  * extrúzie, Qto Height 3950, GrossPerimeter 16000, GrossFloorArea 16, GrossVolume a NetVolume 63,2.
+ * NetFloorArea (D-185 dodatok 4) v 2.01: stĺp 0,4 x 0,4 m (x 7,8 až 8,2, y 2,8 až 3,2) cez celú výšku, otvor v doske pod
+ * 1 x 1 m (x 1,5 až 2,5, y 1,5 až 2,5; IfcRelVoidsElement), vstavka IfcFurniture 1 x 0,6 m (x 9,5 až 10,5, y 6,7 až 7,3,
+ * IsBuiltIn = TRUE na type) a voľný nábytok 1 x 1 m (x 5,5 až 6,5, y 0,5 až 1,5; ten istý typ, ale IsBuiltIn = FALSE na výskyte,
+ * ktorý má prednosť), ktorý sa neodčíta.
+ * Qto NetFloorArea 86,24 (= 88 - 0,16 - 1 - 0,6).
  */
 export const MINI_SPACE_VERIFY = `ISO-10303-21;
 HEADER;FILE_DESCRIPTION(('ViewDefinition [ReferenceView]'),'2;1');
@@ -51,7 +56,8 @@ DATA;
 #44=IFCQUANTITYAREA('GrossFloorArea',$,$,88.,$);
 #45=IFCQUANTITYVOLUME('GrossVolume',$,$,347.6,$);
 #46=IFCQUANTITYVOLUME('NetVolume',$,$,333.5,$);
-#47=IFCELEMENTQUANTITY('0miniqto0space00000100',$,'Qto_SpaceBaseQuantities',$,'BaseQuantities',(#40,#41,#42,#43,#44,#45,#46));
+#49=IFCQUANTITYAREA('NetFloorArea',$,$,86.24,$);
+#47=IFCELEMENTQUANTITY('0miniqto0space00000100',$,'Qto_SpaceBaseQuantities',$,'BaseQuantities',(#40,#41,#42,#43,#44,#49,#45,#46));
 #48=IFCRELDEFINESBYPROPERTIES('0minireldef00000000100',$,$,$,(#32),#47);
 #50=IFCCARTESIANPOINT((6000.,4000.));
 #51=IFCAXIS2PLACEMENT2D(#50,$);
@@ -125,6 +131,43 @@ DATA;
 #236=IFCELEMENTQUANTITY('0miniqto0space20200001',$,'Qto_SpaceBaseQuantities',$,'BaseQuantities',(#231,#232,#233,#234,#235));
 #237=IFCRELDEFINESBYPROPERTIES('0minireldef20200000001',$,$,$,(#230),#236);
 #238=IFCRELAGGREGATES('0minirelagg20200000001',$,$,$,#17,(#230));
+#300=IFCCARTESIANPOINT((8000.,3000.));
+#301=IFCAXIS2PLACEMENT2D(#300,$);
+#302=IFCRECTANGLEPROFILEDEF(.AREA.,$,#301,400.,400.);
+#303=IFCEXTRUDEDAREASOLID(#302,#6,#9,3950.);
+#304=IFCSHAPEREPRESENTATION(#8,'Body','SweptSolid',(#303));
+#305=IFCPRODUCTDEFINITIONSHAPE($,$,(#304));
+#306=IFCCOLUMN('0minicolumn00000000100',$,'SL-stlp',$,$,#31,#305,$,.COLUMN.);
+#310=IFCCARTESIANPOINT((2000.,2000.));
+#311=IFCAXIS2PLACEMENT2D(#310,$);
+#312=IFCRECTANGLEPROFILEDEF(.AREA.,$,#311,1000.,1000.);
+#313=IFCEXTRUDEDAREASOLID(#312,#54,#9,250.);
+#314=IFCSHAPEREPRESENTATION(#8,'Body','SweptSolid',(#313));
+#315=IFCPRODUCTDEFINITIONSHAPE($,$,(#314));
+#316=IFCOPENINGELEMENT('0miniopening0000000100',$,'OT-otvor',$,$,#31,#315,$,.OPENING.);
+#317=IFCRELVOIDSELEMENT('0minirelvoids000000100',$,$,$,#58,#316);
+#320=IFCCARTESIANPOINT((10000.,7000.));
+#321=IFCAXIS2PLACEMENT2D(#320,$);
+#322=IFCRECTANGLEPROFILEDEF(.AREA.,$,#321,1000.,600.);
+#323=IFCEXTRUDEDAREASOLID(#322,#6,#9,900.);
+#324=IFCSHAPEREPRESENTATION(#8,'Body','SweptSolid',(#323));
+#325=IFCPRODUCTDEFINITIONSHAPE($,$,(#324));
+#326=IFCFURNITURE('0minibuiltin0000000100',$,'VS-vstavka',$,$,#31,#325,$,$);
+#327=IFCPROPERTYSINGLEVALUE('IsBuiltIn',$,IFCBOOLEAN(.T.),$);
+#328=IFCPROPERTYSET('0minipsetbuiltin000100',$,'Pset_FurnitureTypeCommon',$,(#327));
+#329=IFCFURNITURETYPE('0minifurntype000000100',$,'Vstavka',$,$,(#328),$,$,$,.FACTORY.,.NOTDEFINED.);
+#330=IFCRELDEFINESBYTYPE('0minireltype0000000100',$,$,$,(#326,#346),#329);
+#340=IFCCARTESIANPOINT((6000.,1000.));
+#341=IFCAXIS2PLACEMENT2D(#340,$);
+#342=IFCRECTANGLEPROFILEDEF(.AREA.,$,#341,1000.,1000.);
+#343=IFCEXTRUDEDAREASOLID(#342,#6,#9,750.);
+#344=IFCSHAPEREPRESENTATION(#8,'Body','SweptSolid',(#343));
+#345=IFCPRODUCTDEFINITIONSHAPE($,$,(#344));
+#346=IFCFURNITURE('0minifurniture00000100',$,'NB-stol',$,$,#31,#345,$,$);
+#347=IFCPROPERTYSINGLEVALUE('IsBuiltIn',$,IFCBOOLEAN(.F.),$);
+#348=IFCPROPERTYSET('0minipsetfree000000100',$,'Pset_FurnitureTypeCommon',$,(#347));
+#349=IFCRELDEFINESBYPROPERTIES('0minireldef30000000001',$,$,$,(#346),#348);
+#350=IFCRELCONTAINEDINSPATIALSTRUCTURE('0minirelcont0000000300',$,$,$,(#306,#326,#346),#17);
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -132,4 +175,4 @@ END-ISO-10303-21;
 export const MINI_SPACE_VERIFY_BYTES = new TextEncoder().encode(MINI_SPACE_VERIFY);
 
 /** Express ID prvkov fixture. */
-export const MINI_SPACE_IDS = { space: 32, slabBelow: 58, slabAbove: 65, floor: 73, ceiling: 88, brepSpace: 230 } as const;
+export const MINI_SPACE_IDS = { space: 32, slabBelow: 58, slabAbove: 65, floor: 73, ceiling: 88, brepSpace: 230, column: 306, opening: 316, builtIn: 326, furniture: 346 } as const;

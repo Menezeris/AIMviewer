@@ -8,7 +8,7 @@
  * reference_schemas/psd/Qto_SpaceBaseQuantities.xml a psd_IFC4_ADD2_TC1 (text v oboch rovnaký).
  */
 
-export const REGISTRY_VERSION = 3;
+export const REGISTRY_VERSION = 4;
 
 export const SPEC_REF = {
   repo: "buildingSMART/IFC4.3.x-development",
@@ -105,6 +105,46 @@ export const OPEN_MESH_RULE = {
   text: "neuzavretý mesh: výška, pôdorys a obvod len potvrdia zhodu (nesúlad = sivá), objem sa neoveruje",
 } as const;
 
+/**
+ * NetFloorArea (Samuel 3. 11. 2026: "podľa IFC schémy", D-185 dodatok 4): z GrossFloorArea (pôdorys telesa miestnosti) sa
+ * odčíta pôdorys prvkov vnútri miestnosti a otvory v doske pod ňou. Schéma menuje "columns, inner walls, built-in's etc.,
+ * slab openings, or other protruding elements"; register to prekladá na triedy nižšie.
+ * - `element_types`: stĺpy, steny a vstavky. Vstavka = IfcBuildingElementProxy a IfcChimney vždy, IfcFurniture /
+ *   IfcFurnishingElement len s `Pset_FurnitureTypeCommon.IsBuiltIn` = TRUE (na výskyte alebo type); voľný nábytok nie.
+ *   Schodisko, zábradlie a prvky obvodového plášťa (IfcCurtainWall, IfcPlate, IfcMember) sa neodčítajú, schéma ich nemenuje.
+ * - Prvok je "vnútri", keď jeho pôdorys pretína pôdorys miestnosti (prienik nad `min_overlap_m2`, dotyk hranou nie) a výškou
+ *   vyčnieva nad hotovú podlahu (vrch podlahoviny, bez nej spodok telesa miestnosti) do pásma `floor_band_m` nad ňou; stena
+ *   podlažia pod miestnosťou, ktorá končí v skladbe podlahy (ASR 2.01: SN07.01.0014 po vrch podlahoviny), ani trám pod
+ *   stropom nie.
+ * - Otvory v doske: IfcOpeningElement, ktorý vyrezáva dosku pod miestnosťou (vrch dosky na spodku miestnosti +- `contact_m`),
+ *   a diery v profile tej dosky; obe len v rozsahu pôdorysu miestnosti.
+ * - Prekryv odčítaných prvkov (stĺp v stene, otvor pod stĺpom) sa neodčíta dvakrát: bunka prvku nesie len časť, ktorú
+ *   neodčítal prvok pred ním (presne pre dvojice, trojnásobný prekryv sa neopravuje).
+ * - Výška sa neberie do úvahy (schéma: "no reduction for areas under a minimum headroom").
+ */
+export const NET_FLOOR_AREA = {
+  element_types: [
+    "IFCCOLUMN", "IFCCOLUMNSTANDARDCASE",
+    "IFCWALL", "IFCWALLSTANDARDCASE", "IFCWALLELEMENTEDCASE",
+    "IFCBUILDINGELEMENTPROXY", "IFCCHIMNEY",
+  ],
+  /** Vstavky len s `Pset_FurnitureTypeCommon.IsBuiltIn` = TRUE. */
+  built_in_types: ["IFCFURNITURE", "IFCFURNISHINGELEMENT"],
+  built_in_property: { pset: "Pset_FurnitureTypeCommon", name: "IsBuiltIn" },
+  /** Pásmo nad hotovou podlahou (m), do ktorého musí prvok výškou zasahovať. */
+  floor_band_m: 1.0,
+} as const;
+
+/**
+ * NetFloorArea bez otvorov v doske (D-185 dodatok 4, návrh ako NetVolume "krytiny po celej ploche"): súbor sa nezhoduje
+ * s výpočtom podľa schémy, ale zhoduje sa, keď sa otvory v doske neodčítajú (Revit plochu miestnosti o otvory v doske
+ * nezmenšuje; ASR v79: schodiskové priestory 2.20 a 4.06). Žltá, nie červená: metóda je známa, nie chyba modelu.
+ */
+export const NFA_OPENINGS_RULE = {
+  id: "nfa-openings@1",
+  text: "sedí len bez odčítania otvorov v doske (Revit plochu miestnosti o otvory v doske nezmenšuje); schéma ich odčíta",
+} as const;
+
 // ── pravidlo konštantnosti (Samuel 1. 11. 2026: podľa textu schémy) ─────────
 
 /**
@@ -190,6 +230,13 @@ export const SPACE_METHODS = {
     definition: "Sum of all floor areas covered by the space. It includes the area covered by elementsinside the space (columns, inner walls, etc.) and excludes the area covered by wall claddings.",
     spec_ref: spec("GrossFloorArea"),
     explanation: "Hrubá plocha podlahy je plocha pôdorysu telesa miestnosti vrátane plochy stĺpov a priečok vnútri; diery v profile sa odčítajú.",
+  },
+  net_floor_area: {
+    id: "space.netfloorarea.profile@1", target: `${Q}.NetFloorArea`, kind: "area",
+    method: "GrossFloorArea (plocha profilu telesa) - pôdorys prvkov vnútri miestnosti (stĺpy, steny, vstavky; NET_FLOOR_AREA) - otvory v doske pod miestnosťou, každé len v rozsahu pôdorysu miestnosti a bez dvojitého odčítania prekryvu; žltá, keď sedí len bez odčítania otvorov v doske (NFA_OPENINGS_RULE); nesúlad pri prvku s otvormi (CSG) alebo bez telesa = sivá",
+    definition: "Sum of all usable floor areas covered by the space. It excludes the area covered  by elements inside the space (columns, inner walls, built-in's etc.), slab openings, or other protruding elements. Varying heights are not taking into account (i.e. no reduction for areas under a minimum headroom).",
+    spec_ref: spec("NetFloorArea"),
+    explanation: "Čistá plocha podlahy je hrubá plocha podlahy mínus pôdorys stĺpov, stien a vstaviek vnútri miestnosti a otvorov v doske pod ňou, každé len tam, kde leží v pôdoryse miestnosti. Výška miestnosti sa neberie do úvahy.",
   },
   gross_perimeter: {
     id: "space.perimeter.profile@2", target: `${Q}.GrossPerimeter`, kind: "perimeter",

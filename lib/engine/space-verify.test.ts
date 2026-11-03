@@ -8,6 +8,7 @@ import {
   extractBodies,
   regionArea,
   regionIntersectionArea,
+  regionIntersectionArea3,
   regionPerimeter,
   triangulate,
   verifySpace,
@@ -52,7 +53,7 @@ describe("recepty IfcSpace (D-185)", () => {
     slabs: [el("SD-pod", body([ring(rect(0, 0, 12, 8))], 4.6, 4.85)), el("SD-nad", body([ring(rect(0, 0, 12, 8))], 8.8, 9.05))],
     coverings: [el("PD", body([ring(L)], 4.85, 5.0), "FLOORING"), el("PH", body([ring(rect(0, 0, 12, 6))], 8.05, 8.0625), "CEILING")],
   };
-  const good = { Height: 3.95, FinishFloorHeight: 0.15, FinishCeilingHeight: 3.05, GrossPerimeter: 40, GrossFloorArea: 88, GrossVolume: 347.6, NetVolume: 333.5 };
+  const good = { Height: 3.95, FinishFloorHeight: 0.15, FinishCeilingHeight: 3.05, GrossPerimeter: 40, GrossFloorArea: 88, NetFloorArea: 88, GrossVolume: 347.6, NetVolume: 333.5 };
 
   it("správne hodnoty sú zelené, so vzorcom a kotvami", () => {
     const res = verifySpace(space(good), ctx);
@@ -123,13 +124,16 @@ describe("extractExtrusionDefinitions na mini modeli v mm (D-185)", () => {
     expect(regionArea(sp.prisms[0].rings)).toBeCloseTo(88, 6);
     expect(bodies.get(ID.ceiling)!.prisms[0].z0).toBeCloseTo(8.05, 9);
     const res = verifySpace(
-      { globalId: "0minispace201000000001", name: "2.01", body: sp, qto: { Height: 3.95, FinishFloorHeight: 0.15, FinishCeilingHeight: 3.05, GrossPerimeter: 40, GrossFloorArea: 88, GrossVolume: 347.6, NetVolume: 333.5 } },
+      { globalId: "0minispace201000000001", name: "2.01", body: sp, qto: { Height: 3.95, FinishFloorHeight: 0.15, FinishCeilingHeight: 3.05, GrossPerimeter: 40, GrossFloorArea: 88, NetFloorArea: 86.24, GrossVolume: 347.6, NetVolume: 333.5 } },
       {
         slabs: [el("SD-pod", bodies.get(ID.slabBelow)!), el("SD-nad", bodies.get(ID.slabAbove)!)],
         coverings: [el("PD", bodies.get(ID.floor)!, "FLOORING"), el("PH", bodies.get(ID.ceiling)!, "CEILING")],
+        inner: [{ ...el("SL", bodies.get(ID.column)!), ifcType: "IFCCOLUMN" }, { ...el("VS", bodies.get(ID.builtIn)!), ifcType: "IFCFURNITURE" }],
+        slabOpenings: [{ ...el("OT", bodies.get(ID.opening)!), host: "SD-pod" }],
       },
     );
     expect(res.filter((r) => r.status !== "green").map((r) => `${r.target} ${r.status} ${r.formula ?? r.note}`)).toEqual([]);
+    expect(status(res, "NetFloorArea")!.formula).toBe("88 - 0.16 (SL) - 0.6 (VS) - 1 (OT) = 86.24 m2");
   });
 });
 
@@ -148,7 +152,7 @@ describe("opravy overovača po prvom behu (D-185)", () => {
   const slabs = [el("SD-pod", body([ring(rect(0, 0, 12, 8))], 4.6, 4.85)), el("SD-nad", body([ring(rect(0, 0, 12, 8))], 8.8, 9.05))];
   const floor = el("PD", body([ring(L)], 4.85, 5.0), "FLOORING");
   const ceiling = el("PH", body([ring(rect(0, 0, 12, 6))], 8.05, 8.0625), "CEILING");
-  const good = { Height: 3.95, FinishFloorHeight: 0.15, FinishCeilingHeight: 3.05, GrossPerimeter: 40, GrossFloorArea: 88, GrossVolume: 347.6, NetVolume: 333.5 };
+  const good = { Height: 3.95, FinishFloorHeight: 0.15, FinishCeilingHeight: 3.05, GrossPerimeter: 40, GrossFloorArea: 88, NetFloorArea: 88, GrossVolume: 347.6, NetVolume: 333.5 };
   const noBody = (name: string, pt: string, bbox?: Body["bbox"]): Element => el(name, { expressId: 99, prisms: [], unsupported: "profile boundaries touch", ...(bbox ? { bbox } : {}) }, pt);
 
   it("B3: NetVolume odčíta len podlahovinu a podhľad, nie izoláciu vnútri telesa", () => {
@@ -220,9 +224,9 @@ describe("opravy overovača po prvom behu (D-185)", () => {
     expect(r.status).toBe("green");
   });
 
-  it("bez telesa sú sivé všetky recepty (8), s dôvodom", () => {
+  it("bez telesa sú sivé všetky recepty (9), s dôvodom", () => {
     const res = verifySpace({ ...el("X", { expressId: 9, prisms: [], unsupported: "mesh nie je uzavretý" }), qto: good }, { slabs, coverings: [] });
-    expect(res).toHaveLength(8);
+    expect(res).toHaveLength(9);
     expect(res.every((r) => r.status === "grey" && r.note === "mesh nie je uzavretý")).toBe(true);
   });
 
@@ -261,7 +265,7 @@ describe("doplnok 2 po druhom behu (D-185)", () => {
   const slabs = [el("SD-pod", body([ring(rect(0, 0, 12, 8))], 4.6, 4.85)), el("SD-nad", body([ring(rect(0, 0, 12, 8))], 8.8, 9.05))];
   const floor = el("PD", body([ring(L)], 4.85, 5.0), "FLOORING");
   const ceiling = el("PH", body([ring(rect(0, 0, 12, 6))], 8.05, 8.0625), "CEILING");
-  const good = { Height: 3.95, FinishFloorHeight: 0.15, FinishCeilingHeight: 3.05, GrossPerimeter: 40, GrossFloorArea: 88, GrossVolume: 347.6, NetVolume: 333.5 };
+  const good = { Height: 3.95, FinishFloorHeight: 0.15, FinishCeilingHeight: 3.05, GrossPerimeter: 40, GrossFloorArea: 88, NetFloorArea: 88, GrossVolume: 347.6, NetVolume: 333.5 };
   const extr = (b: Body): Body => ({ ...b, source: "extrusion" });
   const space = (qto: Record<string, number>, b: Body = extr(body([ring(L)], 4.85, 8.8))): SpaceInput => ({ ...el("2.01", b), qto });
   /** Kváder 8 x 11 ako NEUZAVRETÝ mesh (bez jednej bočnej steny). */
@@ -359,7 +363,7 @@ describe("bunky a vysvetlenie receptov (D-185 UI)", () => {
     slabs: [el("SD-pod", body([ring(rect(0, 0, 12, 8))], 4.6, 4.85)), el("SD-nad", body([ring(rect(0, 0, 12, 8))], 8.8, 9.05))],
     coverings: [el("PD", body([ring(L)], 4.85, 5.0), "FLOORING"), el("PH", body([ring(rect(0, 0, 12, 6))], 8.05, 8.0625), "CEILING")],
   };
-  const good = { Height: 3.95, FinishFloorHeight: 0.15, FinishCeilingHeight: 3.05, GrossPerimeter: 40, GrossFloorArea: 88, GrossVolume: 347.6, NetVolume: 333.5 };
+  const good = { Height: 3.95, FinishFloorHeight: 0.15, FinishCeilingHeight: 3.05, GrossPerimeter: 40, GrossFloorArea: 88, NetFloorArea: 88, GrossVolume: 347.6, NetVolume: 333.5 };
   /** Výraz nad bunkami (A - B - C, A x B, A) dosadený = vypočítaná hodnota. */
   const evalCells = (expr: string, cells: Array<{ key: string; value: number }>) => {
     const v = (k: string) => cells.find((c) => c.key === k)!.value;
@@ -370,7 +374,7 @@ describe("bunky a vysvetlenie receptov (D-185 UI)", () => {
 
   it("každý recept so stavom z geometrie má vysvetlenie, výraz a bunky, ktoré dajú vypočítanú hodnotu", () => {
     const res = verifySpace(space(good), ctx);
-    expect(res).toHaveLength(8);
+    expect(res).toHaveLength(9);
     for (const r of res) {
       expect(r.explanation.length, r.recipe).toBeGreaterThan(20);
       expect(r.expression, r.recipe).toBeTruthy();
@@ -416,5 +420,115 @@ describe("bunky a vysvetlenie receptov (D-185 UI)", () => {
     const r = status(verifySpace(space(good), two), "FinishCeilingHeight")!;
     expect(r.expression).toBeUndefined();
     expect(r.cells!.map((c) => c.value)).toEqual([2.6, 3.05]);
+  });
+});
+
+// ── NetFloorArea (D-185 dodatok 4, Samuel 3. 11.: podľa schémy) ───────────────
+
+describe("NetFloorArea space.netfloorarea.profile@1 (D-185 dodatok 4)", () => {
+  // Miestnosť L 88 m2 od 4,85 do 8,8; podlahovina 0,15 m (hotová podlaha 5,0).
+  const space = (qto: Record<string, number>, b = body([ring(L)], 4.85, 8.8)): SpaceInput => ({ ...el("2.01", b), qto });
+  const slabBelow = el("SD-pod", body([ring(rect(0, 0, 12, 8))], 4.6, 4.85));
+  const base = {
+    slabs: [slabBelow, el("SD-nad", body([ring(rect(0, 0, 12, 8))], 8.8, 9.05))],
+    coverings: [el("PD", body([ring(L)], 4.85, 5.0), "FLOORING")],
+  };
+  const inner = (name: string, ifcType: string, b: Body): Element => ({ ...el(name, b), ifcType });
+  const column = inner("SL", "IFCCOLUMN", body([ring(rect(7.8, 2.8, 8.2, 3.2))], 4.85, 8.8)); // 0,16 m2
+  const wall = inner("SN", "IFCWALL", body([ring(rect(6, 0, 6.2, 4))], 4.85, 8.8)); // 0,8 m2
+  const nfa = (qto: Record<string, number>, ctx: Parameters<typeof verifySpace>[1], b?: Body) => status(verifySpace(space(qto, b), ctx), "NetFloorArea")!;
+
+  it("prienik troch pôdorysov je presný (aj s dierou)", () => {
+    expect(regionIntersectionArea3([ring(L)], [ring(rect(0, 0, 6, 6))], [ring(rect(3, 3, 10, 10))])).toBeCloseTo(9, 9);
+    expect(regionIntersectionArea3([ring(L)], [ring(rect(10, 4, 14, 10))], [ring(rect(11, 5, 13, 9))])).toBeCloseTo(3, 9);
+    const holed = [ring(rect(0, 0, 10, 10)), ring(rect(2, 2, 4, 4), -1)];
+    expect(regionIntersectionArea3(holed, [ring(rect(0, 0, 5, 5))], [ring(rect(1, 1, 5, 5))])).toBeCloseTo(12, 9);
+    expect(regionIntersectionArea3([ring(L)], [ring(rect(0, 0, 1, 1))], [ring(rect(2, 2, 3, 3))])).toBe(0);
+  });
+
+  it("odčíta stĺp a stenu vnútri miestnosti; bunky: A = GrossFloorArea (quantity), ďalšie so zdrojovým prvkom", () => {
+    const r = nfa({ GrossFloorArea: 88, NetFloorArea: 87.04 }, { ...base, inner: [column, wall] });
+    expect(r.status).toBe("green");
+    expect(r.computed).toBe(87.04);
+    expect(r.expression).toBe("A - B - C");
+    expect(r.cells).toEqual([
+      { key: "A", label: "GrossFloorArea miestnosti (z geometrie)", value: 88, unit: "m2", global_id: "2.01", quantity: "Qto_SpaceBaseQuantities.GrossFloorArea" },
+      { key: "B", label: "pôdorys stĺpa vnútri miestnosti", value: 0.16, unit: "m2", global_id: "SL" },
+      { key: "C", label: "pôdorys steny vnútri miestnosti", value: 0.8, unit: "m2", global_id: "SN" },
+    ]);
+    expect(r.anchors.map((a) => [a.global_id, a.role])).toEqual([["2.01", "teleso miestnosti"], ["SL", "stĺp vnútri miestnosti"], ["SN", "stena vnútri miestnosti"]]);
+    expect(r.formula).toBe("88 - 0.16 (SL) - 0.8 (SN) = 87.04 m2");
+    expect(r.definition).toMatch(/^Sum of all usable floor areas covered by the space\. It excludes the area covered {2}by elements inside the space/);
+    // Súbor odpočet neurobil (= GrossFloorArea): 0,96 m2 je nad toleranciou 0,5 % (0,44 m2), červená.
+    expect(nfa({ GrossFloorArea: 88, NetFloorArea: 88 }, { ...base, inner: [column, wall] }).status).toBe("red");
+  });
+
+  it("odčíta len časť prvku v pôdoryse miestnosti; dotyk hranou nie", () => {
+    const outside = inner("SN-obvod", "IFCWALL", body([ring(rect(12, 0, 12.3, 8))], 4.85, 8.8));
+    const half = inner("SL-roh", "IFCCOLUMN", body([ring(rect(11.8, 7.8, 12.2, 8.2))], 4.85, 8.8));
+    const r = nfa({ NetFloorArea: 87.96 }, { ...base, inner: [outside, half] });
+    expect(r.cells!.map((c) => [c.global_id, c.value])).toEqual([["2.01", 88], ["SL-roh", 0.04]]);
+    expect(r.status).toBe("green");
+  });
+
+  it("prvok musí vyčnievať nad hotovú podlahu: stena podlažia pod, stena po vrch podlahoviny a trám pod stropom sa neodčítajú", () => {
+    const below = inner("SN-1NP", "IFCWALL", body([ring(rect(6, 0, 6.2, 4))], 0.9, 4.85));
+    const inFloor = inner("SN-skladba", "IFCWALL", body([ring(rect(6, 0, 6.2, 4))], 0.9, 5.0));
+    const beam = inner("SL-pod-stropom", "IFCCOLUMN", body([ring(rect(7.8, 2.8, 8.2, 3.2))], 8.0, 8.8));
+    const r = nfa({ NetFloorArea: 88 }, { ...base, inner: [below, inFloor, beam] });
+    expect([r.status, r.computed, r.expression]).toEqual(["green", 88, "A"]);
+    // Bez podlahoviny je hotová podlaha spodok miestnosti: stena po 5,0 už vyčnieva.
+    expect(nfa({ NetFloorArea: 88 }, { ...base, coverings: [], inner: [inFloor] }).computed).toBe(87.2);
+  });
+
+  it("prekryv odčítaných prvkov sa neodčíta dvakrát (stĺp v stene, otvor pod stĺpom)", () => {
+    const inWall = inner("SL-v-stene", "IFCCOLUMN", body([ring(rect(5.9, 1, 6.3, 1.4))], 4.85, 8.8)); // 0,16, z toho 0,08 v stene
+    const r = nfa({ NetFloorArea: 87.12 }, { ...base, inner: [wall, inWall] });
+    expect(r.computed).toBe(87.12);
+    expect(r.cells![2]).toMatchObject({ global_id: "SL-v-stene", value: 0.08, label: "pôdorys stĺpa vnútri miestnosti (bez časti už odčítanej)" });
+    // Stĺp celý v stene: jeho bunka odpadne.
+    const hidden = inner("SL-skryty", "IFCCOLUMN", body([ring(rect(6.05, 2, 6.15, 2.1))], 4.85, 8.8));
+    expect(nfa({ NetFloorArea: 87.2 }, { ...base, inner: [wall, hidden] }).cells!.map((c) => c.global_id)).toEqual(["2.01", "SN"]);
+  });
+
+  it("otvor v doske pod miestnosťou a diera v jej profile sa odčítajú; otvor dosky nad ani inej dosky nie", () => {
+    const opening = { ...el("OT", body([ring(rect(1.5, 1.5, 2.5, 2.5))], 4.6, 4.85)), host: "SD-pod" };
+    const above = { ...el("OT-nad", body([ring(rect(8, 1, 9, 2))], 8.8, 9.05)), host: "SD-nad" };
+    const other = { ...el("OT-ina", body([ring(rect(8, 4, 9, 5))], 4.6, 4.85)), host: "SD-ina" };
+    const r = nfa({ GrossFloorArea: 88, NetFloorArea: 87 }, { ...base, slabOpenings: [opening, above, other] });
+    expect([r.status, r.computed]).toEqual(["green", 87]);
+    expect(r.cells![1]).toMatchObject({ label: "otvor v doske pod miestnosťou", global_id: "OT", value: 1 });
+    expect(r.anchors[1]).toEqual({ global_id: "OT", role: "otvor v doske" });
+    const holed = el("SD-pod", body([ring(rect(0, 0, 12, 8)), ring(rect(9, 1, 11, 3), -1)], 4.6, 4.85));
+    const h = nfa({ NetFloorArea: 84 }, { ...base, slabs: [holed, base.slabs[1]] });
+    expect([h.status, h.computed]).toEqual(["green", 84]);
+    expect(h.cells![1]).toMatchObject({ label: "diera v profile dosky SD-pod pod miestnosťou", global_id: "SD-pod", value: 4 });
+  });
+
+  it("súbor bez odčítania otvorov v doske (Revit) je žltý, iná hodnota červená", () => {
+    const stair = { ...el("OT-schody", body([ring(rect(0, 0, 4, 5))], 4.6, 4.85)), host: "SD-pod" }; // 20 m2
+    const ctx = { ...base, inner: [column], slabOpenings: [stair] };
+    expect(nfa({ NetFloorArea: 67.84 }, ctx).status).toBe("green");
+    const y = nfa({ NetFloorArea: 87.84 }, ctx);
+    expect(y.status).toBe("yellow");
+    expect(y.note).toMatch(/sedí len bez odčítania otvorov v doske .* \(87\.84 m2\)/);
+    expect(nfa({ NetFloorArea: 90 }, ctx).status).toBe("red");
+  });
+
+  it("nesúlad pri prvku bez telesa v pásme podlahy alebo pri odčítanom prvku z CSG je sivý; zhoda ostáva zelená", () => {
+    const noBody = inner("SN-bez", "IFCWALL", { expressId: 5, prisms: [], unsupported: "Brep", bbox: { min: [3, 3, 4.85], max: [3.2, 5, 8.8] } });
+    expect(nfa({ NetFloorArea: 80 }, { ...base, inner: [noBody] })).toMatchObject({ status: "grey", note: expect.stringMatching(/nedá sa overiť: .*SN-bez/) });
+    expect(nfa({ NetFloorArea: 88 }, { ...base, inner: [noBody] }).status).toBe("green");
+    const csg = inner("SN-dvere", "IFCWALL", { ...wall.body, unsupported: "teleso je operand CSG (source_modified), hranol je len horný odhad" });
+    expect(nfa({ NetFloorArea: 88 }, { ...base, inner: [csg] })).toMatchObject({ status: "grey", note: expect.stringMatching(/horný odhad \(SN-dvere/) });
+    expect(nfa({ NetFloorArea: 87.2 }, { ...base, inner: [csg] }).status).toBe("green");
+  });
+
+  it("odpočet v tolerancii plochy dá poznámku; bez hodnoty v súbore je sivá", () => {
+    const r = nfa({ NetFloorArea: 88 }, { ...base, inner: [column] });
+    expect(r.status).toBe("green");
+    expect(r.note).toMatch(/odpočet 0\.16 m2 je v tolerancii plochy/);
+    expect(nfa({}, { ...base, inner: [column] }).status).toBe("grey");
+    expect(nfa({ NetFloorArea: 88 }, base).note).toBeUndefined();
   });
 });
