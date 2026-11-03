@@ -1,5 +1,5 @@
 #!/bin/bash
-# Land AIMviewer PRs in order: merge origin/main into a dirty branch (doc conflicts only), verify, push, wait for Vercel, merge.
+# Land AIMviewer PRs in order: merge origin/main into a dirty branch (doc conflicts only), verify, push, wait for GitHub Actions CI (job check, D-187), merge.
 # Kópia mimo stromu: pri prepnutí na starú vetvu PR by skript v scripts/orchestrator/ nemusel existovať.
 R=$(mktemp --suffix=.py); cp "$(cd "$(dirname "$0")" && pwd)/resolve_docs.py" "$R"
 cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)" || exit 1
@@ -17,8 +17,10 @@ for n in "$@"; do
     npx vitest run 2>&1 | grep -E "Tests " ; npx vitest run >/dev/null 2>&1 || { echo "STOP #$n vitest"; exit 3; }
     git push -q origin $B || exit 1
     SHA=$(git rev-parse HEAD)
-    for i in $(seq 1 30); do V=$(gh api "repos/Menezeris/AIMviewer/commits/$SHA/status" --jq .state); [ "$V" = "success" ] && break; [ "$V" = "failure" -o "$V" = "error" ] && { echo "STOP #$n vercel $V"; exit 4; }; sleep 30; done
-    echo "  vercel $V"
+    # Kontrola pred zlúčením je GitHub Actions CI (ci.yml, job check), nie Vercel: náhľad vetvy sa bez [preview] nerobí (D-187).
+    for i in $(seq 1 40); do V=$(gh api "repos/Menezeris/AIMviewer/commits/$SHA/check-runs?check_name=check" --jq '.check_runs[0] | "\(.status)/\(.conclusion)"'); [ "$V" = "completed/success" ] && break; case "$V" in completed/*) echo "STOP #$n ci $V"; exit 4;; esac; sleep 30; done
+    [ "$V" = "completed/success" ] || { echo "STOP #$n ci $V (čas vypršal)"; exit 4; }
+    echo "  ci $V"
   elif [ "$S" != "clean" ] && [ "$S" != "unstable" ]; then echo "STOP #$n $S"; exit 5; fi
   gh api -X PUT repos/Menezeris/AIMviewer/pulls/$n/merge -f merge_method=merge -f sha=$SHA --jq '"  merged=\(.merged) \(.sha[0:9])"' || { echo "FAIL #$n"; exit 6; }
   sleep 5

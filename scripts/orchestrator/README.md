@@ -2,7 +2,7 @@
 
 Pomocné skripty orchestrátora (odovzdanie Menezeris/AIMviewer#203 a nasledujúce). Spúšťa ich len orchestrátor, nie pracovné session.
 
-- `land.sh <PR> [<PR>...]` - zlúči hostové PR v poradí. Keď je PR v konflikte s main (`dirty`), zlúči doňho `origin/main`, konflikty v `DECISIONS.md`, `ROADMAP.md`, `eval/questions.json` vyrieši cez `resolve_docs.py` (oboje strany), `MCP-TOOLS.md` vygeneruje nanovo (`npx vitest run lib/mcp/tool-registry.test.ts -u`), spustí `tsc` a `vitest`, pushne, počká na Vercel a zlúči merge commitom. Konflikt v kóde = STOP, rieš ručne. Pozor: pri stave `clean`/`unstable` zlučuje hneď, nečaká na Vercel; skontroluj nasadenie main.
+- `land.sh <PR> [<PR>...]` - zlúči hostové PR v poradí. Keď je PR v konflikte s main (`dirty`), zlúči doňho `origin/main`, konflikty v `DECISIONS.md`, `ROADMAP.md`, `eval/questions.json` vyrieši cez `resolve_docs.py` (oboje strany), `MCP-TOOLS.md` vygeneruje nanovo (`npx vitest run lib/mcp/tool-registry.test.ts -u`), spustí `tsc` a `vitest`, pushne, počká na GitHub Actions CI (job `check` z `ci.yml`, D-187) a zlúči merge commitom. Konflikt v kóde = STOP, rieš ručne. Pozor: pri stave `clean`/`unstable` zlučuje hneď, nečaká na CI; skontroluj, že CI PR je zelené, a po zlúčení nasadenie main.
 - `resolve_docs.py <súbory>` - append-only konflikty dokumentov po merge `origin/main`: DECISIONS (najprv main, potom PR), ROADMAP, nové otázky evalov z PR.
 
 Poučenia pri balíkoch forku (Menezeris/ifc-lite):
