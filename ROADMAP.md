@@ -324,6 +324,7 @@ naming convention finálny tvar) sú v DECISIONS §7.
 > Kompaktný reverse-chrono log. Detail ku každému bodu je v `DECISIONS.md` (D-0xx);
 > aktuálny stav je hore v sekcii „Stav".
 
+- **2026-11-03** - **D-187 náklady Vercelu (PR):** GitHub Actions CI `ci.yml` (tsc, eslint zmenených súborov bez nových chýb, vitest, next build proti falošnému PostgREST) ako kontrola pred zlúčením; `scripts/vercel-ignore.sh` (náhľad len `main` a `[preview]`, dokumentačné zmeny bez buildu); `land.sh` čaká na CI. Nastavenia projektov Vercelu čakajú na autorizáciu tímu.
 - **2026-11-02** - **D-186 krok 7, príprava (PR):** dokumenty knižnice (MODEL, DECISIONS V1-V30, SCHEMA, NORMS-GAP, QUESTIONS, VALIDATION-RULES) prenesené bez zmeny do `docs/kniznica/` s mapou Python -> TS; assetin-library na ne odkazuje (bez archivácie).
 - **2026-11-02** - **D-186 krok 6: IDS a Vydať v TS (#405):** `lib/kniznica/ids/` (generátor IDS, ER-0101_ARCH bajtovo; kontrola ids.xsd v1.0.0 cez `xmllint-wasm`, MIT), `vydanie.ts`, `vydanie-db.ts`, migrácia `20261102230500_library_vydaj.sql` aplikovaná na produkciu 2. 11.; Vydať za `LIBRARY_RELEASE_ENABLED`; jednoduchý editor z kroku 3 a `/api/library/zapis`, `/nova` odstránené.
 - **2026-11-02** - **D-186 krok UI: editor knižnice v AIM (#403):** vendorovaná stránka `app.html` z assetin-library (`library/editor/`), `lib/kniznica/nahlad.ts`, `kontrola.ts`, `editor-api.ts`; `/kniznica/editor/<kód>` a API `/api/library/editor/<kód>/{stav,kontrola,save,nova,vydaj}`; stránka bajtovo zhodná s Pythonom, `kontrola` 25/25, zápis za `LIBRARY_WRITE_ENABLED`.

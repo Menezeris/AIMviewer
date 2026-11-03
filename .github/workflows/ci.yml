@@ -1,0 +1,54 @@
+# CI pre pull requesty a main (D-187): kontrola pred zlúčením je toto, nie náhľad Vercelu.
+# Bez tajomstiev: build ide proti falošnému PostgREST (scripts/ci/postgrest-stub.mjs) s dummy kľúčom,
+# lebo niektoré stránky (/kniznica, /icdd) sa predrenderujú pri builde a čítajú Supabase.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+
+      - name: tsc --noEmit
+        run: npx tsc --noEmit
+
+      - name: eslint (zmenené súbory, nové chyby blokujú)
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then BASE=HEAD~1; fi
+          node scripts/ci/lint-changed.mjs "$BASE"
+
+      - name: vitest run
+        run: npx vitest run
+
+      - name: next build (falošný PostgREST, bez tajomstiev)
+        env:
+          SUPABASE_URL: http://127.0.0.1:54321
+          SUPABASE_SERVICE_ROLE_KEY: ci-dummy-not-a-key
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          node scripts/ci/postgrest-stub.mjs &
+          for i in $(seq 1 20); do curl -fsS "$SUPABASE_URL" > /dev/null && break; sleep 0.5; done
+          npx next build

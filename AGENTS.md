@@ -71,6 +71,15 @@ Naraz beží viac Claude sessions (ručné, automatické z konektora, fork). Ka�
   inak dá do PR komentár "Pripravené na zlúčenie". Stav a otázky na Samuela posiela tiež jemu;
   Samuelovi priamo len otázku, na ktorú potrebuje odpoveď vo vlastnej session.
 
+### PR, CI a náhľady Vercelu (D-187)
+- **Kontrolou pred zlúčením je GitHub Actions CI** (`.github/workflows/ci.yml`: tsc, eslint na zmenených súboroch
+  bez nových chýb, vitest, next build bez tajomstiev), nie náhľad Vercelu. Zelené CI = podmienka "Pripravené na zlúčenie".
+- **Push až po lokálnych kontrolách** (`npx tsc --noEmit`, `npx vitest run`, `node scripts/ci/lint-changed.mjs origin/main`,
+  pri zmene stránok aj build); opravy z kola revízie sa pushujú naraz, nie po jednej. Do balíka (release vetva forku) raz za kolo opráv.
+- **Náhľad len na požiadanie:** Vercel builduje `main` a commit so značkou `[preview]` v správe (`scripts/vercel-ignore.sh`);
+  zmeny len v `docs/`, `*.md`, `supabase/pending/`, `supabase/tests/` sa nebuildujú ani na `main`. Fork: `main` vždy,
+  `release/aim-*` len s `[preview]`, iné vetvy nikdy; `[preview]` dáva len posledný push balíka, ktorý sa bude skúšať.
+
 **Orchestrátor** (od 20. 10. 2026; ktorá session to je, hovorí telo issue #60) jediný zlučuje,
 na Samuelov pokyn a v balíkoch (D-116: najprv fork, potom AIMviewer, potom OCB), prideľuje
 čísla `D-0xx` a drží celkový stav pre Samuela.
