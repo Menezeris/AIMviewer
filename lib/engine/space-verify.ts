@@ -410,6 +410,8 @@ export interface Cell {
   value: number;
   unit: "m" | "m2" | "m3";
   global_id?: string;
+  /** Odvodená bunka: výmera toho istého prvku, ktorej hodnotu bunka nesie (viewer ukáže "(Height)" a nascrolluje riadok). */
+  quantity?: string;
 }
 
 export interface RecipeResult {
@@ -637,7 +639,7 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
     ...(isMesh
       ? { expression: "A", cells: cells({ label: "objem uzavretého meshu miestnosti", value: gv, unit: "m3", global_id: sp }) }
       : body.prisms.length === 1
-        ? { expression: "A x B", cells: cells({ label: "plocha profilu miestnosti", value: A, unit: "m2", global_id: sp }, { label: "výška extrúzie miestnosti", value: H, unit: "m", global_id: sp }) }
+        ? { expression: "A x B", cells: cells({ label: "plocha profilu miestnosti", value: A, unit: "m2", global_id: sp }, { label: "výška extrúzie miestnosti", value: H, unit: "m", global_id: sp, quantity: "Qto_SpaceBaseQuantities.Height" }) }
         : { expression: "A", cells: cells({ label: `objem telesa miestnosti (${body.prisms.length} hranoly, súčet plocha x výška)`, value: gv, unit: "m3", global_id: sp }) }),
     formula: isMesh ? `objem uzavretého meshu = ${r4(gv)} m3` : `${r4(A)} x ${r4(H)} = ${r4(gv)} m3${modified}`, anchors: [self] });
 
@@ -750,7 +752,7 @@ export function verifySpace(s: SpaceInput, ctx: Context): RecipeResult[] {
   out.push({ ...base("net_volume", body), ...(nvTol ? { tolerance: nvTol.text } : {}), status: nvStatus, file: nvFile, computed: r4(nv),
     expression: minus(parts.length + 1),
     cells: cells(
-      { label: "GrossVolume miestnosti (z geometrie)", value: gv, unit: "m3", global_id: sp },
+      { label: "GrossVolume miestnosti (z geometrie)", value: gv, unit: "m3", global_id: sp, quantity: "Qto_SpaceBaseQuantities.GrossVolume" },
       ...parts.map((x) => ({
         label: x.cut.exact ? `objem ${covWhat(x)} vnútri telesa (${r4(x.cut.area)} m2 x ${r4(x.cut.dz)} m)` : `objem ${covWhat(x)} vnútri telesa (${x.cut.how})`,
         value: x.cut.volume, unit: "m3" as const, global_id: x.e.globalId,
