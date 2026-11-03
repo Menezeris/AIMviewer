@@ -32,6 +32,8 @@ export interface VerifyCellWire {
   unit: string;
   global_id?: string;
   ref?: string;
+  /** Odvodená bunka: výmera toho istého prvku, ktorej hodnotu bunka nesie. */
+  quantity?: string;
 }
 
 export interface VerifyRecipeWire {
@@ -44,7 +46,7 @@ export interface VerifyRecipeWire {
   cells: VerifyCellWire[];
   formula_text?: string;
   note?: string;
-  anchors: { global_id: string; role: string; z_m?: number }[];
+  anchors: { global_id: string; role: string; z_m?: number; ref?: string }[];
   segments?: { a: [number, number, number]; b: [number, number, number] }[];
 }
 
@@ -153,7 +155,7 @@ function recipeWire(r: VerifyRow, refs: ReadonlyMap<string, string>): VerifyReci
   const reg = methodOfRecipe(r.recipe);
   const cells = (r.inputs?.cells ?? []).map((c) => {
     const ref = c.global_id ? refs.get(c.global_id) : undefined;
-    return { key: c.key, label: c.label, value: c.value, unit: c.unit, ...(c.global_id ? { global_id: c.global_id } : {}), ...(ref ? { ref } : {}) };
+    return { key: c.key, label: c.label, value: c.value, unit: c.unit, ...(c.global_id ? { global_id: c.global_id } : {}), ...(ref ? { ref } : {}), ...(c.quantity ? { quantity: c.quantity } : {}) };
   });
   return {
     recipe: r.recipe,
@@ -165,7 +167,10 @@ function recipeWire(r: VerifyRow, refs: ReadonlyMap<string, string>): VerifyReci
     cells,
     ...(r.formula ? { formula_text: r.formula } : {}),
     ...(r.note ? { note: r.note } : {}),
-    anchors: r.anchors ?? [],
+    anchors: (r.anchors ?? []).map((a) => {
+      const ref = refs.get(a.global_id);
+      return ref ? { ...a, ref } : a;
+    }),
   };
 }
 

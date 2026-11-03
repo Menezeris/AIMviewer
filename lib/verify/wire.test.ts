@@ -96,6 +96,23 @@ describe("tvar overenia pre viewer (D-185 UI)", () => {
     expect(w.help_href).toBe("/overenie");
   });
 
+  it("kotvy dostanú ref výskytu a odvodená bunka nesie quantity", () => {
+    const w = elementWire(
+      [
+        row({
+          target: H,
+          recipe: "space.height.slabs@2",
+          anchors: [{ global_id: "slabAbove000000000000a", role: "doska nad", z_m: 8.8 }, { global_id: "unknown", role: "x" }],
+          inputs: { cells: [{ key: "B", label: "výška", value: 3.95, unit: "m", global_id: "slabAbove000000000000a", quantity: "Qto_SpaceBaseQuantities.Height" }] },
+        }),
+      ],
+      { currentRevision: 79, refs: new Map([["slabAbove000000000000a", "SD02.03.0003"]]) },
+    )!;
+    const r = w.targets[0].recipes[0];
+    expect(r.anchors).toEqual([{ global_id: "slabAbove000000000000a", role: "doska nad", z_m: 8.8, ref: "SD02.03.0003" }, { global_id: "unknown", role: "x" }]);
+    expect(r.cells[0].quantity).toBe("Qto_SpaceBaseQuantities.Height");
+  });
+
   it("riadok pred migráciou (bez inputs): vysvetlenie z registra, bunky prázdne, vzorec textom", () => {
     const w = elementWire([row({ target: H, recipe: "space.height.slabs@2", formula: "8.8 - 4.85 = 3.95 m" })], { currentRevision: 79 })!;
     expect(w.targets[0].recipes[0]).toMatchObject({ cells: [], formula_text: "8.8 - 4.85 = 3.95 m", explanation: SPACE_METHODS.height_slabs.explanation });

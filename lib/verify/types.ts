@@ -40,6 +40,8 @@ export interface VerificationCell {
   value: number;
   unit: string;
   global_id?: string;
+  /** Odvodená bunka: meno inej výmery toho istého prvku (napr. `Qto_SpaceBaseQuantities.Height`), len keď hodnota bunky je tá výmera. */
+  quantity?: string;
 }
 
 export interface VerificationInputs {
