@@ -36,7 +36,7 @@ export const VIEWER_QUERY_TOOL_DEFINITIONS: ToolDefinition[] = [
       "stavu obálky v súradniciach IFC (m, Z hore): celý model a prvky (min, max, size, center, section_axis), " +
       "napr. pred presným rezom set_section(orientation, coordinate_m); zostava bez geometrie sa zráta z častí, " +
       "missing = prvky bez geometrie. PODKLADY PDF: underlays = kalibrované podklady vo vieweri (document_id, name, page, storey_guid, storey_z, discipline, calibrated_at, " +
-      "visible, opacity, saved {visible, opacity} z DB, overridden = stav sa líši od uloženého), underlays_3d = globálny vypínač; ovládanie calibrate_underlay " +
+      "visible = či je podklad zapnutý v 3D v tejto relácii (pri štarte false), opacity, saved {visible, opacity} z DB, overridden = stav sa líši od uloženého), underlays_3d = globálny vypínač; ovládanie calibrate_underlay " +
       "mode=show_in_3d|hide|set_opacity, zoznam s DB mode=list; chýbajúce pole underlays = starší viewer. ULOŽENÉ POHĽADY: saved_views=true = ten istý zoznam ako pás Presentation (meno, id, " +
       "kamera, rez, počet prvkov košíka) a 'Posledný pohľad', aj bez otvoreného viewera; otvorenie cez set_view_mode(view).",
     inputSchema: {
