@@ -8622,3 +8622,22 @@ bez revízie a chyba tabuľky bez straty výpočtu, odmietnutie inej triedy), SQ
 **Zavrhnuté:** vypnúť náhľady úplne (`previewDeploymentsDisabled`): Samuel náhľad balíka skúša; lint celého repa ako blokujúci krok: padal by na starých chybách; build v CI s produkčnými tajomstvami: zbytočný povrch, falošný PostgREST stačí.
 
 **Otvorené:** limit výdavkov (Spend Management) nastavuje Samuel v dashboarde Vercelu.
+
+
+### D-188 - Schéma `platform` v zdieľanej DB pre platformu Assetin (AIMforked), rola `platform_app` so stropom pripojení, pgvector
+
+**Dátum:** 2026-11-04 · **Stav:** schválené (Samuel 4. 11.: "krok 1, stropy pripojení, povoľujem stavbu"; číslo rezervované v #60) · **Nadväzuje na:** D-026 (čítanie cez service_role), D-079 (anon a authenticated bez práv), D-186 (precedens schémy `library`), D-183 (pravda o revíziách); dokument "Assetin platforma - stav, rozhodnutia a plán" (kolo 8: jedna DB, fork len v `platform`)
+
+**Kontext:** platforma Assetin (repo `Menezeris/AIMforked`, fork Archives: SolidStart, Drizzle, better-auth, pg-boss) má bežať v tej istej Supabase DB ako AIM, aby sa ontológia zlučovala priamo, bez synchronizácie. AIM dáta sú živé demo, fork ich nesmie meniť. Archives mal schému natvrdo `public` (job-runner odmietal inú schému, migrácie kvalifikujú `"public".`). DB má `max_connections = 60`, Archives predvolene otvára 10 na pool a stovky LISTEN klientov. Samuel zvolil stropy pripojení namiesto väčšieho compute.
+
+**Rozhodnutie:**
+1. **Migrácia `20261104220000_platform_schema.sql`** (aplikovaná 4. 11.): `vector` do `public` (rovnako ako `unaccent` a `pg_trgm`; fork volá `operator(public.<=>)`), rola `platform_app` (login, bez hesla v gite, `connection limit 20`, `search_path = platform, public`), schémy `platform` a `platform_pgboss` vo vlastníctve roly, `grant usage on schema public` (len typy a funkcie rozšírení), `grant create on database` (drizzle aj pg-boss volajú `create schema if not exists` a Postgres kontroluje právo pred existenciou), `public.simple_unaccent` pre fulltext forku. `grant platform_app to postgres`, aby šlo `set role platform_app` z Management API.
+2. **Hranica:** rola nemá žiadny grant na tabuľky `public` ani `library` a tie majú RLS bez politík, takže fork do AIM dát nevidí ani nezapíše (overené testom `supabase/tests/platform_schema.sql`). Čítanie vybraných views AIM bude vedomý grant v neskoršom kroku, zápis do grafu len cez API AIM.
+3. **Migrácie forku** bežia vo forku (Drizzle): migrator prepíše kvalifikátor `"public".` na `"platform".` za behu, súbory migrácií sa nemenia; žurnál `platform.__drizzle_migrations`, fronty pg-boss v `platform_pgboss`. Prvé aplikovanie 4. 11. cez Management API ako `platform_app` (porty Postgresu z cloud session nejdú), riadky žurnálu zhodné so skutočným migratorom (sha256 a `created_at`), lokálne overené na kópii DB: druhý beh migratora nič neaplikuje.
+4. **Rozpočet pripojení forku** (profil `deployments/platform/*/application-platform.yaml` v AIMforked): app 4 + 2 LISTEN, job-runner 2 + pg-boss 2, notifier 1 + 3 LISTEN, migrator a bootstrapper 1; tvrdý strop 20 na role.
+
+**Zavrhnuté:** samostatná databáza pre fork (upstream to podporuje, ale z inej DB sa nedajú čítať views AIM); prepis tabuliek forku na `pgSchema("platform")` (veľký rozdiel voči upstreamu, drizzle-kit by generoval novú schému); väčší compute (Samuel: stropy); `create` na schému `public` pre fork (porušilo by hranicu).
+
+**Riziká:** advisor Supabase hlási `vector` v `public` (rovnako ako existujúce `unaccent`, `pg_trgm`) a 4 funkcie Archives v `platform` bez pevného `search_path` (poistka: `search_path` nastavený na role); `public.simple_unaccent` a `platform.simple_unaccent` musia ostať rovnaké (definícia v migrácii 0000 forku); rola smie zakladať nové schémy.
+
+**Otvorené:** heslo roly a connection string forku pri nasadení (mimo gitu); views AIM na čítanie forkom.

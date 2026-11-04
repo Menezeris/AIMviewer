@@ -491,6 +491,7 @@ je v prehliadači kvôli Realtime Broadcast (živý kanál, D-079) a bez odobrat
 PostgREST otváral celú DB. `service_role` má explicitný `grant all` / `grant execute`.
 Nová tabuľka alebo RPC teda **nie je** dostupná anon kľúču — ak to raz treba (auth + RLS),
 grant je vedomý krok v migrácii.
+Rola `platform_app` (D-188, §2.22) nemá na tabuľky `public` žiadny grant; píše len do vlastných schém `platform` a `platform_pgboss`.
 
 
 ### 2.13 Výsledky kontroly voči IDS (D-081, migrácia 20261017120000)
@@ -843,6 +844,14 @@ Zapisuje len host (`ifc_measure verify=true save=true`, `lib/verify/store.ts`, s
   `verification_results.inputs` jsonb (objekt `{expression?, cells: [{key, label, value, unit, global_id?}], file_meta?: {method_of_measurement?,
   formula?}}`) a `explanation` text (ako sa recept počíta, z registra); `v_verification_latest` ich má na konci. Staré riadky NULL (viewer
   ukáže vzorec textom); DB bez migrácie dostane beh bez nich (`lib/verify/store.ts`).
+
+### 2.22 Schéma `platform` pre platformu Assetin (D-188, migrácia `20261104220000_platform_schema.sql`, aplikovaná 4. 11.; test `supabase/tests/platform_schema.sql`)
+
+Schému `platform` vlastní repo AIMforked (fork Archives, Drizzle); AIMviewer ju nemigruje ani nečíta. Táto migrácia len pripraví miesto:
+- rozšírenie `vector` v `public`, text search konfigurácia `public.simple_unaccent` (fulltext forku);
+- rola `platform_app` (login, `connection limit 20`, `search_path = platform, public`, heslo mimo gitu), vlastník schém `platform`
+  a `platform_pgboss` (fronty pg-boss); `usage` na `public`, `create` na databázu; žiadne práva na tabuľky `public` a `library`;
+- obsah `platform` (31 tabuliek Archives, `progress_notifications`, žurnál `__drizzle_migrations`) zakladajú migrácie forku.
 
 ## 4. Konvencia `properties` (D-022)
 
