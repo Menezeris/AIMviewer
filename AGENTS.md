@@ -18,7 +18,7 @@ najprv zisti, do ktorého dokumentu to patrí:
 | **ROADMAP.md** | „Čo je hotové a čo ďalej?" | **Jediné** miesto pre živý stav a sprinty. |
 | **README.md** | „Ako to spustím/nasadím?" | Ľudský onboarding. |
 | **etl/README.md** | ETL pipeline | Detaily spustenia a mapovania ETL. |
-| **docs/kniznica/** | Knižnica požiadaviek (IDM -> LOIN -> EIR): model, schéma, rozhodnutia V1-V30 | MODEL, DECISIONS (V31+ po Samuelovom slove), SCHEMA, NORMS-GAP, QUESTIONS, VALIDATION-RULES knižnice; prenesené z assetin-library (D-186 krok 7, V30). Port do TS je D-186. |
+| **docs/kniznica/** | Knižnica požiadaviek (IDM -> LOIN -> EIR): model, schéma, rozhodnutia V1-V30 | MODEL, DECISIONS (V31+ po Samuelovom slove), SCHEMA, NORMS-GAP, QUESTIONS, VALIDATION-RULES knižnice; prenesené z assetin-library (D-186 krok 7, V30), od 4. 11. aj PLAN, DATA-MODEL, PROMPT-*, REVIEW-*, POLIA, vault/ (LOIN), normy/; assetin-library je archivované. Korpus `library/korpus/` je zmrazený orákulom (`KORPUS_COMMIT`), Python engine sa nespúšťa, zmeny schémy idú v TS a korpus sa aktualizuje ručne s odôvodnením (`docs/kniznica/README.md`). Port do TS je D-186. |
 
 ### Ako tvoriť/upravovať dokumenty (platí pre KAŽDÝ nástroj)
 
