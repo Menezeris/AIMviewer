@@ -8461,6 +8461,43 @@ ribbon AIM > Overovanie), bunky pri všetkých veličinách.
 `space-verify-run.test.ts` +1 a uloženie buniek a `MethodOfMeasurement`; 8 mutácií, každú test zhodí; SQL `verification_inputs.sql` na
 lokálnom Postgres 16; zhoda tvaru s `parseVerifyElement` / `parseRunAll` viewera na mini modeli (bez straty polí).
 
+**Doplnok 4 (2026-11-03): NetFloorArea podľa schémy (Samuel 3. 11. cez orchestrátora: recept "podľa IFC schémy").** Veličina
+NetFloorArea v registri chýbala, preto nemala fajočku. Definícia overená doslovne z pinnutého zdroja (`d71e140`, PSD IFC4.3 aj IFC4 ADD2
+TC1, text rovnaký, vrátane dvojitej medzery "covered  by"): "Sum of all usable floor areas covered by the space. It excludes the area
+covered by elements inside the space (columns, inner walls, built-in's etc.), slab openings, or other protruding elements. Varying
+heights are not taking into account (i.e. no reduction for areas under a minimum headroom)."
+- **Recept `space.netfloorarea.profile@1`** (`REGISTRY_VERSION = 4`, pravidlá `NET_FLOOR_AREA`): GrossFloorArea z geometrie (plocha
+  profilu telesa, pri meshi priemet plôch nadol) mínus pôdorys prvkov vnútri miestnosti a otvory v doske pod ňou, každé len v rozsahu
+  pôdorysu miestnosti (presný 2D prienik). Prvky: IfcColumn, IfcWall (aj StandardCase, ElementedCase), IfcBuildingElementProxy,
+  IfcChimney a IfcFurniture / IfcFurnishingElement len s `Pset_FurnitureTypeCommon.IsBuiltIn` = TRUE (výskyt má prednosť pred typom).
+  Prvok sa odčíta, keď vyčnieva nad hotovú podlahu (vrch podlahoviny, bez nej spodok miestnosti) do pásma 1 m nad ňou; stena podlažia
+  pod miestnosťou ani stena končiaca v skladbe podlahy (ASR 2.01: SN07.01.0014 po vrch podlahoviny 5,0) sa neodčíta. Otvory v doske:
+  IfcOpeningElement cez IfcRelVoidsElement na doske s vrchom na spodku miestnosti a diery v profile tej dosky. Prekryv odčítaných prvkov
+  (stĺp v stene) sa neodčíta dvakrát: bunka nesie len časť, ktorú prvok pred ňou neodčítal (presný prienik troch pôdorysov; trojnásobný
+  prekryv sa neopravuje). Schodisko, zábradlie a obvodový plášť (IfcCurtainWall, IfcPlate, IfcMember) schéma nemenuje, neodčítajú sa.
+- **Tolerancia plochy 0,5 %, rovnaká ako GrossFloorArea.** Chyba výsledku je chyba hrubej plochy (ten istý pôdorys telesa); odčítané
+  pôdorysy sú presné polygóny extrúzií (oblúk stĺpa s chybou pod 0,7 % jeho plochy, rádovo 0,001 m2). Na rozdiel od NetVolume (tolerancia
+  z GV - NV) tu odpočty bývajú desatiny m2 až desiatky m2 (otvor schodiska), preto sa tolerancia na odpočet neviaže; keď je odpočet
+  menší než tolerancia, výsledok má poznámku "zhoda nerozlíši, či súbor odpočet urobil".
+- **Žltá `NFA_OPENINGS_RULE`** (návrh analogický NetVolume "krytiny po celej ploche", na potvrdenie Samuelom): keď súbor nesedí s
+  výpočtom podľa schémy, ale sedí bez odčítania otvorov v doske (Revit plochu miestnosti o otvory v doske nezmenšuje). **Sivá**: nesúlad,
+  keď v pásme podlahy leží prvok bez telesa alebo doska pod miestnosťou bez telesa (ako B2), alebo keď odčítaný prvok je operand CSG
+  (stena s otvormi, hranol je len horný odhad) či neuzavretý mesh; neuzavretý mesh miestnosti ako GrossFloorArea (`OPEN_MESH_RULE`).
+- **Bunky (D-185 UI kolo 2, #410):** A = GrossFloorArea miestnosti s `quantity: Qto_SpaceBaseQuantities.GrossFloorArea`, ďalšie bunky
+  = odčítaný prvok s `global_id` (host doplní `ref`), výraz `A - B - ...`; kotvy s rolou (stĺp, stena, vstavka, otvor v doske, diera
+  v doske). `/overenie` pravidlo vypisuje z registra.
+- **Overenie na ASR v079** (sha256 `1f2c5e6f...`, motor lokálne cez `ifc_measure verify=true`, bez `save`): 1.01 Lobby
+  (`1lPOIrTfjBlRLHYd2fiz8_`) zelená 149,2311 = 149,2311 - 0; 2.01 (`3sVKD79KnE69QhEA8lMbzt`, neuzavretý mesh) zelená 230,9473 - 0
+  (súbor 230,9544). Všetkých 83 IfcSpace: green 81, yellow 2, red 0, grey 0. 14 miestností má odpočet stien, ktorý súbor urobil
+  rovnako (napr. 2.07: 14,1034 - 0,5415 - 0,5295 - 0,368 - 0,135 = 12,5294, súbor 12,5295). Žlté sú schodiskové priestory 2.20 (otvor
+  v SD02.03.0001 18,36 m2, podľa schémy 1,35 m2) a 4.06 (12,9 m2, podľa schémy 4,245 m2); 3.20 doska pod nenájdená, otvor sa preto neodčíta.
+  Pri 2.01 pôdorys miestnosti presahuje okraj dosky SD02.03.0001 o 5,25 m2 nad vodorovnými prvkami plášťa (IfcMember 4,85 až 4,90);
+  plášť sa neodčíta, informácia pre GrossFloorArea.
+**Testy:** `space-verify.test.ts` +9 (prienik troch pôdorysov, stĺp a stena s bunkami, časť v pôdoryse a dotyk hranou, pásmo nad hotovou
+podlahou, prekryv, otvor a diera v doske, žltá Revit, sivé, poznámka o tolerancii) a mini model s NetFloorArea; `space-verify-run.test.ts`
++1 (fixture: stĺp, otvor dosky cez IfcRelVoidsElement, vstavka s IsBuiltIn z typu, voľný nábytok s FALSE na výskyte sa neodčíta);
+17 mutácií, každú test zhodí.
+
 **Otvorené (Samuel):** (a) `ifc_measure` ostáva v inventári "čítanie" (`readOnlyHint`), hoci `save=true` pridá riadok behu do
 DB (len pridáva, nič neprepisuje); označenie "zápis" by v claude.ai pýtalo súhlas pri každom meraní. (b) Systémový prompt sa
 nemení (MCP inštrukcie sú na hranici 15 000 znakov, test); pravidlo nesie opis toolu, ako D-142. (c) UI fajočky v paneli

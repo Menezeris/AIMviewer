@@ -1,17 +1,18 @@
-import type { IfcDataStore } from "@ifc-lite/parser";
+import { extractPropertiesOnDemand, extractTypePropertiesOnDemand, type IfcDataStore } from "@ifc-lite/parser";
 import { EntityNode } from "@ifc-lite/query";
 
 import { getIfcModels } from "../data/ifc-models";
 import type { MeasureSegment } from "../viewer-measure";
 import { MAX_MEASURE_SEGMENTS } from "../viewer-measure";
-import { REGISTRY_VERSION } from "../verify/quantity-methods";
+import { NET_FLOOR_AREA, REGISTRY_VERSION } from "../verify/quantity-methods";
 import type { VerificationResultWrite } from "../verify/types";
 
 import { joinToAim } from "./join";
+import { parseBoolean } from "./load-bearing";
 import { meshMetrics, meshModel, type MeshElement } from "./measure";
 import { toWorld } from "./measure-dimension";
 import { openEngineSession, type EngineModel } from "./session";
-import { bodyFromMeshTriangles, dimensionPoint, extractExtrusions, verifySpace, type Body, type Element, type RecipeResult, type SpaceInput, type Status } from "./space-verify";
+import { bodyFromMeshTriangles, dimensionPoint, extractExtrusions, verifySpace, type Body, type Element, type Opening, type RecipeResult, type SpaceInput, type Status } from "./space-verify";
 import { ENGINE_VERSION, IFC_GUID_RE, InputError, guidIndex, modelsFor, revisionStamp, str, type EngineDeps } from "./tools";
 
 /**
@@ -34,6 +35,10 @@ interface ModelData {
   spaces: number[];
   slabs: Element[];
   coverings: Element[];
+  /** NetFloorArea: stĺpy, steny a vstavky (`NET_FLOOR_AREA`). */
+  inner: Element[];
+  /** NetFloorArea: otvory vyrezávajúce dosky. */
+  slabOpenings: Opening[];
 }
 
 const cache = new WeakMap<IfcDataStore, Promise<ModelData>>();
@@ -44,12 +49,47 @@ const ids = (store: IfcDataStore, types: string[]) => types.flatMap((t) => store
 function element(store: IfcDataStore, id: number, body: Body): Element {
   const node = new EntityNode(store, id);
   const predefined = enumOf(node.allAttributes().find((a) => a.name === "PredefinedType")?.value);
+  const ifcType = (store.entities.getTypeName(id) || "").toUpperCase();
   return {
     globalId: store.entities.getGlobalId(id) || String(id),
     name: store.entities.getName(id) || store.entities.getGlobalId(id) || String(id),
     body,
     ...(predefined ? { predefinedType: predefined } : {}),
+    ...(ifcType ? { ifcType } : {}),
   };
+}
+
+type Sets = Array<{ name: string; properties: Array<{ name: string; value: unknown }> }>;
+
+/**
+ * Vstavka (NET_FLOOR_AREA.built_in_property): `Pset_FurnitureTypeCommon.IsBuiltIn` = TRUE na výskyte, inak na type
+ * (IfcRelDefinesByType, HasPropertySets typu; dedenie ako `load-bearing.ts`). Bez hodnoty alebo pri chybe čítania nie.
+ */
+export function isBuiltIn(store: IfcDataStore, id: number): boolean {
+  const { pset, name } = NET_FLOOR_AREA.built_in_property;
+  const pick = (sets: Sets | undefined) => parseBoolean(sets?.find((x) => x.name === pset)?.properties.find((p) => p.name === name)?.value);
+  try {
+    const own = pick(extractPropertiesOnDemand(store, id) as Sets);
+    if (own !== null) return own;
+    return pick(extractTypePropertiesOnDemand(store, id)?.properties as Sets | undefined) === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Prvky NetFloorArea modelu: triedy `NET_FLOOR_AREA.element_types` a nábytok s IsBuiltIn. */
+function innerIds(store: IfcDataStore): number[] {
+  return [...ids(store, [...NET_FLOOR_AREA.element_types]), ...ids(store, [...NET_FLOOR_AREA.built_in_types]).filter((id) => isBuiltIn(store, id))];
+}
+
+/** Otvory dosiek (IfcRelVoidsElement): id otvoru -> GlobalId dosky. */
+function slabOpeningIds(store: IfcDataStore, slabIds: number[]): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const sl of slabIds) {
+    const host = store.entities.getGlobalId(sl) || String(sl);
+    for (const o of new EntityNode(store, sl).voids()) out.set(o.expressId, host);
+  }
+  return out;
 }
 
 /** Teleso z meshu motora (náhrada za extrúziu): trojuholníky v IFC svete, uzavretosť a objem z `meshMetrics`. */
@@ -66,7 +106,7 @@ export function meshBody(expressId: number, e: MeshElement): Body {
   return bodyFromMeshTriangles(expressId, tris, closed, volume);
 }
 
-/** Extrúzie miestností, dosiek a krytín modelu raz na store (ako tesselácia v measure.ts). */
+/** Extrúzie miestností, dosiek, krytín, prvkov NetFloorArea a otvorov dosiek modelu raz na store (ako tesselácia v measure.ts). */
 export function modelData(m: EngineModel): Promise<ModelData> {
   const hit = cache.get(m.store);
   if (hit) return hit;
@@ -76,8 +116,10 @@ export function modelData(m: EngineModel): Promise<ModelData> {
     const spaces = ids(store, ["IFCSPACE"]);
     const slabIds = ids(store, SLAB_TYPES);
     const covIds = ids(store, COVERING_TYPES);
-    const { bodies, lengthUnitScale } = await store.source.withMaterializedAsync((bytes) => extractExtrusions(bytes, [...spaces, ...slabIds, ...covIds]));
-    const all = [...spaces, ...slabIds, ...covIds];
+    const inner = innerIds(store);
+    const openingHost = slabOpeningIds(store, slabIds);
+    const all = [...new Set([...spaces, ...slabIds, ...covIds, ...inner, ...openingHost.keys()])];
+    const { bodies, lengthUnitScale } = await store.source.withMaterializedAsync((bytes) => extractExtrusions(bytes, all));
     for (const id of all) if (!bodies.has(id)) bodies.set(id, { expressId: id, prisms: [], unsupported: "bez extrúzie" });
     // Náhrada telesa (D-185 oprava): prvky bez použiteľnej extrúzie dostanú teleso z uzavretého meshu motora.
     const needMesh = all.filter((id) => !bodies.get(id)!.prisms.length);
@@ -103,6 +145,8 @@ export function modelData(m: EngineModel): Promise<ModelData> {
       spaces,
       slabs: slabIds.map((id) => element(store, id, of(id))),
       coverings: covIds.map((id) => element(store, id, of(id))),
+      inner: inner.map((id) => element(store, id, of(id))),
+      slabOpenings: [...openingHost].map(([id, host]) => ({ ...element(store, id, of(id)), host })),
     };
   })();
   cache.set(m.store, p);
@@ -218,7 +262,7 @@ export async function verifyLocated(located: Array<{ m: EngineModel; id: number 
     const data = await modelData(m);
     const { qto, formulas, method_of_measurement } = spaceQuantities(m.store, id, data.scale);
     const space: SpaceInput = { ...element(m.store, id, data.bodies.get(id) ?? { expressId: id, prisms: [], unsupported: "bez telesa" }), qto };
-    const results = verifySpace(space, { slabs: data.slabs, coverings: data.coverings });
+    const results = verifySpace(space, { slabs: data.slabs, coverings: data.coverings, inner: data.inner, slabOpenings: data.slabOpenings });
     out.push({ model: m, space, results, formulas, ...(method_of_measurement ? { method_of_measurement } : {}) });
   }
   return out;

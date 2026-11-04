@@ -39,14 +39,14 @@ describe("ifc_measure verify=true (D-185)", () => {
     expect(r.isError).toBe(false);
     const sp = r.json.spaces[0];
     expect(sp.object_ref).toBe("2.01");
-    expect(r.json.counts).toEqual({ green: 8, yellow: 0, red: 0, grey: 0 });
+    expect(r.json.counts).toEqual({ green: 9, yellow: 0, red: 0, grey: 0 });
     const h = sp.results.find((x: { recipe: string }) => x.recipe === "space.height.slabs@2");
     expect(h.formula).toBe("spodok(SD-nad) - vrch(SD-pod) = 8.8 - 4.85 = 3.95 m");
     expect(h.file).toBe(3.95); // 3950 mm zo súboru prevedené na m
     expect(h.tolerance).toBe("dĺžka +- 5 mm");
     expect(h.definition).toMatch(/constant height/);
     expect(h.dimension).toBeUndefined();
-    expect(r.json.registry_version).toBe(3);
+    expect(r.json.registry_version).toBe(4);
     expect(r.json.saved).toBeUndefined();
   });
 
@@ -72,8 +72,8 @@ describe("ifc_measure verify=true (D-185)", () => {
     try {
       const ok = await run({ verify: true, a: "2.01", save: true, author: "test" }, archived);
       expect(ok.json.saved).toEqual({ ok: true, run_id: "run-1", model_revisions: { MINI: 7 } });
-      expect(saved[0].run).toMatchObject({ scope: "IfcSpace", registry_version: 3, model_revisions: { MINI: 7 }, counts: { green: 8 }, author: "test" });
-      expect(saved[0].rows).toHaveLength(8);
+      expect(saved[0].run).toMatchObject({ scope: "IfcSpace", registry_version: 4, model_revisions: { MINI: 7 }, counts: { green: 9 }, author: "test" });
+      expect(saved[0].rows).toHaveLength(9);
       expect(saved[0].rows.every((x) => x.revision === 7 && x.global_id === SPACE && x.method.length > 0)).toBe(true);
       // D-185 UI: riadok nesie vysvetlenie a bunky vzorca so zdrojovým prvkom (stĺpce z migrácie verification_inputs).
       const hs = saved[0].rows.find((x) => x.recipe === "space.height.slabs@2")!;
@@ -88,7 +88,7 @@ describe("ifc_measure verify=true (D-185)", () => {
     // Bez archívu revízia nie je známa: beh sa neukladá (D-183), výpočet ostáva.
     const unknown = await run({ verify: true, a: "2.01", save: true }, deps({ verification: store }));
     expect(unknown.json.saved.error).toMatch(/revízia modelu nie je známa/);
-    expect(unknown.json.counts.green).toBe(8);
+    expect(unknown.json.counts.green).toBe(9);
     const failing: VerificationStore = { saveRun: async () => { throw new Error('relation "verification_runs" does not exist'); } };
     const noStore = await run({ verify: true, a: "2.01", save: true });
     expect(noStore.json.saved).toEqual({ ok: false, error: "úložisko overenia nie je nastavené" });
@@ -98,7 +98,7 @@ describe("ifc_measure verify=true (D-185)", () => {
       const broken = await run({ verify: true, a: "2.01", save: true }, { ...archived, verification: failing });
       expect(broken.json.saved.ok).toBe(false);
       expect(broken.json.saved.error).toMatch(/verification_runs/);
-      expect(broken.json.counts.green).toBe(8);
+      expect(broken.json.counts.green).toBe(9);
     } finally {
       setArchiveResolver(null);
     }
@@ -117,6 +117,23 @@ describe("ifc_measure verify=true (D-185)", () => {
     expect(by("space.volume.prism").formula).toMatch(/objem uzavretého meshu/);
     expect(by("space.netvolume.coverings").status).toBe("green");
     expect(by("space.ffh.covering").status).toBe("grey");
+  });
+
+  it("NetFloorArea (D-185 dodatok 4): odčíta stĺp, vstavku (IsBuiltIn z typu) a otvor dosky pod; voľný nábytok nie", async () => {
+    const r = await run({ verify: true, a: "2.01" });
+    const nfa = r.json.spaces[0].results.find((x: { recipe: string }) => x.recipe === "space.netfloorarea.profile@1");
+    expect(nfa).toMatchObject({ status: "green", file: 86.24, computed: 86.24, expression: "A - B - C - D", tolerance: "plocha +- 0,5 %" });
+    expect(nfa.formula).toBe("88 - 0.16 (SL-stlp) - 0.6 (VS-vstavka) - 1 (OT-otvor) = 86.24 m2");
+    // Bunky nesie host (verifySpacesByGuid, riadok behu), výstup toolu nie.
+    const { verified } = await verifySpacesByGuid([SPACE], deps());
+    const cells = verified[0].results.find((x) => x.recipe === "space.netfloorarea.profile@1")!.cells!;
+    expect(cells.map((c) => [c.global_id, c.quantity ?? null])).toEqual([
+      [SPACE, "Qto_SpaceBaseQuantities.GrossFloorArea"],
+      ["0minicolumn00000000100", null],
+      ["0minibuiltin0000000100", null],
+      ["0miniopening0000000100", null],
+    ]);
+    expect(nfa.anchors.map((a: { role: string }) => a.role)).toEqual(["teleso miestnosti", "stĺp vnútri miestnosti", "vstavka vnútri miestnosti", "otvor v doske"]);
   });
 
   it("odmietne prvok, ktorý nie je IfcSpace, a kombináciu s b", async () => {

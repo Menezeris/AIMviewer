@@ -1,7 +1,9 @@
 import {
   FFH_ABSENT_RULE,
+  NET_FLOOR_AREA,
   NET_VOLUME_COVERINGS,
   NET_VOLUME_TOLERANCE,
+  NFA_OPENINGS_RULE,
   NON_CONSTANT_RULE,
   OPEN_MESH_RULE,
   REGISTRY_VERSION,
@@ -19,7 +21,7 @@ const DECISION_URL = "https://github.com/Menezeris/AIMviewer/blob/main/DECISIONS
 
 const STATUSES: Array<[string, string, string]> = [
   ["green", "bg-green-500", "hodnota zo súboru sedí s geometriou v tolerancii (alebo je správne neuvedená)"],
-  ["yellow", "bg-yellow-400", "sedí iná známa metóda (NetVolume ako v Revite) alebo chýba hodnota, ktorú schéma žiada"],
+  ["yellow", "bg-yellow-400", "sedí iná známa metóda (NetVolume a NetFloorArea ako v Revite) alebo chýba hodnota, ktorú schéma žiada"],
   ["red", "bg-red-500", "hodnota nesedí, alebo vlastnosť nie je jednoznačná (miestnosť má viac výšok); nález ide autorovi cez BCF"],
   ["grey", "bg-neutral-400", "nedá sa overiť (prvok nemá teleso, chýba doska alebo krytina); dôvod je pri veličine"],
 ];
@@ -93,6 +95,10 @@ export default function OverenieVymerPage() {
           <li>Konštantnosť: {NON_CONSTANT_RULE.text}</li>
           <li>FinishFloorHeight: {FFH_ABSENT_RULE.text} (žltá).</li>
           <li>NetVolume odčíta len krytiny {NET_VOLUME_COVERINGS.join(", ")}.</li>
+          <li>
+            NetFloorArea odčíta pôdorys tried {[...NET_FLOOR_AREA.element_types, ...NET_FLOOR_AREA.built_in_types.map((t) => `${t} (len IsBuiltIn)`)].join(", ")},
+            ktoré vyčnievajú nad hotovú podlahu do {NET_FLOOR_AREA.floor_band_m} m, a otvory v doske pod miestnosťou; {NFA_OPENINGS_RULE.text} (žltá).
+          </li>
           <li>Teleso z meshu: {OPEN_MESH_RULE.text}.</li>
         </ul>
       </section>
