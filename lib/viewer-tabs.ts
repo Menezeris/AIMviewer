@@ -187,5 +187,5 @@ export function tabsBridgeMessage(o: TabsOp): Record<string, unknown> {
   if (o.op === "tab") return { type: "VIEW_TABS", action: o.action, ...o.wire };
   return o.box
     ? { type: "SET_SECTION_BOX", box: o.box }
-    : { type: "SET_SECTION_BOX", guids: o.guids, ...(o.marginM !== undefined ? { marginM: o.marginM } : {}) };
+    : { type: "SET_SECTION_BOX", guids: o.guids, ...(o.marginM !== undefined ? { marginM: o.marginM } : { auto: true }) };
 }

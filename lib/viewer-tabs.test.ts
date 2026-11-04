@@ -29,12 +29,12 @@ describe("záložky viewera, op tab a section_box (D-132)", () => {
 
   it("section_box: okolo prvkov s okrajom alebo presná obálka; prevrátená obálka neprejde", () => {
     expect(bridge(sectionBoxAroundOp([G], 0.5))).toEqual([{ type: "SET_SECTION_BOX", guids: [G], marginM: 0.5 }]);
-    expect(bridge(sectionBoxAroundOp([G]))).toEqual([{ type: "SET_SECTION_BOX", guids: [G] }]);
+    expect(bridge(sectionBoxAroundOp([G]))).toEqual([{ type: "SET_SECTION_BOX", guids: [G], auto: true }]);
     const box = { min: { x: -1.2344, y: 0, z: 0 }, max: { x: 2, y: 3, z: 4 } };
     expect(sectionBoxOp(box)).toBe("section_box:-1.234,0,0,2,3,4:");
     expect(bridge("section_box:2,0,0,1,3,4:")).toEqual([]);
     expect(bridge("section_box:1,2,3:")).toEqual([]);
-    expect(bridge(`section_box:25:${G}`)).toEqual([{ type: "SET_SECTION_BOX", guids: [G] }]);
+    expect(bridge(`section_box:25:${G}`)).toEqual([{ type: "SET_SECTION_BOX", guids: [G], auto: true }]);
   });
 
   it("doc: layout split ide do DOCUMENT_OPEN, bez neho záložka", () => {
@@ -56,8 +56,10 @@ describe("záložky viewera, op tab a section_box (D-132)", () => {
     expect(() => planViewTabs({ tab: "" })).toThrow("tab");
   });
 
-  it("set_section box: cieľ povinný, okraj v rozsahu, predvolene 0,5 m", () => {
-    expect(planSectionBox({}, [G]).ops).toEqual([`section_box:0.5:${G}`]);
+  it("set_section box: cieľ povinný, okraj v rozsahu, bez okraja automaticky", () => {
+    expect(planSectionBox({}, [G]).ops).toEqual([`section_box::${G}`]);
+    expect(planSectionBox({}, [G]).result).toMatchObject({ margin_m: "auto" });
+    expect(bridge(planSectionBox({}, [G]).ops[0])).toEqual([{ type: "SET_SECTION_BOX", guids: [G], auto: true }]);
     expect(planSectionBox({ margin_m: 0 }, [G]).result).toMatchObject({ margin_m: 0 });
     expect(() => planSectionBox({}, [])).toThrow("cieľ");
     expect(() => planSectionBox({ margin_m: 30 }, [G])).toThrow("margin_m");
