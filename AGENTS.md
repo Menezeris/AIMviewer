@@ -28,6 +28,9 @@
   `npx vitest run`, `node scripts/ci/lint-changed.mjs origin/main`; the gate is green GitHub Actions CI.
 - **Database:** nodes in `objects`, edges in `relationships`, IFC-first naming. Conventions:
   [`docs/conventions-db.md`](docs/conventions-db.md). Spatial hierarchy: Site -> Building -> Floor -> Space -> Asset.
+- **Production applies (D-198):** only the orchestrator session applies migrations to production, and only after
+  Samuel's explicit yes is quoted on #60. The step session prepares the migration and does the backup, restore test
+  and rehearsal first; it does not apply. The rollback is ready before the apply, the checks run right after it.
 - **Every writer names itself (D-196):** writes to the graph are logged in `audit.log` with the person and the source.
   App code writes through `getSupabaseAdmin()` (headers from `lib/audit/context.ts`, `withAuditContext` per route),
   ETL through `etl/audit.py` (`PGAPPNAME`, `set_session`, one `write_run` per load), the fork through the AIM API.

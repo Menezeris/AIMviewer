@@ -8817,3 +8817,19 @@ Introduced in AIMforked #3, which also updates sections 2 and 5 of `docs/platfor
 **Addendum (PR 3, 5 Nov):** the check runs on insert and on an update that changes `rel_type`, `from_id` or `to_id`. An update of other columns is not rechecked: under `enforce` an old edge that fails could otherwise not be closed (`valid_until`), and the ETL's rewrites of unchanged edges would pay the check every load. A rel_type moves to `enforce` with `supabase/pending/relationship_ifc_enforce.sql` (copied into a migration on Samuel's yes); `rel_assigns_to_actor` stays `warn` until the ETL writes IfcActor nodes.
 
 **Consequences:** a new rel_type needs its end attributes (or explicit types for aim_*) in the generator. Every writer sets the person and the source (AGENTS.md). IfcEvent stays the domain record of workflow transitions (R11); the log is the technical audit.
+
+### D-198 - Production applies run from the orchestrator session
+
+**Date:** 2026-11-05 · **Status:** approved (Samuel 5 Nov: "I have always to go to several sessions to approve something, make it possible so I can approve everything from here or another orchestrator in the furture", then "a+b combined?" and "In .claude/settings.json add mcp__Supabase__apply_migration"; number from the orchestrator, #60) · **Builds on:** D-193 (relayed decisions), D-196 (point 10: how a production apply is done), D-197 (orchestrator rules)
+
+**Context:** each production apply asked Samuel to approve a permission prompt inside the step session that prepared it (R10 + audit, D-194, PR 4). He wants one place to approve.
+
+**Decision:**
+1. **Who applies.** Only the orchestrator session applies migrations to production. The step session prepares the migration and does the backup, the restore test and the rehearsal (D-196 point 10), then hands the orchestrator the exact steps, the checks and the rollback. It does not apply.
+2. **The gate.** Samuel's explicit yes, quoted on #60 as a relayed decision (D-193), before each apply. No yes, no apply. A yes for one migration does not cover other migrations.
+3. **The allow rule.** `.claude/settings.json` allows `mcp__Supabase__apply_migration`, so the orchestrator is not prompted again. `execute_sql` was already allowed. Nothing broader: no Bash patterns for the Management API.
+4. **After the apply.** The orchestrator runs the checks from the step session (object counts unchanged, new objects present, grants, API logs for errors) and reports on #60. A failed check means the rollback, not a fix forward.
+
+**Rejected:** allow rules for every session without the orchestrator rule (a step session could then apply on its own); a looser permission mode for child sessions (a child cannot be more permissive than its parent); leaving the prompts in the step sessions.
+
+**Consequences:** the allow rule is repo-wide, so "only the orchestrator applies" is a convention, not a technical lock. A session that reads this record must not apply.
