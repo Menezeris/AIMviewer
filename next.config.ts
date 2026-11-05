@@ -52,7 +52,7 @@ const nextConfig: NextConfig = {
     "/api/bcf/**/*": PDF_RENDER_FILES,
     "/api/drawing/**/*": PDF_RENDER_FILES,
     // Editor knižnice (D-186): vendorovaná šablóna `app.html` a design kit sa čítajú zo súborov pri požiadavke.
-    "/kniznica/editor/**/*": ["./library/editor/**/*"],
+    "/library/editor/**/*": ["./library/editor/**/*"],
     "/api/library/editor/**/*": ["./node_modules/xmllint-wasm/**/*"],
   },
 
@@ -69,7 +69,13 @@ const nextConfig: NextConfig = {
   // stránka `/` = žiadny build-time prerender (layout ťahá Supabase a build
   // padal na prechodnom „JWT issued at future" clock skewe build stroja).
   async redirects() {
-    return [{ source: "/", destination: "/ifc", permanent: false }];
+    return [
+      { source: "/", destination: "/ifc", permanent: false },
+      // D-194 phase 4: pages renamed to English; old links (documents, MCP outputs) keep working. Query strings are kept.
+      { source: "/kniznica", destination: "/library", permanent: true },
+      { source: "/kniznica/:path*", destination: "/library/:path*", permanent: true },
+      { source: "/overenie", destination: "/verification", permanent: true },
+    ];
   },
   async headers() {
     return [
