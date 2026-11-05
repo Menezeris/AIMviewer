@@ -6,7 +6,7 @@ describe("protokol spätného kanála (D-085)", () => {
   it("otázka: známy typ, krátke id, nanajvýš 100 GUIDov", () => {
     expect(isLiveQuery({ id: "a", query: "bounds", guids: ["G"] })).toBe(true);
     expect(isLiveQuery({ id: "a", query: "view_state" })).toBe(true);
-    // D-096: počty AIM chat lens s verziou.
+    // D-096: AIM chat lens counts with a version.
     expect(isLiveQuery({ id: "a", query: "lens_state", rev: "r1" })).toBe(true);
     expect(isLiveQuery({ id: "a", query: "lens_state", rev: "" })).toBe(false);
     expect(isLiveQuery({ id: "a", query: "lens_state", rev: "x".repeat(65) })).toBe(false);

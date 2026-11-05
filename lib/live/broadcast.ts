@@ -6,34 +6,34 @@ import { currentCaller } from "./caller";
 import { LIVE_TEST_SUFFIX } from "./protocol";
 
 /**
- * Živý príkazový kanál (D-079): server odvysiela UI akcie (navigačné URL zo
- * whitelistu) cez Supabase Realtime Broadcast REST API. Viewer prihlásený na
- * kanál ich vykoná ako AI dock. Fire-and-forget — nevieme, či niekto počúva.
+ * Live command channel (D-079): the server broadcasts UI actions (navigation URLs from the
+ * whitelist) via the Supabase Realtime Broadcast REST API. A viewer subscribed to the
+ * channel executes them like the AI dock. Fire-and-forget - we do not know whether anyone is listening.
  */
 
-/** Udalosť v kanáli, na ktorú počúva klient (`components/live-channel.tsx`). */
+/** Event in the channel the client listens to (`components/live-channel.tsx`). */
 export const LIVE_EVENT = "command";
 
 export interface LivePayload {
   actions: AskAction[];
-  /** Kto príkaz poslal (zobrazí sa vo vieweri). */
+  /** Who sent the command (shown in the viewer). */
   from: string;
   sentAt: string;
-  /** Id príkazu pre potvrdenie `applied` (D-101). */
+  /** Command id for the `applied` acknowledgement (D-101). */
   cmdId?: string;
-  /** Rozhovor, ktorý príkaz poslal (D-159): viewer prijíma príkazy len od svojho chatu. */
+  /** Conversation that sent the command (D-159): the viewer accepts commands only from its own chat. */
   sid?: string;
 }
 
-/** Produkčný kanál (`LIVE_CHANNEL`) bez ohľadu na volajúceho: zmeny dát (BCF, revízie) patria používateľovi. */
+/** Production channel (`LIVE_CHANNEL`) regardless of the caller: data changes (BCF, revisions) belong to the user. */
 export function liveBaseChannel(): string | null {
   const c = process.env.LIVE_CHANNEL?.trim();
   return c ? c : null;
 }
 
 /**
- * Kanál pre príkazy a otázky volajúceho (D-159): pracovná session (Claude Code) dostane testovací
- * kanál `<LIVE_CHANNEL>-test`, chat používateľa produkčný. Viewer si kanál vyberie v stavovej lište.
+ * Channel for the caller's commands and questions (D-159): a working session (Claude Code) gets the test
+ * channel `<LIVE_CHANNEL>-test`, the user's chat the production one. The viewer picks the channel in the status bar.
  */
 export function liveChannel(): string | null {
   const base = liveBaseChannel();
@@ -41,10 +41,10 @@ export function liveChannel(): string | null {
   return currentCaller()?.work ? `${base}${LIVE_TEST_SUFFIX}` : base;
 }
 
-/** Testovací kanál pracovných sessions (D-159)? */
+/** Test channel of working sessions (D-159)? */
 export const isTestChannel = (channel: string) => channel.endsWith(LIVE_TEST_SUFFIX);
 
-/** `sid` do príkazu: viazanie viewera na chat sa dá vypnúť `LIVE_OWNER_LOCK=0` (D-159). */
+/** `sid` into the command: binding the viewer to a chat can be turned off with `LIVE_OWNER_LOCK=0` (D-159). */
 export function commandSid(): string | undefined {
   if (process.env.LIVE_OWNER_LOCK?.trim() === "0") return undefined;
   return currentCaller()?.sid;
@@ -87,8 +87,8 @@ export async function broadcastLive(
 }
 
 /**
- * Iná udalosť než príkazy (napr. "témy BCF sa zmenili", D-099): ten istý REST
- * broadcast, vlastné meno udalosti a payload.
+ * An event other than commands (e.g. "BCF topics changed", D-099): the same REST
+ * broadcast, its own event name and payload.
  */
 export async function broadcastLiveEvent(
   channel: string,

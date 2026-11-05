@@ -73,7 +73,7 @@ describe("značky: overenie", () => {
 
 describe("značky: geometria", () => {
   it("obláčik: oblúky podľa vzorca, každý polkruh leží na hrane", () => {
-    // 400 x 200 jednotiek: s = min(18, max(6, 200 / 4)) = 18, hrana 400 = 11 oblúkov (400 / 36 = 11,1), hrana 200 = 6.
+    // 400 x 200 units: s = min(18, max(6, 200 / 4)) = 18, edge 400 = 11 arcs (400 / 36 = 11.1), edge 200 = 6.
     const arcs = cloudArcs(100, 100, 500, 300);
     expect(arcs).toHaveLength(2 * 11 + 2 * 6);
     const top = arcs.slice(0, 11);
@@ -83,7 +83,7 @@ describe("značky: geometria", () => {
     }
     expect(top[0].cx - top[0].r).toBeCloseTo(100);
     expect(top[10].cx + top[10].r).toBeCloseTo(500);
-    // Hrana hore: oblúk ide z ľavého bodu cez horný vrchol (uhol 3pi/2) k pravému.
+    // Top edge: the arc goes from the left point over the top vertex (angle 3pi/2) to the right one.
     expect(top[0].a0).toBeCloseTo(Math.PI);
     expect(top[0].a1).toBeCloseTo(2 * Math.PI);
   });
@@ -92,7 +92,7 @@ describe("značky: geometria", () => {
     const arcs = cloudArcs(0, 0, 10, 10);
     expect(arcs.length).toBeGreaterThanOrEqual(4);
     for (const a of arcs) expect(a.r).toBeGreaterThan(0);
-    // Rohy v obrátenom poradí dávajú ten istý počet.
+    // Corners in reverse order give the same count.
     expect(cloudArcs(500, 300, 100, 100)).toHaveLength(cloudArcs(100, 100, 500, 300).length);
   });
 
@@ -110,12 +110,12 @@ describe("značky: geometria", () => {
     expect(g.centre).toEqual({ x: 300, y: 276 });
     expect(g.a0).toBeCloseTo(Math.PI / 6);
     expect(g.a1).toBeCloseTo((5 * Math.PI) / 6);
-    // Dotyčnica je kolmá na polomer: vzdialenosť hrot - bod dotyku = sqrt(24^2 - 12^2).
+    // The tangent is perpendicular to the radius: distance tip - touch point = sqrt(24^2 - 12^2).
     expect(Math.hypot(g.from.x - 300, g.from.y - 300)).toBeCloseTo(Math.sqrt(24 * 24 - 12 * 12));
   });
 });
 
-/** Jednostranové biele PDF 842 x 595 bodov. */
+/** Single-page white PDF 842 x 595 points. */
 function blankPdf(): Uint8Array {
   const content = "0.5 g 0 0 1 1 re f";
   const objs = [
@@ -171,17 +171,17 @@ describe("značky: render nad stranou PDF", () => {
     const px = await reds(r.png);
     const sx = px.width / 100;
     const sy = px.height / 100;
-    // Obrys obláčika: červené pixely na hornej hrane (pás okolo y = 10 %), ale nie vo vnútri.
+    // Cloud outline: red pixels on the top edge (a band around y = 10 %), but not inside.
     expect(px.count(12 * sx, 8 * sy, 38 * sx, 12 * sy)).toBeGreaterThan(200);
     expect(px.count(15 * sx, 20 * sy, 35 * sx, 30 * sy)).toBe(0);
-    // Šípka: čiara aj plný hrot pri x = 90 %.
+    // Arrow: the line and the filled head at x = 90 %.
     expect(px.count(60 * sx, 19 * sy, 85 * sx, 21 * sy)).toBeGreaterThan(100);
     expect(px.count(86 * sx, 18 * sy, 90 * sx, 22 * sy)).toBeGreaterThan(50);
     // Pin: kvapka nad bodom 70 %, 80 %.
     expect(px.count(68 * sx, 74 * sy, 72 * sx, 80 * sy)).toBeGreaterThan(100);
-    // Text nad ľavým dolným rohom 10 %, 90 %.
+    // Text above the bottom left corner 10 %, 90 %.
     expect(px.count(10 * sx, 86 * sy, 20 * sx, 91 * sy)).toBeGreaterThan(40);
-    // Mimo značiek biela strana.
+    // Outside the markups a white page.
     expect(px.count(45 * sx, 45 * sy, 55 * sx, 55 * sy)).toBe(0);
   });
 

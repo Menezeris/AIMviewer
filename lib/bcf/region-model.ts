@@ -3,11 +3,11 @@ import { toGeorefV2, type GeorefCalibration, type Tuple3 } from "../data/georef"
 import type { PctRect } from "./snapshot-plan";
 
 /**
- * Oblasť strany dokumentu v IFC svete (D-158 krok 4): kalibrácia strany (`_georef` v2, D-133)
- * prevedie rohy oblasti (% vľavo hore) na body strany (vľavo dole), affine na metre roviny
- * (u, v) a rovina na IFC svet (Z hore, m, rámec viewera). Z toho návrh prvkov v oblasti
- * (pôdorys: obálka v pásme podlažia, rez: prvky preťaté rovinou), BCF kamera nad oblasťou a
- * orezávacia rovina. Čisté funkcie; meshe a kalibráciu dodá volajúci.
+ * A document page region in the IFC world (D-158 step 4): page calibration (`_georef` v2, D-133)
+ * converts region corners (% from top left) to page points (bottom left), affine to plane meters
+ * (u, v) and the plane to the IFC world (Z up, m, viewer frame). From that a proposal of elements in the region
+ * (floor plan: bounding box in the storey band, section: elements cut by the plane), a BCF camera over the region and
+ * a clipping plane. Pure functions; meshes and calibration are supplied by the caller.
  */
 
 export type Vec3 = Tuple3;
@@ -23,19 +23,19 @@ const norm = (a: Vec3): Vec3 => {
 };
 const r3 = (v: number) => Math.round(v * 1000) / 1000 || 0;
 
-/** Bod strany (body, vľavo dole) -> metre roviny (u, v) podľa `_georef.affine` [a, b, tx, c, d, ty]. */
+/** Page point (points, bottom left) -> plane meters (u, v) by `_georef.affine` [a, b, tx, c, d, ty]. */
 export function applyAffine(a: GeorefCalibration["affine"], p: [number, number]): [number, number] {
   return [a[0] * p[0] + a[1] * p[1] + a[2], a[3] * p[0] + a[4] * p[1] + a[5]];
 }
 
-/** Metre roviny -> IFC svet: pôdorys (bez `plane`) = (u, v, výška podlažia), rez = origin + u·s + v·t. */
+/** Plane meters -> IFC world: floor plan (without `plane`) = (u, v, storey height), section = origin + u*s + v*t. */
 export function planeToWorld(cal: GeorefCalibration, uv: [number, number]): Vec3 {
   if (!cal.plane) return [uv[0], uv[1], cal.storey_z ?? 0];
   const { origin, u, v } = cal.plane;
   return add(origin, add(mul(u, uv[0]), mul(v, uv[1])));
 }
 
-/** % strany (vľavo hore) -> body strany (vľavo dole). */
+/** % of the page (top left) -> page points (bottom left). */
 const pagePoint = (cal: GeorefCalibration, xPct: number, yPct: number): [number, number] => [
   (xPct / 100) * cal.page_size[0],
   cal.page_size[1] - (yPct / 100) * cal.page_size[1],
@@ -45,8 +45,8 @@ const inside = (outer: [number, number, number, number], r: PctRect) =>
   r.x >= outer[0] - 0.5 && r.y >= outer[1] - 0.5 && r.x + r.width <= outer[0] + outer[2] + 0.5 && r.y + r.height <= outer[1] + outer[3] + 0.5;
 
 /**
- * Kalibrácia pre stranu a oblasť: pri viac výkresoch na strane tá, ktorej výrez oblasť
- * obsahuje; ručná má prednosť pred automatickou (ručné dorovnanie je posledné slovo, D-133).
+ * Calibration for a page and region: with several drawings on a page the one whose crop contains the region;
+ * a manual one takes precedence over an automatic one (the manual adjustment has the last word, D-133).
  */
 export function pickCalibration(georef: unknown, page: number, region: PctRect | null): GeorefCalibration | null {
   const cals = toGeorefV2(georef).calibrations.filter((c) => c.page === page);
@@ -56,21 +56,21 @@ export function pickCalibration(georef: unknown, page: number, region: PctRect |
 
 export interface RegionFrame {
   kind: "plan" | "section";
-  /** Rohy oblasti v IFC svete (vľavo hore, vpravo hore, vpravo dole, vľavo dole na strane). */
+  /** Region corners in the IFC world (top left, top right, bottom right, bottom left on the page). */
   corners: [Vec3, Vec3, Vec3, Vec3];
   center: Vec3;
-  /** Šírka a výška oblasti v m (pozdĺž strany). */
+  /** Region width and height in m (along the page). */
   size: [number, number];
   /** Smery strany v IFC svete: doprava a hore po strane. */
   right: Vec3;
   up: Vec3;
-  /** Normála roviny ku kamere (pôdorys = +Z). */
+  /** Plane normal toward the camera (floor plan = +Z). */
   normal: Vec3;
   storey_guid: string | null;
   storey_z: number | null;
 }
 
-/** Oblasť (null = výrez kalibrácie alebo celá strana) -> rámec v IFC svete. */
+/** Region (null = calibration crop or the whole page) -> frame in the IFC world. */
 export function regionFrame(cal: GeorefCalibration, region: PctRect | null): RegionFrame {
   const r: PctRect = region ?? (cal.region ? { x: cal.region[0], y: cal.region[1], width: cal.region[2], height: cal.region[3] } : { x: 0, y: 0, width: 100, height: 100 });
   const w = (x: number, y: number) => planeToWorld(cal, applyAffine(cal.affine, pagePoint(cal, x, y)));
@@ -97,13 +97,13 @@ export function regionFrame(cal: GeorefCalibration, region: PctRect | null): Reg
 
 const vec = (a: Vec3) => ({ x: r3(a[0]), y: r3(a[1]), z: r3(a[2]) });
 
-/** Výška rezu nad podlažím, keď horná hrana podlažia nie je známa (dvere ostanú celé). */
+/** Section height above the storey when the storey top edge is unknown (doors stay whole). */
 export const DEFAULT_CUT_M = 2.0;
 
 /**
- * BCF pohľad nad oblasťou: perspektíva zo strany "dole na výkrese" šikmo zhora (pôdorys),
- * kolmo na rovinu z jej prednej strany (rez); orezávacia rovina nad podlažím alebo v rovine
- * rezu, smer ako nerotovaný rez viewera (`sectionPlaneToClippingPlane`, viditeľná strana).
+ * BCF viewpoint over the region: perspective from the "bottom of the drawing" side obliquely from above (floor plan),
+ * perpendicular to the plane from its front side (section); the clipping plane above the storey or in the section
+ * plane, direction like an unflipped viewer section (`sectionPlaneToClippingPlane`, visible side).
  */
 export function regionViewpoint(f: RegionFrame, opts: { storeyTop?: number | null; aspect?: number } = {}): Record<string, unknown> {
   const span = Math.max(f.size[0], f.size[1], 2);
@@ -112,7 +112,7 @@ export function regionViewpoint(f: RegionFrame, opts: { storeyTop?: number | nul
     const z = f.storey_z ?? f.center[2];
     const cut = opts.storeyTop != null && opts.storeyTop > z + 0.5 ? opts.storeyTop - 0.1 : z + DEFAULT_CUT_M;
     const target: Vec3 = [f.center[0], f.center[1], z + 1];
-    // Kamera z tej strany, ktorá je na výkrese dole, 55 stupňov nad vodorovnou.
+    // Camera from the side that is at the bottom of the drawing, 55 degrees above the horizontal.
     const back = norm([-f.up[0], -f.up[1], 0]);
     const dist = span * 1.3 + 4;
     const position = add(target, add(mul(back, dist * Math.cos(0.96)), [0, 0, dist * Math.sin(0.96)]));
@@ -137,7 +137,7 @@ export function regionViewpoint(f: RegionFrame, opts: { storeyTop?: number | nul
   };
 }
 
-/** Kamera bez kalibrácie: pohľad zhora (BCF 3.0 chce v každom pohľade kameru, D-158 krok 3). */
+/** Camera without calibration: a top-down view (BCF 3.0 wants a camera in every viewpoint, D-158 step 3). */
 export function overviewViewpoint(aspect = 1.5): Record<string, unknown> {
   return {
     orthogonal_camera: {
@@ -150,22 +150,22 @@ export function overviewViewpoint(aspect = 1.5): Record<string, unknown> {
   };
 }
 
-// --- Návrh prvkov v oblasti -------------------------------------------------
+// --- Proposal of elements in the region -------------------------------------------------
 
-/** Prvok IFC motora v IFC svete: trojuholníky (x, y, z) a obálka. */
+/** IFC engine element in the IFC world: triangles (x, y, z) and a bounding box. */
 export interface RegionElement {
   globalId: string;
   ifcType: string;
   name: string | null;
   model: string;
-  /** Body v IFC svete (x, y, z po trojiciach) a indexy trojuholníkov. */
+  /** Points in the IFC world (x, y, z in triples) and triangle indices. */
   positions: ArrayLike<number>;
   indices: ArrayLike<number>;
   min: Vec3;
   max: Vec3;
 }
 
-/** Nie sú to prvky, ktorých sa pripomienka týka (priestory a podlažie idú zvlášť ako nadradené). */
+/** These are not the elements the comment concerns (spaces and the storey go separately as parents). */
 const NOT_COMPONENT = new Set([
   "IfcSpace",
   "IfcSpatialZone",
@@ -181,7 +181,7 @@ const NOT_COMPONENT = new Set([
 
 type P2 = [number, number];
 
-/** Projekcia do rámca oblasti: (s, t) po strane od stredu, d = vzdialenosť od roviny po normále. */
+/** Projection into the region frame: (s, t) along the sides from the center, d = distance from the plane along the normal. */
 function projector(f: RegionFrame) {
   return (p: Vec3): [number, number, number] => {
     const q = sub(p, f.center);
@@ -189,7 +189,7 @@ function projector(f: RegionFrame) {
   };
 }
 
-/** Separating axis test: konvexné mnohouholníky v 2D sa prekrývajú. */
+/** Separating axis test: convex polygons in 2D overlap. */
 function overlap2d(a: P2[], b: P2[]): boolean {
   for (const poly of [a, b]) {
     for (let i = 0; i < poly.length; i++) {
@@ -222,7 +222,7 @@ export interface RegionHit {
   ifcType: string;
   name: string | null;
   model: string;
-  /** Podiel pôdorysu (rezu) prvku vnútri oblasti 0..1 podľa obálky, na zoradenie. */
+  /** Share of the element's floor plan (section) inside the region 0..1 by bounding box, for sorting. */
   inside: number;
 }
 
@@ -235,9 +235,9 @@ const corners8 = (min: Vec3, max: Vec3): Vec3[] =>
   [0, 1, 2, 3, 4, 5, 6, 7].map((i) => [i & 1 ? max[0] : min[0], i & 2 ? max[1] : min[1], i & 4 ? max[2] : min[2]]);
 
 /**
- * Prvky v oblasti: pôdorys = trojuholník prvku v pásme podlažia (`depth`, výšky nad rovinou
- * podlažia) a jeho priemet do oblasti; rez = trojuholník preťatý rovinou (pásmo okolo nej)
- * a priemet do oblasti. Obálka je len predvýber, rozhoduje geometria.
+ * Elements in the region: floor plan = an element triangle in the storey band (`depth`, heights above the storey
+ * plane) and its projection into the region; section = a triangle cut by the plane (a band around it)
+ * and a projection into the region. The bounding box is only a preselection, geometry decides.
  */
 export function elementsInRegion(f: RegionFrame, elements: Iterable<RegionElement>, depth: [number, number]): RegionMatch {
   const proj = projector(f);
@@ -290,13 +290,13 @@ function trianglesHit(e: RegionElement, proj: (p: Vec3) => [number, number, numb
   return false;
 }
 
-/** Horná hrana podlažia vo výške `z`: najbližšia vyššia výška podlažia (aspoň 0,5 m nad). */
+/** Storey top edge at height `z`: the nearest higher storey height (at least 0.5 m above). */
 export function storeyTop(elevations: number[], z: number | null): number | null {
   if (z === null) return null;
   return [...elevations].sort((a, b) => a - b).find((e) => e > z + 0.5) ?? null;
 }
 
-/** Pásmo hĺbky: pôdorys od podlahy po hornú hranu podlažia (bez dosiek hore a dole), rez okolo roviny. */
+/** Depth band: floor plan from the floor to the storey top edge (without slabs above and below), section around the plane. */
 export function regionDepth(f: RegionFrame, storeyTop: number | null): [number, number] {
   if (f.kind === "section") return [-0.05, 0.05];
   const z = f.storey_z ?? f.center[2];

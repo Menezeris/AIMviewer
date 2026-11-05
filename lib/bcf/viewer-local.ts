@@ -2,9 +2,9 @@ import { MAX_TOPIC_DOCUMENTS } from "./documents";
 import { parseMarkup, type Markup } from "./markup";
 
 /**
- * Lokálne BCF témy viewera v `view_state.bcf_local` (D-158): overenie
- * nedôveryhodných dát z prehliadača a krátky súhrn pre `get_viewer_state`.
- * Bez závislosti na tools (číta ho aj `viewer-query-tools`).
+ * Local BCF topics of the viewer in `view_state.bcf_local` (D-158): verification of
+ * untrusted data from the browser and a short summary for `get_viewer_state`.
+ * Without a dependency on tools (`viewer-query-tools` reads it too).
  */
 
 const MAX_TOPICS = 50;
@@ -33,7 +33,7 @@ const str = (v: unknown, max: number): string | null => {
   return s ? s.slice(0, max) : null;
 };
 
-/** `view_state.bcf_local` -> overené lokálne témy (neplatné vynechá). */
+/** `view_state.bcf_local` -> verified local topics (invalid ones omitted). */
 export function localTopicsFromState(state: unknown): { count: number; topics: LocalTopic[] } {
   const raw = (state && typeof state === "object" ? (state as Record<string, unknown>).bcf_local : null) as
     | { count?: unknown; topics?: unknown }
@@ -77,7 +77,7 @@ export function localTopicsFromState(state: unknown): { count: number; topics: L
   return { count, topics };
 }
 
-/** Krátky súhrn pre `get_viewer_state` (celé pohľady a výbery by zahltili odpoveď). */
+/** Short summary for `get_viewer_state` (whole viewpoints and selections would flood the answer). */
 export function compactLocalTopics(state: unknown) {
   const { count, topics } = localTopicsFromState(state);
   if (count === 0) return undefined;

@@ -8,9 +8,9 @@ import { SnapshotRenderError } from "./snapshot-render";
 import { defaultSnapshotSource } from "./snapshot-runtime";
 
 /**
- * Spoločné pre routes so snímkou výrezu (D-158 krok 3): `/api/drawing/<id>/snapshot` a BCF API
- * `.../viewpoints/<guid>/snapshot`. Limit na IP (D-068) kryje render na požiadanie; viewer
- * pri načítaní tém pýta snímku každej pripomienky, preto je okno štedré.
+ * Shared by routes with a region snapshot (D-158 step 3): `/api/drawing/<id>/snapshot` and the BCF API
+ * `.../viewpoints/<guid>/snapshot`. The per-IP limit (D-068) covers on-demand rendering; the viewer
+ * asks for the snapshot of every comment when loading topics, so the window is generous.
  */
 
 const MAX = Number(process.env.SNAPSHOT_RATE_LIMIT_MAX ?? (process.env.NODE_ENV === "production" ? 240 : 0));
@@ -31,7 +31,7 @@ export async function snapshotFor(req: SnapshotRequest, ipKey: string): Promise<
   }
 }
 
-/** PNG odpoveď; obsah pre ten istý kľúč (sha256, strana, oblasť) sa nemení, len revízia dokumentu. */
+/** PNG response; the content for the same key (sha256, page, region) does not change, only the document revision does. */
 export function pngHeaders(revisionChanged: boolean): Record<string, string> {
   return {
     "Content-Type": "image/png",

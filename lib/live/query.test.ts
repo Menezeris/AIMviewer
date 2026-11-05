@@ -5,7 +5,7 @@ vi.mock("server-only", () => ({}));
 import { LIVE_QUERY_EVENT, LIVE_REPLY_EVENT } from "./protocol";
 import { queryLiveViewer, type QueryChannel } from "./query";
 
-/** Falošný kanál: zachytí odoslanú otázku a dovolí "viewerom" odpovedať. */
+/** Fake channel: captures the sent question and lets "viewers" answer. */
 function fakeChannel(status = "SUBSCRIBED") {
   const listeners: ((m: { payload?: unknown }) => void)[] = [];
   const sent: { event: string; payload: { id: string } }[] = [];

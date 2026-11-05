@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 /**
- * BCF viewpoint DTO (BCF API 2.1, snake_case) -> uložený pohľad témy (D-099).
- * Spoločné pre BCF API (pohľad z panela) a uloženie lokálnych tém z viewera (D-158).
+ * BCF viewpoint DTO (BCF API 2.1, snake_case) -> stored topic viewpoint (D-099).
+ * Shared by the BCF API (viewpoint from the panel) and saving local topics from the viewer (D-158).
  */
 
-/** BCF viewpoint DTO z panela -> uložený pohľad a GlobalId výberu. */
+/** BCF viewpoint DTO from the panel -> stored viewpoint and GlobalId of the selection. */
 export function viewpointFromDto(dto: Record<string, unknown>): { viewpoint: Record<string, unknown>; selection: string[] } {
   const comps = (dto.components ?? {}) as { selection?: { ifc_guid?: unknown }[] };
   const selection = [
@@ -14,7 +14,7 @@ export function viewpointFromDto(dto: Record<string, unknown>): { viewpoint: Rec
     ),
   ];
   const rest: Record<string, unknown> = { ...dto };
-  // Snímka zatiaľ nie je (D-099 fáza D); prvky idú do `components` témy.
+  // The snapshot is not there yet (D-099 phase D); elements go to the topic `components`.
   delete rest.snapshot;
   delete rest.components;
   delete rest.guid;

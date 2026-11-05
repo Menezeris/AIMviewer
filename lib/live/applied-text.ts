@@ -4,29 +4,29 @@ import { withSectionOrientation } from "./section-orientation";
 import { visibleArea, type ViewerCamera } from "../viewer-camera";
 
 /**
- * Text pre model po potvrdení príkazu vo vieweri (D-101). Stav je ten, ktorý
- * viewer hlási PO vykonaní príkazu (rez, izolácia, zvýraznenie, súhrn Lens),
- * takže netreba ďalšie get_viewer_state; problémy povedia, čo sa nevykonalo.
- * D-125: upozorní na zmeny mimo príkazov, aktívny rez pri izolácii a farbení a
- * na viac okien viewera na kanáli.
+ * Text for the model after a command is acknowledged in the viewer (D-101). The state is the one the
+ * viewer reports AFTER executing the command (section, isolation, highlight, Lens summary),
+ * so no further get_viewer_state is needed; problems say what was not executed.
+ * D-125: warns about changes outside commands, an active section during isolation and coloring, and
+ * about multiple viewer windows on the channel.
  */
 
 export const ACK_TIMEOUT_MS = 3000;
 
 /**
- * Zvýraznenie vlastnosti (`show_in_3d` select + highlight, #168): viewer počká na načítanie vlastností prvku
- * (veľký model) až 10 s a potvrdí až potom, takže bežných 3 s by stav `property_focus` nikdy nezachytilo.
- * Starší viewer potvrdí hneď, čakanie sa ho netýka.
+ * Property highlight (`show_in_3d` select + highlight, #168): the viewer waits up to 10 s for the element properties
+ * to load (large model) and acknowledges only then, so the usual 3 s would never catch the `property_focus` state.
+ * An older viewer acknowledges immediately, the wait does not apply to it.
  */
 export const PROPERTY_FOCUS_ACK_TIMEOUT_MS = 12_000;
 
-/** Koľko čakať na potvrdenie príkazu `tool` s argumentmi `args`. */
+/** How long to wait for the acknowledgement of a `tool` command with arguments `args`. */
 export function ackTimeoutMs(tool: string, args: Record<string, unknown> = {}): number {
   const focus = typeof args.highlight === "string" && args.highlight.trim() !== "";
   return tool === "show_in_3d" && args.select === true && focus ? PROPERTY_FOCUS_ACK_TIMEOUT_MS : ACK_TIMEOUT_MS;
 }
 
-/** Po `set_camera` k stavu pridá viditeľnú oblasť z koncovej kamery (D-128). */
+/** After `set_camera` adds the visible area from the final camera to the state (D-128). */
 function withVisibleArea(tool: string, state: unknown): unknown {
   if (tool !== "set_camera" || !state || typeof state !== "object") return state;
   const camera = (state as { camera?: unknown }).camera;
@@ -35,17 +35,17 @@ function withVisibleArea(tool: string, state: unknown): unknown {
   return visible ? { ...state, visible } : state;
 }
 
-/** Akcie `style_in_3d`, pri ktorých rez skryje časť výsledku (#177). */
+/** `style_in_3d` actions where a section hides part of the result (#177). */
 const CUT_SENSITIVE = new Set(["isolate", "xray", "colorize"]);
 
 export interface AppliedContext {
   /** Argumenty toolu (action, clear_section...). */
   args?: Record<string, unknown>;
-  /** Koľko okien viewera nedávno odpovedalo na kanáli (D-125). */
+  /** How many viewer windows answered on the channel recently (D-125). */
   viewers?: number;
 }
 
-/** Upozornenia k stavu po príkaze (D-125): zmeny mimo príkazov, rez pri farbení a izolácii, viac okien. */
+/** Warnings about the state after a command (D-125): changes outside commands, section during coloring and isolation, multiple windows. */
 export function appliedWarnings(tool: string, a: LiveAppliedPayload, ctx: AppliedContext = {}): string[] {
   const out: string[] = [];
   const state = (a.state ?? {}) as { changed_outside_commands?: unknown; section?: { crosses?: string; coordinate?: number } | null };
@@ -74,7 +74,7 @@ export function appliedWarnings(tool: string, a: LiveAppliedPayload, ctx: Applie
   return out;
 }
 
-/** Stav tabuľky po `open_list` (D-148): beží, hotová alebo prečo nie. */
+/** Table state after `open_list` (D-148): running, done, or why not. */
 export function listStateText(tool: string, state: unknown, run: boolean): string {
   if (tool !== "open_list") return "";
   const l = state && typeof state === "object" ? (state as { list?: { name?: string; status?: string; rows?: number; error?: string; reason?: string } }).list : undefined;
@@ -103,8 +103,8 @@ type ListState = {
 const VIEW_ARGS = ["maximize", "sort_by", "sum", "group_by", "search", "color_by", "export", "visible_only", "column_widths", "highlight"];
 
 /**
- * Úpravy zoznamu (D-149): súčty povedané vetou, a čo sa z `maximize`/`sort_by`/`sum` nevykonalo;
- * krok 2: farby podľa stĺpca a ponuka exportu (stiahnutie je na kliku používateľa).
+ * List edits (D-149): sums stated in a sentence, and what from `maximize`/`sort_by`/`sum` was not executed;
+ * step 2: colors by column and the export offer (the download is up to the user's click).
  */
 export function listViewText(tool: string, state: unknown, args: Record<string, unknown> = {}): string {
   if (tool !== "open_list") return "";
@@ -141,7 +141,7 @@ export function listViewText(tool: string, state: unknown, args: Record<string, 
   return out.length ? ` ${out.join(" ")}` : "";
 }
 
-/** Šírky, zvýraznenie a filter "len viditeľné" (D-171, #274 až #276): čo viewer potvrdil a čo sa neprejavilo. */
+/** Widths, highlight and the "visible only" filter (D-171, #274 to #276): what the viewer acknowledged and what did not take effect. */
 function listLayoutNotes(l: ListState, args: Record<string, unknown>): string[] {
   const out: string[] = [];
   const done = l.status === "done";
@@ -180,7 +180,7 @@ function listLayoutNotes(l: ListState, args: Record<string, unknown>): string[] 
   return out;
 }
 
-/** Okno viewera ovláda iný chat a príkaz odmietlo (D-159). */
+/** The viewer window is controlled by another chat and rejected the command (D-159). */
 export const FOREIGN_REJECTED_TEXT =
   "Príkaz sa NEVYKONAL: živý viewer ovláda iný chat (iná session alebo iný rozhovor, D-159). Netvrď, že sa " +
   "vykonal. Používateľ ho môže prevziať tlačidlom Prevziať vo vieweri (pri Live), potom príkaz zopakuj.";
@@ -191,7 +191,7 @@ export function appliedText(tool: string, a: LiveAppliedPayload, elapsedMs?: num
     ? `Vykonané vo vieweri${elapsedMs !== undefined ? ` (${elapsedMs} ms)` : ""}.`
     : `Vo vieweri sa nevykonalo všetko: ${a.issues.join("; ")}.`;
   const state = a.state === undefined ? "" : ` Stav po príkaze: ${JSON.stringify(withVisibleArea(tool, withSectionOrientation(a.state)))}.`;
-  // D-092: rez nad podlažím má sedieť s eleváciou z DB, inak ho nepotvrdzuj.
+  // D-092: a section above a storey must match the elevation from the DB, otherwise do not acknowledge it.
   const section =
     tool === "set_section"
       ? " Pri reze nad podlažím má section.coordinate zodpovedať floor_elevation_model_units + offset_m; ak nie, povedz to a rez nepotvrdzuj."

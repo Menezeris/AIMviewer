@@ -15,23 +15,23 @@ import {
 import type { ClashResultRow, ClashReviewRow, ClashRunRow, ClashStore, ClashTestRow, ClashTestWrite, ReviewStatus } from "./types";
 
 /**
- * Clash z AIM pre viewer (D-164, host PR3): čítanie testu a behu pre `CLASH_LOAD` a zápis `CLASH_SAVE` z panela
- * (test, beh, stav kolízií) do `clash_*`. Bez motora: len `@ifc-lite/clash` kvôli `clashReviewKey`, aby kľúč
- * kolízie z panela bol ten istý, aký píše `clash` v chate (pravidlo + dvojica `model:GUID` bez ohľadu na poradie).
+ * Clash from AIM for the viewer (D-164, host PR3): reading the test and run for `CLASH_LOAD` and writing `CLASH_SAVE` from the panel
+ * (test, run, clash state) into `clash_*`. Without the engine: only `@ifc-lite/clash` because of `clashReviewKey`, so that the clash key
+ * from the panel is the same one `clash` writes in the chat (rule + the `model:GUID` pair regardless of order).
  */
 
 export class ClashViewerError extends Error {}
 
 export const VIEWER_AUTHOR = "Viewer (panel clash)";
 const CODE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
-/** Verzia enginu v panele; nesie ju beh, aby sa dalo porovnávať behy rovnakého pôvodu. */
+/** Engine version in the panel; the run carries it so that runs of the same origin can be compared. */
 export const VIEWER_ENGINE = "ifc-lite-viewer";
 
 const round = (v: number, digits = 3) => Math.round(v * 10 ** digits) / 10 ** digits;
 const keyOf = (e: Pick<ClashElementWire, "model" | "guid">) => `${e.model}:${e.guid}`;
-/** Kľúč kolízie ako `clashReviewKey` v chate: pravidlo = kód testu. */
+/** Clash key as `clashReviewKey` in the chat: rule = test code. */
 export const clashKey = (rule: string, a: ClashElementWire, b: ClashElementWire) => clashReviewKey({ rule, a: { key: keyOf(a) }, b: { key: keyOf(b) } } as Parameters<typeof clashReviewKey>[0]);
-/** Súradnice IFC (Z hore) -> engine (Y hore), inverzia `toIfc` z `lib/engine/measure.ts`. */
+/** IFC coordinates (Z up) -> engine (Y up), inverse of `toIfc` from `lib/engine/measure.ts`. */
 const toEngine = (c: readonly number[]): number[] => [c[0], c[2], -c[1] || 0];
 
 function countBy<T>(items: T[], key: (x: T) => string | null | undefined): Record<string, number> {
@@ -91,7 +91,7 @@ async function findRow(store: ClashStore, ref: string): Promise<ClashTestRow | n
   return (await store.listTests()).find((t) => t.code.toLowerCase() === want || t.name.toLowerCase() === want) ?? null;
 }
 
-// --- čítanie (CLASH_LOAD) --------------------------------------------------------------------
+// --- reading (CLASH_LOAD) --------------------------------------------------------------------
 
 function toResultWire(r: ClashResultRow, review: ClashReviewRow | undefined): ClashResultWire {
   return {
@@ -122,7 +122,7 @@ function runInfo(r: ClashRunRow): NonNullable<ClashLoadPayload["run"]> {
   };
 }
 
-/** Test (predvolený z kódu alebo z DB) a voliteľne uložený beh s kolíziami a ich stavom; `run` = UUID | `latest`. */
+/** Test (default from code or from the DB) and optionally a saved run with clashes and their state; `run` = UUID | `latest`. */
 export async function loadForViewer(store: ClashStore, req: { test: string; run?: string }): Promise<ClashLoadPayload> {
   const preset = findTest(req.test);
   const row = await findRow(store, req.test);
@@ -130,7 +130,7 @@ export async function loadForViewer(store: ClashStore, req: { test: string; run?
     throw new ClashViewerError(`Test '${req.test}' nie je (clash action=list ukáže všetky).`);
   }
   const wire = row ? rowToWire(row) : testToWire(preset!);
-  // Predvolený test z kódu vyhráva nad riadkom v DB (riadok sa pri uložení behu vyrovná s kódom).
+  // The default test from code wins over the DB row (the row is reconciled with the code when a run is saved).
   const test = { ...(preset ? testToWire(preset) : wire), origin: row?.origin ?? "default" };
   if (!req.run) return { test };
   if (!row) throw new ClashViewerError(`Test '${test.code}' ešte nemá uložený beh.`);
@@ -153,7 +153,7 @@ export async function loadForViewer(store: ClashStore, req: { test: string; run?
   };
 }
 
-/** Zoznam testov s posledným behom (`GET /api/clash` bez parametrov). */
+/** List of tests with the last run (`GET /api/clash` without parameters). */
 export async function listForViewer(store: ClashStore): Promise<Array<Record<string, unknown>>> {
   const rows = await store.listTests();
   const byCode = new Map(rows.map((r) => [r.code, r]));
@@ -169,7 +169,7 @@ export async function listForViewer(store: ClashStore): Promise<Array<Record<str
   });
 }
 
-// --- zápis (CLASH_SAVE, from_viewer) -------------------------------------------------------------
+// --- writing (CLASH_SAVE, from_viewer) -------------------------------------------------------------
 
 const slug = (name: string) =>
   name
@@ -180,7 +180,7 @@ const slug = (name: string) =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 76);
 
-/** Kód nového testu z názvu; pri kolízii s iným testom `-2`, `-3`... */
+/** Code of a new test from the name; on a clash with another test `-2`, `-3`... */
 async function freshCode(store: ClashStore, name: string): Promise<string> {
   const base = slug(name);
   if (!base) throw new ClashViewerError("Test potrebuje kód alebo názov s písmenami a číslami.");
@@ -191,7 +191,7 @@ async function freshCode(store: ClashStore, name: string): Promise<string> {
   throw new ClashViewerError(`Pre názov '${name}' sa nenašiel voľný kód testu.`);
 }
 
-/** Riadok testu pre beh a stav kolízií: predvolený sa vyrovná s kódom, vlastný musí existovať. */
+/** Test row for the run and clash state: the default is reconciled with the code, a custom one must exist. */
 async function testRowFor(store: ClashStore, code: string): Promise<ClashTestRow> {
   const preset = findTest(code);
   if (preset) return store.upsertTest(writeOf({ ...testToWire(preset) }, "default", null));
@@ -224,8 +224,8 @@ function resultRow(code: string, r: ClashResultWire): ClashResultRow {
 }
 
 /**
- * Zápis z panela: test (posledný zápis vyhráva, predvolený sa neprepisuje), beh (`trigger='viewer'`, bez zoznamu
- * overených prvkov, preto porovnanie povie "nepretestované", nie "vyriešené") a stav kolízií po kolíziách.
+ * Write from the panel: the test (last write wins, the default is not overwritten), the run (`trigger='viewer'`, without a list of
+ * verified elements, so the comparison says "not tested", not "resolved") and clash state clash by clash.
  */
 export async function saveFromViewer(store: ClashStore, save: ClashSaveWire, by = VIEWER_AUTHOR): Promise<Extract<ClashSaveResult, { ok: true }>> {
   const notes: string[] = [];

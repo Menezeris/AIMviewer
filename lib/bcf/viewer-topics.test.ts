@@ -10,7 +10,7 @@ const GUID_A = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
 const GUID_B = "3f2504e0-4f89-41d3-9a0c-0305e82c3302";
 const OWN = `https://aim.example/drawing/${DOC_ID}?page=2&region=50_0_25_50#page=2`;
 
-/** `view_state.bcf_local` tak, ako ho pošle fork (`describeLocalTopics`). */
+/** `view_state.bcf_local` as the fork sends it (`describeLocalTopics`). */
 const local = (topics: Record<string, unknown>[], count = topics.length) => ({ mode: "3d", bcf_local: { count, topics } });
 
 const pdfTopic = {
@@ -62,7 +62,7 @@ describe("lokálne témy viewera (D-158)", () => {
       viewpoint: { guid: "vp", source: "bcf", bcf: { perspective_camera: expect.any(Object) } },
     });
     expect(rows[0].comments.map((c) => [c.author, c.comment])).toEqual([["Samuel", "pozri vpravo hore"]]);
-    // Vlastná adresa -> dokument AIM s kódom a revíziou; cudzia ostane ako url.
+    // Own address -> an AIM document with code and revision; a foreign one stays as url.
     expect(docs[0]).toMatchObject({ task_id: GUID_A, document_id: DOC_ID, document_ref: "D.1.1.09", document_revision: "B", page: 2, region: { x: 50, y: 0, width: 25, height: 50 }, url: null });
     expect(docs[1]).toMatchObject({ document_id: null, url: "https://cde.example/D-11.pdf#page=4", description: "Revizto" });
     expect(notify).toHaveBeenCalledTimes(1);
@@ -84,7 +84,7 @@ describe("lokálne témy viewera (D-158)", () => {
     expect(docs[0].markup).toEqual([cloud]);
     expect(docs[1].markup).toBeNull();
     expect(docs[2].markup).toBeNull();
-    // Starší fork `markup` neposiela: správanie ako doteraz.
+    // An older fork does not send `markup`: behaviour as before.
     const old = memoryStore();
     await run({}, deps({ store: old.store, viewState: async () => local([{ ...pdfTopic, guid: GUID_B }]) }));
     expect(old.docs[0].markup).toBeNull();
@@ -129,7 +129,7 @@ describe("lokálne témy viewera (D-158)", () => {
       topics: [{ guid: GUID_A, title: "Chýba popis miestnosti", status: "Open", documents: ["Pôdorys 1NP, strana 2, oblasť x 50 %, y 0 %, 25 x 50 %", "Revizto"], components: 2 }],
       note: expect.stringMatching(/from_viewer/),
     });
-    // Nedôveryhodné tvary sa zahodia, dlhé texty orežú.
+    // Untrusted shapes are dropped, long texts clamped.
     const t = localTopicsFromState({ bcf_local: { topics: [{ guid: GUID_A, title: "x".repeat(500), viewpoint: [1], document_references: [{ url: 5 }] }] } });
     expect(t.topics[0]).toMatchObject({ title: "x".repeat(200), viewpoint: null, document_references: [] });
   });

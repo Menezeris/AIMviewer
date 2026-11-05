@@ -8,19 +8,19 @@ import { viewpointFromDto } from "./viewpoint";
 import type { BCFDocumentReference, BCFProject, BCFTopic, BCFViewpoint } from "@ifc-lite/bcf";
 
 /**
- * Import `.bcfzip` (BCF 2.1 a 3.0) do DB (D-158 krok 8, #199 bod 4): témy sa zapíšu do `model_tasks`,
- * odkazy na dokumenty do `model_task_documents`, komentáre cez `addComment` (s pôvodným dátumom), jediný pohľad témy
- * (D-099) a prvky do `components`. Idempotentné podľa guid témy: opakovaný import tej istej témy
- * nič nezdvojí a zapíše len zmenené polia. Rozhoduje čas zmeny: súbor novší než téma v DB ju
- * aktualizuje, inak ide o konflikt, ktorý sa len ohlási (nič sa nezapíše; `overwrite` ho prepíše).
- * Komentáre a nové odkazy sa len pridávajú, nikdy nemažú. Čistá logika nad `BcfStore`, bez servera.
- * Pôvodné dátumy a autori z BCF sa zachovajú: `created_at`/`updated_at` témy (creation/modified date),
- * dátum komentára (a guid; cez `model_task_import_comment`; kým migrácia nie je nasadená, komentár dostane čas zápisu).
+ * Import of `.bcfzip` (BCF 2.1 and 3.0) into the DB (D-158 step 8, #199 point 4): topics are written to `model_tasks`,
+ * document references to `model_task_documents`, comments via `addComment` (with the original date), the single topic viewpoint
+ * (D-099) and elements into `components`. Idempotent by topic guid: a repeated import of the same topic
+ * duplicates nothing and writes only changed fields. The modification time decides: a file newer than the topic in the DB
+ * updates it, otherwise it is a conflict that is only reported (nothing is written; `overwrite` overwrites it).
+ * Comments and new references are only added, never deleted. Pure logic over `BcfStore`, without a server.
+ * Original dates and authors from BCF are kept: `created_at`/`updated_at` of the topic (creation/modified date),
+ * the comment date (and guid; via `model_task_import_comment`; until the migration is deployed, the comment gets the write time).
  */
 
-/** Strop počtu tém z jedného súboru (zvyšok sa neimportuje, ohlási sa). */
+/** Cap on the number of topics from one file (the rest is not imported, it is reported). */
 export const MAX_IMPORT_TOPICS = 500;
-/** Strop veľkosti archívu (bajty) a rozbalených dát. */
+/** Cap on archive size (bytes) and unpacked data. */
 export const MAX_ARCHIVE_BYTES = 40 * 1024 * 1024;
 const MAX_EXPANDED_BYTES = 300 * 1024 * 1024;
 const MAX_ENTRIES = 20000;
@@ -33,13 +33,13 @@ export type ConflictPolicy = "keep" | "overwrite";
 
 export interface ImportOptions {
   dryRun?: boolean;
-  /** `keep` (predvolené): téma novšia v DB ostane, konflikt sa ohlási; `overwrite`: prepíše ju súbor. */
+  /** `keep` (default): a topic newer in the DB stays, the conflict is reported; `overwrite`: the file overwrites it. */
   conflict?: ConflictPolicy;
-  /** Model federácie pre nové témy (súbor ho nenesie). */
+  /** Federation model for new topics (the file does not carry it). */
   model?: string | null;
-  /** Kto importuje (autor tém bez autora v súbore, `modified_by` pri zmene). */
+  /** Who imports (author of topics without an author in the file, `modified_by` on change). */
   author?: string;
-  /** Len tieto témy (guid z archívu). */
+  /** Only these topics (guid from the archive). */
   guids?: string[];
 }
 
@@ -54,13 +54,13 @@ export interface TopicOutcome {
   number?: number;
   title: string;
   result: ImportResult;
-  /** created/updated: čo sa zapísalo (alebo by sa zapísalo pri dry_run). */
+  /** created/updated: what was written (or would be written on dry_run). */
   changes?: string[];
   conflicts?: FieldDiff[];
   comments_added?: number;
   documents_added?: number;
   documents_updated?: number;
-  /** Odkaz na dokument, ktorý sa nepodarilo priradiť k dokumentu AIM (ostal ako url). */
+  /** A document reference that could not be matched to an AIM document (it stayed as url). */
   documents_foreign?: number;
   reason?: string;
   warnings?: string[];
@@ -80,7 +80,7 @@ export interface ImportSummary {
   warnings: string[];
 }
 
-/** BCF stav z ľubovoľného nástroja -> náš stav; neznámy = open + upozornenie. */
+/** BCF status from any tool -> our status; unknown = open + a warning. */
 const STATUS_MAP: Record<string, TopicStatus> = {
   open: "open",
   new: "open",
@@ -105,7 +105,7 @@ export function importStatus(raw: string | undefined): { status: TopicStatus; un
   return hit ? { status: hit, unknown: false } : { status: "open", unknown: true };
 }
 
-/** guid témy z archívu -> naše uuid: uuid ostáva, 22-znakový IFC guid sa prevedie, iné sa nedá. */
+/** Topic guid from the archive -> our uuid: a uuid stays, a 22-character IFC guid is converted, anything else is not possible. */
 export function topicIdFromGuid(guid: string, ifcGuidToUuid: (g: string) => string, isValidIfcGuid: (g: string) => boolean): string | null {
   const g = guid.trim();
   if (UUID_RE.test(g)) return g.toLowerCase();
@@ -127,7 +127,7 @@ const dateOnly = (v: string | undefined): string | null => {
   return s && /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null;
 };
 
-/** ISO čas z BCF dátumu; budúci čas (zlé hodiny zdroja) sa orezá na teraz, neplatný = null. */
+/** ISO time from a BCF date; a future time (bad source clocks) is clamped to now, invalid = null. */
 const isoMs = (v: string | undefined, now: number): number | null => {
   const t = Date.parse(v ?? "");
   return Number.isNaN(t) ? null : Math.min(t, now);
@@ -146,9 +146,9 @@ interface IncomingRef {
 interface IncomingComment {
   author: string | null;
   comment: string;
-  /** Pôvodný dátum komentára (ISO, nie v budúcnosti); undefined = súbor ho nemá. */
+  /** Original comment date (ISO, not in the future); undefined = the file does not have it. */
   date?: string;
-  /** Pôvodný guid komentára z BCF (len ak je UUID, inak ho dá DB). */
+  /** Original comment guid from BCF (only if it is a UUID, otherwise the DB assigns one). */
   guid?: string;
 }
 
@@ -166,7 +166,7 @@ interface Incoming {
   warnings: string[];
 }
 
-/** Kandidáti na kód dokumentu (Identification) z url a opisu cudzieho odkazu. */
+/** Candidates for the document code (Identification) from the url and description of a foreign reference. */
 export function identificationCandidates(url: string, description: string | null): string[] {
   const out: string[] = [];
   const base = url.split("#")[0].split("?")[0];
@@ -176,7 +176,7 @@ export function identificationCandidates(url: string, description: string | null
     try {
       v = decodeURIComponent(last);
     } catch {
-      // nechaj surové
+      // leave raw
     }
     out.push(v, v.replace(/\.[A-Za-z0-9]{2,5}$/, ""));
   }
@@ -187,7 +187,7 @@ export function identificationCandidates(url: string, description: string | null
   return [...new Set(out.map((c) => c.trim()).filter((c) => c.length >= 2 && c.length <= 200))];
 }
 
-/** DocumentReference z archívu -> riadok odkazu (dokument AIM podľa adresy, kódu; inak ostane url). */
+/** DocumentReference from the archive -> reference row (an AIM document by address, code; otherwise it stays url). */
 export async function referenceFromBcf(deps: BcfDeps, ref: BCFDocumentReference, author: string): Promise<IncomingRef | null> {
   const url = clean(ref.url ?? ref.referencedDocument, 2000);
   const description = clean(ref.description, 2000);
@@ -201,7 +201,7 @@ export async function referenceFromBcf(deps: BcfDeps, ref: BCFDocumentReference,
     try {
       origin = new URL(url, origin).origin;
     } catch {
-      // chybná adresa: parse ju vyhodnotí ako cudziu
+      // invalid address: parse evaluates it as foreign
     }
     const parsed = parseDocumentReferenceDto({ url, description: description ?? undefined }, origin);
     if (parsed.document_id) {
@@ -211,7 +211,7 @@ export async function referenceFromBcf(deps: BcfDeps, ref: BCFDocumentReference,
     }
   }
   if (!info) {
-    // Cudzí nástroj: dokument podľa kódu (Identification) v adrese alebo opise.
+    // A foreign tool: the document by code (Identification) in the address or description.
     for (const c of identificationCandidates(url ?? "", description)) {
       info = await deps.store.findDocument(c);
       if (info) break;
@@ -249,7 +249,7 @@ export async function referenceFromBcf(deps: BcfDeps, ref: BCFDocumentReference,
     delete w.task_id;
     row = w as Omit<TopicDocumentWrite, "task_id">;
   }
-  // Revízia z nášho opisu: odkaz vznikol nad staršou revíziou, nepripíše sa potichu k aktuálnej (D-158 krok 6).
+  // Revision from our description: the reference was created over an older revision, it is not silently attached to the current one (D-158 step 6).
   const rev = description ? REV_RE.exec(description.split(": ")[0])?.[1]?.trim() : undefined;
   const extra: Partial<TopicDocumentWrite> = {};
   if (rev && rev !== (info.revision ?? "")) {
@@ -260,7 +260,7 @@ export async function referenceFromBcf(deps: BcfDeps, ref: BCFDocumentReference,
   return { id, foreign: false, row: { ...row, ...extra, description: stripOwnLabel(description, row) } };
 }
 
-/** Pohľady témy: pohľady odkazov na dokumenty (AIM) sú odvodené a neukladajú sa; prvý ostatný je pohľad témy. */
+/** Topic viewpoints: viewpoints of document references (AIM) are derived and not stored; the first other one is the topic viewpoint. */
 function splitViewpoints(topic: BCFTopic): { main: BCFViewpoint | null; rest: BCFViewpoint[] } {
   const refGuids = new Set((topic.documentReferences ?? []).map((r) => r.guid?.toLowerCase()).filter((g): g is string => !!g));
   const own = (topic.viewpoints ?? []).filter((v) => !refGuids.has(v.guid.toLowerCase()));
@@ -331,7 +331,7 @@ async function incomingFrom(
   };
 }
 
-/** Rozdiely poľa po poli (normalizované: biele znaky, poradie štítkov a prvkov). */
+/** Field-by-field differences (normalized: whitespace, order of labels and elements). */
 export function fieldDiffs(db: BcfTopicRow, inc: Incoming): FieldDiff[] {
   const out: FieldDiff[] = [];
   const text = (field: keyof Incoming["fields"]) => {
@@ -354,7 +354,7 @@ export function fieldDiffs(db: BcfTopicRow, inc: Incoming): FieldDiff[] {
 
 const regionKey = (r: TopicDocumentRow["region"]) => (r ? [r.x, r.y, r.width, r.height].join("_") : "");
 
-/** Existujúci odkaz zodpovedajúci prichádzajúcemu: podľa guid, inak podľa dokumentu+strany+oblasti, alebo url. */
+/** The existing reference matching the incoming one: by guid, otherwise by document+page+region, or url. */
 function matchRef(existing: TopicDocumentRow[], inc: IncomingRef): TopicDocumentRow | undefined {
   if (inc.id) {
     const byId = existing.find((e) => e.id === inc.id);
@@ -367,7 +367,7 @@ function matchRef(existing: TopicDocumentRow[], inc: IncomingRef): TopicDocument
   );
 }
 
-/** Zmena existujúceho odkazu (značky `markup` sa nikdy nemenia: BCF ich nenesie). */
+/** Change of an existing reference (`markup` shapes never change: BCF does not carry them). */
 function refPatch(e: TopicDocumentRow, inc: IncomingRef): Partial<TopicDocumentWrite> {
   const patch: Partial<TopicDocumentWrite> = {};
   if (norm(e.description) !== norm(inc.row.description)) patch.description = inc.row.description;
@@ -395,7 +395,7 @@ async function importTopic(topic: BCFTopic, deps: BcfDeps, opts: Required<Pick<I
     let number: number | undefined;
     if (!dry) {
       const author = inc.author ?? opts.author;
-      // Pôvodné dátumy témy: vznik = creation_date (bez neho dátum zmeny), zmena = modified_date (nie skôr než vznik).
+      // Original dates of the topic: creation = creation_date (without it the modification date), modification = modified_date (not before creation). */
       const now = Date.now();
       const createdMs = inc.createdAt !== null ? Math.min(inc.createdAt, now) : inc.modifiedAt !== null ? Math.min(inc.modifiedAt, now) : null;
       const updatedMs = createdMs === null ? null : Math.max(createdMs, inc.modifiedAt !== null ? Math.min(inc.modifiedAt, now) : createdMs);
@@ -412,7 +412,7 @@ async function importTopic(topic: BCFTopic, deps: BcfDeps, opts: Required<Pick<I
       number = row.number;
       for (const r of inc.refs) await deps.store.addDocument({ ...r.row, ...(r.id ? { id: r.id } : {}), task_id: row.id });
       for (const c of comments) await deps.store.addComment(row.id, c.author ?? author, c.comment, c.date, c.guid);
-      // Komentár bez novej funkcie v DB posunie updated_at a modified_by na čas zápisu: vráť ich na hodnoty zo súboru.
+      // A comment without the new DB function moves updated_at and modified_by to the write time: restore them to the values from the file.
       if (comments.length && updatedMs !== null) await deps.store.update(row.id, { updated_at: iso(updatedMs), modified_by: inc.modifiedBy ?? author });
     }
     return {
@@ -471,8 +471,8 @@ async function importTopic(topic: BCFTopic, deps: BcfDeps, opts: Required<Pick<I
     for (const { e, patch: p } of toPatch) await deps.store.updateDocument(id, e.id, p);
     for (const r of adding) await deps.store.addDocument({ ...r.row, ...(r.id ? { id: r.id } : {}), task_id: id });
     for (const c of newComments) await deps.store.addComment(id, c.author ?? opts.author, c.comment, c.date, c.guid);
-    // Jedna úprava témy nakoniec. updated_at: novší dátum zmeny zo súboru; inak zmena polí = teraz (zapísali sme ju),
-    // len komentáre a odkazy ho nechajú, ako bol (komentár bez novej funkcie v DB by ho posunul na čas zápisu).
+    // One final topic update. updated_at: a newer modification date from the file; otherwise a field change = now (we wrote it),
+    // only comments and references leave it as it was (a comment without the new DB function would move it to the write time).
     if (Object.keys(patch).length || toPatch.length || newComments.length) {
       patch.modified_by = inc.modifiedBy ?? opts.author;
       const stamp = inc.modifiedAt !== null ? Math.min(inc.modifiedAt, Date.now()) : null;
@@ -496,7 +496,7 @@ function pickKeys(e: TopicDocumentRow, patch: Partial<TopicDocumentWrite>) {
   return Object.fromEntries(Object.keys(patch).map((k) => [k, (e as unknown as Record<string, unknown>)[k]]));
 }
 
-/** Nový je komentár, ktorého guid ani dvojica autor + text v téme ešte nie je (guid je presnejší, text drží aj pred migráciou). */
+/** A new comment is one whose guid, and whose author + text pair, is not yet in the topic (guid is more precise, text holds even before the migration). */
 function dedupeComments(incoming: IncomingComment[], existing: { guid?: string; author: string | null; comment: string }[]) {
   const seen = new Set(existing.map((c) => commentKey(c.author, c.comment)));
   const guids = new Set(existing.map((c) => c.guid?.toLowerCase()).filter((g): g is string => !!g));
@@ -517,7 +517,7 @@ interface Lib {
   viewpointToApi: (v: BCFViewpoint) => unknown;
 }
 
-/** Importuje už prečítaný projekt BCF (testy a `importBcfArchive`). */
+/** Imports an already read BCF project (tests and `importBcfArchive`). */
 export async function importBcfProject(project: BCFProject, deps: BcfDeps, options: ImportOptions = {}, warnings: string[] = []): Promise<ImportSummary> {
   const [{ ifcGuidToUuid, isValidIfcGuid }, { viewpointToApi }] = await Promise.all([import("@ifc-lite/bcf"), import("@ifc-lite/bcf-api")]);
   const lib: Lib = { ifcGuidToUuid, isValidIfcGuid, viewpointToApi };
@@ -550,7 +550,7 @@ export async function importBcfProject(project: BCFProject, deps: BcfDeps, optio
   };
 }
 
-/** `.bcfzip` (bajty) -> import; chyba archívu je `BcfInputError`. */
+/** `.bcfzip` (bytes) -> import; an archive error is `BcfInputError`. */
 export async function importBcfArchive(bytes: Uint8Array, deps: BcfDeps, options: ImportOptions = {}): Promise<ImportSummary> {
   if (bytes.byteLength === 0) throw new BcfInputError("Súbor je prázdny.");
   if (bytes.byteLength > MAX_ARCHIVE_BYTES) throw new BcfInputError(`Súbor je väčší než ${Math.round(MAX_ARCHIVE_BYTES / 1024 / 1024)} MB.`);

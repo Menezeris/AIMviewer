@@ -19,29 +19,29 @@ import {
 import { FRAME_COLOR, FRAME_FILL, snapshotPlan, type PctRect, type SnapshotPlan } from "./snapshot-plan";
 
 /**
- * Render výrezu strany PDF na serveri (D-158 krok 3): pdf.js (legacy build, tá istá verzia
- * ako vo forku) do canvasu `@napi-rs/canvas`, biele pozadie, rámik oblasti, PNG. Server inak
- * parser PDF nemá (D-123); oba balíky sú externé (`serverExternalPackages`) a ich súbory
- * (písma, CMapy, wasm dekodéry) sa do funkcie pribaľujú v `next.config.ts`.
+ * Server rendering of a PDF page region (D-158 step 3): pdf.js (legacy build, the same version
+ * as in the fork) into an `@napi-rs/canvas` canvas, white background, region frame, PNG. The server otherwise
+ * has no PDF parser (D-123); both packages are external (`serverExternalPackages`) and their files
+ * (fonts, CMaps, wasm decoders) are bundled into the function in `next.config.ts`.
  *
- * Dekodéry: bez `BinaryDataFactory` pdf.js v Node nenačíta wasm JBIG2/OpenJPEG ani štandardné
- * písma a CCITT/JBIG2 masky a text by zo snímky zmizli (fork `browser-backend.ts`, #238).
+ * Decoders: without `BinaryDataFactory` pdf.js in Node does not load the JBIG2/OpenJPEG wasm nor the standard
+ * fonts and CCITT/JBIG2 masks, and text would vanish from the snapshot (fork `browser-backend.ts`, #238).
  */
 
 const requireHere = createRequire(import.meta.url);
 
-/** Priečinok balíka pdfjs-dist (cmaps, standard_fonts, wasm). */
+/** Folder of the pdfjs-dist package (cmaps, standard_fonts, wasm). */
 function pdfjsDir(): string {
   return path.dirname(requireHere.resolve("pdfjs-dist/package.json"));
 }
 
 const FOLDERS: Record<string, string> = { cMapUrl: "cmaps", standardFontDataUrl: "standard_fonts", wasmUrl: "wasm" };
 
-/** Dáta dekodérov a písiem z disku (pdf.js `BinaryDataFactory`). */
+/** Decoder and font data from disk (pdf.js `BinaryDataFactory`). */
 class NodeFileDataFactory {
   async fetch({ kind, filename }: { kind: string; filename: string }): Promise<Uint8Array> {
     const folder = FOLDERS[kind];
-    // Meno súboru dáva pdf.js; cesta mimo priečinka balíka sa nepustí.
+    // The file name comes from pdf.js; a path outside the package folder is not served.
     if (!folder || filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
       throw new Error(`Zdroj pdf.js ${kind}/${filename} nie je k dispozícii.`);
     }
@@ -52,7 +52,7 @@ class NodeFileDataFactory {
 type PdfJs = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
 let pdfjs: Promise<PdfJs> | null = null;
 
-/** pdf.js s pracovníkom v tom istom vlákne (Node nemá Web Worker); raz na proces. */
+/** pdf.js with the worker in the same thread (Node has no Web Worker); once per process. */
 function loadPdfJs(): Promise<PdfJs> {
   pdfjs ??= (async () => {
     const worker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
@@ -62,19 +62,19 @@ function loadPdfJs(): Promise<PdfJs> {
   return pdfjs;
 }
 
-/** Najväčší PDF, ktorý sa renderuje (výkresy majú jednotky MB). */
+/** The largest PDF that is rendered (drawings are a few MB). */
 export const MAX_PDF_BYTES = 80 * 1024 * 1024;
 
 export class SnapshotRenderError extends Error {}
 
 export interface RenderedSnapshot {
   png: Buffer;
-  /** Rozmer zobrazenej strany v bodoch (s rotáciou strany). */
+  /** Size of the displayed page in points (with page rotation). */
   pageSize: [number, number];
   pages: number;
 }
 
-/** Vyrenderuje stranu `page` (od 1) a oblasť `region` (% vľavo hore, null = celá strana). */
+/** Renders page `page` (from 1) and region `region` (% from top left, null = the whole page). */
 export async function renderPdfRegion(
   pdf: Uint8Array,
   page: number,
@@ -85,7 +85,7 @@ export async function renderPdfRegion(
   const { getDocument } = await loadPdfJs();
   const { createCanvas } = await import("@napi-rs/canvas");
   const task = getDocument({
-    // pdf.js si buffer prevezme (transfer); kópia nechá volajúcemu jeho bajty.
+    // pdf.js takes over the buffer (transfer); a copy leaves the caller its bytes.
     data: new Uint8Array(pdf),
     BinaryDataFactory: NodeFileDataFactory,
     isEvalSupported: false,
@@ -130,7 +130,7 @@ export async function renderPdfRegion(
   }
 }
 
-/** Podmnožina 2D kontextu, ktorú značky potrebujú (canvas `@napi-rs/canvas` ju spĺňa). */
+/** Subset of the 2D context that markups need (an `@napi-rs/canvas` canvas satisfies it). */
 export interface MarkupContext {
   save(): void;
   restore(): void;
@@ -156,7 +156,7 @@ export interface MarkupContext {
 const FONT_FAMILY = "AimMarkup, Liberation Sans, Arial, Helvetica, sans-serif";
 let fontReady = false;
 
-/** Tučné písmo značiek: Liberation Sans z pdfjs-dist (v kontajneri nemusí byť žiadne systémové písmo). */
+/** Bold markup font: Liberation Sans from pdfjs-dist (the container may have no system font). */
 async function ensureMarkupFont(): Promise<void> {
   if (fontReady) return;
   fontReady = true;
@@ -164,14 +164,14 @@ async function ensureMarkupFont(): Promise<void> {
     const { GlobalFonts } = await import("@napi-rs/canvas");
     GlobalFonts.registerFromPath(path.join(pdfjsDir(), "standard_fonts", "LiberationSans-Bold.ttf"), "AimMarkup");
   } catch {
-    // bez písma ostanú tvary, text spadne na systémové písmo
+    // without the font the shapes stay, the text falls back to a system font
   }
 }
 
 /**
- * Značky nad vyrenderovanou stranou (D-158 krok 7), tvary ako `docMarkupSvg.ts` vo forku: červená
- * #dc2626, jednotky kreslenia = šírka strany 1000. Súradnice bitmapy sa dostanú z jednotiek
- * cez mierku plánu a posun výrezu.
+ * Markups over the rendered page (D-158 step 7), shapes like `docMarkupSvg.ts` in the fork: red
+ * #dc2626, drawing units = page width 1000. Bitmap coordinates are obtained from the units
+ * via the plan scale and the crop offset.
  */
 export function drawMarkup(ctx: MarkupContext, markup: Markup[], pageSize: [number, number], plan: SnapshotPlan): void {
   const k = (plan.scale * pageSize[0]) / 1000;
@@ -200,7 +200,7 @@ export function drawMarkup(ctx: MarkupContext, markup: Markup[], pageSize: [numb
       const head = arrowHead(pts[0], pts[1]);
       ctx.beginPath();
       ctx.moveTo(pts[0].x, pts[0].y);
-      // Čiara končí v základni hrotu, aby nevyčnievala za jeho špičku.
+      // The line ends at the arrow head base so that it does not stick out past its tip.
       const base = head ? { x: (head[1].x + head[2].x) / 2, y: (head[1].y + head[2].y) / 2 } : pts[1];
       ctx.lineTo(base.x, base.y);
       ctx.stroke();
@@ -235,7 +235,7 @@ export function drawMarkup(ctx: MarkupContext, markup: Markup[], pageSize: [numb
   ctx.restore();
 }
 
-/** Tučný červený text s bielym halo (hrúbka 1/5 veľkosti písma). */
+/** Bold red text with a white halo (thickness 1/5 of the font size). */
 function haloText(ctx: MarkupContext, text: string, x: number, y: number, size: number, baseline: string): void {
   ctx.font = `bold ${size}px ${FONT_FAMILY}`;
   ctx.textBaseline = baseline;

@@ -6,9 +6,9 @@ import { InputError, str, type EngineDeps } from "../engine/tools";
 import { CLASH_UUID_RE } from "../viewer-clash";
 
 /**
- * `clash action=matrix` (D-177): kolízie ako matica modelov (disciplín) federácie, napr. ASR x VZT.
- * Otvorený beh vo vieweri: `view_state.clash_local.matrix` bez zmeny (`source: "local"`); uložený beh
- * z DB (`run_id`): ten istý tvar z uložených výsledkov (`source: "saved"`).
+ * `clash action=matrix` (D-177): clashes as a matrix of federation models (disciplines), e.g. ASR x VZT.
+ * An open run in the viewer: `view_state.clash_local.matrix` unchanged (`source: "local"`); a saved run
+ * from the DB (`run_id`): the same shape from the saved results (`source: "saved"`).
  */
 
 export interface ClashMatrixCell {
@@ -31,7 +31,7 @@ const NOTE =
   "Bunka = neusporiadaná dvojica modelov (a <= b), počty podľa druhu (hard / clearance) a stavu (open / resolved / accepted). " +
   "Na 'koľko kolízií je medzi ASR a VZT a koľko je otvorených' použi túto maticu, nepočítaj z riadkov results (sú orezané).";
 
-/** Matica z uloženého behu: dvojica modelov kolízie je neusporiadaná, chýbajúci stav je open. */
+/** Matrix from a saved run: the model pair of a clash is unordered, a missing status is open. */
 async function savedMatrix(input: Record<string, unknown>, deps: EngineDeps): Promise<Record<string, unknown>> {
   const id = str(input.run_id);
   if (!CLASH_UUID_RE.test(id)) throw new InputError("run_id pre matrix: UUID uloženého behu (action=list test=...). Bez run_id sa berie beh otvorený vo vieweri; beh z pamäte (run-N) najprv ulož (run save=true).");

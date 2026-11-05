@@ -13,7 +13,7 @@ import type {
   ClashTestWrite,
 } from "./types";
 
-/** Úložisko testov, behov a stavov kolízií v DB (D-164, `service_role`); logika je v `lib/engine/clash-saved.ts`. */
+/** Storage of tests, runs and clash states in the DB (D-164, `service_role`); the logic is in `lib/engine/clash-saved.ts`. */
 
 const TESTS = "clash_tests";
 const RUNS = "clash_runs";
@@ -117,7 +117,7 @@ export function supabaseClashStore(projectId: string): ClashStore {
     async setReviews(testId, keys, patch, by) {
       const now = new Date().toISOString();
       for (const part of chunks(keys, WRITE_CHUNK)) {
-        // Bez `comment` v obsahu upsert poznámku nezmení (PostgREST aktualizuje len zadané stĺpce).
+        // Without `comment` in the content the upsert leaves the note unchanged (PostgREST updates only the given columns).
         const rows = part.map((clash_key) => ({
           test_id: testId,
           clash_key,

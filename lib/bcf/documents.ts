@@ -6,13 +6,13 @@ import { viewrect } from "./snapshot-plan";
 import type { BcfStore, DocumentInfo, TopicDocumentRow, TopicDocumentWrite } from "./store";
 
 /**
- * Odkaz BCF témy na dokument, stranu a oblasť strany (D-158): riadok
- * `model_task_documents` = BCF DocumentReference. Téma ostáva v `model_tasks`
- * (D-099), prvky IFC v jej `components`. Tu je čistá logika pre chat
- * (`bcf_topic document`) aj BCF API (`document_references`); DB je za `BcfStore`.
+ * A BCF topic reference to a document, page and page region (D-158): a row of
+ * `model_task_documents` = a BCF DocumentReference. The topic stays in `model_tasks`
+ * (D-099), IFC elements in its `components`. Here is the pure logic for chat
+ * (`bcf_topic document`) and the BCF API (`document_references`); the DB is behind `BcfStore`.
  */
 
-/** Najviac odkazov na dokumenty pri jednej téme. */
+/** Maximum document references per topic. */
 export const MAX_TOPIC_DOCUMENTS = 20;
 const MAX_DESCRIPTION = 2000;
 const MAX_URL = 2000;
@@ -29,7 +29,7 @@ export interface DocumentArg {
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const DRAWING_PATH = new RegExp(`^/drawing/(${UUID})/?$`, "i");
 
-/** Parameter `document` toolu: objekt, alebo len id/kód dokumentu. */
+/** Tool parameter `document`: an object, or just a document id/code. */
 export function parseDocumentArg(raw: unknown): DocumentArg {
   if (typeof raw === "string" && raw.trim()) return { id_or_ref: raw.trim() };
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -48,7 +48,7 @@ export function parseDocumentArg(raw: unknown): DocumentArg {
   return { id_or_ref: id, page, region: r.region ?? undefined, description };
 }
 
-/** Výrez v tvare `open_drawing region` (%, 2 desatinné miesta); chybný = chyba, nie tichá celá strana. */
+/** Region in the form of `open_drawing region` (%, 2 decimal places); an invalid one = an error, not a silent whole page. */
 export function regionArg(raw: unknown): TopicDocumentRow["region"] {
   if (raw === undefined || raw === null) return null;
   const r = docRegionInput(raw);
@@ -59,7 +59,7 @@ export function regionArg(raw: unknown): TopicDocumentRow["region"] {
   return { x: p(r.x), y: p(r.y), width: p(r.w), height: p(r.h) };
 }
 
-/** Riadok odkazu z dokumentu v AIM; strana sa overí voči extrahovaným stranám, ak sú. */
+/** Reference row from a document in AIM; the page is checked against the extracted pages, if there are any. */
 export function documentWrite(
   info: DocumentInfo,
   input: { page?: number; region?: unknown; description?: string; markup?: unknown },
@@ -69,14 +69,14 @@ export function documentWrite(
   const region = regionArg(input.region);
   let page = input.page ?? info.reference_page ?? null;
   if (page === null && region) {
-    // Oblasť bez strany má zmysel len pri jednostranovom dokumente.
+    // A region without a page makes sense only for a single-page document.
     if (info.pages === 1) page = 1;
     else throw new TopicDocumentError("document.region potrebuje page (oblasť je na konkrétnej strane).");
   }
   if (page !== null && info.pages !== null && page > info.pages) {
     throw new TopicDocumentError(`Dokument ${label(info)} má ${info.pages} strán, strana ${page} nie je.`);
   }
-  // Značky patria na konkrétnu stranu; bez strany sa zahodia (rovnako neplatné tvary, nie celá téma).
+  // Markups belong on a specific page; without a page they are dropped (invalid shapes likewise, not the whole topic).
   const markup = page !== null ? parseMarkup(input.markup) : [];
   return {
     task_id: taskId,
@@ -97,7 +97,7 @@ export function documentWrite(
 const label = (d: { identification?: string | null; object_ref?: string | null; name?: string | null }) =>
   d.identification ?? d.object_ref ?? d.name ?? "dokument";
 
-/** Dokument z argumentu chatu -> riadok odkazu (bez task_id, ten dá volajúci). */
+/** Document from a chat argument -> reference row (without task_id, the caller supplies it). */
 export async function resolveDocumentArg(store: BcfStore, raw: unknown, author: string | null): Promise<Omit<TopicDocumentWrite, "task_id">> {
   const arg = parseDocumentArg(raw);
   const info = await store.findDocument(arg.id_or_ref);
@@ -113,7 +113,7 @@ export async function resolveDocumentArg(store: BcfStore, raw: unknown, author: 
 
 const pct = (v: number) => `${+v.toFixed(2)}`.replace(".", ",");
 
-/** Čitateľný opis odkazu: kód, revízia, strana, oblasť (BCF description, zoznam v chate). */
+/** Readable description of a reference: code, revision, page, region (BCF description, list in chat). */
 export function documentLabel(d: Pick<TopicDocumentRow, "document_ref" | "document_name" | "document_revision" | "page" | "region" | "url">): string {
   const parts = [d.document_ref ?? d.document_name ?? d.url ?? "dokument"];
   if (d.document_revision) parts[0] += ` (rev. ${d.document_revision})`;
@@ -125,7 +125,7 @@ export function documentLabel(d: Pick<TopicDocumentRow, "document_ref" | "docume
   return parts.join(", ");
 }
 
-/** Odkaz v detaile témy pre chat: s pripravenými argumentmi `open_drawing`. */
+/** Reference in the topic detail for chat: with prepared `open_drawing` arguments. */
 export function documentView(d: TopicDocumentRow) {
   return {
     guid: d.id,
@@ -142,12 +142,12 @@ export function documentView(d: TopicDocumentRow) {
     open_drawing: d.document_id
       ? { document_id: d.document_id, ...(d.page ? { page: d.page } : {}), ...(d.region ? { region: d.region } : {}), in_viewer: true }
       : null,
-    // Snímka výrezu s rámikom (D-158 krok 3), relatívna adresa hosta; BCF API ju dáva ako snímku pohľadu.
+    // Snapshot of a region with a frame (D-158 step 3), a relative host address; the BCF API gives it as the viewpoint snapshot.
     snapshot_url: snapshotPath(d),
   };
 }
 
-/** Značky odkazu v detaile témy: tvary a počet (bez značiek polia nie sú). */
+/** Markups of a reference in the topic detail: shapes and count (without markups the fields are absent). */
 function markupView(markup: Markup[] | null): { markup?: Markup[]; markup_count?: number } {
   const m = parseMarkup(markup);
   return m.length ? { markup: m, markup_count: m.length } : {};
@@ -164,9 +164,9 @@ export function snapshotPath(d: Pick<TopicDocumentRow, "document_id" | "page" | 
 }
 
 /**
- * Odkaz na stranu vo vieweri AIM: `/drawing/<id>?page=N&region=x_y_w_h#page=N&viewrect=l,t,w,h`.
- * `region` je náš parameter (návrat pri importe), `#page` a `viewrect` (body strany od ľavého
- * horného rohu, len keď je známa veľkosť strany) sú RFC 8118 pre PDF.
+ * Link to a page in the AIM viewer: `/drawing/<id>?page=N&region=x_y_w_h#page=N&viewrect=l,t,w,h`.
+ * `region` is our parameter (round trip on import), `#page` and `viewrect` (page points from the top
+ * left corner, only when the page size is known) are RFC 8118 for PDF.
  */
 export function documentUrl(
   origin: string,
@@ -190,13 +190,13 @@ export function documentReferenceToDto(d: TopicDocumentRow, origin: string): Rec
     guid: d.id,
     url: d.url ?? documentUrl(origin, d),
     description: d.description ? `${head}: ${d.description}` : head,
-    // Rozšírenie AIM (D-158 krok 7): tvary značiek; klient, ktorý ho nepozná, ho ignoruje.
+    // AIM extension (D-158 step 7): markup shapes; a client that does not know it ignores it.
     ...(markup.length ? { markup } : {}),
   };
 }
 
 export interface ParsedReference {
-  /** Dokument AIM z našej adresy (`/drawing/<id>`); inak cudzí odkaz v `url`. */
+  /** An AIM document from our address (`/drawing/<id>`); otherwise a foreign reference in `url`. */
   document_id: string | null;
   page: number | null;
   region: TopicDocumentRow["region"];
@@ -204,7 +204,7 @@ export interface ParsedReference {
   description: string | null;
 }
 
-/** BCF DocumentReference PUT/POST DTO -> náš odkaz; adresa AIM sa rozloží na dokument, stranu a oblasť. */
+/** BCF DocumentReference PUT/POST DTO -> our reference; an AIM address is decomposed into document, page and region. */
 export function parseDocumentReferenceDto(body: unknown, origin: string): ParsedReference {
   const b = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
   const url = typeof b.url === "string" ? b.url.trim().slice(0, MAX_URL) : "";
@@ -231,7 +231,7 @@ export function parseDocumentReferenceDto(body: unknown, origin: string): Parsed
   return { document_id: ours[1].toLowerCase(), page, region, url: null, description: rawDescription || null };
 }
 
-/** Opis z exportu (`<kód, strana...>: <text>`) sa pri návrate zbaví vlastnej hlavičky. */
+/** A description from an export (`<code, page...>: <text>`) loses its own header on return. */
 export function stripOwnLabel(description: string | null, row: Omit<TopicDocumentWrite, "task_id">): string | null {
   if (!description) return null;
   const head = documentLabel(row);

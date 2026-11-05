@@ -11,15 +11,15 @@ import { scopeQuery } from "@/lib/project/scope";
 import { currentProjectId } from "../project/context";
 
 /**
- * Rozsah entity pre `bcf_topic_list entity` (D-158 krok 4) z grafu AIM: entita podľa
- * objects.id, GlobalId, object_ref, podlažia (1NP = 1.NP) alebo slova "projekt"; potomkovia
- * cez `rel_aggregates` (budova -> podlažie -> priestor), prvky cez contained a referenced
- * (D-080), dokumenty cez `rel_associates_document` entity a jej priestorových uzlov.
+ * Entity scope for `bcf_topic_list entity` (D-158 step 4) from the AIM graph: an entity by
+ * objects.id, GlobalId, object_ref, storey (1NP = 1.NP) or the word "projekt"; descendants
+ * via `rel_aggregates` (building -> storey -> space), elements via contained and referenced
+ * (D-080), documents via `rel_associates_document` of the entity and its spatial nodes.
  */
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CHUNK = 200;
-/** Hĺbka dekompozície projekt -> lokalita -> budova -> podlažie -> priestor (+ rezerva). */
+/** Decomposition depth project -> site -> building -> storey -> space (+ reserve). */
 const MAX_DEPTH = 6;
 
 interface Node {
@@ -32,7 +32,7 @@ interface Node {
 
 const COLS = "id, object_type, object_ref, name, ifc_guid";
 
-/** `.in` po dávkach a stránkach (PostgREST vracia najviac 1000 riadkov naraz). */
+/** `.in` in batches and pages (PostgREST returns at most 1000 rows at once). */
 async function fetchIn<T>(table: string, cols: string, key: string, values: string[], activeOnly = true): Promise<T[]> {
   const db = getSupabaseAdmin();
   const projectId = currentProjectId();
@@ -70,7 +70,7 @@ async function findEntity(raw: string): Promise<Node> {
     if (error) throw new Error(error.message);
     if (data?.length === 1) return data[0] as Node;
   }
-  // Podlažie zápisom ako v ostatných tooloch (1NP = 1.NP = 1 NP).
+  // Storey notation as in the other tools (1NP = 1.NP = 1 NP).
   const { data: floors, error } = await objects().eq("object_type", "floor");
   if (error) throw new Error(error.message);
   const norm = normalizeStoreyLabel(want);
@@ -88,18 +88,18 @@ export async function entityScope(raw: string): Promise<EntityScope> {
   if (node.object_type === "project") {
     return { label, object_type: node.object_type, self, guids: new Set(self ? [self] : []), documents: new Set() };
   }
-  // Priestorové uzly pod entitou (budova -> podlažie -> priestor).
+  // Spatial nodes under the entity (building -> storey -> space).
   const containers = new Set([node.id]);
   let frontier = [node.id];
   for (let depth = 0; depth < MAX_DEPTH && frontier.length; depth++) {
     const kids = await fetchIn<{ from_id: string | null }>("rel_aggregates", "id, from_id", "to_id", frontier);
-    // Časť bez uzla AIM (D-183 K3) má from_id null.
+    // A part without an AIM node (D-183 K3) has from_id null.
     frontier = kids.flatMap((k) => (k.from_id && !containers.has(k.from_id) ? [k.from_id] : []));
     for (const id of frontier) containers.add(id);
   }
   const ids = new Set(containers);
   for (const rel of ["rel_contained_in_spatial_structure", "rel_referenced_in_spatial_structure"]) {
-    // Prvok bez uzla AIM (D-183 K3) má from_id null.
+    // An element without an AIM node (D-183 K3) has from_id null.
     for (const r of await fetchIn<{ from_id: string | null }>(rel, "id, from_id", "to_id", [...containers])) {
       if (r.from_id) ids.add(r.from_id);
     }

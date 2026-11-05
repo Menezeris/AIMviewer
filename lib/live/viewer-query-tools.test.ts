@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// Modul je server-only (D-026) - mimo RSC runtime treba marker odmockovať.
+// The module is server-only (D-026) - outside the RSC runtime the marker must be mocked out.
 vi.mock("server-only", () => ({}));
 
 import type { queryLiveViewer } from "./query";
@@ -80,7 +80,7 @@ describe("viac okien viewera na kanáli (D-125, #182)", () => {
     const one = { ok: true as const, reply: { id: "s", ok: true as const, result: A, viewer: "a" }, others: [] };
     expect(viewersNote(one, one)).toBeNull();
     expect(lensOfState({ ok: true, reply: { id: "l", ok: true, result: LENS_A } }, undefined)).toEqual(LENS_A);
-    // Okno so stavom lens neposlalo: radšej nič než lens iného okna.
+    // The window did not send a lens state: better nothing than the lens of another window.
     expect(lensOfState({ ok: true, reply: { id: "l", ok: true, result: LENS_B, viewer: "b" } }, "a")).toBeUndefined();
   });
 });

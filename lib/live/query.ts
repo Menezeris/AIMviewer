@@ -13,15 +13,15 @@ import {
 } from "./protocol";
 
 /**
- * Otázka do otvoreného viewera (D-085): server sa pripojí na živý kanál
- * (Supabase Realtime, D-079), pošle `query` a čaká na `reply` s rovnakým id.
- * Na rozdiel od príkazov to nie je fire-and-forget: bez otvoreného viewera
- * s `?live=` príde timeout a tool to povie, nie "odoslané".
+ * A question to an open viewer (D-085): the server connects to the live channel
+ * (Supabase Realtime, D-079), sends `query` and waits for a `reply` with the same id.
+ * Unlike commands this is not fire-and-forget: without an open viewer
+ * with `?live=` a timeout comes and the tool says so, not "sent".
  */
 
 export const QUERY_TIMEOUT_MS = 8000;
 
-/** Minimálne rozhranie kanála - supabase-js `RealtimeChannel`, v testoch náhrada. */
+/** Minimal channel interface - supabase-js `RealtimeChannel`, a stand-in in tests. */
 export interface QueryChannel {
   on(type: "broadcast", filter: { event: string }, cb: (msg: { payload?: unknown }) => void): QueryChannel;
   subscribe(cb: (status: string) => void): unknown;
@@ -30,13 +30,13 @@ export interface QueryChannel {
 }
 
 export type QueryOutcome =
-  /** `others` = odpovede ďalších okien (iné `viewer`) počas `collectMs` po prvej (D-125). */
+  /** `others` = answers of further windows (other `viewer`) during `collectMs` after the first (D-125). */
   | { ok: true; reply: LiveReplyPayload; others?: LiveReplyPayload[] }
   | { ok: false; reason: "not_configured" | "channel_error" | "timeout" };
 
 /**
- * Zber odpovedí na jednu otázku: prvá vyhrá, s `collectMs` sa ešte chvíľu čaká na odpovede
- * ďalších okien (D-125). Odpoveď toho istého okna znova sa nepočíta.
+ * Collecting answers to one question: the first wins, with `collectMs` it waits a little longer for answers
+ * of further windows (D-125). A repeated answer from the same window does not count.
  */
 function collector(collectMs: number | undefined, done: (o: QueryOutcome) => void) {
   let first: LiveReplyPayload | null = null;
@@ -53,7 +53,7 @@ function collector(collectMs: number | undefined, done: (o: QueryOutcome) => voi
       const seen = [first, ...others].some((r) => r.viewer !== undefined && r.viewer === p.viewer);
       if (!seen) others.push(p);
     },
-    /** Pri vypršaní času: ak už prišla prvá odpoveď, vráti ju (zber sa skončí skôr). */
+    /** On timeout: if the first answer already arrived, returns it (collecting ends earlier). */
     settle(): boolean {
       if (!first) return false;
       clearTimeout(timer);
@@ -98,7 +98,7 @@ export async function queryLiveViewer(
     ...(opts.rev ? { rev: opts.rev } : {}),
     ...(sid ? { sid } : {}),
   };
-  // Teplý kanál inštancie (D-101): bez nového websocketu a prihlásenia pri každej otázke.
+  // Warm channel of the instance (D-101): no new websocket and subscription for every question.
   if (!opts.open) {
     const { warmChannel } = await import("./warm-channel");
     const warm = await warmChannel(channel);

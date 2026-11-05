@@ -18,9 +18,9 @@ import { lookupSelectionContext } from "./selection-context";
 import { DEFAULT_ITEMS_LIMIT, MAX_ITEMS_LIMIT, lookupGuidsFor, summarizeSelection, type ViewerSelection } from "./selection-summary";
 
 /**
- * Tools spätného kanála (D-085), len v MCP konektore: čítajú otvorený živý
- * viewer, preto potrebujú `LIVE_CHANNEL` a viewer s `?live=`. Súradnice sú
- * IFC svet (Z hore, metre), rovnaké ako `set_section.coordinate_m`.
+ * Back channel tools (D-085), only in the MCP connector: they read the open live
+ * viewer, so they need `LIVE_CHANNEL` and a viewer with `?live=`. Coordinates are
+ * the IFC world (Z up, meters), the same as `set_section.coordinate_m`.
  */
 
 export const VIEWER_QUERY_TOOL_DEFINITIONS: ToolDefinition[] = [
@@ -62,23 +62,23 @@ export const VIEWER_QUERY_TOOL_DEFINITIONS: ToolDefinition[] = [
 
 export const VIEWER_QUERY_TOOL_NAMES = new Set(VIEWER_QUERY_TOOL_DEFINITIONS.map((t) => t.name));
 
-/** Obálky alebo stav: bounds=true alebo zadaný cieľ = obálky (D-115). */
+/** Bounds or state: bounds=true or a given target = bounds (D-115). */
 export function viewerQueryOf(input: Record<string, unknown>): ViewerQuery {
   const targets = input.target_ids_or_refs !== undefined || input.global_ids !== undefined;
   return input.bounds === true || targets ? "bounds" : "view_state";
 }
 
-/** Pracovná session bez viewera na testovacom kanáli (D-159): produkciu na overenie neotvára. */
+/** A working session without a viewer on the test channel (D-159): it does not open production for verification. */
 export const TEST_CHANNEL_NO_VIEWER =
   "Pracovná session (Claude Code) je na testovacom kanáli, nie v živom vieweri používateľa (D-159), a na ňom " +
   "nie je otvorený viewer. Živé overenie rob lokálne (skill verify, testovací model); produkčný viewer neotváraj (D-135).";
 
-/** Okno viewera ovláda iný chat (D-159): čítať smie, príkazy odtiaľto sa nevykonajú. */
+/** The viewer window is controlled by another chat (D-159): reading is allowed, commands from here are not executed. */
 export const FOREIGN_OWNER_NOTE =
   "Živý viewer ovláda iný chat: stav čítať môžeš, ale príkazy z tohto chatu sa nevykonajú, kým ho používateľ " +
   "neprevezme (Prevziať pri Live v stavovej lište) alebo kým 15 min nepríde príkaz od chatu, ktorý ho ovláda.";
 
-/** Chybová hláška pre model: čo chýba a ako to používateľ napraví. */
+/** Error message for the model: what is missing and how the user fixes it. */
 export function outcomeError(outcome: Exclude<QueryOutcome, { ok: true }>, channel: string | null, site: string): string {
   if (outcome.reason === "not_configured" || !channel) {
     return "Živý viewer nie je nastavený na serveri (LIVE_CHANNEL alebo Supabase), stav viewera sa nedá prečítať.";
@@ -96,8 +96,8 @@ export function outcomeError(outcome: Exclude<QueryOutcome, { ok: true }>, chann
 }
 
 /**
- * Výsledok viewera doplní z AIM: prvky obálok o object_ref a názov, výber o súhrn,
- * príznak orezania a stránku položiek (D-093). Prvky mimo AIM ostanú bez object_ref.
+ * Completes the viewer result from AIM: bounds elements with object_ref and name, the selection with a summary,
+ * truncation flag and a page of items (D-093). Elements outside AIM stay without object_ref.
  */
 async function withAimRefs(result: unknown, input: Record<string, unknown>): Promise<unknown> {
   if (!result || typeof result !== "object") return result;
@@ -113,7 +113,7 @@ async function withAimRefs(result: unknown, input: Record<string, unknown>): Pro
       selectionGuids.length ? lookupSelectionContext(selectionGuids) : ctx,
     ]);
   } catch (err) {
-    // Odpoveď viewera platí aj bez AIM - výpadok DB ju nemá zahodiť, len to povie.
+    // The viewer answer is valid even without AIM - a DB outage must not discard it, only say so.
     aimError = err instanceof Error ? err.message : String(err);
   }
   const ref = (g: string) => {
@@ -122,13 +122,13 @@ async function withAimRefs(result: unknown, input: Record<string, unknown>): Pro
   };
   let selection: unknown = r.selection;
   if (r.selection) {
-    // Surové zoznamy GUID nahradí stránka items; ostatné polia viewera (napr. bbox) ostanú.
+    // Raw GUID lists are replaced by the items page; other viewer fields (e.g. bbox) stay.
     const rest: Record<string, unknown> = { ...r.selection };
     delete rest.guids;
     delete rest.items;
     selection = { ...rest, ...summarizeSelection(r.selection, ctx, input) };
   }
-  // GUIDy skrytých a izolovaných (D-122) sú pre uloženie pohľadu; Claudovi stačia počty.
+  // GUIDs of hidden and isolated elements (D-122) are for saving a view; counts are enough for Claude.
   const { hidden_guids: _h, isolated_guids: _i, ...state } = r as typeof r & { hidden_guids?: unknown; isolated_guids?: unknown };
   void _h;
   void _i;
@@ -140,17 +140,17 @@ async function withAimRefs(result: unknown, input: Record<string, unknown>): Pro
   };
 }
 
-/** Súhrn lens k stavu čaká kratšie než samotný stav: lens, ktorá sa ešte vyhodnocuje, stav nezdrží. */
+/** The lens summary for the state waits shorter than the state itself: a lens that is still being evaluated does not hold the state back. */
 const LENS_IN_STATE_TIMEOUT_MS = 2_500;
-/** Po prvej odpovedi sa ešte toľko čaká na ďalšie okná viewera (D-125). */
+/** After the first answer it waits this long for further viewer windows (D-125). */
 export const VIEWERS_COLLECT_MS = 400;
 
 const repliesOf = (o: QueryOutcome | null | undefined) => (o?.ok ? [o.reply, ...(o.others ?? [])] : []);
 
 /**
- * AIM chat lens k stavu viewera (#97): `lens_state` bez verzie = posledná lens a izolácia
- * či X-ray z chatu (pravidlá, počty, bez GUID). Z toho istého okna ako stav (D-125); bez
- * odpovede sa kľúč vynechá.
+ * AIM chat lens for the viewer state (#97): `lens_state` without a version = the last lens and the isolation
+ * or X-ray from the chat (rules, counts, no GUIDs). From the same window as the state (D-125); without
+ * an answer the key is omitted.
  */
 export function lensOfState(outcome: QueryOutcome | null, viewer: string | undefined): unknown {
   const replies = repliesOf(outcome);
@@ -158,7 +158,7 @@ export function lensOfState(outcome: QueryOutcome | null, viewer: string | undef
   return reply?.ok ? reply.result : undefined;
 }
 
-/** Viac okien viewera na kanáli (D-125): každé má vlastný stav, prvá odpoveď nemusí byť obrazovka používateľa. */
+/** Multiple viewer windows on the channel (D-125): each has its own state, the first answer need not be the user's screen. */
 export function viewersNote(...outcomes: (QueryOutcome | null | undefined)[]): { count: number; warning: string } | null {
   const ids = new Set(outcomes.flatMap(repliesOf).map((r) => r.viewer).filter((v): v is string => !!v));
   if (ids.size < 2) return null;
@@ -200,11 +200,11 @@ export async function execViewerQueryTool(
     const viewers = viewersNote(outcome, lensOutcome);
     const owner = outcome.reply.owner === "other" ? { owner: { controlled_by: "other_chat", note: FOREIGN_OWNER_NOTE } } : {};
     const extra = { ...(lensState !== undefined ? { lens: lensState } : {}), ...(viewers ? { viewers } : {}), ...owner };
-    // Lokálne BCF témy viewera (D-158) len ako súhrn; celé ich číta bcf_topic(action=from_viewer).
+    // Local BCF topics of the viewer (D-158) only as a summary; bcf_topic(action=from_viewer) reads them whole.
     const local = state ? compactLocalTopics(result) : undefined;
-    // IDS otvorené v paneloch (D-162): bez XML, to číta ids_document(action=from_viewer).
+    // IDS open in the panels (D-162): without XML, that is read by ids_document(action=from_viewer).
     const ids = state ? compactIdsLocal(result) : undefined;
-    // Panel clash (D-164): bez zoznamov kolízií a zmien stavu, tie číta clash(action=from_viewer).
+    // Clash panel (D-164): without clash lists and state changes, those are read by clash(action=from_viewer).
     const clash = state ? compactClashLocal(result) : undefined;
     const { ids_local: _ids, clash_local: _clash, ...resultRest } = (result && typeof result === "object" ? result : {}) as Record<string, unknown>;
     void _ids;

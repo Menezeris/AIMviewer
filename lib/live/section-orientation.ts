@@ -1,7 +1,7 @@
 /**
- * Rez v stave viewera nesie `axis` render rámca (y = výška) a `crosses` (ktorú os IFC rez pretína).
- * Agent z toho čítal orientáciu zle (eval #97 E4: zvislý rez na IFC Y opísal ako vodorovný),
- * preto stav dostane odvodené `orientation`: rez cez IFC Z (výšku) je vodorovný, inak zvislý.
+ * A section in the viewer state carries the render frame `axis` (y = height) and `crosses` (which IFC axis the section crosses).
+ * The agent read the orientation wrongly from it (eval #97 E4: a vertical section on IFC Y was described as horizontal),
+ * so the state gets a derived `orientation`: a section across IFC Z (height) is horizontal, otherwise vertical.
  */
 export function withSectionOrientation(state: unknown): unknown {
   if (!state || typeof state !== "object") return state;

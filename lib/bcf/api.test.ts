@@ -34,7 +34,7 @@ describe("objavenie a prihlásenie (ako BCFServerConnectForm)", () => {
     expect((await call(anon, "GET", "2.1/current-user")).status).toBe(401);
     const list = await call(anon, "GET", `${P}/topics`);
     expect(list.status).toBe(200);
-    // Bez tokenu panel neponúkne zápis: prázdne akcie projektu aj témy.
+    // Without a token the panel does not offer writing: empty project and topic actions.
     expect((list.body as Record<string, unknown>[])[0].authorization).toEqual({ topic_actions: [], topic_status: [] });
     expect((await call(anon, "GET", "2.1/projects")).body).toEqual([
       expect.objectContaining({ authorization: { project_actions: [] } }),
@@ -59,7 +59,7 @@ describe("objavenie a prihlásenie (ako BCFServerConnectForm)", () => {
     await call(c, "POST", `${P}/topics`, { title: "t" });
     await call(c, "POST", `${P}/topics/${rows[0].id}/comments`, { comment: "c" });
     expect(notify).toHaveBeenCalledTimes(2);
-    // Zlyhané oznámenie zápis nezhodí.
+    // A failed notification does not fail the write.
     const broken = ctx({ deps: deps({ store, notify: async () => Promise.reject(new Error("kanál")) }) });
     expect((await call(broken, "POST", `${P}/topics`, { title: "u" })).status).toBe(201);
   });

@@ -1,14 +1,14 @@
 /**
- * Udalosť "témy BCF sa zmenili" (D-099 dodatok): server ju pošle na živý kanál
- * po zápise témy (MCP tools, BCF API); klient (`components/live-channel.tsx`) ju
- * prepošle oknu a viewer (`components/ifc-viewer.tsx`) témy načíta znova. Bez
- * závislostí na serveri, číta ju aj klient.
+ * The "BCF topics changed" event (D-099 addendum): the server sends it to the live channel
+ * after a topic write (MCP tools, BCF API); the client (`components/live-channel.tsx`)
+ * forwards it to the window and the viewer (`components/ifc-viewer.tsx`) reloads the topics. No
+ * server dependencies, the client reads it too.
  */
 
-/** Udalosť v živom kanáli (Supabase Realtime Broadcast). */
+/** Event in the live channel (Supabase Realtime Broadcast). */
 export const LIVE_BCF_EVENT = "bcf_topics";
 
-/** Udalosť okna medzi živým kanálom a viewerom na tej istej stránke. */
+/** Window event between the live channel and the viewer on the same page. */
 export const BCF_CHANGED_WINDOW_EVENT = "aim:bcf-topics-changed";
 
 /**
@@ -18,7 +18,7 @@ export const BCF_CHANGED_WINDOW_EVENT = "aim:bcf-topics-changed";
 export const BCF_VIEWER_PROJECT = "aim";
 
 /**
- * Správa mostu pre viewer: odkiaľ si má témy načítať (BCF API na tomto origine, bez tokenu). The BCF
+ * Bridge message for the viewer: where to load the topics from (BCF API on this origin, no token). The BCF
  * project id is the AIM project code (D-189); the viewer calls the API cross-origin without cookies,
  * so the project rides in the path.
  */

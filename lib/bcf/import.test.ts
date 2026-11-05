@@ -18,7 +18,7 @@ const T_OLD = "2026-10-01T10:00:00.000Z";
 
 type Mem = ReturnType<typeof memoryStore>;
 
-/** Export z úložiska ako to robí viewer: upstream klient + DocumentReference z `document_references` (D-158 krok 2). */
+/** Export from the storage as the viewer does it: upstream client + DocumentReference from `document_references` (D-158 step 2). */
 async function exportProject(m: Mem, version: "2.1" | "3.0"): Promise<Uint8Array> {
   const d = deps({ store: m.store });
   const fetchFn = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
@@ -111,10 +111,10 @@ describe("import .bcfzip do DB (D-158 krok 8)", () => {
       expect(first.bcf_version).toBe(version);
       expect([first.created, first.failed, first.skipped, first.conflicts]).toEqual([3, 0, 0, 0]);
       expect(b.rows.map(strip)).toEqual(a.rows.map(strip));
-      // Pohľad témy: ten istý guid, kamera aj rez.
+      // Topic viewpoint: the same guid, camera and section.
       expect(viewpointToDto(b.rows[0])).toMatchObject({ guid: viewpointToDto(a.rows[0])!.guid, perspective_camera: { camera_view_point: { x: 5, y: 5, z: 5 } } });
       expect(viewpointToDto(b.rows[0])!.clipping_planes).toEqual(viewpointToDto(a.rows[0])!.clipping_planes);
-      // Odkaz na dokument: ten istý dokument, strana, oblasť, revízia a text; guid odkazu sa zachoval.
+      // Document reference: the same document, page, region, revision and text; the reference guid was kept.
       expect(b.docs).toHaveLength(1);
       expect(b.docs[0]).toMatchObject({
         id: a.docs[0].id,
@@ -126,7 +126,7 @@ describe("import .bcfzip do DB (D-158 krok 8)", () => {
         region: { x: 50, y: 0, width: 50, height: 50 },
         description: "Doplniť kótu",
       });
-      // Opakovaný import: nič nové, nič zmenené.
+      // Repeated import: nothing new, nothing changed.
       const again = await importBcfArchive(zip, bd);
       expect([again.created, again.updated, again.unchanged, again.conflicts]).toEqual([0, 0, 3, 0]);
       expect(b.rows).toHaveLength(3);
@@ -141,7 +141,7 @@ describe("import .bcfzip do DB (D-158 krok 8)", () => {
     const bd = deps({ store: b.store });
     const zip = await exportProject(a, "2.1");
     await importBcfArchive(zip, bd);
-    // Zdroj sa zmenil neskôr (iný nástroj): stav, komentár a termín.
+    // The source changed later (another tool): status, comment and deadline.
     a.rows[0].status = "resolved";
     a.rows[0].due_date = "2026-12-01";
     a.rows[0].comments = [...a.rows[0].comments, { guid: "c2", author: "projektant", date: "2026-10-30T08:00:00Z", comment: "Posunuté nosník" }];
@@ -152,7 +152,7 @@ describe("import .bcfzip do DB (D-158 krok 8)", () => {
     expect(t.changes).toEqual(expect.arrayContaining(["status", "due_date", "+1 komentárov"]));
     expect(b.rows[0]).toMatchObject({ status: "resolved", due_date: "2026-12-01" });
     expect(b.rows[0].comments.map((c) => c.comment)).toEqual(["Založené z chatu", "Posunuté nosník"]);
-    // Totožný súbor znova: už nič.
+    // The identical file again: nothing now.
     const same = await importBcfArchive(await exportProject(a, "2.1"), bd);
     expect(same.unchanged).toBe(3);
     expect(b.rows[0].comments).toHaveLength(2);
@@ -193,12 +193,12 @@ describe("import .bcfzip do DB (D-158 krok 8)", () => {
     const again = await importBcfArchive(zip, bd);
     expect([again.created, again.updated, again.unchanged]).toEqual([0, 0, 3]);
     expect(b.rows[0].comments.map((c) => c.guid)).toEqual([G_A, G_B]);
-    // Komentár s rovnakým guid, ale zmeneným textom (úprava v zdroji) sa nepridá ako nový.
+    // A comment with the same guid but changed text (an edit in the source) is not added as new.
     a.rows[0].comments = [{ ...a.rows[0].comments[0], comment: "Založené z chatu (upravené)" }, a.rows[0].comments[1]];
     a.rows[0].updated_at = "2099-01-01T00:00:00.000Z";
     await importBcfArchive(await exportProject(a, "2.1"), bd);
     expect(b.rows[0].comments).toHaveLength(2);
-    // Store s rovnakým guid vráti existujúci komentár, nepridá ho (správanie funkcie v DB).
+    // A store with the same guid returns the existing comment and does not add it (DB function behaviour).
     const dup = await b.store.addComment(b.rows[0].id, "x", "iný text", undefined, G_A);
     expect(dup?.guid).toBe(G_A);
     expect(b.rows[0].comments).toHaveLength(2);
@@ -215,7 +215,7 @@ describe("import .bcfzip do DB (D-158 krok 8)", () => {
     await importBcfArchive(await exportProject(a, "2.1"), bd);
     expect(b.rows[0].updated_at).toBe("2026-10-30T09:00:00.000Z");
     expect(b.rows[0].comments[1]).toMatchObject({ author: "projektant", date: "2026-10-30T08:00:00.000Z" });
-    // Súbor so zlými hodinami (dátum zmeny v budúcnosti) sa orezá na čas importu.
+    // A file with bad clocks (modification date in the future) is clamped to the import time.
     a.rows[0].status = "closed";
     a.rows[0].updated_at = "2099-01-01T00:00:00.000Z";
     const before = Date.now();
@@ -242,7 +242,7 @@ describe("import .bcfzip do DB (D-158 krok 8)", () => {
     const bd = deps({ store: b.store });
     const zip = await exportProject(a, "3.0");
     await importBcfArchive(zip, bd);
-    // Niekto zmenil tému v DB (updated_at je teraz, novšie než dátum zmeny v súbore).
+    // Someone changed the topic in the DB (updated_at is now, newer than the modification date in the file).
     await b.store.update(b.rows[0].id, { priority: "Low", status: "closed" });
     b.rows[0].updated_at = "2099-01-01T00:00:00.000Z";
     const res = await importBcfArchive(zip, bd);
@@ -315,7 +315,7 @@ describe("import .bcfzip do DB (D-158 krok 8)", () => {
 
   it("odkaz vzniknutý nad staršou revíziou dokumentu sa nepripíše k aktuálnej (D-158 krok 6)", async () => {
     const a = seeded();
-    a.docs[0].document_revision = "A"; // dokument v AIM má revíziu B
+    a.docs[0].document_revision = "A"; // the document in AIM has revision B
     const b = memoryStore();
     await importBcfArchive(await exportProject(a, "2.1"), deps({ store: b.store }));
     expect(b.docs[0]).toMatchObject({ document_revision: "A", document_sha256: null, anchor_pages: null });

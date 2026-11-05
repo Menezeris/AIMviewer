@@ -1,10 +1,10 @@
 import type { RevisionSource } from "../engine/revisions";
 
 /**
- * Podpis vstupu behu clash (D-183 bod 11, K1/K4): `{model: revízia}`, nad ktorými beh naozaj
- * bežal, a či je zastaraný voči aktuálnym revíziám (`model_revisions.is_current`). Rovnaká
- * logika ako DB funkcia `revisions_stale` v pohľadoch `v_clash_*`: neznámy podpis = `null`,
- * nie `true` (zastaranie sa nehlási bez dôkazu).
+ * Signature of the clash run input (D-183 point 11, K1/K4): `{model: revision}` the run was actually
+ * run over, and whether it is stale against the current revisions (`model_revisions.is_current`). The same
+ * logic as the DB function `revisions_stale` in the `v_clash_*` views: unknown signature = `null`,
+ * not `true` (staleness is not reported without evidence).
  */
 export type RevisionStamp = Record<string, number>;
 
@@ -15,8 +15,8 @@ const asRevision = (v: unknown): number | undefined => {
 };
 
 /**
- * Podpis behu: uložený `model_revisions` (K1) má prednosť; inak z `models` motora
- * (`{model: {etag, size, loaded_at, revision?}}` alebo `{model: číslo}`). Prázdny = null.
+ * Run signature: the stored `model_revisions` (K1) takes precedence; otherwise from the engine `models`
+ * (`{model: {etag, size, loaded_at, revision?}}` or `{model: number}`). Empty = null.
  */
 export function stampOf(models: Record<string, unknown> | null | undefined, stored?: unknown): RevisionStamp | null {
   const out: RevisionStamp = {};
@@ -35,7 +35,7 @@ export function stampOf(models: Record<string, unknown> | null | undefined, stor
   return Object.keys(out).length > 0 ? out : null;
 }
 
-/** Aktuálne revízie modelov; null, keď zdroj nie je alebo zlyhá (stav sa potom nehlási). */
+/** Current model revisions; null when there is no source or it fails (the status is then not reported). */
 export async function currentRevisions(models: string[], source: RevisionSource | undefined): Promise<RevisionStamp | null> {
   if (!source || models.length === 0) return null;
   try {
@@ -48,7 +48,7 @@ export async function currentRevisions(models: string[], source: RevisionSource 
   }
 }
 
-/** true = niektorý model behu má dnes inú aktuálnu revíziu; null = podpis alebo aktuálny stav neznámy. */
+/** true = some model of the run has a different current revision today; null = signature or current state unknown. */
 export function staleOf(basedOn: RevisionStamp | null, current: RevisionStamp | null): boolean | null {
   if (!basedOn || !current) return null;
   return Object.entries(basedOn).some(([m, r]) => current[m] !== r);
@@ -56,7 +56,7 @@ export function staleOf(basedOn: RevisionStamp | null, current: RevisionStamp | 
 
 const vnnn = (n: number) => `v${String(n).padStart(3, "0")}`;
 
-/** "ASR v078 -> v079, VZT v009 -> v011" pre modely, ktorých revízia sa líši. */
+/** "ASR v078 -> v079, VZT v009 -> v011" for models whose revision differs. */
 export function describeDrift(basedOn: RevisionStamp, current: RevisionStamp): string {
   return Object.entries(basedOn)
     .filter(([m, r]) => current[m] !== r)
@@ -64,7 +64,7 @@ export function describeDrift(basedOn: RevisionStamp, current: RevisionStamp): s
     .join(", ");
 }
 
-/** Polia výstupu toolu: `based_on`, `stale` a pri zastaraní `stale_note`; bez podpisu nič. */
+/** Tool output fields: `based_on`, `stale` and, when stale, `stale_note`; nothing without a signature. */
 export function revisionFields(basedOn: RevisionStamp | null, current: RevisionStamp | null): Record<string, unknown> {
   if (!basedOn) return {};
   const stale = staleOf(basedOn, current);

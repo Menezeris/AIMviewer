@@ -47,7 +47,7 @@ describe("reviewState (D-158 krok 6)", () => {
     expect(reviewState(link({ anchor_pages: 5 }), "open", now()).position_reason).toContain("5 na 2");
     expect(reviewState(link({ anchor_page_size: [595, 842], page_size: [842, 595] }), "open", now()).position_uncertain).toBe(true);
     expect(reviewState(link({ anchor_pages: 2, anchor_page_size: [595, 842], page_size: [595.5, 842] }), "open", now())).toMatchObject({ position_uncertain: false });
-    // starý odkaz bez kotvy: len chýbajúca strana
+    // old reference without an anchor: only a missing page
     expect(reviewState(link(), "open", now({ pages: 9 })).position_uncertain).toBe(false);
   });
 });
@@ -95,7 +95,7 @@ describe("bcf_topic_list / bcf_topic: pripomienka po novej revízii", () => {
     const d = (await run("bcf_topic_list", { guid: "#1" }, deps({ store }))).json.topic.documents[0];
     expect(d).toMatchObject({ needs_review: false, reviewed: { by: "Samuel", revision: "C" } });
     expect((await run("bcf_topic_list", { needs_review: true }, deps({ store }))).json.count).toBe(0);
-    // druhé potvrdenie toho istého odkazu je chyba, 'all' nič nenájde a nehlási chybu
+    // a second confirmation of the same reference is an error, 'all' finds nothing and reports no error
     expect((await run("bcf_topic", { action: "update", guid: "#1", review_document: l.id }, deps({ store }))).isError).toBe(true);
     expect((await run("bcf_topic", { action: "update", guid: "#1", review_document: "all" }, deps({ store }))).json.documents_reviewed).toBe(0);
     expect((await run("bcf_topic", { action: "update", guid: "#1", review_document: "x" }, deps({ store }))).isError).toBe(true);

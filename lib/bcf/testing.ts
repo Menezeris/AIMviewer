@@ -1,4 +1,4 @@
-/** Spoločné pomôcky testov BCF (D-099): úložisko v pamäti a závislosti tools. */
+/** Shared BCF test helpers (D-099): in-memory storage and tool dependencies. */
 
 import type { BcfStore, BcfTopicRow, BcfTopicWrite, DocumentInfo, TopicDocumentRow } from "./store";
 import { viewFromState, type BcfDeps, type CapturedView } from "./tools";
@@ -17,7 +17,7 @@ export const VIEW_STATE = {
 };
 
 export const DOC_ID = "11111111-1111-4111-8111-111111111111";
-/** Dokumenty AIM pre testy odkazov (D-158): výkres 1NP s 2 stranami, odkaz na jeho stranu 2. */
+/** AIM documents for reference tests (D-158): the 1NP drawing with 2 pages, a reference to its page 2. */
 export const DOCUMENTS: (DocumentInfo & { aliases: string[] })[] = [
   {
     id: DOC_ID,
@@ -32,10 +32,10 @@ export const DOCUMENTS: (DocumentInfo & { aliases: string[] })[] = [
   { id: DOC_ID, object_ref: "DOC.1NP", name: "Pôdorys 1NP", identification: "D.1.1.09", revision: "B", pages: 2, reference_page: 2, aliases: ["REF.1NP.2"] },
 ];
 
-/** Úložisko v pamäti so správaním `model_tasks` (number, stav, komentáre) a `model_task_documents`. */
+/** In-memory storage with the behaviour of `model_tasks` (number, status, comments) and `model_task_documents`. */
 export function memoryStore(seed: Partial<BcfTopicRow>[] = []) {
   const rows: BcfTopicRow[] = [];
-  /** `_georef` dokumentov podľa objects.id (D-133), pre testy kroku 4. */
+  /** `_georef` of documents by objects.id (D-133), for step 4 tests. */
   const georefs = new Map<string, unknown>();
   const docs: TopicDocumentRow[] = [];
   let d = 0;

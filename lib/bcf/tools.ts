@@ -24,18 +24,18 @@ import {
 } from "./store";
 
 /**
- * BCF témy nad modelmi federácie (D-099), len v MCP konektore. Mená a
- * parametre sú 1:1 z `@ifc-lite/mcp` 0.27 (`bcf_topic_*`, `bcf_viewpoint_create`,
- * D-087); originál drží témy v pamäti session, tu sú v DB (`model_tasks`).
- * Téma priradená Claudovi spustí Claude session cez routine "AIM: BCF téma",
- * ktorá ju vyrieši (úprava modelu v OCB, revízia s poistkou, D-086).
- * Závislosti (DB, živý viewer, routine) sú v `runtime.ts`, tu len logika.
+ * BCF topics over the federation models (D-099), only in the MCP connector. Names and
+ * parameters are 1:1 from `@ifc-lite/mcp` 0.27 (`bcf_topic_*`, `bcf_viewpoint_create`,
+ * D-087); the original keeps topics in session memory, here they are in the DB (`model_tasks`).
+ * A topic assigned to Claude starts a Claude session via the routine "AIM: BCF téma",
+ * which resolves it (a model edit in OCB, a revision with a safeguard, D-086).
+ * Dependencies (DB, live viewer, routine) are in `runtime.ts`, here only the logic.
  */
 
-/** `assigned_to` tejto hodnoty (bez ohľadu na veľkosť písmen) = téma pre Claude. */
+/** `assigned_to` of this value (case-insensitive) = a topic for Claude. */
 export const CLAUDE_ASSIGNEE = "claude";
 export const DEFAULT_AUTHOR = "Claude (MCP)";
-/** Session bez pohybu v téme dlhšie než toto sa do stropu nepočíta. */
+/** A session without movement in the topic for longer than this is not counted toward the cap. */
 export const STALE_HOURS = 24;
 
 const MAX_TITLE = 200;
@@ -60,7 +60,7 @@ const TARGET_PROPS = {
 
 const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 
-/** `bcf_topic` action -> zápisový handler (D-115); hodnoty sú už len vnútorné kľúče handlerov. */
+/** `bcf_topic` action -> write handler (D-115); the values are now only internal handler keys. */
 export const BCF_ACTIONS = {
   create: "bcf_topic_create",
   update: "bcf_topic_update",
@@ -189,7 +189,7 @@ export const BCF_TOOL_DEFINITIONS: ToolDefinition[] = [
 
 export const BCF_TOOL_NAMES = new Set(BCF_TOOL_DEFINITIONS.map((t) => t.name));
 
-/** Pohľad z viewera: BCF viewpoint + GlobalId výberu. */
+/** Viewpoint from the viewer: BCF viewpoint + GlobalId of the selection. */
 export interface CapturedView {
   viewpoint: Record<string, unknown>;
   selection: string[];
@@ -197,25 +197,25 @@ export interface CapturedView {
 
 export interface BcfDeps {
   store: BcfStore;
-  /** Spustí session; null = routine "AIM: BCF téma" nie je nastavená. */
+  /** Starts a session; null = the routine "AIM: BCF téma" is not set up. */
   fire: ((text: string) => Promise<RoutineFireResult>) | null;
-  /** Pohľad z otvoreného viewera; string = prečo sa nedal zachytiť. */
+  /** Viewpoint from the open viewer; string = why it could not be captured. */
   captureView: () => Promise<CapturedView | string>;
-  /** Celý `view_state` viewera (lokálne témy, D-158); string = prečo sa nedal prečítať. */
+  /** The whole `view_state` of the viewer (local topics, D-158); string = why it could not be read. */
   viewState?: () => Promise<Record<string, unknown> | string>;
   /** object_ref / objects.id / GlobalId -> GlobalId (vzor view tools). */
   resolve: (input: Record<string, unknown>) => Promise<string[]>;
   now: () => Date;
   maxSessions: number;
-  /** Po zápise: oznámenie otvoreným viewerom, že sa témy zmenili (D-099 dodatok). */
+  /** After a write: a notification to open viewers that the topics changed (D-099 addendum). */
   notify?: () => Promise<void>;
-  /** Prvky federácie v IFC svete a výšky podlaží (`locate`, D-158 krok 4). */
+  /** Federation elements in the IFC world and storey heights (`locate`, D-158 step 4). */
   regionModel?: () => Promise<{ elements: Iterable<RegionElement>; elevations: number[] }>;
-  /** Rozsah entity pre filter `entity` zoznamu tém (D-158 krok 4). */
+  /** Entity scope for the `entity` filter of the topic list (D-158 step 4). */
   entityScope?: (ref: string) => Promise<EntityScope>;
 }
 
-/** Čistá časť: odpoveď `view_state` -> uložený pohľad (bez zoznamu GUID, ten je v components). */
+/** The pure part: a `view_state` answer -> a stored viewpoint (without the GUID list, that is in components). */
 export function viewFromState(result: unknown): CapturedView {
   const r = (result && typeof result === "object" ? result : {}) as Record<string, unknown>;
   const sel = (r.selection && typeof r.selection === "object" ? r.selection : {}) as ViewerSelection;
@@ -253,7 +253,7 @@ const required = (v: unknown, max: number, field: string): string => {
   return s;
 };
 
-/** BCF stav v ľubovoľnom zápise ('In Progress', 'in-progress') -> hodnota v DB. */
+/** BCF status in any notation ('In Progress', 'in-progress') -> the value in the DB. */
 export function normalizeStatus(v: unknown): TopicStatus | undefined {
   if (v === undefined || v === null || v === "") return undefined;
   const s = String(v).trim().toLowerCase().replace(/[\s-]+/g, "_");
@@ -280,7 +280,7 @@ export const isClaude = (assignee: string | null | undefined) => assignee?.trim(
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** guid témy alebo jej číslo ('12', '#12'). */
+/** Topic guid or its number ('12', '#12'). */
 export function topicRef(v: unknown): { id?: string; number?: number } {
   const s = typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : "";
   if (UUID_RE.test(s)) return { id: s.toLowerCase() };
@@ -296,7 +296,7 @@ export async function loadTopic(deps: BcfDeps, v: unknown): Promise<BcfTopicRow>
   return row;
 }
 
-/** Prvky z argumentov + výber z viewera; GlobalId bez duplicít. */
+/** Elements from arguments + the viewer selection; GlobalIds without duplicates. */
 async function components(
   args: Record<string, unknown>,
   deps: BcfDeps,
@@ -312,14 +312,14 @@ async function components(
     if (typeof view === "string") viewNote = `Pohľad sa neuložil: ${view}.`;
     else {
       viewpoint = view.viewpoint;
-      // Výber z viewera je prvkami témy, len keď ich Claude nezadal sám.
+      // The viewer selection becomes the topic elements only when Claude did not give them itself.
       if (explicit.length === 0) selected = view.selection;
     }
   }
   return { guids: [...new Set([...explicit, ...selected])].slice(0, MAX_COMPONENTS), viewpoint, viewNote };
 }
 
-/** Text pre `<routine-fire-payload>`; session si tému prečíta cez bcf_topic_list(guid). */
+/** Text for `<routine-fire-payload>`; the session reads the topic via bcf_topic_list(guid). */
 export function bcfFirePayload(t: BcfTopicRow): string {
   return [
     "BCF téma z MCP konektora AIM (D-099).",
@@ -339,7 +339,7 @@ export interface SessionOutcome {
   topic: BcfTopicRow;
 }
 
-/** Spustí session pre tému priradenú Claudovi (ak nebeží a je miesto); inak povie prečo nie. */
+/** Starts a session for a topic assigned to Claude (if it is not running and there is room); otherwise says why not. */
 export async function maybeStartSession(topic: BcfTopicRow, deps: BcfDeps, wanted: boolean): Promise<SessionOutcome> {
   const base = { session: null, queued: false, topic };
   if (!isClaude(topic.assigned_to)) return { ...base, note: "Téma nie je priradená Claudovi, session sa nespúšťa." };
@@ -373,12 +373,12 @@ export async function maybeStartSession(topic: BcfTopicRow, deps: BcfDeps, wante
     return { ...base, queued: true, note: `Session sa nespustila: ${err instanceof Error ? err.message : String(err)}. Téma čaká.` };
   }
   const updated = await deps.store.update(topic.id, { session_url: fired.sessionUrl, status: "in_progress" });
-  // Komentár je pohodlie: zlyhanie nemá zhodiť výsledok, session už beží.
+  // The comment is a convenience: a failure must not fail the result, the session is already running.
   await deps.store.addComment(topic.id, DEFAULT_AUTHOR, `Claude session rieši tému: ${fired.sessionUrl}`).catch(() => null);
   return { session: { url: fired.sessionUrl }, queued: false, note: "Session beží; postup a otázky píše do komentárov témy.", topic: updated };
 }
 
-/** Krátky riadok zoznamu; `docs` = počet odkazov na dokumenty, keď sa čítali. */
+/** Short list line; `docs` = count of document references when they were read. */
 export function summary(t: BcfTopicRow, docs?: number) {
   return {
     number: t.number,
@@ -403,7 +403,7 @@ export function summary(t: BcfTopicRow, docs?: number) {
 export type TopicContext = "3d" | "pdf" | "both" | "none";
 const CONTEXTS: readonly TopicContext[] = ["3d", "pdf", "both", "none"];
 
-/** Druh kontextu témy (D-158): 3D pohľad (`viewpoint`), odkaz na dokument, oboje, ani jedno. */
+/** Kind of topic context (D-158): 3D viewpoint (`viewpoint`), document reference, both, neither. */
 export function topicContext(t: Pick<BcfTopicRow, "viewpoint">, docs: number): TopicContext {
   const has3d = t.viewpoint != null;
   if (has3d && docs > 0) return "both";
@@ -417,11 +417,11 @@ function contextFilter(v: unknown): TopicContext | undefined {
   return c;
 }
 
-/** Zhoda kontextu témy s filtrom: 3d a pdf berú aj `both`. */
+/** Topic context match with the filter: 3d and pdf also take `both`. */
 const contextMatches = (c: TopicContext, want: TopicContext) =>
   want === c || (want === "3d" && c === "both") || (want === "pdf" && c === "both");
 
-/** Detail témy pre model: komentáre, pohľad, odkazy na dokumenty a orezaný zoznam GlobalId. */
+/** Topic detail for the model: comments, viewpoint, document references and a truncated GlobalId list. */
 export function detail(t: BcfTopicRow, docs: TopicDocumentRow[] = []) {
   return {
     ...summary(t, docs.length),
@@ -440,7 +440,7 @@ export function detail(t: BcfTopicRow, docs: TopicDocumentRow[] = []) {
   };
 }
 
-/** Pripojí odkaz na dokument z argumentu `document` (D-158); strop odkazov na tému. */
+/** Attaches a document reference from the `document` argument (D-158); cap on references per topic. */
 async function attachDocument(
   deps: BcfDeps,
   topicId: string,
@@ -453,7 +453,7 @@ async function attachDocument(
   return deps.store.addDocument({ ...prepared, task_id: topicId });
 }
 
-/** Stav kontroly po novej revízii každého odkazu témy (aktuálna revízia dokumentu sa číta raz na dokument). */
+/** Check state after a new revision for each topic reference (the current document revision is read once per document). */
 export async function reviewStates(
   deps: BcfDeps,
   t: Pick<BcfTopicRow, "status">,
@@ -464,7 +464,7 @@ export async function reviewStates(
   return docs.map((d) => reviewState(d, t.status, d.document_id ? (cache.get(d.document_id) ?? null) : null));
 }
 
-/** Odkaz v detaile s príznakmi kontroly; zmenený odkaz nesie aj pôvodné miesto (kotva v histórii). */
+/** Reference in the detail with check flags; a changed reference also carries its original place (anchor in history). */
 function annotate(view: ReturnType<typeof documentView>, link: TopicDocumentRow, st: ReviewState) {
   if (!st.revision_changed) return view;
   return {
@@ -478,7 +478,7 @@ function annotate(view: ReturnType<typeof documentView>, link: TopicDocumentRow,
   };
 }
 
-/** Počet odkazov na kontrolu po novej revízii pri každej téme (len témy, ktoré ho majú > 0). */
+/** Count of references to check after a new revision for each topic (only topics where it is > 0). */
 async function reviewCounts(deps: BcfDeps, rows: BcfTopicRow[], docs: TopicDocumentRow[]): Promise<Map<string, number>> {
   const byTopic = new Map<string, TopicDocumentRow[]>();
   for (const d of docs) byTopic.set(d.task_id, [...(byTopic.get(d.task_id) ?? []), d]);
@@ -498,7 +498,7 @@ const json = (v: unknown) => JSON.stringify(v, null, 1);
 async function create(args: Record<string, unknown>, deps: BcfDeps) {
   const title = required(args.title, MAX_TITLE, "title");
   const author = text(args.author, 200) || DEFAULT_AUTHOR;
-  // Dokument sa overí pred založením, aby chybný odkaz nenechal tému bez neho.
+  // The document is verified before creation so that an invalid reference does not leave the topic without it.
   const doc = args.document !== undefined ? await resolveDocumentArg(deps.store, args.document, author) : null;
   const { guids, viewpoint, viewNote } = await components(args, deps, "global_ids");
   const row = await deps.store.create({
@@ -538,7 +538,7 @@ async function list(args: Record<string, unknown>, deps: BcfDeps) {
     const t = await loadTopic(deps, args.guid);
     const docs = await deps.store.documents([t.id]);
     const out = detail(t, docs);
-    // Odkaz sa na novú revíziu prenáša sám (D-158 krok 6); pôvodná revízia, strana a oblasť ostávajú.
+    // The reference carries over to a new revision by itself (D-158 step 6); the original revision, page and region stay.
     const states = await reviewStates(deps, t, docs);
     out.documents = out.documents.map((v, i) => annotate(v, docs[i], states[i]));
     return { topic: out };
@@ -560,7 +560,7 @@ async function list(args: Record<string, unknown>, deps: BcfDeps) {
   const docs = await deps.store.documents(rows.map((r) => r.id));
   const docCount = new Map<string, number>();
   for (const d of docs) docCount.set(d.task_id, (docCount.get(d.task_id) ?? 0) + 1);
-  // Počty podľa stavu, inak agent skúša stav po stave a potom bez filtra (#97, C12: 3 volania).
+  // Counts by status, otherwise the agent tries status by status and then without a filter (#97, C12: 3 calls).
   const filtered = Boolean(filter.status || filter.model || filter.assigned_to || filter.document_id);
   const byStatus = filtered ? await countByStatus(deps, filter) : undefined;
   const review = await reviewCounts(deps, rows, docs);
@@ -572,7 +572,7 @@ async function list(args: Record<string, unknown>, deps: BcfDeps) {
   };
 }
 
-/** Filter `context` a `needs_review` bez entity: témy sa prejdú ako pri entite (obe vlastnosti sú odvodené). */
+/** Filter `context` and `needs_review` without an entity: topics are walked as with an entity (both properties are derived). */
 async function listInContext(want: TopicContext | undefined, filter: Omit<TopicFilter, "limit">, limit: number, deps: BcfDeps, onlyReview = false) {
   const { rows, total } = await deps.store.list({ ...filter, limit: ENTITY_SCAN });
   const docs = await deps.store.documents(rows.map((r) => r.id));
@@ -596,10 +596,10 @@ async function listInContext(want: TopicContext | undefined, filter: Omit<TopicF
   };
 }
 
-/** Najviac tém, ktoré filter entity prejde (tabuľka tém je malá; viac = upozornenie). */
+/** Maximum topics the entity filter walks (the topic table is small; more = a warning). */
 const ENTITY_SCAN = 1000;
 
-/** Filter `entity` (D-158 krok 4): témy s prvkom entity alebo v nej, alebo s dokumentom entity. */
+/** Filter `entity` (D-158 step 4): topics with an element of the entity or in it, or with a document of the entity. */
 async function listInEntity(ref: string, filter: Omit<TopicFilter, "limit">, limit: number, deps: BcfDeps, context?: TopicContext, onlyReview = false) {
   if (!deps.entityScope) throw new BcfInputError("Filter entity nie je v tomto prostredí k dispozícii.");
   const scope = await deps.entityScope(ref);
@@ -625,7 +625,7 @@ async function listInEntity(ref: string, filter: Omit<TopicFilter, "limit">, lim
   };
 }
 
-/** Filter `document` (+ `page`) zoznamu -> objects.id dokumentu; neznámy dokument = chyba, nie prázdny zoznam. */
+/** Filter `document` (+ `page`) of the list -> objects.id of the document; an unknown document = an error, not an empty list. */
 async function documentFilter(args: Record<string, unknown>, deps: BcfDeps): Promise<{ document_id?: string; page?: number }> {
   const ref = text(args.document, 200);
   if (!ref) return {};
@@ -635,7 +635,7 @@ async function documentFilter(args: Record<string, unknown>, deps: BcfDeps): Pro
   return { document_id: info.id, ...(args.page !== undefined && Number.isInteger(n) && n >= 1 ? { page: n } : {}) };
 }
 
-/** Nenulové počty tém podľa stavu pri filtroch model a assigned_to (tabuľka tém je malá). */
+/** Non-zero topic counts by status with the model and assigned_to filters (the topic table is small). */
 async function countByStatus(deps: BcfDeps, filter: { model?: string; assigned_to?: string; document_id?: string; page?: number }) {
   const counts = await Promise.all(
     TOPIC_STATUSES.map(async (status) => [status, (await deps.store.list({ ...filter, status, limit: 1 })).total] as const),
@@ -666,7 +666,7 @@ async function update(args: Record<string, unknown>, deps: BcfDeps) {
   const reviewRef = text(args.review_document, 60);
   const reviewed = reviewRef ? await reviewDocuments(deps, topic, reviewRef, by) : 0;
 
-  // Zmena odkazov na dokumenty je zmena témy (modified_by, updated_at).
+  // A change of document references is a topic change (modified_by, updated_at).
   let row = Object.keys(patch).length > 1 || attached || removed || reviewed ? await deps.store.update(topic.id, patch) : topic;
   const comment = text(args.comment, MAX_TEXT);
   if (comment) await deps.store.addComment(topic.id, by, comment);
@@ -696,8 +696,8 @@ async function removeDocuments(deps: BcfDeps, topicId: string, ref: string): Pro
 }
 
 /**
- * Potvrdenie kontroly po novej revízii dokumentu (D-158 krok 6): zapíše revíziu, kto a kedy. Príznak sa tým
- * zruší len pre túto revíziu; ďalšia revízia dokumentu ho vráti. 'all' = všetky odkazy, ktoré kontrolu čakajú.
+ * Confirmation of the check after a new document revision (D-158 step 6): writes the revision, who and when. The flag is thereby
+ * cleared only for this revision; the next document revision brings it back. 'all' = all references awaiting a check.
  */
 async function reviewDocuments(deps: BcfDeps, topic: BcfTopicRow, ref: string, by: string): Promise<number> {
   const all = ref.toLowerCase() === "all";
@@ -750,11 +750,11 @@ const WRITES: Record<string, (args: Record<string, unknown>, deps: BcfDeps) => P
   bcf_topic_update: update,
   bcf_topic_close: close,
   bcf_viewpoint_create: viewpoint,
-  // Lenivo: modul lokálnych tém viewera (D-158) importuje tento.
+  // Lazily: the viewer local topics module (D-158) imports this one.
   bcf_topic_from_viewer: async (args, deps) => (await import("./viewer-topics")).fromViewer(args, deps),
-  // Lenivo: návrh prvkov a pohľadu z oblasti strany (D-158 krok 4).
+  // Lazily: a proposal of elements and viewpoint from a page region (D-158 step 4).
   bcf_topic_locate: async (args, deps) => (await import("./locate")).locate(args, deps),
-  // Lenivo: import .bcfzip do DB (D-158 krok 8); parser BCF sa nenačíta pri iných akciách.
+  // Lazily: import of .bcfzip into the DB (D-158 step 8); the BCF parser is not loaded for other actions.
   bcf_topic_import: async (args, deps) => (await import("./import-tool")).importFromArgs(args, deps),
 };
 
@@ -773,7 +773,7 @@ export async function execBcfTool(
     const write = name === "bcf_topic" ? WRITES[bcfAction(args.action)] : undefined;
     if (!write) return { text: `Neznámy tool: ${name}`, isError: true };
     const result = await write(args, deps);
-    // Oznámenie je pohodlie: zlyhanie nemá zhodiť zápis, ktorý už prebehol.
+    // The notification is a convenience: a failure must not fail a write that already happened.
     await deps.notify?.().catch(() => undefined);
     return { text: json(result), isError: false };
   } catch (err) {

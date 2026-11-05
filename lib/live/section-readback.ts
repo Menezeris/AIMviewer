@@ -3,12 +3,12 @@ import "server-only";
 import { queryLiveViewer, type QueryOutcome } from "./query";
 
 /**
- * Potvrdenie rezu (D-092): po odvysielaní `set_section` do živého viewera sa
- * server tým istým kanálom spýta na stav (`view_state`, D-085) a vráti, kde
- * rovina naozaj je. Claude tak nepotvrdí rez len podľa toho, čo poslal.
+ * Section confirmation (D-092): after broadcasting `set_section` to the live viewer the
+ * server asks for the state over the same channel (`view_state`, D-085) and returns where
+ * the plane really is. This way Claude does not confirm a section only by what it sent.
  */
 
-/** Kratší než bežná otázka: potvrdenie je doplnok, odoslanie rezu už prebehlo. */
+/** Shorter than a normal question: the confirmation is an add-on, the section was already sent. */
 export const SECTION_READBACK_TIMEOUT_MS = 4000;
 
 type Query = (channel: string) => Promise<QueryOutcome>;
@@ -16,7 +16,7 @@ type Query = (channel: string) => Promise<QueryOutcome>;
 const defaultQuery: Query = (channel) =>
   queryLiveViewer(channel, "view_state", [], { timeoutMs: SECTION_READBACK_TIMEOUT_MS });
 
-/** Riadok pre odpoveď toolu: skutočný rez z viewera, alebo prečo ho nevieme. */
+/** Line for the tool answer: the actual section from the viewer, or why we do not know it. */
 export async function readBackSection(channel: string, query: Query = defaultQuery): Promise<string> {
   let outcome: QueryOutcome;
   try {

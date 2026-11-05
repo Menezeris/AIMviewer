@@ -11,17 +11,17 @@ import {
 } from "./protocol";
 
 /**
- * Teplý živý kanál (D-101): jedno prihlásenie na Realtime kanál na inštanciu
- * funkcie namiesto nového websocketu pri každej otázke. Odpovede (`reply`) a
- * potvrdenia príkazov (`applied`) sa párujú podľa id. Kanál, ktorý sa zavrie
- * alebo zlyhá, sa zabudne a ďalšie volanie sa prihlási znova.
+ * Warm live channel (D-101): one Realtime channel subscription per function
+ * instance instead of a new websocket for every question. Answers (`reply`) and
+ * command acknowledgements (`applied`) are paired by id. A channel that closes
+ * or fails is forgotten and the next call subscribes again.
  */
 
 export interface WarmChannel {
   send(event: string, payload: unknown): Promise<void>;
   onReply(id: string, cb: (p: LiveReplyPayload) => void): () => void;
   onApplied(cmdId: string, cb: (p: LiveAppliedPayload) => void): () => void;
-  /** Okná viewera (`viewer`), ktoré na kanáli odpovedali za posledných `withinMs` (D-125). */
+  /** Viewer windows (`viewer`) that answered on the channel within the last `withinMs` (D-125). */
   recentViewers(withinMs: number, now?: number): string[];
 }
 
@@ -29,9 +29,9 @@ type Open = (channel: string) => Promise<QueryChannel | null>;
 
 const SUBSCRIBE_TIMEOUT_MS = 4000;
 /**
- * Inštancia môže medzi volaniami zaspať a websocket potom ticho odumrie; kanál
- * nepoužitý dlhšie ako toto sa preto otvorí nanovo (jedno prihlásenie navyše
- * na začiatku ďalšej série volaní).
+ * An instance may fall asleep between calls and the websocket then silently dies; a channel
+ * unused for longer than this is therefore reopened (one extra subscription
+ * at the start of the next series of calls).
  */
 const IDLE_MS = 60_000;
 interface Entry {
@@ -50,7 +50,7 @@ export function warmChannel(name: string, open: Open = connect, now = Date.now()
   }
   if (!entry) {
     const holder: { entry?: Entry } = {};
-    // Zabudnúť len vlastný záznam - zatvorenie starého kanála nesmie vyhodiť nový.
+    // Forget only its own record - closing the old channel must not drop a new one.
     const forget = () => {
       if (holder.entry && cache.get(name) === holder.entry) cache.delete(name);
     };
@@ -76,7 +76,7 @@ async function create(name: string, open: Open, forget: () => void): Promise<{ w
   if (!ch) return null;
   const replies = new Map<string, (p: LiveReplyPayload) => void>();
   const applied = new Map<string, (p: LiveAppliedPayload) => void>();
-  // Kedy ktoré okno naposledy odpovedalo (D-125): viac okien = stav sa môže líšiť.
+  // When each window last answered (D-125): more windows = the state may differ.
   const viewers = new Map<string, number>();
   const sawViewer = (v: string | undefined) => {
     if (v) viewers.set(v, Date.now());
@@ -100,7 +100,7 @@ async function create(name: string, open: Open, forget: () => void): Promise<{ w
       } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
         clearTimeout(timer);
         resolve(false);
-        forget(); // aj neskôr: zavretý kanál sa pri ďalšom volaní otvorí znova
+        forget(); // also later: a closed channel is reopened on the next call
       }
     });
   });
@@ -124,9 +124,9 @@ async function create(name: string, open: Open, forget: () => void): Promise<{ w
 }
 
 /**
- * Prihlási čakanie na `applied` s `cmdId` ešte pred odoslaním príkazu (inak by
- * rýchle potvrdenie prišlo skôr, než ho niekto počúva). Vráti funkciu, ktorá
- * počká najviac `timeoutMs`; null = kanál nie je dostupný.
+ * Subscribes the wait for `applied` with `cmdId` before sending the command (otherwise a
+ * fast acknowledgement would arrive before anyone listens). Returns a function that
+ * waits at most `timeoutMs`; null = the channel is not available.
  */
 export async function expectApplied(
   name: string,
@@ -150,7 +150,7 @@ export async function expectApplied(
   };
 }
 
-/** Koľko okien viewera na kanáli odpovedalo za posledných `withinMs` (D-125); bez teplého kanála 0. */
+/** How many viewer windows on the channel answered within the last `withinMs` (D-125); 0 without a warm channel. */
 export async function recentViewerCount(name: string, withinMs: number, open: Open = connect): Promise<number> {
   const w = cache.has(name) ? await warmChannel(name, open) : null;
   return w ? w.recentViewers(withinMs).length : 0;

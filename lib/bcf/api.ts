@@ -18,11 +18,11 @@ import { viewpointFromDto } from "./viewpoint";
 export { viewpointFromDto };
 
 /**
- * BCF API 2.1 nad `model_tasks` (D-099 fáza B): BCF panel viewera (fork,
- * `@ifc-lite/bcf-api`) sa pripojí tokenom a vidí, zakladá a komentuje tie
- * isté témy ako MCP tools. Jeden projekt = celá federácia (téma nemusí mať
- * model). Čítanie je bez tokenu (viewer si témy načíta sám, D-099 dodatok),
- * zápis len s tokenom. Čistá funkcia nad požiadavkou - token a CORS rieši route.
+ * BCF API 2.1 over `model_tasks` (D-099 phase B): the viewer BCF panel (fork,
+ * `@ifc-lite/bcf-api`) connects with a token and sees, creates and comments on the same
+ * topics as the MCP tools. One project = the whole federation (a topic need not have a
+ * model). Reading is without a token (the viewer loads topics itself, D-099 addendum),
+ * writing only with a token. A pure function over the request - the route handles token and CORS.
  */
 
 export const BCF_VERSION = "2.1";
@@ -35,7 +35,7 @@ export const LEGACY_PROJECT_ID = "aim";
 export const PROJECT_ID = LEGACY_PROJECT_ID;
 export const PROJECT_NAME = "AIM - modely federácie";
 
-/** DB stav <-> BCF topic_status (Title Case ako v paneli a v iných nástrojoch). */
+/** DB status <-> BCF topic_status (Title Case as in the panel and in other tools). */
 export const STATUS_TO_BCF: Record<TopicStatus, string> = {
   open: "Open",
   in_progress: "In Progress",
@@ -51,7 +51,7 @@ const TOPIC_ACTIONS = ["update", "updateRelatedTopics", "updateDocumentReference
 
 export interface BcfApiRequest {
   method: string;
-  /** Cesta za bázou API, napr. ["2.1", "projects", "aim", "topics"]. */
+  /** Path after the API base, e.g. ["2.1", "projects", "aim", "topics"]. */
   segments: string[];
   query: URLSearchParams;
   body: unknown;
@@ -60,27 +60,27 @@ export interface BcfApiRequest {
 export interface BcfApiResponse {
   status: number;
   body: unknown;
-  /** Binárna odpoveď (snímka pohľadu, D-158 krok 3); route ju pošle namiesto JSON. */
+  /** Binary response (viewpoint snapshot, D-158 step 3); the route sends it instead of JSON. */
   binary?: { bytes: Buffer; headers: Record<string, string> };
 }
 
 export interface BcfApiContext {
   deps: BcfDeps;
-  /** Používateľ tokenu (BCF current-user, autor zápisov). */
+  /** Token user (BCF current-user, author of writes). */
   user: string;
-  /** Požiadavka nesie platný token na zápis. */
+  /** The request carries a valid write token. */
   authenticated: boolean;
-  /** Token na zápis je nastavený (`BCF_API_TOKEN`); bez neho je API len na čítanie. */
+  /** The write token is set (`BCF_API_TOKEN`); without it the API is read-only. */
   writeEnabled: boolean;
-  /** Origin stránky (odkazy na dokumenty v DocumentReference, D-158). */
+  /** Page origin (links to documents in DocumentReference, D-158). */
   origin: string;
-  /** Snímka výrezu dokumentu (D-158 krok 3); bez nej pohľady dokumentov snímku neponúknu. */
+  /** Snapshot of a document region (D-158 step 3); without it document viewpoints offer no snapshot. */
   snapshot?: (req: SnapshotRequest) => Promise<SnapshotOutcome>;
   /** The AIM project of the request (D-189): BCF `project_id` = its code. Missing = legacy `aim`. */
   project?: { code: string; name: string };
 }
 
-/** Výsledok snímky pre BCF API (zhodný so `snapshot-http.ts`, bez závislosti na serveri). */
+/** Snapshot result for the BCF API (identical to `snapshot-http.ts`, without a server dependency). */
 export type SnapshotOutcome =
   | { ok: true; png: Buffer; revisionChanged: boolean }
   | { ok: false; status: number; message: string; retryAfter?: number };
@@ -98,9 +98,9 @@ const unit = (a: Vec): Vec => {
 };
 
 /**
- * Normála roviny rezu v BCF (IFC svet, Z hore) podľa osi viewera: x = IFC X,
- * y = IFC Z (výška), z = IFC Y; neotočený rez má normálu proti osi viewera,
- * prevod ako `sectionPlaneToClippingPlane` v `@ifc-lite/bcf`.
+ * Section plane normal in BCF (IFC world, Z up) from the viewer axis: x = IFC X,
+ * y = IFC Z (height), z = IFC Y; an unflipped section has the normal against the viewer axis,
+ * conversion as `sectionPlaneToClippingPlane` in `@ifc-lite/bcf`.
  */
 const SECTION_NORMAL: Record<string, Vec> = {
   x: { x: -1, y: 0, z: 0 },
@@ -108,14 +108,14 @@ const SECTION_NORMAL: Record<string, Vec> = {
   z: { x: 0, y: 1, z: 0 },
 };
 
-/** Náš pohľad z viewera (`view_state`) -> BCF viewpoint DTO. */
+/** Our viewer view (`view_state`) -> BCF viewpoint DTO. */
 export function viewpointToDto(row: BcfTopicRow): Record<string, unknown> | null {
   const vp = row.viewpoint;
   if (!vp) return null;
   const guid = typeof vp.guid === "string" ? vp.guid : row.id;
   const selection = row.components.map((g) => ({ ifc_guid: g, originating_system: "AIM" }));
   const components = selection.length ? { selection } : undefined;
-  // Pohľad založený panelom ostáva v tvare BCF; prvky sú v `components` témy.
+  // A viewpoint created by the panel stays in BCF shape; elements are in the topic `components`.
   if (vp.source === "bcf" && vp.bcf && typeof vp.bcf === "object") {
     return { ...(vp.bcf as Record<string, unknown>), guid, ...(components ? { components } : {}) };
   }
@@ -129,7 +129,7 @@ export function viewpointToDto(row: BcfTopicRow): Record<string, unknown> | null
       ...(Number.isFinite(cam.aspect) ? { aspect_ratio: cam.aspect } : {}),
     };
     if (cam.projection === "orthographic" && Number.isFinite(cam.ortho_size)) {
-      // ortho_size je polovica výšky pohľadu, BCF chce celú výšku v metroch.
+      // ortho_size is half of the view height, BCF wants the whole height in meters.
       dto.orthogonal_camera = { ...base, view_to_world_scale: (cam.ortho_size as number) * 2 };
     } else {
       dto.perspective_camera = { ...base, field_of_view: Number.isFinite(cam.fov_deg) ? cam.fov_deg : 60 };
@@ -149,10 +149,10 @@ export function viewpointToDto(row: BcfTopicRow): Record<string, unknown> | null
 }
 
 /**
- * Pohľad odkazu na stranu dokumentu (D-158 kroky 3 a 4): snímka výrezu s rámikom; BCF panel ju
- * ukáže pri téme a upstream export ju zapíše do .bcfzip ako snímku pohľadu. BCF 3.0 chce v
- * každom pohľade kameru: s kalibráciou strany (D-133) je to pohľad nad oblasťou v modeli, bez
- * nej kamera 3D pohľadu témy, inak náhľad zhora.
+ * Viewpoint of a document page reference (D-158 steps 3 and 4): a snapshot of the region with a frame; the BCF panel
+ * shows it with the topic and the upstream export writes it into the .bcfzip as the viewpoint snapshot. BCF 3.0 wants a
+ * camera in every viewpoint: with page calibration (D-133) it is a view over the region in the model, without
+ * it the camera of the topic 3D viewpoint, otherwise a top-down preview.
  */
 export function documentViewpointToDto(d: TopicDocumentRow, georef: unknown = null, fallback: Record<string, unknown> | null = null): Record<string, unknown> {
   const cal = d.page ? pickCalibration(georef, d.page, d.region) : null;
@@ -169,7 +169,7 @@ export function documentViewpointToDto(d: TopicDocumentRow, georef: unknown = nu
   return { guid: d.id, ...camera, snapshot: { snapshot_type: "png" } };
 }
 
-/** Pohľady dokumentov témy s kalibráciou ich strán (jedno čítanie `_georef` na dokument). */
+/** Document viewpoints of a topic with calibration of their pages (one `_georef` read per document). */
 async function documentViewpoints(deps: BcfDeps, docs: TopicDocumentRow[], current: Record<string, unknown> | null) {
   const ids = [...new Set(docs.map((d) => d.document_id as string))];
   const georefs = new Map(await Promise.all(ids.map(async (id) => [id, await deps.store.georef(id)] as const)));
@@ -178,7 +178,7 @@ async function documentViewpoints(deps: BcfDeps, docs: TopicDocumentRow[], curre
 
 async function documentSnapshotResponse(d: TopicDocumentRow, ctx: BcfApiContext): Promise<BcfApiResponse> {
   if (!ctx.snapshot || !d.document_id || !d.page) return err(404, "Pohľad nemá snímku.");
-  // Uložené značky zo stĺpca (D-158 krok 7); bez nich požiadavka ostáva ako doteraz.
+  // Saved markups from the column (D-158 step 7); without them the request stays as before.
   const markup = parseMarkup(d.markup);
   const out = await ctx.snapshot({ document_id: d.document_id, page: d.page, region: d.region, sha256: d.document_sha256, ...(markup.length ? { markup } : {}) });
   if (!out.ok) return err(out.status, out.message);
@@ -193,9 +193,9 @@ async function documentSnapshotResponse(d: TopicDocumentRow, ctx: BcfApiContext)
 }
 
 /**
- * Hlavička odkazov na dokumenty v opise témy (D-158): BCF panel (upstream
- * `fetchProjectAsBCF`) DocumentReference nesťahuje, opis ukáže. Pri zápise
- * z panela sa odreže, v DB je opis bez nej.
+ * Header of document references in the topic description (D-158): the BCF panel (upstream
+ * `fetchProjectAsBCF`) does not download DocumentReference, it shows the description. On write
+ * from the panel it is cut off, in the DB the description is without it.
  */
 export const DOCUMENTS_HEADING = "Dokumenty (AIM):";
 
@@ -249,7 +249,7 @@ async function extensions(deps: BcfDeps, canWrite: boolean): Promise<Record<stri
     topic_status: Object.values(STATUS_TO_BCF),
     priority: union(DEFAULT_PRIORITIES, v.priority),
     stage: v.stage,
-    // Bez zoznamu štítkov panel štítky nekontroluje (MCP ich píše voľne).
+    // Without a label list the panel does not check labels (MCP writes them freely).
     user_id_type: union(["claude"], v.assigned_to),
     snippet_type: [],
     project_actions: canWrite ? PROJECT_ACTIONS : [],
@@ -272,7 +272,7 @@ const str = (v: unknown, max: number): string | null => {
   return s ? s.slice(0, max) : null;
 };
 
-/** BCF topic write DTO -> polia témy; PUT nahrádza, čo BCF zapisuje (chýbajúce = prázdne). */
+/** BCF topic write DTO -> topic fields; PUT replaces what BCF writes (missing = empty). */
 function topicWrite(body: unknown, user: string): BcfTopicWrite & { title: string } {
   const b = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
   const title = str(b.title, 200);
@@ -299,12 +299,12 @@ function topicWrite(body: unknown, user: string): BcfTopicWrite & { title: strin
 
 class ApiInputError extends Error {}
 
-/** Oznámenie je pohodlie: zlyhanie nemá zhodiť zápis, ktorý už prebehol. */
+/** The notification is a convenience: a failure must not fail a write that already happened. */
 async function notified(ctx: BcfApiContext): Promise<void> {
   await ctx.deps.notify?.().catch(() => undefined);
 }
 
-/** DocumentReference DTO -> riadok odkazu (D-158); dokument AIM sa overí a dostane snímku kódu a revízie. */
+/** DocumentReference DTO -> reference row (D-158); an AIM document is verified and gets a snapshot of code and revision. */
 async function referenceWrite(body: unknown, topic: BcfTopicRow, ctx: BcfApiContext): Promise<TopicDocumentWrite> {
   const ref = parseDocumentReferenceDto(body, ctx.origin);
   if (ref.document_id) {
@@ -314,7 +314,7 @@ async function referenceWrite(body: unknown, topic: BcfTopicRow, ctx: BcfApiCont
       return { ...row, description: stripOwnLabel(ref.description, row) };
     }
   }
-  // Cudzí odkaz (alebo dokument, ktorý v AIM už nie je) ostáva ako url.
+  // A foreign reference (or a document that is no longer in AIM) stays as url.
   const b = (body ?? {}) as Record<string, unknown>;
   const row: TopicDocumentWrite = {
     task_id: topic.id,
@@ -338,7 +338,7 @@ async function startIfClaude(row: BcfTopicRow, wasClaude: boolean, deps: BcfDeps
   return (await maybeStartSession(row, deps, true)).topic;
 }
 
-/** Spracuje jednu požiadavku BCF API; `segments` sú za bázou (napr. `/api/bcf`). */
+/** Handles one BCF API request; `segments` are after the base (e.g. `/api/bcf`). */
 export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Promise<BcfApiResponse> {
   const { method, segments: s } = req;
   const { deps, user } = ctx;
@@ -357,7 +357,7 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
     }
     if (s[0] !== BCF_VERSION) return err(404, "Neznáma cesta BCF API.");
     if (s.length === 2 && s[1] === "auth" && method === "GET") {
-      // Len vložený token (Bearer); OAuth server nemáme.
+      // Only an inserted token (Bearer); we have no OAuth server.
       return ok({ http_basic_supported: false, supported_oauth2_flows: [] });
     }
     if (method !== "GET") {
@@ -367,7 +367,7 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
       if (!ctx.authenticated) return err(401, "Zápis potrebuje token (Authorization: Bearer).");
     }
     if (s.length === 2 && s[1] === "current-user" && method === "GET") {
-      // Prihlásenie tokenom v paneli; bez tokenu sa panel nepripája, témy mu posiela most AIM.
+      // Token login in the panel; without a token the panel does not connect, the AIM bridge sends it the topics.
       return ctx.authenticated ? ok({ id: user, name: user }) : err(401, "Chýba alebo nesedí token (Authorization: Bearer).");
     }
     if (s[1] !== "projects") return err(404, "Neznáma cesta BCF API.");
@@ -379,7 +379,7 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
 
     if (s.length === 4) {
       if (method === "GET") {
-        // $filter a $orderby sa nevyhodnocujú: témy idú podľa čísla, stránkuje $top/$skip.
+        // $filter and $orderby are not evaluated: topics go by number, $top/$skip paginate.
         const top = Math.min(500, Math.max(1, Number.parseInt(req.query.get("$top") ?? "", 10) || 100));
         const skip = Math.max(0, Number.parseInt(req.query.get("$skip") ?? "", 10) || 0);
         const { rows } = await deps.store.list({ limit: top, offset: skip, ascending: true });
@@ -427,7 +427,7 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
     if (s[5] === "document_references") {
       if (s.length === 6) {
         if (method === "GET") {
-          // revision_changed len keď platí (rovnaký výpočet ako bcf_topic_list); starší fork ho ignoruje.
+          // revision_changed only when it applies (same computation as bcf_topic_list); an older fork ignores it.
           const links = await deps.store.documents([topic.id]);
           const states = await reviewStates(deps, topic, links);
           return ok(links.map((d, i) => ({ ...documentReferenceToDto(d, ctx.origin), ...(states[i].revision_changed ? { revision_changed: true } : {}) })));
@@ -457,14 +457,14 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
 
     if (s[5] === "viewpoints") {
       const current = viewpointToDto(topic);
-      // Pripomienka na strane dokumentu = pohľad so snímkou výrezu (D-158 krok 3); guid = guid odkazu.
+      // A comment on a document page = a viewpoint with a region snapshot (D-158 step 3); guid = the reference guid.
       const docViews = ctx.snapshot ? (await deps.store.documents([topic.id])).filter((d) => d.document_id && d.page) : [];
       if (s.length === 6) {
         if (method === "GET") return ok([...(current ? [current] : []), ...(await documentViewpoints(deps, docViews, current))]);
         if (method === "POST") {
           const dto = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
           const { viewpoint, selection } = viewpointFromDto(dto);
-          // Téma má jeden pohľad (D-099): nový nahradí starý; prvky len keď ich pohľad nesie.
+          // A topic has one viewpoint (D-099): a new one replaces the old; elements only when the viewpoint carries them.
           const row = await deps.store.update(topic.id, {
             viewpoint,
             ...(selection.length ? { components: selection } : {}),

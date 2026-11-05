@@ -10,10 +10,10 @@ import { clashOpenOp, type ClashOpenReq } from "@/lib/viewer-clash";
 
 import type { ClashOpenOutcome, ClashViewerDeps } from "./viewer-tool";
 
-/** Čakanie na otvorenie panela clash: klient hosta najprv stiahne test a beh z route, potom ich pošle forku. */
+/** Waiting for the clash panel to open: the host client first fetches the test and run from the route, then sends them to the fork. */
 const OPEN_TIMEOUT_MS = ACK_TIMEOUT_MS * 2;
 
-/** `clash_open` na živý kanál (D-164) a potvrdenie `APPLIED`; vzor `liveOpen` z IDS (D-162). */
+/** `clash_open` to the live channel (D-164) and the `APPLIED` acknowledgement; pattern of `liveOpen` from IDS (D-162). */
 async function liveOpen(req: ClashOpenReq): Promise<ClashOpenOutcome> {
   const channel = liveChannel();
   if (!channel) return { ok: false, reason: "živý viewer nie je nastavený (LIVE_CHANNEL)" };
@@ -36,7 +36,7 @@ async function liveOpen(req: ClashOpenReq): Promise<ClashOpenOutcome> {
   return { ok: true, issues: applied.issues };
 }
 
-/** Surová odpoveď `view_state` (D-085); string = prečo sa nedala prečítať. */
+/** Raw `view_state` response (D-085); string = why it could not be read. */
 async function liveViewState(): Promise<unknown> {
   const channel = liveChannel();
   if (!channel) return "živý viewer nie je nastavený (LIVE_CHANNEL)";
@@ -46,5 +46,5 @@ async function liveViewState(): Promise<unknown> {
   return outcome.reply.result;
 }
 
-/** Živý viewer pre `clash open` a `from_viewer`. */
+/** Live viewer for `clash open` and `from_viewer`. */
 export const clashViewer: ClashViewerDeps = { open: liveOpen, viewState: liveViewState };

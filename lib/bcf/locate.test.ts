@@ -14,7 +14,7 @@ const run = async (name: string, args: Record<string, unknown>, d: BcfDeps) => {
   return { ...res, json: res.isError ? null : JSON.parse(res.text) };
 };
 
-/** Strana 2: celá strana = x 0..10 m, y 0..5 m na podlaží z = 3. */
+/** Page 2: the whole page = x 0..10 m, y 0..5 m on storey z = 3. */
 const CAL: GeorefCalibration = {
   page: 2,
   page_size: [842, 595],
@@ -43,7 +43,7 @@ function box(globalId: string, ifcType: string, min: Vec3, max: Vec3): RegionEle
   return { globalId, ifcType, name: `${ifcType} ${globalId}`, model: "ASR", positions: c.flat(), indices: faces.flatMap(([a, b, cc, d]) => [a, b, cc, a, cc, d]), min, max };
 }
 
-// Oblasť témy: ľavá polovica strany = x 0..5 m.
+// Topic region: the left half of the page = x 0..5 m.
 const ELEMENTS = [
   box("wallLeft00000000000000", "IfcWall", [1, 1, 3], [4, 1.2, 6]),
   box("doorLeft00000000000000", "IfcDoor", [2, 1, 3], [3, 1.2, 5.1]),
