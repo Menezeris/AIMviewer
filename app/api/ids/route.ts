@@ -12,19 +12,19 @@ import { currentProjectId } from "@/lib/live/caller";
 /**
  * IDS z AIM pre viewer (D-162, #285).
  *
- * - `GET` bez brány (len čítanie, ako BCF API): bez parametrov zoznam IDS, `?code=<kód>[&version=<n>]` posledná alebo
- *   danej verzie s XML (z toho klient hosta skladá `IDS_LOAD`), s `&format=ids` XML ako súbor na stiahnutie.
- * - `POST {xml, code?, base_version?, title?}` uloží IDS z panela viewera (`IDS_SAVE`) ako novú verziu so
- *   `source='viewer'`. Bez `code` vznikne nové pracovné IDS, knižničná snímka sa neprepíše (uloží sa ako kópia).
- *   Konflikt (`base_version` nie je posledná) je 409 s `latest_version` a `diff` zmien v AIM.
+ * - `GET` without the gate (read-only, like BCF API): without parameters a list of IDS, `?code=<code>[&version=<n>]` the latest or
+ *   the given version with XML (the host client builds `IDS_LOAD` from it), with `&format=ids` the XML as a downloadable file.
+ * - `POST {xml, code?, base_version?, title?}` saves an IDS from the viewer panel (`IDS_SAVE`) as a new version with
+ *   `source='viewer'`. Without `code` a new working IDS is created, the library snapshot is not overwritten (saved as a copy).
+ *   A conflict (`base_version` is not the latest) is 409 with `latest_version` and a `diff` of changes in AIM.
  *
- * Ochrana ako pri pohľadoch a podkladoch (D-161, D-072): viewer je verejný read-only, preto je zápis za env
- * bránou, predvolene VYPNUTOU (`IDS_WRITE_ENABLED=true` ju zapne), k tomu origin guard a per-IP rate limit
- * (D-068). Bez prihlásenia môže IDS ukladať každý, kto viewer otvorí; poctivý vedomý limit, kým nepríde auth.
+ * Protection as for views and underlays (D-161, D-072): the viewer is public read-only, so writing is behind the env
+ * gate, OFF by default (`IDS_WRITE_ENABLED=true` turns it on), plus origin guard and per-IP rate limit
+ * (D-068). Without login anyone who opens the viewer can save an IDS; an honest conscious limit until auth arrives.
  */
 
 export const dynamic = "force-dynamic";
-/** Audit a čítanie XML idú cez motor `@ifc-lite/mcp` (relácia bez modelov). */
+/** Audit and XML reading go through the `@ifc-lite/mcp` engine (session without models). */
 export const maxDuration = 60;
 
 const MAX_BODY_CHARS = MAX_IDS_XML + 10_000;

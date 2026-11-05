@@ -9,18 +9,18 @@ import { withRequestProject } from "@/lib/project/request";
 import { currentProjectId } from "@/lib/live/caller";
 
 /**
- * Uloženie výsledku kontroly IDS z viewera (D-182, Samuel 2. 11.: kontrola beží raz, vo vieweri; server ju
- * neopakuje). `POST {code, version, ids_sha256, model, revision, engine_version, author, specs}`:
- * `specs` = výsledky po špecifikáciách v tvare reportu `@ifc-lite/ids`. Uloží sa `ids_runs` + `ids_results`
- * (`trigger = viewer`, `engine = ifc-lite`) s pečiatkou revízie modelu, ktorú viewer načítal, verzie IDS a verzie
- * nástroja; pri novej revízii alebo verzii IDS je výsledok `stale` / `ids_stale` (nikdy sa neprepisuje).
- * Uloží sa len neupravená verzia IDS z AIM (sha256 musí sedieť) a len so známou revíziou modelu.
+ * Saving the result of an IDS check from the viewer (D-182, Samuel 2 Nov: the check runs once, in the viewer; the server does not
+ * repeat it). `POST {code, version, ids_sha256, model, revision, engine_version, author, specs}`:
+ * `specs` = results per specification in the shape of the `@ifc-lite/ids` report. `ids_runs` + `ids_results` are saved
+ * (`trigger = viewer`, `engine = ifc-lite`) with the stamp of the model revision the viewer loaded, the IDS version and the tool
+ * version; on a new revision or IDS version the result is `stale` / `ids_stale` (it is never overwritten).
+ * Only the unmodified IDS version from AIM is saved (sha256 must match) and only with a known model revision.
  */
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-/** Telo pod limitom požiadavky Vercelu (4,5 MB). */
+/** Body under the Vercel request limit (4.5 MB). */
 const MAX_BODY_CHARS = 4_000_000;
 
 async function postHandler(req: Request) {

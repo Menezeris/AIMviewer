@@ -14,7 +14,7 @@ const base = "https://aim.test/api/clash";
 const post = (body: unknown, headers: Record<string, string> = {}) =>
   new Request(base, { method: "POST", headers: { "content-type": "application/json", host: "aim.test", origin: "https://aim.test", ...headers }, body: JSON.stringify(body) });
 
-/** Nový modul route (brána sa číta pri načítaní) a nové úložisko z tej istej sady modulov. */
+/** New route module (the gate is read on load) and a new store from the same set of modules. */
 async function load(enabled: boolean) {
   vi.resetModules();
   if (enabled) vi.stubEnv("CLASH_WRITE_ENABLED", "true");

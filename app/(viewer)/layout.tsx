@@ -11,7 +11,7 @@ import { currentPageProject } from "@/lib/project/page";
 // D-189: the project comes from the session cookie (`?project=`), so the layout renders per
 // request; the data stays cached per project in `unstable_cache` (60 s, tag `aim:<project>`).
 
-/** Panel AI chatu vo vieweri (D-056) - predvolene skrytý (D-100). */
+/** AI chat panel in the viewer (D-056) - hidden by default (D-100). */
 const ASK_PANEL = process.env.NEXT_PUBLIC_ASK_PANEL === "1";
 
 export default async function ViewerLayout({
@@ -24,8 +24,8 @@ export default async function ViewerLayout({
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      {/* Na /ifc sa sidebar nerenderuje (D-077 viewer-first) — jediný strom je
-          natívny HierarchyPanel embed viewera s AIM dekoráciami. */}
+      {/* On /ifc the sidebar is not rendered (D-077 viewer-first) - the only tree is
+          the native HierarchyPanel of the embed viewer with AIM decorations. */}
       <SidebarGate>
         <SidebarShell>
           <SpatialTree tree={tree} />
@@ -33,17 +33,17 @@ export default async function ViewerLayout({
         </SidebarShell>
       </SidebarGate>
 
-      {/* Stránky s koreňom `.full-bleed` (3D viewer) dostanú celú plochu bez
-          paddingu a bez scrollu — obsah si výšku manažuje sám. */}
+      {/* Pages with a `.full-bleed` root (3D viewer) get the whole area without
+          padding and without scroll - the content manages its height itself. */}
       <main className="flex-1 overflow-y-auto p-6 lg:p-8 [&:has(.full-bleed)]:overflow-hidden [&:has(.full-bleed)]:p-0">
         {children}
       </main>
 
-      {/* Globálny AI chat pri spodku — konverzácia prežíva preklikávanie (D-056).
-          Skrytý, kým nie je NEXT_PUBLIC_ASK_PANEL=1: Claude pracuje cez MCP konektor (D-100). */}
+      {/* Global AI chat at the bottom - the conversation survives navigating between pages (D-056).
+          Hidden until NEXT_PUBLIC_ASK_PANEL=1: Claude works via the MCP connector (D-100). */}
       {ASK_PANEL && <AskDock />}
 
-      {/* Živý kanál: príkazy od Claude cez MCP konektor (D-079), len s ?live=. */}
+      {/* Live channel: commands from Claude via the MCP connector (D-079), only with ?live=. */}
       <LiveChannel />
     </div>
   );

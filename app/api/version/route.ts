@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 
 /**
- * Vráti SHA aktuálne živého Vercel deployu. `<VersionWatcher>` (klient) si túto
- * hodnotu zapamätá pri načítaní a periodicky ju porovnáva — keď sa zmení, vie,
- * že medzitým pribudol nový build, a ponúkne obnovu (rieši „staré UI po deployi").
+ * Returns the SHA of the currently live Vercel deploy. `<VersionWatcher>` (client) remembers this
+ * value on load and compares it periodically - when it changes, it knows
+ * that a new build has arrived in the meantime, and offers a refresh (solves "stale UI after a deploy").
  *
- * `force-dynamic` + `no-store`: nesmie sa cachovať, inak by otvorený tab dostával
- * svoje vlastné staré SHA a novú verziu by nikdy nezachytil. Lokálne/dev bez
- * Vercel env vracia "dev" → klient nikdy nefalošne nevyskočí.
+ * `force-dynamic` + `no-store`: must not be cached, otherwise an open tab would keep getting
+ * its own old SHA and would never catch the new version. Local/dev without
+ * Vercel env returns "dev" -> the client never pops up falsely.
  */
 export const dynamic = "force-dynamic";
 

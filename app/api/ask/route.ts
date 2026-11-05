@@ -19,29 +19,29 @@ import { currentProjectId } from "@/lib/live/caller";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * LLM rozhranie nad grafom (D-056, F6): agentická tool-calling slučka nad
- * whitelistovanými views. Read-only, row-capy v tools, max počet kôl — model
- * nemá priamy prístup k SQL ani k zápisu. Zdroje (trust loop) zbiera server
- * deterministicky z tool výsledkov; UI z nich renderuje deep-linky.
+ * LLM interface over the graph (D-056, F6): an agentic tool-calling loop over
+ * whitelisted views. Read-only, row caps in tools, max number of rounds - the model
+ * has no direct access to SQL or to writes. Sources (trust loop) are collected by the server
+ * deterministically from tool results; the UI renders deep links from them.
  */
 
-/** Max kôl tool-callov na jednu otázku (ochrana nákladov aj slučiek). */
+/** Max tool-call rounds per question (protects costs and loops). */
 const MAX_TOOL_ROUNDS = 8;
-/** Max tokenov odpovede modelu. 4000: tool call show_in_3d s desiatkami UUID
- *  má 1000+ tokenov — pri 1500 sa odsekol uprostred a odpoveď ostala prázdna. */
+/** Max tokens of the model response. 4000: a show_in_3d tool call with dozens of UUIDs
+ *  has 1000+ tokens - at 1500 it was cut off in the middle and the response stayed empty. */
 const MAX_TOKENS = 4000;
-/** Koľko posledných správ histórie posielame modelu. */
+/** How many of the latest history messages we send to the model. */
 const MAX_HISTORY = 20;
-/** Max dĺžka jednej user správy. */
+/** Max length of a single user message. */
 const MAX_INPUT_CHARS = 2000;
 
 export const maxDuration = 60;
 
-// D-068: endpoint spúšťa až MAX_TOOL_ROUNDS+1 LLM volaní na požiadavku —
-// bez limitu je to vektor na vyčerpanie kreditu providera. Per-IP sliding
-// window; default len v produkcii — eval runner (`npm run eval`, D-057) búši
-// do dev servera desiatkami otázok a nesmie sa limitovať. Override oboma
-// smermi cez ASK_RATE_LIMIT_MAX (0 = vypnuté).
+// D-068: the endpoint triggers up to MAX_TOOL_ROUNDS+1 LLM calls per request -
+// without a limit it is a vector for exhausting the provider's credit. Per-IP sliding
+// window; default only in production - the eval runner (`npm run eval`, D-057) hammers
+// the dev server with dozens of questions and must not be limited. Override in both
+// directions via ASK_RATE_LIMIT_MAX (0 = off).
 const RATE_LIMIT_MAX = Number(
   process.env.ASK_RATE_LIMIT_MAX ?? (process.env.NODE_ENV === "production" ? 20 : 0)
 );
@@ -53,8 +53,8 @@ interface AskRequestBody {
 }
 
 async function postHandler(req: Request) {
-  // Cudzia stránka strieľajúca na API z prehliadača používateľa (CSRF-ová
-  // vrstva; požiadavky bez Origin — curl/eval — prechádzajú na limiter).
+  // A foreign page firing at the API from the user's browser (CSRF-style
+  // layer; requests without Origin - curl/eval - pass on to the limiter).
   if (isCrossOriginBlocked(req.headers.get("origin"), req.headers.get("host"))) {
     return NextResponse.json({ error: "cross-origin request denied" }, { status: 403 });
   }
@@ -76,8 +76,8 @@ async function postHandler(req: Request) {
     return NextResponse.json({ error: "invalid json" }, { status: 400 });
   }
 
-  // Validácia histórie: striedavé user/assistant TEXTY od klienta; tool bloky
-  // žijú len server-side v rámci jednej požiadavky (klient ich nikdy neposiela).
+  // History validation: alternating user/assistant TEXTS from the client; tool blocks
+  // live only server-side within a single request (the client never sends them).
   const history = (body.messages ?? [])
     .filter(
       (m): m is { role: "user" | "assistant"; content: string } =>
@@ -127,7 +127,7 @@ async function postHandler(req: Request) {
 
       if (res.stopReason !== "tool_use" || toolUses.length === 0) break;
 
-      // Posledné kolo: tool výsledky už neposielame, ostáva posledná textová odpoveď.
+      // Last round: we no longer send tool results, the last text answer remains.
       if (round === MAX_TOOL_ROUNDS) break;
 
       messages.push({ role: "assistant", content: res.content });
@@ -144,9 +144,9 @@ async function postHandler(req: Request) {
       messages.push({ role: "user", content: results });
     }
 
-    // Poistka proti konfabulácii: keď VŠETKY tool cally zlyhali, model nemá
-    // žiadne dáta — jeho text sa nesmie tváriť ako fakt (overené: lite modely
-    // si po chybách vymyslia čísla napriek promptu).
+    // Safeguard against confabulation: when ALL tool calls failed, the model has
+    // no data - its text must not pose as fact (verified: lite models
+    // make up numbers after errors despite the prompt).
     const allToolsFailed =
       runtime.trace.length > 0 && runtime.trace.every((t) => !t.ok);
     if (allToolsFailed) {

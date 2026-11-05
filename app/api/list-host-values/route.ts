@@ -6,9 +6,9 @@ import { currentProjectId } from "@/lib/live/caller";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Hodnoty host stĺpcov panela Lists (D-174, #277): `GET /api/list-host-values?key=derived_referenced|derived_boundary`
- * vráti `{ values: { GlobalId: text }, count, truncated }`. Volá ho klient viewera, keď op `list` nesie stĺpec
- * `source: "host"`; hodnoty pošle forku v stĺpci správy `OPEN_LIST` / `LIST_UPDATE`. Read-only cez `service_role` (D-026).
+ * Values of the host columns of the Lists panel (D-174, #277): `GET /api/list-host-values?key=derived_referenced|derived_boundary`
+ * returns `{ values: { GlobalId: text }, count, truncated }`. Called by the viewer client when a `list` op carries a column
+ * `source: "host"`; the values are sent to the fork in the column of the `OPEN_LIST` / `LIST_UPDATE` message. Read-only via `service_role` (D-026).
  */
 
 const CACHE = { "Cache-Control": "public, max-age=60, s-maxage=60, stale-while-revalidate=300" };

@@ -7,36 +7,36 @@ import DrawingWorkspace from "@/components/drawing-workspace";
 import type { DocumentPanelData } from "@/components/document-info-panel";
 import { currentPageProject } from "@/lib/project/page";
 
-// ISR — render sa cachuje a po 60 s revaliduje (viewer je verejný read-only, D-029).
+// ISR - render is cached and revalidated after 60 s (viewer is public read-only, D-029).
 export const revalidate = 60;
 
 /**
- * Prehliadačka dokumentu/výkresu (D-042 C+D, rozšírené): kanonické zobrazenie
- * **každého** PDF dokumentu — zdrojové PDF vľavo (s prekrytím klikateľných SNIM
- * kódov, ak ich výkres má, `_drawing_links`), vpravo panel s info o dokumente,
- * resp. po kliku na kód s detailom prvku. Vizualizuje previazanosť dát (jadro dema).
+ * Document/drawing viewer (D-042 C+D, extended): canonical display
+ * of **every** PDF document - source PDF on the left (with an overlay of clickable SNIM
+ * codes, if the drawing has them, `_drawing_links`), on the right a panel with document info,
+ * or, after clicking a code, with the element detail. Visualizes data linkage (the core of the demo).
  */
 export default async function DrawingPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  /** `focus` = `objects.id` prvku na zvýraznenie; `page` = počiatočná strana (D-042 D). */
+  /** `focus` = `objects.id` of the element to highlight; `page` = initial page (D-042 D). */
   searchParams: Promise<{ focus?: string; page?: string }>;
 }) {
   const projectId = (await currentPageProject()).id;
   const { id } = await params;
   const { focus, page } = await searchParams;
 
-  // Výkres (PDF + klikateľné regióny) + dokument (metadáta + „pripojené k") naraz.
+  // Drawing (PDF + clickable regions) + document (metadata + "attached to") at once.
   const [drawing, document] = await Promise.all([
     fetchDrawing(projectId, id),
     fetchDocument(projectId, id),
   ]);
   if (!document) {
-    // Odkaz na časť dokumentu (IfcDocumentReference, D-104) = jeho dokument na strane.
+    // Reference to a part of a document (IfcDocumentReference, D-104) = its document on a page.
     const ref = await fetchDocumentReference(projectId, id);
-    if (!ref) notFound(); // nie je dokument
+    if (!ref) notFound(); // not a document
     redirect(`/drawing/${ref.documentId}${ref.page ? `?page=${ref.page}` : ""}`);
   }
 
@@ -45,8 +45,8 @@ export default async function DrawingPage({
   const initialPage = page ? Number.parseInt(page, 10) : undefined;
   const hasLinks = links.length > 0;
 
-  // Origin PDF (Supabase Storage) — preconnect rozbehne TCP/TLS handshake hneď,
-  // takže react-pdf po mount-e sťahuje rovno cez teplé spojenie (D-030 perf, dodatok).
+  // PDF origin (Supabase Storage) - preconnect starts the TCP/TLS handshake right away,
+  // so react-pdf downloads over a warm connection right after mount (D-030 perf, addendum).
   let pdfOrigin: string | null = null;
   if (pdfUrl) {
     try {
@@ -71,8 +71,8 @@ export default async function DrawingPage({
 
   return (
     <div className="mx-auto max-w-[1500px]">
-      {/* React 19 hoistne preconnect do <head> — spojenie na PDF origin sa otvára
-          paralelne s načítaním react-pdf bundlu, nie až po ňom. */}
+      {/* React 19 hoists preconnect into <head> - the connection to the PDF origin opens
+          in parallel with loading the react-pdf bundle, not only after it. */}
       {pdfOrigin && <link rel="preconnect" href={pdfOrigin} crossOrigin="anonymous" />}
       <header className="mb-4">
         <span className="inline-block rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
@@ -89,9 +89,9 @@ export default async function DrawingPage({
         </div>
       </header>
 
-      {/* key = id: soft-navigácia na iný dokument (klik na výkres v paneli) musí
-          resetnúť stav prehliadačky (strana/zoom/výber/progress) — bez remountu by
-          nový dokument zdedil napr. stranu 3 z predchádzajúceho. */}
+      {/* key = id: soft navigation to another document (click on a drawing in the panel) must
+          reset the viewer state (page/zoom/selection/progress) - without a remount the
+          new document would inherit e.g. page 3 from the previous one. */}
       <DrawingWorkspace
         key={id}
         pdfUrl={pdfUrl}

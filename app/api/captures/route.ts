@@ -20,12 +20,12 @@ import { withRequestProject } from "@/lib/project/request";
 /**
  * Reality Capture (D-073) — capture point endpoint.
  *
- * `GET  /api/captures?space=<objects.id>` — captures naviazané na priestor
- *   (obojsmerné čítanie „fotky priestoru"). Read-only, server-side (D-026).
- * `POST /api/captures` — vytvor capture point (objects+captures riadok, `_capture`
- *   placement, hrana na IfcSpace). Za env bránou `CAPTURE_WRITE_ENABLED` (default
- *   VYPNUTÝ) + origin guard + per-IP rate limit (vzor D-068/D-072). Snímka sa
- *   následne nahrá cez `POST /api/captures/{id}/media`.
+ * `GET  /api/captures?space=<objects.id>` - captures linked to a space
+ *   (bidirectional reading of "photos of a space"). Read-only, server-side (D-026).
+ * `POST /api/captures` - create a capture point (objects+captures row, `_capture`
+ *   placement, edge to IfcSpace). Behind the env gate `CAPTURE_WRITE_ENABLED` (default
+ *   OFF) + origin guard + per-IP rate limit (pattern D-068/D-072). The shot is
+ *   then uploaded via `POST /api/captures/{id}/media`.
  */
 
 const WRITE_ENABLED = process.env.CAPTURE_WRITE_ENABLED === "true";
@@ -120,8 +120,8 @@ async function postHandler(req: Request) {
   if (!isValidCaptureV1(b.placement)) {
     return NextResponse.json({ error: "invalid _capture payload" }, { status: 400 });
   }
-  // Plán-pin dokument (ak je) musí byť UUID; existenciu neblokujeme (drawing sa
-  // môže doplniť neskôr), ale tvar strážime.
+  // The plan-pin document (if any) must be a UUID; we do not block on existence (the drawing
+  // can be added later), but we guard the shape.
   if (b.placement.plan && !UUID_RE.test(b.placement.plan.documentId)) {
     return NextResponse.json({ error: "invalid plan.documentId" }, { status: 400 });
   }

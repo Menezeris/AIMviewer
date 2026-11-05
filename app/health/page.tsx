@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/card";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
-// Vždy čerstvý fetch (žiadny statický cache) — je to live connection test.
+// Always a fresh fetch (no static cache) - it is a live connection test.
 export const dynamic = "force-dynamic";
 
 async function fetchObjectsCount(): Promise<

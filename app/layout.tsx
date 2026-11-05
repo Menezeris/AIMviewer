@@ -4,8 +4,8 @@ import "./globals.css";
 
 import { VersionWatcher } from "@/components/version-watcher";
 
-// Inter = brand font (assetin design kit, D-070); premenná --font-sans ju
-// prepojí na @theme mapovanie v globals.css.
+// Inter = brand font (assetin design kit, D-070); the --font-sans variable
+// links it to the @theme mapping in globals.css.
 const interSans = Inter({
   variable: "--font-sans",
   subsets: ["latin", "latin-ext"],

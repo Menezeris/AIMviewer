@@ -5,7 +5,7 @@ import { brana, chybaServera, info, kodKniznice, neznamaKniznica, odpoved, sklad
 import { ZapisMigraciaChyba } from "@/lib/kniznica/sklad-db";
 import { withRequestProject } from "@/lib/project/request";
 
-/** `POST nova` stránky editora (`assetin/server`) nad skladom v DB, za bránou `LIBRARY_WRITE_ENABLED` (D-186). */
+/** `POST nova` of the editor page (`assetin/server`) over the store in the DB, behind the `LIBRARY_WRITE_ENABLED` gate (D-186). */
 export const dynamic = "force-dynamic";
 
 async function postHandler(req: Request, ctx: { params: Promise<{ kniznica: string }> }) {

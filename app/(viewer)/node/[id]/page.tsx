@@ -44,7 +44,7 @@ import {
 } from "@/components/ui/card";
 import { currentPageProject } from "@/lib/project/page";
 
-// ISR — render uzla sa cachuje a po 60 s revaliduje (viewer je verejný read-only).
+// ISR - the node render is cached and revalidated after 60 s (viewer is public read-only).
 export const revalidate = 60;
 
 function Breadcrumb({ trail }: { trail: NodeRef[] }) {
@@ -64,8 +64,8 @@ function Breadcrumb({ trail }: { trail: NodeRef[] }) {
 }
 
 /**
- * Placeholder karty počas streamovania sekcie (Suspense fallback) — hlavička
- * a jadro stránky prídu okamžite z cachovaného grafu, sekcie sa dostreamujú.
+ * Card placeholder while a section streams (Suspense fallback) - the header
+ * and the page core arrive immediately from the cached graph, the sections stream in later.
  */
 function SectionSkeleton() {
   return (
@@ -79,7 +79,7 @@ function SectionSkeleton() {
   );
 }
 
-/** Riadok atribútu (label : hodnota). */
+/** Attribute row (label : value). */
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   if (value === null || value === undefined || value === "") return null;
   return (
@@ -90,7 +90,7 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-/** Hlavička karty: typový badge + názov + object_ref. */
+/** Card header: type badge + name + object_ref. */
 function NodeHeader({
   type,
   name,
@@ -114,9 +114,9 @@ function NodeHeader({
 }
 
 /**
- * Generické sekcie uzla (S3, D-029): dokumenty, zodpovednosti, história GUID.
- * Presentational — dáta dostane zvonku, aby ich volajúci mohol načítať paralelne
- * s ostatným obsahom karty.
+ * Generic node sections (S3, D-029): documents, responsibilities, GUID history.
+ * Presentational - data comes from outside so that the caller can load it in parallel
+ * with the rest of the card content.
  */
 function NodeSectionsCards({
   data,
@@ -125,7 +125,7 @@ function NodeSectionsCards({
 }: {
   data: NodeSectionsData;
   ifcGuid: string | null;
-  /** `objects.id` uzla — pre `?focus=` odkaz do prehliadačky výkresov (D-042 D). */
+  /** `objects.id` of the node - for the `?focus=` link into the drawing viewer (D-042 D). */
   nodeId: string;
 }) {
   const { documents, drawings, responsibilities, guidHistory } = data;
@@ -182,7 +182,7 @@ function NodeSectionsCards({
   );
 }
 
-/** Async wrapper — načíta sekcie sám (priestorové uzly, kde nie je čo paralelizovať). */
+/** Async wrapper - loads the sections itself (spatial nodes, where there is nothing to parallelize). */
 async function NodeSections({ id, ifcGuid }: { id: string; ifcGuid: string | null }) {
   const projectId = (await currentPageProject()).id;
   const data = await fetchNodeSections(projectId, id);
@@ -190,9 +190,9 @@ async function NodeSections({ id, ifcGuid }: { id: string; ifcGuid: string | nul
 }
 
 /**
- * „Prvky vo výkrese" (E4, D-041) — pre priestorový uzol (podlažie/budova): výkresy
- * pripojené na uzol a prvky auto-detegované v každom z nich. Skryje sa, ak žiadny
- * výkres uzla nemá detegované prvky.
+ * "Elements in drawing" (E4, D-041) - for a spatial node (storey/building): drawings
+ * attached to the node and elements auto-detected in each of them. Hidden if no
+ * drawing of the node has detected elements.
  */
 async function FloorDrawingsSection({ id }: { id: string }) {
   const projectId = (await currentPageProject()).id;
@@ -214,9 +214,9 @@ async function FloorDrawingsSection({ id }: { id: string }) {
 }
 
 /**
- * Reality Capture galéria priestoru (D-073, F1): fotky + 360° panorámy naviazané na
- * IfcSpace, obojsmerne (klik na priestor → jeho snímky). Skryje sa pre priestor bez
- * snímok, ak nie je povolený upload (`CAPTURE_WRITE_ENABLED`).
+ * Reality Capture gallery of a space (D-073, F1): photos + 360° panoramas linked to
+ * the IfcSpace, bidirectionally (click on a space -> its shots). Hidden for a space without
+ * shots if upload is not enabled (`CAPTURE_WRITE_ENABLED`).
  */
 async function CapturesSection({
   spaceId,
@@ -229,7 +229,7 @@ async function CapturesSection({
   const canUpload = process.env.CAPTURE_WRITE_ENABLED === "true";
   const [captures, planDocumentId] = await Promise.all([
     fetchCapturesForSpace(projectId, spaceId),
-    // Pôdorys podlažia (cieľ „umiestniť na pláne") načítaj len keď je upload povolený.
+    // Load the storey floor plan (target "place on the plan") only when upload is enabled.
     canUpload ? fetchPlanDocumentForSpace(projectId, spaceId) : Promise.resolve(null),
   ]);
   if (captures.length === 0 && !canUpload) return null;
@@ -255,8 +255,8 @@ async function CapturesSection({
 }
 
 /**
- * „Súčasť systému" (D-047) — systémy, ktorých je prvok členom (`rel_assigns_to_group`).
- * Skryje sa, ak prvok nie je v žiadnom systéme (napr. stavebné prvky ARCH).
+ * "Part of system" (D-047) - systems the element is a member of (`rel_assigns_to_group`).
+ * Hidden if the element is in no system (e.g. ARCH building elements).
  */
 async function SystemMembershipSection({ id }: { id: string }) {
   const projectId = (await currentPageProject()).id;
@@ -293,8 +293,8 @@ async function SystemMembershipSection({ id }: { id: string }) {
   );
 }
 
-/** Jadro detailu assetu (S2): atribúty, properties, klasifikácie. S3 sekcie
- *  streamujú súbežne vo vlastných Suspense hraniciach (viď SpatialView). */
+/** Core of the asset detail (S2): attributes, properties, classifications. S3 sections
+ *  stream concurrently in their own Suspense boundaries (see SpatialView). */
 async function AssetDetailView({ id }: { id: string }) {
   const projectId = (await currentPageProject()).id;
   const asset = await fetchAsset(projectId, id);
@@ -380,11 +380,11 @@ async function AssetDetailView({ id }: { id: string }) {
 }
 
 /**
- * Priestorový uzol (S1) + generické S3 sekcie.
+ * Spatial node (S1) + generic S3 sections.
  *
- * Breadcrumb, hlavička a jadro prichádzajú okamžite z cachovaného grafu; každá
- * dátovo závislá sekcia streamuje vo vlastnej Suspense hranici. Async sekcie sú
- * súrodenci → ich fetche bežia paralelne a stránka nečaká na najpomalší z nich.
+ * Breadcrumb, header and core arrive immediately from the cached graph; each
+ * data-dependent section streams in its own Suspense boundary. Async sections are
+ * siblings -> their fetches run in parallel and the page does not wait for the slowest of them.
  */
 function SpatialView({ detail }: { detail: NodeDetail }) {
   const { node, breadcrumb, children } = detail;
@@ -463,7 +463,7 @@ function SpatialView({ detail }: { detail: NodeDetail }) {
   );
 }
 
-/** Detail osoby (S3): kontakt, členstvá vo firmách, za čo zodpovedá. */
+/** Person detail (S3): contact, memberships in companies, what they are responsible for. */
 async function PersonView({ id }: { id: string }) {
   const projectId = (await currentPageProject()).id;
   const person = await fetchPerson(projectId, id);
@@ -560,7 +560,7 @@ async function PersonView({ id }: { id: string }) {
   );
 }
 
-/** Detail organizácie (S3): zachytený kontakt, členovia, za čo zodpovedá. */
+/** Organization detail (S3): captured contact, members, what they are responsible for. */
 async function OrganizationView({ id }: { id: string }) {
   const projectId = (await currentPageProject()).id;
   const org = await fetchOrganization(projectId, id);
@@ -650,7 +650,7 @@ async function OrganizationView({ id }: { id: string }) {
   );
 }
 
-/** Texty karty skupinového uzla podľa typu (D-047, D-088). */
+/** Texts of the group node card by type (D-047, D-088). */
 const GROUP_VIEW_TEXT: Record<
   GroupLikeType,
   { kindLabel: string; kinds: Record<string, string>; members: string; empty: string }
@@ -663,9 +663,9 @@ const GROUP_VIEW_TEXT: Record<
 };
 
 /**
- * Detail systému (D-047) a ďalších skupinových uzlov - projekt, zóna, priestorová
- * zóna, skupina (D-088): členovia a časti zoskupení podľa IFC typu. Ukazuje
- * previazanosť „systém → prvky" (headline graf pre S-LLM).
+ * Detail of a system (D-047) and other group nodes - project, zone, spatial
+ * zone, group (D-088): members and parts of groupings by IFC type. Shows
+ * the "system -> elements" linkage (headline graph for S-LLM).
  */
 async function SystemView({ id }: { id: string }) {
   const projectId = (await currentPageProject()).id;
@@ -752,8 +752,8 @@ async function SystemView({ id }: { id: string }) {
 }
 
 /**
- * Generický object route (D-029): priestorové uzly cez `fetchNode` (S1), inak
- * dispatch podľa `object_type`. `asset_type` patrí na `/type/[id]`.
+ * Generic object route (D-029): spatial nodes via `fetchNode` (S1), otherwise
+ * dispatch by `object_type`. `asset_type` belongs to `/type/[id]`.
  */
 export default async function NodePage({
   params,
@@ -763,15 +763,15 @@ export default async function NodePage({
   const projectId = (await currentPageProject()).id;
   const { id } = await params;
 
-  // Spatial detail aj meta pre dispatch naraz — pre ne-priestorové uzly (osoba,
-  // organizácia, systém, dokument) to odstráni sekvenčný druhý krok; priestorové
-  // uzly stojí navyše len jeden lacný cachovaný single-row dotaz.
+  // Spatial detail and meta for the dispatch at once - for non-spatial nodes (person,
+  // organization, system, document) this removes the sequential second step; for spatial
+  // nodes it costs just one cheap cached single-row query on top.
   const [spatial, meta] = await Promise.all([fetchNode(projectId, id), fetchObjectMeta(projectId, id)]);
 
-  // Spatial uzly (site…asset) — bežná cesta, breadcrumb + strom.
+  // Spatial nodes (site...asset) - the usual path, breadcrumb + tree.
   if (spatial) return <SpatialView detail={spatial} />;
 
-  // Nie je priestorový — rozhodni podľa typu objektu.
+  // Not spatial - decide by object type.
   if (!meta) notFound();
 
   switch (meta.object_type) {
@@ -789,8 +789,8 @@ export default async function NodePage({
       return <SystemView id={id} />;
     case "document":
     case "document_reference":
-      // Dokumenty sa zobrazujú v prehliadačke (PDF + bočný panel, D-042 D+);
-      // odkaz na časť dokumentu ju otvorí na svojej strane (D-104).
+      // Documents are shown in the viewer (PDF + side panel, D-042 D+);
+      // a link to a part of a document opens it on its page (D-104).
       redirect(`/drawing/${id}`);
     default:
       notFound();

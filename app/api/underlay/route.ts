@@ -5,8 +5,8 @@ import { currentProjectId } from "@/lib/live/caller";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Podklady PDF pre viewer nanovo (D-168): klient hosta ich po `calibrate_underlay mode=restore` pošle viewerovi
- * ako `UNDERLAYS_LOAD`. Len čítanie, rovnaké dáta ako pri štarte viewera (kalibrácie bez histórie); zápis je
+ * PDF underlays for the viewer anew (D-168): the host client sends them to the viewer after `calibrate_underlay mode=restore`
+ * as `UNDERLAYS_LOAD`. Read-only, the same data as at viewer start (calibrations without history); writing is
  * `PATCH /api/underlay/[documentId]`.
  */
 async function getHandler() {

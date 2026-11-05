@@ -8,9 +8,9 @@ import { withRequestProject } from "@/lib/project/request";
 import { currentProjectId } from "@/lib/live/caller";
 
 /**
- * Ručná väzba IDS na model federácie z karty "Requirements library" (D-182): `POST {code, model, bound, author,
- * library_container?}`. `bound=false` väzbu ukončí (`valid_until`, nič sa nemaže). Mnoho na mnoho, nič natvrdo.
- * Ochrana ako ostatné zápisy IDS z viewera (`IDS_WRITE_ENABLED`, origin guard, rate limit).
+ * Manual link of an IDS to a federation model from the "Requirements library" card (D-182): `POST {code, model, bound, author,
+ * library_container?}`. `bound=false` ends the link (`valid_until`, nothing is deleted). Many to many, nothing hardcoded.
+ * Protection like the other IDS writes from the viewer (`IDS_WRITE_ENABLED`, origin guard, rate limit).
  */
 
 export const dynamic = "force-dynamic";

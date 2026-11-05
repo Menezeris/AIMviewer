@@ -4,7 +4,7 @@ import { stav } from "@/lib/kniznica/editor-api";
 import { brana, kodKniznice, NO_STORE, neznamaKniznica } from "@/lib/kniznica/editor-server";
 import { withRequestProject } from "@/lib/project/request";
 
-/** Stránka editora sa pýta, či beží pod serverom a smie ukladať (`assetin/server` `/api/stav`). */
+/** The editor page asks whether it runs under a server and may save (`assetin/server` `/api/stav`). */
 export const dynamic = "force-dynamic";
 
 async function getHandler(_req: Request, ctx: { params: Promise<{ kniznica: string }> }) {
