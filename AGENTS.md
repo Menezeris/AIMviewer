@@ -141,15 +141,18 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
 - **Cieľ: pokryť celú IFC ontológiu** (entity aj vzťahy) — entity už dnes generické cez
   otvorený `object_type`; vzťahy cez generický meta-model (D-051). Nie je to prestavba, ale
   aditívne dopĺňanie hodnôt/`rel_type`. IFC = sémantika/ontológia, nie STEP súbor (D-046).
-- IFC atribúty sú **stĺpce** (`ifc_guid`, `ifc_type`, `predefined_type`, `name`,
-  `object_ref UNIQUE`…), NIE do `properties`. `properties JSONB` = property sety +
-  rezervované `_kľúče` (viď nižšie). Presné stĺpce → `SCHEMA.md §2.1`.
+- **IFC attributes (D-195, round 8):** the existing columns (`ifc_guid`, `ifc_type`, `predefined_type`, `name`,
+  `object_ref UNIQUE`...) stay; a new column only for values that are searched. Every other IFC attribute of a
+  node goes into `properties._attributes` by its IFC name; value entities without identity (IfcTaskTime,
+  IfcPostalAddress...) nested with a `_class` key. A new IFC entity is a row, not a migration: its class is
+  in the manifest `entity_types` (all of IFC 4.3, `is_node`, class tree, `entity_is_a`). Columns → `SCHEMA.md §2.1`,
+  `_attributes` → §4, manifest → §2.24.
 - Typovo-špecifické stĺpce → tenká 1:1 prípona (`floors`, `documents`, `persons`),
   `id` ako FK na `objects(id) ON DELETE CASCADE` (`SCHEMA.md §2.2`)
 - `organization` = obyčajný `objects` riadok (name = názov firmy), bez prípony
 
 ### Property sety — tri vrstvy (D-022)
-- **Atribúty** (pevné zo schémy) → stĺpce, NIE do `properties`
+- **Atribúty** (zo schémy) → stĺpce, ostatné do `properties._attributes` (D-195), nikdy ako pset
 - **Štandardné psety** (buildingSMART) → `properties[<názov>]`, názov `Pset_`/`Qto_`
 - **Custom psety** → `properties[<názov>]`, akýkoľvek iný názov (bez povinného prefixu)
 - **Rezervované `_kľúče`** (`_contact`, `_org`…) = meta/zachytené dáta, NIE psety; psety nikdy nezačínajú `_`
@@ -228,7 +231,7 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
 - Nikdy používať IFC GUID ako primárny kľúč
 - Nevytvárať samostatnú tabuľku pre každý typ uzla — použiť `objects` + príponu
 - Neukladať type property sety na occurrence — patria na type (dedia sa cez view)
-- Nedávať IFC atribúty do `properties` — sú to stĺpce
+- Nedávať IFC atribúty do psetov; bez stĺpca patria do `properties._attributes` (D-195)
 - Nezahadzovať adresy/org-väzby zo zdroja — uložiť do `_contact`/`_org` v `properties` (kým nie je C)
 - Nebudovať features bez zodpovedajúceho záznamu v DECISIONS.md
 - Nezavádzať nový atribút/hranu/enum bez kontroly IFC4.3 ekvivalentu — ak existuje,
