@@ -1,13 +1,13 @@
-"""Post-processing odvodzovače nad naloadenými IFC modelmi (D-080).
+"""Post-processing derivers over the loaded IFC models (D-080).
 
-Odvodzovač (rule) dostane jeden alebo viac IFC modelov federácie a vráti hrany,
-ktoré v žiadnom zdrojovom súbore nie sú, ale dajú sa z nich odvodiť (geometria,
-tranzitivita, …). Hrany žijú len v našej DB ako vrstva nad zdrojmi: zdrojové IFC
-sa nikdy neprepisujú, každá odvodená hrana nesie `source='derive:<rule>'`
-a beh je idempotentný (rekonciliácia v `db.py`).
+A deriver (rule) receives one or more IFC models of the federation and returns edges
+that are in no source file but can be derived from them (geometry,
+transitivity, ...). The edges live only in our DB as a layer above the sources: the source IFC
+files are never overwritten, every derived edge carries `source='derive:<rule>'`
+and a run is idempotent (reconciliation in `db.py`).
 
-Nový odvodzovač = nová trieda s `name`/`rel_type` a metódou `derive(ctx)`,
-zaregistrovaná v `RULES`. Spustenie: `python -m etl.derive <rule> --models …`.
+A new deriver = a new class with `name`/`rel_type` and a `derive(ctx)` method,
+registered in `RULES`. Run: `python -m etl.derive <rule> --models ...`.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class DerivedEdge:
-    """Jedna odvodená hrana medzi dvoma IFC entitami (identita = IFC GUID)."""
+    """One derived edge between two IFC entities (identity = IFC GUID)."""
 
     rel_type: str
     from_guid: str

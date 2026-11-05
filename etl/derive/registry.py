@@ -1,9 +1,9 @@
-"""Register pravidiel odvodení (D-089): ktoré pravidlá bežia, medzi čím a kedy.
+"""Registry of derivation rules (D-089): which rules run, between what and when.
 
-Pravidlá sú dáta v `derivation_rules` (zapnuté, režim auto/manual, triedy, roly, zdroj hrán).
-`run` spustí vybrané pravidlá nad modelmi federácie, vypnutým uzavrie hrany a každý beh zapíše
-do `derivation_runs`. Geometrické pravidlá zdieľajú jeden výpočet (jeden BVH strom) a hrany sa
-rozdelia podľa cieľovej triedy, takže každé pravidlo zapisuje pod vlastným zdrojom.
+The rules are data in `derivation_rules` (enabled, auto/manual mode, classes, roles, edge source).
+`run` runs the selected rules over the federation models, closes the edges of the disabled ones and writes every run
+to `derivation_runs`. Geometric rules share one computation (one BVH tree) and the edges are
+split by target class, so each rule writes under its own source.
 """
 
 from __future__ import annotations
@@ -51,8 +51,8 @@ def load_rules(cur) -> list[Rule]:
 
 def select_rules(rules: Sequence[Rule], rule_ids: Optional[Sequence[str]], trigger: str
                  ) -> tuple[list[Rule], list[Rule]]:
-    """(na výpočet, na uzavretie). Bez `rule_ids`: zapnuté v režime auto (pri `trigger=auto`) alebo
-    všetky zapnuté (`manual`); vypnuté pravidlá sa vždy uprace (ich hrany sa uzavrú)."""
+    """(to compute, to close). Without `rule_ids`: those enabled in auto mode (with `trigger=auto`) or
+    all enabled (`manual`); disabled rules are always cleaned up (their edges are closed)."""
     if rule_ids:
         unknown = set(rule_ids) - {r.id for r in rules}
         if unknown:
@@ -67,10 +67,10 @@ def select_rules(rules: Sequence[Rule], rule_ids: Optional[Sequence[str]], trigg
 
 def partition_edges(edges: Sequence[DerivedEdge], rules: Sequence[Rule],
                     classes: dict[str, Any]) -> dict[str, list[DerivedEdge]]:
-    """Rozdelí hrany spoločného geometrického výpočtu podľa pravidiel.
+    """Splits the edges of the shared geometric computation by rule.
 
-    `classes` = GUID -> entita IFC (stačí `is_a(cls)`); hrana patrí pravidlu, keď jej prvok je
-    jednou zo zdrojových tried, cieľ jednou z cieľových a rola je medzi rolami pravidla."""
+    `classes` = GUID -> IFC entity (`is_a(cls)` is enough); an edge belongs to a rule when its element is
+    one of the source classes, its target one of the target classes and the role is among the rule's roles."""
     out: dict[str, list[DerivedEdge]] = {r.id: [] for r in rules}
     for e in edges:
         src, dst = classes.get(e.from_guid), classes.get(e.to_guid)
@@ -85,7 +85,7 @@ def partition_edges(edges: Sequence[DerivedEdge], rules: Sequence[Rule],
 
 
 def current_revisions(cur, project_id: str = OCB_ID) -> dict[str, int]:
-    """Aktuálne revízie modelov projektu (D-086, D-189) do záznamu behu; bez tabuľky prázdne."""
+    """Current revisions of the project's models (D-086, D-189) for the run record; empty without the table."""
     exists = cur.execute("select to_regclass('model_revisions') is not null").fetchone()[0]
     if not exists:
         return {}
