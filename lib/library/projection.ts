@@ -3,7 +3,7 @@
  * pri každom zápise sa uloží do `library.projekcia` (odvodené, nositeľom ostáva text, princíp 4).
  */
 
-import { VRSTVY } from "./cesty";
+import { VRSTVY } from "./paths";
 import { modelPreTyp, nacitajSubor, type Diagnostika } from "./loader";
 
 const KNIZNICA_SUBOR = "KNIZNICA.md";

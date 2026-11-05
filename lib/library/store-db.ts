@@ -2,9 +2,9 @@ import "server-only";
 
 import { getSupabaseAdmin } from "../supabase/server";
 
-import { ChybaCesty, rozober } from "./cesty";
-import { projekcia } from "./projekcia";
-import { ChybaSkladu, Konflikt, type Podpis, type Sklad, type ZapisSuboru } from "./zapis";
+import { ChybaCesty, rozober } from "./paths";
+import { projekcia } from "./projection";
+import { ChybaSkladu, Konflikt, type Podpis, type Sklad, type ZapisSuboru } from "./write";
 
 /**
  * Sklad knižnice v DB (port `assetin/db/sklad_db.py`, D-186 krok 3): čítanie hlavy cez `public.library_texty`,

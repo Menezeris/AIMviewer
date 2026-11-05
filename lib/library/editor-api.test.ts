@@ -6,10 +6,10 @@ import { describe, expect, it } from "vitest";
 
 import { dokumentEditora } from "./app-json";
 import { dokument, nova, over, save, stav, vydaj } from "./editor-api";
-import { nacitajKniznicuGraf } from "./graf";
-import { POCET_VOLANI_API, vykresliHtml } from "./nahlad";
+import { nacitajKniznicuGraf } from "./graph";
+import { POCET_VOLANI_API, vykresliHtml } from "./preview";
 import { validuj } from "./validator";
-import { skladPamat } from "./zapis";
+import { skladPamat } from "./write";
 
 const KORPUS = join(process.cwd(), "library", "korpus", "stromy");
 const subory = (strom: string) => JSON.parse(readFileSync(join(KORPUS, strom, "subory.json"), "utf8")) as Record<string, string>;

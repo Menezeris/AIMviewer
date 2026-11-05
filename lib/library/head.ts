@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { blokyJson, parsuj, serializuj } from "./bloky";
+import { blokyJson, parsuj, serializuj } from "./blocks";
 import { nacitajSubor, poznamkaJson } from "./loader";
 
 /**

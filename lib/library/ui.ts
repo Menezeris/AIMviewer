@@ -5,8 +5,8 @@
  */
 
 import { jsonSchema } from "./schema/jsonSchema";
-import { SCHEMY } from "./schema/modely";
-import { TRIEDY_POD_ZAZNAMOV, TRIEDY_TYPOV, type TriedaTypu } from "./schema/triedy";
+import { SCHEMY } from "./schema/models";
+import { TRIEDY_POD_ZAZNAMOV, TRIEDY_TYPOV, type TriedaTypu } from "./schema/classes";
 
 type JS = Record<string, unknown>;
 

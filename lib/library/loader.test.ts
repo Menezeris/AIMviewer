@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { rozober } from "./cesty";
+import { rozober } from "./paths";
 import { nacitajKniznicu, nacitajSubor, poznamkaJson, riadokPrePointer, rozdelInline } from "./loader";
 
 const KORPUS = join(process.cwd(), "library", "korpus", "stromy");

@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { nacitajKniznicuGraf } from "./graf";
-import { cestyPre, retazceJson, retazcePre, skratkaUloh } from "./retazec";
+import { nacitajKniznicuGraf } from "./graph";
+import { cestyPre, retazceJson, retazcePre, skratkaUloh } from "./chain";
 
 const KORPUS = join(process.cwd(), "library", "korpus", "stromy");
 const json = (rel: string) => JSON.parse(readFileSync(join(KORPUS, rel), "utf8"));

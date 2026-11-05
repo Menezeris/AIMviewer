@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { jsonSchema } from "./jsonSchema";
-import { SCHEMY } from "./modely";
+import { SCHEMY } from "./models";
 
 const KORPUS = join(process.cwd(), "library", "korpus", "schema");
 

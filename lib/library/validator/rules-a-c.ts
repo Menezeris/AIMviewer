@@ -3,11 +3,11 @@
  * `b_odkazy.py`, `c_uc_er_ev.py`). A3-A7, A9-A11 a B1-B3 hlási loader a graf pri čítaní.
  */
 
-import { nazovDoSuboru, premenovatelna } from "../cesty";
-import { idPoznamky, typPoznamky } from "../graf";
-import { klucPolozky } from "../graf-json";
+import { nazovDoSuboru, premenovatelna } from "../paths";
+import { idPoznamky, typPoznamky } from "../graph";
+import { klucPolozky } from "../graph-json";
 import type { Poznamka } from "../loader";
-import { jednotkyVymeny } from "../retazec";
+import { jednotkyVymeny } from "../chain";
 import {
   attr,
   ciele,
@@ -27,7 +27,7 @@ import {
   zoznamM,
   type Kontext,
   type M,
-} from "./kontext";
+} from "./context";
 
 // ------------------------------------------------------------------------------------------------ A
 

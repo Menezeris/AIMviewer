@@ -3,10 +3,10 @@
  * validátora (port `f_typy.py`, `g_nositel.py`, `h_generovatelnost.py`). F3, F10 a H3 potrebujú schému IFC (F2b).
  */
 
-import { idPoznamky } from "../graf";
-import { klucPolozky } from "../graf-json";
-import { jednotkyVymeny } from "../retazec";
-import { attr, ciele, je, link, obj, pravda, pravidlo, pyRepr, pyStr, zorad, zoznam, zoznamM, type Kontext, type M } from "./kontext";
+import { idPoznamky } from "../graph";
+import { klucPolozky } from "../graph-json";
+import { jednotkyVymeny } from "../chain";
+import { attr, ciele, je, link, obj, pravda, pravidlo, pyRepr, pyStr, zorad, zoznam, zoznamM, type Kontext, type M } from "./context";
 
 // ------------------------------------------------------------------------------------------------ F
 

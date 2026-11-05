@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { skladPamat, uloz, vytvor, type NovaPoznamka, type Zmena } from "./zapis";
+import { skladPamat, uloz, vytvor, type NovaPoznamka, type Zmena } from "./write";
 
 const KORPUS = join(process.cwd(), "library", "korpus");
 const vzor = JSON.parse(readFileSync(join(KORPUS, "stromy", "vzor", "subory.json"), "utf8")) as Record<string, string>;

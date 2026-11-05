@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * Validátory schémy knižnice, ktoré JSON Schema nenesie (port pydantic `field_validator` / `model_validator`,
- * D-186 krok 2). `modely.ts` volá `doplnValidator` pri každej definícii a každom modeli; JSON Schema ostáva
+ * D-186 krok 2). `models.ts` volá `doplnValidator` pri každej definícii a každom modeli; JSON Schema ostáva
  * vstupná strana (`io: "input"`), takže validátory a odvodené polia tvar exportu nemenia.
  *
  * Výstup parsovania = `model_dump(mode="json")` pydanticu: mená atribútov (nie aliasy), odvodené polia dopočítané.

@@ -5,10 +5,10 @@
  * rozsahom aspektov LOIN (V27). Pruh "kde to sedí" a línia (U19) sú projekcie toho istého stromu.
  */
 
-import { idPoznamky, typPoznamky, type Kniznica } from "./graf";
-import { polePointera } from "./graf-json";
-import { parseWikilink } from "./projekcia";
-import { POPISKY_TYPU_ULOHY, TRIEDY_TYPOV } from "./schema/triedy";
+import { idPoznamky, typPoznamky, type Kniznica } from "./graph";
+import { polePointera } from "./graph-json";
+import { parseWikilink } from "./projection";
+import { POPISKY_TYPU_ULOHY, TRIEDY_TYPOV } from "./schema/classes";
 
 type M = Record<string, unknown>;
 export const ASPEKTY = ["geometria", "alfanumerika", "dokumentacia"];

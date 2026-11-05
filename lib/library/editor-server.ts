@@ -5,10 +5,10 @@ import { NextResponse } from "next/server";
 import { clientIpKey, createRateLimiter, isCrossOriginBlocked } from "../api-guard";
 
 import type { InfoRevizie } from "./app-json";
-import { zapisPovoleny } from "./brana";
+import { zapisPovoleny } from "./gate";
 import type { Brana, Odpoved } from "./editor-api";
-import { supabaseHlavaStore } from "./hlava-store";
-import { supabaseSklad } from "./sklad-db";
+import { supabaseHlavaStore } from "./head-store";
+import { supabaseSklad } from "./store-db";
 
 /**
  * Spoločné pre route editora knižnice (D-186 krok UI): kód knižnice z cesty, sklad v DB, revízie hlavy (autor, čas)

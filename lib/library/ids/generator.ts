@@ -7,11 +7,11 @@
  * kontajner. Deterministický: bez dátumu, ak ho nikto nedá, takže vydanie bez zmeny dá tie isté bajty.
  */
 
-import { idPoznamky, typPoznamky, type Kniznica } from "../graf";
-import { klucPolozky } from "../graf-json";
-import { dopadajucePravidla, povodHodnoty } from "../inspektor";
+import { idPoznamky, typPoznamky, type Kniznica } from "../graph";
+import { klucPolozky } from "../graph-json";
+import { dopadajucePravidla, povodHodnoty } from "../inspector";
 import type { PodZaznam, Poznamka } from "../loader";
-import { jednotkyVymeny, type Jednotky } from "../retazec";
+import { jednotkyVymeny, type Jednotky } from "../chain";
 import { odsad, podprvok, prvok, vypis, type Prvok } from "./xml";
 
 export const IDS_NS = "http://standards.buildingsmart.org/IDS";

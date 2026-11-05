@@ -7,9 +7,9 @@
 import { load as yamlLoad } from "js-yaml";
 
 import { nacitajSubor, type Diagnostika, type PodZaznam, type Poznamka } from "./loader";
-import { odkazyModelu, odkazySchemy, type OdkazMeta } from "./projekcia";
+import { odkazyModelu, odkazySchemy, type OdkazMeta } from "./projection";
 import { jsonSchema } from "./schema/jsonSchema";
-import { SCHEMY } from "./schema/modely";
+import { SCHEMY } from "./schema/models";
 
 export const KNIZNICA_SUBOR = "KNIZNICA.md";
 export const SCHEMA_VERZIA = "1.5";

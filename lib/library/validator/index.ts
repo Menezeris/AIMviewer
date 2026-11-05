@@ -3,14 +3,14 @@
  * načítanou knižnicou; diagnostiky loadera a grafu idú prvé. Pravidlá so schémou IFC a bSDD (F2b) tu nie sú.
  */
 
-import type { Kniznica } from "../graf";
+import type { Kniznica } from "../graph";
 import type { Diagnostika } from "../loader";
-import { Kontext, REGISTER, type Pravidlo } from "./kontext";
-import "./pravidla-a-c";
-import "./pravidla-d-e";
-import "./pravidla-f-h";
+import { Kontext, REGISTER, type Pravidlo } from "./context";
+import "./rules-a-c";
+import "./rules-d-e";
+import "./rules-f-h";
 
-export { REGISTER, type Pravidlo } from "./kontext";
+export { REGISTER, type Pravidlo } from "./context";
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 

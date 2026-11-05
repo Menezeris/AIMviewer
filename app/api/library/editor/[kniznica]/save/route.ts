@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { save } from "@/lib/library/editor-api";
 import { brana, chybaServera, info, kodKniznice, neznamaKniznica, odpoved, sklad, vstup } from "@/lib/library/editor-server";
-import { ZapisMigraciaChyba } from "@/lib/library/sklad-db";
+import { ZapisMigraciaChyba } from "@/lib/library/store-db";
 import { withRequestProject } from "@/lib/project/request";
 
 /** `POST save` of the editor page (`assetin/server`) over the store in the DB, behind the `LIBRARY_WRITE_ENABLED` gate (D-186). */

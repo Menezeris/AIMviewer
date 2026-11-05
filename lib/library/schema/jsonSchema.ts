@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ZNACKA } from "./pomocky";
+import { ZNACKA } from "./helpers";
 
 /**
  * JSON Schema zo zod schémy knižnice v tvare pydantic (`assetin schema export`, korpus `schema/*.json`):

@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { nacitajKniznicuGraf } from "../graf";
-import { vydaj, type SkladVydania } from "../vydanie";
+import { nacitajKniznicuGraf } from "../graph";
+import { vydaj, type SkladVydania } from "../release";
 import { ChybaXsd, nacitajSchemy, overXsd, SCHEMY } from "./xsd";
 
 const KORPUS = join(process.cwd(), "library", "korpus");

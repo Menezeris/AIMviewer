@@ -8,8 +8,8 @@
 
 import { createHash } from "node:crypto";
 
-import { parsuj, serializuj } from "./bloky";
-import { ChybaCesty, cestaPre, premenovatelna, typZPrefixuId } from "./cesty";
+import { parsuj, serializuj } from "./blocks";
+import { ChybaCesty, cestaPre, premenovatelna, typZPrefixuId } from "./paths";
 import { modelPreTyp, nacitajKniznicu, nacitajSubor, type Diagnostika, type Poznamka } from "./loader";
 import {
   ChybaZapisu,

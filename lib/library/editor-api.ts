@@ -6,11 +6,11 @@
  */
 
 import { dokumentEditora, type InfoRevizie } from "./app-json";
-import { nacitajKniznicuGraf } from "./graf";
-import { kontrola } from "./kontrola";
+import { nacitajKniznicuGraf } from "./graph";
+import { kontrola } from "./check";
 import { validuj } from "./validator";
-import { vydaj as vydajKniznicu, type KontrolaXsd, type SkladVydania, type Uloziste } from "./vydanie";
-import { ChybaSkladu, Konflikt, uloz, vytvor, type Sklad, type Zmena } from "./zapis";
+import { vydaj as vydajKniznicu, type KontrolaXsd, type SkladVydania, type Uloziste } from "./release";
+import { ChybaSkladu, Konflikt, uloz, vytvor, type Sklad, type Zmena } from "./write";
 
 export interface Brana {
   /** `LIBRARY_WRITE_ENABLED` */

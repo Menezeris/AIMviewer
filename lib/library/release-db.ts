@@ -2,8 +2,8 @@ import "server-only";
 
 import { getSupabaseAdmin } from "../supabase/server";
 
-import type { SkladVydania, Uloziste } from "./vydanie";
-import { ChybaSkladu, Konflikt } from "./zapis";
+import type { SkladVydania, Uloziste } from "./release";
+import { ChybaSkladu, Konflikt } from "./write";
 
 /**
  * Vydanie knižnice v DB (D-186 krok 6): texty hlavy cez `public.library_texty`, snímka + katalóg IDS v jednej

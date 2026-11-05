@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { blokyJson, parsuj, preindexuj, serializuj, splitlines } from "./bloky";
+import { blokyJson, parsuj, preindexuj, serializuj, splitlines } from "./blocks";
 
 /** Korpus zhody z assetin-library (`library/KORPUS_COMMIT`), vygenerovaný Python enginom (orákulum). */
 const KORPUS = join(process.cwd(), "library", "korpus");

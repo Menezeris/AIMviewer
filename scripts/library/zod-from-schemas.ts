@@ -7,7 +7,7 @@
  * again only when the schema changes in Python during the port (changes only at once in both engines) and the conformance test
  * `lib/library/schema/schema.test.ts` tells whether the result fits.
  *
- * Usage: `npx tsx scripts/library/zod-zo-schem.ts`
+ * Usage: `npx tsx scripts/library/zod-from-schemas.ts`
  */
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -17,8 +17,8 @@ type J = Record<string, unknown>;
 
 const DIR = join(process.cwd(), "library", "korpus", "schema");
 /** Field order of pydantic (`model_fields`) per class; the corpus JSON Schema has sorted keys. A one-off dump from Python. */
-const PORADIE = JSON.parse(readFileSync(join(process.cwd(), "scripts", "kniznica", "poradie-poli.json"), "utf8")) as Record<string, string[]>;
-const OUT = join(process.cwd(), "lib", "library", "schema", "modely.ts");
+const PORADIE = JSON.parse(readFileSync(join(process.cwd(), "scripts", "library", "field-order.json"), "utf8")) as Record<string, string[]>;
+const OUT = join(process.cwd(), "lib", "library", "schema", "models.ts");
 const WIKILINK_PATTERN = "^\\[\\[[^\\[\\]]+\\]\\]$";
 const META_KEYS = ["title", "description", "x-assetin"] as const;
 
@@ -153,9 +153,9 @@ const out: string[] = [
   "/**",
   " * Schéma knižnice požiadaviek v zod (D-186 krok 2; port `assetin/schema`, schéma v1.5).",
   " *",
-  " * Vznikla jednorazovo nástrojom `scripts/library/zod-zo-schem.ts` z JSON Schema korpusu (pydantic) a odteraz je",
+  " * Vznikla jednorazovo nástrojom `scripts/library/zod-from-schemas.ts` z JSON Schema korpusu (pydantic) a odteraz je",
   " * pravdou schémy v TS: mení sa ručne a naraz s Pythonom, kým port trvá (assetin-library V30). Validátory, ktoré",
-  " * JSON Schema nenesie, sú v `validatory.ts`; JSON Schema z tohto zdroja dáva `jsonSchema.ts`, zhodu s korpusom",
+  " * JSON Schema nenesie, sú v `validators.ts`; JSON Schema z tohto zdroja dáva `jsonSchema.ts`, zhodu s korpusom",
   " * stráži `schema.test.ts`.",
   " */",
   "",

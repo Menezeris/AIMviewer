@@ -12,10 +12,10 @@ import { createHash } from "node:crypto";
 import { LineCounter, parseDocument, isMap, isSeq, isScalar, type Node as YamlNode } from "yaml";
 import type { z } from "zod";
 
-import { parsuj, type Dokument, type Nadpis, type SurovyBlok, type YamlBlok } from "./bloky";
-import { ChybaCesty, rozober, type Umiestnenie } from "./cesty";
+import { parsuj, type Dokument, type Nadpis, type SurovyBlok, type YamlBlok } from "./blocks";
+import { ChybaCesty, rozober, type Umiestnenie } from "./paths";
 import { jsonSchema } from "./schema/jsonSchema";
-import { SCHEMY } from "./schema/modely";
+import { SCHEMY } from "./schema/models";
 
 export type Uroven = "E" | "W" | "I";
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { detail, HlavaMigraciaChyba, HlavaVstupChyba, prehlad } from "@/lib/library/hlava";
-import { supabaseHlavaStore } from "@/lib/library/hlava-store";
+import { detail, HlavaMigraciaChyba, HlavaVstupChyba, prehlad } from "@/lib/library/head";
+import { supabaseHlavaStore } from "@/lib/library/head-store";
 import { withRequestProject } from "@/lib/project/request";
 
 /**

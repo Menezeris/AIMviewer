@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { detail, HlavaMigraciaChyba, HlavaVstupChyba, prehlad, type HlavaStore, type HlavaSubor } from "./hlava";
+import { detail, HlavaMigraciaChyba, HlavaVstupChyba, prehlad, type HlavaStore, type HlavaSubor } from "./head";
 
 /** Hlava knižnice v pamäti zo stromu `vzor` korpusu (rovnaké súbory ako `library.hlava` knižnice assetin 2. 11.). */
 function memoryHlava(opts: { bezMigracie?: boolean } = {}): HlavaStore {
