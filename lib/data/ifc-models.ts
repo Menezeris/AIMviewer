@@ -62,7 +62,10 @@ export interface ProjectModelRow {
   container_id: string;
   model: string;
   revision: number;
-  /** Archive path in Storage (`ifc/archive/ASR/v079.ifc.gz`), null when unknown. */
+  /**
+   * Archive path in Storage (`model_revisions.archive_path`): OCB `ifc/archive/ASR/v079.ifc.gz`, new
+   * projects `ifc/archive/<container uuid>/vNNN.ifc.gz` (D-190); null when unknown.
+   */
   location: string | null;
 }
 
@@ -81,7 +84,10 @@ export function modelsFromRows(
   return [...rows]
     .sort((a, b) => a.model.localeCompare(b.model))
     .map((r) => {
-      const current = new URL(`${base}/ifc/${encodeURIComponent(r.model)}.ifc`);
+      // Current key next to the archive (`ifc/<dir>.ifc`, dir = code at OCB, container uuid in new
+      // projects, D-190); without an archive path the OCB layout by code.
+      const dir = r.location ? modelKey(`${base}/${r.location}`) : null;
+      const current = new URL(`${base}/ifc/${encodeURIComponent(dir ?? r.model)}.ifc`);
       let url: string;
       if (archive && r.location) url = `${base}/${r.location.replace(/^\/+/, "")}`;
       else if (archive) url = archiveUrl(current.toString(), r.revision) ?? current.toString();

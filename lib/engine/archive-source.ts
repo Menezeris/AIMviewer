@@ -13,7 +13,7 @@ import { setArchiveResolver, type EngineModelSource } from "./cache";
  */
 export async function currentArchiveUrl(src: EngineModelSource): Promise<string | null> {
   if (src.revision !== undefined) return archiveUrl(src.url, src.revision);
-  const key = modelKey(src.url);
+  const key = src.containerId ? src.id : modelKey(src.url);
   const project = maybeCurrentProject();
   if (key === null || !project) return null;
   const revision = await fetchCurrentRevision(project.id, key);

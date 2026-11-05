@@ -72,6 +72,14 @@ describe("modelsFromRows (D-189: models from the DB per project)", () => {
     expect(asr.url).toBe(`${base}/ifc/ASR.ifc?rev=79`);
   });
 
+  it("D-190: a new project's archive is named by the container uuid, the code stays the label", () => {
+    const uuidRow = { container_id: "c-1", model: "ARCH", revision: 3, location: "ifc/archive/c-1/v003.ifc.gz" };
+    const [a] = modelsFromRows([uuidRow], { archive: true, base });
+    expect([a.id, a.url]).toEqual(["ARCH", `${base}/ifc/archive/c-1/v003.ifc.gz`]);
+    const [b] = modelsFromRows([uuidRow], { archive: false, base });
+    expect(b.url).toBe(`${base}/ifc/c-1.ifc?rev=3`);
+  });
+
   it("a project without models has none (no code is assumed)", () => {
     expect(modelsFromRows([], { archive: true, base })).toEqual([]);
   });

@@ -292,7 +292,8 @@ async function ifcModels(input: Record<string, unknown>, deps: EngineDeps): Prom
   const sources = (deps.sources ?? requestIfcModels)();
   const history = input.history === undefined ? 0 : clamp(input.history, 1, 20, 5);
   // Kľúč revízie = meno súboru v buckete (ASR.ifc -> ASR), nie id modelu (D-086).
-  const keyOf = (m: { id: string; url: string }) => modelKey(m.url) ?? m.id;
+  // Models from the DB carry their code (D-189/D-190: the path may be a container uuid); env overrides by file name.
+  const keyOf = (m: { id: string; url: string; containerId?: string }) => (m.containerId ? m.id : (modelKey(m.url) ?? m.id));
   let rows: ModelRevisionRow[] = [];
   let revisionError: string | undefined;
   if (deps.revisions) {
