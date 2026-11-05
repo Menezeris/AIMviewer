@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const { db } = vi.hoisted(() => ({ db: { tables: {} as Record<string, Record<string, unknown>[]> } }));
 
-// Napodobená PostgREST nad riadkami v pamäti: in/is/order/range (D-126).
+// A mimicked PostgREST over in-memory rows: in/is/order/range (D-126).
 vi.mock("server-only", () => ({}));
 vi.mock("../supabase/server", () => ({
   getSupabaseAdmin: () => ({
@@ -62,7 +62,7 @@ describe("fetchRelatedMembers (search_all related)", () => {
         { id: "e2", from_id: "S2", to_id: "Z", valid_until: null },
         { id: "e3", from_id: "S3", to_id: "Z", valid_until: null },
         { id: "e4", from_id: "A1", to_id: "SYS", valid_until: null },
-        // člen zo súboru bez uzla AIM (port VZT, D-183 K3): from_id null, členom nie je
+        // a member from the file without an AIM node (VZT port, D-183 K3): from_id null, not a member
         { id: "e6", from_id: null, to_id: "Z", global_id: "PORT-1", valid_until: null },
       ],
       rel_assigns_to_actor: [{ id: "e5", from_id: "ORG", to_id: "A1", valid_until: null }],

@@ -42,7 +42,7 @@ describe("ifc_measure verify=true (D-185)", () => {
     expect(r.json.counts).toEqual({ green: 9, yellow: 0, red: 0, grey: 0 });
     const h = sp.results.find((x: { recipe: string }) => x.recipe === "space.height.slabs@2");
     expect(h.formula).toBe("spodok(SD-nad) - vrch(SD-pod) = 8.8 - 4.85 = 3.95 m");
-    expect(h.file).toBe(3.95); // 3950 mm zo súboru prevedené na m
+    expect(h.file).toBe(3.95); // 3950 mm from the file converted to m
     expect(h.tolerance).toBe("dĺžka +- 5 mm");
     expect(h.definition).toMatch(/constant height/);
     expect(h.dimension).toBeUndefined();
@@ -59,7 +59,7 @@ describe("ifc_measure verify=true (D-185)", () => {
   it("save=true uloží beh s podpisom revízie; bez úložiska alebo pri chybe tabuľky výpočet platí a saved.ok=false", async () => {
     const saved: Array<{ run: VerificationRunWrite; rows: VerificationResultWrite[] }> = [];
     const store: VerificationStore = { saveRun: async (r, rows) => (saved.push({ run: r, rows }), { id: "run-1" }) };
-    // Ako server: motor číta archív revízie (D-135), revízia je z URL archívu -> podpis vstupu {MINI: 7}.
+    // Like the server: the engine reads the revision archive (D-135), the revision is from the archive URL -> input signature {MINI: 7}.
     const gz = gzipSync(MINI_SPACE_VERIFY_BYTES);
     setArchiveResolver(async () => "https://example.test/archive/MINI/v007.ifc.gz");
     const archived = deps({
@@ -75,7 +75,7 @@ describe("ifc_measure verify=true (D-185)", () => {
       expect(saved[0].run).toMatchObject({ scope: "IfcSpace", registry_version: 4, model_revisions: { MINI: 7 }, counts: { green: 9 }, author: "test" });
       expect(saved[0].rows).toHaveLength(9);
       expect(saved[0].rows.every((x) => x.revision === 7 && x.global_id === SPACE && x.method.length > 0)).toBe(true);
-      // D-185 UI: riadok nesie vysvetlenie a bunky vzorca so zdrojovým prvkom (stĺpce z migrácie verification_inputs).
+      // D-185 UI: the row carries the explanation and formula cells with the source element (columns from the verification_inputs migration).
       const hs = saved[0].rows.find((x) => x.recipe === "space.height.slabs@2")!;
       expect(hs.explanation).toMatch(/od vrchu dosky pod/);
       expect(hs.inputs?.expression).toBe("A - B");
@@ -85,14 +85,14 @@ describe("ifc_measure verify=true (D-185)", () => {
       setArchiveResolver(null);
       clearEngineCache();
     }
-    // Bez archívu revízia nie je známa: beh sa neukladá (D-183), výpočet ostáva.
+    // Without an archive the revision is not known: the run is not stored (D-183), the computation stays.
     const unknown = await run({ verify: true, a: "2.01", save: true }, deps({ verification: store }));
     expect(unknown.json.saved.error).toMatch(/revízia modelu nie je známa/);
     expect(unknown.json.counts.green).toBe(9);
     const failing: VerificationStore = { saveRun: async () => { throw new Error('relation "verification_runs" does not exist'); } };
     const noStore = await run({ verify: true, a: "2.01", save: true });
     expect(noStore.json.saved).toEqual({ ok: false, error: "úložisko overenia nie je nastavené" });
-    clearEngineCache(); // store z behu bez archívu nemá revíziu
+    clearEngineCache(); // a store from a run without an archive has no revision
     setArchiveResolver(async () => "https://example.test/archive/MINI/v007.ifc.gz");
     try {
       const broken = await run({ verify: true, a: "2.01", save: true }, { ...archived, verification: failing });
@@ -124,7 +124,7 @@ describe("ifc_measure verify=true (D-185)", () => {
     const nfa = r.json.spaces[0].results.find((x: { recipe: string }) => x.recipe === "space.netfloorarea.profile@1");
     expect(nfa).toMatchObject({ status: "green", file: 86.24, computed: 86.24, expression: "A - B - C - D", tolerance: "plocha +- 0,5 %" });
     expect(nfa.formula).toBe("88 - 0.16 (SL-stlp) - 0.6 (VS-vstavka) - 1 (OT-otvor) = 86.24 m2");
-    // Bunky nesie host (verifySpacesByGuid, riadok behu), výstup toolu nie.
+    // The cells are carried by the host (verifySpacesByGuid, the run row), not the tool output.
     const { verified } = await verifySpacesByGuid([SPACE], deps());
     const cells = verified[0].results.find((x) => x.recipe === "space.netfloorarea.profile@1")!.cells!;
     expect(cells.map((c) => [c.global_id, c.quantity ?? null])).toEqual([

@@ -8,19 +8,19 @@ import { nameIndex } from "./search";
 import { openEngineSession, type EngineModel } from "./session";
 import { guidIndex } from "./tools";
 
-// D-135: modely motora z nemenného archívu revízie (cca 5-krát menej egressu).
+// D-135: engine models from the immutable revision archive (about 5 times less egress).
 installArchiveSource();
 
 /**
- * Predčítanie modelov federácie do cache motora (D-100). MCP route ho spúšťa
- * po `initialize` / `tools/list` (cez `after()`), teda keď sa Claude pripája,
- * aby prvé `ifc_*` volanie nečakalo sekundy na stiahnutie a parsovanie.
- * Teplá cache stojí len HEAD request raz za minútu; chyba sa ignoruje -
- * tool si model načíta sám.
+ * Preloading federation models into the engine cache (D-100). The MCP route starts it
+ * after `initialize` / `tools/list` (via `after()`), i.e. when Claude connects,
+ * so that the first `ifc_*` call does not wait seconds for download and parsing.
+ * A warm cache costs only a HEAD request once a minute; an error is ignored -
+ * the tool loads the model itself.
  *
- * D-102: postaví aj indexy GUID a mien (mená stoja na indexe `ifc_search`).
- * Bez nich prvé `ifc_get` / `ifc_search` / hľadanie podľa kódu na čerstvej
- * inštancii čakalo 2 až 4 s navyše; indexy sa držia so store ako model.
+ * D-102: it also builds the GUID and name indexes (names stand on the `ifc_search` index).
+ * Without them the first `ifc_get` / `ifc_search` / lookup by code on a fresh
+ * instance waited 2 to 4 s extra; indexes are kept with the store as the model.
  * D-189: `sources` = models of the request project (the caller captures them before `after()`).
  */
 export async function preloadEngineModels(sources: IfcModel[]): Promise<void> {

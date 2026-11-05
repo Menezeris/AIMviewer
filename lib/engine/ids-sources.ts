@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 
 /**
- * Záložný register IDS (D-084). Od D-162 je zdrojom IDS pre server DB (`ids_documents`);
- * `IDS_SOURCES` platí len pre kód, ktorý v DB nie je. IDS sa do repa nekopíruje (D-081) -
- * server ho stiahne z URL v env `IDS_SOURCES`, JSON `{"<id>": "<https URL>"}`. Bez premennej
- * je register prázdny.
+ * Fallback IDS registry (D-084). Since D-162 the IDS source for the server is the DB (`ids_documents`);
+ * `IDS_SOURCES` applies only to a code that is not in the DB. IDS is not copied into the repo (D-081) -
+ * the server downloads it from a URL in the env `IDS_SOURCES`, JSON `{"<id>": "<https URL>"}`. Without the variable
+ * the registry is empty.
  */
 
 export interface IdsSource {

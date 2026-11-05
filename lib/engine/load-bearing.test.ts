@@ -28,14 +28,14 @@ describe("LoadBearing (D-164 dodatok, #292)", () => {
   });
 });
 
-// --- skutočný parser: výskyt, typ, prednosť výskytu (IfcRelDefinesByType) --------------------
+// --- real parser: occurrence, type, occurrence precedence (IfcRelDefinesByType) --------------------
 
 const lbSet = (n: number, value: string) =>
   `#${n}= IFCPROPERTYSINGLEVALUE('LoadBearing',$,IFCBOOLEAN(${value}),$);\n#${n + 1}= IFCPROPERTYSET('${guid(`PS${n}`)}',$,'Pset_WallCommon',$,(#${n}));\n`;
 const EXTRA =
-  lbSet(300, ".T.") + // typ: nosný
-  lbSet(310, ".F.") + // výskyt W2 prebíja typ
-  lbSet(320, ".T.") + // výskyt W3 sám
+  lbSet(300, ".T.") + // type: load-bearing
+  lbSet(310, ".F.") + // occurrence W2 overrides the type
+  lbSet(320, ".T.") + // occurrence W3 alone
   `#330= IFCWALLTYPE('${guid("WTY")}',$,'WT1',$,$,(#301),$,$,$,.STANDARD.);\n` +
   `#331= IFCWALL('${guid("W1")}',$,'W1 zdedí',$,$,#40,$,$,.STANDARD.);\n` +
   `#332= IFCWALL('${guid("W2")}',$,'W2 prebije',$,$,#40,$,$,.STANDARD.);\n` +

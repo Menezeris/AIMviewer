@@ -5,22 +5,22 @@ import { openEngineSession, type EngineSession } from "./session";
 import { ENGINE_VERSION, InputError, clamp, modelsFor, str, structured, type EngineDeps } from "./tools";
 
 /**
- * `ifc_material_layers` (D-108): prvky, ktorých materiál obsahuje hľadaný
- * materiál alebo kategóriu - aj ako jednu vrstvu zloženej skladby
- * (IfcMaterialLayerSet), zložku (ConstituentSet) alebo profil (ProfileSet),
- * vrátane materiálu zdedeného z typu. Adaptér nad upstream `query_entities` a
- * `get_entities_bulk` s `include: ["materials"]` (D-087); upstream filter
- * podľa materiálu nemá (`material=` v selektore odmietne).
+ * `ifc_material_layers` (D-108): elements whose material contains the searched
+ * material or category - also as one layer of a composite assembly
+ * (IfcMaterialLayerSet), a constituent (ConstituentSet) or a profile (ProfileSet),
+ * including a material inherited from the type. An adapter over upstream `query_entities` and
+ * `get_entities_bulk` with `include: ["materials"]` (D-087); upstream has no filter
+ * by material (it rejects `material=` in the selector).
  */
 
 const MAX_RESULT_CHARS = 30_000;
 const PAGE = 10_000;
 const BULK = 1000;
-/** Strop prechodu: celý ASR má rádovo tisíce prvkov, toto je ochrana pred omylom. */
+/** Traversal ceiling: the whole ASR has thousands of elements, this is protection against a mistake. */
 const MAX_SCANNED = 50_000;
 const DEFAULT_TYPES = ["IfcElement"];
 
-/** Člen materiálu, ako ho vracia `bim.materials()` (MaterialInfo z `@ifc-lite/parser`). */
+/** Material member as returned by `bim.materials()` (MaterialInfo from `@ifc-lite/parser`). */
 interface Member {
   materialName?: string;
   name?: string;
@@ -41,7 +41,7 @@ export interface MaterialInfo {
 }
 
 export interface MatchedMember {
-  /** Poradie vo vrstve / zložke / profile od 1 (pri jednom materiáli chýba). */
+  /** Order in the layer / constituent / profile from 1 (missing for a single material). */
   position?: number;
   material: string | null;
   name?: string;
@@ -50,7 +50,7 @@ export interface MatchedMember {
   fraction?: number;
 }
 
-/** Bez diakritiky a veľkosti písmen: "Tepelná izolácia" ~ "izolacia". */
+/** Without diacritics and case: "Tepelná izolácia" ~ "izolacia". */
 export function foldText(text: string): string {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
@@ -59,9 +59,9 @@ const hits = (needle: string, values: Array<string | undefined>): boolean =>
   values.some((v) => typeof v === "string" && foldText(v).includes(needle));
 
 /**
- * Členy materiálu, ktoré zodpovedajú hľadanému textu (materiál, názov vrstvy
- * alebo kategória vrstvy či materiálu). Prázdne pole = prvok nevyhovuje.
- * Zhoda na názve celej skladby vráti všetky jej členy.
+ * Material members that match the searched text (material, layer name
+ * or category of the layer or material). An empty array = the element does not match.
+ * A match on the name of the whole assembly returns all its members.
  */
 export function matchMaterial(mat: MaterialInfo | null | undefined, needle: string): MatchedMember[] {
   if (!mat || !needle) return [];
@@ -95,7 +95,7 @@ export function matchMaterial(mat: MaterialInfo | null | undefined, needle: stri
   return out;
 }
 
-/** Názov skladby na súhrn: názov setu, inak materiálu, inak typ setu. */
+/** Assembly name for the summary: the set name, otherwise the material, otherwise the set type. */
 function setName(mat: MaterialInfo): string {
   return mat.name ?? mat.type ?? "(bez názvu)";
 }
@@ -161,7 +161,7 @@ export async function ifcMaterialLayers(input: Record<string, unknown>, deps: En
       count: a.count,
       matched_layers: [...a.layers.entries()].map(([material, thickness]) => ({ material, ...(thickness !== undefined ? { thickness } : {}) })),
     }));
-  // GUIDy pre 3D idú za všetky nájdené prvky, nie len za vypísané (strop toolov 3D platí zvlášť).
+  // GUIDs for 3D go for all found elements, not only the listed ones (the 3D tool ceiling applies separately).
   const joined = await joinToAim(rows, deps.lookup);
   const text = JSON.stringify({
     engine: ENGINE_VERSION,

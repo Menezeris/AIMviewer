@@ -88,7 +88,7 @@ describe("calibrate_underlay mode=list (D-168)", () => {
         visible: false, opacity: 0.9, saved_visible: true, saved_opacity: 0.6, overridden: true,
         source: "auto", calibrated_at: "2026-10-22T10:00:00.000Z", underlays_3d: true,
       },
-      // 2NP viewer nepozná: hodnoty z DB
+      // 2NP the viewer does not know: values from the DB
       {
         document_id: ASR2, object_ref: "OCB_ASR_2NP", name: "OCB_ASR_2NP", page: 1, floor: "2NP",
         visible: false, opacity: 0.3, saved_visible: false, saved_opacity: 0.3,
@@ -207,7 +207,7 @@ describe("calibrate_underlay mode=show_in_3d | hide | set_opacity (D-168)", () =
 
 describe("calibrate_underlay mode=history | restore (D-168)", () => {
   const meta = (n: number) => ({ by: "mcp" as const, reason: `calibrate_underlay mode=auto ${n}`, at: `2026-10-2${n}T10:00:00.000Z` });
-  /** 1NP ASR prepísaná dvakrát: v histórii dve staršie polohy. */
+  /** 1NP ASR overwritten twice: two older positions in history. */
   function overwritten(): CalibratedDocument[] {
     const moved = (tx: number) => cal({ affine: [0.0176, 0, tx, 0, 0.0176, -12.1], source: "manual" });
     const r1 = mergeCalibration({ version: 2, calibrations: [moved(25.5)] }, moved(26), true, meta(1));
@@ -246,7 +246,7 @@ describe("calibrate_underlay mode=history | restore (D-168)", () => {
     expect(r.json.replaced.offset_m[0]).toBe(27);
     const g = toGeorefV2(written);
     expect(g.calibrations[0].affine[2]).toBe(25.5);
-    // obnovený záznam z histórie odišiel, aktuálna (27) v nej pribudla, 26 ostala
+    // the restored history record left, the current one (27) was added to it, 26 stayed
     expect(historyOf(written).map((h) => h.calibration.affine[2])).toEqual([27, 26]);
     expect(historyOf(written)[0].reason).toBe("restore index 1");
   });
@@ -263,7 +263,7 @@ describe("calibrate_underlay mode=history | restore (D-168)", () => {
     expect(toGeorefV2(stored).calibrations.map((c) => c.page)).toEqual([2]);
     expect(historyOf(stored)).toHaveLength(1);
     expect(historyOf(stored)[0]).toMatchObject({ page: 1, replaced_by: "mcp", reason: "remove" });
-    // vrátenie: restore index 0 dá kalibráciu späť
+    // restore: restore index 0 brings the calibration back
     docs[0] = { ...docs[0], georef: stored };
     const hist = await run({ mode: "history", document_id: ASR1, page: 1 }, deps({}, undefined, docs));
     expect(hist.json).toMatchObject({ removed: true, current: null, count: 1 });
@@ -285,7 +285,7 @@ describe("calibrate_underlay mode=history | restore (D-168)", () => {
       const r = await run({ mode: "remove", document_id: ASR1, ...args }, deps({ write: async (_id, apply) => { const x = apply(stored); if (x.ok) stored = x.georef; return x; } }, undefined, docs));
       return { r, stored };
     };
-    // bez section_plane: chyba so zoznamom, nič sa nezmaže
+    // without section_plane: an error with a list, nothing is deleted
     const amb = await run1({});
     expect(amb.r.isError).toBe(true);
     expect(amb.r.text).toMatch(/3 kalibrácie rezu/);
@@ -293,16 +293,16 @@ describe("calibrate_underlay mode=history | restore (D-168)", () => {
     expect(amb.r.text).toMatch(/y = 4\.721/);
     expect(amb.r.text).toMatch(/x = 47\.42/);
     expect(toGeorefV2(amb.stored).calibrations).toHaveLength(3);
-    // najbližšia rovina rovnakej orientácie: Y = 4,72 zmaže novú (4,721), nie prvú (4,688)
+    // the nearest plane of the same orientation: Y = 4.72 deletes the new one (4.721), not the first (4.688)
     const near = await run1({ section_plane: { axis: "y", coordinate_m: 4.72 } });
     expect(near.r.isError, near.r.text).toBe(false);
     expect(toGeorefV2(near.stored).calibrations.map((c) => c.plane!.origin[1])).toEqual([4.688, 0]);
     expect(historyOf(near.stored)[0].calibration.calibrated_at).toBe("2026-10-30T10:00:00.000Z");
-    // orientácia X sa nemieša s Y: X = 47,4 zmaže rovinu X
+    // orientation X is not mixed with Y: X = 47.4 deletes the plane X
     const x = await run1({ section_plane: { axis: "x", coordinate_m: 47.4 } });
     expect(x.r.isError, x.r.text).toBe(false);
     expect(toGeorefV2(x.stored).calibrations.map((c) => c.plane!.origin[1])).toEqual([4.688, 4.721]);
-    // zlý tvar section_plane
+    // wrong shape of section_plane
     expect((await run1({ section_plane: { from_plan: true } })).r.text).toMatch(/axis/);
     // jedna rovina na strane: section_plane netreba
     const one = [doc(ASR1, "OCB_REZ_B", [nova])];

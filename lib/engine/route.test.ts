@@ -75,7 +75,7 @@ describe("ifc_measure route (D-121)", () => {
     expect(r.json.exit).toMatchObject({ global_id: guid("DX"), name: "DX" });
     expect(r.json.length_m).toBeCloseTo(18.6, 5);
     expect(path(r.json).at(-1)).toBe("door:DX");
-    // Karuselové DR v R2 je bližšie (R2 -> DR 2 m), ale únikovým východom nie je.
+    // The revolving DR in R2 is closer (R2 -> DR 2 m), but it is not an escape exit.
     expect(r.json.other_exits).toBeUndefined();
   });
 
@@ -92,7 +92,7 @@ describe("ifc_measure route (D-121)", () => {
     expect((await run({ route: "shortest", a: guid("R3") })).content).toMatch(/potrebuje aj b/);
     expect((await run({ route: "escape", a: guid("R3"), b: guid("R1") })).content).toMatch(/b nezadávaj/);
     expect((await run({ route: "walk", a: guid("R3") })).content).toMatch(/shortest \| escape/);
-    // Bez hraníc dverí D2 je 2NP odrezané od východu.
+    // Without the boundaries of door D2 the 2NP is cut off from the exit.
     const cut = new TextEncoder().encode(new TextDecoder().decode(MINI_ROUTE_BYTES).replace(/IFCRELSPACEBOUNDARY1STLEVEL\('RSB3[^\n]*\n/, ""));
     clearEngineCache();
     const disconnected = await run({ route: "escape", a: guid("R3") }, cut);

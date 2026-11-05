@@ -6,12 +6,12 @@ import { cacheSnapshot, getStore } from "./cache";
 import { callEngineTool, type EngineModel } from "./session";
 
 /**
- * Diagnostický tool fázy 0 (D-084), len pri `ENGINE_SPIKE=1` (preview):
- * zmeria IFC motor priamo vo funkcii Vercelu - studené/teplé načítanie
- * modelov, dotaz, voliteľne kolízie - a vráti čísla pre brány prototypu.
+ * Diagnostic tool of phase 0 (D-084), only with `ENGINE_SPIKE=1` (preview):
+ * measures the IFC engine directly in a Vercel function - cold/warm loading of
+ * models, a query, optionally clashes - and returns numbers for the prototype gates.
  */
 
-/** Id inštancie - rovnaké id v dvoch volaniach = tá istá teplá inštancia. */
+/** Instance id - the same id in two calls = the same warm instance. */
 const INSTANCE_ID = randomUUID().slice(0, 8);
 const INSTANCE_STARTED = Date.now();
 
@@ -79,8 +79,8 @@ export async function runProbe(input: Record<string, unknown>): Promise<string> 
 const peakRssMb = () => Math.round(process.resourceUsage().maxRSS / 1024);
 
 /**
- * D-164: ASR x VZT federovane na serveri - tesselácia oboch modelov (studená, potom teplá
- * cache) a detekcia oboch predvolených testov, každá dvakrát. Čas, RSS a špička RSS.
+ * D-164: ASR x VZT federated on the server - tessellation of both models (cold, then warm
+ * cache) and detection of both default tests, each twice. Time, RSS and peak RSS.
  */
 async function probeClashAsrVzt(models: EngineModel[]): Promise<Record<string, unknown>> {
   const [{ detect, parseSpec }, { meshModel }, { DEFAULT_TESTS }] = await Promise.all([

@@ -18,7 +18,7 @@ import { revisionStamp } from "./tools";
 
 const SRC = { id: "MINI", label: "Mini", url: "https://example.test/mini.ifc" };
 
-/** Falošné úložisko: `etags[n]` je verzia súboru po n stiahnutiach (HEAD hlási nasledujúcu). */
+/** Fake storage: `etags[n]` is the file version after n downloads (HEAD reports the next one). */
 function fakeFetch(etags: string[]) {
   let gets = 0;
   let heads = 0;
@@ -88,7 +88,7 @@ describe("IFC motor - archív revízie (D-135)", () => {
   });
   const ARCHIVE = "https://example.test/archive/mini/v007.ifc.gz";
 
-  /** Úložisko s gzip archívom a pôvodným súborom; zaznamená, čo sa sťahovalo. */
+  /** Storage with a gzip archive and the original file; records what was downloaded. */
   function storage(opts: { archiveStatus?: number } = {}) {
     const calls: string[] = [];
     const impl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
@@ -111,7 +111,7 @@ describe("IFC motor - archív revízie (D-135)", () => {
     expect(res.entry.etag).toBe('"cur"');
     expect(res.entry.size).toBe(MINI_BUILDING_BYTES.byteLength);
     expect(res.entry.store.entities.getExpressIdByGlobalId(guid("WALA"))).toBeGreaterThan(0);
-    // D-183: revízia archívu ide do podpisu vstupu výsledkov
+    // D-183: the archive revision goes into the input signature of the results
     expect(res.entry.revision).toBe(7);
     expect(engineRevision(res.entry)).toMatchObject({ etag: '"cur"', revision: 7 });
   });

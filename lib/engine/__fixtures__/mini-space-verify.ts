@@ -1,17 +1,17 @@
 /**
- * Mini model pre spike overovača výmer (D-185), jednotky mm ako ASR:
- * miestnosť 2.01 v tvare L (12 x 8 m bez rohu 4 x 2 m, plocha 88 m2, obvod 40 m) od z = 4,85
- * o 3,95 m; doska pod (z 4,60 až 4,85) a nad (8,80 až 9,05), 12 x 8 m; podlahovina v tvare
- * miestnosti 150 mm (4,85 až 5,00); podhľad 12 x 6 m, 12,5 mm so spodkom na 8,05.
- * Qto miestnosti: Height 3950, FinishFloorHeight 150, FinishCeilingHeight 3050, GrossPerimeter
- * 40000, GrossFloorArea 88, GrossVolume 347,6, NetVolume 333,5 (= 347,6 - 88 x 0,15 - 72 x 0,0125).
- * Miestnosť 2.02 (D-185 oprava, náhrada cez mesh): IfcFacetedBrep kváder 4 x 4 x 3,95 m vedľa (x 12 až 16), bez
- * extrúzie, Qto Height 3950, GrossPerimeter 16000, GrossFloorArea 16, GrossVolume a NetVolume 63,2.
- * NetFloorArea (D-185 dodatok 4) v 2.01: stĺp 0,4 x 0,4 m (x 7,8 až 8,2, y 2,8 až 3,2) cez celú výšku, otvor v doske pod
- * 1 x 1 m (x 1,5 až 2,5, y 1,5 až 2,5; IfcRelVoidsElement), vstavka IfcFurniture 1 x 0,6 m (x 9,5 až 10,5, y 6,7 až 7,3,
- * IsBuiltIn = TRUE na type) a voľný nábytok 1 x 1 m (x 5,5 až 6,5, y 0,5 až 1,5; ten istý typ, ale IsBuiltIn = FALSE na výskyte,
- * ktorý má prednosť), ktorý sa neodčíta.
- * Qto NetFloorArea 86,24 (= 88 - 0,16 - 1 - 0,6).
+ * Mini model for the spike of the quantity verifier (D-185), units mm like ASR:
+ * space 2.01 in an L shape (12 x 8 m without a 4 x 2 m corner, area 88 m2, perimeter 40 m) from z = 4.85
+ * by 3.95 m; slab below (z 4.60 to 4.85) and above (8.80 to 9.05), 12 x 8 m; floor covering in the shape of
+ * the space 150 mm (4.85 to 5.00); ceiling 12 x 6 m, 12.5 mm with the bottom at 8.05.
+ * Space Qto: Height 3950, FinishFloorHeight 150, FinishCeilingHeight 3050, GrossPerimeter
+ * 40000, GrossFloorArea 88, GrossVolume 347.6, NetVolume 333.5 (= 347.6 - 88 x 0.15 - 72 x 0.0125).
+ * Space 2.02 (D-185 fix, substitute via mesh): an IfcFacetedBrep box 4 x 4 x 3.95 m next to it (x 12 to 16), without an
+ * extrusion, Qto Height 3950, GrossPerimeter 16000, GrossFloorArea 16, GrossVolume and NetVolume 63.2.
+ * NetFloorArea (D-185 addendum 4) in 2.01: a column 0.4 x 0.4 m (x 7.8 to 8.2, y 2.8 to 3.2) over the whole height, an opening in the slab below
+ * 1 x 1 m (x 1.5 to 2.5, y 1.5 to 2.5; IfcRelVoidsElement), a built-in IfcFurniture 1 x 0.6 m (x 9.5 to 10.5, y 6.7 to 7.3,
+ * IsBuiltIn = TRUE on the type) and loose furniture 1 x 1 m (x 5.5 to 6.5, y 0.5 to 1.5; the same type, but IsBuiltIn = FALSE on the occurrence,
+ * which takes precedence), which is not subtracted.
+ * Qto NetFloorArea 86.24 (= 88 - 0.16 - 1 - 0.6).
  */
 export const MINI_SPACE_VERIFY = `ISO-10303-21;
 HEADER;FILE_DESCRIPTION(('ViewDefinition [ReferenceView]'),'2;1');

@@ -1,23 +1,23 @@
 import type { ToolDefinition } from "../llm/provider";
 
 /**
- * Tools `@ifc-lite/mcp` prevzaté takmer 1:1 (D-087, pravidlo 1): rovnaké
- * parametre ako v balíku, žiadna vlastná logika, jediný doplnok je prepojenie
- * GUIDov výsledku na AIM. Od D-115 ich Claude volá cez `ifc_models` (action) a
- * `ifc_measure` (qto); mená `ifc_<upstream>` sú už len vnútorné kľúče (aliasy zrušené).
- * Bez závislostí motora (MCP route ich importuje staticky); schémy stráži
- * `passthrough.test.ts` proti registru balíka, takže povýšenie verzie, ktoré
- * ich zmení, padne v teste a nie u Clauda.
+ * Tools of `@ifc-lite/mcp` taken over almost 1:1 (D-087, rule 1): the same
+ * parameters as in the bundle, no own logic, the only addition is linking the
+ * GUIDs of the result to AIM. Since D-115 Claude calls them via `ifc_models` (action) and
+ * `ifc_measure` (qto); the names `ifc_<upstream>` are only internal keys now (aliases removed).
+ * Without engine dependencies (the MCP route imports them statically); the schemas are guarded
+ * by `passthrough.test.ts` against the bundle registry, so a version bump that
+ * changes them fails in the test and not at Claude.
  */
 
 export interface PassthroughTool {
-  /** Názov toolu v `@ifc-lite/mcp`. */
+  /** Tool name in `@ifc-lite/mcp`. */
   upstream: string;
-  /** Opis z balíka (anglicky, bez zmeny). */
+  /** Description from the bundle (in English, unchanged). */
   description: string;
   properties: Record<string, Record<string, unknown>>;
   required?: string[];
-  /** Tool pracuje nad modelom federácie (model_id povinný). */
+  /** The tool works over a federation model (model_id required). */
   needsModel: boolean;
 }
 
@@ -85,7 +85,7 @@ export const PASSTHROUGH_TOOLS: PassthroughTool[] = [
 
 export const passthroughName = (upstream: string) => `ifc_${upstream}`;
 
-/** Definície pre MCP: schéma balíka, `model_id` obmedzený na modely federácie. */
+/** Definitions for MCP: the bundle schema, `model_id` restricted to federation models. */
 export function passthroughDefinitions(models: string[]): ToolDefinition[] {
   return PASSTHROUGH_TOOLS.map((t) => ({
     name: passthroughName(t.upstream),

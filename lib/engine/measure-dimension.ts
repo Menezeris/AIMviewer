@@ -5,18 +5,18 @@ import { routeOp } from "../viewer-route";
 import { toIfc, type MeshElement, type Vec3 } from "./measure";
 
 /**
- * Kóta k `ifc_measure` (D-124): body, medzi ktorými sa meralo, v IFC svete,
- * a príkaz, ktorý ich ukáže v nástroji Measure forku (`MEASURE_SHOW`).
- * Clash engine vracia pri svetlej vzdialenosti stred najkratšej úsečky; jej
- * konce sú najbližšie body každého meshu k tomuto stredu (pre dvojicu
- * s minimom presne tie isté body). Rozmery prvku sú hrany obálky X, Y, Z.
+ * Dimension for `ifc_measure` (D-124): the points between which it measured, in the IFC world,
+ * and the command that shows them in the Measure tool of the fork (`MEASURE_SHOW`).
+ * For a clear distance the clash engine returns the centre of the shortest segment; its
+ * ends are the nearest points of each mesh to this centre (for a pair
+ * with a minimum exactly the same points). Element dimensions are the envelope edges X, Y, Z.
  */
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const along = (a: Vec3, d: Vec3, t: number): Vec3 => [a[0] + d[0] * t, a[1] + d[1] * t, a[2] + d[2] * t];
 
-/** Najbližší bod trojuholníka abc k p (Ericson, Real-Time Collision Detection 5.1.5). */
+/** Nearest point of triangle abc to p (Ericson, Real-Time Collision Detection 5.1.5). */
 export function closestOnTriangle(p: Vec3, a: Vec3, b: Vec3, c: Vec3): Vec3 {
   const ab = sub(b, a);
   const ac = sub(c, a);
@@ -46,7 +46,7 @@ export function closestOnTriangle(p: Vec3, a: Vec3, b: Vec3, c: Vec3): Vec3 {
   return [a[0] + ab[0] * v + ac[0] * w, a[1] + ab[1] * v + ac[1] * w, a[2] + ab[2] * v + ac[2] * w];
 }
 
-/** Najbližší bod povrchu meshu k p (rámec meshu); prvok má stovky až tisíce trojuholníkov. */
+/** Nearest point of the mesh surface to p (mesh frame); an element has hundreds to thousands of triangles. */
 export function closestOnMesh(e: Pick<MeshElement, "positions" | "indices">, p: Vec3): Vec3 {
   const v = (i: number): Vec3 => [e.positions[i * 3], e.positions[i * 3 + 1], e.positions[i * 3 + 2]];
   let best: Vec3 = v(e.indices[0]);
@@ -63,7 +63,7 @@ export function closestOnMesh(e: Pick<MeshElement, "positions" | "indices">, p: 
   return best;
 }
 
-/** Bod meshu (Y hore, posunutý rámec) -> IFC svet (Z hore) cez posun rámca, ktorý zapísal mesher. */
+/** Mesh point (Y up, shifted frame) -> IFC world (Z up) via the frame offset written by the mesher. */
 export function toWorld(e: Pick<MeshElement, "worldOffset">, p: readonly number[]): Vec3 {
   const q = toIfc(p);
   const o = e.worldOffset ?? [0, 0, 0];
@@ -73,13 +73,13 @@ export function toWorld(e: Pick<MeshElement, "worldOffset">, p: readonly number[
 const mm = (v: number) => Math.round(v * 1000) / 1000;
 const point = (v: Vec3) => ({ x: mm(v[0]), y: mm(v[1]), z: mm(v[2]) });
 
-/** Kóta svetlej vzdialenosti a-b zo stredu najkratšej úsečky; prienik a dotyk nemajú čo kótovať. */
+/** Clear distance dimension a-b from the centre of the shortest segment; an intersection and a touch have nothing to dimension. */
 export function pairDimension(a: MeshElement, b: MeshElement, mid: Vec3, distance: number): MeasureSegment | null {
   if (!(distance > 1e-4)) return null;
   return { a: point(toWorld(a, closestOnMesh(a, mid))), b: point(toWorld(b, closestOnMesh(b, mid))) };
 }
 
-/** Rozmery obálky prvku: tri hrany z rohu s najmenšími súradnicami (X, Y, Z v IFC svete). */
+/** Element envelope dimensions: three edges from the corner with the smallest coordinates (X, Y, Z in the IFC world). */
 export function sizeDimensions(e: MeshElement): MeasureSegment[] {
   const p = toWorld(e, e.bounds.min);
   const q = toWorld(e, e.bounds.max);
@@ -92,7 +92,7 @@ export function sizeDimensions(e: MeshElement): MeasureSegment[] {
   ];
 }
 
-/** Príkaz pre živý viewer: kóty sa pridajú (`keep`) alebo nahradia predošlé kóty od hosta (vlastné merania ostanú). */
+/** Command for the live viewer: dimensions are added (`keep`) or replace the previous dimensions from the host (own measurements stay). */
 export function dimensionAction(segments: readonly MeasureSegment[], keep = false): AskAction {
   return {
     type: "navigate",
@@ -101,7 +101,7 @@ export function dimensionAction(segments: readonly MeasureSegment[], keep = fals
   };
 }
 
-/** Príkaz pre živý viewer (D-152): zmaže kóty od Claude aj čiaru trasy; merania používateľa ostanú. */
+/** Command for the live viewer (D-152): deletes dimensions from Claude and the route line; user measurements stay. */
 export function clearDimensionsAction(): AskAction {
   return {
     type: "navigate",

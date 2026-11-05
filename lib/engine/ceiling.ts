@@ -8,27 +8,27 @@ import { modelsFor, storeyGuid, structured } from "./tools";
 const QSET = "Qto_SpaceBaseQuantities";
 const QNAME = "FinishCeilingHeight";
 
-/** Výška podhľadu podlažia v metroch nad úrovňou podlažia (D-140, pôvodne D-102). */
+/** Ceiling height of a storey in metres above the storey level (D-140, originally D-102). */
 export interface StoreyCeiling {
-  /** Odkiaľ je výška: geometria IfcCovering CEILING (mesh), alebo záloha z Qto miestností. */
+  /** Where the height comes from: geometry of IfcCovering CEILING (mesh), or a fallback from the Qto of spaces. */
   source: "geometry" | "qto";
-  /** Spodný okraj podhľadu (m nad IfcBuildingStorey.Elevation); pri Qto rovnaký ako top_m. */
+  /** Bottom edge of the ceiling (m above IfcBuildingStorey.Elevation); for Qto the same as top_m. */
   bottom_m: number;
-  /** Horný okraj podhľadu (m nad úrovňou podlažia). */
+  /** Top edge of the ceiling (m above the storey level). */
   top_m: number;
-  /** Prvky IfcCovering CEILING, z ktorých je geometria (0 pri Qto). */
+  /** IfcCovering CEILING elements the geometry comes from (0 for Qto). */
   coverings: number;
-  /** Qto FinishCeilingHeight miestností (od hotovej podlahy), ak ho model nesie. */
+  /** Qto FinishCeilingHeight of spaces (from the finished floor), if the model carries it. */
   qto?: { height_m: number; min_m: number; max_m: number; spaces: number };
-  /** Nezhoda Qto a geometrie, resp. dôvod zálohy; model ju má povedať používateľovi. */
+  /** Qto and geometry mismatch, or the reason for the fallback; the model should tell it to the user. */
   warning?: string;
   model: string;
 }
 
-/** Nezhoda Qto a geometrie nad touto hodnotou (m) sa hlási. */
+/** A Qto and geometry mismatch above this value (m) is reported. */
 const MISMATCH_M = 0.02;
 
-/** Vážený medián: výška, pod ktorou je aspoň polovica plochy podlažia (bez plochy váha 1). */
+/** Weighted median: the height below which is at least half of the storey area (without area weight 1). */
 export function weightedMedian(items: Array<{ value: number; weight: number }>): number {
   const v = [...items].sort((a, b) => a.value - b.value);
   const total = v.reduce((s, x) => s + x.weight, 0);
@@ -42,7 +42,7 @@ export function weightedMedian(items: Array<{ value: number; weight: number }>):
 
 const round3 = (x: number) => Math.round(x * 1000) / 1000;
 
-/** Geometrický podhľad podlažia: vážený medián spodných a horných okrajov krytín CEILING (m nad úrovňou). */
+/** Geometric ceiling of a storey: weighted median of bottom and top edges of CEILING coverings (m above the level). */
 export function ceilingFromCoverings(
   items: Array<{ bottom: number; top: number; weight: number }>,
   elevation: number,
@@ -87,11 +87,11 @@ async function geometryCeiling(session: Session, m: EngineModel, gid: string, st
 }
 
 /**
- * "Pod podhľadom na 3NP" = podhľad miestností 3NP, nie IfcCovering priradené k
- * podlažiu pri iných dotazoch (v modeli visia pod doskou podlažia a patria miestnostiam
- * pod ním). D-140 (#230): výška sa berie z GEOMETRIE krytín CEILING podlažia (mesh,
- * spodný a horný okraj nad úrovňou podlažia); Qto FinishCeilingHeight (od hotovej
- * podlahy, jednotka podľa modelu) je záloha, a pri nezhode sa upozorní.
+ * "Below the ceiling on 3NP" = the ceiling of the spaces of 3NP, not the IfcCovering assigned to
+ * the storey in other queries (in the model they hang below the storey slab and belong to the spaces
+ * below it). D-140 (#230): the height is taken from the GEOMETRY of CEILING coverings of the storey (mesh,
+ * bottom and top edge above the storey level); Qto FinishCeilingHeight (from the finished
+ * floor, unit per the model) is a fallback, and on a mismatch a warning is given.
  */
 export async function storeyCeiling(
   label: string,

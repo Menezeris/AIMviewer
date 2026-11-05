@@ -1,6 +1,6 @@
 /**
- * Údaje jedného prvku z IFC súboru pre `get_object(include=quantities)` (D-142): všetky Qto výmery a psety
- * výskytu aj typu v plochom tvare s označením zdroja. Dáta berie `ifc_get`; tu je len tvarovanie.
+ * Data of one element from the IFC file for `get_object(include=quantities)` (D-142): all Qto quantities and psets
+ * of the occurrence and the type in a flat shape with a source mark. The data is taken by `ifc_get`; here is only the shaping.
  */
 
 type Sets = Array<{ name?: string; properties?: unknown[]; quantities?: unknown[] }>;
@@ -32,7 +32,7 @@ export interface ElementIfcData {
 
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
-/** `typeProperties` z balíka: buď rovno súpravy, alebo objekt s `properties` / `quantities` / `name`. */
+/** `typeProperties` from the bundle: either the sets directly, or an object with `properties` / `quantities` / `name`. */
 function typeSets(type: unknown): { name: string | null; properties: Sets; quantities: Sets } {
   if (Array.isArray(type)) return { name: null, properties: type as Sets, quantities: [] };
   if (!type || typeof type !== "object") return { name: null, properties: [], quantities: [] };
@@ -55,7 +55,7 @@ function flatten<T>(sets: Sets, inner: "properties" | "quantities", source: "occ
   return out as T[];
 }
 
-/** Z jednej položky `ifc_get` urobí kompaktný zoznam výmer a vlastností s označením zdroja. */
+/** Makes a compact list of quantities and properties with a source mark from one `ifc_get` item. */
 export function shapeIfcElement(item: Record<string, unknown>): ElementIfcData {
   const type = typeSets(item.typeProperties);
   const quantities = [

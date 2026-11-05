@@ -6,27 +6,27 @@ import type { MeshElement, Vec3 } from "./measure";
 import { toWorld } from "./measure-dimension";
 
 /**
- * `ifc_measure` axis a face_a / face_b (D-155): jedna os prvku a kolmá vzdialenosť
- * dvoch rovnobežných plôch, z meshu v IFC svete (Z hore, m, s posunom rámca).
- * Osi prvku = obdĺžnik s najmenšou plochou v pôdoryse (ako svetlý otvor dverí, D-118):
- * x = width (dlhšia strana), y = depth, z = hore. Smer x je otočený k +X sveta (pri
- * zvislom x k +Y), y je x otočené o 90° proti smeru hodinových ručičiek, aby "+x"
- * znamenalo vždy to isté pri a aj b. Osi z IfcObjectPlacement sú na neskôr.
+ * `ifc_measure` axis and face_a / face_b (D-155): one element axis and the perpendicular distance
+ * of two parallel faces, from the mesh in the IFC world (Z up, m, with the frame offset).
+ * Element axes = the rectangle with the smallest area in plan (like the clear door opening, D-118):
+ * x = width (longer side), y = depth, z = up. The x direction is turned towards the world +X (for a
+ * vertical x towards +Y), y is x rotated by 90° counter-clockwise, so that "+x"
+ * always means the same for both a and b. The IfcObjectPlacement axes are left for later.
  */
 
 export type AxisName = "x" | "y" | "z" | "width" | "depth" | "height";
 export const AXES: readonly AxisName[] = ["x", "y", "z", "width", "depth", "height"];
 const FACE_RE = /^([+-])([xyz])$/;
 
-/** Plocha je kolmá na os, keď normála od osi neodbočí o viac ako 2°. */
+/** A face is perpendicular to the axis when its normal deviates from the axis by no more than 2°. */
 const PARALLEL_COS = Math.cos((2 * Math.PI) / 180);
-/** Trojuholníky do 1 mm od seba v smere osi = jedna rovina. */
+/** Triangles within 1 mm of each other along the axis direction = one plane. */
 const PLANE_TOL = 0.001;
-/** Plochy oproti sebe bližšie ako toto sú škára alebo dotyk telies, nie meraná medzera. */
+/** Opposite faces closer than this are a joint or a touch of solids, not a measured gap. */
 const MIN_FACING_GAP = 0.005;
 
 export interface ElementAxes {
-  /** Stred pôdorysného obdĺžnika v IFC svete (x, y). */
+  /** Centre of the plan rectangle in the IFC world (x, y). */
   origin: [number, number];
   x: Vec3;
   y: Vec3;
@@ -36,7 +36,7 @@ export interface ElementAxes {
 const round = (v: number, digits = 3) => Math.round(v * 10 ** digits) / 10 ** digits;
 const point = (v: Vec3) => ({ x: round(v[0]), y: round(v[1]), z: round(v[2]) });
 
-/** Vrcholy meshu v IFC svete. */
+/** Mesh vertices in the IFC world. */
 function worldPositions(e: MeshElement): Float64Array {
   const out = new Float64Array(e.positions.length);
   for (let i = 0; i < e.positions.length; i += 3) {
@@ -65,21 +65,21 @@ export function elementAxes(e: MeshElement): ElementAxes {
   return { origin: center, x: [ux, uy, 0], y: [-uy, ux, 0], z: [0, 0, 1] };
 }
 
-/** Bod IFC sveta -> súradnice v osiach prvku. */
+/** IFC world point -> coordinates in the element axes. */
 function local(ax: ElementAxes, p: Vec3): Vec3 {
   const dx = p[0] - ax.origin[0];
   const dy = p[1] - ax.origin[1];
   return [dx * ax.x[0] + dy * ax.x[1], dx * ax.y[0] + dy * ax.y[1], p[2]];
 }
 
-/** Súradnice v osiach prvku -> IFC svet. */
+/** Coordinates in the element axes -> IFC world. */
 function world(ax: ElementAxes, l: Vec3): Vec3 {
   return [ax.origin[0] + ax.x[0] * l[0] + ax.y[0] * l[1], ax.origin[1] + ax.x[1] * l[0] + ax.y[1] * l[1], l[2]];
 }
 
 /**
- * Jedna os prvku: x/y/z = hrana obálky v osiach IFC sveta, width/depth/height = v osiach
- * prvku. Kóta ide po spodnej prednej hrane, ako jedna z troch hrán `sizeDimensions`.
+ * One element axis: x/y/z = envelope edge in the IFC world axes, width/depth/height = in the element
+ * axes. The dimension runs along the bottom front edge, like one of the three edges of `sizeDimensions`.
  */
 export function axisDimension(e: MeshElement, axis: AxisName): { axis: AxisName; length_m: number; segment: MeasureSegment } {
   const k = axis === "x" || axis === "width" ? 0 : axis === "y" || axis === "depth" ? 1 : 2;
@@ -114,7 +114,7 @@ export function parseFace(raw: unknown, key: string): FacePick {
   return { sign: m[1] === "-" ? -1 : 1, axis: m[2] === "x" ? 0 : m[2] === "y" ? 1 : 2, name: `${m[1]}${m[2]}` };
 }
 
-/** Rovina zložená z trojuholníkov: poloha na osi a obdĺžnik v ďalších dvoch osiach. */
+/** A plane composed of triangles: the position on the axis and the rectangle in the other two axes. */
 export interface Plane {
   offset: number;
   area: number;
@@ -122,7 +122,7 @@ export interface Plane {
   hi: [number, number];
 }
 
-/** Roviny prvku s normálou `face` v osiach `ax`; pri IfcDoor bez výplne otvoru (krídlo, kovanie). */
+/** Planes of an element with normal `face` in axes `ax`; for IfcDoor without the opening fill (leaf, hardware). */
 export function facePlanes(e: MeshElement, ax: ElementAxes, face: FacePick): Plane[] {
   const w = worldPositions(e);
   const skip = doorFill(e);
@@ -160,13 +160,13 @@ export function facePlanes(e: MeshElement, ax: ElementAxes, face: FacePick): Pla
   });
 }
 
-/** Maska výplne dverí po telesách (rovnaké pravidlá ako svetlý otvor), inak null. */
+/** Door fill mask by solids (same rules as the clear opening), otherwise null. */
 function doorFill(e: MeshElement): boolean[] | null {
   if (!e.ifcType.startsWith("IfcDoor") || e.parts.length < 2) return null;
   return doorLayout(e.positions, e.indices, e.parts).fill;
 }
 
-/** Prekrytie dvoch obdĺžnikov (v každej osi, záporné = medzera). */
+/** Overlap of two rectangles (in each axis, negative = gap). */
 function overlap(a: Plane, b: Plane): [number, number] {
   return [Math.min(a.hi[0], b.hi[0]) - Math.max(a.lo[0], b.lo[0]), Math.min(a.hi[1], b.hi[1]) - Math.max(a.lo[1], b.lo[1])];
 }
@@ -174,10 +174,10 @@ function overlap(a: Plane, b: Plane): [number, number] {
 export type FaceRelation = "facing" | "away" | "same_direction";
 
 /**
- * Kolmá vzdialenosť plôch `fa` prvku `a` a `fb` prvku `b` (môže byť ten istý) v osiach `a`.
- * Plochy oproti sebe (normála a mieri k b a naopak, napr. vnútorné líca zárubne) = najbližšia
- * dvojica s prekrytím v priemete a medzerou nad 5 mm. Inak (hrúbka steny, plochy rovnakým
- * smerom) = najväčšie plochy, pri zhode vzdialenejšie.
+ * Perpendicular distance of faces `fa` of element `a` and `fb` of element `b` (may be the same) in the axes of `a`.
+ * Opposite faces (normal of a points to b and vice versa, e.g. inner faces of a frame) = the nearest
+ * pair with an overlap in projection and a gap above 5 mm. Otherwise (wall thickness, faces facing the same
+ * direction) = the largest faces, on a tie the farther.
  */
 export function faceDistance(a: MeshElement, b: MeshElement, fa: FacePick, fb: FacePick) {
   if (fa.axis !== fb.axis) throw new InputError(`Plochy ${fa.name} a ${fb.name} nie sú rovnobežné: zadaj obe na tej istej osi (napr. +x a -x).`);
@@ -211,7 +211,7 @@ export function faceDistance(a: MeshElement, b: MeshElement, fa: FacePick, fb: F
   if (!best) throw new InputError(`Plochy ${label(fa, a)} a ${label(fb, b)} sú len oproti sebe bez prekrytia alebo bližšie ako 5 mm: skús opačné smery.`);
   const k = fa.axis;
   const [p, q] = ([0, 1, 2] as const).filter((c) => c !== k);
-  // Kóta v strede prekrytia plôch; bez prekrytia medzi stredmi plôch.
+  // Dimension at the centre of the face overlap; without an overlap between the face centres.
   const mid = (i: 0 | 1) =>
     best.ov[i] > 0
       ? (Math.max(best.a.lo[i], best.b.lo[i]) + Math.min(best.a.hi[i], best.b.hi[i])) / 2

@@ -9,9 +9,9 @@ import { currentProjectId } from "../project/context";
 const IN_CHUNK = 100;
 
 /**
- * IFC GlobalId prvku -> názov systému z grafu AIM (D-164): GUID -> uzol (`ifc_guid_history`),
- * uzol -> systém cez `rel_assigns_to_group` (uzly `object_type='system'`). Prvok bez
- * systému v mape nie je. Read-only, `service_role` (D-026).
+ * IFC GlobalId of an element -> system name from the AIM graph (D-164): GUID -> node (`ifc_guid_history`),
+ * node -> system via `rel_assigns_to_group` (nodes `object_type='system'`). An element without a
+ * system is not in the map. Read-only, `service_role` (D-026).
  */
 export async function systemsOfGuids(guids: string[]): Promise<Map<string, string>> {
   const projectId = currentProjectId();

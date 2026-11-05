@@ -9,8 +9,8 @@ import { execEngineTool, type EngineDeps } from "./tools";
 type Box = [number, number, number, number, number, number];
 
 /**
- * Telesá dverí v osiach IFC (x šírka, y hĺbka, z hore, metre) -> mesh ako z mesheru:
- * Y-up (x, z, -y), otočený v pôdoryse o `angle`, posunutý o `at`; každé teleso = časť.
+ * Door solids in IFC axes (x width, y depth, z up, metres) -> a mesh as from the mesher:
+ * Y-up (x, z, -y), rotated in plan by `angle`, shifted by `at`; every solid = a part.
  */
 function door(bodies: Box[][], angle = 0, at: [number, number] = [0, 0]) {
   const pos: number[] = [];
@@ -35,7 +35,7 @@ function door(bodies: Box[][], angle = 0, at: [number, number] = [0, 0]) {
   return { positions: new Float32Array(pos), indices: new Uint32Array(idx), parts };
 }
 
-/** Zárubňa 0,9 x 2,1 m: stojky 60 mm a nadpražie, hĺbka 0,12 m. */
+/** Frame 0.9 x 2.1 m: posts 60 mm and a lintel, depth 0.12 m. */
 const FRAME: Box[] = [
   [-0.51, -0.45, 0, 0.12, 0, 2.1],
   [0.45, 0.51, 0, 0.12, 0, 2.1],
@@ -79,7 +79,7 @@ describe("svetlý otvor dverí z geometrie (dodatok D-118)", () => {
       [0.425, 0.475, 0, 0.04, 0, 2.275],
       [-0.475, 0.475, 0, 0.04, 2.275, 2.325],
     ];
-    // Rám krídla okolo skla: profily 0,13 m, sklo 0,59 m v strede.
+    // Leaf frame around the glass: profiles 0.13 m, glass 0.59 m in the middle.
     const leafFrame: Box[] = [
       [-0.425, -0.295, 0, 0.04, 0, 2.275],
       [0.295, 0.425, 0, 0.04, 0, 2.275],

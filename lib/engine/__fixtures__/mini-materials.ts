@@ -1,10 +1,10 @@
 import { guid } from "./mini-building";
 
 /**
- * Malý IFC4 model pre `ifc_material_layers` (D-108): typ steny so zloženou
- * skladbou (omietka, EPS v kategórii "Tepelná izolácia", betón) priradenou
- * typu, dve steny toho typu (materiál len z typu), betónová stena s jedným
- * materiálom a doska so zložkami (minerálna vlna).
+ * Small IFC4 model for `ifc_material_layers` (D-108): a wall type with a composite
+ * assembly (plaster, EPS in the category "Tepelná izolácia" [thermal insulation], concrete) assigned to the
+ * type, two walls of that type (material only from the type), a concrete wall with a single
+ * material and a slab with constituents (mineral wool).
  */
 export const MINI_MATERIALS = `ISO-10303-21;
 HEADER;

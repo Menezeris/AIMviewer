@@ -5,12 +5,12 @@ import { getSupabaseAdmin } from "../supabase/server";
 import type { AimRef } from "./join";
 import { currentProjectId } from "../project/context";
 
-/** Dávka pre `.in()` filtre (limit dĺžky URL v PostgREST), ako v lib/llm/tools.ts. */
+/** Batch for `.in()` filters (URL length limit in PostgREST), as in lib/llm/tools.ts. */
 const IN_CHUNK = 100;
 
 /**
- * IFC GlobalId -> uzol AIM (aktívny GUID v `ifc_guid_history`, D-010).
- * Read-only cez `service_role` (D-026).
+ * IFC GlobalId -> AIM node (active GUID in `ifc_guid_history`, D-010).
+ * Read-only via `service_role` (D-026).
  */
 export async function lookupGuids(guids: string[]): Promise<Map<string, AimRef>> {
   const projectId = currentProjectId();
@@ -52,16 +52,16 @@ export async function lookupGuids(guids: string[]): Promise<Map<string, AimRef>>
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Kandidát pre kód prvku: GUID a čím je (do hlásenia viacznačnosti). */
+/** Candidate for an element code: the GUID and what it is (for the ambiguity report). */
 export interface NameCandidate {
   guid: string;
   label: string;
 }
 
-/** Kódy s viac zhodami - nevyberá sa potichu, tool vráti kandidátov (D-102). */
+/** Codes with several matches - not chosen silently, the tool returns the candidates (D-102). */
 export class AmbiguousTargetError extends Error {}
 
-/** Jednoznačné kódy -> GUID; viacznačné do chyby so zoznamom kandidátov. */
+/** Unambiguous codes -> GUID; ambiguous ones into an error with a list of candidates. */
 export function pickUnique(matches: Map<string, NameCandidate[]>): Map<string, string> {
   const out = new Map<string, string>();
   const ambiguous: string[] = [];
@@ -80,14 +80,14 @@ export function pickUnique(matches: Map<string, NameCandidate[]>): Map<string, s
 }
 
 type FindNames = (names: string[]) => Promise<Map<string, { global_id: string; ifc_type: string; model: string }[]>>;
-/** Motor je zapnutý (ako `ENGINE_ENABLED` v MCP route); bez neho sa kód hľadá len v AIM. */
+/** The engine is enabled (like `ENGINE_ENABLED` in the MCP route); without it a code is searched only in AIM. */
 export const engineEnabled = () => process.env.ENGINE_ENABLED === "1" || process.env.ENGINE_SPIKE === "1";
 const findNamesInIfc: FindNames = async (names) => (engineEnabled() ? (await import("./names")).findByNames(names) : new Map());
 
 /**
- * objects.id, object_ref alebo kód prvku -> aktívny IFC GUID (prvky bez GUID sa vynechajú).
- * Kód, ktorý nie je object_ref (VV.03.01.040 je meno, SD04.0001 nie je v AIM vôbec),
- * sa dohľadá podľa presného `objects.name` a potom podľa IFC Name/Tag v motore (D-102).
+ * objects.id, object_ref or element code -> active IFC GUID (elements without a GUID are skipped).
+ * A code that is not an object_ref (VV.03.01.040 is a name, SD04.0001 is not in AIM at all)
+ * is looked up by the exact `objects.name` and then by IFC Name/Tag in the engine (D-102).
  */
 export async function resolveTargetsToGuids(targets: string[], findNames: FindNames = findNamesInIfc): Promise<Map<string, string>> {
   const projectId = currentProjectId();
@@ -102,7 +102,7 @@ export async function resolveTargetsToGuids(targets: string[], findNames: FindNa
         .select("id, object_ref")
         .eq("project_id", projectId)
         .in(col, vals.slice(i, i + IN_CHUNK))
-        .is("valid_until", null); // zaniknuté objekty (D-088)
+        .is("valid_until", null); // expired objects (D-088)
       if (error) throw new Error(error.message);
       for (const o of (data ?? []) as { id: string; object_ref: string | null }[]) {
         idByTarget.set(col === "id" ? o.id : (o.object_ref as string), o.id);
@@ -112,13 +112,13 @@ export async function resolveTargetsToGuids(targets: string[], findNames: FindNa
   const out = new Map<string, string>();
   for (const [target, g] of await guidsOfObjects(idByTarget)) out.set(target, g);
 
-  // Kód prvku: presné meno v AIM, potom IFC Name/Tag.
+  // Element code: exact name in AIM, then IFC Name/Tag.
   const byName = refs.filter((t) => !idByTarget.has(t));
   for (const [target, g] of await resolveNamesToGuids(byName, findNames)) out.set(target, g);
   return out;
 }
 
-/** Kódy prvkov (nie object_ref) -> GUID: presné `objects.name`, potom IFC Name/Tag; viacznačné = chyba. */
+/** Element codes (not object_ref) -> GUID: exact `objects.name`, then IFC Name/Tag; ambiguous = error. */
 export async function resolveNamesToGuids(byName: string[], findNames: FindNames = findNamesInIfc): Promise<Map<string, string>> {
   const projectId = currentProjectId();
   if (byName.length === 0) return new Map();
@@ -149,7 +149,7 @@ export async function resolveNamesToGuids(byName: string[], findNames: FindNames
   return pickUnique(named);
 }
 
-/** objects.id -> aktívny IFC GUID pre mapu cieľ -> objects.id. */
+/** objects.id -> active IFC GUID for the map goal -> objects.id. */
 async function guidsOfObjects(idByTarget: Map<string, string>): Promise<Map<string, string>> {
   const supabase = getSupabaseAdmin();
   const ids = [...new Set(idByTarget.values())];

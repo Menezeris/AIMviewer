@@ -33,22 +33,22 @@ import { resolveStorey } from "./storey";
 import { MODEL_ACTIONS, OPS, QUERY_MODES, type ModelAction } from "./tool-defs";
 
 /**
- * Tools IFC motora pre MCP konektor (D-084, fáza 1): `ifc_*` nad IFC súbormi
- * federácie cez `@ifc-lite/mcp`, výsledky prepojené na graf AIM cez GUID.
- * Len čítanie. Odpovedajú na to, čo je v súbore (aj to, čo ETL nenaimportovalo),
- * číselné porovnania hodnôt psetov a IDS kontrolu ad hoc; otázky o grafe AIM
- * (dokumenty, zodpovednosti, uložené IDS behy) patria DB tools.
+ * IFC engine tools for the MCP connector (D-084, phase 1): `ifc_*` over the IFC files
+ * of the federation via `@ifc-lite/mcp`, results linked to the AIM graph via GUID.
+ * Read only. They answer what is in the file (also what the ETL did not import),
+ * numeric comparisons of pset values and an ad hoc IDS check; questions about the AIM graph
+ * (documents, responsibilities, stored IDS runs) belong to the DB tools.
  */
 
 const MAX_RESULT_CHARS = 20_000;
 export const ENGINE_VERSION = "@ifc-lite/mcp@0.27.0";
-/** Operátory, ktoré vie aj selektor (ďalšie podmienky `where` okrem prvej). */
+/** Operators that the selector also supports (further `where` conditions besides the first). */
 const SELECTOR_OPS = new Set(["=", "!=", ">", "<", ">=", "<="]);
 const BULK_PAGE = 1000;
 const NAME_RE = /^[A-Za-z0-9_]+$/;
 export const IFC_GUID_RE = /^[0-9A-Za-z_$]{22}$/;
 
-/** Druhý koniec odvodenej väzby prvok <-> priestor (D-167); `direction` je z pohľadu cieľa ako v `ifc_relations`. */
+/** The other end of a derived element <-> space link (D-167); `direction` is from the target's point of view as in `ifc_relations`. */
 export interface SpatialLink {
   direction: "forward" | "inverse";
   global_id: string;
@@ -63,30 +63,30 @@ export interface EngineDeps {
   resolveTargets: (targets: string[]) => Promise<Map<string, string>>;
   env?: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
-  /** Revízie modelov z DB (D-109); bez nej `ifc_models` revíziu nevracia. */
+  /** Model revisions from the DB (D-109); without it `ifc_models` does not return the revision. */
   revisions?: RevisionSource;
-  /** IDS dokumenty z DB (D-162); bez nich `ifc_ids_validate` berie len `IDS_SOURCES`. */
+  /** IDS documents from the DB (D-162); without them `ifc_ids_validate` takes only `IDS_SOURCES`. */
   ids?: IdsStore;
-  /** GUID prvku -> názov systému z grafu AIM (D-164, `clash group_by=system`). */
+  /** Element GUID -> system name from the AIM graph (D-164, `clash group_by=system`). */
   systems?: (guids: string[]) => Promise<Map<string, string>>;
-  /** Odvodené IfcRelReferencedInSpatialStructure z grafu AIM (D-167); bez nich `ifc_relations` vracia len hrany zo súboru. */
+  /** Derived IfcRelReferencedInSpatialStructure from the AIM graph (D-167); without them `ifc_relations` returns only edges from the file. */
   spatialLinks?: (guid: string) => Promise<SpatialLink[]>;
-  /** Testy, behy a stav kolízií z DB (D-164); bez nich `clash save`, `compare`, `review` a `save=true` nejdú. */
+  /** Tests, runs and clash status from the DB (D-164); without them `clash save`, `compare`, `review` and `save=true` do not work. */
   clash?: ClashStore;
-  /** BCF vrstva pre `clash bcf create=true` (D-164, D-099). */
+  /** BCF layer for `clash bcf create=true` (D-164, D-099). */
   bcf?: ClashBcfPort;
-  /** Živý viewer pre `clash open` a `from_viewer` (D-164); bez neho tieto akcie povedia, že viewer nie je nastavený. */
+  /** Live viewer for `clash open` and `from_viewer` (D-164); without it these actions say the viewer is not set up. */
   clashViewer?: ClashViewerDeps;
-  /** Stropy behu `clash` (D-164); len testy. */
+  /** Ceilings of a `clash` run (D-164); tests only. */
   clashLimits?: { maxPairs?: number; budgetMs?: number };
-  /** Uloženie behu overenia výmer (D-185, `ifc_measure verify=true save=true`); bez neho sa beh neukladá. */
+  /** Storing a quantity verification run (D-185, `ifc_measure verify=true save=true`); without it the run is not stored. */
   verification?: VerificationStore;
 }
 
 export interface EngineExecution {
   content: string;
   isError: boolean;
-  /** Príkazy pre živý viewer (kóta `ifc_measure show`, D-124); route ich pošle ako akcie DB tools. */
+  /** Commands for the live viewer (dimension `ifc_measure show`, D-124); the route sends them as actions of the DB tools. */
   actions?: AskAction[];
 }
 
@@ -116,7 +116,7 @@ interface Where {
   name: string;
   op: string;
   value?: unknown;
-  /** IFC atribút entity (OverallWidth, LongName...) namiesto psetu (D-118). */
+  /** IFC attribute of the entity (OverallWidth, LongName...) instead of a pset (D-118). */
   attribute?: string;
 }
 
@@ -151,7 +151,7 @@ function parseWhere(raw: unknown): Where[] {
   });
 }
 
-/** where -> argumenty query_entities: prvá podmienka na pset ako `property`, ďalšie ako selektor; atribúty filtruje `scanAttributes`. */
+/** where -> query_entities arguments: the first condition on a pset as `property`, the others as a selector; attributes are filtered by `scanAttributes`. */
 function whereArgs(all: Where[]): Record<string, unknown> {
   const where = all.filter((w) => !w.attribute);
   if (where.length === 0) return {};
@@ -165,7 +165,7 @@ function whereArgs(all: Where[]): Record<string, unknown> {
 
 const attributeConditions = (where: Where[]) => where.filter((w) => w.attribute);
 
-/** Porovnanie hodnoty IFC atribútu: čísla číselne, text bez ohľadu na veľkosť písmen. */
+/** Comparison of an IFC attribute value: numbers numerically, text case-insensitively. */
 export function attributeMatches(actual: unknown, w: Pick<Where, "op" | "value">): boolean {
   const empty = actual === null || actual === undefined || actual === "";
   if (w.op === "exists") return !empty;
@@ -194,13 +194,13 @@ export function attributeMatches(actual: unknown, w: Pick<Where, "op" | "value">
   }
 }
 
-/** Strop kandidátov na filter atribútov (atribúty čítame po stránkach cez get_entities_bulk). */
+/** Ceiling of candidates for the attribute filter (attributes are read by pages via get_entities_bulk). */
 const MAX_ATTRIBUTE_SCAN = 20_000;
 
 /**
- * Prvky, ktoré spĺňajú aj podmienky na IFC atribúty (D-118). Upstream selektor
- * atribúty nevie, preto kandidátov z query_entities (triedy, psety, podlažie)
- * dofiltrujeme podľa `attributes` z get_entities_bulk.
+ * Elements that also satisfy the conditions on IFC attributes (D-118). The upstream selector
+ * does not know attributes, so the candidates from query_entities (classes, psets, storey)
+ * are further filtered by `attributes` from get_entities_bulk.
  */
 async function scanAttributes(
   session: EngineSession,
@@ -249,7 +249,7 @@ export async function modelsFor(ids: string[], deps: EngineDeps): Promise<{ mode
   return { models, revision };
 }
 
-/** Podpis vstupu (D-183) z `modelsFor().revision`: modely so známou revíziou archívu. */
+/** Input signature (D-183) from `modelsFor().revision`: models with a known archive revision. */
 export function revisionStamp(revision: Record<string, unknown>, ids: string[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const id of ids) {
@@ -291,7 +291,7 @@ async function ifcModels(input: Record<string, unknown>, deps: EngineDeps): Prom
   const loaded = new Map(cacheSnapshot().map((c) => [c.key, c]));
   const sources = (deps.sources ?? requestIfcModels)();
   const history = input.history === undefined ? 0 : clamp(input.history, 1, 20, 5);
-  // Kľúč revízie = meno súboru v buckete (ASR.ifc -> ASR), nie id modelu (D-086).
+  // Revision key = file name in the bucket (ASR.ifc -> ASR), not the model id (D-086).
   // Models from the DB carry their code (D-189/D-190: the path may be a container uuid); env overrides by file name.
   const keyOf = (m: { id: string; url: string; containerId?: string }) => (m.containerId ? m.id : (modelKey(m.url) ?? m.id));
   let rows: ModelRevisionRow[] = [];
@@ -363,9 +363,9 @@ async function ifcQuery(input: Record<string, unknown>, deps: EngineDeps): Promi
 }
 
 /**
- * GlobalId -> expressId produktov modelu. Hľadanie podľa GlobalId v balíku
- * prechádza všetky entity súboru (~1 s na ASR pri každom volaní); parsovaný
- * store sa nemení, takže index sa postaví raz na store a drží s ním.
+ * GlobalId -> expressId of model products. A lookup by GlobalId in the bundle
+ * walks all entities of the file (~1 s on ASR per call); the parsed
+ * store does not change, so the index is built once per store and lives with it.
  */
 const guidIndexes = new WeakMap<object, Map<string, number>>();
 export async function guidIndex(session: EngineSession, m: EngineModel): Promise<Map<string, number>> {
@@ -416,7 +416,7 @@ async function ifcGet(input: Record<string, unknown>, deps: EngineDeps): Promise
     }
     let hit: Record<string, unknown> | null = null;
     const loc = where.get(gid);
-    // Mimo indexu (napr. typ prvku) ostáva pomalšia cesta cez GlobalId.
+    // Outside the index (e.g. an element type) the slower GlobalId path remains.
     const candidates = loc ? [{ modelId: loc.modelId, arg: { express_id: loc.expressId } }] : models.map((m) => ({ modelId: m.id, arg: { global_id: gid } }));
     for (const c of candidates) {
       const res = await session.call("get_entity", { model_id: c.modelId, ...c.arg, include });
@@ -472,7 +472,7 @@ async function ifcPropertyValues(input: Record<string, unknown>, deps: EngineDep
   const res = structured<{ values: Array<{ value: string; count: number }>; total: number }>(
     await session.call("properties_unique", { model_id: modelId, type, pset, property: name }),
   );
-  // Upstream `properties_unique` číta len psety; Qto (IfcElementQuantity) vráti ako "(missing)" (#96).
+  // Upstream `properties_unique` reads only psets; it returns Qto (IfcElementQuantity) as "(missing)" (#96).
   let values = res.values;
   let source: "pset" | "qto" = "pset";
   if (res.total > 0 && values.every((v) => v.value === MISSING)) {
@@ -505,7 +505,7 @@ async function ifcPropertyValues(input: Record<string, unknown>, deps: EngineDep
 
 const MISSING = "(missing)";
 
-/** Histogram hodnoty z množstiev (Qto) pre všetky prvky typu - po stránkach, ako guidIndex. */
+/** Histogram of a value from quantities (Qto) for all elements of a type - by pages, like guidIndex. */
 async function quantityValues(
   session: EngineSession,
   modelId: string,
@@ -534,7 +534,7 @@ async function quantityValues(
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value, count]) => ({ value, count }));
 }
 
-/** Výsledok `ifc_search` ako objekt - používa ho aj kombinované `search_all` (D-095). */
+/** Result of `ifc_search` as an object - also used by the combined `search_all` (D-095). */
 export async function ifcSearchResult(input: Record<string, unknown>, deps: EngineDeps) {
   const text = str(input.text);
   if (text.length < 2) throw new InputError("text musí mať aspoň 2 znaky.");
@@ -549,7 +549,7 @@ export async function ifcSearchResult(input: Record<string, unknown>, deps: Engi
   const session = await openEngineSession(models);
   const index = (await Promise.all(models.map((m) => searchIndex(session, m)))).flat();
   const allowed = types.length > 0 ? new Map(await Promise.all(models.map(async (m) => [m.id, await idsOfTypes(session, m, types)] as const))) : undefined;
-  // Kód prvku (SD04.0001) presne podľa mena alebo Tagu bez prechodu celého indexu (D-102).
+  // Element code (SD04.0001) exactly by name or Tag without walking the whole index (D-102).
   const exact = looksLikeCode(text)
     ? exactNameHits((await Promise.all(models.map((m) => nameIndex(session, m)))).flatMap((ni) => ni.get(nameKey(text)) ?? []), allowed)
     : [];
@@ -588,14 +588,14 @@ interface IdsSpec {
   }>;
 }
 
-/** Strop riadkov jedného uloženého behu (zápis ide po dávkach, route má časový limit). */
+/** Row ceiling of one stored run (writing goes in batches, the route has a time limit). */
 const MAX_SAVED_RESULTS = 50_000;
 
 interface ResolvedIds {
   xml: string;
   sha256: string;
   ref: { id: string; sha256: string; origin?: string; version?: number };
-  /** Len IDS z DB: verzia, na ktorú sa viaže uložený beh. */
+  /** IDS from the DB only: the version the stored run is bound to. */
   stored?: { versionId: string; code: string; title: string | null; idsVersion: string | null; source: string; version: number };
 }
 
@@ -725,7 +725,7 @@ async function ifcIdsValidate(input: Record<string, unknown>, deps: EngineDeps):
   });
 }
 
-/** `ifc_models` action -> meno toolu balíka, alebo null pre vlastné revisions (D-115). */
+/** `ifc_models` action -> tool name of the bundle, or null for own revisions (D-115). */
 function modelActionUpstream(raw: unknown): string | null {
   if (raw === undefined || raw === null || raw === "") return null;
   const action = str(raw);
@@ -733,7 +733,7 @@ function modelActionUpstream(raw: unknown): string | null {
   return MODEL_ACTIONS[action as ModelAction];
 }
 
-/** Vstup prevzatého toolu: `model` z ifc_models je `model_id` balíka. */
+/** Input of a taken-over tool: `model` from ifc_models is the bundle `model_id`. */
 function modelActionArgs(input: Record<string, unknown>): Record<string, unknown> {
   const { model, model_id, type, include_inherited } = input;
   return {
@@ -744,16 +744,16 @@ function modelActionArgs(input: Record<string, unknown>): Record<string, unknown
 }
 
 /**
- * `ifc_query` s režimom (D-115): list = dotaz na prvky, count = počet, values =
- * histogram hodnôt, material = prvky s materiálom; každý režim má vlastný
- * handler, zlúčené je len meno a schéma.
+ * `ifc_query` with a mode (D-115): list = query for elements, count = count, values =
+ * histogram of values, material = elements with a material; each mode has its own
+ * handler, only the name and schema are merged.
  */
 async function ifcQueryMode(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
   const mode = str(input.mode) || "list";
   if (!(QUERY_MODES as readonly string[]).includes(mode)) throw new InputError(`mode: ${QUERY_MODES.join(" | ")}.`);
   if (str(input.material)) {
     if (mode === "values") throw new InputError("material sa nekombinuje s mode=values.");
-    // count = ten istý výpočet (total a skladby platia za všetky), len bez zoznamu prvkov.
+    // count = the same computation (total and assemblies apply to all), only without the element list.
     if (mode === "count") {
       const full = JSON.parse(await ifcMaterialLayers({ ...input, limit: 1 }, deps)) as Record<string, unknown>;
       for (const key of ["items", "show_in_3d", "truncated", "note"]) delete full[key];
@@ -761,7 +761,7 @@ async function ifcQueryMode(input: Record<string, unknown>, deps: EngineDeps): P
     }
     return ifcMaterialLayers(input, deps);
   }
-  // count a values majú jednu triedu; prijmú aj starší tvar ifc_type.
+  // count and values have one class; they also accept the older ifc_type form.
   const one = { ...input, ifc_type: input.ifc_type ?? sanitizeTypes(input.ifc_types)[0] };
   if (mode === "count") return ifcCount(one, deps);
   if (mode === "values") return ifcPropertyValues(one, deps);
@@ -769,8 +769,8 @@ async function ifcQueryMode(input: Record<string, unknown>, deps: EngineDeps): P
 }
 
 /**
- * `ifc_measure` s qto=true (D-115): plocha a objem z Qto v súbore cez prevzaté
- * `geometry_area` / `geometry_volume`, bez tesselácie geometrie.
+ * `ifc_measure` with qto=true (D-115): area and volume from Qto in the file via the taken-over
+ * `geometry_area` / `geometry_volume`, without tessellating the geometry.
  */
 async function ifcQto(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
   const list = Array.isArray(input.items) ? input.items.map((v) => str(v)).filter(Boolean) : [];
@@ -834,8 +834,8 @@ async function ifcQto(input: Record<string, unknown>, deps: EngineDeps): Promise
   });
 }
 
-/** Vykoná `ifc_*` tool. Chyby vstupu a motora sa vracajú ako výsledok toolu, nie výnimka. */
-/** Počet kót na plátne do odpovede; nad limit jednej správy odporučí `clear` (neodmieta). */
+/** Runs an `ifc_*` tool. Input and engine errors are returned as a tool result, not an exception. */
+/** Number of dimensions on the canvas into the reply; above the limit of one message it recommends `clear` (does not refuse). */
 function withCanvasTally(content: string, total: number): string {
   try {
     const out = JSON.parse(content) as Record<string, unknown>;
@@ -858,7 +858,7 @@ export async function execEngineTool(
     let content: string;
     switch (name) {
       case "ifc_models": {
-        // D-115: údaje o súbore z prevzatých tools balíka pod jedným menom.
+        // D-115: file data from the taken-over tools of the bundle under one name.
         const upstream = modelActionUpstream(input.action);
         if (upstream) return await execPassthroughTool(passthroughName(upstream), modelActionArgs(input), deps);
         content = await ifcModels(input, deps);
@@ -878,20 +878,20 @@ export async function execEngineTool(
         break;
       case "ifc_measure": {
         if (input.clear === true) {
-          // D-152: kóty a čiara trasy od Claude preč, merania používateľa ostanú.
+          // D-152: dimensions and the route line from Claude are removed, the user's measurements stay.
           const { clearDimensionsAction } = await import("./measure-dimension");
           resetDimensionTally();
           return { content: JSON.stringify({ view: "kóty od Claude zmazané (aj čiara trasy; merania používateľa ostali)" }), isError: false, actions: [clearDimensionsAction()] };
         }
         if (input.route !== undefined) {
-          // show=true: čiara trasy pre viewer (D-137), príkaz poskladá route-line.
+          // show=true: route line for the viewer (D-137), the command is assembled by route-line.
           const line: Vec3[] | undefined = input.show === true ? [] : undefined;
           content = await (await import("./route")).ifcRoute(input, deps, line);
           if (line && line.length >= 2) return { content, isError: false, actions: [(await import("./route-line")).routeLineAction(line)] };
           break;
         }
         if (input.verify === true) {
-          // D-185: overenie výmer IfcSpace voči geometrii; show=true = zvislé kóty v ťažisku miestnosti.
+          // D-185: verification of IfcSpace quantities against geometry; show=true = vertical dimensions at the space centroid.
           const dims: MeasureSegment[] | undefined = input.show === true ? [] : undefined;
           content = await (await import("./space-verify-run")).ifcVerifySpaces(input, deps, dims);
           if (dims?.length) {
@@ -906,11 +906,11 @@ export async function execEngineTool(
           content = await ifcQto(input, deps);
           break;
         }
-        // show=true: kóty pre viewer (D-124) zbiera meranie, príkaz poskladá measure-dimension.
+        // show=true: dimensions for the viewer (D-124) are collected by the measurement, the command is assembled by measure-dimension.
         const dimensions: MeasureSegment[] | undefined = input.show === true ? [] : undefined;
         content = await (await import("./measure")).ifcMeasure(input, deps, dimensions);
         if (dimensions?.length) {
-          // D-170: kóty sa predvolene hromadia (keep), keep=false nahradí predošlé kóty od Claude.
+          // D-170: dimensions accumulate by default (keep), keep=false replaces the previous dimensions from Claude.
           const keep = input.keep !== false;
           const total = noteDimensions(dimensions.length, keep);
           const action = (await import("./measure-dimension")).dimensionAction(dimensions, keep);

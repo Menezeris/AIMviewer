@@ -7,9 +7,9 @@ import { openEngineSession, type EngineModel, type EngineUpstreamTool } from "./
 import type { EngineDeps, EngineExecution } from "./tools";
 
 /**
- * Vykonanie prevzatých tools (D-087): vstup ide do balíka bez úprav (len
- * kľúče z jeho schémy), výsledok sa vráti tak, ako ho balík dal, a GUIDy v
- * ňom sa doplnia o object_ref z AIM v samostatnom poli `aim`.
+ * Execution of taken-over tools (D-087): the input goes into the bundle unchanged (only
+ * keys from its schema), the result is returned as the bundle gave it, and the GUIDs in
+ * it are supplemented with the object_ref from AIM in a separate field `aim`.
  */
 
 const MAX_RESULT_CHARS = 20_000;
@@ -19,7 +19,7 @@ const GUID_KEYS = new Set(["globalId", "global_id", "GlobalId"]);
 const byName = new Map(PASSTHROUGH_TOOLS.map((t) => [passthroughName(t.upstream), t]));
 export const isPassthroughTool = (name: string) => byName.has(name);
 
-/** Všetky IFC GUIDy vo výsledku (podľa mena kľúča), bez opakovania. */
+/** All IFC GUIDs in a result (by key name), without repetition. */
 export function collectGuids(value: unknown, out = new Set<string>()): Set<string> {
   if (out.size >= MAX_AIM_GUIDS || value === null || typeof value !== "object") return out;
   if (Array.isArray(value)) {

@@ -6,23 +6,23 @@ import { ifcBox, toIfc, type Box, type MeshElement, type Vec3 } from "./measure"
 import type { Endpoint, NavData, NavStair, RouteResult } from "./route";
 
 /**
- * Čiara trasy vo vieweri (D-137): body cesty z `ifc_measure route` v IFC svete,
- * 1,6 m nad pochôdznou plochou. Plocha = najvyšší povrch dosky, krytiny
- * alebo rampy pod bodom (zvislý lúč v okne okolo podlahy miestnosti),
- * bez zásahu = spodok IfcSpace. Čiara ide stredom každých dverí, v miestnosti
- * priamo (vzorky každých 0,5 m kopírujú zmenu úrovne podlahy) a po schodisku
- * rovnobežne s čiarou nábehových hrán stupňov (plynulo šikmo, aj na točitom
- * ramene), na podestách vodorovne.
+ * Route line in the viewer (D-137): path points from `ifc_measure route` in the IFC world,
+ * 1.6 m above the walking surface. Surface = the highest surface of a slab, covering
+ * or ramp under the point (vertical ray in a window around the space floor),
+ * without a hit = bottom of the IfcSpace. The line goes through the centre of every door, in a space
+ * straight (samples every 0.5 m follow the change of floor level) and along a stair
+ * parallel to the line of the tread nosings (smoothly sloped, also on a winding
+ * flight), horizontally on landings.
  */
 
 export const WALK_HEIGHT_M = 1.6;
 /**
- * Podlaha miestnosti: doska, krytina (podlahová; stropná je pod doskou a nevyhrá), rampa. Schodisko
- * len vo vlastnom úseku: priamka od dverí k ramenu ide v pôdoryse aj nad otvorom schodiska a nesmie
- * klesnúť na stupne pod podlahou.
+ * Floor of a space: slab, covering (floor covering; a ceiling covering is under the slab and does not win), ramp. A stair
+ * only in its own section: the straight line from the door to the flight runs in plan also above the stair opening and must not
+ * drop to the treads below the floor.
  */
 const FLOOR_TYPES = /^IFC(SLAB|COVERING|RAMP|RAMPFLIGHT)$/i;
-/** Okno lúča okolo referenčnej výšky: o toľko pod ňou a nad ňou sa hľadá plocha. */
+/** Ray window around the reference height: the surface is searched this far below and above it. */
 const BELOW = 0.6;
 const ABOVE = 0.4;
 const ROOM_STEP = 0.5;
@@ -31,7 +31,7 @@ const SIMPLIFY = 0.02;
 
 interface Surface {
   box: Box;
-  /** Trojuholníky v IFC rámci meshu (x, y, z po deviatich). */
+  /** Triangles in the IFC frame of the mesh (x, y, z, nine per triangle). */
   tris: Float64Array;
 }
 
@@ -45,7 +45,7 @@ function surfaceOf(e: MeshElement): Surface {
   return { box: ifcBox(e.bounds), tris: out };
 }
 
-/** Najvyšší povrch pod bodom (x, y) s výškou v [lo, hi], inak null. */
+/** The highest surface under the point (x, y) with a height in [lo, hi], otherwise null. */
 export function surfaceZ(list: readonly Surface[], x: number, y: number, lo: number, hi: number): number | null {
   let best: number | null = null;
   for (const s of list) {
@@ -56,7 +56,7 @@ export function surfaceZ(list: readonly Surface[], x: number, y: number, lo: num
     for (let i = 0; i + 8 < t.length; i += 9) {
       const [ax, ay, az, bx, by, bz, cx, cy, cz] = t.subarray(i, i + 9);
       const d = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
-      if (Math.abs(d) < 1e-12) continue; // zvislá plocha (podstupnica, stena)
+      if (Math.abs(d) < 1e-12) continue; // vertical surface (riser, wall)
       const l1 = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / d;
       const l2 = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / d;
       const l3 = 1 - l1 - l2;
@@ -68,7 +68,7 @@ export function surfaceZ(list: readonly Surface[], x: number, y: number, lo: num
   return best;
 }
 
-/** Vzdialenosť bodu od úsečky (3D). */
+/** Distance of a point from a segment (3D). */
 function segDist(p: Vec3, a: Vec3, b: Vec3): number {
   const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
   const len2 = d[0] ** 2 + d[1] ** 2 + d[2] ** 2;
@@ -76,7 +76,7 @@ function segDist(p: Vec3, a: Vec3, b: Vec3): number {
   return Math.hypot(p[0] - a[0] - d[0] * t, p[1] - a[1] - d[1] * t, p[2] - a[2] - d[2] * t);
 }
 
-/** Douglas-Peucker: body bližšie ako `tol` k zjednodušenej čiare sa vynechajú. */
+/** Douglas-Peucker: points closer than `tol` to the simplified line are dropped. */
 export function simplify(pts: readonly Vec3[], tol: number): Vec3[] {
   if (pts.length <= 2) return [...pts];
   const keep = new Uint8Array(pts.length);
@@ -100,7 +100,7 @@ export function simplify(pts: readonly Vec3[], tol: number): Vec3[] {
 
 const median = (v: number[]) => [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)] ?? 0;
 
-/** Stupeň: horná vodorovná plocha ramena (ťažisko v pôdoryse, výška, plocha). */
+/** Tread: upper horizontal surface of a flight (centroid in plan, height, area). */
 interface Tread {
   x: number;
   y: number;
@@ -109,10 +109,10 @@ interface Tread {
 }
 
 /**
- * Horné vodorovné plochy prvku zoskupené podľa výšky (1 cm): stupne a podesty.
- * Horná = nad ňou z prvku už nič nie je (spodná plocha stupňa ani päta stĺpa nie).
- * Malé plochy (vrch stredového stĺpa točitého schodiska, madlo) pod 50 % mediánu
- * plôch sa vynechajú (FZK-Haus: stĺp 0,031 m², stupeň 0,098 m²).
+ * Upper horizontal surfaces of an element grouped by height (1 cm): treads and landings.
+ * Upper = nothing of the element is above it (the bottom surface of a tread and the foot of a column are not).
+ * Small surfaces (top of the central column of a spiral stair, handrail) under 50 % of the median
+ * area are dropped (FZK-Haus: column 0.031 m2, tread 0.098 m2).
  */
 export function treadsOf(s: Surface): Tread[] {
   const faces: Tread[] = [];
@@ -141,13 +141,13 @@ export function treadsOf(s: Surface): Tread[] {
 }
 
 /**
- * Referenčná čiara ramena (rozhodnutie Samuela v #223): spája nábehové hrany
- * stupňov, takže je šikmá so sklonom ramena; na podeste a hornom podlaží vodorovne.
- * Nábeh stupňa = jeho predná hrana: od ťažiska späť proti smeru chôdze o polovicu
- * hĺbky (hĺbka = plocha / šírka ramena, šírka = medián plochy / medián vzdialenosti
- * stredov; podesta tak vyjde hlbšia). Začína pätou o jeden stupeň pred prvým
- * nábehom (výška podlahy), na podeste vedie vodorovne k päte ďalšieho ramena.
- * Body sú vo výške vrchu stupňa (bez 1,6 m).
+ * Reference line of a flight (decision by Samuel in #223): connects the nosings of the
+ * treads, so it is sloped with the slope of the flight; horizontal on a landing and the upper storey.
+ * Tread nosing = its front edge: from the centroid back against the walking direction by half
+ * the depth (depth = area / flight width, width = median area / median distance of
+ * centres; a landing thus comes out deeper). It starts at the foot one tread before the first
+ * nosing (floor height), on a landing it runs horizontally to the foot of the next flight.
+ * Points are at the height of the tread top (without 1.6 m).
  */
 export function pitchLine(treads: readonly Tread[]): Vec3[] {
   if (treads.length < 2) return [];
@@ -160,7 +160,7 @@ export function pitchLine(treads: readonly Tread[]): Vec3[] {
     const d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
     return [(b[0] - a[0]) / d, (b[1] - a[1]) / d];
   };
-  // Smer chôdze pri stupni i: od predošlého stredu k jeho (prvý stupeň: k ďalšiemu).
+  // Walking direction at tread i: from the previous centre to its own (first tread: to the next).
   const dir = (i: number) => (i === 0 ? unit(xy(treads[0]), xy(treads[1])) : unit(xy(treads[i - 1]), xy(treads[i])));
   const depth = (t: Tread) => (width > 1e-6 ? t.area / width : going);
   const nosing = treads.map((t, i): Vec3 => {
@@ -174,22 +174,22 @@ export function pitchLine(treads: readonly Tread[]): Vec3[] {
   };
   const line: Vec3[] = [foot(0), nosing[0]];
   for (let i = 1; i < treads.length; i++) {
-    // Podesta: medzi nábehmi viac ako 1,5 stupňa -> vodorovne k päte ďalšieho ramena.
+    // Landing: more than 1.5 treads between nosings -> horizontally to the foot of the next flight.
     const gap = Math.hypot(nosing[i][0] - nosing[i - 1][0], nosing[i][1] - nosing[i - 1][1]);
     if (gap > 1.5 * going) line.push(foot(i));
     line.push(nosing[i]);
   }
-  // Horná podesta v prvku: vodorovne do jej stredu.
+  // Upper landing in the element: horizontally to its centre.
   const top = treads[treads.length - 1];
   if (depth(top) > 1.5 * going) line.push([top.x, top.y, top.z]);
   return line;
 }
 
 /**
- * Čiara po schodisku zdola nahor: referenčná čiara ramena (`pitchLine`), plynulo
- * šikmá, na podestách vodorovne. Platí pre rovné aj točité ramená. Ramená (inak
- * časti schodiska) v poradí podľa výšky. Prvok bez vodorovných plôch: os obálky
- * v smere stúpania, výška = vrch pod bodom.
+ * Line along a stair from bottom to top: the reference line of a flight (`pitchLine`), smoothly
+ * sloped, horizontal on landings. Valid for straight and winding flights. Flights (otherwise
+ * parts of the stair) in order by height. An element without horizontal surfaces: the envelope axis
+ * in the direction of the rise, height = top under the point.
  */
 function stairLine(st: NavStair, meshes: Map<string, MeshElement>): Vec3[] {
   const runs = (st.flights.length > 0 ? st.flights : st.parts).map((g) => meshes.get(g)).filter((e): e is MeshElement => !!e);
@@ -215,7 +215,7 @@ function stairLine(st: NavStair, meshes: Map<string, MeshElement>): Vec3[] {
       return out;
     };
     const rise = (l: Vec3[]) => (l.length > 1 ? Math.abs(l[l.length - 1][2] - l[0][2]) : -1);
-    // Smer stúpania = os, po ktorej sa výška mení viac (nie dlhšia strana obálky).
+    // Direction of the rise = the axis along which the height changes more (not the longer side of the envelope).
     const [ax, ay] = [sample(0), sample(1)];
     let line = rise(ax) >= rise(ay) ? ax : ay;
     if (line.length < 2) continue;
@@ -227,8 +227,8 @@ function stairLine(st: NavStair, meshes: Map<string, MeshElement>): Vec3[] {
 }
 
 /**
- * Body čiary trasy v IFC svete (m, Z hore) zo štartu cez kroky trasy do cieľa
- * (`to` = null pri úniku: cieľom sú posledné dvere krokov).
+ * Route line points in the IFC world (m, Z up) from the start through the route steps to the goal
+ * (`to` = null for escape: the goal is the last door of the steps).
  */
 export function routeLine(nav: NavData, meshes: Map<string, MeshElement>, from: Endpoint, route: RouteResult, to: Endpoint | null): Vec3[] {
   const walk: Surface[] = [];
@@ -241,7 +241,7 @@ export function routeLine(nav: NavData, meshes: Map<string, MeshElement>, from: 
   const zRef = (space: string | null) => (space ? nav.spaces.get(space)?.zMin : undefined);
 
   const pts: Vec3[] = [];
-  /** Do miestnosti `space` od posledného bodu k `next` (vzorky kopírujú podlahu). */
+  /** Into the space `space` from the last point to `next` (samples follow the floor). */
   const walkTo = (next: Vec3[], space: string | null) => {
     const p = pts[pts.length - 1];
     const ref = zRef(space);
@@ -253,7 +253,7 @@ export function routeLine(nav: NavData, meshes: Map<string, MeshElement>, from: 
     pts.push(...next);
   };
   const endpointAt = (ep: Endpoint): Vec3 | null => {
-    if (ep.kind === "door") return null; // dvere pridá ich krok
+    if (ep.kind === "door") return null; // the door is added by its step
     const s = nav.spaces.get(ep.space)!;
     const xy = ep.kind === "space" ? s.center : ep.at;
     return floorAt(xy[0], xy[1], s.zMin);
@@ -290,7 +290,7 @@ export function routeLine(nav: NavData, meshes: Map<string, MeshElement>, from: 
   return out.map((p) => [p[0] + offset[0], p[1] + offset[1], p[2] + offset[2]]);
 }
 
-/** Príkaz pre živý viewer: čiara nahradí predošlú čiaru trasy. */
+/** Command for the live viewer: the line replaces the previous route line. */
 export function routeLineAction(points: readonly Vec3[]): AskAction {
   const pts: MeasurePoint[] = points.map(([x, y, z]) => ({ x, y, z }));
   return {

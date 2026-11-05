@@ -1,19 +1,19 @@
 import { guid } from "./mini-building";
 
 /**
- * Mini budova pre trasu `ifc_measure route` (D-121). Pôdorys 10 x 4 m, výška
- * miestností 3 m, podlažia 0 a 3,5 m:
- * - 1NP: R1 (x 0-4), R2 (x 4-8), schodiskový priestor S1 (x 8-10);
- * - 2NP: R3 (x 0-8), schodiskový priestor S2 (x 8-10);
- * - dvere (stred y = 2): DX vonkajšie v R1 (x = 0, IsExternal), D1 R1|R2 (x = 4),
- *   DR karuselové vonkajšie v R2 (y = 0, x = 6, typ s OperationType REVOLVING),
- *   D2 R2|S1 (x = 8), D3 R3|S2 (x = 8, 2NP), DT na streche 2NP (vonkajšie, x = 0);
- * - schodisko ST v S1 (x 8,2-9,8, y 0,5-3,5, z 0-3,5) s ramenom 3 x 3,5 m;
- * - stôl DESK v R2 (stred x 6, y 1);
- * - čiara trasy (D-137): doska 1NP (vrch z = 0), podlahová krytina v R1 (x 0,1-3,9, vrch z = 0,05),
- *   doska 2NP len nad R3 (x 0-8, vrch z = 3,5; nad S2 nie je, tam platí spodok IfcSpace), rameno ST
- *   má 10 stupňov po 0,3 m (y 0,5 -> 3,5) a 0,35 m;
- * - hranice priestorov (IfcRelSpaceBoundary1stLevel) pre všetky dvere, DX a DT EXTERNAL.
+ * Mini building for the route `ifc_measure route` (D-121). Plan 10 x 4 m, space
+ * height 3 m, storeys 0 and 3.5 m:
+ * - 1NP: R1 (x 0-4), R2 (x 4-8), stairwell space S1 (x 8-10);
+ * - 2NP: R3 (x 0-8), stairwell space S2 (x 8-10);
+ * - doors (centre y = 2): DX external in R1 (x = 0, IsExternal), D1 R1|R2 (x = 4),
+ *   DR revolving external in R2 (y = 0, x = 6, type with OperationType REVOLVING),
+ *   D2 R2|S1 (x = 8), D3 R3|S2 (x = 8, 2NP), DT on the 2NP roof (external, x = 0);
+ * - stair ST in S1 (x 8.2-9.8, y 0.5-3.5, z 0-3.5) with a 3 x 3.5 m flight;
+ * - desk DESK in R2 (centre x 6, y 1);
+ * - route line (D-137): 1NP slab (top z = 0), floor covering in R1 (x 0.1-3.9, top z = 0.05),
+ *   2NP slab only above R3 (x 0-8, top z = 3.5; none above S2, there the bottom of the IfcSpace applies), flight ST
+ *   has 10 treads of 0.3 m (y 0.5 -> 3.5) and 0.35 m;
+ * - space boundaries (IfcRelSpaceBoundary1stLevel) for all doors, DX and DT EXTERNAL.
  */
 
 let next = 1000;
@@ -34,7 +34,7 @@ const units = add(`IFCUNITASSIGNMENT((${add("IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)
 
 type Extent = [number, number, number, number, number, number];
 
-/** Extrúzia obdĺžnika [x0,x1] x [y0,y1] od z0 do z1. */
+/** Rectangle extrusion [x0,x1] x [y0,y1] from z0 to z1. */
 function solid([x0, x1, y0, y1, z0, z1]: Extent) {
   const c = add(`IFCCARTESIANPOINT((${(x0 + x1) / 2},${(y0 + y1) / 2}))`);
   const prof = add(`IFCRECTANGLEPROFILEDEF(.AREA.,$,${add(`IFCAXIS2PLACEMENT2D(${c},$)`)},${x1 - x0},${y1 - y0})`);
@@ -42,13 +42,13 @@ function solid([x0, x1, y0, y1, z0, z1]: Extent) {
   return add(`IFCEXTRUDEDAREASOLID(${prof},${pos},${zUp},${z1 - z0})`);
 }
 
-/** Tvar z viacerých kvádrov (stupne ramena). */
+/** Shape from several boxes (flight treads). */
 function boxes(list: Extent[]) {
   const rep = add(`IFCSHAPEREPRESENTATION(${ctx},'Body','SweptSolid',(${list.map(solid).join(",")}))`);
   return add(`IFCPRODUCTDEFINITIONSHAPE($,$,(${rep}))`);
 }
 
-/** Kváder [x0,x1] x [y0,y1] x [z0,z1] ako extrúzia obdĺžnika. */
+/** Box [x0,x1] x [y0,y1] x [z0,z1] as a rectangle extrusion. */
 function box(x0: number, x1: number, y0: number, y1: number, z0: number, z1: number) {
   return boxes([[x0, x1, y0, y1, z0, z1]]);
 }
