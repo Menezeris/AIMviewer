@@ -25,7 +25,7 @@ export * from "@/lib/data/object-documents-core";
 const IN_CHUNK = 200;
 
 /** Uzly podľa id (dokumenty, nositelia), po dávkach kvôli dĺžke URL. */
-export async function fetchNodes(ids: Iterable<string>): Promise<ObjectDocumentNode[]> {
+export async function fetchNodes(projectId: string, ids: Iterable<string>): Promise<ObjectDocumentNode[]> {
   const unique = [...new Set(ids)];
   const supabase = getSupabaseAdmin();
   const out: ObjectDocumentNode[] = [];
@@ -33,6 +33,7 @@ export async function fetchNodes(ids: Iterable<string>): Promise<ObjectDocumentN
     const { data, error } = await supabase
       .from("objects")
       .select("id, object_type, object_ref, name")
+      .eq("project_id", projectId)
       .in("id", unique.slice(i, i + IN_CHUNK));
     if (error) throw new Error(error.message);
     out.push(...((data ?? []) as ObjectDocumentNode[]));
@@ -42,18 +43,20 @@ export async function fetchNodes(ids: Iterable<string>): Promise<ObjectDocumentN
 
 /** Dokumenty objektu s cestou a uzly, ktoré sa pri tom načítali. */
 export async function fetchObjectDocuments(
+  projectId: string,
   objectId: string,
 ): Promise<{ documents: ObjectDocument[]; nodes: ObjectDocumentNode[] }> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("v_object_documents")
     .select("document_id, page, via, via_id, via_nearest_id, depth")
+    .eq("project_id", projectId)
     .eq("object_id", objectId)
     .order("depth")
     .limit(500);
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as ViewRow[];
-  const nodes = await fetchNodes(
+  const nodes = await fetchNodes(projectId, 
     rows.flatMap((r) => [r.document_id, r.via_id, r.via_nearest_id].filter(Boolean) as string[]),
   );
   return { documents: dedupeObjectDocuments(rows, new Map(nodes.map((n) => [n.id, n]))), nodes };
@@ -77,6 +80,7 @@ export interface DocumentObjectRow {
  * presahuje strop odpovede PostgREST (1000 riadkov).
  */
 export async function fetchDocumentObjectRows(
+  projectId: string,
   doc: { id: string; object_type: string },
   page?: number,
 ): Promise<DocumentObjectRow[]> {
@@ -86,6 +90,7 @@ export async function fetchDocumentObjectRows(
     let q = supabase
       .from("v_object_documents")
       .select("object_id, object_type, via, via_id, depth, page")
+      .eq("project_id", projectId)
       .eq(column, doc.id);
     if (page) q = q.eq("page", page);
     return q
@@ -105,6 +110,7 @@ export async function fetchDocumentObjectRows(
  * podmienka zoznamu.
  */
 export async function fetchDocumentClassifications(
+  projectId: string,
   documentIds: readonly string[],
 ): Promise<Map<string, DocumentClassification>> {
   const empty = new Map<string, DocumentClassification>();
@@ -115,6 +121,7 @@ export async function fetchDocumentClassifications(
     const { data, error } = await supabase
       .from("rel_external_reference_relationship")
       .select("from_id, to_id")
+      .eq("project_id", projectId)
       .in("from_id", documentIds.slice(i, i + IN_CHUNK))
       .is("valid_until", null);
     if (error) return empty;
@@ -147,8 +154,8 @@ export async function fetchDocumentClassifications(
 }
 
 /** Typ informácie dokumentov (ISO 19650), bez druhu média (D-104, D-131). */
-export async function fetchDocumentTypes(documentIds: readonly string[]): Promise<Map<string, DocumentType>> {
+export async function fetchDocumentTypes(projectId: string, documentIds: readonly string[]): Promise<Map<string, DocumentType>> {
   const out = new Map<string, DocumentType>();
-  for (const [id, c] of await fetchDocumentClassifications(documentIds)) if (c.type) out.set(id, c.type);
+  for (const [id, c] of await fetchDocumentClassifications(projectId, documentIds)) if (c.type) out.set(id, c.type);
   return out;
 }

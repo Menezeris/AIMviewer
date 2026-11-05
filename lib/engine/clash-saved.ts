@@ -4,7 +4,7 @@ import { clashReviewKey, compareClashRevisions, type Clash, type ClashResult } f
 
 import type { ClashCoverage, ClashResultRow, ClashReviewRow, ClashRunRow, ClashStore, ClashTestRow, ClashTestWrite, ReviewStatus } from "../clash/types";
 import { currentRevisions, describeDrift, revisionFields, staleOf, stampOf, type RevisionStamp } from "../clash/revisions";
-import { getIfcModels } from "../data/ifc-models";
+import { requestIfcModels } from "../project/request-models";
 
 import {
   CLASH_ENGINE,
@@ -32,7 +32,7 @@ import {
   CLASH_BUCKETS,
   CLASH_GROUPS,
   CLASH_STATES,
-  DEFAULT_TESTS,
+  defaultTestsFor,
   findTest,
   type ClashBucket,
   type ClashGroupBy,
@@ -166,7 +166,7 @@ export async function execList(input: Record<string, unknown>, deps: EngineDeps)
   const rows = deps.clash ? await deps.clash.listTests() : [];
   const byCode = new Map(rows.map((r) => [r.code, r]));
   const entries: Array<{ test: ClashTest; row?: ClashTestRow }> = [
-    ...DEFAULT_TESTS.map((t) => ({ test: t, row: byCode.get(t.code) })),
+    ...defaultTestsFor((deps.sources ?? requestIfcModels)().map((m) => m.id)).map((t) => ({ test: t, row: byCode.get(t.code) })),
     ...rows.filter((r) => r.origin !== "default").map((r) => ({ test: testFromRow(r), row: r })),
   ];
   const memory = memoryRuns().map((r) => ({ run_id: r.id, ...(r.saved ? { saved_run_id: r.saved.id } : {}), test: r.spec.name, total: r.result.clashes.length, created_at: r.createdAt }));
@@ -207,7 +207,7 @@ export async function execSave(input: Record<string, unknown>, deps: EngineDeps)
   if (!CODE_RE.test(code)) throw new InputError("Kód testu: písmená, čísla, . _ - (max 80, začína písmenom alebo číslom).");
   if (!existing && !ref && (await store.testByCode(code))) throw new InputError(`Kód ${code} už existuje: zadaj iný test (kód), alebo ten istý test (test=${code}) na úpravu.`);
   const spec = parseSpec({ ...input, test: "" }, existing ? testFromRow(existing) : undefined);
-  const known = (deps.sources ?? getIfcModels)().map((m) => m.id);
+  const known = (deps.sources ?? requestIfcModels)().map((m) => m.id);
   for (const side of [spec.a, spec.b]) {
     if (side?.model && !known.includes(side.model)) throw new InputError(`Model ${side.model} nie je vo federácii (${known.join(", ")}).`);
   }

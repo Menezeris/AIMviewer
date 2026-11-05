@@ -1,9 +1,7 @@
 import "server-only";
 
-import { unstable_cache } from "next/cache";
-
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { AIM_CACHE } from "@/lib/data/constants";
+import { cachedProjectRead } from "@/lib/data/revalidate";
 import { fetchAllPages } from "@/lib/data/pagination";
 import { fetchGuidMap } from "@/lib/data/ifc";
 import { buildDecorations, type TreeDecorations } from "@/lib/data/decoration-counts";
@@ -15,16 +13,17 @@ import { buildDecorations, type TreeDecorations } from "@/lib/data/decoration-co
  * Stránkovane (PostgREST cap 1000) a cachované (ISR tag `aim`, D-030).
  */
 
-async function fetchTreeDecorationsImpl(): Promise<TreeDecorations> {
+async function fetchTreeDecorationsImpl(projectId: string): Promise<TreeDecorations> {
   const supabase = getSupabaseAdmin();
 
   const [guidMap, docRows, respRows, capRows] = await Promise.all([
-    fetchGuidMap(),
+    fetchGuidMap(projectId),
     // Dokumenty na objekte: rel_associates_document.from_id = objekt.
     fetchAllPages<{ from_id: string | null }>((from, to) =>
       supabase
         .from("rel_associates_document")
         .select("from_id")
+        .eq("project_id", projectId)
         .is("valid_until", null)
         .order("id", { ascending: true })
         .range(from, to)
@@ -34,6 +33,7 @@ async function fetchTreeDecorationsImpl(): Promise<TreeDecorations> {
       supabase
         .from("rel_assigns_to_actor")
         .select("to_id")
+        .eq("project_id", projectId)
         .is("valid_until", null)
         .order("id", { ascending: true })
         .range(from, to)
@@ -43,6 +43,7 @@ async function fetchTreeDecorationsImpl(): Promise<TreeDecorations> {
       supabase
         .from("aim_rel_capture_located")
         .select("to_id")
+        .eq("project_id", projectId)
         .is("valid_until", null)
         .order("id", { ascending: true })
         .range(from, to)
@@ -58,8 +59,4 @@ async function fetchTreeDecorationsImpl(): Promise<TreeDecorations> {
 }
 
 /** Cachované dekorácie (ISR 60 s; revaliduje sa tagom `aim` po ETL). */
-export const fetchTreeDecorations = unstable_cache(
-  fetchTreeDecorationsImpl,
-  ["fetch-tree-decorations"],
-  AIM_CACHE
-);
+export const fetchTreeDecorations = cachedProjectRead("fetch-tree-decorations", fetchTreeDecorationsImpl);

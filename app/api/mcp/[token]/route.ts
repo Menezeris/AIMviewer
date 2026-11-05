@@ -10,7 +10,12 @@ import { isControlMode } from "@/lib/engine/underlay-control";
 import { CALIBRATE_UNDERLAY_TOOL } from "@/lib/engine/underlay-tool-def";
 import { FEEDBACK_TOOL_NAMES, execFeedbackTool } from "@/lib/feedback/tools";
 import { broadcastLive, isTestChannel, liveChannel } from "@/lib/live/broadcast";
-import { currentCaller, withCaller } from "@/lib/live/caller";
+import { currentCaller, currentProject, currentProjectId, withCaller } from "@/lib/live/caller";
+import type { IfcModel } from "@/lib/data/ifc-models";
+import { ProjectNotFoundError, defaultProjectCode, resolveProject, type Project } from "@/lib/project/current";
+import { withProjectParam } from "@/lib/live/viewer-apply-bus";
+import { requestIfcModels } from "@/lib/project/models";
+import { projectNotFoundResponse, requestProjectCode, runWithRequestProject } from "@/lib/project/request";
 import { readBackSection } from "@/lib/live/section-readback";
 import {
   TEST_CHANNEL_NO_VIEWER,
@@ -87,9 +92,9 @@ let engineWarm: EngineWarmState = { preloaded: false, checkedAt: null };
 
 const ENGINE_TOOLS_LOGGED = [...ENGINE_TOOL_NAMES, SEARCH_ALL_TOOL.name, CALIBRATE_UNDERLAY_TOOL.name];
 
-async function preloadEngine(): Promise<void> {
+async function preloadEngine(models: IfcModel[]): Promise<void> {
   const [{ preloadEngineModels }] = await Promise.all([import("@/lib/engine/preload"), import("@/lib/engine/run")]);
-  await preloadEngineModels();
+  await preloadEngineModels(models);
 }
 
 /** Zahriatie motora podľa D-135 (`lib/mcp/engine-warm.ts`); beží v `after()`, odpoveď nečaká. */
@@ -101,13 +106,15 @@ function warmEngine(payload: unknown): void {
   };
   const { decision, state } = engineWarmDecision(engineWarm, Date.now(), req);
   engineWarm = state;
-  if (decision === "preload") after(preloadEngine);
+  // D-189: the models of the request project, captured before `after()`.
+  const models = requestIfcModels();
+  if (decision === "preload") after(() => preloadEngine(models));
   if (decision === "check") {
     after(async () => {
       const since = new Date(Date.now() - ENGINE_WANT_WINDOW_MS);
       if (engineWarm.preloaded || !(await engineUsedSince(since, ENGINE_TOOLS_LOGGED, engineUseQuery))) return;
       engineWarm = { ...engineWarm, preloaded: true };
-      await preloadEngine();
+      await preloadEngine(models);
     });
   }
 }
@@ -136,7 +143,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<Mc
       if (loadMs > 0) timer.add("engine_load", loadMs);
     }
     const { ms, phases } = timer.done();
-    const row = { tool: name, action: callAction(args), ms, ok: !res.isError, cold, phases, region: process.env.VERCEL_REGION ?? null, client: callerLabel(currentCaller()) };
+    const row = { tool: name, action: callAction(args), ms, ok: !res.isError, cold, phases, region: process.env.VERCEL_REGION ?? null, client: callerLabel(currentCaller()), project_id: currentProjectId() };
     after(() => writeCallLog(row));
   }
 }
@@ -216,7 +223,7 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
     if (!res.isError && res.actions?.length) text.push(...(await deliverActions(name, args, res.actions, timer)));
     return { text, isError: res.isError };
   }
-  const runtime = new AskToolRuntime();
+  const runtime = new AskToolRuntime(currentProjectId());
   const res = await timer.phase("exec", () => runtime.exec(name, args));
   const text = [res.content];
   const actions = runtime.finalActions();
@@ -232,10 +239,13 @@ const TEST_CHANNEL_SENT =
 async function deliverActions(
   name: string,
   args: Record<string, unknown>,
-  actions: AskAction[],
+  projectActions: AskAction[],
   timer: CallTimer,
   lensRev?: string | null,
 ): Promise<string[]> {
+  // D-189: commands of a non-default project carry `?project=` (the viewer switches to it).
+  const code = currentProject().code;
+  const actions = projectActions.map((a) => ({ ...a, url: withProjectParam(a.url, code, defaultProjectCode()) }));
   const text: string[] = [];
   const site = siteUrl();
   // Obnova uloženého pohľadu nesie stovky GUID (D-122): taký odkaz Claudovi nič nepovie.
@@ -294,22 +304,37 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     return NextResponse.json(parseErrorResponse(), { status: 400, headers: NO_STORE });
   }
 
+  // D-189: the project comes from the connector URL (`/api/mcp/<token>?project=OCB`), else the default.
+  let project: Project;
+  try {
+    project = await resolveProject({ code: requestProjectCode(req, { cookies: false }) });
+  } catch (e) {
+    if (e instanceof ProjectNotFoundError) return projectNotFoundResponse(e);
+    throw e;
+  }
+
   const { caller, issued } = mcpCaller(req.headers, payload, process.env.MCP_TOKEN?.trim() ?? "");
+  const response = await withCaller(caller, () => runWithRequestProject(project, () => serveMcp(payload)));
+  // D-159: klient hlavičku posiela pri každom ďalšom volaní, server podľa nej pozná rozhovor.
+  const headers = issued ? { ...NO_STORE, "Mcp-Session-Id": issued } : NO_STORE;
+  if (response === null) return new NextResponse(null, { status: 202, headers });
+  return NextResponse.json(response, { headers });
+}
+
+/** One MCP payload inside the request context (caller and project, D-159, D-189). */
+function serveMcp(payload: unknown) {
+  const projectId = currentProjectId();
   const deps: McpServerDeps = {
     serverInfo: { name: "aim-viewer", version: "1.0.0" },
     instructions: mcpServerInstructions(siteUrl(), ENGINE_ENABLED, mcpToolGroups({ engine: ENGINE_ENABLED })),
     tools: mcpToolDefinitions({ engine: ENGINE_ENABLED, spike: ENGINE_SPIKE }),
     callTool,
-    onRejected: (name, unknown) => after(() => writeCallLog(rejectedCallRow(name, unknown, process.env.VERCEL_REGION ?? null))),
+    onRejected: (name, unknown) => after(() => writeCallLog(rejectedCallRow(name, unknown, process.env.VERCEL_REGION ?? null, projectId))),
   };
   // D-100/D-101: modely motora sa načítajú vopred, aby ifc_* volanie nečakalo; D-135: len keď
   // rozhovor motor používa (tool motora teraz alebo v posledných 30 min), DB tools nečakajú.
   if (ENGINE_ENABLED) warmEngine(payload);
-  const response = await withCaller(caller, () => handleMcpPayload(payload, deps));
-  // D-159: klient hlavičku posiela pri každom ďalšom volaní, server podľa nej pozná rozhovor.
-  const headers = issued ? { ...NO_STORE, "Mcp-Session-Id": issued } : NO_STORE;
-  if (response === null) return new NextResponse(null, { status: 202, headers });
-  return NextResponse.json(response, { headers });
+  return handleMcpPayload(payload, deps);
 }
 
 /** Bez SSE streamu zo servera — klient používa len POST (Streamable HTTP). */

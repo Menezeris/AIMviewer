@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { jsonFail, NO_STORE, readBody, verifyEngineEnabled, verifyGuard, verifySaveEnabled } from "@/lib/verify/route-guard";
 import { runAllVerification } from "@/lib/verify/service";
 import { VERIFY_CHECK_SPACES } from "@/lib/verify/wire";
+import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Overenie výmer všetkých IfcSpace modelov federácie jedným behom (D-185 UI, ribbon AIM > Overovanie):
@@ -17,7 +18,7 @@ export const maxDuration = 300;
 
 let running = false;
 
-export async function POST(req: Request) {
+async function postHandler(req: Request) {
   const denied = verifyGuard(req);
   if (denied) return denied;
   if (!verifyEngineEnabled()) return jsonFail("motor IFC je na tomto nasadení vypnutý (ENGINE_ENABLED), overiť sa nedá", 503);
@@ -34,3 +35,5 @@ export async function POST(req: Request) {
     running = false;
   }
 }
+
+export const POST = withRequestProject(postHandler);

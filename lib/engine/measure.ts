@@ -4,7 +4,7 @@ import { renderFrameWorldOffset } from "@ifc-lite/geometry/world-frame";
 import type { IfcDataStore } from "@ifc-lite/parser";
 import { EntityNode } from "@ifc-lite/query";
 
-import { getIfcModels } from "../data/ifc-models";
+import { requestIfcModels } from "../project/request-models";
 
 import { clearOpening, type ClearOpening } from "./door-clear";
 import { joinToAim } from "./join";
@@ -383,7 +383,7 @@ export async function ifcMeasure(
   const missing = targets.filter((t) => !guidFor(t));
   if (missing.length > 0) throw new InputError(`Bez IFC GUID v AIM: ${missing.join(", ")} - zadaj IFC GlobalId (napr. z ifc_query).`);
 
-  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? getIfcModels)().map((m) => m.id);
+  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? requestIfcModels)().map((m) => m.id);
   const { models, revision } = await modelsFor(modelIds, deps);
   const session = await openEngineSession(models);
   // GUID -> model: najprv index (lacný), tesselácia len modelov, ktoré prvky naozaj nesú.

@@ -1,11 +1,9 @@
 import "server-only";
 
-import { unstable_cache } from "next/cache";
-
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { applyOverrides } from "@/lib/data/drawing-link-overrides";
 import { fetchOverrides, fetchZones } from "@/lib/data/drawing-link-store";
-import { AIM_CACHE } from "@/lib/data/constants";
+import { cachedProjectRead } from "@/lib/data/revalidate";
 import { fetchAllPages } from "@/lib/data/pagination";
 import { parseBlocks } from "@/lib/llm/document-text";
 import {
@@ -29,13 +27,14 @@ export type { DocumentLinksWire, PageLinks };
  */
 
 /** Podlažia, ktoré dokument nesú (pôdorys podlažia ich má práve jedno). */
-async function drawingFloors(documentIds: readonly string[]): Promise<Map<string, Set<string>>> {
+async function drawingFloors(projectId: string, documentIds: readonly string[]): Promise<Map<string, Set<string>>> {
   const out = new Map<string, Set<string>>();
   if (documentIds.length === 0) return out;
   const supabase = getSupabaseAdmin();
   const { data: rels, error } = await supabase
     .from("rel_associates_document")
     .select("from_id, to_id")
+    .eq("project_id", projectId)
     .in("to_id", documentIds)
     .is("valid_until", null)
     .not("from_id", "is", null);
@@ -45,6 +44,7 @@ async function drawingFloors(documentIds: readonly string[]): Promise<Map<string
   const { data: floors, error: fErr } = await supabase
     .from("objects")
     .select("id")
+    .eq("project_id", projectId)
     .in("id", [...new Set(pairs.map((p) => p.from_id))])
     .eq("object_type", "floor")
     .is("valid_until", null);
@@ -69,13 +69,14 @@ type ObjectRow = {
 };
 
 /** Objekty s kódmi z popiskov: presné `object_ref` a výskyty typov (`<typ>.%`). */
-async function fetchLabelObjects(labels: readonly DrawingLabel[]): Promise<ObjectRow[]> {
+async function fetchLabelObjects(projectId: string, labels: readonly DrawingLabel[]): Promise<ObjectRow[]> {
   const { refs, typePrefixes } = labelCodes(labels);
   const supabase = getSupabaseAdmin();
   const base = () =>
     supabase
       .from("objects")
       .select("id, object_ref, name, ifc_type, object_type, ifc_guid")
+      .eq("project_id", projectId)
       .in("object_type", ["asset", "asset_type", "space"])
       .is("valid_until", null)
       .order("id");
@@ -94,7 +95,7 @@ async function fetchLabelObjects(labels: readonly DrawingLabel[]): Promise<Objec
  * Podlažie objektov: prvok priamo na podlaží alebo v miestnosti (rel_contained...),
  * miestnosť cez rel_aggregates. Vráti id podlažia (alebo null) pre každý objekt.
  */
-async function floorOf(objects: readonly ObjectRow[]): Promise<Map<string, Set<string>>> {
+async function floorOf(projectId: string, objects: readonly ObjectRow[]): Promise<Map<string, Set<string>>> {
   const out = new Map<string, Set<string>>();
   const supabase = getSupabaseAdmin();
   const add = (id: string, floor: string) => {
@@ -109,6 +110,7 @@ async function floorOf(objects: readonly ObjectRow[]): Promise<Map<string, Set<s
         supabase
           .from("rel_contained_in_spatial_structure")
           .select("from_id, to_id")
+          .eq("project_id", projectId)
           .in("from_id", assetIds)
           .is("valid_until", null)
           .order("from_id")
@@ -123,6 +125,7 @@ async function floorOf(objects: readonly ObjectRow[]): Promise<Map<string, Set<s
         supabase
           .from("rel_aggregates")
           .select("from_id, to_id")
+          .eq("project_id", projectId)
           .in("from_id", spaces)
           .is("valid_until", null)
           .not("to_id", "is", null)
@@ -144,7 +147,7 @@ async function floorOf(objects: readonly ObjectRow[]): Promise<Map<string, Set<s
   return out;
 }
 
-async function fetchDocumentLinksImpl(documentId: string, page: number | null): Promise<PageLinks[]> {
+async function fetchDocumentLinksImpl(projectId: string, documentId: string, page: number | null): Promise<PageLinks[]> {
   const supabase = getSupabaseAdmin();
   let query = supabase.from("document_pages").select("page, blocks").eq("document_id", documentId).order("page");
   if (page !== null) query = query.eq("page", page);
@@ -154,17 +157,17 @@ async function fetchDocumentLinksImpl(documentId: string, page: number | null): 
     const blocks = parseBlocks(p.blocks);
     return { page: p.page, blocks, labels: pairLabels(blocks) };
   });
-  const zones = await fetchZones();
-  const manual = await fetchOverrides(documentId, page, zones);
+  const zones = await fetchZones(projectId);
+  const manual = await fetchOverrides(projectId, documentId, page, zones);
   const all = pages.flatMap((p) => p.labels);
 
   const [floors, objects] = all.length
     ? await Promise.all([
-        drawingFloors([documentId]).then((m) => m.get(documentId) ?? new Set<string>()),
-        fetchLabelObjects(all),
+        drawingFloors(projectId, [documentId]).then((m) => m.get(documentId) ?? new Set<string>()),
+        fetchLabelObjects(projectId, all),
       ])
     : [new Set<string>(), [] as ObjectRow[]];
-  const floorsOf = await floorOf(objects);
+  const floorsOf = await floorOf(projectId, objects);
   const labelObjects: LabelObject[] = objects.map((o) => ({
     id: o.id,
     ref: o.object_ref,
@@ -182,16 +185,16 @@ async function fetchDocumentLinksImpl(documentId: string, page: number | null): 
 }
 
 /** Odkazy z popiskov strán dokumentu (všetky strany alebo jedna), ISR tag `aim`. */
-export const fetchDocumentLinks = unstable_cache(fetchDocumentLinksImpl, ["fetch-document-links"], AIM_CACHE);
+export const fetchDocumentLinks = cachedProjectRead("fetch-document-links", fetchDocumentLinksImpl);
 
 /**
  * Odkazy pre pôdorysy podlaží vo vieweri (dokumenty so `storeyGuid` v `DOCUMENTS_LOAD`):
  * host ich pošle po knižnici dokumentov. Ostatné dokumenty dostanú odkazy, až keď bude
  * podlažie aj pre ne (rezy, výpisy) - párovanie typových kódov ho potrebuje.
  */
-export async function fetchViewerDocumentLinks(documentIds: readonly string[]): Promise<DocumentLinksWire[]> {
+export async function fetchViewerDocumentLinks(projectId: string, documentIds: readonly string[]): Promise<DocumentLinksWire[]> {
   const results = await Promise.all(
-    documentIds.map(async (id) => toLinksWire(id, await fetchDocumentLinks(id, null)))
+    documentIds.map(async (id) => toLinksWire(id, await fetchDocumentLinks(projectId, id, null)))
   );
   return results.flat();
 }
