@@ -46,22 +46,22 @@ import { UNDERLAYS_LOAD_OP, underlaysSetOp } from "@/lib/viewer-underlays";
 import { startTimer, type CallTimer } from "@/lib/mcp/timing";
 
 /**
- * MCP konektor pre Claude (D-079): `POST /api/mcp/<MCP_TOKEN>`. Tie isté
- * read-only tools ako `/api/ask`; UI akcie sa odvysielajú do živého viewera
- * (Supabase Realtime, kanál `LIVE_CHANNEL`); get_viewer_state (stav aj obálky) sa
- * tým istým kanálom viewera pýtajú (D-085); pripomienky a požiadavky na nové
- * tools idú do GitHub issues a spúšťajú Claude session (D-090); BCF témy nad modelmi sú v DB
- * a téma pre Claude spúšťa session (D-099). Bez `MCP_TOKEN` je endpoint
- * vypnutý (404). Bezstavový — žiadne session ID, žiadny SSE stream.
+ * MCP connector for Claude (D-079): `POST /api/mcp/<MCP_TOKEN>`. The same
+ * read-only tools as `/api/ask`; UI actions are broadcast to the live viewer
+ * (Supabase Realtime, channel `LIVE_CHANNEL`); get_viewer_state (state and bounds) is
+ * requested from the viewer over the same channel (D-085); feedback and requests for new
+ * tools go to GitHub issues and start Claude sessions (D-090); BCF topics over the models live in the DB
+ * and a topic for Claude starts a session (D-099). Without `MCP_TOKEN` the endpoint is
+ * disabled (404). Stateless - no session ID, no SSE stream.
  */
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const NO_STORE = { "Cache-Control": "no-store" };
-/** Dlhší záložný odkaz sa do odpovede nevypisuje. */
+/** A longer fallback link is not printed into the response. */
 const MAX_LINK = 2000;
-/** Okná viewera, ktoré odpovedali za toto obdobie, sa rátajú do varovania o viacerých oknách (D-125). */
+/** Viewer windows that responded within this period are counted into the multiple-windows warning (D-125). */
 const VIEWERS_WINDOW_MS = 60_000;
 
 function tokenMatches(given: string): boolean {
@@ -80,14 +80,14 @@ function siteUrl(): string {
   return "https://ai-mviewer.vercel.app";
 }
 
-/** Diagnostika IFC motora (D-084 fáza 0) - len keď je zapnutá env bránou. */
+/** Diagnostics of the IFC engine (D-084 phase 0) - only when enabled by the env gate. */
 const ENGINE_SPIKE = process.env.ENGINE_SPIKE === "1";
-/** `ifc_*` tools IFC motora (D-084 fáza 1) - env brána; diagnostika ich zapína tiež. */
+/** `ifc_*` tools of the IFC engine (D-084 phase 1) - env gate; diagnostics enables them too. */
 const ENGINE_ENABLED = process.env.ENGINE_ENABLED === "1" || ENGINE_SPIKE;
 
-/** Prvé volanie v tejto inštancii funkcie = studený štart (D-100). */
+/** First call in this function instance = cold start (D-100). */
 let instanceWarm = false;
-/** Zahriatie motora v tejto inštancii (D-101, D-135): predčítané / kedy sa overovalo použitie. */
+/** Engine warm-up in this instance (D-101, D-135): preloaded / when use was last checked. */
 let engineWarm: EngineWarmState = { preloaded: false, checkedAt: null };
 
 const ENGINE_TOOLS_LOGGED = [...ENGINE_TOOL_NAMES, SEARCH_ALL_TOOL.name, CALIBRATE_UNDERLAY_TOOL.name];
@@ -97,7 +97,7 @@ async function preloadEngine(models: IfcModel[]): Promise<void> {
   await preloadEngineModels(models);
 }
 
-/** Zahriatie motora podľa D-135 (`lib/mcp/engine-warm.ts`); beží v `after()`, odpoveď nečaká. */
+/** Engine warm-up per D-135 (`lib/mcp/engine-warm.ts`); runs in `after()`, the response does not wait. */
 function warmEngine(payload: unknown): void {
   const methods = payloadMethods(payload);
   const req = {
@@ -119,7 +119,7 @@ function warmEngine(payload: unknown): void {
   }
 }
 
-/** Čas, ktorý volanie strávilo načítaním modelov do cache motora (0 = boli teplé). */
+/** Time the call spent loading models into the engine cache (0 = they were warm). */
 async function engineLoadMs(since: number): Promise<number> {
   const { cacheSnapshot } = await import("@/lib/engine/cache");
   return cacheSnapshot()
@@ -127,7 +127,7 @@ async function engineLoadMs(since: number): Promise<number> {
     .reduce((sum, e) => sum + e.loadMs, 0);
 }
 
-/** Tool s meraním (D-100): čas a fázy idú do `mcp_call_log` až po odoslaní odpovede. */
+/** Tool with measurement (D-100): time and phases go to `mcp_call_log` only after the response is sent. */
 async function callTool(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
   const cold = !instanceWarm;
   instanceWarm = true;
@@ -150,7 +150,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<Mc
 
 async function runTool(name: string, args: Record<string, unknown>, timer: CallTimer): Promise<McpToolResult> {
   if (ENGINE_SPIKE && name === "ifc_engine_probe") {
-    // Lenivý import: DB tools nesmú platiť studený štart motora.
+    // Lazy import: DB tools must not pay the engine cold start.
     const { runProbe } = await import("@/lib/engine/probe");
     try {
       return { text: [await runProbe(args)], isError: false };
@@ -163,7 +163,7 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
     return { text: [res.text], isError: res.isError };
   }
   if (IDS_TOOL_NAMES.has(name)) {
-    // Lenivý import: IDS balík (@ifc-lite/ids) sa načíta len pri volaní toolu (D-162).
+    // Lazy import: the IDS package (@ifc-lite/ids) is loaded only when the tool is called (D-162).
     const { runIdsTool } = await import("@/lib/ids/runtime");
     const res = await timer.phase("exec", () => runIdsTool(name, args));
     return { text: [res.text], isError: res.isError };
@@ -181,13 +181,13 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
     return { text: [res.text], isError: res.isError };
   }
   if (ENGINE_ENABLED && name === CALIBRATE_UNDERLAY_TOOL.name && isControlMode(args.mode)) {
-    // Ovládanie podkladov (D-168): list z DB a viewera, ostatné módy menia len stav viewera (nič sa nepočíta).
+    // Underlay control (D-168): list from the DB and the viewer, other modes only change the viewer state (nothing is computed).
     const { execUnderlayControl } = await import("@/lib/engine/underlay-control");
     const { defaultControlDeps } = await import("@/lib/engine/underlay-control-runtime");
     const res = await timer.phase("exec", () => execUnderlayControl(args, defaultControlDeps()));
     const text = [res.text];
     if (res.reload) {
-      // Obnova kalibrácie (D-168): viewer načíta podklady z DB nanovo.
+      // Calibration restore (D-168): the viewer reloads the underlays from the DB.
       const action: AskAction = { type: "navigate", url: `/ifc?ops=${encodeURIComponent(UNDERLAYS_LOAD_OP)}&r=${Date.now().toString(36)}`, label: res.label ?? "Podklady nanovo" };
       text.push(...(await deliverActions(name, args, [action], timer)));
     } else if (res.command) {
@@ -201,7 +201,7 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
     return { text, isError: res.isError };
   }
   if (ENGINE_ENABLED && name === CALIBRATE_UNDERLAY_TOOL.name) {
-    // Kalibrácia podkladu (D-133): IFC motor + zápis _georef; lenivo ako ostatné tools motora.
+    // Underlay calibration (D-133): IFC engine + _georef write; lazy like the other engine tools.
     const [{ execCalibrateUnderlay }, { defaultUnderlayDeps }] = await Promise.all([
       import("@/lib/engine/underlay-tool"),
       import("@/lib/engine/underlay-runtime"),
@@ -215,11 +215,11 @@ async function runTool(name: string, args: Record<string, unknown>, timer: CallT
     return { text: [res.content], isError: res.isError };
   }
   if (ENGINE_ENABLED && ENGINE_TOOL_NAMES.has(name)) {
-    // Lenivý import: motor (stovky MB po načítaní modelov) len keď ho Claude volá.
+    // Lazy import: the engine (hundreds of MB after loading models) only when Claude calls it.
     const { runEngineTool } = await import("@/lib/engine/run");
     const res = await timer.phase("exec", () => runEngineTool(name, args));
     const text = [res.content];
-    // Kóta z ifc_measure show (D-124) ide do viewera rovnako ako akcie DB tools.
+    // The dimension from ifc_measure show (D-124) goes to the viewer the same way as DB tool actions.
     if (!res.isError && res.actions?.length) text.push(...(await deliverActions(name, args, res.actions, timer)));
     return { text, isError: res.isError };
   }
@@ -235,7 +235,7 @@ const TEST_CHANNEL_SENT =
   "Pracovná session (Claude Code): príkaz išiel na testovací kanál sessions, nie do živého viewera používateľa (D-159). " +
   "Odkaz na produkciu sa nedáva; produkčný viewer na overenie neotváraj (D-135), overuj lokálne (skill verify).";
 
-/** Akcie toolu do živého viewera (D-079) s potvrdením (D-101); vráti riadky pre odpoveď. */
+/** Tool actions into the live viewer (D-079) with confirmation (D-101); returns rows for the response. */
 async function deliverActions(
   name: string,
   args: Record<string, unknown>,
@@ -248,7 +248,7 @@ async function deliverActions(
   const actions = projectActions.map((a) => ({ ...a, url: withProjectParam(a.url, code, defaultProjectCode()) }));
   const text: string[] = [];
   const site = siteUrl();
-  // Obnova uloženého pohľadu nesie stovky GUID (D-122): taký odkaz Claudovi nič nepovie.
+  // Restoring a saved view carries hundreds of GUIDs (D-122): such a link tells Claude nothing.
   const links = actions
     .map((a) => `${a.label}: ${a.url.length > MAX_LINK ? "(príkaz je na odkaz pridlhý, ide len do živého viewera)" : `${site}${a.url}`}`)
     .join("\n");
@@ -256,13 +256,13 @@ async function deliverActions(
   if (!channel) {
     text.push(`Živý viewer nie je nastavený (chýba LIVE_CHANNEL). Odkaz na otvorenie:\n${links}`);
   } else {
-    // D-101: čakanie na potvrdenie sa prihlási ešte pred odoslaním príkazu (teplý kanál inštancie).
+    // D-101: waiting for confirmation is registered before the command is sent (warm channel of the instance).
     const cmdId = randomUUID();
     const waitApplied = await timer.phase("channel", () => expectApplied(channel, cmdId).catch(() => null));
     const sent = await timer.phase("broadcast", () =>
       broadcastLive(channel, actions, fetch, cmdId).catch(() => ({ ok: false, status: 0 })),
     );
-    // Pracovná session nejde do viewera používateľa a odkaz na produkciu nedostane (D-159, D-135).
+    // A working session does not go into the user's viewer and does not get a link to production (D-159, D-135).
     const test = isTestChannel(channel);
     if (test) text.push(TEST_CHANNEL_SENT);
     else {
@@ -273,17 +273,17 @@ async function deliverActions(
       );
     }
     if (test && !sent.ok) text.push(`Odoslanie na testovací kanál zlyhalo (HTTP ${sent.status}).`);
-    // Potvrdzuje len viewer (`/ifc`); karta prvku alebo výkres je len navigácia.
+    // Only the viewer (`/ifc`) confirms; an element card or drawing is only navigation.
     if (sent.ok && waitApplied && actions.some((a) => a.url.startsWith("/ifc"))) {
       const t0 = Date.now();
       const ackMs = ackTimeoutMs(name, args);
       const applied = await timer.phase("ack", () => waitApplied(ackMs));
-      // Viac okien viewera za poslednú minútu (D-125): potvrdenie je len z jedného.
+      // More viewer windows in the last minute (D-125): confirmation comes from only one.
       const viewers = applied ? await recentViewerCount(channel, VIEWERS_WINDOW_MS).catch(() => 0) : 0;
       const missing = test ? TEST_CHANNEL_NO_VIEWER : notAppliedText(ackMs);
       text.push(applied ? appliedText(name, applied, Date.now() - t0, { args, viewers }) : missing);
     } else if (sent.ok) {
-      // Bez teplého kanála pôvodné čítanie stavu (D-096 počty Lens, D-092 poloha rezu).
+      // Without a warm channel the original state read (D-096 Lens counts, D-092 section position).
       if (lensRev) text.push(await timer.phase("lens", () => lensCountsText(channel, lensRev)));
       if (name === "set_section" && args.action === "set") {
         text.push(await timer.phase("readback", () => readBackSection(channel)));
@@ -315,7 +315,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
   const { caller, issued } = mcpCaller(req.headers, payload, process.env.MCP_TOKEN?.trim() ?? "");
   const response = await withCaller(caller, () => runWithRequestProject(project, () => serveMcp(payload)));
-  // D-159: klient hlavičku posiela pri každom ďalšom volaní, server podľa nej pozná rozhovor.
+  // D-159: the client sends the header on every further call, the server recognizes the conversation by it.
   const headers = issued ? { ...NO_STORE, "Mcp-Session-Id": issued } : NO_STORE;
   if (response === null) return new NextResponse(null, { status: 202, headers });
   return NextResponse.json(response, { headers });
@@ -331,13 +331,13 @@ function serveMcp(payload: unknown) {
     callTool,
     onRejected: (name, unknown) => after(() => writeCallLog(rejectedCallRow(name, unknown, process.env.VERCEL_REGION ?? null, projectId))),
   };
-  // D-100/D-101: modely motora sa načítajú vopred, aby ifc_* volanie nečakalo; D-135: len keď
-  // rozhovor motor používa (tool motora teraz alebo v posledných 30 min), DB tools nečakajú.
+  // D-100/D-101: the engine models are loaded in advance so that an ifc_* call does not wait; D-135: only when
+  // the conversation uses the engine (an engine tool now or in the last 30 min), DB tools do not wait.
   if (ENGINE_ENABLED) warmEngine(payload);
   return handleMcpPayload(payload, deps);
 }
 
-/** Bez SSE streamu zo servera — klient používa len POST (Streamable HTTP). */
+/** No SSE stream from the server - the client uses only POST (Streamable HTTP). */
 export async function GET(_req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
   if (!tokenMatches(token)) return new NextResponse("Not found", { status: 404 });

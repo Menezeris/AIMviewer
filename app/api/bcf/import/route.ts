@@ -9,10 +9,10 @@ import { BcfInputError } from "@/lib/bcf/tools";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Import `.bcfzip` (BCF 2.1 aj 3.0) do DB (D-158 krok 8): `POST /api/bcf/import`, telo = súbor
- * (application/zip), `Authorization: Bearer <BCF_API_TOKEN>` ako zápis BCF API. Query: `dry_run=1`,
- * `conflict=keep|overwrite`, `model`, `guids=a,b`. Odpoveď je súhrn ako pri `bcf_topic action=import`.
- * Telo je najviac ~4,4 MB (limit funkcie na Verceli); väčší súbor ide cez tool (`url` do úložiska).
+ * Import of `.bcfzip` (BCF 2.1 and 3.0) into the DB (D-158 step 8): `POST /api/bcf/import`, body = file
+ * (application/zip), `Authorization: Bearer <BCF_API_TOKEN>` as for BCF API writes. Query: `dry_run=1`,
+ * `conflict=keep|overwrite`, `model`, `guids=a,b`. The response is a summary like for `bcf_topic action=import`.
+ * The body is at most ~4.4 MB (Vercel function limit); a larger file goes via the tool (`url` to storage).
  */
 
 export const dynamic = "force-dynamic";

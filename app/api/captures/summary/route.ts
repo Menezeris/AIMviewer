@@ -5,8 +5,8 @@ import { currentProjectId } from "@/lib/live/caller";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Súhrn Reality Capture pre objekt vybraný v 3D (D-073) — priestor + počet snímok.
- * Poháňa „Reality Capture (N)" akciu v AIM karte (`lib/aim-panel.ts`). Read-only.
+ * Reality Capture summary for an object selected in 3D (D-073) - space + number of shots.
+ * Powers the "Reality Capture (N)" action in the AIM card (`lib/aim-panel.ts`). Read-only.
  */
 
 const UUID_RE =

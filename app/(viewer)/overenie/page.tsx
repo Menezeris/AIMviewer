@@ -27,11 +27,11 @@ const STATUSES: Array<[string, string, string]> = [
 ];
 
 /**
- * "Ako to funguje?" pre fajočky overenia výmer vo vieweri (D-185 UI, `help_href`). Všetko sa číta z registra metód
- * `lib/verify/quantity-methods.ts`, stránka pravidlá nekopíruje.
+ * "How does it work?" for the quantity verification badges in the viewer (D-185 UI, `help_href`). Everything is read from the method registry
+ * `lib/verify/quantity-methods.ts`, the page does not copy the rules.
  */
 export default function OverenieVymerPage() {
-  // Hlavný recept veličiny pred kontrolným (Height: zo súborových dosiek, potom vlastné teleso).
+  // Main recipe of the quantity before the control one (Height: from the file slabs, then own solid).
   const methods = (Object.values(SPACE_METHODS) as QuantityMethod[]).toSorted((a, b) => targetRank(a.target) - targetRank(b.target) || recipeRank(a.id) - recipeRank(b.id));
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6 overflow-auto p-4 text-sm">

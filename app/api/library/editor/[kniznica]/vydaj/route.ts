@@ -8,9 +8,9 @@ import { currentProjectId } from "@/lib/live/caller";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * `POST vydaj` stránky editora (`assetin/server` `api_vydaj`): validácia, snímka, IDS do katalógu AIM v jednej
- * transakcii, export MD. Za bránou `LIBRARY_RELEASE_ENABLED` (D-186 krok 6). Každé IDS ide cez ids.xsd (variant A,
- * `xmllint-wasm`); neplatné IDS alebo nedostupná schéma vydanie zastaví.
+ * `POST vydaj` of the editor page (`assetin/server` `api_vydaj`): validation, snapshot, IDS into the AIM catalog in one
+ * transaction, MD export. Behind the `LIBRARY_RELEASE_ENABLED` gate (D-186 step 6). Every IDS goes through ids.xsd (variant A,
+ * `xmllint-wasm`); an invalid IDS or an unavailable schema stops the release.
  */
 export const dynamic = "force-dynamic";
 

@@ -13,18 +13,18 @@ import { currentProjectId } from "@/lib/live/caller";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Zápis georeferencie výkresu (D-072): PATCH uloží kalibráciu do `_georef` v
- * `properties` dokumentového objektu (`objects.properties`, rezervovaný
- * `_` kľúč ako `_drawing_links` — tabuľka `documents` properties nemá).
- * Volá ho host stránka po bridge správe `UNDERLAY_SAVE` z embed viewera.
- * D-133: `_georef` je v2 (zoznam kalibrácií); v1 z panela sa zlúči ako
- * `source: manual` na miesto tej istej strany a podlažia, `calibration` (v2
- * položka) sa zlúči tak, ako prišla. Ručná je posledné slovo, preto tu `force`.
+ * Writing the georeference of a drawing (D-072): PATCH saves the calibration into `_georef` in the
+ * `properties` of the document object (`objects.properties`, a reserved
+ * `_` key like `_drawing_links` - the `documents` table has no properties).
+ * Called by the host page after the bridge message `UNDERLAY_SAVE` from the embed viewer.
+ * D-133: `_georef` is v2 (a list of calibrations); a v1 from the panel is merged as
+ * `source: manual` in place of the same page and storey, `calibration` (a v2
+ * item) is merged as it came. Manual has the last word, hence `force` here.
  *
- * Ochrana: viewer je zatiaľ verejný read-only (D-025/D-026), takže JEDINÝ
- * zapisovací endpoint je za env bránou — default VYPNUTÝ, demo/staging si ho
- * zapne cez `UNDERLAY_WRITE_ENABLED=true`. K tomu origin guard + per-IP
- * rate limit (vzor D-068). Poctivý vedomý limit, kým nepríde auth.
+ * Protection: the viewer is so far public read-only (D-025/D-026), so the ONLY
+ * write endpoint is behind the env gate - default OFF, demo/staging turns it
+ * on via `UNDERLAY_WRITE_ENABLED=true`. Plus origin guard + per-IP
+ * rate limit (pattern D-068). An honest conscious limit until auth arrives.
  */
 
 const WRITE_ENABLED = process.env.UNDERLAY_WRITE_ENABLED === "true";
@@ -41,7 +41,7 @@ const underlayLimiter = createRateLimiter({
   max: RATE_LIMIT_MAX,
 });
 
-/** UUID formát `objects.id` — lacná validácia pred DB dotazom. */
+/** UUID format of `objects.id` - a cheap validation before the DB query. */
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -83,7 +83,7 @@ async function patchHandler(
   const b = body as { georef?: unknown; calibration?: unknown; calibrationIndex?: unknown } | null;
   let next: GeorefCalibration;
   let v1: GeorefV1 | null = null;
-  // D-179: položka v2 (rez, zvislý podklad) z viewera; upravuje existujúcu kalibráciu, nikdy nepridáva novú.
+  // D-179: a v2 item (section, vertical underlay) from the viewer; edits an existing calibration, never adds a new one.
   const g2 = b?.georef as { version?: unknown } | undefined;
   const isV2Edit = !!g2 && typeof g2 === "object" && g2.version === 2;
   if (isV2Edit) {
@@ -101,7 +101,7 @@ async function patchHandler(
 
   const supabase = getSupabaseAdmin();
 
-  // Cieľ musí byť existujúci dokument — properties sa merguje, nie prepisuje.
+  // The target must be an existing document - properties are merged, not overwritten.
   const { data: obj, error: oErr } = await supabase
     .from("objects")
     .select("id, object_type, properties")
@@ -122,9 +122,9 @@ async function patchHandler(
     revalidateProject(projectId);
     return NextResponse.json({ ok: true });
   }
-  // D-168: v1 s nezmenenou polohou (SET_UNDERLAYS_3D s persist) zmení len visible a opacity, source ostane (auto ostane auto).
+  // D-168: a v1 with an unchanged position (SET_UNDERLAYS_3D with persist) changes only visible and opacity, source stays (auto stays auto).
   const visibilityOnly = v1 ? visibilityOnlyUpdate(current._georef, v1) : null;
-  // História (D-168): prepis polohy z panela zachová predošlú kalibráciu; samotné visible/opacity nie.
+  // History (D-168): overwriting the position from the panel keeps the previous calibration; visible/opacity alone do not.
   const meta = { by: "panel" as const, reason: v1 ? "úprava v paneli Underlays" : "kalibrácia cez PATCH /api/underlay", at: new Date().toISOString() };
   const merged = mergeCalibration(current._georef, visibilityOnly ?? next, true, meta);
   if (!merged.ok) return NextResponse.json({ error: "merge failed" }, { status: 409 });
@@ -136,10 +136,10 @@ async function patchHandler(
     .eq("id", documentId);
   if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 });
 
-  // Viewer/drawing dáta sa čítajú cez ISR tag `aim`. Next 16 vyžaduje
-  // profil; `{expire: 0}` na legacy unstable_cache tagu sa môže správať ako
-  // stale-while-revalidate (jeden request ešte stará odpoveď, ďalší čerstvá)
-  // — pre podklady to stačí, viewer drží georef v session. Overiť live (F7).
+  // Viewer/drawing data is read via the ISR tag `aim`. Next 16 requires a
+  // profile; `{expire: 0}` on the legacy unstable_cache tag may behave like
+  // stale-while-revalidate (one request still gets the old response, the next a fresh one)
+  // - that is enough for underlays, the viewer keeps georef in the session. Verify live (F7).
   revalidateProject(projectId);
 
   return NextResponse.json({ ok: true });

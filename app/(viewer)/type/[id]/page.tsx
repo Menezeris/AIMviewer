@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 import { currentPageProject } from "@/lib/project/page";
 
-// ISR — render typu sa cachuje a po 60 s revaliduje (viewer je verejný read-only).
+// ISR - the type render is cached and revalidated after 60 s (viewer is public read-only).
 export const revalidate = 60;
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {

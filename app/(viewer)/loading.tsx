@@ -1,7 +1,7 @@
 /**
- * Skeleton počas navigácie (S3 polish). Stránky sú `force-dynamic` (server-render
- * na klik) — `loading.tsx` dáva okamžitú vizuálnu odozvu, kým dobehne render,
- * takže klik nepôsobí zamrznuto.
+ * Skeleton during navigation (S3 polish). Pages are `force-dynamic` (server render
+ * on click) - `loading.tsx` gives immediate visual feedback until the render finishes,
+ * so the click does not feel frozen.
  */
 export default function Loading() {
   return (

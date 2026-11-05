@@ -7,15 +7,15 @@ import { ScopeResolver } from "@/lib/llm/style-scope";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Symbolické množiny pre AIM chat lens a zoznam (D-096), GUIDy necestujú v URL akcie:
+ * Symbolic sets for the AIM chat lens and list (D-096), GUIDs do not travel in the action URL:
  *
- *   · `GET /api/style-scope?zone=<objects.id>` vráti IFC GUIDy miestností zóny (aj cez
- *     vnorené zóny) a prvkov v nich alebo dotýkajúcich sa ich (contained + referenced);
- *   · `GET /api/style-scope?document=<objects.id>[&page=N]` vráti GUIDy prvkov, ktorých
- *     sa dokument alebo jeho strana týka, aj zdedené cez nositeľa (D-104 krok 4).
+ *   - `GET /api/style-scope?zone=<objects.id>` returns the IFC GUIDs of the rooms of a zone (also through
+ *     nested zones) and of the elements in them or touching them (contained + referenced);
+ *   - `GET /api/style-scope?document=<objects.id>[&page=N]` returns the GUIDs of the elements the
+ *     document or its page concerns, also inherited via the carrier (D-104 step 4).
  *
- * Volá ho klient viewera, keď op `lens` alebo `list` nesie `aim_zone` / `aim_document`.
- * Read-only cez `service_role` (D-026), cachované ako ostatné AIM dáta.
+ * Called by the viewer client when a `lens` or `list` op carries `aim_zone` / `aim_document`.
+ * Read-only via `service_role` (D-026), cached like the other AIM data.
  */
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

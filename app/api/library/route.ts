@@ -5,12 +5,12 @@ import { supabaseHlavaStore } from "@/lib/kniznica/hlava-store";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Read-only prehliadač knižnice požiadaviek (port do TS, krok 1, assetin-library V30; AIM D-186).
+ * Read-only browser of the requirements library (port to TS, step 1, assetin-library V30; AIM D-186).
  *
- * - `GET ?kniznica=<kód>` (voliteľne): súbory hlavy knižnice bez textu (cesta, note_id, typ, rev, sha256, autor ...).
- * - `GET ?kniznica=<kód>&cesta=<cesta>`: jeden súbor s textom a blokovým modelom (TS parser, korpus zhody), kontrola
- *   sha256 textu a bajtového round-tripu.
- * Čítanie len na serveri cez `service_role` (anon / authenticated do schémy `library` prístup nemajú); nič sa nezapisuje.
+ * - `GET ?kniznica=<code>` (optional): files of the library head without text (path, note_id, type, rev, sha256, author ...).
+ * - `GET ?kniznica=<code>&cesta=<path>`: one file with text and the block model (TS parser, conformance corpus), check of the
+ *   sha256 of the text and of the byte round trip.
+ * Reading only on the server via `service_role` (anon / authenticated have no access to the `library` schema); nothing is written.
  */
 
 export const dynamic = "force-dynamic";

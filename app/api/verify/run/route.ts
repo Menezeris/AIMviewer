@@ -5,9 +5,9 @@ import { runVerification } from "@/lib/verify/service";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Overenie výmer jedného prvku teraz (D-185 UI, `VERIFY_REQUEST run`): `POST {global_id}` -> `{data: VerifyElementWire,
- * saved}`. To isté ako `ifc_measure verify=true` pre jednu miestnosť; beh sa uloží k aktuálnej revízii modelu
- * (`VERIFY_WRITE_ENABLED`), ďalšie zobrazenie ho už len načíta. Viewer čaká najviac 180 s.
+ * Quantity verification of a single element now (D-185 UI, `VERIFY_REQUEST run`): `POST {global_id}` -> `{data: VerifyElementWire,
+ * saved}`. The same as `ifc_measure verify=true` for one room; the run is saved with the current model revision
+ * (`VERIFY_WRITE_ENABLED`), the next display only loads it. The viewer waits at most 180 s.
  */
 
 export const dynamic = "force-dynamic";

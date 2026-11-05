@@ -7,11 +7,11 @@ import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Import kontajnera ICDD (D-181 dodatok "import"): `POST /api/icdd/import`.
- * Telo `{action: "preview", request}` = náhľad (dry-run) nad stavom AIM; `{action: "apply", importId, aimStateSha256,
- * request}` = zápis väzieb prvok -> dokument. Kontajner neprichádza (~63 MB), len `ImportRequest` z prehliadača.
- * Zápis (aj uloženie náhľadu do `icdd_imports`) je za env bránou, predvolene VYPNUTOU (`ICDD_IMPORT_ENABLED=true`),
- * k tomu origin guard a per-IP rate limit, rovnako ako `/api/clash` a `/api/ids` (Samuel 1. 11.). Bez brány náhľad
- * beží, ale nič sa neuloží.
+ * Body `{action: "preview", request}` = preview (dry-run) over the AIM state; `{action: "apply", importId, aimStateSha256,
+ * request}` = write of element -> document links. The container does not arrive (~63 MB), only the `ImportRequest` from the browser.
+ * Writing (also saving the preview into `icdd_imports`) is behind the env gate, OFF by default (`ICDD_IMPORT_ENABLED=true`),
+ * plus origin guard and per-IP rate limit, the same as `/api/clash` and `/api/ids` (Samuel 1 Nov). Without the gate the preview
+ * runs, but nothing is saved.
  */
 
 export const dynamic = "force-dynamic";

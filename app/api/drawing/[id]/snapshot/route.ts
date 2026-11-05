@@ -7,11 +7,11 @@ import { parseDocRegion } from "@/lib/viewer-ops";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Snímka výrezu strany dokumentu (D-158 krok 3): `GET /api/drawing/<id>/snapshot?page=N&region=x_y_w_h`
- * (oblasť v % vľavo hore ako odkaz témy; bez nej celá strana), voliteľne `markup=<JSON pole značiek,
- * URL-enkódované, do 8 kB>` (D-158 krok 7: obláčik, šípka, text, pin; neuložená pripomienka). PNG s rámikom, dlhšia strana
- * do 1500 px, keš v buckete `documents`. Len čítanie, bez tokenu ako PDF samo; volá ju fork pre
- * neuloženú pripomienku (snímka do lokálneho exportu .bcfzip). CORS otvorený ako BCF API.
+ * Snapshot of a crop of a document page (D-158 step 3): `GET /api/drawing/<id>/snapshot?page=N&region=x_y_w_h`
+ * (area in % from the top left as the topic link; without it the whole page), optionally `markup=<JSON array of marks,
+ * URL-encoded, up to 8 kB>` (D-158 step 7: cloud, arrow, text, pin; unsaved comment). PNG with a frame, longer side
+ * up to 1500 px, cache in the `documents` bucket. Read-only, without a token like the PDF itself; called by the fork for an
+ * unsaved comment (snapshot into a local .bcfzip export). CORS open like BCF API.
  */
 
 export const runtime = "nodejs";

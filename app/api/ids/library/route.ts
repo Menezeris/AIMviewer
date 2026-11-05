@@ -15,16 +15,16 @@ import { withRequestProject } from "@/lib/project/request";
 import { currentProjectId } from "@/lib/live/caller";
 
 /**
- * Knižnica požiadaviek pre kartu "Requirements library" vo vieweri (D-182, #351; doplnok V30: katalóg z DB).
+ * Requirements library for the "Requirements library" card in the viewer (D-182, #351; V30 addendum: catalog from the DB).
  *
- * - `GET` (len čítanie, bez brány ako `/api/ids`): `library` = IDS, ktoré do AIM zapísalo vydanie knižnice v DB
- *   (`ids_documents` `origin = library`, `status = active`, posledná verzia `source = import`, `library_repo =
- *   db:library/<kód>`, `library_commit = <vydanie>@<manifest sha256>`), stav = či má väzbu na model; `project` = IDS
- *   v AIM s históriou verzií, väzbami na modely a posledným výsledkom na model (`stale`, `ids_stale`).
- *   Repo knižnice ani GitHub token sa nečítajú.
- * - `POST {path, commit, sha256, author, model?}` = "Priradiť k projektu": väzba IDS na model federácie
- *   (`ids_document_models`, ako `POST /api/ids/models`); bez modelu odpoveď povie, kde sa väzba robí.
- *   Zápis je za `IDS_WRITE_ENABLED`, origin guardom a rate limitom (D-162).
+ * - `GET` (read-only, without a gate like `/api/ids`): `library` = IDS that a library release in the DB wrote into AIM
+ *   (`ids_documents` `origin = library`, `status = active`, latest version `source = import`, `library_repo =
+ *   db:library/<code>`, `library_commit = <release>@<manifest sha256>`), status = whether it has a link to a model; `project` = IDS
+ *   in AIM with version history, links to models and the latest result per model (`stale`, `ids_stale`).
+ *   The library repo and the GitHub token are not read.
+ * - `POST {path, commit, sha256, author, model?}` = "Assign to project": a link of the IDS to a federation model
+ *   (`ids_document_models`, like `POST /api/ids/models`); without a model the response says where the link is made.
+ *   Writing is behind `IDS_WRITE_ENABLED`, the origin guard and the rate limit (D-162).
  */
 
 export const dynamic = "force-dynamic";

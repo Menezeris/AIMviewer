@@ -14,8 +14,8 @@ async function getHandler(
   const projectId = currentProjectId();
   const { objectId } = await params;
 
-  // Validácia ako /api/element — bez nej ide nevalidný vstup až do Postgresu
-  // (uuid cast error) a interná hláška by unikla do odpovede.
+  // Validation like /api/element - without it invalid input goes all the way to Postgres
+  // (uuid cast error) and the internal message would leak into the response.
   if (!UUID_RE.test(objectId)) {
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
@@ -26,7 +26,7 @@ async function getHandler(
       headers: { "Cache-Control": "public, max-age=60" },
     });
   } catch (err) {
-    // Interné DB hlášky nepatria klientovi — logni a vráť generickú chybu.
+    // Internal DB messages do not belong to the client - log and return a generic error.
     console.error(`[api/space-siblings/${objectId}]`, err);
     return NextResponse.json({ error: "server error" }, { status: 500 });
   }

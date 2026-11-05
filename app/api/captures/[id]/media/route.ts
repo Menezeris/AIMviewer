@@ -16,15 +16,15 @@ import { currentProjectId } from "@/lib/live/caller";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Reality Capture (D-073) — upload snímky/verzie k capture pointu.
+ * Reality Capture (D-073) - upload of a shot/version for a capture point.
  *
- * `POST /api/captures/{id}/media` — multipart (`file`, voliteľne `capturedAt`).
- * Server-side `sharp` vygeneruje `preview` (rýchle načítanie; 360 downscale pod
- * GPU limit ~8K mobil / 16K desktop) + `thumb`, nahrá orig/preview/thumb do
- * bucket `captures` a založí `capture_media` riadok + hranu (append-only).
+ * `POST /api/captures/{id}/media` - multipart (`file`, optionally `capturedAt`).
+ * Server-side `sharp` generates `preview` (fast loading; 360 downscale below the
+ * GPU limit ~8K mobile / 16K desktop) + `thumb`, uploads orig/preview/thumb to the
+ * `captures` bucket and creates a `capture_media` row + edge (append-only).
  *
- * Za env bránou `CAPTURE_WRITE_ENABLED` (default VYPNUTÝ) + origin guard + per-IP
- * rate limit (vzor D-068/D-072). sharp vyžaduje Node runtime.
+ * Behind the env gate `CAPTURE_WRITE_ENABLED` (default OFF) + origin guard + per-IP
+ * rate limit (pattern D-068/D-072). sharp requires the Node runtime.
  */
 
 export const runtime = "nodejs";
@@ -32,15 +32,15 @@ export const maxDuration = 60;
 
 const WRITE_ENABLED = process.env.CAPTURE_WRITE_ENABLED === "true";
 
-/** 360° panorámy bývajú veľké (16K equirect ~ desiatky MB); rezerva 64 MB. */
+/** 360° panoramas tend to be large (16K equirect ~ tens of MB); reserve 64 MB. */
 const MAX_UPLOAD_BYTES = 64 * 1024 * 1024;
 
-/** Equirectangular preview širka (2:1 → 4096×2048) — pod GPU limitom aj na mobile. */
+/** Equirectangular preview width (2:1 -> 4096×2048) - below the GPU limit even on mobile. */
 const PANO_PREVIEW_WIDTH = 4096;
 const PHOTO_PREVIEW_MAX = 2048;
 const PANO_THUMB_WIDTH = 1024;
 const PHOTO_THUMB_MAX = 512;
-/** Tolerancia pomeru strán pre equirect (ideál 2:1). */
+/** Aspect ratio tolerance for equirect (ideal 2:1). */
 const PANO_ASPECT_TOLERANCE = 0.1;
 
 const RATE_LIMIT_MAX = Number(
@@ -129,7 +129,7 @@ async function postHandler(
 
     const input = Buffer.from(await file.arrayBuffer());
 
-    // Rozmery originálu s ohľadom na EXIF orientáciu.
+    // Original dimensions with respect to EXIF orientation.
     const meta = await sharp(input).metadata();
     let origW = meta.width ?? 0;
     let origH = meta.height ?? 0;
@@ -144,7 +144,7 @@ async function postHandler(
       );
     }
 
-    // preview + thumb (sharp .rotate() zapečie EXIF orientáciu).
+    // preview + thumb (sharp .rotate() bakes in the EXIF orientation).
     const preview = await sharp(input)
       .rotate()
       .resize(
