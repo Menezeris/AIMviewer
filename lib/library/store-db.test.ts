@@ -10,7 +10,7 @@ vi.mock("../supabase/server", () => ({
   getSupabaseAdmin: () => ({
     rpc: async (fn: string, args: Record<string, unknown>) => {
       volania.push({ fn, args });
-      return fn === "library_texty" ? { data: Object.entries(vzor).map(([cesta, text]) => ({ cesta, text })), error: null } : odpoved;
+      return fn === "library_texts" ? { data: Object.entries(vzor).map(([cesta, text]) => ({ cesta, text })), error: null } : odpoved;
     },
   }),
 }));
@@ -32,15 +32,15 @@ describe("sklad v DB (D-186 krok 3)", () => {
       ],
       { autor: "Samuel", zdroj: "editor" },
     );
-    const z = volania.find((v) => v.fn === "library_zapis")!.args;
-    expect(Object.keys(z.p_projekcie as object).sort()).toEqual([a, b2].sort());
-    expect((z.p_projekcie as Record<string, { data: { id: string } }>)[a].data.id).toBe("IU-O-space");
-    expect((z.p_projekcie as Record<string, { data: { id: string } }>)[b2].data.id).toBe("DEF-plocha-cista");
-    expect(z.p_zapisy).toEqual([
+    const z = volania.find((v) => v.fn === "library_write")!.args;
+    expect(Object.keys(z.p_projections as object).sort()).toEqual([a, b2].sort());
+    expect((z.p_projections as Record<string, { data: { id: string } }>)[a].data.id).toBe("IU-O-space");
+    expect((z.p_projections as Record<string, { data: { id: string } }>)[b2].data.id).toBe("DEF-plocha-cista");
+    expect(z.p_writes).toEqual([
       expect.objectContaining({ cesta: b, nova_cesta: b2, note_id: "DEF-plocha-cista", typ: "DEF" }),
       expect.objectContaining({ cesta: a, nova_cesta: null, note_id: "IU-O-space", typ: "IU-O" }),
     ]);
-    expect(z.p_autor).toBe("Samuel");
+    expect(z.p_author).toBe("Samuel");
   });
 
   it("AS409 z DB = Konflikt s cestami; prázdny autor sa nepošle", async () => {

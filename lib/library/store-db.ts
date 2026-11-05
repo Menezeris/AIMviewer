@@ -41,7 +41,7 @@ export function supabaseStore(kniznica: string): Sklad {
   let cache: Record<string, string> | null = null;
   const nacitaj = async () => {
     if (cache) return cache;
-    const { data, error } = await getSupabaseAdmin().rpc("library_texty", { p_kniznica: kniznica });
+    const { data, error } = await getSupabaseAdmin().rpc("library_texts", { p_library: kniznica });
     if (chybaRpc(error)) throw new ZapisMigraciaChyba();
     if (error) throw new StoreError(`čítanie knižnice zlyhalo: ${error.message}`);
     cache = Object.fromEntries(((data ?? []) as Array<{ cesta: string; text: string }>).map((r) => [r.cesta, r.text]));
@@ -68,14 +68,14 @@ export function supabaseStore(kniznica: string): Sklad {
       });
       // {cieľová cesta: projekcia}: RPC páruje podľa cesty z výstupu zapis_revizie, nie podľa poradia
       const projekcie = Object.fromEntries(zapisy.map((z) => [z.nova_cesta ?? z.cesta!, projekcia(z.nova_cesta ?? z.cesta!, z.text)]));
-      const { error } = await getSupabaseAdmin().rpc("library_zapis", {
-        p_kniznica: kniznica,
-        p_autor: podpis.autor.trim(),
-        p_sprava: podpis.sprava ?? null,
-        p_zdroj: zdroj,
-        p_schema_verzia: SCHEMA_VERZIA,
-        p_zapisy: polozky,
-        p_projekcie: JSON.parse(JSON.stringify(projekcie)),
+      const { error } = await getSupabaseAdmin().rpc("library_write", {
+        p_library: kniznica,
+        p_author: podpis.autor.trim(),
+        p_message: podpis.sprava ?? null,
+        p_source: zdroj,
+        p_schema_version: SCHEMA_VERZIA,
+        p_writes: polozky,
+        p_projections: JSON.parse(JSON.stringify(projekcie)),
         p_engine: ENGINE,
       });
       cache = null;
