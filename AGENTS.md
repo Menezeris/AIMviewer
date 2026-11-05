@@ -5,6 +5,10 @@
 > `.cursor/rules/*.mdc`, `GEMINI.md`) sú **len tenké pointery sem** — nekopíruj do nich
 > obsah, aby sa nerozišli. Zmeny konvencií rob **tu**.
 
+> **Language (Samuel, 4 Nov 2026):** everything new is written in English: code, comments,
+> commits, PRs, docs, new D-records and answers to Samuel. Existing Slovak text stays as it is and
+> is not translated.
+
 ## Dokumentačná mapa (D-017)
 
 **Zlaté pravidlo:** každý fakt žije na **jednom** mieste, ostatné naň linkujú. Keď píšeš,
