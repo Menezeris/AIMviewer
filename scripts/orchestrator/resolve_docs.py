@@ -7,6 +7,27 @@ def sub(path, fn):
     open(path, 'w', encoding='utf-8').write(s)
     print(path, n)
 
+def decisions_pointer(path):
+    """DECISIONS.md is a pointer since D-197. A PR that still appends records there is converted: each
+    `### D-nnn` block becomes decisions/D-nnn.md, an index row is appended, the pointer file is taken from main."""
+    cur = open(path, encoding='utf-8').read()
+    added = []
+    def grab(m):
+        added.append(m.group(1))
+        return ''
+    cur = re.sub(r'<<<<<<< HEAD\n(.*?)=======\n(.*?)>>>>>>> origin/main\n', grab, cur, flags=re.S)
+    text = '\n'.join(added)
+    for blk in re.split(r'(?m)^(?=### D-\d)', text):
+        m = re.match(r'### D-(\d+[a-z]?)\s*[-\u2014\u2013]?\s*([^\n]*)', blk)
+        if not m:
+            continue
+        name = f'D-{m.group(1)}'
+        open(f'decisions/{name}.md', 'w', encoding='utf-8').write(blk.rstrip('\n').rstrip('-').rstrip() + '\n')
+        with open('decisions/README.md', 'a', encoding='utf-8') as r:
+            r.write(f'| [{name}]({name}.md) | {m.group(2).replace("|", "/")} | decided | (add one line) |\n')
+        print('record moved to decisions/', name, '- check the index row')
+    subprocess.check_call(['git', 'checkout', 'origin/main', '--', path])
+
 def questions():
     sh = lambda r: subprocess.check_output(['git', 'show', f'{r}:eval/questions.json']).decode()
     o, t = sh('HEAD'), sh('origin/main')
@@ -28,7 +49,7 @@ def questions():
 
 for f in sys.argv[1:]:
     if f == 'DECISIONS.md':
-        sub(f, lambda m: m.group(2).rstrip('\n') + '\n\n---\n\n' + m.group(1))
+        decisions_pointer(f)
     elif f == 'ROADMAP.md':
         sub(f, lambda m: m.group(2) + m.group(1))
     elif f == 'eval/questions.json':

@@ -17,7 +17,7 @@ import { specLink } from "@/lib/verify/wire";
 
 export const metadata = { title: "Overenie výmer (D-185)" };
 
-const DECISION_URL = "https://github.com/Menezeris/AIMviewer/blob/main/DECISIONS.md";
+const DECISION_URL = "https://github.com/Menezeris/AIMviewer/blob/main/decisions/D-185.md";
 
 const STATUSES: Array<[string, string, string]> = [
   ["green", "bg-green-500", "hodnota zo súboru sedí s geometriou v tolerancii (alebo je správne neuvedená)"],
@@ -42,7 +42,7 @@ export default function OverenieVymerPage() {
           vypočítanou z geometrie tej istej revízie modelu. Do IFC sa nič nezapisuje; beh sa uloží k revízii a pri novej
           revízii je zastaraný. Pravidlá sú v registri metód (verzia {REGISTRY_VERSION}), rozhodnutie a jeho doplnky v{" "}
           <a className="underline" href={DECISION_URL} target="_blank" rel="noreferrer">
-            DECISIONS.md, D-185
+            decisions/D-185.md
           </a>
           .
         </p>
