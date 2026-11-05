@@ -6,11 +6,11 @@ import { VERIFY_CHECK_SPACES } from "@/lib/verify/wire";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Overenie výmer všetkých IfcSpace modelov federácie jedným behom (D-185 UI, ribbon AIM > Overovanie):
- * `POST {check: 'space_quantities'}` -> `{data: VerifyRunAllWire, saved}`; beh sa uloží k revízii (`VERIFY_WRITE_ENABLED`).
- * Súbežný druhý beh v tej istej inštancii sa odmietne (most hosta pustí z jednej karty len jeden). Limit funkcie 300 s
- * (Vercel Hobby s fluid compute; Pro až 800 s); ASR v79 (83 miestností) sa po načítaní modelu zmestí, inak dávkovanie
- * cez `run` po miestnostiach (D-185 UI, návrh v PR).
+ * Quantity verification of all IfcSpace of the federation models in one run (D-185 UI, ribbon AIM > Verification):
+ * `POST {check: 'space_quantities'}` -> `{data: VerifyRunAllWire, saved}`; the run is saved with the revision (`VERIFY_WRITE_ENABLED`).
+ * A concurrent second run in the same instance is rejected (the host bridge lets only one through from one tab). Function limit 300 s
+ * (Vercel Hobby with fluid compute; Pro up to 800 s); ASR v79 (83 rooms) fits after loading the model, otherwise batching
+ * via `run` per room (D-185 UI, proposal in the PR).
  */
 
 export const dynamic = "force-dynamic";

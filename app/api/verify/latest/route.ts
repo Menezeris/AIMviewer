@@ -5,9 +5,9 @@ import { latestVerification } from "@/lib/verify/service";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Posledné uložené overenie výmer prvku pre viewer (D-185 UI, `VERIFY_REQUEST latest`): `GET ?global_id=` ->
- * `{data: VerifyElementWire | null}` z `v_verification_latest` (na veličinu a rodinu receptu najvyšší register, hlavný
- * recept prvý, veličiny bez hodnoty v súbore vynechané, `stale` a `current_revision` z modelu). Len čítanie.
+ * Latest saved quantity verification of an element for the viewer (D-185 UI, `VERIFY_REQUEST latest`): `GET ?global_id=` ->
+ * `{data: VerifyElementWire | null}` from `v_verification_latest` (per quantity and recipe family the highest registry, the main
+ * recipe first, quantities without a value in the file omitted, `stale` and `current_revision` from the model). Read-only.
  */
 
 export const dynamic = "force-dynamic";

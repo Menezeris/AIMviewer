@@ -1,12 +1,12 @@
-"""IFC model upload — podklady/ASR.ifc → Supabase Storage bucket `ifc/` (D-044, S5).
+"""IFC model upload - podklady/ASR.ifc -> Supabase Storage bucket `ifc/` (D-044, S5).
 
-Vytvorí public bucket `ifc/` (idempotentne) a nahrá IFC súbor. Výstupom je
-verejná URL, ktorú treba nastaviť ako `NEXT_PUBLIC_IFC_URL` v Verceli / `.env.local`.
+Creates the public bucket `ifc/` (idempotently) and uploads the IFC file. The output is
+the public URL, which must be set as `NEXT_PUBLIC_IFC_URL` in Vercel / `.env.local`.
 
-Použitie:
-    python -m etl.ifc_upload                      # štandardná cesta podklady/ASR.ifc
-    python -m etl.ifc_upload --file cesta/ifc     # vlastná cesta
-    python -m etl.ifc_upload --dry-run            # iba overenie, bez uploadu
+Usage:
+    python -m etl.ifc_upload                      # default path podklady/ASR.ifc
+    python -m etl.ifc_upload --file path/ifc      # custom path
+    python -m etl.ifc_upload --dry-run            # verification only, no upload
 
 Env (`.env.local`): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 """
@@ -27,16 +27,16 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 BUCKET = "ifc"
 DEFAULT_IFC = _REPO_ROOT / "podklady" / "ASR.ifc"
 OBJECT_KEY = "ASR.ifc"
-# Cache-Control v sekundách (D-135 dodatok). Aktuálny kľúč `ifc/<MODEL>.ifc` sa prepisuje každou revíziou,
-# preto krátka; archív `archive/<MODEL>/vNNN.ifc.gz` sa nikdy neprepíše, preto rok.
+# Cache-Control in seconds (D-135 addendum). The current key `ifc/<MODEL>.ifc` is overwritten by every revision,
+# hence short; the archive `archive/<MODEL>/vNNN.ifc.gz` is never overwritten, hence a year.
 CURRENT_CACHE_SECONDS = 60
 ARCHIVE_CACHE_SECONDS = 31536000
 
 
-# ── Supabase Storage helpers (rovnaký vzor ako doc_upload.py) ─────────────────
+# ── Supabase Storage helpers (same pattern as doc_upload.py) ──────────────────
 
 def _storage_env() -> tuple[str, str]:
-    # .env.local načíta config pri importe; pre standalone spustenie načítame tu.
+    # config loads .env.local on import; for a standalone run we load it here.
     try:
         from dotenv import load_dotenv
         for name in (".env.local", ".env"):
@@ -79,10 +79,10 @@ def _request(
 
 
 def multipart_body(content: bytes, content_type: str, cache_seconds: int) -> tuple[bytes, str]:
-    """Telo `multipart/form-data` ako ho posiela supabase-js (`cacheControl` + súbor).
+    """`multipart/form-data` body as supabase-js sends it (`cacheControl` + file).
 
-    Storage ignoruje hlavičku `cache-control` na surovom tele (objekt dostane `private, no-cache`),
-    `cacheControl` z formulára berie. Vracia (telo, hodnota Content-Type s boundary)."""
+    Storage ignores the `cache-control` header on a raw body (the object gets `private, no-cache`),
+    it takes `cacheControl` from the form. Returns (body, Content-Type value with boundary)."""
     boundary = f"----aim{uuid.uuid4().hex}"
     head = (
         f"--{boundary}\r\n"
@@ -98,7 +98,7 @@ def multipart_body(content: bytes, content_type: str, cache_seconds: int) -> tup
 
 def put_object(base: str, key: str, bucket: str, object_key: str, content: bytes, *,
                content_type: str, upsert: bool, cache_seconds: int) -> tuple[int, bytes]:
-    """Nahrá objekt s `cacheControl` (sekundy); `upsert=False` nikdy neprepíše existujúci."""
+    """Upload an object with `cacheControl` (seconds); `upsert=False` never overwrites an existing one."""
     body, ctype = multipart_body(content, content_type, cache_seconds)
     return _request(
         "POST", f"{base}/storage/v1/object/{bucket}/{urllib.parse.quote(object_key)}", key,
@@ -108,7 +108,7 @@ def put_object(base: str, key: str, bucket: str, object_key: str, content: bytes
 
 
 def ensure_bucket(base: str, key: str) -> None:
-    """Vytvorí public bucket `ifc/` (idempotentne)."""
+    """Create the public bucket `ifc/` (idempotent)."""
     status, body = _request(
         "POST",
         f"{base}/storage/v1/bucket",
@@ -125,7 +125,7 @@ def ensure_bucket(base: str, key: str) -> None:
 
 
 def upload_ifc(base: str, key: str, content: bytes, object_key: str = OBJECT_KEY) -> str:
-    """Nahrá IFC súbor (upsert) a vráti verejnú URL."""
+    """Upload an IFC file (upsert) and return the public URL."""
     encoded = urllib.parse.quote(object_key)
     status, body = put_object(
         base, key, BUCKET, object_key, content,

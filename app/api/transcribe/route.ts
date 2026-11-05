@@ -9,20 +9,20 @@ import { getSttProvider, SttConfigError } from "@/lib/stt/provider";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Hlasový prepis pokynov (D-069): klient nahrá diktát (MediaRecorder,
- * webm/opus alebo mp4 zo Safari), server ho prepíše cez STT provider vrstvu
- * (`lib/stt/`) a vráti čistý text — klient ho vloží do chat inputu, používateľ
- * ho skontroluje a odošle sám (dictation pattern, žiadne auto-send).
+ * Voice transcription of instructions (D-069): the client uploads dictation (MediaRecorder,
+ * webm/opus or mp4 from Safari), the server transcribes it via the STT provider layer
+ * (`lib/stt/`) and returns plain text - the client puts it into the chat input, the user
+ * checks it and sends it themselves (dictation pattern, no auto-send).
  */
 
-/** Klient nahráva max 60 s; opus ~200 kB/min, mp4/AAC zo Safari viac — rezerva. */
+/** The client records at most 60 s; opus ~200 kB/min, mp4/AAC from Safari more - reserve. */
 const MAX_AUDIO_BYTES = 4 * 1024 * 1024;
 
 export const maxDuration = 30;
 
-// Rovnaká ochrana ako /api/ask (D-068): endpoint prenáša audio na platený/
-// kvótovaný STT backend — bez limitu je to vektor na vyčerpanie free tieru.
-// Default len v produkcii; override cez TRANSCRIBE_RATE_LIMIT_MAX (0 = vypnuté).
+// The same protection as /api/ask (D-068): the endpoint passes audio to a paid/
+// quota-limited STT backend - without a limit it is a vector for exhausting the free tier.
+// Default only in production; override via TRANSCRIBE_RATE_LIMIT_MAX (0 = off).
 const RATE_LIMIT_MAX = Number(
   process.env.TRANSCRIBE_RATE_LIMIT_MAX ??
     (process.env.NODE_ENV === "production" ? 30 : 0)
@@ -64,8 +64,8 @@ async function postHandler(req: Request) {
   if (audio.size > MAX_AUDIO_BYTES) {
     return NextResponse.json({ error: "nahrávka je príliš veľká" }, { status: 413 });
   }
-  // MediaRecorder typ nesie aj codecs sufix (audio/webm;codecs=opus) — pre STT
-  // stačí základný MIME. Prázdny typ = webm (Chrome ho nastavuje vždy, poistka).
+  // The MediaRecorder type also carries a codecs suffix (audio/webm;codecs=opus) - for STT
+  // the base MIME is enough. Empty type = webm (Chrome always sets it, safeguard).
   const mimeType = (audio.type.split(";")[0] || "audio/webm").trim();
   if (!mimeType.startsWith("audio/")) {
     return NextResponse.json({ error: "nepodporovaný formát nahrávky" }, { status: 415 });

@@ -1,5 +1,5 @@
 /**
- * Skórovanie zlatých otázok a platnosť eval/questions.json (beh evalov 2026-10-31, OCB evals.yml).
+ * Scoring of the golden questions and validity of eval/questions.json (eval run 2026-10-31, OCB evals.yml).
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

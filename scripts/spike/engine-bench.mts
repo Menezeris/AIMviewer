@@ -1,12 +1,12 @@
 /**
- * Fáza 0 (D-084): meranie IFC motora `@ifc-lite/mcp` nad modelmi federácie.
+ * Phase 0 (D-084): measuring the IFC engine `@ifc-lite/mcp` over the federation models.
  *
- *   npx vite-node@6.0.0 scripts/spike/engine-bench.mts -- [--ids <cesta k .ids>] [--runs 5]
+ *   npx vite-node@6.0.0 scripts/spike/engine-bench.mts -- [--ids <path to .ids>] [--runs 5]
  *
- * Meria: studené/teplé načítanie modelov (cache inštancie), dotaz s číselným
- * filtrom, izoláciu backendov nad jedným storeom (úprava v A nie je vidno v B),
- * voliteľne ids_validate a clash_check. Výstup = JSON na stdout (čísla idú do
- * D-084). Nič nezapisuje, DB nepotrebuje.
+ * Measures: cold/warm model loading (instance cache), a query with a numeric
+ * filter, isolation of backends over one store (an edit in A is not visible in B),
+ * optionally ids_validate and clash_check. Output = JSON on stdout (the numbers go into
+ * D-084). Writes nothing, needs no DB.
  */
 import { readFileSync } from "node:fs";
 
@@ -55,7 +55,7 @@ async function main() {
   const out: Record<string, unknown> = { node: process.version, rssStartMb: rssMb() };
   const sources = (envIfcModels() ?? []);
 
-  // 1) Studené a teplé načítanie.
+  // 1) Cold and warm loading.
   const models: EngineModel[] = [];
   const load: Record<string, unknown> = {};
   for (const src of sources) {
@@ -73,7 +73,7 @@ async function main() {
   out.load = load;
   out.rssAfterLoadMb = rssMb();
 
-  // 2) Dotaz s číselným filtrom (ASR), opakovane - nový backend pri každom volaní.
+  // 2) Query with a numeric filter (ASR), repeated - a new backend on every call.
   const asr = models.find((m) => m.id === "ASR") ?? models[0];
   const qMs: number[] = [];
   let qCount: unknown = null;
@@ -92,7 +92,7 @@ async function main() {
   }
   out.query = { runs: RUNS, ms: qMs, p95Ms: p95(qMs), count: qCount };
 
-  // 3) Izolácia: úprava vlastnosti na backende A sa nesmie prejaviť v B (zdieľaný store).
+  // 3) Isolation: a property edit on backend A must not show up in B (shared store).
   const all = buildDefaultToolRegistry();
   const first = await callEngineTool([asr], "query_entities", {
     model_id: asr.id,
@@ -131,7 +131,7 @@ async function main() {
     visibleInB: hasMarker(readB.structuredContent),
   };
 
-  // 4) IDS (voliteľne).
+  // 4) IDS (optional).
   if (IDS_PATH) {
     const xml = readFileSync(IDS_PATH, "utf8");
     const r = await timed(() => callEngineTool([asr], "ids_validate", { model_id: asr.id, ids_xml: xml }));
@@ -151,7 +151,7 @@ async function main() {
     };
   }
 
-  // 5) Kolízie (VZT, v rámci modelu).
+  // 5) Clashes (VZT, within the model).
   const vzt = models.find((m) => m.id === "VZT");
   if (vzt) {
     const r = await timed(() =>

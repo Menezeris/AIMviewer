@@ -4,10 +4,10 @@ import { listViewerPreviews, previewForPull } from "@/lib/viewer-previews";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Náhľady viewera z PR forku pre výber viewera nad 3D (D-116).
- * `GET` = otvorené PR s náhľadom; `GET ?pr=73` = jeden PR (aj zatvorený).
- * Odpoveď je verejná a krátko cachovaná: obsahuje len čísla, názvy PR a URL
- * náhľadov verejného forku.
+ * Previews of the viewer from the PR fork for the viewer selection above 3D (D-116).
+ * `GET` = open PRs with a preview; `GET ?pr=73` = one PR (also a closed one).
+ * The response is public and briefly cached: it contains only numbers, PR names and URLs
+ * of the previews of the public fork.
  */
 async function getHandler(req: NextRequest) {
   const pr = req.nextUrl.searchParams.get("pr");

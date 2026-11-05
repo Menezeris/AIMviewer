@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Vercel "Ignored Build Step" projektu ai-mviewer (D-187). Vercel: exit 1 = build, exit 0 = preskočiť.
-# Nastavenie projektu (commandForIgnoringBuildStep) volá tento skript, ak v commite existuje:
+# Vercel "Ignored Build Step" of the ai-mviewer project (D-187). Vercel: exit 1 = build, exit 0 = skip.
+# The project setting (commandForIgnoringBuildStep) calls this script if it exists in the commit:
 #   if [ -f scripts/vercel-ignore.sh ]; then bash scripts/vercel-ignore.sh; else exit 1; fi
 #
-# Pravidlá:
-#   - prázdny ref (deploy z CLI / API bez gitu) = build;
-#   - "[preview]" v správe commitu = build na hocijakej vetve (náhľad na požiadanie);
-#   - main = build, okrem pushu, ktorý od posledného úspešného nasadenia mení len docs/, *.md,
-#     supabase/pending/ alebo supabase/tests/;
-#   - ostatné vetvy bez "[preview]" = bez náhľadu (kontrolou pred zlúčením je GitHub Actions CI).
+# Rules:
+#   - empty ref (deploy from the CLI / API without git) = build;
+#   - "[preview]" in the commit message = build on any branch (preview on request);
+#   - main = build, except a push that since the last successful deployment changes only docs/, *.md,
+#     supabase/pending/ or supabase/tests/;
+#   - other branches without "[preview]" = no preview (the pre-merge check is GitHub Actions CI).
 #
-# VERCEL_GIT_PREVIOUS_SHA = SHA posledného ÚSPEŠNÉHO nasadenia vetvy; preskočené buildy ho neposúvajú,
-# takže diff pokryje všetko od posledného nasadenia. Ak chýba alebo ho plytký klon Vercelu nemá
-# (alebo diff zlyhá), skript radšej builduje.
+# VERCEL_GIT_PREVIOUS_SHA = SHA of the last SUCCESSFUL deployment of the branch; skipped builds do not advance it,
+# so the diff covers everything since the last deployment. If it is missing or the shallow Vercel clone does not have it
+# (or the diff fails), the script prefers to build.
 set -u
 
 ref="${VERCEL_GIT_COMMIT_REF:-}"

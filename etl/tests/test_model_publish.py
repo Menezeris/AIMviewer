@@ -1,8 +1,8 @@
-"""Revízie IFC modelov (D-086): technická poistka a compare-and-swap zápis revízie.
+"""IFC model revisions (D-086): the technical safeguard and the compare-and-swap revision write.
 
-Poistka beží nad malými IFC súbormi vytvorenými cez `ifcopenshell.api`. Zápis
-revízií potrebuje Postgres: testy bežia len s `AIM_TEST_DATABASE_URL` (lokálna databáza so všetkými
-migráciami, D-189). Každý test má vlastný projekt (D-189), ktorý na konci zmaže. Úložisko je slovník v pamäti.
+The safeguard runs over small IFC files created via `ifcopenshell.api`. Writing
+revisions needs Postgres: the tests run only with `AIM_TEST_DATABASE_URL` (a local database with all
+migrations, D-189). Each test has its own project (D-189), which it deletes at the end. The storage is an in-memory dict.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ def _model(tmp: Path, name: str, walls: list[str], schema: str = "IFC4X3_ADD2", 
 W1, W2, W3 = (ifcopenshell.guid.new() for _ in range(3))
 
 
-# ── poistka ──────────────────────────────────────────────────────────────────
+# ── safeguard ──────────────────────────────────────────────────────────────────
 
 def test_guard_first_revision_checks_schema(tmp_path: Path) -> None:
     assert mp.guard(_model(tmp_path, "a", [W1])).ok
@@ -60,7 +60,7 @@ def test_guard_requires_declared_add_and_remove(tmp_path: Path) -> None:
     rep = mp.guard(new, base, {"changes": []})
     assert not rep.ok
     assert rep.added == [W3] and rep.removed == [W2]
-    assert rep.class_delta == {}  # jedna stena preč, jedna pribudla
+    assert rep.class_delta == {}  # one wall gone, one added
     assert len(rep.errors) == 2
 
     declared = {"changes": [{"guid": W3, "op": "add"}, {"guid": W2, "op": "remove"}]}
@@ -77,7 +77,7 @@ def test_guard_schema_change_against_base(tmp_path: Path) -> None:
     assert not rep.ok and "schéma sa zmenila" in rep.errors[0]
 
 
-# ── zápis revízií (Postgres) ─────────────────────────────────────────────────
+# ── revision write (Postgres) ─────────────────────────────────────────────────
 
 DB = os.environ.get("AIM_TEST_DATABASE_URL")
 needs_db = pytest.mark.skipif(not DB, reason="AIM_TEST_DATABASE_URL nie je nastavené")
@@ -173,7 +173,7 @@ def test_publish_bootstrap_then_change(tmp_path, db_url, storage, project) -> No
     assert _revisions(db_url, pid) == [(72, None, False, "prevzatie"), (73, 72, True, "nová stena")]
     assert storage[f"{cid}.ifc"] == v1.read_bytes()
 
-    # rovnaký obsah znova = nič nové
+    # the same content again = nothing new
     assert mp.publish(model="ASR", path=v1, base=73, changes=changes, db_url=db_url,
                       project_code=code)["status"] == "unchanged"
 
@@ -284,7 +284,7 @@ def test_archive_keys_by_project() -> None:
 
 @needs_db
 def test_bcf_topic_without_model_and_atomic_comment(db_url, project) -> None:
-    """D-099: téma nad federáciou nemá model; komentár sa pripája bez prepisu poľa."""
+    """D-099: a topic over a federation has no model; the comment is appended without overwriting the field."""
     import psycopg
 
     _, pid = project
@@ -305,7 +305,7 @@ def test_bcf_topic_without_model_and_atomic_comment(db_url, project) -> None:
 
 
 def test_changes_file_format_roundtrip(tmp_path: Path) -> None:
-    """Zoznam zmien je obyčajný JSON; poistka číta len `changes[].guid` a `op`."""
+    """The change list is plain JSON; the safeguard reads only `changes[].guid` and `op`."""
     doc = {"summary": "s", "changes": [{"guid": W1, "ifc_class": "IfcWall", "op": "modify",
                                         "what": "Pset_WallCommon.FireRating",
                                         "before": "REI 30", "after": "REI 60"}]}

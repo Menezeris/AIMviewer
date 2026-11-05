@@ -1,22 +1,22 @@
-"""Odvodzovač `spatial_reference` (D-080): prvok → priestor podľa geometrie.
+"""The `spatial_reference` deriver (D-080): element -> space by geometry.
 
-Pre každý prvok federácie (default: IfcDistributionElement + IfcFurnishingElement)
-zistí, v ktorých priestorových prvkoch (default: IfcSpace; ďalšie triedy podľa registra
-pravidiel D-089, napr. IfcSpatialZone) leží,
-a vydá hranu `rel_referenced_in_spatial_structure` (IFC-kanonická,
-IfcRelReferencedInSpatialStructure — neexkluzívna, takže nekoliduje s natívnym
-`ContainedInStructure` prvku na podlaží, ktoré je SET[0:1]).
+For every element of the federation (default: IfcDistributionElement + IfcFurnishingElement)
+it finds which spatial elements (default: IfcSpace; further classes per the rule registry
+D-089, e.g. IfcSpatialZone) it lies in,
+and emits an edge `rel_referenced_in_spatial_structure` (IFC-canonical,
+IfcRelReferencedInSpatialStructure - non-exclusive, so it does not collide with the element's native
+`ContainedInStructure` on a storey, which is SET[0:1]).
 
-Geometriu rieši ifcopenshell: BVH strom nad presnými BRep telesami
-(`ifcopenshell.geom.tree`, OpenCascade) a jeho priestorové dotazy:
-  * `inside`  — prvok leží celý v tele priestoru (`select(space, completely_within=True)`),
-  * `partial` — prvok telo priestoru pretína (`select(space)`), napr. potrubie
-    prechádza miestnosťou.
-Rozhoduje teda telo IfcSpace tak, ako ho model nesie; žiadna heuristika navyše
-(ak VZT v podhľade nepadne do miestnosti, má model zle definované telo priestoru).
-Modely federácie sa zarovnajú cez IfcMapConversion (`model-offset`). Steny IfcFacetedBrep
-sa preorientujú (`reorient-shells`), inak telo s opačne otočenými stenami nič nepretne (#92).
-Prvok, ktorý zdrojový súbor už priamo obsahuje/referencuje v tom priestore, sa preskočí.
+The geometry is handled by ifcopenshell: a BVH tree over exact BRep solids
+(`ifcopenshell.geom.tree`, OpenCascade) and its spatial queries:
+  * `inside`  - the element lies entirely within the space body (`select(space, completely_within=True)`),
+  * `partial` - the element crosses the space body (`select(space)`), e.g. a duct
+    passing through a room.
+So the IfcSpace body decides, as the model carries it; no extra heuristics
+(if an HVAC element in a ceiling void does not fall into a room, the model has a badly defined space body).
+The models of the federation are aligned via IfcMapConversion (`model-offset`). The faces of IfcFacetedBrep
+are reoriented (`reorient-shells`), otherwise a body with oppositely oriented faces intersects nothing (#92).
+An element that the source file already directly contains/references in that space is skipped.
 """
 
 from __future__ import annotations
@@ -33,9 +33,9 @@ REL_TYPE = "rel_referenced_in_spatial_structure"
 @dataclass
 class SpatialReferenceConfig:
     element_classes: tuple[str, ...] = ("IfcDistributionElement", "IfcFurnishingElement")
-    # Priestorové zóny majú vlastné pravidlo v registri (D-089, element_in_spatial_zone).
+    # Spatial zones have their own rule in the registry (D-089, element_in_spatial_zone).
     spatial_classes: tuple[str, ...] = ("IfcSpace",)
-    # Vydávať aj `partial` (prvok pretína priestor). False = len prvky celé vnútri.
+    # Also emit `partial` (the element crosses the space). False = only elements entirely inside.
     include_partial: bool = True
 
 
@@ -46,8 +46,8 @@ class SpatialReferenceResult:
     elements_matched: int = 0
     spaces_total: int = 0
     unmatched: list[tuple[str, str]] = field(default_factory=list)  # (guid, ifc_type)
-    # QA: dvojice priestorov, v ktorých naraz celý leží ten istý prvok —
-    # priestory sa prekrývajú (duplicitné miestnosti, Revit Areas ako IfcSpace…).
+    # QA: pairs of spaces in which the same element lies entirely at once -
+    # the spaces overlap (duplicate rooms, Revit Areas as IfcSpace...).
     overlaps: dict[tuple[str, str], int] = field(default_factory=dict)
 
 
@@ -57,7 +57,7 @@ def _by_types(model, classes) -> list:
         try:
             out.extend(model.by_type(c))
         except RuntimeError:
-            pass  # trieda v schéme modelu neexistuje (napr. IfcSpatialZone v IFC2X3)
+            pass  # the class does not exist in the model schema (e.g. IfcSpatialZone in IFC2X3)
     return out
 
 
@@ -73,15 +73,15 @@ def _native_space_relations(model) -> set[tuple[str, str]]:
 
 
 def _iterator(model, products, offset):
-    """Iterátor natívnych BRep tvarov vo svetových súradniciach + posun federácie."""
+    """Iterator of native BRep shapes in world coordinates + the federation offset."""
     import ifcopenshell.geom
     from ifcopenshell import ifcopenshell_wrapper
 
     settings = ifcopenshell.geom.settings()
     settings.set("use-world-coords", True)
     settings.set("iterator-output", ifcopenshell_wrapper.NATIVE)
-    # Revit exportuje rodiny (výustky, tvarovky) ako IfcFacetedBrep s nejednotne orientovanými
-    # stenami; bez preorientovania ich presný test voči telu priestoru minie (#92).
+    # Revit exports families (outlets, fittings) as IfcFacetedBrep with inconsistently oriented
+    # faces; without reorienting, the exact test against the space body misses them (#92).
     settings.set("reorient-shells", True)
     if any(offset):
         settings.set("model-offset", tuple(float(x) for x in offset))
@@ -89,7 +89,7 @@ def _iterator(model, products, offset):
 
 
 def derive(models: list, config: SpatialReferenceConfig | None = None) -> SpatialReferenceResult:
-    """`models[0]` je referenčný rámec; ostatné sa zarovnajú cez IfcMapConversion."""
+    """`models[0]` is the reference frame; the others are aligned via IfcMapConversion."""
     import ifcopenshell.geom
 
     cfg = config or SpatialReferenceConfig()

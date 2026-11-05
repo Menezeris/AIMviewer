@@ -1,20 +1,20 @@
-"""PDF URI-anotácie — kódy klikateľné v ľubovoľnom prehliadači (D-042 fáza B / MVP).
+"""PDF URI annotations - codes clickable in any viewer (D-042 phase B / MVP).
 
-Číta link regióny z `objects.properties._drawing_links` (zapísané fázou A,
-`pdf_link.py`) a pre každý región vloží do PDF URI-link anotáciu (`page.insert_link`)
-mieriacu na `${SITE_URL}/{target_route}/{target_id}`. Výsledok je samostatné anotované
-PDF — kódy sú klikateľné v akomkoľvek prehliadači, **nula frontendu**.
+Reads the link regions from `objects.properties._drawing_links` (written by phase A,
+`pdf_link.py`) and for each region inserts a PDF URI-link annotation (`page.insert_link`)
+pointing to `${SITE_URL}/{target_route}/{target_id}`. The result is a separate annotated
+PDF - the codes are clickable in any viewer, **zero frontend**.
 
-**Žiadna druhá detekcia** (D-042): súradnice sa neberú z PDF nanovo, ale z
-`_drawing_links` (jeden zdroj pravdy). Zdrojové PDF sa **neprepíše** — anotované idú
-do oddelenej cesty (`podklady/ANNOTATED/`, zrkadlí relatívnu `source_path`).
+**No second detection** (D-042): the coordinates are not taken from the PDF again but from
+`_drawing_links` (a single source of truth). The source PDF is **not overwritten** - the annotated ones go
+to a separate path (`podklady/ANNOTATED/`, mirroring the relative `source_path`).
 
-Súradnice v `_drawing_links` sú v PDF bottom-left (y hore); `page.insert_link` čaká
-rect v `page.rect` priestore (top-left, y dole) → inverz y-flipu tu (`_to_page_rect`).
-Strany výkresov majú rotáciu 0; PyMuPDF rieši offset mediaboxu interne (rovnaký
-priestor ako `get_text`, z ktorého bbox vznikol).
+The coordinates in `_drawing_links` are in PDF bottom-left (y up); `page.insert_link` expects a
+rect in the `page.rect` space (top-left, y down) -> the inverse of the y-flip is here (`_to_page_rect`).
+Drawing pages have rotation 0; PyMuPDF handles the mediabox offset internally (the same
+space as `get_text`, from which the bbox came).
 
-`--dry-run` = report bez zápisu súborov.
+`--dry-run` = a report without writing files.
 """
 
 from __future__ import annotations
@@ -30,19 +30,19 @@ import psycopg
 from .config import database_url, site_url
 from .pdf_link import _SOURCE_ROOT, DrawingRow, read_drawings
 
-# Anotované PDF idú vedľa zdroja — zrkadlia relatívnu `source_path` (zdroj netknutý).
+# Annotated PDFs go next to the source - they mirror the relative `source_path` (source untouched).
 _OUT_ROOT = _SOURCE_ROOT.parent / "ANNOTATED"
 
 
 def _to_page_rect(bbox: list[float], page_size: list[float]) -> "fitz.Rect":
-    """`_drawing_links` bbox (PDF bottom-left) → `page.rect` rect (top-left). Inverz y-flipu."""
+    """`_drawing_links` bbox (PDF bottom-left) -> `page.rect` rect (top-left). The inverse of the y-flip."""
     x0, by0, x1, by1 = bbox
     _w, h = page_size
     return fitz.Rect(x0, h - by1, x1, h - by0)
 
 
 def _load_links(cur, container_name: str) -> Optional[list[dict]]:
-    """`_drawing_links` blob dokumentu (alebo None, ak dokument/kľúč chýba)."""
+    """The `_drawing_links` blob of a document (or None if the document/key is missing)."""
     row = cur.execute(
         "select properties->'_drawing_links' from objects "
         "where object_ref = %s and object_type = 'document'",
@@ -54,7 +54,7 @@ def _load_links(cur, container_name: str) -> Optional[list[dict]]:
 
 
 def annotate_drawing(cur, row: DrawingRow, base_url: str, dry: bool) -> int:
-    """Vloží URI-link anotácie do kópie výkresu; vráti počet vložených linkov."""
+    """Inserts URI-link annotations into a copy of the drawing; returns the number of inserted links."""
     pdf_path = _SOURCE_ROOT / row.source_path
     if not pdf_path.exists():
         raise SystemExit(f"PDF chýba: {row.source_path}")
@@ -66,13 +66,13 @@ def annotate_drawing(cur, row: DrawingRow, base_url: str, dry: bool) -> int:
             f"pdf_link (D-042 fáza A)."
         )
     if not links:
-        return 0  # 0 regiónov (napr. PBR pôdorys) → netreba anotovať
+        return 0  # 0 regions (e.g. a PBR floor plan) -> nothing to annotate
 
     doc = fitz.open(pdf_path)
     for region in links:
         uri = f"{base_url}/{region['target_route']}/{region['target_id']}"
         rect = _to_page_rect(region["bbox"], region["page_size"])
-        page = doc[region["page"] - 1]   # `page` je 1-based
+        page = doc[region["page"] - 1]   # `page` is 1-based
         page.insert_link({"kind": fitz.LINK_URI, "from": rect, "uri": uri})
 
     if not dry:
@@ -108,7 +108,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 status = "anotované" if (n and not args.dry_run) else (
                     "—" if not n else "(dry-run)")
                 print(f"  {row.container_name:42s} linkov {n:3d}  {status}")
-        conn.rollback()  # len čítame z DB; žiadny zápis do DB v tejto fáze
+        conn.rollback()  # we only read from the DB; no DB write in this phase
 
     tail = " (--dry-run → súbory sa nezapisujú)" if args.dry_run else ""
     print(f"\nHotovo: {total} URI-linkov{tail}.")

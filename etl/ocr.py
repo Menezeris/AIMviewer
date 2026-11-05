@@ -1,15 +1,15 @@
-"""OCR strán PDF bez textovej vrstvy (D-169, #279).
+"""OCR of PDF pages without a text layer (D-169, #279).
 
-Záchrana, nie náhrada: `etl/pdf_text.py` sem pošle len stranu, ktorá nemá textovú vrstvu a
-diagnostika (#279) ju označila ako `obrázok` (sken, CCITT/JBIG2 maska) alebo `krivky` (text
-prevedený na vektorové ťahy). Strana sa vyrenderuje do rastra (PyMuPDF), Tesseract z nej
-prečíta slová s polohou a istotou a tie sa zložia do riadkov v tvare `blocks` (D-123): `{t, x,
-y, w, h}` v % strany, počiatok vľavo hore, navyše `src: "ocr"` a `conf` (0 až 1). Tak fungujú
-`regions` aj rámiky `open_drawing highlights` rovnako ako pri textovej vrstve.
+A rescue, not a replacement: `etl/pdf_text.py` sends here only a page that has no text layer and
+that the diagnostics (#279) marked as `obrázok` (a scan, CCITT/JBIG2 mask) or `krivky` (text
+converted to vector strokes). The page is rendered to a raster (PyMuPDF), Tesseract reads
+words from it with position and confidence, and these are assembled into lines in the `blocks` shape (D-123): `{t, x,
+y, w, h}` in % of the page, origin top left, plus `src: "ocr"` and `conf` (0 to 1). This way `regions` and the
+`open_drawing highlights` frames work the same as with a text layer.
 
-Závislosti: Tesseract 5 (Apache-2.0) s jazykmi ces, slk, eng (traineddata Apache-2.0) a
-pytesseract (Apache-2.0), ktorý ťahá Pillow (MIT-CMU). Keď niečo chýba, `ocr_unavailable()`
-povie čo a ETL strany nechá bez textu ako doteraz, beh nespadne.
+Dependencies: Tesseract 5 (Apache-2.0) with the languages ces, slk, eng (traineddata Apache-2.0) and
+pytesseract (Apache-2.0), which pulls in Pillow (MIT-CMU). When something is missing, `ocr_unavailable()`
+says what, and the ETL leaves the pages without text as before; the run does not fail.
 """
 
 from __future__ import annotations
@@ -21,12 +21,12 @@ from typing import Optional
 
 import fitz  # PyMuPDF
 
-# Čeština prvá: podklady sú z VUT Brno a pri `slk` prvom Tesseract číta "BRNĚ" ako "BRNÉ".
+# Czech first: the source documents are from VUT Brno and with `slk` first Tesseract reads "BRNĚ" as "BRNÉ".
 OCR_LANG = os.environ.get("AIM_OCR_LANG", "ces+slk+eng")
 OCR_DPI = 300
-# Strop rastra (pixely): výkres A1 pri 300 dpi má ~70 MP, Tesseract by bežal minúty.
+# Raster cap (pixels): an A1 drawing at 300 dpi is ~70 MP, Tesseract would run for minutes.
 OCR_MAX_PIXELS = 30_000_000
-# Riadok s nižšou priemernou istotou je šum (logo, šrafa, pečiatka), nie text.
+# A line with a lower average confidence is noise (logo, hatching, stamp), not text.
 OCR_MIN_LINE_CONF = 50
 
 _WS_RE = re.compile(r"\s+")
@@ -36,7 +36,7 @@ _WS_RE = re.compile(r"\s+")
 class OcrPage:
     text: str
     blocks: list[dict]
-    conf: float  # istota strany 0 až 1 (priemer riadkov vážený dĺžkou textu)
+    conf: float  # page confidence 0 to 1 (average of the lines weighted by text length)
 
 
 _unavailable: Optional[str] = None
@@ -44,7 +44,7 @@ _checked = False
 
 
 def ocr_unavailable() -> Optional[str]:
-    """None = OCR beží; inak dôvod (chýba pytesseract, Tesseract alebo jazyk)."""
+    """None = OCR works; otherwise the reason (pytesseract, Tesseract or a language is missing)."""
     global _checked, _unavailable
     if _checked:
         return _unavailable
@@ -56,7 +56,7 @@ def ocr_unavailable() -> Optional[str]:
     except ImportError:
         _unavailable = "chýba balík pytesseract (pip install -r etl/requirements.txt)"
         return _unavailable
-    except Exception as exc:  # noqa: BLE001 - TesseractNotFoundError a spol.
+    except Exception as exc:  # noqa: BLE001 - TesseractNotFoundError and the like
         _unavailable = f"Tesseract nie je nainštalovaný ({exc.__class__.__name__})"
         return _unavailable
     missing = [lang for lang in OCR_LANG.split("+") if lang not in langs]
@@ -66,7 +66,7 @@ def ocr_unavailable() -> Optional[str]:
 
 
 def _dpi(page: fitz.Page) -> int:
-    """OCR_DPI, pri veľkej strane menej, aby raster nepresiahol OCR_MAX_PIXELS."""
+    """OCR_DPI, lower for a large page so that the raster does not exceed OCR_MAX_PIXELS."""
     area_in2 = (page.rect.width / 72.0) * (page.rect.height / 72.0)
     if area_in2 <= 0:
         return OCR_DPI
@@ -78,10 +78,10 @@ def _pct(v: float, size: float) -> float:
 
 
 def lines_from_data(data: dict, img_w: int, img_h: int, min_conf: float = OCR_MIN_LINE_CONF) -> list[dict]:
-    """Slová z `pytesseract.image_to_data` (DICT) -> riadky `{t, x, y, w, h, src, conf}` v % strany.
+    """Words from `pytesseract.image_to_data` (DICT) -> lines `{t, x, y, w, h, src, conf}` in % of the page.
 
-    Riadok = slová s rovnakým (block_num, par_num, line_num); slovo s conf < 0 nie je text.
-    Riadok s priemernou istotou pod `min_conf` sa zahodí. Poradie ako číta Tesseract.
+    A line = words with the same (block_num, par_num, line_num); a word with conf < 0 is not text.
+    A line with an average confidence below `min_conf` is dropped. The order is as Tesseract reads.
     """
     rows: dict[tuple[int, int, int], list[int]] = {}
     for i, word in enumerate(data.get("text", [])):
@@ -114,17 +114,17 @@ def lines_from_data(data: dict, img_w: int, img_h: int, min_conf: float = OCR_MI
 
 
 def page_conf(blocks: list[dict]) -> float:
-    """Istota strany: priemer `conf` riadkov vážený dĺžkou textu."""
+    """Page confidence: the average `conf` of the lines weighted by text length."""
     total = sum(len(b["t"]) for b in blocks)
     return round(sum(b["conf"] * len(b["t"]) for b in blocks) / total, 2) if total else 0.0
 
 
 def ocr_page(page: fitz.Page) -> Optional[OcrPage]:
-    """Vyrenderuje stranu a prečíta ju Tesseractom; None, keď na nej nič čitateľné nie je."""
+    """Renders the page and reads it with Tesseract; None when nothing legible is on it."""
     import pytesseract
     from PIL import Image
 
-    # Zobrazená strana (s rotáciou), rovnako ako bbox textovej vrstvy v `page_blocks`.
+    # The displayed page (with rotation), the same as the text-layer bbox in `page_blocks`.
     pix = page.get_pixmap(dpi=_dpi(page), colorspace=fitz.csGRAY, alpha=False)
     img = Image.frombytes("L", (pix.width, pix.height), pix.samples)
     data = pytesseract.image_to_data(img, lang=OCR_LANG, output_type=pytesseract.Output.DICT)

@@ -8,10 +8,10 @@ import { BCF_VIEWER_IMPORT_MAX_BYTES, summaryToWire } from "@/lib/viewer-bcf-imp
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Import `.bcfzip` z BCF panela viewera (D-158 krok 8, dodatok 1. 11.): `POST /api/bcf/viewer-import`,
- * telo = súbor (application/zip), query `dry_run=1`. Bez tokenu, ako ostatné zápisy z viewera
- * (`/api/clash`, `/api/ids`): env brána predvolene VYPNUTÁ (`BCF_VIEWER_IMPORT_ENABLED=true` ju zapne),
- * origin guard a per-IP rate limit. Konflikty sa pri zápise ponechajú (`conflict=keep`).
+ * Import of `.bcfzip` from the viewer's BCF panel (D-158 step 8, addendum 1 Nov): `POST /api/bcf/viewer-import`,
+ * body = file (application/zip), query `dry_run=1`. Without a token, like other writes from the viewer
+ * (`/api/clash`, `/api/ids`): env gate OFF by default (`BCF_VIEWER_IMPORT_ENABLED=true` turns it on),
+ * origin guard and per-IP rate limit. Conflicts are kept on write (`conflict=keep`).
  */
 
 export const dynamic = "force-dynamic";

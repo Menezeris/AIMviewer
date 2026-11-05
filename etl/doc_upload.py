@@ -1,19 +1,19 @@
-"""Document upload — manifest → Supabase Storage + graf (D-032 / D-036, E3).
+"""Document upload - manifest -> Supabase Storage + graph (D-032 / D-036, E3).
 
-Číta manifest `podklady/docs.csv` (legacy PDF → CDE názov + cieľ väzby), nahrá
-súbory do public bucketu `documents/` a zapíše ich do grafu ako prvotriedne uzly:
+Reads the manifest `podklady/docs.csv` (legacy PDF -> CDE name + link target), uploads the
+files to the public bucket `documents/` and writes them to the graph as first-class nodes:
 
-    objects(object_type='document', object_ref=<CDE názov>)
+    objects(object_type='document', object_ref=<CDE name>)
       └─ documents (identification, description, revision, status, location,
                     storage_type='supabase')
-    rel_associates_document(from=target_ref → to=dokument, role=<z TypSouboru>)
+    rel_associates_document(from=target_ref -> to=document, role=<from TypSouboru>)
 
-Identita dokumentu = **CDE názov kontajnera** (`object_ref`, D-010 vrstva 2),
-metadáta sa parsujú cez `doc_scheme.py` (D-036). Väzba ide z manifestu (`target_ref`),
-nie z názvu — CDE nemá pole pre podlažie (D-036).
+Document identity = **CDE name of the container** (`object_ref`, D-010 layer 2),
+metadata is parsed via `doc_scheme.py` (D-036). The link comes from the manifest (`target_ref`),
+not from the name - CDE has no field for the floor (D-036).
 
-Idempotentné: uzly cez `object_ref`, hrany cez deterministické UUID (`ids.py`),
-upload `x-upsert`. `--dry-run` = iba parsovanie + validácia (žiadny upload/zápis).
+Idempotent: nodes via `object_ref`, edges via deterministic UUIDs (`ids.py`),
+upload `x-upsert`. `--dry-run` = parsing + validation only (no upload/write).
 
 Env (`.env.local`): `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 """
@@ -42,7 +42,7 @@ from .doc_scheme import DocumentMeta, parse_container_name
 from .ifc_upload import put_object
 
 BUCKET = "documents"
-# PDF sa pod rovnakým menom (CDE názov) prepíše novou verziou, preto hodina, nie rok.
+# A PDF under the same name (CDE name) is overwritten by a new version, hence an hour, not a year.
 CACHE_SECONDS = 3600
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SOURCE_ROOT = _REPO_ROOT / "podklady" / "FINAL"
@@ -63,7 +63,7 @@ class ManifestRow:
 
     @property
     def object_key(self) -> str:
-        """Kľúč v buckete = CDE názov + .pdf (bez diakritiky → bezpečné URL)."""
+        """Key in the bucket = CDE name + .pdf (no diacritics -> safe URL)."""
         return f"{self.container_name}.pdf"
 
 
@@ -75,8 +75,8 @@ def read_manifest() -> list[ManifestRow]:
         raise SystemExit(f"Chýba manifest {_MANIFEST}")
     rows: list[ManifestRow] = []
     with _MANIFEST.open(encoding="utf-8-sig") as fh:
-        # utf-8-sig: Excel pri uložení CSV pridá BOM — bez neho by prvý stĺpec
-        # hlavičky bol '﻿source_path' a parser by padol na KeyError.
+        # utf-8-sig: Excel adds a BOM when saving CSV - without it the first header
+        # column would be '﻿source_path' and the parser would fail with a KeyError.
         reader = csv.DictReader(line for line in fh if not line.startswith("#"))
         for r in reader:
             rows.append(
@@ -92,7 +92,7 @@ def read_manifest() -> list[ManifestRow]:
 
 
 def validate(rows: list[ManifestRow]) -> list[str]:
-    """Predletová kontrola: existencia súborov, unikátnosť názvov, kódy v slovníku."""
+    """Pre-flight check: files exist, names are unique, codes are in the dictionary."""
     problems: list[str] = []
     seen: set[str] = set()
     for r in rows:
@@ -107,7 +107,7 @@ def validate(rows: list[ManifestRow]) -> list[str]:
     return problems
 
 
-# ── Supabase Storage (REST cez stdlib urllib) ─────────────────────────────────
+# ── Supabase Storage (REST via stdlib urllib) ─────────────────────────────────
 
 
 def _storage_env() -> tuple[str, str]:
@@ -137,7 +137,7 @@ def _request(method: str, url: str, key: str, *, data: bytes | None = None,
 
 
 def ensure_bucket(base: str, key: str) -> None:
-    """Vytvorí public bucket `documents` (idempotentne — existujúci ignoruje)."""
+    """Create the public bucket `documents` (idempotent - an existing one is ignored)."""
     status, body = _request(
         "POST", f"{base}/storage/v1/bucket", key,
         data=json.dumps({"id": BUCKET, "name": BUCKET, "public": True}).encode(),
@@ -152,7 +152,7 @@ def ensure_bucket(base: str, key: str) -> None:
 
 
 def upload_file(base: str, key: str, object_key: str, content: bytes) -> str:
-    """Nahrá súbor (upsert) a vráti verejnú URL."""
+    """Upload a file (upsert) and return the public URL."""
     encoded = urllib.parse.quote(object_key)
     status, body = put_object(
         base, key, BUCKET, object_key, content,
@@ -163,11 +163,11 @@ def upload_file(base: str, key: str, object_key: str, content: bytes) -> str:
     return f"{base}/storage/v1/object/public/{BUCKET}/{encoded}"
 
 
-# ── Zápis do grafu ────────────────────────────────────────────────────────────
+# ── Writing to the graph ──────────────────────────────────────────────────────
 
 
 def _document_properties(meta: DocumentMeta) -> dict:
-    """Custom pset `CDE` s diagnostickými labelmi (nie `_`-kľúč — je to pset, D-022)."""
+    """Custom pset `CDE` with diagnostic labels (not a `_` key - it is a pset, D-022)."""
     fields = {
         "Stupeň PD": meta.stage_label,
         "Profese": meta.discipline_label,
@@ -184,7 +184,7 @@ def _write_document(cur, row: ManifestRow, location: str, storage_type: str,
     meta = row.meta
     target_ref = project_mod.qualify(row.target_ref, code)
     doc_ref = project_mod.qualify(row.container_name, code)
-    # 1) cieľový uzol musí existovať (v tom istom projekte)
+    # 1) the target node must exist (in the same project)
     target = cur.execute(
         "select id from objects where object_ref = %s and project_id = %s", (target_ref, project_id)
     ).fetchone()
@@ -193,7 +193,7 @@ def _write_document(cur, row: ManifestRow, location: str, storage_type: str,
                          f"(dokument {row.container_name})")
     target_id = target[0]
 
-    # 2) objects(document) — upsert cez object_ref (= CDE názov)
+    # 2) objects(document) - upsert via object_ref (= CDE name)
     name = meta.human_description() or row.container_name
     doc_id = cur.execute(
         """
@@ -216,7 +216,7 @@ def _write_document(cur, row: ManifestRow, location: str, storage_type: str,
         raise SystemExit(f"Dokument '{doc_ref}' patrí inému projektu (D-189).")
     doc_id = doc_id[0]
 
-    # 3) documents prípona (D-014 + storage_type D-032)
+    # 3) documents extension (D-014 + storage_type D-032)
     cur.execute(
         """
         insert into documents
@@ -230,8 +230,8 @@ def _write_document(cur, row: ManifestRow, location: str, storage_type: str,
         (doc_id, row.container_name, name, location, row.revision, row.status, storage_type),
     )
 
-    # 4) rel_associates_document(target → dokument, role z TypSouboru)
-    # D-051: generická `relationships` (rel_type), nie kanonické view.
+    # 4) rel_associates_document(target -> document, role from TypSouboru)
+    # D-051: the generic `relationships` (rel_type), not the canonical view.
     eid = ids.edge_id(target_ref, doc_ref, "has_document")
     cur.execute(
         """
@@ -247,7 +247,7 @@ def _write_document(cur, row: ManifestRow, location: str, storage_type: str,
 
 def _index_pdf(cur, row: ManifestRow, pdf_path: Path, ocr: bool = True,
                code: str = project_mod.OCB_CODE) -> None:
-    """Text, riadky a čiary výkresu do `document_pages` (D-063, D-133, OCR D-169); chyba PDF upload nezhodí."""
+    """Drawing text, lines and strokes into `document_pages` (D-063, D-133, OCR D-169); a PDF error does not fail the upload."""
     from .pdf_text import _doc_id, index_pdf
 
     try:
@@ -258,7 +258,7 @@ def _index_pdf(cur, row: ManifestRow, pdf_path: Path, ocr: bool = True,
         pages = index_pdf(cur, doc_id, pdf_path, ocr=ocr)
         cur.execute("release savepoint pdf_text")
         print(f"      text a čiary: {pages} strán")
-    except Exception as exc:  # noqa: BLE001 - jeden zlý PDF súbor nezhodí upload
+    except Exception as exc:  # noqa: BLE001 - one bad PDF file does not fail the upload
         cur.execute("rollback to savepoint pdf_text")
         print(f"      ! text a čiary PDF sa nenačítali ({exc}); doplň: python -m etl.pdf_text --from-db --only {row.container_name}")
 
@@ -267,7 +267,7 @@ def _index_pdf(cur, row: ManifestRow, pdf_path: Path, ocr: bool = True,
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    # Windows konzola býva cp1250 — diakritika/šípky by inak padli na UnicodeEncodeError.
+    # The Windows console is often cp1250 - diacritics/arrows would otherwise fail with UnicodeEncodeError.
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")

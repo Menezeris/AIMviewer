@@ -1,24 +1,24 @@
 /**
- * Eval runner pre /api/ask (D-057) — zlaté otázky s deterministickým skórovaním.
+ * Eval runner for /api/ask (D-057) - golden questions with deterministic scoring.
  *
- * Meria presnosť LLM rozhrania nad grafom: regex asercie nad `answer` +
- * kontrola trust-loop `sources` (dôkazy zbiera server deterministicky, takže
- * táto časť skóre nezávisí od formulácie modelu). Bez LLM-judge (v1).
+ * Measures the accuracy of the LLM interface over the graph: regex assertions over `answer` +
+ * a check of the trust-loop `sources` (the server collects the evidence deterministically, so
+ * this part of the score does not depend on the model's wording). No LLM judge (v1).
  *
- * Spustenie (dev server musí bežať — `npm run dev`, s reálnym providerom
- * alebo LLM_PROVIDER=mock pre smoke):
+ * Running (the dev server must be running - `npm run dev`, with a real provider
+ * or LLM_PROVIDER=mock for a smoke run):
  *
  *   npm run eval -- [--base-url http://localhost:3000] [--filter counts]
  *                   [--runs 3] [--label sonnet-baseline] [--include-unverified]
  *
- * - `--filter` = kategória alebo podreťazec id otázky.
- * - `--runs N` = každú otázku N-krát (variancia nedeterministických modelov).
- * - `--include-unverified` = spusti aj otázky s verified=false (na doplnenie
- *   očakávaní — odpovede sa vypíšu, do headline pass-rate sa nerátajú).
- * - mock_only otázky (smoke) bežia len keď ich --filter explicitne vyberie.
+ * - `--filter` = category or substring of the question id.
+ * - `--runs N` = each question N times (variance of nondeterministic models).
+ * - `--include-unverified` = also run questions with verified=false (to fill in
+ *   expectations - the answers are printed, they do not count toward the headline pass-rate).
+ * - mock_only questions (smoke) run only when --filter selects them explicitly.
  *
- * Výstup: tabuľka per kategória + JSON do eval/results/<ts>_<label>.json
- * (baseline runy sa commitujú — porovnanie modelov/promptov v čase, D-057).
+ * Output: a table per category + JSON to eval/results/<ts>_<label>.json
+ * (baseline runs are committed - comparison of models/prompts over time, D-057).
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -33,7 +33,7 @@ interface Args {
   label: string | null;
   includeUnverified: boolean;
   timeoutMs: number;
-  /** Cesta k sade otázok — per-projekt sady (multi-projekt, D-033 línia). */
+  /** Path to the question set - per-project sets (multi-project, D-033 line). */
   questions: string;
 }
 
@@ -107,8 +107,8 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const root = process.cwd();
   const parsed = JSON.parse(readFileSync(join(root, args.questions), "utf8")) as { questions: unknown[] };
-  // Neplatný záznam (bez id alebo otázky) by poslal prázdnu históriu a /api/ask vráti 400
-  // "posledná správa musí byť od používateľa"; runner ho ohlási a preskočí.
+  // An invalid record (without id or question) would send an empty history and /api/ask returns 400
+  // "posledná správa musí byť od používateľa"; the runner reports it and skips it.
   const invalid = validateQuestions(parsed.questions);
   if (invalid.length > 0) {
     console.warn(`Neplatné záznamy v ${args.questions} (preskočené):\n  ${invalid.join("\n  ")}`);
@@ -120,9 +120,9 @@ async function main() {
 
   const selected = questions.filter((q) => {
     if (!matchesFilter(q)) return false;
-    // smoke/mock_only len pri explicitnom filtri — reálny model by na ne odpovedal nezmyslom
+    // smoke/mock_only only with an explicit filter - a real model would answer them with nonsense
     if (q.mock_only && !args.filter) return false;
-    // Tooly MCP konektora (search_all, clash, calibrate_underlay...) /api/ask nemá; meria ich eval/mcp-tasks.json.
+    // /api/ask does not have the MCP connector tools (search_all, clash, calibrate_underlay...); eval/mcp-tasks.json measures them.
     if (q.mcp_only) return false;
     if (!q.verified && !args.includeUnverified) return false;
     return true;
@@ -191,7 +191,7 @@ async function main() {
     }
   }
 
-  // Súhrn per kategória — len verified otázky tvoria headline pass-rate.
+  // Summary per category - only verified questions make up the headline pass-rate.
   const verified = results.filter((r) => r.verified);
   const byCategory = new Map<string, { pass: number; total: number }>();
   for (const r of verified) {

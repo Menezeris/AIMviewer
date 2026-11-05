@@ -11,7 +11,7 @@ import type { ElementDetail } from "@/lib/aim-panel";
 import { currentProjectId } from "@/lib/live/caller";
 import { withRequestProject } from "@/lib/project/request";
 
-/** Dokumenty prvku cez vzťahy s kódom druhu (D-104); chyba = karta ukáže priame väzby. */
+/** Documents of an element via relations with a kind code (D-104); on error the card shows direct links. */
 async function effectiveDocuments(id: string): Promise<ElementDetail["effectiveDocuments"]> {
   const projectId = currentProjectId();
   const { documents } = await fetchObjectDocuments(projectId, id);
@@ -23,10 +23,10 @@ async function effectiveDocuments(id: string): Promise<ElementDetail["effectiveD
 }
 
 /**
- * Detail prvku pre AIM inspector v 3D (D-077) a bočný info-panel prehliadačky
- * výkresov (D-042 D). Od D-077 obohatený o sekcie uzla (zodpovednosti, história
- * GUID) a capture súhrn — NodeSummary polia ostávajú aditívne zachované.
- * Server-side cez `service_role` (D-026), cachované (ISR).
+ * Element detail for the AIM inspector in 3D (D-077) and the side info panel of the drawing
+ * viewer (D-042 D). Since D-077 enriched with node sections (responsibilities, GUID
+ * history) and a capture summary - NodeSummary fields remain additively preserved.
+ * Server-side via `service_role` (D-026), cached (ISR).
  */
 
 const UUID_RE =
@@ -48,7 +48,7 @@ async function getHandler(
       fetchNodeSummary(projectId, id),
       fetchNodeSections(projectId, id),
       fetchCaptureSummaryForObject(projectId, id),
-      // Vrstva AIM (D-089): odvodené vzťahy pre Relationship records vo vieweri.
+      // AIM layer (D-089): derived relations for Relationship records in the viewer.
       fetchDerivedRelations(projectId, id).catch(() => undefined),
       effectiveDocuments(id).catch((err) => {
         console.error(`[api/element/${id}] documents`, err);
@@ -68,9 +68,9 @@ async function getHandler(
       captureMedia: await captureMediaOf(captures, summary.objectType !== "space"),
       ...(docs ? { effectiveDocuments: docs } : {}),
     };
-    // Read-only súhrn (revaliduje sa s ostatnými AIM dátami po 60 s). Cache v
-    // prehliadači + na CDN → opakovaný klik na ten istý kód vo výkrese je okamžitý,
-    // bez HTTP round-tripu na server (D-030 perf, dodatok).
+    // Read-only summary (revalidated with the other AIM data after 60 s). Cache in the
+    // browser + on the CDN -> a repeated click on the same code in a drawing is instant,
+    // without an HTTP round trip to the server (D-030 perf, addendum).
     return NextResponse.json(detail, {
       headers: {
         "Cache-Control":
@@ -83,7 +83,7 @@ async function getHandler(
   }
 }
 
-/** D-129: posledná zmena aktívneho GUID receptom; chyba čítania kartu nezhodí. */
+/** D-129: latest change of the active GUID by recipe; a read error does not bring the card down. */
 async function lastChangeOf(history: ElementDetail["guidHistory"]): Promise<ElementDetail["lastChange"]> {
   const projectId = currentProjectId();
   const guid = history?.find((h) => h.active)?.ifcGuid;
@@ -94,7 +94,7 @@ async function lastChangeOf(history: ElementDetail["guidHistory"]): Promise<Elem
   });
 }
 
-/** D-131: médiá Reality Capture priestoru (aj pre prvok v ňom); chyba čítania kartu nezhodí. */
+/** D-131: Reality Capture media of a space (also for an element in it); a read error does not bring the card down. */
 async function captureMediaOf(cap: CaptureSummary, inherited: boolean): Promise<ElementDetail["captureMedia"]> {
   const projectId = currentProjectId();
   if (!cap.spaceId || cap.count === 0) return undefined;

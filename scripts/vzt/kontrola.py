@@ -1,12 +1,12 @@
-"""Overenie modelu VZT po úprave (BCF #13 až #17): IDS, porty klapiek, schéma IFC.
+"""Verification of the VZT model after the edit (BCF #13 to #17): IDS, damper ports, IFC schema.
 
     python scripts/vzt/kontrola.py --ifc VZT_v011.ifc [--ids scripts/vzt/bcf_opravy.ids] [--bez-schemy]
 
-- IDS (`bcf_opravy.ids`) cez ifctester: verdikt každej špecifikácie, počty pass/fail.
-- #13: každý port každej IfcDamper je spojený cez IfcRelConnectsPorts.
-- schéma: `ifcopenshell.validate` (atribúty, typy, WHERE pravidlá); vypíše počet chýb podľa
-  správy. Porovnávaj so základom: chyby, ktoré mal už základ, úprava nespôsobila.
-Kód 0 = všetko prešlo, 1 = niečo neprešlo.
+- IDS (`bcf_opravy.ids`) via ifctester: verdict of each specification, pass/fail counts.
+- #13: every port of every IfcDamper is connected via IfcRelConnectsPorts.
+- schema: `ifcopenshell.validate` (attributes, types, WHERE rules); prints the error count per
+  message. Compare with the base: errors the base already had were not caused by the edit.
+Code 0 = everything passed, 1 = something did not pass.
 """
 
 from __future__ import annotations

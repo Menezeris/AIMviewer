@@ -1,12 +1,12 @@
 /**
- * Fáza 0 (D-084): zhoda IDS motora `@ifc-lite/ids` (cez `@ifc-lite/mcp`
- * ids_validate) s ifctesterom (`etl.ids_check`, D-081) na tom istom IDS a modeli.
+ * Phase 0 (D-084): agreement of the IDS engine `@ifc-lite/ids` (via `@ifc-lite/mcp`
+ * ids_validate) with ifctester (`etl.ids_check`, D-081) on the same IDS and model.
  *
  *   python -m etl.ids_check --ids <ids> --model <ASR.ifc> --label ASR --dry-run --report ifctester.csv
  *   npx vite-node@6.0.0 scripts/spike/ids-compare.mts -- --ids <ids> --csv ifctester.csv [--model ASR]
  *
- * Porovnáva verdikt každej špecifikácie a každý pár (špecifikácia × GUID).
- * Špecifikácie sa párujú podľa názvu (ifctester ho nesie v CSV). Nič nezapisuje.
+ * Compares the verdict of each specification and each pair (specification x GUID).
+ * Specifications are matched by name (ifctester carries it in the CSV). Writes nothing.
  */
 import { readFileSync } from "node:fs";
 
@@ -27,7 +27,7 @@ if (!IDS || !CSV) {
   process.exit(2);
 }
 
-/** Minimálny CSV parser (úvodzovky + čiarky v poli), stačí na report ids_check. */
+/** Minimal CSV parser (quotes + commas in a field), enough for the ids_check report. */
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -101,8 +101,8 @@ async function main() {
   for (const s of specs) {
     const name = s.specification?.name ?? "?";
     const verdict = s.status === "fail" ? "fail" : "pass";
-    // Špecifikácia bez vyhovujúceho prvku nemá v CSV ifctestera riadok, ale
-    // ifctester ju v súhrne počíta ako splnenú (etl.ids_check: specs_passed).
+    // A specification without a passing element has no row in the ifctester CSV, but
+    // ifctester counts it as passed in the summary (etl.ids_check: specs_passed).
     const refVerdict = refSpec.get(name) ?? "pass";
     specVerdicts.push({ spec: name, ifctester: refSpec.get(name) ?? "pass (bez prvkov)", ifclite: s.status, match: refVerdict === verdict });
     const ents = s.entityResults ?? [];

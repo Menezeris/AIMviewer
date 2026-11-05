@@ -1,8 +1,8 @@
-"""Register pravidiel odvodení (D-089): výber pravidiel na beh a rozdelenie hrán.
+"""Registry of derivation rules (D-089): selecting the rules for a run and splitting the edges.
 
-Geometrické pravidlá zdieľajú jeden výpočet; hrany sa rozdelia podľa cieľovej triedy,
-zdrojovej triedy a roly, aby každé pravidlo zapisovalo pod vlastným zdrojom a dalo sa vypnúť
-samostatne. Vypnuté pravidlo sa pri behu uprace (jeho hrany sa uzavrú).
+Geometric rules share one computation; the edges are split by target class,
+source class and role, so that each rule writes under its own source and can be switched off
+on its own. A disabled rule is cleaned up on a run (its edges are closed).
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ ZONE = _rule("element_in_zone", "IfcZone", kind="via_space")
 
 
 class Ent:
-    """Náhrada entity IFC: `is_a(cls)` podľa zoznamu nadtried."""
+    """Stand-in for an IFC entity: `is_a(cls)` according to a list of superclasses."""
 
     def __init__(self, *classes: str) -> None:
         self.classes = classes
@@ -73,10 +73,10 @@ def test_partition_by_target_class_source_class_and_role() -> None:
     edges = [
         DerivedEdge(REL, "duct", "room", "inside"),
         DerivedEdge(REL, "duct", "fire", "partial"),
-        DerivedEdge(REL, "wall", "room", "inside"),      # stena nie je zdrojová trieda
-        DerivedEdge(REL, "ghost", "room", "inside"),     # GUID mimo modelov
+        DerivedEdge(REL, "wall", "room", "inside"),      # a wall is not a source class
+        DerivedEdge(REL, "ghost", "room", "inside"),     # GUID outside the models
     ]
     only_inside = _rule("element_in_spatial_zone", "IfcSpatialZone", roles=("inside",))
     out = partition_edges(edges, [SPACE, only_inside], entities)
     assert [(e.from_guid, e.to_guid) for e in out["element_in_space"]] == [("duct", "room")]
-    assert out["element_in_spatial_zone"] == []  # partial nepatrí pravidlu len s inside
+    assert out["element_in_spatial_zone"] == []  # partial does not belong to a rule with inside only

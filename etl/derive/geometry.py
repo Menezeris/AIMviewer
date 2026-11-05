@@ -1,9 +1,9 @@
-"""Zarovnanie federácie pre odvodzovače (D-080).
+"""Federation alignment for the derivers (D-080).
 
-Geometriu (tesseláciu, BRep, priestorové dotazy) robí ifcopenshell
-(`ifcopenshell.geom.tree`); tu je len prepočet IfcMapConversion → posun
-modelu do referenčného rámca federácie, ktorý sa odovzdá ako `model-offset`.
-Geometria sa nikdy neukladá do DB (D-044) — žije len počas behu odvodzovača.
+Geometry (tessellation, BRep, spatial queries) is done by ifcopenshell
+(`ifcopenshell.geom.tree`); here is only the conversion of IfcMapConversion -> the shift
+of the model into the reference frame of the federation, passed on as `model-offset`.
+Geometry is never stored in the DB (D-044) - it lives only during the deriver run.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import numpy as np
 
 @dataclass(frozen=True)
 class MapFrame:
-    """Engineering CRS modelu voči mape (IfcMapConversion), dĺžky v metroch."""
+    """The engineering CRS of the model relative to the map (IfcMapConversion), lengths in metres."""
 
     eastings: float
     northings: float
@@ -27,7 +27,7 @@ class MapFrame:
 
 
 def map_frame(model) -> Optional[MapFrame]:
-    """Prvý IfcMapConversion modelu, alebo None (model bez georeferencie)."""
+    """The first IfcMapConversion of the model, or None (a model without georeferencing)."""
     try:
         convs = model.by_type("IfcMapConversion")
     except RuntimeError:
@@ -48,11 +48,11 @@ def map_frame(model) -> Optional[MapFrame]:
 
 
 def offset_to(reference: Optional[MapFrame], other: Optional[MapFrame]) -> np.ndarray:
-    """Posun (m), ktorý prevedie lokálne súradnice `other` do rámca `reference`.
+    """The shift (m) that converts the local coordinates of `other` into the frame of `reference`.
 
-    map = R·local + T  ⇒  local_ref = local_other + R⁻¹·(T_other − T_ref).
-    Predpoklad: rovnaká rotácia aj mierka (federácia jedného projektu); inak
-    by bolo treba plnú transformáciu — vtedy hlásime chybu, nie tichý omyl.
+    map = R*local + T  =>  local_ref = local_other + R^-1*(T_other - T_ref).
+    Assumption: the same rotation and scale (a federation of one project); otherwise
+    a full transformation would be needed - then we report an error, not a silent mistake.
     """
     if reference is None or other is None:
         return np.zeros(3)

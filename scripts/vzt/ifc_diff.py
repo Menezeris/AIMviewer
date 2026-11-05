@@ -1,9 +1,9 @@
-"""Porovnanie dvoch revízií IFC podľa GlobalId (overenie úpravy pred publikáciou, D-086).
+"""Comparison of two IFC revisions by GlobalId (verifying an edit before publication, D-086).
 
-Vypíše: zmenu počtu entít podľa triedy (aj geometrie, má byť 0), pridané a odobraté
-objekty, a pre objekty s rovnakým GlobalId zmeny atribútov (Name, Description,
-ObjectType, ElementType, PredefinedType, Tag), psetov (vlastné aj z typu) a materiálu
-(aj zdedeného z typu). Nič nezapisuje do IFC.
+Prints: the change in entity count per class (also of geometry, should be 0), added and removed
+objects, and for objects with the same GlobalId the changes of attributes (Name, Description,
+ObjectType, ElementType, PredefinedType, Tag), psets (own and from the type) and material
+(also inherited from the type). Writes nothing to the IFC.
 
     python scripts/vzt/ifc_diff.py --pred VZT_v010.ifc --po VZT_v011.ifc [--json diff.json] [--detail 30]
 """

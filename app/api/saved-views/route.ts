@@ -8,16 +8,16 @@ import { currentProjectId } from "@/lib/live/caller";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * Pohľady z panela Presentation (D-161, #188): `saved_views` je trvalá kópia `BasketView` s tým istým `id`.
+ * Views from the Presentation panel (D-161, #188): `saved_views` is a persistent copy of `BasketView` with the same `id`.
  *
- * - `GET` vráti zoznam pre `VIEWS_LOAD` (len čítanie, bez brány).
- * - `POST {view}` vytvorí alebo prepíše pohľad (`VIEW_SAVE`), `PATCH {id, name}` premenuje (`VIEW_RENAME`),
- *   `DELETE {id}` zmaže (`VIEW_DELETE`). Zápis volá host stránka po bridge správe z embed viewera a odpoveď
- *   nesie úplný zoznam (`views`), ktorý host pošle späť ako `VIEWS_LOAD` (kolízia mena dostane príponu).
+ * - `GET` returns the list for `VIEWS_LOAD` (read-only, without a gate).
+ * - `POST {view}` creates or overwrites a view (`VIEW_SAVE`), `PATCH {id, name}` renames (`VIEW_RENAME`),
+ *   `DELETE {id}` deletes (`VIEW_DELETE`). Writing is called by the host page after a bridge message from the embed viewer and the response
+ *   carries the full list (`views`), which the host sends back as `VIEWS_LOAD` (a name collision gets a suffix).
  *
- * Ochrana ako pri podkladoch (D-072): viewer je verejný read-only, preto je zápis za env bránou, predvolene
- * VYPNUTOU (`VIEWS_WRITE_ENABLED=true` ju zapne), k tomu origin guard a per-IP rate limit (D-068). Bez
- * prihlásenia môže pohľady meniť každý, kto viewer otvorí; poctivý vedomý limit, kým nepríde auth.
+ * Protection as for underlays (D-072): the viewer is public read-only, so writing is behind the env gate, OFF by default
+ * (`VIEWS_WRITE_ENABLED=true` turns it on), plus origin guard and per-IP rate limit (D-068). Without
+ * login anyone who opens the viewer can change views; an honest conscious limit until auth arrives.
  */
 
 const WRITE_ENABLED = process.env.VIEWS_WRITE_ENABLED === "true";
@@ -26,7 +26,7 @@ const RATE_LIMIT_MAX = Number(process.env.VIEWS_RATE_LIMIT_MAX ?? (process.env.N
 const RATE_LIMIT_WINDOW_MS = Number(process.env.VIEWS_RATE_LIMIT_WINDOW_MS ?? 10 * 60_000);
 const limiter = createRateLimiter({ windowMs: RATE_LIMIT_WINDOW_MS, max: RATE_LIMIT_MAX });
 
-/** Strop tela: pohľad s 5000 GUID má okolo 150 kB. */
+/** Body cap: a view with 5000 GUIDs is around 150 kB. */
 const MAX_BODY_CHARS = 1_000_000;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -34,7 +34,7 @@ const NO_STORE = { "Cache-Control": "no-store" };
 
 type Fail = NextResponse;
 
-/** Brána, origin guard a rate limit; null = pokračuj. */
+/** Gate, origin guard and rate limit; null = continue. */
 function guard(req: Request): Fail | null {
   if (!WRITE_ENABLED) {
     return NextResponse.json({ error: "zápis pohľadov z viewera je vypnutý (VIEWS_WRITE_ENABLED)" }, { status: 403 });
@@ -61,7 +61,7 @@ async function bodyOf(req: Request): Promise<Record<string, unknown> | Fail> {
     const body: unknown = JSON.parse(raw);
     if (body && typeof body === "object" && !Array.isArray(body)) return body as Record<string, unknown>;
   } catch {
-    // padá na chybu nižšie
+    // falls through to the error below
   }
   return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
 }
@@ -76,7 +76,7 @@ async function getHandler() {
   }
 }
 
-/** Zápis + úplný zoznam v odpovedi; chyba DB = 500. */
+/** Write + full list in the response; DB error = 500. */
 async function write(run: (store: SavedViewStore) => Promise<Record<string, unknown>>) {
   try {
     const store = supabaseSavedViewStore(currentProjectId());

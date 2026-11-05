@@ -1,8 +1,8 @@
-// ESLint len na súboroch zmenených voči základu (D-187). V main sú staré chyby lintu, preto CI
-// neblokuje celé repo, ale nedovolí, aby v zmenenom súbore pribudla chyba: počet chýb každého
-// zmeneného súboru sa porovná s jeho verziou v základe (nový súbor = 0 chýb). Varovania neblokujú.
+// ESLint only on files changed against the base (D-187). main has old lint errors, so CI
+// does not block the whole repo, but it does not allow a new error in a changed file: the error
+// count of each changed file is compared with its version in the base (new file = 0 errors). Warnings do not block.
 //
-// Použitie: node scripts/ci/lint-changed.mjs <základný ref alebo SHA>
+// Usage: node scripts/ci/lint-changed.mjs <base ref or SHA>
 import { execFileSync } from "node:child_process";
 import { ESLint } from "eslint";
 
@@ -38,7 +38,7 @@ for (const r of head) {
     const [b] = await eslint.lintText(text, { filePath: r.filePath });
     before = b.errorCount;
   } catch {
-    before = 0; // súbor v základe nie je
+    before = 0; // file is not in the base
   }
   const tag = r.errorCount > before ? "PRIBUDLO" : "ok";
   if (r.errorCount + r.warningCount + before > 0)

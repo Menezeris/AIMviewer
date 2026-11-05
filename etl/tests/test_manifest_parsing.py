@@ -1,8 +1,8 @@
-"""Testy parserov `podklady/docs.csv` — všetky tri musia zvládnuť `#` komentáre aj BOM.
+"""Tests of the `podklady/docs.csv` parsers - all three must handle `#` comments and a BOM.
 
-Regresia: `pdf_text._load_pdf_rows` nefiltroval `#` komentáre, prvý riadok manifestu
-sa stal hlavičkou DictReaderu a `python -m etl.pdf_text` ticho spracoval 0 dokumentov
-(`document_pages` prázdne → `search_documents` nikdy nič nevráti).
+Regression: `pdf_text._load_pdf_rows` did not filter `#` comments, the first manifest row
+became the DictReader header and `python -m etl.pdf_text` silently processed 0 documents
+(`document_pages` empty -> `search_documents` never returns anything).
 """
 
 from __future__ import annotations
@@ -73,12 +73,12 @@ def test_pdf_link_read_drawings_handles_bom_and_comments(
 ) -> None:
     monkeypatch.setattr(pdf_link, "_MANIFEST", manifest_with_bom)
     rows = pdf_link.read_drawings()
-    # výkres = TypSouboru 'VD'; RP správa a MD model sa filtrujú preč
+    # drawing = TypSouboru 'VD'; the RP report and the MD model are filtered out
     assert [r.container_name for r in rows] == ["AIM_DSP_D1_ASR_VD_001_Pôdorys"]
 
 
 def test_parsers_agree_on_real_manifest() -> None:
-    """Všetky tri parsery čítajú skutočný commitnutý manifest a vidia rovnaké PDF riadky."""
+    """All three parsers read the real committed manifest and see the same PDF rows."""
     real = Path(__file__).resolve().parents[2] / "podklady" / "docs.csv"
     if not real.exists():
         pytest.skip("podklady/docs.csv nie je v checkoute")

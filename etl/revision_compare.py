@@ -1,13 +1,14 @@
-"""Porovnanie dvoch revízií modelu na požiadanie (D-183 bod 7); nič sa neukladá.
+"""On-demand comparison of two model revisions (D-183 point 7); nothing is stored.
 
-Informácie (atribúty, psety a Qto, vzťahy) porovnáva DB funkcia `ifc_rev_compare` nad kópiami revízií (K2).
-Poloha v DB nie je (geometria ide vždy do súboru, D-183 bod 6), preto ju `--placement` číta z archívov oboch
-revízií: `ObjectPlacement` relatívne k podlažiu prvku (prvok bez podlažia k nadradenému priestorovému celku,
-port k hostiteľovi, časť zostavy k zostave), tolerancia 1 mm a 0,001 rad. Posun podlažia alebo budovy je MODIFIED len toho objektu;
-zmena `IfcMapConversion` je jedna spoločná zmena `georeference`; spoločný posun väčšiny prvkov (zapečený do
-každého prvku) sa vypíše raz ako `common_shift` a prvky ním neoznačí.
+Information (attributes, psets and Qto, relationships) is compared by the DB function `ifc_rev_compare` over the revision
+copies (K2). Placement is not in the DB (geometry always goes to the file, D-183 point 6), so `--placement` reads it from
+the archives of both revisions: `ObjectPlacement` relative to the element's storey (an element without a storey to its
+parent spatial whole, a port to its host, an assembly part to the assembly), tolerance 1 mm and 0.001 rad. A shift of a
+storey or building is MODIFIED for that object only; a change of `IfcMapConversion` is one shared `georeference` change;
+a common shift of most elements (baked into every element) is reported once as `common_shift` and does not flag the
+elements.
 
-Spustenie z koreňa repa:
+Run from the repo root:
     python -m etl.revision_compare --model VZT --from 10 --to 11
     python -m etl.revision_compare --model VZT --from 10 --to 11 --placement [--from-file a.ifc.gz --to-file b.ifc.gz]
 """
@@ -29,20 +30,20 @@ TOLERANCE_RAD = 0.001
 COMMON_SHIFT_SHARE = 0.5
 
 
-# ── poloha zo súboru ──────────────────────────────────────────────────────────
+# ── placement from the file ───────────────────────────────────────────────────
 
 def _storey_anchor(e: ifcopenshell.entity_instance) -> Optional[ifcopenshell.entity_instance]:
-    """Kotva polohy: prvok = jeho podlažie, časť zostavy = zostava, port = hostiteľ (hýbu sa s ním),
-    priestorový celok = nadradený celok; prvok mimo podlažia = najbližší nadradený priestorový celok."""
+    """Placement anchor: element = its storey, assembly part = the assembly, port = host (they move with it),
+    spatial whole = its parent whole; an element outside a storey = the nearest parent spatial whole."""
     import ifcopenshell.util.element as ue
 
     if e.is_a("IfcSpatialElement") or e.is_a("IfcSpatialStructureElement"):
         return ue.get_aggregate(e)
-    for rel in getattr(e, "Nests", None) or ():          # port vnorený v prvku
+    for rel in getattr(e, "Nests", None) or ():          # port nested in the element
         return rel.RelatingObject
     whole = ue.get_aggregate(e)
     if whole is not None and not (whole.is_a("IfcSpatialElement") or whole.is_a("IfcSpatialStructureElement")):
-        return whole                                    # časť zostavy (napr. IfcElementAssembly)
+        return whole                                    # assembly part (e.g. IfcElementAssembly)
     parent = ue.get_container(e) or whole
     first = parent
     while parent is not None and not parent.is_a("IfcBuildingStorey"):
@@ -51,7 +52,7 @@ def _storey_anchor(e: ifcopenshell.entity_instance) -> Optional[ifcopenshell.ent
 
 
 def relative_placements(f: ifcopenshell.file) -> dict[str, tuple[Optional[str], Any]]:
-    """{GlobalId: (GlobalId kotvy, matica 4x4 relatívne ku kotve v metroch)} pre IfcProduct s polohou."""
+    """{GlobalId: (anchor GlobalId, 4x4 matrix relative to the anchor in metres)} for IfcProduct with a placement."""
     import numpy as np
     import ifcopenshell.util.placement as up
     import ifcopenshell.util.unit as uu
@@ -81,7 +82,7 @@ def relative_placements(f: ifcopenshell.file) -> dict[str, tuple[Optional[str], 
 def georeference(f: ifcopenshell.file) -> list[dict[str, Any]]:
     from etl.revision_copy import attributes
 
-    # IFC2X3 IfcMapConversion nemá; poloha IfcSite je potom zmena atribútov alebo polohy budovy
+    # IFC2X3 has no IfcMapConversion; the IfcSite placement is then an attribute change or a building placement change
     return sorted((attributes(m) for m in f.by_type("IfcMapConversion")), key=lambda d: json.dumps(d, sort_keys=True))
 
 
@@ -93,7 +94,7 @@ def _angle(r1: Any, r2: Any) -> float:
 
 
 def placement_changes(a: ifcopenshell.file, b: ifcopenshell.file) -> dict[str, Any]:
-    """Zmeny polohy medzi revíziami: {elements: {GlobalId: {dx, dy, dz, rotation_rad}}, common_shift, georeference}."""
+    """Placement changes between revisions: {elements: {GlobalId: {dx, dy, dz, rotation_rad}}, common_shift, georeference}."""
     pa, pb = relative_placements(a), relative_placements(b)
     deltas: dict[str, tuple[Any, float]] = {}
     for gid, (anchor_b, mb) in pb.items():
@@ -101,7 +102,7 @@ def placement_changes(a: ifcopenshell.file, b: ifcopenshell.file) -> dict[str, A
             continue
         anchor_a, ma = pa[gid]
         if anchor_a != anchor_b:
-            continue  # iné podlažie = zmena vzťahu, tú hlási DB
+            continue  # a different storey = a relationship change, which the DB reports
         deltas[gid] = (mb[:3, 3] - ma[:3, 3], _angle(ma[:3, :3], mb[:3, :3]))
 
     moved = {g: d for g, d in deltas.items()
@@ -124,10 +125,10 @@ def placement_changes(a: ifcopenshell.file, b: ifcopenshell.file) -> dict[str, A
     }
 
 
-# ── spojenie s DB ─────────────────────────────────────────────────────────────
+# ── connection to the DB ──────────────────────────────────────────────────────
 
 def merge(rows: list[dict[str, Any]], placement: Optional[dict[str, Any]], classes: dict[str, str]) -> list[dict[str, Any]]:
-    """Doplní aspekt `placement` k riadkom DB; prvok bez inej zmeny sa stane MODIFIED."""
+    """Add the `placement` aspect to the DB rows; an element with no other change becomes MODIFIED."""
     if not placement:
         return rows
     by_gid = {r["global_id"]: r for r in rows}
@@ -139,7 +140,7 @@ def merge(rows: list[dict[str, Any]], placement: Optional[dict[str, Any]], class
                         "aspects": {"placement": delta}})
         elif row["change_action"] == "MODIFIED":
             row["aspects"] = {**(row["aspects"] or {}), "placement": delta}
-        elif row["change_action"] == "NOCHANGE":   # len poznámka "zmenené cez typ"
+        elif row["change_action"] == "NOCHANGE":   # only the note "changed via type"
             row["change_action"] = "MODIFIED"
             row["aspects"] = {**(row["aspects"] or {}), "placement": delta}
     return out

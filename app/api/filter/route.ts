@@ -32,7 +32,7 @@ async function getHandler(req: NextRequest) {
       { headers: { "Cache-Control": "public, max-age=30" } }
     );
   } catch (err) {
-    // Interné DB hlášky nepatria klientovi — logni a vráť generickú chybu.
+    // Internal DB messages do not belong to the client - log and return a generic error.
     console.error("[api/filter]", err);
     return NextResponse.json({ error: "server error" }, { status: 500 });
   }

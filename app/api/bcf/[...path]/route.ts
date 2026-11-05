@@ -10,12 +10,12 @@ import { snapshotFor } from "@/lib/bcf/snapshot-http";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
- * BCF API 2.1 (D-099): báza `<site>/api/bcf`. Čítanie je bez tokenu - viewer
- * si témy načíta sám cez most (`AIM_BCF_LOAD`, dodatok D-099), rovnako
- * verejne ako ostatné dáta AIM. Zápis (POST/PUT) len s `Authorization: Bearer
- * <BCF_API_TOKEN>`; bez tejto env je API len na čítanie a témy sa zakladajú v
- * chate. CORS je otvorený: viewer beží na inej doméne a zápis chráni token,
- * nie cookie.
+ * BCF API 2.1 (D-099): base `<site>/api/bcf`. Reading is without a token - the viewer
+ * loads the topics itself via the bridge (`AIM_BCF_LOAD`, addendum to D-099), as publicly
+ * as the other AIM data. Writing (POST/PUT) only with `Authorization: Bearer
+ * <BCF_API_TOKEN>`; without this env the API is read-only and topics are created in
+ * chat. CORS is open: the viewer runs on another domain and writing is protected by a token,
+ * not a cookie.
  */
 
 export const dynamic = "force-dynamic";
@@ -62,13 +62,13 @@ async function handle(req: Request, ctx: { params: Promise<{ path: string[] }> }
       authenticated: bearerMatches(req.headers.get("authorization"), expected),
       writeEnabled: expected !== null,
       origin: new URL(req.url).origin,
-      // Snímka výrezu dokumentu (D-158 krok 3), render na požiadanie s keš v buckete.
+      // Snapshot of a document crop (D-158 step 3), rendered on demand with a cache in the bucket.
       snapshot: (r) => snapshotFor(r, clientIpKey(req.headers)),
       project: { code: currentProject().code, name: currentProject().name },
     },
   );
   if (res.binary) {
-    // Snímka sa pre ten istý odkaz mení len s revíziou dokumentu: hodinu z keše prehliadača.
+    // The snapshot for the same link changes only with the document revision: one hour from the browser cache.
     return new Response(new Uint8Array(res.binary.bytes), {
       status: res.status,
       headers: { ...CORS, ...res.binary.headers, "Cache-Control": "public, max-age=3600" },

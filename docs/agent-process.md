@@ -34,7 +34,7 @@ Rules for writing (agent and human):
 2. **New feature => first a `D-0xx` record in `DECISIONS.md`** (rationale), only then code.
    Without a decision the feature is not built.
 3. **DB change => a new migration + an update of `SCHEMA.md`** (old migrations are not deleted).
-4. **Change of state or priority => only `ROADMAP.md`** (section "Stav"); the state is not duplicated anywhere else.
+4. **Change of state or priority => only `ROADMAP.md`** (section "State"); the state is not duplicated anywhere else.
 5. **Do not create a new .md file** until it has **a different role and a different cadence** than the existing ones.
    Prefer extending an existing document.
 6. **New tool (Cline, Aider, Windsurf, Zed...) => create only a thin pointer** to `AGENTS.md`
@@ -44,10 +44,10 @@ Rules for writing (agent and human):
    `AGENTS.md` natively.
 7. **Conventions change only here in `AGENTS.md`**, not in the pointers.
 8. **Re-check before a sprint:** before planning or implementing each sprint, check the
-   current state (ROADMAP "Stav", git, DB) and what has changed; reconsider the order and
+   current state (ROADMAP "State", git, DB) and what has changed; reconsider the order and
    scope of sprints and steps accordingly, and only then write the `D-0xx` detail and code.
 9. **Align the documents after a sprint or commit (multi-tool):** after finishing a sprint and after
-   a commit, always align the supporting documents: `ROADMAP.md` ("Stav" and changelog), `DECISIONS.md`
+   a commit, always align the supporting documents: `ROADMAP.md` ("State" and changelog), `DECISIONS.md`
    (`D-0xx`), `SCHEMA.md` (if the DB was touched) and the **thin tool pointers** (`CLAUDE.md`,
    `.github/copilot-instructions.md`, `.cursor/rules/aim-platform.mdc`, possibly `GEMINI.md`),
    so that any other tool started on the repo has current, consistent context (the source of

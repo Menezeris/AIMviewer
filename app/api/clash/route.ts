@@ -10,14 +10,14 @@ import { currentProjectId } from "@/lib/live/caller";
 /**
  * Clash detection z AIM pre viewer (D-164, #292).
  *
- * - `GET` bez brány (len čítanie, ako BCF API): bez parametrov zoznam testov s posledným behom, `?test=<kód>`
- *   test, s `&run=latest|<UUID>` aj uložený beh s kolíziami a ich stavom (z toho klient hosta skladá `CLASH_LOAD`).
- * - `POST` uloží z panela clash (`CLASH_SAVE`) test, beh a/alebo stav kolízií; beh má `trigger='viewer'`.
- *   Test vyhráva posledným zápisom, predvolený test sa neprepisuje, stav kolízií sa píše po kolíziách.
+ * - `GET` without the gate (read-only, like BCF API): without parameters a list of tests with the latest run, `?test=<code>`
+ *   a test, with `&run=latest|<UUID>` also the saved run with collisions and their state (the host client builds `CLASH_LOAD` from it).
+ * - `POST` saves from the clash panel (`CLASH_SAVE`) a test, run and/or collision state; the run has `trigger='viewer'`.
+ *   The test wins by the last write, the default test is not overwritten, the collision state is written after the collisions.
  *
- * Ochrana ako pri pohľadoch, podkladoch a IDS (D-161, D-162, D-072): viewer je verejný read-only, preto je zápis za
- * env bránou, predvolene VYPNUTOU (`CLASH_WRITE_ENABLED=true` ju zapne), k tomu origin guard a per-IP rate limit
- * (D-068). Bez prihlásenia môže ukladať každý, kto viewer otvorí; vedomý limit, kým nepríde auth.
+ * Protection as for views, underlays and IDS (D-161, D-162, D-072): the viewer is public read-only, so writing is behind
+ * the env gate, OFF by default (`CLASH_WRITE_ENABLED=true` turns it on), plus origin guard and per-IP rate limit
+ * (D-068). Without login anyone who opens the viewer can save; a conscious limit until auth arrives.
  */
 
 export const dynamic = "force-dynamic";
@@ -28,7 +28,7 @@ const RATE_LIMIT_MAX = Number(process.env.CLASH_RATE_LIMIT_MAX ?? (process.env.N
 const RATE_LIMIT_WINDOW_MS = Number(process.env.CLASH_RATE_LIMIT_WINDOW_MS ?? 10 * 60_000);
 const limiter = createRateLimiter({ windowMs: RATE_LIMIT_WINDOW_MS, max: RATE_LIMIT_MAX });
 
-/** Beh s 10 000 kolíziami (~300 B na riadok) + stavy; nad Vercel limit 4,5 MB beh neprejde. */
+/** A run with 10,000 collisions (~300 B per row) + states; above the Vercel 4.5 MB limit the run will not pass. */
 const MAX_BODY_CHARS = 4_000_000;
 const NO_STORE = { "Cache-Control": "no-store" };
 

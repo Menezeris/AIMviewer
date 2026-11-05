@@ -18,10 +18,10 @@ import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Capture point (D-073).
- * `GET   /api/captures/{id}` — detail + verzie médií (read-only, D-026).
- * `PATCH /api/captures/{id}` — merge ukotvenia (`plan`/`world`/`yaw`) do `_capture`
- *   (authoring pinov: 2D plán pin, 3D world pin). Za env bránou `CAPTURE_WRITE_ENABLED`
- *   + origin guard + rate limit (vzor D-068/D-072).
+ * `GET   /api/captures/{id}` - detail + media versions (read-only, D-026).
+ * `PATCH /api/captures/{id}` - merge of the anchoring (`plan`/`world`/`yaw`) into `_capture`
+ *   (pin authoring: 2D plan pin, 3D world pin). Behind the env gate `CAPTURE_WRITE_ENABLED`
+ *   + origin guard + rate limit (pattern D-068/D-072).
  */
 
 const WRITE_ENABLED = process.env.CAPTURE_WRITE_ENABLED === "true";
@@ -99,8 +99,8 @@ async function patchHandler(
   }
   const b = (body ?? {}) as Record<string, unknown>;
 
-  // Prijímame čiastočný patch (plan/world/yaw); validujeme ho ako placement, kde
-  // sú prítomné len zadané kľúče (`isValidCaptureV1` overí ich tvar).
+  // We accept a partial patch (plan/world/yaw); we validate it as a placement where
+  // only the given keys are present (`isValidCaptureV1` checks their shape).
   const patch: CapturePlacementPatch = {};
   const probe: Record<string, unknown> = { version: 1 };
   if ("plan" in b) {
@@ -121,7 +121,7 @@ async function patchHandler(
   if (!isValidCaptureV1(probe)) {
     return NextResponse.json({ error: "invalid placement payload" }, { status: 400 });
   }
-  // Plán-pin dokument musí byť UUID (tvar, nie existencia).
+  // The plan-pin document must be a UUID (shape, not existence).
   if (patch.plan && !UUID_RE.test(patch.plan.documentId)) {
     return NextResponse.json({ error: "invalid plan.documentId" }, { status: 400 });
   }

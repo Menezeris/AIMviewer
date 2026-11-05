@@ -1,13 +1,13 @@
 /**
- * Jednorazový nástroj portu (D-186 krok 2): z JSON Schema korpusu (`library/korpus/schema/*.json`, vyrobené
- * z pydantic modelov assetin-library) vypíše zod zdroj `lib/kniznica/schema/modely.ts`.
+ * One-off port tool (D-186 step 2): from the JSON Schema corpus (`library/korpus/schema/*.json`, produced
+ * from the pydantic models of assetin-library) it prints the zod source `lib/kniznica/schema/modely.ts`.
  *
- * Výstup je od portu pravda schémy v TS a upravuje sa ručne; validátory, ktoré JSON Schema nenesie
- * (pydantic `field_validator` / `model_validator`), sú v `lib/kniznica/schema/validatory.ts`. Generátor sa púšťa
- * znova len pri zmene schémy v Pythone počas portu (zmeny len naraz v oboch enginoch) a test zhody
- * `lib/kniznica/schema/schema.test.ts` povie, či výsledok sedí.
+ * Since the port the output is the source of truth of the schema in TS and is edited by hand; validators that JSON Schema does not carry
+ * (pydantic `field_validator` / `model_validator`) are in `lib/kniznica/schema/validatory.ts`. The generator is run
+ * again only when the schema changes in Python during the port (changes only at once in both engines) and the conformance test
+ * `lib/kniznica/schema/schema.test.ts` tells whether the result fits.
  *
- * Použitie: `npx tsx scripts/kniznica/zod-zo-schem.ts`
+ * Usage: `npx tsx scripts/kniznica/zod-zo-schem.ts`
  */
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -16,7 +16,7 @@ import { join } from "node:path";
 type J = Record<string, unknown>;
 
 const DIR = join(process.cwd(), "library", "korpus", "schema");
-/** Poradie polí pydantic (`model_fields`) per trieda; JSON Schema korpusu má zoradené kľúče. Jednorazový výpis z Pythonu. */
+/** Field order of pydantic (`model_fields`) per class; the corpus JSON Schema has sorted keys. A one-off dump from Python. */
 const PORADIE = JSON.parse(readFileSync(join(process.cwd(), "scripts", "kniznica", "poradie-poli.json"), "utf8")) as Record<string, string[]>;
 const OUT = join(process.cwd(), "lib", "kniznica", "schema", "modely.ts");
 const WIKILINK_PATTERN = "^\\[\\[[^\\[\\]]+\\]\\]$";
@@ -36,13 +36,13 @@ function isWikilink(n: J) {
   return n.type === "string" && n.pattern === WIKILINK_PATTERN && JSON.stringify(n["x-assetin"]) === JSON.stringify({ widget: "wikilink" });
 }
 
-/** Výraz zod pre uzol; `withMeta` = pridať title / description / x-assetin a default uzla. */
+/** The zod expression for a node; `withMeta` = add the title / description / x-assetin and the default of the node. */
 function expr(n: J, withMeta = true): string {
   let e = base(n);
   if (withMeta) {
     if ("default" in n) e += `.default(${lit(n.default)})`;
     if (typeof n.$ref === "string" && Object.keys(n).length > 1) {
-      // `$ref` s vlastnými kľúčmi poľa: pydantic nededí title / description definície
+      // `$ref` with the field's own keys: pydantic does not inherit the title / description of the definition
       const m: J = {};
       for (const k of META_KEYS) if (k in n) m[k] = n[k];
       e = `odkaz(${refName(n.$ref)}${"default" in n ? `, ${lit(n.default)}` : ", undefined"}, ${lit(m)})`;
@@ -98,7 +98,7 @@ function objekt(n: J): string {
   }
   const props = (n.properties ?? {}) as Record<string, J>;
   const req = new Set((n.required as string[] | undefined) ?? []);
-  // pydantic drží poradie polí len v `required` (korpus má zoradené kľúče): povinné najprv v tom poradí
+  // pydantic keeps the field order only in `required` (the corpus has sorted keys): required first, in that order
   let keys = [...((n.required as string[] | undefined) ?? []), ...Object.keys(props).filter((k) => !req.has(k))];
   if (trieda && trieda.length === keys.length && keys.every((k) => trieda.includes(k))) keys = [...trieda];
   const rows = keys.map((k) => [k, props[k]] as const).map(([k, v]) => {
@@ -134,7 +134,7 @@ for (const f of files) {
   roots.push({ file: f.replace(/\.json$/, ""), name: String(s.title), schema: s });
 }
 
-// topologické poradie definícií
+// topological order of the definitions
 const order: string[] = [];
 const state = new Map<string, "visiting" | "done">();
 const visit = (k: string) => {

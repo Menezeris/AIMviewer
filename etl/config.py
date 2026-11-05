@@ -1,8 +1,8 @@
-"""Konfigurácia ETL — načítanie `DATABASE_URL` z prostredia (D-031).
+"""ETL configuration - loading `DATABASE_URL` from the environment (D-031).
 
-`DATABASE_URL` je priame Postgres pripojenie na Supabase (Project Settings →
-Database → Connection string). Tajné — žije v `.env.local`/`.env` (gitignored),
-nikdy sa necommituje.
+`DATABASE_URL` is a direct Postgres connection to Supabase (Project Settings ->
+Database -> Connection string). Secret - lives in `.env.local`/`.env` (gitignored),
+never committed.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Repo root = o úroveň vyššie ako etl/. Načítaj .env.local aj .env (ak existujú).
+# Repo root = one level above etl/. Load both .env.local and .env (if they exist).
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 for _name in (".env.local", ".env"):
     _path = _REPO_ROOT / _name
@@ -27,7 +27,7 @@ _audit.tag_connections()
 
 
 def database_url() -> str:
-    """Vráti `DATABASE_URL` alebo zrozumiteľne zlyhá."""
+    """Return `DATABASE_URL` or fail with an understandable message."""
     url = os.environ.get("DATABASE_URL")
     if not url:
         raise SystemExit(
@@ -50,15 +50,15 @@ def project_code(cli: str | None = None) -> str:
 
 
 def supabase_url() -> str | None:
-    """`SUPABASE_URL` (báza verejných URL v Storage), ak je nastavené."""
+    """`SUPABASE_URL` (base of public URLs in Storage), if set."""
     return os.environ.get("SUPABASE_URL") or None
 
 
-# Verejná URL nasadeného Viewera — báza pre URI-link anotácie vo výkresoch (D-042 B).
-# Env-špecifická: prepíš `SITE_URL` v `.env.local` pre lokál/preview; default = produkcia.
+# Public URL of the deployed Viewer - base for URI-link annotations in drawings (D-042 B).
+# Environment-specific: override `SITE_URL` in `.env.local` for local/preview; default = production.
 _DEFAULT_SITE_URL = "https://ai-mviewer.vercel.app"
 
 
 def site_url() -> str:
-    """Vráti `SITE_URL` (bez koncového `/`); default = produkčná Vercel URL."""
+    """Return `SITE_URL` (without a trailing `/`); default = production Vercel URL."""
     return os.environ.get("SITE_URL", _DEFAULT_SITE_URL).rstrip("/")
