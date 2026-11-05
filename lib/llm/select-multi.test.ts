@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { TEST_PROJECT } from "@/lib/project/testing";
 
-// Viacnásobný výber (#217): DB je maketa, ktorá k object_ref vráti uzol a GUID.
+// Multi-selection (#217): the DB is a stub that returns a node and a GUID for an object_ref.
 vi.mock("server-only", () => ({}));
 
 const OBJECTS: Record<string, { id: string; object_type: string; object_ref: string; name: string }> = {

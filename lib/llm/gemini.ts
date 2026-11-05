@@ -11,25 +11,25 @@ import {
 } from "./provider";
 
 /**
- * Google Gemini provider (D-056) — generateContent API cez čistý `fetch`,
- * bez SDK. Kľúč z `GEMINI_API_KEY`, model z `LLM_MODEL` (default alias
- * `gemini-flash-lite-latest` — sleduje aktuálnu flash-lite radu; konkrétne
- * modely Google priebežne vypína pre nové kontá a plný flash je na free tieri
- * často preťažený → 503, overené live 2026-07-10). 429/503 sa retryuje.
+ * Google Gemini provider (D-056) - generateContent API via plain `fetch`,
+ * without an SDK. Key from `GEMINI_API_KEY`, model from `LLM_MODEL` (default alias
+ * `gemini-flash-lite-latest` - follows the current flash-lite line; Google keeps switching off specific
+ * models for new accounts and full flash is often overloaded on the free tier
+ * -> 503, verified live 2026-07-10). 429/503 is retried.
  *
- * Gemini 3.x špecifiká (overené live 2026-07-10):
- * - functionCall parts nesú `thoughtSignature` + natívne `id` a API **vyžaduje
- *   ich vrátiť** v ďalšom kole — round-trip cez `providerMeta` na blokoch.
- * - `functionResponse` sa páruje cez `name` (+ `id` ak existuje), nie cez naše
- *   syntetické tool-use ID → pri serializácii tool_result sa name/id dohľadá
- *   v predchádzajúcich assistant správach.
- * - `functionResponse.response` musí byť objekt → JSON toolu balíme do
- *   `{ result: … }` / `{ error: … }`.
+ * Gemini 3.x specifics (verified live 2026-07-10):
+ * - functionCall parts carry `thoughtSignature` + a native `id` and the API **requires
+ *   returning them** in the next round - round-trip via `providerMeta` on the blocks.
+ * - `functionResponse` is paired via `name` (+ `id` if present), not via our
+ *   synthetic tool-use ID -> when serializing tool_result the name/id is looked up
+ *   in the previous assistant messages.
+ * - `functionResponse.response` must be an object -> we wrap the tool JSON into
+ *   `{ result: ... }` / `{ error: ... }`.
  */
 
 const DEFAULT_MODEL = "gemini-flash-lite-latest";
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-/** Retry na preťaženie/rate-limit free tieru (429/503) — pauzy v ms. */
+/** Retry on free tier overload/rate limit (429/503) - pauses in ms. */
 const RETRY_DELAYS_MS = [1500, 3000];
 
 interface GeminiPart {
@@ -39,7 +39,7 @@ interface GeminiPart {
   functionResponse?: { name: string; id?: string; response: Record<string, unknown> };
 }
 
-/** Mapa syntetické tool-use ID → { name, nativeId } zo všetkých tool_use blokov. */
+/** Map of synthetic tool-use ID -> { name, nativeId } from all tool_use blocks. */
 function collectToolUses(messages: LlmMessage[]): Map<string, { name: string; nativeId?: string }> {
   const map = new Map<string, { name: string; nativeId?: string }>();
   for (const m of messages) {
@@ -110,8 +110,8 @@ export function createGeminiProvider(): LlmProvider {
     );
   }
   const model = process.env.LLM_MODEL ?? DEFAULT_MODEL;
-  // Naprieč kolami slučky (jedna inštancia = jedna /api/ask požiadavka) —
-  // syntetické ID musia byť unikátne, inak sa tool_result spáruje so zlým callom.
+  // Across rounds of the loop (one instance = one /api/ask request) -
+  // synthetic IDs must be unique, otherwise tool_result is paired with the wrong call.
   let callCounter = 0;
 
   return {

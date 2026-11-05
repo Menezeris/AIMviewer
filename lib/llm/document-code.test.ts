@@ -31,7 +31,7 @@ const { DOC, ROWS } = vi.hoisted(() => {
   };
 });
 
-// Server-only moduly (D-026); tabuľka objects vyhodnocuje eq / ilike / is ako PostgREST.
+// Server-only modules (D-026); the objects table evaluates eq / ilike / is like PostgREST.
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => {
   const table = (name: string) => {

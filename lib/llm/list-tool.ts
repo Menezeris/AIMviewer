@@ -28,22 +28,22 @@ import { StyleInputError, parseStyleGroups } from "./style-plan";
 import { ScopeResolver } from "./style-scope";
 
 /**
- * `open_list` (D-111): zoznam (tabuľka) prvkov v paneli Lists vo vieweri. Filter
- * je ten istý ako pri `style_in_3d` (zostaví sa ako skupina Lens, D-096), stĺpce
- * sú atribúty, psety, Qto, materiál, klasifikácia, podlažie alebo model. Viewer
- * otvorí builder upstream panela Lists; spustenie a export (CSV/XLSX/PDF) urobí
- * používateľ tlačidlom - stiahnutie súboru bez jeho kliku prehliadač v iframe nedovolí.
+ * `open_list` (D-111): a list (table) of elements in the Lists panel in the viewer. The filter
+ * is the same as for `style_in_3d` (built as a Lens group, D-096), the columns
+ * are attributes, psets, Qto, material, classification, storey or model. The viewer
+ * opens the builder of the upstream Lists panel; running and export (CSV/XLSX/PDF) is done by the
+ * user with a button - the browser does not allow a file download in an iframe without their click.
  *
- * "Excel hlasom" (D-149): `action=update` upraví práve otvorený zoznam (filtre pribudnú
- * cez AND a tabuľka sa spustí znova), `maximize`, `sort_by`, `sum`, `group_by` a `search`
- * platia pri otvorení aj úprave. Stav zoznamu vráti potvrdenie viewera a `get_viewer_state`.
- * Krok 2: pri `update` pribudnú a ubudnú stĺpce a triedy, odoberú sa filtre, podlažie a model
- * sa prepnú (nahradia staré), `color_by` ofarbí prvky podľa stĺpca a `export` ponúkne stiahnutie.
+ * "Excel by voice" (D-149): `action=update` edits the currently open list (filters are added
+ * with AND and the table runs again), `maximize`, `sort_by`, `sum`, `group_by` and `search`
+ * apply both on open and on edit. The list state is returned by the viewer confirmation and `get_viewer_state`.
+ * Step 2: on `update` columns and classes are added and removed, filters are removed, the storey and model
+ * are switched (replace the old ones), `color_by` colors elements by a column and `export` offers a download.
  */
 
 const DEFAULT_COLUMNS = ["Name", "GlobalId", "ObjectType", "storey"];
 
-/** `remove_filter` -> druh pravidla filtra vo vieweri (zóna, dokument a prvky sú tam GlobalId). */
+/** `remove_filter` -> kind of filter rule in the viewer (zone, document and elements are GlobalId there). */
 const REMOVE_FILTER_KINDS: Record<string, string> = {
   storey: "storey",
   model: "model",
@@ -59,7 +59,7 @@ const REMOVE_FILTER_KINDS: Record<string, string> = {
   all: "all",
 };
 const REMOVE_FILTER_KEYS = Object.keys(REMOVE_FILTER_KINDS);
-/** Edit parametre `update` (krok 2). */
+/** Edit parameters of `update` (step 2). */
 const EDIT_KEYS = ["add_columns", "remove_columns", "add_types", "remove_types", "remove_filter"];
 const MAX_COLUMNS = 30;
 
@@ -242,7 +242,7 @@ export async function execListTool(
   };
 }
 
-/** `space` / `miestnost` je Container (priestor zo súboru): povedz to, nech Claude nehlási odvodenú miestnosť (#277). */
+/** `space` / `miestnost` (Slovak for room) is a Container (space from the file): say so, so that Claude does not report a derived room (#277). */
 const CONTAINER_WORDS = new Set(["space", "miestnost", "container"]);
 const fold = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
@@ -268,7 +268,7 @@ function columnList(raw: unknown, key: string): ListColumnWire[] | undefined {
   return raw.map((c) => assertHostColumnUsable(parseListColumn(String(c)), key));
 }
 
-/** `maximize`, `sort_by`, `sum`, `group_by`, `search` -> `ListViewWire`; nič z toho = undefined. */
+/** `maximize`, `sort_by`, `sum`, `group_by`, `search` -> `ListViewWire`; none of them = undefined. */
 export function parseListViewInput(input: Record<string, unknown>): ListViewWire | undefined {
   const v: ListViewWire = {};
   if (input.maximize !== undefined) {
@@ -333,7 +333,7 @@ function cellValue(raw: unknown, where: string): ListCellValue {
   throw new StyleInputError(`${where}: hodnota je text (do 200 znakov) alebo číslo.`);
 }
 
-/** `highlight` -> `ListHighlightWire`; null alebo prázdny reťazec zruší zvýraznenie. */
+/** `highlight` -> `ListHighlightWire`; null or an empty string cancels the highlight. */
 function parseHighlight(raw: unknown): ListHighlightWire | null {
   if (raw === null || raw === "") return null;
   if (!isObject(raw)) throw new StyleInputError("highlight je objekt {rows, columns, cells, sum}, alebo null na zrušenie.");
@@ -412,7 +412,7 @@ function typeList(raw: unknown, key: string): string[] | undefined {
   return out;
 }
 
-/** `add_columns`, `remove_columns`, `add_types`, `remove_types`, `remove_filter` -> `ListEditWire`; nič = undefined. */
+/** `add_columns`, `remove_columns`, `add_types`, `remove_types`, `remove_filter` -> `ListEditWire`; nothing = undefined. */
 export function parseListEditInput(input: Record<string, unknown>): ListEditWire | undefined {
   const e: ListEditWire = {};
   for (const [key, field] of [["add_columns", "ac"], ["remove_columns", "rc"]] as const) {
@@ -437,7 +437,7 @@ export function parseListEditInput(input: Record<string, unknown>): ListEditWire
   return Object.keys(e).length ? e : undefined;
 }
 
-/** Bez podpory viewera host stĺpce z `add_columns` a `remove_columns` vypadnú (nie je čo pridať ani odobrať). */
+/** Without viewer support the host drops the columns from `add_columns` and `remove_columns` (there is nothing to add or remove). */
 function dropHostEdit(e: ListEditWire, addColumns: ListColumnWire[]): ListEditWire | undefined {
   const out: ListEditWire = { ...e };
   delete out.ac;
@@ -458,7 +458,7 @@ function editSummary(e: ListEditWire): Record<string, unknown> {
   };
 }
 
-/** `action=update` (D-149): úprava otvoreného zoznamu, filtre pribudnú cez AND. */
+/** `action=update` (D-149): edit of the open list, filters are added with AND. */
 async function execListUpdate(
   input: Record<string, unknown>,
   view: ListViewWire | undefined,

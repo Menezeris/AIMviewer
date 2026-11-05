@@ -1,13 +1,13 @@
 /**
- * Množinový selektor 3D operácií (D-066 rozšírenie): IFC domény a očista hodnôt
- * selektora. Zdieľa ho `style_in_3d` (tools.ts) aj `set_camera` (D-094).
+ * Set selector of 3D operations (D-066 extension): IFC domains and sanitization of the
+ * selector values. Shared by `style_in_3d` (tools.ts) and `set_camera` (D-094).
  */
 
 /**
- * IFC domény → triedy pre množinové 3D operácie (D-066 rozšírenie: „všetko
- * HVAC", „celá elektrika"). Selektor rozkladá viewer z entity tables, takže
- * zoznam smie byť veľkorysý — trieda, ktorá v modeli nie je, sa ticho
- * preskočí. Kurátorský výber podľa IFC4 domain schém.
+ * IFC domains -> classes for set 3D operations (D-066 extension: "all
+ * HVAC", "all electrics"). The selector is expanded by the viewer from entity tables, so the
+ * list may be generous - a class that is not in the model is silently
+ * skipped. A curated selection by the IFC4 domain schemas.
  */
 export const DOMAIN_IFC_TYPES: Record<string, string[]> = {
   hvac: [
@@ -44,7 +44,7 @@ export const DOMAIN_IFC_TYPES: Record<string, string[]> = {
   ],
 };
 
-/** Wire-safe očista selektorových hodnôt (ops formát používa : ; ~ . ako oddeľovače). */
+/** Wire-safe sanitization of selector values (the ops format uses : ; ~ . as separators). */
 export const sanitizeIfcType = (raw: unknown): string =>
   String(raw ?? "").replace(/[^A-Za-z0-9]/g, "").trim();
 export const sanitizeModelName = (raw: unknown): string =>

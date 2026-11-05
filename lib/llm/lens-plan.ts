@@ -1,8 +1,8 @@
 /**
- * Čistá stavba pravidiel Lens pre `style_in_3d` (D-096): vyriešený filter
- * (mená systémov a podlaží z grafu AIM, GUIDy konkrétnych prvkov, id zón) ->
- * `FilterGroup` z `@ifc-lite/rules`. Všetky kritériá jednej skupiny platia
- * naraz (combinator AND). DB sa tu nečíta; to robí `style-lens.ts`.
+ * Pure construction of Lens rules for `style_in_3d` (D-096): a resolved filter
+ * (names of systems and storeys from the AIM graph, GUIDs of specific elements, zone ids) ->
+ * `FilterGroup` from `@ifc-lite/rules`. All criteria of one group apply
+ * at once (combinator AND). The DB is not read here; that is done by `style-lens.ts`.
  */
 
 import type { AimDocumentRule, AimZoneRule, AutoColorSource, LensFilterGroup, LensFilterRule, LensWire } from "@/lib/viewer-lens";
@@ -11,25 +11,25 @@ import { StyleInputError } from "./style-plan";
 export interface ResolvedLensFilter {
   types: string[];
   predefinedType?: string;
-  /** Mená podlaží v IFC (z grafu AIM). */
+  /** Storey names in IFC (from the AIM graph). */
   storeys?: string[];
-  /** Presné mená systémov (IfcSystem a podtriedy). */
+  /** Exact names of systems (IfcSystem and subclasses). */
   systemNames?: string[];
   notInSystem?: boolean;
   property?: { pset?: string; name: string; value: string };
-  /** Časť názvu prvku. */
+  /** Part of the element name. */
   query?: string;
-  /** Meno modelu federácie (VZT, ASR); viewer ho preloží na identitu modelu. */
+  /** Name of the federation model (VZT, ASR); the viewer translates it to the model identity. */
   model?: string;
-  /** IFC GlobalId konkrétnych prvkov. */
+  /** IFC GlobalId of specific elements. */
   guids?: string[];
-  /** objects.id zón (IfcZone, IfcSpatialZone, IfcGroup); členov doplní klient. */
+  /** objects.id of zones (IfcZone, IfcSpatialZone, IfcGroup); members are added by the client. */
   zoneIds?: string[];
-  /** Dokument alebo odkaz na jeho časť (objects.id), voliteľne strana; prvky doplní klient (D-104). */
+  /** Document or a reference to its part (objects.id), optionally a page; elements are added by the client (D-104). */
   document?: { id: string; page?: number };
 }
 
-/** Regex na presnú zhodu s jedným z mien (pravidlo `group` porovnáva názov skupiny). */
+/** Regex for an exact match with one of the names (the `group` rule compares the group name). */
 export function exactNamesRegex(names: string[]): string {
   const esc = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   return `^(?:${esc.join("|")})$`;
@@ -37,7 +37,7 @@ export function exactNamesRegex(names: string[]): string {
 
 const BOOL = /^(true|false)$/i;
 
-/** Vyriešený filter -> jedna skupina pravidiel Lens (AND). */
+/** Resolved filter -> one group of Lens rules (AND). */
 export function lensGroup(f: ResolvedLensFilter): LensFilterGroup {
   const rules: (LensFilterRule | AimZoneRule | AimDocumentRule)[] = [];
   if (f.types.length > 0) rules.push({ kind: "ifcType", op: "in", values: [...new Set(f.types)] });
@@ -74,7 +74,7 @@ export function lensGroup(f: ResolvedLensFilter): LensFilterGroup {
   return { combinator: "AND", rules: rules as LensFilterRule[] };
 }
 
-/** `color_by` toolu -> autoColor Lens (farba podľa hodnoty, legenda vo vieweri). */
+/** `color_by` of the tool -> autoColor of the Lens (color by value, legend in the viewer). */
 export const COLOR_BY = ["ifc_type", "system", "zone", "material", "model", "classification", "property", "attribute"] as const;
 
 export function autoColorSpec(colorBy: string, key?: string): NonNullable<LensWire["ac"]> {

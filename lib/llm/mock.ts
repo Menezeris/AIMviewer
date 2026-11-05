@@ -3,13 +3,13 @@ import "server-only";
 import type { LlmProvider, LlmRequest, LlmResponse } from "./provider";
 
 /**
- * Deterministický mock provider (D-056) — celá agentická slučka `/api/ask`
- * (tool-calling, zber zdrojov, error path) sa dá overiť bez API kľúča aj bez
- * siete (devtest/e2e, verify skill). Zapína sa cez `LLM_PROVIDER=mock`.
+ * Deterministic mock provider (D-056) - the whole agentic loop of `/api/ask`
+ * (tool-calling, source collection, error path) can be verified without an API key and without
+ * a network (devtest/e2e, verify skill). It is switched on via `LLM_PROVIDER=mock`.
  *
- * Správanie: na prvý user vstup zavolá `search_objects` s textom otázky;
- * po tool výsledku odpovie textom (vrátane chybového výsledku — overuje, že
- * slučka prežije výpadok DB). Vstup s prefixom `notool:` odpovie priamo.
+ * Behavior: on the first user input it calls `search_objects` with the text of the question;
+ * after the tool result it answers with text (including an error result - it verifies that the
+ * loop survives a DB outage). Input with the prefix `notool:` answers directly.
  */
 export function createMockProvider(): LlmProvider {
   return {

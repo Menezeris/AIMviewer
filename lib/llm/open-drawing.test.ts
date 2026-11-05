@@ -5,7 +5,7 @@ import { TEST_PROJECT } from "@/lib/project/testing";
 const { DOC } = vi.hoisted(() => ({ DOC: "dd6745e7-4427-4467-98dd-c5f080eb3866" }));
 const ELEMENT = "fff37f74-3202-4099-8c9b-a8d28229261c";
 
-// Moduly sú server-only (D-026); DB vráti len dokument, na ktorý tool siaha.
+// Server-only modules (D-026); the DB returns only the document the tool reaches for.
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => {
   const row = { id: DOC, object_type: "document", object_ref: "REZ-A", name: "Rez A", ifc_type: null, predefined_type: null };

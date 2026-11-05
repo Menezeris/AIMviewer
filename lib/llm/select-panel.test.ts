@@ -10,13 +10,13 @@ describe("select_in_3d s panelom vlastností (D-113)", () => {
   it("vstup toolu -> panel", () => {
     expect(selectPanelInput({ id_or_ref: "x" })).toBeUndefined();
     expect(selectPanelInput({ panel_section: "quantities" })).toEqual({ section: "quantities" });
-    // D-127: záložka AIM | IFC zanikla, starý vstup sa ignoruje (nie chyba).
+    // D-127: the AIM | IFC tab is gone, the old input is ignored (not an error).
     expect(selectPanelInput({ panel_tab: "aim" })).toBeUndefined();
     expect(selectPanelInput({ panel_tab: "ifc", panel_section: "properties" })).toEqual({ section: "properties" });
     expect(selectPanelInput({ highlight: " Pset_WallCommon.FireRating " })).toEqual({
       focus: { pset: "Pset_WallCommon", property: "FireRating" },
     });
-    // Bodka vo vlastnosti ostáva vo vlastnosti (delí sa na prvej).
+    // A dot in a property stays in the property (split on the first one).
     expect(selectPanelInput({ highlight: "Pset_X.U.value" })).toEqual({ focus: { pset: "Pset_X", property: "U.value" } });
   });
 
@@ -55,7 +55,7 @@ describe("select_in_3d s panelom vlastností (D-113)", () => {
       { type: "SELECT", guid: G, panel },
       { type: "SHOW_ALL" },
     ]);
-    // Prejde aj URL (jedno kódovanie navyše, ako v navigate akcii).
+    // The URL passes too (one extra encoding, as in the navigate action).
     const viaUrl = new URLSearchParams(`ops=${encodeURIComponent(raw)}`).get("ops")!;
     expect(parseOps(viaUrl)[0]).toEqual({ op: "select", guid: G, panel });
   });
@@ -63,7 +63,7 @@ describe("select_in_3d s panelom vlastností (D-113)", () => {
   it("bez panela ostáva op aj správa ako doteraz", () => {
     expect(selectOp(G)).toBe(`select::${G}`);
     expect(parseOps(`select::${G}`).map(opToBridgeMessage)).toEqual([{ type: "SELECT", guid: G }]);
-    // Neplatné kľúče sa zahodia, výber ostane.
+    // Invalid keys are dropped, the selection stays.
     expect(parseOps(`select:~t=raw~s=bsdd~p=A:${G}`).map(opToBridgeMessage)).toEqual([{ type: "SELECT", guid: G }]);
   });
 });

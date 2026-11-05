@@ -1,6 +1,6 @@
 /**
- * `list_relations` nad pohľadmi IFC vzťahov z kópie revízie (D-183 K3): strana bez uzla AIM sa vráti
- * ako GlobalId alebo kľúč zo súboru (`in_aim: false`), strany s uzlom AIM idú pred ňou.
+ * `list_relations` over the views of IFC relations from the revision copy (D-183 K3): a side without an AIM node is returned
+ * as a GlobalId or a key from the file (`in_aim: false`), sides with an AIM node go before it.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

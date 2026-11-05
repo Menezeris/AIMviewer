@@ -19,17 +19,17 @@ import { hasLayoutParams, hasTabParams, planLayout, planViewTabs, type Presentat
 import { TILE_LAYOUTS } from "../viewer-tabs";
 import { currentProjectId } from "../project/context";
 
-/** `view` je to isté ako `saved_view` (D-132); prázdne = žiadny pohľad. */
+/** `view` is the same as `saved_view` (D-132); empty = no view. */
 const savedViewName = (input: Record<string, unknown>): string | undefined => {
   const v = typeof input.view === "string" && input.view.trim() ? input.view : input.saved_view;
   return typeof v === "string" && v.trim() !== "" ? v : undefined;
 };
 
 /**
- * UI tools pohľadu (D-083 fáza 1): rez, kamera, režim 3D/2D/Split. Vydávajú
- * viewer ops (`lib/viewer-ops.ts`) tou istou cestou ako style_in_3d - URL akcia,
- * živý kanál (D-079) a záložný odkaz. Podlažie cestuje ako IFC GUID podlažia;
- * výšku rezu prepočíta viewer zo svojej elevácie (jedna pravda o súradniciach).
+ * UI view tools (D-083 phase 1): section, camera, 3D/2D/Split mode. They emit
+ * viewer ops (`lib/viewer-ops.ts`) by the same route as style_in_3d - URL action,
+ * live channel (D-079) and a fallback link. A storey travels as the IFC GUID of the storey;
+ * the section height is computed by the viewer from its elevation (one truth about coordinates).
  */
 
 const MAX_TARGETS = 100;
@@ -330,14 +330,14 @@ export const VIEW_TOOL_DEFINITIONS: ToolDefinition[] = [
 
 export const VIEW_TOOL_NAMES = new Set(VIEW_TOOL_DEFINITIONS.map((t) => t.name));
 
-/** `cap_style` / `cap_color` (D-120); chybný vstup = ViewInputError. */
+/** `cap_style` / `cap_color` (D-120); bad input = ViewInputError. */
 function sectionCapPlan(input: Record<string, unknown>) {
   const cap = planSectionCap(input);
   if (cap && "error" in cap) throw new ViewInputError(cap.error);
   return cap;
 }
 
-/** Výkres podlažia pre mode=split (D-176): ASR pôdorys, PBR len keď iný nie je, alebo disciplína na výslovnú žiadosť. */
+/** Storey drawing for mode=split (D-176): ASR floor plan, PBR only when no other exists, or a discipline on explicit request. */
 async function resolveSplitDrawing(storeyGuid: string, rawDiscipline: unknown) {
   if (rawDiscipline !== undefined && (typeof rawDiscipline !== "string" || !/^[A-Za-z]{2,5}$/.test(rawDiscipline.trim()))) {
     throw new ViewInputError("discipline je kód disciplíny z kódu dokumentu (ASR, PBR, STA...).");
@@ -359,7 +359,7 @@ async function resolveSplitDrawing(storeyGuid: string, rawDiscipline: unknown) {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Podlažie AIM (object_ref, názov s normalizáciou, alebo UUID) -> label, aktívny GUID, elevácia. */
+/** AIM storey (object_ref, name with normalization, or UUID) -> label, active GUID, elevation. */
 async function resolveFloor(raw: unknown): Promise<SectionFloor | null> {
   const projectId = currentProjectId();
   const want = typeof raw === "string" ? raw.trim() : "";
@@ -392,7 +392,7 @@ async function resolveFloor(raw: unknown): Promise<SectionFloor | null> {
   return { label: floor.object_ref ?? floor.name ?? want, guid, elevation: floor.elevation };
 }
 
-/** Pohľady z Presentation (D-161) z `saved_views`: meno -> id pre dlaždice, `tab` a `beside`. Bez DB prázdny zoznam. */
+/** Views from Presentation (D-161) from `saved_views`: name -> id for tiles, `tab` and `beside`. Without DB an empty list. */
 async function presentationViews(): Promise<PresentationView[]> {
   try {
     const [{ supabaseSavedViewStore }, { wireOfRow }] = await Promise.all([import("@/lib/views/store"), import("@/lib/views/wire")]);
@@ -403,7 +403,7 @@ async function presentationViews(): Promise<PresentationView[]> {
   }
 }
 
-/** Dlaždica ako podlažie (D-157): GUID a menovka, alebo null (menovka inej záložky). */
+/** Tile as a storey (D-157): GUID and label, or null (label of another tab). */
 async function floorGuidOf(ref: string): Promise<{ guid: string; label: string } | null> {
   for (const want of new Set([ref, ref.replace(/^p[oô]dorys\s+/i, "")])) {
     try {
@@ -435,7 +435,7 @@ export async function resolveTargets(input: Record<string, unknown>): Promise<st
   return [...out].slice(0, MAX_TARGETS);
 }
 
-/** Vykoná tool pohľadu; vráti odpoveď pre model a pridá URL akciu. */
+/** Executes the view tool; returns the answer for the model and adds a URL action. */
 export async function execViewTool(
   name: string,
   input: Record<string, unknown>,
@@ -444,7 +444,7 @@ export async function execViewTool(
   let plan: ViewPlan;
   const cap = name === "set_section" ? sectionCapPlan(input) : null;
   if (cap && input.action === "widget" && typeof input.show_widget !== "boolean") {
-    // Len vzhľad reznej plochy aktívneho rezu (D-120).
+    // Only the look of the section plane of the active section (D-120).
     plan = { ops: [], label: "3D", result: { ok: true } };
   } else if (name === "set_section" && input.action === "set" && input.box === true) {
     const { planSectionBox } = await import("./view-tabs");
@@ -458,7 +458,7 @@ export async function execViewTool(
       const ceiling = await storeyCeiling(floor.label);
       if (!ceiling) throw new ViewInputError(`Podlažie ${floor.label} nemá IfcCovering CEILING ani miestnosti s Qto FinishCeilingHeight - zadaj offset_m priamo.`);
       const offset = typeof input.offset_m === "number" && Number.isFinite(input.offset_m) ? input.offset_m : 0;
-      // D-140: záporný offset = pod podhľadom (od jeho spodku), inak nad ním (od horného okraja).
+      // D-140: a negative offset = below the plan view (from its bottom), otherwise above it (from the top edge).
       const reference = offset < 0 ? ceiling.bottom_m : ceiling.top_m;
       plan = planSection({ ...input, offset_m: Math.round((reference + offset) * 1000) / 1000 }, floor, targets);
       plan.result = {
@@ -478,7 +478,7 @@ export async function execViewTool(
     const [{ restoreSavedView }, { defaultSavedViewDeps }] = await Promise.all([import("@/lib/views/tools"), import("@/lib/views/runtime")]);
     plan = await restoreSavedView({ ...input, saved_view: savedViewName(input) }, defaultSavedViewDeps());
   } else if (name === "set_view_mode") {
-    // D-127: samotné panely nepotrebujú režim.
+    // D-127: the panels alone do not need a mode.
     const panelsOnly = (input.panels !== undefined || input.panel_layout !== undefined || input.panel_scroll !== undefined || input.panel_zoom !== undefined || input.underlays_3d !== undefined || input.plan_position !== undefined) && input.mode === undefined && input.reset !== true;
     const floor = panelsOnly || input.reset === true ? null : await resolveFloor(input.floor);
     plan = panelsOnly ? { ops: [], label: "", result: { ok: true } } : planViewMode(input, floor, input.mode === "split" && floor ? await resolveSplitDrawing(floor.guid, input.discipline) : null);
@@ -486,7 +486,7 @@ export async function execViewTool(
     throw new Error(`Neznámy tool pohľadu '${name}'.`);
   }
   if (cap) plan = { ops: [...plan.ops, cap.op], label: `${plan.label}, ${cap.label}`, result: { ...plan.result, ...cap.result } };
-  // Panely (D-127) idú po režime aj po obnove uloženého pohľadu.
+  // Panels (D-127) go after the mode and after restoring a saved view.
   const panels = name === "set_view_mode" ? planPanels(input) : null;
   if (panels) {
     plan = {
@@ -495,7 +495,7 @@ export async function execViewTool(
       result: { ...plan.result, ...panels.result },
     };
   }
-  // Podklady PDF v 3D (D-133 doplnok): stav viewera, ide až po režime.
+  // PDF underlays in 3D (D-133 addendum): viewer state, goes only after the mode.
   const underlays = name === "set_view_mode" ? planUnderlays3d(input) : null;
   if (underlays) {
     plan = {
@@ -504,7 +504,7 @@ export async function execViewTool(
       result: { ...plan.result, ...underlays.result },
     };
   }
-  // Poloha kamery na PDF (D-161 bod 8, #282): stav viewera, ide po režime ako podklady v 3D.
+  // Camera position on the PDF (D-161 point 8, #282): viewer state, goes after the mode like the underlays in 3D.
   const planPos = name === "set_view_mode" ? planPlanPosition(input) : null;
   if (planPos) {
     plan = {
@@ -513,7 +513,7 @@ export async function execViewTool(
       result: { ...plan.result, ...planPos.result },
     };
   }
-  // Posun a zoom obsahu panela (D-146, D-150) idú po paneloch, aby sa najprv otvorili.
+  // Panel content scroll and zoom (D-146, D-150) go after the panels, so that they are opened first.
   for (const step of name === "set_view_mode" ? [planPanelScroll(input), planPanelZoom(input)] : []) {
     if (!step) continue;
     plan = {

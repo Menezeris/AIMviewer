@@ -1,35 +1,35 @@
 import "server-only";
 
 /**
- * Provider vrstva LLM rozhrania (D-056, F6). API-pluggable: neutrálne typy správ
- * a tool-callov, konkrétny model sa vyberá cez env (`LLM_PROVIDER`, `LLM_MODEL`).
- * Server-only — API kľúč nikdy neopustí server (rovnaká línia ako D-026).
+ * Provider layer of the LLM interface (D-056, F6). API-pluggable: neutral message types
+ * and tool calls, the concrete model is chosen via env (`LLM_PROVIDER`, `LLM_MODEL`).
+ * Server-only - the API key never leaves the server (the same line as D-026).
  */
 
-/** Textový blok odpovede modelu. */
+/** Text block of the model answer. */
 export interface TextBlock {
   type: "text";
   text: string;
-  /** Opaque provider dáta (napr. Gemini `thoughtSignature`) — round-trip v slučke. */
+  /** Opaque provider data (e.g. Gemini `thoughtSignature`) - round-trip in the loop. */
   providerMeta?: Record<string, unknown>;
 }
 
-/** Model žiada zavolať tool s argumentami. */
+/** The model asks to call a tool with arguments. */
 export interface ToolUseBlock {
   type: "tool_use";
-  /** Provider-špecifické ID callu — vracia sa v tool_result. */
+  /** Provider-specific call ID - returned in tool_result. */
   id: string;
   name: string;
   input: Record<string, unknown>;
-  /** Opaque provider dáta (Gemini 3 vyžaduje vrátiť `thoughtSignature` + `id`). */
+  /** Opaque provider data (Gemini 3 requires returning `thoughtSignature` + `id`). */
   providerMeta?: Record<string, unknown>;
 }
 
-/** Výsledok toolu, ktorý posielame späť modelu. */
+/** Result of a tool that we send back to the model. */
 export interface ToolResultBlock {
   type: "tool_result";
   toolUseId: string;
-  /** JSON-serializovaný výsledok (alebo chybová hláška). */
+  /** JSON-serialized result (or an error message). */
   content: string;
   isError?: boolean;
 }
@@ -41,7 +41,7 @@ export interface LlmMessage {
   content: ContentBlock[];
 }
 
-/** JSON Schema definícia toolu (subset postačujúci pre naše tools). */
+/** JSON Schema definition of a tool (a subset sufficient for our tools). */
 export interface ToolDefinition {
   name: string;
   description: string;
@@ -51,8 +51,8 @@ export interface ToolDefinition {
     required?: string[];
   };
   /**
-   * MCP anotácie toolu (D-084). Bez nich platí "len na čítanie"; tool, ktorý
-   * zapisuje (fáza 3, D-086), ich musí prepísať, aby si klient vypýtal súhlas.
+   * MCP annotations of the tool (D-084). Without them "read only" applies; a tool that
+   * writes (phase 3, D-086) must override them so that the client asks for consent.
    */
   annotations?: {
     readOnlyHint?: boolean;
@@ -60,7 +60,7 @@ export interface ToolDefinition {
     idempotentHint?: boolean;
     openWorldHint?: boolean;
   };
-  /** MCP `_meta` toolu (D-153), napr. `anthropic/alwaysLoad`; posiela ho len konektor, nie chat. */
+  /** MCP `_meta` of the tool (D-153), e.g. `anthropic/alwaysLoad`; sent only by the connector, not the chat. */
   meta?: Record<string, unknown>;
 }
 
@@ -73,20 +73,20 @@ export interface LlmRequest {
 
 export interface LlmResponse {
   content: (TextBlock | ToolUseBlock)[];
-  /** 'tool_use' → treba vykonať tools a pokračovať v slučke. */
+  /** 'tool_use' -> tools must be executed and the loop continues. */
   stopReason: "end_turn" | "tool_use" | "max_tokens" | "other";
 }
 
 export interface LlmProvider {
-  /** Identifikátor pre trace/log (napr. 'anthropic:claude-sonnet-5'). */
+  /** Identifier for trace/log (e.g. 'anthropic:claude-sonnet-5'). */
   id: string;
   complete(req: LlmRequest): Promise<LlmResponse>;
 }
 
-/** Chyba konfigurácie (chýbajúci kľúč…) — API ju mapuje na 503 s návodom. */
+/** Configuration error (missing key...) - the API maps it to 503 with instructions. */
 export class LlmConfigError extends Error {}
 
-/** Bez explicitného LLM_PROVIDER sa provider odvodí z dostupného kľúča. */
+/** Without an explicit LLM_PROVIDER the provider is derived from the available key. */
 function detectProvider(): string {
   if (process.env.GEMINI_API_KEY) return "gemini";
   if (process.env.ANTHROPIC_API_KEY) return "anthropic";

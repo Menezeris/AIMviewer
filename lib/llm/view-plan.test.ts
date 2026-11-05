@@ -40,7 +40,7 @@ describe("tools pohľadu (D-083 fáza 1)", () => {
 
   it("režim 2D na podlaží a reset pohľadu", () => {
     expect(parseOps(planViewMode({ mode: "2d" }, FLOOR).ops[0])).toEqual([{ op: "view", mode: "2d", storeyGuid: FLOOR.guid }]);
-    // split nesie výkres vybraný hostom (D-176), 2d ho nepotrebuje
+    // split carries the drawing chosen by the host (D-176), 2d does not need it
     const drawing = { documentId: "11111111-1111-4111-8111-111111111111", name: "OCB_SO01_ASR_D-1-1-01_PODORYS-1NP", discipline: "ASR", chosen_by: "preference" as const, alternatives: [{ name: "OCB_SO01_PBR_D-1-3-02_PODORYS-1NP", discipline: "PBR" }] };
     const split = planViewMode({ mode: "split" }, FLOOR, drawing);
     expect(parseOps(split.ops[0])).toEqual([{ op: "view", mode: "split", storeyGuid: FLOOR.guid, documentId: drawing.documentId }]);
@@ -130,7 +130,7 @@ describe("panely (D-127)", () => {
     expect(planPanels({})).toBeNull();
     expect(() => planPanels({ panels: { all: "open" } })).toThrow(ViewInputError);
     expect(() => planPanels({ panels: { "bad name!": "close" } })).toThrow(/neplatné meno panela/);
-    // Existenciu panela posudzuje viewer (zoznam je v jeho registri), host pustí ľubovoľné meno.
+    // The existence of a panel is judged by the viewer (the list is in its registry), the host lets any name through.
     expect(parseOps(planPanels({ panels: { bcf: "open", compare: "toggle" } })!.op)).toEqual([{ op: "panels", panels: { bcf: "open", compare: "toggle" } }]);
     expect(planPanels({ panels: { drawing: "open" } })!.result).toEqual({ panels: { drawing: "open" } });
     expect(() => planPanels({ panels: { lens: "hide" } })).toThrow(/open, close/);
@@ -151,7 +151,7 @@ describe("panely (D-127)", () => {
     expect(opToBridgeMessage(parseOps(sideOnly.op)[0])).toEqual({ type: "SET_PANELS", panel_layout: { panel: "lens", side: "left" } });
     const full = planPanels({ panel_layout: { panel: "bcf", width_pct: 25.5, side: "free" } })!;
     expect(opToBridgeMessage(parseOps(full.op)[0])).toEqual({ type: "SET_PANELS", panel_layout: { panel: "bcf", width_pct: 25.5, side: "free" } });
-    // Starý tvar správy sa nemení.
+    // The old message shape does not change.
     expect(opToBridgeMessage(parseOps(planPanels({ panels: { lens: "close" } })!.op)[0])).toEqual({ type: "SET_PANELS", panels: { lens: "close" } });
   });
 

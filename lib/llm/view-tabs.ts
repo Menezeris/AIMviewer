@@ -2,21 +2,21 @@ import { BOX_MARGIN_RANGE, MIN_TILE_SHARE, TILE_COUNTS, checkTileSizes, TILE_LAY
 import { ViewInputError, type ViewPlan } from "./view-plan";
 
 /**
- * Záložky viewera z chatu (D-132): `set_view_mode` s `tab`, `beside`, `close_tab`
- * a rezný box `set_section box=true`. Otvorenie pohľadu do záložky robí obnova
- * uloženého pohľadu (`lib/views/plan.ts`), pôdorys `mode=2d` (fork ho mapuje na
- * záložku). Stav záložiek vráti viewer v `APPLIED` / `view_state.tabs`.
- * Dlaždice (D-157): `layout` + `tiles`, stav v `view_state.layout`.
- * Pohľady z Presentation (D-161, krok 4): `tiles`, `tab` a `beside` prijmú aj meno pohľadu; host ho
- * preloží na id zo `saved_views` (viewer dostane id, nie meno, ktoré sa môže zmeniť).
+ * Viewer tabs from the chat (D-132): `set_view_mode` with `tab`, `beside`, `close_tab`
+ * and the section box `set_section box=true`. Opening a view into a tab is done by restoring a
+ * saved view (`lib/views/plan.ts`), a floor plan by `mode=2d` (the fork maps it to a
+ * tab). The state of the tabs is returned by the viewer in `APPLIED` / `view_state.tabs`.
+ * Tiles (D-157): `layout` + `tiles`, state in `view_state.layout`.
+ * Views from Presentation (D-161, step 4): `tiles`, `tab` and `beside` also accept a view name; the host
+ * translates it to an id from `saved_views` (the viewer gets the id, not the name, which can change).
  */
 
-/** Pohľad z Presentation (riadok `saved_views` s tvarom `ViewWire`): id a meno. */
+/** View from Presentation (a `saved_views` row with the shape `ViewWire`): id and name. */
 export interface PresentationView { id: string; name: string }
 
 const EXCLUDED_REFS = new Set(["3d", "none", "all"]);
 
-/** Pohľad podľa mena (bez ohľadu na veľkosť písmen); '3D', 'none' a 'all' sú vyhradené. */
+/** View by name (case-insensitive); '3D', 'none' and 'all' are reserved. */
 export function viewByName(views: readonly PresentationView[] | undefined, name: string): PresentationView | undefined {
   const want = name.trim().toLowerCase();
   if (!views || EXCLUDED_REFS.has(want)) return undefined;
@@ -33,12 +33,12 @@ const ref = (v: unknown, field: string): string | undefined => {
   return v.trim();
 };
 
-/** Má volanie `set_view_mode` parametre záložiek? */
+/** Does the `set_view_mode` call have tab parameters? */
 export function hasTabParams(input: Record<string, unknown>): boolean {
   return input.tab !== undefined || input.beside !== undefined || input.close_tab !== undefined;
 }
 
-/** `tab` prepne, `beside` dá vedľa aktívnej (`none` zruší), `close_tab` zavrie; v tomto poradí. Meno pohľadu sa preloží na jeho id. */
+/** `tab` switches, `beside` puts beside the active one (`none` cancels), `close_tab` closes; in this order. A view name is translated to its id. */
 export function planViewTabs(input: Record<string, unknown>, views?: readonly PresentationView[]): ViewPlan {
   if (input.mode !== undefined || input.saved_view !== undefined || input.view !== undefined || input.reset !== undefined) {
     throw new ViewInputError("tab, beside a close_tab sa nekombinujú s mode, view ani reset; zavolaj set_view_mode dvakrát.");
@@ -74,10 +74,10 @@ export function planViewTabs(input: Record<string, unknown>, views?: readonly Pr
   };
 }
 
-/** `set_section box=true`: box okolo prvkov s okrajom (D-132). */
+/** `set_section box=true`: box around elements with a margin (D-132). */
 export function planSectionBox(input: Record<string, unknown>, guids: string[]): ViewPlan {
   if (guids.length === 0) throw new ViewInputError("box=true potrebuje cieľ: target_ids_or_refs alebo global_ids.");
-  // Bez margin_m rozhodne viewer sám (auto: okraj podľa veľkosti, miestnosť od dosky po dosku so stenami).
+  // Without margin_m the viewer decides itself (auto: margin by size, a space from slab to slab with the walls).
   let margin: number | undefined;
   if (input.margin_m !== undefined) {
     const m = input.margin_m;
@@ -98,7 +98,7 @@ export function planSectionBox(input: Record<string, unknown>, guids: string[]):
   };
 }
 
-/** Má volanie `set_view_mode` parametre dlaždíc (D-157)? */
+/** Does the `set_view_mode` call have tile parameters (D-157)? */
 export function hasLayoutParams(input: Record<string, unknown>): boolean {
   return input.layout !== undefined || input.tiles !== undefined || input.ratio !== undefined || input.sizes !== undefined;
 }
@@ -106,11 +106,11 @@ export function hasLayoutParams(input: Record<string, unknown>): boolean {
 const EMPTY_TILE = new Set(["none", "-", "prázdna", "prazdna"]);
 
 /**
- * `layout` + `tiles` (D-157): rozloženie dlaždíc a záložka v každej. Menovka
- * podlažia (1NP) sa preloží na GUID a viewer pôdorys otvorí sám; ostatné sú
- * menovky otvorených záložiek ('3D', dokument); meno pohľadu z Presentation (D-161) sa preloží na jeho id
- * (`views`), viewer pohľad otvorí v dlaždici sám; 'none' = prázdna.
- * `floorGuid` vráti GUID podlažia alebo null (nie je to podlažie).
+ * `layout` + `tiles` (D-157): tile layout and a tab in each. The label
+ * of a storey (1NP) is translated to a GUID and the viewer opens the floor plan itself; the others are
+ * labels of open tabs ('3D', document); a view name from Presentation (D-161) is translated to its id
+ * (`views`), the viewer opens the view in the tile itself; 'none' = empty.
+ * `floorGuid` returns the storey GUID or null (it is not a storey).
  */
 export async function planLayout(
   input: Record<string, unknown>,
@@ -126,7 +126,7 @@ export async function planLayout(
   const refs = (tilesIn as unknown[] | undefined) ?? [];
   let layout: TileLayout;
   if (raw === undefined) {
-    // Len tiles: rozloženie podľa počtu (2 vedľa seba, 3 s veľkou vľavo, 4 = 2x2).
+    // Only tiles: layout by count (2 side by side, 3 with a large one on the left, 4 = 2x2).
     const auto: Record<number, TileLayout> = { 1: "single", 2: "split_h", 3: "three_left", 4: "grid4" };
     if (!auto[refs.length]) throw new ViewInputError(
       input.tiles === undefined ? "ratio a sizes potrebujú layout (aktuálny je v get_viewer_state, layout)." : "tiles: 1 až 4 záložky, alebo zadaj layout.",

@@ -1,8 +1,8 @@
 /**
- * `get_object(include=documents)` (D-104 krok 2, D-115) nad napodobenou DB:
- * `v_object_documents` vracia riadky pre každú cestu (zóna aj nadradená zóna), tool z nich
- * spraví jeden riadok na dokument a stranu s najbližšou cestou a pri dokumente počty
- * objektov podľa typu a nositeľa.
+ * `get_object(include=documents)` (D-104 step 2, D-115) over a mocked DB:
+ * `v_object_documents` returns rows for every route (zone and parent zone), the tool makes from them
+ * one row per document and page with the nearest route and for a document counts of
+ * objects by type and carrier.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,7 +14,7 @@ import { orFilter, rowEq } from "@/lib/project/testing-filters";
 type Row = Record<string, unknown>;
 const tables: Record<string, Row[]> = {};
 
-/** Minimálny PostgREST builder: eq / in / is / order / limit / range + count head. */
+/** Minimal PostgREST builder: eq / in / is / order / limit / range + count head. */
 function builder(table: string) {
   const filters: ((r: Row) => boolean)[] = [];
   let head = false;
@@ -47,7 +47,7 @@ function builder(table: string) {
       return b;
     },
     order(col: string) {
-      // Prvé zoradenie rozhoduje; ďalšie (rozstrel pri stránkovaní) mock nepotrebuje.
+      // The first ordering decides; the others (tie-breaking when paging) the mock does not need.
       order ??= col;
       return b;
     },
@@ -63,7 +63,7 @@ function builder(table: string) {
     then(resolve: (v: { data: Row[] | null; error: null; count: number }) => unknown) {
       let rows = (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
       if (order) rows = [...rows].sort((a, z) => Number(a[order!]) - Number(z[order!]));
-      // Ako PostgREST na Supabase: najviac 1000 riadkov v odpovedi bez ohľadu na limit.
+      // Like PostgREST on Supabase: at most 1000 rows in the answer regardless of the limit.
       rows = rows.slice(offset, offset + Math.min(limit, 1000));
       return Promise.resolve(resolve({ data: head ? null : rows, error: null, count: rows.length }));
     },
@@ -103,7 +103,7 @@ beforeEach(() => {
     v({ object_id: "st", object_type: "asset", document_id: "d9", reference_id: "r3", page: 3, via: "group", via_id: "s1", depth: 2 }),
     v({ object_id: "np", object_type: "zone", document_id: "d3", via: "direct", via_id: null, depth: 0 }),
   ];
-  // Druh dokumentu (D-104, typ informácie ISO 19650).
+  // Kind of document (D-104, ISO 19650 information type).
   tables.rel_external_reference_relationship = [{ id: "x1", from_id: "d9", to_id: "c1", valid_until: null, project_id: P }];
   tables.classification_references = [{ id: "c1", identification: "SH", name: "Výpis" }];
   tables.rel_associates_document = Array.from({ length: 44 }, (_, i) => ({

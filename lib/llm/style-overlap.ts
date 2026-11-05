@@ -1,11 +1,11 @@
 /**
- * Priorita prekrývajúcich sa pravidiel `style_in_3d` (D-138, #221). Lens vo viewera farbí
- * prvou zhodou. Host preto posiela pravidlá volania v opačnom poradí (`lensPriorityOrder`):
- * NESKORŠIA skupina v `groups` je navrchu, rovnako ako novšie volanie (mode=add) prebije staršie.
- * Konkrétna trasa sa teda zapíše ako posledná skupina, širšie farby (systémy) pred ňu.
+ * Priority of overlapping `style_in_3d` rules (D-138, #221). The Lens in the viewer colors
+ * by the first match. The host therefore sends the rules of a call in reverse order (`lensPriorityOrder`):
+ * a LATER group in `groups` is on top, just as a newer call (mode=add) overrides an older one.
+ * A specific route is thus written as the last group, broader colors (systems) before it.
  */
 
-/** Poradie pravidiel pre wire: prvé vo wire vyhráva, tak posledná skupina volania ide dopredu. */
+/** Order of rules for the wire: the first in the wire wins, so the last group of the call goes first. */
 export function lensPriorityOrder<T>(rules: readonly T[]): T[] {
   return [...rules].reverse();
 }
@@ -17,8 +17,8 @@ export interface RuleCount {
 }
 
 /**
- * Varovania pre pravidlá bez zásahu z pravidiel, ktoré vrátil viewer (poradie = od najvyššej
- * priority). Pravidlo, nad ktorým je pravidlo so zásahom, môže byť prekryté; inak mu filter nič nenašiel.
+ * Warnings for rules without a hit from the rules returned by the viewer (order = from the highest
+ * priority). A rule above which there is a rule with a hit may be covered; otherwise its filter found nothing.
  */
 export function inactiveRuleWarnings(rules: unknown): string[] {
   if (!Array.isArray(rules)) return [];

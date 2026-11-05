@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { TEST_PROJECT } from "@/lib/project/testing";
 
-// Moduly sú server-only (D-026) a DB sa v týchto testoch nesmie volať: zlý vstup sa odmietne skôr.
+// The modules are server-only (D-026) and the DB must not be called in these tests: bad input is rejected earlier.
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseAdmin: () => {
@@ -23,7 +23,7 @@ describe("zlúčené tooly AIM (D-115)", () => {
     expect(props("search_objects")).toEqual(expect.arrayContaining(["mode", "ids"]));
     expect(props("get_object")).toContain("include");
     expect(props("show_in_3d")).toEqual(expect.arrayContaining(["select", "panel_section", "highlight"]));
-    expect(props("show_in_3d")).not.toContain("panel_tab"); // D-127: panel má len IFC obsah
+    expect(props("show_in_3d")).not.toContain("panel_tab"); // D-127: the panel has only IFC content
   });
 
   it("zlý režim a include sa odmietnu pred dotazom do DB", async () => {

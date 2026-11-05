@@ -48,7 +48,7 @@ describe("set_camera auto_rotate: plynulé otáčanie dokola (D-154)", () => {
     expect(autoRotateOp("start")).toBe("auto_rotate:start:");
     expect(autoRotateOp("start", 2.5, "left")).toBe("auto_rotate:start~s=2.5~d=l:");
     expect(parseOps("auto_rotate:start~s=2.5~d=r:")).toEqual([{ op: "auto_rotate", action: "start", speedDegS: 2.5, direction: "right" }]);
-    // Rýchlosť mimo rozsahu sa zahodí (fork použije default), neznáma akcia celý op.
+    // A speed out of range is dropped (the fork uses the default), an unknown action the whole op.
     expect(parseOps("auto_rotate:start~s=900:")).toEqual([{ op: "auto_rotate", action: "start" }]);
     expect(parseOps("auto_rotate:spin:")).toEqual([]);
     expect(parseOps("auto_rotate:stop~s=5~d=l:")).toEqual([{ op: "auto_rotate", action: "stop" }]);
