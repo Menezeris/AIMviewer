@@ -1,21 +1,21 @@
 -- =============================================================================
--- D-104 krok 2 dodatok - prvok dedí dokumenty podlažia a miestnosti
+-- D-104 step 2 addendum - an element inherits the documents of its floor and room
 -- =============================================================================
--- Aditívna migrácia (AGENTS.md: migrácie sa nemažú ani needitujú); nahrádza pohľad z
--- 20261020090000 s rovnakými stĺpcami.
+-- Additive migration (AGENTS.md: migrations are neither deleted nor edited); replaces the view from
+-- 20261020090000 with the same columns.
 --
--- ASR v076 (recept OCB, Samuel 2026-10-20) dáva pôdorysy všetkých profesií na podlažie,
--- ASR pôdorys na miestnosť a zónam nechá len zónové dokumenty. Prvok (asset) preto dedí aj
--- dokumenty podlažia a miestnosti, v ktorých je (rel_contained_in_spatial_structure,
--- rel_referenced_in_spatial_structure vrátane odvodených). Miestnosť ani priestorová zóna od
--- podlažia nededia; budova, pozemok a projekt sa nededia vôbec.
+-- ASR v076 (OCB recipe, Samuel 2026-10-20) puts the floor plans of all disciplines on the floor,
+-- the ASR floor plan on the room, and leaves only zone documents on zones. An element (asset) therefore also inherits the
+-- documents of the floor and room it is in (rel_contained_in_spatial_structure,
+-- rel_referenced_in_spatial_structure including derived). A room or spatial zone does not inherit from
+-- the floor; building, site and project are not inherited at all.
 -- =============================================================================
 
 begin;
 
 create or replace view v_object_documents as
 with recursive
-  -- Člen -> skupinový uzol alebo typ: kto dedí dokumenty nositeľa. Počíta sa raz.
+  -- Member -> group node or type: who inherits the carrier's documents. Computed once.
   members (member_id, parent_id, via_space_id) as materialized (
     select g.from_id, g.to_id, null::uuid
     from rel_assigns_to_group g where g.valid_until is null
@@ -35,8 +35,8 @@ with recursive
     union all
     select ze.element_id, ze.zone_id, ze.via_space_id from v_zone_elements ze
     union all
-    -- Prvok v podlaží alebo v miestnosti (zo súboru aj odvodene geometriou). Len prvky:
-    -- miestnosť ani priestorová zóna od podlažia nededia (miestnosť nesie len svoj ASR pôdorys).
+    -- An element in a floor or in a room (from the file and also derived by geometry). Elements only:
+    -- a room or spatial zone does not inherit from the floor (a room carries only its own ASR floor plan).
     select c.from_id, c.to_id, null
     from rel_contained_in_spatial_structure c
     join objects e on e.id = c.from_id and e.object_type = 'asset'
@@ -49,8 +49,8 @@ with recursive
     join objects p on p.id = r.to_id and p.object_type in ('floor', 'space')
     where r.valid_until is null
   ),
-  -- Od nositeľa dokumentu nadol k členom, kým je uzol skupinový alebo typ. Ide sa od
-  -- väzieb dokumentov (163), nie od všetkých objektov.
+  -- From the document carrier down to the members, as long as the node is a group or a type. It starts from
+  -- document links (163), not from all objects.
   walk (object_id, holder_id, via_space_id, depth, path) as (
     select h.id, h.id, null::uuid, 0, array[h.id]
     from objects h

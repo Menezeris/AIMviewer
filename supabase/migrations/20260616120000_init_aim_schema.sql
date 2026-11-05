@@ -1,28 +1,28 @@
 -- =============================================================================
--- AIM Platform — iniciálna schéma (SCHEMA.md v0.4, §2)
+-- AIM Platform - initial schema (SCHEMA.md v0.4, §2)
 -- =============================================================================
--- Scope: priestorová hierarchia · assets · dokumenty · zodpovednosti ·
---        type–occurrence · aktori (úroveň B)
--- Model: centrálna `objects` + tenké typové prípony + čisté FK hrany.
--- Konvencie: CLAUDE.md + DECISIONS.md (D-009–D-024).
+-- Scope: spatial hierarchy · assets · documents · responsibilities ·
+--        type-occurrence · actors (level B)
+-- Model: central `objects` + thin type extensions + plain FK edges.
+-- Conventions: CLAUDE.md + DECISIONS.md (D-009 to D-024).
 --
--- Poradie príkazov rešpektuje FK závislosti:
---   extension → funkcie → objects → prípony → klasifikácia →
---   ifc_guid_history → hrany → indexy → views → triggery
+-- Statement order respects FK dependencies:
+--   extension → functions → objects → extensions → classification →
+--   ifc_guid_history → edges → indexes → views → triggers
 --
--- Migrácie sú ADITÍVNE — tento súbor sa nikdy nemaže ani needituje;
--- zmeny prídu ako nové migrácie.
+-- Migrations are ADDITIVE - this file is never deleted or edited;
+-- changes arrive as new migrations.
 --
--- Poznámky k implementácii (odchýlky vs. SCHEMA.md §2 sú zapísané v SCHEMA.md):
---   * RLS sa zámerne NEzapína (doplní sa aditívne s auth/frontendom).
---   * Implementované sú len 4 explicitne menované views; v_documents/
---     v_assets/v_spaces ("analogicky") prídu neskôr podľa potreby.
---   * object_type je TEXT validovaný v app/ETL, NIE CHECK constraint (D-018).
+-- Implementation notes (deviations from SCHEMA.md §2 are recorded in SCHEMA.md):
+--   * RLS is deliberately NOT enabled (to be added additively with auth/frontend).
+--   * Only 4 explicitly named views are implemented; v_documents/
+--     v_assets/v_spaces ("analogously") will come later as needed.
+--   * object_type is TEXT validated in the app/ETL, NOT a CHECK constraint (D-018).
 -- =============================================================================
 
 
 -- -----------------------------------------------------------------------------
--- 2.0  Pomocné: rozšírenia + funkcie
+-- 2.0  Helpers: extensions + functions
 -- -----------------------------------------------------------------------------
 create extension if not exists "pgcrypto";
 
@@ -30,7 +30,7 @@ create or replace function set_updated_at()
 returns trigger language plpgsql as $$
 begin new.updated_at := now(); return new; end $$;
 
--- Hĺbkový merge psetov: occurrence (b) prepíše type (a) na úrovni skalárov
+-- Deep merge of psets: occurrence (b) overrides type (a) at the scalar level
 create or replace function jsonb_deep_merge(a jsonb, b jsonb)
 returns jsonb language sql immutable as $$
   select case
@@ -45,19 +45,19 @@ returns jsonb language sql immutable as $$
 
 
 -- -----------------------------------------------------------------------------
--- 2.1  Centrálna tabuľka uzlov (D-018)
+-- 2.1  Central node table (D-018)
 -- -----------------------------------------------------------------------------
 create table objects (
   id                uuid primary key default gen_random_uuid(),   -- Master UUID (D-010/1)
   object_type       text not null,     -- 'site','building','floor','space','asset','asset_type',
                                         -- 'document','person','organization'
-  object_ref        text unique,       -- ľudsky čitateľná identita / QR (D-010/2)
-  name              text,              -- IFC Name (atribút)
-  ifc_guid          text,              -- IFC GlobalId — len atribút, nullable (D-010/3)
-  ifc_type          text,              -- IFC entita: IfcPump, IfcPumpType, IfcSpace…
-  predefined_type   text,              -- IFC PredefinedType enum; dedí sa type→occ
+  object_ref        text unique,       -- human-readable identity / QR (D-010/2)
+  name              text,              -- IFC Name (attribute)
+  ifc_guid          text,              -- IFC GlobalId - attribute only, nullable (D-010/3)
+  ifc_type          text,              -- IFC entity: IfcPump, IfcPumpType, IfcSpace...
+  predefined_type   text,              -- IFC PredefinedType enum; inherited type→occ
   user_defined_type text,              -- IFC ObjectType(occ)/ElementType(type) pri USERDEFINED
-  properties        jsonb not null default '{}',   -- property sety + rezervované _kľúče (§4)
+  properties        jsonb not null default '{}',   -- property sets + reserved _keys (§4)
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
 );
@@ -67,35 +67,35 @@ create index on objects (predefined_type);
 
 
 -- -----------------------------------------------------------------------------
--- 2.2  Typové prípony (1:1 k `objects`)
+-- 2.2  Type extensions (1:1 to `objects`)
 -- -----------------------------------------------------------------------------
 create table floors (
   id        uuid primary key references objects(id) on delete cascade,
   elevation numeric
 );
 
-create table documents (        -- IfcDocumentInformation (D-014); .Name žije v objects.name
+create table documents (        -- IfcDocumentInformation (D-014); .Name lives in objects.name
   id              uuid primary key references objects(id) on delete cascade,
   identification  text, description text, location text, purpose text, revision text,
-  document_owner  text,         -- dočasné; neskôr rel_responsible_for(role='owner')
+  document_owner  text,         -- temporary; later rel_responsible_for(role='owner')
   status          text,
-  valid_from      timestamptz,  -- platnosť revízie (≠ platnosť väzby)
+  valid_from      timestamptz,  -- validity of the revision (≠ validity of the link)
   valid_until     timestamptz
 );
 
-create table persons (          -- IfcPerson (D-024); objects.name = zobrazované meno
+create table persons (          -- IfcPerson (D-024); objects.name = display name
   id          uuid primary key references objects(id) on delete cascade,
   given_name  text,
   family_name text,
   email       text,
   phone       text
 );
--- organization = obyčajný objects riadok (name = názov firmy)
--- štruktúrované adresy + org-hierarchia = C (plánované, §7)
+-- organization = plain objects row (name = company name)
+-- structured addresses + org hierarchy = C (planned, §7)
 
 
 -- -----------------------------------------------------------------------------
--- 2.3  Klasifikácia (D-011, D-019 — referenčné dáta)
+-- 2.3  Classification (D-011, D-019 - reference data)
 -- -----------------------------------------------------------------------------
 create table classification_systems (         -- IfcClassification
   id           uuid primary key default gen_random_uuid(),
@@ -108,7 +108,7 @@ create table classification_systems (         -- IfcClassification
 create table classification_references (      -- IfcClassificationReference
   id              uuid primary key default gen_random_uuid(),
   system_id       uuid not null references classification_systems(id) on delete restrict,
-  identification  text not null,              -- 'Pr_60_50_10' (produkt) / 'Ss_…' (systém)
+  identification  text not null,              -- 'Pr_60_50_10' (product) / 'Ss_...' (system)
   name            text, location text,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
@@ -117,14 +117,14 @@ create table classification_references (      -- IfcClassificationReference
 
 
 -- -----------------------------------------------------------------------------
--- 2.4  História IFC GUIDov (D-010)
+-- 2.4  History of IFC GUIDs (D-010)
 -- -----------------------------------------------------------------------------
 create table ifc_guid_history (
   id          uuid primary key default gen_random_uuid(),
   object_id   uuid not null references objects(id) on delete cascade,
   ifc_guid    text not null,
   valid_from  timestamptz not null default now(),
-  valid_until timestamptz,          -- NULL = aktuálny
+  valid_until timestamptz,          -- NULL = current
   source      text,
   created_at  timestamptz not null default now()
 );
@@ -132,11 +132,11 @@ create unique index uniq_active_guid on ifc_guid_history (object_id) where valid
 
 
 -- -----------------------------------------------------------------------------
--- 2.5  Hrany (D-009) — from_id → to_id, oba FK na objects(id)
---      výnimka: rel_has_classification.to_id → classification_references(id)
+-- 2.5  Edges (D-009) - from_id → to_id, both FK to objects(id)
+--      exception: rel_has_classification.to_id → classification_references(id)
 -- -----------------------------------------------------------------------------
 
--- Priestorová väzba (D-013). IFC: IfcRelAggregates + IfcRelContainedInSpatialStructure
+-- Spatial link (D-013). IFC: IfcRelAggregates + IfcRelContainedInSpatialStructure
 create table rel_located_in (
   id uuid primary key default gen_random_uuid(),
   from_id uuid not null references objects(id) on delete cascade,
@@ -144,7 +144,7 @@ create table rel_located_in (
   valid_from timestamptz not null default now(), valid_until timestamptz, source text
 );
 
--- Type–occurrence (D-021). IFC: IfcRelDefinesByType. 1:N
+-- Type-occurrence (D-021). IFC: IfcRelDefinesByType. 1:N
 create table rel_defined_by_type (
   id uuid primary key default gen_random_uuid(),
   from_id uuid not null references objects(id) on delete cascade,    -- occurrence
@@ -152,26 +152,26 @@ create table rel_defined_by_type (
   valid_from timestamptz not null default now(), valid_until timestamptz, source text
 );
 
--- Osoba v organizácii (D-024). IFC: IfcPersonAndOrganization
+-- Person in organization (D-024). IFC: IfcPersonAndOrganization
 create table rel_member_of (
   id uuid primary key default gen_random_uuid(),
   from_id uuid not null references objects(id) on delete cascade,    -- person
   to_id   uuid not null references objects(id) on delete restrict,   -- organization
-  role    text,              -- rola v rámci firmy (IfcPersonAndOrganization.Roles)
-  valid_from timestamptz not null default now(),   -- obdobie zamestnania
+  role    text,              -- role within the company (IfcPersonAndOrganization.Roles)
+  valid_from timestamptz not null default now(),   -- period of employment
   valid_until timestamptz, source text
 );
 
--- Dokument (D-014)
+-- Document (D-014)
 create table rel_has_document (
   id uuid primary key default gen_random_uuid(),
   from_id uuid not null references objects(id) on delete cascade,
   to_id   uuid not null references objects(id) on delete restrict,
-  role text,                 -- 'manual','certificate','as-built'…
+  role text,                 -- 'manual','certificate','as-built'...
   valid_from timestamptz not null default now(), valid_until timestamptz, source text
 );
 
--- Klasifikácia (D-011, D-023). Cieľ = referenčná tabuľka. Type aj occurrence
+-- Classification (D-011, D-023). Target = reference table. Type and occurrence
 create table rel_has_classification (
   id uuid primary key default gen_random_uuid(),
   from_id uuid not null references objects(id) on delete cascade,
@@ -179,19 +179,19 @@ create table rel_has_classification (
   valid_from timestamptz not null default now(), valid_until timestamptz, source text
 );
 
--- Zodpovednosti (D-020). IFC: IfcRelAssignsToActor + IfcActorRole
--- from_id = person ALEBO organization
+-- Responsibilities (D-020). IFC: IfcRelAssignsToActor + IfcActorRole
+-- from_id = person OR organization
 create table rel_responsible_for (
   id uuid primary key default gen_random_uuid(),
   from_id uuid not null references objects(id) on delete restrict,   -- actor (person|organization)
-  to_id   uuid not null references objects(id) on delete cascade,    -- objekt
-  role text not null,        -- acting role: 'owner','operator','maintainer','manufacturer'…
+  to_id   uuid not null references objects(id) on delete cascade,    -- object
+  role text not null,        -- acting role: 'owner','operator','maintainer','manufacturer'...
   valid_from timestamptz not null default now(), valid_until timestamptz, source text
 );
 
 
 -- -----------------------------------------------------------------------------
--- 2.6  Indexy + integrita hrán
+-- 2.6  Indexes + edge integrity
 -- -----------------------------------------------------------------------------
 create index on rel_located_in (from_id);          create index on rel_located_in (to_id);
 create index on rel_defined_by_type (from_id);     create index on rel_defined_by_type (to_id);
@@ -205,10 +205,10 @@ create unique index uniq_active_type     on rel_defined_by_type(from_id) where v
 
 
 -- -----------------------------------------------------------------------------
--- 2.7  Pohľady (Viewer / LLM)
+-- 2.7  Views (Viewer / LLM)
 -- -----------------------------------------------------------------------------
 
--- Effective asset: dedičnosť type→occurrence (occurrence prepíše)
+-- Effective asset: inheritance type→occurrence (occurrence overrides)
 create view v_asset_effective as
   select occ.id, occ.object_ref, occ.name, occ.ifc_type,
     case when typ.predefined_type is not null and typ.predefined_type <> 'NOTDEFINED'
@@ -222,7 +222,7 @@ create view v_asset_effective as
   left join objects typ on typ.id = r.to_id
   where occ.object_type = 'asset';
 
--- Effective klasifikácia: UNION vlastných + zdedených z type (D-023)
+-- Effective classification: UNION of own + inherited from type (D-023)
 create view v_asset_classifications as
   select occ.id as object_id, rc.to_id as classification_ref_id, 'occurrence' as level
   from objects occ
@@ -237,11 +237,11 @@ create view v_asset_classifications as
 
 create view v_floors as select o.*, f.elevation from objects o join floors f using (id);
 create view v_actors as select * from objects where object_type in ('person','organization');
--- v_documents, v_assets, v_spaces… analogicky (doplnia sa neskôr podľa potreby)
+-- v_documents, v_assets, v_spaces... analogously (to be added later as needed)
 
 
 -- -----------------------------------------------------------------------------
--- 2.8  Triggery `updated_at` (tabuľky s updated_at stĺpcom)
+-- 2.8  `updated_at` triggers (tables with an updated_at column)
 -- -----------------------------------------------------------------------------
 create trigger trg_objects_updated before update on objects
   for each row execute function set_updated_at();

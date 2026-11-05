@@ -1,19 +1,19 @@
 -- =============================================================================
--- D-080 — Odvodené priestorové zaradenie: rel_referenced_in_spatial_structure
+-- D-080 - Derived spatial placement: rel_referenced_in_spatial_structure
 -- =============================================================================
--- Aditívna migrácia (AGENTS.md: migrácie sa nemažú ani needitujú).
+-- Additive migration (AGENTS.md: migrations are never deleted or edited).
 --
--- Prvok federácie (napr. VZT vyústenie z VZT.ifc) leží v priestore (IfcSpace z
--- ASR.ifc), ale zdrojové súbory to nevedia povedať: prvok je natívne zaradený
--- len na podlaží a IfcRelContainedInSpatialStructure je pre prvok EXKLUZÍVNY
--- (IfcElement.ContainedInStructure SET[0:1]). IFC na „prvok sa nachádza aj
--- v ďalšej priestorovej štruktúre" má neexkluzívny
--- IfcRelReferencedInSpatialStructure (ReferencedInStructures SET[0:?]) —
--- preberáme ho doslovne (IFC-first, D-046), preto namespace 'rel', nie 'aim'.
+-- An element of the federation (e.g. an HVAC outlet from VZT.ifc) lies in a space (IfcSpace from
+-- ASR.ifc), but the source files cannot say so: the element is natively placed
+-- only on the floor and IfcRelContainedInSpatialStructure is EXCLUSIVE for an element
+-- (IfcElement.ContainedInStructure SET[0:1]). For "the element is also located
+-- in another spatial structure" IFC has the non-exclusive
+-- IfcRelReferencedInSpatialStructure (ReferencedInStructures SET[0:?]) -
+-- we adopt it verbatim (IFC-first, D-046), hence namespace 'rel', not 'aim'.
 --
--- Hrany plní odvodzovač `python -m etl.derive spatial_reference` (geometria,
--- source='derive:spatial_reference'); role = 'inside' (prvok celý v tele
--- priestoru) | 'partial' (prvok telo pretína). Zdrojové IFC sa nikdy neprepisujú.
+-- The edges are populated by the deriver `python -m etl.derive spatial_reference` (geometry,
+-- source='derive:spatial_reference'); role = 'inside' (element entirely within the body of
+-- the space) | 'partial' (element intersects the body). Source IFC files are never overwritten.
 -- =============================================================================
 
 begin;
@@ -35,14 +35,14 @@ create view rel_referenced_in_spatial_structure as
   select id, from_id, to_id, role, valid_from, valid_until, source
   from relationships where rel_type = 'rel_referenced_in_spatial_structure';
 
--- „čo je v tejto miestnosti" = čítanie po to_id.
+-- "what is in this room" = read by to_id.
 create index idx_relationships_referenced_to on relationships (to_id)
   where rel_type = 'rel_referenced_in_spatial_structure';
 create index idx_relationships_referenced_from on relationships (from_id)
   where rel_type = 'rel_referenced_in_spatial_structure';
 
--- Obsah priestoru jedným dopytom (LLM/viewer): natívny containment zo súboru
--- + odvodené referencie. `relation` hovorí, odkiaľ väzba pochádza.
+-- Content of a space in one query (LLM/viewer): native containment from the file
+-- + derived references. `relation` says where the link comes from.
 create view v_space_elements as
   select c.to_id as space_id, s.object_ref as space_ref, s.name as space_name,
          sp.long_name as space_long_name,

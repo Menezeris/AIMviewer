@@ -1,25 +1,25 @@
--- D-087: platnosť objektov (zaniknuté prvky modelu) + projekt, zóny a skupiny ako uzly AIM.
+-- D-087: validity of objects (retired model elements) + project, zones and groups as AIM nodes.
 --
--- 1) `objects.valid_until`: objekt, ktorý žiadny model federácie už nevydáva (zmazaný
---    alebo premenovaný prvok), ETL uzavrie (`etl.main --model`, `model_publish close-legacy`).
---    Riadok ostáva (Master UUID, D-010), ale views a RPC nad `objects` ho nevidia.
--- 2) Manifest vzťahov (`etl/manifest.py`) povoľuje nové object_type `project`, `zone`,
---    `spatial_zone`, `group` (IfcProject, IfcZone, IfcSpatialZone, IfcGroup) na hranách.
--- 3) Views a RPC nad `objects` filtrujú `valid_until is null` (definície prevzaté z
---    predošlých migrácií, zmenený je len filter).
+-- 1) `objects.valid_until`: an object that no federation model issues any more (deleted
+--    or renamed element) is closed by ETL (`etl.main --model`, `model_publish close-legacy`).
+--    The row stays (Master UUID, D-010), but views and RPCs over `objects` do not see it.
+-- 2) The relationship manifest (`etl/manifest.py`) allows the new object_type `project`, `zone`,
+--    `spatial_zone`, `group` (IfcProject, IfcZone, IfcSpatialZone, IfcGroup) on edges.
+-- 3) Views and RPCs over `objects` filter `valid_until is null` (definitions taken from
+--    earlier migrations, only the filter is changed).
 
 begin;
 
--- Načíta knižnicu pg_trgm: bez nej rola bez superusera (Management API, `supabase db push`)
--- nesmie pri create function nastaviť `pg_trgm.word_similarity_threshold` (search_everything).
+-- Loads the pg_trgm library: without it a non-superuser role (Management API, `supabase db push`)
+-- may not set `pg_trgm.word_similarity_threshold` in create function (search_everything).
 select word_similarity('a', 'a');
 
-alter table objects add column valid_until timestamptz;   -- NULL = objekt existuje v modeli
+alter table objects add column valid_until timestamptz;   -- NULL = the object exists in the model
 comment on column objects.valid_until is
   'Kedy objekt zanikol (už ho nevydáva žiadny model federácie, D-087). NULL = platný.';
 create index idx_objects_retired on objects (valid_until) where valid_until is not null;
 
--- 2) relationship_types podľa manifestu (python -m etl.manifest)
+-- 2) relationship_types per the manifest (python -m etl.manifest)
 update relationship_types set
   from_object_types = array['site', 'building', 'floor', 'space', 'spatial_zone', 'group'],
   to_object_types = array['project', 'site', 'building', 'floor', 'spatial_zone', 'group'],

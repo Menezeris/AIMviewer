@@ -1,36 +1,36 @@
 -- =============================================================================
--- D-063 — Obsah dokumentov: `document_pages` + RPC `search_documents`
+-- D-063 - Document content: `document_pages` + RPC `search_documents`
 -- =============================================================================
--- Dokumenty boli doteraz len metadáta (CDE názov, D-036) + E4 regióny — otázky
--- na OBSAH PDF (legendy, špecifikácie, popisky) boli principiálne
--- nezodpovedateľné. Extrakciu textu robí `etl/pdf_text.py` (PyMuPDF — už je
--- ETL závislosť, D-041), per strana; vyhľadáva RPC (FTS, rovnaká normalizácia
--- ako D-059: lower + f_unaccent).
+-- Documents were until now only metadata (CDE name, D-036) + E4 regions - questions
+-- about the CONTENT of PDFs (legends, specifications, labels) were in principle
+-- unanswerable. Text extraction is done by `etl/pdf_text.py` (PyMuPDF - already an
+-- ETL dependency, D-041), per page; searched by RPC (FTS, same normalization
+-- as D-059: lower + f_unaccent).
 --
--- Poctivé očakávanie (D-063): výkresy sú prevažne vektorová grafika — text je
--- riedky (legendy, rohové pečiatky, popisky). OCR mimo scope. Dokument bez
--- lokálneho zdrojového PDF stránky nemá — tool to povie.
+-- Honest expectation (D-063): drawings are mostly vector graphics - text is
+-- sparse (legends, corner stamps, labels). OCR is out of scope. A document without
+-- a local source PDF has no pages - the tool says so.
 --
--- Migrácie sú ADITÍVNE — tento súbor sa nikdy needituje.
+-- Migrations are ADDITIVE - this file is never edited.
 
 begin;
 
 create table document_pages (
   document_id uuid not null references objects(id) on delete cascade,
   page        int  not null check (page >= 1),
-  text        text not null,     -- normalizovaný text strany (extrahovaný, nie OCR)
+  text        text not null,     -- normalized text of the page (extracted, not OCR)
   primary key (document_id, page)
 );
 
 comment on table document_pages is
   'D-063: extrahovaný text PDF strán (etl/pdf_text.py) — fulltext nad obsahom dokumentov.';
 
--- Rovnaká normalizácia ako search_text (D-059): unaccent → lower.
+-- Same normalization as search_text (D-059): unaccent → lower.
 create index idx_document_pages_tsv on document_pages
   using gin (to_tsvector('simple', lower(f_unaccent(text))));
 
--- RPC pre LLM tool (parametrizované, row-cap 50). Vracia aj identitu dokumentu
--- (join na objects) — jeden call, žiadne dohľadávanie mien.
+-- RPC for the LLM tool (parameterized, row-cap 50). Also returns the document identity
+-- (join to objects) - one call, no name lookups.
 create or replace function search_documents(
   q text,
   max_rows int default 10
@@ -72,5 +72,5 @@ comment on function search_documents(text, int) is
 
 commit;
 
--- PostgREST musí novú tabuľku/RPC vidieť bez reštartu (Supabase).
+-- PostgREST must see the new table/RPC without a restart (Supabase).
 notify pgrst, 'reload schema';
