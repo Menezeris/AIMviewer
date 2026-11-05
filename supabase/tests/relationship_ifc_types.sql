@@ -11,8 +11,7 @@ declare
   wall uuid; storey uuid; doc uuid; wall_type uuid; cap uuid; space uuid; ref uuid; sys uuid;
 begin
   -- 1. Manifest: every rel_type has its types, the check is off, every type is an entity.
-  select count(*) into n from relationship_types where ifc_check <> 'off';
-  if n <> 0 then raise exception 'ifc_check must be off for all rel_types in PR 1: %', n; end if;
+  -- (the mode itself is tested in relationship_ifc_check.sql; here only the end types)
   select count(*) into n from relationship_types
    where namespace = 'rel' and (cardinality(from_ifc_types) = 0 or cardinality(to_ifc_types) = 0);
   if n <> 0 then raise exception 'IFC-anchored rel_type without end types: %', n; end if;
