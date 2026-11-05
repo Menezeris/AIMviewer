@@ -39,17 +39,17 @@ import { InputError, clamp, modelsFor, revisionStamp, str, structured, type Engi
 const saved = () => import("./clash-saved");
 
 /**
- * Tool `clash` (D-164, host PR1): kolízie medzi modelmi federácie na serveri. Geometria
- * ako `ifc_measure` (headless tesselácia, cache na store), detekcia upstream
- * `@ifc-lite/clash` (TS engine) federovane nad ASR aj VZT. Beh sa drží v pamäti procesu
- * podľa revízií modelov, takže `results` s iným `group_by` nepočíta znova. Testy, uložené
- * behy, porovnanie, stav kolízie a BCF téma (PR2) sú v `clash-saved.ts` (DB), sem sa
- * dostanú lenivo.
+ * Tool `clash` (D-164, host PR1): clashes between federation models on the server. Geometry
+ * like `ifc_measure` (headless tessellation, cache on the store), detection by upstream
+ * `@ifc-lite/clash` (TS engine) federated over ASR and VZT. A run is kept in process memory
+ * by model revisions, so `results` with another `group_by` does not recompute. Tests, stored
+ * runs, comparison, clash status and the BCF topic (PR2) are in `clash-saved.ts` (DB), which is
+ * loaded lazily.
  */
 
 export const CLASH_ENGINE = "@ifc-lite/clash@2.4.4 (ts)";
 
-/** Triedy bez fyzického telesa: priestory a otvory sa v kolíziách neberú, kým ich selektor nepomenuje. */
+/** Classes without a physical solid: spaces and openings are not taken into clashes until a selector names them. */
 const NON_PHYSICAL = ["IfcSpace", "IfcOpeningElement", "IfcVirtualElement"];
 const MAX_PAIRS = 3_000_000;
 const RUN_BUDGET_MS = 45_000;
@@ -60,7 +60,7 @@ const MEMBERS_MAX = 50;
 const SAMPLE_PAIRS = 3;
 const GLOBAL_IDS_CAP = 600;
 const SYSTEM_GUID_CAP = 3000;
-/** Model, ktorý v téme BCF ustupuje (Samuel, D-164). */
+/** The model that yields in the BCF topic (Samuel, D-164). */
 export const BCF_DEFAULT_MODEL = "VZT";
 
 export const round = (v: number, digits = 3) => Math.round(v * 10 ** digits) / 10 ** digits;
@@ -93,11 +93,11 @@ export interface ClashRun {
   info: Map<string, ElInfo>;
   sets: { a: number; b: number | null };
   models: Record<string, unknown>;
-  /** Podpis vstupu `{model: revízia}` (D-183 bod 11); null = revízia neznáma (napr. model mimo archívu). */
+  /** Input signature `{model: revision}` (D-183 point 11); null = revision unknown (e.g. a model outside the archive). */
   basedOn: RevisionStamp | null;
   ms: { tessellate: number; detect: number };
   createdAt: string;
-  /** Uložený v DB (`run save=true` alebo obnovený z DB). */
+  /** Stored in the DB (`run save=true` or restored from the DB). */
   saved?: { id: string; testId: string | null };
   /** Project of the request that ran it (D-189); runs of other projects stay invisible. */
   project?: string | null;
@@ -112,13 +112,13 @@ function projectRuns(): ClashRun[] {
 }
 let runSeq = 0;
 
-/** Len pre testy. */
+/** Tests only. */
 export function clearClashRuns(): void {
   runs.clear();
   runSeq = 0;
 }
 
-/** Strana z `a`, `a_model`, `a_storey` (alebo `b...`); chýbajúce pole nechá nezadané. */
+/** Side from `a`, `a_model`, `a_storey` (or `b...`); a missing field is left unspecified. */
 function parseSide(input: Record<string, unknown>, prefix: "a" | "b"): Partial<ClashSide> | undefined {
   const type = str(input[prefix]);
   const model = str(input[`${prefix}_model`]);
@@ -131,8 +131,8 @@ function parseSide(input: Record<string, unknown>, prefix: "a" | "b"): Partial<C
 }
 
 /**
- * Zadané polia strany prepíšu polia strany testu, ostatné ostanú (test + a_storey zúži test
- * na podlažie a nechá jeho triedy a model); bez testu je chýbajúca trieda `*`.
+ * The given side fields override the test side fields, the others stay (a test + a_storey narrows the test
+ * to the storey and keeps its classes and model); without a test a missing class is `*`.
  */
 function mergeSide(given: Partial<ClashSide> | undefined, base: ClashSide | undefined): ClashSide | undefined {
   if (!given) return base;
@@ -147,8 +147,8 @@ function mm(raw: unknown, field: string): number | undefined {
 }
 
 /**
- * Test podľa mena (predvolený, alebo `custom` = uložený z DB), alebo ad hoc sady A/B; a, b,
- * mode, clearance_mm a tolerance_mm test prepíšu.
+ * Test by name (default, or `custom` = stored in the DB), or ad hoc sets A/B; a, b,
+ * mode, clearance_mm and tolerance_mm override the test.
  */
 export function parseSpec(input: Record<string, unknown>, custom?: ClashTest): ClashSpec {
   const testName = str(input.test);
@@ -206,11 +206,11 @@ function toClashElement(e: MeshElement, storey: string | null): ClashElement {
 
 export interface DetectInput {
   spec: ClashSpec;
-  /** Prvky modelov (tesselované), po modeloch. */
+  /** Model elements (tessellated), per model. */
   elements: Map<string, { model: EngineModel; meshes: Map<string, MeshElement> }>;
   signal?: AbortSignal;
   maxPairs?: number;
-  /** Nosnosť prvku (výskyt, inak typ); predvolene z IFC store modelu. Len pre testy. */
+  /** Load-bearing property of an element (occurrence, otherwise type); by default from the model IFC store. Tests only. */
   loadBearing?: (e: MeshElement) => boolean | null;
 }
 
@@ -220,7 +220,7 @@ export interface Detected {
   sets: { a: number; b: number | null };
 }
 
-/** Čisté jadro: výber sád A/B, pravidlo s explicitnými členmi a beh upstream enginu. */
+/** Pure core: selection of sets A/B, a rule with explicit members and an upstream engine run. */
 export async function detect({ spec, elements, signal, maxPairs = MAX_PAIRS, loadBearing }: DetectInput): Promise<Detected> {
   const storeys = new Map<string, string | null>();
   const storeyOf = (e: MeshElement): string | null => {
@@ -231,7 +231,7 @@ export async function detect({ spec, elements, signal, maxPairs = MAX_PAIRS, loa
     try {
       name = holder ? new EntityNode(holder.model.store, e.expressId).storey()?.name : undefined;
     } catch {
-      name = undefined; // prvok bez priestorovej väzby: bez podlažia
+      name = undefined; // an element without a spatial link: without a storey
     }
     const label = name ? normalizeStoreyLabel(name) : null;
     storeys.set(k, label);
@@ -336,14 +336,14 @@ async function execRun(input: Record<string, unknown>, deps: EngineDeps): Promis
   return { ...describeRun(run, truncatedHint), cached: false, ...(await maybeSave(run, input, deps)) };
 }
 
-/** `save=true` uloží beh do DB (testy a stav kolízií sa viažu na test); inak nič. */
+/** `save=true` stores the run in the DB (tests and clash status are bound to the test); otherwise nothing. */
 async function maybeSave(run: ClashRun, input: Record<string, unknown>, deps: EngineDeps): Promise<Record<string, unknown>> {
   if (input.save !== true) return {};
   const result = await (await saved()).persistRun(run, deps, str(input.author));
   return { saved: result, saved_run_id: result.run_id };
 }
 
-/** Podlažia modelov (normalizované štítky) pre radu "zúž na podlažie". */
+/** Model storeys (normalized labels) for the hint "narrow to a storey". */
 async function storeyLabels(models: EngineModel[]): Promise<string[]> {
   const session = await openEngineSession(models);
   const labels = new Set<string>();
@@ -356,7 +356,7 @@ async function storeyLabels(models: EngineModel[]): Promise<string[]> {
   return [...labels].sort();
 }
 
-/** Rada pri prekročení rozpočtu alebo stropu dvojíc: podlažia na výber, užšie triedy, menší odstup. */
+/** Hint on exceeding the budget or the pair ceiling: storeys to choose from, narrower classes, a smaller clearance. */
 async function narrowHint(spec: ClashSpec, models: EngineModel[]): Promise<string> {
   const storeys = await storeyLabels(models).catch(() => []);
   const scoped = spec.a.storey || spec.b?.storey;
@@ -430,11 +430,11 @@ function bucket(clashes: Clash[], keysOf: (c: Clash) => string[], titleOf: (key:
 
 export interface GroupContext {
   run: ClashRun;
-  /** Systém prvku (kľúč GUID) z grafu AIM; len pre group_by=system. */
+  /** Element system (GUID key) from the AIM graph; only for group_by=system. */
   systems?: Map<string, string>;
 }
 
-/** Skupiny kolízií podľa kritéria, najväčšie prvé (pri zhode závažnejšie, potom kľúč). */
+/** Clash groups by criterion, largest first (on a tie the more severe, then the key). */
 export function groupRun({ run, systems }: GroupContext, by: ClashGroupBy): Group[] {
   const clashes = run.result.clashes;
   let groups: Group[];
@@ -482,8 +482,8 @@ export function pickGroup(groups: Group[], ref: string): Group {
 }
 
 /**
- * Beh podľa `run_id` (`run-N` z pamäte, UUID z DB), inak najnovší beh testu `test`
- * (pamäť alebo DB), inak posledný z pamäte.
+ * Run by `run_id` (`run-N` from memory, UUID from the DB), otherwise the newest run of the test `test`
+ * (memory or DB), otherwise the last one from memory.
  */
 export async function findRun(input: Record<string, unknown>, deps: EngineDeps): Promise<ClashRun> {
   const id = str(input.run_id);
@@ -500,7 +500,7 @@ export async function findRun(input: Record<string, unknown>, deps: EngineDeps):
   return last;
 }
 
-/** Posledný beh v pamäti, voliteľne len daného testu (kód alebo názov). */
+/** The last run in memory, optionally only of the given test (code or name). */
 export function lastMemoryRun(testName?: string): ClashRun | undefined {
   const want = testName?.trim().toLowerCase();
   return projectRuns().filter((r) => !want || r.spec.code?.toLowerCase() === want || r.spec.name.toLowerCase() === want).pop();
@@ -527,7 +527,7 @@ export function clashRow(run: ClashRun, c: Clash) {
   };
 }
 
-/** Prvky strany A a B zo skupiny pre `style_in_3d` (A a B inou farbou); strop ako show_in_3d. */
+/** Elements of sides A and B from a group for `style_in_3d` (A and B in different colours); ceiling like show_in_3d. */
 export function idsOf(run: ClashRun, members: Clash[]) {
   const a = new Set<string>();
   const b = new Set<string>();
@@ -539,7 +539,7 @@ export function idsOf(run: ClashRun, members: Clash[]) {
   return { a_global_ids: cap(a), b_global_ids: cap(b), truncated: a.size + b.size > GLOBAL_IDS_CAP };
 }
 
-/** Pripojí k riadkom objekt AIM (object_ref) cez GUID. */
+/** Attaches an AIM object (object_ref) to rows via GUID. */
 export async function withAim(rows: Person[], deps: EngineDeps) {
   const joined = await joinToAim(rows, deps.lookup);
   return new Map(joined.items.map((i) => [i.global_id, i.object_ref]));
@@ -633,7 +633,7 @@ async function execResults(input: Record<string, unknown>, deps: EngineDeps): Pr
   return out;
 }
 
-/** `based_on` a `stale` behu voči aktuálnym revíziám (D-183 bod 11); bez podpisu nič. */
+/** `based_on` and `stale` of a run against the current revisions (D-183 point 11); without a signature nothing. */
 export async function runRevision(run: ClashRun, deps: EngineDeps): Promise<Record<string, unknown>> {
   if (!run.basedOn) return {};
   return revisionFields(run.basedOn, await currentRevisions(Object.keys(run.basedOn), deps.revisions));
@@ -694,7 +694,7 @@ async function execBcf(input: Record<string, unknown>, deps: EngineDeps): Promis
   return { ...base, ...(await (await saved()).createBcfTopic({ run, members: g.members, proposal, center: groupCenter(g.members), deps, author: str(input.author) })) };
 }
 
-/** Stred skupiny v IFC svete (priemer bodov kolízií) a rozpätie jej obálky. */
+/** Centre of a group in the IFC world (mean of clash points) and the span of its envelope. */
 function groupCenter(members: Clash[]): { center: Vec3; span: number } {
   const n = members.length || 1;
   const sum = members.reduce<Vec3>((s, c) => [s[0] + c.point[0], s[1] + c.point[1], s[2] + c.point[2]], [0, 0, 0]);
@@ -733,5 +733,5 @@ export async function ifcClash(input: Record<string, unknown>, deps: EngineDeps)
   }
 }
 
-/** Behy v pamäti procesu (pre `list`). */
+/** Runs in process memory (for `list`). */
 export const memoryRuns = (): ClashRun[] => projectRuns();

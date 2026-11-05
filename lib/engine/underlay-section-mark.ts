@@ -1,14 +1,14 @@
 import { applyAffine, axisInModel, blockCenter, mergeRefAxes, type Affine, type AxisLine, type P2, type PageBlock, type PageLine, type RefAxis } from "./underlay-calibrate";
 
 /**
- * Rovina rezu zo značky rezu na kalibrovanom pôdoryse (D-179, #284): rezná čiara má na oboch koncoch
- * rovnaké písmeno (A ... A), osi majú tiež dvojice popiskov na koncoch, ale v rade s ďalšími osami
- * (A až F hore aj dole). Koncové body značky sa prepočítajú cez `affine` strany do IFC (X, Y) a dajú
- * zvislú rovinu; osi a značky iných rezov, ktoré rovina pretína, dajú polohy po reze (popisky osí na
- * výkrese rezu). Čistá logika bez DB a motora.
+ * Section plane from a section mark on a calibrated floor plan (D-179, #284): the section line has the same letter at both ends
+ * (A ... A), grids also have pairs of labels at the ends, but in a row with other grids
+ * (A to F both above and below). The end points of the mark are converted via the page `affine` to IFC (X, Y) and give
+ * a vertical plane; grids and marks of other sections that the plane intersects give positions along the cut (grid labels
+ * on the section drawing). Pure logic without DB and engine.
  */
 
-/** Kalibrovaný pôdorys: strana s affine do IFC (X, Y), text a čiary strany (pri výreze len z neho). */
+/** Calibrated floor plan: a page with affine to IFC (X, Y), the page text and lines (for a region only from it). */
 export interface PlanSheet {
   ref: string;
   page: number;
@@ -16,20 +16,20 @@ export interface PlanSheet {
   pageSize: [number, number];
   blocks: PageBlock[];
   lines?: PageLine[];
-  /** Výrez strany kalibrácie (hárok s viac pôdorysmi); blocks a lines sú už orezané. */
+  /** Region of the calibration page (sheet with several floor plans); blocks and lines are already clipped. */
   region?: [number, number, number, number] | null;
 }
 
 const IDENTITY: Affine = [1, 0, 0, 0, 1, 0];
 
-/** Rady osí strany v bodoch strany (pred kalibráciou): dvojice popiskov v rade aspoň 3 osí. */
+/** Rows of grids of the page in page points (before calibration): pairs of labels in a row of at least 3 grids. */
 export function pageAxisLines(pageSize: [number, number], blocks: PageBlock[], lines?: PageLine[]): AxisLine[] {
   return planLabelLines({ ref: "", page: 0, affine: IDENTITY, pageSize, blocks, lines })
     .filter((l) => l.kind === "axis")
     .map(({ text, a, b }) => ({ text, a, b }));
 }
 
-/** Polohy osí v IFC z kalibrovaných pôdorysov (medián cez výkresy); grid je spoločný pre všetky podlažia. */
+/** Grid positions in IFC from calibrated floor plans (median over drawings); the grid is shared by all storeys. */
 export function refAxesFromSheets(sheets: PlanSheet[]): RefAxis[] {
   return mergeRefAxes(
     sheets.map((sh) =>
@@ -40,7 +40,7 @@ export function refAxesFromSheets(sheets: PlanSheet[]): RefAxis[] {
   );
 }
 
-/** Čiara medzi dvojicou rovnakých popiskov na pôdoryse, v IFC (X, Y). */
+/** Line between a pair of equal labels on a floor plan, in IFC (X, Y). */
 export interface LabelLine {
   text: string;
   kind: "section" | "axis";
@@ -48,27 +48,27 @@ export interface LabelLine {
   b: P2;
 }
 
-/** Popisok osi alebo značky: 1 až 2 písmená, číslo do 2 cifier, aj s apostrofom (A', 1a). */
+/** Grid or mark label: 1 to 2 letters, a number up to 2 digits, also with an apostrophe (A', 1a). */
 const LABEL_RE = /^(?:[A-Z]{1,2}'?|\d{1,2}[a-z]?'?)$/;
-/** Najviac výskytov textu na strane (inak to nie je popisok osi, ale napr. číslo skladby). */
+/** At most this many occurrences of a text on a page (otherwise it is not a grid label but e.g. an assembly number). */
 const MAX_OCCURRENCES = 6;
-/** Dvojica pokrýva aspoň takú časť strany v smere čiary. */
+/** The pair covers at least this part of the page in the line direction. */
 const MIN_SPAN = 0.3;
-/** Zarovnanie dvojice (kolmo na čiaru) a zhoda koncov v rade osí, podiel rozmeru strany. */
+/** Alignment of a pair (perpendicular to the line) and match of ends in a row of grids, share of the page dimension. */
 const ALIGN_TOL = 0.006;
 const ROW_TOL = 0.0025;
-/** Rad osí má aspoň toľko dvojíc s rovnakými koncami; menej = značka rezu. */
+/** A row of grids has at least this many pairs with equal ends; fewer = a section mark. */
 const GRID_MIN = 3;
 
 interface PagePair {
   text: string;
-  /** Orientácia na strane: v = zvislá čiara (rovnaké x), h = vodorovná. */
+  /** Orientation on the page: v = vertical line (equal x), h = horizontal. */
   dir: "v" | "h";
   a: P2;
   b: P2;
 }
 
-/** Dvojice rovnakých popiskov zarovnané zvislo alebo vodorovne cez veľkú časť strany. */
+/** Pairs of equal labels aligned vertically or horizontally across a large part of the page. */
 function pagePairs(sheet: PlanSheet): PagePair[] {
   const [W, H] = sheet.pageSize;
   const byText = new Map<string, P2[]>();
@@ -95,7 +95,7 @@ function pagePairs(sheet: PlanSheet): PagePair[] {
         }
       }
     }
-    // Každý výskyt najviac v jednej dvojici, dlhšie dvojice prvé.
+    // Each occurrence in at most one pair, longer pairs first.
     const used = new Set<P2>();
     for (const c of cands.sort((x, y) => y.span - x.span)) {
       if (used.has(c.a) || used.has(c.b)) continue;
@@ -108,8 +108,8 @@ function pagePairs(sheet: PlanSheet): PagePair[] {
 }
 
 /**
- * Dorovná dvojicu na čiaru strany: rovnobežné úsečky medzi popiskami do 6 pt od spojnice
- * (rezná čiara, os) posunú spojnicu na ich priemernú polohu; bez nich ostane stred popiskov.
+ * Snaps a pair to a page line: parallel segments between labels within 6 pt of the connecting line
+ * (section line, grid) move the connecting line to their mean position; without them the centre of the labels stays.
  */
 function snapToLines(p: PagePair, lines: PageLine[] | undefined): PagePair {
   if (!lines?.length) return p;
@@ -136,7 +136,7 @@ function snapToLines(p: PagePair, lines: PageLine[] | undefined): PagePair {
   return { ...p, a: move(p.a), b: move(p.b) };
 }
 
-/** Čiary popiskov pôdorysu v IFC: rady osí (aspoň 3 dvojice s rovnakými koncami) a značky rezov. */
+/** Floor plan label lines in IFC: rows of grids (at least 3 pairs with equal ends) and section marks. */
 export function planLabelLines(sheet: PlanSheet): LabelLine[] {
   const pairs = pagePairs(sheet);
   const [W, H] = sheet.pageSize;
@@ -149,7 +149,7 @@ export function planLabelLines(sheet: PlanSheet): LabelLine[] {
   const out: LabelLine[] = [];
   for (const p of pairs) {
     const kind = pairs.filter((q) => sameRow(p, q)).length >= GRID_MIN ? "axis" : "section";
-    // Značka rezu je písmeno (A, B'), samotné číslo mimo radu osí je kód skladby či prvku.
+    // A section mark is a letter (A, B'), a bare number outside a row of grids is an assembly or element code.
     if (kind === "section" && !/[A-Z]/.test(p.text)) continue;
     const s = snapToLines(p, sheet.lines);
     out.push({ text: p.text, kind, a: applyAffine(sheet.affine, s.a), b: applyAffine(sheet.affine, s.b) });
@@ -157,7 +157,7 @@ export function planLabelLines(sheet: PlanSheet): LabelLine[] {
   return out;
 }
 
-/** Písmeno rezu z dokumentu: `..._REZ-A`, `Rez B - ...`, `REZ C-C`. */
+/** Section letter from a document: `..._REZ-A`, `Rez B - ...`, `REZ C-C`. */
 export function sectionMarkFromName(...names: (string | null | undefined)[]): string | null {
   for (const n of names) {
     const m = n ? /(?:^|[^a-z])rez[\s_-]*([a-z]{1,2}\d?)(?:[\s_-]*\1)?(?![a-z\d])/i.exec(n) : null;
@@ -168,21 +168,21 @@ export function sectionMarkFromName(...names: (string | null | undefined)[]): st
 
 export interface SectionFromPlans {
   mark: string;
-  /** Bod roviny (päta kolmice z počiatku IFC) a smer reznej čiary (jednotkový). */
+  /** Plane point (foot of the perpendicular from the IFC origin) and the direction of the section line (unit). */
   at: P2;
   dir: P2;
-  /** Os zarovnaná rovina (odchýlka smeru pod 0,05 stupňa): axis x = rovina X = coordinate. */
+  /** Axis-aligned plane (direction deviation under 0.05 degrees): axis x = plane X = coordinate. */
   axis: { axis: "x" | "y"; coordinate_m: number } | null;
-  /** Pôdorysy so značkou: odchýlka od výslednej čiary (kolmo, mm; uhol) a či sa použili. */
+  /** Floor plans with the mark: deviation from the resulting line (perpendicular, mm; angle) and whether they were used. */
   plans: { ref: string; page: number; offset_mm: number; angle_deg: number; used: boolean }[];
-  /** Najväčšia odchýlka použitých pôdorysov od výslednej čiary (mm). */
+  /** Largest deviation of the used floor plans from the resulting line (mm). */
   spread_mm: number;
-  /** Poloha osí a iných rezov po reze (m od `at` v smere `dir`), kľúč = popisok. */
+  /** Position of grids and other sections along the cut (m from `at` in direction `dir`), key = label. */
   axes: Record<string, number>;
 }
 
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
-/** Pôdorys ďalej od zhody (kolmo) sa nepoužije: iný výkres s rovnakým písmenom alebo hrubšia kalibrácia (PBR 1:100). */
+/** A floor plan farther from the match (perpendicular) is not used: another drawing with the same letter or a coarser calibration (PBR 1:100). */
 const OUTLIER_M = 0.1;
 const SNAP_DEG = 0.05;
 
@@ -193,9 +193,9 @@ function median(v: number[]): number {
 }
 
 /**
- * Rovina rezu `mark` zo všetkých kalibrovaných pôdorysov, na ktorých značka je: smer a poloha ako
- * medián (pôdorys mimo zhody o viac než 10 cm vypadne, vráti sa s `used: false`), osi a ostatné značky
- * pretnuté rovinou ako poloha po reze. Null, ak značku nemá žiadny pôdorys.
+ * Plane of the section `mark` from all calibrated floor plans that have the mark: direction and position as
+ * the median (a floor plan off the match by more than 10 cm drops out, returned with `used: false`), grids and other marks
+ * intersected by the plane as the position along the cut. Null if no floor plan has the mark.
  */
 export function sectionFromPlans(mark: string, sheets: PlanSheet[]): SectionFromPlans | null {
   const hits: { sheet: PlanSheet; line: LabelLine; all: LabelLine[] }[] = [];
@@ -205,7 +205,7 @@ export function sectionFromPlans(mark: string, sheets: PlanSheet[]): SectionFrom
     if (line) hits.push({ sheet, line, all });
   }
   if (hits.length === 0) return null;
-  // Smer zjednotený (kladná väčšia zložka), aby sa uhly dali porovnať.
+  // Direction unified (positive larger component), so that angles can be compared.
   const dirOf = (l: LabelLine): P2 => {
     let d: P2 = [l.b[0] - l.a[0], l.b[1] - l.a[1]];
     const L = Math.hypot(d[0], d[1]);
@@ -228,7 +228,7 @@ export function sectionFromPlans(mark: string, sheets: PlanSheet[]): SectionFrom
     axis = { axis: "y", coordinate_m: r3(off) };
   } else if (Math.abs(Math.abs(deg) - 90) < SNAP_DEG) {
     ang = Math.PI / 2;
-    // Smer (0, 1): normála (-1, 0), offset = -X.
+    // Direction (0, 1): normal (-1, 0), offset = -X.
     axis = { axis: "x", coordinate_m: r3(-off) };
   }
   const dir: P2 = [Math.cos(ang), Math.sin(ang)];
@@ -245,8 +245,8 @@ export function sectionFromPlans(mark: string, sheets: PlanSheet[]): SectionFrom
   }));
   const spread = Math.max(...plans.filter((p) => p.used).map((p) => Math.abs(p.offset_mm)));
 
-  // Osi a iné značky: priesečník ich čiary s reznou čiarou, poloha po reze (m od `at`). Os má prednosť
-  // pred značkou rezu s rovnakým písmenom (os B aj rez B): na výkrese rezu sú osi v rade nad rezom.
+  // Grids and other marks: the intersection of their line with the section line, position along the cut (m from `at`). A grid takes precedence
+  // over a section mark with the same letter (grid B and section B): on the section drawing the grids are in a row above the section.
   const pos = new Map<string, { axis: number[]; section: number[] }>();
   hits.forEach((h, i) => {
     if (!used[i]) return;
@@ -255,9 +255,9 @@ export function sectionFromPlans(mark: string, sheets: PlanSheet[]): SectionFrom
       const d: P2 = [l.b[0] - l.a[0], l.b[1] - l.a[1]];
       const den = d[0] * n[0] + d[1] * n[1];
       const L = Math.hypot(d[0], d[1]);
-      if (Math.abs(den) < 0.2 * L) continue; // takmer rovnobežná s rezom
+      if (Math.abs(den) < 0.2 * L) continue; // almost parallel to the section
       const t = (off - (l.a[0] * n[0] + l.a[1] * n[1])) / den;
-      if (t < -0.05 || t > 1.05) continue; // čiara rez nepretína
+      if (t < -0.05 || t > 1.05) continue; // the line does not cross the section
       const p: P2 = [l.a[0] + t * d[0], l.a[1] + t * d[1]];
       const entry = pos.get(l.text) ?? { axis: [], section: [] };
       entry[l.kind].push((p[0] - at[0]) * dir[0] + (p[1] - at[1]) * dir[1]);
@@ -267,7 +267,7 @@ export function sectionFromPlans(mark: string, sheets: PlanSheet[]): SectionFrom
   const axes: Record<string, number> = {};
   for (const [text, e] of pos) {
     const us = e.axis.length ? e.axis : e.section;
-    // Ten istý popisok na dvoch miestach po reze je nejednoznačný: preč.
+    // The same label at two places along the cut is ambiguous: dropped.
     if (Math.max(...us) - Math.min(...us) > 0.2) continue;
     axes[text] = r3(median(us));
   }

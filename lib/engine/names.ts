@@ -5,13 +5,13 @@ import { nameIndex, nameKey } from "./search";
 import { openEngineSession } from "./session";
 import { modelsFor } from "./tools";
 
-/** Prvok IFC nájdený podľa presného mena alebo Tagu (D-102). */
+/** IFC element found by exact name or Tag (D-102). */
 export interface NameMatch {
   global_id: string;
   ifc_type: string;
   model: string;
   name: string | null;
-  /** Podlažie zo súboru (aj cez celok, napr. rameno -> schodisko -> podlažie); null = nenašlo sa. */
+  /** Storey from the file (also via the whole, e.g. flight -> stair -> storey); null = not found. */
   storey?: { name: string | null; global_id: string } | null;
 }
 
@@ -21,11 +21,11 @@ interface Edge {
   entity: { id: number; name?: string; type: string };
 }
 
-/** Vzťahy, ktorými prvok patrí do celku alebo priestoru (D-115, eval D7). */
+/** Relations by which an element belongs to a whole or a space (D-115, eval D7). */
 const UP = new Set(["relaggregates", "relcontainedinspatialstructure", "relnests"]);
 const MAX_UP = 4;
 
-/** Podlažie prvku: nahor cez agregáciu a umiestnenie, kým nepríde IfcBuildingStorey. */
+/** Storey of an element: up via aggregation and placement until IfcBuildingStorey is reached. */
 async function storeyOf(
   session: Awaited<ReturnType<typeof openEngineSession>>,
   model: { id: string; store: { entities: { getGlobalId(id: number): string } } },
@@ -46,9 +46,9 @@ async function storeyOf(
 }
 
 /**
- * Kódy prvkov (SD04.0001, VV.03.01.040) -> prvky IFC so zhodným Name alebo Tag
- * naprieč federáciou. Prvok nemusí byť v grafe AIM (rameno schodiska), preto
- * to, čo DB nepozná, dohľadá až motor. Index mien je hotový z predčítania.
+ * Element codes (SD04.0001, VV.03.01.040) -> IFC elements with a matching Name or Tag
+ * across the federation. The element need not be in the AIM graph (stair flight), so
+ * what the DB does not know is looked up only by the engine. The name index is ready from the preload.
  */
 export async function findByNames(
   names: string[],
@@ -69,7 +69,7 @@ export async function findByNames(
         await Promise.all(
           hits.map(async (e) => {
             const model = models.find((m) => m.id === e.model);
-            // Podlažie len pre jednoznačný kód: pri viacerých kandidátoch by to boli zbytočné dotazy.
+            // Storey only for an unambiguous code: with several candidates these would be needless queries.
             const storey = model && hits.length === 1 ? await storeyOf(session, model, e.express_id).catch(() => null) : undefined;
             return { global_id: e.global_id, ifc_type: e.ifc_type, model: e.model, name: e.name, ...(storey !== undefined ? { storey } : {}) };
           }),

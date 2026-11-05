@@ -1,11 +1,11 @@
 import { MINI_BUILDING, guid } from "./mini-building";
 
 /**
- * Mini model rozšírený o vzťahy pre `ifc_relations` (D-097): zóna s vnorenou
- * zónou (IfcRelAssignsToGroup), systém VZT, dva prvky napojené cez porty
- * (IfcRelNests + IfcRelConnectsPorts) a ich umiestnenie na podlaží 1NP. Za klapkou
- * pokračuje sieť (D-110): potrubie 2 -> požiarna klapka (FIREDAMPER) -> VZT jednotka.
- * Samostatné potrubie 3 vedie do klapky TD1, ktorá nemá PredefinedType a nesie ho jej typ PK.01 (IfcRelDefinesByType).
+ * Mini model extended with relations for `ifc_relations` (D-097): a zone with a nested
+ * zone (IfcRelAssignsToGroup), a VZT system, two elements connected via ports
+ * (IfcRelNests + IfcRelConnectsPorts) and their placement on storey 1NP. The network continues
+ * behind the damper (D-110): duct 2 -> fire damper (FIREDAMPER) -> VZT unit.
+ * A separate duct 3 leads to the damper TD1, which has no PredefinedType and its type PK.01 carries it (IfcRelDefinesByType).
  */
 const EXTRA = `#100= IFCZONE('${guid("ZN1")}',$,'Najomne priestory',$,$,$);
 #101= IFCZONE('${guid("ZN2")}',$,'NJ 2NP',$,$,$);

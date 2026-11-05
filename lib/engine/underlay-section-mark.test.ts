@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import type { PageBlock } from "./underlay-calibrate";
 import { pageAxisLines, planLabelLines, refAxesFromSheets, sectionFromPlans, sectionMarkFromName, type PlanSheet } from "./underlay-section-mark";
 
-/** Popisok strany: text, x %, y % (vľavo hore), rozmer ako ETL (D-123). */
+/** Page label: text, x %, y % (top left), size as ETL (D-123). */
 const b = (t: string, x: number, y: number): PageBlock => ({ t, x, y, w: 0.15, h: 0.65 });
 
-/** Osi A až F (zvislé) a 1 až 4 (vodorovné) v radoch, ako na pôdorysoch ASR. */
+/** Grids A to F (vertical) and 1 to 4 (horizontal) in rows, as on the ASR floor plans. */
 function grid(letters: number[], rowsY: [number, number], numbers: number[], colsX: [number, number]): PageBlock[] {
   const out: PageBlock[] = [];
   ["A", "B", "C", "D", "E", "F"].forEach((t, i) => out.push(b(t, letters[i], rowsY[0]), b(t, letters[i], rowsY[1])));
@@ -16,7 +16,7 @@ function grid(letters: number[], rowsY: [number, number], numbers: number[], col
 
 const PAGE: [number, number] = [3260.04, 1683.72];
 
-/** Skutočné popisky a ručné kalibrácie pôdorysov OCB SO01 (DB 30. 10. 2026, výťah). */
+/** Real labels and manual calibrations of the OCB SO01 floor plans (DB 30. 10. 2026, lift). */
 const SHEETS: PlanSheet[] = [
   {
     ref: "OCB_SO01_ASR_D-1-1-01_PODORYS-1NP",
@@ -93,7 +93,7 @@ describe("planLabelLines", () => {
 
   it("dorovná dvojicu na čiaru strany (rezná čiara medzi popiskami)", () => {
     const lines: PlanSheet["lines"] = [];
-    // Rezná čiara A je na x = 1242,9 pt (stred popiskov 1242,7 pt), čiarkovaná.
+    // The section line A is at x = 1242.9 pt (label centre 1242.7 pt), dashed.
     for (let y = 200; y < 1500; y += 13) lines.push([1242.9, y, 1242.9, y + 6, 1.42]);
     const sheet: PlanSheet = { ...SHEETS[0], affine: [1, 0, 0, 0, 1, 0], lines };
     const a = planLabelLines(sheet).find((l) => l.text === "A" && l.kind === "section")!;
@@ -105,13 +105,13 @@ describe("sectionFromPlans", () => {
   it("rez A: rovina X = 47,43 m zo všetkých pôdorysov, osi 1 až 4 a rezy B, C, D po reze", () => {
     const s = sectionFromPlans("A", SHEETS)!;
     expect(s.axis?.axis).toBe("x");
-    // Existujúca automatická kalibrácia (prototyp D-133) má X = 47,42.
+    // The existing automatic calibration (prototype D-133) has X = 47.42.
     expect(s.axis!.coordinate_m).toBeCloseTo(47.43, 1);
     expect(s.plans.length).toBe(4);
     expect(s.plans.every((p) => p.used)).toBe(true);
     expect(s.spread_mm).toBeLessThan(60);
     expect(Object.keys(s.axes).sort()).toEqual(["1", "2", "3", "4", "B", "C", "D"]);
-    // Os 1 je na pôdoryse hore = najväčšie Y; po reze (u = +Y) najďalej.
+    // Grid 1 is at the top of the floor plan = the largest Y; along the cut (u = +Y) the farthest.
     expect(s.axes["1"]).toBeGreaterThan(s.axes["4"]);
     expect(s.axes.B).toBeCloseTo(4.69, 1);
   });
@@ -121,7 +121,7 @@ describe("sectionFromPlans", () => {
     expect(s.axis?.axis).toBe("y");
     expect(s.axis!.coordinate_m).toBeCloseTo(4.69, 1);
     expect(Object.keys(s.axes).sort()).toEqual(["A", "B", "C", "D", "E", "F"]);
-    // Os A je na pôdoryse vpravo (x 64,93 %), rez A pri X = 47,43 m.
+    // Grid A is on the right of the floor plan (x 64.93 %), section A at X = 47.43 m.
     expect(s.axes.A).toBeGreaterThan(60);
     expect(s.axes.F).toBeLessThan(s.axes.E);
   });

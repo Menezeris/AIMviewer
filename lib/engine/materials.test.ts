@@ -9,7 +9,7 @@ import { execEngineTool, type EngineDeps } from "./tools";
 
 const fetchImpl = (async () => new Response(MINI_MATERIALS_BYTES, { status: 200, headers: { etag: '"mat"' } })) as typeof fetch;
 
-/** AIM pozná len prvú stenu skladby. */
+/** AIM knows only the first wall of the assembly. */
 const AIM: Record<string, AimRef> = {
   [guid("MWAL1")]: { object_id: "33333333-3333-3333-3333-333333333333", object_ref: "FS01.10.0001", name: "Stena 1", object_type: "asset" },
 };
@@ -78,7 +78,7 @@ describe("ifc_query s material a materiály v ifc_get (D-108, D-115)", () => {
   });
 
   it("krátky dopyt odmietne", async () => {
-    // D-115: ifc_query(mode=count, material) = ten istý total bez zoznamu prvkov.
+    // D-115: ifc_query(mode=count, material) = the same total without the element list.
     const full = await run("ifc_query", { material: "izol" });
     const count = await run("ifc_query", { mode: "count", material: "izol" });
     expect(count.json.total).toBe(full.json.total);

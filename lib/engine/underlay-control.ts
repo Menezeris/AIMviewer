@@ -2,10 +2,10 @@ import { historyOf, planeAxisDistance, removeCalibration, restoreCalibration, to
 import type { UnderlaysSetRequest } from "../viewer-underlays";
 
 /**
- * Režimy `calibrate_underlay` na ovládanie podkladov (D-168, #323): `list`, `show_in_3d`, `hide`, `set_opacity`.
- * Nikdy nemenia polohu (affine) ani nespúšťajú výpočet kalibrácie; menia len viditeľnosť a priehľadnosť vo vieweri
- * (`SET_UNDERLAYS_3D`) a s `persist` ich viewer uloží cez `UNDERLAY_SAVE` ako dnes. Logika je tu, závislosti (DB,
- * živý viewer) v `underlay-control-runtime.ts`, aby sa dala testovať bez nich.
+ * Modes of `calibrate_underlay` for controlling underlays (D-168, #323): `list`, `show_in_3d`, `hide`, `set_opacity`.
+ * They never change the position (affine) nor start a calibration computation; they change only visibility and opacity in the viewer
+ * (`SET_UNDERLAYS_3D`) and with `persist` the viewer stores them via `UNDERLAY_SAVE` as today. The logic is here, the dependencies (DB,
+ * live viewer) in `underlay-control-runtime.ts`, so that it can be tested without them.
  */
 
 export const UNDERLAY_CONTROL_MODES = ["list", "show_in_3d", "hide", "set_opacity", "history", "restore", "remove"] as const;
@@ -13,7 +13,7 @@ export type ControlMode = (typeof UNDERLAY_CONTROL_MODES)[number];
 
 export const isControlMode = (m: unknown): m is ControlMode => (UNDERLAY_CONTROL_MODES as readonly unknown[]).includes(m);
 
-/** Dokument s kalibráciou (`properties._georef`) z DB. */
+/** Document with a calibration (`properties._georef`) from the DB. */
 export interface CalibratedDocument {
   id: string;
   object_ref: string | null;
@@ -21,13 +21,13 @@ export interface CalibratedDocument {
   georef: unknown;
 }
 
-/** Podlažie podľa mena, kódu alebo GUID; v federácii môže mať jeden štítok viac GUID (ASR, VZT). */
+/** Storey by name, code or GUID; in a federation one label can have several GUIDs (ASR, VZT). */
 export interface ResolvedFloor {
   name: string;
   guids: string[];
 }
 
-/** Podklad v stave viewera (`get_viewer_state.underlays`). */
+/** Underlay in the viewer state (`get_viewer_state.underlays`). */
 export interface ViewerUnderlay {
   document_id: string;
   name?: string | null;
@@ -42,26 +42,26 @@ export interface ViewerUnderlay {
   overridden?: boolean;
 }
 
-/** Čo viewer o podkladoch povedal; `underlays` null = starý viewer (pole v stave chýba) alebo viewer nie je. */
+/** What the viewer said about underlays; `underlays` null = an old viewer (the field is missing in the state) or no viewer. */
 export interface ViewerSnapshot {
   connected: boolean;
-  /** Prečo nie je (bez kanála, bez odpovede). */
+  /** Why there is none (no channel, no answer). */
   reason?: string;
   underlays: ViewerUnderlay[] | null;
   underlays_3d: boolean | null;
 }
 
 export interface ControlDeps {
-  /** Dokumenty s `_georef` (aspoň jedna kalibrácia). */
+  /** Documents with `_georef` (at least one calibration). */
   documents: () => Promise<CalibratedDocument[]>;
-  /** Podlažia podľa GUID (meno na výpis). */
+  /** Storeys by GUID (name for the listing). */
   floorNames: (guids: string[]) => Promise<Map<string, string>>;
-  /** Podlažie z `floor` (meno, kód, UUID alebo IFC GUID); null = nenájdené. */
+  /** Storey from `floor` (name, code, UUID or IFC GUID); null = not found. */
   floor: (ref: string) => Promise<ResolvedFloor | null>;
   viewer: () => Promise<ViewerSnapshot>;
-  /** `UNDERLAY_WRITE_ENABLED`: bez neho sa `persist` ani `restore` neuloží. */
+  /** `UNDERLAY_WRITE_ENABLED`: without it `persist` and `restore` are not stored. */
   writeEnabled: boolean;
-  /** Zápis `restore` a `remove`: `apply` zlúči do aktuálneho `_georef` (prečítaného tesne pred zápisom). */
+  /** Write of `restore` and `remove`: `apply` merges into the current `_georef` (read right before the write). */
   write: (documentId: string, apply: (stored: unknown) => RestoreResult | RemoveResult) => Promise<RestoreResult | RemoveResult>;
   now: () => Date;
 }
@@ -69,24 +69,24 @@ export interface ControlDeps {
 export interface ControlResult {
   text: string;
   isError: boolean;
-  /** Príkaz do viewera (`SET_UNDERLAYS_3D`); chýba pri `list` a pri chybe. */
+  /** Command for the viewer (`SET_UNDERLAYS_3D`); missing for `list` and on error. */
   command?: UnderlaysSetRequest;
-  /** Popis príkazu pre odkaz a log. */
+  /** Description of the command for the link and the log. */
   label?: string;
-  /** Viewer má načítať podklady z DB nanovo (`restore`, op `underlays_load`). */
+  /** The viewer should load the underlays from the DB again (`restore`, op `underlays_load`). */
   reload?: boolean;
 }
 
 export class UnderlayControlError extends Error {}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** Predvolená priehľadnosť kalibrácie bez `opacity` (`calibrate_underlay` ju zapisuje 0,6). */
+/** Default opacity of a calibration without `opacity` (`calibrate_underlay` writes it as 0.6). */
 const DEFAULT_OPACITY = 0.6;
 
 interface Entry {
   doc: CalibratedDocument;
   cal: GeorefCalibration;
-  /** Kalibrácia strany už nie je živá, je len v histórii (po mode=remove). */
+  /** The page calibration is no longer live, it is only in history (after mode=remove). */
   removed?: boolean;
 }
 
@@ -96,7 +96,7 @@ function entriesOf(docs: CalibratedDocument[], withHistory = false): Entry[] {
   return docs.flatMap((doc) => {
     const live = toGeorefV2(doc.georef).calibrations.map((cal) => ({ doc, cal }));
     if (!withHistory) return live;
-    // Zmazaná kalibrácia (mode=remove) ostala len v histórii: strana bez živej kalibrácie sa dá ešte obnoviť (D-176).
+    // A deleted calibration (mode=remove) stayed only in history: a page without a live calibration can still be restored (D-176).
     const pages = new Set(live.map((e) => e.cal.page));
     const gone = new Map<number, Entry>();
     for (const h of historyOf(doc.georef)) if (!pages.has(h.page) && !gone.has(h.page)) gone.set(h.page, { doc, cal: h.calibration, removed: true });
@@ -117,14 +117,14 @@ interface Target {
   doc: CalibratedDocument;
   cal: GeorefCalibration;
   floor: string | null;
-  /** cal je len záznam z histórie (živá kalibrácia strany bola zmazaná). */
+  /** cal is only a history record (the live calibration of the page was deleted). */
   removed: boolean;
 }
 
 /**
- * `mode=remove` na reze (D-179): strana môže niesť viac kalibrácií roviny. So `section_plane {axis, coordinate_m}` sa
- * berie kalibrácia najbližšej roviny rovnakej orientácie; bez neho viac kalibrácií na jednej strane je chyba so
- * zoznamom, nie ticho prvá.
+ * `mode=remove` on a section (D-179): a page can carry several plane calibrations. With `section_plane {axis, coordinate_m}`
+ * the calibration of the nearest plane of the same orientation is taken; without it several calibrations on one page is an error with
+ * a list, not silently the first.
  */
 function pickByPlane(candidates: Entry[], sectionPlane: unknown): Entry[] {
   const s = sectionPlane as { axis?: unknown; coordinate_m?: unknown } | undefined;
@@ -167,7 +167,7 @@ function describePlanes(planes: Entry[]): string {
     .join("; ") + ".";
 }
 
-/** Podklad z `document_id` alebo `floor` (+ `page`); nejednoznačnosť a chýbajúca kalibrácia sú chyby s radou. */
+/** Underlay from `document_id` or `floor` (+ `page`); ambiguity and a missing calibration are errors with a hint. */
 async function resolveTarget(args: Record<string, unknown>, deps: ControlDeps, viewer: ViewerSnapshot, withHistory = false, bySection = false): Promise<Target> {
   const documentId = textOf(args.document_id);
   const floorRef = textOf(args.floor);
@@ -206,7 +206,7 @@ async function resolveTarget(args: Record<string, unknown>, deps: ControlDeps, v
     throw new UnderlayControlError(`Nejednoznačné, ${distinct.size} podklady: ${options}. Zadaj document_id${new Set(candidates.map((e) => e.doc.id)).size === 1 ? " a page" : ""}.`);
   }
   const hit = [...distinct.values()][0];
-  // Viewer pozná na document_id jednu kalibrovanú stranu: nesedí = chyba, nie ticho iný podklad.
+  // The viewer knows one calibrated page for the document_id: a mismatch = an error, not silently another underlay.
   const known = viewer.underlays?.find((u) => u.document_id.toLowerCase() === hit.doc.id.toLowerCase());
   if (known && known.page !== hit.cal.page) {
     throw new UnderlayControlError(`Viewer pozná na dokumente ${label(hit.doc)} stranu ${known.page}, nie ${hit.cal.page}; zadaj page=${known.page} alebo obnov stránku viewera.`);
@@ -286,7 +286,7 @@ async function run(args: Record<string, unknown>, deps: ControlDeps): Promise<Co
 
 const NO_VIEWER: ViewerSnapshot = { connected: false, underlays: null, underlays_3d: null };
 
-/** Čitateľný súhrn kalibrácie (bez bodov): poloha, mierka, natočenie, kvalita. */
+/** Readable calibration summary (without points): position, scale, rotation, quality. */
 function summary(c: GeorefCalibration) {
   const [a, , tx, cc, , ty] = c.affine;
   return {
@@ -309,7 +309,7 @@ function indexOf(args: Record<string, unknown>): number {
   return i;
 }
 
-/** História prepisov kalibrácie strany (`_georef.history`, najnovšia prvá): index sa dá dať do `restore`. */
+/** History of overwrites of a page calibration (`_georef.history`, newest first): the index can be passed to `restore`. */
 async function history(args: Record<string, unknown>, deps: ControlDeps) {
   const t = await resolveTarget(args, deps, NO_VIEWER, true);
   const entries = historyOf(t.doc.georef).filter((h) => h.page === t.cal.page);
@@ -323,7 +323,7 @@ async function history(args: Record<string, unknown>, deps: ControlDeps) {
   };
 }
 
-/** Vráti záznam histórie do kalibrácie; aktuálna kalibrácia ide do histórie. Nič sa nepočíta. */
+/** Returns a history record into the calibration; the current calibration goes into history. Nothing is computed. */
 async function restore(args: Record<string, unknown>, deps: ControlDeps): Promise<ControlResult> {
   const index = indexOf(args);
   const t = await resolveTarget(args, deps, NO_VIEWER, true);
@@ -348,8 +348,8 @@ async function restore(args: Record<string, unknown>, deps: ControlDeps): Promis
 }
 
 /**
- * Zmaže kalibráciu podkladu (D-176, #284): len na výslovný pokyn používateľa. Ručná kalibrácia z panela len s `force`.
- * Zmazaná kalibrácia ide do `_georef.history`, takže `restore` ju vráti; viewer dostane podklady nanovo.
+ * Deletes the calibration of an underlay (D-176, #284): only on an explicit user instruction. A manual calibration from the panel only with `force`.
+ * A deleted calibration goes into `_georef.history`, so `restore` brings it back; the viewer gets the underlays anew.
  */
 async function remove(args: Record<string, unknown>, deps: ControlDeps): Promise<ControlResult> {
   const t = await resolveTarget(args, deps, NO_VIEWER, false, true);
@@ -424,7 +424,7 @@ async function list(deps: ControlDeps, viewer: ViewerSnapshot) {
       underlays_3d: viewer.underlays_3d,
     };
   });
-  // Podklady, ktoré viewer pozná, ale v DB nie sú (kalibrácia ešte neuložená).
+  // Underlays that the viewer knows but are not in the DB (calibration not yet stored).
   for (const [key, u] of live) {
     if (seen.has(key)) continue;
     rows.push({

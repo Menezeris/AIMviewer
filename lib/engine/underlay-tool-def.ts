@@ -1,19 +1,19 @@
 import type { ToolDefinition } from "../llm/provider";
 
 /**
- * Definícia `calibrate_underlay` (D-133) bez závislostí motora, aby ju MCP route a zoznam
- * toolov importovali staticky (vzor `tool-defs.ts`); vykonanie je v `underlay-tool.ts`.
+ * Definition of `calibrate_underlay` (D-133) without engine dependencies, so that the MCP route and the tool
+ * list import it statically (pattern of `tool-defs.ts`); the execution is in `underlay-tool.ts`.
  */
 
 export const CALIBRATE_UNDERLAY_MODES = ["dry_run", "auto", "manual"] as const;
 export type Mode = (typeof CALIBRATE_UNDERLAY_MODES)[number];
 
-/** Režimy ovládania podkladov (D-168): menia len viditeľnosť a priehľadnosť, nie polohu; logika v `underlay-control.ts`. */
+/** Underlay control modes (D-168): they change only visibility and opacity, not the position; logic in `underlay-control.ts`. */
 export const UNDERLAY_CONTROL_MODE_NAMES = ["list", "show_in_3d", "hide", "set_opacity", "history", "restore", "remove"] as const;
 
-/** Pôdorysný rez nad podlahou (m), ako 2D pohľad viewera. */
+/** Floor plan cut above the floor (m), like the 2D view of the viewer. */
 export const PLAN_CUT_M = 1.2;
-/** Predvolený strop chyby pre zápis (medián, mm). */
+/** Default error ceiling for writing (median, mm). */
 export const DEFAULT_MAX_ERROR_MM = 50;
 
 export const CALIBRATE_UNDERLAY_TOOL: ToolDefinition = {

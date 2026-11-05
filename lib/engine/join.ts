@@ -1,10 +1,10 @@
 /**
- * Prepojenie výsledku IFC motora na graf AIM cez IFC GlobalId (D-084).
+ * Linking an IFC engine result to the AIM graph via IFC GlobalId (D-084).
  *
- * Každý prvok z IFC súboru dostane `object_id`/`object_ref`/`aim_url`, ak ho
- * graf AIM pozná (aktívny GUID v `ifc_guid_history`), inak null. Výsledok nesie
- * pripravený vstup pre `show_in_3d`/`style_in_3d`: prvky z AIM ako
- * `ids_or_refs`, ostatné priamo ako `global_ids`.
+ * Every element from the IFC file gets `object_id`/`object_ref`/`aim_url` if the
+ * AIM graph knows it (active GUID in `ifc_guid_history`), otherwise null. The result carries
+ * a ready input for `show_in_3d`/`style_in_3d`: elements from AIM as
+ * `ids_or_refs`, the others directly as `global_ids`.
  */
 
 export interface AimRef {

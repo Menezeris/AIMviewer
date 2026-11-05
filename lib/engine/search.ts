@@ -1,15 +1,15 @@
 import type { EngineModel, EngineSession, EngineToolResult } from "./session";
 
 /**
- * Full-text hľadanie priamo v IFC súbore (D-095) - `ifc_search`.
+ * Full-text search directly in the IFC file (D-095) - `ifc_search`.
  *
- * `@ifc-lite/mcp` full-text nemá (`query_entities` vie len triedu a presné
- * podmienky psetov), preto vlastný tool podľa D-087 bod 3: dáta berie cez tools
- * balíka (`query_entities` + `get_entities_bulk`), hľadanie je naše. Index sa
- * postaví raz na parsovaný store (ten sa nemení, vzor `guidIndex` v `tools.ts`)
- * a nesie atribúty (Name, Description, ObjectType, Tag, LongName...), psety a
- * Qto výskytu aj z typu, klasifikácie a materiály - prvkov, priestorov, zón,
- * skupín, systémov aj typov (IfcTypeObject).
+ * `@ifc-lite/mcp` has no full-text (`query_entities` knows only a class and exact
+ * pset conditions), hence an own tool per D-087 point 3: it takes data via the tools of the
+ * bundle (`query_entities` + `get_entities_bulk`), the search is ours. The index is
+ * built once per parsed store (it does not change, the `guidIndex` pattern in `tools.ts`)
+ * and carries attributes (Name, Description, ObjectType, Tag, LongName...), psets and
+ * Qto of the occurrence and of the type, classifications and materials - of elements, spaces, zones,
+ * groups, systems and types (IfcTypeObject).
  */
 
 export const SEARCH_FIELDS = ["attribute", "property", "quantity", "type_property", "classification", "material"] as const;
@@ -17,10 +17,10 @@ export type SearchField = (typeof SEARCH_FIELDS)[number];
 
 interface IndexedField {
   field: SearchField;
-  /** Napr. `Description`, `Pset_DoorCommon.FireRating`, `Uniformat DD01`. */
+  /** E.g. `Description`, `Pset_DoorCommon.FireRating`, `Uniformat DD01`. */
   path: string;
   value: string;
-  /** Normalizované `path value` - bez diakritiky, malé písmená. */
+  /** Normalized `path value` - without diacritics, lower case. */
   norm: string;
   words: string[];
 }
@@ -36,7 +36,7 @@ export interface IndexedEntity {
 
 export interface SearchQuery {
   text: string;
-  /** expressId povolených prvkov podľa modelu (filter ifc_types); undefined = všetky. */
+  /** expressIds of allowed elements by model (filter ifc_types); undefined = all. */
   allowed?: Map<string, Set<number>>;
   fields?: SearchField[];
   fuzzy: boolean;
@@ -58,7 +58,7 @@ const MAX_VALUE_CHARS = 200;
 const MAX_MATCHED = 5;
 const INCLUDE = ["attributes", "properties", "quantities", "type_properties", "classifications", "materials"];
 
-/** Bez diakritiky a malými písmenami (karuselové = KARUSELOVE). */
+/** Without diacritics and lower case (karuselové = KARUSELOVE). */
 export function normalizeText(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
@@ -82,7 +82,7 @@ function field(field: SearchField, path: string, value: string): IndexedField {
 type Rec = Record<string, unknown>;
 const arr = (v: unknown): Rec[] => (Array.isArray(v) ? (v as Rec[]) : []);
 
-/** Psety v tvare balíka: [{name, properties:[{name, value}]}] alebo quantities:[...]. */
+/** Psets in the bundle shape: [{name, properties:[{name, value}]}] or quantities:[...]. */
 function psetFields(kind: SearchField, sets: unknown, inner: "properties" | "quantities"): IndexedField[] {
   const out: IndexedField[] = [];
   for (const set of arr(sets)) {
@@ -116,7 +116,7 @@ export function entityFields(e: Rec): IndexedField[] {
     const v = scalar(a.value);
     if (v !== null) out.push(field("attribute", scalar(a.name) ?? "", v));
   }
-  // Atribúty, ktoré balík vráti mimo `attributes` (napr. ObjectType výskytu).
+  // Attributes that the bundle returns outside `attributes` (e.g. ObjectType of an occurrence).
   for (const [k, path] of [["description", "Description"], ["objectType", "ObjectType"]] as const) {
     const v = scalar(e[k]);
     if (v && !out.some((f) => f.path === path)) out.push(field("attribute", path, v));
@@ -150,7 +150,7 @@ async function allIds(session: EngineSession, modelId: string, types?: string[])
 }
 
 async function buildIndex(session: EngineSession, m: EngineModel): Promise<IndexedEntity[]> {
-  // Výskyty, priestory, zóny a skupiny + typy (query_entities bez triedy typy nevracia).
+  // Occurrences, spaces, zones and groups + types (query_entities without a class does not return types).
   const ids = [...new Set([...(await allIds(session, m.id)), ...(await allIds(session, m.id, ["IfcTypeObject"]))])];
   const out: IndexedEntity[] = [];
   for (let i = 0; i < ids.length; i += BULK) {
@@ -174,7 +174,7 @@ async function buildIndex(session: EngineSession, m: EngineModel): Promise<Index
 
 const indexes = new WeakMap<object, Promise<IndexedEntity[]>>();
 
-/** Index modelu - raz na parsovaný store, súbežné volania čakajú na jedno postavenie. */
+/** Model index - once per parsed store, concurrent calls wait for a single build. */
 export function searchIndex(session: EngineSession, m: EngineModel): Promise<IndexedEntity[]> {
   let p = indexes.get(m.store);
   if (!p) {
@@ -185,11 +185,11 @@ export function searchIndex(session: EngineSession, m: EngineModel): Promise<Ind
   return p;
 }
 
-/** Riadky Levenshteina sa recyklujú: fuzzy hľadanie ich volá milión ráz na otázku (D-102). */
+/** Levenshtein rows are recycled: fuzzy search calls them a million times per question (D-102). */
 let rowA = new Int32Array(64);
 let rowB = new Int32Array(64);
 
-/** Levenshtein s horným stropom (rýchly výstup, keď je slovo ďaleko). */
+/** Levenshtein with an upper ceiling (quick exit when the word is far away). */
 export function editDistance(a: string, b: string, max: number): number {
   if (Math.abs(a.length - b.length) > max) return max + 1;
   if (rowA.length <= b.length) {
@@ -217,18 +217,18 @@ export function editDistance(a: string, b: string, max: number): number {
 }
 
 /**
- * Preklep sa toleruje len v slovách. Token s číslicou je kód alebo číslo
- * (SD04, 0001, 3.02): fuzzy by z neho spravil iný prvok (SD03), preto len presne (D-102).
+ * A typo is tolerated only in words. A token with a digit is a code or number
+ * (SD04, 0001, 3.02): fuzzy would turn it into another element (SD03), so only exact (D-102).
  */
 const allowedEdits = (token: string) => (/\d/.test(token) ? 0 : token.length >= 8 ? 2 : token.length >= 4 ? 1 : 0);
 
-/** 2 = presná zhoda slova/prefixu, 1 = fuzzy, 0 = nič. */
+/** 2 = exact word/prefix match, 1 = fuzzy, 0 = nothing. */
 function tokenMatch(token: string, f: IndexedField, fuzzy: boolean): number {
   if (f.words.some((w) => w.startsWith(token))) return 2;
   if (token.length >= 3 && f.norm.includes(token)) return 2;
   const max = fuzzy ? allowedEdits(token) : 0;
   if (max === 0) return 0;
-  // Preklep v slove aj v jeho začiatku (prenajimatelne vs. prenajímateľné).
+  // A typo in a word and in its beginning (prenajimatelne vs. prenajímateľné).
   return f.words.some(
     (w) => editDistance(token, w, max) <= max || (w.length > token.length && editDistance(token, w.slice(0, token.length), max) <= max),
   )
@@ -236,7 +236,7 @@ function tokenMatch(token: string, f: IndexedField, fuzzy: boolean): number {
     : 0;
 }
 
-/** Váha poľa: meno a popis sú silnejší dôkaz než ľubovoľná hodnota psetu. */
+/** Field weight: name and description are stronger evidence than an arbitrary pset value. */
 function weight(f: IndexedField): number {
   if (f.field === "attribute" && ["Name", "Description", "LongName", "ObjectType"].includes(f.path)) return 1.5;
   return f.field === "quantity" ? 0.5 : 1;
@@ -297,7 +297,7 @@ export function searchEntities(index: IndexedEntity[], q: SearchQuery): SearchHi
   return hits.sort((a, b) => b.score - a.score || a.ifc_type.localeCompare(b.ifc_type) || (a.name ?? "").localeCompare(b.name ?? ""));
 }
 
-/** expressId prvkov zadaných tried vrátane podtried (cez `query_entities` balíka), raz na store a triedy. */
+/** expressIds of elements of the given classes including subclasses (via `query_entities` of the bundle), once per store and classes. */
 const typeIds = new WeakMap<object, Map<string, Promise<Set<number>>>>();
 export function idsOfTypes(session: EngineSession, m: EngineModel, types: string[]): Promise<Set<number>> {
   let byKey = typeIds.get(m.store);
@@ -312,7 +312,7 @@ export function idsOfTypes(session: EngineSession, m: EngineModel, types: string
   return p;
 }
 
-/** Presné meno alebo Tag -> prvky; kód ako SD04.0001 tak nejde cez fuzzy prechod indexu (D-102). */
+/** Exact name or Tag -> elements; a code like SD04.0001 thus does not go through the fuzzy pass of the index (D-102). */
 export type NameIndex = Map<string, IndexedEntity[]>;
 const nameIndexes = new WeakMap<object, Promise<NameIndex>>();
 
@@ -343,13 +343,13 @@ export function buildNameIndex(entities: IndexedEntity[]): NameIndex {
   return out;
 }
 
-/** Vyzerá ako kód prvku (SD04.0001, VV.03.01.040, PD02.31.07), nie ako slová. */
+/** Looks like an element code (SD04.0001, VV.03.01.040, PD02.31.07), not like words. */
 export function looksLikeCode(text: string): boolean {
   const t = text.trim();
   return /^[\p{L}]{1,6}[\p{L}\d]*([._-]\d+)+$/u.test(t) || /^[\p{L}]{1,6}\d+$/u.test(t);
 }
 
-/** Zásahy presného mena ako výsledok hľadania (najvyššie skóre, match_kind exact). */
+/** Exact name hits as a search result (highest score, match_kind exact). */
 export function exactNameHits(entities: IndexedEntity[], allowed?: Map<string, Set<number>>): SearchHit[] {
   return entities
     .filter((e) => !allowed || allowed.get(e.model)?.has(e.express_id))

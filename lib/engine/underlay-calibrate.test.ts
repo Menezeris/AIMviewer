@@ -34,7 +34,7 @@ import {
   type Seg,
 } from "./underlay-calibrate";
 
-/** Deterministický šum (LCG), aby testy nezáviseli od Math.random. */
+/** Deterministic noise (LCG), so that tests do not depend on Math.random. */
 function rng(seed: number) {
   let s = seed >>> 0;
   return () => {
@@ -43,7 +43,7 @@ function rng(seed: number) {
   };
 }
 
-/** Pravá kalibrácia: strana (pt) -> model (m), 1:50 s malou rotáciou. */
+/** True calibration: page (pt) -> model (m), 1:50 with a small rotation. */
 function trueAffine(scale: number, deg: number, t: P2, mirror = false): Affine {
   const c = Math.cos((deg * Math.PI) / 180) * scale;
   const s = Math.sin((deg * Math.PI) / 180) * scale;
@@ -54,25 +54,25 @@ function trueAffine(scale: number, deg: number, t: P2, mirror = false): Affine {
 const PAGE: P2 = [3000, 1700];
 const SCALE = 0.0176;
 
-/** Model -> úsečka strany (inverzná kalibrácia) s hrúbkou čiary. */
+/** Model -> page segment (inverse calibration) with the line thickness. */
 function toPage(inv: Affine, s: Seg, w = 1.4): PageLine {
   const a = applyAffine(inv, [s[0], s[1]]);
   const b = applyAffine(inv, [s[2], s[3]]);
   return [a[0], a[1], b[0], b[1], w];
 }
 
-/** Text na strane v % (počiatok vľavo hore) okolo bodu strany. */
+/** Text on the page in % (origin top left) around a page point. */
 function block(t: string, p: P2, w = 0.8, h = 1.2): PageBlock {
   return { t, x: (p[0] / PAGE[0]) * 100 - w / 2, y: (1 - p[1] / PAGE[1]) * 100 - h / 2, w, h };
 }
 
-/** Rám miestností 4x3 (6 x 5 m) ako steny rezu v pôdoryse. */
+/** Frame of 4x3 spaces (6 x 5 m) as cut walls in the plan. */
 function planModel(): { cut: Seg[]; spaces: { name: string; centroid: P2 }[] } {
   const cut: Seg[] = [];
   const spaces: { name: string; centroid: P2 }[] = [];
   for (let i = 0; i <= 4; i++) cut.push([30 + i * 6, 0, 30 + i * 6, 15]);
   for (let j = 0; j <= 3; j++) cut.push([30, j * 5, 54, j * 5]);
-  // Nepravidelné steny, aby ICP malo čo chytiť aj pozdĺž.
+  // Irregular walls, so that ICP has something to catch also along the walls.
   cut.push([33, 2, 33, 4], [41.5, 7, 44, 7], [50, 11, 50, 13.5]);
   let n = 1;
   for (let j = 0; j < 3; j++) {
@@ -105,7 +105,7 @@ describe("podobnosť a rozklad", () => {
 });
 
 describe("rez a ťažisko", () => {
-  // Kváder 2 x 1 x 3 m s rohom v (10, 20, 0), trojuholníky.
+  // Box 2 x 1 x 3 m with a corner at (10, 20, 0), triangles.
   const pos = [10, 20, 0, 12, 20, 0, 12, 21, 0, 10, 21, 0, 10, 20, 3, 12, 20, 3, 12, 21, 3, 10, 21, 3];
   const idx = [0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7];
 
@@ -153,14 +153,14 @@ describe("calibratePlan", () => {
     const { cut, spaces } = planModel();
     const r = rng(7);
     const lines: PageLine[] = cut.map((s) => toPage(inv, s));
-    // Šum: krátke čiary mimo stien (nábytok, kóty) a legenda vpravo.
+    // Noise: short lines outside walls (furniture, marks) and a legend on the right.
     for (let k = 0; k < 60; k++) {
       const x = 300 + r() * 1800;
       const y = 200 + r() * 1200;
       lines.push([x, y, x + 20 + r() * 40, y + r() * 30, 1.0]);
     }
     const blocks: PageBlock[] = spaces.map((s) => {
-      // Popisok nie je v ťažisku: posun do 0,8 m.
+      // The label is not at the centroid: shift up to 0.8 m.
       const p = applyAffine(inv, [s.centroid[0] + (r() - 0.5) * 1.6, s.centroid[1] + (r() - 0.5) * 1.6]);
       return block(s.name, p);
     });
@@ -188,7 +188,7 @@ describe("calibratePlan", () => {
   });
 });
 
-/** Nepravidelná budova (L, vnútorné steny) bez symetrie, aby sken posunu mal jednoznačný vrchol. */
+/** Irregular building (L, interior walls) without symmetry, so that the shift scan has an unambiguous peak. */
 function irregularCut(): Seg[] {
   const cut: Seg[] = [
     [30, 0, 66, 0], [66, 0, 66, 12], [66, 12, 48, 12], [48, 12, 48, 24], [48, 24, 30, 24], [30, 24, 30, 0],
@@ -205,7 +205,7 @@ describe("calibratePlan bez popiskov (D-180)", () => {
       const cut = irregularCut();
       const r = rng(11);
       const lines: PageLine[] = cut.map((x) => toPage(inv, x));
-      // Pečiatka v rohu strany (rám a riadky) a krátke čiary nábytku.
+      // Stamp in the page corner (frame and rows) and short furniture lines.
       lines.push([2500, 50, 2950, 50, 1.4], [2950, 50, 2950, 400, 1.4], [2950, 400, 2500, 400, 1.4], [2500, 400, 2500, 50, 1.4]);
       for (let k = 0; k < 8; k++) lines.push([2500, 90 + k * 40, 2950, 90 + k * 40, 1.0]);
       for (let k = 0; k < 40; k++) {
@@ -235,7 +235,7 @@ describe("calibratePlan bez popiskov (D-180)", () => {
     const inv = invertAffine(T);
     const cut = irregularCut();
     const lines = cut.map((x) => toPage(inv, x));
-    // Dva popisky s chybou 1 m (štart z nich je krivý), sken ho prekoná.
+    // Two labels with an error of 1 m (the start from them is skewed), the scan overcomes it.
     const spaces = [
       { name: "1.01", centroid: [33, 4] as P2 },
       { name: "1.02", centroid: [60, 9] as P2 },
@@ -260,7 +260,7 @@ describe("kontrola rozumnosti a výrez (D-180)", () => {
 
   it("cropToRegion: riadky so stredom a úsečky s oboma koncami vo výreze", () => {
     const blocks = [block("A", [300, 1500]), block("B", [2500, 300])];
-    // Výrez ľavá horná štvrtina strany: x 0..1500 pt, y (vľavo dole) 850..1700 pt.
+    // Region: upper left quarter of the page: x 0..1500 pt, y (bottom left) 850..1700 pt.
     const r = cropToRegion(blocks, [[100, 1000, 200, 1100, 1], [100, 1000, 2000, 1100, 1]], [0, 0, 50, 50], PAGE);
     expect(r.blocks.map((b) => b.t)).toEqual(["A"]);
     expect(r.lines).toHaveLength(1);
@@ -269,7 +269,7 @@ describe("kontrola rozumnosti a výrez (D-180)", () => {
 
 describe("calibrateSection", () => {
   it("kóty + osi + ICP, pohľad zo zadnej strany (zrkadlo)", () => {
-    // Rez: u = poloha po reze (-8 až 13 m), v = výška Z; dosky 0 / 5 / 9,2 / 13,4, steny na osiach.
+    // Section: u = position along the cut (-8 to 13 m), v = height Z; slabs 0 / 5 / 9.2 / 13.4, walls on the grids.
     const levelsZ = [0, 5, 9.2, 13.4];
     const axes: Record<string, number> = { "1": 12.84, "2": 6.35, "3": -1.14, "4": -7.62 };
     const cut: Seg[] = [];
@@ -282,14 +282,14 @@ describe("calibrateSection", () => {
     const blocks: PageBlock[] = [];
     for (const z of levelsZ) {
       for (const h of [-9, 14.5]) {
-        // Text kóty stojí nad čiarou úrovne (spodok textu 0,1 m nad ňou).
+        // The mark text sits above the level line (the bottom of the text 0.1 m above it).
         const p = applyAffine(inv, [h, z + 0.1]);
         blocks.push({ t: z === 0 ? "±0,000" : `+${z.toFixed(3).replace(".", ",")}`, x: (p[0] / PAGE[0]) * 100, y: (1 - p[1] / PAGE[1]) * 100 - 0.7, w: 0.7, h: 0.7 });
       }
     }
     for (const [name, h] of Object.entries(axes)) blocks.push(block(name, applyAffine(inv, [h, 15.5])));
 
-    // S osami z pôdorysu aj bez nich (sken vodorovného posunu a smeru pohľadu).
+    // With grids from the floor plan and without them (scan of horizontal shift and view direction).
     for (const [withAxes, method] of [[true, "levels_axes"], [false, "levels_scan"]] as const) {
       const res = calibrateSection({ pageSize: PAGE, blocks, lines, axes: withAxes ? axes : undefined, cut });
       expect(res.start.method).toBe(method);
@@ -336,7 +336,7 @@ describe("mierka výkresu (#284)", () => {
     expect(pageScaleFromText([blk("Mierka: 1:100")])).toBe(100);
     expect(pageScaleFromText([blk("SCALE"), blk("1 : 200")])).toBe(200);
     expect(pageScaleFromText([blk("MERÍTKO 1 : 50"), blk("Mierka 1:5")])).toBeNull();
-    // Bez slova (pečiatka PBR, D-180): samostatná bežná mierka áno, nebežná alebo dve rôzne nie.
+    // Without the word (PBR stamp, D-180): a separate common scale yes, an uncommon one or two different ones no.
     expect(pageScaleFromText([blk("1 : 50")])).toBe(50);
     expect(pageScaleFromText([blk("1:100"), blk("4.01")])).toBe(100);
     expect(pageScaleFromText([blk("1 : 7")])).toBeNull();
@@ -349,7 +349,7 @@ describe("mierka výkresu (#284)", () => {
     expect(checkScale(28.49, null, null)).toMatchObject({ source: "standard", ok: false });
     expect(checkScale(28.49, null, 50)).toMatchObject({ source: "text", expected: 50, ok: false });
     expect(checkScale(28.49, 28.5, 50)).toMatchObject({ source: "param", expected: 28.5, ok: true });
-    // D-180: od mierky z textu alebo zadania najviac 2 %, od bežnej 5 %.
+    // D-180: from the scale from the text or input at most 2 %, from a common one 5 %.
     expect(checkScale(51.5, null, 50)).toMatchObject({ source: "text", ok: false });
     expect(checkScale(50.9, null, 50)).toMatchObject({ source: "text", ok: true });
     expect(checkScale(51.5, null, null)).toMatchObject({ source: "standard", ok: true });
@@ -372,7 +372,7 @@ describe("mierka výkresu (#284)", () => {
     const r = ransacLabels(cands, 1.5, 50, SCALE)!;
     expect(r.inliers).toHaveLength(2);
     expect(decompose(r.affine).scale).toBeCloseTo(SCALE, 9);
-    // Dva popisky v nesúlade s mierkou (vzdialenosť inak než 50 m) nie sú inlieri.
+    // Two labels inconsistent with the scale (distance other than 50 m) are not inliers.
     const off = [cands[0], { ...cands[1], model: [cands[1].model[0] + 20, cands[1].model[1]] as P2 }];
     expect(ransacLabels(off, 1.5, 50, SCALE)).toBeNull();
   });
@@ -380,12 +380,12 @@ describe("mierka výkresu (#284)", () => {
 
 
 describe("osi (gridy) a referencie z iných výkresov (D-184)", () => {
-  /** Osi A až D (roviny X = 30, 36, 42, 48) a 1 až 3 (roviny Y = 0, 8, 16) v IFC. */
+  /** Grids A to D (planes X = 30, 36, 42, 48) and 1 to 3 (planes Y = 0, 8, 16) in IFC. */
   const REFS: RefAxis[] = [
     ...["A", "B", "C", "D"].map((text, i) => ({ text, dir: "x" as const, at: 30 + i * 6, sheets: 3 })),
     ...["1", "2", "3"].map((text, i) => ({ text, dir: "y" as const, at: i * 8, sheets: 3 })),
   ];
-  /** Osi na strane podľa pravej kalibrácie T (dvojice bodov mimo budovy). */
+  /** Grids on the page by the true calibration T (pairs of points outside the building). */
   function pageAxes(T: Affine): AxisLine[] {
     const inv = invertAffine(T);
     return REFS.map((r) =>
@@ -448,7 +448,7 @@ describe("osi (gridy) a referencie z iných výkresov (D-184)", () => {
     const inv = invertAffine(T);
     const cut = irregularCut();
     const lines = cut.map((x) => toPage(inv, x));
-    // Popisky sú konzistentné, ale s inou polohou (iný pôdorys hárku): RANSAC z nich dá natočenie o 70°.
+    // The labels are consistent but with another position (another floor plan of the sheet): RANSAC from them gives a rotation of 70°.
     const W = trueAffine(SCALE, 70, [80, 40]);
     const names = ["1.01", "1.02", "1.03", "1.04", "1.05"];
     const model: P2[] = [[33, 4], [45, 6], [60, 9], [36, 20], [44, 18]];
@@ -470,7 +470,7 @@ describe("osi (gridy) a referencie z iných výkresov (D-184)", () => {
     expect(affine[1]).toBe(-0);
     expect(Math.abs(affine[2] - T[2]) + Math.abs(affine[5] - T[5])).toBeLessThan(0.005);
 
-    // Výkres na strane natočený o 1,2° (napr. sklz na čiarach rozvodov): výsledok má 0° a hlási voľné natočenie.
+    // The drawing on the page rotated by 1.2° (e.g. slip on service lines): the result has 0° and reports a free rotation.
     const R = trueAffine(SCALE, 1.2, [25.5, -12.1]);
     const lines = cut.map((x) => toPage(invertAffine(R), x));
     const res = calibratePlan({ pageSize: PAGE, blocks: [], lines, spaces: [], cut, scale: SCALE / PT_M });

@@ -1,7 +1,7 @@
 import type { ToolDefinition } from "../llm/provider";
 
-/** Definícia diagnostického toolu (D-084 fáza 0) - bez závislostí motora, aby
- * ju route mohla importovať staticky; implementácia je v `./probe` (lenivo). */
+/** Definition of the diagnostic tool (D-084 phase 0) - without engine dependencies, so that
+ * the route can import it statically; the implementation is in `./probe` (lazily). */
 export const PROBE_TOOL: ToolDefinition = {
   name: "ifc_engine_probe",
   description:

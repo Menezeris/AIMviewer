@@ -18,7 +18,7 @@ const deps: EngineDeps = {
 
 type P = { x: number; y: number; z: number };
 
-/** Body čiary z príkazu pre viewer (ten istý drôt, aký číta klient). */
+/** Line points from the viewer command (the same wire the client reads). */
 async function line(input: Record<string, unknown>) {
   const res = await execEngineTool("ifc_measure", { ...input, show: true }, deps);
   expect(res.isError).toBe(false);
@@ -32,7 +32,7 @@ async function line(input: Record<string, unknown>) {
 
 const near = (a: number, b: number, tol = 0.011) => Math.abs(a - b) <= tol;
 const at = (pts: P[], x: number, y: number) => pts.filter((p) => near(p.x, x) && near(p.y, y));
-/** Výška čiary nad bodom (x, y) na úseku, ktorý ide pozdĺž osi x (interpolácia po y). */
+/** Line height above the point (x, y) on a section running along the x axis (interpolation along y). */
 function zAt(pts: P[], x: number, y: number): number | null {
   for (let i = 1; i < pts.length; i++) {
     const [a, b] = [pts[i - 1], pts[i]];
@@ -50,20 +50,20 @@ describe("ifc_measure route show - čiara trasy (D-137)", () => {
     const { json, color, points } = await line({ route: "escape", a: guid("R3") });
     expect(color).toBe("#dc2626");
     expect(json.line).toMatchObject({ shown: true, points: points.length, height_m: 1.6 });
-    // Štart v strede R3 nad doskou 2NP (vrch 3,5), cieľ v strede vonkajších dverí DX.
+    // Start at the centre of R3 above the 2NP slab (top 3.5), goal at the centre of the external door DX.
     expect(points[0]).toEqual({ x: 4, y: 2, z: 5.1 });
     expect(points.at(-1)).toEqual({ x: 0, y: 2, z: 1.6 });
-    // Stredom každých dverí na ceste (D3 na 2NP, D2, D1, DX na 1NP).
+    // Through the centre of every door on the way (D3 on 2NP, D2, D1, DX on 1NP).
     for (const [x, z] of [[8, 5.1], [8, 1.6], [4, 1.6], [0, 1.6]]) expect(at(points, x, 2).map((p) => p.z)).toContain(z);
-    // V R1 je podlahová krytina (vrch 0,05): čiara 1,65 m, nie 1,6 m.
+    // In R1 there is a floor covering (top 0.05): the line 1.65 m, not 1.6 m.
     const r1 = points.filter((p) => p.x > 0.2 && p.x < 3.8);
     expect(r1.length).toBeGreaterThan(0);
     for (const p of r1) expect(p.z).toBeCloseTo(1.65, 2);
-    // Rameno (rozhodnutie Samuela v #223): plynulo šikmo 1,6 m nad čiarou nábehových hrán. Päta o stupeň
-    // pred prvým nábehom (y 0,2, podlaha), posledný nábeh y 3,2 vo výške 2NP; medzi nimi nič (jedna priamka).
+    // Flight (decision by Samuel in #223): smoothly sloped 1.6 m above the line of the nosings. The foot one tread
+    // before the first nosing (y 0.2, floor), the last nosing y 3.2 at the 2NP height; nothing between them (one straight line).
     expect(at(points, 9, 0.2).map((p) => p.z)).toEqual([1.6]);
     expect(at(points, 9, 3.2).map((p) => p.z)).toEqual([5.1]);
-    // Nad nábehom každého z 10 stupňov (y 0,5 + 0,3 k, vrch 0,35 (k + 1)) presne 1,6 m.
+    // Above the nosing of each of the 10 treads (y 0.5 + 0.3 k, top 0.35 (k + 1)) exactly 1.6 m.
     for (let k = 0; k < 10; k++) expect(zAt(points, 9, 0.5 + 0.3 * k)).toBeCloseTo(0.35 * (k + 1) + 1.6, 2);
     expect(points.filter(onStair).filter((p) => p.z > 1.61 && p.z < 5.09)).toEqual([]);
     expect(points.length).toBeLessThanOrEqual(MAX_ROUTE_POINTS);
@@ -73,10 +73,10 @@ describe("ifc_measure route show - čiara trasy (D-137)", () => {
     const { points } = await line({ route: "shortest", a: guid("R1"), b: guid("R3") });
     expect(points[0]).toEqual({ x: 2, y: 2, z: 1.65 });
     expect(points.at(-1)).toEqual({ x: 4, y: 2, z: 5.1 });
-    // Hore po tej istej šikmej čiare: päta, potom posledný nábeh a ďalej k dverám D3.
+    // Up along the same sloped line: the foot, then the last nosing and on to the door D3.
     const i0 = points.findIndex((p) => near(p.x, 9) && near(p.y, 0.2));
     expect(points[i0 + 1]).toEqual({ x: 9, y: 3.2, z: 5.1 });
-    expect(zAt(points, 9, 2)).toBeCloseTo(0.35 * 6 + 1.6, 2); // nábeh 6. stupňa
+    expect(zAt(points, 9, 2)).toBeCloseTo(0.35 * 6 + 1.6, 2); // nosing of the 6th tread
   });
 
   it("bez show čiara nie je a výstup je ako doteraz", async () => {
@@ -95,35 +95,35 @@ describe("ifc_measure route show - čiara trasy (D-137)", () => {
   });
 
   it("stupne: horné vodorovné plochy podľa výšky, bez spodných plôch a vrchu stĺpa", () => {
-    // Štvorec [x0,x1] x [y0,y1] vo výške z ako dva trojuholníky.
+    // Square [x0,x1] x [y0,y1] at height z as two triangles.
     const sq = (x0: number, x1: number, y0: number, y1: number, z: number) => [x0, y0, z, x1, y0, z, x1, y1, z, x0, y0, z, x1, y1, z, x0, y1, z];
     const tris = Float64Array.from([
-      ...sq(0, 1, 0, 0.3, 0.2), // stupeň 1
-      ...sq(0, 1, 0.3, 0.6, 0.4), // stupeň 2
-      ...sq(0, 1, 0.3, 0.6, 0.2), // spodok stupňa 2 (nad ním je jeho vrch)
-      ...sq(1.2, 1.4, 0, 0.2, 1.5), // vrch stĺpa, 0,04 m² (pod polovicou stupňa 0,3 m²)
+      ...sq(0, 1, 0, 0.3, 0.2), // tread 1
+      ...sq(0, 1, 0.3, 0.6, 0.4), // tread 2
+      ...sq(0, 1, 0.3, 0.6, 0.2), // bottom of tread 2 (its top is above it)
+      ...sq(1.2, 1.4, 0, 0.2, 1.5), // top of the column, 0.04 m² (under half of the 0.3 m² tread)
     ]);
     const treads = treadsOf({ box: { min: [0, 0, 0.2], max: [1.4, 0.6, 1.5] }, tris });
     expect(treads.map((t) => [t.x, t.y, t.z].map((v) => +v.toFixed(3)))).toEqual([[0.5, 0.15, 0.2], [0.5, 0.45, 0.4]]);
   });
 
   it("čiara nábehov: šikmo po ramene, na podeste vodorovne k päte ďalšieho ramena", () => {
-    // Rameno šírky 1 m pozdĺž y: 3 stupne 0,3 m, podesta 1,2 m, 3 stupne; podstupnica 0,2 m.
+    // Flight 1 m wide along y: 3 treads of 0.3 m, a landing of 1.2 m, 3 treads; riser 0.2 m.
     const t = (y0: number, y1: number, z: number) => ({ x: 0.5, y: (y0 + y1) / 2, z, area: y1 - y0 });
     const treads = [t(0, 0.3, 0.2), t(0.3, 0.6, 0.4), t(0.6, 0.9, 0.6), t(0.9, 2.1, 0.8), t(2.1, 2.4, 1), t(2.4, 2.7, 1.2), t(2.7, 3, 1.4)];
     const line = pitchLine(treads).map((p) => p.map((v) => +v.toFixed(3) || 0));
     expect(line).toEqual([
-      [0.5, -0.3, 0], // päta o stupeň pred prvým nábehom (podlaha)
+      [0.5, -0.3, 0], // foot one tread before the first nosing (floor)
       [0.5, 0, 0.2],
       [0.5, 0.3, 0.4],
       [0.5, 0.6, 0.6],
-      [0.5, 0.9, 0.8], // nábeh podesty
-      [0.5, 1.8, 0.8], // vodorovne po podeste k päte druhého ramena
+      [0.5, 0.9, 0.8], // nosing of the landing
+      [0.5, 1.8, 0.8], // horizontally along the landing to the foot of the second flight
       [0.5, 2.1, 1],
       [0.5, 2.4, 1.2],
       [0.5, 2.7, 1.4],
     ]);
-    // Horná podesta prvku (napr. prechod na podlažie): po nábehu vodorovne do jej stredu.
+    // Upper landing of the element (e.g. a transition to the storey): after the nosing horizontally to its centre.
     expect(pitchLine(treads.slice(0, 4)).map((p) => p.map((v) => +v.toFixed(3) || 0)).slice(-2)).toEqual([[0.5, 0.9, 0.8], [0.5, 1.5, 0.8]]);
     expect(pitchLine(treads.slice(0, 1))).toEqual([]);
   });
@@ -140,7 +140,7 @@ describe("drôt čiary trasy (lib/viewer-route.ts)", () => {
     expect(encodeRouteWire(pts)).toBe("1.23,-2,3.46|4,5,6");
     expect(decodeRouteWire("1.23,-2,3.46|4,5,6")).toEqual([{ x: 1.23, y: -2, z: 3.46 }, { x: 4, y: 5, z: 6 }]);
     expect(decodeRouteWire("")).toEqual([]);
-    expect(decodeRouteWire("1,2,3")).toBeNull(); // jeden bod nie je čiara
+    expect(decodeRouteWire("1,2,3")).toBeNull(); // a single point is not a line
     expect(decodeRouteWire("1,2|3,4,5")).toBeNull();
     expect(decodeRouteWire("1,2,NaN|3,4,5")).toBeNull();
     expect(decodeRouteWire("1,2,1e8|3,4,5")).toBeNull();

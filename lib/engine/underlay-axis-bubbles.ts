@@ -1,34 +1,34 @@
 import { blockCenter, type AxisLine, type P2, type PageBlock, type RefAxis } from "./underlay-calibrate";
 
 /**
- * Osi pôdorysu z radov bublín (D-184 dodatok, #170): popisky osí (A až F, 1 až 4) na strane bez úplných dvojíc
- * v smere strany. Nájde aj natočený pôdorys (SF.01: 19° na hárku) a výsek, kde je os len na jednom konci
- * (TP.01 1NP, 4NP). Čistá logika bez DB a motora.
+ * Floor plan grids from rows of bubbles (D-184 addendum, #170): grid labels (A to F, 1 to 4) on a page without complete pairs
+ * in the page direction. It also finds a rotated floor plan (SF.01: 19° on the sheet) and a detail where a grid is at one end only
+ * (TP.01 1NP, 4NP). Pure logic without DB and engine.
  *
- * Rad bublín = aspoň 2 rôzne popisky tej istej rodiny osí (písmená = osi roviny X, čísla = osi roviny Y podľa
- * referencií z iných výkresov) na jednej priamke, ktorých vzdialenosť na strane pri známej mierke sedí s
- * rozostupom tých istých osí v modeli (do `SPACING_TOL_M`). Os je kolmá na svoj rad bublín, takže z radu je aj
- * natočenie siete osí na strane. Rodina bez vlastného radu (TP.01 1NP: os C) dostane smer kolmý na rad druhej
- * rodiny (sieť je pravouhlá).
+ * Row of bubbles = at least 2 different labels of the same grid family (letters = grids of the plane X, numbers = grids of the plane Y per
+ * references from other drawings) on one straight line, whose distance on the page at known scale matches
+ * the spacing of the same grids in the model (within `SPACING_TOL_M`). A grid is perpendicular to its row of bubbles, so the row also gives the
+ * rotation of the grid network on the page. A family without its own row (TP.01 1NP: grid C) gets the direction perpendicular to the row of the other
+ * family (the network is orthogonal).
  */
 
-/** Najviac výskytov popisku v sledovanom výreze (inak to nie je popisok osi, ale napr. číslo skladby). */
+/** At most this many occurrences of a label in the watched region (otherwise it is not a grid label but e.g. an assembly number). */
 const MAX_OCCURRENCES = 6;
-/** Bublina patrí do radu, keď je od priamky radu do toľko bodov strany. */
+/** A bubble belongs to a row when it is within this many page points of the row line. */
 const ROW_DIST_PT = 6;
-/** Rozostup bublín v rade proti rozostupu osí v modeli (m). */
+/** Spacing of bubbles in a row against the spacing of grids in the model (m). */
 const SPACING_TOL_M = 0.3;
-/** Rady sa zhodujú v natočení siete do toľko stupňov. */
+/** Rows agree in the network rotation within this many degrees. */
 const ANGLE_TOL_DEG = 1;
-/** Dĺžka syntetickej čiary osi (body strany): smer pre `axisInModel`, poloha = bublina. */
+/** Length of the synthetic grid line (page points): the direction for `axisInModel`, position = bubble. */
 const AXIS_LEN_PT = 100;
 
 export interface BubbleGrid {
-  /** Osi strany: bublina a smer osi (a = bublina, b = bublina + smer). */
+  /** Page grids: bubble and grid direction (a = bubble, b = bubble + direction). */
   lines: AxisLine[];
-  /** Natočenie siete na strane (stupne, 0 až 180): smer radu bublín písmen (osi X). */
+  /** Network rotation on the page (degrees, 0 to 180): direction of the row of letter bubbles (X grids). */
   gridDeg: number;
-  /** Rady bublín (popisky v poradí). */
+  /** Rows of bubbles (labels in order). */
   rows: string[];
 }
 
@@ -43,8 +43,8 @@ const mod180 = (d: number) => ((d % 180) + 180) % 180;
 const angDiff = (a: number, b: number) => Math.abs(mod180(a - b + 90) - 90);
 
 /**
- * Rady bublín osí strany (výrezu) pri známej mierke `s` (m na bod strany). `refs` sú polohy osí z iných
- * kalibrovaných výkresov; popisok, ktorý medzi nimi nie je, sa ignoruje. Null bez radu aspoň 2 bublín.
+ * Rows of grid bubbles of a page (region) at known scale `s` (m per page point). `refs` are grid positions from other
+ * calibrated drawings; a label that is not among them is ignored. Null without a row of at least 2 bubbles.
  */
 export function bubbleAxes(pageSize: P2, blocks: PageBlock[], refs: RefAxis[], s: number): BubbleGrid | null {
   const refBy = new Map<string, RefAxis>();
@@ -59,12 +59,12 @@ export function bubbleAxes(pageSize: P2, blocks: PageBlock[], refs: RefAxis[], s
   for (const b of blocks) {
     const t = b.t.trim();
     const r = refBy.get(t);
-    // Popisok v oboch smeroch (os aj iná os s rovnakým menom) je nejednoznačný.
+    // A label in both directions (a grid and another grid with the same name) is ambiguous.
     if (!r || dup.has(t) || (counts.get(t) ?? 0) > MAX_OCCURRENCES) continue;
     labels.push({ text: t, dir: r.dir, at: r.at, p: blockCenter(b, pageSize) });
   }
 
-  // Rady: priamka cez dve bubliny rôznych osí tej istej rodiny s rozostupom ako v modeli, k nej ďalšie bubliny.
+  // Rows: a line through two bubbles of different grids of the same family with a spacing as in the model, further bubbles onto it.
   const rows: { dir: "x" | "y"; deg: number; members: Label[] }[] = [];
   for (const dir of ["x", "y"] as const) {
     const fam = labels.filter((l) => l.dir === dir);
@@ -76,7 +76,7 @@ export function bubbleAxes(pageSize: P2, blocks: PageBlock[], refs: RefAxis[], s
         const L = Math.hypot(b.p[0] - a.p[0], b.p[1] - a.p[1]);
         if (!(L > 0) || Math.abs(L * s - Math.abs(b.at - a.at)) > SPACING_TOL_M) continue;
         const u: P2 = [(b.p[0] - a.p[0]) / L, (b.p[1] - a.p[1]) / L];
-        // Smer radu tak, aby poloha osi rástla po rade (znamienko z dvojice a -> b).
+        // Row direction so that the grid position grows along the row (sign from the pair a -> b).
         const sign = Math.sign(b.at - a.at) || 1;
         const members: Label[] = [];
         const texts = new Set<string>();
@@ -95,7 +95,7 @@ export function bubbleAxes(pageSize: P2, blocks: PageBlock[], refs: RefAxis[], s
         found.push({ deg: mod180((Math.atan2(u[1], u[0]) * 180) / Math.PI), members });
       }
     }
-    // Najväčšie rady prvé; bublina je najviac v jednom rade.
+    // Largest rows first; a bubble is in at most one row.
     const used = new Set<Label>();
     for (const f of found.sort((x, y) => y.members.length - x.members.length)) {
       if (f.members.some((m) => used.has(m))) continue;
@@ -105,7 +105,7 @@ export function bubbleAxes(pageSize: P2, blocks: PageBlock[], refs: RefAxis[], s
   }
   if (rows.length === 0) return null;
 
-  // Natočenie siete: rad písmen (osi X) má smer siete, rad čísel je naň kolmý. Zhoda väčšiny bublín.
+  // Network rotation: the row of letters (X grids) has the network direction, the row of numbers is perpendicular to it. Majority of bubbles agree.
   const grid = (r: (typeof rows)[number]) => mod180(r.dir === "x" ? r.deg : r.deg + 90);
   let best: { deg: number; n: number } | null = null;
   for (const r of rows) {
@@ -113,8 +113,8 @@ export function bubbleAxes(pageSize: P2, blocks: PageBlock[], refs: RefAxis[], s
     if (!best || n > best.n) best = { deg: grid(r), n };
   }
   let gridDeg = best!.deg;
-  // Rady jednej rodiny z toho istého pôdorysu majú rovnaký posun (poloha bubliny po smere radu - poloha osi);
-  // rad s iným posunom je zo susedného pôdorysu, ktorý zasahuje do výrezu (natočené pôdorysy SF.01).
+  // Rows of one family from the same floor plan have the same shift (bubble position along the row direction - grid position);
+  // a row with another shift is from a neighbouring floor plan reaching into the region (rotated floor plans SF.01).
   const offsetOf = (r: (typeof rows)[number]) => {
     const d = ((r.dir === "x" ? gridDeg : gridDeg + 90) * Math.PI) / 180;
     const proj = r.members.map((m) => (m.p[0] * Math.cos(d) + m.p[1] * Math.sin(d)) * s);
@@ -134,7 +134,7 @@ export function bubbleAxes(pageSize: P2, blocks: PageBlock[], refs: RefAxis[], s
     }
     kept.push(...pick.map((g) => g.r));
   }
-  // Natočenie siete = vážený priemer radov (váha = počet bublín), nie natočenie jedného radu.
+  // Network rotation = weighted mean of rows (weight = number of bubbles), not the rotation of a single row.
   let sw = 0;
   let sd = 0;
   for (const r of kept) {
@@ -143,7 +143,7 @@ export function bubbleAxes(pageSize: P2, blocks: PageBlock[], refs: RefAxis[], s
     sw += r.members.length;
   }
   if (sw > 0) gridDeg = mod180(sd / sw);
-  // Os rodiny x (písmená) je kolmá na rad písmen, os rodiny y je v smere radu písmen.
+  // A grid of family x (letters) is perpendicular to the row of letters, a grid of family y is in the direction of the row of letters.
   const axisDir = (dir: "x" | "y"): P2 => {
     const d = ((dir === "x" ? gridDeg + 90 : gridDeg) * Math.PI) / 180;
     return [Math.cos(d), Math.sin(d)];
@@ -154,7 +154,7 @@ export function bubbleAxes(pageSize: P2, blocks: PageBlock[], refs: RefAxis[], s
     lines.push({ text: l.text, a: l.p, b: [l.p[0] + d[0] * AXIS_LEN_PT, l.p[1] + d[1] * AXIS_LEN_PT] });
   };
   for (const r of kept) r.members.forEach(add);
-  // Rodina bez radu: jej bubliny (každý popisok najviac 2-krát, oba konce osi) so smerom kolmým na sieť.
+  // A family without a row: its bubbles (each label at most 2 times, both ends of the grid) with a direction perpendicular to the network.
   for (const dir of ["x", "y"] as const) {
     if (kept.some((r) => r.dir === dir)) continue;
     for (const l of labels) if (l.dir === dir && (counts.get(l.text) ?? 0) <= 2) add(l);

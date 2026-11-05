@@ -7,14 +7,14 @@ import type { RelatedGroup } from "./search-all";
 import { currentProjectId } from "../project/context";
 
 /**
- * Členovia zón, skupín a aktérov z grafu AIM pre `search_all related` (D-126,
- * #174): "prenajímateľné priestory" nájde zónu a cez `rel_assigns_to_group`
- * jej priestory. Systémy sa nerozbaľujú (stovky prvkov, na to je ifc_relations).
+ * Members of zones, groups and actors from the AIM graph for `search_all related` (D-126,
+ * #174): "leasable spaces" finds the zone and via `rel_assigns_to_group`
+ * its spaces. Systems are not expanded (hundreds of elements, ifc_relations is for that).
  */
 
 const GROUP_TYPES = ["zone", "spatial_zone", "group"];
 const ACTOR_TYPES = ["person", "organization"];
-/** Koľko členov na skupinu sa vypíše (počet je vždy úplný). */
+/** How many members per group are listed (the count is always complete). */
 export const MEMBERS_PER_GROUP = 50;
 const IN_CHUNK = 100;
 
@@ -55,7 +55,7 @@ async function edges(view: string, matchCol: "from_id" | "to_id", ids: string[])
       .eq("project_id", projectId)
       .in(matchCol, ids)
       .is("valid_until", null)
-      // Strana bez uzla AIM (D-183 K3, napr. port VZT v systéme) nie je člen.
+      // A side without an AIM node (D-183 K3, e.g. a VZT port in a system) is not a member.
       .not("from_id", "is", null)
       .not("to_id", "is", null)
       .order("id")
@@ -75,7 +75,7 @@ export async function fetchRelatedMembers(ids: string[]): Promise<RelatedGroup[]
     groups.length > 0 ? edges("rel_assigns_to_group", "to_id", groups.map((g) => g.id)) : [],
     actors.length > 0 ? edges("rel_assigns_to_actor", "from_id", actors.map((a) => a.id)) : [],
   ]);
-  // Člen -> skupina (rel_assigns_to_group), aktér -> objekt (rel_assigns_to_actor).
+  // Member -> group (rel_assigns_to_group), actor -> object (rel_assigns_to_actor).
   const members = new Map<string, string[]>();
   const add = (owner: string, member: string) => {
     const list = members.get(owner) ?? [];

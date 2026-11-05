@@ -1,35 +1,35 @@
 /**
- * Automatická kalibrácia podkladu výkresu (D-133) - čistá logika bez DB a motora.
+ * Automatic calibration of a drawing underlay (D-133) - pure logic without DB and engine.
  *
- * Podklad = strana PDF v rovine pohľadu (pôdorys, zvislý rez). Výsledok je `affine`
- * `[a, b, tx, c, d, ty]` z bodov strany PDF (počiatok vľavo dole, y hore, ako `_georef`
- * D-072) do metrov v súradniciach roviny (u, v); pri pôdoryse sú (u, v) = IFC (X, Y).
+ * Underlay = a PDF page in the view plane (floor plan, vertical section). The result is an `affine`
+ * `[a, b, tx, c, d, ty]` from PDF page points (origin bottom left, y up, like `_georef`
+ * D-072) to metres in plane coordinates (u, v); for a floor plan (u, v) = IFC (X, Y).
  *
- * Postup (prototyp v #170: pôdorys medián 15 mm, rez 8 mm):
- * 1. Hrubý štart z textu strany (`document_pages.blocks`): pôdorys = popisky miestností
- *    proti ťažiskám IfcSpace (RANSAC, legenda má tie isté čísla); rez = výškové kóty
- *    (`+5,000`) na zvislú mierku a výšku, popisky osí na vodorovný posun a smer pohľadu.
- * 2. Doladenie: hrubé čiary strany (`document_pages.lines`) proti rezu modelu rovinou
- *    pohľadu, trimmed ICP s podobnosťou (mierka, rotácia, posun; smer pohľadu pevný).
- * 3. Kvalita: vzdialenosť bodov rezu IFC od čiar PDF (medián, p90) a krížová validácia
- *    (fit na polovici, rozdiel voči plnému fitu na druhej).
+ * Procedure (prototype in #170: floor plan median 15 mm, section 8 mm):
+ * 1. Rough start from the page text (`document_pages.blocks`): floor plan = space labels
+ *    against the IfcSpace centroids (RANSAC, the legend has the same numbers); section = elevation marks
+ *    (`+5,000`) for vertical scale and height, grid labels for horizontal shift and view direction.
+ * 2. Refinement: thick page lines (`document_pages.lines`) against the model cut by the view
+ *    plane, trimmed ICP with similarity (scale, rotation, shift; view direction fixed).
+ * 3. Quality: distance of IFC cut points from PDF lines (median, p90) and cross-validation
+ *    (fit on one half, difference against the full fit on the other).
  */
 
 export type P2 = [number, number];
 export type Vec3 = [number, number, number];
-/** Úsečka v rovine: x1, y1, x2, y2. */
+/** Line segment in the plane: x1, y1, x2, y2. */
 export type Seg = [number, number, number, number];
-/** `x' = a·x + b·y + tx`, `y' = c·x + d·y + ty` (rovnaké poradie ako `_georef.affine`). */
+/** `x' = a·x + b·y + tx`, `y' = c·x + d·y + ty` (same order as `_georef.affine`). */
 export type Affine = [number, number, number, number, number, number];
 
-/** Rovina pohľadu v IFC svete (m): body roviny = origin + u·s + v·t. */
+/** View plane in the IFC world (m): plane points = origin + u·s + v·t. */
 export interface Plane {
   origin: Vec3;
   u: Vec3;
   v: Vec3;
 }
 
-/** Riadok textu strany (D-123): bbox v % strany, počiatok vľavo hore. */
+/** Page text line (D-123): bbox in % of the page, origin top left. */
 export interface PageBlock {
   t: string;
   x: number;
@@ -38,21 +38,21 @@ export interface PageBlock {
   h: number;
 }
 
-/** Hrubá úsečka strany (D-133): body strany, počiatok vľavo dole, w = hrúbka. */
+/** Thick page line segment (D-133): page points, origin bottom left, w = thickness. */
 export type PageLine = [number, number, number, number, number];
 
-/** 1 pt = 1/72 palca v metroch; mierka 1:N = (m/pt) / PT_M. */
+/** 1 pt = 1/72 inch in metres; scale 1:N = (m/pt) / PT_M. */
 export const PT_M = 0.0254 / 72;
 
-/** Prahy ICP (m): od hrubého štartu po presnosť čiary. */
+/** ICP thresholds (m): from the rough start to line accuracy. */
 const ICP_THRESHOLDS = [1.5, 1.0, 0.6, 0.4, 0.25, 0.15, 0.1, 0.1, 0.08, 0.08];
-/** Krížová validácia štartuje z plného fitu, stačia jemné prahy (veľké by polovicu odtiahli). */
+/** Cross-validation starts from the full fit, fine thresholds suffice (large ones would pull the half away). */
 const CV_THRESHOLDS = [0.15, 0.1, 0.08];
 const ICP_ITERATIONS = 5;
-/** Vzorkovanie: rez IFC 2 cm, čiary PDF 1 pt (v 1:50 asi 1,8 cm). */
+/** Sampling: IFC cut 2 cm, PDF lines 1 pt (at 1:50 about 1.8 cm). */
 const IFC_STEP_M = 0.02;
 const PDF_STEP_PT = 1;
-/** Bod rezu IFC ďalej od čiary PDF nepatrí do kvality (čiara vo výkrese chýba). */
+/** An IFC cut point farther from a PDF line does not count towards quality (the line is missing in the drawing). */
 const QUALITY_RADIUS_M = 0.3;
 
 export function applyAffine(m: Affine, p: P2): P2 {
@@ -69,25 +69,25 @@ export function invertAffine(m: Affine): Affine {
   return [a, b, -(a * m[2] + b * m[5]), c, d, -(c * m[2] + d * m[5])];
 }
 
-/** Mierka (m na pt), rotácia (stupne) a zrkadlenie osi u (pohľad z druhej strany). */
+/** Scale (m per pt), rotation (degrees) and mirroring of the u axis (view from the other side). */
 export function decompose(m: Affine): { scale: number; rotationDeg: number; mirrored: boolean } {
   const det = m[0] * m[4] - m[1] * m[3];
   const mirrored = det < 0;
-  // Zrkadlo je pred rotáciou: M = s·R·F, F = diag(-1, 1) -> s·R = M·F.
+  // The mirror comes before the rotation: M = s·R·F, F = diag(-1, 1) -> s·R = M·F.
   const a = mirrored ? -m[0] : m[0];
   const c = mirrored ? -m[3] : m[3];
   return { scale: Math.sqrt(Math.abs(det)), rotationDeg: (Math.atan2(c, a) * 180) / Math.PI, mirrored };
 }
 
-// ─── Rez modelu rovinou ──────────────────────────────────────────────────────
+// ─── Model cut by a plane ────────────────────────────────────────────────────
 
 const sub = (a: ArrayLike<number>, i: number, o: Vec3): Vec3 => [a[i] - o[0], a[i + 1] - o[1], a[i + 2] - o[2]];
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 
 /**
- * Úsečky rezu trojuholníkov rovinou v súradniciach roviny (u, v). `positions` sú body
- * v IFC svete (x, y, z, m), `indices` trojice. Pridáva do `out`.
+ * Segments of the triangle cut by a plane in plane coordinates (u, v). `positions` are points
+ * in the IFC world (x, y, z, m), `indices` triples. Appends to `out`.
  */
 export function sliceTriangles(positions: ArrayLike<number>, indices: ArrayLike<number>, plane: Plane, out: Seg[]): void {
   const n = cross(plane.u, plane.v);
@@ -115,8 +115,8 @@ export function sliceTriangles(positions: ArrayLike<number>, indices: ArrayLike<
 }
 
 /**
- * Ťažisko pôdorysu telesa (priestoru) v IFC (X, Y): plošne vážené ťažisko priemetov
- * trojuholníkov s kladnou plochou (horná alebo spodná plocha, steny sa premietnu na 0).
+ * Centroid of the plan of a solid (space) in IFC (X, Y): area-weighted centroid of the projections
+ * of triangles with positive area (top or bottom face, walls project to 0).
  */
 export function footprintCentroid(positions: ArrayLike<number>, indices: ArrayLike<number>): P2 | null {
   let A = 0;
@@ -135,7 +135,7 @@ export function footprintCentroid(positions: ArrayLike<number>, indices: ArrayLi
   return A > 0 ? [cx / A, cy / A] : null;
 }
 
-/** Body po úsečkách s krokom `step` (oba konce), zhodné body (na 0,1 kroku) raz. */
+/** Points along segments with step `step` (both ends), coincident points (within 0.1 step) once. */
 export function samplePoints(segs: ArrayLike<number>[], step: number): Float64Array {
   const out: number[] = [];
   const seen = new Set<string>();
@@ -155,9 +155,9 @@ export function samplePoints(segs: ArrayLike<number>[], step: number): Float64Ar
   return Float64Array.from(out);
 }
 
-// ─── Najbližší bod: mriežka ──────────────────────────────────────────────────
+// ─── Nearest point: grid ─────────────────────────────────────────────────────
 
-/** Najbližší bod v polomere `cell` (mriežka s bunkou = polomer, hľadá sa 3x3 buniek). */
+/** Nearest point within radius `cell` (grid with cell = radius, a 3x3 cell neighbourhood is searched). */
 export class PointGrid {
   private readonly cells = new Map<number, number[]>();
   constructor(
@@ -174,7 +174,7 @@ export class PointGrid {
   private key(ix: number, iy: number): number {
     return (ix + 1_000_000) * 2_000_003 + (iy + 1_000_000);
   }
-  /** Index (do poľa súradníc, párny) a vzdialenosť; -1, ak nič nie je bližšie ako bunka. */
+  /** Index (into the coordinate array, even) and distance; -1 if nothing is closer than the cell. */
   nearest(x: number, y: number): [number, number] {
     const ix = Math.floor(x / this.cell);
     const iy = Math.floor(y / this.cell);
@@ -199,9 +199,9 @@ export class PointGrid {
   }
 }
 
-// ─── Podobnosť ───────────────────────────────────────────────────────────────
+// ─── Similarity ──────────────────────────────────────────────────────────────
 
-/** Súčty dvojíc bodov pre podobnosť najmenších štvorcov (bez ukladania dvojíc). */
+/** Sums of point pairs for a least-squares similarity (without storing the pairs). */
 class PairSums {
   n = 0;
   px = 0;
@@ -213,9 +213,9 @@ class PairSums {
   pxq = 0;
   constructor(
     private readonly mirror: boolean,
-    /** Pevná mierka (m na pt): rotácia a posun sa hľadajú, mierka ostáva (#284). */
+    /** Fixed scale (m per pt): rotation and shift are searched, scale stays (#284). */
     private readonly fixedScale?: number,
-    /** Pevné natočenie (rad) pri pevnej mierke: hľadá sa len posun (pôdorys rovnobežný s osami modelu). */
+    /** Fixed rotation (rad) with fixed scale: only the shift is searched (floor plan parallel to the model axes). */
     private readonly fixedRotation?: number,
   ) {}
   add(px: number, py: number, qx: number, qy: number): void {
@@ -229,7 +229,7 @@ class PairSums {
     this.pq += px * qx + py * qy;
     this.pxq += px * qy - py * qx;
   }
-  /** q ≈ s·R·F·p + t (F = zrkadlo u, ak `mirror`); null pri menej ako 2 bodoch. */
+  /** q ≈ s·R·F·p + t (F = mirror of u, if `mirror`); null for fewer than 2 points. */
   solve(): Affine | null {
     const n = this.n;
     if (n < 2) return null;
@@ -245,7 +245,7 @@ class PairSums {
       a = Math.cos(this.fixedRotation) * this.fixedScale;
       b = Math.sin(this.fixedRotation) * this.fixedScale;
     } else if (this.fixedScale) {
-      // Smer (uhol) z najmenších štvorcov ostáva, dĺžka s·R sa nastaví na pevnú mierku.
+      // The direction (angle) from least squares stays, the length s·R is set to the fixed scale.
       const len = Math.hypot(a, b);
       if (len < 1e-18) return null;
       a = (a / len) * this.fixedScale;
@@ -260,7 +260,7 @@ class PairSums {
   }
 }
 
-/** Podobnosť najmenších štvorcov z dvojíc (bez zrkadla, alebo so zrkadlom osi u). */
+/** Least-squares similarity from pairs (without mirror, or with mirror of the u axis). */
 export function fitSimilarity(P: P2[], Q: P2[], mirror = false, fixedScale?: number): Affine | null {
   const s = new PairSums(mirror, fixedScale);
   P.forEach((p, i) => s.add(p[0], p[1], Q[i][0], Q[i][1]));
@@ -274,8 +274,8 @@ export interface LabelCandidate {
 }
 
 /**
- * Hrubý štart z popiskov: RANSAC cez dvojice rôznych mien, inliery bližšie ako `tol` m
- * a každé meno najviac raz (legenda na strane má tie isté čísla). Vráti fit z inlierov.
+ * Rough start from labels: RANSAC over pairs of different names, inliers closer than `tol` m
+ * and each name at most once (the legend on the page has the same numbers). Returns the fit from the inliers.
  */
 export function ransacLabels(cands: LabelCandidate[], tol = 1.5, minPagePt = 50, fixedScale?: number): { affine: Affine; inliers: LabelCandidate[] } | null {
   let best: { n: number; sum: number; idx: number[] } | null = null;
@@ -302,7 +302,7 @@ export function ransacLabels(cands: LabelCandidate[], tol = 1.5, minPagePt = 50,
       if (!best || idx.length > best.n || (idx.length === best.n && sum < best.sum)) best = { n: idx.length, sum, idx };
     }
   }
-  // Pri známej mierke stačia dva popisky (tretí by dával len kontrolu), inak treba aspoň 3.
+  // With a known scale two labels suffice (a third would only give a check), otherwise at least 3 are needed.
   if (!best || best.n < (fixedScale ? 2 : 3)) return null;
   const inliers = best.idx.map((k) => cands[k]);
   const affine = fitSimilarity(
@@ -318,16 +318,16 @@ export function ransacLabels(cands: LabelCandidate[], tol = 1.5, minPagePt = 50,
 
 export interface IcpOptions {
   mirror?: boolean;
-  /** Len body PDF, ktorých obraz (u, v) prejde filtrom (krížová validácia). */
+  /** Only PDF points whose image (u, v) passes the filter (cross-validation). */
   keep?: (u: number, v: number) => boolean;
   thresholds?: number[];
-  /** Pevná mierka (m na pt), ICP ju nemení. */
+  /** Fixed scale (m per pt), ICP does not change it. */
   fixedScale?: number;
-  /** Pevné natočenie (rad), len s `fixedScale`: ICP hľadá len posun. */
+  /** Fixed rotation (rad), only with `fixedScale`: ICP searches only the shift. */
   fixedRotation?: number;
 }
 
-/** Obálka bodov s okrajom; body PDF mimo nej (legenda, pečiatka) sa do ICP neberú. */
+/** Envelope of points with a margin; PDF points outside it (legend, stamp) are not taken into ICP. */
 function bounds(pts: Float64Array, pad: number): [number, number, number, number] {
   let x0 = Infinity;
   let y0 = Infinity;
@@ -342,7 +342,7 @@ function bounds(pts: Float64Array, pad: number): [number, number, number, number
   return [x0 - pad, y0 - pad, x1 + pad, y1 + pad];
 }
 
-/** Každý `stride`-tý bod (hrubé kroky ICP nepotrebujú plnú hustotu). */
+/** Every `stride`-th point (coarse ICP steps do not need the full density). */
 function decimate(pts: Float64Array, stride: number): Float64Array {
   if (stride <= 1) return pts;
   const out = new Float64Array(Math.ceil(pts.length / 2 / stride) * 2);
@@ -354,14 +354,14 @@ function decimate(pts: Float64Array, stride: number): Float64Array {
   return out.subarray(0, k);
 }
 
-/** Hustota bodov podľa prahu: pri prahu od 0,4 m stačí každý 8. bod PDF a 4. bod IFC. */
+/** Point density by threshold: for a threshold from 0.4 m every 8th PDF point and every 4th IFC point suffice. */
 function strides(thr: number): [number, number] {
   if (thr >= 0.4) return [8, 4];
   if (thr >= 0.15) return [2, 1];
   return [1, 1];
 }
 
-/** Trimmed ICP: body čiar PDF k najbližšiemu bodu rezu IFC pod prahom, prah klesá. */
+/** Trimmed ICP: PDF line points to the nearest IFC cut point under the threshold, the threshold decreases. */
 export function icp(pdf: Float64Array, ifc: Float64Array, start: Affine, opts: IcpOptions = {}): { affine: Affine; pairs: number } {
   const box = bounds(ifc, 2);
   let m = start;
@@ -398,11 +398,11 @@ function quantile(sorted: number[], q: number): number {
 export interface Quality {
   median_mm: number;
   p90_mm: number;
-  /** Podiel bodov rezu IFC do 0,3 m od čiary PDF (pokrytie). */
+  /** Share of IFC cut points within 0.3 m of a PDF line (coverage). */
   coverage: number;
 }
 
-/** Vzdialenosť bodov rezu IFC od čiar PDF po transformácii (len do 0,3 m). */
+/** Distance of IFC cut points from PDF lines after the transform (only up to 0.3 m). */
 export function quality(pdf: Float64Array, ifc: Float64Array, m: Affine): Quality {
   const q = new Float64Array(pdf.length);
   for (let i = 0; i < pdf.length; i += 2) {
@@ -424,8 +424,8 @@ export function quality(pdf: Float64Array, ifc: Float64Array, m: Affine): Qualit
 }
 
 /**
- * Krížová validácia: fit len na polovici (podľa u, potom podľa v), najväčší rozdiel
- * polohy voči plnému fitu na bodoch rezu druhej polovice (mm).
+ * Cross-validation: fit on one half only (by u, then by v), the largest position difference
+ * against the full fit on the cut points of the other half (mm).
  */
 export function crossValidate(pdf: Float64Array, ifc: Float64Array, full: Affine, mirror: boolean, fixedScale?: number, fixedRotation?: number): number {
   const inv = invertAffine(full);
@@ -449,14 +449,14 @@ export function crossValidate(pdf: Float64Array, ifc: Float64Array, full: Affine
   return Math.round(worst * 1000);
 }
 
-// ─── Text strany ─────────────────────────────────────────────────────────────
+// ─── Page text ───────────────────────────────────────────────────────────────
 
-/** Stred riadku textu v bodoch strany (vľavo dole). */
+/** Centre of a text line in page points (bottom left). */
 export function blockCenter(b: PageBlock, pageSize: P2): P2 {
   return [((b.x + b.w / 2) / 100) * pageSize[0], (1 - (b.y + b.h / 2) / 100) * pageSize[1]];
 }
 
-/** Výšková kóta `+5,000`, `-0,160`, `±0,000` -> metre; inak null. */
+/** Elevation mark `+5,000`, `-0,160`, `±0,000` -> metres; otherwise null. */
 export function parseLevel(t: string): number | null {
   const m = /^([+\-±])\s?(\d+)[,.](\d{3})$/.exec(t.trim());
   if (!m) return null;
@@ -464,12 +464,12 @@ export function parseLevel(t: string): number | null {
   return m[1] === "-" ? -v : v;
 }
 
-// ─── Kalibrácia ──────────────────────────────────────────────────────────────
+// ─── Calibration ─────────────────────────────────────────────────────────────
 
 export interface CalibrationResult {
   affine: Affine;
   scale_m_per_pt: number;
-  /** Mierka výkresu 1:N. */
+  /** Drawing scale 1:N. */
   scale_ratio: number;
   rotation_deg: number;
   mirrored: boolean;
@@ -478,48 +478,48 @@ export interface CalibrationResult {
     points: number;
     median_mm: number | null;
     labels_found?: number;
-    /** Pôdorys bez popiskov (D-180): štart skenovaním posunu pri pevnej mierke a natočení po 90°. */
+    /** Floor plan without labels (D-180): start by scanning the shift at fixed scale and rotation in 90° steps. */
     scan?: { rotation_deg: number; candidates: number; score: number; labels_tried: boolean };
-    /** Rez (D-179): kóty spárované s výškami podlaží modelu a posun ±0,000 voči IFC Z (m). */
+    /** Section (D-179): marks paired with the model storey heights and the ±0,000 shift against IFC Z (m). */
     levels?: { found: number; storeys_matched: number; offset_m: number };
-    /** Rez: popisky osí na reze spárované s polohou po reze; pôdorys (plan_axes): osi strany spárované s osami iných výkresov. */
+    /** Section: grid labels on the section paired with the position along the cut; floor plan (plan_axes): page grids paired with grids of other drawings. */
     axes_matched?: number;
-    /** Pôdorys: štart nevybraný hneď z popiskov (slabé popisky, nízke pokrytie, osi), ktoré štarty súťažili. */
+    /** Floor plan: start not chosen straight from labels (weak labels, low coverage, grids), which starts competed. */
     compared?: string[];
   };
-  /** Pôdorys: ICP s voľným natočením skĺzlo o viac ako 0,5° od násobku 90° (pri natočenej sieti osí od jej natočenia), výsledok má natočenie pevné (voľné bolo toto). */
+  /** Floor plan: ICP with free rotation slipped by more than 0.5° from a multiple of 90° (for a rotated grid network from its rotation), the result has fixed rotation (the free one was this one). */
   rotation_locked_from_deg?: number;
   /**
-   * Pôdorys (D-184 dodatok): ICP posunulo osi výkresu mimo polohy z iných výkresov, hoci štart z osí sedel; výsledok je
-   * štart z osí bez doladenia (čiary výkresu nie sú konštrukcie: raster SF.01, výsek s rozvodmi TP.01 4NP).
+   * Floor plan (D-184 addendum): ICP moved the drawing grids away from the position from other drawings although the start from grids fit; the result is
+   * the start from grids without refinement (drawing lines are not structure: raster SF.01, detail with services TP.01 4NP).
    */
   icp_rejected?: { reason: "axes"; axes_median_mm: number | null };
   icp_pairs: number;
   quality: Quality;
   cross_validation_max_mm: number;
-  /** Dva vzdialené body (strana -> rovina) pre ručnú úpravu v paneli Underlays. */
+  /** Two distant points (page -> plane) for manual adjustment in the Underlays panel. */
   calibration: { pdf_pt: P2; plane_m: P2 }[];
 }
 
-// ─── Mierka výkresu (#284) ───────────────────────────────────────────────────
+// ─── Drawing scale (#284) ────────────────────────────────────────────────────
 
-/** Bežné mierky výkresov 1:N; iná mierka z kalibrácie je podozrivá (zlé čiary v ICP). */
+/** Common drawing scales 1:N; another scale from calibration is suspicious (wrong lines in ICP). */
 export const STANDARD_SCALES = [10, 20, 25, 50, 75, 100, 125, 150, 200, 250, 500];
-/** Najväčšia relatívna odchýlka mierky od najbližšej bežnej mierky (mierka nie je známa, D-133 doplnok). */
+/** Largest relative deviation of the scale from the nearest common scale (scale not known, D-133 addendum). */
 export const SCALE_TOLERANCE = 0.05;
-/** Najväčšia odchýlka od mierky zo zadania alebo z textu strany (D-180): výkres 1:50 nevyjde 1:51,5. */
+/** Largest deviation from the scale given in the input or from the page text (D-180): a 1:50 drawing does not come out 1:51.5. */
 export const SCALE_TOLERANCE_KNOWN = 0.02;
-/** Najväčšia odchýlka natočenia od násobku 90° pri pôdoryse a od 0° pri reze (D-180). */
+/** Largest deviation of rotation from a multiple of 90° for a floor plan and from 0° for a section (D-180). */
 export const ROTATION_TOLERANCE_DEG = 2;
-/** Pôdorys s pevnou mierkou: natočenie po ICP ďalej od násobku 90° sa uzamkne (dobré kalibrácie sú do 0,03°, sklz TP.01 1 až 2,3°). */
+/** Floor plan with fixed scale: rotation after ICP farther from a multiple of 90° gets locked (good calibrations are within 0.03°, slip TP.01 1 to 2.3°). */
 export const ROTATION_LOCK_DEG = 0.5;
 
 const SCALE_WORD = /m[eé]r[ií]tko|mierka|scale/i;
 const SCALE_VALUE = /(?:^|[^\d:])1\s*:\s*(\d{1,4})(?!\d)/;
 
 /**
- * Mierka výkresu z textu strany ("MERÍTKO 1 : 50", "Mierka: 1:100", slovo a hodnota v dvoch
- * riadkoch). Viac rôznych mierok (detaily) alebo žiadna = null.
+ * Drawing scale from the page text ("MERÍTKO 1 : 50", "Mierka: 1:100", the word and the value on two
+ * lines). Several different scales (details) or none = null.
  */
 export function pageScaleFromText(blocks: PageBlock[]): number | null {
   const found = new Set<number>();
@@ -529,21 +529,21 @@ export function pageScaleFromText(blocks: PageBlock[]): number | null {
     if (!m) continue;
     const n = Number(m[1]);
     if (!(n >= 2)) continue;
-    // Hodnota v tom istom riadku ako slovo, alebo samostatný riadok "1 : 50", ak slovo je na strane.
+    // The value on the same line as the word, or a separate line "1 : 50", if the word is on the page.
     const alone = /^\s*1\s*:\s*\d{1,4}\s*$/.test(b.t);
     if (SCALE_WORD.test(b.t) || (hasWord && alone)) found.add(n);
-    // Bez slova (pečiatka PBR "1:100", D-180): samostatný riadok s bežnou mierkou.
+    // Without the word (PBR stamp "1:100", D-180): a separate line with a common scale.
     else if (!hasWord && alone && STANDARD_SCALES.includes(n)) found.add(n);
   }
   return found.size === 1 ? [...found][0] : null;
 }
 
-/** Výrez strany v % (x, y, w, h; vľavo hore, ako `_georef.region`). */
+/** Page region in % (x, y, w, h; top left, like `_georef.region`). */
 export type PageRegion = [number, number, number, number];
 
 /**
- * Text a čiary len z výrezu strany (D-180, hárok s viac pôdorysmi): riadok so stredom vo výreze, úsečka s oboma
- * koncami vo výreze. Súradnice ostávajú v bodoch celej strany, affine je teda pre celú stranu.
+ * Text and lines only from a page region (D-180, sheet with several floor plans): a line with its centre in the region, a segment with both
+ * ends in the region. Coordinates stay in points of the whole page, so the affine is for the whole page.
  */
 export function cropToRegion(blocks: PageBlock[], lines: PageLine[], region: PageRegion, pageSize: P2): { blocks: PageBlock[]; lines: PageLine[] } {
   const [rx, ry, rw, rh] = region;
@@ -563,17 +563,17 @@ export function cropToRegion(blocks: PageBlock[], lines: PageLine[], region: Pag
 }
 
 export interface ScaleCheck {
-  /** Mierka výsledku 1:N. */
+  /** Scale of the result 1:N. */
   ratio: number;
-  /** Očakávaná mierka 1:N a odkiaľ je. */
+  /** Expected scale 1:N and where it comes from. */
   expected: number | null;
   source: "param" | "text" | "standard" | "none";
-  /** Relatívna odchýlka od očakávanej (0,03 = 3 %). */
+  /** Relative deviation from the expected one (0.03 = 3 %). */
   deviation: number | null;
   ok: boolean;
 }
 
-/** Porovná mierku výsledku s očakávanou (parameter, text strany), inak s najbližšou bežnou. */
+/** Compares the result scale with the expected one (parameter, page text), otherwise with the nearest common scale. */
 export function checkScale(ratio: number, param: number | null, text: number | null): ScaleCheck {
   let expected = param ?? text;
   let source: ScaleCheck["source"] = param !== null ? "param" : text !== null ? "text" : "none";
@@ -588,22 +588,22 @@ export function checkScale(ratio: number, param: number | null, text: number | n
 
 export interface RotationCheck {
   rotation_deg: number;
-  /** Očakávané natočenie: najbližší násobok 90° (pôdorys), 0° (rez). */
+  /** Expected rotation: nearest multiple of 90° (floor plan), 0° (section). */
   expected_deg: number;
   deviation_deg: number;
   ok: boolean;
 }
 
 /**
- * Kontrola natočenia (D-180): výkresy budovy sú kreslené rovnobežne s osami modelu, pôdorys môže byť na strane
- * otočený o 90°, rez nie. Väčšia odchýlka = ICP chytilo zlé čiary (strecha 4NP: -23,6°).
+ * Rotation check (D-180): building drawings are drawn parallel to the model axes, a floor plan may be on the page
+ * rotated by 90°, a section not. A larger deviation = ICP caught wrong lines (roof 4NP: -23.6°).
  */
 export function checkRotation(rotationDeg: number, kind: "plan" | "section", gridDeg?: number): RotationCheck {
-  // Pôdorys s natočenou sieťou osí na strane (D-184 dodatok): očakávané natočenie z osí strany (`gridRotations`).
+  // Floor plan with a rotated grid network on the page (D-184 addendum): expected rotation from the page grids (`gridRotations`).
   const expected = kind === "plan" ? (gridDeg !== undefined ? nearestRotation(rotationDeg, gridRotations(gridDeg)).to : Math.round(rotationDeg / 90) * 90) : 0;
   let d = Math.abs(rotationDeg - expected) % 360;
   if (d > 180) d = 360 - d;
-  // `|| 0`: bez -0 vo výsledku.
+  // `|| 0`: no -0 in the result.
   return { rotation_deg: rotationDeg, expected_deg: +(((((expected + 180) % 360) + 360) % 360) - 180).toFixed(3) || 0, deviation_deg: +d.toFixed(3), ok: d <= ROTATION_TOLERANCE_DEG };
 }
 
@@ -611,14 +611,14 @@ function linesToPoints(lines: PageLine[]): Float64Array {
   return samplePoints(lines, PDF_STEP_PT);
 }
 
-/** Uzamknutie natočenia pôdorysu: `rotations` = povolené natočenia (násobky 90°, pri natočenej sieti osí `gridRotations`). */
+/** Locking the floor plan rotation: `rotations` = allowed rotations (multiples of 90°, for a rotated grid network `gridRotations`). */
 interface PlanLock {
   rotations: number[];
-  /** Osi strany a referencie: ICP, ktoré osi rozbije, sa nevezme (štart z osí ostane). */
+  /** Page grids and references: an ICP that breaks the grids is not accepted (the start from grids stays). */
   axes?: { page: AxisLine[]; ref: RefAxis[] };
 }
 
-/** Uhol `deg` najbližší k povoleným natočeniam a jeho odchýlka (stupne, 0 až 180). */
+/** Angle `deg` nearest to the allowed rotations and its deviation (degrees, 0 to 180). */
 function nearestRotation(deg: number, rotations: number[]): { to: number; dev: number } {
   let best = { to: rotations[0], dev: Infinity };
   for (const r of rotations) {
@@ -630,9 +630,9 @@ function nearestRotation(deg: number, rotations: number[]): { to: number; dev: n
 }
 
 /**
- * ICP pôdorysu pri pevnej mierke s uzamknutím natočenia a kontrolou osí (D-184 a dodatok): natočenie ďalej ako
- * 0,5° od povoleného = sklz na čiarach, ktoré v modeli nie sú (rozvody TZB, šrafy), posun sa doladí pri pevnom
- * natočení; keď štart osi spĺňa a doladenie ich rozbije, ostáva štart (čiary výkresu nie sú konštrukcie).
+ * Floor plan ICP at fixed scale with rotation locking and grid check (D-184 and addendum): rotation farther than
+ * 0.5° from the allowed one = slip on lines that are not in the model (services, hatching), the shift is refined at fixed
+ * rotation; when the grid start satisfies the grids and the refinement breaks them, the start stays (drawing lines are not structure).
  */
 function refinePlan(pdf: Float64Array, ifc: Float64Array, start: Affine, fixedScale: number | undefined, lock: PlanLock | undefined) {
   let { affine, pairs } = icp(pdf, ifc, start, { fixedScale });
@@ -692,7 +692,7 @@ function finish(
     start: startInfo,
     icp_pairs: pairs,
     quality: quality(pdf, ifc, affine),
-    // Bez doladenia (ICP zamietnuté) sa krížová validácia nedá urobiť: polovice by ICP znova odtiahlo.
+    // Without refinement (ICP rejected) cross-validation cannot be done: ICP would pull the halves away again.
     cross_validation_max_mm: rejected ? NaN : crossValidate(pdf, ifc, affine, mirror, fixedScale, fixedRotation),
     calibration: [left, right].map((p) => ({ pdf_pt: p, plane_m: applyAffine(affine, p) })),
     ...(lockedFrom !== undefined ? { rotation_locked_from_deg: lockedFrom } : {}),
@@ -714,50 +714,50 @@ export interface PlanInput {
   pageSize: P2;
   blocks: PageBlock[];
   lines: PageLine[];
-  /** Priestory podlažia: Name (číslo miestnosti, ako na výkrese) a ťažisko v IFC (X, Y). */
+  /** Storey spaces: Name (room number, as on the drawing) and centroid in IFC (X, Y). */
   spaces: { name: string; centroid: P2 }[];
-  /** Rez modelu vo výške pôdorysného rezu, (u, v) = IFC (X, Y). */
+  /** Model cut at the height of the plan cut, (u, v) = IFC (X, Y). */
   cut: Seg[];
-  /** Pevná mierka výkresu 1:N (parameter alebo text strany): štart aj ICP ju držia. */
+  /** Fixed drawing scale 1:N (parameter or page text): both the start and ICP keep it. */
   scale?: number;
   /**
-   * Osi (gridy): rady osí tejto strany v bodoch strany a polohy osí z iných kalibrovaných výkresov (IFC). `gridDeg` =
-   * natočenie siete osí na strane z radov bublín (D-184 dodatok), keď sieť nie je v smere strany (SF.01: 19°).
+   * Grids: rows of grids of this page in page points and grid positions from other calibrated drawings (IFC). `gridDeg` =
+   * rotation of the grid network on the page from rows of bubbles (D-184 addendum), when the network is not in the page direction (SF.01: 19°).
    */
   axes?: { page: AxisLine[]; ref: RefAxis[]; gridDeg?: number };
 }
 
-/** Pri pevnej mierke a menej popiskoch ako toľko sa porovná aj štart skenovaním (strecha 4NP: 3 popisky, zlý štart). */
+/** With fixed scale and fewer labels than this, the start by scanning is also compared (roof 4NP: 3 labels, bad start). */
 const WEAK_LABELS = 4;
-/** Pokrytie rezu modelu po ICP zo štartu z popiskov, pod ktorým súťaží aj sken a osi (SF.01: 5 popiskov, pokrytie 0,03). */
+/** Coverage of the model cut after ICP from the start from labels, below which the scan and grids also compete (SF.01: 5 labels, coverage 0.03). */
 const LOW_COVERAGE = 0.3;
 
-// ─── Osi (gridy) ─────────────────────────────────────────────────────────────
+// ─── Grids ───────────────────────────────────────────────────────────────────
 
-/** Os na strane: čiara medzi dvojicou rovnakých popiskov v rade osí (body strany, vľavo dole). */
+/** Grid on the page: a line between a pair of equal labels in a row of grids (page points, bottom left). */
 export interface AxisLine {
   text: string;
   a: P2;
   b: P2;
 }
 
-/** Poloha osi v IFC z kalibrovaných výkresov: dir x = os je rovina X = at, dir y = rovina Y = at. */
+/** Grid position in IFC from calibrated drawings: dir x = grid is the plane X = at, dir y = plane Y = at. */
 export interface RefAxis {
   text: string;
   dir: "x" | "y";
   at: number;
-  /** Z koľkých výkresov (strán, výrezov) poloha je. */
+  /** From how many drawings (pages, regions) the position comes. */
   sheets: number;
 }
 
-/** Os po transformácii `m`: smer podľa väčšieho rozmeru obrazu, poloha = priemer kolmej súradnice. */
+/** Grid after transform `m`: direction by the larger extent of the image, position = mean of the perpendicular coordinate. */
 export function axisInModel(m: Affine, l: { a: P2; b: P2 }): { dir: "x" | "y"; at: number } {
   const a = applyAffine(m, l.a);
   const b = applyAffine(m, l.b);
   return Math.abs(b[0] - a[0]) < Math.abs(b[1] - a[1]) ? { dir: "x", at: (a[0] + b[0]) / 2 } : { dir: "y", at: (a[1] + b[1]) / 2 };
 }
 
-/** Osi z viacerých výkresov: medián polohy podľa popisku a smeru; popisok s rozptylom nad 0,3 m (iný grid) preč. */
+/** Grids from several drawings: median position by label and direction; a label with spread above 0.3 m (another grid) is dropped. */
 export function mergeRefAxes(perSheet: { text: string; dir: "x" | "y"; at: number }[][]): RefAxis[] {
   const by = new Map<string, number[]>();
   for (const sheet of perSheet) {
@@ -777,7 +777,7 @@ export function mergeRefAxes(perSheet: { text: string; dir: "x" | "y"; at: numbe
   return out.sort((x, y) => (x.dir === y.dir ? x.at - y.at : x.dir < y.dir ? -1 : 1));
 }
 
-/** Posun osí pri danom lineárnom zobrazení: rozdiely ref - obraz, oddelene pre osi X a Y. */
+/** Grid shift under the given linear mapping: differences ref - image, separately for X and Y grids. */
 function axisDiffs(m: Affine, lines: AxisLine[], refs: RefAxis[]): { text: string; dir: "x" | "y"; d: number }[] {
   const out: { text: string; dir: "x" | "y"; d: number }[] = [];
   for (const l of lines) {
@@ -789,9 +789,9 @@ function axisDiffs(m: Affine, lines: AxisLine[], refs: RefAxis[]): { text: strin
 }
 
 /**
- * Štart pôdorysu z osí (gridov): pri pevnej mierke pre natočenie 0, 90, 180 a 270° posun z popiskov osí strany
- * spárovaných s polohou rovnakých osí na iných kalibrovaných výkresoch. Natočenie vyberie zhoda smeru (os A je
- * na modeli rovina X) a počet osí do 0,5 m od mediánu; treba aspoň jednu os v každom smere a spolu 3.
+ * Floor plan start from grids: at fixed scale for rotation 0, 90, 180 and 270° the shift from page grid labels
+ * paired with the position of the same grids on other calibrated drawings. The rotation is chosen by direction match (grid A is
+ * the plane X on the model) and the number of grids within 0.5 m of the median; at least one grid in each direction and 3 in total are needed.
  */
 export function axisStart(lines: AxisLine[], refs: RefAxis[], s: number, rotationsDeg: number[] = [0, 90, 180, -90]): { affine: Affine; rotation: number; matched: number } | null {
   let best: { affine: Affine; rotation: number; matched: number; spread: number } | null = null;
@@ -817,20 +817,20 @@ export function axisStart(lines: AxisLine[], refs: RefAxis[], s: number, rotatio
   return best && { affine: best.affine, rotation: best.rotation, matched: best.matched };
 }
 
-/** Najväčší medián odchýlky osí (mm) od polôh z iných výkresov, nad ktorým je kalibrácia podozrivá. */
+/** Largest median deviation of grids (mm) from positions on other drawings above which the calibration is suspicious. */
 export const AXES_TOLERANCE_MM = 150;
 
 export interface AxesCheck {
-  /** Osi strany spárované s osami iných výkresov (rovnaký popisok a smer). */
+  /** Page grids paired with grids of other drawings (same label and direction). */
   matched: number;
   median_mm: number | null;
   max_mm: number | null;
-  /** false = osi výkresu nesedia s osami iných výkresov (posun o pole, zlé natočenie). */
+  /** false = drawing grids do not match grids of other drawings (shift by a bay, wrong rotation). */
   ok: boolean;
   axes: { text: string; dir: "x" | "y"; dev_mm: number }[];
 }
 
-/** Kontrola osí: poloha osí strany po kalibrácii voči polohe tých istých osí z iných kalibrovaných výkresov. */
+/** Grid check: position of page grids after calibration against the position of the same grids from other calibrated drawings. */
 export function checkAxes(m: Affine, lines: AxisLine[], refs: RefAxis[]): AxesCheck {
   const diffs = axisDiffs(m, lines, refs).map((x) => ({ text: x.text, dir: x.dir, dev_mm: Math.round(Math.abs(x.d) * 1000) }));
   const devs = diffs.map((x) => x.dev_mm).sort((a, b) => a - b);
@@ -845,9 +845,9 @@ export function checkAxes(m: Affine, lines: AxisLine[], refs: RefAxis[]): AxesCh
 }
 
 /**
- * Pôdorys: popisky miestností -> RANSAC, potom ICP na rez stien. Bez popiskov (strecha, základy, strop, PBR) pri
- * známej mierke štart skenovaním (D-180) a z osí iných výkresov; pri slabom štarte z popiskov (málo popiskov,
- * nízke pokrytie) súťažia všetky štarty. Víťaz: sedia osi s inými výkresmi, potom pokrytie rezu, potom medián.
+ * Floor plan: room labels -> RANSAC, then ICP on the wall cut. Without labels (roof, foundations, ceiling, PBR) at
+ * known scale the start by scanning (D-180) and from grids of other drawings; with a weak start from labels (few labels,
+ * low coverage) all starts compete. Winner: grids match other drawings, then cut coverage, then median.
  */
 export function calibratePlan(input: PlanInput): CalibrationResult {
   const byName = new Map(input.spaces.filter((s) => s.name).map((s) => [s.name.trim(), s.centroid]));
@@ -903,9 +903,9 @@ export function calibratePlan(input: PlanInput): CalibrationResult {
   if (start) options.push({ affine: start.affine, info: labelsInfo!, anchors: start.inliers.map((c) => c.page) });
   if (options.length === 0) throw new CalibrationError("Pôdorys bez popiskov: sken posunu nenašiel polohu, kde by sa čiary strany prekrývali s rezom modelu.");
   const compared = [...new Set(options.map((o) => o.info.method))];
-  // Víťaz po ICP: osi sedia s inými výkresmi, potom najväčšie pokrytie rezu modelu čiarami strany, pri zhode menší medián.
-  // Osi: 2 = sedia (aspoň 2 spárované), 1 = nič sa nespárovalo (kontrola nemá čo povedať), 0 = nesedia; overené osi
-  // predbehnú neoverené (sken natočený mimo siete osí nespáruje žiadnu os a inak by vyhral pokrytím, SF.01 1NP).
+  // Winner after ICP: grids match other drawings, then the largest coverage of the model cut by page lines, on a tie the smaller median.
+  // Grids: 2 = match (at least 2 paired), 1 = nothing paired (the check has nothing to say), 0 = mismatch; verified grids
+  // beat unverified ones (a scan rotated off the grid network pairs no grid and would otherwise win by coverage, SF.01 1NP).
   let best: { o: (typeof options)[number]; ok: number; cov: number; med: number } | null = null;
   for (const o of options) {
     const { affine } = refinePlan(pdf, ifc, o.affine, fixed, lock);
@@ -922,7 +922,7 @@ export function calibratePlan(input: PlanInput): CalibrationResult {
   return finish(pdf, ifc, best!.o.affine, false, { ...best!.o.info, compared }, best!.o.anchors, fixed, lock);
 }
 
-/** Dva vzdialené body strany (10. a 90. percentil x pri mediáne y) na ručnú úpravu v paneli. */
+/** Two distant page points (10th and 90th percentile x at median y) for manual adjustment in the panel. */
 function spreadAnchors(pdf: Float64Array): P2[] {
   const xs: number[] = [];
   const ys: number[] = [];
@@ -935,7 +935,7 @@ function spreadAnchors(pdf: Float64Array): P2[] {
   return [[quantile(xs, 0.1), y], [quantile(xs, 0.9), y]];
 }
 
-/** Obsadené bunky mriežky (kľúč "i,j" -> počet bodov) pre body už v metroch. */
+/** Occupied grid cells (key "i,j" -> point count) for points already in metres. */
 function cellCounts(pts: Float64Array, cell: number): { i: Int32Array; j: Int32Array; w: Float64Array; total: number } {
   const m = new Map<number, [number, number, number]>();
   for (let k = 0; k < pts.length; k += 2) {
@@ -957,7 +957,7 @@ function cellCounts(pts: Float64Array, cell: number): { i: Int32Array; j: Int32A
   return out;
 }
 
-/** Raster obsadených buniek rozšírený o `dilate` buniek na každú stranu. */
+/** Raster of occupied cells expanded by `dilate` cells on each side. */
 function occupancy(c: ReturnType<typeof cellCounts>, dilate: number): { i0: number; j0: number; ni: number; nj: number; occ: Uint8Array } {
   let i0 = Infinity;
   let j0 = Infinity;
@@ -982,7 +982,7 @@ function occupancy(c: ReturnType<typeof cellCounts>, dilate: number): { i0: numb
   return { i0, j0, ni, nj, occ };
 }
 
-/** Podiel váhy buniek `a` posunutých o (ti, tj), ktoré padnú do rastra `b`. */
+/** Share of the weight of cells `a` shifted by (ti, tj) that fall into raster `b`. */
 function hitShare(a: ReturnType<typeof cellCounts>, b: ReturnType<typeof occupancy>, ti: number, tj: number): number {
   let hit = 0;
   for (let k = 0; k < a.i.length; k++) {
@@ -993,7 +993,7 @@ function hitShare(a: ReturnType<typeof cellCounts>, b: ReturnType<typeof occupan
   return hit / a.total;
 }
 
-/** Natočenie o `deg` stupňov: podobnosť s mierkou `s` bez posunu (násobky 90° presne, bez zaokrúhlenia sin a cos). */
+/** Rotation by `deg` degrees: similarity with scale `s` without shift (multiples of 90° exact, without rounding sin and cos). */
 export function rotationAffine(s: number, deg: number): Affine {
   const q = deg / 90;
   if (Number.isInteger(q)) return quarterTurn(s, ((q % 4) + 4) % 4);
@@ -1002,16 +1002,16 @@ export function rotationAffine(s: number, deg: number): Affine {
 }
 
 /**
- * Natočenia kalibrácie, pri ktorých sieť osí strany natočená o `gridDeg` (smer radu bublín písmen, D-184 dodatok)
- * leží rovnobežne s osami modelu: rad písmen ide po X modelu (dva smery) alebo pri obrátenom poradí po -X.
- * Pri sieti v smere strany sú to 0, 90, 180 a 270°.
+ * Calibration rotations at which the page grid network rotated by `gridDeg` (direction of the row of letter bubbles, D-184 addendum)
+ * lies parallel to the model axes: the row of letters runs along model X (two directions) or, with reversed order, along -X.
+ * For a network in the page direction these are 0, 90, 180 and 270°.
  */
 export function gridRotations(gridDeg: number): number[] {
   const norm = (d: number) => +((((d % 360) + 540) % 360) - 180).toFixed(3) || 0;
   return [0, 90, 180, 270].map((k) => norm(k - gridDeg));
 }
 
-/** Natočenie o k·90°: podobnosť s mierkou `s` bez posunu. */
+/** Rotation by k·90°: similarity with scale `s` without shift. */
 function quarterTurn(s: number, k: number): Affine {
   const c = [1, 0, -1, 0][k];
   const n = [0, 1, 0, -1][k];
@@ -1019,9 +1019,9 @@ function quarterTurn(s: number, k: number): Affine {
 }
 
 /**
- * Štart pôdorysu bez popiskov (D-180): pri pevnej mierke skúša natočenie 0, 90, 180 a 270° a posun najprv po 1 m,
- * potom po 0,25 m okolo najlepších. Skóre = podiel čiar strany pri reze modelu × podiel rezu pod čiarami strany
- * (samotné čiary strany by vyhrali aj pri pečiatke položenej na budovu). Vráti najviac 3 kandidátov, najlepší prvý.
+ * Floor plan start without labels (D-180): at fixed scale tries rotation 0, 90, 180 and 270° and the shift first in 1 m steps,
+ * then in 0.25 m steps around the best. Score = share of page lines at the model cut × share of the cut under page lines
+ * (page lines alone would also win with a stamp placed on the building). Returns at most 3 candidates, the best first.
  */
 export function scanPlanStarts(pdf: Float64Array, ifc: Float64Array, s: number): { affine: Affine; rotation: number; score: number }[] {
   const coarse: { k: number; ti: number; tj: number; score: number }[] = [];
@@ -1034,7 +1034,7 @@ export function scanPlanStarts(pdf: Float64Array, ifc: Float64Array, s: number):
     const occDst = occupancy(dst, 1);
     const occSrc = occupancy(src, 1);
     const found: { ti: number; tj: number; score: number }[] = [];
-    // Posun t (bunky): obraz strany + t musí prekryť rez modelu.
+    // Shift t (cells): image of the page + t must overlap the model cut.
     for (let ti = occDst.i0 - (occSrc.i0 + occSrc.ni); ti <= occDst.i0 + occDst.ni - occSrc.i0; ti++) {
       for (let tj = occDst.j0 - (occSrc.j0 + occSrc.nj); tj <= occDst.j0 + occDst.nj - occSrc.j0; tj++) {
         const a = hitShare(src, occDst, ti, tj);
@@ -1044,7 +1044,7 @@ export function scanPlanStarts(pdf: Float64Array, ifc: Float64Array, s: number):
       }
     }
     found.sort((x, y) => y.score - x.score);
-    // Dva najlepší na natočenie, od seba aspoň 3 m (opakované polia osí dajú vedľajšie vrcholy).
+    // Two best per rotation, at least 3 m apart (repeated grid bays give neighbouring peaks).
     const keep: typeof found = [];
     for (const f of found) {
       if (keep.length >= 2) break;
@@ -1087,23 +1087,23 @@ export interface SectionInput {
   pageSize: P2;
   blocks: PageBlock[];
   lines: PageLine[];
-  /** Poloha osí po smere u (m), kľúč = popisok osi na výkrese (`1`, `A`); bez nich sken. */
+  /** Grid position along the u direction (m), key = grid label on the drawing (`1`, `A`); without them the scan. */
   axes?: Record<string, number>;
-  /** Rez modelu rovinou pohľadu, (u, v) = (po reze, výška Z). */
+  /** Model cut by the view plane, (u, v) = (along the cut, height Z). */
   cut: Seg[];
-  /** Pevná mierka výkresu 1:N (parameter alebo text strany); kóty potom určia len výšku. */
+  /** Fixed drawing scale 1:N (parameter or page text); the marks then determine only the height. */
   scale?: number;
-  /** Výšky podlaží modelu (IfcBuildingStorey.Elevation v IFC Z, m): kóty sa s nimi spárujú (D-179). */
+  /** Model storey heights (IfcBuildingStorey.Elevation in IFC Z, m): the marks are paired with them (D-179). */
   storeys?: number[];
 }
 
-/** Zhoda kóty s výškou podlažia (m): kóty sú na mm, výška z parsera tiež. */
+/** Match of a mark with a storey height (m): marks are in mm, the height from the parser too. */
 const STOREY_TOL_M = 0.005;
 
 /**
- * Posun kót voči IFC Z (D-179): ±0,000 nemusí byť IFC Z = 0. Kandidáti sú rozdiely výška podlažia -
- * kóta, vyhrá posun, pri ktorom najviac podlaží má kótu (aspoň 2), pri zhode menší posun. Bez
- * spárovania 0 (kóty sú priamo v IFC Z, ako doteraz).
+ * Shift of marks against IFC Z (D-179): ±0,000 need not be IFC Z = 0. Candidates are differences storey height -
+ * mark, the shift wins at which most storeys have a mark (at least 2), on a tie the smaller shift. Without
+ * pairing 0 (marks are directly in IFC Z, as before).
  */
 export function levelOffset(values: number[], storeys: number[]): { offset: number; matched: number } {
   const uniq = [...new Set(values.map((v) => Math.round(v * 1000)))].map((v) => v / 1000);
@@ -1121,10 +1121,10 @@ export function levelOffset(values: number[], storeys: number[]): { offset: numb
   return best.matched >= 2 ? best : { offset: 0, matched: zero };
 }
 
-/** Rez: výškové kóty -> mierka a výška, osi (alebo sken) -> posun a smer pohľadu, potom ICP. */
+/** Section: elevation marks -> scale and height, grids (or scan) -> shift and view direction, then ICP. */
 export function calibrateSection(input: SectionInput): CalibrationResult {
   const H = input.pageSize[1];
-  // Kóta: hodnota proti spodku textu (text stojí nad čiarou úrovne, stály posun dorovná ICP).
+  // Mark: value against the bottom of the text (the text sits above the level line, a constant shift is levelled by ICP).
   const levels: P2[] = [];
   for (const b of input.blocks) {
     const v = parseLevel(b.t);
@@ -1175,7 +1175,7 @@ export function calibrateSection(input: SectionInput): CalibrationResult {
       fixed,
     );
   }
-  // Bez osí: vodorovný posun a smer pohľadu skenovaním (najviac bodov PDF pri reze IFC).
+  // Without grids: horizontal shift and view direction by scanning (most PDF points at the IFC cut).
   const scan = scanOffset(pdf, ifc, s, z0);
   if (!scan) throw new CalibrationError("Rez: bez osí sa nepodarilo nájsť vodorovný posun (čiary PDF sa s rezom modelu neprekrývajú).");
   const start: Affine = [scan.sign * s, 0, scan.t, 0, s, z0];
@@ -1187,8 +1187,8 @@ export function calibrateSection(input: SectionInput): CalibrationResult {
 }
 
 /**
- * Vodorovný posun rezu bez osí: pri známej mierke a výške (kóty) skúša posun po 0,25 m a
- * oba smery pohľadu, vyhrá ten s najviac bodmi PDF do 0,2 m od rezu IFC.
+ * Horizontal shift of the cut without grids: at known scale and height (marks) tries the shift in 0.25 m steps and
+ * both view directions, the one with the most PDF points within 0.2 m of the IFC cut wins.
  */
 function scanOffset(pdf: Float64Array, ifc: Float64Array, s: number, z0: number): { sign: 1 | -1; t: number } | null {
   const src = decimate(pdf, 16);
@@ -1202,7 +1202,7 @@ function scanOffset(pdf: Float64Array, ifc: Float64Array, s: number, z0: number)
   }
   let best: { sign: 1 | -1; t: number; n: number } | null = null;
   for (const sign of [1, -1] as const) {
-    // Obraz strany [sign·s·x0, sign·s·x1] + t musí prekryť rez [u0, u1].
+    // Image of the page [sign·s·x0, sign·s·x1] + t must overlap the cut [u0, u1].
     const a = Math.min(sign * s * x0, sign * s * x1);
     const b = Math.max(sign * s * x0, sign * s * x1);
     for (let t = u0 - b; t <= u1 - a; t += 0.25) {
@@ -1216,7 +1216,7 @@ function scanOffset(pdf: Float64Array, ifc: Float64Array, s: number, z0: number)
   return best && best.n > 0 ? { sign: best.sign, t: best.t } : null;
 }
 
-/** Ručné dvojice (strana -> rovina), voliteľne doladené ICP. */
+/** Manual pairs (page -> plane), optionally refined by ICP. */
 export function calibratePairs(
   pairs: { pdf_pt: P2; plane_m: P2 }[],
   refine?: { lines: PageLine[]; cut: Seg[]; mirror: boolean },
@@ -1250,7 +1250,7 @@ function median(v: number[]): number {
   return quantile([...v].sort((a, b) => a - b), 0.5);
 }
 
-/** Priamka v = s·y + b najmenšími štvorcami. */
+/** Line segment v = s·y + b by least squares. */
 function lineFit(pts: P2[]): [number, number] {
   const n = pts.length;
   const my = pts.reduce((a, p) => a + p[0], 0) / n;

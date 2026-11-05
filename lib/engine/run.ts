@@ -19,10 +19,10 @@ import { execSearchAll } from "./search-all";
 import { execEngineTool, ifcSearchResult, type EngineDeps, type EngineExecution } from "./tools";
 import { currentProjectId } from "../project/context";
 
-// D-135: modely motora z nemenného archívu revízie (cca 5-krát menej egressu).
+// D-135: engine models from the immutable revision archive (about 5 times less egress).
 installArchiveSource();
 
-/** BCF vrstva pre `clash bcf create=true`: ten istý store ako `bcf_topic create` (D-099), s oznámením viewerom. */
+/** BCF layer for `clash bcf create=true`: the same store as `bcf_topic create` (D-099), with a notification by the viewer. */
 function clashBcfPort(): ClashBcfPort {
   return {
     create: async (row) => {
@@ -33,17 +33,17 @@ function clashBcfPort(): ClashBcfPort {
   };
 }
 
-/** Závislosti motora s reálnym prepojením na DB AIM (D-084); aj pre host routes overenia výmer (D-185 UI). */
+/** Engine dependencies with a real link to the AIM DB (D-084); also for host routes of quantity verification (D-185 UI). */
 export function engineDeps(): EngineDeps {
   return { lookup: lookupGuids, resolveTargets: resolveTargetsToGuids, revisions: (models, perModel) => fetchModelRevisions(currentProjectId(), models, perModel), ids: supabaseIdsStore(currentProjectId()), systems: systemsOfGuids, spatialLinks: spatialLinksOfGuid, clash: supabaseClashStore(currentProjectId()), bcf: clashBcfPort(), clashViewer, verification: supabaseVerificationStore(currentProjectId()) };
 }
 
-/** `ifc_*` tool s reálnym prepojením na DB AIM (D-084); importuje sa lenivo z MCP route. */
+/** `ifc_*` tool with a real link to the AIM DB (D-084); imported lazily from the MCP route. */
 export function runEngineTool(name: string, args: Record<string, unknown>): Promise<EngineExecution> {
   return execEngineTool(name, args, engineDeps());
 }
 
-/** Kombinované `search_all` (D-095): IFC súbor + graf AIM, badge pri každom výsledku. */
+/** Combined `search_all` (D-095): IFC file + AIM graph, a badge on every result. */
 export function runSearchAll(args: Record<string, unknown>): Promise<EngineExecution> {
   const deps = { lookup: lookupGuids, resolveTargets: resolveTargetsToGuids };
   const runtime = new AskToolRuntime(currentProjectId());

@@ -27,7 +27,7 @@ const call = async (input: Record<string, unknown>, d: EngineDeps = deps) => {
   return { ...res, json: res.isError ? null : JSON.parse(res.content) };
 };
 
-/** Vlastný test: steny proti doske s odstupom 500 mm (v mini geometrii 2 kolízie, odstup 300 mm). */
+/** Custom test: walls against a slab with a clearance of 500 mm (in the mini geometry 2 clashes, clearance 300 mm). */
 const SAVE_MOJ = { action: "save", test: "MOJ", name: "Steny x doska", a: "IfcWall", b: "IfcSlab", mode: "clearance", clearance_mm: 500 } as const;
 
 beforeEach(() => {
@@ -108,14 +108,14 @@ describe("clash run save=true a uložený beh (D-164 PR2)", () => {
     const again = await call({ action: "run", test: "MOJ", save: true });
     expect(again.json).toMatchObject({ cached: true, saved: { already_saved: true, run_id: run.json.saved_run_id } });
     expect(store.runRows).toHaveLength(1);
-    // bez save=true sa nič nezapíše
+    // without save=true nothing is written
     clearClashRuns();
     await call({ action: "run", test: "MOJ", clearance_mm: 400 });
     expect(store.runRows).toHaveLength(1);
   });
 
   it("predvolený test sa pri ukladaní založí v DB s pôvodom default", async () => {
-    // mini model nemá VZT, preto test ad hoc zúžený na MINI cez prepísanie strán
+    // the mini model has no VZT, so the test is ad hoc narrowed to MINI by overriding the sides
     const run = await call({ action: "run", test: "VZT-ASR", a_model: "MINI", b_model: "MINI", a: "IfcWall", b: "IfcSlab", clearance_mm: 500, save: true });
     expect(run.isError).toBe(false);
     expect(store.tests[0]).toMatchObject({ code: "VZT-ASR", origin: "default" });
@@ -133,7 +133,7 @@ describe("clash run save=true a uložený beh (D-164 PR2)", () => {
     await call(SAVE_MOJ);
     const run = await call({ action: "run", test: "MOJ", save: true });
     const live = await call({ action: "results", group_by: "type_pair", group: "1" });
-    clearClashRuns(); // reštart inštancie
+    clearClashRuns(); // instance restart
     expect((await call({ action: "results" })).content).toMatch(/najprv action=run/);
 
     const byId = await call({ action: "results", run_id: run.json.saved.run_id, group_by: "type_pair", group: "1" });
@@ -165,7 +165,7 @@ describe("clash run save=true a uložený beh (D-164 PR2)", () => {
 
   it("strop uloženia kolízií odmietne beh so radou zúžiť", async () => {
     expect(RESULT_CAP).toBe(100_000);
-    // krátky dôkaz cez beh nad stropom nejde bez veľkého modelu: kontrola, že hláška nesie strop a radu
+    // a short proof via a run above the ceiling does not work without a large model: check that the message carries the ceiling and the hint
     const { persistRun } = await import("./clash-saved");
     const fake = { saved: undefined, spec: { code: null }, result: { clashes: new Array(RESULT_CAP + 1).fill({ status: "hard" }) } } as never;
     await expect(persistRun(fake, deps)).rejects.toThrow(/nad stropom 100000[\s\S]*a_storey/);
@@ -192,7 +192,7 @@ describe("clash review - stav kolízie sa prenáša medzi behmi (D-164 PR2)", ()
     expect(set.json).toMatchObject({ updated: 2, review_status: "accepted", test: "MOJ" });
     expect(store.reviewRows.map((r) => r.status)).toEqual(["accepted", "accepted"]);
 
-    // nový beh (iná tolerancia = iný odtlačok), stav ostáva
+    // a new run (another tolerance = another fingerprint), the status stays
     const next = await call({ action: "run", test: "MOJ", tolerance_mm: 3, save: true });
     expect(next.json.cached).toBe(false);
     const res = await call({ action: "results", run_id: next.json.saved_run_id, group_by: "storey", group: "1NP" });
@@ -237,7 +237,7 @@ describe("clash compare (D-164 PR2)", () => {
   it("nové, vyriešené a pretrvávajúce kolízie; stav pri pretrvávajúcej vyriešenej sa označí", async () => {
     await call(SAVE_MOJ);
     const first = await runSaved();
-    // druhý beh s menším odstupom: obe kolízie zmiznú, prvky sa znova overili = vyriešené
+    // a second run with a smaller clearance: both clashes disappear, the elements were verified again = resolved
     const second = await runSaved({ clearance_mm: 100 });
     expect(second.total).toBe(0);
     const cmp = await call({ action: "compare", run_id: second.saved_run_id });
@@ -246,7 +246,7 @@ describe("clash compare (D-164 PR2)", () => {
     expect(cmp.json.warnings.join(" ")).toMatch(/iný režim, odstup alebo toleranciu/);
     expect(cmp.json.by_storey.resolved).toEqual({ "1NP": 2 });
 
-    // tretí beh s pôvodným odstupom vráti obe kolízie ako nové proti druhému a pretrvávajúce proti prvému
+    // a third run with the original clearance returns both clashes as new against the second and persisting against the first
     const third = await runSaved({ clearance_mm: 500, tolerance_mm: 3 });
     const vsSecond = await call({ action: "compare", run_id: third.saved_run_id });
     expect(vsSecond.json.summary).toEqual({ added: 2, persistent: 0, resolved: 0, unretested: 0 });
@@ -266,7 +266,7 @@ describe("clash compare (D-164 PR2)", () => {
     await call(SAVE_MOJ);
     const first = await runSaved();
     const base = store.runRows[0];
-    // Nový beh (zúžený rozsah): neoveril stenu W2, a teda ani jej kolíziu; W1 áno a kolízia W1 zmizla.
+    // A new run (narrowed scope): it did not verify wall W2, hence not its clash either; W1 yes and the W1 clash disappeared.
     const narrowed: ClashRunRow = {
       ...base,
       id: "c0000001-0000-4000-8000-000000000000",
@@ -279,7 +279,7 @@ describe("clash compare (D-164 PR2)", () => {
     expect(cmp.json.samples.resolved[0].a.global_id).toBe(guid("W1"));
     expect(cmp.json.samples.unretested[0].a.global_id).toBe(guid("W2"));
 
-    // Beh bez zoznamu overených prvkov nevie nič potvrdiť: všetko nepretestované.
+    // A run without a list of verified elements cannot confirm anything: everything not retested.
     store.runRows[1] = { ...narrowed, coverage: null };
     const blind = await call({ action: "compare", run_id: narrowed.id, base_run_id: first.saved_run_id });
     expect(blind.json.summary).toEqual({ added: 0, persistent: 0, resolved: 0, unretested: 2 });
@@ -341,7 +341,7 @@ describe("clash bcf create (D-164 PR2)", () => {
     expect(again.json).toMatchObject({ created: false, existing: { linked_clashes: 2, topics: [{ number: 1 }] } });
     expect(bcf.created).toHaveLength(1);
 
-    // stav kolízií ostal otvorený (odkaz na tému ho nemení) a results ukáže odkaz
+    // the clash status stayed open (a link to the topic does not change it) and results shows the link
     expect(store.reviewRows.every((x) => x.status === "open")).toBe(true);
   });
 
@@ -375,7 +375,7 @@ describe("clash bcf create (D-164 PR2)", () => {
 });
 
 describe("clash podpis vstupu: based_on a stale (D-183 bod 11, #292)", () => {
-  /** Aktuálna revízia MINI je 12 (ako `model_revisions.is_current`). */
+  /** The current revision of MINI is 12 (like `model_revisions.is_current`). */
   const current = (rev: number): EngineDeps["revisions"] => async (models) =>
     models.map((model) => ({ model, revision: rev, parent_revision: null, is_current: true, sha256: "x", size_bytes: 1, recipe_ref: null, summary: null, author: null, guard: null, created_at: "2026-10-31T00:00:00Z" }));
 
@@ -383,11 +383,11 @@ describe("clash podpis vstupu: based_on a stale (D-183 bod 11, #292)", () => {
     await call(SAVE_MOJ);
     const first = (await call({ action: "run", test: "MOJ", save: true })).json;
     const second = (await call({ action: "run", test: "MOJ", save: true, tolerance_mm: 3 })).json;
-    // mini geometria nie je z archívu (bez revízie): pečiatku dá trigger K1, tu ju nastavíme ručne
+    // the mini geometry is not from the archive (without a revision): the stamp is given by trigger K1, here we set it by hand
     expect(store.runRows.map((r) => r.model_revisions)).toEqual([undefined, undefined]);
     store.runRows[0].model_revisions = { MINI: 11 };
     store.runRows[1].model_revisions = { MINI: 12 };
-    clearClashRuns(); // čítanie z DB
+    clearClashRuns(); // reading from the DB
     const d = { ...deps, revisions: current(12) };
 
     const list = await call({ action: "list", test: "MOJ" }, d);
@@ -408,12 +408,12 @@ describe("clash podpis vstupu: based_on a stale (D-183 bod 11, #292)", () => {
     expect(cmp.json.revisions_changed).toBe("MINI v011 -> v012");
     expect(cmp.json.run).toMatchObject({ based_on: { MINI: 12 }, stale: false });
     expect(cmp.json.base.based_on).toEqual({ MINI: 11 });
-    // keď medzitým vyšla v013, nový beh je zastaraný a compare to povie nahlas
+    // when v013 has come out in the meantime, the new run is stale and compare says it aloud
     const later = await call({ action: "compare", run_id: second.saved_run_id }, { ...deps, revisions: current(13) });
     expect(later.json.run.stale).toBe(true);
     expect(later.json.warnings.join(" ")).toMatch(/nie je nad aktuálnymi revíziami.*MINI v012 -> v013/);
 
-    // bez zdroja revízií: podpis áno, stale nie (neznáme != zastarané)
+    // without a revision source: signature yes, stale no (unknown != stale)
     const noSource = await call({ action: "results", run_id: first.saved_run_id });
     expect(noSource.json.based_on).toEqual({ MINI: 11 });
     expect("stale" in noSource.json).toBe(false);

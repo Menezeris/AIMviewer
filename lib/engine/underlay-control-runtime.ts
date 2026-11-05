@@ -11,8 +11,8 @@ import type { CalibratedDocument, ControlDeps, ResolvedFloor, ViewerSnapshot, Vi
 import { currentProjectId } from "../project/context";
 
 /**
- * Produkčné závislosti ovládania podkladov (D-168): dokumenty s `_georef` a podlažia z DB, stav podkladov zo
- * živého viewera (`get_viewer_state.underlays`). Bez viewera sa `list` odpovie len z DB.
+ * Production dependencies of underlay control (D-168): documents with `_georef` and storeys from the DB, the underlay state from the
+ * live viewer (`get_viewer_state.underlays`). Without a viewer `list` is answered from the DB only.
  */
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -53,7 +53,7 @@ async function floorNames(guids: string[]): Promise<Map<string, string>> {
   return new Map((await floorRows()).filter((f) => wanted.has(f.ifc_guid)).map((f) => [f.ifc_guid, f.object_ref ?? f.name ?? f.ifc_guid]));
 }
 
-/** Podlažie podľa kódu, mena, UUID alebo IFC GUID; zhodné štítky z viac modelov federácie dajú viac GUID. */
+/** Storey by code, name, UUID or IFC GUID; matching labels from several federation models give several GUIDs. */
 async function floor(ref: string): Promise<ResolvedFloor | null> {
   const key = ref.trim().toLowerCase();
   const rows = await floorRows();
@@ -64,7 +64,7 @@ async function floor(ref: string): Promise<ResolvedFloor | null> {
   return { name: hit[0].object_ref ?? hit[0].name ?? ref, guids: [...new Set(hit.map((f) => f.ifc_guid))] };
 }
 
-/** Stav podkladov zo živého viewera; chýbajúce pole `underlays` = starý viewer. */
+/** Underlay state from the live viewer; a missing `underlays` field = an old viewer. */
 async function viewer(): Promise<ViewerSnapshot> {
   const channel = liveChannel();
   if (!channel) return { connected: false, reason: "LIVE_CHANNEL nie je nastavený", underlays: null, underlays_3d: null };
@@ -81,7 +81,7 @@ async function viewer(): Promise<ViewerSnapshot> {
   };
 }
 
-/** Zápis `_georef` ako `calibrate_underlay`: zlúčenie nad najnovšími properties tesne pred zápisom. */
+/** Writing `_georef` like `calibrate_underlay`: a merge over the newest properties right before the write. */
 async function write(documentId: string, apply: (stored: unknown) => RestoreResult | RemoveResult): Promise<RestoreResult | RemoveResult> {
   const projectId = currentProjectId();
   const db = getSupabaseAdmin();

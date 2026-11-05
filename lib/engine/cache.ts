@@ -5,19 +5,19 @@ import type { IfcDataStore } from "@ifc-lite/parser";
 import { parseIfcBytes } from "./loader";
 
 /**
- * Cache parsovaných modelov v pamäti inštancie funkcie (D-084).
+ * Cache of parsed models in the memory of a function instance (D-084).
  *
- * Kľúč = identita modelu, kontajner (`information_containers.id`, D-189); kód modelu (ASR) je len
- * štítok jedinečný v projekte. Položka platí pre konkrétnu URL a ETag. Súbor sa znova overí HEAD requestom najviac raz za `REVALIDATE_MS`
- * (rovnaké okno ako ISR, D-030) a pri zmene ETagu sa načíta nanovo. Súbežné
- * požiadavky na ten istý model čakajú na jedno načítanie (single-flight).
- * `unstable_cache` sa nedá použiť - parsovaný store má stovky MB a nie je
- * serializovateľný.
+ * Key = model identity, the container (`information_containers.id`, D-189); the model code (ASR) is only a
+ * label unique within a project. An entry is valid for a specific URL and ETag. The file is re-checked by a HEAD request at most once per `REVALIDATE_MS`
+ * (the same window as ISR, D-030) and on an ETag change it is loaded anew. Concurrent
+ * requests for the same model wait for a single load (single-flight).
+ * `unstable_cache` cannot be used - the parsed store has hundreds of MB and is not
+ * serializable.
  *
- * D-135: bajty sa sťahujú z nemenného archívu aktuálnej revízie (`archive/<MODEL>/
- * vNNN.ifc.gz`, cca 5-krát menší), ak ho resolver pozná; ETag na kontrolu zmeny je
- * stále z HEAD pôvodnej URL. Bez resolvera alebo pri chybe archívu sa stiahne
- * pôvodná URL ako doteraz.
+ * D-135: bytes are downloaded from the immutable archive of the current revision (`archive/<MODEL>/
+ * vNNN.ifc.gz`, about 5 times smaller) if the resolver knows it; the ETag for change checking is
+ * still from HEAD of the original URL. Without a resolver or on an archive error the
+ * original URL is downloaded as before.
  */
 
 export interface EngineModelSource {
@@ -43,7 +43,7 @@ export interface CachedStore {
   url: string;
   etag: string | null;
   size: number;
-  /** Revízia archívu, z ktorého sa model načítal (D-183, podpis vstupu); null = pôvodná URL. */
+  /** Revision of the archive the model was loaded from (D-183, input signature); null = original URL. */
   revision: number | null;
   store: IfcDataStore;
   loadedAt: number;
@@ -53,7 +53,7 @@ export interface CachedStore {
 
 export interface GetStoreResult {
   entry: CachedStore;
-  /** true = model sa v tomto volaní sťahoval a parsoval. */
+  /** true = the model was downloaded and parsed in this call. */
   cold: boolean;
 }
 
@@ -62,12 +62,12 @@ const REVALIDATE_MS = 60_000;
 const entries = new Map<string, CachedStore>();
 const inflight = new Map<string, Promise<CachedStore>>();
 
-/** URL archívu aktuálnej revízie modelu (D-135) alebo null, keď revíziu nepoznáme. */
+/** URL of the archive of the current model revision (D-135) or null when the revision is not known. */
 export type ArchiveResolver = (src: EngineModelSource) => Promise<string | null>;
 
 let defaultArchive: ArchiveResolver | null = null;
 
-/** Server (`run.ts`) zaregistruje resolver nad `model_revisions`; testy a skripty bez neho. */
+/** The server (`run.ts`) registers a resolver over `model_revisions`; tests and scripts without it. */
 export function setArchiveResolver(resolver: ArchiveResolver | null): void {
   defaultArchive = resolver;
 }
@@ -85,24 +85,24 @@ async function head(url: string, fetchImpl: typeof fetch): Promise<{ etag: strin
   return { etag: res.headers.get("etag"), size: len ? Number(len) : null };
 }
 
-/** Strop rozbaleného modelu: poškodený alebo podvrhnutý archív nezahltí pamäť funkcie. */
+/** Ceiling of the unpacked model: a damaged or forged archive does not flood the function memory. */
 const MAX_UNPACKED_BYTES = 512 * 1024 * 1024;
 
-/** Číslo revízie z URL archívu (`archive/<MODEL>/vNNN.ifc.gz`); null = iný tvar. */
+/** Revision number from the archive URL (`archive/<MODEL>/vNNN.ifc.gz`); null = another shape. */
 export function archiveRevision(url: string): number | null {
   const m = /\/v(\d+)\.ifc\.gz$/i.exec(url.split(/[?#]/)[0]);
   return m ? Number(m[1]) : null;
 }
 
-/** Bajty z archívu revízie (gzip) s ETagom pôvodnej URL; null = archív nepoužiť. */
+/** Bytes from the revision archive (gzip) with the ETag of the original URL; null = do not use the archive. */
 async function fromArchive(
   src: EngineModelSource,
   fetchImpl: typeof fetch,
   archive: ArchiveResolver,
 ): Promise<{ bytes: Uint8Array; etag: string | null; revision: number | null } | null> {
   try {
-    // HEAD pred revíziou z DB: publikácia zapíše DB skôr než aktuálny kľúč, takže starý ETag
-    // s novou revíziou znamená najviac jedno načítanie navyše, nikdy nový ETag so starou revíziou.
+    // HEAD before the revision from the DB: publishing writes the DB before the current key, so an old ETag
+    // with a new revision means at most one extra load, never a new ETag with an old revision.
     const h = await head(src.url, fetchImpl);
     const url = await archive(src);
     if (!url) return null;
@@ -142,7 +142,7 @@ async function load(src: EngineModelSource, fetchImpl: typeof fetch, now: () => 
   };
 }
 
-/** Vráti parsovaný store modelu - z cache, alebo ho stiahne a naparsuje. */
+/** Returns the parsed store of a model - from the cache, or downloads and parses it. */
 export async function getStore(src: EngineModelSource, deps: Deps = {}): Promise<GetStoreResult> {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const now = deps.now ?? Date.now;
@@ -152,7 +152,7 @@ export async function getStore(src: EngineModelSource, deps: Deps = {}): Promise
   if (cached && cached.url === src.url) {
     if (now() - cached.checkedAt < REVALIDATE_MS) return { entry: cached, cold: false };
     const h = await head(src.url, fetchImpl).catch(() => null);
-    // Nedostupný HEAD = radšej starý model než chyba; ETag bez zmeny = platí.
+    // Unavailable HEAD = rather the old model than an error; an unchanged ETag = valid.
     if (!h || (h.etag !== null && h.etag === cached.etag)) {
       cached.checkedAt = now();
       return { entry: cached, cold: false };
@@ -173,7 +173,7 @@ export async function getStore(src: EngineModelSource, deps: Deps = {}): Promise
   return { entry: await p, cold: true };
 }
 
-/** Údaj o načítanom modeli vo výsledkoch motora: ETag, veľkosť, čas a revízia archívu, keď je známa (D-183). */
+/** Info about the loaded model in engine results: ETag, size, time and archive revision when known (D-183). */
 export function engineRevision(entry: CachedStore): { etag: string | null; size: number; loaded_at: string; revision?: number } {
   return {
     etag: entry.etag,
@@ -183,7 +183,7 @@ export function engineRevision(entry: CachedStore): { etag: string | null; size:
   };
 }
 
-/** Stav cache pre diagnostiku (ifc_models / ifc_engine_probe). */
+/** Cache state for diagnostics (ifc_models / ifc_engine_probe). */
 export function cacheSnapshot(): Array<Omit<CachedStore, "store">> {
   return [...entries.values()].map((e) => ({
     key: e.key,
@@ -198,7 +198,7 @@ export function cacheSnapshot(): Array<Omit<CachedStore, "store">> {
   }));
 }
 
-/** Len pre testy. */
+/** Tests only. */
 export function clearEngineCache(): void {
   entries.clear();
   inflight.clear();

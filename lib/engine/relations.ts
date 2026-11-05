@@ -15,27 +15,27 @@ import {
 } from "./tools";
 
 /**
- * `ifc_relations` (D-097): všetky IFC vzťahy jednej entity priamo zo súboru -
- * aj entity, ktorú graf AIM nepozná (zóna, port, systém len v súbore).
- * Adaptér nad upstream `relationships` (D-087): balík vráti hrany grafu v oboch
- * smeroch s presnou triedou IfcRel*, tu sa len filtrujú, rekurzívne rozvinú,
- * doplnia o GlobalId druhej strany a object_ref z AIM a stránkujú.
+ * `ifc_relations` (D-097): all IFC relations of one entity straight from the file -
+ * also of an entity the AIM graph does not know (zone, port, system only in the file).
+ * An adapter over upstream `relationships` (D-087): the bundle returns graph edges in both
+ * directions with the exact IfcRel* class, here they are only filtered, expanded recursively,
+ * completed with the GlobalId of the other side and the object_ref from AIM, and paginated.
  *
- * Smer je smer balíka: forward = entita je Relating strana (skupina -> členovia,
- * podlažie -> prvky, celok -> časti, prvok -> porty), inverse = Related strana
- * (kam entita patrí).
+ * Direction is the direction of the bundle: forward = the entity is the Relating side (group -> members,
+ * storey -> elements, whole -> parts, element -> ports), inverse = the Related side
+ * (where the entity belongs).
  */
 
 type Direction = "forward" | "inverse";
 const DIRECTIONS = ["forward", "inverse", "both"] as const;
-/** Väčší strop než ostatné ifc_* (20 000): zoznam členov má prejsť na málo stránok. */
+/** A larger ceiling than other ifc_* (20 000): the member list should fit on a few pages. */
 const MAX_RESULT_CHARS = 40_000;
 const MAX_DEPTH = 10;
-/** Strop prechodu pri rekurzii (ochrana pred celým grafom modelu v jednom volaní). */
+/** Traversal ceiling for recursion (protection against the whole model graph in one call). */
 const MAX_ROWS = 20_000;
-/** Rekurzia bez rel_types ide len cez členstvo (vnorené zóny, systémy); cez všetko by prešla celý model. */
+/** Recursion without rel_types goes only via membership (nested zones, systems); via everything it would walk the whole model. */
 const RECURSIVE_DEFAULT = "IfcRelAssignsToGroup";
-/** Psety a Qto dáva ifc_get; bez výslovného rel_types by zahltili zoznam. */
+/** Psets and Qto are given by ifc_get; without an explicit rel_types they would flood the list. */
 const HIDDEN_BY_DEFAULT = new Set(["relassociatesproperties", "reldefinesbyproperties"]);
 
 interface UpstreamEdge {
@@ -52,9 +52,9 @@ interface Row {
   via?: string;
   via_port?: string;
   port?: string;
-  /** Priestorová väzba (D-167): contained = prvok patrí do priestoru, referenced = je v ňom aj (neexkluzívne). */
+  /** Spatial link (D-167): contained = the element belongs to the space, referenced = it is also in it (non-exclusive). */
   kind?: "contained" | "referenced";
-  /** Väzba je odvodená geometriou v grafe AIM (D-080), v IFC súbore nie je. */
+  /** The link is derived by geometry in the AIM graph (D-080), it is not in the IFC file. */
   derived?: true;
   role?: string;
   global_id: string;
@@ -68,7 +68,7 @@ export function relKey(raw: string): string {
   return k.startsWith("rel") ? k : `rel${k}`;
 }
 
-/** Kľúč relKey -> zápis, ako ho dal volajúci. */
+/** Key relKey -> spelling as given by the caller. */
 function parseRelTypes(raw: unknown): Map<string, string> {
   const list = Array.isArray(raw) ? raw : raw === undefined ? [] : [raw];
   const out = new Map<string, string>();
@@ -88,7 +88,7 @@ const REFERENCED_TYPE = "IfcRelReferencedInSpatialStructure";
 
 const isPort = (type: string) => /port$/i.test(type);
 
-/** Zastavenie prechodu sieťou (D-110): IFC trieda, voliteľne s PredefinedType (`IfcDamper.FIREDAMPER`). */
+/** Stopping the traversal of the network (D-110): IFC class, optionally with PredefinedType (`IfcDamper.FIREDAMPER`). */
 interface StopRule {
   cls: string;
   predefined?: string;
@@ -164,8 +164,8 @@ export async function ifcRelations(input: Record<string, unknown>, deps: EngineD
     name: e.entity.name ?? null,
   });
 
-  // PredefinedType len pre kandidátov na zastavenie (stop_at s typom), nie pre celú sieť.
-  // Typovaný výskyt ho podľa IFC nemá ($ alebo NOTDEFINED) a nesie ho typ cez IfcRelDefinesByType (D-165).
+  // PredefinedType only for stop candidates (stop_at with a type), not for the whole network.
+  // A typed occurrence does not have it per IFC ($ or NOTDEFINED) and the type carries it via IfcRelDefinesByType (D-165).
   const predefinedAttr = async (id: number): Promise<string | null> => {
     const res = structured<{ attributes?: Array<{ name?: string; value?: unknown }> }>(
       await session.call("get_entity", { model_id: model.id, express_id: id, include: ["attributes"] }),
@@ -186,7 +186,7 @@ export async function ifcRelations(input: Record<string, unknown>, deps: EngineD
     : throughPorts
       ? await portConnections(rootId, edgesOf, guidOf, row)
       : await walk(rootId, edgesOf, guidOf, row, { relTypes, direction, recursive });
-  // Odvodené priestorové väzby (D-167) sú len v grafe AIM; dopĺňajú sa k hranám zo súboru bez duplicity.
+  // Derived spatial links (D-167) are only in the AIM graph; they are added to the edges from the file without duplicates.
   if (!trace && !throughPorts && !recursive && deps.spatialLinks && (relTypes.size === 0 || relTypes.has(relKey(REFERENCED_TYPE)))) {
     const seen = new Set(rows.filter((r) => r.kind === "referenced").map((r) => `${r.direction}|${r.global_id}`));
     for (const l of await deps.spatialLinks(guid)) {
@@ -223,12 +223,12 @@ export async function ifcRelations(input: Record<string, unknown>, deps: EngineD
   const { aim_url: _url, ...targetOut } = rootJoined;
   void _url;
 
-  // Dávka sa skráti tak, aby sa výsledok zmestil celý (nikdy nie orezaný JSON).
+  // The batch is shortened so that the result fits whole (never a truncated JSON).
   let size = Math.min(limit, Math.max(0, rows.length - offset));
   for (;;) {
     const page = rows.slice(offset, offset + size);
     const joined = await joinToAim(page, deps.lookup);
-    // Kompaktné riadky: väzba na AIM len pri prvkoch, ktoré AIM pozná.
+    // Compact rows: the AIM link only for elements that AIM knows.
     const items = joined.items.map((item) => {
       const { object_id, object_ref, aim_url, ...rest } = item;
       void aim_url;
@@ -274,7 +274,7 @@ export async function ifcRelations(input: Record<string, unknown>, deps: EngineD
 type EdgesOf = (id: number) => Promise<UpstreamEdge[]>;
 type MakeRow = (e: UpstreamEdge, extra?: Partial<Row>) => Row;
 
-/** Vzťahy entity; s `recursive` do šírky cez tie isté typy a smer (vnorené zóny, systémy, agregácie). */
+/** Relations of an entity; with `recursive` breadth-first via the same types and direction (nested zones, systems, aggregations). */
 async function walk(
   rootId: number,
   edgesOf: EdgesOf,
@@ -318,9 +318,9 @@ interface PortLink {
 }
 
 /**
- * Spojenia entity cez porty: vlastné porty (IfcRelNests, v IFC2X3
- * IfcRelConnectsPortToElement) -> IfcRelConnectsPorts -> port druhej strany ->
- * jeho hostiteľský prvok (ak ho port má).
+ * Entity connections via ports: own ports (IfcRelNests, in IFC2X3
+ * IfcRelConnectsPortToElement) -> IfcRelConnectsPorts -> the port of the other side ->
+ * its host element (if the port has one).
  */
 async function portLinks(rootId: number, edgesOf: EdgesOf): Promise<PortLink[]> {
   const hostOf = async (portId: number) =>
@@ -347,7 +347,7 @@ async function portLinks(rootId: number, edgesOf: EdgesOf): Promise<PortLink[]> 
   return out;
 }
 
-/** Prvky napojené na entitu cez porty, jeden krok. Port bez hostiteľa sa vráti sám. */
+/** Elements connected to an entity via ports, one step. A port without a host is returned alone. */
 async function portConnections(rootId: number, edgesOf: EdgesOf, guidOf: (id: number) => string, row: MakeRow): Promise<Row[]> {
   return (await portLinks(rootId, edgesOf)).map(({ own, link, host }) => {
     const ports = { via_port: guidOf(own.entity.id), port: guidOf(link.entity.id) };
@@ -361,14 +361,14 @@ export interface Reached {
   name: string | null;
   predefined_type?: string;
   steps: number;
-  /** GUIDy od štartu po zastavenie vrátane. */
+  /** GUIDs from the start to the stop inclusive. */
   path: string[];
 }
 
 /**
- * Prechod sieťou cez porty do šírky (D-110): každý prvok raz, s hĺbkou a
- * predchodcom (`via`). Prvok zo `stop_at` sa zapíše do `reached` s cestou a za
- * neho sa nejde (najbližšia jednotka, prvá klapka). Oba smery toku.
+ * Network traversal via ports breadth-first (D-110): every element once, with depth and
+ * predecessor (`via`). An element from `stop_at` is written to `reached` with the path and
+ * the traversal does not continue past it (the nearest unit, the first damper). Both flow directions.
  */
 async function traceNetwork(
   rootId: number,

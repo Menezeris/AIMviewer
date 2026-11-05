@@ -16,17 +16,17 @@ import { bodyFromMeshTriangles, dimensionPoint, extractExtrusions, verifySpace, 
 import { ENGINE_VERSION, IFC_GUID_RE, InputError, guidIndex, modelsFor, revisionStamp, str, type EngineDeps } from "./tools";
 
 /**
- * `ifc_measure verify=true` (D-185): overenie výmer IfcSpace voči geometrii. Pre každú miestnosť z `a` / `items`
- * vráti pri každej veličine Qto_SpaceBaseQuantities hodnotu zo súboru, hodnotu z geometrie, stav
- * (green / yellow / red / grey), metódu, definíciu zo schémy, použitú toleranciu, vzorec s dosadenými číslami
- * a kotvy. Pravidlá sú v registri `lib/verify/quantity-methods.ts`. `show=true` nakreslí zvislé kóty
- * (MEASURE_SHOW, D-124), `save=true` uloží beh k revízii (`verification_runs`, D-183 bod 11).
+ * `ifc_measure verify=true` (D-185): verification of IfcSpace quantities against geometry. For every space from `a` / `items`
+ * it returns for each Qto_SpaceBaseQuantities quantity the value from the file, the value from geometry, the status
+ * (green / yellow / red / grey), the method, the definition from the schema, the tolerance used, a formula with substituted numbers
+ * and anchors. The rules are in the registry `lib/verify/quantity-methods.ts`. `show=true` draws vertical dimensions
+ * (MEASURE_SHOW, D-124), `save=true` stores the run for a revision (`verification_runs`, D-183 point 11).
  */
 
 export const MAX_SPACES = 50;
 const SLAB_TYPES = ["IFCSLAB", "IFCSLABSTANDARDCASE", "IFCSLABELEMENTEDCASE"];
 const COVERING_TYPES = ["IFCCOVERING"];
-/** Kóty vedľa seba v ťažisku miestnosti, aby sa neprekrývali (m). */
+/** Dimensions side by side at the space centroid so that they do not overlap (m). */
 const DIMENSION_STEP_M = 0.3;
 
 interface ModelData {
@@ -35,9 +35,9 @@ interface ModelData {
   spaces: number[];
   slabs: Element[];
   coverings: Element[];
-  /** NetFloorArea: stĺpy, steny a vstavky (`NET_FLOOR_AREA`). */
+  /** NetFloorArea: columns, walls and built-ins (`NET_FLOOR_AREA`). */
   inner: Element[];
-  /** NetFloorArea: otvory vyrezávajúce dosky. */
+  /** NetFloorArea: openings cutting slabs. */
   slabOpenings: Opening[];
 }
 
@@ -62,8 +62,8 @@ function element(store: IfcDataStore, id: number, body: Body): Element {
 type Sets = Array<{ name: string; properties: Array<{ name: string; value: unknown }> }>;
 
 /**
- * Vstavka (NET_FLOOR_AREA.built_in_property): `Pset_FurnitureTypeCommon.IsBuiltIn` = TRUE na výskyte, inak na type
- * (IfcRelDefinesByType, HasPropertySets typu; dedenie ako `load-bearing.ts`). Bez hodnoty alebo pri chybe čítania nie.
+ * Built-in (NET_FLOOR_AREA.built_in_property): `Pset_FurnitureTypeCommon.IsBuiltIn` = TRUE on the occurrence, otherwise on the type
+ * (IfcRelDefinesByType, HasPropertySets of the type; inheritance like `load-bearing.ts`). Without a value or on a read error no.
  */
 export function isBuiltIn(store: IfcDataStore, id: number): boolean {
   const { pset, name } = NET_FLOOR_AREA.built_in_property;
@@ -77,12 +77,12 @@ export function isBuiltIn(store: IfcDataStore, id: number): boolean {
   }
 }
 
-/** Prvky NetFloorArea modelu: triedy `NET_FLOOR_AREA.element_types` a nábytok s IsBuiltIn. */
+/** NetFloorArea elements of a model: classes `NET_FLOOR_AREA.element_types` and furniture with IsBuiltIn. */
 function innerIds(store: IfcDataStore): number[] {
   return [...ids(store, [...NET_FLOOR_AREA.element_types]), ...ids(store, [...NET_FLOOR_AREA.built_in_types]).filter((id) => isBuiltIn(store, id))];
 }
 
-/** Otvory dosiek (IfcRelVoidsElement): id otvoru -> GlobalId dosky. */
+/** Slab openings (IfcRelVoidsElement): opening id -> slab GlobalId. */
 function slabOpeningIds(store: IfcDataStore, slabIds: number[]): Map<number, string> {
   const out = new Map<number, string>();
   for (const sl of slabIds) {
@@ -92,7 +92,7 @@ function slabOpeningIds(store: IfcDataStore, slabIds: number[]): Map<number, str
   return out;
 }
 
-/** Teleso z meshu motora (náhrada za extrúziu): trojuholníky v IFC svete, uzavretosť a objem z `meshMetrics`. */
+/** Solid from the engine mesh (substitute for an extrusion): triangles in the IFC world, closedness and volume from `meshMetrics`. */
 export function meshBody(expressId: number, e: MeshElement): Body {
   const { closed, volume } = meshMetrics(e.positions, e.indices);
   const tris = new Float64Array(e.indices.length * 3);
@@ -106,7 +106,7 @@ export function meshBody(expressId: number, e: MeshElement): Body {
   return bodyFromMeshTriangles(expressId, tris, closed, volume);
 }
 
-/** Extrúzie miestností, dosiek, krytín, prvkov NetFloorArea a otvorov dosiek modelu raz na store (ako tesselácia v measure.ts). */
+/** Extrusions of spaces, slabs, coverings, NetFloorArea elements and slab openings of a model once per store (like tessellation in measure.ts). */
 export function modelData(m: EngineModel): Promise<ModelData> {
   const hit = cache.get(m.store);
   if (hit) return hit;
@@ -121,7 +121,7 @@ export function modelData(m: EngineModel): Promise<ModelData> {
     const all = [...new Set([...spaces, ...slabIds, ...covIds, ...inner, ...openingHost.keys()])];
     const { bodies, lengthUnitScale } = await store.source.withMaterializedAsync((bytes) => extractExtrusions(bytes, all));
     for (const id of all) if (!bodies.has(id)) bodies.set(id, { expressId: id, prisms: [], unsupported: "bez extrúzie" });
-    // Náhrada telesa (D-185 oprava): prvky bez použiteľnej extrúzie dostanú teleso z uzavretého meshu motora.
+    // Solid substitute (D-185 fix): elements without a usable extrusion get a solid from the closed engine mesh.
     const needMesh = all.filter((id) => !bodies.get(id)!.prisms.length);
     if (needMesh.length) {
       const meshes = await meshModel(m);
@@ -134,7 +134,7 @@ export function modelData(m: EngineModel): Promise<ModelData> {
           continue;
         }
         const fallback = meshBody(id, e);
-        // Pri neuzavretom meshi nesie dôvod oboje: prečo nie extrúzia a že mesh nie je uzavretý (OPEN_MESH_RULE).
+        // For an open mesh the reason carries both: why not an extrusion and that the mesh is not closed (OPEN_MESH_RULE).
         bodies.set(id, { ...fallback, unsupported: fallback.unsupported ? `${prev.unsupported ?? "bez extrúzie"}; ${fallback.unsupported}` : prev.unsupported });
       }
     }
@@ -156,14 +156,14 @@ export function modelData(m: EngineModel): Promise<ModelData> {
 
 const qsetMethods = new WeakMap<IfcDataStore, Map<string, string>>();
 
-/** `IfcElementQuantity.MethodOfMeasurement` podľa GlobalId sady (stĺpcový store ho v `quantities()` nenesie). */
+/** `IfcElementQuantity.MethodOfMeasurement` by the GlobalId of the set (the column store does not carry it in `quantities()`). */
 function methodOfMeasurement(store: IfcDataStore, qsetGlobalId: string | undefined): string | undefined {
   if (!qsetGlobalId) return undefined;
   let map = qsetMethods.get(store);
   if (!map) {
     map = new Map();
     for (const id of store.entityIndex.byType.get("IFCELEMENTQUANTITY") ?? []) {
-      // GlobalId sady nie je v stĺpcovom store (getGlobalId vráti ""), EntityNode ho dočíta zo zdroja.
+      // The GlobalId of the set is not in the column store (getGlobalId returns ""), EntityNode reads it from the source.
       const node = new EntityNode(store, id);
       const v = node.allAttributes().find((a) => a.name === "MethodOfMeasurement")?.value;
       const gid = node.globalId;
@@ -175,8 +175,8 @@ function methodOfMeasurement(store: IfcDataStore, qsetGlobalId: string | undefin
 }
 
 /**
- * Qto_SpaceBaseQuantities miestnosti v m / m2 / m3, vzorce zo súboru (IfcQuantity*.Formula) a MethodOfMeasurement sady
- * (len informačne, detail veličiny vo vieweri).
+ * Qto_SpaceBaseQuantities of a space in m / m2 / m3, formulas from the file (IfcQuantity*.Formula) and MethodOfMeasurement of the set
+ * (informational only, quantity detail in the viewer).
  */
 export function spaceQuantities(store: IfcDataStore, id: number, scale: number): { qto: Record<string, number>; formulas: Record<string, string>; method_of_measurement?: string } {
   const qto: Record<string, number> = {};
@@ -187,7 +187,7 @@ export function spaceQuantities(store: IfcDataStore, id: number, scale: number):
     method ??= methodOfMeasurement(store, set.globalId);
     for (const q of set.quantities) {
       if (!Number.isFinite(q.value)) continue;
-      // QuantityType: 0 dĺžka (jednotky súboru), 1 plocha, 2 objem (m2, m3 v našich súboroch).
+      // QuantityType: 0 length (file units), 1 area, 2 volume (m2, m3 in our files).
       qto[q.name] = q.type === 0 ? Math.round(q.value * scale * 1e9) / 1e9 : q.value;
       if (q.formula) formulas[q.name] = q.formula;
     }
@@ -201,11 +201,11 @@ function counts(results: RecipeResult[]): Record<Status, number> {
   return c;
 }
 
-/** Zvislé kóty dĺžkových receptov v ťažisku pôdorysu, posunuté vedľa seba; najviac MAX_MEASURE_SEGMENTS. */
+/** Vertical dimensions of length recipes at the plan centroid, shifted side by side; at most MAX_MEASURE_SEGMENTS. */
 export function spaceDimensions(space: SpaceInput, results: RecipeResult[]): MeasureSegment[] {
   const c = dimensionPoint(space);
   if (!c) return [];
-  // Height zo súborových dosiek, ak ich recept našiel; inak z vlastného telesa (dve kóty tej istej výšky nekreslíme).
+  // Height from file slabs if the recipe found them; otherwise from its own solid (we do not draw two dimensions of the same height).
   const bySlabs = results.find((r) => r.recipe.startsWith("space.height.slabs") && r.dimension);
   const picked = results.filter((r) => r.dimension && !(bySlabs && r.recipe.startsWith("space.height.own")));
   return picked.map((r, i) => ({
@@ -214,7 +214,7 @@ export function spaceDimensions(space: SpaceInput, results: RecipeResult[]): Mea
   }));
 }
 
-/** Overená miestnosť: vstup, výsledky receptov a údaje zo súboru (vzorce, MethodOfMeasurement). */
+/** A verified space: input, recipe results and data from the file (formulas, MethodOfMeasurement). */
 export interface VerifiedSpace {
   model: EngineModel;
   space: SpaceInput;
@@ -223,7 +223,7 @@ export interface VerifiedSpace {
   method_of_measurement?: string;
 }
 
-/** Riadky `verification_results` jednej miestnosti (aj bunky, vysvetlenie a údaje zo súboru v `inputs`). */
+/** Rows of `verification_results` of one space (also cells, explanation and data from the file in `inputs`). */
 export function resultRows(v: VerifiedSpace, revision: number | null): VerificationResultWrite[] {
   return v.results.map((r) => {
     const q = r.target.split(".")[1];
@@ -255,7 +255,7 @@ export function resultRows(v: VerifiedSpace, revision: number | null): Verificat
   });
 }
 
-/** Overí miestnosti podľa polohy v modeli (bez stropu počtu; strop drží volajúci). */
+/** Verifies spaces by position in the model (without a count ceiling; the ceiling is held by the caller). */
 export async function verifyLocated(located: Array<{ m: EngineModel; id: number }>): Promise<VerifiedSpace[]> {
   const out: VerifiedSpace[] = [];
   for (const { m, id } of located) {
@@ -269,8 +269,8 @@ export async function verifyLocated(located: Array<{ m: EngineModel; id: number 
 }
 
 /**
- * Uloženie behu k revízii (D-183 bod 11): beh bez známej revízie každého použitého modelu sa neukladá.
- * Vráti objekt `saved` pre výstup toolu aj host routes.
+ * Storing a run for a revision (D-183 point 11): a run without a known revision of each used model is not stored.
+ * Returns the `saved` object for the tool output and the host routes.
  */
 export async function saveVerification(
   deps: Pick<EngineDeps, "verification">,
@@ -296,8 +296,8 @@ export async function saveVerification(
 export { counts as statusCounts };
 
 /**
- * Host (D-185 UI, `/api/verify/*`): overí miestnosti podľa IFC GlobalId v modeloch federácie, alebo všetky IfcSpace
- * všetkých modelov (`guids` = null, "run_all"). Bez stropu MAX_SPACES (ten drží len tool); vráti aj podpis revízie.
+ * Host (D-185 UI, `/api/verify/*`): verifies spaces by IFC GlobalId in federation models, or all IfcSpace
+ * of all models (`guids` = null, "run_all"). Without the MAX_SPACES ceiling (held only by the tool); also returns the revision signature.
  */
 export async function verifySpacesByGuid(guids: string[] | null, deps: EngineDeps): Promise<{ verified: VerifiedSpace[]; stamp: Record<string, number>; used: string[] }> {
   const modelIds = (deps.sources ?? requestIfcModels)().map((m) => m.id);

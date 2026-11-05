@@ -1,12 +1,12 @@
 /**
- * Nosnosť prvku (`Pset_*Common.LoadBearing`) pre filter strany testu kolízií (D-164, dodatok 2026-10-31, #292).
- * Hodnota sa berie z výskytu a ak ju výskyt nemá, z jeho typu (IfcRelDefinesByType, dedenie ako D-021). Prvok bez hodnoty
- * na výskyte aj type je "neznámy" (`null`), nikdy sa nepovažuje za nosný ani nenosný.
+ * Load-bearing property of an element (`Pset_*Common.LoadBearing`) for the clash test side filter (D-164, addendum 2026-10-31, #292).
+ * The value is taken from the occurrence and if the occurrence lacks it, from its type (IfcRelDefinesByType, inheritance as D-021). An element without a value
+ * on both the occurrence and the type is "unknown" (`null`), it is never considered load-bearing or non-load-bearing.
  */
 import { extractPropertiesOnDemand, extractTypePropertiesOnDemand, type IfcDataStore } from "@ifc-lite/parser";
 
 export const LOAD_BEARING_FILTERS = ["true", "false", "unknown"] as const;
-/** true = len nosné, false = len výslovne nenosné, unknown = bez hodnoty (výskyt ani typ ju nemajú). */
+/** true = only load-bearing, false = only explicitly non-load-bearing, unknown = no value (neither occurrence nor type has it). */
 export type LoadBearingFilter = (typeof LOAD_BEARING_FILTERS)[number];
 
 export type LoadBearingSource = "occurrence" | "type";
@@ -17,7 +17,7 @@ export interface LoadBearingInfo {
 
 type Sets = Array<{ name: string; properties: Array<{ name: string; value: unknown }> }>;
 
-/** IFC boolean v rôznych tvaroch parsera: true, ".T.", "TRUE", "True", 1; nerozpoznané = neznáme. */
+/** IFC boolean in various parser shapes: true, ".T.", "TRUE", "True", 1; unrecognized = unknown. */
 export function parseBoolean(v: unknown): boolean | null {
   if (typeof v === "boolean") return v;
   if (typeof v === "number") return v === 1 ? true : v === 0 ? false : null;
@@ -28,7 +28,7 @@ export function parseBoolean(v: unknown): boolean | null {
   return null;
 }
 
-/** `LoadBearing` zo sád: štandardné `Pset_*Common` majú prednosť pred vlastnými (napr. AIM_StairFlight). */
+/** `LoadBearing` from sets: standard `Pset_*Common` take precedence over custom ones (e.g. AIM_StairFlight). */
 export function loadBearingFromSets(sets: Sets): boolean | null {
   const hits = sets
     .map((s) => ({ common: /^Pset_.*Common$/.test(s.name), value: parseBoolean(s.properties.find((p) => p.name === "LoadBearing")?.value) }))
@@ -36,7 +36,7 @@ export function loadBearingFromSets(sets: Sets): boolean | null {
   return (hits.find((h) => h.common) ?? hits[0])?.value ?? null;
 }
 
-/** Výskyt, potom typ; chyba čítania psetov = neznáme (filter prvok neprepustí ani nevyhodí). */
+/** Occurrence, then type; a pset read error = unknown (the filter neither lets the element through nor drops it). */
 export function loadBearingOf(store: IfcDataStore, expressId: number): LoadBearingInfo {
   try {
     const own = loadBearingFromSets(extractPropertiesOnDemand(store, expressId) as Sets);

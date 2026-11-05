@@ -55,7 +55,7 @@ describe("kóta k ifc_measure (D-124)", () => {
     const b = cube([3, 0, 0], 1, [100, 200, 10]);
     expect(closestOnMesh(a, [2, 0.5, 0.5])).toEqual([1, 0.5, 0.5]);
     const seg = pairDimension(a, b, [2, 0.5, 0.5], 2)!;
-    // Y-up mesh -> IFC: x = x, y = -z, z = y; potom posun rámca.
+    // Y-up mesh -> IFC: x = x, y = -z, z = y; then the frame offset.
     expect(seg).toEqual({ a: { x: 101, y: 199.5, z: 10.5 }, b: { x: 103, y: 199.5, z: 10.5 } });
     expect(pairDimension(a, b, [1, 0.5, 0.5], 0)).toBeNull();
     expect(toWorld(cube([0, 0, 0]), [1, 2, 3])).toEqual([1, -3, 2]);
@@ -109,7 +109,7 @@ describe("kóta k ifc_measure (D-124)", () => {
       { type: "MEASURE_SHOW", segments: [] },
       { type: "ROUTE_SHOW", color: "#dc2626", points: [] },
     ]);
-    // keep bez úsekov nedáva zmysel a zahodí sa.
+    // keep without segments makes no sense and is dropped.
     expect(parseOps("measure:keep:")).toEqual([]);
   });
 

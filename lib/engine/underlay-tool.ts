@@ -34,10 +34,10 @@ import { pageAxisLines, refAxesFromSheets, sectionFromPlans, sectionMarkFromName
 import { CALIBRATE_UNDERLAY_MODES, DEFAULT_MAX_ERROR_MM, PLAN_CUT_M, type Mode } from "./underlay-tool-def";
 
 /**
- * `calibrate_underlay` (D-133): automatická kalibrácia podkladu výkresu (strana PDF) pod
- * IFC model - pôdorys k podlažiu, zvislý rez k rovine rezu. Výsledok ide do `_georef` v2
- * dokumentu (zoznam kalibrácií, `lib/data/georef.ts`). Logika je tu, závislosti (DB, IFC
- * motor) v `underlay-runtime.ts`, aby sa dala testovať bez nich.
+ * `calibrate_underlay` (D-133): automatic calibration of a drawing underlay (PDF page) under the
+ * IFC model - floor plan to the storey, vertical section to the section plane. The result goes into `_georef` v2
+ * of the document (list of calibrations, `lib/data/georef.ts`). The logic is here, the dependencies (DB, IFC
+ * engine) in `underlay-runtime.ts`, so that it can be tested without them.
  */
 
 export { CALIBRATE_UNDERLAY_TOOL } from "./underlay-tool-def";
@@ -46,25 +46,25 @@ export interface UnderlayDocument {
   id: string;
   object_ref: string | null;
   name: string | null;
-  /** Surové `properties._georef` (v1, v2 alebo nič). */
+  /** Raw `properties._georef` (v1, v2 or nothing). */
   georef: unknown;
-  /** Podlažia, na ktoré je dokument naviazaný (IFC GUID a meno). */
+  /** Storeys the document is linked to (IFC GUID and name). */
   floors: { guid: string; name: string }[];
 }
 
 export interface UnderlayPage {
   blocks: PageBlock[];
   lines: { size: P2; segs: PageLine[] } | null;
-  /** Rozmer strany v bodoch (`document_pages.page_size`, D-158); null = ETL pred D-158. */
+  /** Page size in points (`document_pages.page_size`, D-158); null = ETL before D-158. */
   pageSize?: P2 | null;
 }
 
 export interface UnderlayModel {
   id: string;
   elements: MeshElement[];
-  /** Pôdorys: podlažie, jeho výška (m, z parsera, ako viewer) a IfcSpace (GUID). */
+  /** Floor plan: storey, its height (m, from the parser, like the viewer) and IfcSpace (GUID). */
   storey?: { guid: string; name: string; z?: number | null; spaceGuids: string[] };
-  /** Rez: výšky všetkých podlaží (IfcBuildingStorey.Elevation z parsera, IFC Z v m) na spárovanie kót (D-179). */
+  /** Section: heights of all storeys (IfcBuildingStorey.Elevation from the parser, IFC Z in m) for pairing the marks (D-179). */
   storeys?: { name: string; z: number }[];
 }
 
@@ -72,11 +72,11 @@ export interface UnderlayDeps {
   document: (ref: string) => Promise<UnderlayDocument | null>;
   page: (documentId: string, page: number) => Promise<UnderlayPage | null>;
   model: (opts: { model?: string; floor?: string }) => Promise<UnderlayModel>;
-  /** Zápis: `apply` zlúči kalibráciu do aktuálneho `_georef` (prečítaného tesne pred zápisom). */
+  /** Write: `apply` merges the calibration into the current `_georef` (read right before the write). */
   write: (documentId: string, apply: (stored: unknown) => MergeResult) => Promise<MergeResult>;
-  /** `object_ref` (miestnosť, stena, prvok) -> IFC GUID pre `pairs[].object_ref` (D-176); bez neho sa object_ref odmietne. */
+  /** `object_ref` (space, wall, element) -> IFC GUID for `pairs[].object_ref` (D-176); without it an object_ref is rejected. */
   refGuids?: (refs: string[]) => Promise<Map<string, string>>;
-  /** Kalibrované pôdorysy (strana s affine, plane null) s textom a čiarami, pre rovinu rezu zo značky (D-179). */
+  /** Calibrated floor plans (page with affine, plane null) with text and lines, for the section plane from a mark (D-179). */
   planSheets?: () => Promise<PlanSheet[]>;
   writeEnabled: boolean;
   now: () => Date;
@@ -93,21 +93,21 @@ interface Parsed {
   mode: Mode;
   floor?: string;
   section?: { axis: "x" | "y"; coordinate: number };
-  /** Rez zo značky na kalibrovanom pôdoryse (D-179): písmeno (null = z mena dokumentu). */
+  /** Section from a mark on a calibrated floor plan (D-179): the letter (null = from the document name). */
   fromPlan?: { mark: string | null };
-  /** Dvojica: bod modelu je `model_m`, alebo `object_ref` prvku (ťažisko prvku v rovine, D-176). */
+  /** Pair: the model point is `model_m`, or the `object_ref` of an element (element centroid in the plane, D-176). */
   pairs: { page_pct: P2; model_m?: P2; object_ref?: string }[];
   refine: boolean;
   maxErrorMm: number;
   force: boolean;
   model?: string;
-  /** Mierka výkresu 1:N zadaná používateľom (pevná v štarte aj ICP). */
+  /** Drawing scale 1:N given by the user (fixed in the start and in ICP). */
   scale: number | null;
-  /** Výrez strany v % (x, y, w, h; vľavo hore) pri hárku s viac výkresmi (D-180). */
+  /** Page region in % (x, y, w, h; top left) for a sheet with several drawings (D-180). */
   region: PageRegion | null;
 }
 
-/** `region` ako [x, y, w, h] alebo {x, y, width, height} v % strany (vľavo hore, ako open_drawing). */
+/** `region` as [x, y, w, h] or {x, y, width, height} in % of the page (top left, like open_drawing). */
 function parseRegion(v: unknown): PageRegion | null {
   if (v === undefined || v === null) return null;
   const o = v as { x?: unknown; y?: unknown; width?: unknown; height?: unknown };
@@ -166,10 +166,10 @@ function parse(a: Record<string, unknown>): Parsed {
 }
 
 /**
- * Výška podlažia: z parsera (`storeyElevations`, tú istú berie viewer), inak medián spodkov
- * priestorov. Minimum nestačí: šachta siaha pod podlahu (1NP ASR -1,2 m) a spodok priestoru
- * je nosná doska, nie podlaha (2NP ASR 4,85 m pri výške 5,0 m). Podlažie bez IfcSpace (5NP)
- * ide s výškou z parsera, popisky miestností potom nie sú (štart skenovaním, D-180).
+ * Storey height: from the parser (`storeyElevations`, the same one the viewer takes), otherwise the median of space
+ * bottoms. The minimum is not enough: a shaft reaches below the floor (1NP ASR -1.2 m) and the bottom of a space
+ * is the load-bearing slab, not the floor (2NP ASR 4.85 m at a height of 5.0 m). A storey without IfcSpace (5NP)
+ * goes with the height from the parser, space labels are then not available (start by scanning, D-180).
  */
 function storeyFloor(model: UnderlayModel): { z: number; spaces: { name: string; centroid: P2 }[] } {
   const ids = new Set(model.storey?.spaceGuids ?? []);
@@ -191,7 +191,7 @@ function storeyFloor(model: UnderlayModel): { z: number; spaces: { name: string;
   return { z: bottoms[Math.floor(bottoms.length / 2)], spaces };
 }
 
-/** Súčet odchýlok dvojíc od podobnosti (priamej alebo zrkadlovej). */
+/** Sum of pair deviations from a similarity (direct or mirrored). */
 function residual(pairs: { pdf_pt: P2; plane_m: P2 }[], mirror: boolean): number {
   const m = fitSimilarity(
     pairs.map((x) => x.pdf_pt),
@@ -206,9 +206,9 @@ function residual(pairs: { pdf_pt: P2; plane_m: P2 }[], mirror: boolean): number
 }
 
 /**
- * Body modelu pre dvojice s `object_ref` (D-176): ťažisko prvku v IFC (pôdorys: plošné ťažisko pôdorysu, napr. IfcSpace;
- * ináč priemer vrcholov), kým je rovina známa až po výbere podlažia. Prvok bez geometrie alebo mimo modelu je chyba
- * s radou (model_m alebo iný prvok), nie ticho vynechaná dvojica.
+ * Model points for pairs with `object_ref` (D-176): centroid of the element in IFC (floor plan: area centroid of the plan, e.g. IfcSpace;
+ * otherwise the mean of vertices), while the plane is known only after the storey is chosen. An element without geometry or outside the model is an error
+ * with a hint (model_m or another element), not a silently dropped pair.
  */
 async function pairRefPoints(pairs: Parsed["pairs"], model: UnderlayModel, deps: UnderlayDeps): Promise<Map<string, MeshElement>> {
   const refs = [...new Set(pairs.flatMap((x) => (x.object_ref ? [x.object_ref] : [])))];
@@ -228,7 +228,7 @@ async function pairRefPoints(pairs: Parsed["pairs"], model: UnderlayModel, deps:
   return out;
 }
 
-/** Ťažisko prvku v IFC: v pôdoryse plošné ťažisko pôdorysu (ako popisky miestností), ináč priemer vrcholov. */
+/** Centroid of an element in IFC: in plan the area centroid of the plan (like space labels), otherwise the mean of vertices. */
 function elementCentroid(el: MeshElement, plan: boolean): [number, number, number] {
   const pos = ifcPositions(el);
   const n = pos.length / 3;
@@ -247,7 +247,7 @@ function elementCentroid(el: MeshElement, plan: boolean): [number, number, numbe
   return [x / n, y / n, z / n];
 }
 
-/** Dvojice s bodom strany v bodoch PDF a bodom modelu v rovine (u, v); object_ref sa premieta ťažiskom do roviny. */
+/** Pairs with a page point in PDF points and a model point in the plane (u, v); object_ref is projected by its centroid into the plane. */
 function pairsInPlane(
   pairs: Parsed["pairs"],
   refPoints: Map<string, MeshElement>,
@@ -265,27 +265,27 @@ function pairsInPlane(
   });
 }
 
-/** Pohľad z druhej strany: zrkadlo osi u sa prenesie do roviny (u -> -u), affine ostane priamy. */
+/** View from the other side: the mirror of the u axis is carried into the plane (u -> -u), the affine stays direct. */
 function unmirror(res: CalibrationResult, plane: Plane): { affine: Affine; plane: Plane; calibration: CalibrationResult["calibration"] } {
   if (!res.mirrored) return { affine: res.affine, plane, calibration: res.calibration };
   const a = res.affine;
   return {
     affine: [-a[0], -a[1], -a[2], a[3], a[4], a[5]],
-    // `|| 0`: bez -0 v uloženom JSON.
+    // `|| 0`: no -0 in the stored JSON.
     plane: { ...plane, u: [-plane.u[0] || 0, -plane.u[1] || 0, -plane.u[2] || 0] },
     calibration: res.calibration.map((c) => ({ pdf_pt: c.pdf_pt, plane_m: [-c.plane_m[0], c.plane_m[1]] as P2 })),
   };
 }
 
-/** Séria výkresov `OCB_SO01_ASR` z object_ref (stavba, objekt, disciplína): pôdorysy rovnakej série majú prednosť. */
+/** Series of drawings `OCB_SO01_ASR` from object_ref (construction, object, discipline): floor plans of the same series take precedence. */
 function seriesOf(ref: string | null): string | null {
   const parts = ref?.split("_") ?? [];
   return parts.length >= 3 ? parts.slice(0, 3).join("_") : null;
 }
 
 /**
- * Rovina rezu zo značky na kalibrovaných pôdorysoch (D-179): písmeno z argumentu alebo z mena dokumentu
- * (REZ-A), pôdorysy tej istej série (ASR) prednostne, inak všetky kalibrované.
+ * Section plane from a mark on calibrated floor plans (D-179): the letter from the argument or from the document name
+ * (REZ-A), floor plans of the same series (ASR) preferably, otherwise all calibrated.
  */
 async function planSection(markArg: string | null, doc: UnderlayDocument, deps: UnderlayDeps): Promise<SectionFromPlans> {
   const mark = markArg ?? sectionMarkFromName(doc.object_ref, doc.name);
@@ -303,22 +303,22 @@ async function planSection(markArg: string | null, doc: UnderlayDocument, deps: 
   return res;
 }
 
-/** Osi pôdorysu pre výpočet a výsledok: odkiaľ sú osi strany (dvojice popiskov, rady bublín) a natočenie siete. */
+/** Floor plan grids for computation and result: where the page grids come from (pairs of labels, rows of bubbles) and the network rotation. */
 interface PlanAxes {
   page: AxisLine[];
   ref: RefAxis[];
   sheets: number;
   source: "pairs" | "bubbles";
-  /** Rady bublín (D-184 dodatok): natočenie siete na strane a rady popiskov. */
+  /** Rows of bubbles (D-184 addendum): network rotation on the page and rows of labels. */
   grid?: { deg: number; rows: string[] };
-  /** Natočenie siete pre výpočet, len keď je sieť mimo smeru strany o viac ako ROTATION_TOLERANCE_DEG. */
+  /** Network rotation for the computation, only when the network is off the page direction by more than ROTATION_TOLERANCE_DEG. */
   gridDeg?: number;
 }
 
 /**
- * Osi (gridy) pôdorysu: rady osí tejto strany (výrezu) a ich poloha v IFC z ostatných kalibrovaných pôdorysov
- * (aj iných podlaží a disciplín, grid je spoločný). Bez dvojíc popiskov v smere strany pri známej mierke rady bublín
- * (D-184 dodatok: natočený pôdorys SF.01, výseky TP.01 s osou len na jednom konci). Bez osí alebo referencií null.
+ * Floor plan grids: rows of grids of this page (region) and their position in IFC from the other calibrated floor plans
+ * (also other storeys and disciplines, the grid is shared). Without pairs of labels in the page direction, at known scale rows of bubbles
+ * (D-184 addendum: rotated floor plan SF.01, details TP.01 with a grid at one end only). Without grids or references null.
  */
 async function planAxes(doc: UnderlayDocument, page: number, region: PageRegion | null, pageSize: P2, blocks: PageBlock[], lines: PageLine[], scale: number | null, deps: UnderlayDeps): Promise<PlanAxes | null> {
   if (!deps.planSheets) return null;
@@ -343,7 +343,7 @@ async function planAxes(doc: UnderlayDocument, page: number, region: PageRegion 
   };
 }
 
-/** Zvislá rovina osi: axis x = rovina X = c (rez ide po Y), axis y = rovina Y = c. */
+/** Vertical grid plane: axis x = plane X = c (the section runs along Y), axis y = plane Y = c. */
 const axisPlane = (axis: "x" | "y", c: number): Plane => (axis === "x" ? sectionPlane([c, 0], [0, 1]) : sectionPlane([0, c], [1, 0]));
 
 export async function execCalibrateUnderlay(args: Record<string, unknown>, deps: UnderlayDeps): Promise<{ text: string; isError: boolean }> {
@@ -361,13 +361,13 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   if (!doc) throw new UnderlayInputError(`Dokument ${p.documentId} neexistuje (UUID alebo object_ref).`);
   const pg = await deps.page(doc.id, p.page);
   if (!pg) throw new UnderlayInputError(`Dokument ${doc.object_ref ?? doc.id} nemá stranu ${p.page} s textom (document_pages; ETL etl.pdf_text --from-db).`);
-  // Rozmer strany (body) treba na prepočet ručných bodov v %: z čiar, inak z `page_size` (D-158).
+  // The page size (points) is needed to convert manual points in %: from lines, otherwise from `page_size` (D-158).
   const pageSize = pg.lines?.size ?? pg.pageSize ?? null;
   const ref = doc.object_ref ?? doc.id;
-  // Bez čiar sa dá len mode=manual bez doladenia (refine=false): dvojice bodov dajú podobnosť sami.
+  // Without lines only mode=manual without refinement is possible (refine=false): pairs of points give the similarity alone.
   const noLinesManual = !pg.lines && p.mode === "manual" && pageSize !== null;
   if (!pg.lines && !noLinesManual) {
-    // `page_size` plní rovnaký beh ETL ako čiary: ak je, ETL strana prešla a čiar je málo (raster, sken).
+    // `page_size` is filled by the same ETL run as the lines: if present, the ETL passed the page and there are few lines (raster, scan).
     throw new UnderlayInputError(
       pg.pageSize
         ? `Strana ${p.page} nemá čiary výkresu (document_pages.lines): ETL ju spracovalo, ale má menej než 200 úsečiek ani pri tenkých čiarach (0,25 pt), teda je to pravdepodobne raster (sken) alebo výkres bez vektorových čiar. Auto kalibrácia nejde; použi mode=manual s dvojicami pairs (refine sa vypne).`
@@ -380,7 +380,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   const refine = p.refine && !!pg.lines;
   const warnings: string[] = [];
   if (noLinesManual && p.refine) warnings.push("Strana nemá čiary výkresu, dvojice sa nedoladili (refine=false).");
-  // Výrez (D-180): text a čiary len z neho; mierka prednostne z textu výrezu (hárok s výkresmi v rôznych mierkach).
+  // Region (D-180): text and lines only from it; scale preferably from the region text (sheet with drawings in different scales).
   const cropped = p.region ? cropToRegion(pg.blocks, pg.lines?.segs ?? [], p.region, pageSize) : null;
   if (cropped && pg.lines && cropped.lines.length < 20) {
     throw new UnderlayInputError(`Výrez ${p.region!.join(", ")} (%, vľavo hore) obsahuje len ${cropped.lines.length} čiar výkresu; skontroluj region (x, y, šírka, výška v % strany).`);
@@ -389,8 +389,8 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   const textScale = (cropped ? pageScaleFromText(cropped.blocks) : null) ?? pageScaleFromText(pg.blocks);
   const wantScale = p.scale ?? textScale;
 
-  // Rovina: rez zo section_plane (súradnica alebo značka na pôdoryse), dokument rezu bez podlažia (REZ-A)
-  // zo značky na pôdoryse (D-179), inak pôdorys podlažia (z argumentu alebo z väzby dokumentu).
+  // Plane: section from section_plane (coordinate or a mark on a floor plan), a section document without a storey (REZ-A)
+  // from a mark on a floor plan (D-179), otherwise the floor plan of the storey (from the argument or from the document link).
   let fromPlan = p.fromPlan;
   if (!p.section && !fromPlan && !p.floor && doc.floors.length === 0 && sectionMarkFromName(doc.object_ref, doc.name)) fromPlan = { mark: null };
   const marked = fromPlan ? await planSection(fromPlan.mark, doc, deps) : null;
@@ -424,11 +424,11 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     if (cut.length === 0) throw new UnderlayInputError(`Rovina ${what} nepretína model ${model.id}.`);
     if (p.mode === "manual") {
       const pairs = pairsInPlane(p.pairs, refPoints, plane, pageSize);
-      // Smer pohľadu z dvojíc: pri 3 a viac tá podobnosť (priama alebo zrkadlová), ktorá sedí lepšie.
+      // View direction from pairs: with 3 or more, the similarity (direct or mirrored) that fits better.
       const mirror = pairs.length >= 3 && residual(pairs, true) < residual(pairs, false);
       res = calibratePairs(pairs, refine ? { lines: segs, cut, mirror } : undefined, mirror, p.scale ?? undefined);
     } else {
-      // D-179: kóty spárované s výškami podlaží, osi a iné rezy z pôdorysu ako poloha po reze.
+      // D-179: marks paired with storey heights, grids and other sections from the floor plan as the position along the cut.
       res = calibrateSection({
         pageSize,
         blocks,
@@ -454,20 +454,20 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     axesCheck = axes ? checkAxes(res.affine, axes.page, axes.ref) : null;
   }
 
-  // Kontrola mierky (#284): nízky medián chyby nestačí, ICP vie zachytiť nesprávne čiary v zlej mierke.
-  // Pri manual je mierka z dvojíc bodov používateľa, tá sa len ohlási.
+  // Scale check (#284): a low median error is not enough, ICP can catch wrong lines at a wrong scale.
+  // With manual the scale comes from the user's pairs of points, it is only reported.
   const scaleCheck = checkScale(res.scale_ratio, p.scale, p.mode === "manual" ? null : textScale);
   if (!scaleCheck.ok) {
     const what = { param: "zadanej mierky", text: "mierky z textu strany", standard: "najbližšej bežnej mierky", none: "" }[scaleCheck.source];
     warnings.push(`Mierka 1:${res.scale_ratio} sa líši o ${((scaleCheck.deviation ?? 0) * 100).toFixed(1)} % od ${what} 1:${scaleCheck.expected}; kalibrácia je pravdepodobne krivá.`);
   }
-  // Kontrola natočenia (D-180): pôdorys rovnobežne s osami modelu (aj otočený o 90°), rez bez natočenia.
-  // Natočená sieť osí na strane (D-184 dodatok): očakávané natočenie je z osí strany, nie násobok 90°; tolerancia ostáva.
+  // Rotation check (D-180): floor plan parallel to the model axes (also rotated by 90°), section without rotation.
+  // Rotated grid network on the page (D-184 addendum): the expected rotation is from the page grids, not a multiple of 90°; the tolerance stays.
   const rotationCheck = checkRotation(res.rotation_deg, isSection ? "section" : "plan", axes?.gridDeg);
   if (!rotationCheck.ok) {
     warnings.push(`Natočenie ${res.rotation_deg}° sa líši o ${rotationCheck.deviation_deg}° od ${rotationCheck.expected_deg}°; kalibrácia je pravdepodobne krivá.`);
   }
-  // Kontrola osí: osi výkresu na tom istom mieste ako na ostatných kalibrovaných pôdorysoch (posun o pole osí, zlý štart).
+  // Grid check: drawing grids at the same place as on the other calibrated floor plans (shift by a grid bay, bad start).
   if (axesCheck && !axesCheck.ok) {
     warnings.push(`Osi výkresu sú v mediáne ${axesCheck.median_mm} mm od polohy tých istých osí na iných kalibrovaných výkresoch (strop ${AXES_TOLERANCE_MM} mm); kalibrácia je pravdepodobne posunutá.`);
   }
@@ -503,7 +503,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
     ...(isSection
       ? {
           section_plane: section ? { axis: section.axis, coordinate_m: section.coordinate } : { origin: [marked!.at[0], marked!.at[1]], dir: marked!.dir },
-          // Smer pohľadu (pôdorys X, Y): kamera hľadí proti normále u × v (D-133), teda v × u.
+          // View direction (floor plan X, Y): the camera looks against the normal u × v (D-133), i.e. v × u.
           view_direction: [r3(-fixed.plane.u[1]) || 0, r3(fixed.plane.u[0]) || 0],
           ...(marked
             ? {
@@ -528,7 +528,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
       ? { axes_check: { ...axesCheck, tolerance_mm: AXES_TOLERANCE_MM, ref_axes: axes!.ref.length, ref_sheets: axes!.sheets, page_axes: axes!.source, ...(axes!.grid ? { grid_deg: axes!.grid.deg, rows: axes!.grid.rows } : {}) } }
       : {}),
     ...(res.icp_rejected ? { icp_rejected: res.icp_rejected } : {}),
-    // Výsledok je zlý (mierka alebo natočenie mimo), auto ho neuloží; pri manual len hlásenie.
+    // The result is bad (scale or rotation off), auto does not store it; with manual only a report.
     plausible,
     ...(warnings.length ? { warnings } : {}),
     rotation_deg: res.rotation_deg,
@@ -591,7 +591,7 @@ async function calibrate(p: Parsed, deps: UnderlayDeps) {
   }
   out.written = true;
   out.replaced = merged.replaced ? { source: merged.replaced.source, calibrated_at: merged.replaced.calibrated_at ?? null } : null;
-  // D-168: prepísaná kalibrácia s inou polohou ostáva v histórii (calibrate_underlay mode=history | restore).
+  // D-168: an overwritten calibration with a different position stays in history (calibrate_underlay mode=history | restore).
   if (merged.history_added) out.history_saved = true;
   out.calibrations_in_document = toGeorefV2(merged.georef).calibrations.length;
   out.note = "Uložené do kalibrácie dokumentu; viewer podklad načíta pri ďalšom otvorení (obnov stránku). Rez sa zobrazí, keď viewer začne čítať zvislé podklady (D-132).";

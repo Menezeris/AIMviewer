@@ -8,14 +8,14 @@ import type { SpatialLink } from "./tools";
 import { currentProjectId } from "../project/context";
 
 const IN_CHUNK = 100;
-/** Strop odvodených väzieb jedného dopytu (miestnosť s tisíckami prvkov nezahltí volanie). */
+/** Ceiling of derived links of one query (a space with thousands of elements does not flood the call). */
 const MAX_LINKS = 5000;
 
 /**
- * Odvodené IfcRelReferencedInSpatialStructure (D-080) z grafu AIM pre `ifc_relations` (D-167):
- * prvok -> priestor aj priestor -> prvky, naprieč modelmi federácie (VZT výustka -> IfcSpace z ASR).
- * V IFC súbore tieto hrany nie sú, vznikajú geometriou v `python -m etl.derive`; panel vlastností
- * ich číta z DB, preto ich tu doplníme k tým zo súboru. Read-only, `service_role` (D-026).
+ * Derived IfcRelReferencedInSpatialStructure (D-080) from the AIM graph for `ifc_relations` (D-167):
+ * element -> space and space -> elements, across federation models (VZT outlet -> IfcSpace from ASR).
+ * These edges are not in the IFC file, they arise by geometry in `python -m etl.derive`; the properties panel
+ * reads them from the DB, so we add them here to those from the file. Read-only, `service_role` (D-026).
  */
 export async function spatialLinksOfGuid(guid: string): Promise<SpatialLink[]> {
   const projectId = currentProjectId();
@@ -49,7 +49,7 @@ export async function spatialLinksOfGuid(guid: string): Promise<SpatialLink[]> {
     const outgoing = e.from_id === node.object_id;
     const o = others.get(outgoing ? e.to_id : e.from_id);
     if (!o?.ifc_guid) continue;
-    // from_id = prvok, to_id = priestor: z prvku je priestor Relating strana (inverse), z priestoru sú prvky forward.
+    // from_id = element, to_id = space: from the element the space is the Relating side (inverse), from the space the elements are forward.
     out.push({ direction: outgoing ? "inverse" : "forward", global_id: o.ifc_guid, ifc_type: o.ifc_type ?? "", name: o.name, ...(e.role ? { role: e.role } : {}) });
   }
   return out;

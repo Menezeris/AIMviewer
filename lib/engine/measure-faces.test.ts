@@ -19,8 +19,8 @@ const deps: EngineDeps = {
 };
 
 /**
- * Prvok z kvádrov v osiach IFC (x, y, z hore, m) -> mesh ako z mesheru: Y-up (x, z, -y),
- * otočený v pôdoryse o `angle`, posunutý o `at`; každé teleso = časť.
+ * An element of boxes in IFC axes (x, y, z up, m) -> a mesh as from the mesher: Y-up (x, z, -y),
+ * rotated in plan by `angle`, shifted by `at`; every solid = a part.
  */
 function element(bodies: Box[][], ifcType = "IfcWall", angle = 0, at: [number, number] = [0, 0]): MeshElement {
   const pos: number[] = [];
@@ -50,7 +50,7 @@ function element(bodies: Box[][], ifcType = "IfcWall", angle = 0, at: [number, n
   return { globalId: "g", expressId: 1, model: "M", ifcType, name: null, positions, indices: new Uint32Array(idx), parts, bounds: { min, max } };
 }
 
-/** Zárubňa 0,9 x 2,1 m (stojky 60 mm, nadpražie), krídlo s kľučkou. */
+/** Frame 0.9 x 2.1 m (posts 60 mm, lintel), a leaf with a handle. */
 const FRAME: Box[] = [
   [-0.51, -0.45, 0, 0.12, 0, 2.1],
   [0.45, 0.51, 0, 0.12, 0, 2.1],
@@ -67,7 +67,7 @@ describe("ifc_measure axis a plochy (D-155)", () => {
   it("osi prvku: x pozdĺž dlhšej strany, otočené k +X, y o 90° doľava", () => {
     const wall = element([[[0, 4, 0, 0.3, 0, 3]]], "IfcWall", Math.PI / 2 + Math.PI / 6);
     const ax = elementAxes(wall);
-    // Stena otočená o 120°: dlhšia strana mieri do (-0,5; 0,87), otočí sa k +X.
+    // The wall rotated by 120°: the longer side points to (-0.5; 0.87), it turns towards +X.
     expect(ax.x[0]).toBeCloseTo(0.5, 5);
     expect(ax.x[1]).toBeCloseTo(-Math.sqrt(3) / 2, 5);
     expect(ax.y[0]).toBeCloseTo(Math.sqrt(3) / 2, 5);
@@ -81,9 +81,9 @@ describe("ifc_measure axis a plochy (D-155)", () => {
     const h = axisDimension(wall, "height");
     expect(h.length_m).toBeCloseTo(3, 3);
     expect(len(h.segment)).toBeCloseTo(3, 3);
-    // Obálka sveta otočenej steny je širšia ako stena.
+    // The world envelope of the rotated wall is wider than the wall.
     expect(axisDimension(wall, "x").length_m).toBeCloseTo((4 + 0.3) * Math.SQRT1_2, 3);
-    // Konce kóty sú zaokrúhlené na mm, šikmá kóta sa preto líši do 1 mm.
+    // The dimension ends are rounded to mm, so a slanted dimension differs by up to 1 mm.
     expect(len(axisDimension(wall, "width").segment)).toBeCloseTo(4, 2);
   });
 
@@ -102,7 +102,7 @@ describe("ifc_measure axis a plochy (D-155)", () => {
     expect(ab.distance_m).toBeCloseTo(0.9, 3);
     expect(ba.distance_m).toBeCloseTo(0.9, 3);
     expect(ab.relation).toBe("facing");
-    // Svetlá výška: vrch prahu (+z) oproti spodku nadpražia (-z).
+    // Clear height: top of the threshold (+z) against the bottom of the lintel (-z).
     const sill = element([FRAME, LEAF, [[-0.45, 0.45, 0.02, 0.06, 0, 0.004]]], "IfcDoor", 1.1, [5, -3]);
     expect(faceDistance(sill, sill, parseFace("+z", "face_a"), parseFace("-z", "face_b")).distance_m).toBeCloseTo(2.096, 3);
   });

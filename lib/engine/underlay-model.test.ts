@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { MeshElement } from "./measure";
 import { ifcPositions, modelCut, planPlane, sectionPlane, spacesAt } from "./underlay-model";
 
-/** Kváder v IFC (x0..x1, y0..y1, z0..z1) ako mesh motora: Y-up (x, z, -y) mínus posun. */
+/** Box in IFC (x0..x1, y0..y1, z0..z1) as an engine mesh: Y-up (x, z, -y) minus the offset. */
 function box(ifcType: string, b: [number, number, number, number, number, number], name: string | null = null, off: [number, number, number] = [0, 0, 0]): MeshElement {
   const [x0, x1, y0, y1, z0, z1] = b;
   const c = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]];

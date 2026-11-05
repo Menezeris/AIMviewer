@@ -1,9 +1,9 @@
 import { MINI_BUILDING, guid } from "./mini-building";
 
 /**
- * Mini model s podhľadom (D-140, #230): na 2.NP (úroveň 3,5 m) miestnosť s Qto
- * FinishCeilingHeight 3,05 m a krytina CEILING 4 x 4 x 0,013 m so spodkom na z = 6,6 m
- * (Qto by dalo 6,55 m, teda nezhoda 5 cm). 1NP krytinu nemá.
+ * Mini model with a ceiling (D-140, #230): on 2.NP (level 3.5 m) a space with Qto
+ * FinishCeilingHeight 3.05 m and a CEILING covering 4 x 4 x 0.013 m with the bottom at z = 6.6 m
+ * (Qto would give 6.55 m, i.e. a 5 cm mismatch). 1NP has no covering.
  */
 const EXTRA = `#300= IFCDIRECTION((0.,0.,1.));
 #301= IFCCARTESIANPOINT((2.,2.));

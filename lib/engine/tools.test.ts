@@ -30,7 +30,7 @@ const fetchImpl = (async (url: string | URL | Request) => {
   return new Response(MINI_BUILDING_BYTES, { status: 200, headers: { etag: '"mini"' } });
 }) as typeof fetch;
 
-/** AIM pozná len miestnosť 1.01 a stenu (ostatné sú "len v súbore"). */
+/** AIM knows only space 1.01 and the wall (the others are "only in the file"). */
 const AIM: Record<string, AimRef> = {
   [guid("SPA")]: { object_id: "11111111-1111-1111-1111-111111111111", object_ref: "1.01", name: "1.01", object_type: "space" },
   [guid("WALA")]: { object_id: "22222222-2222-2222-2222-222222222222", object_ref: "W-A", name: "Wall A", object_type: "asset" },

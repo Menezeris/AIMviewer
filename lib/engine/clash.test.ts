@@ -30,7 +30,7 @@ const call = async (input: Record<string, unknown>, d: EngineDeps = deps) => {
   return { ...res, json: res.isError ? null : JSON.parse(res.content) };
 };
 
-/** Kocka s hranou `s` (Y-up), posunutá o `at`. */
+/** Cube with edge `s` (Y-up), shifted by `at`. */
 function cube(model: string, id: string, ifcType: string, at: [number, number, number], s = 1, expressId = 1): MeshElement {
   const v = [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1].map((x, i) => x * s + at[i % 3]);
   const f = [0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 1, 2, 6, 1, 6, 5, 0, 4, 7, 0, 7, 3];
@@ -113,7 +113,7 @@ describe("clash (D-164) - jadro", () => {
     expect(n).toEqual({ a: 1, b: 4 });
     expect(result.clashes).toHaveLength(4);
     expect(new Set(result.clashes.map((c) => c.status))).toEqual(new Set(["clearance"]));
-    // Port VZT (rovnaká poloha ako potrubie) nie je prvok strany a.
+    // The VZT port (same position as the duct) is not an element of side a.
     expect(result.clashes.every((c) => c.a.key === `VZT:${guid("D1")}`)).toBe(true);
   });
 
@@ -154,7 +154,7 @@ describe("clash (D-164) - jadro", () => {
     expect(byElement[0].members).toHaveLength(3);
     expect(byElement[0].title).toContain("D1");
     expect(groupRun({ run }, "rule")).toHaveLength(1);
-    // Bez podlažia (prvky bez priestorovej väzby) ide všetko do jednej skupiny.
+    // Without a storey (elements without a spatial link) everything goes into one group.
     expect(groupRun({ run }, "storey").map((g) => g.key)).toEqual(["bez podlažia"]);
   });
 });
@@ -197,23 +197,23 @@ describe("clash (D-164) - vstup", () => {
     expect(DEFAULT_TESTS.map((t) => t.name)).toEqual(["VZT x nosné konštrukcie", "VZT x ASR"]);
     expect(parseSpec({ test: "VZT x nosné konštrukcie" })).toMatchObject({ mode: "hard", code: "VZT-NOSNE", a: { model: "VZT" }, b: { model: "ASR", type: STRUCTURAL_TYPES } });
     expect(parseSpec({ test: "vzt-asr" })).toMatchObject({ mode: "clearance", clearance: 0.05, a: { model: "VZT" }, b: { model: "ASR" } });
-    // Vylúčenia sú pomenované v selektore na oboch stranách (čistý zoznam vylúčení = AND).
+    // Exclusions are named in the selector on both sides (a pure list of exclusions = AND).
     const asr = parseSpec({ test: "VZT-ASR" });
     for (const cls of NON_SOLID_EXCLUDES) {
       expect(asr.a.type).toContain(`!${cls}`);
       expect(asr.b?.type).toContain(`!${cls}`);
     }
-    // Zúženie na podlažie ponechá vylúčenia.
+    // Narrowing to a storey keeps the exclusions.
     expect(parseSpec({ test: "VZT-ASR", b_storey: "2NP" }).b).toMatchObject({ type: asr.b?.type, storey: "2NP" });
   });
 
   it("parametre prepíšu test, chybný vstup je InputError", () => {
     expect(parseSpec({ test: "VZT-ASR", clearance_mm: 100 }).clearance).toBeCloseTo(0.1, 6);
-    // Zúženie na podlažie ponechá triedy a model testu (nenahradí stranu celú).
+    // Narrowing to a storey keeps the classes and the model of the test (it does not replace the whole side).
     const narrowed = parseSpec({ test: "VZT-NOSNE", a_storey: "2NP", b_storey: "2NP" });
     expect(narrowed.a).toEqual({ type: "*", model: "VZT", storey: "2NP" });
     expect(narrowed.b).toEqual({ type: STRUCTURAL_TYPES, model: "ASR", storey: "2NP", load_bearing: "true" });
-    // Zúženie triedy ponechá filter nosnosti testu, b_load_bearing ho prepíše.
+    // Narrowing the class keeps the load-bearing filter of the test, b_load_bearing overrides it.
     expect(parseSpec({ test: "VZT-NOSNE", b: "IfcSlab" }).b).toEqual({ type: "IfcSlab", model: "ASR", load_bearing: "true" });
     expect(parseSpec({ test: "VZT-NOSNE", b_load_bearing: "unknown" }).b).toMatchObject({ load_bearing: "unknown" });
     expect(() => parseSpec({ a: "IfcWall", b_load_bearing: "možno" })).toThrow(/b_load_bearing/);
@@ -280,7 +280,7 @@ describe("clash tool (D-164)", () => {
     expect(again.json).toMatchObject({ run_id: first.json.run_id, cached: true });
     const other = await call({ action: "run", a: "IfcWall", b: "IfcSlab", mode: "clearance", clearance_mm: 100 });
     expect(other.json).toMatchObject({ run_id: "run-2", total: 0 });
-    // results bez run_id berie posledný beh, s run_id konkrétny.
+    // results without run_id takes the last run, with run_id a specific one.
     expect((await call({ action: "results" })).json.run_id).toBe("run-2");
     expect((await call({ action: "results", run_id: "run-1", group_by: "rule" })).json.groups[0]).toMatchObject({ count: 2 });
   });

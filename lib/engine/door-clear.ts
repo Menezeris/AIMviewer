@@ -1,25 +1,25 @@
 import { toIfc, type Vec3 } from "./measure";
 
 /**
- * Svetlá šírka a výška dverí z geometrie (dodatok D-118, `ifc_measure clear_opening`).
- * Hodnoty psetov (`AIM_Door.ClearWidth`, `OverallWidth`) nie sú zdroj pravdy; meria sa mesh
- * dverí. Mesher dáva každé teleso reprezentácie zvlášť (zárubňa, krídlo, sklo, kovanie, prah):
- * 1. Lokálne osi dverí z pôdorysu: obdĺžnik s najmenšou plochou okolo konvexného obalu,
- *    dlhšia strana = šírka (u), kratšia = hĺbka (v), z hore.
- * 2. Výplň otvoru (krídlo, sklo, posuvné panely, kľučky, madlá) sa odstráni, ostane zárubňa,
- *    nadpražie, prah alebo portál (pravidlá pri `fill`).
- * 3. Šírka: vodorovné lúče po osi u stredom dverí v mriežke výšok x hĺbok. Lúč vo vnútri
- *    telesa (nepárny počet priesečníkov naľavo) alebo bez steny na jednej strane (mimo hĺbky
- *    zárubne) sa preskočí. Na každej výške platí najužšia medzera cez hĺbku (doraz zárubne),
- *    výsledok je medián výšok, najužšia výška ostáva vo `width_min_m`.
- * 4. Výška: zvislé lúče z polovice výšky na troch miestach šírky, dole prah alebo spodok
- *    dverí (podlaha), hore nadpražie; najnižšia cez hĺbku, medián cez šírku.
- * Krídlo otvorené o 90° a kľučka sa od svetlej šírky neodpočítavajú.
+ * Clear width and height of a door from geometry (addendum D-118, `ifc_measure clear_opening`).
+ * Pset values (`AIM_Door.ClearWidth`, `OverallWidth`) are not the source of truth; the door mesh
+ * is measured. The mesher gives each solid of the representation separately (frame, leaf, glass, hardware, threshold):
+ * 1. Local door axes from the plan: the rectangle with the smallest area around the convex hull,
+ *    longer side = width (u), shorter = depth (v), z up.
+ * 2. The opening fill (leaf, glass, sliding panels, handles, grips) is removed, leaving the frame,
+ *    lintel, threshold or portal (rules at `fill`).
+ * 3. Width: horizontal rays along the u axis through the door centre in a grid of heights x depths. A ray inside
+ *    a solid (odd number of intersections on the left) or without a wall on one side (outside the frame
+ *    depth) is skipped. At each height the narrowest gap across the depth applies (frame stop),
+ *    the result is the median over heights, the narrowest height stays in `width_min_m`.
+ * 4. Height: vertical rays from half height at three places of the width, below the threshold or the door
+ *    bottom (floor), above the lintel; the lowest across the depth, median across the width.
+ * A leaf opened by 90° and a handle are not subtracted from the clear width.
  */
 
 type P2 = [number, number];
 
-/** Najužšia medzera, ktorú berieme ako priechod (užšia = škára medzi krídlami). */
+/** The narrowest gap we take as a passage (narrower = a joint between leaves). */
 const MIN_GAP = 0.2;
 const WIDTH_HEIGHTS = 9;
 const DEPTHS = 15;
@@ -28,17 +28,17 @@ const HEIGHT_COLUMNS = [0.3, 0.5, 0.7];
 export interface ClearOpening {
   width_m: number | null;
   height_m: number | null;
-  /** Najužšie miesto zo všetkých výšok (kľučka, lišta), ak je užšie ako medián. */
+  /** The narrowest spot over all heights (handle, strip), if narrower than the median. */
   width_min_m: number | null;
-  /** Obálka dverí v ich osiach (so zárubňou). */
+  /** Door envelope in its axes (with the frame). */
   overall_width_m: number;
   overall_height_m: number;
   depth_m: number;
-  /** Platné lúče šírky a výšky z mriežky. */
+  /** Valid width and height rays from the grid. */
   samples: { width: number; height: number };
-  /** Telesá dverí: všetky a výplň otvoru (krídlo, sklo, kovanie), ktorá sa do merania neráta. */
+  /** Door solids: all of them and the opening fill (leaf, glass, hardware) that is not counted in the measurement. */
   bodies: { total: number; fill: number };
-  /** Konce zmeranej šírky a výšky v IFC (Z hore, bez posunu rámca) na kótu vo vieweri (D-155). */
+  /** Ends of the measured width and height in IFC (Z up, without the frame offset) for the dimension in the viewer (D-155). */
   segments?: { width?: [Vec3, Vec3]; height?: [Vec3, Vec3] };
 }
 
@@ -46,7 +46,7 @@ function cross(o: P2, a: P2, b: P2): number {
   return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
 }
 
-/** Konvexný obal (monotone chain). */
+/** Convex hull (monotone chain). */
 export function convexHull(points: P2[]): P2[] {
   const pts = [...points].sort((p, q) => p[0] - q[0] || p[1] - q[1]);
   if (pts.length < 3) return pts;
@@ -64,7 +64,7 @@ export function convexHull(points: P2[]): P2[] {
   return lower.slice(0, -1).concat(upper.slice(0, -1));
 }
 
-/** Obdĺžnik s najmenšou plochou: os šírky (dlhšia strana) a stred. */
+/** Rectangle with the smallest area: the width axis (longer side) and the centre. */
 export function planAxes(points: P2[]): { center: P2; u: P2; v: P2 } {
   const hull = convexHull(points);
   let best = { area: Infinity, center: [0, 0] as P2, u: [1, 0] as P2, v: [0, 1] as P2 };
@@ -96,7 +96,7 @@ export function planAxes(points: P2[]): { center: P2; u: P2; v: P2 } {
   return { center: best.center, u: best.u, v: best.v };
 }
 
-/** Priesečníky lúča rovnobežného s osou `w` cez bod (s0, t0) v rovine (s, t) s trojuholníkmi. */
+/** Intersections of a ray parallel to the axis `w` through the point (s0, t0) in the plane (s, t) with triangles. */
 function rayHits(tri: Float64Array, s: number, t: number, w: number, s0: number, t0: number): number[] {
   const hits: number[] = [];
   for (let i = 0; i < tri.length; i += 9) {
@@ -116,15 +116,15 @@ function rayHits(tri: Float64Array, s: number, t: number, w: number, s0: number,
 }
 
 /**
- * Voľná medzera okolo `at` medzi najbližšími plochami, null = vo vnútri telesa alebo otvorené.
- * `floor` = dolná hranica, keď pod `at` nie je žiadna plocha (spodok dverí bez prahu).
+ * Free gap around `at` between the nearest surfaces, null = inside a solid or open.
+ * `floor` = lower bound when there is no surface below `at` (door bottom without a threshold).
  */
 export function gapAround(hits: number[], at: number, floor?: number): number | null {
   const span = spanAround(hits, at, floor);
   return span && span[1] - span[0];
 }
 
-/** Ako `gapAround`, ale vráti obe plochy [dole, hore] (konce kóty). */
+/** Like `gapAround`, but returns both surfaces [bottom, top] (the ends of the dimension). */
 export function spanAround(hits: number[], at: number, floor?: number): [number, number] | null {
   let below = -Infinity;
   let above = Infinity;
@@ -146,20 +146,20 @@ function median(xs: number[]): number {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-/** Posun vzoriek mimo okrúhlych hodnôt, aby lúč netrafil hranu medzi trojuholníkmi. */
+/** Offset of samples away from round values, so that a ray does not hit an edge between triangles. */
 const JITTER = 0.00731;
 const frac = (i: number, n: number) => (i + 0.5 + JITTER) / n;
 
-/** Sondy výplne otvoru: podiely šírky a výšky, kde je v zatvorených dverách krídlo, nie zárubňa. */
+/** Opening fill probes: shares of width and height where in a closed door the leaf is, not the frame. */
 const PROBES = [0.3, 0.4, 0.5, 0.6, 0.7];
-/** Hĺbka nad týmto podielom šírky = nie plochá dverová zostava (karuselové dvere). */
+/** Depth above this share of the width = not a flat door assembly (revolving door). */
 const ROUND_DOOR = 0.6;
-/** Prah: teleso pri spodku dverí nižšie ako tento podiel výšky. */
+/** Threshold: a solid at the door bottom lower than this share of the height. */
 const SILL = 0.1;
 
 /**
- * Svetlý otvor dverí z meshu (Y-up, metre, svetové súradnice); `parts` = začiatky telies
- * v `indices`. Text = dôvod, prečo sa nedá zmerať.
+ * Clear door opening from a mesh (Y-up, metres, world coordinates); `parts` = starts of solids
+ * in `indices`. Text = the reason why it cannot be measured.
  */
 export function clearOpening(positions: Float32Array, indices: Uint32Array, parts: number[] = [0]): ClearOpening | string {
   if (indices.length < 3) return "dvere nemajú geometriu";
@@ -168,19 +168,19 @@ export function clearOpening(positions: Float32Array, indices: Uint32Array, part
   const uMid = (uMin + uMax) / 2;
   const zMid = (zMin + zMax) / 2;
   const kept = bodies.filter((_, n) => !fill[n]);
-  // Karuselové dvere a iné priestorové zostavy nemajú rovinu otvoru.
+  // Revolving doors and other spatial assemblies have no opening plane.
   if (vMax - vMin > ROUND_DOOR * (uMax - uMin)) return "nie je plochá dverová zostava (napr. karuselové dvere)";
   if (kept.length === 0) return "dvere nemajú zárubňu ani portál oddelený od krídla";
   const tri = new Float64Array(kept.reduce((n, b) => n + b.length, 0));
   kept.reduce((off, b) => (tri.set(b, off), off + b.length), 0);
-  // Bod v osiach dverí (u, v, z) -> IFC.
+  // Point in door axes (u, v, z) -> IFC.
   const ifcAt = (pu: number, pv: number, pz: number): Vec3 => [
     center[0] + u[0] * pu + v[0] * pv,
     center[1] + u[1] * pu + v[1] * pv,
     pz,
   ];
 
-  // Šírka: os u (0), rovina (v, z) = (1, 2); najužšie miesto cez hĺbku (doraz zárubne).
+  // Width: axis u (0), plane (v, z) = (1, 2); narrowest spot across the depth (frame stop).
   const perHeight: { gap: number; at: [Vec3, Vec3] }[] = [];
   let widthSamples = 0;
   for (let h = 0; h < WIDTH_HEIGHTS; h++) {
@@ -196,7 +196,7 @@ export function clearOpening(positions: Float32Array, indices: Uint32Array, part
     if (narrowest) perHeight.push(narrowest);
   }
 
-  // Výška: os z (2), rovina (u, v) = (0, 1); dole prah, bez neho spodok dverí (podlaha).
+  // Height: axis z (2), plane (u, v) = (0, 1); below the threshold, without it the door bottom (floor).
   const perColumn: { gap: number; at: [Vec3, Vec3] }[] = [];
   let heightSamples = 0;
   for (const c of HEIGHT_COLUMNS) {
@@ -215,8 +215,8 @@ export function clearOpening(positions: Float32Array, indices: Uint32Array, part
   const width = perHeight.length > 0 ? median(perHeight.map((p) => p.gap)) : null;
   const height = perColumn.length > 0 ? median(perColumn.map((p) => p.gap)) : null;
   const widthMin = perHeight.length > 0 ? Math.min(...perHeight.map((p) => p.gap)) : null;
-  // Kóta = vzorka najbližšie k mediánu (pri párnom počte medián nie je žiadna vzorka), pri zhode
-  // bližšie k stredu (šírka v polovici výšky, výška v strede šírky).
+  // Dimension = the sample nearest to the median (with an even count the median is no sample), on a tie
+  // nearer to the centre (width at half height, height at the centre of the width).
   const nearest = (xs: { gap: number; at: [Vec3, Vec3] }[], m: number | null) => {
     if (m === null) return undefined;
     const score = (x: (typeof xs)[number], i: number) => Math.abs(x.gap - m) * 1e3 + Math.abs(i - (xs.length - 1) / 2) * 1e-6;
@@ -240,8 +240,8 @@ export function clearOpening(positions: Float32Array, indices: Uint32Array, part
 }
 
 /**
- * Osi dverí, telesá v nich a maska výplne otvoru (krídlo, sklo, kovanie). Zdieľa ju svetlý otvor
- * aj meranie plôch (D-155), aby hrana krídla nebola "plocha" zárubne.
+ * Door axes, the solids in them and the opening fill mask (leaf, glass, hardware). Shared by the clear opening
+ * and the area measurement (D-155), so that a leaf edge is not an "area" of the frame.
  */
 export function doorLayout(positions: Float32Array, indices: Uint32Array, parts: number[] = [0]) {
   const ifc = new Float64Array(positions.length);
@@ -259,7 +259,7 @@ export function doorLayout(positions: Float32Array, indices: Uint32Array, parts:
     }
   }
   const { center, u, v } = planAxes(plan);
-  // Trojuholníky v osiach dverí: [u, v, z] na vrchol, po telesách.
+  // Triangles in door axes: [u, v, z] per vertex, by solids.
   const all = new Float64Array(indices.length * 3);
   let [uMin, uMax, vMin, vMax, zMin, zMax] = [Infinity, -Infinity, Infinity, -Infinity, Infinity, -Infinity];
   for (let k = 0; k < indices.length; k++) {
@@ -285,11 +285,11 @@ export function doorLayout(positions: Float32Array, indices: Uint32Array, parts:
   const zMid = (zMin + zMax) / 2;
   const around = (hits: number[], at: number) => hits.some((h) => h < at) && hits.some((h) => h > at);
 
-  // Zárubňa a nadpražie siahajú na bok alebo vrch obálky dverí, prah leží nízko pri podlahe.
-  // Vnútorné teleso je výplň otvoru, ak je nízke (kľučka, madlo, paniková tyč) alebo obopína
-  // stred zo všetkých strán (rám krídla so sklom); vnútorný portál v tvare U (výťah) ostáva.
-  // Výplň je aj každé teleso, ktoré zasiahne lúč po hĺbke v strednej časti otvoru (krídlo,
-  // sklo, posuvné panely). Výplň sa do merania nepočíta.
+  // The frame and lintel reach the side or top of the door envelope, the threshold lies low at the floor.
+  // An inner solid is opening fill if it is low (handle, grip, panic bar) or wraps around the
+  // centre from all sides (leaf frame with glass); an inner U-shaped portal (lift) stays.
+  // Fill is also every solid hit by a ray along the depth in the central part of the opening (leaf,
+  // glass, sliding panels). The fill is not counted in the measurement.
   const tol = 0.005;
   const fill = bodies.map((b) => {
     if (PROBES.some((pu) => PROBES.some((pz) => rayHits(b, 0, 2, 1, uMin + (uMax - uMin) * (pu + JITTER), zMin + (zMax - zMin) * (pz + JITTER)).length > 0))) return true;

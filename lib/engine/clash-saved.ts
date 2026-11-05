@@ -42,16 +42,16 @@ import { toIfc, type Vec3 } from "./measure";
 import { InputError, clamp, str, type EngineDeps } from "./tools";
 
 /**
- * Testy, uložené behy, porovnanie, stav kolízie a BCF téma toolu `clash` (D-164, host PR2).
- * Nositeľ je DB (`lib/clash/store.ts`): beh sa dá uložiť (`run save=true`), po reštarte
- * inštancie obnoviť podľa UUID a porovnať s iným behom. Stav kolízie (`clash_reviews`) je
- * kľúčovaný testom a upstream `clashReviewKey`, takže prežije beh, revíziu modelu aj
- * zúženie testu na podlažie.
+ * Tests, stored runs, comparison, clash status and the BCF topic of the `clash` tool (D-164, host PR2).
+ * The DB is the holder (`lib/clash/store.ts`): a run can be stored (`run save=true`), restored by UUID
+ * after an instance restart and compared with another run. The clash status (`clash_reviews`) is
+ * keyed by the test and upstream `clashReviewKey`, so it survives a run, a model revision and
+ * narrowing the test to a storey.
  */
 
-/** Strop kolízií uloženého behu (ako v paneli viewera); nad ním zúž test. */
+/** Clash ceiling of a stored run (as in the viewer panel); above it narrow the test. */
 export const RESULT_CAP = 100_000;
-/** Strop prvkov, ktoré beh overil, uložených na stranu; nad ním porovnanie nepovie "vyriešené". */
+/** Ceiling of elements verified by a run, stored per side; above it the comparison does not say "resolved". */
 const COVERAGE_CAP = 30_000;
 const RUNS_LISTED = 20;
 const SAMPLE = 3;
@@ -66,7 +66,7 @@ function need(deps: EngineDeps): ClashStore {
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-// --- testy -------------------------------------------------------------------------------
+// --- tests -------------------------------------------------------------------------------
 
 export function testFromRow(r: ClashTestRow): ClashTest {
   const rule = r.rules[0];
@@ -103,7 +103,7 @@ async function findRow(ref: string, store: ClashStore): Promise<ClashTestRow | n
   return (await store.listTests()).find((t) => t.code.toLowerCase() === want || t.name.toLowerCase() === want) ?? null;
 }
 
-/** Predvolený test z kódu, inak uložený z DB; undefined = taký test nie je. */
+/** Default test from code, otherwise stored from the DB; undefined = no such test. */
 export async function resolveTest(ref: string, deps: EngineDeps): Promise<ClashTest | undefined> {
   const preset = findTest(ref);
   if (preset) return preset;
@@ -112,7 +112,7 @@ export async function resolveTest(ref: string, deps: EngineDeps): Promise<ClashT
   return row ? testFromRow(row) : undefined;
 }
 
-/** Riadok testu v DB pre beh: predvolený sa vyrovná s kódom, vlastný musí existovať. */
+/** Test row in the DB for a run: the default is reconciled with the code, a custom one must exist. */
 async function ensureTestRow(spec: ClashSpec, deps: EngineDeps): Promise<ClashTestRow> {
   const store = need(deps);
   const code = spec.code!;
@@ -155,7 +155,7 @@ const lastRunOf = (r: ClashRunRow, current: RevisionStamp | null) => ({
   ...(r.completeness.truncated ? { truncated: true } : {}),
 });
 
-/** Aktuálne revízie modelov, ktoré behy nesú v podpise (jedno čítanie pre celý zoznam). */
+/** Current model revisions that runs carry in the signature (one read for the whole list). */
 async function currentFor(rows: ClashRunRow[], deps: EngineDeps): Promise<RevisionStamp | null> {
   const models = new Set(rows.flatMap((r) => Object.keys(stampOf(r.models, r.model_revisions) ?? {})));
   return currentRevisions([...models].sort(), deps.revisions);
@@ -243,7 +243,7 @@ export async function execDelete(input: Record<string, unknown>, deps: EngineDep
   return { deleted: true, test: row.code, removed: stats };
 }
 
-// --- uložený beh ---------------------------------------------------------------------------
+// --- stored run ---------------------------------------------------------------------------
 
 function resultRow(run: ClashRun, c: Clash): ClashResultRow {
   const a = run.info.get(c.a.key);
@@ -276,7 +276,7 @@ function coverageOf(run: ClashRun): ClashCoverage | null {
   return { a: [...cov.matchedKeysA], b: cov.matchedKeysB ? [...cov.matchedKeysB] : null };
 }
 
-/** Uloží beh a jeho kolízie; test sa viaže podľa kódu (predvolený sa v DB založí). Druhé uloženie ten istý beh nezdvojí. */
+/** Stores a run and its clashes; the test is bound by code (the default is created in the DB). A second store does not duplicate the same run. */
 export async function persistRun(run: ClashRun, deps: EngineDeps, author?: string): Promise<Record<string, unknown>> {
   const store = need(deps);
   if (run.saved) return { run_id: run.saved.id, already_saved: true, test: run.spec.code };
@@ -326,7 +326,7 @@ function summarize(clashes: Clash[]): ClashResult["summary"] {
   return { total: clashes.length, byRule, byTypePair, bySeverity };
 }
 
-/** Obnoví beh z riadkov DB tak, aby fungovali rovnaké zoskupenie, riadky a porovnanie ako pri behu v pamäti. */
+/** Restores a run from DB rows so that the same grouping, rows and comparison work as for a run in memory. */
 export function runFromRows(row: ClashRunRow, results: ClashResultRow[]): ClashRun {
   const spec = row.rules_snapshot.spec as ClashSpec | undefined;
   if (!spec?.a) throw new InputError(`Beh ${row.id} nemá uložené pravidlo (poškodený záznam).`);
@@ -392,7 +392,7 @@ export async function loadSavedRun(id: string, deps: EngineDeps): Promise<ClashR
   return runFromRows(row, await store.results(id));
 }
 
-/** Najnovší beh testu: pamäť alebo DB, podľa času. */
+/** The newest run of a test: memory or DB, by time. */
 export async function latestRunOfTest(ref: string, deps: EngineDeps, memory?: ClashRun): Promise<ClashRun> {
   const row = deps.clash ? await findRow(ref, deps.clash) : null;
   const last = row && deps.clash ? (await deps.clash.runs(row.id, 1))[0] : undefined;
@@ -407,7 +407,7 @@ export async function reviewMap(run: ClashRun, deps: EngineDeps): Promise<Map<st
   return new Map((await deps.clash.reviews(testId)).map((r) => [r.clash_key, r]));
 }
 
-// --- stav kolízie --------------------------------------------------------------------------
+// --- clash status --------------------------------------------------------------------------
 
 export async function execReview(input: Record<string, unknown>, deps: EngineDeps): Promise<Record<string, unknown>> {
   const store = need(deps);
@@ -447,7 +447,7 @@ export async function execReview(input: Record<string, unknown>, deps: EngineDep
   };
 }
 
-// --- porovnanie ----------------------------------------------------------------------------
+// --- comparison ----------------------------------------------------------------------------
 
 const refOf = (r: ClashRun) => ({ run_id: r.saved?.id ?? r.id, created_at: r.createdAt, total: r.result.clashes.length, ...(r.basedOn ? { based_on: r.basedOn } : {}) });
 
@@ -462,7 +462,7 @@ async function previousRun(run: ClashRun, deps: EngineDeps): Promise<ClashRun> {
   return loadSavedRun(prev.id, deps);
 }
 
-/** Porovnanie dvoch behov podľa `clashReviewKey`; "vyriešené" len ak beh prvky naozaj znova overil, inak "nepretestované". */
+/** Comparison of two runs by `clashReviewKey`; "resolved" only if the run really verified the elements again, otherwise "not retested". */
 export async function execCompare(input: Record<string, unknown>, deps: EngineDeps): Promise<Record<string, unknown>> {
   const run = await findRun(input, deps);
   const baseId = str(input.base_run_id);
@@ -470,7 +470,7 @@ export async function execCompare(input: Record<string, unknown>, deps: EngineDe
   if (base === run || (base.saved && base.saved.id === run.saved?.id)) throw new InputError("Porovnávaš ten istý beh: daj base_run_id iného behu.");
   const side = (r: ClashRun) => ({ result: r.result, modelNames: Object.fromEntries(Object.keys(r.models).map((m) => [m, m])) });
   const cmp = compareClashRevisions(side(base), side(run));
-  // Beh orezaný stropom dvojíc nevidel všetko: chýbajúca kolízia nie je dôkaz opravy.
+  // A run cut by the pair ceiling did not see everything: a missing clash is not proof of a fix.
   const cut = !!run.result.truncated;
   const buckets: Record<ClashBucket, Clash[]> = {
     added: cmp.added,
@@ -503,7 +503,7 @@ export async function execCompare(input: Record<string, unknown>, deps: EngineDe
     return !same([x?.etag, x?.size], [y?.etag, y?.size]);
   });
 
-  // Podpis vstupu (D-183 bod 11): porovnanie naprieč revíziami je účel, zastaraný nový beh nie.
+  // Input signature (D-183 point 11): comparison across revisions is the purpose, a stale new run is not.
   const revision = await runRevision(run, deps);
   if (revision.stale === true) warnings.push(`Nový beh nie je nad aktuálnymi revíziami: ${String(revision.stale_note)}`);
   const revisionsChanged = base.basedOn && run.basedOn && staleOf(base.basedOn, run.basedOn) ? describeDrift(base.basedOn, run.basedOn) : null;
@@ -540,7 +540,7 @@ export async function execCompare(input: Record<string, unknown>, deps: EngineDe
   return out;
 }
 
-// --- BCF téma ------------------------------------------------------------------------------
+// --- BCF topic ------------------------------------------------------------------------------
 
 export interface TopicProposal {
   title: string;
@@ -572,8 +572,8 @@ function viewpointOf(center: Vec3, span: number, selection: number): Record<stri
 }
 
 /**
- * Založí BCF tému Clash za skupinu cez BCF vrstvu (D-099) a pripojí ju ku kolíziám skupiny
- * (`clash_reviews.bcf_topic_id`). Skupina, ktorá už tému má, novú nedostane (bez duplicít).
+ * Creates a Clash BCF topic for a group via the BCF layer (D-099) and attaches it to the group clashes
+ * (`clash_reviews.bcf_topic_id`). A group that already has a topic does not get a new one (no duplicates).
  */
 export async function createBcfTopic(a: {
   run: ClashRun;

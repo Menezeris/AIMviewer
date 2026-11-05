@@ -1,10 +1,10 @@
 /**
- * Malý IFC4 model pre testy IFC motora (D-084) - vzor upstream testov
- * `@ifc-lite/mcp` (`read-after-write.test.ts`). Dve podlažia, tri miestnosti
- * s plochou v `Qto_SpaceBaseQuantities.NetFloorArea`, stena s psetom.
+ * Small IFC4 model for tests of the IFC engine (D-084) - a pattern of the upstream tests
+ * `@ifc-lite/mcp` (`read-after-write.test.ts`). Two storeys, three spaces
+ * with an area in `Qto_SpaceBaseQuantities.NetFloorArea`, a wall with a pset.
  */
 
-/** 22-znakový IFC GlobalId z krátkej skratky. */
+/** 22-character IFC GlobalId from a short abbreviation. */
 export function guid(mnemonic: string): string {
   return (mnemonic + "0".repeat(22)).slice(0, 22);
 }

@@ -3,22 +3,22 @@ import type { ToolDefinition } from "../llm/provider";
 import { SEARCH_FIELDS } from "./search";
 
 /**
- * Kombinované hľadanie `search_all` (D-095 dodatok, issue #66): jedno volanie
- * hľadá text naraz v IFC súbore (`ifc_search`) aj v grafe AIM v DB
- * (`search_everything`), výsledky spojí podľa uzla AIM (inak GlobalId) a každý
- * označí badge podľa toho, KDE sa text našiel: `IFC`, `AIM` alebo `IFC+AIM`.
- * Vstup `badges` filtruje, `counts` sú počty po badge pred filtrom. Bez
- * závislostí motora a DB (zdroje sa vstrekujú), aby to šlo testovať.
+ * Combined search `search_all` (D-095 addendum, issue #66): one call
+ * searches text at once in the IFC file (`ifc_search`) and in the AIM graph in the DB
+ * (`search_everything`), joins the results by the AIM node (otherwise GlobalId) and marks each
+ * with a badge by WHERE the text was found: `IFC`, `AIM` or `IFC+AIM`.
+ * The input `badges` filters, `counts` are counts per badge before the filter. Without
+ * engine and DB dependencies (sources are injected), so that it can be tested.
  */
 
 export const BADGES = ["IFC", "AIM", "IFC+AIM"] as const;
-/** Zdroj hľadania (D-115): all = oba, ifc = len súbor (bývalý `ifc_search`), aim = len graf AIM. */
+/** Search source (D-115): all = both, ifc = the file only (the former `ifc_search`), aim = the AIM graph only. */
 export const SOURCES = ["all", "ifc", "aim"] as const;
 export type Badge = (typeof BADGES)[number];
 
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
-/** Koľko výsledkov sa berie z každého zdroja pred spojením. */
+/** How many results are taken from each source before joining. */
 const PER_SOURCE = 100;
 const MAX_RESULT_CHARS = 20_000;
 
@@ -63,7 +63,7 @@ export const SEARCH_ALL_TOOL: ToolDefinition = {
   },
 };
 
-/** Položka z `ifc_search` (po prepojení na AIM cez GUID). */
+/** Item from `ifc_search` (after linking to AIM via GUID). */
 export interface IfcSearchItem {
   model: string;
   global_id: string;
@@ -76,7 +76,7 @@ export interface IfcSearchItem {
   aim_url: string | null;
 }
 
-/** Riadok z RPC `search_everything`. */
+/** Row from the RPC `search_everything`. */
 export interface AimSearchRow {
   id: string;
   object_type: string;
@@ -108,9 +108,9 @@ const aimRoute = (objectType: string): string =>
   objectType === "asset_type" ? "type" : objectType === "document" ? "drawing" : "node";
 
 /**
- * Spojí výsledky oboch zdrojov. Kľúč = objects.id (IFC prvok ho má, ak ho AIM
- * pozná), inak GlobalId. Poradie: najprv IFC+AIM, potom podľa najlepšieho
- * poradia v niektorom zo zdrojov (skóre zdrojov nie sú porovnateľné).
+ * Joins the results of both sources. Key = objects.id (an IFC element has it if AIM
+ * knows it), otherwise GlobalId. Order: first IFC+AIM, then by the best
+ * rank in either source (source scores are not comparable).
  */
 export function combineResults(ifc: IfcSearchItem[], aim: AimSearchRow[]): SearchAllItem[] {
   const byKey = new Map<string, { item: SearchAllItem; rank: number }>();
@@ -164,7 +164,7 @@ export function combineResults(ifc: IfcSearchItem[], aim: AimSearchRow[]): Searc
     .map((v) => v.item);
 }
 
-/** Členovia zóny, skupiny alebo aktéra, ktorý sa našiel (D-126, `related`). */
+/** Members of a zone, group or actor that was found (D-126, `related`). */
 export interface RelatedGroup {
   via: "rel_assigns_to_group" | "rel_assigns_to_actor";
   node: { object_id: string; object_ref: string | null; name: string | null; object_type: string };
@@ -174,11 +174,11 @@ export interface RelatedGroup {
 }
 
 export interface SearchAllDeps {
-  /** `ifc_search` (vracia `items`). */
+  /** `ifc_search` (returns `items`). */
   ifc: (input: Record<string, unknown>) => Promise<{ items: IfcSearchItem[] }>;
-  /** `search_everything` (riadky alebo `{rows, hint}`). */
+  /** `search_everything` (rows or `{rows, hint}`). */
   aim: (input: Record<string, unknown>) => Promise<unknown>;
-  /** Členovia nájdených zón, skupín a aktérov z grafu AIM; bez neho sa `related` nerobí. */
+  /** Members of found zones, groups and actors from the AIM graph; without it `related` is not done. */
   related?: (ids: string[]) => Promise<RelatedGroup[]>;
 }
 
@@ -188,7 +188,7 @@ function strList(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string" && s.trim().length > 0) : [];
 }
 
-/** Vykoná `search_all`; zlyhanie jedného zdroja vráti v `errors`, druhý ostane. */
+/** Runs `search_all`; the failure of one source is returned in `errors`, the other stays. */
 export async function execSearchAll(
   input: Record<string, unknown>,
   deps: SearchAllDeps,
@@ -208,7 +208,7 @@ export async function execSearchAll(
   if (!(SOURCES as readonly string[]).includes(source)) {
     return { content: `Chyba toolu: source: ${SOURCES.join(" | ")}.`, isError: true };
   }
-  // fields a fuzzy idú do IFC časti; offset len pri source=ifc (spojený výsledok sa nestránkuje).
+  // fields and fuzzy go to the IFC part; offset only with source=ifc (the joined result is not paginated).
   const ifcExtra = {
     ...(input.fields !== undefined ? { fields: input.fields } : {}),
     ...(input.fuzzy !== undefined ? { fuzzy: input.fuzzy } : {}),
@@ -244,14 +244,14 @@ export async function execSearchAll(
     return { content: `Chyba toolu: IFC: ${errors.ifc}; AIM: ${errors.aim}`, isError: true };
   }
 
-  // ifc_types platí aj pre AIM časť (uzly bez IFC triedy, napr. dokumenty, vypadnú).
+  // ifc_types also applies to the AIM part (nodes without an IFC class, e.g. documents, drop out).
   if (ifcTypes.length > 0) {
     const want = new Set(ifcTypes.map((t) => t.toLowerCase()));
     const ifcIds = new Set(ifc.map((h) => h.object_id).filter(Boolean));
     aim = aim.filter((r) => (r.ifc_type && want.has(r.ifc_type.toLowerCase())) || ifcIds.has(r.id));
   }
   if (model) {
-    // AIM nevie, z ktorého modelu uzol je; ostanú len zhody, ktoré má aj IFC časť.
+    // AIM does not know which model the node is from; only matches that the IFC part also has stay.
     const ifcIds = new Set(ifc.map((h) => h.object_id).filter(Boolean));
     aim = aim.filter((r) => ifcIds.has(r.id));
   }
@@ -270,7 +270,7 @@ export async function execSearchAll(
       errors.related = errText(err);
     }
   }
-  // Členovia (priestory zóny) idú do 3D hneď za zhody: "ukáž prenajímateľné priestory" = jedno volanie.
+  // Members (spaces of a zone) go into 3D right after the matches: "show leasable spaces" = one call.
   const idsOrRefs = [...new Set([...itemIds, ...related.flatMap((g) => g.members.map((m) => m.object_id))])];
   const globalIds = [...new Set(items.filter((it) => !it.object_id && it.global_id).map((it) => it.global_id as string))];
 

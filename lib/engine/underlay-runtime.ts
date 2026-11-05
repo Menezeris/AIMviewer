@@ -16,12 +16,12 @@ import type { PlanSheet } from "./underlay-section-mark";
 import type { UnderlayDeps, UnderlayDocument, UnderlayModel, UnderlayPage } from "./underlay-tool";
 import { currentProjectId } from "../project/context";
 
-// D-135: modely motora z nemenného archívu revízie (cca 5-krát menej egressu).
+// D-135: engine models from the immutable revision archive (about 5 times less egress).
 installArchiveSource();
 
 /**
- * Produkčné závislosti `calibrate_underlay` (D-133): dokument a strany z DB, model z IFC
- * motora, zápis `_georef` do `objects.properties` (rovnako ako `PATCH /api/underlay`).
+ * Production dependencies of `calibrate_underlay` (D-133): the document and pages from the DB, the model from the IFC
+ * engine, writing `_georef` into `objects.properties` (the same as `PATCH /api/underlay`).
  */
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -88,12 +88,12 @@ function findNode(n: TreeNode | undefined, guid: string): TreeNode | null {
 async function model(opts: { model?: string; floor?: string }): Promise<UnderlayModel> {
   const ids = requestIfcModels().map((m) => m.id);
   const id = opts.model ?? ids[0];
-  // modelsFor potrebuje len zdroje modelov; prepojenie na AIM tu netreba.
+  // modelsFor needs only model sources; linking to AIM is not needed here.
   const { models } = await modelsFor([id], {} as EngineDeps);
   const m = models[0];
   const elements = [...(await meshModel(m)).values()];
   const elevations = (m.store as { spatialHierarchy?: { storeyElevations?: Map<number, number> } }).spatialHierarchy?.storeyElevations;
-  // Rez (D-179): výšky podlaží na spárovanie výškových kót; mená netreba, kľúč je expressId.
+  // Section (D-179): storey heights for pairing elevation marks; names are not needed, the key is the expressId.
   if (!opts.floor) return { id: m.id, elements, storeys: [...(elevations ?? new Map<number, number>())].map(([id, z]) => ({ name: `#${id}`, z })) };
   const session = await openEngineSession([m]);
   const guid = IFC_GUID_RE.test(opts.floor) ? opts.floor : await storeyGuid(session, m.id, opts.floor);
@@ -101,14 +101,14 @@ async function model(opts: { model?: string; floor?: string }): Promise<Underlay
   const node = findNode(tree, guid);
   if (!node) throw new Error(`Podlažie ${opts.floor} nie je v modeli ${m.id}.`);
   const spaceGuids = (node.children ?? []).filter((c) => c.type === "IfcSpace" && c.globalId).map((c) => c.globalId!);
-  // Výška podlažia z parsera (m), rovnaký zdroj ako `storeyElevations` vo vieweri.
+  // Storey height from the parser (m), the same source as `storeyElevations` in the viewer.
   const z = node.expressId !== undefined ? (elevations?.get(node.expressId) ?? null) : null;
   return { id: m.id, elements, storey: { guid, name: node.name ?? opts.floor, z, spaceGuids } };
 }
 
 /**
- * Kalibrované pôdorysy pre rovinu rezu zo značky (D-179): kalibrácie strán s `plane: null` (pôdorys) a
- * affine, k nim text a čiary strany. Len čítanie; filter na `_georef` robí DB, kalibrácie sa čítajú v2.
+ * Calibrated floor plans for the section plane from a mark (D-179): page calibrations with `plane: null` (floor plan) and
+ * affine, plus the page text and lines. Read only; the filter on `_georef` is done by the DB, calibrations are read as v2.
  */
 async function planSheets(): Promise<PlanSheet[]> {
   const projectId = currentProjectId();
@@ -124,7 +124,7 @@ async function planSheets(): Promise<PlanSheet[]> {
   const wanted: { id: string; ref: string; page: number; affine: Affine; pageSize: P2; region: PageRegion | null }[] = [];
   for (const d of data ?? []) {
     for (const c of toGeorefV2((d.properties as Record<string, unknown> | null)?._georef).calibrations) {
-      // Affine je z bodov strany v rozmere `page_size` kalibrácie (D-133), ten istý rámec ako čiary ETL.
+      // The affine is from page points in the `page_size` of the calibration (D-133), the same frame as the ETL lines.
       if (!c.plane) wanted.push({ id: d.id as string, ref: (d.object_ref as string | null) ?? (d.id as string), page: c.page, affine: c.affine, pageSize: c.page_size, region: c.region ?? null });
     }
   }
@@ -140,7 +140,7 @@ async function planSheets(): Promise<PlanSheet[]> {
     if (!pg) continue;
     const lines = pg.lines as UnderlayPage["lines"] | null;
     const blocks = (pg.blocks as UnderlayPage["blocks"]) ?? [];
-    // Hárok s viac pôdorysmi (D-180): text a čiary len z výrezu kalibrácie, inak by osi a značky iného pôdorysu išli cez zlý affine.
+    // Sheet with several floor plans (D-180): text and lines only from the calibration region, otherwise grids and marks of another floor plan would go through a wrong affine.
     const crop = w.region ? cropToRegion(blocks, lines?.segs ?? [], w.region, w.pageSize) : null;
     out.push({ ref: w.ref, page: w.page, affine: w.affine, pageSize: w.pageSize, blocks: crop?.blocks ?? blocks, lines: crop ? crop.lines : lines?.segs, region: w.region });
   }
@@ -150,7 +150,7 @@ async function planSheets(): Promise<PlanSheet[]> {
 async function write(documentId: string, apply: (stored: unknown) => MergeResult): Promise<MergeResult> {
   const projectId = currentProjectId();
   const db = getSupabaseAdmin();
-  // Zlúčenie nad najnovšími properties, nie nad tými z čítania pred výpočtom.
+  // Merge over the newest properties, not over those from the read before the computation.
   const { data, error } = await db.from("objects").select("properties").eq("project_id", projectId).eq("id", documentId).maybeSingle();
   if (error) throw new Error(error.message);
   const current = (data?.properties as Record<string, unknown> | null) ?? {};

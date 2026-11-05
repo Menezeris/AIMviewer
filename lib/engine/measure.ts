@@ -15,19 +15,19 @@ import { openEngineSession, type EngineModel } from "./session";
 import { ENGINE_VERSION, IFC_GUID_RE, InputError, guidIndex, modelsFor, str, type EngineDeps } from "./tools";
 
 /**
- * `ifc_measure` (D-112): meranie z geometrie IFC motora. Upstream `geometry_*`
- * čítajú len Qto; skutočnú geometriu má balík iba v `clash_check` (headless
- * tesselácia `@ifc-lite/geometry`). Tu sa model tesseluje rovnako, raz na
- * inštanciu (cache pri zdieľanom store), a:
- * - dva prvky: svetlá vzdialenosť meshov upstream clash enginom (režim
- *   clearance s explicitnými členmi, záporná = prienik), stredy, medzery po osiach;
- * - prvok: rozmery obálky, povrch, pôdorys a objem z meshu vedľa Qto.
- * Modely federácie sú v jednom rámci (overené na ASR a VZT), takže dvojica
- * môže byť z rôznych modelov. Mesh je Y-up v metroch; von ide v osiach IFC (Z hore).
+ * `ifc_measure` (D-112): measurement from the geometry of the IFC engine. Upstream `geometry_*`
+ * read only Qto; the bundle has real geometry only in `clash_check` (headless
+ * tessellation of `@ifc-lite/geometry`). Here the model is tessellated the same way, once per
+ * instance (cache for a shared store), and:
+ * - two elements: clear distance of meshes by the upstream clash engine (clearance
+ *   mode with explicit members, negative = intersection), centres, gaps along axes;
+ * - an element: envelope dimensions, surface, plan and volume from the mesh next to Qto.
+ * Federation models are in one frame (verified on ASR and VZT), so a pair
+ * can come from different models. The mesh is Y-up in metres; output is in IFC axes (Z up).
  */
 
 const MAX_ITEMS = 50;
-/** Nezhoda meshu a Qto nad touto relatívnou odchýlkou. */
+/** Mesh and Qto mismatch above this relative deviation. */
 const MISMATCH = 0.05;
 
 export type Vec3 = [number, number, number];
@@ -44,15 +44,15 @@ export interface MeshElement {
   name: string | null;
   positions: Float32Array;
   indices: Uint32Array;
-  /** Začiatky telies (položiek reprezentácie) v `indices`, napr. zárubňa, krídlo, kovanie. */
+  /** Starts of solids (representation items) in `indices`, e.g. frame, leaf, hardware. */
   parts: number[];
-  /** Obálka v rámci meshu (Y-up). */
+  /** Envelope in the mesh frame (Y-up). */
   bounds: Box;
-  /** Posun rámca meshu do IFC sveta (Z hore, m) z `coordinateInfo`; bez neho 0 (D-124). */
+  /** Mesh frame offset into the IFC world (Z up, m) from `coordinateInfo`; without it 0 (D-124). */
   worldOffset?: Vec3;
 }
 
-/** Y-up mesh -> IFC (Z hore): x = x, y = -z, z = y. */
+/** Y-up mesh -> IFC (Z up): x = x, y = -z, z = y. */
 export function toIfc(p: readonly number[]): Vec3 {
   return [p[0], -p[2] || 0, p[1]];
 }
@@ -79,7 +79,7 @@ export function boundsOf(positions: Float32Array): Box {
   return { min, max };
 }
 
-/** Povrch (m²), pôdorys = priemet plôch s normálou hore (m², IFC Z) a objem (m³) cez znamienkové štvorsteny. */
+/** Surface (m²), plan = projection of faces with an upward normal (m², IFC Z) and volume (m³) via signed tetrahedra. */
 export function meshMetrics(positions: Float32Array, indices: Uint32Array): { area: number; footprint: number; volume: number; closed: boolean } {
   let area = 0;
   let footprint = 0;
@@ -98,7 +98,7 @@ export function meshMetrics(positions: Float32Array, indices: Uint32Array): { ar
     const ny = uz * vx - ux * vz;
     const nz = ux * vy - uy * vx;
     area += Math.hypot(nx, ny, nz) / 2;
-    // Y je v meshi hore: priemet na vodorovnú rovinu = zložka normály Y.
+    // Y is up in the mesh: projection onto the horizontal plane = the Y component of the normal.
     if (ny > 0) footprint += ny / 2;
     volume += (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)) / 6;
     for (const [p, q] of [[ia, ib], [ib, ic], [ic, ia]]) {
@@ -118,12 +118,12 @@ export function meshMetrics(positions: Float32Array, indices: Uint32Array): { ar
   return { area, footprint, volume: Math.abs(volume), closed };
 }
 
-/** Kľúč vrcholu podľa polohy (mm), lebo mesher zdvojuje vrcholy na hranách kvôli normálam. */
+/** Vertex key by position (mm), because the mesher duplicates vertices on edges because of normals. */
 function vertexKey(positions: Float32Array, i: number): string {
   return `${Math.round(positions[i * 3] * 1000)},${Math.round(positions[i * 3 + 1] * 1000)},${Math.round(positions[i * 3 + 2] * 1000)}`;
 }
 
-/** Medzera medzi obálkami po osiach (0 = v priemete sa prekrývajú). */
+/** Gap between envelopes along axes (0 = they overlap in projection). */
 export function boxGap(a: Box, b: Box): Vec3 {
   return [0, 1, 2].map((k) => Math.max(0, a.min[k] - b.max[k], b.min[k] - a.max[k])) as Vec3;
 }
@@ -136,7 +136,7 @@ const round = (v: number, digits = 3) => Math.round(v * 10 ** digits) / 10 ** di
 const xyz = (v: Vec3) => ({ x: round(v[0]), y: round(v[1]), z: round(v[2]) });
 const roundVec = (v: readonly number[]) => v.map((x) => round(x)) as Vec3;
 
-/** Meshe jedného modelu zlúčené po prvkoch, svetové súradnice (world = origin + position). */
+/** Meshes of one model merged per element, world coordinates (world = origin + position). */
 export function elementsFromMeshes(
   meshes: MeshData[],
   store: IfcDataStore,
@@ -194,7 +194,7 @@ export function elementsFromMeshes(
   return out;
 }
 
-/** Tesselácia raz na zdieľaný store (cache inštancie, ako store v `cache.ts`). */
+/** Tessellation once per shared store (instance cache, like the store in `cache.ts`). */
 const meshCache = new WeakMap<IfcDataStore, Promise<Map<string, MeshElement>>>();
 
 export function meshModel(m: EngineModel): Promise<Map<string, MeshElement>> {
@@ -210,7 +210,7 @@ async function tessellate(m: EngineModel): Promise<Map<string, MeshElement>> {
   if (!m.store.source || m.store.source.byteLength === 0) throw new Error(`Model ${m.id} nemá zdrojové bajty na tesseláciu.`);
   return m.store.source.withMaterializedAsync(async (bytes) => {
     const gp = new GeometryProcessor({ enableInstancing: false });
-    // Mesher píše priebeh do console.* (ako parser v loader.ts) - stíšiť.
+    // The mesher writes progress to console.* (like the parser in loader.ts) - silence it.
     const origLog = console.log;
     const origWarn = console.warn;
     console.log = () => undefined;
@@ -228,7 +228,7 @@ async function tessellate(m: EngineModel): Promise<Map<string, MeshElement>> {
   });
 }
 
-/** Svetlá vzdialenosť meshov (m) upstream clash enginom; záporná = hĺbka prieniku. */
+/** Clear distance of meshes (m) by the upstream clash engine; negative = penetration depth. */
 export async function meshDistance(a: MeshElement, b: MeshElement): Promise<{ distance: number; kind: string; point: Vec3 } | null> {
   const el = (e: MeshElement): ClashElement => ({
     key: `${e.model}:${e.globalId}`,
@@ -240,7 +240,7 @@ export async function meshDistance(a: MeshElement, b: MeshElement): Promise<{ di
     positions: e.positions,
     indices: e.indices,
   });
-  // Clearance stačí ako najväčšia možná vzdialenosť obálok (+1 m rezerva).
+  // Clearance suffices as the largest possible distance of envelopes (+1 m reserve).
   const lo: Vec3 = [0, 1, 2].map((k) => Math.min(a.bounds.min[k], b.bounds.min[k])) as Vec3;
   const hi: Vec3 = [0, 1, 2].map((k) => Math.max(a.bounds.max[k], b.bounds.max[k])) as Vec3;
   const clearance = Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) + 1;
@@ -272,7 +272,7 @@ interface QtoValue {
   value: number;
 }
 
-/** Objem a plocha z Qto prvku (štandardné `Qto_*BaseQuantities` pred ostatnými, Net pred Gross). */
+/** Volume and area from the element Qto (standard `Qto_*BaseQuantities` before others, Net before Gross). */
 export function qtoOf(store: IfcDataStore, expressId: number): { volume?: QtoValue; area?: QtoValue; all: QtoValue[] } {
   const all: QtoValue[] = [];
   for (const set of new EntityNode(store, expressId).quantities()) {
@@ -305,7 +305,7 @@ function compare(mesh: number, qto: QtoValue | undefined) {
   };
 }
 
-/** Rozmery a výmery jedného prvku z meshu vedľa Qto. */
+/** Dimensions and quantities of one element from the mesh next to Qto. */
 export function sizeOf(e: MeshElement, store: IfcDataStore) {
   const box = ifcBox(e.bounds);
   const m = meshMetrics(e.positions, e.indices);
@@ -325,7 +325,7 @@ export function sizeOf(e: MeshElement, store: IfcDataStore) {
   };
 }
 
-/** Rozdiel dvojice: svetlá vzdialenosť, stredy, medzery po osiach IFC. */
+/** Difference of a pair: clear distance, centres, gaps along IFC axes. */
 export async function pairOf(a: MeshElement, b: MeshElement) {
   const ba = ifcBox(a.bounds);
   const bb = ifcBox(b.bounds);
@@ -339,11 +339,11 @@ export async function pairOf(a: MeshElement, b: MeshElement) {
     status: clear === null ? "unknown" : clear < -1e-4 ? "overlap" : clear <= 1e-4 ? "touch" : "gap",
     distance_kind: d?.kind ?? null,
     closest_point: d ? roundVec(toIfc(d.point)) : null,
-    // Konce najkratšej úsečky v IFC svete (D-124): kóta vo vieweri; pri prieniku a dotyku null.
+    // Ends of the shortest segment in the IFC world (D-124): a dimension in the viewer; null on intersection and touch.
     closest_points: d ? pairDimension(a, b, d.point, d.distance) : null,
     center_distance_m: round(Math.hypot(ca[0] - cb[0], ca[1] - cb[1], ca[2] - cb[2])),
     bbox_gap_m: { x: round(gap[0]), y: round(gap[1]), z: round(gap[2]), horizontal: round(Math.hypot(gap[0], gap[1])) },
-    // a nad b: spodok a - vrch b (napr. klapka nad doskou); záporné = a je pod b.
+    // a above b: bottom of a - top of b (e.g. a damper above a slab); negative = a is below b.
     a_above_b_m: round(ba.min[2] - bb.max[2]),
   };
 }
@@ -367,8 +367,8 @@ function parseTargets(input: Record<string, unknown>): { a: string; b: string; l
 }
 
 /**
- * `dimensions`: volajúci s `show=true` sem dostane kóty pre viewer (D-124) -
- * a + b svetlú vzdialenosť, len a rozmery obálky.
+ * `dimensions`: a caller with `show=true` gets here dimensions for the viewer (D-124) -
+ * a + b clear distance, only a envelope dimensions.
  */
 export async function ifcMeasure(
   input: Record<string, unknown>,
@@ -386,7 +386,7 @@ export async function ifcMeasure(
   const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? requestIfcModels)().map((m) => m.id);
   const { models, revision } = await modelsFor(modelIds, deps);
   const session = await openEngineSession(models);
-  // GUID -> model: najprv index (lacný), tesselácia len modelov, ktoré prvky naozaj nesú.
+  // GUID -> model: first the index (cheap), tessellation only of models that really carry the elements.
   const where = new Map<string, EngineModel>();
   for (const m of models) {
     const idx = await guidIndex(session, m);
@@ -484,7 +484,7 @@ export async function ifcMeasure(
   return JSON.stringify(out);
 }
 
-/** Svetlý otvor dverí z geometrie (dodatok D-118) s pass/fail voči limitu od používateľa. */
+/** Clear door opening from geometry (addendum D-118) with pass/fail against a user limit. */
 function clearOpenings(
   targets: string[],
   element: (t: string) => MeshElement,
@@ -514,7 +514,7 @@ function clearOpenings(
     const raw = clearOpening(e.positions, e.indices, e.parts);
     const { segments, ...measured } = typeof raw === "string" ? { segments: undefined } : raw;
     const c = typeof raw === "string" ? null : (measured as Omit<ClearOpening, "segments">);
-    // Kóty svetlého otvoru (D-155): šírka a výška, kým sa zmestia do limitu mosta.
+    // Clear opening dimensions (D-155): width and height as long as they fit into the bridge limit.
     for (const seg of [segments?.width, segments?.height]) {
       if (!dimensions || !seg) continue;
       if (dimensions.length >= MAX_MEASURE_SEGMENTS) {
@@ -555,7 +555,7 @@ function clearOpenings(
             pass: groups.pass.length,
             fail: groups.fail.length,
             unknown: groups.unknown.length,
-            // Vstup pre style_in_3d: pass zelená, fail červená.
+            // Input for style_in_3d: pass green, fail red.
             style_pass: style(groups.pass),
             style_fail: style(groups.fail),
           },

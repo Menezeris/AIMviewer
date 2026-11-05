@@ -10,7 +10,7 @@ import { execEngineTool, type EngineDeps } from "./tools";
 
 const fetchImpl = (async () => new Response(MINI_RELATIONS_BYTES, { status: 200, headers: { etag: '"rel"' } })) as unknown as typeof fetch;
 
-/** AIM pozná len miestnosť 1.01 a zónu Z1 (ostatné sú "len v súbore", ako 40 z 64 zón na prode). */
+/** AIM knows only space 1.01 and zone Z1 (the others are "only in the file", like 40 of 64 zones in prod). */
 const AIM: Record<string, AimRef> = {
   [guid("SPA")]: { object_id: "11111111-1111-1111-1111-111111111111", object_ref: "1.01", name: "1.01", object_type: "space" },
   [guid("ZN1")]: { object_id: "33333333-3333-3333-3333-333333333333", object_ref: "Najomne", name: "Najomne priestory", object_type: "zone" },
@@ -98,13 +98,13 @@ describe("ifc_relations (D-097)", () => {
       expect.objectContaining({ global_id: guid("AHU"), ifc_type: "IfcUnitaryEquipment", steps: 4, path: [guid("DS1"), guid("DMP"), guid("DS2"), guid("FD1"), guid("AHU")] }),
     ]);
     expect(ahu.json.path_show_in_3d.global_ids).toHaveLength(5);
-    // Obyčajná klapka DMP nie je požiarna: prechod ide cez ňu až po FD1 a ďalej nie.
+    // An ordinary damper DMP is not a fire damper: the traversal goes through it up to FD1 and no further.
     const fire = await run({ target: guid("DS1"), through_ports: true, recursive: true, stop_at: ["IfcDamper.FIREDAMPER"] });
     expect(fire.json.reached.map((r: { global_id: string; steps: number; predefined_type: string }) => [r.global_id, r.steps, r.predefined_type])).toEqual([
       [guid("FD1"), 3, "FIREDAMPER"],
     ]);
     expect(guids(fire.json.items)).toEqual([guid("DMP"), guid("DS2"), guid("FD1")].sort());
-    // Trieda bez typu zastaví na prvej klapke.
+    // A class without a type stops at the first damper.
     const any = await run({ target: guid("DS1"), through_ports: true, recursive: true, stop_at: ["IfcDamper"] });
     expect(any.json.reached.map((r: { global_id: string }) => r.global_id)).toEqual([guid("DMP")]);
   });
@@ -112,7 +112,7 @@ describe("ifc_relations (D-097)", () => {
   it("stop_at: PredefinedType typovaného výskytu ($) sa berie z jeho typu (#300)", async () => {
     const typed = await run({ target: guid("DS3"), through_ports: true, recursive: true, stop_at: ["IfcDamper.FIREDAMPER"] });
     expect(typed.json.reached.map((r: { global_id: string; predefined_type: string }) => [r.global_id, r.predefined_type])).toEqual([[guid("TD1"), "FIREDAMPER"]]);
-    // Sieť je celá, len taký prvok v nej nie je: poznámka nehovorí o nenapojených prvkoch.
+    // The network is complete, only such an element is not in it: the note does not speak about unconnected elements.
     const none = await run({ target: guid("DS3"), through_ports: true, recursive: true, stop_at: ["IfcDamper.BALANCINGDAMPER"] });
     expect(none.json.reached).toEqual([]);
     expect(none.json.note).toContain("neobsahuje prvok vyhovujúci stop_at");
@@ -156,7 +156,7 @@ describe("ifc_relations (D-097)", () => {
 describe("ifc_relations: priestorové väzby contained a referenced (D-167, #297)", () => {
   afterEach(() => clearEngineCache());
 
-  /** Odvodené geometriou (D-080): VZT prvok je v IfcSpace z iného modelu, v súbore tá hrana nie je. */
+  /** Derived by geometry (D-080): the VZT element is in an IfcSpace of another model, in the file that edge is not present. */
   const derived = (g: string) =>
     g === guid("SPC")
       ? [{ direction: "forward" as const, global_id: guid("DS1"), ifc_type: "IfcDuctSegment", name: "Potrubie 1", role: "inside" }]

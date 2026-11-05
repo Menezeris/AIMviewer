@@ -4,8 +4,8 @@ import type { ToolDefinition } from "../llm/provider";
 
 
 /**
- * Definície `ifc_*` tools IFC motora (D-084) - bez závislostí motora, aby ich
- * MCP route mohla importovať staticky; vykonanie je v `./tools` (lenivo).
+ * Definitions of the `ifc_*` tools of the IFC engine (D-084) - without engine dependencies, so that
+ * the MCP route can import them statically; the execution is in `./tools` (lazily).
  */
 
 export const OPS = ["=", "!=", ">", "<", ">=", "<=", "contains", "exists", "matches"] as const;
@@ -35,7 +35,7 @@ const whereSchema = {
   },
 };
 
-/** `ifc_models` action -> prevzatý tool balíka (D-087); revisions je vlastný (D-109). */
+/** `ifc_models` action -> taken-over tool of the bundle (D-087); revisions is own (D-109). */
 export const MODEL_ACTIONS = {
   revisions: null,
   info: "model_info",

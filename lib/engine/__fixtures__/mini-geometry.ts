@@ -1,10 +1,10 @@
 import { MINI_BUILDING, guid } from "./mini-building";
 
 /**
- * Mini model s geometriou pre `ifc_measure` (D-112): dve steny 1 x 0,2 x 3 m
- * (extrúzia obdĺžnika) s medzerou 1 m v osi X a doska 4 x 4 x 0,2 m pod nimi,
- * spodok dosky -0,5 m (medzera 0,3 m). Qto: stena W1 má správny objem 0,6 m³,
- * stena W2 nesie zlý objem 1,0 m³ (nezhoda s geometriou).
+ * Mini model with geometry for `ifc_measure` (D-112): two walls 1 x 0.2 x 3 m
+ * (rectangle extrusion) with a 1 m gap along the X axis and a slab 4 x 4 x 0.2 m below them,
+ * slab bottom -0.5 m (gap 0.3 m). Qto: wall W1 has the correct volume 0.6 m³,
+ * wall W2 carries a wrong volume 1.0 m³ (mismatch with geometry).
  */
 const EXTRA = `#200= IFCDIRECTION((0.,0.,1.));
 #201= IFCCARTESIANPOINT((0.5,0.1));

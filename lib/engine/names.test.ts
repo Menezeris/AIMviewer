@@ -54,7 +54,7 @@ describe("hľadanie podľa kódu (D-102)", () => {
     expect(hits.get("1.02")).toEqual([
       { global_id: guid("SPB"), ifc_type: "IfcSpace", model: "MINI", name: "1.02", storey: { name: "1NP", global_id: guid("ST1") } },
     ]);
-    // D-115 (eval D7): podlažie aj pre prvok len v súbore, tu cez IfcRelContainedInSpatialStructure.
+    // D-115 (eval D7): the storey also for an element only in the file, here via IfcRelContainedInSpatialStructure.
     expect(hits.get("tagA")?.[0]).toMatchObject({ global_id: guid("WALA"), storey: { name: "1NP" } });
     expect(hits.has("neexistuje")).toBe(false);
   });
@@ -81,7 +81,7 @@ describe("podhľad podlažia (D-102)", () => {
       model: "MINI",
     });
     expect(c?.warning).toMatch(/len z Qto/);
-    expect(await storeyCeiling("2NP", opts)).toBeNull(); // miestnosť bez Qto výšky
+    expect(await storeyCeiling("2NP", opts)).toBeNull(); // a space without a Qto height
     // Openspace 3,05 m (120 m2) prehlasuje WC 2,6 m (4 x 3 m2).
     const rooms = [{ value: 3.05, weight: 120 }, ...Array.from({ length: 4 }, () => ({ value: 2.6, weight: 3 }))];
     expect(weightedMedian(rooms)).toBe(3.05);
@@ -93,11 +93,11 @@ describe("podhľad podlažia (D-102)", () => {
       sources: () => [{ id: "MINI", label: "Mini", url: "https://example.test/ceil.ifc" }],
       fetchImpl: (async () => new Response(MINI_CEILING_BYTES, { status: 200, headers: { etag: '"ceil"' } })) as typeof fetch,
     };
-    // 2.NP: úroveň 3,5 m, podhľad 6,6 až 6,613 m; Qto 3,05 m by dalo 6,55 m.
+    // 2.NP: level 3.5 m, ceiling 6.6 to 6.613 m; Qto 3.05 m would give 6.55 m.
     const c = await storeyCeiling("2NP", geo);
     expect(c).toMatchObject({ source: "geometry", bottom_m: 3.1, top_m: 3.113, coverings: 1, qto: { height_m: 3.05 }, model: "MINI" });
     expect(c?.warning).toMatch(/Qto FinishCeilingHeight \(3.05 m\).*3.1 m.*o 0.05 m/);
-    // 1NP nemá krytinu: záloha z Qto bez nezhody.
+    // 1NP has no covering: a fallback from Qto without a mismatch.
     expect(await storeyCeiling("1NP", geo)).toMatchObject({ source: "qto", bottom_m: 3.05 });
   });
   it("ceilingFromCoverings: vážený medián okrajov mínus úroveň podlažia", () => {

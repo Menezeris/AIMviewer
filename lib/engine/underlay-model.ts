@@ -2,14 +2,14 @@ import { toIfc, type MeshElement } from "./measure";
 import { footprintCentroid, sliceTriangles, type P2, type Plane, type Seg } from "./underlay-calibrate";
 
 /**
- * Model pre kalibráciu podkladu (D-133): meshe IFC motora (Y-up, `meshModel`) prevedené do
- * IFC sveta (Z hore, m, + `worldOffset` D-124), teda do toho istého rámca, v ktorom viewer
- * ukladá body kalibrácie (`_georef`, `worldToIfcMetres`).
+ * Model for underlay calibration (D-133): IFC engine meshes (Y-up, `meshModel`) converted into the
+ * IFC world (Z up, m, + `worldOffset` D-124), i.e. into the same frame in which the viewer
+ * stores calibration points (`_georef`, `worldToIfcMetres`).
  */
 
 /**
- * Pôdorys: konštrukcie, ktoré výkres kreslí hrubou čiarou rezu. Dvere, okná a zariadenie
- * sú v pôdoryse tenké (pod `LINE_MIN_WIDTH` ETL) a v ICP by len rušili (p90 1NP 41 -> 20 mm).
+ * Floor plan: structures that the drawing draws with a thick cut line. Doors, windows and equipment
+ * are thin in a plan (under the ETL `LINE_MIN_WIDTH`) and would only disturb ICP (p90 1NP 41 -> 20 mm).
  */
 const PLAN_TYPES = new Set([
   "IfcWall",
@@ -29,12 +29,12 @@ const PLAN_TYPES = new Set([
 ]);
 
 /**
- * Rez: všetko okrem objemov priestorov a zón, otvorov a nábytku. Zvislý rez kreslí hrubo aj
- * rámy okien, zábradlia a obklady (len konštrukcie zhoršia rez A z 8/13 na 13/114 mm).
+ * Section: everything except volumes of spaces and zones, openings and furniture. A vertical section also draws
+ * window frames, railings and cladding thick (structures only worsen section A from 8/13 to 13/114 mm).
  */
 const NOT_IN_SECTION = new Set(["IfcSpace", "IfcSpatialZone", "IfcZone", "IfcOpeningElement", "IfcFurniture", "IfcFurnishingElement", "IfcVirtualElement", "IfcAnnotation", "IfcSite"]);
 
-/** Body meshu v IFC svete (x, y, z). */
+/** Mesh points in the IFC world (x, y, z). */
 export function ifcPositions(e: MeshElement): Float64Array {
   const off = e.worldOffset ?? [0, 0, 0];
   const out = new Float64Array(e.positions.length);
@@ -47,7 +47,7 @@ export function ifcPositions(e: MeshElement): Float64Array {
   return out;
 }
 
-/** Rez modelu rovinou pohľadu, úsečky v (u, v); `kind` určuje triedy (pôdorys alebo rez). */
+/** Model cut by the view plane, segments in (u, v); `kind` determines the classes (floor plan or section). */
 export function modelCut(elements: Iterable<MeshElement>, plane: Plane, kind: "plan" | "section"): Seg[] {
   const out: Seg[] = [];
   for (const e of elements) {
@@ -57,14 +57,14 @@ export function modelCut(elements: Iterable<MeshElement>, plane: Plane, kind: "p
   return out;
 }
 
-/** Pôdorysná rovina vo výške `z` (u = X, v = Y). */
+/** Floor plan plane at height `z` (u = X, v = Y). */
 export function planPlane(z: number): Plane {
   return { origin: [0, 0, z], u: [1, 0, 0], v: [0, 1, 0] };
 }
 
 /**
- * Zvislá rovina rezu cez bod `at` (IFC X, Y) v smere `dir` (pôdorysný smer reznej čiary):
- * u = smer čiary, v = Z hore.
+ * Vertical section plane through the point `at` (IFC X, Y) in the direction `dir` (plan direction of the section line):
+ * u = line direction, v = Z up.
  */
 export function sectionPlane(at: P2, dir: P2): Plane {
   const L = Math.hypot(dir[0], dir[1]);
@@ -72,7 +72,7 @@ export function sectionPlane(at: P2, dir: P2): Plane {
   return { origin: [at[0], at[1], 0], u: [dir[0] / L, dir[1] / L, 0], v: [0, 0, 1] };
 }
 
-/** IfcSpace, ktoré pretína výška `z`: Name (číslo miestnosti) a ťažisko pôdorysu. */
+/** IfcSpace cut by the height `z`: Name (room number) and the plan centroid. */
 export function spacesAt(elements: Iterable<MeshElement>, z: number): { name: string; centroid: P2 }[] {
   const out: { name: string; centroid: P2 }[] = [];
   for (const e of elements) {

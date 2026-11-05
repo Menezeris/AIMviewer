@@ -1,11 +1,11 @@
 /**
- * Revízie IFC modelov pre `ifc_models` (D-109): riadky `model_revisions` (D-086)
- * zúžené na to, čo Claude potrebuje na otázku "je toto najnovšie VZT?" - číslo,
- * základ, dátum, autor, obsah (sha256, veľkosť), recept a výsledok poistky.
- * Čisté funkcie bez DB; čítanie je v `lib/data/model-revisions.ts`.
+ * IFC model revisions for `ifc_models` (D-109): `model_revisions` rows (D-086)
+ * narrowed to what Claude needs for the question "is this the newest VZT?" - number,
+ * base, date, author, content (sha256, size), recipe and the result of the safeguard.
+ * Pure functions without DB; reading is in `lib/data/model-revisions.ts`.
  */
 
-/** Riadok `model_revisions`, ako ho vráti DB. */
+/** A `model_revisions` row as returned by the DB. */
 export interface ModelRevisionRow {
   model: string;
   revision: number;
@@ -20,10 +20,10 @@ export interface ModelRevisionRow {
   created_at: string;
 }
 
-/** Načíta revízie modelov, najnovšie prvé; `perModel` = koľko na model. */
+/** Loads model revisions, newest first; `perModel` = how many per model. */
 export type RevisionSource = (models: string[], perModel: number) => Promise<ModelRevisionRow[]>;
 
-/** GUIDov pridaných/odobratých vypíše najviac toľko; počet je vždy celý. */
+/** At most this many added/removed GUIDs are listed; the count is always complete. */
 const MAX_GUIDS = 20;
 
 const vnnn = (n: number) => `v${String(n).padStart(3, "0")}`;
@@ -48,7 +48,7 @@ function guardSummary(raw: unknown): Record<string, unknown> | undefined {
   };
 }
 
-/** Revízia pre odpoveď toolu. */
+/** Revision for the tool reply. */
 export function shapeRevision(row: ModelRevisionRow): Record<string, unknown> {
   const guard = guardSummary(row.guard);
   return {
@@ -62,13 +62,13 @@ export function shapeRevision(row: ModelRevisionRow): Record<string, unknown> {
     sha256: row.sha256,
     size_bytes: row.size_bytes,
     ...(row.recipe_ref ? { recipe: row.recipe_ref } : {}),
-    // Úplný zoznam zmien (aj modify) je v repe OCB, v DB nie (D-086).
+    // The complete list of changes (also modify) is in the OCB repo, not in the DB (D-086).
     changes_file: `Menezeris/OCB: zmeny/${row.model}/${vnnn(row.revision)}.json`,
     ...(guard ? { guard } : {}),
   };
 }
 
-/** Aktuálna revízia a (voliteľne) história modelu z riadkov, najnovšie prvé. */
+/** Current revision and (optionally) the model history from rows, newest first. */
 export function revisionsFor(
   model: string,
   rows: readonly ModelRevisionRow[],

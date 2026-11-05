@@ -25,8 +25,8 @@ import {
 import { execCalibrateUnderlay, type UnderlayDeps } from "./underlay-tool";
 
 /**
- * D-184 dodatok (#170): osi z radov bublín. Pôdorys natočený na hárku (SF.01: sieť osí 19° na strane, kalibrácia
- * -109,05°), raster bez čiar konštrukcií (len krúžky osí) a výsek s osou len na jednom konci (TP.01).
+ * D-184 addendum (#170): grids from rows of bubbles. A floor plan rotated on the sheet (SF.01: grid network 19° on the page, calibration
+ * -109.05°), a raster without structure lines (only grid circles) and a detail with a grid at one end only (TP.01).
  */
 
 const PAGE: P2 = [3260, 1190];
@@ -46,7 +46,7 @@ const AY = (i: number) => 12.85 - 6.5 * i;
 const REFS: RefAxis[] = [...LETTERS.map((text, i) => ({ text, dir: "x" as const, at: AX(i), sheets: 3 })), ...NUMBERS.map((text, i) => ({ text, dir: "y" as const, at: AY(i), sheets: 3 }))];
 
 const block = (t: string, p: P2): PageBlock => ({ t, x: (p[0] / PAGE[0]) * 100 - 0.1, y: (1 - p[1] / PAGE[1]) * 100 - 0.3, w: 0.2, h: 0.6 });
-/** Bubliny pôdorysu v modeli (m): písmená nad aj pod budovou, čísla len vľavo (os na jednom konci). */
+/** Floor plan bubbles in the model (m): letters both above and below the building, numbers on the left only (a grid at one end). */
 function bubbles(inv: Affine, yTop = 18, yBot = -13.5, xLeft = 24): { blocks: PageBlock[]; at: P2[] } {
   const at: P2[] = [];
   const blocks: PageBlock[] = [];
@@ -63,7 +63,7 @@ function bubbles(inv: Affine, yTop = 18, yBot = -13.5, xLeft = 24): { blocks: Pa
   return { blocks, at };
 }
 
-/** Krúžok bubliny (polomer 0,25 m) na strane ako 12 úsečiek (raster SF.01 má vo vektoroch len tieto). */
+/** Bubble circle (radius 0.25 m) on the page as 12 segments (the SF.01 raster has only these in vectors). */
 function circles(inv: Affine, at: P2[]): PageLine[] {
   const out: PageLine[] = [];
   for (const c of at) {
@@ -76,7 +76,7 @@ function circles(inv: Affine, at: P2[]): PageLine[] {
   return out;
 }
 
-/** Obvodové steny budovy (X 30 až 63, Y -8 až 13) ako rez modelu. */
+/** Perimeter walls of the building (X 30 to 63, Y -8 to 13) as a model cut. */
 const OUTLINE: Seg[] = [
   [30, -8, 63, -8],
   [63, -8, 63, 13],
@@ -89,7 +89,7 @@ const near = (a: Affine, b: Affine) => Math.max(...([[0, 0], PAGE] as P2[]).map(
 describe("osi z radov bublín (D-184 dodatok)", () => {
   it("natočená sieť: natočenie a posun z bublín, aj keď sú čísla len na jednom konci a do výrezu zasahuje susedný pôdorys", () => {
     const own = bubbles(INV);
-    // Susedný pôdorys hárku (o 848 pt vpravo): jeho rad D, E, F a os 2 zasahujú do výrezu.
+    // Neighbouring floor plan of the sheet (848 pt to the right): its row D, E, F and grid 2 reach into the region.
     const shift = (b: PageBlock): PageBlock => ({ ...b, x: b.x + (848 / PAGE[0]) * 100 });
     const neighbour = own.blocks.filter((b, i) => (["D", "E", "F"].includes(b.t) && i % 2 === 1) || b.t === "2").map(shift);
     const noise = [block("2", [2900, 300]), block("B", [3100, 900])];
@@ -101,7 +101,7 @@ describe("osi z radov bublín (D-184 dodatok)", () => {
     expect(st.rotation).toBeCloseTo(ROT, 1);
     expect(near(st.affine, T)).toBeLessThan(0.02);
     expect(checkAxes(st.affine, g.lines, REFS)).toMatchObject({ ok: true });
-    // Sieť v smere strany (TP.01): natočenia sú presne násobky 90°.
+    // Network in the page direction (TP.01): the rotations are exact multiples of 90°.
     expect(gridRotations(0)).toEqual([0, 90, -180, -90]);
   });
 
@@ -127,7 +127,7 @@ describe("osi z radov bublín (D-184 dodatok)", () => {
   });
 
   it("raster (len krúžky osí pri stenách): ICP by osi posunulo, ostane štart z osí; natočenie sa kontroluje voči sieti", () => {
-    // Bubliny 0,8 m od obvodových stien: ICP ich pritiahne na steny a posunie celý výkres.
+    // Bubbles 0.8 m from the perimeter walls: ICP pulls them onto the walls and shifts the whole drawing.
     const own = bubbles(INV, 13.8, -8.8, 29.2);
     const lines = circles(INV, own.at);
     const g = bubbleAxes(PAGE, own.blocks, REFS, S)!;
@@ -137,14 +137,14 @@ describe("osi z radov bublín (D-184 dodatok)", () => {
     expect(res.icp_pairs).toBe(0);
     expect(near(res.affine, T)).toBeLessThan(0.02);
     expect(decompose(res.affine).rotationDeg).toBeCloseTo(ROT, 1);
-    // Tolerancia 2° ostáva: voči sieti osí strany sedí, voči násobku 90° nie.
+    // The tolerance of 2° stays: it fits the page grid network, not a multiple of 90°.
     expect(checkRotation(res.rotation_deg, "plan", g.gridDeg)).toMatchObject({ ok: true });
     expect(checkRotation(res.rotation_deg, "plan").ok).toBe(false);
     expect(checkRotation(res.rotation_deg + 3, "plan", g.gridDeg).ok).toBe(false);
   });
 });
 
-/** Stena (kváder) v IFC ako mesh motora (Y-up: x, z, -y). */
+/** Wall (box) in IFC as an engine mesh (Y-up: x, z, -y). */
 function wall(s: Seg, i: number): MeshElement {
   const [x0, y0, x1, y1] = s;
   const nx = -(y1 - y0);
@@ -178,7 +178,7 @@ describe("calibrate_underlay: natočený raster s osami (D-184 dodatok)", () => 
   it("dry_run nájde polohu z osí, auto ju neuloží (ICP zamietnuté), osi a natočenie sú vo výsledku", async () => {
     const own = bubbles(INV, 13.8, -8.8, 29.2);
     const lines = circles(INV, own.at);
-    // Referenčný pôdorys v smere strany s dvojicami popiskov osí (ako ručné ASR pôdorysy).
+    // Reference floor plan in the page direction with pairs of grid labels (like the manual ASR floor plans).
     const REF_PAGE: P2 = [3000, 1700];
     const R: Affine = [0.0176, 0, 25.5, 0, 0.0176, -12.1];
     const rinv = invertAffine(R);

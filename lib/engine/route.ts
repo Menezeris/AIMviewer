@@ -10,18 +10,18 @@ import { openEngineSession, type EngineModel } from "./session";
 import { ENGINE_VERSION, IFC_GUID_RE, InputError, guidIndex, modelsFor, str, type EngineDeps } from "./tools";
 
 /**
- * `ifc_measure` s `route` (D-121): najkratšia a úniková cesta po budove.
+ * `ifc_measure` with `route` (D-121): shortest and escape path through the building.
  *
- * Graf je zo súboru: miestnosti (IfcSpace) spojené dverami cez
- * IfcRelSpaceBoundary (RelatingSpace = miestnosť, RelatedBuildingElement =
- * dvere), podlažia spája schodisko (IfcStair, spodok = miestnosť na jeho
- * podlaží, vrch = miestnosť na podlaží nad ním, obe podľa prekryvu pôdorysu).
- * Dĺžka v miestnosti = priamka v pôdoryse medzi dverami (štart a cieľ v strede
- * prvku), schodisko = dĺžka ramien. Je to DOLNÝ ODHAD: nábytok, tvar L ani
- * šírku priechodu nezohľadní, výstup to hovorí. Východ (escape) = dvere s
- * Pset_DoorCommon.IsExternal alebo s jedinou hranicou EXTERNAL, nie otočné
- * (OperationType REVOLVING*, výskyt alebo typ). Limity dĺžok
- * podľa noriem tool neposudzuje (patria do knižnice IDS).
+ * The graph comes from the file: spaces (IfcSpace) connected by doors via
+ * IfcRelSpaceBoundary (RelatingSpace = space, RelatedBuildingElement =
+ * door), storeys are connected by a stair (IfcStair, bottom = space on its
+ * storey, top = space on the storey above it, both by plan overlap).
+ * Length in a space = a straight line in plan between doors (start and goal at the centre
+ * of the element), stair = length of the flights. It is a LOWER ESTIMATE: furniture, an L shape and
+ * the passage width are not taken into account, the output says so. Exit (escape) = a door with
+ * Pset_DoorCommon.IsExternal or with a single EXTERNAL boundary, not revolving
+ * (OperationType REVOLVING*, occurrence or type). The tool does not judge length limits
+ * from standards (they belong to the IDS library).
  */
 
 export const ROUTES = ["shortest", "escape"] as const;
@@ -33,9 +33,9 @@ export interface NavSpace {
   globalId: string;
   name: string | null;
   storey: string | null;
-  /** Stred pôdorysu (IFC x, y). */
+  /** Plan centre (IFC x, y). */
   center: Pt;
-  /** Trojuholníky pôdorysu (IFC x, y) a výška obálky na test bodu. */
+  /** Plan triangles (IFC x, y) and the envelope height for the point test. */
   triangles: Float64Array;
   zMin: number;
   zMax: number;
@@ -57,9 +57,9 @@ export interface NavStair {
   top: string;
   center: Pt;
   length: number;
-  /** Ramená (IfcStairFlight) na kreslenie čiary (D-137); prázdne = celé schodisko. */
+  /** Flights (IfcStairFlight) for drawing the line (D-137); empty = the whole stair. */
   flights: string[];
-  /** Prvky schodiska s geometriou (schodisko a jeho časti). */
+  /** Stair elements with geometry (the stair and its parts). */
   parts: string[];
 }
 
@@ -67,13 +67,13 @@ export interface NavData {
   spaces: Map<string, NavSpace>;
   doors: Map<string, NavDoor>;
   stairs: NavStair[];
-  /** Vonkajšie dvere nad podlažím východov (do úvahy sa neberú). */
+  /** External doors above the exit storey (not taken into account). */
   upperExits: string[];
-  /** Otočné (karuselové) dvere: priechodné, ale nie únikový východ. */
+  /** Revolving doors: passable, but not an escape exit. */
   revolving: string[];
 }
 
-/** Štart alebo cieľ: miestnosť, dvere, alebo bod v miestnosti (stred prvku). */
+/** Start or goal: a space, a door, or a point in a space (element centre). */
 export type Endpoint = { kind: "space"; space: string } | { kind: "door"; door: string } | { kind: "point"; globalId: string; space: string; at: Pt };
 
 export interface Step {
@@ -82,21 +82,21 @@ export interface Step {
   segment_m?: number;
   storey?: string | null;
   storey_to?: string | null;
-  /** Schodisko smerom hore (len pre čiaru trasy, D-137; do výstupu nejde). */
+  /** Stair going up (only for the route line, D-137; it does not go into the output). */
   up?: boolean;
 }
 
 export interface RouteResult {
   length: number;
   steps: Step[];
-  /** Cieľové dvere pri escape. */
+  /** Goal door for escape. */
   exit?: string;
 }
 
 const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const round = (v: number, digits = 2) => Math.round(v * 10 ** digits) / 10 ** digits;
 
-/** Bod v pôdoryse miestnosti (a vo výške jej obálky). */
+/** A point in the plan of a space (and at the height of its envelope). */
 export function spaceContains(s: NavSpace, p: Pt, z: number): boolean {
   if (z < s.zMin - 0.05 || z > s.zMax + 0.05) return false;
   const t = s.triangles;
@@ -111,7 +111,7 @@ export function spaceContains(s: NavSpace, p: Pt, z: number): boolean {
   return false;
 }
 
-/** Pôdorysné trojuholníky meshu (Y-up -> IFC x, y), len plochy s nenulovým priemetom. */
+/** Plan triangles of a mesh (Y-up -> IFC x, y), only faces with a non-zero projection. */
 function planTriangles(e: MeshElement): Float64Array {
   const out: number[] = [];
   const p = e.positions;
@@ -132,7 +132,7 @@ const planOverlap = (a: Box, b: Box) =>
 const ids = (store: IfcDataStore, type: string) => store.entityIndex.byType.get(type) ?? [];
 const enumOf = (v: unknown) => (typeof v === "string" ? v.replace(/\./g, "").toUpperCase() : "");
 
-/** Graf zo súboru: miestnosti, dvere s hranicami priestorov, schodiská. */
+/** Graph from the file: spaces, doors with space boundaries, stairs. */
 export function navDataFromModel(store: IfcDataStore, meshes: Map<string, MeshElement>): NavData {
   const spaces = new Map<string, NavSpace>();
   const spaceBox = new Map<string, Box>();
@@ -155,7 +155,7 @@ export function navDataFromModel(store: IfcDataStore, meshes: Map<string, MeshEl
     });
   }
 
-  // Hranice priestorov (aj podtriedy 1st/2nd level): RelatingSpace (4), RelatedBuildingElement (5), InternalOrExternal (8).
+  // Space boundaries (also 1st/2nd level subclasses): RelatingSpace (4), RelatedBuildingElement (5), InternalOrExternal (8).
   const extractor = new EntityExtractor(store.source);
   const doorSpaces = new Map<number, Set<string>>();
   const doorExternal = new Set<number>();
@@ -181,7 +181,7 @@ export function navDataFromModel(store: IfcDataStore, meshes: Map<string, MeshEl
     if (!gid || !e) continue;
     const node = new EntityNode(store, id);
     const isExternal = node.property("Pset_DoorCommon", "IsExternal") === true;
-    // Otočné (karuselové) dvere nie sú únikový východ; OperationType výskytu, inak z typu.
+    // Revolving doors are not an escape exit; OperationType of the occurrence, otherwise from the type.
     const operation = (n: EntityNode | null) => enumOf(n?.allAttributes().find((a) => a.name === "OperationType")?.value);
     const op = operation(node) || operation(node.definingType());
     const isRevolving = op.startsWith("REVOLVING");
@@ -196,7 +196,7 @@ export function navDataFromModel(store: IfcDataStore, meshes: Map<string, MeshEl
     });
   }
 
-  // Poradie podlaží podľa spodku ich miestností (výška podlažia nie je v atribútoch).
+  // Storey order by the bottom of their spaces (the storey height is not in the attributes).
   const storeyZ = new Map<string, number>();
   for (const s of spaces.values()) if (s.storey) storeyZ.set(s.storey, Math.min(storeyZ.get(s.storey) ?? Infinity, s.zMin));
   const storeyOrder = [...storeyZ.entries()].sort((a, b) => a[1] - b[1]).map(([n]) => n);
@@ -215,15 +215,15 @@ export function navDataFromModel(store: IfcDataStore, meshes: Map<string, MeshEl
       min: [0, 1, 2].map((k) => Math.min(...boxes.map((b) => b.min[k]))) as Box["min"],
       max: [0, 1, 2].map((k) => Math.max(...boxes.map((b) => b.max[k]))) as Box["max"],
     };
-    // Dĺžka = ramená (priemet dlhšej strany a prevýšenie); bez ramien celé schodisko.
+    // Length = flights (projection of the longer side and the rise); without flights the whole stair.
     const flightIds = parts.filter((p) => /^IFCSTAIRFLIGHT$/i.test(p.type) && meshes.has(p.globalId)).map((p) => p.globalId);
     const flights = flightIds.map((g) => meshes.get(g)!);
     const runOf = (b: Box) => Math.hypot(Math.max(b.max[0] - b.min[0], b.max[1] - b.min[1]), b.max[2] - b.min[2]);
     const length = flights.length > 0 ? flights.reduce((acc, f) => acc + runOf(ifcBox(f.bounds)), 0) : runOf(box);
     const storey = node.storey()?.name ?? null;
     const above = storey ? storeyOrder[storeyOrder.indexOf(storey) + 1] : undefined;
-    // Miestnosť podlažia, v ktorej pôdoryse leží stred schodiska (schodiskový priestor),
-    // inak najväčší prekryv obálok.
+    // The storey space in whose plan the stair centre lies (stairwell),
+    // otherwise the largest envelope overlap.
     const at = planCenter(box);
     const best = (label: string | undefined) => {
       const onStorey = [...spaces.values()].filter((s) => label && s.storey === label);
@@ -242,8 +242,8 @@ export function navDataFromModel(store: IfcDataStore, meshes: Map<string, MeshEl
     const withMesh = [gid, ...parts.map((p) => p.globalId)].filter((g): g is string => !!g && meshes.has(g));
     if (bottom && top) stairs.push({ globalId: gid, name: node.name || null, bottom, top, center: at, length, flights: flightIds, parts: withMesh });
   }
-  // Východ = vonkajšie dvere na najnižšom podlaží, ktoré nejaké má (terén); vonkajšie dvere
-  // vyššie (strecha, terasa) nie sú bezpečný cieľ únikovej cesty.
+  // Exit = external doors on the lowest storey that has any (terrain); external doors
+  // higher up (roof, terrace) are not a safe goal of an escape route.
   const exitStoreys = [...doors.values()].filter((d) => d.exit).map((d) => storeyOrder.indexOf(d.storey ?? "")).filter((i) => i >= 0);
   const ground = exitStoreys.length > 0 ? Math.min(...exitStoreys) : -1;
   const upperExits: string[] = [];
@@ -263,9 +263,9 @@ interface Edge {
 }
 
 /**
- * Dijkstra nad "portálmi" (dvere, konce schodísk, štart, cieľ). V miestnosti
- * vedie priamka medzi každou dvojicou portálov, dvere sú spoločný portál
- * dvoch miestností, schodisko spája portál spodku a vrchu.
+ * Dijkstra over "portals" (doors, stair ends, start, goal). In a space
+ * a straight line runs between each pair of portals, a door is a shared portal
+ * of two spaces, a stair connects the bottom and top portal.
  */
 export function findRoute(nav: NavData, from: Endpoint, to: Endpoint | "exit"): RouteResult | null {
   const portalsIn = new Map<string, Array<{ key: string; at: Pt }>>();
@@ -324,7 +324,7 @@ export function findRoute(nav: NavData, from: Endpoint, to: Endpoint | "exit"): 
   const distTo = new Map<string, number>([[start.key, 0]]);
   const prev = new Map<string, { from: string; step: Step }>();
   const done = new Set<string>();
-  // Malý graf (stovky portálov): lineárny výber minima stačí.
+  // Small graph (hundreds of portals): a linear minimum selection suffices.
   for (;;) {
     let cur: string | null = null;
     let best = Infinity;
@@ -351,7 +351,7 @@ export function findRoute(nav: NavData, from: Endpoint, to: Endpoint | "exit"): 
   }
 }
 
-/** Všetky východy zoradené podľa dĺžky (escape: najbližší a ďalšie). */
+/** All exits sorted by length (escape: the nearest and the others). */
 export function exitsByLength(nav: NavData, from: Endpoint, limit: number): RouteResult[] {
   const out: RouteResult[] = [];
   for (const d of nav.doors.values()) {
@@ -362,7 +362,7 @@ export function exitsByLength(nav: NavData, from: Endpoint, limit: number): Rout
   return out.sort((a, b) => a.length - b.length).slice(0, limit);
 }
 
-/** Miestnosti dosiahnuteľné zo štartu cez dvere a schodiská (na hlásenie nesúvislého grafu). */
+/** Spaces reachable from the start via doors and stairs (for reporting a disconnected graph). */
 export function reachableSpaces(nav: NavData, from: Endpoint): Set<string> {
   const start =
     from.kind === "door" ? (nav.doors.get(from.door)?.spaces ?? []) : [from.space];
@@ -381,20 +381,20 @@ export function reachableSpaces(nav: NavData, from: Endpoint): Set<string> {
   return seen;
 }
 
-/** Cieľ -> bod v grafe: miestnosť, dvere s hranicou, inak stred prvku v miestnosti. */
+/** Goal -> point in the graph: a space, a door with a boundary, otherwise the element centre in a space. */
 function endpointOf(nav: NavData, gid: string, e: MeshElement | undefined, label: string): Endpoint {
   if (nav.spaces.has(gid)) return { kind: "space", space: gid };
   if (nav.doors.has(gid)) return { kind: "door", door: gid };
   if (!e) throw new InputError(`${label} nemá geometriu, nedá sa umiestniť do miestnosti.`);
   const box = ifcBox(e.bounds);
   const at = planCenter(box);
-  // Výška pre test: kúsok nad spodkom prvku (dvere bez hranice, nábytok, zariadenie).
+  // Height for the test: a bit above the bottom of the element (a door without a boundary, furniture, equipment).
   const z = Math.min(box.max[2], box.min[2] + 0.5);
   for (const s of nav.spaces.values()) if (spaceContains(s, at, z)) return { kind: "point", globalId: gid, space: s.globalId, at };
   throw new InputError(`${label} neleží v žiadnej miestnosti (IfcSpace) modelu.`);
 }
 
-/** `line` = zberač bodov čiary pre živý viewer (show=true, D-137); príkaz poskladá `route-line`. */
+/** `line` = collector of line points for the live viewer (show=true, D-137); the command is assembled by `route-line`. */
 export async function ifcRoute(input: Record<string, unknown>, deps: EngineDeps, line?: Vec3[]): Promise<string> {
   const route = str(input.route) as Route;
   if (!(ROUTES as readonly string[]).includes(route)) throw new InputError("route: shortest | escape.");
@@ -414,7 +414,7 @@ export async function ifcRoute(input: Record<string, unknown>, deps: EngineDeps,
   const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? requestIfcModels)().map((m) => m.id);
   const { models, revision } = await modelsFor(modelIds, deps);
   const session = await openEngineSession(models);
-  // Model trasy = model, ktorý nesie štart (miestnosti a dvere sú v jednom modeli).
+  // Route model = the model that carries the start (spaces and doors are in one model).
   let model: EngineModel | undefined;
   for (const m of models) {
     if ((await guidIndex(session, m)).has(guidFor(a)!)) {
@@ -471,7 +471,7 @@ export async function ifcRoute(input: Record<string, unknown>, deps: EngineDeps,
       return [rest.global_id, rest];
     }),
   );
-  // Do 3D len trasa, nie ďalšie východy.
+  // Only the route goes into 3D, not the other exits.
   const onPath = joined.items.filter((i) => pathGuids.includes(i.global_id));
   const show_in_3d = {
     ids_or_refs: onPath.flatMap((i) => (i.object_id ? [i.object_id] : [])),

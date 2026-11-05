@@ -26,7 +26,7 @@ const run = async (input: Record<string, unknown>) => {
   return { ...res, json: res.isError ? null : JSON.parse(res.content) };
 };
 
-/** Jednotková kocka (Y-up), 12 trojuholníkov s normálami von. */
+/** Unit cube (Y-up), 12 triangles with normals outward. */
 function cube(): { positions: Float32Array; indices: Uint32Array } {
   const v = [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1];
   const f = [0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 1, 2, 6, 1, 6, 5, 0, 4, 7, 0, 7, 3];
@@ -45,7 +45,7 @@ describe("ifc_measure (D-112)", () => {
     const m = meshMetrics(positions, indices);
     expect(m).toMatchObject({ area: 6, footprint: 1, closed: true });
     expect(m.volume).toBeCloseTo(1, 9);
-    // Bez jednej steny už nie je uzavretý.
+    // Without one wall it is no longer closed.
     expect(meshMetrics(positions, indices.slice(0, 30)).closed).toBe(false);
   });
 
