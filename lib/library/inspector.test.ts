@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { nacitajKniznicuGraf } from "./graph";
-import { inspektor, inspektorEr } from "./inspector";
+import { loadLibraryGraph } from "./graph";
+import { inspect, inspectEr } from "./inspector";
 
 const KORPUS = join(process.cwd(), "library", "korpus", "stromy");
 const json = (rel: string) => JSON.parse(readFileSync(join(KORPUS, rel), "utf8"));
@@ -13,15 +13,15 @@ const plain = (v: unknown) => JSON.parse(JSON.stringify(v));
 describe("korpus zhody: inšpektor (krok 4c portu, D-186)", () => {
   for (const strom of ["vzor", "kniznica", "chybne"]) {
     describe(`strom ${strom}`, () => {
-      const k = nacitajKniznicuGraf(json(`${strom}/subory.json`));
+      const k = loadLibraryGraph(json(`${strom}/subory.json`));
       const editor = json(`${strom}/editor.json`);
       it("inspektor_er (kontext každej výmeny)", () => {
-        const got = plain(inspektorEr(k));
+        const got = plain(inspectEr(k));
         expect(Object.keys(got).sort()).toEqual(Object.keys(editor.inspektor_er).sort());
         for (const kl of Object.keys(got)) expect(got[kl], kl).toEqual(editor.inspektor_er[kl]);
       });
       for (const p of editor.poznamky as Array<{ id: string; inspektor: unknown }>) {
-        it(`inšpektor ${p.id}`, () => expect(plain(inspektor(k, p.id))).toEqual(p.inspektor));
+        it(`inšpektor ${p.id}`, () => expect(plain(inspect(k, p.id))).toEqual(p.inspektor));
       }
     });
   }

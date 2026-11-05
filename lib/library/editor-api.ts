@@ -5,35 +5,35 @@
  * Chyby majú tvar FastAPI (`{detail}`), lebo tak ich stránka číta.
  */
 
-import { dokumentEditora, type InfoRevizie } from "./app-json";
-import { nacitajKniznicuGraf } from "./graph";
+import { editorDocument, type RevisionInfo } from "./app-json";
+import { loadLibraryGraph } from "./graph";
 import { kontrola } from "./check";
 import { validuj } from "./validator";
-import { vydaj as vydajKniznicu, type KontrolaXsd, type SkladVydania, type Uloziste } from "./release";
-import { ChybaSkladu, Konflikt, uloz, vytvor, type Sklad, type Zmena } from "./write";
+import { vydaj as vydajKniznicu, type XsdCheck, type ReleaseStore, type Uloziste } from "./release";
+import { StoreError, Konflikt, uloz, vytvor, type Sklad, type Zmena } from "./write";
 
-export interface Brana {
+export interface Gate {
   /** `LIBRARY_WRITE_ENABLED` */
   zapis: boolean;
   /** `LIBRARY_RELEASE_ENABLED` (rola vydavateľa) */
   vydanie: boolean;
 }
 
-export interface Odpoved {
+export interface Reply {
   status: number;
   telo: Record<string, unknown>;
 }
 
 type JS = Record<string, unknown>;
-const chyba = (status: number, detail: string): Odpoved => ({ status, telo: { detail, error: detail } });
+const chyba = (status: number, detail: string): Reply => ({ status, telo: { detail, error: detail } });
 
 /** `_dokument`: knižnica zo skladu, validátor, dokument editora s revíziami zo skladu. */
-export async function dokument(sklad: Sklad, info: InfoRevizie = {}) {
-  const k = nacitajKniznicuGraf(await sklad.texty());
-  return dokumentEditora(k, validuj(k), { ...info, vyzadujeAutora: true });
+export async function dokument(sklad: Sklad, info: RevisionInfo = {}) {
+  const k = loadLibraryGraph(await sklad.texty());
+  return editorDocument(k, validuj(k), { ...info, vyzadujeAutora: true });
 }
 
-export function stav(kniznica: string, b: Brana) {
+export function stav(kniznica: string, b: Gate) {
   return { api: true, koren: `db:${kniznica}`, zapis: b.zapis, nova: b.zapis, kontrola: true, vydanie: b.vydanie, autor_povinny: true };
   // `vydanie` stránka ukáže len s povinným autorom (databázový sklad), ako `assetin/server`
 }
@@ -44,7 +44,7 @@ function zmeny(v: unknown): Zmena[] {
     : [];
 }
 
-function podpis(b: Brana, vstup: JS): { autor: string } | Odpoved {
+function podpis(b: Gate, vstup: JS): { autor: string } | Reply {
   if (!b.zapis) return chyba(403, "zápis do knižnice v AIM je vypnutý (LIBRARY_WRITE_ENABLED)");
   const autor = typeof vstup.autor === "string" ? vstup.autor.trim().slice(0, 120) : "";
   if (!autor) return chyba(400, "zadaj meno autora - podpisuje revíziu v databáze");
@@ -52,7 +52,7 @@ function podpis(b: Brana, vstup: JS): { autor: string } | Odpoved {
 }
 
 /** `POST save`: zmeny z editora cez writer do skladu; súbeh = 409 a nič sa neprepíše. */
-export async function save(novySklad: () => Sklad, b: Brana, vstup: JS, info: () => Promise<InfoRevizie>): Promise<Odpoved> {
+export async function save(novySklad: () => Sklad, b: Gate, vstup: JS, info: () => Promise<RevisionInfo>): Promise<Reply> {
   const p = podpis(b, vstup);
   if ("status" in p) return p;
   const verzie = vstup.verzie && typeof vstup.verzie === "object" ? (Object.fromEntries(Object.entries(vstup.verzie as JS).filter(([, v]) => typeof v === "string")) as Record<string, string>) : {};
@@ -61,13 +61,13 @@ export async function save(novySklad: () => Sklad, b: Brana, vstup: JS, info: ()
 }
 
 /** `POST kontrola`: diagnostiky pracovnej kópie, nič sa nezapisuje. */
-export async function over(sklad: Sklad, vstup: JS): Promise<Odpoved> {
+export async function over(sklad: Sklad, vstup: JS): Promise<Reply> {
   const nova = vstup.nova && typeof vstup.nova === "object" && !Array.isArray(vstup.nova) ? (vstup.nova as JS) : null;
   return { status: 200, telo: { ...(await kontrola(sklad, zmeny(vstup.zmeny), nova)) } };
 }
 
 /** `POST nova`: nová poznámka zo šablóny typu. */
-export async function nova(novySklad: () => Sklad, b: Brana, vstup: JS, info: () => Promise<InfoRevizie>): Promise<Odpoved> {
+export async function nova(novySklad: () => Sklad, b: Gate, vstup: JS, info: () => Promise<RevisionInfo>): Promise<Reply> {
   const p = podpis(b, vstup);
   if ("status" in p) return p;
   if (typeof vstup.typ !== "string" || typeof vstup.id !== "string" || typeof vstup.nazov !== "string") return chyba(422, "typ, id a nazov sú povinné");
@@ -84,7 +84,7 @@ export async function nova(novySklad: () => Sklad, b: Brana, vstup: JS, info: ()
  * `POST vydaj`: validácia (0 chýb), snímka, IDS do katalógu AIM, export MD (port `api_vydaj`). Za bránou
  * `LIBRARY_RELEASE_ENABLED` (rola vydavateľa); kód vydania volí vydavateľ, podpisuje meno z editora.
  */
-export async function vydaj(sklad: () => SkladVydania, b: Brana, vstup: JS, o: { xsd?: KontrolaXsd | null; uloziste?: Uloziste | null } = {}): Promise<Odpoved> {
+export async function vydaj(sklad: () => ReleaseStore, b: Gate, vstup: JS, o: { xsd?: XsdCheck | null; uloziste?: Uloziste | null } = {}): Promise<Reply> {
   if (!b.vydanie) return chyba(403, "vydávanie v AIM je vypnuté (LIBRARY_RELEASE_ENABLED)");
   const autor = typeof vstup.autor === "string" ? vstup.autor.trim().slice(0, 120) : "";
   if (!autor) return chyba(400, "zadaj meno autora - podpisuje vydanie");
@@ -96,7 +96,7 @@ export async function vydaj(sklad: () => SkladVydania, b: Brana, vstup: JS, o: {
     return { status: v.ok ? 200 : 422, telo: { ...v } };
   } catch (e) {
     if (e instanceof Konflikt) return { status: 409, telo: { ok: false, sprava: e.message, konflikt: true } };
-    if (e instanceof ChybaSkladu) return { status: 400, telo: { ok: false, sprava: e.message } };
+    if (e instanceof StoreError) return { status: 400, telo: { ok: false, sprava: e.message } };
     throw e;
   }
 }

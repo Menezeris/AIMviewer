@@ -7,10 +7,10 @@
  * kontajner. Deterministický: bez dátumu, ak ho nikto nedá, takže vydanie bez zmeny dá tie isté bajty.
  */
 
-import { idPoznamky, typPoznamky, type Kniznica } from "../graph";
+import { noteId, noteType, type Library } from "../graph";
 import { klucPolozky } from "../graph-json";
-import { dopadajucePravidla, povodHodnoty } from "../inspector";
-import type { PodZaznam, Poznamka } from "../loader";
+import { affectingRules, povodHodnoty } from "../inspector";
+import type { PodZaznam, Note } from "../loader";
 import { jednotkyVymeny, type Jednotky } from "../chain";
 import { odsad, podprvok, prvok, vypis, type Prvok } from "./xml";
 
@@ -112,9 +112,9 @@ function linkAnchor(v: unknown): string | null {
   const i = inner.indexOf("#");
   return i >= 0 ? inner.slice(i + 1) : null;
 }
-const podZaznam = (k: Kniznica, ciel: string, kotva: string | null): PodZaznam | null => k.pod_zaznamy.get(`${ciel}\u0000${kotva ?? ""}`) ?? null;
+const podZaznam = (k: Library, ciel: string, kotva: string | null): PodZaznam | null => k.pod_zaznamy.get(`${ciel}\u0000${kotva ?? ""}`) ?? null;
 
-function resolveVocab(k: Kniznica, ref: unknown, where: string, rep: Report): unknown[] | null {
+function resolveVocab(k: Library, ref: unknown, where: string, rep: Report): unknown[] | null {
   const ciel = linkTarget(ref);
   const kotva = linkAnchor(ref);
   if (ciel === null) return null;
@@ -135,7 +135,7 @@ function resolveVocab(k: Kniznica, ref: unknown, where: string, rep: Report): un
   return Array.isArray(hodnoty) ? [...hodnoty] : Object.keys(hodnoty as M);
 }
 
-function providerOf(er: Poznamka, iu: Poznamka): [string | null, string] {
+function providerOf(er: Note, iu: Note): [string | null, string] {
   const own = zoznam(iu.model!.poskytovatel).map(linkTarget).filter((x): x is string => !!x);
   if (own.length === 1) return [own[0], "IU-O.poskytovatel"];
   if (own.length > 1) return [null, `IU-O.poskytovatel má ${own.length} hodnôt (${own.join(", ")}) — nejednoznačné`];
@@ -151,9 +151,9 @@ function rozsahObjektu(j: Jednotky, iu: string): Set<string> {
   return r;
 }
 
-function objektyCiela(k: Kniznica, er: Poznamka, ciel: Ciel, rep: Report): Poznamka[] {
-  const out: Poznamka[] = [];
-  const j = jednotkyVymeny(k, idPoznamky(er)!);
+function objektyCiela(k: Library, er: Note, ciel: Ciel, rep: Report): Note[] {
+  const out: Note[] = [];
+  const j = jednotkyVymeny(k, noteId(er)!);
   for (const nid of j.kontajnery) rep.skipped.push(`${nid}: kontajner — IDS neopisuje kontajnery`);
   for (const nid of j.objekty) {
     const n = k.poznamky.get(nid);
@@ -190,7 +190,7 @@ const bezNull = (v: unknown): unknown => {
 };
 
 /** `Kniznica.efektivna_polozka` + predvoľby §14b z inšpektora. */
-function effectiveItem(k: Kniznica, erId: string, iuId: string, kluc: string): M {
+function effectiveItem(k: Library, erId: string, iuId: string, kluc: string): M {
   const origin = povodHodnoty(k, iuId, kluc, erId);
   const iu = k.poznamky.get(iuId);
   const er = k.poznamky.get(erId);
@@ -228,7 +228,7 @@ function addValueRestriction(facet: Prvok, eff: M, where: string, rep: Report, n
   restriction(facet, "value", { base, enum: zoznam(hodnoty), pattern: pravda(vzor) ? xsdPattern(String(vzor), where, rep) : null, bounds });
 }
 
-function classificationFacet(k: Kniznica, parent: Prvok, kl: M, where: string, rep: Report, cardinality: string | null = null): Prvok {
+function classificationFacet(k: Library, parent: Prvok, kl: M, where: string, rep: Report, cardinality: string | null = null): Prvok {
   const cl = sub(parent, "classification", null, { uri: kl.uri as string | null, cardinality });
   let pattern: string | null = null;
   const ciel = linkTarget(kl.pravidlo);
@@ -244,9 +244,9 @@ function classificationFacet(k: Kniznica, parent: Prvok, kl: M, where: string, r
   return cl;
 }
 
-function buildIuSpec(k: Kniznica, erId: string, iu: Poznamka, ifcVersion: string, rep: Report): Prvok {
+function buildIuSpec(k: Library, erId: string, iu: Note, ifcVersion: string, rep: Report): Prvok {
   const m = iu.model as M;
-  const nid = idPoznamky(iu)!;
+  const nid = noteId(iu)!;
   const objekt = obj(m.objekt) ?? {};
   const spec = prvok(q("specification"), {
     ifcVersion,
@@ -329,7 +329,7 @@ function buildIuSpec(k: Kniznica, erId: string, iu: Poznamka, ifcVersion: string
 
 // ------------------------------------------------------------------------------------------------ STD pravidlo -> špecifikácia
 
-function addGenericFacet(k: Kniznica, parent: Prvok, f: M, where: string, rep: Report, inRequirements: boolean) {
+function addGenericFacet(k: Library, parent: Prvok, f: M, where: string, rep: Report, inRequirements: boolean) {
   const card = inRequirements && je(f.cardinality) ? String(f.cardinality) : null;
   let hodnoty: unknown[] | null = Array.isArray(f.hodnoty) ? f.hodnoty : null;
   if (je(f.hodnoty_ref)) {
@@ -376,9 +376,9 @@ function addGenericFacet(k: Kniznica, parent: Prvok, f: M, where: string, rep: R
   if (inRequirements && card === null && f.facet !== "entity") rep.miss(`${where}.cardinality`, "cardinality", "chýba → predvoľba XSD `required`");
 }
 
-function applicableRules(k: Kniznica, erId: string, ius: Poznamka[], rep: Report): Array<[PodZaznam, string]> {
+function applicableRules(k: Library, erId: string, ius: Note[], rep: Report): Array<[PodZaznam, string]> {
   const seen = new Map<string, string>();
-  for (const iu of ius) for (const r of dopadajucePravidla(k, idPoznamky(iu)!, erId)) if (!seen.has(String(r.pravidlo))) seen.set(String(r.pravidlo), String(r.dovod));
+  for (const iu of ius) for (const r of affectingRules(k, noteId(iu)!, erId)) if (!seen.has(String(r.pravidlo))) seen.set(String(r.pravidlo), String(r.dovod));
   for (const [, pid, pz] of k.pod_zaznamy_poradie) {
     if (pz.druh !== "pravidlo" || pz.model === null) continue;
     const p = pz.model as M;
@@ -403,7 +403,7 @@ function applicableRules(k: Kniznica, erId: string, ius: Poznamka[], rep: Report
   return out.map((x, i) => [x, i] as const).sort(([a, ia], [b, ib]) => (a[0].id < b[0].id ? -1 : a[0].id > b[0].id ? 1 : ia - ib)).map(([x]) => x);
 }
 
-function buildRuleSpec(k: Kniznica, pz: PodZaznam, dovod: string, ifcVersion: string, rep: Report): Prvok | null {
+function buildRuleSpec(k: Library, pz: PodZaznam, dovod: string, ifcVersion: string, rep: Report): Prvok | null {
   const p = pz.model as M;
   const pid = pz.id;
   if (pravda(p.vynimka)) {
@@ -453,7 +453,7 @@ function buildRuleSpec(k: Kniznica, pz: PodZaznam, dovod: string, ifcVersion: st
 
 // ------------------------------------------------------------------------------------------------ ids:info
 
-function buildInfo(k: Kniznica, er: Poznamka, ciel: Ciel, root: Prvok, rep: Report, datum: string | null) {
+function buildInfo(k: Library, er: Note, ciel: Ciel, root: Prvok, rep: Report, datum: string | null) {
   const m = er.model as M;
   const info = sub(root, "info");
   sub(info, "title", String(m.nazov));
@@ -477,34 +477,34 @@ function buildInfo(k: Kniznica, er: Poznamka, ciel: Ciel, root: Prvok, rep: Repo
   if (su.length > 1) rep.miss(`${ciel.er}.spustacia_udalost`, "milestone", "viac udalostí — IDS má jeden milestone");
 }
 
-function ifcVersionOf(er: Poznamka, rep: Report): string {
+function ifcVersionOf(er: Note, rep: Report): string {
   const v = attr(er.model!.forma, "verzia_schemy");
   if (v === "IFC2X3" || v === "IFC4" || v === "IFC4X3_ADD2") return v;
-  rep.miss(`${idPoznamky(er)}.forma.verzia_schemy`, "ifcVersion", `\`${pyStr(v)}\` nie je v IDS enum (IFC2X3|IFC4|IFC4X3_ADD2) → IFC4X3_ADD2`);
+  rep.miss(`${noteId(er)}.forma.verzia_schemy`, "ifcVersion", `\`${pyStr(v)}\` nie je v IDS enum (IFC2X3|IFC4|IFC4X3_ADD2) → IFC4X3_ADD2`);
   return "IFC4X3_ADD2";
 }
 
 // ------------------------------------------------------------------------------------------------ ciele a súbory
 
 /** `ciele`: všetky ciele (ER × poskytovateľ) knižnice, zoradené. */
-export function ciele(k: Kniznica): Ciel[] {
+export function ciele(k: Library): Ciel[] {
   const out = new Map<string, Ciel>();
-  const ery = k.vsetky.filter((n) => typPoznamky(n) === "ER" && n.model !== null).sort((a, b) => ((idPoznamky(a) ?? "") < (idPoznamky(b) ?? "") ? -1 : 1));
+  const ery = k.vsetky.filter((n) => noteType(n) === "ER" && n.model !== null).sort((a, b) => ((noteId(a) ?? "") < (noteId(b) ?? "") ? -1 : 1));
   for (const er of ery) {
-    const j = jednotkyVymeny(k, idPoznamky(er)!);
+    const j = jednotkyVymeny(k, noteId(er)!);
     for (const nid of j.objekty) {
       const n = k.poznamky.get(nid);
       if (!n || !n.model) continue;
       if (kontajneryObjektu(j, nid).length && !rozsahObjektu(j, nid).has("alfanumerika")) continue;
       const [prov] = providerOf(er, n);
-      if (prov !== null) out.set(`${idPoznamky(er)}\u0000${prov}`, { er: idPoznamky(er)!, poskytovatel: prov });
+      if (prov !== null) out.set(`${noteId(er)}\u0000${prov}`, { er: noteId(er)!, poskytovatel: prov });
     }
   }
   return [...out.values()].sort((a, b) => (a.er < b.er ? -1 : a.er > b.er ? 1 : a.poskytovatel < b.poskytovatel ? -1 : a.poskytovatel > b.poskytovatel ? 1 : 0));
 }
 
 /** `generuj_ciel`: (text IDS, správa o tom, čo sa nedalo zmapovať) pre jeden cieľ. */
-export function generujCiel(k: Kniznica, ciel: Ciel, datum: string | null = null): [string, Report] {
+export function generujCiel(k: Library, ciel: Ciel, datum: string | null = null): [string, Report] {
   const rep = new Report();
   const er = k.poznamky.get(ciel.er);
   if (!er || !er.model) throw new Error(`${ciel.er} sa nedá načítať`);
@@ -515,7 +515,7 @@ export function generujCiel(k: Kniznica, ciel: Ciel, datum: string | null = null
   const ius = objektyCiela(k, er, ciel, rep);
   for (const iu of ius) {
     specs.deti.push(buildIuSpec(k, ciel.er, iu, ifcVersion, rep));
-    rep.specs.push(`${idPoznamky(iu)} (IU-O, ${pyStr(attr(iu.model!.objekt, "ifc_entita"))})`);
+    rep.specs.push(`${noteId(iu)} (IU-O, ${pyStr(attr(iu.model!.objekt, "ifc_entita"))})`);
   }
   for (const [pz, dovod] of applicableRules(k, ciel.er, ius, rep)) {
     const spec = buildRuleSpec(k, pz, dovod, ifcVersion, rep);
@@ -524,7 +524,7 @@ export function generujCiel(k: Kniznica, ciel: Ciel, datum: string | null = null
       rep.specs.push(`${pz.id} (STD, ${dovod})`);
     }
   }
-  rep.objekty = ius.map((iu) => idPoznamky(iu)!);
+  rep.objekty = ius.map((iu) => noteId(iu)!);
   odsad(root, "  ");
   return [`${vypis(root, PREFIXY)}\n`, rep];
 }

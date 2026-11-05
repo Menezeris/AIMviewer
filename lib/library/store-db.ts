@@ -2,9 +2,9 @@ import "server-only";
 
 import { getSupabaseAdmin } from "../supabase/server";
 
-import { ChybaCesty, rozober } from "./paths";
+import { PathError, rozober } from "./paths";
 import { projekcia } from "./projection";
-import { ChybaSkladu, Konflikt, type Podpis, type Sklad, type ZapisSuboru } from "./write";
+import { StoreError, Konflikt, type Podpis, type Sklad, type FileWrite } from "./write";
 
 /**
  * Sklad knižnice v DB (port `assetin/db/sklad_db.py`, D-186 krok 3): čítanie hlavy cez `public.library_texty`,
@@ -32,28 +32,28 @@ function identita(rel: string): [string | null, string | null] {
     const um = rozober(rel);
     return [um.id, um.typ];
   } catch (e) {
-    if (e instanceof ChybaCesty) return [null, null];
+    if (e instanceof PathError) return [null, null];
     throw e;
   }
 }
 
-export function supabaseSklad(kniznica: string): Sklad {
+export function supabaseStore(kniznica: string): Sklad {
   let cache: Record<string, string> | null = null;
   const nacitaj = async () => {
     if (cache) return cache;
     const { data, error } = await getSupabaseAdmin().rpc("library_texty", { p_kniznica: kniznica });
     if (chybaRpc(error)) throw new ZapisMigraciaChyba();
-    if (error) throw new ChybaSkladu(`čítanie knižnice zlyhalo: ${error.message}`);
+    if (error) throw new StoreError(`čítanie knižnice zlyhalo: ${error.message}`);
     cache = Object.fromEntries(((data ?? []) as Array<{ cesta: string; text: string }>).map((r) => [r.cesta, r.text]));
     return cache;
   };
   return {
     texty: async () => ({ ...(await nacitaj()) }),
     existuje: async (rel) => rel in (await nacitaj()),
-    async zapis(zapisy: ZapisSuboru[], podpis: Podpis) {
-      if (!podpis.autor?.trim()) throw new ChybaSkladu("zápis do databázy potrebuje autora (meno v editore)");
+    async zapis(zapisy: FileWrite[], podpis: Podpis) {
+      if (!podpis.autor?.trim()) throw new StoreError("zápis do databázy potrebuje autora (meno v editore)");
       const zdroj = podpis.zdroj ?? "editor";
-      if (!ZDROJE.includes(zdroj)) throw new ChybaSkladu(`neznámy zdroj revízie '${zdroj}'`);
+      if (!ZDROJE.includes(zdroj)) throw new StoreError(`neznámy zdroj revízie '${zdroj}'`);
       const polozky = zapisy.map((z) => {
         const ciel = z.nova_cesta ?? z.cesta!;
         const [note_id, typ] = identita(ciel);
@@ -90,8 +90,8 @@ export function supabaseSklad(kniznica: string): Sklad {
         }
         throw new Konflikt(cesty);
       }
-      if (error.code === "AS404") throw new ChybaSkladu(`knižnica '${kniznica}' v databáze nie je`);
-      throw new ChybaSkladu(`databáza zápis odmietla: ${error.message}`);
+      if (error.code === "AS404") throw new StoreError(`knižnica '${kniznica}' v databáze nie je`);
+      throw new StoreError(`databáza zápis odmietla: ${error.message}`);
     },
   };
 }

@@ -3,4 +3,4 @@
  * slovo). Origin guard a rate limit robí `editor-server.ts` pre všetky POST editora.
  */
 
-export const zapisPovoleny = () => process.env.LIBRARY_WRITE_ENABLED === "true";
+export const writeAllowed = () => process.env.LIBRARY_WRITE_ENABLED === "true";

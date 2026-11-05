@@ -4,8 +4,8 @@
  * Pravidlá nikdy nehádžu výnimku, vracajú diagnostiky v tom istom tvare ako loader a graf.
  */
 
-import { idPoznamky, typPoznamky, type Kniznica } from "../graph";
-import { riadokPrePointer, type Diagnostika, type PodZaznam, type Poznamka, type Uroven } from "../loader";
+import { noteId, noteType, type Library } from "../graph";
+import { rowForPointer, type Diagnostic, type PodZaznam, type Note, type Uroven } from "../loader";
 import { parseWikilink } from "../projection";
 
 export type M = Record<string, unknown>;
@@ -17,7 +17,7 @@ export interface Pravidlo {
   popis: string;
   zdroj: string;
   potrebuje: Potrebuje;
-  fn: (ctx: Kontext) => Iterable<Diagnostika>;
+  fn: (ctx: Kontext) => Iterable<Diagnostic>;
   /** pravidlo beží len v preflighte generátora (H2), nie v obyčajnej validácii */
   preflight: boolean;
 }
@@ -29,7 +29,7 @@ export function pravidlo(
   kod: string,
   uroven: Uroven,
   o: { popis: string; zdroj: string; potrebuje?: Potrebuje; preflight?: boolean },
-  fn: (ctx: Kontext) => Iterable<Diagnostika>,
+  fn: (ctx: Kontext) => Iterable<Diagnostic>,
 ) {
   if (REGISTER.has(kod)) throw new Error(`pravidlo ${kod} je už registrované`);
   REGISTER.set(kod, { kod, uroven, popis: o.popis, zdroj: o.zdroj, potrebuje: o.potrebuje ?? "graf", fn, preflight: !!o.preflight });
@@ -249,12 +249,12 @@ export function platnyRegex(vzor: string): string | null {
 // ------------------------------------------------------------------------------------------------ kontext
 
 /** `riadok_pola`: 1-based riadok cesty poľa v súbore, nech pole žije v ktoromkoľvek nositeľovi. */
-export function riadokPola(n: Poznamka, cesta: Array<string | number>): number | null {
+export function fieldRow(n: Note, cesta: Array<string | number>): number | null {
   if (!cesta.length) return null;
   const top = String(cesta[0]);
   const fm = n.dokument.frontmatter;
   if (n.zdroje[top] === "frontmatter" && fm) {
-    const r = riadokPrePointer(fm.yaml_text, cesta);
+    const r = rowForPointer(fm.yaml_text, cesta);
     return r !== null ? fm.riadok + 1 + r + 1 : null;
   }
   if (top in n.riadky) return n.riadky[top] + 1;
@@ -262,8 +262,8 @@ export function riadokPola(n: Poznamka, cesta: Array<string | number>): number |
 }
 
 /** `riadok_pod_zaznamu`: 1-based riadok v YAML bloku pod-záznamu. */
-export function riadokPodZaznamu(pz: PodZaznam, cesta: Array<string | number>): number {
-  const r = cesta.length ? riadokPrePointer(pz.blok.yaml_text, cesta) : null;
+export function subRecordRow(pz: PodZaznam, cesta: Array<string | number>): number {
+  const r = cesta.length ? rowForPointer(pz.blok.yaml_text, cesta) : null;
   return pz.blok.riadok + 1 + (r !== null ? r + 1 : 1);
 }
 
@@ -273,31 +273,31 @@ export class Kontext {
   kod = "";
   uroven: Uroven = "E";
   constructor(
-    public k: Kniznica,
+    public k: Library,
     public preflight = false,
   ) {}
 
-  diag(n: Poznamka, sprava: string, cesta: Cesta = [], uroven?: Uroven): Diagnostika {
-    return { note_id: idPoznamky(n), json_pointer: cesta.length ? `/${cesta.join("/")}` : "", uroven: uroven ?? this.uroven, kod: this.kod, sprava, subor: n.rel, riadok: riadokPola(n, cesta) };
+  diag(n: Note, sprava: string, cesta: Cesta = [], uroven?: Uroven): Diagnostic {
+    return { note_id: noteId(n), json_pointer: cesta.length ? `/${cesta.join("/")}` : "", uroven: uroven ?? this.uroven, kod: this.kod, sprava, subor: n.rel, riadok: fieldRow(n, cesta) };
   }
 
-  diagPod(n: Poznamka, pz: PodZaznam, sprava: string, cesta: Cesta = [], uroven?: Uroven): Diagnostika {
-    return { note_id: idPoznamky(n), json_pointer: `#${pz.id}${cesta.length ? `/${cesta.join("/")}` : ""}`, uroven: uroven ?? this.uroven, kod: this.kod, sprava, subor: n.rel, riadok: riadokPodZaznamu(pz, cesta) };
+  diagPod(n: Note, pz: PodZaznam, sprava: string, cesta: Cesta = [], uroven?: Uroven): Diagnostic {
+    return { note_id: noteId(n), json_pointer: `#${pz.id}${cesta.length ? `/${cesta.join("/")}` : ""}`, uroven: uroven ?? this.uroven, kod: this.kod, sprava, subor: n.rel, riadok: subRecordRow(pz, cesta) };
   }
 
   /** Načítané poznámky daných typov s typovaným modelom, ako [poznámka, model]. */
-  typu(...typy: string[]): Array<[Poznamka, M]> {
-    return this.k.vsetky.filter((n) => typy.includes(typPoznamky(n) ?? "") && n.model !== null).map((n) => [n, n.model as M]);
+  typu(...typy: string[]): Array<[Note, M]> {
+    return this.k.vsetky.filter((n) => typy.includes(noteType(n) ?? "") && n.model !== null).map((n) => [n, n.model as M]);
   }
 
   /** Pod-záznamy druhu, ako [rodič, pod-záznam, model]. */
-  pod(druh: string): Array<[Poznamka, PodZaznam, M]> {
-    const out: Array<[Poznamka, PodZaznam, M]> = [];
+  pod(druh: string): Array<[Note, PodZaznam, M]> {
+    const out: Array<[Note, PodZaznam, M]> = [];
     for (const n of this.k.vsetky) for (const pz of n.pod_zaznamy) if (pz.druh === druh && pz.model !== null) out.push([n, pz, pz.model as M]);
     return out;
   }
 
-  poznamka(id: string | null | undefined): Poznamka | null {
+  poznamka(id: string | null | undefined): Note | null {
     return id ? (this.k.poznamky.get(id) ?? null) : null;
   }
 
@@ -309,7 +309,7 @@ export class Kontext {
   typCiela(l: Link | null): string | null {
     if (!l) return null;
     const n = this.k.poznamky.get(l.ciel);
-    if (n) return typPoznamky(n);
+    if (n) return noteType(n);
     const pz = this.k.globalne_pod.get(l.ciel);
     if (pz) return pz.druh === "profil" ? "GEO" : "STD";
     return null;
@@ -322,7 +322,7 @@ export class Kontext {
     return this.k.globalne_pod.get(l.ciel) ?? null;
   }
 
-  vrstva(n: Poznamka): string {
+  vrstva(n: Note): string {
     return n.umiestnenie ? n.umiestnenie.vrstva : "zadanie";
   }
 }

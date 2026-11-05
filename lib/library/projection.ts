@@ -4,7 +4,7 @@
  */
 
 import { VRSTVY } from "./paths";
-import { modelPreTyp, nacitajSubor, type Diagnostika } from "./loader";
+import { modelForType, loadFile, type Diagnostic } from "./loader";
 
 const KNIZNICA_SUBOR = "KNIZNICA.md";
 const WIKILINK_PATTERN = "^\\[\\[[^\\[\\]]+\\]\\]$";
@@ -23,15 +23,15 @@ export interface OdkazMeta extends Odkaz {
   meta: Record<string, unknown>;
 }
 
-export interface Projekcia {
+export interface Projection {
   frontmatter: Record<string, unknown> | null;
   data: Record<string, unknown> | null;
   odkazy: Odkaz[];
-  diagnostiky: Diagnostika[];
+  diagnostiky: Diagnostic[];
 }
 
 /** `je_subor_kniznice`: `KNIZNICA.md` alebo `.md` pod vrstvou, mimo skrytých priečinkov. */
-export function jeSuborKniznice(rel: string): boolean {
+export function isLibraryFile(rel: string): boolean {
   if (rel === KNIZNICA_SUBOR) return true;
   const parts = rel.split("/");
   return parts.length >= 2 && (VRSTVY as readonly string[]).includes(parts[0]) && rel.endsWith(".md") && !parts.some((p) => p.startsWith("."));
@@ -99,20 +99,20 @@ export function odkazySchemy(js: JS, model: Record<string, unknown>): OdkazMeta[
   return out;
 }
 
-export function odkazyModelu(typ: string, model: Record<string, unknown>): OdkazMeta[] {
-  const m = modelPreTyp(typ);
+export function modelLinks(typ: string, model: Record<string, unknown>): OdkazMeta[] {
+  const m = modelForType(typ);
   return m ? odkazySchemy(m.js, model) : [];
 }
 
 /** `projekcia(rel, text)`. */
-export function projekcia(rel: string, text: string): Projekcia {
-  if (rel === KNIZNICA_SUBOR || !jeSuborKniznice(rel)) return { frontmatter: null, data: null, odkazy: [], diagnostiky: [] };
-  const n = nacitajSubor(rel, text);
+export function projekcia(rel: string, text: string): Projection {
+  if (rel === KNIZNICA_SUBOR || !isLibraryFile(rel)) return { frontmatter: null, data: null, odkazy: [], diagnostiky: [] };
+  const n = loadFile(rel, text);
   const fm = n.dokument.frontmatter;
   return {
     frontmatter: fm && !fm.chyba && fm.data ? fm.data : null,
     data: n.model,
-    odkazy: n.model ? odkazyModelu(String(n.model.typ), n.model).map(({ pointer, ciel, kotva, alias }) => ({ pointer, ciel, kotva, alias })) : [],
+    odkazy: n.model ? modelLinks(String(n.model.typ), n.model).map(({ pointer, ciel, kotva, alias }) => ({ pointer, ciel, kotva, alias })) : [],
     diagnostiky: n.diagnostiky,
   };
 }

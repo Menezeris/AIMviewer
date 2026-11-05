@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { nacitajKniznicuGraf } from "./graph";
-import { cestyPre, retazceJson, retazcePre, skratkaUloh } from "./chain";
+import { loadLibraryGraph } from "./graph";
+import { pathsFor, retazceJson, retazcePre, skratkaUloh } from "./chain";
 
 const KORPUS = join(process.cwd(), "library", "korpus", "stromy");
 const json = (rel: string) => JSON.parse(readFileSync(join(KORPUS, rel), "utf8"));
@@ -12,7 +12,7 @@ const json = (rel: string) => JSON.parse(readFileSync(join(KORPUS, rel), "utf8")
 describe("korpus zhody: reťazec ako strom (krok 4b portu, D-186)", () => {
   for (const strom of ["vzor", "kniznica", "chybne"]) {
     it(`strom ${strom}: editor.json retazce`, () => {
-      const k = nacitajKniznicuGraf(json(`${strom}/subory.json`));
+      const k = loadLibraryGraph(json(`${strom}/subory.json`));
       const ocak = json(`${strom}/editor.json`).retazce;
       const got = JSON.parse(JSON.stringify(retazceJson(k)));
       expect(got.map((r: { id: string }) => r.id)).toEqual(ocak.map((r: { id: string }) => r.id));
@@ -28,13 +28,13 @@ describe("korpus zhody: reťazec ako strom (krok 4b portu, D-186)", () => {
 
 describe("pruh 'kde to sedí' a stromy pri poznámke (editor.json poznamky[].cesty, retazce, pod_zaznamy[].cesty)", () => {
   for (const strom of ["vzor", "kniznica", "chybne"]) {
-    const k = nacitajKniznicuGraf(json(`${strom}/subory.json`));
+    const k = loadLibraryGraph(json(`${strom}/subory.json`));
     const poznamky = json(`${strom}/editor.json`).poznamky as Array<{ id: string; cesty: unknown; retazce: unknown; pod_zaznamy: Array<{ id: string; cesty: unknown }> }>;
     for (const p of poznamky) {
       it(`${strom}: ${p.id}`, () => {
-        expect(JSON.parse(JSON.stringify(cestyPre(k, p.id)))).toEqual(p.cesty);
+        expect(JSON.parse(JSON.stringify(pathsFor(k, p.id)))).toEqual(p.cesty);
         expect(JSON.parse(JSON.stringify(retazcePre(k, p.id)))).toEqual(p.retazce);
-        for (const pz of p.pod_zaznamy) expect(JSON.parse(JSON.stringify(cestyPre(k, pz.id))), pz.id).toEqual(pz.cesty);
+        for (const pz of p.pod_zaznamy) expect(JSON.parse(JSON.stringify(pathsFor(k, pz.id))), pz.id).toEqual(pz.cesty);
       });
     }
   }

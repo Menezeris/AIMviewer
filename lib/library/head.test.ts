@@ -4,12 +4,12 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { detail, HlavaMigraciaChyba, HlavaVstupChyba, prehlad, type HlavaStore, type HlavaSubor } from "./head";
+import { detail, HlavaMigraciaChyba, HlavaVstupChyba, prehlad, type HeadStore, type HeadFile } from "./head";
 
 /** Hlava knižnice v pamäti zo stromu `vzor` korpusu (rovnaké súbory ako `library.hlava` knižnice assetin 2. 11.). */
-function memoryHlava(opts: { bezMigracie?: boolean } = {}): HlavaStore {
+function memoryHlava(opts: { bezMigracie?: boolean } = {}): HeadStore {
   const texty = JSON.parse(readFileSync(join(process.cwd(), "library", "korpus", "stromy", "vzor", "subory.json"), "utf8")) as Record<string, string>;
-  const subory: HlavaSubor[] = Object.entries(texty).map(([cesta, text]) => ({
+  const subory: HeadFile[] = Object.entries(texty).map(([cesta, text]) => ({
     kniznica: "assetin",
     cesta,
     note_id: cesta === "KNIZNICA.md" ? null : cesta.split("/").pop()!.split(" ")[0].replace(/\.md$/, ""),

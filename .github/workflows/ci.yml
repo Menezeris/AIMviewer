@@ -1,6 +1,6 @@
 # CI for pull requests and main (D-187): the pre-merge check is this, not the Vercel preview.
 # No secrets: the build runs against a fake PostgREST (scripts/ci/postgrest-stub.mjs) with a dummy key,
-# because some pages (/kniznica, /icdd) are prerendered at build time and read Supabase.
+# because some pages (/library, /icdd) are prerendered at build time and read Supabase.
 name: ci
 
 on:

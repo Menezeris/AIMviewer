@@ -44,7 +44,7 @@ export const SCHEMY: Subor[] = [
   { meno: "xml.xsd", url: "https://www.w3.org/2001/xml.xsd", sha256: "61960fb3131e38022caad5360e2f33a3382578ab3c80cd58bd74320ede61b20c" },
 ];
 
-export class ChybaXsd extends Error {}
+export class XsdError extends Error {}
 
 export type Stahovac = (url: string) => Promise<Uint8Array>;
 
@@ -65,10 +65,10 @@ export async function nacitajSchemy(stahuj: Stahovac = predvolenyStahovac, pouzi
     try {
       data = await stahuj(s.url);
     } catch (e) {
-      throw new ChybaXsd(`${s.meno} sa nedá stiahnuť z ${s.url} (${e instanceof Error ? e.message : String(e)}) - bez kontroly XSD sa nevydáva`);
+      throw new XsdError(`${s.meno} sa nedá stiahnuť z ${s.url} (${e instanceof Error ? e.message : String(e)}) - bez kontroly XSD sa nevydáva`);
     }
     const sha = createHash("sha256").update(data).digest("hex");
-    if (sha !== s.sha256) throw new ChybaXsd(`${s.meno} z ${s.url} má sha256 ${sha}, očakávané ${s.sha256} - zdroj sa zmenil, over a uprav pin`);
+    if (sha !== s.sha256) throw new XsdError(`${s.meno} z ${s.url} má sha256 ${sha}, očakávané ${s.sha256} - zdroj sa zmenil, over a uprav pin`);
     const text = new TextDecoder().decode(data);
     out.push({ fileName: s.meno, contents: s.presmeruj ? s.presmeruj(text) : text });
   }

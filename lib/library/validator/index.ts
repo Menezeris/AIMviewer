@@ -3,8 +3,8 @@
  * načítanou knižnicou; diagnostiky loadera a grafu idú prvé. Pravidlá so schémou IFC a bSDD (F2b) tu nie sú.
  */
 
-import type { Kniznica } from "../graph";
-import type { Diagnostika } from "../loader";
+import type { Library } from "../graph";
+import type { Diagnostic } from "../loader";
 import { Kontext, REGISTER, type Pravidlo } from "./context";
 import "./rules-a-c";
 import "./rules-d-e";
@@ -15,8 +15,8 @@ export { REGISTER, type Pravidlo } from "./context";
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /** `validuj`: diagnostiky loadera a grafu + pravidlá; zoradené podľa (súbor, riadok, kód) stabilne. */
-export function validuj(k: Kniznica, o: { preflight?: boolean } = {}): Diagnostika[] {
-  const out: Diagnostika[] = [...k.diagnostiky];
+export function validuj(k: Library, o: { preflight?: boolean } = {}): Diagnostic[] {
+  const out: Diagnostic[] = [...k.diagnostiky];
   const ctx = new Kontext(k, !!o.preflight);
   for (const p of REGISTER.values()) {
     if (p.potrebuje !== "graf") continue;

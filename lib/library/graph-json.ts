@@ -3,11 +3,11 @@
  * kaskády, rodiny hrán, diagnostiky. Jeden export pre dokument editora a stránku grafu; projekcia `Kniznica`.
  */
 
-import { idPoznamky, SCHEMA_VERZIA, typPoznamky, type Kniznica } from "./graph";
-import type { Diagnostika, Poznamka } from "./loader";
+import { noteId, SCHEMA_VERZIA, noteType, type Library } from "./graph";
+import type { Diagnostic, Note } from "./loader";
 import { parseWikilink } from "./projection";
 
-export const KASKADA = [
+export const CASCADE = [
   { kluc: "ciel", nazov: "Ciele", popis: "OIR → AIR → PIR (19650-1)" },
   { kluc: "podnet", nazov: "Podnet", popis: "impact event — prečo projekt vzniká" },
   { kluc: "scenar", nazov: "Účel užitia", popis: "use case a jeho úlohy (29481-1)" },
@@ -20,7 +20,7 @@ export const KASKADA = [
   { kluc: "projekt", nazov: "Projekt", popis: "dosadenie knižnice do zákazky (PROJ, PROT)" },
 ];
 
-export const RODINY: Record<string, Record<string, unknown>> = {
+export const FAMILIES: Record<string, Record<string, unknown>> = {
   kaskada: { nazov: "Kaskáda", popis: "cieľ → scenár → výmena → jednotka" },
   roly: { nazov: "Roly", popis: "kto dodáva, kto preberá, kto overuje" },
   standard: { nazov: "Štandard", popis: "odkaz na pravidlo, profil, slovník alebo definíciu" },
@@ -73,7 +73,7 @@ function kaskada(typ: string | null, model: M): string {
   return KASKADA_TYPU[typ ?? ""] ?? "standard";
 }
 
-export function rodinaHrany(pointer: string): string {
+export function edgeFamily(pointer: string): string {
   const seg = segmentyPointera(pointer);
   if (seg.length) {
     const pole = polePointera(pointer);
@@ -92,10 +92,10 @@ function ulohaHrany(pointer: string, ulohy: Array<{ id: unknown }>): string | nu
   return null;
 }
 
-function suhrn(n: Poznamka): Record<string, unknown> {
+function suhrn(n: Note): Record<string, unknown> {
   const m = n.model;
   if (!m) return {};
-  const typ = typPoznamky(n);
+  const typ = noteType(n);
   const o = (v: unknown) => (v && typeof v === "object" ? (v as Record<string, unknown>) : null);
   switch (typ) {
     case "GOAL":
@@ -153,8 +153,8 @@ export function klucPolozky(p: Record<string, unknown>): string {
   return String(i.nazov);
 }
 
-function polozky(n: Poznamka) {
-  if (typPoznamky(n) !== "IU-O" || !n.model) return [];
+function polozky(n: Note) {
+  if (noteType(n) !== "IU-O" || !n.model) return [];
   return zoznam(n.model.alfanumerika).map((x, i) => {
     const p = x as Record<string, unknown>;
     const s = (v: unknown) => (v ? String(v) : null);
@@ -167,14 +167,14 @@ function polozky(n: Poznamka) {
   });
 }
 
-function ulohy(n: Poznamka) {
+function ulohy(n: Note) {
   return zoznam(n.model?.ulohy).map((x) => {
     const u = x as Record<string, unknown>;
     return { id: u.id, nazov: u.nazov, typ: u.typ ?? null, aktor: ciel(u.aktor), vystup: zoznam(u.vystup).map(ciel) };
   });
 }
 
-function pocty(diag: Diagnostika[], nid: string | null) {
+function pocty(diag: Diagnostic[], nid: string | null) {
   const p: Record<string, number> = { E: 0, W: 0, I: 0 };
   for (const d of diag) if (d.note_id === nid) p[d.uroven] += 1;
   return p;
@@ -191,13 +191,13 @@ const prazdne = () => ({ E: 0, W: 0, I: 0 });
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /** `graf_json`: celá knižnica ako graf; visiace ciele sú uzly-duchovia, nie chýbajúce hrany. */
-export function grafJson(k: Kniznica, diagnostiky?: Diagnostika[]) {
+export function graphJson(k: Library, diagnostiky?: Diagnostic[]) {
   const diag = diagnostiky ?? k.diagnostiky;
   const uzly = new Map<string, Record<string, unknown>>();
   for (const n of k.vsetky) {
-    const nid = idPoznamky(n);
+    const nid = noteId(n);
     if (nid === null) continue;
-    const typ = typPoznamky(n);
+    const typ = noteType(n);
     uzly.set(nid, {
       id: nid, typ, nazov: n.model ? (n.model.nazov ?? nid) : nid, nazov_en: n.model?.nazov_en ?? null, stav: n.model?.stav ?? null,
       vrstva: n.umiestnenie ? n.umiestnenie.vrstva : "zadanie", subor: n.rel, kaskada: kaskada(typ, n.model), visiaci: false,
@@ -223,14 +223,14 @@ export function grafJson(k: Kniznica, diagnostiky?: Diagnostika[]) {
       uzly.set(c, { id: c, typ: t, nazov: c, nazov_en: null, stav: null, vrstva: null, subor: null, kaskada: KASKADA_TYPU[t] ?? "standard", visiaci: true, suhrn: {}, ulohy: [], polozky: [], diagnostiky: prazdne() });
     }
     hrany.push({
-      z: o.zdroj, na: c, pole: polePointera(o.pointer), pointer: o.pointer, rodina: rodinaHrany(o.pointer), kotva: o.link.kotva,
+      z: o.zdroj, na: c, pole: polePointera(o.pointer), pointer: o.pointer, rodina: edgeFamily(o.pointer), kotva: o.link.kotva,
       rozlisene: o.ciel !== null, uloha: ulohaHrany(o.pointer, uzly.get(o.zdroj)!.ulohy as Array<{ id: unknown }>), riadok: o.riadok,
     });
   }
   return {
     kniznica: { schema_verzia: k.schema_verzia || SCHEMA_VERZIA, poznamky: k.poznamky.size, pod_zaznamy: k.pod_zaznamy.size, odkazy: k.odkazy.length },
-    kaskada: KASKADA,
-    rodiny: RODINY,
+    kaskada: CASCADE,
+    rodiny: FAMILIES,
     uzly: [...uzly.values()].sort((a, b) => cmp(String(a.kaskada), String(b.kaskada)) || cmp(String(a.id), String(b.id))),
     hrany,
     diagnostiky: diag,

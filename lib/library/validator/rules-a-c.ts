@@ -3,10 +3,10 @@
  * `b_odkazy.py`, `c_uc_er_ev.py`). A3-A7, A9-A11 a B1-B3 hlási loader a graf pri čítaní.
  */
 
-import { nazovDoSuboru, premenovatelna } from "../paths";
-import { idPoznamky, typPoznamky } from "../graph";
+import { nameToFile, renamable } from "../paths";
+import { noteId, noteType } from "../graph";
 import { klucPolozky } from "../graph-json";
-import type { Poznamka } from "../loader";
+import type { Note } from "../loader";
 import { jednotkyVymeny } from "../chain";
 import {
   attr,
@@ -64,7 +64,7 @@ const DOSADENIE: Record<string, Array<[string, string]>> = {
 pravidlo("A8", "E", { popis: "Definícia vs. dosadenie: knižnica nenesie termíny, osoby ani dátumy", zdroj: "§16.6 V19" }, function* (ctx) {
   for (const [n, m] of ctx.typu("EV", "ACT", "PROJ", "GOAL")) {
     const vrstva = ctx.vrstva(n);
-    const typ = typPoznamky(n) ?? "";
+    const typ = noteType(n) ?? "";
     if (typ === "PROJ" && vrstva !== "projekty") {
       yield ctx.diag(n, `typ PROJ je dosadenie — patrí len do projekty/, nie do ${vrstva}/`, ["typ"]);
       continue;
@@ -85,9 +85,9 @@ pravidlo("A12", "W", { popis: "`pouzitie` = sloveso + podstatné meno", zdroj: "
 pravidlo("A14", "I", { popis: "Názov súboru sedí s `nazov`", zdroj: "§0.4, DATA-MODEL §4" }, function* (ctx) {
   for (const n of ctx.k.vsetky) {
     const um = n.umiestnenie;
-    if (!n.model || !um || !premenovatelna(um.typ, um.id)) continue;
+    if (!n.model || !um || !renamable(um.typ, um.id)) continue;
     const vSubore = um.nazov_zo_suboru || "";
-    if (vSubore !== nazovDoSuboru(n.model.nazov as string | null)) {
+    if (vSubore !== nameToFile(n.model.nazov as string | null)) {
       yield ctx.diag(n, `názov súboru „${vSubore || "—"}“ sa líši od \`nazov\` — editor premenuje pri zmene názvu`, ["nazov"]);
     }
   }
@@ -114,7 +114,7 @@ const CYKLICKE: Array<[string, string[], string[]]> = [
 ];
 
 /** HTML komentár vedľa inline poľa (vysvetľuje ukotvenie literálom). */
-function maPoznamku(n: Poznamka, kluc: string): boolean {
+function maPoznamku(n: Note, kluc: string): boolean {
   const telo = n.dokument.telo;
   return telo.some((b, i) => b.druh === "InlinePole" && b.kluc === kluc && telo.slice(Math.max(0, i - 1), i + 2).some((x) => x.druh === "HtmlKomentar"));
 }
@@ -127,7 +127,7 @@ pravidlo("B4", "E", { popis: "Literály #aktivum / #proces len vo `viaze_sa_na` 
       for (const [i, v] of vs.entries()) {
         if (!(typeof v === "string" && TAGY.includes(v))) continue;
         const cesta = Array.isArray(hodnota) ? [nazov, i] : [nazov];
-        if (nazov === "objekt" && typPoznamky(n) === "EV") continue;
+        if (nazov === "objekt" && noteType(n) === "EV") continue;
         if (nazov !== "viaze_sa_na") yield ctx.diag(n, `literál ${v} je prípustný len vo \`viaze_sa_na\` a \`EV.objekt\``, cesta);
         else if (!maPoznamku(n, nazov)) yield ctx.diag(n, `ukotvenie literálom ${v} bez vysvetlenia — doplň HTML komentár, prečo nie je IU-O`, cesta, "W");
       }
@@ -143,14 +143,14 @@ pravidlo("B5", "E", { popis: "Typované väzby sú acyklické", zdroj: "nové" }
       if (b) hrany.get(a)!.add(b);
     };
     for (const [n, m] of ctx.typu(...typy)) {
-      const nid = idPoznamky(n);
+      const nid = noteId(n);
       if (nid === null) continue;
       for (const pole of polia) {
         pridaj(nid, "");
         for (const c of ciele(m, pole)) if (c) pridaj(nid, c);
       }
     }
-    if (vztah === "poradie kontajnerov") for (const [n, m] of ctx.typu("IU-C")) for (const c of ciele(m, "predchodca")) if (c) pridaj(c, idPoznamky(n) ?? "None");
+    if (vztah === "poradie kontajnerov") for (const [n, m] of ctx.typu("IU-C")) for (const c of ciele(m, "predchodca")) if (c) pridaj(c, noteId(n) ?? "None");
     for (const cyklus of cykly(hrany)) {
       const n = ctx.poznamka(cyklus[0]);
       if (n) yield ctx.diag(n, `cyklus vo väzbe \`${vztah}\`: ${cyklus.join(" → ")}`, ["id"]);
@@ -160,7 +160,7 @@ pravidlo("B5", "E", { popis: "Typované väzby sú acyklické", zdroj: "nové" }
 
 pravidlo("B6", "W", { popis: "Inverzné páry dokladovania", zdroj: "V4" }, function* (ctx) {
   for (const [n, m] of ctx.typu("IU-C")) {
-    const nid = idPoznamky(n);
+    const nid = noteId(n);
     for (const [i, w] of odkazyPola(m, "dokladuje").entries()) {
       const cielova = ctx.model(w.ciel);
       if (!cielova) continue;
@@ -170,7 +170,7 @@ pravidlo("B6", "W", { popis: "Inverzné páry dokladovania", zdroj: "V4" }, func
     }
   }
   for (const [n, m] of ctx.typu("IU-O")) {
-    const nid = idPoznamky(n);
+    const nid = noteId(n);
     for (const [i, d] of zoznamM(m.dokumentacia).entries()) {
       const dok = link(d.dok);
       const kontajner = ctx.model(dok?.ciel);
@@ -226,7 +226,7 @@ pravidlo("C2", "E", { popis: "Impact spúšťa UC/PROJ, delivery spúšťa ER", 
   for (const [n, m] of ctx.typu("UC", "PROJ")) {
     for (const [i, w] of odkazyPola(m, "spustacia_udalost").entries()) {
       const ev = ctx.model(w.ciel);
-      if (ev && attr(ev, "typ_udalosti") !== "impact") yield ctx.diag(n, `${w.raw} je delivery; ${typPoznamky(n)} spúšťa len impact udalosť`, ["spustacia_udalost", i]);
+      if (ev && attr(ev, "typ_udalosti") !== "impact") yield ctx.diag(n, `${w.raw} je delivery; ${noteType(n)} spúšťa len impact udalosť`, ["spustacia_udalost", i]);
     }
   }
 });
@@ -236,7 +236,7 @@ pravidlo("C3", "E", { popis: "ER má práve jeden UC; poskytovateľ IU je určit
     const pocet = odkazyPola(er, "uc").length;
     if (pocet !== 1) yield ctx.diag(n, `ER má práve jeden \`uc::\`, nájdených ${pocet}`, ["uc"]);
     if (je(er.poskytovatel_predvoleny)) continue;
-    for (const nid of jednotkyVymeny(ctx.k, idPoznamky(n) ?? "").vsetky) {
+    for (const nid of jednotkyVymeny(ctx.k, noteId(n) ?? "").vsetky) {
       const iu = ctx.model(nid);
       if (!iu) continue;
       if (!ciele(iu, "poskytovatel").length) yield ctx.diag(n, `[[${nid}]] nemá \`poskytovatel::\` a ER nemá \`poskytovatel_predvoleny\` — IDS sa nedá rozdeliť`, ["obsahuje"]);
@@ -250,7 +250,7 @@ pravidlo("C12", "E", { popis: "ER nesie aspoň jednu informačnú jednotku", zdr
 
 pravidlo("C4", "E", { popis: "Prepisy ER menia len hodnoty existujúcich položiek", zdroj: "§16.9" }, function* (ctx) {
   for (const [n, er] of ctx.typu("ER")) {
-    const obsahuje = new Set(jednotkyVymeny(ctx.k, idPoznamky(n) ?? "").vsetky);
+    const obsahuje = new Set(jednotkyVymeny(ctx.k, noteId(n) ?? "").vsetky);
     for (const [i, pr] of zoznamM(er.prepisy).entries()) {
       const iuL = link(pr.iu);
       if (!iuL || !obsahuje.has(iuL.ciel)) {
@@ -332,7 +332,7 @@ pravidlo("C8", "E", { popis: "Udalosť nesie, čo jej druh vyžaduje", zdroj: "�
 });
 
 /** `Dokument.sekcia`: bloky pod nadpisom s daným textom. */
-function sekcia(n: Poznamka, text: string) {
+function sekcia(n: Note, text: string) {
   const telo = n.dokument.telo;
   const i = telo.findIndex((b) => b.druh === "Nadpis" && b.text === text);
   if (i < 0) return null;
@@ -344,11 +344,11 @@ pravidlo("C9", "W", { popis: "Sekcia „Fázy → ER“ sedí s udalosťami ER",
   for (const [n] of ctx.typu("UC")) {
     const sek = sekcia(n, "Fázy → ER");
     if (!sek) continue;
-    const nid = idPoznamky(n) ?? "";
+    const nid = noteId(n) ?? "";
     const text = sek.map((b) => b.raw).join("");
-    const ocakavane = new Set(ctx.typu("ER").filter(([, er]) => ciele(er, "uc").includes(nid)).map(([e]) => idPoznamky(e) ?? ""));
+    const ocakavane = new Set(ctx.typu("ER").filter(([, er]) => ciele(er, "uc").includes(nid)).map(([e]) => noteId(e) ?? ""));
     const uvedene = [...text.matchAll(/\[\[([A-Z]+-[\p{L}\p{N}_-]+)\]\]/gu)].map((x) => x[1]).filter((x) => ctx.k.poznamky.has(x));
-    const uvedeneEr = new Set(uvedene.filter((x) => typPoznamky(ctx.k.poznamky.get(x)!) === "ER"));
+    const uvedeneEr = new Set(uvedene.filter((x) => noteType(ctx.k.poznamky.get(x)!) === "ER"));
     for (const ch of zorad([...ocakavane].filter((x) => !uvedeneEr.has(x)))) yield ctx.diag(n, `generovaná sekcia „Fázy → ER“ neuvádza ${ch}`, ["id"]);
     for (const nav of zorad([...uvedeneEr].filter((x) => !ocakavane.has(x)))) yield ctx.diag(n, `„Fázy → ER“ uvádza ${nav}, ktoré na tento UC neodkazuje`, ["id"]);
   }
@@ -356,15 +356,15 @@ pravidlo("C9", "W", { popis: "Sekcia „Fázy → ER“ sedí s udalosťami ER",
 
 /** `vymeny_jednotky`: výmeny, ktorých jednotky obsahujú poznámku (priamo alebo cez kontajner). */
 const vymenyJednotky = (ctx: Kontext, iu: string) =>
-  ctx.k.podlaTypu("ER").filter((er) => idPoznamky(er) !== null && jednotkyVymeny(ctx.k, idPoznamky(er)!).vsetky.includes(iu));
+  ctx.k.podlaTypu("ER").filter((er) => noteId(er) !== null && jednotkyVymeny(ctx.k, noteId(er)!).vsetky.includes(iu));
 
 pravidlo("C10", "W", { popis: "Osirené poznámky (bez použitia v grafe)", zdroj: "nové" }, function* (ctx) {
   const pouzite = new Set(ctx.k.odkazy.filter((o) => o.ciel).map((o) => o.ciel!));
-  for (const [n] of ctx.typu("IU-O", "IU-C")) if (!vymenyJednotky(ctx, idPoznamky(n) ?? "").length) yield ctx.diag(n, "jednotku neobsahuje žiadny ER — nedostane sa do výmeny", ["id"]);
+  for (const [n] of ctx.typu("IU-O", "IU-C")) if (!vymenyJednotky(ctx, noteId(n) ?? "").length) yield ctx.diag(n, "jednotku neobsahuje žiadny ER — nedostane sa do výmeny", ["id"]);
   for (const [n, er] of ctx.typu("ER")) if (!ciele(er, "uc").length) yield ctx.diag(n, "ER bez `uc::`", ["uc"]);
   const ery = ctx.typu("ER");
-  for (const [n] of ctx.typu("UC")) if (!ery.some(([, er]) => ciele(er, "uc").includes(idPoznamky(n) ?? ""))) yield ctx.diag(n, "UC nemá žiadny ER — scenár nič nevymieňa", ["id"]);
-  for (const [n] of ctx.typu("EV")) if (!pouzite.has(idPoznamky(n) ?? "")) yield ctx.diag(n, "udalosť nikto nepoužíva (žiadny UC, ER ani PROJ)", ["id"]);
+  for (const [n] of ctx.typu("UC")) if (!ery.some(([, er]) => ciele(er, "uc").includes(noteId(n) ?? ""))) yield ctx.diag(n, "UC nemá žiadny ER — scenár nič nevymieňa", ["id"]);
+  for (const [n] of ctx.typu("EV")) if (!pouzite.has(noteId(n) ?? "")) yield ctx.diag(n, "udalosť nikto nepoužíva (žiadny UC, ER ani PROJ)", ["id"]);
 });
 
 function lokalneFazy(ctx: Kontext): Set<string> | null {
@@ -390,7 +390,7 @@ pravidlo("C11", "W", { popis: "Región a lokálna fáza", zdroj: "§2" }, functi
 
 pravidlo("C13", "W", { popis: "Objekt bez kontajnera", zdroj: "V27, PAS 6.3.2.1 a" }, function* (ctx) {
   for (const [n, er] of ctx.typu("ER")) {
-    const j = jednotkyVymeny(ctx.k, idPoznamky(n) ?? "");
+    const j = jednotkyVymeny(ctx.k, noteId(n) ?? "");
     for (const [i, w] of odkazyPola(er, "obsahuje").entries()) {
       if (j.volne.includes(w.ciel)) yield ctx.diag(n, `${w.raw} nenesie žiadny kontajner tejto výmeny — doplň priradenie do IU-C (\`obsahuje: [{iu: …}]\`) alebo kontajner do \`obsahuje::\``, ["obsahuje", i]);
     }

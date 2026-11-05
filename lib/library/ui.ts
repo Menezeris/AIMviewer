@@ -6,7 +6,7 @@
 
 import { jsonSchema } from "./schema/jsonSchema";
 import { SCHEMY } from "./schema/models";
-import { TRIEDY_POD_ZAZNAMOV, TRIEDY_TYPOV, type TriedaTypu } from "./schema/classes";
+import { SUB_RECORD_CLASSES, TYPE_CLASSES, type TriedaTypu } from "./schema/classes";
 
 type JS = Record<string, unknown>;
 
@@ -188,8 +188,8 @@ function popisTypu(js: JS, t: TriedaTypu, typ: string) {
 /** `vsetky_popisy`: opis každého typu poznámky a druhu pod-záznamu pre editor. */
 export function vsetkyPopisy() {
   const out: Record<string, unknown> = {};
-  for (const typ of TYPY_POZNAMOK) out[typ] = popisTypu(jsonSchema(SCHEMY[typ as keyof typeof SCHEMY]), TRIEDY_TYPOV[typ], typ);
-  for (const d of POD) out[`pod-${d}`] = popisTypu(jsonSchema(SCHEMY[`pod-${d}` as keyof typeof SCHEMY]), TRIEDY_POD_ZAZNAMOV[d], TRIEDY_POD_ZAZNAMOV[d].DRUH ?? d);
+  for (const typ of TYPY_POZNAMOK) out[typ] = popisTypu(jsonSchema(SCHEMY[typ as keyof typeof SCHEMY]), TYPE_CLASSES[typ], typ);
+  for (const d of POD) out[`pod-${d}`] = popisTypu(jsonSchema(SCHEMY[`pod-${d}` as keyof typeof SCHEMY]), SUB_RECORD_CLASSES[d], SUB_RECORD_CLASSES[d].DRUH ?? d);
   return out;
 }
 
@@ -205,10 +205,10 @@ export const PRIEREZOVE_POPIS = "prierezové — dopadá na každé pásmo, pret
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 /** `poradie_panela`: typy v poradí ľavého panela (PORADIE_UI, potom kód). */
-export const poradiePanela = () => [...TYPY_POZNAMOK].sort((a, b) => (TRIEDY_TYPOV[a].PORADIE_UI ?? 99) - (TRIEDY_TYPOV[b].PORADIE_UI ?? 99) || cmp(a, b));
+export const poradiePanela = () => [...TYPY_POZNAMOK].sort((a, b) => (TYPE_CLASSES[a].PORADIE_UI ?? 99) - (TYPE_CLASSES[b].PORADIE_UI ?? 99) || cmp(a, b));
 
 function skupinaPanela(typ: string): string {
-  const t = TRIEDY_TYPOV[typ];
+  const t = TYPE_CLASSES[typ];
   if (!t) return "";
   if (t.PRIEREZOVE) return "prierezove";
   const r = RAMCE.find((x) => x.kluc === (t.RAMEC ?? ""));
@@ -232,17 +232,17 @@ function skupinyPanela(): string[][] {
 function popisky() {
   const out: Record<string, Record<string, string>> = {};
   for (const typ of TYPY_POZNAMOK) {
-    const t = TRIEDY_TYPOV[typ];
+    const t = TYPE_CLASSES[typ];
     out[typ] = { popisok: t.POPISOK || typ, popisok_export: t.POPISOK_EXPORT || t.POPISOK || typ, ikona: t.IKONA ?? "ti-file" };
   }
   for (const d of POD) {
-    const t = TRIEDY_POD_ZAZNAMOV[d];
+    const t = SUB_RECORD_CLASSES[d];
     out[`pod-${d}`] = { popisok: t.POPISOK ?? d, popisok_export: t.POPISOK_EXPORT ?? d, ikona: t.IKONA ?? "ti-ruler" };
   }
   return out;
 }
 
 /** `pasma.dokument`. */
-export function pasmaDokument() {
+export function documentBands() {
   return { ramce: RAMCE.map((r) => ({ ...r })), poradie: poradiePanela(), skupiny: skupinyPanela(), popisky: popisky(), prierezove_popis: PRIEREZOVE_POPIS };
 }

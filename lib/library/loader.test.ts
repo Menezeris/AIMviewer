@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { rozober } from "./paths";
-import { nacitajKniznicu, nacitajSubor, poznamkaJson, riadokPrePointer, rozdelInline } from "./loader";
+import { loadLibrary, loadFile, noteJson, rowForPointer, rozdelInline } from "./loader";
 
 const KORPUS = join(process.cwd(), "library", "korpus", "stromy");
 const json = (rel: string) => JSON.parse(readFileSync(join(KORPUS, rel), "utf8"));
@@ -14,7 +14,7 @@ describe("korpus zhody: loader (krok 2b portu, D-186)", () => {
     describe(`strom ${strom}`, () => {
       const subory = json(`${strom}/subory.json`) as Record<string, string>;
       const ocakavane = json(`${strom}/poznamky.json`) as Record<string, unknown>;
-      const nacitane = Object.fromEntries(nacitajKniznicu(subory).map((n) => [n.rel, poznamkaJson(n)]));
+      const nacitane = Object.fromEntries(loadLibrary(subory).map((n) => [n.rel, noteJson(n)]));
 
       it("rovnaké poznámky (bez KNIZNICA.md)", () => {
         expect(Object.keys(nacitane).sort()).toEqual(Object.keys(ocakavane).sort());
@@ -42,7 +42,7 @@ describe("loader mimo korpusu: diagnostiky (kľúč note_id, json_pointer, urove
   };
   for (const [nazov, p] of Object.entries(orakulum.pripady)) {
     it(`proti Python loaderu: ${nazov}`, () => {
-      const got = nacitajSubor(p.cesta, p.text).diagnostiky.map((d) => [d.note_id, d.json_pointer, d.uroven, d.kod, d.subor, d.riadok]);
+      const got = loadFile(p.cesta, p.text).diagnostiky.map((d) => [d.note_id, d.json_pointer, d.uroven, d.kod, d.subor, d.riadok]);
       expect(got.sort((x, y) => JSON.stringify(x).localeCompare(JSON.stringify(y)))).toEqual(
         [...p.ocakavane].sort((x, y) => JSON.stringify(x).localeCompare(JSON.stringify(y))),
       );
@@ -50,8 +50,8 @@ describe("loader mimo korpusu: diagnostiky (kľúč note_id, json_pointer, urove
   }
 
   it("riadok YAML uzla ako ruamel lc; delenie inline odkazov", () => {
-    expect(riadokPrePointer("a: 1\nb:\n  - x: 1\n  - x: 2\n", ["b", 1, "x"])).toBe(3);
-    expect(riadokPrePointer("a: 1\n", ["nie"])).toBeNull();
+    expect(rowForPointer("a: 1\nb:\n  - x: 1\n  - x: 2\n", ["b", 1, "x"])).toBe(3);
+    expect(rowForPointer("a: 1\n", ["nie"])).toBeNull();
     expect(rozdelInline("[[A|b, c]], [[B]] ,#aktivum,")).toEqual(["[[A|b, c]]", "[[B]]", "#aktivum"]);
   });
 });

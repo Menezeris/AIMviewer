@@ -13,13 +13,13 @@ import { LineCounter, parseDocument, isMap, isSeq, isScalar, type Node as YamlNo
 import type { z } from "zod";
 
 import { parsuj, type Dokument, type Nadpis, type SurovyBlok, type YamlBlok } from "./blocks";
-import { ChybaCesty, rozober, type Umiestnenie } from "./paths";
+import { PathError, rozober, type Umiestnenie } from "./paths";
 import { jsonSchema } from "./schema/jsonSchema";
 import { SCHEMY } from "./schema/models";
 
 export type Uroven = "E" | "W" | "I";
 
-export interface Diagnostika {
+export interface Diagnostic {
   note_id: string | null;
   json_pointer: string;
   uroven: Uroven;
@@ -39,14 +39,14 @@ export interface PodZaznam {
   ids_blok: SurovyBlok | null;
 }
 
-export interface Poznamka {
+export interface Note {
   rel: string;
   dokument: Dokument;
   umiestnenie: Umiestnenie | null;
   data: Record<string, unknown>;
   model: Record<string, unknown> | null;
   pod_zaznamy: PodZaznam[];
-  diagnostiky: Diagnostika[];
+  diagnostiky: Diagnostic[];
   zdroje: Record<string, string>;
   /** sha256 textu (`sklad.verzia_textu`). */
   verzia: string;
@@ -102,7 +102,7 @@ function jeZoznam(n: Record<string, unknown>): boolean {
 }
 
 const modely = new Map<string, Model>();
-export function modelPreTyp(typ: string): Model | null {
+export function modelForType(typ: string): Model | null {
   if (!(TYPY_POZNAMOK as readonly string[]).includes(typ)) return null;
   let m = modely.get(typ);
   if (!m) {
@@ -177,7 +177,7 @@ const pyStrip = (s: string) => s.replace(PY_WS, "");
 // ------------------------------------------------------------------------------------------------ riadky YAML
 
 /** `riadok_pre_pointer`: riadok (0-based, voči textu YAML) hodnoty na ceste `loc`, ako ruamel `lc`. */
-export function riadokPrePointer(yamlText: string, loc: ReadonlyArray<PropertyKey>): number | null {
+export function rowForPointer(yamlText: string, loc: ReadonlyArray<PropertyKey>): number | null {
   const lc = new LineCounter();
   const doc = parseDocument(yamlText, { lineCounter: lc, uniqueKeys: false });
   let node: unknown = doc.contents;
@@ -224,29 +224,29 @@ const pointer = (loc: ReadonlyArray<PropertyKey>) => (loc.length ? `/${loc.map(S
 
 // ------------------------------------------------------------------------------------------------ jedna poznámka
 
-function idPoznamky(n: Poznamka): string | null {
+function idPoznamky(n: Note): string | null {
   const id = n.model?.id ?? n.data.id;
   if (id) return String(id);
   return n.umiestnenie?.id ?? null;
 }
 
-function diag(n: Poznamka, uroven: Uroven, kod: string, sprava: string, ptr = "", riadok: number | null = null) {
+function diag(n: Note, uroven: Uroven, kod: string, sprava: string, ptr = "", riadok: number | null = null) {
   n.diagnostiky.push({ note_id: idPoznamky(n), json_pointer: ptr, uroven, kod, sprava, subor: n.rel, riadok });
 }
 
 const repr = (v: unknown) => (typeof v === "string" ? `'${v}'` : v === undefined || v === null ? "None" : String(v));
 
-export function nacitajSubor(rel: string, text: string): Poznamka {
+export function loadFile(rel: string, text: string): Note {
   const doc = parsuj(text);
   let umiestnenie: Umiestnenie | null = null;
   let chybaCesty: string | null = null;
   try {
     umiestnenie = rozober(rel);
   } catch (e) {
-    if (!(e instanceof ChybaCesty)) throw e;
+    if (!(e instanceof PathError)) throw e;
     chybaCesty = e.message;
   }
-  const n: Poznamka = {
+  const n: Note = {
     rel,
     dokument: doc,
     umiestnenie,
@@ -276,7 +276,7 @@ export function nacitajSubor(rel: string, text: string): Poznamka {
   n.data = data;
 
   const typ = (data.typ as string | undefined) || umiestnenie?.typ || null;
-  const model = typ ? modelPreTyp(typ) : null;
+  const model = typ ? modelForType(typ) : null;
   if (umiestnenie && data.typ && data.typ !== umiestnenie.typ) diag(n, "E", "A3", `typ ${repr(data.typ)} nesedí s priečinkom (${umiestnenie.typ})`, "/typ");
   if (!model) {
     diag(n, "E", "A5", `neznámy typ ${repr(typ)}`, "/typ");
@@ -294,7 +294,7 @@ export function nacitajSubor(rel: string, text: string): Poznamka {
       const top = c.loc.length ? String(c.loc[0]) : "";
       let riadok: number | null = null;
       if (n.zdroje[top] === "frontmatter") {
-        const rr = riadokPrePointer(fm.yaml_text, c.loc);
+        const rr = rowForPointer(fm.yaml_text, c.loc);
         riadok = rr !== null ? fmYamlRiadok + rr + 1 : null;
       } else if (top in n.riadky) riadok = n.riadky[top] + 1;
       diag(n, "E", c.kod, c.sprava, pointer(c.loc), riadok);
@@ -321,7 +321,7 @@ export function nacitajSubor(rel: string, text: string): Poznamka {
   return n;
 }
 
-function nacitajTelo(n: Poznamka, model: Model) {
+function nacitajTelo(n: Note, model: Model) {
   const inline = new Map<string, string[]>();
   let nadpis: Nadpis | null = null;
   let pod: PodZaznam | null = null;
@@ -398,7 +398,7 @@ function nacitajTelo(n: Poznamka, model: Model) {
   }
 }
 
-function nacitajPodZaznam(n: Poznamka, model: Model, nadpis: Nadpis, blok: YamlBlok, d: Record<string, unknown>) {
+function nacitajPodZaznam(n: Note, model: Model, nadpis: Nadpis, blok: YamlBlok, d: Record<string, unknown>) {
   const druh = druhPodZaznamu(d);
   const pz: PodZaznam = { druh, id: String(d.id), nadpis, blok, data: d, model: null, ids_blok: null };
   n.pod_zaznamy.push(pz);
@@ -410,7 +410,7 @@ function nacitajPodZaznam(n: Poznamka, model: Model, nadpis: Nadpis, blok: YamlB
   if (r.success) pz.model = r.data;
   else {
     for (const c of chyby(r.error.issues)) {
-      const rr = riadokPrePointer(blok.yaml_text, c.loc);
+      const rr = rowForPointer(blok.yaml_text, c.loc);
       diag(n, "E", c.kod, c.sprava, `#${pz.id}/${c.loc.map(String).join("/")}`, rr !== null ? yamlRiadok + rr + 1 : yamlRiadok + 1);
     }
   }
@@ -419,20 +419,20 @@ function nacitajPodZaznam(n: Poznamka, model: Model, nadpis: Nadpis, blok: YamlB
 // ------------------------------------------------------------------------------------------------ knižnica a tvar korpusu
 
 /** Súbory knižnice okrem `KNIZNICA.md` (ako `Sklad.texty()`), zoradené podľa cesty. */
-export function nacitajKniznicu(texty: Record<string, string>): Poznamka[] {
+export function loadLibrary(texty: Record<string, string>): Note[] {
   return Object.keys(texty)
     .filter((rel) => rel !== "KNIZNICA.md")
     .sort()
-    .map((rel) => nacitajSubor(rel, texty[rel]));
+    .map((rel) => loadFile(rel, texty[rel]));
 }
 
-const poradieDiag = (d: Diagnostika[]) => [...d].sort((a, b) => kluc(a).localeCompare(kluc(b)));
+const poradieDiag = (d: Diagnostic[]) => [...d].sort((a, b) => kluc(a).localeCompare(kluc(b)));
 /** `json.dumps(d, sort_keys=True)` ako kľúč poradia (rovnaké poradie ako korpus). */
-const kluc = (d: Diagnostika) =>
-  JSON.stringify(Object.fromEntries(Object.keys(d).sort().map((k) => [k, d[k as keyof Diagnostika]])));
+const kluc = (d: Diagnostic) =>
+  JSON.stringify(Object.fromEntries(Object.keys(d).sort().map((k) => [k, d[k as keyof Diagnostic]])));
 
 /** Záznam `poznamky.json` korpusu. */
-export function poznamkaJson(n: Poznamka) {
+export function noteJson(n: Note) {
   return {
     id: idPoznamky(n),
     typ: (n.data.typ as string | undefined) || n.umiestnenie?.typ || null,

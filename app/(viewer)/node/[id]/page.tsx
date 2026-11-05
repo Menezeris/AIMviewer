@@ -696,7 +696,7 @@ async function SystemView({ id }: { id: string }) {
               <Field
                 label="Knižnica požiadaviek"
                 value={
-                  <Link href="/kniznica" className="hover:underline" data-testid="project-kniznica-link">
+                  <Link href="/library" className="hover:underline" data-testid="project-kniznica-link">
                     Prehliadač knižnice (len na čítanie)
                   </Link>
                 }
