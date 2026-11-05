@@ -901,6 +901,31 @@ file of the project is an `ifc_guid_aliases` row of the node.
   that filled `container_id` and `model_revision_id` from `(model, revision)`, and one global identity for BCF
   numbers. The cleanup migration removed all of it.
 
+### 2.24 Entity manifest `entity_types` (D-195, migration `20261105130000_entity_types.sql`, not applied; test `supabase/tests/entity_types.sql`)
+
+Every entity of IFC 4.3 as data, one row each (876), global (no `project_id`, like `relationship_types`). Generated
+by `python -m etl.entity_manifest --write` from ifcopenshell `IFC4X3_ADD2`, whose entities equal the entity files of
+the pinned schema submodule `vendor/ifc4.3` (`424cadb`); the migration is checked in and CI (`ifc-manifest`) plus
+`etl/tests/test_entity_manifest.py` regenerate it and fail on drift. No text from the schema docs is stored
+(CC BY-ND 4.0); the docs file is `vendor/ifc4.3/docs/schemas/<schema_layer>/<schema_package>/Entities/<ifc_class>.md`.
+
+| Column | Meaning |
+|---|---|
+| `ifc_class` PK | IFC entity name, e.g. `IfcDoor` |
+| `supertype` | direct supertype (FK to `ifc_class`), NULL at roots |
+| `ancestors text[]` | supertypes, root first, without the class (`IfcTask`: IfcRoot, IfcObjectDefinition, IfcObject, IfcProcess) |
+| `is_abstract` | ABSTRACT in EXPRESS (133) |
+| `is_root` | IfcRoot subtype (484) |
+| `is_node` | stored as a node in `objects` (422): every IfcObjectDefinition subtype plus the resource entities with identity of R1 (IfcApproval, IfcDocumentInformation, IfcDocumentReference, IfcMetric, IfcObjective, IfcOrganization, IfcPerson; not IfcRoot, exported as resource entities) |
+| `schema_layer`, `schema_package` | e.g. `shared`, `IfcSharedBldgElements` |
+| `attributes jsonb` | own explicit attributes in schema order: `{name, type, kind (entity, enum, select, type, simple), optional, aggregate?, enum?}`; inherited ones are on the supertypes |
+| `schema_version`, `source_commit`, `source` | `IFC4X3_ADD2`, submodule commit, `ifcopenshell` |
+
+Functions (read-only, `stable`, no rights for `anon`/`authenticated`): `entity_is_a(child, ancestor)` = the class
+is the ancestor or its subtype (R9 categories, R10 relationship validation); `entity_attributes_unknown_keys(ifc_class,
+attributes)` = keys of `properties._attributes` the class with its supertypes does not declare (keys starting with
+`_` skipped). `object_type` is not tied to the manifest (R9: the node type is `ifc_type`).
+
 ## 4. Konvencia `properties` (D-022)
 
 `properties` JSONB obsahuje **property sety**, vnorené podľa názvu. IFC **atribúty**
@@ -908,7 +933,7 @@ sem NEPATRIA (sú stĺpce).
 
 | Vrstva | Kde | Rozlíšenie |
 |---|---|---|
-| 1 — IFC atribúty | stĺpce na `objects` | pevný zoznam zo schémy |
+| 1 — IFC atribúty | stĺpce na `objects`; ostatné v `properties._attributes` (D-195) | zo schémy (`entity_types.attributes`) |
 | 2 — štandardné psety | `properties[<názov>]` | názov `Pset_` / `Qto_` |
 | 3 — custom psety | `properties[<názov>]` | čokoľvek iné (bez `Pset_`/`Qto_`) |
 
@@ -923,6 +948,18 @@ PDF podkladu na podlažie, D-072, zapisuje `PATCH /api/underlay`; v2 `{version, 
 nevydáva, D-104) a `_ifc_location` (pôvodná `Location` zo súboru, keď `documents.location`
 ukazuje na súbor v buckete `documents`, D-104) - oba len na `document`/`document_reference`. `_ref` (D-190) = plain ref
 (SNIM kód, číslo miestnosti) uzla projektu mimo OCB, ktorého `object_ref` je `<kód projektu>:<ref>`; zapisuje ETL.
+
+**`_attributes` (D-195, declared extension, plan round 8 and 7.3 point 2):** IFC attributes of the node's class
+(`ifc_type`, with its supertypes in `entity_types`) that have no column, keyed by the IFC attribute name, e.g.
+`{"_attributes": {"Status": "Planned", "IsMilestone": false, "TaskTime": {"_class": "IfcTaskTime",
+"ScheduleStart": "2026-11-05T08:00:00"}}}`. Values follow the canonical form of `ifc_rev_objects.attributes`
+(`etl/revision_copy.py`): an entity reference to an IfcRoot as `{"ref": <GlobalId>}`, a value entity without
+identity nested as an object with `_class` and its own attributes (IfcTaskTime, IfcTaskTimeRecurring with
+IfcRecurrencePattern, IfcEventTime, IfcCostValue, IfcPostalAddress, IfcTelecomAddress). Not here: attributes that
+have a column (`GlobalId` = `ifc_guid`, `Name`, `Description`, `ObjectType`, `PredefinedType`...), IfcOwnerHistory
+(derived at export, 7.3 point 5), relationships (`relationships`), IfcActorRole (on the edge). A value that is
+searched gets a column instead (round 8). `entity_attributes_unknown_keys(ifc_class, jsonb)` lists keys the class
+does not declare; it is a report, nothing is rejected.
 
 ---
 

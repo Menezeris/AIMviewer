@@ -52,3 +52,20 @@ jobs:
           node scripts/ci/postgrest-stub.mjs &
           for i in $(seq 1 20); do curl -fsS "$SUPABASE_URL" > /dev/null && break; sleep 0.5; done
           npx next build
+
+  # D-195: entity_types migration must equal the generator output from the pinned IFC 4.3 schema.
+  # Fetches only the sparse submodule (about 21 MB) and one ifcopenshell wheel; no secrets.
+  ifc-manifest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ifcopenshell==0.9.0.post1 pytest
+      - run: bash scripts/ifc-schema/fetch.sh
+      - name: entity manifest drift check
+        run: python -m etl.entity_manifest --check
+      - name: pytest (entity manifest)
+        run: python -m pytest etl/tests/test_entity_manifest.py -q
