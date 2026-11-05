@@ -7,8 +7,8 @@ import { withRequestProject } from "@/lib/project/request";
 /** `POST kontrola`: diagnostics of the working copy from the editor, nothing is written (D-186, U16). */
 export const dynamic = "force-dynamic";
 
-async function postHandler(req: Request, ctx: { params: Promise<{ kniznica: string }> }) {
-  const k = kodKniznice((await ctx.params).kniznica);
+async function postHandler(req: Request, ctx: { params: Promise<{ library: string }> }) {
+  const k = kodKniznice((await ctx.params).library);
   if (!k) return neznamaKniznica();
   const b = await vstup(req);
   if (b instanceof NextResponse) return b;
