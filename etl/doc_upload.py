@@ -197,10 +197,12 @@ def _write_document(cur, row: ManifestRow, location: str, storage_type: str,
     name = meta.human_description() or row.container_name
     doc_id = cur.execute(
         """
-        insert into objects (object_type, object_ref, name, properties, project_id)
-        values ('document', %s, %s, %s, %s)
+        insert into objects (object_type, object_ref, name, properties, project_id, ifc_type)
+        values ('document', %s, %s, %s, %s, 'IfcDocumentInformation')
         on conflict (object_ref) do update set
           object_type = 'document', name = excluded.name,
+          -- D-196: a document node is IfcDocumentInformation (R10 checks the ends by ifc_type)
+          ifc_type = coalesce(objects.ifc_type, excluded.ifc_type),
           -- nahradí LEN pset CDE; ostatné kľúče (_drawing_links z pdf_link, E4)
           -- musia re-upload prežiť (D-031: opakovaný E3 nesmie degradovať E4)
           properties = (coalesce(objects.properties, '{}'::jsonb) - 'CDE')
