@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Sequence
 
+from .project import OCB_ID
+
 IDS_NS = "{http://standards.buildingsmart.org/IDS}"
 NO_APPLICABLE = "Model neobsahuje žiadny prvok, na ktorý sa povinná špecifikácia vzťahuje."
 PROHIBITED = "Prvok je podľa špecifikácie zakázaný."
@@ -101,24 +103,25 @@ def check(ids_path: Path, model) -> CheckResult:
 
 
 def write_run(cur, res: CheckResult, *, model_label: str, model_file: str,
-              ids_source: Optional[str]) -> tuple[str, int]:
-    """Zapíše jeden beh. Vráti (run_id, počet výsledkov bez prvku v DB)."""
+              ids_source: Optional[str], project_id: str = OCB_ID) -> tuple[str, int]:
+    """Zapíše jeden beh. Vráti (run_id, počet výsledkov bez prvku v DB).
+    D-189: the run belongs to `project_id` and a GUID resolves only within that project."""
     guids = sorted({r.ifc_guid for r in res.rows if r.ifc_guid})
     rows = cur.execute(
-        "select ifc_guid, object_id from ifc_guid_history "
-        "where valid_until is null and ifc_guid = any(%s)",
-        (guids,),
+        "select h.ifc_guid, h.object_id from ifc_guid_history h join objects o on o.id = h.object_id "
+        "where h.valid_until is null and h.ifc_guid = any(%s) and o.project_id = %s",
+        (guids, project_id),
     ).fetchall()
     by_guid = {g: oid for g, oid in rows}
     failed = sum(1 for r in res.rows if r.status == "fail")
     run_id = cur.execute(
         """
         insert into ids_runs (ids_title, ids_version, ids_sha256, ids_source, model_label,
-          model_file, specs_total, specs_passed, results_total, results_failed)
-        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) returning id
+          model_file, specs_total, specs_passed, results_total, results_failed, project_id)
+        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) returning id
         """,
         (res.ids_title, res.ids_version, res.ids_sha256, ids_source, model_label, model_file,
-         res.specs_total, res.specs_passed, len(res.rows), failed),
+         res.specs_total, res.specs_passed, len(res.rows), failed, project_id),
     ).fetchone()[0]
     missing = 0
     for r in res.rows:
@@ -149,11 +152,16 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     p.add_argument("--source", help="pôvod IDS (napr. assetin-library@<commit>:<cesta>)")
     p.add_argument("--dry-run", action="store_true", help="nepíš do DB")
     p.add_argument("--report", help="CSV s výsledkami")
+    p.add_argument("--project", metavar="CODE", help="project code (D-189); default env AIM_PROJECT or OCB")
     args = p.parse_args(argv)
 
     from . import config, extract
 
+    from . import project as project_mod
+
+    code = config.project_code(args.project)
     model = extract.open_model(args.model)
+    project_mod.check_file(model, code, Path(args.model).name)
     res = check(Path(args.ids), model)
     print(f"IDS: {res.ids_title} v{res.ids_version or '?'} ({res.ids_sha256[:12]}) × {args.label}")
     by_spec: dict[tuple, list[ResultRow]] = {}
@@ -184,7 +192,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     with psycopg.connect(config.database_url()) as conn:
         with conn.cursor() as cur:
             run_id, missing = write_run(cur, res, model_label=args.label, model_file=Path(args.model).name,
-                                        ids_source=args.source)
+                                        ids_source=args.source, project_id=project_mod.require(cur, code))
         conn.commit()
     print(f"DB: beh {run_id}, výsledkov {len(res.rows)}, prvok mimo DB {missing}")
 

@@ -58,7 +58,8 @@ from typing import Optional
 import fitz  # PyMuPDF
 import psycopg
 
-from .config import database_url
+from . import project as project_mod
+from .config import database_url, project_code
 from .ocr import ocr_page, ocr_unavailable
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -277,18 +278,18 @@ class DbDoc:
     location: str
 
 
-def _db_docs(cur, only: Optional[str]) -> list[DbDoc]:
-    """Živé dokumenty s PDF v storage (D-123); `only` = jeden object_ref."""
+def _db_docs(cur, only: Optional[str], project_id: str = project_mod.OCB_ID) -> list[DbDoc]:
+    """Živé dokumenty s PDF v storage projektu (D-123, D-189); `only` = jeden object_ref."""
     sql = (
         "select o.id, o.object_ref, d.location from objects o "
         "join documents d on d.id = o.id "
-        "where o.object_type = 'document' and o.valid_until is null "
+        "where o.object_type = 'document' and o.valid_until is null and o.project_id = %s "
         "and d.location ilike 'http%%' and d.location ilike '%%.pdf'"
     )
-    params: tuple = ()
+    params: tuple = (project_id,)
     if only:
         sql += " and o.object_ref = %s"
-        params = (only,)
+        params = (project_id, only)
     cur.execute(sql + " order by o.object_ref", params)
     return [DbDoc(str(r[0]), r[1], r[2]) for r in cur.fetchall()]
 
@@ -382,7 +383,8 @@ def _report(ref: str, pages: list[Page]) -> None:
     )
 
 
-def run_from_db(dry_run: bool, only: Optional[str], ocr: bool = True) -> int:
+def run_from_db(dry_run: bool, only: Optional[str], ocr: bool = True,
+                code: str = project_mod.OCB_CODE) -> int:
     """D-123: text všetkých živých PDF dokumentov zo storage (nie z manifestu)."""
     conn = psycopg.connect(database_url())
     written_docs = written_pages = ocr_candidates = 0
@@ -390,7 +392,7 @@ def run_from_db(dry_run: bool, only: Optional[str], ocr: bool = True) -> int:
     skipped: list[str] = []
     try:
         cur = conn.cursor()
-        docs = _db_docs(cur, only)
+        docs = _db_docs(cur, only, project_mod.require(cur, code))
         print(f"Živé PDF dokumenty v DB: {len(docs)}")
         with tempfile.TemporaryDirectory() as tmp:
             for d in docs:
@@ -441,11 +443,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         action="store_true",
         help="D-169: strany bez textovej vrstvy (obrázok, krivky) nečítať OCR",
     )
+    ap.add_argument("--project", metavar="CODE", help="project code (D-189); default env AIM_PROJECT or OCB")
     args = ap.parse_args(argv)
     ocr = not args.no_ocr
+    code = project_code(args.project)
 
     if args.from_db:
-        return run_from_db(args.dry_run, args.only, ocr)
+        return run_from_db(args.dry_run, args.only, ocr, code)
 
     rows = _load_pdf_rows(args.manifest)
     print(f"PDF v manifeste: {len(rows)}")
@@ -470,7 +474,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             ocr_candidates += _report_textless(pdf_path, pages, args.dry_run)
             if cur is None:
                 continue
-            doc_id = _doc_id(cur, row.container_name)
+            doc_id = _doc_id(cur, project_mod.qualify(row.container_name, code))
             if doc_id is None:
                 skipped.append(f"{row.container_name} (nie je v DB — najprv doc_upload/E3)")
                 continue

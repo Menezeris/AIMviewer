@@ -22,6 +22,7 @@ from typing import Any, Optional
 import ifcopenshell
 import ifcopenshell.util.element as ue
 
+from . import project as project_mod
 from . import scheme as scheme_mod
 from .extract import attr
 from .model import (
@@ -279,6 +280,7 @@ def to_staged(
     model: ifcopenshell.file,
     coding: CodingScheme = scheme_mod.SNIM,
     federate: bool = False,
+    project_code: Optional[str] = None,
 ) -> StagedModel:
     """IFC → staged model. `federate=True` (D-049) = disciplinárny model (VZT) sa napojí
     na už naloženú priestorovú štruktúru: **neemitujú** sa jeho site/building/storey/space
@@ -287,6 +289,14 @@ def to_staged(
     """
     staged = StagedModel()
     refs = _RefAllocator(coding)
+    if project_code is not None:
+        # D-189: IfcProject.Name must be the project code; the IfcProject of every file maps onto the
+        # project node, whose object_ref is the code (reserved first, so no other entity takes it).
+        ifc_project = project_mod.check_file(model, project_code)
+        refs._by_id[ifc_project.id()] = project_code
+        refs._used.add(project_code)
+        staged.project_code = project_code
+        staged.project_guid = attr(ifc_project, "GlobalId")
     systems_seen: dict[str, ClassificationSystem] = {}
     refs_seen: set[tuple[str, str]] = set()
     ref_names: dict[tuple[str, str], Optional[str]] = {}
@@ -446,6 +456,12 @@ def to_staged(
                     continue  # podtypy (IfcZone, IfcSystem…) majú vlastný object_type
                 group_refs[ent.id()] = add_object(ent, otype, refs.generic_ref(ent))
         _collect_group_structure(model, staged, emitted, group_refs, _spatial_ref)
+    elif staged.project_code is not None and staged.project_guid:
+        # D-189: the discipline model's IfcProject is the same project; its GlobalId is an alias of the node.
+        staged.guid_aliases.append(GuidAlias(
+            object_ref=staged.project_code, ifc_guid=staged.project_guid,
+            reason=project_mod.ALIAS_REASON, source="IFC import",
+        ))
 
     _collect_space_boundaries(model, staged, emitted)
 
@@ -480,6 +496,8 @@ def to_staged(
         ClassificationRef(system_name=s, identification=i, name=ref_names.get((s, i)), location=None)
         for (s, i) in refs_seen
     ]
+    if staged.project_code is not None:
+        project_mod.qualify_refs(staged, staged.project_code)   # `<code>:` outside OCB (D-190)
     return staged
 
 

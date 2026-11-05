@@ -65,7 +65,9 @@ def test_write_edges_upserts_resolvable_and_closes_stale() -> None:
     assert inserts[0][1] == (eid, "rel_referenced_in_spatial_structure", "uuid-e1", "uuid-s1",
                              "inside", "derive:spatial_reference")
     update = [c for c in cur.calls if c[0].startswith("update relationships")][0]
-    assert update[1] == ("derive:spatial_reference", "rel_referenced_in_spatial_structure", [eid])
+    # closing is scoped to the project (D-189, default OCB)
+    assert update[1] == ("derive:spatial_reference", "rel_referenced_in_spatial_structure",
+                         "9e2dfcba-437b-43d3-a925-0dd29f195b38", [eid])
 
 
 def test_edge_uuid_is_deterministic() -> None:

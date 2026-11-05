@@ -31,6 +31,18 @@ def database_url() -> str:
     return url
 
 
+# Project of an ETL run (D-189): `--project` > env `AIM_PROJECT` > OCB.
+DEFAULT_PROJECT = "OCB"
+
+
+def project_code(cli: str | None = None) -> str:
+    """Project code (`IfcProject.Name`, `objects.object_ref` of the project node)."""
+    code = (cli or os.environ.get("AIM_PROJECT") or DEFAULT_PROJECT).strip()
+    if not code:
+        raise SystemExit("Empty project code (--project / AIM_PROJECT).")
+    return code
+
+
 def supabase_url() -> str | None:
     """`SUPABASE_URL` (báza verejných URL v Storage), ak je nastavené."""
     return os.environ.get("SUPABASE_URL") or None

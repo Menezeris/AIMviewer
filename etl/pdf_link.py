@@ -39,7 +39,8 @@ import fitz  # PyMuPDF
 import psycopg
 
 from . import ids
-from .config import database_url
+from . import project as project_mod
+from .config import database_url, project_code
 from .doc_scheme import parse_container_name
 from .scheme import SNIM, CodingScheme
 
@@ -279,11 +280,13 @@ def read_skladby() -> dict[str, int]:
 # ── Matching na DB + zápis hrán ───────────────────────────────────────────────
 
 
-def _load_refs(cur) -> dict[str, tuple[str, str]]:
-    """object_ref → (id, object_type) pre asset/asset_type."""
+def _load_refs(cur, project_id: str = project_mod.OCB_ID) -> dict[str, tuple[str, str]]:
+    """Plain ref (SNIM code as printed on the drawing) → (id, object_type) pre asset/asset_type projektu.
+    Outside OCB the object_ref carries `<code>:` and the plain ref is `properties._ref` (D-189)."""
     rows = cur.execute(
-        "select object_ref, id, object_type from objects "
-        "where object_type in ('asset','asset_type')"
+        "select coalesce(properties->>'_ref', object_ref), id, object_type from objects "
+        "where object_type in ('asset','asset_type') and project_id = %s",
+        (project_id,),
     ).fetchall()
     return {r[0]: (r[1], r[2]) for r in rows}
 
@@ -371,11 +374,12 @@ class DrawingResult:
 def process_drawing(
     cur, row: DrawingRow, m: CodeMatcher, refs: dict, types_by_assembly: dict, dry: bool,
     skladby: Optional[dict] = None, vypis_doc_id: Optional[str] = None,
+    code: str = project_mod.OCB_CODE,
 ) -> DrawingResult:
     pdf_path = _SOURCE_ROOT / row.source_path
     if not pdf_path.exists():
         raise SystemExit(f"PDF chýba: {row.source_path}")
-    doc_id = _doc_id(cur, row.container_name)
+    doc_id = _doc_id(cur, project_mod.qualify(row.container_name, code))
     if doc_id is None:
         raise SystemExit(
             f"dokument '{row.container_name}' nie je v DB — najprv spusti doc_upload (E3)."
@@ -486,7 +490,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                     help="detekcia + coverage, žiadny zápis do DB.")
     ap.add_argument("--show-unmatched", action="store_true",
                     help="vypíš kódy detegované vo výkrese bez zhody v DB (ladenie).")
+    ap.add_argument("--project", metavar="CODE", help="project code (D-189); default env AIM_PROJECT or OCB")
     args = ap.parse_args(argv)
+    code = project_code(args.project)
 
     matcher = CodeMatcher(SNIM)
     drawings = read_drawings()
@@ -499,16 +505,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     total_skladby = 0
     with psycopg.connect(database_url()) as conn:
         with conn.cursor() as cur:
-            refs = _load_refs(cur)
+            refs = _load_refs(cur, project_mod.require(cur, code))
             types_by_assembly = _types_by_assembly(refs)
-            vypis_doc_id = _doc_id(cur, _VYPIS_CONTAINER) if skladby else None
+            vypis_doc_id = _doc_id(cur, project_mod.qualify(_VYPIS_CONTAINER, code)) if skladby else None
             if skladby and vypis_doc_id is None:
                 print(f"  ! Výpis '{_VYPIS_CONTAINER}' nie je v DB — skladby sa nelinkujú.")
             print(f"object_ref v DB (asset/type): {len(refs)}\n")
             for row in drawings:
                 res = process_drawing(
                     cur, row, matcher, refs, types_by_assembly, args.dry_run,
-                    skladby, vypis_doc_id,
+                    skladby, vypis_doc_id, code,
                 )
                 total_links += res.matched
                 total_regions += res.regions

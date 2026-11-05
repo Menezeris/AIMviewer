@@ -22,6 +22,7 @@ import urllib.parse
 from typing import Optional
 
 from .model import StagedModel
+from .project import OCB_ID
 
 BUCKET = "documents"
 DOCUMENT_TYPES = ("document", "document_reference")
@@ -71,19 +72,19 @@ def mark_model(model: StagedModel, scope: str) -> None:
 RETIRE_DOCUMENTS = (
     "update objects set valid_until = now() "
     "where valid_until is null and object_type = any(%s) "
-    "and properties->>'_model' = %s and not (object_ref = any(%s)) returning id"
+    "and properties->>'_model' = %s and project_id = %s and not (object_ref = any(%s)) returning id"
 )
 
 # Dokumenty bez modelu: stará sada E3 a dokumenty ETL pred D-104.
 _LEGACY = (
     "select id from objects where valid_until is null and object_type = any(%s) "
-    "and not (properties ? '_model')"
+    "and not (properties ? '_model') and project_id = %s"
 )
 
 
-def close_legacy(cur) -> dict[str, int]:
-    """Ukončí dokumenty bez `_model` a všetky ich aktívne väzby (E3, E4, ETL pred D-104)."""
-    legacy = [r[0] for r in cur.execute(_LEGACY, (list(DOCUMENT_TYPES),)).fetchall()]
+def close_legacy(cur, project_id: str = OCB_ID) -> dict[str, int]:
+    """Ukončí dokumenty bez `_model` a všetky ich aktívne väzby (E3, E4, ETL pred D-104), in one project."""
+    legacy = [r[0] for r in cur.execute(_LEGACY, (list(DOCUMENT_TYPES), project_id)).fetchall()]
     if not legacy:
         return {"documents": 0, "edges": 0}
     edges = cur.execute(
@@ -103,19 +104,22 @@ def main(argv: Optional[list[str]] = None) -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     legacy = sub.add_parser("close-legacy", help="ukonči dokumenty bez modelu (E3, ETL pred D-104)")
     legacy.add_argument("--dry-run", action="store_true", help="len vypíš, nič nezapisuj")
+    legacy.add_argument("--project", metavar="CODE", help="project code (D-189); default env AIM_PROJECT or OCB")
     args = ap.parse_args(argv)
 
     import psycopg
 
-    from .config import database_url
+    from . import project as project_mod
+    from .config import database_url, project_code
 
     with psycopg.connect(database_url()) as conn:
         with conn.cursor() as cur:
-            ids = [r[0] for r in cur.execute(_LEGACY, (list(DOCUMENT_TYPES),)).fetchall()]
+            pid = project_mod.require(cur, project_code(args.project))
+            ids = [r[0] for r in cur.execute(_LEGACY, (list(DOCUMENT_TYPES), pid)).fetchall()]
             new = cur.execute(
                 "select count(*) from objects where valid_until is null "
-                "and object_type = any(%s) and properties ? '_model'",
-                (list(DOCUMENT_TYPES),),
+                "and object_type = any(%s) and properties ? '_model' and project_id = %s",
+                (list(DOCUMENT_TYPES), pid),
             ).fetchone()[0]
             if args.dry_run:
                 print(f"--dry-run: ukončilo by sa {len(ids)} dokumentov bez modelu "
@@ -124,7 +128,7 @@ def main(argv: Optional[list[str]] = None) -> None:
             if ids and not new:
                 raise SystemExit("Žiadny dokument s _model - najprv re-ETL modelu s D-104, "
                                  "inak by ostala knižnica prázdna.")
-            closed = close_legacy(cur)
+            closed = close_legacy(cur, pid)
         conn.commit()
     print(f"Ukončené dokumenty bez modelu {closed['documents']}, ich väzby {closed['edges']} "
           f"(dokumentov z modelov: {new}).")

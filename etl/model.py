@@ -165,6 +165,10 @@ class StagedModel:
     coverage: Optional["CoverageReport"] = None
     # object_ref → IFC trieda entít, na ktoré ukazujú väzby dokumentov/aktorov (diagnostika)
     link_classes: dict[str, str] = field(default_factory=dict)
+    # Project of the file (D-189): code = IfcProject.Name = object_ref of the project node, and the
+    # GlobalId of this file's IfcProject (an alias of the node when it is not the node's own GUID).
+    project_code: Optional[str] = None
+    project_guid: Optional[str] = None
 
     def summary(self) -> str:
         return (
