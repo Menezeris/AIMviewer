@@ -2,3 +2,4 @@
 	path = vendor/ifc4.3
 	url = https://github.com/buildingSMART/IFC4.3.x-development
 	shallow = true
+	update = none
