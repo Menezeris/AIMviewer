@@ -8,7 +8,7 @@ import { ciele, generujCiel } from "./generator";
 
 const KORPUS = join(process.cwd(), "library", "korpus");
 const subory = (strom: string) => JSON.parse(readFileSync(join(KORPUS, "stromy", strom, "subory.json"), "utf8"));
-const ORAKULUM = JSON.parse(readFileSync(join(process.cwd(), "lib", "kniznica", "__fixtures__", "ids-orakulum.json"), "utf8")) as Record<
+const ORAKULUM = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "__fixtures__", "ids-orakulum.json"), "utf8")) as Record<
   string,
   Array<{ er: string; poskytovatel: string; datum: string | null; xml: string; specs: string[]; objekty: string[]; skipped: string[]; missing: string[][]; applicability: Record<string, number>; requirements: Record<string, number> }>
 >;

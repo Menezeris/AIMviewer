@@ -1,13 +1,13 @@
 /**
  * One-off port tool (D-186 step 2): from the JSON Schema corpus (`library/korpus/schema/*.json`, produced
- * from the pydantic models of assetin-library) it prints the zod source `lib/kniznica/schema/modely.ts`.
+ * from the pydantic models of assetin-library) it prints the zod source `lib/library/schema/modely.ts`.
  *
  * Since the port the output is the source of truth of the schema in TS and is edited by hand; validators that JSON Schema does not carry
- * (pydantic `field_validator` / `model_validator`) are in `lib/kniznica/schema/validatory.ts`. The generator is run
+ * (pydantic `field_validator` / `model_validator`) are in `lib/library/schema/validatory.ts`. The generator is run
  * again only when the schema changes in Python during the port (changes only at once in both engines) and the conformance test
- * `lib/kniznica/schema/schema.test.ts` tells whether the result fits.
+ * `lib/library/schema/schema.test.ts` tells whether the result fits.
  *
- * Usage: `npx tsx scripts/kniznica/zod-zo-schem.ts`
+ * Usage: `npx tsx scripts/library/zod-zo-schem.ts`
  */
 
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -18,7 +18,7 @@ type J = Record<string, unknown>;
 const DIR = join(process.cwd(), "library", "korpus", "schema");
 /** Field order of pydantic (`model_fields`) per class; the corpus JSON Schema has sorted keys. A one-off dump from Python. */
 const PORADIE = JSON.parse(readFileSync(join(process.cwd(), "scripts", "kniznica", "poradie-poli.json"), "utf8")) as Record<string, string[]>;
-const OUT = join(process.cwd(), "lib", "kniznica", "schema", "modely.ts");
+const OUT = join(process.cwd(), "lib", "library", "schema", "modely.ts");
 const WIKILINK_PATTERN = "^\\[\\[[^\\[\\]]+\\]\\]$";
 const META_KEYS = ["title", "description", "x-assetin"] as const;
 
@@ -153,7 +153,7 @@ const out: string[] = [
   "/**",
   " * Schéma knižnice požiadaviek v zod (D-186 krok 2; port `assetin/schema`, schéma v1.5).",
   " *",
-  " * Vznikla jednorazovo nástrojom `scripts/kniznica/zod-zo-schem.ts` z JSON Schema korpusu (pydantic) a odteraz je",
+  " * Vznikla jednorazovo nástrojom `scripts/library/zod-zo-schem.ts` z JSON Schema korpusu (pydantic) a odteraz je",
   " * pravdou schémy v TS: mení sa ručne a naraz s Pythonom, kým port trvá (assetin-library V30). Validátory, ktoré",
   " * JSON Schema nenesie, sú v `validatory.ts`; JSON Schema z tohto zdroja dáva `jsonSchema.ts`, zhodu s korpusom",
   " * stráži `schema.test.ts`.",

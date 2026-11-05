@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { over } from "@/lib/kniznica/editor-api";
-import { chybaServera, kodKniznice, neznamaKniznica, odpoved, sklad, vstup } from "@/lib/kniznica/editor-server";
+import { over } from "@/lib/library/editor-api";
+import { chybaServera, kodKniznice, neznamaKniznica, odpoved, sklad, vstup } from "@/lib/library/editor-server";
 import { withRequestProject } from "@/lib/project/request";
 
 /** `POST kontrola`: diagnostics of the working copy from the editor, nothing is written (D-186, U16). */

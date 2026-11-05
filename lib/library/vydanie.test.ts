@@ -11,7 +11,7 @@ import { Konflikt } from "./zapis";
 
 const subory = JSON.parse(readFileSync(join(process.cwd(), "library", "korpus", "stromy", "vzor", "subory.json"), "utf8")) as Record<string, string>;
 const chybne = JSON.parse(readFileSync(join(process.cwd(), "library", "korpus", "stromy", "chybne", "subory.json"), "utf8")) as Record<string, string>;
-const ORAKULUM = JSON.parse(readFileSync(join(process.cwd(), "lib", "kniznica", "__fixtures__", "vydanie-orakulum.json"), "utf8"));
+const ORAKULUM = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "__fixtures__", "vydanie-orakulum.json"), "utf8"));
 
 function skladPamat(texty: Record<string, string>, konflikt = false) {
   const volania: Array<Record<string, unknown>> = [];

@@ -42,7 +42,7 @@ describe("korpus zhody: blokový model poznámky (krok 1 portu, V30)", () => {
 });
 
 describe("okrajové vstupy proti orákulu (Python, __fixtures__/okraje.json)", () => {
-  const okraje = JSON.parse(readFileSync(join(process.cwd(), "lib", "kniznica", "__fixtures__", "okraje.json"), "utf8")) as {
+  const okraje = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "__fixtures__", "okraje.json"), "utf8")) as {
     pripady: Record<string, { vstup: string; ocakavane: unknown }>;
   };
   for (const [nazov, p] of Object.entries(okraje.pripady)) {
