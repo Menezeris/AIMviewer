@@ -1,22 +1,22 @@
--- D-089: register pravidiel odvodení a záznam ich behov.
+-- D-089: register of derivation rules and a record of their runs.
 --
--- Odvodený vzťah = vzťah, ktorý nikto nezapísal do súboru ani ručne; AIM ho vypočíta pravidlom
--- (geometria, cez priestory…). Pravidlá sú dáta: dajú sa zapnúť, vypnúť a prepnúť medzi
--- `auto` (po každej novej revízii) a `manual`. Vypnutie uzavrie hrany pravidla (`source`).
--- Spúšťa `python -m etl.derive run`; každý beh sa zapíše do `derivation_runs` (vzor ids_runs).
--- Práva anon/authenticated tabuľky nedostanú (default privileges, migrácia 20261016120000).
+-- A derived relationship = a relationship that nobody wrote into a file or by hand; AIM computes it by a rule
+-- (geometry, via spaces...). Rules are data: they can be switched on, off and between
+-- `auto` (after each new revision) and `manual`. Switching off closes the edges of the rule (`source`).
+-- Run by `python -m etl.derive run`; each run is recorded in `derivation_runs` (pattern ids_runs).
+-- anon/authenticated privileges are not granted on the tables (default privileges, migration 20261016120000).
 
 begin;
 
 create table derivation_rules (
-  id              text primary key,                    -- stabilný kľúč pravidla
+  id              text primary key,                    -- stable key of the rule
   name            text not null,
   description     text,
   kind            text not null check (kind in ('geometry', 'via_space')),
-  rel_type        text,                                -- IFC vzťah, ktorý pravidlo zapisuje (NULL = len pohľad)
-  source          text unique,                         -- zdroj hrán pravidla v `relationships`
-  source_classes  text[] not null default '{}',        -- IFC triedy prvkov
-  target_classes  text[] not null default '{}',        -- IFC triedy cieľov
+  rel_type        text,                                -- IFC relationship the rule writes (NULL = view only)
+  source          text unique,                         -- source of the rule's edges in `relationships`
+  source_classes  text[] not null default '{}',        -- IFC classes of the elements
+  target_classes  text[] not null default '{}',        -- IFC classes of the targets
   roles           text[] not null default '{inside,partial}',
   enabled         boolean not null default true,
   mode            text not null default 'auto' check (mode in ('auto', 'manual')),
@@ -28,10 +28,10 @@ create table derivation_runs (
   rule_id         text not null references derivation_rules (id),
   status          text not null check (status in ('ok', 'dry_run', 'disabled', 'error')),
   trigger         text not null default 'manual' check (trigger in ('auto', 'manual')),
-  models          jsonb not null default '{}'::jsonb,  -- {"ASR": 72, "VZT": 1} revízie z model_revisions
+  models          jsonb not null default '{}'::jsonb,  -- {"ASR": 72, "VZT": 1} revisions from model_revisions
   written         integer not null default 0,
   closed          integer not null default 0,
-  unresolved      integer not null default 0,          -- GUID, ktoré DB nepozná
+  unresolved      integer not null default 0,          -- GUIDs the DB does not know
   details         jsonb not null default '{}'::jsonb,
   started_at      timestamptz not null default now(),
   finished_at     timestamptz
@@ -55,9 +55,9 @@ values
    'via_space', null, null,
    '{IfcProduct}', '{IfcZone}', '{contained,referenced}');
 
--- Prvky v zónach cez priestory (pravidlo element_in_zone). Zóna obsahuje priestory priamo alebo
--- cez vnorené zóny (rel_assigns_to_group zóna -> zóna); prvok je v priestore natívne (contained)
--- alebo referenciou (zo súboru aj odvodenou). Prázdny, keď je pravidlo vypnuté.
+-- Elements in zones via spaces (rule element_in_zone). A zone contains spaces directly or
+-- via nested zones (rel_assigns_to_group zone -> zone); an element is in a space natively (contained)
+-- or by reference (from the file and also derived). Empty when the rule is switched off.
 create view v_zone_elements as
   with recursive zone_spaces (zone_id, space_id) as (
     select g.to_id, g.from_id

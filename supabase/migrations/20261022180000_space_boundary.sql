@@ -1,19 +1,19 @@
 -- =============================================================================
--- D-156 — Hranice priestorov: rel_space_boundary a v_space_elements (relation = 'boundary')
+-- D-156 - Space boundaries: rel_space_boundary and v_space_elements (relation = 'boundary')
 -- =============================================================================
--- Aditívna migrácia (AGENTS.md: migrácie sa nemažú ani needitujú), bez straty dát.
+-- Additive migration (AGENTS.md: migrations are neither deleted nor edited), without data loss.
 --
--- Dvere (a iné prvky) môžu byť s miestnosťou spojené len IfcRelSpaceBoundary, pričom
--- v štruktúre ležia na podlaží. `v_space_elements` ich vynechával (issue #245: otáčavé
--- dvere DD01.08.0001 chýbali v lobby 1.01), takže dotaz "dvere miestnosti" mlčky dal
--- nesprávne "nie je spojené". ETL (etl/transform.py `_collect_space_boundaries`) odteraz
--- hranice ukladá ako hranu `rel_space_boundary` prvok -> priestor (jedna hrana na pár,
--- `role` = PhysicalOrVirtualBoundary: physical | virtual | notdefined). Plní ju re-ETL.
+-- Doors (and other elements) may be linked to a room only by IfcRelSpaceBoundary, while
+-- in the structure they sit on the floor. `v_space_elements` left them out (issue #245: the swing
+-- door DD01.08.0001 was missing in lobby 1.01), so the query "doors of the room" silently gave
+-- a wrong "not linked". ETL (etl/transform.py `_collect_space_boundaries`) from now on
+-- stores the boundaries as the edge `rel_space_boundary` element -> space (one edge per pair,
+-- `role` = PhysicalOrVirtualBoundary: physical | virtual | notdefined). Filled by a re-ETL.
 --
--- Pohľad `v_space_elements` dostane tretiu vetvu `relation = 'boundary'`. Stĺpce a ich
--- poradie ostávajú (CREATE OR REPLACE VIEW), pribudnú len riadky. Bez duplicít: pár
--- (priestor, prvok) sa vypíše raz, s prednosťou contained > referenced > boundary, takže
--- prvok, ktorý je v miestnosti aj ju ohraničuje, ostáva ako doteraz.
+-- The view `v_space_elements` gets a third branch `relation = 'boundary'`. Columns and their
+-- order stay (CREATE OR REPLACE VIEW), only rows are added. No duplicates: a pair
+-- (space, element) is output once, with precedence contained > referenced > boundary, so an
+-- element that is in the room and also bounds it stays as before.
 -- =============================================================================
 
 begin;
@@ -36,10 +36,10 @@ create view rel_space_boundary as
   select id, from_id, to_id, role, valid_from, valid_until, source
   from relationships where rel_type = 'rel_space_boundary';
 
--- D-079: nový pohľad nesmie byť čitateľný anon kľúčom (service_role ho dostane z default privileges).
+-- D-079: the new view must not be readable with the anon key (service_role gets it from default privileges).
 revoke all on rel_space_boundary from anon, authenticated;
 
--- "čo ohraničuje túto miestnosť" = čítanie po to_id; "ktoré miestnosti ohraničuje prvok" po from_id.
+-- "what bounds this room" = read by to_id; "which rooms an element bounds" by from_id.
 create index idx_relationships_boundary_to on relationships (to_id)
   where rel_type = 'rel_space_boundary';
 create index idx_relationships_boundary_from on relationships (from_id)

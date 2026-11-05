@@ -1,34 +1,34 @@
 -- =============================================================================
--- D-060 — Agregácie + numericky bezpečné filtre: RPC `aggregate_objects`
+-- D-060 - Aggregations + numerically safe filters: RPC `aggregate_objects`
 -- =============================================================================
--- Problém: query_view (PostgREST) nevie agregovať (len count) a filter nad JSONB
--- cestou `properties->Pset->>Key` porovnáva gt/lt ako TEXT (lexikograficky:
--- '9' > '10') — tichá chyba presnosti. Model potom počíta z orezaných riadkov
--- (row-cap 50) v kontexte → vymyslené čísla. Súčty/priemery/číselné porovnania
--- musí robiť DATABÁZA.
+-- Problem: query_view (PostgREST) cannot aggregate (only count) and a filter over a JSONB
+-- path `properties->Pset->>Key` compares gt/lt as TEXT (lexicographically:
+-- '9' > '10') - a silent precision error. The model then computes from truncated rows
+-- (row-cap 50) in context → invented numbers. Sums/averages/numeric comparisons
+-- must be done by the DATABASE.
 --
--- Bezpečnosť dynamického SQL (jediné miesto v repe, drž krátke a auditovateľné):
---   * relation/agg/op/stĺpce = interné whitelisty (raise pri všetkom mimo),
---   * identifikátory cez format('%I'), literály cez format('%L') — nikdy splicing,
---   * JSONB cesty = pole text literálov (%L per prvok),
---   * numerika cez guarded cast (regex) — nenumerické hodnoty sa preskočia
---     a reportujú v `skipped_non_numeric` (poctivosť voči modelu).
+-- Safety of dynamic SQL (the only place in the repo, keep it short and auditable):
+--   * relation/agg/op/columns = internal whitelists (raise on anything else),
+--   * identifiers via format('%I'), literals via format('%L') - never splicing,
+--   * JSONB paths = array of text literals (%L per element),
+--   * numerics via guarded cast (regex) - non-numeric values are skipped
+--     and reported in `skipped_non_numeric` (honesty towards the model).
 --
--- Migrácie sú ADITÍVNE — tento súbor sa nikdy needituje.
+-- Migrations are ADDITIVE - this file is never edited.
 
 begin;
 
 create or replace function aggregate_objects(
   relation text default 'objects',        -- objects | v_asset_effective
   agg text default 'count',               -- count | sum | avg | min | max
-  prop_path text[] default null,          -- cesta v properties, napr. {VZT_Parametre,AirFlowRate}
-  group_by text default null,             -- stĺpec z whitelistu (výlučné s group_by_path)
-  group_by_path text[] default null,      -- alebo pset cesta ako kľúč skupiny
+  prop_path text[] default null,          -- path in properties, e.g. {VZT_Parametre,AirFlowRate}
+  group_by text default null,             -- column from the whitelist (exclusive with group_by_path)
+  group_by_path text[] default null,      -- or a pset path as the group key
   filters jsonb default '[]'::jsonb,      -- [{"column":"ifc_type","op":"eq","value":"IfcDoor"},
                                           --  {"path":["Pset_X","Key"],"op":"gt","value":"5"}]
-  ids uuid[] default null,                -- voliteľné zúženie na konkrétne objects.id (reťazenie)
+  ids uuid[] default null,                -- optional narrowing to specific objects.id (chaining)
   max_groups int default 50,
-  return_rows boolean default false       -- true = riadky s hodnotou namiesto agregátu (top 50)
+  return_rows boolean default false       -- true = rows with the value instead of the aggregate (top 50)
 ) returns jsonb
 language plpgsql stable
 set search_path = public
@@ -226,5 +226,5 @@ comment on function aggregate_objects(text, text, text[], text, text[], jsonb, u
 
 commit;
 
--- PostgREST musí RPC vidieť bez reštartu (Supabase).
+-- PostgREST must see the RPC without a restart (Supabase).
 notify pgrst, 'reload schema';

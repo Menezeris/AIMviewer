@@ -1,9 +1,9 @@
 -- =============================================================================
--- Cleanup po D-048 cutovere — zahodenie prechodných backward-compat views
+-- Cleanup after the D-048 cutover - dropping the transitional backward-compat views
 -- =============================================================================
--- Nový kód (nasadený na main) číta IFC-kanonické tabuľky priamo. Prechodné views
--- so starými názvami (20260702130000) už nikto nepoužíva → zahodíme ich.
--- Tým je expand/contract dokončený a schéma je v cieľovom stave.
+-- New code (deployed to main) reads the IFC-canonical tables directly. The transitional views
+-- with the old names (20260702130000) are no longer used by anyone → we drop them.
+-- This completes expand/contract and the schema is in its target state.
 -- =============================================================================
 
 begin;

@@ -1,28 +1,28 @@
 -- =============================================================================
--- D-104 krok 2 - Dokumenty objektu cez vzťahy (v_object_documents)
+-- D-104 step 2 - Documents of an object via relationships (v_object_documents)
 -- =============================================================================
--- Aditívna migrácia (AGENTS.md: migrácie sa nemažú ani needitujú).
+-- Additive migration (AGENTS.md: migrations are neither deleted nor edited).
 --
--- Model nesie dokumenty na nositeľoch, nie na prvkoch (ASR: projekt, zóny, priestorové
--- zóny, skupiny skladieb, typ LOP). Pohľad hovorí pre každý objekt, ktoré dokumenty
--- (alebo strany dokumentu) mu patria a cez čo:
---   direct        priamo (rel_associates_document z objektu),
---   type          cez typ (rel_defines_by_type),
---   zone/group/system  cez členstvo (rel_assigns_to_group),
---   zone          prvok cez priestor v zóne (v_zone_elements, pravidlo element_in_zone, D-089),
---   spatial_zone  cez priestorovú zónu (rel_referenced_in_spatial_structure, aj odvodené),
--- a cez nadradené skupinové uzly: zóna v zóne (rel_assigns_to_group), časť skupiny alebo
--- priestorovej zóny (rel_aggregates), napr. podlaha -> S1.01 -> S1 -> strana 3.
--- Projekt sa nededí: dokumentácia stavby by sa inak opakovala pri každom prvku.
--- IfcDocumentReference (document_reference) sa rozbalí na dokument + stranu.
--- Väzby výkres -> prvok z obsahu PDF (E4) sem nepatria (zdroj 'pdf_link (E4)').
+-- The model carries documents on carriers, not on elements (ASR: project, zones, spatial
+-- zones, assembly groups, type LOP). For each object the view says which documents
+-- (or document pages) belong to it and through what:
+--   direct        directly (rel_associates_document from the object),
+--   type          via the type (rel_defines_by_type),
+--   zone/group/system  via membership (rel_assigns_to_group),
+--   zone          element via a space in a zone (v_zone_elements, rule element_in_zone, D-089),
+--   spatial_zone  via a spatial zone (rel_referenced_in_spatial_structure, also derived),
+-- and via parent group nodes: a zone in a zone (rel_assigns_to_group), a part of a group or
+-- spatial zone (rel_aggregates), e.g. floor surface -> S1.01 -> S1 -> page 3.
+-- The project is not inherited: the documentation of the building would otherwise repeat on every element.
+-- IfcDocumentReference (document_reference) is expanded into document + page.
+-- Drawing -> element links from PDF content (E4) do not belong here (source 'pdf_link (E4)').
 -- =============================================================================
 
 begin;
 
 create view v_object_documents as
 with recursive
-  -- Člen -> skupinový uzol alebo typ: kto dedí dokumenty nositeľa. Počíta sa raz.
+  -- Member -> group node or type: who inherits the carrier's documents. Computed once.
   members (member_id, parent_id, via_space_id) as materialized (
     select g.from_id, g.to_id, null::uuid
     from rel_assigns_to_group g where g.valid_until is null
@@ -42,8 +42,8 @@ with recursive
     union all
     select ze.element_id, ze.zone_id, ze.via_space_id from v_zone_elements ze
   ),
-  -- Od nositeľa dokumentu nadol k členom, kým je uzol skupinový alebo typ. Ide sa od
-  -- väzieb dokumentov (163), nie od všetkých objektov.
+  -- From the document carrier down to the members, as long as the node is a group or a type. It starts from
+  -- document links (163), not from all objects.
   walk (object_id, holder_id, via_space_id, depth, path) as (
     select h.id, h.id, null::uuid, 0, array[h.id]
     from objects h
@@ -94,7 +94,7 @@ comment on view v_object_documents is
   'depth = počet krokov od nositeľa, path = cesta od nositeľa po objekt. Strana pri odkaze na '
   'časť dokumentu (reference_id, page). Projekt sa nededí.';
 
--- Čítanie len server-side cez service_role (D-026, migrácia 20261016120000).
+-- Read only server-side via service_role (D-026, migration 20261016120000).
 revoke all on v_object_documents from anon, authenticated;
 
 commit;

@@ -1,43 +1,43 @@
 -- =============================================================================
--- D-059 — Fulltext nad všetkým: `objects.search_text` + RPC `search_everything`
+-- D-059 - Fulltext over everything: `objects.search_text` + RPC `search_everything`
 -- =============================================================================
--- Cieľ: parita s človekom, ktorý očami skenuje panel vlastností — LLM musí vedieť
--- nájsť kľúčové slovo KDEKOĽVEK v obsahu uzla (názov, object_ref, IFC typológia,
--- všetky psety vrátane CUSTOM — kľúče aj hodnoty), bez znalosti JSONB štruktúry.
--- search_objects ostáva na identitu/typológiu; obsah vlastností hľadá táto vrstva.
+-- Goal: parity with a human who scans the properties panel by eye - the LLM must be able to
+-- find a keyword ANYWHERE in the content of a node (name, object_ref, IFC typology,
+-- all psets including CUSTOM - keys and values), without knowing the JSONB structure.
+-- search_objects stays for identity/typology; this layer searches property content.
 --
--- Mechanika:
---   1. `f_unaccent`      — IMMUTABLE wrapper nad unaccent (extension funkcia je
---                          len STABLE → nedá sa použiť v generated column/indexe).
---   2. `f_object_search_text` — IMMUTABLE flattener uzla na normalizovaný text
---                          (lower + unaccent); rezervované `_kľúče` (D-022)
---                          vynechané — napr. `_drawing_links` (stovky regiónov
---                          súradníc) by utopili signál.
---   3. `objects.search_text` — STORED generated stĺpec (pri ~10^3 riadkoch je
---                          bloat irelevantný; prepočíta sa sám pri update).
---   4. GIN indexy — tsvector (fulltext) + pg_trgm (preklepy/podreťazce).
---   5. RPC `search_everything` — kombinovaný ranking FTS + word_similarity,
---                          vracia aj `matched_properties` (KTORÝ pset/property
---                          matchol — dôkaz pre trust loop) a `headline` (úryvok).
+-- Mechanics:
+--   1. `f_unaccent`      - IMMUTABLE wrapper over unaccent (the extension function is
+--                          only STABLE → cannot be used in a generated column/index).
+--   2. `f_object_search_text` - IMMUTABLE flattener of a node into normalized text
+--                          (lower + unaccent); reserved `_keys` (D-022)
+--                          omitted - e.g. `_drawing_links` (hundreds of regions of
+--                          coordinates) would drown the signal.
+--   3. `objects.search_text` - STORED generated column (at ~10^3 rows the
+--                          bloat is irrelevant; it recomputes itself on update).
+--   4. GIN indexes - tsvector (fulltext) + pg_trgm (typos/substrings).
+--   5. RPC `search_everything` - combined ranking FTS + word_similarity,
+--                          also returns `matched_properties` (WHICH pset/property
+--                          matched - proof for the trust loop) and `headline` (excerpt).
 --
--- Zápis: ETL (`etl/db.py`) aj seed insertujú s explicitným zoznamom stĺpcov,
--- generated stĺpec sa ich netýka. LLM tool volá RPC cez parametre (žiadny SQL
--- splicing). Migrácie sú ADITÍVNE — tento súbor sa nikdy needituje.
+-- Writes: ETL (`etl/db.py`) and seed insert with an explicit column list,
+-- the generated column does not affect them. The LLM tool calls the RPC via parameters (no SQL
+-- splicing). Migrations are ADDITIVE - this file is never edited.
 
 begin;
 
 create extension if not exists unaccent;
 create extension if not exists pg_trgm;
 
--- unaccent(text) je STABLE (závisí od search_path k slovníku) → immutable wrapper
--- s explicitne kvalifikovaným slovníkom (štandardný vzor pre indexy/generated cols).
+-- unaccent(text) is STABLE (depends on search_path for the dictionary) → immutable wrapper
+-- with an explicitly qualified dictionary (standard pattern for indexes/generated cols).
 create or replace function f_unaccent(text)
 returns text
 language sql immutable parallel safe strict
 as $$ select public.unaccent('public.unaccent'::regdictionary, $1) $$;
 
--- Flatten uzla na vyhľadávací text: identita + IFC typológia + všetky psety
--- (názov psetu + celý JSON obsah = kľúče aj hodnoty). Deterministické poradie.
+-- Flatten a node into search text: identity + IFC typology + all psets
+-- (pset name + whole JSON content = keys and values). Deterministic order.
 create or replace function f_object_search_text(
   p_name text,
   p_object_ref text,
@@ -67,9 +67,9 @@ create index idx_objects_search_tsv on objects
 create index idx_objects_search_trgm on objects
   using gin (search_text gin_trgm_ops);
 
--- RPC: kombinované vyhľadávanie. FTS zásah (websearch syntax, 'simple' konfig —
--- slovenský stemmer neexistuje, morfológiu aproximuje trigram) ranked nad fuzzy;
--- fuzzy vetva (word_similarity) chytá preklepy a podreťazce. Row-cap 50 (D-005).
+-- RPC: combined search. An FTS hit (websearch syntax, 'simple' config -
+-- no Slovak stemmer exists, trigram approximates morphology) ranks above fuzzy;
+-- the fuzzy branch (word_similarity) catches typos and substrings. Row-cap 50 (D-005).
 create or replace function search_everything(
   q text,
   object_types text[] default null,
@@ -158,5 +158,5 @@ comment on function search_everything(text, text[], int) is
 
 commit;
 
--- PostgREST musí RPC vidieť bez reštartu (Supabase).
+-- PostgREST must see the RPC without a restart (Supabase).
 notify pgrst, 'reload schema';
