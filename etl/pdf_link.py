@@ -1,27 +1,27 @@
-"""PDF výkres auto-linking — element ↔ výkres z obsahu PDF (E4, D-032/D-033).
+"""PDF drawing auto-linking - element <-> drawing from the PDF content (E4, D-032/D-033).
 
-CDE názov dokumentu (E3, D-036) zámerne **nenesie** väzbu na konkrétny prvok —
-tá sa získa až z **obsahu výkresu**. Tu skenujeme PDF pôdorysy, detegujeme SNIM
-kódy (`scheme.py`) a vytvoríme `rel_associates_document(prvok → výkres)`. Pôdorys 1NP sa
-tak automaticky prepojí na typy/inštancie prvkov v ňom.
+The CDE name of a document (E3, D-036) deliberately **does not carry** a link to a specific element -
+that comes only from the **content of the drawing**. Here we scan the PDF floor plans, detect SNIM
+codes (`scheme.py`) and create `rel_associates_document(element -> drawing)`. The 1NP floor plan is
+thus automatically linked to the types/instances of the elements in it.
 
 Pipeline (D-033):
-  1. PyMuPDF (`fitz`) — slová + bounding boxy z každej strany.
-  2. Detekcia kódov regexom **odvodeným zo schémy** (platné TSP prefixy z `SNIM`).
-     Bublina na výkrese nie je vždy jeden reťazec (`SN11` a `01` zvlášť) → **proximity
-     match**: holý Assembly Code sa spojí s blízkym číselným fragmentom.
-  3. Match na `object_ref` v DB (typové `DD01.06` aj inštančné `DD01.06.03`).
-  4. `rel_associates_document(from=prvok, to=výkres, role='drawing', source='pdf_link (E4)')`.
-  5. Link regióny (D-042): per zhoda sa uloží bbox + cieľ do `objects.properties.
-     _drawing_links` (JSONB, `_`-kľúč = konvencia D-022, BEZ migrácie). Súradnice
-     v PDF bottom-left (y-flip raz, na zdroji). **Jeden pipeline** — tá istá detekcia
-     plní hrany (E4) aj regióny (D-042), žiadna druhá detekčná logika.
+  1. PyMuPDF (`fitz`) - words + bounding boxes from every page.
+  2. Code detection by a regex **derived from the scheme** (valid TSP prefixes from `SNIM`).
+     A bubble on the drawing is not always a single string (`SN11` and `01` separately) -> **proximity
+     match**: a bare Assembly Code is joined with a nearby numeric fragment.
+  3. Match to `object_ref` in the DB (type `DD01.06` and instance `DD01.06.03` alike).
+  4. `rel_associates_document(from=element, to=drawing, role='drawing', source='pdf_link (E4)')`.
+  5. Link regions (D-042): per match a bbox + target is stored in `objects.properties.
+     _drawing_links` (JSONB, `_` key = the D-022 convention, NO migration). Coordinates
+     in PDF bottom-left (y-flip once, at the source). **One pipeline** - the same detection
+     fills the edges (E4) and the regions (D-042), no second detection logic.
 
-Vstup = mapovanie výkres-PDF → dokument (`object_ref` z E3). Berie sa z `docs.csv`
-(riadky s TypSouboru `VD`); cesta k PDF = `source_path`, cieľový dokument = `container_name`.
+Input = the drawing PDF -> document mapping (`object_ref` from E3). Taken from `docs.csv`
+(rows with TypSouboru `VD`); path to the PDF = `source_path`, target document = `container_name`.
 
-`--dry-run` = detekcia + coverage report (žiadny zápis). Idempotentné
-(deterministické UUID hrán, `ids.py`). NIE je to IDS validácia — len pokrytie.
+`--dry-run` = detection + coverage report (no write). Idempotent
+(deterministic edge UUIDs, `ids.py`). This is NOT an IDS validation - only coverage.
 """
 
 from __future__ import annotations
@@ -51,21 +51,21 @@ _MANIFEST = _REPO_ROOT / "podklady" / "docs.csv"
 LINK_ROLE = "drawing"
 LINK_SOURCE = "pdf_link (E4)"
 
-# Proximity práh pre spojenie holého kódu s číselným fragmentom (v bodoch PDF,
-# 1 pt ≈ 0.35 mm). Bublina prvku má kód a Mark blízko seba; ladí sa na výkrese.
+# Proximity threshold for joining a bare code with a numeric fragment (in PDF points,
+# 1 pt ~ 0.35 mm). An element bubble has the code and the Mark close together; tuned on the drawing.
 PROXIMITY_PT = 28.0
 
-# ── Skladby (kompozičné značky S#, D-043) ─────────────────────────────────────
-# Výkresy nesú aj **skladbové značky** (`S1`–`S9`, hexagónové bubliny) — odkazy na
-# skladby konštrukcií definované vo „Výpise skladieb" (jeden dokument, každá skladba
-# = jedna strana). Nemajú vlastný prvok v DB (D-043 možnosť C): bublina sa nelinkuje
-# na objekt, ale **na dokument Výpis skladieb otvorený na strane danej skladby**
-# (`target_route='drawing'`, `target_page`). Žiadna hrana — čistý navigačný región.
+# -- Assemblies (composition marks S#, D-043) -----------------------------------
+# Drawings also carry **assembly marks** (`S1`-`S9`, hexagonal bubbles) - references to the
+# construction assemblies defined in the "Výpis skladieb" (the assembly schedule; one document, each assembly
+# = one page). They have no element of their own in the DB (D-043 option C): the bubble is not linked
+# to an object but **to the schedule document opened on the page of that assembly**
+# (`target_route='drawing'`, `target_page`). No edge - a pure navigation region.
 _VYPIS_CONTAINER = "OCB_DPS_SO01_ARS_VV_109_Vypis-skladieb"
 _SKLADBA_RE = re.compile(r"^S[1-9]$")
-# Názov skladby vo Výpise vždy začína „Skladba …" hneď vedľa značky — kotva, ktorá
-# odlíši pravú značku od textových výskytov „S4" v špecifikácii materiálu (napr. pás
-# „PV 200 S4 N"). Mark = ten `S#`, ktorý má v tom istom riadku napravo token „Skladba".
+# The assembly name in the schedule always starts with "Skladba ..." right next to the mark - an anchor that
+# tells the true mark from textual occurrences of "S4" in the material specification (e.g. the strip
+# "PV 200 S4 N"). Mark = the `S#` that has the token "Skladba" to its right on the same line.
 _SKLADBA_NAME_PREFIX = "Skladba"
 SKLADBA_LAYER = "skladba"
 SKLADBA_ROUTE = "drawing"
@@ -73,7 +73,7 @@ SKLADBA_ROUTE = "drawing"
 
 @dataclass(frozen=True)
 class CodeMatcher:
-    """Detektor SNIM kódov odvodený z `CodingScheme` (žiadny hardcode mimo schémy)."""
+    """Detector of SNIM codes derived from `CodingScheme` (no hardcode outside the scheme)."""
 
     scheme: CodingScheme
 
@@ -83,17 +83,17 @@ class CodeMatcher:
 
     @property
     def _full_re(self) -> re.Pattern:
-        # Assembly Code (2 písmená + číslice) + aspoň jedna `.číslica` skupina.
+        # Assembly Code (2 letters + digits) + at least one `.digit` group.
         return re.compile(r"^[A-Z]{2}\d{2}(?:\.\d+)+$")
 
     @property
     def _bare_re(self) -> re.Pattern:
-        # Holý Assembly Code bez Type Mark (napr. `DD01`, `SN11`).
+        # Bare Assembly Code without a Type Mark (e.g. `DD01`, `SN11`).
         return re.compile(r"^[A-Z]{2}\d{2}$")
 
     @property
     def _frag_re(self) -> re.Pattern:
-        # Číselný fragment (Type Mark / Mark), príp. zložený `06.03`.
+        # Numeric fragment (Type Mark / Mark), possibly composed `06.03`.
         return re.compile(r"^\d{1,2}(?:\.\d{1,2})*$")
 
     def valid_tsp(self, code: str) -> bool:
@@ -102,15 +102,15 @@ class CodeMatcher:
 
 @dataclass
 class Hit:
-    """Jeden detegovaný kód na strane + jeho pôvod (pre report/debug).
+    """One detected code on a page + its origin (for report/debug).
 
-    `origin` určuje **dôverovú vrstvu matchu** (D-041):
-      • ``full``      — celý kód s vytlačenou bodkou (`PD02.31`, `DD01.06.03`); dôveryhodný
-                        dôkaz zámeru → exact match, bez zhody = reálna medzera (reportuj).
-      • ``proximity`` — poskladaný z dvoch blízkych tokenov (holý kód + číselný fragment);
-                        **heuristický odhad** → exact match, bez zhody = šum (kóty/osi) → zahoď.
-      • ``bare``      — holý Assembly Code bez Marku (`SN11`, `FS01`); **prefix-match** na
-                        typy `SN11.*` (výkres ukazuje typ prvku, nie konkrétnu inštanciu).
+    `origin` sets the **trust tier of the match** (D-041):
+      - ``full``      - the whole code with the printed dot (`PD02.31`, `DD01.06.03`); trustworthy
+                        evidence of intent -> exact match, no match = a real gap (report it).
+      - ``proximity`` - assembled from two nearby tokens (bare code + numeric fragment);
+                        **a heuristic guess** -> exact match, no match = noise (dimensions/axes) -> drop it.
+      - ``bare``      - a bare Assembly Code without a Mark (`SN11`, `FS01`); **prefix match** on
+                        types `SN11.*` (the drawing shows an element type, not a specific instance).
     """
 
     code: str
@@ -120,13 +120,13 @@ class Hit:
     page_size: tuple[float, float]            # (width, height) v bodoch
 
 
-# Slovo strany: text + bbox (x0, y0, x1, y1) v PyMuPDF top-left súradniciach.
+# Page word: text + bbox (x0, y0, x1, y1) in PyMuPDF top-left coordinates.
 Word = tuple[str, float, float, float, float]
 
 
 @dataclass
 class PageWords:
-    """Slová strany s bbox (x0, y0, x1, y1) + rozmer strany — vstup proximity matchu."""
+    """Words of a page with bbox (x0, y0, x1, y1) + the page size - the input of proximity match."""
 
     words: list[Word] = field(default_factory=list)
     width: float = 0.0
@@ -138,7 +138,7 @@ def _center(w: Word) -> tuple[float, float]:
 
 
 def _page_words(page: "fitz.Page") -> PageWords:
-    rect = page.rect      # reflektuje rotáciu strany; words sú v rovnakom priestore
+    rect = page.rect      # reflects the page rotation; words are in the same space
     out: list[Word] = []
     for x0, y0, x1, y1, text, *_ in page.get_text("words"):
         out.append((text, x0, y0, x1, y1))
@@ -146,27 +146,27 @@ def _page_words(page: "fitz.Page") -> PageWords:
 
 
 def detect_codes(page: "fitz.Page", page_no: int, m: CodeMatcher) -> list[Hit]:
-    """Deteguje kódy na strane: priame (s bodkou) + proximity (holý + fragment).
+    """Detects codes on a page: direct (with a dot) + proximity (bare + fragment).
 
-    Každý `Hit` nesie bbox (top-left) + rozmer strany — z toho sa neskôr (na zdroji)
-    spraví y-flip do PDF bottom-left pre `_drawing_links` (D-042).
+    Every `Hit` carries a bbox (top-left) + the page size - from it the y-flip to PDF bottom-left
+    for `_drawing_links` is done later (at the source) (D-042).
     """
     pw = _page_words(page)
     ps = (pw.width, pw.height)
     hits: list[Hit] = []
 
-    # 1) priame celé kódy (`PD02.31`, `PH01.10`)
+    # 1) direct whole codes (`PD02.31`, `PH01.10`)
     for w in pw.words:
         text = w[0]
         if m._full_re.match(text) and m.valid_tsp(text):
             hits.append(Hit(text, page_no, "full", (w[1], w[2], w[3], w[4]), ps))
 
-    # 2) proximity — holý Assembly Code + najbližší číselný fragment
+    # 2) proximity - bare Assembly Code + the nearest numeric fragment
     bares = [w for w in pw.words if m._bare_re.match(w[0]) and m.valid_tsp(w[0])]
     frags = [w for w in pw.words if m._frag_re.match(w[0])]
     for bw in bares:
         bx, by = _center(bw)
-        # najbližší fragment v okruhu PROXIMITY_PT
+        # the nearest fragment within PROXIMITY_PT
         best: Optional[tuple[Word, float]] = None
         for fw in frags:
             fx, fy = _center(fw)
@@ -175,22 +175,22 @@ def detect_codes(page: "fitz.Page", page_no: int, m: CodeMatcher) -> list[Hit]:
                 best = (fw, dist)
         if best is not None:
             fw = best[0]
-            # bbox = zjednotenie bublinového kódu a jeho fragmentu (Mark)
+            # bbox = union of the bubble code and its fragment (Mark)
             ubbox = (min(bw[1], fw[1]), min(bw[2], fw[2]),
                      max(bw[3], fw[3]), max(bw[4], fw[4]))
             hits.append(Hit(f"{bw[0]}.{fw[0]}", page_no, "proximity", ubbox, ps))
         else:
-            # holý kód bez fragmentu — prefix-match na typy `bt.*` (D-041)
+            # bare code without a fragment - prefix match on types `bt.*` (D-041)
             hits.append(Hit(bw[0], page_no, "bare", (bw[1], bw[2], bw[3], bw[4]), ps))
     return hits
 
 
-# ── Skladbové značky (S#) ─────────────────────────────────────────────────────
+# -- Assembly marks (S#) ---------------------------------------------------------
 
 
 @dataclass
 class SkladbaHit:
-    """Jedna detegovaná skladbová značka (`S#`) na strane výkresu (D-043 C)."""
+    """One detected assembly mark (`S#`) on a drawing page (D-043 C)."""
 
     mark: str
     page: int
@@ -199,10 +199,10 @@ class SkladbaHit:
 
 
 def detect_skladby(page: "fitz.Page", page_no: int, marks: set[str]) -> list[SkladbaHit]:
-    """Nájde výskyty známych skladbových značiek (`marks`) ako samostatné tokeny.
+    """Finds occurrences of the known assembly marks (`marks`) as separate tokens.
 
-    `marks` = množina platných značiek z Výpisu (napr. `{S1, S2, …}`) → bez whitelistu
-    by sa chytali aj `S#` z textu. Každý výskyt = vlastný klikací región (ako pri kódoch).
+    `marks` = the set of valid marks from the schedule (e.g. `{S1, S2, ...}`) -> without a whitelist
+    `S#` from the text would be caught too. Every occurrence = its own clickable region (as with codes).
     """
     pw = _page_words(page)
     ps = (pw.width, pw.height)
@@ -213,7 +213,7 @@ def detect_skladby(page: "fitz.Page", page_no: int, marks: set[str]) -> list[Skl
     return out
 
 
-# ── Manifest (výkres PDF → dokument object_ref) ───────────────────────────────
+# -- Manifest (drawing PDF -> document object_ref) -----------------------------
 
 
 @dataclass(frozen=True)
@@ -223,12 +223,12 @@ class DrawingRow:
 
 
 def read_drawings() -> list[DrawingRow]:
-    """Riadky manifestu, ktoré sú výkresy (TypSouboru = VD)."""
+    """Manifest rows that are drawings (TypSouboru = VD)."""
     if not _MANIFEST.exists():
         raise SystemExit(f"Chýba manifest {_MANIFEST}")
     out: list[DrawingRow] = []
     with _MANIFEST.open(encoding="utf-8-sig") as fh:
-        # utf-8-sig kvôli prípadnému BOM z Excelu (rovnako ako doc_upload.read_manifest)
+        # utf-8-sig because of a possible BOM from Excel (same as doc_upload.read_manifest)
         reader = csv.DictReader(line for line in fh if not line.startswith("#"))
         for r in reader:
             cn = r["container_name"].strip()
@@ -238,11 +238,11 @@ def read_drawings() -> list[DrawingRow]:
 
 
 def read_skladby() -> dict[str, int]:
-    """Mapa skladbová značka → strana vo „Výpise skladieb" (`S#` → 1-based page, D-043).
+    """Map assembly mark -> page in the "Výpis skladieb" (`S#` -> 1-based page, D-043).
 
-    Vyhľadá Výpis v manifeste, otvorí PDF a na každej strane nájde značku `S#`, ktorá
-    má napravo v tom istom riadku token „Skladba" (kotva — odlíši pravú značku od `S4`
-    v špecifikácii materiálu). Prázdna mapa = Výpis chýba (skladby sa proste nelinkujú).
+    Finds the schedule in the manifest, opens the PDF and on every page finds the mark `S#` that
+    has the token "Skladba" to its right on the same line (an anchor - tells the true mark from `S4`
+    in the material specification). An empty map = the schedule is missing (assemblies are simply not linked).
     """
     src: Optional[str] = None
     if _MANIFEST.exists():
@@ -266,9 +266,9 @@ def read_skladby() -> dict[str, int]:
             if not _SKLADBA_RE.match(text):
                 continue
             cy = (y0 + y1) / 2
-            # Pravá značka má názov „Skladba …" vo svojej hlavičke (ten istý alebo
-            # tesne nasledujúci riadok). Textové výskyty „S4" v tabuľke materiálov sú
-            # od „Skladba" ďaleko → vertikálny pás ich spoľahlivo odfiltruje.
+            # The true mark has the name "Skladba ..." in its header (the same or
+            # the immediately following line). Textual occurrences of "S4" in the materials table are
+            # far from "Skladba" -> a vertical band filters them out reliably.
             if any(
                 name.startswith(_SKLADBA_NAME_PREFIX) and abs((b0 + b1) / 2 - cy) < 18
                 for name, a0, b0, a1, b1 in words
@@ -277,11 +277,11 @@ def read_skladby() -> dict[str, int]:
     return out
 
 
-# ── Matching na DB + zápis hrán ───────────────────────────────────────────────
+# -- Matching to the DB + writing edges ---------------------------------------
 
 
 def _load_refs(cur, project_id: str = project_mod.OCB_ID) -> dict[str, tuple[str, str]]:
-    """Plain ref (SNIM code as printed on the drawing) → (id, object_type) pre asset/asset_type projektu.
+    """Plain ref (SNIM code as printed on the drawing) -> (id, object_type) for the project's asset/asset_type.
     Outside OCB the object_ref carries `<code>:` and the plain ref is `properties._ref` (D-189)."""
     rows = cur.execute(
         "select coalesce(properties->>'_ref', object_ref), id, object_type from objects "
@@ -292,11 +292,11 @@ def _load_refs(cur, project_id: str = project_mod.OCB_ID) -> dict[str, tuple[str
 
 
 def _types_by_assembly(refs: dict[str, tuple[str, str]]) -> dict[str, list[str]]:
-    """Assembly Code (`OV01`) → id-čka typov `OV01.*` — pre prefix-match holých kódov.
+    """Assembly Code (`OV01`) -> ids of types `OV01.*` - for prefix match of bare codes.
 
-    Assembly Code je vždy prvý dot-segment `object_ref`; prefix-match cieli **len typy**
-    (`asset_type`), lebo holý kód na výkrese identifikuje typ prvku, nie konkrétnu
-    inštanciu (tá by vyžadovala Mark, ktorý na bubline chýba).
+    The Assembly Code is always the first dot segment of `object_ref`; the prefix match targets **only types**
+    (`asset_type`), because a bare code on a drawing identifies an element type, not a specific
+    instance (that would need a Mark, which is missing on the bubble).
     """
     out: dict[str, list[str]] = {}
     for ref, (oid, otype) in refs.items():
@@ -317,19 +317,19 @@ def _doc_id(cur, container_name: str) -> Optional[str]:
 
 def _to_bottom_left(bbox: tuple[float, float, float, float],
                     page_size: tuple[float, float]) -> list[float]:
-    """PyMuPDF top-left bbox → PDF bottom-left (y rastie hore). Rieši y-flip raz, na zdroji."""
+    """PyMuPDF top-left bbox -> PDF bottom-left (y grows up). Does the y-flip once, at the source."""
     x0, y0, x1, y1 = bbox
     _w, h = page_size
     return [round(x0, 2), round(h - y1, 2), round(x1, 2), round(h - y0, 2)]
 
 
 def _route_for(object_type: str) -> str:
-    """object_type → segment route (zladené s appkou: `asset_type` → /type, inak /node)."""
+    """object_type -> route segment (in line with the app: `asset_type` -> /type, otherwise /node)."""
     return "type" if object_type == "asset_type" else "node"
 
 
 def _write_links(cur, doc_id: str, regions: list[dict]) -> None:
-    """Prepíše `_drawing_links` blob dokumentu (idempotentné, ostatné properties netknuté)."""
+    """Rewrites the document's `_drawing_links` blob (idempotent, other properties untouched)."""
     cur.execute(
         """
         update objects
@@ -345,9 +345,9 @@ def _write_links(cur, doc_id: str, regions: list[dict]) -> None:
 def _link(cur, from_id: str, doc_id: str, dry: bool) -> None:
     if dry:
         return
-    # rel_associates_document(from=prvok, to=výkres) — zachováva smer D-014 (objekt → dokument).
-    # D-051: zapisujeme do generickej `relationships` (rel_type), nie do kanonického view.
-    # psycopg vracia UUID stĺpce ako uuid.UUID → edge_id pracuje so stringami
+    # rel_associates_document(from=element, to=drawing) - keeps the D-014 direction (object -> document).
+    # D-051: we write into the generic `relationships` (rel_type), not into the canonical view.
+    # psycopg returns UUID columns as uuid.UUID -> edge_id works with strings
     eid = ids.edge_id(str(from_id), str(doc_id), "has_document")
     cur.execute(
         """
@@ -364,11 +364,11 @@ def _link(cur, from_id: str, doc_id: str, dry: bool) -> None:
 class DrawingResult:
     container_name: str
     detected: int
-    matched: int                     # počet previazaných prvkov (= počet regiónov)
-    regions: int                     # počet link-regiónov v `_drawing_links` (vrátane skladieb)
-    unmatched_codes: set[str]        # reálne medzery: `full`/`bare` bez zhody (reportuj)
-    dropped_proximity: set[str]      # proximity odhad bez cieľa v DB (šum/mimo scope) → zahodené
-    skladba_regions: int = 0         # z toho navigačné regióny skladieb (S#, D-043 C)
+    matched: int                     # number of linked elements (= number of regions)
+    regions: int                     # number of link regions in `_drawing_links` (including assemblies)
+    unmatched_codes: set[str]        # real gaps: `full`/`bare` without a match (report)
+    dropped_proximity: set[str]      # proximity guess without a target in the DB (noise/out of scope) -> dropped
+    skladba_regions: int = 0         # of which navigation regions of assemblies (S#, D-043 C)
 
 
 def process_drawing(
@@ -385,8 +385,8 @@ def process_drawing(
             f"dokument '{row.container_name}' nie je v DB — najprv spusti doc_upload (E3)."
         )
 
-    # zber zhôd s bbox; poradie podľa dôvery (full > proximity > bare), nech pri tom
-    # istom **fyzickom výskyte** vyhrá najdôveryhodnejšia vrstva
+    # collecting matches with bbox; ordered by trust (full > proximity > bare), so that for the same
+    # **physical occurrence** the most trustworthy tier wins
     doc = fitz.open(pdf_path)
     hits: list[Hit] = []
     for i in range(doc.page_count):
@@ -394,23 +394,23 @@ def process_drawing(
     _order = {"full": 0, "proximity": 1, "bare": 2}
     hits.sort(key=lambda h: _order[h.origin])
 
-    # Región = jeden **fyzický výskyt** kódu (klikací hotspot), NIE jeden prvok:
-    # ten istý `object_ref` sa na výkrese opakuje (napr. `ST01.21` 4×) a každý výskyt
-    # má byť klikateľný. Dedupe preto na úrovni (strana, bbox, cieľ) — nie cieľa.
-    # `rel_associates_document` ostáva 1 hrana na prvok (sémantická väzba) → `matched_ids`.
+    # A region = one **physical occurrence** of a code (a clickable hotspot), NOT one element:
+    # the same `object_ref` repeats on a drawing (e.g. `ST01.21` 4x) and every occurrence
+    # must be clickable. So dedupe at the level (page, bbox, target) - not the target.
+    # `rel_associates_document` stays 1 edge per element (a semantic link) -> `matched_ids`.
     regions: list[dict] = []
-    seen: set[tuple] = set()          # (page, bbox, target_id) — proti exaktným duplicitám
-    matched_ids: set[str] = set()     # cieľe pre hrany (dedupe na úrovni prvku)
+    seen: set[tuple] = set()          # (page, bbox, target_id) - against exact duplicates
+    matched_ids: set[str] = set()     # targets for edges (dedupe at the element level)
     unmatched: set[str] = set()
     dropped: set[str] = set()
 
     def add_region(target_id: str, object_type: str, hit: Hit) -> None:
         tid = str(target_id)
-        matched_ids.add(tid)          # hrana vznikne raz na prvok (nech regiónov koľko chce)
+        matched_ids.add(tid)          # the edge is created once per element (however many regions)
         bbox = _to_bottom_left(hit.bbox, hit.page_size)
         key = (hit.page, tuple(bbox), tid)
         if key in seen:
-            return                    # ten istý výskyt už má región (full pred proximity)
+            return                    # the same occurrence already has a region (full before proximity)
         seen.add(key)
         regions.append({
             "page": hit.page,
@@ -424,32 +424,32 @@ def process_drawing(
 
     for hit in hits:
         if hit.origin == "bare":
-            # prefix-match holého Assembly Code na typy `code.*` (D-041)
+            # prefix match of a bare Assembly Code on types `code.*` (D-041)
             type_ids = types_by_assembly.get(hit.code)
             if type_ids:
                 for tid in type_ids:
                     add_region(tid, "asset_type", hit)
             else:
-                unmatched.add(hit.code)       # neznámy Assembly Code bez typu v DB
+                unmatched.add(hit.code)       # unknown Assembly Code without a type in the DB
         else:
-            # exact match (full + proximity); pri nezhode rozhoduje pôvod
+            # exact match (full + proximity); on a mismatch the origin decides
             ref = refs.get(hit.code)
             if ref is not None:
                 add_region(ref[0], ref[1], hit)
             elif hit.origin == "full":
-                unmatched.add(hit.code)       # vytlačený kód bez prvku = reálna medzera
+                unmatched.add(hit.code)       # a printed code without an element = a real gap
             else:
-                dropped.add(hit.code)         # proximity odhad bez zhody = šum → zahoď
+                dropped.add(hit.code)         # a proximity guess without a match = noise -> drop
 
-    # Skladbové značky (S#) → navigačné regióny na Výpis skladieb (D-043 C). Bez hrán
-    # (skladba nemá vlastný uzol): cieľ = dokument Výpis, otvorený na strane skladby.
+    # Assembly marks (S#) -> navigation regions to the "Výpis skladieb" (D-043 C). No edges
+    # (an assembly has no node of its own): target = the schedule document, opened on the assembly page.
     skladba_count = 0
     if skladby and vypis_doc_id:
         marks = set(skladby)
         for i in range(doc.page_count):
             for sh in detect_skladby(doc[i], i + 1, marks):
                 bbox = _to_bottom_left(sh.bbox, sh.page_size)
-                key = (sh.page, tuple(bbox), sh.mark)   # mark v kľúči (cieľ je 1 dokument)
+                key = (sh.page, tuple(bbox), sh.mark)   # mark in the key (the target is one document)
                 if key in seen:
                     continue
                 seen.add(key)
