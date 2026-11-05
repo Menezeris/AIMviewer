@@ -324,6 +324,7 @@ naming convention finálny tvar) sú v DECISIONS §7.
 > Kompaktný reverse-chrono log. Detail ku každému bodu je v `DECISIONS.md` (D-0xx);
 > aktuálny stav je hore v sekcii „Stav".
 
+- **2026-11-05** - **D-NEWX orchestration model for the platform work (PR):** rules in `AIMforked/docs/platform/orchestration.md` (AIMforked #2), pointer in `AGENTS.md`; first orchestrator rotation the same day (`session_016P6uF4rhtGYZdeMPmRbkyN` to `session_01RqBVf22ejDQvF4YpsCMgTk`, handoff on #60).
 - **2026-11-04** - **D-186 krok 7, archivácia (PR):** zvyšok dokumentov assetin-library (PLAN, DATA-MODEL, PROMPT-*, REVIEW-*, POLIA, `vault/` LOIN, `normy/`) prenesený bez zmeny do `docs/kniznica/` so sha256; `zadanie/` už je v `library/korpus/stromy/vzor`; korpus zmrazený orákulom (`KORPUS_COMMIT`), Python engine sa nespúšťa, zmeny schémy v TS s ručnou aktualizáciou korpusu; archiváciu repa robí orchestrátor po zlúčení.
 - **2026-11-03** - **D-187 náklady Vercelu (PR):** GitHub Actions CI `ci.yml` (tsc, eslint zmenených súborov bez nových chýb, vitest, next build proti falošnému PostgREST) ako kontrola pred zlúčením; `scripts/vercel-ignore.sh` (náhľad len `main` a `[preview]`, dokumentačné zmeny bez buildu); `land.sh` čaká na CI. Nastavenia projektov Vercelu čakajú na autorizáciu tímu.
 - **2026-11-02** - **D-186 krok 7, príprava (PR):** dokumenty knižnice (MODEL, DECISIONS V1-V30, SCHEMA, NORMS-GAP, QUESTIONS, VALIDATION-RULES) prenesené bez zmeny do `docs/kniznica/` s mapou Python -> TS; assetin-library na ne odkazuje (bez archivácie).
