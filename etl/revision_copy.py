@@ -15,6 +15,10 @@ Vlastné GlobalId psetov a vzťahov sa ukladá len informačne (Revit ich pri ex
 úplnosti (počty zo súboru = DB) je jej súčasťou a až potom vznikne `ifc_rev_imports.status = 'done'`.
 Graf AIM (`objects`, `relationships`) sa nemení.
 
+D-189: the revision is resolved within a project (`--project`, default AIM_PROJECT or OCB) and every row is
+keyed by `model_revision_id`; `model` and `revision` stay as labels. The archive is read from the stored
+`model_revisions.archive_path`.
+
 Spustenie z koreňa repa:
     python -m etl.revision_copy --model ASR                 # aktuálna revízia
     python -m etl.revision_copy --model VZT --revision 11   # konkrétna revízia
@@ -381,15 +385,15 @@ def _copy(cur, table: str, columns: Iterable[str], rows: Iterable[tuple]) -> Non
             cp.write_row(r)
 
 
-def _db_counts(cur, model: str, revision: int) -> dict[str, Any]:
-    q = lambda sql: dict(cur.execute(sql, (model, revision)).fetchall())  # noqa: E731
+def _db_counts(cur, model_revision_id: str) -> dict[str, Any]:
+    q = lambda sql: dict(cur.execute(sql, (model_revision_id,)).fetchall())  # noqa: E731
     return {
-        "objects": q("select ifc_class, count(*)::int from ifc_rev_objects where model = %s and revision = %s "
+        "objects": q("select ifc_class, count(*)::int from ifc_rev_objects where model_revision_id = %s "
                      "group by 1 order by 1"),
         "relationship_pairs": q("select rel_class, sum(multiplicity)::int from ifc_rev_relationships "
-                                "where model = %s and revision = %s group by 1 order by 1"),
+                                "where model_revision_id = %s group by 1 order by 1"),
         "pset_attachments": q("select pset_class, sum(cardinality(pset_global_ids))::int from ifc_rev_property_sets "
-                              "where model = %s and revision = %s group by 1 order by 1"),
+                              "where model_revision_id = %s group by 1 order by 1"),
     }
 
 
@@ -417,40 +421,45 @@ def _application_id(cur, app: Optional[dict[str, Any]]) -> Optional[str]:
     return row[0]
 
 
-def write(cur, model: str, revision: int, sha256: str, copy: RevisionCopy, started: float) -> dict[str, Any]:
-    """Zapíše kópiu revízie v jednej transakcii (volajúci commitne); pri neúplnosti vyhodí chybu."""
+def write(cur, model_revision_id: str, model: str, revision: int, sha256: str, copy: RevisionCopy,
+          started: float) -> dict[str, Any]:
+    """Zapíše kópiu revízie v jednej transakcii (volajúci commitne); pri neúplnosti vyhodí chybu.
+    Every row carries `model_revision_id` (D-189); `model` and `revision` are labels."""
     from psycopg.types.json import Jsonb
 
-    cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (f"ifc_rev_imports:{model}",))
-    cur.execute("delete from ifc_rev_imports where model = %s and revision = %s", (model, revision))
+    mid = model_revision_id
+    cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (f"ifc_rev_imports:{mid}",))
+    cur.execute("delete from ifc_rev_imports where model_revision_id = %s", (mid,))
     cur.execute(
-        "insert into ifc_rev_imports (model, revision, sha256, status, hash_version, schema_identifier, engine, "
-        "started_at) values (%s, %s, %s, 'done', %s, %s, %s, to_timestamp(%s))",
-        (model, revision, sha256, HASH_VERSION, copy.schema, f"ifcopenshell {ifcopenshell.version}", started),
+        "insert into ifc_rev_imports (model_revision_id, model, revision, sha256, status, hash_version, "
+        "schema_identifier, engine, started_at) values (%s, %s, %s, %s, 'done', %s, %s, %s, to_timestamp(%s))",
+        (mid, model, revision, sha256, HASH_VERSION, copy.schema, f"ifcopenshell {ifcopenshell.version}", started),
     )
     _copy(cur, "ifc_rev_objects",
-          ("model", "revision", "global_id", "ifc_class", "attributes", "file_owner_history", "content_hash"),
-          ((model, revision, o["global_id"], o["ifc_class"], Jsonb(o["attributes"]),
+          ("model_revision_id", "model", "revision", "global_id", "ifc_class", "attributes", "file_owner_history",
+           "content_hash"),
+          ((mid, model, revision, o["global_id"], o["ifc_class"], Jsonb(o["attributes"]),
             Jsonb(o["file_owner_history"]) if o["file_owner_history"] is not None else None, o["content_hash"])
            for o in copy.objects))
     _copy(cur, "ifc_rev_relationships",
-          ("model", "revision", "rel_class", "relating", "related", "relating_class", "related_class", "attributes",
-           "multiplicity", "rel_global_ids", "content_hash"),
-          ((model, revision, r["rel_class"], r["relating"], r["related"], r["relating_class"], r["related_class"],
-            Jsonb(r["attributes"]), r["multiplicity"], r["rel_global_ids"], r["content_hash"])
+          ("model_revision_id", "model", "revision", "rel_class", "relating", "related", "relating_class",
+           "related_class", "attributes", "multiplicity", "rel_global_ids", "content_hash"),
+          ((mid, model, revision, r["rel_class"], r["relating"], r["related"], r["relating_class"],
+            r["related_class"], Jsonb(r["attributes"]), r["multiplicity"], r["rel_global_ids"], r["content_hash"])
            for r in copy.relationships))
     _copy(cur, "ifc_rev_property_sets",
-          ("model", "revision", "global_id", "pset_name", "pset_class", "properties", "pset_global_ids", "content_hash"),
-          ((model, revision, p["global_id"], p["pset_name"], p["pset_class"], Jsonb(p["properties"]),
+          ("model_revision_id", "model", "revision", "global_id", "pset_name", "pset_class", "properties",
+           "pset_global_ids", "content_hash"),
+          ((mid, model, revision, p["global_id"], p["pset_name"], p["pset_class"], Jsonb(p["properties"]),
             p["pset_global_ids"], p["content_hash"]) for p in copy.property_sets))
 
-    db = _db_counts(cur, model, revision)
+    db = _db_counts(cur, mid)
     diffs = completeness(copy.expected, db)
     if diffs:
         raise RuntimeError("Kópia nie je úplná: " + "; ".join(diffs[:20]))
     counts = {"file": copy.expected, "db": db}
     cur.execute("update ifc_rev_imports set counts = %s, warnings = %s, finished_at = now() "
-                "where model = %s and revision = %s", (Jsonb(counts), Jsonb(copy.warnings), model, revision))
+                "where model_revision_id = %s", (Jsonb(counts), Jsonb(copy.warnings), mid))
 
     # Hlavička a aplikácia patria k revízii kontajnera (K1); doplnia sa, nič sa neprepisuje.
     owning = _application_id(cur, (copy.applications or {}).get("owning"))
@@ -460,47 +469,59 @@ def write(cur, model: str, revision: int, sha256: str, copy: RevisionCopy, start
         "electronic_format = coalesce(cr.electronic_format, %s), "
         "owning_application_id = coalesce(cr.owning_application_id, %s), "
         "last_modifying_application_id = coalesce(cr.last_modifying_application_id, %s) "
-        "from model_revisions m where cr.model_revision_id = m.id and m.model = %s and m.revision = %s",
-        (Jsonb(copy.header), copy.schema, owning, last, model, revision),
+        "where cr.model_revision_id = %s",
+        (Jsonb(copy.header), copy.schema, owning, last, mid),
     )
     return counts
 
 
-def _fail(db_url: str, model: str, revision: int, sha256: str, error: str) -> None:
+def _fail(db_url: str, model_revision_id: str, model: str, revision: int, sha256: str, error: str) -> None:
     import psycopg
 
     with psycopg.connect(db_url) as conn, conn.cursor() as cur:
         cur.execute(
-            "insert into ifc_rev_imports (model, revision, sha256, status, hash_version, error, finished_at) "
-            "values (%s, %s, %s, 'failed', %s, %s, now()) on conflict (model, revision) do update "
+            "insert into ifc_rev_imports (model_revision_id, model, revision, sha256, status, hash_version, error, "
+            "finished_at) values (%s, %s, %s, %s, 'failed', %s, %s, now()) on conflict (model_revision_id) do update "
             "set status = 'failed', error = excluded.error, finished_at = now() "
             "where ifc_rev_imports.status <> 'done'",
-            (model, revision, sha256, HASH_VERSION, error[:2000]),
+            (model_revision_id, model, revision, sha256, HASH_VERSION, error[:2000]),
         )
 
 
 # ── vstup ─────────────────────────────────────────────────────────────────────
 
-def revision_row(cur, model: str, revision: Optional[int]) -> tuple[int, str]:
+@dataclass(frozen=True)
+class RevisionRow:
+    """A model revision within a project (D-189): id, number, sha256 and stored archive path."""
+
+    id: str
+    revision: int
+    sha256: str
+    archive_path: Optional[str]
+
+
+def revision_row(cur, project_id: str, model: str, revision: Optional[int]) -> RevisionRow:
+    sql = ("select id, revision, sha256, archive_path from model_revisions "
+           "where project_id = %s and model = %s and ")
     if revision is None:
-        row = cur.execute("select revision, sha256 from model_revisions where model = %s and is_current",
-                          (model,)).fetchone()
+        row = cur.execute(sql + "is_current", (project_id, model)).fetchone()
     else:
-        row = cur.execute("select revision, sha256 from model_revisions where model = %s and revision = %s",
-                          (model, revision)).fetchone()
+        row = cur.execute(sql + "revision = %s", (project_id, model, revision)).fetchone()
     if row is None:
         raise SystemExit(f"{model}: revízia {revision if revision is not None else '(aktuálna)'} nie je v model_revisions")
-    return row[0], row[1]
+    return RevisionRow(str(row[0]), row[1], row[2], row[3])
 
 
-def load_bytes(model: str, revision: int, archive_file: Optional[Path]) -> bytes:
-    """Rozbalený obsah archívu revízie (zo Storage, alebo lokálny súbor .ifc.gz / .ifc)."""
+def load_bytes(archive_path: Optional[str], archive_file: Optional[Path]) -> bytes:
+    """Rozbalený obsah archívu revízie (zo Storage podľa `archive_path`, alebo lokálny súbor .ifc.gz / .ifc)."""
     if archive_file is not None:
         raw = archive_file.read_bytes()
         return gzip.decompress(raw) if raw[:2] == b"\x1f\x8b" else raw
-    from etl.model_publish import _get, archive_key
+    from etl.model_publish import _get, storage_key
 
-    return gzip.decompress(_get(archive_key(model, revision)))
+    if not archive_path:
+        raise SystemExit("revízia nemá archive_path; použi --archive-file")
+    return gzip.decompress(_get(storage_key(archive_path)))
 
 
 def open_verified(data: bytes, expected_sha: Optional[str]) -> tuple[ifcopenshell.file, str]:
@@ -511,10 +532,15 @@ def open_verified(data: bytes, expected_sha: Optional[str]) -> tuple[ifcopenshel
 
 
 def run(model: str, revision: Optional[int], archive_file: Optional[Path], dry_run: bool, force: bool,
-        db_url: Optional[str] = None) -> dict[str, Any]:
+        db_url: Optional[str] = None, project_code: Optional[str] = None) -> dict[str, Any]:
+    from etl import config
+    from etl import project as project_mod
+
     started = time.time()
+    code = config.project_code(project_code)
+    mid: Optional[str] = None
     if dry_run and db_url is None:
-        data = load_bytes(model, revision if revision is not None else -1, archive_file) if archive_file else None
+        data = load_bytes(None, archive_file) if archive_file else None
         if data is None:
             raise SystemExit("--dry-run bez DB potrebuje --archive-file")
         f, sha = open_verified(data, None)
@@ -522,16 +548,15 @@ def run(model: str, revision: Optional[int], archive_file: Optional[Path], dry_r
     else:
         import psycopg
 
-        from etl import config
-
         db_url = db_url or config.database_url()
         with psycopg.connect(db_url) as conn, conn.cursor() as cur:
-            rev, expected_sha = revision_row(cur, model, revision)
-            done = cur.execute("select sha256, hash_version from ifc_rev_imports where model = %s and revision = %s "
-                               "and status = 'done'", (model, rev)).fetchone()
+            row = revision_row(cur, project_mod.require(cur, code), model, revision)
+            mid, rev, expected_sha = row.id, row.revision, row.sha256
+            done = cur.execute("select sha256, hash_version from ifc_rev_imports where model_revision_id = %s "
+                               "and status = 'done'", (mid,)).fetchone()
         if done and done[0] == expected_sha and done[1] == HASH_VERSION and not force and not dry_run:
-            return {"model": model, "revision": rev, "status": "already_done"}
-        f, sha = open_verified(load_bytes(model, rev, archive_file), expected_sha)
+            return {"project": code, "model": model, "revision": rev, "status": "already_done"}
+        f, sha = open_verified(load_bytes(row.archive_path, archive_file), expected_sha)
 
     dups = duplicate_guids(f)
     if dups:
@@ -539,7 +564,7 @@ def run(model: str, revision: Optional[int], archive_file: Optional[Path], dry_r
     t0 = time.time()
     copy = extract(f)
     result: dict[str, Any] = {
-        "model": model, "revision": rev, "sha256": sha, "schema": copy.schema,
+        "project": code, "model": model, "revision": rev, "sha256": sha, "schema": copy.schema,
         "objects": len(copy.objects), "relationship_pairs": len(copy.relationships),
         "property_sets": len(copy.property_sets), "warnings": copy.warnings,
         "extract_s": round(time.time() - t0, 1),
@@ -551,16 +576,16 @@ def run(model: str, revision: Optional[int], archive_file: Optional[Path], dry_r
 
     import psycopg
 
-    assert db_url is not None and rev is not None
+    assert db_url is not None and rev is not None and mid is not None
     try:
         t1 = time.time()
         with psycopg.connect(db_url) as conn:
             with conn.cursor() as cur:
-                counts = write(cur, model, rev, sha, copy, started)
+                counts = write(cur, mid, model, rev, sha, copy, started)
             conn.commit()
         result.update(status="done", write_s=round(time.time() - t1, 1), counts=counts["db"])
     except Exception as err:  # zápis sa vrátil celý; stav failed ide samostatne
-        _fail(db_url, model, rev, sha, str(err))
+        _fail(db_url, mid, model, rev, sha, str(err))
         raise
     return result
 
@@ -572,8 +597,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--archive-file", type=Path, help="lokálny archív .ifc.gz namiesto Storage (sha256 sa overí)")
     ap.add_argument("--dry-run", action="store_true", help="len extrakcia a počty, nič sa nezapíše")
     ap.add_argument("--force", action="store_true", help="znova zapísať aj hotovú revíziu s rovnakým sha256")
+    ap.add_argument("--project", metavar="CODE", help="project code (D-189); default env AIM_PROJECT or OCB")
     args = ap.parse_args(argv)
-    res = run(args.model, args.revision, args.archive_file, args.dry_run, args.force)
+    res = run(args.model, args.revision, args.archive_file, args.dry_run, args.force, project_code=args.project)
     print(json.dumps(res, ensure_ascii=False, indent=2))
     return 0
 

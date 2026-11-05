@@ -8668,3 +8668,19 @@ bez revízie a chyba tabuľky bez straty výpočtu, odmietnutie inej triedy), SQ
 **Risks:** the revision copy rewrite (~400k rows) is the only real data update, so it is measured on a restored backup first; old signatures must stay until PR 2 is deployed (release train D-116); the ISR cache key must contain the project or one project's page could serve another's data.
 
 **Open:** R12 (write log with the person): RPCs or `request.headers`, touches step 3 only at the edges; `derivation_rules.enabled` is global today but probably a per-project setting; when to drop the DEFAULT; RLS policies after the demo; a project-scoped coding scheme for `object_ref` when a second project collides (D-033).
+
+### D-190 - Projects other than OCB: CDE file names, archive by model UUID, `<code>:` refs (D-189 PR 3)
+
+**Date:** 2026-11-05 · **Status:** approved (Samuel 5 Nov, plan rounds of D-189 PR 3; number from the orchestrator, #60) · **Builds on:** D-189 (multi-project), D-036 (CDE naming scheme), D-010 (identity, QR tag), D-033 (`object_ref` from the coding scheme), D-086 (model revisions), D-135 (egress of models)
+
+**Context:** PR 3 of D-189 makes the ETL write `project_id`. Three questions came up that D-189 does not answer: how files of a new project are named, where its revisions are archived (`archive/<MODEL>/` is keyed by the code, which is only unique within a project), and what `object_ref` a new project's nodes get. Samuel: several projects (for example stages of one building) can hold the same element with the same GUID and SNIM code, and QR codes must stay unique for now; "UUID is important".
+
+**Decision:**
+1. **File names.** Every IFC file of a project other than OCB follows the CDE scheme (D-036, `etl/doc_scheme.py`): 7 positions, type `DiMS`, and the project position equals `--project` and `IfcProject.Name` (`<code>_<stage>_<part>_<discipline>_DiMS_<number>_<description>.ifc`). Checked by `etl.main` and `etl.model_publish publish`; codes outside the vocabulary are warnings (the vocabulary is per project). OCB's files (`ASR.ifc`, `VZT.ifc`) are grandfathered.
+2. **Archive by model UUID.** A new project's revisions go to `ifc/archive/<information_containers.id>/vNNN.ifc.gz`, the current key is `ifc/<container uuid>.ifc`; the date lives in `model_revisions.created_at` (a date alone collides for two revisions on one day, and app and fork read the number from `vNNN`). OCB keeps `archive/<MODEL>/vNNN.ifc.gz`. Readers use `model_revisions.archive_path`, never rebuild it; the app labels models from the DB (PR 2).
+3. **Refs outside OCB.** Every project-bound node of a project other than OCB gets `object_ref = '<code>:<ref>'`; the plain ref stays in `properties._ref` (SCHEMA §4). The project node is `<code>`, persons and organizations stay global and unprefixed, OCB refs do not change. Deterministic ids built from refs (edges, GUID history, aliases) are per project by construction; derived edges (built from GUIDs) include the project id outside OCB.
+4. **One-time exception to D-135:** the PR 3 session downloaded the two current OCB archives (ASR v079, VZT v011) once to run the read-only zero-difference check (`etl.main --dry-run --check-db`), then deleted them.
+
+**Rejected:** a date in the archive path instead of `vNNN` (collisions, app and fork parse `vNNN`); prefix only on collision (a ref would depend on load order); `object_ref` unique per project now (schema change of the cleanup migration, and the QR payload would have to carry the project); a GUID fallback for colliding refs (the same element has the same GUID in both projects).
+
+**Consequences:** loading a second project with the same model code needs the cleanup migration of D-189 first (old global keys `information_containers (model)` / `(identification)`, `model_revisions (model, revision)`, `uniq_active_guid_alias`); until then the ETL is ready but the database refuses the duplicate code.

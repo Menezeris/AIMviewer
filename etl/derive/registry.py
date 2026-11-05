@@ -12,6 +12,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
+from ..project import OCB_ID
 from . import DerivedEdge
 
 
@@ -83,31 +84,32 @@ def partition_edges(edges: Sequence[DerivedEdge], rules: Sequence[Rule],
     return out
 
 
-def current_revisions(cur) -> dict[str, int]:
-    """Aktuálne revízie modelov (D-086) do záznamu behu; bez tabuľky prázdne."""
+def current_revisions(cur, project_id: str = OCB_ID) -> dict[str, int]:
+    """Aktuálne revízie modelov projektu (D-086, D-189) do záznamu behu; bez tabuľky prázdne."""
     exists = cur.execute("select to_regclass('model_revisions') is not null").fetchone()[0]
     if not exists:
         return {}
-    rows = cur.execute("select model, revision from model_revisions where is_current").fetchall()
+    rows = cur.execute("select model, revision from model_revisions where is_current and project_id = %s",
+                       (project_id,)).fetchall()
     return {m: r for m, r in rows}
 
 
-def close_rule_edges(cur, rule: Rule) -> int:
+def close_rule_edges(cur, rule: Rule, project_id: str = OCB_ID) -> int:
     if not rule.source:
         return 0
     return len(cur.execute(
         "update relationships set valid_until = now() "
-        "where source = %s and valid_until is null returning id",
-        (rule.source,),
+        "where source = %s and project_id = %s and valid_until is null returning id",
+        (rule.source, project_id),
     ).fetchall())
 
 
-def record_run(cur, res: RuleResult, trigger: str, models: dict[str, int]) -> None:
+def record_run(cur, res: RuleResult, trigger: str, models: dict[str, int], project_id: str = OCB_ID) -> None:
     cur.execute(
         "insert into derivation_runs (rule_id, status, trigger, models, written, closed, "
-        "unresolved, details, finished_at) values (%s, %s, %s, %s, %s, %s, %s, %s, now())",
+        "unresolved, details, finished_at, project_id) values (%s, %s, %s, %s, %s, %s, %s, %s, now(), %s)",
         (res.rule_id, res.status, trigger, json.dumps(models), res.written, res.closed,
-         res.unresolved, json.dumps(res.details, ensure_ascii=False)),
+         res.unresolved, json.dumps(res.details, ensure_ascii=False), project_id),
     )
 
 

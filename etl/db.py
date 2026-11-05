@@ -13,8 +13,9 @@ import psycopg
 from psycopg.types.json import Json
 
 from . import documents, ids
+from . import project as project_mod
 from .manifest import _SPECS, EDGE_TYPE_TO_REL_TYPE, FROM_REVISION_COPY
-from .model import StagedModel
+from .model import GuidAlias, StagedModel
 
 # D-051: hrany už nemajú per-vzťah tabuľku — všetky idú do generickej `relationships`
 # (diskriminátor `rel_type`). Interný ETL `edge_type` → kanonický `rel_type` drží
@@ -37,23 +38,21 @@ def writes_edge(edge_type: str, source: Optional[str]) -> bool:
     return not (source == LEGACY_EDGE_SOURCE or (source or "").startswith(LEGACY_EDGE_SOURCE + ":"))
 
 
-def reset_data(cur) -> None:
-    """Vyprázdni AIM dátové tabuľky (napr. pred nahradením seedu reálnymi dátami, E2).
+def reset_data(cur, project_id: str) -> None:
+    """Empty the AIM graph of ONE project before a load (D-189; originally E2, replacing the seed).
 
-    `TRUNCATE ... CASCADE` na koreňových tabuľkách zmaže aj všetko závislé cez FK
-    (prípony, hrany `rel_*`, GUID história, klasifikačné referencie). Seed je
-    reprodukovateľný z `supabase/seed.sql`, takže je to bezpečné a vratné.
-    Schéma (tabuľky/views/migrácie) ostáva nedotknutá — len riadky.
-    """
-    cur.execute(
-        "truncate table objects, classification_systems, classification_references "
-        "restart identity cascade"
-    )
+    Other projects are never touched, so nothing is truncated: the project's edges and GUID aliases go first,
+    then its nodes except the project node (the cascade removes appendices and GUID history). The project node,
+    its model revisions, containers and runs stay; classification tables and actors are global and stay too.
+    Never run against production (AGENTS.md)."""
+    cur.execute("delete from relationships where project_id = %s", (project_id,))
+    cur.execute("delete from ifc_guid_aliases where project_id = %s", (project_id,))
+    cur.execute("delete from objects where project_id = %s and id <> %s", (project_id, project_id))
 
 
 def load_model(
     url: str, model: StagedModel, reset: bool = False, scope: str | None = None,
-    storage_base: Optional[str] = None,
+    storage_base: Optional[str] = None, project_code: Optional[str] = None,
 ) -> dict[str, int]:
     """Zapíše celý staged model v jednej transakcii (commit na konci).
 
@@ -69,28 +68,72 @@ def load_model(
 
     `storage_base` = `SUPABASE_URL`: `Location` dokumentov sa preloží na URL súboru v
     buckete `documents`, ak tam je (D-104, `documents.resolve_locations`).
+
+    `project_code` (default the code staged from the file, else OCB): every row is written into that project
+    (D-189). The first main-model load of a new code creates the project node from the file's IfcProject.
     """
     closed = {"edges": 0, "guids": 0, "objects": 0, "documents": 0, "repointed": 0}
     if scope:
         scope_sources(model, scope)
         documents.mark_model(model, scope)
+    code = project_code or model.project_code or project_mod.OCB_CODE
     with psycopg.connect(url) as conn:
         with conn.cursor() as cur:
             documents.resolve_locations(model, documents.bucket_names(cur), storage_base)
+            project_id = load_project(cur, model, code)
             if reset:
-                reset_data(cur)
+                reset_data(cur, project_id)
             sys_ids = _load_systems(cur, model)
             ref_ids = _load_refs(cur, model, sys_ids)
-            obj_ids = _load_objects(cur, model)
+            obj_ids = _load_objects(cur, model, project_id)
             _load_appendices(cur, model, obj_ids)
             _load_guid_history(cur, model, obj_ids)
-            _load_guid_aliases(cur, model, obj_ids)
-            _load_edges(cur, model, obj_ids)
+            alias_ids = _load_guid_aliases(cur, model, obj_ids, project_id)
+            _load_edges(cur, model, obj_ids, project_id)
             _load_class_links(cur, model, obj_ids, ref_ids)
             if scope:
-                closed = close_stale(cur, model, scope)
+                closed = close_stale(cur, model, scope, project_id, alias_ids)
         conn.commit()
     return closed
+
+
+def load_project(cur, model: StagedModel, code: str) -> str:
+    """Resolve (or create) the project node of the run and map this file's IfcProject onto it (D-189).
+
+    - Node missing: the main model creates it from its IfcProject row (the trigger sets `project_id = id`);
+      a discipline model (`--federate`) cannot, the main model is loaded first.
+    - Node present and this file's IfcProject has another GlobalId (IFC defines IfcProject per exchange): the
+      node keeps its GUID and the file's GlobalId becomes an alias of the node.
+    Returns the project id."""
+    row = next((o for o in model.objects if o.object_type == "project" and o.object_ref == code), None)
+    found = cur.execute(
+        "select id, ifc_guid from objects where object_type = 'project' and object_ref = %s",
+        (code,),
+    ).fetchone()
+    if found is None:
+        if row is None:
+            raise project_mod.ProjectError(
+                f"Project '{code}' does not exist yet; load the main model of the project first "
+                f"(without --federate), it creates the project node (D-189)."
+            )
+        created = cur.execute(
+            "insert into objects (object_type, object_ref, name, ifc_guid, ifc_type) "
+            "values ('project', %s, %s, %s, %s) returning id",
+            (code, row.name, row.ifc_guid, row.ifc_type),
+        ).fetchone()
+        return str(created[0])
+    project_id, node_guid = str(found[0]), found[1]
+    file_guid = model.project_guid
+    if row is not None and file_guid and node_guid and file_guid != node_guid:
+        row.ifc_guid = node_guid
+        for g in model.guid_history:
+            if g.object_ref == code and g.ifc_guid == file_guid:
+                g.ifc_guid = node_guid
+        if not any(a.object_ref == code and a.ifc_guid == file_guid for a in model.guid_aliases):
+            source = next((g.source for g in model.guid_history if g.object_ref == code), LEGACY_GUID_SOURCE)
+            model.guid_aliases.append(GuidAlias(object_ref=code, ifc_guid=file_guid,
+                                                reason=project_mod.ALIAS_REASON, source=source))
+    return project_id
 
 
 # Zdroje, ktoré ETL zapisoval pred D-086 (bez mena modelu).
@@ -146,41 +189,46 @@ _RETIRE_OBJECTS = (
     "where o.valid_until is null and o.ifc_guid is not null "
     "and exists (select 1 from ifc_guid_history h where h.object_id = o.id and h.source = %s) "
     "and not exists (select 1 from ifc_guid_history h "
-    "where h.object_id = o.id and h.valid_until is null) returning o.id"
+    "where h.object_id = o.id and h.valid_until is null) and o.project_id = %s returning o.id"
 )
 
 
-def close_stale(cur, model: StagedModel, scope: str) -> dict[str, int]:
+def close_stale(cur, model: StagedModel, scope: str, project_id: str = project_mod.OCB_ID,
+                alias_ids: Optional[list[str]] = None) -> dict[str, int]:
     """Uzavrie aktívne hrany, GUID záznamy a objekty modelu `scope`, ktoré tento beh nevydal.
 
     Hrany typov z kópie revízie (D-183 K3 krok 3) sa nechajú, ako sú: ETL ich už nevydáva a ich
     ukončenie je samostatný krok na Samuelovo slovo (`supabase/pending/`), nie vedľajší účinok re-ETL."""
+    # The model code (source `etl:ASR`) is unique only within a project (D-189), so every statement is
+    # scoped to the run's project.
     edges, guids = emitted_ids(model)
     closed_edges = cur.execute(
         "update relationships set valid_until = now() "
-        "where source = %s and valid_until is null and not (rel_type = any(%s)) "
+        "where source = %s and project_id = %s and valid_until is null and not (rel_type = any(%s)) "
         "and not (id = any(%s)) returning id",
-        (edge_source(scope), COPY_REL_TYPES, edges),
+        (edge_source(scope), project_id, COPY_REL_TYPES, edges),
     ).fetchall()
     closed_guids = cur.execute(
-        "update ifc_guid_history set valid_until = now() "
-        "where source = %s and valid_until is null and not (id = any(%s)) returning id",
-        (guid_source(scope), guids),
+        "update ifc_guid_history h set valid_until = now() "
+        "where h.source = %s and h.valid_until is null and not (h.id = any(%s)) "
+        "and exists (select 1 from objects o where o.id = h.object_id and o.project_id = %s) returning h.id",
+        (guid_source(scope), guids, project_id),
     ).fetchall()
-    aliases = [ids.guid_alias_id(a.object_ref, a.ifc_guid) for a in model.guid_aliases]
+    aliases = alias_ids if alias_ids is not None else [
+        ids.guid_alias_id(a.object_ref, a.ifc_guid) for a in model.guid_aliases]
     closed_guids += cur.execute(
         "update ifc_guid_aliases set valid_until = now() "
-        "where source = %s and valid_until is null and not (id = any(%s)) returning id",
-        (guid_source(scope), aliases),
+        "where source = %s and project_id = %s and valid_until is null and not (id = any(%s)) returning id",
+        (guid_source(scope), project_id, aliases),
     ).fetchall()
-    retired = cur.execute(_RETIRE_OBJECTS, (guid_source(scope),)).fetchall()
+    retired = cur.execute(_RETIRE_OBJECTS, (guid_source(scope), project_id)).fetchall()
     # Dokumenty nemajú GUID: model ich značí `_model`, čo už nevydal, zaniká (D-104).
     docs = [o.object_ref for o in model.objects if o.object_type in documents.DOCUMENT_TYPES]
     retired_docs = cur.execute(
-        documents.RETIRE_DOCUMENTS, (list(documents.DOCUMENT_TYPES), scope, docs)
+        documents.RETIRE_DOCUMENTS, (list(documents.DOCUMENT_TYPES), scope, project_id, docs)
     ).fetchall()
     return {"edges": len(closed_edges), "guids": len(closed_guids), "objects": len(retired),
-            "documents": len(retired_docs), "repointed": repoint_to_successors(cur)}
+            "documents": len(retired_docs), "repointed": repoint_to_successors(cur, project_id)}
 
 
 # Ručné väzby (výkresy E4, dokumenty E3, fotky D-073) na zaniknutý objekt prejdú na
@@ -190,38 +238,41 @@ _REPOINT = """
     update relationships r set {end}_id = s.new_id
     from (select o.id as old_id, n.id as new_id
           from objects o join objects n
-            on n.ifc_guid = o.ifc_guid and n.valid_until is null and n.id <> o.id
-          where o.valid_until is not null and o.ifc_guid is not null) s
+            on n.ifc_guid = o.ifc_guid and n.project_id = o.project_id
+           and n.valid_until is null and n.id <> o.id
+          where o.valid_until is not null and o.ifc_guid is not null and o.project_id = %s) s
     where r.{end}_id = s.old_id and r.valid_until is null
-      and r.source not like 'etl%' and r.source not like 'derive:%'
+      and r.source not like 'etl%%' and r.source not like 'derive:%%'
     returning r.id
 """
 
 
-def repoint_to_successors(cur) -> int:
-    """Presmeruje aktívne ručné väzby zo zaniknutých objektov na nástupcu s rovnakým GUID."""
+def repoint_to_successors(cur, project_id: str = project_mod.OCB_ID) -> int:
+    """Presmeruje aktívne ručné väzby zo zaniknutých objektov na nástupcu s rovnakým GUID.
+    A GUID is unique only within a project (D-189): the successor is searched in the same project."""
     moved = 0
     for end in ("from", "to"):
-        moved += len(cur.execute(_REPOINT.format(end=end)).fetchall())
+        moved += len(cur.execute(_REPOINT.format(end=end), (project_id,)).fetchall())
     return moved
 
 
-def close_legacy(cur) -> dict[str, int]:
+def close_legacy(cur, project_id: str = project_mod.OCB_ID) -> dict[str, int]:
     """Jednorazovo po prvom loade všetkých modelov so `scope` (D-086): čo ostalo aktívne
-    so starým zdrojom bez mena modelu, už žiadny model nevydal → uzavrieť."""
+    so starým zdrojom bez mena modelu, už žiadny model nevydal → uzavrieť. Only within one project (D-189)."""
     closed_edges = cur.execute(
         "update relationships set valid_until = now() "
-        "where source = %s and valid_until is null returning id",
-        (LEGACY_EDGE_SOURCE,),
+        "where source = %s and project_id = %s and valid_until is null returning id",
+        (LEGACY_EDGE_SOURCE, project_id),
     ).fetchall()
     closed_guids = cur.execute(
-        "update ifc_guid_history set valid_until = now() "
-        "where source = %s and valid_until is null returning id",
-        (LEGACY_GUID_SOURCE,),
+        "update ifc_guid_history h set valid_until = now() "
+        "where h.source = %s and h.valid_until is null "
+        "and exists (select 1 from objects o where o.id = h.object_id and o.project_id = %s) returning h.id",
+        (LEGACY_GUID_SOURCE, project_id),
     ).fetchall()
-    retired = cur.execute(_RETIRE_OBJECTS, (LEGACY_GUID_SOURCE,)).fetchall()
+    retired = cur.execute(_RETIRE_OBJECTS, (LEGACY_GUID_SOURCE, project_id)).fetchall()
     return {"edges": len(closed_edges), "guids": len(closed_guids), "objects": len(retired),
-            "repointed": repoint_to_successors(cur)}
+            "repointed": repoint_to_successors(cur, project_id)}
 
 
 def _load_systems(cur, model: StagedModel) -> dict[str, str]:
@@ -268,9 +319,14 @@ def _load_refs(cur, model: StagedModel, sys_ids: dict[str, str]) -> dict[tuple[s
 HOST_PROPERTY_KEYS = ("_georef",)
 
 
-def _load_objects(cur, model: StagedModel) -> dict[str, str]:
-    """Upsert `objects` cez object_ref; vráti mapu object_ref → DB id."""
+def _load_objects(cur, model: StagedModel, project_id: str) -> dict[str, str]:
+    """Upsert `objects` cez object_ref; vráti mapu object_ref → DB id.
+
+    Every row is written into `project_id` (D-189; the trigger nulls it for person and organization). An
+    `object_ref` held by another project is never taken over: the update only applies within the same
+    project (or to the project node itself), and a refused row aborts the load."""
     out: dict[str, str] = {}
+    foreign: list[str] = []
     for o in model.objects:
         if not o.object_ref:
             raise ValueError(f"objekt bez object_ref (typ {o.object_type}) — D-031 vyžaduje stabilný ref")
@@ -278,8 +334,8 @@ def _load_objects(cur, model: StagedModel) -> dict[str, str]:
             """
             insert into objects
               (object_type, object_ref, name, ifc_guid, ifc_type,
-               predefined_type, user_defined_type, properties)
-            values (%s, %s, %s, %s, %s, %s, %s, %s)
+               predefined_type, user_defined_type, properties, project_id)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             on conflict (object_ref) do update set
               object_type = excluded.object_type, name = excluded.name,
               ifc_guid = excluded.ifc_guid, ifc_type = excluded.ifc_type,
@@ -293,15 +349,25 @@ def _load_objects(cur, model: StagedModel) -> dict[str, str]:
               ),
               updated_at = now(),
               valid_until = null    -- objekt je znova v modeli (D-088)
+            where objects.project_id is not distinct from excluded.project_id
+               or (objects.object_type = 'project' and excluded.object_type = 'project')
             returning id
             """,
             (
                 o.object_type, o.object_ref, o.name, o.ifc_guid, o.ifc_type,
                 o.predefined_type, o.user_defined_type, Json(o.properties or {}),
-                list(HOST_PROPERTY_KEYS),
+                project_id, list(HOST_PROPERTY_KEYS),
             ),
         ).fetchone()
+        if row is None:
+            foreign.append(o.object_ref)
+            continue
         out[o.object_ref] = row[0]
+    if foreign:
+        raise project_mod.ProjectError(
+            f"{len(foreign)} object_ref already belong to another project (QR tags are unique across the "
+            f"platform, D-189): {sorted(foreign)[:20]}"
+        )
     return out
 
 
@@ -389,30 +455,56 @@ def _load_guid_history(cur, model: StagedModel, obj_ids: dict[str, str]) -> None
         )
 
 
-def _load_guid_aliases(cur, model: StagedModel, obj_ids: dict[str, str]) -> None:
+def existing_alias(cur, project_id: str, ifc_guid: str, object_id: str, reason: str) -> Optional[str]:
+    """Id of an active alias that already says the same (project, GUID, node, reason), e.g. one backfilled by
+    a migration under another id. A re-run keeps it instead of closing and re-inserting it (D-189)."""
+    row = cur.execute(
+        "select id from ifc_guid_aliases where project_id = %s and ifc_guid = %s and object_id = %s "
+        "and reason = %s and valid_until is null",
+        (project_id, ifc_guid, object_id, reason),
+    ).fetchone()
+    return str(row[0]) if row else None
+
+
+def _load_guid_aliases(cur, model: StagedModel, obj_ids: dict[str, str], project_id: str) -> list[str]:
     """GUID zlúčených IFC typov -> `asset_type` (D-033 ako údaj, D-183 K3 krok 3). Aktívny alias GUID
     je najviac jeden (`uniq_active_guid_alias`): iný aktívny alias toho GUID (napr. spätné doplnenie
-    migráciou, typ prešiel pod iný kód) sa najprv uzavrie."""
+    migráciou, typ prešiel pod iný kód) sa najprv uzavrie.
+
+    D-189: aliases belong to the run's project and only that project's aliases are closed. The IfcProject of
+    another file is an alias of the project node. An active alias with the same meaning (backfilled by a
+    migration under another id: the type aliases of 31 Oct, OCB's VZT IfcProject) is kept as it is.
+    Returns the ids of the aliases this run holds active, for `close_stale`."""
+    active: list[str] = []
     for a in model.guid_aliases:
         aid = ids.guid_alias_id(a.object_ref, a.ifc_guid)
+        object_id = obj_ids.get(a.object_ref) or (project_id if a.object_ref == model.project_code else None)
+        if object_id is None:
+            raise ValueError(f"GUID alias {a.ifc_guid} points at unknown object_ref {a.object_ref}")
+        kept = existing_alias(cur, project_id, a.ifc_guid, str(object_id), a.reason)
+        if kept is not None:
+            active.append(kept)
+            continue
+        active.append(aid)
         cur.execute(
             "update ifc_guid_aliases set valid_until = now() "
-            "where ifc_guid = %s and valid_until is null and id <> %s",
-            (a.ifc_guid, aid),
+            "where ifc_guid = %s and project_id = %s and valid_until is null and id <> %s",
+            (a.ifc_guid, project_id, aid),
         )
         cur.execute(
             """
-            insert into ifc_guid_aliases (id, object_id, ifc_guid, reason, valid_until, source)
-            values (%s, %s, %s, %s, null, %s)
+            insert into ifc_guid_aliases (id, object_id, ifc_guid, reason, valid_until, source, project_id)
+            values (%s, %s, %s, %s, null, %s, %s)
             on conflict (id) do update set
               object_id = excluded.object_id, reason = excluded.reason,
               valid_until = null, source = excluded.source
             """,
-            (aid, obj_ids[a.object_ref], a.ifc_guid, a.reason, a.source),
+            (aid, object_id, a.ifc_guid, a.reason, a.source, project_id),
         )
+    return active
 
 
-def _resolve_cross_file_refs(cur, model: StagedModel, obj_ids: dict[str, str]) -> None:
+def _resolve_cross_file_refs(cur, model: StagedModel, obj_ids: dict[str, str], project_id: str) -> None:
     """Doplní `obj_ids` o endpointy hrán, ktoré už existujú v DB (nie v tomto behu).
 
     Federate load (D-049): VZT MEP containment ukazuje na **existujúce** floor uzly,
@@ -428,8 +520,9 @@ def _resolve_cross_file_refs(cur, model: StagedModel, obj_ids: dict[str, str]) -
     if not missing:
         return
     rows = cur.execute(
-        "select object_ref, id from objects where object_ref = any(%s)",
-        (list(missing),),
+        "select object_ref, id from objects where object_ref = any(%s) "
+        "and (project_id = %s or project_id is null)",
+        (list(missing), project_id),
     ).fetchall()
     for object_ref, oid in rows:
         obj_ids[object_ref] = oid
@@ -440,8 +533,10 @@ def _resolve_cross_file_refs(cur, model: StagedModel, obj_ids: dict[str, str]) -
         )
 
 
-def _load_edges(cur, model: StagedModel, obj_ids: dict[str, str]) -> None:
-    _resolve_cross_file_refs(cur, model, obj_ids)
+def _load_edges(cur, model: StagedModel, obj_ids: dict[str, str], project_id: str) -> None:
+    # `relationships.project_id` is set by the validation trigger from the endpoints; an edge across
+    # projects is rejected there (D-189).
+    _resolve_cross_file_refs(cur, model, obj_ids, project_id)
     for e in model.edges:
         if not writes_edge(e.edge_type, e.source):
             continue  # IFC vzťah zo súboru, pohľad ho číta z kópie revízie (D-183 K3 krok 3)

@@ -36,7 +36,8 @@ import psycopg
 from psycopg.types.json import Json
 
 from . import ids
-from .config import database_url
+from . import project as project_mod
+from .config import database_url, project_code
 from .doc_scheme import DocumentMeta, parse_container_name
 from .ifc_upload import put_object
 
@@ -177,14 +178,18 @@ def _document_properties(meta: DocumentMeta) -> dict:
     return {"CDE": cde} if cde else {}
 
 
-def _write_document(cur, row: ManifestRow, location: str, storage_type: str) -> None:
+def _write_document(cur, row: ManifestRow, location: str, storage_type: str,
+                    project_id: str = project_mod.OCB_ID, code: str = project_mod.OCB_CODE) -> None:
+    """D-189: the document belongs to `project_id`; outside OCB its ref and the target ref carry `<code>:`."""
     meta = row.meta
-    # 1) cieľový uzol musí existovať
+    target_ref = project_mod.qualify(row.target_ref, code)
+    doc_ref = project_mod.qualify(row.container_name, code)
+    # 1) cieľový uzol musí existovať (v tom istom projekte)
     target = cur.execute(
-        "select id from objects where object_ref = %s", (row.target_ref,)
+        "select id from objects where object_ref = %s and project_id = %s", (target_ref, project_id)
     ).fetchone()
     if not target:
-        raise SystemExit(f"target_ref '{row.target_ref}' neexistuje v objects "
+        raise SystemExit(f"target_ref '{target_ref}' neexistuje v objects projektu {code} "
                          f"(dokument {row.container_name})")
     target_id = target[0]
 
@@ -192,18 +197,22 @@ def _write_document(cur, row: ManifestRow, location: str, storage_type: str) -> 
     name = meta.human_description() or row.container_name
     doc_id = cur.execute(
         """
-        insert into objects (object_type, object_ref, name, properties)
-        values ('document', %s, %s, %s)
+        insert into objects (object_type, object_ref, name, properties, project_id)
+        values ('document', %s, %s, %s, %s)
         on conflict (object_ref) do update set
           object_type = 'document', name = excluded.name,
           -- nahradí LEN pset CDE; ostatné kľúče (_drawing_links z pdf_link, E4)
           -- musia re-upload prežiť (D-031: opakovaný E3 nesmie degradovať E4)
           properties = (coalesce(objects.properties, '{}'::jsonb) - 'CDE')
                        || excluded.properties, updated_at = now()
+        where objects.project_id = excluded.project_id
         returning id
         """,
-        (row.container_name, name, Json(_document_properties(meta))),
-    ).fetchone()[0]
+        (doc_ref, name, Json(_document_properties(meta)), project_id),
+    ).fetchone()
+    if doc_id is None:
+        raise SystemExit(f"Dokument '{doc_ref}' patrí inému projektu (D-189).")
+    doc_id = doc_id[0]
 
     # 3) documents prípona (D-014 + storage_type D-032)
     cur.execute(
@@ -221,7 +230,7 @@ def _write_document(cur, row: ManifestRow, location: str, storage_type: str) -> 
 
     # 4) rel_associates_document(target → dokument, role z TypSouboru)
     # D-051: generická `relationships` (rel_type), nie kanonické view.
-    eid = ids.edge_id(row.target_ref, row.container_name, "has_document")
+    eid = ids.edge_id(target_ref, doc_ref, "has_document")
     cur.execute(
         """
         insert into relationships
@@ -234,12 +243,13 @@ def _write_document(cur, row: ManifestRow, location: str, storage_type: str) -> 
     )
 
 
-def _index_pdf(cur, row: ManifestRow, pdf_path: Path, ocr: bool = True) -> None:
+def _index_pdf(cur, row: ManifestRow, pdf_path: Path, ocr: bool = True,
+               code: str = project_mod.OCB_CODE) -> None:
     """Text, riadky a čiary výkresu do `document_pages` (D-063, D-133, OCR D-169); chyba PDF upload nezhodí."""
     from .pdf_text import _doc_id, index_pdf
 
     try:
-        doc_id = _doc_id(cur, row.container_name)
+        doc_id = _doc_id(cur, project_mod.qualify(row.container_name, code))
         if doc_id is None:
             return
         cur.execute("savepoint pdf_text")
@@ -267,7 +277,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                     help="nenačítať text a čiary PDF do document_pages (inak ich načíta hneď po uploade, #283).")
     ap.add_argument("--no-ocr", action="store_true",
                     help="D-169: strany PDF bez textovej vrstvy (obrázok, krivky) nečítať OCR.")
+    ap.add_argument("--project", metavar="CODE", help="project code (D-189); default env AIM_PROJECT or OCB")
     args = ap.parse_args(argv)
+    code = project_code(args.project)
 
     rows = read_manifest()
     print(f"Manifest: {len(rows)} dokumentov ({_MANIFEST.name})")
@@ -295,14 +307,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     uploaded = 0
     with psycopg.connect(url) as conn:
         with conn.cursor() as cur:
+            pid = project_mod.require(cur, code)
             for r in rows:
                 content = (_SOURCE_ROOT / r.source_path).read_bytes()
                 location = upload_file(base, key, r.object_key, content)
-                _write_document(cur, r, location, storage_type="supabase")
+                _write_document(cur, r, location, storage_type="supabase", project_id=pid, code=code)
                 uploaded += 1
                 print(f"  ✓ {r.container_name} → {r.target_ref}  ({len(content)//1024} kB)")
                 if not args.no_pdf_text and r.source_path.lower().endswith(".pdf"):
-                    _index_pdf(cur, r, _SOURCE_ROOT / r.source_path, ocr=not args.no_ocr)
+                    _index_pdf(cur, r, _SOURCE_ROOT / r.source_path, ocr=not args.no_ocr, code=code)
         conn.commit()
 
     print(f"\nHotovo: {uploaded} dokumentov nahraných + zapísaných do grafu.")

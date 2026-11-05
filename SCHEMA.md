@@ -913,7 +913,8 @@ PDF podkladu na podlažie, D-072, zapisuje `PATCH /api/underlay`; v2 `{version, 
 `yaw`, versioned; D-073, zapisuje `POST /api/captures`, len na `object_type='capture'`),
 `_model` (model federácie, ktorý dokument vydal; ETL ukončí dokumenty modelu, ktoré už
 nevydáva, D-104) a `_ifc_location` (pôvodná `Location` zo súboru, keď `documents.location`
-ukazuje na súbor v buckete `documents`, D-104) - oba len na `document`/`document_reference`.
+ukazuje na súbor v buckete `documents`, D-104) - oba len na `document`/`document_reference`. `_ref` (D-190) = plain ref
+(SNIM kód, číslo miestnosti) uzla projektu mimo OCB, ktorého `object_ref` je `<kód projektu>:<ref>`; zapisuje ETL.
 
 ---
 

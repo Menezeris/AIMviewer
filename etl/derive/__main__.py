@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from .. import config, extract
+from .. import project as project_mod
 from . import spatial_reference
 
 
@@ -31,8 +32,10 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
 
     p = argparse.ArgumentParser(description="AIM ETL — odvodené hrany (D-080, D-089)")
     sub = p.add_subparsers(dest="cmd", required=True)
+    proj = argparse.ArgumentParser(add_help=False)
+    proj.add_argument("--project", metavar="CODE", help="project code (D-189); default env AIM_PROJECT or OCB")
 
-    r = sub.add_parser("run", help="spustiť pravidlá z registra (D-089)")
+    r = sub.add_parser("run", parents=[proj], help="spustiť pravidlá z registra (D-089)")
     r.add_argument("--models", nargs="+", required=True, help="IFC súbory federácie (prvý = referenčný rámec)")
     r.add_argument("--rule", nargs="+", help="len tieto pravidlá (inak zapnuté podľa režimu)")
     r.add_argument("--trigger", choices=("auto", "manual"), default="manual",
@@ -41,12 +44,12 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
 
     sub.add_parser("rules", help="zoznam pravidiel a posledný beh")
     for name in ("enable", "disable"):
-        e = sub.add_parser(name, help=f"{'zapnúť' if name == 'enable' else 'vypnúť'} pravidlo")
+        e = sub.add_parser(name, parents=[proj], help=f"{'zapnúť' if name == 'enable' else 'vypnúť'} pravidlo")
         e.add_argument("--rule", required=True)
         if name == "enable":
             e.add_argument("--mode", choices=("auto", "manual"))
 
-    lp = sub.add_parser("spatial_reference", help="priamo odvodzovač D-080 (bez registra)")
+    lp = sub.add_parser("spatial_reference", parents=[proj], help="priamo odvodzovač D-080 (bez registra)")
     lp.add_argument("--models", nargs="+", required=True, help="IFC súbory federácie (prvý = referenčný rámec)")
     lp.add_argument("--dry-run", action="store_true", help="nepíš do DB, len zhrnutie")
     lp.add_argument("--report", help="CSV s odvodenými hranami a nespárovanými prvkami")
@@ -88,9 +91,11 @@ def cmd_run(args) -> None:
                            partition_edges, record_run, select_rules)
 
     url = config.database_url()
+    code = config.project_code(args.project)
     with psycopg.connect(url) as conn, conn.cursor() as cur:
+        pid = project_mod.require(cur, code)
         rules = load_rules(cur)
-        revisions = current_revisions(cur)
+        revisions = current_revisions(cur, pid)
     to_run, to_close = select_rules(rules, args.rule, args.trigger)
     geo = [r for r in to_run if r.kind == "geometry"]
     print(f"Pravidlá na výpočet: {[r.id for r in to_run] or '-'}; na uzavretie: "
@@ -99,6 +104,8 @@ def cmd_run(args) -> None:
     edges_by_rule: dict = {}
     if geo:
         models = [extract.open_model(m) for m in args.models]
+        for path, m in zip(args.models, models):
+            project_mod.check_file(m, code, Path(path).name)
         cfg = spatial_reference.SpatialReferenceConfig(
             element_classes=tuple(sorted({c for r in geo for c in r.source_classes})),
             spatial_classes=tuple(sorted({c for r in geo for c in r.target_classes})),
@@ -125,22 +132,23 @@ def cmd_run(args) -> None:
             for r in to_run:
                 if r.kind == "geometry":
                     edges = edges_by_rule.get(r.id, [])
-                    st = write_edges(cur, r.source, r.rel_type, edges)
+                    st = write_edges(cur, r.source, r.rel_type, edges, pid)
                     results.append(RuleResult(
                         r.id, "ok", st.written, st.closed, len(st.unresolved_guids),
                         {"roles": dict(collections.Counter(e.role for e in edges)),
                          "disallowed": len(st.disallowed)}))
                 else:
                     rows, elements = cur.execute(
-                        "select count(*), count(distinct element_id) from v_zone_elements"
+                        "select count(*), count(distinct element_id) from v_zone_elements where project_id = %s",
+                        (pid,),
                     ).fetchone()
                     results.append(RuleResult(r.id, "ok", details={"rows": rows, "elements": elements}))
             for r in to_close:
-                closed = close_rule_edges(cur, r)
+                closed = close_rule_edges(cur, r, pid)
                 if closed:
                     results.append(RuleResult(r.id, "disabled", closed=closed))
             for res_ in results:
-                record_run(cur, res_, args.trigger, revisions)
+                record_run(cur, res_, args.trigger, revisions, pid)
         conn.commit()
     for res_ in results:
         print(f"DB {res_.rule_id}: {res_.status}, zapísané {res_.written}, uzavreté {res_.closed}, "
@@ -170,11 +178,13 @@ def cmd_toggle(args) -> None:
     enable = args.cmd == "enable"
     with psycopg.connect(config.database_url()) as conn:
         with conn.cursor() as cur:
+            pid = project_mod.require(cur, config.project_code(args.project))
             rule = set_enabled(cur, args.rule, enable, getattr(args, "mode", None))
             if not enable:
-                closed = close_rule_edges(cur, rule)
+                # derivation_rules.enabled is global today (D-189 open item); edges close in this project.
+                closed = close_rule_edges(cur, rule, pid)
                 record_run(cur, RuleResult(rule.id, "disabled", closed=closed), "manual",
-                           current_revisions(cur))
+                           current_revisions(cur, pid), pid)
         conn.commit()
     if enable:
         print(f"{rule.id}: zapnuté ({rule.mode}). Hrany vzniknú pri ďalšom `run`.")
@@ -183,7 +193,10 @@ def cmd_toggle(args) -> None:
 
 
 def cmd_spatial_reference(args) -> None:
+    code = config.project_code(args.project)
     models = [extract.open_model(m) for m in args.models]
+    for path, m in zip(args.models, models):
+        project_mod.check_file(m, code, Path(path).name)
     names = {}
     for m in models:
         for e in m.by_type("IfcRoot"):
@@ -224,7 +237,7 @@ def cmd_spatial_reference(args) -> None:
     source = "derive:spatial_reference"
     with psycopg.connect(config.database_url()) as conn:
         with conn.cursor() as cur:
-            st = write_edges(cur, source, spatial_reference.REL_TYPE, res.edges)
+            st = write_edges(cur, source, spatial_reference.REL_TYPE, res.edges, project_mod.require(cur, code))
         conn.commit()
     print(f"DB: zapísané {st.written}, uzavreté zastarané {st.closed}, "
           f"GUID mimo DB {len(st.unresolved_guids)}, nepovolený object_type {len(st.disallowed)}")

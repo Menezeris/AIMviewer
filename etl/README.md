@@ -42,6 +42,25 @@ python -m etl.main --file etl/data/model.ifc --reset     # vyprázdni AIM dáta,
 
 > **Windows:** konzola je `cp1250` → spúšťaj s `PYTHONUTF8=1` (inak padne na diakritike).
 
+### Project (D-189, D-190)
+Every ETL tool (`etl.main`, `model_publish`, `revision_copy`, `revision_compare`, `derive`, `ids_check`,
+`doc_upload`, `pdf_link`, `pdf_text`, `documents`) takes `--project <code>`, default env `AIM_PROJECT`, else `OCB`.
+The code is `IfcProject.Name` of every file and the `object_ref` of the project node (`objects`,
+`object_type = 'project'`); a file with another Name fails with a clear error. All rows are written into that
+project, and closing stale rows, retiring objects, repointing, `close-legacy` and `--reset` never touch another
+project.
+- The first main-model load of a new code creates the project node from the file's IfcProject. A discipline model
+  (`--federate`) needs the node; its IfcProject GlobalId becomes an `ifc_guid_aliases` row of the node (IFC defines
+  IfcProject per exchange).
+- Outside OCB (D-190): file names follow the CDE scheme (D-036) with type `DiMS` and the code first,
+  `<code>_<stage>_<part>_<discipline>_DiMS_<number>_<description>.ifc`; node refs are `<code>:<ref>` (QR tags stay
+  unique, the plain ref is `properties._ref`); revisions are archived by the model UUID,
+  `ifc/archive/<information_containers.id>/vNNN.ifc.gz`. OCB keeps its names, refs and paths.
+- Check before a load, read only: `python -m etl.main --file X.ifc --project OCB --model ASR --dry-run --check-db`
+  lists what the load would add, change (including `project_id`) or close; exit code 2 when anything differs.
+- Loading a second project with a model code another project already uses needs the D-189 cleanup migration
+  (old global keys `information_containers (model)`, `model_revisions (model, revision)`, `uniq_active_guid_alias`).
+
 ### Manifest vzťahov (D-051)
 Hrany od F1 žijú v generickej `relationships` (diskriminátor `rel_type`); zoznam typov +
 ich IFC sémantika žije v manifeste (`manifest.py`, overený proti IFC schéme). Regenerácia
@@ -131,10 +150,10 @@ Upsert objektu prepíše `properties` tým, čo vydá model, okrem kľúčov hos
 `/api/underlay`): tie ostanú, re-ETL ich nezmaže (D-104 krok 3).
 
 ### `--reset` (nahradenie seedu, E2)
-`--reset` pred loadom `TRUNCATE ... CASCADE` vyprázdni AIM dáta (riadky, nie schému) —
-použité raz pri výmene ručného seedu za reálne ETL dáta. Seed je reprodukovateľný
-z `../supabase/seed.sql`, takže je to vratné. Bez `--reset` ide čistý idempotentný
-upsert (re-run rovnakého modelu nič neduplikuje).
+`--reset` pred loadom vyprázdni graf **jedného projektu** (D-189): jeho hrany, GUID aliasy a uzly okrem uzla
+projektu; revízie, kontajnery, klasifikácia a aktori ostávajú. Iné projekty sa nikdy nemažú (žiadny `TRUNCATE`).
+Na produkcii sa nespúšťa (AGENTS.md). Bez `--reset` ide čistý idempotentný upsert (re-run rovnakého modelu nič
+neduplikuje).
 
 ## Odvodené hrany — `etl.derive` (D-080)
 
@@ -192,7 +211,9 @@ púšťa na ASR, nie na VZT — špecifikácie s `minOccurs=1` by inak hlásili,
 IFC súbor je master. Každá zverejnená verzia modelu = nemenná kópia
 `ifc/archive/<model>/vNNN.ifc.gz` + riadok `model_revisions`; aktuálna je aj na
 `ifc/<model>.ifc`. Env: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-voliteľne `LIVE_CHANNEL`.
+voliteľne `LIVE_CHANNEL`. D-189: the model is the container of a project (`--project`); the advisory lock and the
+compare-and-swap are per container, readers take the stored `archive_path`; outside OCB the archive is
+`ifc/archive/<container uuid>/vNNN.ifc.gz` and the current key `ifc/<container uuid>.ifc` (D-190).
 
 Poradie jednej zmeny (rovnaké v GitHub Actions repa OCB):
 ```bash
@@ -307,6 +328,7 @@ ide na GUID fallback (správne — netlačí sa inštančný tag).
 ## Unit testy
 `pip install -r etl/requirements-dev.txt`, potom z koreňa repa `python -m pytest etl/tests -q`.
 Testy sú čisto lokálne (bez DB/Supabase) — pokrývajú parsovanie manifestu a load-logiku
-cez stub kurzor. Testy zápisu revízií (`test_model_publish.py`) potrebujú prázdnu Postgres
-databázu v `AIM_TEST_DATABASE_URL` (migrácia sa aplikuje do vlastnej schémy testu), inak sa
-preskočia.
+cez stub kurzor. Testy nad databázou (`test_model_publish.py`, `test_revision_copy.py`,
+`test_multi_project_load.py`) potrebujú lokálnu Postgres databázu so všetkými migráciami a uzlom projektu OCB v
+`AIM_TEST_DATABASE_URL` (nikdy produkciu), inak sa preskočia; každý test si založí vlastný projekt a po sebe ho
+zmaže.

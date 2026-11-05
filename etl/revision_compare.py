@@ -152,24 +152,27 @@ def summary(rows: list[dict[str, Any]]) -> dict[str, int]:
 
 
 def compare(model: str, rev_from: int, rev_to: int, with_placement: bool, from_file: Optional[Path] = None,
-            to_file: Optional[Path] = None, db_url: Optional[str] = None) -> dict[str, Any]:
+            to_file: Optional[Path] = None, db_url: Optional[str] = None,
+            project_code: Optional[str] = None) -> dict[str, Any]:
     import psycopg
 
     from etl import config
-    from etl.revision_copy import load_bytes, open_verified
+    from etl import project as project_mod
+    from etl.revision_copy import load_bytes, open_verified, revision_row
 
     db_url = db_url or config.database_url()
     with psycopg.connect(db_url) as conn, conn.cursor() as cur:
+        pid = project_mod.require(cur, config.project_code(project_code))
+        a, b = revision_row(cur, pid, model, rev_from), revision_row(cur, pid, model, rev_to)
         rows = [dict(zip(("global_id", "ifc_class", "change_action", "aspects"), r)) for r in
-                cur.execute("select * from ifc_rev_compare(%s, %s, %s)", (model, rev_from, rev_to)).fetchall()]
-        sha = dict(cur.execute("select revision, sha256 from model_revisions where model = %s and revision in (%s, %s)",
-                               (model, rev_from, rev_to)).fetchall())
-        classes = dict(cur.execute("select global_id, ifc_class from ifc_rev_objects where model = %s and revision = %s",
-                                   (model, rev_to)).fetchall()) if with_placement else {}
+                cur.execute("select * from ifc_rev_compare(%s, %s, %s, %s)",
+                            (model, rev_from, rev_to, pid)).fetchall()]
+        classes = dict(cur.execute("select global_id, ifc_class from ifc_rev_objects where model_revision_id = %s",
+                                   (b.id,)).fetchall()) if with_placement else {}
     placement = None
     if with_placement:
-        fa, _ = open_verified(load_bytes(model, rev_from, from_file), sha.get(rev_from))
-        fb, _ = open_verified(load_bytes(model, rev_to, to_file), sha.get(rev_to))
+        fa, _ = open_verified(load_bytes(a.archive_path, from_file), a.sha256)
+        fb, _ = open_verified(load_bytes(b.archive_path, to_file), b.sha256)
         placement = placement_changes(fa, fb)
         rows = merge(rows, placement, classes)
     rows.sort(key=lambda r: (r["change_action"], r["ifc_class"], r["global_id"]))
@@ -191,8 +194,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--placement", action="store_true", help="porovnať aj polohu zo súborov oboch revízií")
     ap.add_argument("--from-file", type=Path, help="lokálny archív revízie --from (sha256 sa overí)")
     ap.add_argument("--to-file", type=Path, help="lokálny archív revízie --to (sha256 sa overí)")
+    ap.add_argument("--project", metavar="CODE", help="project code (D-189); default env AIM_PROJECT or OCB")
     args = ap.parse_args(argv)
-    res = compare(args.model, args.rev_from, args.rev_to, args.placement, args.from_file, args.to_file)
+    res = compare(args.model, args.rev_from, args.rev_to, args.placement, args.from_file, args.to_file,
+                  project_code=args.project)
     print(json.dumps(res, ensure_ascii=False, indent=2, default=str))
     return 0
 

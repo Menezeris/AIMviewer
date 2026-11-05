@@ -3,6 +3,8 @@
 IFC súbor je master. Každá zverejnená verzia sa uloží nemenne a skomprimovane do
 `ifc/archive/<model>/vNNN.ifc.gz`, zapíše sa do `model_revisions` a nahrá sa aj na
 doterajší kľúč `ifc/<model>.ifc`, z ktorého čítajú viewer, motor (D-084) aj ETL.
+D-189: the model is a container of a project (`--project`, default AIM_PROJECT or OCB); outside OCB the
+archive is `ifc/archive/<container uuid>/vNNN.ifc.gz` and the current key `ifc/<container uuid>.ifc` (D-190).
 Zápis je compare-and-swap pod advisory lockom modelu: úloha pripravená nad revíziou
 N sa zverejní len vtedy, ak je N stále aktuálna; inak skončí kódom 3 (konflikt) a
 recept treba spustiť znova nad novou revíziou. Viewer sa o novej revízii dozvie až
@@ -43,6 +45,7 @@ import ifcopenshell
 import psycopg
 
 from . import config
+from . import project as project_mod
 from .db import close_legacy
 from .ifc_upload import (
     ARCHIVE_CACHE_SECONDS, BUCKET, CURRENT_CACHE_SECONDS, _request, _storage_env, put_object,
@@ -100,6 +103,7 @@ def guard(
     base_path: Optional[Path] = None,
     changes: Optional[dict] = None,
     strict: bool = True,
+    project_code: Optional[str] = None,
 ) -> GuardReport:
     """Technická poistka pred zverejnením (D-086 bod 6).
 
@@ -115,6 +119,11 @@ def guard(
         rep.fail(f"súbor sa nedá otvoriť: {exc}")
         return rep
     rep.schema = _schema_of(new)
+    if project_code is not None:
+        try:
+            project_mod.check_file(new, project_code, new_path.name)
+        except project_mod.ProjectError as exc:
+            rep.fail(str(exc))
 
     roots = Counter(e.GlobalId for e in new.by_type("IfcRoot") if e.GlobalId)
     dup = sorted(g for g, n in roots.items() if n > 1)
@@ -153,14 +162,47 @@ def guard(
     return rep
 
 
+# ── model identity (D-189) ────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class ModelRef:
+    """A model of a project: the code (`ASR`) is a label unique within the project, the identity is the
+    container (`information_containers.id`). `container_id` is None while the model has no revision yet."""
+
+    project_code: str
+    project_id: str
+    model: str
+    container_id: Optional[str] = None
+
+    @property
+    def legacy(self) -> bool:
+        return project_mod.is_legacy(self.project_code)
+
+
+def model_ref(cur, project_code: str, model: str, create: bool = False) -> ModelRef:
+    """Resolve project and container of a model; `create=True` makes the container (first revision)."""
+    project_id = project_mod.require(cur, project_code)
+    row = cur.execute(
+        "select id from information_containers where project_id = %s and model = %s", (project_id, model)
+    ).fetchone()
+    if row is None and create:
+        row = cur.execute("select container_for_model(%s, %s)", (project_id, model)).fetchone()
+    return ModelRef(project_code, project_id, model, str(row[0]) if row else None)
+
+
 # ── úložisko ──────────────────────────────────────────────────────────────────
 
-def archive_key(model: str, revision: int) -> str:
-    return f"archive/{model}/v{revision:03d}.ifc.gz"
+def archive_key(m: ModelRef, revision: int) -> str:
+    """Archive key of a new revision. OCB keeps `archive/<model>/vNNN.ifc.gz`; other projects use the model
+    UUID, `archive/<container uuid>/vNNN.ifc.gz` (D-190). Readers use `model_revisions.archive_path`."""
+    folder = m.model if m.legacy else m.container_id
+    if not folder:
+        raise ValueError(f"{m.model}: model without a container has no archive key")
+    return f"archive/{folder}/v{revision:03d}.ifc.gz"
 
 
-def current_key(model: str) -> str:
-    return f"{model}.ifc"
+def current_key(m: ModelRef) -> str:
+    return f"{m.model}.ifc" if m.legacy else f"{m.container_id}.ifc"
 
 
 def _put(key: str, data: bytes, *, upsert: bool, content_type: str, cache_control: int) -> None:
@@ -189,24 +231,43 @@ def compress(data: bytes) -> bytes:
     return gzip.compress(data, compresslevel=6, mtime=0)
 
 
-def fetch_revision(model: str, revision: int, dest: Path) -> Path:
-    dest.write_bytes(gzip.decompress(_get(archive_key(model, revision))))
+def storage_key(archive_path: str) -> str:
+    """`model_revisions.archive_path` (`ifc/archive/...`) -> key inside the bucket."""
+    prefix = f"{BUCKET}/"
+    return archive_path[len(prefix):] if archive_path.startswith(prefix) else archive_path
+
+
+def revision_archive(cur, m: ModelRef, revision: int) -> str:
+    """Stored archive key of a revision (never rebuilt from the code, D-189)."""
+    row = cur.execute(
+        "select archive_path from model_revisions where container_id = %s and revision = %s",
+        (m.container_id, revision),
+    ).fetchone()
+    if row is None or not row[0]:
+        raise SystemExit(f"{m.project_code}/{m.model}: revision v{revision} has no archive")
+    return storage_key(row[0])
+
+
+def fetch_revision(key: str, dest: Path) -> Path:
+    dest.write_bytes(gzip.decompress(_get(key)))
     return dest
 
 
-def announce(model: str, db_url: Optional[str] = None) -> Optional[int]:
+def announce(model: str, db_url: Optional[str] = None, project_code: Optional[str] = None) -> Optional[int]:
     """Po re-ETL oznámi aktuálnu revíziu modelu na živom kanáli; vráti ju, ak odišla."""
+    code = config.project_code(project_code)
     with psycopg.connect(db_url or config.database_url()) as conn, conn.cursor() as cur:
+        m = model_ref(cur, code, model)
         row = cur.execute(
-            "select revision, summary from model_revisions where model = %s and is_current",
-            (model,),
-        ).fetchone()
+            "select revision, summary from model_revisions where container_id = %s and is_current",
+            (m.container_id,),
+        ).fetchone() if m.container_id else None
     if row is None:
-        raise SystemExit(f"{model}: žiadna aktuálna revízia")
-    return row[0] if broadcast_revision(model, row[0], row[1]) else None
+        raise SystemExit(f"{code}/{model}: žiadna aktuálna revízia")
+    return row[0] if broadcast_revision(model, row[0], row[1], project=code) else None
 
 
-def broadcast_revision(model: str, revision: int, summary: Optional[str]) -> bool:
+def broadcast_revision(model: str, revision: int, summary: Optional[str], project: Optional[str] = None) -> bool:
     """Oznámi novú revíziu na živom kanáli (D-079); viewer s `?live=` obnoví modely."""
     channel = (os.environ.get("LIVE_CHANNEL") or "").strip()
     if not channel:
@@ -218,6 +279,8 @@ def broadcast_revision(model: str, revision: int, summary: Optional[str]) -> boo
         "summary": summary,
         "sentAt": datetime.now(timezone.utc).isoformat(),
     }
+    if project:
+        payload["project"] = project
     body = {"messages": [{"topic": channel, "event": LIVE_REVISION_EVENT, "payload": payload,
                           "private": False}]}
     status, _ = _request(
@@ -229,18 +292,20 @@ def broadcast_revision(model: str, revision: int, summary: Optional[str]) -> boo
 
 # ── revízie v DB ──────────────────────────────────────────────────────────────
 
-def current_revision(cur, model: str) -> Optional[tuple[int, str]]:
+def current_revision(cur, m: ModelRef) -> Optional[tuple[int, str]]:
     """(revízia, sha256) aktuálnej revízie modelu alebo None."""
+    if m.container_id is None:
+        return None
     row = cur.execute(
-        "select revision, sha256 from model_revisions where model = %s and is_current",
-        (model,),
+        "select revision, sha256 from model_revisions where container_id = %s and is_current",
+        (m.container_id,),
     ).fetchone()
     return (row[0], row[1]) if row else None
 
 
-def _lock(cur, model: str) -> None:
-    # Advisory lock na celú transakciu: súbežné zverejnenia toho istého modelu idú po jednom.
-    cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (f"model_revisions:{model}",))
+def _lock(cur, m: ModelRef) -> None:
+    # Advisory lock na celú transakciu: súbežné zverejnenia toho istého modelu (kontajnera) idú po jednom.
+    cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (f"model_revisions:{m.container_id}",))
 
 
 def publish(
@@ -257,25 +322,37 @@ def publish(
     strict: bool = True,
     dry_run: bool = False,
     db_url: Optional[str] = None,
+    project_code: Optional[str] = None,
+    check_name: bool = True,
 ) -> dict[str, Any]:
-    """Poistka → archív → zápis revízie (compare-and-swap) → aktuálny kľúč."""
+    """Poistka → archív → zápis revízie (compare-and-swap) → aktuálny kľúč.
+
+    `project_code` (D-189): the model is resolved within the project, the file must carry the project code in
+    IfcProject.Name, and outside OCB its name follows the CDE scheme (D-036, D-190)."""
+    code = config.project_code(project_code)
+    if check_name:
+        for warning in project_mod.check_file_name(path.name, code):
+            print(f"File name: code outside the CDE vocabulary ({warning}), D-036.", file=sys.stderr)
     data = path.read_bytes()
     sha = hashlib.sha256(data).hexdigest()
     url = db_url or config.database_url()
     summary = summary or (changes or {}).get("summary")
 
     with psycopg.connect(url) as conn, conn.cursor() as cur:
-        cur_rev = current_revision(cur, model)
+        m = model_ref(cur, code, model)
+        cur_rev = current_revision(cur, m)
+        base_key = revision_archive(cur, m, base) if base is not None else None
     if cur_rev is not None and cur_rev[1] == sha:
-        return {"status": "unchanged", "model": model, "revision": cur_rev[0]}
+        return {"status": "unchanged", "project": code, "model": model, "revision": cur_rev[0]}
     if (cur_rev[0] if cur_rev else None) != base:
         raise Conflict(f"{model}: aktuálna revízia je {cur_rev[0] if cur_rev else 'žiadna'}, "
                        f"úloha vychádza z {base}")
 
     with tempfile.TemporaryDirectory() as tmp:
-        base_path = fetch_revision(model, base, Path(tmp) / "base.ifc") if base is not None else None
-        rep = guard(path, base_path, changes, strict=strict and base is not None)
-    result: dict[str, Any] = {"model": model, "base": base, "sha256": sha, "guard": asdict(rep)}
+        base_path = fetch_revision(base_key, Path(tmp) / "base.ifc") if base_key is not None else None
+        rep = guard(path, base_path, changes, strict=strict and base is not None, project_code=code)
+    result: dict[str, Any] = {"project": code, "model": model, "base": base, "sha256": sha,
+                              "guard": asdict(rep)}
     if not rep.ok:
         result["status"] = "guard_failed"
         return result
@@ -285,67 +362,76 @@ def publish(
 
     with psycopg.connect(url) as conn:
         with conn.cursor() as cur:
-            _lock(cur, model)
-            now = current_revision(cur, model)
+            m = model_ref(cur, code, model, create=True)
+            _lock(cur, m)
+            now = current_revision(cur, m)
             if (now[0] if now else None) != base:
                 raise Conflict(f"{model}: medzitým vznikla revízia {now[0]}, úloha vychádza z {base}")
             top = cur.execute(
-                "select max(revision) from model_revisions where model = %s", (model,)
+                "select max(revision) from model_revisions where container_id = %s", (m.container_id,)
             ).fetchone()[0]
             new_rev = revision if revision is not None else (top + 1 if top is not None else 0)
             if top is not None and new_rev <= top:
                 raise ValueError(f"{model}: revízia v{new_rev} nie je vyššia ako v{top}")
-            key = archive_key(model, new_rev)
+            key = archive_key(m, new_rev)
             _put(key, compress(data), upsert=False, content_type="application/gzip",
                  cache_control=ARCHIVE_CACHE_CONTROL)
-            cur.execute("update model_revisions set is_current = false where model = %s and is_current",
-                        (model,))
+            cur.execute("update model_revisions set is_current = false where container_id = %s and is_current",
+                        (m.container_id,))
             cur.execute(
                 """
                 insert into model_revisions
                   (model, revision, parent_revision, is_current, sha256, size_bytes,
-                   archive_path, task_id, recipe_ref, summary, author, guard)
-                values (%s, %s, %s, true, %s, %s, %s, %s, %s, %s, %s, %s)
+                   archive_path, task_id, recipe_ref, summary, author, guard, project_id, container_id)
+                values (%s, %s, %s, true, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (model, new_rev, base, sha, len(data), f"{BUCKET}/{key}", task_id, recipe_ref,
-                 summary, author, json.dumps(asdict(rep))),
+                 summary, author, json.dumps(asdict(rep)), m.project_id, m.container_id),
             )
             if task_id:
                 cur.execute(
                     "update model_tasks set status = 'resolved', result_revision = %s, "
-                    "updated_at = now() where id = %s",
-                    (new_rev, task_id),
+                    "updated_at = now() where id = %s and project_id = %s",
+                    (new_rev, task_id, m.project_id),
                 )
         conn.commit()
 
     # Až po commite: pri zlyhaní ostane DB pravdou a `sync` aktuálny kľúč dorovná.
-    _put(current_key(model), data, upsert=True, content_type="application/octet-stream",
+    _put(current_key(m), data, upsert=True, content_type="application/octet-stream",
          cache_control=CURRENT_CACHE_CONTROL)
-    result.update(status="published", revision=new_rev)
+    result.update(status="published", revision=new_rev, container_id=m.container_id, archive=f"{BUCKET}/{key}")
     return result
 
 
-def revert(model: str, to: int, author: Optional[str] = None, db_url: Optional[str] = None) -> dict:
+def revert(model: str, to: int, author: Optional[str] = None, db_url: Optional[str] = None,
+           project_code: Optional[str] = None) -> dict:
     """Návrat = nová revízia s obsahom staršej; história sa neprepisuje."""
+    code = config.project_code(project_code)
     url = db_url or config.database_url()
     with psycopg.connect(url) as conn, conn.cursor() as cur:
-        now = current_revision(cur, model)
+        m = model_ref(cur, code, model)
+        now = current_revision(cur, m)
+        old_key = revision_archive(cur, m, to) if now is not None else None
     if now is None:
-        raise SystemExit(f"{model}: žiadna aktuálna revízia")
+        raise SystemExit(f"{code}/{model}: žiadna aktuálna revízia")
     with tempfile.TemporaryDirectory() as tmp:
-        old = fetch_revision(model, to, Path(tmp) / f"{model}_v{to}.ifc")
+        old = fetch_revision(old_key, Path(tmp) / f"{model}_v{to}.ifc")
+        # The archived revision passed the file-name rule when it was published.
         return publish(model=model, path=old, base=now[0], summary=f"návrat na v{to}",
-                       author=author, strict=False, db_url=url)
+                       author=author, strict=False, db_url=url, project_code=code, check_name=False)
 
 
-def sync(model: str, db_url: Optional[str] = None) -> int:
-    """Aktuálny kľúč `ifc/<model>.ifc` znova z archívu aktuálnej revízie."""
+def sync(model: str, db_url: Optional[str] = None, project_code: Optional[str] = None) -> int:
+    """Aktuálny kľúč znova z archívu aktuálnej revízie."""
+    code = config.project_code(project_code)
     with psycopg.connect(db_url or config.database_url()) as conn, conn.cursor() as cur:
-        now = current_revision(cur, model)
+        m = model_ref(cur, code, model)
+        now = current_revision(cur, m)
+        key = revision_archive(cur, m, now[0]) if now is not None else None
     if now is None:
-        raise SystemExit(f"{model}: žiadna aktuálna revízia")
-    data = gzip.decompress(_get(archive_key(model, now[0])))
-    _put(current_key(model), data, upsert=True, content_type="application/octet-stream",
+        raise SystemExit(f"{code}/{model}: žiadna aktuálna revízia")
+    data = gzip.decompress(_get(key))
+    _put(current_key(m), data, upsert=True, content_type="application/octet-stream",
          cache_control=CURRENT_CACHE_CONTROL)
     return now[0]
 
@@ -359,8 +445,11 @@ def _print(result: dict) -> None:
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
+    proj = argparse.ArgumentParser(add_help=False)
+    proj.add_argument("--project", metavar="CODE",
+                      help="project code (D-189); default env AIM_PROJECT or OCB")
 
-    p = sub.add_parser("publish", help="zverejniť novú revíziu modelu")
+    p = sub.add_parser("publish", parents=[proj], help="zverejniť novú revíziu modelu")
     p.add_argument("--model", required=True)
     p.add_argument("--file", required=True, type=Path)
     p.add_argument("--base", type=int, help="revízia, nad ktorou úloha vznikla (compare-and-swap)")
@@ -374,21 +463,21 @@ def main(argv: Optional[list[str]] = None) -> int:
                    help="prvá revízia alebo prevzatie súboru bez zoznamu zmien (poistka len hlási)")
     p.add_argument("--dry-run", action="store_true", help="len poistka, nič sa nezapíše")
 
-    r = sub.add_parser("revert", help="návrat na staršiu revíziu (ako nová revízia)")
+    r = sub.add_parser("revert", parents=[proj], help="návrat na staršiu revíziu (ako nová revízia)")
     r.add_argument("--model", required=True)
     r.add_argument("--to", required=True, type=int)
     r.add_argument("--author")
 
-    a = sub.add_parser("announce", help="po re-ETL oznámiť aktuálnu revíziu na živom kanáli")
+    a = sub.add_parser("announce", parents=[proj], help="po re-ETL oznámiť aktuálnu revíziu na živom kanáli")
     a.add_argument("--model", required=True)
 
-    s = sub.add_parser("sync", help="aktuálny kľúč znova z archívu")
+    s = sub.add_parser("sync", parents=[proj], help="aktuálny kľúč znova z archívu")
     s.add_argument("--model", required=True)
 
-    st = sub.add_parser("status", help="zoznam revízií")
+    st = sub.add_parser("status", parents=[proj], help="zoznam revízií")
     st.add_argument("--model")
 
-    sub.add_parser("close-legacy", help="uzavrieť aktívne hrany a GUID so zdrojom bez mena modelu")
+    sub.add_parser("close-legacy", parents=[proj], help="uzavrieť aktívne hrany a GUID so zdrojom bez mena modelu")
 
     args = parser.parse_args(argv)
     try:
@@ -400,29 +489,30 @@ def main(argv: Optional[list[str]] = None) -> int:
                 model=args.model, path=args.file, base=args.base, revision=args.revision,
                 changes=changes, task_id=args.task, recipe_ref=args.recipe,
                 summary=args.summary, author=args.author, strict=not args.bootstrap,
-                dry_run=args.dry_run,
+                dry_run=args.dry_run, project_code=args.project,
             )
             _print(result)
             return EXIT_GUARD if result["status"] == "guard_failed" else 0
         if args.cmd == "revert":
-            result = revert(args.model, args.to, args.author)
+            result = revert(args.model, args.to, args.author, project_code=args.project)
             _print(result)
             return EXIT_GUARD if result["status"] == "guard_failed" else 0
         if args.cmd == "announce":
-            rev = announce(args.model)
+            rev = announce(args.model, project_code=args.project)
             print(f"{args.model}: v{rev} oznámená na živom kanáli" if rev is not None
                   else f"{args.model}: živý kanál nie je nastavený alebo neodpovedal (LIVE_CHANNEL)")
             return 0
         if args.cmd == "sync":
-            print(f"{args.model}: aktuálny kľúč = v{sync(args.model)}")
+            print(f"{args.model}: aktuálny kľúč = v{sync(args.model, project_code=args.project)}")
             return 0
         if args.cmd == "status":
             with psycopg.connect(config.database_url()) as conn, conn.cursor() as cur:
+                pid = project_mod.require(cur, config.project_code(args.project))
                 rows = cur.execute(
                     "select model, revision, parent_revision, is_current, size_bytes, created_at, "
                     "coalesce(summary, '') from model_revisions "
-                    "where %s::text is null or model = %s order by model, revision",
-                    (args.model, args.model),
+                    "where project_id = %s and (%s::text is null or model = %s) order by model, revision",
+                    (pid, args.model, args.model),
                 ).fetchall()
             for m, rev, parent, cur_flag, size, created, summ in rows:
                 mark = "*" if cur_flag else " "
@@ -432,7 +522,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         if args.cmd == "close-legacy":
             with psycopg.connect(config.database_url()) as conn:
                 with conn.cursor() as cur:
-                    closed = close_legacy(cur)
+                    closed = close_legacy(cur, project_mod.require(cur, config.project_code(args.project)))
                 conn.commit()
             print(f"Uzavreté staré hrany {closed['edges']}, GUID záznamy {closed['guids']}, "
                   f"zaniknuté objekty {closed['objects']}, ručné väzby presunuté na nástupcu "

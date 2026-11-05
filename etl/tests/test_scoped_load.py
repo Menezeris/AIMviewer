@@ -19,6 +19,8 @@ from etl.db import (
 from etl.db import _load_class_links, _load_guid_aliases, writes_edge
 from etl.model import ClassLink, Edge, GuidAlias, GuidHistory, StagedModel
 
+P = "9e2dfcba-437b-43d3-a925-0dd29f195b38"  # OCB (D-189)
+
 
 class StubCursor:
     def __init__(self) -> None:
@@ -75,40 +77,43 @@ def test_close_stale_closes_only_this_model() -> None:
     cur = StubCursor()
     m = _model()
     scope_sources(m, "ASR")
-    closed = close_stale(cur, m, "ASR")
+    closed = close_stale(cur, m, "ASR", P)
     assert closed == {"edges": 1, "guids": 2, "objects": 1, "documents": 1, "repointed": 2}
     (edge_sql, edge_params), (guid_sql, guid_params), (alias_sql, alias_params), \
         (obj_sql, obj_params), (doc_sql, doc_params), *repoint = cur.calls
     assert edge_sql.startswith("update relationships set valid_until = now()")
-    assert ("source = %s and valid_until is null and not (rel_type = any(%s)) "
+    assert ("source = %s and project_id = %s and valid_until is null and not (rel_type = any(%s)) "
             "and not (id = any(%s))") in edge_sql
-    assert edge_params[0] == "etl:ASR"
+    assert edge_params[:2] == ("etl:ASR", P)
     # staré hrany typov z kópie revízie re-ETL neuzatvára (samostatný krok, D-183 K3 krok 3)
-    assert edge_params[1] == sorted({
+    assert edge_params[2] == sorted({
         "rel_aggregates", "rel_contained_in_spatial_structure", "rel_defines_by_type",
         "rel_assigns_to_group", "rel_associates_document", "rel_associates_classification"})
-    assert guid_sql.startswith("update ifc_guid_history set valid_until = now()")
-    assert guid_params == ("IFC import:ASR", [ids.guid_history_id("1.01", "G1")])
+    assert guid_sql.startswith("update ifc_guid_history h set valid_until = now()")
+    assert "o.project_id = %s" in guid_sql
+    assert guid_params == ("IFC import:ASR", [ids.guid_history_id("1.01", "G1")], P)
     assert alias_sql.startswith("update ifc_guid_aliases set valid_until = now()")
-    assert alias_params == ("IFC import:ASR", [ids.guid_alias_id("DD01", "T2")])
+    assert alias_params == ("IFC import:ASR", P, [ids.guid_alias_id("DD01", "T2")])
     # objekt bez aktívneho GUID zo zdroja modelu zanikne (D-088)
     assert obj_sql.startswith("update objects o set valid_until = now()")
     assert "not exists (select 1 from ifc_guid_history h where h.object_id = o.id and h.valid_until is null)" in obj_sql
-    assert obj_params == ("IFC import:ASR",)
+    assert obj_params == ("IFC import:ASR", P)
     # dokumenty modelu, ktoré beh nevydal, zaniknú (D-104); iné modely a E3 nie
     assert doc_sql.startswith("update objects set valid_until = now()")
-    assert "properties->>'_model' = %s and not (object_ref = any(%s))" in doc_sql
-    assert doc_params == (["document", "document_reference"], "ASR", [])
+    assert "properties->>'_model' = %s and project_id = %s and not (object_ref = any(%s))" in doc_sql
+    assert doc_params == (["document", "document_reference"], "ASR", P, [])
     # ručné väzby na nástupcu s rovnakým GUID, oba konce; väzby ETL a derive nie
     assert [sql.split(" = s.new_id")[0] for sql, _ in repoint] == [
         "update relationships r set from_id", "update relationships r set to_id"]
-    assert all("r.source not like 'etl%' and r.source not like 'derive:%'" in sql for sql, _ in repoint)
+    assert all("r.source not like 'etl%%' and r.source not like 'derive:%%'" in sql for sql, _ in repoint)
+    # a GUID is unique only within a project: the successor is searched in the same project (D-189)
+    assert all("n.project_id = o.project_id" in sql and params == (P,) for sql, params in repoint)
 
 
 def test_close_legacy_targets_sources_without_model() -> None:
     cur = StubCursor()
     close_legacy(cur)
-    assert [c[1] for c in cur.calls] == [("etl",), ("IFC import",), ("IFC import",), (), ()]
+    assert [c[1] for c in cur.calls] == [("etl", P), ("IFC import", P), ("IFC import", P), (P,), (P,)]
 
 
 def test_new_parent_closes_previous_active_parent_first() -> None:
@@ -117,7 +122,7 @@ def test_new_parent_closes_previous_active_parent_first() -> None:
     m = StagedModel()
     m.edges.append(Edge("aggregates", "1.06", "1NP", source="seed"))  # AIM vrstva, nie ETL
     m.edges.append(Edge("has_document", "1.06", "DOC", source="seed"))  # bez unique-active-parent
-    _load_edges(cur, m, {"1.06": "uuid-106", "1NP": "uuid-1np", "DOC": "uuid-doc"})
+    _load_edges(cur, m, {"1.06": "uuid-106", "1NP": "uuid-1np", "DOC": "uuid-doc"}, P)
 
     close_sql, close_params = cur.calls[0]
     assert close_sql.startswith("update relationships set valid_until = now()")
@@ -150,7 +155,7 @@ def test_load_writes_no_ifc_edges_from_file() -> None:
     m.edges.append(Edge("contained", "VZT.1", "2NP", source="etl:VZT"))  # 2NP nie je v behu ani v DB
     m.edges.append(Edge("defined_by_type", "VZT.1", "VT.1", source="etl:VZT"))
     m.edges.append(Edge("assigns_to_group", "VZT.1", "SYS", source="etl:VZT"))
-    _load_edges(cur, m, {"VZT.1": "u1"})
+    _load_edges(cur, m, {"VZT.1": "u1"}, P)
     assert cur.calls == []
     m.class_links.append(ClassLink(from_ref="VZT.1", system_name="S", identification="X", source="etl:VZT"))
     m.class_links.append(ClassLink(from_ref="DOC", system_name="ISO", identification="DR",
@@ -164,10 +169,31 @@ def test_guid_alias_closes_other_active_alias_then_upserts() -> None:
     cur = StubCursor()
     m = StagedModel()
     m.guid_aliases.append(GuidAlias(object_ref="DD01.06", ifc_guid="T2", source="IFC import:ASR"))
-    _load_guid_aliases(cur, m, {"DD01.06": "u-type"})
+    assert _load_guid_aliases(cur, m, {"DD01.06": "u-type"}, P) == [ids.guid_alias_id("DD01.06", "T2")]
     aid = ids.guid_alias_id("DD01.06", "T2")
-    (close_sql, close_params), (ins_sql, ins_params) = cur.calls
+    (look_sql, look_params), (close_sql, close_params), (ins_sql, ins_params) = cur.calls
+    assert look_sql.startswith("select id from ifc_guid_aliases") and look_params == (P, "T2", "u-type", "type_code")
     assert close_sql.startswith("update ifc_guid_aliases set valid_until = now()")
-    assert close_params == ("T2", aid)
+    # only aliases of the run's project are closed (D-189)
+    assert close_params == ("T2", P, aid)
     assert ins_sql.startswith("insert into ifc_guid_aliases")
-    assert ins_params == (aid, "u-type", "T2", "type_code", "IFC import:ASR")
+    assert ins_params == (aid, "u-type", "T2", "type_code", "IFC import:ASR", P)
+
+
+def test_equivalent_active_alias_is_kept() -> None:
+    """D-189: an alias with the same meaning under another id (migration backfill) is kept, not re-inserted,
+    and its id counts as emitted, so close_stale does not close it."""
+
+    class Found(StubCursor):
+        def fetchone(self):
+            return ("backfilled-id",)
+
+    cur = Found()
+    m = StagedModel()
+    m.guid_aliases.append(GuidAlias(object_ref="DD01.06", ifc_guid="T2", source="IFC import:ASR"))
+    assert _load_guid_aliases(cur, m, {"DD01.06": "u-type"}, P) == ["backfilled-id"]
+    assert len(cur.calls) == 1
+    cur = StubCursor()
+    close_stale(cur, m, "ASR", P, ["backfilled-id"])
+    alias_close = [c for c in cur.calls if c[0].startswith("update ifc_guid_aliases")][0]
+    assert alias_close[1] == ("IFC import:ASR", P, ["backfilled-id"])
