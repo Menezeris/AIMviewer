@@ -10,9 +10,9 @@ declare
   wall uuid; storey uuid; wtype uuid; bad uuid; nul uuid; cap uuid; space uuid; ref uuid; doc uuid;
   n int;
 begin
-  -- After the migration every rel_type is in warn mode.
-  select count(*) into n from relationship_types where ifc_check <> 'warn';
-  if n <> 0 then raise exception 'not all rel_types in warn: %', n; end if;
+  -- The modes are set here (20261105170000 left every rel_type in warn, 20261105210000 enforces most of
+  -- them; relationship_ifc_enforce.sql tests that state). This test starts from warn everywhere.
+  update relationship_types set ifc_check = 'warn';
 
   insert into objects (object_type, object_ref, name, ifc_type, project_id)
     values ('floor', 'T196C.S', 'storey', 'IfcBuildingStorey', p) returning id into storey;
