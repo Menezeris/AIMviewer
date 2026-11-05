@@ -491,6 +491,7 @@ je v prehliadači kvôli Realtime Broadcast (živý kanál, D-079) a bez odobrat
 PostgREST otváral celú DB. `service_role` má explicitný `grant all` / `grant execute`.
 Nová tabuľka alebo RPC teda **nie je** dostupná anon kľúču — ak to raz treba (auth + RLS),
 grant je vedomý krok v migrácii.
+Rola `platform_app` (D-188, §2.22) nemá na tabuľky `public` žiadny grant; píše len do vlastných schém `platform` a `platform_pgboss`.
 
 
 ### 2.13 Výsledky kontroly voči IDS (D-081, migrácia 20261017120000)
@@ -844,6 +845,54 @@ Zapisuje len host (`ifc_measure verify=true save=true`, `lib/verify/store.ts`, s
   formula?}}`) a `explanation` text (ako sa recept počíta, z registra); `v_verification_latest` ich má na konci. Staré riadky NULL (viewer
   ukáže vzorec textom); DB bez migrácie dostane beh bez nich (`lib/verify/store.ts`).
 
+### 2.22 Schéma `platform` pre platformu Assetin (D-188, migrácia `20261104220000_platform_schema.sql`, aplikovaná 4. 11.; test `supabase/tests/platform_schema.sql`)
+
+Schému `platform` vlastní repo AIMforked (fork Archives, Drizzle); AIMviewer ju nemigruje ani nečíta. Táto migrácia len pripraví miesto:
+- rozšírenie `vector` v `public`, text search konfigurácia `public.simple_unaccent` (fulltext forku);
+- rola `platform_app` (login, `connection limit 20`, `search_path = platform, public`, heslo mimo gitu), vlastník schém `platform`
+  a `platform_pgboss` (fronty pg-boss); `usage` na `public`, `create` na databázu; žiadne práva na tabuľky `public` a `library`;
+- obsah `platform` (31 tabuliek Archives, `progress_notifications`, žurnál `__drizzle_migrations`) zakladajú migrácie forku.
+
+### 2.23 Projects (D-189, migration `20261104233000_multi_project.sql`, applied 5 Nov; test `supabase/tests/multi_project.sql`)
+
+A project is the `objects` node with `object_type = 'project'` (IfcProject); its `id` is the project id
+(`platform.projects.id`) and its `object_ref` is the project code (`IfcProject.Name`). OCB =
+`9e2dfcba-437b-43d3-a925-0dd29f195b38`. IFC defines IfcProject per exchange, so the IfcProject of every other
+file of the project is an `ifc_guid_aliases` row of the node.
+
+- **`project_id uuid` references `objects(id)`** on `objects` (NULL only for `person` and `organization`, a project
+  node has `project_id = id`; check `objects_project_scope`, trigger `trg_objects_project_scope`), `relationships`
+  (derived by `relationships_validate` from the endpoints, NULL for edges between global nodes, edges across
+  projects are rejected), and NOT NULL on `information_containers`, `model_revisions`, `model_tasks`, `saved_views`,
+  `clash_tests`, `clash_runs`, `ids_documents`, `ids_runs`, `derivation_runs`, `verification_runs`, `icdd_imports`,
+  `drawing_link_overrides`, `ifc_guid_aliases`; nullable on `mcp_call_log`. Other tables take the project of their
+  parent row. Global: persons, `ifc_actor`, `ifc_application`, classification, `relationship_types`,
+  `ifc_property_definitions`, `derivation_rules`, schema `library`.
+- **Model identity:** the model is its container (`information_containers.id`); the code (`ASR`) is a label unique
+  within a project (`uniq_information_containers_project_model`). `model_revisions.container_id` (filled by
+  `trg_model_revisions_container` from `(project_id, model)`), unique `(container_id, revision)` and current per
+  container. The revision copy is keyed by `model_revision_id`: PK of `ifc_rev_imports` is `model_revision_id`,
+  PKs of `ifc_rev_objects` / `_property_sets` / `_relationships` start with it; `model` and `revision` stay as
+  labels. `trg_ifc_rev_*_model_revision` fill it from `(model, revision)` when unambiguous.
+- **Per-project keys:** `clash_tests (project_id, code)`, `ids_documents (project_id, code)`, `model_tasks
+  (project_id, number)`, `saved_views (project_id, lower(name))` for `saved` and `(project_id)` for `last`,
+  `information_containers (project_id, identification)`, `ifc_guid_aliases (project_id, ifc_guid)` active.
+  `objects.object_ref` stays unique across the platform; index `objects (project_id, ifc_guid)`.
+- **Views:** every `v_*`, `rel_*`, `aim_rel_*`, `ifc_guid_node`, `ifc_rev_current` (also `container_id`,
+  `model_revision_id`) and `ifc_storey_map` (also `model_revision_id`) has `project_id` as the last column; GUIDs
+  resolve within the project of the revision.
+- **Functions:** `project_model_revisions_at(p_project, t)`, `project_revisions_stale(p_project, based_on)`,
+  `project_engine_model_revisions(p_project, models)`, `ifc_rev_revision_id(p_project, model, revision)`,
+  `container_for_model(p_project, model)`, `georef_stamp(..., p_project)`. RPCs `search_everything`,
+  `search_documents`, `aggregate_objects`, `ifc_rev_resolve`, `ifc_rev_storey_elements`, `ifc_rev_compare` have a
+  trailing `p_project uuid`.
+- **Transitional until the cleanup migration** (after the app and ETL write `project_id`): the DEFAULT OCB of the
+  columns and of `p_project`, the old global keys (`information_containers (model)` and `(identification)`,
+  `model_revisions (model, revision)` and current `(model)`, `ifc_rev_imports (model, revision)`, `clash_tests
+  (code)`, `ids_documents (code)`, `uniq_model_tasks_number`, `uniq_saved_views_name`, `uniq_saved_views_last`,
+  `uniq_active_guid_alias`) and the OCB wrappers `model_revisions_at`, `revisions_stale`, `engine_model_revisions`,
+  `container_for_model(model)`, `georef_stamp(_item)` without the project.
+
 ## 4. Konvencia `properties` (D-022)
 
 `properties` JSONB obsahuje **property sety**, vnorené podľa názvu. IFC **atribúty**
@@ -864,7 +913,8 @@ PDF podkladu na podlažie, D-072, zapisuje `PATCH /api/underlay`; v2 `{version, 
 `yaw`, versioned; D-073, zapisuje `POST /api/captures`, len na `object_type='capture'`),
 `_model` (model federácie, ktorý dokument vydal; ETL ukončí dokumenty modelu, ktoré už
 nevydáva, D-104) a `_ifc_location` (pôvodná `Location` zo súboru, keď `documents.location`
-ukazuje na súbor v buckete `documents`, D-104) - oba len na `document`/`document_reference`.
+ukazuje na súbor v buckete `documents`, D-104) - oba len na `document`/`document_reference`. `_ref` (D-190) = plain ref
+(SNIM kód, číslo miestnosti) uzla projektu mimo OCB, ktorého `object_ref` je `<kód projektu>:<ref>`; zapisuje ETL.
 
 ---
 

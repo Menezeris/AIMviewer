@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { TEST_PROJECT } from "@/lib/project/testing";
+
 const { ROWS } = vi.hoisted(() => ({
   // 139 vyústiek ako v ASR+VZT (eval D-126, N2), id zoradené.
   ROWS: Array.from({ length: 139 }, (_, i) => ({
@@ -40,7 +42,7 @@ import { AskToolRuntime } from "./tools";
 
 describe("search_objects mode=list stránkuje (eval D-126, N2)", () => {
   it("stránky idú za sebou bez medzery: všetkých 139, hoci 100 riadkov sa do výsledku nezmestí", async () => {
-    const rt = new AskToolRuntime();
+    const rt = new AskToolRuntime(TEST_PROJECT.id);
     const seen: string[] = [];
     let offset: number | null = 0;
     let pages = 0;
@@ -59,7 +61,7 @@ describe("search_objects mode=list stránkuje (eval D-126, N2)", () => {
   });
 
   it("stĺpce určené filtrom sú raz v same, riadky ich nemajú", async () => {
-    const res = JSON.parse((await new AskToolRuntime().exec("search_objects", { predefined_type: "GRILLE" })).content);
+    const res = JSON.parse((await new AskToolRuntime(TEST_PROJECT.id).exec("search_objects", { predefined_type: "GRILLE" })).content);
     expect(res).toMatchObject({ total: 2, truncated: false, same: { predefined_type: "GRILLE" } });
     expect(res.rows.map((r: { name: string }) => r.name)).toEqual(["VV.03.02.000", "VV.03.02.001"]);
     expect(res.rows[0]).not.toHaveProperty("predefined_type");
@@ -67,11 +69,11 @@ describe("search_objects mode=list stránkuje (eval D-126, N2)", () => {
   });
 
   it("bez filtra stĺpca ostáva pole celých riadkov, prázdny výsledok radí fulltext", async () => {
-    const all = JSON.parse((await new AskToolRuntime().exec("search_objects", { query: "VV", limit: 5 })).content);
+    const all = JSON.parse((await new AskToolRuntime(TEST_PROJECT.id).exec("search_objects", { query: "VV", limit: 5 })).content);
     expect(all).toMatchObject({ total: 139, returned: 5 });
     expect(all).not.toHaveProperty("same");
     expect(all.rows[0]).toHaveProperty("ifc_type");
-    const none = JSON.parse((await new AskToolRuntime().exec("search_objects", { ifc_type: "IfcDoor" })).content);
+    const none = JSON.parse((await new AskToolRuntime(TEST_PROJECT.id).exec("search_objects", { ifc_type: "IfcDoor" })).content);
     expect(none).toMatchObject({ rows: [] });
     expect(none.hint).toContain("search_everything");
   });

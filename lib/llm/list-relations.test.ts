@@ -4,6 +4,10 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { orFilter, rowEq } from "@/lib/project/testing-filters";
+
+import { TEST_PROJECT } from "@/lib/project/testing";
+
 vi.mock("server-only", () => ({}));
 
 type Row = Record<string, unknown>;
@@ -17,7 +21,8 @@ function builder(table: string) {
   let head = false;
   const b = {
     select: (_c?: string, o?: { head?: boolean }) => ((head = !!o?.head), b),
-    eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), b),
+    eq: (c: string, v: unknown) => (filters.push((r) => rowEq(r, c, v)), b),
+    or: (expr: string) => (filters.push(orFilter(expr)), b),
     in: (c: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[c])), b),
     is: (c: string, v: unknown) => (filters.push((r) => (r[c] ?? null) === v), b),
     not: (c: string) => (filters.push((r) => (r[c] ?? null) !== null), b),
@@ -73,7 +78,7 @@ beforeEach(() => {
 });
 
 async function run(input: Record<string, unknown>) {
-  const res = await new AskToolRuntime().exec("list_relations", input);
+  const res = await new AskToolRuntime(TEST_PROJECT.id).exec("list_relations", input);
   expect(res.isError).toBe(false);
   return JSON.parse(res.content);
 }

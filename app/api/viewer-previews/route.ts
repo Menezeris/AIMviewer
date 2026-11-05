@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { listViewerPreviews, previewForPull } from "@/lib/viewer-previews";
+import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Náhľady viewera z PR forku pre výber viewera nad 3D (D-116).
@@ -8,7 +9,7 @@ import { listViewerPreviews, previewForPull } from "@/lib/viewer-previews";
  * Odpoveď je verejná a krátko cachovaná: obsahuje len čísla, názvy PR a URL
  * náhľadov verejného forku.
  */
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   const pr = req.nextUrl.searchParams.get("pr");
   try {
     if (pr !== null) {
@@ -24,3 +25,5 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "github unavailable" }, { status: 502 });
   }
 }
+
+export const GET = withRequestProject(getHandler);

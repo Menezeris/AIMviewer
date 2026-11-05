@@ -7,8 +7,8 @@ import { parseIfcBytes } from "./loader";
 /**
  * Cache parsovaných modelov v pamäti inštancie funkcie (D-084).
  *
- * Kľúč = id modelu federácie (ASR, VZT...); položka platí pre konkrétnu URL a
- * ETag. Súbor sa znova overí HEAD requestom najviac raz za `REVALIDATE_MS`
+ * Kľúč = identita modelu, kontajner (`information_containers.id`, D-189); kód modelu (ASR) je len
+ * štítok jedinečný v projekte. Položka platí pre konkrétnu URL a ETag. Súbor sa znova overí HEAD requestom najviac raz za `REVALIDATE_MS`
  * (rovnaké okno ako ISR, D-030) a pri zmene ETagu sa načíta nanovo. Súbežné
  * požiadavky na ten istý model čakajú na jedno načítanie (single-flight).
  * `unstable_cache` sa nedá použiť - parsovaný store má stovky MB a nie je
@@ -21,12 +21,24 @@ import { parseIfcBytes } from "./loader";
  */
 
 export interface EngineModelSource {
+  /** Model code within the project (ASR); the tools speak codes. */
   id: string;
   label: string;
   url: string;
+  /** Container id = the model's identity (D-189); the cache key. Missing only for env overrides. */
+  containerId?: string;
+  /** Current revision from the DB (D-086), when known. */
+  revision?: number;
+}
+
+/** Cache key of a model: its container, else (env override, tests) its code. */
+export function engineKey(src: EngineModelSource): string {
+  return src.containerId ?? src.id;
 }
 
 export interface CachedStore {
+  /** Cache key (`engineKey`: container id, D-189). */
+  key: string;
   id: string;
   url: string;
   etag: string | null;
@@ -105,7 +117,9 @@ async function fromArchive(
 
 async function load(src: EngineModelSource, fetchImpl: typeof fetch, now: () => number, archive: ArchiveResolver | null): Promise<CachedStore> {
   const started = now();
-  let got = archive ? await fromArchive(src, fetchImpl, archive) : null;
+  // The source already points at a revision archive (D-135 viewer URL from the DB, D-189).
+  let got = archiveRevision(src.url) !== null ? await fromArchive(src, fetchImpl, async () => src.url) : null;
+  if (!got && archive && archiveRevision(src.url) === null) got = await fromArchive(src, fetchImpl, archive);
   if (!got) {
     const res = await fetchImpl(src.url, { cache: "no-store" });
     if (!res.ok) throw new Error(`Model ${src.id} sa nepodarilo stiahnuť (${res.status})`);
@@ -115,6 +129,7 @@ async function load(src: EngineModelSource, fetchImpl: typeof fetch, now: () => 
   const store = await parseIfcBytes(bytes, `${src.id}.ifc`);
   const t = now();
   return {
+    key: engineKey(src),
     id: src.id,
     url: src.url,
     etag,
@@ -132,7 +147,8 @@ export async function getStore(src: EngineModelSource, deps: Deps = {}): Promise
   const fetchImpl = deps.fetchImpl ?? fetch;
   const now = deps.now ?? Date.now;
 
-  const cached = entries.get(src.id);
+  const key = engineKey(src);
+  const cached = entries.get(key);
   if (cached && cached.url === src.url) {
     if (now() - cached.checkedAt < REVALIDATE_MS) return { entry: cached, cold: false };
     const h = await head(src.url, fetchImpl).catch(() => null);
@@ -143,17 +159,17 @@ export async function getStore(src: EngineModelSource, deps: Deps = {}): Promise
     }
   }
 
-  const pending = inflight.get(src.id);
+  const pending = inflight.get(key);
   if (pending) return { entry: await pending, cold: true };
 
   const archive = deps.archive === undefined ? defaultArchive : deps.archive;
   const p = load(src, fetchImpl, now, archive)
     .then((entry) => {
-      entries.set(src.id, entry);
+      entries.set(key, entry);
       return entry;
     })
-    .finally(() => inflight.delete(src.id));
-  inflight.set(src.id, p);
+    .finally(() => inflight.delete(key));
+  inflight.set(key, p);
   return { entry: await p, cold: true };
 }
 
@@ -170,6 +186,7 @@ export function engineRevision(entry: CachedStore): { etag: string | null; size:
 /** Stav cache pre diagnostiku (ifc_models / ifc_engine_probe). */
 export function cacheSnapshot(): Array<Omit<CachedStore, "store">> {
   return [...entries.values()].map((e) => ({
+    key: e.key,
     id: e.id,
     url: e.url,
     etag: e.etag,

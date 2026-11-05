@@ -1,6 +1,6 @@
 import "server-only";
 
-import { revalidateTag } from "next/cache";
+import { revalidateProject } from "@/lib/data/revalidate";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { fetchAllPages } from "@/lib/data/pagination";
@@ -25,12 +25,13 @@ type ObjRow = {
 const OBJ_COLS = "id, object_ref, name, ifc_type, object_type, ifc_guid";
 
 /** Zóny stavby (IfcZone a IfcSpatialZone) s GUIDmi členských miestností. */
-export async function fetchZones(): Promise<ZoneObject[]> {
+export async function fetchZones(projectId: string): Promise<ZoneObject[]> {
   const supabase = getSupabaseAdmin();
   const rows = await fetchAllPages<ObjRow>((from, to) =>
     supabase
       .from("objects")
       .select(OBJ_COLS)
+      .eq("project_id", projectId)
       .in("object_type", ["zone", "spatial_zone"])
       .is("valid_until", null)
       .order("id")
@@ -43,6 +44,7 @@ export async function fetchZones(): Promise<ZoneObject[]> {
       supabase
         .from("rel_assigns_to_group")
         .select("from_id, to_id")
+        .eq("project_id", projectId)
         .in("to_id", zoneIds)
         .is("valid_until", null)
         .not("from_id", "is", null)
@@ -55,6 +57,7 @@ export async function fetchZones(): Promise<ZoneObject[]> {
       const { data, error } = await supabase
         .from("objects")
         .select("id, ifc_guid")
+        .eq("project_id", projectId)
         .in("id", memberIds.slice(i, i + 200))
         .eq("object_type", "space")
         .is("valid_until", null);
@@ -92,11 +95,12 @@ type OverrideRow = {
 };
 
 /** Živé ručné riadky dokumentu (jedna strana alebo všetky), od najstaršieho; cieľ s aktuálnymi údajmi. */
-export async function fetchOverrides(documentId: string, page: number | null, zones: readonly ZoneObject[]): Promise<LinkOverride[]> {
+export async function fetchOverrides(projectId: string, documentId: string, page: number | null, zones: readonly ZoneObject[]): Promise<LinkOverride[]> {
   const supabase = getSupabaseAdmin();
   let q = supabase
     .from("drawing_link_overrides")
     .select("page, text, bbox, action, target_id, target_ref, target_guid")
+    .eq("project_id", projectId)
     .eq("document_id", documentId)
     .is("valid_until", null)
     .order("created_at");
@@ -110,6 +114,7 @@ export async function fetchOverrides(documentId: string, page: number | null, zo
     const { data: objs, error: oErr } = await supabase
       .from("objects")
       .select(OBJ_COLS)
+      .eq("project_id", projectId)
       .in("id", ids)
       .is("valid_until", null);
     if (oErr) throw new Error(oErr.message);
@@ -143,10 +148,10 @@ export type ResolvedTarget = { ok: true; row: ObjRow } | { ok: false; error: str
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Cieľ priradenia: objects.id, object_ref, IFC GUID, alebo meno zóny/miestnosti (musí byť jednoznačné). */
-export async function resolveLinkTarget(input: string): Promise<ResolvedTarget> {
+export async function resolveLinkTarget(projectId: string, input: string): Promise<ResolvedTarget> {
   const supabase = getSupabaseAdmin();
   const t = input.trim();
-  const base = () => supabase.from("objects").select(OBJ_COLS).is("valid_until", null);
+  const base = () => supabase.from("objects").select(OBJ_COLS).eq("project_id", projectId).is("valid_until", null);
   const one = async (q: PromiseLike<{ data: unknown; error: { message: string } | null }>) => {
     const { data, error } = await q;
     if (error) throw new Error(error.message);
@@ -185,11 +190,12 @@ export interface OverrideWrite {
 }
 
 /** Ukončí živý riadok s rovnakým kľúčom (dokument, strana, text, bbox). */
-async function endLive(w: Pick<OverrideWrite, "documentId" | "page" | "text" | "bbox">): Promise<number> {
+async function endLive(projectId: string, w: Pick<OverrideWrite, "documentId" | "page" | "text" | "bbox">): Promise<number> {
   const supabase = getSupabaseAdmin();
   let q = supabase
     .from("drawing_link_overrides")
     .update({ valid_until: new Date().toISOString() })
+    .eq("project_id", projectId)
     .eq("document_id", w.documentId)
     .eq("page", w.page)
     .eq("text", w.text)
@@ -201,11 +207,12 @@ async function endLive(w: Pick<OverrideWrite, "documentId" | "page" | "text" | "
 }
 
 /** assign / clear (suppress) / reset (späť na automatiku); predošlý riadok s rovnakým kľúčom sa ukončí. */
-export async function writeOverride(w: OverrideWrite): Promise<{ replaced: number }> {
-  const replaced = await endLive(w);
+export async function writeOverride(projectId: string, w: OverrideWrite): Promise<{ replaced: number }> {
+  const replaced = await endLive(projectId, w);
   if (w.action !== "reset") {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("drawing_link_overrides").insert({
+      project_id: projectId,
       document_id: w.documentId,
       document_ref: w.documentRef,
       page: w.page,
@@ -219,6 +226,6 @@ export async function writeOverride(w: OverrideWrite): Promise<{ replaced: numbe
     });
     if (error) throw new Error(error.message);
   }
-  revalidateTag("aim", { expire: 0 });
+  revalidateProject(projectId);
   return { replaced };
 }

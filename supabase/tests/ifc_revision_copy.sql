@@ -111,10 +111,11 @@ begin
       raise exception 'anon/authenticated majú práva na %', t;
     end if;
   end loop;
-  if has_function_privilege('anon', 'ifc_rev_compare(text, integer, integer)', 'execute') then
+  -- D-189: trailing p_project parameter
+  if has_function_privilege('anon', 'ifc_rev_compare(text, integer, integer, uuid)', 'execute') then
     raise exception 'anon smie volať ifc_rev_compare';
   end if;
-  if not has_function_privilege('service_role', 'ifc_rev_compare(text, integer, integer)', 'execute') then
+  if not has_function_privilege('service_role', 'ifc_rev_compare(text, integer, integer, uuid)', 'execute') then
     raise exception 'service_role nesmie volať ifc_rev_compare';
   end if;
 end $$;

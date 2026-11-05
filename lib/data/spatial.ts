@@ -1,10 +1,9 @@
 import "server-only";
 
 import { cache } from "react";
-import { unstable_cache } from "next/cache";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { AIM_CACHE } from "@/lib/data/constants";
+import { cachedProjectRead } from "@/lib/data/revalidate";
 import { fetchAllPages } from "@/lib/data/pagination";
 import { isGroupOnly, treeEdges } from "@/lib/data/group-only";
 
@@ -78,7 +77,8 @@ interface RawSpatialObject {
  * limit 1000). Stabilné poradie cez `order(id)` — nutné pre správne stránkovanie.
  */
 function loadSpatialObjects(
-  supabase: ReturnType<typeof getSupabaseAdmin>
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  projectId: string,
 ): Promise<RawSpatialObject[]> {
   return fetchAllPages<RawSpatialObject>((from, to) =>
     supabase
@@ -86,6 +86,7 @@ function loadSpatialObjects(
       .select(
         "id, object_type, object_ref, name, ifc_type, ifc_guid, predefined_type"
       )
+      .eq("project_id", projectId)
       .in("object_type", SPATIAL_TYPES as unknown as string[])
       .is("valid_until", null) // zaniknuté objekty (D-088)
       .order("id", { ascending: true })
@@ -107,12 +108,14 @@ interface RawEdge {
  */
 function loadSpatialEdges(
   supabase: ReturnType<typeof getSupabaseAdmin>,
-  view: "rel_aggregates" | "rel_contained_in_spatial_structure"
+  view: "rel_aggregates" | "rel_contained_in_spatial_structure",
+  projectId: string,
 ): Promise<RawEdge[]> {
   return fetchAllPages<RawEdge>((from, to) =>
     supabase
       .from(view)
       .select("from_id, to_id")
+      .eq("project_id", projectId)
       .is("valid_until", null)
       // Strana bez uzla AIM (D-183 K3) do stromu nepatrí.
       .not("from_id", "is", null)
@@ -136,20 +139,20 @@ interface GraphData {
  * záznamu, takže prvý klik na nový uzol už nespúšťa žiadne DB dotazy na graf
  * (predtým bol `fetchNode` cachovaný per-id → každý nový uzol = celý graf znova).
  */
-const loadGraphData = unstable_cache(async (): Promise<GraphData> => {
+const loadGraphData = cachedProjectRead("spatial-graph", async (projectId: string): Promise<GraphData> => {
   const supabase = getSupabaseAdmin();
 
   const [objectRows, aggEdges, containedEdges, floorsRes, spacesRes] = await Promise.all([
     // Priestorové objekty stránkovane — Supabase capuje odpoveď na 1000 riadkov
     // (`db-max-rows`), a assetov je po federácii VZT (D-049) > 1000. Bez stránkovania
     // by sa prvky nad limit stratili z grafu (fetchNode → 404).
-    loadSpatialObjects(supabase),
+    loadSpatialObjects(supabase, projectId),
     // Spatial väzby IFC-kanonicky (D-048): dekompozícia štruktúry (rel_aggregates)
     // + umiestnenie prvku (rel_contained_in_spatial_structure). Len aktívne
     // (valid_until IS NULL) — partial-unique na oboch garantuje 1 rodiča na dieťa.
     // Tiež stránkovane (hrán je rovnako veľa ako prvkov).
-    loadSpatialEdges(supabase, "rel_aggregates"),
-    loadSpatialEdges(supabase, "rel_contained_in_spatial_structure"),
+    loadSpatialEdges(supabase, "rel_aggregates", projectId),
+    loadSpatialEdges(supabase, "rel_contained_in_spatial_structure", projectId),
     supabase.from("floors").select("id, elevation"),
     supabase.from("spaces").select("id, long_name"),
   ]);
@@ -192,14 +195,14 @@ const loadGraphData = unstable_cache(async (): Promise<GraphData> => {
   const edges = treeEdges(aggEdges, containedEdges, byId);
 
   return { objects: [...byId.values()], edges };
-}, ["spatial-graph"], AIM_CACHE);
+});
 
 /**
  * Graf ako Mapy (per-request memo cez `cache()`) — zloženie z cachovaných dát
  * je čisto in-memory (~1–2k uzlov, sub-ms), žiadny DB round-trip pri HIT-e.
  */
-const loadGraph = cache(async (): Promise<Graph> => {
-  const { objects, edges } = await loadGraphData();
+const loadGraph = cache(async (projectId: string): Promise<Graph> => {
+  const { objects, edges } = await loadGraphData(projectId);
 
   const byId = new Map<string, ObjectRow>(objects.map((o) => [o.id, o]));
   const childrenOf = new Map<string, string[]>();
@@ -242,8 +245,8 @@ function buildSubtree(id: string, graph: Graph): SpatialNode {
  * Derivát cachovaného grafu (`loadGraphData`) — skladanie je in-memory, vlastný
  * `unstable_cache` netreba (render routy navyše cachuje Full Route Cache).
  */
-export const fetchSpatialTree = cache(async (): Promise<SpatialNode[]> => {
-  const graph = await loadGraph();
+export const fetchSpatialTree = cache(async (projectId: string): Promise<SpatialNode[]> => {
+  const graph = await loadGraph(projectId);
   const roots: ObjectRow[] = [];
   for (const row of graph.byId.values()) {
     // Koreň = priestorová štruktúra bez rodiča (site). `asset` bez rodiča (prvok bez
@@ -277,8 +280,8 @@ function toRef(row: ObjectRow): NodeRef {
  * (predchádzajúce per-id cachovanie tu pri každom novom uzle znova načítavalo
  * celý graf; to bola hlavná latencia studeného kliku).
  */
-export const fetchNode = cache(async (id: string): Promise<NodeDetail | null> => {
-  const graph = await loadGraph();
+export const fetchNode = cache(async (projectId: string, id: string): Promise<NodeDetail | null> => {
+  const graph = await loadGraph(projectId);
   const node = graph.byId.get(id);
   if (!node) return null;
 

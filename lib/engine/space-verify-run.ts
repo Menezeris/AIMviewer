@@ -1,7 +1,7 @@
 import { extractPropertiesOnDemand, extractTypePropertiesOnDemand, type IfcDataStore } from "@ifc-lite/parser";
 import { EntityNode } from "@ifc-lite/query";
 
-import { getIfcModels } from "../data/ifc-models";
+import { requestIfcModels } from "../project/request-models";
 import type { MeasureSegment } from "../viewer-measure";
 import { MAX_MEASURE_SEGMENTS } from "../viewer-measure";
 import { NET_FLOOR_AREA, REGISTRY_VERSION } from "../verify/quantity-methods";
@@ -300,7 +300,7 @@ export { counts as statusCounts };
  * všetkých modelov (`guids` = null, "run_all"). Bez stropu MAX_SPACES (ten drží len tool); vráti aj podpis revízie.
  */
 export async function verifySpacesByGuid(guids: string[] | null, deps: EngineDeps): Promise<{ verified: VerifiedSpace[]; stamp: Record<string, number>; used: string[] }> {
-  const modelIds = (deps.sources ?? getIfcModels)().map((m) => m.id);
+  const modelIds = (deps.sources ?? requestIfcModels)().map((m) => m.id);
   const { models, revision } = await modelsFor(modelIds, deps);
   const located: Array<{ m: EngineModel; id: number }> = [];
   if (guids === null) {
@@ -343,7 +343,7 @@ export async function ifcVerifySpaces(input: Record<string, unknown>, deps: Engi
   const missing = targets.filter((t) => !guidFor(t));
   if (missing.length > 0) throw new InputError(`Bez IFC GUID v AIM: ${missing.join(", ")} - zadaj IFC GlobalId (napr. z ifc_query).`);
 
-  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? getIfcModels)().map((m) => m.id);
+  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? requestIfcModels)().map((m) => m.id);
   const { models, revision } = await modelsFor(modelIds, deps);
   const session = await openEngineSession(models);
   const where = new Map<string, { m: EngineModel; id: number }>();

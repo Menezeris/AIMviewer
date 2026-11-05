@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from etl.ids_check import NO_APPLICABLE, CheckResult, ResultRow, check, write_run
+from etl.project import OCB_ID as OCB
 
 IDS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <ids:ids xmlns:ids="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema"
@@ -102,6 +103,8 @@ def test_write_run_resolves_guids_and_counts() -> None:
     run_id, missing = write_run(cur, res, model_label="ASR", model_file="ASR.ifc", ids_source="lib@x")
     assert (run_id, missing) == ("run-1", 1)
     run = [c for c in cur.calls if c[0].startswith("insert into ids_runs")][0]
-    assert run[1][-2:] == (3, 2)  # results_total, results_failed
+    assert run[1][-3:] == (3, 2, OCB)  # results_total, results_failed, project_id (D-189)
+    lookup = cur.calls[0]
+    assert "o.project_id = %s" in lookup[0] and lookup[1][1] == OCB  # GUID resolves within the project
     results = [c[1] for c in cur.calls if c[0].startswith("insert into ids_results")]
     assert [r[5] for r in results] == ["uuid-1", None, None]  # object_id: G1 v DB, G2 nie, zóna bez prvku

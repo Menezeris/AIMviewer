@@ -274,6 +274,8 @@ interface Props {
   /** Vložený viewer (D-116): produkčný, alebo náhľad PR forku z výberu viewera.
    *  Overený volajúcim (lib/viewer-source.ts); zmena remountne iframe. */
   viewerUrl?: string;
+  /** Project code (D-189): the BCF project id the viewer loads topics from. */
+  projectCode?: string;
 }
 
 export function IFCViewer({
@@ -295,6 +297,7 @@ export function IFCViewer({
   onNavigate,
   onCaptureClick,
   viewerUrl = PROD_VIEWER_URL,
+  projectCode,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [status, setStatus] = useState<"loading" | "error" | "timeout" | "ready">("loading");
@@ -785,7 +788,7 @@ export function IFCViewer({
           // Vrstva AIM nad modelmi (D-089): pravidlá odvodení, počty, revízie modelov.
           if (derivations) post({ type: "AIM_DERIVATIONS_LOAD", layer: derivations });
           // BCF témy (D-099): viewer si ich načíta z /api/bcf tohto originu bez tokenu.
-          post(bcfLoadMessage(window.location.origin));
+          post(bcfLoadMessage(window.location.origin, projectCode));
           // Pohľady z DB (D-161) do panela Presentation; odpoveď príde až po ops, ale `VIEW_ACTIVATE` z ops
           // si pohľad hľadá vo vieweri, preto ju fork zaradí do brány príkazov za ne.
           loadViews();
@@ -1010,7 +1013,7 @@ export function IFCViewer({
   // ── BCF témy (D-099) — po zápise z chatu príde udalosť zo živého kanála.
   useEffect(() => {
     const reload = () => {
-      if (loadedRef.current) post(bcfLoadMessage(window.location.origin));
+      if (loadedRef.current) post(bcfLoadMessage(window.location.origin, projectCode));
     };
     window.addEventListener(BCF_CHANGED_WINDOW_EVENT, reload);
     return () => window.removeEventListener(BCF_CHANGED_WINDOW_EVENT, reload);

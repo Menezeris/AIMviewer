@@ -47,7 +47,8 @@ export function resolveRunModel(models: readonly IfcModel[], viewer: { model_id?
     return names.some((n) => n === file || n === key || n === m.id.toLowerCase() || n === m.label.toLowerCase());
   });
   if (hits.length !== 1) return null;
-  const key = modelKey(hits[0].url);
+  // Models from the DB carry their code (D-190: the file may be named by the container uuid).
+  const key = hits[0].containerId ? hits[0].id : modelKey(hits[0].url);
   return key ? { model: key, revision: hits[0].revision ?? null } : null;
 }
 

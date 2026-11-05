@@ -5,6 +5,10 @@
 > `.cursor/rules/*.mdc`, `GEMINI.md`) sú **len tenké pointery sem** — nekopíruj do nich
 > obsah, aby sa nerozišli. Zmeny konvencií rob **tu**.
 
+> **Language (Samuel, 4 Nov 2026):** everything new is written in English: code, comments,
+> commits, PRs, docs, new D-records and answers to Samuel. Existing Slovak text stays as it is and
+> is not translated.
+
 ## Dokumentačná mapa (D-017)
 
 **Zlaté pravidlo:** každý fakt žije na **jednom** mieste, ostatné naň linkujú. Keď píšeš,
@@ -250,6 +254,10 @@ Každá úroveň je riadok v `objects` (líši sa `object_type`). Spatial väzby
   nová tabuľka/RPC im práva nedáva. Dáta sa cez anon kľúč nikdy nečítajú.
 - ISR cache (`unstable_cache`, tag `aim`, revalidate 60 s, D-030); po ETL loade
   `revalidateTag("aim")`.
+- **Project (D-189):** every query of a project-bound table or view names `project_id` (guard test
+  `lib/project/project-scope.test.ts`); the request project comes from `lib/project/` (`currentProjectId()`),
+  cached reads take it as an argument (`cachedProjectRead`), writes clear it with `revalidateProject`. No code
+  assumes a model code (ASR, VZT) exists.
 
 ## RDF / ICDD
 RDF nie je interná databáza, len export formát. Kontajner ICDD (ISO 21597) skladá prehliadač podľa plánu z hosta

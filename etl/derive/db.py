@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .. import ids
+from ..project import OCB_ID
 from . import DerivedEdge
 
 
@@ -22,19 +23,24 @@ class WriteStats:
     disallowed: list[tuple[str, str]] = field(default_factory=list)  # (guid, object_type)
 
 
-def edge_uuid(source: str, edge: DerivedEdge) -> str:
-    return ids.stable_uuid("derive", source, edge.rel_type, edge.from_guid, edge.to_guid)
+def edge_uuid(source: str, edge: DerivedEdge, project_id: str = OCB_ID) -> str:
+    """Deterministic id from GUIDs. A GUID is unique only within a project (D-189), so outside OCB the
+    project is part of the key; OCB keeps its existing ids."""
+    if project_id == OCB_ID:
+        return ids.stable_uuid("derive", source, edge.rel_type, edge.from_guid, edge.to_guid)
+    return ids.stable_uuid("derive", project_id, source, edge.rel_type, edge.from_guid, edge.to_guid)
 
 
-def write_edges(cur, source: str, rel_type: str, edges: list[DerivedEdge]) -> WriteStats:
-    """Zapíše `edges` (všetky jedného `rel_type`) a uzavrie zastarané hrany `source`."""
+def write_edges(cur, source: str, rel_type: str, edges: list[DerivedEdge],
+                project_id: str = OCB_ID) -> WriteStats:
+    """Zapíše `edges` (všetky jedného `rel_type`) a uzavrie zastarané hrany `source` v projekte (D-189)."""
     stats = WriteStats()
     guids = sorted({g for e in edges for g in (e.from_guid, e.to_guid)})
     rows = cur.execute(
         "select h.ifc_guid, o.id, o.object_type from ifc_guid_history h "
         "join objects o on o.id = h.object_id "
-        "where h.valid_until is null and h.ifc_guid = any(%s)",
-        (guids,),
+        "where h.valid_until is null and h.ifc_guid = any(%s) and o.project_id = %s",
+        (guids, project_id),
     ).fetchall()
     by_guid = {g: (oid, otype) for g, oid, otype in rows}
 
@@ -62,7 +68,7 @@ def write_edges(cur, source: str, rel_type: str, edges: list[DerivedEdge]) -> Wr
             continue
         # id hrany je z GUID; objekt s tým GUID sa môže zmeniť (premenovaný object_ref,
         # D-088), preto upsert prepisuje aj from_id/to_id.
-        eid = edge_uuid(source, e)
+        eid = edge_uuid(source, e, project_id)
         keep.append(eid)
         cur.execute(
             """
@@ -79,9 +85,9 @@ def write_edges(cur, source: str, rel_type: str, edges: list[DerivedEdge]) -> Wr
 
     closed = cur.execute(
         "update relationships set valid_until = now() "
-        "where source = %s and rel_type = %s and valid_until is null and not (id = any(%s)) "
-        "returning id",
-        (source, rel_type, keep),
+        "where source = %s and rel_type = %s and project_id = %s and valid_until is null "
+        "and not (id = any(%s)) returning id",
+        (source, rel_type, project_id, keep),
     ).fetchall()
     stats.closed = len(closed)
     return stats

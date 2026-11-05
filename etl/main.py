@@ -3,6 +3,7 @@
 Spustenie z koreňa repa:
     python -m etl.main --file etl/data/model.ifc            # zapíše do DB
     python -m etl.main --file etl/data/model.ifc --dry-run  # len zhrnutie, bez DB
+    python -m etl.main --file X.ifc --project OCB --dry-run --check-db   # what the load would change (read only)
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import sys
 from typing import Optional, Sequence
 
 from . import config, extract, transform
+from . import project as project_mod
 from .db import load_model
 from .model import StagedModel
 
@@ -43,16 +45,31 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         help="meno modelu federácie (ASR, VZT; D-086): hrany a GUID história dostanú zdroj "
              "modelu a čo tento beh už nevydal (zmazané/presunuté prvky), sa uzavrie.",
     )
+    parser.add_argument(
+        "--project", metavar="CODE",
+        help="project code = IfcProject.Name of every file (D-189); default env AIM_PROJECT or OCB. "
+             "The first main-model load of a new code creates the project.",
+    )
+    parser.add_argument(
+        "--check-db", action="store_true",
+        help="with --dry-run: compare with the database read only and list what the load would change",
+    )
     args = parser.parse_args(argv)
+    code = config.project_code(args.project)
 
+    if args.check_db and not args.dry_run:
+        raise SystemExit("--check-db works only with --dry-run.")
     if args.federate and args.reset:
         raise SystemExit("--federate a --reset sa vylučujú: federate pridáva do už "
                          "naloženej štruktúry, reset by ju zmazal (D-049).")
 
+    for warning in project_mod.check_file_name(args.file, code):
+        print(f"File name: code outside the CDE vocabulary ({warning}), D-036.")
     model = extract.open_model(args.file)
     print(f"IFC schéma: {extract.schema_version(model)}")
+    print(f"Project: {code} (IfcProject.Name checked, D-189)")
 
-    staged = transform.to_staged(model, federate=args.federate)
+    staged = transform.to_staged(model, federate=args.federate, project_code=code)
     print(f"Staged: {staged.summary()}")
     _print_unlinked(staged)
 
@@ -61,6 +78,13 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         _print_sample(staged)
         if staged.coverage is not None:
             _print_coverage(staged.coverage)
+        if args.check_db:
+            from .check_db import check
+            diff = check(config.database_url(), staged, code, scope=args.model,
+                         storage_base=config.supabase_url())
+            print("\n" + diff.report())
+            if diff.total:
+                raise SystemExit(2)
         return
 
     url = config.database_url()
@@ -69,7 +93,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     storage_base = config.supabase_url()
     if storage_base is None:
         print("Chýba SUPABASE_URL → dokumenty ostanú bez súborov v buckete (D-104).")
-    closed = load_model(url, staged, reset=args.reset, scope=args.model, storage_base=storage_base)
+    closed = load_model(url, staged, reset=args.reset, scope=args.model, storage_base=storage_base,
+                        project_code=code)
     docs = [o.document for o in staged.objects if o.object_type == "document" and o.document]
     print(f"Dokumenty: {len(docs)}, so súborom v buckete "
           f"{sum(d.storage_type == 'supabase' for d in docs)} (D-104).")

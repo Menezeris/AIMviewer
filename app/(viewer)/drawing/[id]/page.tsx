@@ -5,6 +5,7 @@ import { fetchDrawing } from "@/lib/data/drawing";
 import { fetchDocument } from "@/lib/data/object";
 import DrawingWorkspace from "@/components/drawing-workspace";
 import type { DocumentPanelData } from "@/components/document-info-panel";
+import { currentPageProject } from "@/lib/project/page";
 
 // ISR — render sa cachuje a po 60 s revaliduje (viewer je verejný read-only, D-029).
 export const revalidate = 60;
@@ -23,17 +24,18 @@ export default async function DrawingPage({
   /** `focus` = `objects.id` prvku na zvýraznenie; `page` = počiatočná strana (D-042 D). */
   searchParams: Promise<{ focus?: string; page?: string }>;
 }) {
+  const projectId = (await currentPageProject()).id;
   const { id } = await params;
   const { focus, page } = await searchParams;
 
   // Výkres (PDF + klikateľné regióny) + dokument (metadáta + „pripojené k") naraz.
   const [drawing, document] = await Promise.all([
-    fetchDrawing(id),
-    fetchDocument(id),
+    fetchDrawing(projectId, id),
+    fetchDocument(projectId, id),
   ]);
   if (!document) {
     // Odkaz na časť dokumentu (IfcDocumentReference, D-104) = jeho dokument na strane.
-    const ref = await fetchDocumentReference(id);
+    const ref = await fetchDocumentReference(projectId, id);
     if (!ref) notFound(); // nie je dokument
     redirect(`/drawing/${ref.documentId}${ref.page ? `?page=${ref.page}` : ""}`);
   }
