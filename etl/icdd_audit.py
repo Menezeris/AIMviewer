@@ -1,24 +1,24 @@
-"""Audit kontajnera ICDD (ISO 21597-1/-2) po exporte z AIM (D-181).
+"""Audit of an ICDD container (ISO 21597-1/-2) after an export from AIM (D-181).
 
-Spustenie z koreňa repa (len čítanie, bez DB a bez siete)::
+Run from the repo root (read-only, no DB and no network)::
 
     python -m etl.icdd_audit AIM_<versionID>.icdd [--json out.json] [--list-limit 50]
 
-Vypíše stručné zhrnutie a skončí kódom 0 (bez chýb, varovania sú dovolené), 1 (chyba) alebo 2 (súbor sa nedá
-prečítať). Kontroly (zadanie Samuela 1. 11. 2026):
+Prints a short summary and exits with code 0 (no errors, warnings are allowed), 1 (error) or 2 (the file cannot be
+read). Checks (Samuel's assignment of 1 Nov 2026):
 
-* rozloženie ZIP: tri priečinky, hlavička `index.rdf` (iný zápis = varovanie), ontológie v `Ontology resources/`;
-* index <-> `Payload documents/` obojsmerne, SHA-256 každého `ct:SecuredDocument`;
-* každý súbor v `Payload triples/` je v indexe ako `ct:Linkset` a naopak; varovanie pri prázdnom linksete;
-* každý `ls:LinkElement` má `ls:hasDocument` na dokument z indexu; identifikátory majú pole a hodnotu;
-* GlobalId (a `IfcDocument*.Identification`) z linksetov existuje v príslušnom IFC;
-* žiadne duplicitné väzby (typ, od, do), žiadne osirelé ani visiace `ls:LinkElement`;
-* pokrytie: MEP produkty IFC (bez portov) bez väzby na priestor alebo zónu (varovanie, pri prvku bez podlažia chyba);
-* žiadne predikáty ani triedy mimo pribalených ontológií (ISO 21597 a aim).
+* ZIP layout: three folders, header `index.rdf` (another spelling = warning), ontologies in `Ontology resources/`;
+* index <-> `Payload documents/` in both directions, SHA-256 of every `ct:SecuredDocument`;
+* every file in `Payload triples/` is in the index as a `ct:Linkset` and vice versa; a warning for an empty linkset;
+* every `ls:LinkElement` has `ls:hasDocument` pointing to a document from the index; identifiers have a field and a value;
+* the GlobalId (and `IfcDocument*.Identification`) from the linksets exists in the respective IFC;
+* no duplicate links (type, from, to), no orphaned or dangling `ls:LinkElement`;
+* coverage: IFC MEP products (without ports) with no link to a space or zone (warning; an error for an element without a storey);
+* no predicates or classes outside the bundled ontologies (ISO 21597 and aim).
 
-Nie je to normatívna validácia ISO 21597 (oficiálne SHACL tvary z ISO 21597-2 prílohy B nie sú verejné); kardinality
-a domény/rozsahy kontroluje `lib/icdd/validate.ts` v exporte. IFC sa číta priamo ako ISO 10303-21 (bez ifcopenshell),
-aby audit bežal aj v CI.
+It is not a normative ISO 21597 validation (the official SHACL shapes from ISO 21597-2 annex B are not public); cardinalities
+and domains/ranges are checked by `lib/icdd/validate.ts` in the export. IFC is read directly as ISO 10303-21 (without ifcopenshell),
+so that the audit also runs in CI.
 """
 
 from __future__ import annotations
@@ -33,9 +33,9 @@ import zipfile
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
-# Hlavička: ICDDToolkitCore (IIB.ICDD, RUB) ju hľadá presne ako "index.rdf" (ZipArchive.GetEntry, File.Exists) a tak ju
-# aj zapisuje; openbim-icdd ju hľadá bez ohľadu na veľkosť písmen a uvádza, že referenčné kontajnery ISO majú
-# "index.rdf". Iný zápis (napr. "Index.rdf") je preto varovanie, nie chyba.
+# Header: ICDDToolkitCore (IIB.ICDD, RUB) looks for it exactly as "index.rdf" (ZipArchive.GetEntry, File.Exists) and
+# writes it that way too; openbim-icdd looks for it case-insensitively and states that the ISO reference containers have
+# "index.rdf". Any other spelling (e.g. "Index.rdf") is therefore a warning, not an error.
 INDEX_NAME = "index.rdf"
 DIR_ONTOLOGY = "Ontology resources/"
 DIR_DOCUMENTS = "Payload documents/"
@@ -49,7 +49,7 @@ RDFS = "http://www.w3.org/2000/01/rdf-schema#"
 OWL = "http://www.w3.org/2002/07/owl#"
 XSD = "http://www.w3.org/2001/XMLSchema#"
 
-# Termy RDF/RDFS/OWL, ktoré smú byť v indexe a linksetoch bez deklarácie v pribalenej ontológii.
+# RDF/RDFS/OWL terms that may be in the index and linksets without a declaration in the bundled ontology.
 BUILTIN_PREDICATES = {
     f"{RDF}type",
     f"{RDFS}label",
@@ -61,9 +61,9 @@ BUILTIN_CLASSES = {f"{OWL}Ontology"}
 EXCHANGE_VALUES = ("export-only", "import")
 DEFAULT_AIM_NS = "urn:x-aim:icdd#"
 
-# Podtriedy IfcDistributionElement (IFC4 ADD2 TC1 + IFC4X3) a IfcFurnishingElement = triedy prvkov, pre ktoré AIM
-# odvodzuje väzbu na priestor (derivation_rules: IfcDistributionElement, IfcFurnishingElement). Porty
-# (IfcDistributionPort) sú IfcPort, nie IfcDistributionElement, preto v zozname nie sú.
+# Subclasses of IfcDistributionElement (IFC4 ADD2 TC1 + IFC4X3) and IfcFurnishingElement = element classes for which AIM
+# derives the link to a space (derivation_rules: IfcDistributionElement, IfcFurnishingElement). Ports
+# (IfcDistributionPort) are IfcPort, not IfcDistributionElement, so they are not in the list.
 _MEP_NAMES = tuple(
     """
 IfcDistributionElement IfcDistributionControlElement IfcActuator IfcAlarm IfcController IfcFlowInstrument
@@ -109,7 +109,7 @@ class Report:
         self.issues.append(Issue("warning", code, message, where))
 
     def collapse(self) -> None:
-        """Rovnaké hlásenia (úroveň, kód, miesto, text) zlúči do jedného s počtom."""
+        """Merges identical reports (level, code, place, text) into one with a count."""
         count = collections.Counter((i.level, i.code, i.message, i.where) for i in self.issues)
         out, seen = [], set()
         for i in self.issues:
@@ -145,7 +145,7 @@ _WANTED = {
 
 
 def decode_step_string(raw: str) -> str:
-    """Reťazec ISO 10303-21 (bez úvodzoviek): '' -> ', \\X2\\hhhh\\X0\\, \\X\\hh, \\S\\c."""
+    """ISO 10303-21 string (without quotes): '' -> ', \\X2\\hhhh\\X0\\, \\X\\hh, \\S\\c."""
     out: list[str] = []
     i, n = 0, len(raw)
     while i < n:
@@ -182,7 +182,7 @@ def decode_step_string(raw: str) -> str:
 
 
 def parse_step_args(data: bytes, pos: int) -> list:
-    """Atribúty záznamu od pozície za '(' po zodpovedajúcu ')'. Odkazy '#12' -> int, reťazce dekódované."""
+    """Attributes of a record from the position after '(' to the matching ')'. References '#12' -> int, strings decoded."""
     stack: list[list] = [[]]
     i, n = pos, len(data)
     while i < n:
@@ -222,7 +222,7 @@ def parse_step_args(data: bytes, pos: int) -> list:
 
 @dataclass
 class IfcIndex:
-    """To, čo audit z IFC potrebuje: GlobalId -> trieda, identifikácie dokumentov, prvky natívne v priestore."""
+    """What the audit needs from IFC: GlobalId -> class, document identifications, elements native in a space."""
 
     schema: str = ""
     guid_class: dict[str, str] = field(default_factory=dict)
@@ -230,8 +230,8 @@ class IfcIndex:
     doc_information: set[str] = field(default_factory=set)
     doc_reference: set[str] = field(default_factory=set)
     in_space_natively: set[str] = field(default_factory=set)
-    storey_of: dict[str, str] = field(default_factory=dict)  # GlobalId prvku -> meno podlažia (IfcRelContainedIn...)
-    # GlobalId prvku -> "Trieda Meno" priestorovej štruktúry, v ktorej je prvok v IFC (obsiahnutý alebo referencovaný)
+    storey_of: dict[str, str] = field(default_factory=dict)  # GlobalId of an element -> storey name (IfcRelContainedIn...)
+    # GlobalId of an element -> "Class Name" of the spatial structure the element is in within the IFC (contained or referenced)
     structure_of: dict[str, str] = field(default_factory=dict)
 
     @classmethod
@@ -245,7 +245,7 @@ class IfcIndex:
         for mm in _REC_START.finditer(data):
             ent = mm.group(2).upper()
             rid = int(mm.group(1))
-            # GlobalId = prvý atribút IfcRoot (22 znakov base64 IFC)
+            # GlobalId = the first attribute of IfcRoot (22 characters, IFC base64)
             g = _ROOT_GUID.match(data, mm.start())
             if g:
                 guid = g.group(2).decode("ascii")
@@ -300,7 +300,7 @@ def _graph(data: bytes, where: str, report: Report):
 
 
 def _closure(pairs: Iterable[tuple[str, str]], roots: Iterable[str]) -> set[str]:
-    """Všetky termy, ktoré sú (tranzitívne) pod niektorým z `roots`."""
+    """All terms that are (transitively) under one of the `roots`."""
     children: dict[str, set[str]] = collections.defaultdict(set)
     for sub, sup in pairs:
         children[sup].add(sub)
@@ -333,8 +333,8 @@ def audit(path: str, list_limit: int = 50) -> Report:
     except (OSError, zipfile.BadZipFile) as exc:
         rep.error("zip", f"súbor nie je ZIP: {exc}")
         return rep
-    # Priečinky sa porovnávajú bez ohľadu na veľkosť písmen (referenčné kontajnery RUB majú "Payload Documents/",
-    # openbim-icdd číta bez ohľadu na veľkosť); iný zápis než v ISO 21597-1 je varovanie.
+    # Folders are compared case-insensitively (the RUB reference containers have "Payload Documents/",
+    # openbim-icdd reads case-insensitively); a spelling other than in ISO 21597-1 is a warning.
     actual: dict[str, str] = {}
     case_diff: set[str] = set()
     for info in zf.infolist():
@@ -355,7 +355,7 @@ def audit(path: str, list_limit: int = 50) -> Report:
     def read(n: str) -> bytes:
         return zf.read(actual[n])
 
-    # --- rozloženie
+    # --- layout
     for d in (DIR_ONTOLOGY, DIR_DOCUMENTS, DIR_TRIPLES):
         if not any(n.startswith(d) for n in names):
             rep.error("layout", f"chýba priečinok '{d}'")
@@ -380,7 +380,7 @@ def audit(path: str, list_limit: int = 50) -> Report:
         elif n.count("/") > 1 and not n.startswith(DIR_DOCUMENTS):
             rep.warn("layout", f"vnorený priečinok: {n}")
 
-    # --- ontológie
+    # --- ontologies
     onto_files = sorted(n for n in names if n.startswith(DIR_ONTOLOGY))
     onto = rdflib.Graph()
     for f in onto_files:
@@ -408,7 +408,7 @@ def audit(path: str, list_limit: int = 50) -> Report:
         return out
 
     def link_type(ts: set[str]) -> str:
-        """Najšpecifickejší typ väzby (els:IsIdenticalTo pred ls:BinaryLink, ak má väzba oba)."""
+        """The most specific link type (els:IsIdenticalTo before ls:BinaryLink, if the link has both)."""
         cand = sorted(ts & link_classes)
         return next((t for t in cand if all(u == t or u in ancestors(t) for u in cand)), cand[0])
 
@@ -464,7 +464,7 @@ def audit(path: str, list_limit: int = 50) -> Report:
     by_ext = collections.Counter(fn.rsplit(".", 1)[-1].lower() for fn in doc_file.values())
     rep.stats["documents"] = {"total": len(doc_file), "by_type": dict(sorted(by_ext.items())), "sha256_checked": checked}
 
-    # --- linksety
+    # --- linksets
     linkset_nodes = set(idx.objects(cont, ct("containsLinkset"))) if cont is not None else set()
     ls_file = {}
     for l in linkset_nodes:
@@ -481,7 +481,7 @@ def audit(path: str, list_limit: int = 50) -> Report:
     for fn in sorted(triple_files - set(ls_file)):
         rep.error("linkset_unregistered", f"súbor v '{DIR_TRIPLES}' nie je v indexe ako ct:Linkset: {fn}")
 
-    # --- predikáty a triedy mimo ontológií (index aj linksety)
+    # --- predicates and classes outside the ontologies (index and linksets)
     allowed_pred = declared | BUILTIN_PREDICATES
     allowed_cls = declared | BUILTIN_CLASSES
 
@@ -494,7 +494,7 @@ def audit(path: str, list_limit: int = 50) -> Report:
             rep.error("undeclared_term", f"predikát mimo pribalených ontológií: {t} ({c}x)", where)
         for t, c in sorted(bad_c.items()):
             rep.error("undeclared_term", f"trieda mimo pribalených ontológií: {t} ({c}x)", where)
-        # typovaný literál, ktorého zápis nezodpovedá dátovému typu (napr. xsd:dateTime "03.06.2022 09:22:38")
+        # a typed literal whose notation does not match the datatype (e.g. xsd:dateTime "03.06.2022 09:22:38")
         ill: dict[str, list[str]] = collections.defaultdict(list)
         for o in g.objects():
             if isinstance(o, rdflib.Literal) and getattr(o, "ill_typed", False):
@@ -504,7 +504,7 @@ def audit(path: str, list_limit: int = 50) -> Report:
 
     check_terms(idx, index_name)
 
-    # IFC payloady (len tie, na ktoré linksety ukazujú, sa parsujú lenivo)
+    # IFC payloads (only those the linksets point to are parsed, lazily)
     ifc_cache: dict[str, Optional[IfcIndex]] = {}
 
     def ifc_of(fn: str) -> Optional[IfcIndex]:
@@ -519,7 +519,7 @@ def audit(path: str, list_limit: int = 50) -> Report:
     ls_stats: dict[str, dict] = {}
     guid_missing: dict[str, list[str]] = collections.defaultdict(list)
     guid_checked: collections.Counter = collections.Counter()
-    linked_to_space: dict[str, set[str]] = collections.defaultdict(set)  # ifc súbor -> GlobalId s väzbou
+    linked_to_space: dict[str, set[str]] = collections.defaultdict(set)  # ifc file -> GlobalIds with a link
     for fn in sorted(ls_file):
         if fn not in triple_files:
             continue
@@ -534,7 +534,7 @@ def audit(path: str, list_limit: int = 50) -> Report:
         links = [s for s, ts in types.items() if ts & link_classes]
         elements = {s for s, ts in types.items() if f"{ISO_LS}LinkElement" in ts}
         st = {"links": len(links), "link_elements": len(elements), "by_type": {}}
-        # značka výmeny AIM (D-181 dodatok "import"): len informačná, import rozhoduje podľa politiky v kóde
+        # AIM exchange mark (D-181 addendum "import"): informational only, the import decides by the policy in code
         mark = next((str(o) for p_, o in idx.predicate_objects(ls_file[fn]) if str(p_).endswith("#exchange")), None)
         if mark is not None:
             st["exchange"] = mark
@@ -546,8 +546,8 @@ def audit(path: str, list_limit: int = 50) -> Report:
         ls_stats[fn] = st
         if not links:
             rep.warn("linkset_empty", f"linkset neobsahuje žiadnu väzbu ({len(g)} trojíc)", where)
-        # Čítače bez inferencie RDFS hľadajú väzbu podľa presného rdf:type: ICDDToolkitCore (RUB) typy ls: a els:
-        # (Part 2), openbim-icdd 0.2 len ls:. Väzbu typovanú len vlastnou triedou (aim:) nenájde ani jeden.
+        # Readers without RDFS inference look for a link by the exact rdf:type: ICDDToolkitCore (RUB) types ls: and els:
+        # (Part 2), openbim-icdd 0.2 only ls:. A link typed only by its own class (aim:) is found by neither.
         no_base = collections.Counter(
             _local(link_type(types[l]))
             for l in links
@@ -561,7 +561,7 @@ def audit(path: str, list_limit: int = 50) -> Report:
             )
         st["without_ls_type"] = sum(no_base.values())
 
-        # LinkElement -> dokument + identifikátor
+        # LinkElement -> document + identifier
         el_key: dict = {}
         el_doc_file: dict = {}
         for e in sorted(elements, key=str):
@@ -631,7 +631,7 @@ def audit(path: str, list_limit: int = 50) -> Report:
                     rep.error("identifier", f"ls:hasIdentifier bez typu identifikátora: {i}", where)
             el_key[e] = f"{dfn}|{'|'.join(sorted(key_parts))}"
 
-        # linky: konce, osirelé a visiace prvky, duplicity
+        # links: ends, orphaned and dangling elements, duplicates
         used: set = set()
         seen: dict = {}
         for l in sorted(links, key=str):
@@ -658,7 +658,7 @@ def audit(path: str, list_limit: int = 50) -> Report:
             if key in seen:
                 rep.error("duplicate_link", f"duplicitná väzba {_local(ltype)} {key[1]} -> {key[2]}", where)
             seen[key] = l
-            # väzba prvok -> priestor/zóna pre pokrytie
+            # link element -> space/zone for coverage
             if directed:
                 for t in to:
                     tfn = el_doc_file.get(t)
@@ -688,7 +688,7 @@ def audit(path: str, list_limit: int = 50) -> Report:
         rep.lists[f"guid_missing:{fn}"] = sorted(set(miss))[:list_limit]
     rep.stats["globalid_checked"] = dict(sorted(guid_checked.items()))
 
-    # --- pokrytie MEP produktov väzbou na priestor/zónu
+    # --- coverage of MEP products by a link to a space/zone
     if any(linked_to_space.values()):
         cov = {}
         for fn in sorted(f for f in payload_files if f.lower().endswith(".ifc")):
@@ -701,8 +701,8 @@ def audit(path: str, list_limit: int = 50) -> Report:
             linked = linked_to_space.get(fn, set())
             native = ifc.in_space_natively
             missing = sorted(g for g in products if g not in linked and g not in native)
-            # Samuel 1. 11.: bez priestoru/zóny, ale s podlažím (alebo inou priestorovou štruktúrou v IFC) = varovanie;
-            # bez akejkoľvek priestorovej príslušnosti = chyba.
+            # Samuel 1 Nov: without a space/zone but with a storey (or another spatial structure in the IFC) = warning;
+            # without any spatial membership = error.
             floating = [g for g in missing if g not in ifc.structure_of]
             cov[fn] = {
                 "products": len(products),
@@ -733,10 +733,10 @@ def audit(path: str, list_limit: int = 50) -> Report:
 
 
 def read_links(path: str) -> dict:
-    """Väzby kontajnera v tvare, v akom ich číta import AIM (`importRequestFromContents` v `lib/icdd/import.ts`).
+    """Links of the container in the form the AIM import reads them (`importRequestFromContents` in `lib/icdd/import.ts`).
 
-    Nezávislé čítanie cez rdflib; pytest ho porovná s výstupom TypeScriptu (`fixtures/icdd/aim-small.links.json`),
-    takže export -> import roundtrip je overený dvoma implementáciami. Väzby sú zoradené podľa kanonického kľúča.
+    Independent reading via rdflib; pytest compares it with the TypeScript output (`fixtures/icdd/aim-small.links.json`),
+    so the export -> import roundtrip is verified by two implementations. Links are sorted by the canonical key.
     """
     import rdflib
     from rdflib import URIRef
@@ -843,7 +843,7 @@ def _ifc_name(upper: str) -> str:
     return _IFC_CASE.get(upper, upper)
 
 
-# --------------------------------------------------------------------------------------------- výstup
+# --------------------------------------------------------------------------------------------- output
 
 
 def format_report(rep: Report) -> str:
@@ -877,7 +877,7 @@ def format_report(rep: Report) -> str:
 def main(argv: Optional[list[str]] = None) -> int:
     import logging
 
-    logging.getLogger("rdflib").setLevel(logging.CRITICAL)  # neplatné literály hlási audit sám (kód 'literal')
+    logging.getLogger("rdflib").setLevel(logging.CRITICAL)  # invalid literals are reported by the audit itself (code 'literal')
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
