@@ -1,42 +1,42 @@
 /**
- * Popisky na výkrese ako odkazy na prvok (D-130) - čisté funkcie nad riadkami strany.
+ * Labels on a drawing as links to an element (D-130) - pure functions over page rows.
  *
- * `document_pages.blocks` (D-123) = riadky textu s bbox v % strany. Bublina prvku na
- * pôdoryse je dvojriadková: hlava `DD01` (typ prvku) a tesne pod ňou `05.04` (plný kód
- * DD01.05.04) alebo len `08` (typ DD01.08; číslo výskytu na výkrese nie je). Kód
- * miestnosti je riadok `1.01`. Párovanie je AIM vrstva (odvodenie), nič nezapisuje.
+ * `document_pages.blocks` (D-123) = text rows with a bbox in % of the page. An element bubble on
+ * a floor plan has two rows: the head `DD01` (element type) and right below it `05.04` (full code
+ * DD01.05.04) or just `08` (type DD01.08; the occurrence number is not on the drawing). A space
+ * code is the row `1.01`. The pairing is an AIM layer (derivation), it writes nothing.
  */
 
 import { foldText, type PageRegion, type TextBlock } from "@/lib/llm/document-text";
 
-/** Hlava bubliny: kategória a číslo typu prvku (DD01, SN05, OV01). */
+/** Bubble head: category and number of the element type (DD01, SN05, OV01). */
 const HEAD_RE = /^[A-Z]{2}\d{2}$/;
-/** Riadok pod hlavou: `NN` = číslo typu, `NN.NN(NN)` = typ a výskyt. */
+/** Row below the head: `NN` = type number, `NN.NN(NN)` = type and occurrence. */
 const TAIL_RE = /^\d{2}(?:\.\d{2,4})?$/;
-/** Kód napísaný v jednom riadku (DD01.05.04, DD01.08). */
+/** Code written in a single row (DD01.05.04, DD01.08). */
 const INLINE_RE = /^[A-Z]{2}\d{2}\.\d{2}(?:\.\d{2,4})?$/;
-/** Kód miestnosti (1.01); platí len pre miestnosť na podlaží výkresu. */
+/** Space code (1.01); applies only to a space on the storey of the drawing. */
 const SPACE_RE = /^\d\.\d{2}$/;
-/** Riadok pod hlavou: najviac toľko % strany nižšie (bublina 1NP má 0,29 %). */
+/** Row below the head: at most this many % of the page lower (a 1NP bubble has 0.29 %). */
 const TAIL_MAX_DY = 1.2;
-/** Stred riadku pod hlavou na osi x: tolerancia v % strany. */
+/** Center of the row below the head on the x axis: tolerance in % of the page. */
 const TAIL_MAX_DX = 0.6;
-/** Najviac kandidátov na popisok (zvyšok zoznam skráti). */
+/** Maximum number of candidates for a label (the rest is truncated from the list). */
 export const MAX_CANDIDATES = 12;
 
 export type LabelKind = "element" | "type" | "space" | "zone";
 
-/** Popisok na strane: kód, ako je napísaný, a obal jeho riadkov v % strany. */
+/** Label on a page: the code as written, and the envelope of its rows in % of the page. */
 export interface DrawingLabel {
-  /** Text, ako je na výkrese (riadky oddelené medzerou). */
+  /** Text as on the drawing (rows separated by a space). */
   text: string;
-  /** Kód na párovanie (DD01.05.04, DD01.08, 1.01). */
+  /** Code for pairing (DD01.05.04, DD01.08, 1.01). */
   code: string;
   kind: LabelKind;
   bbox: PageRegion;
 }
 
-/** Objekt, na ktorý môže popisok ukazovať (výskyt, typ alebo miestnosť). */
+/** Object a label can point to (occurrence, type or space). */
 export interface LabelObject {
   id: string;
   ref: string;
@@ -44,7 +44,7 @@ export interface LabelObject {
   name: string | null;
   ifcType: string | null;
   objectType: string;
-  /** Je na podlaží výkresu (priamo alebo cez miestnosť)? */
+  /** Is it on the storey of the drawing (directly or via a space)? */
   onFloor: boolean;
 }
 
@@ -55,19 +55,19 @@ export interface LinkTarget {
   guid: string | null;
   name: string | null;
   ifc_type: string | null;
-  /** Zóna: GUIDy členských miestností (klik vyberie aspoň ich, keď zóna nemá geometriu). */
+  /** Zone: GUIDs of member spaces (a click selects at least them when the zone has no geometry). */
   members?: string[];
 }
 
 export interface DrawingLink extends DrawingLabel {
-  /** unique = jeden prvok, candidates = viac výskytov typu na podlaží, none = nič. */
+  /** unique = one element, candidates = several occurrences of the type on the storey, none = nothing. */
   status: LinkStatus;
-  /** Ako sa prvok našiel: presný kód, jediný výskyt typu na podlaží, miestnosť. */
+  /** How the element was found: exact code, the only occurrence of the type on the storey, space. */
   via?: "ref" | "type_on_floor" | "space_on_floor" | "zone_name" | "manual";
   targets: LinkTarget[];
-  /** Kandidátov bolo viac ako MAX_CANDIDATES. */
+  /** There were more candidates than MAX_CANDIDATES. */
   targets_total?: number;
-  /** Typový popisok s viac výskytmi: IFC typ (`asset_type` s presným kódom), ktorý klik otvorí. */
+  /** Type label with several occurrences: the IFC type (`asset_type` with the exact code) that a click opens. */
   type?: LinkTarget;
 }
 
@@ -83,13 +83,13 @@ function union(blocks: TextBlock[]): PageRegion {
 }
 
 /**
- * Popisky strany zhora nadol. Hlava sa spojí s riadkom tesne pod ňou (najbližšie dvojice
- * prvé, aby susedné bubliny nekradli riadky); hlava bez neho (legenda "SN05 - murivo") popiskom nie je.
+ * Page labels from top to bottom. A head is joined with the row right below it (the closest pairs
+ * first, so that neighboring bubbles do not steal rows); a head without one (legend "SN05 - murivo", masonry) is not a label.
  */
 export function pairLabels(blocks: readonly TextBlock[]): DrawingLabel[] {
   const out: DrawingLabel[] = [];
   const tails = blocks.filter((b) => TAIL_RE.test(b.t.trim()));
-  // Všetky prípustné dvojice, najbližšie prvé: riadok aj hlava patria najviac jednej dvojici.
+  // All admissible pairs, the closest first: both a row and a head belong to at most one pair.
   const pairs: { head: TextBlock; tail: TextBlock; dy: number }[] = [];
   for (const head of blocks) {
     if (!HEAD_RE.test(head.t.trim())) continue;
@@ -125,14 +125,14 @@ export function pairLabels(blocks: readonly TextBlock[]): DrawingLabel[] {
   return out.sort((a, b) => a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x);
 }
 
-/** Kódy, ktoré treba načítať z DB: presné `object_ref` a predpony typov. */
+/** Codes that need to be loaded from the DB: exact `object_ref` and type prefixes. */
 export function labelCodes(labels: readonly DrawingLabel[]): { refs: string[]; typePrefixes: string[] } {
   const refs = new Set<string>();
   const types = new Set<string>();
   for (const l of labels) {
     if (l.kind === "type") {
       types.add(l.code);
-      refs.add(l.code); // samotný IFC typ (asset_type) s presným kódom
+      refs.add(l.code); // the IFC type (asset_type) itself with the exact code
     } else refs.add(l.code);
   }
   return { refs: [...refs].sort(), typePrefixes: [...types].sort() };
@@ -141,9 +141,9 @@ export function labelCodes(labels: readonly DrawingLabel[]): { refs: string[]; t
 const target = (o: LabelObject): LinkTarget => ({ ref: o.ref, guid: o.guid, name: o.name, ifc_type: o.ifcType });
 
 /**
- * Priradí popiskom objekty: plný kód = objekt s tým `object_ref`; typový kód = výskyty
- * typu na podlaží výkresu (jeden = unique, viac = candidates); miestnosť len na podlaží
- * výkresu, inak to bola kóta a popisok vypadne.
+ * Assigns objects to labels: full code = the object with that `object_ref`; type code = occurrences
+ * of the type on the storey of the drawing (one = unique, several = candidates); a space only on the storey of the
+ * drawing, otherwise it was a dimension and the label drops out.
  */
 export function resolveLabels(labels: readonly DrawingLabel[], objects: readonly LabelObject[]): DrawingLink[] {
   const byRef = new Map(objects.map((o) => [o.ref, o]));
@@ -194,7 +194,7 @@ const insideRegion = (inner: PageRegion, outer: PageRegion, eps = 0.02) =>
   inner.x + inner.width <= outer.x + outer.width + eps &&
   inner.y + inner.height <= outer.y + outer.height + eps;
 
-/** Zóna stavby (IfcZone, IfcSpatialZone) na párovanie podľa mena (D-160). */
+/** Building zone (IfcZone, IfcSpatialZone) for pairing by name (D-160). */
 export interface ZoneObject {
   id: string;
   ref: string;
@@ -204,16 +204,16 @@ export interface ZoneObject {
   members: string[];
 }
 
-/** Normalizovaný zápis na porovnanie textu výkresu s menom: bez diakritiky, veľkosti písmen a medzier navyše. */
+/** Normalized form for comparing drawing text with a name: without diacritics, case and extra whitespace. */
 export const normLabel = (s: string) => foldText(s).replace(/\s+/g, " ").trim();
 
-/** Najviac členských miestností v cieli zóny. */
+/** Maximum number of member spaces in a zone target. */
 export const MAX_ZONE_MEMBERS = 40;
 
 /**
- * Popisky zón: riadok strany, ktorého text sa po normalizácii rovná menu zóny (IfcRoot.Name).
- * Riadky, ktoré už sú popiskom (kód miestnosti, bublina), preskočí. Viac zón s rovnakým menom =
- * candidates. Meno rozlomené na dva riadky automatika nezachytí - to je prípad ručného priradenia.
+ * Zone labels: a page row whose text, after normalization, equals the zone name (IfcRoot.Name).
+ * Rows that are already a label (space code, bubble) are skipped. Several zones with the same name =
+ * candidates. A name broken over two rows is not caught by the automation - that is a case for manual assignment.
  */
 export function resolveZoneLabels(
   blocks: readonly TextBlock[],
@@ -257,7 +257,7 @@ export interface PageLinks {
   links: DrawingLink[];
 }
 
-/** Wire formát `DOCUMENT_LINKS` (zrkadlí fork `aim/docLinks.ts`): zlomky strany, len spárované. */
+/** Wire format of `DOCUMENT_LINKS` (mirrors the fork `aim/docLinks.ts`): page fractions, only paired. */
 export interface DocumentLinksWire {
   documentId: string;
   page: number;
@@ -268,17 +268,17 @@ export interface DocumentLinksWire {
     h: number;
     label: string;
     status: "unique" | "candidates";
-    /** Ručné priradenie (D-160), nie odvodenie z popisku. */
+    /** Manual assignment (D-160), not a derivation from the label. */
     manual?: true;
     targets: { guid: string; ref: string; name?: string; members?: string[] }[];
-    /** Typový popisok s viac výskytmi: klik otvorí tento IFC typ, výskyty sú vedľajšia voľba. */
+    /** Type label with several occurrences: a click opens this IFC type, the occurrences are a secondary choice. */
     type?: { guid: string; ref: string; name?: string };
   }[];
 }
 
 const frac = (pct: number) => Math.round(pct * 100) / 10_000;
 
-/** Odkazy pre viewer: bez nespárovaných a bez cieľov, ktoré nemajú GUID (nie sú v 3D). */
+/** Links for the viewer: without unpaired ones and without targets that have no GUID (not in 3D). */
 export function toLinksWire(documentId: string, pages: readonly PageLinks[]): DocumentLinksWire[] {
   const out: DocumentLinksWire[] = [];
   for (const p of pages) {
@@ -310,7 +310,7 @@ export function toLinksWire(documentId: string, pages: readonly PageLinks[]): Do
   return out;
 }
 
-/** Súhrn pre výsledok toolu a záznam rozhodnutia. */
+/** Summary for the tool result and the decision record. */
 export function linkSummary(links: readonly DrawingLink[]) {
   const count = (kind: LabelKind | null, status: LinkStatus) =>
     links.filter(

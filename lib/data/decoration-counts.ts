@@ -1,31 +1,31 @@
 import type { GuidMap } from "@/lib/data/ifc";
 
 /**
- * AIM dekorácie stromu (D-077) — čistá agregácia počtov väzieb per objekt,
- * kľúčovaná IFC GlobalId pre bridge správu AIM_TREE_DECORATIONS.
+ * AIM tree decorations (D-077) - pure aggregation of link counts per object,
+ * keyed by IFC GlobalId for the bridge message AIM_TREE_DECORATIONS.
  *
- * Zámerne BEZ `server-only`/DB závislostí (vzor `capture-placement.ts`):
- * agregácia je unit-testovateľná, DB čítanie žije v `decorations.ts`.
+ * Deliberately WITHOUT `server-only`/DB dependencies (pattern `capture-placement.ts`):
+ * the aggregation is unit-testable, the DB read lives in `decorations.ts`.
  */
 
-/** Kompaktné počty pre badge v strome viewera: d=dokumenty, r=zodpovednosti, c=snímky. */
+/** Compact counts for the badge in the viewer tree: d=documents, r=responsibilities, c=images. */
 export interface TreeDecoration {
   d?: number;
   r?: number;
   c?: number;
 }
 
-/** Per-GUID mapa dekorácií — payload bridge správy AIM_TREE_DECORATIONS. */
+/** Per-GUID map of decorations - payload of the bridge message AIM_TREE_DECORATIONS. */
 export type TreeDecorations = Record<string, TreeDecoration>;
 
 /**
- * Riadky väzieb (už filtrované na aktívne) → per-GUID počty. Objekty bez GUID
- * (nie sú v modeli) sa ticho vynechajú — badge patrí len prvkom v 3D strome.
+ * Link rows (already filtered to active) -> per-GUID counts. Objects without a GUID
+ * (not in the model) are silently skipped - the badge belongs only to elements in the 3D tree.
  *
- * @param guidMap  ifc_guid → objects.id (fetchGuidMap)
- * @param docObjectIds   objekt (from_id) za každú väzbu dokumentu
- * @param respObjectIds  objekt (to_id) za každú väzbu zodpovednosti
- * @param capSpaceIds    priestor (to_id) za každú väzbu capture → space
+ * @param guidMap  ifc_guid -> objects.id (fetchGuidMap)
+ * @param docObjectIds   object (from_id) for each document link
+ * @param respObjectIds  object (to_id) for each responsibility link
+ * @param capSpaceIds    space (to_id) for each capture -> space link
  */
 export function buildDecorations(
   guidMap: GuidMap,

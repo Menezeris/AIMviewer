@@ -8,9 +8,9 @@ describe("buildDecorations", () => {
   it("agreguje počty per GUID podľa typu väzby", () => {
     const out = buildDecorations(
       guidMap,
-      ["o1", "o1", "o2"], // dokumenty
-      ["o1"], // zodpovednosti
-      ["o3", "o3"] // snímky (priestor)
+      ["o1", "o1", "o2"], // documents
+      ["o1"], // responsibilities
+      ["o3", "o3"] // images (space)
     );
     expect(out).toEqual({
       G1: { d: 2, r: 1 },

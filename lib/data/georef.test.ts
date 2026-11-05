@@ -102,12 +102,12 @@ describe("_georef v2 (D-133)", () => {
     expect(r.ok && r.replaced).toEqual(old);
     expect(r.ok && r.history_added).toBe(true);
     expect(r.ok && r.georef.history).toHaveLength(1);
-    // ručná kalibrácia inej roviny na strane sa bez force neprepíše, s force áno
+    // a manual calibration of another plane on a page is not overwritten without force, with force it is
     const manual = { ...section(4.688), source: "manual" as const };
     expect(mergeCalibration({ version: 2, calibrations: [manual] }, section(4.721), false, meta).ok).toBe(false);
     const forced = mergeCalibration({ version: 2, calibrations: [manual] }, section(4.721), true, meta);
     expect(forced.ok && forced.georef.calibrations).toHaveLength(1);
-    // pôdorys a rez na tej istej strane sa nezamieňajú
+    // a floor plan and a section on the same page are not mixed up
     const mixed = mergeCalibration({ version: 2, calibrations: [plan("auto")] }, section(4.721), false, meta);
     expect(mixed.ok && mixed.georef.calibrations).toHaveLength(2);
   });
@@ -143,7 +143,7 @@ describe("visibilityOnlyUpdate (D-168): uloženie visible a opacity z viewera", 
     ...plan("auto"),
     quality: { method: "rooms+icp", median_mm: 12, p90_mm: 30, cv_max_mm: 20, start_points: 8 },
     calibrated_at: "2026-10-22T10:00:00.000Z",
-    // auto kalibrácia má viac bodov než v1
+    // an auto calibration has more points than v1
     calibration: [...V1.calibration, { pdf_pt: [900, 900], ifc_m: [41, 3] }],
   });
 

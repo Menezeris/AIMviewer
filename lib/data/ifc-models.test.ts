@@ -1,7 +1,7 @@
 /**
- * Revízia v URL modelu (D-086): archív revízie (D-135) alebo `?rev=N` mení `src`
- * iframe viewera, takže nová revízia sa načíta znova a cache prehliadača nevráti
- * starý súbor.
+ * Revision in the model URL (D-086): a revision archive (D-135) or `?rev=N` changes the `src`
+ * of the viewer iframe, so a new revision is loaded again and the browser cache does not return
+ * the old file.
  */
 import { describe, expect, it } from "vitest";
 

@@ -14,17 +14,17 @@ import { splitDocumentClassifications, type DocumentClassification } from "@/lib
 export * from "@/lib/data/object-documents-core";
 
 /**
- * Dokumenty objektu cez vzťahy (D-104, pohľad `v_object_documents`) na jednom
- * mieste: číta ich tool `get_object(include=documents)` aj AIM karta vo vieweri
- * (`/api/element`), aby karta a konektor ukazovali to isté.
+ * Documents of an object via relations (D-104, view `v_object_documents`) in one
+ * place: read by the tool `get_object(include=documents)` and by the AIM card in the viewer
+ * (`/api/element`), so that the card and the connector show the same thing.
  *
- * Čítanie z DB; čisté funkcie (zlúčenie ciest, texty pre kartu) sú v
- * `object-documents-core.ts`, ktoré smie načítať aj klient.
+ * Reads from the DB; the pure functions (merging of paths, texts for the card) are in
+ * `object-documents-core.ts`, which the client may also load.
  */
 
 const IN_CHUNK = 200;
 
-/** Uzly podľa id (dokumenty, nositelia), po dávkach kvôli dĺžke URL. */
+/** Nodes by id (documents, carriers), in batches because of the URL length. */
 export async function fetchNodes(projectId: string, ids: Iterable<string>): Promise<ObjectDocumentNode[]> {
   const unique = [...new Set(ids)];
   const supabase = getSupabaseAdmin();
@@ -41,7 +41,7 @@ export async function fetchNodes(projectId: string, ids: Iterable<string>): Prom
   return out;
 }
 
-/** Dokumenty objektu s cestou a uzly, ktoré sa pri tom načítali. */
+/** Documents of an object with the path and the nodes that were loaded along the way. */
 export async function fetchObjectDocuments(
   projectId: string,
   objectId: string,
@@ -62,7 +62,7 @@ export async function fetchObjectDocuments(
   return { documents: dedupeObjectDocuments(rows, new Map(nodes.map((n) => [n.id, n]))), nodes };
 }
 
-/** Riadok `v_object_documents` z pohľadu dokumentu: objekt, ktorého sa dokument týka. */
+/** Row of `v_object_documents` from the document's point of view: the object the document concerns. */
 export interface DocumentObjectRow {
   object_id: string;
   object_type: string;
@@ -73,11 +73,11 @@ export interface DocumentObjectRow {
 }
 
 /**
- * Objekty, ktorých sa dokument týka (D-104 krok 4), aj zdedené cez nositeľa
- * (podlažie, zóna, skupina, typ). `document_reference` = len cez ten odkaz na
- * časť dokumentu, `page` = len odkazy na tú stranu. Zoradené podľa `depth`, takže
- * prvý riadok objektu je jeho najbližšia cesta. Stránkuje: pôdorys podlažia
- * presahuje strop odpovede PostgREST (1000 riadkov).
+ * Objects the document concerns (D-104 step 4), also inherited via a carrier
+ * (storey, zone, group, type). `document_reference` = only via that reference to a
+ * part of the document, `page` = only references to that page. Sorted by `depth`, so
+ * the first row of an object is its nearest path. Paginates: a storey floor plan
+ * exceeds the PostgREST response cap (1000 rows).
  */
 export async function fetchDocumentObjectRows(
   projectId: string,
@@ -104,10 +104,10 @@ export async function fetchDocumentObjectRows(
 }
 
 /**
- * Klasifikácie dokumentov (`rel_external_reference_relationship`, migrácia
- * `20261020150000`) po osiach: typ informácie ISO 19650 a druh média (D-131).
- * Bez migrácie alebo bez klasifikácie vráti prázdnu mapu: druh je doplnok, nie
- * podmienka zoznamu.
+ * Classifications of documents (`rel_external_reference_relationship`, migration
+ * `20261020150000`) by axis: information type ISO 19650 and media kind (D-131).
+ * Without the migration or without a classification it returns an empty map: the kind is a supplement, not
+ * a condition of the list.
  */
 export async function fetchDocumentClassifications(
   projectId: string,
@@ -153,7 +153,7 @@ export async function fetchDocumentClassifications(
   );
 }
 
-/** Typ informácie dokumentov (ISO 19650), bez druhu média (D-104, D-131). */
+/** Information type of documents (ISO 19650), without the media kind (D-104, D-131). */
 export async function fetchDocumentTypes(projectId: string, documentIds: readonly string[]): Promise<Map<string, DocumentType>> {
   const out = new Map<string, DocumentType>();
   for (const [id, c] of await fetchDocumentClassifications(projectId, documentIds)) if (c.type) out.set(id, c.type);

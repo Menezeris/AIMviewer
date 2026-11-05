@@ -1,14 +1,14 @@
 /**
- * Čisté časti dokumentov objektu (D-104): tvar záznamu, zlúčenie riadkov
- * `v_object_documents` a texty pre AIM kartu. Bez `server-only`, lebo
- * `lib/aim-panel.ts` beží aj v prehliadači; čítanie z DB je v `object-documents.ts`.
+ * Pure parts of the documents of an object (D-104): the record shape, merging of the rows of
+ * `v_object_documents` and the texts for the AIM card. Without `server-only`, because
+ * `lib/aim-panel.ts` also runs in the browser; the DB read is in `object-documents.ts`.
  *
- * Pohľad vracia riadok pre každú cestu (zóna aj nadradená zóna); tu z nich je
- * jeden záznam na dokument a stranu s najbližšou cestou, ďalší nositelia idú do
+ * The view returns a row for each path (a zone and a parent zone); here they are turned into
+ * one record per document and page with the nearest path, other carriers go to
  * `alsoVia`.
  */
 
-/** Uzol, ktorý pri čítaní padol do rúk (dokument alebo nositeľ). */
+/** A node that fell into the reader's hands (a document or a carrier). */
 export interface ObjectDocumentNode {
   id: string;
   object_type: string;
@@ -21,11 +21,11 @@ export interface ObjectDocument {
   name: string | null;
   identification: string | null;
   page?: number;
-  /** Druh nositeľa: direct | type | zone | group | system | spatial_zone | floor | space. */
+  /** Kind of carrier: direct | type | zone | group | system | spatial_zone | floor | space. */
   via: string;
-  /** Nositeľ dokumentu (zóna, skupina, podlažie...). */
+  /** Carrier of the document (zone, group, storey...). */
   viaName?: string;
-  /** Najbližší nositeľ k objektu, ak je iný (NJ - 3NP pod Nájomné priestory). */
+  /** The carrier nearest to the object, if different (NJ - 3NP under "Nájomné priestory", rental spaces). */
   through?: string;
   alsoVia?: string[];
 }
@@ -38,7 +38,7 @@ export interface ViewRow {
   via_nearest_id: string | null;
 }
 
-/** Riadky pohľadu (zoradené podľa hĺbky) -> jeden záznam na dokument a stranu. */
+/** View rows (sorted by depth) -> one record per document and page. */
 export function dedupeObjectDocuments(
   rows: readonly ViewRow[],
   nodes: ReadonlyMap<string, ObjectDocumentNode>,
@@ -51,7 +51,7 @@ export function dedupeObjectDocuments(
     const holder = label(r.via_id);
     const seen = out.get(key);
     if (seen) {
-      // Ten istý dokument aj cez ďalšieho nositeľa (napr. zóna aj nadradená zóna).
+      // The same document also via another carrier (e.g. a zone and a parent zone).
       if (holder && holder !== seen.viaName && !seen.alsoVia?.includes(holder)) {
         seen.alsoVia = [...(seen.alsoVia ?? []), holder];
       }
@@ -82,20 +82,20 @@ const VIA_LABEL: Record<string, string> = {
   space: "miestnosť",
 };
 
-/** Cesta po slovensky pre kartu: "priamo", "cez zónu Nájomné priestory (NJ - 3NP)". */
+/** Path in Slovak for the card: "priamo" (directly), "cez zónu Nájomné priestory (NJ - 3NP)" (via the zone Rental spaces). */
 export function viaText(d: Pick<ObjectDocument, "via" | "viaName" | "through">): string {
   if (d.via === "direct") return "priamo";
   const what = VIA_LABEL[d.via] ?? d.via;
   return `cez ${what}${d.viaName ? ` ${d.viaName}` : ""}${d.through ? ` (${d.through})` : ""}`;
 }
 
-/** Druh dokumentu (D-104: typ informácie ISO 19650, napr. DR Výkres). */
+/** Kind of document (D-104: information type ISO 19650, e.g. DR Výkres). */
 export interface DocumentType {
   code: string;
   name: string | null;
 }
 
-/** "DR Výkres" (kód a meno), alebo len kód. */
+/** "DR Výkres" (code and name), or just the code. */
 export function typeText(t: DocumentType | undefined): string | undefined {
   return t ? [t.code, t.name].filter(Boolean).join(" ") : undefined;
 }

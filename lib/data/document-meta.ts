@@ -1,15 +1,15 @@
 /**
- * Metadáta dokumentu pre zoznam vo vieweri (D-104 krok 3, `DOCUMENTS_LOAD.meta`).
- * Viewer zoskupuje a hľadá genericky podľa kľúčov, ktoré tu vzniknú, zoznam polí
- * nedrží; kľúč je preto rovno slovenský popisok. Viac hodnôt v jednom kľúči
- * (pôdorys strechy pre 4NP aj 5NP) oddeľuje `META_VALUES_SEPARATOR`, dokument sa
- * vo vieweri objaví v každej skupine.
+ * Document metadata for the list in the viewer (D-104 step 3, `DOCUMENTS_LOAD.meta`).
+ * The viewer groups and searches generically by the keys that arise here, it does not hold
+ * a list of fields; the key is therefore directly the Slovak label. Multiple values in one key
+ * (roof plan for both 4NP and 5NP) are separated by `META_VALUES_SEPARATOR`, the document
+ * appears in every group in the viewer.
  */
 
-/** Oddeľovač viacerých hodnôt (zrkadlí `META_VALUES_SEPARATOR` vo forku, aim/documentsQuery.ts). */
+/** Separator of multiple values (mirrors `META_VALUES_SEPARATOR` in the fork, aim/documentsQuery.ts). */
 export const META_VALUES_SEPARATOR = "; ";
 
-/** Objekt, ktorý nesie väzbu na dokument (rel_associates_document). */
+/** Object that carries a link to a document (rel_associates_document). */
 export interface DocumentHolder {
   objectType: string;
   name: string | null;
@@ -18,11 +18,11 @@ export interface DocumentHolder {
 
 export interface DocumentMetaInput {
   identification: string | null;
-  /** Cesta v strome dokumentácie (bez koreňa PD), prvý prvok = časť. */
+  /** Path in the documentation tree (without the PD root), first item = part. */
   folder?: readonly string[];
-  /** Druh, napr. "DR Výkres" (typ informácie ISO 19650). */
+  /** Kind, e.g. "DR Výkres" (information type per ISO 19650). */
   type?: string;
-  /** Druh média, napr. "Fotografia" (systém `Druh média`, D-131). */
+  /** Media kind, e.g. "Fotografia" (system `Druh média`, D-131). */
   mediaKind?: string;
   holders: readonly DocumentHolder[];
   lastRevisionTime: string | null;
@@ -57,8 +57,8 @@ function formatLabel(mime: string): string {
 }
 
 /**
- * Metadáta jedného dokumentu. Projekt nesie celú dokumentáciu, preto ako nositeľ
- * figuruje len vtedy, keď dokument nič iné nenesie (inak by bol v každej skupine).
+ * Metadata of a single document. The project carries the whole documentation, so it appears as
+ * a carrier only when the document is carried by nothing else (otherwise it would be in every group).
  */
 export function documentMeta(input: DocumentMetaInput): Record<string, string> {
   const meta: Record<string, string> = {};
@@ -79,9 +79,9 @@ export function documentMeta(input: DocumentMetaInput): Record<string, string> {
 }
 
 /**
- * Pôdorys podlažia pre viewer (`kind = drawing`, `storeyGuid`): dokument, ktorý nesie
- * podlažie (po ASR v76 len pôdorysy) a nie je iného druhu než výkres. `storeyGuid` len
- * pri jedinom podlaží (pôdorys strechy 4NP a 5NP ho nemá, viewer by nevedel, kam patrí).
+ * Storey floor plan for the viewer (`kind = drawing`, `storeyGuid`): a document that carries the
+ * storey (after ASR v76 only floor plans) and is not of a kind other than drawing. `storeyGuid` only
+ * for a single storey (the roof plan of 4NP and 5NP does not have it, the viewer would not know where it belongs).
  */
 export function floorDrawing(
   holders: readonly DocumentHolder[],
@@ -94,15 +94,15 @@ export function floorDrawing(
 }
 
 /**
- * Disciplína výkresu z kódu dokumentu (`OCB_SO01_ASR_D-1-1-01_...` -> `ASR`); null, keď kód nemá tvar
- * `<projekt>_<objekt>_<disciplína>_...`. Veľkosť písmen sa nerozlišuje, výsledok je veľkými.
+ * Drawing discipline from the document code (`OCB_SO01_ASR_D-1-1-01_...` -> `ASR`); null when the code does not have the form
+ * `<project>_<object>_<discipline>_...`. Case is ignored, the result is uppercase.
  */
 export function disciplineOf(ref: string | null | undefined): string | null {
   const m = /^[A-Za-z0-9]+_[A-Za-z0-9]+_([A-Za-z]{2,5})_/.exec(ref ?? "");
   return m ? m[1].toUpperCase() : null;
 }
 
-/** Kandidát na výkres podlažia: dokument, ktorý nesie podlažie (jedno alebo viac). */
+/** Storey drawing candidate: a document that carries the storey (one or more). */
 export interface FloorDrawingCandidate {
   documentId: string;
   ref: string | null;
@@ -110,11 +110,11 @@ export interface FloorDrawingCandidate {
   floorGuids: readonly string[];
 }
 
-/** Disciplína, ktorá nie je hlavným výkresom podlažia: požiarne riešenie ide až po ostatných (D-176). */
+/** A discipline that is not the main storey drawing: fire safety solution goes only after the others (D-176). */
 const FALLBACK_DISCIPLINE = "PBR";
 const PRIMARY_DISCIPLINE = "ASR";
 
-/** Menšie číslo = lepší výkres podlažia: ASR, ostatné, PBR; v rámci disciplíny výkres jedného podlažia pred spoločným (strecha). */
+/** Lower number = better storey drawing: ASR, others, PBR; within a discipline a drawing of a single storey before a shared one (roof). */
 function floorDrawingRank(c: FloorDrawingCandidate): number {
   const d = c.discipline;
   const tier = d === PRIMARY_DISCIPLINE ? 0 : d === FALLBACK_DISCIPLINE ? 2 : 1;
@@ -126,9 +126,9 @@ export type FloorDrawingPick =
   | { ok: false; reason: "no_drawing" | "no_discipline"; available: string[] };
 
 /**
- * Výkres podlažia pre `set_view_mode(floor, split)` (D-176, #316): predvolene ASR pôdorys podlažia, potom iné
- * disciplíny, PBR (požiarne riešenie) len keď iný nie je. Výslovná `discipline` vyberie výkres tej disciplíny
- * (bez nej `no_discipline` s dostupnými). Pri zhode poradia rozhoduje kód dokumentu, aby bol výber stabilný.
+ * Storey drawing for `set_view_mode(floor, split)` (D-176, #316): by default the ASR floor plan of the storey, then other
+ * disciplines, PBR (fire safety solution) only when there is no other. An explicit `discipline` selects the drawing of that discipline
+ * (without it `no_discipline` with the available ones). On a tie the document code decides, so that the choice is stable.
  */
 export function pickFloorDrawing(
   candidates: readonly FloorDrawingCandidate[],

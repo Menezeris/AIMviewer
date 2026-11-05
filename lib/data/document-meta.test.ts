@@ -78,7 +78,7 @@ describe("výkres podlažia pre split (D-176, #316)", () => {
   it("PBR len keď iný výkres podlažia nie je; ASR spoločný pre viac podlaží (strecha) je pred PBR", () => {
     expect(pickFloorDrawing([PBR1], "g1")).toMatchObject({ ok: true, drawing: { documentId: "p1" } });
     expect(pickFloorDrawing([PBR4, ASR4], "g4")).toMatchObject({ ok: true, drawing: { documentId: "a4" } });
-    // ASR jedného podlažia je pred ASR spoločným
+    // the ASR of a single storey comes before the shared ASR
     expect(pickFloorDrawing([ASR4, c("a4b", "OCB_SO01_ASR_D-1-1-09_PODORYS-4NP", ["g4"])], "g4")).toMatchObject({ drawing: { documentId: "a4b" } });
   });
 

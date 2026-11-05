@@ -21,12 +21,12 @@ import {
 export type { DocumentLinksWire, PageLinks };
 
 /**
- * Popisky výkresu ako odkazy na prvok (D-130): riadky strany (`document_pages.blocks`,
- * D-123) + podlažie výkresu (nositeľ dokumentu typu floor, D-104) + objekty s kódmi
- * z popiskov. Párovanie je AIM vrstva, počíta sa pri čítaní, nič sa neukladá.
+ * Drawing labels as links to an element (D-130): page rows (`document_pages.blocks`,
+ * D-123) + the storey of the drawing (carrier of a document of type floor, D-104) + objects with codes
+ * from the labels. The pairing is an AIM layer, computed on read, nothing is stored.
  */
 
-/** Podlažia, ktoré dokument nesú (pôdorys podlažia ich má práve jedno). */
+/** Storeys that carry the document (a storey floor plan has exactly one). */
 async function drawingFloors(projectId: string, documentIds: readonly string[]): Promise<Map<string, Set<string>>> {
   const out = new Map<string, Set<string>>();
   if (documentIds.length === 0) return out;
@@ -68,7 +68,7 @@ type ObjectRow = {
   ifc_guid: string | null;
 };
 
-/** Objekty s kódmi z popiskov: presné `object_ref` a výskyty typov (`<typ>.%`). */
+/** Objects with codes from the labels: exact `object_ref` and occurrences of types (`<type>.%`). */
 async function fetchLabelObjects(projectId: string, labels: readonly DrawingLabel[]): Promise<ObjectRow[]> {
   const { refs, typePrefixes } = labelCodes(labels);
   const supabase = getSupabaseAdmin();
@@ -80,7 +80,7 @@ async function fetchLabelObjects(projectId: string, labels: readonly DrawingLabe
       .in("object_type", ["asset", "asset_type", "space"])
       .is("valid_until", null)
       .order("id");
-  // Bez .or(): kódy obsahujú bodky, jednoduché filtre netreba escapovať. Typov je na strane málo.
+  // Without .or(): codes contain dots, simple filters need no escaping. There are few types on a page.
   const parts = await Promise.all([
     ...(refs.length > 0 ? [fetchAllPages<ObjectRow>((from, to) => base().in("object_ref", refs).range(from, to))] : []),
     ...typePrefixes.map((p) =>
@@ -92,8 +92,8 @@ async function fetchLabelObjects(projectId: string, labels: readonly DrawingLabe
 }
 
 /**
- * Podlažie objektov: prvok priamo na podlaží alebo v miestnosti (rel_contained...),
- * miestnosť cez rel_aggregates. Vráti id podlažia (alebo null) pre každý objekt.
+ * Storey of objects: an element directly on the storey or in a space (rel_contained...),
+ * a space via rel_aggregates. Returns the storey id (or null) for each object.
  */
 async function floorOf(projectId: string, objects: readonly ObjectRow[]): Promise<Map<string, Set<string>>> {
   const out = new Map<string, Set<string>>();
@@ -117,8 +117,8 @@ async function floorOf(projectId: string, objects: readonly ObjectRow[]): Promis
           .range(from, to)
       )
     : [];
-  // Rodič miestnosti (aj miestností, v ktorých sú prvky) = podlažie.
-  // Kontajner bez uzla AIM (podlažie modelu bez náprotivku, D-183 K3) nemá to_id.
+  // Parent of a space (also of spaces that contain elements) = the storey.
+  // A container without an AIM node (a model storey without a counterpart, D-183 K3) has no to_id.
   const spaces = [...new Set([...spaceIds, ...contained.flatMap((c) => (c.to_id ? [c.to_id] : []))])];
   const aggregates = spaces.length
     ? await fetchAllPages<{ from_id: string; to_id: string }>((from, to) =>
@@ -184,13 +184,13 @@ async function fetchDocumentLinksImpl(projectId: string, documentId: string, pag
   });
 }
 
-/** Odkazy z popiskov strán dokumentu (všetky strany alebo jedna), ISR tag `aim`. */
+/** Links from the labels of the pages of a document (all pages or one), ISR tag `aim`. */
 export const fetchDocumentLinks = cachedProjectRead("fetch-document-links", fetchDocumentLinksImpl);
 
 /**
- * Odkazy pre pôdorysy podlaží vo vieweri (dokumenty so `storeyGuid` v `DOCUMENTS_LOAD`):
- * host ich pošle po knižnici dokumentov. Ostatné dokumenty dostanú odkazy, až keď bude
- * podlažie aj pre ne (rezy, výpisy) - párovanie typových kódov ho potrebuje.
+ * Links for storey floor plans in the viewer (documents with `storeyGuid` in `DOCUMENTS_LOAD`):
+ * the host sends them after the document library. Other documents get links only once there is a
+ * storey for them too (sections, schedules) - pairing of type codes needs it.
  */
 export async function fetchViewerDocumentLinks(projectId: string, documentIds: readonly string[]): Promise<DocumentLinksWire[]> {
   const results = await Promise.all(

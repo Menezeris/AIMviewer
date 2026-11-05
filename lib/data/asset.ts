@@ -6,35 +6,35 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { cachedProjectRead } from "@/lib/data/revalidate";
 
 /**
- * Data-access vrstva pre asset kartu (S2) — jadro previazanosti.
+ * Data-access layer for the asset card (S2) - the core of interlinking.
  *
- * Dedičnosť type→occurrence (D-021) je zapuzdrená vo `v_asset_effective`
- * (predefined_type, user_defined_type, type väzba). `properties` ale view
- * vracia už zmergované — pôvod (vlastné / zdedené / prepísané) by sa stratil,
- * preto popri view načítame raw `properties` typu aj occurrence a provenance
- * dopočítame v TS (rozhodnutie D-028). Klasifikácie čítame z `v_asset_classifications`
- * (union faset type+occurrence, D-023). Všetko server-side cez `service_role` (D-026).
+ * Type->occurrence inheritance (D-021) is encapsulated in `v_asset_effective`
+ * (predefined_type, user_defined_type, type link). However, the view returns
+ * `properties` already merged - the origin (own / inherited / overridden) would be lost,
+ * so besides the view we load the raw `properties` of the type and the occurrence and
+ * compute provenance in TS (decision D-028). Classifications are read from `v_asset_classifications`
+ * (facet union of type+occurrence, D-023). All server-side via `service_role` (D-026).
  */
 
 export type Provenance = "own" | "inherited" | "overridden";
 
-/** Jedna položka property setu + odkiaľ jej hodnota pochádza. */
+/** One property set item + where its value comes from. */
 export interface PropertyEntry {
   key: string;
   value: unknown;
   provenance: Provenance;
-  /** Pôvodná hodnota z typu — len pri `overridden`. */
+  /** Original value from the type - only when `overridden`. */
   typeValue?: unknown;
 }
 
-/** Property set zoskupený podľa názvu; `standard` = názov `Pset_`/`Qto_` (D-022). */
+/** Property set grouped by name; `standard` = name is `Pset_`/`Qto_` (D-022). */
 export interface PropertySetGroup {
   name: string;
   standard: boolean;
   entries: PropertyEntry[];
 }
 
-/** Jedna klasifikačná faseta + úroveň (type = zdedená, occurrence = vlastná). */
+/** One classification facet + level (type = inherited, occurrence = own). */
 export interface ClassificationFacet {
   refId: string;
   identification: string;
@@ -56,10 +56,10 @@ export interface AssetDetail {
   name: string | null;
   ifc_type: string | null;
   ifc_guid: string | null;
-  /** Efektívny PredefinedType + či bol zdedený z typu (D-021). */
+  /** Effective PredefinedType + whether it was inherited from the type (D-021). */
   predefinedType: { value: string | null; inherited: boolean };
   userDefinedType: string | null;
-  /** Odkaz na asset_type (väzba `rel_defines_by_type`) alebo `null`. */
+  /** Reference to asset_type (link `rel_defines_by_type`) or `null`. */
   type: TypeRef | null;
   propertySets: PropertySetGroup[];
   classifications: ClassificationFacet[];
@@ -73,27 +73,27 @@ export interface AssetTypeDetail {
   ifc_guid: string | null;
   predefinedType: string | null;
   userDefinedType: string | null;
-  /** Zdieľané psety typu — všetko `own` (provenance sa na type stránke neukazuje). */
+  /** Shared psets of the type - all `own` (provenance is not shown on the type page). */
   propertySets: PropertySetGroup[];
-  /** Vlastné klasifikácie typu (každú zdedí jeho occurrence). */
+  /** Own classifications of the type (each is inherited by its occurrence). */
   classifications: ClassificationFacet[];
-  /** Occurrence assety definované týmto typom. */
+  /** Occurrence assets defined by this type. */
   occurrences: TypeRef[];
 }
 
 type PropertyBag = Record<string, unknown>;
 
-/** Psety nikdy nezačínajú `_` (rezervované meta kľúče, D-022). */
+/** Psets never start with `_` (reserved meta keys, D-022). */
 const isPsetName = (n: string) => !n.startsWith("_");
-/** Štandardný buildingSMART pset má prefix `Pset_`/`Qto_` (D-022). */
+/** A standard buildingSMART pset has the prefix `Pset_`/`Qto_` (D-022). */
 const isStandardPset = (n: string) => n.startsWith("Pset_") || n.startsWith("Qto_");
 
 const asBag = (v: unknown): PropertyBag =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as PropertyBag) : {};
 
 /**
- * Zostaví property sety z raw `properties` typu a occurrence a označí pôvod
- * každej hodnoty. Pre type stránku sa volá s prázdnym `typeProps` → všetko `own`.
+ * Builds property sets from the raw `properties` of the type and the occurrence and marks the origin
+ * of each value. For the type page it is called with empty `typeProps` -> all `own`.
  */
 function buildPropertySets(
   typeProps: PropertyBag,
@@ -127,7 +127,7 @@ function buildPropertySets(
     groups.push({ name: pset, standard: isStandardPset(pset), entries });
   }
 
-  // Štandardné psety prv, custom potom; v rámci skupiny abecedne.
+  // Standard psets first, then custom; alphabetical within a group.
   groups.sort((a, b) => {
     if (a.standard !== b.standard) return a.standard ? -1 : 1;
     return a.name.localeCompare(b.name);
@@ -143,7 +143,7 @@ interface RefRow {
   system_id: string;
 }
 
-/** Načíta klasifikačné referencie + názvy systémov pre dané ref id. */
+/** Loads classification references + system names for the given ref ids. */
 async function loadRefs(
   supabase: SupabaseClient,
   refIds: string[]
@@ -182,7 +182,7 @@ async function loadRefs(
   return out;
 }
 
-/** Efektívne klasifikácie occurrence (union vlastných + zdedených, D-023). */
+/** Effective classifications of an occurrence (union of own + inherited, D-023). */
 async function fetchAssetClassifications(
   projectId: string,
   supabase: SupabaseClient,
@@ -206,7 +206,7 @@ async function fetchAssetClassifications(
     if (ref) facets.push({ ...ref, level: row.level });
   }
 
-  // Vlastné (occurrence) hore, zdedené (type) dole; v rámci podľa kódu.
+  // Own (occurrence) on top, inherited (type) below; by code within each.
   facets.sort((a, b) => {
     if (a.level !== b.level) return a.level === "occurrence" ? -1 : 1;
     return a.identification.localeCompare(b.identification);
@@ -226,14 +226,14 @@ interface EffRow {
 }
 
 /**
- * Detail assetu (occurrence): efektívne atribúty, property sety s provenance,
- * väzba na type a union klasifikácií. `null`, ak `id` nie je `object_type='asset'`.
+ * Asset (occurrence) detail: effective attributes, property sets with provenance,
+ * type link and union of classifications. `null` if `id` is not `object_type='asset'`.
  */
 async function fetchAssetImpl(projectId: string, id: string): Promise<AssetDetail | null> {
   const supabase = getSupabaseAdmin();
 
-  // Effective view, raw occurrence a klasifikácie sú navzájom nezávislé →
-  // spustíme ich paralelne (jeden round-trip namiesto troch za sebou).
+  // The effective view, raw occurrence and classifications are independent of each other ->
+  // run them in parallel (one round-trip instead of three in a row).
   const [effRes, occRes, classifications] = await Promise.all([
     supabase
       .from("v_asset_effective")
@@ -252,12 +252,12 @@ async function fetchAssetImpl(projectId: string, id: string): Promise<AssetDetai
     fetchAssetClassifications(projectId, supabase, id),
   ]);
 
-  // Effective view — zapuzdruje dedičnosť (D-021). Žiadny riadok = nie je asset.
+  // Effective view - encapsulates inheritance (D-021). No row = not an asset.
   if (effRes.error) throw new Error(effRes.error.message);
   const eff = (effRes.data?.[0] ?? null) as EffRow | null;
   if (!eff) return null;
 
-  // Raw occurrence — ifc_guid (vo view nie je) + raw properties pre provenance.
+  // Raw occurrence - ifc_guid (not in the view) + raw properties for provenance.
   if (occRes.error) throw new Error(occRes.error.message);
   const occ = (occRes.data?.[0] ?? null) as {
     ifc_guid: string | null;
@@ -265,7 +265,7 @@ async function fetchAssetImpl(projectId: string, id: string): Promise<AssetDetai
     properties: PropertyBag | null;
   } | null;
 
-  // Raw type — zdieľané properties (závisí od eff.type_id → až po effective view).
+  // Raw type - shared properties (depends on eff.type_id -> only after the effective view).
   let typeProps: PropertyBag = {};
   let typeRef: TypeRef | null = null;
   if (eff.type_id) {
@@ -290,7 +290,7 @@ async function fetchAssetImpl(projectId: string, id: string): Promise<AssetDetai
 
   const propertySets = buildPropertySets(typeProps, asBag(occ?.properties));
 
-  // PredefinedType: efektívna hodnota z view; zdedená, ak occurrence vlastnú nemá.
+  // PredefinedType: effective value from the view; inherited if the occurrence has none of its own.
   const occPredef = occ?.predefined_type ?? null;
   const predefinedInherited =
     !!eff.type_id &&
@@ -312,14 +312,14 @@ async function fetchAssetImpl(projectId: string, id: string): Promise<AssetDetai
 }
 
 /**
- * Detail asset_type: zdieľané atribúty/psety, vlastné klasifikácie a zoznam
- * occurrence, ktoré ho používajú. `null`, ak `id` nie je `object_type='asset_type'`.
+ * Asset_type detail: shared attributes/psets, own classifications and the list of
+ * occurrences that use it. `null` if `id` is not `object_type='asset_type'`.
  */
 async function fetchAssetTypeImpl(projectId: string, id: string): Promise<AssetTypeDetail | null> {
   const supabase = getSupabaseAdmin();
 
-  // Hlavný riadok, klasifikačné väzby aj occurrence väzby závisia len od `id`
-  // → jedna paralelná vlna namiesto troch sekvenčných round-tripov.
+  // The main row, classification links and occurrence links depend only on `id`
+  // -> one parallel wave instead of three sequential round-trips.
   const [rowsRes, clsRes, occRelsRes] = await Promise.all([
     supabase
       .from("objects")
@@ -343,7 +343,7 @@ async function fetchAssetTypeImpl(projectId: string, id: string): Promise<AssetT
       .eq("project_id", projectId)
       .eq("to_id", id)
       .is("valid_until", null)
-      .not("from_id", "is", null), // výskyt bez uzla AIM (D-183 K3)
+      .not("from_id", "is", null), // occurrence without an AIM node (D-183 K3)
   ]);
   if (rowsRes.error) throw new Error(rowsRes.error.message);
   const t = (rowsRes.data?.[0] ?? null) as {
@@ -361,12 +361,12 @@ async function fetchAssetTypeImpl(projectId: string, id: string): Promise<AssetT
   if (clsRes.error) throw new Error(clsRes.error.message);
   if (occRelsRes.error) throw new Error(occRelsRes.error.message);
 
-  // Typ nemá nad sebou vrstvu → všetko `own` (typeProps prázdne).
+  // The type has no layer above it -> all `own` (typeProps empty).
   const propertySets = buildPropertySets({}, asBag(t.properties));
 
   const occIds = [...new Set((occRelsRes.data ?? []).map((r) => r.from_id as string))];
 
-  // Detaily referencií (klasifikácie) a occurrence objekty — druhá paralelná vlna.
+  // Reference details (classifications) and occurrence objects - second parallel wave.
   const [refMap, occObjs] = await Promise.all([
     loadRefs(supabase, [
       ...new Set((clsRes.data ?? []).map((r) => r.to_id as string)),
@@ -384,12 +384,12 @@ async function fetchAssetTypeImpl(projectId: string, id: string): Promise<AssetT
       : Promise.resolve([]),
   ]);
 
-  // Vlastné klasifikácie typu (level 'type' — zdedí ich každá occurrence).
+  // Own classifications of the type (level 'type' - each occurrence inherits them).
   const classifications: ClassificationFacet[] = [...refMap.values()]
     .map((r) => ({ ...r, level: "type" as const }))
     .sort((a, b) => a.identification.localeCompare(b.identification));
 
-  // Occurrence definované týmto typom (aktívne väzby).
+  // Occurrences defined by this type (active links).
   const occurrences: TypeRef[] = occObjs
     .map((o) => ({
       id: o.id as string,
@@ -414,8 +414,8 @@ async function fetchAssetTypeImpl(projectId: string, id: string): Promise<AssetT
   };
 }
 
-/** Detail assetu (occurrence) — cachované per id (ISR, D-029 perf). */
+/** Asset (occurrence) detail - cached per id (ISR, D-029 perf). */
 export const fetchAsset = cachedProjectRead("fetch-asset", fetchAssetImpl);
 
-/** Detail asset_type — cachované per id (ISR, D-029 perf). */
+/** Asset_type detail - cached per id (ISR, D-029 perf). */
 export const fetchAssetType = cachedProjectRead("fetch-asset-type", fetchAssetTypeImpl);

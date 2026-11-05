@@ -4,10 +4,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { cachedProjectRead } from "@/lib/data/revalidate";
 
 /**
- * Navigačné zoznamy ne-priestorových uzlov pre sidebar (typy assetov, osoby,
- * organizácie, dokumenty). Priestorová hierarchia má vlastný strom (D-027);
- * tieto uzly polohu nemajú, preto sa zobrazia ako ploché zoznamy. Jeden dotaz,
- * `cache()` dedupe na request. Server-side cez `service_role` (D-026).
+ * Navigation lists of non-spatial nodes for the sidebar (asset types, persons,
+ * organizations, documents). The spatial hierarchy has its own tree (D-027);
+ * these nodes have no location, so they are shown as flat lists. One query,
+ * `cache()` dedupes per request. Server-side via `service_role` (D-026).
  */
 
 export interface NavItem {
@@ -35,7 +35,7 @@ export const fetchSidebarNav = cachedProjectRead("sidebar-nav", async (projectId
     // D-189: nodes of the project; persons and organizations are global (project_id NULL, A1).
     .or(`project_id.eq.${projectId},project_id.is.null`)
     .in("object_type", NAV_TYPES as unknown as string[])
-    .is("valid_until", null); // zaniknuté objekty (D-088)
+    .is("valid_until", null); // vanished objects (D-088)
   if (error) throw new Error(error.message);
 
   const groups: SidebarNavData = {

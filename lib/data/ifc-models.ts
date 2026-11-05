@@ -1,6 +1,6 @@
 /**
- * Zoznam IFC modelov federácie - čistá funkcia bez závislostí na serveri, aby ju
- * zdieľal viewer (`lib/data/ifc.ts`) aj IFC motor (`lib/engine`, D-084) a jeho skripty.
+ * List of the IFC models of the federation - a pure function without server dependencies, so that
+ * the viewer (`lib/data/ifc.ts`), the IFC engine (`lib/engine`, D-084) and its scripts can share it.
  */
 
 /** Public storage of the production Supabase project (fallback when no URL env is set). */
@@ -12,21 +12,21 @@ export function storagePublicBase(env: Record<string, string | undefined> = proc
   return `${url}/storage/v1/object/public`;
 }
 
-/** Jeden 3D model federácie (D-049): štítok pre UI + verejná URL IFC súboru. */
+/** One 3D model of the federation (D-049): a label for the UI + the public URL of the IFC file. */
 export interface IfcModel {
   /** Model code within the project (`ASR`); the iframe `models=` and tools use it (D-189). */
   id: string;
   label: string;
   url: string;
-  /** Aktuálna revízia súboru (D-086), ak ju DB pozná. */
+  /** Current revision of the file (D-086), if the DB knows it. */
   revision?: number;
   /** The model's identity (D-189): `information_containers.id`. Missing only for env overrides. */
   containerId?: string;
 }
 
 /**
- * Kľúč modelu v `model_revisions` = meno súboru v buckete bez `.ifc` (`…/ifc/ASR.ifc` → `ASR`);
- * pozná aj archív revízie (`…/ifc/archive/ASR/v078.ifc.gz` → `ASR`, D-135).
+ * Key of a model in `model_revisions` = the file name in the bucket without `.ifc` (`.../ifc/ASR.ifc` -> `ASR`);
+ * it also knows the revision archive (`.../ifc/archive/ASR/v078.ifc.gz` -> `ASR`, D-135).
  */
 export function modelKey(url: string): string | null {
   const path = url.split(/[?#]/)[0];
@@ -35,9 +35,9 @@ export function modelKey(url: string): string | null {
 }
 
 /**
- * Nemenný archív revízie (D-086) vedľa aktuálneho súboru: `…/ifc/ASR.ifc` + 78 →
- * `…/ifc/archive/ASR/v078.ifc.gz`. Kľúč sa po nahratí nemení (`immutable`, rok), takže
- * prehliadač model stiahne raz na revíziu, a gzip je cca 5-krát menší (D-135).
+ * Immutable archive of a revision (D-086) next to the current file: `.../ifc/ASR.ifc` + 78 ->
+ * `.../ifc/archive/ASR/v078.ifc.gz`. The key does not change after upload (`immutable`, a year), so
+ * the browser downloads the model once per revision, and gzip is about 5 times smaller (D-135).
  */
 export function archiveUrl(url: string, revision: number): string | null {
   const key = modelKey(url);
@@ -50,8 +50,8 @@ export function archiveUrl(url: string, revision: number): string | null {
 }
 
 /**
- * Viewer číta archív revízie len pri `NEXT_PUBLIC_IFC_ARCHIVE=1` (D-135): gzip vie načítať až
- * fork s D-135, preto ho Samuel zapne na Verceli po nasadení forku. Inak `?rev=` na aktuálnom kľúči.
+ * The viewer reads the revision archive only with `NEXT_PUBLIC_IFC_ARCHIVE=1` (D-135): only the fork with D-135
+ * can load gzip, so Samuel turns it on on Vercel after deploying the fork. Otherwise `?rev=` on the current key.
  */
 export function archiveEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return env.NEXT_PUBLIC_IFC_ARCHIVE === "1";
@@ -101,7 +101,7 @@ export function modelsFromRows(
 
 /**
  * Env override of the model list (local verification, D-135): `NEXT_PUBLIC_IFC_URLS` =
- * "Label|url,Label|url" (alebo len "url,url"); legacy `NEXT_PUBLIC_IFC_URL` = one model.
+ * "Label|url,Label|url" (or just "url,url"); legacy `NEXT_PUBLIC_IFC_URL` = one model.
  * Without either null: the models come from the DB per project (D-189), nothing is hardcoded.
  */
 export function envIfcModels(env: Record<string, string | undefined> = process.env): IfcModel[] | null {

@@ -10,12 +10,12 @@ import {
 } from "@/lib/derivations";
 
 /**
- * Vrstva AIM nad modelmi (D-089): register pravidiel odvodení so stavom a odvodené vzťahy
- * vybraného prvku. Bez migrácie `20261018140000` (tabuľka chýba) vráti null / prázdne pole,
- * aby viewer bežal ďalej bez vrstvy.
+ * AIM layer over the models (D-089): a registry of derivation rules with status and the derived relations
+ * of the selected element. Without the migration `20261018140000` (table missing) it returns null / an empty array,
+ * so that the viewer keeps running without the layer.
  */
 
-/** Kde sa pravidlá spravujú, kým zápis z viewera nie je (fáza 3, D-086). */
+/** Where the rules are managed until writing from the viewer exists (phase 3, D-086). */
 const DEFAULT_MANAGE_URL = "https://github.com/Menezeris/OCB/actions/workflows/odvodenie.yml";
 
 interface RuleRow {
@@ -108,7 +108,7 @@ async function fetchDerivationLayerImpl(projectId: string): Promise<DerivationsL
   };
 }
 
-/** Stav vrstvy pre záložku AIM vo vieweri (ISR 60 s, tag `aim`, D-030). */
+/** Layer status for the AIM tab in the viewer (ISR 60 s, tag `aim`, D-030). */
 export const fetchDerivationLayer = cachedProjectRead("derivation-layer", fetchDerivationLayerImpl);
 
 interface OtherObject {
@@ -121,9 +121,9 @@ interface OtherObject {
 }
 
 /**
- * Odvodené vzťahy objektu v oboch smeroch: hrany zapnutých geometrických pravidiel
- * (`rel_referenced_in_spatial_structure` so zdrojom pravidla) a riadky `v_zone_elements`
- * (prvok v IfcZone cez priestory). Na smer najviac `DERIVED_RELATIONS_CAP` riadkov.
+ * Derived relations of an object in both directions: edges of enabled geometric rules
+ * (`rel_referenced_in_spatial_structure` with the rule source) and rows of `v_zone_elements`
+ * (an element in an IfcZone via spaces). At most `DERIVED_RELATIONS_CAP` rows per direction.
  */
 export async function fetchDerivedRelations(
   projectId: string,

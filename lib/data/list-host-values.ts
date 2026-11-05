@@ -6,9 +6,9 @@ import { LIST_HOST_MAX_VALUES, LIST_HOST_MAX_VALUE_LENGTH, type ListHostKey, typ
 import { fetchAllPages } from "./pagination";
 
 /**
- * Hodnoty host stĺpcov panela Lists (D-174, #277): odvodené väzby z `v_space_elements` (D-167, geometria) ako
- * `GlobalId prvku -> text`. Viewer ich zobrazí v stĺpci `source: "host"`; kľúč stĺpca určuje, ktorá väzba to je.
- * Zaniknuté prvky a priestory (`valid_until`, D-088) sa nezobrazia.
+ * Host column values of the Lists panel (D-174, #277): derived links from `v_space_elements` (D-167, geometry) as
+ * `GlobalId of the element -> text`. The viewer shows them in a column with `source: "host"`; the column key determines which link it is.
+ * Vanished elements and spaces (`valid_until`, D-088) are not shown.
  */
 
 const RELATION: Record<ListHostKey, string> = { derived_referenced: "referenced", derived_boundary: "boundary" };
@@ -35,9 +35,9 @@ async function mapChunks<T, R>(items: T[], size: number, fn: (chunk: T[]) => Pro
 
 export interface HostValuesResult {
   values: ListHostValues;
-  /** Prvkov s hodnotou. */
+  /** Elements with a value. */
   count: number;
-  /** Viac prvkov, než prenesie stĺpec (strop `LIST_HOST_MAX_VALUES`). */
+  /** More elements than a column can carry (cap `LIST_HOST_MAX_VALUES`). */
   truncated: boolean;
 }
 
@@ -73,7 +73,7 @@ export async function loadListHostValues(projectId: string, key: ListHostKey): P
     const guid = guidOf.get(e.element_id);
     const label = e.space_ref ?? e.space_name;
     if (!guid || !label || !liveSpaces.has(e.space_id)) continue;
-    // Odvodená referencia, ktorá prvok len pretína (role partial), sa označí; inside = celý v priestore.
+    // A derived reference that only intersects the element (role partial) is marked; inside = entirely in the space.
     const text = key === "derived_referenced" && e.role === "partial" ? `${label} (čiastočne)` : label;
     const set = perGuid.get(guid) ?? new Set<string>();
     set.add(text);
