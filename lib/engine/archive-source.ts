@@ -3,13 +3,20 @@ import "server-only";
 import { archiveUrl, modelKey } from "../data/ifc-models";
 import { fetchCurrentRevision } from "../data/model-revisions";
 
+import { maybeCurrentProject } from "../project/context";
+
 import { setArchiveResolver, type EngineModelSource } from "./cache";
 
-/** Archív aktuálnej revízie modelu podľa `model_revisions` (D-135); null = pôvodná URL. */
+/**
+ * Archív aktuálnej revízie modelu (D-135); null = pôvodná URL. The project's model list already
+ * carries the current revision (D-189); otherwise it is read within the request project.
+ */
 export async function currentArchiveUrl(src: EngineModelSource): Promise<string | null> {
+  if (src.revision !== undefined) return archiveUrl(src.url, src.revision);
   const key = modelKey(src.url);
-  if (key === null) return null;
-  const revision = await fetchCurrentRevision(key);
+  const project = maybeCurrentProject();
+  if (key === null || !project) return null;
+  const revision = await fetchCurrentRevision(project.id, key);
   return revision === null ? null : archiveUrl(src.url, revision);
 }
 

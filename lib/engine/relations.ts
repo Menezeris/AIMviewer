@@ -1,4 +1,4 @@
-import { getIfcModels } from "../data/ifc-models";
+import { requestIfcModels } from "../project/request-models";
 
 import { joinToAim } from "./join";
 import { openEngineSession } from "./session";
@@ -127,7 +127,7 @@ export async function ifcRelations(input: Record<string, unknown>, deps: EngineD
   const guid = IFC_GUID_RE.test(target) ? target : (await deps.resolveTargets([target])).get(target);
   if (!guid) throw new InputError(`'${target}' v AIM nie je alebo nemá IFC GUID - zadaj IFC GlobalId (napr. z ifc_query).`);
 
-  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? getIfcModels)().map((m) => m.id);
+  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? requestIfcModels)().map((m) => m.id);
   const { models, revision } = await modelsFor(modelIds, deps);
   const session = await openEngineSession(models);
   let model: (typeof models)[number] | undefined;

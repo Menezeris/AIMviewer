@@ -3,16 +3,25 @@
  * zdieľal viewer (`lib/data/ifc.ts`) aj IFC motor (`lib/engine`, D-084) a jeho skripty.
  */
 
-const IFC_STORAGE_BASE =
-  "https://acwoupricatirhlfkhvk.supabase.co/storage/v1/object/public/ifc";
+/** Public storage of the production Supabase project (fallback when no URL env is set). */
+const DEFAULT_SUPABASE_URL = "https://acwoupricatirhlfkhvk.supabase.co";
+
+/** Public object base of Supabase Storage (`<url>/storage/v1/object/public`). */
+export function storagePublicBase(env: Record<string, string | undefined> = process.env): string {
+  const url = (env.NEXT_PUBLIC_SUPABASE_URL || env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, "");
+  return `${url}/storage/v1/object/public`;
+}
 
 /** Jeden 3D model federácie (D-049): štítok pre UI + verejná URL IFC súboru. */
 export interface IfcModel {
+  /** Model code within the project (`ASR`); the iframe `models=` and tools use it (D-189). */
   id: string;
   label: string;
   url: string;
   /** Aktuálna revízia súboru (D-086), ak ju DB pozná. */
   revision?: number;
+  /** The model's identity (D-189): `information_containers.id`. Missing only for env overrides. */
+  containerId?: string;
 }
 
 /**
@@ -73,15 +82,49 @@ export function withRevisions(
   });
 }
 
+/** Current revision of one model of a project (`model_revisions` + `container_revisions.location`). */
+export interface ProjectModelRow {
+  container_id: string;
+  model: string;
+  revision: number;
+  /** Archive path in Storage (`ifc/archive/ASR/v079.ifc.gz`), null when unknown. */
+  location: string | null;
+}
+
 /**
- * IFC modely na render (D-044/D-049). Geometria je klient-side ephemerálna
- * (Postgres sa jej nedotýka); spojka na dáta = IFC GUID cez `guidMap`.
- * Default = ARCH (ASR) + vzduchotechnika (VZT) federované do jednej scény.
- * Override: `NEXT_PUBLIC_IFC_URLS` = "Label|url,Label|url" (alebo len "url,url");
- * legacy `NEXT_PUBLIC_IFC_URL` = jeden model.
+ * IFC models of a project from the DB (D-189): one per container with a current revision, sorted
+ * by code. No model code is assumed. With the archive (D-135) the URL is the revision's archive
+ * location, otherwise the current key `ifc/<code>.ifc?rev=N` as before. The label is the code until
+ * the naming decision (Samuel, 5 Nov).
  */
-export function getIfcModels(): IfcModel[] {
-  const multi = process.env.NEXT_PUBLIC_IFC_URLS;
+export function modelsFromRows(
+  rows: ProjectModelRow[],
+  opts: { archive?: boolean; base?: string } = {},
+): IfcModel[] {
+  const archive = opts.archive ?? archiveEnabled();
+  const base = opts.base ?? storagePublicBase();
+  return [...rows]
+    .sort((a, b) => a.model.localeCompare(b.model))
+    .map((r) => {
+      const current = new URL(`${base}/ifc/${encodeURIComponent(r.model)}.ifc`);
+      let url: string;
+      if (archive && r.location) url = `${base}/${r.location.replace(/^\/+/, "")}`;
+      else if (archive) url = archiveUrl(current.toString(), r.revision) ?? current.toString();
+      else {
+        current.searchParams.set("rev", String(r.revision));
+        url = current.toString();
+      }
+      return { id: r.model, label: r.model, url, revision: r.revision, containerId: r.container_id };
+    });
+}
+
+/**
+ * Env override of the model list (local verification, D-135): `NEXT_PUBLIC_IFC_URLS` =
+ * "Label|url,Label|url" (alebo len "url,url"); legacy `NEXT_PUBLIC_IFC_URL` = one model.
+ * Without either null: the models come from the DB per project (D-189), nothing is hardcoded.
+ */
+export function envIfcModels(env: Record<string, string | undefined> = process.env): IfcModel[] | null {
+  const multi = env.NEXT_PUBLIC_IFC_URLS;
   if (multi) {
     return multi
       .split(",")
@@ -93,10 +136,7 @@ export function getIfcModels(): IfcModel[] {
       })
       .filter((m) => m.url.length > 0);
   }
-  const single = process.env.NEXT_PUBLIC_IFC_URL;
-  if (single) return [{ id: "ASR", label: "Architektúra", url: single }];
-  return [
-    { id: "ASR", label: "Architektúra", url: `${IFC_STORAGE_BASE}/ASR.ifc` },
-    { id: "VZT", label: "Vzduchotechnika", url: `${IFC_STORAGE_BASE}/VZT.ifc` },
-  ];
+  const single = env.NEXT_PUBLIC_IFC_URL;
+  if (single) return [{ id: modelKey(single) ?? "m0", label: modelKey(single) ?? "Model", url: single }];
+  return null;
 }

@@ -45,7 +45,7 @@ describe("loadListHostValues (D-174)", () => {
       ],
       objects: [obj("e1", "G1"), obj("e2", "G2"), obj("e3", "G3", "2026-10-01"), obj("e4", "G4"), obj("e5", null), obj("s1", null), obj("s2", null), obj("s3", null, "2026-09-01")],
     };
-    const out = await loadListHostValues("derived_referenced");
+    const out = await loadListHostValues(projectId, "derived_referenced");
     expect(out.values).toEqual({ G1: "3.01 (čiastočne), 3.02", G2: "3.02" });
     expect(out).toMatchObject({ count: 2, truncated: false });
   });
@@ -55,13 +55,13 @@ describe("loadListHostValues (D-174)", () => {
       v_space_elements: [edge("boundary", "e1", "s1", "3.02", "physical"), edge("referenced", "e2", "s1", "3.02")],
       objects: [obj("e1", "G1"), obj("e2", "G2"), obj("s1", null)],
     };
-    expect((await loadListHostValues("derived_boundary")).values).toEqual({ G1: "3.02" });
+    expect((await loadListHostValues(projectId, "derived_boundary")).values).toEqual({ G1: "3.02" });
     db.tables = { v_space_elements: [], objects: [] };
-    expect(await loadListHostValues("derived_referenced")).toEqual({ values: {}, count: 0, truncated: false });
+    expect(await loadListHostValues(projectId, "derived_referenced")).toEqual({ values: {}, count: 0, truncated: false });
   });
 
   it("priestor bez kódu použije názov", async () => {
     db.tables = { v_space_elements: [edge("referenced", "e1", "s1", null)], objects: [obj("e1", "G1"), obj("s1", null)] };
-    expect((await loadListHostValues("derived_referenced")).values).toEqual({ G1: "Zasadačka" });
+    expect((await loadListHostValues(projectId, "derived_referenced")).values).toEqual({ G1: "Zasadačka" });
   });
 });

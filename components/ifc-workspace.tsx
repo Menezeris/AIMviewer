@@ -53,7 +53,10 @@ export default function IFCWorkspace({
   decorations,
   derivations,
   documentLinks,
+  projectCode,
 }: {
+  /** Project code (D-189), for the BCF project of the viewer. */
+  projectCode?: string;
   models: IfcModel[];
   guidMap: GuidMap;
   focus?: string;
@@ -141,6 +144,7 @@ export default function IFCWorkspace({
           decorations={decorations}
           derivations={derivations}
           documentLinks={documentLinks}
+          projectCode={projectCode}
           apiRef={viewerApiRef}
           onPickedElement={handlePickedElement}
           onNavigate={(href) => router.push(href)}

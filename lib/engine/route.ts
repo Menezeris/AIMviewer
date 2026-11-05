@@ -1,7 +1,7 @@
 import { EntityExtractor, type IfcDataStore } from "@ifc-lite/parser";
 import { EntityNode } from "@ifc-lite/query";
 
-import { getIfcModels } from "../data/ifc-models";
+import { requestIfcModels } from "../project/request-models";
 
 import { joinToAim } from "./join";
 import { ifcBox, meshModel, type Box, type MeshElement, type Vec3 } from "./measure";
@@ -411,7 +411,7 @@ export async function ifcRoute(input: Record<string, unknown>, deps: EngineDeps,
   const missing = targets.filter((t) => !guidFor(t));
   if (missing.length > 0) throw new InputError(`Bez IFC GUID v AIM: ${missing.join(", ")} - zadaj IFC GlobalId (napr. z ifc_query).`);
 
-  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? getIfcModels)().map((m) => m.id);
+  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? requestIfcModels)().map((m) => m.id);
   const { models, revision } = await modelsFor(modelIds, deps);
   const session = await openEngineSession(models);
   // Model trasy = model, ktorý nesie štart (miestnosti a dvere sú v jednom modeli).

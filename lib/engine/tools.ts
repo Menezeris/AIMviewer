@@ -1,9 +1,10 @@
-import { getIfcModels, modelKey } from "../data/ifc-models";
+import { modelKey } from "../data/ifc-models";
+import { requestIfcModels } from "../project/request-models";
 import type { AskAction } from "../llm/actions";
 import { MAX_MEASURE_SEGMENTS, noteDimensions, resetDimensionTally, type MeasureSegment } from "../viewer-measure";
 import type { Vec3 } from "./measure";
 
-import { cacheSnapshot, engineRevision, getStore, type EngineModelSource } from "./cache";
+import { cacheSnapshot, engineKey, engineRevision, getStore, type EngineModelSource } from "./cache";
 import type { ClashBcfPort, ClashStore } from "../clash/types";
 import type { VerificationStore } from "../verify/types";
 import type { ClashViewerDeps } from "../clash/viewer-tool";
@@ -235,7 +236,7 @@ function sanitizeTypes(raw: unknown): string[] {
 }
 
 export async function modelsFor(ids: string[], deps: EngineDeps): Promise<{ models: EngineModel[]; revision: Record<string, unknown> }> {
-  const all = (deps.sources ?? getIfcModels)();
+  const all = (deps.sources ?? requestIfcModels)();
   const revision: Record<string, unknown> = {};
   const models: EngineModel[] = [];
   for (const id of ids) {
@@ -287,8 +288,8 @@ function envelope(base: Record<string, unknown>): string {
 }
 
 async function ifcModels(input: Record<string, unknown>, deps: EngineDeps): Promise<string> {
-  const loaded = new Map(cacheSnapshot().map((c) => [c.id, c]));
-  const sources = (deps.sources ?? getIfcModels)();
+  const loaded = new Map(cacheSnapshot().map((c) => [c.key, c]));
+  const sources = (deps.sources ?? requestIfcModels)();
   const history = input.history === undefined ? 0 : clamp(input.history, 1, 20, 5);
   // Kľúč revízie = meno súboru v buckete (ASR.ifc -> ASR), nie id modelu (D-086).
   const keyOf = (m: { id: string; url: string }) => modelKey(m.url) ?? m.id;
@@ -303,7 +304,7 @@ async function ifcModels(input: Record<string, unknown>, deps: EngineDeps): Prom
   }
   return envelope({
     models: sources.map((m) => {
-      const c = loaded.get(m.id);
+      const c = loaded.get(engineKey(m));
       const rev = deps.revisions && !revisionError ? revisionsFor(keyOf(m), rows, history) : null;
       return {
         model: m.id,
@@ -385,7 +386,7 @@ async function ifcGet(input: Record<string, unknown>, deps: EngineDeps): Promise
   const targets = Array.isArray(input.targets) ? [...new Set(input.targets.map(str).filter(Boolean))] : [];
   if (targets.length === 0 || targets.length > 50) throw new InputError("targets musí mať 1-50 položiek.");
   const includeType = input.include_type_properties !== false;
-  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? getIfcModels)().map((m) => m.id);
+  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? requestIfcModels)().map((m) => m.id);
 
   const guidByTarget = new Map<string, string>();
   const nonGuid = targets.filter((t) => !IFC_GUID_RE.test(t));
@@ -542,7 +543,7 @@ export async function ifcSearchResult(input: Record<string, unknown>, deps: Engi
   if (bad.length > 0) throw new InputError(`fields: ${SEARCH_FIELDS.join(" | ")} (neznáme: ${bad.join(", ")}).`);
   const limit = clamp(input.limit, 1, 200, 30);
   const offset = clamp(input.offset, 0, 100_000, 0);
-  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? getIfcModels)().map((m) => m.id);
+  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? requestIfcModels)().map((m) => m.id);
   const { models, revision } = await modelsFor(modelIds, deps);
   const session = await openEngineSession(models);
   const index = (await Promise.all(models.map((m) => searchIndex(session, m)))).flat();
@@ -781,7 +782,7 @@ async function ifcQto(input: Record<string, unknown>, deps: EngineDeps): Promise
   const missing = targets.filter((t) => !guidFor(t));
   if (missing.length > 0) throw new InputError(`Bez IFC GUID v AIM: ${missing.join(", ")} - zadaj IFC GlobalId.`);
 
-  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? getIfcModels)().map((m) => m.id);
+  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? requestIfcModels)().map((m) => m.id);
   const { models, revision } = await modelsFor(modelIds, deps);
   const session = await openEngineSession(models);
   const found: Array<{ input: string; global_id: string; model: EngineModel; express_id: number }> = [];

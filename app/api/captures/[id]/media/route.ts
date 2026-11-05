@@ -1,4 +1,4 @@
-import { revalidateTag } from "next/cache";
+import { revalidateProject } from "@/lib/data/revalidate";
 import { NextResponse } from "next/server";
 import sharp from "sharp";
 
@@ -12,6 +12,8 @@ import {
   getCaptureKind,
   uploadCaptureObject,
 } from "@/lib/data/captures";
+import { currentProjectId } from "@/lib/live/caller";
+import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Reality Capture (D-073) — upload snímky/verzie k capture pointu.
@@ -62,10 +64,11 @@ const EXT_BY_MIME: Record<string, string> = {
   "image/webp": "webp",
 };
 
-export async function POST(
+async function postHandler(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const projectId = currentProjectId();
   if (!WRITE_ENABLED) {
     return NextResponse.json(
       { error: "zápis captures je vypnutý (CAPTURE_WRITE_ENABLED)" },
@@ -168,7 +171,7 @@ export async function POST(
       uploadCaptureObject(`${base}_thumb.jpg`, thumb, "image/jpeg"),
     ]);
 
-    const mediaId = await addCaptureMedia(captureId, {
+    const mediaId = await addCaptureMedia(projectId, captureId, {
       location,
       previewLocation,
       thumbLocation,
@@ -178,10 +181,12 @@ export async function POST(
       capturedAt,
     });
 
-    revalidateTag("aim", { expire: 0 });
+    revalidateProject(projectId);
     return NextResponse.json({ id: mediaId, location, previewLocation, thumbLocation }, { status: 201 });
   } catch (err) {
     console.error("[api/captures/[id]/media]", err);
     return NextResponse.json({ error: "server error" }, { status: 500 });
   }
 }
+
+export const POST = withRequestProject(postHandler);

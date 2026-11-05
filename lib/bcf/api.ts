@@ -26,7 +26,13 @@ export { viewpointFromDto };
  */
 
 export const BCF_VERSION = "2.1";
-export const PROJECT_ID = "aim";
+/**
+ * The only BCF project before D-189. The BCF project id is now the AIM project code (`OCB`); `aim`
+ * stays accepted as the request project for viewers loaded before the change.
+ */
+export const LEGACY_PROJECT_ID = "aim";
+/** Default BCF project of tests and contexts without a project (D-189). */
+export const PROJECT_ID = LEGACY_PROJECT_ID;
 export const PROJECT_NAME = "AIM - modely federácie";
 
 /** DB stav <-> BCF topic_status (Title Case ako v paneli a v iných nástrojoch). */
@@ -70,6 +76,8 @@ export interface BcfApiContext {
   origin: string;
   /** Snímka výrezu dokumentu (D-158 krok 3); bez nej pohľady dokumentov snímku neponúknu. */
   snapshot?: (req: SnapshotRequest) => Promise<SnapshotOutcome>;
+  /** The AIM project of the request (D-189): BCF `project_id` = its code. Missing = legacy `aim`. */
+  project?: { code: string; name: string };
 }
 
 /** Výsledok snímky pre BCF API (zhodný so `snapshot-http.ts`, bez závislosti na serveri). */
@@ -335,9 +343,10 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
   const { method, segments: s } = req;
   const { deps, user } = ctx;
   const canWrite = ctx.authenticated;
+  const projectId = ctx.project?.code ?? LEGACY_PROJECT_ID;
   const project = () => ({
-    project_id: PROJECT_ID,
-    name: PROJECT_NAME,
+    project_id: projectId,
+    name: ctx.project ? `${ctx.project.name} - modely federácie` : PROJECT_NAME,
     authorization: { project_actions: canWrite ? PROJECT_ACTIONS : [] },
   });
   try {
@@ -363,7 +372,7 @@ export async function handleBcfApi(req: BcfApiRequest, ctx: BcfApiContext): Prom
     }
     if (s[1] !== "projects") return err(404, "Neznáma cesta BCF API.");
     if (s.length === 2 && method === "GET") return ok([project()]);
-    if (s[2] !== PROJECT_ID) return err(404, `Projekt ${s[2]} neexistuje (jediný je '${PROJECT_ID}').`);
+    if (s[2] !== projectId && s[2] !== LEGACY_PROJECT_ID) return err(404, `Projekt ${s[2]} neexistuje (tento je '${projectId}').`);
     if (s.length === 3 && method === "GET") return ok(project());
     if (s.length === 4 && s[3] === "extensions" && method === "GET") return ok(await extensions(deps, canWrite));
     if (s[3] !== "topics") return err(404, "Neznáma cesta BCF API.");

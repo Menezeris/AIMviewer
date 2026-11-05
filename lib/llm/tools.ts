@@ -1,5 +1,6 @@
 import "server-only";
 
+import { projectOrGlobal, scopeQuery } from "@/lib/project/scope";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PDF_LINK_SOURCE } from "@/lib/data/constants";
 import { fetchDocumentObjectRows, fetchDocumentTypes, fetchObjectDocuments, typeText } from "@/lib/data/object-documents";
@@ -985,6 +986,12 @@ export interface ToolExecution {
 const MAX_SELECT_REFS = 200;
 
 export class AskToolRuntime {
+  /**
+   * D-189: every query of the LLM layer reads the project of the request (MCP `?project=`,
+   * `/api/ask`); RPCs get it as `p_project`.
+   */
+  constructor(readonly projectId: string) {}
+
   private sources = new Map<string, AskSource>();
   readonly trace: AskToolTrace[] = [];
   /** UI akcie vyžiadané modelom — route ich vráti klientovi na vykonanie. */
@@ -1015,6 +1022,7 @@ export class AskToolRuntime {
       const { data, error } = await supabase
         .from("objects")
         .select("id, object_type, object_ref, name, ifc_type, predefined_type")
+        .or(projectOrGlobal(this.projectId))
         .in("id", unique.slice(i, i + IN_CHUNK));
       if (error) throw new Error(error.message);
       rows.push(...((data ?? []) as ObjectRow[]));
@@ -1095,13 +1103,18 @@ export class AskToolRuntime {
     // Zaniknuté objekty (už ich nevydáva žiadny model, D-088) AI nevidí.
     q = q.is("valid_until", null);
     const query = sanitizeQuery(input.query);
+    // D-189: nodes of the project plus the global ones (persons, organizations, A1). One `or`
+    // filter carries both the project scope and the text search.
+    const scope = [`project_id.eq.${this.projectId}`, "project_id.is.null"];
     if (query) {
       // Hľadáme naprieč identitou aj IFC typológiou — podtyp (AIRCONDITIONINGUNIT)
       // žije v predefined_type, nie v názve (poučenie z prevádzky, D-056).
-      q = q.or(
+      const text =
         `name.ilike.%${query}%,object_ref.ilike.%${query}%,` +
-          `ifc_type.ilike.%${query}%,predefined_type.ilike.%${query}%`
-      );
+        `ifc_type.ilike.%${query}%,predefined_type.ilike.%${query}%`;
+      q = q.or(scope.map((p) => `and(${p},or(${text}))`).join(","));
+    } else {
+      q = q.or(scope.join(","));
     }
     if (typeof input.object_type === "string" && input.object_type)
       q = q.eq("object_type", input.object_type);
@@ -1170,6 +1183,7 @@ export class AskToolRuntime {
       q,
       object_types: objectTypes && objectTypes.length > 0 ? objectTypes : null,
       max_rows: clampLimit(input.limit),
+      p_project: this.projectId,
     });
     if (error) throw new Error(error.message);
 
@@ -1253,6 +1267,7 @@ export class AskToolRuntime {
       const { data, error } = await supabase
         .from("rel_contained_in_spatial_structure")
         .select("from_id, to_id")
+        .eq("project_id", this.projectId)
         .in("from_id", elementIds.slice(i, i + IN_CHUNK))
         .is("valid_until", null);
       if (error) throw new Error(error.message);
@@ -1267,6 +1282,7 @@ export class AskToolRuntime {
       const { data, error } = await supabase
         .from("objects")
         .select("id, object_type, object_ref, name")
+        .eq("project_id", this.projectId)
         .in("id", parentIds.slice(i, i + IN_CHUNK));
       if (error) throw new Error(error.message);
       for (const r of (data ?? []) as ObjectRow[]) parents.set(r.id, r);
@@ -1279,6 +1295,7 @@ export class AskToolRuntime {
       const { data, error } = await supabase
         .from("rel_aggregates")
         .select("from_id, to_id")
+        .eq("project_id", this.projectId)
         .in("from_id", spaceIds.slice(i, i + IN_CHUNK))
         .is("valid_until", null)
         .not("to_id", "is", null);
@@ -1292,6 +1309,7 @@ export class AskToolRuntime {
       const { data, error } = await supabase
         .from("objects")
         .select("id, object_type, object_ref, name")
+        .eq("project_id", this.projectId)
         .in("id", floorIds.slice(i, i + IN_CHUNK));
       if (error) throw new Error(error.message);
       for (const r of (data ?? []) as ObjectRow[]) parents.set(r.id, r);
@@ -1431,7 +1449,7 @@ export class AskToolRuntime {
       const all: Record<string, unknown>[] = [];
       for (let i = 0; i < ids.length; i += IN_CHUNK) {
         const q = applyFilters(
-          supabase.from(relation).select(cols.length > 0 ? cols.join(", ") : "*").in("id", ids.slice(i, i + IN_CHUNK))
+          scopeQuery(supabase.from(relation).select(cols.length > 0 ? cols.join(", ") : "*"), relation, this.projectId).in("id", ids.slice(i, i + IN_CHUNK))
         );
         const { data, error } = await q;
         if (error) throw new Error(error.message);
@@ -1443,8 +1461,8 @@ export class AskToolRuntime {
     } else {
       const select = selectCols.length > 0 ? selectCols.join(", ") : "*";
       let q = countOnly
-        ? supabase.from(relation).select("*", { count: "exact", head: true })
-        : supabase.from(relation).select(select, { count: "exact" });
+        ? scopeQuery(supabase.from(relation).select("*", { count: "exact", head: true }), relation, this.projectId)
+        : scopeQuery(supabase.from(relation).select(select, { count: "exact" }), relation, this.projectId);
       q = applyFilters(q);
       if (!countOnly) {
         for (const t of terms) q = q.order(t.column, { ascending: t.ascending });
@@ -1501,6 +1519,7 @@ export class AskToolRuntime {
       const { data, error } = await supabase
         .from("objects")
         .select("id")
+        .eq("project_id", this.projectId)
         .eq("object_ref", spec.node)
         .is("valid_until", null)
         .limit(2);
@@ -1511,9 +1530,7 @@ export class AskToolRuntime {
     }
     const [match, other] = spec.direction === "to" ? (["to_id", "from_id"] as const) : (["from_id", "to_id"] as const);
     const edges = await fetchAllPages<{ from_id: string; to_id: string }>((from, to) =>
-      supabase
-        .from(spec.relation)
-        .select("from_id, to_id")
+      scopeQuery(supabase.from(spec.relation).select("from_id, to_id"), spec.relation, this.projectId)
         .eq(match, nodeId)
         .is("valid_until", null)
         .order("id")
@@ -1549,6 +1566,7 @@ export class AskToolRuntime {
       ids: idsArr.length > 0 ? idsArr : null,
       max_groups: typeof input.max_groups === "number" ? input.max_groups : 50,
       return_rows: input.return_rows === true,
+      p_project: this.projectId,
     });
     if (error) throw new Error(error.message);
 
@@ -1593,19 +1611,21 @@ export class AskToolRuntime {
         supabase
           .from("objects")
           .select("object_type, ifc_type, predefined_type")
+          .eq("project_id", this.projectId)
           .is("valid_until", null)
           .order("id", { ascending: true })
           .range(from, to)
       ),
-      supabase.from("v_property_dictionary").select("pset, property").limit(5000),
+      supabase.from("v_property_dictionary").select("pset, property").eq("project_id", this.projectId).limit(5000),
       supabase
         .from("v_floors")
         .select("name, elevation")
+        .eq("project_id", this.projectId)
         .order("elevation", { ascending: true })
         .limit(50),
-      supabase.from("objects").select("name").eq("object_type", "system").is("valid_until", null).limit(50),
+      supabase.from("objects").select("name").eq("project_id", this.projectId).eq("object_type", "system").is("valid_until", null).limit(50),
       supabase.from("classification_systems").select("name").limit(20),
-      supabase.from("objects").select("name").eq("object_type", "document").is("valid_until", null).limit(50),
+      supabase.from("objects").select("name").eq("project_id", this.projectId).eq("object_type", "document").is("valid_until", null).limit(50),
     ]);
     const byObjectType = new Map<string, number>();
     const byClass = new Map<string, { ifc_type: string; predefined_type: string | null; count: number }>();
@@ -1722,6 +1742,7 @@ export class AskToolRuntime {
     const { data, error } = await supabase
       .from("objects")
       .select("id, object_type, object_ref, name, ifc_type, predefined_type, user_defined_type")
+      .or(projectOrGlobal(this.projectId))
       .eq(col, idOrRef)
       .is("valid_until", null)
       .limit(1);
@@ -1733,6 +1754,7 @@ export class AskToolRuntime {
       const { data: named, error: nameErr } = await supabase
         .from("objects")
         .select("id, object_type, object_ref, name, ifc_type, predefined_type, user_defined_type")
+        .or(projectOrGlobal(this.projectId))
         .eq("name", idOrRef)
         .is("valid_until", null)
         .limit(6);
@@ -1769,12 +1791,12 @@ export class AskToolRuntime {
     for (let depth = 0; depth < 3; depth++) {
       const [contained, aggregated] = await Promise.all(
         ["rel_contained_in_spatial_structure", "rel_aggregates"].map((view) =>
-          supabase.from(view).select("to_id").eq("from_id", current).is("valid_until", null).not("to_id", "is", null).limit(1),
+          supabase.from(view).select("to_id").eq("project_id", this.projectId).eq("from_id", current).is("valid_until", null).not("to_id", "is", null).limit(1),
         ),
       );
       const parent = (contained.data?.[0]?.to_id ?? aggregated.data?.[0]?.to_id) as string | undefined;
       if (!parent) return null;
-      const { data } = await supabase.from("objects").select("id, object_type, object_ref, name").eq("id", parent).limit(1);
+      const { data } = await supabase.from("objects").select("id, object_type, object_ref, name").eq("project_id", this.projectId).eq("id", parent).limit(1);
       const p = data?.[0] as { id: string; object_type: string; object_ref: string | null; name: string | null } | undefined;
       if (!p) return null;
       if (p.object_type === "floor") return { id: p.id, object_ref: p.object_ref, name: p.name };
@@ -1807,11 +1829,13 @@ export class AskToolRuntime {
       supabase
         .from("v_asset_effective")
         .select("id, object_ref, name, ifc_type, predefined_type, user_defined_type, properties, type_id, type_name")
+        .eq("project_id", this.projectId)
         .eq("id", id)
         .limit(1),
       supabase
         .from("v_asset_classifications")
         .select("classification_ref_id, level")
+        .eq("project_id", this.projectId)
         .eq("object_id", id)
         .limit(MAX_LIMIT),
     ]);
@@ -1870,9 +1894,8 @@ export class AskToolRuntime {
 
     // Strany s uzlom AIM najprv: riadky zo súboru bez uzla (napr. porty VZT v systéme, D-183 K3) by inak
     // pod limitom vytlačili členov z grafu.
-    let q = supabase
-      .from(relType)
-      .select("*")
+    // rel_member_of is between global nodes and has no project (D-189).
+    let q = scopeQuery(supabase.from(relType).select("*"), relType, this.projectId)
       .is("valid_until", null)
       .order("from_id", { ascending: true, nullsFirst: false })
       .order("to_id", { ascending: true, nullsFirst: false })
@@ -1961,7 +1984,7 @@ export class AskToolRuntime {
     const supabase = getSupabaseAdmin();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const base = (): any => {
-      let q = supabase.from(relation).select("id", { count: "exact", head: true });
+      let q = scopeQuery(supabase.from(relation).select("id", { count: "exact", head: true }), relation, this.projectId);
       if (activeOnly) q = q.is("valid_until", null);
       q = applyFilters(q);
       for (const [c, v] of Object.entries(eqs)) if (v) q = q.eq(c, v);
@@ -1989,6 +2012,7 @@ export class AskToolRuntime {
         const { data, error } = await supabase
           .from(view)
           .select("to_id")
+          .eq("project_id", this.projectId)
           .eq("from_id", current)
           .is("valid_until", null)
           .not("to_id", "is", null) // kontajner bez uzla AIM (D-183 K3)
@@ -2008,6 +2032,7 @@ export class AskToolRuntime {
     const { data: refs, error: refErr } = await supabase
       .from("rel_referenced_in_spatial_structure")
       .select("to_id, role")
+      .eq("project_id", this.projectId)
       .eq("from_id", id)
       .is("valid_until", null)
       .limit(MAX_LIMIT);
@@ -2061,6 +2086,7 @@ export class AskToolRuntime {
       q,
       max_rows: clampLimit(input.limit),
       ...(doc ? { doc_id: doc.id } : {}),
+      p_project: this.projectId,
     });
     if (error) throw new Error(error.message);
 
@@ -2162,7 +2188,7 @@ export class AskToolRuntime {
       if (bErr) throw new Error(bErr.message);
       blocks = parseBlocks(((rows ?? []) as { blocks?: unknown }[])[0]?.blocks);
     }
-    const links = includeLinks ? ((await fetchDocumentLinks(doc.id, page))[0]?.links ?? []) : null;
+    const links = includeLinks ? ((await fetchDocumentLinks(this.projectId, doc.id, page))[0]?.links ?? []) : null;
     return {
       ...document,
       page,
@@ -2195,9 +2221,9 @@ export class AskToolRuntime {
    * nositeľa, `via_name` = nositeľ, `through` = najbližší nositeľ k objektu, ak je iný.
    */
   private async objectDocuments(objectId: string) {
-    const { documents, nodes } = await fetchObjectDocuments(objectId);
+    const { documents, nodes } = await fetchObjectDocuments(this.projectId, objectId);
     for (const n of nodes) this.addSource(n);
-    const types = await fetchDocumentTypes([...new Set(documents.map((d) => d.documentId))]);
+    const types = await fetchDocumentTypes(this.projectId, [...new Set(documents.map((d) => d.documentId))]);
     return documents.map((d) => {
       const type = typeText(types.get(d.documentId));
       return {
@@ -2225,17 +2251,13 @@ export class AskToolRuntime {
       const documents = await this.objectDocuments(obj.id);
       let projectDocuments = 0;
       if (obj.object_type !== "project") {
-        const { data: projects, error: pErr } = await supabase
-          .from("objects")
-          .select("id")
-          .eq("object_type", "project")
-          .is("valid_until", null);
-        if (pErr) throw new Error(pErr.message);
-        const ids = (projects ?? []).map((p) => p.id as string);
+        // D-189: the project of the request is the one IfcProject node (resolver id).
+        const ids = [this.projectId];
         if (ids.length) {
           const { count, error } = await supabase
             .from("rel_associates_document")
             .select("id", { count: "exact", head: true })
+            .eq("project_id", this.projectId)
             .in("from_id", ids)
             .is("valid_until", null);
           if (error) throw new Error(error.message);
@@ -2254,7 +2276,7 @@ export class AskToolRuntime {
     }
 
     const doc = obj;
-    const rows = await fetchDocumentObjectRows(doc);
+    const rows = await fetchDocumentObjectRows(this.projectId, doc);
     // Objekt raz, s najbližšou cestou (riadky sú zoradené podľa depth).
     const first = new Map<string, (typeof rows)[number]>();
     for (const r of rows) if (!first.has(r.object_id)) first.set(r.object_id, r);
@@ -2313,6 +2335,7 @@ export class AskToolRuntime {
     const { data, error } = await supabase
       .from("objects")
       .select("id, object_type, object_ref, name, ifc_type, predefined_type")
+      .eq("project_id", this.projectId)
       .eq(col, value)
       .is("valid_until", null)
       .limit(1);
@@ -2331,6 +2354,7 @@ export class AskToolRuntime {
     const { data, error } = await getSupabaseAdmin()
       .from("objects")
       .select("id, object_type, object_ref, name, ifc_type, predefined_type, user_defined_type")
+      .eq("project_id", this.projectId)
       .eq("object_type", "document")
       .ilike("name", `${code} %`)
       .is("valid_until", null)
@@ -2382,6 +2406,7 @@ export class AskToolRuntime {
           const { data, error } = await supabase
             .from("objects")
             .select("id, object_type, object_ref, name, ifc_type, predefined_type")
+            .eq("project_id", this.projectId)
             .in(col, vals.slice(i, i + IN_CHUNK))
             .is("valid_until", null);
           if (error) throw new Error(error.message);
@@ -2615,7 +2640,7 @@ export class AskToolRuntime {
   /** `pset.property` v dátach AIM prvku (výskyt s dedičnosťou z typu, D-021) - D-127. */
   private async propertyOf(obj: ObjectRow, pset: string, property: string): Promise<PropertyLookup> {
     const relation = obj.object_type === "asset" ? "v_asset_effective" : "objects";
-    const { data, error } = await getSupabaseAdmin().from(relation).select("properties").eq("id", obj.id).limit(1);
+    const { data, error } = await getSupabaseAdmin().from(relation).select("properties").eq("project_id", this.projectId).eq("id", obj.id).limit(1);
     if (error) throw new Error(error.message);
     return lookupProperty((data?.[0] as { properties?: unknown } | undefined)?.properties, pset, property);
   }
@@ -2771,6 +2796,7 @@ export class AskToolRuntime {
           const { data, error } = await supabase
             .from("objects")
             .select("id, object_type, object_ref, name")
+            .eq("project_id", this.projectId)
             .in(col, values.slice(i, i + IN_CHUNK))
             .is("valid_until", null);
           if (error) throw new Error(error.message);
@@ -2808,6 +2834,7 @@ export class AskToolRuntime {
         const { data, error } = await supabase
           .from("v_property_dictionary")
           .select("pset")
+          .eq("project_id", this.projectId)
           .ilike("property", propertyName);
         if (error) throw new Error(error.message);
         propertyPsets = [...new Set((data ?? []).map((r) => (r as { pset: string }).pset))]
@@ -2828,6 +2855,7 @@ export class AskToolRuntime {
       let q = supabase
         .from("v_asset_effective")
         .select("id")
+        .eq("project_id", this.projectId)
         .or(orExpr)
         .limit(STYLE_CAP);
       if (singleType) q = q.ilike("ifc_type", singleType);
@@ -2926,6 +2954,7 @@ export class AskToolRuntime {
         const { data, error } = await supabase
           .from("objects")
           .select("id, object_ref")
+          .eq("project_id", this.projectId)
           .in(col, vals.slice(i, i + IN_CHUNK))
           .is("valid_until", null);
         if (error) throw new Error(error.message);
@@ -2989,7 +3018,7 @@ export class AskToolRuntime {
     // Ručný odkaz popisku (D-160): zápis pred otvorením, aby viewer načítal už upravené odkazy.
     let linkEdit: Record<string, unknown> | undefined;
     if (input.link !== undefined) {
-      linkEdit = await editDrawingLink(doc, page, input.link, realLinkEditDeps());
+      linkEdit = await editDrawingLink(doc, page, input.link, realLinkEditDeps(this.projectId));
     }
     if (input.in_viewer === true || region || input.target !== undefined || linkEdit) {
       // Dokument vo vieweri (D-075 DOCUMENT_OPEN cez op `doc`, D-083), výrez strany D-117, rámiky D-123,
@@ -3078,6 +3107,7 @@ export class AskToolRuntime {
           supabase
             .from("rel_associates_document")
             .select("from_id, to_id")
+            .eq("project_id", this.projectId)
             .in("from_id", chunk)
             .eq("source", PDF_LINK_SOURCE)
             .is("valid_until", null),
@@ -3099,6 +3129,7 @@ export class AskToolRuntime {
           const { data: docs } = await supabase
             .from("objects")
             .select("id, name")
+            .eq("project_id", this.projectId)
             .in("id", docIds);
           const nameById = new Map(
             (docs ?? []).map((d) => [d.id as string, (d.name as string | null) ?? null])

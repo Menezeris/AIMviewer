@@ -31,7 +31,7 @@ describe("/api/ids/library, /models, /runs (D-182)", () => {
   it("GET: katalóg z DB bez tokenu a bez GitHubu, projekt", async () => {
     const { library } = await load({});
     const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const res = await library.GET();
+    const res = await library.GET(projectId);
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(fetchSpy).not.toHaveBeenCalled();
