@@ -1,7 +1,7 @@
--- D-156: v_space_elements s relation = 'boundary' nad syntetickými dátami.
--- Spustenie (na lokálnej DB s aplikovanými migráciami, nikdy na produkcii):
+-- D-156: v_space_elements with relation = 'boundary' over synthetic data.
+-- Run (on a local DB with the migrations applied, never on production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/space_boundary.sql
--- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
+-- Everything runs in a transaction and ends with ROLLBACK; a failure = an exception with a description.
 begin;
 \ir _legacy_ocb.sql
 
@@ -18,7 +18,7 @@ insert into spaces (id, long_name) values
   ('00000000-0000-4000-8000-000000000001', 'Lobby'),
   ('00000000-0000-4000-8000-000000000002', 'Chodba');
 
--- Umiestnenie zo súboru je od D-183 K3 z kópie revízie (rel_contained_in_spatial_structure nad ifc_rev_relationships).
+-- Placement from the file has come from the revision copy since D-183 K3 (rel_contained_in_spatial_structure over ifc_rev_relationships).
 insert into ifc_guid_history (object_id, ifc_guid) values
   ('00000000-0000-4000-8000-000000000001', 'G-T1.01'), ('00000000-0000-4000-8000-000000000003', 'G-T1NP'),
   ('00000000-0000-4000-8000-0000000000a1', 'G-a1'), ('00000000-0000-4000-8000-0000000000a2', 'G-a2');
@@ -26,20 +26,20 @@ insert into model_revisions (model, revision, parent_revision, is_current, sha25
   values ('TSB', 1, null, true, repeat('c', 64), 1, 'x');
 insert into ifc_rev_imports (model, revision, sha256, status, hash_version) values ('TSB', 1, repeat('c', 64), 'done', 1);
 insert into ifc_rev_relationships (model, revision, rel_class, relating, related, relating_class, related_class, content_hash) values
-  -- DD01.08 z issue #245: na podlaží, s miestnosťou ho spája len hranica
+  -- DD01.08 from issue #245: on the storey, only a boundary links it to the room
   ('TSB', 1, 'IfcRelContainedInSpatialStructure', 'G-T1NP', 'G-a1', 'IfcBuildingStorey', 'IfcDoor', 'h1'),
-  -- v miestnosti aj hranica: ostáva jeden riadok 'contained'
+  -- a boundary in the room too: one 'contained' row remains
   ('TSB', 1, 'IfcRelContainedInSpatialStructure', 'G-T1.01', 'G-a2', 'IfcSpace', 'IfcDoor', 'h2');
 
 insert into relationships (rel_type, from_id, to_id, role, valid_until, source) values
   ('rel_space_boundary', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-000000000001', 'physical', null, 'etl'),
   ('rel_space_boundary', '00000000-0000-4000-8000-0000000000a2', '00000000-0000-4000-8000-000000000001', 'physical', null, 'etl'),
-  -- odvodená referencia aj hranica: jeden riadok 'referenced'
+  -- derived reference and boundary: one 'referenced' row
   ('rel_referenced_in_spatial_structure', '00000000-0000-4000-8000-0000000000a3', '00000000-0000-4000-8000-000000000001', 'inside', null, 'derive:spatial_reference'),
   ('rel_space_boundary', '00000000-0000-4000-8000-0000000000a3', '00000000-0000-4000-8000-000000000001', 'virtual', null, 'etl'),
-  -- ukončená (neaktívna) hranica sa nezobrazí
+  -- an ended (inactive) boundary is not shown
   ('rel_space_boundary', '00000000-0000-4000-8000-0000000000a4', '00000000-0000-4000-8000-000000000001', 'physical', now(), 'etl'),
-  -- dvere medzi dvoma miestnosťami: riadok v oboch
+  -- door between two rooms: a row in both
   ('rel_space_boundary', '00000000-0000-4000-8000-0000000000a5', '00000000-0000-4000-8000-000000000001', 'physical', null, 'etl'),
   ('rel_space_boundary', '00000000-0000-4000-8000-0000000000a5', '00000000-0000-4000-8000-000000000002', 'physical', null, 'etl');
 

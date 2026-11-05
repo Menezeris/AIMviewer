@@ -1,13 +1,13 @@
--- Port knižnice požiadaviek do TS, krok 3 (assetin-library V30, Q70; AIM D-186): zápis z editora v AIM.
--- APLIKOVANÉ na produkciu 2. 11. 2026 (orchestrátor, verzia s p_projekcie ako objektom). Zápis v AIM je navyše za env bránou
--- LIBRARY_WRITE_ENABLED (predvolene vypnutá, zapína sa na Samuelovo slovo).
+-- Port of the requirements library to TS, step 3 (assetin-library V30, Q70; AIM D-186): write from the editor in AIM.
+-- APPLIED to production 2. 11. 2026 (orchestrator, version with p_projekcie as an object). The write in AIM is additionally behind the env gate
+-- LIBRARY_WRITE_ENABLED (off by default, switched on at Samuel's word).
 --
--- Schéma `library` nie je v PostgREST vystavená; host (service_role) volá dve RPC v `public`:
---   library_texty(p_kniznica)  = hlava knižnice s textom (celá knižnica pre loader pri uložení),
---   library_zapis(...)         = library.zapis_revizie (všetko alebo nič, kontrola sha256 = AS409 konflikt)
---                                a v tej istej transakcii prepočítaná projekcia zapísaných súborov
---                                (`library.projekcia`, odvodené; počíta TS engine, ako sklad_db._uloz_projekciu).
--- EXECUTE len service_role; anon / authenticated nič (D-026). Rollback: drop function oboch.
+-- The `library` schema is not exposed in PostgREST; the host (service_role) calls two RPCs in `public`:
+--   library_texty(p_kniznica)  = library head with text (the whole library for the loader on save),
+--   library_zapis(...)         = library.zapis_revizie (all or nothing, sha256 check = AS409 conflict)
+--                                and in the same transaction the recomputed projection of the written files
+--                                (`library.projekcia`, derived; computed by the TS engine, like sklad_db._uloz_projekciu).
+-- EXECUTE only service_role; anon / authenticated none (D-026). Rollback: drop function of both.
 
 create or replace function public.library_texty(p_kniznica text)
 returns table (cesta text, note_id text, typ text, rev integer, sha256 text, text text)

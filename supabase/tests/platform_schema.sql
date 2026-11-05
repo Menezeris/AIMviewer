@@ -1,5 +1,5 @@
--- D-188: rola platform_app smie písať len do schémy platform, do AIM dát nie.
--- Spúšťa sa ručne po aplikovaní migrácie (ako postgres); všetko sa vráti rollbackom.
+-- D-188: the platform_app role may write only into the platform schema, not into AIM data.
+-- Run manually after applying the migration (as postgres); everything is rolled back.
 begin;
 
 do $$

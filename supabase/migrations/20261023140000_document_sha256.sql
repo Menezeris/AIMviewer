@@ -1,13 +1,13 @@
--- D-158 kroky 3 a 4: kotva revízie dokumentu a veľkosť strán pre snímku výrezu PDF.
+-- D-158 steps 3 and 4: document revision anchor and page size for the PDF crop snapshot.
 --
--- `documents.file_sha256` = sha256 súboru PDF (`location`), plní `etl/pdf_text.py --from-db`.
--- `model_task_documents.document_sha256` = sha256 dokumentu v čase založenia odkazu: snímka
--- výrezu sa kešuje pod ním (bucket `documents`, `snapshots/<sha256>/...`), takže téma ostane
--- pri svojej revízii aj po novej revízii súboru (nový súbor = nové sha256 = nová snímka).
--- `document_pages.page_size` = [šírka, výška] strany v bodoch (ako `_georef.page_size`, D-133),
--- pre RFC 8118 `viewrect` v odkaze na dokument; plní ten istý ETL.
--- Všetko aditívne, bez dát nič nepadá (snímka sa vyrobí aj bez sha256, odkaz bez viewrect).
--- Práva anon/authenticated sa nemenia (default privileges, migrácia 20261016120000).
+-- `documents.file_sha256` = sha256 of the PDF file (`location`), filled by `etl/pdf_text.py --from-db`.
+-- `model_task_documents.document_sha256` = sha256 of the document at the time the link was created: the crop
+-- snapshot is cached under it (bucket `documents`, `snapshots/<sha256>/...`), so the topic stays
+-- at its revision even after a new revision of the file (new file = new sha256 = new snapshot).
+-- `document_pages.page_size` = [width, height] of the page in points (like `_georef.page_size`, D-133),
+-- for the RFC 8118 `viewrect` in the document link; filled by the same ETL.
+-- Everything is additive, nothing breaks without data (the snapshot is produced even without sha256, the link without viewrect).
+-- anon/authenticated rights are unchanged (default privileges, migration 20261016120000).
 
 alter table documents add column if not exists file_sha256 text
   check (file_sha256 is null or file_sha256 ~ '^[0-9a-f]{64}$');

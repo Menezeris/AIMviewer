@@ -1,15 +1,15 @@
--- Test pending migrácie 20261102230500_library_vydaj.sql (po aplikácii, v transakcii s rollback; nič neostane).
+-- Test of the pending migration 20261102230500_library_vydaj.sql (after applying, in a transaction with rollback; nothing remains).
 begin;
 \ir _legacy_ocb.sql
 set local role service_role;
--- bez autora = 22023
+-- without an author = 22023
 do $$
 begin
   perform public.library_vydaj('assetin', 'test-0', ' ', null, '1.5', '{}'::jsonb, '{}'::jsonb, '[]'::jsonb, '9e2dfcba-437b-43d3-a925-0dd29f195b38');
   raise exception 'očakávaná chyba 22023';
 exception when sqlstate '22023' then null;
 end $$;
--- iná očakávaná verzia súboru = AS409, vydanie nevznikne
+-- a different expected file version = AS409, the release is not created
 do $$
 begin
   perform public.library_vydaj('assetin', 'test-1', 'test', null, '1.5', '{}'::jsonb,
@@ -18,7 +18,7 @@ begin
 exception when sqlstate 'AS409' then null;
 end $$;
 select count(*) = 0 as nevzniklo from library.vydanie where kod = 'test-1';
--- presná hlava a žiadne IDS: vydanie vznikne, katalóg IDS ostane bez zmeny (publikuj_ids sa nevolá)
+-- exact head and no IDS: the release is created, the IDS catalog stays unchanged (publikuj_ids is not called)
 do $$
 declare
   v_ocak jsonb; v_out jsonb; v_pred integer; v_po integer;

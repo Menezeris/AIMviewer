@@ -1,14 +1,14 @@
--- D-185 UI (fajočky overenia výmer v paneli vlastností): bunky vzorca a vysvetlenie receptu pri výsledku overenia.
--- APLIKOVANÉ na produkciu 2. 11. (Samuel "áno", orchestrátor).
--- Aditívne: dva nové stĺpce vo verification_results, v_verification_latest dostane tie isté stĺpce na konci
--- (create or replace view smie stĺpce len pridať na koniec). Staré riadky ostanú s NULL; viewer vtedy ukáže vzorec textom.
--- Kým migrácia nie je v DB, host (lib/verify/store.ts) uloží beh bez týchto stĺpcov a nič sa nestratí z výpočtu.
--- Rollback: create or replace view nejde odobrať stĺpce, preto drop view + pôvodná definícia z
---   20261101200000_verification_results.sql; potom alter table verification_results drop column inputs, drop column explanation;
+-- D-185 UI (area verification ticks in the properties panel): formula cells and a recipe explanation with the verification result.
+-- APPLIED to production 2. 11. (Samuel "yes", orchestrator).
+-- Additive: two new columns in verification_results, v_verification_latest gets the same columns at the end
+-- (create or replace view may only add columns at the end). Old rows stay with NULL; the viewer then shows the formula as text.
+-- Until the migration is in the DB, the host (lib/verify/store.ts) saves the run without these columns and nothing is lost from the computation.
+-- Rollback: create or replace view cannot remove columns, so drop view + the original definition from
+--   20261101200000_verification_results.sql; then alter table verification_results drop column inputs, drop column explanation;
 
 alter table verification_results
   add column if not exists inputs jsonb check (inputs is null or jsonb_typeof(inputs) = 'object'),  -- {expression?, cells: [{key, label, value, unit, global_id?}], file_meta?: {method_of_measurement?, formula?}}
-  add column if not exists explanation text;                                                       -- ako sa recept počíta, 1 až 2 vety (register metód)
+  add column if not exists explanation text;                                                       -- how the recipe is computed, 1 to 2 sentences (method registry)
 
 create or replace view v_verification_latest as
   select distinct on (r.model, r.global_id, r.recipe)

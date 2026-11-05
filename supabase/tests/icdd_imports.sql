@@ -1,12 +1,12 @@
--- D-181: icdd_imports a icdd_apply_import (pripravená migrácia supabase/pending/20261101140000_icdd_imports.sql).
--- Spustenie na lokálnej DB s aplikovanými migráciami a pripravenou migráciou (nikdy produkcia):
+-- D-181: icdd_imports and icdd_apply_import (prepared migration supabase/pending/20261101140000_icdd_imports.sql).
+-- Run on a local DB with the migrations applied and the prepared migration (never production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/pending/20261101140000_icdd_imports.sql
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/icdd_imports.sql
--- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
+-- Everything runs in a transaction and ends with ROLLBACK; a failure = an exception with a description.
 begin;
 \ir _legacy_ocb.sql
 
--- uzly: prvok, dokument, druhý dokument
+-- nodes: element, document, second document
 insert into objects (id, object_type, name) values
   ('00000000-0000-4000-8000-0000000000a1', 'asset', 'VV.01.01.001'),
   ('00000000-0000-4000-8000-0000000000d1', 'document', 'D.1.1.09'),
@@ -14,7 +14,7 @@ insert into objects (id, object_type, name) values
 insert into documents (id, storage_type) values
   ('00000000-0000-4000-8000-0000000000d1', 'unresolved'),
   ('00000000-0000-4000-8000-0000000000d2', 'unresolved');
--- živá väzba AIM vrstvy, ktorú cudzí nástroj zmení (d1 -> d2), a väzba zo súboru (etl), ktorú import nesmie uzavrieť
+-- a live AIM layer link that a foreign tool changes (d1 -> d2), and a link from the file (etl) that the import must not close
 insert into relationships (id, rel_type, from_id, to_id, role, source) values
   ('00000000-0000-4000-8000-0000000000e1', 'rel_associates_document', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000d1', 'document', 'pdf_link (E4)'),
   ('00000000-0000-4000-8000-0000000000e2', 'rel_associates_document', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000d1', 'document', 'etl:ASR');

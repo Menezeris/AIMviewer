@@ -1,32 +1,32 @@
--- D-183 K3 krok 3 (Samuel 31. 10.: "ukončiť"): ukončenie starých hrán ETL grafu, ktoré pohľady už čítajú
--- z kópie revízie. Súbor je zámerne v `supabase/pending/`, nie v `supabase/migrations/`: nasadenie ho nespustí.
--- Keď Samuel povie áno, presuň ho (git mv) do `supabase/migrations/` s aktuálnym časom v mene a nasaď.
+-- D-183 K3 step 3 (Samuel 31. 10.: "end it"): ending the old graph ETL edges that the views already read
+-- from the revision copy. The file is deliberately in `supabase/pending/`, not in `supabase/migrations/`: deployment does not run it.
+-- When Samuel says yes, move it (git mv) to `supabase/migrations/` with the current time in the name and deploy.
 --
--- Čo robí: hrany šiestich typov (rel_aggregates, rel_contained_in_spatial_structure, rel_defines_by_type,
--- rel_assigns_to_group, rel_associates_document, rel_associates_classification) so zdrojom ETL zo súboru
--- (`etl`, `etl:<model>`, presne podľa `rel_is_aim_layer`) dostanú `valid_until = now()`. Nič sa nemaže.
--- Pohľady ich nečítajú od migrácií 20261031120000 a 20261031150000 a ETL ich od 20261031180000 nepíše ani
--- neuzatvára (`etl/manifest.py`, `FROM_REVISION_COPY`), takže bez tohto kroku ostanú navždy "aktívne".
--- Hrany AIM vrstvy (pdf_link, doc_upload, seed, derive:*) a ostatné typy ETL (referenced, space_boundary,
--- aktori, strom a klasifikácia dokumentov) sa nemenia.
+-- What it does: edges of six types (rel_aggregates, rel_contained_in_spatial_structure, rel_defines_by_type,
+-- rel_assigns_to_group, rel_associates_document, rel_associates_classification) with the file ETL source
+-- (`etl`, `etl:<model>`, exactly per `rel_is_aim_layer`) get `valid_until = now()`. Nothing is deleted.
+-- The views have not read them since migrations 20261031120000 and 20261031150000 and ETL has neither written nor
+-- closed them since 20261031180000 (`etl/manifest.py`, `FROM_REVISION_COPY`), so without this step they stay "active" forever.
+-- AIM layer edges (pdf_link, doc_upload, seed, derive:*) and the other ETL types (referenced, space_boundary,
+-- actors, document tree and classification) do not change.
 --
--- Počty na produkcii 31. 10. (aktívne, ktoré krok ukončí):
+-- Counts in production 31. 10. (active, which the step ends):
 --   rel_aggregates                      etl:ASR   122
 --   rel_contained_in_spatial_structure  etl:ASR   766, etl:VZT  166
 --   rel_defines_by_type                 etl:ASR   735, etl:VZT 1 075
 --   rel_assigns_to_group                etl:ASR   391, etl:VZT 1 084
 --   rel_associates_document             etl:ASR   248, etl:VZT    9
 --   rel_associates_classification       etl:ASR   608
---   spolu 5 204 (ASR 2 870, VZT 2 334). Už ukončených ETL hrán týchto typov je 1 747 (etl bez modelu 1 542, etl:ASR
---   dokumenty 178, etl:VZT 27); spolu by v tabuľke ostalo 6 951 neaktívnych riadkov ETL týchto typov.
+--   total 5 204 (ASR 2 870, VZT 2 334). Already ended ETL edges of these types: 1 747 (etl without model 1 542, etl:ASR
+--   documents 178, etl:VZT 27); in total 6 951 inactive ETL rows of these types would remain in the table.
 --
--- Prečo ukončiť, nie zmazať (odporúčanie): relationships je časová tabuľka (valid_from/valid_until, D-010, D-086),
--- história re-ETL sa doteraz nikdy nemazala; ukončenie je vratné (valid_until = null) a uvoľní parciálne unique
--- indexy "jeden aktívny rodič" (uniq_active_aggregate/contained/defines_by_type), ktoré by inak blokovali hrany
--- AIM vrstvy tých typov. Zmazanie (variant nižšie) ušetrí len ~7 000 malých riadkov a je nevratné.
+-- Why end rather than delete (recommendation): relationships is a time table (valid_from/valid_until, D-010, D-086),
+-- the re-ETL history has never been deleted so far; ending is reversible (valid_until = null) and frees the partial unique
+-- indexes "one active parent" (uniq_active_aggregate/contained/defines_by_type) that would otherwise block the AIM
+-- layer edges of those types. Deleting (variant below) saves only ~7 000 small rows and is irreversible.
 --
--- Spätne (vrátiť stav pred krokom): update relationships set valid_until = null
---   where valid_until = '<čas behu>' and rel_type in (...) and not rel_is_aim_layer(source);
+-- Reverse (restore the state before the step): update relationships set valid_until = null
+--   where valid_until = '<run time>' and rel_type in (...) and not rel_is_aim_layer(source);
 
 begin;
 
@@ -44,9 +44,9 @@ end $$;
 
 commit;
 
--- Variant ZMAZAŤ (len ak Samuel výslovne povie zmazať, namiesto bloku vyššie):
+-- Variant DELETE (only if Samuel explicitly says delete, instead of the block above):
 --   delete from relationships
 --   where not rel_is_aim_layer(source)
 --     and rel_type in ('rel_aggregates', 'rel_contained_in_spatial_structure', 'rel_defines_by_type',
 --                      'rel_assigns_to_group', 'rel_associates_document', 'rel_associates_classification');
---   -- 6 951 riadkov (5 204 aktívnych + 1 747 ukončených) k 31. 10.
+--   -- 6 951 rows (5 204 active + 1 747 ended) as of 31. 10.

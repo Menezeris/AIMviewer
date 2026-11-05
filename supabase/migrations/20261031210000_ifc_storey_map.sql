@@ -1,31 +1,31 @@
--- D-183 K3 krok 4 (R6, #220): podlažia naprieč modelmi ako pohľad `ifc_storey_map`, nie implicitne v pohľade
--- `rel_contained_in_spatial_structure` (CTE floor_by_np) ani v ETL.
+-- D-183 K3 step 4 (R6, #220): storeys across models as the view `ifc_storey_map`, not implicitly in the view
+-- `rel_contained_in_spatial_structure` (CTE floor_by_np) nor in ETL.
 --
--- Riadok = každé IfcBuildingStorey z kópie aktuálnej `done` revízie každého modelu (`ifc_rev_current`):
---   model, revision, global_id (storey), name, elevation  - z kópie revízie (`ifc_rev_objects`);
---   to_id, floor_ref, floor_name                           - podlažie AIM (`objects.object_type = 'floor'`), alebo null;
---   match_rule                                             - ako sa spárovalo:
---       'guid'        = storey má vlastný uzol AIM (GlobalId v ifc_guid_node, napr. ASR - model, ktorý podlažia vlastní);
---       'name_number' = číslo podlažia z mena (`ifc_np_key`: 2NP, 2.NP, 2. NP, 2NP_VZT) sa zhoduje s jediným podlažím AIM
---                       (disciplinárny model bez vlastných uzlov podlaží, D-049; napr. VZT);
---       null          = nespárované, `reason` povie prečo:
---       'no_number_in_name'  = v mene nie je číslo podlažia (Strojovňa, Spadova vrstva);
---       'no_floor_for_number' = číslo je, ale podlažie AIM s ním neexistuje;
---       'ambiguous_floors'   = číslo zodpovedá viac podlažiam AIM (nevyberá sa ticho prvé, ako robil CTE floor_by_np);
---   elevation_check, floor_elevation                        - kontrola výškou: `Elevation` storey z kópie voči
---                                                             `Pset_BuildingStoreyCommon.ElevationOfFFLRelative` podlažia AIM
---                                                             (obe v jednotke kópie, tu mm; tolerancia 1): 'match' | 'mismatch'
---                                                             | 'unknown' (chýba na jednej strane, napr. ASR nemá Elevation
---                                                             v kópii). Je to len kontrola, párovanie nemení.
--- Pravidlo: vlastný uzol cez GlobalId má prednosť, inak číslo z mena. Fallback na najbližšiu eleváciu (ako ETL federácie)
--- sa nepreberá: nič ho dnes nepotrebuje a tichý odhad by bol proti princípu "nejednoznačné viditeľne".
+-- Row = every IfcBuildingStorey from the copy of the current `done` revision of each model (`ifc_rev_current`):
+--   model, revision, global_id (storey), name, elevation  - from the revision copy (`ifc_rev_objects`);
+--   to_id, floor_ref, floor_name                           - the AIM floor (`objects.object_type = 'floor'`), or null;
+--   match_rule                                             - how it was matched:
+--       'guid'        = the storey has its own AIM node (GlobalId in ifc_guid_node, e.g. ASR - the model that owns the storeys);
+--       'name_number' = the storey number from the name (`ifc_np_key`: 2NP, 2.NP, 2. NP, 2NP_VZT) matches a single AIM floor
+--                       (a discipline model without its own storey nodes, D-049; e.g. VZT);
+--       null          = unmatched, `reason` says why:
+--       'no_number_in_name'  = there is no storey number in the name (Strojovňa, Spadova vrstva);
+--       'no_floor_for_number' = there is a number, but no AIM floor exists for it;
+--       'ambiguous_floors'   = the number matches several AIM floors (the first is not silently chosen, as the CTE floor_by_np did);
+--   elevation_check, floor_elevation                        - elevation check: the storey `Elevation` from the copy against
+--                                                             `Pset_BuildingStoreyCommon.ElevationOfFFLRelative` of the AIM floor
+--                                                             (both in the copy unit, mm here; tolerance 1): 'match' | 'mismatch'
+--                                                             | 'unknown' (missing on one side, e.g. ASR has no Elevation
+--                                                             in the copy). It is only a check, it does not change the matching.
+-- Rule: an own node via GlobalId takes precedence, otherwise the number from the name. Fallback to the nearest elevation (like federation ETL)
+-- is not taken over: nothing needs it today and a silent guess would go against the principle "ambiguous visibly".
 --
--- `rel_contained_in_spatial_structure` ho používa namiesto CTE floor_by_np: výsledok rovnaký (VZT 1NP 43, 2NP 510, 3NP 510,
--- 4NP 12; ASR 253/167/167/149/30), nová je len viditeľnosť nejednoznačnosti. Telo pohľadu inak bez zmeny.
--- Pohľad je len na čítanie pre service_role (ako ostatné pohľady nad kópiou, default privileges 20261016120000).
+-- `rel_contained_in_spatial_structure` uses it instead of the CTE floor_by_np: the same result (VZT 1NP 43, 2NP 510, 3NP 510,
+-- 4NP 12; ASR 253/167/167/149/30), only the visibility of ambiguity is new. The view body is otherwise unchanged.
+-- The view is read-only for service_role (like the other views over the copy, default privileges 20261016120000).
 --
--- Rollback (pohľad rel_contained_in_spatial_structure späť na CTE floor_by_np, potom zrušiť mapu):
---   1) create or replace view rel_contained_in_spatial_structure ... telo z migrácie 20261031120000 (CTE floor_by_np);
+-- Rollback (view rel_contained_in_spatial_structure back to the CTE floor_by_np, then drop the map):
+--   1) create or replace view rel_contained_in_spatial_structure ... body from migration 20261031120000 (CTE floor_by_np);
 --   2) drop view ifc_storey_map;
 
 begin;
@@ -91,7 +91,7 @@ left join floors f on f.id = r.floor_id;
 comment on view ifc_storey_map is
   'Každé IfcBuildingStorey z kópie aktuálnej hotovej revízie každého modelu -> podlažie AIM (to_id). match_rule = guid (vlastný uzol) | name_number (číslo z mena, ifc_np_key); nespárované a nejednoznačné majú to_id null a reason. elevation_check porovnáva Elevation storey s Pset_BuildingStoreyCommon.ElevationOfFFLRelative podlažia AIM (D-183 K3 krok 4, R6).';
 
--- rel_contained_in_spatial_structure: podlažie bez vlastného uzla z ifc_storey_map (namiesto CTE floor_by_np).
+-- rel_contained_in_spatial_structure: a storey without its own node from ifc_storey_map (instead of the CTE floor_by_np).
 create or replace view rel_contained_in_spatial_structure as
 with
   rev as (

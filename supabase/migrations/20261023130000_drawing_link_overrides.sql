@@ -1,27 +1,27 @@
--- D-160: ručné priradenie a zrušenie odkazu popisku na výkrese (čísla miestností, značky typov,
--- názvy zón). Párovanie z textovej vrstvy (D-130) je odvodená AIM vrstva; toto je jediný nositeľ
--- ručnej opravy a má prednosť pred automatikou.
+-- D-160: manual assignment and suppression of a label link on a drawing (room numbers, type marks,
+-- zone names). Matching from the text layer (D-130) is a derived AIM layer; this is the only carrier
+-- of a manual correction and it takes precedence over the automation.
 --
--- Kľúč riadku = dokument + strana + normalizovaný text popisku (+ voliteľný bbox v % strany).
--- Bez bbox platí pre všetky výskyty textu na strane. bbox platí len pri zhode revízie dokumentu
--- (`document_revision`, neskôr `document_sha256` ako kotva podľa D-158 krok 4); text-only
--- riadok prežije re-ETL. action 'assign' = popisok ukazuje na `target_id`, 'suppress' = odkaz
--- sa nezobrazí. Zrušenie ručnej opravy ukončí riadok (`valid_until`), história ostáva.
--- Práva anon/authenticated nové objekty nedostanú (default privileges, migrácia 20261016120000).
+-- Row key = document + page + normalized label text (+ optional bbox in % of the page).
+-- Without bbox it applies to all occurrences of the text on the page. bbox applies only when the document
+-- revision matches (`document_revision`, later `document_sha256` as the anchor per D-158 step 4); a text-only
+-- row survives re-ETL. action 'assign' = the label points to `target_id`, 'suppress' = the link
+-- is not shown. Cancelling a manual correction ends the row (`valid_until`), history stays.
+-- anon/authenticated get no rights on new objects (default privileges, migration 20261016120000).
 
 create table drawing_link_overrides (
   id                uuid primary key default gen_random_uuid(),
   document_id       uuid references objects(id) on delete set null,       -- document (D-104)
-  document_ref      text,                                                 -- snímka object_ref dokumentu
-  document_revision text,                                                 -- documents.revision v čase zápisu
-  document_sha256   text,                                                 -- kotva revízie (D-158 krok 4), zatiaľ nullable
+  document_ref      text,                                                 -- snapshot of the document object_ref
+  document_revision text,                                                 -- documents.revision at the time of writing
+  document_sha256   text,                                                 -- revision anchor (D-158 step 4), nullable for now
   page              integer not null check (page >= 1),
-  text              text not null check (length(text) between 1 and 200), -- normalizovaný (bez diakritiky, malé písmená)
-  bbox              jsonb check (bbox is null or jsonb_typeof(bbox) = 'object'),  -- {x, y, width, height} v %
+  text              text not null check (length(text) between 1 and 200), -- normalized (no diacritics, lower case)
+  bbox              jsonb check (bbox is null or jsonb_typeof(bbox) = 'object'),  -- {x, y, width, height} in %
   action            text not null check (action in ('assign', 'suppress')),
   target_id         uuid references objects(id) on delete set null,
-  target_ref        text,                                                 -- snímka object_ref cieľa
-  target_guid       text,                                                 -- snímka IFC GlobalId cieľa
+  target_ref        text,                                                 -- snapshot of the target object_ref
+  target_guid       text,                                                 -- snapshot of the target IFC GlobalId
   author            text,
   created_at        timestamptz not null default now(),
   valid_until       timestamptz,

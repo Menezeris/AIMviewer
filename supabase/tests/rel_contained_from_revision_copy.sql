@@ -1,11 +1,11 @@
--- D-183 K3 krok 2: rel_contained_in_spatial_structure z kópie revízie (ifc_rev_relationships).
--- Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
+-- D-183 K3 step 2: rel_contained_in_spatial_structure from the revision copy (ifc_rev_relationships).
+-- Run on a local DB with the migrations applied (never production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/rel_contained_from_revision_copy.sql
--- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
+-- Everything runs in a transaction and ends with ROLLBACK; a failure = an exception with a description.
 begin;
 \ir _legacy_ocb.sql
 
--- Uzly AIM: podlažie 2NP (z ASR), miestnosť, potrubie, vyústka, schodisko (bez uzla), zábradlie v ňom, zaniknutý prvok.
+-- AIM nodes: storey 2NP (from ASR), room, pipe, outlet, stairwell (without a node), railing in it, vanished element.
 insert into objects (id, object_type, object_ref, name, ifc_type, valid_until) values
   ('00000000-0000-4000-8000-0000000000f2', 'floor', 'T2NP', '2NP', 'IfcBuildingStorey', null),
   ('00000000-0000-4000-8000-0000000000f3', 'floor', 'T3NP', '3NP', 'IfcBuildingStorey', null),
@@ -21,11 +21,11 @@ insert into ifc_guid_history (object_id, ifc_guid) values
   ('00000000-0000-4000-8000-0000000000a3', 'A-RAIL'), ('00000000-0000-4000-8000-0000000000a4', 'V-DEAD'),
   ('00000000-0000-4000-8000-0000000000b1', 'A-SZ');
 
--- Stará hrana grafu (ETL): pohľad ju už nečíta.
+-- Old graph edge (ETL): the view no longer reads it.
 insert into relationships (rel_type, from_id, to_id, source) values
   ('rel_contained_in_spatial_structure', '00000000-0000-4000-8000-0000000000a2', '00000000-0000-4000-8000-0000000000f3', 'etl:TVZ');
 
--- TVZ: v1 a v2 hotové, v3 aktuálna, ale kópia ešte nie je (pohľad berie v2). TAS: v1 hotová a aktuálna.
+-- TVZ: v1 and v2 finished, v3 current, but the copy is not there yet (the view takes v2). TAS: v1 finished and current.
 insert into model_revisions (model, revision, parent_revision, is_current, sha256, size_bytes, archive_path) values
   ('TVZ', 1, null, false, repeat('1', 64), 1, 'x'), ('TVZ', 2, 1, false, repeat('2', 64), 1, 'x'),
   ('TVZ', 3, 2, true, repeat('3', 64), 1, 'x'), ('TAS', 1, null, true, repeat('4', 64), 1, 'x');
@@ -34,8 +34,8 @@ insert into ifc_rev_imports (model, revision, sha256, status, hash_version) valu
 
 insert into ifc_rev_objects (model, revision, global_id, ifc_class, attributes, content_hash) values
   ('TVZ', 1, 'V-S2', 'IfcBuildingStorey', '{"Name": "3NP"}', 'x'),
-  ('TVZ', 2, 'V-S2', 'IfcBuildingStorey', '{"Name": "2.NP_VZT"}', 'x'),   -- podlažie bez uzla, mapuje sa podľa mena
-  ('TVZ', 2, 'V-SX', 'IfcBuildingStorey', '{"Name": "Strojovňa"}', 'x'),  -- bez čísla podlažia = bez uzla
+  ('TVZ', 2, 'V-S2', 'IfcBuildingStorey', '{"Name": "2.NP_VZT"}', 'x'),   -- storey without a node, mapped by name
+  ('TVZ', 2, 'V-SX', 'IfcBuildingStorey', '{"Name": "Strojovňa"}', 'x'),  -- without a storey number = without a node
   ('TAS', 1, 'A-S2', 'IfcBuildingStorey', '{"Name": "2NP"}', 'x');
 
 insert into ifc_rev_relationships (model, revision, rel_class, relating, related, relating_class, related_class, content_hash) values
@@ -48,7 +48,7 @@ insert into ifc_rev_relationships (model, revision, rel_class, relating, related
   ('TAS', 1, 'IfcRelContainedInSpatialStructure', 'A-S2', 'A-STAIR', 'IfcBuildingStorey', 'IfcStair', 'x'),
   ('TAS', 1, 'IfcRelContainedInSpatialStructure', 'A-S2', 'A-SZ-TOP', 'IfcBuildingStorey', 'IfcSpatialZone', 'x'),
   ('TAS', 1, 'IfcRelContainedInSpatialStructure', 'A-R1', 'A-DOOR', 'IfcSpace', 'IfcDoor', 'x'),
-  -- časti zostáv: zábradlie (asset) dedí podlažie schodiska, rameno bez uzla nie, zóna (nie asset) nie
+  -- assembly parts: the railing (asset) inherits the stairwell's storey, an arm without a node does not, a zone (not an asset) does not
   ('TAS', 1, 'IfcRelAggregates', 'A-STAIR', 'A-RAIL', 'IfcStair', 'IfcRailing', 'x'),
   ('TAS', 1, 'IfcRelAggregates', 'A-STAIR', 'A-FLIGHT', 'IfcStair', 'IfcStairFlight', 'x'),
   ('TAS', 1, 'IfcRelAggregates', 'A-SZ-TOP', 'A-SZ', 'IfcSpatialZone', 'IfcSpatialZone', 'x');
