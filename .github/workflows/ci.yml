@@ -69,3 +69,7 @@ jobs:
         run: python -m etl.entity_manifest --check
       - name: pytest (entity manifest)
         run: python -m pytest etl/tests/test_entity_manifest.py -q
+      - name: relationship manifest IFC end types (D-196)
+        run: |
+          python -m etl.manifest --check
+          python -m pytest etl/tests/test_manifest_ifc_types.py -q
