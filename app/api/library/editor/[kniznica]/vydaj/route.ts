@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { vydaj } from "@/lib/library/editor-api";
 import { overXsd } from "@/lib/library/ids/xsd";
 import { brana, chybaServera, kodKniznice, neznamaKniznica, odpoved, vstup } from "@/lib/library/editor-server";
-import { supabaseSkladVydania, supabaseUloziste, VydanieMigraciaChyba } from "@/lib/library/vydanie-db";
+import { supabaseSkladVydania, supabaseUloziste, VydanieMigraciaChyba } from "@/lib/library/release-db";
 import { currentProjectId } from "@/lib/live/caller";
 import { withRequestProject } from "@/lib/project/request";
 
