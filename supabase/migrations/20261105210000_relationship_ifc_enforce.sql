@@ -1,10 +1,12 @@
 -- D-196 (R10, decision A): enforce the IFC end types for every rel_type whose active edges all pass.
--- Not a migration yet: copy to supabase/migrations/ with a timestamp on Samuel's yes, after
---   select rel_type, count(*) from v_relationship_ifc_violations where active group by 1;
--- returns no row for the types below (5 Nov 16:52 UTC: no row at all).
+-- Approved by Samuel on 5 Nov (~19:00 UTC, relayed under D-193, #60); applied by the orchestrator (D-198).
+-- Was supabase/pending/relationship_ifc_enforce.sql.
 -- rel_assigns_to_actor stays 'warn' until the ETL writes IfcActor nodes (D-196 point 4,
 -- etl/transform.py writes person/organization -> object today).
+-- Rollback: update public.relationship_types set ifc_check = 'warn' where ifc_check = 'enforce';
+-- Test: supabase/tests/relationship_ifc_enforce.sql.
 
+-- Guard: no active edge of an enforced rel_type may fail the IFC rule, or this migration stops.
 do $$
 declare n int;
 begin
