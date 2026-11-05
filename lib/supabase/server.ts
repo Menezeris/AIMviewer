@@ -2,6 +2,8 @@ import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+import { withAuditHeaders } from "@/lib/audit/context";
+
 /**
   * Server-only Supabase client with the `service_role` key (D-026).
  *
@@ -34,6 +36,8 @@ export function getSupabaseAdmin(): SupabaseClient {
       persistSession: false,
       autoRefreshToken: false,
     },
+    // D-196: every request names its writer for the transaction log (lib/audit/context.ts).
+    global: { fetch: withAuditHeaders(fetch) },
   });
 
   return client;

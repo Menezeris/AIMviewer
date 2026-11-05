@@ -963,6 +963,49 @@ is the ancestor or its subtype (R9 categories, R10 relationship validation); `en
 attributes)` = keys of `properties._attributes` the class with its supertypes does not declare (keys starting with
 `_` skipped). `object_type` is not tied to the manifest (R9: the node type is `ifc_type`).
 
+### 2.25 Transaction log `audit.log` (D-196, R2/R12, migrations `20261105160000_audit_log.sql` and `20261105160100_postgrest_pre_request.sql`, not applied; test `supabase/tests/audit_log.sql`)
+
+One append-only table for every write to the AIM graph tables in `public`. A declared extension (plan 7.3 point 6):
+IFC has only IfcOwnerHistory, which is derived from it.
+
+| Column | Meaning |
+|---|---|
+| `id` bigint identity, `at` timestamptz | PK `(id, at)`; `at` = `clock_timestamp()` |
+| `txid` | transaction id, groups the rows of one write |
+| `person_id` uuid | IfcPerson node of the writer (`app.person_id`), NULL when unknown (until step 5) |
+| `db_role` | role that ran the statement (`service_role`, `postgres`, `platform_app`) |
+| `source` | `app.source`, else the connection's `application_name` (`app`, `app:<route>`, `etl:<scope>:<run>`, `api:<role>`) |
+| `table_name`, `row_id` | `public.objects`, the primary key (composite keys `/`-joined) |
+| `project_id` | the row's `project_id`, or that of its `objects` row for 1:1 suffixes; NULL for global tables |
+| `op` | `INSERT`, `UPDATE`, `DELETE`, `RUN` (one summary row per ETL load, `table_name = 'etl'`) |
+| `before`, `after` | full rows as jsonb |
+
+- **Partitions:** by month (`audit.log_YYYY_MM`, 24 from Nov 2026) and `audit.log_default`;
+  `audit.ensure_partitions(months, from)` adds months. Indexes on `at`, `(table_name, row_id, at)`, `(project_id, at)`.
+- **Append-only:** owned by `audit_owner` (NOLOGIN; `postgres` is not a member after the migration). No role holds
+  insert, update, delete or truncate. Rows come only from `audit.write()` and `audit.write_run()` (SECURITY DEFINER);
+  `audit.reject_change` rejects update, delete and truncate (on the parent and every partition), also for the owner.
+  `postgres` and `service_role` may read it; `anon` and `authenticated` cannot use the schema.
+- **Triggers:** `audit_log_ins_del` (after insert or delete) and `audit_log_upd` (after update, `when old.* is
+  distinct from new.*`) run `audit.log_row(<pk columns>[, '@objects'])` on 25 tables: `objects`, `documents`, `spaces`,
+  `floors`, `persons`, `captures`, `capture_media`, `relationships`, `classification_systems`,
+  `classification_references`, `information_containers`, `container_revisions`, `model_revisions`, `model_tasks`,
+  `model_task_documents`, `saved_views`, `ids_documents`, `ids_document_versions`, `ids_document_models`,
+  `clash_tests`, `clash_reviews`, `drawing_link_overrides`, `ifc_guid_aliases`, `relationship_types`,
+  `entity_types`. An update that changes only `updated_at` is not logged (the ETL's no-op rewrites). Not logged:
+  `ifc_rev_*`, run results (`clash_results`, `ids_results`, `verification_results`, `document_pages`, run tables),
+  `mcp_call_log`, `ifc_guid_history`, `bcf_topic_counters`. Platform tables: AIMforked PR (D-188).
+- **Who writes:** PostgREST runs `public.aim_pre_request()` before every request (`pgrst.db_pre_request` on role
+  `authenticator`, migration `20261105160100`): for the `service_role` key it copies the headers `x-aim-person-id`
+  (UUID only) and `x-aim-source` into `app.person_id` / `app.source`; for any other role it sets
+  `app.source = 'api:<role>'` and no person. It never fails a request. The app's server client sends the headers
+  (`lib/audit/context.ts`); the ETL tags every connection with `PGAPPNAME` and the main load sets both settings
+  (`etl/audit.py`, person from `AIM_PERSON_ID`).
+- **IfcOwnerHistory:** `public.ifc_owner_history(table, row_id)` and the view `public.v_ifc_owner_history` (per
+  logged row): `creation_date` (first insert), `owning_user`, `owning_application`, `change_action`
+  (IfcChangeActionEnum ADDED, MODIFIED, DELETED from the last write), `last_modified_date`, `last_modifying_user`,
+  `last_modifying_application`, `project_id`. No rights for `anon`/`authenticated`.
+
 ## 4. The `properties` convention (D-022)
 
 `properties` JSONB contains **property sets**, nested by name. IFC **attributes**

@@ -20,6 +20,12 @@ for _name in (".env.local", ".env"):
         load_dotenv(_path, override=False)
 
 
+# D-196: every ETL connection carries its source for the transaction log (etl/audit.py).
+from etl import audit as _audit  # noqa: E402
+
+_audit.tag_connections()
+
+
 def database_url() -> str:
     """Return `DATABASE_URL` or fail with an understandable message."""
     url = os.environ.get("DATABASE_URL")

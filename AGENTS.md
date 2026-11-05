@@ -28,6 +28,10 @@
   `npx vitest run`, `node scripts/ci/lint-changed.mjs origin/main`; the gate is green GitHub Actions CI.
 - **Database:** nodes in `objects`, edges in `relationships`, IFC-first naming. Conventions:
   [`docs/conventions-db.md`](docs/conventions-db.md). Spatial hierarchy: Site -> Building -> Floor -> Space -> Asset.
+- **Every writer names itself (D-196):** writes to the graph are logged in `audit.log` with the person and the source.
+  App code writes through `getSupabaseAdmin()` (headers from `lib/audit/context.ts`, `withAuditContext` per route),
+  ETL through `etl/audit.py` (`PGAPPNAME`, `set_session`, one `write_run` per load), the fork through the AIM API.
+  Never write the graph around them (no other DB client, no disabled triggers). Details: `SCHEMA.md` §2.25.
 - **Stack, data access, viewer, ETL, LLM and eval cadence:** [`docs/architecture.md`](docs/architecture.md).
 - **Licences:** only MIT, Apache-2.0, BSD, ISC, MPL-2.0, LGPL (dynamic); no AGPL or GPL (D-186).
 

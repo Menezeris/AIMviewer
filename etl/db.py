@@ -12,7 +12,7 @@ from typing import Optional
 import psycopg
 from psycopg.types.json import Json
 
-from . import documents, ids
+from . import audit, documents, ids
 from . import project as project_mod
 from .manifest import _SPECS, EDGE_TYPE_TO_REL_TYPE, FROM_REVISION_COPY
 from .model import GuidAlias, StagedModel
@@ -77,8 +77,10 @@ def load_model(
         scope_sources(model, scope)
         documents.mark_model(model, scope)
     code = project_code or model.project_code or project_mod.OCB_CODE
+    run = f"etl:{scope or 'model'}:{audit.RUN_ID}"
     with psycopg.connect(url) as conn:
         with conn.cursor() as cur:
+            audit.set_session(cur, run)  # D-196: source and person of every row this load writes
             documents.resolve_locations(model, documents.bucket_names(cur), storage_base)
             project_id = load_project(cur, model, code)
             if reset:
@@ -93,6 +95,10 @@ def load_model(
             _load_class_links(cur, model, obj_ids, ref_ids)
             if scope:
                 closed = close_stale(cur, model, scope, project_id, alias_ids)
+            audit.write_run(cur, run, {
+                "scope": scope, "project": code, "reset": bool(reset),
+                "objects": len(model.objects), "edges": len(model.edges), "closed": closed,
+            }, project_id)
         conn.commit()
     return closed
 
