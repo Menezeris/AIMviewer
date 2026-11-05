@@ -1,16 +1,16 @@
-"""Opravy modelu VZT podľa BCF tém #14, #15 a #17 (#13 bez zmeny modelu).
+"""Fixes of the VZT model per BCF topics #14, #15 and #17 (#13 without a model change).
 
-Hodnoty nie sú v kóde, ale v `bcf_opravy.json` so stavom každej položky:
-`dolozene` (zdroj v modeli alebo dokumente) a `potvrdene` (schválil Samuel) sa aplikujú
-vždy, `navrh` len s `--vratane-navrhov` (náhľad pred schválením), `chyba_hodnota` nikdy.
-GlobalId prvkov sa nemenia; skript nič nepridáva ani neodoberá okrem materiálov, psetov
-a vzťahov (IfcMaterial, IfcPropertySet, IfcRel*), ktoré poistka D-086 nesleduje.
+The values are not in the code but in `bcf_opravy.json` with the status of each item:
+`dolozene` (source in the model or document) and `potvrdene` (approved by Samuel) are always
+applied, `navrh` only with `--vratane-navrhov` (preview before approval), `chyba_hodnota` never.
+The GlobalIds of elements do not change; the script adds or removes nothing except materials, psets
+and relations (IfcMaterial, IfcPropertySet, IfcRel*), which the D-086 safeguard does not track.
 
-Použitie (z koreňa repa, vstup = archív aktuálnej revízie rozbalený lokálne):
+Usage (from the repo root, input = archive of the current revision unpacked locally):
     python scripts/vzt/bcf_opravy.py --vstup VZT_v010.ifc --vystup VZT_v011.ifc \\
         --zmeny zmeny_v011.json [--vratane-navrhov] [--temy 14,15,17]
 
-Výstup `--zmeny` je zoznam zmien pre `python -m etl.model_publish publish --changes`.
+The `--zmeny` output is a list of changes for `python -m etl.model_publish publish --changes`.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ FLOOR_ORDER = {"1NP": 1, "2NP": 2, "3NP": 3, "4NP": 4}
 
 
 class Zmeny:
-    """Zoznam zmien vo formáte D-086 (`etl/README.md`, zmeny.json)."""
+    """List of changes in the D-086 format (`etl/README.md`, zmeny.json)."""
 
     def __init__(self) -> None:
         self.items: list[dict[str, Any]] = []
@@ -66,7 +66,7 @@ def pset_value(el, pset: str, prop: str) -> Any:
 
 
 def set_pset(f, el, pset: str, props: dict[str, Any]) -> None:
-    """Zapíše vlastnosti do psetu na prvku (nie zdedeného z typu); pset vytvorí, ak chýba."""
+    """Writes properties into a pset on the element (not inherited from the type); creates the pset if missing."""
     own = None
     for rel in getattr(el, "IsDefinedBy", None) or []:
         if rel.is_a("IfcRelDefinesByProperties") and rel.RelatingPropertyDefinition.Name == pset:
@@ -87,7 +87,7 @@ def systems(el) -> list[str]:
     return [s.Name for s in SY.get_element_systems(el)]
 
 
-# ── #14 koncový prvok bez označenia a s nulovým prietokom ─────────────────────
+# ── #14 terminal element without a label and with zero flow ─────────────────────
 
 def tema_14(f, cfg: dict, navrhy: bool, z: Zmeny) -> None:
     el = f.by_guid(cfg["global_id"])
@@ -118,7 +118,7 @@ def tema_14(f, cfg: dict, navrhy: bool, z: Zmeny) -> None:
     flow = cfg.get("air_flow_rate_m3h")
     props: dict[str, Any] = {}
     if ok(flow, navrhy):
-        props["AirFlowRate"] = flow["value"] / 3600.0          # súbor má m3/s (IfcDerivedUnit)
+        props["AirFlowRate"] = flow["value"] / 3600.0          # the file has m3/s (IfcDerivedUnit)
     else:
         z.skip("#14 AirFlowRate: návrh čaká na schválenie")
     if ok(cfg.get("air_flow_type"), navrhy):
@@ -129,7 +129,7 @@ def tema_14(f, cfg: dict, navrhy: bool, z: Zmeny) -> None:
         set_pset(f, el, "Pset_AirTerminalOccurrence", props)
 
 
-# ── #15 materiály ─────────────────────────────────────────────────────────────
+# ── #15 materials ─────────────────────────────────────────────────────────────
 
 def _type_matches(typ, patterns: list[str]) -> bool:
     key = f"{typ.is_a()}:{typ.Name or ''}"
@@ -158,7 +158,7 @@ def tema_15(f, cfg: dict, navrhy: bool, z: Zmeny) -> None:
         targets = [t for t in types if t.id() not in done and _type_matches(t, spec["types"])]
         for typ in targets:
             done.add(typ.id())
-            # Materiál patrí na typ (D-021); výskyt ho zdedí, vlastné '<Unnamed>' sa z neho zruší.
+            # The material belongs on the type (D-021); the occurrence inherits it, its own '<Unnamed>' is cleared.
             for el in [typ, *E.get_types(typ)]:
                 before = _material_name(el)
                 if el.is_a("IfcTypeObject") or before is not None:
@@ -180,7 +180,7 @@ def tema_15(f, cfg: dict, navrhy: bool, z: Zmeny) -> None:
         z.skip("#15 '<Unnamed>' ostáva na prvkoch bez potvrdeného materiálu")
 
 
-# ── #17 klapky: označenie, PredefinedType, štandardné psety ──────────────────
+# ── #17 dampers: label, PredefinedType, standard psets ──────────────────
 
 def _sort_key(el) -> tuple:
     sy = systems(el)
@@ -215,7 +215,7 @@ def tema_17(f, cfg: dict, navrhy: bool, z: Zmeny) -> None:
         for seq, el in enumerate(occ, start=1):
             if naming:
                 name = f"{spec['code']}.{seq:03d}"
-                # Stena požiarneho úseku je dnes len v texte (Description, Funkcia z v005), nesmie sa stratiť.
+                # The fire compartment wall is today only in text (Description, Funkcia from v005), it must not be lost.
                 src = f"{el.Description or ''} {pset_value(el, 'AIM_VZT_ProjektoveHodnoty', 'Funkcia') or ''}"
                 wall = re.search(r"požiarneho úseku (\S+?)[\s,)]", src)
                 desc = spec["popis"].format(system=", ".join(systems(el)), stena=wall.group(1) if wall else "?")
