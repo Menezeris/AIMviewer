@@ -93,8 +93,10 @@ begin
   if (select tableowner from pg_tables where schemaname = 'audit' and tablename = 'log') <> 'audit_owner' then
     raise exception 'audit.log not owned by audit_owner';
   end if;
-  if pg_has_role('postgres', 'audit_owner', 'member') and not (select rolsuper from pg_roles where rolname = 'postgres') then
-    raise exception 'postgres still a member of audit_owner';
+  -- On PostgreSQL 16+ the creator keeps an ADMIN grant it cannot revoke; it must not be able to act as the owner.
+  if (pg_has_role('postgres', 'audit_owner', 'SET') or pg_has_role('postgres', 'audit_owner', 'USAGE'))
+     and not (select rolsuper from pg_roles where rolname = 'postgres') then
+    raise exception 'postgres can act as audit_owner';
   end if;
 
   -- 8. IfcOwnerHistory: creation from the first insert, last change from the last write.

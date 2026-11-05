@@ -319,7 +319,7 @@ create trigger trg_relationships_validate before insert or update on relationshi
 ```
 
 **IFC end types (D-196, R10, migration `20261105140000_relationship_ifc_types.sql`, applied 5 Nov 16:52 UTC; check
-`20261105170000_relationship_ifc_check.sql`, not applied; tests `supabase/tests/relationship_ifc_types.sql`,
+`20261105170000_relationship_ifc_check.sql`, applied 5 Nov by the orchestrator (all rel_types `warn`); tests `supabase/tests/relationship_ifc_types.sql`,
 `relationship_ifc_check.sql`):** `relationship_types` has `from_ifc_types text[]` and `to_ifc_types
 text[]` (the declared IFC type of the From and To end: the Relating* and Related* attribute of the IfcRel class, or
 ThePerson / TheOrganization of IfcPersonAndOrganization, a SELECT expanded to its entities) and `ifc_check`
@@ -969,7 +969,7 @@ is the ancestor or its subtype (R9 categories, R10 relationship validation); `en
 attributes)` = keys of `properties._attributes` the class with its supertypes does not declare (keys starting with
 `_` skipped). `object_type` is not tied to the manifest (R9: the node type is `ifc_type`).
 
-### 2.25 Transaction log `audit.log` (D-196, R2/R12, migrations `20261105160000_audit_log.sql` and `20261105160100_postgrest_pre_request.sql`, not applied; test `supabase/tests/audit_log.sql`)
+### 2.25 Transaction log `audit.log` (D-196, R2/R12, migrations `20261105160000_audit_log.sql`, `20261105160100_postgrest_pre_request.sql` and `20261105180000_audit_platform_app_grants.sql`, applied 5 Nov by the orchestrator (D-198, #60); test `supabase/tests/audit_log.sql`)
 
 One append-only table for every write to the AIM graph tables in `public`. A declared extension (plan 7.3 point 6):
 IFC has only IfcOwnerHistory, which is derived from it.
@@ -988,11 +988,20 @@ IFC has only IfcOwnerHistory, which is derived from it.
 
 - **Partitions:** by month (`audit.log_YYYY_MM`, 24 from Nov 2026) and `audit.log_default`;
   `audit.ensure_partitions(months, from)` adds months. Indexes on `at`, `(table_name, row_id, at)`, `(project_id, at)`.
-- **Append-only:** owned by `audit_owner` (NOLOGIN; `postgres` is not a member after the migration). No role holds
+- **Append-only:** owned by `audit_owner` (NOLOGIN). The migration's own `grant audit_owner to postgres` is revoked at the
+  end, but on PostgreSQL 16+ the creator keeps the automatic ADMIN grant (no SET, no INHERIT): `postgres` cannot act as
+  `audit_owner`, though as the platform admin it could grant itself SET again. Without superuser rights (Supabase) this
+  cannot be closed; the guard trigger and the missing grants hold for every other role. No role holds
   insert, update, delete or truncate. Rows come only from `audit.write()` and `audit.write_run()` (SECURITY DEFINER);
   `audit.reject_change` rejects update, delete and truncate (on the parent and every partition), also for the owner.
   `platform_app` (the fork) has usage on `audit` and execute on `audit.log_row()` and `audit.write(...)` only (migration
-  `20261105180000_audit_platform_app_grants.sql`, not applied), so the fork's triggers on `platform` can log.
+  `20261105180000_audit_platform_app_grants.sql`), so the fork's triggers on `platform` can log.
+- **Granting on audit objects:** `postgres` cannot grant anything on `audit` objects (they belong to `audit_owner`, and
+  with only the ADMIN grant a GRANT is skipped with a warning). A later migration that grants on them does what
+  `20261105180000` does: `grant audit_owner to postgres with set true, inherit false; set role audit_owner;` the grants,
+  `reset role; revoke audit_owner from postgres;`, then guards that the grants took effect and that `postgres` can neither
+  SET nor use `audit_owner` (a plain `with set true` also grants INHERIT, and revoking only SET leaves the owner's rights
+  with `postgres`).
   `postgres` and `service_role` may read it; `anon` and `authenticated` cannot use the schema.
 - **Triggers:** `audit_log_ins_del` (after insert or delete) and `audit_log_upd` (after update, `when old.* is
   distinct from new.*`) run `audit.log_row(<pk columns>[, '@objects'])` on 25 tables: `objects`, `documents`, `spaces`,
