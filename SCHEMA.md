@@ -853,7 +853,7 @@ Schému `platform` vlastní repo AIMforked (fork Archives, Drizzle); AIMviewer j
   a `platform_pgboss` (fronty pg-boss); `usage` na `public`, `create` na databázu; žiadne práva na tabuľky `public` a `library`;
 - obsah `platform` (31 tabuliek Archives, `progress_notifications`, žurnál `__drizzle_migrations`) zakladajú migrácie forku.
 
-### 2.23 Projects (D-189, migration `20261104233000_multi_project.sql`, PREPARED, not applied; test `supabase/tests/multi_project.sql`)
+### 2.23 Projects (D-189, migration `20261104233000_multi_project.sql`, applied 5 Nov; test `supabase/tests/multi_project.sql`)
 
 A project is the `objects` node with `object_type = 'project'` (IfcProject); its `id` is the project id
 (`platform.projects.id`) and its `object_ref` is the project code (`IfcProject.Name`). OCB =

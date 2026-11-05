@@ -8645,7 +8645,7 @@ bez revízie a chyba tabuľky bez straty výpočtu, odmietnutie inej triedy), SQ
 
 ### D-189 - AIMviewer becomes multi-project: project_id on project-bound tables, models identified by UUID, per-project codes, one project resolver
 
-**Date:** 2026-11-04 · **Status:** plan approved (Samuel 4 Nov, round 1 answers below; number reserved in #60). The migration is applied to production only after Samuel's separate yes and a fresh backup. · **Builds on:** D-188 (platform schema), D-026 (service_role), D-010 (identity), D-088 (IfcProject node), D-183 (revision container is the truth), D-059/D-060 (RPC rules), D-079 (live channel); document "Assetin platforma - stav, rozhodnutia a plán" (3.5, round 8, 7.3 point 8)
+**Date:** 2026-11-04 · **Status:** approved (Samuel 4 Nov, round 1 answers below; number reserved in #60). Migration applied to production 5 Nov on Samuel's yes, after a fresh backup. · **Builds on:** D-188 (platform schema), D-026 (service_role), D-010 (identity), D-088 (IfcProject node), D-183 (revision container is the truth), D-059/D-060 (RPC rules), D-079 (live channel); document "Assetin platforma - stav, rozhodnutia a plán" (3.5, round 8, 7.3 point 8)
 
 **Context:** step 3 of the platform plan. AIM holds one building (OCB) and every key assumes it: model codes `ASR`/`VZT` are global keys (revisions, containers, the ifc_rev_* revision copy, archive paths), clash and IDS codes, BCF numbers and saved view names are global, and the code reads "the" IfcProject. Round 8 decided: `project_id` on every project-bound table, all existing data to OCB (hosted by Assetin), filtering through one helper and a parameter in RPCs and `v_*` views, people and organizations global (A1), RLS after the demo.
 
