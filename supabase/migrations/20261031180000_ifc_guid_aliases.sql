@@ -1,30 +1,30 @@
--- D-183 K3 krok 3: zlúčenie IFC typov s rovnakým typovým kódom do jedného `asset_type` (D-033) ako údaj.
+-- D-183 K3 step 3: merging IFC types with the same type code into one `asset_type` (D-033) as data.
 --
--- ETL grafu zlučuje viac IFC typov (IfcDoorType...) s rovnakým typovým kódom do jedného uzla `asset_type`;
--- zlúčený typ nemal GUID nikde v DB, preto `rel_defines_by_type` z kópie revízie (migrácia 20261031150000)
--- hľadal typ dočasným mostom podľa object_ref výskytu (DD01.06.04 -> DD01.06). Teraz je zlúčenie údaj:
---   * `ifc_guid_aliases` = ďalší GlobalId toho istého uzla AIM (nie jeho história): GUID zlúčeného typu ->
---     `asset_type`, dôvod `type_code` (D-033). Zapisuje ETL grafu (`etl/db.py`, `_load_guid_aliases`) so zdrojom
---     modelu (`IFC import:ASR`) a re-ETL uzavrie, čo už nevydal (D-086), rovnako ako `ifc_guid_history`.
---   * Prečo nie viac aktívnych GUID v `ifc_guid_history` (D-010): tam je na uzle najviac jeden aktívny GUID
---     (`uniq_active_guid`) a na tom stojí `objects.ifc_guid`, zánik objektu bez aktívneho GUID (D-088), presun ručných
---     väzieb na nástupcu, výber v 3D a IDS. História = ten istý prvok v čase (Revit zmení GUID), alias = iná IFC entita
---     v tej istej revízii, ktorú AIM zámerne zlúčil (rozhodnutie AIM, D-183 bod 12), preto vlastná tabuľka.
---   * `ifc_guid_node` (GlobalId -> živý uzol AIM) berie aj aktívne aliasy, ak GUID nie je v aktívnej histórii;
---     nový stĺpec `alias_reason` (null = vlastný GUID uzla). Zlúčené typy majú v kópii okrem IfcRelDefinesByType len
---     IfcRelAssociatesMaterial a IfcRelDeclares (overené 31. 10.), takže ostatné pohľady sa nemenia.
---   * `rel_defines_by_type` bez mosta podľa object_ref (typ len cez GlobalId, aj alias).
---   * Spätné doplnenie: aliasy z dnešného mosta nad kópiou aktuálnej revízie (jednoznačné: GUID typu -> jediný
---     `asset_type`), zdroj `IFC import:<model>`, aby ich prvý re-ETL modelu prevzal (uzavrie a zapíše vlastné id).
---     Produkcia 31. 10.: ASR 8 GUID typov -> 7 `asset_type` (DD01.02, DD01.06 x2, DD02.03, DD03.03, DD04.03, ST01.10,
---     ZD02.02), 35 výskytov; VZT žiadny.
+-- The graph ETL merges several IFC types (IfcDoorType...) with the same type code into one `asset_type` node;
+-- the merged type had no GUID anywhere in the DB, so `rel_defines_by_type` from the revision copy (migration 20261031150000)
+-- looked up the type through a temporary bridge by the occurrence object_ref (DD01.06.04 -> DD01.06). Now the merge is data:
+--   * `ifc_guid_aliases` = another GlobalId of the same AIM node (not its history): the GUID of the merged type ->
+--     `asset_type`, reason `type_code` (D-033). Written by the graph ETL (`etl/db.py`, `_load_guid_aliases`) with the model
+--     source (`IFC import:ASR`) and re-ETL closes what it no longer emitted (D-086), the same as `ifc_guid_history`.
+--   * Why not several active GUIDs in `ifc_guid_history` (D-010): there a node has at most one active GUID
+--     (`uniq_active_guid`) and `objects.ifc_guid` stands on it, as do the end of an object without an active GUID (D-088), the transfer of manual
+--     links to the successor, selection in 3D and IDS. History = the same element in time (Revit changes the GUID), alias = a different IFC entity
+--     in the same revision that AIM deliberately merged (an AIM decision, D-183 point 12), hence a table of its own.
+--   * `ifc_guid_node` (GlobalId -> live AIM node) also takes active aliases, if the GUID is not in the active history;
+--     new column `alias_reason` (null = the node's own GUID). Merged types have in the copy, besides IfcRelDefinesByType, only
+--     IfcRelAssociatesMaterial and IfcRelDeclares (verified 31. 10.), so the other views do not change.
+--   * `rel_defines_by_type` without the bridge by object_ref (type only via GlobalId, also alias).
+--   * Backfill: aliases from today's bridge over the copy of the current revision (unambiguous: type GUID -> a single
+--     `asset_type`), source `IFC import:<model>`, so that the first re-ETL of the model takes them over (closes them and writes its own id).
+--     Production 31. 10.: ASR 8 type GUIDs -> 7 `asset_type` (DD01.02, DD01.06 x2, DD02.03, DD03.03, DD04.03, ST01.10,
+--     ZD02.02), 35 occurrences; VZT none.
 --
--- Rollback (pomocné objekty ostanú; stĺpec z pohľadu sa odobrať nedá, preto alias_reason ostane null):
+-- Rollback (helper objects stay; a column cannot be removed from a view, so alias_reason stays null):
 --   create or replace view ifc_guid_node as
 --     select h.ifc_guid, h.object_id, o.object_type, o.object_ref, null::text as alias_reason
 --     from ifc_guid_history h join objects o on o.id = h.object_id and o.valid_until is null
 --     where h.valid_until is null;
---   a telo `rel_defines_by_type` z migrácie 20261031150000 (s mostom `left join objects tc ...`).
+--   and the body of `rel_defines_by_type` from migration 20261031150000 (with the bridge `left join objects tc ...`).
 
 begin;
 
@@ -32,10 +32,10 @@ create table ifc_guid_aliases (
   id          uuid primary key default gen_random_uuid(),
   object_id   uuid not null references objects(id) on delete cascade,
   ifc_guid    text not null,
-  reason      text not null default 'type_code',   -- prečo je GUID aliasom uzla: type_code = zlúčený IFC typ (D-033)
+  reason      text not null default 'type_code',   -- why the GUID is an alias of the node: type_code = merged IFC type (D-033)
   valid_from  timestamptz not null default now(),
-  valid_until timestamptz,                          -- NULL = aktívny
-  source      text,                                 -- IFC import:<model> (ETL grafu), ako ifc_guid_history
+  valid_until timestamptz,                          -- NULL = active
+  source      text,                                 -- IFC import:<model> (graph ETL), like ifc_guid_history
   created_at  timestamptz not null default now()
 );
 create unique index uniq_active_guid_alias on ifc_guid_aliases (ifc_guid) where valid_until is null;
@@ -44,8 +44,8 @@ create index idx_ifc_guid_aliases_object_id on ifc_guid_aliases (object_id);
 comment on table ifc_guid_aliases is
   'Ďalší GlobalId toho istého uzla AIM (nie história): GUID IFC typu zlúčeného do asset_type s rovnakým typovým kódom (D-033, D-183 K3 krok 3). Aktívny alias GUID najviac jeden.';
 
--- Spätné doplnenie z mosta podľa object_ref nad kópiou aktuálnej revízie (telo mosta z 20261031150000);
--- len GUID typu, ktorý most mapuje na jediný asset_type.
+-- Backfill from the bridge by object_ref over the copy of the current revision (bridge body from 20261031150000);
+-- only a type GUID that the bridge maps to a single asset_type.
 with bridge as (
   select r.model, r.relating, tc.id as type_id
   from ifc_rev_relationships r
@@ -64,7 +64,7 @@ select distinct on (b.relating) b.type_id, b.relating, 'type_code', 'IFC import:
 from bridge b join unique_guid u using (relating)
 order by b.relating, b.model;
 
--- GlobalId -> živý uzol AIM: aktívna história, inak aktívny alias.
+-- GlobalId -> live AIM node: active history, otherwise active alias.
 create or replace view ifc_guid_node as
   select h.ifc_guid, h.object_id, o.object_type, o.object_ref, null::text as alias_reason
   from ifc_guid_history h

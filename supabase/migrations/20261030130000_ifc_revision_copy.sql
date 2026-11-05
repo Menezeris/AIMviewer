@@ -1,32 +1,32 @@
--- D-183 K2: úplná kópia informácií každej revízie modelu (bez geometrie), vedľa grafu AIM.
+-- D-183 K2: complete copy of the information of every model revision (without geometry), next to the AIM graph.
 --
--- Zapisuje len `python -m etl.revision_copy` z archívu revízie (overený sha256), generickým pravidlom:
---   * `ifc_rev_objects`        = každý IfcRoot okrem vzťahov a sád (prvky, priestory, typy, systémy, projekt, šablóny
---                                psetov) s atribútmi okrem geometrie a OwnerHistory; kľúč (model, revision, global_id);
---   * `ifc_rev_relationships`  = každá dvojica z každého IfcRel* okrem IfcRelDefinesByProperties (to sú psety);
---                                kľúč (model, revision, rel_class, relating, related) = (trieda, nositeľ, druhá strana);
---                                strana bez GlobalId má prirodzený kľúč `Trieda:Identification|Name` alebo hash obsahu;
---   * `ifc_rev_property_sets`  = každý pset, Qto a preddefinovaná sada na výskyte aj na type; kľúč
---                                (model, revision, global_id nositeľa, pset_name); vlastné GlobalId psetu len informačne.
--- Plné kópie (D-183 bod 5): každý riadok nesie (model, revision) a `content_hash` (sha256 kanonického zápisu riadku,
--- `hash_version` v behu). Kópia vzniká v jednej transakcii s riadkom `ifc_rev_imports` v stave `done`; pohľady
--- a funkcie čítajú len revízie s `done`. Kópiu nikto ručne nemení, pri geometrii sa ide do súboru (bod 6).
--- Porovnanie dvoch revízií je funkcia na požiadanie (bod 7), nič neukladá. Existujúce `objects` a `relationships`
--- (graf AIM) sa nemenia. Práva: anon/authenticated nič (default privileges, 20261016120000).
+-- Written only by `python -m etl.revision_copy` from the revision archive (verified sha256), by a generic rule:
+--   * `ifc_rev_objects`        = every IfcRoot except relationships and sets (elements, spaces, types, systems, project, pset
+--                                templates) with attributes except geometry and OwnerHistory; key (model, revision, global_id);
+--   * `ifc_rev_relationships`  = every pair from every IfcRel* except IfcRelDefinesByProperties (those are psets);
+--                                key (model, revision, rel_class, relating, related) = (class, carrier, other side);
+--                                a side without GlobalId has a natural key `Class:Identification|Name` or a content hash;
+--   * `ifc_rev_property_sets`  = every pset, Qto and predefined set on an occurrence and on a type; key
+--                                (model, revision, carrier global_id, pset_name); the pset's own GlobalId only informational.
+-- Full copies (D-183 point 5): every row carries (model, revision) and `content_hash` (sha256 of the canonical row notation,
+-- `hash_version` in the run). The copy is created in one transaction with an `ifc_rev_imports` row in state `done`; views
+-- and functions read only revisions with `done`. Nobody changes the copy by hand, geometry goes to a file (point 6).
+-- Comparing two revisions is an on-demand function (point 7), it stores nothing. Existing `objects` and `relationships`
+-- (AIM graph) do not change. Rights: anon/authenticated none (default privileges, 20261016120000).
 
 begin;
 
 create table ifc_rev_imports (
   model                text not null,
   revision             integer not null,
-  sha256               text not null check (sha256 ~ '^[0-9a-f]{64}$'),   -- overený obsah archívu
+  sha256               text not null check (sha256 ~ '^[0-9a-f]{64}$'),   -- verified content of the archive
   status               text not null check (status in ('done', 'failed')),
-  hash_version         integer not null,           -- verzia kanonického zápisu a content_hash
+  hash_version         integer not null,           -- version of the canonical notation and of content_hash
   schema_identifier    text,                       -- FILE_SCHEMA (IFC4X3_ADD2)
-  counts               jsonb not null default '{}'::jsonb,   -- počty zo súboru a z DB (kontrola úplnosti)
-  warnings             jsonb not null default '[]'::jsonb,   -- napr. pset bez nositeľa, IfcRel bez dvojice
-  error                text,                       -- pri failed
-  engine               text,                       -- ifcopenshell verzia
+  counts               jsonb not null default '{}'::jsonb,   -- counts from the file and from the DB (completeness check)
+  warnings             jsonb not null default '[]'::jsonb,   -- e.g. pset without carrier, IfcRel without a pair
+  error                text,                       -- on failed
+  engine               text,                       -- ifcopenshell version
   started_at           timestamptz not null default now(),
   finished_at          timestamptz,
   primary key (model, revision),
@@ -38,8 +38,8 @@ create table ifc_rev_objects (
   revision            integer not null,
   global_id           text not null,               -- IfcRoot.GlobalId
   ifc_class           text not null,               -- IfcDuctSegment, IfcBuildingStorey, IfcPropertySetTemplate...
-  attributes          jsonb not null,              -- atribúty schémy bez geometrie a OwnerHistory (Name, PredefinedType...)
-  file_owner_history  jsonb,                       -- IfcOwnerHistory zo súboru, len informačne (ChangeAction, OwningUser...)
+  attributes          jsonb not null,              -- schema attributes without geometry and OwnerHistory (Name, PredefinedType...)
+  file_owner_history  jsonb,                       -- IfcOwnerHistory from the file, informational only (ChangeAction, OwningUser...)
   content_hash        text not null,
   primary key (model, revision, global_id),
   foreign key (model, revision) references ifc_rev_imports (model, revision) on delete cascade
@@ -50,13 +50,13 @@ create table ifc_rev_relationships (
   model           text not null,
   revision        integer not null,
   rel_class       text not null,                   -- IfcRelContainedInSpatialStructure...
-  relating        text not null,                   -- nositeľ (Relating*): GlobalId alebo prirodzený kľúč
-  related         text not null,                   -- druhá strana (Related*): GlobalId alebo prirodzený kľúč
+  relating        text not null,                   -- carrier (Relating*): GlobalId or natural key
+  related         text not null,                   -- other side (Related*): GlobalId or natural key
   relating_class  text not null,
   related_class   text not null,
-  attributes      jsonb not null default '[]'::jsonb,   -- ostatné atribúty IfcRel* (zoradené rôzne varianty)
-  multiplicity    integer not null default 1,      -- koľko IfcRel* inštancií nesie tú istú dvojicu
-  rel_global_ids  text[] not null default '{}',    -- vlastné GlobalId IfcRel*, len informačne (Revit ich mení)
+  attributes      jsonb not null default '[]'::jsonb,   -- other IfcRel* attributes (distinct variants sorted)
+  multiplicity    integer not null default 1,      -- how many IfcRel* instances carry the same pair
+  rel_global_ids  text[] not null default '{}',    -- IfcRel* own GlobalIds, informational only (Revit changes them)
   content_hash    text not null,
   primary key (model, revision, rel_class, relating, related),
   foreign key (model, revision) references ifc_rev_imports (model, revision) on delete cascade
@@ -67,17 +67,17 @@ create index idx_ifc_rev_rel_relating on ifc_rev_relationships (model, revision,
 create table ifc_rev_property_sets (
   model            text not null,
   revision         integer not null,
-  global_id        text not null,                  -- nositeľ: výskyt alebo typ
+  global_id        text not null,                  -- carrier: occurrence or type
   pset_name        text not null,                  -- Pset_DuctSegmentCommon, Qto_DuctSegmentBaseQuantities...
   pset_class       text not null,                  -- IfcPropertySet, IfcElementQuantity, IfcDoorLiningProperties...
-  properties       jsonb not null,                 -- {meno: hodnota}
-  pset_global_ids  text[] not null default '{}',   -- vlastné GlobalId psetu, len informačne
+  properties       jsonb not null,                 -- {name: value}
+  pset_global_ids  text[] not null default '{}',   -- pset's own GlobalIds, informational only
   content_hash     text not null,
   primary key (model, revision, global_id, pset_name),
   foreign key (model, revision) references ifc_rev_imports (model, revision) on delete cascade
 );
 
--- Revízia, ktorú smú čítať funkcie: zadaná (len done), inak aktuálna z model_revisions (tiež len done).
+-- The revision the functions may read: the given one (only done), otherwise the current one from model_revisions (also only done).
 create or replace function ifc_rev_resolve(p_model text, p_revision integer default null)
 returns integer language plpgsql stable set search_path = public as $$
 declare r integer;
@@ -90,9 +90,9 @@ begin
   return r;
 end $$;
 
--- Prvky obsiahnuté v podlaží (IfcRelContainedInSpatialStructure, podlažie podľa Name alebo GlobalId), voliteľne
--- len členovia systému (IfcRelAssignsToGroup, Name systému ilike p_system). Akceptačný test D-183:
--- ifc_rev_storey_elements('VZT', 11, '2NP', 'Prívod%') = 212 prvkov.
+-- Elements contained in a storey (IfcRelContainedInSpatialStructure, storey by Name or GlobalId), optionally
+-- only members of a system (IfcRelAssignsToGroup, system Name ilike p_system). D-183 acceptance test:
+-- ifc_rev_storey_elements('VZT', 11, '2NP', 'Prívod%') = 212 elements.
 create or replace function ifc_rev_storey_elements(p_model text, p_revision integer, p_storey text, p_system text default null)
 returns table (global_id text, ifc_class text, name text)
 language sql stable set search_path = public as $$
@@ -119,7 +119,7 @@ language sql stable set search_path = public as $$
   order by o.ifc_class, o.global_id
 $$;
 
--- Kľúče, ktorých hodnota sa líši (aj pridané a odobraté), zoradené.
+-- Keys whose value differs (including added and removed), sorted.
 create or replace function jsonb_changed_keys(a jsonb, b jsonb)
 returns text[] language sql immutable as $$
   select coalesce(array_agg(k order by k), '{}')
@@ -131,10 +131,10 @@ returns text[] language sql immutable as $$
   ) d
 $$;
 
--- Porovnanie dvoch revízií modelu na požiadanie (D-183 bod 7), nič neukladá. Podľa GlobalId:
--- ADDED / DELETED / MODIFIED (aspects: attributes = mená atribútov, psets = Pset.Vlastnosť, relations = +/-Trieda:nositeľ
--- na strane Related, teda prvku) / NOCHANGE len ako poznámka "changed via type" (výskyt typu, ktorý je MODIFIED).
--- Poloha (placement) sa v DB nenachádza: dopĺňa ju `python -m etl.revision_compare --placement` zo súborov.
+-- Comparison of two model revisions on demand (D-183 point 7), stores nothing. By GlobalId:
+-- ADDED / DELETED / MODIFIED (aspects: attributes = attribute names, psets = Pset.Property, relations = +/-Class:carrier
+-- on the Related side, i.e. the element) / NOCHANGE only as the note "changed via type" (an occurrence of a type that is MODIFIED).
+-- Placement is not in the DB: it is added by `python -m etl.revision_compare --placement` from the files.
 create or replace function ifc_rev_compare(p_model text, p_from integer, p_to integer)
 returns table (global_id text, ifc_class text, change_action text, aspects jsonb)
 language sql stable set search_path = public as $$

@@ -1,31 +1,31 @@
--- D-181 (ICDD, #350), dodatok "import" (1. 11.): záznam importu kontajnera ICDD a zápis väzieb prvok -> dokument.
--- APLIKOVANÉ na produkciu 1. 11. (Samuel "spusti ty", orchestrátor).
--- Náhľad (dry-run) počíta host (`lib/icdd/import.ts`) a uloží riadok `checked` s nálezmi a zmenami. Zápis (`applied`) robí
--- RPC `icdd_apply_import` v jednej transakcii: vloží nové väzby AIM vrstvy `rel_associates_document` so
--- `source = 'icdd:<version_id>'` a uzavrie (`valid_until`) väzby, ktoré cudzí nástroj zmenil (AIM vrstva sa neprepisuje,
--- D-183). Väzba, ktorá v kontajneri chýba, sa neuzatvára (len nález). Prijatý kontajner sa nemení (D-183 bod 2): ukladá sa
--- len jeho sha256 a čo sme v ňom našli; obsah do DB nejde.
--- Aditívne, bez FK a bez zmeny existujúcich objektov.
+-- D-181 (ICDD, #350), "import" addendum (1. 11.): record of an ICDD container import and writing of element -> document links.
+-- APPLIED to production 1. 11. (Samuel "run it yourself", orchestrator).
+-- The preview (dry-run) is computed by the host (`lib/icdd/import.ts`) and stores a `checked` row with findings and changes. The write (`applied`) is done by
+-- the RPC `icdd_apply_import` in one transaction: it inserts new AIM layer `rel_associates_document` links with
+-- `source = 'icdd:<version_id>'` and closes (`valid_until`) links that a foreign tool changed (the AIM layer is not overwritten,
+-- D-183). A link missing in the container is not closed (finding only). A received container is not changed (D-183 point 2): only
+-- its sha256 and what we found in it are stored; the content does not go to the DB.
+-- Additive, without FK and without changing existing objects.
 -- Rollback: drop function if exists icdd_apply_import(uuid, text, jsonb); drop table if exists icdd_imports;
 
 create table if not exists icdd_imports (
   id uuid primary key default gen_random_uuid(),
-  version_id text not null,                                     -- ct:versionID z index.rdf
+  version_id text not null,                                     -- ct:versionID from index.rdf
   container_sha256 text not null check (container_sha256 ~ '^[0-9a-f]{64}$'),
   file_name text,
   status text not null default 'checked' check (status in ('checked', 'applied', 'rejected', 'failed')),
-  same_as_aim boolean,                                          -- vrstvy len na export: true = 0 rozdielov voči AIM
+  same_as_aim boolean,                                          -- export-only layers: true = 0 differences against AIM
   payloads jsonb not null default '{}'::jsonb check (jsonb_typeof(payloads) = 'object'),   -- {filename: sha256}
-  counts jsonb not null default '{}'::jsonb check (jsonb_typeof(counts) = 'object'),       -- linky, zmeny, nálezy po kódoch
-  diff jsonb,                                                   -- RoundtripDiff vrstiev len na export (lib/icdd/roundtrip.ts)
-  issues jsonb not null default '[]'::jsonb check (jsonb_typeof(issues) = 'array'),       -- chyby kontroly ISO 21597
-  findings jsonb not null default '[]'::jsonb check (jsonb_typeof(findings) = 'array'),   -- nálezy importu {code, level, key, detail}
-  changes jsonb not null default '[]'::jsonb check (jsonb_typeof(changes) = 'array'),     -- náhľad zápisu {op: add|close, ...}
-  model_revisions jsonb not null default '{}'::jsonb check (jsonb_typeof(model_revisions) = 'object'), -- {model: revízia} AIM pri importe
-  aim_state_sha256 text not null check (aim_state_sha256 ~ '^[0-9a-f]{64}$'),           -- stav AIM pri náhľade (brána 409)
-  written_ids uuid[] not null default '{}',                     -- relationships.id vložené pri zápise
-  closed_ids uuid[] not null default '{}',                      -- relationships.id uzavreté pri zápise
-  message text,                                                 -- dôvod rejected / failed
+  counts jsonb not null default '{}'::jsonb check (jsonb_typeof(counts) = 'object'),       -- links, changes, findings by code
+  diff jsonb,                                                   -- RoundtripDiff of export-only layers (lib/icdd/roundtrip.ts)
+  issues jsonb not null default '[]'::jsonb check (jsonb_typeof(issues) = 'array'),       -- ISO 21597 check errors
+  findings jsonb not null default '[]'::jsonb check (jsonb_typeof(findings) = 'array'),   -- import findings {code, level, key, detail}
+  changes jsonb not null default '[]'::jsonb check (jsonb_typeof(changes) = 'array'),     -- write preview {op: add|close, ...}
+  model_revisions jsonb not null default '{}'::jsonb check (jsonb_typeof(model_revisions) = 'object'), -- {model: revision} of AIM at import
+  aim_state_sha256 text not null check (aim_state_sha256 ~ '^[0-9a-f]{64}$'),           -- AIM state at preview (409 gate)
+  written_ids uuid[] not null default '{}',                     -- relationships.id inserted at write
+  closed_ids uuid[] not null default '{}',                      -- relationships.id closed at write
+  message text,                                                 -- reason for rejected / failed
   imported_by text,
   created_at timestamptz not null default now(),
   applied_at timestamptz,
@@ -42,9 +42,9 @@ comment on column icdd_imports.aim_state_sha256 is 'D-181: odtlačok aktuálnych
 
 revoke all on icdd_imports from anon, authenticated;
 
--- Zápis importu v jednej transakcii. p_changes = changes z náhľadu: {op: 'close', id} a {op: 'add', from_id, to_id}.
--- Stráže: riadok importu je checked a jeho aim_state_sha256 = p_aim_state; uzatvára sa len živá väzba AIM vrstvy
--- rel_associates_document; nová väzba nesmie mať živé dvojča. Porušenie = výnimka, nič sa nezapíše.
+-- Import write in one transaction. p_changes = changes from the preview: {op: 'close', id} and {op: 'add', from_id, to_id}.
+-- Guards: the import row is checked and its aim_state_sha256 = p_aim_state; only a live AIM layer link is closed
+-- rel_associates_document; a new link must not have a live twin. Violation = exception, nothing is written.
 create or replace function icdd_apply_import(p_import uuid, p_aim_state text, p_changes jsonb)
 returns icdd_imports
 language plpgsql

@@ -1,10 +1,10 @@
 -- D-164: clash_tests, clash_runs, clash_results, clash_reviews + v_clash_latest / v_clash_summary.
--- Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
+-- Run on a local DB with the migrations applied (never production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/clash.sql
 begin;
 \ir _legacy_ocb.sql
 
--- Graf AIM: dva prvky s GUID, jeden v systéme VZT-01.
+-- AIM graph: two elements with a GUID, one in the system VZT-01.
 insert into objects (id, object_type, object_ref, name) values
   ('00000000-0000-4000-8000-0000000000e1', 'asset', 'T.01', 'Potrubie'),
   ('00000000-0000-4000-8000-0000000000e2', 'asset', 'T.02', 'Stena'),
@@ -27,16 +27,16 @@ insert into clash_runs (id, test_id, test_code, rules_snapshot, models, engine, 
   ('00000000-0000-4000-8000-0000000000b3', null, null, '{}', '{}', 'e', 'chat', now());
 
 insert into clash_results (run_id, clash_key, rule, status, severity, distance, a_guid, a_model, b_guid, b_model, storey, center) values
-  -- starší beh: dve kolízie
+  -- earlier run: two clashes
   ('00000000-0000-4000-8000-0000000000b1', 'VZT-NOSNE VZT:GUID-DUCT-1 ASR:GUID-WALL-1', 'VZT-NOSNE', 'hard', 'major', -0.05, 'GUID-DUCT-1', 'VZT', 'GUID-WALL-1', 'ASR', '2NP', '[1,2,3]'),
   ('00000000-0000-4000-8000-0000000000b1', 'VZT-NOSNE VZT:GUID-DUCT-2 ASR:GUID-WALL-1', 'VZT-NOSNE', 'hard', 'minor', -0.01, 'GUID-DUCT-2', 'VZT', 'GUID-WALL-1', 'ASR', '2NP', null),
-  -- posledný beh: jedna z nich a jedna nová
+  -- latest run: one of them and one new
   ('00000000-0000-4000-8000-0000000000b2', 'VZT-NOSNE VZT:GUID-DUCT-1 ASR:GUID-WALL-1', 'VZT-NOSNE', 'hard', 'major', -0.04, 'GUID-DUCT-1', 'VZT', 'GUID-WALL-1', 'ASR', '2NP', null),
   ('00000000-0000-4000-8000-0000000000b2', 'VZT-NOSNE VZT:GUID-DUCT-3 ASR:GUID-WALL-9', 'VZT-NOSNE', 'clearance', 'info', 0.02, 'GUID-DUCT-3', 'VZT', 'GUID-WALL-9', 'ASR', '3NP', null),
-  -- ad hoc beh
+  -- ad hoc run
   ('00000000-0000-4000-8000-0000000000b3', 'adhoc A B', 'adhoc', 'hard', 'minor', -0.01, 'A', 'VZT', 'B', 'ASR', null, null);
 
--- Stav kolízie je kľúčovaný testom a kľúčom kolízie, preto prežije beh (v poslednom behu je tá istá kolízia).
+-- Clash status is keyed by the test and the clash key, so it survives a run (the same clash is in the latest run).
 insert into clash_reviews (test_id, clash_key, status, comment) values
   ('00000000-0000-4000-8000-0000000000a1', 'VZT-NOSNE VZT:GUID-DUCT-1 ASR:GUID-WALL-1', 'accepted', 'prechod je zámerný');
 
@@ -137,7 +137,7 @@ begin
   if n <> 0 then raise exception 'kolízie behov zmazaného testu ostali'; end if;
 end $$;
 
--- Práva: anon a authenticated nové objekty nevidia, service_role áno
+-- Rights: anon and authenticated do not see the new objects, service_role does
 do $$
 declare t text;
 begin

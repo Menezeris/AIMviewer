@@ -1,8 +1,8 @@
--- D-158 krok 8, dodatok (#372 follow-up): import .bcfzip zachová pôvodný dátum a GUID komentára a je idempotentný.
--- APLIKOVANÉ na produkciu orchestrátorom (1. 11. 2026), súbor presunutý z supabase/pending.
--- Aditívne: nová funkcia, žiadny nový stĺpec ani zmena existujúcej `model_task_add_comment`.
--- Dátumy tém netreba migráciu: `model_tasks.created_at`/`updated_at` sa zapisujú priamo pri vložení.
--- Kód funguje aj pred touto migráciou (komentár dostane čas zápisu a nový guid; duplicity brzdí zhoda autor + text).
+-- D-158 step 8, addendum (#372 follow-up): .bcfzip import keeps the original comment date and GUID and is idempotent.
+-- APPLIED to production by the orchestrator (1. 11. 2026), file moved from supabase/pending.
+-- Additive: a new function, no new column or change to the existing `model_task_add_comment`.
+-- Topic dates need no migration: `model_tasks.created_at`/`updated_at` are written directly on insert.
+-- The code works even before this migration (the comment gets the write time and a new guid; duplicates are held back by author + text match).
 -- Rollback: drop function model_task_import_comment(uuid, text, text, timestamptz, uuid);
 
 create or replace function model_task_import_comment(

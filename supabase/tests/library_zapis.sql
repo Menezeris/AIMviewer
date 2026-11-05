@@ -1,10 +1,10 @@
--- Test migrácie 20261102210000_library_zapis.sql (po aplikácii, v transakcii s rollback; nič neostane).
+-- Test of migration 20261102210000_library_zapis.sql (after applying, in a transaction with rollback; nothing remains).
 begin;
 \ir _legacy_ocb.sql
 set local role service_role;
--- texty: celá hlava
+-- texts: the whole head
 select count(*) > 0 as ma_texty from public.library_texty('assetin');
--- zápis so zlou očakávanou verziou = AS409, nič sa nezapíše
+-- write with a wrong expected version = AS409, nothing is written
 do $$
 begin
   perform public.library_zapis('assetin', 'test', null, 'editor', '1.5',
@@ -14,7 +14,7 @@ begin
   raise exception 'očakávaný konflikt AS409';
 exception when sqlstate 'AS409' then null;
 end $$;
--- chýbajúca projekcia pre zapisovaný súbor = 22023, nič sa nezapíše
+-- missing projection for the written file = 22023, nothing is written
 do $$
 begin
   perform public.library_zapis('assetin', 'test', null, 'editor', '1.5',
@@ -23,7 +23,7 @@ begin
   raise exception 'očakávaná chyba 22023';
 exception when sqlstate '22023' then null;
 end $$;
--- dva súbory v jednom zápise: projekcia každého patrí jeho ceste (poradie výstupu nerozhoduje)
+-- two files in one write: the projection of each belongs to its path (output order does not matter)
 do $$
 declare
   a text; b text; ta text; tb text; v jsonb;

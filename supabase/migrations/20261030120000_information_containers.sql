@@ -1,32 +1,32 @@
--- D-183 K1: záznam informačného kontajnera a jeho revízií + podpis vstupu (pečiatky revízie).
+-- D-183 K1: record of an information container and its revisions + input signature (revision stamps).
 --
--- Pravda o obsahu je kontajner revízie (IFC, PDF, DWG v archíve, sha256); DB nesie jeho záznam
--- podľa IfcDocumentInformation (jeden riadok = jedna Revision) a z IfcOwnerHistory len pojmy, ktoré
--- IfcDocumentInformation nemá (OwningApplication, LastModifyingApplication, ChangeAction, State).
--- Pojmy IFC po anglicky, stĺpce snake_case (D-183 bod 9). Stav ISO 19650 (IfcApproval) pripravený prázdny.
+-- The truth about content is the revision container (IFC, PDF, DWG in the archive, sha256); the DB carries its record
+-- following IfcDocumentInformation (one row = one Revision) and from IfcOwnerHistory only the concepts that
+-- IfcDocumentInformation lacks (OwningApplication, LastModifyingApplication, ChangeAction, State).
+-- IFC terms in English, columns snake_case (D-183 point 9). ISO 19650 status (IfcApproval) prepared empty.
 --
--- Aditívne a bez zmeny hosta ani ETL:
---   * revízia modelu ostáva v `model_revisions` (D-086, zapisuje `etl.model_publish`); trigger z nej
---     založí `container_revisions`, väzba `model_revision_id`;
---   * dokument (PDF) dostane revíziu pri každom novom `documents.file_sha256` (trigger);
---   * `ids_runs` a `clash_runs` nesú `model_revisions` = {model: revízia}, nad ktorými beh naozaj bežal;
---     clash beh bez nej sa doplní z `models` (revízia z motora, inak jednoznačná veľkosť súboru);
---   * položky `_georef` nesú `model_revisions` a `document_sha256` (trigger pri zápise kalibrácie);
---   * `v_ids_latest`, `v_ids_summary`, `v_clash_latest`, `v_clash_summary` dostanú na konci `based_on`
---     a `stale` (null = revízia behu neznáma).
--- Spätné doplnenie: kontajnery a revízie z `model_revisions` a dokumentov, clash behy podľa veľkosti,
--- kalibrácie podľa času `calibrated_at`. Hlavička súboru (`file_header`) a aplikácia (`IfcApplication`)
--- sa doplnia až pri čítaní archívu (K2), trigger súbor nečíta.
--- Práva: nové tabuľky anon/authenticated nedostanú (default privileges, migrácia 20261016120000).
+-- Additive and without change to the host or ETL:
+--   * the model revision stays in `model_revisions` (D-086, written by `etl.model_publish`); a trigger on it
+--     creates `container_revisions`, link `model_revision_id`;
+--   * a document (PDF) gets a revision on every new `documents.file_sha256` (trigger);
+--   * `ids_runs` and `clash_runs` carry `model_revisions` = {model: revision} the run actually ran over;
+--     a clash run without it is filled from `models` (revision from the engine, otherwise unambiguous file size);
+--   * `_georef` items carry `model_revisions` and `document_sha256` (trigger on calibration write);
+--   * `v_ids_latest`, `v_ids_summary`, `v_clash_latest`, `v_clash_summary` get `based_on`
+--     and `stale` at the end (null = run revision unknown).
+-- Backfill: containers and revisions from `model_revisions` and documents, clash runs by size,
+-- calibrations by `calibrated_at` time. The file header (`file_header`) and application (`IfcApplication`)
+-- are filled in only when the archive is read (K2), the trigger does not read the file.
+-- Rights: anon/authenticated get no rights on new tables (default privileges, migration 20261016120000).
 
 begin;
 
 -- ---------------------------------------------------------------------------
--- Číselníky: IfcApplication, IfcPersonAndOrganization
+-- Lookups: IfcApplication, IfcPersonAndOrganization
 -- ---------------------------------------------------------------------------
 create table ifc_application (
   id                      uuid primary key default gen_random_uuid(),
-  application_developer   text,                    -- IfcApplication.ApplicationDeveloper (meno organizácie)
+  application_developer   text,                    -- IfcApplication.ApplicationDeveloper (organization name)
   version                 text not null,           -- IfcApplication.Version
   application_full_name   text not null,           -- IfcApplication.ApplicationFullName
   application_identifier  text not null,           -- IfcApplication.ApplicationIdentifier
@@ -36,17 +36,17 @@ create table ifc_application (
 
 create table ifc_actor (
   id                 uuid primary key default gen_random_uuid(),
-  person_name        text,                         -- IfcPerson (meno, ako ho zdroj uvádza)
+  person_name        text,                         -- IfcPerson (name, as the source states it)
   organization_name  text,                         -- IfcOrganization.Name
-  person_id          uuid references objects (id) on delete set null,        -- AIM uzol person
-  organization_id    uuid references objects (id) on delete set null,        -- AIM uzol organization
+  person_id          uuid references objects (id) on delete set null,        -- AIM person node
+  organization_id    uuid references objects (id) on delete set null,        -- AIM organization node
   roles              text[] not null default '{}', -- IfcActorRole.Role
   created_at         timestamptz not null default now(),
   check (person_name is not null or organization_name is not null)
 );
 create unique index uniq_ifc_actor on ifc_actor (coalesce(person_name, ''), coalesce(organization_name, ''));
 
--- Aktér podľa mena (bez organizácie); založí ho, ak chýba. NULL meno = NULL.
+-- Actor by name (without organization); creates it if missing. NULL name = NULL.
 create or replace function ifc_actor_for(p_person text, p_org text default null)
 returns uuid language plpgsql as $$
 declare a uuid;
@@ -66,40 +66,40 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- Kontajner (IfcDocumentInformation naprieč revíziami)
+-- Container (IfcDocumentInformation across revisions)
 -- ---------------------------------------------------------------------------
 create table information_containers (
   id                 uuid primary key default gen_random_uuid(),
-  identification     text not null unique,         -- IfcDocumentInformation.Identification (ISO 19650 container ID; dnes ASR, D.1.1.09)
+  identification     text not null unique,         -- IfcDocumentInformation.Identification (ISO 19650 container ID; today ASR, D.1.1.09)
   name               text,                         -- .Name
   description        text,                         -- .Description
   purpose            text,                         -- .Purpose
   intended_use       text,                         -- .IntendedUse
   scope              text,                         -- .Scope
   confidentiality    text,                         -- .Confidentiality (IfcDocumentConfidentialityEnum)
-  electronic_format  text,                         -- .ElectronicFormat (MIME alebo schéma IFC)
-  document_owner_id  uuid references ifc_actor (id),  -- .DocumentOwner (= OwningUser kontajnera)
+  electronic_format  text,                         -- .ElectronicFormat (MIME or IFC schema)
+  document_owner_id  uuid references ifc_actor (id),  -- .DocumentOwner (= OwningUser of the container)
   container_type     text not null check (container_type in ('IFC', 'PDF', 'DWG', 'OTHER')),
-  model              text unique,                  -- model federácie (ifc/<model>.ifc), len IFC
-  document_id        uuid unique references objects (id) on delete set null,  -- dokument AIM (D-014)
+  model              text unique,                  -- federation model (ifc/<model>.ifc), IFC only
+  document_id        uuid unique references objects (id) on delete set null,  -- AIM document (D-014)
   created_at         timestamptz not null default now(),
   check ((container_type = 'IFC') = (model is not null))
 );
 
 -- ---------------------------------------------------------------------------
--- Revízia kontajnera (jedna IfcDocumentInformation.Revision)
+-- Container revision (one IfcDocumentInformation.Revision)
 -- ---------------------------------------------------------------------------
 create table container_revisions (
   id                             uuid primary key default gen_random_uuid(),
   container_id                   uuid not null references information_containers (id) on delete cascade,
-  revision                       text not null,          -- IfcDocumentInformation.Revision (dnes číslo, neskôr P01.80)
-  revision_no                    integer not null check (revision_no >= 0),  -- poradie v hlavnej rade (model: vNNN)
-  parent_revision_no             integer,                -- predchodca v hlavnej rade; NULL = prvá
+  revision                       text not null,          -- IfcDocumentInformation.Revision (a number today, later P01.80)
+  revision_no                    integer not null check (revision_no >= 0),  -- order in the main line (model: vNNN)
+  parent_revision_no             integer,                -- predecessor in the main line; NULL = first
   model_revision_id              uuid unique references model_revisions (id) on delete cascade,
-  sha256                         text not null check (sha256 ~ '^[0-9a-f]{64}$'),  -- nekomprimovaný obsah, nemenné
+  sha256                         text not null check (sha256 ~ '^[0-9a-f]{64}$'),  -- uncompressed content, immutable
   size_bytes                     bigint,
-  location                       text,                   -- .Location (archív revízie, bucket dokumentu)
-  electronic_format              text,                   -- .ElectronicFormat tejto revízie (IFC: FILE_SCHEMA)
+  location                       text,                   -- .Location (revision archive, document bucket)
+  electronic_format              text,                   -- .ElectronicFormat of this revision (IFC: FILE_SCHEMA)
   creation_time                  timestamptz,            -- .CreationTime (= IfcOwnerHistory.CreationDate)
   last_revision_time             timestamptz,            -- .LastRevisionTime (= LastModifiedDate)
   editors_id                     uuid references ifc_actor (id),        -- .Editors (= LastModifyingUser)
@@ -109,18 +109,18 @@ create table container_revisions (
   state                          text check (state in ('READWRITE', 'READONLY', 'LOCKED', 'READWRITELOCKED', 'READONLYLOCKED')),
   status                         text not null default 'DRAFT'          -- IfcDocumentStatusEnum; DRAFT = WIP (D-183)
                                  check (status in ('DRAFT', 'FINALDRAFT', 'FINAL', 'REVISION', 'NOTDEFINED')),
-  approval                       jsonb,                  -- IfcApproval (ISO 19650: Status S0..S4, Level WIP/SHARED/PUBLISHED/ARCHIVED, GivingApproval, TimeOfApproval); zatiaľ NULL
-  file_header                    jsonb,                  -- hlavička STEP (FILE_DESCRIPTION, FILE_NAME, FILE_SCHEMA) tak, ako je v súbore; K2
-  recipe_ref                     text,                   -- recept v OCB (cesta@commit), D-086
+  approval                       jsonb,                  -- IfcApproval (ISO 19650: Status S0..S4, Level WIP/SHARED/PUBLISHED/ARCHIVED, GivingApproval, TimeOfApproval); NULL for now
+  file_header                    jsonb,                  -- STEP header (FILE_DESCRIPTION, FILE_NAME, FILE_SCHEMA) as it is in the file; K2
+  recipe_ref                     text,                   -- recipe in OCB (path@commit), D-086
   task_id                        uuid references model_tasks (id) on delete set null,
-  commit_sha                     text,                   -- commit receptu
+  commit_sha                     text,                   -- recipe commit
   created_at                     timestamptz not null default now(),
   unique (container_id, revision_no)
 );
 create index idx_container_revisions_container on container_revisions (container_id, revision_no desc);
 
 -- ---------------------------------------------------------------------------
--- Kontajner modelu a dokumentu
+-- Container of a model and of a document
 -- ---------------------------------------------------------------------------
 create or replace function container_for_model(p_model text)
 returns uuid language plpgsql as $$
@@ -135,7 +135,7 @@ begin
   return c;
 end $$;
 
--- Typ kontajnera dokumentu z ElectronicFormat alebo prípony Location.
+-- Document container type from ElectronicFormat or the Location extension.
 create or replace function container_type_of(p_format text, p_location text)
 returns text language sql immutable as $$
   select case
@@ -171,7 +171,7 @@ begin
   return c;
 end $$;
 
--- Revízia modelu -> revízia kontajnera (volá trigger aj spätné doplnenie).
+-- Model revision -> container revision (called by the trigger and by the backfill).
 create or replace function container_revision_from_model(m model_revisions)
 returns uuid language plpgsql as $$
 declare c uuid; r uuid; first_time timestamptz; prior int;
@@ -192,7 +192,7 @@ begin
   return r;
 end $$;
 
--- Nový obsah dokumentu (file_sha256) -> nová revízia jeho kontajnera; rovnaký obsah nič nezmení.
+-- New document content (file_sha256) -> new revision of its container; the same content changes nothing.
 create or replace function container_revision_from_document(p_doc uuid)
 returns uuid language plpgsql as $$
 declare c uuid; r uuid; d record; last record;
@@ -218,7 +218,7 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- Spätné doplnenie (pred strážnymi triggermi: prod dáta sa neodmietnu)
+-- Backfill (before the guard triggers: prod data is not rejected)
 -- ---------------------------------------------------------------------------
 do $$
 begin
@@ -231,7 +231,7 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- Stráže: hlavná rada, nemenná revízia, mazať len poslednú (D-183 bod 10)
+-- Guards: main line, immutable revision, delete only the last one (D-183 point 10)
 -- ---------------------------------------------------------------------------
 create or replace function container_revisions_guard()
 returns trigger language plpgsql as $$
@@ -276,7 +276,7 @@ create trigger trg_model_revisions_immutable
   before update on model_revisions
   for each row execute function model_revisions_immutable();
 
--- Nová revízia modelu (etl.model_publish) -> revízia kontajnera v tej istej transakcii.
+-- New model revision (etl.model_publish) -> container revision in the same transaction.
 create or replace function model_revisions_to_container()
 returns trigger language plpgsql as $$
 begin
@@ -287,7 +287,7 @@ create trigger trg_model_revisions_to_container
   after insert on model_revisions
   for each row execute function model_revisions_to_container();
 
--- Nový sha256 dokumentu (etl.pdf_text, doc_upload) -> revízia kontajnera dokumentu.
+-- New document sha256 (etl.pdf_text, doc_upload) -> revision of the document container.
 create or replace function documents_to_container()
 returns trigger language plpgsql as $$
 begin
@@ -301,9 +301,9 @@ create trigger trg_documents_to_container
   for each row execute function documents_to_container();
 
 -- ---------------------------------------------------------------------------
--- Revízie modelov: aktuálne a k času, zastaranie podpisu
+-- Model revisions: current and as of a time, staleness of the signature
 -- ---------------------------------------------------------------------------
--- {model: revízia}: t = NULL aktuálne (is_current), inak posledné zverejnené najneskôr v čase t.
+-- {model: revision}: t = NULL current (is_current), otherwise the latest published at or before time t.
 create or replace function model_revisions_at(t timestamptz default null)
 returns jsonb language sql stable set search_path = public as $$
   select coalesce(jsonb_object_agg(model, revision), '{}'::jsonb)
@@ -315,7 +315,7 @@ returns jsonb language sql stable set search_path = public as $$
   ) x
 $$;
 
--- true = podpis behu sa líši od aktuálnych revízií; NULL = podpis neznámy (prázdny).
+-- true = the run signature differs from the current revisions; NULL = signature unknown (empty).
 create or replace function revisions_stale(based_on jsonb)
 returns boolean language sql stable set search_path = public as $$
   select case
@@ -327,8 +327,8 @@ returns boolean language sql stable set search_path = public as $$
   end
 $$;
 
--- `models` z motora ({model: {etag, size, loaded_at, revision?}} alebo {model: číslo}) -> {model: revízia}.
--- Revízia z motora má prednosť; inak jednoznačná zhoda veľkosti nekomprimovaného súboru.
+-- `models` from the engine ({model: {etag, size, loaded_at, revision?}} or {model: number}) -> {model: revision}.
+-- The revision from the engine takes precedence; otherwise an unambiguous match of the uncompressed file size.
 create or replace function engine_model_revisions(models jsonb)
 returns jsonb language sql stable set search_path = public as $$
   select coalesce(jsonb_object_agg(k, rev), '{}'::jsonb)
@@ -349,12 +349,12 @@ returns jsonb language sql stable set search_path = public as $$
 $$;
 
 -- ---------------------------------------------------------------------------
--- Podpis vstupu na behoch IDS a clash
+-- Input signature on IDS and clash runs
 -- ---------------------------------------------------------------------------
-alter table ids_runs add column model_revisions jsonb not null default '{}'::jsonb;    -- {model: revízia}, nad ktorou beh bežal
-alter table clash_runs add column model_revisions jsonb not null default '{}'::jsonb;  -- {model: revízia}, D-183
+alter table ids_runs add column model_revisions jsonb not null default '{}'::jsonb;    -- {model: revision} the run ran over
+alter table clash_runs add column model_revisions jsonb not null default '{}'::jsonb;  -- {model: revision}, D-183
 
--- Spätne: clash behy z veľkosti (beh 26. 10. má ASR v78 a VZT v9); IDS behy nemajú z čoho (ostanú neznáme).
+-- Backfill: clash runs from size (the 26.10. run has ASR v78 and VZT v9); IDS runs have nothing to go on (stay unknown).
 update clash_runs set model_revisions = engine_model_revisions(models) where model_revisions = '{}'::jsonb;
 
 create or replace function clash_runs_stamp()
@@ -370,11 +370,11 @@ create trigger trg_clash_runs_stamp
   for each row execute function clash_runs_stamp();
 
 -- ---------------------------------------------------------------------------
--- Podpis vstupu na kalibráciách `_georef` (položka v2 alebo celé v1)
+-- Input signature on `_georef` calibrations (item v2 or whole v1)
 -- ---------------------------------------------------------------------------
--- Pečiatka položky: `model_revisions` {model: revízia} a `document_sha256`. Položka s pečiatkou ju drží;
--- tá istá kalibrácia (strana, affine, výrez) zo starého stavu ju prenesie (viewer neznáme kľúče zahodí);
--- nová kalibrácia dostane aktuálne revízie, pri spätnom doplnení revízie platné v čase `calibrated_at`.
+-- Item stamp: `model_revisions` {model: revision} and `document_sha256`. An item with a stamp keeps it;
+-- the same calibration (page, affine, crop) from the old state carries it over (the viewer drops unknown keys);
+-- a new calibration gets the current revisions, in the backfill the revisions valid at `calibrated_at`.
 create or replace function georef_stamp_item(c jsonb, old_items jsonb, sha text, backfill boolean)
 returns jsonb language plpgsql stable set search_path = public as $$
 declare o jsonb; at timestamptz;
@@ -444,7 +444,7 @@ create trigger trg_objects_georef_stamp
   for each row execute function objects_georef_stamp();
 
 -- ---------------------------------------------------------------------------
--- Pohľady: `based_on` a `stale` na konci (staré stĺpce bez zmeny)
+-- Views: `based_on` and `stale` at the end (old columns unchanged)
 -- ---------------------------------------------------------------------------
 create or replace view v_ids_latest as
   with latest as (
@@ -535,7 +535,7 @@ create or replace view v_clash_summary as
   left join clash_reviews rv on rv.test_id = l.test_id and rv.clash_key = c.clash_key
   group by t.code, t.name, l.id, l.created_at, l.model_revisions, c.rule, c.storey, coalesce(rv.status, 'open');
 
--- Prehľad kontajnerov s pojmami IfcDocumentInformation a IfcOwnerHistory (po anglicky, D-183 bod 9).
+-- Overview of containers with IfcDocumentInformation and IfcOwnerHistory terms (in English, D-183 point 9).
 create or replace view v_container_revisions as
   select c.id as container_id, c.identification, c.name, c.container_type, c.model, c.document_id,
          r.id as revision_id, r.revision, r.revision_no, r.parent_revision_no,

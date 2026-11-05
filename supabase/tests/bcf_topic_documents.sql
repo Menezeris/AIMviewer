@@ -1,7 +1,7 @@
--- D-158: model_task_documents (odkaz BCF témy na dokument, stranu a oblasť strany).
--- Spustenie (na lokálnej DB s aplikovanými migráciami, nikdy na produkcii):
+-- D-158: model_task_documents (link of a BCF topic to a document, page and page area).
+-- Run (on a local DB with the migrations applied, never on production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/bcf_topic_documents.sql
--- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
+-- Everything runs in a transaction and ends with ROLLBACK; a failure = an exception with a description.
 begin;
 \ir _legacy_ocb.sql
 

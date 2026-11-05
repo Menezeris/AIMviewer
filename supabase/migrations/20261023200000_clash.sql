@@ -1,10 +1,10 @@
--- D-164 (#292): kontrola kolízií - testy, behy, kolízie a stav kolízie medzi behmi.
--- Aditívna migrácia. Kolízie nie sú `objects` (IFC ich nenesie; BCF je výmenný formát, nie úložisko).
--- `clash_tests` = pomenovaný test (pravidlo so sadami A/B + nastavenia), `clash_runs` = beh nad
--- revíziami modelov, `clash_results` = kolízie behu s kľúčom `clash_key` (upstream `clashReviewKey`:
--- id pravidla + dva prvky bez ohľadu na poradie), `clash_reviews` = stav kolízie naprieč behmi testu
--- (kľúč test + `clash_key`, nie beh), s odkazom na BCF tému (`model_tasks`, D-099).
--- Práva anon/authenticated nové objekty nedostanú (default privileges, migrácia 20261016120000).
+-- D-164 (#292): clash detection - tests, runs, clashes and clash status across runs.
+-- Additive migration. Clashes are not `objects` (IFC does not carry them; BCF is an exchange format, not storage).
+-- `clash_tests` = named test (rule with sets A/B + settings), `clash_runs` = run over
+-- model revisions, `clash_results` = clashes of a run with key `clash_key` (upstream `clashReviewKey`:
+-- rule id + two elements regardless of order), `clash_reviews` = clash status across runs of a test
+-- (key test + `clash_key`, not run), with a link to a BCF topic (`model_tasks`, D-099).
+-- anon/authenticated get no rights on new objects (default privileges, migration 20261016120000).
 
 begin;
 
@@ -13,7 +13,7 @@ create table clash_tests (
   code        text not null unique check (code ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$'),
   name        text not null check (length(name) between 1 and 200),
   description text,
-  origin      text not null check (origin in ('default', 'chat', 'viewer')),   -- default = pevný test z kódu hostu
+  origin      text not null check (origin in ('default', 'chat', 'viewer')),   -- default = fixed test from the host code
   rules       jsonb not null check (jsonb_typeof(rules) = 'array' and jsonb_array_length(rules) >= 1),
   settings    jsonb not null default '{}'::jsonb check (jsonb_typeof(settings) = 'object'),
   created_by  text,
@@ -23,15 +23,15 @@ create table clash_tests (
 
 create table clash_runs (
   id             uuid primary key default gen_random_uuid(),
-  test_id        uuid references clash_tests(id) on delete cascade,        -- null = ad hoc beh
-  test_code      text,                                                     -- kód testu v čase behu (aj ad hoc: null)
-  rules_snapshot jsonb not null,                                           -- pravidlo a nastavenia v čase behu
-  models         jsonb not null default '{}'::jsonb,                       -- {model: revízia} (D-086)
-  engine         text not null,                                            -- napr. @ifc-lite/clash@2.4.4 (ts)
+  test_id        uuid references clash_tests(id) on delete cascade,        -- null = ad hoc run
+  test_code      text,                                                     -- test code at run time (also ad hoc: null)
+  rules_snapshot jsonb not null,                                           -- rule and settings at run time
+  models         jsonb not null default '{}'::jsonb,                       -- {model: revision} (D-086)
+  engine         text not null,                                            -- e.g. @ifc-lite/clash@2.4.4 (ts)
   trigger        text not null check (trigger in ('chat', 'viewer')),
-  completeness   jsonb not null default '{}'::jsonb,                       -- truncated (strop dvojíc)
-  summary        jsonb not null default '{}'::jsonb,                       -- počty: total, stav, závažnosť, podlažie, dvojica tried
-  coverage       jsonb,                                                    -- prvky, ktoré beh overil {a: [...], b: [...]|null}; null = neznáme
+  completeness   jsonb not null default '{}'::jsonb,                       -- truncated (pair cap)
+  summary        jsonb not null default '{}'::jsonb,                       -- counts: total, status, severity, storey, class pair
+  coverage       jsonb,                                                    -- elements the run checked {a: [...], b: [...]|null}; null = unknown
   created_by     text,
   created_at     timestamptz not null default now()
 );
@@ -44,7 +44,7 @@ create table clash_results (
   rule       text not null,
   status     text not null check (status in ('hard', 'clearance')),
   severity   text not null check (severity in ('critical', 'major', 'minor', 'info')),
-  distance   real not null,                                                -- m; záporné = hĺbka prieniku
+  distance   real not null,                                                -- m; negative = penetration depth
   a_guid     text not null,
   a_model    text not null,
   a_ifc_type text,
@@ -54,9 +54,9 @@ create table clash_results (
   b_ifc_type text,
   b_name     text,
   storey     text,
-  center     jsonb,                                                        -- [x, y, z] v IFC svete (m, Z hore)
-  point      jsonb,                                                        -- [x, y, z] ako ho dal engine (Y hore); na obnovu behu
-  bounds     jsonb                                                         -- [[x, y, z], [x, y, z]] ako ho dal engine
+  center     jsonb,                                                        -- [x, y, z] in the IFC world (m, Z up)
+  point      jsonb,                                                        -- [x, y, z] as given by the engine (Y up); for restoring the run
+  bounds     jsonb                                                         -- [[x, y, z], [x, y, z]] as given by the engine
 );
 create index on clash_results (run_id);
 create index on clash_results (clash_key);
@@ -81,9 +81,9 @@ comment on table clash_reviews is 'D-164: stav kolízie (open|resolved|accepted)
 revoke all on clash_tests, clash_runs, clash_results, clash_reviews from anon, authenticated;
 grant all on clash_tests, clash_runs, clash_results, clash_reviews to service_role;
 
--- Kolízie posledného behu každého testu so stavom (review), prvkami z grafu AIM (object_ref cez
--- aktívny GUID) a systémom prvku (`rel_assigns_to_group`, prvý podľa názvu). Ad hoc behy (bez testu)
--- tu nie sú, čítajú sa podľa `run_id` cez tool.
+-- Clashes of the latest run of each test with status (review), elements from the AIM graph (object_ref via
+-- active GUID) and the element system (`rel_assigns_to_group`, first by name). Ad hoc runs (without test)
+-- are not here, they are read by `run_id` via the tool.
 create or replace view v_clash_latest as
   with latest as (
     select distinct on (r.test_id) r.*
@@ -120,7 +120,7 @@ create or replace view v_clash_latest as
     where g.from_id = ob.id and g.valid_until is null order by s.name limit 1
   ) sb on true;
 
--- Súhrn posledného behu každého testu po pravidle, podlaží a stave kolízie (bez grafu AIM).
+-- Summary of the latest run of each test by rule, storey and clash status (without the AIM graph).
 create or replace view v_clash_summary as
   with latest as (
     select distinct on (r.test_id) r.*

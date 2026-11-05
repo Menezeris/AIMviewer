@@ -1,11 +1,11 @@
--- Port knižnice požiadaviek do TS, krok 1 (assetin-library V30, Q70; AIM D-186): read-only prehliadač knižnice.
--- APLIKOVANÉ na produkciu 2. 11. (Samuel "áno", orchestrátor).
+-- Port of the requirements library to TS, step 1 (assetin-library V30, Q70; AIM D-186): read-only library browser.
+-- APPLIED to production 2. 11. (Samuel "yes", orchestrator).
 --
--- Schéma `library` nie je vystavená v PostgREST (db_schema = public, graphql_public) a rolám anon / authenticated
--- do nej prístup nepatrí. Host (service_role, serverová API route) preto číta hlavu knižnice cez dve RPC v `public`:
---   library_hlava_zoznam(p_kniznica) = súbory hlavy bez textu (cesta, note_id, typ, rev, sha256, autor, ...),
---   library_hlava_subor(p_kniznica, p_cesta) = jeden súbor hlavy s textom.
--- Len čítanie (stable, security invoker), pevný search_path, EXECUTE len service_role (AGENTS.md D-026, D-059).
+-- The `library` schema is not exposed in PostgREST (db_schema = public, graphql_public) and the anon / authenticated roles
+-- have no access to it. The host (service_role, server API route) therefore reads the library head through two RPCs in `public`:
+--   library_hlava_zoznam(p_kniznica) = head files without text (path, note_id, type, rev, sha256, author, ...),
+--   library_hlava_subor(p_kniznica, p_cesta) = one head file with text.
+-- Read only (stable, security invoker), fixed search_path, EXECUTE only service_role (AGENTS.md D-026, D-059).
 -- Rollback: drop function public.library_hlava_zoznam(text); drop function public.library_hlava_subor(text, text);
 
 create or replace function public.library_hlava_zoznam(p_kniznica text default null)

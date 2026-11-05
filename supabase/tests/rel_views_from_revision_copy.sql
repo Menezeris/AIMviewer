@@ -1,13 +1,13 @@
--- D-183 K3 krok 2b: rel_aggregates, rel_defines_by_type, rel_assigns_to_group, rel_associates_document,
--- rel_associates_classification z kópie revízie (ifc_rev_relationships) + hrany AIM vrstvy z relationships.
--- Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
+-- D-183 K3 step 2b: rel_aggregates, rel_defines_by_type, rel_assigns_to_group, rel_associates_document,
+-- rel_associates_classification from the revision copy (ifc_rev_relationships) + AIM layer edges from relationships.
+-- Run on a local DB with the migrations applied (never production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/rel_views_from_revision_copy.sql
--- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
+-- Everything runs in a transaction and ends with ROLLBACK; a failure = an exception with a description.
 begin;
 \ir _legacy_ocb.sql
 
--- Uzly AIM (ASR "TAS" + VZT "TVZ"): podlažie, miestnosť, schodisko so zábradlím, dvere dvoch IFC typov zlúčených
--- do jedného typu AIM (typový kód TD01.01), systém s vyústkou, zóna, výkres, strana, klasifikácia.
+-- AIM nodes (ASR "TAS" + VZT "TVZ"): storey, room, stairwell with railing, a door of two IFC types merged
+-- into one AIM type (type code TD01.01), system with outlet, zone, drawing, page, classification.
 insert into objects (id, object_type, object_ref, name, ifc_type, properties, valid_until) values
   ('00000000-0000-4000-8000-0000000000f2', 'floor', 'T2NP', '2NP', 'IfcBuildingStorey', '{}', null),
   ('00000000-0000-4000-8000-0000000000e1', 'space', 'T2.01', 'T2.01', 'IfcSpace', '{}', null),
@@ -28,7 +28,7 @@ insert into objects (id, object_type, object_ref, name, ifc_type, properties, va
 insert into documents (id, identification, storage_type) values
   ('00000000-0000-4000-8000-0000000000d1', 'TDOC_PODORYS', 'supabase'),
   ('00000000-0000-4000-8000-0000000000d2', 'page=2', 'supabase'),
-  ('00000000-0000-4000-8000-0000000000d3', 'TDOC_DUP', 'supabase'),   -- rovnaká Identification dvakrát = bez cieľa
+  ('00000000-0000-4000-8000-0000000000d3', 'TDOC_DUP', 'supabase'),   -- the same Identification twice = no target
   ('00000000-0000-4000-8000-0000000000d4', 'TDOC_DUP', 'supabase');
 insert into classification_systems (id, name) values ('00000000-0000-4000-8000-0000000000b1', 'TSNIM');
 insert into classification_references (id, system_id, identification, name) values
@@ -40,17 +40,17 @@ insert into ifc_guid_history (object_id, ifc_guid) values
   ('00000000-0000-4000-8000-0000000000a5', 'V-T1'), ('00000000-0000-4000-8000-0000000000a6', 'A-DEAD'),
   ('00000000-0000-4000-8000-0000000000c1', 'A-DT1'), ('00000000-0000-4000-8000-0000000000c2', 'V-SYS'),
   ('00000000-0000-4000-8000-0000000000c3', 'A-ZN');
--- Zlúčený typ A-DT2 (D-033) je od D-183 K3 kroku 3 údaj: alias GUID na ten istý asset_type (predtým most podľa object_ref).
+-- The merged type A-DT2 (D-033) has been data since D-183 K3 step 3: an alias GUID to the same asset_type (before, a bridge by object_ref).
 insert into ifc_guid_aliases (object_id, ifc_guid, reason, source) values
   ('00000000-0000-4000-8000-0000000000c1', 'A-DT2', 'type_code', 'IFC import:TAS');
 
--- Hrany grafu: ETL (pohľady ich nečítajú) a AIM vrstva (E4 výkres -> prvok, ostáva).
+-- Graph edges: ETL (the views do not read them) and the AIM layer (E4 drawing -> element, stays).
 insert into relationships (rel_type, from_id, to_id, role, source) values
   ('rel_aggregates', '00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-0000000000f2', null, 'etl:TAS'),
   ('rel_associates_document', '00000000-0000-4000-8000-0000000000a3', '00000000-0000-4000-8000-0000000000d1', 'document', 'etl:TAS'),
   ('rel_associates_document', '00000000-0000-4000-8000-0000000000a3', '00000000-0000-4000-8000-0000000000d1', 'drawing', 'pdf_link (E4)');
 
--- TAS v1 hotová a aktuálna; TVZ v1 hotová, v2 aktuálna bez kópie (pohľady berú v1).
+-- TAS v1 finished and current; TVZ v1 finished, v2 current without a copy (the views take v1).
 insert into model_revisions (model, revision, parent_revision, is_current, sha256, size_bytes, archive_path) values
   ('TAS', 1, null, true, repeat('a', 64), 1, 'x'),
   ('TVZ', 1, null, false, repeat('b', 64), 1, 'x'), ('TVZ', 2, 1, true, repeat('c', 64), 1, 'x');
@@ -58,25 +58,25 @@ insert into ifc_rev_imports (model, revision, sha256, status, hash_version) valu
   ('TAS', 1, repeat('a', 64), 'done', 1), ('TVZ', 1, repeat('b', 64), 'done', 1);
 
 insert into ifc_rev_relationships (model, revision, rel_class, relating, related, relating_class, related_class, content_hash) values
-  -- agregácia: miestnosť v podlaží, zábradlie v schodisku, prút závesovej steny bez uzla, budova VZT -> podlažie VZT
+  -- aggregation: room in a storey, railing in a stairwell, curtain wall bar without a node, VZT building -> VZT storey
   ('TAS', 1, 'IfcRelAggregates', 'A-S2', 'A-R1', 'IfcBuildingStorey', 'IfcSpace', 'x'),
   ('TAS', 1, 'IfcRelAggregates', 'A-STAIR', 'A-RAIL', 'IfcStair', 'IfcRailing', 'x'),
   ('TAS', 1, 'IfcRelAggregates', 'A-CW', 'A-MEMBER', 'IfcCurtainWall', 'IfcMember', 'x'),
   ('TVZ', 1, 'IfcRelAggregates', 'V-B', 'V-S2', 'IfcBuilding', 'IfcBuildingStorey', 'x'),
-  -- typ: dvere 1 cez GlobalId typu, dvere 2 cez zlúčený typ (A-DT2 nemá uzol, typový kód TD01.01), zaniknutý výskyt
+  -- type: door 1 via the type GlobalId, door 2 via the merged type (A-DT2 has no node, type code TD01.01), vanished occurrence
   ('TAS', 1, 'IfcRelDefinesByType', 'A-DT1', 'A-D1', 'IfcDoorType', 'IfcDoor', 'x'),
   ('TAS', 1, 'IfcRelDefinesByType', 'A-DT2', 'A-D2', 'IfcDoorType', 'IfcDoor', 'x'),
   ('TAS', 1, 'IfcRelDefinesByType', 'A-DT2', 'A-DEAD', 'IfcDoorType', 'IfcDoor', 'x'),
-  -- skupina: miestnosť v zóne, vyústka v systéme, port bez uzla v systéme
+  -- group: room in a zone, outlet in a system, port without a node in a system
   ('TAS', 1, 'IfcRelAssignsToGroup', 'A-ZN', 'A-R1', 'IfcZone', 'IfcSpace', 'x'),
   ('TVZ', 1, 'IfcRelAssignsToGroup', 'V-SYS', 'V-T1', 'IfcDistributionSystem', 'IfcAirTerminal', 'x'),
   ('TVZ', 1, 'IfcRelAssignsToGroup', 'V-SYS', 'V-PORT', 'IfcDistributionSystem', 'IfcDistributionPort', 'x'),
-  -- dokument: na type (dedí výskyt), strana na miestnosti, dvojznačná Identification, projekt VZT bez uzla
+  -- document: on a type (the occurrence inherits), page on a room, ambiguous Identification, VZT project without a node
   ('TAS', 1, 'IfcRelAssociatesDocument', 'IfcDocumentInformation:TDOC_PODORYS', 'A-DT1', 'IfcDocumentInformation', 'IfcDoorType', 'x'),
   ('TAS', 1, 'IfcRelAssociatesDocument', 'IfcDocumentReference:page=2', 'A-R1', 'IfcDocumentReference', 'IfcSpace', 'x'),
   ('TAS', 1, 'IfcRelAssociatesDocument', 'IfcDocumentInformation:TDOC_DUP', 'A-S2', 'IfcDocumentInformation', 'IfcBuildingStorey', 'x'),
   ('TVZ', 1, 'IfcRelAssociatesDocument', 'IfcDocumentInformation:TDOC_PODORYS', 'V-PROJ', 'IfcDocumentInformation', 'IfcProject', 'x'),
-  -- klasifikácia: známa referencia, neznáma referencia, celá klasifikácia na projekte
+  -- classification: known reference, unknown reference, whole classification on the project
   ('TAS', 1, 'IfcRelAssociatesClassification', 'IfcClassificationReference:TDD01', 'A-D1', 'IfcClassificationReference', 'IfcDoor', 'x'),
   ('TAS', 1, 'IfcRelAssociatesClassification', 'IfcClassificationReference:TXX99', 'A-D2', 'IfcClassificationReference', 'IfcDoor', 'x'),
   ('TAS', 1, 'IfcRelAssociatesClassification', 'IfcClassification:TSNIM', 'A-PROJ', 'IfcClassification', 'IfcProject', 'x');

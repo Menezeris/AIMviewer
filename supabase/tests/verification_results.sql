@@ -1,13 +1,13 @@
--- D-185: verification_runs, verification_results a v_verification_latest (pripravená migrácia
+-- D-185: verification_runs, verification_results and v_verification_latest (prepared migration
 -- supabase/pending/20261101200000_verification_results.sql).
--- Spustenie na lokálnej DB s aplikovanými migráciami a pripravenou migráciou (nikdy produkcia):
+-- Run on a local DB with the migrations applied and the prepared migration (never production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/pending/20261101200000_verification_results.sql
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/verification_results.sql
--- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
+-- Everything runs in a transaction and ends with ROLLBACK; a failure = an exception with a description.
 begin;
 \ir _legacy_ocb.sql
 
--- aktuálne revízie: ASR v79 (bez ostatných modelov stačí jeden riadok)
+-- current revisions: ASR v79 (without other models one row is enough)
 delete from model_revisions where model = 'ZZTEST';
 
 do $$

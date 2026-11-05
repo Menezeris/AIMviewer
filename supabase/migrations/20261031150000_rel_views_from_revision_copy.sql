@@ -1,35 +1,35 @@
--- D-183 K3 krok 2b: ďalšie kanonické pohľady IFC vzťahov z kópie revízie (ifc_rev_relationships), rovnakým spôsobom
--- ako `rel_contained_in_spatial_structure` (migrácia 20261031120000): `rel_aggregates`, `rel_defines_by_type`,
+-- D-183 K3 step 2b: more canonical IFC relationship views from the revision copy (ifc_rev_relationships), the same way
+-- as `rel_contained_in_spatial_structure` (migration 20261031120000): `rel_aggregates`, `rel_defines_by_type`,
 -- `rel_assigns_to_group`, `rel_associates_document`, `rel_associates_classification`.
 --
--- Spoločné pravidlá (D-183 bod 13 a 12):
---   * Riadok zo súboru = každá dvojica príslušnej triedy IfcRel* aktuálnej revízie modelu s hotovou kópiou
---     (`ifc_rev_current`: aktuálna revízia, kým jej kópia nie je `done`, najnovšia nižšia `done`). from_id = strana
---     Related (prvok, časť, výskyt, člen, objekt), to_id = strana Relating (celok, typ, skupina, dokument, klasifikácia).
---   * GlobalId -> uzol AIM cez aktívny `ifc_guid_history` a živý `objects` (`ifc_guid_node`). Strana bez uzla AIM má
---     from_id/to_id null; zo súboru ju povie `global_id` (Related) a stĺpec Relating (`parent_global_id`,
+-- Common rules (D-183 points 13 and 12):
+--   * Row from the file = every pair of the relevant IfcRel* class of the current model revision with a finished copy
+--     (`ifc_rev_current`: the current revision, while its copy is not `done`, the newest lower `done`). from_id = the Related
+--     side (element, part, occurrence, member, object), to_id = the Relating side (whole, type, group, document, classification).
+--   * GlobalId -> AIM node via the active `ifc_guid_history` and live `objects` (`ifc_guid_node`). A side without an AIM node has
+--     from_id/to_id null; from the file it is given by `global_id` (Related) and the Relating column (`parent_global_id`,
 --     `type_global_id`, `group_global_id`, `document_key`, `classification_key`).
---   * `id` = md5(model|revízia|trieda IfcRel*|Relating|Related)::uuid, `valid_from` = koniec importu kópie,
---     `valid_until` vždy null, `source` = 'ifc:ASR v79'.
---   * K tomu riadky AIM vrstvy z `relationships` (zdroj nie je ETL zo súboru, napr. 'pdf_link (E4)', 'doc_upload
---     (D-036)'): ostávajú, ako boli (aj s valid_until), model/revision/global_id null. Hrany ETL (`etl`, `etl:*`)
---     pohľady nečítajú, ETL ich zatiaľ píše (prestane v kroku 3).
--- Mapovanie podľa vzťahu:
---   * rel_aggregates: oba konce cez GlobalId. Podlažie VZT (bez vlastného uzla, D-049) sa tu na podlažie AIM nemapuje
---     (budova VZT nemá uzol, podlažie AIM by dostalo druhého rodiča null); ostane from_id null.
---   * rel_defines_by_type: typ cez GlobalId; typ zo súboru bez vlastného uzla (ETL zlúčil viac IFC typov s rovnakým
---     typovým kódom do jedného `asset_type`, D-033) -> `asset_type`, ktorého object_ref je typový kód výskytu
---     (object_ref výskytu bez posledného segmentu, DD01.06.04 -> DD01.06), tak ako ho určil ETL.
+--   * `id` = md5(model|revision|IfcRel* class|Relating|Related)::uuid, `valid_from` = end of the copy import,
+--     `valid_until` always null, `source` = 'ifc:ASR v79'.
+--   * Plus the AIM layer rows from `relationships` (source is not the file ETL, e.g. 'pdf_link (E4)', 'doc_upload
+--     (D-036)'): they stay as they were (also with valid_until), model/revision/global_id null. ETL edges (`etl`, `etl:*`)
+--     are not read by the views, ETL still writes them (stops in step 3).
+-- Mapping by relationship:
+--   * rel_aggregates: both ends via GlobalId. A VZT storey (without its own node, D-049) is not mapped to an AIM storey here
+--     (the VZT building has no node, the AIM storey would get a second parent null); it stays from_id null.
+--   * rel_defines_by_type: type via GlobalId; a type from the file without its own node (ETL merged several IFC types with the same
+--     type code into one `asset_type`, D-033) -> `asset_type` whose object_ref is the type code of the occurrence
+--     (occurrence object_ref without the last segment, DD01.06.04 -> DD01.06), as ETL determined it.
 --   * rel_associates_document: `IfcDocumentInformation:<Identification>` / `IfcDocumentReference:<Identification>`
---     (prirodzený kľúč kópie) -> uzol `document` / `document_reference` s rovnakou `documents.identification`,
---     len keď je jediný. `role` = 'document' ako doteraz.
+--     (natural key of the copy) -> node `document` / `document_reference` with the same `documents.identification`,
+--     only when it is unique. `role` = 'document' as before.
 --   * rel_associates_classification: `IfcClassificationReference:<Identification>` -> `classification_references`
---     s rovnakou `identification`, len keď je jediná (systém kľúč kópie nenesie). Väzba na celú IfcClassification
---     (projekt) nemá cieľ, to_id null.
--- Prvé stĺpce sú rovnaké ako doteraz (query_view, whitelist, list_relations, v_object_documents, v_asset_effective,
--- v_asset_classifications, v_zone_elements, v_clash_latest bez zmeny).
+--     with the same `identification`, only when unique (the system is not carried by the copy key). A link to the whole IfcClassification
+--     (project) has no target, to_id null.
+-- The first columns are the same as before (query_view, whitelist, list_relations, v_object_documents, v_asset_effective,
+-- v_asset_classifications, v_zone_elements, v_clash_latest unchanged).
 --
--- Rollback (stĺpce sa z pohľadu odobrať nedajú, preto rovnaké stĺpce s pôvodným telom; pomocné pohľady ostanú):
+-- Rollback (columns cannot be removed from a view, hence the same columns with the original body; helper views stay):
 --   create or replace view rel_aggregates as
 --     select id, from_id, to_id, valid_from, valid_until, source, null::text as model, null::integer as revision,
 --            null::text as global_id, null::text as parent_global_id
@@ -53,7 +53,7 @@
 
 begin;
 
--- Revízia kópie, ktorú čítajú pohľady: pre každý model aktuálna, kým nie je `done`, najnovšia nižšia `done`.
+-- Copy revision read by the views: for each model the current one, while it is not `done`, the newest lower `done`.
 create or replace view ifc_rev_current as
   select distinct on (i.model) i.model, i.revision, i.finished_at
   from ifc_rev_imports i
@@ -61,14 +61,14 @@ create or replace view ifc_rev_current as
   where i.status = 'done' and i.revision <= c.revision
   order by i.model, i.revision desc;
 
--- GlobalId -> živý uzol AIM (aktívny GUID, objekt bez valid_until).
+-- GlobalId -> live AIM node (active GUID, object without valid_until).
 create or replace view ifc_guid_node as
   select h.ifc_guid, h.object_id, o.object_type, o.object_ref
   from ifc_guid_history h
   join objects o on o.id = h.object_id and o.valid_until is null
   where h.valid_until is null;
 
--- Hrana AIM vrstvy (nie ETL zo súboru): pohľady nad kópiou ju zachovajú.
+-- AIM layer edge (not file ETL): the views over the copy keep it.
 create or replace function rel_is_aim_layer(p_source text)
 returns boolean language sql immutable set search_path = public as $$
   select coalesce(p_source, '') !~ '^etl(:|$)'

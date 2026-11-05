@@ -1,6 +1,6 @@
--- D-182 (#351): pôvod verzie knižničného IDS, ručná väzba IDS na model, ids_stale a engine_version v pohľadoch.
--- Spustenie na lokálnej DB s aplikovanými migráciami a supabase/pending/20261102120000_ids_library_assign.sql
--- (nikdy produkcia):
+-- D-182 (#351): origin of a library IDS version, manual link of an IDS to a model, ids_stale and engine_version in the views.
+-- Run on a local DB with the migrations applied and supabase/pending/20261102120000_ids_library_assign.sql
+-- (never production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/ids_library_assign.sql
 begin;
 \ir _legacy_ocb.sql
@@ -74,7 +74,7 @@ begin
   if n <> 3 then raise exception 'väzieb spolu (aj ukončená): čakal som 3, je %', n; end if;
 end $$;
 
--- Beh z viewera nad v1 so stopou nástroja; potom nová verzia IDS v AIM -> ids_stale.
+-- A run from the viewer over v1 with the tool trace; then a new IDS version in AIM -> ids_stale.
 insert into ids_runs (id, ids_title, ids_sha256, model_label, ids_version_id, engine, trigger, engine_version, created_by, model_revisions) values
   ('00000000-0000-4000-8000-0000000000c1', 'Knižnica', 'h1', 'T-ASR', '00000000-0000-4000-8000-0000000000b1', 'ifc-lite', 'viewer',
    '@ifc-lite/ids 1.0.0', 'Samuel', '{"T-ASR": 79}');
@@ -104,7 +104,7 @@ begin
   if not b then raise exception 'starý beh má ids_stale'; end if;
 end $$;
 
--- Práva: anon a authenticated väzby nevidia
+-- Rights: anon and authenticated do not see the links
 do $$
 begin
   if has_table_privilege('anon', 'ids_document_models', 'select') or has_table_privilege('authenticated', 'ids_document_models', 'select') then

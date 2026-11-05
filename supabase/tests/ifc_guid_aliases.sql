@@ -1,12 +1,12 @@
--- D-183 K3 krok 3: zlúčený IFC typ ako údaj (ifc_guid_aliases), ifc_guid_node s aliasom, rel_defines_by_type bez
--- mosta podľa object_ref, a samostatný krok ukončenia hrán ETL (supabase/pending/) nad testovacími dátami.
--- Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
+-- D-183 K3 step 3: merged IFC type as data (ifc_guid_aliases), ifc_guid_node with an alias, rel_defines_by_type without
+-- the bridge by object_ref, and a separate step ending the ETL edges (supabase/pending/) over test data.
+-- Run on a local DB with the migrations applied (never production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/ifc_guid_aliases.sql
--- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
+-- Everything runs in a transaction and ends with ROLLBACK; a failure = an exception with a description.
 begin;
 \ir _legacy_ocb.sql
 
--- Typ TQ01.06 (GUID Q-T1) zlúčil ďalšie dva IFC typy Q-T2, Q-T3; typ TQ01.07 bez aliasu (most už nie je).
+-- Type TQ01.06 (GUID Q-T1) merged two more IFC types Q-T2, Q-T3; type TQ01.07 without an alias (the bridge is gone).
 insert into objects (id, object_type, object_ref, name, ifc_type, properties, valid_until) values
   ('00000000-0000-4000-8000-000000000101', 'asset_type', 'TQ01.06', 'TQ01.06', 'IfcDoorType', '{"Pset_DoorCommon": {"FireRating": "EI45"}}', null),
   ('00000000-0000-4000-8000-000000000102', 'asset_type', 'TQ01.07', 'TQ01.07', 'IfcDoorType', '{}', null),
@@ -25,9 +25,9 @@ insert into ifc_guid_history (object_id, ifc_guid) values
 insert into ifc_guid_aliases (object_id, ifc_guid, reason, valid_until, source) values
   ('00000000-0000-4000-8000-000000000101', 'Q-T2', 'type_code', null, 'IFC import:TQA'),
   ('00000000-0000-4000-8000-000000000101', 'Q-T3', 'type_code', null, 'IFC import:TQA'),
-  ('00000000-0000-4000-8000-000000000101', 'Q-T8', 'type_code', now(), 'IFC import:TQA'),  -- uzavretý alias
-  ('00000000-0000-4000-8000-000000000103', 'Q-T9', 'type_code', null, 'IFC import:TQA'),   -- zaniknutý uzol
-  ('00000000-0000-4000-8000-000000000102', 'Q-T1', 'type_code', null, 'IFC import:TQA');   -- GUID je v histórii iného uzla
+  ('00000000-0000-4000-8000-000000000101', 'Q-T8', 'type_code', now(), 'IFC import:TQA'),  -- closed alias
+  ('00000000-0000-4000-8000-000000000103', 'Q-T9', 'type_code', null, 'IFC import:TQA'),   -- vanished node
+  ('00000000-0000-4000-8000-000000000102', 'Q-T1', 'type_code', null, 'IFC import:TQA');   -- GUID is in the history of another node
 
 insert into model_revisions (model, revision, parent_revision, is_current, sha256, size_bytes, archive_path) values
   ('TQA', 1, null, true, repeat('d', 64), 1, 'x');
@@ -36,10 +36,10 @@ insert into ifc_rev_relationships (model, revision, rel_class, relating, related
   ('TQA', 1, 'IfcRelDefinesByType', 'Q-T1', 'Q-D1', 'IfcDoorType', 'IfcDoor', 'x'),
   ('TQA', 1, 'IfcRelDefinesByType', 'Q-T2', 'Q-D2', 'IfcDoorType', 'IfcDoor', 'x'),
   ('TQA', 1, 'IfcRelDefinesByType', 'Q-T3', 'Q-D3', 'IfcDoorType', 'IfcDoor', 'x'),
-  ('TQA', 1, 'IfcRelDefinesByType', 'Q-T8', 'Q-D4', 'IfcDoorType', 'IfcDoor', 'x'),    -- len uzavretý alias, most by dal TQ01.07
-  ('TQA', 1, 'IfcRelDefinesByType', 'Q-T9', 'Q-D5', 'IfcDoorType', 'IfcDoor', 'x');    -- alias na zaniknutý uzol
+  ('TQA', 1, 'IfcRelDefinesByType', 'Q-T8', 'Q-D4', 'IfcDoorType', 'IfcDoor', 'x'),    -- only the closed alias, the bridge would give TQ01.07
+  ('TQA', 1, 'IfcRelDefinesByType', 'Q-T9', 'Q-D5', 'IfcDoorType', 'IfcDoor', 'x');    -- alias to a vanished node
 
--- Hrany grafu na krok ukončenia: ETL zo súboru (typy z kópie aj iný typ) a AIM vrstva.
+-- Graph edges for the ending step: ETL from the file (types from the copy and another type) and the AIM layer.
 insert into relationships (rel_type, from_id, to_id, role, source) values
   ('rel_defines_by_type', '00000000-0000-4000-8000-000000000111', '00000000-0000-4000-8000-000000000101', null, 'etl:TQA'),
   ('rel_contained_in_spatial_structure', '00000000-0000-4000-8000-000000000111', '00000000-0000-4000-8000-000000000121', null, 'etl'),

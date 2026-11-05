@@ -1,5 +1,5 @@
 -- D-162: ids_documents, ids_document_versions, ids_runs + v_ids_latest / v_ids_summary.
--- Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
+-- Run on a local DB with the migrations applied (never production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/ids_documents.sql
 begin;
 \ir _legacy_ocb.sql
@@ -8,7 +8,7 @@ insert into ids_documents (id, code, title, origin, library_source) values
   ('00000000-0000-4000-8000-0000000000a1', 'LIB-1', 'Knižnica 1', 'library', 'assetin-library@abc:zadanie/x.md'),
   ('00000000-0000-4000-8000-0000000000a2', 'CHAT-1', 'Chat 1', 'chat', null);
 
--- Verzia z knižnice nesie pôvod (repo, cesta, commit; D-182, supabase/pending/20261102120000_ids_library_assign.sql).
+-- A version from the library carries its origin (repo, path, commit; D-182, supabase/pending/20261102120000_ids_library_assign.sql).
 insert into ids_document_versions (id, document_id, version, xml, sha256, source, library_repo, library_path, library_commit) values
   ('00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000a1', 1, '<ids/>', 'h1', 'import', 'o/lib', 'ids/LIB-1.ids', 'c1');
 insert into ids_document_versions (id, document_id, version, xml, sha256, source) values
@@ -83,7 +83,7 @@ begin
   end;
 end $$;
 
--- Behy: starý (bez verzie) zostáva viditeľný, nové sa kľúčujú dokumentom a majú engine, binding.
+-- Runs: the old one (without a version) stays visible, new ones are keyed by document and have engine, binding.
 insert into ids_runs (id, ids_title, ids_sha256, model_label, checked_at) values
   ('00000000-0000-4000-8000-0000000000c1', 'Spoločný názov', 'o', 'ASR', now() - interval '3 hours');
 insert into ids_runs (id, ids_title, ids_sha256, model_label, checked_at, ids_version_id, engine, trigger) values
@@ -121,7 +121,7 @@ begin
   if n <> 2 then raise exception 'behy po zmazaní dokumentu: %', n; end if;
 end $$;
 
--- Práva: anon a authenticated nové tabuľky nevidia
+-- Rights: anon and authenticated do not see the new tables
 do $$
 begin
   if has_table_privilege('anon', 'ids_documents', 'select') or has_table_privilege('authenticated', 'ids_document_versions', 'select') then

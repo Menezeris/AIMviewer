@@ -1,7 +1,7 @@
--- D-158 kroky 3 a 4: kotva revízie (sha256) a veľkosť strany pre snímku výrezu a viewrect.
--- Spustenie (na lokálnej DB s aplikovanými migráciami, nikdy na produkcii):
+-- D-158 steps 3 and 4: revision anchor (sha256) and page size for the crop snapshot and viewrect.
+-- Run (on a local DB with the migrations applied, never on production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/document_sha256.sql
--- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
+-- Everything runs in a transaction and ends with ROLLBACK; a failure = an exception with a description.
 begin;
 \ir _legacy_ocb.sql
 

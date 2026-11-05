@@ -1,33 +1,33 @@
--- D-182 (#351): knižnica požiadaviek v AIM vedomým priradením k projektu.
--- APLIKOVANÉ na produkciu 2. 11. (Samuel "migrácia áno", orchestrátor).
--- Aditívne, bez zmeny existujúcich riadkov. Závisí od 20261023180000_ids_documents.sql a
+-- D-182 (#351): requirements library in AIM by a deliberate assignment to a project.
+-- APPLIED to production 2. 11. (Samuel "migration yes", orchestrator).
+-- Additive, without changing existing rows. Depends on 20261023180000_ids_documents.sql and
 -- 20261030120000_information_containers.sql (`revisions_stale`, `information_containers`).
 --
--- * Verzia knižničného IDS (`source = 'import'`) nesie pôvod v knižnici: repo, cesta, commit a kód súboru v čase
---   priradenia; `author` = kto priradil, `created_at` = kedy. Kópia je nemenná (trigger D-162), zmena = nová verzia.
--- * `ids_document_models` = ručná väzba IDS na model federácie (mnoho na mnoho); zrušenie väzbu ukončí, nemaže.
--- * `ids_runs`: verzia nástroja (`engine_version`) a kto beh uložil (`created_by`); beh z viewera má `trigger = 'viewer'`.
---   Sha256 revízie modelu sa neukladá, je v `model_revisions` pri (model, revízia).
--- * `v_ids_latest`, `v_ids_summary`: na konci `ids_stale` (IDS má v AIM novšiu verziu, než nad ktorou beh bežal) a
---   `engine_version`. `stale` (novšia revízia modelu) ostáva bez zmeny.
--- Práva anon/authenticated nové objekty nedostanú (default privileges, migrácia 20261016120000).
+-- * A library IDS version (`source = 'import'`) carries its origin in the library: repo, path, commit and file code at the time of
+--   the assignment; `author` = who assigned, `created_at` = when. The copy is immutable (trigger D-162), a change = a new version.
+-- * `ids_document_models` = a manual link of an IDS to a federation model (many to many); cancelling ends the link, does not delete.
+-- * `ids_runs`: tool version (`engine_version`) and who saved the run (`created_by`); a run from the viewer has `trigger = 'viewer'`.
+--   The model revision sha256 is not stored, it is in `model_revisions` at (model, revision).
+-- * `v_ids_latest`, `v_ids_summary`: at the end `ids_stale` (the IDS has a newer version in AIM than the one the run ran over) and
+--   `engine_version`. `stale` (newer model revision) stays unchanged.
+-- anon/authenticated get no rights on new objects (default privileges, migration 20261016120000).
 -- Rollback: drop table if exists ids_document_models; alter table ids_runs drop column if exists engine_version,
 --   drop column if exists created_by; alter table ids_document_versions drop constraint if exists
 --   ids_document_versions_library_ref_check, drop column if exists library_repo, drop column if exists library_path,
---   drop column if exists library_commit, drop column if exists library_code; pohľady v_ids_* z 20261030120000.
+--   drop column if exists library_commit, drop column if exists library_code; v_ids_* views from 20261030120000.
 
 begin;
 
 -- ---------------------------------------------------------------------------
--- Pôvod verzie knižničného IDS
+-- Origin of a library IDS version
 -- ---------------------------------------------------------------------------
 alter table ids_document_versions
   add column library_repo   text,   -- Menezeris/assetin-library
   add column library_path   text,   -- ids/ER-0101_ARCH.ids
-  add column library_commit text,   -- sha commitu, z ktorého sa súbor priradil
-  add column library_code   text;   -- kód (meno súboru bez .ids) v čase priradenia; kód IDS v AIM sa môže zmeniť
+  add column library_commit text,   -- sha of the commit the file was assigned from
+  add column library_code   text;   -- code (file name without .ids) at the time of assignment; the IDS code in AIM may change
 
--- Nová verzia z knižnice musí niesť pôvod; staré riadky (pred D-182) sa nekontrolujú.
+-- A new version from the library must carry its origin; old rows (before D-182) are not checked.
 alter table ids_document_versions
   add constraint ids_document_versions_library_ref_check
   check (source <> 'import' or (library_repo is not null and library_path is not null and library_commit is not null))
@@ -39,13 +39,13 @@ comment on column ids_document_versions.library_commit is
   'D-182: commit knižnice, z ktorého sa IDS priradilo k projektu (author = kto, created_at = kedy).';
 
 -- ---------------------------------------------------------------------------
--- Ručná väzba IDS <-> model federácie
+-- Manual link IDS <-> federation model
 -- ---------------------------------------------------------------------------
 create table ids_document_models (
   id                        uuid primary key default gen_random_uuid(),
   document_id               uuid not null references ids_documents (id) on delete cascade,
   information_container_id  uuid not null references information_containers (id) on delete cascade,
-  library_container         text,                     -- voliteľne kontajner knižnice (napr. IU-C-arch-model), zadá človek
+  library_container         text,                     -- optionally the library container (e.g. IU-C-arch-model), entered by a person
   created_by                text not null,
   valid_from                timestamptz not null default now(),
   valid_until               timestamptz,
@@ -57,7 +57,7 @@ create unique index uniq_ids_document_models_active
   on ids_document_models (document_id, information_container_id) where valid_until is null;
 create index on ids_document_models (information_container_id) where valid_until is null;
 
--- Väzba len na IFC kontajner (model federácie); ukončená väzba sa už nemení.
+-- Link only to an IFC container (federation model); an ended link no longer changes.
 create function ids_document_models_guard() returns trigger language plpgsql as $$
 declare kind text;
 begin
@@ -89,14 +89,14 @@ revoke all on ids_document_models from anon, authenticated;
 grant all on ids_document_models to service_role;
 
 -- ---------------------------------------------------------------------------
--- Behy: verzia nástroja a kto uložil
+-- Runs: tool version and who saved
 -- ---------------------------------------------------------------------------
 alter table ids_runs
-  add column engine_version text,   -- napr. @ifc-lite/ids 1.2.3 (vo forku pri behu z viewera)
-  add column created_by     text;   -- meno z dialógu viewera alebo autor v chate
+  add column engine_version text,   -- e.g. @ifc-lite/ids 1.2.3 (in the fork for a run from the viewer)
+  add column created_by     text;   -- name from the viewer dialog or the author in chat
 
 -- ---------------------------------------------------------------------------
--- Pohľady: `ids_stale` a `engine_version` na konci (staré stĺpce bez zmeny)
+-- Views: `ids_stale` and `engine_version` at the end (old columns unchanged)
 -- ---------------------------------------------------------------------------
 create or replace view v_ids_latest as
   with latest as (
