@@ -36,8 +36,25 @@ interface RequestContext {
 
 const store = new AsyncLocalStorage<RequestContext>();
 
+/**
+ * Test-only fallback context (vitest setup), on `globalThis` so it survives `vi.resetModules()`;
+ * never set in the app, where a request sets its own.
+ */
+const TEST_KEY = Symbol.for("aim.testRequestContext");
+type WithTest = { [TEST_KEY]?: RequestContext | null };
+
+/** vitest: the context code sees outside `withProject` (fixture project and models); null clears it. */
+export function setTestRequestContext(c: { project: Project; models?: IfcModel[] | null } | null): void {
+  if (!process.env.VITEST) throw new Error("setTestRequestContext is for tests only.");
+  (globalThis as WithTest)[TEST_KEY] = c ? { caller: null, project: c.project, models: c.models ?? null } : null;
+}
+
+function stored(): RequestContext | undefined {
+  return store.getStore() ?? (globalThis as WithTest)[TEST_KEY] ?? undefined;
+}
+
 function ctx(): RequestContext {
-  return store.getStore() ?? { caller: null, project: null, models: null };
+  return stored() ?? { caller: null, project: null, models: null };
 }
 
 export function withCaller<T>(caller: LiveCaller | null, fn: () => T): T {
@@ -55,7 +72,7 @@ export function withProject<T>(project: Project, fn: () => T, models: IfcModel[]
 
 /** The request project; throws outside a request that resolved one (no silent default). */
 export function currentProject(): Project {
-  const p = store.getStore()?.project;
+  const p = stored()?.project;
   if (!p) throw new Error("No project in the request context (D-189): wrap the handler in withRequestProject.");
   return p;
 }
@@ -66,10 +83,10 @@ export function currentProjectId(): string {
 
 /** The request project or null (callers that have their own fallback). */
 export function maybeCurrentProject(): Project | null {
-  return store.getStore()?.project ?? null;
+  return stored()?.project ?? null;
 }
 
 /** Models of the request project, or null when the request did not load them. */
 export function currentModels(): IfcModel[] | null {
-  return store.getStore()?.models ?? null;
+  return stored()?.models ?? null;
 }

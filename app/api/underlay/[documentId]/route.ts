@@ -117,7 +117,7 @@ async function patchHandler(
   if (isV2Edit) {
     const edit = editCalibration(current._georef, next, b!.calibrationIndex as number | undefined, { by: "panel", reason: "úprava v paneli Underlays (rez)", at: new Date().toISOString() });
     if (!edit.ok) return NextResponse.json({ error: "calibration not found" }, { status: 404 });
-    const { error: eErr } = await supabase.from("objects").update({ properties: { ...current, _georef: edit.georef } }).eq("id", documentId);
+    const { error: eErr } = await supabase.from("objects").update({ properties: { ...current, _georef: edit.georef } }).eq("project_id", projectId).eq("id", documentId);
     if (eErr) return NextResponse.json({ error: eErr.message }, { status: 500 });
     revalidateProject(projectId);
     return NextResponse.json({ ok: true });
@@ -132,6 +132,7 @@ async function patchHandler(
   const { error: uErr } = await supabase
     .from("objects")
     .update({ properties })
+    .eq("project_id", projectId)
     .eq("id", documentId);
   if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 });
 

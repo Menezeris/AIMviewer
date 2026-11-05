@@ -19,6 +19,8 @@ vi.mock("../supabase/server", () => ({
             q
           ),
           is: (c: string, v: unknown) => ((rows = rows.filter((r) => (r[c] ?? null) === v)), q),
+          // D-189: every row of the fixture is in the test project.
+          eq: (c: string, v: unknown) => ((rows = rows.filter((r) => (c === "project_id" ? (r[c] ?? v) : r[c]) === v)), q),
           not: (c: string, _op: "is", v: unknown) => ((rows = rows.filter((r) => (r[c] ?? null) !== v)), q),
           order: () => q,
           range: (a: number, b: number) => ((range = [a, b]), q),

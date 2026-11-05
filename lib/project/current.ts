@@ -92,11 +92,14 @@ export async function loadProjectRow(
   return { id: r.id, code: r.object_ref as string, name: r.name ?? (r.object_ref as string) };
 }
 
-let loader: Loader = loadFromDb;
+/** Test hook slot on `globalThis`, so it survives `vi.resetModules()` in route tests. */
+const LOADER_KEY = Symbol.for("aim.projectLoader");
+type WithLoader = { [LOADER_KEY]?: Loader | null };
+const loader: Loader = (key) => ((globalThis as WithLoader)[LOADER_KEY] ?? loadFromDb)(key);
 
 /** Test hook: replace the DB loader (null = back to the DB). */
 export function setProjectLoader(l: Loader | null): void {
-  loader = l ?? loadFromDb;
+  (globalThis as WithLoader)[LOADER_KEY] = l;
   clearProjectCache();
 }
 

@@ -522,6 +522,7 @@ export async function createCapturePoint(projectId: string, input: CreateCapture
   if (cErr) throw new Error(cErr.message);
 
   const { error: rErr } = await supabase.from("relationships").insert({
+    project_id: projectId,
     rel_type: "aim_rel_capture_located",
     from_id: captureId,
     to_id: input.spaceId,
@@ -577,6 +578,7 @@ export async function addCaptureMedia(
   if (mErr) throw new Error(mErr.message);
 
   const { error: rErr } = await supabase.from("relationships").insert({
+    project_id: projectId,
     rel_type: "aim_rel_capture_media",
     from_id: captureId,
     to_id: mediaId,

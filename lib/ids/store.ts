@@ -153,7 +153,7 @@ export function supabaseIdsStore(projectId: string): IdsStore {
         const rows = results.slice(i, i + RESULT_CHUNK).map((r) => ({ ...r, run_id: runId }));
         const { error: err } = await db().from("ids_results").insert(rows);
         if (err) {
-          await db().from("ids_runs").delete().eq("id", runId);
+          await db().from("ids_runs").delete().eq("project_id", projectId).eq("id", runId);
           fail("Uloženie výsledkov IDS zlyhalo", err);
         }
       }

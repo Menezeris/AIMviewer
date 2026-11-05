@@ -44,7 +44,7 @@ export function supabaseVerificationStore(projectId: string): VerificationStore 
         }
         if (e) {
           // Beh bez výsledkov by klamal: zmazať (kaskáda) a nahlásiť.
-          await db.from("verification_runs").delete().eq("id", id);
+          await db.from("verification_runs").delete().eq("project_id", projectId).eq("id", id);
           throw new Error(`verification_results: ${e.message}`);
         }
       }
