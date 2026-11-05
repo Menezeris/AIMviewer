@@ -433,6 +433,13 @@ begin
   end if;
 end $$;
 
+-- Planner statistics for what changed (rule of the D-189 incident addendum, #420).
+analyze public.model_tasks;
+analyze public.bcf_topic_counters;
+analyze public.information_containers;
+analyze public.model_revisions;
+analyze public.ids_documents;
+
 comment on column public.model_tasks.number is
   'BCF topic.index, unique per project; assigned by trg_model_tasks_number from bcf_topic_counters (D-189)';
 
