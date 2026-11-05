@@ -1,4 +1,4 @@
-"""Nahrávanie do Storage nastavuje `cacheControl` vo formulári (D-135 dodatok)."""
+"""Uploading to Storage sets `cacheControl` in the form (D-135 addendum)."""
 
 from __future__ import annotations
 

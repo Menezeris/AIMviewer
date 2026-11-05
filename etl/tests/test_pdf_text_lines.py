@@ -1,4 +1,4 @@
-"""D-133: hrubé čiary výkresu pre kalibráciu podkladu (`document_pages.lines`)."""
+"""D-133: thick drawing lines for underlay calibration (`document_pages.lines`)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def _pdf(tmp_path: Path, thick: int) -> Path:
     page.insert_text((40, 50), "1.01", fontsize=10)
     for i in range(thick):
         page.draw_line((10, 10 + i * 0.5), (110, 10 + i * 0.5), width=1.4)
-    page.draw_line((10, 150), (300, 150), width=0.3)  # tenká kóta sa neuloží
+    page.draw_line((10, 150), (300, 150), width=0.3)  # a thin dimension line is not stored
     page.draw_rect(fitz.Rect(200, 20, 260, 60), width=1.4)
     out = tmp_path / "v.pdf"
     doc.save(out)
@@ -29,10 +29,10 @@ def test_lines_bottom_left_points_and_thick_only(tmp_path: Path) -> None:
     assert data is not None and data["size"] == [400, 200]
     lines = data["segs"]
     assert len(lines) == LINE_MIN_COUNT + 4
-    # Prvá čiara y = 10 od vrchu strany 200 -> 190 od spodku (počiatok vľavo dole).
+    # The first line y = 10 from the top of a page 200 high -> 190 from the bottom (origin at the bottom left).
     assert lines[0] == [10.0, 190.0, 110.0, 190.0, 1.4]
     assert all(seg[4] >= 0.99 for seg in lines)
-    # Obdĺžnik = 4 strany.
+    # A rectangle = 4 sides.
     assert [200.0, 180.0, 260.0, 180.0, 1.4] in lines
 
 
@@ -63,7 +63,7 @@ def _thin_pdf(tmp_path: Path, n: int, width: float) -> Path:
 
 
 def test_thin_lines_use_lower_width_tier(tmp_path: Path) -> None:
-    """#283: požiarny pôdorys s čiarami 0,4 pt dostane `lines` s nižším prahom."""
+    """#283: a fire floor plan with 0.4 pt lines gets `lines` with a lower threshold."""
     data = extract_pages_full(_thin_pdf(tmp_path, LINE_MIN_COUNT, 0.4))[0][3]
     assert data is not None
     assert data["min_w"] == 0.25

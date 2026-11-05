@@ -1,8 +1,8 @@
-"""Odvodzovač prvok → priestor (D-080): zarovnanie, rekonciliácia zápisu, integrácia.
+"""Element -> space deriver (D-080): alignment, write reconciliation, integration.
 
-DB sa nepoužíva (stub kurzor). Integračný test postaví malý IFC4X3 model cez
-ifcopenshell.api: dve miestnosti 4×4×3 m vedľa seba, vyústenie v prvej, vyústenie
-nad telom miestnosti (podhľad), vyústenie mimo a potrubie cez obe miestnosti.
+The DB is not used (stub cursor). The integration test builds a small IFC4X3 model via
+ifcopenshell.api: two rooms 4x4x3 m side by side, an outlet in the first one, an outlet
+above the room body (ceiling void), an outlet outside and a duct through both rooms.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ def test_offset_between_map_conversions() -> None:
     ref = MapFrame(100.0, 200.0, 0.0, 1.0, 0.0)
     other = MapFrame(110.0, 195.0, 1.0, 1.0, 0.0)
     assert offset_to(ref, other).tolist() == [10.0, -5.0, 1.0]
-    rot = MapFrame(0.0, 0.0, 0.0, 0.0, 1.0)  # os X modelu = sever
+    rot = MapFrame(0.0, 0.0, 0.0, 0.0, 1.0)  # the model X axis = north
     assert np.allclose(offset_to(rot, MapFrame(0.0, 10.0, 0.0, 0.0, 1.0)), [10.0, 0.0, 0.0])
     with pytest.raises(ValueError):
         offset_to(ref, MapFrame(0, 0, 0, 0.0, 1.0))
@@ -52,8 +52,8 @@ def test_write_edges_upserts_resolvable_and_closes_stale() -> None:
     cur = StubCursor(rows, closed=("old-1",))
     edges = [
         DerivedEdge("rel_referenced_in_spatial_structure", "E1", "S1", "inside"),
-        DerivedEdge("rel_referenced_in_spatial_structure", "E2", "S1", "inside"),  # E2 nie je v DB
-        DerivedEdge("rel_referenced_in_spatial_structure", "D1", "S1", "inside"),  # nepovolený typ
+        DerivedEdge("rel_referenced_in_spatial_structure", "E2", "S1", "inside"),  # E2 is not in the DB
+        DerivedEdge("rel_referenced_in_spatial_structure", "D1", "S1", "inside"),  # type not allowed
     ]
     st = write_edges(cur, "derive:spatial_reference", "rel_referenced_in_spatial_structure", edges)
     assert (st.written, st.closed) == (1, 1)
@@ -97,7 +97,7 @@ def _model():
     def placed(ifc_class, x, y, z, dx, dy, dz, storey, name):
         el = ifcopenshell.api.run("root.create_entity", m, ifc_class=ifc_class, name=name)
         mat = np.eye(4)
-        mat[:3, 3] = [x, y, z]  # api pracuje v SI (m), súbor je v mm
+        mat[:3, 3] = [x, y, z]  # the api works in SI (m), the file is in mm
         ifcopenshell.api.run("geometry.edit_object_placement", m, product=el, matrix=mat)
         rep = ifcopenshell.api.run("geometry.add_wall_representation", m, context=body,
                                    length=dx, height=dz, thickness=dy)
@@ -124,11 +124,11 @@ def test_derive_inside_partial_and_unmatched() -> None:
     res = derive([m])
     got = {(e.from_guid, e.to_guid, e.role) for e in res.edges}
     assert (t_in.GlobalId, space.GlobalId, "inside") in got
-    # potrubie prechádza oboma miestnosťami → partial v oboch, inside v žiadnej
+    # the duct passes through both rooms -> partial in both, inside in neither
     assert (duct.GlobalId, space.GlobalId, "partial") in got
     assert (duct.GlobalId, space2.GlobalId, "partial") in got
     assert all(e.rel_type == REL_TYPE for e in res.edges)
-    # nad telom miestnosti = mimo; rozhoduje telo IfcSpace, nie heuristika
+    # above the room body = outside; the IfcSpace body decides, not a heuristic
     unmatched = {g for g, _ in res.unmatched}
     assert {t_plenum.GlobalId, t_out.GlobalId} <= unmatched
     assert res.overlaps == {}
@@ -138,8 +138,8 @@ def test_derive_inside_partial_and_unmatched() -> None:
 
 
 def _faceted_box(m, x, y, z, d, flip=frozenset()):
-    """IfcFacetedBrep kocky d×d×d na (x, y, z) v mm; `flip` = indexy stien s opačným poradím
-    vrcholov (Revit exportuje rodiny s nejednotne orientovanými stenami)."""
+    """IfcFacetedBrep of a d x d x d cube at (x, y, z) in mm; `flip` = indexes of faces with reversed
+    vertex order (Revit exports families with inconsistently oriented faces)."""
     p = [m.createIfcCartesianPoint((x + dx * d, y + dy * d, z + dz * d))
          for dz in (0, 1) for dy in (0, 1) for dx in (0, 1)]
     quads = [(0, 2, 3, 1), (4, 5, 7, 6), (0, 1, 5, 4), (2, 6, 7, 3), (0, 4, 6, 2), (1, 3, 7, 5)]
@@ -151,9 +151,9 @@ def _faceted_box(m, x, y, z, d, flip=frozenset()):
 
 
 def test_faceted_brep_with_inconsistent_faces_is_matched() -> None:
-    """#92: výustky a tvarovky VZT z Revitu majú telo IfcFacetedBrep (často cez IfcMappedItem
-    typu) s nejednotne orientovanými stenami; bez `reorient-shells` ich presný test voči telu
-    priestoru minul a nedostali žiadnu hranu."""
+    """#92: HVAC outlets and fittings from Revit have an IfcFacetedBrep body (often via the type's
+    IfcMappedItem) with inconsistently oriented faces; without `reorient-shells` the exact test against
+    the space body missed them and they got no edge."""
     import ifcopenshell.guid
 
     from etl.derive.spatial_reference import derive

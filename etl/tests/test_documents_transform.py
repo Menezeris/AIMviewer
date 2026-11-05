@@ -1,8 +1,8 @@
-"""Dokumenty z IFC (D-104) nad malým súborom v tvare ASR.
+"""Documents from IFC (D-104) over a small file shaped like the ASR.
 
-ASR nesie strom dokumentácie (PD -> časť -> súbor cez IfcDocumentInformationRelationship),
-súbory s `Location = ../Dokumentacia/<Identification>.pdf`, IfcDocumentReference na strany
-výpisu skladieb a väzby na projekt, zóny, priestorové zóny, skupiny a typ.
+The ASR carries a documentation tree (PD -> part -> file via IfcDocumentInformationRelationship),
+files with `Location = ../Dokumentacia/<Identification>.pdf`, IfcDocumentReference to the pages
+of the assembly listing and links to the project, zones, spatial zones, groups and type.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ def test_documents_tree_and_references() -> None:
     kinds = Counter(o.object_type for o in st.objects)
     assert kinds["document"] == 4 and kinds["document_reference"] == 1
 
-    # identita = Identification; priečinkové časti bez súboru sú tiež dokumenty
+    # identity = Identification; folder parts without a file are documents too
     plan = objs["OCB_SO01_ASR_D-1-1-03_PODORYS-3NP"]
     assert plan.name == "D.1.1.03 Pôdorys 3NP" and plan.ifc_type == "IfcDocumentInformation"
     d = plan.document
@@ -76,7 +76,7 @@ def test_documents_tree_and_references() -> None:
     assert d.electronic_format == "application/pdf"
     assert objs["OCB_SO01_PD"].document.location is None
 
-    # odkaz na stranu: vlastný uzol s menom, ukazuje na výpis skladieb
+    # page reference: its own node with a name, points to the assembly listing
     ref = objs["OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB#page=3"]
     assert ref.object_type == "document_reference" and ref.ifc_type == "IfcDocumentReference"
     assert ref.name == "S1 - Skladba strechy (D.1.1.09, strana 3)"
@@ -97,7 +97,7 @@ def test_documents_tree_and_references() -> None:
 def test_resolve_locations_uses_bucket_and_keeps_fragment() -> None:
     st = transform.to_staged(_model())
     names = {"OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB.pdf"}
-    assert documents.resolve_locations(st, names, BASE) == 2   # výpis + jeho strana
+    assert documents.resolve_locations(st, names, BASE) == 2   # listing + its page
     objs = _by_ref(st)
     vypis = objs["OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB"]
     assert vypis.document.storage_type == "supabase"
@@ -106,10 +106,10 @@ def test_resolve_locations_uses_bucket_and_keeps_fragment() -> None:
     assert vypis.properties["_ifc_location"] == "../Dokumentacia/OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB.pdf"
     page = objs["OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB#page=3"].document
     assert page.storage_type == "supabase" and page.location.endswith(".pdf#page=3")
-    # súbor v buckete nie je → ostáva cesta zo súboru
+    # the file is not in the bucket -> the path from the file stays
     plan = objs["OCB_SO01_ASR_D-1-1-03_PODORYS-3NP"].document
     assert plan.storage_type == "unresolved" and plan.location.startswith("../Dokumentacia/")
-    # opakované volanie nič nemení
+    # a repeated call changes nothing
     assert documents.resolve_locations(st, names, BASE) == 0
     assert vypis.properties["_ifc_location"].startswith("../Dokumentacia/")
 
@@ -119,7 +119,7 @@ def test_resolve_locations_without_base_keeps_source() -> None:
     assert documents.resolve_locations(m, {"D.pdf"}, None) == 0
     assert m.objects[0].document.location == "a\\b\\D.pdf"
     m.objects[0].document.location = "a\\b\\D.pdf"
-    assert documents.resolve_locations(m, {"D.pdf"}, BASE) == 1   # Windows oddeľovač
+    assert documents.resolve_locations(m, {"D.pdf"}, BASE) == 1   # Windows separator
 
 
 def test_mark_model_only_documents() -> None:
@@ -160,7 +160,7 @@ def test_close_legacy_without_legacy_is_noop() -> None:
 
 
 def test_document_classification_iso19650() -> None:
-    """Typ informácie (ASR v77): IfcExternalReferenceRelationship z referencie na dokumenty."""
+    """Type information (ASR v77): IfcExternalReferenceRelationship from a reference to documents."""
     f = _model()
     system = f.createIfcClassification(Source="BSI", Name="ISO 19650 typ informácie")
     dr = f.createIfcClassificationReference(Identification="DR", Name="Výkres", ReferencedSource=system)

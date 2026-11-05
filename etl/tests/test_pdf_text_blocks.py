@@ -1,8 +1,8 @@
-"""D-123: riadky textu s polohou v % strany (`document_pages.blocks`).
+"""D-123: text lines with a position in % of the page (`document_pages.blocks`).
 
-Overuje `extract_pages_with_blocks` na vygenerovanom PDF: text strany ostáva ako
-pred D-123 a každý riadok má bbox v % strany s počiatkom vľavo hore, aby sa dal
-dať priamo do `open_drawing region` (D-117).
+Checks `extract_pages_with_blocks` on a generated PDF: the page text stays as
+before D-123 and each line has a bbox in % of the page with the origin at the top left, so it can
+be passed straight to `open_drawing region` (D-117).
 """
 
 from __future__ import annotations
@@ -17,10 +17,10 @@ from etl.pdf_text import extract_pages, extract_pages_with_blocks, page_blocks
 def _pdf(tmp_path: Path) -> Path:
     doc = fitz.open()
     page = doc.new_page(width=400, height=200)
-    # Base14 písmo nemá "ť"; diakritiku z Latin-1 overí "á".
+    # The Base14 font has no "ť"; the Latin-1 diacritic is checked by "á".
     page.insert_text((40, 50), "1.05 Technická miestnost", fontsize=10)
     page.insert_text((300, 180), "250", fontsize=10)
-    doc.new_page(width=400, height=200)  # prázdna strana sa nevloží
+    doc.new_page(width=400, height=200)  # an empty page is not inserted
     out = tmp_path / "v.pdf"
     doc.save(out)
     doc.close()
@@ -34,7 +34,7 @@ def test_blocks_have_page_percent_bbox(tmp_path: Path) -> None:
     assert "Technická miestnost" in text
     by_text = {b["t"]: b for b in blocks}
     room = by_text["1.05 Technická miestnost"]
-    # Baseline y=50 na strane 200 vysokej: horný okraj riadku je pod 25 %.
+    # Baseline y=50 on a page 200 high: the top edge of the line is below 25 %.
     assert 9 <= room["x"] <= 11
     assert 15 <= room["y"] <= 25 < room["y"] + room["h"] + 1
     dim = by_text["250"]

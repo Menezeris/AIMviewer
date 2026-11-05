@@ -1,7 +1,7 @@
-"""Úplná kópia revízie a porovnanie revízií (D-183 K2) nad malým IFC súborom.
+"""Full revision copy and revision comparison (D-183 K2) over a small IFC file.
 
-Unit testy sú bez DB. Zápis do DB a SQL porovnanie overuje `test_revision_copy_db` len pri premennej
-`AIM_TEST_DATABASE_URL` (lokálny Postgres s migráciami, nikdy produkcia)."""
+The unit tests need no DB. The DB write and the SQL comparison are checked by `test_revision_copy_db` only with the variable
+`AIM_TEST_DATABASE_URL` (a local Postgres with migrations, never production)."""
 
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ def _placement(f, rel_to, xyz):
 def _model(*, seg_x: float = 1000.0, terminal_name: str = "VV.02.01", length: float = 2.4,
            manufacturer: str = "ACME", damper_storey: str = "2NP", storey_z: float = 3000.0,
            drop_segment: bool = False) -> ifcopenshell.file:
-    """Mini VZT: 2 podlažia, prívodný systém, potrubie s Qto, vyústka s typom a psetom typu, klapka, port,
-    geometria (tvar a poloha), história vlastníka. GlobalId prvkov sú pevné, psetov a vzťahov náhodné (ako Revit)."""
+    """Mini HVAC: 2 storeys, a supply system, a duct with Qto, an outlet with a type and a type pset, a damper, a port,
+    geometry (shape and placement), owner history. Element GlobalIds are fixed, those of psets and relationships random (like Revit)."""
     f = ifcopenshell.file(schema="IFC4X3_ADD2")
     g = ifcopenshell.guid.new
     person = f.createIfcPerson(None, "Augustin", "Samuel")
@@ -96,19 +96,19 @@ def test_extract_full_copy_without_geometry() -> None:
     f = _model()
     copy = revision_copy.extract(f)
     exp = copy.expected
-    # každý IfcRoot je objekt, vzťah alebo sada vlastností
+    # every IfcRoot is an object, a relationship or a property set
     assert exp["ifc_root"] == exp["ifc_root_accounted"] == len(f.by_type("IfcRoot"))
     objs = {o["global_id"]: o for o in copy.objects}
     assert exp["objects"]["IfcDuctSegment"] == 2 and "0PORT0000000000000000" in objs
     seg = objs["0SEGMENT0000000000000"]
     assert seg["attributes"]["Name"] == "PO.02.0001" and seg["attributes"]["PredefinedType"] == "RIGIDSEGMENT"
-    # bez geometrie, polohy a OwnerHistory v atribútoch; história len informačne
+    # without geometry, placement and OwnerHistory in the attributes; the history is informational only
     text = json.dumps([o["attributes"] for o in copy.objects])
     for word in ("Representation", "ObjectPlacement", "IfcCartesianPoint", "IfcShapeRepresentation", "OwnerHistory"):
         assert word not in text
     assert seg["file_owner_history"]["ChangeAction"] == "NOCHANGE"
     assert seg["file_owner_history"]["OwningApplication"] == "Autodesk Revit 2027"
-    # jednotky projektu ostanú (nie sú geometria)
+    # the project units stay (they are not geometry)
     assert objs["0PROJECT00000000000000"]["attributes"]["UnitsInContext"]["Units"][0]["Prefix"] == "MILLI"
 
 
@@ -119,10 +119,10 @@ def test_relationship_pairs_and_natural_keys() -> None:
     assert ("IfcRelAssignsToGroup", "0SYSTEM00000000000000", "0DAMPER00000000000000") in rels
     assert ("IfcRelNests", "0SEGMENT0000000000000", "0PORT0000000000000000") in rels
     assert ("IfcRelDefinesByType", "0TERMTYPE000000000000", "0TERMINAL000000000000") in rels
-    # strana bez GlobalId: prirodzený kľúč
+    # a side without a GlobalId: natural key
     assert ("IfcRelAssociatesDocument", "IfcDocumentInformation:D.1.1.09", "0SEGMENT0000000000000") in rels
     assert ("IfcRelAssociatesMaterial", "IfcMaterial:Pozink", "0SEGMENT0000000000000") in rels
-    # psety nie sú vo vzťahoch, ale v sadách (nositeľ, meno)
+    # psets are not in the relationships but in the sets (carrier, name)
     assert not any(r["rel_class"] == "IfcRelDefinesByProperties" for r in copy.relationships)
     assert sum(copy.expected["relationship_pairs"].values()) == sum(r["multiplicity"] for r in copy.relationships)
 
@@ -138,7 +138,7 @@ def test_property_sets_on_occurrence_and_type() -> None:
 
 
 def test_hashes_ignore_own_guids_of_psets_and_relationships() -> None:
-    """Revit pri exporte mení GlobalId psetov a vzťahov: kópia ostane rovnaká (D-183 P1)."""
+    """On export Revit changes the GlobalIds of psets and relationships: the copy stays the same (D-183 P1)."""
     a, b = revision_copy.extract(_model()), revision_copy.extract(_model())
     for part in ("objects", "relationships", "property_sets"):
         assert sorted(r["content_hash"] for r in getattr(a, part)) == sorted(r["content_hash"] for r in getattr(b, part))
@@ -182,13 +182,13 @@ def test_completeness_reports_differences() -> None:
     assert revision_copy.completeness({**exp, "ifc_root_accounted": 2}, {"objects": {"IfcWall": 2}})
 
 
-# ── poloha (zo súborov) ───────────────────────────────────────────────────────
+# ── placement (from files) ───────────────────────────────────────────────────────
 
 def test_placement_relative_to_storey() -> None:
     res = revision_compare.placement_changes(_model(), _model(seg_x=1100.0))
     assert set(res["elements"]) == {"0SEGMENT0000000000000"}
     assert res["elements"]["0SEGMENT0000000000000"]["dx"] == pytest.approx(0.1)
-    # port sa pohol s potrubím: voči hostiteľovi stojí, MODIFIED je len potrubie
+    # the port moved with the duct: relative to the host it stands still, only the duct is MODIFIED
     assert res["common_shift"] is None and res["georeference"] is None
 
 
@@ -216,7 +216,7 @@ def test_merge_adds_placement_aspect() -> None:
     assert out["C"] == {"global_id": "C", "ifc_class": "IfcWall", "change_action": "MODIFIED", "aspects": {"placement": {"dz": 1.0}}}
 
 
-# ── DB (len lokálny Postgres s migráciami) ────────────────────────────────────
+# ── DB (only a local Postgres with migrations) ────────────────────────────────────
 
 DB = os.environ.get("AIM_TEST_DATABASE_URL")
 OCB = "9e2dfcba-437b-43d3-a925-0dd29f195b38"  # D-189: the project the test writes into
@@ -263,8 +263,8 @@ def test_revision_copy_db(tmp_path) -> None:
             "-IfcRelContainedInSpatialStructure:0STOREY2NP00000000000", "+IfcRelContainedInSpatialStructure:0STOREY3NP00000000000"]
         seg = by["0SEGMENT0000000000000"]["aspects"]
         assert seg["psets"] == ["Qto_DuctSegmentBaseQuantities.Length"] and seg["placement"]["dx"] == pytest.approx(0.1)
-        assert out["summary"]["NOCHANGE_via_type"] == 0  # vyústka sa zmenila sama (meno), poznámku cez typ nedostane
-        # chybný sha256 archívu: nič sa nezapíše
+        assert out["summary"]["NOCHANGE_via_type"] == 0  # the outlet changed on its own (name), it does not get the note via the type
+        # a wrong archive sha256: nothing is written
         with pytest.raises(SystemExit):
             revision_copy.run("TST", 2, paths[1], dry_run=False, force=True, db_url=DB)
     finally:

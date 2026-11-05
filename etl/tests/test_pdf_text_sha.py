@@ -1,4 +1,4 @@
-"""D-158 kroky 3 a 4: veľkosť strán a sha256 súboru PDF (kotva revízie, keš snímky)."""
+"""D-158 steps 3 and 4: page size and sha256 of the PDF file (revision anchor, snapshot cache)."""
 
 from __future__ import annotations
 

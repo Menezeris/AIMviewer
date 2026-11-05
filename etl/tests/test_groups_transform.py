@@ -1,9 +1,9 @@
-"""Projekt, zóny a skupiny ako uzly AIM (D-088) nad malým IFC súborom.
+"""Project, zones and groups as AIM nodes (D-088) over a small IFC file.
 
-ASR v72 nesie IfcProject, IfcZone (nájomné jednotky, šachty), IfcSpatialZone
-(požiarne úseky, energetické zóny) a IfcGroup (skladby). ETL ich emituje ako
-`project` / `zone` / `spatial_zone` / `group` aj s väzbami, takže dokumenty na nich
-už nevypadnú (predtým `_drop_unemitted_links`).
+ASR v72 carries IfcProject, IfcZone (tenant units, shafts), IfcSpatialZone
+(fire compartments, energy zones) and IfcGroup (assemblies). The ETL emits them as
+`project` / `zone` / `spatial_zone` / `group` together with the links, so documents on them
+no longer drop out (previously `_drop_unemitted_links`).
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def test_project_zones_and_groups_are_emitted() -> None:
     assert edges[("assigns_to_group", "space", "zone")] == 1
     assert edges[("assigns_to_group", "zone", "zone")] == 1
     assert edges[("assigns_to_group", "spatial_zone", "zone")] == 1
-    # dokumenty na projekte, skupine aj zónach ostávajú
+    # documents on the project, group and zones are kept
     assert edges[("has_document", "project", "document")] == 1
     assert sum(n for (t, *_), n in edges.items() if t == "has_document") == 4
     assert not st.coverage.unlinked
@@ -75,5 +75,5 @@ def test_project_zones_and_groups_are_emitted() -> None:
 def test_federate_does_not_emit_project_or_zones() -> None:
     st = transform.to_staged(_model(), federate=True)
     assert not {"project", "zone", "spatial_zone", "group"} & {o.object_type for o in st.objects}
-    # dokumenty na neemitovaných entitách sa vynechajú a zrátajú
+    # documents on entities that are not emitted are skipped and counted
     assert st.coverage.unlinked == {"IfcProject": 1, "IfcGroup": 1, "IfcSpatialZone": 1, "IfcZone": 1}

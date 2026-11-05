@@ -1,8 +1,8 @@
-"""Audit kontajnera ICDD (`etl/icdd_audit.py`, D-181).
+"""Audit of an ICDD container (`etl/icdd_audit.py`, D-181).
 
-Kontajner `fixtures/icdd/aim-small.icdd` zloží exportný kód v TypeScripte (`lib/icdd/audit-fixture.test.ts` stráži,
-že súbor zodpovedá builderu). Testy nad ním overia, že čistý export audit prejde, a mutácie, že každá kontrola
-naozaj zhodí výsledok. DB ani sieť sa nepoužívajú.
+The container `fixtures/icdd/aim-small.icdd` is assembled by the export code in TypeScript (`lib/icdd/audit-fixture.test.ts` guards
+that the file matches the builder). The tests over it check that a clean export passes the audit, and mutations that every check
+really fails the result. No DB or network is used.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ def _replace(files: dict[str, bytes], name: str, old: str, new: str, count: int 
 
 
 def _rehash(files: dict[str, bytes], payload: str) -> None:
-    """Po zmene payloadu prepíše jeho sha256 v indexe, aby test meral len zamýšľanú chybu."""
+    """After a payload change, rewrites its sha256 in the index so the test measures only the intended error."""
     idx = _index_name(files)
     old = hashlib.sha256(_files()["Payload documents/" + payload]).hexdigest()
     _replace(files, idx, old, hashlib.sha256(files["Payload documents/" + payload]).hexdigest())
@@ -71,13 +71,13 @@ def test_clean_export_passes_and_reports_known_gaps() -> None:
     assert ls["derived-spatial.rdf"]["to_class"] == {"IFCSPACE": 2, "IFCSPATIALZONE": 1}
     assert ls["documents-identity.rdf"]["by_type"] == {"IsIdenticalTo": 2}
     assert rep.stats["globalid_checked"] == {"ASR_v079.ifc": 3, "VZT_v011.ifc": 5}
-    # port (IfcDistributionPort) sa nepočíta, výfukový nástavec bez priestoru áno
+    # a port (IfcDistributionPort) is not counted, an exhaust fitting without a space is
     assert rep.stats["coverage"]["VZT_v011.ifc"] == {"products": 3, "linked": 2, "without_space": 1, "without_structure": 0}
     assert any(COWL in x and "VV.07.04.001" in x and "podlažie 1NP_VZT" in x for x in rep.lists["without_space:VZT_v011.ifc"])
 
 
 def test_index_name_variants(tmp_path: Path) -> None:
-    """index.rdf (zapisuje AIM aj ICDDToolkitCore) je bez nálezu, Index.rdf varovanie, chýbajúca hlavička chyba."""
+    """index.rdf (written by both AIM and ICDDToolkitCore) gives no finding, Index.rdf a warning, a missing header an error."""
     f = _files()
     idx = _index_name(f)
     assert idx == "index.rdf"
@@ -221,10 +221,10 @@ RUB = Path(__file__).parent / "fixtures" / "icdd" / "11_Garage_Binary.icdd"
 
 
 def test_foreign_container_from_icdd_shacl_validation() -> None:
-    """Kontajner z ICDD Platform RUB (icdd-shacl-validation, CC BY 4.0): audit ho prečíta a nájde známe odchýlky."""
+    """A container from ICDD Platform RUB (icdd-shacl-validation, CC BY 4.0): the audit reads it and finds the known deviations."""
     rep = audit(str(RUB))
     assert rep.stats["linksets"]["linkset-20220603-114745.rdf"]["by_type"] == {"BinaryLink": 9}
-    assert rep.stats["globalid_checked"] == {"model.ifc": 9}  # všetkých 9 GlobalId je v pribalenom IFC
+    assert rep.stats["globalid_checked"] == {"model.ifc": 9}  # all 9 GlobalIds are in the bundled IFC
     errors = {i.code for i in rep.errors}
     warnings = {i.code for i in rep.warnings}
     assert {"linkset_unregistered", "undeclared_term", "literal"} <= errors
@@ -250,7 +250,7 @@ def test_most_specific_link_type_is_reported(tmp_path: Path) -> None:
 def test_links_without_explicit_ls_type_are_reported() -> None:
     rep = audit(str(FIXTURE))
     w = [i for i in rep.warnings if i.code == "link_base_type"]
-    # els: väzby číta ICDDToolkitCore priamo; aim:IsReferencedInSpatialStructure bez ls: typu nenájde nik
+    # els: the links are read by ICDDToolkitCore directly; aim:IsReferencedInSpatialStructure without an ls: type is found by nobody
     assert {i.where for i in w} <= {"Payload triples/derived-spatial.rdf"}
     if rep.stats["linksets"]["derived-spatial.rdf"]["without_ls_type"]:
         assert w
@@ -258,7 +258,7 @@ def test_links_without_explicit_ls_type_are_reported() -> None:
 
 
 def test_element_without_any_spatial_structure_is_error(tmp_path: Path) -> None:
-    """Prvok bez priestoru/zóny, ale na podlaží = varovanie; bez akejkoľvek priestorovej príslušnosti = chyba."""
+    """An element without a space/zone but on a storey = warning; without any spatial membership = error."""
     f = _files()
     vzt = "Payload documents/VZT_v011.ifc"
     _replace(f, vzt, "(#1,#2,#3),#4)", "(#1,#2),#4)")
@@ -270,8 +270,8 @@ def test_element_without_any_spatial_structure_is_error(tmp_path: Path) -> None:
 
 
 def test_import_roundtrip_matches_typescript_reader() -> None:
-    """Export -> import naprieč implementáciami (D-181 dodatok "import"): rdflib prečíta z kontajnera tie isté väzby
-    (id väzby, revízia, konce, značky linksetov) ako import v TypeScripte (`aim-small.links.json`)."""
+    """Export -> import across implementations (D-181 addendum "import"): rdflib reads from the container the same links
+    (link id, revision, ends, linkset markers) as the import in TypeScript (`aim-small.links.json`)."""
     import json
 
     from etl.icdd_audit import read_links
@@ -304,4 +304,4 @@ def test_read_links_on_foreign_container() -> None:
 
     garage = Path(__file__).parent / "fixtures" / "icdd" / "11_Garage_Binary.icdd"
     got = read_links(str(garage))
-    assert got["linksets"] and all(l["exchange"] is None for l in got["linksets"])  # cudzí nástroj značku nemá
+    assert got["linksets"] and all(l["exchange"] is None for l in got["linksets"])  # a foreign tool has no marker
