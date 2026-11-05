@@ -1,7 +1,7 @@
-"""Názvy podlaží: ETL zvláda zápis Revitu (2NP) aj štandardu knižnice (2.NP).
+"""Storey names: the ETL handles both the Revit notation (2NP) and the library standard (2.NP).
 
-Knižnica (assetin-library, IU-O-storey) predpisuje `[0-9]{1,2}.(NP|PP)`; ETL
-federácia (D-049) páruje VZT podlažia s ASR cez normalizovaný kľúč `2NP`.
+The library (assetin-library, IU-O-storey) prescribes `[0-9]{1,2}.(NP|PP)`; the ETL
+federation (D-049) pairs HVAC storeys with the ASR via the normalized key `2NP`.
 """
 
 from __future__ import annotations

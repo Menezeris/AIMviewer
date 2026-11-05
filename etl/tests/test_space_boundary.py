@@ -1,8 +1,8 @@
-"""IfcRelSpaceBoundary → hrana `space_boundary` (D-156) nad malým IFC súborom.
+"""IfcRelSpaceBoundary -> `space_boundary` edge (D-156) over a small IFC file.
 
-Dvere DD01.08 ležia v štruktúre len na podlaží a s miestnosťou 1.01 ich spája iba hranica
-priestoru (1st level, plus druhá hranica 2nd level virtual). Druhé dvere sú hranicou
-spojené s dvoma miestnosťami; stena má len virtuálnu hranicu."""
+Door DD01.08 lies in the structure only on the storey and is linked to room 1.01 only by a space
+boundary (1st level, plus a second boundary 2nd level virtual). The second door is linked by a boundary
+to two rooms; the wall has only a virtual boundary."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def _model() -> ifcopenshell.file:
             PhysicalOrVirtualBoundary=kind, InternalOrExternalBoundary="INTERNAL",
         )
 
-    boundary(s101, d1, "VIRTUAL")        # druhá hranica toho istého páru: vyhrá physical
+    boundary(s101, d1, "VIRTUAL")        # a second boundary of the same pair: physical wins
     boundary(s101, d1, "PHYSICAL", "IfcRelSpaceBoundary")
     boundary(s101, d2, "PHYSICAL")
     boundary(s102, d2, "PHYSICAL")
@@ -66,7 +66,7 @@ def test_boundary_to_unemitted_object_is_dropped() -> None:
     f = _model()
     g = ifcopenshell.guid.new
     space = f.by_type("IfcSpace")[0]
-    ghost = f.createIfcOpeningElement(g(), Name="ghost")   # nie je asset
+    ghost = f.createIfcOpeningElement(g(), Name="ghost")   # not an asset
     f.create_entity("IfcRelSpaceBoundary", GlobalId=g(), RelatingSpace=space,
                     RelatedBuildingElement=ghost, PhysicalOrVirtualBoundary="PHYSICAL")
     st = transform.to_staged(f)

@@ -1,7 +1,7 @@
-"""Kontrola modelu voči IDS (D-081): ifctester výsledok → riadky, zápis behu.
+"""Checking a model against IDS (D-081): ifctester result -> rows, writing the run.
 
-Integrácia: malý IFC4X3 (dve miestnosti, jedna so zlým číslom, žiadna zóna)
-a minimálny IDS 1.0 (číslo miestnosti podľa vzoru + povinná zóna).
+Integration: a small IFC4X3 (two rooms, one with a wrong number, no zone)
+and a minimal IDS 1.0 (room number by pattern + a mandatory zone).
 """
 
 from __future__ import annotations
@@ -107,4 +107,4 @@ def test_write_run_resolves_guids_and_counts() -> None:
     lookup = cur.calls[0]
     assert "o.project_id = %s" in lookup[0] and lookup[1][1] == OCB  # GUID resolves within the project
     results = [c[1] for c in cur.calls if c[0].startswith("insert into ids_results")]
-    assert [r[5] for r in results] == ["uuid-1", None, None]  # object_id: G1 v DB, G2 nie, zóna bez prvku
+    assert [r[5] for r in results] == ["uuid-1", None, None]  # object_id: G1 in the DB, G2 not, zone without an element

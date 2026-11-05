@@ -1,4 +1,4 @@
-"""D-169: OCR číta len strany bez textovej vrstvy (obrázok, krivky) a zapisuje ich ako `blocks` so src=ocr."""
+"""D-169: OCR reads only pages without a text layer (image, curves) and writes them as `blocks` with src=ocr."""
 
 from __future__ import annotations
 
@@ -16,11 +16,11 @@ TITLE = "VYSOKÉ UČENÍ TECHNICKÉ V BRNĚ"
 
 
 def _pdf(tmp_path: Path) -> Path:
-    """Strana 1 s textovou vrstvou, strana 2 len s obrázkom textu (ako titulka #279), strana 3 prázdna."""
+    """Page 1 with a text layer, page 2 with only an image of text (like the title page #279), page 3 empty."""
     doc = fitz.open()
     doc.new_page(width=595, height=842).insert_text((60, 80), "D.1.1.09 VYPIS SKLADIEB", fontsize=12)
 
-    # Titulka ako raster: text s diakritikou (vstavané písmo MuPDF) vyrenderovaný do bitmapy.
+    # Title page as a raster: text with diacritics (the built-in MuPDF font) rendered into a bitmap.
     src = fitz.open()
     sp = src.new_page(width=420, height=120)
     sp.insert_htmlbox(
@@ -48,7 +48,7 @@ def test_text_layer_page_never_goes_to_ocr(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(pdf_text, "ocr_unavailable", lambda: None)
     monkeypatch.setattr(pdf_text, "ocr_page", fake_ocr)
     pages = extract_pages_full(_pdf(tmp_path), ocr=True)
-    # Len obrázková strana 2; strana 1 má textovú vrstvu, strana 3 je prázdna.
+    # Only the image page 2; page 1 has a text layer, page 3 is empty.
     assert calls == [2]
     assert [p[0] for p in pages] == [1, 2]
     assert not is_ocr_page(pages[0]) and "src" not in pages[0][2][0]
@@ -88,6 +88,6 @@ def test_real_ocr_reads_czech_title_with_diacritics(tmp_path: Path) -> None:
     assert TITLE in text
     title = next(b for b in blocks if b["t"] == TITLE)
     assert title["src"] == "ocr" and title["conf"] >= 0.8
-    # Obrázok je na strane v rámci x 50-545 pt, y 100-242 pt (v % strany 595 x 842).
+    # The image is on the page within x 50-545 pt, y 100-242 pt (in % of a 595 x 842 page).
     assert 8 <= title["x"] <= 20 and 11 <= title["y"] <= 20
     assert 0 < title["w"] < 85 and 0 < title["h"] < 6

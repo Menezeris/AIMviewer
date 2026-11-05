@@ -1,8 +1,8 @@
-"""Zlúčenie IFC typov s rovnakým typovým kódom (D-033) ako údaj: alias GUID (D-183 K3 krok 3).
+"""Merging IFC types with the same type code (D-033) as data: GUID alias (D-183 K3 step 3).
 
-Dvere DD01.06.01 a DD01.06.02 majú dva rôzne IfcDoorType, ale typový kód je jeden (DD01.06) -> jeden
-`asset_type`. GUID druhého typu sa zapíše ako alias toho istého uzla (`ifc_guid_aliases`), nie ako jeho
-história; `rel_defines_by_type` z kópie revízie ho tak nájde bez odhadu podľa object_ref.
+Doors DD01.06.01 and DD01.06.02 have two different IfcDoorTypes, but the type code is one (DD01.06) -> one
+`asset_type`. The GUID of the second type is written as an alias of the same node (`ifc_guid_aliases`), not as its
+history; `rel_defines_by_type` from the revision copy thus finds it without guessing by object_ref.
 """
 
 from __future__ import annotations
@@ -44,8 +44,8 @@ def test_merged_type_guid_becomes_alias_of_shared_asset_type() -> None:
     guids = {t.Name: t.GlobalId for t in f.by_type("IfcDoorType")}
     emitted = types["DD01.06"].ifc_guid
     merged = ({guids["Dvere 800"], guids["Dvere 800 zrkadlové"]} - {emitted}).pop()
-    # jeden alias: druhý typ s kódom DD01.06; typ s vlastným kódom alias nemá
+    # one alias: the second type with code DD01.06; a type with its own code has no alias
     assert [(a.object_ref, a.ifc_guid, a.reason) for a in st.guid_aliases] == [("DD01.06", merged, "type_code")]
-    # história GUID ostáva jeden aktívny GUID na uzol (D-010), alias v nej nie je
+    # the GUID history stays one active GUID per node (D-010), the alias is not in it
     assert merged not in {h.ifc_guid for h in st.guid_history}
     assert st.coverage.types_merged == 1

@@ -1,9 +1,9 @@
-"""Load so zdrojom modelu (D-086): zastarané hrany a GUID záznamy modelu sa uzavrú.
+"""Load with a model source (D-086): stale edges and GUID records of the model are closed.
 
-Úprava modelu presunie prvok, zlúči priestory alebo prvok zmaže. Upsert by starú
-hranu nechal aktívnu (pri `rel_aggregates` by nový rodič zhodil load na parciálnom
-unique indexe), preto: nový rodič najprv uzavrie starého a po loade sa uzavrie
-všetko so zdrojom modelu, čo tento beh nevydal. Stub kurzor ako `test_guid_history`.
+Editing a model moves an element, merges spaces or deletes an element. An upsert would leave the old
+edge active (for `rel_aggregates` the new parent would crash the load on the partial
+unique index), hence: the new parent first closes the old one and after the load everything
+with the model source that this run did not emit is closed. A stub cursor as in `test_guid_history`.
 """
 
 from __future__ import annotations
@@ -64,13 +64,13 @@ def test_scope_sources_rewrites_only_default_sources() -> None:
 
 def test_emitted_ids_cover_edges_classifications_and_active_guids() -> None:
     edges, guids = emitted_ids(_model())
-    # IFC vzťahy z kópie revízie ETL nevydáva (D-183 K3 krok 3); AIM vrstva a ostatné typy áno
+    # The ETL does not emit IFC relationships from the revision copy (D-183 K3 step 3); the AIM layer and other types it does
     assert ids.edge_id("1.01", "1NP", "aggregates") not in edges
     assert ids.edge_id("1.01", "CCI:A", "has_classification") not in edges
     assert ids.edge_id("1.01", "Z1", "referenced") in edges
     assert ids.edge_id("1.01", "DOC", "has_document") in edges
     assert ids.edge_id("DOC", "ISO:DR", "document_classification") in edges
-    assert guids == [ids.guid_history_id("1.01", "G1")]  # uzavretý G0 sa nepočíta
+    assert guids == [ids.guid_history_id("1.01", "G1")]  # a closed G0 is not counted
 
 
 def test_close_stale_closes_only_this_model() -> None:
@@ -85,7 +85,7 @@ def test_close_stale_closes_only_this_model() -> None:
     assert ("source = %s and project_id = %s and valid_until is null and not (rel_type = any(%s)) "
             "and not (id = any(%s))") in edge_sql
     assert edge_params[:2] == ("etl:ASR", P)
-    # staré hrany typov z kópie revízie re-ETL neuzatvára (samostatný krok, D-183 K3 krok 3)
+    # a re-ETL does not close the old type edges from the revision copy (a separate step, D-183 K3 step 3)
     assert edge_params[2] == sorted({
         "rel_aggregates", "rel_contained_in_spatial_structure", "rel_defines_by_type",
         "rel_assigns_to_group", "rel_associates_document", "rel_associates_classification"})
@@ -94,15 +94,15 @@ def test_close_stale_closes_only_this_model() -> None:
     assert guid_params == ("IFC import:ASR", [ids.guid_history_id("1.01", "G1")], P)
     assert alias_sql.startswith("update ifc_guid_aliases set valid_until = now()")
     assert alias_params == ("IFC import:ASR", P, [ids.guid_alias_id("DD01", "T2")])
-    # objekt bez aktívneho GUID zo zdroja modelu zanikne (D-088)
+    # an object without an active GUID from the model source ceases to exist (D-088)
     assert obj_sql.startswith("update objects o set valid_until = now()")
     assert "not exists (select 1 from ifc_guid_history h where h.object_id = o.id and h.valid_until is null)" in obj_sql
     assert obj_params == ("IFC import:ASR", P)
-    # dokumenty modelu, ktoré beh nevydal, zaniknú (D-104); iné modely a E3 nie
+    # model documents that the run did not emit cease to exist (D-104); other models and E3 do not
     assert doc_sql.startswith("update objects set valid_until = now()")
     assert "properties->>'_model' = %s and project_id = %s and not (object_ref = any(%s))" in doc_sql
     assert doc_params == (["document", "document_reference"], "ASR", P, [])
-    # ručné väzby na nástupcu s rovnakým GUID, oba konce; väzby ETL a derive nie
+    # manual links to a successor with the same GUID, both ends; ETL and derive links are not
     assert [sql.split(" = s.new_id")[0] for sql, _ in repoint] == [
         "update relationships r set from_id", "update relationships r set to_id"]
     assert all("r.source not like 'etl%%' and r.source not like 'derive:%%'" in sql for sql, _ in repoint)
@@ -117,11 +117,11 @@ def test_close_legacy_targets_sources_without_model() -> None:
 
 
 def test_new_parent_closes_previous_active_parent_first() -> None:
-    """Zlúčenie priestorov / presun: 1.06 má nového rodiča → starý sa uzavrie pred insertom."""
+    """Merging spaces / a move: 1.06 has a new parent -> the old one is closed before the insert."""
     cur = StubCursor()
     m = StagedModel()
-    m.edges.append(Edge("aggregates", "1.06", "1NP", source="seed"))  # AIM vrstva, nie ETL
-    m.edges.append(Edge("has_document", "1.06", "DOC", source="seed"))  # bez unique-active-parent
+    m.edges.append(Edge("aggregates", "1.06", "1NP", source="seed"))  # AIM layer, not ETL
+    m.edges.append(Edge("has_document", "1.06", "DOC", source="seed"))  # without unique-active-parent
     _load_edges(cur, m, {"1.06": "uuid-106", "1NP": "uuid-1np", "DOC": "uuid-doc"}, P)
 
     close_sql, close_params = cur.calls[0]
@@ -131,28 +131,28 @@ def test_new_parent_closes_previous_active_parent_first() -> None:
         "rel_aggregates", "uuid-106", ids.edge_id("1.06", "1NP", "aggregates")
     )
     assert cur.calls[1][0].startswith("insert into relationships")
-    # dokument nemá jedného rodiča → žiadne uzavretie, len insert
+    # a document has no single parent -> no closing, just an insert
     assert len(cur.calls) == 3 and cur.calls[2][0].startswith("insert into relationships")
 
 
 def test_writes_edge_skips_only_etl_edges_read_from_revision_copy() -> None:
-    """D-183 K3 krok 3: IFC vzťah zo súboru, ktorý pohľad číta z kópie, ETL nezapíše; AIM vrstva áno."""
+    """D-183 K3 step 3: an IFC relationship from a file that the view reads from the copy is not written by the ETL; the AIM layer is."""
     for edge_type in ("aggregates", "contained", "defined_by_type", "assigns_to_group",
                       "has_document", "has_classification"):
         assert not writes_edge(edge_type, "etl")
         assert not writes_edge(edge_type, "etl:VZT")
     assert writes_edge("has_document", "pdf_link (E4)")
-    assert writes_edge("aggregates", "etlx")  # iný zdroj, len podobný prefix
+    assert writes_edge("aggregates", "etlx")  # another source, only a similar prefix
     for edge_type in ("referenced", "space_boundary", "responsible_for", "member_of",
                       "document_part", "document_classification"):
         assert writes_edge(edge_type, "etl:ASR")
 
 
 def test_load_writes_no_ifc_edges_from_file() -> None:
-    """ETL grafu nezapíše ani hranu, ani klasifikačnú väzbu typov z kópie; federačný kontajner sa ani nehľadá."""
+    """The graph ETL writes neither an edge nor a classification link of types from the copy; the federation container is not even searched for."""
     cur = StubCursor()
     m = StagedModel()
-    m.edges.append(Edge("contained", "VZT.1", "2NP", source="etl:VZT"))  # 2NP nie je v behu ani v DB
+    m.edges.append(Edge("contained", "VZT.1", "2NP", source="etl:VZT"))  # 2NP is neither in the run nor in the DB
     m.edges.append(Edge("defined_by_type", "VZT.1", "VT.1", source="etl:VZT"))
     m.edges.append(Edge("assigns_to_group", "VZT.1", "SYS", source="etl:VZT"))
     _load_edges(cur, m, {"VZT.1": "u1"}, P)
@@ -165,7 +165,7 @@ def test_load_writes_no_ifc_edges_from_file() -> None:
 
 
 def test_guid_alias_closes_other_active_alias_then_upserts() -> None:
-    """Alias GUID zlúčeného typu (D-033 ako údaj): iný aktívny alias toho GUID sa uzavrie, potom upsert."""
+    """Alias GUID of a merged type (D-033 as data): another active alias of that GUID is closed, then an upsert."""
     cur = StubCursor()
     m = StagedModel()
     m.guid_aliases.append(GuidAlias(object_ref="DD01.06", ifc_guid="T2", source="IFC import:ASR"))
