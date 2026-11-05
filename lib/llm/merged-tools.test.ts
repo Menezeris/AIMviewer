@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { TEST_PROJECT } from "@/lib/project/testing";
-
 // Moduly sú server-only (D-026) a DB sa v týchto testoch nesmie volať: zlý vstup sa odmietne skôr.
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({
@@ -27,7 +25,7 @@ describe("zlúčené tooly AIM (D-115)", () => {
   });
 
   it("zlý režim a include sa odmietnu pred dotazom do DB", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const mode = await rt.exec("search_objects", { mode: "zle" });
     expect(mode).toMatchObject({ isError: true });
     expect(mode.content).toContain("list | count | locate");
@@ -36,7 +34,7 @@ describe("zlúčené tooly AIM (D-115)", () => {
   });
 
   it("show_in_3d select=true ide cez výber (panel sa overí pred DB), clear zruší výber", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const bad = await rt.exec("show_in_3d", { select: true, id_or_ref: "DD01.02.0004", panel_section: "zle" });
     expect(bad.isError).toBe(true);
     const cleared = await rt.exec("show_in_3d", { select: true, clear: true });
@@ -45,14 +43,14 @@ describe("zlúčené tooly AIM (D-115)", () => {
   });
 
   it("show_in_3d select=true visible=true vyberie všetky viditeľné prvky bez DB (#315)", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const res = await rt.exec("show_in_3d", { select: true, visible: true });
     expect(JSON.parse(res.content)).toMatchObject({ ok: true, selected: "visible" });
     expect(rt.finalActions()[0].url).toContain("select_visible");
   });
 
   it("staré mená zlúčených toolov sa už nevykonajú (aliasy D-115 zrušené)", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     for (const name of OLD_NAMES) {
       const res = await rt.exec(name, { id_or_ref: "DD01.02.0004" });
       expect(res, name).toMatchObject({ isError: true });

@@ -8,9 +8,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { TEST_PROJECT } from "@/lib/project/testing";
-import { orFilter, rowEq } from "@/lib/project/testing-filters";
-
 type Row = Record<string, unknown>;
 const tables: Record<string, Row[]> = {};
 
@@ -27,11 +24,7 @@ function builder(table: string) {
       return b;
     },
     eq(col: string, v: unknown) {
-      filters.push((r) => rowEq(r, col, v));
-      return b;
-    },
-    or(expr: string) {
-      filters.push(orFilter(expr));
+      filters.push((r) => r[col] === v);
       return b;
     },
     in(col: string, vs: unknown[]) {
@@ -76,16 +69,15 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 const { AskToolRuntime } = await import("./tools");
-const P = TEST_PROJECT.id;
 
 const obj = (id: string, object_type: string, name: string, object_ref = name): Row => ({
-  id, object_type, name, object_ref, ifc_type: null, predefined_type: null, project_id: P,
+  id, object_type, name, object_ref, ifc_type: null, predefined_type: null,
 });
 
 beforeEach(() => {
   tables.objects = [
     obj("sp", "space", "3.01"),
-    obj(P, "project", "OCB"),
+    obj("proj", "project", "OCB"),
     obj("nj", "zone", "NJ - 3NP"),
     obj("np", "zone", "Nájomné priestory"),
     obj("s1", "group", "S1"),
@@ -95,7 +87,7 @@ beforeEach(() => {
     obj("r3", "document_reference", "S1 - Skladba strechy", "OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB#page=3"),
     obj("st", "asset", "ST01.20.0012"),
   ].map((o) => ({ ...o, valid_until: null }));
-  const v = (o: Row): Row => ({ reference_id: null, page: null, via_nearest_id: o.via_id, project_id: P, ...o });
+  const v = (o: Row): Row => ({ reference_id: null, page: null, via_nearest_id: o.via_id, ...o });
   tables.v_object_documents = [
     v({ object_id: "sp", object_type: "space", document_id: "d3", via: "zone", via_id: "nj", depth: 1 }),
     v({ object_id: "sp", object_type: "space", document_id: "d3", via: "zone", via_id: "np", via_nearest_id: "nj", depth: 2 }),
@@ -104,15 +96,15 @@ beforeEach(() => {
     v({ object_id: "np", object_type: "zone", document_id: "d3", via: "direct", via_id: null, depth: 0 }),
   ];
   // Druh dokumentu (D-104, typ informácie ISO 19650).
-  tables.rel_external_reference_relationship = [{ id: "x1", from_id: "d9", to_id: "c1", valid_until: null, project_id: P }];
+  tables.rel_external_reference_relationship = [{ id: "x1", from_id: "d9", to_id: "c1", valid_until: null }];
   tables.classification_references = [{ id: "c1", identification: "SH", name: "Výpis" }];
   tables.rel_associates_document = Array.from({ length: 44 }, (_, i) => ({
-    id: `p${i}`, from_id: P, to_id: `x${i}`, valid_until: null, project_id: P,
+    id: `p${i}`, from_id: "proj", to_id: `x${i}`, valid_until: null,
   }));
 });
 
 async function run(idOrRef: string, include: string[] = ["documents"]) {
-  const rt = new AskToolRuntime(P);
+  const rt = new AskToolRuntime();
   const res = await rt.exec("get_object", { id_or_ref: idOrRef, include });
   expect(res.isError).toBe(false);
   return JSON.parse(res.content);
@@ -157,7 +149,7 @@ describe("get_object include=documents (D-104)", () => {
   it("dokument nad strop odpovede PostgREST: stránkuje, nič neoreže", async () => {
     tables.v_object_documents = Array.from({ length: 2300 }, (_, i) => ({
       object_id: `a${i}`, object_type: "asset", document_id: "d1", reference_id: null, page: null,
-      via: "floor", via_id: "f1", via_nearest_id: "f1", depth: 1, project_id: P,
+      via: "floor", via_id: "f1", via_nearest_id: "f1", depth: 1,
     }));
     const out = await run("OCB_SO01_ASR_D-1-1-01_PODORYS-1NP");
     expect(out.objects_total).toBe(2300);
@@ -185,7 +177,7 @@ describe("style_in_3d document (D-104 krok 4)", () => {
   };
 
   it("xray so stranou: symbolické pravidlo aim_document, GUIDy necestujú v URL", async () => {
-    const rt = new AskToolRuntime(P);
+    const rt = new AskToolRuntime();
     const res = await rt.exec("style_in_3d", { action: "xray", document: "D.1.1.09", page: 3 });
     expect(res.isError).toBe(false);
     expect(JSON.parse(res.content).groups[0]).toMatchObject({ document: "D.1.1.09 Výpis skladieb, s. 3" });
@@ -195,7 +187,7 @@ describe("style_in_3d document (D-104 krok 4)", () => {
   });
 
   it("odkaz na stranu podľa object_ref je ten odkaz, nie celý dokument", async () => {
-    const rt = new AskToolRuntime(P);
+    const rt = new AskToolRuntime();
     await rt.exec("style_in_3d", { action: "isolate", document: "OCB_SO01_ASR_D-1-1-09_VYPIS-SKLADIEB#page=3" });
     expect(decodeLens((rt.actions[0] as { url: string }).url).r[0].g[0].rules).toEqual([{ kind: "aim_document", id: "r3" }]);
   });
@@ -205,7 +197,7 @@ describe("style_in_3d document (D-104 krok 4)", () => {
       { object_id: "sp", ifc_guid: "0SpaceGuid000000000001", source: "ifc:asr", valid_until: null },
       { object_id: "np", ifc_guid: "0ZoneGuid0000000000001", source: "ifc:asr", valid_until: null },
     ];
-    const rt = new AskToolRuntime(P);
+    const rt = new AskToolRuntime();
     const res = await rt.exec("style_in_3d", { action: "hide", document: "OCB_SO01_ASR_D-1-1-03_PODORYS-3NP" });
     expect(JSON.parse(res.content)).toMatchObject({ ok: true, elements: 1, document: "D.1.1.03 Pôdorys 3NP" });
     const ops = decodeURIComponent(new URL((rt.actions[0] as { url: string }).url, "http://x").searchParams.get("ops") ?? "");
@@ -214,7 +206,7 @@ describe("style_in_3d document (D-104 krok 4)", () => {
   });
 
   it("nejednoznačný dokument a strana bez dokumentu sú chyby vstupu", async () => {
-    const rt = new AskToolRuntime(P);
+    const rt = new AskToolRuntime();
     const amb = await rt.exec("style_in_3d", { action: "xray", document: "Pôdorys" });
     expect(amb.isError).toBe(true);
     expect(amb.content).toContain("nejednoznačný");

@@ -6,7 +6,6 @@ import { clientIpKey, createRateLimiter } from "@/lib/api-guard";
 import { importBcfArchive, type ConflictPolicy } from "@/lib/bcf/import";
 import { defaultBcfDeps } from "@/lib/bcf/runtime";
 import { BcfInputError } from "@/lib/bcf/tools";
-import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Import `.bcfzip` (BCF 2.1 aj 3.0) do DB (D-158 krok 8): `POST /api/bcf/import`, telo = súbor
@@ -41,7 +40,7 @@ function bearerMatches(header: string | null, expected: string | null): boolean 
 const fail = (status: number, message: string, headers: Record<string, string> = {}) =>
   NextResponse.json({ message }, { status, headers: { ...CORS, ...headers } });
 
-async function postHandler(req: Request): Promise<Response> {
+export async function POST(req: Request): Promise<Response> {
   const token = process.env.BCF_API_TOKEN?.trim();
   const expected = token && token.length >= 16 ? token : null;
   if (!expected) return fail(403, "Import cez API je vypnutý (bez BCF_API_TOKEN); použi bcf_topic action=import v chate.");
@@ -74,5 +73,3 @@ async function postHandler(req: Request): Promise<Response> {
 export async function OPTIONS(): Promise<Response> {
   return new NextResponse(null, { status: 204, headers: CORS });
 }
-
-export const POST = withRequestProject(postHandler);

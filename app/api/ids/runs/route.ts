@@ -5,8 +5,6 @@ import { LibraryInputError, parseRunSpecs, saveViewerRun } from "@/lib/ids/libra
 import { supabaseIdsLibraryStore } from "@/lib/ids/library-store";
 import { idsWriteGuard, jsonFail, NO_STORE, readJson } from "@/lib/ids/route-guard";
 import { supabaseIdsStore } from "@/lib/ids/store";
-import { withRequestProject } from "@/lib/project/request";
-import { currentProjectId } from "@/lib/live/caller";
 
 /**
  * Uloženie výsledku kontroly IDS z viewera (D-182, Samuel 2. 11.: kontrola beží raz, vo vieweri; server ju
@@ -23,7 +21,7 @@ export const maxDuration = 60;
 /** Telo pod limitom požiadavky Vercelu (4,5 MB). */
 const MAX_BODY_CHARS = 4_000_000;
 
-async function postHandler(req: Request) {
+export async function POST(req: Request) {
   const denied = idsWriteGuard(req);
   if (denied) return denied;
   const read = await readJson(req, MAX_BODY_CHARS);
@@ -39,7 +37,7 @@ async function postHandler(req: Request) {
   }
   try {
     const out = await saveViewerRun(
-      { store: supabaseIdsStore(currentProjectId()), lib: supabaseIdsLibraryStore(currentProjectId()), lookup: lookupGuids },
+      { store: supabaseIdsStore(), lib: supabaseIdsLibraryStore(), lookup: lookupGuids },
       {
         code: b.code,
         version: b.version,
@@ -57,5 +55,3 @@ async function postHandler(req: Request) {
     return jsonFail(err instanceof Error ? err.message : "uloženie výsledku zlyhalo", 500);
   }
 }
-
-export const POST = withRequestProject(postHandler);

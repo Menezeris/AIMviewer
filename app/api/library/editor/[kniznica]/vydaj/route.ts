@@ -4,7 +4,6 @@ import { vydaj } from "@/lib/kniznica/editor-api";
 import { overXsd } from "@/lib/kniznica/ids/xsd";
 import { brana, chybaServera, kodKniznice, neznamaKniznica, odpoved, vstup } from "@/lib/kniznica/editor-server";
 import { supabaseSkladVydania, supabaseUloziste, VydanieMigraciaChyba } from "@/lib/kniznica/vydanie-db";
-import { withRequestProject } from "@/lib/project/request";
 
 /**
  * `POST vydaj` stránky editora (`assetin/server` `api_vydaj`): validácia, snímka, IDS do katalógu AIM v jednej
@@ -13,7 +12,7 @@ import { withRequestProject } from "@/lib/project/request";
  */
 export const dynamic = "force-dynamic";
 
-async function postHandler(req: Request, ctx: { params: Promise<{ kniznica: string }> }) {
+export async function POST(req: Request, ctx: { params: Promise<{ kniznica: string }> }) {
   const k = kodKniznice((await ctx.params).kniznica);
   if (!k) return neznamaKniznica();
   const b = await vstup(req);
@@ -25,5 +24,3 @@ async function postHandler(req: Request, ctx: { params: Promise<{ kniznica: stri
     return chybaServera(err);
   }
 }
-
-export const POST = withRequestProject(postHandler);

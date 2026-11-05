@@ -5,10 +5,6 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { orFilter, rowEq } from "@/lib/project/testing-filters";
-
-import { TEST_PROJECT } from "@/lib/project/testing";
-
 vi.mock("server-only", () => ({}));
 
 type Row = Record<string, unknown>;
@@ -25,12 +21,12 @@ function builder(table: string) {
   let head = false;
   const b = {
     select: (_c?: string, o?: { head?: boolean }) => ((head = !!o?.head), b),
-    eq: (c: string, v: unknown) => (filters.push((r) => rowEq(r, c, v)), b),
+    eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), b),
     ilike: (c: string, v: string) => (filters.push((r) => String(r[c] ?? "").toLowerCase() === v.toLowerCase()), b),
     in: (c: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[c])), b),
     is: (c: string, v: unknown) => (filters.push((r) => (r[c] ?? null) === v), b),
     not: (c: string) => (filters.push((r) => (r[c] ?? null) !== null), b),
-    or: (expr: string) => (filters.push(orFilter(expr)), b),
+    or: () => b,
     order: (c: string) => ((order = c), b),
     range: (from: number, to: number) => ((range = [from, to]), b),
     limit: (n: number) => ((limit = n), b),
@@ -86,7 +82,7 @@ beforeEach(() => {
 
 describe("search_objects mode=locate nad 500 prvkov", () => {
   it("rozpad po podlažiach počíta všetky prvky, nie vzorku", async () => {
-    const res = await new AskToolRuntime(TEST_PROJECT.id).exec("search_objects", { mode: "locate", ifc_type: "IfcDuctSegment" });
+    const res = await new AskToolRuntime().exec("search_objects", { mode: "locate", ifc_type: "IfcDuctSegment" });
     expect(res.isError).toBe(false);
     const out = JSON.parse(res.content) as {
       total: number;
@@ -117,7 +113,7 @@ describe("query_view nad pohľadom IFC vzťahu (rel-system-members)", () => {
   });
 
   it("count_only vráti aj in_aim a only_in_file", async () => {
-    const res = await new AskToolRuntime(TEST_PROJECT.id).exec("query_view", {
+    const res = await new AskToolRuntime().exec("query_view", {
       relation: "rel_assigns_to_group",
       filters: [{ column: "to_id", op: "eq", value: SYS }],
       count_only: true,
@@ -127,7 +123,7 @@ describe("query_view nad pohľadom IFC vzťahu (rel-system-members)", () => {
   });
 
   it("riadky: total všetkých dvojíc, in_aim pre počet prvkov AIM", async () => {
-    const res = await new AskToolRuntime(TEST_PROJECT.id).exec("query_view", {
+    const res = await new AskToolRuntime().exec("query_view", {
       relation: "rel_assigns_to_group",
       filters: [{ column: "to_id", op: "eq", value: SYS }],
     });
@@ -139,7 +135,7 @@ describe("query_view nad pohľadom IFC vzťahu (rel-system-members)", () => {
 
   it("bez riadkov zo súboru nič nepridá", async () => {
     tables.rel_assigns_to_group = tables.rel_assigns_to_group.filter((r) => r.from_id !== null);
-    const res = await new AskToolRuntime(TEST_PROJECT.id).exec("query_view", {
+    const res = await new AskToolRuntime().exec("query_view", {
       relation: "rel_assigns_to_group",
       filters: [{ column: "to_id", op: "eq", value: SYS }],
       count_only: true,

@@ -1,4 +1,4 @@
-import { revalidateProject } from "@/lib/data/revalidate";
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import {
@@ -9,8 +9,6 @@ import {
 import { isValidGeorefV1 } from "@/lib/data/drawing";
 import { calibrationFromV1, editCalibration, isValidCalibration, mergeCalibration, visibilityOnlyUpdate, type GeorefCalibration, type GeorefV1 } from "@/lib/data/georef";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { currentProjectId } from "@/lib/live/caller";
-import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Zápis georeferencie výkresu (D-072): PATCH uloží kalibráciu do `_georef` v
@@ -45,11 +43,10 @@ const underlayLimiter = createRateLimiter({
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function patchHandler(
+export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ documentId: string }> }
 ) {
-  const projectId = currentProjectId();
   if (!WRITE_ENABLED) {
     return NextResponse.json(
       { error: "zápis georeferencie je vypnutý (UNDERLAY_WRITE_ENABLED)" },
@@ -105,7 +102,6 @@ async function patchHandler(
   const { data: obj, error: oErr } = await supabase
     .from("objects")
     .select("id, object_type, properties")
-    .eq("project_id", projectId)
     .eq("id", documentId)
     .maybeSingle();
   if (oErr) return NextResponse.json({ error: oErr.message }, { status: 500 });
@@ -117,9 +113,9 @@ async function patchHandler(
   if (isV2Edit) {
     const edit = editCalibration(current._georef, next, b!.calibrationIndex as number | undefined, { by: "panel", reason: "úprava v paneli Underlays (rez)", at: new Date().toISOString() });
     if (!edit.ok) return NextResponse.json({ error: "calibration not found" }, { status: 404 });
-    const { error: eErr } = await supabase.from("objects").update({ properties: { ...current, _georef: edit.georef } }).eq("project_id", projectId).eq("id", documentId);
+    const { error: eErr } = await supabase.from("objects").update({ properties: { ...current, _georef: edit.georef } }).eq("id", documentId);
     if (eErr) return NextResponse.json({ error: eErr.message }, { status: 500 });
-    revalidateProject(projectId);
+    revalidateTag("aim", { expire: 0 });
     return NextResponse.json({ ok: true });
   }
   // D-168: v1 s nezmenenou polohou (SET_UNDERLAYS_3D s persist) zmení len visible a opacity, source ostane (auto ostane auto).
@@ -132,7 +128,6 @@ async function patchHandler(
   const { error: uErr } = await supabase
     .from("objects")
     .update({ properties })
-    .eq("project_id", projectId)
     .eq("id", documentId);
   if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 });
 
@@ -140,9 +135,7 @@ async function patchHandler(
   // profil; `{expire: 0}` na legacy unstable_cache tagu sa môže správať ako
   // stale-while-revalidate (jeden request ešte stará odpoveď, ďalší čerstvá)
   // — pre podklady to stačí, viewer drží georef v session. Overiť live (F7).
-  revalidateProject(projectId);
+  revalidateTag("aim", { expire: 0 });
 
   return NextResponse.json({ ok: true });
 }
-
-export const PATCH = withRequestProject(patchHandler);

@@ -8,14 +8,11 @@ import { fetchLastElementChange } from "@/lib/data/model-revisions";
 import { fetchDerivedRelations } from "@/lib/data/derivations";
 import { fetchDocumentTypes, fetchObjectDocuments } from "@/lib/data/object-documents";
 import type { ElementDetail } from "@/lib/aim-panel";
-import { currentProjectId } from "@/lib/live/caller";
-import { withRequestProject } from "@/lib/project/request";
 
 /** Dokumenty prvku cez vzťahy s kódom druhu (D-104); chyba = karta ukáže priame väzby. */
 async function effectiveDocuments(id: string): Promise<ElementDetail["effectiveDocuments"]> {
-  const projectId = currentProjectId();
-  const { documents } = await fetchObjectDocuments(projectId, id);
-  const types = await fetchDocumentTypes(projectId, [...new Set(documents.map((d) => d.documentId))]);
+  const { documents } = await fetchObjectDocuments(id);
+  const types = await fetchDocumentTypes([...new Set(documents.map((d) => d.documentId))]);
   return documents.map((d) => {
     const typeCode = types.get(d.documentId)?.code;
     return typeCode ? { ...d, typeCode } : d;
@@ -32,11 +29,10 @@ async function effectiveDocuments(id: string): Promise<ElementDetail["effectiveD
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function getHandler(
+export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const projectId = currentProjectId();
   const { id } = await params;
 
   if (!UUID_RE.test(id)) {
@@ -45,11 +41,11 @@ async function getHandler(
 
   try {
     const [summary, sections, captures, derived, docs] = await Promise.all([
-      fetchNodeSummary(projectId, id),
-      fetchNodeSections(projectId, id),
-      fetchCaptureSummaryForObject(projectId, id),
+      fetchNodeSummary(id),
+      fetchNodeSections(id),
+      fetchCaptureSummaryForObject(id),
       // Vrstva AIM (D-089): odvodené vzťahy pre Relationship records vo vieweri.
-      fetchDerivedRelations(projectId, id).catch(() => undefined),
+      fetchDerivedRelations(id).catch(() => undefined),
       effectiveDocuments(id).catch((err) => {
         console.error(`[api/element/${id}] documents`, err);
         return undefined;
@@ -85,10 +81,9 @@ async function getHandler(
 
 /** D-129: posledná zmena aktívneho GUID receptom; chyba čítania kartu nezhodí. */
 async function lastChangeOf(history: ElementDetail["guidHistory"]): Promise<ElementDetail["lastChange"]> {
-  const projectId = currentProjectId();
   const guid = history?.find((h) => h.active)?.ifcGuid;
   if (!guid) return null;
-  return fetchLastElementChange(projectId, guid).catch((err) => {
+  return fetchLastElementChange(guid).catch((err) => {
     console.error("[api/element] lastChange", err);
     return null;
   });
@@ -96,15 +91,12 @@ async function lastChangeOf(history: ElementDetail["guidHistory"]): Promise<Elem
 
 /** D-131: médiá Reality Capture priestoru (aj pre prvok v ňom); chyba čítania kartu nezhodí. */
 async function captureMediaOf(cap: CaptureSummary, inherited: boolean): Promise<ElementDetail["captureMedia"]> {
-  const projectId = currentProjectId();
   if (!cap.spaceId || cap.count === 0) return undefined;
   const space = { id: cap.spaceId, name: cap.spaceName };
-  return fetchCapturesForSpace(projectId, cap.spaceId)
+  return fetchCapturesForSpace(cap.spaceId)
     .then((points) => captureMediaEntries(points, space, inherited))
     .catch((err) => {
       console.error("[api/element] captureMedia", err);
       return undefined;
     });
 }
-
-export const GET = withRequestProject(getHandler);

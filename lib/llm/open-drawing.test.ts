@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { TEST_PROJECT } from "@/lib/project/testing";
-
 const { DOC } = vi.hoisted(() => ({ DOC: "dd6745e7-4427-4467-98dd-c5f080eb3866" }));
 const ELEMENT = "fff37f74-3202-4099-8c9b-a8d28229261c";
 
@@ -22,7 +20,7 @@ import { AskToolRuntime } from "./tools";
 
 describe("open_drawing s výrezom strany (D-117)", () => {
   it("region otvorí kartu vo vieweri s výrezom v %", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const res = await rt.exec("open_drawing", { document_id: DOC, page: 1, region: { x: 50, y: 0, width: 50, height: 50 } });
     expect(JSON.parse(res.content)).toMatchObject({
       ok: true,
@@ -34,7 +32,7 @@ describe("open_drawing s výrezom strany (D-117)", () => {
   });
 
   it("výrez sa oreže do strany a chybný výrez je chyba", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const res = await rt.exec("open_drawing", { document_id: DOC, region: { x: 80, y: 90, width: 40, height: 40 } });
     expect(JSON.parse(res.content).region).toEqual({ x: 80, y: 90, width: 20, height: 10 });
     const bad = await rt.exec("open_drawing", { document_id: DOC, region: { x: 120, y: 0, width: 10, height: 10 } });
@@ -43,14 +41,14 @@ describe("open_drawing s výrezom strany (D-117)", () => {
   });
 
   it("focus_id vo vieweri vráti poznámku, bez výrezu ostáva op ako doteraz", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const res = await rt.exec("open_drawing", { document_id: DOC, in_viewer: true, focus_id: ELEMENT });
     expect(JSON.parse(res.content).note).toContain("region");
     expect(decodeURIComponent(rt.finalActions()[0].url)).toContain(`doc::${DOC}`);
   });
 
   it("highlights (D-123) orámujú text a bez region priblížia kartu na ich obal", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const res = await rt.exec("open_drawing", {
       document_id: DOC,
       page: 1,

@@ -4,8 +4,6 @@ import { LibraryInputError, LibrarySchemaMissingError, setModelBinding } from "@
 import { supabaseIdsLibraryStore } from "@/lib/ids/library-store";
 import { idsWriteGuard, jsonFail, NO_STORE, readJson } from "@/lib/ids/route-guard";
 import { supabaseIdsStore } from "@/lib/ids/store";
-import { withRequestProject } from "@/lib/project/request";
-import { currentProjectId } from "@/lib/live/caller";
 
 /**
  * Ručná väzba IDS na model federácie z karty "Requirements library" (D-182): `POST {code, model, bound, author,
@@ -15,7 +13,7 @@ import { currentProjectId } from "@/lib/live/caller";
 
 export const dynamic = "force-dynamic";
 
-async function postHandler(req: Request) {
+export async function POST(req: Request) {
   const denied = idsWriteGuard(req);
   if (denied) return denied;
   const read = await readJson(req, 5_000);
@@ -26,7 +24,7 @@ async function postHandler(req: Request) {
   }
   try {
     const out = await setModelBinding(
-      { store: supabaseIdsStore(currentProjectId()), lib: supabaseIdsLibraryStore(currentProjectId()) },
+      { store: supabaseIdsStore(), lib: supabaseIdsLibraryStore() },
       {
         code: b.code,
         model: b.model,
@@ -42,5 +40,3 @@ async function postHandler(req: Request) {
     return jsonFail(err instanceof Error ? err.message : "väzba zlyhala", 500);
   }
 }
-
-export const POST = withRequestProject(postHandler);

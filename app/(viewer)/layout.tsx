@@ -6,10 +6,11 @@ import { SidebarShell } from "@/components/sidebar-shell";
 import { SidebarGate } from "@/components/sidebar-gate";
 import { AskDock } from "@/components/ask-dock";
 import { LiveChannel } from "@/components/live-channel";
-import { currentPageProject } from "@/lib/project/page";
 
-// D-189: the project comes from the session cookie (`?project=`), so the layout renders per
-// request; the data stays cached per project in `unstable_cache` (60 s, tag `aim:<project>`).
+// ISR: viewer je verejný read-only (žiadne auth/cookies), tak render cachujeme
+// a každých 60 s revalidujeme. Warm navigácia je takmer okamžitá a Next routy
+// prefetchne. V `next dev` sa cache neuplatní → počas vývoja vždy čerstvé.
+export const revalidate = 60;
 
 /** Panel AI chatu vo vieweri (D-056) - predvolene skrytý (D-100). */
 const ASK_PANEL = process.env.NEXT_PUBLIC_ASK_PANEL === "1";
@@ -19,8 +20,7 @@ export default async function ViewerLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const project = await currentPageProject();
-  const [tree, nav] = await Promise.all([fetchSpatialTree(project.id), fetchSidebarNav(project.id)]);
+  const [tree, nav] = await Promise.all([fetchSpatialTree(), fetchSidebarNav()]);
 
   return (
     <div className="flex flex-1 overflow-hidden">

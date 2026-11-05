@@ -15,8 +15,7 @@ async function fetchObjectsCount(): Promise<
 > {
   try {
     const supabase = getSupabaseAdmin();
-    // head:true => nevracia riadky, len count (select count(*) from objects). Connection test over
-    // all projects on purpose (D-189 guard exception).
+    // head:true => nevracia riadky, len count (select count(*) from objects).
     const { count, error } = await supabase
       .from("objects")
       .select("*", { count: "exact", head: true })

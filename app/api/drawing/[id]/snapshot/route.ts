@@ -4,7 +4,6 @@ import { clientIpKey } from "@/lib/api-guard";
 import { MarkupParamError, parseMarkupParam } from "@/lib/bcf/markup";
 import { pngHeaders, snapshotFor } from "@/lib/bcf/snapshot-http";
 import { parseDocRegion } from "@/lib/viewer-ops";
-import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Snímka výrezu strany dokumentu (D-158 krok 3): `GET /api/drawing/<id>/snapshot?page=N&region=x_y_w_h`
@@ -20,7 +19,7 @@ export const maxDuration = 60;
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
 
-async function getHandler(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await ctx.params;
   const q = new URL(req.url).searchParams;
   const page = Number(q.get("page") ?? "1");
@@ -49,5 +48,3 @@ async function getHandler(req: Request, ctx: { params: Promise<{ id: string }> }
   }
   return new Response(new Uint8Array(out.png), { status: 200, headers: { ...CORS, ...pngHeaders(out.revisionChanged) } });
 }
-
-export const GET = withRequestProject(getHandler);

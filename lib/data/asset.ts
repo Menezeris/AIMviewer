@@ -1,9 +1,10 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { cachedProjectRead } from "@/lib/data/revalidate";
+import { AIM_CACHE } from "@/lib/data/constants";
 
 /**
  * Data-access vrstva pre asset kartu (S2) — jadro previazanosti.
@@ -184,14 +185,12 @@ async function loadRefs(
 
 /** Efektívne klasifikácie occurrence (union vlastných + zdedených, D-023). */
 async function fetchAssetClassifications(
-  projectId: string,
   supabase: SupabaseClient,
   id: string
 ): Promise<ClassificationFacet[]> {
   const { data: rows, error } = await supabase
     .from("v_asset_classifications")
     .select("classification_ref_id, level")
-    .eq("project_id", projectId)
     .eq("object_id", id);
   if (error) throw new Error(error.message);
 
@@ -229,7 +228,7 @@ interface EffRow {
  * Detail assetu (occurrence): efektívne atribúty, property sety s provenance,
  * väzba na type a union klasifikácií. `null`, ak `id` nie je `object_type='asset'`.
  */
-async function fetchAssetImpl(projectId: string, id: string): Promise<AssetDetail | null> {
+async function fetchAssetImpl(id: string): Promise<AssetDetail | null> {
   const supabase = getSupabaseAdmin();
 
   // Effective view, raw occurrence a klasifikácie sú navzájom nezávislé →
@@ -240,16 +239,14 @@ async function fetchAssetImpl(projectId: string, id: string): Promise<AssetDetai
       .select(
         "id, object_ref, name, ifc_type, predefined_type, user_defined_type, type_id, type_name"
       )
-      .eq("project_id", projectId)
       .eq("id", id)
       .limit(1),
     supabase
       .from("objects")
       .select("ifc_guid, predefined_type, properties")
-      .eq("project_id", projectId)
       .eq("id", id)
       .limit(1),
-    fetchAssetClassifications(projectId, supabase, id),
+    fetchAssetClassifications(supabase, id),
   ]);
 
   // Effective view — zapuzdruje dedičnosť (D-021). Žiadny riadok = nie je asset.
@@ -272,7 +269,6 @@ async function fetchAssetImpl(projectId: string, id: string): Promise<AssetDetai
     const { data: typeRows, error: typeErr } = await supabase
       .from("objects")
       .select("id, object_ref, name, properties")
-      .eq("project_id", projectId)
       .eq("id", eff.type_id)
       .limit(1);
     if (typeErr) throw new Error(typeErr.message);
@@ -315,7 +311,7 @@ async function fetchAssetImpl(projectId: string, id: string): Promise<AssetDetai
  * Detail asset_type: zdieľané atribúty/psety, vlastné klasifikácie a zoznam
  * occurrence, ktoré ho používajú. `null`, ak `id` nie je `object_type='asset_type'`.
  */
-async function fetchAssetTypeImpl(projectId: string, id: string): Promise<AssetTypeDetail | null> {
+async function fetchAssetTypeImpl(id: string): Promise<AssetTypeDetail | null> {
   const supabase = getSupabaseAdmin();
 
   // Hlavný riadok, klasifikačné väzby aj occurrence väzby závisia len od `id`
@@ -326,21 +322,18 @@ async function fetchAssetTypeImpl(projectId: string, id: string): Promise<AssetT
       .select(
         "id, object_ref, name, ifc_type, ifc_guid, predefined_type, user_defined_type, properties"
       )
-      .eq("project_id", projectId)
       .eq("id", id)
       .eq("object_type", "asset_type")
       .limit(1),
     supabase
       .from("rel_associates_classification")
       .select("to_id")
-      .eq("project_id", projectId)
       .eq("from_id", id)
       .is("valid_until", null)
       .not("to_id", "is", null),
     supabase
       .from("rel_defines_by_type")
       .select("from_id")
-      .eq("project_id", projectId)
       .eq("to_id", id)
       .is("valid_until", null)
       .not("from_id", "is", null), // výskyt bez uzla AIM (D-183 K3)
@@ -375,7 +368,6 @@ async function fetchAssetTypeImpl(projectId: string, id: string): Promise<AssetT
       ? supabase
           .from("objects")
           .select("id, object_ref, name")
-          .eq("project_id", projectId)
           .in("id", occIds)
           .then(({ data, error: e }) => {
             if (e) throw new Error(e.message);
@@ -415,7 +407,11 @@ async function fetchAssetTypeImpl(projectId: string, id: string): Promise<AssetT
 }
 
 /** Detail assetu (occurrence) — cachované per id (ISR, D-029 perf). */
-export const fetchAsset = cachedProjectRead("fetch-asset", fetchAssetImpl);
+export const fetchAsset = unstable_cache(fetchAssetImpl, ["fetch-asset"], AIM_CACHE);
 
 /** Detail asset_type — cachované per id (ISR, D-029 perf). */
-export const fetchAssetType = cachedProjectRead("fetch-asset-type", fetchAssetTypeImpl);
+export const fetchAssetType = unstable_cache(
+  fetchAssetTypeImpl,
+  ["fetch-asset-type"],
+  AIM_CACHE
+);

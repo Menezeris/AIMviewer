@@ -47,15 +47,6 @@ describe("IFC motor - cache (D-084)", () => {
     expect(f.counts()).toEqual({ gets: 1, heads: 0 });
   });
 
-  it("D-189: the key is the container, so the same code in two projects is two models", async () => {
-    const f = fakeFetch(['"v1"']);
-    const a = await getStore({ ...SRC, containerId: "c-project-a" }, { fetchImpl: f.impl, archive: null });
-    const b = await getStore({ ...SRC, containerId: "c-project-b" }, { fetchImpl: f.impl, archive: null });
-    expect(a.entry).not.toBe(b.entry);
-    expect([a.entry.key, b.entry.key]).toEqual(["c-project-a", "c-project-b"]);
-    expect(f.counts().gets).toBe(2);
-  });
-
   it("po okne revalidácie overí ETag a pri zmene model načíta znova", async () => {
     let t = 1_000;
     const now = () => t;

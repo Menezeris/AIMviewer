@@ -4,8 +4,6 @@ import { clientIpKey, createRateLimiter, isCrossOriginBlocked } from "@/lib/api-
 import { currentModelRevisions, supabaseSavedViewStore, type SavedViewStore } from "@/lib/views/store";
 import { deleteWire, listWires, renameWire, saveWire } from "@/lib/views/wire";
 import { isViewWire } from "@/lib/viewer-views";
-import { currentProjectId } from "@/lib/live/caller";
-import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Pohľady z panela Presentation (D-161, #188): `saved_views` je trvalá kópia `BasketView` s tým istým `id`.
@@ -68,9 +66,9 @@ async function bodyOf(req: Request): Promise<Record<string, unknown> | Fail> {
 
 const isFail = (v: unknown): v is Fail => v instanceof NextResponse;
 
-async function getHandler() {
+export async function GET() {
   try {
-    return NextResponse.json({ views: await listWires(supabaseSavedViewStore(currentProjectId())) }, { headers: NO_STORE });
+    return NextResponse.json({ views: await listWires(supabaseSavedViewStore()) }, { headers: NO_STORE });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "list failed" }, { status: 500 });
   }
@@ -79,7 +77,7 @@ async function getHandler() {
 /** Zápis + úplný zoznam v odpovedi; chyba DB = 500. */
 async function write(run: (store: SavedViewStore) => Promise<Record<string, unknown>>) {
   try {
-    const store = supabaseSavedViewStore(currentProjectId());
+    const store = supabaseSavedViewStore();
     const extra = await run(store);
     return NextResponse.json({ ok: true, ...extra, views: await listWires(store) }, { headers: NO_STORE });
   } catch (err) {
@@ -87,7 +85,7 @@ async function write(run: (store: SavedViewStore) => Promise<Record<string, unkn
   }
 }
 
-async function postHandler(req: Request) {
+export async function POST(req: Request) {
   const denied = guard(req);
   if (denied) return denied;
   const body = await bodyOf(req);
@@ -95,12 +93,12 @@ async function postHandler(req: Request) {
   const view = body.view;
   if (!isViewWire(view) || !UUID_RE.test(view.id)) return NextResponse.json({ error: "invalid view" }, { status: 400 });
   return write(async (store) => {
-    const revisions = await currentModelRevisions(currentProjectId()).catch(() => ({}));
+    const revisions = await currentModelRevisions().catch(() => ({}));
     return { ...(await saveWire(store, view, revisions)) };
   });
 }
 
-async function patchHandler(req: Request) {
+export async function PATCH(req: Request) {
   const denied = guard(req);
   if (denied) return denied;
   const body = await bodyOf(req);
@@ -112,7 +110,7 @@ async function patchHandler(req: Request) {
   return write(async (store) => ({ ...((await renameWire(store, id, name)) ?? { missing: true }) }));
 }
 
-async function deleteHandler(req: Request) {
+export async function DELETE(req: Request) {
   const denied = guard(req);
   if (denied) return denied;
   const body = await bodyOf(req);
@@ -124,8 +122,3 @@ async function deleteHandler(req: Request) {
     return {};
   });
 }
-
-export const GET = withRequestProject<[Request]>(getHandler);
-export const POST = withRequestProject(postHandler);
-export const PATCH = withRequestProject(patchHandler);
-export const DELETE = withRequestProject(deleteHandler);

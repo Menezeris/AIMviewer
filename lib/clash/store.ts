@@ -34,32 +34,31 @@ const chunks = <T>(items: T[], size: number): T[][] => {
   return out;
 };
 
-/** D-189: tests and runs of one project; test codes are unique per project (`project_id, code`). */
-export function supabaseClashStore(projectId: string): ClashStore {
+export function supabaseClashStore(): ClashStore {
   const db = () => getSupabaseAdmin();
 
   return {
     async listTests() {
-      const { data, error } = await db().from(TESTS).select("*").eq("project_id", projectId).order("code");
+      const { data, error } = await db().from(TESTS).select("*").order("code");
       if (error) fail("Čítanie testov kolízií zlyhalo", error);
       return (data ?? []) as ClashTestRow[];
     },
     async testByCode(code) {
-      const { data, error } = await db().from(TESTS).select("*").eq("project_id", projectId).eq("code", code).maybeSingle();
+      const { data, error } = await db().from(TESTS).select("*").eq("code", code).maybeSingle();
       if (error) fail("Čítanie testu kolízií zlyhalo", error);
       return (data as ClashTestRow | null) ?? null;
     },
     async upsertTest(row: ClashTestWrite) {
       const { data, error } = await db()
         .from(TESTS)
-        .upsert({ ...row, project_id: projectId, updated_at: new Date().toISOString() }, { onConflict: "project_id,code" })
+        .upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: "code" })
         .select("*")
         .single();
       if (error || !data) fail("Uloženie testu kolízií zlyhalo", error);
       return data as ClashTestRow;
     },
     async deleteTest(id) {
-      const { error } = await db().from(TESTS).delete().eq("project_id", projectId).eq("id", id);
+      const { error } = await db().from(TESTS).delete().eq("id", id);
       if (error) fail("Zrušenie testu kolízií zlyhalo", error);
     },
     async testStats(id) {
@@ -75,19 +74,19 @@ export function supabaseClashStore(projectId: string): ClashStore {
     async lastRuns(testIds) {
       const out = new Map<string, ClashRunRow>();
       for (const ids of chunks(testIds, IN_CHUNK)) {
-        const { data, error } = await db().from(RUNS).select("*").eq("project_id", projectId).in("test_id", ids).order("created_at", { ascending: false }).limit(500);
+        const { data, error } = await db().from(RUNS).select("*").in("test_id", ids).order("created_at", { ascending: false }).limit(500);
         if (error) fail("Čítanie behov kolízií zlyhalo", error);
         for (const r of (data ?? []) as ClashRunRow[]) if (r.test_id && !out.has(r.test_id)) out.set(r.test_id, r);
       }
       return out;
     },
     async runs(testId, limit) {
-      const { data, error } = await db().from(RUNS).select("*").eq("project_id", projectId).eq("test_id", testId).order("created_at", { ascending: false }).limit(limit);
+      const { data, error } = await db().from(RUNS).select("*").eq("test_id", testId).order("created_at", { ascending: false }).limit(limit);
       if (error) fail("Čítanie behov kolízií zlyhalo", error);
       return (data ?? []) as ClashRunRow[];
     },
     async run(id) {
-      const { data, error } = await db().from(RUNS).select("*").eq("project_id", projectId).eq("id", id).maybeSingle();
+      const { data, error } = await db().from(RUNS).select("*").eq("id", id).maybeSingle();
       if (error) fail("Čítanie behu kolízií zlyhalo", error);
       return (data as ClashRunRow | null) ?? null;
     },
@@ -97,7 +96,7 @@ export function supabaseClashStore(projectId: string): ClashStore {
       );
     },
     async saveRun(run: ClashRunWrite, results: ClashResultRow[]) {
-      const { data, error } = await db().from(RUNS).insert({ ...run, project_id: projectId }).select("id").single();
+      const { data, error } = await db().from(RUNS).insert(run).select("id").single();
       if (error || !data) fail("Uloženie behu kolízií zlyhalo", error);
       const runId = (data as { id: string }).id;
       for (const part of chunks(results, WRITE_CHUNK)) {
@@ -141,7 +140,7 @@ export function supabaseClashStore(projectId: string): ClashStore {
     async topicNumbers(topicIds) {
       const out = new Map<string, number>();
       for (const ids of chunks(topicIds, IN_CHUNK)) {
-        const { data, error } = await db().from("model_tasks").select("id, number").eq("project_id", projectId).in("id", ids);
+        const { data, error } = await db().from("model_tasks").select("id, number").in("id", ids);
         if (error) fail("Čítanie BCF tém zlyhalo", error);
         for (const t of (data ?? []) as { id: string; number: number }[]) out.set(t.id, t.number);
       }

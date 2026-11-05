@@ -6,7 +6,6 @@ import {
   isCrossOriginBlocked,
 } from "@/lib/api-guard";
 import { getSttProvider, SttConfigError } from "@/lib/stt/provider";
-import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Hlasový prepis pokynov (D-069): klient nahrá diktát (MediaRecorder,
@@ -35,7 +34,7 @@ const transcribeLimiter = createRateLimiter({
   max: RATE_LIMIT_MAX,
 });
 
-async function postHandler(req: Request) {
+export async function POST(req: Request) {
   if (isCrossOriginBlocked(req.headers.get("origin"), req.headers.get("host"))) {
     return NextResponse.json({ error: "cross-origin request denied" }, { status: 403 });
   }
@@ -95,5 +94,3 @@ async function postHandler(req: Request) {
     );
   }
 }
-
-export const POST = withRequestProject(postHandler);

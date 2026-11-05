@@ -5,14 +5,12 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { LAYERS, type Extra, type IcddPlan, type Layer } from "./model";
 import { buildPlan, type DerivationRuleRow, type DocLinkRow, type PlanRows, type SpatialLinkRow } from "./plan";
-import { currentProjectId } from "../project/context";
 
 /**
  * Načíta stav AIM pre export ICDD (D-181): len čítanie cez service_role (D-026). Payloady sa tu nesťahujú;
  * plán nesie ich verejné URL a sha256, kontajner skladá prehliadač (Vercel nevráti ~85 MB odpoveď).
  */
 export async function fetchIcddPlan(opts: { layers?: Layer[]; extras?: Extra[]; createdAt?: string } = {}): Promise<IcddPlan> {
-  const projectId = currentProjectId();
   const sb = getSupabaseAdmin();
   const must = <T>(label: string, r: { data: T | null; error: { message: string } | null }): T => {
     if (r.error) throw new Error(`${label}: ${r.error.message}`);
@@ -21,29 +19,26 @@ export async function fetchIcddPlan(opts: { layers?: Layer[]; extras?: Extra[]; 
   const layers = opts.layers ?? [...LAYERS];
 
   const [modelRevisions, copyRevisions, containerRevisions, documentsRaw, storeyMap, rulesRaw, runsRaw] = await Promise.all([
-    sb.from("model_revisions").select("model, revision, sha256, size_bytes, archive_path").eq("project_id", projectId).eq("is_current", true).then((r) => must("model_revisions", r)),
-    sb.from("ifc_rev_current").select("model, revision, model_revision_id").eq("project_id", projectId).then((r) => must("ifc_rev_current", r)),
+    sb.from("model_revisions").select("model, revision, sha256, size_bytes, archive_path").eq("is_current", true).then((r) => must("model_revisions", r)),
+    sb.from("ifc_rev_current").select("model, revision").then((r) => must("ifc_rev_current", r)),
     sb
       .from("v_container_revisions")
       .select("model, document_id, name, revision, revision_no, status, approval")
-      .eq("project_id", projectId)
       .eq("is_latest", true)
       .then((r) => must("v_container_revisions", r)),
     fetchAllPages((from, to) =>
       sb
         .from("documents")
-        .select("id, identification, description, location, revision, electronic_format, file_sha256, referenced_document_id, objects!documents_id_fkey!inner(object_type, object_ref, name, valid_until, project_id)")
+        .select("id, identification, description, location, revision, electronic_format, file_sha256, referenced_document_id, objects!documents_id_fkey!inner(object_type, object_ref, name, valid_until)")
         .is("objects.valid_until", null)
-        .eq("objects.project_id", projectId)
         .order("id")
         .range(from, to),
     ),
-    sb.from("ifc_storey_map").select("model, global_id, name, to_id, match_rule").eq("project_id", projectId).then((r) => must("ifc_storey_map", r)),
+    sb.from("ifc_storey_map").select("model, global_id, name, to_id, match_rule").then((r) => must("ifc_storey_map", r)),
     sb.from("derivation_rules").select("id, source").then((r) => must("derivation_rules", r)),
     sb
       .from("derivation_runs")
       .select("rule_id, models, finished_at")
-      .eq("project_id", projectId)
       .eq("status", "ok")
       .order("finished_at", { ascending: false })
       .limit(200)
@@ -73,7 +68,6 @@ export async function fetchIcddPlan(opts: { layers?: Layer[]; extras?: Extra[]; 
         sb
           .from("rel_associates_document")
           .select("id, from_id, to_id, source, global_id, model, document_key")
-          .eq("project_id", projectId)
           .is("valid_until", null)
           .order("id")
           .range(from, to),
@@ -84,7 +78,6 @@ export async function fetchIcddPlan(opts: { layers?: Layer[]; extras?: Extra[]; 
         sb
           .from("rel_referenced_in_spatial_structure")
           .select("id, from_id, to_id, role, source")
-          .eq("project_id", projectId)
           .like("source", "derive:%")
           .is("valid_until", null)
           .order("id")
@@ -97,17 +90,17 @@ export async function fetchIcddPlan(opts: { layers?: Layer[]; extras?: Extra[]; 
   );
   const objects: PlanRows["objects"] = [];
   for (let i = 0; i < ids.length; i += 200) {
-    objects.push(...must("objects", await sb.from("objects").select("id, ifc_guid, object_ref").eq("project_id", projectId).in("id", ids.slice(i, i + 200))));
+    objects.push(...must("objects", await sb.from("objects").select("id, ifc_guid, object_ref").in("id", ids.slice(i, i + 200))));
   }
 
   const guids = [...new Set([...objects.map((o) => o.ifc_guid), ...docLinks.map((l) => l.global_id)].filter((g): g is string => !!g))];
   const guidModel = new Map<string, string>();
-  const copies = copyRevisions as { model: string; revision: number; model_revision_id: string }[];
+  const copies = copyRevisions as { model: string; revision: number }[];
   for (const c of copies) {
     for (let i = 0; i < guids.length; i += 200) {
       const rows = must(
         "ifc_rev_objects",
-        await sb.from("ifc_rev_objects").select("global_id").eq("model_revision_id", c.model_revision_id).in("global_id", guids.slice(i, i + 200)),
+        await sb.from("ifc_rev_objects").select("global_id").eq("model", c.model).eq("revision", c.revision).in("global_id", guids.slice(i, i + 200)),
       ) as { global_id: string }[];
       for (const r of rows) if (!guidModel.has(r.global_id)) guidModel.set(r.global_id, c.model);
     }

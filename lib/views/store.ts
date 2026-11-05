@@ -35,13 +35,12 @@ function fail(what: string, error: { message: string } | null): never {
   throw new Error(`${what}: ${error?.message ?? "neznáma chyba"}`);
 }
 
-/** D-189: every read filters the project, every insert sets it (names and 'last' are per project). */
-export function supabaseSavedViewStore(projectId: string): SavedViewStore {
+export function supabaseSavedViewStore(): SavedViewStore {
   const db = () => getSupabaseAdmin();
   const now = () => new Date().toISOString();
   return {
     async list() {
-      const { data, error } = await db().from(TABLE).select("*").eq("project_id", projectId).eq("kind", "saved").order("updated_at", { ascending: false }).limit(500);
+      const { data, error } = await db().from(TABLE).select("*").eq("kind", "saved").order("updated_at", { ascending: false }).limit(500);
       if (error) fail("Čítanie pohľadov zlyhalo", error);
       return (data ?? []) as SavedViewRow[];
     },
@@ -50,7 +49,6 @@ export function supabaseSavedViewStore(projectId: string): SavedViewStore {
       const { data, error } = await db()
         .from(TABLE)
         .select("*")
-        .eq("project_id", projectId)
         .eq("kind", "saved")
         .ilike("name", name.replace(/[\\%_]/g, "\\$&"))
         .maybeSingle();
@@ -58,44 +56,44 @@ export function supabaseSavedViewStore(projectId: string): SavedViewStore {
       return (data as SavedViewRow | null) ?? null;
     },
     async byId(id) {
-      const { data, error } = await db().from(TABLE).select("*").eq("project_id", projectId).eq("kind", "saved").eq("id", id).maybeSingle();
+      const { data, error } = await db().from(TABLE).select("*").eq("kind", "saved").eq("id", id).maybeSingle();
       if (error) fail("Čítanie pohľadu zlyhalo", error);
       return (data as SavedViewRow | null) ?? null;
     },
     async last() {
-      const { data, error } = await db().from(TABLE).select("*").eq("project_id", projectId).eq("kind", "last").maybeSingle();
+      const { data, error } = await db().from(TABLE).select("*").eq("kind", "last").maybeSingle();
       if (error) fail("Čítanie posledného pohľadu zlyhalo", error);
       return (data as SavedViewRow | null) ?? null;
     },
     async create(row) {
-      const { data, error } = await db().from(TABLE).insert({ ...row, kind: "saved", project_id: projectId }).select("*").single();
+      const { data, error } = await db().from(TABLE).insert({ ...row, kind: "saved" }).select("*").single();
       if (error || !data) fail("Uloženie pohľadu zlyhalo", error);
       return data as SavedViewRow;
     },
     async update(id, patch) {
-      const { data, error } = await db().from(TABLE).update({ ...patch, updated_at: now() }).eq("project_id", projectId).eq("id", id).select("*").single();
+      const { data, error } = await db().from(TABLE).update({ ...patch, updated_at: now() }).eq("id", id).select("*").single();
       if (error || !data) fail("Úprava pohľadu zlyhala", error);
       return data as SavedViewRow;
     },
     async remove(id) {
-      const { error } = await db().from(TABLE).delete().eq("project_id", projectId).eq("id", id);
+      const { error } = await db().from(TABLE).delete().eq("id", id);
       if (error) fail("Zmazanie pohľadu zlyhalo", error);
     },
     async setLast(row) {
-      const { data, error } = await db().from(TABLE).select("id").eq("project_id", projectId).eq("kind", "last").maybeSingle();
+      const { data, error } = await db().from(TABLE).select("id").eq("kind", "last").maybeSingle();
       if (error) fail("Čítanie posledného pohľadu zlyhalo", error);
       const write = { ...row, updated_at: now() };
       const res = data
-        ? await db().from(TABLE).update(write).eq("project_id", projectId).eq("id", (data as { id: string }).id)
-        : await db().from(TABLE).insert({ ...write, kind: "last", project_id: projectId });
+        ? await db().from(TABLE).update(write).eq("id", (data as { id: string }).id)
+        : await db().from(TABLE).insert({ ...write, kind: "last" });
       if (res.error) fail("Zápis posledného pohľadu zlyhal", res.error);
     },
   };
 }
 
-/** Aktuálne revízie modelov projektu {model: revízia} (D-086, D-189) v čase uloženia. */
-export async function currentModelRevisions(projectId: string): Promise<Record<string, number>> {
-  const { data, error } = await getSupabaseAdmin().from("model_revisions").select("model, revision").eq("project_id", projectId).eq("is_current", true);
+/** Aktuálne revízie modelov federácie {model: revízia} (D-086) v čase uloženia. */
+export async function currentModelRevisions(): Promise<Record<string, number>> {
+  const { data, error } = await getSupabaseAdmin().from("model_revisions").select("model, revision").eq("is_current", true);
   if (error) fail("Čítanie revízií modelov zlyhalo", error);
   return Object.fromEntries(((data ?? []) as { model: string; revision: number }[]).map((r) => [r.model, r.revision]));
 }

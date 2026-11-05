@@ -15,7 +15,6 @@ vi.mock("../supabase/server", () => ({
   }),
 }));
 
-import { TEST_PROJECT } from "../project/testing";
 import { isMissingFunction, supabaseBcfStore } from "./store";
 
 beforeEach(() => {
@@ -25,26 +24,26 @@ beforeEach(() => {
 
 describe("addComment s pôvodným dátumom (import .bcfzip)", () => {
   it("s dátumom volá model_task_import_comment", async () => {
-    const c = await supabaseBcfStore(TEST_PROJECT.id).addComment("t1", "a@b.sk", "text", "2026-01-02T03:04:05.000Z");
+    const c = await supabaseBcfStore().addComment("t1", "a@b.sk", "text", "2026-01-02T03:04:05.000Z");
     expect(calls.map((x) => x.fn)).toEqual(["model_task_import_comment"]);
     expect(c?.date).toBe("2026-01-02T03:04:05.000Z");
   });
 
   it("posiela pôvodný guid komentára (p_guid) a bez neho null", async () => {
-    const store = supabaseBcfStore(TEST_PROJECT.id);
+    const store = supabaseBcfStore();
     await store.addComment("t1", "a@b.sk", "text", "2026-01-02T03:04:05.000Z", "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa");
     await store.addComment("t1", "a@b.sk", "text", "2026-01-02T03:04:05.000Z");
     expect(calls.map((x) => x.args.p_guid)).toEqual(["aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa", null]);
   });
 
   it("bez dátumu volá pôvodnú model_task_add_comment", async () => {
-    await supabaseBcfStore(TEST_PROJECT.id).addComment("t1", "a@b.sk", "text");
+    await supabaseBcfStore().addComment("t1", "a@b.sk", "text");
     expect(calls.map((x) => x.fn)).toEqual(["model_task_add_comment"]);
   });
 
   it("pred migráciou (funkcia chýba) padne na dnešné správanie a ďalej sa nepokúša", async () => {
     missing = true;
-    const store = supabaseBcfStore(TEST_PROJECT.id);
+    const store = supabaseBcfStore();
     await store.addComment("t1", "a@b.sk", "jedna", "2026-01-02T03:04:05.000Z");
     await store.addComment("t1", "a@b.sk", "dva", "2026-01-02T03:04:05.000Z");
     expect(calls.map((x) => x.fn)).toEqual(["model_task_import_comment", "model_task_add_comment", "model_task_add_comment"]);
@@ -55,7 +54,7 @@ describe("addComment s pôvodným dátumom (import .bcfzip)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(Date.now() + 10 * 60 * 1000);
     try {
-      await expect(supabaseBcfStore(TEST_PROJECT.id).addComment("t1", "a@b.sk", "boom", "2026-01-02T03:04:05.000Z")).rejects.toThrow(/boom/);
+      await expect(supabaseBcfStore().addComment("t1", "a@b.sk", "boom", "2026-01-02T03:04:05.000Z")).rejects.toThrow(/boom/);
     } finally {
       vi.useRealTimers();
     }

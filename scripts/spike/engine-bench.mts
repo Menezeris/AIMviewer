@@ -19,7 +19,7 @@ import {
   fullScope,
 } from "@ifc-lite/mcp";
 
-import { envIfcModels } from "../../lib/data/ifc-models";
+import { getIfcModels } from "../../lib/data/ifc-models";
 import { getStore } from "../../lib/engine/cache";
 import { modelFromStore } from "../../lib/engine/loader";
 import { callEngineTool, type EngineModel } from "../../lib/engine/session";
@@ -53,7 +53,7 @@ function p95(xs: number[]): number {
 
 async function main() {
   const out: Record<string, unknown> = { node: process.version, rssStartMb: rssMb() };
-  const sources = (envIfcModels() ?? []);
+  const sources = getIfcModels();
 
   // 1) Studené a teplé načítanie.
   const models: EngineModel[] = [];

@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { TEST_PROJECT } from "@/lib/project/testing";
-
 // Viacnásobný výber (#217): DB je maketa, ktorá k object_ref vráti uzol a GUID.
 vi.mock("server-only", () => ({}));
 
@@ -42,7 +40,7 @@ const opsOf = (url: string) => new URL(url, "http://x").searchParams.get("ops");
 
 describe("show_in_3d select=true s viac prvkami (#217)", () => {
   it("označí všetky a vráti zoznam všetkých", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const res = await rt.exec("show_in_3d", { select: true, ids_or_refs: ["1.02", "1.03"] });
     expect(res.isError).toBeFalsy();
     expect(JSON.parse(res.content)).toMatchObject({
@@ -55,7 +53,7 @@ describe("show_in_3d select=true s viac prvkami (#217)", () => {
   });
 
   it("UUID aj duplicity: každý prvok raz", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const res = await rt.exec("show_in_3d", {
       select: true,
       ids_or_refs: ["11111111-1111-4111-8111-111111111111", "1.02", "1.03"],
@@ -64,7 +62,7 @@ describe("show_in_3d select=true s viac prvkami (#217)", () => {
   });
 
   it("jeden prvok ostáva ako doteraz (selected je text)", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const res = await rt.exec("show_in_3d", { select: true, ids_or_refs: ["1.02"] });
     const out = JSON.parse(res.content);
     expect(out).toMatchObject({ ok: true, selected: "1.02", ifc_guid: "0AAAAAAAAAAAAAAAAAAAA1" });

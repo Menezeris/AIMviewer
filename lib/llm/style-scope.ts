@@ -2,8 +2,6 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { scopeQuery } from "@/lib/project/scope";
-import { currentProjectId } from "@/lib/project/context";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { fetchAllPages } from "@/lib/data/pagination";
 import { fetchDocumentObjectRows } from "@/lib/data/object-documents";
@@ -72,11 +70,7 @@ export class ScopeResolver {
   private documents?: TypedRow[];
   private allSystemMembers?: Set<string>;
 
-  /** D-189: the scope reads one project (default: the request project). */
-  constructor(
-    private readonly db: SupabaseClient,
-    private readonly projectId: string = currentProjectId(),
-  ) {}
+  constructor(private readonly db: SupabaseClient) {}
 
   /** `.in()` po dávkach s úplným stránkovaním každej dávky. */
   private async fetchIn<T>(
@@ -91,7 +85,7 @@ export class ScopeResolver {
       const chunk = values.slice(i, i + IN_CHUNK);
       out.push(
         ...(await fetchAllPages<T>((from, to) => {
-          let q = scopeQuery(this.db.from(table).select(select), table, this.projectId).in(col, chunk);
+          let q = this.db.from(table).select(select).in(col, chunk);
           if (opts.activeOnly !== false) q = q.is("valid_until", null);
           return q.order(opts.order ?? "id").range(from, to) as unknown as PromiseLike<{
             data: T[] | null;
@@ -108,7 +102,6 @@ export class ScopeResolver {
       this.db
         .from("objects")
         .select("id, object_type, object_ref, name, predefined_type, user_defined_type")
-        .eq("project_id", this.projectId)
         .in("object_type", types)
         .is("valid_until", null)
         .order("id")
@@ -241,7 +234,7 @@ export class ScopeResolver {
   /** Objekty, ktorých sa dokument (alebo jeho strana) týka, aj zdedené cez nositeľa. */
   async documentMembers(want: string, page: number | undefined): Promise<{ doc: TypedRow; ids: Set<string> }> {
     const doc = await this.pickDocument(want);
-    const rows = await fetchDocumentObjectRows(this.projectId, doc, page);
+    const rows = await fetchDocumentObjectRows(doc, page);
     return { doc, ids: new Set(rows.filter((r) => STYLABLE_OBJECT_TYPES.has(r.object_type)).map((r) => r.object_id)) };
   }
 
@@ -251,7 +244,6 @@ export class ScopeResolver {
       this.db
         .from("objects")
         .select("id, object_ref, name")
-        .eq("project_id", this.projectId)
         .eq("object_type", "floor")
         .is("valid_until", null)
         .order("id")
@@ -313,7 +305,7 @@ export class ScopeResolver {
       );
     }
     const rows = await fetchAllPages<{ id: string }>((from, to) => {
-      let q = this.db.from("objects").select("id").eq("project_id", this.projectId).is("valid_until", null);
+      let q = this.db.from("objects").select("id").is("valid_until", null);
       if (types.length > 0) q = q.in("ifc_type", types);
       if (predefinedType) q = q.ilike("predefined_type", predefinedType);
       if (query) {

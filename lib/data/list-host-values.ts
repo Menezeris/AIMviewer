@@ -41,13 +41,12 @@ export interface HostValuesResult {
   truncated: boolean;
 }
 
-export async function loadListHostValues(projectId: string, key: ListHostKey): Promise<HostValuesResult> {
+export async function loadListHostValues(key: ListHostKey): Promise<HostValuesResult> {
   const supabase = getSupabaseAdmin();
   const edges = await fetchAllPages<EdgeRow>((from, to) =>
     supabase
       .from("v_space_elements")
       .select("space_id, space_ref, space_name, element_id, role")
-      .eq("project_id", projectId)
       .eq("relation", RELATION[key])
       .order("element_id")
       .order("space_id")
@@ -57,7 +56,7 @@ export async function loadListHostValues(projectId: string, key: ListHostKey): P
 
   const live = async (ids: string[], columns: string) =>
     mapChunks(ids, IN_CHUNK, async (chunk) => {
-      const { data, error } = await supabase.from("objects").select(columns).eq("project_id", projectId).in("id", chunk).is("valid_until", null);
+      const { data, error } = await supabase.from("objects").select(columns).in("id", chunk).is("valid_until", null);
       if (error) throw new Error(error.message);
       return (data ?? []) as unknown as Array<{ id: string; ifc_guid: string | null }>;
     });

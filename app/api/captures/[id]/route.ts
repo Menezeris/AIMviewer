@@ -1,4 +1,4 @@
-import { revalidateProject } from "@/lib/data/revalidate";
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import {
@@ -13,8 +13,6 @@ import {
   updateCapturePlacement,
   type CapturePlacementPatch,
 } from "@/lib/data/captures";
-import { currentProjectId } from "@/lib/live/caller";
-import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Capture point (D-073).
@@ -41,17 +39,16 @@ const patchLimiter = createRateLimiter({
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function getHandler(
+export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const projectId = currentProjectId();
   const { id } = await params;
   if (!UUID_RE.test(id)) {
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
   try {
-    const capture = await fetchCaptureDetail(projectId, id);
+    const capture = await fetchCaptureDetail(id);
     if (!capture) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(capture, {
       headers: { "Cache-Control": "public, max-age=60, s-maxage=60, stale-while-revalidate=300" },
@@ -62,11 +59,10 @@ async function getHandler(
   }
 }
 
-async function patchHandler(
+export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const projectId = currentProjectId();
   if (!WRITE_ENABLED) {
     return NextResponse.json(
       { error: "zápis captures je vypnutý (CAPTURE_WRITE_ENABLED)" },
@@ -130,14 +126,11 @@ async function patchHandler(
     if (!(await captureExists(id))) {
       return NextResponse.json({ error: "capture not found" }, { status: 404 });
     }
-    const placement = await updateCapturePlacement(projectId, id, patch);
-    revalidateProject(projectId);
+    const placement = await updateCapturePlacement(id, patch);
+    revalidateTag("aim", { expire: 0 });
     return NextResponse.json({ ok: true, placement });
   } catch (err) {
     console.error("[api/captures/[id] PATCH]", err);
     return NextResponse.json({ error: "server error" }, { status: 500 });
   }
 }
-
-export const GET = withRequestProject(getHandler);
-export const PATCH = withRequestProject(patchHandler);

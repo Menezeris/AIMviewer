@@ -1,6 +1,8 @@
 import "server-only";
 
-import { cachedProjectRead } from "@/lib/data/revalidate";
+import { unstable_cache } from "next/cache";
+
+import { AIM_CACHE } from "@/lib/data/constants";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import {
   DERIVED_RELATIONS_CAP,
@@ -39,7 +41,7 @@ async function fetchRules(): Promise<RuleRow[] | null> {
   return error || !data ? null : (data as RuleRow[]);
 }
 
-async function fetchDerivationLayerImpl(projectId: string): Promise<DerivationsLayerWire | null> {
+async function fetchDerivationLayerImpl(): Promise<DerivationsLayerWire | null> {
   const supabase = getSupabaseAdmin();
   const rules = await fetchRules();
   if (!rules) return null;
@@ -48,19 +50,17 @@ async function fetchDerivationLayerImpl(projectId: string): Promise<DerivationsL
     supabase
       .from("derivation_runs")
       .select("rule_id, status, written, closed, started_at, finished_at")
-      .eq("project_id", projectId)
       .order("started_at", { ascending: false })
       .limit(200),
-    supabase.from("model_revisions").select("model, revision").eq("project_id", projectId).eq("is_current", true),
+    supabase.from("model_revisions").select("model, revision").eq("is_current", true),
     Promise.all(
       rules.map(async (r) => {
         const q =
           r.kind === "via_space"
-            ? supabase.from("v_zone_elements").select("element_id", { count: "exact", head: true }).eq("project_id", projectId)
+            ? supabase.from("v_zone_elements").select("element_id", { count: "exact", head: true })
             : supabase
                 .from("relationships")
                 .select("id", { count: "exact", head: true })
-                .eq("project_id", projectId)
                 .eq("source", r.source ?? "")
                 .is("valid_until", null);
         const { count } = await q;
@@ -109,7 +109,11 @@ async function fetchDerivationLayerImpl(projectId: string): Promise<DerivationsL
 }
 
 /** Stav vrstvy pre záložku AIM vo vieweri (ISR 60 s, tag `aim`, D-030). */
-export const fetchDerivationLayer = cachedProjectRead("derivation-layer", fetchDerivationLayerImpl);
+export const fetchDerivationLayer = unstable_cache(
+  fetchDerivationLayerImpl,
+  ["derivation-layer"],
+  AIM_CACHE
+);
 
 interface OtherObject {
   id: string;
@@ -126,7 +130,6 @@ interface OtherObject {
  * (prvok v IfcZone cez priestory). Na smer najviac `DERIVED_RELATIONS_CAP` riadkov.
  */
 export async function fetchDerivedRelations(
-  projectId: string,
   objectId: string
 ): Promise<{ relations: DerivedRelationWire[]; total: number }> {
   const supabase = getSupabaseAdmin();
@@ -141,7 +144,6 @@ export async function fetchDerivedRelations(
       ? supabase
           .from("rel_referenced_in_spatial_structure")
           .select("from_id, to_id, role, source")
-          .eq("project_id", projectId)
           .or(`from_id.eq.${objectId},to_id.eq.${objectId}`)
           .in("source", [...bySource.keys()])
           .is("valid_until", null)
@@ -151,7 +153,6 @@ export async function fetchDerivedRelations(
       ? supabase
           .from("v_zone_elements")
           .select("zone_id, element_id, via_space_ref, relation, role")
-          .eq("project_id", projectId)
           .or(`element_id.eq.${objectId},zone_id.eq.${objectId}`)
           .limit(DERIVED_RELATIONS_CAP * 2)
       : Promise.resolve({ data: [], error: null }),
@@ -207,7 +208,6 @@ export async function fetchDerivedRelations(
     const { data } = await supabase
       .from("objects")
       .select("id, object_ref, name, ifc_type, ifc_guid, predefined_type")
-      .eq("project_id", projectId)
       .in("id", ids);
     for (const o of (data ?? []) as OtherObject[]) others.set(o.id, o);
   }

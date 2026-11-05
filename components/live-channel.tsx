@@ -8,7 +8,7 @@ import { Radio } from "lucide-react";
 import { isSafeViewerUrl, mergeIfcActions, type AskAction } from "@/lib/llm/actions";
 import { LIVE_APPLIED_EVENT, LIVE_QUERY_EVENT, LIVE_REPLY_EVENT, channelFor, isCmdId, isLiveQuery, newViewerId, splitChannel, type LiveKind } from "@/lib/live/protocol";
 import { NO_OWNER, decideOwner, ownerFor, takeOver, type OwnerState } from "@/lib/live/owner";
-import { applyLive, deferCmdIds, parseIfcCommandUrl, sameProject, setAppliedSink } from "@/lib/live/viewer-apply-bus";
+import { applyLive, deferCmdIds, parseIfcCommandUrl, setAppliedSink } from "@/lib/live/viewer-apply-bus";
 import { BCF_CHANGED_WINDOW_EVENT, LIVE_BCF_EVENT } from "@/lib/live/bcf-event";
 import { LIVE_VIEWS_EVENT, VIEWS_CHANGED_WINDOW_EVENT } from "@/lib/live/views-event";
 import { LIVE_REVISION_EVENT, parseRevisionNotice, revisionToast } from "@/lib/live/revision";
@@ -69,26 +69,6 @@ function storeKind(kind: LiveKind) {
   }
 }
 
-const PROJECT_KEY = "aim-project";
-
-/**
- * Project of this tab (D-189): `?project=<code>` sticks in sessionStorage like `?live=` (the server
- * keeps it in the session cookie); `?project=` or `default` = the default project (null).
- */
-export function readProject(): string | null {
-  try {
-    const param = new URLSearchParams(window.location.search).get("project");
-    if (param !== null) {
-      const v = param.trim();
-      if (!v || v.toLowerCase() === "default") sessionStorage.removeItem(PROJECT_KEY);
-      else sessionStorage.setItem(PROJECT_KEY, v);
-    }
-    return sessionStorage.getItem(PROJECT_KEY);
-  } catch {
-    return new URLSearchParams(window.location.search).get("project") || null;
-  }
-}
-
 function readChannel(): string | null {
   try {
     const param = new URLSearchParams(window.location.search).get("live");
@@ -121,7 +101,6 @@ export function LiveChannel() {
 
   // Kanál z URL alebo karty sa číta až v prehliadači (sessionStorage).
   useEffect(() => {
-    readProject();
     const name = readChannel();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (name) setLive(splitChannel(name, readKind()));
@@ -151,14 +130,8 @@ export function LiveChannel() {
       const nav = mergeIfcActions(batch)[0];
       if (!nav) return;
       const inPlace = parseIfcCommandUrl(nav.url);
-      // Na /ifc s viewerom bez navigácie; URL sa prepíše, aby odkaz ostal zdieľateľný. Príkaz iného
-      // projektu (D-189) ide navigáciou, proxy prepne projekt.
-      if (
-        inPlace &&
-        window.location.pathname === "/ifc" &&
-        sameProject(inPlace.project, readProject()) &&
-        applyLive({ focus: inPlace.focus, ops: inPlace.ops, nonce: inPlace.nonce, cmdIds: ids })
-      ) {
+      // Na /ifc s viewerom bez navigácie; URL sa prepíše, aby odkaz ostal zdieľateľný.
+      if (inPlace && window.location.pathname === "/ifc" && applyLive({ ...inPlace, cmdIds: ids })) {
         window.history.replaceState(window.history.state, "", nav.url);
       } else {
         // Na /ifc z inej stránky: viewer príkaz z URL vykoná a potvrdí po načítaní.

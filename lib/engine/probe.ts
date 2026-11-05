@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { requestIfcModels } from "../project/request-models";
+import { getIfcModels } from "../data/ifc-models";
 
 import { cacheSnapshot, getStore } from "./cache";
 import { callEngineTool, type EngineModel } from "./session";
@@ -35,7 +35,7 @@ export async function runProbe(input: Record<string, unknown>): Promise<string> 
 
   const models: EngineModel[] = [];
   const load: Record<string, unknown> = {};
-  for (const src of requestIfcModels()) {
+  for (const src of getIfcModels()) {
     const r = await timed(() => getStore(src));
     models.push({ id: src.id, name: `${src.id}.ifc`, store: r.value.entry.store });
     load[src.id] = { ms: r.ms, cold: r.value.cold, loadMs: r.value.entry.loadMs, sizeMb: +(r.value.entry.size / 1048576).toFixed(1) };

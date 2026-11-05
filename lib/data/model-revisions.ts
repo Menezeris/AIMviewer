@@ -7,7 +7,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
  * Revízie modelov z `model_revisions` (D-086) pre `ifc_models` (D-109): aktuálna
  * revízia každého modelu a posledných `perModel` revízií, najnovšie prvé.
  */
-export async function fetchModelRevisions(projectId: string, models: string[], perModel: number): Promise<ModelRevisionRow[]> {
+export async function fetchModelRevisions(models: string[], perModel: number): Promise<ModelRevisionRow[]> {
   if (models.length === 0) return [];
   const columns = "model, revision, parent_revision, is_current, sha256, size_bytes, recipe_ref, summary, author, guard, created_at";
   const supabase = getSupabaseAdmin();
@@ -16,7 +16,6 @@ export async function fetchModelRevisions(projectId: string, models: string[], p
     const { data, error } = await supabase
       .from("model_revisions")
       .select(columns)
-      .eq("project_id", projectId)
       .eq("model", model)
       .order("revision", { ascending: false })
       .limit(Math.max(1, perModel));
@@ -26,7 +25,7 @@ export async function fetchModelRevisions(projectId: string, models: string[], p
   // Aktuálna nemusí byť najnovšia (návrat cez `model_publish revert`): dočítať ju zvlášť.
   const missing = models.filter((m) => !out.some((r) => r.model === m && r.is_current));
   if (missing.length > 0) {
-    const { data, error } = await supabase.from("model_revisions").select(columns).eq("project_id", projectId).in("model", missing).eq("is_current", true);
+    const { data, error } = await supabase.from("model_revisions").select(columns).in("model", missing).eq("is_current", true);
     if (error) throw new Error(`model_revisions: ${error.message}`);
     out.push(...((data ?? []) as ModelRevisionRow[]));
   }
@@ -43,11 +42,10 @@ export interface ElementChange {
 }
 
 /** Najnovšia téma (`model_tasks`) s prvkom vo výbere a zverejnenou revíziou; null = žiadna. */
-export async function fetchLastElementChange(projectId: string, guid: string): Promise<ElementChange | null> {
+export async function fetchLastElementChange(guid: string): Promise<ElementChange | null> {
   const { data, error } = await getSupabaseAdmin()
     .from("model_tasks")
     .select("model, title, result_revision, updated_at")
-    .eq("project_id", projectId)
     .contains("components", [guid])
     .not("result_revision", "is", null)
     .order("updated_at", { ascending: false })
@@ -60,11 +58,10 @@ export async function fetchLastElementChange(projectId: string, guid: string): P
 }
 
 /** Aktuálna revízia modelu (`model_revisions.is_current`) alebo null, keď model revíziu nemá. */
-export async function fetchCurrentRevision(projectId: string, model: string): Promise<number | null> {
+export async function fetchCurrentRevision(model: string): Promise<number | null> {
   const { data, error } = await getSupabaseAdmin()
     .from("model_revisions")
     .select("revision")
-    .eq("project_id", projectId)
     .eq("model", model)
     .eq("is_current", true)
     .maybeSingle();

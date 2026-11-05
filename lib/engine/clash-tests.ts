@@ -71,15 +71,6 @@ export const DEFAULT_TESTS: ClashTest[] = [
   },
 ];
 
-/**
- * Default tests that fit a project (D-189): both sides name models the project has. A project
- * without ASR or VZT gets none; no code may assume a model code exists.
- */
-export function defaultTestsFor(models: readonly string[]): ClashTest[] {
-  const has = (m?: string) => !m || models.includes(m);
-  return DEFAULT_TESTS.filter((t) => has(t.a.model) && has(t.b?.model));
-}
-
 export const findTest = (nameOrCode: string): ClashTest | undefined => {
   const want = nameOrCode.trim().toLowerCase();
   return DEFAULT_TESTS.find((t) => t.code.toLowerCase() === want || t.name.toLowerCase() === want);
