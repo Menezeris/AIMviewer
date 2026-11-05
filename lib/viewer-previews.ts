@@ -3,11 +3,11 @@ import "server-only";
 import { isAllowedViewerUrl, type ViewerPreview } from "./viewer-source";
 
 /**
- * Náhľady viewera z otvorených PR forku (D-116): GitHub Deployments API, kam
- * Vercel hlási každý náhľad (`environment: Preview`, `environment_url`). Fork je
- * verejný, stačí ľubovoľný token: `GITHUB_PREVIEWS_TOKEN`, inak token konektora
- * `FEEDBACK_GITHUB_TOKEN`. Výsledok sa cachuje 60 s, takže otvorené karty limit
- * nevyčerpajú.
+ * Viewer previews from open PRs of the fork (D-116): GitHub Deployments API, where
+ * Vercel reports each preview (`environment: Preview`, `environment_url`). The fork is
+ * public, any token will do: `GITHUB_PREVIEWS_TOKEN`, otherwise the connector token
+ * `FEEDBACK_GITHUB_TOKEN`. The result is cached for 60 s, so open tabs do not
+ * exhaust the limit.
  */
 
 const API = "https://api.github.com";
@@ -24,14 +24,14 @@ interface PullWire {
 type FetchLike = (url: string, init?: RequestInit & { next?: { revalidate?: number } }) => Promise<Response>;
 
 function headers(): HeadersInit {
-  // Bez tokenu má zdieľaná IP serverless funkcie 60 požiadaviek/h na všetkých
-  // zákazníkov Vercelu, takže limit býva vyčerpaný; token konektora (D-090)
-  // stačí, verejný fork vie čítať každý token.
+  // Without a token the shared IP of the serverless function has 60 requests/h across all
+  // Vercel customers, so the limit is usually exhausted; the connector token (D-090)
+  // is enough, any token can read the public fork.
   const token = (process.env.GITHUB_PREVIEWS_TOKEN ?? process.env.FEEDBACK_GITHUB_TOKEN)?.trim();
   return {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
-    // GitHub odmietne požiadavku bez User-Agent (403).
+    // GitHub rejects a request without a User-Agent (403).
     "User-Agent": "aim-viewer-previews",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
@@ -43,7 +43,7 @@ async function getJson<T>(fetchImpl: FetchLike, path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** URL posledného úspešného náhľadu pre commit, alebo null. */
+/** URL of the last successful preview for a commit, or null. */
 export async function previewUrlForSha(sha: string, fetchImpl: FetchLike = fetch): Promise<string | null> {
   const deployments = await getJson<{ id: number }[]>(
     fetchImpl,
@@ -55,13 +55,13 @@ export async function previewUrlForSha(sha: string, fetchImpl: FetchLike = fetch
       `/repos/${FORK_REPO}/deployments/${d.id}/statuses?per_page=1`,
     );
     const url = statuses[0]?.state === "success" ? statuses[0].environment_url : undefined;
-    // Len náhľad nášho Vercel projektu; čokoľvek iné z API sa nevloží.
+    // Only a preview of our Vercel project; anything else from the API is not embedded.
     if (url && isAllowedViewerUrl(url)) return url;
   }
   return null;
 }
 
-/** Otvorené PR forku s náhľadom hlavy (najnovšie prvé, max 20). */
+/** Open PRs of the fork with a head preview (newest first, max 20). */
 export async function listViewerPreviews(fetchImpl: FetchLike = fetch): Promise<ViewerPreview[]> {
   const pulls = await getJson<PullWire[]>(
     fetchImpl,
@@ -78,7 +78,7 @@ export async function listViewerPreviews(fetchImpl: FetchLike = fetch): Promise<
   );
 }
 
-/** Náhľad jedného PR (aj zatvoreného: odkaz z neho funguje, kým náhľad žije). */
+/** Preview of one PR (also a closed one: the link from it works while the preview lives). */
 export async function previewForPull(number: number, fetchImpl: FetchLike = fetch): Promise<ViewerPreview | null> {
   let p: PullWire;
   try {

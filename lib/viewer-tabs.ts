@@ -1,13 +1,13 @@
 /**
- * Záložky viewera a rezný box (D-132, #165): viewer op `tab` a `section_box`.
+ * Viewer tabs and section box (D-132, #165): viewer ops `tab` and `section_box`.
  *
- * `tab:<action>:<base64url JSON>` = `VIEW_TABS` forku. JSON nesie odkaz na záložku
- * (`tab`), otvorenie (`open`: pôdorys podlažia alebo uložený pohľad) a `beside`.
- * Menovky a mená pohľadov môžu mať `:` aj `;`, preto sú v base64url ako Lens (D-096).
- * `tab:layout:<base64url JSON>` = dlaždice (D-157): `layout` a `tiles` (`{tab}` menovka, `{plan}` GUID
- * podlažia, `{view}` id pohľadu z Presentation, null prázdna); voliteľne `ratio` alebo `sizes` (pomer dlaždíc, D-172).
- * `section_box:<m>:<guid.guid...>` = box okolo prvkov s okrajom `m` metrov,
- * `section_box:<minx,miny,minz,maxx,maxy,maxz>:` = presná obálka v IFC svete (obnova D-122).
+ * `tab:<action>:<base64url JSON>` = `VIEW_TABS` of the fork. The JSON carries a reference to the tab
+ * (`tab`), opening (`open`: storey floor plan or saved view) and `beside`.
+ * Labels and view names may contain `:` and `;`, so they are base64url like Lens (D-096).
+ * `tab:layout:<base64url JSON>` = tiles (D-157): `layout` and `tiles` (`{tab}` label, `{plan}` GUID
+ * of the storey, `{view}` id of a Presentation view, null empty); optionally `ratio` or `sizes` (tile ratio, D-172).
+ * `section_box:<m>:<guid.guid...>` = box around the elements with margin `m` meters,
+ * `section_box:<minx,miny,minz,maxx,maxy,maxz>:` = exact bounds in the IFC world (restore D-122).
  */
 
 import { fromBase64Url, toBase64Url } from "./viewer-lens";
@@ -23,7 +23,7 @@ export interface TabOpen {
   locked?: boolean;
 }
 
-/** Rozloženia dlaždíc (D-157), rovnaké ako `TILE_LAYOUTS` forku (`aim/viewTilesPlan.ts`). */
+/** Tile layouts (D-157), same as `TILE_LAYOUTS` of the fork (`aim/viewTilesPlan.ts`). */
 export const TILE_LAYOUTS = [
   "single", "split_h", "split_v",
   "three_left", "three_right", "three_top", "three_bottom", "three_h", "three_v",
@@ -37,19 +37,19 @@ export const TILE_COUNTS: Record<TileLayout, number> = {
 };
 
 /**
- * Počet podielov `sizes` podľa rozloženia (D-172, fork `viewTilesPlan.ts`): dvojica pri delení na dve a pri
- * rozloženiach s veľkou dlaždicou (prvá hodnota = veľká), trojica pri `three_h` / `three_v`. `single` a
- * `grid4` pomer nemajú.
+ * Number of `sizes` shares by layout (D-172, fork `viewTilesPlan.ts`): a pair for a split into two and for
+ * layouts with a large tile (first value = large), a triple for `three_h` / `three_v`. `single` and
+ * `grid4` have no ratio.
  */
 export const SIZE_COUNTS: Partial<Record<TileLayout, number>> = {
   split_h: 2, split_v: 2, three_left: 2, three_right: 2, three_top: 2, three_bottom: 2, three_h: 3, three_v: 3,
 };
-/** Pod touto hranicou podielu viewer dlaždicu zdvihne a povie to v `APPLIED.issues` (host ju nemení). */
+/** Below this share threshold the viewer raises the tile and says so in `APPLIED.issues` (the host does not change it). */
 export const MIN_TILE_SHARE = 0.1;
 
 /**
- * Pomer dlaždíc (D-172): `ratio` (0 < r < 1, podiel prvej dlaždice, len rozloženia s 2 podielmi) alebo `sizes`
- * (váhy, počet podľa `SIZE_COUNTS`); naraz len jedno. Vráti chybu po slovensky alebo normalizovaný zápis.
+ * Tile ratio (D-172): `ratio` (0 < r < 1, share of the first tile, only layouts with 2 shares) or `sizes`
+ * (weights, count per `SIZE_COUNTS`); only one at a time. Returns an error in Slovak or a normalized notation.
  */
 export function checkTileSizes(layout: TileLayout, ratio: unknown, sizes: unknown): { error: string } | { ratio?: number; sizes?: number[] } {
   if (ratio === undefined && sizes === undefined) return {};
@@ -66,7 +66,7 @@ export function checkTileSizes(layout: TileLayout, ratio: unknown, sizes: unknow
   return { sizes: sizes as number[] };
 }
 
-/** Dlaždica na drôte: otvorená záložka, pôdorys podlažia (GUID), pohľad z Presentation (id, D-161) alebo prázdna. */
+/** Tile on the wire: an open tab, storey floor plan (GUID), Presentation view (id, D-161) or empty. */
 export type TileWire = { tab: string } | { plan: string } | { view: string } | null;
 
 export interface TabsWire {
@@ -75,7 +75,7 @@ export interface TabsWire {
   beside?: boolean;
   layout?: TileLayout;
   tiles?: TileWire[];
-  /** Pomer dlaždíc (D-172): len jedno z `ratio` / `sizes`; chýba = polovice a tretiny. */
+  /** Tile ratio (D-172): only one of `ratio` / `sizes`; missing = halves and thirds. */
   ratio?: number;
   sizes?: number[];
 }
@@ -87,7 +87,7 @@ export type TabsOp =
   | { op: "tab"; action: TabAction; wire: TabsWire }
   | { op: "section_box"; guids?: string[]; marginM?: number; box?: Box3 };
 
-/** Okraj boxu okolo prvkov (m) - rovnaký rozsah ako most forku. */
+/** Margin of the box around elements (m) - same range as the fork bridge. */
 export const BOX_MARGIN_RANGE = { min: 0, max: 20 } as const;
 const MAX_BOX_GUIDS = 100;
 const LIMIT = 1e7;
@@ -150,7 +150,7 @@ function finite(v: string | undefined, min: number, max: number): number | undef
   return Number.isFinite(n) && n >= min && n <= max ? n : undefined;
 }
 
-/** `tab` / `section_box` z wire formátu; null = neplatné (op sa preskočí). */
+/** `tab` / `section_box` from the wire format; null = invalid (the op is skipped). */
 export function parseTabsOp(op: string, arg: string, joined: string): TabsOp | null {
   if (op === "tab") {
     if (!(TAB_ACTIONS as readonly string[]).includes(arg)) return null;
@@ -182,7 +182,7 @@ export function sectionBoxOp(box: Box3): string {
   return `section_box:${[box.min.x, box.min.y, box.min.z, box.max.x, box.max.y, box.max.z].map(r).join(",")}:`;
 }
 
-/** Op -> bridge správa forku (`apps/viewer/src/aim/tabs-protocol.ts`, `sectionBox.ts`). */
+/** Op -> bridge message of the fork (`apps/viewer/src/aim/tabs-protocol.ts`, `sectionBox.ts`). */
 export function tabsBridgeMessage(o: TabsOp): Record<string, unknown> {
   if (o.op === "tab") return { type: "VIEW_TABS", action: o.action, ...o.wire };
   return o.box

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { hasRelativeStep, relativeViewpoint, visibleArea, type ViewerCamera } from "./viewer-camera";
 import { appliedText } from "./live/applied-text";
 
-/** Kamera 10 m južne od cieľa vo výške cieľa, pohľad na sever (IFC: Y sever, Z hore). */
+/** Camera 10 m south of the target at target height, looking north (IFC: Y north, Z up). */
 const SOUTH: ViewerCamera = {
   position: { x: 0, y: -10, z: 0 },
   target: { x: 0, y: 0, z: 0 },
@@ -32,7 +32,7 @@ describe("relativeViewpoint (D-098)", () => {
   });
 
   it("orbit_h kladný = kamera obehne cieľ doľava", () => {
-    // Pri pohľade na sever je vľavo západ (-X).
+    // Looking north, west (-X) is on the left.
     const vp = relativeViewpoint(SOUTH, { orbitH: 90 });
     close(vp.position, -10, 0, 0);
     close(vp.target, 0, 0, 0);
@@ -54,7 +54,7 @@ describe("relativeViewpoint (D-098)", () => {
   });
 
   it("posun o % šírky a výšky pohľadu presunie kameru aj cieľ", () => {
-    // fov 90° na 10 m: polovica výšky 10 m, šírky 20 m; doprava = +X, hore = +Z.
+    // fov 90° at 10 m: half height 10 m, width 20 m; right = +X, up = +Z.
     const vp = relativeViewpoint(SOUTH, { panX: 10, panY: -10 });
     close(vp.target, 4, 0, -2);
     close(vp.position, 4, -10, -2);
@@ -73,7 +73,7 @@ describe("visibleArea (D-128)", () => {
     expect(v.height_m).toBeCloseTo(20, 3);
     expect(v.width_m).toBeCloseTo(40, 3);
     close(v.center, 0, 0, 0);
-    // Pohľad na sever: doprava = východ (+X), hore = +Z.
+    // Looking north: right = east (+X), up = +Z.
     close(v.right, 1, 0, 0);
     close(v.up, 0, 0, 1);
   });

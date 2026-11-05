@@ -1,11 +1,11 @@
 /**
- * Import `.bcfzip` z BCF panela viewera do DB (D-158 krok 8, dodatok 1. 11.): wire formát správ
- * `BCF_IMPORT` (viewer -> host) a `BCF_IMPORTED` (host -> viewer), zrkadlo `apps/viewer/src/aim/` vo forku.
- * Viewer nemá vlastný token: súbor pošle hostu cez most a host ho zapíše cez `/api/bcf/viewer-import`
- * (env brána, origin guard, rate limit), tou istou cestou ako `bcf_topic action=import` (#372).
+ * Import of `.bcfzip` from the viewer's BCF panel into the DB (D-158 step 8, addendum 1 Nov): wire format of messages
+ * `BCF_IMPORT` (viewer -> host) and `BCF_IMPORTED` (host -> viewer), mirror of `apps/viewer/src/aim/` in the fork.
+ * The viewer has no token of its own: it sends the file to the host via the bridge and the host writes it through `/api/bcf/viewer-import`
+ * (env gate, origin guard, rate limit), the same way as `bcf_topic action=import` (#372).
  */
 
-/** Limit tela funkcie na Verceli; väčší súbor ide cez chat (`bcf_topic action=import` s url). */
+/** Function body limit on Vercel; a larger file goes via chat (`bcf_topic action=import` with url). */
 export const BCF_VIEWER_IMPORT_MAX_BYTES = 4_400_000;
 
 export interface BcfImportRequest {
@@ -30,7 +30,7 @@ export interface BcfImportSummaryWire {
 
 export type BcfImportResult = { ok: true; summary: BcfImportSummaryWire } | { ok: false; error: string };
 
-/** Správa `BCF_IMPORT` po overení tvaru; null = neplatná (nič sa neodošle). */
+/** `BCF_IMPORT` message after shape validation; null = invalid (nothing is sent). */
 export function parseBcfImport(raw: unknown): BcfImportRequest | null {
   if (!raw || typeof raw !== "object") return null;
   const m = raw as Record<string, unknown>;
@@ -43,7 +43,7 @@ export function parseBcfImport(raw: unknown): BcfImportRequest | null {
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
-/** Súhrn importu (ImportSummary z lib/bcf/import) zúžený na to, čo viewer ukáže; témy jednotlivo neposiela. */
+/** Import summary (ImportSummary from lib/bcf/import) narrowed to what the viewer shows; topics are not sent individually. */
 export function summaryToWire(s: Record<string, unknown>): BcfImportSummaryWire {
   return {
     dry_run: s.dry_run === true,

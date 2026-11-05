@@ -1,22 +1,22 @@
 /**
- * Vzhľad reznej plochy z chatu (D-120, #138; vzor šrafy D-128, #173): op `section_cap`
- * v `/ifc?ops=`, jej preklad na bridge správu `SET_SECTION_CAP` forku viewera
- * (`apps/viewer/src/aim/sectionCap.ts`) a plán z parametrov `set_section`
- * (`cap_style`, `cap_color`, `hatch_*`). Fork volá tie isté setery ako tlačidlo Fill slice
- * a popover Cap, takže voľba platí pre všetky roviny a viewer si ju pamätá. Bez závislostí.
+ * Appearance of the section cap from chat (D-120, #138; hatch pattern D-128, #173): op `section_cap`
+ * in `/ifc?ops=`, its translation to the bridge message `SET_SECTION_CAP` of the viewer fork
+ * (`apps/viewer/src/aim/sectionCap.ts`) and the plan from the `set_section` parameters
+ * (`cap_style`, `cap_color`, `hatch_*`). The fork calls the same setters as the Fill slice button
+ * and the Cap popover, so the choice applies to all planes and the viewer remembers it. No dependencies.
  *
- * Op: `section_cap:<none|solid|hatch>[~c=<rrggbb>][~p=<vzor>~a=<°>[~a2=<°>]~s=<px>~w=<px>]:`
- * (vzor a uhly sú už vo forme renderera, mapovanie z `hatch_pattern` robí host).
+ * Op: `section_cap:<none|solid|hatch>[~c=<rrggbb>][~p=<pattern>~a=<°>[~a2=<°>]~s=<px>~w=<px>]:`
+ * (the pattern and angles are already in the renderer's form, the mapping from `hatch_pattern` is done by the host).
  */
 
 export const SECTION_CAPS = ["hatch", "solid", "none"] as const;
 export type SectionCap = (typeof SECTION_CAPS)[number];
 
-/** Vzory šrafy, ktoré kreslí renderer forku (`HATCH_PATTERN_IDS`, okrem `solid`). */
+/** Hatch patterns drawn by the fork renderer (`HATCH_PATTERN_IDS`, except `solid`). */
 export const RENDER_HATCHES = ["diagonal", "crossHatch", "horizontal", "vertical", "concrete", "brick", "insulation"] as const;
 export type RenderHatch = (typeof RENDER_HATCHES)[number];
 
-/** Vzory pre model (D-128); `dots` = betón (bodky), krížové sú dve sady čiar. */
+/** Patterns for the model (D-128); `dots` = concrete (dots), cross ones are two sets of lines. */
 export const HATCH_PATTERNS = [
   "diagonal",
   "diagonal_reverse",
@@ -30,17 +30,17 @@ export const HATCH_PATTERNS = [
 ] as const;
 export type HatchPattern = (typeof HATCH_PATTERNS)[number];
 
-/** Rozsahy ako v popoveri Cap forku (`SectionCapControls`). */
+/** Ranges as in the fork's Cap popover (`SectionCapControls`). */
 export const HATCH_RANGES = {
   angleDeg: { min: -180, max: 180 },
   spacingPx: { min: 2, max: 64 },
   widthPx: { min: 1, max: 16 },
 } as const;
 
-/** Predvolené hodnoty upstreamu (`DEFAULT_CAP_STYLE`): diagonála 45°, 8 px, 1 px. */
+/** Upstream defaults (`DEFAULT_CAP_STYLE`): diagonal 45°, 8 px, 1 px. */
 export const HATCH_DEFAULTS = { pattern: "diagonal" as HatchPattern, angleDeg: 45, spacingPx: 8, widthPx: 1 };
 
-/** Vzor modelu -> vzor renderera a predvolený uhol; uhol majú len čiarové vzory s natočením. */
+/** Model pattern -> renderer pattern and default angle; only line patterns with rotation have an angle. */
 const PATTERN_MAP: Record<HatchPattern, { render: RenderHatch; angle?: number }> = {
   diagonal: { render: "diagonal", angle: 45 },
   diagonal_reverse: { render: "diagonal", angle: 45 },
@@ -55,9 +55,9 @@ const PATTERN_MAP: Record<HatchPattern, { render: RenderHatch; angle?: number }>
 
 export interface HatchSpec {
   pattern: RenderHatch;
-  /** Uhol v stupňoch ako pole Uhol v popoveri Cap (len diagonal a crossHatch). */
+  /** Angle in degrees as the Angle field in the Cap popover (only diagonal and crossHatch). */
   angleDeg?: number;
-  /** Druhá sada čiar (crossHatch). */
+  /** Second set of lines (crossHatch). */
   secondaryAngleDeg?: number;
   spacingPx: number;
   widthPx: number;
@@ -68,7 +68,7 @@ export interface SectionCapOp {
   cap: SectionCap;
   /** `#rrggbb` */
   fillColor?: string;
-  /** Len pri `hatch` (D-128); bez neho fork vráti uloženú šrafu (staré správanie D-120). */
+  /** Only with `hatch` (D-128); without it the fork returns the saved hatch (old behavior D-120). */
   hatch?: HatchSpec;
 }
 
@@ -92,7 +92,7 @@ function num(raw: string | undefined, range: { min: number; max: number }): numb
   return raw !== "" && Number.isFinite(n) && n >= range.min && n <= range.max ? n : null;
 }
 
-/** Argument op `section_cap`; chybný = null (vstup je z URL). */
+/** Argument of the `section_cap` op; faulty = null (input is from the URL). */
 export function parseSectionCapArg(arg: string): SectionCapOp | null {
   const [cap, ...rest] = arg.split("~");
   if (!(SECTION_CAPS as readonly string[]).includes(cap)) return null;
@@ -130,7 +130,7 @@ export function sectionCapBridgeMessage(o: SectionCapOp): Record<string, unknown
     type: "SET_SECTION_CAP",
     cap: o.cap,
     ...(o.fillColor ? { fillColor: o.fillColor } : {}),
-    // Starší fork tieto polia ignoruje a vráti uloženú šrafu.
+    // An older fork ignores these fields and returns the saved hatch.
     ...(o.hatch ? { ...o.hatch } : {}),
   };
 }
@@ -161,7 +161,7 @@ function rangedNumber(raw: unknown, name: string, range: { min: number; max: num
   return raw;
 }
 
-/** `hatch_*` zo vstupu -> šrafa renderera a pole výsledku (D-128). */
+/** `hatch_*` from input -> renderer hatch and result field (D-128). */
 function planHatch(input: Record<string, unknown>): { spec: HatchSpec; result: Record<string, unknown>; label: string } | { error: string } {
   const rawPattern = input.hatch_pattern ?? HATCH_DEFAULTS.pattern;
   if (!(HATCH_PATTERNS as readonly unknown[]).includes(rawPattern)) {
@@ -182,9 +182,9 @@ function planHatch(input: Record<string, unknown>): { spec: HatchSpec; result: R
   let secondaryAngleDeg: number | undefined;
   if (map.angle !== undefined) {
     const base = (angle as number | undefined) ?? map.angle;
-    // Opačná diagonála je zrkadlo: 45° -> -45°.
+    // The opposite diagonal is a mirror: 45° -> -45°.
     angleDeg = pattern === "diagonal_reverse" ? -base : base;
-    // Druhá sada krížovej šrafy je kolmá na prvú.
+    // The second set of a cross hatch is perpendicular to the first.
     if (map.render === "crossHatch") secondaryAngleDeg = angleDeg - 90;
   }
   return {
@@ -206,8 +206,8 @@ function planHatch(input: Record<string, unknown>): { spec: HatchSpec; result: R
 }
 
 /**
- * `cap_style`, `cap_color` a `hatch_*` zo vstupu `set_section` -> op, popis a pole výsledku;
- * bez nich null. Chybu vráti ako text, typ chyby volí volajúci.
+ * `cap_style`, `cap_color` and `hatch_*` from the `set_section` input -> op, description and result field;
+ * null without them. It returns the error as text, the caller chooses the error type.
  */
 export function planSectionCap(input: Record<string, unknown>): Plan | null {
   const style = input.cap_style;
@@ -222,12 +222,12 @@ export function planSectionCap(input: Record<string, unknown>): Plan | null {
     hex = typeof color === "string" ? color.trim().replace(/^#/, "") : "";
     if (!HEX6.test(hex)) return { error: "cap_color musí byť farba #rrggbb, napr. #ffffff." };
   }
-  // Parametre šrafy znamenajú šrafu; samotná farba plnú výplň tou farbou.
+  // Hatch parameters mean a hatch; a color alone means a solid fill in that color.
   const cap = (style ?? (hatchGiven ? "hatch" : "solid")) as SectionCap;
   if (cap === "none" && hex) return { error: "cap_color nemá zmysel s cap_style=none." };
   if (cap !== "hatch" && hatchGiven) return { error: `hatch_* parametre platia len pre cap_style=hatch, nie ${cap}.` };
   const fill = hex ? `#${hex.toLowerCase()}` : undefined;
-  // Šrafa ide vždy s vzorom (predvolene diagonála 45°), aby nezávisela od voľby uloženej v prehliadači (#173).
+  // A hatch always goes with a pattern (default diagonal 45°), so that it does not depend on the choice stored in the browser (#173).
   const hatch = cap === "hatch" ? planHatch(input) : null;
   if (hatch && "error" in hatch) return hatch;
   return {

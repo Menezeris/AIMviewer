@@ -1,11 +1,11 @@
 /**
- * Overenie výmer vo vieweri (D-185 UI): most pre fajočky v paneli vlastností a ribbon AIM > Overovanie.
- * Vzor `REQLIB_REQUEST` (D-182, `lib/viewer-reqlib.ts`), tvar dát je záväzný vo forku `aim/verify-protocol.ts`.
+ * Verification of quantities in the viewer (D-185 UI): bridge for the checkmarks in the properties panel and the ribbon AIM > Overovanie (Verification).
+ * Pattern of `REQLIB_REQUEST` (D-182, `lib/viewer-reqlib.ts`), the data shape is binding in the fork `aim/verify-protocol.ts`.
  *
  * Viewer -> host `VERIFY_REQUEST {id, action, payload}`, host -> viewer `VERIFY_RESULT {id, ok, data?, error?}`:
  *  - `latest`  {global_id} -> `GET /api/verify/latest` (`VerifyElementWire | null`);
- *  - `run`     {global_id} -> `POST /api/verify/run` (overí a uloží k revízii);
- *  - `run_all` {check}     -> `POST /api/verify/run_all` (všetky IfcSpace, súhrn); z jednej karty len jeden naraz.
+ *  - `run`     {global_id} -> `POST /api/verify/run` (verifies and saves against the revision);
+ *  - `run_all` {check}     -> `POST /api/verify/run_all` (all IfcSpace, summary); only one at a time from one card.
  */
 
 export const VERIFY_ACTIONS = ["latest", "run", "run_all"] as const;
@@ -33,9 +33,9 @@ export function parseVerifyRequest(raw: unknown): VerifyRequest | null {
 
 export interface VerifyDeps {
   fetch: typeof fetch;
-  /** Správa do viewera (host doplní `source`). */
+  /** Message to the viewer (the host fills in `source`). */
   post: (msg: Record<string, unknown>) => void;
-  /** Stav "run_all beží" pre túto kartu (druhý beh sa odmietne bez volania servera). */
+  /** State "run_all is running" for this card (a second run is rejected without calling the server). */
   runAll: { busy: boolean };
 }
 
@@ -55,7 +55,7 @@ function guidOf(req: VerifyRequest): string {
   return g;
 }
 
-/** Vykoná žiadosť a pošle `VERIFY_RESULT` (aj pri chybe, aby viewer nečakal do limitu). */
+/** Executes the request and sends `VERIFY_RESULT` (also on error, so the viewer does not wait until the limit). */
 export async function runVerifyRequest(req: VerifyRequest, deps: VerifyDeps): Promise<void> {
   const reply = (r: { ok: boolean; data?: unknown; error?: string }) => deps.post({ type: "VERIFY_RESULT", id: req.id, ...r });
   try {

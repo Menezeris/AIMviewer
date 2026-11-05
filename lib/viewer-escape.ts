@@ -1,13 +1,13 @@
 /**
- * Esc v hoste zruší zvýraznenie z show_in_3d (#94).
- * Po show_in_3d je fokus v chate hosta, takže Esc do iframe viewera nepríde.
+ * Esc in the host cancels the highlight from show_in_3d (#94).
+ * After show_in_3d the focus is in the host chat, so Esc does not reach the viewer iframe.
  */
 
-/** Selektor otvoreného dialógu alebo popoveru (Radix/shadcn): Esc patrí jemu, nie viewerovi. */
+/** Selector of an open dialog or popover (Radix/shadcn): Esc belongs to it, not to the viewer. */
 export const OPEN_OVERLAY_SELECTOR =
   '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]';
 
-/** Cieľ udalosti, ktorý píše text: Esc tam patrí poľu (zrušenie úpravy, zatvorenie návrhov). */
+/** Event target that takes text input: Esc belongs to the field there (cancelling an edit, closing suggestions). */
 const EDITABLE_SELECTOR = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 
 export interface EscapeEventLike {
@@ -17,7 +17,7 @@ export interface EscapeEventLike {
   target: EventTarget | null;
 }
 
-/** Čistá podmienka: má Esc poslať CLEAR_FOCUS do viewera? `overlayOpen` = je otvorený dialóg alebo popover. */
+/** Pure condition: should Esc send CLEAR_FOCUS to the viewer? `overlayOpen` = a dialog or popover is open. */
 export function shouldClearFocusOnEscape(e: EscapeEventLike, overlayOpen: boolean): boolean {
   if (e.key !== "Escape" || e.defaultPrevented || e.isComposing || overlayOpen) return false;
   const t = e.target as Element | null;

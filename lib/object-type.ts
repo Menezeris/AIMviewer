@@ -1,26 +1,26 @@
 import type { SpatialType } from "@/lib/data/spatial";
 
-/** Všetky typy uzlov, ktoré Viewer vie zobraziť (D-018). */
+/** All node types the Viewer can display (D-018). */
 export type ObjectType =
   | SpatialType
   | "asset_type"
   | "person"
   | "organization"
   | "document"
-  // Časť dokumentu (IfcDocumentReference, napr. strana výpisu skladieb, D-104).
+  // Part of a document (IfcDocumentReference, e.g. a page of the assembly schedule, D-104).
   | "document_reference"
   | "system"
-  // Projekt, zóny a skupiny z IFC (D-088): IfcProject, IfcZone, IfcSpatialZone, IfcGroup.
+  // Project, zones and groups from the IFC (D-088): IfcProject, IfcZone, IfcSpatialZone, IfcGroup.
   | "project"
   | "zone"
   | "spatial_zone"
   | "group";
 
-/** Skupinové uzly s členmi alebo časťami (systém D-047, projekt/zóny/skupiny D-088). */
+/** Group nodes with members or parts (system D-047, project/zones/groups D-088). */
 export const GROUP_LIKE_TYPES = ["system", "project", "zone", "spatial_zone", "group"] as const;
 export type GroupLikeType = (typeof GROUP_LIKE_TYPES)[number];
 
-/** Slovenské labely typov uzlov (zobrazenie vo Viewerі). */
+/** Slovak labels of node types (displayed in the Viewer). */
 export const OBJECT_TYPE_LABEL: Record<ObjectType, string> = {
   site: "Areál",
   building: "Budova",
@@ -39,7 +39,7 @@ export const OBJECT_TYPE_LABEL: Record<ObjectType, string> = {
   group: "Skupina",
 };
 
-/** Labely `IfcSpatialZoneTypeEnum` (predefined_type priestorovej zóny, D-088). */
+/** Labels of `IfcSpatialZoneTypeEnum` (predefined_type of a spatial zone, D-088). */
 export const SPATIAL_ZONE_TYPE_LABEL: Record<string, string> = {
   FIRESAFETY: "požiarny úsek",
   THERMAL: "energetická zóna",
@@ -53,7 +53,7 @@ export const SPATIAL_ZONE_TYPE_LABEL: Record<string, string> = {
   INTERFERENCE: "interferencia",
 };
 
-/** Labely `IfcDistributionSystemEnum` (predefined_type systému, D-047). */
+/** Labels of `IfcDistributionSystemEnum` (predefined_type of a system, D-047). */
 export const SYSTEM_TYPE_LABEL: Record<string, string> = {
   VENTILATION: "vetranie",
   EXHAUST: "odvod",
@@ -64,7 +64,7 @@ export const SYSTEM_TYPE_LABEL: Record<string, string> = {
   DRAINAGE: "kanalizácia",
 };
 
-/** Acting roly zo `rel_assigns_to_actor.role` (D-020, IfcActorRole). */
+/** Acting roles from `rel_assigns_to_actor.role` (D-020, IfcActorRole). */
 export const ACTING_ROLE_LABEL: Record<string, string> = {
   owner: "vlastník",
   operator: "prevádzkovateľ",
@@ -72,14 +72,14 @@ export const ACTING_ROLE_LABEL: Record<string, string> = {
   manufacturer: "výrobca",
 };
 
-/** Roly dokumentovej väzby `rel_associates_document.role` (D-014). */
+/** Roles of the document link `rel_associates_document.role` (D-014). */
 export const DOC_ROLE_LABEL: Record<string, string> = {
   manual: "manuál",
   certificate: "certifikát",
   "as-built": "as-built",
 };
 
-/** Preloží rolu cez mapu; neznámu rolu vráti tak ako je. `null` ostáva `null`. */
+/** Translates a role via the map; an unknown role is returned as is. `null` stays `null`. */
 export function roleLabel(
   map: Record<string, string>,
   role: string | null | undefined

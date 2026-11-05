@@ -1,11 +1,11 @@
 /**
- * Pohľady z panela Presentation (D-161, #188): wire formát správ `VIEWS_LOAD`, `VIEW_SAVE`, `VIEW_RENAME`,
- * `VIEW_DELETE`, `VIEW_ACTIVATE`, `VIEW_CAPTURE` (zrkadlo `apps/viewer/src/aim/views-protocol.ts` vo forku) a
- * viewer ops `view_activate` a `view_capture`, ktorými ich vydáva chat.
+ * Views from the Presentation panel (D-161, #188): wire format of messages `VIEWS_LOAD`, `VIEW_SAVE`, `VIEW_RENAME`,
+ * `VIEW_DELETE`, `VIEW_ACTIVATE`, `VIEW_CAPTURE` (mirror of `apps/viewer/src/aim/views-protocol.ts` in the fork) and
+ * the viewer ops `view_activate` and `view_capture`, by which the chat issues them.
  *
- * Nositeľom pohľadu je `BasketView` upstreamu, trvalou kópiou riadok `saved_views` s tým istým `id`; do
- * `viewpoint` jsonb sa ukladá celý `ViewWire` (bez migrácie). Súradnice sú v IFC svete (m, Z hore),
- * košík ako IFC GlobalId, náhľady sa nenosia (D-135).
+ * The carrier of a view is upstream's `BasketView`, the permanent copy is a `saved_views` row with the same `id`; into
+ * the `viewpoint` jsonb the whole `ViewWire` is stored (no migration). Coordinates are in the IFC world (m, Z up),
+ * the basket as IFC GlobalIds, thumbnails are not carried (D-135).
  *
  * Ops: `view_activate::<base64url JSON {id?, name?}>`, `view_capture::<base64url JSON {name?, capture_id?}>`.
  */
@@ -15,7 +15,7 @@ import { isViewUnderlays, type ViewUnderlaysWire } from "./viewer-underlays";
 
 export const VIEWS_SOURCE = "aim-bridge" as const;
 export const MAX_VIEWS = 500;
-/** Strop zoznamu GUID v jednom pohľade; väčší košík ide ako `truncated`. */
+/** Cap on the GUID list in one view; a larger basket goes as `truncated`. */
 export const MAX_BASKET_GUIDS = 5000;
 const MAX_TEXT = 200;
 
@@ -33,10 +33,10 @@ export interface ViewCameraWire {
 
 export interface ViewSectionPlaneWire {
   name: string;
-  /** Os hosta: x = IFC X, y = IFC Z (výška), z = IFC Y. */
+  /** Host axes: x = IFC X, y = IFC Z (height), z = IFC Y. */
   axis: "x" | "y" | "z";
   position_percent: number;
-  /** IFC m; presnejšia než percento a prežije novú revíziu modelu. */
+  /** IFC m; more precise than a percentage and survives a new model revision. */
   coordinate?: number;
   flipped: boolean;
   enabled: boolean;
@@ -48,11 +48,11 @@ export interface ViewSectionPlaneWire {
 
 export interface ViewSectionWire {
   planes: ViewSectionPlaneWire[];
-  /** Index aktívnej roviny v `planes`. */
+  /** Index of the active plane in `planes`. */
   active: number;
 }
 
-/** `all` = všetko viditeľné okrem `hidden_guids`; `guids` = zoznam (najviac 5000). */
+/** `all` = everything visible except `hidden_guids`; `guids` = list (at most 5000). */
 export type ViewBasketWire =
   | { scope: "all"; hidden_guids: string[] }
   | { scope: "guids"; guids: string[]; truncated?: boolean };
@@ -61,18 +61,18 @@ export interface ViewWire {
   /** = `saved_views.id` = `BasketView.id` (UUID). */
   id: string;
   name: string;
-  /** Poradie v páse Presentation (0 = prvý). */
+  /** Order in the Presentation strip (0 = first). */
   order: number;
   transition_ms: number | null;
   source: ViewSource;
   camera: ViewCameraWire | null;
   section: ViewSectionWire | null;
   basket: ViewBasketWire;
-  /** Počet prvkov košíka pri uložení (informatívne). */
+  /** Number of basket elements at save time (informative). */
   objects: number;
   /**
-   * Stav podkladov PDF v 3D (D-168, #325): viewer ho pri uložení zachytí a pri aktivácii obnoví. Chýba v pohľadoch
-   * uložených starým viewerom; pohľad bez neho stav podkladov nemení.
+   * State of PDF underlays in 3D (D-168, #325): the viewer captures it on save and restores it on activation. Missing in views
+   * saved by an old viewer; a view without it does not change the underlay state.
    */
   underlays?: ViewUnderlaysWire;
 }
@@ -119,7 +119,7 @@ function isBasket(v: unknown): boolean {
   return v.scope === "guids" && isStrings(v.guids, MAX_BASKET_GUIDS) && optional(v.truncated, isBool);
 }
 
-/** Tvar pohľadu na drôte (rovnaká kontrola ako vo forku; neplatný riadok zahodí celú správu). */
+/** Shape of a view on the wire (same check as in the fork; an invalid row drops the whole message). */
 export function isViewWire(v: unknown): v is ViewWire {
   if (!isObj(v)) return false;
   return (
@@ -130,7 +130,7 @@ export function isViewWire(v: unknown): v is ViewWire {
   );
 }
 
-/** Správy viewera -> host (post na parent). */
+/** Viewer messages -> host (post to parent). */
 export type ViewsOutbound =
   | { type: "VIEW_SAVE"; view: unknown; capture_id?: unknown }
   | { type: "VIEW_RENAME"; id: unknown; name: unknown }
@@ -152,7 +152,7 @@ export function viewCaptureOp(req: { name?: string; capture_id?: string } = {}):
   return `view_capture::${toBase64Url(JSON.stringify(req))}`;
 }
 
-/** `view_activate` / `view_capture` z wire formátu; null = neplatné (op sa preskočí). */
+/** `view_activate` / `view_capture` from the wire format; null = invalid (the op is skipped). */
 export function parseViewsOp(op: string, joined: string): ViewsOp | null {
   const raw = joined ? fromBase64Url(joined) : "{}";
   if (raw === null) return null;
@@ -173,14 +173,14 @@ export function parseViewsOp(op: string, joined: string): ViewsOp | null {
   return { op: "view_capture", ...(name ? { name } : {}), ...(captureId ? { capture_id: captureId } : {}) };
 }
 
-/** Op -> bridge správa forku (`VIEW_ACTIVATE`, `VIEW_CAPTURE`). */
+/** Op -> bridge message of the fork (`VIEW_ACTIVATE`, `VIEW_CAPTURE`). */
 export function viewsBridgeMessage(o: ViewsOp): Record<string, unknown> {
   return o.op === "view_activate"
     ? { type: "VIEW_ACTIVATE", ...(o.id ? { id: o.id } : {}), ...(o.name ? { name: o.name } : {}) }
     : { type: "VIEW_CAPTURE", ...(o.name ? { name: o.name } : {}), ...(o.capture_id ? { capture_id: o.capture_id } : {}) };
 }
 
-/** Správa hosta `VIEWS_LOAD` (úplný zoznam z DB). */
+/** Host message `VIEWS_LOAD` (full list from the DB). */
 export function viewsLoadMessage(views: ViewWire[]): { source: typeof VIEWS_SOURCE; type: "VIEWS_LOAD"; views: ViewWire[] } {
   return { source: VIEWS_SOURCE, type: "VIEWS_LOAD", views: views.slice(0, MAX_VIEWS) };
 }

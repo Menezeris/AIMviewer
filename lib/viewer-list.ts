@@ -1,14 +1,14 @@
 /**
- * Zoznam z chatu (D-111): wire formát op `list` v `/ifc?ops=` a jej preklad na
- * bridge správu `OPEN_LIST` forku viewera (`apps/viewer/src/aim/aimList.ts`).
- * Filtre sú tie isté skupiny ako pri Lens z chatu (D-096) vrátane symbolickej
- * zóny `aim_zone` a dokumentu `aim_document`, ktoré klient pred odoslaním nahradí GUIDmi (`lensBridgeMessage`).
- * Jeden zdroj pre server (`lib/llm/list-tool.ts`) aj klienta. Bez závislostí.
+ * List from chat (D-111): wire format of the `list` op in `/ifc?ops=` and its translation to the
+ * bridge message `OPEN_LIST` of the viewer fork (`apps/viewer/src/aim/aimList.ts`).
+ * The filters are the same groups as for Lens from chat (D-096), including the symbolic
+ * zone `aim_zone` and document `aim_document`, which the client replaces with GUIDs before sending (`lensBridgeMessage`).
+ * One source for the server (`lib/llm/list-tool.ts`) and the client. No dependencies.
  *
- * Op: `list::<base64url JSON>`. S `u: 1` je to úprava otvoreného zoznamu (`LIST_UPDATE`,
- * D-149): filtre pribudnú k filtrom zoznamu, `v` nesie zoskupenie, súčty, zoradenie,
- * hľadanie a maximalizáciu panela (aj pri otvorení), farby podľa stĺpca a ponuku exportu;
- * `e` (len s `u`) pridá alebo odoberie stĺpce a triedy a odoberie filtre (D-149, krok 2).
+ * Op: `list::<base64url JSON>`. With `u: 1` it is an edit of an open list (`LIST_UPDATE`,
+ * D-149): filters are added to the list's filters, `v` carries grouping, sums, sorting,
+ * search and panel maximization (also on open), colors by column and the export offer;
+ * `e` (only with `u`) adds or removes columns and classes and removes filters (D-149, step 2).
  */
 
 import {
@@ -33,105 +33,105 @@ export const LIST_COLUMN_SOURCES = [
 export type ListColumnSource = (typeof LIST_COLUMN_SOURCES)[number];
 
 /**
- * Stĺpce `source: "host"` (D-174, #277): hodnoty podľa GlobalId počíta host z DB (odvodené väzby `v_space_elements`,
- * D-167), nie viewer zo súboru IFC. Kľúč `k` je symbolický, hodnoty si klient stiahne z `/api/list-host-values`.
+ * Columns `source: "host"` (D-174, #277): values by GlobalId are computed by the host from the DB (derived links `v_space_elements`,
+ * D-167), not by the viewer from the IFC file. The key `k` is symbolic, the client fetches the values from `/api/list-host-values`.
  */
 export const LIST_HOST_KEYS = ["derived_referenced", "derived_boundary"] as const;
 export type ListHostKey = (typeof LIST_HOST_KEYS)[number];
-/** Strop hodnôt jedného host stĺpca a dĺžka hodnoty (rovnako ako v návrhu forku). */
+/** Cap on values of one host column and value length (same as in the fork design). */
 export const LIST_HOST_MAX_VALUES = 20000;
 export const LIST_HOST_MAX_VALUE_LENGTH = 200;
-/** GlobalId -> text bunky jedného host stĺpca. */
+/** GlobalId -> cell text of one host column. */
 export type ListHostValues = Record<string, string>;
 
-/** Stĺpec zoznamu (`ColumnDefinition` z `@ifc-lite/lists` bez id). */
+/** List column (`ColumnDefinition` from `@ifc-lite/lists` without id). */
 export interface ListColumnWire {
   s: ListColumnSource;
-  /** Pset / Qto pri property / quantity. */
+  /** Pset / Qto for property / quantity. */
   p?: string;
-  /** Atribút, vlastnosť, množstvo alebo úroveň priestoru (Storey, Container...). */
+  /** Attribute, property, quantity or spatial level (Storey, Container...). */
   k: string;
-  /** Popis stĺpca. */
+  /** Column description. */
   l?: string;
 }
 
-/** Hodnota bunky, podľa ktorej sa hľadajú riadky na zvýraznenie (D-171). */
+/** Cell value by which rows to highlight are searched (D-171). */
 export type ListCellValue = string | number;
 
-/** Šírka stĺpca (D-171): px 56 až 800, `fit` = podľa obsahu, `auto` = predvolená. */
+/** Column width (D-171): px 56 to 800, `fit` = by content, `auto` = default. */
 export type ListColumnWidth = number | "fit" | "auto";
 export const LIST_MIN_COLUMN_WIDTH = 56;
 export const LIST_MAX_COLUMN_WIDTH = 800;
-/** `fit` / `auto` pre všetky stĺpce, alebo po jednom. */
+/** `fit` / `auto` for all columns, or one by one. */
 export type ListColumnWidthsWire = "fit" | "auto" | Array<{ c: ListColumnWire; w: ListColumnWidth }>;
 
-/** Zvýraznenie v tabuľke (D-171, #274): riadky, stĺpce, bunky a riadok súčtov; všetko voliteľné. */
+/** Highlighting in the table (D-171, #274): rows, columns, cells and the sums row; all optional. */
 export interface ListHighlightWire {
-  /** Riadky, ktorých bunka v stĺpci `c` sa rovná niektorej hodnote `v`. */
+  /** Rows whose cell in column `c` equals one of the values `v`. */
   r?: { c: ListColumnWire; v: ListCellValue[] };
-  /** Celé stĺpce. */
+  /** Whole columns. */
   c?: ListColumnWire[];
-  /** Bunka v stĺpci `c` v riadkoch, kde stĺpec `r.c` sa rovná `r.v`. */
+  /** Cell in column `c` in rows where column `r.c` equals `r.v`. */
   x?: Array<{ c: ListColumnWire; r: { c: ListColumnWire; v: ListCellValue } }>;
-  /** Riadok súčtov: `true` všetky, alebo len súčty týchto stĺpcov. */
+  /** Sums row: `true` all, or only the sums of these columns. */
   s?: true | ListColumnWire[];
 }
 
-/** Pohľad na tabuľku (D-149); nezadané sa nemení, prázdne pole alebo text zruší. */
+/** View of the table (D-149); unspecified stays unchanged, an empty array or text cancels. */
 export interface ListViewWire {
-  /** Panel Lists na celú plochu viewera (true) alebo späť (false). */
+  /** Lists panel over the whole viewer area (true) or back (false). */
   m?: boolean;
-  /** Zoradenie; null = zrušiť. */
+  /** Sorting; null = cancel. */
   o?: { c: ListColumnWire; d: "asc" | "desc" } | null;
-  /** Stĺpce so súčtom. */
+  /** Columns with a sum. */
   sum?: ListColumnWire[];
-  /** Zoskupenie, vonkajšie prvé. */
+  /** Grouping, outer first. */
   gb?: ListColumnWire[];
-  /** Rýchle hľadanie v riadkoch. */
+  /** Quick search in rows. */
   q?: string;
-  /** Farby prvkov v 3D podľa stĺpca (upstream "Color by"); null = zrušiť. */
+  /** Colors of elements in 3D by column (upstream "Color by"); null = cancel. */
   cb?: ListColumnWire | null;
-  /** Formát, ktorý viewer ponúkne zvýrazneným tlačidlom na stiahnutie (klik je na používateľovi). */
+  /** Format the viewer offers with a highlighted download button (the click is up to the user). */
   x?: ListExportFormat;
-  /** Filter tabuľky "len viditeľné v 3D" (D-171, #276): false ukáže všetky riadky aj pri izolácii. */
+  /** Table filter "only visible in 3D" (D-171, #276): false shows all rows even under isolation. */
   vo?: boolean;
-  /** Šírky stĺpcov (D-171, #275). */
+  /** Column widths (D-171, #275). */
   cw?: ListColumnWidthsWire;
-  /** Zvýraznenie (D-171, #274); null = zrušiť. */
+  /** Highlighting (D-171, #274); null = cancel. */
   hl?: ListHighlightWire | null;
 }
 
 export const LIST_EXPORT_FORMATS = ["csv", "xlsx", "pdf"] as const;
 export type ListExportFormat = (typeof LIST_EXPORT_FORMATS)[number];
 
-/** Druhy filtrov (pravidlá `FilterRule.kind`), ktoré sa dajú odobrať; `all` = všetky okrem tried. */
+/** Kinds of filters (rules `FilterRule.kind`) that can be removed; `all` = all except classes. */
 export const LIST_FILTER_KINDS = ["storey", "model", "property", "group", "globalId", "name", "predefinedType", "all"] as const;
 
-/** Úprava obsahu otvoreného zoznamu (D-149, krok 2); nezadané sa nemení. */
+/** Edit of the content of an open list (D-149, step 2); unspecified stays unchanged. */
 export interface ListEditWire {
-  /** Pridať stĺpce (na koniec). */
+  /** Add columns (at the end). */
   ac?: ListColumnWire[];
-  /** Odobrať stĺpce. */
+  /** Remove columns. */
   rc?: ListColumnWire[];
-  /** Pridať / odobrať IFC triedy. */
+  /** Add / remove IFC classes. */
   at?: string[];
   rt?: string[];
-  /** Odobrať filtre podľa druhu. */
+  /** Remove filters by kind. */
   rf?: string[];
 }
 
 export interface ListWire {
-  /** Názov zoznamu; pri úprave (`u`) sa nepoužije. */
+  /** Name of the list; not used for an edit (`u`). */
   n: string;
   g: LensFilterGroup[];
-  /** Stĺpce; pri úprave prázdne (stĺpce sa zatiaľ nemenia). */
+  /** Columns; empty for an edit (columns are not changed yet). */
   c: ListColumnWire[];
-  /** 1 = tabuľku po otvorení rovno spustiť (D-148). */
+  /** 1 = run the table right after opening (D-148). */
   r?: 1;
-  /** 1 = upraviť otvorený zoznam namiesto nového (D-149). */
+  /** 1 = edit the open list instead of a new one (D-149). */
   u?: 1;
   v?: ListViewWire;
-  /** Úprava obsahu, len s `u`. */
+  /** Content edit, only with `u`. */
   e?: ListEditWire;
 }
 
@@ -205,7 +205,7 @@ export function listOp(wire: ListWire): string {
   return `list::${toBase64Url(JSON.stringify(wire))}`;
 }
 
-/** Rozbalí JSON op `list`; vstup je z URL, chybné časti -> `null`. */
+/** Unpacks the JSON of the `list` op; input is from the URL, faulty parts -> `null`. */
 export function decodeListWire(raw: string): ListWire | null {
   const text = fromBase64Url(raw);
   if (!text) return null;
@@ -233,23 +233,23 @@ export function decodeListWire(raw: string): ListWire | null {
   return parsed as unknown as ListWire;
 }
 
-/** Filtre ako jediné pravidlo Lens - tak sa na ne použije to isté doplnenie zóny. */
+/** Filters as a single Lens rule - so the same zone filling applies to them. */
 const asLens = (wire: ListWire): LensWire => ({ r: [{ n: wire.n, a: "isolate", g: wire.g }] });
 
-/** Kľúče zón a dokumentov, ktorých GUIDy musí klient stiahnuť pred odoslaním. */
+/** Keys of zones and documents whose GUIDs the client must fetch before sending. */
 export function listScopeKeys(wire: ListWire): string[] {
   return lensScopeKeys(asLens(wire));
 }
 
-/** Kľúče host stĺpcov, ktorých hodnoty musí klient stiahnuť pred odoslaním (stĺpce nového zoznamu aj `edit.ac`). */
+/** Keys of host columns whose values the client must fetch before sending (columns of a new list and `edit.ac`). */
 export function listHostKeys(wire: ListWire): ListHostKey[] {
   const cols = [...wire.c, ...(wire.e?.ac ?? [])];
   return [...new Set(cols.filter((c) => c.s === "host").map((c) => c.k as ListHostKey))];
 }
 
 /**
- * Bridge správa `OPEN_LIST` alebo `LIST_UPDATE` (D-149); zóny a dokumenty nahradí GUIDmi z `scopeGuids`,
- * host stĺpce dostanú `values` z `hostValues` (kľúč stĺpca -> GlobalId -> text, D-174).
+ * Bridge message `OPEN_LIST` or `LIST_UPDATE` (D-149); zones and documents are replaced with GUIDs from `scopeGuids`,
+ * host columns get `values` from `hostValues` (column key -> GlobalId -> text, D-174).
  */
 export function listBridgeMessage(
   wire: ListWire,
@@ -278,7 +278,7 @@ export function listBridgeMessage(
 }
 
 const columnRef = (c: ListColumnWire) => ({ source: c.s, propertyName: c.k, ...(c.p ? { psetName: c.p } : {}) });
-/** `edit` správy `LIST_UPDATE` pre fork (`aim/aimListEditPlan.ts`). */
+/** `edit` of the `LIST_UPDATE` message for the fork (`aim/aimListEditPlan.ts`). */
 function editMessage(e: ListEditWire, columnDef: (c: ListColumnWire) => Record<string, unknown>): Record<string, unknown> {
   return {
     ...(e.ac ? { addColumns: e.ac.map(columnDef) } : {}),
@@ -296,7 +296,7 @@ const highlightMessage = (h: ListHighlightWire): Record<string, unknown> => ({
   ...(h.s !== undefined ? { sum: h.s === true ? true : h.s.map(columnRef) } : {}),
 });
 
-/** `view` správy pre fork (`aim/aimListViewPlan.ts`): stĺpce menom, nie id. */
+/** `view` of the message for the fork (`aim/aimListViewPlan.ts`): columns by name, not id. */
 function viewMessage(v: ListViewWire): Record<string, unknown> {
   return {
     ...(v.m !== undefined ? { maximize: v.m } : {}),

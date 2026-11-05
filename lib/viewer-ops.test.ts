@@ -56,7 +56,7 @@ describe("viewer ops - pohľad (D-083)", () => {
     expect(bridge(sectionOp({ storeyGuid: G2, offsetM: -0.4 }))).toEqual([
       { type: "SET_SECTION", action: "set", axis: "y", storeyGuid: G2, offsetM: -0.4 },
     ]);
-    // Bez výšky platí 1,2 m (výška pôdorysného rezu).
+    // Without a height 1.2 m applies (height of the floor-plan section).
     expect(bridge(`section:y:${G2}`)[0]).toMatchObject({ offsetM: 1.2 });
   });
 
@@ -103,11 +103,11 @@ describe("viewer ops - pohľad (D-083)", () => {
     expect(bridge(op)).toEqual([
       { type: "DOCUMENT_OPEN", documentId: DOC, page: 2, region: { x: 0.5, y: 0, w: 0.5, h: 0.25 } },
     ]);
-    // Bez strany: výrez na strane, kde karta je.
+    // Without a page: the crop on the page where the card is.
     expect(parseOps(docOp(DOC, undefined, { x: 10, y: 10, w: 20, h: 20 }))).toEqual([
       { op: "doc", documentId: DOC, region: { x: 10, y: 10, w: 20, h: 20 } },
     ]);
-    // Chybný výrez sa zahodí, dokument sa otvorí celý.
+    // A faulty crop is dropped, the document opens whole.
     expect(parseOps(`doc:3~r=10_abc_5_5:${DOC}`)).toEqual([{ op: "doc", documentId: DOC, page: 3 }]);
     expect(parseOps(`doc:3~r=120_0_10_10:${DOC}`)).toEqual([{ op: "doc", documentId: DOC, page: 3 }]);
   });
@@ -122,7 +122,7 @@ describe("viewer ops - pohľad (D-083)", () => {
     expect(msg.highlights).toHaveLength(2);
     expect(msg.highlights[0].x).toBeCloseTo(0.3833);
     expect(msg.highlights[0].w).toBeCloseTo(0.0075);
-    // Tenký riadok sa nenafúkne na 1 % ako výrez; neúplná štvorica a riadok mimo strany sa zahodia.
+    // A thin row is not inflated to 1 % like a crop; an incomplete quadruple and a row outside the page are dropped.
     expect(parseOps(`doc:1~h=10_10_0.3_0.4_200_0_1_1_5_5_1:${DOC}`)).toEqual([
       { op: "doc", documentId: DOC, page: 1, highlights: [{ x: 10, y: 10, w: 0.3, h: 0.4 }] },
     ]);
@@ -176,11 +176,11 @@ describe("viewer ops - rez cez prvok a na súradnici (D-085)", () => {
 
   it("neplatné kombinácie sa zahodia", () => {
     for (const raw of [
-      `section:x~fit=along:${STAIR}`, // along s pevnou osou
-      `section:auto~fit=center:${STAIR}`, // center bez osi
-      "section:auto~fit=along:", // bez cieľa
+      `section:x~fit=along:${STAIR}`, // along with a fixed axis
+      `section:auto~fit=center:${STAIR}`, // center without an axis
+      "section:auto~fit=along:", // without a target
       `section:auto~fit=diagonal:${STAIR}`,
-      `section:x~c=5:${STAIR}`, // súradnica s cieľom
+      `section:x~c=5:${STAIR}`, // coordinate with a target
       "section:x~c=abc:",
       "section:x~c=1e9:",
       `section:auto~fit=along:${Array(101).fill(STAIR).join(".")}`,

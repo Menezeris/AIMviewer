@@ -85,7 +85,7 @@ describe("dlaždice, op tab:layout (D-157)", () => {
       { type: "VIEW_TABS", action: "layout", layout: "split_h", tiles: [{ tab: "3D" }, { view: "v-uuid-1" }] },
     ]);
     expect(plan.result).toMatchObject({ tiles: ["3D", "Rez A-A"] });
-    // Pohľad pomenovaný ako podlažie ostáva pôdorysom; neznáme meno ostáva menovkou záložky (dokument).
+    // A view named like a storey stays a floor plan; an unknown name stays a tab label (document).
     const mixed = await planLayout({ tiles: ["1NP", "TS.pdf"] }, floorGuid, views);
     expect(bridge(mixed.ops.join(";"))[0]).toMatchObject({ tiles: [{ plan: G }, { tab: "TS.pdf" }] });
     expect(parseTabsOp("tab", "layout", "")).toBeNull();
@@ -131,7 +131,7 @@ describe("dlaždice, op tab:layout (D-157)", () => {
     expect(three.result).toMatchObject({ sizes_pct: [25, 50, 25] });
     const big = await planLayout({ layout: "three_right", ratio: 0.7 }, floorGuid);
     expect(bridge(big.ops.join(";"))[0]).toMatchObject({ layout: "three_right", ratio: 0.7 });
-    // Bez pomeru sa na drôt nič nepridá (starší viewer).
+    // Without a ratio nothing is added to the wire (older viewer).
     expect(bridge((await planLayout({ layout: "split_h" }, floorGuid)).ops.join(";"))).toEqual([{ type: "VIEW_TABS", action: "layout", layout: "split_h" }]);
     expect((await planLayout({ layout: "split_h", ratio: 0.05 }, floorGuid)).result).toHaveProperty("warning");
     expect(hasLayoutParams({ ratio: 0.5 })).toBe(true);
@@ -149,7 +149,7 @@ describe("dlaždice, op tab:layout (D-157)", () => {
     await expect(planLayout({ layout: "split_h", sizes: [1, -1] }, floorGuid)).rejects.toThrow(/kladné/);
     await expect(planLayout({ layout: "split_h", ratio: 0.5, sizes: [1, 1] }, floorGuid)).rejects.toThrow(/nekombinujú/);
     await expect(planLayout({ ratio: 0.5 }, floorGuid)).rejects.toThrow(/potrebujú layout/);
-    // Rovnaká validácia pri čítaní drôtu: neplatná správa sa zahodí.
+    // The same validation when reading the wire: an invalid message is dropped.
     expect(bridge(tabOp("layout", { layout: "grid4", ratio: 0.5 }))).toEqual([]);
     expect(bridge(tabOp("layout", { layout: "split_v", sizes: [1, 2, 3] }))).toEqual([]);
     expect(bridge(tabOp("layout", { layout: "split_v", ratio: 1.5 }))).toEqual([]);

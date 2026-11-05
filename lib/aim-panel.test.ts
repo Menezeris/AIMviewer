@@ -57,7 +57,7 @@ describe("nodeSummaryToAimPanel (v2, D-077)", () => {
     expect(panel.history).toEqual([
       { guid: "GUID-A", validFrom: "2026-07-12", validUntil: undefined, active: true },
     ]);
-    // Akcia Reality Capture ostáva (parita s D-073).
+    // The Reality Capture action stays (parity with D-073).
     expect(panel.actions?.some((a) => a.label === "Reality Capture (3)")).toBe(true);
   });
 

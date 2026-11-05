@@ -1,7 +1,7 @@
 /**
- * Priebeh načítavania federácie vo vieweri (D-178, #308). Viewer počas `?models=` autoloadu
- * posiela `LOAD_PROGRESS` (aj pred READY) a `FIRST_GEOMETRY`; host z nich skladá pásik
- * po modeloch a vie, kedy zdvihnúť prekrytie. Čisté funkcie, bez Reactu.
+ * Progress of federation loading in the viewer (D-178, #308). During `?models=` autoload the viewer
+ * sends `LOAD_PROGRESS` (also before READY) and `FIRST_GEOMETRY`; the host composes a per-model strip
+ * from them and knows when to lift the overlay. Pure functions, no React.
  */
 
 export type LoadPhase = "download" | "process" | "done" | "error";
@@ -27,11 +27,11 @@ export interface LoadEntry {
 }
 
 export interface LoadState {
-  /** Počet modelov podľa viewera (0 = viewer priebeh zatiaľ neposlal). */
+  /** Number of models according to the viewer (0 = the viewer has not sent progress yet). */
   total: number;
-  /** Posledný stav modelu podľa `index`. */
+  /** Last state of the model by `index`. */
   entries: Record<number, LoadEntry>;
-  /** Aspoň jeden model je celý na scéne (FIRST_GEOMETRY). */
+  /** At least one model is fully in the scene (FIRST_GEOMETRY). */
   firstGeometry: boolean;
 }
 
@@ -43,7 +43,7 @@ function isCount(n: unknown): n is number {
   return typeof n === "number" && Number.isInteger(n) && n >= 0;
 }
 
-/** Overí telo `LOAD_PROGRESS` z iframu (neznáma fáza alebo index mimo rozsahu = zahodené). */
+/** Validates the `LOAD_PROGRESS` body from the iframe (unknown phase or index out of range = dropped). */
 export function parseLoadProgress(data: unknown): LoadProgressMsg | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
@@ -68,7 +68,7 @@ export function parseFirstGeometry(data: unknown): FirstGeometryMsg | null {
 
 export function applyLoadProgress(state: LoadState, msg: LoadProgressMsg): LoadState {
   const prev = state.entries[msg.index];
-  // Hotový model sa späť nevracia (oneskorená správa o sťahovaní po `done`).
+  // A finished model does not go back (a late download message after `done`).
   if (prev && (prev.phase === "done" || prev.phase === "error") && msg.phase !== "done" && msg.phase !== "error") {
     return state;
   }
@@ -84,7 +84,7 @@ export function applyFirstGeometry(state: LoadState, msg: FirstGeometryMsg): Loa
   return { ...state, firstGeometry: true, total: Math.max(state.total, msg.total) };
 }
 
-/** Viewer poslal aspoň jednu správu o priebehu (inak je starší a hostu ostáva MODELS_LOADED). */
+/** The viewer has sent at least one progress message (otherwise it is older and the host keeps MODELS_LOADED). */
 export function hasLoadProgress(state: LoadState): boolean {
   return state.total > 0;
 }
@@ -96,12 +96,12 @@ export interface LoadSegment {
   model: string;
   kind: SegmentKind;
   percent: number;
-  /** Podiel vyplnenia segmentu 0..1: sťahovanie je prvá tretina, spracovanie zvyšok. */
+  /** Fill fraction of the segment 0..1: download is the first third, processing the rest. */
   fill: number;
   label: string;
 }
 
-/** Segmenty v poradí `index`; model, ktorý sa ešte neozval, je "waiting". */
+/** Segments in `index` order; a model that has not reported yet is "waiting". */
 export function loadSegments(state: LoadState): LoadSegment[] {
   const out: LoadSegment[] = [];
   for (let index = 0; index < state.total; index++) {
@@ -140,7 +140,7 @@ export function loadSegments(state: LoadState): LoadSegment[] {
   return out;
 }
 
-/** Všetky modely sú hotové alebo skončili chybou (pásik sa skryje aj bez MODELS_LOADED). */
+/** All models are done or ended with an error (the strip hides even without MODELS_LOADED). */
 export function allSettled(state: LoadState): boolean {
   if (state.total === 0) return false;
   for (let i = 0; i < state.total; i++) {
@@ -150,7 +150,7 @@ export function allSettled(state: LoadState): boolean {
   return true;
 }
 
-/** Jeden riadok pre čítačky a prekrytie: "ASR 40 %, VZT stiahnuté". */
+/** One line for screen readers and the overlay: "ASR 40 %, VZT stiahnuté" (VZT downloaded). */
 export function loadSummary(segments: LoadSegment[]): string {
   return segments.map((s) => s.label).join(", ");
 }
