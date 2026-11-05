@@ -5,7 +5,7 @@ import { ZapisMigraciaChyba } from "@/lib/library/store-db";
 
 /**
  * Requirements library editor in AIM (D-186 UI step): the same page as `assetin edit` (vendored `app.html`),
- * the document comes from the library in the DB, API at `/api/library/editor/<code>/`. Reading is public like `/kniznica`; writing is behind
+ * the document comes from the library in the DB, API at `/api/library/editor/<code>/`. Reading is public like `/library`; writing is behind
  * the `LIBRARY_WRITE_ENABLED` gate.
  */
 export const dynamic = "force-dynamic";

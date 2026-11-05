@@ -114,7 +114,7 @@ export function LibraryBrowser({ initial }: { initial?: { kniznica?: string; ces
           {kniznice.length > 0 && (
             <p className="mt-1 flex flex-wrap gap-2 text-xs" data-testid="kniznica-editor-odkazy">
               {kniznice.map((k) => (
-                <a key={k} href={`/kniznica/editor/${encodeURIComponent(k)}`} className="text-primary underline underline-offset-2" data-testid="kniznica-editor-odkaz">
+                <a key={k} href={`/library/editor/${encodeURIComponent(k)}`} className="text-primary underline underline-offset-2" data-testid="kniznica-editor-odkaz">
                   Otvoriť editor {k}
                 </a>
               ))}
