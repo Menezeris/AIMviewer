@@ -19,7 +19,7 @@ const vzor = JSON.parse(readFileSync(join(process.cwd(), "library", "korpus", "s
 
 describe("sklad v DB (D-186 krok 3)", () => {
   it("projekcie sa posielajú podľa cieľovej cesty (aj pri premenovaní a viacerých súboroch), nie podľa poradia", async () => {
-    const { supabaseSklad } = await import("./sklad-db");
+    const { supabaseSklad } = await import("./store-db");
     const s = supabaseSklad("assetin");
     const a = "zadanie/IU-O/IU-O-space Priestor.md";
     const b = "zadanie/registre/DEF/DEF-plocha-cista Čistá plocha miestnosti.md";
@@ -44,8 +44,8 @@ describe("sklad v DB (D-186 krok 3)", () => {
   });
 
   it("AS409 z DB = Konflikt s cestami; prázdny autor sa nepošle", async () => {
-    const { supabaseSklad } = await import("./sklad-db");
-    const { Konflikt } = await import("./zapis");
+    const { supabaseSklad } = await import("./store-db");
+    const { Konflikt } = await import("./write");
     const s = supabaseSklad("assetin");
     odpoved = { data: null, error: { code: "AS409", details: '["zadanie/IU-O/IU-O-space Priestor.md"]', message: "conflict" } };
     await expect(s.zapis([{ cesta: "zadanie/IU-O/IU-O-space Priestor.md", text: "x", ocakavana: "0", nova_cesta: null }], { autor: "S" })).rejects.toBeInstanceOf(Konflikt);

@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { kontrola } from "./kontrola";
-import { skladPamat, type Zmena } from "./zapis";
+import { kontrola } from "./check";
+import { skladPamat, type Zmena } from "./write";
 
 const subory = JSON.parse(readFileSync(join(process.cwd(), "library", "korpus", "stromy", "vzor", "subory.json"), "utf8"));
 const ORAKULUM = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "__fixtures__", "kontrola-orakulum.json"), "utf8")) as Array<{

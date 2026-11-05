@@ -4,15 +4,15 @@
  * telo, pod-záznamy, slovníky, návrhy ID). Stránka z neho len kreslí (princíp 3).
  */
 
-import { PREFIXY } from "./cesty";
-import { idPoznamky, typPoznamky, type Kniznica } from "./graf";
-import { grafJson } from "./graf-json";
-import { inspektor, inspektorEr } from "./inspektor";
+import { PREFIXY } from "./paths";
+import { idPoznamky, typPoznamky, type Kniznica } from "./graph";
+import { grafJson } from "./graph-json";
+import { inspektor, inspektorEr } from "./inspector";
 import type { Diagnostika, Poznamka } from "./loader";
-import { cestyPre, retazceJson, retazcePre } from "./retazec";
-import { TRIEDY_TYPOV } from "./schema/triedy";
+import { cestyPre, retazceJson, retazcePre } from "./chain";
+import { TRIEDY_TYPOV } from "./schema/classes";
 import { pasmaDokument, vsetkyPopisy } from "./ui";
-import { PREDVOLBY_NOVEJ } from "./zapis";
+import { PREDVOLBY_NOVEJ } from "./write";
 
 const TYPY_POZNAMOK = ["GOAL", "UC", "ER", "IU-O", "IU-C", "STD", "PROP", "DEF", "EV", "ACT", "PROT", "PROJ"];
 

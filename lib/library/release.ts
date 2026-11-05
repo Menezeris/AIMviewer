@@ -9,11 +9,11 @@
 
 import { strToU8, zipSync } from "fflate";
 
-import { nacitajKniznicuGraf, SCHEMA_VERZIA, type Kniznica } from "./graf";
+import { nacitajKniznicuGraf, SCHEMA_VERZIA, type Kniznica } from "./graph";
 import { ciele, generujCiel } from "./ids/generator";
 import type { Diagnostika } from "./loader";
 import { validuj } from "./validator";
-import { Konflikt, verziaTextu } from "./zapis";
+import { Konflikt, verziaTextu } from "./write";
 
 export const GENERATOR = "aimviewer lib/kniznica/ids (D-186)";
 export const MANIFEST_SUBOR = ".assetin-export.json";

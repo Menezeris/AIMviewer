@@ -5,11 +5,11 @@
  * zo šablóny typu, takže dialóg novej poznámky sa pýta registra pravidiel, nie druhej kópie v schéme (U16, Q43).
  */
 
-import { serializuj } from "./bloky";
-import { KNIZNICA_SUBOR, Kniznica, nacitajKniznicuGraf } from "./graf";
+import { serializuj } from "./blocks";
+import { KNIZNICA_SUBOR, Kniznica, nacitajKniznicuGraf } from "./graph";
 import { nacitajSubor, type Diagnostika } from "./loader";
 import { validuj } from "./validator";
-import { diag, kandidat, ulozPoznamku, type NovaPoznamka, type Sklad, type Zmena } from "./zapis";
+import { diag, kandidat, ulozPoznamku, type NovaPoznamka, type Sklad, type Zmena } from "./write";
 
 export interface VysledokKontroly {
   ok: boolean;

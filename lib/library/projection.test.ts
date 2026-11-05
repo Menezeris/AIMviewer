@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { projekcia } from "./projekcia";
+import { projekcia } from "./projection";
 
 const vzor = JSON.parse(readFileSync(join(process.cwd(), "library", "korpus", "stromy", "vzor", "subory.json"), "utf8")) as Record<string, string>;
 const orakulum = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "__fixtures__", "projekcia-vzor.json"), "utf8")) as {

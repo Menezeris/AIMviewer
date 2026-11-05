@@ -2,7 +2,7 @@ import "server-only";
 
 import { getSupabaseAdmin } from "../supabase/server";
 
-import type { HlavaRiadok, HlavaStore, HlavaSubor } from "./hlava";
+import type { HlavaRiadok, HlavaStore, HlavaSubor } from "./head";
 
 /** Chýbajúca RPC (migrácia nie je v DB): PostgREST PGRST202, Postgres 42883. */
 const chybaRpc = (e: { code?: string; message?: string } | null) =>

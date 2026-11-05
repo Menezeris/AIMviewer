@@ -4,9 +4,9 @@
  * Pravidlá nikdy nehádžu výnimku, vracajú diagnostiky v tom istom tvare ako loader a graf.
  */
 
-import { idPoznamky, typPoznamky, type Kniznica } from "../graf";
+import { idPoznamky, typPoznamky, type Kniznica } from "../graph";
 import { riadokPrePointer, type Diagnostika, type PodZaznam, type Poznamka, type Uroven } from "../loader";
-import { parseWikilink } from "../projekcia";
+import { parseWikilink } from "../projection";
 
 export type M = Record<string, unknown>;
 export type Potrebuje = "graf" | "ifc" | "bsdd";

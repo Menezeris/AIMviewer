@@ -3,9 +3,9 @@
  * kaskády, rodiny hrán, diagnostiky. Jeden export pre dokument editora a stránku grafu; projekcia `Kniznica`.
  */
 
-import { idPoznamky, SCHEMA_VERZIA, typPoznamky, type Kniznica } from "./graf";
+import { idPoznamky, SCHEMA_VERZIA, typPoznamky, type Kniznica } from "./graph";
 import type { Diagnostika, Poznamka } from "./loader";
-import { parseWikilink } from "./projekcia";
+import { parseWikilink } from "./projection";
 
 export const KASKADA = [
   { kluc: "ciel", nazov: "Ciele", popis: "OIR → AIR → PIR (19650-1)" },

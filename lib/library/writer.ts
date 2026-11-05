@@ -5,7 +5,7 @@
  *
  * Úrovne: 1 skalár na svojom riadku · 1b celé riadky blokového zoznamu · 2 segment kľúča najvyššej úrovne
  * vypísaný znova · 3 inline pole · 4 nový pod-záznam / blokové pole / poznámka · 5 `aliases` (V18).
- * Pozície uzlov (ruamel `lc`) a flow štýl dáva `yaml` (eemeli, ISC); nové hodnoty vypisuje `yaml-zapis.ts`
+ * Pozície uzlov (ruamel `lc`) a flow štýl dáva `yaml` (eemeli, ISC); nové hodnoty vypisuje `yaml-write.ts`
  * ako ruamel. Zhodu stráži korpus `upravy/*` (bajtovo).
  */
 
@@ -13,8 +13,8 @@ import { isDeepStrictEqual } from "node:util";
 
 import { Document, LineCounter, YAMLMap, isMap, isScalar, isSeq, parseDocument, Scalar, type Node as YamlNode, type Pair } from "yaml";
 
-import { nacitajYaml, parsuj, preindexuj, serializuj, splitlines, type Blok, type Dokument, type Frontmatter, type InlinePole, type Nadpis, type Proza, type YamlBlok } from "./bloky";
-import { dumpYaml, dumpZoznam } from "./yaml-zapis";
+import { nacitajYaml, parsuj, preindexuj, serializuj, splitlines, type Blok, type Dokument, type Frontmatter, type InlinePole, type Nadpis, type Proza, type YamlBlok } from "./blocks";
+import { dumpYaml, dumpZoznam } from "./yaml-write";
 
 export class ChybaZapisu extends Error {}
 

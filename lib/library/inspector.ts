@@ -4,9 +4,9 @@
  * a dosah zmeny (tranzitívne). Číta len graf, nič nezapisuje.
  */
 
-import { typPoznamky, type Kniznica } from "./graf";
-import { klucPolozky } from "./graf-json";
-import { jednotkyVymeny } from "./retazec";
+import { typPoznamky, type Kniznica } from "./graph";
+import { klucPolozky } from "./graph-json";
+import { jednotkyVymeny } from "./chain";
 
 type M = Record<string, unknown>;
 

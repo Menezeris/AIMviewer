@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { dokumentEditora } from "./app-json";
-import { nacitajKniznicuGraf } from "./graf";
+import { nacitajKniznicuGraf } from "./graph";
 import { validuj } from "./validator";
 
 const KORPUS = join(process.cwd(), "library", "korpus", "stromy");

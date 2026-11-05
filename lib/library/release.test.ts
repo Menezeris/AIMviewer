@@ -5,9 +5,9 @@ import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 
 import { vydaj as vydajApi } from "./editor-api";
-import { nacitajKniznicuGraf } from "./graf";
-import { generujIds, kodIds, manifest, vydaj, zipExportu, type SkladVydania } from "./vydanie";
-import { Konflikt } from "./zapis";
+import { nacitajKniznicuGraf } from "./graph";
+import { generujIds, kodIds, manifest, vydaj, zipExportu, type SkladVydania } from "./release";
+import { Konflikt } from "./write";
 
 const subory = JSON.parse(readFileSync(join(process.cwd(), "library", "korpus", "stromy", "vzor", "subory.json"), "utf8")) as Record<string, string>;
 const chybne = JSON.parse(readFileSync(join(process.cwd(), "library", "korpus", "stromy", "chybne", "subory.json"), "utf8")) as Record<string, string>;

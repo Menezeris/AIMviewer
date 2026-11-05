@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { nacitajKniznicuGraf, slug } from "./graf";
-import { grafJson } from "./graf-json";
+import { nacitajKniznicuGraf, slug } from "./graph";
+import { grafJson } from "./graph-json";
 import type { Diagnostika } from "./loader";
 import { validuj } from "./validator";
 

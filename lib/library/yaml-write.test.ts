@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { dumpYaml, dumpZoznam } from "./yaml-zapis";
+import { dumpYaml, dumpZoznam } from "./yaml-write";
 
 const orakulum = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "__fixtures__", "yaml-vypis.json"), "utf8")) as {
   pripady: Record<string, { vstup: unknown; ocakavane: string }>;

@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { nacitajKniznicuGraf } from "../graf";
+import { nacitajKniznicuGraf } from "../graph";
 import { ciele, generujCiel } from "./generator";
 
 const KORPUS = join(process.cwd(), "library", "korpus");

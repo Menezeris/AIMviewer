@@ -16,7 +16,7 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-const { supabaseSkladVydania } = await import("./vydanie-db");
+const { supabaseSkladVydania } = await import("./release-db");
 
 describe("supabaseSkladVydania", () => {
   it("passes the project to library_vydaj", async () => {

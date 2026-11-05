@@ -3,10 +3,10 @@
  * Pravidlá, ktoré potrebujú schému IFC (D3, D4, D17, D18), sú F2b.
  */
 
-import { idPoznamky, typPoznamky } from "../graf";
-import { klucPolozky } from "../graf-json";
-import { ASPEKTY, priradenia } from "../retazec";
-import { attr, ciele, je, link, obj, platnyRegex, pravda, pravidlo, pyRepr, pyStr, zorad, zoznam, zoznamM, type Kontext, type Link, type M } from "./kontext";
+import { idPoznamky, typPoznamky } from "../graph";
+import { klucPolozky } from "../graph-json";
+import { ASPEKTY, priradenia } from "../chain";
+import { attr, ciele, je, link, obj, platnyRegex, pravda, pravidlo, pyRepr, pyStr, zorad, zoznam, zoznamM, type Kontext, type Link, type M } from "./context";
 
 // ------------------------------------------------------------------------------------------------ D
 
