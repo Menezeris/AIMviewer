@@ -8735,6 +8735,48 @@ bez revízie a chyba tabuľky bez straty výpočtu, odmietnutie inej triedy), SQ
 
 Introduced in AIMforked #3, which also updates sections 2 and 5 of `docs/platform/orchestration.md`.
 
+**Addendum (5 Nov):** AIMforked #5 added `check.yml` (integration tests), so `lint`, `e2e` and `check` are required before merge.
+
+### D-193 - Samuel's decisions relayed by the orchestrator
+
+**Date:** 2026-11-05 · **Status:** approved (Samuel 5 Nov; number from the orchestrator, #60) · **Builds on:** D-090 (concurrent sessions), D-191 (orchestration model)
+
+**Context:** step and side sessions send their plans and questions to the orchestrator, not to Samuel. Samuel answers the orchestrator. A session needs to know when such an answer counts as Samuel's own.
+
+**Decision:**
+1. A decision of Samuel's that the orchestrator relays to a session counts as Samuel's answer.
+2. The orchestrator records each relayed decision on #60, with Samuel's words, the question it answers and the session it goes to.
+3. The details (how sessions report, how decisions are relayed, the merge rules) are in AIMforked `docs/platform/orchestration.md`, sections 4 and 7.
+
+### D-194 - The project in English
+
+**Date:** 2026-11-05 · **Status:** approved (Samuel 5 Nov; scope widened the same day; phase plan approved 5 Nov, "yes yes", relayed under D-193, #60) · **Builds on:** D-017 (documentation map), D-189 (release pattern for DB names), D-116 (release train), D-193 (relayed decisions)
+
+**Context:** since 4 Nov new work is written in English. Most legacy text is Slovak: `DECISIONS.md` (about 930 kB), `ROADMAP.md`, `SCHEMA.md`, `AGENTS.md`, many code comments, and names such as `lib/kniznica`, the pages `/kniznica` and `/overenie` and the DB functions `library_zapis`, `library_vydaj` and `library.publikuj_ids`. The platform is built with people and tools that do not read Slovak.
+
+**Decision:**
+1. Everything in the project is English: code, identifiers, comments, docs, D-records, changelogs, plans and the texts the AI assistant sees. The exception is the app's Slovak and Czech user interface (labels and messages the user sees).
+2. Domain terms follow `docs/glossary.md` (from the English plan copy). UI labels stay Slovak; a text names the English first and the Slovak label in parentheses once.
+3. The work runs in phases, each one or more small PRs from a side session:
+   1. inventory (done 5 Nov);
+   2. comments and current docs, no behaviour change;
+   3. code identifiers without external callers (`lib/kniznica` -> `lib/library`, file and test names);
+   4. externally visible names: pages with permanent redirects (the editor API gets no alias), DB functions by the D-189 pattern (additive migration, the app switches, a cleanup migration drops the old names; only after the `library_zapis` drift fix), DB comments and messages through a new migration, the labels `novy-tool` and `pripomienka` to `new-tool` and `feedback` and the skill `mcp-poziadavka` to `mcp-request` (Samuel updates the routine prompt the same day); bridge messages only together with the fork, in its release bundle (D-116);
+   5. history: `DECISIONS.md` translated in place with D-numbers, dates and numbers unchanged, the old changelog lines and the root snapshot files;
+   6. AI-facing texts (tool descriptions, instructions, prompts) last, only when the evals can run again.
+4. Every production migration needs Samuel's yes (relayed under D-193) and a fresh backup when data change.
+
+**Stays as it is:**
+- the requirements library data contract (YAML keys, JSON pointers, validator codes, the oracle corpus `library/korpus`, the `library.*` tables and columns, stored data); it needs its own decision for library schema v2. The code names around it become English;
+- the imported archives (`docs/kniznica` vault, normy, PROMPT, REVIEW, PLAN) and `eval/results`; the living library docs are translated;
+- applied migration files;
+- the OCB folder and workflow names (stored provenance, run history); their content is translated;
+- error messages shown in the UI; those that reach the AI move in phase 6;
+- the eval questions (they model Slovak users); their rubric and notes are translated in phase 6;
+- old commit messages.
+
+**Rejected:** keeping legacy Slovak text untranslated (the rule of 4 Nov); splitting `DECISIONS.md` into files per range (only if Samuel asks); temporary redirects for renamed pages (MCP outputs and documents keep old links).
+
 
 ### D-195 - IFC 4.3 schema in the repo, entity manifest `entity_types`, `properties._attributes`
 

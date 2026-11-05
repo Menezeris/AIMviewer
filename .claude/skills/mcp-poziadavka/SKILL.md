@@ -20,7 +20,7 @@ Samuel ju otvorí v Claude a môže ti odpovedať priamo tu.
 
 ## 1. Koordinácia so súbežnou prácou (pred plánom, vždy)
 Naraz môže bežať viac sessions (ďalšie požiadavky z konektora, ručné sessions F13, fork). Pravidlá
-sú v `AGENTS.md`, sekcia "Súbežné session"; tu je postup:
+sú v `AGENTS.md`, sekcia "Concurrent sessions"; tu je postup:
 - **Ohlás sa:** do issue komentár "Beriem si to: vetva `claude/mcp-<číslo>-<slug>`" (odkaz na
   session tam už dal server). Ak iná session už v issue ohlásila vetvu, nepracuj paralelne:
   povedz to Samuelovi a skonči.
@@ -100,7 +100,7 @@ a pridaj do `eval/questions.json` otázku z issue (bez overenej hodnoty, ak ju n
 ## 6. Výsledok
 - Pred PR zlúč aktuálny `origin/main` do vetvy (merge, nie rebase) a prejdi testy znova.
 - PR do `main` s `Closes #<číslo>` v tele, nikdy merge (ani s trvalým súhlasom; zlučuje len
-  orchestrátor, `AGENTS.md` "Súbežné session"). Prihlás sa na PR (subscribe) a dotiahni CI. Keď
+  orchestrátor, `AGENTS.md` "Concurrent sessions"). Prihlás sa na PR (subscribe) a dotiahni CI. Keď
   je zelený a bez konfliktu, pošli orchestrátorovi repo#číslo a hlavu (`send_message`), inak
   komentár "Pripravené na zlúčenie" v PR.
 - Do issue krátky komentár: čo vzniklo, odkaz na PR, čo treba po merge (env, migrácia, fork).
