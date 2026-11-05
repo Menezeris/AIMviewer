@@ -5,7 +5,6 @@ import { importBcfArchive } from "@/lib/bcf/import";
 import { defaultBcfDeps } from "@/lib/bcf/runtime";
 import { BcfInputError } from "@/lib/bcf/tools";
 import { BCF_VIEWER_IMPORT_MAX_BYTES, summaryToWire } from "@/lib/viewer-bcf-import";
-import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Import `.bcfzip` z BCF panela viewera (D-158 krok 8, dodatok 1. 11.): `POST /api/bcf/viewer-import`,
@@ -22,7 +21,7 @@ const limiter = createRateLimiter({ windowMs: 10 * 60_000, max: 20 });
 const fail = (status: number, error: string, headers: Record<string, string> = {}) =>
   NextResponse.json({ ok: false, error }, { status, headers: { "Cache-Control": "no-store", ...headers } });
 
-async function postHandler(req: Request): Promise<Response> {
+export async function POST(req: Request): Promise<Response> {
   if (process.env.BCF_VIEWER_IMPORT_ENABLED !== "true") {
     return fail(403, "Import BCF z viewera je vypnutý (BCF_VIEWER_IMPORT_ENABLED); importuj súbor v chate (bcf_topic action=import).");
   }
@@ -47,5 +46,3 @@ async function postHandler(req: Request): Promise<Response> {
     return fail(500, e instanceof Error ? e.message : String(e));
   }
 }
-
-export const POST = withRequestProject(postHandler);

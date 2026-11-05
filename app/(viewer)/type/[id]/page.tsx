@@ -12,7 +12,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { currentPageProject } from "@/lib/project/page";
 
 // ISR — render typu sa cachuje a po 60 s revaliduje (viewer je verejný read-only).
 export const revalidate = 60;
@@ -32,11 +31,10 @@ export default async function TypePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const projectId = (await currentPageProject()).id;
   const { id } = await params;
   const [type, drawings] = await Promise.all([
-    fetchAssetType(projectId, id),
-    fetchElementDrawings(projectId, id),
+    fetchAssetType(id),
+    fetchElementDrawings(id),
   ]);
   if (!type) notFound();
 

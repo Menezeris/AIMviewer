@@ -11,17 +11,10 @@ export const LIVE_BCF_EVENT = "bcf_topics";
 /** Udalosť okna medzi živým kanálom a viewerom na tej istej stránke. */
 export const BCF_CHANGED_WINDOW_EVENT = "aim:bcf-topics-changed";
 
-/**
- * Legacy BCF project id (`lib/bcf/api.ts` LEGACY_PROJECT_ID): before D-189 the only project was `aim`;
- * the API still accepts it as the request's project.
- */
+/** Projekt BCF API AIMviewera, ktorý viewer načíta (`lib/bcf/api.ts` PROJECT_ID). */
 export const BCF_VIEWER_PROJECT = "aim";
 
-/**
- * Správa mostu pre viewer: odkiaľ si má témy načítať (BCF API na tomto origine, bez tokenu). The BCF
- * project id is the AIM project code (D-189); the viewer calls the API cross-origin without cookies,
- * so the project rides in the path.
- */
-export function bcfLoadMessage(origin: string, projectCode?: string): { type: "AIM_BCF_LOAD"; baseUrl: string; projectId: string } {
-  return { type: "AIM_BCF_LOAD", baseUrl: `${origin.replace(/\/$/, "")}/api/bcf`, projectId: projectCode || BCF_VIEWER_PROJECT };
+/** Správa mostu pre viewer: odkiaľ si má témy načítať (BCF API na tomto origine, bez tokenu). */
+export function bcfLoadMessage(origin: string): { type: "AIM_BCF_LOAD"; baseUrl: string; projectId: string } {
+  return { type: "AIM_BCF_LOAD", baseUrl: `${origin.replace(/\/$/, "")}/api/bcf`, projectId: BCF_VIEWER_PROJECT };
 }

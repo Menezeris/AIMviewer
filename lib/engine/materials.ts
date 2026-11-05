@@ -1,4 +1,4 @@
-import { requestIfcModels } from "../project/request-models";
+import { getIfcModels } from "../data/ifc-models";
 
 import { joinToAim } from "./join";
 import { openEngineSession, type EngineSession } from "./session";
@@ -126,7 +126,7 @@ export async function ifcMaterialLayers(input: Record<string, unknown>, deps: En
   const rawTypes = Array.isArray(input.ifc_types) ? input.ifc_types : input.ifc_types === undefined ? [] : [input.ifc_types];
   const types = rawTypes.map((t) => str(t)).filter((t) => /^Ifc[A-Za-z0-9]+$/.test(t));
   const limit = clamp(input.limit, 1, 500, 100);
-  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? requestIfcModels)().map((m) => m.id);
+  const modelIds = str(input.model) ? [str(input.model)] : (deps.sources ?? getIfcModels)().map((m) => m.id);
 
   const { models, revision } = await modelsFor(modelIds, deps);
   const session = await openEngineSession(models);

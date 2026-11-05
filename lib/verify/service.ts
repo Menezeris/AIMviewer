@@ -15,7 +15,6 @@ import {
   type VerifyRow,
   type VerifyRunAllWire,
 } from "./wire";
-import { currentProjectId } from "../project/context";
 
 /**
  * Overenie výmer pre viewer (D-185 UI): `latest` číta `v_verification_latest`, `run` a `run_all` počítajú motorom
@@ -27,7 +26,6 @@ const IN_CHUNK = 100;
 
 /** GUID -> `object_ref` výskytu. Ten istý GUID môže mať v `objects` aj riadok s object_ref = GUID (typ); berie sa kód výskytu. */
 export async function lookupObjectRefs(guids: string[]): Promise<Map<string, string>> {
-  const projectId = currentProjectId();
   const out = new Map<string, string>();
   if (guids.length === 0) return out;
   const db = getSupabaseAdmin();
@@ -36,7 +34,6 @@ export async function lookupObjectRefs(guids: string[]): Promise<Map<string, str
     const { data, error } = await db
       .from("objects")
       .select("ifc_guid, object_ref, object_type")
-      .eq("project_id", projectId)
       .in("ifc_guid", guids.slice(i, i + IN_CHUNK))
       .is("valid_until", null);
     if (error) throw new Error(`objects: ${error.message}`);
@@ -63,7 +60,7 @@ async function refsOf(guids: string[]): Promise<Map<string, string>> {
 
 async function currentRevisionOf(model: string): Promise<number | null> {
   try {
-    return await fetchCurrentRevision(currentProjectId(), model);
+    return await fetchCurrentRevision(model);
   } catch {
     return null;
   }
@@ -71,8 +68,7 @@ async function currentRevisionOf(model: string): Promise<number | null> {
 
 /** Posledný uložený beh prvku (aj zastaraný, `stale`); null = prvok nemá uložené overenie. */
 export async function latestVerification(globalId: string): Promise<VerifyElementWire | null> {
-  const projectId = currentProjectId();
-  const { data, error } = await getSupabaseAdmin().from("v_verification_latest").select("*").eq("project_id", projectId).eq("global_id", globalId).limit(500);
+  const { data, error } = await getSupabaseAdmin().from("v_verification_latest").select("*").eq("global_id", globalId).limit(500);
   if (error) throw new Error(`v_verification_latest: ${error.message}`);
   const rows = (data ?? []) as VerifyRow[];
   if (rows.length === 0) return null;

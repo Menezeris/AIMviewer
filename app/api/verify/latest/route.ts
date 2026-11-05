@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 
 import { GUID_RE, jsonFail, NO_STORE, verifyGuard } from "@/lib/verify/route-guard";
 import { latestVerification } from "@/lib/verify/service";
-import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Posledné uložené overenie výmer prvku pre viewer (D-185 UI, `VERIFY_REQUEST latest`): `GET ?global_id=` ->
@@ -13,7 +12,7 @@ import { withRequestProject } from "@/lib/project/request";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-async function getHandler(req: Request) {
+export async function GET(req: Request) {
   const denied = verifyGuard(req);
   if (denied) return denied;
   const guid = new URL(req.url).searchParams.get("global_id") ?? "";
@@ -24,5 +23,3 @@ async function getHandler(req: Request) {
     return jsonFail(err instanceof Error ? err.message : "načítanie overenia zlyhalo", 500);
   }
 }
-
-export const GET = withRequestProject(getHandler);

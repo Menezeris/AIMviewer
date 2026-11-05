@@ -3,7 +3,6 @@ import "server-only";
 import { getSupabaseAdmin } from "../supabase/server";
 
 import type { AimRef } from "./join";
-import { currentProjectId } from "../project/context";
 
 /** Dávka pre `.in()` filtre (limit dĺžky URL v PostgREST), ako v lib/llm/tools.ts. */
 const IN_CHUNK = 100;
@@ -13,7 +12,6 @@ const IN_CHUNK = 100;
  * Read-only cez `service_role` (D-026).
  */
 export async function lookupGuids(guids: string[]): Promise<Map<string, AimRef>> {
-  const projectId = currentProjectId();
   const supabase = getSupabaseAdmin();
   const objectByGuid = new Map<string, string>();
   for (let i = 0; i < guids.length; i += IN_CHUNK) {
@@ -34,7 +32,6 @@ export async function lookupGuids(guids: string[]): Promise<Map<string, AimRef>>
     const { data, error } = await supabase
       .from("objects")
       .select("id, object_ref, name, object_type")
-      .eq("project_id", projectId)
       .in("id", ids.slice(i, i + IN_CHUNK));
     if (error) throw new Error(error.message);
     for (const o of (data ?? []) as { id: string; object_ref: string | null; name: string | null; object_type: string }[]) {
@@ -90,7 +87,6 @@ const findNamesInIfc: FindNames = async (names) => (engineEnabled() ? (await imp
  * sa dohľadá podľa presného `objects.name` a potom podľa IFC Name/Tag v motore (D-102).
  */
 export async function resolveTargetsToGuids(targets: string[], findNames: FindNames = findNamesInIfc): Promise<Map<string, string>> {
-  const projectId = currentProjectId();
   const supabase = getSupabaseAdmin();
   const idByTarget = new Map<string, string>();
   const uuids = targets.filter((t) => UUID_RE.test(t));
@@ -100,7 +96,6 @@ export async function resolveTargetsToGuids(targets: string[], findNames: FindNa
       const { data, error } = await supabase
         .from("objects")
         .select("id, object_ref")
-        .eq("project_id", projectId)
         .in(col, vals.slice(i, i + IN_CHUNK))
         .is("valid_until", null); // zaniknuté objekty (D-088)
       if (error) throw new Error(error.message);
@@ -120,7 +115,6 @@ export async function resolveTargetsToGuids(targets: string[], findNames: FindNa
 
 /** Kódy prvkov (nie object_ref) -> GUID: presné `objects.name`, potom IFC Name/Tag; viacznačné = chyba. */
 export async function resolveNamesToGuids(byName: string[], findNames: FindNames = findNamesInIfc): Promise<Map<string, string>> {
-  const projectId = currentProjectId();
   if (byName.length === 0) return new Map();
   const supabase = getSupabaseAdmin();
   const named = new Map<string, NameCandidate[]>();
@@ -128,7 +122,6 @@ export async function resolveNamesToGuids(byName: string[], findNames: FindNames
     const { data, error } = await supabase
       .from("objects")
       .select("id, name, object_ref, ifc_type")
-      .eq("project_id", projectId)
       .in("name", byName.slice(i, i + IN_CHUNK))
       .is("valid_until", null);
     if (error) throw new Error(error.message);

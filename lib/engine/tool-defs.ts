@@ -1,4 +1,4 @@
-import { requestIfcModels } from "../project/request-models";
+import { getIfcModels } from "../data/ifc-models";
 import { CLASH_ACTIONS, CLASH_GROUPS } from "./clash-tests";
 import type { ToolDefinition } from "../llm/provider";
 
@@ -11,7 +11,7 @@ import type { ToolDefinition } from "../llm/provider";
 export const OPS = ["=", "!=", ">", "<", ">=", "<=", "contains", "exists", "matches"] as const;
 
 function modelEnum(): string[] {
-  return requestIfcModels().map((m) => m.id);
+  return getIfcModels().map((m) => m.id);
 }
 
 const whereSchema = {
@@ -49,12 +49,8 @@ export type ModelAction = keyof typeof MODEL_ACTIONS;
 export const QUERY_MODES = ["list", "count", "values"] as const;
 
 export function engineToolDefinitions(): ToolDefinition[] {
-  // D-189: codes of the request project's models; a project without models gets no enum.
   const models = modelEnum();
-  const model =
-    models.length > 0
-      ? { type: "string", enum: models, description: `Model federácie (${models.join(", ")})` }
-      : { type: "string", description: "Model federácie (kód modelu projektu, ifc_models ich vypíše)" };
+  const model = { type: "string", enum: models, description: `Model federácie (${models.join(", ")})` };
   return [
     {
       name: "ifc_models",

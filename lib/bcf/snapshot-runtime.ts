@@ -3,7 +3,6 @@ import "server-only";
 import { getSupabaseAdmin } from "../supabase/server";
 
 import { isOwnStorageUrl, type SnapshotDocument, type SnapshotSource } from "./snapshot";
-import { currentProjectId } from "../project/context";
 
 /**
  * Produkčné závislosti snímky výrezu (D-158 krok 3): dokument z DB, PDF z verejného
@@ -14,13 +13,11 @@ export const SNAPSHOT_BUCKET = "documents";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function document(id: string): Promise<SnapshotDocument | null> {
-  const projectId = currentProjectId();
   if (!UUID_RE.test(id)) return null;
   const db = getSupabaseAdmin();
   const { data: obj, error } = await db
     .from("objects")
     .select("id")
-    .eq("project_id", projectId)
     .eq("id", id.toLowerCase())
     .eq("object_type", "document")
     .is("valid_until", null)

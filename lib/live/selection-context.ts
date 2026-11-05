@@ -3,7 +3,6 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import type { AimSelectionInfo, SelectionContext } from "./selection-summary";
-import { currentProjectId } from "../project/context";
 
 /** Dávka pre `.in()` filtre (limit dĺžky URL v PostgREST), ako v lib/engine/aim-lookup.ts. */
 const IN_CHUNK = 100;
@@ -30,7 +29,6 @@ const SPATIAL = new Set(["site", "building", "floor", "space", "project"]);
  * nepriestorový uzol. Read-only cez `service_role` (D-026), zaniknuté objekty nie (D-088).
  */
 export async function lookupSelectionContext(guids: string[]): Promise<SelectionContext> {
-  const projectId = currentProjectId();
   const supabase = getSupabaseAdmin();
 
   const chunked = async <T>(values: string[], fetch: (part: string[]) => PromiseLike<{ data: unknown; error: { message: string } | null }>) => {
@@ -49,7 +47,6 @@ export async function lookupSelectionContext(guids: string[]): Promise<Selection
       supabase
         .from("objects")
         .select("id, object_ref, name, ifc_type, object_type")
-        .eq("project_id", projectId)
         .in("id", part)
         .is("valid_until", null),
     );
@@ -57,7 +54,7 @@ export async function lookupSelectionContext(guids: string[]): Promise<Selection
   };
   const edges = async (view: string, from: string[]) => {
     const rows = await chunked<Edge>([...new Set(from)], (part) =>
-      supabase.from(view).select("from_id, to_id").eq("project_id", projectId).in("from_id", part).is("valid_until", null),
+      supabase.from(view).select("from_id, to_id").in("from_id", part).is("valid_until", null),
     );
     const m = new Map<string, string>();
     for (const r of rows) if (r.to_id) m.set(r.from_id, r.to_id); // kontajner bez uzla AIM (D-183 K3)

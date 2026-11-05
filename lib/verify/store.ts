@@ -18,12 +18,11 @@ export function isMissingInputsColumn(e: { code?: string; message?: string } | n
   return (e.code === "PGRST204" || e.code === "42703") && /inputs|explanation/.test(e.message ?? "");
 }
 
-/** D-189: runs of one project. */
-export function supabaseVerificationStore(projectId: string): VerificationStore {
+export function supabaseVerificationStore(): VerificationStore {
   return {
     async saveRun(run, results) {
       const db = getSupabaseAdmin();
-      const { data, error } = await db.from("verification_runs").insert({ ...run, project_id: projectId }).select("id").single();
+      const { data, error } = await db.from("verification_runs").insert(run).select("id").single();
       if (error || !data) throw new Error(`verification_runs: ${error?.message ?? "bez id"}`);
       const id = (data as { id: string }).id;
       let withoutInputs = false;
@@ -44,7 +43,7 @@ export function supabaseVerificationStore(projectId: string): VerificationStore 
         }
         if (e) {
           // Beh bez výsledkov by klamal: zmazať (kaskáda) a nahlásiť.
-          await db.from("verification_runs").delete().eq("project_id", projectId).eq("id", id);
+          await db.from("verification_runs").delete().eq("id", id);
           throw new Error(`verification_results: ${e.message}`);
         }
       }

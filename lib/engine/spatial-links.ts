@@ -5,7 +5,6 @@ import { getSupabaseAdmin } from "../supabase/server";
 
 import { lookupGuids } from "./aim-lookup";
 import type { SpatialLink } from "./tools";
-import { currentProjectId } from "../project/context";
 
 const IN_CHUNK = 100;
 /** Strop odvodených väzieb jedného dopytu (miestnosť s tisíckami prvkov nezahltí volanie). */
@@ -18,7 +17,6 @@ const MAX_LINKS = 5000;
  * ich číta z DB, preto ich tu doplníme k tým zo súboru. Read-only, `service_role` (D-026).
  */
 export async function spatialLinksOfGuid(guid: string): Promise<SpatialLink[]> {
-  const projectId = currentProjectId();
   const node = (await lookupGuids([guid])).get(guid);
   if (!node) return [];
   const supabase = getSupabaseAdmin();
@@ -26,7 +24,6 @@ export async function spatialLinksOfGuid(guid: string): Promise<SpatialLink[]> {
     supabase
       .from("rel_referenced_in_spatial_structure")
       .select("from_id, to_id, role")
-      .eq("project_id", projectId)
       .or(`from_id.eq.${node.object_id},to_id.eq.${node.object_id}`)
       .is("valid_until", null)
       .order("id")
@@ -38,7 +35,6 @@ export async function spatialLinksOfGuid(guid: string): Promise<SpatialLink[]> {
     const { data, error } = await supabase
       .from("objects")
       .select("id, ifc_guid, ifc_type, name")
-      .eq("project_id", projectId)
       .in("id", otherIds.slice(i, i + IN_CHUNK))
       .is("valid_until", null);
     if (error) throw new Error(error.message);

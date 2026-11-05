@@ -14,8 +14,7 @@ import {
 } from "@ifc-lite/clash";
 import { EntityNode } from "@ifc-lite/query";
 
-import { maybeCurrentProject } from "../project/context";
-import { requestIfcModels } from "../project/request-models";
+import { getIfcModels } from "../data/ifc-models";
 
 import {
   CLASH_GROUPS,
@@ -99,17 +98,9 @@ export interface ClashRun {
   createdAt: string;
   /** Uložený v DB (`run save=true` alebo obnovený z DB). */
   saved?: { id: string; testId: string | null };
-  /** Project of the request that ran it (D-189); runs of other projects stay invisible. */
-  project?: string | null;
 }
 
 const runs = new Map<string, ClashRun>();
-
-/** Runs in memory of the request project (D-189); outside a request the ones without a project. */
-function projectRuns(): ClashRun[] {
-  const p = maybeCurrentProject()?.id ?? null;
-  return [...runs.values()].filter((r) => (r.project ?? null) === p);
-}
 let runSeq = 0;
 
 /** Len pre testy. */
@@ -289,12 +280,12 @@ const specModels = (spec: ClashSpec, all: string[]): string[] => {
 async function execRun(input: Record<string, unknown>, deps: EngineDeps): Promise<Record<string, unknown>> {
   const testName = str(input.test);
   const spec = parseSpec(input, testName ? await (await saved()).resolveTest(testName, deps) : undefined);
-  const modelIds = specModels(spec, (deps.sources ?? requestIfcModels)().map((m) => m.id));
+  const modelIds = specModels(spec, (deps.sources ?? getIfcModels)().map((m) => m.id));
   const { models, revision } = await modelsFor(modelIds, deps);
   const maxPairs = deps.clashLimits?.maxPairs ?? MAX_PAIRS;
   const budgetMs = deps.clashLimits?.budgetMs ?? RUN_BUDGET_MS;
   const fingerprint = JSON.stringify([spec, revision, maxPairs]);
-  const hit = projectRuns().find((r) => r.fingerprint === fingerprint);
+  const hit = [...runs.values()].find((r) => r.fingerprint === fingerprint);
   if (hit) return { ...describeRun(hit, hit.result.truncated ? await narrowHint(spec, models) : undefined), cached: true, ...(await maybeSave(hit, input, deps)) };
 
   const t0 = performance.now();
@@ -328,7 +319,6 @@ async function execRun(input: Record<string, unknown>, deps: EngineDeps): Promis
     basedOn: stampOf(revisionStamp(revision, models.map((m) => m.id))),
     ms: { tessellate: Math.round(tessellate), detect: Math.round(performance.now() - t1) },
     createdAt: new Date().toISOString(),
-    project: maybeCurrentProject()?.id ?? null,
   };
   runs.set(run.id, run);
   const truncatedHint = detected.result.truncated ? await narrowHint(spec, models) : undefined;
@@ -488,7 +478,7 @@ export function pickGroup(groups: Group[], ref: string): Group {
 export async function findRun(input: Record<string, unknown>, deps: EngineDeps): Promise<ClashRun> {
   const id = str(input.run_id);
   if (id.startsWith("run-")) {
-    const run = projectRuns().find((r) => r.id === id);
+    const run = runs.get(id);
     if (!run) throw new InputError(`Beh '${id}' nie je v pamäti (po reštarte alebo po ${KEPT_RUNS} behoch sa zahodí): spusti action=run znova (save=true ho uloží do DB), alebo daj run_id uloženého behu (action=list test=...).`);
     return run;
   }
@@ -503,7 +493,7 @@ export async function findRun(input: Record<string, unknown>, deps: EngineDeps):
 /** Posledný beh v pamäti, voliteľne len daného testu (kód alebo názov). */
 export function lastMemoryRun(testName?: string): ClashRun | undefined {
   const want = testName?.trim().toLowerCase();
-  return projectRuns().filter((r) => !want || r.spec.code?.toLowerCase() === want || r.spec.name.toLowerCase() === want).pop();
+  return [...runs.values()].filter((r) => !want || r.spec.code?.toLowerCase() === want || r.spec.name.toLowerCase() === want).pop();
 }
 
 const mmOf = (c: Clash) => (c.status === "clearance" ? { gap_mm: round(c.distance * 1000, 1) } : { depth_mm: round(penetrationDepth(c) * 1000, 1) });
@@ -734,4 +724,4 @@ export async function ifcClash(input: Record<string, unknown>, deps: EngineDeps)
 }
 
 /** Behy v pamäti procesu (pre `list`). */
-export const memoryRuns = (): ClashRun[] => projectRuns();
+export const memoryRuns = (): ClashRun[] => [...runs.values()];

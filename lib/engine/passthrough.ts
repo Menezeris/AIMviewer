@@ -1,4 +1,4 @@
-import { requestIfcModels } from "../project/request-models";
+import { getIfcModels } from "../data/ifc-models";
 
 import { engineRevision, getStore } from "./cache";
 import type { GuidLookup } from "./join";
@@ -58,7 +58,7 @@ export async function execPassthroughTool(
   let revision: Record<string, unknown> | undefined;
   if (tool.needsModel) {
     const id = typeof args.model_id === "string" ? args.model_id.trim() : "";
-    const src = (deps.sources ?? requestIfcModels)().find((m) => m.id === id);
+    const src = (deps.sources ?? getIfcModels)().find((m) => m.id === id);
     if (!src) return { content: "Zadaj model_id modelu federácie (napr. ASR alebo VZT).", isError: true };
     const { entry } = await getStore(src, { fetchImpl: deps.fetchImpl });
     models.push({ id: src.id, name: `${src.id}.ifc`, store: entry.store });

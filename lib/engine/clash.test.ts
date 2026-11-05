@@ -237,18 +237,9 @@ describe("clash tool (D-164)", () => {
     expect(ENGINE_TOOL_NAMES.has("clash")).toBe(true);
   });
 
-  it("list vráti dva predvolené testy, keď projekt má modely ASR a VZT (D-189)", async () => {
-    const federation = () => [
-      { id: "ASR", label: "ASR", url: "https://example.test/asr.ifc" },
-      { id: "VZT", label: "VZT", url: "https://example.test/vzt.ifc" },
-    ];
-    const r = await call({ action: "list" }, { ...deps, sources: federation });
-    expect(r.json.tests.map((t: { code: string }) => t.code)).toEqual(["VZT-NOSNE", "VZT-ASR"]);
-  });
-
-  it("projekt bez modelov ASR a VZT nemá predvolené testy (D-189)", async () => {
+  it("list vráti dva predvolené testy", async () => {
     const r = await call({ action: "list" });
-    expect(r.json.tests).toEqual([]);
+    expect(r.json.tests.map((t: { code: string }) => t.code)).toEqual(["VZT-NOSNE", "VZT-ASR"]);
   });
 
   it("run -> results: podlažie z IFC, dvojice tried, prvky a show_in_3d", async () => {

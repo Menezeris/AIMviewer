@@ -11,7 +11,6 @@ import { idsOpenOp, type IdsOpenReq } from "@/lib/viewer-ids";
 import { supabaseIdsLibraryStore } from "./library-store";
 import { supabaseIdsStore } from "./store";
 import { execIdsTool, type IdsOpenOutcome, type IdsToolResult, type IdsViewerDeps } from "./tools";
-import { currentProjectId } from "../project/context";
 
 /** Čakanie na otvorenie IDS vo vieweri: klient hosta najprv stiahne XML z route, potom ho pošle forku. */
 const OPEN_TIMEOUT_MS = ACK_TIMEOUT_MS * 2;
@@ -53,5 +52,5 @@ const viewer: IdsViewerDeps = { open: liveOpen, viewState: liveViewState };
 
 /** Produkčné závislosti toolu `ids_document` (D-162): DB a živý viewer; import je lenivý z MCP route. */
 export function runIdsTool(name: string, args: Record<string, unknown>): Promise<IdsToolResult> {
-  return execIdsTool(name, args, { store: supabaseIdsStore(currentProjectId()), viewer, lib: supabaseIdsLibraryStore(currentProjectId()) });
+  return execIdsTool(name, args, { store: supabaseIdsStore(), viewer, lib: supabaseIdsLibraryStore() });
 }

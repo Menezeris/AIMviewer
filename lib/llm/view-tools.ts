@@ -17,7 +17,6 @@ import { ViewInputError, planPanelScroll, planPanelZoom, planPanels, planPlanPos
 import { SECTION_SHIFT_RANGE } from "../views/plan";
 import { hasLayoutParams, hasTabParams, planLayout, planViewTabs, type PresentationView } from "./view-tabs";
 import { TILE_LAYOUTS } from "../viewer-tabs";
-import { currentProjectId } from "../project/context";
 
 /** `view` je to isté ako `saved_view` (D-132); prázdne = žiadny pohľad. */
 const savedViewName = (input: Record<string, unknown>): string | undefined => {
@@ -342,7 +341,7 @@ async function resolveSplitDrawing(storeyGuid: string, rawDiscipline: unknown) {
   if (rawDiscipline !== undefined && (typeof rawDiscipline !== "string" || !/^[A-Za-z]{2,5}$/.test(rawDiscipline.trim()))) {
     throw new ViewInputError("discipline je kód disciplíny z kódu dokumentu (ASR, PBR, STA...).");
   }
-  const docs = await fetchProjectDocuments(currentProjectId());
+  const docs = await fetchProjectDocuments();
   const candidates = docs
     .filter((d) => d.kind === "drawing" && (d.storeyGuids ?? (d.storeyGuid ? [d.storeyGuid] : [])).length > 0)
     .map((d) => ({ documentId: d.documentId, ref: d.name, discipline: d.discipline ?? null, floorGuids: d.storeyGuids ?? [d.storeyGuid!] }));
@@ -361,11 +360,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 /** Podlažie AIM (object_ref, názov s normalizáciou, alebo UUID) -> label, aktívny GUID, elevácia. */
 async function resolveFloor(raw: unknown): Promise<SectionFloor | null> {
-  const projectId = currentProjectId();
   const want = typeof raw === "string" ? raw.trim() : "";
   if (!want) return null;
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase.from("v_floors").select("id, object_ref, name, elevation").eq("project_id", projectId);
+  const { data, error } = await supabase.from("v_floors").select("id, object_ref, name, elevation");
   if (error) throw new Error(error.message);
   const floors = (data ?? []) as { id: string; object_ref: string | null; name: string | null; elevation: number | null }[];
   const norm = normalizeStoreyLabel(want);
@@ -396,7 +394,7 @@ async function resolveFloor(raw: unknown): Promise<SectionFloor | null> {
 async function presentationViews(): Promise<PresentationView[]> {
   try {
     const [{ supabaseSavedViewStore }, { wireOfRow }] = await Promise.all([import("@/lib/views/store"), import("@/lib/views/wire")]);
-    const rows = await supabaseSavedViewStore(currentProjectId()).list();
+    const rows = await supabaseSavedViewStore().list();
     return rows.filter((r) => r.kind === "saved" && wireOfRow(r)).map((r) => ({ id: r.id, name: r.name }));
   } catch {
     return [];

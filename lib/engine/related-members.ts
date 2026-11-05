@@ -4,7 +4,6 @@ import { fetchAllPages } from "../data/pagination";
 import { getSupabaseAdmin } from "../supabase/server";
 
 import type { RelatedGroup } from "./search-all";
-import { currentProjectId } from "../project/context";
 
 /**
  * Členovia zón, skupín a aktérov z grafu AIM pre `search_all related` (D-126,
@@ -27,14 +26,12 @@ interface Node {
 }
 
 async function nodes(ids: string[], types: string[] | null): Promise<Node[]> {
-  const projectId = currentProjectId();
   const supabase = getSupabaseAdmin();
   const out: Node[] = [];
   for (let i = 0; i < ids.length; i += IN_CHUNK) {
     let q = supabase
       .from("objects")
       .select("id, object_type, object_ref, name, ifc_type")
-      .eq("project_id", projectId)
       .in("id", ids.slice(i, i + IN_CHUNK))
       .is("valid_until", null);
     if (types) q = q.in("object_type", types);
@@ -47,12 +44,10 @@ async function nodes(ids: string[], types: string[] | null): Promise<Node[]> {
 
 async function edges(view: string, matchCol: "from_id" | "to_id", ids: string[]) {
   const supabase = getSupabaseAdmin();
-  const projectId = currentProjectId();
   return fetchAllPages<{ from_id: string; to_id: string }>((from, to) =>
     supabase
       .from(view)
       .select("from_id, to_id")
-      .eq("project_id", projectId)
       .in(matchCol, ids)
       .is("valid_until", null)
       // Strana bez uzla AIM (D-183 K3, napr. port VZT v systéme) nie je člen.

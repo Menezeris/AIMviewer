@@ -19,8 +19,6 @@ export interface McpCallLogRow {
   region: string | null;
   /** Klient a rozhovor (`claude-ai#sid`, D-159); stĺpec z migrácie 20261023120000. */
   client?: string | null;
-  /** Project of the call (D-189, `?project=` on the connector URL); nullable column. */
-  project_id?: string | null;
 }
 
 /** `args.action`, ak ju tool má (style_in_3d, set_section...); inak null. */
@@ -39,8 +37,8 @@ export function callAction(args: Record<string, unknown>): string | null {
  * Volanie odmietnuté pre neznámy parameter (D-126) sa nevykoná, ale zapíše sa, aby bolo v logu
  * vidno, koľko volaní stálo: `action` = `unknown_param:<mená>`, `ms` 0, `ok` false.
  */
-export function rejectedCallRow(tool: string, unknown: string[], region: string | null, projectId: string | null = null): McpCallLogRow {
-  return { tool, action: `unknown_param:${unknown.join(",")}`.slice(0, 40), ms: 0, ok: false, cold: false, phases: {}, region, project_id: projectId };
+export function rejectedCallRow(tool: string, unknown: string[], region: string | null): McpCallLogRow {
+  return { tool, action: `unknown_param:${unknown.join(",")}`.slice(0, 40), ms: 0, ok: false, cold: false, phases: {}, region };
 }
 
 type Insert = (row: McpCallLogRow) => Promise<{ error: { message: string } | null }>;

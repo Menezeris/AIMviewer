@@ -1,7 +1,9 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
+
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { cachedProjectRead } from "@/lib/data/revalidate";
+import { AIM_CACHE } from "@/lib/data/constants";
 import { georefV2Wire, primaryV1, toGeorefV2, type GeorefV2 } from "@/lib/data/georef";
 
 /**
@@ -90,13 +92,12 @@ function normalizeRegion(r: RawRegion): DrawingRegion | null {
   };
 }
 
-async function fetchDrawingImpl(projectId: string, id: string): Promise<DrawingDoc | null> {
+async function fetchDrawingImpl(id: string): Promise<DrawingDoc | null> {
   const supabase = getSupabaseAdmin();
 
   const { data: obj, error } = await supabase
     .from("objects")
     .select("id, object_ref, name, object_type, properties")
-    .eq("project_id", projectId)
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -129,7 +130,11 @@ async function fetchDrawingImpl(projectId: string, id: string): Promise<DrawingD
 }
 
 /** Cachované per id (ISR, D-029 perf). */
-export const fetchDrawing = cachedProjectRead("fetch-drawing", fetchDrawingImpl);
+export const fetchDrawing = unstable_cache(
+  fetchDrawingImpl,
+  ["fetch-drawing"],
+  AIM_CACHE
+);
 
 // ─── Georeferencované PDF podklady (D-072) ───────────────────────────────────
 
@@ -183,7 +188,7 @@ export function isValidGeorefV1(raw: unknown): boolean {
   return true;
 }
 
-async function fetchUnderlayDrawingsImpl(projectId: string): Promise<UnderlayDrawingWire[]> {
+async function fetchUnderlayDrawingsImpl(): Promise<UnderlayDrawingWire[]> {
   const supabase = getSupabaseAdmin();
 
   // Bez stránkovania (fetchAllPages) zámerne: kardinalita je ohraničená —
@@ -194,7 +199,6 @@ async function fetchUnderlayDrawingsImpl(projectId: string): Promise<UnderlayDra
   const { data: floors, error: fErr } = await supabase
     .from("objects")
     .select("id")
-    .eq("project_id", projectId)
     .eq("object_type", "floor")
     .is("valid_until", null);
   if (fErr) throw new Error(fErr.message);
@@ -204,7 +208,6 @@ async function fetchUnderlayDrawingsImpl(projectId: string): Promise<UnderlayDra
     ? await supabase
         .from("rel_associates_document")
         .select("to_id")
-        .eq("project_id", projectId)
         .in("from_id", floorIds)
         .is("valid_until", null)
         .not("to_id", "is", null)
@@ -215,7 +218,6 @@ async function fetchUnderlayDrawingsImpl(projectId: string): Promise<UnderlayDra
   const { data: calibrated, error: cErr } = await supabase
     .from("objects")
     .select("id")
-    .eq("project_id", projectId)
     .eq("object_type", "document")
     .is("valid_until", null)
     .not("properties->_georef", "is", null);
@@ -231,7 +233,7 @@ async function fetchUnderlayDrawingsImpl(projectId: string): Promise<UnderlayDra
 
   // 2) meta + PDF URL + prípadný _georef.
   const [objsRes, docsRes] = await Promise.all([
-    supabase.from("objects").select("id, name, properties").eq("project_id", projectId).in("id", docIds),
+    supabase.from("objects").select("id, name, properties").in("id", docIds),
     supabase
       .from("documents")
       .select("id, location, storage_type")
@@ -268,4 +270,8 @@ async function fetchUnderlayDrawingsImpl(projectId: string): Promise<UnderlayDra
 }
 
 /** Podklady pre 3D viewer (ISR, tag `aim` — po PATCH sa revaliduje). */
-export const fetchUnderlayDrawings = cachedProjectRead("fetch-underlay-drawings", fetchUnderlayDrawingsImpl);
+export const fetchUnderlayDrawings = unstable_cache(
+  fetchUnderlayDrawingsImpl,
+  ["fetch-underlay-drawings"],
+  AIM_CACHE
+);

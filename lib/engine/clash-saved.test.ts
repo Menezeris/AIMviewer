@@ -54,9 +54,8 @@ describe("clash save a delete (D-164 PR2)", () => {
     const saved = await call(SAVE_MOJ);
     expect(saved.json).toMatchObject({ saved: true, created: true, test: { code: "MOJ", origin: "chat", mode: "clearance", clearance_mm: 500, a: { type: "IfcWall" }, b: { type: "IfcSlab" } } });
     const list = await call({ action: "list" });
-    // Mini project without ASR and VZT: no default tests (D-189).
-    expect(list.json.tests.map((t: { code: string }) => t.code)).toEqual(["MOJ"]);
-    expect(list.json.tests[0]).toMatchObject({ origin: "chat", last_run: null });
+    expect(list.json.tests.map((t: { code: string }) => t.code)).toEqual(["VZT-NOSNE", "VZT-ASR", "MOJ"]);
+    expect(list.json.tests[2]).toMatchObject({ origin: "chat", last_run: null });
 
     const edited = await call({ action: "save", test: "MOJ", clearance_mm: 800, a_storey: "1NP" });
     expect(edited.json).toMatchObject({ created: false, test: { clearance_mm: 800, a: { type: "IfcWall", storey: "1NP" }, name: "Steny x doska" } });
@@ -160,7 +159,7 @@ describe("clash run save=true a uložený beh (D-164 PR2)", () => {
     expect(r.json.runs).toHaveLength(1);
     expect(r.json.runs[0]).toMatchObject({ total: 2, trigger: "chat" });
     expect(r.json.reviews).toEqual({ accepted: 2 });
-    expect((await call({ action: "list" })).json.tests[0].last_run).toMatchObject({ total: 2 });
+    expect((await call({ action: "list" })).json.tests[2].last_run).toMatchObject({ total: 2 });
   });
 
   it("strop uloženia kolízií odmietne beh so radou zúžiť", async () => {
@@ -396,7 +395,7 @@ describe("clash podpis vstupu: based_on a stale (D-183 bod 11, #292)", () => {
       [{ MINI: 11 }, true],
     ]);
     expect(list.json.runs[1].stale_note).toMatch(/MINI v011 -> v012/);
-    expect((await call({ action: "list" }, d)).json.tests[0].last_run).toMatchObject({ based_on: { MINI: 12 }, stale: false });
+    expect((await call({ action: "list" }, d)).json.tests[2].last_run).toMatchObject({ based_on: { MINI: 12 }, stale: false });
 
     const old = await call({ action: "results", run_id: first.saved_run_id }, d);
     expect(old.json).toMatchObject({ based_on: { MINI: 11 }, stale: true });

@@ -194,11 +194,7 @@ function fail(what: string, error: { message: string } | null): never {
   throw new Error(`${what}: ${error?.message ?? "neznáma chyba"}`);
 }
 
-/**
- * D-189: topics of one project. Reads filter `project_id`, inserts set it, the number is unique per
- * project (`uniq_model_tasks_project_number`); child rows (comments, documents) follow the topic.
- */
-export function supabaseBcfStore(projectId: string): BcfStore {
+export function supabaseBcfStore(): BcfStore {
   const db = () => getSupabaseAdmin();
   const pageAnchor = async (documentId: string, page: number | null) => {
     const { data, error } = await db().from("document_pages").select("page, page_size").eq("document_id", documentId).order("page", { ascending: false });
@@ -209,12 +205,12 @@ export function supabaseBcfStore(projectId: string): BcfStore {
   };
   const store: BcfStore = {
     async create(row) {
-      const { data, error } = await db().from(TABLE).insert({ ...row, project_id: projectId }).select("*").single();
+      const { data, error } = await db().from(TABLE).insert(row).select("*").single();
       if (error || !data) fail("Zápis témy zlyhal", error);
       return data as BcfTopicRow;
     },
     async get(ref) {
-      let q = db().from(TABLE).select("*").eq("project_id", projectId);
+      let q = db().from(TABLE).select("*");
       if (ref.id) q = q.eq("id", ref.id);
       else if (ref.number !== undefined) q = q.eq("number", ref.number);
       else return null;
@@ -223,7 +219,7 @@ export function supabaseBcfStore(projectId: string): BcfStore {
       return (data as BcfTopicRow | null) ?? null;
     },
     async list(filter) {
-      let q = db().from(TABLE).select("*", { count: "exact" }).eq("project_id", projectId);
+      let q = db().from(TABLE).select("*", { count: "exact" });
       if (filter.document_id) {
         let d = db().from(DOCS).select("task_id").eq("document_id", filter.document_id);
         if (filter.page !== undefined) d = d.eq("page", filter.page);
@@ -248,7 +244,6 @@ export function supabaseBcfStore(projectId: string): BcfStore {
       const { data, error } = await db()
         .from(TABLE)
         .update({ updated_at: new Date().toISOString(), ...patch })
-        .eq("project_id", projectId)
         .eq("id", id)
         .select("*")
         .single();
@@ -280,7 +275,6 @@ export function supabaseBcfStore(projectId: string): BcfStore {
       const { data, error } = await db()
         .from(TABLE)
         .select("*")
-        .eq("project_id", projectId)
         .eq("status", "in_progress")
         .not("session_url", "is", null)
         .gte("updated_at", since.toISOString());
@@ -288,7 +282,7 @@ export function supabaseBcfStore(projectId: string): BcfStore {
       return (data ?? []) as BcfTopicRow[];
     },
     async vocabulary() {
-      const { data, error } = await db().from(TABLE).select("topic_type, priority, stage, assigned_to").eq("project_id", projectId);
+      const { data, error } = await db().from(TABLE).select("topic_type, priority, stage, assigned_to");
       if (error) fail("Čítanie slovníka tém zlyhalo", error);
       const rows = (data ?? []) as Pick<BcfTopicRow, "topic_type" | "priority" | "stage" | "assigned_to">[];
       const distinct = (k: keyof (typeof rows)[number]) =>
@@ -338,14 +332,14 @@ export function supabaseBcfStore(projectId: string): BcfStore {
       return count ?? 0;
     },
     async georef(documentId) {
-      const { data, error } = await db().from("objects").select("properties").eq("project_id", projectId).eq("id", documentId).maybeSingle();
+      const { data, error } = await db().from("objects").select("properties").eq("id", documentId).maybeSingle();
       if (error) fail("Čítanie kalibrácie dokumentu zlyhalo", error);
       return ((data?.properties as Record<string, unknown> | null) ?? {})._georef ?? null;
     },
     async findDocument(idOrRef) {
       const s = idOrRef.trim();
       const cols = "id, object_type, object_ref, name";
-      const live = () => db().from("objects").select(cols).eq("project_id", projectId).in("object_type", ["document", "document_reference"]).is("valid_until", null);
+      const live = () => db().from("objects").select(cols).in("object_type", ["document", "document_reference"]).is("valid_until", null);
       let obj: { id: string; object_type: string; object_ref: string | null; name: string | null } | null = null;
       if (UUID_RE.test(s)) {
         const { data, error } = await live().eq("id", s.toLowerCase()).maybeSingle();
@@ -371,19 +365,15 @@ export function supabaseBcfStore(projectId: string): BcfStore {
         if (error) fail("Čítanie dokumentu zlyhalo", error);
         ext = data;
       } else {
-        // D-189: the same code may exist in another project; only this project's documents count.
-        const { data, error } = await db().from("documents").select(extCols).eq("identification", s).limit(50);
+        const { data, error } = await db().from("documents").select(extCols).eq("identification", s).limit(2);
         if (error) fail("Čítanie dokumentu zlyhalo", error);
-        type Ext = { id: string; identification: string | null; revision: string | null; location: string | null; referenced_document_id: string | null; file_sha256: string | null };
-        const candidates = (data ?? []) as Ext[];
-        if (candidates.length === 0) return null;
-        const { data: objs, error: e } = await live().in("id", candidates.map((c) => c.id));
+        // Kód dokumentu musí byť jednoznačný, inak by téma visela na náhodnom z nich.
+        if (!data || data.length !== 1) return null;
+        ext = data[0];
+        const { data: o, error: e } = await live().eq("id", ext.id).maybeSingle();
         if (e) fail("Čítanie dokumentu zlyhalo", e);
-        // Kód dokumentu musí byť v projekte jednoznačný, inak by téma visela na náhodnom z nich.
-        if (!objs || objs.length !== 1) return null;
-        const hit = objs[0] as { id: string; object_type: string; object_ref: string | null; name: string | null };
-        obj = hit;
-        ext = candidates.find((c) => c.id === hit.id) ?? null;
+        obj = o;
+        if (!obj) return null;
       }
       let referencePage: number | null = null;
       // Odkaz na časť (D-104): téma visí na celom dokumente a strane z odkazu.

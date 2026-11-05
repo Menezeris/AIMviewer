@@ -34,9 +34,6 @@ describe("most knižnice požiadaviek (D-182)", () => {
     expect(resolveRunModel(MODELS, { model_name: "iny.ifc" })).toBeNull();
     const twins: IfcModel[] = [MODELS[0], { ...MODELS[0], id: "b", label: "B", url: "https://x.test/ifc/archive/B/v079.ifc.gz" }];
     expect(resolveRunModel(twins, { model_name: "v079.ifc.gz" })).toBeNull();
-    // D-190: a model from the DB is named by its code even when the file is named by the container uuid
-    const uuidModel: IfcModel = { id: "ARCH", label: "ARCH", url: "https://x.test/ifc/archive/c-1/v003.ifc.gz", revision: 3, containerId: "c-1" };
-    expect(resolveRunModel([uuidModel], { model_name: "v003.ifc.gz" })).toEqual({ model: "ARCH", revision: 3 });
   });
 
   it("save_run: jeden POST na model s revíziou z hosta; neznámy model nič neuloží", async () => {

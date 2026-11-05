@@ -1,4 +1,4 @@
-import { revalidateProject } from "@/lib/data/revalidate";
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import {
@@ -14,8 +14,6 @@ import {
   spaceExists,
   type CaptureKind,
 } from "@/lib/data/captures";
-import { currentProjectId } from "@/lib/live/caller";
-import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Reality Capture (D-073) — capture point endpoint.
@@ -47,8 +45,7 @@ const UUID_RE =
 
 const KINDS: CaptureKind[] = ["photo", "pano360"];
 
-async function getHandler(req: Request) {
-  const projectId = currentProjectId();
+export async function GET(req: Request) {
   const url = new URL(req.url);
   const space = url.searchParams.get("space");
   const document = url.searchParams.get("document");
@@ -57,7 +54,7 @@ async function getHandler(req: Request) {
       if (!UUID_RE.test(space)) {
         return NextResponse.json({ error: "invalid space id" }, { status: 400 });
       }
-      const captures = await fetchCapturesForSpace(projectId, space);
+      const captures = await fetchCapturesForSpace(space);
       return NextResponse.json(
         { captures },
         { headers: { "Cache-Control": "public, max-age=60, s-maxage=60, stale-while-revalidate=300" } }
@@ -67,7 +64,7 @@ async function getHandler(req: Request) {
       if (!UUID_RE.test(document)) {
         return NextResponse.json({ error: "invalid document id" }, { status: 400 });
       }
-      const pins = await fetchCapturesForDocument(projectId, document);
+      const pins = await fetchCapturesForDocument(document);
       return NextResponse.json(
         { pins },
         { headers: { "Cache-Control": "public, max-age=60, s-maxage=60, stale-while-revalidate=300" } }
@@ -80,8 +77,7 @@ async function getHandler(req: Request) {
   }
 }
 
-async function postHandler(req: Request) {
-  const projectId = currentProjectId();
+export async function POST(req: Request) {
   if (!WRITE_ENABLED) {
     return NextResponse.json(
       { error: "zápis captures je vypnutý (CAPTURE_WRITE_ENABLED)" },
@@ -131,23 +127,20 @@ async function postHandler(req: Request) {
     typeof b.source === "string" && b.source.trim().length > 0 ? b.source.trim() : null;
 
   try {
-    if (!(await spaceExists(projectId, spaceId))) {
+    if (!(await spaceExists(spaceId))) {
       return NextResponse.json({ error: "space not found" }, { status: 404 });
     }
-    const id = await createCapturePoint(projectId, {
+    const id = await createCapturePoint({
       kind: kind as CaptureKind,
       name,
       spaceId,
       placement: b.placement,
       source,
     });
-    revalidateProject(projectId);
+    revalidateTag("aim", { expire: 0 });
     return NextResponse.json({ id }, { status: 201 });
   } catch (err) {
     console.error("[api/captures POST]", err);
     return NextResponse.json({ error: "server error" }, { status: 500 });
   }
 }
-
-export const GET = withRequestProject(getHandler);
-export const POST = withRequestProject(postHandler);

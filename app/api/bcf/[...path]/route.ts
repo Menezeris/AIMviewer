@@ -3,11 +3,9 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { clientIpKey } from "@/lib/api-guard";
-import { LEGACY_PROJECT_ID, handleBcfApi } from "@/lib/bcf/api";
-import { currentProject } from "@/lib/live/caller";
+import { handleBcfApi } from "@/lib/bcf/api";
 import { defaultBcfDeps } from "@/lib/bcf/runtime";
 import { snapshotFor } from "@/lib/bcf/snapshot-http";
-import { withRequestProject } from "@/lib/project/request";
 
 /**
  * BCF API 2.1 (D-099): báza `<site>/api/bcf`. Čítanie je bez tokenu - viewer
@@ -64,7 +62,6 @@ async function handle(req: Request, ctx: { params: Promise<{ path: string[] }> }
       origin: new URL(req.url).origin,
       // Snímka výrezu dokumentu (D-158 krok 3), render na požiadanie s keš v buckete.
       snapshot: (r) => snapshotFor(r, clientIpKey(req.headers)),
-      project: { code: currentProject().code, name: currentProject().name },
     },
   );
   if (res.binary) {
@@ -77,20 +74,9 @@ async function handle(req: Request, ctx: { params: Promise<{ path: string[] }> }
   return NextResponse.json(res.body, { status: res.status, headers: CORS });
 }
 
-/**
- * D-189: the viewer calls the API cross-origin without cookies, so the project is the BCF project
- * in the path (`/2.1/projects/<code>/...`); the legacy `aim` and paths without a project fall back to
- * `?project=`, the cookie and the default.
- */
-async function bcfProjectCode(_req: Request, ctx: { params: Promise<{ path: string[] }> }): Promise<string | null> {
-  const { path } = await ctx.params;
-  const code = path[1] === "projects" ? path[2] : undefined;
-  return code && code !== LEGACY_PROJECT_ID ? code : null;
-}
-
-export const GET = withRequestProject(handle, { code: bcfProjectCode });
-export const POST = withRequestProject(handle, { code: bcfProjectCode });
-export const PUT = withRequestProject(handle, { code: bcfProjectCode });
+export const GET = handle;
+export const POST = handle;
+export const PUT = handle;
 
 export async function OPTIONS(): Promise<Response> {
   return new NextResponse(null, { status: 204, headers: CORS });

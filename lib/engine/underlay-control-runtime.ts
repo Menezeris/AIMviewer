@@ -1,6 +1,6 @@
 import "server-only";
 
-import { revalidateProject } from "@/lib/data/revalidate";
+import { revalidateTag } from "next/cache";
 
 import type { RemoveResult, RestoreResult } from "../data/georef";
 import { isTestChannel, liveChannel } from "../live/broadcast";
@@ -8,7 +8,6 @@ import { queryLiveViewer } from "../live/query";
 import { getSupabaseAdmin } from "../supabase/server";
 
 import type { CalibratedDocument, ControlDeps, ResolvedFloor, ViewerSnapshot, ViewerUnderlay } from "./underlay-control";
-import { currentProjectId } from "../project/context";
 
 /**
  * Produkčné závislosti ovládania podkladov (D-168): dokumenty s `_georef` a podlažia z DB, stav podkladov zo
@@ -19,11 +18,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const VIEWER_TIMEOUT_MS = 2_500;
 
 async function documents(): Promise<CalibratedDocument[]> {
-  const projectId = currentProjectId();
   const { data, error } = await getSupabaseAdmin()
     .from("objects")
     .select("id, object_ref, name, georef:properties->_georef")
-    .eq("project_id", projectId)
     .eq("object_type", "document")
     .is("valid_until", null)
     .not("properties->_georef", "is", null);
@@ -37,11 +34,9 @@ async function documents(): Promise<CalibratedDocument[]> {
 }
 
 async function floorRows() {
-  const projectId = currentProjectId();
   const { data, error } = await getSupabaseAdmin()
     .from("objects")
     .select("id, ifc_guid, object_ref, name")
-    .eq("project_id", projectId)
     .eq("object_type", "floor")
     .is("valid_until", null);
   if (error) throw new Error(error.message);
@@ -83,16 +78,15 @@ async function viewer(): Promise<ViewerSnapshot> {
 
 /** Zápis `_georef` ako `calibrate_underlay`: zlúčenie nad najnovšími properties tesne pred zápisom. */
 async function write(documentId: string, apply: (stored: unknown) => RestoreResult | RemoveResult): Promise<RestoreResult | RemoveResult> {
-  const projectId = currentProjectId();
   const db = getSupabaseAdmin();
-  const { data, error } = await db.from("objects").select("properties").eq("project_id", projectId).eq("id", documentId).maybeSingle();
+  const { data, error } = await db.from("objects").select("properties").eq("id", documentId).maybeSingle();
   if (error) throw new Error(error.message);
   const current = (data?.properties as Record<string, unknown> | null) ?? {};
   const result = apply(current._georef);
   if (!result.ok) return result;
-  const { error: uErr } = await db.from("objects").update({ properties: { ...current, _georef: result.georef } }).eq("project_id", projectId).eq("id", documentId);
+  const { error: uErr } = await db.from("objects").update({ properties: { ...current, _georef: result.georef } }).eq("id", documentId);
   if (uErr) throw new Error(uErr.message);
-  revalidateProject(projectId);
+  revalidateTag("aim", { expire: 0 });
   return result;
 }
 

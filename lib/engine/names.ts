@@ -1,4 +1,4 @@
-import { requestIfcModels } from "../project/request-models";
+import { getIfcModels } from "../data/ifc-models";
 
 import type { EngineModelSource } from "./cache";
 import { nameIndex, nameKey } from "./search";
@@ -56,7 +56,7 @@ export async function findByNames(
 ): Promise<Map<string, NameMatch[]>> {
   const out = new Map<string, NameMatch[]>();
   if (names.length === 0) return out;
-  const sources = opts.sources ?? requestIfcModels;
+  const sources = opts.sources ?? getIfcModels;
   const deps = { sources, fetchImpl: opts.fetchImpl, lookup: async () => new Map(), resolveTargets: async () => new Map() };
   const { models } = await modelsFor(sources().map((m) => m.id), deps);
   const session = await openEngineSession(models);

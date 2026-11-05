@@ -63,37 +63,14 @@ export function emitApplied(p: LiveAppliedPayload): void {
   sink?.(p);
 }
 
-/**
- * `/ifc?focus&ops&r` -> časti príkazu; iná cesta (karta prvku, výkres) = null. `project` (D-189) is
- * allowed: the caller applies in place only when it is the project of this window, otherwise it
- * navigates (the proxy switches the project).
- */
-export function parseIfcCommandUrl(url: string): { focus?: string; ops?: string; nonce?: string; project?: string } | null {
+/** `/ifc?focus&ops&r` -> časti príkazu; iná cesta (karta prvku, výkres) = null. */
+export function parseIfcCommandUrl(url: string): { focus?: string; ops?: string; nonce?: string } | null {
   const u = new URL(url, "http://local");
   if (u.pathname !== "/ifc") return null;
   const pick = (k: string) => u.searchParams.get(k) || undefined;
   // Iné parametre (doc, captures...) potrebujú stránku - tie ostanú navigácii.
-  for (const k of u.searchParams.keys()) if (!["focus", "ops", "r", "project"].includes(k)) return null;
-  return { focus: pick("focus"), ops: pick("ops"), nonce: pick("r"), project: pick("project") };
-}
-
-/**
- * A command may run in this window without navigation (D-189): it names no project, or the project
- * this window shows (`current` = the window's `?project=`, null = the default project).
- */
-export function sameProject(command: string | undefined, current: string | null): boolean {
-  return !command || command === current;
-}
-
-/**
- * Command URL for the project of the MCP request (D-189): pages of a non-default project carry
- * `?project=<code>`, the default project leaves the URL as it was.
- */
-export function withProjectParam(url: string, code: string, defaultCode: string): string {
-  if (code === defaultCode || !url.startsWith("/")) return url;
-  const u = new URL(url, "http://local");
-  u.searchParams.set("project", code);
-  return `${u.pathname}${u.search}${u.hash}`;
+  for (const k of u.searchParams.keys()) if (!["focus", "ops", "r"].includes(k)) return null;
+  return { focus: pick("focus"), ops: pick("ops"), nonce: pick("r") };
 }
 
 /**

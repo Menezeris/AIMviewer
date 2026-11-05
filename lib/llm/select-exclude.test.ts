@@ -4,10 +4,6 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { orFilter, rowEq } from "@/lib/project/testing-filters";
-
-import { TEST_PROJECT } from "@/lib/project/testing";
-
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/engine/aim-lookup", () => ({
   engineEnabled: () => false,
@@ -26,15 +22,14 @@ function builder(table: string) {
       return b;
     },
     eq(col: string, v: unknown) {
-      filters.push((r) => rowEq(r, col, v));
+      filters.push((r) => r[col] === v);
       return b;
     },
     ilike(col: string, v: string) {
       filters.push((r) => String(r[col] ?? "").toLowerCase() === v.toLowerCase());
       return b;
     },
-    or(expr: string) {
-      filters.push(orFilter(expr));
+    or() {
       return b;
     },
     in(col: string, vs: unknown[]) {
@@ -86,7 +81,7 @@ beforeEach(() => {
 
 describe("show_in_3d select=true s filtrom (#242)", () => {
   it("ifc_type vyberie celú triedu jedným volaním", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const res = await rt.exec("show_in_3d", { select: true, ifc_type: "IfcDamper" });
     expect(res.isError).toBe(false);
     const out = JSON.parse(res.content);
@@ -96,7 +91,7 @@ describe("show_in_3d select=true s filtrom (#242)", () => {
   });
 
   it("filter bez zhody je zrozumiteľná chyba, bez filtra aj ids stále chyba", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     expect((await rt.exec("show_in_3d", { select: true, ifc_type: "IfcNic" })).isError).toBe(true);
     const none = await rt.exec("show_in_3d", { select: true });
     expect(none.isError).toBe(true);
@@ -104,7 +99,7 @@ describe("show_in_3d select=true s filtrom (#242)", () => {
   });
 
   it("global_ids fungujú aj pri výbere", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const res = await rt.exec("show_in_3d", { select: true, global_ids: [guid(1), guid(2)] });
     expect(JSON.parse(res.content)).toMatchObject({ selected_count: 2 });
   });
@@ -112,7 +107,7 @@ describe("show_in_3d select=true s filtrom (#242)", () => {
 
 describe("style_in_3d hide s výnimkou (#246)", () => {
   it("model + výnimky: hide_sel celého modelu a za ním show výnimiek, jedna akcia", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const res = await rt.exec("style_in_3d", { action: "hide", model: "VZT", exclude_ids_or_refs: ["VV.03.02.022", "KOD-1"], exclude_global_ids: [guid(5)] });
     expect(res.isError).toBe(false);
     expect(JSON.parse(res.content)).toMatchObject({ applied: "hide", excluded: 3 });
@@ -124,7 +119,7 @@ describe("style_in_3d hide s výnimkou (#246)", () => {
   });
 
   it("filter v DB vetve: výnimky sa odpočítajú z GUIDov na skrytie", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const res = await rt.exec("style_in_3d", { action: "hide", predefined_type: "FIREDAMPER", exclude_global_ids: [guid(0), guid(1)] });
     expect(JSON.parse(res.content)).toMatchObject({ applied: "hide", elements: 22, excluded: 2 });
     const hidden = ops(rt)[0].split(":")[2].split(".");
@@ -133,15 +128,15 @@ describe("style_in_3d hide s výnimkou (#246)", () => {
   });
 
   it("neznáma výnimka sa nahlási, samé neznáme výnimky skrytie zastavia", async () => {
-    const rt = new AskToolRuntime(TEST_PROJECT.id);
+    const rt = new AskToolRuntime();
     const part = await rt.exec("style_in_3d", { action: "hide", model: "VZT", exclude_ids_or_refs: ["VV.03.02.022", "NEEXISTUJE"] });
     expect(JSON.parse(part.content)).toMatchObject({ excluded: 1, excluded_skipped: ["NEEXISTUJE"] });
-    const all = await new AskToolRuntime(TEST_PROJECT.id).exec("style_in_3d", { action: "hide", model: "VZT", exclude_ids_or_refs: ["NEEXISTUJE"] });
+    const all = await new AskToolRuntime().exec("style_in_3d", { action: "hide", model: "VZT", exclude_ids_or_refs: ["NEEXISTUJE"] });
     expect(all.isError).toBe(true);
   });
 
   it("exclude platí len s hide", async () => {
-    const res = await new AskToolRuntime(TEST_PROJECT.id).exec("style_in_3d", { action: "isolate", model: "VZT", exclude_global_ids: [guid(1)] });
+    const res = await new AskToolRuntime().exec("style_in_3d", { action: "isolate", model: "VZT", exclude_global_ids: [guid(1)] });
     expect(res.isError).toBe(true);
     expect(res.content).toContain("action=hide");
   });

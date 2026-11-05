@@ -1,7 +1,9 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
+
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { cachedProjectRead } from "@/lib/data/revalidate";
+import { AIM_CACHE } from "@/lib/data/constants";
 import { documentFolder, referencePage } from "@/lib/data/document-tree";
 import { georefV2Wire, type GeorefV2 } from "@/lib/data/georef";
 import { disciplineOf, documentMeta, floorDrawing, type DocumentHolder } from "@/lib/data/document-meta";
@@ -48,7 +50,7 @@ function mimeFor(location: string): string | null {
   return `image/${ext === "jpg" ? "jpeg" : ext === "svg" ? "svg+xml" : ext}`;
 }
 
-async function fetchProjectDocumentsImpl(projectId: string): Promise<DocumentWire[]> {
+async function fetchProjectDocumentsImpl(): Promise<DocumentWire[]> {
   const supabase = getSupabaseAdmin();
 
   // Bez stránkovania zámerne (vzor fetchUnderlayDrawings): dokumentov je ~54
@@ -57,7 +59,6 @@ async function fetchProjectDocumentsImpl(projectId: string): Promise<DocumentWir
     supabase
       .from("objects")
       .select("id, name, object_ref, georef:properties->_georef")
-      .eq("project_id", projectId)
       .eq("object_type", "document")
       .is("valid_until", null),
     supabase
@@ -68,7 +69,6 @@ async function fetchProjectDocumentsImpl(projectId: string): Promise<DocumentWir
     supabase
       .from("rel_document_information_relationship")
       .select("from_id, to_id")
-      .eq("project_id", projectId)
       .is("valid_until", null),
   ]);
   if (objsRes.error) throw new Error(objsRes.error.message);
@@ -89,7 +89,7 @@ async function fetchProjectDocumentsImpl(projectId: string): Promise<DocumentWir
   // (typ informácie ISO 19650) a druh média (D-131). Z nich je `meta` na zoskupenie a
   // pôdorys podlažia.
   const fileIds = [...docById.keys()].filter((id) => nameOf.has(id));
-  const [holdersByDoc, classes] = await Promise.all([fetchHolders(projectId, fileIds), fetchDocumentClassifications(projectId, fileIds)]);
+  const [holdersByDoc, classes] = await Promise.all([fetchHolders(fileIds), fetchDocumentClassifications(fileIds)]);
 
   const out: DocumentWire[] = [];
   for (const obj of objsRes.data ?? []) {
@@ -143,24 +143,22 @@ async function fetchProjectDocumentsImpl(projectId: string): Promise<DocumentWir
 }
 
 /** Nositelia dokumentov (rel_associates_document -> objekt), po dokumentoch. */
-async function fetchHolders(projectId: string, documentIds: readonly string[]): Promise<Map<string, DocumentHolder[]>> {
+async function fetchHolders(documentIds: readonly string[]): Promise<Map<string, DocumentHolder[]>> {
   const out = new Map<string, DocumentHolder[]>();
   if (documentIds.length === 0) return out;
   const supabase = getSupabaseAdmin();
   const { data: rels, error } = await supabase
     .from("rel_associates_document")
     .select("from_id, to_id")
-    .eq("project_id", projectId)
     .in("to_id", documentIds)
     .is("valid_until", null)
     .not("from_id", "is", null); // nositeľ bez uzla AIM (D-183 K3)
   if (error) throw new Error(error.message);
   const pairs = (rels ?? []) as { from_id: string; to_id: string }[];
-  const nodes = await fetchNodes(projectId, pairs.map((r) => r.from_id));
+  const nodes = await fetchNodes(pairs.map((r) => r.from_id));
   const { data: guids, error: gErr } = await supabase
     .from("objects")
     .select("id, ifc_guid")
-    .eq("project_id", projectId)
     .in("id", nodes.filter((n) => n.object_type === "floor").map((n) => n.id));
   if (gErr) throw new Error(gErr.message);
   const guidOf = new Map(((guids ?? []) as { id: string; ifc_guid: string | null }[]).map((g) => [g.id, g.ifc_guid]));
@@ -176,7 +174,11 @@ async function fetchHolders(projectId: string, documentIds: readonly string[]): 
 }
 
 /** Knižnica dokumentov pre 3D viewer (ISR, tag `aim`). */
-export const fetchProjectDocuments = cachedProjectRead("fetch-project-documents", fetchProjectDocumentsImpl);
+export const fetchProjectDocuments = unstable_cache(
+  fetchProjectDocumentsImpl,
+  ["fetch-project-documents"],
+  AIM_CACHE
+);
 
 /** Cieľ IfcDocumentReference (D-104): dokument, ktorého časť odkaz označuje, a strana. */
 export interface DocumentReferenceTarget {
@@ -184,13 +186,12 @@ export interface DocumentReferenceTarget {
   page: number | null;
 }
 
-async function fetchDocumentReferenceImpl(projectId: string, id: string): Promise<DocumentReferenceTarget | null> {
+async function fetchDocumentReferenceImpl(id: string): Promise<DocumentReferenceTarget | null> {
   const supabase = getSupabaseAdmin();
   const [objRes, docRes] = await Promise.all([
     supabase
       .from("objects")
       .select("id")
-      .eq("project_id", projectId)
       .eq("id", id)
       .eq("object_type", "document_reference")
       .limit(1),
@@ -214,4 +215,8 @@ async function fetchDocumentReferenceImpl(projectId: string, id: string): Promis
 }
 
 /** Odkaz na časť dokumentu → dokument a strana (ISR, tag `aim`). */
-export const fetchDocumentReference = cachedProjectRead("fetch-document-reference", fetchDocumentReferenceImpl);
+export const fetchDocumentReference = unstable_cache(
+  fetchDocumentReferenceImpl,
+  ["fetch-document-reference"],
+  AIM_CACHE
+);

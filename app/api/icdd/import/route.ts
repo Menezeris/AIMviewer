@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { clientIpKey, createRateLimiter, isCrossOriginBlocked } from "@/lib/api-guard";
 import { checkImportRequest, type ImportRequest } from "@/lib/icdd/import";
 import { applyIcddImport, computeImportPreview, ImportConflictError, saveImportPreview } from "@/lib/icdd/import-fetch";
-import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Import kontajnera ICDD (D-181 dodatok "import"): `POST /api/icdd/import`.
@@ -27,7 +26,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const fail = (error: string, status: number, headers: Record<string, string> = {}) =>
   NextResponse.json({ error }, { status, headers: { ...NO_STORE, ...headers } });
 
-async function postHandler(req: Request) {
+export async function POST(req: Request) {
   if (isCrossOriginBlocked(req.headers.get("origin"), req.headers.get("host"))) return fail("cross-origin request denied", 403);
   const rate = limiter.check(clientIpKey(req.headers));
   if (!rate.allowed) return fail("Priveľa požiadaviek, skús to o chvíľu.", 429, { "Retry-After": String(rate.retryAfterSeconds) });
@@ -62,5 +61,3 @@ async function postHandler(req: Request) {
     return fail(err instanceof Error ? err.message : "import ICDD zlyhal", 500);
   }
 }
-
-export const POST = withRequestProject(postHandler);

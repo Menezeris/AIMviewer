@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 
 import { detail, HlavaMigraciaChyba, HlavaVstupChyba, prehlad } from "@/lib/kniznica/hlava";
 import { supabaseHlavaStore } from "@/lib/kniznica/hlava-store";
-import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Read-only prehliadač knižnice požiadaviek (port do TS, krok 1, assetin-library V30; AIM D-186).
@@ -18,7 +17,7 @@ export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "no-store" };
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status, headers: NO_STORE });
 
-async function getHandler(req: Request) {
+export async function GET(req: Request) {
   const u = new URL(req.url);
   const kniznica = u.searchParams.get("kniznica");
   const cesta = u.searchParams.get("cesta");
@@ -37,5 +36,3 @@ async function getHandler(req: Request) {
     return fail(err instanceof Error ? err.message : "čítanie knižnice zlyhalo", 500);
   }
 }
-
-export const GET = withRequestProject(getHandler);

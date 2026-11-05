@@ -32,7 +32,7 @@ describe("/api/saved-views (D-161)", () => {
     expect((await route.PATCH(json("PATCH", { id: ID, name: "X" }))).status).toBe(403);
     expect((await route.DELETE(json("DELETE", { id: ID }))).status).toBe(403);
     expect(store.rows).toHaveLength(0);
-    const get = await route.GET(new Request("http://localhost/api/saved-views"));
+    const get = await route.GET();
     expect(get.status).toBe(200);
     expect((await get.json()).views).toEqual([]);
   });

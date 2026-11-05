@@ -7,8 +7,6 @@ import { getSupabaseAdmin } from "../supabase/server";
 
 import type { EntityScope } from "./entity-scope";
 import { BcfInputError } from "./tools";
-import { scopeQuery } from "@/lib/project/scope";
-import { currentProjectId } from "../project/context";
 
 /**
  * Rozsah entity pre `bcf_topic_list entity` (D-158 krok 4) z grafu AIM: entita podľa
@@ -35,13 +33,12 @@ const COLS = "id, object_type, object_ref, name, ifc_guid";
 /** `.in` po dávkach a stránkach (PostgREST vracia najviac 1000 riadkov naraz). */
 async function fetchIn<T>(table: string, cols: string, key: string, values: string[], activeOnly = true): Promise<T[]> {
   const db = getSupabaseAdmin();
-  const projectId = currentProjectId();
   const out: T[] = [];
   for (let i = 0; i < values.length; i += CHUNK) {
     const chunk = values.slice(i, i + CHUNK);
     out.push(
       ...(await fetchAllPages<T>((from, to) => {
-        let q = scopeQuery(db.from(table).select(cols), table, projectId).in(key, chunk);
+        let q = db.from(table).select(cols).in(key, chunk);
         if (activeOnly) q = q.is("valid_until", null);
         return q.order("id").range(from, to) as unknown as PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
       })),
@@ -51,10 +48,9 @@ async function fetchIn<T>(table: string, cols: string, key: string, values: stri
 }
 
 async function findEntity(raw: string): Promise<Node> {
-  const projectId = currentProjectId();
   const want = raw.trim();
   const db = getSupabaseAdmin();
-  const objects = () => db.from("objects").select(COLS).eq("project_id", projectId).is("valid_until", null);
+  const objects = () => db.from("objects").select(COLS).is("valid_until", null);
   if (/^(projekt|project|ifcproject)$/i.test(want)) {
     const { data, error } = await objects().eq("object_type", "project").limit(2);
     if (error) throw new Error(error.message);

@@ -10,7 +10,7 @@
  */
 import { readFileSync } from "node:fs";
 
-import { envIfcModels } from "../../lib/data/ifc-models";
+import { getIfcModels } from "../../lib/data/ifc-models";
 import { getStore } from "../../lib/engine/cache";
 import { callEngineTool } from "../../lib/engine/session";
 
@@ -79,7 +79,7 @@ async function main() {
     refSpec.set(spec, refSpec.get(spec) === "fail" || status === "fail" ? "fail" : "pass");
   }
 
-  const src = (envIfcModels() ?? []).find((m) => m.id === MODEL);
+  const src = getIfcModels().find((m) => m.id === MODEL);
   if (!src) throw new Error(`Model ${MODEL} nie je v zozname federácie`);
   const { entry } = await getStore(src);
   const t = performance.now();

@@ -5,7 +5,6 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { previewImport, type ImportContext, type ImportPreview, type ImportRequest } from "./import";
 import { fetchIcddPlan } from "./plan-fetch";
-import { currentProjectId } from "../project/context";
 
 /**
  * Stav AIM pre import ICDD (D-181 dodatok "import"): len čítanie cez service_role (D-026). Zápis robí
@@ -31,19 +30,17 @@ function pageOf(identification: string | null, location: string | null): number 
 }
 
 export async function fetchImportContext(req: ImportRequest): Promise<ImportContext> {
-  const projectId = currentProjectId();
   const sb = getSupabaseAdmin();
   const guids = [...new Set(req.links.flatMap((l) => [l.from.guid, l.to.guid]).filter((g): g is string => !!g))];
   const relIds = [...new Set(req.links.map((l) => l.relationshipId).filter((x): x is string => !!x && /^[0-9a-f-]{36}$/i.test(x)))];
 
   const [revs, docsRaw, manifest, liveRaw, ifcPairsRaw, copies, plan] = await Promise.all([
-    sb.from("model_revisions").select("model, revision, sha256, is_current").eq("project_id", projectId).then((r) => must("model_revisions", r)),
+    sb.from("model_revisions").select("model, revision, sha256, is_current").then((r) => must("model_revisions", r)),
     fetchAllPages((from, to) =>
       sb
         .from("documents")
-        .select("id, identification, location, file_sha256, referenced_document_id, objects!documents_id_fkey!inner(object_type, valid_until, project_id)")
+        .select("id, identification, location, file_sha256, referenced_document_id, objects!documents_id_fkey!inner(object_type, valid_until)")
         .is("objects.valid_until", null)
-        .eq("objects.project_id", projectId)
         .order("id")
         .range(from, to),
     ),
@@ -52,16 +49,15 @@ export async function fetchImportContext(req: ImportRequest): Promise<ImportCont
       sb
         .from("relationships")
         .select("id, from_id, to_id, source, valid_until")
-        .eq("project_id", projectId)
         .eq("rel_type", "rel_associates_document")
         .is("valid_until", null)
         .order("id")
         .range(from, to),
     ),
     fetchAllPages((from, to) =>
-      sb.from("rel_associates_document").select("id, from_id, to_id, source").eq("project_id", projectId).like("source", "ifc:%").order("id").range(from, to),
+      sb.from("rel_associates_document").select("id, from_id, to_id, source").like("source", "ifc:%").order("id").range(from, to),
     ),
-    sb.from("ifc_rev_current").select("model, revision, model_revision_id").eq("project_id", projectId).then((r) => must("ifc_rev_current", r)),
+    sb.from("ifc_rev_current").select("model, revision").then((r) => must("ifc_rev_current", r)),
     fetchIcddPlan(),
   ]);
 
@@ -85,14 +81,14 @@ export async function fetchImportContext(req: ImportRequest): Promise<ImportCont
   for (const ids of chunks(relIds.filter((id) => !known.has(id)))) {
     const rows = must(
       "relationships",
-      await sb.from("relationships").select("id, from_id, to_id, source, valid_until").eq("project_id", projectId).eq("rel_type", "rel_associates_document").in("id", ids),
+      await sb.from("relationships").select("id, from_id, to_id, source, valid_until").eq("rel_type", "rel_associates_document").in("id", ids),
     ) as ImportContext["aimLinks"];
     aimLinks.push(...rows.filter((l) => AIM_LAYER(l.source)));
   }
 
   const guidNodes: ImportContext["guidNodes"] = new Map();
   for (const ids of chunks(guids)) {
-    const rows = must("ifc_guid_node", await sb.from("ifc_guid_node").select("ifc_guid, object_id, object_type").eq("project_id", projectId).in("ifc_guid", ids)) as {
+    const rows = must("ifc_guid_node", await sb.from("ifc_guid_node").select("ifc_guid, object_id, object_type").in("ifc_guid", ids)) as {
       ifc_guid: string;
       object_id: string;
       object_type: string;
@@ -100,12 +96,11 @@ export async function fetchImportContext(req: ImportRequest): Promise<ImportCont
     for (const r of rows) guidNodes.set(r.ifc_guid, { object_id: r.object_id, object_type: r.object_type });
   }
   const copyGuids: ImportContext["copyGuids"] = new Map();
-  // D-189: the revision copy is keyed by `model_revision_id` (model codes repeat across projects).
-  for (const c of copies as { model: string; revision: number; model_revision_id: string }[]) {
+  for (const c of copies as { model: string; revision: number }[]) {
     for (const ids of chunks(guids)) {
       const rows = must(
         "ifc_rev_objects",
-        await sb.from("ifc_rev_objects").select("global_id").eq("model_revision_id", c.model_revision_id).in("global_id", ids),
+        await sb.from("ifc_rev_objects").select("global_id").eq("model", c.model).eq("revision", c.revision).in("global_id", ids),
       ) as { global_id: string }[];
       for (const r of rows) if (!copyGuids.has(r.global_id)) copyGuids.set(r.global_id, c.model);
     }
@@ -149,7 +144,7 @@ const row = (req: ImportRequest, p: ImportPreview) => ({
 /** Uloží náhľad (`checked`) do `icdd_imports`; vráti id záznamu. */
 export async function saveImportPreview(req: ImportRequest, p: ImportPreview): Promise<string> {
   const sb = getSupabaseAdmin();
-  const r = must("icdd_imports", await sb.from("icdd_imports").insert({ ...row(req, p), project_id: currentProjectId() }).select("id").single()) as { id: string };
+  const r = must("icdd_imports", await sb.from("icdd_imports").insert(row(req, p)).select("id").single()) as { id: string };
   return r.id;
 }
 
@@ -160,18 +155,17 @@ export class ImportConflictError extends Error {}
  * overí, že kontajner a stav AIM sú tie isté ako pri uloženom náhľade, a zapíše zmeny cez RPC v jednej transakcii.
  */
 export async function applyIcddImport(importId: string, aimState: string, req: ImportRequest) {
-  const projectId = currentProjectId();
   const sb = getSupabaseAdmin();
   const saved = must(
     "icdd_imports",
-    await sb.from("icdd_imports").select("id, status, container_sha256, aim_state_sha256").eq("project_id", projectId).eq("id", importId).maybeSingle(),
+    await sb.from("icdd_imports").select("id, status, container_sha256, aim_state_sha256").eq("id", importId).maybeSingle(),
   ) as { id: string; status: string; container_sha256: string; aim_state_sha256: string } | null;
   if (!saved) throw new ImportConflictError("náhľad importu neexistuje");
   if (saved.status !== "checked") throw new ImportConflictError(`import má stav ${saved.status}`);
   if (saved.container_sha256 !== req.containerSha256) throw new ImportConflictError("kontajner sa líši od náhľadu");
   const preview = await computeImportPreview(req);
   const reject = async (message: string) => {
-    await sb.from("icdd_imports").update({ status: "rejected", message }).eq("project_id", projectId).eq("id", importId);
+    await sb.from("icdd_imports").update({ status: "rejected", message }).eq("id", importId);
     throw new ImportConflictError(message);
   };
   if (preview.aimStateSha256 !== saved.aim_state_sha256 || aimState !== saved.aim_state_sha256)
@@ -179,7 +173,7 @@ export async function applyIcddImport(importId: string, aimState: string, req: I
   if (!preview.applicable) await reject(req.validation.ok ? "nie je čo zapísať" : "kontrola ISO 21597 kontajnera neprešla");
   const { data, error } = await sb.rpc("icdd_apply_import", { p_import: importId, p_aim_state: saved.aim_state_sha256, p_changes: preview.changes });
   if (error) {
-    await sb.from("icdd_imports").update({ status: "failed", message: error.message }).eq("project_id", projectId).eq("id", importId);
+    await sb.from("icdd_imports").update({ status: "failed", message: error.message }).eq("id", importId);
     throw new Error(`zápis importu zlyhal: ${error.message}`);
   }
   return { preview, record: data as { id: string; written_ids: string[]; closed_ids: string[]; applied_at: string } };

@@ -11,8 +11,6 @@ import {
 import { supabaseIdsLibraryStore } from "@/lib/ids/library-store";
 import { idsWriteGuard, jsonFail, NO_STORE, readJson } from "@/lib/ids/route-guard";
 import { supabaseIdsStore } from "@/lib/ids/store";
-import { withRequestProject } from "@/lib/project/request";
-import { currentProjectId } from "@/lib/live/caller";
 
 /**
  * Knižnica požiadaviek pre kartu "Requirements library" vo vieweri (D-182, #351; doplnok V30: katalóg z DB).
@@ -31,9 +29,9 @@ export const dynamic = "force-dynamic";
 
 const MAX_BODY_CHARS = 10_000;
 
-const deps = (): LibraryDeps => ({ store: supabaseIdsStore(currentProjectId()), lib: supabaseIdsLibraryStore(currentProjectId()) });
+const deps = (): LibraryDeps => ({ store: supabaseIdsStore(), lib: supabaseIdsLibraryStore() });
 
-async function getHandler() {
+export async function GET() {
   const d = deps();
   try {
     const [library, project] = await Promise.all([
@@ -52,7 +50,7 @@ async function getHandler() {
   }
 }
 
-async function postHandler(req: Request) {
+export async function POST(req: Request) {
   const denied = idsWriteGuard(req);
   if (denied) return denied;
   const read = await readJson(req, MAX_BODY_CHARS);
@@ -76,6 +74,3 @@ async function postHandler(req: Request) {
     return jsonFail(err instanceof Error ? err.message : "priradenie zlyhalo", 500);
   }
 }
-
-export const GET = withRequestProject<[Request]>(getHandler);
-export const POST = withRequestProject(postHandler);

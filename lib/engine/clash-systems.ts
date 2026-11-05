@@ -4,7 +4,6 @@ import { fetchAllPages } from "../data/pagination";
 import { getSupabaseAdmin } from "../supabase/server";
 
 import { lookupGuids } from "./aim-lookup";
-import { currentProjectId } from "../project/context";
 
 const IN_CHUNK = 100;
 
@@ -14,7 +13,6 @@ const IN_CHUNK = 100;
  * systému v mape nie je. Read-only, `service_role` (D-026).
  */
 export async function systemsOfGuids(guids: string[]): Promise<Map<string, string>> {
-  const projectId = currentProjectId();
   const nodes = await lookupGuids(guids);
   const guidByNode = new Map<string, string>();
   for (const [guid, n] of nodes) guidByNode.set(n.object_id, guid);
@@ -25,7 +23,7 @@ export async function systemsOfGuids(guids: string[]): Promise<Map<string, strin
     const chunk = ids.slice(i, i + IN_CHUNK);
     edges.push(
       ...(await fetchAllPages<{ from_id: string; to_id: string }>((from, to) =>
-        supabase.from("rel_assigns_to_group").select("from_id, to_id").eq("project_id", projectId).in("from_id", chunk).is("valid_until", null).not("to_id", "is", null).order("id").range(from, to),
+        supabase.from("rel_assigns_to_group").select("from_id, to_id").in("from_id", chunk).is("valid_until", null).not("to_id", "is", null).order("id").range(from, to),
       )),
     );
   }
@@ -35,7 +33,6 @@ export async function systemsOfGuids(guids: string[]): Promise<Map<string, strin
     const { data, error } = await supabase
       .from("objects")
       .select("id, name, object_ref")
-      .eq("project_id", projectId)
       .in("id", groupIds.slice(i, i + IN_CHUNK))
       .eq("object_type", "system")
       .is("valid_until", null);
