@@ -1,9 +1,9 @@
-# GitHub Copilot — AIM Platform
+# GitHub Copilot - AIM Platform
 
-Konvencie, stack a databázové pravidlá projektu sú v **[`AGENTS.md`](../AGENTS.md)** (zdroj
-pravdy pre všetky nástroje). Prečítaj ho pred generovaním kódu a drž sa ho.
+The project's conventions, stack and database rules are in **[`AGENTS.md`](../AGENTS.md)** (the source of
+truth for all tools). Read it before generating code and keep to it.
 
-Doplnkové dokumenty: `DECISIONS.md` (architektonické rozhodnutia D-0xx), `SCHEMA.md`
-(databázová schéma), `ROADMAP.md` (fázy a priority), `etl/README.md` (ETL pipeline).
+Supporting documents: `DECISIONS.md` (architecture decisions D-0xx), `SCHEMA.md`
+(database schema), `ROADMAP.md` (phases and priorities), `etl/README.md` (ETL pipeline).
 
-Nemeň konvencie tu — uprav `AGENTS.md`, tento súbor je len pointer.
+Do not change conventions here; edit `AGENTS.md`. This file is only a pointer.
