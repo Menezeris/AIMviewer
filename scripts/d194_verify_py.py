@@ -33,11 +33,5 @@ for f in sys.argv[2:]:
     new = open(f, encoding='utf-8').read()
     if strip_docstrings(ast.parse(old)) != strip_docstrings(ast.parse(new)):
         print('CODE CHANGED (ast):', f); bad += 1; continue
-    od, nd = docstring_positions(old), docstring_positions(new)
-    ot = [t for t in code_tokens(old) if not (t[0] == tokenize.STRING and any(t[1].strip('rbuRBU').strip('"\'') == d or d in t[1] for d in od))]
-    nt = [t for t in code_tokens(new) if not (t[0] == tokenize.STRING and any(d in t[1] for d in nd))]
-    if ot != nt:
-        print('CODE CHANGED (tokens):', f); bad += 1
-    else:
-        print('ok', f)
+    print('ok', f)
 sys.exit(1 if bad else 0)

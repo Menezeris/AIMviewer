@@ -274,8 +274,8 @@ does not emit (IfcZone, IfcSpatialZone, IfcGroup, IfcProject) are skipped and pr
 The revision container is the truth (D-183); the DB carries its full copy without geometry next to the AIM graph (`objects`,
 `relationships` do not change). A generic rule, nothing is selected: every IfcRoot except relationships and sets
 (`ifc_rev_objects`), every Relating x Related pair from every IfcRel* except IfcRelDefinesByProperties
-(`ifc_rev_relationships`, key class, holder, other side) and every pset, Qto and predefined set on the occurrence
-and the type (`ifc_rev_property_sets`, key holder, pset name). Every row carries `(model, revision)` and `content_hash`.
+(`ifc_rev_relationships`, key class, carrier, other side) and every pset, Qto and predefined set on the occurrence
+and the type (`ifc_rev_property_sets`, key carrier, pset name). Every row carries `(model, revision)` and `content_hash`.
 
 ```bash
 python -m etl.revision_copy --model VZT                  # current revision from the archive (Storage, verifies sha256)
