@@ -8623,7 +8623,7 @@ bez revízie a chyba tabuľky bez straty výpočtu, odmietnutie inej triedy), SQ
 
 **Otvorené:** limit výdavkov (Spend Management) nastavuje Samuel v dashboarde Vercelu.
 
-### D-NEWX - Orchestration model for the platform work lives in AIMforked
+### D-191 - Orchestration model for the platform work lives in AIMforked
 
 **Date:** 2026-11-05 · **Status:** approved (Samuel 5 Nov) · **Builds on:** D-090 (concurrent sessions), D-116 (release train), D-134 (connector routines), D-187 (CI before merge), D-189 (platform step 3)
 
