@@ -16,7 +16,7 @@ import {
 
 const DEV = process.env.NODE_ENV !== "production";
 
-/** Udalosť v tej istej karte (udalosť `storage` chodí len z iných kariet). */
+/** An event in the same tab (the `storage` event only comes from other tabs). */
 const CHOICE_EVENT = "aim:viewer-choice";
 
 function subscribe(onChange: () => void) {
@@ -41,23 +41,23 @@ function store(choice: ViewerChoice) {
     if (choice.kind === "prod") window.sessionStorage.removeItem(VIEWER_CHOICE_KEY);
     else window.sessionStorage.setItem(VIEWER_CHOICE_KEY, viewerParamValue(choice));
   } catch {
-    // Bez sessionStorage (súkromné okno) platí len `?viewer=` v URL.
+    // Without sessionStorage (private window) only `?viewer=` in the URL applies.
   }
   window.dispatchEvent(new Event(CHOICE_EVENT));
 }
 
 /**
- * Ktorý viewer vložiť (D-116). `?viewer=` v URL má prednosť a uloží sa do
- * sessionStorage, takže navigácie AI docku a MCP v tej istej karte (nové `?focus=`,
- * `?ops=`) viewer nevrátia na produkciu. `viewerUrl` je null, kým sa náhľad PR
- * nezistí; `error` povie, prečo sa nedá vložiť.
+ * Which viewer to embed (D-116). `?viewer=` in the URL takes precedence and is saved to
+ * sessionStorage, so AI dock and MCP navigations in the same tab (new `?focus=`,
+ * `?ops=`) do not return the viewer to production. `viewerUrl` is null until the PR preview
+ * is determined; `error` says why it cannot be embedded.
  */
 export function useViewerChoice() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const param = searchParams.get("viewer");
   const fromUrl = useMemo(() => parseViewerParam(param, DEV), [param]);
-  // null na serveri a pri hydratácii: viewer sa vloží až po prečítaní voľby.
+  // null on the server and during hydration: the viewer is embedded only after the choice is read.
   const storedRaw = useSyncExternalStore(subscribe, readStoredRaw, () => null);
   const storageRead = storedRaw !== null;
   const stored = storedRaw ? parseViewerParam(storedRaw, DEV) : null;
@@ -111,8 +111,8 @@ export function useViewerChoice() {
 }
 
 /**
- * Čip nad 3D na výber viewera (D-116): produkcia alebo náhľad otvoreného PR
- * forku. Zoznam sa načíta až pri otvorení.
+ * Chip above the 3D for choosing the viewer (D-116): production or a preview of an open PR
+ * fork. The list is loaded only on opening.
  */
 export function ViewerPicker({
   choice,
@@ -150,7 +150,7 @@ export function ViewerPicker({
   }
 
   return (
-    // Čip v spodnej stavovej lište pod viewerom (#185); zoznam a chyba sa otvárajú nahor, nad lištu.
+    // The chip in the bottom status bar below the viewer (#185); the list and the error open upward, above the bar.
     <div className="relative flex items-center text-xs">
       <div className="absolute bottom-full left-0 z-20 mb-1 flex w-80 max-w-[calc(100vw-1.5rem)] flex-col items-start gap-1">
       {open && (

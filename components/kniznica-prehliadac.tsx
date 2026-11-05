@@ -5,8 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
- * Read-only prehliadač knižnice požiadaviek nad `library.hlava` (port do TS, krok 1, assetin-library V30).
- * Dáta z `GET /api/library` (server, service_role); súbor sa ukáže ako blokový model TS parsera.
+ * Read-only viewer of the requirements library over `library.hlava` (port to TS, step 1, assetin-library V30).
+ * Data from `GET /api/library` (server, service_role); the file is shown as a block model of the TS parser.
  */
 
 interface Riadok {

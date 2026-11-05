@@ -5,9 +5,9 @@ import { ACTING_ROLE_LABEL, roleLabel } from "@/lib/object-type";
 import { formatDate } from "@/lib/utils";
 
 /**
- * Zodpovední aktori za uzol (S3, D-020). Acting rola (operator/maintainer…) +
- * odkaz na aktora; pri osobe aj jej firma (rel_member_of, D-024). Platnosť
- * (`valid_from`) ukazuje handover časovú os.
+ * Responsible actors for a node (S3, D-020). Acting role (operator/maintainer...) +
+ * link to the actor; for a person also their company (rel_member_of, D-024). Validity
+ * (`valid_from`) shows the handover time axis.
  */
 export function ResponsibilityList({ items }: { items: Responsibility[] }) {
   if (items.length === 0) {

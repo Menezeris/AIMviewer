@@ -7,12 +7,12 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * Roztiahnuteľný + zbaliteľný rám sidebaru (review polish).
- * - Šírka sa mení ťahaním pravého okraja (drag handle), s medzami MIN/MAX.
- * - Celý panel sa dá zbaliť do tenkého prúžku a späť rozbaliť.
- * - Oba stavy (šírka, zbalené) sa držia v `localStorage` cez `useSyncExternalStore`
- *   — prežijú navigáciu aj reload, bez hydration warningu (server snapshot = default).
- * Obsah (strom + nav) prichádza ako `children`.
+ * Resizable + collapsible sidebar frame (review polish).
+ * - The width changes by dragging the right edge (drag handle), with MIN/MAX limits.
+ * - The whole panel can be collapsed into a thin strip and expanded back.
+ * - Both states (width, collapsed) are kept in `localStorage` via `useSyncExternalStore`
+ *   - they survive navigation and reload, without a hydration warning (server snapshot = default).
+ * Content (tree + nav) arrives as `children`.
  */
 
 const MIN_WIDTH = 220;
@@ -21,8 +21,8 @@ const DEFAULT_WIDTH = 288;
 const WIDTH_KEY = "aim:sidebar-width";
 const COLLAPSED_KEY = "aim:sidebar-collapsed";
 
-// Jednoduchý pub/sub nad localStorage — `storage` event sa v tom istom tabe nespustí,
-// takže zápisy notifikujeme sami.
+// A simple pub/sub over localStorage - the `storage` event does not fire in the same tab,
+// so we notify about writes ourselves.
 const listeners = new Map<string, Set<() => void>>();
 function subscribe(key: string, cb: () => void) {
   let set = listeners.get(key);
@@ -64,9 +64,9 @@ export function SidebarShell({ children }: { children: React.ReactNode }) {
   const startResize = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     const handle = e.currentTarget as HTMLElement;
-    // Pointer capture — mouse eventy zanikajú nad iframom 3D vieweru (iný
-    // dokument), takže mouseup pustený nad ním by drag nikdy neukončil a panel
-    // by potom naveky skákal za kurzorom. Capture drží eventy na úchyte.
+    // Pointer capture - mouse events vanish above the iframe of the 3D viewer (another
+    // document), so a mouseup released above it would never end the drag and the panel
+    // would then jump after the cursor forever. Capture keeps the events on the handle.
     handle.setPointerCapture(e.pointerId);
     draggingRef.current = true;
     document.body.style.cursor = "col-resize";
@@ -82,9 +82,9 @@ export function SidebarShell({ children }: { children: React.ReactNode }) {
     };
     const onMove = (ev: PointerEvent) => {
       if (!draggingRef.current) return;
-      // Poistka: keby mouseup predsa len zapadol, prvý pohyb bez tlačidla drag ukončí.
+      // Safeguard: if a mouseup got lost after all, the first move without a button ends the drag.
       if (ev.buttons === 0) return onUp();
-      // Aside začína na x=0, takže clientX = požadovaná šírka.
+      // The aside starts at x=0, so clientX = the required width.
       const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, ev.clientX));
       writePersisted(WIDTH_KEY, String(next));
     };
@@ -116,7 +116,7 @@ export function SidebarShell({ children }: { children: React.ReactNode }) {
     >
       <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
-          {/* assetin mark z design kitu (D-070); malá statická ikona, next/image netreba */}
+          {/* assetin mark from the design kit (D-070); a small static icon, next/image not needed */}
           <img src="/assetin-mark.png" alt="" className="size-7 shrink-0" />
           <div className="min-w-0">
             <Link href="/" className="font-heading text-sm font-semibold">
@@ -138,7 +138,7 @@ export function SidebarShell({ children }: { children: React.ReactNode }) {
 
       <nav className="flex-1 overflow-y-auto p-2">{children}</nav>
 
-      {/* Drag handle — pravý okraj panela. */}
+      {/* Drag handle - right edge of the panel. */}
       <div
         role="separator"
         aria-orientation="vertical"

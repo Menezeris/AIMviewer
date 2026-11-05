@@ -4,8 +4,8 @@ import { Eye, FileText } from "lucide-react";
 import type { FloorDrawing } from "@/lib/data/relations";
 
 /**
- * Prvky zobrazené vo výkresoch uzla (E4 auto-linking, D-041). Zoskupené podľa
- * výkresu; každý prvok vedie na svoju kartu (`asset_type` → `/type/[id]`).
+ * Elements shown in the drawings of a node (E4 auto-linking, D-041). Grouped by
+ * drawing; each element leads to its card (`asset_type` -> `/type/[id]`).
  */
 export function DrawingElements({ drawings }: { drawings: FloorDrawing[] }) {
   if (drawings.length === 0) {

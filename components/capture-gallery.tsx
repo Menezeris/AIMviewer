@@ -11,17 +11,17 @@ import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { CaptureMediaWire, CapturePointWire } from "@/lib/data/captures";
 
-// PSV je čisto klientský (three.js) — dynamický import bez SSR, načíta sa až pri
-// otvorení panorámy (nezaťažuje bundle detailu uzla).
+// PSV is purely client-side (three.js) - dynamic import without SSR, loaded only when
+// a panorama is opened (does not burden the bundle of the node detail).
 const PanoramaViewer = dynamic(
   () => import("@/components/panorama-viewer").then((m) => m.PanoramaViewer),
   { ssr: false }
 );
 
 /**
- * Galéria Reality Capture snímok priestoru (D-073, F1/F4). Zobrazuje capture pointy
- * (aktuálna verzia ako thumbnail), verzie v čase (F4) a otvorí fotku v lightboxe
- * alebo 360° panorámu v immersive prehliadači. Upload cez `CaptureUploadDialog`.
+ * Gallery of Reality Capture images of a space (D-073, F1/F4). Shows capture points
+ * (current version as a thumbnail), versions over time (F4) and opens a photo in a lightbox
+ * or a 360° panorama in the immersive viewer. Upload via `CaptureUploadDialog`.
  */
 export function CaptureGallery({
   spaceId,
@@ -35,9 +35,9 @@ export function CaptureGallery({
   spaceName: string | null;
   initialCaptures: CapturePointWire[];
   canUpload: boolean;
-  /** Pôdorys podlažia priestoru — cieľ „umiestniť na pláne" (D-073). */
+  /** Floor plan of the space's storey - the target of "place on the plan" (D-073). */
   planDocumentId?: string | null;
-  /** Fetchni snímky na mount (pre overlay bez server-preloadnutých dát, D-073). */
+  /** Fetch the images on mount (for an overlay without server-preloaded data, D-073). */
   autoLoad?: boolean;
 }) {
   const router = useRouter();
@@ -55,11 +55,11 @@ export function CaptureGallery({
         setCaptures(fresh);
       }
     } catch {
-      /* ignoruj */
+      /* ignore */
     }
   }, [spaceId]);
 
-  // Overlay (autoLoad) nemá server-preloadnuté captures — dotiahni ich na mount.
+  // The overlay (autoLoad) has no server-preloaded captures - fetch them on mount.
   useEffect(() => {
     if (autoLoad) void load();
   }, [autoLoad, load]);
@@ -149,7 +149,7 @@ export function CaptureGallery({
         </ul>
       )}
 
-      {/* Lightbox (foto) / immersive 360° prehliadač */}
+      {/* Lightbox (photo) / immersive 360° viewer */}
       {active && activeMedia && active.point.kind === "pano360" && (
         <PanoramaViewer
           open
@@ -180,7 +180,7 @@ export function CaptureGallery({
   );
 }
 
-/** Fotka na plné okno + prepínač verzií v čase (F4). */
+/** Full-window photo + version switcher over time (F4). */
 function PhotoLightbox({
   point,
   mediaIdx,

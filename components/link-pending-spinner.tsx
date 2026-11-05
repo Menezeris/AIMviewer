@@ -6,10 +6,10 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * Točiace sa koliesko viditeľné počas prebiehajúcej navigácie z nadradeného
- * `<Link>` (`useLinkStatus`) — okamžitá odozva na klik, kým server streamuje
- * cieľovú stránku. Renderuj ako potomka `<Link>`; mimo neho je vždy skrytý.
- * Klientský ostrov — dá sa vložiť aj do server-komponentových zoznamov.
+ * A spinning wheel visible during an ongoing navigation from the parent
+ * `<Link>` (`useLinkStatus`) - instant feedback on click while the server streams
+ * the target page. Render as a child of `<Link>`; outside of it it is always hidden.
+ * Client island - can also be embedded in server-component lists.
  */
 export function LinkPendingSpinner({ className }: { className?: string }) {
   const { pending } = useLinkStatus();

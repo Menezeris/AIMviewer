@@ -20,10 +20,10 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * Chat panel LLM rozhrania (D-056, F6). Klient drží len textovú históriu;
- * tool-calling beží server-side v `/api/ask`. Trust loop: zdroje prídu
- * štruktúrovane zo servera a renderujú sa ako deep-linky (karta / 3D / výkres) —
- * každá odpoveď je dohľadateľná až k dátam.
+ * Chat panel of the LLM interface (D-056, F6). The client keeps only the text history;
+ * tool-calling runs server-side in `/api/ask`. Trust loop: sources arrive
+ * structured from the server and are rendered as deep links (card / 3D / drawing) -
+ * every answer is traceable down to the data.
  */
 
 interface AskSource {
@@ -43,7 +43,7 @@ interface AskToolTrace {
   summary: string;
 }
 
-/** UI akcia zo servera (show_in_3d…) — klient na ňu naviguje (D-056). */
+/** UI action from the server (show_in_3d...) - the client navigates on it (D-056). */
 interface AskUiAction {
   type: "navigate";
   url: string;
@@ -67,12 +67,12 @@ const SUGGESTIONS = [
 ];
 
 /**
- * Konverzácie prežijú navigáciu aj reload (dock je globálny, D-056).
- * Viac oddelených vlákien, aby dlhá história nekazila kontext nesúvisiacich
- * dotazov — do `/api/ask` ide vždy len história aktívnej konverzácie.
+ * Conversations survive navigation and reload (the dock is global, D-056).
+ * Several separate threads, so that a long history does not spoil the context of unrelated
+ * queries - only the history of the active conversation always goes to `/api/ask`.
  */
 const CHATS_STORAGE_KEY = "aim-ask-chats";
-/** Pôvodný jednovláknový kľúč — migruje sa do prvej konverzácie. */
+/** Original single-thread key - migrated into the first conversation. */
 const LEGACY_TURNS_KEY = "aim-ask-turns";
 const MAX_CHATS = 10;
 const MAX_TURNS = 30;
@@ -97,7 +97,7 @@ function createChat(): ChatSession {
   return { id, title: null, turns: [], updatedAt: Date.now() };
 }
 
-/** Názov konverzácie = prvá otázka (skrátená). */
+/** Conversation name = the first question (shortened). */
 function chatTitle(turns: ChatTurn[]): string | null {
   const first = turns.find((t) => t.role === "user")?.content.trim();
   if (!first) return null;
@@ -121,7 +121,7 @@ function loadStoredChats(): ChatsState {
         return { chats: parsed.chats, activeId };
       }
     }
-    // Migrácia pôvodného jedného vlákna (aim-ask-turns).
+    // Migration of the original single thread (aim-ask-turns).
     const legacy = window.sessionStorage.getItem(LEGACY_TURNS_KEY);
     if (legacy) {
       window.sessionStorage.removeItem(LEGACY_TURNS_KEY);
@@ -132,21 +132,21 @@ function loadStoredChats(): ChatsState {
       }
     }
   } catch {
-    // nevalidné storage → čerstvá konverzácia
+    // invalid storage -> fresh conversation
   }
   return fresh();
 }
 
-/** Max dĺžka diktátu — chráni náklady STT aj limit veľkosti na serveri. */
+/** Max dictation length - protects the STT cost and the size limit on the server. */
 const MAX_RECORD_SECONDS = 60;
 
-/** Preferované formáty nahrávky — Chrome/Firefox webm/opus, Safari mp4/AAC. */
+/** Preferred recording formats - Chrome/Firefox webm/opus, Safari mp4/AAC. */
 const RECORDER_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
 
-/** Max zdrojov zobrazených bez rozbalenia. */
+/** Max sources shown without expanding. */
 const SOURCE_CAP = 8;
 
-/** Zdroje spomenuté v odpovedi (object_ref/name v texte) — ostatné za rozbalením. */
+/** Sources mentioned in the answer (object_ref/name in the text) - the others behind the expander. */
 function splitSources(sources: AskSource[], answer: string) {
   const mentioned = sources.filter(
     (s) =>
@@ -272,16 +272,16 @@ export function AskPanel() {
   const [unconfigured, setUnconfigured] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
-  // Hlasový vstup (D-069): diktát → /api/transcribe → prepis sa PRIDÁ do
-  // inputu ako editovateľný text — používateľ ho skontroluje a odošle sám
-  // (dictation pattern; pri kódoch prvkov môže STT urobiť chybu).
+  // Voice input (D-069): dictation -> /api/transcribe -> the transcript is APPENDED to
+  // the input as editable text - the user checks it and sends it themselves
+  // (dictation pattern; with element codes the STT can make a mistake).
   const [voice, setVoice] = useState<"idle" | "recording" | "transcribing">("idle");
   const [voiceSeconds, setVoiceSeconds] = useState(0);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const discardRef = useRef(false);
 
-  // Klientská konštanta (SSR nemá navigator/MediaRecorder → server snapshot false).
+  // Client constant (SSR has no navigator/MediaRecorder -> server snapshot false).
   const voiceSupported = useSyncExternalStore(
     () => () => {},
     () =>
@@ -289,7 +289,7 @@ export function AskPanel() {
     () => false
   );
 
-  // Časovač nahrávania + auto-stop na limite dĺžky.
+  // Recording timer + auto-stop at the length limit.
   useEffect(() => {
     if (voice !== "recording") return;
     const t = window.setInterval(() => {
@@ -301,7 +301,7 @@ export function AskPanel() {
     return () => window.clearInterval(t);
   }, [voice]);
 
-  // Unmount počas nahrávania → zahodiť a uvoľniť mikrofón.
+  // Unmount during recording -> discard and release the microphone.
   useEffect(
     () => () => {
       if (recorderRef.current?.state === "recording") {
@@ -377,7 +377,7 @@ export function AskPanel() {
     setVoice("recording");
   }
 
-  /** Ukončí nahrávanie; discard = zahodiť bez prepisu (tlačidlo ×). */
+  /** Ends the recording; discard = drop without a transcript (the x button). */
   function stopRecording(discard: boolean) {
     discardRef.current = discard;
     recorderRef.current?.stop();
@@ -396,16 +396,16 @@ export function AskPanel() {
         })
       );
     } catch {
-      // plné/nedostupné storage vlákno neláme
+      // full/unavailable storage does not break the thread
     }
   }, [chats, activeId]);
 
-  // Prepnutie konverzácie → skok na koniec vlákna.
+  // Switching conversation -> jump to the end of the thread.
   useEffect(() => {
     endRef.current?.scrollIntoView();
   }, [activeId]);
 
-  /** Zapíše vlákno konkrétnej konverzácie (id fixné — prepnutie počas fetchu nevadí). */
+  /** Writes the thread of a specific conversation (id fixed - switching during the fetch does not matter). */
   const setChatTurns = (chatId: string, nextTurns: ChatTurn[]) => {
     setChats((s) => ({
       ...s,
@@ -414,7 +414,7 @@ export function AskPanel() {
           ? {
               ...c,
               turns: nextTurns,
-              // Rollback na prázdno (503) zruší aj názov z odvolanej otázky.
+              // A rollback to empty (503) also cancels the name from the withdrawn question.
               title: nextTurns.length === 0 ? null : (c.title ?? chatTitle(nextTurns)),
               updatedAt: Date.now(),
             }
@@ -425,7 +425,7 @@ export function AskPanel() {
 
   const startNewChat = () => {
     setChats((s) => {
-      // Prázdna aktívna konverzácia sa recykluje namiesto duplicity.
+      // An empty active conversation is recycled instead of duplicated.
       const current = s.chats.find((c) => c.id === s.activeId);
       if (current && current.turns.length === 0) return s;
       const chat = createChat();
@@ -498,7 +498,7 @@ export function AskPanel() {
           actions: data.actions,
         },
       ]);
-      // UI akcia zo servera (show_in_3d…) — dock ostáva, naviguje sa pod ním.
+      // UI action from the server (show_in_3d...) - the dock stays, navigation happens below it.
       const nav = (data.actions ?? []).find((a) => a.type === "navigate");
       if (nav) router.push(nav.url);
     } catch {

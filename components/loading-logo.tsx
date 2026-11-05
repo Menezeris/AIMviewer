@@ -1,19 +1,19 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-// Poradie je dané: tokeny pred grafikou (D-163).
+// The order is fixed: tokens before graphics (D-163).
 import "@assetinspace/design-kit/css/tokens.css";
 import "@assetinspace/design-kit/css/graphics.css";
 import { LoadProgressBar } from "@/components/load-progress-bar";
 import type { LoadSegment } from "@/lib/viewer-load";
 
 const WORDS = ["", "sight", "formation", "telligence"];
-const SPEED_MS = 60; // na písmeno
-const HOLD_MS = 1300; // pauza na celom slove
-const DELETE_FACTOR = 0.55; // mazanie je rýchlejšie ako písanie (ako v kite)
+const SPEED_MS = 60; // per letter
+const HOLD_MS = 1300; // pause on the whole word
+const DELETE_FACTOR = 0.55; // deleting is faster than typing (as in the kit)
 const GAP_MS = 350;
 const BLINK_MS = 1000;
-/** Ak sa dlhšie nič nevykreslilo, loader sa skončil a ďalší začne odznova. */
+/** If nothing has been drawn for a longer time, the loader has ended and the next one starts over. */
 const RESTART_AFTER_MS = 1500;
 
 type Segment = { word: string; type: number; hold: number; del: number; total: number };
@@ -25,8 +25,8 @@ const SEGMENTS: Segment[] = WORDS.map((word) => {
 });
 const CYCLE_MS = SEGMENTS.reduce((a, s) => a + s.total, 0);
 
-/** Text za `elapsed` ms. Čisto z času, nie z počtu tikov: oneskorený snímok
- *  (zahltené hlavné vlákno) text len dobehne, rytmus je rovnomerný. */
+/** Text after `elapsed` ms. Purely from time, not from the tick count: a delayed frame
+ *  (main thread flooded) just catches the text up, the rhythm is even. */
 function typedAt(elapsed: number, reduced: boolean): string {
   let t = elapsed % CYCLE_MS;
   for (const s of SEGMENTS) {
@@ -48,19 +48,19 @@ function typedAt(elapsed: number, reduced: boolean): string {
   return "";
 }
 
-// Spoločné pre všetky inštancie: loader sa pri prechode (loading.tsx, dynamic
-// loader, prekrytie nad iframe) odmontuje a znova namontuje, animácia ale
-// pokračuje tam, kde skončila, nezačína od nuly.
+// Shared by all instances: the loader is unmounted and mounted again on a transition (loading.tsx, dynamic
+// loader, overlay above the iframe), but the animation
+// continues where it left off, it does not start from zero.
 let startedAt: number | null = null;
 let lastTick = 0;
 
 /**
- * Jediná obrazovka načítavania AIM Viewera (D-163): biele pozadie a v strede
- * animované logo z design-kitu (assetin. -> assetinsight. -> ...). Typewriter
- * je vlastný a riadený časom (skript kitu píše s náhodným rozptylom a od nuly
- * pri každej inštancii, čo pôsobilo sekane); CSS a štruktúra loga sú z kitu.
- * Bodka bliká vždy ako kurzor, aj pri prefers-reduced-motion; pri ňom sa slová
- * len vymieňajú bez písania.
+ * The only loading screen of AIM Viewer (D-163): white background and in the middle an
+ * animated logo from the design kit (assetin. -> assetinsight. -> ...). The typewriter
+ * is custom and time-driven (the kit script writes with random jitter and from zero
+ * on every instance, which looked choppy); the CSS and the logo structure are from the kit.
+ * The dot always blinks as a cursor, also with prefers-reduced-motion; with it the words
+ * are only swapped without typing.
  */
 export function LoadingLogo({ label = "Načítavam", segments }: { label?: string; segments?: LoadSegment[] }) {
   const typedRef = useRef<HTMLSpanElement>(null);
@@ -71,7 +71,7 @@ export function LoadingLogo({ label = "Načítavam", segments }: { label?: strin
     const now0 = performance.now();
     if (startedAt === null || now0 - lastTick > RESTART_AFTER_MS) startedAt = now0;
     const base = startedAt;
-    // Bodka pokračuje vo fáze blikania aj po remounte.
+    // The dot continues in the blinking phase even after a remount.
     if (dotWrapRef.current) dotWrapRef.current.style.setProperty("--blink-delay", `${-((now0 - base) % BLINK_MS)}ms`);
     let raf = 0;
     let shown: string | null = null;
@@ -88,10 +88,10 @@ export function LoadingLogo({ label = "Načítavam", segments }: { label?: strin
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Poloha sa nesmie meniť medzi troma inštanciami: `fixed inset-0`. Celé logo
-  // (aj s písaným slovom a bodkou) je vždy vycentrované a pri písaní sa rozširuje
-  // symetricky do oboch strán; LOADING ostáva nad stredom nezávisle od slova.
-  // Výška sa nemení (jeden riadok, line-height 1 z kitu).
+  // The position must not change between the three instances: `fixed inset-0`. The whole logo
+  // (with the typed word and the dot) is always centered and expands while typing
+  // symmetrically to both sides; LOADING stays above the center independently of the word.
+  // The height does not change (one line, line-height 1 from the kit).
   const font = "var(--font-sans), var(--ds-font-sans)";
   return (
     <div
@@ -100,10 +100,10 @@ export function LoadingLogo({ label = "Načítavam", segments }: { label?: strin
       className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-white"
     >
       <div className="relative flex flex-col items-center gap-4">
-        {/* Pásik nad nápisom LOADING je mimo toku (logo a nápis ostávajú na mieste).
-            Keď viewer posiela priebeh (D-178), je to pásik po modeloch; inak (starší viewer,
-            alebo kým žiadna správa neprišla) neurčitý: fixná šírka a výška, jazdec sa hýbe
-            len transformom, takže sa nič neposúva. Pri reduced-motion stojí. */}
+        {/* The strip above the LOADING label is out of the flow (logo and label stay in place).
+            When the viewer sends progress (D-178), it is a per-model strip; otherwise (older viewer,
+            or until no message has arrived) indeterminate: fixed width and height, the slider moves
+            only by transform, so nothing shifts. With reduced-motion it stands still. */}
         <div className="absolute bottom-full left-1/2 mb-3 -translate-x-1/2">
           {segments && segments.length > 0 ? (
             <LoadProgressBar segments={segments} variant="overlay" />

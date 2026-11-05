@@ -11,18 +11,18 @@ import {
 } from "@/components/document-info-panel";
 
 /**
- * Pracovná plocha dokumentu/výkresu (D-042 D+): vľavo PDF viewer (s klikateľnými
- * kódmi, ak ich výkres má), vpravo bočný panel. Panel **predvolene** ukazuje info
- * o dokumente (metadáta + „Pripojené k"); klik na SNIM kód ho prepne na detail
- * prvku (so „Späť na dokument"). Klik **neopúšťa stránku**.
+ * Document/drawing workspace (D-042 D+): on the left the PDF viewer (with clickable
+ * codes, if the drawing has them), on the right a side panel. The panel **by default** shows info
+ * about the document (metadata + "Pripojené k" (attached to)); a click on a SNIM code switches it to the element
+ * detail (with "Späť na dokument" (back to the document)). The click **does not leave the page**.
  *
- * Úzke šírky (D-054 kadencia 2): na mobile je panel v toku POD viewerom, takže detail
- * po kliku na kód by skončil pod foldom — vybraný prvok sa preto zobrazí ako plávajúci
- * **bottom-sheet** (fixed, vlastný scroll, bez backdropu — výkres ostáva interaktívny,
- * ďalší tap na iný kód panel len prepne). „Späť na dokument" sheet zavrie. Od `lg`
- * breakpointu sa to isté DOM vracia do statického bočného stĺpca.
+ * Narrow widths (D-054 cadence 2): on mobile the panel is in the flow BELOW the viewer, so the detail
+ * after a click on a code would end up below the fold - the selected element is therefore shown as a floating
+ * **bottom-sheet** (fixed, own scroll, no backdrop - the drawing stays interactive,
+ * another tap on a different code only switches the panel). "Späť na dokument" closes the sheet. From the `lg`
+ * breakpoint the same DOM returns to a static side column.
  *
- * Viewer sa načíta výhradne v prehliadači (`ssr: false`) — pdf.js potrebuje DOM/Worker.
+ * The viewer is loaded exclusively in the browser (`ssr: false`) - pdf.js needs the DOM/Worker.
  */
 const DrawingViewer = dynamic(
   () => import("@/components/drawing-viewer").then((m) => m.DrawingViewer),
@@ -49,8 +49,8 @@ export default function DrawingWorkspace({
   initialPage?: number;
   document: DocumentPanelData;
 }) {
-  // Predvybrať prvok z `?focus=` — panel sa otvorí rovno s ním (obojsmernosť).
-  // Skladbové regióny (`drawing` route) nie sú prvky → do panela nejdú.
+  // Preselect the element from `?focus=` - the panel opens directly with it (bidirectionality).
+  // Assembly regions (`drawing` route) are not elements -> they do not go to the panel.
   const initial = focus
     ? links.find((l) => l.targetId === focus && l.targetRoute !== "drawing")
     : undefined;
@@ -70,7 +70,7 @@ export default function DrawingWorkspace({
     <DocumentInfoPanel document={document} />
   );
 
-  // Dokument bez PDF (defenzívne — všetkých 13 je PDF): len panel.
+  // Document without a PDF (defensive - all 13 are PDF): panel only.
   if (!pdfUrl) {
     return <div className="max-w-3xl">{panel}</div>;
   }

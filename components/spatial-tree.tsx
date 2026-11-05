@@ -28,27 +28,27 @@ const ICONS: Record<SpatialType, LucideIcon> = {
   asset: Box,
 };
 
-/** Poradie typov v strome (`SPATIAL_TYPES` je v server-only module). */
+/** Order of the types in the tree (`SPATIAL_TYPES` is in a server-only module). */
 const TYPE_ORDER: SpatialType[] = ["site", "building", "floor", "space", "asset"];
 
-/** Uzly bez `ifc_type` (nemalo by nastať) spadnú do zberného koša. */
+/** Nodes without `ifc_type` (should not happen) fall into the catch-all bucket. */
 const UNCLASSIFIED = "Bez IFC triedy";
 
 /**
- * Deti zoskupené podľa IFC triedy — medzivrstva stromu (napr. `IfcSpace`,
- * `IfcWall`) nad prvkami podlažia/priestoru.
+ * Children grouped by IFC class - an intermediate layer of the tree (e.g. `IfcSpace`,
+ * `IfcWall`) above the elements of a storey/space.
  */
 interface ClassGroup {
-  /** Syntetické id pre open-stav: `${parentId}::${ifcType}`. */
+  /** Synthetic id for the open state: `${parentId}::${ifcType}`. */
   id: string;
   label: string;
   members: SpatialNode[];
 }
 
 /**
- * Rozdelí deti podľa `ifc_type`. Vracia `null`, keď zoskupovať netreba —
- * čisto štruktúrne úrovne (site→building→floor) ostávajú ploché, medzivrstva
- * má zmysel až tam, kde sa miešajú priestory s prvkami.
+ * Splits children by `ifc_type`. Returns `null` when grouping is not needed -
+ * purely structural levels (site->building->floor) stay flat, the intermediate layer
+ * only makes sense where spaces are mixed with elements.
  */
 function groupByIfcClass(parentId: string, children: SpatialNode[]): ClassGroup[] | null {
   if (!children.some((c) => c.object_type === "asset")) return null;
@@ -62,7 +62,7 @@ function groupByIfcClass(parentId: string, children: SpatialNode[]): ClassGroup[
   }
   if (groups.size < 2) return null;
 
-  // Poradie: priestorová štruktúra (IfcSpace) pred prvkami, potom abecedne.
+  // Order: spatial structure (IfcSpace) before elements, then alphabetically.
   return [...groups.values()].sort((a, b) => {
     const ra = TYPE_ORDER.indexOf(a.members[0].object_type);
     const rb = TYPE_ORDER.indexOf(b.members[0].object_type);
@@ -71,13 +71,13 @@ function groupByIfcClass(parentId: string, children: SpatialNode[]): ClassGroup[
   });
 }
 
-// Default: rozbalené po podlažia (site→building→floor viditeľné, space a nižšie zbalené).
+// Default: expanded down to storeys (site->building->floor visible, space and below collapsed).
 const DEFAULT_OPEN_DEPTH = 2;
 
 /**
- * Zdieľaný open-stav stromu. Mód `default` (pravidlo podľa hĺbky) sa dá globálne
- * prepnúť na `all`/`none` cez „Rozbaliť/Zbaliť všetko"; jednotlivé uzly prepisuje
- * `overrides`. Toggle uloží opačnú hodnotu k aktuálne efektívnej.
+ * Shared open state of the tree. The `default` mode (rule by depth) can be switched globally
+ * to `all`/`none` via "Rozbaliť/Zbaliť všetko" (expand/collapse all); individual nodes are overridden by
+ * `overrides`. Toggle stores the opposite of the currently effective value.
  */
 type TreeMode = "default" | "all" | "none";
 
@@ -89,8 +89,8 @@ interface TreeCtx {
 const TreeContext = createContext<TreeCtx | null>(null);
 
 /**
- * Ikona uzla, ktorá sa počas prebiehajúcej navigácie z tohto odkazu zmení na
- * točiace sa koliesko (`useLinkStatus`) — klik má okamžitú viditeľnú odozvu.
+ * Node icon which, during an ongoing navigation from this link, changes into a
+ * spinning wheel (`useLinkStatus`) - the click has an immediate visible response.
  */
 function TreeLinkIcon({ icon: Icon }: { icon: LucideIcon }) {
   const { pending } = useLinkStatus();
@@ -112,8 +112,8 @@ function useTree() {
 }
 
 /**
- * Riadok skupiny IFC triedy — nie je to objekt v AIM, takže na rozdiel od
- * `TreeNode` nemá odkaz na detail, len rozbaľuje svojich členov.
+ * IFC class group row - it is not an object in AIM, so unlike
+ * `TreeNode` it has no link to the detail, it only expands its members.
  */
 function ClassGroupNode({ group, depth }: { group: ClassGroup; depth: number }) {
   const { isOpen, toggle } = useTree();
@@ -198,8 +198,8 @@ function TreeNode({ node, depth }: { node: SpatialNode; depth: number }) {
 
         <Link
           href={`/node/${node.id}`}
-          // Plný prefetch RSC payloadu viditeľných uzlov — klik je potom
-          // z klientskej cache namiesto server round-tripu.
+          // Full prefetch of the RSC payload of visible nodes - a click is then served
+          // from the client cache instead of a server round-trip.
           prefetch={true}
           className="flex min-w-0 flex-1 items-center gap-2 py-1.5"
         >

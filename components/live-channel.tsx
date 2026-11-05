@@ -15,40 +15,40 @@ import { LIVE_REVISION_EVENT, parseRevisionNotice, revisionToast } from "@/lib/l
 import { answerViewerQuery } from "@/lib/live/viewer-query-bus";
 
 /**
- * Živý príkazový kanál (D-079): viewer otvorený s `?live=<kanál>` počúva na
- * Supabase Realtime Broadcast a príkazy od Claude (MCP konektor) vykoná tou
- * istou cestou ako AI dock — `router.push` na internú URL. Kanál si pamätá
- * v `sessionStorage`, lebo navigačné URL príkazov parameter `live` nenesú;
- * `?live=off` ho vypne. Bez kanála alebo bez verejných Supabase env premenných
- * sa nič nenačíta (supabase-js sa importuje až tu, dynamicky).
+ * Live command channel (D-079): a viewer opened with `?live=<channel>` listens on
+ * Supabase Realtime Broadcast and executes commands from Claude (MCP connector) the
+ * same way as the AI dock - `router.push` to an internal URL. The channel is remembered
+ * in `sessionStorage`, because the navigation URLs of commands do not carry the `live` parameter;
+ * `?live=off` turns it off. Without a channel or without public Supabase env variables
+ * nothing is loaded (supabase-js is imported only here, dynamically).
  *
- * Spätný kanál (D-085): udalosť `query` odovzdá vloženému vieweru
- * (`viewer-query-bus`) a odpoveď pošle späť udalosťou `reply`.
+ * Back channel (D-085): the `query` event is handed to the embedded viewer
+ * (`viewer-query-bus`) and the reply is sent back as a `reply` event.
  *
- * D-101: na `/ifc` sa príkaz vykoná na mieste (`viewer-apply-bus`) a URL sa len
- * prepíše - bez `router.push` a serverového renderu stránky pri každom úkone.
- * Potvrdenie forku (`APPLIED`) ide späť udalosťou `applied` s `cmdId` príkazu.
+ * D-101: on `/ifc` the command is executed in place (`viewer-apply-bus`) and the URL is only
+ * rewritten - without `router.push` and a server render of the page on every action.
+ * The fork confirmation (`APPLIED`) goes back as an `applied` event with the `cmdId` of the command.
  *
- * D-125: odpovede a potvrdenia nesú `viewer` (identita okna), lebo na kanál môže
- * odpovedať viac okien naraz a server ich inak nerozlíši.
+ * D-125: replies and confirmations carry `viewer` (window identity), because several windows
+ * can reply on the channel at once and the server would otherwise not tell them apart.
  *
- * D-159: okno prijíma príkazy len od svojho chatu (`lib/live/owner.ts`); cudzí príkaz odmietne
- * (`applied` s `rejected: "foreign"`) a ponúkne Prevziať. Čip Live prepína produkčný kanál a
- * testovací kanál pracovných sessions (`<kanál>-test`); testovací kanál ukáže pruh nad viewerom.
+ * D-159: a window accepts commands only from its own chat (`lib/live/owner.ts`); a foreign command is rejected
+ * (`applied` with `rejected: "foreign"`) and it offers Take over ("Prevziať"). The Live chip switches between the production channel and
+ * the test channel of work sessions (`<channel>-test`); the test channel shows a strip above the viewer.
  */
 
 const STORAGE_KEY = "aim-live-channel";
-/** Vybraný kanál v tejto karte (D-159): produkcia alebo testy sessions. */
+/** Selected channel in this tab (D-159): production or session tests. */
 const KIND_KEY = "aim-live-kind";
-/** Identita tohto okna na kanáli (D-125): server podľa nej pozná, že odpovedá viac okien. */
+/** Identity of this window on the channel (D-125): the server uses it to know that several windows reply. */
 const VIEWER_ID = newViewerId();
 const LIVE_EVENT = "command";
-/** Príkazy doručené do tohto okna sa zlúčia do jednej akcie (jedno volanie toolu = jeden príkaz). */
+/** Commands delivered to this window are merged into one action (one tool call = one command). */
 const BATCH_MS = 50;
 const TOAST_MS = 4000;
-/** Miesto v spodnej stavovej lište /ifc, kam sa indikátor Live vloží (#185); inde je fixed vľavo dole. */
+/** Slot in the bottom status bar of /ifc where the Live indicator is inserted (#185); elsewhere it is fixed bottom left. */
 export const LIVE_SLOT_ID = "aim-live-slot";
-/** Miesto nad viewerom na /ifc pre pruh prostredia mimo produkcie (D-159). */
+/** Slot above the viewer on /ifc for the non-production environment strip (D-159). */
 export const LIVE_ENV_SLOT_ID = "aim-env-slot";
 
 type Status = "connecting" | "live" | "error";
@@ -65,7 +65,7 @@ function storeKind(kind: LiveKind) {
   try {
     sessionStorage.setItem(KIND_KEY, kind);
   } catch {
-    // bez sessionStorage výber platí do obnovenia stránky
+    // without sessionStorage the choice applies until the page is refreshed
   }
 }
 
@@ -109,7 +109,7 @@ export function LiveChannel() {
   const [channel, setChannel] = useState<string | null>(null);
   const [live, setLive] = useState<{ base: string; kind: LiveKind } | null>(null);
   const [menu, setMenu] = useState(false);
-  /** Rozhovor, ktorého príkaz okno odmietlo (D-159): ponuka Prevziať. */
+  /** The conversation whose command the window rejected (D-159): the Take over offer. */
   const [foreign, setForeign] = useState<string | null>(null);
   const owner = useRef<OwnerState>(NO_OWNER);
   const [status, setStatus] = useState<Status>("connecting");
@@ -119,7 +119,7 @@ export function LiveChannel() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Kanál z URL alebo karty sa číta až v prehliadači (sessionStorage).
+  // The channel from the URL or the tab is read only in the browser (sessionStorage).
   useEffect(() => {
     readProject();
     const name = readChannel();
@@ -151,8 +151,8 @@ export function LiveChannel() {
       const nav = mergeIfcActions(batch)[0];
       if (!nav) return;
       const inPlace = parseIfcCommandUrl(nav.url);
-      // Na /ifc s viewerom bez navigácie; URL sa prepíše, aby odkaz ostal zdieľateľný. Príkaz iného
-      // projektu (D-189) ide navigáciou, proxy prepne projekt.
+      // On /ifc with the viewer without navigation; the URL is rewritten so that the link stays shareable. A command of another
+      // project (D-189) goes by navigation, the proxy switches the project.
       if (
         inPlace &&
         window.location.pathname === "/ifc" &&
@@ -161,7 +161,7 @@ export function LiveChannel() {
       ) {
         window.history.replaceState(window.history.state, "", nav.url);
       } else {
-        // Na /ifc z inej stránky: viewer príkaz z URL vykoná a potvrdí po načítaní.
+        // On /ifc from another page: the viewer executes the command from the URL and confirms it after loading.
         if (inPlace) deferCmdIds(ids);
         router.push(nav.url);
       }
@@ -182,7 +182,7 @@ export function LiveChannel() {
           const cmdId = (payload as { cmdId?: unknown })?.cmdId;
           const rawSid = (payload as { sid?: unknown })?.sid;
           const sid = typeof rawSid === "string" && rawSid.length <= 64 ? rawSid : undefined;
-          // D-159: príkaz z iného chatu, než ktorý okno ovláda, sa nevykoná a server sa to dozvie.
+          // D-159: a command from a chat other than the one the window is controlled by is not executed and the server learns about it.
           const decision = decideOwner(owner.current, sid, Date.now());
           owner.current = decision.state;
           if (!decision.accept) {
@@ -210,19 +210,19 @@ export function LiveChannel() {
             timer.current = setTimeout(flush, BATCH_MS);
           }
         })
-        // Nová revízia modelu (D-086): stránka sa obnoví zo servera, URL modelu dostane
-        // nový `?rev=` a iframe viewera model načíta znova; adresa (výber, ops) ostáva.
+        // New model revision (D-086): the page refreshes from the server, the model URL gets
+        // a new `?rev=` and the viewer iframe loads the model again; the address (selection, ops) stays.
         .on("broadcast", { event: LIVE_REVISION_EVENT }, ({ payload }) => {
           const notice = parseRevisionNotice(payload);
           if (!notice) return;
           router.refresh();
           showToast(revisionToast(notice));
         })
-        // Témy BCF sa zmenili (D-099): viewer na stránke si ich načíta znova.
+        // BCF topics changed (D-099): the viewer on the page reloads them.
         .on("broadcast", { event: LIVE_BCF_EVENT }, () => {
           window.dispatchEvent(new Event(BCF_CHANGED_WINDOW_EVENT));
         })
-        // Uložené pohľady sa zmenili v chate (D-161): viewer si zoznam načíta znova.
+        // Saved views changed in the chat (D-161): the viewer reloads the list.
         .on("broadcast", { event: LIVE_VIEWS_EVENT }, () => {
           window.dispatchEvent(new Event(VIEWS_CHANGED_WINDOW_EVENT));
         })
@@ -242,7 +242,7 @@ export function LiveChannel() {
           else if (s === "CHANNEL_ERROR" || s === "TIMED_OUT") setStatus("error");
           else if (s === "CLOSED") setStatus("connecting");
         });
-      // Potvrdenie príkazu z forku (D-101) späť serveru.
+      // Confirmation of a command from the fork (D-101) back to the server.
       const unregisterSink = setAppliedSink((applied) => {
         void sub.send({ type: "broadcast", event: LIVE_APPLIED_EVENT, payload: { ...applied, viewer: VIEWER_ID } });
       });
@@ -279,11 +279,11 @@ export function LiveChannel() {
     toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
   };
 
-  // Slot v stavovej lište sa objaví až po vykreslení stránky, preto ho hľadáme po mounte.
+  // The slot in the status bar appears only after the page is rendered, so we look for it after mount.
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const [envSlot, setEnvSlot] = useState<HTMLElement | null>(null);
   useEffect(() => {
-    // Hľadanie prvku v DOM po commite stránky (synchronizácia s externým stavom).
+    // Looking up the element in the DOM after the page commit (synchronization with external state).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSlot(document.getElementById(LIVE_SLOT_ID));
     setEnvSlot(document.getElementById(LIVE_ENV_SLOT_ID));

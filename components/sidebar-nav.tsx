@@ -19,10 +19,10 @@ import { LinkPendingSpinner } from "@/components/link-pending-spinner";
 import type { NavItem, SidebarNavData } from "@/lib/data/nav";
 
 /**
- * Ploché navigačné zoznamy ne-priestorových uzlov pod stromom (S3 polish).
- * Typy assetov vedú na `/type/[id]`, ostatné na `/node/[id]`. Aktívny odkaz sa
- * zvýrazní cez `usePathname` (rovnako ako strom). Každá sekcia je zbaliteľná
- * a defaultne zbalená (review polish — 149 typov by inak zahltilo panel).
+ * Flat navigation lists of non-spatial nodes below the tree (S3 polish).
+ * Asset types lead to `/type/[id]`, the rest to `/node/[id]`. The active link is
+ * highlighted via `usePathname` (same as the tree). Each section is collapsible
+ * and collapsed by default (review polish - 149 types would otherwise flood the panel).
  */
 function Section({
   title,

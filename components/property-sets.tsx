@@ -2,9 +2,9 @@ import { cn } from "@/lib/utils";
 import type { PropertySetGroup, Provenance } from "@/lib/data/asset";
 
 /**
- * Render property setov (S2). Zoskupené podľa psetu, štandard (`Pset_`/`Qto_`)
- * odlíšený od custom (D-022). Pri assete `showProvenance` zobrazí pôvod hodnoty
- * (vlastné / zdedené / prepísané) — tu sa ukáže dedičnosť type→occurrence (D-021).
+ * Render of property sets (S2). Grouped by pset, standard (`Pset_`/`Qto_`)
+ * distinguished from custom (D-022). For an asset `showProvenance` shows the origin of the value
+ * (own / inherited / overridden) - here the type->occurrence inheritance is shown (D-021).
  */
 
 const PROV_LABEL: Record<Provenance, string> = {

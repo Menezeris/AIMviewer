@@ -6,9 +6,9 @@ import { ChevronDown, Sparkles } from "lucide-react";
 import { AskPanel } from "@/components/ask-panel";
 
 /**
- * Plávajúce okno AI chatu (D-056): drag za hlavičku, resize za pravý dolný
- * roh, geometria aj otvorenosť prežívajú navigáciu a reload (sessionStorage).
- * Default = ukotvené pri spodku v strede; po prvom potiahnutí voľné okno.
+ * Floating AI chat window (D-056): drag by the header, resize by the bottom right
+ * corner, geometry and openness survive navigation and reload (sessionStorage).
+ * Default = anchored at the bottom in the center; after the first drag a free window.
  */
 
 const OPEN_STORAGE_KEY = "aim-ask-open";
@@ -48,7 +48,7 @@ function loadGeom(): DockGeom {
     const raw = window.sessionStorage.getItem(GEOM_STORAGE_KEY);
     if (raw) return clampGeom(JSON.parse(raw) as DockGeom);
   } catch {
-    // nevalidné storage → default
+    // invalid storage -> default
   }
   return defaultGeom();
 }
@@ -75,11 +75,11 @@ export default function AskDockInner() {
     try {
       window.sessionStorage.setItem(OPEN_STORAGE_KEY, open ? "1" : "0");
     } catch {
-      // nedostupné storage dock neláme
+      // unavailable storage does not break the dock
     }
   }, [open]);
 
-  // Zmena veľkosti okna prehliadača → okno ostáva vo viewporte.
+  // Browser window resize -> the window stays within the viewport.
   useEffect(() => {
     const onResize = () => setGeom(clampGeom(geomRef.current));
     window.addEventListener("resize", onResize);
@@ -90,19 +90,19 @@ export default function AskDockInner() {
     try {
       window.sessionStorage.setItem(GEOM_STORAGE_KEY, JSON.stringify(geomRef.current));
     } catch {
-      // nedostupné storage dock neláme
+      // unavailable storage does not break the dock
     }
   };
 
-  /** Spoločný pointer-drag: `apply` premietne delta kurzora do geometrie. */
+  /** Common pointer-drag: `apply` maps the cursor delta into the geometry. */
   const beginPointerDrag = (
     e: React.PointerEvent,
     apply: (start: DockGeom, dx: number, dy: number) => DockGeom
   ) => {
     e.preventDefault();
-    // Pointer capture — dock pláva nad iframom 3D vieweru (iný dokument);
-    // pointerup pustený nad ním by k nám nikdy nedorazil a dock by naveky
-    // nasledoval kurzor. Capture drží eventy na úchyte.
+    // Pointer capture - the dock floats above the iframe of the 3D viewer (another document);
+    // a pointerup released above it would never reach us and the dock would
+    // follow the cursor forever. Capture keeps the events on the handle.
     const handle = e.currentTarget as HTMLElement;
     handle.setPointerCapture(e.pointerId);
     const start = geomRef.current;
@@ -115,7 +115,7 @@ export default function AskDockInner() {
       persistGeom();
     };
     const onMove = (ev: PointerEvent) => {
-      // Poistka: keby pointerup predsa len zapadol, prvý pohyb bez tlačidla drag ukončí.
+      // Safeguard: if a pointerup got lost after all, the first move without a button ends the drag.
       if (ev.buttons === 0) return onUp();
       setGeom(clampGeom(apply(start, ev.clientX - px, ev.clientY - py)));
     };
@@ -125,7 +125,7 @@ export default function AskDockInner() {
   };
 
   const beginMove = (e: React.PointerEvent) => {
-    // Klik na tlačidlo v hlavičke nie je drag.
+    // A click on a button in the header is not a drag.
     if ((e.target as HTMLElement).closest("button")) return;
     beginPointerDrag(e, (s, dx, dy) => ({ ...s, x: s.x + dx, y: s.y + dy }));
   };
@@ -178,7 +178,7 @@ export default function AskDockInner() {
         <AskPanel />
       </div>
 
-      {/* Úchyt na zmenu veľkosti (pravý dolný roh). */}
+      {/* Handle for resizing (bottom right corner). */}
       <div
         className="absolute bottom-0 right-0 z-10 flex size-4 cursor-nwse-resize items-end justify-end text-muted-foreground/70"
         style={{ touchAction: "none" }}
