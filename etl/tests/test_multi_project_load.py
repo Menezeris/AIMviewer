@@ -310,8 +310,8 @@ def test_revision_copy_is_keyed_by_model_revision_id(tmp_path, stage_code) -> No
     with psycopg.connect(DB) as conn, conn.cursor() as cur:
         pid = project_mod.resolve(cur, code)
         cur.execute("insert into model_revisions (model, revision, is_current, sha256, size_bytes, archive_path, "
-                    "project_id) values ('TSTM', 1, true, %s, %s, 'x', %s)",
-                    (hashlib.sha256(data).hexdigest(), len(data), pid))
+                    "project_id, container_id) values ('TSTM', 1, true, %s, %s, 'x', %s, container_for_model(%s, 'TSTM'))",
+                    (hashlib.sha256(data).hexdigest(), len(data), pid, pid))
         conn.commit()
     try:
         res = revision_copy.run("TSTM", 1, path, dry_run=False, force=False, db_url=DB, project_code=code)

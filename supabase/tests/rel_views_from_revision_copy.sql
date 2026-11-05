@@ -4,6 +4,7 @@
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/rel_views_from_revision_copy.sql
 -- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
 begin;
+\ir _legacy_ocb.sql
 
 -- Uzly AIM (ASR "TAS" + VZT "TVZ"): podlažie, miestnosť, schodisko so zábradlím, dvere dvoch IFC typov zlúčených
 -- do jedného typu AIM (typový kód TD01.01), systém s vyústkou, zóna, výkres, strana, klasifikácia.

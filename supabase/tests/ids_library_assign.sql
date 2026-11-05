@@ -3,6 +3,7 @@
 -- (nikdy produkcia):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/ids_library_assign.sql
 begin;
+\ir _legacy_ocb.sql
 
 insert into information_containers (id, identification, container_type, model) values
   ('00000000-0000-4000-8000-0000000000e1', 'T-ASR', 'IFC', 'T-ASR'),

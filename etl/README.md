@@ -58,8 +58,9 @@ project.
   `ifc/archive/<information_containers.id>/vNNN.ifc.gz`. OCB keeps its names, refs and paths.
 - Check before a load, read only: `python -m etl.main --file X.ifc --project OCB --model ASR --dry-run --check-db`
   lists what the load would add, change (including `project_id`) or close; exit code 2 when anything differs.
-- Loading a second project with a model code another project already uses needs the D-189 cleanup migration
-  (old global keys `information_containers (model)`, `model_revisions (model, revision)`, `uniq_active_guid_alias`).
+- A second project may use the same model codes, GUIDs and clash or IDS codes as another one once the D-189 cleanup
+  migration `20261105120000` is applied. Every write names `project_id`; `model_revisions` needs `container_id` and
+  the revision copy `model_revision_id` (no database default or lookup fills them).
 
 ### Manifest vzťahov (D-051)
 Hrany od F1 žijú v generickej `relationships` (diskriminátor `rel_type`); zoznam typov +

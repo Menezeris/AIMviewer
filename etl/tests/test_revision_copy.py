@@ -219,6 +219,7 @@ def test_merge_adds_placement_aspect() -> None:
 # ── DB (len lokálny Postgres s migráciami) ────────────────────────────────────
 
 DB = os.environ.get("AIM_TEST_DATABASE_URL")
+OCB = "9e2dfcba-437b-43d3-a925-0dd29f195b38"  # D-189: the project the test writes into
 
 
 @pytest.mark.skipif(not DB, reason="AIM_TEST_DATABASE_URL nie je nastavené (lokálny Postgres s migráciami)")
@@ -234,9 +235,12 @@ def test_revision_copy_db(tmp_path) -> None:
             data = f.to_string().encode()
             paths[rev] = tmp_path / f"v{rev}.ifc.gz"
             paths[rev].write_bytes(gzip.compress(data))
-            cur.execute("insert into model_revisions (model, revision, parent_revision, is_current, sha256, size_bytes, archive_path) "
-                        "values ('TST', %s, %s, %s, %s, %s, 'x')",
-                        (rev, rev - 1 if rev > 1 else None, rev == 2, hashlib.sha256(data).hexdigest(), len(data)))
+            # the writer names the project and the container (D-189 cleanup), as model_publish does
+            cur.execute("insert into model_revisions (model, revision, parent_revision, is_current, sha256, size_bytes, "
+                        "archive_path, project_id, container_id) "
+                        "values ('TST', %s, %s, %s, %s, %s, 'x', %s, container_for_model(%s, 'TST'))",
+                        (rev, rev - 1 if rev > 1 else None, rev == 2, hashlib.sha256(data).hexdigest(), len(data),
+                         OCB, OCB))
         conn.commit()
     try:
         for rev in files:
@@ -244,9 +248,9 @@ def test_revision_copy_db(tmp_path) -> None:
             assert res["status"] == "done"
         assert revision_copy.run("TST", 1, paths[1], dry_run=False, force=False, db_url=DB)["status"] == "already_done"
         with psycopg.connect(DB) as conn, conn.cursor() as cur:
-            got = cur.execute("select count(*) from ifc_rev_storey_elements('TST', 1, '2NP', 'Prívod%')").fetchone()[0]
+            got = cur.execute("select count(*) from ifc_rev_storey_elements('TST', 1, '2NP', 'Prívod%%', %s)", (OCB,)).fetchone()[0]
             assert got == 4
-            assert cur.execute("select count(*) from ifc_rev_storey_elements('TST', null, '2NP', 'Prívod%')").fetchone()[0] == 2
+            assert cur.execute("select count(*) from ifc_rev_storey_elements('TST', null, '2NP', 'Prívod%%', %s)", (OCB,)).fetchone()[0] == 2
             header = cur.execute("select cr.file_header -> 'FILE_SCHEMA' from container_revisions cr "
                                  "join model_revisions m on m.id = cr.model_revision_id where m.model = 'TST' and m.revision = 1").fetchone()[0]
             assert header == ["IFC4X3_ADD2"]

@@ -2,6 +2,7 @@
 -- Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/ids_documents.sql
 begin;
+\ir _legacy_ocb.sql
 
 insert into ids_documents (id, code, title, origin, library_source) values
   ('00000000-0000-4000-8000-0000000000a1', 'LIB-1', 'Knižnica 1', 'library', 'assetin-library@abc:zadanie/x.md'),

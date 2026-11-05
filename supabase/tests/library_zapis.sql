@@ -1,5 +1,6 @@
 -- Test migrácie 20261102210000_library_zapis.sql (po aplikácii, v transakcii s rollback; nič neostane).
 begin;
+\ir _legacy_ocb.sql
 set local role service_role;
 -- texty: celá hlava
 select count(*) > 0 as ma_texty from public.library_texty('assetin');

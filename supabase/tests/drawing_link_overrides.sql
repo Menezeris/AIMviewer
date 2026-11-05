@@ -1,6 +1,7 @@
 -- D-160: drawing_link_overrides. Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/drawing_link_overrides.sql
 begin;
+\ir _legacy_ocb.sql
 
 insert into objects (id, object_type, object_ref, name) values
   ('00000000-0000-4000-8000-0000000000e1', 'document', 'TDOC.268', 'Pôdorys 1NP'),

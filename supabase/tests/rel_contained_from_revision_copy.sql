@@ -3,6 +3,7 @@
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/rel_contained_from_revision_copy.sql
 -- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
 begin;
+\ir _legacy_ocb.sql
 
 -- Uzly AIM: podlažie 2NP (z ASR), miestnosť, potrubie, vyústka, schodisko (bez uzla), zábradlie v ňom, zaniknutý prvok.
 insert into objects (id, object_type, object_ref, name, ifc_type, valid_until) values

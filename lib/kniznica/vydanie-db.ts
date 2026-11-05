@@ -35,7 +35,8 @@ function chyba(e: { code?: string; message?: string; details?: string }): never 
   throw new ChybaSkladu(`databáza vydanie odmietla: ${e.message}`);
 }
 
-export function supabaseSkladVydania(kniznica: string): SkladVydania {
+/** `projectId`: the project whose IDS catalog the release writes into (D-189 cleanup, `library_vydaj(p_project)`). */
+export function supabaseSkladVydania(kniznica: string, projectId: string): SkladVydania {
   const db = getSupabaseAdmin();
   return {
     kniznica,
@@ -54,6 +55,7 @@ export function supabaseSkladVydania(kniznica: string): SkladVydania {
         p_diagnostiky: p.diagnostiky,
         p_ocakavane: p.ocakavane,
         p_polozky: p.polozky,
+        p_project: projectId,
       });
       if (error) chyba(error);
       const d = (data ?? {}) as { vydanie_id?: string; ids?: unknown[] };
