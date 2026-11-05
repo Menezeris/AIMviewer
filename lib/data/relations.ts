@@ -1,9 +1,8 @@
 import "server-only";
 
-import { unstable_cache } from "next/cache";
-
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { AIM_CACHE, PDF_LINK_SOURCE } from "@/lib/data/constants";
+import { PDF_LINK_SOURCE } from "@/lib/data/constants";
+import { cachedProjectRead } from "@/lib/data/revalidate";
 
 /**
  * Data-access vrstva pre generické sekcie uzla (S3, D-029): dokumenty,
@@ -102,31 +101,29 @@ export interface NodeSectionsData {
 
 /** Generické sekcie uzla naraz (paralelne) — jeden vstupný bod pre Viewer. */
 async function fetchNodeSectionsImpl(
+  projectId: string,
   objectId: string
 ): Promise<NodeSectionsData> {
   const [documents, drawings, responsibilities, guidHistory] = await Promise.all([
-    fetchDocuments(objectId),
-    fetchElementDrawings(objectId),
-    fetchResponsibilities(objectId),
+    fetchDocuments(projectId, objectId),
+    fetchElementDrawings(projectId, objectId),
+    fetchResponsibilities(projectId, objectId),
     fetchGuidHistory(objectId),
   ]);
   return { documents, drawings, responsibilities, guidHistory };
 }
 
 /** Cachované per id (ISR, D-029 perf). */
-export const fetchNodeSections = unstable_cache(
-  fetchNodeSectionsImpl,
-  ["fetch-node-sections"],
-  AIM_CACHE
-);
+export const fetchNodeSections = cachedProjectRead("fetch-node-sections", fetchNodeSectionsImpl);
 
 /** Dokumenty pripojené na uzol (`rel_associates_document` → `documents`, D-014). */
-export async function fetchDocuments(objectId: string): Promise<DocumentRef[]> {
+export async function fetchDocuments(projectId: string, objectId: string): Promise<DocumentRef[]> {
   const supabase = getSupabaseAdmin();
 
   const { data: rels, error } = await supabase
     .from("rel_associates_document")
     .select("to_id, role, source")
+    .eq("project_id", projectId)
     .eq("from_id", objectId)
     .is("valid_until", null)
     .not("to_id", "is", null); // dokument bez uzla AIM (D-183 K3)
@@ -143,7 +140,7 @@ export async function fetchDocuments(objectId: string): Promise<DocumentRef[]> {
   const docIds = [...new Set(relRows.map((r) => r.to_id))];
 
   const [objsRes, docsRes] = await Promise.all([
-    supabase.from("objects").select("id, object_ref, name").in("id", docIds),
+    supabase.from("objects").select("id, object_ref, name").eq("project_id", projectId).in("id", docIds),
     supabase
       .from("documents")
       .select(
@@ -186,6 +183,7 @@ export async function fetchDocuments(objectId: string): Promise<DocumentRef[]> {
  * Vracia priame verejné PDF URL (`documents.location`).
  */
 export async function fetchElementDrawings(
+  projectId: string,
   objectId: string
 ): Promise<DrawingLink[]> {
   const supabase = getSupabaseAdmin();
@@ -193,6 +191,7 @@ export async function fetchElementDrawings(
   const { data: rels, error } = await supabase
     .from("rel_associates_document")
     .select("to_id")
+    .eq("project_id", projectId)
     .eq("from_id", objectId)
     .eq("source", PDF_LINK_SOURCE)
     .is("valid_until", null);
@@ -202,7 +201,7 @@ export async function fetchElementDrawings(
   if (docIds.length === 0) return [];
 
   const [objsRes, docsRes] = await Promise.all([
-    supabase.from("objects").select("id, object_ref, name").in("id", docIds),
+    supabase.from("objects").select("id, object_ref, name").eq("project_id", projectId).in("id", docIds),
     supabase.from("documents").select("id, location").in("id", docIds),
   ]);
   if (objsRes.error) throw new Error(objsRes.error.message);
@@ -230,6 +229,7 @@ export async function fetchElementDrawings(
  * detegovaných prvkov sa **nezobrazí** (prázdny zoznam nemá výpovednú hodnotu).
  */
 export async function fetchFloorDrawings(
+  projectId: string,
   objectId: string
 ): Promise<FloorDrawing[]> {
   const supabase = getSupabaseAdmin();
@@ -238,6 +238,7 @@ export async function fetchFloorDrawings(
   const { data: drawRels, error } = await supabase
     .from("rel_associates_document")
     .select("to_id, source")
+    .eq("project_id", projectId)
     .eq("from_id", objectId)
     .eq("role", "drawing")
     .is("valid_until", null);
@@ -254,11 +255,12 @@ export async function fetchFloorDrawings(
 
   // 2) výkres-meta + prvky zobrazené v každom výkrese (E4, smer element→výkres)
   const [objsRes, docsRes, elemRelsRes] = await Promise.all([
-    supabase.from("objects").select("id, object_ref, name").in("id", drawingIds),
+    supabase.from("objects").select("id, object_ref, name").eq("project_id", projectId).in("id", drawingIds),
     supabase.from("documents").select("id, location").in("id", drawingIds),
     supabase
       .from("rel_associates_document")
       .select("from_id, to_id")
+      .eq("project_id", projectId)
       .in("to_id", drawingIds)
       .eq("source", PDF_LINK_SOURCE)
       .is("valid_until", null),
@@ -280,6 +282,7 @@ export async function fetchFloorDrawings(
     const { data: elems, error: elErr } = await supabase
       .from("objects")
       .select("id, object_type, object_ref, name")
+      .eq("project_id", projectId)
       .in("id", elemIds)
       .in("object_type", ["asset", "asset_type"]);
     if (elErr) throw new Error(elErr.message);
@@ -329,17 +332,14 @@ export async function fetchFloorDrawings(
 }
 
 /** Cachovaný variant pre kartu podlažia/budovy (ISR, D-029 perf). */
-export const fetchFloorDrawingsCached = unstable_cache(
-  fetchFloorDrawings,
-  ["fetch-floor-drawings"],
-  AIM_CACHE
-);
+export const fetchFloorDrawingsCached = cachedProjectRead("fetch-floor-drawings", fetchFloorDrawings);
 
 /**
  * Zodpovednosti za uzol (`rel_assigns_to_actor`, D-020). Actor je person alebo
  * organization; pri osobe doplníme jej firmu (`rel_member_of`, D-024).
  */
 export async function fetchResponsibilities(
+  projectId: string,
   objectId: string
 ): Promise<Responsibility[]> {
   const supabase = getSupabaseAdmin();
@@ -347,6 +347,7 @@ export async function fetchResponsibilities(
   const { data: rels, error } = await supabase
     .from("rel_assigns_to_actor")
     .select("from_id, role, valid_from, valid_until")
+    .eq("project_id", projectId)
     .eq("to_id", objectId)
     .is("valid_until", null);
   if (error) throw new Error(error.message);
@@ -368,6 +369,7 @@ export async function fetchResponsibilities(
     supabase
       .from("objects")
       .select("id, object_type, object_ref, name")
+      .eq("project_id", projectId)
       .in("id", actorIds),
     supabase
       .from("rel_member_of")
@@ -391,6 +393,7 @@ export async function fetchResponsibilities(
       const { data: orgs, error: orgErr } = await supabase
         .from("objects")
         .select("id, name")
+        .eq("project_id", projectId)
         .in("id", orgIds);
       if (orgErr) throw new Error(orgErr.message);
       for (const o of orgs ?? [])
@@ -431,6 +434,7 @@ export async function fetchResponsibilities(
  * D-047). Pre asset kartu: „súčasť systému" (vetranie/odvod…). Aktívne väzby.
  */
 export async function fetchSystemMembership(
+  projectId: string,
   objectId: string
 ): Promise<SystemRef[]> {
   const supabase = getSupabaseAdmin();
@@ -438,6 +442,7 @@ export async function fetchSystemMembership(
   const { data: rels, error } = await supabase
     .from("rel_assigns_to_group")
     .select("to_id")
+    .eq("project_id", projectId)
     .eq("from_id", objectId)
     .is("valid_until", null)
     .not("to_id", "is", null);
@@ -449,6 +454,7 @@ export async function fetchSystemMembership(
   const { data: systems, error: sysErr } = await supabase
     .from("objects")
     .select("id, object_ref, name, predefined_type")
+    .eq("project_id", projectId)
     .in("id", systemIds);
   if (sysErr) throw new Error(sysErr.message);
 

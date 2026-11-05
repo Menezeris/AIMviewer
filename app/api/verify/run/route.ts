@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { GUID_RE, jsonFail, NO_STORE, readBody, verifyEngineEnabled, verifyGuard, verifySaveEnabled } from "@/lib/verify/route-guard";
 import { runVerification } from "@/lib/verify/service";
+import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Overenie výmer jedného prvku teraz (D-185 UI, `VERIFY_REQUEST run`): `POST {global_id}` -> `{data: VerifyElementWire,
@@ -12,7 +13,7 @@ import { runVerification } from "@/lib/verify/service";
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
 
-export async function POST(req: Request) {
+async function postHandler(req: Request) {
   const denied = verifyGuard(req);
   if (denied) return denied;
   if (!verifyEngineEnabled()) return jsonFail("motor IFC je na tomto nasadení vypnutý (ENGINE_ENABLED), overiť sa nedá", 503);
@@ -27,3 +28,5 @@ export async function POST(req: Request) {
     return jsonFail(msg, err instanceof Error && err.name === "InputError" ? 400 : 500);
   }
 }
+
+export const POST = withRequestProject(postHandler);

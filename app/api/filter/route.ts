@@ -4,8 +4,11 @@ import {
   fetchByIfcType,
   fetchByClassificationPrefix,
 } from "@/lib/data/filter";
+import { currentProjectId } from "@/lib/live/caller";
+import { withRequestProject } from "@/lib/project/request";
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
+  const projectId = currentProjectId();
   const { searchParams } = req.nextUrl;
   const ifcType = searchParams.get("ifc_type");
   const classification = searchParams.get("classification");
@@ -14,9 +17,9 @@ export async function GET(req: NextRequest) {
     let objectIds: string[];
 
     if (ifcType) {
-      objectIds = await fetchByIfcType(ifcType);
+      objectIds = await fetchByIfcType(projectId, ifcType);
     } else if (classification) {
-      objectIds = await fetchByClassificationPrefix(classification);
+      objectIds = await fetchByClassificationPrefix(projectId, classification);
     } else {
       return NextResponse.json(
         { error: "Provide ifc_type or classification query param" },
@@ -34,3 +37,5 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "server error" }, { status: 500 });
   }
 }
+
+export const GET = withRequestProject(getHandler);

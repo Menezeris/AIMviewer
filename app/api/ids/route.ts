@@ -6,6 +6,8 @@ import { supabaseIdsStore } from "@/lib/ids/store";
 import { conflictDiff, IdsInputError, saveFromViewer, type IdsToolDeps } from "@/lib/ids/tools";
 import { IdsConflictError } from "@/lib/ids/types";
 import { MAX_IDS_XML, parseIdsSave } from "@/lib/viewer-ids";
+import { withRequestProject } from "@/lib/project/request";
+import { currentProjectId } from "@/lib/live/caller";
 
 /**
  * IDS z AIM pre viewer (D-162, #285).
@@ -29,11 +31,11 @@ const MAX_BODY_CHARS = MAX_IDS_XML + 10_000;
 
 const fail = jsonFail;
 
-export async function GET(req: Request) {
+async function getHandler(req: Request) {
   const params = new URL(req.url).searchParams;
   const code = params.get("code");
   try {
-    const store = supabaseIdsStore();
+    const store = supabaseIdsStore(currentProjectId());
     if (!code) {
       const docs = await store.listDocuments();
       const latest = await store.latestVersions(docs.map((d) => d.id));
@@ -75,14 +77,14 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
+async function postHandler(req: Request) {
   const denied = idsWriteGuard(req);
   if (denied) return denied;
   const read = await readJson(req, MAX_BODY_CHARS);
   if (!read.ok) return read.res;
   const save = parseIdsSave(read.body);
   if (!save) return fail("invalid IDS payload", 400);
-  const deps: IdsToolDeps = { store: supabaseIdsStore() };
+  const deps: IdsToolDeps = { store: supabaseIdsStore(currentProjectId()) };
   try {
     const out = await saveFromViewer(deps, {
       xml: save.xml,
@@ -101,3 +103,6 @@ export async function POST(req: Request) {
     return fail(err instanceof Error ? err.message : "uloženie IDS zlyhalo", 500);
   }
 }
+
+export const GET = withRequestProject(getHandler);
+export const POST = withRequestProject(postHandler);

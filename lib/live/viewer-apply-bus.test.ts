@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { applyLive, deferCmdIds, emitApplied, isRestoredCommandUrl, parseIfcCommandUrl, setAppliedSink, setLiveApplyHandler, takePendingCmdIds, withoutCommandParams } from "./viewer-apply-bus";
+import { applyLive, deferCmdIds, emitApplied, isRestoredCommandUrl, parseIfcCommandUrl, sameProject, setAppliedSink, setLiveApplyHandler, takePendingCmdIds, withProjectParam, withoutCommandParams } from "./viewer-apply-bus";
 
 afterEach(() => {
   takePendingCmdIds();
@@ -40,6 +40,17 @@ describe("príkazy živého kanála na mieste (D-101)", () => {
     expect(parseIfcCommandUrl("/ifc?focus=G1,G2&r=1")).toEqual({ focus: "G1,G2", nonce: "1", ops: undefined });
     expect(parseIfcCommandUrl("/ifc?doc=x&r=1")).toBeNull();
     expect(parseIfcCommandUrl("/node/abc")).toBeNull();
+  });
+
+  it("D-189: project in the command URL; in place only in the window of that project", () => {
+    expect(parseIfcCommandUrl("/ifc?focus=G1&project=XYZ")).toMatchObject({ focus: "G1", project: "XYZ" });
+    expect(sameProject(undefined, "XYZ")).toBe(true);
+    expect(sameProject("XYZ", "XYZ")).toBe(true);
+    expect(sameProject("XYZ", null)).toBe(false);
+    // the default project leaves the URL as it was, another project adds `?project=`
+    expect(withProjectParam("/ifc?focus=G1", "OCB", "OCB")).toBe("/ifc?focus=G1");
+    expect(withProjectParam("/ifc?focus=G1", "XYZ", "OCB")).toBe("/ifc?focus=G1&project=XYZ");
+    expect(withProjectParam("/node/abc", "XYZ", "OCB")).toBe("/node/abc?project=XYZ");
   });
 });
 

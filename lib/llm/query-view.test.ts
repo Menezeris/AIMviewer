@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { rowEq } from "@/lib/project/testing-filters";
+
+import { TEST_PROJECT } from "@/lib/project/testing";
+
 import { orderTerms, pageInfo, parseRelated, sortRows } from "./query-view";
 
 const { db } = vi.hoisted(() => ({ db: { tables: {} as Record<string, Record<string, unknown>[]>, calls: [] as string[] } }));
@@ -15,7 +19,7 @@ vi.mock("@/lib/supabase/server", () => {
     let range: [number, number] | null = null;
     let lim: number | null = null;
     const q = {
-      eq: (c: string, v: unknown) => ((rows = rows.filter((r) => r[c] === v)), q),
+      eq: (c: string, v: unknown) => ((rows = rows.filter((r) => rowEq(r, c, v))), q),
       is: (c: string, v: unknown) => ((rows = rows.filter((r) => (r[c] ?? null) === v)), q),
       in: (c: string, vs: unknown[]) => ((rows = rows.filter((r) => vs.includes(r[c]))), q),
       order: (col: string, o?: { ascending?: boolean }) => (orders.push({ col, asc: o?.ascending !== false }), q),
@@ -81,7 +85,7 @@ beforeEach(() => {
 });
 
 const run = async (input: Record<string, unknown>) => {
-  const rt = new AskToolRuntime();
+  const rt = new AskToolRuntime(TEST_PROJECT.id);
   const res = await rt.exec("query_view", input);
   return { ...res, json: res.isError ? null : JSON.parse(res.content) };
 };

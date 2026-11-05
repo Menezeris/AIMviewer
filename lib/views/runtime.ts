@@ -10,6 +10,8 @@ import { LIVE_VIEWS_EVENT } from "@/lib/live/views-event";
 import { expectApplied } from "@/lib/live/warm-channel";
 import { viewCaptureOp } from "@/lib/viewer-views";
 
+import { currentProjectId } from "../project/context";
+
 import { currentModelRevisions, supabaseSavedViewStore } from "./store";
 import type { CaptureOutcome, SavedViewDeps } from "./tools";
 
@@ -74,12 +76,13 @@ async function notifyViewsChanged(): Promise<void> {
 }
 
 export function defaultSavedViewDeps(): SavedViewDeps {
+  const projectId = currentProjectId();
   return {
-    store: supabaseSavedViewStore(),
+    store: supabaseSavedViewStore(projectId),
     capture: liveCapture,
     notifyChanged: notifyViewsChanged,
     viewState: liveViewState,
-    revisions: currentModelRevisions,
+    revisions: () => currentModelRevisions(projectId),
     storeyLabel,
     now: () => new Date(),
   };

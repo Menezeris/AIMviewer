@@ -1,4 +1,4 @@
-import { getIfcModels } from "../data/ifc-models";
+import { requestIfcModels } from "../project/request-models";
 
 import type { EngineModelSource } from "./cache";
 import { ifcBox, meshMetrics, meshModel } from "./measure";
@@ -97,7 +97,7 @@ export async function storeyCeiling(
   label: string,
   opts: { sources?: () => EngineModelSource[]; fetchImpl?: typeof fetch } = {},
 ): Promise<StoreyCeiling | null> {
-  const sources = opts.sources ?? getIfcModels;
+  const sources = opts.sources ?? requestIfcModels;
   const deps = { sources, fetchImpl: opts.fetchImpl, lookup: async () => new Map(), resolveTargets: async () => new Map() };
   const { models } = await modelsFor(sources().map((m) => m.id), deps);
   const session = await openEngineSession(models);
