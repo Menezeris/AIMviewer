@@ -1,5 +1,5 @@
 /**
- * Skórovanie a validácia zlatých otázok /api/ask (D-057), oddelené od runnera `eval-ask.ts`, aby sa dalo testovať.
+ * Scoring and validation of the /api/ask golden questions (D-057), separate from the `eval-ask.ts` runner so it can be tested.
  */
 
 export interface Expect {
@@ -8,9 +8,9 @@ export interface Expect {
   sources_any_ref?: string[];
   source_types?: string[];
   no_facts?: boolean;
-  /** Regexy, ktoré musí splniť URL niektorej UI akcie (dekódovaná), napr. ops pohľadu (D-083). */
+  /** Regexes that the URL of some UI action (decoded) must satisfy, e.g. the ops of a view (D-083). */
   actions_match?: string[];
-  /** Tools, ktoré musí model zavolať (podľa trace). */
+  /** Tools that the model must call (per the trace). */
   tools_called?: string[];
 }
 
@@ -22,8 +22,8 @@ export interface Question {
   verified: boolean;
   mock_only?: boolean;
   /**
-   * Otázka pre MCP konektor (tooly search_all, clash, calibrate_underlay, ifc_* sú len v MCP s motorom);
-   * /api/ask ich nemá, runner ju preskočí. Meria sa cez eval/mcp-tasks.json (MCP-EVAL.md).
+   * Question for the MCP connector (the tools search_all, clash, calibrate_underlay, ifc_* exist only in MCP with the engine);
+   * /api/ask does not have them, the runner skips it. It is measured via eval/mcp-tasks.json (MCP-EVAL.md).
    */
   mcp_only?: boolean;
   notes?: string;
@@ -43,22 +43,22 @@ export interface AskResponse {
   error?: string;
 }
 
-/** „Nenašiel som" vzory pre no_facts asercie (negatívne otázky). */
+/** "Not found" patterns for no_facts assertions (negative questions). */
 export const NOT_FOUND_RE =
   /nenaš|nenach|neexist|nie je|niesú|nie sú|žiadn|nemá|not found|no such/i;
 
 /**
- * Kód prvku, miestnosti alebo podlažia v odpovedi (DD01.06.03, ZZZ99.99.99, 1NP, 2.05, D.1.1.01, PO.02.02):
- * systémový prompt ich káže citovať, preto nie sú konfabulované čísla. Token s písmenom a číslicou, písmená
- * s bodkovanými číslami (PO.02.02) alebo aspoň tri skupiny číslic s bodkami (desatinné číslo 11.43 ostáva číslom).
+ * Code of an element, room or storey in the answer (DD01.06.03, ZZZ99.99.99, 1NP, 2.05, D.1.1.01, PO.02.02):
+ * the system prompt tells the model to cite them, so they are not confabulated numbers. A token with a letter and a digit, letters
+ * with dotted numbers (PO.02.02) or at least three groups of digits with dots (the decimal number 11.43 stays a number).
  */
 const CODE_RE = /[\p{L}\d]*(?:\p{L}\d|\d\p{L})[\p{L}\d]*(?:[._/-][\p{L}\d]+)*|\p{L}+(?:\.\d+)+|\d+(?:\.\d+){2,}/gu;
-/** Samostatné viacciferné číslo (počet, hodnota) = podozrenie z konfabulácie pri negatívnej otázke. */
+/** A standalone multi-digit number (count, value) = suspected confabulation in a negative question. */
 const MULTI_DIGIT_RE = /(?<![\p{L}\d])\d{2,}(?![\p{L}\d])/u;
 
 /**
- * Viacciferné číslo v odpovedi na negatívnu otázku, okrem kódov prvkov a čísel z otázky
- * (rel-actor, neg-nonexistent-ref padali na DD01.06.03 a ZZZ99.99.99, ktoré model správne citoval).
+ * Multi-digit number in the answer to a negative question, except element codes and numbers from the question
+ * (rel-actor, neg-nonexistent-ref failed on DD01.06.03 and ZZZ99.99.99, which the model cited correctly).
  */
 export function suspiciousNumber(answer: string, question = ""): string | null {
   const own = new Set(question.match(/\d+/g) ?? []);
@@ -66,7 +66,7 @@ export function suspiciousNumber(answer: string, question = ""): string | null {
   return stripped.match(MULTI_DIGIT_RE)?.[0] ?? null;
 }
 
-/** Vyhodnotí asercie jednej odpovede; vráti zoznam zlyhaní (prázdny = pass). */
+/** Evaluates the assertions of one answer; returns the list of failures (empty = pass). */
 export function score(expect: Expect, res: AskResponse, question = ""): string[] {
   const failures: string[] = [];
   const answer = res.answer ?? "";
@@ -107,8 +107,8 @@ export function score(expect: Expect, res: AskResponse, question = ""): string[]
     if (!NOT_FOUND_RE.test(answer)) failures.push("no_facts: chýba formulácia typu 'nenašiel som'");
     const n = suspiciousNumber(answer, question);
     if (n) failures.push(`no_facts: odpoveď obsahuje viacciferné číslo (${n})`);
-    // „Nenašiel som" platí len z fungujúcej DB — beh, kde zlyhali všetky tools,
-    // nedokazuje nič (anti-konfabulačný fallback by inak zeleno prešiel výpadkom).
+    // "Not found" counts only from a working DB - a run where all tools failed
+    // proves nothing (the anti-confabulation fallback would otherwise pass green through an outage).
     const trace = res.trace ?? [];
     if (trace.length > 0 && trace.every((t) => !t.ok)) {
       failures.push("no_facts: všetky tool cally zlyhali — beh nevypovedá o dátach");
@@ -118,8 +118,8 @@ export function score(expect: Expect, res: AskResponse, question = ""): string[]
 }
 
 /**
- * Chyby sady otázok (runner ich vypíše a skončí): záznam bez id alebo otázky poslal /api/ask prázdnu históriu
- * ("posledná správa musí byť od používateľa"), duplicitné id, tools_called s toolom, ktorý /api/ask nemá.
+ * Errors of the question set (the runner prints them and exits): a record without id or question sent /api/ask an empty history
+ * ("posledná správa musí byť od používateľa"), duplicate id, tools_called with a tool that /api/ask does not have.
  */
 export function validateQuestions(questions: unknown[], askTools?: ReadonlySet<string>): string[] {
   const errors: string[] = [];

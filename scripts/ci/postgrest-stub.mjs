@@ -1,6 +1,6 @@
-// Falošný PostgREST len pre `next build` v CI (D-187): stránky, ktoré sa predrenderujú pri builde
-// (napr. /kniznica, /icdd), čítajú Supabase; build v CI nemá tajomstvá ani produkčnú DB.
-// Každá požiadavka dostane prázdny zoznam, stránky sa vykreslia v prázdnom stave.
+// Fake PostgREST only for `next build` in CI (D-187): pages that are prerendered at build time
+// (e.g. /kniznica, /icdd) read Supabase; the CI build has no secrets and no production DB.
+// Every request gets an empty list, the pages render in the empty state.
 import http from "node:http";
 
 const port = Number(process.env.STUB_PORT ?? 54321);
