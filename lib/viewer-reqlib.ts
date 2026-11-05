@@ -1,14 +1,14 @@
 /**
- * Knižnica požiadaviek vo vieweri (D-182, #351): most pre kartu "Requirements library" a uloženie výsledku kontroly.
+ * Requirements library in the viewer (D-182, #351): bridge for the "Requirements library" card and saving the check result.
  *
  * Viewer -> host `REQLIB_REQUEST {id, action, payload}`, host -> viewer `REQLIB_RESULT {id, ok, data?, error?}`:
  *  - `catalog`  -> `GET /api/ids/library`;
- *  - `assign`   -> `POST /api/ids/library` ("Priradiť k projektu");
- *  - `bind`     -> `POST /api/ids/models` (ručná väzba IDS na model);
- *  - `open`     -> `GET /api/ids?code&version` a existujúci `IDS_LOAD` s pôvodom (`origin`, `library_commit`);
- *  - `save_run` -> `POST /api/ids/runs` pre každý model behu: revíziu doplní host z modelu, ktorý viewer načítal
- *    (kontrola beží raz, vo vieweri; server ju neopakuje).
- * Zápisy sú za `IDS_WRITE_ENABLED` v routes; tu sa len skladajú požiadavky a odpovede.
+ *  - `assign`   -> `POST /api/ids/library` ("Priradiť k projektu", assign to project);
+ *  - `bind`     -> `POST /api/ids/models` (manual binding of IDS to a model);
+ *  - `open`     -> `GET /api/ids?code&version` and the existing `IDS_LOAD` with origin (`origin`, `library_commit`);
+ *  - `save_run` -> `POST /api/ids/runs` for each model of the run: the host fills in the revision from the model the viewer loaded
+ *    (the check runs once, in the viewer; the server does not repeat it).
+ * Writes are behind `IDS_WRITE_ENABLED` in the routes; here requests and responses are only composed.
  */
 
 import { modelKey, type IfcModel } from "./data/ifc-models";
@@ -31,13 +31,13 @@ export function parseReqlibRequest(raw: unknown): ReqlibRequest | null {
   return { id: raw.id, action: raw.action as ReqlibAction, payload: isObj(raw.payload) ? raw.payload : {} };
 }
 
-/** Posledný segment cesty URL bez query (tak model pomenuje viewer pri automatickom načítaní). */
+/** Last URL path segment without query (how the viewer names a model on auto-load). */
 const urlFile = (url: string) => decodeURIComponent(url.split(/[?#]/)[0].split("/").pop() ?? "");
 
 /**
- * Model behu z viewera -> kľúč modelu v AIM a revízia, ktorú viewer naozaj načítal (z URL, ktorú mu host dal).
- * Viewer pomenuje model podľa súboru (`ASR.ifc`, pri archíve `v079.ifc.gz`); pri viacerých zhodách nič (radšej
- * neuložiť než priradiť zlú revíziu).
+ * Run model from the viewer -> model key in AIM and the revision the viewer really loaded (from the URL the host gave it).
+ * The viewer names the model after the file (`ASR.ifc`, for an archive `v079.ifc.gz`); with several matches nothing (better
+ * not to save than to assign a wrong revision).
  */
 export function resolveRunModel(models: readonly IfcModel[], viewer: { model_id?: unknown; model_name?: unknown }): { model: string; revision: number | null } | null {
   const names = [viewer.model_name, viewer.model_id].filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim().toLowerCase());
@@ -56,9 +56,9 @@ type Fetch = typeof fetch;
 
 export interface ReqlibDeps {
   fetch: Fetch;
-  /** Modely, ktoré host dal vieweru (s revíziou). */
+  /** Models the host gave the viewer (with revision). */
   models: readonly IfcModel[];
-  /** Správa do viewera (host doplní `source`). */
+  /** Message to the viewer (the host fills in `source`). */
   post: (msg: Record<string, unknown>) => void;
 }
 
@@ -114,7 +114,7 @@ async function openIds(payload: Record<string, unknown>, deps: ReqlibDeps) {
   return { opened: true, code: doc.code, version: doc.version, target };
 }
 
-/** Vykoná žiadosť karty a pošle `REQLIB_RESULT` (aj pri chybe, aby karta neostala čakať). */
+/** Executes the card request and sends `REQLIB_RESULT` (also on error, so the card does not keep waiting). */
 export async function runReqlibRequest(req: ReqlibRequest, deps: ReqlibDeps): Promise<void> {
   const reply = (r: { ok: boolean; data?: unknown; error?: string }) => deps.post({ type: "REQLIB_RESULT", id: req.id, ...r });
   try {

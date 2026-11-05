@@ -1,20 +1,20 @@
 /**
- * Lens z chatu (D-096): wire formát op `lens` v `/ifc?ops=` a jej preklad na
- * bridge správu `APPLY_LENS` forku viewera (`apps/viewer/src/aim/aimLens.ts`).
- * Jeden zdroj pre server (`lib/llm/style-lens.ts` skladá) aj klienta
- * (`components/ifc-viewer.tsx` dopĺňa zónu a posiela). Bez závislostí.
+ * Lens from chat (D-096): wire format of the `lens` op in `/ifc?ops=` and its translation to the
+ * bridge message `APPLY_LENS` of the viewer fork (`apps/viewer/src/aim/aimLens.ts`).
+ * One source for the server (`lib/llm/style-lens.ts` composes) and the client
+ * (`components/ifc-viewer.tsx` fills in the zone and sends). No dependencies.
  *
- * Op: `lens:<mode>[~r=<rev>]:<base64url JSON>`. JSON nesie pravidlá Lens
- * (`FilterGroup` z `@ifc-lite/rules`) zostavené na serveri. Čo pozná len graf
- * AIM, ide symbolicky: zóna s prvkami v miestnostiach ako pravidlo `aim_zone`
- * s id zón, prvky dokumentu alebo jeho strany (D-104 krok 4) ako `aim_document`.
- * Klient si GUIDy stiahne z `/api/style-scope` a nahradí ich pravidlom
- * `globalId`, takže dĺžka URL neobmedzuje veľkosť zóny ani dokumentu.
+ * Op: `lens:<mode>[~r=<rev>]:<base64url JSON>`. The JSON carries Lens rules
+ * (`FilterGroup` from `@ifc-lite/rules`) assembled on the server. What only the AIM
+ * graph knows goes symbolically: a zone with elements in spaces as an `aim_zone` rule
+ * with zone ids, elements of a document or its page (D-104 step 4) as `aim_document`.
+ * The client fetches the GUIDs from `/api/style-scope` and replaces them with a
+ * `globalId` rule, so the URL length does not limit the size of a zone or document.
  */
 
 export const LENS_MODES = ["add", "replace", "clear", "unisolate"] as const;
 export type LensMode = (typeof LENS_MODES)[number];
-/** `isolate` = len do izolácie alebo X-ray bez farby (viewer ich drží vlastným kanálom, nie lens). */
+/** `isolate` = isolation or X-ray only without color (the viewer holds them in its own channel, not lens). */
 export const LENS_ACTIONS = ["colorize", "transparent", "hide", "isolate"] as const;
 export type LensAction = (typeof LENS_ACTIONS)[number];
 export const AUTO_COLOR_SOURCES = [
@@ -29,52 +29,52 @@ export const AUTO_COLOR_SOURCES = [
 ] as const;
 export type AutoColorSource = (typeof AUTO_COLOR_SOURCES)[number];
 
-/** Pravidlo filtra (podmnožina `FilterRule` z `@ifc-lite/rules`) + symbolická zóna AIM. */
+/** Filter rule (subset of `FilterRule` from `@ifc-lite/rules`) + symbolic AIM zone. */
 export type LensFilterRule = { kind: string; [k: string]: unknown };
 export interface LensFilterGroup {
   combinator: "AND" | "OR";
   rules: LensFilterRule[];
 }
-/** Symbolická zóna: id zón (objects.id), GUIDy doplní klient. */
+/** Symbolic zone: zone ids (objects.id), GUIDs are filled in by the client. */
 export interface AimZoneRule {
   kind: "aim_zone";
   ids: string[];
 }
-/** Symbolický dokument (D-104 krok 4): prvky, ktorých sa dokument alebo jeho strana týka, GUIDy doplní klient. */
+/** Symbolic document (D-104 step 4): elements the document or its page relates to, GUIDs are filled in by the client. */
 export interface AimDocumentRule {
   kind: "aim_document";
-  /** objects.id dokumentu alebo odkazu na jeho časť. */
+  /** objects.id of the document or of the reference to its part. */
   id: string;
-  /** 1-based strana; bez nej celý dokument. */
+  /** 1-based page; without it the whole document. */
   page?: number;
 }
 
 export interface LensWireRule {
-  /** Názov pravidla v paneli Lens (štítok skupiny). */
+  /** Name of the rule in the Lens panel (group label). */
   n: string;
   a: LensAction;
-  /** Hex `#rrggbb`; pri `isolate` chýba. */
+  /** Hex `#rrggbb`; missing for `isolate`. */
   c?: string;
   g: LensFilterGroup[];
 }
 
 export interface LensWire {
   r?: LensWireRule[];
-  /** Izolovať zjednotenie všetkých pravidiel (farebné aj bez farby). */
+  /** Isolate the union of all rules (colored and uncolored). */
   i?: 1;
-  /** X-ray context zo zjednotenia pravidiel: vybrané plné, zvyšok priesvitný (D-105). S `i` sa nekombinuje. */
+  /** X-ray context from the union of rules: selected full, the rest translucent (D-105). Not combined with `i`. */
   x?: 1;
   /**
-   * Kontext X-ray len pre podlažia (D-140, #187): normalizované štítky (1NP, 2NP); prvky ostatných podlaží viewer
-   * skryje, kým X-ray z chatu trvá. Platí len s `x`.
+   * X-ray context for storeys only (D-140, #187): normalized labels (1NP, 2NP); the viewer hides elements of other storeys
+   * while the X-ray from chat lasts. Applies only with `x`.
    */
   cs?: string[];
   ac?: { source: AutoColorSource; psetName?: string; propertyName?: string };
-  /** Rozsah `ac` (D-119): farby podľa hodnoty, legenda a počty len pre prvky týchto skupín (AND v skupine). */
+  /** Scope of `ac` (D-119): colors by value, legend and counts only for elements of these groups (AND within a group). */
   s?: LensFilterGroup[];
   /**
-   * Veľkosť legendy (D-119): `large` = panel Lens ako veľké okno, `normal` = späť do lišty,
-   * `compact` = malá karta len s AIM chat lens, panel Lens zavretý (D-125).
+   * Legend size (D-119): `large` = Lens panel as a large window, `normal` = back to the bar,
+   * `compact` = a small card with only the AIM chat lens, Lens panel closed (D-125).
    */
   l?: LegendSize;
 }
@@ -82,12 +82,12 @@ export interface LensWire {
 export const LEGEND_SIZES = ["compact", "large", "normal"] as const;
 export type LegendSize = (typeof LEGEND_SIZES)[number];
 
-/** Najviac zón a dokumentov v jednej správe (každý = jeden dopyt na `/api/style-scope`). */
+/** At most this many zones and documents in one message (each = one query to `/api/style-scope`). */
 export const MAX_LENS_ZONES = 8;
-/** Strop GUIDov zóny, ktoré klient pošle do viewera (rovnaký ako most forku). */
+/** Cap on zone GUIDs the client sends to the viewer (same as the fork bridge). */
 export const MAX_ZONE_GUIDS = 5000;
 const MAX_RULES = 24;
-/** Najviac podlaží v kontexte X-ray (ako `xrayStoreys` mosta forku). */
+/** At most this many storeys in the X-ray context (like `xrayStoreys` of the fork bridge). */
 export const MAX_CONTEXT_STOREYS = 8;
 const HEX = /^#[0-9a-f]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -109,7 +109,7 @@ export function fromBase64Url(raw: string): string | null {
   }
 }
 
-/** Op `lens` vo wire formáte D-066 (`;` a `:` base64url neobsahuje). */
+/** The `lens` op in wire format D-066 (base64url contains no `;` or `:`). */
 export function lensOp(mode: LensMode, wire: LensWire | null, rev?: string): string {
   const arg = rev ? `${mode}~r=${rev.replace(/[^A-Za-z0-9_-]/g, "")}` : mode;
   return `lens:${arg}:${wire ? toBase64Url(JSON.stringify(wire)) : ""}`;
@@ -122,7 +122,7 @@ function validGroup(g: unknown): g is LensFilterGroup {
   return g.rules.length > 0 && g.rules.every((r) => isObj(r) && typeof r.kind === "string");
 }
 
-/** Rozbalí JSON op `lens`; vstup je z URL, takže chybné časti -> `null`. */
+/** Unpacks the JSON of the `lens` op; input is from the URL, so faulty parts -> `null`. */
 export function decodeLensWire(raw: string): LensWire | null {
   if (!raw) return {};
   const text = fromBase64Url(raw);
@@ -170,8 +170,8 @@ export function decodeLensWire(raw: string): LensWire | null {
 const DOC_KEY = /^doc:([0-9a-f-]{36})(?::([1-9][0-9]{0,4}))?$/i;
 
 /**
- * Kľúče symbolických množín pravidla: id zóny (`aim_zone`) alebo `doc:<id>[:<strana>]`
- * (`aim_document`). Pod týmto kľúčom klient drží GUIDy z `/api/style-scope`.
+ * Keys of the symbolic sets of a rule: zone id (`aim_zone`) or `doc:<id>[:<page>]`
+ * (`aim_document`). Under this key the client holds the GUIDs from `/api/style-scope`.
  */
 function scopeKeysOf(rule: LensFilterRule): string[] {
   if (rule.kind === "aim_zone" && Array.isArray(rule.ids)) {
@@ -183,23 +183,23 @@ function scopeKeysOf(rule: LensFilterRule): string[] {
   return [];
 }
 
-/** Kľúče zón a dokumentov zo všetkých pravidiel (bez duplicít). */
+/** Keys of zones and documents from all rules (without duplicates). */
 export function lensScopeKeys(wire: LensWire): string[] {
   const keys = new Set<string>();
-  // Aj rozsah farieb podľa hodnoty (`s`, D-119) môže niesť zónu alebo dokument.
+  // The value-color scope (`s`, D-119) can also carry a zone or document.
   for (const g of [...(wire.r ?? []).flatMap((r) => r.g), ...(wire.s ?? [])]) for (const rule of g.rules) for (const k of scopeKeysOf(rule)) keys.add(k);
   return [...keys].slice(0, MAX_LENS_ZONES);
 }
 
-/** Kľúč dokumentu v mape GUIDov (`lensScopeKeys`, `lensBridgeMessage`). */
+/** Document key in the GUID map (`lensScopeKeys`, `lensBridgeMessage`). */
 export function documentScopeKey(id: string, page?: number): string {
   return `doc:${id}${page ? `:${page}` : ""}`;
 }
 
 /**
- * Lens tlačidla "Ukázať v 3D" pri otvorenom dokumente (D-104 krok 4, správa forku
- * `DOCUMENT_SHOW_3D`): prvky strany alebo celého dokumentu ostanú plné, zvyšok
- * modelu priesvitný (X-ray, D-105). Pravidlo nesie meno dokumentu ako štítok.
+ * Lens of the "Show in 3D" button with an open document (D-104 step 4, fork message
+ * `DOCUMENT_SHOW_3D`): elements of the page or of the whole document stay full, the rest
+ * of the model is translucent (X-ray, D-105). The rule carries the document name as a label.
  */
 export function documentLensWire(id: string, name: string, page?: number): LensWire {
   const rule: LensFilterRule = { kind: "aim_document", id, ...(page ? { page } : {}) } satisfies AimDocumentRule;
@@ -209,7 +209,7 @@ export function documentLensWire(id: string, name: string, page?: number): LensW
   };
 }
 
-/** Query string `/api/style-scope` pre kľúč z `lensScopeKeys` (zlý kľúč -> `null`). */
+/** Query string of `/api/style-scope` for a key from `lensScopeKeys` (bad key -> `null`). */
 export function scopeQuery(key: string): string | null {
   if (UUID.test(key)) return `zone=${encodeURIComponent(key)}`;
   const m = DOC_KEY.exec(key);
@@ -218,9 +218,9 @@ export function scopeQuery(key: string): string | null {
 }
 
 /**
- * Bridge správa `APPLY_LENS`: pravidlá `aim_zone` a `aim_document` nahradí
- * `globalId` s GUIDmi (`scopeGuids` podľa kľúča z `lensScopeKeys`; chýbajúca
- * zóna alebo dokument = prázdny zoznam, teda nič).
+ * Bridge message `APPLY_LENS`: replaces `aim_zone` and `aim_document` rules with
+ * `globalId` with GUIDs (`scopeGuids` by key from `lensScopeKeys`; a missing
+ * zone or document = empty list, i.e. nothing).
  */
 export function lensBridgeMessage(
   mode: LensMode,
@@ -228,7 +228,7 @@ export function lensBridgeMessage(
   scopeGuids: ReadonlyMap<string, readonly string[]>,
   rev?: string,
 ): Record<string, unknown> {
-  // Most forku prijme spolu najviac MAX_ZONE_GUIDS GlobalId v jednej správe.
+  // The fork bridge accepts at most MAX_ZONE_GUIDS GlobalIds in one message in total.
   let budget = MAX_ZONE_GUIDS;
   for (const g of [...(wire.r ?? []).flatMap((r) => r.g), ...(wire.s ?? [])]) {
     for (const rule of g.rules) if (rule.kind === "globalId" && Array.isArray(rule.values)) budget -= rule.values.length;

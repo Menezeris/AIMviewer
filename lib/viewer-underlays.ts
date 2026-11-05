@@ -1,18 +1,18 @@
 /**
- * Podklady PDF v 3D z chatu (D-168, #323, #325): wire formát rozšírenej bridge správy `SET_UNDERLAYS_3D`
- * (zrkadlo `apps/viewer/src/aim/` vo forku, Menezeris/ifc-lite#169) a stav podkladov v pohľade z Presentation
+ * PDF underlays in 3D from chat (D-168, #323, #325): wire format of the extended bridge message `SET_UNDERLAYS_3D`
+ * (mirror of `apps/viewer/src/aim/` in the fork, Menezeris/ifc-lite#169) and the state of underlays in a Presentation view
  * (`ViewWire.underlays`).
  *
- * `SET_UNDERLAYS_3D` {show?, underlays?: [{document_id, visible?, opacity?}], only?, persist?}: bez `persist` je to
- * len stav viewera; s `persist` viewer pošle `UNDERLAY_SAVE` (nezmenené affine a calibration, zmenené len visible a
- * opacity) a host ho uloží ako dnes. Starý viewer pozná len `show`, ostatné polia ignoruje.
+ * `SET_UNDERLAYS_3D` {show?, underlays?: [{document_id, visible?, opacity?}], only?, persist?}: without `persist` it is
+ * viewer state only; with `persist` the viewer sends `UNDERLAY_SAVE` (affine and calibration unchanged, only visible and
+ * opacity changed) and the host saves it as today. An old viewer knows only `show` and ignores the other fields.
  *
- * Op: `underlays_set::<base64url JSON>` (veľkosť: až 200 položiek, preto JSON, nie `~k=v`).
+ * Op: `underlays_set::<base64url JSON>` (size: up to 200 items, hence JSON, not `~k=v`).
  */
 
 import { fromBase64Url, toBase64Url } from "./viewer-lens";
 
-/** Strop zoznamu podkladov v jednej správe aj v jednom pohľade. */
+/** Cap on the list of underlays in one message and in one view. */
 export const MAX_UNDERLAY_ITEMS = 200;
 const MAX_ID = 64;
 
@@ -25,7 +25,7 @@ export interface UnderlaySetItem {
 export interface UnderlaysSetRequest {
   show?: boolean;
   underlays?: UnderlaySetItem[];
-  /** Len s `underlays`: ostatné kalibrované podklady v 3D vypne. */
+  /** Only with `underlays`: turns off the other calibrated underlays in 3D. */
   only?: boolean;
   persist?: boolean;
 }
@@ -34,21 +34,21 @@ export interface UnderlaysSetOp extends UnderlaysSetRequest {
   op: "underlays_set";
 }
 
-/** Op `underlays_load::`: host stiahne aktuálne podklady z `GET /api/underlay` a pošle viewerovi `UNDERLAYS_LOAD` (po obnove kalibrácie). */
+/** Op `underlays_load::`: the host fetches the current underlays from `GET /api/underlay` and sends the viewer `UNDERLAYS_LOAD` (after a calibration restore). */
 export interface UnderlaysLoadOp {
   op: "underlays_load";
 }
 
 export const UNDERLAYS_LOAD_OP = "underlays_load::";
 
-/** Stav jedného podkladu v pohľade (`ViewWire.underlays.items`). */
+/** State of one underlay in a view (`ViewWire.underlays.items`). */
 export interface ViewUnderlayItemWire {
   document_id: string;
   visible: boolean;
   opacity: number;
 }
 
-/** Stav podkladov v pohľade: zapnuté v 3D a ktoré podklady sú viditeľné s akou priehľadnosťou. */
+/** State of underlays in a view: enabled in 3D and which underlays are visible with what transparency. */
 export interface ViewUnderlaysWire {
   show: boolean;
   items: ViewUnderlayItemWire[];
@@ -59,15 +59,15 @@ const isBool = (v: unknown): v is boolean => typeof v === "boolean";
 const isOpacity = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
 const isDocId = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= MAX_ID;
 
-/** Tvar podkladov v pohľade (kontrola ako vo forku): neplatný tvar zahodí celý pohľad. */
+/** Shape of underlays in a view (check as in the fork): an invalid shape drops the whole view. */
 export function isViewUnderlays(v: unknown): v is ViewUnderlaysWire {
   if (!isObj(v) || !isBool(v.show) || !Array.isArray(v.items) || v.items.length > MAX_UNDERLAY_ITEMS) return false;
   return v.items.every((i) => isObj(i) && isDocId(i.document_id) && isBool(i.visible) && isOpacity(i.opacity));
 }
 
 /**
- * Žiadosť o zmenu podkladov: chyba (text pre model) alebo očistená žiadosť. Aspoň `show` alebo `underlays`,
- * každá položka aspoň `visible` alebo `opacity`, `only` len s `underlays`.
+ * Request to change underlays: an error (text for the model) or a cleaned request. At least `show` or `underlays`,
+ * each item at least `visible` or `opacity`, `only` only with `underlays`.
  */
 export function checkUnderlaysSet(raw: unknown): { ok: true; request: UnderlaysSetRequest } | { ok: false; error: string } {
   if (!isObj(raw)) return { ok: false, error: "žiadosť o podklady musí byť objekt" };
@@ -106,14 +106,14 @@ export function checkUnderlaysSet(raw: unknown): { ok: true; request: UnderlaysS
   };
 }
 
-/** Op pre viewer: `underlays_set::<base64url JSON>`; neplatná žiadosť vyhodí chybu (stavia ju len server). */
+/** Op for the viewer: `underlays_set::<base64url JSON>`; an invalid request throws an error (built only by the server). */
 export function underlaysSetOp(request: UnderlaysSetRequest): string {
   const checked = checkUnderlaysSet(request);
   if (!checked.ok) throw new Error(`underlays_set: ${checked.error}`);
   return `underlays_set::${toBase64Url(JSON.stringify(checked.request))}`;
 }
 
-/** `underlays_set` z wire formátu; null = neplatné (op sa preskočí). */
+/** `underlays_set` from the wire format; null = invalid (the op is skipped). */
 export function parseUnderlaysSetOp(joined: string): UnderlaysSetOp | null {
   const raw = joined ? fromBase64Url(joined) : null;
   if (raw === null) return null;
@@ -127,7 +127,7 @@ export function parseUnderlaysSetOp(joined: string): UnderlaysSetOp | null {
   return checked.ok ? { op: "underlays_set", ...checked.request } : null;
 }
 
-/** Op -> bridge správa forku (`SET_UNDERLAYS_3D`). */
+/** Op -> bridge message of the fork (`SET_UNDERLAYS_3D`). */
 export function underlaysSetBridgeMessage(o: UnderlaysSetOp): Record<string, unknown> {
   const { op: _op, ...request } = o;
   void _op;

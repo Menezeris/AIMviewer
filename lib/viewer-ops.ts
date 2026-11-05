@@ -1,37 +1,37 @@
 /**
- * Viewer operácie (wire formát `ops` v URL `/ifc?ops=...`, D-066) - jeden zdroj
- * pre server (tools ich skladajú) aj klienta (`components/ifc-viewer.tsx` ich
- * parsuje a posiela ako bridge správy do forku viewera).
+ * Viewer operations (wire format `ops` in the URL `/ifc?ops=...`, D-066) - one source
+ * for the server (tools compose them) and the client (`components/ifc-viewer.tsx` parses
+ * them and sends them as bridge messages to the viewer fork).
  *
- * Formát: `<op>:<arg>:<guid.guid...>` spájané `;`. Delí sa len na `;` a `:`,
- * takže argument smie niesť bodku aj mínus (`h=-0.4`); tretie pole sú IFC GUID
- * oddelené bodkou (base64 abeceda IFC bodku ani dvojbodku neobsahuje).
+ * Format: `<op>:<arg>:<guid.guid...>` joined by `;`. It splits only on `;` and `:`,
+ * so the argument may carry a dot and a minus (`h=-0.4`); the third field is IFC GUIDs
+ * separated by a dot (the IFC base64 alphabet contains neither dot nor colon).
  *
- * Množinové varianty `<op>_sel:<arg>:<selektor>` nesú selektor `t=IfcA.IfcB~m=Model`.
- * Pohľad (D-083): `section:<y|x|z>[~h=<m>][~p=<pct>][~f=1][~g=0|1]:<storeyGuid>` (g = widget rezu, #63),
- * rez cez prvky (D-085) `section:<auto|y|x|z>~fit=<along|across|center>:<guid.guid...>`
- * a na súradnici IFC sveta `section:<y|x|z>~c=<m>::`,
- * `section_clear::`, `section_gizmo:<0|1>:`, `camera:<preset>[~proj=o|p]:<guid.guid...>` (fit a relatívne kroky
- * `~fit=..~z=..~oh=..~ov=..~px=..~py=..`, okraj a časť cieľa `~mg=..~ar=..` (D-128) a `camera_sel:<arg>:<selektor>`,
+ * Set variants `<op>_sel:<arg>:<selector>` carry the selector `t=IfcA.IfcB~m=Model`.
+ * View (D-083): `section:<y|x|z>[~h=<m>][~p=<pct>][~f=1][~g=0|1]:<storeyGuid>` (g = section widget, #63),
+ * section through elements (D-085) `section:<auto|y|x|z>~fit=<along|across|center>:<guid.guid...>`
+ * and at an IFC world coordinate `section:<y|x|z>~c=<m>::`,
+ * `section_clear::`, `section_gizmo:<0|1>:`, `camera:<preset>[~proj=o|p]:<guid.guid...>` (fit and relative steps
+ * `~fit=..~z=..~oh=..~ov=..~px=..~py=..`, margin and target part `~mg=..~ar=..` (D-128) and `camera_sel:<arg>:<selector>`,
  * D-094/D-098, `lib/viewer-camera.ts`),
  * `view:<3d|2d|split>:<storeyGuid>`, `doc:<page>[~r=<x>_<y>_<w>_<h>][~h=<x>_<y>_<w>_<h>_...]:<documentId>`
- * (výrez strany v %, D-117; rámiky okolo textu v %, po štyroch číslach, D-123; `~l=s` = vedľa 3D, D-132).
- * Záložky a rezný box (D-132): `tab:<action>:<base64url JSON>`, `section_box:...`, formát v `lib/viewer-tabs.ts`.
- * Pohľady z Presentation (D-161): `view_activate::<base64url JSON>`, `view_capture::<base64url JSON>`, formát v `lib/viewer-views.ts`.
- * Clash z AIM do panela (D-164): `clash_open::<base64url JSON>`, formát v `lib/viewer-clash.ts`; kolízie doplní klient hosta (async).
- * IDS z AIM do panelov (D-162): `ids_open::<base64url JSON>`, formát v `lib/viewer-ids.ts`; XML doplní klient hosta (async), preto nemá bridge správu tu.
- * Presná póza kamery z uloženého pohľadu (D-122): `pose:<px,py,pz,tx,ty,tz,ux,uy,uz>[~o=<m>][~proj=o|p]:`
- * (IFC svet, m; `o` = polovica výšky ortografického pohľadu).
- * Lens z chatu (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, formát v `lib/viewer-lens.ts`.
- * Panely (D-127): `panels:~<panel>=<open|close|toggle>~...:` (`all` len `close`).
- * Posun obsahu panela (D-146, D-150): `panel_scroll:<up|down|top|bottom>:`, alebo `panel_scroll:-~p=<panel>~i=<text>~pct=<n>:`;
+ * (page crop in %, D-117; frames around text in %, four numbers each, D-123; `~l=s` = next to 3D, D-132).
+ * Tabs and section box (D-132): `tab:<action>:<base64url JSON>`, `section_box:...`, format in `lib/viewer-tabs.ts`.
+ * Views from Presentation (D-161): `view_activate::<base64url JSON>`, `view_capture::<base64url JSON>`, format in `lib/viewer-views.ts`.
+ * Clash from AIM into the panel (D-164): `clash_open::<base64url JSON>`, format in `lib/viewer-clash.ts`; clashes are filled in by the host client (async).
+ * IDS from AIM into the panels (D-162): `ids_open::<base64url JSON>`, format in `lib/viewer-ids.ts`; the XML is filled in by the host client (async), so there is no bridge message here.
+ * Exact camera pose from a saved view (D-122): `pose:<px,py,pz,tx,ty,tz,ux,uy,uz>[~o=<m>][~proj=o|p]:`
+ * (IFC world, m; `o` = half the height of the orthographic view).
+ * Lens from chat (D-096): `lens:<mode>[~r=<rev>]:<base64url JSON>`, format in `lib/viewer-lens.ts`.
+ * Panels (D-127): `panels:~<panel>=<open|close|toggle>~...:` (`all` only with `close`).
+ * Panel content scroll (D-146, D-150): `panel_scroll:<up|down|top|bottom>:`, or `panel_scroll:-~p=<panel>~i=<text>~pct=<n>:`;
  * zoom `panel_zoom:<in|out|reset|n>~p=<panel>:`.
- * Otáčanie kamery dokola (D-154): `auto_rotate:<start|stop>[~s=<°/s>][~d=<l|r>]:`.
- * Podklady PDF v 3D (D-133 doplnok): `underlays3d:<0|1>:` (stav viewera, do DB sa nezapisuje).
- * Jednotlivé podklady, priehľadnosť a uloženie (D-168): `underlays_set::<base64url JSON>`, formát v `lib/viewer-underlays.ts`;
- * `underlays_load::` načíta podklady z DB nanovo (po `calibrate_underlay mode=restore`).
- * Poloha a smer kamery na PDF (D-161 bod 8, #282): `planpos:<0|1>:` (stav viewera, do DB sa nezapisuje).
- * Čiara trasy (D-137): `route:<hex>:<x,y,z|...>` (prázdne body = zmazať), formát v `lib/viewer-route.ts`.
+ * Camera rotation around (D-154): `auto_rotate:<start|stop>[~s=<°/s>][~d=<l|r>]:`.
+ * PDF underlays in 3D (D-133 addendum): `underlays3d:<0|1>:` (viewer state, not written to the DB).
+ * Individual underlays, transparency and saving (D-168): `underlays_set::<base64url JSON>`, format in `lib/viewer-underlays.ts`;
+ * `underlays_load::` reloads the underlays from the DB (after `calibrate_underlay mode=restore`).
+ * Camera position and direction on the PDF (D-161 point 8, #282): `planpos:<0|1>:` (viewer state, not written to the DB).
+ * Route line (D-137): `route:<hex>:<x,y,z|...>` (empty points = delete), format in `lib/viewer-route.ts`.
  */
 
 import { LENS_MODES, decodeLensWire, lensBridgeMessage, type LensMode, type LensWire } from "./viewer-lens";
@@ -61,7 +61,7 @@ export interface OpsSelector {
   model?: string;
 }
 
-/** Výrez strany dokumentu (D-117): x, y = ľavý horný roh, w, h = rozmer, všetko v % strany. */
+/** Page crop of a document (D-117): x, y = top-left corner, w, h = size, all in % of the page. */
 export interface DocRegion {
   x: number;
   y: number;
@@ -69,32 +69,32 @@ export interface DocRegion {
   h: number;
 }
 
-/** Výrez a rámiky: drôt (op) nesie percentá, fork čaká zlomky strany (0-1). */
+/** Crop and frames: the wire (op) carries percentages, the fork expects page fractions (0-1). */
 const toFraction = (r: DocRegion) => ({ x: r.x / 100, y: r.y / 100, w: r.w / 100, h: r.h / 100 });
 const pctList = (r: DocRegion) => [r.x, r.y, r.w, r.h].map((v) => +v.toFixed(2)).join("_");
 
 export const SECTION_AXES = ["y", "x", "z"] as const;
 export type SectionAxis = (typeof SECTION_AXES)[number];
-/** Rez cez prvok (D-085): pozdĺž / naprieč dlhšej vodorovnej strany, alebo stredom na osi. */
+/** Section through an element (D-085): along / across the longer horizontal side, or through the center on the axis. */
 export const SECTION_FITS = ["along", "across", "center"] as const;
 export type SectionFit = (typeof SECTION_FITS)[number];
-/** Najviac cieľových prvkov rezu - rovnaký limit ako most forku. */
+/** At most this many section target elements - same limit as the fork bridge. */
 export const MAX_SECTION_TARGETS = 100;
-/** Rozsah súradnice roviny v IFC svete (m) - rovnaký ako most forku. */
+/** Range of the plane coordinate in the IFC world (m) - same as the fork bridge. */
 export const SECTION_COORDINATE_LIMIT = 1e7;
-/** keep = zachovať smer, section = kolmo na aktívny rez (D-094). */
+/** keep = keep the direction, section = perpendicular to the active section (D-094). */
 export const CAMERA_PRESETS = ["top", "bottom", "front", "back", "left", "right", "iso", "fit_all", "keep", "section"] as const;
 export type CameraPreset = (typeof CAMERA_PRESETS)[number];
 export const VIEW_MODES = ["3d", "2d", "split"] as const;
 export type ViewMode = (typeof VIEW_MODES)[number];
 export type Projection = "perspective" | "orthographic";
 
-/** Výška rezu nad úrovňou podlažia (m) - rozsah, ktorý server aj klient prijmú. */
+/** Section height above the storey level (m) - range accepted by both the server and the client. */
 export const SECTION_OFFSET_RANGE = { min: -5, max: 20 } as const;
 
 /**
- * Panel vlastností po výbere (D-113): sekcia a zvýraznená vlastnosť. Záložka AIM | IFC
- * zanikla (D-127); `t=` sa z drôtu ešte prečíta kvôli starším odkazom, server ho neposiela.
+ * Properties panel after selection (D-113): section and highlighted property. The AIM | IFC tab
+ * was dropped (D-127); `t=` is still read from the wire for older links, the server does not send it.
  */
 export const PANEL_TABS = ["aim", "ifc"] as const;
 export const PANEL_SECTIONS = ["properties", "quantities"] as const;
@@ -105,18 +105,18 @@ export interface SelectPanel {
 }
 
 /**
- * Panely viewera z chatu (D-127, D-150): meno panela je id z registra panelov forku (`bcf`, `compare`, `lens`,
- * `properties`, `lists`...; historické `underlays` a `model_tree`). Zoznam nie je tu, drží ho fork a vracia ho
- * `view_state.panels` aj so skratkami; host len skontroluje tvar mena, neznáme meno viewer nahlási v `APPLIED`.
+ * Viewer panels from chat (D-127, D-150): the panel name is an id from the fork's panel registry (`bcf`, `compare`, `lens`,
+ * `properties`, `lists`...; historical `underlays` and `model_tree`). The list is not here, the fork holds it and returns it
+ * in `view_state.panels` with shortcuts; the host only checks the shape of the name, an unknown name is reported by the viewer in `APPLIED`.
  */
 export const PANEL_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
 export const PANEL_ACTIONS = ["open", "close", "toggle"] as const;
 export type PanelAction = (typeof PANEL_ACTIONS)[number];
 export type PanelsRequest = Record<string, PanelAction>;
 /**
- * Šírka a strana panela (D-172, #320): `width_pct` 5 až 90 % okna viewera, `side` kam panel pripnúť (`left`, `right`,
- * `bottom`, `free`); aspoň jedno z nich. Správanie podľa toho, kde panel je, rieši viewer (pravý stĺpec 14 až 60 %,
- * plávajúce okno, pripnutie), hostu stačí tvar.
+ * Panel width and side (D-172, #320): `width_pct` 5 to 90 % of the viewer window, `side` where to pin the panel (`left`, `right`,
+ * `bottom`, `free`); at least one of them. The behavior depending on where the panel is is handled by the viewer (right column 14 to 60 %,
+ * floating window, pinning), the host only needs the shape.
  */
 export const PANEL_WIDTH_PCT = { min: 5, max: 90 } as const;
 export const PANEL_SIDES = ["left", "right", "bottom", "free"] as const;
@@ -126,17 +126,17 @@ export interface PanelLayoutRequest {
   widthPct?: number;
   side?: PanelSide;
 }
-/** Posun obsahu panela (D-146, D-150): o stranu hore / dole, na začiatok, na koniec; mená zhodné s mostom forku. */
+/** Panel content scroll (D-146, D-150): by a page up / down, to the start, to the end; names match the fork bridge. */
 export const PANEL_SCROLLS = ["up", "down", "top", "bottom"] as const;
 export type PanelScroll = (typeof PANEL_SCROLLS)[number];
-/** Cieľ posunu: smer, položka podľa textu alebo poloha v % (práve jedno); `panel` chýba = panel vlastností. */
+/** Scroll target: direction, item by text or position in % (exactly one); missing `panel` = properties panel. */
 export interface PanelScrollTarget {
   direction?: PanelScroll;
   item?: string;
   percent?: number;
   panel?: string;
 }
-/** Zoom obsahu panela (D-150): krok `in` / `out`, `reset` alebo násobok v rozsahu viewera. */
+/** Panel content zoom (D-150): step `in` / `out`, `reset` or a multiple within the viewer's range. */
 export const PANEL_ZOOM_RANGE = { min: 0.5, max: 2.5 } as const;
 export const PANEL_ZOOM_STEPS = ["in", "out", "reset"] as const;
 export type PanelZoom = (typeof PANEL_ZOOM_STEPS)[number] | number;
@@ -147,19 +147,19 @@ export type ViewerOp =
   | { op: "hide" | "show" | "isolate"; guids: string[] }
   | { op: "colorize_sel"; selector: OpsSelector; color: string }
   | { op: "hide_sel" | "show_sel" | "isolate_sel"; selector: OpsSelector }
-  | { op: "select"; guid: string; /** Všetky GUIDy výberu, keď je ich viac (#217); `guid` je prvý. */ guids?: string[]; panel?: SelectPanel }
-  /** Výber všetkých práve viditeľných prvkov (#315): bridge `SELECT {visible: true}`; starší viewer správu zahodí. */
+  | { op: "select"; guid: string; /** All GUIDs of the selection when there are several (#217); `guid` is the first. */ guids?: string[]; panel?: SelectPanel }
+  /** Selection of all currently visible elements (#315): bridge `SELECT {visible: true}`; an older viewer drops the message. */
   | { op: "select_visible" }
   | { op: "show_all" }
-  /** Zruší len izoláciu a X-ray z chatu (bridge `APPLY_LENS unisolate`), rez, skryté prvky a farby ostanú (D-151). */
+  /** Cancels only the isolation and X-ray from chat (bridge `APPLY_LENS unisolate`), section, hidden elements and colors stay (D-151). */
   | { op: "clear_isolation" }
   | { op: "reset_colors" }
-  /** Zruší oranžové zvýraznenie z show_in_3d, ostatné farby nechá (D-101, #94). */
+  /** Cancels the orange highlight from show_in_3d, leaves other colors (D-101, #94). */
   | { op: "clear_focus" }
   | { op: "clear_selection" }
   | {
       op: "section";
-      /** Chýba len pri `fit` along/across - os volí viewer podľa obálky prvkov. */
+      /** Missing only for `fit` along/across - the viewer picks the axis from the elements' bounds. */
       axis?: SectionAxis;
       storeyGuid?: string;
       offsetM?: number;
@@ -168,51 +168,51 @@ export type ViewerOp =
       fit?: SectionFit;
       coordinate?: number;
       flipped?: boolean;
-      /** false = skryť widget rezu (quad a obrys), rez ostáva (#63). */
+      /** false = hide the section widget (quad and outline), the section stays (#63). */
       showGizmo?: boolean;
     }
   | { op: "section_clear" }
-  /** Vzhľad reznej plochy (D-120), `lib/viewer-section-cap.ts`. */
+  /** Appearance of the section cap (D-120), `lib/viewer-section-cap.ts`. */
   | SectionCapOp
   | { op: "section_gizmo"; showGizmo: boolean }
   | ({ op: "camera"; preset: CameraPreset; projection?: Projection; guids: string[]; selector?: OpsSelector } & CameraMove)
-  /** Presná póza (D-122): fork ju prenesie do kamery ako `SET_CAMERA {viewpoint}` (D-098). */
+  /** Exact pose (D-122): the fork transfers it to the camera as `SET_CAMERA {viewpoint}` (D-098). */
   | { op: "pose"; viewpoint: BridgeViewpoint; projection?: Projection }
-  /** documentId = výkres podlažia, ktorý vybral host (D-176); bez neho vyberá viewer sám. */
+  /** documentId = drawing of the storey chosen by the host (D-176); without it the viewer chooses itself. */
   | { op: "view"; mode: ViewMode; storeyGuid?: string; documentId?: string }
-  /** layout split = karta vedľa 3D, inak záložka na celú plochu (D-132). */
+  /** layout split = card next to 3D, otherwise a tab over the whole area (D-132). */
   | { op: "doc"; documentId: string; page?: number; region?: DocRegion; highlights?: DocRegion[]; layout?: "split" }
-  /** Záložky viewera a rezný box (D-132), `lib/viewer-tabs.ts`. */
+  /** Viewer tabs and section box (D-132), `lib/viewer-tabs.ts`. */
   | TabsOp
-  /** Pohľad z Presentation (D-161): aktivácia a uloženie aktuálneho stavu, `lib/viewer-views.ts`. */
+  /** View from Presentation (D-161): activation and saving of the current state, `lib/viewer-views.ts`. */
   | ViewsOp
   | IdsOpenOp
   | ClashOpenOp
   | { op: "lens"; mode: LensMode; rev?: string; wire: LensWire }
-  /** Zoznam z chatu do panela Lists (D-111), formát v `lib/viewer-list.ts`. */
+  /** List from chat into the Lists panel (D-111), format in `lib/viewer-list.ts`. */
   | { op: "list"; wire: ListWire }
-  /** Kóty v IFC svete do nástroja Measure forku (D-124), formát v `lib/viewer-measure.ts`; prázdne úseky = zmazať kóty od hosta (D-152). */
+  /** Dimensions in the IFC world into the fork's Measure tool (D-124), format in `lib/viewer-measure.ts`; empty segments = delete the host's dimensions (D-152). */
   | { op: "measure"; segments: MeasureSegment[]; keep?: boolean }
-  /** Čiara trasy v IFC svete (D-137), formát v `lib/viewer-route.ts`; prázdne body = zmazať. */
+  /** Route line in the IFC world (D-137), format in `lib/viewer-route.ts`; empty points = delete. */
   | { op: "route"; color: string; points: MeasurePoint[] }
-  /** Otvorenie / zatvorenie panelov (D-127). */
+  /** Opening / closing of panels (D-127). */
   | { op: "panels"; panels?: PanelsRequest; panelLayout?: PanelLayoutRequest }
-  /** Posun obsahu panela (D-146, D-150). */
+  /** Panel content scroll (D-146, D-150). */
   | ({ op: "panel_scroll" } & PanelScrollTarget)
-  /** Zoom obsahu panela (D-150). */
+  /** Panel content zoom (D-150). */
   | { op: "panel_zoom"; zoom: PanelZoom; panel?: string }
-  /** Plynulé otáčanie kamery okolo cieľa (D-154); rýchlosť a smer len pri `start`. */
+  /** Continuous rotation of the camera around the target (D-154); speed and direction only with `start`. */
   | { op: "auto_rotate"; action: AutoRotateAction; speedDegS?: number; direction?: AutoRotateDirection }
-  /** Zobraziť / skryť podklady PDF v 3D plátne (D-133 doplnok), len stav viewera. */
+  /** Show / hide PDF underlays on the 3D canvas (D-133 addendum), viewer state only. */
   | { op: "underlays3d"; show: boolean }
-  /** Jednotlivé podklady v 3D: viditeľnosť, priehľadnosť, uloženie (D-168). */
+  /** Individual underlays in 3D: visibility, transparency, saving (D-168). */
   | UnderlaysSetOp
-  /** Podklady z DB nanovo do viewera (po obnove kalibrácie), vykoná klient hosta. */
+  /** Underlays from the DB into the viewer again (after a calibration restore), performed by the host client. */
   | UnderlaysLoadOp
   | { op: "planpos"; show: boolean };
 
 const HEX6 = /^[0-9a-fA-F]{6}$/;
-/** UUID dokumentu v `view:...~d=`. */
+/** UUID of the document in `view:...~d=`. */
 const DOC_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -242,8 +242,8 @@ function parseArg(arg: string): [string, Record<string, string>] {
 }
 
 /**
- * Výrez strany z `r=x_y_w_h` (D-117): percentá, orezané do strany; prázdny alebo
- * mimo strany = bez výrezu (karta sa otvorí celá).
+ * Page crop from `r=x_y_w_h` (D-117): percentages, clipped to the page; empty or
+ * outside the page = no crop (the card opens whole).
  */
 export function parseDocRegion(raw: string | undefined): DocRegion | undefined {
   if (!raw) return undefined;
@@ -252,7 +252,7 @@ export function parseDocRegion(raw: string | undefined): DocRegion | undefined {
   return clampDocRegion({ x: parts[0]!, y: parts[1]!, w: parts[2]!, h: parts[3]! });
 }
 
-/** Výrez z parametra toolu `region` ({x, y, width, height} v %, D-117); undefined = chybný alebo mimo strany. */
+/** Crop from the tool parameter `region` ({x, y, width, height} in %, D-117); undefined = faulty or outside the page. */
 export function docRegionInput(raw: unknown): DocRegion | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const r = raw as Record<string, unknown>;
@@ -262,7 +262,7 @@ export function docRegionInput(raw: unknown): DocRegion | undefined {
   return clampDocRegion({ x, y, w, h });
 }
 
-/** Výrez orezaný do strany (0-100 %), najmenej 1 % na os; undefined = celý mimo strany. */
+/** Crop clipped to the page (0-100 %), at least 1 % per axis; undefined = entirely outside the page. */
 export function clampDocRegion(r: DocRegion): DocRegion | undefined {
   const axis = (start: number, size: number): [number, number] | undefined => {
     const lo = Math.max(0, start);
@@ -276,19 +276,19 @@ export function clampDocRegion(r: DocRegion): DocRegion | undefined {
   return x && y ? { x: x[0], y: y[0], w: x[1], h: y[1] } : undefined;
 }
 
-/** Najviac rámikov naraz (D-123), rovnako ako vo forku. */
+/** At most this many frames at once (D-123), as in the fork. */
 export const MAX_DOC_HIGHLIGHTS = 20;
 
 /**
- * Rámik okolo textu (D-123): orezaný do strany ako výrez, ale bez 1 % minima,
- * lebo riadok textu býva vysoký 0,4-1 % strany (najmenej 0,1 %).
+ * Frame around text (D-123): clipped to the page like a crop, but without the 1 % minimum,
+ * because a text line is usually 0.4-1 % of the page high (at least 0.1 %).
  */
 export function clampDocHighlight(r: DocRegion): DocRegion | undefined {
   const axis = (start: number, size: number): [number, number] | undefined => {
     const lo = Math.max(0, start);
     const hi = Math.min(100, start + size);
     if (!(hi - lo > 0)) return undefined;
-    // Rozmer vnútri strany ostáva presný (bez odčítania, ktoré pridá chybu zaokrúhlenia).
+    // A dimension inside the page stays exact (without the subtraction that adds rounding error).
     const len = Math.max(0.1, Math.min(start < 0 ? start + size : size, 100 - lo));
     return [Math.min(lo, 100 - len), len];
   };
@@ -297,7 +297,7 @@ export function clampDocHighlight(r: DocRegion): DocRegion | undefined {
   return x && y ? { x: x[0], y: y[0], w: x[1], h: y[1] } : undefined;
 }
 
-/** Rámiky z `h=x_y_w_h_x_y_w_h...` (D-123); neplatné vynechá. */
+/** Frames from `h=x_y_w_h_x_y_w_h...` (D-123); invalid ones are omitted. */
 export function parseDocHighlights(raw: string | undefined): DocRegion[] {
   if (!raw) return [];
   const n = raw.split("_").map((v) => finite(v, -1000, 1000));
@@ -311,7 +311,7 @@ export function parseDocHighlights(raw: string | undefined): DocRegion[] {
   return out;
 }
 
-/** Rámiky z parametra toolu `highlights` ([{x, y, width, height}] v %, D-123); neplatné vynechá. */
+/** Frames from the tool parameter `highlights` ([{x, y, width, height}] in %, D-123); invalid ones are omitted. */
 export function docHighlightsInput(raw: unknown): DocRegion[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -333,7 +333,7 @@ function finite(raw: string | undefined, min: number, max: number): number | und
   return Number.isFinite(n) && n >= min && n <= max ? n : undefined;
 }
 
-/** Meno psetu/vlastnosti do `ops`: oddeľovače `: ; . ~` nesmú prejsť. */
+/** Name of a pset/property into `ops`: the separators `: ; . ~` must not pass. */
 const encName = (v: string) => encodeURIComponent(v).replace(/\./g, "%2E").replace(/~/g, "%7E");
 function decName(v: string | undefined): string | undefined {
   if (!v) return undefined;
@@ -345,7 +345,7 @@ function decName(v: string | undefined): string | undefined {
   }
 }
 
-/** `~t=ifc~s=quantities~p=<pset>~v=<vlastnosť>` -> panel; nič platné = undefined. */
+/** `~t=ifc~s=quantities~p=<pset>~v=<property>` -> panel; nothing valid = undefined. */
 function parsePanel(arg: string): SelectPanel | undefined {
   const [, kv] = parseArg(arg);
   const panel: SelectPanel = {};
@@ -357,7 +357,7 @@ function parsePanel(arg: string): SelectPanel | undefined {
   return panel.tab || panel.section || panel.focus ? panel : undefined;
 }
 
-/** Op výberu (D-082) s voliteľným panelom (D-113). */
+/** Selection op (D-082) with an optional panel (D-113). */
 export function selectOp(guid: string | readonly string[], panel?: SelectPanel): string {
   const kv = [
     panel?.tab ? `t=${panel.tab}` : "",
@@ -369,7 +369,7 @@ export function selectOp(guid: string | readonly string[], panel?: SelectPanel):
 
 const vec = (n: number[], i: number) => ({ x: n[i], y: n[i + 1], z: n[i + 2] });
 
-/** `px,py,pz,tx,ty,tz,ux,uy,uz~o=..~proj=..` -> póza; mimo rozsahu mosta forku = null. */
+/** `px,py,pz,tx,ty,tz,ux,uy,uz~o=..~proj=..` -> pose; outside the fork bridge's range = null. */
 function parsePose(arg: string): { viewpoint: BridgeViewpoint; projection?: Projection } | null {
   const [head, kv] = parseArg(arg);
   const n = head.split(",").map((v) => finite(v, -SECTION_COORDINATE_LIMIT, SECTION_COORDINATE_LIMIT));
@@ -386,9 +386,9 @@ function parsePose(arg: string): { viewpoint: BridgeViewpoint; projection?: Proj
 }
 
 /**
- * `~lens=close~bcf=open` -> panely; `all` len s `close`. Šírka a strana panela (D-172) idú v tej istej správe
- * v kľúčoch s predponou `+` (nie sú platné meno panela): `~+panel=properties~+w=40~+s=left`, aby sa panel
- * najprv otvoril a potom nastavil. Nič platné = null.
+ * `~lens=close~bcf=open` -> panels; `all` only with `close`. Panel width and side (D-172) go in the same message
+ * in keys with the prefix `+` (not valid panel names): `~+panel=properties~+w=40~+s=left`, so that the panel
+ * is first opened and then set. Nothing valid = null.
  */
 function parsePanels(arg: string): { panels?: PanelsRequest; panelLayout?: PanelLayoutRequest } | null {
   const [, kv] = parseArg(arg);
@@ -409,15 +409,15 @@ function parsePanels(arg: string): { panels?: PanelsRequest; panelLayout?: Panel
   return { ...(Object.keys(panels).length > 0 ? { panels } : {}), ...(panelLayout ? { panelLayout } : {}) };
 }
 
-/** Op otáčania dokola (D-154): `auto_rotate:start~s=5~d=r:` alebo `auto_rotate:stop:`. */
+/** Op for rotating around (D-154): `auto_rotate:start~s=5~d=r:` or `auto_rotate:stop:`. */
 export function autoRotateOp(action: AutoRotateAction, speedDegS?: number, direction?: AutoRotateDirection): string {
   const kv = action === "start" ? [...(speedDegS !== undefined ? [`s=${speedDegS}`] : []), ...(direction ? [`d=${direction === "left" ? "l" : "r"}`] : [])] : [];
   return `auto_rotate:${[action, ...kv].join("~")}:`;
 }
 
 /**
- * Op posunu panela (D-146, D-150): `panel_scroll:down:` (panel vlastností), alebo hlava `-` s parametrami
- * `~p=<panel>~i=<text, encodeURIComponent a ~ ako %7E>~pct=<0-100>`; smer, `i` a `pct` sú vzájomne výlučné.
+ * Panel scroll op (D-146, D-150): `panel_scroll:down:` (properties panel), or head `-` with parameters
+ * `~p=<panel>~i=<text, encodeURIComponent and ~ as %7E>~pct=<0-100>`; direction, `i` and `pct` are mutually exclusive.
  */
 export function panelScrollOp(target: PanelScroll | PanelScrollTarget): string {
   const t: PanelScrollTarget = typeof target === "string" ? { direction: target } : target;
@@ -445,7 +445,7 @@ function parsePanelScroll(arg: string): PanelScrollTarget | null {
   return { ...(direction ? { direction } : {}), ...(item !== undefined ? { item } : {}), ...(percent !== undefined ? { percent } : {}), ...(kv.p ? { panel: kv.p } : {}) };
 }
 
-/** Op zoomu panela (D-150): `panel_zoom:in~p=bcf:`, `panel_zoom:1.5:`. */
+/** Panel zoom op (D-150): `panel_zoom:in~p=bcf:`, `panel_zoom:1.5:`. */
 export function panelZoomOp(zoom: PanelZoom, panel?: string): string {
   return `panel_zoom:${zoom}${panel ? `~p=${panel}` : ""}:`;
 }
@@ -458,17 +458,17 @@ function parsePanelZoom(arg: string): { zoom: PanelZoom; panel?: string } | null
   return { zoom, ...(kv.p ? { panel: kv.p } : {}) };
 }
 
-/** Op podkladov v 3D (D-133 doplnok): `underlays3d:0:` skryje, `underlays3d:1:` zobrazí. */
+/** Underlays op in 3D (D-133 addendum): `underlays3d:0:` hides, `underlays3d:1:` shows. */
 export function underlays3dOp(show: boolean): string {
   return `underlays3d:${show ? 1 : 0}:`;
 }
 
-/** Op polohy kamery na PDF (D-161 bod 8, #282): `planpos:0:` skryje bodku a smer, `planpos:1:` zobrazí. */
+/** Camera position on PDF op (D-161 point 8, #282): `planpos:0:` hides the dot and direction, `planpos:1:` shows. */
 export function planPositionOp(show: boolean): string {
   return `planpos:${show ? 1 : 0}:`;
 }
 
-/** Op panelov (D-127): `panels:~lens=close~...:`; s `layout` (D-172) aj `~+panel=<meno>~+w=<%>~+s=<strana>`. */
+/** Panels op (D-127): `panels:~lens=close~...:`; with `layout` (D-172) also `~+panel=<name>~+w=<%>~+s=<side>`. */
 export function panelsOp(panels: PanelsRequest | undefined, layout?: PanelLayoutRequest): string {
   const kv = [
     ...Object.entries(panels ?? {}).map(([k, v]) => `${k}=${v}`),
@@ -479,7 +479,7 @@ export function panelsOp(panels: PanelsRequest | undefined, layout?: PanelLayout
   return `panels:~${kv.join("~")}:`;
 }
 
-/** Rozparsuje `ops`; neznáme alebo chybné časti sa ticho zahodia (vstup je z URL). */
+/** Parses `ops`; unknown or faulty parts are silently dropped (input is from the URL). */
 export function parseOps(raw: string): ViewerOp[] {
   const out: ViewerOp[] = [];
   for (const part of raw.split(";")) {
@@ -495,7 +495,7 @@ export function parseOps(raw: string): ViewerOp[] {
     } else if ((op === "hide_sel" || op === "show_sel" || op === "isolate_sel") && sel) {
       out.push({ op, selector: sel });
     } else if (op === "select" && guids.length > 0) {
-      // Výber ako klik (D-082); viac GUIDov = viacnásobný výber (#217), panel patrí prvému.
+      // Selection as a click (D-082); several GUIDs = multi-select (#217), the panel belongs to the first.
       const panel = parsePanel(arg);
       const all = [...new Set(guids)];
       out.push({ op, guid: all[0], ...(all.length > 1 ? { guids: all } : {}), ...(panel ? { panel } : {}) });
@@ -513,7 +513,7 @@ export function parseOps(raw: string): ViewerOp[] {
         ...(kv.g === "0" || kv.g === "1" ? { showGizmo: kv.g === "1" } : {}),
       };
       if (kv.fit !== undefined) {
-        // Rez cez prvky: GUIDy sú ciele, nie podlažie.
+        // Section through elements: the GUIDs are targets, not a storey.
         const fit = kv.fit as SectionFit;
         if (!(SECTION_FITS as readonly string[]).includes(fit)) continue;
         if (guids.length === 0 || guids.length > MAX_SECTION_TARGETS) continue;
@@ -532,7 +532,7 @@ export function parseOps(raw: string): ViewerOp[] {
       const offsetM = finite(kv.h, SECTION_OFFSET_RANGE.min, SECTION_OFFSET_RANGE.max);
       const position = finite(kv.p, 0, 100);
       const storeyGuid = guids[0];
-      // Rez potrebuje podlažie (vodorovný) alebo polohu v percentách.
+      // A section needs a storey (horizontal) or a position in percent.
       if (!storeyGuid && position === undefined) continue;
       if (storeyGuid && axis !== "y") continue;
       out.push({
@@ -574,7 +574,7 @@ export function parseOps(raw: string): ViewerOp[] {
       const wire = decodeListWire(joined);
       if (wire) out.push({ op, wire });
     } else if (op === "measure") {
-      // Prázdne telo = zmazať kóty od hosta (D-152); `keep` bez úsekov nedáva zmysel.
+      // An empty body = delete the host's dimensions (D-152); `keep` without segments makes no sense.
       const segments = joined === "" ? (arg === "keep" ? null : []) : decodeMeasureWire(joined);
       if (segments) out.push({ op, segments, ...(arg === "keep" ? { keep: true } : {}) });
     } else if (op === "route") {
@@ -640,7 +640,7 @@ export function parseOps(raw: string): ViewerOp[] {
   return out;
 }
 
-/** Op -> bridge správa forku viewera (`apps/viewer/src/aim/`, D-066/D-082/D-083). */
+/** Op -> bridge message of the viewer fork (`apps/viewer/src/aim/`, D-066/D-082/D-083). */
 export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
   switch (o.op) {
     case "colorize":
@@ -691,9 +691,9 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
         ...(o.projection ? { projection: o.projection } : {}),
         ...(o.guids.length > 0 ? { guids: o.guids } : {}),
         ...(o.selector ? { selector: o.selector } : {}),
-        // Relatívne kroky sem nepatria: host z nich spraví pózu (applyCameraOp v ifc-viewer.tsx).
+        // Relative steps do not belong here: the host makes a pose from them (applyCameraOp in ifc-viewer.tsx).
         ...(o.fit ? { fit: o.fit } : {}),
-        // Okraj a časť cieľa (D-128): fork rámuje `frameBounds` s okrajom; starší fork ich ignoruje.
+        // Margin and target part (D-128): the fork frames `frameBounds` with the margin; an older fork ignores them.
         ...(o.marginPercent !== undefined ? { padding: marginToPadding(o.marginPercent) } : {}),
         ...(o.area ? { area: o.area } : {}),
       };
@@ -706,9 +706,9 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
         type: "DOCUMENT_OPEN",
         documentId: o.documentId,
         ...(o.page ? { page: o.page } : {}),
-        // Fork čaká zlomky strany (0-1), drôt nesie percentá.
+        // The fork expects page fractions (0-1), the wire carries percentages.
         ...(o.region ? { region: toFraction(o.region) } : {}),
-        // Rámiky (D-123): fork ich nakreslí na strane `page`; prázdne = staré zruší.
+        // Frames (D-123): the fork draws them on page `page`; empty = cancels the old ones.
         ...(o.highlights?.length ? { highlights: o.highlights.map(toFraction) } : {}),
         ...(o.layout ? { layout: o.layout } : {}),
       };
@@ -719,19 +719,19 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
     case "view_capture":
       return viewsBridgeMessage(o);
     case "underlays_load":
-      // Podklady si klient hosta stiahne z /api/underlay až pri vykonaní (async), preto správu skladá `applyOps` v ifc-viewer.tsx.
+      // The host client fetches the underlays from /api/underlay only on execution (async), so the message is composed by `applyOps` in ifc-viewer.tsx.
       throw new Error("underlays_load sa vykoná v klientovi hosta (reloadUnderlays), nie cez opToBridgeMessage");
     case "clash_open":
-      // Kolízie si klient hosta stiahne z /api/clash až pri vykonaní (async), preto správu skladá `applyOps` v ifc-viewer.tsx.
+      // The host client fetches the clashes from /api/clash only on execution (async), so the message is composed by `applyOps` in ifc-viewer.tsx.
       throw new Error("clash_open sa vykoná v klientovi hosta (openClash), nie cez opToBridgeMessage");
     case "ids_open":
-      // XML si klient hosta stiahne z /api/ids až pri vykonaní (async), preto správu skladá `applyOps` v ifc-viewer.tsx.
+      // The host client fetches the XML from /api/ids only on execution (async), so the message is composed by `applyOps` in ifc-viewer.tsx.
       throw new Error("ids_open sa vykoná v klientovi hosta (openIds), nie cez opToBridgeMessage");
     case "lens":
-      // Zónu (`aim_zone`) a dokument (`aim_document`) doplní klient pred odoslaním; tu ostanú prázdne.
+      // The zone (`aim_zone`) and document (`aim_document`) are filled in by the client before sending; they stay empty here.
       return lensBridgeMessage(o.mode, o.wire, new Map(), o.rev);
     case "list":
-      // Zónu doplní klient pred odoslaním, ako pri Lens.
+      // The zone is filled in by the client before sending, as with Lens.
       return listBridgeMessage(o.wire, new Map());
     case "measure":
       return { type: "MEASURE_SHOW", segments: o.segments, ...(o.keep ? { keep: true } : {}) };
@@ -777,7 +777,7 @@ export function opToBridgeMessage(o: ViewerOp): Record<string, unknown> {
   }
 }
 
-// ── Buildery (server) ────────────────────────────────────────────────────────
+// ── Builders (server) ────────────────────────────────────────────────────────
 
 export function sectionOp(p: {
   storeyGuid?: string;
@@ -807,7 +807,7 @@ export function sectionOp(p: {
 
 export const SECTION_CLEAR_OP = "section_clear::";
 
-/** Len widget aktívneho rezu (#63): `section_gizmo:<0|1>:`. */
+/** Only the widget of the active section (#63): `section_gizmo:<0|1>:`. */
 export const sectionGizmoOp = (show: boolean) => `section_gizmo:${show ? 1 : 0}:`;
 
 function cameraArg(preset: CameraPreset, projection?: Projection, move: CameraMove = {}): string {
@@ -819,7 +819,7 @@ export function cameraOp(preset: CameraPreset, guids: string[] = [], projection?
   return `camera:${cameraArg(preset, projection, move)}:${guids.join(".")}`;
 }
 
-/** Kamera na množinu prvkov podľa selektora (D-094) - rozloží ju viewer ako `*_sel`. */
+/** Camera on a set of elements by selector (D-094) - expanded by the viewer as `*_sel`. */
 export function cameraSelOp(preset: CameraPreset, selector: OpsSelector, projection?: Projection, move?: CameraMove): string {
   const fields = [
     ...(selector.types?.length ? [`t=${selector.types.join(".")}`] : []),
@@ -828,7 +828,7 @@ export function cameraSelOp(preset: CameraPreset, selector: OpsSelector, project
   return `camera_sel:${cameraArg(preset, projection, move)}:${fields.join("~")}`;
 }
 
-/** Presná póza kamery (D-122), napr. z uloženého pohľadu. */
+/** Exact camera pose (D-122), e.g. from a saved view. */
 export function poseOp(vp: BridgeViewpoint, projection?: Projection): string {
   const nums = [vp.position, vp.target, vp.up].flatMap((v) => [v.x, v.y, v.z]);
   const kv = [

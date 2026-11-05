@@ -1,14 +1,14 @@
 /**
- * Clash detection z AIM vo vieweri (D-164, #292): wire formát správ `CLASH_LOAD`, `CLASH_SAVED` (host -> viewer)
- * a `CLASH_SAVE` (viewer -> host), zrkadlo `apps/viewer/src/aim/clash-protocol.ts` vo forku, a viewer op
- * `clash_open`, ktorým chat otvorí panel clash s testom a (voliteľne) behom.
+ * Clash detection from AIM in the viewer (D-164, #292): wire format of messages `CLASH_LOAD`, `CLASH_SAVED` (host -> viewer)
+ * and `CLASH_SAVE` (viewer -> host), mirror of `apps/viewer/src/aim/clash-protocol.ts` in the fork, and the viewer op
+ * `clash_open`, by which the chat opens the clash panel with a test and (optionally) a run.
  *
- * Test má tvar testu v AIM (`lib/engine/clash-tests.ts`: sady A/B ako selektor tried + model + podlažie, mode, mm);
- * premenu na `ClashPreset` (filterA/filterB) robí fork. Kľúč kolízie (`clash_key`) skladá vždy host z dvojice
- * `model:GUID` a kódu testu, viewer posiela prvky, nie vlastné kľúče.
+ * A test has the shape of a test in AIM (`lib/engine/clash-tests.ts`: sets A/B as a class selector + model + storey, mode, mm);
+ * conversion to `ClashPreset` (filterA/filterB) is done by the fork. The clash key (`clash_key`) is always composed by the host from the pair
+ * `model:GUID` and the test code, the viewer sends elements, not its own keys.
  *
- * Op nesie len odkazy (kód testu, beh): kolízie do správy o živom kanáli nepatria, klient hosta si ich stiahne z
- * `GET /api/clash` a pošle vieweru `CLASH_LOAD`.
+ * The op carries only references (test code, run): clashes do not belong in a live-channel message, the host client fetches them from
+ * `GET /api/clash` and sends the viewer `CLASH_LOAD`.
  * Op: `clash_open::<base64url JSON {test, run?}>`.
  */
 
@@ -20,17 +20,17 @@ export type ClashReviewState = (typeof CLASH_STATUSES)[number];
 const KINDS = ["hard", "clearance"] as const;
 const SEVERITIES = ["critical", "major", "minor", "info"] as const;
 
-/** Strop kolízií v `CLASH_LOAD` (správa do iframe); nad ním `results_truncated` s celkovým počtom. */
+/** Cap on clashes in `CLASH_LOAD` (message to the iframe); above it `results_truncated` with the total count. */
 export const MAX_LOAD_RESULTS = 3000;
-/** Strop kolízií v `CLASH_SAVE` (telo požiadavky na Verceli ~4,5 MB); nad ním viewer zúži test. */
+/** Cap on clashes in `CLASH_SAVE` (Vercel request body ~4.5 MB); above it the viewer narrows the test. */
 export const MAX_SAVE_RESULTS = 10_000;
-/** Strop zmien stavu v jednej správe. */
+/** Cap on state changes in one message. */
 export const MAX_SAVE_REVIEWS = 2000;
 const MAX_TEXT = 200;
 const MAX_COMMENT = 2000;
 
 export interface ClashSideWire {
-  /** Selektor IFC tried upstream: `IfcDuct*|IfcPipe*`, `!IfcSpace`, `*`. */
+  /** Selector of upstream IFC classes: `IfcDuct*|IfcPipe*`, `!IfcSpace`, `*`. */
   type: string;
   model?: string;
   storey?: string;
@@ -58,14 +58,14 @@ export interface ClashElementWire {
 export interface ClashResultWire {
   kind: "hard" | "clearance";
   severity: (typeof SEVERITIES)[number];
-  /** m; záporné = hĺbka prieniku. */
+  /** m; negative = penetration depth. */
   distance: number;
   a: ClashElementWire;
   b: ClashElementWire;
   storey?: string | null;
-  /** [x, y, z] v IFC svete (m, Z hore). */
+  /** [x, y, z] in the IFC world (m, Z up). */
   center?: number[] | null;
-  /** Host -> viewer: stav a poznámka z AIM; kľúč kolízie, ako ho drží AIM. */
+  /** Host -> viewer: state and note from AIM; clash key as AIM holds it. */
   key?: string;
   review?: ClashReviewState;
   comment?: string;
@@ -79,7 +79,7 @@ export interface ClashReviewWire {
 }
 
 export interface ClashSaveWire {
-  /** Kód testu, ktorému patria beh a stavy, keď správa test sama nenesie. */
+  /** Code of the test to which the run and states belong when the message does not carry the test itself. */
   test_code?: string;
   test?: ClashTestWire;
   run?: { models?: Record<string, unknown>; truncated?: boolean; results: ClashResultWire[] };
@@ -87,9 +87,9 @@ export interface ClashSaveWire {
 }
 
 export interface ClashOpenReq {
-  /** Kód alebo názov testu. */
+  /** Code or name of the test. */
   test: string;
-  /** UUID uloženého behu, alebo `latest`; bez neho sa načíta len test. */
+  /** UUID of the saved run, or `latest`; without it only the test is loaded. */
   run?: string;
 }
 
@@ -105,7 +105,7 @@ export function clashOpenOp(req: ClashOpenReq): string {
   return `clash_open::${toBase64Url(JSON.stringify(req))}`;
 }
 
-/** `clash_open` z wire formátu; null = neplatné (op sa preskočí). */
+/** `clash_open` from the wire format; null = invalid (the op is skipped). */
 export function parseClashOp(joined: string): ClashOpenOp | null {
   const raw = joined ? fromBase64Url(joined) : null;
   if (raw === null) return null;
@@ -191,7 +191,7 @@ function review(v: unknown): ClashReviewWire | null {
   return { a, b, status: v.status, ...(comment !== undefined ? { comment } : {}) };
 }
 
-/** Uloženie z panela viewera (`CLASH_SAVE`) po overení tvaru; null = neplatné. Zlý riadok znamená neplatnú celú správu, nič sa nevynechá potichu. */
+/** Save from the viewer panel (`CLASH_SAVE`) after shape validation; null = invalid. A bad row invalidates the whole message, nothing is silently omitted. */
 export function parseClashSave(data: unknown): ClashSaveWire | null {
   if (!isObj(data)) return null;
   const out: ClashSaveWire = {};
@@ -225,7 +225,7 @@ export function parseClashSave(data: unknown): ClashSaveWire | null {
   return out;
 }
 
-/** Čo vráti `GET /api/clash?test=` a z čoho sa skladá `CLASH_LOAD`. */
+/** What `GET /api/clash?test=` returns and what `CLASH_LOAD` is composed from. */
 export interface ClashLoadPayload {
   test: ClashTestWire & { code: string; origin: string };
   run?: { id: string; created_at: string; trigger: string; total: number | null; by_status: Record<string, number> | null; models: Record<string, unknown>; truncated?: boolean };

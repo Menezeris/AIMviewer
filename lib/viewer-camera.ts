@@ -1,18 +1,18 @@
 /**
- * Kamera viewera (D-094, revízia D-098): fit a relatívne kroky nad presetom op
- * `camera` / `camera_sel` (wire formát D-066, `lib/viewer-ops.ts`). Zdieľa
- * server aj klient ako viewer-ops.
+ * Viewer camera (D-094, revision D-098): fit and relative steps on top of the op preset
+ * `camera` / `camera_sel` (wire format D-066, `lib/viewer-ops.ts`). Shared by the
+ * server and the client like viewer-ops.
  *
- * Polia argumentu: `~fit=<v|s>~z=<%>~oh=<°>~ov=<°>~px=<%>~py=<%>~mg=<%>~ar=<l|r|t|b|f|k>`.
- * Fit (viditeľné, výber) vykoná fork existujúcimi funkciami viewera. Relatívny
- * zoom/orbit/posun počíta host: z `view_state` (D-085) vypočíta novú pózu
- * (`relativeViewpoint`) a pošle ju ako `SET_CAMERA {viewpoint}`; fork ju len
- * prenesie do kamery (`applyViewpoint`, tá istá cesta ako BCF). Poradie
- * krokov: orbit, zoom, posun. Okraj a časť cieľa (D-128) rámuje fork po
- * nastavení smeru (`cameraCallbacks.frameBounds` s okrajom).
+ * Argument fields: `~fit=<v|s>~z=<%>~oh=<°>~ov=<°>~px=<%>~py=<%>~mg=<%>~ar=<l|r|t|b|f|k>`.
+ * Fit (visible, selection) is done by the fork with existing viewer functions. Relative
+ * zoom/orbit/pan is computed by the host: from `view_state` (D-085) it computes the new pose
+ * (`relativeViewpoint`) and sends it as `SET_CAMERA {viewpoint}`; the fork only
+ * transfers it to the camera (`applyViewpoint`, same path as BCF). Order
+ * of steps: orbit, zoom, pan. The margin and the target part (D-128) are framed by the fork after
+ * the direction is set (`cameraCallbacks.frameBounds` with the margin).
  */
 
-/** visible = viditeľné (aj izolované) prvky, selection = výber vo vieweri. */
+/** visible = visible (also isolated) elements, selection = selection in the viewer. */
 export const CAMERA_FITS = ["visible", "selection"] as const;
 export type CameraFit = (typeof CAMERA_FITS)[number];
 
@@ -20,8 +20,8 @@ const FIT_CODE: Record<CameraFit, string> = { visible: "v", selection: "s" };
 const FIT_BY_CODE = Object.fromEntries(Object.entries(FIT_CODE).map(([k, v]) => [v, k])) as Record<string, CameraFit>;
 
 /**
- * Časť cieľa podľa smeru pohľadu (D-128): left/right po šírke obrazu, top/bottom
- * po výške, front/back bližšie/ďalej od kamery.
+ * Part of the target by view direction (D-128): left/right by image width, top/bottom
+ * by height, front/back closer/farther from the camera.
  */
 export const CAMERA_AREAS = ["left", "right", "top", "bottom", "front", "back"] as const;
 export type CameraArea = (typeof CAMERA_AREAS)[number];
@@ -29,7 +29,7 @@ export type CameraArea = (typeof CAMERA_AREAS)[number];
 const AREA_CODE: Record<CameraArea, string> = { left: "l", right: "r", top: "t", bottom: "b", front: "f", back: "k" };
 const AREA_BY_CODE = Object.fromEntries(Object.entries(AREA_CODE).map(([k, v]) => [v, k])) as Record<string, CameraArea>;
 
-/** Rozsahy relatívnych krokov a okraja - rovnaké na serveri aj v klientovi. */
+/** Ranges of relative steps and margin - the same on the server and in the client. */
 export const CAMERA_RANGES = {
   zoomPercent: { min: -90, max: 500 },
   orbitH: { min: -180, max: 180 },
@@ -39,8 +39,8 @@ export const CAMERA_RANGES = {
 } as const;
 
 /**
- * Plynulé otáčanie dokola (D-154): `start` / `stop`, rýchlosť v stupňoch za sekundu a smer. `left` = rovnaký smer
- * ako kladné `orbit_h_deg` (kamera obieha cieľ doľava). Rozsah a názvy zhodné s mostom forku (`aim/autoRotatePlan.ts`).
+ * Continuous rotation around (D-154): `start` / `stop`, speed in degrees per second and direction. `left` = same direction
+ * as positive `orbit_h_deg` (the camera orbits the target to the left). Range and names match the fork bridge (`aim/autoRotatePlan.ts`).
  */
 export const AUTO_ROTATE_ACTIONS = ["start", "stop"] as const;
 export type AutoRotateAction = (typeof AUTO_ROTATE_ACTIONS)[number];
@@ -48,27 +48,27 @@ export const AUTO_ROTATE_DIRECTIONS = ["left", "right"] as const;
 export type AutoRotateDirection = (typeof AUTO_ROTATE_DIRECTIONS)[number];
 export const AUTO_ROTATE_SPEED = { min: 0.5, max: 90, default: 10 } as const;
 
-/** Okraj okolo cieľa, keď ho model nezadá (#172: tenká atika nemá byť zarámovaná natesno). */
+/** Margin around the target when the model does not give one (#172: a thin parapet should not be framed tightly). */
 export const DEFAULT_MARGIN_PERCENT = 40;
 
-/** Okraj v % -> násobok obálky pre `frameBounds` (1 = od hrany po hranu, 1,4 = 40 % navyše). */
+/** Margin in % -> multiple of the bounds for `frameBounds` (1 = edge to edge, 1.4 = 40 % extra). */
 export const marginToPadding = (marginPercent: number) => 1 + marginPercent / 100;
 
 export interface CameraMove {
   fit?: CameraFit;
-  /** Kladné priblíži (vzdialenosť / (1 + p/100)), záporné oddiali (vzdialenosť * (1 + |p|/100)). */
+  /** Positive zooms in (distance / (1 + p/100)), negative zooms out (distance * (1 + |p|/100)). */
   zoomPercent?: number;
-  /** Kladné = kamera obehne cieľ doľava. */
+  /** Positive = the camera orbits the target to the left. */
   orbitH?: number;
-  /** Kladné = kamera vyššie, pohľad viac zhora. */
+  /** Positive = camera higher, view more from above. */
   orbitV?: number;
-  /** % šírky pohľadu, kladné = pohľad doprava. */
+  /** % of view width, positive = view to the right. */
   panX?: number;
-  /** % výšky pohľadu, kladné = pohľad hore. */
+  /** % of view height, positive = view up. */
   panY?: number;
-  /** Okraj okolo cieľa v % (D-128); nie je relatívny krok, rámuje fork. */
+  /** Margin around the target in % (D-128); not a relative step, the fork frames it. */
   marginPercent?: number;
-  /** Zarámovať len časť cieľa v danom smere obrazu (D-128). */
+  /** Frame only the part of the target in the given image direction (D-128). */
   area?: CameraArea;
 }
 
@@ -81,7 +81,7 @@ const NUM_FIELDS: [NumKey, string, { min: number; max: number }][] = [
   ["panY", "py", CAMERA_RANGES.pan],
 ];
 
-/** CameraMove -> polia argumentu op (bez nulových krokov). */
+/** CameraMove -> op argument fields (without zero steps). */
 export function cameraMoveArgs(m: CameraMove): string[] {
   const out: string[] = [];
   if (m.fit) out.push(`fit=${FIT_CODE[m.fit]}`);
@@ -94,7 +94,7 @@ export function cameraMoveArgs(m: CameraMove): string[] {
   return out;
 }
 
-/** Polia argumentu -> CameraMove; neplatné alebo mimo rozsahu sa ticho zahodia (vstup je z URL). */
+/** Argument fields -> CameraMove; invalid or out-of-range ones are silently dropped (input is from the URL). */
 export function parseCameraMove(kv: Record<string, string>): CameraMove {
   const m: CameraMove = {};
   const fit = kv.fit !== undefined ? FIT_BY_CODE[kv.fit] : undefined;
@@ -114,14 +114,14 @@ export function parseCameraMove(kv: Record<string, string>): CameraMove {
   return m;
 }
 
-/** Má op relatívny krok? Ten počíta host z `view_state`, nie fork. */
+/** Does the op have a relative step? The host computes it from `view_state`, not the fork. */
 export function hasRelativeStep(m: CameraMove): boolean {
   return NUM_FIELDS.some(([key]) => m[key] !== undefined);
 }
 
 type Vec3 = { x: number; y: number; z: number };
 
-/** Kamera z `view_state` (IFC svet, Z hore, m). */
+/** Camera from `view_state` (IFC world, Z up, m). */
 export interface ViewerCamera {
   position: Vec3;
   target: Vec3;
@@ -132,7 +132,7 @@ export interface ViewerCamera {
   aspect?: number;
 }
 
-/** Póza pre bridge `SET_CAMERA.viewpoint` (IFC svet). */
+/** Pose for bridge `SET_CAMERA.viewpoint` (IFC world). */
 export interface BridgeViewpoint {
   position: Vec3;
   target: Vec3;
@@ -149,7 +149,7 @@ const norm = (a: Vec3): Vec3 => scale(a, 1 / (len(a) || 1));
 const WORLD_UP: Vec3 = { x: 0, y: 0, z: 1 };
 const RAD = Math.PI / 180;
 
-/** Otočenie okolo zvislej osi IFC (Z) o uhol v radiánoch, kladný proti smeru hodín zhora. */
+/** Rotation around the vertical IFC axis (Z) by an angle in radians, positive counterclockwise seen from above. */
 function rotateZ(v: Vec3, a: number): Vec3 {
   const c = Math.cos(a);
   const s = Math.sin(a);
@@ -157,11 +157,11 @@ function rotateZ(v: Vec3, a: number): Vec3 {
 }
 
 /**
- * Nová póza kamery po relatívnych krokoch (orbit, zoom, posun), IFC svet.
- * Orbit obieha cieľ okolo zvislej osi; zvislý orbit drží výšku pohľadu v
- * rozsahu -89° až 89° a vráti `up` na zvislicu. Zoom mení vzdialenosť od
- * cieľa (perspektíva) alebo polovicu výšky pohľadu (ortografia). Posun
- * presunie kameru aj cieľ o percento viditeľnej šírky/výšky.
+ * New camera pose after relative steps (orbit, zoom, pan), IFC world.
+ * Orbit circles the target around the vertical axis; vertical orbit keeps the view elevation in
+ * the range -89° to 89° and returns `up` to the vertical. Zoom changes the distance from
+ * the target (perspective) or half the view height (orthographic). Pan
+ * moves the camera and the target by a percentage of the visible width/height.
  */
 export function relativeViewpoint(cam: ViewerCamera, move: CameraMove): BridgeViewpoint {
   let target = cam.target;
@@ -172,13 +172,13 @@ export function relativeViewpoint(cam: ViewerCamera, move: CameraMove): BridgeVi
   let orthoSize = cam.ortho_size;
 
   if (move.orbitH) {
-    // Kamera doľava = otočenie po smere hodinových ručičiek zhora.
+    // Camera to the left = rotation clockwise seen from above.
     offset = rotateZ(offset, -move.orbitH * RAD);
     up = rotateZ(up, -move.orbitH * RAD);
   }
   if (move.orbitV) {
     const horiz = Math.hypot(offset.x, offset.y);
-    // Pohľad zhora nemá vodorovný smer kamery: kamera je oproti hornej hrane obrazu.
+    // A top-down view has no horizontal camera direction: the camera is opposite the top edge of the image.
     const heading = horiz > dist * 1e-6
       ? { x: offset.x / horiz, y: offset.y / horiz }
       : Math.hypot(up.x, up.y) > 1e-9
@@ -214,14 +214,14 @@ export function relativeViewpoint(cam: ViewerCamera, move: CameraMove): BridgeVi
   };
 }
 
-/** Viditeľná oblasť po kamere (D-128): stred, rozmery v m v rovine cieľa a smery obrazu v IFC. */
+/** Visible area through the camera (D-128): center, dimensions in m in the target plane and image directions in the IFC. */
 export interface VisibleArea {
   center: Vec3;
   width_m: number;
   height_m: number;
-  /** Jednotkový smer "doprava" na obrazovke v IFC svete. */
+  /** Unit direction "right" on screen in the IFC world. */
   right: Vec3;
-  /** Jednotkový smer "hore" na obrazovke v IFC svete. */
+  /** Unit direction "up" on screen in the IFC world. */
   up: Vec3;
 }
 
@@ -229,9 +229,9 @@ const r3 = (v: number) => Math.round(v * 1000) / 1000;
 const roundVec = (v: Vec3): Vec3 => ({ x: r3(v.x), y: r3(v.y), z: r3(v.z) });
 
 /**
- * Čo kamera z `view_state` ukazuje: v ortografii výška 2 * ortho_size, v perspektíve
- * výška zorného poľa vo vzdialenosti cieľa; šírka = výška * pomer strán. Chýbajúci
- * údaj (pomer, FOV, ortho_size) = null, nehádame.
+ * What the camera shows from `view_state`: in orthographic height 2 * ortho_size, in perspective
+ * the field-of-view height at the target distance; width = height * aspect ratio. A missing
+ * value (ratio, FOV, ortho_size) = null, we do not guess.
  */
 export function visibleArea(cam: ViewerCamera): VisibleArea | null {
   const offset = sub(cam.position, cam.target);

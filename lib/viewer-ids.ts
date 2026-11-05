@@ -1,10 +1,10 @@
 /**
- * IDS z AIM vo vieweri (D-162, #285): wire formát správ `IDS_LOAD`, `IDS_SAVED` (host -> viewer) a `IDS_SAVE`
- * (viewer -> host), zrkadlo `apps/viewer/src/aim/ids-protocol.ts` vo forku, a viewer op `ids_open`, ktorým
- * chat otvorí IDS v paneli IDS Studio alebo Data validation -> IDS validation.
+ * IDS from AIM in the viewer (D-162, #285): wire format of messages `IDS_LOAD`, `IDS_SAVED` (host -> viewer) and `IDS_SAVE`
+ * (viewer -> host), mirror of `apps/viewer/src/aim/ids-protocol.ts` in the fork, and the viewer op `ids_open`, by which the
+ * chat opens IDS in the IDS Studio panel or Data validation -> IDS validation.
  *
- * Op nesie len kód a voľby (XML do správy o živom kanáli nepatrí): klient hosta si XML stiahne z
- * `GET /api/ids?code=` a pošle vieweru `IDS_LOAD`.
+ * The op carries only the code and options (XML does not belong in a live-channel message): the host client fetches the XML from
+ * `GET /api/ids?code=` and sends the viewer `IDS_LOAD`.
  * Op: `ids_open::<base64url JSON {code, target, version?, spec?, run?}>`.
  */
 
@@ -13,18 +13,18 @@ import { fromBase64Url, toBase64Url } from "./viewer-lens";
 export const IDS_SOURCE = "aim-bridge" as const;
 export const IDS_TARGETS = ["studio", "validation"] as const;
 export type IdsTarget = (typeof IDS_TARGETS)[number];
-/** Strop XML v správe viewera (rovnaký ako vo forku). */
+/** Cap on XML in a viewer message (same as in the fork). */
 export const MAX_IDS_XML = 2_000_000;
 const MAX_TEXT = 200;
 
 export interface IdsOpenReq {
   code: string;
   target: IdsTarget;
-  /** Predvolene posledná verzia. */
+  /** Latest version by default. */
   version?: number;
-  /** Identifikátor, názov alebo id špecifikácie: beh sa obmedzí na ňu. */
+  /** Identifier, name or id of a specification: the run is limited to it. */
   spec?: string;
-  /** Spustiť kontrolu hneď po načítaní (panel validácie). */
+  /** Run the check right after loading (validation panel). */
   run?: boolean;
 }
 
@@ -39,7 +39,7 @@ export function idsOpenOp(req: IdsOpenReq): string {
   return `ids_open::${toBase64Url(JSON.stringify(req))}`;
 }
 
-/** `ids_open` z wire formátu; null = neplatné (op sa preskočí). */
+/** `ids_open` from the wire format; null = invalid (the op is skipped). */
 export function parseIdsOp(joined: string): IdsOpenOp | null {
   const raw = joined ? fromBase64Url(joined) : null;
   if (raw === null) return null;
@@ -61,7 +61,7 @@ export function parseIdsOp(joined: string): IdsOpenOp | null {
   };
 }
 
-/** Čo vráti `GET /api/ids?code=` a z čoho sa skladá `IDS_LOAD`. */
+/** What `GET /api/ids?code=` returns and what `IDS_LOAD` is composed from. */
 export interface IdsDocumentPayload {
   code: string;
   version: number;
@@ -82,7 +82,7 @@ export function idsLoadMessage(req: IdsOpenReq, doc: IdsDocumentPayload): Record
   };
 }
 
-/** Uloženie z panela viewera (`IDS_SAVE`) po overení tvaru; null = neplatné. */
+/** Save from the viewer panel (`IDS_SAVE`) after shape validation; null = invalid. */
 export interface IdsSaveWire {
   target: IdsTarget;
   xml: string;

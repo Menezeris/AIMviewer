@@ -1,33 +1,33 @@
 /**
- * Ochrana verejných API routes (D-068): per-IP sliding-window rate limit
- * + cross-origin guard. Čisté funkcie s injektovateľnými hodinami — testovateľné
- * bez Next runtime.
+ * Protection of public API routes (D-068): per-IP sliding-window rate limit
+ * + cross-origin guard. Pure functions with injectable clocks - testable
+ * without the Next runtime.
  *
- * In-memory limiter je per serverless inštancia (na Verceli sa inštancie
- * škálujú a recyklujú) — nie je to presný distribuovaný limit, ale reálne
- * zastaví lacné zneužitie (skript búšiaci do jednej inštancie). Presný
- * globálny limit by vyžadoval KV/Upstash — vedomý trade-off, viď D-068.
+ * The in-memory limiter is per serverless instance (on Vercel instances
+ * scale and get recycled) - it is not an exact distributed limit, but it really
+ * stops cheap abuse (a script hammering a single instance). An exact
+ * global limit would need KV/Upstash - a conscious trade-off, see D-068.
  */
 
 interface RateLimiterOptions {
-  /** Dĺžka okna v ms. */
+  /** Window length in ms. */
   windowMs: number;
-  /** Max požiadaviek na kľúč v okne. */
+  /** Max requests per key in the window. */
   max: number;
-  /** Zdroj času — injektovateľný pre testy (default Date.now). */
+  /** Time source - injectable for tests (default Date.now). */
   now?: () => number;
 }
 
 export interface RateCheck {
   allowed: boolean;
-  /** Sekundy do uvoľnenia okna — hodnota pre Retry-After hlavičku (0 ak allowed). */
+  /** Seconds until the window frees up - value for the Retry-After header (0 if allowed). */
   retryAfterSeconds: number;
 }
 
 /**
- * Sliding-window limiter: drží timestampy požiadaviek per kľúč a pri každej
- * kontrole odreže tie mimo okna. Pamäť sa upratuje lazy — kľúč zmizne, keď
- * jeho okno vyprší (prune pri kontrole), takže Map nerastie donekonečna.
+ * Sliding-window limiter: keeps request timestamps per key and on every
+ * check cuts off those outside the window. Memory is cleaned up lazily - a key disappears when
+ * its window expires (prune on check), so the Map does not grow forever.
  */
 export function createRateLimiter({ windowMs, max, now = Date.now }: RateLimiterOptions) {
   const hits = new Map<string, number[]>();
@@ -37,8 +37,8 @@ export function createRateLimiter({ windowMs, max, now = Date.now }: RateLimiter
     const t = now();
     const cutoff = t - windowMs;
 
-    // Lazy prune celej mapy každú 64. kontrolu, aby kľúče jednorazových
-    // návštevníkov nezostávali v pamäti navždy.
+    // Lazy prune of the whole map every 64th check, so that keys of one-off
+    // visitors do not stay in memory forever.
     if (++checksSincePrune >= 64) {
       checksSincePrune = 0;
       for (const [k, arr] of hits) {
@@ -66,11 +66,11 @@ export function createRateLimiter({ windowMs, max, now = Date.now }: RateLimiter
 }
 
 /**
- * Cross-origin guard pre browser POST-y: ak požiadavka NESIE Origin hlavičku
- * a jej host sa nezhoduje s hostom požiadavky, je to cudzia stránka strieľajúca
- * na naše API z prehliadača používateľa — blokni. Požiadavky bez Origin
- * (curl, server-side skripty, eval runner) prechádzajú — limiter ich stále
- * kryje; toto je CSRF-ová vrstva, nie autentifikácia.
+ * Cross-origin guard for browser POSTs: if a request CARRIES an Origin header
+ * and its host does not match the request host, it is a foreign page firing
+ * at our API from the user's browser - block. Requests without Origin
+ * (curl, server-side scripts, eval runner) pass - the limiter still
+ * covers them; this is a CSRF layer, not authentication.
  */
 export function isCrossOriginBlocked(
   originHeader: string | null,
@@ -80,15 +80,15 @@ export function isCrossOriginBlocked(
   try {
     return new URL(originHeader).host !== requestHost;
   } catch {
-    // Nevalidný Origin — prehliadač ho takto nikdy nepošle; blokni.
+    // Invalid Origin - a browser never sends it like this; block.
     return true;
   }
 }
 
 /**
- * Klientská IP z hlavičiek, ktoré na Verceli nastavuje platforma (proxy ich
- * prepisuje, klient ich nespoofne). Mimo takejto infraštruktúry je to len
- * best-effort kľúč pre limiter — horšie ako nič to nie je.
+ * Client IP from the headers set by the platform on Vercel (the proxy
+ * overwrites them, the client cannot spoof them). Outside such infrastructure it is just a
+ * best-effort key for the limiter - it is no worse than nothing.
  */
 export function clientIpKey(headers: Headers): string {
   return (

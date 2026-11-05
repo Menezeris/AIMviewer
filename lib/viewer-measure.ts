@@ -1,8 +1,8 @@
 /**
- * Kóta vo vieweri (D-124): úseky medzi dvoma bodmi v IFC svete (m, Z hore),
- * ktoré fork vloží do svojho nástroja Measure (`MEASURE_SHOW`). Wire v `ops`:
- * `measure:<keep>:<ax,ay,az,bx,by,bz>|<...>`; `keep` = pridať k predošlým kótam
- * od hosta, inak ich nahradiť; bez úsekov (`measure::`) ich len zmazať (D-152). Čisté funkcie - zdieľa ich server aj klient.
+ * Dimension in the viewer (D-124): segments between two points in the IFC world (m, Z up),
+ * which the fork inserts into its Measure tool (`MEASURE_SHOW`). Wire in `ops`:
+ * `measure:<keep>:<ax,ay,az,bx,by,bz>|<...>`; `keep` = add to the previous dimensions
+ * from the host, otherwise replace them; without segments (`measure::`) just delete them (D-152). Pure functions - shared by the server and the client.
  */
 
 export interface MeasurePoint {
@@ -16,9 +16,9 @@ export interface MeasureSegment {
   b: MeasurePoint;
 }
 
-/** Najviac úsekov v jednom príkaze - rovnaký limit ako most forku. */
+/** At most this many segments in one command - same limit as the fork bridge. */
 export const MAX_MEASURE_SEGMENTS = 12;
-/** Rozsah súradnice v IFC svete (m) - rovnaký ako pri reze. */
+/** Range of a coordinate in the IFC world (m) - same as for the section. */
 const COORDINATE_LIMIT = 1e7;
 
 const mm = (v: number) => String(Math.round(v * 1000) / 1000);
@@ -30,7 +30,7 @@ export function encodeMeasureWire(segments: readonly MeasureSegment[]): string {
     .join("|");
 }
 
-/** null = chybný wire (vstup je z URL, nič sa nevykoná). */
+/** null = faulty wire (input is from the URL, nothing is executed). */
 export function decodeMeasureWire(raw: string): MeasureSegment[] | null {
   const parts = raw.split("|").filter(Boolean);
   if (parts.length === 0 || parts.length > MAX_MEASURE_SEGMENTS) return null;
@@ -48,9 +48,9 @@ export function measureOp(segments: readonly MeasureSegment[], keep = false): st
 }
 
 /**
- * Počet kót od hosta na plátne viewera (D-170, #278). Host nemá spätný kanál z vieweru, počíta sám:
- * `keep` pripočíta, nahradenie a zmazanie prepíše. Stav je v pamäti inštancie (jeden živý kanál),
- * preto je to odhad pre odporúčanie `clear`, nie záruka; reset farieb ho vynuluje.
+ * Number of host dimensions on the viewer canvas (D-170, #278). The host has no back channel from the viewer, it counts itself:
+ * `keep` adds, replace and delete overwrite. The state is in instance memory (one live channel),
+ * so it is an estimate for the `clear` recommendation, not a guarantee; a color reset zeroes it.
  */
 let onCanvas = 0;
 

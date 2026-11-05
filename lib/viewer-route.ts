@@ -1,16 +1,16 @@
 /**
- * Čiara trasy vo vieweri (D-137): lomená čiara cez body v IFC svete (m, Z hore),
- * ktorú fork nakreslí plnou farebnou čiarou (`ROUTE_SHOW`). Wire v `ops`:
- * `route:<hex farba>:<x,y,z|x,y,z|...>`; prázdne body = zmazať čiaru. Body sú
- * na cm (čiara na 1,6 m nad podlahou presnejšie netreba a URL ostane krátka).
- * Čisté funkcie - zdieľa ich server aj klient.
+ * Route line in the viewer (D-137): a polyline through points in the IFC world (m, Z up),
+ * which the fork draws as a solid colored line (`ROUTE_SHOW`). Wire in `ops`:
+ * `route:<hex color>:<x,y,z|x,y,z|...>`; empty points = delete the line. Points are
+ * in cm (a line at 1.6 m above the floor needs no more precision and the URL stays short).
+ * Pure functions - shared by the server and the client.
  */
 
 import type { MeasurePoint } from "./viewer-measure";
 
-/** Najviac bodov v jednom príkaze - rovnaký limit ako most forku. */
+/** At most this many points in one command - same limit as the fork bridge. */
 export const MAX_ROUTE_POINTS = 400;
-/** Predvolená farba čiary trasy (červená). */
+/** Default color of the route line (red). */
 export const ROUTE_COLOR = "#dc2626";
 const COORDINATE_LIMIT = 1e7;
 const HEX6 = /^[0-9a-fA-F]{6}$/;
@@ -24,7 +24,7 @@ export function encodeRouteWire(points: readonly MeasurePoint[]): string {
     .join("|");
 }
 
-/** [] = zmazať čiaru, null = chybný wire (vstup je z URL, nič sa nevykoná). */
+/** [] = delete the line, null = faulty wire (input is from the URL, nothing is executed). */
 export function decodeRouteWire(raw: string): MeasurePoint[] | null {
   const parts = raw.split("|").filter(Boolean);
   if (parts.length === 1 || parts.length > MAX_ROUTE_POINTS) return null;
@@ -41,7 +41,7 @@ export function routeOp(points: readonly MeasurePoint[], color = ROUTE_COLOR): s
   return `route:${color.replace(/^#/, "")}:${encodeRouteWire(points)}`;
 }
 
-/** `route:<hex>:<body>` -> farba a body, alebo null. */
+/** `route:<hex>:<body>` -> color and body, or null. */
 export function parseRouteOp(arg: string, joined: string): { color: string; points: MeasurePoint[] } | null {
   if (!HEX6.test(arg)) return null;
   const points = decodeRouteWire(joined);

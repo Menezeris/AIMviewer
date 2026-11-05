@@ -1,21 +1,21 @@
 /**
- * Ktorý viewer sa vloží do /ifc (D-116). Predvolene produkčný viewer forku;
- * na vyskúšanie PR forku pred zlúčením jeho Vercel náhľad, vybraný cez
- * `?viewer=pr-<číslo>` (alebo celú URL náhľadu). Povolené sú len produkčný
- * viewer a náhľady projektu `ifc-lite-viewer` v tíme assetinspaces, aby odkaz
- * nevložil cudzí viewer: host mu posiela AIM dáta (karty, dokumenty).
+ * Which viewer is embedded in /ifc (D-116). By default the production viewer of the fork;
+ * to try out a fork PR before merging, its Vercel preview, chosen via
+ * `?viewer=pr-<number>` (or the full preview URL). Only the production
+ * viewer and previews of the `ifc-lite-viewer` project in the assetinspaces team are allowed, so that a link
+ * cannot embed a foreign viewer: the host sends it AIM data (cards, documents).
  *
- * Čisté funkcie bez prehliadača, testované v viewer-source.test.ts.
+ * Pure functions without a browser, tested in viewer-source.test.ts.
  */
 
-/** Produkčný viewer forku; override celého deployu cez NEXT_PUBLIC_IFC_VIEWER_URL. */
+/** Production viewer of the fork; override of the whole deploy via NEXT_PUBLIC_IFC_VIEWER_URL. */
 export const PROD_VIEWER_URL =
   process.env.NEXT_PUBLIC_IFC_VIEWER_URL ?? "https://ifc-lite-viewer.vercel.app";
 
-/** Host náhľadu Vercel projektu ifc-lite-viewer (per deploy aj per vetva). */
+/** Host of a preview of the ifc-lite-viewer Vercel project (per deploy and per branch). */
 const PREVIEW_HOST = /^ifc-lite-viewer-[a-z0-9-]+-assetinspaces-projects\.vercel\.app$/;
 
-/** Kľúč v sessionStorage: voľba prežije navigácie AI docku a MCP v tej istej karte. */
+/** Key in sessionStorage: the choice survives AI dock and MCP navigations in the same tab. */
 export const VIEWER_CHOICE_KEY = "aim.viewer";
 
 export type ViewerChoice =
@@ -24,8 +24,8 @@ export type ViewerChoice =
   | { kind: "url"; url: string };
 
 /**
- * Adresa stránky po "Vyčistiť uložený stav a načítať znova" (D-163): bez `?viewer=`,
- * aby sa voľba náhľadu PR (napr. už zavretého) z odkazu znova neuložila.
+ * Page address after "Vyčistiť uložený stav a načítať znova" (clear saved state and reload) (D-163): without `?viewer=`,
+ * so that the PR preview choice (e.g. an already closed one) from the link is not saved again.
  */
 export function urlWithoutViewerChoice(href: string): string {
   const u = new URL(href);
@@ -33,7 +33,7 @@ export function urlWithoutViewerChoice(href: string): string {
   return u.toString();
 }
 
-/** Je to URL, ktorú smieme vložiť ako viewer? */
+/** Is it a URL we may embed as the viewer? */
 export function isAllowedViewerUrl(raw: string, dev = false): boolean {
   let u: URL;
   try {
@@ -53,8 +53,8 @@ export function isAllowedViewerUrl(raw: string, dev = false): boolean {
 }
 
 /**
- * Hodnota `?viewer=`: `pr-73` (alebo `73`), `prod`, alebo povolená URL.
- * Čokoľvek iné je null: neznáma hodnota nesmie potichu zmeniť viewer.
+ * Value of `?viewer=`: `pr-73` (or `73`), `prod`, or an allowed URL.
+ * Anything else is null: an unknown value must not silently change the viewer.
  */
 export function parseViewerParam(raw: string | null | undefined, dev = false): ViewerChoice | null {
   const v = raw?.trim();
@@ -66,14 +66,14 @@ export function parseViewerParam(raw: string | null | undefined, dev = false): V
   return null;
 }
 
-/** Hodnota do URL pre danú voľbu (inverzia parseViewerParam). */
+/** Value for the URL for the given choice (inverse of parseViewerParam). */
 export function viewerParamValue(choice: ViewerChoice): string {
   if (choice.kind === "prod") return "prod";
   if (choice.kind === "pr") return `pr-${choice.number}`;
   return choice.url;
 }
 
-/** Krátky popis pre čip nad viewerom. */
+/** Short description for the chip above the viewer. */
 export function viewerChoiceLabel(choice: ViewerChoice): string {
   if (choice.kind === "prod") return "Produkcia";
   if (choice.kind === "pr") return `PR #${choice.number}`;
@@ -84,12 +84,12 @@ export function viewerChoiceLabel(choice: ViewerChoice): string {
   }
 }
 
-/** Náhľad jedného otvoreného PR forku, ako ho vracia /api/viewer-previews. */
+/** Preview of one open PR of the fork, as returned by /api/viewer-previews. */
 export interface ViewerPreview {
   number: number;
   title: string;
   branch: string;
-  /** URL posledného úspešného náhľadu hlavy PR, null kým sa stavia alebo zlyhal. */
+  /** URL of the last successful preview of the PR head, null while it is building or failed. */
   url: string | null;
   updatedAt: string;
 }

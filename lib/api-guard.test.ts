@@ -1,13 +1,13 @@
 /**
- * Testy ochrany /api/ask (D-068): sliding-window rate limit + origin guard.
- * Endpoint bez ochrany spúšťal až 9 LLM volaní na anonymný POST — priamy
- * vektor na vyčerpanie kreditu providera.
+ * Tests of /api/ask protection (D-068): sliding-window rate limit + origin guard.
+ * An endpoint without protection triggered up to 9 LLM calls per anonymous POST - a direct
+ * vector for exhausting the provider's credit.
  */
 import { describe, expect, it } from "vitest";
 
 import { clientIpKey, createRateLimiter, isCrossOriginBlocked } from "./api-guard";
 
-/** Manuálne posúvateľné hodiny. */
+/** Manually advanceable clock. */
 function fakeClock(start = 1_000_000) {
   let t = start;
   return { now: () => t, tick: (ms: number) => (t += ms) };
@@ -37,7 +37,7 @@ describe("createRateLimiter", () => {
     limiter.check("ip1");
     expect(limiter.check("ip1").allowed).toBe(false);
 
-    clock.tick(31_000); // prvý hit (t=0) vypadol z okna, druhý (t=30s) ostáva
+    clock.tick(31_000); // the first hit (t=0) dropped out of the window, the second (t=30s) remains
     expect(limiter.check("ip1").allowed).toBe(true);
     expect(limiter.check("ip1").allowed).toBe(false);
   });
@@ -60,7 +60,7 @@ describe("createRateLimiter", () => {
       clock.tick(1_000);
       expect(limiter.check("ip1").allowed).toBe(false);
     }
-    clock.tick(5_001); // 10s od PRVÉHO (jediného počítaného) hitu
+    clock.tick(5_001); // 10s after the FIRST (the only counted) hit
     expect(limiter.check("ip1").allowed).toBe(true);
   });
 

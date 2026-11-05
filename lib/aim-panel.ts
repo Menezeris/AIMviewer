@@ -7,19 +7,19 @@ import { viaText, type ObjectDocument } from "@/lib/data/object-documents-core";
 import { OBJECT_TYPE_LABEL } from "./object-type";
 
 /**
- * AIM karta v natívnom paneli ifclite — render schéma posielaná cez
- * aim-bridge do embednutého viewera (AIM_PANEL_DATA). Viewer ju vykresľuje
- * genericky (apps/viewer/src/aim/AimCard.tsx vo forku), takže nové polia /
- * sekcie sa pridávajú len tu (host deploy), bez redeployu viewera.
+ * AIM card in the native ifclite panel - render schema sent via
+ * aim-bridge to the embedded viewer (AIM_PANEL_DATA). The viewer renders it
+ * generically (apps/viewer/src/aim/AimCard.tsx in the fork), so new fields /
+ * sections are added only here (host deploy), without redeploying the viewer.
  *
- * Všetky `href` sú host-relatívne cesty (/node/{id}, /type/{id},
- * /drawing/{id}); viewer ich neinterpretuje, len ich pošle späť cez
- * AIM_NAVIGATE a parent appka naviguje.
+ * All `href`s are host-relative paths (/node/{id}, /type/{id},
+ * /drawing/{id}); the viewer does not interpret them, it only sends them back via
+ * AIM_NAVIGATE and the parent app navigates.
  */
 export interface AimPanelData {
-  /** v2 (D-077) je aditívna — všetky v2 polia sú voliteľné, v1 render beží ďalej. */
+  /** v2 (D-077) is additive - all v2 fields are optional, the v1 render keeps working. */
   version: 1 | 2;
-  /** Echo GUID-u vybraného elementu — viewer ním zahadzuje stale odpovede. */
+  /** Echo of the selected element's GUID - the viewer uses it to discard stale responses. */
   guid: string;
   title: string;
   subtitle?: string;
@@ -29,58 +29,58 @@ export interface AimPanelData {
     rows: { label: string; value: string; href?: string; mono?: boolean }[];
   }[];
   /**
-   * Dokumenty prvku. `documentId`, `page` a `via` (D-104) sú voliteľné: s nimi viewer
-   * otvorí PDF sám na strane (AimCardDocumentWire vo forku), bez nich naviguje `href`.
+   * Element documents. `documentId`, `page` and `via` (D-104) are optional: with them the viewer
+   * opens the PDF itself on the page (AimCardDocumentWire in the fork), without them it navigates via `href`.
    */
   documents?: { name: string; href: string; badge?: string; documentId?: string; page?: number; via?: string; aim?: boolean }[];
   actions?: { label: string; href: string; primary?: boolean }[];
-  // --- v2 typované sekcie (D-077: AIM inspector) ---
-  /** Zodpovedné osoby/organizácie (rel_assigns_to_actor). */
+  // --- v2 typed sections (D-077: AIM inspector) ---
+  /** Responsible persons/organizations (rel_assigns_to_actor). */
   responsibilities?: { name: string; role: string; org?: string; href?: string }[];
-  /** Reality Capture súhrn — počet + host link na galériu priestoru. */
+  /** Reality Capture summary - count + host link to the space gallery. */
   captures?: { count: number; href: string };
   /**
-   * Médiá Reality Capture priestoru (D-131): vrstva AIM v paneli Documents ("Len pre
-   * výber"), vo vieweri zoskupené podľa `kindLabel` s odznakom AIM.
+   * Reality Capture media of the space (D-131): AIM layer in the Documents panel ("Selection
+   * only"), grouped in the viewer by `kindLabel` with an AIM badge.
    */
   captureMedia?: CaptureMediaEntry[];
-  /** História GUID (bitemporálna platnosť; `active` = aktuálny GUID). */
+  /** GUID history (bitemporal validity; `active` = current GUID). */
   history?: { guid: string; validFrom: string; validUntil?: string; active: boolean }[];
-  /** Posledná zmena prvku receptom (D-129): revízia modelu a BCF téma; riadok s odznakom AIM v IFC paneli. */
+  /** Last change of the element by a recipe (D-129): model revision and BCF topic; row with an AIM badge in the IFC panel. */
   lastChange?: { model: string; revision: string; title: string; date: string };
-  // --- vrstva AIM (D-089 fáza B) ---
-  /** Odvodené vzťahy prvku pre Relationship records s odznakom AIM (orezané na smer). */
+  // --- AIM layer (D-089 phase B) ---
+  /** Derived relations of the element for Relationship records with an AIM badge (trimmed per direction). */
   derivedRelations?: DerivedRelationWire[];
-  /** Celkový počet odvodených vzťahov pred orezaním. */
+  /** Total number of derived relations before trimming. */
   derivedTotal?: number;
 }
 
 /**
- * Obohatený detail elementu z GET /api/element/[id] (D-077): NodeSummary +
- * sekcie uzla (zodpovednosti, história GUID) + capture súhrn. Aditívne nad
- * NodeSummary — starší klient (ElementInfoPanel pred D-077) polia ignoruje.
+ * Enriched element detail from GET /api/element/[id] (D-077): NodeSummary +
+ * node sections (responsibilities, GUID history) + capture summary. Additive over
+ * NodeSummary - an older client (ElementInfoPanel before D-077) ignores the fields.
  */
 export interface ElementDetail extends NodeSummary {
   responsibilities?: NodeSectionsData["responsibilities"];
   guidHistory?: NodeSectionsData["guidHistory"];
   captures?: CaptureSummary | null;
-  /** Médiá Reality Capture priestoru (D-131) - `captureMediaEntries`. */
+  /** Reality Capture media of the space (D-131) - `captureMediaEntries`. */
   captureMedia?: CaptureMediaEntry[];
-  /** Posledná zmena receptom (D-129) - `fetchLastElementChange`. */
+  /** Last change by a recipe (D-129) - `fetchLastElementChange`. */
   lastChange?: { model: string; revision: string; title: string; date: string } | null;
-  /** Odvodené vzťahy (D-089) - `fetchDerivedRelations`. */
+  /** Derived relations (D-089) - `fetchDerivedRelations`. */
   derived?: { relations: DerivedRelationWire[]; total: number };
   /**
-   * Dokumenty prvku cez vzťahy (D-104, `v_object_documents`) s druhom (kód ISO 19650);
-   * chýba, ak sa nepodarilo načítať - karta potom ukáže priame väzby ako predtým.
+   * Element documents via relations (D-104, `v_object_documents`) with their kind (ISO 19650 code);
+   * missing if loading failed - the card then shows direct links as before.
    */
   effectiveDocuments?: (ObjectDocument & { typeCode?: string })[];
 }
 
-/** Strop dokumentov v karte; plný zoznam je v paneli Dokumenty ("len pre výber"). */
+/** Cap on documents in the card; the full list is in the Documents panel ("selection only"). */
 const CARD_DOCUMENTS_MAX = 40;
 
-/** Odznak typu v paneli; neznámy typ = "Prvok" (zóny, projekt a skupiny majú vlastný, D-088). */
+/** Type badge in the panel; unknown type = "Prvok" (zones, project and groups have their own, D-088). */
 const TYPE_LABEL: Record<string, string> = {
   asset: "Asset",
   asset_type: "Typ assetu",
@@ -91,16 +91,16 @@ const TYPE_LABEL: Record<string, string> = {
   ),
 };
 
-/** `2026-07-12T09:31:00Z` → `2026-07-12` (render histórie; null → prázdny string). */
+/** `2026-07-12T09:31:00Z` -> `2026-07-12` (history render; null -> empty string). */
 function shortDate(ts: string | null): string {
   return ts ? ts.slice(0, 10) : "";
 }
 
 /**
- * ElementDetail (GET /api/element/[id]) → render schéma AIM karty/inspectora.
- * v2 (D-077): typované sekcie zodpovedností, capture súhrnu a histórie GUID
- * sa mapujú z obohateného detailu; `captures` parameter ostáva pre spätnú
- * kompatibilitu volajúcich (D-073) a má prednosť pred `summary.captures`.
+ * ElementDetail (GET /api/element/[id]) -> render schema of the AIM card/inspector.
+ * v2 (D-077): typed sections of responsibilities, capture summary and GUID history
+ * are mapped from the enriched detail; the `captures` parameter stays for backward
+ * compatibility of callers (D-073) and takes precedence over `summary.captures`.
  */
 export function nodeSummaryToAimPanel(
   summary: ElementDetail,
@@ -132,8 +132,8 @@ export function nodeSummaryToAimPanel(
   if (ifcRows.length > 0) sections.push({ label: "IFC", rows: ifcRows });
   sections.push({ label: "Prehľad", rows: overviewRows });
 
-  // Capture súhrn: explicitný parameter (D-073 volajúci) má prednosť pred
-  // hodnotou z obohateného detailu (D-077 route).
+  // Capture summary: the explicit parameter (D-073 callers) takes precedence over
+  // the value from the enriched detail (D-077 route).
   const cap = captures ?? summary.captures ?? null;
 
   return {
@@ -143,8 +143,8 @@ export function nodeSummaryToAimPanel(
     subtitle: summary.objectRef ?? undefined,
     badges: [{ label: TYPE_LABEL[summary.objectType] ?? "Prvok", tone: "accent" }],
     sections,
-    // D-104: dokumenty aj cez zónu, podlažie, typ a skupinu, so stranou a cestou; viewer
-    // ich otvorí sám. Bez nich (chyba čítania) priame väzby na /drawing/{id} ako predtým.
+    // D-104: documents also via zone, storey, type and group, with page and path; the viewer
+    // opens them itself. Without them (read error) direct links to /drawing/{id} as before.
     documents: summary.effectiveDocuments
       ? summary.effectiveDocuments.slice(0, CARD_DOCUMENTS_MAX).map((d) => ({
           name: d.name ?? d.identification ?? d.documentId,
@@ -153,7 +153,7 @@ export function nodeSummaryToAimPanel(
           documentId: d.documentId,
           ...(d.page ? { page: d.page } : {}),
           via: viaText(d),
-          // D-129: priamo a cez typ sú v IFC; zdedené cez zónu, podlažie, skupinu... sú AIM vrstva.
+          // D-129: direct and via type are in the IFC; inherited via zone, storey, group... are the AIM layer.
           ...(d.via !== "direct" && d.via !== "type" ? { aim: true } : {}),
         }))
       : summary.documents.map((d) => ({
@@ -161,7 +161,7 @@ export function nodeSummaryToAimPanel(
           href: `/drawing/${d.id}`,
           badge: d.isDrawing ? "výkres" : undefined,
         })),
-    // v2 (D-077): zodpovednosti s preklikom na aktora, história GUID read-only.
+    // v2 (D-077): responsibilities with a click-through to the actor, GUID history read-only.
     responsibilities: summary.responsibilities?.map((r) => ({
       name: r.actorName ?? r.actorRef ?? r.actorId,
       role: r.role,
@@ -184,7 +184,7 @@ export function nodeSummaryToAimPanel(
     derivedTotal: summary.derived?.relations.length ? summary.derived.total : undefined,
     actions: [
       { label: "Otvoriť celý detail", href: `/${summary.route}/${summary.id}`, primary: true },
-      // Reality Capture (D-073) — otvorí galériu priestoru ako overlay nad 3D.
+      // Reality Capture (D-073) - opens the space gallery as an overlay over 3D.
       ...(cap && cap.count > 0 && cap.spaceId
         ? [
             {

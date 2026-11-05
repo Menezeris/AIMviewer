@@ -44,7 +44,7 @@ describe("výber viewera (D-116)", () => {
   });
 });
 
-/** Falošné GitHub API: PR 73 má hotový náhľad, PR 74 ešte nie, PR 75 cudziu URL. */
+/** Fake GitHub API: PR 73 has a finished preview, PR 74 not yet, PR 75 a foreign URL. */
 function fakeGithub() {
   const routes: Record<string, unknown> = {
     "/repos/Menezeris/ifc-lite/pulls?state=open&sort=updated&direction=desc&per_page=20": [

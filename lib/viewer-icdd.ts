@@ -1,8 +1,8 @@
 /**
- * Export a kontrola ICDD z AIM ribbonu viewera (D-181, Samuel 31. 10.: "tlačidlo na ribbon AIM").
- * Wire formát: viewer -> host `ICDD_EXPORT {id}` a `ICDD_CHECK {id, name, bytes: ArrayBuffer}`,
- * host -> viewer `ICDD_STATUS {id, op, phase, message, result?}`. Prácu robí host (D-091): stiahne payloady,
- * zloží kontajner a uloží ho cez download v okne hosta; viewer len ukáže stav.
+ * ICDD export and check from the AIM ribbon of the viewer (D-181, Samuel, 31 Oct: "a button on the AIM ribbon").
+ * Wire format: viewer -> host `ICDD_EXPORT {id}` and `ICDD_CHECK {id, name, bytes: ArrayBuffer}`,
+ * host -> viewer `ICDD_STATUS {id, op, phase, message, result?}`. The host does the work (D-091): fetches the payloads,
+ * assembles the container and saves it via download in the host window; the viewer only shows the status.
  */
 
 import type { CheckResult, ExportResult } from "@/lib/icdd/client";
@@ -23,7 +23,7 @@ export interface IcddStatus {
 
 const MAX_CHECK_BYTES = 512 * 1024 * 1024;
 
-/** Overí tvar správy z viewera; null = neplatná. */
+/** Validates the shape of a message from the viewer; null = invalid. */
 export function parseIcddRequest(data: unknown): IcddRequest | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
@@ -82,7 +82,7 @@ export interface IcddDeps {
   download: (bytes: Uint8Array, filename: string, mime?: string) => void;
 }
 
-/** Vykoná požiadavku a priebežne posiela `ICDD_STATUS`. Kontajner s chybou kontroly sa nestiahne. */
+/** Executes the request and sends `ICDD_STATUS` along the way. A container with a check error is not downloaded. */
 export async function runIcddRequest(req: IcddRequest, post: (s: IcddStatus) => void, deps: IcddDeps): Promise<void> {
   const send = (phase: IcddStatus["phase"], message: string, result?: Record<string, unknown>) =>
     post({ type: "ICDD_STATUS", id: req.id, op: req.op, phase, message, ...(result ? { result } : {}) });
@@ -92,7 +92,7 @@ export async function runIcddRequest(req: IcddRequest, post: (s: IcddStatus) => 
       const r = await deps.exportIcdd(progress, req.extras);
       if (r.report.ok) {
         deps.download(r.bytes, r.filename);
-        // xlsx výpis je mimo kontajnera (audit ICDD 1. 11.), stiahne sa vedľa neho
+        // the xlsx listing is outside the container (ICDD audit 1 Nov), it is downloaded next to it
         for (const f of r.sideFiles ?? []) deps.download(f.bytes, f.filename, f.mime);
       }
       send("done", r.report.ok ? `stiahnuté ${r.filename}` : "kontajner neprešiel kontrolou ISO 21597, nestiahol sa", exportSummary(r));
