@@ -7,7 +7,7 @@ import { kontrola } from "./kontrola";
 import { skladPamat, type Zmena } from "./zapis";
 
 const subory = JSON.parse(readFileSync(join(process.cwd(), "library", "korpus", "stromy", "vzor", "subory.json"), "utf8"));
-const ORAKULUM = JSON.parse(readFileSync(join(process.cwd(), "lib", "kniznica", "__fixtures__", "kontrola-orakulum.json"), "utf8")) as Array<{
+const ORAKULUM = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "__fixtures__", "kontrola-orakulum.json"), "utf8")) as Array<{
   nazov: string;
   vstup: { zmeny?: Zmena[]; nova?: Record<string, unknown> };
   vysledok: { ok: boolean; odmietnute: string[]; diagnostiky: Array<Record<string, unknown>> };

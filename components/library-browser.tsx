@@ -61,7 +61,7 @@ async function getJson<T>(url: string): Promise<T> {
   return body;
 }
 
-export function KniznicaPrehliadac({ initial }: { initial?: { kniznica?: string; cesta?: string } }) {
+export function LibraryBrowser({ initial }: { initial?: { kniznica?: string; cesta?: string } }) {
   const [rows, setRows] = useState<Riadok[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sel, setSel] = useState<{ kniznica: string; cesta: string } | null>(

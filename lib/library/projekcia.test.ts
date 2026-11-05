@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { projekcia } from "./projekcia";
 
 const vzor = JSON.parse(readFileSync(join(process.cwd(), "library", "korpus", "stromy", "vzor", "subory.json"), "utf8")) as Record<string, string>;
-const orakulum = JSON.parse(readFileSync(join(process.cwd(), "lib", "kniznica", "__fixtures__", "projekcia-vzor.json"), "utf8")) as {
+const orakulum = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "__fixtures__", "projekcia-vzor.json"), "utf8")) as {
   ocakavane: Record<string, unknown>;
 };
 

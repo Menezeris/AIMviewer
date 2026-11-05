@@ -23,7 +23,7 @@ describe("korpus zhody: validátor (krok 5 portu, D-186)", () => {
   }
 });
 
-const ORAKULUM = JSON.parse(readFileSync(join(process.cwd(), "lib", "kniznica", "__fixtures__", "validator-orakulum.json"), "utf8"));
+const ORAKULUM = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "__fixtures__", "validator-orakulum.json"), "utf8"));
 
 describe("validátor mimo korpusu (orákulum assetin-library f7c103c)", () => {
   for (const strom of ["vzor", "kniznica", "chybne"]) {

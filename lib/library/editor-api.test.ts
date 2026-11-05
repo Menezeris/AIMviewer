@@ -13,7 +13,7 @@ import { skladPamat } from "./zapis";
 
 const KORPUS = join(process.cwd(), "library", "korpus", "stromy");
 const subory = (strom: string) => JSON.parse(readFileSync(join(KORPUS, strom, "subory.json"), "utf8")) as Record<string, string>;
-const HTML = JSON.parse(readFileSync(join(process.cwd(), "lib", "kniznica", "__fixtures__", "editor-html-orakulum.json"), "utf8"));
+const HTML = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "__fixtures__", "editor-html-orakulum.json"), "utf8"));
 const ZAPIS = { zapis: true, vydanie: false };
 const bezInfo = async () => ({});
 

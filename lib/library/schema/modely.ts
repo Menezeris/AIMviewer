@@ -1,7 +1,7 @@
 /**
  * Schéma knižnice požiadaviek v zod (D-186 krok 2; port `assetin/schema`, schéma v1.5).
  *
- * Vznikla jednorazovo nástrojom `scripts/kniznica/zod-zo-schem.ts` z JSON Schema korpusu (pydantic) a odteraz je
+ * Vznikla jednorazovo nástrojom `scripts/library/zod-zo-schem.ts` z JSON Schema korpusu (pydantic) a odteraz je
  * pravdou schémy v TS: mení sa ručne a naraz s Pythonom, kým port trvá (assetin-library V30). Validátory, ktoré
  * JSON Schema nenesie, sú v `validatory.ts`; JSON Schema z tohto zdroja dáva `jsonSchema.ts`, zhodu s korpusom
  * stráži `schema.test.ts`.

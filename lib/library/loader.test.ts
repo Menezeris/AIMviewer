@@ -37,7 +37,7 @@ describe("loader mimo korpusu: diagnostiky (kľúč note_id, json_pointer, urove
     expect(() => rozober("ine/X.md")).toThrow(/mimo vrstiev/);
   });
 
-  const orakulum = JSON.parse(readFileSync(join(process.cwd(), "lib", "kniznica", "__fixtures__", "loader-diagnostiky.json"), "utf8")) as {
+  const orakulum = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "__fixtures__", "loader-diagnostiky.json"), "utf8")) as {
     pripady: Record<string, { cesta: string; text: string; ocakavane: unknown[] }>;
   };
   for (const [nazov, p] of Object.entries(orakulum.pripady)) {
