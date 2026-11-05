@@ -1,7 +1,7 @@
--- D-185 UI: stĺpce inputs a explanation (migrácia supabase/migrations/20261102230000_verification_inputs.sql, aplikovaná 2. 11.).
--- Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
+-- D-185 UI: columns inputs and explanation (migration supabase/migrations/20261102230000_verification_inputs.sql, applied 2. 11.).
+-- Run on a local DB with the migrations applied (never production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/verification_inputs.sql
--- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
+-- Everything runs in a transaction and ends with ROLLBACK; a failure = an exception with a description.
 begin;
 \ir _legacy_ocb.sql
 

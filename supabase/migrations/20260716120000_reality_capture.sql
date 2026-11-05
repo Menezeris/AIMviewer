@@ -1,68 +1,68 @@
 -- =============================================================================
--- D-073 — Reality Capture v1 (fotky + statické 360° panorámy)
+-- D-073 - Reality Capture v1 (photos + static 360° panoramas)
 -- =============================================================================
--- Aditívna migrácia (AGENTS.md: migrácie sa nikdy nemažú ani needitujú).
+-- Additive migration (AGENTS.md: migrations are never deleted or edited).
 --
--- Vizuálna pasportizácia reality naviazaná na model (D-065 „platform feature":
--- 360°/2D/3D prepojené na IFC). Model presne v duchu „ako dokumenty" (D-014/D-032):
---   * capture point  = objects riadok object_type='capture'  + tenká prípona `captures`.
---                      Ukotvenie (2D plán pin + 3D world pin) žije v rezervovanom
---                      properties._capture JSONB (vzor _georef, D-072) — bez stĺpcov,
---                      versioned + validované v app vrstve.
---   * capture médium = objects riadok object_type='capture_media' + prípona
---                      `capture_media` (analóg `documents`: location=verejná URL,
---                      storage_type, rozmery, captured_at, valid_from/valid_until).
--- Verzovanie tej istej lokácie v čase = viac capture_media na jeden capture point,
--- append-only (valid_until IS NULL = aktuálna verzia; nič sa needituje in-place).
+-- Visual condition survey of reality tied to the model (D-065 "platform feature":
+-- 360°/2D/3D linked to IFC). The model follows exactly the spirit of "like documents" (D-014/D-032):
+--   * capture point  = objects row object_type='capture'  + thin extension `captures`.
+--                      The anchoring (2D plan pin + 3D world pin) lives in the reserved
+--                      properties._capture JSONB (pattern of _georef, D-072) - no columns,
+--                      versioned + validated in the app layer.
+--   * capture medium = objects row object_type='capture_media' + extension
+--                      `capture_media` (analog of `documents`: location=public URL,
+--                      storage_type, dimensions, captured_at, valid_from/valid_until).
+-- Versioning of the same location over time = several capture_media per capture point,
+-- append-only (valid_until IS NULL = current version; nothing is edited in place).
 --
--- HRANY (D-051 meta-model): dve NOVÉ `aim_`-namespace položky v manifeste
--- `relationship_types`. IFC pre „reality-capture bod s verzovaným médiom" nemá
--- čistý koncept → `aim_` namespace + export do ICDD linksetu (D-015/D-048 konvencia;
--- toto sú PRVÉ aim_ hrany, dovtedy len dopredná konvencia). Zámerne NErozširujeme
--- `rel_contained_in_spatial_structure` o object_type 'capture' — držíme captures mimo
--- IFC-kanonických asset/priestorových čítaní (žiadny leak do „prvky v priestore").
---   * aim_rel_capture_located  capture → space|floor  (kde capture je; unique-active)
---   * aim_rel_capture_media     capture → capture_media (jeho snímky/verzie; 1:N)
--- Obojsmernosť („fotky priestoru" ↔ „priestor fotky") padá z hrany zadarmo.
+-- EDGES (D-051 meta-model): two NEW `aim_`-namespace entries in the manifest
+-- `relationship_types`. IFC has no clean concept for a "reality-capture point with versioned media"
+-- → `aim_` namespace + export to an ICDD linkset (D-015/D-048 convention;
+-- these are the FIRST aim_ edges, until now only a forward convention). We deliberately do NOT extend
+-- `rel_contained_in_spatial_structure` with object_type 'capture' - we keep captures out of
+-- the IFC-canonical asset/spatial reads (no leak into "elements in a space").
+--   * aim_rel_capture_located  capture → space|floor  (where the capture is; unique-active)
+--   * aim_rel_capture_media     capture → capture_media (its images/versions; 1:N)
+-- Bidirectionality ("photos of a space" ↔ "space of a photo") falls out of the edge for free.
 --
--- Úložisko: verejný Supabase Storage bucket `captures` (vzor `documents`/`ifc`) —
--- bucket sa zakladá idempotentne z app upload route (nie SQL migráciou; Storage
--- žije mimo public schémy). Serving = priama public CDN URL v capture_media.location.
+-- Storage: public Supabase Storage bucket `captures` (pattern `documents`/`ifc`) -
+-- the bucket is created idempotently from the app upload route (not by an SQL migration;
+-- Storage lives outside the public schema). Serving = direct public CDN URL in capture_media.location.
 -- =============================================================================
 
 begin;
 
 -- -----------------------------------------------------------------------------
--- 1) Typové prípony (1:1 k objects, ON DELETE CASCADE) — štýl documents/floors
+-- 1) Type extensions (1:1 to objects, ON DELETE CASCADE) - style of documents/floors
 -- -----------------------------------------------------------------------------
 
--- Capture point: registrácia lokácie. `kind` diskriminuje médium; ukotvenie
--- (plán/world/yaw) je v objects.properties._capture (rezervovaný _kľúč, §4).
+-- Capture point: registration of a location. `kind` discriminates the medium; the anchoring
+-- (plan/world/yaw) is in objects.properties._capture (reserved _key, §4).
 create table captures (
   id   uuid primary key references objects(id) on delete cascade,
-  kind text not null                 -- 'photo' | 'pano360' (validované v app/ETL, nie CHECK — D-018)
+  kind text not null                 -- 'photo' | 'pano360' (validated in the app/ETL, not CHECK - D-018)
 );
 
--- Jedna snímka / verzia viazaná na capture point (analóg IfcDocumentInformation).
+-- One image / version tied to a capture point (analog of IfcDocumentInformation).
 create table capture_media (
   id               uuid primary key references objects(id) on delete cascade,
-  location         text,             -- verejná URL originálu (Supabase Storage)
-  preview_location text,             -- zmenšený equirect/foto náhľad (rýchle načítanie)
-  thumb_location   text,             -- thumbnail (galéria / pin)
-  storage_type     text not null default 'supabase',   -- ako documents.storage_type (D-032)
-  media_type       text,             -- 'image/jpeg' | 'image/png' …
+  location         text,             -- public URL of the original (Supabase Storage)
+  preview_location text,             -- reduced equirect/photo preview (fast loading)
+  thumb_location   text,             -- thumbnail (gallery / pin)
+  storage_type     text not null default 'supabase',   -- like documents.storage_type (D-032)
+  media_type       text,             -- 'image/jpeg' | 'image/png' ...
   width            int,
   height           int,
-  captured_at      timestamptz,      -- DÁTUM SNÍMANIA → poradie verzií lokácie v čase
+  captured_at      timestamptz,      -- CAPTURE DATE → order of the location's versions over time
   valid_from       timestamptz not null default now(),
-  valid_until      timestamptz       -- NULL = aktuálna verzia (append-only, nikdy nemazať)
+  valid_until      timestamptz       -- NULL = current version (append-only, never delete)
 );
 create index on capture_media (valid_until);
 
 -- -----------------------------------------------------------------------------
--- 2) Manifest hrán — dve nové aim_ položky (D-051/D-048)
+-- 2) Edge manifest - two new aim_ entries (D-051/D-048)
 --    is_ifc_rel=false, namespace='aim', export_path='icdd' (ICDD linkset, D-015).
---    ifc_entity/ifc_family = null (IFC nemá koncept).
+--    ifc_entity/ifc_family = null (IFC has no such concept).
 -- -----------------------------------------------------------------------------
 insert into relationship_types
   (rel_type, ifc_entity, ifc_family, is_ifc_rel, relating_end,
@@ -79,8 +79,8 @@ values
    'Reality-capture bod → jeho snímky/verzie (D-073). 1:N, append-only cez valid_from/valid_until.');
 
 -- -----------------------------------------------------------------------------
--- 3) Kanonické views (rovnaký vzor ako rel_* views) — čítacia vrstva captures
---    dotazuje tieto, nie base `relationships`.
+-- 3) Canonical views (same pattern as the rel_* views) - the read layer of captures
+--    queries these, not the base `relationships`.
 -- -----------------------------------------------------------------------------
 create view aim_rel_capture_located as
   select id, from_id, to_id, valid_from, valid_until, source
@@ -91,17 +91,17 @@ create view aim_rel_capture_media as
   from relationships where rel_type = 'aim_rel_capture_media';
 
 -- -----------------------------------------------------------------------------
--- 4) Integrita + hot-path indexy (per rel_type literál, vzor §2.6)
+-- 4) Integrity + hot-path indexes (per rel_type literal, pattern §2.6)
 -- -----------------------------------------------------------------------------
--- unique-active-parent: 1 aktívny priestor na capture (zodpovedá unique_active_from).
+-- unique-active-parent: 1 active space per capture (corresponds to unique_active_from).
 create unique index uniq_active_capture_located on relationships (from_id)
   where rel_type = 'aim_rel_capture_located' and valid_until is null;
 
--- „médiá tohto capture pointu" (galéria/verzie) — časté čítanie po from_id.
+-- "media of this capture point" (gallery/versions) - frequent read by from_id.
 create index idx_relationships_capture_media_from on relationships (from_id)
   where rel_type = 'aim_rel_capture_media';
 
--- „captures v tomto priestore" (obojsmernosť) — čítanie po to_id.
+-- "captures in this space" (bidirectionality) - read by to_id.
 create index idx_relationships_capture_located_to on relationships (to_id)
   where rel_type = 'aim_rel_capture_located';
 

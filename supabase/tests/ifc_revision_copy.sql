@@ -1,5 +1,5 @@
--- D-183 K2: kópia revízie (ifc_rev_*), ifc_rev_storey_elements, ifc_rev_compare.
--- Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
+-- D-183 K2: revision copy (ifc_rev_*), ifc_rev_storey_elements, ifc_rev_compare.
+-- Run on a local DB with the migrations applied (never production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/ifc_revision_copy.sql
 begin;
 \ir _legacy_ocb.sql
@@ -11,7 +11,7 @@ insert into ifc_rev_imports (model, revision, sha256, status, hash_version) valu
   ('TST', 1, repeat('a', 64), 'done', 1),
   ('TST', 2, repeat('b', 64), 'done', 1);
 
--- v1: podlažia, systém, potrubie P1 a P2, vyústka V s typom T, klapka K v 2NP
+-- v1: storeys, system, pipes P1 and P2, outlet V with type T, damper K in 2NP
 insert into ifc_rev_objects (model, revision, global_id, ifc_class, attributes, content_hash)
 select 'TST', r, g, c, a::jsonb, md5(a || c) from (values
   ('S2', 'IfcBuildingStorey', '{"Name": "2NP"}'), ('S3', 'IfcBuildingStorey', '{"Name": "3NP"}'),
@@ -20,7 +20,7 @@ select 'TST', r, g, c, a::jsonb, md5(a || c) from (values
   ('V', 'IfcAirTerminal', '{"Name": "VV.1"}'), ('T', 'IfcAirTerminalType', '{"Name": "Typ"}'),
   ('K', 'IfcDamper', '{"Name": "KL.1"}')) v(g, c, a), (values (1), (2)) rr(r)
 where not (r = 2 and g = 'P2');
--- v2: P2 zmazané, N pridané, V premenované
+-- v2: P2 deleted, N added, V renamed
 insert into ifc_rev_objects (model, revision, global_id, ifc_class, attributes, content_hash) values
   ('TST', 2, 'N', 'IfcAirTerminal', '{"Name": "VV.NEW"}', 'n');
 update ifc_rev_objects set attributes = '{"Name": "VV.1-X"}', content_hash = 'v2' where revision = 2 and global_id = 'V';
@@ -32,7 +32,7 @@ select 'TST', r, c, a, b, 'x', 'y', md5(c || a || b) from (values
   ('IfcRelAssignsToGroup', 'SYS', 'P1'), ('IfcRelAssignsToGroup', 'SYS', 'P2'), ('IfcRelAssignsToGroup', 'SYS', 'K'),
   ('IfcRelAssignsToGroup', 'ODV', 'V'), ('IfcRelDefinesByType', 'T', 'V')) v(c, a, b), (values (1), (2)) rr(r)
 where not (r = 2 and (b = 'P2' or (b = 'K' and c = 'IfcRelContainedInSpatialStructure')));
--- v2: K presunutá do 3NP
+-- v2: K moved to 3NP
 insert into ifc_rev_relationships (model, revision, rel_class, relating, related, relating_class, related_class, content_hash) values
   ('TST', 2, 'IfcRelContainedInSpatialStructure', 'S3', 'K', 'x', 'y', 'k3');
 
@@ -40,7 +40,7 @@ insert into ifc_rev_property_sets (model, revision, global_id, pset_name, pset_c
 select 'TST', r, g, n, 'IfcPropertySet', p::jsonb, md5(p) from (values
   ('P1', 'Qto_DuctSegmentBaseQuantities', '{"Length": 2.4, "Width": 0.2}'),
   ('T', 'Pset_ManufacturerTypeInformation', '{"Manufacturer": "ACME"}')) v(g, n, p), (values (1), (2)) rr(r);
--- v2: jedna hodnota Qto a pset typu
+-- v2: one Qto value and a type pset
 update ifc_rev_property_sets set properties = '{"Length": 2.1, "Width": 0.2}', content_hash = 'q2' where revision = 2 and global_id = 'P1';
 update ifc_rev_property_sets set properties = '{"Manufacturer": "INÝ"}', content_hash = 't2' where revision = 2 and global_id = 'T';
 
@@ -70,7 +70,7 @@ begin
   if j is not null then raise exception 'podlažie nemá byť MODIFIED pri presune klapky: %', j; end if;
 end $$;
 
--- "zmenené cez typ": výskyt bez vlastnej zmeny dostane poznámku, zostane NOCHANGE
+-- "changed via type": an occurrence without its own change gets a note, stays NOCHANGE
 update ifc_rev_objects set attributes = '{"Name": "VV.1"}', content_hash = md5('{"Name": "VV.1"}' || 'IfcAirTerminal')
  where revision = 2 and global_id = 'V';
 do $$
@@ -83,7 +83,7 @@ begin
   if (select count(*) from ifc_rev_compare('TST', 1, 1, '9e2dfcba-437b-43d3-a925-0dd29f195b38')) <> 0 then raise exception 'revízia sama so sebou má zmeny'; end if;
 end $$;
 
--- bez hotovej kópie sa nič nevracia, chyba povie, čo spustiť
+-- without a finished copy nothing is returned, the error says what to run
 insert into model_revisions (model, revision, parent_revision, is_current, sha256, size_bytes, archive_path)
 values ('TST', 3, 2, false, repeat('c', 64), 1, 'x');
 insert into ifc_rev_imports (model, revision, sha256, status, hash_version, error) values ('TST', 3, repeat('c', 64), 'failed', 1, 'x');
@@ -95,7 +95,7 @@ exception when raise_exception then
   if sqlerrm not like '%etl.revision_copy%' then raise; end if;
 end $$;
 
--- zmazanie poslednej revízie zmaže aj jej kópiu
+-- deleting the last revision also deletes its copy
 delete from model_revisions where model = 'TST' and revision = 3;
 delete from model_revisions where model = 'TST' and revision = 2;
 do $$

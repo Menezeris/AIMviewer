@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { stav } from "@/lib/kniznica/editor-api";
-import { brana, kodKniznice, NO_STORE, neznamaKniznica } from "@/lib/kniznica/editor-server";
+import { stav } from "@/lib/library/editor-api";
+import { brana, kodKniznice, NO_STORE, neznamaKniznica } from "@/lib/library/editor-server";
 import { withRequestProject } from "@/lib/project/request";
 
 /** The editor page asks whether it runs under a server and may save (`assetin/server` `/api/stav`). */

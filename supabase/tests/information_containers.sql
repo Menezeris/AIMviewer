@@ -1,10 +1,10 @@
--- D-183 K1: information_containers, container_revisions, podpis vstupu na behoch a kalibráciách, stale.
--- Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
+-- D-183 K1: information_containers, container_revisions, input signature on runs and calibrations, stale.
+-- Run on a local DB with the migrations applied (never production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/information_containers.sql
 begin;
 \ir _legacy_ocb.sql
 
--- Revízie modelu ASR (v0, potom v72 v hlavnej rade) a VZT v11.
+-- Revisions of model ASR (v0, then v72 in the main line) and VZT v11.
 insert into model_revisions (id, model, revision, parent_revision, is_current, sha256, size_bytes, archive_path, recipe_ref, author, created_at) values
   ('00000000-0000-4000-8000-0000000000c0', 'ASR', 0, null, false, repeat('a', 64), 100, 'ifc/archive/ASR/v000.ifc.gz', null, 'Samuel', '2026-06-30'),
   ('00000000-0000-4000-8000-0000000000c1', 'ASR', 72, 0, true, repeat('b', 64), 200, 'ifc/archive/ASR/v072.ifc.gz', 'recepty/ASR/v072.py@abc123', 'Samuel', '2026-10-18'),
@@ -35,7 +35,7 @@ begin
   if n is distinct from 1 then raise exception 'CreationTime / LastRevisionTime v72'; end if;
 end $$;
 
--- Hlavná rada, nemennosť, mazanie len poslednej (D-183 bod 10).
+-- Main line, immutability, delete only the last one (D-183 point 10).
 do $$
 declare n int;
 begin
@@ -81,7 +81,7 @@ end $$;
 insert into model_revisions (id, model, revision, parent_revision, is_current, sha256, size_bytes, archive_path, author, created_at) values
   ('00000000-0000-4000-8000-0000000000c1', 'ASR', 72, 0, true, repeat('b', 64), 200, 'ifc/archive/ASR/v072.ifc.gz', 'Samuel', '2026-10-18');
 
--- Dokument (PDF): revízia pri každom novom sha256, rovnaký obsah nič nepridá.
+-- Document (PDF): a revision on every new sha256, the same content adds nothing.
 insert into objects (id, object_type, object_ref, name) values
   ('00000000-0000-4000-8000-0000000000d1', 'document', 'D.1.1.09', 'Pôdorys 2NP'),
   ('00000000-0000-4000-8000-0000000000d2', 'document_reference', 'D.1.1.09#2', 'Strana 2');
@@ -104,7 +104,7 @@ begin
   if a is distinct from '1:ADDED:1,2:MODIFIED:3' then raise exception 'revízie dokumentu: %', a; end if;
 end $$;
 
--- Podpis behov a stale.
+-- Signature of runs and stale.
 insert into ids_runs (id, ids_title, ids_sha256, model_label, model_revisions, checked_at) values
   ('00000000-0000-4000-8000-0000000000e1', 'IDS-A', 'x', 'ASR', '{"ASR": 72}', now() - interval '1 hour'),
   ('00000000-0000-4000-8000-0000000000e2', 'IDS-B', 'x', 'ASR', '{}', now());
@@ -115,12 +115,12 @@ insert into ids_results (run_id, spec_name, status, ifc_guid) values
 insert into clash_tests (id, code, name, origin, rules) values
   ('00000000-0000-4000-8000-0000000000f0', 'VZT-NOSNE', 'VZT x nosné', 'default', '[{"id":"VZT-NOSNE","a":{"type":"*"}}]');
 insert into model_revisions (model, revision, parent_revision, is_current, sha256, size_bytes, archive_path) values
-  ('VZT', 12, 11, false, repeat('9', 64), 300, 'ifc/archive/VZT/v012.ifc.gz');  -- rovnaká veľkosť ako v11
+  ('VZT', 12, 11, false, repeat('9', 64), 300, 'ifc/archive/VZT/v012.ifc.gz');  -- same size as v11
 insert into clash_runs (id, test_id, test_code, rules_snapshot, models, engine, trigger, created_at) values
-  -- veľkosť ASR jednoznačná (v72), VZT nejednoznačná (v11 aj v12 majú 300) -> len ASR
+  -- ASR size is unambiguous (v72), VZT ambiguous (v11 and v12 both have 300) -> only ASR
   ('00000000-0000-4000-8000-0000000000f1', '00000000-0000-4000-8000-0000000000f0', 'VZT-NOSNE', '{}',
    '{"ASR": {"etag": "e", "size": 200}, "VZT": {"etag": "f", "size": 300}}', 'e', 'chat', now() - interval '1 hour'),
-  -- revízia z motora má prednosť pred veľkosťou
+  -- a revision from the engine takes precedence over size
   ('00000000-0000-4000-8000-0000000000f2', '00000000-0000-4000-8000-0000000000f0', 'VZT-NOSNE', '{}',
    '{"ASR": {"etag": "e", "size": 999, "revision": 72}, "VZT": {"etag": "f", "size": 300, "revision": 11}}', 'e', 'chat', now());
 insert into clash_results (run_id, clash_key, rule, status, severity, distance, a_guid, a_model, b_guid, b_model) values
@@ -148,7 +148,7 @@ begin
   if n is distinct from 1 then raise exception 'v_clash_summary based_on: %', n; end if;
 end $$;
 
--- Nová revízia VZT -> behy nad v11 sú zastarané.
+-- New VZT revision -> runs over v11 are stale.
 update model_revisions set is_current = false where model = 'VZT';
 update model_revisions set is_current = true where model = 'VZT' and revision = 12;
 do $$
@@ -162,7 +162,7 @@ begin
   if project_model_revisions_at('9e2dfcba-437b-43d3-a925-0dd29f195b38', '2026-10-20') is distinct from '{"ASR": 72}'::jsonb then raise exception 'revízie k času: %', project_model_revisions_at('9e2dfcba-437b-43d3-a925-0dd29f195b38', '2026-10-20'); end if;
 end $$;
 
--- Kalibrácie `_georef`: pečiatka pri zápise, prenos pri tej istej kalibrácii, nová pri inej.
+-- `_georef` calibrations: stamp on write, carry-over on the same calibration, a new one on a different one.
 insert into objects (id, object_type, object_ref, name, properties) values
   ('00000000-0000-4000-8000-0000000000d3', 'document', 'D.1.1.10', 'Pôdorys 3NP',
    '{"_georef": {"version": 2, "calibrations": [{"page": 1, "page_size": [10, 10], "storey_guid": "S", "storey_z": 3, "affine": [1,0,0,0,1,0], "calibration": [{"pdf_pt": [0,0], "ifc_m": [0,0]}], "source": "auto"}]}}');
@@ -209,7 +209,7 @@ begin
   if g -> 'model_revisions' is distinct from '{"ASR": 72, "VZT": 13}'::jsonb then raise exception 'v1: %', g; end if;
 end $$;
 
--- Práva.
+-- Rights.
 do $$
 declare t text;
 begin

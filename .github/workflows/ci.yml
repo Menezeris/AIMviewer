@@ -1,6 +1,6 @@
-# CI pre pull requesty a main (D-187): kontrola pred zlúčením je toto, nie náhľad Vercelu.
-# Bez tajomstiev: build ide proti falošnému PostgREST (scripts/ci/postgrest-stub.mjs) s dummy kľúčom,
-# lebo niektoré stránky (/kniznica, /icdd) sa predrenderujú pri builde a čítajú Supabase.
+# CI for pull requests and main (D-187): the pre-merge check is this, not the Vercel preview.
+# No secrets: the build runs against a fake PostgREST (scripts/ci/postgrest-stub.mjs) with a dummy key,
+# because some pages (/kniznica, /icdd) are prerendered at build time and read Supabase.
 name: ci
 
 on:
@@ -33,7 +33,7 @@ jobs:
       - name: tsc --noEmit
         run: npx tsc --noEmit
 
-      - name: eslint (zmenené súbory, nové chyby blokujú)
+      - name: eslint (changed files, new errors block)
         env:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
         run: |
@@ -43,7 +43,7 @@ jobs:
       - name: vitest run
         run: npx vitest run
 
-      - name: next build (falošný PostgREST, bez tajomstiev)
+      - name: next build (fake PostgREST, no secrets)
         env:
           SUPABASE_URL: http://127.0.0.1:54321
           SUPABASE_SERVICE_ROLE_KEY: ci-dummy-not-a-key

@@ -1,4 +1,4 @@
--- D-160: drawing_link_overrides. Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
+-- D-160: drawing_link_overrides. Run on a local DB with the migrations applied (never production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/drawing_link_overrides.sql
 begin;
 \ir _legacy_ocb.sql

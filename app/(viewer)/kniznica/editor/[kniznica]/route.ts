@@ -1,7 +1,7 @@
-import { dokument } from "@/lib/kniznica/editor-api";
-import { info, kodKniznice, neznamaKniznica, sklad } from "@/lib/kniznica/editor-server";
-import { vykresliHtml } from "@/lib/kniznica/nahlad";
-import { ZapisMigraciaChyba } from "@/lib/kniznica/sklad-db";
+import { dokument } from "@/lib/library/editor-api";
+import { info, kodKniznice, neznamaKniznica, sklad } from "@/lib/library/editor-server";
+import { vykresliHtml } from "@/lib/library/preview";
+import { ZapisMigraciaChyba } from "@/lib/library/store-db";
 
 /**
  * Requirements library editor in AIM (D-186 UI step): the same page as `assetin edit` (vendored `app.html`),

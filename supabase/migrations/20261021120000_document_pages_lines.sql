@@ -1,16 +1,16 @@
 -- =============================================================================
--- D-133 - Čiary výkresu pre automatickú kalibráciu podkladov: `document_pages.lines`
+-- D-133 - Drawing lines for automatic calibration of underlays: `document_pages.lines`
 -- =============================================================================
--- Kalibrácia podkladu (pôdorys, rez) dolaďuje polohu strany PDF na rez modelom
--- IFC. Potrebuje hrubé čiary výkresu (rezané konštrukcie); server parser PDF
--- nemá (D-123), preto ich vytiahne etl/pdf_text.py tým istým extraktorom ako
+-- Calibration of an underlay (floor plan, section) fine-tunes the position of the PDF page against a section of the
+-- IFC model. It needs the coarse lines of the drawing (cut constructions); the server has no
+-- PDF parser (D-123), so etl/pdf_text.py extracts them with the same extractor as
 -- `blocks`:
---   lines = {size: [W, H], segs: [[x1, y1, x2, y2, w]]} v bodoch strany, počiatok
---   vľavo dole (y hore, rovnako ako `_georef`), size = rozmer strany, w = hrúbka
---   čiary; len čiary od 0,99 pt a len vektorové výkresy (aspoň 200 takých
---   úsečiek na strane), inak null.
+--   lines = {size: [W, H], segs: [[x1, y1, x2, y2, w]]} in page points, origin
+--   bottom left (y up, same as `_georef`), size = page size, w = line
+--   width; only lines from 0.99 pt and only vector drawings (at least 200 such
+--   segments on the page), otherwise null.
 --
--- Migrácie sú ADITÍVNE - tento súbor sa nikdy needituje.
+-- Migrations are ADDITIVE - this file is never edited.
 
 begin;
 

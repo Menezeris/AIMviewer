@@ -1,22 +1,22 @@
 -- =============================================================================
--- D-123 - Text dokumentov s polohou: `document_pages.blocks` + `search_documents`
--- v jednom dokumente
+-- D-123 - Document text with position: `document_pages.blocks` + `search_documents`
+-- in a single document
 -- =============================================================================
--- `document_pages` bolo v produkcii prázdne: etl/pdf_text.py čítal len starý
--- manifest (E3), dokumenty z IFC (D-104) v ňom nie sú. Všetky ich PDF majú
--- textovú vrstvu, OCR netreba. `python -m etl.pdf_text --from-db` ich načíta zo
--- storage a k textu strany uloží riadky s polohou:
---   blocks = [{t: text riadku, x, y, w, h: bbox v % strany, počiatok vľavo hore}]
--- Tool z nich vráti výrez pre open_drawing region (D-117).
+-- `document_pages` was empty in production: etl/pdf_text.py read only the old
+-- manifest (E3), the documents from IFC (D-104) are not in it. All their PDFs have
+-- a text layer, no OCR needed. `python -m etl.pdf_text --from-db` loads them from
+-- storage and stores lines with a position alongside the page text:
+--   blocks = [{t: line text, x, y, w, h: bbox in % of the page, origin top left}]
+-- From them the tool returns the crop for the open_drawing region (D-117).
 --
--- search_documents dostane voliteľný doc_id (hľadanie len v jednom dokumente) a
--- slová dopytu hľadá ako prefixy so skrátenou koncovkou: slovenčina sa skloňuje
--- a 'simple' konfigurácia nemá stemming, takže "požiarna odolnosť" predtým
--- nenašla "požiarnej odolnosti".
--- Nová signatúra = drop + create (stará by ostala ako preťaženie a PostgREST by
--- volanie s dvoma parametrami nevedel jednoznačne priradiť).
+-- search_documents gets an optional doc_id (search in a single document only) and
+-- searches the query words as prefixes with a shortened ending: Slovak is inflected
+-- and the 'simple' configuration has no stemming, so "požiarna odolnosť" previously
+-- did not find "požiarnej odolnosti".
+-- New signature = drop + create (the old one would remain as an overload and PostgREST could not
+-- unambiguously match a call with two parameters).
 --
--- Migrácie sú ADITÍVNE - tento súbor sa nikdy needituje.
+-- Migrations are ADDITIVE - this file is never edited.
 
 begin;
 
@@ -81,7 +81,7 @@ $$;
 comment on function search_documents(text, int, uuid) is
   'D-063/D-123: fulltext nad extrahovaným textom PDF strán (document_pages), voliteľne v jednom dokumente.';
 
--- Práva ako ostatné RPC (migrácia 20261016120000): len service_role.
+-- Privileges like the other RPCs (migration 20261016120000): service_role only.
 revoke all on function search_documents(text, int, uuid) from anon, authenticated, public;
 grant execute on function search_documents(text, int, uuid) to service_role;
 

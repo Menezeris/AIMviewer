@@ -1,21 +1,21 @@
 -- =============================================================================
--- D-058 — Slovník psetov z reálnych dát: view `v_property_dictionary`
+-- D-058 - Pset dictionary from real data: view `v_property_dictionary`
 -- =============================================================================
--- Grounding pre LLM rozhranie (D-056/D-057): model nemá HÁDAŤ JSONB cesty do
--- `objects.properties` — view agreguje, ktoré psety × property v dátach reálne
--- existujú (per object_type × ifc_type), akého typu sú hodnoty, koľko objektov
--- ich nesie a ako hodnoty vyzerajú (vzorky + min/max pre numeriku).
+-- Grounding for the LLM interface (D-056/D-057): the model must not GUESS JSONB paths into
+-- `objects.properties` - the view aggregates which psets × properties actually
+-- exist in the data (per object_type × ifc_type), what type the values are, how many objects
+-- carry them and what the values look like (samples + min/max for numerics).
 --
--- Pokrýva štandardné (Pset_/Qto_) AJ custom psety (D-022 vrstva 3) — statická
--- IFC schéma custom psety nepozná, tento view áno (dopĺňa sa s D-061, statický
--- IFC slovník definícií). Rezervované `_kľúče` (meta, D-022) nie sú psety →
--- vynechané (`p.key !~ '^_'`).
+-- Covers standard (Pset_/Qto_) AND custom psets (D-022 layer 3) - the static
+-- IFC schema does not know custom psets, this view does (complemented by D-061, the static
+-- IFC dictionary of definitions). Reserved `_keys` (meta, D-022) are not psets →
+-- omitted (`p.key !~ '^_'`).
 --
--- Výkon: full scan + dvojité jsonb_each — pri ~10^3 objektoch jednotky ms.
--- Pri raste nad ~10^5 objektov prejsť na materialized view s refreshom po ETL
--- loade (poznámka v D-058); definícia sa tým nemení.
+-- Performance: full scan + double jsonb_each - a few ms at ~10^3 objects.
+-- When growing beyond ~10^5 objects switch to a materialized view with a refresh after the ETL
+-- load (note in D-058); the definition does not change.
 --
--- Migrácie sú ADITÍVNE — tento súbor sa nikdy needituje; staré sa nemažú.
+-- Migrations are ADDITIVE - this file is never edited; old ones are not deleted.
 
 begin;
 
@@ -28,7 +28,7 @@ select
   jsonb_typeof(a.value)                as value_type,
   count(*)::int                        as object_count,
   count(distinct a.value)::int         as distinct_values,
-  -- vzorky hodnôt (scalár bez JSON úvodzoviek, orezané na 60 znakov, max 5)
+  -- value samples (scalar without JSON quotes, trimmed to 60 characters, max 5)
   (array_agg(distinct left(a.value #>> '{}', 60)))[1:5] as sample_values,
   min(case when jsonb_typeof(a.value) = 'number'
            then (a.value #>> '{}')::numeric end)        as min_number,
@@ -46,5 +46,5 @@ comment on view v_property_dictionary is
 
 commit;
 
--- PostgREST musí nový view vidieť bez reštartu (Supabase).
+-- PostgREST must see the new view without a restart (Supabase).
 notify pgrst, 'reload schema';

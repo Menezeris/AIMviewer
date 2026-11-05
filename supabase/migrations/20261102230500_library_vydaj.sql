@@ -1,16 +1,16 @@
--- Port knižnice požiadaviek do TS, krok 6 (assetin-library V30, Q70; AIM D-186): vydanie knižnice z editora v AIM.
--- APLIKOVANÉ na produkciu 2. 11. 2026 (orchestrátor; definície funkcií overené md5 voči tomuto súboru). Vydanie v AIM je navyše za env bránou
--- LIBRARY_RELEASE_ENABLED (predvolene vypnutá, zapína sa na Samuelovo slovo; rola vydavateľa).
+-- Port of the requirements library to TS, step 6 (assetin-library V30, Q70; AIM D-186): library release from the editor in AIM.
+-- APPLIED to production 2. 11. 2026 (orchestrator; function definitions verified by md5 against this file). The release in AIM is additionally behind the env gate
+-- LIBRARY_RELEASE_ENABLED (off by default, switched on at Samuel's word; releaser role).
 --
--- Schéma `library` nie je v PostgREST vystavená; host (service_role) volá dve RPC v `public`:
---   library_vydaj(...)          = library.vytvor_vydanie (snímka hlavy, kontrola sha256 každého súboru = AS409)
---                                 a library.publikuj_ids (IDS do public.ids_documents) v JEDNEJ transakcii,
---                                 ako assetin/db/vydanie.py; AIM nikdy neuvidí IDS bez vydania.
---   library_vydanie_export(...) = cesta zipu exportu v Storage, zapísaná raz po úspešnom nahratí.
--- Bucket `library-exports` (súkromný) pre export vydania (Q64 a); zip nahráva len server (service_role).
--- EXECUTE len service_role; anon / authenticated nič (D-026). service_role má EXECUTE na library.vytvor_vydanie
--- a library.publikuj_ids a UPDATE na library.vydanie (overené 2. 11.), preto security invoker.
--- Rollback: drop function oboch; delete from storage.buckets where id = 'library-exports' (ak je prázdny).
+-- The `library` schema is not exposed in PostgREST; the host (service_role) calls two RPCs in `public`:
+--   library_vydaj(...)          = library.vytvor_vydanie (head snapshot, sha256 check of every file = AS409)
+--                                 and library.publikuj_ids (IDS into public.ids_documents) in ONE transaction,
+--                                 like assetin/db/vydanie.py; AIM never sees an IDS without a release.
+--   library_vydanie_export(...) = export zip path in Storage, written once after a successful upload.
+-- Bucket `library-exports` (private) for the release export (Q64 a); the zip is uploaded only by the server (service_role).
+-- EXECUTE only service_role; anon / authenticated none (D-026). service_role has EXECUTE on library.vytvor_vydanie
+-- and library.publikuj_ids and UPDATE on library.vydanie (verified 2. 11.), hence security invoker.
+-- Rollback: drop function of both; delete from storage.buckets where id = 'library-exports' (if empty).
 
 create or replace function public.library_vydaj(
   p_kniznica text,

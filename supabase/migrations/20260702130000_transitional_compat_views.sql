@@ -1,26 +1,26 @@
 -- =============================================================================
--- PRECHODNÉ backward-compat views (expand/contract) — D-048 bezvýpadkový cutover
+-- TRANSITIONAL backward-compat views (expand/contract) - D-048 zero-downtime cutover
 -- =============================================================================
--- Starý nasadený kód (main) dopytuje pôvodné názvy hrán. Po aplikovaní D-048 na
--- cloud by padol (tabuľky premenované/rozseknuté). Tieto views vystavia staré
--- názvy nad novými IFC-kanonickými tabuľkami (len na ČÍTANIE — appka je read-only),
--- takže:
---   • cloud sa dá migrovať kedykoľvek bez rozbitia živého viewera (main),
---   • preview build vetvy prejde (nový kód číta reálne tabuľky),
---   • po nasadení nového kódu (merge → main) tieto views zahodí cleanup migrácia.
+-- Old deployed code (main) queries the original edge names. After D-048 is applied to
+-- the cloud it would break (tables renamed/split). These views expose the old
+-- names over the new IFC-canonical tables (READ-ONLY - the app is read-only),
+-- so that:
+--   • the cloud can be migrated at any time without breaking the live viewer (main),
+--   • the branch preview build passes (new code reads the real tables),
+--   • after the new code is deployed (merge → main) the cleanup migration drops these views.
 --
--- NIE je súčasť cieľovej schémy — je to dočasný shim. Zahodiť po cutovere.
+-- NOT part of the target schema - it is a temporary shim. Drop after the cutover.
 -- =============================================================================
 
 begin;
 
--- rel_located_in = zjednotenie rozseknutých spatial hrán (bez `role`, ako pôvodne)
+-- rel_located_in = union of the split spatial edges (without `role`, as originally)
 create view rel_located_in as
   select id, from_id, to_id, valid_from, valid_until, source from rel_aggregates
   union all
   select id, from_id, to_id, valid_from, valid_until, source from rel_contained_in_spatial_structure;
 
--- čisté 1:1 premeny — rovnaké stĺpce, stačí select *
+-- pure 1:1 renames - same columns, select * is enough
 create view rel_defined_by_type   as select * from rel_defines_by_type;
 create view rel_has_document       as select * from rel_associates_document;
 create view rel_has_classification as select * from rel_associates_classification;

@@ -1,25 +1,25 @@
 -- =============================================================================
--- AIM Platform — migrácia: prípona `spaces` (IfcSpace.LongName) — D-040
+-- AIM Platform - migration: `spaces` extension (IfcSpace.LongName) - D-040
 -- =============================================================================
--- Aditívna migrácia (CLAUDE.md: migrácie sa nikdy nemažú ani needitujú).
+-- Additive migration (CLAUDE.md: migrations are never deleted or edited).
 --
--- `IfcSpace` má dva textové atribúty: `Name` = číslo miestnosti (`2.04`,
--- → objects.name) a `LongName` = popis funkcie (`Serverovňa`, `WC Muži`,
--- `Openspace - Západ`). Doteraz sa LongName nikde neukladal — priestory mali
--- vo Vieweri len číslo bez názvu.
+-- `IfcSpace` has two text attributes: `Name` = room number (`2.04`,
+-- → objects.name) and `LongName` = function description (`Serverovňa`, `WC Muži`,
+-- `Openspace - Západ`). Until now LongName was not stored anywhere - spaces had
+-- only a number without a name in the Viewer.
 --
--- Per konvencia (CLAUDE.md): IFC atribúty = stĺpce; typovo-špecifické → tenká
--- 1:1 prípona s `id` ako FK na objects(id) (ako `floors`/`documents`/`persons`).
+-- Per convention (CLAUDE.md): IFC attributes = columns; type-specific → thin
+-- 1:1 extension with `id` as FK to objects(id) (like `floors`/`documents`/`persons`).
 -- =============================================================================
 
-create table if not exists spaces (   -- IfcSpace (D-040); objects.name = číslo miestnosti
+create table if not exists spaces (   -- IfcSpace (D-040); objects.name = room number
   id        uuid primary key references objects(id) on delete cascade,
-  long_name text                       -- IfcSpace.LongName — popis funkcie miestnosti
+  long_name text                       -- IfcSpace.LongName - function description of the room
 );
 
 comment on table spaces is
   'Prípona priestoru — IfcSpace.LongName (popis funkcie). objects.name = číslo (D-040).';
 
--- v_spaces — analogicky k v_floors (CLAUDE.md SCHEMA §2: "v_spaces… analogicky").
+-- v_spaces - analogous to v_floors (CLAUDE.md SCHEMA §2: "v_spaces... analogously").
 create or replace view v_spaces as
   select o.*, s.long_name from objects o join spaces s using (id);

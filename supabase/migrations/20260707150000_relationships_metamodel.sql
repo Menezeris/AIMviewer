@@ -1,55 +1,55 @@
 -- =============================================================================
--- D-051 — Meta-model vzťahov B: generická `relationships` + kanonické views + manifest
+-- D-051 - Relationship meta-model B: generic `relationships` + canonical views + manifest
 -- =============================================================================
--- Revízia D-048: per-vzťah tabuľky `rel_*` sú SUPERSEDOVANÉ jednou generickou
--- tabuľkou `relationships` (diskriminátor `rel_type`, symetricky k `objects`).
--- Vlastný IFC meta-model je trojtabuľkový: objects (IfcObjectDefinition) +
--- relationships (IfcRelationship, objektifikovaný) + properties (IfcPropertyDefinition).
--- B škáluje na celé IFC bez migrácie za každý vzťah.
+-- Revision of D-048: the per-relationship `rel_*` tables are SUPERSEDED by one generic
+-- table `relationships` (discriminator `rel_type`, symmetric to `objects`).
+-- Our own IFC meta-model is a three-table one: objects (IfcObjectDefinition) +
+-- relationships (IfcRelationship, reified) + properties (IfcPropertyDefinition).
+-- B scales to the whole of IFC without a migration for every relationship.
 --
--- KRITICKÁ DELIACA ČIARA (D-048 ostáva v platnosti): preberáme z IFC identitu,
--- pomenovanie a granularitu vzťahov, NIE fyzickú serializačnú štruktúru. Hrany
--- ostávajú **binárne** `from_id→to_id` + naše meta stĺpce (valid_from/until/source/
--- role). N-árne = N riadkov (leaning binárne, D-051) — drží idempotenciu (D-031)
--- aj LLM-friendly views.
+-- CRITICAL DIVIDING LINE (D-048 remains in force): we adopt from IFC the identity,
+-- naming and granularity of relationships, NOT the physical serialization structure. Edges
+-- stay **binary** `from_id→to_id` + our meta columns (valid_from/until/source/
+-- role). N-ary = N rows (leaning binary, D-051) - keeps idempotency (D-031)
+-- and LLM-friendly views.
 --
--- Manifest (`relationship_types`) = jeden zdroj pravdy o `rel_type` (smer/IFC
--- Relating strana, povolené object_type oboch strán, namespace rel/aim, export
--- cesta, unique-active-parent). Generovaný a overený proti IFC schéme cez
--- `ifcopenshell` (etl/manifest.py, IFC-first D-046). Poháňa validačný trigger,
--- ETL routing aj export.
+-- Manifest (`relationship_types`) = single source of truth about `rel_type` (direction/IFC
+-- Relating side, allowed object_type of both sides, namespace rel/aim, export
+-- path, unique-active-parent). Generated and verified against the IFC schema via
+-- `ifcopenshell` (etl/manifest.py, IFC-first D-046). Drives the validation trigger,
+-- ETL routing and export.
 --
--- Bezvýpadkový cutover (vzor D-048): kanonické views nesú ROVNAKÉ názvy ako dnešné
--- tabuľky `rel_*` → čítacia vrstva (viewer/3D/filter) sa nemení vôbec. Zápis (ETL,
--- seed) ide na base tabuľku `relationships`.
+-- Zero-downtime cutover (pattern of D-048): canonical views carry the SAME names as today's
+-- `rel_*` tables → the read layer (viewer/3D/filter) does not change at all. Writes (ETL,
+-- seed) go to the base table `relationships`.
 --
--- Partície ODLOŽENÉ: `LIST` partícia podľa `rel_type` nesie constraint „PK musí
--- obsahovať partičný kľúč" → kolízia s `ON CONFLICT (id)` idempotenciou (D-031).
--- Zavedie sa len ak to objem vyžiada (dnes tisíce hrán → index na rel_type stačí).
+-- Partitions DEFERRED: a `LIST` partition by `rel_type` carries the constraint "PK must
+-- contain the partition key" → collision with `ON CONFLICT (id)` idempotency (D-031).
+-- To be introduced only if volume requires it (today thousands of edges → an index on rel_type suffices).
 --
--- Migrácie sú ADITÍVNE — tento súbor sa nikdy needituje; staré sa nemažú.
--- Dáta hrán sú regenerovateľné (ETL D-031 + seed) → split/backfill je bezpečný.
+-- Migrations are ADDITIVE - this file is never edited; old ones are not deleted.
+-- Edge data is regenerable (ETL D-031 + seed) → split/backfill is safe.
 -- =============================================================================
 
 begin;
 
 -- -----------------------------------------------------------------------------
--- 1) Manifest vzťahov — referenčná tabuľka `relationship_types` (D-051)
---    Generované z etl/manifest.py (`python -m etl.manifest --sql`), overené proti
---    IFC4X3 schéme. Regenerácia = ten skript; tu je commitnutý deterministický výstup.
+-- 1) Relationship manifest - reference table `relationship_types` (D-051)
+--    Generated from etl/manifest.py (`python -m etl.manifest --sql`), verified against the
+--    IFC4X3 schema. Regeneration = that script; the deterministic output is committed here.
 -- -----------------------------------------------------------------------------
 create table relationship_types (
-  rel_type            text primary key,      -- diskriminátor v `relationships`
-  ifc_entity          text,                  -- IFC kotva (IfcRelAggregates…); null = čisto aim_
-  ifc_family          text,                  -- rodina (IfcRelDecomposes…); null pre resource
-  is_ifc_rel          boolean not null,      -- true → serializuje sa na IfcRel*; false → resource/aim
-  relating_end        text not null,         -- 'from' | 'to' — ktorý koniec je IFC Relating
-  from_object_types   text[] not null,       -- povolené object_type subjektu (from_id)
-  to_object_types     text[] not null,       -- povolené object_type objektu (to_id); prázdne pri klasifikácii
-  to_is_classification boolean not null default false,  -- výnimka: to_id → classification_references
-  namespace           text not null,         -- 'rel' (IFC-kanonické) | 'aim' (naše rozšírenie, D-048)
+  rel_type            text primary key,      -- discriminator in `relationships`
+  ifc_entity          text,                  -- IFC anchor (IfcRelAggregates...); null = purely aim_
+  ifc_family          text,                  -- family (IfcRelDecomposes...); null for resource
+  is_ifc_rel          boolean not null,      -- true → serialized to IfcRel*; false → resource/aim
+  relating_end        text not null,         -- 'from' | 'to' - which end is the IFC Relating
+  from_object_types   text[] not null,       -- allowed object_type of the subject (from_id)
+  to_object_types     text[] not null,       -- allowed object_type of the object (to_id); empty for classification
+  to_is_classification boolean not null default false,  -- exception: to_id → classification_references
+  namespace           text not null,         -- 'rel' (IFC-canonical) | 'aim' (our extension, D-048)
   export_path         text not null,         -- 'ifcrel' | 'resource' | 'icdd' | 'ifcx'
-  unique_active_from  boolean not null default false,   -- unique-active-parent (1 aktívny rodič na from_id)
+  unique_active_from  boolean not null default false,   -- unique-active-parent (1 active parent per from_id)
   description         text,
   check (relating_end in ('from', 'to')),
   check (namespace in ('rel', 'aim')),
@@ -72,18 +72,18 @@ values
 
 
 -- -----------------------------------------------------------------------------
--- 2) Generická tabuľka hrán `relationships` (D-051)
---    Binárna from→to. `to_id` je POLYMORFNÉ (objects ALEBO classification_references)
---    → zámerne bez FK; integritu rieši validačný trigger z manifestu (nižšie).
---    `from_id` má FK+CASCADE na objects → reset (TRUNCATE objects CASCADE) aj
---    mazanie uzla ostáva bez osirelých hrán.
+-- 2) Generic edge table `relationships` (D-051)
+--    Binary from→to. `to_id` is POLYMORPHIC (objects OR classification_references)
+--    → deliberately without FK; integrity is handled by the validation trigger from the manifest (below).
+--    `from_id` has FK+CASCADE to objects → reset (TRUNCATE objects CASCADE) and
+--    node deletion leave no orphaned edges.
 -- -----------------------------------------------------------------------------
 create table relationships (
   id          uuid primary key default gen_random_uuid(),
   rel_type    text not null references relationship_types(rel_type),
-  from_id     uuid not null references objects(id) on delete cascade,  -- subjekt
-  to_id       uuid not null,                                           -- objekt (objects/classification_references)
-  role        text,                                                    -- len kde to typ vzťahu nesie
+  from_id     uuid not null references objects(id) on delete cascade,  -- subject
+  to_id       uuid not null,                                           -- object (objects/classification_references)
+  role        text,                                                    -- only where the relationship type carries it
   valid_from  timestamptz not null default now(),
   valid_until timestamptz,
   source      text
@@ -95,16 +95,16 @@ create index on relationships (rel_type, from_id);
 
 
 -- -----------------------------------------------------------------------------
--- 3) Views závislé od premenovaných tabuliek zrušíme, na konci obnovíme
+-- 3) Views depending on renamed tables are dropped, recreated at the end
 -- -----------------------------------------------------------------------------
 drop view if exists v_asset_classifications;
 drop view if exists v_asset_effective;
 
 
 -- -----------------------------------------------------------------------------
--- 4) Backfill z ôsmich per-vzťah tabuliek → `relationships`
---    id sa ZACHOVÁVA (stabilita, D-031). `role` len tam, kde ho tabuľka má.
---    Trigger ešte NEexistuje → backfill sa nevaliduje (dôveruje existujúcim dátam).
+-- 4) Backfill from the eight per-relationship tables → `relationships`
+--    id is PRESERVED (stability, D-031). `role` only where the table has it.
+--    The trigger does NOT exist yet → backfill is not validated (trusts existing data).
 -- -----------------------------------------------------------------------------
 insert into relationships (id, rel_type, from_id, to_id, role, valid_from, valid_until, source)
   select id, 'rel_aggregates',                     from_id, to_id, null, valid_from, valid_until, source from rel_aggregates
@@ -147,7 +147,7 @@ end $$;
 
 
 -- -----------------------------------------------------------------------------
--- 5) Zahodenie starých per-vzťah tabuliek (ruší aj ich indexy/uniq)
+-- 5) Dropping the old per-relationship tables (also drops their indexes/uniq)
 -- -----------------------------------------------------------------------------
 drop table rel_aggregates;
 drop table rel_contained_in_spatial_structure;
@@ -160,9 +160,9 @@ drop table rel_member_of;
 
 
 -- -----------------------------------------------------------------------------
--- 6) Kanonické views = ROVNAKÉ názvy ako dnešné tabuľky (bezvýpadkový cutover)
---    Zrkadlia pôvodné stĺpce (role len tam, kde ho tabuľka mala) → žiadny drift
---    pre čítaciu vrstvu. LLM/whitelist dotazuje LEN tieto views, nie base tabuľku.
+-- 6) Canonical views = SAME names as today's tables (zero-downtime cutover)
+--    They mirror the original columns (role only where the table had it) → no drift
+--    for the read layer. LLM/whitelist queries ONLY these views, not the base table.
 -- -----------------------------------------------------------------------------
 create view rel_aggregates as
   select id, from_id, to_id, valid_from, valid_until, source
@@ -198,9 +198,9 @@ create view rel_member_of as
 
 
 -- -----------------------------------------------------------------------------
--- 7) Integrita: parciálne unique + hot-path indexy (per rel_type literál)
---    unique-active-parent (D-021/D-048): 1 aktívny rodič na from_id pre
---    aggregates/contained/defines_by_type (`unique_active_from` v manifeste).
+-- 7) Integrity: partial unique + hot-path indexes (per rel_type literal)
+--    unique-active-parent (D-021/D-048): 1 active parent per from_id for
+--    aggregates/contained/defines_by_type (`unique_active_from` in the manifest).
 -- -----------------------------------------------------------------------------
 create unique index uniq_active_aggregate on relationships (from_id)
   where rel_type = 'rel_aggregates' and valid_until is null;
@@ -209,14 +209,14 @@ create unique index uniq_active_contained on relationships (from_id)
 create unique index uniq_active_defines_by_type on relationships (from_id)
   where rel_type = 'rel_defines_by_type' and valid_until is null;
 
--- E4 auto-linking hot-path (D-041): from_id výkresových väzieb (ekvivalent
--- pôvodného idx_rel_associates_document_e4_from).
+-- E4 auto-linking hot path (D-041): from_id of drawing links (equivalent
+-- to the original idx_rel_associates_document_e4_from).
 create index idx_relationships_e4_from on relationships (from_id)
   where rel_type = 'rel_associates_document' and source = 'pdf_link (E4)';
 
 
 -- -----------------------------------------------------------------------------
--- 8) Obnova odvodených views (nezmenená sémantika; čítajú kanonické views)
+-- 8) Restore derived views (unchanged semantics; they read the canonical views)
 -- -----------------------------------------------------------------------------
 create view v_asset_effective as
   select occ.id, occ.object_ref, occ.name, occ.ifc_type,
@@ -245,9 +245,9 @@ create view v_asset_classifications as
 
 
 -- -----------------------------------------------------------------------------
--- 9) Validačný trigger z manifestu (integrita bez polymorfného FK)
---    Vytvorený AŽ PO backfille → existujúce dáta sa nevalidujú; platí pre nové
---    a upravené hrany (ETL/seed/app). Náš objem = tisíce hrán → per-row lacné.
+-- 9) Validation trigger from the manifest (integrity without a polymorphic FK)
+--    Created only AFTER the backfill → existing data is not validated; applies to new
+--    and modified edges (ETL/seed/app). Our volume = thousands of edges → cheap per row.
 -- -----------------------------------------------------------------------------
 create or replace function relationships_validate()
 returns trigger language plpgsql as $$

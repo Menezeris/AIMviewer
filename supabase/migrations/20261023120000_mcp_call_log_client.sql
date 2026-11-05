@@ -1,7 +1,7 @@
--- D-159: kto volal tool konektora. `client` = clientInfo.name z MCP initialize a rozhovor
--- (`claude-ai#<sid>`, `claude-code#<sid> (work)`, bez Mcp-Session-Id `ua:<User-Agent>`).
--- Podľa neho sa overí, či sa pracovné sessions rozoznajú a či chat drží jeden rozhovor.
--- Aditívne, nullable; staré riadky ostanú bez hodnoty.
+-- D-159: who called a connector tool. `client` = clientInfo.name from MCP initialize and the conversation
+-- (`claude-ai#<sid>`, `claude-code#<sid> (work)`, without Mcp-Session-Id `ua:<User-Agent>`).
+-- It is used to check whether work sessions are recognized and whether the chat keeps one conversation.
+-- Additive, nullable; old rows stay without a value.
 
 alter table mcp_call_log add column if not exists client text;
 

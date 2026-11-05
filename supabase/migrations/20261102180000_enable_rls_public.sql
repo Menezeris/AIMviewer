@@ -1,9 +1,9 @@
--- Obrana do hĺbky (2. 11., Samuel "áno"): RLS zapnuté na všetkých tabuľkách public.
--- anon a authenticated už od 20261016120000 nemajú na tabuľkách ani pohľadoch žiadne granty; host, ETL a motor
--- pracujú cez service_role / postgres, ktoré majú BYPASSRLS, takže sa správanie nemení. Politiky sa nepridávajú:
--- keby niekto grant omylom vrátil, RLS bez politiky stále nič nepustí. Nové tabuľky: v migrácii aj
--- `alter table ... enable row level security` (pravidlo v AGENTS.md).
--- Rollback: alter table <t> disable row level security; pre každú tabuľku nižšie.
+-- Defense in depth (2. 11., Samuel "yes"): RLS enabled on all public tables.
+-- anon and authenticated have had no grants on tables or views since 20261016120000; the host, ETL and engine
+-- work via service_role / postgres, which have BYPASSRLS, so behavior does not change. No policies are added:
+-- if someone returned a grant by mistake, RLS without a policy still lets nothing through. New tables: in the migration also
+-- `alter table ... enable row level security` (rule in AGENTS.md).
+-- Rollback: alter table <t> disable row level security; for each table below.
 do $$
 declare t record;
 begin

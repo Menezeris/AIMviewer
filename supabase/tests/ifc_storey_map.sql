@@ -1,11 +1,11 @@
--- D-183 K3 krok 4: ifc_storey_map (podlažia naprieč modelmi, R6) a jeho použitie v rel_contained_in_spatial_structure.
--- Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
+-- D-183 K3 step 4: ifc_storey_map (storeys across models, R6) and its use in rel_contained_in_spatial_structure.
+-- Run on a local DB with the migrations applied (never production):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/ifc_storey_map.sql
--- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
+-- Everything runs in a transaction and ends with ROLLBACK; a failure = an exception with a description.
 begin;
 \ir _legacy_ocb.sql
 
--- Podlažia AIM: 1NP a 2NP (jediné), dve podlažia s číslom 3 (3NP a 3.NP = dvojznačné), 4NP bez výšky.
+-- AIM storeys: 1NP and 2NP (the only ones), two storeys with number 3 (3NP and 3.NP = ambiguous), 4NP without elevation.
 insert into objects (id, object_type, object_ref, name, ifc_type, properties, valid_until) values
   ('00000000-0000-4000-8000-0000000000f1', 'floor', 'S1NP', '1NP', 'IfcBuildingStorey',
      '{"Pset_BuildingStoreyCommon": {"ElevationOfFFLRelative": 0}}', null),
@@ -14,10 +14,10 @@ insert into objects (id, object_type, object_ref, name, ifc_type, properties, va
   ('00000000-0000-4000-8000-0000000000f3', 'floor', 'S3NP-A', '3NP', 'IfcBuildingStorey', '{}', null),
   ('00000000-0000-4000-8000-0000000000f4', 'floor', 'S3NP-B', '3.NP', 'IfcBuildingStorey', '{}', null),
   ('00000000-0000-4000-8000-0000000000f5', 'floor', 'S4NP', '4NP', 'IfcBuildingStorey', '{}', null),
-  ('00000000-0000-4000-8000-0000000000f6', 'floor', 'S6NP', '6NP', 'IfcBuildingStorey', '{}', now()),   -- zaniknuté
+  ('00000000-0000-4000-8000-0000000000f6', 'floor', 'S6NP', '6NP', 'IfcBuildingStorey', '{}', now()),   -- vanished
   ('00000000-0000-4000-8000-0000000000a1', 'asset', 'SP.1', 'potrubie', 'IfcDuctSegment', '{}', null);
 insert into ifc_guid_history (object_id, ifc_guid) values
-  ('00000000-0000-4000-8000-0000000000f2', 'A-S2'),     -- 2NP má vlastný uzol (model, ktorý podlažia vlastní)
+  ('00000000-0000-4000-8000-0000000000f2', 'A-S2'),     -- 2NP has its own node (the model that owns the storeys)
   ('00000000-0000-4000-8000-0000000000a1', 'V-P1');
 
 insert into model_revisions (model, revision, parent_revision, is_current, sha256, size_bytes, archive_path) values
@@ -27,16 +27,16 @@ insert into ifc_rev_imports (model, revision, sha256, status, hash_version) valu
   ('SAS', 1, repeat('1', 64), 'done', 1), ('SVZ', 1, repeat('2', 64), 'done', 1), ('SVZ', 2, repeat('3', 64), 'done', 1);
 
 insert into ifc_rev_objects (model, revision, global_id, ifc_class, attributes, content_hash) values
-  ('SAS', 1, 'A-S2', 'IfcBuildingStorey', '{"Name": "2NP"}', 'x'),                              -- guid, bez výšky
-  ('SVZ', 1, 'V-OLD', 'IfcBuildingStorey', '{"Name": "1NP"}', 'x'),                              -- stará revízia, mapa ju nevráti
-  ('SVZ', 2, 'V-S1', 'IfcBuildingStorey', '{"Name": "1NP_VZT", "Elevation": 0}', 'x'),           -- číslo, výška sedí
-  ('SVZ', 2, 'V-S2', 'IfcBuildingStorey', '{"Name": "2. NP", "Elevation": 5200}', 'x'),          -- číslo, výška nesedí
-  ('SVZ', 2, 'V-S3', 'IfcBuildingStorey', '{"Name": "3NP", "Elevation": 9200}', 'x'),            -- dvojznačné
-  ('SVZ', 2, 'V-S4', 'IfcBuildingStorey', '{"Name": "4NP", "Elevation": "n/a"}', 'x'),           -- výška nie je číslo
-  ('SVZ', 2, 'V-S5', 'IfcBuildingStorey', '{"Name": "5NP"}', 'x'),                              -- podlažie AIM neexistuje
-  ('SVZ', 2, 'V-S6', 'IfcBuildingStorey', '{"Name": "6NP"}', 'x'),                              -- podlažie AIM zaniklo
-  ('SVZ', 2, 'V-SX', 'IfcBuildingStorey', '{"Name": "Strojovňa", "Elevation": 100}', 'x'),       -- bez čísla
-  ('SVZ', 2, 'V-NOTSTOREY', 'IfcSpace', '{"Name": "2NP"}', 'x');                                -- nie podlažie
+  ('SAS', 1, 'A-S2', 'IfcBuildingStorey', '{"Name": "2NP"}', 'x'),                              -- guid, without elevation
+  ('SVZ', 1, 'V-OLD', 'IfcBuildingStorey', '{"Name": "1NP"}', 'x'),                              -- old revision, the map does not return it
+  ('SVZ', 2, 'V-S1', 'IfcBuildingStorey', '{"Name": "1NP_VZT", "Elevation": 0}', 'x'),           -- number, elevation matches
+  ('SVZ', 2, 'V-S2', 'IfcBuildingStorey', '{"Name": "2. NP", "Elevation": 5200}', 'x'),          -- number, elevation does not match
+  ('SVZ', 2, 'V-S3', 'IfcBuildingStorey', '{"Name": "3NP", "Elevation": 9200}', 'x'),            -- ambiguous
+  ('SVZ', 2, 'V-S4', 'IfcBuildingStorey', '{"Name": "4NP", "Elevation": "n/a"}', 'x'),           -- elevation is not a number
+  ('SVZ', 2, 'V-S5', 'IfcBuildingStorey', '{"Name": "5NP"}', 'x'),                              -- AIM storey does not exist
+  ('SVZ', 2, 'V-S6', 'IfcBuildingStorey', '{"Name": "6NP"}', 'x'),                              -- AIM storey vanished
+  ('SVZ', 2, 'V-SX', 'IfcBuildingStorey', '{"Name": "Strojovňa", "Elevation": 100}', 'x'),       -- without a number
+  ('SVZ', 2, 'V-NOTSTOREY', 'IfcSpace', '{"Name": "2NP"}', 'x');                                -- not a storey
 
 insert into ifc_rev_relationships (model, revision, rel_class, relating, related, relating_class, related_class, content_hash) values
   ('SVZ', 2, 'IfcRelContainedInSpatialStructure', 'V-S2', 'V-P1', 'IfcBuildingStorey', 'IfcDuctSegment', 'x'),

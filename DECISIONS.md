@@ -8814,4 +8814,6 @@ Introduced in AIMforked #3, which also updates sections 2 and 5 of `docs/platfor
 
 **Rejected:** enforcing at once (would reject writes before the data is clean); letting NULL `ifc_type` pass (weaker than filling the 65 documents); allowing IfcPerson and IfcOrganization at the actor end (contradicts PLATFORM.md §5.3 and the schema); a signed header now (only the server holds the `service_role` key; step 5 replaces the header with the JWT); logging the revision copy (hundreds of thousands of rows per load, derived from a file); one log table per source table.
 
+**Addendum (PR 3, 5 Nov):** the check runs on insert and on an update that changes `rel_type`, `from_id` or `to_id`. An update of other columns is not rechecked: under `enforce` an old edge that fails could otherwise not be closed (`valid_until`), and the ETL's rewrites of unchanged edges would pay the check every load. A rel_type moves to `enforce` with `supabase/pending/relationship_ifc_enforce.sql` (copied into a migration on Samuel's yes); `rel_assigns_to_actor` stays `warn` until the ETL writes IfcActor nodes.
+
 **Consequences:** a new rel_type needs its end attributes (or explicit types for aim_*) in the generator. Every writer sets the person and the source (AGENTS.md). IfcEvent stays the domain record of workflow transitions (R11); the log is the technical audit.

@@ -1,11 +1,11 @@
--- D-158 krok 6: pripomienka na PDF sa pri novej revízii dokumentu prenáša, otvorená dostane príznak
--- "skontrolovať po revízii". Príznak sa NEUKLADÁ: odvodzuje sa pri čítaní z revízie odkazu
--- (`document_revision`, `document_sha256` = pôvodná revízia, nemenia sa) a aktuálnej revízie
--- dokumentu (`container_revisions`, D-183 K1 / `documents.file_sha256`). Ukladá sa len:
---   * kotva polohy (počet strán a veľkosť strany pôvodnej revízie) na hlásenie "poloha neistá",
---   * potvrdenie kontroly (revízia, kto, kedy), ktoré príznak zruší.
--- Všetko aditívne a nullable; staré odkazy bez kotvy sa porovnajú len podľa čísla strany.
--- Práva sa nemenia (tabuľka je len pre service_role, migrácia 20261022190000).
+-- D-158 step 6: a comment on a PDF is carried over on a new document revision, an open one gets the flag
+-- "check after revision". The flag is NOT STORED: it is derived on read from the link revision
+-- (`document_revision`, `document_sha256` = original revision, do not change) and the current revision of the
+-- document (`container_revisions`, D-183 K1 / `documents.file_sha256`). Only these are stored:
+--   * position anchor (page count and page size of the original revision) for the "position uncertain" report,
+--   * review confirmation (revision, who, when), which cancels the flag.
+-- All additive and nullable; old links without an anchor are compared only by page number.
+-- Rights do not change (the table is for service_role only, migration 20261022190000).
 
 alter table model_task_documents
   add column if not exists anchor_pages integer check (anchor_pages is null or anchor_pages >= 1),
@@ -23,8 +23,8 @@ comment on column model_task_documents.anchor_page_size is
 comment on column model_task_documents.reviewed_revision is
   'D-158 krok 6: revízia dokumentu, po ktorej človek potvrdil kontrolu (zruší príznak "skontrolovať po revízii").';
 
--- Spätné doplnenie kotvy z aktuálnych strán len pre odkazy, ktoré sú ešte pri svojej revízii
--- (sha256 odkazu = sha256 dokumentu); pri už zmenenej revízii pôvodnú hodnotu nepoznáme.
+-- Backfill of the anchor from current pages only for links that are still at their revision
+-- (link sha256 = document sha256); for an already changed revision we do not know the original value.
 update model_task_documents t
    set anchor_pages = p.max_page,
        anchor_page_size = (select pp.page_size from document_pages pp where pp.document_id = t.document_id and pp.page = t.page)

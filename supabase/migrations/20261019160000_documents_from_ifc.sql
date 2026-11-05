@@ -1,15 +1,15 @@
 -- =============================================================================
--- D-104 krok 1 - Dokumenty z IFC: atribúty, strom dokumentácie, odkazy na časť
+-- D-104 step 1 - Documents from IFC: attributes, documentation tree, references to a part
 -- =============================================================================
--- Aditívna migrácia (AGENTS.md: migrácie sa nemažú ani needitujú).
+-- Additive migration (AGENTS.md: migrations are neither deleted nor edited).
 --
--- 1) `documents` dostane atribúty IfcDocumentInformation, ktoré ASR nesie a doteraz
---    sa zahadzovali (SCHEMA §5: "pridajú sa aditívne, keď budú treba"), a
---    `referenced_document_id` pre IfcDocumentReference (object_type
---    `document_reference`, časť dokumentu, napr. strana výpisu skladieb).
--- 2) Strom dokumentácie (PD -> časť -> súbor) z IfcDocumentInformationRelationship:
---    nový rel_type, resource ako rel_member_of (D-048), smer časť -> nadradený.
--- 3) rel_associates_document smie viesť aj na `document_reference`.
+-- 1) `documents` gets the IfcDocumentInformation attributes that ASR carries and that were so far
+--    discarded (SCHEMA §5: "they will be added additively when needed"), and
+--    `referenced_document_id` for IfcDocumentReference (object_type
+--    `document_reference`, a part of a document, e.g. a page of the assembly schedule).
+-- 2) Documentation tree (PD -> part -> file) from IfcDocumentInformationRelationship:
+--    a new rel_type, resource like rel_member_of (D-048), direction part -> parent.
+-- 3) rel_associates_document may also lead to `document_reference`.
 -- =============================================================================
 
 begin;
@@ -30,7 +30,7 @@ comment on column documents.referenced_document_id is
 create index idx_documents_referenced on documents (referenced_document_id)
   where referenced_document_id is not null;
 
--- 2) relationship_types podľa manifestu (python -m etl.manifest)
+-- 2) relationship_types per the manifest (python -m etl.manifest)
 insert into relationship_types
   (rel_type, ifc_entity, ifc_family, is_ifc_rel, relating_end,
    from_object_types, to_object_types, to_is_classification,
@@ -54,7 +54,7 @@ create view rel_document_information_relationship as
 create index idx_relationships_document_part_to on relationships (to_id)
   where rel_type = 'rel_document_information_relationship';
 
--- Čítanie len server-side cez service_role (D-026, migrácia 20261016120000).
+-- Read only server-side via service_role (D-026, migration 20261016120000).
 revoke all on rel_document_information_relationship from anon, authenticated;
 
 commit;
