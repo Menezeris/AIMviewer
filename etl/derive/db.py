@@ -1,9 +1,9 @@
-"""Zápis odvodených hrán do DB (D-080) — idempotentná rekonciliácia.
+"""Writing derived edges to the DB (D-080) - idempotent reconciliation.
 
-Hrany sa identifikujú deterministickým UUID z (zdroj, rel_type, from GUID, to GUID),
-takže opakovaný beh nič nezduplikuje. Hrany toho istého zdroja, ktoré nový beh
-už neodvodil, sa **neodstránia**, ale uzavrú (`valid_until = now()`) — história
-ostáva, presne ako pri GUID histórii (D-010). Všetko v jednej transakcii.
+Edges are identified by a deterministic UUID from (source, rel_type, from GUID, to GUID),
+so a repeated run duplicates nothing. Edges of the same source that the new run
+no longer derived are **not deleted** but closed (`valid_until = now()`) - the history
+stays, exactly as with the GUID history (D-010). Everything in one transaction.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ def edge_uuid(source: str, edge: DerivedEdge, project_id: str = OCB_ID) -> str:
 
 def write_edges(cur, source: str, rel_type: str, edges: list[DerivedEdge],
                 project_id: str = OCB_ID) -> WriteStats:
-    """Zapíše `edges` (všetky jedného `rel_type`) a uzavrie zastarané hrany `source` v projekte (D-189)."""
+    """Writes `edges` (all of one `rel_type`) and closes the stale edges of `source` in the project (D-189)."""
     stats = WriteStats()
     guids = sorted({g for e in edges for g in (e.from_guid, e.to_guid)})
     rows = cur.execute(
@@ -66,8 +66,8 @@ def write_edges(cur, source: str, rel_type: str, edges: list[DerivedEdge],
         if to_ok and t[1] not in to_ok:
             stats.disallowed.append((e.to_guid, t[1]))
             continue
-        # id hrany je z GUID; objekt s tým GUID sa môže zmeniť (premenovaný object_ref,
-        # D-088), preto upsert prepisuje aj from_id/to_id.
+        # The edge id comes from the GUIDs; the object with that GUID can change (a renamed
+        # object_ref, D-088), so the upsert also overwrites from_id/to_id.
         eid = edge_uuid(source, e, project_id)
         keep.append(eid)
         cur.execute(

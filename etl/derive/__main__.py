@@ -1,13 +1,13 @@
-"""CLI odvodzovačov (D-080) a registra pravidiel odvodení (D-089).
+"""CLI of the derivers (D-080) and of the derivation rule registry (D-089).
 
-    python -m etl.derive run --models ASR.ifc VZT.ifc [--rule ID …] [--trigger auto|manual] [--dry-run]
-    python -m etl.derive rules                       # pravidlá, stav a posledný beh
+    python -m etl.derive run --models ASR.ifc VZT.ifc [--rule ID ...] [--trigger auto|manual] [--dry-run]
+    python -m etl.derive rules                       # rules, state and last run
     python -m etl.derive enable --rule ID [--mode auto|manual]
-    python -m etl.derive disable --rule ID           # uzavrie hrany pravidla
-    python -m etl.derive spatial_reference --models … [--dry-run] [--report out.csv]   # priamo D-080
+    python -m etl.derive disable --rule ID           # closes the rule's edges
+    python -m etl.derive spatial_reference --models ... [--dry-run] [--report out.csv]   # directly D-080
 
-`run` bez `--rule` spustí zapnuté pravidlá (pri `--trigger auto` len v režime auto) a vypnutým
-uzavrie hrany. Prvý model je referenčný súradnicový rámec; ostatné sa zarovnajú cez
+`run` without `--rule` runs the enabled rules (with `--trigger auto` only those in auto mode) and closes
+the edges of the disabled ones. The first model is the reference coordinate frame; the others are aligned via
 IfcMapConversion.
 """
 
@@ -83,7 +83,7 @@ def _print_derive_summary(res, names) -> None:
 
 
 def cmd_run(args) -> None:
-    """Register pravidiel (D-089): geometria raz pre všetky zapnuté geometrické pravidlá."""
+    """Rule registry (D-089): geometry once for all enabled geometric rules."""
     import psycopg
 
     from .db import write_edges

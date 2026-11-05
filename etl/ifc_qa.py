@@ -1,17 +1,17 @@
-"""IFC QA — kontrola kvality zdrojového modelu pred ETL (read-only).
+"""IFC QA - quality check of the source model before the ETL (read-only).
 
-Nálezy zo skenu `Office centrum Brno - ASR.ifc` (2026-06-22) povýšené na opakovateľný
-report. Nie je to IDS/conformance (to je E6) — je to **autorská QA**: pred a po
-re-exporte z Revitu spusti tento skript a porovnaj, či sa nálezy opravili.
+Findings from the scan of `Office centrum Brno - ASR.ifc` (2026-06-22) promoted to a repeatable
+report. It is not IDS/conformance (that is E6) - it is **authoring QA**: run this script before and
+after a re-export from Revit and compare whether the findings were fixed.
 
     python -m etl.ifc_qa --file "podklady/.../Office centrum Brno - ASR.ifc"
 
-Každá kontrola vypíše stav:
-  PASS  — v poriadku
-  WARN  — odporúčané opraviť (nie blokujúce pre ETL)
-  FAIL  — nesprávne, oprav v zdroji
+Each check prints a status:
+  PASS  - fine
+  WARN  - recommended to fix (not blocking for the ETL)
+  FAIL  - wrong, fix it in the source
 
-Skript NIČ nemení (otvára IFC len na čítanie).
+The script changes NOTHING (it opens the IFC read-only).
 """
 
 from __future__ import annotations
@@ -24,15 +24,15 @@ from typing import Any, Optional, Sequence
 import ifcopenshell
 import ifcopenshell.util.element as ue
 
-# Revit default `Name` = "Rodina:Typ:ElementId" → chvost ":<číslo>" je volatilné Revit ID.
+# Revit default `Name` = "Family:Type:ElementId" -> the ":<number>" tail is a volatile Revit ID.
 _REVIT_ID_TAIL = re.compile(r":\d+(?::\d+)?$")
-# „Reálne" podlažie (nie pomocná Revit úroveň 1NP_SH_ZD / Spadova vrstva / Dojazd_…).
+# A "real" storey (not an auxiliary Revit level 1NP_SH_ZD / Spadova vrstva / Dojazd_...).
 _REAL_FLOOR = re.compile(r"^\d+NP$")
-# Skutočný Uniformat kód: písmeno A–G + číslice (A1010, B2010…). SNIM kód je `DD02`, `SN11`.
+# A real Uniformat code: letter A-G + digits (A1010, B2010...). A SNIM code is `DD02`, `SN11`.
 _UNIFORMAT = re.compile(r"^[A-G]\d")
-# Placeholder hodnoty, ktoré Revit/šablóna nechá nevyplnené.
+# Placeholder values that Revit/the template leaves unfilled.
 _PLACEHOLDERS = {"default", "", "[názov projektu]", "[název projektu]", "nnnn/nn/nnn"}
-# Psety, ktoré bývajú prázdny šum (výstužné na architektúre, environmentálne na všetkom).
+# Psets that are usually empty noise (reinforcement on architecture, environmental on everything).
 _NOISE_PSETS = (
     "Pset_EnvironmentalImpactIndicators",
     "Pset_ReinforcementBarPitchOfWall",
@@ -55,7 +55,7 @@ def _line(status: str, title: str, detail: str = "") -> None:
     print(f"  [{status:4}] {title}" + (f"  — {detail}" if detail else ""))
 
 
-# ── jednotlivé kontroly ───────────────────────────────────────────────────────
+# ── individual checks ─────────────────────────────────────────────────────────
 
 
 def check_names(m: ifcopenshell.file) -> None:
@@ -67,7 +67,7 @@ def check_names(m: ifcopenshell.file) -> None:
         "Name bez Revit ':ElementId' chvosta",
         f"{len(id_tail)}/{len(els)} má volatilný ':<id>' (napr. 'Basic Wall:Stena:959298')",
     )
-    # Name identický s názvom typu = žiadny ľudský/inštančný override.
+    # Name identical to the type name = no human/instance override.
     same_as_type = 0
     for e in els:
         t = ue.get_type(e)
@@ -111,7 +111,7 @@ def check_classification(m: ifcopenshell.file) -> None:
     systems = m.by_type("IfcClassification")
     for c in systems:
         _line("PASS", "IfcClassification", f"Name={c.Name!r} Source={_attr(c, 'Source')!r}")
-    # SNIM kódy pod hlavičkou 'Uniformat' = nesprávne pomenovaný systém.
+    # SNIM codes under the 'Uniformat' header = a wrongly named system.
     miscoded: Counter = Counter()
     for cr in m.by_type("IfcClassificationReference"):
         ident = _attr(cr, "Identification") or _attr(cr, "ItemReference")
@@ -126,7 +126,7 @@ def check_classification(m: ifcopenshell.file) -> None:
             "Kódy pod 'Uniformat' nie sú Uniformat (sú to SNIM kódy)",
             f"{len(miscoded)} kódov, napr. {sample} → premenovať systém na SNIM",
         )
-    # Klasifikácia na otvoroch (IfcOpeningElement) = nesprávne.
+    # Classification on openings (IfcOpeningElement) = wrong.
     on_openings = 0
     for r in m.by_type("IfcRelAssociatesClassification"):
         on_openings += sum(1 for o in (r.RelatedObjects or []) if o.is_a("IfcOpeningElement"))

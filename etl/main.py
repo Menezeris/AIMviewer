@@ -1,8 +1,8 @@
-"""ETL CLI (D-031) — IFC → Supabase.
+"""ETL CLI (D-031) - IFC -> Supabase.
 
-Spustenie z koreňa repa:
-    python -m etl.main --file etl/data/model.ifc            # zapíše do DB
-    python -m etl.main --file etl/data/model.ifc --dry-run  # len zhrnutie, bez DB
+Run from the repo root:
+    python -m etl.main --file etl/data/model.ifc            # writes to the DB
+    python -m etl.main --file etl/data/model.ifc --dry-run  # summary only, no DB
     python -m etl.main --file X.ifc --project OCB --dry-run --check-db   # what the load would change (read only)
 """
 
@@ -20,8 +20,8 @@ from .model import StagedModel
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
-    # Windows konzola býva cp1250 — diakritika v coverage reporte by inak padla
-    # na UnicodeEncodeError (rovnaký guard ako doc_upload/pdf_link/pdf_annotate).
+    # The Windows console is often cp1250 - diacritics in the coverage report would otherwise fail
+    # with UnicodeEncodeError (same guard as doc_upload/pdf_link/pdf_annotate).
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
@@ -106,7 +106,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     print("Hotovo — zapísané do Supabase.")
 
 
-_SNIM_REF = re.compile(r"^[A-Z]{2}\d{2}(?:\.\d+)+$")  # napr. DD01.06 / DD01.06.03
+_SNIM_REF = re.compile(r"^[A-Z]{2}\d{2}(?:\.\d+)+$")  # e.g. DD01.06 / DD01.06.03
 
 
 def _print_unlinked(staged: StagedModel) -> None:
@@ -132,8 +132,8 @@ def _print_sample(staged: StagedModel) -> None:
 
 
 def _print_coverage(cov) -> None:
-    """Coverage report (D-033) — pokrytie `object_ref` SNIM kódom vs. fallback.
-    Nie je to IDS/conformance (E6) — len extrakcia: čo dostalo kód a čo nie."""
+    """Coverage report (D-033) - coverage of `object_ref` by SNIM code vs. fallback.
+    It is not IDS/conformance (E6) - extraction only: what got a code and what did not."""
     total = cov.assets_total or 1
     no_code = cov.assets_fallback.get("bez SNIM kódu (žiadny Assembly Code)", 0)
     coded = cov.assets_total - no_code
