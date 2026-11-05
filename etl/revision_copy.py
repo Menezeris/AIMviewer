@@ -1,28 +1,28 @@
-"""Úplná kópia informácií revízie modelu v DB (D-183 K2).
+"""Full copy of a model revision's information in the DB (D-183 K2).
 
-Kontajner revízie (archív `ifc/archive/<model>/vNNN.ifc.gz`) je pravda; DB nesie jeho úplnú kópiu bez
-geometrie, vyrobenú vždy tým istým generickým pravidlom (nič sa nevyberá ručne):
+The revision container (archive `ifc/archive/<model>/vNNN.ifc.gz`) is the truth; the DB holds its full copy without
+geometry, always produced by the same generic rule (nothing is picked by hand):
 
-* `ifc_rev_objects`: každý IfcRoot okrem vzťahov a sád vlastností (prvky, priestory, typy, systémy, projekt,
-  šablóny psetov) s atribútmi bez geometrie a OwnerHistory (tá je len informačne v `file_owner_history`),
-* `ifc_rev_relationships`: každá dvojica (nositeľ = Relating*, druhá strana = Related*) z každého IfcRel*
-  okrem IfcRelDefinesByProperties, kľúč (trieda, nositeľ, druhá strana),
-* `ifc_rev_property_sets`: každý pset, Qto a preddefinovaná sada na výskyte aj na type, kľúč
-  (nositeľ, meno psetu).
+* `ifc_rev_objects`: every IfcRoot except relationships and property sets (elements, spaces, types, systems, project,
+  pset templates) with attributes without geometry and OwnerHistory (that is only informational in `file_owner_history`),
+* `ifc_rev_relationships`: every pair (owner = Relating*, other side = Related*) from every IfcRel*
+  except IfcRelDefinesByProperties, key (class, owner, other side),
+* `ifc_rev_property_sets`: every pset, Qto and predefined set on the occurrence and on the type, key
+  (owner, pset name).
 
-Vlastné GlobalId psetov a vzťahov sa ukladá len informačne (Revit ich pri exporte mení). Každý riadok má
-`content_hash` = sha256 kanonického zápisu (`HASH_VERSION`). Import beží v jednej transakcii, kontrola
-úplnosti (počty zo súboru = DB) je jej súčasťou a až potom vznikne `ifc_rev_imports.status = 'done'`.
-Graf AIM (`objects`, `relationships`) sa nemení.
+The own GlobalIds of psets and relationships are stored only for information (Revit changes them on export). Every row has
+`content_hash` = sha256 of the canonical form (`HASH_VERSION`). The import runs in one transaction, the completeness
+check (counts from the file = DB) is part of it, and only then `ifc_rev_imports.status = 'done'` is created.
+The AIM graph (`objects`, `relationships`) does not change.
 
 D-189: the revision is resolved within a project (`--project`, default AIM_PROJECT or OCB) and every row is
 keyed by `model_revision_id`; `model` and `revision` stay as labels. The archive is read from the stored
 `model_revisions.archive_path`.
 
-Spustenie z koreňa repa:
-    python -m etl.revision_copy --model ASR                 # aktuálna revízia
-    python -m etl.revision_copy --model VZT --revision 11   # konkrétna revízia
-    python -m etl.revision_copy --model VZT --archive-file v011.ifc.gz --dry-run   # bez DB zápisu
+Run from the repo root:
+    python -m etl.revision_copy --model ASR                 # current revision
+    python -m etl.revision_copy --model VZT --revision 11   # specific revision
+    python -m etl.revision_copy --model VZT --archive-file v011.ifc.gz --dry-run   # without a DB write
 """
 
 from __future__ import annotations
@@ -43,26 +43,26 @@ import ifcopenshell
 
 HASH_VERSION = 1
 
-# Atribúty, ktoré nie sú informácia kópie: identita, história (zvlášť), geometria a psety typu (vlastná tabuľka).
+# Attributes that are not information of the copy: identity, history (separately), geometry and type psets (own table).
 _SKIP_ATTRS = {"GlobalId", "OwnerHistory", "ObjectPlacement", "Representation", "RepresentationMaps",
                "HasPropertySets", "RepresentationContexts"}
-# Geometria a jej kontext: do DB nejde nikdy (D-183 bod 6).
+# Geometry and its context: never goes to the DB (D-183 point 6).
 _GEOMETRY = ("IfcRepresentationItem", "IfcProductRepresentation", "IfcRepresentation", "IfcObjectPlacement",
              "IfcRepresentationContext", "IfcRepresentationMap", "IfcShapeAspect", "IfcConnectionGeometry")
 _MAX_DEPTH = 6
 
 
 class Skip:
-    """Hodnota, ktorá do kópie nepatrí (geometria)."""
+    """A value that does not belong in the copy (geometry)."""
 
 
 SKIP = Skip()
 
 
-# ── kanonický zápis ───────────────────────────────────────────────────────────
+# ── canonical form ────────────────────────────────────────────────────────────
 
 def _num(x: float) -> Any:
-    """Pevná presnosť 12 platných číslic: zmena hodnoty je vidieť, šum zápisu (2.4 vs 2.4000000000001) nie."""
+    """Fixed precision of 12 significant digits: a value change is visible, write noise (2.4 vs 2.4000000000001) is not."""
     if math.isnan(x) or math.isinf(x):
         return str(x)
     v = float(f"{x:.12g}")
@@ -74,7 +74,7 @@ def is_geometry(e: ifcopenshell.entity_instance) -> bool:
 
 
 def natural_key(e: ifcopenshell.entity_instance) -> str:
-    """Kľúč strany vzťahu: GlobalId, inak `Trieda:Identification|Name|...`, inak hash obsahu (P14)."""
+    """Key of a relationship side: GlobalId, else `Class:Identification|Name|...`, else a content hash (P14)."""
     gid = getattr(e, "GlobalId", None) if hasattr(e, "GlobalId") else None
     if gid:
         return gid
@@ -87,7 +87,7 @@ def natural_key(e: ifcopenshell.entity_instance) -> str:
 
 
 def value(v: Any, depth: int = 0) -> Any:
-    """Hodnota atribútu v kanonickom tvare: IfcRoot = odkaz GlobalId, geometria = SKIP, ostatné entity vnorene."""
+    """Attribute value in canonical form: IfcRoot = GlobalId reference, geometry = SKIP, other entities nested."""
     if isinstance(v, ifcopenshell.entity_instance):
         if v.id() == 0 and hasattr(v, "wrappedValue"):          # IfcLabel, IfcLengthMeasure...
             return value(v.wrappedValue, depth)
@@ -145,7 +145,7 @@ def _actor(a: Any) -> Optional[str]:
 
 
 def owner_history(oh: Any) -> Optional[dict[str, Any]]:
-    """IfcOwnerHistory zo súboru, len informačne (D-183 bod 7: nikdy sa z neho nepočíta zmena)."""
+    """IfcOwnerHistory from the file, only informational (D-183 point 7: a change is never computed from it)."""
     if oh is None:
         return None
     app = lambda a: a.ApplicationFullName if a is not None else None  # noqa: E731
@@ -162,10 +162,10 @@ def owner_history(oh: Any) -> Optional[dict[str, Any]]:
     return {k: v for k, v in out.items() if v is not None}
 
 
-# ── psety ─────────────────────────────────────────────────────────────────────
+# ── psets ─────────────────────────────────────────────────────────────────────
 
 def property_value(p: ifcopenshell.entity_instance) -> Any:
-    """Hodnota IfcProperty alebo IfcPhysicalQuantity."""
+    """Value of an IfcProperty or IfcPhysicalQuantity."""
     if p.is_a("IfcPropertySingleValue"):
         v = value(p.NominalValue)
         return {"value": v, "unit": value(p.Unit)} if p.Unit is not None else v
@@ -184,7 +184,7 @@ def property_value(p: ifcopenshell.entity_instance) -> Any:
     if p.is_a("IfcPhysicalComplexQuantity"):
         return {q.Name: property_value(q) for q in (p.HasQuantities or ())}
     if p.is_a("IfcPhysicalSimpleQuantity"):
-        # 4. atribút je hodnota (LengthValue, AreaValue, CountValue...), ostatné sú Name, Description, Unit
+        # the 4th attribute is the value (LengthValue, AreaValue, CountValue...), the others are Name, Description, Unit
         info = p.get_info(include_identifier=False, recursive=False)
         vals = {k: value(v) for k, v in info.items() if k.endswith("Value")}
         return next(iter(vals.values())) if len(vals) == 1 else vals
@@ -198,11 +198,11 @@ def pset_properties(ps: ifcopenshell.entity_instance) -> dict[str, Any]:
         return {p.Name: property_value(p) for p in (ps.HasProperties or ())}
     if ps.is_a("IfcElementQuantity"):
         return {q.Name: property_value(q) for q in (ps.Quantities or ())}
-    return attributes(ps)  # IfcPreDefinedPropertySet: vlastné atribúty
+    return attributes(ps)  # IfcPreDefinedPropertySet: own attributes
 
 
 def _flatten_psets(defn: Any) -> list[ifcopenshell.entity_instance]:
-    """IfcPropertySetDefinitionSelect: jedna sada alebo IfcPropertySetDefinitionSet (zoznam)."""
+    """IfcPropertySetDefinitionSelect: a single set or an IfcPropertySetDefinitionSet (list)."""
     if defn is None:
         return []
     if isinstance(defn, (tuple, list)):
@@ -212,18 +212,18 @@ def _flatten_psets(defn: Any) -> list[ifcopenshell.entity_instance]:
     return [defn]
 
 
-# ── extrakcia ─────────────────────────────────────────────────────────────────
+# ── extraction ────────────────────────────────────────────────────────────────
 
 @dataclass
 class RevisionCopy:
     objects: list[dict[str, Any]] = field(default_factory=list)
     relationships: list[dict[str, Any]] = field(default_factory=list)
     property_sets: list[dict[str, Any]] = field(default_factory=list)
-    expected: dict[str, Any] = field(default_factory=dict)       # počty zo súboru (kontrola úplnosti)
+    expected: dict[str, Any] = field(default_factory=dict)       # counts from the file (completeness check)
     warnings: list[str] = field(default_factory=list)
     schema: str = ""
     header: dict[str, Any] = field(default_factory=dict)
-    applications: dict[str, Any] = field(default_factory=dict)  # OwningApplication / LastModifyingApplication projektu
+    applications: dict[str, Any] = field(default_factory=dict)  # OwningApplication / LastModifyingApplication of the project
 
 
 def duplicate_guids(f: ifcopenshell.file) -> list[str]:
@@ -257,7 +257,7 @@ def extract(f: ifcopenshell.file) -> RevisionCopy:
     out.header = file_header(f)
     oh_cache: dict[int, Optional[dict[str, Any]]] = {}
 
-    # objekty: každý IfcRoot okrem vzťahov a sád vlastností (tie majú vlastné tabuľky)
+    # objects: every IfcRoot except relationships and property sets (those have their own tables)
     obj_counts: Counter[str] = Counter()
     for e in f.by_type("IfcRoot"):
         if e.is_a("IfcRelationship") or e.is_a("IfcPropertySetDefinition"):
@@ -279,7 +279,7 @@ def extract(f: ifcopenshell.file) -> RevisionCopy:
         out.applications = {"owning": _application(oh.OwningApplication),
                             "last_modifying": _application(oh.LastModifyingApplication)}
 
-    # vzťahy (bez IfcRelDefinesByProperties: to sú psety)
+    # relationships (without IfcRelDefinesByProperties: those are psets)
     pairs: dict[tuple[str, str, str], dict[str, Any]] = {}
     pair_counts: Counter[str] = Counter()
     for rel in f.by_type("IfcRelationship"):
@@ -326,7 +326,7 @@ def extract(f: ifcopenshell.file) -> RevisionCopy:
                                       "related": row["related"], "attributes": variants})
         out.relationships.append(row)
 
-    # psety na výskytoch (IfcRelDefinesByProperties) a na typoch (HasPropertySets)
+    # psets on occurrences (IfcRelDefinesByProperties) and on types (HasPropertySets)
     attachments: list[tuple[ifcopenshell.entity_instance, ifcopenshell.entity_instance]] = []
     for rel in f.by_type("IfcRelDefinesByProperties"):
         for ps in _flatten_psets(rel.RelatingPropertyDefinition):
@@ -369,14 +369,14 @@ def extract(f: ifcopenshell.file) -> RevisionCopy:
         "relationship_pairs": dict(sorted(pair_counts.items())),
         "pset_attachments": dict(sorted(pset_counts.items())),
         "ifc_root": len(f.by_type("IfcRoot")),
-        # každý IfcRoot je objekt, vzťah alebo sada vlastností (kontrola, že pravidlo nič nevynecháva)
+        # every IfcRoot is an object, a relationship or a property set (check that the rule leaves nothing out)
         "ifc_root_accounted": sum(obj_counts.values()) + rel_entities + pset_entities,
         "pset_orphans": len(orphans),
     }
     return out
 
 
-# ── zápis do DB ───────────────────────────────────────────────────────────────
+# ── DB write ──────────────────────────────────────────────────────────────────
 
 def _copy(cur, table: str, columns: Iterable[str], rows: Iterable[tuple]) -> None:
     cols = list(columns)
@@ -398,7 +398,7 @@ def _db_counts(cur, model_revision_id: str) -> dict[str, Any]:
 
 
 def completeness(expected: dict[str, Any], db: dict[str, Any]) -> list[str]:
-    """Rozdiely počtov súbor vs DB po triedach; prázdne = úplné."""
+    """Count differences file vs DB by class; empty = complete."""
     diffs = []
     if expected.get("ifc_root") != expected.get("ifc_root_accounted"):
         diffs.append(f"IfcRoot: súbor {expected.get('ifc_root')}, započítané {expected.get('ifc_root_accounted')}")
@@ -423,7 +423,7 @@ def _application_id(cur, app: Optional[dict[str, Any]]) -> Optional[str]:
 
 def write(cur, model_revision_id: str, model: str, revision: int, sha256: str, copy: RevisionCopy,
           started: float) -> dict[str, Any]:
-    """Zapíše kópiu revízie v jednej transakcii (volajúci commitne); pri neúplnosti vyhodí chybu.
+    """Writes the revision copy in one transaction (the caller commits); raises an error if incomplete.
     Every row carries `model_revision_id` (D-189); `model` and `revision` are labels."""
     from psycopg.types.json import Jsonb
 
@@ -461,7 +461,7 @@ def write(cur, model_revision_id: str, model: str, revision: int, sha256: str, c
     cur.execute("update ifc_rev_imports set counts = %s, warnings = %s, finished_at = now() "
                 "where model_revision_id = %s", (Jsonb(counts), Jsonb(copy.warnings), mid))
 
-    # Hlavička a aplikácia patria k revízii kontajnera (K1); doplnia sa, nič sa neprepisuje.
+    # The header and application belong to the revision of the container (K1); they are filled in, nothing is overwritten.
     owning = _application_id(cur, (copy.applications or {}).get("owning"))
     last = _application_id(cur, (copy.applications or {}).get("last_modifying"))
     cur.execute(
@@ -488,7 +488,7 @@ def _fail(db_url: str, model_revision_id: str, model: str, revision: int, sha256
         )
 
 
-# ── vstup ─────────────────────────────────────────────────────────────────────
+# ── input ─────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class RevisionRow:
@@ -513,7 +513,7 @@ def revision_row(cur, project_id: str, model: str, revision: Optional[int]) -> R
 
 
 def load_bytes(archive_path: Optional[str], archive_file: Optional[Path]) -> bytes:
-    """Rozbalený obsah archívu revízie (zo Storage podľa `archive_path`, alebo lokálny súbor .ifc.gz / .ifc)."""
+    """Unpacked content of a revision archive (from Storage by `archive_path`, or a local .ifc.gz / .ifc file)."""
     if archive_file is not None:
         raw = archive_file.read_bytes()
         return gzip.decompress(raw) if raw[:2] == b"\x1f\x8b" else raw
@@ -584,7 +584,7 @@ def run(model: str, revision: Optional[int], archive_file: Optional[Path], dry_r
                 counts = write(cur, mid, model, rev, sha, copy, started)
             conn.commit()
         result.update(status="done", write_s=round(time.time() - t1, 1), counts=counts["db"])
-    except Exception as err:  # zápis sa vrátil celý; stav failed ide samostatne
+    except Exception as err:  # the write was rolled back entirely; the failed status goes separately
         _fail(db_url, mid, model, rev, sha, str(err))
         raise
     return result

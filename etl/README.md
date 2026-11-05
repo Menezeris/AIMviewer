@@ -1,46 +1,46 @@
-# AIM ETL — IFC → Supabase
+# AIM ETL: IFC -> Supabase
 
-Python pipeline, ktorá načíta IFC model a naplní Supabase schému (`objects` +
-`rel_*` + klasifikácie + GUID história) podľa `../SCHEMA.md` a konvencií v
-`../AGENTS.md`. Architektúra a rozhodnutia: **D-031** v `../DECISIONS.md`.
+A Python pipeline that reads an IFC model and fills the Supabase schema (`objects` +
+`rel_*` + classifications + GUID history) according to `../SCHEMA.md` and the conventions in
+`../AGENTS.md`. Architecture and decisions: **D-031** in `../DECISIONS.md`.
 
-> **Stav (E2):** mapovanie doladené na model diplomky (`ASR.ifc`) — rozsah importu
-> (D-034), konsolidácia podlaží (D-035), 18 SNIM kategórií, psety/klasifikácie/GUID.
-> `--dry-run` overený (681 assetov, 5 podlaží, 89 priestorov). Reálny load nahrádza
-> `../supabase/seed.sql` (`--reset`). VZT.ifc, dokumenty a ICDD export sú ďalšie E-sprinty.
+> **Status (E2):** mapping tuned to the thesis model (`ASR.ifc`): import scope
+> (D-034), floor consolidation (D-035), 18 SNIM categories, psets/classifications/GUID.
+> `--dry-run` verified (681 assets, 5 floors, 89 spaces). A real load replaces
+> `../supabase/seed.sql` (`--reset`). VZT.ifc, documents and ICDD export are further E-sprints.
 
-## Štruktúra
-| Súbor | Účel |
+## Structure
+| File | Purpose |
 |---|---|
-| `extract.py` | otvorenie IFC + nízkoúrovňové helpery (ifcopenshell) |
-| `scheme.py` | kódovacia schéma — field-source resolver + SNIM definícia (`object_ref`, D-033) |
-| `manifest.py` | manifest vzťahov (D-051) — `rel_type` spec overený proti IFC schéme; `EDGE_TYPE_TO_REL_TYPE` routing; SQL pre `relationship_types` |
-| `transform.py` | IFC → staged model (mapovanie podľa SCHEMA/§4) |
-| `model.py` | medziľahlé dataclassy (staged riadky) + `CoverageReport` |
-| `db.py` | idempotentný upsert do Postgresu v poradí FK; hrany → generická `relationships` (D-051), okrem IFC vzťahov z kópie revízie (D-183 K3) |
-| `ids.py` | deterministické UUID pre tabuľky bez prirodzeného unique |
-| `config.py` | načítanie `DATABASE_URL` |
+| `extract.py` | opening the IFC + low-level helpers (ifcopenshell) |
+| `scheme.py` | coding scheme: field-source resolver + SNIM definition (`object_ref`, D-033) |
+| `manifest.py` | relationship manifest (D-051): `rel_type` spec verified against the IFC schema; `EDGE_TYPE_TO_REL_TYPE` routing; SQL for `relationship_types` |
+| `transform.py` | IFC -> staged model (mapping per SCHEMA/§4) |
+| `model.py` | intermediate dataclasses (staged rows) + `CoverageReport` |
+| `db.py` | idempotent upsert into Postgres in FK order; edges -> generic `relationships` (D-051), except IFC relationships from the revision copy (D-183 K3) |
+| `ids.py` | deterministic UUIDs for tables without a natural unique key |
+| `config.py` | loading `DATABASE_URL` |
 | `main.py` | CLI (`--file`, `--dry-run`, `--model`) |
-| `model_publish.py` | revízie IFC modelov: poistka, archív, compare-and-swap, živý kanál (D-086) |
-| `documents.py` | dokumenty z IFC: `Location` → súbor v buckete `documents`, ukončenie starej sady (D-104) |
+| `model_publish.py` | IFC model revisions: safeguard, archive, compare-and-swap, live channel (D-086) |
+| `documents.py` | documents from IFC: `Location` -> file in the `documents` bucket, closing the old set (D-104) |
 
-## Predpoklady
-- **Python 3.9+** (overené s 3.9 + `ifcopenshell 0.8.4`).
-- `DATABASE_URL` v `../.env.local` — Supabase → Project Settings → Database →
-  Connection string (URI). Tajné, gitignored.
+## Prerequisites
+- **Python 3.9+** (verified with 3.9 + `ifcopenshell 0.8.4`).
+- `DATABASE_URL` in `../.env.local`: Supabase -> Project Settings -> Database ->
+  Connection string (URI). Secret, gitignored.
 
-## Inštalácia a spustenie
+## Installation and running
 ```bash
 python -m venv etl/.venv && source etl/.venv/Scripts/activate   # Windows: etl/.venv/Scripts/activate
 pip install -r etl/requirements.txt
 
-# IFC súbor daj do etl/data/ (gitignored), potom z koreňa repa:
-python -m etl.main --file etl/data/model.ifc --dry-run   # náhľad, bez zápisu
-python -m etl.main --file etl/data/model.ifc             # zápis do Supabase (upsert)
-python -m etl.main --file etl/data/model.ifc --reset     # vyprázdni AIM dáta, potom load
+# put the IFC file in etl/data/ (gitignored), then from the repo root:
+python -m etl.main --file etl/data/model.ifc --dry-run   # preview, no write
+python -m etl.main --file etl/data/model.ifc             # write to Supabase (upsert)
+python -m etl.main --file etl/data/model.ifc --reset     # empty the AIM data, then load
 ```
 
-> **Windows:** konzola je `cp1250` → spúšťaj s `PYTHONUTF8=1` (inak padne na diakritike).
+> **Windows:** the console is `cp1250` -> run with `PYTHONUTF8=1` (otherwise it fails on diacritics).
 
 ### Project (D-189, D-190)
 Every ETL tool (`etl.main`, `model_publish`, `revision_copy`, `revision_compare`, `derive`, `ids_check`,
@@ -62,274 +62,274 @@ project.
   migration `20261105120000` is applied. Every write names `project_id`; `model_revisions` needs `container_id` and
   the revision copy `model_revision_id` (no database default or lookup fills them).
 
-### Manifest vzťahov (D-051)
-Hrany od F1 žijú v generickej `relationships` (diskriminátor `rel_type`); zoznam typov +
-ich IFC sémantika žije v manifeste (`manifest.py`, overený proti IFC schéme). Regenerácia
-SQL pre migráciu / kontrola:
+### Relationship manifest (D-051)
+Since F1, edges live in the generic `relationships` (discriminator `rel_type`); the list of types +
+their IFC semantics lives in the manifest (`manifest.py`, verified against the IFC schema). Regenerating
+SQL for a migration / checking:
 ```bash
-python -m etl.manifest --check   # validácia rel_type proti IFC schéme
-python -m etl.manifest --sql     # INSERT do relationship_types (do migrácie)
+python -m etl.manifest --check   # validate rel_type against the IFC schema
+python -m etl.manifest --sql     # INSERT into relationship_types (into a migration)
 ```
 
-### Manifest IFC pset definícií (D-061)
-Statický slovník štandardných psetov (význam/typ/enum properties) pre LLM grounding —
-generuje sa z bSDD/psd šablón `ifcopenshell` LEN pre triedy projektu:
+### IFC pset definition manifest (D-061)
+A static dictionary of standard psets (meaning/type/enum of properties) for LLM grounding,
+generated from the `ifcopenshell` bSDD/psd templates ONLY for the project's classes:
 ```bash
-python -m etl.pset_manifest --check            # validácia + súhrn
-python -m etl.pset_manifest --classes-from-db  # triedy z objects.ifc_type
-python -m etl.pset_manifest --sql              # INSERT do ifc_property_definitions (do NOVEJ migrácie)
+python -m etl.pset_manifest --check            # validation + summary
+python -m etl.pset_manifest --classes-from-db  # classes from objects.ifc_type
+python -m etl.pset_manifest --sql              # INSERT into ifc_property_definitions (into a NEW migration)
 ```
 
-### Extrakcia textu PDF (D-063)
-Text všetkých PDF z `docs.csv` per strana → `document_pages` (fulltext v obsahu
-dokumentov pre LLM tool `search_documents`). Spúšťaj po E3 uploade dokumentov, tam kde
-sú PDF lokálne (`podklady/FINAL`, rovnaký kontrakt ako E4):
+### PDF text extraction (D-063)
+Text of all PDFs from `docs.csv` per page -> `document_pages` (full text of document
+content for the LLM tool `search_documents`). Run after the E3 document upload, where
+the PDFs are local (`podklady/FINAL`, same contract as E4):
 ```bash
-python -m etl.pdf_text --dry-run   # extrakcia + report, bez zápisu
-python -m etl.pdf_text             # idempotentný zápis (delete+insert per dokument)
+python -m etl.pdf_text --dry-run   # extraction + report, no write
+python -m etl.pdf_text             # idempotent write (delete+insert per document)
 ```
-Dokumenty z IFC (D-104) v manifeste nie sú; ich PDF ležia v buckete `documents`. Text všetkých
-živých dokumentov (aj riadky s polohou na strane, `document_pages.blocks`, D-123) načíta:
+Documents from IFC (D-104) are not in the manifest; their PDFs are in the `documents` bucket. The text of all
+live documents (including lines with their position on the page, `document_pages.blocks`, D-123) is loaded by:
 ```bash
-python -m etl.pdf_text --from-db --dry-run   # stiahne PDF, report, bez zápisu
-python -m etl.pdf_text --from-db             # zápis; --only <object_ref> = jeden dokument
+python -m etl.pdf_text --from-db --dry-run   # downloads the PDFs, report, no write
+python -m etl.pdf_text --from-db             # write; --only <object_ref> = one document
 ```
-Report pri každom dokumente uvádza aj strany bez textovej vrstvy (`obrázok` = text ako raster/CCITT maska, `krivky`, `prázdna`).
-Strany `obrázok` a `krivky` prečíta OCR (D-169, #279): Tesseract `ces+slk+eng`, riadky v `blocks` so `src: "ocr"` a `conf`,
-`search_documents` ich hlási ako `source: "ocr"`. Strany s textovou vrstvou do OCR nejdú nikdy. Predvolene zapnuté
-(aj v `etl.doc_upload`), `--no-ocr` vypne, `--dry-run` OCR nespúšťa a vypíše "Do OCR by išlo: N strán".
-Treba Tesseract s jazykmi (bez neho beh pokračuje bez OCR a napíše to):
+For each document the report also lists pages without a text layer (`obrázok` = image: text as raster/CCITT mask, `krivky` = curves, `prázdna` = empty).
+Pages `obrázok` and `krivky` are read by OCR (D-169, #279): Tesseract `ces+slk+eng`, lines in `blocks` with `src: "ocr"` and `conf`,
+`search_documents` reports them as `source: "ocr"`. Pages with a text layer never go to OCR. On by default
+(also in `etl.doc_upload`), `--no-ocr` turns it off, `--dry-run` does not run OCR and prints "Do OCR by išlo: N strán" ("Would go to OCR: N pages").
+Tesseract with languages is required (without it the run continues without OCR and says so):
 ```bash
 sudo apt-get install -y tesseract-ocr tesseract-ocr-ces tesseract-ocr-slk tesseract-ocr-eng   # Ubuntu, GitHub Actions
-# Windows: inštalátor UB Mannheim (github.com/UB-Mannheim/tesseract), jazyky Czech + Slovak, tesseract.exe do PATH
+# Windows: UB Mannheim installer (github.com/UB-Mannheim/tesseract), languages Czech + Slovak, tesseract.exe on PATH
 pip install -r etl/requirements.txt                                                            # pytesseract
-python -m etl.pdf_text --from-db --dry-run    # počet strán pre OCR
-python -m etl.pdf_text --from-db              # zápis vrátane OCR
+python -m etl.pdf_text --from-db --dry-run    # number of pages for OCR
+python -m etl.pdf_text --from-db              # write including OCR
 ```
 
-Beh zapíše aj `document_pages.page_size` (veľkosť strany v bodoch) a `documents.file_sha256`
-(sha256 súboru PDF, kotva revízie pre pripomienky a keš snímky výrezu, D-158 krok 3; po migrácii
-`20261023140000`). Rastre strán sa nerobia: snímku výrezu renderuje host na požiadanie.
+The run also writes `document_pages.page_size` (page size in points) and `documents.file_sha256`
+(sha256 of the PDF file, revision anchor for comments and the crop snapshot cache, D-158 step 3; after migration
+`20261023140000`). Page rasters are not made: the host renders the crop snapshot on request.
 
-Čiary výkresu (`document_pages.lines`, kalibrácia podkladov, D-133) sa ukladajú pri každom behu; tenšie výkresy
-(požiarne pôdorysy) dostanú nižší prah hrúbky (0,5 alebo 0,25 pt, `lines.min_w`). Nové PDF z `etl.doc_upload`
-sa načítajú hneď po uploade (`--no-pdf-text` to vypne); už nahraté dokumenty bez čiar dopočíta
-`python -m etl.pdf_text --from-db` (alebo s `--only <object_ref>`).
+Drawing lines (`document_pages.lines`, underlay calibration, D-133) are stored on every run; thinner drawings
+(fire floor plans) get a lower thickness threshold (0.5 or 0.25 pt, `lines.min_w`). New PDFs from `etl.doc_upload`
+are loaded right after upload (`--no-pdf-text` turns this off); documents already uploaded without lines are filled in by
+`python -m etl.pdf_text --from-db` (or with `--only <object_ref>`).
 
-Jednorazový beh po nasadení D-133 doplnku (#283), z koreňa repa:
+One-off run after deploying the D-133 addition (#283), from the repo root:
 ```bash
-pip install -r etl/requirements.txt           # PyMuPDF a psycopg
-export DATABASE_URL='postgresql://...'        # jediná povinná env (alebo riadok v .env.local), Supabase → Database → URI
-export PYTHONUTF8=1                           # len Windows
-python -m etl.pdf_text --from-db --dry-run --only OCB_SO01_PBR_D-1-3-02_PODORYS-1NP   # kontrola: stĺpec "čiar" > 0
-python -m etl.pdf_text --from-db              # všetky živé PDF (zápis delete+insert per dokument, idempotentné)
+pip install -r etl/requirements.txt           # PyMuPDF and psycopg
+export DATABASE_URL='postgresql://...'        # the only required env (or a line in .env.local), Supabase -> Database -> URI
+export PYTHONUTF8=1                           # Windows only
+python -m etl.pdf_text --from-db --dry-run --only OCB_SO01_PBR_D-1-3-02_PODORYS-1NP   # check: column "čiar" (lines) > 0
+python -m etl.pdf_text --from-db              # all live PDFs (write delete+insert per document, idempotent)
 ```
-PDF sa sťahujú z `documents.location` (verejné URL v Storage), preto netreba `SUPABASE_SERVICE_ROLE_KEY`.
+PDFs are downloaded from `documents.location` (public URLs in Storage), so `SUPABASE_SERVICE_ROLE_KEY` is not needed.
 
-### Dokumenty z IFC (D-104)
-Dokumentáciu nesie model: každý `IfcDocumentInformation` je `document` s `object_ref` =
-`Identification` (aj priečinkové časti bez súboru), strom z
-`IfcDocumentInformationRelationship` je `rel_document_information_relationship` (časť →
-nadradený), `IfcDocumentReference` je `document_reference` (napr. strana výpisu skladieb,
-`object_ref` = `<Identification dokumentu>#page=N`). Druh dokumentu je klasifikácia
-(`IfcClassificationReference` cez `IfcExternalReferenceRelationship`, ASR v77: typ informácie
-ISO 19650) a ide do `rel_external_reference_relationship` (dokument → referencia). Load preloží `Location`
-(`../Dokumentacia/<Identification>.pdf`) na verejnú URL súboru v buckete `documents`, ak tam
-súbor s rovnakým menom je (`storage_type='supabase'`, treba `SUPABASE_URL`); pôvodná hodnota
-ostane v `properties._ifc_location`. Dokumenty nesú `properties._model`; dokument, ktorý model
-prestane vydávať, `--model` beh ukončí. Starú sadu E3 a dokumenty ETL pred D-104 (bez
-`_model`) jednorazovo ukončí:
+### Documents from IFC (D-104)
+The model carries the documentation: each `IfcDocumentInformation` is a `document` with `object_ref` =
+`Identification` (including folder parts without a file), the tree from
+`IfcDocumentInformationRelationship` is `rel_document_information_relationship` (part ->
+parent), `IfcDocumentReference` is `document_reference` (e.g. a page of the build-up schedule,
+`object_ref` = `<document Identification>#page=N`). The document kind is a classification
+(`IfcClassificationReference` via `IfcExternalReferenceRelationship`, ASR v77: information type
+ISO 19650) and goes into `rel_external_reference_relationship` (document -> reference). The load translates `Location`
+(`../Dokumentacia/<Identification>.pdf`) to the public URL of the file in the `documents` bucket, if a
+file with the same name is there (`storage_type='supabase'`, needs `SUPABASE_URL`); the original value
+stays in `properties._ifc_location`. Documents carry `properties._model`; a document that the model
+stops issuing is closed by the `--model` run. The old E3 set and ETL documents from before D-104 (without
+`_model`) are closed once by:
 ```bash
-python -m etl.documents close-legacy --dry-run   # koľko by sa ukončilo
-python -m etl.documents close-legacy             # dokumenty bez _model + ich väzby
+python -m etl.documents close-legacy --dry-run   # how many would be closed
+python -m etl.documents close-legacy             # documents without _model + their links
 ```
-Na produkcii oboje spúšťa workflow `reetl` v repe OCB (re-ETL aktuálnej revízie bez novej
-revízie, `close_legacy_documents`).
+In production both are run by the `reetl` workflow in the OCB repo (re-ETL of the current revision without a new
+revision, `close_legacy_documents`).
 
-Upsert objektu prepíše `properties` tým, čo vydá model, okrem kľúčov hostiteľa
-(`HOST_PROPERTY_KEYS` v `db.py`, dnes `_georef` = kalibrácia podkladu výkresu z PATCH
-`/api/underlay`): tie ostanú, re-ETL ich nezmaže (D-104 krok 3).
+An object upsert overwrites `properties` with what the model issues, except the host keys
+(`HOST_PROPERTY_KEYS` in `db.py`, today `_georef` = drawing underlay calibration from PATCH
+`/api/underlay`): those stay, re-ETL does not delete them (D-104 step 3).
 
-### `--reset` (nahradenie seedu, E2)
-`--reset` pred loadom vyprázdni graf **jedného projektu** (D-189): jeho hrany, GUID aliasy a uzly okrem uzla
-projektu; revízie, kontajnery, klasifikácia a aktori ostávajú. Iné projekty sa nikdy nemažú (žiadny `TRUNCATE`).
-Na produkcii sa nespúšťa (AGENTS.md). Bez `--reset` ide čistý idempotentný upsert (re-run rovnakého modelu nič
-neduplikuje).
+### `--reset` (replacing the seed, E2)
+Before the load, `--reset` empties the graph of **one project** (D-189): its edges, GUID aliases and nodes except the
+project node; revisions, containers, classification and actors stay. Other projects are never deleted (no `TRUNCATE`).
+It is not run in production (AGENTS.md). Without `--reset` it is a clean idempotent upsert (a re-run of the same model
+duplicates nothing).
 
-## Odvodené hrany — `etl.derive` (D-080)
+## Derived edges: `etl.derive` (D-080)
 
-Post-processing nad už naloadenými modelmi: hrany, ktoré v žiadnom zdrojovom IFC nie sú,
-ale dajú sa odvodiť. Prvý odvodzovač `spatial_reference` zaradí prvky (VZT, nábytok…) do
-miestností geometriou ako `rel_referenced_in_spatial_structure`:
+Post-processing over already loaded models: edges that are in no source IFC,
+but can be derived. The first deriver `spatial_reference` assigns elements (VZT, furniture...) to
+rooms by geometry as `rel_referenced_in_spatial_structure`:
 
 ```bash
-# najprv bez DB: zhrnutie, QA prekrývajúcich sa priestorov, CSV report
+# first without DB: summary, QA of overlapping spaces, CSV report
 python -m etl.derive spatial_reference --models podklady/FINAL/ASR.ifc podklady/FINAL/VZT.ifc --dry-run --report out/spatial.csv
-# zápis (idempotentný; hrany, ktoré beh už neodvodí, sa uzavrú)
+# write (idempotent; edges the run no longer derives are closed)
 python -m etl.derive spatial_reference --models podklady/FINAL/ASR.ifc podklady/FINAL/VZT.ifc
 ```
 
-Geometriu rieši ifcopenshell (`geom.tree` nad BRep telesami): `inside` = prvok celý v tele
-priestoru, `partial` = prvok telo pretína. Rozhoduje telo IfcSpace v modeli — ak VZT
-v podhľade nepadne do miestnosti, treba opraviť telo priestoru v modeli.
-Prvý model je referenčný súradnicový rámec, ostatné sa zarovnajú cez `IfcMapConversion`.
-Voľby: `--include` (triedy prvkov), `--spatial` (triedy priestorov), `--inside-only`
-(len prvky celé vnútri, bez `partial`). Spúšťa sa **po** `etl.main`
-oboch modelov (prvky aj priestory musia byť v DB, páruje sa cez aktívny IFC GUID).
+Geometry is handled by ifcopenshell (`geom.tree` over BRep bodies): `inside` = element fully in the space
+body, `partial` = element intersects the body. The IfcSpace body in the model decides: if VZT
+in the suspended ceiling does not fall into a room, the space body in the model needs fixing.
+The first model is the reference coordinate frame, the others are aligned via `IfcMapConversion`.
+Options: `--include` (element classes), `--spatial` (space classes), `--inside-only`
+(only elements fully inside, without `partial`). It runs **after** `etl.main`
+of both models (elements and spaces must be in the DB, matching is by the active IFC GUID).
 
-### Register pravidiel odvodení (D-089)
-Ktoré odvodenia bežia, je v DB (`derivation_rules`), nie vo workflowe. Každý beh sa zapíše do
+### Derivation rule register (D-089)
+Which derivations run is in the DB (`derivation_rules`), not in the workflow. Each run is written to
 `derivation_runs`.
 ```bash
-python -m etl.derive rules                                        # stav a posledný beh
-python -m etl.derive run --models ASR.ifc VZT.ifc --trigger auto  # po novej revízii
+python -m etl.derive rules                                        # status and last run
+python -m etl.derive run --models ASR.ifc VZT.ifc --trigger auto  # after a new revision
 python -m etl.derive run --models ASR.ifc VZT.ifc --rule element_in_spatial_zone
-python -m etl.derive disable --rule element_in_spatial_zone       # uzavrie jeho hrany
+python -m etl.derive disable --rule element_in_spatial_zone       # closes its edges
 python -m etl.derive enable --rule element_in_spatial_zone --mode manual
 ```
-Geometrické pravidlá (`element_in_space`, `element_in_spatial_zone`) sa počítajú jedným
-prechodom a hrany sa rozdelia podľa cieľovej triedy; `element_in_zone` je pohľad
-`v_zone_elements` (prvok v IfcZone cez priestory). `spatial_reference` ostáva ako priamy
-odvodzovač D-080 (predvolene len IfcSpace).
+Geometric rules (`element_in_space`, `element_in_spatial_zone`) are computed in one
+pass and the edges are split by target class; `element_in_zone` is the view
+`v_zone_elements` (element in an IfcZone via spaces). `spatial_reference` stays as the direct
+D-080 deriver (by default IfcSpace only).
 
-## Kontrola modelu voči IDS — `etl.ids_check` (D-081)
+## Checking the model against IDS: `etl.ids_check` (D-081)
 
-IDS vyrába knižnica požiadaviek (`assetin-library`), sem sa nekopíruje. Krok overí model
-ifctesterom a výsledky (špecifikácia × prvok, pass/fail + dôvody) zapíše do `ids_runs` /
-`ids_results`; AI ich číta cez `v_ids_summary` / `v_ids_latest`.
+IDS is produced by the requirements library (`assetin-library`), it is not copied here. The step verifies the model
+with ifctester and writes the results (specification x element, pass/fail + reasons) to `ids_runs` /
+`ids_results`; the AI reads them via `v_ids_summary` / `v_ids_latest`.
 
 ```bash
 python -m etl.ids_check --ids ../assetin-library/tests/fixtures/ids/ER-0101_ARCH.ids \
     --model podklady/FINAL/ASR.ifc --label ASR --source "assetin-library@<commit>" --dry-run --report out/ids.csv
 ```
 
-Spúšťa sa **po** `etl.main` (prvky sa párujú cez aktívny IFC GUID). Každý beh je nový
-záznam (história plnenia ostáva); pohľady ukazujú posledný beh. IDS pre ARCH výmenu sa
-púšťa na ASR, nie na VZT — špecifikácie s `minOccurs=1` by inak hlásili, že v modeli nič nie je.
+It runs **after** `etl.main` (elements are matched by the active IFC GUID). Each run is a new
+record (the compliance history stays); the views show the last run. IDS for the ARCH exchange is
+run on ASR, not on VZT: specifications with `minOccurs=1` would otherwise report that there is nothing in the model.
 
-## Revízie modelov — `etl.model_publish` (D-086)
+## Model revisions: `etl.model_publish` (D-086)
 
-IFC súbor je master. Každá zverejnená verzia modelu = nemenná kópia
-`ifc/archive/<model>/vNNN.ifc.gz` + riadok `model_revisions`; aktuálna je aj na
+The IFC file is the master. Each published version of a model = an immutable copy
+`ifc/archive/<model>/vNNN.ifc.gz` + a `model_revisions` row; the current one is also at
 `ifc/<model>.ifc`. Env: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-voliteľne `LIVE_CHANNEL`. D-189: the model is the container of a project (`--project`); the advisory lock and the
+optionally `LIVE_CHANNEL`. D-189: the model is the container of a project (`--project`); the advisory lock and the
 compare-and-swap are per container, readers take the stored `archive_path`; outside OCB the archive is
 `ifc/archive/<container uuid>/vNNN.ifc.gz` and the current key `ifc/<container uuid>.ifc` (D-190).
 
-Poradie jednej zmeny (rovnaké v GitHub Actions repa OCB):
+Order of one change (the same in the OCB repo's GitHub Actions):
 ```bash
 python -m etl.model_publish publish --model ASR --file ASR_v73.ifc --base 72 \
-    --changes zmeny.json --summary "..."        # poistka → archív → revízia (compare-and-swap)
-python -m etl.main --file ASR_v73.ifc --model ASR              # re-ETL so zdrojom modelu
+    --changes zmeny.json --summary "..."        # safeguard -> archive -> revision (compare-and-swap)
+python -m etl.main --file ASR_v73.ifc --model ASR              # re-ETL with the model source
 python -m etl.derive spatial_reference --models ASR_v73.ifc VZT.ifc
-python -m etl.model_publish announce --model ASR               # "nová revízia" do viewera
+python -m etl.model_publish announce --model ASR               # "new revision" to the viewer
 ```
-- **Poistka** (bez IDS): súbor sa otvorí, schéma ostáva, žiadny GlobalId nie je dvakrát a
-  každý pridaný/odobratý objekt (`IfcObjectDefinition`) je v zozname zmien ako `add` /
-  `remove`. Neprejde → kód 2, nič sa nezapíše. `--dry-run` = len poistka.
-- **Konflikt** (kód 3): aktuálna revízia už nie je `--base` → recept spustiť nad novou.
-- `revert --model ASR --to 71` = nová revízia s obsahom v71; `sync` = aktuálny kľúč znova
-  z archívu; `status` = zoznam revízií.
-- Zoznam zmien (`zmeny.json`): `{"summary": "...", "changes": [{"guid", "ifc_class",
+- **Safeguard** (no IDS): the file opens, the schema stays, no GlobalId appears twice and
+  every added/removed object (`IfcObjectDefinition`) is in the change list as `add` /
+  `remove`. Fails -> code 2, nothing is written. `--dry-run` = safeguard only.
+- **Conflict** (code 3): the current revision is no longer `--base` -> run the recipe over the new one.
+- `revert --model ASR --to 71` = a new revision with the content of v71; `sync` = current key again
+  from the archive; `status` = list of revisions.
+- Change list (`zmeny.json`): `{"summary": "...", "changes": [{"guid", "ifc_class",
   "op": "add|remove|modify", "what", "before", "after"}]}`.
 
-### Recept v AIMvieweri: VZT podľa BCF #14, #15, #17 (`scripts/vzt/`)
-Väčšina receptov žije v OCB (`recepty/<MODEL>/vNNN-*.py`); tento je v AIMvieweri, aby
-sa dal zopakovať nad ďalšou revíziou bez zmeny kódu. Hodnoty sú v `bcf_opravy.json`
-so stavom: `dolozene` (zdroj v modeli alebo dokumente) a `potvrdene` (Samuel) sa
-aplikujú, `navrh` len s `--vratane-navrhov` (náhľad, nepublikovať), `chyba_hodnota`
-nikdy. Po schválení sa stav v JSON zmení na `potvrdene`, kód sa nemení. GlobalId ostávajú,
-mení sa len Name/Description/PredefinedType, psety a materiály (poistka: 0 pridaných,
-0 odobratých). #13 nemení model (porty klapiek sú napojené, chyba bola v nástroji, #300).
+### Recipe in AIMviewer: VZT per BCF #14, #15, #17 (`scripts/vzt/`)
+Most recipes live in OCB (`recepty/<MODEL>/vNNN-*.py`); this one is in AIMviewer so that
+it can be repeated over another revision without changing code. The values are in `bcf_opravy.json`
+with a status: `dolozene` (source in the model or a document) and `potvrdene` (Samuel) are
+applied, `navrh` only with `--vratane-navrhov` (preview, do not publish), `chyba_hodnota`
+never. After approval the status in the JSON changes to `potvrdene`, the code does not change. GlobalIds stay,
+only Name/Description/PredefinedType, psets and materials change (safeguard: 0 added,
+0 removed). #13 does not change the model (damper ports are connected, the bug was in the tool, #300).
 ```bash
 curl -sS -o VZT_v010.ifc.gz "$SUPABASE_URL/storage/v1/object/public/ifc/archive/VZT/v010.ifc.gz"
 gunzip VZT_v010.ifc.gz            # sha256 f2a4491540357d62ee0460a7f527bdd3fe6fa47c7d5749c21840a605f05be67f
 python scripts/vzt/bcf_opravy.py --vstup VZT_v010.ifc --vystup VZT_v011.ifc --zmeny zmeny_v011.json
-python scripts/vzt/kontrola.py --ifc VZT_v011.ifc            # IDS bcf_opravy.ids, porty klapiek, schéma
+python scripts/vzt/kontrola.py --ifc VZT_v011.ifc            # IDS bcf_opravy.ids, damper ports, schema
 python scripts/vzt/ifc_diff.py --pred VZT_v010.ifc --po VZT_v011.ifc --detail 20
 python -m etl.model_publish publish --model VZT --file VZT_v011.ifc --base 10 \
     --changes zmeny_v011.json --recipe "Menezeris/AIMviewer:scripts/vzt/bcf_opravy.py@<commit>" --dry-run
 ```
-Zverejnenie potom rovnakým príkazom bez `--dry-run` a ďalej podľa poradia vyššie
-(`etl.main --model VZT`, `etl.derive run --trigger auto`, `announce`). Ak medzitým vznikne
-nová revízia VZT, `--base` skončí konfliktom (kód 3): recept sa spustí znova nad ňou.
+Publishing is then the same command without `--dry-run` and then per the order above
+(`etl.main --model VZT`, `etl.derive run --trigger auto`, `announce`). If a new VZT revision appears
+in the meantime, `--base` ends in a conflict (code 3): the recipe is run again over it.
 
-**IFC vzťahy z kópie revízie (D-183 K3 krok 3):** `rel_aggregates`, `rel_contained_in_spatial_structure`,
-`rel_defines_by_type`, `rel_assigns_to_group`, `rel_associates_document` a `rel_associates_classification` ETL grafu do
-`relationships` nezapisuje ani neuzatvára (`manifest.FROM_REVISION_COPY`, `db.writes_edge`); ich pohľady čítajú
-`ifc_rev_relationships` (`etl.revision_copy`). Transformácia ich ďalej skladá (dry-run, testy), zapisuje sa len hrana
-AIM vrstvy týchto typov (zdroj nie je `etl*`). Uzly, GUID história, klasifikačné referencie a ostatné typy hrán ostávajú.
-Zlúčené IFC typy s rovnakým typovým kódom (D-033) zapíše ako alias GUID (`ifc_guid_aliases`, zdroj `IFC import:<model>`).
-Staré hrany ETL týchto typov ukončí samostatný krok `supabase/migrations/20261031190000_end_etl_ifc_edges.sql`.
+**IFC relationships from the revision copy (D-183 K3 step 3):** `rel_aggregates`, `rel_contained_in_spatial_structure`,
+`rel_defines_by_type`, `rel_assigns_to_group`, `rel_associates_document` and `rel_associates_classification` are neither written
+to nor closed in `relationships` by the graph ETL (`manifest.FROM_REVISION_COPY`, `db.writes_edge`); their views read
+`ifc_rev_relationships` (`etl.revision_copy`). The transformation still assembles them (dry-run, tests), only an AIM layer
+edge of these types is written (source is not `etl*`). Nodes, GUID history, classification references and other edge types stay.
+Merged IFC types with the same type code (D-033) are written as a GUID alias (`ifc_guid_aliases`, source `IFC import:<model>`).
+Old ETL edges of these types are closed by a separate step `supabase/migrations/20261031190000_end_etl_ifc_edges.sql`.
 
-**`--model` v `etl.main`:** hrany, GUID história a aliasy dostanú zdroj modelu (`etl:ASR`,
-`IFC import:ASR`); čo beh nevydal (zmazaný, presunutý, premenovaný prvok), sa uzavrie.
-Nový rodič pri `rel_aggregates` / `contained` / `defines_by_type` uzavrie starého pred
-insertom. **Prvý prechod** z dát bez mena modelu: načítať ASR aj VZT s `--model`, potom raz
-`python -m etl.model_publish close-legacy`. Väzby dokumentov/aktorov na entity, ktoré ETL
-neemituje (IfcZone, IfcSpatialZone, IfcGroup, IfcProject), sa vynechajú a vypíšu.
+**`--model` in `etl.main`:** edges, GUID history and aliases get the model source (`etl:ASR`,
+`IFC import:ASR`); what the run did not issue (deleted, moved, renamed element) is closed.
+A new parent in `rel_aggregates` / `contained` / `defines_by_type` closes the old one before the
+insert. **First pass** from data without a model name: load both ASR and VZT with `--model`, then once
+`python -m etl.model_publish close-legacy`. Links of documents/actors to entities that ETL
+does not emit (IfcZone, IfcSpatialZone, IfcGroup, IfcProject) are skipped and printed.
 
-## Úplná kópia revízie - `etl.revision_copy` a `etl.revision_compare` (D-183 K2)
+## Full revision copy - `etl.revision_copy` and `etl.revision_compare` (D-183 K2)
 
-Kontajner revízie je pravda (D-183); DB nesie jeho úplnú kópiu bez geometrie vedľa grafu AIM (`objects`,
-`relationships` sa nemenia). Generické pravidlo, nič sa nevyberá: každý IfcRoot okrem vzťahov a sád
-(`ifc_rev_objects`), každá dvojica Relating x Related z každého IfcRel* okrem IfcRelDefinesByProperties
-(`ifc_rev_relationships`, kľúč trieda, nositeľ, druhá strana) a každý pset, Qto a preddefinovaná sada na výskyte
-aj type (`ifc_rev_property_sets`, kľúč nositeľ, meno psetu). Každý riadok nesie `(model, revision)` a `content_hash`.
+The revision container is the truth (D-183); the DB carries its full copy without geometry next to the AIM graph (`objects`,
+`relationships` do not change). A generic rule, nothing is selected: every IfcRoot except relationships and sets
+(`ifc_rev_objects`), every Relating x Related pair from every IfcRel* except IfcRelDefinesByProperties
+(`ifc_rev_relationships`, key class, holder, other side) and every pset, Qto and predefined set on the occurrence
+and the type (`ifc_rev_property_sets`, key holder, pset name). Every row carries `(model, revision)` and `content_hash`.
 
 ```bash
-python -m etl.revision_copy --model VZT                  # aktuálna revízia z archívu (Storage, overí sha256)
-python -m etl.revision_copy --model ASR --revision 79    # konkrétna revízia; hotová s rovnakým sha256 = already_done
-python -m etl.revision_copy --model VZT --archive-file v011.ifc.gz --dry-run   # len extrakcia a počty, bez DB
-python -m etl.revision_compare --model VZT --from 10 --to 11 [--placement]     # porovnanie na požiadanie, nič nezapíše
+python -m etl.revision_copy --model VZT                  # current revision from the archive (Storage, verifies sha256)
+python -m etl.revision_copy --model ASR --revision 79    # a specific revision; already done with the same sha256 = already_done
+python -m etl.revision_copy --model VZT --archive-file v011.ifc.gz --dry-run   # extraction and counts only, no DB
+python -m etl.revision_compare --model VZT --from 10 --to 11 [--placement]     # comparison on request, writes nothing
 ```
 
-- Duplicitné GlobalId alebo nesúlad sha256 = revízia sa neindexuje. Zápis je jedna transakcia: kópia, kontrola úplnosti
-  (počty po triedach zo súboru = DB, každý IfcRoot započítaný), `ifc_rev_imports.status = 'done'`, doplnenie hlavičky
-  a `IfcApplication` do `container_revisions`. Chyba = nič sa nezapíše, riadok `failed` s dôvodom.
-- Akceptačný test: `select count(*) from ifc_rev_storey_elements('VZT', null, '2NP', 'Prívod%')` = 212 (aj 3NP).
-- Poloha nie je v DB: `--placement` číta oba archívy (relatívne k podlažiu, port k hostiteľovi, tolerancia 1 mm a
-  0,001 rad, georeferencia a spoločný posun raz).
-- Merané 30. 10. lokálne: VZT v11 1,8 s, ASR v79 2,5 s (extrakcia + zápis), obe revízie spolu 20 MB s indexmi;
-  porovnanie dvoch revízií VZT v DB 0,1 s, s polohou zo súborov ~9 s.
+- Duplicate GlobalId or sha256 mismatch = the revision is not indexed. The write is one transaction: copy, completeness check
+  (counts per class from the file = DB, every IfcRoot counted), `ifc_rev_imports.status = 'done'`, filling in the header
+  and `IfcApplication` into `container_revisions`. Error = nothing is written, a `failed` row with the reason.
+- Acceptance test: `select count(*) from ifc_rev_storey_elements('VZT', null, '2NP', 'Prívod%')` = 212 (also 3NP).
+- Placement is not in the DB: `--placement` reads both archives (relative to the storey, port to host, tolerance 1 mm and
+  0.001 rad, georeference and common offset once).
+- Measured 30 Oct locally: VZT v11 1.8 s, ASR v79 2.5 s (extraction + write), both revisions together 20 MB with indexes;
+  comparison of two VZT revisions in the DB 0.1 s, with placement from files ~9 s.
 
-## Idempotencia (D-031)
-- `objects` upsert cez `object_ref` (UNIQUE) → `id` ostáva DB-generované (D-010).
-- Hrany / systémy / GUID história → deterministické UUID (`ids.py`), `ON CONFLICT (id)`.
-- Re-run rovnakého modelu nič neduplikuje. Pri zmene dát mimo revalidačného okna
-  Viewera viď `revalidateTag("aim")` (D-030).
+## Idempotency (D-031)
+- `objects` upsert via `object_ref` (UNIQUE) -> `id` stays DB-generated (D-010).
+- Edges / systems / GUID history -> deterministic UUIDs (`ids.py`), `ON CONFLICT (id)`.
+- A re-run of the same model duplicates nothing. When data changes outside the Viewer's revalidation
+  window see `revalidateTag("aim")` (D-030).
 
-## `object_ref` zo schémy (E1, D-033)
-`object_ref` sa skladá z **kódovacej schémy projektu** (`scheme.py`), nie z IFC `Tag`.
-SNIM: `Assembly Code` (TSP+PSP) + `Type Mark` (UOT) + `Mark` (INST) → type `DD01.06`,
-inštancia `DD01.06.03`. Kategóriu určuje **prefix `Assembly Code`** (čítané naprieč
-psetmi). Fallback na `ifc_guid` len keď kód chýba/nie je unikátny. `--dry-run` vypíše
-**coverage report** (pokrytie SNIM kódom vs. fallback, po IFC triedach). Iný projekt =
-iná `CodingScheme` v `scheme.py`, kód sa nemení.
+## `object_ref` from the scheme (E1, D-033)
+`object_ref` is built from the **project coding scheme** (`scheme.py`), not from the IFC `Tag`.
+SNIM: `Assembly Code` (TSP+PSP) + `Type Mark` (UOT) + `Mark` (INST) -> type `DD01.06`,
+instance `DD01.06.03`. The category is set by the **`Assembly Code` prefix** (read across
+psets). Fallback to `ifc_guid` only when the code is missing/not unique. `--dry-run` prints a
+**coverage report** (coverage by SNIM code vs. fallback, per IFC class). Another project =
+another `CodingScheme` in `scheme.py`, the code does not change.
 
-## Rozsah importu — policy (D-034)
-Čo je `asset` **nie je hardcoded** v `transform.py`, ale `ScopePolicy` v `scheme.py`:
-asset = **top-level** prvok (`get_aggregate` = priestor/None) mínus voidy
-(`IfcFeatureElement`) a sub-komponenty (vnorené stĺpiky/panely fasády, vrstvy strechy,
-ramená schodov); **výnimka** = vnorené `IfcDoor`/`IfcWindow` ostávajú asset. `asset_type`
-sa tvorí **len pre typy referencované assetom** (žiadny `IfcSpaceType`/typy vyradených
-komponentov). Na ASR: **681 assetov** z 2706 `IfcElement`.
+## Import scope: policy (D-034)
+What is an `asset` is **not hardcoded** in `transform.py`, but a `ScopePolicy` in `scheme.py`:
+asset = **top-level** element (`get_aggregate` = space/None) minus voids
+(`IfcFeatureElement`) and sub-components (nested curtain wall mullions/panels, roof layers,
+stair flights); **exception** = nested `IfcDoor`/`IfcWindow` stay assets. An `asset_type`
+is created **only for types referenced by an asset** (no `IfcSpaceType`/types of excluded
+components). On ASR: **681 assets** out of 2706 `IfcElement`.
 
-## Konsolidácia podlaží (D-035)
-Pomocné Revit úrovne (`1NP_SH_ZD`, `2NP_HH_STROP`, `Dojazd_výťahov`, …) sa NEemitujú
-ako `floor` uzly — premapujú sa na reálne podlažie (`^\d+NP$` / má priestory) podľa
-NP-prefixu názvu, inak najbližšej elevácie. ASR: 18 storeys → **5 podlaží** (`1NP`–`5NP`).
+## Floor consolidation (D-035)
+Auxiliary Revit levels (`1NP_SH_ZD`, `2NP_HH_STROP`, `Dojazd_výťahov`, ...) are NOT emitted
+as `floor` nodes: they are remapped to the real floor (`^\d+NP$` / has spaces) by the
+NP prefix of the name, otherwise by the nearest elevation. ASR: 18 storeys -> **5 floors** (`1NP` to `5NP`).
 
-## SNIM kategórie (`scheme.py`)
-18 kategórií: 8 z `SNIM - Hierarchia.pdf` (DD, SN, FS, PH, ST, PD, ZV, KV) + 10
-doplnených v E2 (OV, PL, LP, ZD, DZ, SD, IH, VT, SH, TV). Coverage report už nehlási
-„TSP mimo schémy". Väčšina kategórií má len typové kódovanie (bez `Mark`) → inštancia
-ide na GUID fallback (správne — netlačí sa inštančný tag).
+## SNIM categories (`scheme.py`)
+18 categories: 8 from `SNIM - Hierarchia.pdf` (DD, SN, FS, PH, ST, PD, ZV, KV) + 10
+added in E2 (OV, PL, LP, ZD, DZ, SD, IH, VT, SH, TV). The coverage report no longer reports
+"TSP mimo schémy" ("TSP outside the scheme"). Most categories have type coding only (no `Mark`) -> the instance
+goes to the GUID fallback (correct: no instance tag is forced).
 
-## Unit testy
-`pip install -r etl/requirements-dev.txt`, potom z koreňa repa `python -m pytest etl/tests -q`.
-Testy sú čisto lokálne (bez DB/Supabase) — pokrývajú parsovanie manifestu a load-logiku
-cez stub kurzor. Testy nad databázou (`test_model_publish.py`, `test_revision_copy.py`,
-`test_multi_project_load.py`) potrebujú lokálnu Postgres databázu so všetkými migráciami a uzlom projektu OCB v
-`AIM_TEST_DATABASE_URL` (nikdy produkciu), inak sa preskočia; každý test si založí vlastný projekt a po sebe ho
-zmaže.
+## Unit tests
+`pip install -r etl/requirements-dev.txt`, then from the repo root `python -m pytest etl/tests -q`.
+The tests are purely local (no DB/Supabase): they cover manifest parsing and the load logic
+via a stub cursor. Tests against a database (`test_model_publish.py`, `test_revision_copy.py`,
+`test_multi_project_load.py`) need a local Postgres database with all migrations and the OCB project node in
+`AIM_TEST_DATABASE_URL` (never production), otherwise they are skipped; each test creates its own project and
+deletes it afterwards.

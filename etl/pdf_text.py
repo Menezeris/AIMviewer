@@ -1,42 +1,42 @@
-"""Extrakcia textu PDF dokumentov → `document_pages` (D-063).
+"""Text extraction of PDF documents -> `document_pages` (D-063).
 
-Dopĺňa E4 (`pdf_link.py` — väzby prvok↔výkres z obsahu): tu sa z KAŽDÉHO PDF
-v manifeste (`docs.csv`, nie len výkresy VD) extrahuje text per strana, aby LLM
-vedel vyhľadávať v OBSAHU dokumentov (RPC `search_documents`, migrácia
-`20260715120000`). Rovnaký vstupný kontrakt ako E4: `source_path` = cesta k PDF
-pod `podklady/FINAL`, `container_name` = `object_ref` dokumentu v DB (E3).
+Complements E4 (`pdf_link.py` - element<->drawing links from content): here text is extracted
+per page from EVERY PDF in the manifest (`docs.csv`, not only VD drawings), so that the LLM
+can search in the CONTENT of documents (RPC `search_documents`, migration
+`20260715120000`). Same input contract as E4: `source_path` = path to the PDF
+under `podklady/FINAL`, `container_name` = `object_ref` of the document in the DB (E3).
 
-PyMuPDF (`fitz`) — už je ETL závislosť (D-041). Extrakcia je
-`page.get_text("text")` + normalizácia bielych znakov; vektorové výkresy majú
-riedky text (legendy, pečiatky) a to je očakávané. Prázdne strany sa nevkladajú.
+PyMuPDF (`fitz`) - already an ETL dependency (D-041). Extraction is
+`page.get_text("text")` + whitespace normalization; vector drawings have
+sparse text (legends, title blocks) and that is expected. Empty pages are not inserted.
 
-D-169 (mení D-123 bod 7): strana BEZ textovej vrstvy, ktorú diagnostika (#279)
-označí ako `obrázok` alebo `krivky`, sa prečíta OCR (`etl/ocr.py`, Tesseract
-ces+slk+eng). Riadky z OCR majú v `blocks` navyše `src: "ocr"` a `conf`; strany
-s textovou vrstvou do OCR nejdú nikdy. Predvolene zapnuté, `--no-ocr` ho vypne,
-`--dry-run` len spočíta strany, ktoré by do OCR išli.
+D-169 (changes D-123 point 7): a page WITHOUT a text layer that the diagnostics (#279)
+mark as `obrázok` or `krivky` is read by OCR (`etl/ocr.py`, Tesseract
+ces+slk+eng). Lines from OCR additionally have `src: "ocr"` and `conf` in `blocks`; pages
+with a text layer never go to OCR. On by default, `--no-ocr` turns it off,
+`--dry-run` only counts the pages that would go to OCR.
 
-Idempotentné: per dokument `DELETE` + `INSERT` v jednej transakcii — opakovaný
-beh = rovnaký stav. Dokument, ktorý nie je v DB (chýba E3 upload), sa preskočí
-s warningom, beh nezhodí.
+Idempotent: per document `DELETE` + `INSERT` in one transaction - a repeated
+run = the same state. A document that is not in the DB (missing E3 upload) is skipped
+with a warning, the run does not fail.
 
-D-123: dokumenty z IFC (D-104) v manifeste nie sú a ich PDF ležia v buckete
-`documents`, preto `--from-db` berie živé dokumenty priamo z DB (`valid_until is
-null`, `documents.location` = URL PDF) a PDF stiahne. Okrem textu strany sa
-ukladajú riadky textu s polohou (`blocks`, bbox v % strany, počiatok vľavo
-hore), aby tool vedel povedať, KDE na strane text je (výrez pre open_drawing
+D-123: documents from IFC (D-104) are not in the manifest and their PDFs lie in the bucket
+`documents`, so `--from-db` takes live documents directly from the DB (`valid_until is
+null`, `documents.location` = PDF URL) and downloads the PDF. Besides the page text,
+text lines with position are stored (`blocks`, bbox in % of the page, origin top
+left), so that the tool can tell WHERE on the page the text is (crop for open_drawing
 region, D-117).
 
-D-133: pri vektorových výkresoch sa ukladajú aj hrubé čiary strany (`lines` =
-`{size: [W, H], segs: [[x1, y1, x2, y2, w]]}` v bodoch strany, počiatok vľavo dole), z ktorých IFC motor
-kalibruje podklad (pôdorys, rez) na rez modelom.
+D-133: for vector drawings the thick lines of the page are also stored (`lines` =
+`{size: [W, H], segs: [[x1, y1, x2, y2, w]]}` in page points, origin bottom left), from which the IFC engine
+calibrates the underlay (floor plan, section) against a section through the model.
 
-D-158 (kroky 3 a 4): každá strana dostane `page_size` = [šírka, výška] v bodoch
-(zobrazená strana, s rotáciou; RFC 8118 viewrect odkazu na stranu) a dokument
-`documents.file_sha256` = sha256 súboru PDF (kotva revízie, kľúč keše snímky
-výrezu). Rastre strán sa nerobia, snímka sa renderuje v hoste na požiadanie.
+D-158 (steps 3 and 4): each page gets `page_size` = [width, height] in points
+(the displayed page, with rotation; RFC 8118 viewrect of a link to the page) and the document
+`documents.file_sha256` = sha256 of the PDF file (revision anchor, cache key of the crop
+snapshot). Page rasters are not made, the snapshot is rendered in the host on demand.
 
-Spustenie (z koreňa repa):
+Run (from the repo root):
     python -m etl.pdf_text [--dry-run] [--no-ocr] [--manifest podklady/docs.csv]
     python -m etl.pdf_text --from-db [--dry-run] [--no-ocr] [--only <object_ref>]
 """
@@ -72,15 +72,15 @@ _WS_RE = re.compile(r"\s+")
 @dataclass
 class PdfRow:
     source_path: str
-    container_name: str  # object_ref dokumentu (E3)
+    container_name: str  # object_ref of the document (E3)
 
 
 def _load_pdf_rows(manifest: Path) -> list[PdfRow]:
-    """Všetky riadky manifestu s PDF zdrojom (výkresy aj ostatné dokumenty)."""
+    """All manifest rows with a PDF source (drawings and other documents)."""
     out: list[PdfRow] = []
     with manifest.open(encoding="utf-8-sig", newline="") as fh:
-        # `#` komentáre filtrovať ako doc_upload/pdf_link — prvý riadok manifestu
-        # je komentár a bez filtra by sa stal hlavičkou (0 spracovaných PDF).
+        # filter `#` comments like doc_upload/pdf_link - the first manifest line
+        # is a comment and without the filter it would become the header (0 processed PDFs).
         for r in csv.DictReader(line for line in fh if not line.startswith("#")):
             src = (r.get("source_path") or "").strip()
             cn = (r.get("container_name") or "").strip()
@@ -99,7 +99,7 @@ def _doc_id(cur, container_name: str) -> Optional[str]:
 
 
 def extract_pages(pdf_path: Path) -> list[tuple[int, str]]:
-    """(číslo strany 1-based, normalizovaný text) pre neprázdne strany."""
+    """(page number 1-based, normalized text) for non-empty pages."""
     return [(n, text) for n, text, _ in extract_pages_with_blocks(pdf_path)]
 
 
@@ -108,14 +108,14 @@ def _pct(v: float, size: float) -> float:
 
 
 def page_blocks(page_dict: dict, width: float, height: float) -> list[dict]:
-    """Riadky textu strany s bbox v % strany (D-123).
+    """Text lines of the page with bbox in % of the page (D-123).
 
-    Vstup je `page.get_text("dict")`; riadok = spojené spany jedného `line`.
-    Výstup `{t, x, y, w, h}` (x/y = ľavý horný roh), prázdne riadky vynechané.
+    Input is `page.get_text("dict")`; a line = the joined spans of one `line`.
+    Output `{t, x, y, w, h}` (x/y = top left corner), empty lines skipped.
     """
     out: list[dict] = []
     for block in page_dict.get("blocks", []):
-        if block.get("type", 0) != 0:  # 0 = text, 1 = obrázok
+        if block.get("type", 0) != 0:  # 0 = text, 1 = image
             continue
         for line in block.get("lines", []):
             text = _WS_RE.sub(" ", "".join(s.get("text", "") for s in line.get("spans", []))).strip()
@@ -134,17 +134,17 @@ def page_blocks(page_dict: dict, width: float, height: float) -> list[dict]:
     return out
 
 
-# D-133: hrubé čiary (rezané konštrukcie) od tejto hrúbky; tenké sú kóty, šrafy, osi.
+# D-133: thick lines (cut structures) from this width; thin ones are dimensions, hatches, axes.
 LINE_MIN_WIDTH = 0.99
-# #283/#316: požiarne pôdorysy (PBR) a niektoré exporty kreslia steny tenšie než 0,99 pt, preto sa pri
-# nedostatku hrubých čiar skúšajú postupne nižšie prahy (prvý, ktorý dá aspoň LINE_MIN_COUNT úsečiek).
+# #283/#316: fire safety floor plans (PBR) and some exports draw walls thinner than 0.99 pt, so when
+# thick lines are lacking, progressively lower thresholds are tried (the first that gives at least LINE_MIN_COUNT segments).
 LINE_WIDTH_TIERS = (LINE_MIN_WIDTH, 0.5, 0.25)
-# Strana s menej úsečkami nie je vektorový výkres (správa, tabuľka, sken) -> lines = null.
+# A page with fewer segments is not a vector drawing (report, table, scan) -> lines = null.
 LINE_MIN_COUNT = 200
 
 
 def _segments(drawings: list[dict], min_width: float, height: float) -> list[list[float]]:
-    """Úsečky (`l`), strany obdĺžnikov (`re`) a štvoruholníkov (`qu`) od `min_width`."""
+    """Line segments (`l`), sides of rectangles (`re`) and quadrilaterals (`qu`) from `min_width`."""
     out: list[list[float]] = []
 
     def add(x1: float, y1: float, x2: float, y2: float, w: float) -> None:
@@ -173,14 +173,14 @@ def _segments(drawings: list[dict], min_width: float, height: float) -> list[lis
 
 
 def page_lines(drawings: list[dict], width: float, height: float) -> Optional[dict]:
-    """Hrubé úsečky strany pre kalibráciu podkladu (D-133).
+    """Thick line segments of the page for underlay calibration (D-133).
 
-    Vstup je `page.get_drawings()`; čiary (`l`) a strany obdĺžnikov (`re`, `qu`) od
-    `LINE_MIN_WIDTH`, krivky sa vynechajú (oblúky dverí). Ak ich je menej než `LINE_MIN_COUNT`,
-    skúšajú sa nižšie prahy z `LINE_WIDTH_TIERS` (tenšie čiary, #283). Výstup `{size: [W, H],
-    segs: [[x1, y1, x2, y2, w]], min_w}` v bodoch strany s počiatkom vľavo dole (y hore, ako
-    `_georef` D-072), zaokrúhlené na 0,1 pt; `size` je rámec, v ktorom kalibrácia počíta,
-    `min_w` použitý prah hrúbky. Pri žiadnom prahu s dosť úsečkami = nie výkres, vráti None.
+    Input is `page.get_drawings()`; lines (`l`) and sides of rectangles (`re`, `qu`) from
+    `LINE_MIN_WIDTH`, curves are skipped (door arcs). If there are fewer than `LINE_MIN_COUNT`,
+    lower thresholds from `LINE_WIDTH_TIERS` are tried (thinner lines, #283). Output `{size: [W, H],
+    segs: [[x1, y1, x2, y2, w]], min_w}` in page points with origin bottom left (y up, like
+    `_georef` D-072), rounded to 0.1 pt; `size` is the frame in which the calibration computes,
+    `min_w` the width threshold used. If no threshold gives enough segments = not a drawing, returns None.
     """
     for min_w in LINE_WIDTH_TIERS:
         out = _segments(drawings, min_w, height)
@@ -189,13 +189,13 @@ def page_lines(drawings: list[dict], width: float, height: float) -> Optional[di
     return None
 
 
-# Strana bez textovej vrstvy: čo na nej namiesto textu je (#279, nadväzuje na #238).
-TEXTLESS_IMAGE = "obrázok"  # text je rastrový obrázok (sken, CCITT/JBIG2 maska) -> len OCR
-TEXTLESS_VECTOR = "krivky"  # text prevedený na krivky (veľa vektorových ťahov bez písma)
+# Page without a text layer: what it has instead of text (#279, follows up on #238).
+TEXTLESS_IMAGE = "obrázok"  # text is a raster image (scan, CCITT/JBIG2 mask) -> OCR only
+TEXTLESS_VECTOR = "krivky"  # text converted to curves (many vector strokes without a font)
 TEXTLESS_EMPTY = "prázdna"
-# Strana s toľkými vektorovými prvkami bez textu je pravdepodobne text na krivkách, nie čistý list.
+# A page with this many vector items and no text is probably text as curves, not a blank sheet.
 TEXTLESS_VECTOR_MIN = 50
-# D-169: tieto strany sa rasterizujú a čítajú OCR; prázdna strana nie.
+# D-169: these pages are rasterized and read by OCR; an empty page is not.
 OCR_KINDS = (TEXTLESS_IMAGE, TEXTLESS_VECTOR)
 
 
@@ -204,7 +204,7 @@ def _page_text(page: fitz.Page) -> str:
 
 
 def _textless_kind(page: fitz.Page) -> str:
-    """Strana bez textu: obrázok, krivky alebo prázdna (#279)."""
+    """Page without text: image, curves or empty (#279)."""
     if page.get_images(full=True):
         return TEXTLESS_IMAGE
     if len(page.get_drawings()) >= TEXTLESS_VECTOR_MIN:
@@ -213,11 +213,11 @@ def _textless_kind(page: fitz.Page) -> str:
 
 
 def extract_pages_full(pdf_path: Path, ocr: bool = False) -> list[tuple[int, str, list[dict], Optional[dict]]]:
-    """(strana, text, riadky s polohou, hrubé čiary alebo None) pre neprázdne strany.
+    """(page, text, lines with position, thick lines or None) for non-empty pages.
 
-    `ocr=True` (D-169): stranu bez textovej vrstvy typu obrázok alebo krivky prečíta OCR; jej
-    riadky majú `src: "ocr"` a `conf`. Strana s textovou vrstvou do OCR nejde. Keď OCR nie je
-    nainštalované alebo strana zlyhá, ostane bez textu ako pred D-169.
+    `ocr=True` (D-169): a page without a text layer of type image or curves is read by OCR; its
+    lines have `src: "ocr"` and `conf`. A page with a text layer does not go to OCR. When OCR is not
+    installed or the page fails, it stays without text as before D-169.
     """
     use_ocr = ocr and ocr_unavailable() is None
     pages: list[tuple[int, str, list[dict], Optional[dict]]] = []
@@ -233,7 +233,7 @@ def extract_pages_full(pdf_path: Path, ocr: bool = False) -> list[tuple[int, str
                 continue
             try:
                 res = ocr_page(page)
-            except Exception as exc:  # noqa: BLE001 - jedna zlá strana nezhodí dokument
+            except Exception as exc:  # noqa: BLE001 - one bad page does not fail the document
                 print(f"    ! OCR strany {i} zlyhalo ({exc})")
                 continue
             if res is not None:
@@ -242,23 +242,23 @@ def extract_pages_full(pdf_path: Path, ocr: bool = False) -> list[tuple[int, str
 
 
 def textless_pages(pdf_path: Path) -> dict[int, str]:
-    """Strany BEZ textovej vrstvy a dôvod: obrázok, krivky alebo prázdna (#279).
+    """Pages WITHOUT a text layer and the reason: image, curves or empty (#279).
 
-    `search_documents` o takých stranách bez OCR hlási "Strana nemá text"; obrázok a krivky
-    číta OCR (D-169, `extract_pages_full(ocr=True)`), prázdna strana ostáva bez textu.
+    Without OCR, `search_documents` reports "Strana nemá text" for such pages; image and curves
+    are read by OCR (D-169, `extract_pages_full(ocr=True)`), an empty page stays without text.
     """
     with fitz.open(pdf_path) as doc:
         return {i: _textless_kind(page) for i, page in enumerate(doc, start=1) if not _page_text(page)}
 
 
 def page_sizes(pdf_path: Path) -> dict[int, list[float]]:
-    """D-158: [šírka, výška] každej strany v bodoch (zobrazená strana, s rotáciou)."""
+    """D-158: [width, height] of each page in points (the displayed page, with rotation)."""
     with fitz.open(pdf_path) as doc:
         return {i: [round(p.rect.width, 2), round(p.rect.height, 2)] for i, p in enumerate(doc, start=1)}
 
 
 def file_sha256(pdf_path: Path) -> str:
-    """D-158: sha256 súboru PDF (kotva revízie dokumentu)."""
+    """D-158: sha256 of the PDF file (document revision anchor)."""
     h = hashlib.sha256()
     with pdf_path.open("rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -267,7 +267,7 @@ def file_sha256(pdf_path: Path) -> str:
 
 
 def extract_pages_with_blocks(pdf_path: Path) -> list[tuple[int, str, list[dict]]]:
-    """(strana 1-based, normalizovaný text, riadky s polohou) pre neprázdne strany."""
+    """(page 1-based, normalized text, lines with position) for non-empty pages."""
     return [(n, text, blocks) for n, text, blocks, _ in extract_pages_full(pdf_path)]
 
 
@@ -279,7 +279,7 @@ class DbDoc:
 
 
 def _db_docs(cur, only: Optional[str], project_id: str = project_mod.OCB_ID) -> list[DbDoc]:
-    """Živé dokumenty s PDF v storage projektu (D-123, D-189); `only` = jeden object_ref."""
+    """Live documents with a PDF in the project storage (D-123, D-189); `only` = one object_ref."""
     sql = (
         "select o.id, o.object_ref, d.location from objects o "
         "join documents d on d.id = o.id "
@@ -304,7 +304,7 @@ def _write_pages(
     sizes: Optional[dict[int, list[float]]] = None,
     sha256: Optional[str] = None,
 ) -> None:
-    # Idempotencia: plný refresh strán dokumentu.
+    # Idempotency: full refresh of the document's pages.
     cur.execute("delete from document_pages where document_id = %s", (doc_id,))
     for page_no, text, blocks, lines in pages:
         size = (sizes or {}).get(page_no)
@@ -325,11 +325,11 @@ def _write_pages(
 
 
 def index_pdf(cur, doc_id: str, pdf_path: Path, ocr: bool = True) -> int:
-    """Extrakcia jedného PDF a zápis do `document_pages` (text, riadky, čiary, rozmer, sha256).
+    """Extract one PDF and write to `document_pages` (text, lines, line segments, size, sha256).
 
-    Volá ho `etl.doc_upload` hneď po nahratí dokumentu, aby sa čiary výkresu (kalibrácia
-    podkladu, #283/#316) nemuseli dopĺňať ručne cez `--from-db`. Strany bez textovej vrstvy
-    číta OCR (D-169), ak nie je `ocr=False`. Vráti počet strán s textom.
+    Called by `etl.doc_upload` right after a document is uploaded, so that the drawing lines (underlay
+    calibration, #283/#316) do not have to be filled in by hand via `--from-db`. Pages without a text layer
+    are read by OCR (D-169), unless `ocr=False`. Returns the number of pages with text.
     """
     pages = extract_pages_full(pdf_path, ocr=ocr)
     _write_pages(cur, doc_id, pages, page_sizes(pdf_path), file_sha256(pdf_path))
@@ -337,14 +337,14 @@ def index_pdf(cur, doc_id: str, pdf_path: Path, ocr: bool = True) -> int:
 
 
 def is_ocr_page(page: Page) -> bool:
-    """Strana prečítaná OCR (D-169): jej riadky nesú `src: "ocr"`."""
+    """Page read by OCR (D-169): its lines carry `src: "ocr"`."""
     return bool(page[2]) and page[2][0].get("src") == "ocr"
 
 
 def _report_textless(pdf_path: Path, pages: list[Page], dry_run: bool) -> int:
-    """Strany bez textovej vrstvy (obrázok / krivky) a čo s nimi OCR (D-169, #279).
+    """Pages without a text layer (image / curves) and what OCR does with them (D-169, #279).
 
-    Vráti počet strán, ktoré idú (pri `dry_run` by išli) do OCR.
+    Returns the number of pages that go (with `dry_run`, would go) to OCR.
     """
     ocr_done = {p[0] for p in pages if is_ocr_page(p)}
     textless = textless_pages(pdf_path)
@@ -358,7 +358,7 @@ def _report_textless(pdf_path: Path, pages: list[Page], dry_run: bool) -> int:
 
 
 def _ocr_banner(ocr: bool, dry_run: bool) -> None:
-    """Na začiatku behu: či OCR beží a prečo nie (D-169)."""
+    """At the start of the run: whether OCR runs and why not (D-169)."""
     if not ocr:
         print("OCR vypnuté (--no-ocr): strany bez textovej vrstvy ostanú bez textu.")
     elif dry_run:
@@ -385,7 +385,7 @@ def _report(ref: str, pages: list[Page]) -> None:
 
 def run_from_db(dry_run: bool, only: Optional[str], ocr: bool = True,
                 code: str = project_mod.OCB_CODE) -> int:
-    """D-123: text všetkých živých PDF dokumentov zo storage (nie z manifestu)."""
+    """D-123: text of all live PDF documents from storage (not from the manifest)."""
     conn = psycopg.connect(database_url())
     written_docs = written_pages = ocr_candidates = 0
     _ocr_banner(ocr, dry_run)
@@ -403,7 +403,7 @@ def run_from_db(dry_run: bool, only: Optional[str], ocr: bool = True,
                     pages = extract_pages_full(pdf_path, ocr=ocr and not dry_run)
                     sizes = page_sizes(pdf_path)
                     sha = file_sha256(pdf_path)
-                except Exception as exc:  # noqa: BLE001 - jeden zlý súbor nezhodí beh
+                except Exception as exc:  # noqa: BLE001 - one bad file does not fail the run
                     skipped.append(f"{d.object_ref} ({exc})")
                     continue
                 _report(d.object_ref, pages)

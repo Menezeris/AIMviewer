@@ -1,8 +1,8 @@
-"""Load vrstva — idempotentný upsert staged modelu do Supabase Postgresu (D-031).
+"""Load layer: idempotent upsert of the staged model into Supabase Postgres (D-031).
 
-Poradie rešpektuje FK závislosti. `objects` sa upsertujú cez `object_ref`
-(`id` ostáva DB-generované, verné D-010); ostatné tabuľky bez prirodzeného
-unique používajú deterministické UUID (`ids.py`). Všetko v jednej transakcii.
+The order respects FK dependencies. `objects` are upserted by `object_ref`
+(`id` stays DB-generated, true to D-010); other tables without a natural
+unique key use deterministic UUIDs (`ids.py`). Everything in one transaction.
 """
 
 from __future__ import annotations
@@ -17,22 +17,22 @@ from . import project as project_mod
 from .manifest import _SPECS, EDGE_TYPE_TO_REL_TYPE, FROM_REVISION_COPY
 from .model import GuidAlias, StagedModel
 
-# D-051: hrany už nemajú per-vzťah tabuľku — všetky idú do generickej `relationships`
-# (diskriminátor `rel_type`). Interný ETL `edge_type` → kanonický `rel_type` drží
-# manifest (`etl/manifest.py`, jeden zdroj pravdy). Zapisujeme BASE tabuľku, nie
-# kanonické views (tie sú len na čítanie).
+# D-051: edges no longer have a per-relationship table: all go to the generic `relationships`
+# (discriminator `rel_type`). The internal ETL `edge_type` -> canonical `rel_type` is held by the
+# manifest (`etl/manifest.py`, single source of truth). We write the BASE table, not the
+# canonical views (those are read-only).
 
-# rel_type s parciálnym unique indexom "1 aktívny rodič na from_id" (manifest).
+# rel_type with a partial unique index "1 active parent per from_id" (manifest).
 UNIQUE_ACTIVE_FROM = frozenset(s.rel_type for s in _SPECS if s.unique_active_from)
 
-# D-183 K3 krok 3: typy hrán, ktoré pohľady čítajú z kópie revízie; ETL ich nezapisuje ani neuzatvára.
+# D-183 K3 step 3: edge types the views read from the revision copy; the ETL neither writes nor closes them.
 COPY_REL_TYPES = sorted(FROM_REVISION_COPY)
 
 
 def writes_edge(edge_type: str, source: Optional[str]) -> bool:
-    """Zapisuje ETL grafu túto hranu do `relationships`? Nie, ak je to IFC vzťah zo súboru (zdroj `etl`,
-    `etl:<model>`), ktorý pohľad číta z kópie revízie. Hrana AIM vrstvy (iný zdroj) sa zapíše vždy,
-    rovnako ako ju pohľady čítajú (`rel_is_aim_layer`)."""
+    """Does the graph ETL write this edge to `relationships`? No if it is an IFC relationship from the file (source `etl`,
+    `etl:<model>`) that the view reads from the revision copy. An AIM layer edge (another source) is always written,
+    just as the views read it (`rel_is_aim_layer`)."""
     if EDGE_TYPE_TO_REL_TYPE[edge_type] not in FROM_REVISION_COPY:
         return True
     return not (source == LEGACY_EDGE_SOURCE or (source or "").startswith(LEGACY_EDGE_SOURCE + ":"))
@@ -54,20 +54,20 @@ def load_model(
     url: str, model: StagedModel, reset: bool = False, scope: str | None = None,
     storage_base: Optional[str] = None, project_code: Optional[str] = None,
 ) -> dict[str, int]:
-    """Zapíše celý staged model v jednej transakcii (commit na konci).
+    """Writes the whole staged model in one transaction (commit at the end).
 
-    `reset=True` najprv vyprázdni AIM dáta (nahradenie seedu, E2) — stále v tej
-    istej transakcii, takže pri chybe sa nič nezahodí.
+    `reset=True` first empties the AIM data (replacing the seed, E2), still in the same
+    transaction, so nothing is thrown away on an error.
 
-    `scope` = meno modelu federácie (`ASR`, `VZT`; D-086). Hrany a GUID história
-    dostanú zdroj tohto modelu (`etl:ASR`, `IFC import:ASR`) a čo tento beh už
-    nevydal, sa uzavrie (`valid_until = now()`) — zmazaný prvok, presunutý prvok,
-    zmenený typ či klasifikácia. Vzor `etl.derive` (D-080). Objekt bez aktívneho GUID
-    dostane `valid_until` (D-088); riadok ostáva (D-010) a pri návrate do modelu ožije.
-    Vráti počty uzavretých záznamov.
+    `scope` = name of the federation model (`ASR`, `VZT`; D-086). Edges and GUID history
+    get the source of this model (`etl:ASR`, `IFC import:ASR`), and what this run no longer
+    emitted is closed (`valid_until = now()`): a deleted element, a moved element,
+    a changed type or classification. Pattern `etl.derive` (D-080). An object without an active GUID
+    gets `valid_until` (D-088); the row stays (D-010) and comes back to life when it returns to the model.
+    Returns the counts of closed records.
 
-    `storage_base` = `SUPABASE_URL`: `Location` dokumentov sa preloží na URL súboru v
-    buckete `documents`, ak tam je (D-104, `documents.resolve_locations`).
+    `storage_base` = `SUPABASE_URL`: the `Location` of documents is translated to the URL of the file in
+    the `documents` bucket, if it is there (D-104, `documents.resolve_locations`).
 
     `project_code` (default the code staged from the file, else OCB): every row is written into that project
     (D-189). The first main-model load of a new code creates the project node from the file's IfcProject.
@@ -136,7 +136,7 @@ def load_project(cur, model: StagedModel, code: str) -> str:
     return project_id
 
 
-# Zdroje, ktoré ETL zapisoval pred D-086 (bez mena modelu).
+# Sources the ETL wrote before D-086 (without a model name).
 LEGACY_EDGE_SOURCE = "etl"
 LEGACY_GUID_SOURCE = "IFC import"
 
@@ -150,7 +150,7 @@ def guid_source(scope: str) -> str:
 
 
 def scope_sources(model: StagedModel, scope: str) -> None:
-    """Prepíše predvolené zdroje ETL na zdroje modelu `scope` (explicitné iné zdroje ostávajú)."""
+    """Rewrites the default ETL sources to the sources of model `scope` (explicit other sources stay)."""
     for e in model.edges:
         if e.source == LEGACY_EDGE_SOURCE:
             e.source = edge_source(scope)
@@ -166,8 +166,8 @@ def scope_sources(model: StagedModel, scope: str) -> None:
 
 
 def emitted_ids(model: StagedModel) -> tuple[list[str], list[str]]:
-    """Id hrán (vrátane klasifikačných) a aktívnych GUID záznamov, ktoré tento beh zapísal.
-    Hrany typov z kópie revízie (D-183 K3) ETL nezapisuje, preto tu nie sú."""
+    """Ids of edges (including classification ones) and active GUID records this run wrote.
+    Type edges from the revision copy (D-183 K3) are not written by the ETL, so they are not here."""
     edges = [ids.edge_id(e.from_ref, e.to_ref, e.edge_type) for e in model.edges
              if writes_edge(e.edge_type, e.source)]
     edges += [
@@ -183,7 +183,7 @@ def emitted_ids(model: StagedModel) -> tuple[list[str], list[str]]:
     return edges, guids
 
 
-# Objekt zanikol (D-088): mal GUID zo zdroja `source`, ale už nemá žiadny aktívny GUID.
+# The object ceased to exist (D-088): it had a GUID from source `source`, but no longer has any active GUID.
 _RETIRE_OBJECTS = (
     "update objects o set valid_until = now() "
     "where o.valid_until is null and o.ifc_guid is not null "
@@ -195,10 +195,10 @@ _RETIRE_OBJECTS = (
 
 def close_stale(cur, model: StagedModel, scope: str, project_id: str = project_mod.OCB_ID,
                 alias_ids: Optional[list[str]] = None) -> dict[str, int]:
-    """Uzavrie aktívne hrany, GUID záznamy a objekty modelu `scope`, ktoré tento beh nevydal.
+    """Closes the active edges, GUID records and objects of model `scope` that this run did not emit.
 
-    Hrany typov z kópie revízie (D-183 K3 krok 3) sa nechajú, ako sú: ETL ich už nevydáva a ich
-    ukončenie je samostatný krok na Samuelovo slovo (`supabase/pending/`), nie vedľajší účinok re-ETL."""
+    Type edges from the revision copy (D-183 K3 step 3) are left as they are: the ETL no longer emits them and
+    ending them is a separate step on Samuel's word (`supabase/pending/`), not a side effect of re-ETL."""
     # The model code (source `etl:ASR`) is unique only within a project (D-189), so every statement is
     # scoped to the run's project.
     edges, guids = emitted_ids(model)
@@ -222,7 +222,7 @@ def close_stale(cur, model: StagedModel, scope: str, project_id: str = project_m
         (guid_source(scope), project_id, aliases),
     ).fetchall()
     retired = cur.execute(_RETIRE_OBJECTS, (guid_source(scope), project_id)).fetchall()
-    # Dokumenty nemajú GUID: model ich značí `_model`, čo už nevydal, zaniká (D-104).
+    # Documents have no GUID: the model marks them with `_model`; what it no longer emitted ceases to exist (D-104).
     docs = [o.object_ref for o in model.objects if o.object_type in documents.DOCUMENT_TYPES]
     retired_docs = cur.execute(
         documents.RETIRE_DOCUMENTS, (list(documents.DOCUMENT_TYPES), scope, project_id, docs)
@@ -231,9 +231,9 @@ def close_stale(cur, model: StagedModel, scope: str, project_id: str = project_m
             "documents": len(retired_docs), "repointed": repoint_to_successors(cur, project_id)}
 
 
-# Ručné väzby (výkresy E4, dokumenty E3, fotky D-073) na zaniknutý objekt prejdú na
-# platný objekt s rovnakým GUID: premenovaný object_ref je ten istý prvok (D-088).
-# Väzby ETL a derive si model vydá sám, tie sa nepresúvajú.
+# Manual links (drawings E4, documents E3, photos D-073) to an object that ceased to exist move to the
+# valid object with the same GUID: a renamed object_ref is the same element (D-088).
+# ETL and derive links are emitted by the model itself; those are not moved.
 _REPOINT = """
     update relationships r set {end}_id = s.new_id
     from (select o.id as old_id, n.id as new_id
@@ -248,7 +248,7 @@ _REPOINT = """
 
 
 def repoint_to_successors(cur, project_id: str = project_mod.OCB_ID) -> int:
-    """Presmeruje aktívne ručné väzby zo zaniknutých objektov na nástupcu s rovnakým GUID.
+    """Redirects active manual links from objects that ceased to exist to the successor with the same GUID.
     A GUID is unique only within a project (D-189): the successor is searched in the same project."""
     moved = 0
     for end in ("from", "to"):
@@ -257,8 +257,8 @@ def repoint_to_successors(cur, project_id: str = project_mod.OCB_ID) -> int:
 
 
 def close_legacy(cur, project_id: str = project_mod.OCB_ID) -> dict[str, int]:
-    """Jednorazovo po prvom loade všetkých modelov so `scope` (D-086): čo ostalo aktívne
-    so starým zdrojom bez mena modelu, už žiadny model nevydal → uzavrieť. Only within one project (D-189)."""
+    """Once after the first load of all models with `scope` (D-086): what stayed active
+    with the old source without a model name is no longer emitted by any model -> close it. Only within one project (D-189)."""
     closed_edges = cur.execute(
         "update relationships set valid_until = now() "
         "where source = %s and project_id = %s and valid_until is null returning id",
@@ -314,13 +314,13 @@ def _load_refs(cur, model: StagedModel, sys_ids: dict[str, str]) -> dict[tuple[s
     return out
 
 
-# Kľúče `objects.properties`, ktoré nezapisuje ETL, ale hostiteľ, a re-ETL ich nesmie
-# zmazať: kalibrácia podkladu výkresu (`_georef`, PATCH /api/underlay, D-072; D-104).
+# Keys of `objects.properties` that are written not by the ETL but by the host, and re-ETL must not
+# delete them: calibration of the drawing underlay (`_georef`, PATCH /api/underlay, D-072; D-104).
 HOST_PROPERTY_KEYS = ("_georef",)
 
 
 def _load_objects(cur, model: StagedModel, project_id: str) -> dict[str, str]:
-    """Upsert `objects` cez object_ref; vráti mapu object_ref → DB id.
+    """Upsert `objects` by object_ref; returns a map object_ref -> DB id.
 
     Every row is written into `project_id` (D-189; the trigger nulls it for person and organization). An
     `object_ref` held by another project is never taken over: the update only applies within the same
@@ -432,9 +432,9 @@ def _load_guid_history(cur, model: StagedModel, obj_ids: dict[str, str]) -> None
     for g in model.guid_history:
         hid = ids.guid_history_id(g.object_ref, g.ifc_guid)
         if g.valid_until is None:
-            # Rotácia GUID (D-010): pred insertom nového aktívneho záznamu uzavri
-            # predošlý aktívny s iným GUID — inak partial unique index
-            # uniq_active_guid (object_id WHERE valid_until IS NULL) zhodí celý load.
+            # GUID rotation (D-010): before inserting a new active record close
+            # the previous active one with a different GUID, otherwise the partial unique index
+            # uniq_active_guid (object_id WHERE valid_until IS NULL) crashes the whole load.
             cur.execute(
                 """
                 update ifc_guid_history
@@ -467,9 +467,9 @@ def existing_alias(cur, project_id: str, ifc_guid: str, object_id: str, reason: 
 
 
 def _load_guid_aliases(cur, model: StagedModel, obj_ids: dict[str, str], project_id: str) -> list[str]:
-    """GUID zlúčených IFC typov -> `asset_type` (D-033 ako údaj, D-183 K3 krok 3). Aktívny alias GUID
-    je najviac jeden (`uniq_active_guid_alias`): iný aktívny alias toho GUID (napr. spätné doplnenie
-    migráciou, typ prešiel pod iný kód) sa najprv uzavrie.
+    """GUIDs of merged IFC types -> `asset_type` (D-033 as data, D-183 K3 step 3). There is at most one
+    active GUID alias (`uniq_active_guid_alias`): another active alias of that GUID (e.g. a backfill by
+    migration, the type moved under another code) is closed first.
 
     D-189: aliases belong to the run's project and only that project's aliases are closed. The IfcProject of
     another file is an alias of the project node. An active alias with the same meaning (backfilled by a
@@ -505,11 +505,11 @@ def _load_guid_aliases(cur, model: StagedModel, obj_ids: dict[str, str], project
 
 
 def _resolve_cross_file_refs(cur, model: StagedModel, obj_ids: dict[str, str], project_id: str) -> None:
-    """Doplní `obj_ids` o endpointy hrán, ktoré už existujú v DB (nie v tomto behu).
+    """Adds to `obj_ids` the endpoints of edges that already exist in the DB (not in this run).
 
-    Federate load (D-049): VZT MEP containment ukazuje na **existujúce** floor uzly,
-    ktoré tento beh neemitoval. Dohľadáme ich id cez `object_ref`. Chýbajúci ref
-    (ani v behu, ani v DB) = tvrdá chyba (zlá federačná väzba)."""
+    Federate load (D-049): VZT MEP containment points to **existing** floor nodes
+    that this run did not emit. We look up their id by `object_ref`. A missing ref
+    (neither in the run nor in the DB) = hard error (wrong federation link)."""
     missing = {
         ref
         for e in model.edges
@@ -539,16 +539,16 @@ def _load_edges(cur, model: StagedModel, obj_ids: dict[str, str], project_id: st
     _resolve_cross_file_refs(cur, model, obj_ids, project_id)
     for e in model.edges:
         if not writes_edge(e.edge_type, e.source):
-            continue  # IFC vzťah zo súboru, pohľad ho číta z kópie revízie (D-183 K3 krok 3)
+            continue  # IFC relationship from the file, the view reads it from the revision copy (D-183 K3 step 3)
         rel_type = EDGE_TYPE_TO_REL_TYPE[e.edge_type]
-        # `edge_id` (deterministické UUIDv5 z edge_type, D-031) sa NEmení → re-run
-        # idempotentný cez `ON CONFLICT (id)`. `role` je nullable pre všetky typy.
+        # `edge_id` (deterministic UUIDv5 from edge_type, D-031) does NOT change -> re-run
+        # idempotent via `ON CONFLICT (id)`. `role` is nullable for all types.
         eid = ids.edge_id(e.from_ref, e.to_ref, e.edge_type)
         from_id, to_id = obj_ids[e.from_ref], obj_ids[e.to_ref]
         if rel_type in UNIQUE_ACTIVE_FROM and e.valid_until is None:
-            # Nový rodič (presun prvku, zlúčenie priestorov; D-086): pred insertom uzavri
-            # iný aktívny záznam toho istého from_id — inak parciálny unique index
-            # uniq_active_* zhodí celý load. Vzor rotácie GUID (D-010).
+            # New parent (element moved, spaces merged; D-086): before inserting close
+            # another active record of the same from_id, otherwise the partial unique index
+            # uniq_active_* crashes the whole load. Pattern of the GUID rotation (D-010).
             cur.execute(
                 "update relationships set valid_until = now() "
                 "where rel_type = %s and from_id = %s and valid_until is null and id <> %s",
@@ -570,13 +570,13 @@ def _load_edges(cur, model: StagedModel, obj_ids: dict[str, str], project_id: st
 def _load_class_links(
     cur, model: StagedModel, obj_ids: dict[str, str], ref_ids: dict[tuple[str, str], str]
 ) -> None:
-    # rel_associates_classification je výnimka: to_id → classification_references
-    # (nie objects). V generickej `relationships` je to len iný `rel_type`
-    # (`to_is_classification` v manifeste); trigger to zohľadní. Typ dokumentu (D-104) ide
-    # tou istou cestou s iným `rel_type`.
+    # rel_associates_classification is an exception: to_id -> classification_references
+    # (not objects). In the generic `relationships` it is just another `rel_type`
+    # (`to_is_classification` in the manifest); the trigger takes it into account. The document type (D-104) goes
+    # the same way with another `rel_type`.
     for c in model.class_links:
         if not writes_edge(c.edge_type, c.source):
-            continue  # IfcRelAssociatesClassification zo súboru: pohľad z kópie revízie (D-183 K3 krok 3)
+            continue  # IfcRelAssociatesClassification from the file: view from the revision copy (D-183 K3 step 3)
         rel_type = EDGE_TYPE_TO_REL_TYPE[c.edge_type]
         ref_id = ref_ids[(c.system_name, c.identification)]
         cid = ids.edge_id(c.from_ref, f"{c.system_name}:{c.identification}", c.edge_type)

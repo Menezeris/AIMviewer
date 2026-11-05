@@ -1,28 +1,28 @@
-"""Revízie IFC modelov federácie (D-086, F13): technická poistka, archív, zverejnenie.
+"""Revisions of the federation IFC models (D-086, F13): technical safeguard, archive, publishing.
 
-IFC súbor je master. Každá zverejnená verzia sa uloží nemenne a skomprimovane do
-`ifc/archive/<model>/vNNN.ifc.gz`, zapíše sa do `model_revisions` a nahrá sa aj na
-doterajší kľúč `ifc/<model>.ifc`, z ktorého čítajú viewer, motor (D-084) aj ETL.
+The IFC file is the master. Every published version is stored immutably and compressed in
+`ifc/archive/<model>/vNNN.ifc.gz`, written to `model_revisions` and also uploaded to the
+existing key `ifc/<model>.ifc`, which the viewer, the engine (D-084) and the ETL read from.
 D-189: the model is a container of a project (`--project`, default AIM_PROJECT or OCB); outside OCB the
 archive is `ifc/archive/<container uuid>/vNNN.ifc.gz` and the current key `ifc/<container uuid>.ifc` (D-190).
-Zápis je compare-and-swap pod advisory lockom modelu: úloha pripravená nad revíziou
-N sa zverejní len vtedy, ak je N stále aktuálna; inak skončí kódom 3 (konflikt) a
-recept treba spustiť znova nad novou revíziou. Viewer sa o novej revízii dozvie až
-krokom `announce` po re-ETL, aby nový model nečakal na GUID, ktoré DB ešte nepozná.
+The write is a compare-and-swap under the model's advisory lock: a task prepared on revision
+N is published only if N is still current; otherwise it ends with code 3 (conflict) and the
+recipe must be run again on the new revision. The viewer learns about the new revision only
+in the `announce` step after re-ETL, so the new model does not wait for GUIDs the DB does not know yet.
 
-Použitie (z koreňa repa):
+Usage (from the repo root):
     python -m etl.model_publish publish --model ASR --file out/ASR_v73.ifc --base 72 \\
         --changes zmeny.json --summary "..." [--task UUID] [--recipe cesta@commit] [--dry-run]
     python -m etl.model_publish publish --model ASR --file ASR_v72.ifc --revision 72 \\
-        --bootstrap --summary "prvá revízia"          # bez aktuálnej revízie / bez zoznamu zmien
+        --bootstrap --summary "prvá revízia"          # without a current revision / without a change list
     python -m etl.model_publish revert --model ASR --to 71
-    python -m etl.model_publish announce --model ASR  # po re-ETL: "nová revízia" do viewera
-    python -m etl.model_publish sync --model ASR      # aktuálny kľúč znova z archívu
+    python -m etl.model_publish announce --model ASR  # after re-ETL: "nová revízia" to the viewer
+    python -m etl.model_publish sync --model ASR      # current key again from the archive
     python -m etl.model_publish status [--model ASR]
-    python -m etl.model_publish close-legacy          # raz po prvom loade s --model
+    python -m etl.model_publish close-legacy          # once after the first load with --model
 
-Kódy ukončenia: 0 OK alebo bez zmeny, 2 poistka neprešla, 3 konflikt so základom.
-Env: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, voliteľne `LIVE_CHANNEL`.
+Exit codes: 0 OK or no change, 2 safeguard failed, 3 conflict with the base.
+Env: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, optionally `LIVE_CHANNEL`.
 """
 
 from __future__ import annotations
@@ -54,30 +54,30 @@ from .ifc_upload import (
 EXPECTED_SCHEMA = "IFC4X3_ADD2"
 EXIT_GUARD = 2
 EXIT_CONFLICT = 3
-# Udalosť živého kanála (D-079), na ktorú viewer obnoví modely (`components/live-channel.tsx`).
+# Live channel event (D-079) on which the viewer reloads the models (`components/live-channel.tsx`).
 LIVE_REVISION_EVENT = "model_revision"
-# Aktuálny kľúč sa prepisuje každou revíziou, preto krátka cache. Archív sa nikdy neprepíše
-# (upsert=false), preto dlhá: viewer aj IFC motor čítajú práve archív (D-135).
+# The current key is overwritten by every revision, hence a short cache. The archive is never overwritten
+# (upsert=false), hence a long one: both the viewer and the IFC engine read the archive itself (D-135).
 CURRENT_CACHE_CONTROL = CURRENT_CACHE_SECONDS
 ARCHIVE_CACHE_CONTROL = ARCHIVE_CACHE_SECONDS
 
 
 class Conflict(Exception):
-    """Aktuálna revízia už nie je základ úlohy."""
+    """The current revision is no longer the base of the task."""
 
 
-# ── technická poistka ─────────────────────────────────────────────────────────
+# ── technical safeguard ───────────────────────────────────────────────────────
 
 @dataclass
 class GuardReport:
-    """Výsledok technickej poistky. Nekontroluje obsah (IDS), len či súbor nie je poškodený
-    a či sa zo súboru nestratili alebo nepribudli objekty, o ktorých zoznam zmien nevie."""
+    """Result of the technical safeguard. It does not check content (IDS), only whether the file is not corrupted
+    and whether objects the change list does not know about were lost from or added to the file."""
 
     ok: bool = True
     errors: list[str] = field(default_factory=list)
     schema: Optional[str] = None
-    objects: int = 0                                         # IfcObjectDefinition s GlobalId
-    added: list[str] = field(default_factory=list)           # GUID oproti základu
+    objects: int = 0                                         # IfcObjectDefinition with GlobalId
+    added: list[str] = field(default_factory=list)           # GUID compared to the base
     removed: list[str] = field(default_factory=list)
     class_delta: dict[str, int] = field(default_factory=dict)
 
@@ -87,10 +87,10 @@ class GuardReport:
 
 
 def _object_guids(f: ifcopenshell.file) -> dict[str, str]:
-    """GlobalId → IFC trieda pre IfcObjectDefinition (objekty, typy, kontext).
+    """GlobalId -> IFC class for IfcObjectDefinition (objects, types, context).
 
-    Vzťahy a sady vlastností (tiež IfcRoot) sa pri úpravách bežne vytvárajú aj rušia,
-    preto sa porovnávajú len objekty."""
+    Relationships and property sets (also IfcRoot) are routinely created and deleted during edits,
+    so only objects are compared."""
     return {e.GlobalId: e.is_a() for e in f.by_type("IfcObjectDefinition") if e.GlobalId}
 
 
@@ -105,17 +105,17 @@ def guard(
     strict: bool = True,
     project_code: Optional[str] = None,
 ) -> GuardReport:
-    """Technická poistka pred zverejnením (D-086 bod 6).
+    """Technical safeguard before publishing (D-086 point 6).
 
-    - súbor sa otvorí v ifcopenshell a schéma ostáva (IFC4X3_ADD2 alebo schéma základu);
-    - žiadny GlobalId IfcRoot nie je v súbore dvakrát;
-    - `strict`: každý pridaný a odobratý objekt (GlobalId) je v zozname zmien ako
-      `add` / `remove`. Bez základu (prvá revízia) alebo pri návrate sa to len hlási.
+    - the file opens in ifcopenshell and the schema stays (IFC4X3_ADD2 or the schema of the base);
+    - no IfcRoot GlobalId is in the file twice;
+    - `strict`: every added and removed object (GlobalId) is in the change list as
+      `add` / `remove`. Without a base (first revision) or on a revert this is only reported.
     """
     rep = GuardReport()
     try:
         new = ifcopenshell.open(str(new_path))
-    except Exception as exc:  # noqa: BLE001 - poškodený súbor môže zhodiť parser hocijako
+    except Exception as exc:  # noqa: BLE001 - a corrupted file can crash the parser in any way
         rep.fail(f"súbor sa nedá otvoriť: {exc}")
         return rep
     rep.schema = _schema_of(new)
@@ -190,7 +190,7 @@ def model_ref(cur, project_code: str, model: str, create: bool = False) -> Model
     return ModelRef(project_code, project_id, model, str(row[0]) if row else None)
 
 
-# ── úložisko ──────────────────────────────────────────────────────────────────
+# ── storage ───────────────────────────────────────────────────────────────────
 
 def archive_key(m: ModelRef, revision: int) -> str:
     """Archive key of a new revision. OCB keeps `archive/<model>/vNNN.ifc.gz`; other projects use the model
@@ -206,7 +206,7 @@ def current_key(m: ModelRef) -> str:
 
 
 def _put(key: str, data: bytes, *, upsert: bool, content_type: str, cache_control: int) -> None:
-    """`cache_control` = sekundy (`cacheControl` formulára Storage, nie hlavička)."""
+    """`cache_control` = seconds (`cacheControl` of the Storage form, not a header)."""
     base, secret = _storage_env()
     status, body = put_object(
         base, secret, BUCKET, key, data,
@@ -227,7 +227,7 @@ def _get(key: str) -> bytes:
 
 
 def compress(data: bytes) -> bytes:
-    # mtime=0: rovnaký obsah = rovnaký archív
+    # mtime=0: same content = same archive
     return gzip.compress(data, compresslevel=6, mtime=0)
 
 
@@ -254,7 +254,7 @@ def fetch_revision(key: str, dest: Path) -> Path:
 
 
 def announce(model: str, db_url: Optional[str] = None, project_code: Optional[str] = None) -> Optional[int]:
-    """Po re-ETL oznámi aktuálnu revíziu modelu na živom kanáli; vráti ju, ak odišla."""
+    """After re-ETL announces the model's current revision on the live channel; returns it if it was sent."""
     code = config.project_code(project_code)
     with psycopg.connect(db_url or config.database_url()) as conn, conn.cursor() as cur:
         m = model_ref(cur, code, model)
@@ -268,7 +268,7 @@ def announce(model: str, db_url: Optional[str] = None, project_code: Optional[st
 
 
 def broadcast_revision(model: str, revision: int, summary: Optional[str], project: Optional[str] = None) -> bool:
-    """Oznámi novú revíziu na živom kanáli (D-079); viewer s `?live=` obnoví modely."""
+    """Announces a new revision on the live channel (D-079); the viewer with `?live=` reloads the models."""
     channel = (os.environ.get("LIVE_CHANNEL") or "").strip()
     if not channel:
         return False
@@ -290,10 +290,10 @@ def broadcast_revision(model: str, revision: int, summary: Optional[str], projec
     return 200 <= status < 300
 
 
-# ── revízie v DB ──────────────────────────────────────────────────────────────
+# ── revisions in the DB ───────────────────────────────────────────────────────
 
 def current_revision(cur, m: ModelRef) -> Optional[tuple[int, str]]:
-    """(revízia, sha256) aktuálnej revízie modelu alebo None."""
+    """(revision, sha256) of the model's current revision, or None."""
     if m.container_id is None:
         return None
     row = cur.execute(
@@ -304,7 +304,7 @@ def current_revision(cur, m: ModelRef) -> Optional[tuple[int, str]]:
 
 
 def _lock(cur, m: ModelRef) -> None:
-    # Advisory lock na celú transakciu: súbežné zverejnenia toho istého modelu (kontajnera) idú po jednom.
+    # Advisory lock for the whole transaction: concurrent publishes of the same model (container) go one at a time.
     cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (f"model_revisions:{m.container_id}",))
 
 
@@ -325,7 +325,7 @@ def publish(
     project_code: Optional[str] = None,
     check_name: bool = True,
 ) -> dict[str, Any]:
-    """Poistka → archív → zápis revízie (compare-and-swap) → aktuálny kľúč.
+    """Safeguard -> archive -> revision write (compare-and-swap) -> current key.
 
     `project_code` (D-189): the model is resolved within the project, the file must carry the project code in
     IfcProject.Name, and outside OCB its name follows the CDE scheme (D-036, D-190)."""
@@ -396,7 +396,7 @@ def publish(
                 )
         conn.commit()
 
-    # Až po commite: pri zlyhaní ostane DB pravdou a `sync` aktuálny kľúč dorovná.
+    # Only after the commit: on failure the DB stays the truth and `sync` catches up the current key.
     _put(current_key(m), data, upsert=True, content_type="application/octet-stream",
          cache_control=CURRENT_CACHE_CONTROL)
     result.update(status="published", revision=new_rev, container_id=m.container_id, archive=f"{BUCKET}/{key}")
@@ -405,7 +405,7 @@ def publish(
 
 def revert(model: str, to: int, author: Optional[str] = None, db_url: Optional[str] = None,
            project_code: Optional[str] = None) -> dict:
-    """Návrat = nová revízia s obsahom staršej; história sa neprepisuje."""
+    """Revert = a new revision with the content of an older one; history is not rewritten."""
     code = config.project_code(project_code)
     url = db_url or config.database_url()
     with psycopg.connect(url) as conn, conn.cursor() as cur:
@@ -422,7 +422,7 @@ def revert(model: str, to: int, author: Optional[str] = None, db_url: Optional[s
 
 
 def sync(model: str, db_url: Optional[str] = None, project_code: Optional[str] = None) -> int:
-    """Aktuálny kľúč znova z archívu aktuálnej revízie."""
+    """Current key again from the archive of the current revision."""
     code = config.project_code(project_code)
     with psycopg.connect(db_url or config.database_url()) as conn, conn.cursor() as cur:
         m = model_ref(cur, code, model)
