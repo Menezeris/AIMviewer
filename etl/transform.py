@@ -1,17 +1,17 @@
-"""Mapovanie IFC → staged model (D-031), podľa SCHEMA.md + CLAUDE konvencií.
+"""Mapping IFC -> staged model (D-031), following SCHEMA.md + the CLAUDE conventions.
 
-Pokrýva štandardné IFC vzory, ktoré schéma modeluje:
-  • priestorová hierarchia  Site→Building→Storey→Space  (IfcRelAggregates /
-    IfcRelContainedInSpatialStructure)            → objects + rel_aggregates / rel_contained_in_spatial_structure
-  • elementy (occurrence) + ich typy               → objects(asset/asset_type)
+Covers the standard IFC patterns the schema models:
+  - spatial hierarchy  Site->Building->Storey->Space  (IfcRelAggregates /
+    IfcRelContainedInSpatialStructure)            -> objects + rel_aggregates / rel_contained_in_spatial_structure
+  - elements (occurrence) + their types               -> objects(asset/asset_type)
     + rel_defines_by_type (IfcRelDefinesByType)
-  • property sety (Pset_/Qto_ = štandard, inak custom) → properties JSONB
-  • klasifikácie na type aj occurrence              → classification_* + rel_associates_classification
-  • dokumenty, aktori (B)                            → documents/persons + rel_*
+  - property sets (Pset_/Qto_ = standard, otherwise custom) -> properties JSONB
+  - classifications on type and occurrence              -> classification_* + rel_associates_classification
+  - documents, actors (B)                            -> documents/persons + rel_*
 
-POZN. (doladiť na model diplomky — D-031 prereq): zdroj `object_ref`
-(Tag/Name/GlobalId), ktoré elementy sú „asset", a konkrétne názvy psetov/klasifikácií
-sú model-špecifické. Miesta sú označené `TODO(model)`.
+NOTE (to be tuned on the thesis model, D-031 prereq): the source of `object_ref`
+(Tag/Name/GlobalId), which elements are an "asset", and the concrete pset/classification names
+are model-specific. The places are marked `TODO(model)`.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ from .model import (
 from .scheme import INSTANCE, TYPE, CodingScheme, FieldContext
 
 def _safe_psets(entity: Any, inherit: bool) -> dict[str, dict[str, Any]]:
-    """`get_psets` bez `id` kľúčov, odolné voči starším ifcopenshell bez `should_inherit`."""
+    """`get_psets` without `id` keys, tolerant of older ifcopenshell without `should_inherit`."""
     if entity is None:
         return {}
     try:
@@ -58,7 +58,7 @@ def _safe_psets(entity: Any, inherit: bool) -> dict[str, dict[str, Any]]:
 
 
 def _entity_classifications(entity: Any) -> list[tuple[str, str]]:
-    """(systém, identification) páry pre `classification` field source (D-033)."""
+    """(system, identification) pairs for the `classification` field source (D-033)."""
     pairs: list[tuple[str, str]] = []
     for assoc in attr(entity, "HasAssociations") or []:
         if not assoc.is_a("IfcRelAssociatesClassification"):
@@ -76,21 +76,21 @@ def _entity_classifications(entity: Any) -> list[tuple[str, str]]:
 
 
 class _RefAllocator:
-    """`object_ref` zo kódovacej schémy (D-033) — nahrádza provizórny Tag/Name/GUID
-    z D-031. Inštancia (`asset`) = inštančný SNIM kód; typ (`asset_type`) = typový kód
-    odvodený z occurrence (typové entity nemajú vlastné psety). Fallback na `ifc_guid`
-    **len keď kód v zdroji chýba** alebo nie je unikátny (kolízia). Pre ne-SNIM uzly
-    (priestor, dokumenty, aktori) generický Name → GlobalId (Tag sa zámerne NEpoužíva).
+    """`object_ref` from the coding scheme (D-033), replaces the provisional Tag/Name/GUID
+    from D-031. Instance (`asset`) = instance SNIM code; type (`asset_type`) = type code
+    derived from the occurrence (type entities have no psets of their own). Fallback to `ifc_guid`
+    **only when the code is missing in the source** or not unique (collision). For non-SNIM nodes
+    (space, documents, actors) generic Name -> GlobalId (Tag is deliberately NOT used).
     """
 
     def __init__(self, coding: CodingScheme) -> None:
         self.scheme = coding
         self._applicable = coding.applicable_classes()
-        self._by_id: dict[int, str] = {}     # entity.id() → ref (stabilné per entitu)
-        self._used: set[str] = set()         # všetky pridelené refy (unikátnosť)
+        self._by_id: dict[int, str] = {}     # entity.id() -> ref (stable per entity)
+        self._used: set[str] = set()         # all assigned refs (uniqueness)
         self.cov = CoverageReport()
 
-    # — kontext pre resolver (drží scheme.py nezávislý od ifcopenshell) —
+    # - context for the resolver (keeps scheme.py independent of ifcopenshell) -
     def ctx(self, entity: Any) -> FieldContext:
         the_type = ue.get_type(entity)
         return FieldContext(
@@ -108,7 +108,7 @@ class _RefAllocator:
         return cand
 
     def generic_ref(self, entity: Any) -> str:
-        """Name → GlobalId (+ suffix pri kolízii). Pre priestor/dokumenty/aktorov."""
+        """Name -> GlobalId (+ suffix on collision). For space/documents/actors."""
         cached = self._by_id.get(entity.id())
         if cached is not None:
             return cached
@@ -118,7 +118,7 @@ class _RefAllocator:
         return ref
 
     def named_ref(self, entity: Any, base: str) -> str:
-        """Ref z vlastného kľúča (napr. `Identification` dokumentu, D-104) + suffix pri kolízii."""
+        """Ref from the entity's own key (e.g. a document's `Identification`, D-104) + suffix on collision."""
         cached = self._by_id.get(entity.id())
         if cached is not None:
             return cached
@@ -127,14 +127,14 @@ class _RefAllocator:
         return ref
 
     def ref(self, entity: Any) -> str:
-        """Ref už pridelený (asset/typ), inak generický — pre väzby dok./aktorov."""
+        """Ref already assigned (asset/type), otherwise generic - for document/actor links."""
         return self._by_id.get(entity.id()) or self.generic_ref(entity)
 
     def allocate_asset(self, entity: Any) -> tuple[str, Optional[str]]:
-        """Pridelí inštančný `object_ref` a vráti (ref, typový_kód|None).
+        """Assigns the instance `object_ref` and returns (ref, type_code|None).
 
-        Aktualizuje coverage. Typový kód sa odvodí z type-úrovňových polí occurrence
-        (aj keď inštančný kód padne na fallback — typ ostáva zakódovaný)."""
+        Updates coverage. The type code is derived from the occurrence's type-level fields
+        (even when the instance code falls back - the type stays coded)."""
         cls = entity.is_a()
         ctx = self.ctx(entity)
         cat, tsp = self.scheme.category_for(ctx)
@@ -157,8 +157,8 @@ class _RefAllocator:
                 ref = fallback(f"TSP mimo schémy: {tsp}")
         else:
             code = cat._join(ctx, INSTANCE)[0]
-            if cls not in cat.applies_to:                    # mini-IDS: kód na nečakanej triede
-                key = f"{tsp}@{cls}"                          # neblokuje tvorbu kódu, len zaznač
+            if cls not in cat.applies_to:                    # mini-IDS: code on an unexpected class
+                key = f"{tsp}@{cls}"                          # does not block creating the code, only record it
                 self.cov.undefined_tsp[key] = self.cov.undefined_tsp.get(key, 0) + 1
             if code is None:
                 ref = fallback("bez INST (Mark) — len typový kód, inštancia cez GUID")
@@ -177,18 +177,18 @@ class _RefAllocator:
         return ref, type_code
 
     def reserve_type_code(self, type_entity: Any, code: str) -> str:
-        """Zarezervuje typový SNIM kód ako ref typovej entity (idempotentne)."""
+        """Reserves the type SNIM code as the ref of the type entity (idempotent)."""
         self._used.add(code)
         self._by_id[type_entity.id()] = code
         return code
 
 
 def _properties(entity: Any) -> dict[str, Any]:
-    """Property sety entity ako vnorený dict (bez ifcopenshell `id` kľúčov).
-    Type psety sa NEdedia do occurrence (merge rieši v_asset_effective, D-021)."""
+    """Property sets of an entity as a nested dict (without ifcopenshell `id` keys).
+    Type psets are NOT inherited into the occurrence (the merge is done by v_asset_effective, D-021)."""
     try:
         psets = ue.get_psets(entity, should_inherit=False)
-    except TypeError:  # staršie ifcopenshell bez should_inherit
+    except TypeError:  # older ifcopenshell without should_inherit
         psets = ue.get_psets(entity)
     out: dict[str, Any] = {}
     for pset_name, props in (psets or {}).items():
@@ -200,24 +200,24 @@ def _properties(entity: Any) -> dict[str, Any]:
     return out
 
 
-# „Reálne" podlažie: 1NP, 2NP… aj zápis štandardu knižnice 1.NP / 2. NP (nie 1NP_SH_ZD).
+# "Real" storey: 1NP, 2NP... also the library standard notation 1.NP / 2. NP (not 1NP_SH_ZD).
 _NP_EXACT = re.compile(r"^\d+\.?\s?NP$")
-# NP-prefix pomocnej úrovne: 1NP_HH_ZD → 1NP, 2.NP_VZT → 2NP.
+# NP prefix of an auxiliary level: 1NP_HH_ZD -> 1NP, 2.NP_VZT -> 2NP.
 _NP_PREFIX = re.compile(r"(\d+)\.?\s?NP")
 
 
 def _np_key(name: Optional[str]) -> Optional[str]:
-    """Normalizovaný kľúč podlažia (`2NP`) z názvu v ľubovoľnom zápise (2NP, 2.NP, 2. NP)."""
+    """Normalized storey key (`2NP`) from a name in any notation (2NP, 2.NP, 2. NP)."""
     m = _NP_PREFIX.search(name or "")
     return f"{m.group(1)}NP" if m else None
 
 
 def _is_top_level(entity: Any) -> bool:
-    """Prvok „visí priamo v priestore" (D-034): nie je vnorený v inom elemente.
+    """The element "hangs directly in the space" (D-034): it is not nested in another element.
 
-    `get_aggregate` = rodič cez `IfcRelAggregates`. None (prvok je len *contained*
-    v podlaží) alebo priestorový rodič ⇒ top-level. Element-rodič (curtain wall,
-    schody) ⇒ sub-komponent.
+    `get_aggregate` = parent via `IfcRelAggregates`. None (the element is only *contained*
+    in a storey) or a spatial parent => top-level. An element parent (curtain wall,
+    stairs) => sub-component.
     """
     agg = ue.get_aggregate(entity)
     if agg is None:
@@ -226,18 +226,18 @@ def _is_top_level(entity: Any) -> bool:
 
 
 def _is_asset(entity: Any, coding: CodingScheme) -> bool:
-    """Rozsah importu z policy v schéme (D-034) — NIE hardcoded zoznam tried."""
+    """Import scope from the policy in the scheme (D-034) - NOT a hardcoded list of classes."""
     return coding.scope.is_asset(entity.is_a, _is_top_level(entity))
 
 
 def _resolve_floors(model: ifcopenshell.file) -> tuple[list[Any], dict[int, Any]]:
-    """Konsolidácia podlaží (D-035): zlúči pomocné Revit úrovne do reálnych podlaží.
+    """Storey consolidation (D-035): merges auxiliary Revit levels into real storeys.
 
-    Reálne podlažie = názov `^\\d+NP$` **alebo** aggreguje aspoň jeden priestor.
-    Pomocné úrovne (`1NP_SH_ZD`, `2NP_HH_STROP`, `Dojazd_výťahov`, `Spadova vrstva`…)
-    sa namapujú na reálne podlažie podľa NP-prefixu názvu, inak podľa najbližšej
-    elevácie. Vráti (zoznam reálnych podlaží, mapa storey.id() → reálne podlažie).
-    Ak model nemá rozpoznateľné reálne podlažia, ponechá všetky (fallback).
+    A real storey = name `^\\d+NP$` **or** aggregates at least one space.
+    Auxiliary levels (`1NP_SH_ZD`, `2NP_HH_STROP`, `Dojazd_výťahov`, `Spadova vrstva`...)
+    are mapped to a real storey by the NP prefix of the name, otherwise by the nearest
+    elevation. Returns (list of real storeys, map storey.id() -> real storey).
+    If the model has no recognizable real storeys, it keeps all of them (fallback).
     """
     storeys = list(model.by_type("IfcBuildingStorey"))
 
@@ -256,7 +256,7 @@ def _resolve_floors(model: ifcopenshell.file) -> tuple[list[Any], dict[int, Any]
             if key and key not in by_np:
                 by_np[key] = st
 
-    if not real:  # neznámy model — neriskuj, ponechaj všetky podlažia
+    if not real:  # unknown model - do not risk it, keep all storeys
         return storeys, {st.id(): st for st in storeys}
 
     real_elev = [(_to_float(attr(st, "Elevation")) or 0.0, st) for st in real]
@@ -282,10 +282,10 @@ def to_staged(
     federate: bool = False,
     project_code: Optional[str] = None,
 ) -> StagedModel:
-    """IFC → staged model. `federate=True` (D-049) = disciplinárny model (VZT) sa napojí
-    na už naloženú priestorovú štruktúru: **neemitujú** sa jeho site/building/storey/space
-    ani ich `rel_aggregates`; prvky nedostanú hranu na podlažie (podlažie VZT na podlažie AIM mapuje
-    pohľad `ifc_storey_map` z kópie revízie, D-183 K3 krok 4).
+    """IFC -> staged model. `federate=True` (D-049) = a discipline model (HVAC) attaches
+    to the already loaded spatial structure: its site/building/storey/space are **not** emitted,
+    nor their `rel_aggregates`; elements get no edge to a storey (the HVAC storey is mapped to the AIM storey by
+    the view `ifc_storey_map` from the revision copy, D-183 K3 step 4).
     """
     staged = StagedModel()
     refs = _RefAllocator(coding)
@@ -301,7 +301,7 @@ def to_staged(
     refs_seen: set[tuple[str, str]] = set()
     ref_names: dict[tuple[str, str], Optional[str]] = {}
 
-    emitted: dict[int, str] = {}                 # entity.id() → object_ref všetkých emitnutých
+    emitted: dict[int, str] = {}                 # entity.id() -> object_ref of all emitted entities
 
     def add_object(entity: Any, object_type: str, ref: str, **extra: Any) -> str:
         emitted[entity.id()] = ref
@@ -319,7 +319,7 @@ def to_staged(
                 **extra,
             )
         )
-        # Aktívny GUID = záznam histórie s valid_until NULL.
+        # Active GUID = the history record with valid_until NULL.
         if guid:
             staged.guid_history.append(
                 GuidHistory(object_ref=ref, ifc_guid=guid, source="IFC import")
@@ -327,12 +327,12 @@ def to_staged(
         _collect_classifications(entity, ref, staged, systems_seen, refs_seen)
         return ref
 
-    # 1) Priestorová hierarchia (D-013) s konsolidáciou podlaží (D-035).
-    #    Pomocné Revit úrovne (`1NP_SH_ZD`, `*_STROP`, …) sa NEemitujú ako samostatné
-    #    „floor" uzly — assety/priestory z nich sa premapujú na reálne podlažie.
+    # 1) Spatial hierarchy (D-013) with storey consolidation (D-035).
+    #    Auxiliary Revit levels (`1NP_SH_ZD`, `*_STROP`, ...) are NOT emitted as separate
+    #    "floor" nodes - assets/spaces from them are remapped to the real storey.
     real_floors, storey_to_floor = _resolve_floors(model)
 
-    spatial_refs: dict[int, str] = {}            # entity.id() → object_ref (emitnuté uzly)
+    spatial_refs: dict[int, str] = {}            # entity.id() -> object_ref (emitted nodes)
     if not federate:
         for ifc_class, otype in (("IfcSite", "site"), ("IfcBuilding", "building")):
             for ent in model.by_type(ifc_class):
@@ -342,9 +342,9 @@ def to_staged(
                 st, "floor", refs.generic_ref(st), elevation=_to_float(attr(st, "Elevation"))
             )
         for sp in model.by_type("IfcSpace"):
-            # IfcSpace.Name = číslo miestnosti (→ objects.name), LongName = popis funkcie
-            # (Serverovňa, WC…) → prípona `spaces.long_name` (D-040). Generický Revit
-            # placeholder "Space" (nepomenovaná miestnosť) berieme ako prázdny.
+            # IfcSpace.Name = room number (-> objects.name), LongName = function description
+            # (Server room, WC...) -> extension `spaces.long_name` (D-040). The generic Revit
+            # placeholder "Space" (an unnamed room) is treated as empty.
             long_name = attr(sp, "LongName")
             if isinstance(long_name, str) and long_name.strip().lower() == "space":
                 long_name = None
@@ -353,21 +353,21 @@ def to_staged(
             )
 
     def _spatial_ref(host: Any) -> Optional[str]:
-        """Object_ref priestorového rodiča — podlažie premapuj na reálne (D-035).
+        """Object_ref of the spatial parent - remap the storey to the real one (D-035).
 
-        Federate (D-049): spatial korene VZT sa neemitujú → None (podlažie VZT mapuje pohľad
-        `ifc_storey_map`, D-183 K3 krok 4)."""
+        Federate (D-049): the HVAC spatial roots are not emitted -> None (the HVAC storey is mapped by the view
+        `ifc_storey_map`, D-183 K3 step 4)."""
         if host is None:
             return None
         if host.is_a("IfcBuildingStorey"):
             if federate:
-                return None   # podlažie disciplinárneho modelu mapuje pohľad ifc_storey_map (D-183 K3 krok 4)
+                return None   # the discipline model's storey is mapped by the view ifc_storey_map (D-183 K3 step 4)
             target = storey_to_floor.get(host.id(), host)
             return spatial_refs.get(target.id())
         return spatial_refs.get(host.id())
 
-    # Spatial dekompozícia (D-048, rel_aggregates): building→site, floor→building, space→podlažie.
-    # Vo federate režime sa NEemituje — VZT prvky sa zaraďujú do existujúcej štruktúry (D-049).
+    # Spatial decomposition (D-048, rel_aggregates): building->site, floor->building, space->storey.
+    # In federate mode it is NOT emitted - HVAC elements are placed into the existing structure (D-049).
     if not federate:
         for ent in model.by_type("IfcBuilding"):
             parent_ref = _spatial_ref(ue.get_aggregate(ent))
@@ -382,19 +382,19 @@ def to_staged(
             if parent_ref is not None:
                 staged.edges.append(Edge("aggregates", spatial_refs[sp.id()], parent_ref))
 
-    # 2) Elementy (asset, rozsah z policy D-034): inštančný `object_ref` zo schémy
-    #    + zber typových kódov. Typové entity (IfcDoorType…) nemajú vlastné psety →
-    #    typový SNIM kód odvodíme z occurrence a uložíme per type entitu.
+    # 2) Elements (asset, scope from the D-034 policy): instance `object_ref` from the scheme
+    #    + collecting type codes. Type entities (IfcDoorType...) have no psets of their own ->
+    #    the type SNIM code is derived from the occurrence and stored per type entity.
     asset_type_links: list[tuple[str, int]] = []     # (asset_ref, type_entity_id)
-    type_entities: dict[int, Any] = {}               # type_entity_id → entita (len referencované)
-    type_code_by_id: dict[int, str] = {}             # type_entity_id → SNIM typový kód
+    type_entities: dict[int, Any] = {}               # type_entity_id -> entity (only referenced ones)
+    type_code_by_id: dict[int, str] = {}             # type_entity_id -> SNIM type code
     for el in model.by_type("IfcElement"):
         if not _is_asset(el, coding):
             continue
         ref, type_code = refs.allocate_asset(el)
         add_object(el, "asset", ref)
-        # Priestorové containment: group-only MEP prvky (potrubie/tvarovky, D-049) ho
-        # NEdostanú — sú len členmi systému (nezahltia strom); ostatné normálne.
+        # Spatial containment: group-only MEP elements (pipes/fittings, D-049) do NOT
+        # get it - they are only members of a system (they do not flood the tree); the others normally.
         loc_ref = _spatial_ref(ue.get_container(el))
         if loc_ref is not None and not coding.scope.is_group_only(el.is_a):
             staged.edges.append(Edge("contained", ref, loc_ref))
@@ -405,20 +405,20 @@ def to_staged(
             if type_code and el_type.id() not in type_code_by_id:
                 type_code_by_id[el_type.id()] = type_code
 
-    # 3) Typy (asset_type) — LEN typy referencované assetom (D-034: žiadny IfcSpaceType
-    #    ani typy vyradených sub-komponentov). Typový kód je zdieľaný: viac Revit typov
-    #    s rovnakým SNIM kódom → jeden `asset_type` (dedup), occurrence naň ukazujú.
+    # 3) Types (asset_type) - ONLY types referenced by an asset (D-034: no IfcSpaceType
+    #    and no types of dropped sub-components). The type code is shared: several Revit types
+    #    with the same SNIM code -> one `asset_type` (dedup), the occurrences point to it.
     type_refs: dict[int, str] = {}
     code_to_type_ref: dict[str, str] = {}
     for tid, t in type_entities.items():
         code = type_code_by_id.get(tid)
         if code is not None:
             existing = code_to_type_ref.get(code)
-            if existing is not None:                       # zlúč do už emitnutého kódu
+            if existing is not None:                       # merge into the already emitted code
                 type_refs[tid] = existing
                 refs._by_id[tid] = existing
-                # Zlúčenie ako údaj (D-183 K3 krok 3): GUID zlúčeného typu -> ten istý asset_type,
-                # aby ho `rel_defines_by_type` z kópie revízie našiel bez odhadu podľa object_ref.
+                # Merge recorded as data (D-183 K3 step 3): the GUID of the merged type -> the same asset_type,
+                # so that `rel_defines_by_type` from the revision copy finds it without guessing by object_ref.
                 alias_guid = attr(t, "GlobalId")
                 if alias_guid:
                     staged.guid_aliases.append(
@@ -431,29 +431,29 @@ def to_staged(
         else:
             type_refs[tid] = add_object(t, "asset_type", refs.generic_ref(t))
 
-    # 4) defined_by_type (occurrence → type) cez (prípadne zlúčené) typové refy.
+    # 4) defined_by_type (occurrence -> type) through the (possibly merged) type refs.
     for asset_ref, type_id in asset_type_links:
         if type_id in type_refs:
             staged.edges.append(Edge("defined_by_type", asset_ref, type_refs[type_id]))
 
-    # 4.5) Distribučné systémy (D-047) + členstvo. IfcDistributionSystem → object_type
+    # 4.5) Distribution systems (D-047) + membership. IfcDistributionSystem -> object_type
     #      'system' (predefined_type z IfcDistributionSystemEnum); IfcRelAssignsToGroup
-    #      (RelatingGroup = systém) → hrana assigns_to_group (člen → systém). Členom je
-    #      len prvok už emitnutý ako asset (refs._by_id) — žiadne dangling hrany.
+    #      (RelatingGroup = the system) -> edge assigns_to_group (member -> system). A member is
+    #      only an element already emitted as an asset (refs._by_id) - no dangling edges.
     system_refs: dict[int, str] = {}
     for sysent in model.by_type("IfcDistributionSystem"):
         system_refs[sysent.id()] = add_object(sysent, "system", refs.generic_ref(sysent))
 
-    # 4.6) Projekt, zóny a skupiny (D-088): IfcProject, IfcZone, IfcSpatialZone a čisté
-    #      IfcGroup (skladby). Len hlavný model — VZT nesie vlastný IfcProject toho istého
-    #      projektu a zóny nemá (federate ich neemituje).
+    # 4.6) Project, zones and groups (D-088): IfcProject, IfcZone, IfcSpatialZone and pure
+    #      IfcGroup (assemblies). Only the main model - HVAC carries its own IfcProject of the same
+    #      project and has no zones (federate does not emit them).
     group_refs: dict[int, str] = {}
     if not federate:
         for ifc_class, otype in (("IfcProject", "project"), ("IfcZone", "zone"),
                                  ("IfcSpatialZone", "spatial_zone"), ("IfcGroup", "group")):
             for ent in model.by_type(ifc_class):
                 if ifc_class == "IfcGroup" and ent.is_a() != "IfcGroup":
-                    continue  # podtypy (IfcZone, IfcSystem…) majú vlastný object_type
+                    continue  # subtypes (IfcZone, IfcSystem...) have their own object_type
                 group_refs[ent.id()] = add_object(ent, otype, refs.generic_ref(ent))
         _collect_group_structure(model, staged, emitted, group_refs, _spatial_ref)
     elif staged.project_code is not None and staged.project_guid:
@@ -465,7 +465,7 @@ def to_staged(
 
     _collect_space_boundaries(model, staged, emitted)
 
-    # Členstvo v systéme, zóne a skupine (IfcRelAssignsToGroup): len emitnutí členovia.
+    # Membership in a system, zone and group (IfcRelAssignsToGroup): only emitted members.
     for rel in model.by_type("IfcRelAssignsToGroup"):
         group = attr(rel, "RelatingGroup")
         if group is None:
@@ -478,19 +478,19 @@ def to_staged(
             if member_ref is not None:
                 staged.edges.append(Edge("assigns_to_group", member_ref, target_ref))
 
-    # 5) Dokumenty + aktori (best-effort, štruktúra je tu — doladiť na model, E2).
+    # 5) Documents + actors (best-effort, the structure is here - tune on the model, E2).
     _collect_documents(model, refs, staged)
     _collect_document_classifications(model, refs, staged, systems_seen, refs_seen, ref_names)
     _collect_actors(model, refs, staged)
     _drop_unemitted_links(staged, refs.cov)
 
-    # Coverage typov: koľko zdieľaných SNIM kódov vs. koľko IFC typov ich nieslo.
+    # Type coverage: how many shared SNIM codes vs. how many IFC types carried them.
     refs.cov.types_total = len(type_code_by_id)
     refs.cov.types_snim = len(code_to_type_ref)
     refs.cov.types_merged = len(type_code_by_id) - len(code_to_type_ref)
     staged.coverage = refs.cov
 
-    # Deduplikuj systémy/refy do staged zoznamov.
+    # Deduplicate systems/refs into the staged lists.
     staged.systems = list(systems_seen.values())
     staged.refs = [
         ClassificationRef(system_name=s, identification=i, name=ref_names.get((s, i)), location=None)
@@ -522,7 +522,7 @@ def _collect_classifications(
     systems_seen: dict[str, ClassificationSystem],
     refs_seen: set[tuple[str, str]],
 ) -> None:
-    """IfcRelAssociatesClassification → systém + referencia + rel_associates_classification."""
+    """IfcRelAssociatesClassification -> system + reference + rel_associates_classification."""
     for assoc in attr(entity, "HasAssociations") or []:
         if not assoc.is_a("IfcRelAssociatesClassification"):
             continue
@@ -539,7 +539,7 @@ def _classification_ref(
     systems_seen: dict[str, ClassificationSystem],
     refs_seen: set[tuple[str, str]],
 ) -> Optional[tuple[str, str]]:
-    """IfcClassificationReference → (systém, kód); systém a referenciu zaregistruje."""
+    """IfcClassificationReference -> (system, code); registers the system and the reference."""
     identification = attr(cref, "Identification") or attr(cref, "ItemReference")
     if not identification:
         return None
@@ -564,10 +564,10 @@ def _collect_document_classifications(
     refs_seen: set[tuple[str, str]],
     ref_names: dict[tuple[str, str], Optional[str]],
 ) -> None:
-    """Klasifikácia dokumentu (D-104, napr. typ informácie ISO 19650): IfcDocumentInformation
-    nie je IfcRoot, IfcRelAssociatesClassification naň nedosiahne, preto
-    IfcExternalReferenceRelationship z referencie na dokumenty. Dokument musí byť už
-    pridelený v `_collect_documents`; referencia nesie aj meno (napr. "Výkres")."""
+    """Document classification (D-104, e.g. the ISO 19650 information type): IfcDocumentInformation
+    is not an IfcRoot, IfcRelAssociatesClassification cannot reach it, hence an
+    IfcExternalReferenceRelationship from the reference to the documents. The document must already be
+    assigned in `_collect_documents`; the reference also carries a name (e.g. "Výkres")."""
     for rel in model.by_type("IfcExternalReferenceRelationship"):
         cref = attr(rel, "RelatingReference")
         if cref is None or not cref.is_a("IfcClassificationReference"):
@@ -587,14 +587,14 @@ def _collect_document_classifications(
 
 
 def _collect_documents(model: ifcopenshell.file, refs: _RefAllocator, staged: StagedModel) -> None:
-    """Dokumentácia zo súboru (D-104): každý IfcDocumentInformation ako `document` (aj
-    priečinkové časti bez súboru), strom z IfcDocumentInformationRelationship ako
-    `document_part` (časť → nadradený), IfcDocumentReference ako `document_reference`
-    (časť dokumentu, napr. strana) a IfcRelAssociatesDocument ako `has_document`.
+    """Documentation from the file (D-104): every IfcDocumentInformation as a `document` (also
+    folder parts without a file), the tree from IfcDocumentInformationRelationship as
+    `document_part` (part -> parent), IfcDocumentReference as `document_reference`
+    (a part of a document, e.g. a page) and IfcRelAssociatesDocument as `has_document`.
 
-    `object_ref` dokumentu = `Identification` (CDE názov, D-036), odkazu =
-    `<Identification dokumentu>#<Identification odkazu>`. `Location` ostáva zo súboru;
-    na URL v buckete ju preloží load (`documents.resolve_locations`)."""
+    The document's `object_ref` = `Identification` (CDE name, D-036), the reference's =
+    `<document Identification>#<reference Identification>`. `Location` stays from the file;
+    load translates it to the URL in the bucket (`documents.resolve_locations`)."""
     doc_refs: dict[int, str] = {}
     for info in model.by_type("IfcDocumentInformation"):
         ref = refs.named_ref(info, attr(info, "Identification") or attr(info, "Name") or "IfcDocumentInformation")
@@ -643,7 +643,7 @@ def _collect_documents(model: ifcopenshell.file, refs: _RefAllocator, staged: St
             ObjectRow(
                 object_ref=ref,
                 object_type="document_reference",
-                # ASR nesie popis strany v Description, Name je prázdne
+                # ASR carries the page description in Description, Name is empty
                 name=attr(dref, "Name") or attr(dref, "Description") or own,
                 ifc_type="IfcDocumentReference",
                 document=DocumentExt(
@@ -669,7 +669,7 @@ def _collect_documents(model: ifcopenshell.file, refs: _RefAllocator, staged: St
 
 
 def _actor_label(actor: Any) -> Optional[str]:
-    """IfcPerson / IfcOrganization / IfcPersonAndOrganization → čitateľné meno (vlastník dokumentu)."""
+    """IfcPerson / IfcOrganization / IfcPersonAndOrganization -> readable name (document owner)."""
     if actor is None:
         return None
     if actor.is_a("IfcPersonAndOrganization"):
@@ -688,14 +688,14 @@ def _collect_group_structure(
     group_refs: dict[int, str],
     spatial_ref: Any,
 ) -> None:
-    """Väzby projektu, priestorových zón a skupín zo súboru (D-088).
+    """Links of the project, spatial zones and groups from the file (D-088).
 
-    - `aggregates`: site → projekt, časť priestorovej zóny → zóna, podskupina → skupina
-      (dekompozícia budovy a nižšie ostáva v kroku 1);
-    - `contained`: priestorová zóna na podlaží (IfcRelContainedInSpatialStructure);
-    - `referenced`: IfcRelReferencedInSpatialStructure zo súboru (priestor v priestorovej
-      zóne, zóna aj prvok na podlaží, dvere v priestore). Podlažie sa premapuje ako pri
-      containmente (D-035); väzba len medzi emitnutými objektmi."""
+    - `aggregates`: site -> project, part of a spatial zone -> zone, subgroup -> group
+      (the decomposition of the building and below stays in step 1);
+    - `contained`: a spatial zone on a storey (IfcRelContainedInSpatialStructure);
+    - `referenced`: IfcRelReferencedInSpatialStructure from the file (a space in a spatial
+      zone, a zone and an element on a storey, a door in a space). The storey is remapped as with
+      containment (D-035); a link only between emitted objects."""
     for rel in model.by_type("IfcRelAggregates"):
         parent = attr(rel, "RelatingObject")
         if parent is None or parent.id() not in group_refs:
@@ -734,13 +734,13 @@ _BOUNDARY_ROLE_RANK = {"physical": 0, "virtual": 1, "notdefined": 2}
 def _collect_space_boundaries(
     model: ifcopenshell.file, staged: StagedModel, emitted: dict[int, str]
 ) -> None:
-    """IfcRelSpaceBoundary (aj 1st/2nd level) → hrana `space_boundary` prvok → priestor (D-156).
+    """IfcRelSpaceBoundary (also 1st/2nd level) -> edge `space_boundary` element -> space (D-156).
 
-    Dvere môžu byť s miestnosťou spojené len hranicou priestoru (a v štruktúre ležať na
-    podlaží). Jedna dvojica (prvok, priestor) má v IFC často viac hraníc (každá plocha, obe
-    úrovne) → jedna hrana; `role` = PhysicalOrVirtualBoundary v malých písmenách, pri
-    viacerých vyhráva physical. Len medzi emitnutými objektmi (bez prvku alebo priestoru
-    v grafe hrana vypadne, žiadne dangling hrany)."""
+    Doors can be linked to a room only by a space boundary (and lie on a storey in the structure). One
+    pair (element, space) often has several boundaries in IFC (each face, both
+    levels) -> one edge; `role` = PhysicalOrVirtualBoundary in lower case, with
+    several, physical wins. Only between emitted objects (without the element or the space
+    in the graph the edge is dropped, no dangling edges)."""
     best: dict[tuple[str, str], str] = {}
     for rel in model.by_type("IfcRelSpaceBoundary"):
         space, element = attr(rel, "RelatingSpace"), attr(rel, "RelatedBuildingElement")
@@ -759,12 +759,12 @@ def _collect_space_boundaries(
 
 
 def _drop_unemitted_links(staged: StagedModel, cov: CoverageReport) -> None:
-    """Väzby dokumentov a aktorov len na emitnuté objekty — žiadne dangling hrany.
+    """Links of documents and actors only to emitted objects - no dangling edges.
 
-    Model nesie dokumenty aj na entitách, ktoré ETL (zatiaľ) neemituje: IfcZone,
-    IfcSpatialZone, IfcGroup skladieb, IfcProject (D-086). Hrana na neexistujúci
-    `object_ref` by zhodila celý load (`_resolve_cross_file_refs`), preto sa vynechá
-    a zráta do coverage podľa IFC triedy."""
+    The model carries documents also on entities the ETL does not (yet) emit: IfcZone,
+    IfcSpatialZone, IfcGroup of assemblies, IfcProject (D-086). An edge to a nonexistent
+    `object_ref` would fail the whole load (`_resolve_cross_file_refs`), so it is omitted
+    and counted into coverage by IFC class."""
     emitted = {o.object_ref for o in staged.objects}
     kept: list[Edge] = []
     for e in staged.edges:
@@ -780,7 +780,7 @@ def _drop_unemitted_links(staged: StagedModel, cov: CoverageReport) -> None:
 
 
 def _collect_actors(model: ifcopenshell.file, refs: _RefAllocator, staged: StagedModel) -> None:
-    """IfcRelAssignsToActor → person/organization + rel_assigns_to_actor. TODO(model)."""
+    """IfcRelAssignsToActor -> person/organization + rel_assigns_to_actor. TODO(model)."""
     for rel in model.by_type("IfcRelAssignsToActor"):
         actor = attr(rel, "RelatingActor")
         if actor is None:
@@ -801,7 +801,7 @@ def _collect_actors(model: ifcopenshell.file, refs: _RefAllocator, staged: Stage
 
 
 def _actor_object(the_actor: Any, refs: _RefAllocator, staged: StagedModel) -> Optional[str]:
-    """IfcPerson / IfcOrganization / IfcPersonAndOrganization → objekt(y) + rel_member_of."""
+    """IfcPerson / IfcOrganization / IfcPersonAndOrganization -> object(s) + rel_member_of."""
     if the_actor is None:
         return None
     if the_actor.is_a("IfcPersonAndOrganization"):
