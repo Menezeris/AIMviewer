@@ -1,26 +1,26 @@
-"""Dokumentová naming convention — CDE štandard (D-036).
+"""Document naming convention: CDE standard (D-036).
 
-Pri prvkoch je identity spine `object_ref` (`scheme.py`); pri dokumentoch je ním
-**naming convention**. Názov informačného kontajnera nesie metadáta v pevných
-**pozičných poliach** oddelených `_`; tento modul ho rozseká na `DocumentMeta`
-(rovnaký princíp ako `scheme.py` skladá `object_ref`).
+For elements the identity spine is `object_ref` (`scheme.py`); for documents it is the
+**naming convention**. The name of an information container carries metadata in fixed
+**positional fields** separated by `_`; this module splits it into `DocumentMeta`
+(the same principle as `scheme.py` uses to compose `object_ref`).
 
-Konvencia preberá **reálny CDE štandard** (Jihočeský kraj, „Standard CDE — Společné
-datové prostředí", ISO 19650 línia), nie generické ISO — slovník kódov je hotový a
-autoritatívny. Iný projekt = iný slovník v tomto súbore, kód sa nemení (línia D-033).
+The convention adopts the **real CDE standard** (Jihočeský kraj, "Standard CDE - Společné
+datové prostředí", ISO 19650 line), not the generic ISO: the code vocabulary is ready and
+authoritative. Another project = another vocabulary in this file, the code does not change (D-033 line).
 
-Skladba (7 pozícií, oddeľovač `_`):
+Structure (7 positions, separator `_`):
 
     Projekt _ StupeňPD _ ČástDíla _ Profese _ TypSouboru _ Číslo _ Popis
      OCB    _  DPS     _  SO01    _  ARS    _  VD        _ 101   _ Pudorys-1NP
 
-Pravidlá zápisu (z CDE): premenlivá dĺžka pozícií; bez diakritiky; kódy VEĽKÝMI
-(okrem Popisu); chýbajúci údaj → zástupný `X`; v Popise medzery/bodky → `-`,
-max 20 znakov.
+Writing rules (from CDE): variable position length; no diacritics; codes in UPPERCASE
+(except Popis); missing value -> placeholder `X`; in Popis spaces/dots -> `-`,
+max 20 characters.
 
-**Väzba dokument↔uzol nie je v názve** (CDE nemá pole pre podlažie) — rieši ju
-explicitný stĺpec `target_ref` v manifeste `docs.csv` (D-036). Tu len parsujeme
-metadáta a odvodzujeme `role` z `Typ souboru`.
+**The document<->node link is not in the name** (CDE has no field for the floor): it is solved by
+the explicit column `target_ref` in the manifest `docs.csv` (D-036). Here we only parse
+the metadata and derive `role` from `Typ souboru`.
 """
 
 from __future__ import annotations
@@ -29,10 +29,10 @@ from dataclasses import dataclass
 from typing import Optional
 
 DELIMITER = "_"
-PLACEHOLDER = "X"          # CDE: chýbajúci údaj na pozícii
+PLACEHOLDER = "X"          # CDE: missing value at the position
 N_POSITIONS = 7
 
-# Pozície (poradie = poradie v názve).
+# Positions (order = order in the name).
 POS_PROJECT = "project"
 POS_STAGE = "stage"           # Stupeň PD
 POS_PART = "part"             # Část Díla
@@ -42,9 +42,9 @@ POS_NUMBER = "number"
 POS_DESCRIPTION = "description"
 
 
-# ── Slovníky kódov (CDE — diagnostické labely; iný projekt = iný slovník) ──────
+# ── Code vocabularies (CDE: diagnostic labels; another project = another vocabulary) ──────
 
-# Stupeň PD — fáza dokumentácie (mapuje náš ŽC „návrh → výstavba → prevádzka").
+# Stupeň PD: documentation phase (maps our life cycle "design -> construction -> operation").
 STAGES: dict[str, str] = {
     "ADS": "Architektonicko-dispozičná štúdia",
     "DPZ": "Dokumentácia pre povolenie zámeru",
@@ -54,7 +54,7 @@ STAGES: dict[str, str] = {
     "XX": "Obecný dokument (mimo stupňa PD)",
 }
 
-# Profese — odbor (z dátového štandardu projektu, potvrdí BEP).
+# Profese: discipline (from the project data standard, confirmed by the BEP).
 DISCIPLINES: dict[str, str] = {
     "ARS": "Architektúra / pozemné staviteľstvo",
     "STA": "Statika",
@@ -67,7 +67,7 @@ DISCIPLINES: dict[str, str] = {
     "XX": "Neurčené",
 }
 
-# Typ souboru — forma dokumentu (výber z CDE relevantný pre stavebnú dokumentáciu).
+# Typ souboru: form of the document (selection from CDE relevant for construction documentation).
 DOC_TYPES: dict[str, str] = {
     "VD": "Výkresová dokumentácia",
     "RP": "Report, správa",
@@ -83,7 +83,7 @@ DOC_TYPES: dict[str, str] = {
     "XX": "Neurčené",
 }
 
-# ISO 19650 stavy — do `documents.status` (NIE do názvu, D-036).
+# ISO 19650 states: into `documents.status` (NOT into the name, D-036).
 STATUSES: dict[str, str] = {
     "WIP": "Rozpracované (work in progress)",
     "S1": "Zdieľané — vhodné pre koordináciu",
@@ -95,9 +95,9 @@ STATUSES: dict[str, str] = {
     "AB": "Skutočné prevedenie (as-built)",
 }
 
-# `rel_associates_document.role` odvodené z Typ souboru (D-014 / object-type.ts vocab).
-# Typ je forma kontajnera; rola je *vzťah* dokumentu k uzlu. Mapovanie je 1:N-bezpečné
-# (viacero typov môže mať rovnakú rolu) a default = "document".
+# `rel_associates_document.role` derived from Typ souboru (D-014 / object-type.ts vocab).
+# The type is the form of the container; the role is the *relationship* of the document to the node. The mapping is 1:N-safe
+# (several types can have the same role) and default = "document".
 _TYPE_TO_ROLE: dict[str, str] = {
     "VD": "drawing",
     "RP": "report",
@@ -116,7 +116,7 @@ DEFAULT_ROLE = "document"
 
 @dataclass(frozen=True)
 class DocumentMeta:
-    """Rozparsované pozičné polia názvu + odvodené hodnoty (D-036)."""
+    """Parsed positional fields of the name + derived values (D-036)."""
 
     project: Optional[str]
     stage: Optional[str]
@@ -125,11 +125,11 @@ class DocumentMeta:
     doc_type: Optional[str]
     number: Optional[str]
     description: Optional[str]
-    container_name: str       # pôvodný (rekonštruovaný) názov bez prípony
+    container_name: str       # original (reconstructed) name without the extension
 
     @property
     def role(self) -> str:
-        """`rel_associates_document.role` z Typ souboru (fallback `document`)."""
+        """`rel_associates_document.role` from Typ souboru (fallback `document`)."""
         if not self.doc_type:
             return DEFAULT_ROLE
         return _TYPE_TO_ROLE.get(self.doc_type, DEFAULT_ROLE)
@@ -147,13 +147,13 @@ class DocumentMeta:
         return DOC_TYPES.get(self.doc_type) if self.doc_type else None
 
     def human_description(self) -> Optional[str]:
-        """Popis s `-` → medzery (pre `objects.name` / `documents.description`)."""
+        """Popis with `-` -> spaces (for `objects.name` / `documents.description`)."""
         if not self.description:
             return None
         return self.description.replace("-", " ").strip() or None
 
     def unknown_codes(self) -> list[str]:
-        """Kódy mimo slovníka — vstup do validačného reportu (mini-IDS)."""
+        """Codes outside the vocabulary: input to the validation report (mini-IDS)."""
         bad: list[str] = []
         if self.stage and self.stage not in STAGES:
             bad.append(f"StupeňPD={self.stage}")
@@ -165,7 +165,7 @@ class DocumentMeta:
 
 
 def _norm(value: str) -> Optional[str]:
-    """Prázdne / zástupné `X` → None; inak orezané."""
+    """Empty / placeholder `X` -> None; otherwise stripped."""
     value = value.strip()
     if not value or value == PLACEHOLDER:
         return None
@@ -173,20 +173,20 @@ def _norm(value: str) -> Optional[str]:
 
 
 def parse_container_name(name: str) -> DocumentMeta:
-    """Rozseká názov kontajnera (bez prípony) na `DocumentMeta`.
+    """Splits the container name (without extension) into `DocumentMeta`.
 
-    Tolerantný k medzerám okolo `_` (zdroj ich občas má: `CMSP_DPZ _SO01_...`).
-    Chýbajúce koncové pozície ostávajú None (kratší názov = menej polí); polia
-    navyše (Popis s `_`) sa nezlučujú — Popis je posledná pozícia, takže prípadné
-    ďalšie `_` v popise spojíme späť.
+    Tolerant to spaces around `_` (the source sometimes has them: `CMSP_DPZ _SO01_...`).
+    Missing trailing positions stay None (shorter name = fewer fields); extra fields
+    (Popis with `_`) are not merged: Popis is the last position, so we join any
+    further `_` in the description back.
     """
     stem = name.rsplit(".", 1)[0] if "." in name else name
     raw = [p.strip() for p in stem.split(DELIMITER)]
-    # Popis (7. pozícia) môže obsahovať `_`? CDE hovorí „slová oddelené `-`", takže
-    # nie — ale pre robustnosť zvyšok zlepíme do Popisu.
+    # Can Popis (7th position) contain `_`? CDE says "words separated by `-`", so
+    # no, but for robustness we glue the rest into Popis.
     if len(raw) > N_POSITIONS:
         raw = raw[: N_POSITIONS - 1] + [DELIMITER.join(raw[N_POSITIONS - 1 :])]
-    raw += [""] * (N_POSITIONS - len(raw))   # doplň chýbajúce pozície
+    raw += [""] * (N_POSITIONS - len(raw))   # fill in missing positions
 
     project, stage, part, discipline, doc_type, number, description = raw[:N_POSITIONS]
     return DocumentMeta(
@@ -213,9 +213,9 @@ def build_container_name(
     number: str = PLACEHOLDER,
     description: str = PLACEHOLDER,
 ) -> str:
-    """Poskladá kanonický názov kontajnera podľa CDE (D-036).
+    """Composes the canonical container name according to CDE (D-036).
 
-    Popis sa očistí (medzery/bodky → `-`, max 20 znakov); ostatné pozície VEĽKÝMI.
+    Popis is cleaned (spaces/dots -> `-`, max 20 characters); the other positions in UPPERCASE.
     """
     def clean_desc(d: str) -> str:
         d = d.strip().replace(" ", "-").replace(".", "-")
@@ -226,7 +226,7 @@ def build_container_name(
         stage.upper(),
         part.upper(),
         discipline.upper(),
-        doc_type,                       # DiMS má malé písmená — zachovať as-is
+        doc_type,                       # DiMS has lowercase letters: keep as-is
         number,
         clean_desc(description),
     ]

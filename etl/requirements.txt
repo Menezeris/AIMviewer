@@ -1,13 +1,13 @@
-# AIM ETL pipeline (D-031) — Python 3.9+ odporúčané (ifcopenshell wheels).
+# AIM ETL pipeline (D-031) - Python 3.9+ recommended (ifcopenshell wheels).
 ifcopenshell>=0.8.0
 psycopg[binary]>=3.1
 python-dotenv>=1.0
-# E4 — PDF výkres auto-linking (D-032/D-033). PyMuPDF (fitz): slová + bbox, jeden
-# wheel, bez `cryptography` (pdfplumber/pdfminer na Win/Py3.9 padá na DLL _rust).
+# E4 - PDF drawing auto-linking (D-032/D-033). PyMuPDF (fitz): words + bbox, one
+# wheel, no `cryptography` (pdfplumber/pdfminer on Win/Py3.9 fails on the _rust DLL).
 pymupdf>=1.24
-# D-081 — kontrola modelu voči IDS (ifctester = referenčná implementácia IfcOpenShell, LGPL-3.0).
+# D-081 - checking the model against IDS (ifctester = IfcOpenShell reference implementation, LGPL-3.0).
 ifctester>=0.8.0
-# D-169 - OCR strán PDF bez textovej vrstvy: pytesseract (Apache-2.0, ťahá Pillow MIT-CMU) nad
-# systémovým Tesseractom 5 (Apache-2.0) s jazykmi ces, slk, eng (apt: tesseract-ocr tesseract-ocr-ces
-# tesseract-ocr-slk tesseract-ocr-eng). Bez Tesseractu ETL beží ďalej, strany ostanú bez textu.
+# D-169 - OCR of PDF pages without a text layer: pytesseract (Apache-2.0, pulls in Pillow MIT-CMU) over
+# system Tesseract 5 (Apache-2.0) with languages ces, slk, eng (apt: tesseract-ocr tesseract-ocr-ces
+# tesseract-ocr-slk tesseract-ocr-eng). Without Tesseract the ETL keeps running, pages stay without text.
 pytesseract>=0.3.10

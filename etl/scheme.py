@@ -1,30 +1,30 @@
-"""Coding scheme — field-source resolver + projektová SNIM definícia (D-033).
+"""Coding scheme - field-source resolver + project SNIM definition (D-033).
 
-`object_ref` (D-010 vrstva 2) sa **skladá z kódovacej schémy projektu**, nie z IFC
-`Tag` (Revit interné číslo, napr. `959314` — nestabilné, nepoužiteľné na párovanie
-s výkresmi). Schéma je sada usporiadaných **typovaných polí + delimiterov**; každé
-pole má **deskriptor zdroja** (`from`), voliteľný `extract` (regex) a `format` (pad/
-case/trim). Tá istá definícia poháňa extrakciu (ETL: odkiaľ čítať) aj — neskôr —
-validáciu (IDS). Žiadny nový klasifikačný/kódovací systém nevyžaduje zmenu kódu, len
-inú definíciu schémy → **mimo tohto súboru sa nič SNIM-špecifické nehardcoduje**.
+`object_ref` (D-010 layer 2) is **composed from the project's coding scheme**, not from the IFC
+`Tag` (Revit internal number, e.g. `959314` - unstable, unusable for matching
+with drawings). The scheme is a set of ordered **typed fields + delimiters**; each
+field has a **source descriptor** (`from`), an optional `extract` (regex) and `format` (pad/
+case/trim). The same definition drives extraction (ETL: where to read from) and - later -
+validation (IDS). No new classification/coding system requires a code change, only
+a different scheme definition -> **nothing SNIM-specific is hardcoded outside this file**.
 
-Zistené z reálneho IFC diplomky (`Office centrum Brno.ifc`) a `SNIM - Hierarchia.pdf`:
-  • SNIM kód má 6 pozícií: TSP·PSP | (delim) | UOT | (delim) | INST.
-  • Zdroj kódu je **IFC `Name` prvku** — vyčistený re-export (2026-07-02) doň zapečie
-    plný zložený kód `TSP·PSP[.UOT[.INST]]` (dvere `DD02.05.04`, okno `LP01.44`,
-    stena `SN07`). Segmenty čítame z `Name` cez `extract` regex. (Do 2026-06 to boli
-    tri samostatné properties `Assembly Code`/`Type Mark`/`Mark` naprieč psetmi; nový
-    export ich už neexportuje, ale výstup schémy je identický — viď `_snim_parts`.)
-  • **Kategóriu (TSP) určuje prefix kódu z `Name`, NIE IFC trieda ani názov psetu** —
-    napr. fasáda `FS*` aj strecha `ST*` sa v modeli vyskytujú na `IfcWall`. Kategóriu
-    rozlišujeme podľa TSP (prvé 2 znaky kódu).
-  • **Typové entity (`IfcDoorType`…)** — type-level kód (TSP·PSP[.UOT]) sa odvodí z
-    kódu occurrence (rieši `transform.py`); inštancia pridá `.INST`.
-  • Prvky bez SNIM kódu v `Name` (VZT terminály `60`, nevyčistené `Fascia:Atika:…`)
-    regex nezmatchuje → `object_ref` padne na GUID (správne — netlačí sa fiktívny kód).
+Found from the real IFC of the thesis (`Office centrum Brno.ifc`) and `SNIM - Hierarchia.pdf`:
+  - The SNIM code has 6 positions: TSP·PSP | (delim) | UOT | (delim) | INST.
+  - The source of the code is the **IFC `Name` of the element** - the cleaned re-export (2026-07-02) bakes
+    the full composite code `TSP·PSP[.UOT[.INST]]` into it (door `DD02.05.04`, window `LP01.44`,
+    wall `SN07`). We read the segments from `Name` via an `extract` regex. (Until 2026-06 these were
+    three separate properties `Assembly Code`/`Type Mark`/`Mark` across psets; the new
+    export no longer exports them, but the scheme output is identical - see `_snim_parts`.)
+  - **The category (TSP) is determined by the code prefix from `Name`, NOT by the IFC class or the pset name** -
+    e.g. both the facade `FS*` and the roof `ST*` occur in the model on `IfcWall`. We tell
+    categories apart by TSP (the first 2 characters of the code).
+  - **Type entities (`IfcDoorType`...)** - the type-level code (TSP·PSP[.UOT]) is derived from the
+    occurrence code (handled by `transform.py`); the instance adds `.INST`.
+  - Elements without a SNIM code in `Name` (VZT terminals `60`, uncleaned `Fascia:Atika:...`)
+    do not match the regex -> `object_ref` falls back to the GUID (correct - no fictitious code is forced).
 
-Skladba kódu (overené dvere): `Name=DD02.05.04` ⇒ TSP·PSP `DD02`, UOT `05`, INST `04`
-⇒ type `DD02.05`, inštancia `DD02.05.04`. Číselné segmenty sa zero-padujú (min. šírka).
+Code composition (verified on doors): `Name=DD02.05.04` => TSP·PSP `DD02`, UOT `05`, INST `04`
+=> type `DD02.05`, instance `DD02.05.04`. Numeric segments are zero-padded (min. width).
 """
 
 from __future__ import annotations
@@ -33,25 +33,25 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-# Úrovne kódu — type-level pole tvorí `asset_type` ref, instance-level dopĺňa `asset`.
+# Code levels - a type-level field forms the `asset_type` ref, an instance-level one completes the `asset`.
 TYPE = "type"
 INSTANCE = "instance"
 
 
-# ── Field-source resolver (projektovo-nezávislý) ──────────────────────────────
+# ── Field-source resolver (project-independent) ──────────────────────────────
 
 
 @dataclass(frozen=True)
 class Field:
-    """Deskriptor jedného poľa kódu — odkiaľ a ako prečítať jeho hodnotu (D-033).
+    """Descriptor of one code field - where and how to read its value (D-033).
 
     `source`:
-      • ``property``       — pomenovaný pset (`pset=`) alebo naprieč všetkými (`pset=None`)
-      • ``attribute``      — IFC atribút (`Name`/`Tag`/`ObjectType`/`Description`/…)
-      • ``classification`` — identifikátor referencie systému `key` (system+identification)
-      • ``type_property``  — property z `IfcTypeObject` (pset na type)
-    `extract` — regex s jednou capture skupinou (kód zapečený v texte, napr. `…CC:DD02.05`).
-    `pad`     — **minimálna** šírka zero-paddingu číselného poľa (nikdy neoreže dlhšiu hodnotu).
+      - ``property``       - a named pset (`pset=`) or across all of them (`pset=None`)
+      - ``attribute``      - an IFC attribute (`Name`/`Tag`/`ObjectType`/`Description`/...)
+      - ``classification`` - identifier of a reference of system `key` (system+identification)
+      - ``type_property``  - a property from `IfcTypeObject` (pset on the type)
+    `extract` - regex with one capture group (code baked into text, e.g. `...CC:DD02.05`).
+    `pad`     - **minimum** zero-padding width of a numeric field (never truncates a longer value).
     """
 
     source: str
@@ -65,24 +65,24 @@ class Field:
 
 @dataclass
 class FieldContext:
-    """Predčítané dáta jednej entity — drží resolver čistý a testovateľný.
+    """Pre-read data of one entity - keeps the resolver pure and testable.
 
-    `transform.py` ho naplní cez ifcopenshell; resolver tu nezávisí od ifcopenshell.
+    `transform.py` fills it via ifcopenshell; the resolver here does not depend on ifcopenshell.
     """
 
     psets: dict[str, dict[str, Any]] = field(default_factory=dict)        # occurrence (+inherited)
     type_psets: dict[str, dict[str, Any]] = field(default_factory=dict)   # IfcTypeObject psets
-    attrs: Callable[[str], Any] = lambda _name: None                      # IFC atribút
+    attrs: Callable[[str], Any] = lambda _name: None                      # IFC attribute
     classifications: list[tuple[str, str]] = field(default_factory=list)  # (system, identification)
 
 
 def _scan_psets(psets: dict[str, dict[str, Any]], pset: Optional[str], key: str) -> Any:
-    """Hodnota property `key`: z pomenovaného psetu, inak naprieč všetkými (prvá zhoda)."""
+    """Value of property `key`: from the named pset, otherwise across all (first match)."""
     if pset is not None:
         block = psets.get(pset)
         if isinstance(block, dict) and block.get(key) not in (None, ""):
             return block.get(key)
-        # named pset chýba/nemá pole → fallback na sken všetkých (robustné voči anomáliám)
+        # named pset missing/has no field -> fallback to scanning all (robust against anomalies)
     for block in psets.values():
         if isinstance(block, dict) and block.get(key) not in (None, ""):
             return block.get(key)
@@ -105,7 +105,7 @@ def _raw_value(spec: Field, ctx: FieldContext) -> Any:
 
 
 def resolve_field(spec: Field, ctx: FieldContext) -> Optional[str]:
-    """Vráti naformátovanú textovú hodnotu poľa, alebo None ak chýba."""
+    """Return the formatted text value of the field, or None if it is missing."""
     raw = _raw_value(spec, ctx)
     if raw is None:
         return None
@@ -120,7 +120,7 @@ def resolve_field(spec: Field, ctx: FieldContext) -> Optional[str]:
             return None
         text = match.group(1) if match.groups() else match.group(0)
     if spec.pad and text.isdigit():
-        text = text.zfill(spec.pad)        # minimálna šírka — dlhšie hodnoty ostávajú
+        text = text.zfill(spec.pad)        # minimum width - longer values stay as they are
     if spec.case == "upper":
         text = text.upper()
     elif spec.case == "lower":
@@ -128,12 +128,12 @@ def resolve_field(spec: Field, ctx: FieldContext) -> Optional[str]:
     return text or None
 
 
-# ── Zložený kód (object_ref) ──────────────────────────────────────────────────
+# ── Composite code (object_ref) ──────────────────────────────────────────────────
 
 
 @dataclass(frozen=True)
 class CodePart:
-    """Jedna pozícia zloženého `object_ref`. `level=INSTANCE` patrí len do asset refu."""
+    """One position of the composite `object_ref`. `level=INSTANCE` belongs only to the asset ref."""
 
     field: Field
     level: str = TYPE
@@ -141,19 +141,19 @@ class CodePart:
 
 @dataclass
 class ElementScheme:
-    """Definícia jednej kategórie kódovacej schémy (napr. SNIM „Dvere")."""
+    """Definition of one category of the coding scheme (e.g. SNIM "Dvere")."""
 
-    tsp: str                          # kľúč kategórie = prefix Assembly Code (napr. "DD")
-    label: str                        # ľudský názov ("Dvere")
-    applies_to: tuple[str, ...]       # IFC triedy, kde sa kód očakáva (mini-IDS applicability)
+    tsp: str                          # category key = Assembly Code prefix (e.g. "DD")
+    label: str                        # human name ("Dvere")
+    applies_to: tuple[str, ...]       # IFC classes where the code is expected (mini-IDS applicability)
     parts: tuple[CodePart, ...]
     delimiter: str = "."
 
     def _join(self, ctx: FieldContext, max_level: str) -> tuple[Optional[str], list[str]]:
-        """Poskladá kód po `max_level`. Vráti (kód|None, chýbajúce_polia).
+        """Compose the code up to `max_level`. Returns (code|None, missing_fields).
 
-        Type-level pole je povinné (bez neho niet kódu). Instance-level pole, ktoré
-        chýba pri `max_level=INSTANCE`, znamená „kód neúplný" → None + dôvod.
+        A type-level field is mandatory (without it there is no code). An instance-level field
+        missing at `max_level=INSTANCE` means "code incomplete" -> None + reason.
         """
         out: list[str] = []
         missing: list[str] = []
@@ -164,8 +164,8 @@ class ElementScheme:
             if value is None:
                 missing.append(part.field.key)
                 if part.level == INSTANCE:
-                    return None, missing      # chýbajúci INST = neúplný inštančný kód
-                continue                      # voliteľné type pole (napr. chýbajúci UOT)
+                    return None, missing      # missing INST = incomplete instance code
+                continue                      # optional type field (e.g. missing UOT)
             out.append(value)
         if not out:
             return None, missing
@@ -174,34 +174,34 @@ class ElementScheme:
 
 @dataclass(frozen=True)
 class ScopePolicy:
-    """Rozsah importu (D-034) — ktoré IFC elementy sa stávajú `asset`.
+    """Import scope (D-034) - which IFC elements become an `asset`.
 
-    Princíp D-034: *„asset = to, na čo máme vypísanú informačnú požiadavku."*
-    Štruktúrne kritérium (IFC-natívne, nezávislé od kvality kódovania):
-      • asset = **top-level** prvok (visí priamo v priestore: `get_aggregate` =
-        priestor/None) — reálne spravovateľné celky (steny, dvere, strechy, dosky,
-        VZT terminály, stĺpy, podhľady, fasáda ako celok, schody, nábytok);
-      • vyhodené sú **voidy** (`IfcFeatureElement` = otvory) a **sub-komponenty**
-        (vnorené prvky — stĺpiky/výplne/panely fasády, vrstvy strechy, ramená schodov);
-      • **výnimka:** vnorené `IfcDoor`/`IfcWindow`/`IfcRailing` ostávajú asset — funkčne
-        sú samostatné prvky napriek vnoreniu. `IfcRailing` doplnené (D-034 dodatok):
-        zábradlia/madlá (ZV) a tieniaca technika (TV) sú modelované vnorené v `IfcStair`,
-        ale nesú vlastný SNIM kód a informačnú požiadavku — rovnaký dôvod ako dvere/okná.
-        Naopak `IfcSlab` (vrstvy strechy, ST) a `IfcStairFlight` (ramená, SH) zostávajú
-        vylúčené — tie sú reálne sub-komponenty zostavy (typy ST01.* sú už z `IfcRoof`).
+    Principle of D-034: *"asset = what we have an information requirement written for."*
+    Structural criterion (IFC-native, independent of coding quality):
+      - asset = a **top-level** element (hangs directly in the space: `get_aggregate` =
+        space/None) - really manageable units (walls, doors, roofs, slabs,
+        VZT terminals, columns, ceilings, the facade as a whole, stairs, furniture);
+      - dropped are **voids** (`IfcFeatureElement` = openings) and **sub-components**
+        (nested elements - facade mullions/infills/panels, roof layers, stair flights);
+      - **exception:** nested `IfcDoor`/`IfcWindow`/`IfcRailing` stay assets - functionally
+        they are standalone elements despite the nesting. `IfcRailing` added (D-034 addendum):
+        railings/handrails (ZV) and shading (TV) are modelled nested in `IfcStair`,
+        but carry their own SNIM code and information requirement - same reason as doors/windows.
+        Conversely `IfcSlab` (roof layers, ST) and `IfcStairFlight` (flights, SH) stay
+        excluded - those are real sub-components of the assembly (types ST01.* already come from `IfcRoof`).
 
-    Definované ako **policy (config), nie hardcode v `transform.py`** — iný projekt
-    = iná policy (línia D-033/D-034). Resolver nezávisí od ifcopenshell: dostáva
-    `is_a` callable (IFC inheritance check) + príznak `top_level`.
+    Defined as a **policy (config), not hardcoded in `transform.py`** - another project
+    = another policy (line of D-033/D-034). The resolver does not depend on ifcopenshell: it gets
+    an `is_a` callable (IFC inheritance check) + a `top_level` flag.
     """
 
-    exclude_classes: tuple[str, ...] = ("IfcFeatureElement",)   # otvory/voidy — nikdy asset
-    # funkčne samostatné prvky aj vnorené (osadené vo fasáde / v schodisku)
+    exclude_classes: tuple[str, ...] = ("IfcFeatureElement",)   # openings/voids - never an asset
+    # functionally standalone elements even when nested (set in the facade / in the staircase)
     nested_keep: tuple[str, ...] = ("IfcDoor", "IfcWindow", "IfcRailing")
-    # MEP „grouping" (D-049): prvky, kde nezáleží na inštancii — importujú sa ako asset,
-    # ale NEdostávajú priestorové containment (nezahltia strom); sú len členmi systému
-    # (rel_assigns_to_group). Potrubie/tvarovky/rozvody. Instančne-relevantné MEP prvky
-    # (air terminals, VZT jednotky) sem NEpatria → dostanú podlažie normálne.
+    # MEP "grouping" (D-049): elements where the instance does not matter - imported as asset,
+    # but do NOT get spatial containment (do not flood the tree); they are only system members
+    # (rel_assigns_to_group). Ducts/fittings/runs. Instance-relevant MEP elements
+    # (air terminals, VZT units) do NOT belong here -> they get a floor normally.
     group_only: tuple[str, ...] = (
         "IfcDuctSegment", "IfcDuctFitting",
         "IfcPipeSegment", "IfcPipeFitting",
@@ -216,29 +216,29 @@ class ScopePolicy:
         return any(is_a(cls) for cls in self.nested_keep)
 
     def is_group_only(self, is_a: Callable[[str], bool]) -> bool:
-        """Prvok sa importuje, ale bez priestorového containmentu (len člen systému, D-049)."""
+        """The element is imported, but without spatial containment (only a system member, D-049)."""
         return any(is_a(cls) for cls in self.group_only)
 
 
 @dataclass
 class CodingScheme:
-    """Projektová schéma: ako rozpoznať kategóriu a poskladať `object_ref`."""
+    """Project scheme: how to recognize the category and compose `object_ref`."""
 
     name: str
-    discriminator: Field              # číta surový kód identifikujúci kategóriu (1. segment Name)
-    discriminator_len: int            # koľko znakov tvorí TSP kľúč (SNIM = 2)
+    discriminator: Field              # reads the raw code identifying the category (1st segment of Name)
+    discriminator_len: int            # how many characters form the TSP key (SNIM = 2)
     categories: dict[str, ElementScheme]
-    scope: ScopePolicy = field(default_factory=ScopePolicy)   # rozsah importu (D-034)
+    scope: ScopePolicy = field(default_factory=ScopePolicy)   # import scope (D-034)
 
     def applicable_classes(self) -> set[str]:
-        """Zjednotenie `applies_to` — IFC triedy, kde sa kód SNIM vôbec očakáva."""
+        """Union of `applies_to` - IFC classes where a SNIM code is expected at all."""
         classes: set[str] = set()
         for cat in self.categories.values():
             classes.update(cat.applies_to)
         return classes
 
     def category_for(self, ctx: FieldContext) -> tuple[Optional[ElementScheme], Optional[str]]:
-        """Nájde kategóriu podľa TSP prefixu. Vráti (kategória|None, tsp|None)."""
+        """Find the category by TSP prefix. Returns (category|None, tsp|None)."""
         raw = resolve_field(self.discriminator, ctx)
         if not raw:
             return None, None
@@ -246,24 +246,24 @@ class CodingScheme:
         return self.categories.get(tsp), tsp
 
 
-# ── SNIM definícia projektu „Office centrum Brno" ─────────────────────────────
+# ── SNIM definition of the project "Office centrum Brno" ─────────────────────────────
 #
-# Všetky SNIM kategórie zdieľajú rovnakú skladbu (TSP·PSP [type] + UOT [type] + INST
-# [instance]); líšia sa TSP, ľudským názvom a `applies_to`. Všetky tri segmenty čítame
-# z IFC `Name` cez `extract` regex — plný kód je zapečený tam (napr. `DD02.05.04`).
+# All SNIM categories share the same composition (TSP·PSP [type] + UOT [type] + INST
+# [instance]); they differ in TSP, human name and `applies_to`. We read all three segments
+# from the IFC `Name` via an `extract` regex - the full code is baked in there (e.g. `DD02.05.04`).
 #
-# Padding (D-033 otvorená otázka — INST šírka per výkres): UOT aj INST = min. šírka 2
-# (overené na dverách `DD02.05.04`; `pad` neoreže dlhšie hodnoty). Per pole upraviteľné.
+# Padding (D-033 open question - INST width per drawing): both UOT and INST = min. width 2
+# (verified on doors `DD02.05.04`; `pad` does not truncate longer values). Adjustable per field.
 
-_TSP_PSP = r"[A-Z]{2}\d{2}"                                       # 1. segment, napr. DD02, SN07
-# Diskriminátor = 1. segment kódu z Name (TSP·PSP); category_for berie prvé 2 znaky (TSP).
+_TSP_PSP = r"[A-Z]{2}\d{2}"                                       # 1st segment, e.g. DD02, SN07
+# Discriminator = 1st segment of the code from Name (TSP·PSP); category_for takes the first 2 characters (TSP).
 _ASSEMBLY_CODE = Field(source="attribute", key="Name", extract=rf"^({_TSP_PSP})")
 _UOT_PAD = 2
 _INST_PAD = 2
 
 
 def _snim_parts() -> tuple[CodePart, ...]:
-    # Segmenty kódu z `Name`: `DD02.05.04` → TSP·PSP `DD02`, UOT `05`, INST `04`.
+    # Code segments from `Name`: `DD02.05.04` -> TSP·PSP `DD02`, UOT `05`, INST `04`.
     return (
         CodePart(_ASSEMBLY_CODE, level=TYPE),
         CodePart(Field(source="attribute", key="Name", extract=rf"^{_TSP_PSP}\.(\d+)", pad=_UOT_PAD), level=TYPE),
@@ -275,23 +275,23 @@ def _snim_category(tsp: str, label: str, applies_to: tuple[str, ...]) -> Element
     return ElementScheme(tsp=tsp, label=label, applies_to=applies_to, parts=_snim_parts())
 
 
-# `applies_to` = IFC triedy, na ktorých sa daný TSP v modeli reálne vyskytuje
-# (overené skenom ASR IFC) + zmysluplné podľa `SNIM - Hierarchia.pdf` /
-# `SNIM - Výpis skladieb.pdf`. Slúži ako mini-IDS applicability pre coverage report;
-# samotná tvorba kódu beží podľa TSP prefixu (naprieč psetmi), nezávisle od triedy.
+# `applies_to` = IFC classes on which the given TSP really occurs in the model
+# (verified by a scan of the ASR IFC) + meaningful according to `SNIM - Hierarchia.pdf` /
+# `SNIM - Výpis skladieb.pdf`. Serves as mini-IDS applicability for the coverage report;
+# the code creation itself runs by TSP prefix (across psets), independent of the class.
 #
-# Kategórie z `SNIM - Hierarchia.pdf` (8): DD, SN, FS, PH, ST, PD, ZV, KV.
-# Doplnené z `SNIM - Výpis skladieb.pdf` + skenu ASR (E2): OV, PL, ZD, DZ, SD, VT,
-# SH, LP, IH, TV. Label je diagnostický (coverage report); object.name vo Vieweri
-# ide z IFC Name, nie odtiaľto. Skladba kódu je rovnaká pre všetky (Assembly Code
-# [type] + Type Mark [type/UOT] + Mark [instance/INST]); väčšina kategórií nemá
-# `Mark` → inštancia ide na GUID fallback (správne — netlačí sa inštančný tag).
+# Categories from `SNIM - Hierarchia.pdf` (8): DD, SN, FS, PH, ST, PD, ZV, KV.
+# Added from `SNIM - Výpis skladieb.pdf` + the ASR scan (E2): OV, PL, ZD, DZ, SD, VT,
+# SH, LP, IH, TV. The label is diagnostic (coverage report); object.name in the Viewer
+# comes from the IFC Name, not from here. The code composition is the same for all (Assembly Code
+# [type] + Type Mark [type/UOT] + Mark [instance/INST]); most categories have no
+# `Mark` -> the instance goes to the GUID fallback (correct - no instance tag is forced).
 SNIM = CodingScheme(
     name="SNIM — Office centrum Brno (diplomka)",
     discriminator=_ASSEMBLY_CODE,
     discriminator_len=2,
     categories={
-        # — z Hierarchia.pdf —
+        # - from Hierarchia.pdf -
         "DD": _snim_category("DD", "Dvere", ("IfcDoor",)),
         "SN": _snim_category("SN", "Steny", ("IfcWall",)),
         "PD": _snim_category("PD", "Podlahy", ("IfcSlab",)),
@@ -310,7 +310,7 @@ SNIM = CodingScheme(
             "KV", "Klampiarske výrobky",
             ("IfcPlate", "IfcCovering", "IfcBuildingElementProxy"),
         ),
-        # — doplnené v E2 (Výpis skladieb + sken ASR) —
+        # - added in E2 (Výpis skladieb + ASR scan) -
         "OV": _snim_category(
             "OV", "Otvorové výplne a vybavenie",
             ("IfcFlowTerminal", "IfcFurniture", "IfcCurtainWall"),
