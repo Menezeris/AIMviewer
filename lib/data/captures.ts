@@ -17,21 +17,21 @@ import {
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 /**
- * Data-access vrstva pre Reality Capture (D-073). Model „ako dokumenty" (D-018):
- * capture point = `objects` riadok `object_type='capture'` + prípona `captures`,
- * jednotlivá snímka/verzia = `objects` `object_type='capture_media'` + prípona
- * `capture_media`. Ukotvenie (2D plán pin + 3D world pin) žije v rezervovanom
- * `objects.properties._capture` JSONB (vzor `_georef`, D-072).
+ * Data-access layer for Reality Capture (D-073). The model is "like documents" (D-018):
+ * capture point = `objects` row `object_type='capture'` + the `captures` extension,
+ * an individual image/version = `objects` `object_type='capture_media'` + the
+ * `capture_media` extension. The anchoring (2D plan pin + 3D world pin) lives in the reserved
+ * `objects.properties._capture` JSONB (pattern `_georef`, D-072).
  *
- * Hrany (D-051 manifest, prvé `aim_`): `aim_rel_capture_located` (capture → space)
- * a `aim_rel_capture_media` (capture → capture_media). Čítame kanonické views;
- * zápis ide na base `relationships` (views nie sú insertovateľné).
+ * Edges (D-051 manifest, the first `aim_`): `aim_rel_capture_located` (capture -> space)
+ * and `aim_rel_capture_media` (capture -> capture_media). We read the canonical views;
+ * writes go to the base `relationships` (views are not insertable).
  *
- * Čítanie je server-only (`service_role`, D-026) + ISR tag `aim`. Zápisové helpery
- * (nižšie) volajú route handlery za env bránou `CAPTURE_WRITE_ENABLED` (D-068/D-072).
+ * Reads are server-only (`service_role`, D-026) + ISR tag `aim`. The write helpers
+ * (below) are called by route handlers behind the env gate `CAPTURE_WRITE_ENABLED` (D-068/D-072).
  *
- * Čisté typy + validácia `_capture` žijú v `./capture-placement` (unit-testovateľné
- * bez server-only); tu ich re-exportujeme pre pohodlie volajúcich.
+ * Pure types + `_capture` validation live in `./capture-placement` (unit-testable
+ * without server-only); we re-export them here for the convenience of callers.
  */
 
 export {
@@ -51,7 +51,7 @@ export type {
   CaptureViewerWire,
 } from "@/lib/data/capture-placement";
 
-// ─── Čítanie ─────────────────────────────────────────────────────────────────
+// --- Reads ---------------------------------------------------------------------
 
 type MediaRow = {
   id: string;
@@ -64,7 +64,7 @@ type MediaRow = {
   captured_at: string | null;
 };
 
-/** Aktívne médiá capture pointov → mapa capturePointId → zoradené médiá. */
+/** Active media of capture points -> map capturePointId -> sorted media. */
 async function fetchActiveMediaByPoint(
   projectId: string,
   captureIds: string[]
@@ -74,7 +74,7 @@ async function fetchActiveMediaByPoint(
 
   const supabase = getSupabaseAdmin();
 
-  // capture point → médiá (aktívne väzby), potom detail médií z prípony.
+  // capture point -> media (active links), then the media detail from the extension.
   const { data: edges, error: eErr } = await supabase
     .from("aim_rel_capture_media")
     .select("from_id, to_id")
@@ -113,7 +113,7 @@ async function fetchActiveMediaByPoint(
     out.set(e.from_id, list);
   }
 
-  // Zoradenie od najnovšej + odvodenie „aktuálnej" verzie (najnovší captured_at).
+  // Sort from the newest + derive the "current" version (newest captured_at).
   for (const [id, list] of out) {
     list.sort((a, b) => (b.capturedAt ?? "").localeCompare(a.capturedAt ?? ""));
     if (list.length > 0) list[0].isCurrent = true;
@@ -122,7 +122,7 @@ async function fetchActiveMediaByPoint(
   return out;
 }
 
-/** Doplní capture point objekty (name, kind, placement, spaceId) k daným id. */
+/** Completes capture point objects (name, kind, placement, spaceId) for the given ids. */
 async function hydrateCapturePoints(projectId: string, captureIds: string[]): Promise<CapturePointWire[]> {
   if (captureIds.length === 0) return [];
   const supabase = getSupabaseAdmin();
@@ -172,7 +172,7 @@ async function hydrateCapturePoints(projectId: string, captureIds: string[]): Pr
 
 async function fetchCapturesForSpaceImpl(projectId: string, spaceId: string): Promise<CapturePointWire[]> {
   const supabase = getSupabaseAdmin();
-  // Obojsmernosť: capture pointy naviazané na tento priestor (to_id = space).
+  // Bidirectionality: capture points linked to this space (to_id = space).
   const { data: edges, error } = await supabase
     .from("aim_rel_capture_located")
     .select("from_id")
@@ -183,12 +183,12 @@ async function fetchCapturesForSpaceImpl(projectId: string, spaceId: string): Pr
 
   const captureIds = [...new Set(((edges ?? []) as { from_id: string }[]).map((e) => e.from_id))];
   const points = await hydrateCapturePoints(projectId, captureIds);
-  // Stabilné poradie: podľa mena capture pointu.
+  // Stable order: by capture point name.
   points.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
   return points;
 }
 
-/** Captures naviazané na priestor (ISR, tag `aim`). Obojsmerné čítanie „fotky priestoru". */
+/** Captures linked to a space (ISR, tag `aim`). Bidirectional read of "photos of a space". */
 export const fetchCapturesForSpace = cachedProjectRead("fetch-captures-for-space", fetchCapturesForSpaceImpl);
 
 async function fetchCaptureDetailImpl(projectId: string, id: string): Promise<CapturePointWire | null> {
@@ -205,25 +205,25 @@ async function fetchCaptureDetailImpl(projectId: string, id: string): Promise<Ca
   return point ?? null;
 }
 
-/** Detail capture pointu vrátane verzií médií (ISR, tag `aim`). */
+/** Capture point detail including media versions (ISR, tag `aim`). */
 export const fetchCaptureDetail = cachedProjectRead("fetch-capture-detail", fetchCaptureDetailImpl);
 
 async function fetchAllCapturePointsImpl(projectId: string): Promise<CapturePointWire[]> {
   const supabase = getSupabaseAdmin();
-  // Kardinalita capture pointov je nízka (jednotky/desiatky) — bez stránkovania.
-  // Pri väčších objemoch prejsť na fetchAllPages (vzor `fetchGuidMap`).
+  // The cardinality of capture points is low (units/tens) - no pagination.
+  // For larger volumes switch to fetchAllPages (pattern `fetchGuidMap`).
   const { data: caps, error } = await supabase
     .from("objects")
     .select("id")
     .eq("project_id", projectId)
     .eq("object_type", "capture")
-    .is("valid_until", null); // odstránená fotka (D-088) sa nezobrazí
+    .is("valid_until", null); // a removed photo (D-088) is not shown
   if (error) throw new Error(error.message);
   const captureIds = (caps ?? []).map((c) => c.id as string);
   return hydrateCapturePoints(projectId, captureIds);
 }
 
-/** Všetky capture pointy (pre 3D bridge + overlay na 2D vieweri), ISR tag `aim`. */
+/** All capture points (for the 3D bridge + overlay on the 2D viewer), ISR tag `aim`. */
 export const fetchAllCapturePoints = cachedProjectRead("fetch-all-capture-points", fetchAllCapturePointsImpl);
 
 async function fetchCapturePinsImpl(projectId: string): Promise<CaptureViewerWire[]> {
@@ -231,7 +231,7 @@ async function fetchCapturePinsImpl(projectId: string): Promise<CaptureViewerWir
   const out: CaptureViewerWire[] = [];
   for (const p of points) {
     const world = p.placement?.world;
-    if (!world) continue; // 3D pin vyžaduje world ukotvenie (F2 authoring)
+    if (!world) continue; // a 3D pin requires world anchoring (F2 authoring)
     const current = p.media[0];
     out.push({
       id: p.id,
@@ -245,17 +245,17 @@ async function fetchCapturePinsImpl(projectId: string): Promise<CaptureViewerWir
   return out;
 }
 
-/** Capture piny s 3D world ukotvením pre embed viewer (bridge `CAPTURES_LOAD`). */
+/** Capture pins with 3D world anchoring for the embed viewer (bridge `CAPTURES_LOAD`). */
 export const fetchCapturePins = cachedProjectRead("fetch-capture-pins", fetchCapturePinsImpl);
 
 /**
- * Capture piny s 2D plán ukotvením na daný dokument (overlay v drawing vieweri).
+ * Capture pins with 2D plan anchoring to the given document (overlay in the drawing viewer).
  *
- * ZÁMERNE NECACHOVANÉ: volá to len klientský `CapturePlanOverlay` a hneď po
- * umiestnení pinu (PATCH `/api/captures/[id]`) musí `refetch()` vidieť čerstvý
- * stav (read-after-write na rovnakej DB). `unstable_cache` + `revalidateTag` sa
- * na legacy tagu správa ako stale-while-revalidate a prvý refetch by vrátil starý
- * (bezpinový) zoznam → pin by sa nezobrazil (vzor pozn. v `/api/underlay`).
+ * INTENTIONALLY NOT CACHED: it is called only by the client `CapturePlanOverlay` and right after
+ * placing a pin (PATCH `/api/captures/[id]`) the `refetch()` must see the fresh
+ * state (read-after-write on the same DB). `unstable_cache` + `revalidateTag` on the
+ * legacy tag behaves like stale-while-revalidate and the first refetch would return the old
+ * (pinless) list -> the pin would not appear (pattern note in `/api/underlay`).
  */
 export async function fetchCapturesForDocument(projectId: string, documentId: string): Promise<CapturePlanPinWire[]> {
   const points = await fetchAllCapturePointsImpl(projectId);
@@ -294,8 +294,8 @@ async function fetchCaptureSummaryForObjectImpl(projectId: string, objectId: str
   if (error) throw new Error(error.message);
   if (!obj) return empty;
 
-  // Priestor objektu: sám (space) alebo obsahujúci priestor prvku (asset →
-  // rel_contained_in_spatial_structure, vzor fetchSpaceSiblings v filter.ts).
+  // Object's space: itself (space) or the containing space of an element (asset ->
+  // rel_contained_in_spatial_structure, pattern fetchSpaceSiblings in filter.ts).
   let spaceId: string;
   let spaceName: string | null;
   if (obj.object_type === "space") {
@@ -311,7 +311,7 @@ async function fetchCaptureSummaryForObjectImpl(projectId: string, objectId: str
       .limit(1)
       .maybeSingle();
     if (pErr) throw new Error(pErr.message);
-    if (!parent?.to_id) return empty; // kontajner bez uzla AIM (D-183 K3)
+    if (!parent?.to_id) return empty; // container without an AIM node (D-183 K3)
     const { data: sp, error: sErr } = await supabase
       .from("objects")
       .select("id, object_type, name")
@@ -336,15 +336,15 @@ async function fetchCaptureSummaryForObjectImpl(projectId: string, objectId: str
 }
 
 /**
- * Súhrn Reality Capture pre objekt vybraný v 3D (AIM karta, D-073): priestor +
- * počet snímok. Prvok (asset) sa mapuje na svoj obsahujúci priestor. ISR tag `aim`.
+ * Reality Capture summary for an object selected in 3D (AIM card, D-073): space +
+ * number of images. An element (asset) maps to its containing space. ISR tag `aim`.
  */
 export const fetchCaptureSummaryForObject = cachedProjectRead("fetch-capture-summary-for-object", fetchCaptureSummaryForObjectImpl);
 
 /**
- * Dokument pôdorysu podlažia, na ktorom leží priestor (pre „umiestniť na pláne").
- * space → floor (`rel_aggregates`) → drawing (`rel_associates_document` role='drawing').
- * Vráti `objects.id` výkresu, alebo null ak podlažie nemá pôdorys.
+ * Floor-plan document of the storey the space lies on (for "place on plan").
+ * space -> floor (`rel_aggregates`) -> drawing (`rel_associates_document` role='drawing').
+ * Returns the `objects.id` of the drawing, or null if the storey has no floor plan.
  */
 export async function fetchPlanDocumentForSpace(projectId: string, spaceId: string): Promise<string | null> {
   const supabase = getSupabaseAdmin();
@@ -371,7 +371,7 @@ export async function fetchPlanDocumentForSpace(projectId: string, spaceId: stri
   const docIds = ((docs ?? []) as { to_id: string }[]).map((d) => d.to_id);
   if (docIds.length === 0) return null;
 
-  // Uprednostni dokument so supabase PDF (má location); inak prvý.
+  // Prefer the document with a supabase PDF (has a location); otherwise the first.
   const { data: withPdf } = await supabase
     .from("documents")
     .select("id")
@@ -382,7 +382,7 @@ export async function fetchPlanDocumentForSpace(projectId: string, spaceId: stri
   return (withPdf?.id as string | undefined) ?? docIds[0];
 }
 
-/** Čiastočná zmena ukotvenia — merge `plan`/`world`/`yaw` do existujúceho `_capture`. */
+/** Partial anchoring change - merge `plan`/`world`/`yaw` into the existing `_capture`. */
 export interface CapturePlacementPatch {
   plan?: CapturePlanAnchor | null;
   world?: CaptureWorldAnchor | null;
@@ -390,9 +390,9 @@ export interface CapturePlacementPatch {
 }
 
 /**
- * Aktualizuje ukotvenie capture pointu (authoring pinov, D-073). Merguje zadané
- * kľúče do existujúceho `_capture` (null = zmazať kľúč), nič iné neprepisuje.
- * Vráti výsledný placement. Volajúci route handler validuje vstup.
+ * Updates the anchoring of a capture point (pin authoring, D-073). Merges the given
+ * keys into the existing `_capture` (null = delete the key), overwrites nothing else.
+ * Returns the resulting placement. The calling route handler validates the input.
  */
 export async function updateCapturePlacement(
   projectId: string,
@@ -434,15 +434,15 @@ export async function updateCapturePlacement(
   return merged;
 }
 
-// ─── Zápis (volané z route handlerov za env bránou; nie cachované) ────────────
+// --- Writes (called from route handlers behind the env gate; not cached) ----------
 
 let bucketEnsured = false;
 
 /**
- * Idempotentne zabezpečí VEREJNÝ bucket `captures` (vzor `etl/doc_upload.py`).
- * Ak bucket neexistuje → vytvor public. Ak existuje ale NIE je public →
- * `updateBucket` na public (inak by `getPublicUrl` vracal 400 a `<img>` by boli
- * broken — self-heal aj pre bucket vytvorený skôr/privátne).
+ * Idempotently ensures the PUBLIC bucket `captures` (pattern `etl/doc_upload.py`).
+ * If the bucket does not exist -> create it public. If it exists but is NOT public ->
+ * `updateBucket` to public (otherwise `getPublicUrl` would return 400 and the `<img>` would be
+ * broken - self-heal also for a bucket created earlier/private).
  */
 export async function ensureCapturesBucket(): Promise<void> {
   if (bucketEnsured) return;
@@ -450,7 +450,7 @@ export async function ensureCapturesBucket(): Promise<void> {
   const { data } = await supabase.storage.getBucket(CAPTURES_BUCKET);
   if (!data) {
     const { error } = await supabase.storage.createBucket(CAPTURES_BUCKET, { public: true });
-    // Konkurenčný vznik (409) toleruj — bucket už existuje.
+    // Tolerate a concurrent creation (409) - the bucket already exists.
     if (error && !/exist/i.test(error.message)) throw new Error(error.message);
   } else if (!data.public) {
     const { error } = await supabase.storage.updateBucket(CAPTURES_BUCKET, { public: true });
@@ -459,13 +459,13 @@ export async function ensureCapturesBucket(): Promise<void> {
   bucketEnsured = true;
 }
 
-/** Verejná URL objektu v bucket `captures`. */
+/** Public URL of an object in the `captures` bucket. */
 export function capturesPublicUrl(key: string): string {
   const supabase = getSupabaseAdmin();
   return supabase.storage.from(CAPTURES_BUCKET).getPublicUrl(key).data.publicUrl;
 }
 
-/** Nahrá binárny obsah do bucket `captures` (upsert) a vráti verejnú URL. Kľúče nesú `randomUUID`, obsah sa nemení, preto rok (D-135 dodatok). */
+/** Uploads binary content to the `captures` bucket (upsert) and returns the public URL. Keys carry `randomUUID`, the content does not change, hence a year (D-135 addendum). */
 export async function uploadCaptureObject(
   key: string,
   body: Uint8Array | Buffer,
@@ -473,10 +473,10 @@ export async function uploadCaptureObject(
 ): Promise<string> {
   await ensureCapturesBucket();
   const supabase = getSupabaseAdmin();
-  // Blob (nie raw Node Buffer): supabase-js `upload` s Bufferom vie na serverless
-  // (undici) uložiť 0-bajtový súbor → broken <img>. Blob nesie definitívnu veľkosť.
-  // Cast: Node Buffer je Uint8Array<ArrayBufferLike> — za behu platný BlobPart,
-  // len DOM lib typ chce Uint8Array<ArrayBuffer>.
+  // Blob (not a raw Node Buffer): supabase-js `upload` with a Buffer can store a
+  // 0-byte file on serverless (undici) -> broken <img>. Blob carries the definitive size.
+  // Cast: Node Buffer is Uint8Array<ArrayBufferLike> - a valid BlobPart at runtime,
+  // only the DOM lib type wants Uint8Array<ArrayBuffer>.
   const blob = new Blob([body as unknown as BlobPart], { type: contentType });
   const { error } = await supabase.storage
     .from(CAPTURES_BUCKET)
@@ -488,17 +488,17 @@ export async function uploadCaptureObject(
 export interface CreateCapturePointInput {
   kind: CaptureKind;
   name?: string | null;
-  /** `objects.id` priestoru (IfcSpace) — sémantické ukotvenie. */
+  /** `objects.id` of the space (IfcSpace) - semantic anchoring. */
   spaceId: string;
   placement: CapturePlacement;
-  /** Proveniencia (survey-session batch, D-065) — ide na hranu. */
+  /** Provenance (survey-session batch, D-065) - goes onto the edge. */
   source?: string | null;
 }
 
 /**
- * Vytvorí capture point: `objects`+`captures` riadok, `_capture` placement,
- * hrana `aim_rel_capture_located` na priestor. Vráti nové `objects.id`.
- * Volajúci route handler validuje `spaceId` (existujúci `object_type='space'`).
+ * Creates a capture point: `objects`+`captures` row, `_capture` placement,
+ * edge `aim_rel_capture_located` to the space. Returns the new `objects.id`.
+ * The calling route handler validates `spaceId` (an existing `object_type='space'`).
  */
 export async function createCapturePoint(projectId: string, input: CreateCapturePointInput): Promise<string> {
   const supabase = getSupabaseAdmin();
@@ -545,9 +545,9 @@ export interface AddCaptureMediaInput {
 }
 
 /**
- * Pridá snímku/verziu k capture pointu (append-only): `objects`+`capture_media`
- * riadok + hrana `aim_rel_capture_media`. „Aktuálna" verzia sa odvodí z
- * najnovšieho `captured_at` (nič sa needituje in-place). Vráti nové media id.
+ * Adds an image/version to a capture point (append-only): `objects`+`capture_media`
+ * row + edge `aim_rel_capture_media`. The "current" version is derived from the
+ * newest `captured_at` (nothing is edited in place). Returns the new media id.
  */
 export async function addCaptureMedia(
   projectId: string,
@@ -589,12 +589,12 @@ export async function addCaptureMedia(
   return mediaId;
 }
 
-/** Overí, že `id` je existujúci capture point (`object_type='capture'`). */
+/** Verifies that `id` is an existing capture point (`object_type='capture'`). */
 export async function captureExists(id: string): Promise<boolean> {
   return (await getCaptureKind(id)) !== null;
 }
 
-/** Vráti `kind` capture pointu (`photo`/`pano360`), alebo null ak `id` nie je capture. */
+/** Returns the `kind` of a capture point (`photo`/`pano360`), or null if `id` is not a capture. */
 export async function getCaptureKind(id: string): Promise<CaptureKind | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -606,7 +606,7 @@ export async function getCaptureKind(id: string): Promise<CaptureKind | null> {
   return data ? (data.kind as CaptureKind) : null;
 }
 
-/** Overí, že `id` je existujúci priestor (`object_type='space'`). */
+/** Verifies that `id` is an existing space (`object_type='space'`). */
 export async function spaceExists(projectId: string, id: string): Promise<boolean> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase

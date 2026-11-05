@@ -8,15 +8,15 @@ import { fetchAllPages } from "@/lib/data/pagination";
 import { isGroupOnly, treeEdges } from "@/lib/data/group-only";
 
 /**
- * Data-access vrstva pre priestorovú hierarchiu (S1).
+ * Data-access layer for the spatial hierarchy (S1).
  *
- * Číta `objects` + aktívne spatial hrany (`rel_aggregates` +
- * `rel_contained_in_spatial_structure`, D-048) a poskladá strom
- * Site → Building → Floor → Space → Asset (D-018, D-021). `asset_type` sa tu
- * NIKDY nevyskytuje (type nemá polohu).
+ * Reads `objects` + active spatial edges (`rel_aggregates` +
+ * `rel_contained_in_spatial_structure`, D-048) and assembles the tree
+ * Site -> Building -> Floor -> Space -> Asset (D-018, D-021). `asset_type` NEVER
+ * appears here (a type has no location).
  *
- * Pri ~15 uzloch načítame celý graf jedným ťahom a poskladáme ho v pamäti —
- * žiadna rekurzia v DB. Všetko beží server-side cez `service_role` (D-026).
+ * With ~15 nodes we load the whole graph in one go and assemble it in memory -
+ * no recursion in the DB. Everything runs server-side via `service_role` (D-026).
  */
 
 export const SPATIAL_TYPES = [
@@ -29,7 +29,7 @@ export const SPATIAL_TYPES = [
 
 export type SpatialType = (typeof SPATIAL_TYPES)[number];
 
-/** Surový riadok z `objects` (podmnožina stĺpcov, ktorú Viewer potrebuje). */
+/** Raw row from `objects` (the subset of columns the Viewer needs). */
 export interface ObjectRow {
   id: string;
   object_type: SpatialType;
@@ -38,15 +38,15 @@ export interface ObjectRow {
   ifc_type: string | null;
   ifc_guid: string | null;
   predefined_type: string | null;
-  elevation: number | null; // len floor (z prípony `floors`)
+  elevation: number | null; // only floor (from the `floors` extension)
 }
 
-/** Uzol stromu — `ObjectRow` + potomkovia. */
+/** Tree node - `ObjectRow` + children. */
 export interface SpatialNode extends ObjectRow {
   children: SpatialNode[];
 }
 
-/** Skrátený odkaz na uzol (breadcrumb, zoznam assetov). */
+/** Shortened link to a node (breadcrumb, list of assets). */
 export interface NodeRef {
   id: string;
   object_type: SpatialType;
@@ -56,9 +56,9 @@ export interface NodeRef {
 
 interface Graph {
   byId: Map<string, ObjectRow>;
-  /** to_id (rodič) → from_id[] (deti) */
+  /** to_id (parent) -> from_id[] (children) */
   childrenOf: Map<string, string[]>;
-  /** from_id (dieťa) → to_id (rodič) */
+  /** from_id (child) -> to_id (parent) */
   parentOf: Map<string, string>;
 }
 
@@ -73,8 +73,8 @@ interface RawSpatialObject {
 }
 
 /**
- * Načíta všetky priestorové objekty stránkovane (obchádza Supabase `db-max-rows`
- * limit 1000). Stabilné poradie cez `order(id)` — nutné pre správne stránkovanie.
+ * Loads all spatial objects paginated (bypasses the Supabase `db-max-rows`
+ * limit of 1000). Stable order via `order(id)` - necessary for correct pagination.
  */
 function loadSpatialObjects(
   supabase: ReturnType<typeof getSupabaseAdmin>,
@@ -88,23 +88,23 @@ function loadSpatialObjects(
       )
       .eq("project_id", projectId)
       .in("object_type", SPATIAL_TYPES as unknown as string[])
-      .is("valid_until", null) // zaniknuté objekty (D-088)
+      .is("valid_until", null) // vanished objects (D-088)
       .order("id", { ascending: true })
       .range(from, to)
   );
 }
 
-/** Aktívna spatial hrana `from_id (dieťa) → to_id (rodič)`. */
+/** Active spatial edge `from_id (child) -> to_id (parent)`. */
 interface RawEdge {
   from_id: string;
   to_id: string;
 }
 
 /**
- * Načíta všetky aktívne hrany jednej spatial view stránkovane — hrán je po
- * federácii VZT tiež > 1000 (každý asset má containment hranu) a PostgREST
- * by ich bez stránkovania ticho orezal: prvky nad limit by prišli o rodiča
- * a vypadli by zo stromu (parentless assety sa vynechávajú).
+ * Loads all active edges of one spatial view paginated - after the
+ * VZT federation there are also > 1000 edges (every asset has a containment edge) and PostgREST
+ * would silently truncate them without pagination: elements over the limit would lose their parent
+ * and drop out of the tree (parentless assets are omitted).
  */
 function loadSpatialEdges(
   supabase: ReturnType<typeof getSupabaseAdmin>,
@@ -117,7 +117,7 @@ function loadSpatialEdges(
       .select("from_id, to_id")
       .eq("project_id", projectId)
       .is("valid_until", null)
-      // Strana bez uzla AIM (D-183 K3) do stromu nepatrí.
+      // A side without an AIM node (D-183 K3) does not belong in the tree.
       .not("from_id", "is", null)
       .not("to_id", "is", null)
       .order("id", { ascending: true })
@@ -125,32 +125,32 @@ function loadSpatialEdges(
   );
 }
 
-/** Serializovateľná podoba grafu pre `unstable_cache` (Mapy JSON neprežijú). */
+/** Serializable form of the graph for `unstable_cache` (Maps do not survive JSON). */
 interface GraphData {
   objects: ObjectRow[];
-  /** Aktívne spatial hrany `[from_id (dieťa), to_id (rodič)]`. */
+  /** Active spatial edges `[from_id (child), to_id (parent)]`. */
   edges: [string, string][];
 }
 
 /**
- * Načíta celý priestorový graf jedným setom dotazov a cachuje ho ako **jeden
- * zdieľaný záznam** (ISR, tag `aim`). Kľúčové pre rýchlosť preklikávania:
- * strom v layoute aj detail ľubovoľného uzla čerpajú z toho istého cache
- * záznamu, takže prvý klik na nový uzol už nespúšťa žiadne DB dotazy na graf
- * (predtým bol `fetchNode` cachovaný per-id → každý nový uzol = celý graf znova).
+ * Loads the whole spatial graph with one set of queries and caches it as **one
+ * shared record** (ISR, tag `aim`). Key for click-through speed:
+ * the tree in the layout and the detail of any node draw from the same cache
+ * record, so the first click on a new node triggers no DB queries on the graph
+ * (previously `fetchNode` was cached per id -> every new node = the whole graph again).
  */
 const loadGraphData = cachedProjectRead("spatial-graph", async (projectId: string): Promise<GraphData> => {
   const supabase = getSupabaseAdmin();
 
   const [objectRows, aggEdges, containedEdges, floorsRes, spacesRes] = await Promise.all([
-    // Priestorové objekty stránkovane — Supabase capuje odpoveď na 1000 riadkov
-    // (`db-max-rows`), a assetov je po federácii VZT (D-049) > 1000. Bez stránkovania
-    // by sa prvky nad limit stratili z grafu (fetchNode → 404).
+    // Spatial objects paginated - Supabase caps the response at 1000 rows
+    // (`db-max-rows`), and after the VZT federation (D-049) there are > 1000 assets. Without pagination
+    // elements over the limit would be lost from the graph (fetchNode -> 404).
     loadSpatialObjects(supabase, projectId),
-    // Spatial väzby IFC-kanonicky (D-048): dekompozícia štruktúry (rel_aggregates)
-    // + umiestnenie prvku (rel_contained_in_spatial_structure). Len aktívne
-    // (valid_until IS NULL) — partial-unique na oboch garantuje 1 rodiča na dieťa.
-    // Tiež stránkovane (hrán je rovnako veľa ako prvkov).
+    // Spatial links IFC-canonically (D-048): decomposition of the structure (rel_aggregates)
+    // + placement of an element (rel_contained_in_spatial_structure). Only active
+    // (valid_until IS NULL) - partial-unique on both guarantees 1 parent per child.
+    // Also paginated (there are as many edges as elements).
     loadSpatialEdges(supabase, "rel_aggregates", projectId),
     loadSpatialEdges(supabase, "rel_contained_in_spatial_structure", projectId),
     supabase.from("floors").select("id, elevation"),
@@ -171,8 +171,8 @@ const loadGraphData = cachedProjectRead("spatial-graph", async (projectId: strin
   for (const o of objectRows) {
     const id = o.id as string;
     const rawName = (o.name as string | null) ?? null;
-    // Priestor: zobraz "číslo — popis funkcie" (D-040). Name = číslo (IfcSpace.Name),
-    // long_name = IfcSpace.LongName z prípony `spaces`.
+    // Space: show "number - function description" (D-040). Name = number (IfcSpace.Name),
+    // long_name = IfcSpace.LongName from the `spaces` extension.
     const longName = longNameById.get(id) ?? null;
     const displayName =
       o.object_type === "space" && longName && rawName
@@ -190,16 +190,16 @@ const loadGraphData = cachedProjectRead("spatial-graph", async (projectId: strin
     });
   }
 
-  // Uzol je buď agregovaný (štruktúra) alebo obsiahnutý (prvok); časť zostavy zo súboru (D-183 K3)
-  // má rodiča len z umiestnenia (treeEdges).
+  // A node is either aggregated (structure) or contained (an element); an assembly part from the file (D-183 K3)
+  // has a parent only from placement (treeEdges).
   const edges = treeEdges(aggEdges, containedEdges, byId);
 
   return { objects: [...byId.values()], edges };
 });
 
 /**
- * Graf ako Mapy (per-request memo cez `cache()`) — zloženie z cachovaných dát
- * je čisto in-memory (~1–2k uzlov, sub-ms), žiadny DB round-trip pri HIT-e.
+ * The graph as Maps (per-request memo via `cache()`) - composition from cached data
+ * is purely in-memory (~1-2k nodes, sub-ms), no DB round-trip on a HIT.
  */
 const loadGraph = cache(async (projectId: string): Promise<Graph> => {
   const { objects, edges } = await loadGraphData(projectId);
@@ -209,8 +209,8 @@ const loadGraph = cache(async (projectId: string): Promise<Graph> => {
   const parentOf = new Map<string, string>();
   for (const [from, to] of edges) {
     parentOf.set(from, to);
-    // Potrubie a tvarovky (D-049) majú od D-183 K3 podlažie, v strome pod ním ale nie sú
-    // (zaplavili by ho); breadcrumb ich podlažie ukáže.
+    // Pipes and fittings (D-049) have a storey since D-183 K3, but are not under it in the tree
+    // (they would flood it); the breadcrumb shows their storey.
     if (isGroupOnly(byId.get(from)!)) continue;
     const list = childrenOf.get(to);
     if (list) list.push(from);
@@ -220,7 +220,7 @@ const loadGraph = cache(async (projectId: string): Promise<Graph> => {
   return { byId, childrenOf, parentOf };
 });
 
-/** Poradie potomkov: floory podľa elevation, inak podľa object_ref/name. */
+/** Order of children: floors by elevation, otherwise by object_ref/name. */
 function compareNodes(a: ObjectRow, b: ObjectRow): number {
   if (a.object_type === "floor" && b.object_type === "floor") {
     return (a.elevation ?? 0) - (b.elevation ?? 0);
@@ -241,16 +241,16 @@ function buildSubtree(id: string, graph: Graph): SpatialNode {
 }
 
 /**
- * Celý strom priestorovej hierarchie. Korene = uzly bez rodiča (typicky `site`).
- * Derivát cachovaného grafu (`loadGraphData`) — skladanie je in-memory, vlastný
- * `unstable_cache` netreba (render routy navyše cachuje Full Route Cache).
+ * The whole tree of the spatial hierarchy. Roots = nodes without a parent (typically `site`).
+ * A derivative of the cached graph (`loadGraphData`) - assembling is in-memory, no own
+ * `unstable_cache` is needed (the route render is additionally cached by the Full Route Cache).
  */
 export const fetchSpatialTree = cache(async (projectId: string): Promise<SpatialNode[]> => {
   const graph = await loadGraph(projectId);
   const roots: ObjectRow[] = [];
   for (const row of graph.byId.values()) {
-    // Koreň = priestorová štruktúra bez rodiča (site). `asset` bez rodiča (prvok bez
-    // podlažia v súbore) do stromu nepatrí (dostupný cez systém / priamy odkaz).
+    // Root = a spatial structure without a parent (site). An `asset` without a parent (an element without
+    // a storey in the file) does not belong in the tree (reachable via a system / a direct link).
     if (!graph.parentOf.has(row.id) && row.object_type !== "asset") roots.push(row);
   }
   return roots.sort(compareNodes).map((r) => buildSubtree(r.id, graph));
@@ -258,9 +258,9 @@ export const fetchSpatialTree = cache(async (projectId: string): Promise<Spatial
 
 export interface NodeDetail {
   node: ObjectRow;
-  /** Cesta od koreňa po rodiča uzla (bez samotného uzla). */
+  /** Path from the root to the parent of the node (without the node itself). */
   breadcrumb: NodeRef[];
-  /** Priami potomkovia (assety pod space, spaces pod floor, …). */
+  /** Direct children (assets under a space, spaces under a floor, ...). */
   children: NodeRef[];
 }
 
@@ -274,21 +274,21 @@ function toRef(row: ObjectRow): NodeRef {
 }
 
 /**
- * Detail jedného uzla + breadcrumb (chôdza nahor po spatial hranách)
- * a priami potomkovia. `null`, ak uzol neexistuje / nie je priestorový.
- * Derivát cachovaného grafu — prvý klik na nový uzol nespúšťa DB dotazy
- * (predchádzajúce per-id cachovanie tu pri každom novom uzle znova načítavalo
- * celý graf; to bola hlavná latencia studeného kliku).
+ * Detail of a single node + breadcrumb (walking up the spatial edges)
+ * and direct children. `null` if the node does not exist / is not spatial.
+ * A derivative of the cached graph - the first click on a new node triggers no DB queries
+ * (the previous per-id caching reloaded
+ * the whole graph at every new node; that was the main latency of a cold click).
  */
 export const fetchNode = cache(async (projectId: string, id: string): Promise<NodeDetail | null> => {
   const graph = await loadGraph(projectId);
   const node = graph.byId.get(id);
   if (!node) return null;
 
-  // Breadcrumb: nazbieraj predkov a otoč na poradie root → … → rodič.
+  // Breadcrumb: collect the ancestors and reverse to the order root -> ... -> parent.
   const breadcrumb: NodeRef[] = [];
   let cursor = graph.parentOf.get(id);
-  const guard = new Set<string>(); // poistka proti cyklu
+  const guard = new Set<string>(); // guard against a cycle
   while (cursor && !guard.has(cursor)) {
     guard.add(cursor);
     const parent = graph.byId.get(cursor);

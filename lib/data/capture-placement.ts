@@ -1,28 +1,28 @@
 /**
- * Reality Capture (D-073) — čisté typy + validácia ukotvenia (`_capture`).
+ * Reality Capture (D-073) - pure types + anchoring validation (`_capture`).
  *
- * Zámerne BEZ `server-only`/DB závislostí, aby bola validácia unit-testovateľná
- * (vzor: pure logika vedľa server-only data-access vrstvy). `captures.ts` z tohto
- * modulu re-exportuje; klientske komponenty importujú len typy.
+ * Deliberately WITHOUT `server-only`/DB dependencies so that the validation is unit-testable
+ * (pattern: pure logic next to the server-only data-access layer). `captures.ts` re-exports
+ * from this module; client components import only the types.
  */
 
-/** Verejný Storage bucket pre snímky (vzor `documents`/`ifc`). */
+/** Public Storage bucket for the images (pattern `documents`/`ifc`). */
 export const CAPTURES_BUCKET = "captures";
 
-/** Druh capture pointu — klasická fotka vs statická equirectangular panoráma. */
+/** Kind of capture point - a regular photo vs a static equirectangular panorama. */
 export type CaptureKind = "photo" | "pano360";
 
-/** 2D pin na konkrétnom PDF liste (normalizované súradnice 0..1). */
+/** 2D pin on a specific PDF sheet (normalized coordinates 0..1). */
 export interface CapturePlanAnchor {
   documentId: string;
   page: number;
-  /** Normalizovaná X (0 = ľavý okraj, 1 = pravý). */
+  /** Normalized X (0 = left edge, 1 = right). */
   u: number;
-  /** Normalizovaná Y (0 = horný okraj, 1 = dolný). */
+  /** Normalized Y (0 = top edge, 1 = bottom). */
   v: number;
 }
 
-/** 3D pin vo viewer Y-up world frame (metre). */
+/** 3D pin in the viewer Y-up world frame (meters). */
 export interface CaptureWorldAnchor {
   x: number;
   y: number;
@@ -30,9 +30,9 @@ export interface CaptureWorldAnchor {
 }
 
 /**
- * Ukotvenie capture pointu — versioned JSON v `properties._capture` (vzor `_georef`).
- * `plan` aj `world` sú nepovinné; `yaw` je počiatočná orientácia pohľadu pre
- * panorámu (radiány). Sémantické ukotvenie (na priestor) žije na hrane, nie tu.
+ * Anchoring of a capture point - versioned JSON in `properties._capture` (pattern `_georef`).
+ * Both `plan` and `world` are optional; `yaw` is the initial view orientation for a
+ * panorama (radians). The semantic anchoring (to a space) lives on the edge, not here.
  */
 export interface CapturePlacement {
   version: 1;
@@ -41,7 +41,7 @@ export interface CapturePlacement {
   yaw?: number;
 }
 
-/** Wire tvar jednej snímky/verzie. */
+/** Wire shape of one image/version. */
 export interface CaptureMediaWire {
   id: string;
   location: string | null;
@@ -51,14 +51,14 @@ export interface CaptureMediaWire {
   width: number | null;
   height: number | null;
   capturedAt: string | null;
-  /** Odvodené: najnovšia aktívna verzia capture pointu. */
+  /** Derived: the latest active version of the capture point. */
   isCurrent: boolean;
 }
 
 /**
- * Wire tvar capture pinu pre embed 3D viewer (D-073, bridge `CAPTURES_LOAD`).
- * `world` je viewer Y-up world pozícia; `spaceId` je host-only (navigácia po
- * kliku na pin — do viewera sa NEposiela).
+ * Wire shape of a capture pin for the embed 3D viewer (D-073, bridge `CAPTURES_LOAD`).
+ * `world` is the viewer Y-up world position; `spaceId` is host-only (navigation after a
+ * click on the pin - it is NOT sent to the viewer).
  */
 export interface CaptureViewerWire {
   id: string;
@@ -66,13 +66,13 @@ export interface CaptureViewerWire {
   world: CaptureWorldAnchor;
   name?: string;
   thumbUrl?: string;
-  /** Host-only: priestor, na ktorý po kliku navigovať. */
+  /** Host-only: the space to navigate to after a click. */
   spaceId: string | null;
 }
 
 /**
- * Wire tvar capture pinu na 2D pláne (D-073) — pre overlay v drawing vieweri.
- * `page`/`u`/`v` sú z `_capture.plan` (normalizované, v = 0 hore … 1 dole).
+ * Wire shape of a capture pin on the 2D plan (D-073) - for the overlay in the drawing viewer.
+ * `page`/`u`/`v` come from `_capture.plan` (normalized, v = 0 top ... 1 bottom).
  */
 export interface CapturePlanPinWire {
   id: string;
@@ -80,45 +80,45 @@ export interface CapturePlanPinWire {
   name?: string;
   spaceId: string | null;
   thumbUrl?: string;
-  /** Náhľad aktuálnej snímky — na priame otvorenie fotky/360° z pinu. */
+  /** Thumbnail of the current image - for opening the photo/360 directly from the pin. */
   previewUrl?: string;
-  /** Originál aktuálnej snímky (HD / equirect pre 360°). */
+  /** Original of the current image (HD / equirect for 360). */
   origUrl?: string;
-  /** Orientácia pohľadu pre 360° (radiány). */
+  /** View orientation for 360 (radians). */
   yaw?: number;
   page: number;
   u: number;
   v: number;
 }
 
-/** Súhrn Reality Capture pre vybraný objekt (AIM karta v 3D, D-073). */
+/** Reality Capture summary for the selected object (AIM card in 3D, D-073). */
 export interface CaptureSummary {
-  /** `objects.id` priestoru (IfcSpace) objektu, alebo null ak sa nedá určiť. */
+  /** `objects.id` of the object's space (IfcSpace), or null if it cannot be determined. */
   spaceId: string | null;
   spaceName: string | null;
-  /** Počet capture bodov naviazaných na priestor. */
+  /** Number of capture points linked to the space. */
   count: number;
 }
 
-/** Wire tvar capture pointu vrátane (aktívnych) médií. */
+/** Wire shape of a capture point including its (active) media. */
 export interface CapturePointWire {
   id: string;
   name: string | null;
   kind: CaptureKind;
-  /** `objects.id` priestoru (IfcSpace), na ktorý je capture naviazaný. */
+  /** `objects.id` of the space (IfcSpace) the capture is linked to. */
   spaceId: string | null;
   placement: CapturePlacement | null;
-  /** Aktívne verzie, zoradené od najnovšej (`captured_at` desc). */
+  /** Active versions, sorted from the newest (`captured_at` desc). */
   media: CaptureMediaWire[];
 }
 
 const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 /**
- * Validácia `_capture` v1 payloadu (server je hranica zápisu — untrusted vstup).
- * Zrkadlí `isValidGeorefV1` (D-072): prísne typy, `plan`/`world`/`yaw` nepovinné.
- * Prázdny `{version:1}` je platný — sémantické ukotvenie (na priestor) žije na
- * hrane; plán/3D pin sa môže doplniť neskôr vo vieweri (F2).
+ * Validation of the `_capture` v1 payload (the server is the write boundary - untrusted input).
+ * Mirrors `isValidGeorefV1` (D-072): strict types, `plan`/`world`/`yaw` optional.
+ * An empty `{version:1}` is valid - the semantic anchoring (to a space) lives on the
+ * edge; the plan/3D pin can be added later in the viewer (F2).
  */
 export function isValidCaptureV1(raw: unknown): raw is CapturePlacement {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
@@ -142,7 +142,7 @@ export function isValidCaptureV1(raw: unknown): raw is CapturePlacement {
   return true;
 }
 
-/** Bezpečné parsovanie perzistovaného `_capture` (stale/hostile → null). */
+/** Safe parsing of a persisted `_capture` (stale/hostile -> null). */
 export function parseCapturePlacement(raw: unknown): CapturePlacement | null {
   return isValidCaptureV1(raw) ? (raw as CapturePlacement) : null;
 }

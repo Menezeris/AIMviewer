@@ -87,7 +87,7 @@ export async function fetchSpaceSiblings(
     .is("valid_until", null);
   if (siblingErr) throw new Error(siblingErr.message);
 
-  // Prvok bez uzla AIM (D-183 K3) má from_id null.
+  // an element without an AIM node (D-183 K3) has from_id null
   const siblingObjectIds = (siblingRows ?? []).flatMap((r) => (r.from_id ? [r.from_id as string] : []));
   return { spaceId, siblingObjectIds };
 }

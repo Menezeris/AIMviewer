@@ -9,8 +9,8 @@ import type { LinkOverride, OverrideAction, OverrideTarget } from "@/lib/data/dr
 import type { PageRegion } from "@/lib/llm/document-text";
 
 /**
- * Úložisko ručných odkazov popiskov a zón pre párovanie (D-160). Čítanie ide cez
- * `unstable_cache` volajúceho (`drawing-links.ts`), zápis zneplatní tag `aim`.
+ * Store of manual label and zone links for pairing (D-160). Reads go through
+ * the caller's `unstable_cache` (`drawing-links.ts`), a write invalidates the tag `aim`.
  */
 
 type ObjRow = {
@@ -24,7 +24,7 @@ type ObjRow = {
 
 const OBJ_COLS = "id, object_ref, name, ifc_type, object_type, ifc_guid";
 
-/** Zóny stavby (IfcZone a IfcSpatialZone) s GUIDmi členských miestností. */
+/** Building zones (IfcZone and IfcSpatialZone) with the GUIDs of member spaces. */
 export async function fetchZones(projectId: string): Promise<ZoneObject[]> {
   const supabase = getSupabaseAdmin();
   const rows = await fetchAllPages<ObjRow>((from, to) =>
@@ -94,7 +94,7 @@ type OverrideRow = {
   target_guid: string | null;
 };
 
-/** Živé ručné riadky dokumentu (jedna strana alebo všetky), od najstaršieho; cieľ s aktuálnymi údajmi. */
+/** Live manual rows of a document (a single page or all), from the oldest; target with current data. */
 export async function fetchOverrides(projectId: string, documentId: string, page: number | null, zones: readonly ZoneObject[]): Promise<LinkOverride[]> {
   const supabase = getSupabaseAdmin();
   let q = supabase
@@ -128,7 +128,7 @@ export async function fetchOverrides(projectId: string, documentId: string, page
       continue;
     }
     const o = r.target_id ? live.get(r.target_id) : undefined;
-    if (!o) continue; // cieľ zanikol (re-ETL): ručné priradenie nemá kam ukazovať, automatika platí
+    if (!o) continue; // the target is gone (re-ETL): the manual assignment has nowhere to point, the automation applies
     const members = zoneById.get(o.id)?.members;
     const target: OverrideTarget = {
       ref: o.object_ref,
@@ -147,7 +147,7 @@ export type ResolvedTarget = { ok: true; row: ObjRow } | { ok: false; error: str
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Cieľ priradenia: objects.id, object_ref, IFC GUID, alebo meno zóny/miestnosti (musí byť jednoznačné). */
+/** Assignment target: objects.id, object_ref, IFC GUID, or the name of a zone/space (must be unambiguous). */
 export async function resolveLinkTarget(projectId: string, input: string): Promise<ResolvedTarget> {
   const supabase = getSupabaseAdmin();
   const t = input.trim();
@@ -189,7 +189,7 @@ export interface OverrideWrite {
   author: string | null;
 }
 
-/** Ukončí živý riadok s rovnakým kľúčom (dokument, strana, text, bbox). */
+/** Ends the live row with the same key (document, page, text, bbox). */
 async function endLive(projectId: string, w: Pick<OverrideWrite, "documentId" | "page" | "text" | "bbox">): Promise<number> {
   const supabase = getSupabaseAdmin();
   let q = supabase
@@ -206,7 +206,7 @@ async function endLive(projectId: string, w: Pick<OverrideWrite, "documentId" | 
   return (data ?? []).length;
 }
 
-/** assign / clear (suppress) / reset (späť na automatiku); predošlý riadok s rovnakým kľúčom sa ukončí. */
+/** assign / clear (suppress) / reset (back to the automation); the previous row with the same key is ended. */
 export async function writeOverride(projectId: string, w: OverrideWrite): Promise<{ replaced: number }> {
   const replaced = await endLive(projectId, w);
   if (w.action !== "reset") {

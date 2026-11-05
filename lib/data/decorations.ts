@@ -7,10 +7,10 @@ import { fetchGuidMap } from "@/lib/data/ifc";
 import { buildDecorations, type TreeDecorations } from "@/lib/data/decoration-counts";
 
 /**
- * AIM dekorácie stromu (D-077) — per-GUID počty aktívnych väzieb (dokumenty,
- * zodpovednosti, snímky) pre badge v natívnom strome embed viewera. Číta
- * existujúce kanonické views nad `relationships` (D-051), žiadna migrácia.
- * Stránkovane (PostgREST cap 1000) a cachované (ISR tag `aim`, D-030).
+ * AIM tree decorations (D-077) - per-GUID counts of active links (documents,
+ * responsibilities, images) for the badge in the native tree of the embed viewer. Reads
+ * the existing canonical views over `relationships` (D-051), no migration.
+ * Paginated (PostgREST cap 1000) and cached (ISR tag `aim`, D-030).
  */
 
 async function fetchTreeDecorationsImpl(projectId: string): Promise<TreeDecorations> {
@@ -18,7 +18,7 @@ async function fetchTreeDecorationsImpl(projectId: string): Promise<TreeDecorati
 
   const [guidMap, docRows, respRows, capRows] = await Promise.all([
     fetchGuidMap(projectId),
-    // Dokumenty na objekte: rel_associates_document.from_id = objekt.
+    // Documents on an object: rel_associates_document.from_id = object.
     fetchAllPages<{ from_id: string | null }>((from, to) =>
       supabase
         .from("rel_associates_document")
@@ -28,7 +28,7 @@ async function fetchTreeDecorationsImpl(projectId: string): Promise<TreeDecorati
         .order("id", { ascending: true })
         .range(from, to)
     ),
-    // Zodpovednosti: rel_assigns_to_actor.to_id = objekt (from = aktor).
+    // Responsibilities: rel_assigns_to_actor.to_id = object (from = actor).
     fetchAllPages<{ to_id: string | null }>((from, to) =>
       supabase
         .from("rel_assigns_to_actor")
@@ -38,7 +38,7 @@ async function fetchTreeDecorationsImpl(projectId: string): Promise<TreeDecorati
         .order("id", { ascending: true })
         .range(from, to)
     ),
-    // Reality Capture: aim_rel_capture_located.to_id = priestor (from = capture).
+    // Reality Capture: aim_rel_capture_located.to_id = space (from = capture).
     fetchAllPages<{ to_id: string | null }>((from, to) =>
       supabase
         .from("aim_rel_capture_located")
@@ -58,5 +58,5 @@ async function fetchTreeDecorationsImpl(projectId: string): Promise<TreeDecorati
   );
 }
 
-/** Cachované dekorácie (ISR 60 s; revaliduje sa tagom `aim` po ETL). */
+/** Cached decorations (ISR 60 s; revalidated by the `aim` tag after ETL). */
 export const fetchTreeDecorations = cachedProjectRead("fetch-tree-decorations", fetchTreeDecorationsImpl);

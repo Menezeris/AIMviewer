@@ -3,8 +3,8 @@ import { normLabel, pairLabels } from "@/lib/data/drawing-labels";
 import { assignableTexts, parseLinkEdit, type LinkEditInput } from "@/lib/data/drawing-link-overrides";
 
 /**
- * Ručné priradenie, zrušenie a vrátenie odkazu popisku (D-160) pre `open_drawing link`.
- * Logika je nezávislá od DB: zápis, cieľ, riadky strany a návrh z vieweru idú cez `deps`.
+ * Manual assignment, cancellation and restoring of a label link (D-160) for `open_drawing link`.
+ * The logic is independent of the DB: the write, target, page rows and the draft from the viewer go through `deps`.
  */
 
 export interface LinkTargetRow {
@@ -15,19 +15,19 @@ export interface LinkTargetRow {
   object_type: string;
 }
 
-/** Návrh priradenia z viewera (`view_state.link_draft`): označený text na strane a vybraný prvok. */
+/** Assignment draft from the viewer (`view_state.link_draft`): the marked text on the page and the selected element. */
 export interface LinkDraft {
   document_id: string;
   page: number;
-  /** Prázdny = text pod oblasťou určí host z riadkov strany. */
+  /** Empty = the text under the area is determined by the host from the page rows. */
   text: string;
   bbox: PageRegion | null;
   action: "assign" | "clear" | "reset";
-  /** IFC GlobalId prvku vybraného v 3D (pri assign); dopĺňa host z `selection` viewera. */
+  /** IFC GlobalId of the element selected in 3D (for assign); filled in by the host from the viewer `selection`. */
   target_guid?: string;
 }
 
-/** Text riadkov strany, ktorých stred leží v oblasti (zhora nadol, zľava doprava). */
+/** Text of the page rows whose center lies in the area (top to bottom, left to right). */
 export function textInRegion(blocks: readonly TextBlock[], r: PageRegion): string {
   const inside = blocks.filter((b) => {
     const cx = b.x + b.w / 2;
@@ -69,7 +69,7 @@ export function parseDraft(state: unknown): LinkDraft | string {
   if (typeof d.document_id !== "string" || typeof d.page !== "number" || !isRegion(d.bbox)) {
     return "Návrh odkazu vo vieweri je neúplný (dokument, strana, oblasť).";
   }
-  // Cieľ priradenia = jediný prvok vybraný v 3D (selection.items), ak ho návrh sám nenesie.
+  // Assignment target = the only element selected in 3D (selection.items), if the draft does not carry it itself.
   const items = (state as { selection?: { items?: { guid?: unknown }[] } } | null)?.selection?.items ?? [];
   const guid = typeof d.target_guid === "string" ? d.target_guid : items.length === 1 && typeof items[0].guid === "string" ? items[0].guid : undefined;
   if (action === "assign" && !guid) return "Na priradenie vyber vo vieweri v 3D práve jeden prvok (alebo zónu).";

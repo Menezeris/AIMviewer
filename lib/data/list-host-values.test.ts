@@ -4,7 +4,7 @@ import { TEST_PROJECT } from "@/lib/project/testing";
 
 const { db } = vi.hoisted(() => ({ db: { tables: {} as Record<string, Record<string, unknown>[]> } }));
 
-// Napodobená PostgREST nad riadkami v pamäti: eq/in/is/order/range.
+// An imitation of PostgREST over in-memory rows: eq/in/is/order/range.
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({
   getSupabaseAdmin: () => ({

@@ -1,23 +1,23 @@
 /**
- * Druh média (D-131): druhá os klasifikácie dokumentov vedľa typu informácie
- * ISO 19650 a médiá Reality Capture (D-073) pre panel Documents vo vieweri.
+ * Media kind (D-131): the second axis of document classification next to the information type
+ * ISO 19650, and Reality Capture media (D-073) for the Documents panel in the viewer.
  *
- * Čisté funkcie bez DB, aby ich mohol testovať vitest a čítať aj klient.
+ * Pure functions without DB, so that vitest can test them and the client can read them too.
  */
 import type { CaptureKind, CapturePointWire } from "./capture-placement";
 import type { DocumentType } from "./object-documents-core";
 
-/** Meno klasifikačného systému (IfcClassification.Name) druhej osi. */
+/** Name of the classification system (IfcClassification.Name) of the second axis. */
 export const MEDIA_KIND_SYSTEM = "Druh média";
 
-/** Kódy systému `Druh média` (IfcClassificationReference.Identification) a ich mená. */
+/** Codes of the system `Druh média` (media kind; IfcClassificationReference.Identification) and their names. */
 export const MEDIA_KIND_LABEL: Record<string, string> = {
   FOTO: "Fotografia",
   PANO360: "360° panoráma",
   SKEN: "Sken",
 };
 
-/** Médiá v DB nesú druh na bode (`captures.kind`), nie stĺpcom: odvodenie (D-131 bod 2). */
+/** Media in the DB carry the kind on the point (`captures.kind`), not in a column: derivation (D-131 point 2). */
 const CAPTURE_KIND_CODE: Record<CaptureKind, string> = { photo: "FOTO", pano360: "PANO360" };
 
 export function captureMediaKind(kind: CaptureKind): DocumentType {
@@ -25,7 +25,7 @@ export function captureMediaKind(kind: CaptureKind): DocumentType {
   return { code, name: MEDIA_KIND_LABEL[code] };
 }
 
-/** Referencia klasifikácie dokumentu s menom jej systému. */
+/** Classification reference of a document with the name of its system. */
 export interface DocumentClassificationRef {
   documentId: string;
   code: string;
@@ -34,15 +34,15 @@ export interface DocumentClassificationRef {
 }
 
 export interface DocumentClassification {
-  /** Typ informácie (ISO 19650) alebo iný systém mimo druhu média. */
+  /** Information type (ISO 19650) or another system outside the media kind. */
   type?: DocumentType;
-  /** Druh média (systém `Druh média`). */
+  /** Media kind (system `Druh média`). */
   mediaKind?: DocumentType;
 }
 
 /**
- * Klasifikácie dokumentov rozdelené podľa systému. Na každej osi platí prvá
- * referencia; druh média nikdy neprepíše typ informácie (D-131).
+ * Document classifications split by system. On each axis the first
+ * reference applies; the media kind never overwrites the information type (D-131).
  */
 export function splitDocumentClassifications(
   refs: Iterable<DocumentClassificationRef>,
@@ -57,30 +57,30 @@ export function splitDocumentClassifications(
   return out;
 }
 
-/** Jedno médium Reality Capture v paneli Documents (`AimPanelData.captureMedia`). */
+/** One Reality Capture medium in the Documents panel (`AimPanelData.captureMedia`). */
 export interface CaptureMediaEntry {
   /** `capture_media.id`. */
   id: string;
   name: string;
-  /** Kód druhu média (FOTO, PANO360...). */
+  /** Code of the media kind (FOTO, PANO360...). */
   kind: string;
-  /** Meno druhu, nadpis skupiny vo vieweri. */
+  /** Name of the kind, group heading in the viewer. */
   kindLabel: string;
-  /** Galéria priestoru v hostovi. */
+  /** Gallery of the space in the host. */
   href: string;
   thumbUrl?: string;
-  /** Dátum snímky `YYYY-MM-DD`. */
+  /** Date of the image `YYYY-MM-DD`. */
   capturedAt?: string;
-  /** "v miestnosti X" alebo "cez miestnosť X" pri prvku v priestore. */
+  /** "v miestnosti X" (in space X) or "cez miestnosť X" (via space X) for an element in a space. */
   via: string;
 }
 
-/** Strop médií v paneli (ako dokumenty v karte); celá galéria je v hostovi. */
+/** Cap of media in the panel (like documents in the card); the whole gallery is in the host. */
 export const CAPTURE_MEDIA_MAX = 40;
 
 /**
- * Aktívne médiá bodov priestoru pre panel Documents (D-131 bod 1): najnovšie
- * prvé, s druhom odvodeným z bodu. `inherited` = vybraný je prvok v priestore.
+ * Active media of the points of a space for the Documents panel (D-131 point 1): the newest
+ * first, with the kind derived from the point. `inherited` = the selected one is an element in a space.
  */
 export function captureMediaEntries(
   points: readonly CapturePointWire[],

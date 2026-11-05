@@ -5,20 +5,20 @@ import { PDF_LINK_SOURCE } from "@/lib/data/constants";
 import { cachedProjectRead } from "@/lib/data/revalidate";
 
 /**
- * Data-access vrstva pre generické sekcie uzla (S3, D-029): dokumenty,
- * zodpovednosti a história IFC GUID. Všetko nad ľubovoľným `objects` uzlom —
- * sekcie sa zobrazia na asset karte aj na priestorových uzloch.
+ * Data-access layer for the generic sections of a node (S3, D-029): documents,
+ * responsibilities and the history of the IFC GUID. All over an arbitrary `objects` node -
+ * the sections are shown on the asset card and on spatial nodes.
  *
- * Zobrazujú sa len **aktívne** väzby (`valid_until IS NULL`), konzistentne s
- * S1/S2. Všetko server-side cez `service_role` (D-026).
+ * Only **active** links are shown (`valid_until IS NULL`), consistently with
+ * S1/S2. All server-side via `service_role` (D-026).
  */
 
 export interface DocumentRef {
-  /** Document `objects.id` — cieľ odkazu `/node/[id]`. */
+  /** Document `objects.id` - target of the link `/node/[id]`. */
   id: string;
   objectRef: string | null;
   name: string | null;
-  /** rel_associates_document.role: 'manual','certificate','as-built'… */
+  /** rel_associates_document.role: 'manual','certificate','as-built'... */
   role: string | null;
   identification: string | null;
   description: string | null;
@@ -29,17 +29,17 @@ export interface DocumentRef {
   validUntil: string | null;
 }
 
-/** Výkres, v ktorom je prvok zobrazený (E4, D-041) — s verejným PDF URL. */
+/** Drawing in which an element is shown (E4, D-041) - with a public PDF URL. */
 export interface DrawingLink {
-  /** Document `objects.id` — cieľ odkazu `/node/[id]`. */
+  /** Document `objects.id` - target of the link `/node/[id]`. */
   id: string;
   objectRef: string | null;
   name: string | null;
-  /** Verejné URL PDF (`documents.location`) — priamy odkaz na výkres. */
+  /** Public PDF URL (`documents.location`) - a direct link to the drawing. */
   location: string | null;
 }
 
-/** Prvok zobrazený vo výkrese (E4, D-041) — pre kartu podlažia. */
+/** Element shown in a drawing (E4, D-041) - for the storey card. */
 export interface ElementInDrawing {
   id: string;
   objectType: "asset" | "asset_type";
@@ -47,19 +47,19 @@ export interface ElementInDrawing {
   name: string | null;
 }
 
-/** Výkres podlažia + zoznam prvkov, ktoré sú v ňom zobrazené (E4, D-041). */
+/** Storey drawing + the list of elements shown in it (E4, D-041). */
 export interface FloorDrawing {
   drawing: DrawingLink;
   elements: ElementInDrawing[];
 }
 
-/** Systém, ktorého je prvok členom (`rel_assigns_to_group`, D-047) — pre asset kartu. */
+/** System of which an element is a member (`rel_assigns_to_group`, D-047) - for the asset card. */
 export interface SystemRef {
-  /** System `objects.id` — cieľ odkazu `/node/[id]`. */
+  /** System `objects.id` - target of the link `/node/[id]`. */
   id: string;
   objectRef: string | null;
   name: string | null;
-  /** IfcDistributionSystemEnum (VENTILATION/EXHAUST…). */
+  /** IfcDistributionSystemEnum (VENTILATION/EXHAUST...). */
   predefinedType: string | null;
 }
 
@@ -73,11 +73,11 @@ export interface Responsibility {
   actorType: "person" | "organization";
   actorName: string | null;
   actorRef: string | null;
-  /** Acting rola (rel_assigns_to_actor.role): 'operator','maintainer'… */
+  /** Acting role (rel_assigns_to_actor.role): 'operator','maintainer'... */
   role: string;
   validFrom: string | null;
   validUntil: string | null;
-  /** Firma osoby (rel_member_of) — len pri person actoroch. */
+  /** Company of the person (rel_member_of) - only for person actors. */
   org: ActorOrg | null;
 }
 
@@ -85,7 +85,7 @@ export interface GuidHistoryEntry {
   id: string;
   ifcGuid: string;
   validFrom: string | null;
-  /** NULL = aktuálny GUID. */
+  /** NULL = the current GUID. */
   validUntil: string | null;
   source: string | null;
   active: boolean;
@@ -93,13 +93,13 @@ export interface GuidHistoryEntry {
 
 export interface NodeSectionsData {
   documents: DocumentRef[];
-  /** Výkresy, v ktorých je tento prvok zobrazený (E4) — vlastná sekcia. */
+  /** Drawings in which this element is shown (E4) - its own section. */
   drawings: DrawingLink[];
   responsibilities: Responsibility[];
   guidHistory: GuidHistoryEntry[];
 }
 
-/** Generické sekcie uzla naraz (paralelne) — jeden vstupný bod pre Viewer. */
+/** Generic sections of a node at once (in parallel) - a single entry point for the Viewer. */
 async function fetchNodeSectionsImpl(
   projectId: string,
   objectId: string
@@ -113,10 +113,10 @@ async function fetchNodeSectionsImpl(
   return { documents, drawings, responsibilities, guidHistory };
 }
 
-/** Cachované per id (ISR, D-029 perf). */
+/** Cached per id (ISR, D-029 perf). */
 export const fetchNodeSections = cachedProjectRead("fetch-node-sections", fetchNodeSectionsImpl);
 
-/** Dokumenty pripojené na uzol (`rel_associates_document` → `documents`, D-014). */
+/** Documents attached to a node (`rel_associates_document` -> `documents`, D-014). */
 export async function fetchDocuments(projectId: string, objectId: string): Promise<DocumentRef[]> {
   const supabase = getSupabaseAdmin();
 
@@ -126,10 +126,10 @@ export async function fetchDocuments(projectId: string, objectId: string): Promi
     .eq("project_id", projectId)
     .eq("from_id", objectId)
     .is("valid_until", null)
-    .not("to_id", "is", null); // dokument bez uzla AIM (D-183 K3)
+    .not("to_id", "is", null); // a document without an AIM node (D-183 K3)
   if (error) throw new Error(error.message);
 
-  // E4 výkres-väzby (prvok zobrazený vo výkrese) idú do vlastnej sekcie, nie sem.
+  // E4 drawing links (an element shown in a drawing) go to their own section, not here.
   const relRows = ((rels ?? []) as {
     to_id: string;
     role: string | null;
@@ -178,9 +178,9 @@ export async function fetchDocuments(projectId: string, objectId: string): Promi
 }
 
 /**
- * Výkresy, v ktorých je prvok (asset/asset_type) **zobrazený** — E4 auto-linking
- * (`rel_associates_document` so `source='pdf_link (E4)'`, smer prvok → výkres, D-041).
- * Vracia priame verejné PDF URL (`documents.location`).
+ * Drawings in which an element (asset/asset_type) is **shown** - E4 auto-linking
+ * (`rel_associates_document` with `source='pdf_link (E4)'`, direction element -> drawing, D-041).
+ * Returns the direct public PDF URL (`documents.location`).
  */
 export async function fetchElementDrawings(
   projectId: string,
@@ -224,9 +224,9 @@ export async function fetchElementDrawings(
 }
 
 /**
- * Výkresy uzla (E3, `role='drawing'`) + prvky v každom z nich (E4). Pre kartu
- * podlažia/budovy: „ktoré prvky sú zobrazené v tomto výkrese" (D-041). Výkres bez
- * detegovaných prvkov sa **nezobrazí** (prázdny zoznam nemá výpovednú hodnotu).
+ * Drawings of a node (E3, `role='drawing'`) + the elements in each of them (E4). For the storey/building
+ * card: "which elements are shown in this drawing" (D-041). A drawing without
+ * detected elements is **not shown** (an empty list has no informative value).
  */
 export async function fetchFloorDrawings(
   projectId: string,
@@ -234,7 +234,7 @@ export async function fetchFloorDrawings(
 ): Promise<FloorDrawing[]> {
   const supabase = getSupabaseAdmin();
 
-  // 1) výkresy pripojené na uzol (E3 floor→drawing); E4 element-väzby vynechané
+  // 1) drawings attached to a node (E3 floor->drawing); E4 element links omitted
   const { data: drawRels, error } = await supabase
     .from("rel_associates_document")
     .select("to_id, source")
@@ -253,7 +253,7 @@ export async function fetchFloorDrawings(
   ];
   if (drawingIds.length === 0) return [];
 
-  // 2) výkres-meta + prvky zobrazené v každom výkrese (E4, smer element→výkres)
+  // 2) drawing meta + elements shown in each drawing (E4, direction element->drawing)
   const [objsRes, docsRes, elemRelsRes] = await Promise.all([
     supabase.from("objects").select("id, object_ref, name").eq("project_id", projectId).in("id", drawingIds),
     supabase.from("documents").select("id, location").in("id", drawingIds),
@@ -275,7 +275,7 @@ export async function fetchFloorDrawings(
   );
   const elemRels = (elemRelsRes.data ?? []) as { from_id: string; to_id: string }[];
 
-  // prvky (asset/asset_type) jedným dotazom
+  // elements (asset/asset_type) in a single query
   const elemIds = [...new Set(elemRels.map((r) => r.from_id))];
   const elemById = new Map<string, ElementInDrawing>();
   if (elemIds.length > 0) {
@@ -296,7 +296,7 @@ export async function fetchFloorDrawings(
     }
   }
 
-  // zoskup prvky podľa výkresu
+  // group elements by drawing
   const elementsByDrawing = new Map<string, ElementInDrawing[]>();
   for (const r of elemRels) {
     const el = elemById.get(r.from_id);
@@ -331,12 +331,12 @@ export async function fetchFloorDrawings(
     );
 }
 
-/** Cachovaný variant pre kartu podlažia/budovy (ISR, D-029 perf). */
+/** Cached variant for the storey/building card (ISR, D-029 perf). */
 export const fetchFloorDrawingsCached = cachedProjectRead("fetch-floor-drawings", fetchFloorDrawings);
 
 /**
- * Zodpovednosti za uzol (`rel_assigns_to_actor`, D-020). Actor je person alebo
- * organization; pri osobe doplníme jej firmu (`rel_member_of`, D-024).
+ * Responsibilities for a node (`rel_assigns_to_actor`, D-020). An actor is a person or
+ * organization; for a person we add their company (`rel_member_of`, D-024).
  */
 export async function fetchResponsibilities(
   projectId: string,
@@ -362,9 +362,9 @@ export async function fetchResponsibilities(
 
   const actorIds = [...new Set(relRows.map((r) => r.from_id))];
 
-  // Aktori + ich členstvá paralelne — `rel_member_of` vychádza len z osôb, takže
-  // filter cez všetky actorIds vráti presne to, čo filter cez persons (organizácie
-  // žiadne riadky nemajú), ušetrí ale jeden sekvenčný round-trip.
+  // Actors + their memberships in parallel - `rel_member_of` originates only from persons, so a
+  // filter over all actorIds returns exactly what a filter over persons would (organizations have
+  // no rows), but saves one sequential round-trip.
   const [actorsRes, memberRes] = await Promise.all([
     supabase
       .from("objects")
@@ -400,7 +400,7 @@ export async function fetchResponsibilities(
         orgName.set(o.id as string, (o.name as string | null) ?? null);
     }
     for (const m of memberRows ?? []) {
-      // Prvá firma na osobu (B model: 1 členstvo v seede).
+      // The first company per person (model B: 1 membership in the seed).
       if (!orgByPerson.has(m.from_id as string)) {
         orgByPerson.set(m.from_id as string, {
           id: m.to_id as string,
@@ -430,8 +430,8 @@ export async function fetchResponsibilities(
 }
 
 /**
- * Systémy, ktorých je prvok členom (`rel_assigns_to_group`, smer člen → systém,
- * D-047). Pre asset kartu: „súčasť systému" (vetranie/odvod…). Aktívne väzby.
+ * Systems of which an element is a member (`rel_assigns_to_group`, direction member -> system,
+ * D-047). For the asset card: "part of a system" (ventilation/exhaust...). Active links.
  */
 export async function fetchSystemMembership(
   projectId: string,
@@ -471,8 +471,8 @@ export async function fetchSystemMembership(
 }
 
 /**
- * História IFC GUIDov uzla (`ifc_guid_history`, D-010). Aktívny (valid_until
- * NULL) hore, potom zostupne podľa `valid_from`.
+ * History of the IFC GUIDs of a node (`ifc_guid_history`, D-010). Active (valid_until
+ * NULL) on top, then descending by `valid_from`.
  */
 export async function fetchGuidHistory(
   objectId: string

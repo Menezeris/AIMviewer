@@ -9,10 +9,10 @@ import { cachedProjectRead } from "@/lib/data/revalidate";
 import { projectOrGlobal } from "@/lib/project/scope";
 
 /**
- * Data-access pre generický object route (S3, D-029): ľahká meta pre dispatch
- * v `/node/[id]` + detail views pre person / organization / document.
- * Obojsmerné prelinkovanie uzatvára graf (z osoby → firma + jej zodpovednosti;
- * z dokumentu → „pripojené k"). Server-side cez `service_role` (D-026).
+ * Data-access for the generic object route (S3, D-029): light meta for dispatch
+ * in `/node/[id]` + detail views for person / organization / document.
+ * Bidirectional interlinking closes the graph (from a person -> company + their responsibilities;
+ * from a document -> "attached to" ("pripojené k")). Server-side via `service_role` (D-026).
  */
 
 export interface ObjectMeta {
@@ -22,7 +22,7 @@ export interface ObjectMeta {
   name: string | null;
 }
 
-/** Skrátený odkaz na ľubovoľný objekt (cieľ `/node/[id]`). */
+/** Shortened link to an arbitrary object (target `/node/[id]`). */
 export interface ObjectLink {
   id: string;
   object_type: ObjectType;
@@ -34,7 +34,7 @@ export interface Membership {
   orgId: string;
   orgName: string | null;
   orgRef: string | null;
-  /** Rola vo firme (rel_member_of.role, ≠ acting rola). */
+  /** Role in the company (rel_member_of.role, != acting role). */
   role: string | null;
   validFrom: string | null;
   validUntil: string | null;
@@ -42,7 +42,7 @@ export interface Membership {
 
 export interface ResponsibilityOf {
   object: ObjectLink;
-  /** Acting rola (rel_assigns_to_actor.role). */
+  /** Acting role (rel_assigns_to_actor.role). */
   role: string;
   validFrom: string | null;
   validUntil: string | null;
@@ -71,7 +71,7 @@ export interface OrganizationDetail {
   id: string;
   object_ref: string | null;
   name: string | null;
-  /** Zachytené `_contact` (capture-don't-structure, D-024). */
+  /** Captured `_contact` (capture-don't-structure, D-024). */
   contact: Record<string, unknown> | null;
   members: OrgMember[];
   responsibilities: ResponsibilityOf[];
@@ -98,35 +98,35 @@ export interface DocumentDetail {
   attachedTo: DocumentAttachment[];
 }
 
-/** Priradený dokument prvku pre info-panel (klikateľný na `/node/[id]`). */
+/** Document assigned to an element for the info panel (clickable to `/node/[id]`). */
 export interface SummaryDocument {
   id: string;
   name: string | null;
   objectRef: string | null;
-  /** rel_associates_document.role ('drawing', 'manual'…). */
+  /** rel_associates_document.role ('drawing', 'manual'...). */
   role: string | null;
-  /** True ak ide o auto-prepojený výkres (E4, `source='pdf_link (E4)'`). */
+  /** True if it is an auto-linked drawing (E4, `source='pdf_link (E4)'`). */
   isDrawing: boolean;
 }
 
-/** Kompaktný súhrn prvku pre bočný info-panel prehliadačky výkresov (D-042 D). */
+/** Compact summary of an element for the side info panel of the drawing viewer (D-042 D). */
 export interface NodeSummary {
   id: string;
   objectType: ObjectType;
-  /** Segment route detailu (`asset_type` → type, inak node). */
+  /** Route segment of the detail (`asset_type` -> type, otherwise node). */
   route: "node" | "type";
   name: string | null;
   objectRef: string | null;
   ifcType: string | null;
   predefinedType: string | null;
   userDefinedType: string | null;
-  /** Typ assetu (occurrence → type, len pri `asset`). */
+  /** Asset type (occurrence -> type, only for `asset`). */
   type: ObjectLink | null;
-  /** Všetky priradené dokumenty (vrátane auto-prepojených výkresov). */
+  /** All assigned documents (including auto-linked drawings). */
   documents: SummaryDocument[];
   counts: {
     classifications: number;
-    /** Počet occurrences (len pri `asset_type`). */
+    /** Number of occurrences (only for `asset_type`). */
     occurrences: number;
   };
 }
@@ -150,8 +150,8 @@ async function fetchNodeSummaryImpl(projectId: string, id: string): Promise<Node
   const isAsset = objectType === "asset";
   const isType = objectType === "asset_type";
 
-  // Typ, klasifikácie, dokumenty a počet occurrences — naraz; každá vetva vráti
-  // jednoduchý skalárny / pole typ, čím sa vyhneme unsafe `as` castom.
+  // Type, classifications, documents and the number of occurrences - at once; each branch returns
+  // a simple scalar / array type, which avoids unsafe `as` casts.
   const [typeId, classificationCount, docRels, occurrenceCount] = await Promise.all([
     isAsset
       ? supabase
@@ -196,7 +196,7 @@ async function fetchNodeSummaryImpl(projectId: string, id: string): Promise<Node
           .eq("project_id", projectId)
           .eq("to_id", id)
           .is("valid_until", null)
-          .not("from_id", "is", null) // výskyty s uzlom AIM (D-183 K3)
+          .not("from_id", "is", null) // occurrences with an AIM node (D-183 K3)
           .then(({ count, error: e }) => {
             if (e) throw new Error(e.message);
             return count ?? 0;
@@ -204,7 +204,7 @@ async function fetchNodeSummaryImpl(projectId: string, id: string): Promise<Node
       : Promise.resolve<number>(0),
   ]);
 
-  // dedupe per dokument; výkres (E4) má prednosť pri príznaku isDrawing
+  // dedupe per document; a drawing (E4) takes precedence for the isDrawing flag
   const docOrder: string[] = [];
   const docMeta = new Map<string, { role: string | null; isDrawing: boolean }>();
   for (const r of docRels) {
@@ -255,7 +255,7 @@ async function fetchNodeSummaryImpl(projectId: string, id: string): Promise<Node
   };
 }
 
-/** Ľahká identita objektu pre dispatch v route. `null`, ak neexistuje. */
+/** Light identity of an object for dispatch in the route. `null` if it does not exist. */
 async function fetchObjectMetaImpl(projectId: string, id: string): Promise<ObjectMeta | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -275,7 +275,7 @@ async function fetchObjectMetaImpl(projectId: string, id: string): Promise<Objec
   };
 }
 
-/** Načíta `objects` riadky ako odkazy (pre prelinkovanie). */
+/** Loads `objects` rows as links (for interlinking). */
 async function loadObjectLinks(
   supabase: SupabaseClient,
   projectId: string,
@@ -300,7 +300,7 @@ async function loadObjectLinks(
   return out;
 }
 
-/** Za čo aktor (person|organization) zodpovedá — reverz `rel_assigns_to_actor`. */
+/** What an actor (person|organization) is responsible for - the reverse of `rel_assigns_to_actor`. */
 async function loadResponsibilitiesOf(
   supabase: SupabaseClient,
   projectId: string,
@@ -334,11 +334,11 @@ async function loadResponsibilitiesOf(
     .sort((a, b) => a.role.localeCompare(b.role, "sk"));
 }
 
-/** Detail osoby: kontakt, členstvá vo firmách, za čo zodpovedá. */
+/** Person detail: contact, memberships in companies, what they are responsible for. */
 async function fetchPersonImpl(projectId: string, id: string): Promise<PersonDetail | null> {
   const supabase = getSupabaseAdmin();
 
-  // Nezávislé dotazy naraz; orgLinks závisí od členstiev → až potom.
+  // Independent queries at once; orgLinks depends on the memberships -> only afterwards.
   const [objRes, pRes, memRes, responsibilities] = await Promise.all([
     supabase
       .from("objects")
@@ -402,14 +402,14 @@ async function fetchPersonImpl(projectId: string, id: string): Promise<PersonDet
   };
 }
 
-/** Detail organizácie: zachytený kontakt, členovia, za čo zodpovedá. */
+/** Organization detail: captured contact, members, what they are responsible for. */
 async function fetchOrganizationImpl(
   projectId: string,
   id: string
 ): Promise<OrganizationDetail | null> {
   const supabase = getSupabaseAdmin();
 
-  // Objekt, členovia a zodpovednosti sú nezávislé → naraz.
+  // The object, members and responsibilities are independent -> at once.
   const [objRes, memRes, responsibilities] = await Promise.all([
     supabase
       .from("objects")
@@ -464,11 +464,11 @@ async function fetchOrganizationImpl(
   };
 }
 
-/** Detail dokumentu: IfcDocumentInformation polia + „pripojené k" (reverz). */
+/** Document detail: IfcDocumentInformation fields + "attached to" ("pripojené k", reverse). */
 async function fetchDocumentImpl(projectId: string, id: string): Promise<DocumentDetail | null> {
   const supabase = getSupabaseAdmin();
 
-  // Objekt, metadáta dokumentu a väzby „pripojené k" naraz.
+  // The object, the document metadata and the "attached to" links at once.
   const [objRes, dRes, relRes] = await Promise.all([
     supabase
       .from("objects")
@@ -490,7 +490,7 @@ async function fetchDocumentImpl(projectId: string, id: string): Promise<Documen
       .eq("project_id", projectId)
       .eq("to_id", id)
       .is("valid_until", null)
-      .not("from_id", "is", null), // nositeľ bez uzla AIM (D-183 K3)
+      .not("from_id", "is", null), // carrier without an AIM node (D-183 K3)
   ]);
 
   if (objRes.error) throw new Error(objRes.error.message);
@@ -500,7 +500,7 @@ async function fetchDocumentImpl(projectId: string, id: string): Promise<Documen
   if (dRes.error) throw new Error(dRes.error.message);
   const d = dRes.data?.[0];
 
-  // Pripojené k (rel_associates_document, kde to_id = tento dokument).
+  // Attached to (rel_associates_document, where to_id = this document).
   if (relRes.error) throw new Error(relRes.error.message);
   const rels = (relRes.data ?? []) as { from_id: string; role: string | null }[];
   const links = await loadObjectLinks(supabase, projectId,
@@ -534,30 +534,30 @@ async function fetchDocumentImpl(projectId: string, id: string): Promise<Documen
   };
 }
 
-/** Skupina členov systému podľa IFC typu (D-047) — pre systémovú kartu. */
+/** Group of system members by IFC type (D-047) - for the system card. */
 export interface SystemMemberGroup {
   ifcType: string | null;
   count: number;
-  /** Členovia (odkazy) — orezané na `SYSTEM_MEMBER_LIST_CAP`. */
+  /** Members (links) - truncated to `SYSTEM_MEMBER_LIST_CAP`. */
   members: ObjectLink[];
 }
 
 export interface SystemDetail {
   id: string;
-  /** Systém, projekt, zóna, priestorová zóna alebo skupina (D-047, D-088). */
+  /** System, project, zone, spatial zone or group (D-047, D-088). */
   objectType: GroupLikeType;
   object_ref: string | null;
   name: string | null;
-  /** IfcDistributionSystemEnum (VENTILATION/EXHAUST…), IfcSpatialZoneTypeEnum… */
+  /** IfcDistributionSystemEnum (VENTILATION/EXHAUST...), IfcSpatialZoneTypeEnum... */
   predefinedType: string | null;
   memberCount: number;
   groups: SystemMemberGroup[];
 }
 
-/** Koľko členov na skupinu vypíšeme ako odkazy (zvyšok len počet — VZT má stovky). */
+/** How many members per group we list as links (the rest only as a count - VZT has hundreds). */
 const SYSTEM_MEMBER_LIST_CAP = 60;
 
-/** Hrany "člen / časť → skupinový uzol" (to_id = uzol): členstvo, dekompozícia, referencia. */
+/** Edges "member / part -> group node" (to_id = node): membership, decomposition, reference. */
 const MEMBER_RELATIONS = [
   "rel_assigns_to_group",
   "rel_aggregates",
@@ -565,9 +565,9 @@ const MEMBER_RELATIONS = [
 ] as const;
 
 /**
- * Detail systému (D-047) a ďalších skupinových uzlov (D-088): členovia
- * (`rel_assigns_to_group`), časti (`rel_aggregates`) a prvky v priestorovej zóne
- * (`rel_referenced_in_spatial_structure`) zoskupení podľa IFC typu.
+ * Detail of a system (D-047) and other group nodes (D-088): members
+ * (`rel_assigns_to_group`), parts (`rel_aggregates`) and elements in a spatial zone
+ * (`rel_referenced_in_spatial_structure`) grouped by IFC type.
  */
 async function fetchSystemImpl(projectId: string, id: string): Promise<SystemDetail | null> {
   const supabase = getSupabaseAdmin();
@@ -581,7 +581,7 @@ async function fetchSystemImpl(projectId: string, id: string): Promise<SystemDet
       .in("object_type", GROUP_LIKE_TYPES as unknown as string[])
       .limit(1),
     ...MEMBER_RELATIONS.map((rel) =>
-      // Člen bez uzla AIM (D-183 K3, napr. port VZT) má from_id null.
+      // A member without an AIM node (D-183 K3, e.g. a VZT port) has from_id null.
       supabase.from(rel).select("from_id").eq("project_id", projectId).eq("to_id", id).is("valid_until", null).not("from_id", "is", null)
     ),
   ]);
@@ -599,7 +599,7 @@ async function fetchSystemImpl(projectId: string, id: string): Promise<SystemDet
     ),
   ];
 
-  // Členské objekty s IFC typom (loadObjectLinks nemá ifc_type → vlastný dotaz).
+  // Member objects with an IFC type (loadObjectLinks has no ifc_type -> its own query).
   const members =
     memberIds.length > 0
       ? await supabase
@@ -619,7 +619,7 @@ async function fetchSystemImpl(projectId: string, id: string): Promise<SystemDet
           })
       : [];
 
-  // Zoskup podľa IFC typu; skupiny podľa počtu zostupne, členovia orezaní.
+  // Group by IFC type; groups by count descending, members truncated.
   const byType = new Map<string, SystemMemberGroup>();
   for (const m of members) {
     const key = m.ifc_type ?? "—";
@@ -655,7 +655,7 @@ async function fetchSystemImpl(projectId: string, id: string): Promise<SystemDet
   };
 }
 
-// Cachované per projekt a id (ISR, D-029 perf, D-189).
+// Cached per project and id (ISR, D-029 perf, D-189).
 export const fetchObjectMeta = cachedProjectRead("fetch-object-meta", fetchObjectMetaImpl);
 export const fetchPerson = cachedProjectRead("fetch-person", fetchPersonImpl);
 export const fetchOrganization = cachedProjectRead("fetch-organization", fetchOrganizationImpl);

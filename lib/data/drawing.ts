@@ -5,47 +5,47 @@ import { cachedProjectRead } from "@/lib/data/revalidate";
 import { georefV2Wire, primaryV1, toGeorefV2, type GeorefV2 } from "@/lib/data/georef";
 
 /**
- * Data-access vrstva pre in-app prehliadačku výkresov (D-042 fáza C). Číta zdrojové
- * PDF (`documents.location`, verejný Supabase Storage bucket) + klikateľné link
- * regióny z `objects.properties._drawing_links` (zapísané ETL fázou A, `pdf_link.py`).
+ * Data-access layer for the in-app drawing viewer (D-042 phase C). Reads the source
+ * PDF (`documents.location`, public Supabase Storage bucket) + clickable link
+ * regions from `objects.properties._drawing_links` (written by ETL phase A, `pdf_link.py`).
  *
- * `_drawing_links` má snake_case kľúče (zapisuje ich Python); tu sa mapujú na camelCase.
- * Súradnice `bbox` sú v PDF bottom-left (y hore) — render ich preklápa na zdroji UI.
+ * `_drawing_links` has snake_case keys (written by Python); here they are mapped to camelCase.
+ * The `bbox` coordinates are in PDF bottom-left (y up) - the render flips them at the UI source.
  */
 
-/** Jeden klikateľný región vo výkrese (`_drawing_links`, D-042). */
+/** One clickable region in a drawing (`_drawing_links`, D-042). */
 export interface DrawingRegion {
-  /** 1-based číslo strany. */
+  /** 1-based page number. */
   page: number;
-  /** PDF bottom-left [x0, y0, x1, y1] (body). */
+  /** PDF bottom-left [x0, y0, x1, y1] (points). */
   bbox: [number, number, number, number];
-  /** Rozmer strany [šírka, výška] v bodoch — referenčná báza pre škálovanie. */
+  /** Page size [width, height] in points - the reference base for scaling. */
   pageSize: [number, number];
-  /** Cieľový `objects.id` (asset / asset_type), príp. dokument pri `drawing` route. */
+  /** Target `objects.id` (asset / asset_type), or a document for the `drawing` route. */
   targetId: string;
-  /** Segment route cieľa: detail prvku (`node`/`type`) alebo iný výkres (`drawing`, D-043). */
+  /** Target route segment: element detail (`node`/`type`) or another drawing (`drawing`, D-043). */
   targetRoute: "node" | "type" | "drawing";
-  /** Strana cieľového výkresu pre `drawing` route (skladby → strana vo Výpise, D-043). */
+  /** Page of the target drawing for the `drawing` route (assemblies -> page in the Schedule, D-043). */
   targetPage?: number;
-  /** Dôverová vrstva detekcie (D-041) / `skladba` = navigačný región skladby (D-043). */
+  /** Confidence layer of detection (D-041) / `skladba` = navigation region of an assembly (D-043). */
   layer: "full" | "proximity" | "bare" | "skladba";
-  /** Zobrazený SNIM kód, príp. skladbová značka (`S#`). */
+  /** Displayed SNIM code, or an assembly mark (`S#`). */
   label: string;
 }
 
-/** Prvok vybraný kliknutím vo výkrese — vstup pre bočný info-panel (D-042 D). */
+/** Element selected by a click in a drawing - input for the side info panel (D-042 D). */
 export interface SelectedElement {
   id: string;
   route: "node" | "type";
   label: string;
 }
 
-/** Výkres pre prehliadačku: verejné PDF URL + klikateľné regióny. */
+/** Drawing for the viewer: public PDF URL + clickable regions. */
 export interface DrawingDoc {
   id: string;
   name: string | null;
   objectRef: string | null;
-  /** Verejné PDF URL (`documents.location`). */
+  /** Public PDF URL (`documents.location`). */
   location: string;
   links: DrawingRegion[];
 }
@@ -110,7 +110,7 @@ async function fetchDrawingImpl(projectId: string, id: string): Promise<DrawingD
   if (dErr) throw new Error(dErr.message);
 
   const location = (doc?.location as string | null) ?? null;
-  if (!location) return null; // bez PDF nie je čo zobraziť
+  if (!location) return null; // without a PDF there is nothing to show
 
   const raw = ((obj.properties as Record<string, unknown> | null)?.[
     "_drawing_links"
@@ -128,17 +128,17 @@ async function fetchDrawingImpl(projectId: string, id: string): Promise<DrawingD
   };
 }
 
-/** Cachované per id (ISR, D-029 perf). */
+/** Cached per id (ISR, D-029 perf). */
 export const fetchDrawing = cachedProjectRead("fetch-drawing", fetchDrawingImpl);
 
-// ─── Georeferencované PDF podklady (D-072) ───────────────────────────────────
+// --- Georeferenced PDF underlays (D-072) -----------------------------------------
 
 /**
- * Wire tvar jedného podkladu pre embed viewer (bridge `UNDERLAYS_LOAD`).
- * `georef` je v1 (`parsePlacement` v @ifc-lite/drawing-underlay ho validuje
- * sám): pôdorysná kalibrácia strany, ktorú dnešný fork vie zobraziť.
- * `georefV2` (D-133) nesie všetky kalibrácie dokumentu vrátane rezov
- * (`plane`); fork ho začne čítať s pohľadmi D-132.
+ * Wire shape of one underlay for the embed viewer (bridge `UNDERLAYS_LOAD`).
+ * `georef` is v1 (`parsePlacement` in @ifc-lite/drawing-underlay validates it
+ * itself): the floor-plan calibration of the page that today's fork can display.
+ * `georefV2` (D-133) carries all calibrations of the document including sections
+ * (`plane`); the fork will start reading it with the views of D-132.
  */
 export interface UnderlayDrawingWire {
   documentId: string;
@@ -149,10 +149,10 @@ export interface UnderlayDrawingWire {
 }
 
 /**
- * Validácia zápisu `_georef` v1 (PATCH /api/underlay, D-072) — server nesmie
- * perzistovať ľubovoľný JSON z klienta. Zrkadlí `parsePlacement` z
- * @ifc-lite/drawing-underlay (vieweru), ale nezávisle: AIM appka balík
- * nekonzumuje a payload je untrusted vstup route handlera.
+ * Validation of writing `_georef` v1 (PATCH /api/underlay, D-072) - the server must not
+ * persist arbitrary JSON from the client. Mirrors `parsePlacement` from
+ * @ifc-lite/drawing-underlay (of the viewer), but independently: the AIM app does not
+ * consume the package and the payload is untrusted input of the route handler.
  */
 export function isValidGeorefV1(raw: unknown): boolean {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
@@ -169,9 +169,9 @@ export function isValidGeorefV1(raw: unknown): boolean {
   if (!tuple(g.affine, 6)) return false;
   const a = g.affine as number[];
   if (!(Math.abs(a[0] * a[4] - a[1] * a[3]) > 0)) return false;
-  // Server je hranica zápisu: 2 kalibračné body (2-bodová similarity, D-072) alebo
-  // 1 bod jednobodovej kalibrácie panela (bod + mierka 1:N a natočenie sú v affine);
-  // inak placement nie je re-editovateľný. Jednobodovú server predtým odmietal 400 (#317).
+  // The server is the write boundary: 2 calibration points (2-point similarity, D-072) or
+  // 1 point of the panel's single-point calibration (point + scale 1:N and rotation are in the affine);
+  // otherwise the placement is not re-editable. The server used to reject single-point with 400 (#317).
   if (!Array.isArray(g.calibration) || g.calibration.length < 1 || g.calibration.length > 2) return false;
   for (const c of g.calibration as { pdf_pt?: unknown; ifc_m?: unknown }[]) {
     if (!c || typeof c !== "object" || !tuple(c.pdf_pt, 2) || !tuple(c.ifc_m, 2)) return false;
@@ -186,11 +186,11 @@ export function isValidGeorefV1(raw: unknown): boolean {
 async function fetchUnderlayDrawingsImpl(projectId: string): Promise<UnderlayDrawingWire[]> {
   const supabase = getSupabaseAdmin();
 
-  // Bez stránkovania (fetchAllPages) zámerne: kardinalita je ohraničená —
-  // podlaží je jednotky a ich pôdorysov ~12 (ASR v76), hlboko pod PostgREST
-  // capom 1000. Pri multi-projekte (D-033) prehodnotiť.
-  // 1) podlažia → dokumenty, ktoré nesú (D-104: po ASR v76 pôdorysy všetkých
-  //    profesií; IFC väzba má role 'document', stará E3 mala 'drawing').
+  // Without pagination (fetchAllPages) intentionally: the cardinality is bounded -
+  // there are a handful of storeys and ~12 floor plans of them (ASR v76), far below the PostgREST
+  // cap of 1000. Reconsider for multi-project (D-033).
+  // 1) storeys -> documents that carry them (D-104: after ASR v76 floor plans of all
+  //    professions; the IFC link has role 'document', the old E3 had 'drawing').
   const { data: floors, error: fErr } = await supabase
     .from("objects")
     .select("id")
@@ -211,7 +211,7 @@ async function fetchUnderlayDrawingsImpl(projectId: string): Promise<UnderlayDra
     : { data: [] as { to_id: string }[], error: null };
   if (rErr) throw new Error(rErr.message);
 
-  // 1b) dokumenty s kalibráciou bez podlažia (rezy REZ-A, REZ-B, D-179): nesú `_georef`, ale nie väzbu na podlažie.
+  // 1b) documents with calibration without a storey (sections REZ-A, REZ-B, D-179): they carry `_georef`, but no link to a storey.
   const { data: calibrated, error: cErr } = await supabase
     .from("objects")
     .select("id")
@@ -229,7 +229,7 @@ async function fetchUnderlayDrawingsImpl(projectId: string): Promise<UnderlayDra
   ];
   if (docIds.length === 0) return [];
 
-  // 2) meta + PDF URL + prípadný _georef.
+  // 2) meta + PDF URL + a possible _georef.
   const [objsRes, docsRes] = await Promise.all([
     supabase.from("objects").select("id, name, properties").eq("project_id", projectId).in("id", docIds),
     supabase
@@ -248,24 +248,24 @@ async function fetchUnderlayDrawingsImpl(projectId: string): Promise<UnderlayDra
     const id = doc.id as string;
     const location = (doc.location as string | null) ?? null;
     const obj = objById.get(id);
-    if (!location || !obj) continue; // bez verejného PDF nie je čo podložiť
+    if (!location || !obj) continue; // without a public PDF there is nothing to underlay
     const raw = (obj.properties as Record<string, unknown> | null)?.["_georef"];
     const v2 = raw !== undefined ? toGeorefV2(raw) : null;
     const v1 = v2 ? primaryV1(v2) : null;
     const wireV2 = georefV2Wire(raw);
-    // Dokument bez kalibrácie a bez väzby na podlažie (len `_georef` bez platných položiek) viewer nepotrebuje.
+    // A document without calibration and without a link to a storey (only `_georef` without valid items) is not needed by the viewer.
     if (!wireV2 && !floorDocIds.has(id)) continue;
     out.push({
       documentId: id,
       name: (obj.name as string | null) ?? id,
       pdfUrl: location,
       ...(v1 ? { georef: v1 } : {}),
-      // História prepisov (D-168) zostáva na serveri, viewer ju nepotrebuje.
+      // The history of overwrites (D-168) stays on the server, the viewer does not need it.
       ...(wireV2 ? { georefV2: wireV2 } : {}),
     });
   }
   return out;
 }
 
-/** Podklady pre 3D viewer (ISR, tag `aim` — po PATCH sa revaliduje). */
+/** Underlays for the 3D viewer (ISR, tag `aim` - revalidated after PATCH). */
 export const fetchUnderlayDrawings = cachedProjectRead("fetch-underlay-drawings", fetchUnderlayDrawingsImpl);

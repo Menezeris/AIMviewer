@@ -8,17 +8,17 @@ import { disciplineOf, documentMeta, floorDrawing, type DocumentHolder } from "@
 import { fetchDocumentClassifications, fetchNodes, typeText } from "@/lib/data/object-documents";
 
 /**
- * Data-access vrstva pre in-viewer knižnicu dokumentov (D-075): mapuje
- * `objects` (`object_type='document'`) + príponu `documents` na wire formát
- * `DOCUMENTS_LOAD` bridge správy (DocumentDescriptorWire vo forku).
+ * Data-access layer for the in-viewer document library (D-075): maps
+ * `objects` (`object_type='document'`) + the `documents` extension to the wire format
+ * of the `DOCUMENTS_LOAD` bridge message (DocumentDescriptorWire in the fork).
  *
- * Súrodenec `fetchUnderlayDrawings` (D-072), nie náhrada — kalibrované
- * výkresy idú do viewera v OBOCH správach (rovnaké documentId) a panel ich
- * prepája cez `storeyGuid`. `meta` (D-104 krok 3) nesie údaje na zoskupenie
- * a hľadanie vo vieweri (`document-meta.ts`).
+ * A sibling of `fetchUnderlayDrawings` (D-072), not a replacement - calibrated
+ * drawings go to the viewer in BOTH messages (same documentId) and the panel
+ * links them via `storeyGuid`. `meta` (D-104 step 3) carries the data for grouping
+ * and searching in the viewer (`document-meta.ts`).
  */
 
-/** Wire formát dokumentu pre `DOCUMENTS_LOAD` (zrkadlí fork bridge-protocol). */
+/** Wire format of a document for `DOCUMENTS_LOAD` (mirrors the fork bridge-protocol). */
 export interface DocumentWire {
   documentId: string;
   name: string;
@@ -26,12 +26,12 @@ export interface DocumentWire {
   url: string;
   mime?: string;
   storeyGuid?: string;
-  /** Všetky podlažia, ktoré výkres nesie (strecha: 4NP aj 5NP); `storeyGuid` je len pri jedinom (D-176). */
+  /** All storeys the drawing carries (roof: 4NP and 5NP); `storeyGuid` only for a single one (D-176). */
   storeyGuids?: string[];
-  /** Disciplína z kódu dokumentu (ASR, PBR...), len pri výkrese podlažia (D-176). */
+  /** Discipline from the document code (ASR, PBR...), only for a storey drawing (D-176). */
   discipline?: string;
   folder?: string[];
-  /** Kalibrácie podkladu (D-179), rovnaké ako v `UNDERLAYS_LOAD`: pôdorysy aj rezy (`plane`). Chýba, kým dokument nie je kalibrovaný. */
+  /** Underlay calibrations (D-179), same as in `UNDERLAYS_LOAD`: floor plans and sections (`plane`). Absent until the document is calibrated. */
   georefV2?: GeorefV2;
   meta?: Record<string, string>;
 }
@@ -39,7 +39,7 @@ export interface DocumentWire {
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i;
 const PDF_EXT_RE = /\.pdf($|\?)/i;
 
-/** Mime podľa prípony verejnej URL — viewer podľa neho routuje viewery. */
+/** Mime by the extension of the public URL - the viewer routes viewers by it. */
 function mimeFor(location: string): string | null {
   if (PDF_EXT_RE.test(location)) return "application/pdf";
   const m = IMAGE_EXT_RE.exec(location);
@@ -51,8 +51,8 @@ function mimeFor(location: string): string | null {
 async function fetchProjectDocumentsImpl(projectId: string): Promise<DocumentWire[]> {
   const supabase = getSupabaseAdmin();
 
-  // Bez stránkovania zámerne (vzor fetchUnderlayDrawings): dokumentov je ~54
-  // (IFC, D-104), hlboko pod PostgREST capom 1000. Pri multi-projekte (D-033) prehodnotiť.
+  // Intentionally without pagination (pattern fetchUnderlayDrawings): there are ~54 documents
+  // (IFC, D-104), far below the PostgREST cap of 1000. Reconsider for multi-project (D-033).
   const [objsRes, docsRes, partsRes] = await Promise.all([
     supabase
       .from("objects")
@@ -64,7 +64,7 @@ async function fetchProjectDocumentsImpl(projectId: string): Promise<DocumentWir
       .from("documents")
       .select("id, identification, location, document_owner, last_revision_time, electronic_format")
       .eq("storage_type", "supabase"),
-    // Strom dokumentácie z IFC (D-104): časť → nadradený dokument.
+    // Documentation tree from IFC (D-104): part -> parent document.
     supabase
       .from("rel_document_information_relationship")
       .select("from_id, to_id")
@@ -85,9 +85,9 @@ async function fetchProjectDocumentsImpl(projectId: string): Promise<DocumentWir
   const georefOf = new Map((objsRes.data ?? []).map((o) => [o.id as string, georefV2Wire((o as { georef?: unknown }).georef)]));
   const refOf = new Map((objsRes.data ?? []).map((o) => [o.id as string, (o.object_ref as string | null) ?? null]));
 
-  // Nositelia (D-104 krok 3): kto dokument nesie (podlažie, miestnosť, zóna...) a druh
-  // (typ informácie ISO 19650) a druh média (D-131). Z nich je `meta` na zoskupenie a
-  // pôdorys podlažia.
+  // Carriers (D-104 step 3): who carries the document (storey, space, zone...) and the kind
+  // (information type per ISO 19650) and the media kind (D-131). From them `meta` is built for grouping and
+  // the storey floor plan.
   const fileIds = [...docById.keys()].filter((id) => nameOf.has(id));
   const [holdersByDoc, classes] = await Promise.all([fetchHolders(projectId, fileIds), fetchDocumentClassifications(projectId, fileIds)]);
 
@@ -96,10 +96,10 @@ async function fetchProjectDocumentsImpl(projectId: string): Promise<DocumentWir
     const id = obj.id as string;
     const doc = docById.get(id);
     const location = (doc?.location as string | null) ?? null;
-    if (!doc || !location) continue; // bez verejného súboru niet čo zobraziť
-    // D-075 v1 = PDF + obrázky. Iné formáty (docx, dwg, zip…) sa neposielajú —
-    // viewer by ich kŕmil do pdf.js a ukázal rozbitú kartu; ostávajú dostupné
-    // cez /drawing/[id] resp. priamy link, kým nepríde ich viewer.
+    if (!doc || !location) continue; // without a public file there is nothing to show
+    // D-075 v1 = PDF + images. Other formats (docx, dwg, zip...) are not sent -
+    // the viewer would feed them to pdf.js and show a broken card; they remain available
+    // via /drawing/[id] or a direct link until their viewer arrives.
     const mime = mimeFor(location);
     if (!mime) continue;
     const name = (obj.name as string | null) ?? id;
@@ -110,7 +110,7 @@ async function fetchProjectDocumentsImpl(projectId: string): Promise<DocumentWir
     const discipline = plan.drawing ? disciplineOf(refOf.get(id) ?? name) : null;
     const kind: DocumentWire["kind"] = plan.drawing ? "drawing" : mime.startsWith("image/") ? "image" : "document";
 
-    // Folder: strom dokumentácie z IFC (D-104), koreň PD sa vynecháva.
+    // Folder: documentation tree from IFC (D-104), the PD root is omitted.
     const tree = documentFolder(id, parentOf, nameOf);
     const meta = documentMeta({
       identification: (doc.identification as string | null) ?? null,
@@ -137,12 +137,12 @@ async function fetchProjectDocumentsImpl(projectId: string): Promise<DocumentWir
       ...(Object.keys(meta).length > 0 ? { meta } : {}),
     });
   }
-  // Stabilné poradie pre viewer aj cache (názov, potom id).
+  // Stable order for the viewer and the cache (name, then id).
   out.sort((a, b) => a.name.localeCompare(b.name) || a.documentId.localeCompare(b.documentId));
   return out;
 }
 
-/** Nositelia dokumentov (rel_associates_document -> objekt), po dokumentoch. */
+/** Carriers of documents (rel_associates_document -> object), per document. */
 async function fetchHolders(projectId: string, documentIds: readonly string[]): Promise<Map<string, DocumentHolder[]>> {
   const out = new Map<string, DocumentHolder[]>();
   if (documentIds.length === 0) return out;
@@ -153,7 +153,7 @@ async function fetchHolders(projectId: string, documentIds: readonly string[]): 
     .eq("project_id", projectId)
     .in("to_id", documentIds)
     .is("valid_until", null)
-    .not("from_id", "is", null); // nositeľ bez uzla AIM (D-183 K3)
+    .not("from_id", "is", null); // carrier without an AIM node (D-183 K3)
   if (error) throw new Error(error.message);
   const pairs = (rels ?? []) as { from_id: string; to_id: string }[];
   const nodes = await fetchNodes(projectId, pairs.map((r) => r.from_id));
@@ -175,10 +175,10 @@ async function fetchHolders(projectId: string, documentIds: readonly string[]): 
   return out;
 }
 
-/** Knižnica dokumentov pre 3D viewer (ISR, tag `aim`). */
+/** Document library for the 3D viewer (ISR, tag `aim`). */
 export const fetchProjectDocuments = cachedProjectRead("fetch-project-documents", fetchProjectDocumentsImpl);
 
-/** Cieľ IfcDocumentReference (D-104): dokument, ktorého časť odkaz označuje, a strana. */
+/** Target of an IfcDocumentReference (D-104): the document whose part the reference denotes, and the page. */
 export interface DocumentReferenceTarget {
   documentId: string;
   page: number | null;
@@ -213,5 +213,5 @@ async function fetchDocumentReferenceImpl(projectId: string, id: string): Promis
   };
 }
 
-/** Odkaz na časť dokumentu → dokument a strana (ISR, tag `aim`). */
+/** Reference to a document part -> document and page (ISR, tag `aim`). */
 export const fetchDocumentReference = cachedProjectRead("fetch-document-reference", fetchDocumentReferenceImpl);

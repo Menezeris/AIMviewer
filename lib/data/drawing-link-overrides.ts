@@ -1,9 +1,9 @@
 /**
- * Ručné priradenie a zrušenie odkazu popisku na výkrese (D-160) - čisté funkcie.
+ * Manual assignment and cancellation of a label link on a drawing (D-160) - pure functions.
  *
- * Ručný riadok (`drawing_link_overrides`) má prednosť pred párovaním D-130: `assign` nahradí
- * alebo vytvorí odkaz, `suppress` ho odstráni. Kľúč = normalizovaný text popisku na strane,
- * voliteľne s bbox (bez neho platí pre všetky výskyty textu na strane).
+ * A manual row (`drawing_link_overrides`) takes precedence over the D-130 pairing: `assign` replaces
+ * or creates a link, `suppress` removes it. Key = normalized label text on the page,
+ * optionally with a bbox (without it, it applies to all occurrences of the text on the page).
  */
 
 import type { PageRegion, TextBlock } from "@/lib/llm/document-text";
@@ -23,14 +23,14 @@ export interface OverrideTarget extends LinkTarget {
 
 export interface LinkOverride {
   page: number;
-  /** Normalizovaný text popisku (`normLabel`). */
+  /** Normalized label text (`normLabel`). */
   text: string;
   bbox: PageRegion | null;
   action: OverrideAction;
   target: OverrideTarget | null;
 }
 
-/** Stred bbox sa musí zhodovať najviac o toľko % strany (bbox z návrhu vo vieweri nie je presný na pixel). */
+/** The bbox center must match to within this many % of the page (a bbox from a draft in the viewer is not pixel-exact). */
 const BBOX_TOL = 0.6;
 
 const center = (r: PageRegion) => ({ x: r.x + r.width / 2, y: r.y + r.height / 2 });
@@ -41,7 +41,7 @@ export function sameSpot(a: PageRegion, b: PageRegion): boolean {
   return Math.abs(ca.x - cb.x) <= BBOX_TOL && Math.abs(ca.y - cb.y) <= BBOX_TOL;
 }
 
-/** Druh popisku podľa cieľa ručného priradenia. */
+/** Kind of label by the target of the manual assignment. */
 export function kindOfTarget(objectType: string): LabelKind {
   if (objectType === "space") return "space";
   if (objectType === "zone" || objectType === "spatial_zone") return "zone";
@@ -52,8 +52,8 @@ const matches = (o: LinkOverride, text: string, bbox: PageRegion) =>
   o.text === normLabel(text) && (o.bbox === null || sameSpot(o.bbox, bbox));
 
 /**
- * Presnejší riadok vyhráva: s bbox pred textom bez neho. Z riadkov rovnakej presnosti platí
- * posledný (zoznam je zoradený od najstaršieho).
+ * The more precise row wins: with a bbox before text without one. Among rows of the same precision
+ * the last one applies (the list is sorted from the oldest).
  */
 function pick(overrides: readonly LinkOverride[], text: string, bbox: PageRegion): LinkOverride | undefined {
   const hits = overrides.filter((o) => matches(o, text, bbox));
@@ -65,8 +65,8 @@ export function overrideTargetToLink(t: OverrideTarget): LinkTarget {
 }
 
 /**
- * Použije ručné riadky jednej strany na automatické odkazy. `assign` bez zhody v automatike
- * vytvorí odkaz na riadku strany s rovnakým textom (alebo na uloženej bbox).
+ * Applies the manual rows of a single page to the automatic links. An `assign` without a match in the automation
+ * creates a link on the page row with the same text (or on the stored bbox).
  */
 export function applyOverrides(
   links: readonly DrawingLink[],
@@ -94,7 +94,7 @@ export function applyOverrides(
       targets: [overrideTargetToLink(o.target)],
     });
   }
-  // Priradenie textu, ktorý automatika nenašla (alebo ho zrušila iná oprava).
+  // Assignment of a text the automation did not find (or that another correction canceled).
   for (const o of overrides) {
     if (o.action !== "assign" || !o.target || used.has(o)) continue;
     const spots: PageRegion[] = blocks
@@ -117,7 +117,7 @@ export function applyOverrides(
   return out.sort((a, b) => a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x);
 }
 
-/** Texty, ktoré sa na strane dajú priradiť: riadky strany a texty automatických popiskov. */
+/** Texts that can be assigned on a page: page rows and texts of automatic labels. */
 export function assignableTexts(blocks: readonly TextBlock[], labels: readonly DrawingLabel[]): Set<string> {
   return new Set([...blocks.map((b) => normLabel(b.t)), ...labels.map((l) => normLabel(l.text))].filter(Boolean));
 }
@@ -131,7 +131,7 @@ export interface LinkEditInput {
   bbox: PageRegion | null;
 }
 
-/** Vstup parametra `open_drawing link` (D-160); chybu vráti ako text, nikdy ju nehodí. */
+/** Input parameter of `open_drawing link` (D-160); returns an error as text, never throws it. */
 export function parseLinkEdit(raw: unknown): LinkEditInput | string {
   if (!raw || typeof raw !== "object") return "link musí byť objekt {text, action, target?, bbox?}.";
   const r = raw as Record<string, unknown>;

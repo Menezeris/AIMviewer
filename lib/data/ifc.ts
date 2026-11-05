@@ -6,16 +6,16 @@ import type { IfcModel } from "@/lib/data/ifc-models";
 import { fetchProjectModels } from "@/lib/project/models";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
-/** ifc_guid → objects.id (aktívne záznamy živých uzlov projektu, D-189). */
+/** ifc_guid -> objects.id (active records of live nodes of the project, D-189). */
 export type GuidMap = Record<string, string>;
 
 export type { IfcModel } from "@/lib/data/ifc-models";
 
 /**
  * IFC models of the project with their current revision (D-086, D-189): containers with a current
- * revision from the DB, not a hardcoded list. Bez cache: po správe "nová revízia"
- * (`router.refresh()`) musí stránka vidieť novú revíziu hneď. Pri chybe prázdny zoznam (viewer
- * ukáže, že model nie je), nie modely iného projektu.
+ * revision from the DB, not a hardcoded list. Without cache: after the "new revision" message
+ * (`router.refresh()`) the page must see the new revision right away. On error an empty list (the viewer
+ * shows that the model is missing), not the models of another project.
  */
 export async function getCurrentIfcModels(projectId: string): Promise<IfcModel[]> {
   try {
@@ -28,9 +28,9 @@ export async function getCurrentIfcModels(projectId: string): Promise<IfcModel[]
 
 async function fetchGuidMapImpl(projectId: string): Promise<GuidMap> {
   const supabase = getSupabaseAdmin();
-  // Stránkovane: po federácii VZT (D-049) je aktívnych GUID záznamov > 1000
-  // a PostgREST (db-max-rows) by mapu ticho orezal — prvky nad limit by v 3D
-  // viewera nemali AIM kartu (GUID→id sa nepreloží).
+  // Paginated: after the VZT federation (D-049) there are > 1000 active GUID records
+  // and PostgREST (db-max-rows) would silently truncate the map - elements over the limit would have no
+  // AIM card in the viewer's 3D (the GUID->id would not resolve).
   const data = await fetchAllPages<{ object_id: string | null; ifc_guid: string | null }>(
     (from, to) =>
       supabase
@@ -53,5 +53,5 @@ async function fetchGuidMapImpl(projectId: string): Promise<GuidMap> {
   return map;
 }
 
-/** Cachovaná GUID mapa (ISR 60 s, D-029). */
+/** Cached GUID map (ISR 60 s, D-029). */
 export const fetchGuidMap = cachedProjectRead("ifc-guid-map", fetchGuidMapImpl);

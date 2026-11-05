@@ -1,6 +1,6 @@
 /**
- * Testy validácie `_capture` v1 (D-073) — server je hranica zápisu, payload je
- * untrusted vstup route handlera. Zrkadlí prísnosť `isValidGeorefV1` (D-072).
+ * Tests of `_capture` v1 validation (D-073) - the server is the write boundary, the payload is
+ * untrusted input of the route handler. Mirrors the strictness of `isValidGeorefV1` (D-072).
  */
 import { describe, expect, it } from "vitest";
 

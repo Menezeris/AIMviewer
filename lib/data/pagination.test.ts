@@ -1,13 +1,13 @@
 /**
- * Testy `fetchAllPages` — regresia: dotazy na spatial hrany, GUID mapu
- * a štatistiky modelu nestránkovali, PostgREST (`db-max-rows` = 1000) ich
- * ticho orezal a prvky nad limit zmizli zo stromu / 3D↔DB mapovania.
+ * Tests of `fetchAllPages` - regression: queries for spatial edges, the GUID map
+ * and model statistics did not paginate, PostgREST (`db-max-rows` = 1000) silently
+ * truncated them and elements over the limit vanished from the tree / the 3D<->DB mapping.
  */
 import { describe, expect, it } from "vitest";
 
 import { fetchAllPages } from "./pagination";
 
-/** Fake stránkovaného zdroja s `total` riadkami {i}. */
+/** Fake of a paginated source with `total` rows {i}. */
 function fakeSource(total: number, calls: [number, number][]) {
   return async (from: number, to: number) => {
     calls.push([from, to]);

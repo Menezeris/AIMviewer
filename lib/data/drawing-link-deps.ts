@@ -7,7 +7,7 @@ import { parseBlocks } from "@/lib/llm/document-text";
 import { parseDraft, type LinkEditDeps } from "@/lib/data/drawing-link-edit";
 import { resolveLinkTarget, writeOverride } from "@/lib/data/drawing-link-store";
 
-/** Produkčné závislosti `open_drawing link` (D-160): DB a živý viewer. */
+/** Production dependencies of `open_drawing link` (D-160): DB and the live viewer. */
 export function realLinkEditDeps(projectId: string): LinkEditDeps {
   return {
     async blocks(documentId, page) {

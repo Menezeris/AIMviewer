@@ -1,11 +1,11 @@
 /**
- * Dokumenty z IFC (D-104) - čisté pomocné funkcie bez DB, zdieľané server-side
- * dátovou vrstvou (knižnica dokumentov, odkaz na stranu) a testované samostatne.
+ * Documents from IFC (D-104) - pure helper functions without DB, shared by the server-side
+ * data layer (document library, page reference) and tested separately.
  */
 
 /**
- * Strana, ktorú označuje IfcDocumentReference: fragment `#page=N` v `Location`
- * (tvar z ASR, `…VYPIS-SKLADIEB.pdf#page=3`), inak `Identification` `page=N`.
+ * The page denoted by an IfcDocumentReference: the fragment `#page=N` in `Location`
+ * (shape from ASR, `...VYPIS-SKLADIEB.pdf#page=3`), otherwise `Identification` `page=N`.
  */
 export function referencePage(
   location: string | null,
@@ -20,10 +20,10 @@ export function referencePage(
 }
 
 /**
- * Priečinok dokumentu v knižnici = mená nadradených dokumentov zo stromu
- * dokumentácie (`rel_document_information_relationship`, časť → nadradený),
- * zhora nadol. Koreň (celá PD) sa vynecháva, keď je nad ním ešte časť - inak by
- * bol jediným priečinkom pre všetko.
+ * Folder of a document in the library = names of parent documents from the documentation
+ * tree (`rel_document_information_relationship`, part -> parent),
+ * top-down. The root (the whole PD) is omitted when there is still a part above it - otherwise it
+ * would be the only folder for everything.
  */
 export function documentFolder(
   docId: string,

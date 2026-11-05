@@ -1,8 +1,8 @@
 /**
- * MEP "grouping" triedy (D-049, zoznam `group_only` v `etl/scheme.py`): potrubie, tvarovky a rozvody,
- * pri ktorých nezáleží na inštancii. Od D-183 K3 majú v dátach podlažie zo súboru
- * (`rel_contained_in_spatial_structure` z kópie revízie); výnimka ostáva len v strome, ktorý ich
- * pod podlažím neukazuje (inak by ho zaplavili), dostupné sú cez systém alebo priamy odkaz.
+ * MEP "grouping" classes (D-049, the `group_only` list in `etl/scheme.py`): piping, fittings and distribution,
+ * where the instance does not matter. Since D-183 K3 they have a storey from the file in the data
+ * (`rel_contained_in_spatial_structure` from the revision copy); the exception remains only in the tree, which does not show them
+ * under the storey (otherwise they would flood it), they are reachable via the system or a direct link.
  */
 export const GROUP_ONLY_IFC_TYPES: ReadonlySet<string> = new Set([
   "IfcDuctSegment",
@@ -15,16 +15,16 @@ export const GROUP_ONLY_IFC_TYPES: ReadonlySet<string> = new Set([
   "IfcCableCarrierFitting",
 ]);
 
-/** Prvok sa v strome pod priestorovou štruktúrou neukazuje (len člen systému, D-049). */
+/** An element is not shown in the tree under the spatial structure (only a system member, D-049). */
 export function isGroupOnly(row: { object_type: string; ifc_type: string | null }): boolean {
   return row.object_type === "asset" && row.ifc_type !== null && GROUP_ONLY_IFC_TYPES.has(row.ifc_type);
 }
 
 /**
- * Hrany stromu `[dieťa, rodič]` z agregácie a umiestnenia. Od D-183 K3 nesie `rel_aggregates` aj zostavy zo
- * súboru (zábradlie v schodisku); prvok (`asset`) má v strome rodiča len z umiestnenia, časť zostavy sa preto
- * z agregácie neberie (inak by bola pod podlažím aj pod schodiskom). Hrana mimo grafu alebo so stranou bez
- * uzla AIM (null) vypadne.
+ * Tree edges `[child, parent]` from aggregation and placement. Since D-183 K3 `rel_aggregates` also carries assemblies from the
+ * file (a railing in the staircase); an element (`asset`) has a parent in the tree only from placement, so an assembly part is therefore
+ * not taken from aggregation (otherwise it would be both under the storey and under the staircase). An edge outside the graph or with a side without an
+ * AIM node (null) drops out.
  */
 export function treeEdges(
   aggregates: readonly { from_id: string | null; to_id: string | null }[],

@@ -1,19 +1,19 @@
 /**
- * `_georef` dokumentu (D-072, v2 D-133) - čisté typy, validácia a zlúčenie kalibrácií.
+ * `_georef` of a document (D-072, v2 D-133) - pure types, validation and merging of calibrations.
  *
- * v1 = jedna kalibrácia (strana PDF -> vodorovná rovina podlažia). v2 = zoznam kalibrácií
- * dokumentu, každá pre stranu a rovinu: bez `plane` presne v1 (podlažie `storey_guid`), so
- * `plane` zvislá alebo iná rovina v IFC svete (rez, D-132). `source` rozlišuje ručnú
- * kalibráciu z panela Underlays (`manual`) a automatickú (`auto`, `calibrate_underlay`);
- * automatická ručnú bez `force` neprepíše.
+ * v1 = one calibration (PDF page -> horizontal plane of the storey). v2 = a list of calibrations
+ * of the document, each for a page and a plane: without `plane` exactly v1 (storey `storey_guid`), with
+ * `plane` a vertical or other plane in the IFC world (section, D-132). `source` distinguishes a manual
+ * calibration from the Underlays panel (`manual`) and an automatic one (`auto`, `calibrate_underlay`);
+ * an automatic one does not overwrite a manual one without `force`.
  *
- * Bez `server-only`, aby bola logika testovateľná (vzor `capture-placement.ts`).
+ * Without `server-only`, so that the logic is testable (pattern `capture-placement.ts`).
  */
 
 export type Tuple2 = [number, number];
 export type Tuple3 = [number, number, number];
 
-/** Rovina podkladu v IFC svete (m): bod = origin + u·s + v·t; u × v = normála ku kamere. */
+/** Plane of the underlay in the IFC world (m): point = origin + u*s + v*t; u x v = normal towards the camera. */
 export interface GeorefPlane {
   origin: Tuple3;
   u: Tuple3;
@@ -28,7 +28,7 @@ export interface GeorefQuality {
   start_points: number;
 }
 
-/** Jedna kalibrácia: strana PDF (body, vľavo dole) -> metre roviny (u, v). */
+/** One calibration: PDF page (points, bottom left) -> meters of the plane (u, v). */
 export interface GeorefCalibration {
   page: number;
   page_size: Tuple2;
@@ -37,7 +37,7 @@ export interface GeorefCalibration {
   plane?: GeorefPlane | null;
   affine: [number, number, number, number, number, number];
   calibration: { pdf_pt: Tuple2; ifc_m: Tuple2 }[];
-  /** Výrez strany v % (x, y, w, h, vľavo hore), keď strana nesie viac výkresov. */
+  /** Page crop in % (x, y, w, h, top left) when the page carries several drawings. */
   region?: [number, number, number, number] | null;
   source: "manual" | "auto";
   quality?: GeorefQuality | null;
@@ -47,16 +47,16 @@ export interface GeorefCalibration {
   calibrated_at?: string | null;
 }
 
-/** Najviac toľko predošlých kalibrácií drží `_georef.history` (D-168). */
+/** `_georef.history` keeps at most this many previous calibrations (D-168). */
 export const MAX_GEOREF_HISTORY = 10;
 
-/** Kto prepísal kalibráciu: `mcp` = calibrate_underlay, `panel` = ručná úprava v paneli Underlays. */
+/** Who overwrote the calibration: `mcp` = calibrate_underlay, `panel` = manual edit in the Underlays panel. */
 export type GeorefHistoryBy = "mcp" | "panel";
 
-/** Predošlá kalibrácia strany pred prepisom polohy alebo kalibrácie (D-168); najnovšia prvá. */
+/** Previous calibration of a page before the placement or calibration was overwritten (D-168); newest first. */
 export interface GeorefHistoryEntry {
   page: number;
-  /** Celý záznam `calibrations[]` pred prepisom. */
+  /** The whole `calibrations[]` record before the overwrite. */
   calibration: GeorefCalibration;
   replaced_at: string;
   replaced_by: GeorefHistoryBy;
@@ -66,11 +66,11 @@ export interface GeorefHistoryEntry {
 export interface GeorefV2 {
   version: 2;
   calibrations: GeorefCalibration[];
-  /** Ohraničená história prepisov (D-168); chýba, kým sa nič neprepísalo. Do viewera sa neposiela. */
+  /** Bounded history of overwrites (D-168); absent until something was overwritten. Not sent to the viewer. */
   history?: GeorefHistoryEntry[];
 }
 
-/** v1 (D-072) - tvar, ktorý číta dnešný fork (`parsePlacement`). */
+/** v1 (D-072) - the shape read by today's fork (`parsePlacement`). */
 export interface GeorefV1 {
   version: 1;
   storey_guid: string;
@@ -96,11 +96,11 @@ function validPlane(p: unknown): p is GeorefPlane {
   const u = g.u as number[];
   const v = g.v as number[];
   const len = (a: number[]) => Math.hypot(a[0], a[1], a[2]);
-  // Jednotkové a kolmé (tolerancia na zaokrúhlenie JSON).
+  // Unit and perpendicular (tolerance for JSON rounding).
   return Math.abs(len(u) - 1) < 1e-6 && Math.abs(len(v) - 1) < 1e-6 && Math.abs(u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) < 1e-6;
 }
 
-/** Validácia jednej kalibrácie v2 (untrusted vstup route aj toolu). */
+/** Validation of one v2 calibration (untrusted input of both the route and the tool). */
 export function isValidCalibration(raw: unknown): raw is GeorefCalibration {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
   const g = raw as Record<string, unknown>;
@@ -109,7 +109,7 @@ export function isValidCalibration(raw: unknown): raw is GeorefCalibration {
   if (!tuple(g.affine, 6)) return false;
   const a = g.affine as number[];
   if (!(Math.abs(a[0] * a[4] - a[1] * a[3]) > 0)) return false;
-  // Aspoň 1 bod: jednobodová kalibrácia panela (#317) nesie mierku a natočenie v affine.
+  // At least 1 point: the panel's single-point calibration (#317) carries scale and rotation in the affine.
   if (!Array.isArray(g.calibration) || g.calibration.length < 1) return false;
   for (const c of g.calibration as { pdf_pt?: unknown; ifc_m?: unknown }[]) {
     if (!c || typeof c !== "object" || !tuple(c.pdf_pt, 2) || !tuple(c.ifc_m, 2)) return false;
@@ -117,7 +117,7 @@ export function isValidCalibration(raw: unknown): raw is GeorefCalibration {
   if (g.source !== "manual" && g.source !== "auto") return false;
   const hasPlane = g.plane !== undefined && g.plane !== null;
   if (hasPlane && !validPlane(g.plane)) return false;
-  // Bez roviny je to pôdorys podlažia: storey_guid a storey_z sú povinné (ako v1).
+  // Without a plane it is a storey floor plan: storey_guid and storey_z are required (as in v1).
   if (!hasPlane && (typeof g.storey_guid !== "string" || !g.storey_guid || !num(g.storey_z))) return false;
   if (!optStr(g.storey_guid) || (g.storey_z !== undefined && g.storey_z !== null && !num(g.storey_z))) return false;
   if (g.region !== undefined && g.region !== null && !tuple(g.region, 4)) return false;
@@ -133,7 +133,7 @@ export function isValidGeorefV2(raw: unknown): raw is GeorefV2 {
   return g.version === 2 && Array.isArray(g.calibrations) && g.calibrations.length <= 50 && g.calibrations.every(isValidCalibration);
 }
 
-/** v1 -> položka v2 (pôdorys bez roviny). */
+/** v1 -> v2 item (floor plan without a plane). */
 export function calibrationFromV1(v1: GeorefV1, source: "manual" | "auto" = "manual"): GeorefCalibration {
   return {
     page: v1.page,
@@ -165,13 +165,13 @@ function isHistoryEntry(raw: unknown): raw is GeorefHistoryEntry {
   );
 }
 
-/** História z uloženého `_georef`: neplatné záznamy vypadnú, najviac `MAX_GEOREF_HISTORY`. */
+/** History from the stored `_georef`: invalid records drop out, at most `MAX_GEOREF_HISTORY`. */
 export function historyOf(stored: unknown): GeorefHistoryEntry[] {
   const raw = stored && typeof stored === "object" ? (stored as { history?: unknown }).history : undefined;
   return Array.isArray(raw) ? raw.filter(isHistoryEntry).slice(0, MAX_GEOREF_HISTORY) : [];
 }
 
-/** Uložený `_georef` (v1 alebo v2, aj neplatný) -> v2; neplatné položky vypadnú, história ostane. */
+/** Stored `_georef` (v1 or v2, even invalid) -> v2; invalid items drop out, the history stays. */
 export function toGeorefV2(raw: unknown): GeorefV2 {
   const base = calibrationsOf(raw);
   const history = historyOf(raw);
@@ -191,7 +191,7 @@ function calibrationsOf(raw: unknown): GeorefV2 {
   return { version: 2, calibrations: [] };
 }
 
-/** Rovnaké miesto = tá istá strana a rovina (pôdorys: podlažie; rez: rovina do 1 cm a 0,1°). */
+/** Same place = the same page and plane (floor plan: storey; section: plane within 1 cm and 0.1 degrees). */
 export function sameSlot(a: GeorefCalibration, b: GeorefCalibration): boolean {
   if (a.page !== b.page) return false;
   if (JSON.stringify(a.region ?? null) !== JSON.stringify(b.region ?? null)) return false;
@@ -209,8 +209,8 @@ export function sameSlot(a: GeorefCalibration, b: GeorefCalibration): boolean {
 }
 
 /**
- * Vzdialenosť roviny kalibrácie od zvislej roviny `axis` = `coordinate` (x: X = c, y: Y = c) v metroch; `null`, keď
- * orientácia nesedí (normála roviny sa od osi líši o viac ako 1°) alebo kalibrácia nie je rez.
+ * Distance of the calibration plane from the vertical plane `axis` = `coordinate` (x: X = c, y: Y = c) in meters; `null` when the
+ * orientation does not match (the plane normal differs from the axis by more than 1 degree) or the calibration is not a section.
  */
 export function planeAxisDistance(plane: GeorefPlane | null | undefined, axis: "x" | "y", coordinate: number): number | null {
   if (!plane) return null;
@@ -224,12 +224,12 @@ export function planeAxisDistance(plane: GeorefPlane | null | undefined, axis: "
 }
 
 export type MergeResult =
-  | { ok: true; georef: GeorefV2; replaced: GeorefCalibration | null; /** Predošlá kalibrácia išla do `history`. */ history_added: boolean }
+  | { ok: true; georef: GeorefV2; replaced: GeorefCalibration | null; /** The previous calibration went to `history`. */ history_added: boolean }
   | { ok: false; reason: "manual_exists"; existing: GeorefCalibration };
 
 const sameNumbers = (a: readonly number[], b: readonly number[]) => a.length === b.length && a.every((x, i) => Math.abs(x - b[i]) < 1e-9);
 
-/** Kto a prečo prepisuje kalibráciu; s ním sa predošlá kalibrácia zapíše do `history` (D-168). */
+/** Who overwrites the calibration and why; with it the previous calibration is written to `history` (D-168). */
 export interface HistoryMeta {
   by: GeorefHistoryBy;
   reason: string;
@@ -237,8 +237,8 @@ export interface HistoryMeta {
 }
 
 /**
- * Rovnaká poloha a kalibrácia (mierka, natočenie, posun, body, rovina, výrez)? Zmena len `visible`, `opacity`,
- * `quality`, `discipline` alebo `calibrated_at` nie je prepis polohy a do histórie nejde (D-168).
+ * Same placement and calibration (scale, rotation, offset, points, plane, crop)? A change of only `visible`, `opacity`,
+ * `quality`, `discipline` or `calibrated_at` is not an overwrite of the placement and does not go to the history (D-168).
  */
 export function samePlacement(a: GeorefCalibration, b: GeorefCalibration): boolean {
   const planeSame = !a.plane || !b.plane ? !a.plane && !b.plane : sameNumbers([...a.plane.origin, ...a.plane.u, ...a.plane.v], [...b.plane.origin, ...b.plane.u, ...b.plane.v]);
@@ -254,21 +254,21 @@ export function samePlacement(a: GeorefCalibration, b: GeorefCalibration): boole
   );
 }
 
-/** Pridá záznam na začiatok histórie (najnovší prvý), najviac `MAX_GEOREF_HISTORY`. */
+/** Adds a record to the start of the history (newest first), at most `MAX_GEOREF_HISTORY`. */
 function pushHistory(history: GeorefHistoryEntry[], previous: GeorefCalibration, meta: HistoryMeta): GeorefHistoryEntry[] {
   const entry: GeorefHistoryEntry = { page: previous.page, calibration: previous, replaced_at: meta.at, replaced_by: meta.by, reason: meta.reason.slice(0, MAX_REASON) };
   return [entry, ...history].slice(0, MAX_GEOREF_HISTORY);
 }
 
 /**
- * Zapíše kalibráciu do `_georef` (v1 alebo v2 na vstupe): nahradí položku na tom istom
- * mieste. Automatická neprepíše ručnú bez `force` (ručné dorovnanie je posledné slovo).
- * S `meta` sa prepísaná kalibrácia s inou polohou zapíše do `history` (D-168).
+ * Writes a calibration into `_georef` (v1 or v2 on input): replaces the item at the same
+ * place. An automatic one does not overwrite a manual one without `force` (a manual adjustment has the last word).
+ * With `meta` an overwritten calibration with a different placement is written to `history` (D-168).
  */
 export function mergeCalibration(stored: unknown, next: GeorefCalibration, force = false, meta?: HistoryMeta): MergeResult {
   const cur = toGeorefV2(stored);
   let i = cur.calibrations.findIndex((c) => sameSlot(c, next));
-  // Rez bez výrezu má na strane jednu kalibráciu: iná rovina (opravená značka rezu) nahradí starú, tá ide do histórie.
+  // A section without a crop has one calibration on a page: another plane (a corrected section mark) replaces the old one, which goes to the history.
   if (i < 0 && next.plane && !next.region) i = cur.calibrations.findIndex((c) => c.page === next.page && !!c.plane && !c.region);
   const existing = i >= 0 ? cur.calibrations[i] : null;
   if (existing && existing.source === "manual" && next.source === "auto" && !force) {
@@ -287,9 +287,9 @@ export type RestoreResult =
   | { ok: false; reason: "no_history" };
 
 /**
- * Vráti záznam histórie `index` (0 = najnovší z histórie strany `page`) do `calibrations`. Aktuálna kalibrácia toho
- * miesta ide do histórie (obnova sa dá vrátiť), obnovený záznam z nej odíde. Ručnú kalibráciu prepíše: je to výslovná
- * voľba, nie výpočet.
+ * Returns the history record `index` (0 = newest of the history of page `page`) to `calibrations`. The current calibration of that
+ * place goes to the history (a restore can be undone), the restored record leaves it. It overwrites a manual calibration: it is an explicit
+ * choice, not a computation.
  */
 export function restoreCalibration(stored: unknown, page: number, index: number, meta: HistoryMeta): RestoreResult {
   const cur = toGeorefV2(stored);
@@ -314,9 +314,9 @@ export type RemoveResult =
   | { ok: false; reason: "manual_exists"; existing: GeorefCalibration };
 
 /**
- * Zmaže kalibráciu na mieste `target` (D-176, #284). Ručná kalibrácia z panela sa zmaže len s `force`. Zmazaná
- * kalibrácia ide na začiatok `history` (najnovší prvý), takže `restoreCalibration` ju vráti; história drží najviac
- * `MAX_GEOREF_HISTORY` záznamov, najstarší vypadne. Ostatné kalibrácie dokumentu ostávajú.
+ * Deletes the calibration at place `target` (D-176, #284). A manual calibration from the panel is deleted only with `force`. The deleted
+ * calibration goes to the start of `history` (newest first), so `restoreCalibration` brings it back; the history holds at most
+ * `MAX_GEOREF_HISTORY` records, the oldest drops out. The other calibrations of the document stay.
  */
 export function removeCalibration(stored: unknown, target: GeorefCalibration, force: boolean, meta: HistoryMeta): RemoveResult {
   const cur = toGeorefV2(stored);
@@ -330,17 +330,17 @@ export function removeCalibration(stored: unknown, target: GeorefCalibration, fo
 }
 
 /**
- * Uloženie viditeľnosti a priehľadnosti z viewera (D-168, `SET_UNDERLAYS_3D` s `persist`): viewer pošle v1 s nezmeneným
- * `affine` a `calibration`. Ak sedí na existujúcu kalibráciu tej istej strany a podlažia, zmenia sa len `visible` a
- * `opacity`; `source`, `quality`, `calibrated_at` a ostatné polia ostanú (auto ostane auto). Null = poloha sa líši alebo
- * kalibrácia neexistuje, ide bežná cesta (ručná kalibrácia z panela).
+ * Saving visibility and opacity from the viewer (D-168, `SET_UNDERLAYS_3D` with `persist`): the viewer sends v1 with an unchanged
+ * `affine` and `calibration`. If it matches an existing calibration of the same page and storey, only `visible` and
+ * `opacity` change; `source`, `quality`, `calibrated_at` and the other fields stay (auto stays auto). Null = the placement differs or the
+ * calibration does not exist, the normal path applies (manual calibration from the panel).
  */
 export function visibilityOnlyUpdate(stored: unknown, v1: GeorefV1): GeorefCalibration | null {
   const probe = calibrationFromV1(v1);
   const existing = toGeorefV2(stored).calibrations.find((c) => sameSlot(c, probe));
   if (!existing) return null;
   if (!sameNumbers(existing.affine, v1.affine) || !sameNumbers(existing.page_size, v1.page_size)) return null;
-  // v1 nesie najviac 2 body (primaryV1 ich skracuje), auto kalibrácia ich môže mať viac: porovná sa začiatok.
+  // v1 carries at most 2 points (primaryV1 shortens them), an auto calibration may have more: the beginning is compared.
   if (existing.calibration.length < v1.calibration.length) return null;
   if (!v1.calibration.every((c, i) => sameNumbers(c.pdf_pt, existing.calibration[i].pdf_pt) && sameNumbers(c.ifc_m, existing.calibration[i].ifc_m))) return null;
   return {
@@ -351,8 +351,8 @@ export function visibilityOnlyUpdate(stored: unknown, v1: GeorefV1): GeorefCalib
 }
 
 /**
- * Pre dnešný fork (`parsePlacement` číta len v1): prvá kalibrácia bez roviny ako v1.
- * Ručná má prednosť pred automatickou na tej istej strane. Null, keď pôdorysná nie je.
+ * For today's fork (`parsePlacement` reads only v1): the first calibration without a plane as v1.
+ * A manual one takes precedence over an automatic one on the same page. Null when there is no floor plan one.
  */
 export function primaryV1(g: GeorefV2): GeorefV1 | null {
   const plans = g.calibrations.filter((c) => !c.plane && c.storey_guid && typeof c.storey_z === "number");
@@ -365,7 +365,7 @@ export function primaryV1(g: GeorefV2): GeorefV1 | null {
     page: pick.page,
     page_size: pick.page_size,
     affine: pick.affine,
-    // v1 server aj panel berú 1 alebo 2 body.
+    // The server and the panel accept 1 or 2 points for v1.
     calibration: pick.calibration.slice(0, 2),
     ...(pick.opacity !== undefined ? { opacity: pick.opacity } : {}),
     ...(pick.visible !== undefined ? { visible: pick.visible } : {}),
@@ -375,8 +375,8 @@ export function primaryV1(g: GeorefV2): GeorefV1 | null {
 }
 
 /**
- * `georefV2` pre viewer (UNDERLAYS_LOAD aj DOCUMENTS_LOAD, D-179): všetky platné kalibrácie dokumentu, bez histórie
- * (D-168). Null, keď dokument kalibráciu nemá.
+ * `georefV2` for the viewer (UNDERLAYS_LOAD and DOCUMENTS_LOAD, D-179): all valid calibrations of the document, without the history
+ * (D-168). Null when the document has no calibration.
  */
 export function georefV2Wire(stored: unknown): GeorefV2 | null {
   if (stored === undefined || stored === null) return null;
@@ -384,7 +384,7 @@ export function georefV2Wire(stored: unknown): GeorefV2 | null {
   return v2.calibrations.length > 0 ? { version: 2, calibrations: v2.calibrations } : null;
 }
 
-/** Polia kalibrácie, ktoré smie viewer pri uložení položky v2 zmeniť; `mark`, `quality` a iné neznáme ostanú. */
+/** Calibration fields the viewer may change when saving a v2 item; `mark`, `quality` and other unknown ones stay. */
 const EDITABLE_FIELDS = ["page_size", "plane", "affine", "calibration", "region", "storey_guid", "storey_z", "discipline", "opacity", "visible"] as const;
 
 export type EditResult =
@@ -392,10 +392,10 @@ export type EditResult =
   | { ok: false; reason: "not_found" };
 
 /**
- * Uloženie položky v2 z viewera (D-179, `UNDERLAY_SAVE` rezu): nájde kalibráciu strany podľa strany a roviny
- * (`sameSlot`), inak podľa `index`, ak sedí strana a obe sú rezy (viewer zmenil rovinu). Neznáme polia (`mark`,
- * `quality`) ostanú. Zmena polohy (`samePlacement`) zapíše `source: manual`, `calibrated_at` a predošlú kalibráciu do
- * histórie (D-168); zmena len `visible`/`opacity` nechá `source` aj `calibrated_at` pôvodné.
+ * Saving a v2 item from the viewer (D-179, `UNDERLAY_SAVE` of a section): finds the calibration of the page by page and plane
+ * (`sameSlot`), otherwise by `index` if the page matches and both are sections (the viewer changed the plane). Unknown fields (`mark`,
+ * `quality`) stay. A change of placement (`samePlacement`) writes `source: manual`, `calibrated_at` and the previous calibration to the
+ * history (D-168); a change of only `visible`/`opacity` leaves `source` and `calibrated_at` as they were.
  */
 export function editCalibration(stored: unknown, incoming: GeorefCalibration, index: number | undefined, meta: HistoryMeta): EditResult {
   const cur = toGeorefV2(stored);
