@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getIfcModels } from "../data/ifc-models";
+import { requestIfcModels } from "../project/request-models";
 import { installArchiveSource } from "../engine/archive-source";
 import { ifcBox, meshModel } from "../engine/measure";
 import { modelsFor, type EngineDeps } from "../engine/tools";
@@ -24,7 +24,7 @@ export interface RegionModel {
 }
 
 export async function loadRegionModel(): Promise<RegionModel> {
-  const ids = getIfcModels().map((m) => m.id);
+  const ids = requestIfcModels().map((m) => m.id);
   const { models } = await modelsFor(ids, {} as EngineDeps);
   const elements: RegionElement[] = [];
   const levels = new Set<number>();

@@ -64,6 +64,14 @@ describe("objavenie a prihlásenie (ako BCFServerConnectForm)", () => {
     expect((await call(broken, "POST", `${P}/topics`, { title: "u" })).status).toBe(201);
   });
 
+  it("D-189: the BCF project is the AIM project code; legacy 'aim' is accepted, another code 404", async () => {
+    const c = ctx({ project: { code: "OCB", name: "OCB" } });
+    expect((await call(c, "GET", "2.1/projects")).body).toEqual([expect.objectContaining({ project_id: "OCB" })]);
+    expect((await call(c, "GET", "2.1/projects/OCB")).status).toBe(200);
+    expect((await call(c, "GET", "2.1/projects/aim")).status).toBe(200);
+    expect((await call(c, "GET", "2.1/projects/XYZ")).status).toBe(404);
+  });
+
   it("current-user, projekt a slovník projektu", async () => {
     const c = ctx({ deps: deps({ store: memoryStore([{ priority: "vysoká", assigned_to: "Projektant VZT" }]).store }) });
     expect((await call(c, "GET", "2.1/current-user")).body).toEqual({ id: "samuel", name: "samuel" });

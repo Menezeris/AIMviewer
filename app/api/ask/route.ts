@@ -15,6 +15,8 @@ import {
 } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/llm/system-prompt";
 import { AskToolRuntime, TOOL_DEFINITIONS } from "@/lib/llm/tools";
+import { currentProjectId } from "@/lib/live/caller";
+import { withRequestProject } from "@/lib/project/request";
 
 /**
  * LLM rozhranie nad grafom (D-056, F6): agentická tool-calling slučka nad
@@ -50,7 +52,7 @@ interface AskRequestBody {
   messages?: { role?: string; content?: string }[];
 }
 
-export async function POST(req: Request) {
+async function postHandler(req: Request) {
   // Cudzia stránka strieľajúca na API z prehliadača používateľa (CSRF-ová
   // vrstva; požiadavky bez Origin — curl/eval — prechádzajú na limiter).
   if (isCrossOriginBlocked(req.headers.get("origin"), req.headers.get("host"))) {
@@ -106,7 +108,7 @@ export async function POST(req: Request) {
     throw err;
   }
 
-  const runtime = new AskToolRuntime();
+  const runtime = new AskToolRuntime(currentProjectId());
   const messages: LlmMessage[] = [...history];
 
   try {
@@ -174,3 +176,5 @@ export async function POST(req: Request) {
     );
   }
 }
+
+export const POST = withRequestProject(postHandler);

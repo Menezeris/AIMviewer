@@ -1,9 +1,7 @@
 import "server-only";
 
-import { unstable_cache } from "next/cache";
-
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { AIM_CACHE } from "@/lib/data/constants";
+import { cachedProjectRead } from "@/lib/data/revalidate";
 
 /**
  * Navigačné zoznamy ne-priestorových uzlov pre sidebar (typy assetov, osoby,
@@ -28,11 +26,14 @@ export interface SidebarNavData {
 
 const NAV_TYPES = ["asset_type", "system", "person", "organization", "document"] as const;
 
-export const fetchSidebarNav = unstable_cache(async (): Promise<SidebarNavData> => {
+export const fetchSidebarNav = cachedProjectRead("sidebar-nav", async (projectId: string): Promise<SidebarNavData> => {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("objects")
     .select("id, object_type, object_ref, name")
+    .eq("project_id", projectId)
+    // D-189: nodes of the project; persons and organizations are global (project_id NULL, A1).
+    .or(`project_id.eq.${projectId},project_id.is.null`)
     .in("object_type", NAV_TYPES as unknown as string[])
     .is("valid_until", null); // zaniknuté objekty (D-088)
   if (error) throw new Error(error.message);
@@ -71,4 +72,4 @@ export const fetchSidebarNav = unstable_cache(async (): Promise<SidebarNavData> 
   groups.documents.sort(byLabel);
 
   return groups;
-}, ["sidebar-nav"], AIM_CACHE);
+});

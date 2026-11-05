@@ -3,11 +3,12 @@ import { NextResponse } from "next/server";
 import { nova } from "@/lib/kniznica/editor-api";
 import { brana, chybaServera, info, kodKniznice, neznamaKniznica, odpoved, sklad, vstup } from "@/lib/kniznica/editor-server";
 import { ZapisMigraciaChyba } from "@/lib/kniznica/sklad-db";
+import { withRequestProject } from "@/lib/project/request";
 
 /** `POST nova` stránky editora (`assetin/server`) nad skladom v DB, za bránou `LIBRARY_WRITE_ENABLED` (D-186). */
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request, ctx: { params: Promise<{ kniznica: string }> }) {
+async function postHandler(req: Request, ctx: { params: Promise<{ kniznica: string }> }) {
   const k = kodKniznice((await ctx.params).kniznica);
   if (!k) return neznamaKniznica();
   const b = await vstup(req);
@@ -19,3 +20,5 @@ export async function POST(req: Request, ctx: { params: Promise<{ kniznica: stri
     return chybaServera(err);
   }
 }
+
+export const POST = withRequestProject(postHandler);

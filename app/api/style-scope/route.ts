@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { MAX_ZONE_GUIDS } from "@/lib/viewer-lens";
 import { StyleInputError } from "@/lib/llm/style-plan";
 import { ScopeResolver } from "@/lib/llm/style-scope";
+import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Symbolické množiny pre AIM chat lens a zoznam (D-096), GUIDy necestujú v URL akcie:
@@ -20,7 +21,7 @@ import { ScopeResolver } from "@/lib/llm/style-scope";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CACHE = { "Cache-Control": "public, max-age=60, s-maxage=60, stale-while-revalidate=300" };
 
-export async function GET(req: Request) {
+async function getHandler(req: Request) {
   const params = new URL(req.url).searchParams;
   const zone = params.get("zone");
   const document = params.get("document");
@@ -61,3 +62,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "server error" }, { status: 500 });
   }
 }
+
+export const GET = withRequestProject(getHandler);

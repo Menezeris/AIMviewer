@@ -42,6 +42,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { currentPageProject } from "@/lib/project/page";
 
 // ISR — render uzla sa cachuje a po 60 s revaliduje (viewer je verejný read-only).
 export const revalidate = 60;
@@ -183,7 +184,8 @@ function NodeSectionsCards({
 
 /** Async wrapper — načíta sekcie sám (priestorové uzly, kde nie je čo paralelizovať). */
 async function NodeSections({ id, ifcGuid }: { id: string; ifcGuid: string | null }) {
-  const data = await fetchNodeSections(id);
+  const projectId = (await currentPageProject()).id;
+  const data = await fetchNodeSections(projectId, id);
   return <NodeSectionsCards data={data} ifcGuid={ifcGuid} nodeId={id} />;
 }
 
@@ -193,7 +195,8 @@ async function NodeSections({ id, ifcGuid }: { id: string; ifcGuid: string | nul
  * výkres uzla nemá detegované prvky.
  */
 async function FloorDrawingsSection({ id }: { id: string }) {
-  const drawings = await fetchFloorDrawingsCached(id);
+  const projectId = (await currentPageProject()).id;
+  const drawings = await fetchFloorDrawingsCached(projectId, id);
   if (drawings.length === 0) return null;
   return (
     <Card className="mb-6">
@@ -222,11 +225,12 @@ async function CapturesSection({
   spaceId: string;
   spaceName: string | null;
 }) {
+  const projectId = (await currentPageProject()).id;
   const canUpload = process.env.CAPTURE_WRITE_ENABLED === "true";
   const [captures, planDocumentId] = await Promise.all([
-    fetchCapturesForSpace(spaceId),
+    fetchCapturesForSpace(projectId, spaceId),
     // Pôdorys podlažia (cieľ „umiestniť na pláne") načítaj len keď je upload povolený.
-    canUpload ? fetchPlanDocumentForSpace(spaceId) : Promise.resolve(null),
+    canUpload ? fetchPlanDocumentForSpace(projectId, spaceId) : Promise.resolve(null),
   ]);
   if (captures.length === 0 && !canUpload) return null;
   return (
@@ -255,7 +259,8 @@ async function CapturesSection({
  * Skryje sa, ak prvok nie je v žiadnom systéme (napr. stavebné prvky ARCH).
  */
 async function SystemMembershipSection({ id }: { id: string }) {
-  const systems = await fetchSystemMembership(id);
+  const projectId = (await currentPageProject()).id;
+  const systems = await fetchSystemMembership(projectId, id);
   if (systems.length === 0) return null;
   return (
     <Card className="mb-6">
@@ -291,7 +296,8 @@ async function SystemMembershipSection({ id }: { id: string }) {
 /** Jadro detailu assetu (S2): atribúty, properties, klasifikácie. S3 sekcie
  *  streamujú súbežne vo vlastných Suspense hraniciach (viď SpatialView). */
 async function AssetDetailView({ id }: { id: string }) {
-  const asset = await fetchAsset(id);
+  const projectId = (await currentPageProject()).id;
+  const asset = await fetchAsset(projectId, id);
   if (!asset) notFound();
 
   const predef = asset.predefinedType.value && (
@@ -459,7 +465,8 @@ function SpatialView({ detail }: { detail: NodeDetail }) {
 
 /** Detail osoby (S3): kontakt, členstvá vo firmách, za čo zodpovedá. */
 async function PersonView({ id }: { id: string }) {
-  const person = await fetchPerson(id);
+  const projectId = (await currentPageProject()).id;
+  const person = await fetchPerson(projectId, id);
   if (!person) notFound();
 
   const fullName =
@@ -555,7 +562,8 @@ async function PersonView({ id }: { id: string }) {
 
 /** Detail organizácie (S3): zachytený kontakt, členovia, za čo zodpovedá. */
 async function OrganizationView({ id }: { id: string }) {
-  const org = await fetchOrganization(id);
+  const projectId = (await currentPageProject()).id;
+  const org = await fetchOrganization(projectId, id);
   if (!org) notFound();
 
   const contactEntries = org.contact
@@ -660,7 +668,8 @@ const GROUP_VIEW_TEXT: Record<
  * previazanosť „systém → prvky" (headline graf pre S-LLM).
  */
 async function SystemView({ id }: { id: string }) {
-  const system = await fetchSystem(id);
+  const projectId = (await currentPageProject()).id;
+  const system = await fetchSystem(projectId, id);
   if (!system) notFound();
   const text = GROUP_VIEW_TEXT[system.objectType];
 
@@ -751,12 +760,13 @@ export default async function NodePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const projectId = (await currentPageProject()).id;
   const { id } = await params;
 
   // Spatial detail aj meta pre dispatch naraz — pre ne-priestorové uzly (osoba,
   // organizácia, systém, dokument) to odstráni sekvenčný druhý krok; priestorové
   // uzly stojí navyše len jeden lacný cachovaný single-row dotaz.
-  const [spatial, meta] = await Promise.all([fetchNode(id), fetchObjectMeta(id)]);
+  const [spatial, meta] = await Promise.all([fetchNode(projectId, id), fetchObjectMeta(projectId, id)]);
 
   // Spatial uzly (site…asset) — bežná cesta, breadcrumb + strom.
   if (spatial) return <SpatialView detail={spatial} />;

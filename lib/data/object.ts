@@ -1,11 +1,12 @@
 import "server-only";
 
-import { unstable_cache } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { GROUP_LIKE_TYPES, type GroupLikeType, type ObjectType } from "@/lib/object-type";
-import { AIM_CACHE, PDF_LINK_SOURCE } from "@/lib/data/constants";
+import { PDF_LINK_SOURCE } from "@/lib/data/constants";
+import { cachedProjectRead } from "@/lib/data/revalidate";
+import { projectOrGlobal } from "@/lib/project/scope";
 
 /**
  * Data-access pre generický object route (S3, D-029): ľahká meta pre dispatch
@@ -130,7 +131,7 @@ export interface NodeSummary {
   };
 }
 
-async function fetchNodeSummaryImpl(id: string): Promise<NodeSummary | null> {
+async function fetchNodeSummaryImpl(projectId: string, id: string): Promise<NodeSummary | null> {
   const supabase = getSupabaseAdmin();
 
   const { data, error } = await supabase
@@ -138,6 +139,7 @@ async function fetchNodeSummaryImpl(id: string): Promise<NodeSummary | null> {
     .select(
       "id, object_type, object_ref, name, ifc_type, predefined_type, user_defined_type"
     )
+    .or(projectOrGlobal(projectId))
     .eq("id", id)
     .limit(1);
   if (error) throw new Error(error.message);
@@ -155,6 +157,7 @@ async function fetchNodeSummaryImpl(id: string): Promise<NodeSummary | null> {
       ? supabase
           .from("rel_defines_by_type")
           .select("to_id")
+          .eq("project_id", projectId)
           .eq("from_id", id)
           .is("valid_until", null)
           .not("to_id", "is", null)
@@ -167,6 +170,7 @@ async function fetchNodeSummaryImpl(id: string): Promise<NodeSummary | null> {
     supabase
       .from("rel_associates_classification")
       .select("id", { count: "exact", head: true })
+      .eq("project_id", projectId)
       .eq("from_id", id)
       .is("valid_until", null)
       .not("to_id", "is", null)
@@ -177,6 +181,7 @@ async function fetchNodeSummaryImpl(id: string): Promise<NodeSummary | null> {
     supabase
       .from("rel_associates_document")
       .select("to_id, role, source")
+      .eq("project_id", projectId)
       .eq("from_id", id)
       .is("valid_until", null)
       .not("to_id", "is", null)
@@ -188,6 +193,7 @@ async function fetchNodeSummaryImpl(id: string): Promise<NodeSummary | null> {
       ? supabase
           .from("rel_defines_by_type")
           .select("id", { count: "exact", head: true })
+          .eq("project_id", projectId)
           .eq("to_id", id)
           .is("valid_until", null)
           .not("from_id", "is", null) // výskyty s uzlom AIM (D-183 K3)
@@ -213,7 +219,7 @@ async function fetchNodeSummaryImpl(id: string): Promise<NodeSummary | null> {
   }
 
   const linkIds = [...new Set([...(typeId ? [typeId] : []), ...docOrder])];
-  const links = await loadObjectLinks(supabase, linkIds);
+  const links = await loadObjectLinks(supabase, projectId, linkIds);
   const type: ObjectLink | null = typeId ? (links.get(typeId) ?? null) : null;
 
   const documents: SummaryDocument[] = docOrder.map((did) => {
@@ -250,11 +256,12 @@ async function fetchNodeSummaryImpl(id: string): Promise<NodeSummary | null> {
 }
 
 /** Ľahká identita objektu pre dispatch v route. `null`, ak neexistuje. */
-async function fetchObjectMetaImpl(id: string): Promise<ObjectMeta | null> {
+async function fetchObjectMetaImpl(projectId: string, id: string): Promise<ObjectMeta | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("objects")
     .select("id, object_type, object_ref, name")
+    .or(projectOrGlobal(projectId))
     .eq("id", id)
     .limit(1);
   if (error) throw new Error(error.message);
@@ -271,6 +278,7 @@ async function fetchObjectMetaImpl(id: string): Promise<ObjectMeta | null> {
 /** Načíta `objects` riadky ako odkazy (pre prelinkovanie). */
 async function loadObjectLinks(
   supabase: SupabaseClient,
+  projectId: string,
   ids: string[]
 ): Promise<Map<string, ObjectLink>> {
   const out = new Map<string, ObjectLink>();
@@ -278,6 +286,7 @@ async function loadObjectLinks(
   const { data, error } = await supabase
     .from("objects")
     .select("id, object_type, object_ref, name")
+    .or(projectOrGlobal(projectId))
     .in("id", ids);
   if (error) throw new Error(error.message);
   for (const o of data ?? []) {
@@ -294,11 +303,13 @@ async function loadObjectLinks(
 /** Za čo aktor (person|organization) zodpovedá — reverz `rel_assigns_to_actor`. */
 async function loadResponsibilitiesOf(
   supabase: SupabaseClient,
+  projectId: string,
   actorId: string
 ): Promise<ResponsibilityOf[]> {
   const { data, error } = await supabase
     .from("rel_assigns_to_actor")
     .select("to_id, role, valid_from, valid_until")
+    .eq("project_id", projectId)
     .eq("from_id", actorId)
     .is("valid_until", null);
   if (error) throw new Error(error.message);
@@ -308,8 +319,7 @@ async function loadResponsibilitiesOf(
     valid_from: string | null;
     valid_until: string | null;
   }[];
-  const links = await loadObjectLinks(
-    supabase,
+  const links = await loadObjectLinks(supabase, projectId,
     rows.map((r) => r.to_id)
   );
   return rows
@@ -325,7 +335,7 @@ async function loadResponsibilitiesOf(
 }
 
 /** Detail osoby: kontakt, členstvá vo firmách, za čo zodpovedá. */
-async function fetchPersonImpl(id: string): Promise<PersonDetail | null> {
+async function fetchPersonImpl(projectId: string, id: string): Promise<PersonDetail | null> {
   const supabase = getSupabaseAdmin();
 
   // Nezávislé dotazy naraz; orgLinks závisí od členstiev → až potom.
@@ -333,6 +343,7 @@ async function fetchPersonImpl(id: string): Promise<PersonDetail | null> {
     supabase
       .from("objects")
       .select("id, object_ref, name")
+      .or(projectOrGlobal(projectId))
       .eq("id", id)
       .eq("object_type", "person")
       .limit(1),
@@ -346,7 +357,7 @@ async function fetchPersonImpl(id: string): Promise<PersonDetail | null> {
       .select("to_id, role, valid_from, valid_until")
       .eq("from_id", id)
       .is("valid_until", null),
-    loadResponsibilitiesOf(supabase, id),
+    loadResponsibilitiesOf(supabase, projectId, id),
   ]);
 
   if (objRes.error) throw new Error(objRes.error.message);
@@ -363,8 +374,7 @@ async function fetchPersonImpl(id: string): Promise<PersonDetail | null> {
     valid_from: string | null;
     valid_until: string | null;
   }[];
-  const orgLinks = await loadObjectLinks(
-    supabase,
+  const orgLinks = await loadObjectLinks(supabase, projectId,
     memberRows.map((m) => m.to_id)
   );
   const memberships: Membership[] = memberRows.map((m) => {
@@ -394,6 +404,7 @@ async function fetchPersonImpl(id: string): Promise<PersonDetail | null> {
 
 /** Detail organizácie: zachytený kontakt, členovia, za čo zodpovedá. */
 async function fetchOrganizationImpl(
+  projectId: string,
   id: string
 ): Promise<OrganizationDetail | null> {
   const supabase = getSupabaseAdmin();
@@ -403,6 +414,7 @@ async function fetchOrganizationImpl(
     supabase
       .from("objects")
       .select("id, object_ref, name, properties")
+      .or(projectOrGlobal(projectId))
       .eq("id", id)
       .eq("object_type", "organization")
       .limit(1),
@@ -411,7 +423,7 @@ async function fetchOrganizationImpl(
       .select("from_id, role")
       .eq("to_id", id)
       .is("valid_until", null),
-    loadResponsibilitiesOf(supabase, id),
+    loadResponsibilitiesOf(supabase, projectId, id),
   ]);
 
   if (objRes.error) throw new Error(objRes.error.message);
@@ -427,8 +439,7 @@ async function fetchOrganizationImpl(
 
   if (memRes.error) throw new Error(memRes.error.message);
   const memberRows = (memRes.data ?? []) as { from_id: string; role: string | null }[];
-  const personLinks = await loadObjectLinks(
-    supabase,
+  const personLinks = await loadObjectLinks(supabase, projectId,
     memberRows.map((m) => m.from_id)
   );
   const members: OrgMember[] = memberRows
@@ -454,7 +465,7 @@ async function fetchOrganizationImpl(
 }
 
 /** Detail dokumentu: IfcDocumentInformation polia + „pripojené k" (reverz). */
-async function fetchDocumentImpl(id: string): Promise<DocumentDetail | null> {
+async function fetchDocumentImpl(projectId: string, id: string): Promise<DocumentDetail | null> {
   const supabase = getSupabaseAdmin();
 
   // Objekt, metadáta dokumentu a väzby „pripojené k" naraz.
@@ -462,6 +473,7 @@ async function fetchDocumentImpl(id: string): Promise<DocumentDetail | null> {
     supabase
       .from("objects")
       .select("id, object_ref, name")
+      .eq("project_id", projectId)
       .eq("id", id)
       .eq("object_type", "document")
       .limit(1),
@@ -475,6 +487,7 @@ async function fetchDocumentImpl(id: string): Promise<DocumentDetail | null> {
     supabase
       .from("rel_associates_document")
       .select("from_id, role")
+      .eq("project_id", projectId)
       .eq("to_id", id)
       .is("valid_until", null)
       .not("from_id", "is", null), // nositeľ bez uzla AIM (D-183 K3)
@@ -490,8 +503,7 @@ async function fetchDocumentImpl(id: string): Promise<DocumentDetail | null> {
   // Pripojené k (rel_associates_document, kde to_id = tento dokument).
   if (relRes.error) throw new Error(relRes.error.message);
   const rels = (relRes.data ?? []) as { from_id: string; role: string | null }[];
-  const links = await loadObjectLinks(
-    supabase,
+  const links = await loadObjectLinks(supabase, projectId,
     rels.map((r) => r.from_id)
   );
   const attachedTo: DocumentAttachment[] = rels
@@ -557,19 +569,20 @@ const MEMBER_RELATIONS = [
  * (`rel_assigns_to_group`), časti (`rel_aggregates`) a prvky v priestorovej zóne
  * (`rel_referenced_in_spatial_structure`) zoskupení podľa IFC typu.
  */
-async function fetchSystemImpl(id: string): Promise<SystemDetail | null> {
+async function fetchSystemImpl(projectId: string, id: string): Promise<SystemDetail | null> {
   const supabase = getSupabaseAdmin();
 
   const [objRes, ...memRes] = await Promise.all([
     supabase
       .from("objects")
       .select("id, object_type, object_ref, name, predefined_type")
+      .eq("project_id", projectId)
       .eq("id", id)
       .in("object_type", GROUP_LIKE_TYPES as unknown as string[])
       .limit(1),
     ...MEMBER_RELATIONS.map((rel) =>
       // Člen bez uzla AIM (D-183 K3, napr. port VZT) má from_id null.
-      supabase.from(rel).select("from_id").eq("to_id", id).is("valid_until", null).not("from_id", "is", null)
+      supabase.from(rel).select("from_id").eq("project_id", projectId).eq("to_id", id).is("valid_until", null).not("from_id", "is", null)
     ),
   ]);
 
@@ -592,6 +605,7 @@ async function fetchSystemImpl(id: string): Promise<SystemDetail | null> {
       ? await supabase
           .from("objects")
           .select("id, object_type, object_ref, name, ifc_type")
+          .eq("project_id", projectId)
           .in("id", memberIds)
           .then(({ data, error }) => {
             if (error) throw new Error(error.message);
@@ -641,26 +655,10 @@ async function fetchSystemImpl(id: string): Promise<SystemDetail | null> {
   };
 }
 
-// Cachované per id (ISR, D-029 perf) — render uzlov je tým eligible pre Full Route Cache.
-export const fetchObjectMeta = unstable_cache(
-  fetchObjectMetaImpl,
-  ["fetch-object-meta"],
-  AIM_CACHE
-);
-export const fetchPerson = unstable_cache(fetchPersonImpl, ["fetch-person"], AIM_CACHE);
-export const fetchOrganization = unstable_cache(
-  fetchOrganizationImpl,
-  ["fetch-organization"],
-  AIM_CACHE
-);
-export const fetchDocument = unstable_cache(
-  fetchDocumentImpl,
-  ["fetch-document"],
-  AIM_CACHE
-);
-export const fetchNodeSummary = unstable_cache(
-  fetchNodeSummaryImpl,
-  ["fetch-node-summary"],
-  AIM_CACHE
-);
-export const fetchSystem = unstable_cache(fetchSystemImpl, ["fetch-system"], AIM_CACHE);
+// Cachované per projekt a id (ISR, D-029 perf, D-189).
+export const fetchObjectMeta = cachedProjectRead("fetch-object-meta", fetchObjectMetaImpl);
+export const fetchPerson = cachedProjectRead("fetch-person", fetchPersonImpl);
+export const fetchOrganization = cachedProjectRead("fetch-organization", fetchOrganizationImpl);
+export const fetchDocument = cachedProjectRead("fetch-document", fetchDocumentImpl);
+export const fetchNodeSummary = cachedProjectRead("fetch-node-summary", fetchNodeSummaryImpl);
+export const fetchSystem = cachedProjectRead("fetch-system", fetchSystemImpl);

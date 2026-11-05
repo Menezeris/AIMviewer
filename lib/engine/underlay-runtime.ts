@@ -1,9 +1,9 @@
 import "server-only";
 
-import { revalidateTag } from "next/cache";
+import { revalidateProject } from "@/lib/data/revalidate";
 
 import { toGeorefV2, type MergeResult } from "../data/georef";
-import { getIfcModels } from "../data/ifc-models";
+import { requestIfcModels } from "../project/request-models";
 import { getSupabaseAdmin } from "../supabase/server";
 
 import { installArchiveSource } from "./archive-source";
@@ -14,6 +14,7 @@ import { IFC_GUID_RE, modelsFor, storeyGuid, structured, type EngineDeps } from 
 import { cropToRegion, type Affine, type P2, type PageRegion } from "./underlay-calibrate";
 import type { PlanSheet } from "./underlay-section-mark";
 import type { UnderlayDeps, UnderlayDocument, UnderlayModel, UnderlayPage } from "./underlay-tool";
+import { currentProjectId } from "../project/context";
 
 // D-135: modely motora z nemenného archívu revízie (cca 5-krát menej egressu).
 installArchiveSource();
@@ -26,17 +27,18 @@ installArchiveSource();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function document(ref: string): Promise<UnderlayDocument | null> {
+  const projectId = currentProjectId();
   const db = getSupabaseAdmin();
-  const q = db.from("objects").select("id, object_ref, name, properties").eq("object_type", "document").is("valid_until", null);
+  const q = db.from("objects").select("id, object_ref, name, properties").eq("project_id", projectId).eq("object_type", "document").is("valid_until", null);
   const { data, error } = await (UUID_RE.test(ref) ? q.eq("id", ref) : q.eq("object_ref", ref)).maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  const { data: rels, error: rErr } = await db.from("rel_associates_document").select("from_id").eq("to_id", data.id).not("from_id", "is", null).is("valid_until", null);
+  const { data: rels, error: rErr } = await db.from("rel_associates_document").select("from_id").eq("project_id", projectId).eq("to_id", data.id).not("from_id", "is", null).is("valid_until", null);
   if (rErr) throw new Error(rErr.message);
   const fromIds = (rels ?? []).map((r) => r.from_id as string);
   let floors: UnderlayDocument["floors"] = [];
   if (fromIds.length > 0) {
-    const { data: fl, error: fErr } = await db.from("objects").select("ifc_guid, object_ref, name").in("id", fromIds).eq("object_type", "floor");
+    const { data: fl, error: fErr } = await db.from("objects").select("ifc_guid, object_ref, name").eq("project_id", projectId).in("id", fromIds).eq("object_type", "floor");
     if (fErr) throw new Error(fErr.message);
     floors = (fl ?? []).filter((f) => f.ifc_guid).map((f) => ({ guid: f.ifc_guid as string, name: (f.object_ref ?? f.name ?? f.ifc_guid) as string }));
   }
@@ -84,7 +86,7 @@ function findNode(n: TreeNode | undefined, guid: string): TreeNode | null {
 }
 
 async function model(opts: { model?: string; floor?: string }): Promise<UnderlayModel> {
-  const ids = getIfcModels().map((m) => m.id);
+  const ids = requestIfcModels().map((m) => m.id);
   const id = opts.model ?? ids[0];
   // modelsFor potrebuje len zdroje modelov; prepojenie na AIM tu netreba.
   const { models } = await modelsFor([id], {} as EngineDeps);
@@ -109,10 +111,12 @@ async function model(opts: { model?: string; floor?: string }): Promise<Underlay
  * affine, k nim text a čiary strany. Len čítanie; filter na `_georef` robí DB, kalibrácie sa čítajú v2.
  */
 async function planSheets(): Promise<PlanSheet[]> {
+  const projectId = currentProjectId();
   const db = getSupabaseAdmin();
   const { data, error } = await db
     .from("objects")
     .select("id, object_ref, properties")
+    .eq("project_id", projectId)
     .eq("object_type", "document")
     .is("valid_until", null)
     .not("properties->_georef", "is", null);
@@ -144,16 +148,17 @@ async function planSheets(): Promise<PlanSheet[]> {
 }
 
 async function write(documentId: string, apply: (stored: unknown) => MergeResult): Promise<MergeResult> {
+  const projectId = currentProjectId();
   const db = getSupabaseAdmin();
   // Zlúčenie nad najnovšími properties, nie nad tými z čítania pred výpočtom.
-  const { data, error } = await db.from("objects").select("properties").eq("id", documentId).maybeSingle();
+  const { data, error } = await db.from("objects").select("properties").eq("project_id", projectId).eq("id", documentId).maybeSingle();
   if (error) throw new Error(error.message);
   const current = (data?.properties as Record<string, unknown> | null) ?? {};
   const merged = apply(current._georef);
   if (!merged.ok) return merged;
-  const { error: uErr } = await db.from("objects").update({ properties: { ...current, _georef: merged.georef } }).eq("id", documentId);
+  const { error: uErr } = await db.from("objects").update({ properties: { ...current, _georef: merged.georef } }).eq("project_id", projectId).eq("id", documentId);
   if (uErr) throw new Error(uErr.message);
-  revalidateTag("aim", { expire: 0 });
+  revalidateProject(projectId);
   return merged;
 }
 

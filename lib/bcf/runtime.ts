@@ -6,6 +6,7 @@ import { broadcastLiveEvent, liveBaseChannel, liveChannel } from "@/lib/live/bro
 import { queryLiveViewer } from "@/lib/live/query";
 import { resolveTargets } from "@/lib/llm/view-tools";
 
+import { currentProjectId } from "../project/context";
 import { supabaseBcfStore } from "./store";
 import { viewFromState, type BcfDeps, type CapturedView } from "./tools";
 
@@ -58,7 +59,7 @@ export async function notifyBcfChanged(): Promise<void> {
 export function defaultBcfDeps(): BcfDeps {
   const cfg = bcfRoutine();
   return {
-    store: supabaseBcfStore(),
+    store: supabaseBcfStore(currentProjectId()),
     fire: routineConfigured(cfg) ? (text) => fireRoutine(text, fetch, cfg) : null,
     captureView: captureLiveView,
     viewState: liveViewState,

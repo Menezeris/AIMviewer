@@ -13,11 +13,12 @@ function fail(what: string, error: { message: string } | null): never {
   throw new Error(`${what}: ${error?.message ?? "neznáma chyba"}`);
 }
 
-export function supabaseIdsLibraryStore(): IdsLibraryStore {
+/** D-189: bindings and runs of one project (models = the project's IFC containers). */
+export function supabaseIdsLibraryStore(projectId: string): IdsLibraryStore {
   const db = () => getSupabaseAdmin();
 
   async function containersById(): Promise<Map<string, string>> {
-    const { data, error } = await db().from("information_containers").select("id, model").eq("container_type", "IFC");
+    const { data, error } = await db().from("information_containers").select("id, model").eq("project_id", projectId).eq("container_type", "IFC");
     if (error) fail("Čítanie modelov zlyhalo", error);
     return new Map(((data ?? []) as Array<{ id: string; model: string }>).map((c) => [c.id, c.model]));
   }
@@ -27,6 +28,7 @@ export function supabaseIdsLibraryStore(): IdsLibraryStore {
       const { error } = await db()
         .from("ids_documents")
         .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq("project_id", projectId)
         .eq("id", id);
       if (error) fail("Úprava IDS zlyhala", error);
     },
@@ -34,6 +36,7 @@ export function supabaseIdsLibraryStore(): IdsLibraryStore {
       const { data, error } = await db()
         .from("information_containers")
         .select("id, model, identification, name")
+        .eq("project_id", projectId)
         .eq("container_type", "IFC")
         .order("model");
       if (error) fail("Čítanie modelov zlyhalo", error);
@@ -76,12 +79,12 @@ export function supabaseIdsLibraryStore(): IdsLibraryStore {
       return (data ?? []).length > 0;
     },
     async currentRevisions() {
-      const { data, error } = await db().from("model_revisions").select("model, revision").eq("is_current", true);
+      const { data, error } = await db().from("model_revisions").select("model, revision").eq("project_id", projectId).eq("is_current", true);
       if (error) fail("Čítanie revízií zlyhalo", error);
       return Object.fromEntries(((data ?? []) as Array<{ model: string; revision: number }>).map((r) => [r.model, r.revision]));
     },
     async revisionExists(model, revision) {
-      const { data, error } = await db().from("model_revisions").select("id").eq("model", model).eq("revision", revision).limit(1);
+      const { data, error } = await db().from("model_revisions").select("id").eq("project_id", projectId).eq("model", model).eq("revision", revision).limit(1);
       if (error) fail("Čítanie revízií zlyhalo", error);
       return (data ?? []).length > 0;
     },
@@ -99,6 +102,7 @@ export function supabaseIdsLibraryStore(): IdsLibraryStore {
           db()
             .from("ids_runs")
             .select(cols(withExtra))
+            .eq("project_id", projectId)
             .in("ids_document_versions.document_id", documentIds.slice(i, i + IN_CHUNK))
             .order("checked_at", { ascending: false })
             .limit(1000);
