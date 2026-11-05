@@ -4,7 +4,7 @@
  * a dosah zmeny (tranzitívne). Číta len graf, nič nezapisuje.
  */
 
-import { typPoznamky, type Kniznica } from "./graph";
+import { noteType, type Library } from "./graph";
 import { klucPolozky } from "./graph-json";
 import { jednotkyVymeny } from "./chain";
 
@@ -77,7 +77,7 @@ function polozkaPodla(model: M, kluc: string): M | null {
 }
 
 /** `povod_hodnoty`: pôvod každej hodnoty položky IU-O v kontexte výmeny (alebo bez nej). */
-export function povodHodnoty(k: Kniznica, iuId: string, polozka: string, erId: string | null = null) {
+export function povodHodnoty(k: Library, iuId: string, polozka: string, erId: string | null = null) {
   const iu = k.poznamky.get(iuId);
   if (!iu || !iu.model) return null;
   const zaklad = polozkaPodla(iu.model, polozka);
@@ -124,7 +124,7 @@ export function povodHodnoty(k: Kniznica, iuId: string, polozka: string, erId: s
   return { iu: iuId, polozka, er: erId, hodnota, povod: p, suhrn: suhrnPovodu(p) };
 }
 
-export function povodFiltra(k: Kniznica, iuId: string) {
+export function povodFiltra(k: Library, iuId: string) {
   const iu = k.poznamky.get(iuId);
   if (!iu || !iu.model) return [];
   return zoznam(iu.model.filter).map((x, i) => {
@@ -135,7 +135,7 @@ export function povodFiltra(k: Kniznica, iuId: string) {
   });
 }
 
-export function povodGeometrie(k: Kniznica, iuId: string, erId: string | null = null): Povod | null {
+export function povodGeometrie(k: Library, iuId: string, erId: string | null = null): Povod | null {
   const iu = k.poznamky.get(iuId);
   if (!iu || !iu.model) return null;
   const geo = obj(iu.model.geometria);
@@ -163,12 +163,12 @@ function entityPravidla(p: M): string[] {
 }
 
 /** `dopadajuce_pravidla`: pravidlá STD, ktoré na poznámku dopadajú, s dôvodom (V22.2). */
-export function dopadajucePravidla(k: Kniznica, noteId: string, erId: string | null = null) {
+export function affectingRules(k: Library, noteId: string, erId: string | null = null) {
   const n = k.poznamky.get(noteId);
   if (!n || !n.model) return [];
   const ifc = obj(n.model.objekt)?.ifc_entita;
   const entita = ifc !== null && ifc !== undefined ? String(ifc).toUpperCase() : null;
-  const rozsahTypu = ({ "IU-O": "objekt", "IU-C": "kontajner" } as Record<string, string>)[typPoznamky(n) ?? ""] ?? null;
+  const rozsahTypu = ({ "IU-O": "objekt", "IU-C": "kontajner" } as Record<string, string>)[noteType(n) ?? ""] ?? null;
   const zPolozky = new Map<string, string>();
   for (const o of k.odkazyZ(noteId)) {
     if (o.ciel === null || !["STD", "GEO"].includes(o.ciel_typ ?? "")) continue;
@@ -209,11 +209,11 @@ export function dopadajucePravidla(k: Kniznica, noteId: string, erId: string | n
   return out;
 }
 
-const identita = (k: Kniznica, noteId: string) => new Set([noteId, ...(k.poznamky.get(noteId)?.pod_zaznamy.map((p) => p.id) ?? [])]);
+const identita = (k: Library, noteId: string) => new Set([noteId, ...(k.poznamky.get(noteId)?.pod_zaznamy.map((p) => p.id) ?? [])]);
 const siriSa = (pointer: string) => pointer.split("/").some((s) => SIRENIE.has(s));
 
 /** `spatne_odkazy`: kto sem odkazuje. */
-export function spatneOdkazy(k: Kniznica, noteId: string) {
+export function spatneOdkazy(k: Library, noteId: string) {
   const out: Array<{ id: string; typ: string | null; pole: string; cez: string | null }> = [];
   const videne = new Set<string>();
   for (const c of [...identita(k, noteId)].sort()) {
@@ -223,7 +223,7 @@ export function spatneOdkazy(k: Kniznica, noteId: string) {
       if (videne.has(kl)) continue;
       videne.add(kl);
       const z = k.poznamky.get(o.zdroj);
-      out.push({ id: o.zdroj, typ: z ? typPoznamky(z) : null, pole, cez: c !== noteId ? c : null });
+      out.push({ id: o.zdroj, typ: z ? noteType(z) : null, pole, cez: c !== noteId ? c : null });
     }
   }
   out.sort((a, b) => cmp(a.id, b.id) || cmp(a.pole, b.pole));
@@ -238,7 +238,7 @@ function mnozne(pocet: number, jedna: string, malo: string, vela?: string): stri
 }
 
 /** `dopad_zmeny`: poznámky a výmeny, ktoré zmena zasiahne (V22.3). */
-export function dopadZmeny(k: Kniznica, noteId: string) {
+export function dopadZmeny(k: Library, noteId: string) {
   const zasiahnute = new Set<string>();
   const fronta = [noteId];
   const videne = new Set([noteId]);
@@ -254,7 +254,7 @@ export function dopadZmeny(k: Kniznica, noteId: string) {
     }
   }
   const poznamky = [...zasiahnute].sort();
-  const vymeny = poznamky.filter((i) => k.poznamky.has(i) && typPoznamky(k.poznamky.get(i)!) === "ER");
+  const vymeny = poznamky.filter((i) => k.poznamky.has(i) && noteType(k.poznamky.get(i)!) === "ER");
   const ostatne = poznamky.filter((i) => !vymeny.includes(i));
   let veta: string;
   if (vymeny.length) {
@@ -265,15 +265,15 @@ export function dopadZmeny(k: Kniznica, noteId: string) {
   return { poznamky, vymeny, veta };
 }
 
-const ucVymeny = (k: Kniznica, ucId: string) => k.podlaTypu("ER").filter((er) => er.model?.id && zoznam(er.model.uc).some((x) => odkaz(x)[0] === ucId));
+const ucVymeny = (k: Library, ucId: string) => k.podlaTypu("ER").filter((er) => er.model?.id && zoznam(er.model.uc).some((x) => odkaz(x)[0] === ucId));
 
 /** `pravidla_uc`: pravidlá účelu užitia cez jeho výmeny (kolo 3 §5). */
-export function pravidlaUc(k: Kniznica, ucId: string) {
+export function pravidlaUc(k: Library, ucId: string) {
   const zlucene = new Map<string, Record<string, unknown>>();
   for (const er of ucVymeny(k, ucId)) {
     const eid = String(er.model!.id);
     for (const nid of jednotkyVymeny(k, eid).vsetky) {
-      for (const r of dopadajucePravidla(k, nid, eid)) {
+      for (const r of affectingRules(k, nid, eid)) {
         const kl = String(r.pravidlo);
         if (!zlucene.has(kl)) zlucene.set(kl, { ...r, jednotky: [], zaklad: r.dovod });
         const z = zlucene.get(kl)!;
@@ -289,7 +289,7 @@ export function pravidlaUc(k: Kniznica, ucId: string) {
   return out;
 }
 
-function dovodJednotky(k: Kniznica, er: M, nid: string): string {
+function dovodJednotky(k: Library, er: M, nid: string): string {
   const c = k.poznamky.get(nid);
   const polozky = c && c.model ? zoznam(c.model.alfanumerika).length : 0;
   const prepisy = zoznam(er.prepisy).filter((pr) => odkaz((pr as M).iu)[0] === nid);
@@ -301,14 +301,14 @@ function dovodJednotky(k: Kniznica, er: M, nid: string): string {
 const SPUSTA: Record<string, string> = { UC: "spúšťa účel užitia", ER: "spúšťa výmenu" };
 
 /** `prazdny_stav`: prvý blok inšpektora pre poznámku bez položiek, podľa typu (kolo 3 §5). */
-export function prazdnyStav(k: Kniznica, noteId: string) {
+export function emptyState(k: Library, noteId: string) {
   const n = k.poznamky.get(noteId);
   if (!n || !n.model) return null;
   if (pravda(n.model.alfanumerika) || (n.model.geometria !== null && n.model.geometria !== undefined)) return null;
-  const typ = typPoznamky(n) ?? "";
+  const typ = noteType(n) ?? "";
   const riadky: Array<Record<string, unknown>> = [];
   const spat = spatneOdkazy(k, noteId);
-  const typZdroja = (i: string) => (k.poznamky.has(i) ? typPoznamky(k.poznamky.get(i)!) ?? "" : "");
+  const typZdroja = (i: string) => (k.poznamky.has(i) ? noteType(k.poznamky.get(i)!) ?? "" : "");
   if (typ === "UC") {
     for (const er of ucVymeny(k, noteId)) {
       const eid = String(er.model!.id);
@@ -358,7 +358,7 @@ export function prazdnyStav(k: Kniznica, noteId: string) {
 }
 
 /** `inspektor`: všetko, čo ukazuje pravý panel pre jednu poznámku. */
-export function inspektor(k: Kniznica, noteId: string, erId: string | null = null) {
+export function inspect(k: Library, noteId: string, erId: string | null = null) {
   const n = k.poznamky.get(noteId);
   const polozky: unknown[] = [];
   if (n && n.model) {
@@ -368,7 +368,7 @@ export function inspektor(k: Kniznica, noteId: string, erId: string | null = nul
     }
   }
   const geo = povodGeometrie(k, noteId, erId);
-  const pravidla = n && typPoznamky(n) === "UC" ? pravidlaUc(k, noteId) : dopadajucePravidla(k, noteId, erId);
+  const pravidla = n && noteType(n) === "UC" ? pravidlaUc(k, noteId) : affectingRules(k, noteId, erId);
   return {
     id: noteId,
     er: erId,
@@ -376,19 +376,19 @@ export function inspektor(k: Kniznica, noteId: string, erId: string | null = nul
     geometria: geo,
     filter: povodFiltra(k, noteId),
     pravidla,
-    prazdny_stav: prazdnyStav(k, noteId),
+    prazdny_stav: emptyState(k, noteId),
     odkazuje_sem: spatneOdkazy(k, noteId),
     dopad: dopadZmeny(k, noteId),
   };
 }
 
 /** `app_json._inspektor_er`: pôvod v kontexte každej výmeny, kľúč `<ER>|<jednotka>`. */
-export function inspektorEr(k: Kniznica) {
+export function inspectEr(k: Library) {
   const out: Record<string, unknown> = {};
   for (const er of k.podlaTypu("ER")) {
     const eid = er.model?.id as string | undefined;
     if (!eid || !er.model) continue;
-    for (const nid of jednotkyVymeny(k, eid).vsetky) out[`${eid}|${nid}`] = inspektor(k, nid, eid);
+    for (const nid of jednotkyVymeny(k, eid).vsetky) out[`${eid}|${nid}`] = inspect(k, nid, eid);
   }
   return out;
 }

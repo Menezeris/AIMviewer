@@ -6,25 +6,25 @@
  */
 
 import { serializuj } from "./blocks";
-import { KNIZNICA_SUBOR, Kniznica, nacitajKniznicuGraf } from "./graph";
-import { nacitajSubor, type Diagnostika } from "./loader";
+import { LIBRARY_FILE, Library, loadLibraryGraph } from "./graph";
+import { loadFile, type Diagnostic } from "./loader";
 import { validuj } from "./validator";
-import { diag, kandidat, ulozPoznamku, type NovaPoznamka, type Sklad, type Zmena } from "./write";
+import { diag, kandidat, saveNote, type NewNote, type Sklad, type Zmena } from "./write";
 
 export interface VysledokKontroly {
   ok: boolean;
   odmietnute: string[];
-  diagnostiky: Diagnostika[];
+  diagnostiky: Diagnostic[];
 }
 
 const text = (v: unknown) => (v === null || v === undefined ? "" : String(v));
 
 export async function kontrola(sklad: Sklad, zmeny: Zmena[], nova: Record<string, unknown> | null = null): Promise<VysledokKontroly> {
   const vsetky = await sklad.texty();
-  const kniznica = nacitajKniznicuGraf(vsetky);
+  const kniznica = loadLibraryGraph(vsetky);
   const texty: Record<string, string> = {};
   const odmietnute: string[] = [];
-  const problemy: Diagnostika[] = [];
+  const problemy: Diagnostic[] = [];
   const podla = new Map<string, Zmena[]>();
   for (const z of zmeny) podla.set(z.id, [...(podla.get(z.id) ?? []), z]);
 
@@ -36,7 +36,7 @@ export async function kontrola(sklad: Sklad, zmeny: Zmena[], nova: Record<string
       continue;
     }
     try {
-      const [t, chyby] = ulozPoznamku(n, zoznam);
+      const [t, chyby] = saveNote(n, zoznam);
       if (chyby.length) {
         odmietnute.push(nid);
         problemy.push(...chyby);
@@ -49,13 +49,13 @@ export async function kontrola(sklad: Sklad, zmeny: Zmena[], nova: Record<string
     }
   }
 
-  const pracovna = new Kniznica();
-  pracovna.overVerziu(vsetky[KNIZNICA_SUBOR]);
-  for (const rel of Object.keys(vsetky).filter((r) => r !== KNIZNICA_SUBOR).sort()) pracovna.pridaj(nacitajSubor(rel, texty[rel] ?? vsetky[rel]));
+  const pracovna = new Library();
+  pracovna.overVerziu(vsetky[LIBRARY_FILE]);
+  for (const rel of Object.keys(vsetky).filter((r) => r !== LIBRARY_FILE).sort()) pracovna.pridaj(loadFile(rel, texty[rel] ?? vsetky[rel]));
 
   if (nova) {
     const nid = text(nova.id);
-    const p: NovaPoznamka = { typ: text(nova.typ), id: nid, nazov: text(nova.nazov), data: (nova.data as Record<string, unknown>) ?? {}, vrstva: text(nova.vrstva) || "zadanie", balik: (nova.balik as string | null | undefined) ?? null };
+    const p: NewNote = { typ: text(nova.typ), id: nid, nazov: text(nova.nazov), data: (nova.data as Record<string, unknown>) ?? {}, vrstva: text(nova.vrstva) || "zadanie", balik: (nova.balik as string | null | undefined) ?? null };
     let k: ReturnType<typeof kandidat> | null = null;
     try {
       k = kandidat(p);
@@ -70,7 +70,7 @@ export async function kontrola(sklad: Sklad, zmeny: Zmena[], nova: Record<string
       } else if (await sklad.existuje(k.rel)) {
         odmietnute.push(nid);
         problemy.push(diag(nid, "/id", `súbor ${k.rel} už existuje`, ""));
-      } else pracovna.pridaj(nacitajSubor(k.rel, serializuj(k.doc)));
+      } else pracovna.pridaj(loadFile(k.rel, serializuj(k.doc)));
     }
   }
 

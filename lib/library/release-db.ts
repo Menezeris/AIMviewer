@@ -2,8 +2,8 @@ import "server-only";
 
 import { getSupabaseAdmin } from "../supabase/server";
 
-import type { SkladVydania, Uloziste } from "./release";
-import { ChybaSkladu, Konflikt } from "./write";
+import type { ReleaseStore, Uloziste } from "./release";
+import { StoreError, Konflikt } from "./write";
 
 /**
  * Vydanie knižnice v DB (D-186 krok 6): texty hlavy cez `public.library_texty`, snímka + katalóg IDS v jednej
@@ -31,12 +31,12 @@ function chyba(e: { code?: string; message?: string; details?: string }): never 
     }
     throw new Konflikt(cesty);
   }
-  if (e.code === "AS404") throw new ChybaSkladu(e.message ?? "knižnica v databáze nie je");
-  throw new ChybaSkladu(`databáza vydanie odmietla: ${e.message}`);
+  if (e.code === "AS404") throw new StoreError(e.message ?? "knižnica v databáze nie je");
+  throw new StoreError(`databáza vydanie odmietla: ${e.message}`);
 }
 
 /** `projectId`: the project whose IDS catalog the release writes into (D-189 cleanup, `library_vydaj(p_project)`). */
-export function supabaseSkladVydania(kniznica: string, projectId: string): SkladVydania {
+export function supabaseSkladVydania(kniznica: string, projectId: string): ReleaseStore {
   const db = getSupabaseAdmin();
   return {
     kniznica,
@@ -59,7 +59,7 @@ export function supabaseSkladVydania(kniznica: string, projectId: string): Sklad
       });
       if (error) chyba(error);
       const d = (data ?? {}) as { vydanie_id?: string; ids?: unknown[] };
-      if (!d.vydanie_id) throw new ChybaSkladu("databáza nevrátila id vydania");
+      if (!d.vydanie_id) throw new StoreError("databáza nevrátila id vydania");
       return { vydanie_id: d.vydanie_id, ids: d.ids ?? [] };
     },
     async exportCesta(vydanieId, cesta) {
@@ -76,7 +76,7 @@ export function supabaseUloziste(): Uloziste | null {
   return {
     async nahraj(cesta, data) {
       const { error } = await getSupabaseAdmin().storage.from(bucket).upload(cesta, data, { contentType: "application/zip", upsert: false });
-      if (error) throw new ChybaSkladu(`Storage odmietol export: ${error.message}`);
+      if (error) throw new StoreError(`Storage odmietol export: ${error.message}`);
     },
   };
 }

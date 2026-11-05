@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { skladPamat, uloz, vytvor, type NovaPoznamka, type Zmena } from "./write";
+import { memoryStore, uloz, vytvor, type NewNote, type Zmena } from "./write";
 
 const KORPUS = join(process.cwd(), "library", "korpus");
 const vzor = JSON.parse(readFileSync(join(KORPUS, "stromy", "vzor", "subory.json"), "utf8")) as Record<string, string>;
@@ -11,7 +11,7 @@ const kluc = (d: Record<string, unknown>) => JSON.stringify(Object.fromEntries(O
 
 interface Uprava {
   nazov: string;
-  vstup: { zmeny?: Zmena[]; nova?: NovaPoznamka };
+  vstup: { zmeny?: Zmena[]; nova?: NewNote };
   vysledok: Record<string, unknown> & { diagnostiky: Array<Record<string, unknown>> };
   texty_po: Record<string, string>;
   zmazane: string[];
@@ -21,7 +21,7 @@ describe("korpus zhody: writer a uloženie z editora (krok 3 portu, D-186)", () 
   for (const f of readdirSync(join(KORPUS, "upravy")).sort()) {
     const u = JSON.parse(readFileSync(join(KORPUS, "upravy", f), "utf8")) as Uprava;
     it(f, async () => {
-      const sklad = skladPamat(vzor);
+      const sklad = memoryStore(vzor);
       const v = u.vstup.nova ? await vytvor(sklad, u.vstup.nova, { autor: "korpus", zdroj: "nova" }) : await uloz(sklad, u.vstup.zmeny ?? [], { autor: "korpus" });
       const po = sklad.subory;
       const zmenene = Object.fromEntries(Object.entries(po).filter(([rel, t]) => vzor[rel] !== t).sort());

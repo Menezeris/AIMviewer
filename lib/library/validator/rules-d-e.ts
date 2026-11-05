@@ -3,7 +3,7 @@
  * Pravidlá, ktoré potrebujú schému IFC (D3, D4, D17, D18), sú F2b.
  */
 
-import { idPoznamky, typPoznamky } from "../graph";
+import { noteId, noteType } from "../graph";
 import { klucPolozky } from "../graph-json";
 import { ASPEKTY, priradenia } from "../chain";
 import { attr, ciele, je, link, obj, platnyRegex, pravda, pravidlo, pyRepr, pyStr, zorad, zoznam, zoznamM, type Kontext, type Link, type M } from "./context";
@@ -239,7 +239,7 @@ pravidlo("E2", "E", { popis: "Dataset neduplikuje nositeľa v modeli", zdroj: "�
     const ds = obj(iu.dataset);
     if (iu.druh !== "dataset" || !ds) continue;
     const nositelia = new Map<string, string>();
-    for (const p of priradenia(ctx.k, idPoznamky(n) ?? "")) {
+    for (const p of priradenia(ctx.k, noteId(n) ?? "")) {
       const iuO = ctx.model(p.iu);
       if (!iuO) continue;
       for (const x of zoznamM(iuO.alfanumerika)) nositelia.set(klucPolozky(x), p.iu);
@@ -259,7 +259,7 @@ pravidlo("E3", "E", { popis: "Druh kontajnera určuje, čo musí niesť", zdroj:
       if (!forma || !pravda(forma.format)) yield ctx.diag(n, "model potrebuje `forma.format`", ["forma"]);
       else if (!pravda(forma.verzia_schemy)) yield ctx.diag(n, "model potrebuje `forma.verzia_schemy` (napr. IFC4X3_ADD2)", ["forma"]);
     } else if (iu.druh === "dokument") {
-      for (const p of priradenia(ctx.k, idPoznamky(n) ?? "")) {
+      for (const p of priradenia(ctx.k, noteId(n) ?? "")) {
         const mimo = p.ucinny_rozsah.filter((a) => a !== "dokumentacia");
         if (mimo.length) yield ctx.diag(n, `dokument priraďuje ${p.iu} aspekty ${mimo.join(", ")} — dokument nesie \`dokumentacia\`, geometriu a alfanumeriku nesie model (V27); doplň \`rozsah\``, ["obsahuje", p.index, "rozsah"]);
       }
@@ -316,7 +316,7 @@ pravidlo("E7", "W", { popis: "Roly kontajnera podľa 19650", zdroj: "§5" }, fun
 
 pravidlo("E8", "W", { popis: "Priradenie žiada aspekt, ktorý objekt nedefinuje", zdroj: "V27, 7817-1" }, function* (ctx) {
   for (const [n] of ctx.typu("IU-C")) {
-    for (const p of priradenia(ctx.k, idPoznamky(n) ?? "")) {
+    for (const p of priradenia(ctx.k, noteId(n) ?? "")) {
       const c = ctx.model(p.iu);
       if (!c) continue;
       const definuje = aspektyIuO(c);
@@ -335,12 +335,12 @@ pravidlo("E9", "W", { popis: "MVD patrí modelovému kontajneru", zdroj: "V26, 2
 
 pravidlo("E10", "W", { popis: "Dokumentačná väzba a priradenie sa nerozchádzajú", zdroj: "V27, V4" }, function* (ctx) {
   for (const [n, iu] of ctx.typu("IU-O")) {
-    const nid = idPoznamky(n);
+    const nid = noteId(n);
     for (const [i, d] of zoznamM(iu.dokumentacia).entries()) {
       const dok = link(d.dok);
       if (!dok) continue;
       const kontajner = ctx.poznamka(dok.ciel);
-      if (!kontajner || typPoznamky(kontajner) !== "IU-C") continue;
+      if (!kontajner || noteType(kontajner) !== "IU-C") continue;
       const pokryte = priradenia(ctx.k, dok.ciel).some((p) => p.iu === nid && p.ucinny_rozsah.includes("dokumentacia"));
       if (!pokryte) yield ctx.diag(n, `${dok.raw} objekt nepriraďuje — doplň \`obsahuje: [{iu: "[[${nid}]]", rozsah: [dokumentacia]}]\` v ${dok.ciel} (V27)`, ["dokumentacia", i, "dok"]);
     }

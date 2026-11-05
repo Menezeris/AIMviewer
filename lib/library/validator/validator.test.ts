@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { nacitajKniznicuGraf } from "../graph";
+import { loadLibraryGraph } from "../graph";
 import { validuj } from "./index";
 import { platnyRegex } from "./context";
 
@@ -17,7 +17,7 @@ const zorad = (ds: Array<Record<string, unknown>>) => [...ds].sort((a, b) => (kl
 describe("korpus zhody: validátor (krok 5 portu, D-186)", () => {
   for (const strom of ["vzor", "kniznica", "chybne"]) {
     it(`validacia.json stromu ${strom}`, () => {
-      const got = plain(validuj(nacitajKniznicuGraf(json(`${strom}/subory.json`))));
+      const got = plain(validuj(loadLibraryGraph(json(`${strom}/subory.json`))));
       expect(zorad(got)).toEqual(zorad(json(`${strom}/validacia.json`)));
     });
   }
@@ -28,7 +28,7 @@ const ORAKULUM = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "
 describe("validátor mimo korpusu (orákulum assetin-library f7c103c)", () => {
   for (const strom of ["vzor", "kniznica", "chybne"]) {
     it(`preflight H2 stromu ${strom}`, () => {
-      const got = plain(validuj(nacitajKniznicuGraf(json(`${strom}/subory.json`)), { preflight: true }).filter((d) => d.kod === "H2"));
+      const got = plain(validuj(loadLibraryGraph(json(`${strom}/subory.json`)), { preflight: true }).filter((d) => d.kod === "H2"));
       expect(zorad(got)).toEqual(zorad(ORAKULUM[strom]));
     });
   }

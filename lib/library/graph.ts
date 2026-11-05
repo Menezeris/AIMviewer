@@ -6,12 +6,12 @@
 
 import { load as yamlLoad } from "js-yaml";
 
-import { nacitajSubor, type Diagnostika, type PodZaznam, type Poznamka } from "./loader";
-import { odkazyModelu, odkazySchemy, type OdkazMeta } from "./projection";
+import { loadFile, type Diagnostic, type PodZaznam, type Note } from "./loader";
+import { modelLinks, odkazySchemy, type OdkazMeta } from "./projection";
 import { jsonSchema } from "./schema/jsonSchema";
 import { SCHEMY } from "./schema/models";
 
-export const KNIZNICA_SUBOR = "KNIZNICA.md";
+export const LIBRARY_FILE = "KNIZNICA.md";
 export const SCHEMA_VERZIA = "1.5";
 const GLOBALNE_POD_ZAZNAMY = ["STD-", "GEO-"];
 const POD_SCHEMY: Record<string, Record<string, unknown>> = {};
@@ -20,7 +20,7 @@ const podSchema = (druh: string) => (POD_SCHEMY[druh] ??= jsonSchema(SCHEMY[`pod
 /** `slug` z Pythonu: `re.sub(r"[^\w]+", "-", text.lower()).strip("-")` s Unicode `\w`. */
 export const slug = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}_]+/gu, "-").replace(/^-+|-+$/g, "");
 
-export interface OdkazGrafu {
+export interface GraphRef {
   zdroj: string;
   pointer: string;
   link: { ciel: string; kotva: string | null; alias: string | null; raw: string };
@@ -32,29 +32,29 @@ export interface OdkazGrafu {
   riadok: number | null;
 }
 
-export const idPoznamky = (n: Poznamka): string | null => {
+export const noteId = (n: Note): string | null => {
   const id = n.model?.id ?? n.data.id;
   if (id) return String(id);
   return n.umiestnenie?.id ?? null;
 };
-export const typPoznamky = (n: Poznamka): string | null => (n.data.typ as string | undefined) || n.umiestnenie?.typ || null;
+export const noteType = (n: Note): string | null => (n.data.typ as string | undefined) || n.umiestnenie?.typ || null;
 
-export class Kniznica {
-  poznamky = new Map<string, Poznamka>();
-  vsetky: Poznamka[] = [];
+export class Library {
+  poznamky = new Map<string, Note>();
+  vsetky: Note[] = [];
   pod_zaznamy = new Map<string, PodZaznam>(); // `${rodic}\u0000${id}`
   pod_zaznamy_poradie: Array<[string, string, PodZaznam]> = [];
   globalne_pod = new Map<string, PodZaznam>();
   kotvy = new Map<string, Record<string, string>>();
-  odkazy: OdkazGrafu[] = [];
-  diagnostiky: Diagnostika[] = [];
+  odkazy: GraphRef[] = [];
+  diagnostiky: Diagnostic[] = [];
   schema_verzia: string | null = null;
   private memo = new Map<string, Map<string, unknown[]>>();
 
   /** `over_verziu`: `KNIZNICA.md` nesie `schema_verzia` enginu (A10). */
   overVerziu(text: string | undefined) {
     if (text === undefined) {
-      this.diagnostiky.push({ note_id: null, json_pointer: "", uroven: "E", kod: "A10", sprava: `chýba ${KNIZNICA_SUBOR} (schema_verzia)`, subor: KNIZNICA_SUBOR, riadok: null });
+      this.diagnostiky.push({ note_id: null, json_pointer: "", uroven: "E", kod: "A10", sprava: `chýba ${LIBRARY_FILE} (schema_verzia)`, subor: LIBRARY_FILE, riadok: null });
       return;
     }
     const parts = text.split("---\n");
@@ -70,15 +70,15 @@ export class Kniznica {
     const v = raw === undefined || raw === null ? "" : String(raw);
     this.schema_verzia = v;
     if (v !== SCHEMA_VERZIA) {
-      this.diagnostiky.push({ note_id: null, json_pointer: "/schema_verzia", uroven: "E", kod: "A10", sprava: `schema_verzia '${v}' != verzia enginu '${SCHEMA_VERZIA}'`, subor: KNIZNICA_SUBOR, riadok: null });
+      this.diagnostiky.push({ note_id: null, json_pointer: "/schema_verzia", uroven: "E", kod: "A10", sprava: `schema_verzia '${v}' != verzia enginu '${SCHEMA_VERZIA}'`, subor: LIBRARY_FILE, riadok: null });
     }
   }
 
-  pridaj(n: Poznamka) {
+  pridaj(n: Note) {
     this.memo.clear();
     this.vsetky.push(n);
     this.diagnostiky.push(...n.diagnostiky);
-    const nid = idPoznamky(n);
+    const nid = noteId(n);
     if (nid === null) return;
     if (this.poznamky.has(nid)) {
       this.diagnostiky.push({ note_id: nid, json_pointer: "/id", uroven: "E", kod: "A4", sprava: `duplicitné ID (aj v ${this.poznamky.get(nid)!.rel})`, subor: n.rel, riadok: null });
@@ -115,9 +115,9 @@ export class Kniznica {
     this.memo.clear();
     this.odkazy = [];
     for (const n of this.vsetky) {
-      const nid = idPoznamky(n);
+      const nid = noteId(n);
       if (!n.model || nid === null) continue;
-      for (const l of odkazyModelu(String(n.model.typ), n.model)) {
+      for (const l of modelLinks(String(n.model.typ), n.model)) {
         const top = l.pointer.startsWith("/") ? l.pointer.split("/")[1] : "";
         const o = this.odkaz(nid, l.pointer, l, top in n.riadky ? n.riadky[top] + 1 : null);
         this.rozlisJeden(o, n);
@@ -134,7 +134,7 @@ export class Kniznica {
     }
   }
 
-  private odkaz(zdroj: string, pointer: string, l: OdkazMeta, riadok: number | null): OdkazGrafu {
+  private odkaz(zdroj: string, pointer: string, l: OdkazMeta, riadok: number | null): GraphRef {
     return {
       zdroj,
       pointer,
@@ -148,13 +148,13 @@ export class Kniznica {
     };
   }
 
-  private rozlisJeden(o: OdkazGrafu, n: Poznamka) {
+  private rozlisJeden(o: GraphRef, n: Note) {
     const c = o.link.ciel;
     const d = (uroven: "E" | "W", kod: string, sprava: string) =>
       this.diagnostiky.push({ note_id: o.zdroj, json_pointer: o.pointer, uroven, kod, sprava, subor: n.rel, riadok: o.riadok });
     if (this.poznamky.has(c)) {
       o.ciel = c;
-      o.ciel_typ = typPoznamky(this.poznamky.get(c)!);
+      o.ciel_typ = noteType(this.poznamky.get(c)!);
     } else if (this.globalne_pod.has(c)) {
       o.ciel = c;
       o.ciel_typ = this.globalne_pod.get(c)!.druh === "profil" ? "GEO" : "STD";
@@ -175,7 +175,7 @@ export class Kniznica {
     idx = new Map();
     const pridaj = (k: string, v: unknown) => idx!.set(k, [...(idx!.get(k) ?? []), v]);
     if (meno === "typ") {
-      for (const n of this.vsetky) pridaj(typPoznamky(n) ?? "", n);
+      for (const n of this.vsetky) pridaj(noteType(n) ?? "", n);
     } else if (meno === "ciel") {
       for (const o of this.odkazy) {
         if (o.ciel !== null) pridaj(o.ciel, o);
@@ -187,17 +187,17 @@ export class Kniznica {
     return idx;
   }
 
-  podlaTypu = (typ: string) => [...((this.index("typ").get(typ) ?? []) as Poznamka[])];
-  odkazyNa = (ciel: string) => [...((this.index("ciel").get(ciel) ?? []) as OdkazGrafu[])];
-  odkazyZ = (zdroj: string) => [...((this.index("zdroj").get(zdroj) ?? []) as OdkazGrafu[])];
+  podlaTypu = (typ: string) => [...((this.index("typ").get(typ) ?? []) as Note[])];
+  odkazyNa = (ciel: string) => [...((this.index("ciel").get(ciel) ?? []) as GraphRef[])];
+  odkazyZ = (zdroj: string) => [...((this.index("zdroj").get(zdroj) ?? []) as GraphRef[])];
   kotvyPre = (nid: string) => this.kotvy.get(nid) ?? {};
 }
 
 /** `nacitaj_kniznicu`: všetky poznámky (bez `KNIZNICA.md`) zoradené podľa cesty, verzia schémy, odkazy. */
-export function nacitajKniznicuGraf(texty: Record<string, string>): Kniznica {
-  const k = new Kniznica();
-  k.overVerziu(texty[KNIZNICA_SUBOR]);
-  for (const rel of Object.keys(texty).filter((r) => r !== KNIZNICA_SUBOR).sort()) k.pridaj(nacitajSubor(rel, texty[rel]));
+export function loadLibraryGraph(texty: Record<string, string>): Library {
+  const k = new Library();
+  k.overVerziu(texty[LIBRARY_FILE]);
+  for (const rel of Object.keys(texty).filter((r) => r !== LIBRARY_FILE).sort()) k.pridaj(loadFile(rel, texty[rel]));
   k.rozlis();
   return k;
 }

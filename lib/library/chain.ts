@@ -5,10 +5,10 @@
  * rozsahom aspektov LOIN (V27). Pruh "kde to sedí" a línia (U19) sú projekcie toho istého stromu.
  */
 
-import { idPoznamky, typPoznamky, type Kniznica } from "./graph";
+import { noteId, noteType, type Library } from "./graph";
 import { polePointera } from "./graph-json";
 import { parseWikilink } from "./projection";
-import { POPISKY_TYPU_ULOHY, TRIEDY_TYPOV } from "./schema/classes";
+import { POPISKY_TYPU_ULOHY, TYPE_CLASSES } from "./schema/classes";
 
 type M = Record<string, unknown>;
 export const ASPEKTY = ["geometria", "alfanumerika", "dokumentacia"];
@@ -47,7 +47,7 @@ export function predvolenyRozsah(model: M | null, kontajner: string): string[] {
   return out;
 }
 
-export function priradenia(k: Kniznica, iuc: string): Priradenie[] {
+export function priradenia(k: Library, iuc: string): Priradenie[] {
   const n = k.poznamky.get(iuc);
   if (!n || !n.model) return [];
   const out: Priradenie[] = [];
@@ -70,10 +70,10 @@ export interface Jednotky {
   vsetky: string[];
 }
 
-const memoJednotky = new WeakMap<Kniznica, Map<string, Jednotky>>();
+const memoJednotky = new WeakMap<Library, Map<string, Jednotky>>();
 
 /** `jednotky_vymeny`: `ER.obsahuje` plus to, čo priraďujú jeho kontajnery (V27). */
-export function jednotkyVymeny(k: Kniznica, erId: string): Jednotky {
+export function jednotkyVymeny(k: Library, erId: string): Jednotky {
   let memo = memoJednotky.get(k);
   if (!memo) memoJednotky.set(k, (memo = new Map()));
   const hit = memo.get(erId);
@@ -88,12 +88,12 @@ export function jednotkyVymeny(k: Kniznica, erId: string): Jednotky {
       const n = k.poznamky.get(c);
       if (!n) {
         if (!out.visiace.includes(c)) out.visiace.push(c);
-      } else if (typPoznamky(n) === "IU-C") {
+      } else if (noteType(n) === "IU-C") {
         if (!out.kontajnery.includes(c)) {
           out.kontajnery.push(c);
           out.priradenia.set(c, priradenia(k, c));
         }
-      } else if (typPoznamky(n) === "IU-O" && !priame.includes(c)) priame.push(c);
+      } else if (noteType(n) === "IU-O" && !priame.includes(c)) priame.push(c);
     }
     const nesene = new Set([...out.priradenia.values()].flat().map((p) => p.iu));
     out.volne = priame.filter((i) => !nesene.has(i));
@@ -141,7 +141,7 @@ export function skratkaUloh(idy: string[]): string {
 }
 
 function hranicnePre(typ: string | null, model: M | null): string[] {
-  const t = TRIEDY_TYPOV[typ ?? ""];
+  const t = TYPE_CLASSES[typ ?? ""];
   const h = [...(t?.HRANICNE ?? [])];
   if (!h.length || !model) return [];
   const ak = t?.HRANICNE_AK;
@@ -149,19 +149,19 @@ function hranicnePre(typ: string | null, model: M | null): string[] {
   return model[ak[0]] === ak[1] ? h : [];
 }
 
-function pasmo(k: Kniznica, nid: string): [string | null, string, string[]] {
+function pasmo(k: Library, nid: string): [string | null, string, string[]] {
   const n = k.poznamky.get(nid);
   if (!n) {
     const pz = k.globalne_pod.get(nid);
     if (pz) return [pz.druh === "profil" ? "GEO" : "STD", "", []];
     return [null, "", []];
   }
-  const typ = typPoznamky(n);
-  const ramec = TRIEDY_TYPOV[typ ?? ""]?.RAMEC ?? "";
+  const typ = noteType(n);
+  const ramec = TYPE_CLASSES[typ ?? ""]?.RAMEC ?? "";
   return [typ, ramec, n.model ? hranicnePre(typ, n.model) : []];
 }
 
-function krok(k: Kniznica, rola: string, nid: string, popis = "", kotva: string | null = null): Krok {
+function krok(k: Library, rola: string, nid: string, popis = "", kotva: string | null = null): Krok {
   const [typ, ramec, hranicne] = pasmo(k, nid);
   const n = k.poznamky.get(nid);
   return {
@@ -188,7 +188,7 @@ function vystupyUlohy(u: M): string[] {
   return [...new Set(v.filter((x): x is string => typeof x === "string").map((x) => stripZatvorky(x).split("|")[0].split("#")[0]))].sort();
 }
 
-function uloha(k: Kniznica, ucId: string, u: M): Krok {
+function uloha(k: Library, ucId: string, u: M): Krok {
   const kr = krok(k, "uloha", ucId, kratkyAkter(u.aktor, false), String(u.id ?? ""));
   kr.nazov = String(u.nazov ?? "");
   kr.vystupy = vystupyUlohy(u);
@@ -233,12 +233,12 @@ export function vymenaJson(v: Vymena) {
   };
 }
 
-function poskytovatel(k: Kniznica, nid: string): string {
+function poskytovatel(k: Library, nid: string): string {
   const p = k.poznamky.get(nid)?.model?.poskytovatel;
   return Array.isArray(p) && p.length ? kratkyAkter(p[0], true) : "";
 }
 
-function mvdKontajnerov(k: Kniznica, kontajnery: string[]): string[] {
+function mvdKontajnerov(k: Library, kontajnery: string[]): string[] {
   const out: string[] = [];
   for (const nid of kontajnery) {
     const mvd = obj(k.poznamky.get(nid)?.model?.mvd);
@@ -249,7 +249,7 @@ function mvdKontajnerov(k: Kniznica, kontajnery: string[]): string[] {
   return out;
 }
 
-function preTasky(k: Kniznica, jednotky: Set<string>): Set<string> {
+function preTasky(k: Library, jednotky: Set<string>): Set<string> {
   const out = new Set<string>();
   for (const nid of jednotky) {
     const n = k.poznamky.get(nid);
@@ -260,12 +260,12 @@ function preTasky(k: Kniznica, jednotky: Set<string>): Set<string> {
   return out;
 }
 
-function pouzivaju(k: Kniznica, erId: string, erModel: M, j: Jednotky): Krok[] {
+function pouzivaju(k: Library, erId: string, erModel: M, j: Jednotky): Krok[] {
   const moje = new Set(zoznam(erModel.uc).map(ciel).filter((x): x is string => !!x));
   const najdene: string[] = [];
   const pridaj = (x: string) => !najdene.includes(x) && najdene.push(x);
   for (const iny of k.podlaTypu("ER")) {
-    const iid = idPoznamky(iny);
+    const iid = noteId(iny);
     if (iid === erId || !iny.model) continue;
     const odkazy = new Set([...zoznam(iny.model.precondition), ...zoznam(iny.model.referencne_info)].map(ciel).filter((x): x is string => !!x));
     if (odkazy.has(erId) || j.kontajnery.some((c) => odkazy.has(c))) {
@@ -286,7 +286,7 @@ function pouzivaju(k: Kniznica, erId: string, erModel: M, j: Jednotky): Krok[] {
   return najdene.map((nid) => krok(k, "ucel", nid, "používa túto výmenu"));
 }
 
-function vymena(k: Kniznica, erId: string, erModel: M, ulohy: Krok[]): Vymena {
+function vymena(k: Library, erId: string, erModel: M, ulohy: Krok[]): Vymena {
   const v: Vymena = { er: krok(k, "vymena", erId, "výmena pre tento účel"), dodanie: null, prijemca: null, z_uloh: [], kontajnery: [], jednotky: [], forma: null, mvd: [], pouzivaju: [] };
   const dodanie = prvy(erModel, "spustacia_udalost");
   if (dodanie) v.dodanie = krok(k, "dodanie", dodanie, "spúšťa výmenu (delivery)");
@@ -315,7 +315,7 @@ function vymena(k: Kniznica, erId: string, erModel: M, ulohy: Krok[]): Vymena {
 
 // ------------------------------------------------------------------------------------------------ strom
 
-export interface Retazec {
+export interface Chain {
   id: string;
   ucel: Krok;
   ciele: Krok[];
@@ -332,7 +332,7 @@ export interface Pozicia {
   cez?: string;
 }
 
-export function pozicie(r: Retazec, nid: string): Pozicia[] {
+export function pozicie(r: Chain, nid: string): Pozicia[] {
   const out: Pozicia[] = [];
   const kde = (rola: string, v: string | null = null, kontajner: string | null = null): Pozicia => ({ kde: rola, vymena: v, kontajner, kotva: null });
   for (const c of r.ciele) if (c.id === nid) out.push(kde("ciel"));
@@ -350,13 +350,13 @@ export function pozicie(r: Retazec, nid: string): Pozicia[] {
   return out;
 }
 
-function usekUlohy(r: Retazec, u: Krok): number {
+function usekUlohy(r: Chain, u: Krok): number {
   const i = r.vymeny.findIndex((v) => !!u.kotva && v.z_uloh.includes(u.kotva));
   if (u.typ_ulohy === "utilization") return i >= 0 ? i + 1 : r.vymeny.length;
   return i >= 0 ? i : 0;
 }
 
-export function linia(r: Retazec) {
+export function linia(r: Chain) {
   const skupiny: Krok[][] = Array.from({ length: r.vymeny.length + 1 }, () => []);
   for (const u of r.ulohy) skupiny[usekUlohy(r, u)].push(u);
   const out: Array<Record<string, unknown>> = [];
@@ -368,30 +368,30 @@ export function linia(r: Retazec) {
   return out;
 }
 
-export function retazecJson(r: Retazec) {
+export function chainJson(r: Chain) {
   return {
     id: r.id, ciele: r.ciele, spusta: r.spusta, ucel: r.ucel, ulohy: r.ulohy, linia: linia(r), vymeny: r.vymeny.map(vymenaJson),
     pasma: { ciele: PASMO_ROLY.ciel, strom: PASMO_ROLY.ucel, jednotky: PASMO_ROLY.jednotka },
   };
 }
 
-const memoRetazce = new WeakMap<Kniznica, Retazec[]>();
+const memoRetazce = new WeakMap<Library, Chain[]>();
 
 /** `retazce`: každý strom knižnice, jeden na účel užitia. */
-export function retazce(k: Kniznica): Retazec[] {
+export function retazce(k: Library): Chain[] {
   const hit = memoRetazce.get(k);
   if (hit) return hit;
   const vymenyUc = new Map<string, Array<{ id: string; model: M }>>();
   for (const er of k.podlaTypu("ER")) {
-    const eid = idPoznamky(er);
+    const eid = noteId(er);
     if (eid === null || !er.model) continue;
     for (const c of [...new Set(zoznam(er.model.uc).map(ciel).filter((x): x is string => !!x))]) vymenyUc.set(c, [...(vymenyUc.get(c) ?? []), { id: eid, model: er.model }]);
   }
-  const out: Retazec[] = [];
+  const out: Chain[] = [];
   for (const uc of k.podlaTypu("UC")) {
-    const uid = idPoznamky(uc);
+    const uid = noteId(uc);
     if (uid === null || !uc.model) continue;
-    const r: Retazec = { id: uid, ucel: krok(k, "ucel", uid, "účel užitia"), ciele: [], spusta: null, ulohy: [], vymeny: [] };
+    const r: Chain = { id: uid, ucel: krok(k, "ucel", uid, "účel užitia"), ciele: [], spusta: null, ulohy: [], vymeny: [] };
     r.ciele = zoznam(uc.model.podporuje_ciel).map(ciel).filter((x): x is string => !!x).map((c) => krok(k, "ciel", c, "prečo to robíme"));
     const impact = prvy(uc.model, "spustacia_udalost");
     if (impact) r.spusta = krok(k, "udalost", impact, "spúšťa účel užitia (impact)");
@@ -409,7 +409,7 @@ export function retazce(k: Kniznica): Retazec[] {
   return out;
 }
 
-function* uzly(r: Retazec): Generator<string> {
+function* uzly(r: Chain): Generator<string> {
   for (const c of r.ciele) yield c.id;
   if (r.spusta) yield r.spusta.id;
   yield r.ucel.id;
@@ -424,8 +424,8 @@ function* uzly(r: Retazec): Generator<string> {
   }
 }
 
-const memoPozicii = new WeakMap<Kniznica, Map<string, Array<[number, Pozicia]>>>();
-function indexPozicii(k: Kniznica) {
+const memoPozicii = new WeakMap<Library, Map<string, Array<[number, Pozicia]>>>();
+function indexPozicii(k: Library) {
   const hit = memoPozicii.get(k);
   if (hit) return hit;
   const idx = new Map<string, Array<[number, Pozicia]>>();
@@ -436,14 +436,14 @@ function indexPozicii(k: Kniznica) {
   return idx;
 }
 
-function nositelia(k: Kniznica, nid: string): Set<string> {
+function nositelia(k: Library, nid: string): Set<string> {
   const out = new Set<string>();
   const ciele = new Set([nid, ...(k.poznamky.get(nid)?.pod_zaznamy.map((p) => p.id) ?? [])]);
   for (const c of ciele) for (const o of k.odkazyNa(c)) if ((polePointera(o.pointer) && NOSNE_POLIA.has(polePointera(o.pointer))) || o.pointer.startsWith("#")) out.add(o.zdroj);
   return out;
 }
 
-function stromyPre(k: Kniznica, nid: string): [Array<[Retazec, Pozicia[]]>, boolean] {
+function stromyPre(k: Library, nid: string): [Array<[Chain, Pozicia[]]>, boolean] {
   const vsetky = retazce(k);
   const idx = indexPozicii(k);
   const podla = new Map<number, Pozicia[]>();
@@ -454,15 +454,15 @@ function stromyPre(k: Kniznica, nid: string): [Array<[Retazec, Pozicia[]]>, bool
 }
 
 /** `retazce_pre`: stromy, na ktorých poznámka sedí, s označenými pozíciami (prierezová cez nositeľa). */
-export function retazcePre(k: Kniznica, nid: string) {
+export function retazcePre(k: Library, nid: string) {
   const [stromy, prierezovy] = stromyPre(k, nid);
-  return stromy.map(([r, p]) => ({ ...retazecJson(r), prierezovy, pozicie: p }));
+  return stromy.map(([r, p]) => ({ ...chainJson(r), prierezovy, pozicie: p }));
 }
 
-const ulohyPre = (r: Retazec, nid: string) => r.ulohy.filter((u) => u.vystupy.includes(nid)).map((u) => u.kotva ?? "");
+const ulohyPre = (r: Chain, nid: string) => r.ulohy.filter((u) => u.vystupy.includes(nid)).map((u) => u.kotva ?? "");
 
 /** `cesty_pre`: pruhy "kde to sedí" (cieľ › účel › úloha › výmena), bez duplicít. */
-export function cestyPre(k: Kniznica, nid: string): Krok[][] {
+export function pathsFor(k: Library, nid: string): Krok[][] {
   const out: Krok[][] = [];
   const [stromy] = stromyPre(k, nid);
   for (const [r, pp] of stromy) {
@@ -493,7 +493,7 @@ export function cestyPre(k: Kniznica, nid: string): Krok[][] {
 }
 
 /** `app_json._zhrnutie`: počty na prvý pohľad (objekt pod dvoma kontajnermi sa ráta raz). */
-function zhrnutie(r: Retazec) {
+function zhrnutie(r: Chain) {
   const u: Krok[] = [...r.ciele, ...(r.spusta ? [r.spusta] : [])];
   const objekty = new Set<string>();
   const kontajnery = new Set<string>();
@@ -506,6 +506,6 @@ function zhrnutie(r: Retazec) {
 }
 
 /** `app_json._retazce`: všetky stromy knižnice pre dokument editora. */
-export function retazceJson(k: Kniznica) {
-  return retazce(k).map((r) => ({ ...retazecJson(r), nazov: r.ucel.nazov, zhrnutie: zhrnutie(r) }));
+export function retazceJson(k: Library) {
+  return retazce(k).map((r) => ({ ...chainJson(r), nazov: r.ucel.nazov, zhrnutie: zhrnutie(r) }));
 }

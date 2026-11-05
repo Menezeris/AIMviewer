@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
-import { blokyJson, parsuj, serializuj } from "./blocks";
-import { nacitajSubor, poznamkaJson } from "./loader";
+import { blocksJson, parsuj, serializuj } from "./blocks";
+import { loadFile, noteJson } from "./loader";
 
 /**
  * Read-only prehliadač knižnice požiadaviek (port do TS, krok 1, assetin-library V30): hlava knižnice
@@ -9,7 +9,7 @@ import { nacitajSubor, poznamkaJson } from "./loader";
  * (`supabase/migrations/20261102200000_library_hlava_read.sql`, aplikovaná 2. 11.). Do kroku 3 (writer) knižnica v AIM nič nezapisuje.
  */
 
-export interface HlavaRiadok {
+export interface HeadRow {
   kniznica: string;
   cesta: string;
   note_id: string | null;
@@ -22,14 +22,14 @@ export interface HlavaRiadok {
   dlzka: number;
 }
 
-export interface HlavaSubor extends Omit<HlavaRiadok, "dlzka"> {
+export interface HeadFile extends Omit<HeadRow, "dlzka"> {
   text: string;
 }
 
-export interface HlavaStore {
+export interface HeadStore {
   /** null = RPC (migrácia) v DB ešte nie je. */
-  zoznam(kniznica: string | null): Promise<HlavaRiadok[] | null>;
-  subor(kniznica: string, cesta: string): Promise<HlavaSubor | null | "chyba_migracie">;
+  zoznam(kniznica: string | null): Promise<HeadRow[] | null>;
+  subor(kniznica: string, cesta: string): Promise<HeadFile | null | "chyba_migracie">;
 }
 
 export class HlavaMigraciaChyba extends Error {
@@ -44,10 +44,10 @@ const KOD_RE = /^[A-Za-z0-9._-]{1,80}$/;
 
 export interface Prehlad {
   kniznice: Array<{ kod: string; subory: number; typy: Record<string, number> }>;
-  subory: Array<Omit<HlavaRiadok, "kniznica"> & { kniznica: string }>;
+  subory: Array<Omit<HeadRow, "kniznica"> & { kniznica: string }>;
 }
 
-export async function prehlad(store: HlavaStore, kniznica: string | null): Promise<Prehlad> {
+export async function prehlad(store: HeadStore, kniznica: string | null): Promise<Prehlad> {
   if (kniznica !== null && !KOD_RE.test(kniznica)) throw new HlavaVstupChyba("kniznica: kód knižnice (písmená, čísla, . _ -).");
   const rows = await store.zoznam(kniznica);
   if (rows === null) throw new HlavaMigraciaChyba();
@@ -62,24 +62,24 @@ export async function prehlad(store: HlavaStore, kniznica: string | null): Promi
   return { kniznice: [...by.values()], subory: rows };
 }
 
-export interface DetailSuboru {
-  subor: HlavaSubor;
+export interface FileDetail {
+  subor: HeadFile;
   /** sha256 textu súboru (UTF-8) sedí so `sha256` revízie. */
   sha256_sedi: boolean;
   /** Spojenie `raw` blokov = text (bajtovo). */
   round_trip: boolean;
-  bloky: ReturnType<typeof blokyJson>;
+  bloky: ReturnType<typeof blocksJson>;
   /** Loader (krok 2b): zlúčené dáta, pôvod polí, typovaný model alebo null, pod-záznamy, diagnostiky. */
-  poznamka: ReturnType<typeof poznamkaJson> | null;
+  poznamka: ReturnType<typeof noteJson> | null;
 }
 
-export async function detail(store: HlavaStore, kniznica: string, cesta: string): Promise<DetailSuboru | null> {
+export async function detail(store: HeadStore, kniznica: string, cesta: string): Promise<FileDetail | null> {
   if (!KOD_RE.test(kniznica)) throw new HlavaVstupChyba("kniznica: kód knižnice (písmená, čísla, . _ -).");
   if (!cesta || cesta.length > 500 || cesta.split("/").some((s) => s === ".." || s === "")) throw new HlavaVstupChyba("cesta: relatívna cesta súboru v knižnici.");
   const s = await store.subor(kniznica, cesta);
   if (s === "chyba_migracie") throw new HlavaMigraciaChyba();
   if (!s) return null;
   const hash = createHash("sha256").update(s.text, "utf8").digest("hex");
-  const poznamka = cesta === "KNIZNICA.md" ? null : poznamkaJson(nacitajSubor(cesta, s.text));
-  return { subor: s, sha256_sedi: hash === s.sha256, round_trip: serializuj(parsuj(s.text)) === s.text, bloky: blokyJson(s.text), poznamka };
+  const poznamka = cesta === "KNIZNICA.md" ? null : noteJson(loadFile(cesta, s.text));
+  return { subor: s, sha256_sedi: hash === s.sha256, round_trip: serializuj(parsuj(s.text)) === s.text, bloky: blocksJson(s.text), poznamka };
 }

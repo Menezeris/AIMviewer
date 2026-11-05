@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { kontrola } from "./check";
-import { skladPamat, type Zmena } from "./write";
+import { memoryStore, type Zmena } from "./write";
 
 const subory = JSON.parse(readFileSync(join(process.cwd(), "library", "korpus", "stromy", "vzor", "subory.json"), "utf8"));
 const ORAKULUM = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "__fixtures__", "kontrola-orakulum.json"), "utf8")) as Array<{
@@ -20,7 +20,7 @@ const bezSpravy = (ds: Array<Record<string, unknown>>) => ds.map((d) => (INFORMA
 describe("kontrola pracovnej kópie = Python zapis.kontrola nad vstupmi upravy/* (orákulum f7c103c)", () => {
   for (const c of ORAKULUM) {
     it(c.nazov, async () => {
-      const r = plain(await kontrola(skladPamat({ ...subory }), (c.vstup.zmeny ?? []).map((z) => ({ ...z, hodnota: z.hodnota ?? null })), c.vstup.nova ?? null));
+      const r = plain(await kontrola(memoryStore({ ...subory }), (c.vstup.zmeny ?? []).map((z) => ({ ...z, hodnota: z.hodnota ?? null })), c.vstup.nova ?? null));
       expect(r.ok).toBe(c.vysledok.ok);
       expect(r.odmietnute).toEqual(c.vysledok.odmietnute);
       expect(bezSpravy(r.diagnostiky)).toEqual(bezSpravy(c.vysledok.diagnostiky));
