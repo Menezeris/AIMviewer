@@ -5,7 +5,7 @@ import { getSupabaseAdmin } from "../supabase/server";
 import type { IdsLibraryStore, ModelBinding, ModelRun } from "./library";
 import { isMissingSchema, SCHEMA_HINT } from "./schema";
 
-/** Úložisko väzieb, revízií a behov po modeloch pre knižnicu požiadaviek (D-182, `service_role`). */
+/** Store of links, revisions and runs per model for the requirements library (D-182, `service_role`). */
 
 const IN_CHUNK = 100;
 
@@ -63,7 +63,7 @@ export function supabaseIdsLibraryStore(projectId: string): IdsLibraryStore {
     async bindModel(row) {
       const { error } = await db().from("ids_document_models").insert(row);
       if (isMissingSchema(error)) fail(`Väzba IDS na model zlyhala (${SCHEMA_HINT})`, error);
-      // Súbežné zaškrtnutie: jedinečný index aktívnej dvojice, väzba už je.
+            // Concurrent check: the unique index of the active pair, the link already exists.
       if (error && error.code !== "23505") fail("Väzba IDS na model zlyhala", error);
     },
     async endModel(documentId, containerId, endedBy) {

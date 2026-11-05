@@ -4,23 +4,23 @@ import { isLastName, type SavedViewRow, type SavedViewpoint } from "./plan";
 import type { SavedViewStore, SavedViewWrite } from "./store";
 
 /**
- * Pohľady z panela Presentation v `saved_views` (D-161): `viewpoint` nesie celý `ViewWire`, `id` a meno
- * riadku patria stĺpcom. Riadky z D-122 a D-132 (kamera ako {x,y,z}, `mode`, `view_type`) majú iný tvar;
- * ostávajú len pre chat (obnova cez `planRestore`) a do viewera sa neposielajú.
+  * Views from the Presentation panel in `saved_views` (D-161): `viewpoint` carries the whole `ViewWire`, the `id` and name
+  * of the row belong to the columns. Rows from D-122 and D-132 (camera as {x,y,z}, `mode`, `view_type`) have a different shape;
+  * they stay only for the chat (restore via `planRestore`) and are not sent to the viewer.
  */
 
 export const VIEWER_AUTHOR = "viewer";
 const MAX_NAME = 120;
 
-/** Má `viewpoint` tvar `ViewWire` (D-161)? Riadky z D-122 a D-132 ho nemajú. */
+/** Does `viewpoint` have the `ViewWire` shape (D-161)? Rows from D-122 and D-132 do not. */
 export function isWireViewpoint(vp: unknown): boolean {
   const v = vp as { basket?: unknown; order?: unknown } | null;
   return !!v && typeof v === "object" && !!v.basket && typeof v.basket === "object" && Number.isInteger(v.order);
 }
 
 /**
- * Riadok -> pohľad pre viewera; null = riadok z D-122 alebo poškodený. Pri "Posledný pohľad" ostáva v
- * `viewpoint.id` pôvodný pohľad (id riadku patrí poslednému pohľadu).
+  * Row -> view for the viewer; null = a row from D-122 or damaged. For "Posledný pohľad" (last view) the original view stays in
+  * `viewpoint.id` (the row id belongs to the last view).
  */
 export function wireOfRow(row: SavedViewRow): ViewWire | null {
   if (!isWireViewpoint(row.viewpoint)) return null;
@@ -28,11 +28,11 @@ export function wireOfRow(row: SavedViewRow): ViewWire | null {
   return isViewWire(wire) ? wire : null;
 }
 
-/** Zápis pohľadu z viewera: `viewpoint` je celý `ViewWire`, ostatné stĺpce ostávajú prázdne. */
+/** Write of a view from the viewer: `viewpoint` is the whole `ViewWire`, the other columns stay empty. */
 export function wireWrite(view: ViewWire, author: string, revisions: Record<string, number>): SavedViewWrite & Pick<SavedViewRow, "name" | "viewpoint"> {
   return {
     name: view.name,
-    // Jsonb je voľný tvar; typ `SavedViewpoint` platí pre riadky z D-122.
+        // Jsonb is a free shape; the type `SavedViewpoint` applies to rows from D-122.
     viewpoint: view as unknown as SavedViewpoint,
     selection: [],
     hidden: [],
@@ -42,13 +42,13 @@ export function wireWrite(view: ViewWire, author: string, revisions: Record<stri
   };
 }
 
-/** Pohľady pre viewera v poradí pásu Presentation. */
+/** Views for the viewer in the order of the Presentation strip. */
 export async function listWires(store: Pick<SavedViewStore, "list">): Promise<ViewWire[]> {
   const wires = (await store.list()).map(wireOfRow).filter((w): w is ViewWire => w !== null);
   return wires.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)).slice(0, MAX_VIEWS);
 }
 
-/** Meno bez kolízie (bez ohľadu na veľkosť písmen, "Posledný pohľad" je vyhradené): prípona " 2", " 3"... */
+/** Name without a collision (regardless of letter case, "Posledný pohľad" (last view) is reserved): suffix " 2", " 3"... */
 export async function freeName(store: Pick<SavedViewStore, "list">, wanted: string, selfId?: string): Promise<string> {
   const base = wanted.trim().slice(0, MAX_NAME);
   const taken = new Set((await store.list()).filter((r) => r.id !== selfId).map((r) => r.name.toLowerCase()));
@@ -62,7 +62,7 @@ export async function freeName(store: Pick<SavedViewStore, "list">, wanted: stri
 
 const isDuplicate = (err: unknown) => err instanceof Error && /duplicate key|uniq_saved_views_name/i.test(err.message);
 
-/** Zapíše (vytvorí alebo prepíše) pohľad z viewera; kolízia mena dostane príponu. */
+/** Writes (creates or overwrites) a view from the viewer; a name collision gets a suffix. */
 export async function saveWire(
   store: SavedViewStore,
   view: ViewWire,
@@ -78,13 +78,13 @@ export async function saveWire(
       else await store.create({ ...write, id: view.id });
       return { name, renamed: name !== view.name };
     } catch (err) {
-      // Dve okná uložili to isté meno naraz: druhý pokus vidí cudzí riadok a zvolí inú príponu.
+            // Two windows saved the same name at once: the second attempt sees the foreign row and picks a different suffix.
       if (!isDuplicate(err) || attempt >= 2) throw err;
     }
   }
 }
 
-/** Premenovanie pohľadu z viewera; null = riadok neexistuje (zmazal ho chat). */
+/** Renaming a view from the viewer; null = the row does not exist (deleted by the chat). */
 export async function renameWire(store: SavedViewStore, id: string, wanted: string): Promise<{ name: string } | null> {
   const row = await store.byId(id);
   if (!row) return null;
@@ -94,7 +94,7 @@ export async function renameWire(store: SavedViewStore, id: string, wanted: stri
   return { name };
 }
 
-/** Zmazanie pohľadu z viewera; neexistujúci riadok nie je chyba. */
+/** Deleting a view from the viewer; a nonexistent row is not an error. */
 export async function deleteWire(store: SavedViewStore, id: string): Promise<void> {
   if (await store.byId(id)) await store.remove(id);
 }

@@ -1,8 +1,8 @@
 /**
- * Výpis AIM vrstvy ako tabuľka xlsx (D-181, Samuel 31. 10.: "napríklad keby je tam nejaký súbor xlsx"):
- * voliteľný súbor `<kontajner>_aim-layer.xlsx` vedľa `.icdd` (do kontajnera nejde, audit ICDD 1. 11.), hárok na vrstvu
- * linksetu + hárok súborov. Vlastný malý zapisovač
- * SpreadsheetML (OOXML, ISO/IEC 29500) cez fflate: bez ďalšej závislosti, deterministický (pevný čas v ZIP).
+  * Listing of the AIM layer as an xlsx table (D-181, Samuel 31. 10.: "for example if there were some xlsx file"):
+  * an optional file `<container>_aim-layer.xlsx` next to the `.icdd` (it does not go into the container, ICDD audit 1. 11.), a sheet per linkset
+  * layer + a sheet of files. A small custom writer of
+  * SpreadsheetML (OOXML, ISO/IEC 29500) via fflate: no extra dependency, deterministic (fixed time in the ZIP).
  */
 
 import { zipSync, type Zippable } from "fflate";
@@ -37,7 +37,7 @@ function sheetXml(rows: Cell[][]): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
 }
 
-/** Zapíše zošit z hárkov (meno -> riadky, prvý riadok = hlavička). */
+/** Writes a workbook from sheets (name -> rows, first row = header). */
 export function writeXlsx(sheets: { name: string; rows: Cell[][] }[]): Uint8Array {
   const enc = new TextEncoder();
   const t = new Date(1980, 0, 1);
@@ -74,7 +74,7 @@ export function writeXlsx(sheets: { name: string; rows: Cell[][] }[]): Uint8Arra
 
 const HEADER = ["from_file", "from_global_id", "from_object_ref", "to_file", "to_global_id", "to_page", "source", "role", "rule", "based_on", "ifc_relationship"];
 
-/** Výpis AIM vrstvy z plánu: hárok `files` + hárok na každú vrstvu linksetu. */
+/** Listing of the AIM layer from the plan: the `files` sheet + a sheet per every linkset layer. */
 export function buildAimXlsx(plan: IcddPlan): Uint8Array {
   const file = new Map(plan.payloads.map((p) => [p.id, p.filename]));
   const byLayer = new Map<Layer, Cell[][]>(plan.layers.map((l) => [l, []]));

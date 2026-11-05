@@ -3,15 +3,15 @@ import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Server-only Supabase klient so `service_role` kľúčom (D-026).
+  * Server-only Supabase client with the `service_role` key (D-026).
  *
- * - `import "server-only"` je tvrdá poistka: ak by sa tento modul dostal do
- *   client bundle, build zlyhá. Service_role kľúč sa tak NIKDY nedostane do
- *   prehliadača.
- * - RLS je vypnuté (línia D-025) — service_role aj tak RLS obchádza, takže
- *   všetko čítanie DB beží výhradne server-side.
+  * - `import "server-only"` is a hard safeguard: if this module got into the
+  *   client bundle, the build fails. The service_role key thus NEVER reaches
+  *   the browser.
+  * - RLS is off (D-025 line) - service_role bypasses RLS anyway, so
+  *   all DB reading runs exclusively server-side.
  *
- * Singleton: klient sa vytvorí raz na server proces.
+  * Singleton: the client is created once per server process.
  */
 let client: SupabaseClient | undefined;
 

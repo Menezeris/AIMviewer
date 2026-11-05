@@ -1,18 +1,18 @@
 import "server-only";
 
 /**
- * Spustenie Claude Code session z požiadavky (D-090): API trigger routine
- * "AIM: požiadavka z konektora" (claude.ai/code/routines), pre BCF tému
- * "AIM: BCF téma" (D-099, `RoutineConfig` z `lib/bcf/tools.ts`). Každé `/fire`
- * založí novú cloud session v účte vlastníka routine; session je bežná
- * interaktívna session, ktorú Samuel otvorí v Claude a môže v nej odpovedať.
+  * Launching a Claude Code session from a request (D-090): API trigger of the routine
+  * "AIM: požiadavka z konektora" (connector request; claude.ai/code/routines), for a BCF topic
+  * "AIM: BCF téma" (BCF topic; D-099, `RoutineConfig` from `lib/bcf/tools.ts`). Every `/fire`
+  * creates a new cloud session in the routine owner's account; the session is an ordinary
+  * interactive session that Samuel opens in Claude and can reply in.
  *
- * URL aj token sa kopírujú z routine (Edit -> API trigger -> Generate token),
- * token je viazaný na túto jednu routine. Bez nich sa session nespustí a
- * issue počká (požiadavka sa nestratí).
+  * Both the URL and the token are copied from the routine (Edit -> API trigger -> Generate token),
+  * the token is bound to this one routine. Without them the session does not start and
+  * the issue waits (the request is not lost).
  */
 
-/** Hlavička beta API routines; staršie dve hlavičky ostávajú platné po zmene. */
+/** Beta API header of routines; the older two headers stay valid after a change. */
 export const ROUTINE_BETA = "experimental-cc-routine-2026-04-01";
 
 export interface RoutineFireResult {
@@ -20,7 +20,7 @@ export interface RoutineFireResult {
   sessionUrl: string;
 }
 
-/** Token smie ísť len na API Anthropic; presnú cestu necháme na URL z routine. */
+/** The token may go only to the Anthropic API; the exact path is left to the URL from the routine. */
 export function isFireUrl(url: string): boolean {
   try {
     const u = new URL(url);
@@ -30,14 +30,14 @@ export function isFireUrl(url: string): boolean {
   }
 }
 
-/** Ktorá routine: URL a token z API triggera + mená env do chybových hlášok. */
+/** Which routine: URL and token from the API trigger + env names for error messages. */
 export interface RoutineConfig {
   url: string | undefined;
   token: string | undefined;
   env: string;
 }
 
-/** Routine "AIM: Hard Issues" (D-090, od D-134 premenovaná z "AIM: požiadavka z konektora"; Opus). */
+/** Routine "AIM: Hard Issues" (D-090, renamed in D-134 from "AIM: požiadavka z konektora" (connector request); Opus). */
 export function feedbackRoutine(): RoutineConfig {
   return {
     url: process.env.CLAUDE_ROUTINE_FIRE_URL,
@@ -47,8 +47,8 @@ export function feedbackRoutine(): RoutineConfig {
 }
 
 /**
- * Routine "AIM: Standard Issues" (D-134, Sonnet): jasné a lokálne zadania. Model je
- * vlastnosť routine, `/fire` ho nezmení, preto druhá routine popri "AIM: Hard Issues".
+  * Routine "AIM: Standard Issues" (D-134, Sonnet): clear and local tasks. The model is
+  * a property of the routine, `/fire` does not change it, hence a second routine next to "AIM: Hard Issues".
  */
 export function standardRoutine(): RoutineConfig {
   return {
@@ -63,8 +63,8 @@ export function routineConfigured(cfg: RoutineConfig = feedbackRoutine()): boole
 }
 
 /**
- * `text` príde do session ako blok `<routine-fire-payload>` (nedôveryhodné dáta);
- * uložený prompt routine hovorí, ako ho čítať.
+  * `text` arrives in the session as a `<routine-fire-payload>` block (untrusted data);
+  * the stored prompt of the routine says how to read it.
  */
 export async function fireRoutine(
   text: string,

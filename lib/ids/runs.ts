@@ -1,9 +1,9 @@
 import type { IdsResultWrite } from "./types";
 
 /**
- * Riadky `ids_results` z reportu `ids_validate` (@ifc-lite/ids) pre záznam kontroly (D-162).
- * Rovnaká sémantika ako ETL `etl.ids_check`: riadok na každý použiteľný prvok (pass aj fail),
- * povinná špecifikácia bez použiteľného prvku = jeden riadok bez `ifc_guid`.
+  * `ids_results` rows from the `ids_validate` report (@ifc-lite/ids) for the check record (D-162).
+  * Same semantics as the ETL `etl.ids_check`: a row for every applicable element (pass and fail),
+  * a required specification without an applicable element = one row without `ifc_guid`.
  */
 
 export const NO_APPLICABLE = "Model neobsahuje žiadny prvok, na ktorý sa povinná špecifikácia vzťahuje.";

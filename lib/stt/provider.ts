@@ -1,31 +1,31 @@
 import "server-only";
 
 /**
- * Provider vrstva hlasového prepisu (STT, D-069). Zrkadlí `lib/llm/provider.ts`:
- * neutrálne rozhranie, konkrétna služba sa vyberá cez env (`STT_PROVIDER`,
- * `STT_MODEL`). Server-only — API kľúč nikdy neopustí server (línia D-026).
- * Ďalšie služby (OpenAI gpt-4o-transcribe, Deepgram…) sa dopĺňajú aditívne
- * ako nové case-y bez zmeny UI.
+  * Provider layer of voice transcription (STT, D-069). Mirrors `lib/llm/provider.ts`:
+  * a neutral interface, the concrete service is chosen via env (`STT_PROVIDER`,
+  * `STT_MODEL`). Server-only - the API key never leaves the server (D-026 line).
+  * Further services (OpenAI gpt-4o-transcribe, Deepgram...) are added additively
+  * as new cases without a UI change.
  */
 
 export interface SttRequest {
-  /** Surové audio dáta nahrávky. */
+    /** Raw audio data of the recording. */
   audio: Uint8Array;
-  /** MIME typ nahrávky (audio/webm, audio/mp4…). */
+    /** MIME type of the recording (audio/webm, audio/mp4...). */
   mimeType: string;
 }
 
 export interface SttProvider {
-  /** Identifikátor pre trace/log (napr. 'gemini:gemini-flash-lite-latest'). */
+    /** Identifier for trace/log (e.g. 'gemini:gemini-flash-lite-latest'). */
   id: string;
-  /** Doslovný prepis nahrávky; prázdny string = žiadna zrozumiteľná reč. */
+    /** Verbatim transcript of the recording; an empty string = no intelligible speech. */
   transcribe(req: SttRequest): Promise<string>;
 }
 
-/** Chyba konfigurácie (chýbajúci kľúč…) — API ju mapuje na 503 s návodom. */
+/** Configuration error (missing key...) - the API maps it to 503 with instructions. */
 export class SttConfigError extends Error {}
 
-/** Bez explicitného STT_PROVIDER sa provider odvodí z dostupného kľúča. */
+/** Without an explicit STT_PROVIDER the provider is derived from the available key. */
 function detectProvider(): string {
   if (process.env.GEMINI_API_KEY) return "gemini";
   throw new SttConfigError(
@@ -35,7 +35,7 @@ function detectProvider(): string {
 }
 
 export async function getSttProvider(): Promise<SttProvider> {
-  // `||`, nie `??` — prázdna env hodnota znamená „nenastavené".
+    // `||`, not `??` - an empty env value means "unset".
   const provider = process.env.STT_PROVIDER || detectProvider();
   switch (provider) {
     case "gemini": {

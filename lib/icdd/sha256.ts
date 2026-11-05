@@ -1,6 +1,6 @@
 /**
- * Synchrónny SHA-256 (FIPS 180-4) bez závislostí: rovnaký kód v prehliadači aj v Node, pre kontrolu
- * payloadov (ct:checksum) aj pre stabilné IRI linkov (D-181, determinizmus).
+  * Synchronous SHA-256 (FIPS 180-4) without dependencies: the same code in the browser and in Node, for checking
+  * payloads (ct:checksum) and for stable link IRIs (D-181, determinism).
  */
 
 const K = new Uint32Array([

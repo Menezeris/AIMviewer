@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 import { clientIpKey, createRateLimiter, isCrossOriginBlocked } from "@/lib/api-guard";
 
 /**
- * Ochrana `/api/verify/*` (D-185 UI): origin guard a per-IP rate limit (D-068) ako pri IDS (D-162). Výpočet
- * (`run`, `run_all`) beží vždy; ULOŽENIE behu k revízii je za env bránou `VERIFY_WRITE_ENABLED` (predvolene vypnutá,
- * ako ostatné zápisy z viewera D-161, D-162, D-164), bez nej viewer dostane výsledok, ale nič sa neuloží.
+  * Protection of `/api/verify/*` (D-185 UI): origin guard and per-IP rate limit (D-068) as with IDS (D-162). The computation
+  * (`run`, `run_all`) always runs; SAVING a run against a revision is behind the env gate `VERIFY_WRITE_ENABLED` (off by default,
+  * like the other writes from the viewer D-161, D-162, D-164), without it the viewer gets the result, but nothing is saved.
  */
 
 const RATE_LIMIT_MAX = Number(process.env.VERIFY_RATE_LIMIT_MAX ?? (process.env.NODE_ENV === "production" ? 120 : 0));
@@ -21,10 +21,10 @@ export const jsonFail = (error: string, status: number) => NextResponse.json({ e
 
 export const verifySaveEnabled = () => process.env.VERIFY_WRITE_ENABLED === "true";
 
-/** Motor IFC (ENGINE_ENABLED, D-084); bez neho sa overovať nedá. */
+/** IFC engine (ENGINE_ENABLED, D-084); without it verification is not possible. */
 export const verifyEngineEnabled = () => process.env.ENGINE_ENABLED === "1" || process.env.ENGINE_SPIKE === "1";
 
-/** null = požiadavka smie ďalej; inak 403 / 429. */
+/** null = the request may proceed; otherwise 403 / 429. */
 export function verifyGuard(req: Request): NextResponse | null {
   if (isCrossOriginBlocked(req.headers.get("origin"), req.headers.get("host"))) return jsonFail("cross-origin request denied", 403);
   if (RATE_LIMIT_MAX > 0) {
@@ -39,7 +39,7 @@ export function verifyGuard(req: Request): NextResponse | null {
   return null;
 }
 
-/** Telo POST ako objekt (malé, len parametre). */
+/** POST body as an object (small, only parameters). */
 export async function readBody(req: Request): Promise<Record<string, unknown> | null> {
   const raw = await req.text();
   if (raw.length > 10_000) return null;

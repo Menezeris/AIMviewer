@@ -3,22 +3,22 @@ import "server-only";
 import { SttConfigError, type SttProvider, type SttRequest } from "./provider";
 
 /**
- * Gemini ako STT (D-069) — `generateContent` prijíma audio natívne
- * (`inline_data`), takže prepis beží na existujúcom `GEMINI_API_KEY`
- * (free tier pokrýva demo) bez novej služby či účtu. Vzor `lib/llm/gemini.ts`:
- * čistý `fetch` bez SDK, retry na preťaženie free tieru (429/503).
+  * Gemini as STT (D-069) - `generateContent` accepts audio natively
+  * (`inline_data`), so transcription runs on the existing `GEMINI_API_KEY`
+  * (the free tier covers the demo) without a new service or account. Pattern of `lib/llm/gemini.ts`:
+  * plain `fetch` without an SDK, retry on free-tier overload (429/503).
  */
 
 const DEFAULT_MODEL = "gemini-flash-lite-latest";
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-/** Retry na preťaženie/rate-limit free tieru (429/503) — pauzy v ms. */
+/** Retry on free-tier overload/rate-limit (429/503) - pauses in ms. */
 const RETRY_DELAYS_MS = [1500, 3000];
-/** Prepis 60 s diktátu má rádovo stovky tokenov; rezerva na diakritiku. */
+/** A transcript of 60 s of dictation has on the order of hundreds of tokens; a margin for diacritics. */
 const MAX_OUTPUT_TOKENS = 1024;
 
 /**
- * Doménový slovník v prompte navádza model na odbornú terminológiu a tvar
- * kódov prvkov — to je hlavná výhoda LLM-STT oproti Web Speech API.
+  * The domain vocabulary in the prompt steers the model to expert terminology and the shape of
+  * element codes - this is the main advantage of LLM-STT over the Web Speech API.
  */
 const TRANSCRIBE_PROMPT = `Prepíš priloženú hlasovú nahrávku doslovne.
 

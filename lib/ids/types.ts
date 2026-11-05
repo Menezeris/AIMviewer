@@ -1,6 +1,6 @@
 /**
- * IDS dokumenty (D-162): riadky tabuliek `ids_documents` a `ids_document_versions`
- * a rozhranie úložiska. Nositeľ IDS je XML; Studio JSON sa neukladá.
+  * IDS documents (D-162): rows of the tables `ids_documents` and `ids_document_versions`
+  * and the store interface. The IDS carrier is XML; Studio JSON is not stored.
  */
 
 export type IdsOrigin = "library" | "chat";
@@ -31,7 +31,7 @@ export interface IdsVersionRow {
   source: IdsVersionSource;
   note: string | null;
   created_at: string;
-  /** Pôvod verzie z knižnice (D-182): repo, cesta, commit a kód súboru v čase priradenia; null mimo `import`. */
+    /** Version origin from the library (D-182): repo, path, commit and file code at the time of assignment; null outside `import`. */
   library_repo?: string | null;
   library_path?: string | null;
   library_commit?: string | null;
@@ -58,14 +58,14 @@ export interface IdsVersionWrite {
   author: string | null;
   source: IdsVersionSource;
   note: string | null;
-  /** Pôvod v knižnici (D-182), len pri `source = import`. */
+    /** Origin in the library (D-182), only for `source = import`. */
   library_repo?: string;
   library_path?: string;
   library_commit?: string;
   library_code?: string;
 }
 
-/** Posledný uložený beh nad verziou IDS (do `list`). */
+/** Latest saved run over an IDS version (into `list`). */
 export interface IdsRunSummary {
   id: string;
   document_id: string;
@@ -95,11 +95,11 @@ export interface IdsRunWrite {
   results_failed: number;
   engine: "ifc-lite";
   trigger: "chat" | "viewer";
-  /** Verzia nástroja (D-182), pri behu z viewera verzia `@ifc-lite/ids` vo forku. */
+    /** Tool version (D-182), for a run from the viewer the `@ifc-lite/ids` version in the fork. */
   engine_version?: string | null;
-  /** Kto beh uložil (meno z dialógu viewera). */
+    /** Who saved the run (name from the viewer dialog). */
   created_by?: string | null;
-  /** Podpis vstupu (D-183): {model: revízia archívu}, nad ktorou beh naozaj bežal; {} = neznáma. */
+    /** Input signature (D-183): {model: archive revision} over which the run really ran; {} = unknown. */
   model_revisions: Record<string, number>;
 }
 
@@ -115,7 +115,7 @@ export interface IdsResultWrite {
   reasons: string[];
 }
 
-/** Zápis verzie narazil na novšiu verziu (409): chat ponúkne `diff`. */
+/** The version write hit a newer version (409): the chat offers `diff`. */
 export class IdsConflictError extends Error {
   constructor(public readonly latest: number, public readonly base: number | null) {
     super(
@@ -129,22 +129,22 @@ export interface IdsStore {
   listDocuments(): Promise<IdsDocumentRow[]>;
   byCode(code: string): Promise<IdsDocumentRow | null>;
   byId(id: string): Promise<IdsDocumentRow | null>;
-  /** Posledná verzia každého z dokumentov (bez XML). */
+    /** Latest version of each of the documents (without XML). */
   latestVersions(documentIds: string[]): Promise<Map<string, IdsVersionMeta>>;
-  /** Posledný beh nad ktoroukoľvek verziou každého z dokumentov. */
+    /** Latest run over any version of each of the documents. */
   lastRuns(documentIds: string[]): Promise<Map<string, IdsRunSummary>>;
   versions(documentId: string): Promise<IdsVersionMeta[]>;
-  /** Verzia s XML; bez čísla posledná, null = neexistuje. */
+    /** Version with XML; without a number the latest, null = does not exist. */
   version(documentId: string, version?: number): Promise<IdsVersionRow | null>;
   versionById(id: string): Promise<IdsVersionRow | null>;
   createDocument(row: IdsDocumentWrite): Promise<IdsDocumentRow>;
-  /** Zruší dokument bez verzií (vrátenie neúspešného `create`). */
+    /** Removes a document without versions (rollback of a failed `create`). */
   deleteDocument(id: string): Promise<void>;
   /**
-   * Nová nemenná verzia (posledná + 1). `baseVersion` = z ktorej verzie úprava vychádzala;
-   * ak nie je posledná, hodí `IdsConflictError`. Zosúladí názov a `updated_at` dokumentu.
+      * New immutable version (latest + 1). `baseVersion` = the version the edit started from;
+      * if it is not the latest, throws `IdsConflictError`. Aligns the document's title and `updated_at`.
    */
   addVersion(documentId: string, write: IdsVersionWrite, baseVersion: number | null): Promise<IdsVersionRow>;
-  /** Záznam kontroly (`ifc_ids_validate save=true`); vráti id behu. */
+    /** Check record (`ifc_ids_validate save=true`); returns the run id. */
   saveRun(run: IdsRunWrite, results: IdsResultWrite[]): Promise<string>;
 }

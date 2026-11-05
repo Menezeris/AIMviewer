@@ -6,21 +6,21 @@ import { GithubClient, GithubError, parseRepo, type GithubIssue } from "../githu
 import { fireRoutine, routineConfigured, standardRoutine, type RoutineFireResult } from "./routine";
 
 /**
- * Pripomienky a požiadavky na nové tools z MCP konektora (D-090), len v MCP.
- * Claude zapíše, čo mu chýba alebo čo nefunguje, ako GitHub issue v repe
- * konektora; požiadavka na nový tool (a pripomienka, keď o to používateľ
- * požiada) hneď spustí Claude Code session cez routine, ktorá issue rieši.
- * Issue je jediný záznam: žiadna tabuľka v DB, stav sa číta z GitHubu.
+  * Remarks and requests for new tools from the MCP connector (D-090), MCP only.
+  * Claude records what it is missing or what does not work as a GitHub issue in the
+  * connector repo; a request for a new tool (and a remark, when the user
+  * asks for it) immediately starts a Claude Code session via the routine that resolves the issue.
+  * The issue is the only record: no table in the DB, the state is read from GitHub.
  */
 
-/** Štítky; GitHub chýbajúci štítok pri zakladaní issue sám vytvorí. */
+/** Labels; GitHub creates a missing label itself when the issue is created. */
 export const LABEL_MCP = "mcp";
 export const LABEL_TOOL = "novy-tool";
 export const LABEL_FEEDBACK = "pripomienka";
 export const LABEL_SESSION = "session";
-/** Čaká na voľné miesto (strop súbežných sessions). */
+/** Waiting for a free slot (cap of concurrent sessions). */
 export const LABEL_QUEUE = "fronta";
-/** Overenie zatvoreného issue (D-126): Samuel ho skontroloval, alebo ho vrátil. */
+/** Verification of a closed issue (D-126): Samuel checked it, or sent it back. */
 export const VERIFICATIONS = ["overene", "vratene"] as const;
 type Verification = (typeof VERIFICATIONS)[number];
 export const STATES = ["open", "closed", "all"] as const;
@@ -61,7 +61,7 @@ const COMMENT_TEXT: Record<CommentKind, string> = {
   note: "Poznámka",
 };
 
-/** Náročnosť požiadavky (D-134): ktorá routine ju rieši. */
+/** Difficulty of the request (D-134): which routine resolves it. */
 export const NAROCNOST = ["standard", "hard"] as const;
 export type Narocnost = (typeof NAROCNOST)[number];
 const MAX_REASON = 200;
@@ -69,14 +69,14 @@ const MAX_REASON = 200;
 const MAX_TITLE = 120;
 const MAX_TEXT = 4000;
 const MAX_ITEMS = 10;
-/** Kolo evalov s tabuľkou pred / po je dlhšie než pripomienka (GitHub berie do 65 536). */
+/** An eval round with a before / after table is longer than a remark (GitHub takes up to 65 536). */
 const MAX_COMMENT = 16000;
 
 const PRIVACY =
   "Issue je VEREJNÉ (repo konektora je verejné): nepíš mená, telefóny ani e-maily osôb a firiem z modelu, " +
   "heslá ani tokeny. object_ref, IFC triedy, názvy psetov a tools sú v poriadku.";
 
-/** `feedback` action -> handler (D-115); hodnoty sú už len vnútorné kľúče handlerov. */
+/** `feedback` action -> handler (D-115); the values are now only internal handler keys. */
 export const FEEDBACK_ACTIONS = {
   report: "report_feedback",
   request_tool: "request_tool",
@@ -191,12 +191,12 @@ export const FEEDBACK_TOOL_NAMES = new Set(FEEDBACK_TOOL_DEFINITIONS.map((t) => 
 
 export interface FeedbackDeps {
   client: GithubClient | null;
-  /** Spustí session; `null` = routine nie je nastavená. */
+    /** Starts the session; `null` = the routine is not configured. */
   fire: ((text: string) => Promise<RoutineFireResult>) | null;
-  /** Routine STANDARD (D-134); `null` = nie je nastavená, všetko ide na HARD (`fire`). */
+    /** STANDARD routine (D-134); `null` = not configured, everything goes to HARD (`fire`). */
   fireStandard?: ((text: string) => Promise<RoutineFireResult>) | null;
   now: () => Date;
-  /** Tajomstvá, ktoré sa do verejného issue nesmú dostať. */
+    /** Secrets that must not get into a public issue. */
   secrets: string[];
 }
 
@@ -235,7 +235,7 @@ const list = (v: unknown, max: number): string[] =>
         .map((x) => str(x, max, "položka"))
     : [];
 
-/** Bez diakritiky, malé písmená, len [a-z0-9-] - kľúč na zhodu opakovanej požiadavky. */
+/** Without diacritics, lowercase, only [a-z0-9-] - the key for matching a repeated request. */
 export function slug(s: string): string {
   return s
     .normalize("NFD")
@@ -246,7 +246,7 @@ export function slug(s: string): string {
     .slice(0, 60);
 }
 
-/** Skrytá značka v tele issue: druh a odtlačok (zhoda opakovanej požiadavky). */
+/** Hidden marker in the issue body: kind and fingerprint (match of a repeated request). */
 const MARKER_RE = /<!-- aim-mcp (\{[^}]*\}) -->/;
 const SESSION_RE = /<!-- aim-mcp-session (\{[^}]*\}) -->/;
 
@@ -282,11 +282,11 @@ export function parseSessionUrl(body: string): string | null {
   }
 }
 
-/** Triedenie náročnosti (D-134): riadok v komentári + skrytá značka (aj na štatistiku). */
+/** Difficulty triage (D-134): a line in the comment + a hidden marker (also for statistics). */
 const TRIAGE_RE = /<!-- aim-mcp-triage (\{[^}]*\}) -->/;
 
 export interface Triage {
-  /** Čo navrhol Claude; `null` = nezadal. */
+    /** What Claude proposed; `null` = not given. */
   requested: Narocnost | null;
   reason: string;
 }
@@ -296,12 +296,12 @@ export function parseTriageArgs(args: Record<string, unknown>): Triage {
   if (v !== undefined && !(NAROCNOST as readonly string[]).includes(v as string)) {
     throw new FeedbackInputError(`narocnost musí byť jedno z: ${NAROCNOST.join(", ")}.`);
   }
-  // Dôvod ide do verejného komentára vedľa skrytej značky: bez <, > a zlomov riadkov nevie vložiť falošnú.
+    // The reason goes into a public comment next to the hidden marker: without <, > and line breaks it cannot insert a fake one.
   const reason = str(args.narocnost_dovod, MAX_REASON * 2, "narocnost_dovod").replace(/[<>]/g, "").replace(/\s+/g, " ").trim();
   return { requested: (v as Narocnost | undefined) ?? null, reason: reason.slice(0, MAX_REASON) };
 }
 
-/** Značka triedenia z komentára: skutočne použitá náročnosť a to, čo sa navrhlo. */
+/** Triage marker from the comment: the difficulty actually used and what was proposed. */
 export function parseTriage(body: string): { level: Narocnost; requested: Narocnost | null } | null {
   const m = TRIAGE_RE.exec(body);
   if (!m) return null;
@@ -314,13 +314,13 @@ export function parseTriage(body: string): { level: Narocnost; requested: Narocn
   }
 }
 
-/** Routine pre náročnosť; STANDARD bez nastavenia (alebo bez návrhu) padá na HARD ako doteraz. */
+/** Routine for the difficulty; STANDARD without configuration (or without a proposal) falls back to HARD as before. */
 export function pickFire(deps: FeedbackDeps, requested: Narocnost | null) {
   if (requested === "standard" && deps.fireStandard) return { fire: deps.fireStandard, level: "standard" as Narocnost };
   return deps.fire ? { fire: deps.fire, level: "hard" as Narocnost } : null;
 }
 
-/** Dôvod z uloženého riadku "triedenie: LEVEL - dôvod" (bez poznámky v zátvorke na konci). */
+/** Reason from the stored line "triedenie: LEVEL - dôvod" (triage: LEVEL - reason; without the note in parentheses at the end). */
 function triageReasonOf(body: string): string {
   const m = /triedenie: (?:STANDARD|HARD) - ([^\n]*)/.exec(body);
   return (m?.[1] ?? "").replace(/\s*\((?:nezadané, predvolené|STANDARD nie je nastavená)\)$/, "").replace(/^bez dôvodu$/, "");
@@ -350,9 +350,9 @@ interface Draft {
   title: string;
   labels: string[];
   body: string;
-  /** Text komentára, keď už rovnaké issue existuje. */
+    /** Comment text when the same issue already exists. */
   repeat: string;
-  /** Spustiť session hneď. */
+    /** Start the session immediately. */
   start: boolean;
 }
 
@@ -452,7 +452,7 @@ export function draftFeedback(args: Record<string, unknown>, now: Date): Draft {
   };
 }
 
-/** Text pre `<routine-fire-payload>`; session si podrobnosti prečíta z issue. */
+/** Text for `<routine-fire-payload>`; the session reads the details from the issue. */
 export function firePayload(
   repo: string,
   issue: GithubIssue,
@@ -476,16 +476,16 @@ const json = (v: unknown) => JSON.stringify(v, null, 1);
 
 const MAX_OTHERS = 15;
 
-/** Strop súbežných sessions (env `FEEDBACK_MAX_SESSIONS`, predvolene 3). */
+/** Cap of concurrent sessions (env `FEEDBACK_MAX_SESSIONS`, default 3). */
 export function maxSessions(): number {
   const n = Number.parseInt(process.env.FEEDBACK_MAX_SESSIONS ?? "", 10);
   return Number.isFinite(n) && n > 0 ? n : 3;
 }
 
-/** Session bez pohybu v issue dlhšie než toto sa do stropu nepočíta (spadla alebo zabudnutá). */
+/** A session with no activity in the issue for longer than this does not count towards the cap (crashed or forgotten). */
 export const STALE_HOURS = 24;
 
-/** Bežiace sessions = otvorené issues so štítkom `session`, ktoré sa hýbali v posledných STALE_HOURS. */
+/** Running sessions = open issues with the `session` label that moved in the last STALE_HOURS. */
 export function runningSessions(open: GithubIssue[], now: Date): { running: GithubIssue[]; stale: GithubIssue[] } {
   const withSession = open.filter((i) => hasLabel(i, LABEL_SESSION));
   const limit = now.getTime() - STALE_HOURS * 3600_000;
@@ -496,14 +496,14 @@ export function runningSessions(open: GithubIssue[], now: Date): { running: Gith
   return { running: withSession.filter(fresh), stale: withSession.filter((i) => !fresh(i)) };
 }
 
-/** Fronta = otvorené issues so štítkom `fronta` bez session, najstaršie prvé. */
+/** Queue = open issues with the `fronta` (queue) label without a session, oldest first. */
 export function queuedIssues(open: GithubIssue[]): GithubIssue[] {
   return open
     .filter((i) => hasLabel(i, LABEL_QUEUE) && !hasLabel(i, LABEL_SESSION))
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
-/** Spustí session k issue a zapíše odkaz s triedením; štítok `fronta` sa vymení za `session`. */
+/** Starts a session for the issue and writes a link with the triage; the `fronta` (queue) label is swapped for `session`. */
 async function startSession(
   client: GithubClient,
   deps: FeedbackDeps,
@@ -517,7 +517,7 @@ async function startSession(
   if (!picked) throw new Error("Routine nie je nastavená.");
   const fired = await picked.fire(firePayload(repo, issue, kind, repeated, picked.level));
   const line = redact(triageLine(triage, picked.level), deps.secrets);
-  // Odkaz a štítky pri issue sú pohodlie: zlyhanie nemá zhodiť výsledok, session už beží.
+    // The link and labels on the issue are a convenience: a failure must not sink the result, the session is already running.
   await client
     .addComment(
       issue.number,
@@ -536,8 +536,8 @@ const queueText = (running: GithubIssue[], max: number) =>
 const hasLabel = (i: GithubIssue, name: string) => i.labels.some((l) => l.name === name);
 
 /**
- * Otvorené požiadavky v čase zápisu idú do tela nového issue: session, ktorá
- * ho rieši, z nich vidí možné prekrytie so súbežnou prácou (koordinácia, D-090).
+  * Open requests at the time of writing go into the body of the new issue: the session that
+  * resolves it can see from them a possible overlap with concurrent work (coordination, D-090).
  */
 export function withOthers(body: string, others: GithubIssue[]): string {
   if (others.length === 0) return body;
@@ -551,7 +551,7 @@ async function createWithLabels(client: GithubClient, d: Draft): Promise<GithubI
   try {
     return await client.createIssue({ title: d.title, body: d.body, labels: d.labels });
   } catch (err) {
-    // 422 = štítok sa nedá použiť (práva tokenu); issue je dôležitejšie než štítky.
+        // 422 = the label cannot be used (token permissions); the issue matters more than the labels.
     if (err instanceof GithubError && err.status === 422) {
       return client.createIssue({ title: d.title, body: d.body, labels: [] });
     }
@@ -559,7 +559,7 @@ async function createWithLabels(client: GithubClient, d: Draft): Promise<GithubI
   }
 }
 
-/** Fronta si náročnosť pamätá v komentári so značkou; `start_queued_session` ju prečíta (D-134). */
+/** The queue remembers the difficulty in a comment with a marker; `start_queued_session` reads it (D-134). */
 async function rememberTriage(client: GithubClient, number: number, t: Triage, secrets: string[]): Promise<void> {
   if (t.requested === null) return;
   const line = redact(triageLine(t, t.requested), secrets);
@@ -644,7 +644,7 @@ async function record(d: Draft, deps: FeedbackDeps, triage: Triage): Promise<{ t
       session,
       queued,
       session_note: sessionNote,
-      // Súbežné požiadavky: Claude ich vie spomenúť, session ich má v tele issue.
+            // Concurrent requests: Claude can mention them, the session has them in the issue body.
       other_open: others.map((i) => ({ number: i.number, title: i.title, session: hasLabel(i, LABEL_SESSION) })),
     }),
     isError: false,
@@ -699,10 +699,10 @@ async function startQueued(
     };
   }
   const kind = parseMarker(target.body)?.kind ?? "tool";
-  // Náročnosť: výslovný parameter, inak posledné triedenie zapamätané pri zaradení do fronty (D-134).
+    // Difficulty: the explicit parameter, otherwise the last triage remembered when queued (D-134).
   let triage = parseTriageArgs(args);
   if (triage.requested === null) {
-    // Len komentáre účtu servera (token); cudzí komentár so značkou by vedel prepnúť routine.
+        // Only comments of the server account (token); a foreign comment with a marker could switch the routine.
     const me = await client.viewerLogin().catch(() => null);
     const comments = me ? await client.listComments(target.number).catch(() => []) : [];
     const saved = [...comments].reverse().find((c) => c.user?.login === me && parseTriage(c.body));
@@ -722,7 +722,7 @@ async function startQueued(
   };
 }
 
-/** Skrytá značka komentára dopísaného cez `feedback_comment`. */
+/** Hidden marker of a comment appended via `feedback_comment`. */
 const COMMENT_RE = /<!-- aim-mcp-comment (\{[^}]*\}) -->/;
 
 export function parseCommentKind(body: string): CommentKind | null {
@@ -746,7 +746,7 @@ function parseVerification(v: unknown): Verification | null {
   return v as Verification;
 }
 
-/** Overenie zatvoreného issue podľa štítku (D-126); bez štítku = neoverené. */
+/** Verification of a closed issue by label (D-126); without a label = unverified. */
 export function verificationOf(i: GithubIssue): Verification | "neoverene" {
   return VERIFICATIONS.find((v) => hasLabel(i, v)) ?? "neoverene";
 }
@@ -775,8 +775,8 @@ export function draftComment(
 }
 
 /**
- * Komentár do issue konektora (otvoreného aj zatvoreného); issue a PR mimo štítku `mcp` odmietne.
- * `reopen=true` zatvorené issue najprv znovu otvorí, aby sa komentár nezapísal bez neho.
+  * Comment on a connector issue (open or closed); rejects issues and PRs outside the `mcp` label.
+  * `reopen=true` first reopens a closed issue so that the comment is not written without it.
  */
 async function comment(args: Record<string, unknown>, deps: FeedbackDeps): Promise<{ text: string; isError: boolean }> {
   const d = draftComment(args, deps.now());
@@ -799,7 +799,7 @@ async function comment(args: Record<string, unknown>, deps: FeedbackDeps): Promi
   if (reopened) await client.reopenIssue(d.number);
   const c = await client.addComment(d.number, body);
   if (d.verification) {
-    // Jeden stav overenia: nový štítok pridá, opačný odoberie (komentár je už zapísaný).
+        // One verification state: adds the new label, removes the opposite (the comment is already written).
     await client.addLabels(d.number, [d.verification]);
     for (const other of VERIFICATIONS.filter((v) => v !== d.verification)) await client.removeLabel(d.number, other);
   }
@@ -878,7 +878,7 @@ async function status(args: Record<string, unknown>, deps: FeedbackDeps): Promis
       last_comments: comments.slice(-3).map((c) => ({
         author: c.user?.login ?? null,
         at: c.created_at,
-        // Dopísané cez feedback_comment (kolo evalov, výsledok, poznámka).
+                // Appended via feedback_comment (eval round, result, note).
         via_connector: parseCommentKind(c.body),
         text: excerpt(c.body),
       })),
@@ -887,7 +887,7 @@ async function status(args: Record<string, unknown>, deps: FeedbackDeps): Promis
   };
 }
 
-/** Zoznam vrátane zatvorených issues s PR a overením (D-126, #171). */
+/** List including closed issues with PR and verification (D-126, #171). */
 async function closedList(
   state: "closed" | "all",
   args: Record<string, unknown>,
@@ -905,7 +905,7 @@ async function closedList(
     return (verificationOf(i) === "overene") === args.verified;
   });
   const shown = matches.slice(0, limit);
-  // PR len pri zatvorených (časová os issue); jeho výpadok zoznam nezhodí.
+    // PR only for closed ones (issue timeline); its outage does not sink the list.
   const prs = await Promise.all(
     shown.map((i) => (i.state === "closed" ? client.linkedPullRequests(i.number).catch(() => []) : Promise.resolve([]))),
   );

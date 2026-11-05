@@ -9,15 +9,15 @@ import type { Project } from "@/lib/project/current";
  */
 
 /**
- * Kto volá tool konektora (D-159): rozhovor (`sid` z `Mcp-Session-Id`), meno klienta a či ide
- * o pracovnú session. Route ho nastaví na celú požiadavku, živý kanál (`liveChannel`, príkazy aj
- * otázky viewera) ho číta bez prevliekania cez každú funkciu.
+  * Who calls a connector tool (D-159): the conversation (`sid` from `Mcp-Session-Id`), the client name and whether it is
+  * a working session. The route sets it for the whole request, the live channel (`liveChannel`, commands and
+  * viewer questions) reads it without threading it through every function.
  */
 export interface LiveCaller {
-  /** Rozhovor; bez neho (klient nevrátil `Mcp-Session-Id`) viewer príkaz prijme ako doteraz. */
+    /** Conversation; without it (the client did not return `Mcp-Session-Id`) the viewer accepts the command as before. */
   sid?: string;
   client: string;
-  /** Pracovná session (Claude Code) = testovací kanál, nikdy živý viewer používateľa. */
+    /** Working session (Claude Code) = test channel, never the user's live viewer. */
   work: boolean;
 }
 

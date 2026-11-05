@@ -8,8 +8,8 @@ import { DEFAULT_AIM_NAMESPACE, ISO_ONTOLOGY_FILES, type IcddPlan } from "./mode
 import { sha256 } from "./sha256";
 
 /**
- * Malý kontajner z exportného kódu (len pre testy): audit v Pythone (`etl/icdd_audit.py`) a import (`import.test.ts`).
- * Súbor `etl/tests/fixtures/icdd/aim-small.icdd` stráži `audit-fixture.test.ts`.
+  * Small container built from the export code (tests only): the audit in Python (`etl/icdd_audit.py`) and the import (`import.test.ts`).
+  * The file `etl/tests/fixtures/icdd/aim-small.icdd` is guarded by `audit-fixture.test.ts`.
  */
 export const FIXTURE = join(__dirname, "../../etl/tests/fixtures/icdd/aim-small.icdd");
 export const FIXTURE_LINKS = join(__dirname, "../../etl/tests/fixtures/icdd/aim-small.links.json");
@@ -75,7 +75,7 @@ export function fixturePlan(): IcddPlan {
       { id: "document:D.1.1.09", kind: "document", filename: "D-1-1-09.pdf", name: "D.1.1.09 Výpis skladieb", filetype: "pdf", format: "application/pdf", versionID: "1", sha256: sha256(PDF), url: "x", gzip: false, identification: "D.1.1.09", objectRef: "D-1-1-09" },
     ],
     links: [
-      // AIM vrstva prvok -> dokument (importovateľná, D-181 dodatok "import"): id väzby v AIM a revízia modelu prvku
+            // AIM layer element -> document (importable, D-181 addendum "import"): the link id in AIM and the revision of the element's model
       { kind: "IsElaboratedBy", relationshipId: "11111111-1111-4111-8111-111111111111", from: { payload: "model:VZT", guid: G.terminal, objectRef: "VV.01.01.001" }, to: { payload: "document:D.1.1.09", page: 3 }, source: "pdf_link (E4)", basedOn: "VZT=11", ifcRelationship: "IfcRelAssociatesDocument" },
       { kind: "IsElaboratedBy", relationshipId: "22222222-2222-4222-8222-222222222222", from: { payload: "model:VZT", guid: G.duct, objectRef: "PO.01" }, to: { payload: "document:D.1.1.09" }, source: "doc_upload (D-036)", basedOn: "VZT=11", ifcRelationship: "IfcRelAssociatesDocument" },
       { kind: "IsReferencedInSpatialStructure", from: { payload: "model:VZT", guid: G.duct, objectRef: "PO.01" }, to: { payload: "model:ASR", guid: G.space }, source: "derive:spatial_reference", role: "partial", rule: "element_in_space", basedOn: "ASR=79;VZT=11", ifcRelationship: "IfcRelReferencedInSpatialStructure" },

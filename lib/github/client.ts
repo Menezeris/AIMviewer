@@ -1,10 +1,10 @@
 import "server-only";
 
 /**
- * Minimálny klient GitHub REST API (D-090) - len to, čo potrebujú požiadavky
- * z MCP konektora: issue, komentár, štítky, zoznam a časová os issue.
- * Bez závislosti (fetch), `fetchImpl` sa injektuje kvôli testom. Token je
- * fine-grained PAT s právom Issues: write len na cieľové repo; neopustí server.
+  * Minimal GitHub REST API client (D-090) - only what the requests
+  * from the MCP connector need: issue, comment, labels, list and issue timeline.
+  * No dependency (fetch), `fetchImpl` is injected for tests. The token is a
+  * fine-grained PAT with Issues: write only on the target repo; it never leaves the server.
  */
 
 const API = "https://api.github.com";
@@ -46,7 +46,7 @@ export class GithubError extends Error {
   }
 }
 
-/** `owner/repo` z env (predvolene AIMviewer, kde žije kód konektora). */
+/** `owner/repo` from env (default AIMviewer, where the connector code lives). */
 export function parseRepo(value: string | undefined, fallback = "Menezeris/AIMviewer"): GithubRepo {
   const v = (value?.trim() || fallback).replace(/^https:\/\/github\.com\//, "").replace(/\/$/, "");
   const [owner, repo, ...rest] = v.split("/");
@@ -80,7 +80,7 @@ export class GithubClient {
       try {
         message = (JSON.parse(text) as { message?: string }).message ?? text;
       } catch {
-        // telo nie je JSON, necháme text
+        // the body is not JSON, we keep the text
       }
       throw new GithubError(`GitHub ${method} ${path}: HTTP ${res.status} ${message.slice(0, 200)}`, res.status);
     }
@@ -95,7 +95,7 @@ export class GithubClient {
     return this.call("POST", `${this.base}/issues`, input);
   }
 
-  /** Login účtu, ktorému patrí token (komu server pripisuje svoje komentáre). */
+    /** Login of the account the token belongs to (to whom the server attributes its comments). */
   async viewerLogin(): Promise<string> {
     return (await this.call<{ login: string }>("GET", "/user")).login;
   }
@@ -104,12 +104,12 @@ export class GithubClient {
     return this.call("GET", `${this.base}/issues/${number}`);
   }
 
-  /** Otvorené issues so štítkom (bez PR), najnovšie upravené prvé. */
+    /** Open issues with a label (without PRs), most recently updated first. */
   listOpenIssues(label: string, perPage = 100): Promise<GithubIssue[]> {
     return this.listIssues(label, "open", perPage);
   }
 
-  /** Issues so štítkom v danom stave (bez PR), najnovšie upravené prvé (D-126). */
+    /** Issues with a label in the given state (without PRs), most recently updated first (D-126). */
   async listIssues(label: string, state: "open" | "closed" | "all", perPage = 100): Promise<GithubIssue[]> {
     const q = new URLSearchParams({
       state,
@@ -138,7 +138,7 @@ export class GithubClient {
     await this.call("POST", `${this.base}/issues/${number}/labels`, { labels });
   }
 
-  /** Odoberie štítok; chýbajúci štítok (404) nie je chyba. */
+    /** Removes a label; a missing label (404) is not an error. */
   async removeLabel(number: number, label: string): Promise<void> {
     try {
       await this.call("DELETE", `${this.base}/issues/${number}/labels/${encodeURIComponent(label)}`);
@@ -147,7 +147,7 @@ export class GithubClient {
     }
   }
 
-  /** PR, ktoré na issue odkazujú (udalosti `cross-referenced` z časovej osi). */
+    /** PRs that reference the issue (`cross-referenced` events from the timeline). */
   async linkedPullRequests(
     number: number,
   ): Promise<{ number: number; html_url: string; title: string; state: string; merged: boolean }[]> {

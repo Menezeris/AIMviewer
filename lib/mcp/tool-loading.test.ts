@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
-// Moduly toolov sú server-only (D-026) - mimo RSC runtime treba marker odmockovať.
+// The tool modules are server-only (D-026) - outside the RSC runtime the marker must be mocked out.
 vi.mock("server-only", () => ({}));
 
 import { handleMcpPayload } from "./server";
 import { ALWAYS_LOAD_TOOLS, INSTRUCTIONS_CUT, LOADING_BLOCK_MAX, isAlwaysLoaded, mcpServerInstructions, toolLoadingBlock } from "./tool-loading";
 import { mcpToolDefinitions, mcpToolGroups } from "./tool-list";
 
-/** Načítanie toolov v klientovi (D-153, #237). */
+/** Tool loading in the client (D-153, #237). */
 describe("načítanie toolov konektora (D-153)", () => {
   const groups = mcpToolGroups({ engine: true });
   const tools = mcpToolDefinitions({ engine: true });

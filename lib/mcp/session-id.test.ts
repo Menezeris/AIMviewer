@@ -5,7 +5,7 @@ import { initializeClientName, isWorkClient, issueSessionId, readSessionId } fro
 describe("identita rozhovoru konektora (D-159)", () => {
   it("vydaná hlavička sa overí a nesie sid a meno klienta", () => {
     const id = issueSessionId("claude-code", "tajne", "abc12345");
-    expect(id).toMatch(/^[\x21-\x7e]+$/); // viditeľné ASCII, platná hodnota hlavičky
+    expect(id).toMatch(/^[\x21-\x7e]+$/); // visible ASCII, a valid header value
     expect(readSessionId(id, "tajne")).toEqual({ sid: "abc12345", client: "claude-code" });
   });
 

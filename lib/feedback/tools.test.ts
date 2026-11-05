@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// Moduly sú server-only (D-026) - mimo RSC runtime treba marker odmockovať.
+// The modules are server-only (D-026) - outside the RSC runtime the marker must be mocked out.
 vi.mock("server-only", () => ({}));
 
 import { GithubClient } from "../github/client";
@@ -30,7 +30,7 @@ interface Call {
   body: unknown;
 }
 
-/** Falošný GitHub: odpovede podľa metódy a cesty, zaznamená volania. */
+/** Fake GitHub: responses by method and path, records the calls. */
 function fakeGithub(routes: Record<string, (body: unknown) => { status?: number; json?: unknown }>) {
   const calls: Call[] = [];
   const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
@@ -164,7 +164,7 @@ describe("pripomienky a požiadavky na tools (D-090)", () => {
     ]);
     const body = (gh.calls[1].body as { body: string }).body;
     expect(body).toContain("- #7 Nový tool: Zóny podľa požiarneho úseku (session beží)");
-    // Značka ostáva na konci, aby ju zhoda opakovania našla.
+        // The marker stays at the end so that the repeat match finds it.
     expect(body.indexOf("Otvorené požiadavky")).toBeLessThan(body.indexOf("<!-- aim-mcp "));
   });
 
@@ -315,7 +315,7 @@ describe("feedback_comment: komentár do issue konektora (D-090, #98)", () => {
 
   it("je zápisový tool a overí vstup bez volania GitHubu", async () => {
     expect(await execFeedbackTool("feedback", { action: "comment", text: "x" }, deps())).toMatchObject({ isError: true });
-    // D-115: to isté cez feedback(action=comment); neznáma action je chyba vstupu.
+        // D-115: the same via feedback(action=comment); an unknown action is an input error.
     expect(await execFeedbackTool("feedback", { action: "comment", issue_number: 12 }, deps())).toEqual({
       text: "Chýba text.",
       isError: true,
@@ -782,7 +782,7 @@ describe("náročnosť požiadavky: STANDARD a HARD routine (D-134)", () => {
       deps({ client: gh.client, fire: mk("hard"), fireStandard: std }),
     );
     const body = sessionComment(gh);
-    expect(body.match(/aim-mcp-triage/g)).toHaveLength(2); // text dôvodu + pravá značka na konci
+    expect(body.match(/aim-mcp-triage/g)).toHaveLength(2); // reason text + the real marker at the end
     expect(body).not.toContain("<!-- aim-mcp-triage {\"v\":1,\"level\":\"standard\"");
     expect(parseTriage(body)).toEqual({ level: "hard", requested: "hard" });
     expect(body.split("\n").filter((l) => l.startsWith("triedenie:"))).toHaveLength(1);
@@ -824,7 +824,7 @@ describe("náročnosť požiadavky: STANDARD a HARD routine (D-134)", () => {
       "GET /repos/Menezeris/AIMviewer/issues/20/comments": () => ({
         json: [
           { id: 1, body: remembered, created_at: "t", user: { login: "aim-bot" } },
-          // Cudzí komentár so značkou a novší: nesmie prebiť zapamätané triedenie.
+                    // Foreign comment with a marker and newer: must not override the remembered triage.
           { id: 2, body: '<!-- aim-mcp-triage {"v":1,"level":"hard","requested":"hard"} -->', created_at: "t", user: { login: "cudzi" } },
         ],
       }),

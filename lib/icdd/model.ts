@@ -1,7 +1,7 @@
 /**
- * Dátový model exportu ICDD (D-181, #350). `IcddPlan` je čisté JSON: host ho zostaví z DB
- * (`lib/icdd/plan.ts`), prehliadač podľa neho stiahne payloady a zloží kontajner (`lib/icdd/build.ts`),
- * pri importe sa kontajner prečíta späť na rovnaké väzby (`lib/icdd/roundtrip.ts`).
+  * Data model of the ICDD export (D-181, #350). `IcddPlan` is pure JSON: the host builds it from the DB
+  * (`lib/icdd/plan.ts`), the browser downloads the payloads by it and assembles the container (`lib/icdd/build.ts`),
+  * at import the container is read back to the same links (`lib/icdd/roundtrip.ts`).
  */
 
 export const ISO = {
@@ -14,10 +14,10 @@ export const CT = `${ISO.Container}#`;
 export const LS = `${ISO.Linkset}#`;
 export const ELS = `${ISO.ExtendedLinkset}#`;
 
-/** Namespace vlastnej ontológie AIM: placeholder z konfigurácie, nezverejnený (Samuel 30. 10., otázka 9 v #350). */
+/** Namespace of the custom AIM ontology: a placeholder from configuration, unpublished (Samuel 30. 10., question 9 in #350). */
 export const DEFAULT_AIM_NAMESPACE = "urn:x-aim:icdd#";
 
-/** ISO ontológie pribalené v `Ontology resources/` (súbory v `public/icdd/ontology/`). */
+/** ISO ontologies bundled in `Ontology resources/` (files in `public/icdd/ontology/`). */
 export const ISO_ONTOLOGY_FILES = ["Container.rdf", "Linkset.rdf", "ExtendedLinkset.rdf"] as const;
 export const AIM_ONTOLOGY_FILE = "aim.rdf";
 
@@ -25,33 +25,33 @@ export const DIR_ONTOLOGY = "Ontology resources/";
 export const DIR_DOCUMENTS = "Payload documents/";
 export const DIR_TRIPLES = "Payload triples/";
 /**
- * Hlavička kontajnera. ICDDToolkitCore (RUB) ju číta len ako "index.rdf" (presná zhoda), openbim-icdd bez ohľadu na
- * veľkosť písmen (audit ICDD 1. 11.); čítanie (`readIcdd`) prijme aj iný zápis s varovaním.
+  * Container header. ICDDToolkitCore (RUB) reads it only as "index.rdf" (exact match), openbim-icdd regardless of
+  * letter case (ICDD audit 1. 11.); reading (`readIcdd`) also accepts another spelling with a warning.
  */
 export const INDEX_FILE = "index.rdf";
 
 export const CONFORMANCE = "ICDD-Part1-Container";
 
-/** Vrstvy linksetu. MVP: prvé tri; ďalšie sú pripravené ako voľba do budúcnosti (Samuel, otázka 2). */
+/** Linkset layers. MVP: the first three; the others are prepared as an option for the future (Samuel, question 2). */
 export const LAYERS = ["documents-elements", "documents-identity", "derived-spatial", "federation"] as const;
 export const FUTURE_LAYERS = ["georef", "bcf", "ids"] as const;
 export type Layer = (typeof LAYERS)[number];
 
-/** Voliteľné súbory navyše, generované z väzieb plánu (D-181 bod 9): xlsx výpis linksetov (IFCX vynechané, Samuel 31. 10.). */
+/** Optional extra files generated from the plan links (D-181 point 9): xlsx listing of linksets (IFCX omitted, Samuel 31. 10.). */
 export const EXTRAS = ["xlsx"] as const;
 export type Extra = (typeof EXTRAS)[number];
 
 /**
- * `IsIdenticalTo` = podlažie modelu bez uzla <-> podlažie, ktoré uzol vlastní (federation);
- * `DocumentIsIdenticalTo` = dokument v IFC (IfcDocumentInformation / IfcDocumentReference) <-> súbor PDF v kontajneri
- * (documents-identity); obe sa zapisujú ako `els:IsIdenticalTo`, líšia sa vrstvou.
+  * `IsIdenticalTo` = a model storey without a node <-> the storey the node owns (federation);
+  * `DocumentIsIdenticalTo` = a document in the IFC (IfcDocumentInformation / IfcDocumentReference) <-> a PDF file in the container
+  * (documents-identity); both are written as `els:IsIdenticalTo`, they differ by layer.
  */
 export type LinkKind = "IsElaboratedBy" | "IsReferencedInSpatialStructure" | "IsIdenticalTo" | "DocumentIsIdenticalTo";
 
 /**
- * Nadtrieda v ls: (ISO 21597-1), ktorá sa zapisuje na link popri vlastnej triede aim: (Samuel 1. 11., audit ICDD).
- * Čítače bez inferencie RDFS hľadajú väzby podľa presného typu: ICDDToolkitCore (RUB) ls: a els:, openbim-icdd len
- * ls:. Väzby els: (Part 2) ju nedostávajú, lebo ICDDToolkitCore by väzbu s typom ls: aj els: načítal dvakrát.
+  * Superclass in ls: (ISO 21597-1), written on the link next to the custom aim: class (Samuel 1. 11., ICDD audit).
+  * Readers without RDFS inference look for links by exact type: ICDDToolkitCore (RUB) ls: and els:, openbim-icdd only
+  * ls:. els: links (Part 2) do not get it, because ICDDToolkitCore would load a link typed both ls: and els: twice.
  */
 export const LS_BASE_TYPE: Partial<Record<LinkKind, "DirectedBinaryLink">> = {
   IsReferencedInSpatialStructure: "DirectedBinaryLink",
@@ -65,8 +65,8 @@ export const LAYER_OF: Record<LinkKind, Layer> = {
 };
 
 /**
- * IFC vzťah, na ktorého sémantike väzba stojí (D-181, Samuel 31. 10.: "treba zachovať, že je jasné, na základe čoho
- * ten linkset funguje"). Zapisuje sa na link ako `aim:ifcRelationship` a do `aim.rdf` ako `rdfs:seeAlso`.
+  * IFC relationship on whose semantics the link stands (D-181, Samuel 31. 10.: "it must be preserved that it is clear on what basis
+  * that linkset works"). Written on the link as `aim:ifcRelationship` and into `aim.rdf` as `rdfs:seeAlso`.
  */
 export const IFC_RELATIONSHIP: Partial<Record<LinkKind, string>> = {
   IsElaboratedBy: "IfcRelAssociatesDocument",
@@ -74,10 +74,10 @@ export const IFC_RELATIONSHIP: Partial<Record<LinkKind, string>> = {
 };
 
 /**
- * Výmena linksetu s inými nástrojmi (D-181 dodatok "import", Samuel 1. 11.). Rozhoduje táto tabuľka v kóde, nie značka
- * v kontajneri (cudzí nástroj ju vie prepísať): `export-only` = údaje vznikajú v AIM a iný nástroj ich nemení
- * (zmena sa pri importe ukáže ako nález), `import` = väzby smie pridať alebo zmeniť iný nástroj. Do indexu sa
- * zapisuje ako `aim:exchange` na `ct:Linkset`, len informačne.
+  * Linkset exchange with other tools (D-181 addendum "import", Samuel 1. 11.). This table in code decides, not the marker
+  * in the container (a foreign tool can overwrite it): `export-only` = the data originates in AIM and another tool does not change it
+  * (a change shows up at import as a finding), `import` = links may be added or changed by another tool. It goes into the index
+  * as `aim:exchange` on `ct:Linkset`, informational only.
  */
 export type Exchange = "export-only" | "import";
 export const EXCHANGE: Record<Layer, Exchange> = {
@@ -86,47 +86,47 @@ export const EXCHANGE: Record<Layer, Exchange> = {
   "derived-spatial": "export-only",
   federation: "export-only",
 };
-/** Triedy väzieb, ktoré import zapisuje (prvok -> dokument alebo strana, `rel_associates_document` AIM vrstva). */
+/** Link classes that the import writes (element -> document or page, `rel_associates_document` AIM layer). */
 export const IMPORTABLE_KINDS: readonly LinkKind[] = ["IsElaboratedBy"];
 
 export const IFC_DOCS_URL = "https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/";
 
-/** Súbor v `Payload documents/` (ct:InternalDocument + ct:SecuredDocument). */
+/** File in `Payload documents/` (ct:InternalDocument + ct:SecuredDocument). */
 export interface IcddPayload {
-  /** Stabilný kľúč v pláne: `model:ASR`, `document:<identification>`. */
+    /** Stable key in the plan: `model:ASR`, `document:<identification>`. */
   id: string;
-  /** `generated` = súbor vytvorený pri exporte z väzieb (IFCX, xlsx), nie kontajner revízie. */
+    /** `generated` = a file created at export from the links (IFCX, xlsx), not a revision container. */
   kind: "model" | "document" | "generated";
-  /** Meno v `Payload documents/` (ploché, unikátne). */
+    /** Name in `Payload documents/` (flat, unique). */
   filename: string;
   name: string;
   filetype: string;
   format: string;
-  /** Revízia kontajnera (D-183): model `79`, dokument `revision` alebo poradie revízie. */
+    /** Container revision (D-183): model `79`, document `revision` or the revision order. */
   versionID: string;
-  /** sha256 nekomprimovaného obsahu (model_revisions / documents.file_sha256). */
+    /** sha256 of the uncompressed content (model_revisions / documents.file_sha256). */
   sha256: string;
   sizeBytes?: number | null;
   description?: string | null;
-  /** Kde ho prehliadač stiahne (verejný bucket). */
+    /** Where the browser downloads it (public bucket). */
   url: string;
-  /** true = súbor v úložisku je gzip (archív revízie `vNNN.ifc.gz`, D-135); do kontajnera ide rozbalený. */
+    /** true = the file in storage is gzip (revision archive `vNNN.ifc.gz`, D-135); it goes into the container unpacked. */
   gzip: boolean;
   identification: string;
   model?: string | null;
   objectRef?: string | null;
-  /** Stav ISO 19650 z `container_revisions` (D-183 bod 8): `IfcDocumentStatusEnum` a `IfcApproval` (zatiaľ prázdny). */
+    /** ISO 19650 status from `container_revisions` (D-183 point 8): `IfcDocumentStatusEnum` and `IfcApproval` (empty for now). */
   status?: string | null;
   approval?: unknown;
   revisionNo?: number | null;
 }
 
-/** Koniec linku = ls:LinkElement: dokument v kontajneri + voliteľne GlobalId alebo strana. */
+/** Link end = ls:LinkElement: a document in the container + optionally GlobalId or page. */
 export interface LinkEnd {
   /** `IcddPayload.id`. */
   payload: string;
   guid?: string | null;
-  /** Identifikátor bez GlobalId: `<Trieda>.Identification=<hodnota>` (IfcDocumentInformation, IfcDocumentReference). */
+    /** Identifier without GlobalId: `<Class>.Identification=<value>` (IfcDocumentInformation, IfcDocumentReference). */
   ident?: { field: string; value: string } | null;
   page?: number | null;
   objectRef?: string | null;
@@ -135,25 +135,25 @@ export interface LinkEnd {
 
 export interface IcddLink {
   kind: LinkKind;
-  /** `relationships.id` väzby v AIM (`aim:relationshipId`); vypočítané väzby (identita, podlažia) ho nemajú. */
+    /** `relationships.id` of the link in AIM (`aim:relationshipId`); computed links (identity, storeys) do not have it. */
   relationshipId?: string | null;
   from: LinkEnd;
   to: LinkEnd;
-  /** Pôvod väzby v AIM (`relationships.source`, napr. `pdf_link (E4)`, `derive:spatial_reference`, `ifc:ASR v79`). */
+    /** Origin of the link in AIM (`relationships.source`, e.g. `pdf_link (E4)`, `derive:spatial_reference`, `ifc:ASR v79`). */
   source?: string | null;
   role?: string | null;
   /** Pravidlo odvodenia (`derivation_rules.id`). */
   rule?: string | null;
-  /** Revízie, nad ktorými väzba vznikla, kanonicky `ASR=79;VZT=11` (D-183 bod 4). */
+    /** Revisions over which the link arose, canonically `ASR=79;VZT=11` (D-183 point 4). */
   basedOn?: string | null;
-  /** IFC vzťah, ktorého sémantiku väzba nesie (`IFC_RELATIONSHIP`). */
+    /** IFC relationship whose semantics the link carries (`IFC_RELATIONSHIP`). */
   ifcRelationship?: string | null;
 }
 
 export interface IcddPlan {
   versionID: string;
   versionDescription: string;
-  /** ISO dátum a čas exportu (ct:creationDate); jediné, čo sa mení medzi dvoma exportmi toho istého stavu. */
+    /** ISO date and time of the export (ct:creationDate); the only thing that changes between two exports of the same state. */
   createdAt: string;
   description?: string | null;
   publisher: { name: string };
@@ -161,9 +161,9 @@ export interface IcddPlan {
   payloads: IcddPayload[];
   links: IcddLink[];
   layers: Layer[];
-  /** Súbory navyše; chýba = žiadne. */
+    /** Extra files; missing = none. */
   extras?: Extra[];
-  /** Čo sa do kontajnera nedostalo a prečo (počty), napr. dokument bez súboru. */
+    /** What did not make it into the container and why (counts), e.g. a document without a file. */
   skipped: Record<string, number>;
   warnings: string[];
 }

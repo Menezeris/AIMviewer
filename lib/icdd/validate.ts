@@ -1,8 +1,8 @@
 /**
- * Kontrola kontajnera ICDD (D-181, plán #350 časť 3.5): štruktúra ZIP podľa ISO 21597-1, index a súbory
- * jeden k jednému, sha256 payloadov, súlad s pribalenými ontológiami (ct:, ls:, els:, aim:) a referenčná
- * integrita linksetov (dokument v indexe, GlobalId v pribalenom IFC, strana PDF). Beží nad obsahom ZIP,
- * takže kontroluje aj cudzí kontajner pri importe.
+  * ICDD container check (D-181, plan #350 part 3.5): ZIP structure per ISO 21597-1, index and files
+  * one to one, sha256 of payloads, conformance with the bundled ontologies (ct:, ls:, els:, aim:) and the reference
+  * integrity of linksets (document in the index, GlobalId in the bundled IFC, PDF page). Runs over the ZIP contents,
+  * so it also checks a foreign container at import.
  */
 
 import { unzipSync } from "fflate";
@@ -31,12 +31,12 @@ export interface ValidationIssue {
 export interface IcddContents {
   files: Record<string, Uint8Array>;
   index: Graph;
-  /** Linksety podľa mena súboru v `Payload triples/`. */
+    /** Linksets by file name in `Payload triples/`. */
   linksets: Record<string, Triple[]>;
-  /** Index + linksety spolu (linky odkazujú na dokumenty v indexe). */
+    /** Index + linksets together (links refer to documents in the index). */
   data: Graph;
   container: Term | null;
-  /** Dokumenty v indexe podľa IRI. */
+    /** Documents in the index by IRI. */
   documents: Map<string, { iri: string; filename?: string; filetype?: string; checksum?: string; internal: boolean; generated: boolean }>;
 }
 
@@ -49,7 +49,7 @@ export interface ValidationReport {
 
 const dec = new TextDecoder();
 
-/** Rozbalí ZIP a prečíta index a linksety; chyby čítania idú do `issues`. */
+/** Unpacks the ZIP and reads the index and linksets; read errors go to `issues`. */
 export function readIcdd(zip: Uint8Array, issues: ValidationIssue[] = []): IcddContents | null {
   let files: Record<string, Uint8Array>;
   try {
@@ -66,8 +66,8 @@ export function readIcdd(zip: Uint8Array, issues: ValidationIssue[] = []): IcddC
       return null;
     }
   };
-  // Hlavička bez ohľadu na veľkosť písmen (napr. "Index.rdf"); iný zápis než INDEX_FILE je varovanie, lebo
-  // ICDDToolkitCore (RUB) číta len "index.rdf". Obsah sa ďalej číta pod INDEX_FILE.
+    // Header regardless of letter case (e.g. "Index.rdf"); a spelling other than INDEX_FILE is a warning, because
+    // ICDDToolkitCore (RUB) reads only "index.rdf". The content is further read under INDEX_FILE.
   if (!files[INDEX_FILE]) {
     const alt = Object.keys(files).filter((p) => !p.includes("/") && p.toLowerCase() === INDEX_FILE.toLowerCase());
     if (alt.length !== 1) {
@@ -115,14 +115,14 @@ export function readIcdd(zip: Uint8Array, issues: ValidationIssue[] = []): IcddC
 
 const GUID_RE = /=\s*IFC[A-Z0-9_]+\s*\(\s*'([0-9A-Za-z_$]{22})'/g;
 
-/** GlobalId všetkých IfcRoot v STEP súbore (prvý atribút entity). */
+/** GlobalIds of all IfcRoot in a STEP file (the first attribute of the entity). */
 export function ifcGlobalIds(text: string): Set<string> {
   const out = new Set<string>();
   for (const m of text.matchAll(GUID_RE)) out.add(m[1]);
   return out;
 }
 
-/** Dekóduje STEP reťazec (ISO 10303-21: '' , \\X2\\...\\X0\\, \\X\\HH, \\S\\c). */
+/** Decodes a STEP string (ISO 10303-21: '' , \\X2\\...\\X0\\, \\X\\HH, \\S\\c). */
 export function decodeStepString(s: string): string {
   return s
     .replace(/''/g, "'")
@@ -138,7 +138,7 @@ const STR = "'((?:[^']|'')*)'";
 const DOC_INFO_RE = new RegExp(`=\\s*IFCDOCUMENTINFORMATION\\s*\\(\\s*${STR}`, "g");
 const DOC_REF_RE = new RegExp(`=\\s*IFCDOCUMENTREFERENCE\\s*\\(\\s*(?:\\$|${STR})\\s*,\\s*${STR}`, "g");
 
-/** `Trieda.Identification=hodnota` všetkých IfcDocumentInformation a IfcDocumentReference v STEP súbore. */
+/** `Class.Identification=value` of all IfcDocumentInformation and IfcDocumentReference in a STEP file. */
 export function ifcDocumentIdentifications(text: string): Set<string> {
   const out = new Set<string>();
   for (const m of text.matchAll(DOC_INFO_RE)) out.add(`IfcDocumentInformation.Identification=${decodeStepString(m[1])}`);
@@ -153,7 +153,7 @@ export function validateIcdd(zip: Uint8Array): ValidationReport {
   const err = (code: string, where: string, message: string) => issues.push({ level: "error", code, where, message });
   const warn = (code: string, where: string, message: string) => issues.push({ level: "warning", code, where, message });
 
-  // 1. štruktúra
+    // 1. structure
   for (const path of Object.keys(c.files)) {
     if (path === INDEX_FILE || path.endsWith("/")) continue;
     if (![DIR_ONTOLOGY, DIR_DOCUMENTS, DIR_TRIPLES].some((d) => path.startsWith(d)))
@@ -164,11 +164,11 @@ export function validateIcdd(zip: Uint8Array): ValidationReport {
     if (!c.files[`${DIR_ONTOLOGY}${f}`]) err("layout", `${DIR_ONTOLOGY}${f}`, "chýba povinná ontológia Part 1");
   }
 
-  // 2. index <-> súbory, sha256
+    // 2. index <-> files, sha256
   const listed = new Set<string>();
   for (const d of c.documents.values()) {
     if (!d.internal) continue;
-    if (!d.filename) continue; // kardinalitu hlási kontrola ontológie
+    if (!d.filename) continue; // the cardinality is reported by the ontology check
     const path = `${DIR_DOCUMENTS}${d.filename}`;
     listed.add(path);
     const data = c.files[path];
@@ -199,7 +199,7 @@ export function validateIcdd(zip: Uint8Array): ValidationReport {
     if (!linksetFiles.has(f)) err("unlisted_linkset", `${DIR_TRIPLES}${f}`, "linkset nie je v indexe");
   }
 
-  // 3. ontológie
+    // 3. ontologies
   const ontoTriples: Triple[][] = [];
   for (const p of ontoFiles) {
     try {
@@ -220,7 +220,7 @@ export function validateIcdd(zip: Uint8Array): ValidationReport {
   for (const i of ontoIssues.slice(0, 200)) issues.push({ level: i.level, code: `ontology_${i.code}`, where: i.subject, message: i.message });
   if (ontoIssues.length > 200) err("ontology_more", "", `a ďalších ${ontoIssues.length - 200} chýb voči ontológii`);
 
-  // 4. referenčná integrita linksetov
+    // 4. reference integrity of linksets
   const guidCache = new Map<string, Set<string>>();
   const guidsOf = (filename: string): Set<string> | null => {
     const path = `${DIR_DOCUMENTS}${filename}`;

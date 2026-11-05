@@ -1,6 +1,6 @@
 /**
- * Čitateľný opis a porovnanie IDS (D-162) nad Studio dokumentom z `ids_read`
- * (`doc.ids` + `doc.nodes`). Typy sú voľné: tvar prichádza z balíka a tu sa len číta.
+  * Readable description and comparison of IDS (D-162) over a Studio document from `ids_read`
+  * (`doc.ids` + `doc.nodes`). The types are loose: the shape comes from the package and is only read here.
  */
 
 type Json = Record<string, unknown>;
@@ -9,7 +9,7 @@ const rec = (v: unknown): Json => (v && typeof v === "object" && !Array.isArray(
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const txt = (v: unknown): string => (typeof v === "string" ? v : "");
 
-/** Obmedzenie hodnoty: pevná hodnota, vzor, výpočet, rozsah. */
+/** Value constraint: fixed value, pattern, computation, range. */
 export function constraintText(c: unknown): string {
   const o = rec(c);
   switch (o.type) {
@@ -62,7 +62,7 @@ export interface DescribedSpec {
   name: string;
   identifier: string | null;
   ifc_versions: string[];
-  /** Kardinalita použiteľnosti: minOccurs-maxOccurs (0-unbounded = "ak existuje", 1-unbounded = povinná). */
+    /** Applicability cardinality: minOccurs-maxOccurs (0-unbounded = "if it exists", 1-unbounded = required). */
   occurs: string;
   description: string | null;
   instructions: string | null;
@@ -76,7 +76,7 @@ export interface DescribedIds {
   specifications: DescribedSpec[];
 }
 
-/** Opis dokumentu `doc` z `ids_read` (id špecifikácií a facetov sú tie, ktoré berie `apply_ops`). */
+/** Description of the document `doc` from `ids_read` (ids of specifications and facets are the ones `apply_ops` takes). */
 export function describeDoc(doc: unknown): DescribedIds {
   const d = rec(doc);
   const ids = rec(d.ids);
@@ -136,7 +136,7 @@ function listChanges(label: string, a: string[], b: string[]): string[] {
   return out;
 }
 
-/** Rozdiel dvoch IDS podľa špecifikácií (kľúč = identifier, inak názov), z čitateľných opisov. */
+/** Difference of two IDS by specifications (key = identifier, otherwise name), from the readable descriptions. */
 export function diffDocs(before: DescribedIds, after: DescribedIds): IdsDiffResult {
   const info: string[] = [];
   if (before.title !== after.title) info.push(`title: "${before.title}" -> "${after.title}"`);

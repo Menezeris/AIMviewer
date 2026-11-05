@@ -1,17 +1,17 @@
 /**
- * Minimálny MCP server (Streamable HTTP, bezstavový, JSON odpovede) pre custom
- * connector v Claude (D-079). Čistá funkcia nad JSON-RPC správami — transport
- * (Next route) a vykonanie tools sa injektujú, takže je testovateľná bez
- * Next runtime aj bez DB.
+  * Minimal MCP server (Streamable HTTP, stateless, JSON responses) for a custom
+  * connector in Claude (D-079). A pure function over JSON-RPC messages - the transport
+  * (Next route) and the tool execution are injected, so it is testable without the
+  * Next runtime and without the DB.
  *
- * Podporované metódy: `initialize`, `ping`, `tools/list`, `tools/call`;
- * notifikácie (bez `id`) sa potvrdia bez odpovede. Viac netreba — server
- * nevystavuje resources, prompts ani sampling.
+  * Supported methods: `initialize`, `ping`, `tools/list`, `tools/call`;
+  * notifications (without `id`) are acknowledged without a response. No more is needed - the server
+  * does not expose resources, prompts or sampling.
  */
 
 import type { ToolDefinition } from "@/lib/llm/provider";
 
-/** Verzie protokolu, ktorým rozumieme (odpovedáme verziou klienta, ak ju poznáme). */
+/** Protocol versions we understand (we answer with the client's version if we know it). */
 export const SUPPORTED_PROTOCOL_VERSIONS = [
   "2025-11-25",
   "2025-06-18",
@@ -21,7 +21,7 @@ export const SUPPORTED_PROTOCOL_VERSIONS = [
 const FALLBACK_PROTOCOL_VERSION = "2025-06-18";
 
 export interface McpToolResult {
-  /** Textové bloky výsledku (JSON výsledok toolu + prípadná poznámka o živom kanáli). */
+    /** Text blocks of the result (the tool's JSON result + a possible note about the live channel). */
   text: string[];
   isError: boolean;
 }
@@ -31,7 +31,7 @@ export interface McpServerDeps {
   instructions: string;
   tools: ToolDefinition[];
   callTool: (name: string, args: Record<string, unknown>) => Promise<McpToolResult>;
-  /** Volanie odmietnuté pred `callTool` (neznámy parameter), aby ho bolo vidno v logu. */
+    /** A call rejected before `callTool` (unknown parameter), so that it is visible in the log. */
   onRejected?: (name: string, unknown: string[]) => void;
 }
 
@@ -68,18 +68,18 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 /**
- * Klient (claude.ai) lepí textové bloky bez oddeľovača, takže riadok za blokom
- * by sa prilepil na jeho koniec - napr. záložný odkaz na "Vykonané vo vieweri".
- * Každý blok okrem posledného preto končí zalomením (JSON ho ako biely znak znesie).
+  * The client (claude.ai) glues text blocks together without a separator, so a line after a block
+  * would stick to its end - e.g. the fallback link to "Vykonané vo vieweri" (done in the viewer).
+  * So every block except the last ends with a line break (JSON tolerates it as whitespace).
  */
 function separated(text: string, more: boolean): string {
   return more && !text.endsWith("\n") ? `${text}\n` : text;
 }
 
 /**
- * Neznámy parameter toolu je chyba, nie ticho ignorovaný vstup (D-126, #181:
- * `offset` v query_view a `ifc_type` navrchu aggregate_objects vrátili zlé
- * dáta bez varovania). Schéma s `additionalProperties: true` pustí čokoľvek.
+  * An unknown tool parameter is an error, not silently ignored input (D-126, #181:
+  * `offset` in query_view and `ifc_type` at the top of aggregate_objects returned wrong
+  * data without a warning). A schema with `additionalProperties: true` lets anything through.
  */
 export function unknownArguments(tool: ToolDefinition, args: Record<string, unknown>): { unknown: string[]; text: string } | null {
   const schema = tool.inputSchema as { properties?: Record<string, unknown>; additionalProperties?: unknown };
@@ -104,7 +104,7 @@ async function handleOne(
   const hasId = typeof req.id === "string" || typeof req.id === "number";
   const id = hasId ? (req.id as JsonRpcId) : null;
 
-  // Odpoveď klienta (napr. na sampling) ani notifikácia nedostanú odpoveď.
+    // A client response (e.g. to sampling) and a notification get no response.
   if (typeof req.method !== "string") {
     return hasId && ("result" in msg || "error" in msg)
       ? null
@@ -135,8 +135,8 @@ async function handleOne(
           name: t.name,
           description: t.description,
           inputSchema: t.inputSchema,
-          // Default: tool nemení dáta (UI akcie menia len pohľad vo vieweri);
-          // tool, ktorý zapisuje, to prepíše vlastnými anotáciami (D-084).
+                    // Default: the tool does not change data (UI actions change only the view in the viewer);
+                    // a tool that writes overrides this with its own annotations (D-084).
           annotations: { readOnlyHint: true, openWorldHint: false, ...t.annotations },
           ...(t.meta ? { _meta: t.meta } : {}),
         })),
@@ -173,8 +173,8 @@ async function handleOne(
 }
 
 /**
- * Spracuje telo POST požiadavky (jedna správa alebo dávka). `null` = nič
- * neodpovedať (len notifikácie) → transport vráti 202.
+  * Handles the body of a POST request (one message or a batch). `null` = answer
+  * nothing (notifications only) -> the transport returns 202.
  */
 export async function handleMcpPayload(
   payload: unknown,
@@ -192,12 +192,12 @@ export async function handleMcpPayload(
   return handleOne(payload, deps);
 }
 
-/** Metódy JSON-RPC v správe alebo dávke (D-100: route podľa nich predčíta IFC motor). */
+/** JSON-RPC methods in a message or batch (D-100: the route uses them to preload the IFC engine). */
 export function payloadMethods(payload: unknown): string[] {
   const list = Array.isArray(payload) ? payload : [payload];
   return list.flatMap((m) => (isObject(m) && typeof m.method === "string" ? [m.method] : []));
 }
 
-/** Odpoveď na nečitateľné telo (neplatný JSON). */
+/** Response to an unreadable body (invalid JSON). */
 export const parseErrorResponse = (): JsonRpcResponse =>
   fail(null, PARSE_ERROR, "Telo nie je platný JSON.");

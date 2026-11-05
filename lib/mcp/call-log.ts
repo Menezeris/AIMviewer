@@ -3,10 +3,10 @@ import "server-only";
 import { getSupabaseAdmin } from "../supabase/server";
 
 /**
- * Zápis volania MCP toolu do `mcp_call_log` (D-100). Volá sa až po odoslaní
- * odpovede (`after()` v route), takže latenciu toolu nezvyšuje. Chyba zápisu
- * (napr. tabuľka ešte nie je zmigrovaná) sa len zaloguje - meranie nesmie
- * zhodiť tool.
+  * Write of an MCP tool call into `mcp_call_log` (D-100). Called only after the
+  * response is sent (`after()` in the route), so it does not add to the tool latency. A write
+  * error (e.g. the table is not migrated yet) is only logged - the measurement must not
+  * bring the tool down.
  */
 
 export interface McpCallLogRow {
@@ -17,27 +17,27 @@ export interface McpCallLogRow {
   cold: boolean;
   phases: Record<string, number>;
   region: string | null;
-  /** Klient a rozhovor (`claude-ai#sid`, D-159); stĺpec z migrácie 20261023120000. */
+    /** Client and conversation (`claude-ai#sid`, D-159); a column from migration 20261023120000. */
   client?: string | null;
   /** Project of the call (D-189, `?project=` on the connector URL); nullable column. */
   project_id?: string | null;
 }
 
-/** `args.action`, ak ju tool má (style_in_3d, set_section...); inak null. */
+/** `args.action`, if the tool has it (style_in_3d, set_section...); otherwise null. */
 export function callAction(args: Record<string, unknown>): string | null {
-  // Zlúčené tooly (D-115) majú rozlišovač action, mode alebo source, ifc_measure route (D-121) a verify (D-185);
-  // prvý vyplnený ide do logu.
+    // Merged tools (D-115) have a discriminator action, mode or source, the ifc_measure route (D-121) and verify (D-185);
+    // the first one that is filled goes into the log.
   for (const key of ["action", "mode", "source", "route"]) {
     if (typeof args[key] === "string" && args[key]) return (args[key] as string).slice(0, 40);
   }
-  // ifc_measure verify=true (D-185) je rozlišovač typu boolean.
+    // ifc_measure verify=true (D-185) is a boolean discriminator.
   if (args.verify === true) return args.save === true ? "verify:save" : "verify";
   return null;
 }
 
 /**
- * Volanie odmietnuté pre neznámy parameter (D-126) sa nevykoná, ale zapíše sa, aby bolo v logu
- * vidno, koľko volaní stálo: `action` = `unknown_param:<mená>`, `ms` 0, `ok` false.
+  * A call rejected for an unknown parameter (D-126) is not executed, but it is written so that the log
+  * shows how many calls it cost: `action` = `unknown_param:<names>`, `ms` 0, `ok` false.
  */
 export function rejectedCallRow(tool: string, unknown: string[], region: string | null, projectId: string | null = null): McpCallLogRow {
   return { tool, action: `unknown_param:${unknown.join(",")}`.slice(0, 40), ms: 0, ok: false, cold: false, phases: {}, region, project_id: projectId };
@@ -53,7 +53,7 @@ const defaultInsert: Insert = async (row) => {
 export async function writeCallLog(row: McpCallLogRow, insert: Insert = defaultInsert): Promise<void> {
   try {
     let { error } = await insert(row);
-    // Pred migráciou stĺpca `client` (D-159) sa riadok zapíše bez neho, meranie sa nestratí.
+        // Before the migration of the `client` column (D-159) the row is written without it, the measurement is not lost.
     if (error && row.client !== undefined && /client/.test(error.message)) {
       const { client: _c, ...rest } = row;
       void _c;

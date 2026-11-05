@@ -1,53 +1,53 @@
 /**
- * Kedy studená inštancia MCP predčíta modely IFC motora (D-135, dodatok k D-100/D-101).
+  * When a cold MCP instance preloads the IFC engine models (D-135, addendum to D-100/D-101).
  *
- * Doteraz predčítala každá nová inštancia (34,5 MB, pri archíve 7,2 MB) a Vercel inštancie
- * recykluje často (19. až 21. 10.: 182 studených inštancií na 1 278 volaní), takže väčšina
- * stiahnutí padla na rozhovory, ktoré motor nepotrebovali. Teraz:
- * - volanie toolu motora predčíta vždy (rozhovor motor práve potrebuje);
- * - iná požiadavka predčíta, len ak niekto použil motor za posledných `ENGINE_WANT_WINDOW_MS`
- *   (`mcp_call_log`); overuje sa najviac raz za `WANT_CHECK_EVERY_MS` na inštanciu, v `after()`,
- *   takže DB tools na nič nečakajú;
- * - pomalý je tak len prvý prompt s motorom po pauze, ďalšie inštancie toho rozhovoru sa zahrejú
- *   ako doteraz.
+  * Until now every new instance preloaded (34.5 MB, 7.2 MB with the archive) and Vercel recycles
+  * instances often (19 to 21 Oct: 182 cold instances for 1,278 calls), so most of the
+  * downloads fell on conversations that did not need the engine. Now:
+  * - an engine tool call always preloads (the conversation needs the engine right now);
+  * - another request preloads only if someone used the engine in the last `ENGINE_WANT_WINDOW_MS`
+  *   (`mcp_call_log`); it is checked at most once per `WANT_CHECK_EVERY_MS` per instance, in `after()`,
+  *   so the DB tools wait for nothing;
+  * - so only the first prompt with the engine after a pause is slow, the other instances of that conversation warm up
+  *   as before.
  */
 
 export const ENGINE_WANT_WINDOW_MS = 30 * 60_000;
 export const WANT_CHECK_EVERY_MS = 60_000;
 
 export interface EngineWarmState {
-  /** Predčítanie v tejto inštancii beží alebo dobehlo. */
+    /** Preloading in this instance is running or has finished. */
   preloaded: boolean;
-  /** Kedy sa naposledy overovalo, či rozhovor motor používa (ms), null = nikdy. */
+    /** When it was last checked whether the conversation uses the engine (ms), null = never. */
   checkedAt: number | null;
 }
 
-/** preload = načítaj modely; check = over v `mcp_call_log`, či motor niekto používa; skip = nič. */
+/** preload = load the models; check = verify in `mcp_call_log` whether anyone uses the engine; skip = nothing. */
 export type EngineWarmDecision = "preload" | "check" | "skip";
 
 /**
- * Rozhodnutie pre jednu požiadavku; vráti aj nový stav (zapíše sa hneď, aby súbežné
- * požiadavky tej istej inštancie nespúšťali kontrolu ani predčítanie dvakrát).
- * `engineCall` = požiadavka volá tool motora; `connect` = `initialize` / `tools/list`.
+  * Decision for one request; also returns the new state (written immediately so that concurrent
+  * requests of the same instance do not start the check or the preload twice).
+  * `engineCall` = the request calls an engine tool; `connect` = `initialize` / `tools/list`.
  */
 export function engineWarmDecision(
   state: EngineWarmState,
   now: number,
   req: { engineCall: boolean; connect: boolean },
 ): { decision: EngineWarmDecision; state: EngineWarmState } {
-  // Teplý motor: pri pripojení ho predčítanie len overí (HEAD), inak nič.
+    // Warm engine: on connect the preload only verifies it (HEAD), otherwise nothing.
   if (state.preloaded) return { decision: req.connect ? "preload" : "skip", state };
   if (req.engineCall) return { decision: "preload", state: { ...state, preloaded: true } };
   if (state.checkedAt !== null && now - state.checkedAt < WANT_CHECK_EVERY_MS) return { decision: "skip", state };
   return { decision: "check", state: { ...state, checkedAt: now } };
 }
 
-/** Tool, ktorý vždy ide cez IFC motor (`ifc_*`, `search_all`, `calibrate_underlay`). */
+/** A tool that always goes through the IFC engine (`ifc_*`, `search_all`, `calibrate_underlay`). */
 export function isEngineTool(name: string, engineTools: ReadonlySet<string>): boolean {
   return engineTools.has(name) || name === "search_all" || name === "calibrate_underlay";
 }
 
-/** Mená volaných toolov v JSON-RPC správe alebo dávke (`tools/call` -> `params.name`). */
+/** Names of the called tools in a JSON-RPC message or batch (`tools/call` -> `params.name`). */
 export function payloadToolNames(payload: unknown): string[] {
   const msgs = Array.isArray(payload) ? payload : [payload];
   const out: string[] = [];
@@ -61,8 +61,8 @@ export function payloadToolNames(payload: unknown): string[] {
 }
 
 /**
- * Volal niekto tool motora od `since`? Rozhoduje, či studená inštancia predčíta modely.
- * Chyba = false: radšej pomalší prvý prompt s motorom než stiahnutie navyše.
+  * Did anyone call an engine tool since `since`? Decides whether a cold instance preloads the models.
+  * Error = false: rather a slower first prompt with the engine than an extra download.
  */
 export async function engineUsedSince(
   since: Date,

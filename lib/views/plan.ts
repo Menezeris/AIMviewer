@@ -19,29 +19,29 @@ import { viewActivateOp, type ViewWire } from "../viewer-views";
 import { wireOfRow } from "./wire";
 
 /**
- * Čistá logika uložených pohľadov (D-122): odpoveď `view_state` -> záznam,
- * záznam -> opis pre model a viewer ops obnovy. DB a živý kanál sú v `tools.ts`
- * a `runtime.ts`; tu sa nič nečíta ani nezapisuje.
+  * Pure logic of saved views (D-122): `view_state` response -> record,
+  * record -> description for the model and viewer restore ops. The DB and the live channel are in `tools.ts`
+  * and `runtime.ts`; nothing is read or written here.
  */
 
-/** Rovnaký strop ako HIDE/ISOLATE v moste forku: obnova = jedna správa na kanál. */
+/** The same cap as HIDE/ISOLATE in the fork bridge: a restore = one message to the channel. */
 export const MAX_VIEW_GUIDS = 600;
-/** Posun rezu pri obnove ("o meter nižšie"), m. */
+/** Section offset on restore ("a meter lower"), m. */
 export const SECTION_SHIFT_RANGE = { min: -50, max: 50 } as const;
-/** Meno riadku `kind = 'last'`; tak ho nájde aj obnova podľa mena. */
+/** Name of the row `kind = 'last'`; that is how restore by name finds it too. */
 export const LAST_VIEW_NAME = "Posledný pohľad";
 const LAST_ALIASES = new Set(["posledny pohlad", "posledny", "last", "posledný pohľad", "posledný"]);
 
 export const isLastName = (name: string) => LAST_ALIASES.has(name.trim().toLowerCase());
 
-/** Druh pohľadu (D-132), od D-161 už len v starých riadkoch; nové parametre `view_type` sa ignorujú. */
+/** View kind (D-132), since D-161 only in old rows; new `view_type` parameters are ignored. */
 export type ViewType = "3d" | "plan" | "section" | "detail";
 
-/** Rez, ako ho vracia `view_state` (os hosta: y = výška = IFC Z). */
+/** Section as `view_state` returns it (host axes: y = height = IFC Z). */
 export interface SavedSection {
-  /** Chýba pri reznom boxe (D-132). */
+  /** Missing for a section box (D-132). */
   axis?: SectionAxis;
-  /** Rezný box v IFC svete (D-132) namiesto roviny. */
+  /** Section box in the IFC world (D-132) instead of a plane. */
   box?: Box3;
   crosses?: string;
   position_percent?: number;
@@ -50,7 +50,7 @@ export interface SavedSection {
   show_gizmo?: boolean;
 }
 
-/** `viewpoint` uloženého pohľadu: rovnaký tvar ako `model_tasks.viewpoint` (D-099). */
+/** `viewpoint` of a saved view: the same shape as `model_tasks.viewpoint` (D-099). */
 export interface SavedViewpoint {
   frame: string;
   units: string;
@@ -59,7 +59,7 @@ export interface SavedViewpoint {
   storey_label?: string | null;
   camera: ViewerCamera | null;
   section: SavedSection | null;
-  /** D-132: druh pohľadu, zamknutá kamera a väzba na podklad (dokument + strana, kalibrácia je v `_georef`). */
+    /** D-132: view kind, locked camera and the link to the underlay (document + page, calibration is in `_georef`). */
   view_type?: ViewType;
   locked?: boolean;
   underlay?: { document_id: string; page: number } | null;
@@ -84,7 +84,7 @@ export interface SavedViewRow {
   last_used_at: string | null;
 }
 
-/** Stav viewera, ktorý sa ukladá (bez mena, autora a časov). */
+/** Viewer state that is saved (without name, author and times). */
 export type CapturedState = Pick<SavedViewRow, "viewpoint" | "selection" | "hidden" | "isolated">;
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -97,7 +97,7 @@ const vec = (v: unknown) =>
 
 function sectionOf(raw: unknown): SavedSection | null {
   if (isObj(raw) && isObj(raw.box)) {
-    // Rezný box (D-132): obálka v IFC svete.
+        // Section box (D-132): an envelope in the IFC world.
     const min = vec(raw.box.min);
     const max = vec(raw.box.max);
     return min && max ? { box: { min, max }, ...(typeof raw.show_gizmo === "boolean" ? { show_gizmo: raw.show_gizmo } : {}) } : null;
@@ -114,9 +114,9 @@ function sectionOf(raw: unknown): SavedSection | null {
 }
 
 /**
- * Odpoveď `view_state` (D-085) -> stav na uloženie a poznámky, čo sa uložiť nedalo.
- * Starší viewer nevracia `hidden_guids`/`isolated_guids` (fork D-122): skrytie a
- * izolácia sa potom neuložia, len to povieme.
+  * `view_state` response (D-085) -> state to save and notes on what could not be saved.
+  * An older viewer does not return `hidden_guids`/`isolated_guids` (fork D-122): hiding and
+  * isolation are then not saved, we only say so.
  */
 export function captureFromState(result: unknown): { state: CapturedState; notes: string[] } {
   const r = isObj(result) ? result : {};
@@ -161,7 +161,7 @@ export function captureFromState(result: unknown): { state: CapturedState; notes
 
 const vec3 = (v: readonly number[]) => ({ x: v[0], y: v[1], z: v[2] });
 
-/** Pohľad z Presentation (D-161) pre model: kamera, rezy a košík bez zoznamov GUID. */
+/** View from Presentation (D-161) for a model: camera, sections and basket without GUID lists. */
 function describeWire(row: SavedViewRow, wire: ViewWire) {
   const cam = wire.camera;
   const basket = wire.basket.scope === "all"
@@ -188,7 +188,7 @@ function describeWire(row: SavedViewRow, wire: ViewWire) {
       : null,
     objects: wire.objects,
     basket,
-    // D-168: stav podkladov PDF v 3D; chýba v pohľadoch zo starého viewera (obnova stav podkladov nemení).
+        // D-168: state of PDF underlays in 3D; missing in views from an old viewer (restore does not change the underlay state).
     ...(wire.underlays ? { underlays: { show: wire.underlays.show, items: wire.underlays.items.length, visible: wire.underlays.items.filter((i) => i.visible).length } } : {}),
     transition_ms: wire.transition_ms,
     source: wire.source,
@@ -199,7 +199,7 @@ function describeWire(row: SavedViewRow, wire: ViewWire) {
   };
 }
 
-/** Uložený pohľad pre model: čo obsahuje, bez zoznamov GUID. Bez `mode` (D-161: režim 2D neexistuje). */
+/** Saved view for a model: what it contains, without GUID lists. Without `mode` (D-161: the 2D mode does not exist). */
 export function describeView(row: SavedViewRow) {
   const wire = wireOfRow(row);
   if (wire) return describeWire(row, wire);
@@ -234,7 +234,7 @@ function cameraPose(cam: ViewerCamera | null): { vp: BridgeViewpoint; projection
   };
 }
 
-/** Posun rezu pohľadu z Presentation po jeho osi (`section_offset_m`); chyba = ViewInputError. */
+/** Offset of the section of a Presentation view along its axis (`section_offset_m`); an error = ViewInputError. */
 function wireSectionShift(row: SavedViewRow, wire: ViewWire, offset: number): { op: string; section: ViewWire["section"] } {
   const plane = wire.section?.planes[wire.section.active];
   if (!plane || !wire.section) throw new ViewInputError(`Pohľad '${row.name}' nemá rez, section_offset_m sa nedá použiť; nastav rez cez set_section.`);
@@ -243,7 +243,7 @@ function wireSectionShift(row: SavedViewRow, wire: ViewWire, offset: number): { 
   const coordinate = round3(plane.coordinate + offset);
   if (Math.abs(coordinate) > SECTION_COORDINATE_LIMIT) throw new ViewInputError("Rez po posune je mimo rozsahu modelu.");
   const planes = wire.section.planes.map((p, i) => (i === wire.section!.active ? { ...p, coordinate } : p));
-  // Percento patrí pôvodnej súradnici; po posune by klamalo (súradnica pri obnove vyhráva).
+    // The percentage belongs to the original coordinate; after an offset it would lie (the coordinate wins on restore).
   return {
     op: sectionOp({ axis: plane.axis, coordinate, flipped: plane.flipped, showGizmo: plane.show_gizmo }),
     section: { ...wire.section, planes },
@@ -251,8 +251,8 @@ function wireSectionShift(row: SavedViewRow, wire: ViewWire, offset: number): { 
 }
 
 /**
- * Pohľad z Presentation (D-161) -> aktivácia vo vieweri (kamera, rez a košík robí upstream aktivátor),
- * voliteľne s posunom rezu po aktivácii.
+  * View from Presentation (D-161) -> activation in the viewer (camera, section and basket are done by the upstream activator),
+  * optionally with a section offset after the activation.
  */
 function planRestoreWire(row: SavedViewRow, wire: ViewWire, offset: number): { plan: ViewPlan; restored: CapturedState } {
   const ops = [viewActivateOp({ id: wire.id })];
@@ -276,16 +276,16 @@ function planRestoreWire(row: SavedViewRow, wire: ViewWire, offset: number): { p
         note: "Pohľad otvorený v Presentation (kamera, rez, košík ako izolácia); zapísaný ako 'Posledný pohľad'. Stav po príkaze (view, camera, section) vráti viewer.",
       },
     },
-    // "Posledný pohľad" nesie pohľad z Presentation ako ho má riadok: `viewpoint.id` je pôvodný pohľad.
+        // "Posledný pohľad" (last view) carries the Presentation view as the row has it: `viewpoint.id` is the original view.
     restored: { viewpoint: { ...wire, section } as unknown as SavedViewpoint, selection: [], hidden: [], isolated: null },
   };
 }
 
 /**
- * Uložený pohľad -> viewer ops obnovy. Pohľad z Presentation (D-161) sa aktivuje vo vieweri. Starý riadok (D-122,
- * D-132, záloha): najprv čistý stav (ako `set_view_mode reset`), rez (s posunom `section_offset_m` po osi rezu),
- * izolácia, skrytie, výber jedného prvku a nakoniec presná póza kamery, aby ju rez neprepísal; bez záložky a
- * zámku, na bežnom 3D plátne. Vráti aj stav, ktorý sa zapíše ako "Posledný pohľad".
+  * Saved view -> viewer restore ops. A Presentation view (D-161) is activated in the viewer. An old row (D-122,
+  * D-132, backup): first a clean state (like `set_view_mode reset`), the section (with the `section_offset_m` offset along the section axis),
+  * isolation, hiding, selection of one element and finally the exact camera pose so that the section does not overwrite it; without a tab and
+  * a lock, on the regular 3D canvas. It also returns the state that is written as "Posledný pohľad" (last view).
  */
 export function planRestore(row: SavedViewRow, offsetRaw: unknown): { plan: ViewPlan; restored: CapturedState } {
   let offset = 0;
@@ -302,7 +302,7 @@ export function planRestore(row: SavedViewRow, offsetRaw: unknown): { plan: View
   if (offset !== 0 && (!s || (s.coordinate === undefined && !s.box))) {
     throw new ViewInputError(`Pohľad '${row.name}' nemá rez so súradnicou, section_offset_m sa nedá použiť; nastav rez cez set_section.`);
   }
-  // Starý pôdorys (`mode: 2d`) bol pohľad zhora s rezom nad podlažím; teraz je to obyčajná kamera a rez.
+    // The old floor plan (`mode: 2d`) was a top-down view with a section above the storey; now it is an ordinary camera and section.
   const plan2d = vp.mode === "2d" && vp.storey_guid;
   const ops = [SECTION_CLEAR_OP, "show_all::", "reset_colors::", "clear_selection::", "clear_focus::"];
   let section: SavedSection | null = s;
@@ -315,7 +315,7 @@ export function planRestore(row: SavedViewRow, offsetRaw: unknown): { plan: View
     const coordinate = round3(s.coordinate + offset);
     if (Math.abs(coordinate) > SECTION_COORDINATE_LIMIT) throw new ViewInputError("Rez po posune je mimo rozsahu modelu.");
     section = { ...s, coordinate };
-    // Percento patrí pôvodnej súradnici; po posune by v poslednom pohľade klamalo (súradnica pri obnove vyhráva).
+        // The percentage belongs to the original coordinate; after an offset it would lie in the last view (the coordinate wins on restore).
     if (offset) delete section.position_percent;
     ops.push(sectionOp({ axis: s.axis, coordinate, flipped: s.flipped, showGizmo: s.show_gizmo }));
   } else if (s?.axis && s.position_percent !== undefined) {
@@ -323,7 +323,7 @@ export function planRestore(row: SavedViewRow, offsetRaw: unknown): { plan: View
   }
   if (row.isolated && row.isolated.length > 0) ops.push(`isolate::${row.isolated.join(".")}`);
   if (row.hidden.length > 0) ops.push(`hide::${row.hidden.join(".")}`);
-  // Výber vo vieweri je jeden prvok (D-082); väčší výber ostane len v zázname.
+    // The selection in the viewer is one element (D-082); a larger selection stays only in the record.
   if (row.selection.length === 1) ops.push(selectOp(row.selection[0]));
   const pose = cameraPose(vp.camera);
   if (pose) ops.push(poseOp(pose.vp, pose.projection));

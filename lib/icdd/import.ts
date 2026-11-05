@@ -1,14 +1,14 @@
 /**
- * Import kontajnera ICDD do AIM (D-181 dodatok "import", Samuel 1. 11.: "pustiť ďalej"). Čisté funkcie:
- * - `importRequestFromContents`: prehliadač z kontrolovaného kontajnera vyberie, čo potrebuje server (payloady so sha256,
- *   linksety so značkou, väzby). Kontajner (~63 MB) na server nejde (limit funkcie ~4,5 MB), ide len tento JSON.
- * - `previewImport`: náhľad (dry-run) nad stavom AIM: čo sa pridá, uzavrie, čo je bez zmeny a nálezy. Ten istý výpočet
- *   beží pri zápise; keď sa stav AIM medzi náhľadom a zápisom zmenil (`aimStateSha256`), zápis sa odmietne (409).
+  * Import of an ICDD container into AIM (D-181 addendum "import", Samuel 1. 11.: "go ahead"). Pure functions:
+  * - `importRequestFromContents`: the browser picks from the checked container what the server needs (payloads with sha256,
+  *   linksets with the marker, links). The container (~63 MB) does not go to the server (function limit ~4.5 MB), only this JSON does.
+  * - `previewImport`: preview (dry-run) over the AIM state: what is added, closed, what is unchanged, and findings. The same computation
+  *   runs at write; when the AIM state changed between the preview and the write (`aimStateSha256`), the write is rejected (409).
  *
- * Pravidlá: tam a späť ide len väzba prvok -> dokument alebo strana (`IMPORTABLE_KINDS`, AIM vrstva
- * `rel_associates_document`); ostatné vrstvy sú len na export (`EXCHANGE`) a ich zmena je nález, nikdy zápis. Značka
- * `aim:exchange` v kontajneri je informačná a import môže len obmedziť. AIM vrstva sa neprepisuje (D-183): zmena väzby =
- * uzavrieť starý riadok + vložiť nový. Väzba, ktorá v kontajneri chýba, je len nález (Samuel 1. 11.: nič neuzatvárať).
+  * Rules: only an element -> document or page link goes both ways (`IMPORTABLE_KINDS`, AIM layer
+  * `rel_associates_document`); the other layers are export only (`EXCHANGE`) and their change is a finding, never a write. The marker
+  * `aim:exchange` in the container is informational and the import can only restrict. The AIM layer is not overwritten (D-183): a link change =
+  * close the old row + insert a new one. A link that is missing in the container is only a finding (Samuel 1. 11.: close nothing).
  */
 
 import { linkKey } from "./build";
@@ -20,13 +20,13 @@ import type { IcddContents, ValidationReport } from "./validate";
 /** Telo `POST /api/icdd/import` (bez obsahu payloadov). */
 export interface ImportRequest {
   versionID: string | null;
-  /** sha256 celého `.icdd`, počíta prehliadač. */
+    /** sha256 of the whole `.icdd`, computed by the browser. */
   containerSha256: string;
   fileName: string | null;
   payloads: { filename: string; sha256: string; filetype: string | null }[];
   linksets: ContainerLinkset[];
   links: ContainerLink[];
-  /** Výsledok kontroly ISO 21597 v prehliadači (chyby blokujú zápis). */
+    /** Result of the ISO 21597 check in the browser (errors block the write). */
   validation: { ok: boolean; errors: number; warnings: number; issues: { level: string; code: string; where: string; message: string }[] };
 }
 
@@ -62,25 +62,25 @@ export function importRequestFromContents(
   };
 }
 
-/** Stav AIM, voči ktorému sa import počíta (načíta `import-fetch.ts`, len čítanie). */
+/** AIM state against which the import is computed (loaded by `import-fetch.ts`, read-only). */
 export interface ImportContext {
-  /** Aktuálne revízie modelov `{ASR: 79, VZT: 11}`. */
+    /** Current model revisions `{ASR: 79, VZT: 11}`. */
   current: Record<string, number>;
-  /** Všetky revízie modelov (sha256 nekomprimovaného IFC). */
+    /** All model revisions (sha256 of the uncompressed IFC). */
   modelRevisions: { model: string; revision: number; sha256: string }[];
-  /** Živé dokumenty a ich časti (`documents` + `objects.valid_until is null`). */
+    /** Live documents and their parts (`documents` + `objects.valid_until is null`). */
   documents: { id: string; object_type: string; file_sha256: string | null; referenced_document_id: string | null; page: number | null }[];
-  /** GlobalId -> uzol AIM (`ifc_guid_node`) pre GlobalId z požiadavky. */
+    /** GlobalId -> AIM node (`ifc_guid_node`) for the GlobalIds from the request. */
   guidNodes: Map<string, { object_id: string; object_type: string }>;
-  /** GlobalId -> model v kópii aktuálnej revízie (`ifc_rev_objects`) pre GlobalId z požiadavky. */
+    /** GlobalId -> model in the copy of the current revision (`ifc_rev_objects`) for the GlobalIds from the request. */
   copyGuids: Map<string, string>;
-  /** AIM vrstva `rel_associates_document`: živé riadky a ukončené riadky s id z požiadavky. */
+    /** AIM layer `rel_associates_document`: live rows and closed rows with the id from the request. */
   aimLinks: { id: string; from_id: string; to_id: string; source: string | null; valid_until: string | null }[];
-  /** Väzby prvok -> dokument zo súborov IFC (`source ifc:*`) ako `from_id|to_id`. */
+    /** Element -> document links from the IFC files (`source ifc:*`) as `from_id|to_id`. */
   ifcDocPairs: Set<string>;
-  /** Povolené typy uzla na strane prvku (manifest `relationship_types.from_object_types`). */
+    /** Allowed node types on the element side (manifest `relationship_types.from_object_types`). */
   fromObjectTypes: string[];
-  /** Plán exportu z toho istého stavu (porovnanie vrstiev len na export). */
+    /** Export plan from the same state (comparison of the export-only layers). */
   plan: IcddPlan | null;
 }
 
@@ -112,7 +112,7 @@ export type FindingCode =
 export interface Finding {
   code: FindingCode;
   level: "error" | "warning" | "info";
-  /** Kanonický kľúč väzby alebo meno súboru / linksetu. */
+    /** Canonical link key or file / linkset name. */
   key: string;
   detail: string;
 }
@@ -124,7 +124,7 @@ export type ImportChange =
 export interface ImportPreview {
   versionID: string | null;
   containerSha256: string;
-  /** Odtlačok stavu AIM, nad ktorým náhľad vznikol (aktuálne revízie + živá AIM vrstva prvok-dokument). */
+    /** Fingerprint of the AIM state over which the preview was created (current revisions + live AIM element-document layer). */
   aimStateSha256: string;
   modelRevisions: Record<string, number>;
   payloads: Record<string, string>;
@@ -141,11 +141,11 @@ export interface ImportPreview {
   findings: Finding[];
   /** Roundtrip vrstiev len na export (ako `checkIcdd`). */
   diff: RoundtripDiff | null;
-  /** Zápis je možný: kontrola ISO prešla a je čo zapísať. */
+    /** The write is possible: the ISO check passed and there is something to write. */
   applicable: boolean;
 }
 
-/** Odtlačok stavu AIM pre bránu zápisu (409 pri zmene medzi náhľadom a zápisom). */
+/** Fingerprint of the AIM state for the write gate (409 on a change between preview and write). */
 export function aimStateSha256(ctx: Pick<ImportContext, "current" | "aimLinks">): string {
   const revs = Object.entries(ctx.current)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
@@ -178,7 +178,7 @@ export function previewImport(req: ImportRequest, ctx: ImportContext): ImportPre
 
   if (!req.validation.ok) add("validation_failed", "error", req.fileName ?? "", `kontrola ISO 21597 našla ${req.validation.errors} chýb; zápis nie je možný`);
 
-  // payloady: model podľa sha256 revízie, dokument podľa sha256 súboru
+  // payloads: model by the revision sha256, document by the file sha256
   const payloadSha = new Map(req.payloads.map((p) => [p.filename, p.sha256]));
   const revBySha = new Map(ctx.modelRevisions.map((r) => [r.sha256, r]));
   const docsBySha = new Map<string, ImportContext["documents"]>();
@@ -201,7 +201,7 @@ export function previewImport(req: ImportRequest, ctx: ImportContext): ImportPre
     else payloadInfo.set(p.filename, { kind: "unknown" });
   }
 
-  // politika linksetov: rozhoduje kód (EXCHANGE), značka môže import len obmedziť
+    // linkset policy: the code decides (EXCHANGE), the marker can only restrict the import
   const markOf = new Map(req.linksets.map((l) => [l.layer, l.exchange]));
   const policyOf = (layer: string) => ((LAYERS as readonly string[]).includes(layer) ? EXCHANGE[layer as Layer] : null);
   for (const ls of req.linksets) {
@@ -225,7 +225,7 @@ export function previewImport(req: ImportRequest, ctx: ImportContext): ImportPre
     } else add("unsupported_class", "warning", containerLinkKey(l), `väzba ${l.kind} v cudzom linksete ${l.layer} sa neimportuje`);
   }
 
-  // väzby AIM vrstvy
+    // AIM layer links
   const live = ctx.aimLinks.filter((l) => !l.valid_until);
   const liveById = new Map(live.map((l) => [l.id, l]));
   const closedById = new Map(ctx.aimLinks.filter((l) => l.valid_until).map((l) => [l.id, l]));
@@ -329,7 +329,7 @@ export function previewImport(req: ImportRequest, ctx: ImportContext): ImportPre
           unchanged++;
           continue;
         }
-        // zmena väzby: starý riadok sa uzavrie, nový vloží (D-183: AIM vrstva sa neprepisuje)
+                // link change: the old row is closed, the new one inserted (D-183: the AIM layer is not overwritten)
         changes.push({ op: "close", key, id: rid, reason: "modify" });
         closing.add(rid);
         const other = liveByPair.get(pair);
@@ -351,7 +351,7 @@ export function previewImport(req: ImportRequest, ctx: ImportContext): ImportPre
     changes.push({ op: "add", key, from_id: node.object_id, to_id: toId, container_relationship_id: rid ?? null, replaces: null });
   }
 
-  // väzby AIM, ktoré v kontajneri chýbajú: len nález (Samuel 1. 11.: nič neuzatvárať)
+    // AIM links missing from the container: only a finding (Samuel 1. 11.: close nothing)
   const hasImportLinkset = req.linksets.some((ls) => {
     const policy = policyOf(ls.layer);
     return (policy === "import" || (!policy && req.links.some((l) => l.layer === ls.layer && IMPORTABLE_KINDS.includes(l.kind)))) && ls.exchange !== "export-only";
@@ -361,7 +361,7 @@ export function previewImport(req: ImportRequest, ctx: ImportContext): ImportPre
     if (missing.length) add("no_importable_linkset", "info", "", `kontajner nemá importovateľný linkset; ${missing.length} väzieb AIM prvok-dokument sa neporovnáva`);
   } else for (const l of missing) add("missing_in_container", "warning", l.id, `väzba AIM ${l.id} (${l.source ?? ""}) v kontajneri chýba; neuzatvára sa`);
 
-  // vrstvy len na export: rozdiel proti plánu je nález, nikdy zápis
+    // export-only layers: a difference against the plan is a finding, never a write
   let diff: RoundtripDiff | null = null;
   if (ctx.plan) {
     const plan = ctx.plan;
@@ -429,7 +429,7 @@ function layerOfKind(kind: ContainerLink["kind"]): Layer {
   }
 }
 
-/** Kontrola tela požiadavky (server); vráti chybu alebo null. */
+/** Request body check (server); returns an error or null. */
 export function checkImportRequest(body: unknown): string | null {
   if (!body || typeof body !== "object") return "telo nie je objekt";
   const b = body as Partial<ImportRequest>;

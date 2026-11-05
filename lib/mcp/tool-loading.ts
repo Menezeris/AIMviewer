@@ -4,20 +4,20 @@ import { mcpInstructions } from "../llm/system-prompt";
 import type { ToolGroup } from "./tool-list";
 
 /**
- * Načítanie toolov konektora v klientovi (D-153, #237). Claude (aplikácie aj
- * Claude Code) tooly vzdialeného MCP servera často odkladá: na začiatku vidí len
- * mená a inštrukcie, tooly si načíta cez tool_search a v dlhej session (hlas,
- * zhutnenie histórie) ich môže stratiť. Jediná zdokumentovaná oprava je na strane
- * používateľa (Tool access "Always available"); server pomôže tým, čo ide:
- * krátky blok na začiatku inštrukcií a `anthropic/alwaysLoad` na jadrových tooloch.
+  * Loading of the connector tools in the client (D-153, #237). Claude (the apps and
+  * Claude Code) often defers the tools of a remote MCP server: at the start it sees only
+  * the names and instructions, loads the tools via tool_search and in a long session (voice,
+  * history compaction) it can lose them. The only documented fix is on the
+  * user side (Tool access "Always available"); the server helps with what it can:
+  * a short block at the start of the instructions and `anthropic/alwaysLoad` on the core tools.
  */
 
-/** Tooly, ktoré sa majú načítať hneď (Claude Code `_meta["anthropic/alwaysLoad"]`, D-153): malé a najčastejšie. */
+/** Tools to load right away (Claude Code `_meta["anthropic/alwaysLoad"]`, D-153): small and the most frequent. */
 export const ALWAYS_LOAD_TOOLS = ["get_object", "search_objects", "show_in_3d", "get_viewer_state", "set_view_mode"] as const;
 
-/** Claude Code orezáva serverové inštrukcie na 4096 znakov; blok musí byť celý pred orezom. */
+/** Claude Code truncates server instructions to 4096 characters; the block must be whole before the cut. */
 export const INSTRUCTIONS_CUT = 4096;
-/** Strop bloku o načítaní, aby nevytlačil doménové pravidlá z prvých 4096 znakov. */
+/** Cap of the loading block, so that it does not push the domain rules out of the first 4096 characters. */
 export const LOADING_BLOCK_MAX = 1000;
 
 const ALWAYS_LOAD_META = { "anthropic/alwaysLoad": true } as const;
@@ -32,13 +32,13 @@ export function isAlwaysLoaded(tool: ToolDefinition): boolean {
   return tool.meta?.["anthropic/alwaysLoad"] === true;
 }
 
-/** Blok na začiatok inštrukcií: pokyn načítať celú sadu naraz a mená toolov po skupinách. */
+/** Block at the start of the instructions: an instruction to load the whole set at once and the tool names by group. */
 export function toolLoadingBlock(groups: ToolGroup[]): string {
   const names = groups.map((g) => `${g.group}: ${g.tools.map((t) => t.name).join(", ")}`).join("; ");
   return `Načítanie toolov AIM: ak ich klient sprístupňuje cez tool_search, na začiatku session načítaj celú sadu naraz (všetky mená nižšie, aj viac vyhľadaní za sebou). Keď niektorý tool chýba, znova načítaj celú sadu, nie po jednom; používateľovi to nehlás. Tooly - ${names}.`;
 }
 
-/** Celé serverové inštrukcie konektora: blok o načítaní toolov + doménové pravidlá (`mcpInstructions`). */
+/** The whole server instructions of the connector: the tool-loading block + domain rules (`mcpInstructions`). */
 export function mcpServerInstructions(siteUrl: string, engine: boolean, groups: ToolGroup[]): string {
   return `${toolLoadingBlock(groups)}\n\n${mcpInstructions(siteUrl, engine)}`;
 }

@@ -16,11 +16,11 @@ import { currentModelRevisions, supabaseSavedViewStore } from "./store";
 import type { CaptureOutcome, SavedViewDeps } from "./tools";
 
 /**
- * Produkčné závislosti uložených pohľadov (D-122): DB a živý viewer.
- * Logika je v `tools.ts` a `plan.ts` a testuje sa bez nich.
+  * Production dependencies of saved views (D-122): the DB and the live viewer.
+  * The logic is in `tools.ts` and `plan.ts` and is tested without them.
  */
 
-/** Surová odpoveď `view_state` (D-085); string = prečo sa nedala prečítať (vzor `captureLiveView`, D-099). */
+/** Raw `view_state` response (D-085); string = why it could not be read (pattern `captureLiveView`, D-099). */
 async function liveViewState(): Promise<unknown> {
   const channel = liveChannel();
   if (!channel) return "živý viewer nie je nastavený (LIVE_CHANNEL)";
@@ -37,13 +37,13 @@ async function storeyLabel(guid: string): Promise<string | null> {
   return ref?.object_ref ?? ref?.name ?? null;
 }
 
-/** Čakanie na uloženie vo vieweri: zachytenie košíka a náhľadu trvá dlhšie než bežný príkaz. */
+/** Waiting for a save in the viewer: capturing the basket and the preview takes longer than an ordinary command. */
 const CAPTURE_TIMEOUT_MS = ACK_TIMEOUT_MS * 2;
 
 /**
- * `VIEW_CAPTURE` na živý kanál (D-161) a potvrdenie `APPLIED`: viewer uloží pohľad ako tlačidlo v paneli a
- * hostovi pošle `VIEW_SAVE` s tým istým `capture_id`; stav po príkaze nesie `view` (null = nič sa neuložilo,
- * kľúč chýba = starší viewer bez `VIEW_CAPTURE`).
+  * `VIEW_CAPTURE` to the live channel (D-161) and the `APPLIED` confirmation: the viewer saves the view as a button in the panel and
+  * sends the host `VIEW_SAVE` with the same `capture_id`; the state after the command carries `view` (null = nothing was saved,
+  * the key missing = an older viewer without `VIEW_CAPTURE`).
  */
 async function liveCapture(req: { name: string; capture_id: string }): Promise<CaptureOutcome> {
   const channel = liveChannel();
@@ -69,7 +69,7 @@ async function liveCapture(req: { name: string; capture_id: string }): Promise<C
   return { ok: true, view: view && typeof view.id === "string" ? view : view === undefined ? undefined : null, issues: applied.issues };
 }
 
-/** Zoznam pohľadov sa v DB zmenil mimo viewera: otvorené okno ho načíta znova (zmena dát patrí používateľovi, D-159). */
+/** The list of views in the DB changed outside the viewer: the open window loads it again (a data change belongs to the user, D-159). */
 async function notifyViewsChanged(): Promise<void> {
   const channel = liveBaseChannel();
   if (channel) await broadcastLiveEvent(channel, LIVE_VIEWS_EVENT, { at: new Date().toISOString() });

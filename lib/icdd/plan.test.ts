@@ -131,7 +131,7 @@ describe("buildPlan (D-181)", () => {
   });
 
   it("vrstva bez väzieb sa nevydá (ani v indexe, ani vo versionDescription) a plán to povie", () => {
-    // produkcia 1. 11.: všetky väzby AIM prvok-dokument sú ukončené, documents-elements by bol prázdny
+        // production 1. 11.: all AIM element-document links are closed, documents-elements would be empty
     const p = buildPlan(rows({ docLinks: rows().docLinks.filter((l) => l.source?.startsWith("ifc:")) }), { createdAt: "2026-10-31T10:00:00Z" });
     expect(p.layers).toEqual(["documents-identity", "derived-spatial", "federation"]);
     expect(p.versionDescription).not.toMatch(/documents-elements/);

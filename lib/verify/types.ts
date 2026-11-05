@@ -1,10 +1,10 @@
-/** Riadky behu overenia výmer (D-185); DDL v `supabase/migrations/20261101200000_verification_results.sql`. */
+/** Rows of a quantity verification run (D-185); DDL in `supabase/migrations/20261101200000_verification_results.sql`. */
 
 export interface VerificationRunWrite {
   scope: string;
   registry_version: number;
   engine: string;
-  /** Podpis vstupu {model: revízia} (D-183 bod 11). */
+    /** Input signature {model: revision} (D-183 point 11). */
   model_revisions: Record<string, number>;
   counts: Record<string, number>;
   author?: string | null;
@@ -28,9 +28,9 @@ export interface VerificationResultWrite {
   note: string | null;
   distinct_heights: number[] | null;
   anchors: Array<{ global_id: string; role: string; z_m?: number }>;
-  /** Ako sa recept počíta (register metód, D-185 UI); stĺpec z migrácie `verification_inputs`. */
+    /** How the recipe is computed (method registry, D-185 UI); a column from migration `verification_inputs`. */
   explanation?: string | null;
-  /** Bunky vzorca a údaje zo súboru: `{expression?, cells, file_meta?}`; stĺpec z migrácie `verification_inputs`. */
+    /** Formula cells and data from the file: `{expression?, cells, file_meta?}`; a column from migration `verification_inputs`. */
   inputs?: VerificationInputs | null;
 }
 
@@ -40,18 +40,18 @@ export interface VerificationCell {
   value: number;
   unit: string;
   global_id?: string;
-  /** Odvodená bunka: meno inej výmery toho istého prvku (napr. `Qto_SpaceBaseQuantities.Height`), len keď hodnota bunky je tá výmera. */
+    /** Derived cell: the name of another quantity of the same element (e.g. `Qto_SpaceBaseQuantities.Height`), only when the cell value is that quantity. */
   quantity?: string;
 }
 
 export interface VerificationInputs {
   expression?: string;
   cells: VerificationCell[];
-  /** `IfcElementQuantity.MethodOfMeasurement` a `IfcPhysicalQuantity.Formula` zo súboru. */
+    /** `IfcElementQuantity.MethodOfMeasurement` and `IfcPhysicalQuantity.Formula` from the file. */
   file_meta?: { method_of_measurement?: string; formula?: string };
 }
 
 export interface VerificationStore {
-  /** `without_inputs` = DB ešte nemá stĺpce `inputs` / `explanation` (migrácia `verification_inputs` chýba), uložilo sa bez nich. */
+    /** `without_inputs` = the DB does not have the `inputs` / `explanation` columns yet (the `verification_inputs` migration is missing), it was saved without them. */
   saveRun(run: VerificationRunWrite, results: VerificationResultWrite[]): Promise<{ id: string; without_inputs?: boolean }>;
 }

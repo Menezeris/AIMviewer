@@ -4,16 +4,16 @@ import { text } from "./tools";
 import type { IdsDocumentRow, IdsStore, IdsVersionMeta } from "./types";
 
 /**
- * Knižnica požiadaviek v AIM (D-182, #351; doplnok V30): katalóg IDS, ktoré do AIM zapísalo vydanie knižnice v DB
- * (schéma `library`, nemenné verzie `source = import`), priradenie k projektu = ručná väzba IDS na model federácie a uloženie behu kontroly z viewera s pečiatkou
- * revízie modelu, verzie IDS a verzie nástroja. Kontrola beží raz, vo vieweri; server ju neopakuje.
+  * Requirements library in AIM (D-182, #351; addendum V30): a catalog of IDS that a library release wrote into AIM in the DB
+  * (schema `library`, immutable versions `source = import`), assignment to a project = a manual link of the IDS to a federation model, and saving a check run from the viewer with a stamp of the
+  * model revision, the IDS version and the tool version. The check runs once, in the viewer; the server does not repeat it.
  *
- * Zápis IDS ide cez `IdsStore` (D-162), väzby, revízie a behy po modeloch cez `IdsLibraryStore`.
+  * IDS writes go through `IdsStore` (D-162), links, revisions and per-model runs through `IdsLibraryStore`.
  */
 
 export class LibraryInputError extends Error {}
 
-/** Migrácia D-182 (`supabase/migrations/20261102120000_ids_library_assign.sql`) ešte nie je aplikovaná. */
+/** Migration D-182 (`supabase/migrations/20261102120000_ids_library_assign.sql`) is not applied yet. */
 export class LibrarySchemaMissingError extends Error {
   constructor(what: string) {
     super(`${what}: v DB chýba migrácia D-182 (supabase/migrations/20261102120000_ids_library_assign.sql), čaká na nasadenie.`);
@@ -36,7 +36,7 @@ export interface ModelBinding {
   valid_from: string;
 }
 
-/** Posledný beh IDS na modeli (ktorákoľvek verzia dokumentu). */
+/** Latest IDS run on a model (any document version). */
 export interface ModelRun {
   id: string;
   document_id: string;
@@ -55,19 +55,19 @@ export interface ModelRun {
 }
 
 export interface IdsLibraryStore {
-  /** Zmena kódu (premenovanie v knižnici) a posledného pôvodu dokumentu; kód je unikátny (D-162). */
+    /** Code change (rename in the library) and the last origin of the document; the code is unique (D-162). */
   updateDocument(id: string, patch: { code?: string; library_source?: string }): Promise<void>;
-  /** Modely federácie (IFC kontajnery, D-183 K1). */
+    /** Federation models (IFC containers, D-183 K1). */
   containers(): Promise<IfcContainer[]>;
-  /** Aktívne väzby IDS na modely; null = migrácia D-182 nie je aplikovaná. */
+    /** Active links of the IDS to models; null = migration D-182 is not applied. */
   models(documentIds: string[]): Promise<ModelBinding[] | null>;
   bindModel(row: { document_id: string; information_container_id: string; created_by: string; library_container: string | null }): Promise<void>;
-  /** Ukončí aktívnu väzbu; false = nebola. */
+    /** Closes an active link; false = there was none. */
   endModel(documentId: string, containerId: string, endedBy: string): Promise<boolean>;
-  /** Aktuálne revízie modelov {model: revízia} (`model_revisions.is_current`). */
+    /** Current model revisions {model: revision} (`model_revisions.is_current`). */
   currentRevisions(): Promise<Record<string, number>>;
   revisionExists(model: string, revision: number): Promise<boolean>;
-  /** Posledný beh na každom modeli pre dané dokumenty. */
+    /** Latest run on every model for the given documents. */
   lastRunsByModel(documentIds: string[]): Promise<ModelRun[]>;
 }
 
@@ -77,7 +77,7 @@ export interface LibraryDeps {
   engine?: () => Promise<IdsEngine>;
 }
 
-/** Kto priradil / uložil: meno z dialógu viewera (Samuel 2. 11.: meno v dialógu stačí). */
+/** Who assigned / saved: the name from the viewer dialog (Samuel 2. 11.: the name in the dialog is enough). */
 export function authorOf(raw: unknown): string {
   const name = text(raw, 120);
   if (!name) throw new LibraryInputError("Chýba meno (kto priraďuje alebo ukladá).");
@@ -85,20 +85,20 @@ export function authorOf(raw: unknown): string {
 }
 
 // ------------------------------------------------------------------------------------------------
-// Katalóg knižnice (z DB, D-182 doplnok V30)
+// Library catalog (from the DB, D-182 addendum V30)
 // ------------------------------------------------------------------------------------------------
 
 /**
- * Pôvod verzie z vydania knižnice v DB: `library_repo = db:library/<kód knižnice>`,
- * `library_commit = <vydanie>@<manifest sha256>` (nie git SHA). Zapisuje ho vydanie knižnice (schéma `library`,
- * `library.vydanie_ids`), AIM ho len číta.
+  * Origin of a version from a library release in the DB: `library_repo = db:library/<library code>`,
+  * `library_commit = <release>@<manifest sha256>` (not a git SHA). Written by the library release (schema `library`,
+  * `library.vydanie_ids`), AIM only reads it.
  */
 export const DB_LIBRARY_PREFIX = "db:library/";
 
 export interface LibraryRelease {
-  /** Kód knižnice (`library.kniznica.kod`), napr. `assetin`. */
+    /** Library code (`library.kniznica.kod`), e.g. `assetin`. */
   library: string | null;
-  /** Kód vydania, napr. `2026.11.1`. */
+    /** Release code, e.g. `2026.11.1`. */
   release: string | null;
   manifest_sha256: string | null;
 }
@@ -114,23 +114,23 @@ export function parseLibraryOrigin(repo: string | null | undefined, commit: stri
 export type LibraryItemState = "not_assigned" | "assigned";
 
 export interface LibraryItem {
-  /** Cesta poznámky ER v knižnici (`library_path`); kľúč riadku karty. */
+    /** Path of the ER note in the library (`library_path`); the card row key. */
   path: string;
   code: string;
   sha256: string;
-  /** Veľkosť XML nie je v meta verzie; karta ju neukazuje. */
+    /** The XML size is not in the version meta; the card does not show it. */
   size: number;
-  /** Vydanie, ktoré verziu zapísalo (tvar `last_change` ostáva kvôli karte vo forku). */
+    /** Release that wrote the version (the `last_change` shape stays because of the card in the fork). */
   last_change: { sha: string; date: string | null; author: string | null; message: string | null } | null;
   title: string | null;
   ids_version: string | null;
   specs: Array<{ identifier: string | null; name: string }>;
-  /** `assigned` = IDS má aspoň jednu aktívnu väzbu na model projektu (`ids_document_models`). */
+    /** `assigned` = the IDS has at least one active link to a project model (`ids_document_models`). */
   state: LibraryItemState;
   aim: { code: string; version: number | null; origin: string };
   release: LibraryRelease;
   models: string[];
-  /** Súhrn diagnostík vydania pre toto IDS (z `audit`), napr. {E: 0, W: 14, I: 26}. */
+    /** Summary of release diagnostics for this IDS (from `audit`), e.g. {E: 0, W: 14, I: 26}. */
   diagnostics: Record<string, number> | null;
 }
 
@@ -138,7 +138,7 @@ export interface LibraryCatalog {
   repo: string;
   ref: string;
   dir: string;
-  /** Pôvod poslednej verzie (`<vydanie>@<manifest sha256>`), nie git SHA. */
+    /** Origin of the latest version (`<release>@<manifest sha256>`), not a git SHA. */
   commit: string;
   commit_date: string | null;
   truncated: boolean;
@@ -148,7 +148,7 @@ export interface LibraryCatalog {
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
-/** Špecifikácie z auditu vydania: `"IU-O-space (IU-O, IfcSpace)"` -> identifikátor pred zátvorkou. */
+/** Specifications from the release audit: `"IU-O-space (IU-O, IfcSpace)"` -> the identifier before the parenthesis. */
 function specsOfAudit(audit: Record<string, unknown> | null): LibraryItem["specs"] {
   const list = isObj(audit) && Array.isArray(audit.specifikacie) ? audit.specifikacie : [];
   return list
@@ -165,7 +165,7 @@ function diagnosticsOfAudit(audit: Record<string, unknown> | null): Record<strin
   return Object.fromEntries(Object.entries(d).filter((e): e is [string, number] => typeof e[1] === "number"));
 }
 
-/** Knižničné IDS v AIM (`origin = library`, `status = active`) s poslednou verziou z vydania knižnice v DB. */
+/** Library IDS in AIM (`origin = library`, `status = active`) with the latest version from the library release in the DB. */
 async function libraryDocuments(deps: LibraryDeps) {
   const docs = (await deps.store.listDocuments()).filter((d) => d.origin === "library" && d.status === "active");
   const latest = await deps.store.latestVersions(docs.map((d) => d.id));
@@ -175,8 +175,8 @@ async function libraryDocuments(deps: LibraryDeps) {
 }
 
 /**
- * Katalóg "V knižnici": IDS, ktoré vydanie knižnice zapísalo do AIM (nemenné verzie, `source = import`).
- * Repo knižnice ani GitHub sa nečítajú. Priradenie k projektu = väzba na model (`ids_document_models`).
+  * "V knižnici" (in the library) catalog: IDS that a library release wrote into AIM (immutable versions, `source = import`).
+  * The library repo and GitHub are not read. Assignment to a project = a link to a model (`ids_document_models`).
  */
 export async function libraryCatalog(deps: LibraryDeps): Promise<LibraryCatalog> {
   const rows = await libraryDocuments(deps);
@@ -248,9 +248,9 @@ export interface ProjectItem {
     trigger: string;
     created_by: string | null;
     based_on: Record<string, number>;
-    /** Model je v novšej revízii (null = revízia behu neznáma). */
+        /** Model is at a newer revision (null = the run's revision is unknown). */
     stale: boolean | null;
-    /** IDS má v AIM novšiu verziu, než nad ktorou beh bežal. */
+        /** The IDS has a newer version in AIM than the one the run was made over. */
     ids_stale: boolean;
   }>;
 }
@@ -259,7 +259,7 @@ export interface ProjectCatalog {
   items: ProjectItem[];
   containers: Array<{ model: string; identification: string; name: string | null }>;
   current_revisions: Record<string, number>;
-  /** Migrácia D-182 nie je aplikovaná: väzby a pôvod verzií chýbajú. */
+    /** Migration D-182 is not applied: links and version origins are missing. */
   schema_missing?: boolean;
 }
 
@@ -336,26 +336,26 @@ export async function projectCatalog(deps: LibraryDeps): Promise<ProjectCatalog>
 }
 
 // ------------------------------------------------------------------------------------------------
-// Priradenie k projektu (= väzba na model)
+// Assignment to a project (= link to a model)
 // ------------------------------------------------------------------------------------------------
 
 export interface AssignInput {
-  /** `path` alebo kód z katalógu. */
+    /** `path` or a code from the catalog. */
   path: string;
-  /** Pôvod verzie, ktorú karta ukázala (`<vydanie>@<manifest sha256>`). */
+    /** Origin of the version that the card showed (`<release>@<manifest sha256>`). */
   commit: string;
-  /** Sha256 verzie, ktorú karta ukázala; iná posledná verzia = obnov katalóg. */
+    /** Sha256 of the version that the card showed; a different latest version = refresh the catalog. */
   sha256: string;
   author: string;
-  /** Model federácie; bez neho karta povie, kde sa väzba robí. */
+    /** Federation model; without it the card says where the link is made. */
   model?: string;
 }
 
 export type AssignOutcome = { status: "created" | "unchanged"; code: string; version: number; model: string };
 
 /**
- * "Priradiť k projektu": IDS je v AIM od vydania knižnice, priradenie je väzba IDS na model federácie
- * (`ids_document_models`, ručne, D-182 bod 5). Overí, že karta ukázala poslednú verziu.
+  * "Priradiť k projektu" (assign to project): the IDS is in AIM since the library release, assignment is a link of the IDS to a federation model
+  * (`ids_document_models`, manual, D-182 point 5). Verifies that the card showed the latest version.
  */
 export async function assignFromLibrary(deps: LibraryDeps, input: AssignInput): Promise<AssignOutcome> {
   const author = authorOf(input.author);
@@ -376,7 +376,7 @@ export async function assignFromLibrary(deps: LibraryDeps, input: AssignInput): 
 }
 
 // ------------------------------------------------------------------------------------------------
-// Väzba IDS <-> model (ručne)
+// Link IDS <-> model (manual)
 // ------------------------------------------------------------------------------------------------
 
 export interface ModelBindInput {
@@ -407,10 +407,10 @@ export async function setModelBinding(deps: LibraryDeps, input: ModelBindInput) 
 }
 
 // ------------------------------------------------------------------------------------------------
-// Uloženie behu z viewera
+// Saving a run from the viewer
 // ------------------------------------------------------------------------------------------------
 
-/** Strop riadkov prvok x špecifikácia (rovnaký ako `ifc_ids_validate save`). */
+/** Cap of rows element x specification (the same as `ifc_ids_validate save`). */
 export const MAX_VIEWER_RUN_RESULTS = 50_000;
 
 export interface ViewerRunInput {
@@ -421,12 +421,12 @@ export interface ViewerRunInput {
   revision: number | null;
   engine_version: string;
   author: string;
-  /** Výsledky po špecifikáciách v tvare reportu `@ifc-lite/ids` (`specificationResults`). */
+    /** Results per specification in the shape of the `@ifc-lite/ids` report (`specificationResults`). */
   specs: ReportSpec[];
 }
 
 export interface ViewerRunDeps extends LibraryDeps {
-  /** IFC GlobalId -> objects.id (aktívny GUID, D-010). */
+    /** IFC GlobalId -> objects.id (active GUID, D-010). */
   lookup: (guids: string[]) => Promise<Map<string, { object_id: string }>>;
 }
 
@@ -495,7 +495,7 @@ export async function saveViewerRun(deps: ViewerRunDeps, input: ViewerRunInput) 
   };
 }
 
-/** Tvar výsledkov z viewera (podmnožina reportu `@ifc-lite/ids`) po overení; texty orezané. */
+/** Shape of the results from the viewer (subset of the `@ifc-lite/ids` report) after verification; texts trimmed. */
 export function parseRunSpecs(raw: unknown): ReportSpec[] | null {
   if (!Array.isArray(raw)) return null;
   const s = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);

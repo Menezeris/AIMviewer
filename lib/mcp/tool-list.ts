@@ -14,17 +14,17 @@ import { SAVED_VIEW_TOOL_DEFINITIONS } from "../views/tools";
 import { withAlwaysLoad } from "./tool-loading";
 
 /**
- * Zoznam toolov MCP konektora na jednom mieste (D-114): číta ho route, register
- * toolov (`tool-registry.test.ts`) aj generovaný inventár `MCP-TOOLS.md`, v ktorom
- * session hľadá, či schopnosť už niektorý tool nemá, skôr ako navrhne nový.
+  * List of the MCP connector tools in one place (D-114): read by the route, the tool
+  * registry (`tool-registry.test.ts`) and the generated inventory `MCP-TOOLS.md`, in which a
+  * session looks whether a tool already has the capability, before proposing a new one.
  */
 
 export interface ToolGroup {
-  /** Skupina v inventári. */
+    /** Group in the inventory. */
   group: string;
-  /** Odkiaľ tool berie dáta alebo kam pôsobí. */
+    /** Where the tool takes its data from or what it acts on. */
   source: string;
-  /** Kde sú definície (pre session, ktorá tool rozširuje). */
+    /** Where the definitions are (for a session that extends the tool). */
   file: string;
   /** Len v MCP konektore, nie v `/api/ask`. */
   mcpOnly: boolean;
@@ -34,7 +34,7 @@ export interface ToolGroup {
 export interface ToolListOptions {
   /** `ENGINE_ENABLED=1`: `search_all` a `ifc_*` tools IFC motora (D-084). */
   engine: boolean;
-  /** `ENGINE_SPIKE=1`: diagnostika motora (D-084 fáza 0), mimo registra. */
+    /** `ENGINE_SPIKE=1`: engine diagnostics (D-084 phase 0), outside the registry. */
   spike?: boolean;
 }
 
@@ -45,7 +45,7 @@ export function mcpToolGroups({ engine }: ToolListOptions): ToolGroup[] {
       source: "DB (AIM graf) -> živý viewer",
       file: "lib/llm/tools.ts, lib/llm/view-tools.ts, lib/llm/list-tool.ts",
       mcpOnly: false,
-      // D-115: s motorom search_all nahrádza search_everything (hľadá v grafe AIM aj v IFC súbore).
+            // D-115: with the engine, search_all replaces search_everything (it searches the AIM graph and the IFC file).
       tools: engine
         ? TOOL_DEFINITIONS.filter((t) => t.name !== "search_everything").map((t) => ({ ...t, description: withSearchAll(t.description) }))
         : TOOL_DEFINITIONS,
@@ -95,7 +95,7 @@ export function mcpToolGroups({ engine }: ToolListOptions): ToolGroup[] {
       tools: [SEARCH_ALL_TOOL, ...engineToolDefinitions(), CALIBRATE_UNDERLAY_TOOL],
     });
   }
-  // D-153: jadrové tooly s `anthropic/alwaysLoad`, aby ich klient nemusel hľadať cez tool_search.
+    // D-153: core tools with `anthropic/alwaysLoad`, so that the client does not have to look for them via tool_search.
   return groups.map((g) => ({ ...g, tools: g.tools.map(withAlwaysLoad) }));
 }
 
