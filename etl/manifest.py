@@ -28,6 +28,7 @@ Spustenie:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -58,6 +59,16 @@ class RelType:
     export_path: str = "ifcrel"               # 'ifcrel' | 'resource' | 'icdd' | 'ifcx'
     unique_active_from: bool = False          # unique-active-parent (1 aktívny rodič na from_id)
     description: str = ""
+    # D-196 (R10): IFC attribute of the Related end (e.g. 'RelatedObjects'); with relating_attr it gives the
+    # declared IFC type of both ends. end_attrs overrides both for a resource without Relating/Related
+    # ({'from': 'ThePerson', 'to': 'TheOrganization'}).
+    related_attr: Optional[str] = None
+    end_attrs: Optional[dict[str, str]] = None
+    # D-196: declared IFC types of the ends, stated here only for aim_* (no IFC entity); an empty list = no
+    # IFC check at that end (object_type rule only). For IFC-anchored types build_manifest() reads them from
+    # the schema and these must stay None.
+    from_ifc_types: Optional[list[str]] = None
+    to_ifc_types: Optional[list[str]] = None
     # dopočítané zo schémy (build_manifest)
     ifc_family: Optional[str] = None
     is_ifc_rel: bool = False
@@ -73,6 +84,7 @@ _SPECS: list[RelType] = [
         rel_type="rel_aggregates",
         ifc_entity="IfcRelAggregates",
         relating_attr="RelatingObject",       # = celok (parent) = náš to_id
+        related_attr="RelatedObjects",
         relating_end="to",
         # spatial child; site → project, časti priestorovej zóny a podskupiny (D-088)
         from_object_types=["site", "building", "floor", "space", "spatial_zone", "group"],
@@ -85,6 +97,7 @@ _SPECS: list[RelType] = [
         rel_type="rel_contained_in_spatial_structure",
         ifc_entity="IfcRelContainedInSpatialStructure",
         relating_attr="RelatingStructure",    # = štruktúra (space/floor) = náš to_id
+        related_attr="RelatedElements",
         relating_end="to",
         from_object_types=["asset", "spatial_zone"],   # fyzický prvok, priestorová zóna (D-088)
         to_object_types=["floor", "space"],    # priestor/podlažie
@@ -95,6 +108,7 @@ _SPECS: list[RelType] = [
         rel_type="rel_referenced_in_spatial_structure",
         ifc_entity="IfcRelReferencedInSpatialStructure",
         relating_attr="RelatingStructure",    # = štruktúra (space/floor) = náš to_id
+        related_attr="RelatedElements",
         relating_end="to",
         from_object_types=["asset", "space", "spatial_zone"],
         to_object_types=["space", "floor", "building", "site", "spatial_zone"],
@@ -106,6 +120,7 @@ _SPECS: list[RelType] = [
         rel_type="rel_space_boundary",
         ifc_entity="IfcRelSpaceBoundary",
         relating_attr="RelatingSpace",        # = priestor = náš to_id
+        related_attr="RelatedBuildingElement",
         relating_end="to",
         from_object_types=["asset"],          # RelatedBuildingElement (dvere, steny, okná…)
         to_object_types=["space"],
@@ -117,6 +132,7 @@ _SPECS: list[RelType] = [
         rel_type="rel_defines_by_type",
         ifc_entity="IfcRelDefinesByType",
         relating_attr="RelatingType",          # = type = náš to_id
+        related_attr="RelatedObjects",
         relating_end="to",
         from_object_types=["asset"],           # occurrence
         to_object_types=["asset_type"],        # type
@@ -127,6 +143,7 @@ _SPECS: list[RelType] = [
         rel_type="rel_associates_document",
         ifc_entity="IfcRelAssociatesDocument",
         relating_attr="RelatingDocument",      # = dokument = náš to_id
+        related_attr="RelatedObjects",
         relating_end="to",
         from_object_types=["project", "site", "building", "floor", "space", "asset",
                            "asset_type", "zone", "spatial_zone", "group"],
@@ -138,6 +155,7 @@ _SPECS: list[RelType] = [
         rel_type="rel_associates_classification",
         ifc_entity="IfcRelAssociatesClassification",
         relating_attr="RelatingClassification",  # = klasifikačná referencia = náš to_id
+        related_attr="RelatedObjects",
         relating_end="to",
         from_object_types=["asset", "asset_type"],
         to_object_types=[],                      # výnimka: to_id → classification_references
@@ -148,8 +166,11 @@ _SPECS: list[RelType] = [
         rel_type="rel_assigns_to_actor",
         ifc_entity="IfcRelAssignsToActor",
         relating_attr="RelatingActor",         # = aktor = náš from_id
+        related_attr="RelatedObjects",
         relating_end="from",
-        from_object_types=["person", "organization"],
+        # D-196 (PLATFORM.md 5.3): the IFC From end is IfcActor; 'actor' is the node of an IfcActor whose
+        # TheActor is the person or organisation. person/organization stay until the narrower rule goes (R5/R9).
+        from_object_types=["person", "organization", "actor"],
         to_object_types=["project", "site", "building", "floor", "space", "asset", "asset_type",
                          "document", "zone", "spatial_zone", "group"],
         description="Zodpovednosti (D-020); role = acting rola.",
@@ -158,6 +179,7 @@ _SPECS: list[RelType] = [
         rel_type="rel_assigns_to_group",
         ifc_entity="IfcRelAssignsToGroup",
         relating_attr="RelatingGroup",         # = group/system = náš to_id
+        related_attr="RelatedObjects",
         relating_end="to",
         from_object_types=["asset", "space", "zone", "spatial_zone"],   # člen
         to_object_types=["system", "zone", "group"],   # IfcDistributionSystem (D-047), IfcZone, IfcGroup (D-088)
@@ -168,6 +190,7 @@ _SPECS: list[RelType] = [
         ifc_entity="IfcPersonAndOrganization",  # resource, NIE IfcRel (D-048)
         relating_attr=None,                     # resource nemá Relating/Related
         relating_end="from",                    # konvencia: person = subjekt
+        end_attrs={"from": "ThePerson", "to": "TheOrganization"},
         from_object_types=["person"],
         to_object_types=["organization"],
         export_path="resource",
@@ -177,6 +200,7 @@ _SPECS: list[RelType] = [
         rel_type="rel_document_information_relationship",
         ifc_entity="IfcDocumentInformationRelationship",  # resource, NIE IfcRel (D-104)
         relating_attr="RelatingDocument",      # = nadradený dokument = náš to_id
+        related_attr="RelatedDocuments",
         relating_end="to",
         from_object_types=["document"],        # časť (RelatedDocuments)
         to_object_types=["document"],
@@ -188,6 +212,7 @@ _SPECS: list[RelType] = [
         rel_type="rel_external_reference_relationship",
         ifc_entity="IfcExternalReferenceRelationship",  # resource, NIE IfcRel (D-104)
         relating_attr="RelatingReference",     # = klasifikačná referencia = náš to_id
+        related_attr="RelatedResourceObjects",
         relating_end="to",
         from_object_types=["document"],        # RelatedResourceObjects (IfcDocumentInformation)
         to_object_types=[],                    # výnimka: to_id → classification_references
@@ -195,6 +220,36 @@ _SPECS: list[RelType] = [
         export_path="resource",
         description="Klasifikácia dokumentu (D-104), napr. typ informácie ISO 19650. "
                     "to_id → classification_references. IFC resource, nie IfcRel.",
+    ),
+    # D-196: the two aim_* types of D-073 (migration 20260716120000), now also in the generator.
+    RelType(
+        rel_type="aim_rel_capture_located",
+        ifc_entity=None,
+        relating_attr=None,
+        relating_end="to",
+        from_object_types=["capture"],
+        to_object_types=["space", "floor"],
+        namespace="aim",
+        export_path="icdd",
+        unique_active_from=True,
+        description="Reality-capture bod umiestnený v priestore/podlaží (D-073). unique-active: 1 aktívny "
+                    "priestor na capture.",
+        from_ifc_types=[],                     # capture has no IFC class
+        to_ifc_types=["IfcSpatialElement"],
+    ),
+    RelType(
+        rel_type="aim_rel_capture_media",
+        ifc_entity=None,
+        relating_attr=None,
+        relating_end="from",
+        from_object_types=["capture"],
+        to_object_types=["capture_media"],
+        namespace="aim",
+        export_path="icdd",
+        description="Reality-capture bod → jeho snímky/verzie (D-073). 1:N, append-only cez "
+                    "valid_from/valid_until.",
+        from_ifc_types=[],
+        to_ifc_types=[],
     ),
 ]
 
@@ -265,9 +320,19 @@ def build_manifest(schema_name: str = IFC_SCHEMA) -> list[RelType]:
         schema = w.schema_by_name(f"{schema_name}_ADD2")
     out: list[RelType] = []
     for spec in _SPECS:
+        # D-196: work on a copy, the module-level specs stay as declared (build_manifest may run twice).
+        spec = dataclasses.replace(spec, from_object_types=list(spec.from_object_types),
+                                   to_object_types=list(spec.to_object_types))
         if spec.ifc_entity is None:
-            out.append(spec)  # čisto naše (aim_*) — dnes žiadne
+            # aim_* (D-048): no IFC entity, the ends state their own IFC types (D-196).
+            if spec.from_ifc_types is None or spec.to_ifc_types is None:
+                raise ValueError(f"{spec.rel_type}: an aim_* type must state from_ifc_types and to_ifc_types")
+            for t in spec.from_ifc_types + spec.to_ifc_types:
+                _require_entity(schema, spec.rel_type, t)
+            out.append(spec)  # čisto naše (aim_*)
             continue
+        if spec.from_ifc_types is not None or spec.to_ifc_types is not None:
+            raise ValueError(f"{spec.rel_type}: IFC end types come from the schema, do not state them")
         try:
             decl = schema.declaration_by_name(spec.ifc_entity)
         except Exception as exc:  # noqa: BLE001
@@ -285,8 +350,101 @@ def build_manifest(schema_name: str = IFC_SCHEMA) -> list[RelType]:
 
         spec.is_ifc_rel = is_rel
         spec.ifc_family = _ifc_family(decl) if is_rel else None
+        spec.from_ifc_types, spec.to_ifc_types = _end_ifc_types(spec, decl)
         out.append(spec)
     return out
+
+
+def _require_entity(schema, rel_type: str, name: str) -> None:
+    try:
+        d = schema.declaration_by_name(name)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(f"{rel_type}: IFC type '{name}' does not exist") from exc
+    from ifcopenshell import ifcopenshell_wrapper as w
+    if not isinstance(d, w.entity):
+        raise ValueError(f"{rel_type}: '{name}' is not an IFC entity")
+
+
+def _attr_entities(decl, attr_name: str, rel_type: str) -> list[str]:
+    """Declared type of an attribute as IFC entity names (D-196, R10).
+
+    Aggregates (SET OF ...) are unwrapped; a SELECT is expanded to its members, recursively, so the list
+    holds only entities. Anything else (a defined type, an enum) is an error: an end must be an entity.
+    """
+    from ifcopenshell import ifcopenshell_wrapper as w
+
+    attrs = {a.name(): a for a in decl.all_attributes()}
+    if attr_name not in attrs:
+        raise ValueError(f"{rel_type}: '{decl.name()}' has no attribute '{attr_name}' (available: {sorted(attrs)})")
+    t = attrs[attr_name].type_of_attribute()
+    while isinstance(t, w.aggregation_type):
+        t = t.type_of_element()
+    if isinstance(t, w.named_type):
+        t = t.declared_type()
+
+    def expand(d) -> list[str]:
+        if isinstance(d, w.select_type):
+            out: list[str] = []
+            for m in d.select_list():
+                out += expand(m)
+            return out
+        if isinstance(d, w.entity):
+            return [d.name()]
+        raise ValueError(f"{rel_type}: {decl.name()}.{attr_name} resolves to '{d.name()}', not an entity")
+
+    return sorted(set(expand(t)))
+
+
+def _end_ifc_types(spec: RelType, decl) -> tuple[list[str], list[str]]:
+    """(from_ifc_types, to_ifc_types) of an IFC-anchored rel_type from the schema (D-196)."""
+    if spec.end_attrs is not None:
+        return (_attr_entities(decl, spec.end_attrs["from"], spec.rel_type),
+                _attr_entities(decl, spec.end_attrs["to"], spec.rel_type))
+    if spec.relating_attr is None or spec.related_attr is None:
+        raise ValueError(f"{spec.rel_type}: needs relating_attr and related_attr (or end_attrs)")
+    relating = _attr_entities(decl, spec.relating_attr, spec.rel_type)
+    related = _attr_entities(decl, spec.related_attr, spec.rel_type)
+    return (related, relating) if spec.relating_end == "to" else (relating, related)
+
+
+# D-196: the generated block in the migration sits between these lines; the test compares it with
+# sql_ifc_types() and CI fails on drift.
+IFC_TYPES_MIGRATION = "supabase/migrations/20261105140000_relationship_ifc_types.sql"
+IFC_TYPES_BEGIN = "-- BEGIN generated by python -m etl.manifest --sql-ifc-types (do not edit by hand)"
+IFC_TYPES_END = "-- END generated"
+
+
+def sql_ifc_types(schema_name: str = IFC_SCHEMA) -> str:
+    """UPDATE statements filling relationship_types.from_ifc_types / to_ifc_types (D-196).
+
+    Deterministic, one statement per rel_type in manifest order, and a guard that every rel_type of the
+    table was covered: a rel_type in the database the generator does not know fails the migration.
+    """
+    rows = build_manifest(schema_name)
+    lines = [IFC_TYPES_BEGIN]
+    for r in rows:
+        lines.append(
+            f"update relationship_types set from_ifc_types = {_sql_array(r.from_ifc_types or [])}, "
+            f"to_ifc_types = {_sql_array(r.to_ifc_types or [])} where rel_type = {_sql_str(r.rel_type)};"
+        )
+    known = ", ".join(_sql_str(r.rel_type) for r in rows)
+    lines += [
+        "do $$",
+        "begin",
+        f"  if exists (select 1 from relationship_types where rel_type not in ({known})) then",
+        "    raise exception 'D-196: relationship_types has a rel_type the generator does not know';",
+        "  end if;",
+        "end $$;",
+        IFC_TYPES_END,
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def migration_ifc_types_block(text: str) -> str:
+    """The generated block of the migration text, markers included."""
+    start = text.index(IFC_TYPES_BEGIN)
+    end = text.index(IFC_TYPES_END, start) + len(IFC_TYPES_END)
+    return text[start:end] + "\n"
 
 
 def _sql_array(items: list[str]) -> str:
@@ -335,11 +493,16 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Manifest vzťahov (D-051)")
     ap.add_argument("--sql", action="store_true", help="vypíš INSERT SQL do relationship_types")
     ap.add_argument("--check", action="store_true", help="len validácia proti IFC schéme")
+    ap.add_argument("--sql-ifc-types", action="store_true",
+                    help="print the generated IFC end types block of the D-196 migration")
     ap.add_argument("--schema", default=IFC_SCHEMA, help=f"IFC schéma (default {IFC_SCHEMA})")
     args = ap.parse_args()
 
     if args.sql:
         print(sql_inserts(args.schema), end="")
+        return
+    if args.sql_ifc_types:
+        print(sql_ifc_types(args.schema), end="")
         return
     # default = check
     manifest = build_manifest(args.schema)
@@ -347,6 +510,7 @@ def main() -> None:
     for r in manifest:
         kind = f"{r.ifc_entity} ({r.ifc_family})" if r.is_ifc_rel else f"{r.ifc_entity or '—'} [resource]"
         print(f"  {r.rel_type:<38} relating={r.relating_end:<4} {kind}")
+        print(f"  {'':<38} from={r.from_ifc_types} to={r.to_ifc_types}")
 
 
 if __name__ == "__main__":
