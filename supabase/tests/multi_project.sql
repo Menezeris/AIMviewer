@@ -340,14 +340,14 @@ begin
   values (k, 'd189-a', '\x00', '1', 'test') returning id into v1;
   insert into library.vydanie (kniznica_id, kod, manifest_sha256, schema_verzia, autor)
   values (k, 'd189-b', '\x00', '1', 'test') returning id into v2;
-  out := library.publikuj_ids(v1, '[{"code": "LIB-D189", "title": "t", "xml": "<ids/>", "library_path": "zadanie/t.md"}]', '00000000-0000-4000-8189-000000000001');
-  out := library.publikuj_ids(v2, '[{"code": "LIB-D189", "title": "t", "xml": "<ids/>", "library_path": "zadanie/t.md"}]', '00000000-0000-4000-8189-000000000002');
+  out := library.publish_ids(v1, '[{"code": "LIB-D189", "title": "t", "xml": "<ids/>", "library_path": "zadanie/t.md"}]', '00000000-0000-4000-8189-000000000001');
+  out := library.publish_ids(v2, '[{"code": "LIB-D189", "title": "t", "xml": "<ids/>", "library_path": "zadanie/t.md"}]', '00000000-0000-4000-8189-000000000002');
   if out -> 0 ->> 'zmena' <> 'nove' then raise exception 'second project should get a new IDS: %', out; end if;
   select count(*) into n from ids_documents where code = 'LIB-D189';
   if n <> 2 then raise exception 'expected the library IDS in both projects, got %', n; end if;
   begin
-    perform library.publikuj_ids(v1, '[]', null);
-    raise exception 'publikuj_ids accepted a NULL project';
+    perform library.publish_ids(v1, '[]', null);
+    raise exception 'publish_ids accepted a NULL project';
   exception when raise_exception then
     if sqlerrm not like '%p_project is required%' then raise; end if;
   end;
@@ -381,8 +381,8 @@ begin
   end if;
   if exists (select 1 from pg_roles where rolname = 'anon')
      and (has_table_privilege('anon', 'bcf_topic_counters', 'select')
-          or has_function_privilege('anon', 'library_vydaj(text, text, text, text, text, jsonb, jsonb, jsonb, uuid)', 'execute')) then
-    raise exception 'anon may read bcf_topic_counters or call library_vydaj';
+          or has_function_privilege('anon', 'library_release(text, text, text, text, text, jsonb, jsonb, jsonb, uuid)', 'execute')) then
+    raise exception 'anon may read bcf_topic_counters or call library_release';
   end if;
   if not has_table_privilege('service_role', 'bcf_topic_counters', 'update') then
     raise exception 'service_role may not update bcf_topic_counters (needed by the model_tasks trigger)';

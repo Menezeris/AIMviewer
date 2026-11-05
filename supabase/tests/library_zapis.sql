@@ -3,11 +3,11 @@ begin;
 \ir _legacy_ocb.sql
 set local role service_role;
 -- texts: the whole head
-select count(*) > 0 as ma_texty from public.library_texty('assetin');
+select count(*) > 0 as ma_texty from public.library_texts('assetin');
 -- write with a wrong expected version = AS409, nothing is written
 do $$
 begin
-  perform public.library_zapis('assetin', 'test', null, 'editor', '1.5',
+  perform public.library_write('assetin', 'test', null, 'editor', '1.5',
     jsonb_build_array(jsonb_build_object('cesta', 'KNIZNICA.md', 'text', 'x', 'ocakavana', repeat('0', 64))),
     jsonb_build_object('KNIZNICA.md', jsonb_build_object('frontmatter', null, 'data', null, 'odkazy', '[]'::jsonb, 'diagnostiky', '[]'::jsonb)),
     'test');
@@ -17,7 +17,7 @@ end $$;
 -- missing projection for the written file = 22023, nothing is written
 do $$
 begin
-  perform public.library_zapis('assetin', 'test', null, 'editor', '1.5',
+  perform public.library_write('assetin', 'test', null, 'editor', '1.5',
     jsonb_build_array(jsonb_build_object('cesta', 'KNIZNICA.md', 'text', 'x', 'ocakavana', repeat('0', 64))),
     jsonb_build_object('ina/cesta.md', '{}'::jsonb), 'test');
   raise exception 'očakávaná chyba 22023';
@@ -32,7 +32,7 @@ begin
   select h.sha256 into ta from library.hlava h where h.kniznica = 'assetin' and h.cesta = a;
   select h.cesta into b from library.hlava h where h.kniznica = 'assetin' order by h.cesta desc limit 1;
   select h.sha256 into tb from library.hlava h where h.kniznica = 'assetin' and h.cesta = b;
-  v := public.library_zapis('assetin', 'test', null, 'editor', '1.5',
+  v := public.library_write('assetin', 'test', null, 'editor', '1.5',
     jsonb_build_array(
       jsonb_build_object('cesta', b, 'text', (select text from library.hlava where kniznica = 'assetin' and cesta = b), 'ocakavana', tb),
       jsonb_build_object('cesta', a, 'text', (select text from library.hlava where kniznica = 'assetin' and cesta = a), 'ocakavana', ta)),
@@ -45,5 +45,5 @@ begin
   end if;
 end $$;
 reset role;
-select has_function_privilege('anon', 'public.library_zapis(text,text,text,text,text,jsonb,jsonb,text)', 'execute') = false as anon_bez_prava;
+select has_function_privilege('anon', 'public.library_write(text,text,text,text,text,jsonb,jsonb,text)', 'execute') = false as anon_bez_prava;
 rollback;
