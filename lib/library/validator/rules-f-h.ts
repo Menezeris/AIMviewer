@@ -3,7 +3,7 @@
  * validátora (port `f_typy.py`, `g_nositel.py`, `h_generovatelnost.py`). F3, F10 a H3 potrebujú schému IFC (F2b).
  */
 
-import { idPoznamky } from "../graph";
+import { noteId } from "../graph";
 import { klucPolozky } from "../graph-json";
 import { jednotkyVymeny } from "../chain";
 import { attr, ciele, je, link, obj, pravda, pravidlo, pyRepr, pyStr, zorad, zoznam, zoznamM, type Kontext, type M } from "./context";
@@ -96,7 +96,7 @@ pravidlo("F14", "W", { popis: "Cieľ, ku ktorému nevedie žiadny účel užitia
   for (const [, uc] of ctx.typu("UC")) for (const c of ciele(uc, "podporuje_ciel")) pouzite.add(c);
   for (const [, g] of ctx.typu("GOAL")) for (const c of ciele(g, "prispieva_k")) pouzite.add(c);
   for (const [n] of ctx.typu("GOAL")) {
-    if (!pouzite.has(idPoznamky(n) ?? "")) yield ctx.diag(n, "na tento cieľ neukazuje žiadny účel užitia (`podporuje_ciel`) ani nižší cieľ (`prispieva_k`) — v knižnici je to prípustné, len naň zatiaľ nič nenadväzuje", ["id"]);
+    if (!pouzite.has(noteId(n) ?? "")) yield ctx.diag(n, "na tento cieľ neukazuje žiadny účel užitia (`podporuje_ciel`) ani nižší cieľ (`prispieva_k`) — v knižnici je to prípustné, len naň zatiaľ nič nenadväzuje", ["id"]);
   }
 });
 
@@ -123,7 +123,7 @@ const VELA_HODNOT = 5;
 pravidlo("G1", "W", { popis: "Zdieľaný slovník federácie má master DiMS", zdroj: "V11" }, function* (ctx) {
   const entityVEr = new Map<string, string>();
   for (const [n] of ctx.typu("ER")) {
-    for (const c of jednotkyVymeny(ctx.k, idPoznamky(n) ?? "").objekty) {
+    for (const c of jednotkyVymeny(ctx.k, noteId(n) ?? "").objekty) {
       const o = attr(ctx.model(c), "objekt");
       if (je(o)) entityVEr.set(pyStr(attr(o, "ifc_entita")).toUpperCase(), c);
     }
@@ -152,7 +152,7 @@ pravidlo("G2", "E", { popis: "Vrstva aktíva nie je tieňová databáza", zdroj:
 
 pravidlo("G3", "I", { popis: "Dlhý výčet hodnôt mimo slovníka", zdroj: "§0.10" }, function* (ctx) {
   for (const [n, iu] of ctx.typu("IU-O")) {
-    if (idPoznamky(n) === SLOVNIKOVA_POZNAMKA) continue;
+    if (noteId(n) === SLOVNIKOVA_POZNAMKA) continue;
     for (const [i, p] of zoznamM(iu.alfanumerika).entries()) {
       const h = zoznam(p.hodnoty);
       if (h.length >= VELA_HODNOT) yield ctx.diag(n, `položka \`${klucPolozky(p)}\` má ${h.length} hodnôt inline — zváž slovník v ${SLOVNIKOVA_POZNAMKA} a \`hodnoty_ref\` (§0.10)`, ["alfanumerika", i, "hodnoty"]);
@@ -176,7 +176,7 @@ pravidlo("H1", "I", { popis: "Výmena, z ktorej vznikne prázdne IDS", zdroj: "n
   for (const [n, er] of ctx.typu("ER")) {
     const predvoleny = link(er.poskytovatel_predvoleny);
     const podla = new Map<string, string[]>();
-    for (const c of jednotkyVymeny(ctx.k, idPoznamky(n) ?? "").objekty) {
+    for (const c of jednotkyVymeny(ctx.k, noteId(n) ?? "").objekty) {
       const iu = ctx.model(c);
       if (!iu) continue;
       const posk = ciele(iu, "poskytovatel");

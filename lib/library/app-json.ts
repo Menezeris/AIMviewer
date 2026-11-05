@@ -5,13 +5,13 @@
  */
 
 import { PREFIXY } from "./paths";
-import { idPoznamky, typPoznamky, type Kniznica } from "./graph";
-import { grafJson } from "./graph-json";
-import { inspektor, inspektorEr } from "./inspector";
-import type { Diagnostika, Poznamka } from "./loader";
-import { cestyPre, retazceJson, retazcePre } from "./chain";
-import { TRIEDY_TYPOV } from "./schema/classes";
-import { pasmaDokument, vsetkyPopisy } from "./ui";
+import { noteId, noteType, type Library } from "./graph";
+import { graphJson } from "./graph-json";
+import { inspect, inspectEr } from "./inspector";
+import type { Diagnostic, Note } from "./loader";
+import { pathsFor, retazceJson, retazcePre } from "./chain";
+import { TYPE_CLASSES } from "./schema/classes";
+import { documentBands, vsetkyPopisy } from "./ui";
 import { PREDVOLBY_NOVEJ } from "./write";
 
 const TYPY_POZNAMOK = ["GOAL", "UC", "ER", "IU-O", "IU-C", "STD", "PROP", "DEF", "EV", "ACT", "PROT", "PROJ"];
@@ -27,7 +27,7 @@ export function jsonBezpecne(v: unknown): unknown {
 
 /** `pasma.hranicne_pre`: pásma, na ktorých hranici konkrétna poznámka sedí (`HRANICNE_AK` podľa dát). */
 export function hranicnePre(typ: string | null, model: Record<string, unknown> | null): string[] {
-  const t = typ ? TRIEDY_TYPOV[typ] : undefined;
+  const t = typ ? TYPE_CLASSES[typ] : undefined;
   const h = [...(t?.HRANICNE ?? [])];
   if (!h.length || !model) return [];
   const ak = t?.HRANICNE_AK;
@@ -37,7 +37,7 @@ export function hranicnePre(typ: string | null, model: Record<string, unknown> |
 }
 
 /** `_telo`: próza tela po sekciách s indexom bloku v `Dokument.telo` (editor prepisuje jeden blok). */
-function telo(n: Poznamka) {
+function telo(n: Note) {
   const out: Array<Record<string, unknown>> = [];
   const sekcie: Array<{ nadpis: { text: string; uroven: number } | null; bloky: Array<{ i: number; raw: string; proza: boolean }> }> = [{ nadpis: null, bloky: [] }];
   n.dokument.telo.forEach((b, i) => {
@@ -58,22 +58,22 @@ function telo(n: Poznamka) {
   return out;
 }
 
-export interface InfoRevizie {
+export interface RevisionInfo {
   /** `sklad.info()`: rel -> posledná revízia (autor, čas); priečinok ju nepozná. */
   info?: () => Record<string, unknown>;
   vyzadujeAutora?: boolean;
 }
 
-function poznamka(k: Kniznica, n: Poznamka, diag: Diagnostika[], sklad: InfoRevizie) {
-  const nid = idPoznamky(n);
-  const typ = typPoznamky(n);
+function poznamka(k: Library, n: Note, diag: Diagnostic[], sklad: RevisionInfo) {
+  const nid = noteId(n);
+  const typ = noteType(n);
   const m = n.model;
-  const cesty = nid ? cestyPre(k, nid) : [];
+  const cesty = nid ? pathsFor(k, nid) : [];
   return {
     id: nid,
     typ,
     hranicne: m ? hranicnePre(typ, m) : [],
-    inspektor: nid ? inspektor(k, nid) : null,
+    inspektor: nid ? inspect(k, nid) : null,
     retazce: nid ? retazcePre(k, nid) : [],
     cesta: cesty.length ? cesty[0] : [],
     cesty,
@@ -97,14 +97,14 @@ function poznamka(k: Kniznica, n: Poznamka, diag: Diagnostika[], sklad: InfoRevi
       riadok: pz.blok.riadok + 2,
       data: jsonBezpecne(pz.data),
       ma_ids_blok: pz.ids_blok !== null,
-      cesty: cestyPre(k, pz.id),
+      cesty: pathsFor(k, pz.id),
     })),
     diagnostiky: diag.filter((d) => d.note_id === nid),
   };
 }
 
 /** `_slovniky`: pod-záznamy slovníkov, aby bunka `hodnoty_ref` ponúkla hodnoty. */
-function slovniky(k: Kniznica) {
+function slovniky(k: Library) {
   const out: Record<string, unknown> = {};
   for (const [rodic, pid, pz] of k.pod_zaznamy_poradie) {
     if (pz.druh !== "slovnik") continue;
@@ -146,18 +146,18 @@ export function dalsieId(existujuce: Iterable<string>, typ: string): string | nu
  * `app_json.dokument`: graf + popisy typov, pásma, inšpektor v kontexte výmeny, reťazce, poznámky, registre,
  * kotvy, slovníky, návrhy ID. `diag` sú diagnostiky validátora (krok 5); bez nich diagnostiky grafu.
  */
-export function dokumentEditora(k: Kniznica, diag?: Diagnostika[], sklad: InfoRevizie = {}) {
+export function editorDocument(k: Library, diag?: Diagnostic[], sklad: RevisionInfo = {}) {
   const d = diag ?? k.diagnostiky;
-  const zaklad = grafJson(k, d) as Record<string, unknown>;
-  const poznamky = k.vsetky.filter((n) => idPoznamky(n) !== null).map((n) => poznamka(k, n, d, sklad));
+  const zaklad = graphJson(k, d) as Record<string, unknown>;
+  const poznamky = k.vsetky.filter((n) => noteId(n) !== null).map((n) => poznamka(k, n, d, sklad));
   const registre = new Map<string, string[]>();
   for (const p of poznamky) registre.set(p.typ || "?", [...(registre.get(p.typ || "?") ?? []), p.id!]);
   const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
   return {
     ...zaklad,
     typy: vsetkyPopisy(),
-    pasma: pasmaDokument(),
-    inspektor_er: inspektorEr(k),
+    pasma: documentBands(),
+    inspektor_er: inspectEr(k),
     retazce: retazceJson(k),
     poznamky,
     registre: Object.fromEntries([...registre.entries()].sort(([a], [b]) => cmp(a, b)).map(([t, ids]) => [t, [...ids].sort(cmp)])),

@@ -9,16 +9,16 @@
 import { createHash } from "node:crypto";
 
 import { parsuj, serializuj } from "./blocks";
-import { ChybaCesty, cestaPre, premenovatelna, typZPrefixuId } from "./paths";
-import { modelPreTyp, nacitajKniznicu, nacitajSubor, type Diagnostika, type Poznamka } from "./loader";
+import { PathError, pathFor, renamable, typZPrefixuId } from "./paths";
+import { modelForType, loadLibrary, loadFile, type Diagnostic, type Note } from "./loader";
 import {
-  ChybaZapisu,
-  nastavBlokovePole,
-  nastavFrontmatter,
-  nastavInline,
-  nastavPodZaznam,
-  nastavProzu,
-  novaPoznamka,
+  WriteError,
+  setBlockField,
+  setFrontmatter,
+  setInline,
+  setSubRecord,
+  setProse,
+  newNote,
   odstranFrontmatter,
   odstranInline,
   zabezpecAliases,
@@ -36,14 +36,14 @@ export interface Zmena {
   hodnota: unknown;
 }
 
-export const cestaZmeny = (z: Zmena): Array<string | number> =>
+export const changePath = (z: Zmena): Array<string | number> =>
   z.pointer
     .replace(/^\/+|\/+$/g, "")
     .split("/")
     .filter((c) => c !== "")
     .map((c) => (/^\d+$/.test(c) ? Number(c) : c));
 
-export interface ZapisSuboru {
+export interface FileWrite {
   /** Pôvodná cesta; null = nový súbor. */
   cesta: string | null;
   text: string;
@@ -66,20 +66,20 @@ export class Konflikt extends Error {
     super(`konflikt: ${cesty.join(", ")}`);
   }
 }
-export class ChybaSkladu extends Error {}
+export class StoreError extends Error {}
 
 export interface Sklad {
   /** Všetky súbory knižnice vrátane `KNIZNICA.md`. */
   texty(): Promise<Record<string, string>>;
   existuje(rel: string): Promise<boolean>;
   /** Všetko alebo nič; hodí `Konflikt`. */
-  zapis(zapisy: ZapisSuboru[], podpis: Podpis): Promise<void>;
+  zapis(zapisy: FileWrite[], podpis: Podpis): Promise<void>;
 }
 
 export const verziaTextu = (t: string) => createHash("sha256").update(t, "utf8").digest("hex");
 
 /** Sklad v pamäti (testy, korpus): ako `SkladPamat` v Pythone. */
-export function skladPamat(texty: Record<string, string>): Sklad & { subory: Record<string, string> } {
+export function memoryStore(texty: Record<string, string>): Sklad & { subory: Record<string, string> } {
   const subory = { ...texty };
   return {
     subory,
@@ -116,13 +116,13 @@ export interface Vysledok {
   vytvorene: string[];
   premenovane: Array<[string, string]>;
   konflikt: boolean;
-  diagnostiky: Diagnostika[];
+  diagnostiky: Diagnostic[];
 }
 
 const novyVysledok = (): Vysledok => ({ ok: true, zapisane: [], odmietnute: [], vytvorene: [], premenovane: [], konflikt: false, diagnostiky: [] });
 const hotovo = (v: Vysledok): Vysledok => ({ ...v, ok: v.odmietnute.length === 0 });
 
-export const diag = (nid: string, pointer: string, sprava: string, subor: string, kod = "W1"): Diagnostika => ({
+export const diag = (nid: string, pointer: string, sprava: string, subor: string, kod = "W1"): Diagnostic => ({
   note_id: nid,
   json_pointer: pointer,
   uroven: "E",
@@ -133,8 +133,8 @@ export const diag = (nid: string, pointer: string, sprava: string, subor: string
 });
 
 /** Poznámky podľa ID (prvá vyhráva) a globálne pod-záznamy (`STD-*`, `GEO-*`), ako `Kniznica.pridaj`. */
-function index(vsetky: Poznamka[]) {
-  const poznamky = new Map<string, Poznamka>();
+function index(vsetky: Note[]) {
+  const poznamky = new Map<string, Note>();
   const globalnePod = new Set<string>();
   for (const n of vsetky) {
     const nid = (n.model?.id ?? n.data.id ?? n.umiestnenie?.id) as string | undefined;
@@ -145,14 +145,14 @@ function index(vsetky: Poznamka[]) {
   return { poznamky, globalnePod };
 }
 
-const idPoznamky = (n: Poznamka) => String(n.model?.id ?? n.data.id ?? n.umiestnenie?.id ?? "");
+const idPoznamky = (n: Note) => String(n.model?.id ?? n.data.id ?? n.umiestnenie?.id ?? "");
 
 function kopia<T>(v: T): T {
   return v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T);
 }
 
 /** `_cela_hodnota`: celá hodnota poľa najvyššej úrovne po zmene (inline a blokové polia sa prepisujú celé). */
-function celaHodnota(n: Poznamka, z: Zmena, cesta: Array<string | number>): unknown {
+function celaHodnota(n: Note, z: Zmena, cesta: Array<string | number>): unknown {
   if (cesta.length === 1) return z.hodnota;
   const aktualna = kopia(n.data[String(cesta[0])]) as unknown;
   let cur = aktualna as Record<string, unknown> | unknown[];
@@ -161,7 +161,7 @@ function celaHodnota(n: Poznamka, z: Zmena, cesta: Array<string | number>): unkn
       while (cur.length <= k) cur.push({});
       cur = cur[k] as Record<string, unknown>;
     } else {
-      if (!cur || typeof cur !== "object" || Array.isArray(cur)) throw new ChybaZapisu(`${z.pointer}: cesta nesedí s tvarom hodnoty`);
+      if (!cur || typeof cur !== "object" || Array.isArray(cur)) throw new WriteError(`${z.pointer}: cesta nesedí s tvarom hodnoty`);
       const o = cur as Record<string, unknown>;
       if (!(String(k) in o)) o[String(k)] = {};
       cur = o[String(k)] as Record<string, unknown>;
@@ -224,38 +224,38 @@ function schemaNaCeste(js: JS, cesta: Array<string | number>): JS | null {
 }
 
 /** `uloz_poznamku`: všetky zmeny jednej poznámky -> (text, diagnostiky). */
-export function ulozPoznamku(n: Poznamka, zmeny: Zmena[]): [string, Diagnostika[]] {
+export function saveNote(n: Note, zmeny: Zmena[]): [string, Diagnostic[]] {
   const doc = parsuj(serializuj(n.dokument));
   const nid = n.model ? String(n.model.id) : idPoznamky(n);
   if (!n.model) return [serializuj(doc), [diag(nid || n.rel, "", "poznámka sa nedá načítať typovane — zápis by ju rozbil", n.rel)]];
-  const model = modelPreTyp(String(n.model.typ))!;
+  const model = modelForType(String(n.model.typ))!;
   const poradie = [...model.polia.keys()];
-  const chyby: Diagnostika[] = [];
+  const chyby: Diagnostic[] = [];
 
   // próza najprv: indexy blokov sú z textu, ktorý editor ukázal
   for (const z of zmeny) {
-    const c = cestaZmeny(z);
+    const c = changePath(z);
     if (c[0] !== PROZA_PREFIX) continue;
     if (c.length !== 2 || typeof c[1] !== "number") {
       chyby.push(diag(nid, z.pointer, "próza sa adresuje /__proza/<blok>", n.rel));
       continue;
     }
     try {
-      nastavProzu(doc, c[1], z.hodnota === null || z.hodnota === undefined ? "" : String(z.hodnota));
+      setProse(doc, c[1], z.hodnota === null || z.hodnota === undefined ? "" : String(z.hodnota));
     } catch (e) {
-      if (!(e instanceof ChybaZapisu)) throw e;
+      if (!(e instanceof WriteError)) throw e;
       chyby.push(diag(nid, z.pointer, e.message, n.rel));
     }
   }
 
   const defs = (model.js.$defs ?? {}) as Record<string, JS>;
   for (const z0 of zmeny) {
-    const c = cestaZmeny(z0);
+    const c = changePath(z0);
     if (!c.length || c[0] === PROZA_PREFIX) continue;
     const z: Zmena = c[0] === POD_PREFIX ? z0 : { ...z0, hodnota: usporiadaj(schemaNaCeste(model.js, c), defs, z0.hodnota) };
     if (c[0] === POD_PREFIX) {
       if (c.length < 3) continue;
-      nastavPodZaznam(doc, String(c[1]), c.slice(2), z.hodnota);
+      setSubRecord(doc, String(c[1]), c.slice(2), z.hodnota);
       continue;
     }
     const kluc = String(c[0]);
@@ -266,15 +266,15 @@ export function ulozPoznamku(n: Poznamka, zmeny: Zmena[]): [string, Diagnostika[
     const zdroj = n.zdroje[kluc] ?? model.polia.get(kluc)?.zdroj ?? "frontmatter";
     if (zdroj === "frontmatter") {
       if (z.hodnota === null && c.length === 1) odstranFrontmatter(doc, kluc);
-      else nastavFrontmatter(doc, c, z.hodnota, poradie);
+      else setFrontmatter(doc, c, z.hodnota, poradie);
       continue;
     }
     const cela = celaHodnota(n, z, c);
     const sekcia = model.polia.get(kluc)?.sekcia ?? "";
     if (zdroj === "inline") {
       if (cela === null || cela === undefined || cela === "" || (Array.isArray(cela) && cela.length === 0)) odstranInline(doc, kluc);
-      else nastavInline(doc, kluc, cela, sekcia, model.sekcie);
-    } else if (zdroj === "blok") nastavBlokovePole(doc, kluc, cela, sekcia, model.sekcie);
+      else setInline(doc, kluc, cela, sekcia, model.sekcie);
+    } else if (zdroj === "blok") setBlockField(doc, kluc, cela, sekcia, model.sekcie);
     else chyby.push(diag(nid, z.pointer, `neznámy nositeľ poľa: ${zdroj}`, n.rel));
   }
   if (nid) zabezpecAliases(doc, nid);
@@ -282,15 +282,15 @@ export function ulozPoznamku(n: Poznamka, zmeny: Zmena[]): [string, Diagnostika[
 }
 
 /** `_cesta_po_premenovani`: nová cesta súboru po zmene `nazov` v tomto uložení, inak null. */
-function cestaPoPremenovani(n: Poznamka, zmeny: Zmena[]): string | null {
+function cestaPoPremenovani(n: Note, zmeny: Zmena[]): string | null {
   if (!zmeny.some((z) => z.pointer.replace(/\/+$/, "") === "/nazov")) return null;
   const um = n.umiestnenie;
-  if (!um || !n.model || !premenovatelna(um.typ, um.id)) return null;
+  if (!um || !n.model || !renamable(um.typ, um.id)) return null;
   let rel: string;
   try {
-    rel = cestaPre(um.typ, um.id, String(n.model.nazov ?? ""), um.vrstva, um.balik, um.act_uroven);
+    rel = pathFor(um.typ, um.id, String(n.model.nazov ?? ""), um.vrstva, um.balik, um.act_uroven);
   } catch (e) {
-    if (e instanceof ChybaCesty) return null;
+    if (e instanceof PathError) return null;
     throw e;
   }
   return rel === n.rel ? null : rel;
@@ -302,13 +302,13 @@ function cestaPoPremenovani(n: Poznamka, zmeny: Zmena[]): string | null {
  */
 export async function uloz(sklad: Sklad, zmeny: Zmena[], podpis: Podpis, verzie: Record<string, string> = {}): Promise<Vysledok> {
   const texty = await sklad.texty();
-  const vsetky = nacitajKniznicu(texty);
+  const vsetky = loadLibrary(texty);
   const { poznamky } = index(vsetky);
   const v = novyVysledok();
   const podla = new Map<string, Zmena[]>();
   for (const z of zmeny) podla.set(z.id, [...(podla.get(z.id) ?? []), z]);
 
-  const zapisy: ZapisSuboru[] = [];
+  const zapisy: FileWrite[] = [];
   for (const [nid, zoznam] of podla) {
     const n = poznamky.get(nid);
     if (!n) {
@@ -317,9 +317,9 @@ export async function uloz(sklad: Sklad, zmeny: Zmena[], podpis: Podpis, verzie:
       continue;
     }
     let text: string;
-    let chyby: Diagnostika[];
+    let chyby: Diagnostic[];
     try {
-      [text, chyby] = ulozPoznamku(n, zoznam);
+      [text, chyby] = saveNote(n, zoznam);
     } catch (e) {
       v.odmietnute.push(nid);
       v.diagnostiky.push(diag(nid, "", `zápis zlyhal: ${e instanceof Error ? e.message : String(e)}`, n.rel));
@@ -330,7 +330,7 @@ export async function uloz(sklad: Sklad, zmeny: Zmena[], podpis: Podpis, verzie:
       v.diagnostiky.push(...chyby);
       continue;
     }
-    const znovu = nacitajSubor(n.rel, text);
+    const znovu = loadFile(n.rel, text);
     const tvrde = znovu.diagnostiky.filter((d) => d.uroven === "E");
     if (!znovu.model || tvrde.length) {
       v.odmietnute.push(nid);
@@ -345,7 +345,7 @@ export async function uloz(sklad: Sklad, zmeny: Zmena[], podpis: Podpis, verzie:
         v.diagnostiky.push(diag(nid, "/nazov", `súbor ${nova} už existuje`, n.rel));
         continue;
       }
-      const po = nacitajSubor(nova, text);
+      const po = loadFile(nova, text);
       if (!po.model || po.diagnostiky.some((d) => d.uroven === "E")) {
         v.odmietnute.push(nid);
         v.diagnostiky.push(diag(nid, "/nazov", "po premenovaní sa poznámka nedá načítať", n.rel));
@@ -384,7 +384,7 @@ export async function uloz(sklad: Sklad, zmeny: Zmena[], podpis: Podpis, verzie:
   return hotovo(v);
 }
 
-export interface NovaPoznamka {
+export interface NewNote {
   typ: string;
   id: string;
   nazov: string;
@@ -394,7 +394,7 @@ export interface NovaPoznamka {
 }
 
 /** `_kandidat`: hodnoty, cesta a dokument poznámky zo šablóny typu. */
-export function kandidat(p: NovaPoznamka) {
+export function kandidat(p: NewNote) {
   const h: Record<string, unknown> = { ...PREDVOLBY_NOVEJ, ...(p.data ?? {}), id: p.id, typ: p.typ, nazov: p.nazov };
   if (p.typ === "ACT") {
     const segs = p.id.slice("ACT-".length).split("/");
@@ -402,34 +402,34 @@ export function kandidat(p: NovaPoznamka) {
     const predvolena = segs.length === 1 ? "strana" : segs.length === 2 && (segs[0] === "poverena" || segs[0] === "veduca-poverena") ? "tim" : "funkcia";
     if (!("uroven" in h)) h.uroven = predvolena;
   }
-  const rel = cestaPre(p.typ, p.id, p.nazov, p.vrstva ?? "zadanie", p.balik ?? null, p.typ === "ACT" ? String(h.uroven) : null);
-  const m = modelPreTyp(p.typ)!;
+  const rel = pathFor(p.typ, p.id, p.nazov, p.vrstva ?? "zadanie", p.balik ?? null, p.typ === "ACT" ? String(h.uroven) : null);
+  const m = modelForType(p.typ)!;
   const polia = [...m.polia.entries()].map(([kluc, f]) => ({ kluc, ...f }));
-  return { rel, doc: novaPoznamka(p.typ, m.sekcie, polia, h) };
+  return { rel, doc: newNote(p.typ, m.sekcie, polia, h) };
 }
 
 /** `vytvor`: nová poznámka zo šablóny typu na ceste, ktorú určuje ID. */
-export async function vytvor(sklad: Sklad, p: NovaPoznamka, podpis: Podpis): Promise<Vysledok> {
+export async function vytvor(sklad: Sklad, p: NewNote, podpis: Podpis): Promise<Vysledok> {
   const v = novyVysledok();
   const odmietni = (sprava: string, pointer = "") => {
     v.odmietnute.push(p.id);
     v.diagnostiky.push(diag(p.id, pointer, sprava, ""));
     return hotovo(v);
   };
-  if (!modelPreTyp(p.typ)) return odmietni(`neznámy typ '${p.typ}'`, "/typ");
+  if (!modelForType(p.typ)) return odmietni(`neznámy typ '${p.typ}'`, "/typ");
   if (!p.id || p.id.includes(" ") || typZPrefixuId(p.id) !== p.typ) return odmietni(`ID '${p.id}' nezodpovedá typu ${p.typ} (prefix, bez medzier)`, "/id");
-  const { poznamky, globalnePod } = index(nacitajKniznicu(await sklad.texty()));
+  const { poznamky, globalnePod } = index(loadLibrary(await sklad.texty()));
   if (poznamky.has(p.id) || globalnePod.has(p.id)) return odmietni(`ID '${p.id}' už v knižnici je`, "/id");
   let k: ReturnType<typeof kandidat>;
   try {
     k = kandidat(p);
   } catch (e) {
-    if (e instanceof ChybaCesty) return odmietni(`pre ${p.typ} sa nedá určiť cesta: ${e.message}`, "/id");
+    if (e instanceof PathError) return odmietni(`pre ${p.typ} sa nedá určiť cesta: ${e.message}`, "/id");
     return odmietni(`šablóna sa nedá zostaviť: ${e instanceof Error ? e.message : String(e)}`);
   }
   if (await sklad.existuje(k.rel)) return odmietni(`súbor ${k.rel} už existuje`, "/id");
   const text = serializuj(k.doc);
-  const n = nacitajSubor(k.rel, text);
+  const n = loadFile(k.rel, text);
   const tvrde = n.diagnostiky.filter((d) => d.uroven === "E");
   if (!n.model || tvrde.length) {
     v.odmietnute.push(p.id);

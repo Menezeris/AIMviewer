@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { blokyJson, parsuj, preindexuj, serializuj, splitlines } from "./blocks";
+import { blocksJson, parsuj, preindexuj, serializuj, splitlines } from "./blocks";
 
 /** Korpus zhody z assetin-library (`library/KORPUS_COMMIT`), vygenerovaný Python enginom (orákulum). */
 const KORPUS = join(process.cwd(), "library", "korpus");
@@ -31,7 +31,7 @@ describe("korpus zhody: blokový model poznámky (krok 1 portu, V30)", () => {
         it(cesta, () => {
           const text = subory[cesta];
           // zhoda s orákulom ako JSON (poradie kľúčov nerozhoduje)
-          expect(blokyJson(text)).toEqual(bloky[cesta]);
+          expect(blocksJson(text)).toEqual(bloky[cesta]);
           // spojenie raw = vstup, bajtovo
           const out = serializuj(parsuj(text));
           expect(Buffer.from(out, "utf8").equals(Buffer.from(text, "utf8"))).toBe(true);
@@ -47,7 +47,7 @@ describe("okrajové vstupy proti orákulu (Python, __fixtures__/okraje.json)", (
   };
   for (const [nazov, p] of Object.entries(okraje.pripady)) {
     it(nazov, () => {
-      expect(blokyJson(p.vstup)).toEqual(p.ocakavane);
+      expect(blocksJson(p.vstup)).toEqual(p.ocakavane);
       expect(serializuj(parsuj(p.vstup))).toBe(p.vstup);
     });
   }

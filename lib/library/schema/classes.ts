@@ -23,7 +23,7 @@ export interface TriedaTypu {
   ASPEKTY?: string[];
 }
 
-export const TRIEDY_TYPOV: Record<string, TriedaTypu> = {
+export const TYPE_CLASSES: Record<string, TriedaTypu> = {
   "GOAL": {
     "TYP": "GOAL",
     "SEKCIE": [
@@ -319,7 +319,7 @@ export const TRIEDY_TYPOV: Record<string, TriedaTypu> = {
   }
 };
 
-export const TRIEDY_POD_ZAZNAMOV: Record<string, TriedaTypu> = {
+export const SUB_RECORD_CLASSES: Record<string, TriedaTypu> = {
   "pravidlo": {
     "DRUH": "pravidlo",
     "RAMEC": "",

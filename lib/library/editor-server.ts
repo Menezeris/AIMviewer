@@ -4,11 +4,11 @@ import { NextResponse } from "next/server";
 
 import { clientIpKey, createRateLimiter, isCrossOriginBlocked } from "../api-guard";
 
-import type { InfoRevizie } from "./app-json";
-import { zapisPovoleny } from "./gate";
-import type { Brana, Odpoved } from "./editor-api";
+import type { RevisionInfo } from "./app-json";
+import { writeAllowed } from "./gate";
+import type { Gate, Reply } from "./editor-api";
 import { supabaseHlavaStore } from "./head-store";
-import { supabaseSklad } from "./store-db";
+import { supabaseStore } from "./store-db";
 
 /**
  * Spoločné pre route editora knižnice (D-186 krok UI): kód knižnice z cesty, sklad v DB, revízie hlavy (autor, čas)
@@ -22,17 +22,17 @@ const MAX = Number(process.env.LIBRARY_RATE_LIMIT_MAX ?? (process.env.NODE_ENV =
 const limiter = createRateLimiter({ windowMs: 60_000, max: MAX });
 
 export const kodKniznice = (k: string) => (KOD_RE.test(k) ? k : null);
-export const brana = (): Brana => ({ zapis: zapisPovoleny(), vydanie: process.env.LIBRARY_RELEASE_ENABLED === "true" });
-export const sklad = (kniznica: string) => supabaseSklad(kniznica);
+export const brana = (): Gate => ({ zapis: writeAllowed(), vydanie: process.env.LIBRARY_RELEASE_ENABLED === "true" });
+export const sklad = (kniznica: string) => supabaseStore(kniznica);
 
 /** `sklad_db.info()`: rel -> {rev, autor, vytvorena, zdroj} hlavy. */
-export const info = (kniznica: string) => async (): Promise<InfoRevizie> => {
+export const info = (kniznica: string) => async (): Promise<RevisionInfo> => {
   const rows = (await supabaseHlavaStore().zoznam(kniznica)) ?? [];
   const mapa = Object.fromEntries(rows.map((r) => [r.cesta, { rev: r.rev, autor: r.autor, vytvorena: r.vytvorena, zdroj: r.zdroj }]));
   return { info: () => mapa };
 };
 
-export const odpoved = (o: Odpoved) => NextResponse.json(o.telo, { status: o.status, headers: NO_STORE });
+export const odpoved = (o: Reply) => NextResponse.json(o.telo, { status: o.status, headers: NO_STORE });
 const detail = (status: number, d: string) => NextResponse.json({ detail: d, error: d }, { status, headers: NO_STORE });
 
 /** POST: origin, rate limit, telo ako JSON objekt; vráti chybovú odpoveď alebo telo. */

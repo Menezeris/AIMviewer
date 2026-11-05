@@ -16,7 +16,7 @@ import { Document, LineCounter, YAMLMap, isMap, isScalar, isSeq, parseDocument, 
 import { nacitajYaml, parsuj, preindexuj, serializuj, splitlines, type Blok, type Dokument, type Frontmatter, type InlinePole, type Nadpis, type Proza, type YamlBlok } from "./blocks";
 import { dumpYaml, dumpZoznam } from "./yaml-write";
 
-export class ChybaZapisu extends Error {}
+export class WriteError extends Error {}
 
 type Obj = Record<string, unknown>;
 type Cesta = ReadonlyArray<string | number>;
@@ -105,7 +105,7 @@ function plain(v: unknown): unknown {
 
 function nahradYamlText(doc: Dokument, blok: YB, novy: string) {
   const y = nacitajYaml(novy);
-  if (y.chyba) throw new ChybaZapisu(`po zápise neplatný YAML: ${y.sprava ?? ""}`);
+  if (y.chyba) throw new WriteError(`po zápise neplatný YAML: ${y.sprava ?? ""}`);
   blok.yaml_text = novy;
   blok.raw = jeFrontmatter(blok) ? `---\n${novy}---\n` : `${(blok as YamlBlok).raw_open}${novy}${(blok as YamlBlok).raw_close}`;
   blok.data = y.data;
@@ -353,7 +353,7 @@ function level2(doc: Dokument, blok: YB, cesta: Cesta, hodnota: unknown) {
     for (const k of cesta.slice(0, -1)) {
       if (isMap(cur) && najdiPar(cur, k)) cur = najdiPar(cur, k)!.value;
       else if (isSeq(cur) && typeof k === "number" && k < cur.items.length) cur = cur.items[k];
-      else throw new ChybaZapisu(`cesta ${cesta.join("/")} v YAML neexistuje`);
+      else throw new WriteError(`cesta ${cesta.join("/")} v YAML neexistuje`);
     }
     d.setIn(cesta as (string | number)[], uzol(d, hodnota));
     const par = najdiPar(d.contents as YAMLMap, top)!;
@@ -398,11 +398,11 @@ function pridajTopKluc(doc: Dokument, blok: YB, k: string, hodnota: unknown, za:
 }
 
 /** `nastav_yaml`: hodnota vnútri YAML bloku; vráti použitú úroveň (1 alebo 2). */
-export function nastavYaml(doc: Dokument, blok: YB, cesta: Cesta, hodnota: unknown): number {
+export function setYaml(doc: Dokument, blok: YB, cesta: Cesta, hodnota: unknown): number {
   const data = blok.data ?? {};
   const top = String(cesta[0]);
   if (!(top in data)) {
-    if (cesta.length !== 1) throw new ChybaZapisu(`nadradený kľúč '${top}' neexistuje`);
+    if (cesta.length !== 1) throw new WriteError(`nadradený kľúč '${top}' neexistuje`);
     return pridajTopKluc(doc, blok, top, hodnota);
   }
   const p = riadokKluca(blok.yaml_text, cesta);
@@ -424,9 +424,9 @@ export function odstranYaml(doc: Dokument, blok: YB, k: string) {
 }
 
 /** `nastav_frontmatter`: nový kľúč ide za najbližší predchádzajúci kľúč z `poradie` (poradie schémy). */
-export function nastavFrontmatter(doc: Dokument, cesta: Cesta, hodnota: unknown, poradie: string[] = []): number {
+export function setFrontmatter(doc: Dokument, cesta: Cesta, hodnota: unknown, poradie: string[] = []): number {
   const fm = doc.frontmatter;
-  if (!fm) throw new ChybaZapisu("dokument nemá frontmatter");
+  if (!fm) throw new WriteError("dokument nemá frontmatter");
   const top = String(cesta[0]);
   if (!(fm.data && top in fm.data) && cesta.length === 1 && poradie.length) {
     let za: string | null = null;
@@ -441,7 +441,7 @@ export function nastavFrontmatter(doc: Dokument, cesta: Cesta, hodnota: unknown,
     }
     return pridajTopKluc(doc, fm, top, hodnota, za);
   }
-  return nastavYaml(doc, fm, cesta, hodnota);
+  return setYaml(doc, fm, cesta, hodnota);
 }
 
 export function odstranFrontmatter(doc: Dokument, k: string) {
@@ -522,7 +522,7 @@ function rozdelKoncovyPrazdny(doc: Dokument, poz: number): number {
 const inlinePole = (k: string, raw: string, hodnota: string, vPolozke: boolean): InlinePole => ({ druh: "InlinePole", raw, riadok: 0, kluc: k, raw_hodnota: hodnota, v_polozke: vPolozke });
 
 /** `nastav_inline`: existujúce riadky sa prepíšu na mieste (len text za `:: `). */
-export function nastavInline(doc: Dokument, k: string, hodnoty: unknown, sekcia: string, sekcieTypu: string[] = [], vPolozke: boolean | null = null) {
+export function setInline(doc: Dokument, k: string, hodnoty: unknown, sekcia: string, sekcieTypu: string[] = [], vPolozke: boolean | null = null) {
   const h = Array.isArray(hodnoty) ? hodnoty : hodnoty === null || hodnoty === undefined ? [] : [hodnoty];
   const existujuce = doc.telo.map((b, i) => (b.druh === "InlinePole" && b.kluc === k ? i : -1)).filter((i) => i >= 0);
   if (existujuce.length) {
@@ -580,7 +580,7 @@ function vlozBlok(doc: Dokument, poz: number, blok: YamlBlok) {
 }
 
 /** `nastav_blokove_pole`: YAML blok s jediným kľúčom `k` (celý segment sa vypíše znova). */
-export function nastavBlokovePole(doc: Dokument, k: string, hodnota: unknown, sekcia: string, sekcieTypu: string[] = []) {
+export function setBlockField(doc: Dokument, k: string, hodnota: unknown, sekcia: string, sekcieTypu: string[] = []) {
   for (const b of doc.telo) {
     if (b.druh === "YamlBlok" && !b.chyba && b.data && rovnake(Object.keys(b.data), [k])) {
       level2(doc, b, [k], hodnota);
@@ -599,13 +599,13 @@ export function pridajPodZaznam(doc: Dokument, id: string, nazov: string, data: 
 }
 
 /** `nastav_pod_zaznam`: hodnota v YAML bloku pod-záznamu `id`. */
-export function nastavPodZaznam(doc: Dokument, id: string, cesta: Cesta, hodnota: unknown): number {
+export function setSubRecord(doc: Dokument, id: string, cesta: Cesta, hodnota: unknown): number {
   let nadpis: Nadpis | null = null;
   for (const b of doc.telo) {
     if (b.druh === "Nadpis") nadpis = b;
-    else if (nadpis && nadpis.text.split(" ")[0] === id && b.druh === "YamlBlok" && !b.chyba && b.data && b.data.id === id) return nastavYaml(doc, b, cesta, hodnota);
+    else if (nadpis && nadpis.text.split(" ")[0] === id && b.druh === "YamlBlok" && !b.chyba && b.data && b.data.id === id) return setYaml(doc, b, cesta, hodnota);
   }
-  throw new ChybaZapisu(`pod-záznam '${id}' sa nenašiel`);
+  throw new WriteError(`pod-záznam '${id}' sa nenašiel`);
 }
 
 /** Metadáta poľa pre šablónu novej poznámky (z JSON Schema modelu, poradie polí pydantic). */
@@ -621,7 +621,7 @@ export interface PoleSablony {
 }
 
 /** `nova_poznamka`: frontmatter v poradí schémy, telo = sekcie typu s inline a blokovými poľami. */
-export function novaPoznamka(typ: string, sekcie: string[], polia: PoleSablony[], vstup: Obj): Dokument {
+export function newNote(typ: string, sekcie: string[], polia: PoleSablony[], vstup: Obj): Dokument {
   const data: Obj = { ...vstup };
   if (!("typ" in data)) data.typ = typ;
   if (!("aliases" in data)) data.aliases = [data.id ?? null];
@@ -656,12 +656,12 @@ export function zabezpecAliases(doc: Dokument, id: string): boolean {
   if ("aliases" in fm.data) {
     const cur = fm.data.aliases;
     if (cur === null || cur === undefined) {
-      nastavYaml(doc, fm, ["aliases"], [id]);
+      setYaml(doc, fm, ["aliases"], [id]);
       return true;
     }
     if (typeof cur === "string") {
       if (cur === id) return false;
-      nastavYaml(doc, fm, ["aliases"], [cur, id]);
+      setYaml(doc, fm, ["aliases"], [cur, id]);
       return true;
     }
     const zoznam = Array.isArray(cur) ? cur : [];
@@ -678,8 +678,8 @@ export function zabezpecAliases(doc: Dokument, id: string): boolean {
 const telo = (b: Blok) => `${b.druh}\u0000${b.raw}`;
 
 /** `nastav_prozu`: text jedného bloku prózy; próza nesmie zmeniť štruktúru poznámky. */
-export function nastavProzu(doc: Dokument, index: number, text: string) {
-  if (index < 0 || index >= doc.telo.length || doc.telo[index].druh !== "Proza") throw new ChybaZapisu(`blok ${index} nie je próza`);
+export function setProse(doc: Dokument, index: number, text: string) {
+  if (index < 0 || index >= doc.telo.length || doc.telo[index].druh !== "Proza") throw new WriteError(`blok ${index} nie je próza`);
   const blok = doc.telo[index];
   const raw = blok.raw;
   const zaciatok = raw.slice(0, raw.length - raw.replace(/^\s+/, "").length);
@@ -692,6 +692,6 @@ export function nastavProzu(doc: Dokument, index: number, text: string) {
   const po = poDoc.telo.filter((b) => b.druh !== "Proza").map(telo);
   if (!rovnake(po, pred) || (poDoc.frontmatter === null) !== (doc.frontmatter === null)) {
     blok.raw = raw;
-    throw new ChybaZapisu("próza nesmie obsahovať nadpis (#), pole `kluc::`, blok ``` , HTML komentár ani ---; polia sa menia vo formulári");
+    throw new WriteError("próza nesmie obsahovať nadpis (#), pole `kluc::`, blok ``` , HTML komentár ani ---; polia sa menia vo formulári");
   }
 }

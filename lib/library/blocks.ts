@@ -224,7 +224,7 @@ export function preindexuj(doc: Dokument): void {
 }
 
 /** Tvar `bloky.json` korpusu (bez informatívneho `sprava`). */
-export function blokyJson(text: string): { frontmatter: Omit<Frontmatter, "sprava"> | null; telo: Array<Record<string, unknown>> } {
+export function blocksJson(text: string): { frontmatter: Omit<Frontmatter, "sprava"> | null; telo: Array<Record<string, unknown>> } {
   const d = parsuj(text);
   const strip = <T extends { sprava?: string }>(o: T) => {
     const { sprava, ...rest } = o;

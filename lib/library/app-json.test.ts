@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { dokumentEditora } from "./app-json";
-import { nacitajKniznicuGraf } from "./graph";
+import { editorDocument } from "./app-json";
+import { loadLibraryGraph } from "./graph";
 import { validuj } from "./validator";
 
 const KORPUS = join(process.cwd(), "library", "korpus", "stromy");
@@ -16,8 +16,8 @@ describe("korpus zhody: dokument editora (krok 4c portu, D-186)", () => {
   for (const strom of ["vzor", "kniznica", "chybne"]) {
     describe(`strom ${strom}`, () => {
       const editor = json(`${strom}/editor.json`);
-      const k = nacitajKniznicuGraf(json(`${strom}/subory.json`));
-      const got = plain(dokumentEditora(k, validuj(k)));
+      const k = loadLibraryGraph(json(`${strom}/subory.json`));
+      const got = plain(editorDocument(k, validuj(k)));
       it("rovnaké kľúče dokumentu", () => expect(Object.keys(got).sort()).toEqual(Object.keys(editor).sort()));
       for (const kl of Object.keys(editor).filter((x) => x !== "poznamky")) it(kl, () => expect(got[kl]).toEqual(editor[kl]));
       it("poradie poznámok", () => expect(got.poznamky.map((p: { id: string }) => p.id)).toEqual(editor.poznamky.map((p: { id: string }) => p.id)));

@@ -5,8 +5,8 @@ import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 
 import { vydaj as vydajApi } from "./editor-api";
-import { nacitajKniznicuGraf } from "./graph";
-import { generujIds, kodIds, manifest, vydaj, zipExportu, type SkladVydania } from "./release";
+import { loadLibraryGraph } from "./graph";
+import { generujIds, kodIds, manifest, vydaj, zipExportu, type ReleaseStore } from "./release";
 import { Konflikt } from "./write";
 
 const subory = JSON.parse(readFileSync(join(process.cwd(), "library", "korpus", "stromy", "vzor", "subory.json"), "utf8")) as Record<string, string>;
@@ -15,7 +15,7 @@ const ORAKULUM = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "
 
 function skladPamat(texty: Record<string, string>, konflikt = false) {
   const volania: Array<Record<string, unknown>> = [];
-  const s: SkladVydania & { volania: typeof volania } = {
+  const s: ReleaseStore & { volania: typeof volania } = {
     kniznica: "assetin",
     volania,
     texty: async () => ({ ...texty }),
@@ -40,7 +40,7 @@ describe("vydanie = Python db/vydanie.py (D-186 krok 6)", () => {
   });
   it("manifest", () => expect(manifest(subory)).toEqual(ORAKULUM.manifest));
   it("IDS výstupy generátora (bez XSD = neoverené)", async () => {
-    const got = JSON.parse(JSON.stringify(await generujIds(nacitajKniznicuGraf(subory), null)));
+    const got = JSON.parse(JSON.stringify(await generujIds(loadLibraryGraph(subory), null)));
     const bezGen = (v: Array<{ audit: Record<string, unknown> }>) => v.map((x) => ({ ...x, audit: { ...x.audit, generator: "" } }));
     expect(bezGen(got)).toEqual(bezGen(ORAKULUM.vystupy));
   });

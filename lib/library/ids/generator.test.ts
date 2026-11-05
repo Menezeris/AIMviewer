@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { nacitajKniznicuGraf } from "../graph";
+import { loadLibraryGraph } from "../graph";
 import { ciele, generujCiel } from "./generator";
 
 const KORPUS = join(process.cwd(), "library", "korpus");
@@ -15,13 +15,13 @@ const ORAKULUM = JSON.parse(readFileSync(join(process.cwd(), "lib", "library", "
 
 describe("generátor IDS = Python generate/ids.py (D-186 krok 6)", () => {
   it("korpus ids/ER-0101_ARCH.ids bajtovo", () => {
-    const k = nacitajKniznicuGraf(subory("vzor"));
+    const k = loadLibraryGraph(subory("vzor"));
     const [xml] = generujCiel(k, { er: "ER-0101", poskytovatel: "ACT-poverena/ARCH" });
     expect(xml).toBe(readFileSync(join(KORPUS, "ids", "ER-0101_ARCH.ids"), "utf8"));
   });
   for (const [strom, prípady] of Object.entries(ORAKULUM)) {
     describe(`strom ${strom}`, () => {
-      const k = nacitajKniznicuGraf(subory(strom));
+      const k = loadLibraryGraph(subory(strom));
       it("ciele", () => expect(ciele(k)).toEqual([...new Map(prípady.map((c) => [`${c.er}|${c.poskytovatel}`, { er: c.er, poskytovatel: c.poskytovatel }])).values()]));
       for (const c of prípady) {
         it(`${c.er} × ${c.poskytovatel} (dátum ${c.datum ?? "žiadny"})`, () => {

@@ -9,14 +9,14 @@
 
 import { strToU8, zipSync } from "fflate";
 
-import { nacitajKniznicuGraf, SCHEMA_VERZIA, type Kniznica } from "./graph";
+import { loadLibraryGraph, SCHEMA_VERZIA, type Library } from "./graph";
 import { ciele, generujCiel } from "./ids/generator";
-import type { Diagnostika } from "./loader";
+import type { Diagnostic } from "./loader";
 import { validuj } from "./validator";
 import { Konflikt, verziaTextu } from "./write";
 
 export const GENERATOR = "aimviewer lib/kniznica/ids (D-186)";
-export const MANIFEST_SUBOR = ".assetin-export.json";
+export const MANIFEST_FILE = ".assetin-export.json";
 
 export interface IDSVystup {
   code: string;
@@ -29,9 +29,9 @@ export interface IDSVystup {
 }
 
 /** Kontrola XSD jedného IDS: `[]` platné, zoznam chýb, `null` = nedá sa overiť (rozhodnutie (d) ešte padne). */
-export type KontrolaXsd = (xml: string) => Promise<string[] | null>;
+export type XsdCheck = (xml: string) => Promise<string[] | null>;
 
-export class ChybaIDS extends Error {}
+export class IdsError extends Error {}
 
 /** `kod_ids`: kód v katalógu (`ER-0101.ARCH`); posledný segment ID aktéra, lebo `code` v AIM nepripúšťa `/`. */
 export function kodIds(erId: string, poskytovatelId: string): string {
@@ -60,18 +60,18 @@ export function zipExportu(texty: Record<string, string>, hlavicka: Record<strin
   const mtime = new Date(1980, 0, 1, 0, 0, 0);
   const subory: Record<string, [Uint8Array, { mtime: Date; level: 6 }]> = {};
   for (const rel of Object.keys(texty).sort()) subory[normalizujCestu(rel)] = [strToU8(texty[rel]), { mtime, level: 6 }];
-  subory[MANIFEST_SUBOR] = [strToU8(`${JSON.stringify({ ...hlavicka, ...manifest(texty) }, null, 2)}\n`), { mtime, level: 6 }];
+  subory[MANIFEST_FILE] = [strToU8(`${JSON.stringify({ ...hlavicka, ...manifest(texty) }, null, 2)}\n`), { mtime, level: 6 }];
   return zipSync(subory);
 }
 
 /** `generate.ids.generuj`: IDS každého cieľa s aspoň jednou špecifikáciou; neplatné IDS (XSD) hodí `ChybaIDS`. */
-export async function generujIds(k: Kniznica, xsd: KontrolaXsd | null, datum: string | null = null): Promise<IDSVystup[]> {
+export async function generujIds(k: Library, xsd: XsdCheck | null, datum: string | null = null): Promise<IDSVystup[]> {
   const out: IDSVystup[] = [];
   for (const c of ciele(k)) {
     const [xml, rep] = generujCiel(k, c, datum);
     if (!rep.specs.length) continue;
     const chyby = xsd ? await xsd(xml) : null;
-    if (chyby && chyby.length) throw new ChybaIDS(`${kodIds(c.er, c.poskytovatel)} neprešlo ids.xsd: ${chyby[0]}`);
+    if (chyby && chyby.length) throw new IdsError(`${kodIds(c.er, c.poskytovatel)} neprešlo ids.xsd: ${chyby[0]}`);
     const er = k.poznamky.get(c.er)!;
     const prov = k.poznamky.get(c.poskytovatel);
     const meno = prov?.model ? String(prov.model.nazov) : c.poskytovatel;
@@ -100,14 +100,14 @@ export interface VysledokVydania {
   kod: string;
   vydanie_id: string | null;
   manifest_sha256: string | null;
-  chyby: Diagnostika[];
+  chyby: Diagnostic[];
   ids: unknown[];
   export_cesta: string | null;
   sprava: string;
 }
 
 /** Čo vydanie potrebuje od DB: texty hlavy, jedna transakcia snímka + katalóg, zápis cesty exportu. */
-export interface SkladVydania {
+export interface ReleaseStore {
   kniznica: string;
   texty(): Promise<Record<string, string>>;
   /** `library.vytvor_vydanie` + `library.publikuj_ids` v jednej transakcii; súbeh hodí `Konflikt`. */
@@ -122,10 +122,10 @@ export interface Uloziste {
 const vysledok = (kod: string, o: Partial<VysledokVydania>): VysledokVydania => ({ ok: false, kod, vydanie_id: null, manifest_sha256: null, chyby: [], ids: [], export_cesta: null, sprava: "", ...o });
 
 /** `vydaj`: validácia, snímka, publikácia IDS, export MD. Všetko alebo nič až po nahratie exportu. */
-export async function vydaj(sklad: SkladVydania, kod: string, autor: string, sprava = "", o: { xsd?: KontrolaXsd | null; generator?: boolean; uloziste?: Uloziste | null } = {}): Promise<VysledokVydania> {
+export async function vydaj(sklad: ReleaseStore, kod: string, autor: string, sprava = "", o: { xsd?: XsdCheck | null; generator?: boolean; uloziste?: Uloziste | null } = {}): Promise<VysledokVydania> {
   if (!autor.trim()) throw new Error("vydanie potrebuje autora");
   const vsetky = await sklad.texty();
-  const k = nacitajKniznicuGraf(vsetky);
+  const k = loadLibraryGraph(vsetky);
   const diag = validuj(k);
   const chyby = diag.filter((d) => d.uroven === "E");
   const suhrn = { E: chyby.length, W: diag.filter((d) => d.uroven === "W").length, I: diag.filter((d) => d.uroven === "I").length };
