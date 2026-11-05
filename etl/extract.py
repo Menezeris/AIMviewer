@@ -1,8 +1,8 @@
-"""Otvorenie IFC modelu + nízkoúrovňové helpery (D-031).
+"""Opening the IFC model + low-level helpers (D-031).
 
-Tenká vrstva nad ifcopenshell — drží import lokalizovaný, aby `transform.py`
-ostal o mapovaní. Skutočné mapovanie (a jeho doladenie na model diplomky) je
-v `transform.py`.
+A thin layer over ifcopenshell - keeps the import localized so that `transform.py`
+stays about mapping. The actual mapping (and its tuning to the thesis model) is
+in `transform.py`.
 """
 
 from __future__ import annotations
@@ -13,15 +13,15 @@ import ifcopenshell
 
 
 def open_model(path: str) -> ifcopenshell.file:
-    """Načíta IFC súbor (vyhodí zrozumiteľnú chybu, ak sa nedá)."""
+    """Load an IFC file (raises an understandable error if that is not possible)."""
     try:
         return ifcopenshell.open(path)
-    except Exception as exc:  # noqa: BLE001 — chceme zrozumiteľnú hlášku
+    except Exception as exc:  # noqa: BLE001 - we want an understandable message
         raise SystemExit(f"Nepodarilo sa otvoriť IFC '{path}': {exc}") from exc
 
 
 def attr(entity: Any, name: str) -> Any:
-    """Bezpečné čítanie IFC atribútu (None ak chýba)."""
+    """Safe reading of an IFC attribute (None if missing)."""
     return getattr(entity, name, None)
 
 
