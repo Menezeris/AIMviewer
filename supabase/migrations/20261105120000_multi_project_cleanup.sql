@@ -13,7 +13,7 @@
 --      needs container_id from its writer (the trigger only checks it);
 --   6. drops the (model, revision) indexes of the revision copy (no reader left);
 --   7. library release: drops the old library_vydaj and publikuj_ids without the project (the project
---      versions come from 20261105115000_library_release_project.sql);
+--      versions come from 20261105115915_library_release_project.sql);
 --   8. BCF topic numbers per project: counter table bcf_topic_counters, filled by a trigger.
 --      Existing numbers do not change; OCB continues after its highest number.
 --
@@ -201,7 +201,7 @@ drop index public.idx_ifc_rev_property_sets_model_revision;
 drop index public.idx_ifc_rev_relationships_model_revision;
 
 -- ---------------------------------------------------------------------------
--- 7. Library release: the project versions were added by 20261105115000_library_release_project.sql;
+-- 7. Library release: the project versions were added by 20261105115915_library_release_project.sql;
 --    the old signatures without the project go.
 -- ---------------------------------------------------------------------------
 

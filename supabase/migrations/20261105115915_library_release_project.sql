@@ -6,6 +6,7 @@
 -- p_project) both work while the cleanup PR is merged and deployed (LIBRARY_RELEASE_ENABLED is on).
 -- PostgREST picks the function by the named arguments of the call.
 --
+-- Applied to production 5 Nov 11:59 UTC (Samuel, relayed in #60); the file name matches the history row.
 -- Additive: no existing object changes. Rollback: drop function public.library_vydaj(text, text, text, text,
 -- text, jsonb, jsonb, jsonb, uuid); drop function library.publikuj_ids(uuid, jsonb, uuid).
 
@@ -25,6 +26,7 @@ begin
   return p_project;
 end $$;
 
+-- Same as the old publikuj_ids, with the project: lookup, insert and archiving stay within p_project, so the
 -- same library can be released into several projects.
 create function library.publikuj_ids(p_vydanie uuid, p_polozky jsonb, p_project uuid)
 returns jsonb
@@ -158,8 +160,6 @@ begin
   return jsonb_build_object('vydanie_id', v_id, 'ids', v_ids);
 end
 $$;
-
--- ---------------------------------------------------------------------------
 
 -- Grants (D-026, D-079): only service_role.
 do $$
