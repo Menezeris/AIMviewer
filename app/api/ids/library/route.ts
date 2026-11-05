@@ -33,7 +33,7 @@ const MAX_BODY_CHARS = 10_000;
 
 const deps = (): LibraryDeps => ({ store: supabaseIdsStore(currentProjectId()), lib: supabaseIdsLibraryStore(currentProjectId()) });
 
-async function getHandler(_req: Request) {
+async function getHandler() {
   const d = deps();
   try {
     const [library, project] = await Promise.all([
@@ -77,5 +77,5 @@ async function postHandler(req: Request) {
   }
 }
 
-export const GET = withRequestProject(getHandler);
+export const GET = withRequestProject<[Request]>(getHandler);
 export const POST = withRequestProject(postHandler);

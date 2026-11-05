@@ -9,7 +9,7 @@ import { withRequestProject } from "@/lib/project/request";
  * ako `UNDERLAYS_LOAD`. Len čítanie, rovnaké dáta ako pri štarte viewera (kalibrácie bez histórie); zápis je
  * `PATCH /api/underlay/[documentId]`.
  */
-async function getHandler(_req: Request) {
+async function getHandler() {
   const projectId = currentProjectId();
   try {
     return NextResponse.json({ drawings: await fetchUnderlayDrawings(projectId) }, { headers: { "Cache-Control": "no-store" } });
@@ -18,4 +18,4 @@ async function getHandler(_req: Request) {
   }
 }
 
-export const GET = withRequestProject(getHandler);
+export const GET = withRequestProject<[Request]>(getHandler);

@@ -32,7 +32,6 @@ import {
   CLASH_BUCKETS,
   CLASH_GROUPS,
   CLASH_STATES,
-  DEFAULT_TESTS,
   defaultTestsFor,
   findTest,
   type ClashBucket,

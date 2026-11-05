@@ -57,31 +57,6 @@ export function archiveEnabled(env: Record<string, string | undefined> = process
   return env.NEXT_PUBLIC_IFC_ARCHIVE === "1";
 }
 
-/**
- * Pripojí aktuálnu revíziu ku každému modelu, ktorý ju má (D-086). So zapnutým archívom
- * (`archiveEnabled`) URL ukáže na nemenný archív revízie (D-135), inak `?rev=N` na aktuálnom kľúči.
- * Obe zmenia `src` iframe viewera, takže po novej revízii sa model načíta znova a
- * cache prehliadača nevráti starý súbor. Model bez revízie ostáva bez zmeny.
- */
-export function withRevisions(
-  models: IfcModel[],
-  current: { model: string; revision: number }[],
-  opts: { archive?: boolean } = {},
-): IfcModel[] {
-  const archive = opts.archive ?? archiveEnabled();
-  const byKey = new Map(current.map((r) => [r.model, r.revision]));
-  return models.map((m) => {
-    const key = modelKey(m.url);
-    const revision = key ? byKey.get(key) : undefined;
-    if (revision === undefined) return m;
-    const archived = archive ? archiveUrl(m.url, revision) : null;
-    if (archived) return { ...m, url: archived, revision };
-    const url = new URL(m.url);
-    url.searchParams.set("rev", String(revision));
-    return { ...m, url: url.toString(), revision };
-  });
-}
-
 /** Current revision of one model of a project (`model_revisions` + `container_revisions.location`). */
 export interface ProjectModelRow {
   container_id: string;

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { orFilter, rowEq } from "@/lib/project/testing-filters";
+import { rowEq } from "@/lib/project/testing-filters";
 
 import { TEST_PROJECT } from "@/lib/project/testing";
 

@@ -68,7 +68,7 @@ async function bodyOf(req: Request): Promise<Record<string, unknown> | Fail> {
 
 const isFail = (v: unknown): v is Fail => v instanceof NextResponse;
 
-async function getHandler(_req: Request) {
+async function getHandler() {
   try {
     return NextResponse.json({ views: await listWires(supabaseSavedViewStore(currentProjectId())) }, { headers: NO_STORE });
   } catch (err) {
@@ -125,7 +125,7 @@ async function deleteHandler(req: Request) {
   });
 }
 
-export const GET = withRequestProject(getHandler);
+export const GET = withRequestProject<[Request]>(getHandler);
 export const POST = withRequestProject(postHandler);
 export const PATCH = withRequestProject(patchHandler);
 export const DELETE = withRequestProject(deleteHandler);
