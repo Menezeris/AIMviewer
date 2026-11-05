@@ -1,8 +1,8 @@
-"""Kontrola modelu voči IDS z knižnice požiadaviek (D-081).
+"""Checking a model against an IDS from the requirements library (D-081).
 
-IDS sa sem nekopíruje — vyrába ho knižnica (assetin-library). Krok ho prečíta,
-overí model cez ifctester (referenčná implementácia IDS) a výsledok (špecifikácia ×
-prvok, pass/fail + dôvody) zapíše do `ids_runs` / `ids_results`.
+The IDS is not copied here - it is produced by the library (assetin-library). The step reads it,
+verifies the model via ifctester (the reference IDS implementation) and writes the result (specification x
+element, pass/fail + reasons) to `ids_runs` / `ids_results`.
 
     python -m etl.ids_check --ids ../assetin-library/tests/fixtures/ids/ER-0101_ARCH.ids \\
         --model podklady/FINAL/ASR.ifc --label ASR --dry-run --report out/ids.csv
@@ -49,7 +49,7 @@ class CheckResult:
 
 
 def _spec_identifiers(path: Path) -> list[Optional[str]]:
-    """`identifier` špecifikácií v poradí súboru (ifctester ho nečíta vo všetkých verziách)."""
+    """`identifier` of the specifications in file order (ifctester does not read it in all versions)."""
     root = ET.parse(path).getroot()
     return [s.get("identifier") for s in root.iter(f"{IDS_NS}specification")]
 
@@ -104,7 +104,7 @@ def check(ids_path: Path, model) -> CheckResult:
 
 def write_run(cur, res: CheckResult, *, model_label: str, model_file: str,
               ids_source: Optional[str], project_id: str = OCB_ID) -> tuple[str, int]:
-    """Zapíše jeden beh. Vráti (run_id, počet výsledkov bez prvku v DB).
+    """Write one run. Returns (run_id, number of results without an element in the DB).
     D-189: the run belongs to `project_id` and a GUID resolves only within that project."""
     guids = sorted({r.ifc_guid for r in res.rows if r.ifc_guid})
     rows = cur.execute(
