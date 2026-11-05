@@ -234,6 +234,10 @@ Primárny use case: AIM Viewer — ukážka správne previazaných dát.
 - Nezavádzať nový atribút/hranu/enum bez kontroly IFC4.3 ekvivalentu — ak existuje,
   prevziať IFC názov aj hodnoty doslovne; ak nie, zapísať ako deklarovanú extenziu
   do SCHEMA.md §5 (IFC-first naming, D-046)
+- **IFC 4.3 schema in the repo (D-195):** before every new attribute, entity, enum or relationship, look it
+  up in `vendor/ifc4.3/docs/schemas` (entities `<layer>/<package>/Entities/<IfcClass>.md`, psets also
+  `vendor/ifc4.3/reference_schemas/psd`). Fetch it once per session: `bash scripts/ifc-schema/fetch.sh`
+  (pinned submodule, sparse, about 21 MB). Never modify these files (CC BY-ND 4.0, `vendor/IFC4.3-NOTICE.md`).
 - Nikdy neukladať geometriu/meshe do DB — 3D rendering je ephemerálna klient-side vrstva (IFClite, D-044)
 
 ## Priestorová hierarchia
