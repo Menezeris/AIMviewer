@@ -1,24 +1,25 @@
-"""Manifest IFC pset definícií (D-061) — statický slovník štandardných psetov.
+"""IFC pset definitions manifest (D-061) - static dictionary of standard psets.
 
-Zrkadlo vzoru `etl/manifest.py` (D-051): kurátorovaný vstup + validácia proti IFC
-schéme cez `ifcopenshell`, deterministický `--sql` výstup commitovaný do migrácie.
-Tu je vstupom **zoznam IFC tried prítomných v projekte** a výstupom definície ich
-štandardných psetov (`Pset_`/`Qto_`) z bSDD/psd šablón, ktoré `ifcopenshell` nesie
-zabudované (`ifcopenshell.util.pset.PsetQto`).
+Mirrors the pattern of `etl/manifest.py` (D-051): curated input + validation against
+the IFC schema via `ifcopenshell`, deterministic `--sql` output committed into a
+migration. Here the input is the **list of IFC classes present in the project** and
+the output is the definitions of their standard psets (`Pset_`/`Qto_`) from the
+bSDD/psd templates that `ifcopenshell` ships built in
+(`ifcopenshell.util.pset.PsetQto`).
 
-Načo: LLM grounding VÝZNAMU — description, dátový typ (PrimaryMeasureType),
-enum hodnoty a aplikovateľné triedy štandardných properties. Komplementárne
-k `v_property_dictionary` (D-058), ktorý hovorí, čo v dátach reálne JE (vrátane
-custom psetov — tie statická schéma z princípu nepozná).
+Purpose: LLM grounding of MEANING - description, data type (PrimaryMeasureType),
+enum values and applicable classes of the standard properties. Complements
+`v_property_dictionary` (D-058), which says what actually IS in the data (including
+custom psets - a static schema cannot know those by design).
 
-Zoznam tried je kurátorovaný default (`DEFAULT_CLASSES` — triedy demo modelu
-ARCH+VZT + plánovaný ÚK/ZTI import). Po zmene dát v DB sa regeneruje:
+The class list is a curated default (`DEFAULT_CLASSES` - classes of the demo model
+ARCH+VZT + planned ÚK/ZTI import). After the data in the DB changes, regenerate:
 
-    python -m etl.pset_manifest --classes-from-db   # triedy z objects.ifc_type
-    python -m etl.pset_manifest --sql               # INSERT SQL (do NOVEJ migrácie)
-    python -m etl.pset_manifest --check             # validácia + súhrn
+    python -m etl.pset_manifest --classes-from-db   # classes from objects.ifc_type
+    python -m etl.pset_manifest --sql               # INSERT SQL (into a NEW migration)
+    python -m etl.pset_manifest --check             # validation + summary
 
-Determinizmus: výstup radený podľa (pset, property); rovnaký vstup = rovnaký SQL.
+Determinism: output sorted by (pset, property); same input = same SQL.
 """
 
 from __future__ import annotations
@@ -27,18 +28,18 @@ import argparse
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
-# Cieľová IFC schéma — zarovnané s manifestom vzťahov (D-046: IFC4.3 slovník).
+# Target IFC schema - aligned with the relationships manifest (D-046: IFC4.3 vocabulary).
 IFC_SCHEMA = "IFC4X3"
 
-# Max dĺžka description v slovníku (plné texty zbytočne nafukujú migráciu aj
-# kontext LLM; orezanie je bezstratové pre účel groundingu).
+# Max length of description in the dictionary (full texts needlessly bloat the
+# migration and the LLM context; truncation is lossless for the grounding purpose).
 DESCRIPTION_MAX = 200
 
-# Kurátorovaný zoznam tried demo projektu (Office centrum Brno: ARCH + VZT modely,
-# D-049) + triedy plánovaného vodného modelu (ÚK/ZTI — ventilový use-case D-056).
-# Regenerácia zo skutočných dát: --classes-from-db.
+# Curated class list of the demo project (Office centrum Brno: ARCH + VZT models,
+# D-049) + classes of the planned water model (ÚK/ZTI - valve use case D-056).
+# Regeneration from real data: --classes-from-db.
 DEFAULT_CLASSES: list[str] = [
-    # priestorová štruktúra
+    # spatial structure
     "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcSpace",
     # ARCH
     "IfcDoor", "IfcWindow", "IfcWall", "IfcSlab", "IfcColumn", "IfcBeam",
@@ -46,26 +47,26 @@ DEFAULT_CLASSES: list[str] = [
     # VZT
     "IfcUnitaryEquipment", "IfcFan", "IfcAirTerminal", "IfcDuctSegment",
     "IfcDuctFitting", "IfcDistributionSystem",
-    # ÚK/ZTI (import plánovaný — D-056 ventilový dotaz)
+    # ÚK/ZTI (import planned - D-056 valve query)
     "IfcPipeSegment", "IfcPipeFitting", "IfcValve", "IfcPump",
 ]
 
 
 @dataclass
 class PropertyDef:
-    """Jedna štandardná property v slovníku (riadok `ifc_property_definitions`)."""
+    """One standard property in the dictionary (a row of `ifc_property_definitions`)."""
 
     pset: str
     property: str
-    data_type: Optional[str]        # PrimaryMeasureType (IfcLabel, IfcAreaMeasure…)
-    template_type: Optional[str]    # P_SINGLEVALUE | P_ENUMERATEDVALUE | Q_LENGTH…
-    enum_values: list[str]          # pri P_ENUMERATEDVALUE hodnoty PEnum_*
+    data_type: Optional[str]        # PrimaryMeasureType (IfcLabel, IfcAreaMeasure...)
+    template_type: Optional[str]    # P_SINGLEVALUE | P_ENUMERATEDVALUE | Q_LENGTH...
+    enum_values: list[str]          # for P_ENUMERATEDVALUE the PEnum_* values
     description: Optional[str]
-    applicable_classes: list[str]   # LEN triedy zo vstupného zoznamu (nie celé IFC)
+    applicable_classes: list[str]   # ONLY classes from the input list (not all of IFC)
 
 
 def classes_from_db() -> list[str]:
-    """Distinct `objects.ifc_type` z DB (occurrence aj type triedy)."""
+    """Distinct `objects.ifc_type` from the DB (both occurrence and type classes)."""
     import psycopg
 
     from . import config
@@ -78,18 +79,19 @@ def classes_from_db() -> list[str]:
 
 
 def _norm_occurrence_class(name: str) -> str:
-    """`IfcDoorType` → `IfcDoor` — šablóny sú aplikovateľné na occurrence aj Type
-    (ApplicableEntity býva 'IfcDoor,IfcDoorType'); slovník držíme na occurrence."""
+    """`IfcDoorType` -> `IfcDoor` - templates apply to both occurrence and Type
+    (ApplicableEntity is usually 'IfcDoor,IfcDoorType'); the dictionary is kept on occurrence."""
     return name[:-4] if name.endswith("Type") and len(name) > 7 else name
 
 
 def build_definitions(
     classes: Iterable[str], schema_name: str = IFC_SCHEMA
 ) -> tuple[list[PropertyDef], list[str]]:
-    """Vráti (definície radené podľa (pset, property), triedy bez šablón).
+    """Return (definitions sorted by (pset, property), classes without templates).
 
-    Trieda bez šablón (preklep / neexistuje v schéme / nemá psety) sa NEzhodí —
-    reportuje sa (warn v --check), aby sa manifest nerozišiel s dátami potichu.
+    A class without templates (typo / not in the schema / has no psets) does NOT
+    crash - it is reported (warn in --check), so the manifest does not silently
+    drift from the data.
     """
     from ifcopenshell.util.pset import PsetQto
 
@@ -101,7 +103,7 @@ def build_definitions(
     for cls in wanted:
         try:
             templates = qto.get_applicable(cls)
-        except Exception:  # noqa: BLE001 — neznáma trieda nemá zhodiť generovanie
+        except Exception:  # noqa: BLE001 - an unknown class must not crash generation
             templates = []
         if not templates:
             missing.append(cls)
@@ -114,7 +116,7 @@ def build_definitions(
                     enums: list[str] = []
                     enumerators = getattr(pt, "Enumerators", None)
                     if enumerators is not None:
-                        # hodnoty sú IfcLabel inštancie → rozbaliť na čistý string
+                        # values are IfcLabel instances -> unwrap to a plain string
                         enums = [
                             str(getattr(v, "wrappedValue", v))
                             for v in enumerators.EnumerationValues or []
@@ -154,7 +156,7 @@ def _sql_array(items: list[str]) -> str:
 
 
 def sql_inserts(classes: Iterable[str], schema_name: str = IFC_SCHEMA) -> str:
-    """`insert into ifc_property_definitions …` pre migráciu (deterministický)."""
+    """`insert into ifc_property_definitions ...` for a migration (deterministic)."""
     defs, missing = build_definitions(classes, schema_name)
     lines: list[str] = []
     if missing:
