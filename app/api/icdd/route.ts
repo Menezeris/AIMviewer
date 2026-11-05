@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { clientIpKey, createRateLimiter } from "@/lib/api-guard";
 import { EXTRAS, LAYERS, type Extra, type Layer } from "@/lib/icdd/model";
 import { fetchIcddPlan } from "@/lib/icdd/plan-fetch";
+import { withRequestProject } from "@/lib/project/request";
 
 /**
  * Plán kontajnera ICDD (D-181, #350): JSON s indexom (payloady s verejnou URL a sha256) a väzbami AIM.
@@ -17,7 +18,7 @@ const limiter = createRateLimiter({
 
 export const maxDuration = 60;
 
-export async function GET(req: Request) {
+async function getHandler(req: Request) {
   const rate = limiter.check(clientIpKey(req.headers));
   if (!rate.allowed) {
     return NextResponse.json({ error: "príliš veľa exportov, skús neskôr" }, { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } });
@@ -45,3 +46,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "icdd plan failed" }, { status: 500 });
   }
 }
+
+export const GET = withRequestProject(getHandler);

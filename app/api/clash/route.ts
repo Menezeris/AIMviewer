@@ -4,6 +4,8 @@ import { clientIpKey, createRateLimiter, isCrossOriginBlocked } from "@/lib/api-
 import { supabaseClashStore } from "@/lib/clash/store";
 import { ClashViewerError, listForViewer, loadForViewer, saveFromViewer } from "@/lib/clash/viewer";
 import { CLASH_UUID_RE, parseClashSave } from "@/lib/viewer-clash";
+import { withRequestProject } from "@/lib/project/request";
+import { currentProjectId } from "@/lib/live/caller";
 
 /**
  * Clash detection z AIM pre viewer (D-164, #292).
@@ -51,13 +53,13 @@ function guard(req: Request): NextResponse | null {
 
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status, headers: NO_STORE });
 
-export async function GET(req: Request) {
+async function getHandler(req: Request) {
   const params = new URL(req.url).searchParams;
   const test = params.get("test");
   const run = params.get("run") ?? undefined;
   if (run !== undefined && run !== "latest" && !CLASH_UUID_RE.test(run)) return fail("run: 'latest' alebo UUID uloženého behu", 400);
   try {
-    const store = supabaseClashStore();
+    const store = supabaseClashStore(currentProjectId());
     if (!test) return NextResponse.json({ items: await listForViewer(store) }, { headers: NO_STORE });
     return NextResponse.json(await loadForViewer(store, { test, ...(run ? { run } : {}) }), { headers: NO_STORE });
   } catch (err) {
@@ -66,7 +68,7 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
+async function postHandler(req: Request) {
   const denied = guard(req);
   if (denied) return denied;
   const raw = await req.text();
@@ -80,9 +82,12 @@ export async function POST(req: Request) {
   const save = parseClashSave(body);
   if (!save) return fail("invalid clash payload", 400);
   try {
-    return NextResponse.json(await saveFromViewer(supabaseClashStore(), save), { headers: NO_STORE });
+    return NextResponse.json(await saveFromViewer(supabaseClashStore(currentProjectId()), save), { headers: NO_STORE });
   } catch (err) {
     if (err instanceof ClashViewerError) return fail(err.message, 400);
     return fail(err instanceof Error ? err.message : "uloženie kolízií zlyhalo", 500);
   }
 }
+
+export const GET = withRequestProject(getHandler);
+export const POST = withRequestProject(postHandler);

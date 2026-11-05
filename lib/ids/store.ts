@@ -47,7 +47,8 @@ async function selectMeta<T>(run: (cols: string) => PromiseLike<{ data: T | null
   return res;
 }
 
-export function supabaseIdsStore(): IdsStore {
+/** D-189: IDS documents and runs of one project; codes are unique per project. */
+export function supabaseIdsStore(projectId: string): IdsStore {
   const db = () => getSupabaseAdmin();
 
   async function latestOf(documentId: string): Promise<number> {
@@ -58,17 +59,17 @@ export function supabaseIdsStore(): IdsStore {
 
   return {
     async listDocuments() {
-      const { data, error } = await db().from(DOCS).select("*").order("updated_at", { ascending: false }).limit(LIST_CAP);
+      const { data, error } = await db().from(DOCS).select("*").eq("project_id", projectId).order("updated_at", { ascending: false }).limit(LIST_CAP);
       if (error) fail("Čítanie IDS zlyhalo", error);
       return (data ?? []) as IdsDocumentRow[];
     },
     async byCode(code) {
-      const { data, error } = await db().from(DOCS).select("*").eq("code", code).maybeSingle();
+      const { data, error } = await db().from(DOCS).select("*").eq("project_id", projectId).eq("code", code).maybeSingle();
       if (error) fail("Čítanie IDS zlyhalo", error);
       return (data as IdsDocumentRow | null) ?? null;
     },
     async byId(id) {
-      const { data, error } = await db().from(DOCS).select("*").eq("id", id).maybeSingle();
+      const { data, error } = await db().from(DOCS).select("*").eq("project_id", projectId).eq("id", id).maybeSingle();
       if (error) fail("Čítanie IDS zlyhalo", error);
       return (data as IdsDocumentRow | null) ?? null;
     },
@@ -92,6 +93,7 @@ export function supabaseIdsStore(): IdsStore {
             "id, model_label, checked_at, specs_total, specs_passed, results_total, results_failed, engine, trigger, binding, " +
               `${VERSIONS}!inner(document_id, version)`,
           )
+          .eq("project_id", projectId)
           .in(`${VERSIONS}.document_id`, documentIds.slice(i, i + IN_CHUNK))
           .order("checked_at", { ascending: false })
           .limit(500);
@@ -121,12 +123,12 @@ export function supabaseIdsStore(): IdsStore {
       return (data as IdsVersionRow | null) ?? null;
     },
     async createDocument(row: IdsDocumentWrite) {
-      const { data, error } = await db().from(DOCS).insert(row).select("*").single();
+      const { data, error } = await db().from(DOCS).insert({ ...row, project_id: projectId }).select("*").single();
       if (error || !data) fail("Vytvorenie IDS zlyhalo", error);
       return data as IdsDocumentRow;
     },
     async deleteDocument(id) {
-      const { error } = await db().from(DOCS).delete().eq("id", id);
+      const { error } = await db().from(DOCS).delete().eq("project_id", projectId).eq("id", id);
       if (error) fail("Zrušenie IDS zlyhalo", error);
     },
     async addVersion(documentId, write: IdsVersionWrite, baseVersion) {
@@ -138,12 +140,12 @@ export function supabaseIdsStore(): IdsStore {
       if (isUniqueViolation(error)) throw new IdsConflictError(await latestOf(documentId), baseVersion);
       if (isMissingSchema(error)) fail(`Uloženie verzie IDS zlyhalo (${SCHEMA_HINT})`, error);
       if (error || !data) fail("Uloženie verzie IDS zlyhalo", error);
-      const { error: upd } = await db().from(DOCS).update({ title, updated_at: new Date().toISOString() }).eq("id", documentId);
+      const { error: upd } = await db().from(DOCS).update({ title, updated_at: new Date().toISOString() }).eq("project_id", projectId).eq("id", documentId);
       if (upd) fail("Úprava IDS zlyhala", upd);
       return data as IdsVersionRow;
     },
     async saveRun(run: IdsRunWrite, results: IdsResultWrite[]) {
-      const { data, error } = await db().from("ids_runs").insert({ ...run, binding: false }).select("id").single();
+      const { data, error } = await db().from("ids_runs").insert({ ...run, binding: false, project_id: projectId }).select("id").single();
       if (isMissingSchema(error)) fail(`Uloženie behu IDS zlyhalo (${SCHEMA_HINT})`, error);
       if (error || !data) fail("Uloženie behu IDS zlyhalo", error);
       const runId = (data as { id: string }).id;
@@ -151,7 +153,7 @@ export function supabaseIdsStore(): IdsStore {
         const rows = results.slice(i, i + RESULT_CHUNK).map((r) => ({ ...r, run_id: runId }));
         const { error: err } = await db().from("ids_results").insert(rows);
         if (err) {
-          await db().from("ids_runs").delete().eq("id", runId);
+          await db().from("ids_runs").delete().eq("project_id", projectId).eq("id", runId);
           fail("Uloženie výsledkov IDS zlyhalo", err);
         }
       }

@@ -37,8 +37,11 @@ describe("mcp_call_log (D-100)", () => {
       cold: false,
       phases: {},
       region: "arn1",
+      project_id: null,
     });
     expect(rejectedCallRow("x", ["a".repeat(60)], null).action).toHaveLength(40);
+    // D-189: the project of the connector URL rides along.
+    expect(rejectedCallRow("x", ["a"], null, "p1").project_id).toBe("p1");
   });
 
   it("zapíše riadok", async () => {

@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { fetchSpaceSiblings } from "@/lib/data/filter";
+import { currentProjectId } from "@/lib/live/caller";
+import { withRequestProject } from "@/lib/project/request";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function GET(
+async function getHandler(
   _req: NextRequest,
   { params }: { params: Promise<{ objectId: string }> }
 ) {
+  const projectId = currentProjectId();
   const { objectId } = await params;
 
   // Validácia ako /api/element — bez nej ide nevalidný vstup až do Postgresu
@@ -18,7 +21,7 @@ export async function GET(
   }
 
   try {
-    const result = await fetchSpaceSiblings(objectId);
+    const result = await fetchSpaceSiblings(projectId, objectId);
     return NextResponse.json(result, {
       headers: { "Cache-Control": "public, max-age=60" },
     });
@@ -28,3 +31,5 @@ export async function GET(
     return NextResponse.json({ error: "server error" }, { status: 500 });
   }
 }
+
+export const GET = withRequestProject(getHandler);

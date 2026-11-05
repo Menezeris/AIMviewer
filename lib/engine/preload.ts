@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getIfcModels } from "../data/ifc-models";
+import type { IfcModel } from "../data/ifc-models";
 
 import { installArchiveSource } from "./archive-source";
 import { getStore } from "./cache";
@@ -21,10 +21,11 @@ installArchiveSource();
  * D-102: postaví aj indexy GUID a mien (mená stoja na indexe `ifc_search`).
  * Bez nich prvé `ifc_get` / `ifc_search` / hľadanie podľa kódu na čerstvej
  * inštancii čakalo 2 až 4 s navyše; indexy sa držia so store ako model.
+ * D-189: `sources` = models of the request project (the caller captures them before `after()`).
  */
-export async function preloadEngineModels(): Promise<void> {
+export async function preloadEngineModels(sources: IfcModel[]): Promise<void> {
   const loaded = await Promise.all(
-    getIfcModels().map(async (src): Promise<EngineModel | null> => {
+    sources.map(async (src): Promise<EngineModel | null> => {
       const res = await getStore(src).catch(() => null);
       return res ? { id: src.id, name: `${src.id}.ifc`, store: res.entry.store } : null;
     }),
