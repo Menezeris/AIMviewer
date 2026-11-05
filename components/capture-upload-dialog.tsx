@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
- * Upload capture snímky/panorámy (D-073, F1/F3). Dvojkrok:
- *   1. POST /api/captures  → vytvor capture point (sémantické ukotvenie na priestor)
- *   2. POST /api/captures/{id}/media  → nahraj súbor (multipart; server-side sharp)
+ * Upload of a capture image/panorama (D-073, F1/F3). Two steps:
+ *   1. POST /api/captures  -> create a capture point (semantic anchoring to a space)
+ *   2. POST /api/captures/{id}/media  -> upload the file (multipart; server-side sharp)
  *
- * Plán/3D pin sa nezadáva tu (F1) — pridá sa vo vieweri (F2). Kind sa auto-deteguje
- * z pomeru strán (equirect 2:1 → pano360), používateľ ho môže prepnúť.
+ * The plan/3D pin is not entered here (F1) - it is added in the viewer (F2). Kind is auto-detected
+ * from the aspect ratio (equirect 2:1 -> pano360), the user can switch it.
  */
 
 type Kind = "photo" | "pano360";
@@ -64,13 +64,13 @@ export function CaptureUploadDialog({
     setError(null);
     setFile(f);
     if (!f) return;
-    // Auto-detekcia panorámy z rozmerov (equirect 2:1).
+    // Auto-detection of a panorama from the dimensions (equirect 2:1).
     try {
       const bmp = await createImageBitmap(f);
       setKind(isPanoAspect(bmp.width, bmp.height) ? "pano360" : "photo");
       bmp.close?.();
     } catch {
-      /* nechaj default */
+      /* leave default */
     }
   }, []);
 
@@ -103,7 +103,7 @@ export function CaptureUploadDialog({
       }
       const { id } = (await createRes.json()) as { id: string };
 
-      // 2) médium
+      // 2) media
       const form = new FormData();
       form.append("file", file);
       if (capturedAt) form.append("capturedAt", new Date(capturedAt).toISOString());

@@ -1,9 +1,9 @@
 import { loadSummary, type LoadSegment } from "@/lib/viewer-load";
 
 /**
- * Pásik priebehu federácie, jeden segment na model v poradí `index` (D-178).
- * Ten istý komponent je v prekrytí loadera (nad logom) aj ako tenký pásik pri hornom
- * okraji viewera po prvej geometrii; nie sú teda dva rôzne pásiky.
+ * Federation progress bar, one segment per model in order of `index` (D-178).
+ * The same component is in the loader overlay (above the logo) and also as a thin strip at the top
+ * edge of the viewer after the first geometry; so there are not two different bars.
  */
 export function LoadProgressBar({
   segments,

@@ -4,17 +4,17 @@ import { Eye, FileText } from "lucide-react";
 import type { DrawingLink } from "@/lib/data/relations";
 
 /**
- * Výkresy, v ktorých je prvok zobrazený (E4 auto-linking, D-041). Názov vedie na
- * detail dokumentu (`/node/[id]`), „Prehliadačka" otvorí interaktívny výkres
- * (`/drawing/[id]`, D-042) — s `?focus=<elementId>` odscrolluje a zvýrazní práve
- * tento prvok (obojsmernosť, fáza D); ikona je priamy odkaz na PDF (`location`).
+ * Drawings in which the element is shown (E4 auto-linking, D-041). The name leads to the
+ * document detail (`/node/[id]`), "Prehliadačka" (viewer) opens the interactive drawing
+ * (`/drawing/[id]`, D-042) - with `?focus=<elementId>` it scrolls and highlights exactly
+ * this element (bidirectionality, phase D); the icon is a direct link to the PDF (`location`).
  */
 export function DrawingList({
   drawings,
   elementId,
 }: {
   drawings: DrawingLink[];
-  /** `objects.id` aktuálneho prvku — cieľ zvýraznenia vo výkrese (`?focus=`). */
+  /** `objects.id` of the current element - the target of the highlight in the drawing (`?focus=`). */
   elementId?: string;
 }) {
   if (drawings.length === 0) {

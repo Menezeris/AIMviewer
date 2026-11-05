@@ -2,9 +2,9 @@ import { cn } from "@/lib/utils";
 import type { ClassificationFacet } from "@/lib/data/asset";
 
 /**
- * Render klasifikačných faset (S2). Efektívna klasifikácia occurrence = union
- * vlastných + zdedených z typu (D-023). `showLevel` zobrazí badge
- * `occurrence`/`type` — na type stránke je vždy `type`, preto sa skryje.
+ * Render of classification facets (S2). The effective classification of an occurrence = union
+ * of its own + those inherited from the type (D-023). `showLevel` shows the badge
+ * `occurrence`/`type` - on the type page it is always `type`, so it is hidden.
  */
 export function ClassificationList({
   facets,

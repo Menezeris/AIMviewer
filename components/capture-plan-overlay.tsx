@@ -9,22 +9,22 @@ import { Camera, Check, ImageIcon, Orbit, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CapturePlanPinWire } from "@/lib/data/captures";
 
-// PSV je čisto klientský (three.js) — dynamický import bez SSR (rovnako ako galéria).
+// PSV is purely client-side (three.js) - dynamic import without SSR (same as the gallery).
 const PanoramaViewer = dynamic(
   () => import("@/components/panorama-viewer").then((m) => m.PanoramaViewer),
   { ssr: false }
 );
 
 /**
- * Reality Capture overlay nad 2D plánom (D-073) — v drawing vieweri (`/drawing/[id]`).
- * Číta capture piny s plán ukotvením na tento dokument a vykreslí ich na strane
- * (normalizované u,v → pixely renderovanej strany). Klik na pin → otvorí rovno
- * fotku / 360° panorámu (obojsmernosť „plán → snímka").
+ * Reality Capture overlay above the 2D plan (D-073) - in the drawing viewer (`/drawing/[id]`).
+ * Reads capture pins with plan anchoring to this document and draws them on the
+ * page (normalized u,v -> pixels of the rendered page). Click on a pin -> opens directly the
+ * photo / 360° panorama (bidirectionality "plan -> image").
  *
- * Authoring: s `?placeCapture=<id>` v URL sa zapne umiestňovací režim — klik na
- * plán položí **draft** pin, ktorý sa dá **ťahať** na presné miesto, a tlačidlom
- * **Uložiť** sa uloží (PATCH `/api/captures/{id}` `{plan}`). Existujúca pozícia sa
- * predvyplní (edit/„presunúť"). DocumentId sa odvodí z route → self-contained.
+ * Authoring: with `?placeCapture=<id>` in the URL the placement mode is turned on - a click on the
+ * plan places a **draft** pin, which can be **dragged** to the exact spot, and the
+ * **Uložiť** (Save) button saves it (PATCH `/api/captures/{id}` `{plan}`). The existing position is
+ * prefilled (edit/"move"). DocumentId is derived from the route -> self-contained.
  */
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
@@ -78,8 +78,8 @@ export function CapturePlanOverlay({
     return () => window.removeEventListener("keydown", onKey);
   }, [openPin]);
 
-  // Vstup/výstup umiestňovacieho režimu: reset; predvyplň draft z existujúcej
-  // pozície pinu (edit/„presunúť"), kým používateľ neinteragoval (`dirty`).
+  // Enter/exit of the placement mode: reset; prefill the draft from the existing
+  // position of the pin (edit/"move") until the user has interacted (`dirty`).
   useEffect(() => {
     if (!placeId) {
       setDraft(null);
@@ -145,10 +145,10 @@ export function CapturePlanOverlay({
           res.status === 403 ? "Zápis je vypnutý (CAPTURE_WRITE_ENABLED)." : (j.error ?? "Uloženie zlyhalo.")
         );
       }
-      // Optimisticky vykresli pin ihneď — nezávisle od refetchu/cache/re-render
-      // timingu. Pri presune existujúceho pinu zachovaj ostatné polia
-      // (kind/urls/name), pri novom použij minimálny tvar; `refetch()` nižšie ich
-      // následne dopl­ní reálnymi dátami.
+      // Optimistically draw the pin immediately - independent of the refetch/cache/re-render
+      // timing. When moving an existing pin keep the other fields
+      // (kind/urls/name), for a new one use a minimal shape; `refetch()` below then
+      // fills them in with the real data.
       const { u, v } = draft;
       setPins((prev) => {
         const existing = prev.find((p) => p.id === placeId);
@@ -171,8 +171,8 @@ export function CapturePlanOverlay({
 
   return (
     <div ref={containerRef} className="absolute inset-0 overflow-hidden">
-      {/* Uložené piny — klik otvorí fotku/360°. V placement móde ich prekryje
-          klikacia vrstva (nezasahujú), takže netreba osobitne vypínať. */}
+      {/* Saved pins - a click opens the photo/360°. In placement mode they are covered
+          by the click layer (they do not interfere), so there is no need to turn them off separately. */}
       {pagePins.map((pin) => {
         const Icon = pin.kind === "pano360" ? Orbit : Camera;
         return (
@@ -193,7 +193,7 @@ export function CapturePlanOverlay({
         );
       })}
 
-      {/* Umiestňovací režim (authoring): klikacia vrstva + draft pin + toolbar. */}
+      {/* Placement mode (authoring): click layer + draft pin + toolbar. */}
       {placeId && (
         <>
           <div
@@ -245,8 +245,8 @@ export function CapturePlanOverlay({
         </>
       )}
 
-      {/* Klik na pin → otvor rovno fotku / 360°. Portál do body, lebo drawing
-          wrapper má počas zoomu CSS transform (rozbil by `fixed` modal). */}
+      {/* Click on a pin -> open the photo / 360° directly. Portal to body, because the drawing
+          wrapper has a CSS transform during zoom (it would break the `fixed` modal). */}
       {openPin &&
         typeof document !== "undefined" &&
         createPortal(

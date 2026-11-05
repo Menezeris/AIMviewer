@@ -8,11 +8,11 @@ import { OBJECT_TYPE_LABEL, type ObjectType } from "@/lib/object-type";
 import { formatLocalDate } from "@/lib/utils";
 
 /**
- * Bočný panel s informáciami o **dokumente** (D-042 D+): predvolený obsah pravého
- * panela prehliadačky — mirror detail-stránky dokumentu (metadáta + „Pripojené k").
- * „Pripojené k" sa dá filtrovať podľa typu objektu (podlažie / typ assetu / dokument…)
- * — podľa dátového modelu (D-018). Po kliknutí na kód vo výkrese sa panel prepne na
- * detail prvku (`ElementInfoPanel`).
+ * Side panel with information about a **document** (D-042 D+): the default content of the right
+ * panel of the viewer - a mirror of the document detail page (metadata + "Pripojené k" (attached to)).
+ * "Pripojené k" can be filtered by object type (storey / asset type / document...)
+ * - per the data model (D-018). After clicking a code in the drawing the panel switches to the
+ * element detail (`ElementInfoPanel`).
  */
 export interface DocAttachment {
   object: {
@@ -37,7 +37,7 @@ export interface DocumentPanelData {
   attachedTo: DocAttachment[];
 }
 
-// Poradie filter-chipov (priestor → prvky → ostatné), podľa hierarchie D-018.
+// Order of the filter chips (space -> elements -> others), per the D-018 hierarchy.
 const TYPE_ORDER: ObjectType[] = [
   "site",
   "building",
@@ -64,7 +64,7 @@ export function DocumentInfoPanel({ document }: { document: DocumentPanelData })
     return until ? `${from} – ${until}` : from;
   })();
 
-  // Skupiny podľa object_type (len prítomné), v poradí TYPE_ORDER + neznáme na konci.
+  // Groups by object_type (only the present ones), in the order TYPE_ORDER + unknown at the end.
   const groups = useMemo(() => {
     const counts = new Map<string, number>();
     for (const a of document.attachedTo) {

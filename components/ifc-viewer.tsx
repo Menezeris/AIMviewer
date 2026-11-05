@@ -49,56 +49,56 @@ import { VIEWS_CHANGED_WINDOW_EVENT } from "@/lib/live/views-event";
 import { PROD_VIEWER_URL, VIEWER_CHOICE_KEY, urlWithoutViewerChoice } from "@/lib/viewer-source";
 
 /**
- * 3D prehliadač = self-hostovaná IFClite appka (fork AssetinSpace/ifc-lite,
- * vetva aim-integration) vložená cez <iframe>. Tento wrapper drží NEZMENENÝ
- * kontrakt pôvodného three.js vieweru (Props + ViewerApi + onSelect/
- * onPickedElement), takže ifc-workspace.tsx a zvyšok appu sa nemenia — mení
- * sa len transport: in-process volania → postMessage cez hranicu iframu.
+ * 3D viewer = a self-hosted IFClite app (fork AssetinSpace/ifc-lite,
+ * branch aim-integration) embedded via <iframe>. This wrapper keeps the UNCHANGED
+ * contract of the original three.js viewer (Props + ViewerApi + onSelect/
+ * onPickedElement), so ifc-workspace.tsx and the rest of the app do not change -
+ * only the transport changes: in-process calls -> postMessage across the iframe boundary.
  *
- * Druhá strana mostu žije vo forku: apps/viewer/src/aim/AimBridge.tsx.
- * Protokol (source: "aim-bridge"):
- *   host → viewer:  FOCUS{guids} · HIGHLIGHT_FILTER{guids} · CLEAR_FILTER ·
+ * The other side of the bridge lives in the fork: apps/viewer/src/aim/AimBridge.tsx.
+ * Protocol (source: "aim-bridge"):
+ *   host -> viewer:  FOCUS{guids} · HIGHLIGHT_FILTER{guids} · CLEAR_FILTER ·
  *                   COLORIZE{guids|selector,color} · HIDE{guids|selector} ·
  *                   SHOW{guids|selector} · ISOLATE{guids|selector} ·
- *                   SHOW_ALL · RESET_COLORS   (D-066; selector = množinový
- *                   výber {types,model} rozkladaný viewer-side) ·
- *                   SELECT{guid} (D-082; výber ako klik: selekcia + kamera +
- *                   panel vlastností, viewer odpovie ENTITY_SELECTED) ·
+ *                   SHOW_ALL · RESET_COLORS   (D-066; selector = a set
+ *                   selection {types,model} expanded viewer-side) ·
+ *                   SELECT{guid} (D-082; selection as a click: selection + camera +
+ *                   properties panel, the viewer replies ENTITY_SELECTED) ·
  *                   SET_SECTION{action,axis,storeyGuid,offsetM,position} ·
  *                   SET_CAMERA{preset,projection,guids} ·
- *                   SET_VIEW_MODE{mode,storeyGuid} (D-083; pohľad bez
- *                   súradníc, podlažie prepočíta viewer) ·
+ *                   SET_VIEW_MODE{mode,storeyGuid} (D-083; a view without
+ *                   coordinates, the viewer computes the storey) ·
  *                   DOCUMENT_OPEN{documentId,page} ·
- *                   DOCUMENT_LINKS{documents} (D-130; popisky pôdorysov ako odkazy) ·
+ *                   DOCUMENT_LINKS{documents} (D-130; floor plan labels as links) ·
  *                   AIM_PANEL_DATA{guid,data} · AIM_PANEL_EMPTY{guid,reason} ·
- *                   AIM_DERIVATIONS_LOAD{layer} (D-089; vrstva AIM nad modelmi,
- *                   typy v lib/derivations.ts) · AIM_BCF_LOAD{baseUrl,projectId}
- *                   (D-099; BCF témy z /api/bcf bez tokenu, aj po zmene z chatu)
- *   viewer → host:  READY · MODELS_LOADED · LOAD_PROGRESS{model,phase,percent,index,total} ·
- *                   FIRST_GEOMETRY{model,index,total} (D-178; oboje už pred READY) ·
+ *                   AIM_DERIVATIONS_LOAD{layer} (D-089; AIM layer above the models,
+ *                   types in lib/derivations.ts) · AIM_BCF_LOAD{baseUrl,projectId}
+ *                   (D-099; BCF topics from /api/bcf without a token, also after a change from the chat)
+ *   viewer -> host:  READY · MODELS_LOADED · LOAD_PROGRESS{model,phase,percent,index,total} ·
+ *                   FIRST_GEOMETRY{model,index,total} (D-178; both already before READY) ·
  *                   ENTITY_SELECTED{guid} ·
  *                   ENTITY_DESELECTED · AIM_NAVIGATE{href} ·
- *                   DOCUMENT_SHOW_3D{documentId,page} (D-104 krok 4; host odpovie APPLY_LENS)
+ *                   DOCUMENT_SHOW_3D{documentId,page} (D-104 step 4; the host replies APPLY_LENS)
  *
- * AIM karta: po ENTITY_SELECTED host dotiahne DB súhrn (/api/element/{id})
- * a pošle ho ako render schému (lib/aim-panel.ts) do natívneho panelu
- * viewera — jeden panel namiesto dvoch. Kliky v karte chodia späť cez
- * AIM_NAVIGATE a naviguje ich parent appka.
+ * AIM card: after ENTITY_SELECTED the host fetches the DB summary (/api/element/{id})
+ * and sends it as a render schema (lib/aim-panel.ts) to the native panel of the
+ * viewer - one panel instead of two. Clicks in the card go back via
+ * AIM_NAVIGATE and are handled by the parent app.
  */
 
 const SOURCE = "aim-bridge" as const;
-/** Po tomto čase bez MODELS_LOADED loader ustúpi chybovej hláške (D-163). */
+/** After this time without MODELS_LOADED the loader gives way to an error message (D-163). */
 const LOAD_TIMEOUT_MS = 120_000;
 
 /**
- * "Vyčistiť uložený stav a načítať znova" (D-163): zahodí voľbu viewera (`aim.viewer`
- * v sessionStorage, aj z `?viewer=`) a načíta stránku znova, teda produkčný viewer.
- * Úložisko viewera je na jeho origin, to host vyčistiť nevie; chaty a rozloženie
- * panelov hosta ostávajú.
+ * "Clear saved state and reload" ("Vyčistiť uložený stav a načítať znova", D-163): drops the viewer choice (`aim.viewer`
+ * in sessionStorage, also from `?viewer=`) and reloads the page, i.e. the production viewer.
+ * The viewer's storage is on its own origin, the host cannot clear it; the host's chats and the layout
+ * of the panels stay.
  */
 /**
- * Diagnostika štartu (#310): fáza, čas od otvorenia stránky a pamäť JS haldy hosta
- * (`performance.memory` len v Chromiu), aby screenshot konzoly ukázal, kde štart stojí.
+ * Startup diagnostics (#310): phase, time since the page was opened and the host's JS heap memory
+ * (`performance.memory` in Chromium only), so that a console screenshot shows where the startup stalls.
  */
 function logLoadPhase(phase: string) {
   const mem = (performance as Performance & { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
@@ -112,7 +112,7 @@ function clearViewerStateAndReload() {
   try {
     window.sessionStorage.removeItem(VIEWER_CHOICE_KEY);
   } catch {
-    /* súkromný režim: nič na čistenie */
+    /* private mode: nothing to clean */
   }
   window.location.replace(urlWithoutViewerChoice(window.location.href));
 }
@@ -121,49 +121,49 @@ function clearViewerStateAndReload() {
 type OutboundMessage =
   | { source: typeof SOURCE; type: "READY" }
   | { source: typeof SOURCE; type: "MODELS_LOADED"; count: number }
-  // Priebeh autoloadu po modeloch a prvá geometria na scéne (D-178); telo overujú parseLoadProgress a parseFirstGeometry.
+  // Autoload progress per model and the first geometry on the scene (D-178); the body is validated by parseLoadProgress and parseFirstGeometry.
   | { source: typeof SOURCE; type: "LOAD_PROGRESS" }
   | { source: typeof SOURCE; type: "FIRST_GEOMETRY" }
   | { source: typeof SOURCE; type: "ENTITY_SELECTED"; guid: string }
   | { source: typeof SOURCE; type: "ENTITY_DESELECTED" }
-  // Klik na link v AIM karte vo viewri — navigáciu robí táto (parent) appka.
+  // A click on a link in the AIM card in the viewer - the navigation is done by this (parent) app.
   | { source: typeof SOURCE; type: "AIM_NAVIGATE"; href: string }
-  // Kalibrácia PDF podkladu uložená vo viewri (D-072) — host ju perzistuje.
+  // PDF underlay calibration saved in the viewer (D-072) - the host persists it.
   | { source: typeof SOURCE; type: "UNDERLAY_SAVE"; documentId: string; georef: unknown; calibrationIndex?: unknown }
-  // Klik na Reality Capture pin v 3D (D-073) — host otvorí galériu/panorámu.
+  // A click on a Reality Capture pin in 3D (D-073) - the host opens the gallery/panorama.
   | { source: typeof SOURCE; type: "CAPTURE_PIN_CLICK"; captureId: string }
-  // Karta dokumentu otvorená/zavretá vo viewri (D-075) — recents/analytics.
+  // A document card opened/closed in the viewer (D-075) - recents/analytics.
   | { source: typeof SOURCE; type: "DOCUMENT_EVENT"; documentId: string; event: "opened" | "closed" }
-  // Tlačidlo "Ukázať v 3D" pri otvorenom dokumente (D-104 krok 4) - host odpovie APPLY_LENS.
+  // The "Show in 3D" ("Ukázať v 3D") button with an open document (D-104 step 4) - the host replies APPLY_LENS.
   | { source: typeof SOURCE; type: "DOCUMENT_SHOW_3D"; documentId: string; page?: number }
-  // Pohľady z panela Presentation (D-161) - host ich zapíše cez /api/saved-views a pošle späť VIEWS_LOAD.
+  // Views from the Presentation panel (D-161) - the host writes them via /api/saved-views and sends back VIEWS_LOAD.
   | { source: typeof SOURCE; type: "VIEW_SAVE"; view: unknown; capture_id?: string }
   | { source: typeof SOURCE; type: "VIEW_RENAME"; id: string; name: string }
   | { source: typeof SOURCE; type: "VIEW_DELETE"; id: string }
-  // IDS z panela IDS Studio / Data validation (D-162) - host ho zapíše cez /api/ids a pošle späť IDS_SAVED.
+  // IDS from the IDS Studio / Data validation panel (D-162) - the host writes it via /api/ids and sends back IDS_SAVED.
   | { source: typeof SOURCE; type: "IDS_SAVE"; target: string; xml: string; code?: string; base_version?: number; title?: string }
-  // Test, beh a stav kolízií z panela clash (D-164) - host ich zapíše cez /api/clash a pošle späť CLASH_SAVED.
+  // Test, run and state of clashes from the clash panel (D-164) - the host writes them via /api/clash and sends back CLASH_SAVED.
   | { source: typeof SOURCE; type: "CLASH_SAVE"; test?: unknown; test_code?: string; run?: unknown; reviews?: unknown }
-  // Export a kontrola ICDD z AIM ribbonu (D-181) - host zloží kontajner, stiahne ho a odpovie ICDD_STATUS.
+  // ICDD export and check from the AIM ribbon (D-181) - the host assembles the container, downloads it and replies ICDD_STATUS.
   | { source: typeof SOURCE; type: "ICDD_EXPORT"; id: string; extras?: string[] }
-  // Knižnica požiadaviek (D-182) - karta a uloženie výsledku kontroly; host volá /api/ids/* a odpovie REQLIB_RESULT.
+  // Requirements library (D-182) - card and saving of the check result; the host calls /api/ids/* and replies REQLIB_RESULT.
   | { source: typeof SOURCE; type: "REQLIB_REQUEST"; id: string; action: string; payload?: Record<string, unknown> }
-  // Overenie výmer (D-185 UI) - fajočky v paneli vlastností a ribbon Overovanie; host volá /api/verify/* a odpovie VERIFY_RESULT.
+  // Verification of quantities (D-185 UI) - ticks in the properties panel and the Overovanie ribbon; the host calls /api/verify/* and replies VERIFY_RESULT.
   | { source: typeof SOURCE; type: "VERIFY_REQUEST"; id: string; action: string; payload?: Record<string, unknown> }
   | { source: typeof SOURCE; type: "ICDD_CHECK"; id: string; name?: string; bytes: ArrayBuffer }
-  // Import .bcfzip z BCF panela (D-158 krok 8) - host ho zapíše cez /api/bcf/viewer-import a pošle späť BCF_IMPORTED.
+  // Import of .bcfzip from the BCF panel (D-158 step 8) - the host writes it via /api/bcf/viewer-import and sends back BCF_IMPORTED.
   | { source: typeof SOURCE; type: "BCF_IMPORT"; id: string; name?: string; bytes: ArrayBuffer; dry_run?: boolean }
-  // Odpoveď na QUERY spätného kanála (D-085) - obálky, stav pohľadu.
+  // Reply to a QUERY of the back channel (D-085) - envelopes, view state.
   | { source: typeof SOURCE; type: "QUERY_RESULT"; id: string; ok: boolean; result?: unknown; error?: string }
-  // Potvrdenie príkazov pred ACK_REQUEST (D-101) - stav po vykonaní, čo sa nevykonalo.
+  // Confirmation of commands before ACK_REQUEST (D-101) - state after execution, what was not executed.
   | { source: typeof SOURCE; type: "APPLIED"; cmdId: string; ok: boolean; issues: string[]; state?: unknown };
 
-/** Ako dlho čaká živý kanál na odpoveď forku (server čaká dlhšie, QUERY_TIMEOUT_MS). */
+/** How long the live channel waits for a reply from the fork (the server waits longer, QUERY_TIMEOUT_MS). */
 const VIEWER_QUERY_TIMEOUT_MS = 5000;
-/** Lens sa vyhodnocuje až po navigácii a stiahnutí zóny; fork čaká najviac 6 s. */
+/** The lens is evaluated only after navigation and downloading the zone; the fork waits at most 6 s. */
 const LENS_QUERY_TIMEOUT_MS = 7000;
 
-/** Host wire → viewer wire: odstráni host-only `spaceId` z capture pinov. */
+/** Host wire -> viewer wire: removes the host-only `spaceId` from capture pins. */
 function toCapturePins(captures: CaptureViewerWire[]) {
   return captures.map((c) => ({
     id: c.id,
@@ -175,8 +175,8 @@ function toCapturePins(captures: CaptureViewerWire[]) {
 }
 
 /**
- * GUIDy zón (miestnosti + prvky v nich a dotýkajúce sa ich) a dokumentov (prvky, ktorých
- * sa dokument alebo strana týka, D-104) z `/api/style-scope`; chyba = prázdna množina.
+ * GUIDs of zones (rooms + elements in them and touching them) and documents (elements the
+ * document or page relates to, D-104) from `/api/style-scope`; an error = an empty set.
  */
 async function fetchScopeGuids(keys: string[]): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
@@ -198,7 +198,7 @@ async function fetchScopeGuids(keys: string[]): Promise<Map<string, string[]>> {
   return out;
 }
 
-/** Hodnoty host stĺpcov zoznamu z `/api/list-host-values` (D-174); chyba = prázdny stĺpec. */
+/** Values of the host columns of a list from `/api/list-host-values` (D-174); an error = an empty column. */
 async function fetchHostValues(keys: ListHostKey[]): Promise<Map<string, ListHostValues>> {
   const out = new Map<string, ListHostValues>();
   await Promise.all(
@@ -216,7 +216,7 @@ async function fetchHostValues(keys: ListHostKey[]): Promise<Map<string, ListHos
   return out;
 }
 
-/** Prvky dokumentu alebo strany z `/api/style-scope` (D-104 krok 4); chyba = `null`. */
+/** Elements of a document or page from `/api/style-scope` (D-104 step 4); an error = `null`. */
 async function fetchDocumentScope(id: string, page?: number): Promise<{ name: string; guids: string[] } | null> {
   const query = scopeQuery(documentScopeKey(id, page));
   if (!query) return null;
@@ -242,37 +242,37 @@ function isBridgeMessage(data: unknown): data is OutboundMessage {
 }
 
 interface Props {
-  /** Modely federácie (D-049) — renderované do jednej scény. */
+  /** Federation models (D-049) - rendered into one scene. */
   models: IfcModel[];
   guidMap: GuidMap;
   focus?: string;
-  /** Nonce akcie AI docku — nová hodnota vynúti re-aplikáciu focusu/ops (D-056). */
+  /** AI dock action nonce - a new value forces re-applying focus/ops (D-056). */
   focusNonce?: string;
-  /** Viewer operácie AI docku (ofarbenie/skrytie/izolácia, D-066) — wire formát viď parseOps. */
+  /** AI dock viewer operations (coloring/hiding/isolation, D-066) - wire format see parseOps. */
   ops?: string;
-  /** Georeferencované PDF podklady (D-072) — poslané do viewera po MODELS_LOADED. */
+  /** Georeferenced PDF underlays (D-072) - sent to the viewer after MODELS_LOADED. */
   underlays?: UnderlayDrawingWire[];
-  /** Knižnica dokumentov pre in-viewer Documents panel (D-075) — po MODELS_LOADED. */
+  /** Document library for the in-viewer Documents panel (D-075) - after MODELS_LOADED. */
   documents?: DocumentWire[];
-  /** Deep link (D-075): id dokumentu, ktorý sa má otvoriť ako karta (`?doc=`). */
+  /** Deep link (D-075): id of the document to open as a tab (`?doc=`). */
   openDocumentId?: string;
-  /** Reality Capture piny s 3D ukotvením (D-073) — poslané po MODELS_LOADED. */
+  /** Reality Capture pins with 3D anchoring (D-073) - sent after MODELS_LOADED. */
   captures?: CaptureViewerWire[];
-  /** AIM dekorácie stromu (D-077) — per-GUID badge counts, po MODELS_LOADED. */
+  /** AIM tree decorations (D-077) - per-GUID badge counts, after MODELS_LOADED. */
   decorations?: TreeDecorations;
-  /** Vrstva AIM nad modelmi (D-089) — AIM_DERIVATIONS_LOAD po MODELS_LOADED. */
+  /** AIM layer above the models (D-089) - AIM_DERIVATIONS_LOAD after MODELS_LOADED. */
   derivations?: DerivationsLayerWire | null;
-  /** Popisky pôdorysov ako odkazy na prvok (D-130) — DOCUMENT_LINKS po DOCUMENTS_LOAD. */
+  /** Floor plan labels as links to an element (D-130) - DOCUMENT_LINKS after DOCUMENTS_LOAD. */
   documentLinks?: DocumentLinksWire[] | null;
   apiRef?: React.RefObject<ViewerApi | null>;
   onSelect?: (element: SelectedElement) => void;
   onPickedElement?: (objectId: string, guid: string) => void;
-  /** Navigácia z AIM karty vo viewri (host-relatívne href, napr. /node/{id}). */
+  /** Navigation from the AIM card in the viewer (host-relative href, e.g. /node/{id}). */
   onNavigate?: (href: string) => void;
-  /** Klik na capture pin v 3D (D-073) — host otvorí galériu/panorámu. */
+  /** A click on a capture pin in 3D (D-073) - the host opens the gallery/panorama. */
   onCaptureClick?: (captureId: string) => void;
-  /** Vložený viewer (D-116): produkčný, alebo náhľad PR forku z výberu viewera.
-   *  Overený volajúcim (lib/viewer-source.ts); zmena remountne iframe. */
+  /** Embedded viewer (D-116): production, or a PR fork preview chosen in the viewer picker.
+   *  Verified by the caller (lib/viewer-source.ts); a change remounts the iframe. */
   viewerUrl?: string;
   /** Project code (D-189): the BCF project id the viewer loads topics from. */
   projectCode?: string;
@@ -301,26 +301,26 @@ export function IFCViewer({
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [status, setStatus] = useState<"loading" | "error" | "timeout" | "ready">("loading");
-  /** Priebeh načítavania po modeloch (D-178); prázdny, kým viewer (starší) žiadny neposlal. */
+  /** Loading progress per model (D-178); empty until the viewer (an older one) has sent any. */
   const [load, setLoad] = useState<LoadState>(INITIAL_LOAD_STATE);
-  // Prekrytie loadera drží do prvej geometrie; bez LOAD_PROGRESS/FIRST_GEOMETRY (starší viewer) do MODELS_LOADED.
+  // The loader overlay holds until the first geometry; without LOAD_PROGRESS/FIRST_GEOMETRY (an older viewer) until MODELS_LOADED.
   const overlay = status === "loading" && !load.firstGeometry;
   const segments = useMemo(() => loadSegments(load), [load]);
   const showStrip = status === "loading" && load.firstGeometry && !allSettled(load);
-  /** Zlyhaný zápis kalibrácie podkladu (#317): hláška nad viewerom, kým ju používateľ nezavrie. */
+  /** A failed underlay calibration write (#317): a message above the viewer until the user closes it. */
   const [saveError, setSaveError] = useState<string | null>(null);
   const readyRef = useRef(false);
-  /** true až po MODELS_LOADED — skôr viewer nevie resolvnúť GUIDy. */
+  /** true only after MODELS_LOADED - earlier the viewer cannot resolve GUIDs. */
   const loadedRef = useRef(false);
-  // AIM karta: race guard fetchu detailu — nová selekcia abortne predchádzajúci
-  // fetch a odpoveď sa pošle len pre stále aktuálny GUID (viewer má navyše
-  // vlastný guid guard, belt-and-suspenders).
+  // AIM card: race guard of the detail fetch - a new selection aborts the previous
+  // fetch and the reply is sent only for the still current GUID (the viewer additionally has its
+  // own guid guard, belt-and-suspenders).
   const aimGuidRef = useRef<string | null>(null);
   const aimAbortRef = useRef<AbortController | null>(null);
 
-  // Fail-closed: nevalidná viewer URL = žiadny iframe ani postMessage.
-  // Fallback "*" by vypol origin filter prichádzajúcich správ A poslal
-  // AIM panel dáta ľubovoľnej origin — misconfigurácia nesmie otvárať bridge.
+  // Fail-closed: an invalid viewer URL = no iframe and no postMessage.
+  // A fallback "*" would turn off the origin filter of incoming messages AND send
+  // the AIM panel data to any origin - a misconfiguration must not open the bridge.
   const viewerOrigin = useMemo(() => {
     try {
       return new URL(viewerUrl).origin;
@@ -329,16 +329,16 @@ export function IFCViewer({
     }
   }, [viewerUrl]);
 
-  // objects.id → ifc_guid (reverz guidMap) — na preklad DB→3D príkazov.
+  // objects.id -> ifc_guid (reverse of guidMap) - for translating DB->3D commands.
   const objectIdToGuid = useMemo(() => {
     const m = new Map<string, string>();
     for (const [guid, oid] of Object.entries(guidMap)) m.set(oid, guid);
     return m;
   }, [guidMap]);
 
-  // iframe src — modely sa autoloadnú cez ?models=<url>,<url> (AimBridge/
-  // ViewerLayout). URLSearchParams zakóduje čiarky/URL bezpečne; viewer ich
-  // dekóduje späť a splitne na ','.
+  // iframe src - models are autoloaded via ?models=<url>,<url> (AimBridge/
+  // ViewerLayout). URLSearchParams encodes commas/URLs safely; the viewer
+  // decodes them back and splits on ','.
   const src = useMemo(() => {
     if (!viewerOrigin) return null;
     const u = new URL(viewerUrl);
@@ -346,11 +346,11 @@ export function IFCViewer({
     return u.toString();
   }, [models, viewerOrigin, viewerUrl]);
 
-  // Stabilný kľúč — iframe sa remountuje len keď sa zmenia URL modelov alebo viewer (D-116).
+  // Stable key - the iframe is remounted only when the model URLs or the viewer change (D-116).
   const modelsKey = `${viewerUrl}#${models.map((m) => m.url).join("|")}`;
 
-  // Reset stavu pri zmene modelov — React pattern „adjust state during render"
-  // (nie setState v effekte). V praxi sa modely počas session nemenia.
+  // Reset of state on a change of models - the React pattern "adjust state during render"
+  // (not setState in an effect). In practice models do not change during a session.
   const [prevModelsKey, setPrevModelsKey] = useState(modelsKey);
   if (modelsKey !== prevModelsKey) {
     setPrevModelsKey(modelsKey);
@@ -358,10 +358,10 @@ export function IFCViewer({
     setLoad(INITIAL_LOAD_STATE);
   }
 
-  // Poistka: ak MODELS_LOADED nepríde (viewer nemá chybovú správu), loader nesmie
-  // visieť donekonečna - ukáž chybovú hlášku; neskorý MODELS_LOADED ju prepíše.
+  // Safeguard: if MODELS_LOADED does not arrive (the viewer has no error message), the loader must not
+  // hang forever - show an error message; a late MODELS_LOADED overwrites it.
   useEffect(() => {
-    // Po prvej geometrii je model vidieť a dokresľuje sa; chybová hláška by ho zakryla.
+    // After the first geometry the model is visible and being completed; an error message would cover it.
     if (status !== "loading" || load.firstGeometry) return;
     logLoadPhase("čakám na viewer");
     const t = setTimeout(() => {
@@ -369,7 +369,7 @@ export function IFCViewer({
       setStatus("timeout");
     }, LOAD_TIMEOUT_MS);
     return () => clearTimeout(t);
-    // `load` v závislostiach: každá správa o priebehu odmeria 120 s odznova (nečinnosť, nie celkový čas).
+    // `load` in the dependencies: every progress message restarts the 120 s measurement (inactivity, not total time).
   }, [status, modelsKey, load]);
 
   function post(msg: Record<string, unknown>) {
@@ -380,11 +380,11 @@ export function IFCViewer({
     );
   }
 
-  /** Zápisy pohľadov idú za sebou: odpoveď každého nesie úplný zoznam, starší by prepísal novší (D-161). */
+  /** View writes go one after another: the reply of each carries the full list, an older one would overwrite a newer one (D-161). */
   const viewsQueueRef = useRef<Promise<void>>(Promise.resolve());
   const viewsWarnedRef = useRef(false);
 
-  /** Zoznam z DB do Presentation (`VIEWS_LOAD`): po načítaní modelov a po každom zápise. */
+  /** List from the DB into Presentation (`VIEWS_LOAD`): after the models load and after every write. */
   function sendViews(views: unknown) {
     if (!loadedRef.current || !Array.isArray(views)) return;
     const valid = views.filter((v): v is ViewWire => isViewWire(v));
@@ -392,7 +392,7 @@ export function IFCViewer({
     else post(viewsLoadMessage(valid));
   }
 
-  /** Zoznam pohľadov z DB (len čítanie) do Presentation; ide za zápismi, aby nepredbehol ich výsledok. */
+  /** List of views from the DB (read-only) into Presentation; goes after the writes so that it does not outrun their result. */
   function loadViews() {
     viewsQueueRef.current = viewsQueueRef.current
       .then(async () => {
@@ -403,7 +403,7 @@ export function IFCViewer({
       .catch((err: unknown) => console.warn("[ifc-viewer] pohľady sa nenačítali", err));
   }
 
-  /** Zápis pohľadu z panela alebo z chatu (`VIEW_SAVE`, `VIEW_RENAME`, `VIEW_DELETE`); zapnutie je v route (env brána). */
+  /** View write from the panel or from the chat (`VIEW_SAVE`, `VIEW_RENAME`, `VIEW_DELETE`); enabling is in the route (env gate). */
   function writeViews(method: "POST" | "PATCH" | "DELETE", payload: Record<string, unknown>) {
     viewsQueueRef.current = viewsQueueRef.current
       .then(async () => {
@@ -416,7 +416,7 @@ export function IFCViewer({
         sendViews(((await r.json()) as { views?: unknown }).views);
       })
       .catch((err: unknown) => {
-        // Pohľad žije vo vieweri aj bez zápisu; zamietnutý zápis (vypnutá brána) zaloguj raz.
+        // The view lives in the viewer even without a write; a rejected write (gate turned off) is logged once.
         if (viewsWarnedRef.current) return;
         viewsWarnedRef.current = true;
         console.error("saved views write failed", err);
@@ -424,8 +424,8 @@ export function IFCViewer({
   }
 
   /**
-   * IDS z AIM do panela (D-162): `ids_open` z chatu. Klient si XML stiahne z `GET /api/ids` (živý kanál ho nenesie)
-   * a pošle forku `IDS_LOAD`; chyba sa neskryje, `APPLIED` ju ukáže chatu ako problém.
+   * IDS from AIM into the panel (D-162): `ids_open` from the chat. The client downloads the XML from `GET /api/ids` (the live channel does not carry it)
+   * and sends the fork `IDS_LOAD`; an error is not hidden, `APPLIED` shows it to the chat as a problem.
    */
   async function openIds(o: IdsOpenOp) {
     const r = await fetch(`/api/ids?code=${encodeURIComponent(o.code)}${o.version ? `&version=${o.version}` : ""}`, { cache: "no-store" });
@@ -435,8 +435,8 @@ export function IFCViewer({
   }
 
   /**
-   * Clash z AIM do panela (D-164): `clash_open` z chatu. Klient si test a beh stiahne z `GET /api/clash` (živý kanál
-   * kolízie nenesie) a pošle forku `CLASH_LOAD`; chyba sa neskryje, `APPLIED` ju ukáže chatu ako problém.
+   * Clash from AIM into the panel (D-164): `clash_open` from the chat. The client downloads the test and run from `GET /api/clash` (the live channel
+   * does not carry the clashes) and sends the fork `CLASH_LOAD`; an error is not hidden, `APPLIED` shows it to the chat as a problem.
    */
   async function openClash(o: ClashOpenOp) {
     const r = await fetch(`/api/clash?test=${encodeURIComponent(o.test)}${o.run ? `&run=${encodeURIComponent(o.run)}` : ""}`, { cache: "no-store" });
@@ -446,8 +446,8 @@ export function IFCViewer({
   }
 
   /**
-   * Podklady nanovo (D-168): `underlays_load` po `calibrate_underlay mode=restore`. Klient si ich stiahne z
-   * `GET /api/underlay` a pošle forku `UNDERLAYS_LOAD`, rovnako ako pri štarte.
+   * Underlays anew (D-168): `underlays_load` after `calibrate_underlay mode=restore`. The client downloads them from
+   * `GET /api/underlay` and sends the fork `UNDERLAYS_LOAD`, same as at startup.
    */
   async function reloadUnderlays() {
     const r = await fetch("/api/underlay", { cache: "no-store" });
@@ -456,7 +456,7 @@ export function IFCViewer({
     post({ type: "UNDERLAYS_LOAD", drawings: body.drawings ?? [] });
   }
 
-  /** Uloženie z panela clash (`CLASH_SAVE`): route je za env bránou; výsledok sa vráti ako `CLASH_SAVED` (tlačidlo ho ukáže). */
+  /** Save from the clash panel (`CLASH_SAVE`): the route is behind the env gate; the result returns as `CLASH_SAVED` (the button shows it). */
   function saveClash(raw: unknown) {
     const save = parseClashSave(raw);
     const reply = (result: ClashSaveResult) => post(clashSavedMessage(result));
@@ -470,8 +470,8 @@ export function IFCViewer({
       .catch((err: unknown) => reply({ ok: false, error: err instanceof Error ? err.message : "uloženie zlyhalo" }));
   }
 
-  /** Uloženie IDS z panela (`IDS_SAVE`): route je za env bránou; výsledok sa vráti ako `IDS_SAVED` (tlačidlo ho ukáže). */
-  /** Knižnica požiadaviek (D-182): modul sa načíta pri prvej žiadosti karty; revíziu modelu pozná host z `models`. */
+  /** Saving IDS from the panel (`IDS_SAVE`): the route is behind the env gate; the result returns as `IDS_SAVED` (the button shows it). */
+  /** Requirements library (D-182): the module is loaded at the first request of the card; the host knows the model revision from `models`. */
   function runReqlib(raw: unknown) {
     void import("@/lib/viewer-reqlib").then(async ({ parseReqlibRequest, runReqlibRequest }) => {
       const req = parseReqlibRequest(raw);
@@ -479,7 +479,7 @@ export function IFCViewer({
     });
   }
 
-  /** Overenie výmer (D-185 UI): modul sa načíta pri prvej žiadosti; `run_all` z jednej karty len jeden naraz. */
+  /** Verification of quantities (D-185 UI): the module is loaded at the first request; `run_all` from one card only one at a time. */
   const verifyRunAllRef = useRef({ busy: false });
   function runVerify(raw: unknown) {
     void import("@/lib/viewer-verify").then(async ({ parseVerifyRequest, runVerifyRequest }) => {
@@ -488,7 +488,7 @@ export function IFCViewer({
     });
   }
 
-  /** ICDD z ribbonu (D-181): knižnica sa načíta až pri prvom použití, práca beží v okne hosta. */
+  /** ICDD from the ribbon (D-181): the library is loaded only on first use, the work runs in the host window. */
   function runIcdd(raw: unknown) {
     void (async () => {
       const [{ parseIcddRequest, runIcddRequest }, client] = await Promise.all([
@@ -505,7 +505,7 @@ export function IFCViewer({
     })();
   }
 
-  /** Import .bcfzip z BCF panela (`BCF_IMPORT`): route je za env bránou; výsledok sa vráti ako `BCF_IMPORTED`. */
+  /** Import of .bcfzip from the BCF panel (`BCF_IMPORT`): the route is behind the env gate; the result returns as `BCF_IMPORTED`. */
   function importBcf(raw: unknown) {
     void (async () => {
       const { parseBcfImport, bcfImportedMessage, BCF_VIEWER_IMPORT_MAX_BYTES } = await import("@/lib/viewer-bcf-import");
@@ -542,17 +542,17 @@ export function IFCViewer({
       .catch((err: unknown) => reply({ ok: false, error: err instanceof Error ? err.message : "uloženie zlyhalo" }));
   }
 
-  // GUID-nosné príkazy vydané pred MODELS_LOADED (klik na „3D: N prvkov" počas
-  // parsovania, soft-nav focus) by viewer zahodil — resolveGuids pred
-  // naparsovaním modelov nič nenájde. Queue-ujú sa a flushnú v handleri
-  // MODELS_LOADED (prenesené z už zmazaného ifc-viewer-embed.tsx).
+  // GUID-carrying commands issued before MODELS_LOADED (a click on "3D: N elements" during
+  // parsing, soft-nav focus) would be dropped by the viewer - resolveGuids finds nothing
+  // before the models are parsed. They are queued and flushed in the
+  // MODELS_LOADED handler (carried over from the already deleted ifc-viewer-embed.tsx).
   const pendingRef = useRef<Record<string, unknown>[]>([]);
-  // Otázky D-085 čakajúce na QUERY_RESULT z iframu, podľa id.
+  // D-085 questions waiting for QUERY_RESULT from the iframe, by id.
   const queriesRef = useRef(new Map<string, (r: LiveReplyPayload) => void>());
-  // Ops AI docku idú po sebe; relatívna kamera v nich čaká na view_state (D-098).
+  // AI dock ops go one after another; a relative camera in them waits for view_state (D-098).
   const opsChainRef = useRef<Promise<void>>(Promise.resolve());
-  // Príkazy živého kanála vykonané na mieste (D-101): nonce, ktorý už soft-nav efekt nezopakuje,
-  // a príkazy, ktoré prišli pred MODELS_LOADED.
+  // Live channel commands executed in place (D-101): a nonce that the soft-nav effect no longer repeats,
+  // and commands that arrived before MODELS_LOADED.
   const liveNonceRef = useRef<string | null>(null);
   const pendingLiveRef = useRef<LiveApply[]>([]);
   const cameraQueryRef = useRef(0);
@@ -562,8 +562,8 @@ export function IFCViewer({
   }
 
   /**
-   * Po selekcii vo viewri dotiahne DB súhrn a pošle ho do AIM karty
-   * v natívnom paneli viewera (AIM_PANEL_DATA / AIM_PANEL_EMPTY).
+   * After a selection in the viewer fetches the DB summary and sends it to the AIM card
+   * in the native viewer panel (AIM_PANEL_DATA / AIM_PANEL_EMPTY).
    */
   function sendAimPanel(guid: string, objectId: string | undefined) {
     aimAbortRef.current?.abort();
@@ -576,15 +576,15 @@ export function IFCViewer({
 
     const controller = new AbortController();
     aimAbortRef.current = controller;
-    // Jeden fetch: /api/element vracia od D-077 obohatený detail vrátane
-    // capture súhrnu (paralelný /api/captures/summary z D-073 už netreba).
+    // One fetch: since D-077 /api/element returns an enriched detail including the
+    // capture summary (the parallel /api/captures/summary from D-073 is no longer needed).
     fetch(`/api/element/${objectId}`, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
         return r.json() as Promise<ElementDetail>;
       })
       .then((detail) => {
-        if (aimGuidRef.current !== guid) return; // medzičasom iná selekcia
+        if (aimGuidRef.current !== guid) return; // meanwhile another selection
         post({ type: "AIM_PANEL_DATA", guid, data: nodeSummaryToAimPanel(detail, guid) });
       })
       .catch((err: unknown) => {
@@ -595,21 +595,21 @@ export function IFCViewer({
   }
 
   /**
-   * Aplikuje viewer ops AI docku (D-066, pohľad D-083) - jedna op = jedna
-   * bridge správa; formát a preklad žijú v `lib/viewer-ops.ts`.
+   * Applies the AI dock viewer ops (D-066, view D-083) - one op = one
+   * bridge message; the format and translation live in `lib/viewer-ops.ts`.
    */
   function applyOps(raw: string) {
     const list = parseOps(raw);
-    // Relatívny krok kamery čaká na view_state; ops za ním idú až potom, aby
-    // poradie ostalo také, ako ho poslal tool (D-098).
+    // A relative camera step waits for view_state; the ops after it go only then, so that
+    // the order stays as the tool sent it (D-098).
     opsChainRef.current = opsChainRef.current.then(async () => {
       for (const o of list) {
         if (o.op === "camera" && hasRelativeStep(o)) await applyRelativeCamera(o);
         else if (o.op === "lens" && lensScopeKeys(o.wire).length > 0) {
-          // Zóna alebo dokument z grafu AIM (D-096, D-104): GUIDy prvkov si klient stiahne sám.
+          // A zone or document from the AIM graph (D-096, D-104): the client downloads the element GUIDs itself.
           post(lensBridgeMessage(o.mode, o.wire, await fetchScopeGuids(lensScopeKeys(o.wire)), o.rev));
         } else if (o.op === "list" && (listScopeKeys(o.wire).length > 0 || listHostKeys(o.wire).length > 0)) {
-          // Zóna alebo dokument (D-096) a hodnoty host stĺpcov z DB (D-174): klient si ich stiahne sám.
+          // A zone or document (D-096) and the values of host columns from the DB (D-174): the client downloads them itself.
           post(listBridgeMessage(o.wire, await fetchScopeGuids(listScopeKeys(o.wire)), await fetchHostValues(listHostKeys(o.wire))));
         } else if (o.op === "ids_open") {
           await openIds(o);
@@ -618,7 +618,7 @@ export function IFCViewer({
         } else if (o.op === "underlays_load") {
           await reloadUnderlays();
         } else post(opToBridgeMessage(o));
-        // Reset farieb vypne aj AIM chat lens a zmaže čiaru trasy aj kóty od Claude (D-137, D-152), zobraziť všetko zruší izoláciu z chatu (D-096, D-137).
+        // A color reset also turns off the AIM chat lens and deletes the route line and the dimensions from Claude (D-137, D-152), show all cancels the isolation from the chat (D-096, D-137).
         if (o.op === "reset_colors") {
           post({ type: "APPLY_LENS", mode: "clear" });
           post({ type: "ROUTE_SHOW", points: [] });
@@ -630,9 +630,9 @@ export function IFCViewer({
   }
 
   /**
-   * "Ukázať v 3D" z otvoreného dokumentu (D-104 krok 4): X-ray prvkov strany; strana bez
-   * vlastných prvkov (titulná, výkres bez odkazov na strany) ukáže celý dokument. Ide v
-   * reťazci ops, aby sa neprekrížila s lens z chatu.
+   * "Show in 3D" ("Ukázať v 3D") from an open document (D-104 step 4): X-ray of the page's elements; a page without
+   * its own elements (title page, a drawing without links to pages) shows the whole document. It goes in
+   * the ops chain so that it does not cross with the lens from the chat.
    */
   function showDocumentIn3d(documentId: string, page: number | undefined) {
     opsChainRef.current = opsChainRef.current.then(async () => {
@@ -648,7 +648,7 @@ export function IFCViewer({
     }).catch((err: unknown) => console.warn("[ifc-viewer] dokument v 3D", err));
   }
 
-  /** Potvrdenie (D-101): ACK_REQUEST ide za ops v tom istom reťazci, fork ho vybaví po nich. */
+  /** Confirmation (D-101): ACK_REQUEST goes after the ops in the same chain, the fork handles it after them. */
   function requestAck(cmdIds: string[]) {
     if (cmdIds.length === 0) return;
     opsChainRef.current = opsChainRef.current.then(() => {
@@ -656,7 +656,7 @@ export function IFCViewer({
     });
   }
 
-  /** Príkaz živého kanála na mieste (D-101): to isté ako focus/ops z URL, bez navigácie. */
+  /** A live channel command in place (D-101): the same as focus/ops from the URL, without navigation. */
   function runLive(a: LiveApply) {
     if (a.focus) post({ type: "FOCUS", guids: a.focus.split(",") });
     if (a.ops) applyOps(a.ops);
@@ -664,8 +664,8 @@ export function IFCViewer({
   }
 
   /**
-   * Otázka spätného kanála (D-085) forku: QUERY -> QUERY_RESULT s tým istým id.
-   * Pýta sa ňou živý kanál aj host sám (relatívna kamera).
+   * A question of the back channel (D-085) to the fork: QUERY -> QUERY_RESULT with the same id.
+   * It is asked by the live channel and by the host itself (relative camera).
    */
   function askViewer(q: LiveQueryPayload): Promise<LiveReplyPayload> {
     return new Promise<LiveReplyPayload>((resolve) => {
@@ -683,7 +683,7 @@ export function IFCViewer({
         resolve(r);
       });
       if (q.query === "lens_state") {
-        // Počty AIM chat lens (D-096): viewer počká na vyhodnotenie verzie `rev`.
+        // Counts of the AIM chat lens (D-096): the viewer waits for the evaluation of version `rev`.
         post({ type: "LENS_QUERY", id: q.id, ...(q.rev ? { rev: q.rev } : {}) });
         return;
       }
@@ -692,9 +692,9 @@ export function IFCViewer({
   }
 
   /**
-   * Relatívny zoom/orbit/posun (D-098): aktuálna póza z view_state, nová
-   * póza čistou funkciou `relativeViewpoint`, do forku ako `SET_CAMERA
-   * {viewpoint}` (fork ju len prenesie do kamery).
+   * Relative zoom/orbit/pan (D-098): the current pose from view_state, the new
+   * pose by the pure function `relativeViewpoint`, to the fork as `SET_CAMERA
+   * {viewpoint}` (the fork only carries it over to the camera).
    */
   async function applyRelativeCamera(o: CameraMove) {
     const r = await askViewer({ id: `camera-${++cameraQueryRef.current}`, query: "view_state" });
@@ -706,7 +706,7 @@ export function IFCViewer({
     post({ type: "SET_CAMERA", preset: "keep", viewpoint: relativeViewpoint(camera, o) });
   }
 
-  // ── Príjem správ z iframu (3D → DB) ─────────────────────────────────────
+  // ── Receiving messages from the iframe (3D -> DB) ─────────────────────────────────────
   useEffect(() => {
     readyRef.current = false;
 
@@ -719,12 +719,12 @@ export function IFCViewer({
         case "READY": {
           readyRef.current = true;
           logLoadPhase("READY");
-          // Overlay (loader D-163) drží až do MODELS_LOADED: po READY by sa pod
-          // ním ukázala vlastná úvodka forku (veil AimBridge) a progresívne
-          // odkrývanie modelu, teda druhá obrazovka načítavania. Visenie
-          // poistí timeout nižšie.
-          // Naplň ViewerApi až po READY — presne ako pôvodný kontrakt, kde
-          // apiRef.current bol null pred načítaním scény.
+          // The overlay (loader D-163) holds until MODELS_LOADED: after READY the fork's own intro (the AimBridge veil)
+          // and the progressive reveal of the model would show under it, i.e. a second loading screen.
+          // A hang is
+          // guarded by the timeout below.
+          // Fill ViewerApi only after READY - exactly like the original contract, where
+          // apiRef.current was null before the scene loaded.
           if (apiRef) apiRef.current = makeApi();
           break;
         }
@@ -742,13 +742,13 @@ export function IFCViewer({
           break;
         }
         case "MODELS_LOADED": {
-          // Modely sú naparsované — až teraz vie resolveGuids nájsť prvok.
-          // Počiatočný deep-link focus/ops (?focus=…&ops=…) aplikuj tu, nie na READY.
+          // The models are parsed - only now can resolveGuids find the element.
+          // Apply the initial deep-link focus/ops (?focus=...&ops=...) here, not on READY.
           loadedRef.current = true;
           logLoadPhase("MODELS_LOADED");
           setStatus("ready");
-          // Obnova stránky alebo karty s adresou príkazu (živý príkaz ju prepíše, D-101) príkaz
-          // nezopakuje: čerstvý štart je bez rezu a pohľadu, kým ich niekto nežiada (#313).
+          // A page or tab reload with a command address (a live command overwrites it, D-101) does not
+          // repeat the command: a fresh start is without a section and view until someone asks for them (#313).
           const restored =
             (!!focus || !!ops) &&
             isRestoredCommandUrl(
@@ -760,47 +760,47 @@ export function IFCViewer({
             window.history.replaceState(window.history.state, "", withoutCommandParams(window.location.href));
           }
           if (focus && !restored) post({ type: "FOCUS", guids: focus.split(",") });
-          // PDF podklady (D-072) — až po naparsovaní modelov, aby viewer vedel
-          // resolvnúť storey GUIDy z placementov.
+          // PDF underlays (D-072) - only after the models are parsed, so that the viewer can
+          // resolve the storey GUIDs from the placements.
           if (underlays && underlays.length > 0) {
             post({ type: "UNDERLAYS_LOAD", drawings: underlays });
           }
-          // Knižnica dokumentov (D-075) — rovnaký timing slot; kalibrované
-          // výkresy idú v oboch správach (prepojenie cez documentId/storeyGuid).
+          // Document library (D-075) - the same timing slot; calibrated
+          // drawings go in both messages (linked via documentId/storeyGuid).
           if (documents && documents.length > 0) {
             post({ type: "DOCUMENTS_LOAD", documents });
-            // Popisky pôdorysov ako odkazy (D-130): až keď viewer knižnicu dokumentov má.
+            // Floor plan labels as links (D-130): only once the viewer has the document library.
             if (documentLinks && documentLinks.length > 0) post({ type: "DOCUMENT_LINKS", documents: documentLinks });
-            // Deep link `?doc=<id>` — otvor kartu až keď viewer knižnicu má.
+            // Deep link `?doc=<id>` - open the card only once the viewer has the library.
             if (openDocumentId) {
               post({ type: "DOCUMENT_OPEN", documentId: openDocumentId });
             }
           }
-          // Reality Capture piny (D-073) — world-ukotvené capture pointy; spaceId
-          // je host-only (navigácia po kliku), do viewera sa neposiela.
+          // Reality Capture pins (D-073) - world-anchored capture points; spaceId
+          // is host-only (navigation after a click), it is not sent to the viewer.
           if (captures && captures.length > 0) {
             post({ type: "CAPTURES_LOAD", captures: toCapturePins(captures) });
           }
-          // AIM dekorácie stromu (D-077) — badge counts per GUID.
+          // AIM tree decorations (D-077) - badge counts per GUID.
           if (decorations && Object.keys(decorations).length > 0) {
             post({ type: "AIM_TREE_DECORATIONS", decorations });
           }
-          // Vrstva AIM nad modelmi (D-089): pravidlá odvodení, počty, revízie modelov.
+          // AIM layer above the models (D-089): derivation rules, counts, model revisions.
           if (derivations) post({ type: "AIM_DERIVATIONS_LOAD", layer: derivations });
-          // BCF témy (D-099): viewer si ich načíta z /api/bcf tohto originu bez tokenu.
+          // BCF topics (D-099): the viewer loads them from /api/bcf of this origin without a token.
           post(bcfLoadMessage(window.location.origin, projectCode));
-          // Pohľady z DB (D-161) do panela Presentation; odpoveď príde až po ops, ale `VIEW_ACTIVATE` z ops
-          // si pohľad hľadá vo vieweri, preto ju fork zaradí do brány príkazov za ne.
+          // Views from the DB (D-161) into the Presentation panel; the reply arrives only after the ops, but `VIEW_ACTIVATE` from the ops
+          // looks the view up in the viewer, so the fork queues it in the command gate behind them.
           loadViews();
-          // Ops až po podkladoch, dokumentoch a pinoch (D-083): `view:2d` potrebuje
-          // vedieť, či má podlažie kalibrovaný výkres, a `doc` otvorí len dokument,
-          // ktorý viewer už dostal v DOCUMENTS_LOAD.
+          // Ops only after underlays, documents and pins (D-083): `view:2d` needs
+          // to know whether the storey has a calibrated drawing, and `doc` opens only a document
+          // that the viewer already received in DOCUMENTS_LOAD.
           if (ops && !restored) applyOps(ops);
-          // Flush príkazov vydaných pred načítaním modelov (viď send()).
+          // Flush of commands issued before the models loaded (see send()).
           const queued = pendingRef.current;
           pendingRef.current = [];
           for (const msg of queued) post(msg);
-          // D-101: potvrdenie príkazu, ktorý prišiel navigáciou, a príkazy na mieste spred načítania.
+          // D-101: confirmation of a command that arrived via navigation, and the in-place commands from before the load.
           requestAck(takePendingCmdIds());
           const live = pendingLiveRef.current;
           pendingLiveRef.current = [];
@@ -830,13 +830,13 @@ export function IFCViewer({
           break;
         }
         case "ENTITY_DESELECTED":
-          // AIM kartu si viewer čistí sám pri deselekcii; tu stačí zahodiť
-          // rozbehnutý fetch, aby stale odpoveď nešla do ďalšej selekcie.
+          // The viewer clears the AIM card itself on deselection; here it is enough to drop
+          // the running fetch so that a stale reply does not go to the next selection.
           aimAbortRef.current?.abort();
           aimGuidRef.current = null;
           break;
         case "AIM_NAVIGATE": {
-          // Len host-relatívne cesty — obrana pred navigáciou na cudzie URL.
+          // Only host-relative paths - a defense against navigation to foreign URLs.
           const href = e.data.href;
           if (typeof href === "string" && href.startsWith("/") && !href.startsWith("//")) {
             onNavigate?.(href);
@@ -856,9 +856,9 @@ export function IFCViewer({
           break;
         }
         case "DOCUMENT_EVENT":
-          // D-075: zatiaľ bez host-side využitia (kandidát: recents/analytics).
-          // Prijíma sa naschvál — neznámy typ by inak skončil ako šum v konzole
-          // budúceho stricter handlera.
+          // D-075: no host-side use yet (candidate: recents/analytics).
+          // It is accepted on purpose - an unknown type would otherwise end up as noise in the console
+          // of a future stricter handler.
           break;
         case "VIEW_SAVE": {
           const { view, capture_id: captureId } = e.data;
@@ -895,8 +895,8 @@ export function IFCViewer({
           importBcf(e.data);
           break;
         case "UNDERLAY_SAVE": {
-          // Kalibrácia z viewera → perzistuj _georef (D-072). Server payload
-          // validuje (isValidGeorefV1) a zapína/vypína zápis env bránou.
+          // Calibration from the viewer -> persist _georef (D-072). The server validates the payload
+          // (isValidGeorefV1) and turns writing on/off via the env gate.
           const { documentId, georef, calibrationIndex } = e.data;
           if (typeof documentId !== "string" || documentId.length === 0) return;
           void fetch(`/api/underlay/${encodeURIComponent(documentId)}`, {
@@ -910,8 +910,8 @@ export function IFCViewer({
               throw new Error(`${r.status}${typeof body?.error === "string" ? `: ${body.error}` : ""}`);
             })
             .catch((err: unknown) => {
-              // Kalibrácia žije vo viewri aj bez zápisu, po obnove stránky by sa ale stratila:
-              // používateľ to musí vidieť, nielen konzola (#317).
+              // The calibration lives in the viewer even without a write, but would be lost after a page reload:
+              // the user must see it, not just the console (#317).
               console.error("underlay save failed", err);
               setSaveError(err instanceof Error ? err.message : String(err));
             });
@@ -939,7 +939,7 @@ export function IFCViewer({
     }
 
     window.addEventListener("message", onMessage);
-    // Spätný kanál (D-085): otázku pošli forku až s naparsovanými modelmi.
+    // Back channel (D-085): send the question to the fork only with parsed models.
     const pendingQueries = queriesRef.current;
     const unregisterQueries = setViewerQueryHandler(askViewer);
     const unregisterApply = setLiveApplyHandler((a) => {
@@ -964,37 +964,37 @@ export function IFCViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelsKey, viewerOrigin]);
 
-  // ── Focus (karta/AI dock → 3D), reaktívne pri soft-nav (D-056). Pred
-  // MODELS_LOADED sa cez send() queue-uje (počiatočný ?focus= z URL posiela
-  // handler MODELS_LOADED sám — pred READY sa preto neposiela nič).
+  // ── Focus (card/AI dock -> 3D), reactive on soft-nav (D-056). Before
+  // MODELS_LOADED it is queued via send() (the initial ?focus= from the URL is sent
+  // by the MODELS_LOADED handler itself - so nothing is sent before READY).
   useEffect(() => {
     if (!readyRef.current || !focus) return;
-    if (focusNonce && focusNonce === liveNonceRef.current) return; // už vykonané na mieste (D-101)
+    if (focusNonce && focusNonce === liveNonceRef.current) return; // already executed in place (D-101)
     send({ type: "FOCUS", guids: focus.split(",") });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, focusNonce]);
 
-  // ── Viewer ops AI docku (ofarbenie/skrytie/izolácia, D-066) pri soft-nav.
-  // Pred MODELS_LOADED nemá zmysel posielať (GUIDy sa nedajú resolvnúť) —
-  // počiatočné ops aplikuje handler MODELS_LOADED vyššie.
+  // ── AI dock viewer ops (coloring/hiding/isolation, D-066) on soft-nav.
+  // Sending before MODELS_LOADED makes no sense (GUIDs cannot be resolved) -
+  // the initial ops are applied by the MODELS_LOADED handler above.
   useEffect(() => {
     if (!loadedRef.current || !ops) return;
-    if (focusNonce && focusNonce === liveNonceRef.current) return; // už vykonané na mieste (D-101)
+    if (focusNonce && focusNonce === liveNonceRef.current) return; // already executed in place (D-101)
     applyOps(ops);
     requestAck(takePendingCmdIds());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ops, focusNonce]);
 
-  // ── Reality Capture piny (D-073) — re-send po zmene (napr. po uploade +
-  // router.refresh()). Pred MODELS_LOADED sa piny pošlú v jeho handleri vyššie.
+  // ── Reality Capture pins (D-073) - re-send on a change (e.g. after an upload +
+  // router.refresh()). Before MODELS_LOADED the pins are sent in its handler above.
   useEffect(() => {
     if (!loadedRef.current) return;
     post({ type: "CAPTURES_LOAD", captures: toCapturePins(captures ?? []) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [captures]);
 
-  // ── Dokumenty (D-075) — re-send po zmene (router.refresh po ETL/uploade).
-  // Pred MODELS_LOADED ich pošle handler MODELS_LOADED vyššie.
+  // ── Documents (D-075) - re-send on a change (router.refresh after ETL/upload).
+  // Before MODELS_LOADED the MODELS_LOADED handler above sends them.
   useEffect(() => {
     if (!loadedRef.current) return;
     post({ type: "DOCUMENTS_LOAD", documents: documents ?? [] });
@@ -1002,15 +1002,15 @@ export function IFCViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documents, documentLinks]);
 
-  // ── AIM dekorácie stromu (D-077) — re-send po zmene (router.refresh po ETL).
-  // Pred MODELS_LOADED ich pošle handler MODELS_LOADED vyššie.
+  // ── AIM tree decorations (D-077) - re-send on a change (router.refresh after ETL).
+  // Before MODELS_LOADED the MODELS_LOADED handler above sends them.
   useEffect(() => {
     if (!loadedRef.current) return;
     post({ type: "AIM_TREE_DECORATIONS", decorations: decorations ?? {} });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [decorations]);
 
-  // ── BCF témy (D-099) — po zápise z chatu príde udalosť zo živého kanála.
+  // ── BCF topics (D-099) - after a write from the chat an event comes from the live channel.
   useEffect(() => {
     const reload = () => {
       if (loadedRef.current) post(bcfLoadMessage(window.location.origin, projectCode));
@@ -1020,7 +1020,7 @@ export function IFCViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Esc v hoste (#94) — po show_in_3d je fokus v chate, Esc sa do iframe nedostane.
+  // ── Esc in the host (#94) - after show_in_3d the focus is in the chat, Esc does not reach the iframe.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!loadedRef.current) return;
@@ -1032,7 +1032,7 @@ export function IFCViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Pohľady (D-161) — chat ich premenoval, zmazal alebo prepísal: zoznam z DB znova.
+  // ── Views (D-161) - the chat renamed, deleted or overwrote them: the list from the DB again.
   useEffect(() => {
     const reload = () => {
       if (loadedRef.current) loadViews();
@@ -1042,23 +1042,23 @@ export function IFCViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Vrstva AIM (D-089) — re-send po zmene (router.refresh po novej revízii).
+  // ── AIM layer (D-089) - re-send on a change (router.refresh after a new revision).
   useEffect(() => {
     if (!loadedRef.current || !derivations) return;
     post({ type: "AIM_DERIVATIONS_LOAD", layer: derivations });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [derivations]);
 
-  // ── `?doc=` deep link pri soft-navigácii (D-075): handler MODELS_LOADED ho
-  // pokrýva len pri prvom otvorení stránky — na už načítanej scéne sa iframe
-  // neremountuje a MODELS_LOADED znova nepríde, takže sa posiela reaktívne.
+  // ── `?doc=` deep link on soft navigation (D-075): the MODELS_LOADED handler
+  // covers it only on the first page open - on an already loaded scene the iframe
+  // is not remounted and MODELS_LOADED does not arrive again, so it is sent reactively.
   useEffect(() => {
     if (!loadedRef.current || !openDocumentId) return;
     post({ type: "DOCUMENT_OPEN", documentId: openDocumentId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openDocumentId]);
 
-  // Misconfigurácia (nevalidná NEXT_PUBLIC_IFC_VIEWER_URL) — fail-closed UI.
+  // Misconfiguration (an invalid NEXT_PUBLIC_IFC_VIEWER_URL) - fail-closed UI.
   if (!viewerOrigin || !src) {
     return (
       <div className="relative h-full w-full overflow-hidden rounded-md ring-1 ring-border">
@@ -1087,11 +1087,11 @@ export function IFCViewer({
         allow="fullscreen"
       />
 
-      {/* Nepriehľadný overlay — kým sa nenačíta federácia, nesmie presvitať
-          ifc-lite úvodná obrazovka s ich logom (D-163: biele pozadie + animované logo). */}
+      {/* Opaque overlay - until the federation loads, the ifc-lite intro screen with their logo
+          must not show through (D-163: white background + animated logo). */}
       {overlay && <LoadingLogo label="Načítavam 3D scénu" segments={hasLoadProgress(load) ? segments : undefined} />}
 
-      {/* Po prvej geometrii (D-178) model dokresľuje sám viewer; hore ostáva len tenký pásik po modeloch. */}
+      {/* After the first geometry (D-178) the viewer completes the model itself; only a thin per-model strip stays at the top. */}
       {showStrip && <LoadProgressBar segments={segments} variant="strip" />}
 
       {status === "timeout" && (

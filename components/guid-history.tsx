@@ -2,9 +2,9 @@ import type { GuidHistoryEntry } from "@/lib/data/relations";
 import { cn, formatDate } from "@/lib/utils";
 
 /**
- * Panel histórie IFC GUID (S3, D-010). IFC GUID nie je identita — mení sa pri
- * reexporte. Aktívny GUID (`valid_until` NULL) sa zhoduje s `objects.ifc_guid`.
- * Bez záznamov ukáže aspoň aktuálny GUID s poznámkou.
+ * IFC GUID history panel (S3, D-010). The IFC GUID is not an identity - it changes on
+ * re-export. The active GUID (`valid_until` NULL) matches `objects.ifc_guid`.
+ * Without records it shows at least the current GUID with a note.
  */
 export function GuidHistory({
   currentGuid,

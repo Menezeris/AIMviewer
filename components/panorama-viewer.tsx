@@ -9,16 +9,16 @@ import { Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /**
- * Immersive 360° prehliadač (D-073, F3) — Photo Sphere Viewer (MIT, three.js) cez
- * `react-photo-sphere-viewer`, host-side v Next.js modáli. BIM engine forku je
- * WebGPU → žiadna three.js koexistenčná kolízia.
+ * Immersive 360° viewer (D-073, F3) - Photo Sphere Viewer (MIT, three.js) via
+ * `react-photo-sphere-viewer`, host-side in a Next.js modal. The BIM engine of the fork is
+ * WebGPU -> no three.js coexistence collision.
  *
- * Textúrová stratégia: načíta `preview` (equirect downscale pod GPU limitom, rýchle
- * načítanie aj na mobile), tlačidlom „HD" prepne na `orig` (do 16K desktop). Modul
- * je určený na dynamický import (`ssr:false`) — PSV je čisto klientský.
+ * Texture strategy: loads `preview` (equirect downscale below the GPU limit, fast
+ * loading on mobile too), the "HD" button switches to `orig` (up to 16K on desktop). The module
+ * is meant for dynamic import (`ssr:false`) - PSV is purely client-side.
  */
 
-// PSV Viewer inštancia má bohaté API; pre setPanorama nám stačí táto časť.
+// The PSV Viewer instance has a rich API; for setPanorama this part is enough for us.
 type ViewerLike = { setPanorama: (src: string) => Promise<unknown> };
 
 export function PanoramaViewer({
@@ -31,11 +31,11 @@ export function PanoramaViewer({
 }: {
   open: boolean;
   onClose: () => void;
-  /** Plné rozlíšenie originálu. */
+  /** Full resolution of the original. */
   src: string;
-  /** Zmenšený náhľad (rýchle prvé načítanie); ak chýba, použije sa `src`. */
+  /** Downscaled preview (fast first load); if missing, `src` is used. */
   preview?: string | null;
-  /** Počiatočná orientácia pohľadu (radiány). */
+  /** Initial view orientation (radians). */
   yaw?: number;
   title?: string | null;
 }) {
@@ -54,7 +54,7 @@ export function PanoramaViewer({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  // Reset HD stavu pri každom otvorení / zmene panorámy.
+  // Reset the HD state on every open / panorama change.
   useEffect(() => {
     setHd(false);
     setLoadingHd(false);

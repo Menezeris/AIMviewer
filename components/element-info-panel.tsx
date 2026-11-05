@@ -8,11 +8,11 @@ import type { SelectedElement } from "@/lib/data/drawing";
 import { AimPanelView } from "@/components/aim-panel-view";
 
 /**
- * Bočný info-panel prehliadačky výkresov (D-042 D): pri kliknutí na prvok vo
- * výkrese načíta jeho detail (`/api/element/[id]`) a zobrazí ho vedľa výkresu.
- * Od D-077 renderuje tú istú AimPanelData schému ako AIM inspector v 3D
- * (mapovanie `nodeSummaryToAimPanel` + render `AimPanelView`) — jeden zdroj
- * pravdy pre „detail prvku" naprieč 2D/3D.
+ * Side info panel of the drawing viewer (D-042 D): on a click on an element in the
+ * drawing it loads its detail (`/api/element/[id]`) and shows it next to the drawing.
+ * Since D-077 it renders the same AimPanelData schema as the AIM inspector in 3D
+ * (mapping `nodeSummaryToAimPanel` + render `AimPanelView`) - one source of
+ * truth for the "element detail" across 2D/3D.
  */
 export function ElementInfoPanel({
   selected,
@@ -20,9 +20,9 @@ export function ElementInfoPanel({
   backLabel = "Späť na dokument",
 }: {
   selected: SelectedElement;
-  /** Návrat na info o dokumente (prepnutie panela späť). */
+  /** Return to the document info (switching the panel back). */
   onBack: () => void;
-  /** Text tlačidla späť. */
+  /** Text of the back button. */
   backLabel?: string;
 }) {
   const [data, setData] = useState<ElementDetail | null>(null);

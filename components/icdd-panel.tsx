@@ -17,7 +17,7 @@ import {
 import { EXTRAS, type Extra } from "@/lib/icdd/model";
 import type { ValidationReport } from "@/lib/icdd/validate";
 
-/** Export ICDD do PC a kontrola kontajnera späť voči AIM (D-181, #350). */
+/** ICDD export to PC and a check of the container back against AIM (D-181, #350). */
 export function IcddPanel() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");

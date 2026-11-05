@@ -5,8 +5,8 @@ import { RefreshCw, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
-// Interval sledovania nového deployu. 60 s = kompromis medzi „rýchlo zbadá" a
-// „nebombarduje endpoint"; kontrola beží aj pri každom návrate na tab.
+// Interval for watching for a new deploy. 60 s = a compromise between "notices quickly" and
+// "does not hammer the endpoint"; the check also runs on every return to the tab.
 const POLL_MS = 60_000;
 
 async function fetchSha(): Promise<string | null> {
@@ -16,20 +16,20 @@ async function fetchSha(): Promise<string | null> {
     const data = (await res.json()) as { sha?: string };
     return data.sha ?? null;
   } catch {
-    // Sieťový výpadok/offline — ticho preskoč, skúsi sa o POLL_MS znova.
+    // Network outage/offline - skip silently, it will be tried again after POLL_MS.
     return null;
   }
 }
 
 /**
- * Sleduje, či na Verceli nepribudol nový deploy, kým máš tab otvorený.
- * Zapamätá si SHA živého deployu pri načítaní a periodicky (+ pri návrate na
- * tab) ho porovnáva; pri zmene ponúkne nenápadnú obnovu. Rieši „staré UI po
- * deployi" — otvorený tab beží starý JS a sám o novom builde nevie (HTML má
- * `no-store` a chunky sú hashované, takže čerstvý reload vždy stačí).
+ * Watches whether a new deploy has appeared on Vercel while you have the tab open.
+ * Remembers the SHA of the live deploy on load and compares it periodically (+ on return to the
+ * tab); on a change it offers an unobtrusive refresh. Solves the "stale UI after
+ * deploy" problem - an open tab runs old JS and does not know about the new build itself (HTML has
+ * `no-store` and chunks are hashed, so a fresh reload is always enough).
  *
- * Toast, nie auto-reload: obnova je vždy na kliknutie, nikdy nevyhodí uprostred
- * práce. Klient-only; v dev je SHA vždy "dev" → nikdy nevyskočí.
+ * A toast, not an auto-reload: refreshing is always on click, it never throws you out in the middle of
+ * work. Client-only; in dev the SHA is always "dev" so it never pops up.
  */
 export function VersionWatcher() {
   const initial = useRef<string | null>(null);
@@ -43,7 +43,7 @@ export function VersionWatcher() {
       const sha = await fetchSha();
       if (!active || sha === null) return;
       if (initial.current === null) {
-        initial.current = sha; // prvá videná verzia = referencia
+        initial.current = sha; // first seen version = reference
       } else if (sha !== initial.current) {
         setStale(true);
       }

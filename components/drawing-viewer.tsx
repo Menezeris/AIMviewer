@@ -21,43 +21,43 @@ import {
 import type { DrawingRegion, SelectedElement } from "@/lib/data/drawing";
 import { CapturePlanOverlay } from "@/components/capture-plan-overlay";
 
-// Worker self-hostovaný z vlastného originu (D-030 perf, dodatok): bundler ho vyrieši z
-// nainštalovaného `pdfjs-dist` (verzia automaticky zhodná s API → žiadny version
-// mismatch) a vyemituje ako hashovaný statický asset. Eliminuje externý fetch na
-// unpkg, ktorý pri každom otvorení výkresu pridával DNS+TLS+stiahnutie ~1 MB pred
-// samotným parsovaním PDF (a vedel visieť/byť rate-limitovaný).
+// Worker self-hosted from our own origin (D-030 perf, addendum): the bundler resolves it from
+// the installed `pdfjs-dist` (version automatically matching the API -> no version
+// mismatch) and emits it as a hashed static asset. Eliminates the external fetch to
+// unpkg, which on every drawing open added DNS+TLS+a download of ~1 MB before
+// the PDF parsing itself (and could hang/be rate-limited).
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
   import.meta.url
 ).toString();
 
-// Lazy načítanie veľkých PDF (D-054 kadencia 3): pdf.js si cez HTTP Range requesty ťahá
-// len xref/page tree + objekty aktuálne renderovanej strany namiesto celého súboru —
-// prvá strana veľkého viacstranového PDF je viditeľná a klikateľná po pár 100 kB.
-// Ak server Range nepodporuje, pdf.js automaticky spadne na plné stiahnutie (dnešné
-// správanie). Supabase Storage Range podporuje. Objekt je modulová konštanta — react-pdf
-// pri novej referencii `options` reloadne celý dokument.
+// Lazy loading of large PDFs (D-054 cadence 3): pdf.js pulls via HTTP Range requests
+// only the xref/page tree + objects of the currently rendered page instead of the whole file -
+// the first page of a large multi-page PDF is visible and clickable after a few 100 kB.
+// If the server does not support Range, pdf.js automatically falls back to the full download (today's
+// behavior). Supabase Storage supports Range. The object is a module constant - react-pdf
+// reloads the whole document on a new `options` reference.
 const DOCUMENT_OPTIONS = {
-  disableAutoFetch: true, // neprednačítavaj zvyšok súboru na pozadí
-  disableStream: true, // vynúti range transport (inak streamuje celý response)
-  rangeChunkSize: 262144, // 256 KB — menej roundtripov na výkresoch s veľkými streammi
+  disableAutoFetch: true, // do not prefetch the rest of the file in the background
+  disableStream: true, // forces the range transport (otherwise it streams the whole response)
+  rangeChunkSize: 262144, // 256 KB - fewer roundtrips on drawings with large streams
 };
 
-const PAD = 16; // px vnútorný padding plátna (`p-4`) — vstupuje do kotvenia zoomu
-const ZOOM_STEP = 0.25; // krok tlačidiel +/−
-const ZOOM_MIN = 0.5; // 1 = „fit to width" viewportu
+const PAD = 16; // px inner padding of the canvas (`p-4`) - enters the zoom anchoring
+const ZOOM_STEP = 0.25; // step of the +/- buttons
+const ZOOM_MIN = 0.5; // 1 = "fit to width" of the viewport
 const ZOOM_MAX = 8;
-const FALLBACK_FIT_WIDTH = 800; // kým sa nezmeria viewport (SSR-less mount)
-// Pri vstupe s `focus` priblíž, nech je drobný kód čitateľný a zvýraznenie viditeľné.
+const FALLBACK_FIT_WIDTH = 800; // until the viewport is measured (SSR-less mount)
+// On entry with `focus` zoom in so that a small code is readable and the highlight visible.
 const FOCUS_ZOOM = 2.5;
-// Strop renderovaného rastra (px na šírku). Vyšší `devicePixelRatio` = ostrejšie tenké
-// čiary/text; strop chráni pred obrími canvasmi pri vysokom zoome (limit prehliadača).
+// Cap of the rendered raster (px of width). A higher `devicePixelRatio` = sharper thin
+// lines/text; the cap protects against giant canvases at high zoom (browser limit).
 const MAX_RENDER_PX = 6000;
-const PAN_THRESHOLD = 6; // px posunu, od ktorého je gesto pan (nie klik na región)
-const DOUBLE_TAP_MS = 300; // max odstup dvoch tapov (dotyk)
-const DOUBLE_TAP_RADIUS = 40; // px tolerancia polohy druhého tapu
-const DOUBLE_TAP_ZOOM = 2.5; // cieľ double-tapu z fit šírky (≈ FOCUS_ZOOM čitateľnosť)
-const GESTURE_COMMIT_MS = 180; // ustálenie kolieska → ostrý rerastr
+const PAN_THRESHOLD = 6; // px of movement from which the gesture is a pan (not a click on a region)
+const DOUBLE_TAP_MS = 300; // max gap between two taps (touch)
+const DOUBLE_TAP_RADIUS = 40; // px tolerance of the position of the second tap
+const DOUBLE_TAP_ZOOM = 2.5; // target of a double-tap from fit width (~ FOCUS_ZOOM readability)
+const GESTURE_COMMIT_MS = 180; // wheel settling -> sharp re-raster
 
 type Dims = { width: number; height: number };
 type Point = { x: number; y: number };
@@ -71,26 +71,26 @@ function clampZoom(z: number) {
 }
 
 /**
- * In-app prehliadačka výkresu (D-042 C+D, rework D-054): render zdrojového PDF
- * (react-pdf / pdf.js) + prekrytie priehľadných klikateľných boxov z `_drawing_links`.
+ * In-app drawing viewer (D-042 C+D, rework D-054): render of the source PDF
+ * (react-pdf / pdf.js) + an overlay of transparent clickable boxes from `_drawing_links`.
  *
- * Ovládanie (D-054): **koliesko myši = zoom** zacielený na kurzor (zoom-to-pointer);
- * **ťahanie = posun** (pan); na dotyku **pinch = zoom, prst = pan, double-tap =
- * priblížiť/fit**; tlačidlo **fullscreen** roztiahne výkres na celú obrazovku
- * (čitateľnosť na veľkom monitore). Predvolený zoom = **fit-to-width** viewportu
+ * Controls (D-054): **mouse wheel = zoom** targeted at the cursor (zoom-to-pointer);
+ * **drag = pan**; on touch **pinch = zoom, finger = pan, double-tap =
+ * zoom in/fit**; the **fullscreen** button stretches the drawing to the whole screen
+ * (readability on a large monitor). Default zoom = **fit-to-width** of the viewport
  * (mobile-first).
  *
- * Výkon + ostrosť (D-054 kadencia 2): počas bežiaceho gesta (koliesko/pinch) sa strana
- * NErastruje — škáluje sa lacným CSS transformom okolo kotvy gesta; ostrý **rerastr**
- * (nie CSS-scale, do `devicePixelRatio` 2×, strop `MAX_RENDER_PX`) príde raz, po
- * ustálení gesta. Veľké výkresy tak pinch/koliesko nezasekáva rastrovaním per frame.
+ * Performance + sharpness (D-054 cadence 2): during a running gesture (wheel/pinch) the page
+ * is NOT re-rastered - it is scaled by a cheap CSS transform around the gesture anchor; the sharp **re-raster**
+ * (not CSS-scale, up to `devicePixelRatio` 2x, cap `MAX_RENDER_PX`) comes once, after
+ * the gesture settles. Large drawings are thus not choked by pinch/wheel rasterizing per frame.
  *
- * Prekliky ostávajú (D-042 D): klik na box **nevyskočí** na novú stránku — vyberie
- * prvok (`onSelect`), detail v bočnom paneli; Ctrl/⌘-klik otvorí detail v novej karte;
- * skladby (D-043) navigujú na Výpis. Pan gesto klik potlačí (`didPan` threshold).
+ * Click-throughs stay (D-042 D): a click on a box **does not jump** to a new page - it selects
+ * the element (`onSelect`), detail in the side panel; Ctrl/Cmd-click opens the detail in a new tab;
+ * assemblies (D-043) navigate to the Listing. A pan gesture suppresses the click (`didPan` threshold).
  *
- * Obojsmernosť (D): `focus` = `objects.id` → skok na stranu, priblíženie, scroll na box
- * a krátky pulz. `selectedId` (riadený zvonku) určuje trvalo zvýraznený prvok.
+ * Bidirectionality (D): `focus` = `objects.id` -> jump to the page, zoom in, scroll to the box
+ * and a short pulse. `selectedId` (controlled from outside) determines the permanently highlighted element.
  */
 export function DrawingViewer({
   url,
@@ -119,7 +119,7 @@ export function DrawingViewer({
   const [dims, setDims] = useState<Dims | null>(null);
   const [pulsing, setPulsing] = useState(Boolean(focusRegion));
   const [isFullscreen, setIsFullscreen] = useState(false);
-  // % stiahnutia počas úvodného načítania dokumentu (null = neznámy total).
+  // % downloaded during the initial document load (null = unknown total).
   const [loadPct, setLoadPct] = useState<number | null>(null);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -128,8 +128,8 @@ export function DrawingViewer({
   const focusBoxRef = useRef<HTMLAnchorElement | null>(null);
   const focusedOnce = useRef(false);
 
-  // Live zoom/fit v ref-e pre natívne (non-passive) wheel/pointer listenery a rAF —
-  // synchronizované v efekte (ref sa nesmie zapisovať počas renderu).
+  // Live zoom/fit in a ref for the native (non-passive) wheel/pointer listeners and rAF -
+  // synchronized in an effect (a ref must not be written during render).
   const zoomRef = useRef(zoom);
   const fitWidthRef = useRef(fitWidth);
   useEffect(() => {
@@ -139,8 +139,8 @@ export function DrawingViewer({
     fitWidthRef.current = fitWidth;
   }, [fitWidth]);
 
-  // Gestá: aktívne pointery, štart panu/pinchu, „práve som pásol" (potlačí klik),
-  // odložená kotva zoomu (aplikuje sa po rerastri v layout efekte).
+  // Gestures: active pointers, start of pan/pinch, "I was just panning" (suppresses the click),
+  // deferred zoom anchor (applied after the re-raster in a layout effect).
   const pointers = useRef<Map<number, Point>>(new Map());
   const panStart = useRef<{ x: number; y: number; left: number; top: number } | null>(
     null
@@ -151,10 +151,10 @@ export function DrawingViewer({
   const pendingAnchor = useRef<{ fx: number; fy: number; cx: number; cy: number } | null>(
     null
   );
-  // Bežiace zoom gesto: cieľový zoom + kotva (px/py v netransformovaných lokálnych
-  // súradniciach wrappera, base = rect pri štarte gesta) + translácia prstov (tx/ty,
-  // pinch ťahaný po obrazovke sleduje prsty). Kým gesto beží, mení sa len CSS
-  // transform — rerastr (setZoom) príde až pri commite.
+  // A running zoom gesture: target zoom + anchor (px/py in the untransformed local
+  // coordinates of the wrapper, base = rect at the gesture start) + finger translation (tx/ty,
+  // a pinch dragged across the screen follows the fingers). While the gesture runs, only the CSS
+  // transform changes - the re-raster (setZoom) comes only at commit.
   const preview = useRef<{
     target: number;
     px: number;
@@ -172,7 +172,7 @@ export function DrawingViewer({
     [links, page]
   );
 
-  // Šírka „fit" = šírka viewportu mínus padding; sleduje resize aj prepnutie fullscreen.
+  // "Fit" width = viewport width minus padding; tracks resize and fullscreen switching.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -187,10 +187,10 @@ export function DrawingViewer({
   }, []);
 
   /**
-   * Jediné miesto, ktoré mení zoom: clamp + no-op guard + odložená kotva (aplikuje ju
-   * layout efekt po dorastrovaní). Kotvu zdieľajú zoomTo (živý rect) aj commitPreview
-   * (zmrazená geometria gesta) — logika sa nesmie rozdvojiť. Vracia, či sa zoom mení
-   * (bez viditeľnej zmeny šírky sa kotva nenastaví — inak by ostala visieť).
+   * The only place that changes zoom: clamp + no-op guard + deferred anchor (applied by the
+   * layout effect after re-rastering). The anchor is shared by zoomTo (live rect) and commitPreview
+   * (frozen gesture geometry) - the logic must not fork. Returns whether the zoom changes
+   * (without a visible width change the anchor is not set - otherwise it would be left hanging).
    */
   const applyZoom = useCallback(
     (
@@ -211,7 +211,7 @@ export function DrawingViewer({
     []
   );
 
-  /** Absolútny zoom kotvený na bod vo viewporte (client súradnice) — bod ostane pod kurzorom. */
+  /** Absolute zoom anchored to a point in the viewport (client coordinates) - the point stays under the cursor. */
   const zoomTo = useCallback(
     (next: number, cx: number, cy: number) => {
       const wrap = wrapperRef.current;
@@ -226,10 +226,10 @@ export function DrawingViewer({
   );
 
   /**
-   * Lacný náhľad zoomu počas gesta: CSS scale wrappera okolo kotvy (bod pod kurzorom /
-   * stredom pinchu ostáva na mieste), žiadny rerastr. Kotva sa zmrazí pri štarte gesta;
-   * `follow=true` (pinch) navyše sleduje posun prstov transláciou — pinch ťahaný po
-   * obrazovke pácha zoom aj pan naraz. Koliesko kotvu nesleduje (pohyb kurzora ≠ pan).
+   * Cheap zoom preview during a gesture: CSS scale of the wrapper around the anchor (the point under the cursor /
+   * the pinch center stays in place), no re-raster. The anchor is frozen at the gesture start;
+   * `follow=true` (pinch) additionally tracks the finger movement by translation - a pinch
+   * dragged across the screen does zoom and pan at once. The wheel does not track the anchor (cursor movement != pan).
    */
   const previewZoom = useCallback(
     (target: number, cx: number, cy: number, follow = false) => {
@@ -237,7 +237,7 @@ export function DrawingViewer({
       if (!wrap) return;
       const t = clampZoom(target);
       if (!preview.current) {
-        // Prvý event gesta — wrapper je bez transformu, rect = netransformovaná geometria.
+        // First event of the gesture - the wrapper has no transform, rect = untransformed geometry.
         const base = wrap.getBoundingClientRect();
         if (base.width <= 0 || base.height <= 0) return;
         preview.current = { target: t, px: cx - base.left, py: cy - base.top, tx: 0, ty: 0, base };
@@ -256,7 +256,7 @@ export function DrawingViewer({
     []
   );
 
-  /** Zahoď rozbehnutý náhľad aj odloženú kotvu (bez rerastra) — napr. pri zmene strany. */
+  /** Drop a running preview and the deferred anchor (without re-raster) - e.g. on a page change. */
   const cancelPreview = useCallback(() => {
     if (commitTimer.current != null) {
       window.clearTimeout(commitTimer.current);
@@ -268,7 +268,7 @@ export function DrawingViewer({
     if (wrap) wrap.style.transform = "";
   }, []);
 
-  /** Ustálenie gesta: zruš CSS náhľad a rerastruj stranu na cieľový zoom (ostrý render). */
+  /** Gesture settling: cancel the CSS preview and re-raster the page at the target zoom (sharp render). */
   const commitPreview = useCallback(() => {
     if (commitTimer.current != null) {
       window.clearTimeout(commitTimer.current);
@@ -279,14 +279,14 @@ export function DrawingViewer({
     if (!p) return;
     preview.current = null;
     if (wrap) wrap.style.transform = "";
-    // Kotvený bod gesta (posunutý o transláciu prstov) má po rerastri ostať na mieste.
+    // The anchored point of the gesture (shifted by the finger translation) must stay in place after the re-raster.
     const changed = applyZoom(p.target, {
       fx: p.px / p.base.width,
       fy: p.py / p.base.height,
       cx: p.base.left + p.px + p.tx,
       cy: p.base.top + p.py + p.ty,
     });
-    // Čistý dvojprstový pan (zoom bez zmeny): transláciu prenes do scrollu, inak by snapla.
+    // Pure two-finger pan (zoom unchanged): carry the translation into the scroll, otherwise it would snap.
     if (!changed && (p.tx !== 0 || p.ty !== 0)) {
       const c = scrollRef.current;
       if (c) {
@@ -296,7 +296,7 @@ export function DrawingViewer({
     }
   }, [applyZoom]);
 
-  // Upratanie odloženého commitu pri unmounte.
+  // Cleanup of the deferred commit on unmount.
   useEffect(
     () => () => {
       if (commitTimer.current != null) window.clearTimeout(commitTimer.current);
@@ -304,22 +304,22 @@ export function DrawingViewer({
     []
   );
 
-  // Po rerastri (zmena `width`/`dims`) obnov scroll tak, aby kotvený bod ostal pod kurzorom.
-  // POZOR: kotva sa aplikuje až keď raster novú šírku DOBEHNE (`dims` ≈ `width`) — hneď po
-  // setZoom má canvas ešte starú CSS šírku, scrollLeft by sa clampol na starý rozsah a
-  // kotva by sa zahodila (pri väčšom skoku — commit gesta, tlačidlá — viditeľne ustrelí).
+  // After the re-raster (change of `width`/`dims`) restore the scroll so that the anchored point stays under the cursor.
+  // CAUTION: the anchor is applied only when the raster CATCHES UP with the new width (`dims` ~ `width`) - right after
+  // setZoom the canvas still has the old CSS width, scrollLeft would be clamped to the old range and the
+  // anchor would be dropped (on a larger jump - gesture commit, buttons - it visibly overshoots).
   useLayoutEffect(() => {
     const a = pendingAnchor.current;
     const c = scrollRef.current;
     if (!a || !c || !dims) return;
-    if (Math.abs(dims.width - width) > 1) return; // rerastr ešte beží — počkaj na nový dims
+    if (Math.abs(dims.width - width) > 1) return; // re-raster still running - wait for the new dims
     const cr = c.getBoundingClientRect();
     c.scrollLeft = cr.left + PAD + a.fx * dims.width - a.cx;
     c.scrollTop = cr.top + PAD + a.fy * dims.height - a.cy;
     pendingAnchor.current = null;
   }, [dims, width]);
 
-  // Natívny wheel listener (non-passive) — inak nemôžeme `preventDefault` scroll stránky.
+  // Native wheel listener (non-passive) - otherwise we cannot `preventDefault` the page scroll.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -328,7 +328,7 @@ export function DrawingViewer({
       const factor = Math.exp(-e.deltaY * 0.0015);
       const current = preview.current?.target ?? zoomRef.current;
       previewZoom(current * factor, e.clientX, e.clientY);
-      // Burst kolieska = jedno gesto; rerastr až po ustálení.
+      // A wheel burst = one gesture; re-raster only after settling.
       if (commitTimer.current != null) window.clearTimeout(commitTimer.current);
       commitTimer.current = window.setTimeout(commitPreview, GESTURE_COMMIT_MS);
     };
@@ -336,7 +336,7 @@ export function DrawingViewer({
     return () => el.removeEventListener("wheel", onWheel);
   }, [previewZoom, commitPreview]);
 
-  // Fullscreen stav (aj keď užívateľ vyskočí cez Esc / systémovo).
+  // Fullscreen state (also when the user leaves via Esc / by the system).
   useEffect(() => {
     const onChange = () =>
       setIsFullscreen(document.fullscreenElement === rootRef.current);
@@ -352,7 +352,7 @@ export function DrawingViewer({
     }
   }
 
-  // Zmena focusu (soft-navigácia s iným `?focus=`) → skoč na jeho stranu a znovu zacieľ.
+  // Focus change (soft navigation with a different `?focus=`) -> jump to its page and re-target.
   useEffect(() => {
     focusedOnce.current = false;
     if (focusRegion) {
@@ -363,7 +363,7 @@ export function DrawingViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);
 
-  // Po vyrenderovaní strany s focus prvkom: odscrolluj naň a krátko rozpulzuj (raz).
+  // After rendering the page with the focus element: scroll to it and pulse briefly (once).
   useEffect(() => {
     if (!focusRegion || !dims || focusRegion.page !== page || focusedOnce.current) {
       return;
@@ -380,14 +380,14 @@ export function DrawingViewer({
 
   function goPage(next: number) {
     if (next < 1 || (numPages && next > numPages)) return;
-    // Rozbehnutý zoom náhľad aj odložená kotva patria starej strane — zahoď ich,
-    // inak by sa kotva aplikovala na novú stranu (dims.width tam sedí tiež).
+    // A running zoom preview and the deferred anchor belong to the old page - drop them,
+    // otherwise the anchor would be applied to the new page (dims.width matches there too).
     cancelPreview();
-    setDims(null); // kým sa nová strana nevyrenderuje, boxy neskladáme
+    setDims(null); // until the new page is rendered, we do not lay out the boxes
     setPage(next);
   }
 
-  /** Zoom tlačidlom — kotva = stred viewportu. */
+  /** Zoom by button - anchor = center of the viewport. */
   function zoomButton(delta: number) {
     const el = scrollRef.current;
     const r = el?.getBoundingClientRect();
@@ -396,7 +396,7 @@ export function DrawingViewer({
     zoomTo(zoom + delta, cx, cy);
   }
 
-  /** Reset na fit-to-width + scroll na začiatok. */
+  /** Reset to fit-to-width + scroll to the start. */
   function resetZoom() {
     pendingAnchor.current = null;
     setZoom(1);
@@ -409,19 +409,19 @@ export function DrawingViewer({
     });
   }
 
-  // ---- Pan / pinch cez pointer eventy (touch-action: none na plátne) ----
+  // ---- Pan / pinch via pointer events (touch-action: none on the canvas) ----
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     const el = scrollRef.current;
     if (!el) return;
-    // Rozbehnutý wheel-náhľad ukonči — pan/pinch potrebuje stabilnú geometriu.
+    // End a running wheel preview - pan/pinch needs stable geometry.
     commitPreview();
-    // POZOR: myš/pero sa NEzachytáva hneď — capture presmeruje pointerup na scroller,
-    // čím by click event obišiel `<a>` región (klik myšou na kód by bol mŕtvy);
-    // capture príde až keď gesto reálne začne (pan threshold / pinch, nižšie).
-    // Dotyk sa naopak captureuje hneď: syntetizovaný click z tapu cieli touchstart
-    // target aj pri capture (overené live) a capture garantuje, že pointerup/cancel
-    // vždy dôjde do endPointer — bez neho by prst pustený mimo scrollera nechal
-    // v `pointers` stale záznam a ďalší tap by sa tváril ako pinch.
+    // CAUTION: mouse/pen is NOT captured right away - capture redirects pointerup to the scroller,
+    // so the click event would bypass the `<a>` region (a mouse click on a code would be dead);
+    // capture comes only when the gesture really starts (pan threshold / pinch, below).
+    // Touch, on the other hand, is captured right away: the synthesized click from a tap targets the touchstart
+    // target even with capture (verified live) and capture guarantees that pointerup/cancel
+    // always reaches endPointer - without it a finger released outside the scroller would leave
+    // a stale record in `pointers` and the next tap would look like a pinch.
     if (e.pointerType === "touch") el.setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 1) {
@@ -436,7 +436,7 @@ export function DrawingViewer({
       const [p1, p2] = [...pointers.current.values()];
       pinchStart.current = { d: dist(p1, p2), zoom: zoomRef.current };
       panStart.current = null;
-      didPan.current = true; // pinch nikdy nie je klik
+      didPan.current = true; // a pinch is never a click
       for (const id of pointers.current.keys()) el.setPointerCapture(id);
     }
   }
@@ -452,8 +452,8 @@ export function DrawingViewer({
       const d = dist(p1, p2);
       if (pinchStart.current.d > 0) {
         const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-        // Počas pinchu len CSS náhľad — rerastr príde pri pustení prstov.
-        // `follow` = stred pinchu ťahá obsah so sebou (zoom + pan jedným gestom).
+        // During a pinch only the CSS preview - the re-raster comes when the fingers are released.
+        // `follow` = the pinch center drags the content along (zoom + pan in one gesture).
         previewZoom(
           (pinchStart.current.zoom * d) / pinchStart.current.d,
           mid.x,
@@ -469,10 +469,10 @@ export function DrawingViewer({
       const dy = e.clientY - panStart.current.y;
       if (!didPan.current && Math.abs(dx) + Math.abs(dy) > PAN_THRESHOLD) {
         didPan.current = true;
-        // Gesto je pan → od teraz drž pointer aj mimo scrollera (klik už nehrozí).
+        // The gesture is a pan -> from now on hold the pointer even outside the scroller (a click is no longer a risk).
         el.setPointerCapture(e.pointerId);
-        // Čakajúca kotva zoomu by po dorastrovaní prepísala scroll a zrušila
-        // užívateľov posun — pan má prednosť, kotvu zahoď.
+        // A pending zoom anchor would overwrite the scroll after re-rastering and cancel
+        // the user's movement - pan takes precedence, drop the anchor.
         pendingAnchor.current = null;
       }
       el.scrollLeft = panStart.current.left - dx;
@@ -483,20 +483,20 @@ export function DrawingViewer({
   function endPointer(e: React.PointerEvent<HTMLDivElement>) {
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2 && pinchStart.current) {
-      // Koniec pinchu → ostrý rerastr na cieľový zoom.
+      // End of the pinch -> sharp re-raster at the target zoom.
       pinchStart.current = null;
       commitPreview();
     }
     const el = scrollRef.current;
     if (pointers.current.size === 1 && el) {
-      // Prechod z pinchu späť na pan so zvyšným prstom.
+      // Transition from a pinch back to a pan with the remaining finger.
       const p = [...pointers.current.values()][0];
       panStart.current = { x: p.x, y: p.y, left: el.scrollLeft, top: el.scrollTop };
     } else if (pointers.current.size === 0) {
       panStart.current = null;
-      // Double-tap (dotyk): priblíž na miesto tapu; z priblíženého stavu späť na fit.
-      // Len skutočný pointerup — zrušený pointer (pointercancel: palm rejection,
-      // prebratie gesta OS-om) nie je tap a nesmie nabiť double-tap detekciu.
+      // Double-tap (touch): zoom in to the tap location; from the zoomed state back to fit.
+      // Only a real pointerup - a cancelled pointer (pointercancel: palm rejection,
+      // the OS taking over the gesture) is not a tap and must not feed the double-tap detection.
       if (e.type === "pointerup" && e.pointerType === "touch" && !didPan.current) {
         const now = performance.now();
         const prev = lastTap.current;
@@ -507,7 +507,7 @@ export function DrawingViewer({
           dist(prev, { x: e.clientX, y: e.clientY }) < DOUBLE_TAP_RADIUS
         ) {
           lastTap.current = null;
-          didPan.current = true; // druhý tap nie je klik na región
+          didPan.current = true; // the second tap is not a click on a region
           if (zoomRef.current > 1.01) resetZoom();
           else zoomTo(DOUBLE_TAP_ZOOM, e.clientX, e.clientY);
         }
@@ -515,7 +515,7 @@ export function DrawingViewer({
     }
   }
 
-  // Pan gesto potlačí následný klik na región (capture fáza pred `onSelect`/navigáciou).
+  // A pan gesture suppresses the following click on a region (capture phase before `onSelect`/navigation).
   function onClickCapture(e: React.MouseEvent<HTMLDivElement>) {
     if (didPan.current) {
       e.preventDefault();
@@ -524,9 +524,9 @@ export function DrawingViewer({
     }
   }
 
-  // Výber prvku opustí fullscreen: bočný panel/bottom-sheet žije MIMO fullscreen
-  // elementu (rootRef), takže v top-layer režime by nebol vidno — klik na kód by
-  // vyzeral, že nič neurobil. Mimo fullscreenu je to no-op.
+  // Selecting an element leaves fullscreen: the side panel/bottom-sheet lives OUTSIDE the fullscreen
+  // element (rootRef), so in top-layer mode it would not be visible - a click on a code would
+  // look like it did nothing. Outside fullscreen it is a no-op.
   const handleSelect = useMemo(() => {
     if (!onSelect) return undefined;
     return (sel: SelectedElement) => {
@@ -544,7 +544,7 @@ export function DrawingViewer({
           : "space-y-3"
       }
     >
-      {/* Toolbar: stránkovanie + zoom + fullscreen */}
+      {/* Toolbar: pagination + zoom + fullscreen */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex items-center gap-1 rounded-md ring-1 ring-border">
           <button
@@ -624,7 +624,7 @@ export function DrawingViewer({
         </span>
       </div>
 
-      {/* Plátno výkresu + overlay — vlastný pan/zoom (touch-action: none). */}
+      {/* Drawing canvas + overlay - own pan/zoom (touch-action: none). */}
       <div
         ref={scrollRef}
         onPointerDown={onPointerDown}
@@ -689,7 +689,7 @@ export function DrawingViewer({
                     />
                   );
                 })}
-                {/* Reality Capture piny na pláne (D-073) — čítanie + authoring (?placeCapture). */}
+                {/* Reality Capture pins on the plan (D-073) - reading + authoring (?placeCapture). */}
                 <CapturePlanOverlay page={page} dims={dims} />
               </div>
             )}
@@ -700,7 +700,7 @@ export function DrawingViewer({
   );
 }
 
-/** Jeden klikateľný box prekrytý nad kódom vo výkrese. */
+/** A single clickable box overlaid above a code in the drawing. */
 function RegionBox({
   region,
   dims,
@@ -721,7 +721,7 @@ function RegionBox({
   const sx = dims.width / wpt;
   const sy = dims.height / hpt;
 
-  // PDF bottom-left → CSS top-left (y-flip): horný okraj = výška − y1.
+  // PDF bottom-left -> CSS top-left (y-flip): top edge = height - y1.
   const style: React.CSSProperties = {
     left: x0 * sx,
     top: (hpt - y1) * sy,
@@ -729,15 +729,15 @@ function RegionBox({
     height: (y1 - y0) * sy,
   };
 
-  // Skladba (D-043): región vedie na iný dokument (Výpis skladieb) na danú stranu —
-  // nie na detail prvku. Klik = bežná navigácia (žiadny `onSelect`/bočný panel).
+  // Assembly (D-043): the region leads to another document (the assembly listing) to the given page -
+  // not to the element detail. Click = normal navigation (no `onSelect`/side panel).
   const isSkladba = region.targetRoute === "drawing";
   const href = isSkladba
     ? `/drawing/${region.targetId}?page=${region.targetPage ?? 1}`
     : `/${region.targetRoute}/${region.targetId}`;
 
   function handleClick(e: React.MouseEvent<HTMLAnchorElement>) {
-    // Skladba → nechaj odkaz navigovať. Ctrl/⌘/shift-klik = otvoriť detail v novej karte.
+    // Assembly -> let the link navigate. Ctrl/Cmd/shift-click = open the detail in a new tab.
     if (isSkladba || !onSelect || e.metaKey || e.ctrlKey || e.shiftKey) return;
     e.preventDefault();
     onSelect({
@@ -747,7 +747,7 @@ function RegionBox({
     });
   }
 
-  // Skladby vizuálne odlíšené (jantárová) od prvkových kódov (primárna farba).
+  // Assemblies are visually distinguished (amber) from the element codes (primary color).
   const className = isSkladba
     ? "absolute rounded-sm bg-amber-400/15 ring-1 ring-amber-500/50 transition-colors hover:bg-amber-400/30 hover:ring-amber-500"
     : selected

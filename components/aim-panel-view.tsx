@@ -7,16 +7,16 @@ import type { AimPanelData } from "@/lib/aim-panel";
 import { cn } from "@/lib/utils";
 
 /**
- * Host render AimPanelData (D-077) — rovnaká schéma, akú kreslí AimCard vo
- * forku (apps/viewer/src/aim/AimCard.tsx), ale s Next `<Link>` navigáciou
- * namiesto bridge `AIM_NAVIGATE`. Jeden zdroj pravdy pre „detail prvku"
- * naprieč 2D (ElementInfoPanel) a 3D (embed viewer): obsah sa mení len
- * v `nodeSummaryToAimPanel`, obe strany ho zobrazia zhodne.
+ * Host render of AimPanelData (D-077) - the same schema that AimCard draws in
+ * the fork (apps/viewer/src/aim/AimCard.tsx), but with Next `<Link>` navigation
+ * instead of the bridge `AIM_NAVIGATE`. One source of truth for the "element detail"
+ * across 2D (ElementInfoPanel) and 3D (embed viewer): the content changes only
+ * in `nodeSummaryToAimPanel`, both sides show it identically.
  */
 export function AimPanelView({ data }: { data: AimPanelData }) {
   return (
     <div className="space-y-3">
-      {/* Hlavička: badge + titulok + object_ref */}
+      {/* Header: badge + title + object_ref */}
       <div>
         <span className="inline-block rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
           {data.badges?.[0]?.label ?? "Prvok"}
@@ -27,7 +27,7 @@ export function AimPanelView({ data }: { data: AimPanelData }) {
         )}
       </div>
 
-      {/* Generické sekcie (IFC riadky, prehľad) */}
+      {/* Generic sections (IFC rows, overview) */}
       {data.sections?.map((section) => (
         <dl key={section.label} className="divide-y divide-border text-sm">
           {section.rows.map((row, i) => (
@@ -50,7 +50,7 @@ export function AimPanelView({ data }: { data: AimPanelData }) {
         </dl>
       ))}
 
-      {/* Dokumenty */}
+      {/* Documents */}
       {data.documents && (
         <div>
           <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -81,7 +81,7 @@ export function AimPanelView({ data }: { data: AimPanelData }) {
         </div>
       )}
 
-      {/* Zodpovednosti (v2) */}
+      {/* Responsibilities (v2) */}
       {data.responsibilities && data.responsibilities.length > 0 && (
         <div>
           <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -116,7 +116,7 @@ export function AimPanelView({ data }: { data: AimPanelData }) {
         </div>
       )}
 
-      {/* Reality Capture súhrn (v2) */}
+      {/* Reality Capture summary (v2) */}
       {data.captures && data.captures.count > 0 && (
         <Link
           href={data.captures.href}
@@ -128,7 +128,7 @@ export function AimPanelView({ data }: { data: AimPanelData }) {
         </Link>
       )}
 
-      {/* História GUID (v2) — bitemporálna platnosť, read-only */}
+      {/* GUID history (v2) - bitemporal validity, read-only */}
       {data.history && data.history.length > 0 && (
         <div>
           <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -156,7 +156,7 @@ export function AimPanelView({ data }: { data: AimPanelData }) {
         </div>
       )}
 
-      {/* Akcie */}
+      {/* Actions */}
       {data.actions && data.actions.length > 0 && (
         <div className="flex flex-wrap gap-2 pt-1">
           {data.actions.map((action) => (

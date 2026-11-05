@@ -5,8 +5,8 @@ import { DOC_ROLE_LABEL, roleLabel } from "@/lib/object-type";
 import { formatDate } from "@/lib/utils";
 
 /**
- * Dokumenty pripojené na uzol (S3, D-014). Názov otvorí dokument v prehliadačke
- * (`/drawing/[id]` — PDF + bočný panel, D-042 D+), `location` je priamy odkaz na PDF.
+ * Documents attached to a node (S3, D-014). The name opens the document in the viewer
+ * (`/drawing/[id]` - PDF + side panel, D-042 D+), `location` is a direct link to the PDF.
  */
 export function DocumentList({ documents }: { documents: DocumentRef[] }) {
   if (documents.length === 0) {
