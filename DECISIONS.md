@@ -8708,3 +8708,18 @@ bez revízie a chyba tabuľky bez straty výpočtu, odmietnutie inej triedy), SQ
 **Rejected:** keeping the model in AIMviewer (it moves into AIMforked); keeping it only in the Claude Docs plan document (sessions read the repos first); Samuel pasting every step brief himself (the orchestrator has the state).
 
 **Open:** where the D register and the orchestrator line live after AIMviewer moves into AIMforked (proposal: a pinned issue in AIMforked, #60 frozen with a pointer); whether connector requests get step-style briefs.
+
+### D-192 - AIMforked e2e runs in GitHub Actions
+
+**Date:** 2026-11-05 · **Status:** approved (Samuel 5 Nov, option A; number from the orchestrator, #60) · **Builds on:** D-191 (orchestration model), D-187 (CI before merge) · **Supersedes:** the point of D-191 that Lukas runs the AIMforked e2e suite before a merge
+
+**Context:** Lukas does not work on the AIMforked fork, so nobody runs `mise run test:e2e` by hand before merges. Cloud sessions cannot run it either: the Docker image builds fail on the proxy CA.
+
+**Decision:**
+1. `.github/workflows/e2e.yml` in AIMforked runs the full Playwright suite on every PR and on demand, on a GitHub runner, without secrets.
+2. A green `e2e` run is required before merge, next to `lint.yml`.
+3. It runs on every PR, not behind a paths filter, as long as a run stays under about 15 minutes (first green run: 10 min, 113 tests).
+4. `deploy-test.yml` and `release-images.yml` stay disabled on the fork.
+
+Introduced in AIMforked #3, which also updates sections 2 and 5 of `docs/platform/orchestration.md`.
+
