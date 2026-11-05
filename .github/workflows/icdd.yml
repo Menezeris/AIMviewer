@@ -1,6 +1,6 @@
-# Export ICDD (D-181): audit kontajnera v Pythone a testy exportu v TypeScripte.
-# Testovací kontajner etl/tests/fixtures/icdd/aim-small.icdd skladá exportný kód; vitest stráži, že zodpovedá builderu,
-# pytest nad ním spustí audit (etl/icdd_audit.py) a mutácie. Bez DB, bez tajomstiev, bez produkčných dát.
+# ICDD export (D-181): container audit in Python and export tests in TypeScript.
+# The test container etl/tests/fixtures/icdd/aim-small.icdd is assembled by the export code; vitest guards that it matches the builder,
+# pytest then runs the audit (etl/icdd_audit.py) and mutations on it. No DB, no secrets, no production data.
 name: icdd
 
 on:
@@ -37,7 +37,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: vitest (export, kontrola, roundtrip, testovací kontajner)
+      - name: vitest (export, check, roundtrip, test container)
         run: npx vitest run lib/icdd lib/viewer-icdd.test.ts
 
   audit-py:
@@ -48,11 +48,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # Len závislosti auditu (celé etl/requirements-dev.txt ťahá ifcopenshell, PyMuPDF, Tesseract).
+      # Only the audit dependencies (the whole etl/requirements-dev.txt pulls in ifcopenshell, PyMuPDF, Tesseract).
       - run: pip install "rdflib>=7.0" "pytest>=8.0"
       - name: pytest audit
         run: python -m pytest etl/tests/test_icdd_audit.py -q
-      - name: audit testovacieho kontajnera (CLI, exit != 0 pri chybe)
+      - name: audit of the test container (CLI, exit != 0 on error)
         run: python -m etl.icdd_audit etl/tests/fixtures/icdd/aim-small.icdd --json icdd-audit.json
       - uses: actions/upload-artifact@v4
         if: always()
