@@ -61,6 +61,11 @@ Pravidlá pri písaní (agent aj človek):
    pravdy ostáva `AGENTS.md`, pointery bez duplikovaného obsahu).
 
 ### Súbežné session (D-090)
+> **Platform work (D-191, Samuel 5 Nov 2026):** Samuel, the orchestrator, step sessions and side sessions
+> work by [`AIMforked/docs/platform/orchestration.md`](https://github.com/Menezeris/AIMforked/blob/main/docs/platform/orchestration.md)
+> (step sessions started from handoff briefs, merge bundles, checks before merge per repo, orchestrator
+> rotation). The rules below still hold where that file says nothing.
+
 Naraz beží viac Claude sessions (ručné, automatické z konektora, fork). Každá:
 - **pred plánom** pozrie otvorené PR a vetvy `claude/*` z posledných dní (`git diff --stat
   origin/main...<vetva>`); rovnakú prácu nerobí druhýkrát, pri rovnakých súboroch dá vedieť
