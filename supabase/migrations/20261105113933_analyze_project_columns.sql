@@ -8,6 +8,7 @@
 -- in production. After ANALYZE the same queries take 0.1 s.
 --
 -- ANALYZE changes only planner statistics, no data and no schema. It may run inside a transaction.
+-- Applied to production 5 Nov 11:39 UTC (Samuel, relayed in #60); the file name matches the history row.
 -- Rollback: none needed.
 
 analyze public.objects;
