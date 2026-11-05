@@ -6,7 +6,7 @@ import { LIVE_APPLIED_EVENT, LIVE_REPLY_EVENT } from "./protocol";
 import type { QueryChannel } from "./query";
 import { expectApplied, forgetWarmChannels, recentViewerCount, warmChannel } from "./warm-channel";
 
-/** Falošný kanál: počíta prihlásenia a dovolí "vieweru" poslať reply a applied. */
+/** Fake channel: counts subscriptions and lets the "viewer" send reply and applied. */
 function fakeChannel(status = "SUBSCRIBED") {
   const listeners = new Map<string, ((m: { payload?: unknown }) => void)[]>();
   const sent: { event: string; payload: unknown }[] = [];

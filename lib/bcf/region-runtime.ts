@@ -9,17 +9,17 @@ import { ifcPositions } from "../engine/underlay-model";
 import type { RegionElement } from "./region-model";
 
 /**
- * Prvky federácie pre `bcf_topic action=locate` (D-158 krok 4): meshe IFC motora (cache na
- * revíziu, D-124) v IFC svete, tom istom rámci ako `_georef` a viewer. Body trojuholníkov sa
- * prepočítajú až pre prvok, ktorého obálka prešla predvýberom (lenivý getter).
+ * Federation elements for `bcf_topic action=locate` (D-158 step 4): IFC engine meshes (cache per
+ * revision, D-124) in the IFC world, the same frame as `_georef` and the viewer. Triangle points are
+ * converted only for an element whose bounding box passed the preselection (lazy getter).
  */
 
-// D-135: modely motora z nemenného archívu revízie.
+// D-135: engine models from the immutable revision archive.
 installArchiveSource();
 
 export interface RegionModel {
   elements: RegionElement[];
-  /** Výšky podlaží (m) zo všetkých modelov, vzostupne; horná hrana podlažia = ďalšia. */
+  /** Storey heights (m) from all models, ascending; the storey top edge = the next one. */
   elevations: number[];
 }
 

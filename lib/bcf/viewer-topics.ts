@@ -6,12 +6,12 @@ import { viewpointFromDto } from "./viewpoint";
 import { localTopicsFromState } from "./viewer-local";
 
 /**
- * Lokálne BCF témy viewera (D-158): téma založená v BCF paneli (upstream "New
- * topic", aj pripomienka na PDF s oblasťou strany) je len v prehliadači.
- * `view_state.bcf_local` ich vypíše a `bcf_topic action=from_viewer` ich na
- * pokyn uloží do `model_tasks` + `model_task_documents` s tým istým guid, takže
- * opakované uloženie nič nezdvojí a viewer po obnove ukáže uloženú kópiu.
- * Dáta z viewera sú nedôveryhodné: každé pole sa overí a oreže.
+ * Local BCF topics of the viewer (D-158): a topic created in the BCF panel (upstream "New
+ * topic", also a comment on a PDF with a page region) exists only in the browser.
+ * `view_state.bcf_local` lists them and `bcf_topic action=from_viewer` saves them on
+ * request into `model_tasks` + `model_task_documents` with the same guid, so
+ * a repeated save duplicates nothing and the viewer shows the saved copy after a refresh.
+ * Data from the viewer is untrusted: every field is verified and clamped.
  */
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,18 +24,18 @@ function statusOf(v: string | null): TopicStatus {
   }
 }
 
-/** Odkaz z viewera -> riadok; adresa `/drawing/<id>` sa overí voči dokumentom AIM, inak ostane ako url. */
+/** Reference from the viewer -> row; an address `/drawing/<id>` is verified against AIM documents, otherwise it stays as url. */
 async function documentRow(deps: BcfDeps, topicId: string, ref: { url: string; description: string | null; markup: Markup[] }, author: string) {
   let origin = "https://aim.invalid";
   try {
     origin = new URL(ref.url, origin).origin;
   } catch {
-    // relatívna alebo chybná adresa: parse ju vyhodnotí ako cudziu
+    // relative or invalid address: parse evaluates it as foreign
   }
   const parsed = parseDocumentReferenceDto({ url: ref.url, description: ref.description ?? undefined }, origin);
   const info = parsed.document_id ? await deps.store.findDocument(parsed.document_id) : null;
   if (info) {
-    // Opis z viewera je len hlavička (názov, strana, oblasť); kód a revíziu doplní AIM.
+    // The description from the viewer is only a header (name, page, region); AIM adds the code and revision.
     return documentWrite(info, { page: parsed.page ?? undefined, region: parsed.region ?? undefined, markup: ref.markup }, topicId, author);
   }
   const row: TopicDocumentWrite = {
@@ -55,7 +55,7 @@ async function documentRow(deps: BcfDeps, topicId: string, ref: { url: string; d
   return row;
 }
 
-/** `bcf_topic action=from_viewer`: uloží lokálne témy viewera (všetky alebo `guids`). */
+/** `bcf_topic action=from_viewer`: saves the viewer local topics (all or `guids`). */
 export async function fromViewer(args: Record<string, unknown>, deps: BcfDeps) {
   if (!deps.viewState) throw new BcfInputError("Stav viewera sa nedá čítať (živý kanál nie je nastavený).");
   const state = await deps.viewState();
@@ -107,7 +107,7 @@ export async function fromViewer(args: Record<string, unknown>, deps: BcfDeps) {
     });
     for (const ref of t.document_references) await deps.store.addDocument(await documentRow(deps, row.id, ref, author));
     for (const c of t.comments) await deps.store.addComment(row.id, c.author || author, c.comment);
-    // Session pre Claude sa pri uložení z viewera nespúšťa (D-158): spustí ju chat na pokyn.
+    // A session for Claude is not started on a save from the viewer (D-158): the chat starts it on request.
     if (isClaude(row.assigned_to)) claude.push(row.number);
     saved.push(summary(row, t.document_references.length));
   }

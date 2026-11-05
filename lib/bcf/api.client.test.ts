@@ -17,9 +17,9 @@ import type { SnapshotRequest } from "./snapshot";
 import { DOC_ID, G1, G2, deps, memoryStore } from "./testing";
 
 /**
- * Protokolová zhoda s klientom, ktorý používa BCF panel viewera (D-099 fáza B):
- * skutočný `@ifc-lite/bcf-api` volá `handleBcfApi` cez náhradný fetch, tak ako
- * by volal `<site>/api/bcf` (token, objavenie, načítanie projektu, zápisy).
+ * Protocol match with the client used by the viewer BCF panel (D-099 phase B):
+ * the real `@ifc-lite/bcf-api` calls `handleBcfApi` through a stand-in fetch, just as it
+ * would call `<site>/api/bcf` (token, discovery, project load, writes).
  */
 
 const BASE = "https://aim.example/api/bcf";
@@ -99,7 +99,7 @@ describe("@ifc-lite/bcf-api proti /api/bcf", () => {
     expect(topics.map((t) => t.title)).toEqual(["Z 3D", "Na výkrese"]);
     expect(topics[0].description).toBeUndefined();
     expect(topics[1].description).toBe("Chýba popis\n\nDokumenty (AIM):\n- D.1.1.09 (rev. B), strana 2, oblasť x 50 %, y 0 %, 50 x 50 %");
-    // Panel s tokenom pošle opis späť celý; v DB ostane bez bloku dokumentov.
+    // A panel with a token sends the description back whole; in the DB it stays without the documents block.
     await s.client.updateTopic(PROJECT_ID, store.rows[1].id, topicToApiWrite(topics[1]));
     expect(store.rows[1].description).toBe("Chýba popis");
   });
@@ -155,7 +155,7 @@ describe("@ifc-lite/bcf-api proti /api/bcf", () => {
       comments: [],
       viewpoints: [],
     });
-    // Rovnaké kontroly ako outbox-preflight.ts vo viewri.
+    // The same checks as outbox-preflight.ts in the viewer.
     expect(ext.topic_type).toContain(write.topic_type);
     expect(ext.topic_status).toContain(write.topic_status);
     expect(ext.priority).toContain(write.priority);

@@ -1,12 +1,12 @@
 /**
- * Udalosť "uložené pohľady sa zmenili" (D-161): server ju pošle na živý kanál po zápise pohľadu z chatu
- * (premenovanie, zmazanie, prepísanie); klient (`components/live-channel.tsx`) ju prepošle oknu a viewer
- * (`components/ifc-viewer.tsx`) načíta zoznam z `/api/saved-views` znova a pošle ho ako `VIEWS_LOAD`.
- * Vzor `bcf-event.ts`, bez závislostí na serveri.
+ * The "saved views changed" event (D-161): the server sends it to the live channel after a view is written from the chat
+ * (rename, delete, overwrite); the client (`components/live-channel.tsx`) forwards it to the window and the viewer
+ * (`components/ifc-viewer.tsx`) reloads the list from `/api/saved-views` and sends it as `VIEWS_LOAD`.
+ * Pattern of `bcf-event.ts`, no server dependencies.
  */
 
-/** Udalosť v živom kanáli (Supabase Realtime Broadcast). */
+/** Event in the live channel (Supabase Realtime Broadcast). */
 export const LIVE_VIEWS_EVENT = "saved_views";
 
-/** Udalosť okna medzi živým kanálom a viewerom na tej istej stránke. */
+/** Window event between the live channel and the viewer on the same page. */
 export const VIEWS_CHANGED_WINDOW_EVENT = "aim:saved-views-changed";

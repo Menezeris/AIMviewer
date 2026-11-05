@@ -5,7 +5,7 @@ import { documentSnapshot, isOwnStorageUrl, sha256Hex, SnapshotError, type Snaps
 import { clampRect, snapshotKey, snapshotPlan, SNAPSHOT_LONG_SIDE, viewrect } from "./snapshot-plan";
 import { renderPdfRegion, SnapshotRenderError } from "./snapshot-render";
 
-/** Jednostranové PDF 842 x 595 bodov: modrá čiara, čierny text vľavo hore, sivý obdĺžnik vpravo dole. */
+/** Single-page PDF 842 x 595 points: a blue line, black text top left, a gray rectangle bottom right. */
 function testPdf(pages = 1): Uint8Array {
   const content =
     "0 0 1 RG 4 w 50 50 m 500 300 l S BT /F1 24 Tf 100 500 Td (AIM 1.01) Tj ET 0.5 g 600 50 200 100 re f";
@@ -45,7 +45,7 @@ async function pixels(png: Buffer) {
       const i = (Math.round(y) * img.width + Math.round(x)) * 4;
       return [data[i], data[i + 1], data[i + 2]];
     },
-    /** Počet tmavých pixelov v obdĺžniku (text, čiary). */
+    /** Count of dark pixels in a rectangle (text, lines). */
     dark: (x0: number, y0: number, x1: number, y1: number) => {
       let n = 0;
       for (let y = Math.round(y0); y < Math.round(y1); y++) {
@@ -64,7 +64,7 @@ describe("snímka výrezu: plán", () => {
     const p = snapshotPlan([842, 595], { x: 40, y: 40, width: 20, height: 20 });
     expect(p.crop).toEqual({ x: 35, y: 35, width: 30, height: 30 });
     expect(Math.max(p.width, p.height)).toBe(SNAPSHOT_LONG_SIDE);
-    // Rámik je v strede výrezu a má 2/3 jeho rozmeru.
+    // The frame is in the middle of the crop and is 2/3 of its size.
     expect(p.frame!.x / p.width).toBeCloseTo(5 / 30, 3);
     expect(p.frame!.width / p.width).toBeCloseTo(20 / 30, 3);
   });
@@ -106,7 +106,7 @@ describe("snímka výrezu: plán", () => {
 
 describe("snímka výrezu: render pdf.js v Node", () => {
   it("výrez s textom a rámikom (text = štandardné písmo cez BinaryDataFactory)", async () => {
-    // Oblasť okolo textu "AIM 1.01" (100, 500 bodov zdola = 95 bodov zhora).
+    // Region around the text "AIM 1.01" (100, 500 points from the bottom = 95 points from the top).
     const region = { x: 10, y: 10, width: 20, height: 10 };
     const r = await renderPdfRegion(testPdf(), 1, region);
     expect(r.pageSize).toEqual([842, 595]);
@@ -114,12 +114,12 @@ describe("snímka výrezu: render pdf.js v Node", () => {
     const plan = snapshotPlan([842, 595], region);
     expect([px.width, px.height]).toEqual([plan.width, plan.height]);
     const f = plan.frame!;
-    // Ľavý okraj rámika je červený.
+    // The left edge of the frame is red.
     const [rr, gg, bb] = px.at(f.x, f.y + f.height / 2);
     expect(rr).toBeGreaterThan(180);
     expect(gg).toBeLessThan(90);
     expect(bb).toBeLessThan(90);
-    // Text je vo výreze (tmavé pixely), pozadie mimo neho biele.
+    // The text is in the crop (dark pixels), the background outside it is white.
     expect(px.dark(f.x + 5, f.y + 5, f.x + f.width - 5, f.y + f.height - 5)).toBeGreaterThan(200);
     expect(px.at(2, 2)).toEqual([255, 255, 255]);
   });
@@ -128,7 +128,7 @@ describe("snímka výrezu: render pdf.js v Node", () => {
     const r = await renderPdfRegion(testPdf(), 1, null);
     const px = await pixels(r.png);
     const s = px.width / 842;
-    // Sivý obdĺžnik 600..800 x 50..150 bodov zdola.
+    // Gray rectangle 600..800 x 50..150 points from the bottom.
     const [g] = px.at(700 * s, (595 - 100) * s);
     expect(g).toBeGreaterThan(110);
     expect(g).toBeLessThan(140);

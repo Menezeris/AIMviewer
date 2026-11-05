@@ -85,7 +85,7 @@ describe("argument document (chat, D-158)", () => {
     expect(() => documentWrite(INFO, { page: 3 }, "t", "a")).toThrow(/2 strán/);
     expect(() => documentWrite(INFO, { region: { x: 0, y: 0, width: 10, height: 10 } }, "t", "a")).toThrow(/potrebuje page/);
     expect(documentWrite({ ...INFO, pages: 1 }, { region: { x: 0, y: 0, width: 10, height: 10 } }, "t", "a").page).toBe(1);
-    // Bez extrahovaného textu počet strán nepoznáme: strana sa neoveruje.
+    // Without extracted text we do not know the page count: the page is not verified.
     expect(documentWrite({ ...INFO, pages: null }, { page: 40 }, "t", "a").page).toBe(40);
   });
 });
@@ -224,7 +224,7 @@ describe("BCF API document_references", () => {
     expect(own.body).toMatchObject({ url: `${ORIGIN}/drawing/${DOC_ID}?page=2&region=10_20_30_40#page=2`, description: "D.1.1.09 (rev. B), strana 2, oblasť x 10 %, y 20 %, 30 x 40 %: pozri" });
     expect(rows[0].modified_by).toBe("samuel");
 
-    // Návrat vlastného exportu: hlavička opisu sa neopakuje.
+    // Round trip of our own export: the description header is not repeated.
     const back = await call(ctx(d), "PUT", `${base}/${docs[0].id}`, own.body);
     expect(back.status).toBe(200);
     expect(docs[0].description).toBe("pozri");

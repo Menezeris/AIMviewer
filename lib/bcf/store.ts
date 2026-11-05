@@ -4,8 +4,8 @@ import "server-only";
 import { getSupabaseAdmin } from "../supabase/server";
 
 /**
- * Uloženie BCF tém (D-099): riadky `model_tasks` (D-086), polia podľa BCF API
- * 2.1 topic. Tools pracujú cez rozhranie `BcfStore`, takže sú testovateľné bez DB.
+ * Storage of BCF topics (D-099): `model_tasks` rows (D-086), fields per the BCF API
+ * 2.1 topic. The tools work through the `BcfStore` interface, so they are testable without a DB.
  */
 
 export const TOPIC_STATUSES = ["open", "in_progress", "resolved", "closed", "conflict", "failed"] as const;
@@ -44,7 +44,7 @@ export interface BcfTopicRow {
   updated_at: string;
 }
 
-/** Polia, ktoré tools zapisujú (ostatné patria `model_publish`). */
+/** Fields the tools write (the others belong to `model_publish`). */
 export type BcfTopicWrite = Partial<
   Pick<
     BcfTopicRow,
@@ -63,7 +63,7 @@ export type BcfTopicWrite = Partial<
     | "author"
     | "modified_by"
     | "session_url"
-    /** Len import `.bcfzip`: pôvodné dátumy z BCF (creation_date, modified_date); stĺpce existujú od začiatku. */
+    /** Import of `.bcfzip` only: original dates from BCF (creation_date, modified_date); the columns have existed from the start. */
     | "created_at"
     | "updated_at"
   >
@@ -71,18 +71,18 @@ export type BcfTopicWrite = Partial<
 
 export interface TopicFilter {
   status?: TopicStatus;
-  /** Len témy s odkazom na tento dokument (D-158), voliteľne na túto stranu. */
+  /** Only topics with a reference to this document (D-158), optionally to this page. */
   document_id?: string;
   page?: number;
   model?: string;
   assigned_to?: string;
   limit: number;
   offset?: number;
-  /** Podľa čísla vzostupne (BCF API stránkuje od najstaršej); predvolene najnovšie prvé. */
+  /** By number ascending (the BCF API paginates from the oldest); by default newest first. */
   ascending?: boolean;
 }
 
-/** Hodnoty, ktoré už témy používajú (slovník projektu pre BCF API extensions). */
+/** Values the topics already use (the project vocabulary for BCF API extensions). */
 export interface TopicVocabulary {
   topic_type: string[];
   priority: string[];
@@ -90,7 +90,7 @@ export interface TopicVocabulary {
   assigned_to: string[];
 }
 
-/** Odkaz témy na dokument, stranu a oblasť strany (D-158, `model_task_documents`, BCF DocumentReference). */
+/** Topic reference to a document, page and page region (D-158, `model_task_documents`, BCF DocumentReference). */
 export interface TopicDocumentRow {
   id: string;
   task_id: string;
@@ -99,22 +99,22 @@ export interface TopicDocumentRow {
   document_name: string | null;
   document_revision: string | null;
   page: number | null;
-  /** Výrez strany v % ({x, y, width, height}, vľavo hore) ako `open_drawing region`; null = celá strana. */
+  /** Page crop in % ({x, y, width, height}, top left) as `open_drawing region`; null = the whole page. */
   region: { x: number; y: number; width: number; height: number } | null;
-  /** Značky na strane (D-158 krok 7): `{type, points[], text?}` v % strany, null = bez značiek. */
+  /** Markups on the page (D-158 step 7): `{type, points[], text?}` in % of the page, null = no markups. */
   markup: Markup[] | null;
   url: string | null;
   description: string | null;
   author: string | null;
-  /** sha256 súboru dokumentu v čase založenia (kľúč snímky výrezu, D-158 krok 3). */
+  /** sha256 of the document file at creation time (key of the region snapshot, D-158 step 3). */
   document_sha256: string | null;
   created_at: string;
-  /** Veľkosť strany v bodoch (`document_pages.page_size`), dopočítaná pri čítaní; nie stĺpec. */
+  /** Page size in points (`document_pages.page_size`), computed on read; not a column. */
   page_size?: [number, number] | null;
-  /** Kotva polohy v čase založenia (D-158 krok 6): počet strán a veľkosť strany pôvodnej revízie; null = nebolo známe. */
+  /** Position anchor at creation time (D-158 step 6): page count and page size of the original revision; null = it was not known. */
   anchor_pages?: number | null;
   anchor_page_size?: [number, number] | null;
-  /** Potvrdenie kontroly po novej revízii (D-158 krok 6): revízia, kto a kedy zrušil príznak "skontrolovať". */
+  /** Confirmation of the check after a new revision (D-158 step 6): revision, who and when cleared the "needs review" flag. */
   reviewed_revision?: string | null;
   reviewed_sha256?: string | null;
   reviewed_by?: string | null;
@@ -123,55 +123,55 @@ export interface TopicDocumentRow {
 
 export type TopicDocumentWrite = Omit<TopicDocumentRow, "id" | "created_at" | "page_size"> & { id?: string };
 
-/** Dokument v AIM (D-104), na ktorý sa téma odkazuje. */
+/** Document in AIM (D-104) the topic refers to. */
 export interface DocumentInfo {
   id: string;
   object_ref: string | null;
   name: string | null;
   identification: string | null;
   revision: string | null;
-  /** Najvyššia strana s textom (`document_pages`); null = text sa neextrahoval. */
+  /** Highest page with text (`document_pages`); null = the text was not extracted. */
   pages: number | null;
-  /** Strana z odkazu na časť dokumentu (IfcDocumentReference, `#page=N`). */
+  /** Page from a reference to a part of a document (IfcDocumentReference, `#page=N`). */
   reference_page: number | null;
-  /** sha256 súboru (`documents.file_sha256` z ETL); null = ešte nepočítané. */
+  /** sha256 of the file (`documents.file_sha256` from the ETL); null = not computed yet. */
   sha256?: string | null;
 }
 
 export interface BcfStore {
-  /** `id` = guid témy z viewera (D-158), inak ho dá DB. */
+  /** `id` = topic guid from the viewer (D-158), otherwise the DB assigns it. */
   create(row: BcfTopicWrite & { title: string; id?: string }): Promise<BcfTopicRow>;
-  /** Téma podľa guid (uuid) alebo čísla; null = neexistuje. */
+  /** Topic by guid (uuid) or number; null = does not exist. */
   get(ref: { id?: string; number?: number }): Promise<BcfTopicRow | null>;
   list(filter: TopicFilter): Promise<{ rows: BcfTopicRow[]; total: number }>;
   update(id: string, patch: BcfTopicWrite): Promise<BcfTopicRow>;
   /**
-   * Atomické pripojenie komentára (`model_task_add_comment`); null = téma neexistuje. S `date` alebo `guid` (import
-   * `.bcfzip`) sa zachová pôvodný dátum a guid komentára, komentár s týmto guid v téme sa nepridá znova a
-   * `updated_at`/`modified_by` témy sa nemení (`model_task_import_comment`); kým migrácia z `supabase/pending`
-   * nie je nasadená, padne to na dnešné správanie (čas zápisu, nový guid).
+   * Atomic attaching of a comment (`model_task_add_comment`); null = the topic does not exist. With `date` or `guid` (import of
+   * `.bcfzip`) the original date and guid of the comment are kept, a comment with this guid in the topic is not added again and
+   * the topic `updated_at`/`modified_by` do not change (`model_task_import_comment`); until the migration from `supabase/pending`
+   * is deployed, it falls back to today's behaviour (write time, new guid).
    */
   addComment(id: string, author: string, comment: string, date?: string, guid?: string): Promise<BcfComment | null>;
-  /** Témy so session, ktoré ešte bežia (stav `in_progress`, pohyb po `since`). */
+  /** Topics with a session that is still running (status `in_progress`, movement after `since`). */
   runningSessions(since: Date): Promise<BcfTopicRow[]>;
   vocabulary(): Promise<TopicVocabulary>;
-  /** Odkazy tém na dokumenty (D-158), podľa času založenia. */
+  /** Topic references to documents (D-158), by creation time. */
   documents(taskIds: string[]): Promise<TopicDocumentRow[]>;
   addDocument(row: TopicDocumentWrite): Promise<TopicDocumentRow>;
-  /** null = odkaz pri téme nie je. */
+  /** null = the topic has no such reference. */
   updateDocument(taskId: string, id: string, patch: Partial<TopicDocumentWrite>): Promise<TopicDocumentRow | null>;
-  /** Zmaže odkaz (alebo všetky odkazy témy pri id = null); vráti počet. */
+  /** Deletes a reference (or all references of a topic when id = null); returns the count. */
   removeDocuments(taskId: string, id: string | null): Promise<number>;
-  /** Dokument podľa objects.id, object_ref alebo identification; odkaz na časť vedie na jeho dokument. */
+  /** Document by objects.id, object_ref or identification; a reference to a part leads to its document. */
   findDocument(idOrRef: string): Promise<DocumentInfo | null>;
-  /** Kalibrácie strán dokumentu (`objects.properties._georef`, D-133); null = nekalibrovaný. */
+  /** Calibrations of document pages (`objects.properties._georef`, D-133); null = not calibrated. */
   georef(documentId: string): Promise<unknown>;
 }
 
 const DOCS = "model_task_documents";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Strana z `Location` odkazu na časť dokumentu (`...#page=3`, `?page=3`). */
+/** Page from the `Location` of a reference to a part of a document (`...#page=3`, `?page=3`). */
 export function pageFromLocation(location: string | null | undefined): number | null {
   const m = location ? /[#?&]page=(\d{1,5})\b/i.exec(location) : null;
   const n = m ? Number(m[1]) : NaN;
@@ -180,13 +180,13 @@ export function pageFromLocation(location: string | null | undefined): number | 
 
 const TABLE = "model_tasks";
 
-/** RPC v DB nie je (migrácia ešte nespustená): PostgREST `PGRST202`, Postgres `42883`. */
+/** The RPC is not in the DB (migration not yet run): PostgREST `PGRST202`, Postgres `42883`. */
 export function isMissingFunction(error: { code?: string; message?: string } | null): boolean {
   if (!error) return false;
   return error.code === "PGRST202" || error.code === "42883" || /could not find the function|does not exist/i.test(error.message ?? "");
 }
 
-/** Po zlyhaní kvôli chýbajúcej funkcii sa ďalších 5 minút nepokúšame (import 500 tém by inak zdvojil volania). */
+/** After a failure due to a missing function we do not try again for 5 minutes (importing 500 topics would otherwise double the calls). */
 const IMPORT_RPC_RETRY_MS = 5 * 60 * 1000;
 let importRpcMissingAt = 0;
 
@@ -235,7 +235,7 @@ export function supabaseBcfStore(projectId: string): BcfStore {
       }
       if (filter.status) q = q.eq("status", filter.status);
       if (filter.model) q = q.eq("model", filter.model);
-      // Presná zhoda bez ohľadu na veľkosť písmen: zástupné znaky LIKE sa escapujú.
+      // Exact match regardless of case: LIKE wildcards are escaped.
       if (filter.assigned_to) q = q.ilike("assigned_to", filter.assigned_to.replace(/[\\%_]/g, "\\$&"));
       const from = filter.offset ?? 0;
       const { data, error, count } = await q
@@ -305,7 +305,7 @@ export function supabaseBcfStore(projectId: string): BcfStore {
       const { data, error } = await db().from(DOCS).select("*").in("task_id", taskIds).order("created_at");
       if (error) fail("Čítanie odkazov na dokumenty zlyhalo", error);
       const rows = (data ?? []) as TopicDocumentRow[];
-      // Veľkosť strany pre RFC 8118 viewrect (D-158 krok 3); chýba = odkaz bez viewrect.
+      // Page size for RFC 8118 viewrect (D-158 step 3); missing = a reference without viewrect.
       const docIds = [...new Set(rows.filter((r) => r.document_id && r.page).map((r) => r.document_id as string))];
       if (docIds.length === 0) return rows;
       const pages = [...new Set(rows.map((r) => r.page).filter((p): p is number => typeof p === "number"))];
@@ -319,7 +319,7 @@ export function supabaseBcfStore(projectId: string): BcfStore {
       return rows.map((r) => ({ ...r, page_size: size.get(`${r.document_id}:${r.page}`) ?? null }));
     },
     async addDocument(row) {
-      // Kotva polohy (D-158 krok 6): počet strán a veľkosť strany revízie, nad ktorou odkaz vzniká.
+      // Position anchor (D-158 step 6): page count and page size of the revision the reference is created over.
       const anchor = row.document_id && row.anchor_pages === undefined ? await pageAnchor(row.document_id, row.page) : {};
       const { data, error } = await db().from(DOCS).insert({ ...anchor, ...row }).select("*").single();
       if (error || !data) fail("Zápis odkazu na dokument zlyhal", error);
@@ -379,14 +379,14 @@ export function supabaseBcfStore(projectId: string): BcfStore {
         if (candidates.length === 0) return null;
         const { data: objs, error: e } = await live().in("id", candidates.map((c) => c.id));
         if (e) fail("Čítanie dokumentu zlyhalo", e);
-        // Kód dokumentu musí byť v projekte jednoznačný, inak by téma visela na náhodnom z nich.
+        // The document code must be unambiguous in the project, otherwise the topic would hang on a random one of them.
         if (!objs || objs.length !== 1) return null;
         const hit = objs[0] as { id: string; object_type: string; object_ref: string | null; name: string | null };
         obj = hit;
         ext = candidates.find((c) => c.id === hit.id) ?? null;
       }
       let referencePage: number | null = null;
-      // Odkaz na časť (D-104): téma visí na celom dokumente a strane z odkazu.
+      // A reference to a part (D-104): the topic hangs on the whole document and the page from the reference.
       if (obj.object_type === "document_reference" && ext?.referenced_document_id) {
         referencePage = pageFromLocation(ext.location);
         const parent = await store.findDocument(ext.referenced_document_id);

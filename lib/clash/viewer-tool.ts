@@ -4,16 +4,16 @@ import { CLASH_UUID_RE, parseClashSave, type ClashOpenReq, type ClashSaveWire } 
 import { ClashViewerError, loadForViewer, saveFromViewer, VIEWER_AUTHOR } from "./viewer";
 
 /**
- * `clash action=open` a `from_viewer` (D-164, host PR3): panel clash vo vieweri. Vzor `ids_document` (D-162):
- * `open` pošle živému vieweru op `clash_open` a počká na `APPLIED`, `from_viewer` číta `view_state.clash_local`.
+ * `clash action=open` and `from_viewer` (D-164, host PR3): the clash panel in the viewer. Pattern of `ids_document` (D-162):
+ * `open` sends the live viewer the op `clash_open` and waits for `APPLIED`, `from_viewer` reads `view_state.clash_local`.
  */
 
 export type ClashOpenOutcome = { ok: true; issues: string[] } | { ok: false; reason: string };
 
 export interface ClashViewerDeps {
-  /** Pošle vieweru op `clash_open` a počká na potvrdenie `APPLIED`. */
+  /** Sends the viewer the op `clash_open` and waits for the `APPLIED` acknowledgement. */
   open: (req: ClashOpenReq) => Promise<ClashOpenOutcome>;
-  /** Surová odpoveď `view_state` z otvoreného viewera; string = prečo sa nedala prečítať. */
+  /** Raw `view_state` response from the open viewer; string = why it could not be read. */
   viewState: () => Promise<unknown>;
 }
 
@@ -32,7 +32,7 @@ const asInput = (err: unknown): never => {
   throw err;
 };
 
-/** `open`: test a voliteľne uložený beh z DB do panela clash vo vieweri (kolízie so stavom na zvýraznenie). */
+/** `open`: the test and optionally a saved run from the DB into the clash panel in the viewer (clashes with state for highlighting). */
 export async function execOpen(input: Record<string, unknown>, deps: EngineDeps): Promise<Record<string, unknown>> {
   const v = viewer(deps, "open");
   const ref = str(input.test);
@@ -54,7 +54,7 @@ export async function execOpen(input: Record<string, unknown>, deps: EngineDeps)
   };
 }
 
-/** `from_viewer`: uloží test a zmenené stavy kolízií, ktoré má používateľ v paneli clash (beh ukladá len tlačidlo v paneli). */
+/** `from_viewer`: saves the test and the changed clash states the user has in the clash panel (a run is saved only by the button in the panel). */
 export async function execFromViewer(input: Record<string, unknown>, deps: EngineDeps): Promise<Record<string, unknown>> {
   const v = viewer(deps, "from_viewer");
   const store = need(deps);

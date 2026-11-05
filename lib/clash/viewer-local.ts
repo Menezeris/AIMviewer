@@ -1,14 +1,14 @@
 /**
- * `view_state.clash_local` (D-164): panel clash vo vieweri. Pre `get_viewer_state` sa vyhodia zoznamy
- * (`reviews` zmenené stavy kolízií, `results`), ostane test, `from_aim`, `dirty`, súhrn behu a vybraná kolízia
- * a počty; zoznamy číta `clash action=from_viewer` (test a zmenené stavy). Bez závislosti na tools.
+ * `view_state.clash_local` (D-164): the clash panel in the viewer. For `get_viewer_state` the lists are dropped
+ * (`reviews` changed clash states, `results`), what stays is the test, `from_aim`, `dirty`, run summary and the selected clash
+ * and counts; the lists are read by `clash action=from_viewer` (test and changed states). No dependency on tools.
  */
 
 const LISTS = ["reviews", "results"] as const;
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
-/** Stav panela bez zoznamov; undefined, ak viewer `clash_local` nehlási (panel zatvorený alebo starší fork). */
+/** Panel state without lists; undefined if the viewer does not report `clash_local` (panel closed or an older fork). */
 export function compactClashLocal(state: unknown): Record<string, unknown> | undefined {
   const raw = isObj(state) ? state.clash_local : undefined;
   if (!isObj(raw)) return undefined;

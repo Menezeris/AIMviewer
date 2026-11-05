@@ -4,18 +4,18 @@ import { markupHash, type Markup } from "./markup";
 import { snapshotKey, type PctRect } from "./snapshot-plan";
 
 /**
- * Snímka výrezu dokumentu pre BCF tému (D-158 krok 3): render na požiadanie a keš v buckete
- * `documents` pod `snapshots/<sha256>/<strana>-<oblasť>.png`. Prvá požiadavka stiahne PDF a
- * vyrenderuje len danú stranu a výrez, ďalšie čítajú keš (bez sťahovania PDF, keď je sha256
- * známe z ETL alebo z odkazu témy). Rastre všetkých strán sa vopred nerobia (egress, úložisko).
- * Závislosti (DB, storage, render) sú za rozhraním, logika sa testuje bez nich.
+ * Snapshot of a document region for a BCF topic (D-158 step 3): on-demand rendering and a cache in the
+ * `documents` bucket under `snapshots/<sha256>/<page>-<region>.png`. The first request downloads the PDF and
+ * renders only the given page and crop, later ones read the cache (without downloading the PDF when sha256 is
+ * known from the ETL or from the topic reference). Rasters of all pages are not made in advance (egress, storage).
+ * Dependencies (DB, storage, render) are behind an interface, the logic is tested without them.
  */
 
 export interface SnapshotDocument {
   id: string;
-  /** Verejná adresa PDF (`documents.location`). */
+  /** Public address of the PDF (`documents.location`). */
   location: string | null;
-  /** `documents.file_sha256` z ETL; null = ešte nepočítané. */
+  /** `documents.file_sha256` from the ETL; null = not computed yet. */
   sha256: string | null;
 }
 
@@ -31,9 +31,9 @@ export interface SnapshotRequest {
   document_id: string;
   page: number;
   region: PctRect | null;
-  /** Revízia z odkazu témy (`document_sha256`); bez nej aktuálny súbor. */
+  /** Revision from the topic reference (`document_sha256`); without it the current file. */
   sha256?: string | null;
-  /** Značky nad stranou (D-158 krok 7): uložené zo stĺpca alebo neuložené z parametra; bez nich snímka ako doteraz. */
+  /** Markups over the page (D-158 step 7): stored from the column or unstored from the parameter; without them the snapshot as before. */
   markup?: Markup[] | null;
 }
 
@@ -42,7 +42,7 @@ export interface SnapshotResult {
   key: string;
   cached: boolean;
   sha256: string;
-  /** Odkaz témy patril inej revízii a jej snímka v keši nie je: snímka je z aktuálneho súboru. */
+  /** The topic reference belonged to another revision and its snapshot is not in the cache: the snapshot is from the current file. */
   revision_changed: boolean;
 }
 
@@ -59,7 +59,7 @@ export const sha256Hex = (bytes: Uint8Array) => createHash("sha256").update(byte
 
 const SHA_RE = /^[0-9a-f]{64}$/;
 
-/** PDF sa sťahuje len z verejného úložiska tohto projektu (žiadna iná adresa z DB). */
+/** The PDF is downloaded only from the public storage of this project (no other address from the DB). */
 export function isOwnStorageUrl(location: string, supabaseUrl: string | undefined): boolean {
   if (!supabaseUrl) return false;
   try {
@@ -87,7 +87,7 @@ export async function documentSnapshot(src: SnapshotSource, req: SnapshotRequest
   const sha = sha256Hex(pdf);
   const key = snapshotKey(sha, req.page, req.region, mh);
   const { png } = await src.render(pdf, req.page, req.region, marks);
-  // Keš je pohodlie: zlyhaný zápis nemá zhodiť snímku, ktorá je hotová.
+  // The cache is a convenience: a failed write must not fail a snapshot that is done.
   await src.cachePut(key, png).catch(() => undefined);
   return { png, key, cached: false, sha256: sha, revision_changed: Boolean(req.sha256 && req.sha256 !== sha) };
 }

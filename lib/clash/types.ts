@@ -1,14 +1,14 @@
 /**
- * Testy, behy, kolízie a stav kolízie kontroly kolízií (D-164): riadky tabuliek
- * `clash_tests`, `clash_runs`, `clash_results`, `clash_reviews` a rozhranie úložiska.
- * Nositeľ stavu kolízie je dvojica test + `clash_key` (upstream `clashReviewKey`), nie beh.
+ * Tests, runs, clashes and clash state of the clash check (D-164): rows of the tables
+ * `clash_tests`, `clash_runs`, `clash_results`, `clash_reviews` and the storage interface.
+ * The carrier of a clash state is the pair test + `clash_key` (upstream `clashReviewKey`), not the run.
  */
 
 export type ClashOrigin = "default" | "chat" | "viewer";
 export type ReviewStatus = "open" | "resolved" | "accepted";
 export const REVIEW_STATUSES: readonly ReviewStatus[] = ["open", "resolved", "accepted"];
 
-/** Jedna strana pravidla testu (selektor tried upstream, model, podlažie podľa štítku AIM). */
+/** One side of a test rule (upstream class selector, model, storey by AIM label). */
 export interface ClashSideDef {
   type: string;
   model?: string;
@@ -17,7 +17,7 @@ export interface ClashSideDef {
 }
 
 export interface ClashRuleDef {
-  /** Stabilné id pravidla = kód testu (je súčasťou `clash_key`). */
+  /** Stable rule id = test code (it is part of `clash_key`). */
   id: string;
   a: ClashSideDef;
   b?: ClashSideDef;
@@ -52,7 +52,7 @@ export interface ClashTestWrite {
   created_by: string | null;
 }
 
-/** Prvky, ktoré beh overil (kľúče `model:GlobalId`); bez nich porovnanie nepovie "vyriešené". */
+/** Elements the run verified (keys `model:GlobalId`); without them the comparison does not say "resolved". */
 export interface ClashCoverage {
   a: string[];
   b: string[] | null;
@@ -69,7 +69,7 @@ export interface ClashRunRow {
   completeness: Record<string, unknown>;
   summary: Record<string, unknown>;
   coverage: ClashCoverage | null;
-  /** Podpis vstupu `{model: revízia}` (D-183 K1); chýba pred migráciou K1, `{}` = neznámy. */
+  /** Input signature `{model: revision}` (D-183 K1); missing before the K1 migration, `{}` = unknown. */
   model_revisions?: Record<string, number> | null;
   created_by: string | null;
   created_at: string;
@@ -85,7 +85,7 @@ export interface ClashRunWrite {
   completeness: Record<string, unknown>;
   summary: Record<string, unknown>;
   coverage: ClashCoverage | null;
-  /** Podpis vstupu (D-183 bod 11); bez neho ho doplní trigger `clash_runs_stamp` z `models`. */
+  /** Input signature (D-183 point 11); without it the `clash_runs_stamp` trigger fills it in from `models`. */
   model_revisions?: Record<string, number>;
   created_by: string | null;
 }
@@ -95,7 +95,7 @@ export interface ClashResultRow {
   rule: string;
   status: "hard" | "clearance";
   severity: "critical" | "major" | "minor" | "info";
-  /** m; záporné = hĺbka prieniku. */
+  /** m; negative = penetration depth. */
   distance: number;
   a_guid: string;
   a_model: string;
@@ -126,31 +126,31 @@ export interface ClashReviewRow {
 export interface ClashStore {
   listTests(): Promise<ClashTestRow[]>;
   testByCode(code: string): Promise<ClashTestRow | null>;
-  /** Vytvorí test alebo prepíše existujúci podľa `code`. */
+  /** Creates a test or overwrites an existing one by `code`. */
   upsertTest(row: ClashTestWrite): Promise<ClashTestRow>;
-  /** Zmaže test aj jeho behy, kolízie a stavy kolízií. */
+  /** Deletes a test together with its runs, clashes and clash states. */
   deleteTest(id: string): Promise<void>;
-  /** Čo zmazanie testu odstráni (na potvrdenie). */
+  /** What deleting a test removes (for confirmation). */
   testStats(id: string): Promise<{ runs: number; reviews: number; topics: number }>;
-  /** Posledný uložený beh každého z testov. */
+  /** The last saved run of each test. */
   lastRuns(testIds: string[]): Promise<Map<string, ClashRunRow>>;
-  /** Behy testu, najnovšie prvé. */
+  /** Runs of a test, newest first. */
   runs(testId: string, limit: number): Promise<ClashRunRow[]>;
   run(id: string): Promise<ClashRunRow | null>;
   results(runId: string): Promise<ClashResultRow[]>;
-  /** Uloží beh a jeho kolízie; pri chybe zruší aj hlavičku. Vráti id behu. */
+  /** Saves a run and its clashes; on error also cancels the header. Returns the run id. */
   saveRun(run: ClashRunWrite, results: ClashResultRow[]): Promise<string>;
-  /** Všetky stavy kolízií testu. */
+  /** All clash states of a test. */
   reviews(testId: string): Promise<ClashReviewRow[]>;
-  /** Nastaví stav (a poznámku, keď je zadaná; inak ostane) kolíziám testu; vráti počet. */
+  /** Sets the status (and the note when given; otherwise it stays) on the clashes of a test; returns the count. */
   setReviews(testId: string, keys: string[], patch: { status: ReviewStatus; comment?: string }, by: string): Promise<number>;
-  /** Pripojí k stavom kolízií BCF tému; stav a poznámku nemení (nová kolízia je `open`). */
+  /** Attaches a BCF topic to clash states; does not change the status or note (a new clash is `open`). */
   linkTopic(testId: string, keys: string[], topicId: string): Promise<void>;
-  /** Čísla BCF tém (`model_tasks.number`) podľa id. */
+  /** BCF topic numbers (`model_tasks.number`) by id. */
   topicNumbers(topicIds: string[]): Promise<Map<string, number>>;
 }
 
-/** Brána k BCF vrstve (D-099, `BcfStore.create`): založí tému Clash; `notify` oznámi zmenu viewerom. */
+/** Gateway to the BCF layer (D-099, `BcfStore.create`): creates the Clash topic; `notify` announces the change to viewers. */
 export interface ClashBcfPort {
   create(row: {
     title: string;

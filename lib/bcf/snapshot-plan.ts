@@ -1,10 +1,10 @@
 /**
- * Snímka výrezu strany PDF pre BCF tému (D-158 krok 3), čistá časť: čo sa vyreže, v akej
- * mierke, kde je rámik a pod akým kľúčom sa snímka kešuje. Render (pdf.js + canvas) je v
- * `snapshot-render.ts`, zdroj PDF a keš v `snapshot.ts`.
+ * Snapshot of a PDF page region for a BCF topic (D-158 step 3), the pure part: what is cropped, at what
+ * scale, where the frame is and under what key the snapshot is cached. Rendering (pdf.js + canvas) is in
+ * `snapshot-render.ts`, the PDF source and cache in `snapshot.ts`.
  *
- * Súradnice oblasti sú v % zobrazenej strany, počiatok vľavo hore (ako `open_drawing region`
- * a odkaz témy v `model_task_documents.region`).
+ * Region coordinates are in % of the displayed page, origin top left (like `open_drawing region`
+ * and the topic reference in `model_task_documents.region`).
  */
 
 export interface PctRect {
@@ -14,20 +14,20 @@ export interface PctRect {
   height: number;
 }
 
-/** Dlhšia strana snímky v px (BCF snímka, #199: "long side up to 1500 px"). */
+/** Longer side of the snapshot in px (BCF snapshot, #199: "long side up to 1500 px"). */
 export const SNAPSHOT_LONG_SIDE = 1500;
-/** Okolie okolo oblasti: podiel jej rozmeru na každú stranu, aby bol rámik v kontexte. */
+/** Margin around the region: a share of its size on each side, so that the frame is in context. */
 const CONTEXT = 0.25;
-/** Najmenšie okolie v % strany (malá oblasť by inak nemala čitateľný kontext). */
+/** Smallest margin in % of the page (a small region would otherwise have no readable context). */
 const MIN_CONTEXT_PCT = 2;
-/** Strop mierky (bod -> px), aby malá oblasť nevyrobila rozmazanú obrovskú bitmapu. */
+/** Scale cap (point -> px), so that a small region does not produce a blurry huge bitmap. */
 const MAX_SCALE = 8;
 export const FRAME_COLOR = "#dc2626";
 export const FRAME_FILL = "rgba(220, 38, 38, 0.08)";
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/** Oblasť orezaná na stranu; prázdna (mimo strany) = null. */
+/** Region clamped to the page; empty (outside the page) = null. */
 export function clampRect(r: PctRect): PctRect | null {
   const x0 = clamp(r.x, 0, 100);
   const y0 = clamp(r.y, 0, 100);
@@ -38,20 +38,20 @@ export function clampRect(r: PctRect): PctRect | null {
 }
 
 export interface SnapshotPlan {
-  /** Výrez strany v % (oblasť s okolím, alebo celá strana). */
+  /** Page crop in % (region with margin, or the whole page). */
   crop: PctRect;
   /** Mierka body strany -> px. */
   scale: number;
   /** Rozmer bitmapy. */
   width: number;
   height: number;
-  /** Rámik oblasti v px bitmapy; null = celá strana bez rámika. */
+  /** Region frame in bitmap px; null = the whole page without a frame. */
   frame: { x: number; y: number; width: number; height: number } | null;
 }
 
 /**
- * Výrez a mierka: oblasť s okolím (alebo celá strana) tak, aby dlhšia strana snímky mala
- * `SNAPSHOT_LONG_SIDE` px; `pageSize` = [šírka, výška] zobrazenej strany v bodoch.
+ * Crop and scale: the region with margin (or the whole page) so that the longer side of the snapshot has
+ * `SNAPSHOT_LONG_SIDE` px; `pageSize` = [width, height] of the displayed page in points.
  */
 export function snapshotPlan(pageSize: [number, number], region: PctRect | null): SnapshotPlan {
   const [pw, ph] = pageSize;
@@ -82,8 +82,8 @@ export function snapshotPlan(pageSize: [number, number], region: PctRect | null)
 const SHA_RE = /^[0-9a-f]{64}$/;
 
 /**
- * Kľúč keše v buckete `documents`: `snapshots/<sha256>/<strana>-<x_y_w_h|full>.png`; so značkami
- * (D-158 krok 7) `<strana>-<oblasť>-m<hash značiek>.png`, bez nich nezmenený.
+ * Cache key in the `documents` bucket: `snapshots/<sha256>/<page>-<x_y_w_h|full>.png`; with markups
+ * (D-158 step 7) `<page>-<region>-m<markup hash>.png`, unchanged without them.
  */
 export function snapshotKey(sha256: string, page: number, region: PctRect | null, markupHash: string | null = null): string {
   if (!SHA_RE.test(sha256)) throw new Error("sha256 dokumentu nemá tvar 64 hex znakov.");
@@ -95,8 +95,8 @@ export function snapshotKey(sha256: string, page: number, region: PctRect | null
 }
 
 /**
- * RFC 8118 `viewrect=left,top,width,height` v bodoch strany od ľavého horného rohu
- * (PDF Open Parameters); bez veľkosti strany alebo oblasti null.
+ * RFC 8118 `viewrect=left,top,width,height` in page points from the top left corner
+ * (PDF Open Parameters); null without the page size or region.
  */
 export function viewrect(pageSize: [number, number] | null, region: PctRect | null): string | null {
   const r = region ? clampRect(region) : null;

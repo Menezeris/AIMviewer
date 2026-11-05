@@ -5,7 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { AimSelectionInfo, SelectionContext } from "./selection-summary";
 import { currentProjectId } from "../project/context";
 
-/** Dávka pre `.in()` filtre (limit dĺžky URL v PostgREST), ako v lib/engine/aim-lookup.ts. */
+/** Batch for `.in()` filters (URL length limit in PostgREST), as in lib/engine/aim-lookup.ts. */
 const IN_CHUNK = 100;
 
 interface Obj {
@@ -20,14 +20,14 @@ interface Edge {
   to_id: string;
 }
 
-/** Uzly, ktoré nie sú rodičovská zostava, ale priestorová štruktúra. */
+/** Nodes that are not a parent assembly but a spatial structure. */
 const SPATIAL = new Set(["site", "building", "floor", "space", "project"]);
 
 /**
- * IFC GlobalId -> objekt AIM s IFC triedou, podlažím a rodičovskou zostavou (D-093).
- * Podlažie: `rel_contained_in_spatial_structure` prvku (priestor -> podlažie cez
- * `rel_aggregates`), inak kontajner jeho zostavy. Zostava: `rel_aggregates` na
- * nepriestorový uzol. Read-only cez `service_role` (D-026), zaniknuté objekty nie (D-088).
+ * IFC GlobalId -> AIM object with IFC class, storey and parent assembly (D-093).
+ * Storey: `rel_contained_in_spatial_structure` of the element (space -> storey via
+ * `rel_aggregates`), otherwise the container of its assembly. Assembly: `rel_aggregates` to a
+ * non-spatial node. Read-only via `service_role` (D-026), removed objects excluded (D-088).
  */
 export async function lookupSelectionContext(guids: string[]): Promise<SelectionContext> {
   const projectId = currentProjectId();
@@ -72,7 +72,7 @@ export async function lookupSelectionContext(guids: string[]): Promise<Selection
   if (ids.length === 0) return new Map();
   await loadObjects(ids);
 
-  // Zostava (rel_aggregates dieťa -> rodič) a kontajner prvku aj zostavy.
+  // Assembly (rel_aggregates child -> parent) and the container of the element and of the assembly.
   const aggregate = await edges("rel_aggregates", ids);
   await loadObjects([...aggregate.values()]);
   const assembly = (id: string) => {

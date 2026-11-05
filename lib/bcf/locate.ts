@@ -15,10 +15,10 @@ import type { BcfTopicWrite } from "./store";
 import { BcfInputError, DEFAULT_AUTHOR, loadTopic, MAX_COMPONENTS, summary, type BcfDeps } from "./tools";
 
 /**
- * `bcf_topic action=locate` (D-158 krok 4): oblasť strany z odkazu témy -> IFC svet cez
- * kalibráciu strany (`_georef`, D-133) -> návrh prvkov v oblasti, nadradené priestory a
- * podlažie a BCF pohľad nad oblasťou. Predvolene len návrh; `apply` zapíše prvky do
- * `components` (zjednotenie) a pohľad (existujúci len s `replace`). Modul je lenivý.
+ * `bcf_topic action=locate` (D-158 step 4): a page region from the topic reference -> IFC world via
+ * page calibration (`_georef`, D-133) -> a proposal of elements in the region, parent spaces and
+ * storey, and a BCF viewpoint over the region. By default only a proposal; `apply` writes the elements to
+ * `components` (union) and the viewpoint (an existing one only with `replace`). The module is lazy.
  */
 
 const APPLY = ["components", "viewpoint", "all"] as const;

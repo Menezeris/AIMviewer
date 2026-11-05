@@ -1,17 +1,17 @@
 import type { LiveQueryPayload, LiveReplyPayload } from "./protocol";
 
 /**
- * Most v prehliadači medzi živým kanálom (`components/live-channel.tsx`) a
- * vloženým viewerom (`components/ifc-viewer.tsx`) pre otázky D-085. Viewer sa
- * zaregistruje, keď má načítané modely; bez neho kanál odpovie chybou hneď,
- * nie až po timeoute servera.
+ * Browser bridge between the live channel (`components/live-channel.tsx`) and the
+ * embedded viewer (`components/ifc-viewer.tsx`) for D-085 questions. The viewer
+ * registers when it has models loaded; without it the channel answers with an error immediately,
+ * not only after the server timeout.
  */
 
 export type ViewerQueryHandler = (q: LiveQueryPayload) => Promise<LiveReplyPayload>;
 
 let handler: ViewerQueryHandler | null = null;
 
-/** Vráti odregistrovanie - zruší len vlastný handler, nie neskorší. */
+/** Returns the unregister function - cancels only its own handler, not a later one. */
 export function setViewerQueryHandler(h: ViewerQueryHandler): () => void {
   handler = h;
   return () => {

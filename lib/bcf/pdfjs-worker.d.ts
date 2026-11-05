@@ -1,2 +1,2 @@
-// pdf.js pracovník bez vlastných typov; snímka výrezu ho načíta do `globalThis.pdfjsWorker` (D-158 krok 3).
+// pdf.js worker without its own types; the region snapshot loads it into `globalThis.pdfjsWorker` (D-158 step 3).
 declare module "pdfjs-dist/legacy/build/pdf.worker.mjs";

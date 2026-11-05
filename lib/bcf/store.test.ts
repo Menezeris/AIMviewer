@@ -51,7 +51,7 @@ describe("addComment s pôvodným dátumom (import .bcfzip)", () => {
   });
 
   it("iná chyba funkcie sa nezakryje fallbackom", async () => {
-    // po predošlom teste je fallback v platnosti 5 minút: čas posunieme za jeho okno
+    // after the previous test the fallback holds for 5 minutes: we move the time past its window
     vi.useFakeTimers();
     vi.setSystemTime(Date.now() + 10 * 60 * 1000);
     try {

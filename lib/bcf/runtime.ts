@@ -11,11 +11,11 @@ import { supabaseBcfStore } from "./store";
 import { viewFromState, type BcfDeps, type CapturedView } from "./tools";
 
 /**
- * Produkčné závislosti BCF tools (D-099): DB, živý viewer a routine
- * "AIM: BCF téma". Logika je v `tools.ts` a testuje sa bez nich.
+ * Production dependencies of the BCF tools (D-099): DB, live viewer and the routine
+ * "AIM: BCF téma". The logic is in `tools.ts` and is tested without them.
  */
 
-/** Routine "AIM: BCF téma" - iná než pre požiadavky na tools (D-090), má repo OCB. */
+/** The routine "AIM: BCF téma" - different from the one for tool requests (D-090), it has the OCB repo. */
 export function bcfRoutine(): RoutineConfig {
   return {
     url: process.env.CLAUDE_BCF_ROUTINE_FIRE_URL,
@@ -24,13 +24,13 @@ export function bcfRoutine(): RoutineConfig {
   };
 }
 
-/** Strop súbežných BCF sessions (env `BCF_MAX_SESSIONS`, predvolene 3). */
+/** Cap on concurrent BCF sessions (env `BCF_MAX_SESSIONS`, default 3). */
 export function bcfMaxSessions(): number {
   const n = Number.parseInt(process.env.BCF_MAX_SESSIONS ?? "", 10);
   return Number.isFinite(n) && n > 0 ? n : 3;
 }
 
-/** `view_state` živého viewera (D-085); string = prečo sa nedal prečítať. */
+/** `view_state` of the live viewer (D-085); string = why it could not be read. */
 export async function liveViewState(): Promise<Record<string, unknown> | string> {
   const channel = liveChannel();
   if (!channel) return "živý viewer nie je nastavený (LIVE_CHANNEL)";
@@ -43,15 +43,15 @@ export async function liveViewState(): Promise<Record<string, unknown> | string>
   return r && typeof r === "object" ? (r as Record<string, unknown>) : {};
 }
 
-/** `view_state` -> BCF pohľad; string = prečo sa nedal zachytiť. */
+/** `view_state` -> BCF viewpoint; string = why it could not be captured. */
 export async function captureLiveView(): Promise<CapturedView | string> {
   const state = await liveViewState();
   return typeof state === "string" ? state : viewFromState(state);
 }
 
-/** "Témy sa zmenili" na živý kanál; otvorený viewer si ich načíta znova. */
+/** "Topics changed" to the live channel; an open viewer reloads them. */
 export async function notifyBcfChanged(): Promise<void> {
-  // Zmena dát patrí do viewera používateľa aj keď ju urobila pracovná session (D-159).
+  // A data change belongs to the user's viewer even when a working session made it (D-159).
   const channel = liveBaseChannel();
   if (channel) await broadcastLiveEvent(channel, LIVE_BCF_EVENT, { at: new Date().toISOString() });
 }

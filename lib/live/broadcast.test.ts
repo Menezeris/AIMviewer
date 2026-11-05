@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// Modul je server-only (D-026) — mimo RSC runtime treba marker odmockovať.
+// The module is server-only (D-026) - outside the RSC runtime the marker must be mocked out.
 vi.mock("server-only", () => ({}));
 
 import { bcfLoadMessage, LIVE_BCF_EVENT } from "./bcf-event";

@@ -1,24 +1,24 @@
 /**
- * Výber zo živého viewera pre `get_viewer_state` (D-093): celkový počet, príznak
- * orezania, súhrn (IFC trieda, podlažie, rodičovská zostava, model) a stránka
- * položiek s identitou, nie len GUID.
+ * Selection from the live viewer for `get_viewer_state` (D-093): total count, truncation
+ * flag, summary (IFC class, storey, parent assembly, model) and a page of
+ * items with identity, not just the GUID.
  *
- * Údaje o prvku berie najprv z odpovede viewera (`selection.items`, má načítaný
- * IFC, pozná aj časti zostáv, ktoré AIM nemá, napr. IfcPlate obvodového plášťa),
- * inak z AIM (`SelectionContext`). Súhrn nad celým výberom počíta viewer
- * (`selection.summary`, D-093 dodatok): odpoveď ide cez Realtime so stropom
- * 256 kB, preto viewer posiela zoznamy orezané a súhrn celý. Bez zmien DB,
- * čistá funkcia + typy.
+ * Element data is taken first from the viewer answer (`selection.items`, it has the IFC
+ * loaded, it also knows parts of assemblies AIM does not have, e.g. an IfcPlate of the curtain wall),
+ * otherwise from AIM (`SelectionContext`). The summary over the whole selection is computed by the viewer
+ * (`selection.summary`, D-093 addendum): the answer goes via Realtime with a cap of
+ * 256 kB, so the viewer sends truncated lists and the whole summary. No DB changes,
+ * a pure function + types.
  */
 
-/** Strop GUID, ktoré server z výberu spracuje (súhrn aj AIM lookup). */
+/** Cap of GUIDs the server processes from a selection (summary and AIM lookup). */
 export const MAX_SELECTION_GUIDS = 5000;
 export const DEFAULT_ITEMS_LIMIT = 50;
 export const MAX_ITEMS_LIMIT = 200;
-/** Koľko skupín súhrnu na rozmer (zvyšok sa zráta do `other`). */
+/** How many summary groups per dimension (the rest is counted into `other`). */
 const MAX_GROUPS = 30;
 
-/** Položka výberu, ako ju môže poslať viewer (všetko okrem guid voliteľné). */
+/** A selection item as the viewer may send it (everything except guid optional). */
 export interface ViewerSelectionItem {
   guid: string;
   name?: string | null;
@@ -35,7 +35,7 @@ export interface ViewerSummaryGroup {
   count: number;
 }
 
-/** Súhrn, ktorý viewer spočíta nad celým výberom (rodič nesie GUID na dohľadanie v AIM). */
+/** Summary the viewer computes over the whole selection (the parent carries a GUID for lookup in AIM). */
 export interface ViewerSummary {
   of: number;
   by_ifc_type?: ViewerSummaryGroup[];
@@ -52,7 +52,7 @@ export interface ViewerSelection {
   [key: string]: unknown;
 }
 
-/** Čo o GUID vie AIM (graf v DB). */
+/** What AIM knows about a GUID (the graph in the DB). */
 export interface AimSelectionInfo {
   object_id: string;
   object_ref: string | null;
@@ -81,14 +81,14 @@ export interface SummaryGroup {
 }
 
 export interface SelectionSummary {
-  /** "all" = súhrn platí pre celý výber, "returned" = len pre vrátenú časť (viewer výber orezal a súhrn neposlal). */
+  /** "all" = the summary applies to the whole selection, "returned" = only to the returned part (the viewer truncated the selection and did not send a summary). */
   covers: "all" | "returned";
   of: number;
   by_ifc_type: SummaryGroup[];
   by_floor: SummaryGroup[];
   by_parent: SummaryGroup[];
   by_model?: SummaryGroup[];
-  /** Koľko z vrátených položiek (`returned`) AIM pozná. */
+  /** How many of the returned items (`returned`) AIM knows. */
   in_aim: number;
 }
 
@@ -111,7 +111,7 @@ function clampInt(v: unknown, def: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.trunc(n)));
 }
 
-/** GUIDy výberu bez duplicít, v poradí viewera (guids, potom items), max `MAX_SELECTION_GUIDS`. */
+/** Selection GUIDs without duplicates, in viewer order (guids, then items), max `MAX_SELECTION_GUIDS`. */
 export function selectionGuids(sel: ViewerSelection): string[] {
   const out = new Set<string>();
   for (const g of sel.guids ?? []) if (typeof g === "string" && g) out.add(g);
@@ -119,7 +119,7 @@ export function selectionGuids(sel: ViewerSelection): string[] {
   return [...out].slice(0, MAX_SELECTION_GUIDS);
 }
 
-/** GUIDy, ktoré treba hľadať v AIM: prvky výberu + rodičia, ktorých poslal viewer. */
+/** GUIDs to look up in AIM: selection elements + the parents the viewer sent. */
 export function lookupGuidsFor(sel: ViewerSelection): string[] {
   const guids = selectionGuids(sel);
   const keep = new Set(guids);
@@ -143,7 +143,7 @@ function group(values: (string | null | undefined)[]): SummaryGroup[] {
   return [...sorted.slice(0, MAX_GROUPS - 1), { key: "(ostatné)", count: rest }];
 }
 
-/** Súhrn z viewera, ak je použiteľný (počet `of` a polia skupín). */
+/** Summary from the viewer, if usable (count `of` and group fields). */
 function viewerSummary(sel: ViewerSelection): ViewerSummary | null {
   const v = sel.summary;
   if (!v || typeof v !== "object" || typeof v.of !== "number" || !Number.isFinite(v.of)) return null;
@@ -162,9 +162,9 @@ function parentLabel(p: SelectionItem["parent"]): string | null {
 }
 
 /**
- * Zloží výber: viewer má prednosť (pozná IFC), AIM dopĺňa object_ref a čo viewer
- * nepošle. `opts.items_offset`/`items_limit` stránkujú položky, súhrn je vždy
- * nad všetkými spracovanými GUID.
+ * Assembles the selection: the viewer takes precedence (it knows the IFC), AIM adds object_ref and what the viewer
+ * does not send. `opts.items_offset`/`items_limit` paginate the items, the summary is always
+ * over all processed GUIDs.
  */
 export function summarizeSelection(
   sel: ViewerSelection,
@@ -178,7 +178,7 @@ export function summarizeSelection(
   const all: SelectionItem[] = guids.map((guid) => {
     const v = fromViewer.get(guid);
     const a = ctx.get(guid);
-    // Rodič z viewera; AIM ho môže poznať, aj keď časť nie (IfcCurtainWall áno, IfcPlate nie).
+    // Parent from the viewer; AIM may know it even when a part is unknown (IfcCurtainWall yes, IfcPlate no).
     const pa = v?.parent_guid ? ctx.get(v.parent_guid) : undefined;
     const parent =
       v?.parent_guid || v?.parent_type || v?.parent_name
@@ -212,7 +212,7 @@ export function summarizeSelection(
         of: vs.of,
         by_ifc_type: groups(vs.by_ifc_type),
         by_floor: groups(vs.by_storey),
-        // Zostavu, ktorú AIM pozná (IfcCurtainWall áno), pomenuje object_ref.
+        // An assembly that AIM knows (IfcCurtainWall yes) is named by object_ref.
         by_parent: (vs.by_parent ?? [])
           .filter((g) => g && typeof g.key === "string" && typeof g.count === "number")
           .map((g) => {

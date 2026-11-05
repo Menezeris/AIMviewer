@@ -1,10 +1,10 @@
 /**
- * Správa "nová revízia" na živom kanáli (D-086). Posiela ju `etl/model_publish.py
- * announce` po re-ETL; viewer s `?live=` obnoví stránku a iframe dostane URL modelu
- * s novým `?rev=`. Bez závislostí na serveri — číta ju klient (`components/live-channel.tsx`).
+ * The "new revision" message on the live channel (D-086). Sent by `etl/model_publish.py
+ * announce` after a re-ETL; a viewer with `?live=` refreshes the page and the iframe gets the model URL
+ * with the new `?rev=`. No server dependencies - read by the client (`components/live-channel.tsx`).
  */
 
-/** Udalosť v kanáli (rovnaká hodnota ako `LIVE_REVISION_EVENT` v `etl/model_publish.py`). */
+/** Event in the channel (the same value as `LIVE_REVISION_EVENT` in `etl/model_publish.py`). */
 export const LIVE_REVISION_EVENT = "model_revision";
 
 export interface RevisionNotice {

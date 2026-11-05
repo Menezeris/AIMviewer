@@ -50,10 +50,10 @@ describe("BCF API: snímka výrezu ako pohľad témy (D-158 krok 3)", () => {
       return { ok: true, png: Buffer.from("PNG"), revisionChanged: false };
     });
     const page = await s.store.addDocument({ ...s.base, page: 2, region: { x: 10, y: 20, width: 30, height: 40 }, document_sha256: SHA });
-    // Celý dokument bez strany snímku nemá (nie je čo vyrezať).
+    // A whole document without a page has no snapshot (there is nothing to crop).
     await s.store.addDocument({ ...s.base, page: null, region: null, document_sha256: null });
     const vps = (await call(s.ctx, "GET", `${P}/topics/${s.topic.id}/viewpoints`)).body as Record<string, unknown>[];
-    // Bez kalibrácie a bez 3D pohľadu: náhľad zhora (BCF 3.0 chce kameru v každom pohľade).
+    // Without calibration and without a 3D viewpoint: a top-down preview (BCF 3.0 wants a camera in every viewpoint).
     expect(vps).toEqual([{ guid: page.id, orthogonal_camera: expect.objectContaining({ camera_direction: { x: 0, y: 0, z: -1 } }), snapshot: { snapshot_type: "png" } }]);
     const one = await call(s.ctx, "GET", `${P}/topics/${s.topic.id}/viewpoints/${page.id}`);
     expect(one.body).toEqual(vps[0]);
@@ -77,7 +77,7 @@ describe("BCF API: snímka výrezu ako pohľad témy (D-158 krok 3)", () => {
     expect(asked[0].markup).toEqual([cloud]);
     const refs = (await call(s.ctx, "GET", `${P}/topics/${s.topic.id}/document_references`)).body as Record<string, unknown>[];
     expect(refs[0].markup).toEqual([cloud]);
-    // Odkaz bez značiek: odpoveď aj požiadavka ako predtým.
+    // A reference without markups: the answer and the request as before.
     const plain = await s.store.addDocument({ ...s.base, page: 1, region: null, document_sha256: SHA });
     await call(s.ctx, "GET", `${P}/topics/${s.topic.id}/viewpoints/${plain.id}/snapshot`);
     expect("markup" in asked[1]).toBe(false);
@@ -96,7 +96,7 @@ describe("BCF API: snímka výrezu ako pohľad témy (D-158 krok 3)", () => {
     expect(snap).toMatchObject({ status: 502, body: { message: "PDF sa nedalo stiahnuť" } });
     expect((await call(s.ctx, "GET", `${P}/topics/${s.topic.id}/viewpoints/vp-3d/snapshot`)).status).toBe(404);
 
-    // Bez kalibrácie preberie kameru 3D pohľadu témy.
+    // Without calibration it takes the camera of the topic 3D viewpoint.
     s.topic.viewpoint = { guid: "vp-3d", source: "viewer", camera: { position: { x: 5, y: 5, z: 5 }, target: { x: 0, y: 0, z: 0 } } };
     await s.store.update(s.topic.id, { viewpoint: s.topic.viewpoint });
     const withCam = (await call(s.ctx, "GET", `${P}/topics/${s.topic.id}/viewpoints`)).body as Record<string, unknown>[];
@@ -132,7 +132,7 @@ describe("odkaz na dokument: viewrect, revízia a snímka v detaile", () => {
     expect(url).toBe(`${ORIGIN}/drawing/${DOC_ID}?page=2&region=50_0_50_50#page=2&viewrect=421,0,421,297.5`);
     expect(documentReferenceToDto(row({ page_size: [842, 595] }), ORIGIN).url).toBe(url);
     expect(parseDocumentReferenceDto({ url }, ORIGIN)).toMatchObject({ document_id: DOC_ID, page: 2, region: { x: 50, y: 0, width: 50, height: 50 } });
-    // Len fragment (cudzí nástroj zahodil query): strana z #page aj s viewrect.
+    // Fragment only (a foreign tool dropped the query): the page from #page with viewrect.
     expect(parseDocumentReferenceDto({ url: `/drawing/${DOC_ID}#page=3&viewrect=1,2,3,4` }, ORIGIN)).toMatchObject({ page: 3 });
   });
 

@@ -3,14 +3,14 @@ import { MAX_ARCHIVE_BYTES } from "./import";
 import { BcfInputError } from "./tools";
 
 /**
- * Odkiaľ príde `.bcfzip` pri importe (D-158 krok 8): `data_base64` (malý súbor priamo v tooli) alebo
- * `url`. Server nesťahuje hocijakú adresu (SSRF): len https z verejného úložiska tohto projektu
- * alebo z hostov v `BCF_IMPORT_HOSTS` (čiarkou oddelené mená), bez presmerovania.
+ * Where the `.bcfzip` on import comes from (D-158 step 8): `data_base64` (a small file directly in the tool) or
+ * `url`. The server does not download any address (SSRF): only https from the public storage of this project
+ * or from hosts in `BCF_IMPORT_HOSTS` (comma-separated names), without redirects.
  */
 
 export interface ImportSourceConfig {
   supabaseUrl?: string;
-  /** Povolené mená hostov okrem úložiska projektu. */
+  /** Allowed host names besides the project storage. */
   hosts: string[];
 }
 
@@ -38,7 +38,7 @@ export function checkImportUrl(raw: string, cfg: ImportSourceConfig): URL {
   );
 }
 
-/** Stiahne súbor s limitom veľkosti a času; bez presmerovania. */
+/** Downloads a file with a size and time limit; without redirects. */
 export async function fetchArchive(raw: string, cfg: ImportSourceConfig, fetchImpl: typeof fetch = fetch): Promise<Uint8Array> {
   const u = checkImportUrl(raw, cfg);
   const res = await fetchImpl(u, { redirect: "error", signal: AbortSignal.timeout(30_000) });
@@ -62,7 +62,7 @@ export async function fetchArchive(raw: string, cfg: ImportSourceConfig, fetchIm
   return Buffer.concat(chunks);
 }
 
-/** Argumenty toolu -> bajty archívu. */
+/** Tool arguments -> archive bytes. */
 export async function archiveFromArgs(args: Record<string, unknown>, cfg: ImportSourceConfig = importSourceConfig(), fetchImpl?: typeof fetch): Promise<Uint8Array> {
   const b64 = typeof args.data_base64 === "string" ? args.data_base64.trim() : "";
   const url = typeof args.url === "string" ? args.url.trim() : "";

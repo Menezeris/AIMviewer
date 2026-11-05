@@ -13,7 +13,7 @@ import {
   type Vec3,
 } from "./region-model";
 
-/** Pôdorys 1:100 na A4 naležato: 1 bod = 0,0352778 m, ľavý dolný roh strany = IFC (-5, -3). */
+/** Floor plan 1:100 on A4 landscape: 1 point = 0.0352778 m, bottom left corner of the page = IFC (-5, -3). */
 const K = 0.0352778;
 const PLAN: GeorefCalibration = {
   page: 2,
@@ -29,7 +29,7 @@ const PLAN: GeorefCalibration = {
   source: "auto",
 };
 
-/** Kvádr ako 12 trojuholníkov. */
+/** A box as 12 triangles. */
 function box(globalId: string, ifcType: string, min: Vec3, max: Vec3): RegionElement {
   const c = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => [i & 1 ? max[0] : min[0], i & 2 ? max[1] : min[1], i & 4 ? max[2] : min[2]]);
   const faces = [
@@ -50,7 +50,7 @@ describe("oblasť strany v IFC svete (D-158 krok 4)", () => {
   });
 
   it("rohy oblasti: % vľavo hore -> body vľavo dole -> metre podlažia", () => {
-    // Pravá horná štvrtina strany.
+    // Top right quarter of the page.
     const f = regionFrame(PLAN, { x: 50, y: 0, width: 50, height: 50 });
     const [tl, tr, br, bl] = f.corners;
     expect(tl[0]).toBeCloseTo(-5 + 421 * K, 6);
@@ -77,7 +77,7 @@ describe("oblasť strany v IFC svete (D-158 krok 4)", () => {
     const f = regionFrame(sec, null);
     expect(f.kind).toBe("section");
     expect(f.normal).toEqual([0, -1, 0]);
-    // Ľavý dolný roh strany = origin roviny.
+    // Bottom left corner of the page = plane origin.
     expect(f.corners[3]).toEqual([0, 10, 0]);
     expect(f.corners[1][2]).toBeCloseTo(595 * K, 6);
     const vp = regionViewpoint(f);
@@ -104,7 +104,7 @@ describe("oblasť strany v IFC svete (D-158 krok 4)", () => {
 });
 
 describe("návrh prvkov v oblasti", () => {
-  // Oblasť: x 0..10 m, y 0..5 m na podlaží z = 3 (horná hrana podlažia 6).
+  // Region: x 0..10 m, y 0..5 m on storey z = 3 (storey top edge 6).
   const cal: GeorefCalibration = { ...PLAN, affine: [10 / 842, 0, 0, 0, 5 / 595, 0] };
   const f = regionFrame(cal, null);
   const depth = regionDepth(f, 6);
@@ -128,7 +128,7 @@ describe("návrh prvkov v oblasti", () => {
   });
 
   it("šikmá stena mimo oblasti: obálka zasahuje, geometria nie", () => {
-    // Tenký diagonálny prvok od (9, 9) po (14, 4): obálka prekryje roh oblasti (10, 5), trojuholníky nie.
+    // A thin diagonal element from (9, 9) to (14, 4): the bounding box overlaps the region corner (10, 5), the triangles do not.
     const diag: RegionElement = {
       globalId: "diag",
       ifcType: "IfcWall",
@@ -150,7 +150,7 @@ describe("návrh prvkov v oblasti", () => {
     expect(pos.z).toBeGreaterThan(6);
     expect(cam.aspect_ratio).toBe(1.6);
     expect(vp.clipping_planes).toEqual([{ location: { x: 5, y: 2.5, z: 5.9 }, direction: { x: 0, y: 0, z: -1 } }]);
-    // Bez hornej hrany podlažia: rez 2 m nad podlahou.
+    // Without the storey top edge: a section 2 m above the floor.
     expect((regionViewpoint(f).clipping_planes as { location: { z: number } }[])[0].location.z).toBe(5);
   });
 });

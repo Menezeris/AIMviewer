@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-// Moduly sú server-only (D-026) - mimo RSC runtime treba marker odmockovať.
+// The modules are server-only (D-026) - outside the RSC runtime the marker must be mocked out.
 vi.mock("server-only", () => ({}));
 
 import type { BcfTopicRow } from "./store";

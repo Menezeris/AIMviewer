@@ -1,19 +1,19 @@
 import type { LiveAppliedPayload } from "./protocol";
 
 /**
- * Most v prehliadači pre príkazy živého kanála (D-101), vzor `viewer-query-bus`.
+ * Browser bridge for live channel commands (D-101), pattern of `viewer-query-bus`.
  *
- * - Viewer na `/ifc` sa zaregistruje a príkazy (`focus`, `ops`) vykoná na
- *   mieste: bez `router.push` a bez serverového renderu `/ifc` pri každom úkone.
- * - Bez viewera (iná stránka) ide navigácia ako doteraz a `cmdId` počkajú,
- *   kým viewer po načítaní ops vykoná a potvrdí.
- * - Potvrdenie `APPLIED` z forku ide späť do kanála cez `emitApplied`.
+ * - The viewer on `/ifc` registers and executes commands (`focus`, `ops`) in
+ *   place: no `router.push` and no server render of `/ifc` on every action.
+ * - Without a viewer (another page) navigation goes as before and `cmdId`s wait
+ *   until the viewer executes the ops after loading and acknowledges.
+ * - The `APPLIED` acknowledgement from the fork goes back to the channel via `emitApplied`.
  */
 
 export interface LiveApply {
   focus?: string;
   ops?: string;
-  /** Nonce akcie (`r` v URL): efekt soft-nav ten istý príkaz už nezopakuje. */
+  /** Action nonce (`r` in the URL): the soft-nav effect does not repeat the same command. */
   nonce?: string;
   cmdIds: string[];
 }
@@ -25,7 +25,7 @@ let handler: ApplyHandler | null = null;
 let sink: AppliedSink | null = null;
 let pending: string[] = [];
 
-/** Vráti odregistrovanie - zruší len vlastný handler, nie neskorší. */
+/** Returns the unregister function - cancels only its own handler, not a later one. */
 export function setLiveApplyHandler(h: ApplyHandler): () => void {
   handler = h;
   return () => {
@@ -33,19 +33,19 @@ export function setLiveApplyHandler(h: ApplyHandler): () => void {
   };
 }
 
-/** true = vykonané na mieste; false = nie je viewer, volajúci naviguje (a cmdId odloží cez `deferCmdIds`). */
+/** true = executed in place; false = no viewer, the caller navigates (and defers the cmdId via `deferCmdIds`). */
 export function applyLive(a: LiveApply): boolean {
   if (!handler) return false;
   handler(a);
   return true;
 }
 
-/** Príkaz ide navigáciou na `/ifc`: jeho cmdId potvrdí viewer po vykonaní ops z URL. */
+/** The command goes by navigation to `/ifc`: its cmdId is acknowledged by the viewer after executing the ops from the URL. */
 export function deferCmdIds(ids: string[]): void {
   pending.push(...ids);
 }
 
-/** cmdId príkazov, ktoré prišli navigáciou (viewer ich potvrdí po vykonaní ops z URL). */
+/** cmdIds of commands that arrived by navigation (the viewer acknowledges them after executing the ops from the URL). */
 export function takePendingCmdIds(): string[] {
   const out = pending;
   pending = [];
@@ -64,7 +64,7 @@ export function emitApplied(p: LiveAppliedPayload): void {
 }
 
 /**
- * `/ifc?focus&ops&r` -> časti príkazu; iná cesta (karta prvku, výkres) = null. `project` (D-189) is
+ * `/ifc?focus&ops&r` -> command parts; another path (element card, drawing) = null. `project` (D-189) is
  * allowed: the caller applies in place only when it is the project of this window, otherwise it
  * navigates (the proxy switches the project).
  */
@@ -72,7 +72,7 @@ export function parseIfcCommandUrl(url: string): { focus?: string; ops?: string;
   const u = new URL(url, "http://local");
   if (u.pathname !== "/ifc") return null;
   const pick = (k: string) => u.searchParams.get(k) || undefined;
-  // Iné parametre (doc, captures...) potrebujú stránku - tie ostanú navigácii.
+  // Other parameters (doc, captures...) need a page - those stay with navigation.
   for (const k of u.searchParams.keys()) if (!["focus", "ops", "r", "project"].includes(k)) return null;
   return { focus: pick("focus"), ops: pick("ops"), nonce: pick("r"), project: pick("project") };
 }
@@ -97,16 +97,16 @@ export function withProjectParam(url: string, code: string, defaultCode: string)
 }
 
 /**
- * Adresa s príkazom (`?ops`, `?focus`) otvorená znova obnovou stránky alebo krokom v histórii
- * (aj obnovená karta prehliadača), nie novým odkazom: príkaz už raz prebehol a štart ho nemá
- * zopakovať, inak sa model načíta napr. prerezaný (#313). `nav` = PerformanceNavigationTiming
- * dokumentu; platí len pre adresu, ktorou sa dokument načítal, nie pre neskoršiu navigáciu v appke.
+ * An address with a command (`?ops`, `?focus`) opened again by a page refresh or a history step
+ * (also a restored browser tab), not by a new link: the command already ran once and the start must not
+ * repeat it, otherwise the model loads e.g. sectioned (#313). `nav` = PerformanceNavigationTiming
+ * of the document; applies only to the address the document was loaded with, not to later navigation in the app.
  */
 export function isRestoredCommandUrl(nav: { type: string; name: string } | undefined, href: string): boolean {
   return !!nav && (nav.type === "reload" || nav.type === "back_forward") && nav.name === href;
 }
 
-/** Adresa bez častí príkazu (`focus`, `ops`, `r`), ostatné parametre (napr. `live`) ostanú. */
+/** Address without command parts (`focus`, `ops`, `r`), other parameters (e.g. `live`) stay. */
 export function withoutCommandParams(href: string): string {
   const u = new URL(href);
   for (const k of ["focus", "ops", "r"]) u.searchParams.delete(k);

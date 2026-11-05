@@ -1,35 +1,35 @@
 /**
- * Spätný kanál viewer -> Claude (D-085): otázka a odpoveď cez ten istý
- * Supabase Realtime kanál ako príkazy (D-079). Spoločné pre server
- * (`query.ts`) aj prehliadač (`components/live-channel.tsx`), bez závislostí.
+ * Back channel viewer -> Claude (D-085): a question and answer over the same
+ * Supabase Realtime channel as the commands (D-079). Shared by the server
+ * (`query.ts`) and the browser (`components/live-channel.tsx`), no dependencies.
  *
- * Server pošle udalosť `query` {id, query, guids?}; otvorený viewer ju odovzdá
- * forku (`QUERY` bridge správa) a odpoveď vráti udalosťou `reply` s tým istým id.
+ * The server sends a `query` event {id, query, guids?}; an open viewer hands it to the
+ * fork (`QUERY` bridge message) and returns the answer as a `reply` event with the same id.
  */
 
 export const LIVE_QUERY_EVENT = "query";
 
-/** Testovací kanál pracovných sessions (D-159): `<LIVE_CHANNEL>-test`, nikdy viewer používateľa. */
+/** Test channel of working sessions (D-159): `<LIVE_CHANNEL>-test`, never the user's viewer. */
 export const LIVE_TEST_SUFFIX = "-test";
 
-/** Prostredie živého kanála vo vieweri (D-159): produkcia (chat používateľa) alebo testy sessions. */
+/** Live channel environment in the viewer (D-159): production (the user's chat) or session tests. */
 export type LiveKind = "prod" | "test";
 
-/** Kanál pre vybrané prostredie: testy sessions = `<kanál>-test`. */
+/** Channel for the selected environment: session tests = `<channel>-test`. */
 export const channelFor = (base: string, kind: LiveKind) => (kind === "test" ? `${base}${LIVE_TEST_SUFFIX}` : base);
 
-/** `?live=` s príponou testovacieho kanála = základný kanál + výber testov; inak platí uložený výber karty. */
+/** `?live=` with the test channel suffix = base channel + test selection; otherwise the saved tab selection applies. */
 export function splitChannel(name: string, storedKind: string | null): { base: string; kind: LiveKind } {
   if (name.endsWith(LIVE_TEST_SUFFIX)) return { base: name.slice(0, -LIVE_TEST_SUFFIX.length), kind: "test" };
   return { base: name, kind: storedKind === "test" ? "test" : "prod" };
 }
 export const LIVE_REPLY_EVENT = "reply";
 
-/** `lens_state` = počty AIM chat lens po `style_in_3d` (D-096). */
+/** `lens_state` = counts of the AIM chat lens after `style_in_3d` (D-096). */
 export const VIEWER_QUERIES = ["bounds", "view_state", "lens_state"] as const;
 export type ViewerQuery = (typeof VIEWER_QUERIES)[number];
 
-/** Rovnaké limity ako most forku (`apps/viewer/src/aim/view-protocol.ts`). */
+/** The same limits as the fork bridge (`apps/viewer/src/aim/view-protocol.ts`). */
 export const MAX_QUERY_GUIDS = 100;
 const MAX_ID = 64;
 
@@ -37,21 +37,21 @@ export interface LiveQueryPayload {
   id: string;
   query: ViewerQuery;
   guids?: string[];
-  /** Verzia lens pri `lens_state` - viewer počká na jej vyhodnotenie. */
+  /** Lens version for `lens_state` - the viewer waits for its evaluation. */
   rev?: string;
-  /** Rozhovor, ktorý sa pýta (D-159): odpoveď povie, či viewer ovláda on. */
+  /** Conversation asking (D-159): the answer says whether the viewer is controlled by it. */
   sid?: string;
 }
 
 /**
- * Kto ovláda okno viewera z pohľadu pýtajúceho sa rozhovoru (D-159): `you` = tento chat,
- * `other` = iný chat (príkazy odtiaľto sa nevykonajú), `none` = zatiaľ nikto.
+ * Who controls the viewer window from the point of view of the asking conversation (D-159): `you` = this chat,
+ * `other` = another chat (commands from here are not executed), `none` = nobody yet.
  */
 export type ViewerOwner = "you" | "other" | "none";
 
 /**
- * `viewer` = náhodná identita okna s `?live=` na jedno načítanie stránky (D-125): na kanál
- * môže odpovedať viac okien (karty, telefón) a ich stav sa líši; starší klient ju nemá.
+ * `viewer` = random identity of a window with `?live=` for one page load (D-125): several windows
+ * (tabs, phone) can answer on the channel and their state differs; an older client does not have it.
  */
 export type LiveReplyPayload =
   | { id: string; ok: true; result: unknown; viewer?: string; owner?: ViewerOwner }
@@ -73,10 +73,10 @@ export function isLiveQuery(p: unknown): p is LiveQueryPayload {
   );
 }
 
-/** Identita okna viewera (D-125): krátky reťazec, inak sa ignoruje. */
+/** Viewer window identity (D-125): a short string, otherwise ignored. */
 export const isViewerId = (v: unknown): v is string => isStr(v) && v.length <= MAX_ID;
 
-/** Nová identita okna viewera pri načítaní stránky (D-125). */
+/** New viewer window identity on page load (D-125). */
 export function newViewerId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
@@ -92,20 +92,20 @@ export function isLiveReply(p: unknown): p is LiveReplyPayload {
 }
 
 /**
- * Potvrdenie príkazu (D-101): server pošle príkaz s `cmdId`, viewer ho vykoná a
- * po dobehnutí jeho krokov vráti udalosť `applied` so stavom po aplikovaní.
+ * Command acknowledgement (D-101): the server sends a command with `cmdId`, the viewer executes it and
+ * after its steps finish returns an `applied` event with the state after applying.
  */
 export const LIVE_APPLIED_EVENT = "applied";
 
 export interface LiveAppliedPayload {
   cmdId: string;
-  /** Okno, ktoré príkaz potvrdilo (D-125). */
+  /** Window that acknowledged the command (D-125). */
   viewer?: string;
   ok: boolean;
-  /** Čo sa vo vieweri vykonať nedalo (napr. prvok sa nenašiel). */
+  /** What could not be executed in the viewer (e.g. an element was not found). */
   issues: string[];
   state?: unknown;
-  /** `foreign` = okno ovláda iný chat a príkaz nevykonalo (D-159). */
+  /** `foreign` = the window is controlled by another chat and did not execute the command (D-159). */
   rejected?: "foreign";
 }
 

@@ -1,4 +1,4 @@
-/** Pomôcky testov kolízií (D-164): úložisko a BCF vrstva v pamäti so správaním DB (jedinečný kód, cascade, upsert stavu). */
+/** Clash test helpers (D-164): in-memory storage and BCF layer with DB behaviour (unique code, cascade, state upsert). */
 
 import type {
   ClashBcfPort,
@@ -16,7 +16,7 @@ export interface MemoryClashStore extends ClashStore {
   runRows: ClashRunRow[];
   resultRows: Array<ClashResultRow & { run_id: string }>;
   reviewRows: ClashReviewRow[];
-  /** Čísla tém, ktoré store pozná (BCF `model_tasks.number`). */
+  /** Topic numbers the store knows (BCF `model_tasks.number`). */
   topics: Map<string, number>;
 }
 
@@ -127,7 +127,7 @@ export interface MemoryBcf extends ClashBcfPort {
   notified: number;
 }
 
-/** BCF vrstva v pamäti: témy dostávajú čísla od 1; `store.topics` sa dopĺňa, aby `topicNumbers` odpovedalo. */
+/** In-memory BCF layer: topics get numbers from 1; `store.topics` is filled in so that `topicNumbers` answers. */
 export function memoryBcf(store?: MemoryClashStore): MemoryBcf {
   const created: MemoryBcf["created"] = [];
   const bcf: MemoryBcf = {

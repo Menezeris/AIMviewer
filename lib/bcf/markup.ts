@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 
 /**
- * Tvary značiek na odkaze témy (D-158 krok 7, #199): `model_task_documents.markup` je pole
- * `{type, points[], text?}` v % strany (vľavo hore, 2 desatinné miesta), tak ako `region`.
- * Dáta prichádzajú z viewera (nedôveryhodné), preto sa každý tvar overí a oreže; neplatný tvar
- * sa zahodí, nie celá téma. Čistá časť: overenie, hash do kľúča keše a geometria kreslenia
- * (render na canvas je v `snapshot-render.ts`, tvary rovnaké ako `docMarkupSvg.ts` vo forku).
+ * Markup shapes on a topic reference (D-158 step 7, #199): `model_task_documents.markup` is an array of
+ * `{type, points[], text?}` in % of the page (top left, 2 decimal places), like `region`.
+ * The data comes from the viewer (untrusted), so every shape is verified and clamped; an invalid shape
+ * is dropped, not the whole topic. The pure part: verification, the hash into the cache key and the drawing geometry
+ * (canvas rendering is in `snapshot-render.ts`, shapes the same as `docMarkupSvg.ts` in the fork).
  */
 
 export type MarkupType = "cloud" | "arrow" | "text" | "pin";
@@ -21,10 +21,10 @@ export interface Markup {
   text?: string;
 }
 
-/** Najviac značiek na odkaz a znakov textu značky. */
+/** Maximum markups per reference and characters of the markup text. */
 export const MAX_MARKUP = 20;
 export const MAX_MARKUP_TEXT = 200;
-/** Strop JSON v parametri `markup` snímky (URL-enkódovaný, bez enkódovania). */
+/** Cap on JSON in the snapshot `markup` parameter (URL-encoded, without encoding). */
 export const MAX_MARKUP_JSON = 8 * 1024;
 
 const POINTS: Record<MarkupType, number> = { cloud: 2, arrow: 2, text: 1, pin: 1 };
@@ -40,7 +40,7 @@ const cleanText = (v: unknown): string | undefined => {
   return s || undefined;
 };
 
-/** Jeden tvar -> overený tvar, alebo null (zlý typ, počet bodov, súradnica, chýbajúci text textu). */
+/** One shape -> a verified shape, or null (bad type, point count, coordinate, missing text of a text). */
 export function parseMarkupShape(raw: unknown): Markup | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const r = raw as Record<string, unknown>;
@@ -61,7 +61,7 @@ export function parseMarkupShape(raw: unknown): Markup | null {
   return { type, points };
 }
 
-/** Pole značiek -> overené (najviac `MAX_MARKUP`, neplatné vynechá); nie pole alebo nič platné = []. */
+/** Array of markups -> verified (at most `MAX_MARKUP`, invalid omitted); not an array or nothing valid = []. */
 export function parseMarkup(raw: unknown): Markup[] {
   if (!Array.isArray(raw)) return [];
   const out: Markup[] = [];
@@ -74,8 +74,8 @@ export function parseMarkup(raw: unknown): Markup[] {
 }
 
 /**
- * Parameter `markup` snímky: URL-dekódovaný JSON do 8 kB. Chybný JSON alebo príliš dlhý = výnimka
- * (chyba požiadavky), platné pole sa overí ako pri uložení.
+ * The snapshot `markup` parameter: URL-decoded JSON up to 8 kB. Invalid JSON or too long = an exception
+ * (a request error), a valid array is verified as on save.
  */
 export function parseMarkupParam(raw: string | null | undefined): Markup[] {
   if (!raw) return [];
@@ -91,10 +91,10 @@ export function parseMarkupParam(raw: string | null | undefined): Markup[] {
 
 export class MarkupParamError extends Error {}
 
-/** Uložená hodnota (jsonb) alebo null -> overené značky (poškodený stĺpec nezhodí čítanie). */
+/** Stored value (jsonb) or null -> verified markups (a damaged column does not fail the read). */
 export const storedMarkup = (raw: unknown): Markup[] => parseMarkup(raw);
 
-/** Skrátený hash značiek do kľúča keše snímky; prázdne značky = null (kľúč ostane ako doteraz). */
+/** Shortened hash of markups for the snapshot cache key; empty markups = null (the key stays as before). */
 export function markupHash(markup: readonly Markup[] | null | undefined): string | null {
   if (!markup || markup.length === 0) return null;
   const canon = JSON.stringify(markup.map((m) => [m.type, m.points.map((p) => [p.x, p.y]), m.text ?? null]));
@@ -102,7 +102,7 @@ export function markupHash(markup: readonly Markup[] | null | undefined): string
 }
 
 // ---------------------------------------------------------------------------------------------
-// Geometria kreslenia. Súradnice sú v jednotkách, kde šírka strany = 1000 (rovnako ako vo forku).
+// Drawing geometry. Coordinates are in units where page width = 1000 (as in the fork).
 // ---------------------------------------------------------------------------------------------
 
 export const MARKUP_COLOR = "#dc2626";
@@ -119,15 +119,15 @@ export interface Arc {
   cx: number;
   cy: number;
   r: number;
-  /** Polkruh vedený od `a0` po `a1` (rastúci uhol, v smere hodín na canvase s y dole). */
+  /** Semicircle drawn from `a0` to `a1` (increasing angle, clockwise on a canvas with y down). */
   a0: number;
   a1: number;
 }
 
 /**
- * Obláčik: obrys obdĺžnika z polkruhových oblúkov smerom von. Polomer oblúka `s` = štvrtina
- * kratšej strany v rozsahu 6 až 18; na hranu s dĺžkou L ide n = round(L / (2s)) oblúkov
- * (aspoň 1) s polomerom L / n / 2. Hrany idú v smere hodín: hore, vpravo, dole, vľavo.
+ * Cloud: the outline of a rectangle from semicircular arcs pointing outward. The arc radius `s` = a quarter of the
+ * shorter side in the range 6 to 18; an edge of length L gets n = round(L / (2s)) arcs
+ * (at least 1) with radius L / n / 2. Edges go clockwise: top, right, bottom, left.
  */
 export function cloudArcs(x0: number, y0: number, x1: number, y1: number): Arc[] {
   const l = Math.min(x0, x1);
@@ -162,7 +162,7 @@ export function cloudArcs(x0: number, y0: number, x1: number, y1: number): Arc[]
   return arcs;
 }
 
-/** Hrot šípky: trojuholník ARROW_HEAD x ARROW_HEAD s hrotom v `tip`, základňa v smere k chvostu. */
+/** Arrow head: a triangle ARROW_HEAD x ARROW_HEAD with the tip at `tip`, the base toward the tail. */
 export function arrowHead(tail: MarkupPoint, tip: MarkupPoint): [MarkupPoint, MarkupPoint, MarkupPoint] | null {
   const dx = tip.x - tail.x;
   const dy = tip.y - tail.y;
@@ -176,7 +176,7 @@ export function arrowHead(tail: MarkupPoint, tip: MarkupPoint): [MarkupPoint, Ma
   return [tip, { x: bx - uy * half, y: by + ux * half }, { x: bx + uy * half, y: by - ux * half }];
 }
 
-/** Kvapka pinu: hrot v `tip`, kruh r=12 so stredom 24 nad hrotom; dotyčnice ležia pod uhlom 60° od osi. */
+/** Pin drop: the tip at `tip`, a circle r=12 centered 24 above the tip; tangents lie at an angle of 60 degrees from the axis. */
 export function pinGeometry(tip: MarkupPoint) {
   const cx = tip.x;
   const cy = tip.y - PIN_LIFT;
@@ -192,7 +192,7 @@ export function pinGeometry(tip: MarkupPoint) {
   };
 }
 
-/** Značka v % strany -> jednotky kreslenia (šírka 1000, výška podľa pomeru strán). */
+/** Markup in % of the page -> drawing units (width 1000, height by aspect ratio). */
 export function toUnits(p: MarkupPoint, pageSize: [number, number]): MarkupPoint {
   const w = 1000;
   const h = (1000 * pageSize[1]) / pageSize[0];

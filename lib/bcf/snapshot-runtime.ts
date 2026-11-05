@@ -6,8 +6,8 @@ import { isOwnStorageUrl, type SnapshotDocument, type SnapshotSource } from "./s
 import { currentProjectId } from "../project/context";
 
 /**
- * Produkčné závislosti snímky výrezu (D-158 krok 3): dokument z DB, PDF z verejného
- * bucketu, keš v buckete `documents` (verejný, tam kde sú PDF, D-123) a render pdf.js.
+ * Production dependencies of the region snapshot (D-158 step 3): the document from the DB, the PDF from the public
+ * bucket, the cache in the `documents` bucket (public, where the PDFs are, D-123) and the pdf.js render.
  */
 
 export const SNAPSHOT_BUCKET = "documents";
@@ -37,9 +37,9 @@ async function document(id: string): Promise<SnapshotDocument | null> {
 }
 
 /**
- * PDF v pamäti inštancie (posledné dva súbory, 10 minút): BCF panel pýta snímky všetkých
- * pripomienok naraz a každá chýbajúca by inak stiahla celé PDF znova (egress Supabase).
- * Súbežné požiadavky na ten istý súbor zdieľajú jedno stiahnutie.
+ * PDF in instance memory (the last two files, 10 minutes): the BCF panel asks for snapshots of all
+ * comments at once and each missing one would otherwise download the whole PDF again (Supabase egress).
+ * Concurrent requests for the same file share one download.
  */
 const PDF_TTL_MS = 10 * 60_000;
 const PDF_KEEP = 2;
@@ -75,7 +75,7 @@ async function cacheGet(key: string): Promise<Buffer | null> {
 }
 
 async function cachePut(key: string, png: Buffer): Promise<void> {
-  // Blob, nie Buffer (vzor uploadCaptureObject); kľúč nesie sha256 súboru, obsah sa nemení.
+  // A Blob, not a Buffer (pattern of uploadCaptureObject); the key carries the file sha256, the content does not change.
   const blob = new Blob([new Uint8Array(png)], { type: "image/png" });
   const { error } = await getSupabaseAdmin()
     .storage.from(SNAPSHOT_BUCKET)
@@ -89,7 +89,7 @@ export function defaultSnapshotSource(): SnapshotSource {
     fetchPdf,
     cacheGet,
     cachePut,
-    // Lenivo: pdf.js a canvas sa načítajú až pri prvom renderi (nie pri každej BCF požiadavke).
+    // Lazily: pdf.js and canvas load only on the first render (not on every BCF request).
     render: async (pdf, page, region, markup) => (await import("./snapshot-render")).renderPdfRegion(pdf, page, region, markup),
   };
 }

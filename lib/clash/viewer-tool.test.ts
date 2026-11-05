@@ -143,7 +143,7 @@ describe("clash action=matrix (D-177)", () => {
     expect(r.json.total).toBe(4);
     const { matrix } = r.json;
     expect(matrix.models).toEqual(["ASR", "VZT"]);
-    // všetky cells a <= b a zoradené, súčet total = počet kolízií
+    // all cells and <= b and sorted, sum of total = number of clashes
     expect(matrix.cells.map((c: { a: string; b: string }) => [c.a, c.b])).toEqual([["ASR", "ASR"], ["ASR", "VZT"]]);
     expect(matrix.cells.reduce((s: number, c: { total: number }) => s + c.total, 0)).toBe(4);
     const cross = matrix.cells[1];
