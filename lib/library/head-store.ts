@@ -12,13 +12,13 @@ const chybaRpc = (e: { code?: string; message?: string } | null) =>
 export function supabaseHlavaStore(): HeadStore {
   return {
     async zoznam(kniznica) {
-      const { data, error } = await getSupabaseAdmin().rpc("library_hlava_zoznam", { p_kniznica: kniznica });
+      const { data, error } = await getSupabaseAdmin().rpc("library_head_list", { p_library: kniznica });
       if (chybaRpc(error)) return null;
       if (error) throw new Error(`Čítanie knižnice zlyhalo: ${error.message}`);
       return (data ?? []) as HeadRow[];
     },
     async subor(kniznica, cesta) {
-      const { data, error } = await getSupabaseAdmin().rpc("library_hlava_subor", { p_kniznica: kniznica, p_cesta: cesta });
+      const { data, error } = await getSupabaseAdmin().rpc("library_head_file", { p_library: kniznica, p_path: cesta });
       if (chybaRpc(error)) return "chyba_migracie";
       if (error) throw new Error(`Čítanie súboru knižnice zlyhalo: ${error.message}`);
       return ((data ?? []) as HeadFile[])[0] ?? null;

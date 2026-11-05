@@ -19,15 +19,15 @@ vi.mock("@/lib/supabase/server", () => ({
 const { supabaseSkladVydania } = await import("./release-db");
 
 describe("supabaseSkladVydania", () => {
-  it("passes the project to library_vydaj", async () => {
+  it("passes the project to library_release", async () => {
     const P = "11111111-2222-4333-8444-555555555555";
     const out = await supabaseSkladVydania("assetin", P).vydaj({
       kod: "v1", autor: "test", sprava: null, schema_verzia: "1.5", diagnostiky: {}, ocakavane: {}, polozky: [],
     });
     expect(out.vydanie_id).toBe("v-1");
     expect(rpcCalls).toHaveLength(1);
-    expect(rpcCalls[0].fn).toBe("library_vydaj");
+    expect(rpcCalls[0].fn).toBe("library_release");
     expect(rpcCalls[0].args.p_project).toBe(P);
-    expect(rpcCalls[0].args.p_kniznica).toBe("assetin");
+    expect(rpcCalls[0].args.p_library).toBe("assetin");
   });
 });

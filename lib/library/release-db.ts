@@ -41,20 +41,20 @@ export function supabaseSkladVydania(kniznica: string, projectId: string): Relea
   return {
     kniznica,
     async texty() {
-      const { data, error } = await db.rpc("library_texty", { p_kniznica: kniznica });
+      const { data, error } = await db.rpc("library_texts", { p_library: kniznica });
       if (error) chyba(error);
       return Object.fromEntries(((data ?? []) as Array<{ cesta: string; text: string }>).map((r) => [r.cesta, r.text]));
     },
     async vydaj(p) {
-      const { data, error } = await db.rpc("library_vydaj", {
-        p_kniznica: kniznica,
-        p_kod: p.kod,
-        p_autor: p.autor,
-        p_sprava: p.sprava,
-        p_schema_verzia: p.schema_verzia,
-        p_diagnostiky: p.diagnostiky,
-        p_ocakavane: p.ocakavane,
-        p_polozky: p.polozky,
+      const { data, error } = await db.rpc("library_release", {
+        p_library: kniznica,
+        p_code: p.kod,
+        p_author: p.autor,
+        p_message: p.sprava,
+        p_schema_version: p.schema_verzia,
+        p_diagnostics: p.diagnostiky,
+        p_expected: p.ocakavane,
+        p_items: p.polozky,
         p_project: projectId,
       });
       if (error) chyba(error);
@@ -63,7 +63,7 @@ export function supabaseSkladVydania(kniznica: string, projectId: string): Relea
       return { vydanie_id: d.vydanie_id, ids: d.ids ?? [] };
     },
     async exportCesta(vydanieId, cesta) {
-      const { error } = await db.rpc("library_vydanie_export", { p_vydanie: vydanieId, p_cesta: cesta });
+      const { error } = await db.rpc("library_release_export", { p_release: vydanieId, p_path: cesta });
       if (error) chyba(error);
     },
   };
