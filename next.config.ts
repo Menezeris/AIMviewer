@@ -33,6 +33,11 @@ const nextConfig: NextConfig = {
     // Kontrola IDS proti ids.xsd pri vydaní knižnice (D-186): libxml2 vo wasm beží vo worker_threads podľa cesty k súboru.
     "xmllint-wasm",
   ],
+  // IFC 4.3 schema submodule (D-195) is for sessions and generators, never part of a function bundle
+  // (a broad pdf.js path pattern in lib/bcf/snapshot-render.ts would otherwise trace it).
+  outputFileTracingExcludes: {
+    "*": ["./vendor/**/*"],
+  },
   outputFileTracingIncludes: {
     "/api/mcp/[token]": [
       "./node_modules/@ifc-lite/wasm/pkg/*.wasm",
