@@ -4,6 +4,7 @@ import { vydaj } from "@/lib/kniznica/editor-api";
 import { overXsd } from "@/lib/kniznica/ids/xsd";
 import { brana, chybaServera, kodKniznice, neznamaKniznica, odpoved, vstup } from "@/lib/kniznica/editor-server";
 import { supabaseSkladVydania, supabaseUloziste, VydanieMigraciaChyba } from "@/lib/kniznica/vydanie-db";
+import { currentProjectId } from "@/lib/live/caller";
 import { withRequestProject } from "@/lib/project/request";
 
 /**
@@ -19,7 +20,7 @@ async function postHandler(req: Request, ctx: { params: Promise<{ kniznica: stri
   const b = await vstup(req);
   if (b instanceof NextResponse) return b;
   try {
-    return odpoved(await vydaj(() => supabaseSkladVydania(k), brana(), b, { xsd: (xml) => overXsd(xml), uloziste: supabaseUloziste() }));
+    return odpoved(await vydaj(() => supabaseSkladVydania(k, currentProjectId()), brana(), b, { xsd: (xml) => overXsd(xml), uloziste: supabaseUloziste() }));
   } catch (err) {
     if (err instanceof VydanieMigraciaChyba) return NextResponse.json({ detail: err.message, error: err.message }, { status: 503 });
     return chybaServera(err);

@@ -5,6 +5,7 @@
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/verification_results.sql
 -- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
 begin;
+\ir _legacy_ocb.sql
 
 -- aktuálne revízie: ASR v79 (bez ostatných modelov stačí jeden riadok)
 delete from model_revisions where model = 'ZZTEST';
@@ -40,7 +41,7 @@ begin
   end;
 
   -- starý beh nad neexistujúcou revíziou -1 (stale = true), nový nad aktuálnou revíziou ASR (stale = false)
-  select (model_revisions_at(null) ->> 'ASR')::int into cur;
+  select (project_model_revisions_at('9e2dfcba-437b-43d3-a925-0dd29f195b38', null) ->> 'ASR')::int into cur;
   insert into verification_results (run_id, model, revision, global_id, target, recipe, status, file_value, computed_value, method, anchors)
     values (run_old, 'ASR', -1, 'g1', 'Qto_SpaceBaseQuantities.Height', 'space.height.own@1', 'red', 3.95, 3.90, 'm', '[]');
   insert into verification_runs (id, registry_version, engine, model_revisions, counts)

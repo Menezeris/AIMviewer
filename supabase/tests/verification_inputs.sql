@@ -3,6 +3,7 @@
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/verification_inputs.sql
 -- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
 begin;
+\ir _legacy_ocb.sql
 
 do $$
 declare

@@ -3,6 +3,7 @@
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/document_sha256.sql
 -- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
 begin;
+\ir _legacy_ocb.sql
 
 insert into objects (id, object_type, object_ref, name) values
   ('00000000-0000-4000-8000-0000000000d1', 'document', 'TDOC.1NP', 'Pôdorys 1NP');

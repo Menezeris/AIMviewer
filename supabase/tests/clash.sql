@@ -2,6 +2,7 @@
 -- Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/clash.sql
 begin;
+\ir _legacy_ocb.sql
 
 -- Graf AIM: dva prvky s GUID, jeden v systéme VZT-01.
 insert into objects (id, object_type, object_ref, name) values

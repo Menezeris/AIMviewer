@@ -4,6 +4,7 @@
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/icdd_imports.sql
 -- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
 begin;
+\ir _legacy_ocb.sql
 
 -- uzly: prvok, dokument, druhý dokument
 insert into objects (id, object_type, name) values

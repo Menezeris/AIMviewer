@@ -183,11 +183,6 @@ def test_same_model_code_in_two_projects_is_two_models(tmp_path, db_url, storage
     """D-189: ASR of one project is not ASR of another; each has its own container and revision line."""
     import psycopg
 
-    with psycopg.connect(DB) as conn:
-        if conn.execute("select 1 from pg_constraint where conname = 'information_containers_identification_key'"
-                        ).fetchone():
-            pytest.skip("transitional global key information_containers (identification) until the cleanup "
-                        "migration (D-189)")
     code, pid = project
     other_code = f"U{code[1:]}"
     with psycopg.connect(DB, autocommit=True) as conn:

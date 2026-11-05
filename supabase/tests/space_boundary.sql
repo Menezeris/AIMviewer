@@ -3,6 +3,7 @@
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/space_boundary.sql
 -- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
 begin;
+\ir _legacy_ocb.sql
 
 insert into objects (id, object_type, object_ref, name, ifc_type) values
   ('00000000-0000-4000-8000-000000000001', 'space', 'T1.01', 'T1.01', 'IfcSpace'),

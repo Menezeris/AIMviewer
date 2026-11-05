@@ -2,6 +2,7 @@
 -- Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/information_containers.sql
 begin;
+\ir _legacy_ocb.sql
 
 -- Revízie modelu ASR (v0, potom v72 v hlavnej rade) a VZT v11.
 insert into model_revisions (id, model, revision, parent_revision, is_current, sha256, size_bytes, archive_path, recipe_ref, author, created_at) values
@@ -132,8 +133,8 @@ begin
   if j is distinct from '{"ASR": 72}'::jsonb then raise exception 'clash podľa veľkosti: %', j; end if;
   select model_revisions into j from clash_runs where id = '00000000-0000-4000-8000-0000000000f2';
   if j is distinct from '{"ASR": 72, "VZT": 11}'::jsonb then raise exception 'clash z motora: %', j; end if;
-  if engine_model_revisions('{"ASR": 0}') is distinct from '{"ASR": 0}'::jsonb then raise exception 'číslo revízie priamo'; end if;
-  if engine_model_revisions(null) is distinct from '{}'::jsonb then raise exception 'null models'; end if;
+  if project_engine_model_revisions('9e2dfcba-437b-43d3-a925-0dd29f195b38', '{"ASR": 0}') is distinct from '{"ASR": 0}'::jsonb then raise exception 'číslo revízie priamo'; end if;
+  if project_engine_model_revisions('9e2dfcba-437b-43d3-a925-0dd29f195b38', null) is distinct from '{}'::jsonb then raise exception 'null models'; end if;
 
   select based_on, stale into j, s from v_ids_latest where ids_title = 'IDS-A';
   if j is distinct from '{"ASR": 72}'::jsonb or s is distinct from false then raise exception 'IDS-A aktuálne: % %', j, s; end if;
@@ -157,8 +158,8 @@ begin
   if s is distinct from true then raise exception 'clash po novej revízii VZT: %', s; end if;
   select stale into s from v_ids_latest where ids_title = 'IDS-A';
   if s is distinct from false then raise exception 'IDS nad ASR sa VZT netýka: %', s; end if;
-  if revisions_stale('{"XYZ": 1}') is distinct from true then raise exception 'neznámy model nie je aktuálny'; end if;
-  if model_revisions_at('2026-10-20') is distinct from '{"ASR": 72}'::jsonb then raise exception 'revízie k času: %', model_revisions_at('2026-10-20'); end if;
+  if project_revisions_stale('9e2dfcba-437b-43d3-a925-0dd29f195b38', '{"XYZ": 1}') is distinct from true then raise exception 'neznámy model nie je aktuálny'; end if;
+  if project_model_revisions_at('9e2dfcba-437b-43d3-a925-0dd29f195b38', '2026-10-20') is distinct from '{"ASR": 72}'::jsonb then raise exception 'revízie k času: %', project_model_revisions_at('9e2dfcba-437b-43d3-a925-0dd29f195b38', '2026-10-20'); end if;
 end $$;
 
 -- Kalibrácie `_georef`: pečiatka pri zápise, prenos pri tej istej kalibrácii, nová pri inej.
@@ -199,12 +200,12 @@ begin
 
   -- spätné doplnenie: revízie platné v čase calibrated_at; bez času sa nič nevymýšľa
   g := georef_stamp('{"version": 2, "calibrations": [{"page": 1, "affine": [1,0,0,0,1,0], "calibrated_at": "2026-10-20T10:00:00Z"}, {"page": 2, "affine": [1,0,0,0,1,0]}]}',
-                    null, '00000000-0000-4000-8000-0000000000d3', true);
+                    null, '00000000-0000-4000-8000-0000000000d3', true, '9e2dfcba-437b-43d3-a925-0dd29f195b38');
   if g -> 'calibrations' -> 0 -> 'model_revisions' is distinct from '{"ASR": 72}'::jsonb then raise exception 'spätne k času: %', g; end if;
   if g -> 'calibrations' -> 1 ? 'model_revisions' then raise exception 'spätne bez času: %', g; end if;
 
   -- v1 (celý _georef je jedna kalibrácia)
-  g := georef_stamp('{"version": 1, "page": 1, "affine": [1,0,0,0,1,0], "storey_guid": "S", "storey_z": 0}', null, null);
+  g := georef_stamp('{"version": 1, "page": 1, "affine": [1,0,0,0,1,0], "storey_guid": "S", "storey_z": 0}', null, null, false, '9e2dfcba-437b-43d3-a925-0dd29f195b38');
   if g -> 'model_revisions' is distinct from '{"ASR": 72, "VZT": 13}'::jsonb then raise exception 'v1: %', g; end if;
 end $$;
 

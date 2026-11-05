@@ -2,6 +2,7 @@
 -- Spustenie na lokálnej DB s aplikovanými migráciami (nikdy produkcia):
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/ifc_revision_copy.sql
 begin;
+\ir _legacy_ocb.sql
 
 insert into model_revisions (model, revision, parent_revision, is_current, sha256, size_bytes, archive_path) values
   ('TST', 1, null, false, repeat('a', 64), 1, 'x'),
@@ -46,26 +47,26 @@ update ifc_rev_property_sets set properties = '{"Manufacturer": "INÝ"}', conten
 do $$
 declare n int; a text; j jsonb;
 begin
-  select count(*) into n from ifc_rev_storey_elements('TST', 1, '2NP', 'Prívod%');
+  select count(*) into n from ifc_rev_storey_elements('TST', 1, '2NP', 'Prívod%', '9e2dfcba-437b-43d3-a925-0dd29f195b38');
   if n is distinct from 3 then raise exception 'prívod 2NP v1: %', n; end if;
-  select count(*) into n from ifc_rev_storey_elements('TST', null, '2NP', 'Prívod%');   -- aktuálna = v2
+  select count(*) into n from ifc_rev_storey_elements('TST', null, '2NP', 'Prívod%', '9e2dfcba-437b-43d3-a925-0dd29f195b38');   -- aktuálna = v2
   if n is distinct from 1 then raise exception 'prívod 2NP v2: %', n; end if;
-  select count(*) into n from ifc_rev_storey_elements('TST', 1, 'S2');                  -- podľa GlobalId, bez systému
+  select count(*) into n from ifc_rev_storey_elements('TST', 1, 'S2', null, '9e2dfcba-437b-43d3-a925-0dd29f195b38');                  -- podľa GlobalId, bez systému
   if n is distinct from 4 then raise exception 'podlažie podľa GlobalId: %', n; end if;
 
-  select string_agg(global_id || ':' || change_action, ',' order by global_id) into a from ifc_rev_compare('TST', 1, 2);
+  select string_agg(global_id || ':' || change_action, ',' order by global_id) into a from ifc_rev_compare('TST', 1, 2, '9e2dfcba-437b-43d3-a925-0dd29f195b38');
   if a is distinct from 'K:MODIFIED,N:ADDED,P1:MODIFIED,P2:DELETED,T:MODIFIED,V:MODIFIED' then
     raise exception 'porovnanie: %', a;
   end if;
-  select aspects into j from ifc_rev_compare('TST', 1, 2) where global_id = 'P1';
+  select aspects into j from ifc_rev_compare('TST', 1, 2, '9e2dfcba-437b-43d3-a925-0dd29f195b38') where global_id = 'P1';
   if j is distinct from '{"psets": ["Qto_DuctSegmentBaseQuantities.Length"]}'::jsonb then raise exception 'P1: %', j; end if;
-  select aspects into j from ifc_rev_compare('TST', 1, 2) where global_id = 'K';
+  select aspects into j from ifc_rev_compare('TST', 1, 2, '9e2dfcba-437b-43d3-a925-0dd29f195b38') where global_id = 'K';
   if j is distinct from '{"relations": ["-IfcRelContainedInSpatialStructure:S2", "+IfcRelContainedInSpatialStructure:S3"]}'::jsonb then
     raise exception 'K: %', j;
   end if;
-  select aspects into j from ifc_rev_compare('TST', 1, 2) where global_id = 'V';
+  select aspects into j from ifc_rev_compare('TST', 1, 2, '9e2dfcba-437b-43d3-a925-0dd29f195b38') where global_id = 'V';
   if j is distinct from '{"attributes": ["Name"]}'::jsonb then raise exception 'V: %', j; end if;
-  select aspects into j from ifc_rev_compare('TST', 1, 2) where global_id = 'S2';
+  select aspects into j from ifc_rev_compare('TST', 1, 2, '9e2dfcba-437b-43d3-a925-0dd29f195b38') where global_id = 'S2';
   if j is not null then raise exception 'podlažie nemá byť MODIFIED pri presune klapky: %', j; end if;
 end $$;
 
@@ -75,11 +76,11 @@ update ifc_rev_objects set attributes = '{"Name": "VV.1"}', content_hash = md5('
 do $$
 declare a text; j jsonb;
 begin
-  select change_action, aspects into a, j from ifc_rev_compare('TST', 1, 2) where global_id = 'V';
+  select change_action, aspects into a, j from ifc_rev_compare('TST', 1, 2, '9e2dfcba-437b-43d3-a925-0dd29f195b38') where global_id = 'V';
   if a is distinct from 'NOCHANGE' or j is distinct from '{"note": "changed via type", "via_type": "T"}'::jsonb then
     raise exception 'cez typ: % %', a, j;
   end if;
-  if (select count(*) from ifc_rev_compare('TST', 1, 1)) <> 0 then raise exception 'revízia sama so sebou má zmeny'; end if;
+  if (select count(*) from ifc_rev_compare('TST', 1, 1, '9e2dfcba-437b-43d3-a925-0dd29f195b38')) <> 0 then raise exception 'revízia sama so sebou má zmeny'; end if;
 end $$;
 
 -- bez hotovej kópie sa nič nevracia, chyba povie, čo spustiť
@@ -88,7 +89,7 @@ values ('TST', 3, 2, false, repeat('c', 64), 1, 'x');
 insert into ifc_rev_imports (model, revision, sha256, status, hash_version, error) values ('TST', 3, repeat('c', 64), 'failed', 1, 'x');
 do $$
 begin
-  perform ifc_rev_compare('TST', 2, 3);
+  perform ifc_rev_compare('TST', 2, 3, '9e2dfcba-437b-43d3-a925-0dd29f195b38');
   raise exception 'neúplná revízia prešla';
 exception when raise_exception then
   if sqlerrm not like '%etl.revision_copy%' then raise; end if;

@@ -4,6 +4,7 @@
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/ifc_guid_aliases.sql
 -- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
 begin;
+\ir _legacy_ocb.sql
 
 -- Typ TQ01.06 (GUID Q-T1) zlúčil ďalšie dva IFC typy Q-T2, Q-T3; typ TQ01.07 bez aliasu (most už nie je).
 insert into objects (id, object_type, object_ref, name, ifc_type, properties, valid_until) values

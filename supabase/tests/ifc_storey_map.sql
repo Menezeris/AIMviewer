@@ -3,6 +3,7 @@
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/ifc_storey_map.sql
 -- Všetko beží v transakcii a končí ROLLBACK; zlyhanie = výnimka s popisom.
 begin;
+\ir _legacy_ocb.sql
 
 -- Podlažia AIM: 1NP a 2NP (jediné), dve podlažia s číslom 3 (3NP a 3.NP = dvojznačné), 4NP bez výšky.
 insert into objects (id, object_type, object_ref, name, ifc_type, properties, valid_until) values
