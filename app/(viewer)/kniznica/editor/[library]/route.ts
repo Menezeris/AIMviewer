@@ -10,8 +10,8 @@ import { ZapisMigraciaChyba } from "@/lib/library/store-db";
  */
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request, ctx: { params: Promise<{ kniznica: string }> }) {
-  const k = kodKniznice((await ctx.params).kniznica);
+export async function GET(_req: Request, ctx: { params: Promise<{ library: string }> }) {
+  const k = kodKniznice((await ctx.params).library);
   if (!k) return neznamaKniznica();
   try {
     const html = vykresliHtml(await dokument(sklad(k), await info(k)()), `/api/library/editor/${k}/`);
