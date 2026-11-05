@@ -213,36 +213,36 @@ create table ifc_guid_aliases (
 create unique index uniq_active_guid_alias on ifc_guid_aliases (ifc_guid) where valid_until is null;
 ```
 
-### 2.5 Hrany — generický meta-model `relationships` (D-051, implementované vo F1)
+### 2.5 Edges - the generic meta-model `relationships` (D-051, implemented in F1)
 
-Hrany sú **IFC-kanonické** (D-048) a od F1 žijú v **jednej generickej tabuľke
-`relationships`** s diskriminátorom `rel_type` (symetricky k `objects.object_type`).
-Fyzicky binárne `from→to` + naše meta stĺpce (NIE objektifikované N-árne IFC entity —
-sme index nad IFC sémantikou, nie STEP v Postgrese, D-046/D-048). Smer = `subjekt→objekt`.
-Vlastný IFC meta-model je trojtabuľkový: `objects` (IfcObjectDefinition) + `relationships`
-(IfcRelationship) + `properties` (IfcPropertyDefinition). Migrácia:
-`20260707150000_relationships_metamodel.sql` (revízia D-048; per-vzťah tabuľky supersedované).
+Edges are **IFC-canonical** (D-048) and since F1 live in **one generic table
+`relationships`** with the discriminator `rel_type` (symmetric to `objects.object_type`).
+Physically binary `from->to` plus our meta columns (NOT reified N-ary IFC entities -
+we are an index over the IFC semantics, not STEP in Postgres, D-046/D-048). Direction = `subject->object`.
+The own IFC meta-model has three tables: `objects` (IfcObjectDefinition) + `relationships`
+(IfcRelationship) + `properties` (IfcPropertyDefinition). Migration:
+`20260707150000_relationships_metamodel.sql` (revision of D-048; per-relationship tables superseded).
 
-**Manifest `relationship_types`** = jeden zdroj pravdy o `rel_type` (generovaný a overený
-proti IFC schéme cez `ifcopenshell`, `etl/manifest.py`). Poháňa validačný trigger, ETL
-routing (`db.py`) aj export. **Kanonické views** rovnakého názvu ako pôvodné `rel_*` slúžia
-zároveň ako bezvýpadkový compat layer — **čítacia vrstva (viewer/3D/filter) sa nemení**;
-**LLM dotazuje LEN views**, nie base tabuľku. **N-árnosť = binárne `from→to`** (N-árne = N
-riadkov; zachováva D-031 idempotenciu). **Partície odložené** (`LIST` podľa `rel_type` nesie
-„PK musí obsahovať partičný kľúč" → kolízia s `ON CONFLICT (id)`; dnes index na `rel_type` stačí).
+**The manifest `relationship_types`** = the single source of truth about `rel_type` (generated and verified
+against the IFC schema via `ifcopenshell`, `etl/manifest.py`). It drives the validation trigger, the ETL
+routing (`db.py`) and the export. **Canonical views** with the same names as the original `rel_*` tables serve
+at the same time as a zero-downtime compat layer - **the read layer (viewer/3D/filter) does not change**;
+**the LLM queries ONLY the views**, not the base table. **N-arity = binary `from->to`** (N-ary = N
+rows; preserves D-031 idempotency). **Partitions deferred** (`LIST` by `rel_type` carries
+"the PK must include the partition key" -> collision with `ON CONFLICT (id)`; today an index on `rel_type` is enough).
 
 ```sql
--- Manifest vzťahov (D-051) — generovaný z IFC schémy (etl/manifest.py)
+-- Relationship manifest (D-051) - generated from the IFC schema (etl/manifest.py)
 create table relationship_types (
-  rel_type            text primary key,      -- diskriminátor v relationships
-  ifc_entity          text,                  -- IFC kotva (IfcRelAggregates…); null = čisto aim_
-  ifc_family          text,                  -- rodina (IfcRelDecomposes…); null pre resource
-  is_ifc_rel          boolean not null,      -- true → IfcRel*; false → resource (member_of) / aim_
-  relating_end        text not null,         -- 'from'|'to' — ktorý koniec je IFC Relating
-  from_object_types   text[] not null,       -- povolené object_type subjektu
-  to_object_types     text[] not null,       -- povolené object_type objektu (prázdne pri klasifikácii)
-  to_is_classification boolean not null default false,  -- výnimka: to_id → classification_references
-  namespace           text not null,         -- 'rel' (IFC-kanonické) | 'aim' (rozšírenie D-048)
+  rel_type            text primary key,      -- discriminator in relationships
+  ifc_entity          text,                  -- IFC anchor (IfcRelAggregates...); null = purely aim_
+  ifc_family          text,                  -- family (IfcRelDecomposes...); null for resource
+  is_ifc_rel          boolean not null,      -- true -> IfcRel*; false -> resource (member_of) / aim_
+  relating_end        text not null,         -- 'from'|'to' - which end is the IFC Relating
+  from_object_types   text[] not null,       -- allowed object_type of the subject
+  to_object_types     text[] not null,       -- allowed object_type of the object (empty for classification)
+  to_is_classification boolean not null default false,  -- exception: to_id -> classification_references
+  namespace           text not null,         -- 'rel' (IFC-canonical) | 'aim' (extension D-048)
   export_path         text not null,         -- 'ifcrel' | 'resource' | 'icdd' | 'ifcx'
   unique_active_from  boolean not null default false,   -- unique-active-parent
   description         text,
@@ -250,26 +250,26 @@ create table relationship_types (
   check (namespace in ('rel','aim')),
   check (export_path in ('ifcrel','resource','icdd','ifcx'))
 );
--- Dodatok D-080 (migrácia 20261016130000): + rel_referenced_in_spatial_structure
---   (IfcRelReferencedInSpatialStructure, asset → space|floor|building|site, NEexkluzívne,
---   role inside|partial, plní `etl.derive spatial_reference`, source='derive:spatial_reference').
--- Dnešná sada (8 rel_type): rel_aggregates, rel_contained_in_spatial_structure,
+-- Addendum D-080 (migration 20261016130000): + rel_referenced_in_spatial_structure
+--   (IfcRelReferencedInSpatialStructure, asset -> space|floor|building|site, NON-exclusive,
+--   role inside|partial, filled by `etl.derive spatial_reference`, source='derive:spatial_reference').
+-- Current set (8 rel_type): rel_aggregates, rel_contained_in_spatial_structure,
 -- rel_defines_by_type, rel_associates_document, rel_associates_classification,
--- rel_assigns_to_actor, rel_assigns_to_group, rel_member_of. Presné hodnoty = migrácia.
--- Dodatok D-073 (migrácia 20260716120000): +2 PRVÉ aim_ hrany —
---   aim_rel_capture_located (capture → space|floor, unique-active),
---   aim_rel_capture_media (capture → capture_media, 1:N). namespace='aim',
---   is_ifc_rel=false, export_path='icdd' (ICDD linkset, D-015). Kanonické views
---   rovnakého názvu (aim_rel_capture_located / aim_rel_capture_media).
+-- rel_assigns_to_actor, rel_assigns_to_group, rel_member_of. Exact values = the migration.
+-- Addendum D-073 (migration 20260716120000): +2 FIRST aim_ edges -
+--   aim_rel_capture_located (capture -> space|floor, unique-active),
+--   aim_rel_capture_media (capture -> capture_media, 1:N). namespace='aim',
+--   is_ifc_rel=false, export_path='icdd' (ICDD linkset, D-015). Canonical views
+--   with the same names (aim_rel_capture_located / aim_rel_capture_media).
 
--- Generická tabuľka hrán. to_id je POLYMORFNÉ (objects ALEBO classification_references)
--- → zámerne bez FK; integrita cez validačný trigger z manifestu. from_id má FK+CASCADE.
+-- Generic edge table. to_id is POLYMORPHIC (objects OR classification_references)
+-- -> deliberately no FK; integrity via a validation trigger driven by the manifest. from_id has FK+CASCADE.
 create table relationships (
   id          uuid primary key default gen_random_uuid(),
   rel_type    text not null references relationship_types(rel_type),
-  from_id     uuid not null references objects(id) on delete cascade,  -- subjekt
-  to_id       uuid not null,                                           -- objekt (objects/classification_references)
-  role        text,                                                    -- len kde to typ vzťahu nesie
+  from_id     uuid not null references objects(id) on delete cascade,  -- subject
+  to_id       uuid not null,                                           -- object (objects/classification_references)
+  role        text,                                                    -- only where the relationship type carries it
   valid_from  timestamptz not null default now(),
   valid_until timestamptz,
   source      text
@@ -279,28 +279,28 @@ create index on relationships (from_id);
 create index on relationships (to_id);
 create index on relationships (rel_type, from_id);
 
--- Kanonické views = ROVNAKÉ názvy ako pôvodné rel_* (bezvýpadkový cutover, D-048).
--- Zrkadlia pôvodné stĺpce; role len tam, kde ho vzťah nesie (assoc_document, assigns_to_actor, member_of).
+-- Canonical views = the SAME names as the original rel_* (zero-downtime cutover, D-048).
+-- They mirror the original columns; role only where the relationship carries it (assoc_document, assigns_to_actor, member_of).
 create view rel_aggregates as
   select id, from_id, to_id, valid_from, valid_until, source
   from relationships where rel_type = 'rel_aggregates';
--- … analogicky rel_defines_by_type /
---   rel_associates_classification / rel_assigns_to_group (bez role) a
---   rel_associates_document / rel_assigns_to_actor / rel_member_of (s role).
--- rel_contained_in_spatial_structure od D-183 K3 (migrácia 20261031120000) číta kópiu revízie, nie
---   `relationships` (rovnaké prvé stĺpce + model, revision, global_id, container_global_id, via_global_id; §2.19).
+-- ... analogously rel_defines_by_type /
+--   rel_associates_classification / rel_assigns_to_group (without role) and
+--   rel_associates_document / rel_assigns_to_actor / rel_member_of (with role).
+-- rel_contained_in_spatial_structure since D-183 K3 (migration 20261031120000) reads the revision copy, not
+--   `relationships` (same leading columns + model, revision, global_id, container_global_id, via_global_id; §2.19).
 -- rel_aggregates / rel_defines_by_type / rel_assigns_to_group / rel_associates_document / rel_associates_classification
---   od D-183 K3 krok 2b (migrácia 20261031150000) tiež z kópie revízie + hrany AIM vrstvy (zdroj nie etl*) z `relationships`
---   (rovnaké prvé stĺpce + model, revision, global_id a parent_global_id | type_global_id | group_global_id |
---   document_key | classification_key; §2.19). rel_assigns_to_actor, rel_member_of a ostatné ostávajú nad `relationships`.
--- Od D-183 K3 krok 3 ETL grafu hrany týchto šiestich typov do `relationships` nezapisuje (staré `etl*` ostávajú
---   aktívne a nečítané, kým ich neukončí `supabase/migrations/20261031190000_end_etl_ifc_edges.sql`).
+--   since D-183 K3 step 2b (migration 20261031150000) also read the revision copy + the AIM-layer edges (source not etl*) from `relationships`
+--   (same leading columns + model, revision, global_id and parent_global_id | type_global_id | group_global_id |
+--   document_key | classification_key; §2.19). rel_assigns_to_actor, rel_member_of and the rest stay over `relationships`.
+-- Since D-183 K3 step 3 the graph ETL no longer writes the edges of these six types into `relationships` (the old `etl*` ones stay
+--   active and unread until `supabase/migrations/20261031190000_end_etl_ifc_edges.sql` ends them).
 ```
 
-### 2.6 Indexy + integrita hrán
+### 2.6 Indexes + edge integrity
 
 ```sql
--- unique-active-parent (D-021/D-048) = parciálne unique per rel_type literál
+-- unique-active-parent (D-021/D-048) = partial unique per rel_type literal
 create unique index uniq_active_aggregate on relationships (from_id)
   where rel_type = 'rel_aggregates' and valid_until is null;
 create unique index uniq_active_contained on relationships (from_id)
@@ -312,8 +312,8 @@ create unique index uniq_active_defines_by_type on relationships (from_id)
 create index idx_relationships_e4_from on relationships (from_id)
   where rel_type = 'rel_associates_document' and source = 'pdf_link (E4)';
 
--- Integrita bez polymorfného FK: BEFORE trigger číta manifest a overí rel_type,
--- povolené object_type oboch strán a to endpoint (objects vs classification_references).
+-- Integrity without a polymorphic FK: a BEFORE trigger reads the manifest and checks rel_type,
+-- the allowed object_type of both ends and the to endpoint (objects vs classification_references).
 create trigger trg_relationships_validate before insert or update on relationships
   for each row execute function relationships_validate();
 ```
