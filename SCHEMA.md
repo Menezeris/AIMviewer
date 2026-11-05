@@ -991,6 +991,8 @@ IFC has only IfcOwnerHistory, which is derived from it.
 - **Append-only:** owned by `audit_owner` (NOLOGIN; `postgres` is not a member after the migration). No role holds
   insert, update, delete or truncate. Rows come only from `audit.write()` and `audit.write_run()` (SECURITY DEFINER);
   `audit.reject_change` rejects update, delete and truncate (on the parent and every partition), also for the owner.
+  `platform_app` (the fork) has usage on `audit` and execute on `audit.log_row()` and `audit.write(...)` only (migration
+  `20261105180000_audit_platform_app_grants.sql`, not applied), so the fork's triggers on `platform` can log.
   `postgres` and `service_role` may read it; `anon` and `authenticated` cannot use the schema.
 - **Triggers:** `audit_log_ins_del` (after insert or delete) and `audit_log_upd` (after update, `when old.* is
   distinct from new.*`) run `audit.log_row(<pk columns>[, '@objects'])` on 25 tables: `objects`, `documents`, `spaces`,
