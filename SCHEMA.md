@@ -982,7 +982,10 @@ IFC has only IfcOwnerHistory, which is derived from it.
 
 - **Partitions:** by month (`audit.log_YYYY_MM`, 24 from Nov 2026) and `audit.log_default`;
   `audit.ensure_partitions(months, from)` adds months. Indexes on `at`, `(table_name, row_id, at)`, `(project_id, at)`.
-- **Append-only:** owned by `audit_owner` (NOLOGIN; `postgres` is not a member after the migration). No role holds
+- **Append-only:** owned by `audit_owner` (NOLOGIN). The migration's own `grant audit_owner to postgres` is revoked at the
+  end, but on PostgreSQL 16+ the creator keeps the automatic ADMIN grant (no SET, no INHERIT): `postgres` cannot act as
+  `audit_owner`, though as the platform admin it could grant itself SET again. Without superuser rights (Supabase) this
+  cannot be closed; the guard trigger and the missing grants hold for every other role. No role holds
   insert, update, delete or truncate. Rows come only from `audit.write()` and `audit.write_run()` (SECURITY DEFINER);
   `audit.reject_change` rejects update, delete and truncate (on the parent and every partition), also for the owner.
   `postgres` and `service_role` may read it; `anon` and `authenticated` cannot use the schema.
