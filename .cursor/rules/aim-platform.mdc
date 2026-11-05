@@ -7,7 +7,7 @@ The project's conventions, stack and database rules are in **[AGENTS.md](../../A
 single source of truth shared by all tools. Read it before work and keep to it.
 
 Supporting documents:
-- `DECISIONS.md`: architecture decisions (D-0xx) with context; every feature has a record
+- `decisions/` (index `decisions/README.md`): architecture decisions (D-0xx), one file per record; every feature has a record
 - `SCHEMA.md`: database schema (§5 = IFC mapping and declared extensions)
 - `ROADMAP.md`: phases, sprints and priorities
 - `etl/README.md`: running the ETL pipeline

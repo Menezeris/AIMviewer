@@ -13,7 +13,7 @@
 
 ## Core rules (details in the linked docs)
 
-- **One fact, one place.** Rules: this file. Why: `DECISIONS.md` (`D-0xx`). DDL: `SCHEMA.md`. State and next steps:
+- **One fact, one place.** Rules: this file. Why: `decisions/` (one file `D-nnn.md` per record, index in `decisions/README.md`). DDL: `SCHEMA.md`. State and next steps:
   `ROADMAP.md` (only there). Run and deploy: `README.md`. ETL: `etl/README.md`. Map and writing rules:
   [`docs/agent-process.md`](docs/agent-process.md).
 - **New feature = a `D-0xx` record first, then code.** DB change = a new migration + an update of `SCHEMA.md`.
@@ -43,7 +43,7 @@
 - Do not store type property sets on the occurrence; they belong to the type (inherited through a view)
 - Do not put IFC attributes into psets; without a column they belong in `properties._attributes` (D-195)
 - Do not throw away addresses or organization links from the source; store them in `_contact`/`_org` in `properties` (until C)
-- Do not build features without a matching record in DECISIONS.md
+- Do not build features without a matching record in `decisions/` (new record = `decisions/D-nnn.md` plus one index row in `decisions/README.md`; never append to `DECISIONS.md`, it is a pointer)
 - Do not introduce a new attribute, edge or enum without checking the IFC4.3 equivalent. If one exists,
   take the IFC name and values literally; if not, record it as a declared extension
   in SCHEMA.md §5 (IFC-first naming, D-046)

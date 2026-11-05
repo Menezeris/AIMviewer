@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -47,10 +47,9 @@ describe("register toolov MCP (D-114)", () => {
     expect(new Set(tools.map((t) => t.name)).size).toBe(tools.length);
   });
 
-  it("každé rozhodnutie v registri existuje v DECISIONS.md", () => {
-    const decisions = readFileSync(join(process.cwd(), "DECISIONS.md"), "utf8");
+  it("každé rozhodnutie v registri existuje v decisions/", () => {
     const unknown = [...new Set(Object.values(REGISTRY))].filter(
-      (d) => !new RegExp(`^### ${d}\\b`, "m").test(decisions),
+      (d) => !existsSync(join(process.cwd(), "decisions", `${d}.md`)),
     );
     expect(unknown).toEqual([]);
   });

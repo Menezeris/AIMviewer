@@ -78,7 +78,7 @@ V inventári nájdi 2-3 tooly najbližšie k potrebe a do plánu (krok 3) ich vy
 
 ## 4. Implementácia
 - Vetva `claude/mcp-<číslo issue>-<krátky-slug>` z aktuálneho `main`.
-- **Najprv záznam `D-0xx` v `DECISIONS.md`** (pred kódom, `AGENTS.md` pravidlo 2) s číslom
+- **Najprv záznam `D-0xx` ako `decisions/D-0xx.md` + riadok v `decisions/README.md`** (pred kódom, `AGENTS.md` pravidlo 2) s číslom
   rezervovaným v registri #60 (krok 1).
 - Tool má opis po slovensky, parametre po anglicky (ako ostatné), anotácie: čítanie =
   predvolené read-only; zápis musí prepísať `readOnlyHint: false`.
