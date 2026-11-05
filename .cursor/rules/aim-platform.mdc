@@ -1,15 +1,15 @@
 ---
-description: AIM Platform — projektové konvencie, stack a databázové pravidlá
+description: AIM Platform - project conventions, stack and database rules
 alwaysApply: true
 ---
 
-Konvencie, stack a databázové pravidlá projektu sú v **[AGENTS.md](../../AGENTS.md)** —
-jediný zdroj pravdy, spoločný pre všetky nástroje. Čítaj ho pred prácou a drž sa ho.
+The project's conventions, stack and database rules are in **[AGENTS.md](../../AGENTS.md)**, the
+single source of truth shared by all tools. Read it before work and keep to it.
 
-Doplnkové dokumenty:
-- `DECISIONS.md` — architektonické rozhodnutia (D-0xx) s kontextom; každá feature má záznam
-- `SCHEMA.md` — databázová schéma (§5 = IFC mapovanie a deklarované extenzie)
-- `ROADMAP.md` — fázy, sprinty a priority
-- `etl/README.md` — spustenie ETL pipeline
+Supporting documents:
+- `DECISIONS.md`: architecture decisions (D-0xx) with context; every feature has a record
+- `SCHEMA.md`: database schema (§5 = IFC mapping and declared extensions)
+- `ROADMAP.md`: phases, sprints and priorities
+- `etl/README.md`: running the ETL pipeline
 
-Konvencie nemeň v tomto súbore — uprav `AGENTS.md`. Toto je len pointer.
+Do not change conventions in this file; edit `AGENTS.md`. This is only a pointer.
